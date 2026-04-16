@@ -1,11 +1,9 @@
 {
   "id": "web-novel-assistant",
   "name": "WebNovel Assistant",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "minAppVersion": "0.15.0",
-  "description": "专为网文小说创作设计的 Obsidian 插件 — 精准字数统计、写作目标追踪、专注/摸鱼计时、悬浮便签、文件夹合并导出、OBS 直播数据同步、历史统计大盘",
+  "description": "专为网文小说创作服务",
   "author": "HatanoChihiro",
-  "authorUrl": "https://github.com/HatanoChihiro",
-  "isDesktopOnly": false,
-  "repositoryUrl": "https://github.com/HatanoChihiro/obsidian-webnovel-assistant"
+  "isDesktopOnly": false
 }

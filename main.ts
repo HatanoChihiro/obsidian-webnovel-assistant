@@ -34,12 +34,22 @@ interface AccurateCountSettings {
 	showGoal: boolean;
 	showExplorerCounts: boolean;
 	enableObs: boolean;
+	enableLegacyObsExport: boolean;
 	dailyHistory: Record<string, DailyStat>;
 	obsPath: string;
 	openNotes: StickyNoteState[];
-	noteOpacity: number; 
-	noteThemes: ThemeScheme[]; 
+	noteOpacity: number;
+	noteThemes: ThemeScheme[];
 	idleTimeoutThreshold: number;
+	obsPort: number;
+	obsOverlayTheme: string;
+	obsOverlayOpacity: number;
+	obsCustomCss: string;
+	obsShowFocusTime: boolean;
+	obsShowSlackTime: boolean;
+	obsShowTotalTime: boolean;
+	obsShowTodayWords: boolean;
+	obsShowSessionWords: boolean; // 已还原
 }
 
 const DEFAULT_SETTINGS: AccurateCountSettings = {
@@ -47,6 +57,7 @@ const DEFAULT_SETTINGS: AccurateCountSettings = {
 	showGoal: true,
 	showExplorerCounts: true,
 	enableObs: false,
+	enableLegacyObsExport: false,
 	obsPath: "",
 	openNotes: [],
 	noteOpacity: 0.9,
@@ -59,8 +70,18 @@ const DEFAULT_SETTINGS: AccurateCountSettings = {
 		{ bg: '#2C3E50', text: '#F8F9FA' }, // 暗夜蓝
 		{ bg: '#E8DFF5', text: '#4A3B69' }, // 薰衣草
 		{ bg: '#FDE0C1', text: '#593D2B' }  // 奶茶橘
-	]
+	],
+	obsPort: 24816,
+	obsOverlayTheme: 'dark',
+	obsOverlayOpacity: 0.85,
+	obsCustomCss: '',
+	obsShowFocusTime: true,
+	obsShowSlackTime: true,
+	obsShowTotalTime: true,
+	obsShowTodayWords: true,
+	obsShowSessionWords: true, // 已还原
 }
+
 
 function hexToRgba(hex: string, alpha: number): string {
 	if (!hex) return `rgba(255, 255, 255, ${alpha})`;
@@ -74,6 +95,8 @@ function hexToRgba(hex: string, alpha: number): string {
 }
 
 export default class AccurateChineseCountPlugin extends Plugin {
+
+	
 	settings!: AccurateCountSettings;
 	statusBarItemEl!: HTMLElement;
 
@@ -89,6 +112,7 @@ export default class AccurateChineseCountPlugin extends Plugin {
 	
 	worker: Worker | null = null;
 	activeNotes: FloatingStickyNote[] = [];
+	obsServer: ObsOverlayServer | null = null;
 
 	async onload() {
 		// ==========================================
@@ -173,7 +197,7 @@ export default class AccurateChineseCountPlugin extends Plugin {
 					new Notice("⏸️ 码字时长统计已暂停");
 				}
 				this.updateWordCount();
-				this.exportToOBS(true);
+				this.exportLegacyOBS(true);
 				this.refreshStatusViews(); 
 			}
 		});
@@ -197,7 +221,7 @@ export default class AccurateChineseCountPlugin extends Plugin {
 				this.isTracking = false; 
 				this.worker?.postMessage('stop');
 				this.handleFileChange(); 
-				this.exportToOBS(true); 
+				this.exportLegacyOBS(true); 
 				this.refreshStatusViews();
 				new Notice('直播数据已重置，且统计已暂停，请手动开始新的场次！');
 			}
@@ -274,6 +298,7 @@ export default class AccurateChineseCountPlugin extends Plugin {
 								return;
 							}
 
+							// 确保有序
 							mdFiles.sort((a, b) => a.path.localeCompare(b.path, 'zh', { numeric: true }));
 
 							let mergedContent = `# 【合并导出】${file.name}\n\n`;
@@ -332,17 +357,34 @@ export default class AccurateChineseCountPlugin extends Plugin {
 
 		this.setupWorker();
 
+		// 启动 OBS 叠加层 HTTP Server
+		if (this.settings.enableObs) {
+			this.obsServer = new ObsOverlayServer(this, this.settings.obsPort);
+			this.obsServer.start();
+		}
+
+		this.addCommand({
+			id: 'copy-obs-overlay-url',
+			name: '复制 OBS 叠加层 URL 到剪贴板',
+			callback: () => {
+				const url = `http://127.0.0.1:${this.settings.obsPort}/`;
+				navigator.clipboard.writeText(url);
+				new Notice(`已复制: ${url}`);
+			}
+		});
+
 		this.registerInterval(window.setInterval(() => {
 			if (this.isTracking) {
 				this.saveSettings();
 			}
 		}, 60 * 1000));
 	}
-	
+
 	onunload() {
 		this.saveSettings();
 		this.removeGlobalStyles();
 		if (this.worker) this.worker.terminate();
+		this.obsServer?.stop();
 	}
 
 	async toggleStatusView() {
@@ -367,8 +409,9 @@ export default class AccurateChineseCountPlugin extends Plugin {
 		const data = await this.loadData();
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, data);
 		
+		// 已还原的向下兼容逻辑
 		if (data && data.noteColors && (!data.noteThemes || data.noteThemes.length === 0)) {
-			this.settings.noteThemes = data.noteColors.map((c: string) => ({ bg: c, text: '#2C3E50' }));
+			this.settings.noteThemes = data.noteColors.map((color: string) => ({ bg: color, text: '#2C3E50' }));
 		}
 	}
 
@@ -474,8 +517,8 @@ export default class AccurateChineseCountPlugin extends Plugin {
 		        this.settings.dailyHistory[today].slackMs += delta;
 		    }
 		    
-		    this.exportToOBS();
-			this.refreshStatusViews(); 
+			this.refreshStatusViews();
+			if (this.settings.enableLegacyObsExport) this.exportLegacyOBS();
 		};
 	}
 
@@ -495,9 +538,8 @@ export default class AccurateChineseCountPlugin extends Plugin {
 		return `${h}:${m}:${s}`;
 	}
 
-	exportToOBS(force: boolean = false) {
-		// --- 增加对移动端的拦截，手机上绝对不执行本地文件写入 ---
-		if (!Platform.isDesktop || !this.settings.enableObs || !this.settings.obsPath) return;
+	exportLegacyOBS(force: boolean = false) {
+		if (!Platform.isDesktop || !this.settings.enableLegacyObsExport || !this.settings.obsPath) return;
 		try {
 			// @ts-ignore
 			const fs = window.require('fs');
@@ -508,13 +550,13 @@ export default class AccurateChineseCountPlugin extends Plugin {
 
 			const totalSec = Math.floor((this.focusMs + this.slackMs) / 1000);
 			const focusSec = Math.floor(this.focusMs / 1000);
-			const slackSec = totalSec - focusSec; 
+			const slackSec = totalSec - focusSec;
 
 			fs.writeFileSync(path.join(dir, 'obs_focus_time.txt'), this.formatTime(focusSec), 'utf8');
 			fs.writeFileSync(path.join(dir, 'obs_slack_time.txt'), this.formatTime(slackSec), 'utf8');
-			fs.writeFileSync(path.join(dir, 'obs_total_time.txt'), this.formatTime(totalSec), 'utf8'); 
+			fs.writeFileSync(path.join(dir, 'obs_total_time.txt'), this.formatTime(totalSec), 'utf8');
 			fs.writeFileSync(path.join(dir, 'obs_words_done.txt'), Math.max(0, this.sessionAddedWords).toString(), 'utf8');
-			
+
 			let currentGoal = this.settings.defaultGoal;
 			const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 			if (view?.file) {
@@ -526,6 +568,320 @@ export default class AccurateChineseCountPlugin extends Plugin {
 		} catch (e) { if (force) console.error(e); }
 	}
 
+	getObsStats(): ObsStatsPayload {
+		const focusSec = Math.floor(this.focusMs / 1000);
+		const slackSec = Math.floor(this.slackMs / 1000);
+		const totalSec = focusSec + slackSec;
+		const today = window.moment().format('YYYY-MM-DD');
+		const todayStat = this.settings.dailyHistory[today] || { focusMs: 0, slackMs: 0, addedWords: 0 };
+
+		let targetGoal = this.settings.defaultGoal;
+		let currentFile = '';
+		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+		if (view?.file) {
+			currentFile = view.file.basename;
+			const cache = this.app.metadataCache.getFileCache(view.file);
+			const fmGoal = parseInt(cache?.frontmatter?.['word-goal']);
+			if (!isNaN(fmGoal)) targetGoal = fmGoal;
+		}
+
+		const todayAdded = Math.max(0, todayStat.addedWords);
+		return {
+			isTracking: this.isTracking,
+			focusTime: this.formatTime(focusSec),
+			slackTime: this.formatTime(slackSec),
+			totalTime: this.formatTime(totalSec),
+			sessionWords: Math.max(0, this.sessionAddedWords),
+			todayWords: todayAdded,
+			goal: targetGoal,
+			percent: targetGoal > 0 ? Math.min(Math.round((todayAdded / targetGoal) * 100), 100) : 0,
+			currentFile: currentFile,
+		};
+	}
+
+	buildObsOverlayHtml(): string {
+		const theme = this.settings.obsOverlayTheme || 'dark';
+		let isDark = theme === 'dark';
+		
+		
+		const overlayOpacity = this.settings.obsOverlayOpacity ?? 0.85;
+		let cardBg = isDark ? `rgba(20, 20, 30, ${overlayOpacity})` : `rgba(255, 255, 255, ${overlayOpacity})`;
+		let textColor = isDark ? '#E8E8E8' : '#2C3E50';
+		
+		if (theme.startsWith('note-')) {
+			const index = parseInt(theme.split('-')[1]);
+			const noteTheme = this.settings.noteThemes[index];
+			if (noteTheme) {
+				cardBg = hexToRgba(noteTheme.bg, overlayOpacity);
+				textColor = noteTheme.text;
+				
+				isDark = false; 
+			}
+		}
+
+		const mutedColor = isDark ? '#888' : '#999';
+		const accentColor = isDark ? '#6C9EFF' : '#4A90D9';
+		const greenColor = '#4CAF50';
+		const redColor = '#E74C3C';
+
+		let timeRowHtml = '';
+		if (this.settings.obsShowFocusTime || this.settings.obsShowSlackTime || this.settings.obsShowTotalTime) {
+			timeRowHtml = `\n\t<div class="time-row">`;
+			if (this.settings.obsShowTotalTime) timeRowHtml += `\n\t\t<div class="time-item"><div class="time-label">总计</div><div class="time-value" id="totalTime">00:00:00</div></div>`;
+			if (this.settings.obsShowFocusTime) timeRowHtml += `\n\t\t<div class="time-item"><div class="time-label">专注</div><div class="time-value focus" id="focusTime">00:00:00</div></div>`;
+			if (this.settings.obsShowSlackTime) timeRowHtml += `\n\t\t<div class="time-item"><div class="time-label">摸鱼</div><div class="time-value slack" id="slackTime">00:00:00</div></div>`;
+			timeRowHtml += `\n\t</div>\n\t<div class="divider"></div>`;
+		}
+
+		let todayGoalHtml = '';
+		if (this.settings.obsShowTodayWords) {
+			todayGoalHtml = `\n\t<div class="goal-row">
+		<span class="goal-label">目标进度</span>
+		<span class="goal-value"><span id="todayWords" class="current-val">0</span> <span class="sep">/</span> <span id="goalValue" class="target-val">0</span><span class="percent" id="percentText">0%</span></span>
+	</div>
+	<div class="progress-bg">
+		<div class="progress-fill" id="progressFill" style="width: 0%"></div>
+	</div>`;
+		}
+
+		// 已还原的本场净增逻辑
+		let sessionRowHtml = '';
+		if (this.settings.obsShowSessionWords) {
+			sessionRowHtml = `\n\t<div class="session-row">
+		<span>本场净增</span>
+		<span class="val" id="sessionWords">0</span>
+	</div>`;
+		}
+
+		// 已还原被破坏的 CSS 样式 (宽度、缩放与字号)
+		const html = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; 
+* { 
+    -webkit-font-smoothing: antialiased; 
+    -moz-osx-font-smoothing: grayscale; 
+} }
+body {
+	background: transparent;
+	font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+	color: ${textColor};
+	margin: 0;
+	padding: 0;
+	display: flex;
+	justify-content: flex-start;
+	align-items: flex-start;
+}
+.overlay-card {
+	background: ${cardBg};
+	border-radius: 14px;
+	padding: 20px 24px;
+	backdrop-filter: ${overlayOpacity < 0.1 ? 'none' : 'blur(12px)'};
+	border: ${overlayOpacity < 0.1 ? 'none' : '1px solid ' + (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)')};
+	transition: all 0.3s ease;
+	width: 280px; /* 已还原旧版宽度 */
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	zoom: 1.1; /* 已还原放大优化 */
+}
+.overlay-title {
+	font-size: 14px; /* 已还原旧版字号 */
+	font-weight: 700;
+	margin-bottom: 14px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+.status-dot {
+	width: 12px; height: 12px; border-radius: 50%;
+	display: inline-block;
+}
+.status-dot.active {
+	background: ${greenColor};
+	animation: pulse 1.5s ease-in-out infinite;
+}
+.status-dot.paused {
+	background: ${mutedColor};
+}
+@keyframes pulse {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.3; }
+}
+
+
+.time-label {
+	font-size: 16px; /* 已还原旧版字号 */
+	color: ${textColor};
+	opacity: 0.9;
+}
+.time-value {
+	font-family: 'Consolas', 'Courier New', monospace;
+	font-size: 24px; /* 已还原旧版字号 */
+	font-weight: 700;
+	letter-spacing: 1px;
+}
+.time-value.focus { color: ${accentColor}; }
+.time-value.slack { color: ${redColor}; }
+.divider {
+	height: 1px;
+	background: ${isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'};
+	margin: 4px 0;
+}
+
+
+
+
+
+.goal-value .percent {
+	font-size: 13px;
+	color: ${accentColor};
+	margin-left: 6px;
+}
+.progress-bg {
+	width: 100%;
+	height: 6px;
+	background: ${isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'};
+	border-radius: 3px;
+	overflow: hidden;
+	margin-bottom: 10px;
+}
+.progress-fill {
+	height: 100%;
+	border-radius: 3px;
+	background: ${accentColor};
+	transition: width 0.8s ease, background-color 0.5s ease;
+}
+.progress-fill.done {
+	background: ${greenColor};
+}
+
+.session-row .val {
+	text-align: right;
+	font-family: 'Consolas', monospace;
+	font-weight: 600;
+	color: ${textColor};
+	opacity: 1;
+}
+
+
+.time-value, 
+
+.goal-value .current-val { color: inherit; }
+.goal-value .sep { opacity: 0.5; margin: 0 2px; }
+.goal-value .target-val { opacity: 0.8; }
+
+
+.goal-value.done .current-val { color: #E74C3C !important; } /* 达成后默认变红 */
+
+
+.time-row {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	margin-bottom: 6px;
+}
+.time-item {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	width: 100%;
+}
+
+
+
+
+
+
+.goal-row {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end; /* 整体靠右 */
+	width: 100%;
+	margin-bottom: 4px;
+	gap: 2px;
+}
+.goal-header {
+	font-size: 16px; /* 已还原旧版字号 */
+	color: ${textColor};
+	opacity: 0.9;
+	text-align: right;
+}
+.goal-value {
+	display: flex;
+	justify-content: flex-end;
+	align-items: baseline;
+	text-align: right;
+	width: 100%;
+	gap: 4px;
+}
+.goal-value .current-val { font-size: 24px; font-weight: 700; } /* 已还原旧版字号 */
+.goal-value .target-val { font-size: 20px; opacity: 0.8; } /* 已还原旧版字号 */
+.goal-value .sep { opacity: 0.4; }
+.goal-value .percent { font-size: 14px; color: ${accentColor}; font-weight: normal; } /* 已还原旧版字号 */
+
+/* Custom User CSS */
+${this.settings.obsCustomCss || ''}
+</style>
+</head>
+<body>
+<div class="overlay-card">
+	<div class="overlay-title">
+		<span class="status-dot paused" id="statusDot"></span>
+	</div>
+	${timeRowHtml}
+	${todayGoalHtml}
+	${sessionRowHtml}
+</div>
+<script>
+function safeSetText(id, text) {
+	const el = document.getElementById(id);
+	if (el) el.textContent = text;
+}
+let lastData = {};
+function update() {
+	fetch('/api/stats')
+		.then(r => r.json())
+		.then(d => {
+			if (d.focusTime !== lastData.focusTime) safeSetText('focusTime', d.focusTime);
+			if (d.slackTime !== lastData.slackTime) safeSetText('slackTime', d.slackTime);
+			if (d.totalTime !== lastData.totalTime) safeSetText('totalTime', d.totalTime);
+			if (d.todayWords !== lastData.todayWords) safeSetText('todayWords', d.todayWords.toLocaleString());
+			if (d.goal !== lastData.goal) safeSetText('goalValue', d.goal.toLocaleString());
+			if (d.percent !== lastData.percent) {
+				safeSetText('percentText', d.percent + '%');
+				const fill = document.getElementById('progressFill');
+				if (fill) {
+					fill.style.width = d.percent + '%';
+					fill.className = 'progress-fill' + (d.percent >= 100 ? ' done' : '');
+				}
+				const goalValContainer = document.querySelector('.goal-value');
+				if (goalValContainer) {
+					if (d.percent >= 100) goalValContainer.classList.add('done');
+					else goalValContainer.classList.remove('done');
+				}
+			}
+			if (d.sessionWords !== lastData.sessionWords) safeSetText('sessionWords', d.sessionWords.toLocaleString());
+
+			if (d.isTracking !== lastData.isTracking) {
+				const dot = document.getElementById('statusDot');
+				if (dot) dot.className = 'status-dot ' + (d.isTracking ? 'active' : 'paused');
+			}
+			lastData = d;
+		})
+		.catch(() => {})
+		.finally(() => {
+			setTimeout(update, 500);
+		});
+}
+update();
+</script>
+</body>
+</html>`;
+		return html;
+	}
 	async refreshFolderCounts() {
 		const fileExplorer = this.app.workspace.getLeavesOfType("file-explorer")[0];
 		if (!fileExplorer) return;
@@ -604,9 +960,9 @@ export default class AccurateChineseCountPlugin extends Plugin {
 				/* 侧边栏状态视图样式 */
 				.status-view-container { padding: 15px; }
 				.status-card { background: var(--background-secondary); border-radius: 8px; padding: 16px; margin-bottom: 16px; border: 1px solid var(--background-modifier-border); }
-				.status-title { font-weight: bold; margin-bottom: 12px; font-size: 1.1em; display: flex; justify-content: space-between; align-items: center; }
+				.status-title { font-weight: bold; margin-bottom: 6px; font-size: 1.1em; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; align-items: center; }
 				.status-title-badge { font-size: 0.75em; background: var(--interactive-accent); color: var(--text-on-accent); padding: 2px 6px; border-radius: 4px; font-weight: normal; }
-				.status-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.95em; }
+				.status-row { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; margin-bottom: 4px; font-size: 0.95em; }
 				.status-value { font-family: var(--font-monospace); font-weight: 600; }
 				
 				.progress-bar-bg { width: 100%; height: 10px; background: var(--background-modifier-border); border-radius: 5px; overflow: hidden; margin: 10px 0; }
@@ -618,13 +974,13 @@ export default class AccurateChineseCountPlugin extends Plugin {
 				.time-box-value { font-family: var(--font-monospace); font-size: 1.1em; font-weight: bold; color: var(--text-normal); }
 				.time-box.total { grid-column: span 2; background: var(--background-secondary-alt); }
 				
-				.history-chart { display: flex; align-items: flex-end; gap: 6px; height: 120px; margin-top: 20px; padding-top: 15px; border-top: 1px dashed var(--background-modifier-border); justify-content: space-between;}
+				.history-chart { display: flex; align-items: flex-end; gap: 6px; height: 120px; margin-top: 20px; padding-top: 15px; border-top: 1px dashed var(--background-modifier-border); flex-direction: column; align-items: flex-start; gap: 2px;}
 				.chart-col { display: flex; flex-direction: column; align-items: center; flex: 1; height: 100%; justify-content: flex-end; }
 				.chart-bar { width: 100%; max-width: 20px; background: var(--interactive-accent); border-radius: 3px 3px 0 0; min-height: 2px; transition: height 0.5s ease; opacity: 0.8; cursor: pointer; }
 				.chart-bar:hover { opacity: 1; filter: brightness(1.2); }
 				.chart-label { font-size: 0.65em; margin-top: 6px; color: var(--text-muted); }
 
-				/* 历史统计大盘 Modal 样式 */
+				/* 字数统计 Modal 样式 */
 				.history-stats-modal { min-width: 600px; }
 				.stats-tab-group { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid var(--background-modifier-border); padding-bottom: 10px; }
 				.stats-tab-btn { background: transparent; border: none; box-shadow: none; color: var(--text-muted); cursor: pointer; padding: 6px 12px; border-radius: 4px; transition: all 0.2s; }
@@ -699,7 +1055,7 @@ class WritingStatusView extends ItemView {
 		this.statusBadgeEl = titleRow.createSpan({ cls: 'status-title-badge', text: '已暂停' });
 
 		const row1 = goalCard.createDiv({ cls: 'status-row' });
-		row1.createSpan({ text: '今日目标' });
+		row1.createSpan({ text: '目标进度' });
 		this.goalWordEl = row1.createSpan({ cls: 'status-value', text: '0' });
 
 		const row2 = goalCard.createDiv({ cls: 'status-row' });
@@ -732,9 +1088,9 @@ class WritingStatusView extends ItemView {
 
 		this.chartContainerEl = timeCard.createDiv({ cls: 'history-chart' });
 
-		// 3. 历史字数统计卡片 (新增)
+		// 3. 字数统计卡片 (新增)
 		const historyCard = container.createDiv({ cls: 'status-card' });
-		historyCard.createDiv({ cls: 'status-title', text: '历史字数统计' });
+		historyCard.createDiv({ cls: 'status-title', text: '字数统计' });
 
 		const historyGrid = historyCard.createDiv({ cls: 'time-grid' });
 		
@@ -802,7 +1158,7 @@ class WritingStatusView extends ItemView {
 		this.slackTimeEl.innerText = this.plugin.formatTime(slackSec);
 		this.totalTimeEl.innerText = this.plugin.formatTime(totalSec);
 
-		// 计算历史统计数据 (周/月/年/总计)
+		// 计算字数统计数据 (周/月/年/总计)
 		let weekWords = 0;
 		let monthWords = 0;
 		let yearWords = 0;
@@ -832,7 +1188,7 @@ class WritingStatusView extends ItemView {
 		
 		// 新增：让整个图表区变成可点击的按钮效果
 		this.chartContainerEl.style.cursor = 'pointer';
-		this.chartContainerEl.setAttribute('aria-label', '点击查看详细历史统计大盘');
+		this.chartContainerEl.setAttribute('aria-label', '点击进入字数统计详情');
 		this.chartContainerEl.onclick = () => {
 			new HistoryStatsModal(this.plugin.app, this.plugin.settings.dailyHistory).open();
 		};
@@ -1006,29 +1362,139 @@ class AccurateCountSettingTab extends PluginSettingTab {
 
 		containerEl.createEl('h2', {text: '数据统计与输出设置'});
 
+		// 已修复滑动条设置被截断缺少结尾括号的语法错误
 		new Setting(containerEl)
-		    .setName('精准专注度判定阈值 (秒)') 
+		    .setName('精准专注度判定阈值 (秒)')
 		    .setDesc('在此时间内没有键盘输入，即使软件处于聚焦状态，也会被判定为“摸鱼”。')
 		    .addSlider(slider => slider
-		        .setLimits(30, 600, 30) 
+		        .setLimits(30, 600, 30)
 		        .setValue(this.plugin.settings.idleTimeoutThreshold / 1000)
 		        .setDynamicTooltip()
 		        .onChange(async (value) => {
 		            this.plugin.settings.idleTimeoutThreshold = value * 1000;
 		            await this.plugin.saveSettings();
-		        })); 
+				}));
 
 		new Setting(containerEl)
-			.setName('启用直播数据导出')
+			.setName('启用 OBS 直播叠加层')
+			.setDesc('在本地启动 HTTP 服务，OBS 通过「浏览器源」加载实时统计面板，零磁盘 I/O。')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.enableObs)
 				.onChange(async (value) => {
 					this.plugin.settings.enableObs = value;
 					await this.plugin.saveSettings();
+					if (value) {
+						if (!this.plugin.obsServer) {
+							this.plugin.obsServer = new ObsOverlayServer(this.plugin, this.plugin.settings.obsPort);
+						}
+						this.plugin.obsServer.start();
+					} else {
+						this.plugin.obsServer?.stop();
+					}
+				}));
+
+		new Setting(containerEl)
+			.setName('叠加层端口')
+			.setDesc('OBS 浏览器源访问的端口号，修改后需重启叠加层。')
+			.addText(text => text
+				.setValue(this.plugin.settings.obsPort.toString())
+				.onChange(async (value) => {
+					const parsed = parseInt(value);
+					if (!isNaN(parsed) && parsed > 0 && parsed < 65536) {
+						this.plugin.settings.obsPort = parsed;
+						await this.plugin.saveSettings();
+					}
+				}));
+
+		// 已还原遗失的文案提示
+		new Setting(containerEl)
+			.setName('叠加层背景透明度')
+			.setDesc('调整 OBS 叠加层卡片背景的透明度 (0为完全透明)。注意：此项不影响透明背景的主题，仅对带卡片的主题生效。')
+			.addSlider(slider => slider
+				.setLimits(0, 1, 0.05)
+				.setValue(this.plugin.settings.obsOverlayOpacity ?? 0.85)
+				.setDynamicTooltip()
+				.onChange(async (value) => {
+					this.plugin.settings.obsOverlayOpacity = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('自定义 CSS')
+			.setDesc('通过覆盖 CSS 类名修改样式，常用类名：.overlay-card(外壳), .time-value.focus(专注时间), .time-value.slack(摸鱼时间), .goal-value(目标进度), .status-dot(状态点)')
+			.addTextArea(text => {
+				text.setPlaceholder('/* 例：修改摸鱼时间为绿色 */ .time-value.slack { color: #4CAF50 !important; }')
+					.setValue(this.plugin.settings.obsCustomCss)
+					.onChange(async (value) => {
+						this.plugin.settings.obsCustomCss = value;
+						await this.plugin.saveSettings();
+					});
+				text.inputEl.style.width = '100%';
+				text.inputEl.style.height = '100px';
+				text.inputEl.style.fontFamily = 'monospace';
+				return text;
+			});
+
+		new Setting(containerEl)
+			.setName('叠加层主题')
+			.addDropdown(dropdown => {
+				dropdown.addOption('dark', '暗色 (深色背景+白字)');
+				dropdown.addOption('light', '亮色 (浅色背景+深字)');
+				this.plugin.settings.noteThemes.forEach((theme, index) => {
+					dropdown.addOption(`note-${index}`, `便签预设色 ${index + 1}`);
+				});
+				dropdown.setValue(this.plugin.settings.obsOverlayTheme);
+				dropdown.onChange(async (value) => {
+					this.plugin.settings.obsOverlayTheme = value;
+					await this.plugin.saveSettings();
+				});
+			});
+
+		new Setting(containerEl)
+			.setName('显示总计时间')
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.obsShowTotalTime).onChange(async (v) => { this.plugin.settings.obsShowTotalTime = v; await this.plugin.saveSettings(); }));
+		new Setting(containerEl)
+			.setName('显示专注时间')
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.obsShowFocusTime).onChange(async (v) => { this.plugin.settings.obsShowFocusTime = v; await this.plugin.saveSettings(); }));
+		new Setting(containerEl)
+			.setName('显示摸鱼时间')
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.obsShowSlackTime).onChange(async (v) => { this.plugin.settings.obsShowSlackTime = v; await this.plugin.saveSettings(); }));
+		
+		// 已还原旧版的设置名称
+		new Setting(containerEl)
+			.setName('显示目标进度')
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.obsShowTodayWords).onChange(async (v) => { this.plugin.settings.obsShowTodayWords = v; await this.plugin.saveSettings(); }));
+		
+		// 已还原“本场净增”开关
+		new Setting(containerEl)
+			.setName('显示本场净增')
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.obsShowSessionWords).onChange(async (v) => { this.plugin.settings.obsShowSessionWords = v; await this.plugin.saveSettings(); }));
+
+		new Setting(containerEl)
+			.setName('复制 OBS 叠加层 URL')
+			.setDesc('点击后复制 URL，在 OBS 中添加「浏览器源」并粘贴此 URL。')
+			.addButton(btn => btn
+				.setButtonText('复制 URL')
+				.onClick(() => {
+					const url = `http://127.0.0.1:${this.plugin.settings.obsPort}/`;
+					navigator.clipboard.writeText(url);
+					new Notice(`已复制: ${url}`);
+				}));
+
+		containerEl.createEl('h3', {text: '文本文件导出 (兼容)'});
+		new Setting(containerEl)
+			.setName('启用本地文本文件导出')
+			.setDesc('开启后，插件将像以前一样每秒将专注时间、摸鱼时间等数据写入纯文本文件中。')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.enableLegacyObsExport)
+				.onChange(async (value) => {
+					this.plugin.settings.enableLegacyObsExport = value;
+					await this.plugin.saveSettings();
 				}));
 
 		new Setting(containerEl)
 			.setName('数据输出路径 (绝对路径)')
+			.setDesc('请填入绝对路径 (例如 D:\\OBS\\Stats)')
 			.addText(text => text
 				.setPlaceholder('请输入文件夹路径')
 				.setValue(this.plugin.settings.obsPath)
@@ -1038,7 +1504,6 @@ class AccurateCountSettingTab extends PluginSettingTab {
 				}));
 	}
 }
-
 // ===========================================
 // 类：持久化悬浮便签组件
 // ===========================================
@@ -1341,7 +1806,7 @@ class FloatingStickyNote extends Component {
 					background-color: var(--note-bg-color) !important;
 				}
 				
-				.my-sticky-header { padding: 8px 12px; background-color: transparent !important; border-bottom: 1px solid transparent !important; cursor: grab; display: flex; justify-content: space-between; align-items: center; user-select: none; flex-shrink: 0; min-width: 0; transition: background-color 0.2s ease, border-color 0.2s ease; }
+				.my-sticky-header { padding: 8px 12px; background-color: transparent !important; border-bottom: 1px solid transparent !important; cursor: grab; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; align-items: center; user-select: none; flex-shrink: 0; min-width: 0; transition: background-color 0.2s ease, border-color 0.2s ease; }
 				.my-floating-sticky-note:hover .my-sticky-header { background-color: rgba(0, 0, 0, 0.04) !important; border-bottom: 1px solid rgba(0,0,0,0.06) !important; }
 				
 				.my-sticky-header:active { cursor: grabbing; }
@@ -1383,7 +1848,7 @@ class FloatingStickyNote extends Component {
 }
 
 // ===========================================
-// 类：历史统计详细大盘 (Modal)
+// 类：字数统计 (Modal)
 // ===========================================
 class HistoryStatsModal extends Modal {
 	history: Record<string, DailyStat>;
@@ -1496,5 +1961,89 @@ class HistoryStatsModal extends Modal {
 
 	onClose() {
 		this.contentEl.empty();
+	}
+}
+
+// ===========================================
+// 类：OBS 直播叠加层 HTTP Server
+// ===========================================
+interface ObsStatsPayload {
+	isTracking: boolean;
+	focusTime: string;
+	slackTime: string;
+	totalTime: string;
+	sessionWords: number;
+	todayWords: number;
+	goal: number;
+	percent: number;
+	currentFile: string;
+}
+
+class ObsOverlayServer {
+	private plugin: AccurateChineseCountPlugin;
+	private server: any;
+	private port: number;
+
+	constructor(plugin: AccurateChineseCountPlugin, port: number) {
+		this.plugin = plugin;
+		this.port = port;
+	}
+
+	start(): boolean {
+		if (!Platform.isDesktop) return false;
+		try {
+			// @ts-ignore
+			const http = window.require('http');
+			const plugin = this.plugin;
+
+			this.server = http.createServer((req: any, res: any) => {
+				const url = new URL(req.url, `http://localhost:${this.port}`);
+
+				if (url.pathname === '/api/stats') {
+					res.writeHead(200, {
+						'Content-Type': 'application/json',
+						'Access-Control-Allow-Origin': '*'
+					});
+					res.end(JSON.stringify(plugin.getObsStats()));
+				} else {
+					res.writeHead(200, {
+						'Content-Type': 'text/html; charset=utf-8',
+						'Access-Control-Allow-Origin': '*'
+					});
+					res.end(plugin.buildObsOverlayHtml());
+				}
+			});
+
+			this.server.listen(this.port, '127.0.0.1', () => {
+				console.log(`[WebNovel Assistant] OBS Overlay server started at http://127.0.0.1:${this.port}`);
+			});
+
+			this.server.on('error', (e: any) => {
+				if (e.code === 'EADDRINUSE') {
+					new Notice(`端口 ${this.port} 已被占用，OBS 叠加层启动失败！请在设置中更换端口。`);
+				} else {
+					console.error('[WebNovel Assistant] OBS Overlay server error:', e);
+				}
+			});
+
+			return true;
+		} catch (e) {
+			console.error('[WebNovel Assistant] Failed to start OBS Overlay server:', e);
+			return false;
+		}
+	}
+
+	stop() {
+		if (this.server) {
+			this.server.close();
+			this.server = null;
+		}
+	}
+
+	updatePort(newPort: number) {
+		if (this.port === newPort && this.server) return;
+		this.stop();
+		this.port = newPort;
+		this.start();
 	}
 }

@@ -1,15 +1,15 @@
 {
-  "name": "obsidian-webnovel-assistant",
-  "version": "1.0.0",
-  "description": "Obsidian plugin for web novel writing — accurate word count, goal tracking, focus/slack timer, sticky notes, merge export, OBS integration, history stats",
-  "main": "main.js",
+  "name": "web-novel-assistant",
+  "version": "1.0.1",
+  "description": "",
+  "main": "index.js",
   "scripts": {
-    "dev": "esbuild main.ts --bundle --external:obsidian --outfile=main.js --watch",
-    "build": "esbuild main.ts --bundle --external:obsidian --minify --outfile=main.js"
+    "dev": "esbuild main.ts --bundle --format=cjs --external:obsidian --outfile=main.js --watch",
+    "build": "esbuild main.ts --bundle --format=cjs --external:obsidian --minify --outfile=main.js"
   },
-  "keywords": ["obsidian", "plugin", "writing", "novel", "word-count", "sticky-notes", "chinese"],
-  "author": "HatanoChihiro",
-  "license": "MIT",
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
   "type": "commonjs",
   "devDependencies": {
     "esbuild": "^0.28.0",
