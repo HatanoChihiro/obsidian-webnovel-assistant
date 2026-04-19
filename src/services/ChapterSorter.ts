@@ -40,6 +40,7 @@ export class ChapterSorter {
 	 * 支持的格式：
 	 * - 第1章、第01章、第001章
 	 * - 第一章、第二十三章
+	 * - 第一卷、第二卷、第1卷
 	 * - Chapter 1、Ch01
 	 * - 1.md、01.md
 	 * 
@@ -50,15 +51,15 @@ export class ChapterSorter {
 		const basename = filename.replace(/\.md$/i, '');
 		
 		// 尝试匹配阿拉伯数字格式
-		// 匹配：第1章、第01章、Chapter 1、Ch01、001章、1-标题
-		const arabicMatch = basename.match(/(?:第|chapter|ch)?(\d+)(?:[章节回\s\-]|$)/i);
+		// 匹配：第1章、第01章、第1卷、Chapter 1、Ch01、001章、1-标题
+		const arabicMatch = basename.match(/(?:第|chapter|ch)?(\d+)(?:[章节回卷部册篇\s\-]|$)/i);
 		if (arabicMatch) {
 			return parseInt(arabicMatch[1], 10);
 		}
 		
 		// 尝试匹配中文数字格式
-		// 匹配：第一章、第二十三章
-		const chineseMatch = basename.match(/(?:第)?([零一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]+)(?:[章节回]|$)/);
+		// 匹配：第一章、第二十三章、第一卷、第二卷
+		const chineseMatch = basename.match(/(?:第)?([零一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]+)(?:[章节回卷部册篇]|$)/);
 		if (chineseMatch) {
 			const num = this.parseChineseNumber(chineseMatch[1]);
 			if (num > 0) {
