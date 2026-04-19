@@ -1,4 +1,4 @@
-import { App, Plugin, PluginSettingTab, Setting, MarkdownView, Modal, TFile, Notice, TFolder, MarkdownRenderer, Component, setIcon, ItemView, WorkspaceLeaf, Platform } from 'obsidian';
+﻿import { App, Plugin, PluginSettingTab, Setting, MarkdownView, Modal, TFile, Notice, TFolder, MarkdownRenderer, Component, setIcon, ItemView, WorkspaceLeaf, Platform } from 'obsidian';
 import { AccurateCountSettings, DailyStat, ThemeScheme, StickyNoteState } from './src/types/settings';
 import { ObsStatsPayload } from './src/types/stats';
 import {
@@ -13,13 +13,19 @@ import {
 import { CacheManager } from './src/services/CacheManager';
 import { DebounceManager } from './src/services/DebounceManager';
 import { SettingsManager } from './src/core/SettingsManager';
-
-export const STATUS_VIEW_TYPE = "writing-status-view";
+import { FileExplorerPatcher } from './src/services/FileExplorerPatcher';
+import { GoalModal } from './src/ui/GoalModal';
+import { HistoryStatsModal } from './src/ui/HistoryModal';
+import { AccurateCountSettingTab } from './src/ui/SettingsTab';
+import { FloatingStickyNote } from './src/ui/StickyNote';
+import { WritingStatusView, STATUS_VIEW_TYPE } from './src/ui/StatusView';
+import { ObsOverlayServer } from './src/services/ObsServer';
 
 const DEFAULT_SETTINGS: AccurateCountSettings = {
 	defaultGoal: 3000,
 	showGoal: true,
 	showExplorerCounts: true,
+	enableSmartChapterSort: false, // 默认关闭，避免与其他插件冲突
 	enableObs: false,
 	enableLegacyObsExport: false,
 	obsPath: "",
@@ -70,12 +76,14 @@ export default class AccurateChineseCountPlugin extends Plugin {
 	cacheManager: CacheManager;
 	debounceManager: DebounceManager;
 	settingsManager: SettingsManager;
+	fileExplorerPatcher: FileExplorerPatcher;
 
 	constructor(app: App, manifest: any) {
 		super(app, manifest);
 		this.cacheManager = new CacheManager();
 		this.debounceManager = new DebounceManager();
 		this.settingsManager = new SettingsManager(this, DEFAULT_SETTINGS);
+		this.fileExplorerPatcher = new FileExplorerPatcher(this.app);
 	}
 
 	async onload() {
@@ -276,30 +284,135 @@ export default class AccurateChineseCountPlugin extends Plugin {
 			editorCallback: async (editor, view) => {
 				const currentFile = view.file;
 				if (!currentFile) return;
-				const fileName = currentFile.basename; 
-				const match = fileName.match(/^([^0-9]*)(\d+)([章节回]?)/);
-				if (!match) {
-					new Notice("当前文件名不包含数字，无法自动递增！");
-					return;
-				}
-				const prefix = match[1];
-				const currentNumStr = match[2];
-				const chapterUnit = match[3]; 
-				const nextNum = parseInt(currentNumStr, 10) + 1;
-				const nextNumStr = nextNum.toString().padStart(currentNumStr.length, '0');
-				const newFileName = `${prefix}${nextNumStr}${chapterUnit}.md`;
-				const folderPath = currentFile.parent?.path || "/";
-				const newFilePath = folderPath === "/" ? newFileName : `${folderPath}/${newFileName}`;
+				const fileName = currentFile.basename;
+				
+				// 中文数字映射
+				const chineseToArabic: Record<string, number> = {
+					'零': 0, '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9, '十': 10,
+					'〇': 0, '壹': 1, '贰': 2, '叁': 3, '肆': 4, '伍': 5, '陆': 6, '柒': 7, '捌': 8, '玖': 9, '拾': 10,
+					'百': 100, '佰': 100, '千': 1000, '仟': 1000, '万': 10000, '萬': 10000
+				};
+				
+				const arabicToChinese = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
+				
+				// 解析中文数字（支持一到九十九）
+				const parseChineseNumber = (str: string): number => {
+					if (str === '十') return 10;
+					if (str.startsWith('十')) return 10 + (chineseToArabic[str[1]] || 0);
+					if (str.includes('十')) {
+						const parts = str.split('十');
+						const tens = chineseToArabic[parts[0]] || 0;
+						const ones = parts[1] ? (chineseToArabic[parts[1]] || 0) : 0;
+						return tens * 10 + ones;
+					}
+					return chineseToArabic[str] || 0;
+				};
+				
+				// 转换数字为中文（支持一到九十九）
+				const toChineseNumber = (num: number): string => {
+					if (num <= 10) return arabicToChinese[num];
+					if (num < 20) return '十' + (num === 10 ? '' : arabicToChinese[num - 10]);
+					const tens = Math.floor(num / 10);
+					const ones = num % 10;
+					return arabicToChinese[tens] + '十' + (ones === 0 ? '' : arabicToChinese[ones]);
+				};
+				
+				// 智能检测文件夹中的最大章节数，用于自动补零
+				const detectMaxChapterInFolder = (folder: TFolder | null, prefix: string): number => {
+					if (!folder) return 0;
+					let maxNum = 0;
+					for (const child of folder.children) {
+						if (child instanceof TFile && child.extension === 'md') {
+							// 使用更宽松的匹配，支持各种前缀（包括 Chapter、第等）
+							const match = child.basename.match(/^([^0-9]*)(\d+)/);
+							if (match) {
+								// 比较前缀（不区分大小写）
+								const childPrefix = match[1];
+								if (childPrefix.toLowerCase() === prefix.toLowerCase()) {
+									const num = parseInt(match[2], 10);
+									if (num > maxNum) maxNum = num;
+								}
+							}
+						}
+					}
+					return maxNum;
+				};
+				
+				// 尝试匹配阿拉伯数字格式：第1章、第01章、001章等
+				let match = fileName.match(/^([^0-9]*)(\d+)([章节回]?)(.*)$/);
+				if (match) {
+					const prefix = match[1];
+					const currentNumStr = match[2];
+					const chapterUnit = match[3];
+					// 不再复制标题部分 (suffix)
+					const nextNum = parseInt(currentNumStr, 10) + 1;
+					
+					// 智能补零：检测文件夹中的最大章节数
+					const folderPath = currentFile.parent;
+					const maxChapter = detectMaxChapterInFolder(folderPath, prefix);
+					
+					// 如果当前是补零格式（如01、001），或者文件夹中有更大的章节数，则自动补零
+					let paddingLength = currentNumStr.length;
+					if (maxChapter >= 100 && paddingLength < 3) paddingLength = 3;
+					else if (maxChapter >= 10 && paddingLength < 2) paddingLength = 2;
+					
+					const nextNumStr = nextNum.toString().padStart(paddingLength, '0');
+					// 只使用前缀、编号和章节单位，不包含标题
+					const newFileName = `${prefix}${nextNumStr}${chapterUnit}.md`;
+					const newFilePath = folderPath ? `${folderPath.path}/${newFileName}` : newFileName;
 
-				const existingFile = this.app.vault.getAbstractFileByPath(newFilePath);
-				if (existingFile) {
-					await this.app.workspace.getLeaf(false).openFile(existingFile as TFile);
+					const existingFile = this.app.vault.getAbstractFileByPath(newFilePath);
+					if (existingFile) {
+						await this.app.workspace.getLeaf(false).openFile(existingFile as TFile);
+						return;
+					}
+					try {
+						const newFile = await this.app.vault.create(newFilePath, "");
+						await this.app.workspace.getLeaf(false).openFile(newFile);
+						new Notice(`✅ 已创建: ${newFileName}`);
+					} catch (error) { 
+						console.error(error);
+						new Notice(`❌ 创建失败: ${error}`);
+					}
 					return;
 				}
-				try {
-					const newFile = await this.app.vault.create(newFilePath, "");
-					await this.app.workspace.getLeaf(false).openFile(newFile);
-				} catch (error) { console.error(error); }
+				
+				// 尝试匹配中文数字格式：第一章、第二十三章等
+				match = fileName.match(/^([^零一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]*)([零一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]+)([章节回]?)(.*)$/);
+				if (match) {
+					const prefix = match[1];
+					const currentNumStr = match[2];
+					const chapterUnit = match[3];
+					// 不再复制标题部分 (suffix)
+					const currentNum = parseChineseNumber(currentNumStr);
+					if (currentNum === 0) {
+						new Notice("无法识别中文数字，请检查文件名格式！");
+						return;
+					}
+					const nextNum = currentNum + 1;
+					const nextNumStr = toChineseNumber(nextNum);
+					// 只使用前缀、编号和章节单位，不包含标题
+					const newFileName = `${prefix}${nextNumStr}${chapterUnit}.md`;
+					const folderPath = currentFile.parent;
+					const newFilePath = folderPath ? `${folderPath.path}/${newFileName}` : newFileName;
+
+					const existingFile = this.app.vault.getAbstractFileByPath(newFilePath);
+					if (existingFile) {
+						await this.app.workspace.getLeaf(false).openFile(existingFile as TFile);
+						return;
+					}
+					try {
+						const newFile = await this.app.vault.create(newFilePath, "");
+						await this.app.workspace.getLeaf(false).openFile(newFile);
+						new Notice(`✅ 已创建: ${newFileName}`);
+					} catch (error) { 
+						console.error(error);
+						new Notice(`❌ 创建失败: ${error}`);
+					}
+					return;
+				}
+				
+				new Notice("当前文件名不包含可识别的数字（阿拉伯数字或中文数字），无法自动递增！");
 			}
 		});
 
@@ -406,6 +519,21 @@ export default class AccurateChineseCountPlugin extends Plugin {
 			this.obsServer.start();
 		}
 
+		// 启用智能章节排序
+		if (this.settings.enableSmartChapterSort) {
+			// 延迟启用，确保文件浏览器已加载
+			this.app.workspace.onLayoutReady(() => {
+				setTimeout(() => {
+					const success = this.fileExplorerPatcher.enable();
+					if (success) {
+						console.log('[WebNovel Assistant] Smart chapter sorting enabled');
+					} else {
+						console.warn('[WebNovel Assistant] Failed to enable smart chapter sorting');
+					}
+				}, 1000);
+			});
+		}
+
 		this.addCommand({
 			id: 'copy-obs-overlay-url',
 			name: '复制 OBS 叠加层 URL 到剪贴板',
@@ -413,6 +541,19 @@ export default class AccurateChineseCountPlugin extends Plugin {
 				const url = `http://127.0.0.1:${this.settings.obsPort}/`;
 				navigator.clipboard.writeText(url);
 				new Notice(`已复制: ${url}`);
+			}
+		});
+
+		this.addCommand({
+			id: 'refresh-chapter-sort',
+			name: '手动刷新章节排序（通常不需要）',
+			callback: () => {
+				if (!this.settings.enableSmartChapterSort) {
+					new Notice('请先在设置中启用"智能章节排序"功能');
+					return;
+				}
+				this.fileExplorerPatcher.refreshManually();
+				new Notice('✅ 章节排序已刷新\n\n💡 提示：智能排序会自动应用，通常不需要手动刷新');
 			}
 		});
 
@@ -440,6 +581,9 @@ export default class AccurateChineseCountPlugin extends Plugin {
 		
 		// 清理缓存
 		this.cacheManager.clearCache();
+		
+		// 禁用智能排序
+		this.fileExplorerPatcher.disable();
 		
 		if (this.worker) this.worker.terminate();
 		this.obsServer?.stop();
@@ -1153,1165 +1297,4 @@ update();
 	}
 }
 
-// ===========================================
-// 类：实时状态面板 (ItemView)
-// ===========================================
-class WritingStatusView extends ItemView {
-	plugin: AccurateChineseCountPlugin;
-	
-	goalWordEl!: HTMLElement;
-	todayWordEl!: HTMLElement;
-	percentEl!: HTMLElement;
-	progressFillEl!: HTMLElement;
-	focusTimeEl!: HTMLElement;
-	slackTimeEl!: HTMLElement;
-	totalTimeEl!: HTMLElement;
-	chartContainerEl!: HTMLElement;
-	statusBadgeEl!: HTMLElement;
 
-	// 字数统计元素引用
-	weekWordEl!: HTMLElement;
-	monthWordEl!: HTMLElement;
-	yearWordEl!: HTMLElement;
-	historyTotalWordEl!: HTMLElement;
-
-	constructor(leaf: WorkspaceLeaf, plugin: AccurateChineseCountPlugin) {
-		super(leaf);
-		this.plugin = plugin;
-	}
-
-	getViewType() {
-		return STATUS_VIEW_TYPE;
-	}
-
-	getDisplayText() {
-		return "写作实时状态";
-	}
-
-	getIcon() {
-		return "bar-chart-2";
-	}
-
-	async onOpen() {
-		const container = this.containerEl.children[1];
-		container.empty();
-		container.addClass('status-view-container');
-
-		// 1. 今日状态卡片
-		const goalCard = container.createDiv({ cls: 'status-card' });
-		const titleRow = goalCard.createDiv({ cls: 'status-title' });
-		titleRow.createSpan({ text: '今日状态' });
-		this.statusBadgeEl = titleRow.createSpan({ cls: 'status-title-badge', text: '已暂停' });
-		
-		// 目标进度显示：当前字数 / 目标字数 百分比（右对齐，上方留空）
-		const goalRow = goalCard.createDiv({ cls: 'goal-display-row-right' });
-		this.todayWordEl = goalRow.createSpan({ cls: 'goal-current', text: '0' });
-		goalRow.createSpan({ cls: 'goal-separator', text: ' / ' });
-		this.goalWordEl = goalRow.createSpan({ cls: 'goal-target', text: '0' });
-		this.percentEl = goalRow.createSpan({ cls: 'goal-percent', text: '0%' });
-		
-		// 进度条
-		const progressBg = goalCard.createDiv({ cls: 'progress-bar-bg' });
-		this.progressFillEl = progressBg.createDiv({ cls: 'progress-bar-fill' });
-
-		// 2. 本次统计卡片 - 总计耗时在上方，专注和摸鱼时长在下方
-		const timeCard = container.createDiv({ cls: 'status-card' });
-		timeCard.createDiv({ cls: 'status-title', text: '本次统计' });
-
-		// 总计耗时（上方，占满宽度）
-		const totalBox = timeCard.createDiv({ cls: 'time-box time-box-total' });
-		totalBox.createDiv({ cls: 'time-box-title', text: '总计耗时' });
-		this.totalTimeEl = totalBox.createDiv({ cls: 'time-box-value', text: '00:00:00' });
-
-		// 专注和摸鱼时长（下方，左右排列）
-		const timeGrid = timeCard.createDiv({ cls: 'time-grid' });
-		
-		const focusBox = timeGrid.createDiv({ cls: 'time-box' });
-		focusBox.createDiv({ cls: 'time-box-title', text: '专注时长' });
-		this.focusTimeEl = focusBox.createDiv({ cls: 'time-box-value', text: '00:00:00' });
-
-		const slackBox = timeGrid.createDiv({ cls: 'time-box' });
-		slackBox.createDiv({ cls: 'time-box-title', text: '摸鱼时长' });
-		this.slackTimeEl = slackBox.createDiv({ cls: 'time-box-value', text: '00:00:00' });
-
-		// 近7日图表
-		this.chartContainerEl = timeCard.createDiv({ cls: 'history-chart' });
-
-		// 3. 字数统计卡片
-		const historyCard = container.createDiv({ cls: 'status-card' });
-		historyCard.createDiv({ cls: 'status-title', text: '字数统计' });
-
-		const historyGrid = historyCard.createDiv({ cls: 'time-grid' });
-		
-		const weekBox = historyGrid.createDiv({ cls: 'time-box' });
-		weekBox.createDiv({ cls: 'time-box-title', text: '本周净增' });
-		this.weekWordEl = weekBox.createDiv({ cls: 'time-box-value', text: '0' });
-
-		const monthBox = historyGrid.createDiv({ cls: 'time-box' });
-		monthBox.createDiv({ cls: 'time-box-title', text: '本月净增' });
-		this.monthWordEl = monthBox.createDiv({ cls: 'time-box-value', text: '0' });
-
-		const yearBox = historyGrid.createDiv({ cls: 'time-box' });
-		yearBox.createDiv({ cls: 'time-box-title', text: '今年净增' });
-		this.yearWordEl = yearBox.createDiv({ cls: 'time-box-value', text: '0' });
-
-		const histTotalBox = historyGrid.createDiv({ cls: 'time-box' });
-		histTotalBox.createDiv({ cls: 'time-box-title', text: '累计总字数' });
-		this.historyTotalWordEl = histTotalBox.createDiv({ cls: 'time-box-value', text: '0' });
-
-		// 更新数据与图表
-		this.updateData();
-		this.renderChart();
-	}
-
-	updateData() {
-		// 更新状态徽章
-		if (this.plugin.isTracking) {
-			this.statusBadgeEl.innerText = '▶ 记录中';
-			this.statusBadgeEl.style.background = 'var(--color-green)';
-			this.statusBadgeEl.style.color = '#ffffff';
-		} else {
-			this.statusBadgeEl.innerText = '⏸ 已暂停';
-			this.statusBadgeEl.style.background = 'var(--text-muted)';
-			this.statusBadgeEl.style.color = '#ffffff';
-		}
-
-		// 更新目标进度
-		let targetGoal = this.plugin.settings.defaultGoal;
-		const view = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
-		if (view?.file) {
-			const cache = this.plugin.app.metadataCache.getFileCache(view.file);
-			const fmGoal = parseInt(cache?.frontmatter?.['word-goal']);
-			if (!isNaN(fmGoal)) targetGoal = fmGoal;
-		}
-
-		const today = window.moment().format('YYYY-MM-DD');
-		const todayStat = this.plugin.settings.dailyHistory[today] || { focusMs: 0, slackMs: 0, addedWords: 0 };
-		const added = Math.max(0, todayStat.addedWords);
-
-		// 更新目标进度显示：当前 / 目标 百分比
-		this.todayWordEl.innerText = added.toLocaleString();
-		this.goalWordEl.innerText = targetGoal.toLocaleString();
-
-		const percent = targetGoal > 0 ? Math.min(Math.round((added / targetGoal) * 100), 100) : 0;
-		this.percentEl.innerText = ` ${percent}%`;
-		this.progressFillEl.style.width = `${percent}%`;
-		if (percent >= 100) {
-			this.progressFillEl.style.background = 'var(--color-green)';
-			this.todayWordEl.style.color = 'var(--color-green)';
-		} else {
-			this.progressFillEl.style.background = 'var(--interactive-accent)';
-			this.todayWordEl.style.color = 'var(--text-normal)';
-		}
-
-		// 更新时间统计
-		const focusSec = Math.floor(this.plugin.focusMs / 1000);
-		const slackSec = Math.floor(this.plugin.slackMs / 1000);
-		const totalSec = focusSec + slackSec;
-
-		this.focusTimeEl.innerText = formatTime(focusSec);
-		this.slackTimeEl.innerText = formatTime(slackSec);
-		this.totalTimeEl.innerText = formatTime(totalSec);
-
-		// 计算字数统计数据 (周/月/年/总计)
-		let weekWords = 0;
-		let monthWords = 0;
-		let yearWords = 0;
-		let totalWords = 0;
-		
-		const now = window.moment();
-
-		for (const [dateStr, stat] of Object.entries(this.plugin.settings.dailyHistory)) {
-			const dailyAdded = stat.addedWords || 0;
-			totalWords += dailyAdded;
-			
-			const dateMoment = window.moment(dateStr);
-			if (dateMoment.isSame(now, 'isoWeek')) weekWords += dailyAdded;
-			if (dateMoment.isSame(now, 'month')) monthWords += dailyAdded;
-			if (dateMoment.isSame(now, 'year')) yearWords += dailyAdded;
-		}
-
-		// 使用 toLocaleString 添加千位分隔符方便阅读，并且限制最低为 0
-		if (this.weekWordEl) this.weekWordEl.innerText = Math.max(0, weekWords).toLocaleString();
-		if (this.monthWordEl) this.monthWordEl.innerText = Math.max(0, monthWords).toLocaleString();
-		if (this.yearWordEl) this.yearWordEl.innerText = Math.max(0, yearWords).toLocaleString();
-		if (this.historyTotalWordEl) this.historyTotalWordEl.innerText = Math.max(0, totalWords).toLocaleString();
-	}
-
-	renderChart() {
-		this.chartContainerEl.empty();
-		
-		// 添加标题（大字）
-		const chartTitle = this.chartContainerEl.createDiv({ 
-			text: '近7日字数统计', 
-			cls: 'history-chart-title'
-		});
-		
-		// 添加副标题（小字，可点击）
-		const chartSubtitle = this.chartContainerEl.createDiv({ 
-			text: '点击查看详情', 
-			cls: 'history-chart-subtitle'
-		});
-		
-		chartSubtitle.setAttribute('aria-label', '点击进入字数统计详情');
-		chartSubtitle.onclick = () => {
-			new HistoryStatsModal(this.plugin.app, this.plugin.settings.dailyHistory).open();
-		};
-		
-		// 创建横向柱状图容器
-		const chartBars = this.chartContainerEl.createDiv({ 
-			attr: { style: 'display: flex; flex-direction: column; gap: 6px; cursor: pointer;' } 
-		});
-		
-		chartBars.onclick = () => {
-			new HistoryStatsModal(this.plugin.app, this.plugin.settings.dailyHistory).open();
-		};
-
-		const history = this.plugin.settings.dailyHistory;
-		const dates = Object.keys(history).sort().slice(-7);
-
-		if (dates.length === 0) {
-			chartBars.createDiv({ text: '暂无历史数据', attr: { style: 'color: var(--text-muted); font-size: 0.8em; padding: 10px 0;' } });
-			return;
-		}
-
-		const maxWords = Math.max(...dates.map(d => history[d].addedWords), 100);
-
-		dates.forEach(date => {
-			const stat = history[date];
-			const row = chartBars.createDiv({ attr: { style: 'display: flex; align-items: center; gap: 8px;' } });
-			
-			// 日期标签
-			const dateLabel = row.createDiv({ 
-				text: date.substring(5), 
-				attr: { style: 'font-size: 0.7em; color: var(--text-muted); min-width: 35px; text-align: right; flex-shrink: 0;' } 
-			});
-			
-			// 横向柱状图
-			const barContainer = row.createDiv({ attr: { style: 'flex: 1; height: 18px; background: var(--background-modifier-border); border-radius: 3px; overflow: hidden; position: relative; min-width: 0;' } });
-			const barWidthPercent = Math.max(2, (Math.max(0, stat.addedWords) / maxWords) * 100);
-			const bar = barContainer.createDiv({ attr: { style: `width: ${barWidthPercent}%; height: 100%; background: var(--interactive-accent); border-radius: 3px; transition: width 0.4s ease;` } });
-			
-			const focusHours = (stat.focusMs / 3600000).toFixed(1);
-			bar.setAttribute('title', `日期: ${date}\n字数: ${Math.max(0, stat.addedWords)}\n专注时长: ${focusHours}h`);
-			
-			// 字数值
-			const valueLabel = row.createDiv({ 
-				text: formatCount(Math.max(0, stat.addedWords)), 
-				attr: { style: 'font-size: 0.75em; font-weight: bold; font-family: var(--font-monospace); min-width: 40px; text-align: right; flex-shrink: 0;' } 
-			});
-		});
-	}
-
-	async onClose() {}
-}
-
-
-// ===========================================
-// 类：目标设定弹窗
-// ===========================================
-class GoalModal extends Modal {
-	file: TFile;
-	goalInput: string = "";
-
-	constructor(app: App, file: TFile) {
-		super(app);
-		this.file = file;
-	}
-
-	onOpen() {
-		const {contentEl} = this;
-		contentEl.createEl('h2', {text: `为《${this.file.basename}》设定目标`});
-
-		new Setting(contentEl)
-			.setName('目标字数')
-			.setDesc('输入 0 或清空则恢复全局默认目标。')
-			.addText(text => {
-				const cache = this.app.metadataCache.getFileCache(this.file);
-				if (cache?.frontmatter && cache.frontmatter['word-goal']) {
-					text.setValue(cache.frontmatter['word-goal'].toString());
-				}
-				text.inputEl.focus();
-				text.onChange(value => { this.goalInput = value; });
-				text.inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') this.saveGoal(); });
-			});
-
-		new Setting(contentEl).addButton(btn => btn.setButtonText('保存').setCta().onClick(() => { this.saveGoal(); }));
-	}
-
-	async saveGoal() {
-		const goalNum = parseInt(this.goalInput);
-		await this.app.fileManager.processFrontMatter(this.file, (frontmatter) => {
-			if (isNaN(goalNum) || goalNum <= 0) delete frontmatter['word-goal'];
-			else frontmatter['word-goal'] = goalNum;
-		});
-		this.close();
-	}
-	onClose() { this.contentEl.empty(); }
-}
-
-// ===========================================
-// 类：设置面板
-// ===========================================
-class AccurateCountSettingTab extends PluginSettingTab {
-	plugin: AccurateChineseCountPlugin;
-
-	constructor(app: App, plugin: AccurateChineseCountPlugin) {
-		super(app, plugin);
-		this.plugin = plugin;
-	}
-
-	display(): void {
-		const {containerEl} = this;
-		containerEl.empty();
-
-		// 平台检测 - 移动端显示提示
-		if (isMobile()) {
-			const mobileNotice = containerEl.createDiv({
-				cls: 'setting-item-description',
-				attr: {
-					style: 'background: var(--background-secondary); padding: 12px; border-radius: 6px; margin-bottom: 20px; border-left: 3px solid var(--interactive-accent);'
-				}
-			});
-			mobileNotice.createEl('strong', { text: '💡 移动端模式' });
-			mobileNotice.createEl('br');
-			mobileNotice.appendText('部分高级功能(悬浮便签、OBS 直播叠加层、文本文件导出)仅在桌面端可用,以优化移动设备性能和电池续航。');
-		}
-
-		containerEl.createEl('h2', {text: '精准字数与目标设置'});
-
-		new Setting(containerEl)
-			.setName('显示目标进度')
-			.setDesc('在状态栏显示当前文件的字数完成进度。')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.showGoal)
-				.onChange(async (value) => {
-					this.plugin.settings.showGoal = value;
-					await this.plugin.saveSettings();
-					this.plugin.updateWordCount(); // 立即更新状态栏显示
-				}));
-
-		new Setting(containerEl)
-			.setName('显示文件列表字数')
-			.setDesc('在侧边栏文件树中显示文件夹和文档的汇总字数。')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.showExplorerCounts)
-				.onChange(async (value) => {
-					this.plugin.settings.showExplorerCounts = value;
-					await this.plugin.saveSettings();
-					// 切换开关时重新构建缓存或清除显示
-					if (value) {
-						await this.plugin.buildFolderCache();
-					} else {
-						this.plugin.refreshFolderCounts();
-					}
-				}));
-
-		new Setting(containerEl)
-			.setName('默认字数目标 (全局)')
-			.addText(text => text
-				.setValue(this.plugin.settings.defaultGoal.toString())
-				.onChange(async (value) => {
-					const parsed = parseInt(value);
-					if (!isNaN(parsed)) {
-						this.plugin.settings.defaultGoal = parsed;
-						await this.plugin.saveSettings();
-					}
-				}));
-
-		// 移动端隐藏桌面专属功能
-		if (isDesktop()) {
-			containerEl.createEl('h2', {text: '悬浮便签设置'});
-		
-		new Setting(containerEl)
-			.setName('闲置时透明度 (仅背景)')
-			.setDesc('调节便签在闲置时的纯背景透明度。拖动滑块时已打开的便签会实时预览！')
-			.addSlider(slider => slider
-				.setLimits(0.1, 1, 0.05)
-				.setValue(this.plugin.settings.noteOpacity)
-				.setDynamicTooltip()
-				.onChange(async (value) => {
-					this.plugin.settings.noteOpacity = value;
-					await this.plugin.saveSettings();
-					this.plugin.activeNotes.forEach(note => note.updateVisuals());
-				}));
-
-		const colorSetting = new Setting(containerEl)
-			.setName('自定义主题方案 (背景色 + 文字色)')
-			.setDesc('自定义便签调色板中的 6 种预设组合。左侧为背景色，右侧为对应的文字/图标色。');
-		
-		const colorContainer = colorSetting.controlEl.createDiv({ attr: { style: 'display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;' } });
-		
-		this.plugin.settings.noteThemes.forEach((theme, index) => {
-			const themeDiv = colorContainer.createDiv({ attr: { style: 'display: flex; align-items: center; gap: 6px; background: var(--background-modifier-form-field); padding: 4px 8px; border-radius: 6px;' } });
-			
-			const bgInput = themeDiv.createEl('input', { type: 'color', value: theme.bg });
-			bgInput.style.cursor = 'pointer'; bgInput.style.border = 'none'; bgInput.style.padding = '0'; bgInput.style.width = '24px'; bgInput.style.height = '24px'; bgInput.style.borderRadius = '4px';
-			
-			themeDiv.createSpan({ text: 'Aa', attr: { style: 'font-weight: bold; font-family: serif; color: var(--text-muted); padding-left: 2px;' } });
-			
-			const textInput = themeDiv.createEl('input', { type: 'color', value: theme.text });
-			textInput.style.cursor = 'pointer'; textInput.style.border = 'none'; textInput.style.padding = '0'; textInput.style.width = '24px'; textInput.style.height = '24px'; textInput.style.borderRadius = '4px';
-
-			bgInput.onchange = async (e) => {
-				this.plugin.settings.noteThemes[index].bg = (e.target as HTMLInputElement).value;
-				await this.plugin.saveSettings();
-			};
-			textInput.onchange = async (e) => {
-				this.plugin.settings.noteThemes[index].text = (e.target as HTMLInputElement).value;
-				await this.plugin.saveSettings();
-			};
-		});
-
-		// 桌面端专属功能结束
-		}
-
-		// 移动端隐藏以下设置: 显示文件列表字数、精准专注度判定阈值
-		if (isDesktop()) {
-			containerEl.createEl('h2', {text: '数据统计与输出设置'});
-
-			// 已修复滑动条设置被截断缺少结尾括号的语法错误
-			new Setting(containerEl)
-		    .setName('精准专注度判定阈值 (秒)')
-		    .setDesc('在此时间内没有键盘输入，即使软件处于聚焦状态，也会被判定为“摸鱼”。')
-		    .addSlider(slider => slider
-		        .setLimits(30, 600, 30)
-		        .setValue(this.plugin.settings.idleTimeoutThreshold / 1000)
-		        .setDynamicTooltip()
-		        .onChange(async (value) => {
-		            this.plugin.settings.idleTimeoutThreshold = value * 1000;
-		            await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('启用 OBS 直播叠加层')
-			.setDesc('在本地启动 HTTP 服务，OBS 通过「浏览器源」加载实时统计面板，零磁盘 I/O。')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.enableObs)
-				.onChange(async (value) => {
-					this.plugin.settings.enableObs = value;
-					await this.plugin.saveSettings();
-					if (value) {
-						if (!this.plugin.obsServer) {
-							this.plugin.obsServer = new ObsOverlayServer(this.plugin, this.plugin.settings.obsPort);
-						}
-						this.plugin.obsServer.start();
-					} else {
-						this.plugin.obsServer?.stop();
-					}
-				}));
-
-		new Setting(containerEl)
-			.setName('叠加层端口')
-			.setDesc('OBS 浏览器源访问的端口号，修改后需重启叠加层。')
-			.addText(text => text
-				.setValue(this.plugin.settings.obsPort.toString())
-				.onChange(async (value) => {
-					const parsed = parseInt(value);
-					if (!isNaN(parsed) && parsed > 0 && parsed < 65536) {
-						this.plugin.settings.obsPort = parsed;
-						await this.plugin.saveSettings();
-					}
-				}));
-
-		// 已还原遗失的文案提示
-		new Setting(containerEl)
-			.setName('叠加层背景透明度')
-			.setDesc('调整 OBS 叠加层卡片背景的透明度 (0为完全透明)。注意：此项不影响透明背景的主题，仅对带卡片的主题生效。')
-			.addSlider(slider => slider
-				.setLimits(0, 1, 0.05)
-				.setValue(this.plugin.settings.obsOverlayOpacity ?? 0.85)
-				.setDynamicTooltip()
-				.onChange(async (value) => {
-					this.plugin.settings.obsOverlayOpacity = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('自定义 CSS')
-			.setDesc('通过覆盖 CSS 类名修改样式，常用类名：.overlay-card(外壳), .time-value.focus(专注时间), .time-value.slack(摸鱼时间), .goal-value(目标进度), .status-dot(状态点)')
-			.addTextArea(text => {
-				text.setPlaceholder('/* 例：修改摸鱼时间为绿色 */ .time-value.slack { color: #4CAF50 !important; }')
-					.setValue(this.plugin.settings.obsCustomCss)
-					.onChange(async (value) => {
-						this.plugin.settings.obsCustomCss = value;
-						await this.plugin.saveSettings();
-					});
-				text.inputEl.style.width = '100%';
-				text.inputEl.style.height = '100px';
-				text.inputEl.style.fontFamily = 'monospace';
-				return text;
-			});
-
-		new Setting(containerEl)
-			.setName('叠加层主题')
-			.addDropdown(dropdown => {
-				dropdown.addOption('dark', '暗色 (深色背景+白字)');
-				dropdown.addOption('light', '亮色 (浅色背景+深字)');
-				this.plugin.settings.noteThemes.forEach((theme, index) => {
-					dropdown.addOption(`note-${index}`, `便签预设色 ${index + 1}`);
-				});
-				dropdown.setValue(this.plugin.settings.obsOverlayTheme);
-				dropdown.onChange(async (value) => {
-					this.plugin.settings.obsOverlayTheme = value;
-					await this.plugin.saveSettings();
-				});
-			});
-
-		new Setting(containerEl)
-			.setName('显示总计时间')
-			.addToggle(toggle => toggle.setValue(this.plugin.settings.obsShowTotalTime).onChange(async (v) => { this.plugin.settings.obsShowTotalTime = v; await this.plugin.saveSettings(); }));
-		new Setting(containerEl)
-			.setName('显示专注时间')
-			.addToggle(toggle => toggle.setValue(this.plugin.settings.obsShowFocusTime).onChange(async (v) => { this.plugin.settings.obsShowFocusTime = v; await this.plugin.saveSettings(); }));
-		new Setting(containerEl)
-			.setName('显示摸鱼时间')
-			.addToggle(toggle => toggle.setValue(this.plugin.settings.obsShowSlackTime).onChange(async (v) => { this.plugin.settings.obsShowSlackTime = v; await this.plugin.saveSettings(); }));
-		
-		// 已还原旧版的设置名称
-		new Setting(containerEl)
-			.setName('显示目标进度')
-			.addToggle(toggle => toggle.setValue(this.plugin.settings.obsShowTodayWords).onChange(async (v) => { this.plugin.settings.obsShowTodayWords = v; await this.plugin.saveSettings(); }));
-		
-		// 已还原“本场净增”开关
-		new Setting(containerEl)
-			.setName('显示本场净增')
-			.addToggle(toggle => toggle.setValue(this.plugin.settings.obsShowSessionWords).onChange(async (v) => { this.plugin.settings.obsShowSessionWords = v; await this.plugin.saveSettings(); }));
-
-		new Setting(containerEl)
-			.setName('复制 OBS 叠加层 URL')
-			.setDesc('点击后复制 URL，在 OBS 中添加「浏览器源」并粘贴此 URL。')
-			.addButton(btn => btn
-				.setButtonText('复制 URL')
-				.onClick(() => {
-					const url = `http://127.0.0.1:${this.plugin.settings.obsPort}/`;
-					navigator.clipboard.writeText(url);
-					new Notice(`已复制: ${url}`);
-				}));
-
-		containerEl.createEl('h3', {text: '文本文件导出 (兼容)'});
-		new Setting(containerEl)
-			.setName('启用本地文本文件导出')
-			.setDesc('开启后，插件将像以前一样每秒将专注时间、摸鱼时间等数据写入纯文本文件中。')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.enableLegacyObsExport)
-				.onChange(async (value) => {
-					this.plugin.settings.enableLegacyObsExport = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('数据输出路径 (绝对路径)')
-			.setDesc('请填入绝对路径 (例如 D:\\OBS\\Stats)')
-			.addText(text => text
-				.setPlaceholder('请输入文件夹路径')
-				.setValue(this.plugin.settings.obsPath)
-				.onChange(async (value) => {
-					this.plugin.settings.obsPath = value;
-					await this.plugin.saveSettings();
-				}));
-
-		// 桌面端专属功能结束
-		}
-	}
-}
-// ===========================================
-// 类：持久化悬浮便签组件
-// ===========================================
-class FloatingStickyNote extends Component {
-	app: App;
-	plugin: AccurateChineseCountPlugin;
-	state: StickyNoteState;
-	containerEl!: HTMLElement;
-	contentContainer!: HTMLDivElement;
-	textareaEl!: HTMLTextAreaElement;
-
-	constructor(app: App, plugin: AccurateChineseCountPlugin, options: { file?: TFile, content?: string, title?: string, state?: StickyNoteState }) {
-		super();
-		this.app = app;
-		this.plugin = plugin;
-		
-		if (options.state) {
-			this.state = options.state;
-			if (!this.state.zoomLevel) this.state.zoomLevel = 1;
-			if (!this.state.textColor) this.state.textColor = '#2C3E50'; 
-		} else {
-			this.state = {
-				id: Math.random().toString(36).substring(2, 11),
-				filePath: options.file?.path,
-				content: options.content || "",
-				title: options.title || (options.file ? options.file.basename : "新便签"),
-				top: "150px",
-				left: "150px",
-				width: "320px",
-				height: "450px",
-				color: this.plugin.settings.noteThemes[0].bg,
-				textColor: this.plugin.settings.noteThemes[0].text,
-				isEditing: !options.file && !options.content,
-				isPinned: false,
-				zoomLevel: 1 
-			};
-		}
-	}
-
-	async onload() {
-		this.plugin.activeNotes.push(this);
-		
-		this.injectCSS();
-		this.containerEl = document.body.createDiv({ cls: 'my-floating-sticky-note' });
-		
-		if (this.state.filePath && !this.state.content) {
-			const file = this.app.vault.getAbstractFileByPath(this.state.filePath);
-			if (file instanceof TFile) {
-				this.state.content = await this.app.vault.read(file);
-			}
-		}
-
-		this.updateVisuals();
-
-		this.containerEl.addEventListener('wheel', (e) => {
-			if (e.ctrlKey || e.metaKey) {
-				e.preventDefault();
-				e.stopPropagation();
-				
-				const currentZoom = this.state.zoomLevel || 1;
-				const zoomStep = 0.1;
-				const delta = e.deltaY < 0 ? zoomStep : -zoomStep;
-				
-				this.state.zoomLevel = Math.max(0.5, Math.min(4, currentZoom + delta));
-				this.updateVisuals();
-				this.saveState();
-			}
-		}, { passive: false });
-
-		const headerEl = this.containerEl.createDiv({ cls: 'my-sticky-header' });
-		
-		const titleWrapper = headerEl.createDiv({ cls: 'my-sticky-title-wrapper' });
-		const titleIcon = titleWrapper.createSpan({ cls: 'my-sticky-title-icon' });
-		setIcon(titleIcon, 'sticky-note');
-		titleWrapper.createSpan({ text: this.state.title || '', cls: 'my-sticky-title' });
-		
-		const controlsEl = headerEl.createDiv({ cls: 'my-sticky-controls' });
-		
-		const pinBtn = controlsEl.createEl('button', { cls: 'my-sticky-btn' });
-		setIcon(pinBtn, 'pin');
-		if (this.state.isPinned) pinBtn.classList.add('is-active');
-		
-		const saveBtn = controlsEl.createEl('button', { cls: 'my-sticky-btn' });
-		setIcon(saveBtn, 'save');
-
-		const toggleEditBtn = controlsEl.createEl('button', { cls: 'my-sticky-btn' });
-		setIcon(toggleEditBtn, this.state.isEditing ? 'eye' : 'pencil');
-
-		const paletteBtn = controlsEl.createEl('button', { cls: 'my-sticky-btn palette-btn-target' });
-		setIcon(paletteBtn, 'palette');
-
-		const closeBtn = controlsEl.createEl('button', { cls: 'my-sticky-close' });
-		setIcon(closeBtn, 'x');
-
-		this.contentContainer = this.containerEl.createDiv({ cls: 'my-sticky-content markdown-rendered' });
-		this.textareaEl = this.containerEl.createEl('textarea', { cls: 'my-sticky-textarea' });
-
-		const popupEl = controlsEl.createDiv({ cls: 'my-sticky-palette-popup' });
-		this.plugin.settings.noteThemes.forEach(theme => {
-			const swatch = popupEl.createDiv({ cls: 'my-sticky-swatch' });
-			swatch.style.backgroundColor = theme.bg;
-			swatch.style.color = theme.text;
-			swatch.innerText = "Aa"; 
-			
-			swatch.onclick = (e) => { 
-				e.stopPropagation();
-				this.state.color = theme.bg; 
-				this.state.textColor = theme.text; 
-				this.updateVisuals(); 
-				this.saveState(); 
-				popupEl.classList.remove('is-active'); 
-			};
-		});
-
-		this.containerEl.addEventListener('click', (e) => {
-			if (!(e.target as HTMLElement).closest('.my-sticky-palette-popup') && !(e.target as HTMLElement).closest('.palette-btn-target')) {
-				popupEl.classList.remove('is-active');
-			}
-		});
-
-		paletteBtn.onclick = (e) => { e.stopPropagation(); popupEl.classList.toggle('is-active'); };
-
-		pinBtn.onclick = () => {
-			this.state.isPinned = !this.state.isPinned;
-			if (this.state.isPinned) {
-				pinBtn.classList.add('is-active');
-			} else {
-				pinBtn.classList.remove('is-active');
-			}
-			this.updateVisuals();
-			this.saveState();
-		};
-
-		toggleEditBtn.onclick = async () => {
-			if (this.state.isEditing) {
-				this.state.content = this.textareaEl.value;
-				if (this.state.filePath) {
-					const file = this.app.vault.getAbstractFileByPath(this.state.filePath);
-					if (file instanceof TFile) await this.app.vault.modify(file, this.state.content);
-				}
-				this.state.isEditing = false;
-				setIcon(toggleEditBtn, 'pencil');
-			} else {
-				if (this.state.filePath) {
-					const file = this.app.vault.getAbstractFileByPath(this.state.filePath);
-					if (file instanceof TFile) {
-						this.state.content = await this.app.vault.read(file);
-					}
-				}
-				this.state.isEditing = true;
-				setIcon(toggleEditBtn, 'eye');
-			}
-			await this.renderContent();
-			this.saveState();
-		};
-
-		saveBtn.onclick = async () => {
-			if (this.state.isEditing) {
-				this.state.content = this.textareaEl.value;
-			}
-			if (this.state.filePath) { 
-				const file = this.app.vault.getAbstractFileByPath(this.state.filePath);
-				if (file instanceof TFile) {
-					await this.app.vault.modify(file, this.state.content || "");
-					new Notice("✅ 便签已同步至原文档");
-				}
-				return; 
-			}
-			const fileName = `便签_${window.moment().format('YYYYMMDD_HHmmss')}.md`;
-			const file = await this.app.vault.create(fileName, this.state.content || "");
-			this.state.filePath = file.path;
-			this.state.title = file.basename;
-			const titleEl = titleWrapper.querySelector('.my-sticky-title') as HTMLElement;
-			if (titleEl) titleEl.innerText = this.state.title;
-			this.saveState();
-			new Notice("✅ 已转存为文件");
-		};
-
-		closeBtn.onclick = () => this.close();
-
-		await this.renderContent();
-		this.setupDragging(headerEl);
-		this.setupResizing();
-		
-		if (!this.plugin.settings.openNotes.find(n => n.id === this.state.id)) {
-			this.plugin.settings.openNotes.push(this.state);
-			this.plugin.saveSettings();
-		}
-	}
-
-	updateVisuals() {
-		this.containerEl.style.top = this.state.top;
-		this.containerEl.style.left = this.state.left;
-		this.containerEl.style.width = this.state.width;
-		this.containerEl.style.height = this.state.height;
-		this.containerEl.style.resize = this.state.isPinned ? 'none' : 'both';
-		this.containerEl.style.setProperty('--sticky-zoom', (this.state.zoomLevel || 1).toString());
-		
-		const bgWithAlpha = hexToRgba(this.state.color, this.plugin.settings.noteOpacity);
-		
-		this.containerEl.style.setProperty('--note-bg-color', this.state.color);
-		this.containerEl.style.setProperty('--note-bg-color-alpha', bgWithAlpha);
-		this.containerEl.style.setProperty('--note-text-color', this.state.textColor || '#2C3E50');
-		
-		if (this.state.isPinned) {
-			this.containerEl.classList.add('is-pinned');
-		} else {
-			this.containerEl.classList.remove('is-pinned');
-		}
-	}
-
-	async renderContent() {
-		if (this.state.isEditing) {
-			this.contentContainer.style.display = 'none';
-			this.textareaEl.style.display = 'block';
-			this.textareaEl.value = this.state.content || "";
-		} else {
-			this.textareaEl.style.display = 'none';
-			this.contentContainer.style.display = 'block';
-			this.contentContainer.empty();
-			let text = this.state.content || "";
-			if (this.state.filePath) {
-				const file = this.app.vault.getAbstractFileByPath(this.state.filePath);
-				if (file instanceof TFile) text = await this.app.vault.read(file);
-			}
-			await MarkdownRenderer.renderMarkdown(text, this.contentContainer, this.state.filePath || '', this);
-		}
-	}
-
-	saveState() {
-		const index = this.plugin.settings.openNotes.findIndex(n => n.id === this.state.id);
-		if (index !== -1) {
-			this.plugin.settings.openNotes[index] = this.state;
-			this.plugin.saveSettings();
-		}
-	}
-
-	onunload() {
-		// 只清理 DOM 和从 activeNotes 移除
-		// 不删除持久化状态，除非是用户主动关闭（通过 close() 方法）
-		if (this.containerEl) {
-			this.containerEl.remove();
-		}
-		const activeIndex = this.plugin.activeNotes.indexOf(this);
-		if (activeIndex > -1) {
-			this.plugin.activeNotes.splice(activeIndex, 1);
-		}
-	}
-	
-	// 新增：用户主动关闭便签时调用
-	close() {
-		// 从持久化存储中删除
-		const stateIndex = this.plugin.settings.openNotes.findIndex(n => n.id === this.state.id);
-		if (stateIndex !== -1) {
-			this.plugin.settings.openNotes.splice(stateIndex, 1);
-			this.plugin.saveSettings();
-		}
-		// 调用 unload 清理 DOM
-		this.unload();
-	}
-
-	setupDragging(handle: HTMLElement) {
-		let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
-		handle.onmousedown = (e) => {
-			if (this.state.isPinned) return; 
-			const target = e.target as HTMLElement;
-			if (target.tagName === 'BUTTON' || target.closest('.my-sticky-btn') || target.closest('.my-sticky-close')) return;
-			pos3 = e.clientX; pos4 = e.clientY;
-			document.onmouseup = () => { document.onmouseup = null; document.onmousemove = null; this.saveState(); };
-			document.onmousemove = (e) => {
-				pos1 = pos3 - e.clientX; pos2 = pos4 - e.clientY;
-				pos3 = e.clientX; pos4 = e.clientY;
-				this.state.top = (this.containerEl.offsetTop - pos2) + "px";
-				this.state.left = (this.containerEl.offsetLeft - pos1) + "px";
-				this.containerEl.style.top = this.state.top;
-				this.containerEl.style.left = this.state.left;
-			};
-		};
-	}
-
-	setupResizing() {
-		const observer = new ResizeObserver(() => {
-			if (this.state.isPinned) return; 
-			this.state.width = this.containerEl.style.width;
-			this.state.height = this.containerEl.style.height;
-			this.saveState();
-		});
-		observer.observe(this.containerEl);
-	}
-
-	injectCSS() {
-		const styleId = 'sticky-note-plugin-styles-v15'; 
-		const styleContent = `
-				.my-floating-sticky-note { 
-					position: fixed; width: 320px; height: 450px; min-width: 200px; min-height: 200px; 
-					border: 1px solid rgba(0,0,0,0.1) !important; 
-					box-shadow: 0 10px 30px rgba(0,0,0,0.15); 
-					border-radius: 8px; z-index: var(--layer-popover, 40); 
-					display: flex; flex-direction: column; overflow: hidden; 
-					transition: background-color 0.2s ease, box-shadow 0.3s ease; 
-					background-color: var(--note-bg-color-alpha, transparent) !important; 
-				}
-				
-				.my-floating-sticky-note:hover { 
-					box-shadow: 0 12px 35px rgba(0,0,0,0.22); 
-					background-color: var(--note-bg-color) !important;
-				}
-				
-				.my-sticky-header { 
-					padding: 8px 12px; 
-					background-color: transparent !important; 
-					border-bottom: 1px solid transparent !important; 
-					cursor: grab; 
-					display: flex; 
-					flex-direction: row !important; 
-					align-items: center; 
-					justify-content: space-between !important; 
-					user-select: none; 
-					flex-shrink: 0; 
-					min-width: 0; 
-					transition: background-color 0.2s ease, border-color 0.2s ease; 
-					gap: 10px;
-				}
-				.my-floating-sticky-note:hover .my-sticky-header { background-color: rgba(0, 0, 0, 0.04) !important; border-bottom: 1px solid rgba(0,0,0,0.06) !important; }
-				
-				.my-sticky-header:active { cursor: grabbing; }
-				
-				.my-sticky-title-wrapper { 
-					display: flex; 
-					align-items: center; 
-					gap: 6px; 
-					overflow: hidden; 
-					flex-grow: 1; 
-					flex-shrink: 1;
-					min-width: 0;
-				}
-				.my-sticky-title-icon { display: flex; align-items: center; color: var(--note-text-color); opacity: 0.6; flex-shrink: 0; }
-				.my-sticky-title-icon svg { width: 14px; height: 14px; }
-				.my-sticky-title { font-weight: bold; font-size: 0.9em; color: var(--note-text-color) !important; pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 1; min-width: 0; }
-				
-				.my-sticky-controls { 
-					display: flex; 
-					align-items: center; 
-					gap: 4px; 
-					flex-shrink: 0; 
-					position: relative; 
-					opacity: 0; 
-					pointer-events: none; 
-					transition: opacity 0.2s ease; 
-				}
-				.my-floating-sticky-note:hover .my-sticky-controls { opacity: 1; pointer-events: auto; }
-				
-				.my-sticky-btn, .my-sticky-close { background: transparent !important; border: none; box-shadow: none; cursor: pointer; padding: 4px; border-radius: 4px; color: var(--note-text-color) !important; opacity: 0.5; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
-				.my-sticky-btn svg, .my-sticky-close svg { width: 16px; height: 16px; stroke-width: 2px; }
-				.my-sticky-btn:hover { background-color: rgba(0,0,0,0.08) !important; opacity: 1; }
-				.my-sticky-btn.is-active { color: var(--interactive-accent) !important; background-color: rgba(0,0,0,0.06) !important; opacity: 1;}
-				
-				.my-sticky-close:hover { color: #e74c3c !important; background-color: rgba(231, 76, 60, 0.1) !important; opacity: 1;}
-				
-				.my-sticky-palette-popup { display: none; position: absolute; top: 32px; right: 25px; background-color: var(--background-primary); border: 1px solid var(--background-modifier-border); border-radius: 8px; padding: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); z-index: var(--layer-menu, 50); grid-template-columns: repeat(3, 1fr); gap: 8px; }
-				.my-sticky-palette-popup.is-active { display: grid; animation: popupFadeIn 0.15s ease-out; }
-				@keyframes popupFadeIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
-				
-				.my-sticky-swatch { width: 26px; height: 26px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.15); cursor: pointer; transition: transform 0.1s, border-color 0.1s; display: flex; align-items: center; justify-content: center; font-weight: bold; font-family: serif; font-size: 13px;}
-				.my-sticky-swatch:hover { transform: scale(1.15); border-color: rgba(0,0,0,0.5); }
-				
-				.my-sticky-content { padding: 15px; overflow-y: auto; font-size: calc(0.9em * var(--sticky-zoom, 1)); flex-grow: 1; color: var(--note-text-color) !important; padding-bottom: 25px; background-color: transparent !important; }
-				
-				.my-sticky-content * { color: inherit; }
-				
-				.my-sticky-textarea { flex-grow: 1; width: 100%; height: calc(100% - 10px); resize: none; border: none; background: transparent !important; color: var(--note-text-color) !important; font-family: var(--font-text); font-size: calc(0.9em * var(--sticky-zoom, 1)); padding: 15px; outline: none; box-shadow: none; display: none; line-height: 1.5; }
-				.my-sticky-textarea:focus { box-shadow: none; background-color: transparent !important; }
-				
-				.my-sticky-content h1.inline-title { display: none; }
-			`;
-		injectGlobalStyle(styleId, styleContent);
-	}
-}
-
-// ===========================================
-// 类：字数统计 (Modal)
-// ===========================================
-class HistoryStatsModal extends Modal {
-	history: Record<string, DailyStat>;
-	currentTab: '7day' | 'day' | 'week' | 'month' | 'year' = 'month';
-	chartContainer!: HTMLElement;
-
-	constructor(app: App, history: Record<string, DailyStat>) {
-		super(app);
-		this.history = history;
-	}
-
-	onOpen() {
-		const { contentEl } = this;
-		contentEl.empty();
-		contentEl.addClass('history-stats-modal');
-
-		contentEl.createEl('h2', { text: '📈 字数统计' });
-
-		// 创建 Tab 切换组
-		const tabGroup = contentEl.createDiv({ cls: 'stats-tab-group' });
-		const tabs = [
-			{ id: '7day', name: '近7日' },
-			{ id: 'day', name: '近30日' },
-			{ id: 'week', name: '按周' },
-			{ id: 'month', name: '按月' },
-			{ id: 'year', name: '按年' }
-		];
-
-		tabs.forEach(tab => {
-			const btn = tabGroup.createEl('button', { text: tab.name, cls: 'stats-tab-btn' });
-			if (this.currentTab === tab.id) btn.addClass('is-active');
-			btn.onclick = () => {
-				this.currentTab = tab.id as 'day' | 'week' | 'month' | 'year' | '7day';
-				tabGroup.querySelectorAll('.stats-tab-btn').forEach(b => b.removeClass('is-active'));
-				btn.addClass('is-active');
-				this.renderData();
-			};
-		});
-
-		this.chartContainer = contentEl.createDiv({ cls: 'stats-large-chart-container' });
-		this.renderData();
-	}
-
-	renderData() {
-		this.chartContainer.empty();
-		const aggregated = this.aggregateData();
-		const keys = Object.keys(aggregated).sort();
-		
-		// 根据 Tab 限制显示数量，防止太挤
-		let displayKeys = keys;
-		if (this.currentTab === '7day') displayKeys = keys.slice(-7); // 近7日
-		if (this.currentTab === 'day') displayKeys = keys.slice(-30);
-		if (this.currentTab === 'week') displayKeys = keys.slice(-12); // 近12周
-
-		if (displayKeys.length === 0) {
-			this.chartContainer.createDiv({ text: '暂无数据' });
-			return;
-		}
-
-		const maxWords = Math.max(...displayKeys.map(k => aggregated[k].words), 100);
-
-		displayKeys.forEach(key => {
-			const data = aggregated[key];
-			const col = this.chartContainer.createDiv({ cls: 'stats-large-col' });
-			
-			const heightPercent = Math.max(2, (data.words / maxWords) * 100);
-			const bar = col.createDiv({ cls: 'stats-large-bar' });
-			bar.style.height = `${heightPercent}%`;
-			
-			// 悬停提示
-			const focusHours = (data.focusMs / 3600000).toFixed(1);
-			bar.setAttribute('title', `时间: ${key}\n总字数: ${data.words.toLocaleString()}\n专注总计: ${focusHours}小时`);
-
-			col.createDiv({ cls: 'stats-large-label', text: this.formatLabel(key) });
-			col.createDiv({ cls: 'stats-large-value', text: formatCount(data.words) });
-		});
-	}
-
-	aggregateData() {
-		const result: Record<string, { words: number, focusMs: number }> = {};
-		
-		for (const [date, stat] of Object.entries(this.history)) {
-			const m = window.moment(date);
-			let key = date; // 默认按日
-
-			if (this.currentTab === '7day') {
-				key = date; // 近7日也按日显示
-			} else if (this.currentTab === 'week') {
-				key = `${m.year()}年 第${m.isoWeek()}周`;
-			} else if (this.currentTab === 'month') {
-				key = m.format('YYYY-MM');
-			} else if (this.currentTab === 'year') {
-				key = m.format('YYYY');
-			}
-
-			if (!result[key]) result[key] = { words: 0, focusMs: 0 };
-			result[key].words += Math.max(0, stat.addedWords || 0);
-			result[key].focusMs += (stat.focusMs || 0);
-		}
-		return result;
-	}
-
-	formatLabel(key: string): string {
-		if (this.currentTab === '7day' || this.currentTab === 'day') return key.substring(5); // 04-15
-		if (this.currentTab === 'month') return key.substring(2); // 24-04
-		return key; // week 和 year 直接显示
-	}
-
-	onClose() {
-		this.contentEl.empty();
-	}
-}
-
-// ===========================================
-// 类：OBS 直播叠加层 HTTP Server
-// ===========================================
-
-class ObsOverlayServer {
-	private plugin: AccurateChineseCountPlugin;
-	private server: import('./src/types/node').NodeHTTPServer | null = null;
-	private port: number;
-
-	constructor(plugin: AccurateChineseCountPlugin, port: number) {
-		this.plugin = plugin;
-		this.port = port;
-	}
-
-	start(): boolean {
-		if (!isDesktop()) return false;
-		try {
-			const http = window.require('http') as import('./src/types/node').NodeHTTP;
-			const plugin = this.plugin;
-
-			this.server = http.createServer((req: import('./src/types/node').NodeHTTPRequest, res: import('./src/types/node').NodeHTTPResponse) => {
-				const url = new URL(req.url, `http://localhost:${this.port}`);
-
-				if (url.pathname === '/api/stats') {
-					res.writeHead(200, {
-						'Content-Type': 'application/json',
-						'Access-Control-Allow-Origin': '*'
-					});
-					res.end(JSON.stringify(plugin.getObsStats()));
-				} else {
-					res.writeHead(200, {
-						'Content-Type': 'text/html; charset=utf-8',
-						'Access-Control-Allow-Origin': '*'
-					});
-					res.end(plugin.buildObsOverlayHtml());
-				}
-			});
-
-			this.server.listen(this.port, '127.0.0.1', () => {
-				console.log(`[WebNovel Assistant] OBS Overlay server started at http://127.0.0.1:${this.port}`);
-				new Notice(`OBS 叠加层已启动: http://127.0.0.1:${this.port}`);
-			});
-
-			this.server.on('error', async (e: NodeJS.ErrnoException) => {
-				console.error('[WebNovel Assistant] OBS 服务器错误:', e);
-				
-				// 降级: 自动切换到文件导出模式
-				this.plugin.settings.enableObs = false;
-				this.plugin.settings.enableLegacyObsExport = true;
-				await this.plugin.saveSettings();
-				
-				if (e.code === 'EADDRINUSE') {
-					const suggestedPorts = [this.port + 1, this.port + 2, this.port + 10];
-					new Notice(
-						`端口 ${this.port} 已被占用！\n` +
-						`已自动切换到文件导出模式\n\n` +
-						`如需使用 OBS HTTP 服务器，请:\n` +
-						`1. 在设置中更换端口 (建议: ${suggestedPorts.join(', ')})\n` +
-						`2. 重新启用 OBS 服务器`,
-						15000
-					);
-				} else {
-					new Notice(
-						`OBS 服务器启动失败\n` +
-						`已自动切换到文件导出模式\n\n` +
-						`错误: ${e.message}\n` +
-						`您可以在设置中配置文件导出路径`,
-						12000
-					);
-				}
-			});
-
-			return true;
-		} catch (e) {
-			console.error('[WebNovel Assistant] 无法启动 OBS 服务器:', e);
-			
-			// 降级: 自动切换到文件导出模式
-			this.plugin.settings.enableObs = false;
-			this.plugin.settings.enableLegacyObsExport = true;
-			this.plugin.saveSettings();
-			
-			new Notice(
-				'OBS 服务器启动失败\n' +
-				'已自动切换到文件导出模式\n\n' +
-				'可能原因: Node.js 模块不可用\n' +
-				'您可以在设置中配置文件导出路径',
-				12000
-			);
-			return false;
-		}
-	}
-
-	stop() {
-		if (this.server) {
-			this.server.close();
-			this.server = null;
-		}
-	}
-
-	updatePort(newPort: number) {
-		if (this.port === newPort && this.server) return;
-		this.stop();
-		this.port = newPort;
-		this.start();
-	}
-}

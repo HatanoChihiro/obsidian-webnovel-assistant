@@ -68,6 +68,8 @@ export interface AccurateCountSettings {
 	showGoal: boolean;
 	/** 是否在文件浏览器中显示字数统计 */
 	showExplorerCounts: boolean;
+	/** 是否启用智能章节排序 */
+	enableSmartChapterSort: boolean;
 	/** 是否启用 OBS 直播叠加层 */
 	enableObs: boolean;
 	/** 是否启用旧版 OBS 文件导出模式 */
