@@ -1,0 +1,47 @@
+{
+  "defaultGoal": 3000,
+  "showGoal": true,
+  "showExplorerCounts": true,
+  "enableObs": false,
+  "enableLegacyObsExport": false,
+  "obsPath": "",
+  "openNotes": [],
+  "noteOpacity": 0.9,
+  "dailyHistory": {},
+  "idleTimeoutThreshold": 60000,
+  "noteThemes": [
+    {
+      "bg": "#FDF3B8",
+      "text": "#2C3E50"
+    },
+    {
+      "bg": "#FCDDEC",
+      "text": "#5D2E46"
+    },
+    {
+      "bg": "#CCE8CF",
+      "text": "#2A4A30"
+    },
+    {
+      "bg": "#2C3E50",
+      "text": "#F8F9FA"
+    },
+    {
+      "bg": "#E8DFF5",
+      "text": "#4A3B69"
+    },
+    {
+      "bg": "#FDE0C1",
+      "text": "#593D2B"
+    }
+  ],
+  "obsPort": 24816,
+  "obsOverlayTheme": "dark",
+  "obsOverlayOpacity": 0.85,
+  "obsCustomCss": "",
+  "obsShowFocusTime": true,
+  "obsShowSlackTime": true,
+  "obsShowTotalTime": true,
+  "obsShowTodayWords": true,
+  "obsShowSessionWords": true
+}

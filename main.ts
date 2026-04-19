@@ -1,56 +1,20 @@
 import { App, Plugin, PluginSettingTab, Setting, MarkdownView, Modal, TFile, Notice, TFolder, MarkdownRenderer, Component, setIcon, ItemView, WorkspaceLeaf, Platform } from 'obsidian';
+import { AccurateCountSettings, DailyStat, ThemeScheme, StickyNoteState } from './src/types/settings';
+import { ObsStatsPayload } from './src/types/stats';
+import {
+	hexToRgba,
+	formatTime,
+	formatCount,
+	injectGlobalStyle,
+	removeGlobalStyle,
+	isDesktop,
+	isMobile
+} from './src/utils';
+import { CacheManager } from './src/services/CacheManager';
+import { DebounceManager } from './src/services/DebounceManager';
+import { SettingsManager } from './src/core/SettingsManager';
 
 export const STATUS_VIEW_TYPE = "writing-status-view";
-
-interface DailyStat {
-	focusMs: number;
-	slackMs: number;
-	addedWords: number;
-}
-
-interface ThemeScheme {
-	bg: string;
-	text: string;
-}
-
-interface StickyNoteState {
-	id: string;
-	filePath?: string;
-	content?: string;
-	title?: string;
-	top: string;
-	left: string;
-	width: string;
-	height: string;
-	color: string;      
-	textColor?: string; 
-	isEditing: boolean;
-	isPinned?: boolean; 
-	zoomLevel?: number;
-}
-
-interface AccurateCountSettings {
-	defaultGoal: number;
-	showGoal: boolean;
-	showExplorerCounts: boolean;
-	enableObs: boolean;
-	enableLegacyObsExport: boolean;
-	dailyHistory: Record<string, DailyStat>;
-	obsPath: string;
-	openNotes: StickyNoteState[];
-	noteOpacity: number;
-	noteThemes: ThemeScheme[];
-	idleTimeoutThreshold: number;
-	obsPort: number;
-	obsOverlayTheme: string;
-	obsOverlayOpacity: number;
-	obsCustomCss: string;
-	obsShowFocusTime: boolean;
-	obsShowSlackTime: boolean;
-	obsShowTotalTime: boolean;
-	obsShowTodayWords: boolean;
-	obsShowSessionWords: boolean; // 已还原
-}
 
 const DEFAULT_SETTINGS: AccurateCountSettings = {
 	defaultGoal: 3000,
@@ -82,18 +46,6 @@ const DEFAULT_SETTINGS: AccurateCountSettings = {
 	obsShowSessionWords: true, // 已还原
 }
 
-
-function hexToRgba(hex: string, alpha: number): string {
-	if (!hex) return `rgba(255, 255, 255, ${alpha})`;
-	let h = hex.replace('#', '');
-	if (h.length === 3) h = h.split('').map(c => c + c).join('');
-	if (h.length !== 6) return `rgba(255, 255, 255, ${alpha})`;
-	let r = parseInt(h.substring(0, 2), 16) || 0;
-	let g = parseInt(h.substring(2, 4), 16) || 0;
-	let b = parseInt(h.substring(4, 6), 16) || 0;
-	return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
 export default class AccurateChineseCountPlugin extends Plugin {
 
 	
@@ -114,7 +66,30 @@ export default class AccurateChineseCountPlugin extends Plugin {
 	activeNotes: FloatingStickyNote[] = [];
 	obsServer: ObsOverlayServer | null = null;
 
+	// 性能优化管理器
+	cacheManager: CacheManager;
+	debounceManager: DebounceManager;
+	settingsManager: SettingsManager;
+
+	constructor(app: App, manifest: any) {
+		super(app, manifest);
+		this.cacheManager = new CacheManager();
+		this.debounceManager = new DebounceManager();
+		this.settingsManager = new SettingsManager(this, DEFAULT_SETTINGS);
+	}
+
 	async onload() {
+		// ==========================================
+		// 平台检测和功能分级 (需求 8.1, 8.2, 8.4, 8.6)
+		// ==========================================
+		// 本插件采用平台检测和功能分级策略:
+		// - 核心功能: 所有平台都支持 (字数统计、目标追踪、状态栏、设置)
+		// - 扩展功能: 仅桌面端支持 (便签、OBS、状态视图、Worker、缓存)
+		// 
+		// 移动端 Lite 模式: 只加载核心功能，提供轻量级体验
+		// 桌面端完整模式: 加载所有功能，提供完整功能体验
+		// ==========================================
+
 		// ==========================================
 		// 1. 全平台核心功能 (字数统计、目标、设置页)
 		// ==========================================
@@ -123,15 +98,37 @@ export default class AccurateChineseCountPlugin extends Plugin {
 		this.statusBarItemEl = this.addStatusBarItem();
 		this.addSettingTab(new AccurateCountSettingTab(this.app, this));
 
-		this.registerEvent(this.app.workspace.on('editor-change', this.handleEditorChange.bind(this)));
+		this.registerEvent(this.app.workspace.on('editor-change', () => {
+			// 使用防抖，300ms 后才执行
+			this.debounceManager.debounce('editor-update', () => {
+				this.handleEditorChange();
+			}, 300);
+		}));
 		this.registerEvent(this.app.workspace.on('active-leaf-change', this.handleFileChange.bind(this)));
-		this.registerEvent(this.app.metadataCache.on('changed', this.updateWordCount.bind(this)));
+		this.registerEvent(this.app.metadataCache.on('changed', () => {
+			// 使用防抖，避免频繁更新
+			this.debounceManager.debounce('word-count-update', () => {
+				this.updateWordCount();
+			}, 100);
+		}));
 		this.updateWordCount(); // 初始化状态栏数字
 
 		// ==========================================
-		// 2. 移动端 Lite 模式拦截
+		// 2. 移动端 Lite 模式拦截 (需求 8.1, 8.3)
 		// ==========================================
-		if (Platform.isMobile) {
+		// 移动端只提供核心功能:
+		// - ✅ 字数统计 (状态栏实时显示)
+		// - ✅ 目标追踪 (右键菜单设定目标)
+		// - ✅ 设置页面 (基础配置)
+		// 
+		// 移动端不支持的扩展功能:
+		// - ❌ 悬浮便签 (需要桌面级 DOM 操作)
+		// - ❌ OBS 服务器 (需要 Node.js 模块)
+		// - ❌ 状态视图面板 (占用屏幕空间)
+		// - ❌ Worker 时间追踪 (耗电)
+		// - ❌ 文件夹字数缓存 (内存占用)
+		// ==========================================
+		if (isMobile()) {
 			// 手机端只注册“设定本章目标字数”的右键菜单
 			this.registerEvent(this.app.workspace.on('file-menu', (menu, file) => {
 				if (file instanceof TFile && file.extension === 'md') {
@@ -151,7 +148,24 @@ export default class AccurateChineseCountPlugin extends Plugin {
 		}
 
 		// ==========================================
-		// 3. 桌面端全功能完全体 (面板、便签、耗电监控等)
+		// 3. 桌面端全功能完全体 (需求 8.4)
+		// ==========================================
+		// 桌面端提供完整功能集:
+		// 
+		// 核心功能 (已在上方加载):
+		// - ✅ 字数统计
+		// - ✅ 目标追踪
+		// - ✅ 状态栏显示
+		// - ✅ 设置页面
+		// 
+		// 扩展功能 (以下加载):
+		// - ✅ 实时状态视图面板 (侧边栏)
+		// - ✅ 悬浮便签系统 (可拖拽、缩放、主题)
+		// - ✅ OBS 直播叠加层 (HTTP 服务器)
+		// - ✅ Worker 时间追踪 (专注/摸鱼时长)
+		// - ✅ 文件夹字数缓存 (性能优化)
+		// - ✅ 文件夹合并导出
+		// - ✅ 历史统计图表
 		// ==========================================
 		this.registerView(STATUS_VIEW_TYPE, (leaf) => new WritingStatusView(leaf, this));
 
@@ -160,13 +174,42 @@ export default class AccurateChineseCountPlugin extends Plugin {
 				const note = new FloatingStickyNote(this.app, this, { state });
 				note.load();
 			});
-			this.refreshFolderCounts();
+			
+			// 延迟构建缓存，避免阻塞启动
+			setTimeout(() => {
+				this.buildFolderCache();
+			}, 1000);
 		});
 
-		this.registerEvent(this.app.vault.on('modify', () => this.refreshFolderCounts()));
-		this.registerEvent(this.app.vault.on('delete', () => this.refreshFolderCounts()));
-		this.registerEvent(this.app.vault.on('rename', () => this.refreshFolderCounts()));
-		this.registerEvent(this.app.workspace.on('layout-change', () => this.refreshFolderCounts()));
+		this.registerEvent(this.app.vault.on('modify', (file) => {
+			if (file instanceof TFile && file.extension === 'md') {
+				// 使用防抖，500ms 后才更新缓存和刷新显示
+				this.debounceManager.debounce('folder-refresh', () => {
+					this.updateFileCacheAndRefresh(file);
+				}, 500);
+			}
+		}));
+		this.registerEvent(this.app.vault.on('delete', (file) => {
+			if (file instanceof TFile && file.extension === 'md') {
+				this.cacheManager.invalidateCache(file.path, this.app.vault);
+				this.debounceManager.debounce('folder-refresh', () => {
+					this.refreshFolderCounts();
+				}, 500);
+			}
+		}));
+		this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
+			if (file instanceof TFile && file.extension === 'md') {
+				this.cacheManager.invalidateCache(oldPath, this.app.vault);
+				this.debounceManager.debounce('folder-refresh', () => {
+					this.updateFileCacheAndRefresh(file);
+				}, 500);
+			}
+		}));
+		this.registerEvent(this.app.workspace.on('layout-change', () => {
+			this.debounceManager.debounce('folder-refresh', () => {
+				this.refreshFolderCounts();
+			}, 500);
+		}));
 
 		this.addRibbonIcon('sticky-note', '新建空白悬浮便签', () => {
 			const note = new FloatingStickyNote(this.app, this, { content: '', title: '新便签' });
@@ -381,10 +424,83 @@ export default class AccurateChineseCountPlugin extends Plugin {
 	}
 
 	onunload() {
+		// 先保存所有便签的当前状态
+		this.activeNotes.forEach(note => {
+			const index = this.settings.openNotes.findIndex(n => n.id === note.state.id);
+			if (index !== -1) {
+				this.settings.openNotes[index] = note.state;
+			}
+		});
+		
 		this.saveSettings();
 		this.removeGlobalStyles();
+		
+		// 清理防抖管理器
+		this.debounceManager.cancelAll();
+		
+		// 清理缓存
+		this.cacheManager.clearCache();
+		
 		if (this.worker) this.worker.terminate();
 		this.obsServer?.stop();
+		
+		// 清理便签 DOM，但不删除状态
+		this.activeNotes.forEach(note => {
+			if (note.containerEl) {
+				note.containerEl.remove();
+			}
+		});
+		this.activeNotes = [];
+	}
+
+	/**
+	 * 构建文件夹字数缓存
+	 */
+	async buildFolderCache(): Promise<void> {
+		if (!this.settings.showExplorerCounts) return;
+
+		try {
+			const notice = new Notice('正在构建文件夹字数缓存...', 0);
+			
+			await this.cacheManager.buildInitialCache(
+				this.app.vault,
+				this.calculateAccurateWords.bind(this)
+			);
+			
+			notice.hide();
+			this.refreshFolderCounts();
+			
+			new Notice('文件夹字数缓存构建完成', 3000);
+		} catch (error) {
+			console.error('[Plugin] 缓存构建失败:', error);
+			
+			// 降级: 禁用文件夹字数显示
+			this.settings.showExplorerCounts = false;
+			await this.saveSettings();
+			
+			new Notice(
+				'文件夹字数缓存构建失败，已自动禁用该功能\n' +
+				'您可以在设置中重新启用\n' +
+				`错误: ${error instanceof Error ? error.message : String(error)}`,
+				10000
+			);
+		}
+	}
+
+	/**
+	 * 更新文件缓存并刷新显示
+	 */
+	async updateFileCacheAndRefresh(file: TFile): Promise<void> {
+		try {
+			const content = await this.app.vault.cachedRead(file);
+			const wordCount = this.calculateAccurateWords(content);
+			this.cacheManager.updateFileCache(file, wordCount, this.app.vault);
+			this.refreshFolderCounts();
+		} catch (error) {
+			console.error('[Plugin] 更新文件缓存失败:', error);
+			// 文件读取失败时，使缓存失效
+			this.cacheManager.invalidateCache(file.path, this.app.vault);
+		}
 	}
 
 	async toggleStatusView() {
@@ -406,17 +522,11 @@ export default class AccurateChineseCountPlugin extends Plugin {
 	}
 
 	async loadSettings() {
-		const data = await this.loadData();
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, data);
-		
-		// 已还原的向下兼容逻辑
-		if (data && data.noteColors && (!data.noteThemes || data.noteThemes.length === 0)) {
-			this.settings.noteThemes = data.noteColors.map((color: string) => ({ bg: color, text: '#2C3E50' }));
-		}
+		this.settings = await this.settingsManager.loadSettings();
 	}
 
 	async saveSettings() {
-		await this.saveData(this.settings);
+		await this.settingsManager.saveSettings();
 	}
 
 	calculateAccurateWords(text: string): number {
@@ -495,6 +605,46 @@ export default class AccurateChineseCountPlugin extends Plugin {
 		`;
 		const blob = new Blob([workerCode], { type: 'application/javascript' });
 		this.worker = new Worker(URL.createObjectURL(blob));
+		
+		// Sub-task 12.1: 添加 Worker 错误监听
+		this.worker.onerror = (error) => {
+			// 记录错误信息到控制台
+			console.error(
+				'[WebNovel Assistant] Worker 错误:',
+				'\n  消息:', error.message,
+				'\n  文件:', error.filename,
+				'\n  行号:', error.lineno,
+				'\n  列号:', error.colno
+			);
+			
+			// Sub-task 12.2: 实现 Worker 自动重启逻辑
+			// 保存当前追踪状态
+			const wasTracking = this.isTracking;
+			
+			// 终止崩溃的 Worker
+			if (this.worker) {
+				this.worker.terminate();
+				this.worker = null;
+			}
+			
+			// 5 秒后自动重启 Worker
+			setTimeout(() => {
+				console.log('[WebNovel Assistant] 正在重启 Worker...');
+				
+				// 重新创建 Worker
+				this.setupWorker();
+				
+				// 恢复之前的追踪状态
+				if (wasTracking) {
+					this.worker?.postMessage('start');
+					console.log('[WebNovel Assistant] Worker 已重启，追踪状态已恢复');
+				}
+				
+				// 通知用户
+				new Notice('⚠️ 时间追踪 Worker 已自动重启\n追踪功能已恢复正常', 5000);
+			}, 5000);
+		};
+		
 		this.worker.onmessage = () => {
 		    if (!this.isTracking) return;
 		    const now = Date.now();
@@ -519,6 +669,10 @@ export default class AccurateChineseCountPlugin extends Plugin {
 		    
 			this.refreshStatusViews();
 			if (this.settings.enableLegacyObsExport) this.exportLegacyOBS();
+			// 通知 OBS 服务器更新（如果启用）
+			if (this.settings.enableObs && this.obsServer) {
+				// OBS 服务器会在请求时自动获取最新数据，无需主动推送
+			}
 		};
 	}
 
@@ -531,20 +685,11 @@ export default class AccurateChineseCountPlugin extends Plugin {
 		}
 	}
 
-	formatTime(totalSeconds: number): string {
-		const h = Math.floor(totalSeconds / 3600).toString().padStart(2, '0');
-		const m = Math.floor((totalSeconds % 3600) / 60).toString().padStart(2, '0');
-		const s = (totalSeconds % 60).toString().padStart(2, '0');
-		return `${h}:${m}:${s}`;
-	}
-
 	exportLegacyOBS(force: boolean = false) {
-		if (!Platform.isDesktop || !this.settings.enableLegacyObsExport || !this.settings.obsPath) return;
+		if (!isDesktop() || !this.settings.enableLegacyObsExport || !this.settings.obsPath) return;
 		try {
-			// @ts-ignore
-			const fs = window.require('fs');
-			// @ts-ignore
-			const path = window.require('path');
+			const fs = window.require('fs') as import('./src/types/node').NodeFS;
+			const path = window.require('path') as import('./src/types/node').NodePath;
 			const dir = this.settings.obsPath;
 			if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
@@ -552,9 +697,9 @@ export default class AccurateChineseCountPlugin extends Plugin {
 			const focusSec = Math.floor(this.focusMs / 1000);
 			const slackSec = totalSec - focusSec;
 
-			fs.writeFileSync(path.join(dir, 'obs_focus_time.txt'), this.formatTime(focusSec), 'utf8');
-			fs.writeFileSync(path.join(dir, 'obs_slack_time.txt'), this.formatTime(slackSec), 'utf8');
-			fs.writeFileSync(path.join(dir, 'obs_total_time.txt'), this.formatTime(totalSec), 'utf8');
+			fs.writeFileSync(path.join(dir, 'obs_focus_time.txt'), formatTime(focusSec), 'utf8');
+			fs.writeFileSync(path.join(dir, 'obs_slack_time.txt'), formatTime(slackSec), 'utf8');
+			fs.writeFileSync(path.join(dir, 'obs_total_time.txt'), formatTime(totalSec), 'utf8');
 			fs.writeFileSync(path.join(dir, 'obs_words_done.txt'), Math.max(0, this.sessionAddedWords).toString(), 'utf8');
 
 			let currentGoal = this.settings.defaultGoal;
@@ -588,9 +733,9 @@ export default class AccurateChineseCountPlugin extends Plugin {
 		const todayAdded = Math.max(0, todayStat.addedWords);
 		return {
 			isTracking: this.isTracking,
-			focusTime: this.formatTime(focusSec),
-			slackTime: this.formatTime(slackSec),
-			totalTime: this.formatTime(totalSec),
+			focusTime: formatTime(focusSec),
+			slackTime: formatTime(slackSec),
+			totalTime: formatTime(totalSec),
 			sessionWords: Math.max(0, this.sessionAddedWords),
 			todayWords: todayAdded,
 			goal: targetGoal,
@@ -627,9 +772,9 @@ export default class AccurateChineseCountPlugin extends Plugin {
 		let timeRowHtml = '';
 		if (this.settings.obsShowFocusTime || this.settings.obsShowSlackTime || this.settings.obsShowTotalTime) {
 			timeRowHtml = `\n\t<div class="time-row">`;
-			if (this.settings.obsShowTotalTime) timeRowHtml += `\n\t\t<div class="time-item"><div class="time-label">总计</div><div class="time-value" id="totalTime">00:00:00</div></div>`;
-			if (this.settings.obsShowFocusTime) timeRowHtml += `\n\t\t<div class="time-item"><div class="time-label">专注</div><div class="time-value focus" id="focusTime">00:00:00</div></div>`;
-			if (this.settings.obsShowSlackTime) timeRowHtml += `\n\t\t<div class="time-item"><div class="time-label">摸鱼</div><div class="time-value slack" id="slackTime">00:00:00</div></div>`;
+			if (this.settings.obsShowTotalTime) timeRowHtml += `\n\t\t<div class="time-item"><div class="time-label">总计时长</div><div class="time-value" id="totalTime">00:00:00</div></div>`;
+			if (this.settings.obsShowFocusTime) timeRowHtml += `\n\t\t<div class="time-item"><div class="time-label">专注时长</div><div class="time-value focus" id="focusTime">00:00:00</div></div>`;
+			if (this.settings.obsShowSlackTime) timeRowHtml += `\n\t\t<div class="time-item"><div class="time-label">摸鱼时长</div><div class="time-value slack" id="slackTime">00:00:00</div></div>`;
 			timeRowHtml += `\n\t</div>\n\t<div class="divider"></div>`;
 		}
 
@@ -886,7 +1031,14 @@ update();
 		const fileExplorer = this.app.workspace.getLeavesOfType("file-explorer")[0];
 		if (!fileExplorer) return;
 
-		const fileExplorerItems = (fileExplorer.view as any).fileItems;
+		// Type assertion for Obsidian's internal file explorer structure
+		interface FileExplorerView {
+			fileItems: Record<string, {
+				el: HTMLElement;
+				file: TFile | TFolder;
+			}>;
+		}
+		const fileExplorerItems = (fileExplorer.view as unknown as FileExplorerView).fileItems;
 
 		// --- 如果设置关闭，清除所有已有的字数标签并退出 ---
 		if (!this.settings.showExplorerCounts) {
@@ -900,30 +1052,13 @@ update();
 			return;
 		}
 
-		// --- 如果设置开启，执行字数统计逻辑 ---
-		const counts = new Map<string, number>();
-		const allFiles = this.app.vault.getMarkdownFiles();
-		
-		for (const file of allFiles) {
-			const content = await this.app.vault.cachedRead(file);
-			const count = this.calculateAccurateWords(content);
-			
-			// 记录单文件字数
-			counts.set(file.path, count);
-			
-			// 递归累加到所有父文件夹
-			let parent = file.parent;
-			while (parent) {
-				counts.set(parent.path, (counts.get(parent.path) || 0) + count);
-				parent = parent.parent;
-			}
-		}
-
+		// --- 使用缓存获取字数 ---
 		for (const path in fileExplorerItems) {
 			const item = fileExplorerItems[path];
 			// 支持文件夹(TFolder)和文档(TFile)
 			if (item.el && (item.file instanceof TFolder || (item.file instanceof TFile && item.file.extension === 'md'))) {
-				const count = counts.get(path) || 0;
+				// 从缓存获取字数
+				const count = this.cacheManager.getFolderCount(path) || 0;
 				let countEl = item.el.querySelector('.folder-word-count');
 				
 				if (!countEl) {
@@ -933,52 +1068,49 @@ update();
 				}
 				
 				if (countEl) {
-					// 只有字数大于 0 时才显示，或者你可以改为始终显示
-					countEl.setText(count > 0 ? ` (${this.formatCount(count)})` : "");
-					countEl.style.fontSize = '0.8em';
-					countEl.style.opacity = '0.5';
-					countEl.style.marginLeft = '5px';
+					// 只有字数大于 0 时才显示
+					countEl.setText(count > 0 ? ` (${formatCount(count)})` : "");
+					(countEl as HTMLElement).style.fontSize = '0.8em';
+					(countEl as HTMLElement).style.opacity = '0.5';
+					(countEl as HTMLElement).style.marginLeft = '5px';
 				}
 			}
 		}
 	}
 
-	formatCount(count: number): string {
-		if (count >= 10000) return (count / 10000).toFixed(1) + 'w';
-		if (count >= 1000) return (count / 1000).toFixed(1) + 'k';
-		return count.toString();
-	}
-
 	injectGlobalStyles() {
 		const styleId = 'accurate-count-global-styles';
-		if (!document.getElementById(styleId)) {
-			const style = document.createElement('style');
-			style.id = styleId;
-			style.innerHTML = `
+		const styleContent = `
 				.folder-word-count { font-variant-numeric: tabular-nums; pointer-events: none; }
 				
 				/* 侧边栏状态视图样式 */
 				.status-view-container { padding: 15px; }
 				.status-card { background: var(--background-secondary); border-radius: 8px; padding: 16px; margin-bottom: 16px; border: 1px solid var(--background-modifier-border); }
-				.status-title { font-weight: bold; margin-bottom: 6px; font-size: 1.1em; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; align-items: center; }
-				.status-title-badge { font-size: 0.75em; background: var(--interactive-accent); color: var(--text-on-accent); padding: 2px 6px; border-radius: 4px; font-weight: normal; }
-				.status-row { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; margin-bottom: 4px; font-size: 0.95em; }
-				.status-value { font-family: var(--font-monospace); font-weight: 600; }
 				
-				.progress-bar-bg { width: 100%; height: 10px; background: var(--background-modifier-border); border-radius: 5px; overflow: hidden; margin: 10px 0; }
+				.status-title { font-weight: bold; margin-bottom: 12px; font-size: 1.1em; display: flex; flex-direction: row; align-items: center; justify-content: space-between; }
+				.status-title-badge { font-size: 0.75em; background: var(--interactive-accent); color: #ffffff; padding: 2px 6px; border-radius: 4px; font-weight: normal; }
+				
+				/* 目标进度显示 - 右对齐，上方留空 */
+				.goal-display-row-right { display: flex; align-items: baseline; justify-content: flex-end; gap: 4px; margin-top: 18px; margin-bottom: 12px; font-family: var(--font-monospace); flex-wrap: wrap; }
+				.goal-current { font-size: 1.8em; font-weight: bold; color: var(--text-normal); }
+				.goal-separator { font-size: 1.1em; color: var(--text-muted); opacity: 0.5; }
+				.goal-target { font-size: 1.4em; color: var(--text-muted); opacity: 0.8; }
+				.goal-percent { font-size: 1.1em; color: var(--interactive-accent); font-weight: 600; margin-left: 8px; }
+				
+				.progress-bar-bg { width: 100%; height: 10px; background: var(--background-modifier-border); border-radius: 5px; overflow: hidden; margin: 0; }
 				.progress-bar-fill { height: 100%; background: var(--interactive-accent); transition: width 0.3s ease; }
 				
-				.time-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px; }
-				.time-box { background: var(--background-primary); padding: 10px; border-radius: 6px; text-align: center; border: 1px solid var(--background-modifier-border); }
-				.time-box-title { font-size: 0.8em; color: var(--text-muted); margin-bottom: 4px; }
-				.time-box-value { font-family: var(--font-monospace); font-size: 1.1em; font-weight: bold; color: var(--text-normal); }
-				.time-box.total { grid-column: span 2; background: var(--background-secondary-alt); }
+				/* 时间统计布局 */
+				.time-box-total { background: var(--background-primary); padding: 12px; border-radius: 6px; text-align: center; border: 1px solid var(--background-modifier-border); margin-bottom: 10px; }
+				.time-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+				.time-box { background: var(--background-primary); padding: 10px; border-radius: 6px; text-align: center; border: 1px solid var(--background-modifier-border); min-width: 0; }
+				.time-box-title { font-size: 0.8em; color: var(--text-muted); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+				.time-box-value { font-family: var(--font-monospace); font-size: 1.1em; font-weight: bold; color: var(--text-normal); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 				
-				.history-chart { display: flex; align-items: flex-end; gap: 6px; height: 120px; margin-top: 20px; padding-top: 15px; border-top: 1px dashed var(--background-modifier-border); flex-direction: column; align-items: flex-start; gap: 2px;}
-				.chart-col { display: flex; flex-direction: column; align-items: center; flex: 1; height: 100%; justify-content: flex-end; }
-				.chart-bar { width: 100%; max-width: 20px; background: var(--interactive-accent); border-radius: 3px 3px 0 0; min-height: 2px; transition: height 0.5s ease; opacity: 0.8; cursor: pointer; }
-				.chart-bar:hover { opacity: 1; filter: brightness(1.2); }
-				.chart-label { font-size: 0.65em; margin-top: 6px; color: var(--text-muted); }
+				.history-chart { margin-top: 20px; padding-top: 15px; border-top: 1px dashed var(--background-modifier-border); }
+				.history-chart-title { font-size: 0.95em; font-weight: 600; color: var(--text-normal); margin-bottom: 4px; }
+				.history-chart-subtitle { font-size: 0.75em; color: var(--text-muted); margin-bottom: 8px; cursor: pointer; }
+				.history-chart-subtitle:hover { color: var(--interactive-accent); text-decoration: underline; }
 
 				/* 字数统计 Modal 样式 */
 				.history-stats-modal { min-width: 600px; }
@@ -993,14 +1125,31 @@ update();
 				.stats-large-bar:hover { opacity: 1; filter: brightness(1.2); }
 				.stats-large-label { font-size: 0.7em; margin-top: 8px; color: var(--text-muted); white-space: nowrap; }
 				.stats-large-value { font-size: 0.75em; margin-top: 4px; font-weight: bold; font-family: var(--font-monospace); }
+
+				/* 移动端触摸优化 (需求 8.5) */
+				@media (hover: none) and (pointer: coarse) {
+					/* 禁用悬停效果 */
+					.stats-tab-btn:hover { background: transparent; color: var(--text-muted); }
+					.history-chart-subtitle:hover { color: var(--text-muted); text-decoration: none; }
+					.stats-large-bar:hover { opacity: 0.8; filter: none; }
+					
+					/* 增大触摸目标 - 最小 44px */
+					.stats-tab-btn { min-height: 44px; padding: 12px 16px; }
+					button, .clickable-icon { min-height: 44px; min-width: 44px; }
+					
+					/* 增加间距以避免误触 */
+					.stats-tab-group { gap: 12px; }
+					.time-grid { gap: 12px; }
+					
+					/* 优化移动端卡片间距 */
+					.status-card { padding: 18px; margin-bottom: 18px; }
+				}
 			`;
-			document.head.appendChild(style);
-		}
+		injectGlobalStyle(styleId, styleContent);
 	}
 
 	removeGlobalStyles() {
-		const style = document.getElementById('accurate-count-global-styles');
-		if (style) style.remove();
+		removeGlobalStyle('accurate-count-global-styles');
 	}
 }
 
@@ -1020,7 +1169,7 @@ class WritingStatusView extends ItemView {
 	chartContainerEl!: HTMLElement;
 	statusBadgeEl!: HTMLElement;
 
-	// 新增统计元素引用
+	// 字数统计元素引用
 	weekWordEl!: HTMLElement;
 	monthWordEl!: HTMLElement;
 	yearWordEl!: HTMLElement;
@@ -1053,25 +1202,28 @@ class WritingStatusView extends ItemView {
 		const titleRow = goalCard.createDiv({ cls: 'status-title' });
 		titleRow.createSpan({ text: '今日状态' });
 		this.statusBadgeEl = titleRow.createSpan({ cls: 'status-title-badge', text: '已暂停' });
-
-		const row1 = goalCard.createDiv({ cls: 'status-row' });
-		row1.createSpan({ text: '目标进度' });
-		this.goalWordEl = row1.createSpan({ cls: 'status-value', text: '0' });
-
-		const row2 = goalCard.createDiv({ cls: 'status-row' });
-		row2.createSpan({ text: '今日已写' });
-		this.todayWordEl = row2.createSpan({ cls: 'status-value', text: '0' });
-
+		
+		// 目标进度显示：当前字数 / 目标字数 百分比（右对齐，上方留空）
+		const goalRow = goalCard.createDiv({ cls: 'goal-display-row-right' });
+		this.todayWordEl = goalRow.createSpan({ cls: 'goal-current', text: '0' });
+		goalRow.createSpan({ cls: 'goal-separator', text: ' / ' });
+		this.goalWordEl = goalRow.createSpan({ cls: 'goal-target', text: '0' });
+		this.percentEl = goalRow.createSpan({ cls: 'goal-percent', text: '0%' });
+		
+		// 进度条
 		const progressBg = goalCard.createDiv({ cls: 'progress-bar-bg' });
 		this.progressFillEl = progressBg.createDiv({ cls: 'progress-bar-fill' });
-		
-		const row3 = goalCard.createDiv({ cls: 'status-row', attr: { style: 'justify-content: flex-end; margin-top: 4px;' } });
-		this.percentEl = row3.createSpan({ text: '0%', attr: { style: 'font-size: 0.85em; color: var(--text-muted); font-weight: bold;' } });
 
-		// 2. 耗时与历史图表卡片
+		// 2. 本次统计卡片 - 总计耗时在上方，专注和摸鱼时长在下方
 		const timeCard = container.createDiv({ cls: 'status-card' });
 		timeCard.createDiv({ cls: 'status-title', text: '本次统计' });
 
+		// 总计耗时（上方，占满宽度）
+		const totalBox = timeCard.createDiv({ cls: 'time-box time-box-total' });
+		totalBox.createDiv({ cls: 'time-box-title', text: '总计耗时' });
+		this.totalTimeEl = totalBox.createDiv({ cls: 'time-box-value', text: '00:00:00' });
+
+		// 专注和摸鱼时长（下方，左右排列）
 		const timeGrid = timeCard.createDiv({ cls: 'time-grid' });
 		
 		const focusBox = timeGrid.createDiv({ cls: 'time-box' });
@@ -1082,13 +1234,10 @@ class WritingStatusView extends ItemView {
 		slackBox.createDiv({ cls: 'time-box-title', text: '摸鱼时长' });
 		this.slackTimeEl = slackBox.createDiv({ cls: 'time-box-value', text: '00:00:00' });
 
-		const totalBox = timeGrid.createDiv({ cls: 'time-box total' });
-		totalBox.createDiv({ cls: 'time-box-title', text: '总计耗时' });
-		this.totalTimeEl = totalBox.createDiv({ cls: 'time-box-value', text: '00:00:00' });
-
+		// 近7日图表
 		this.chartContainerEl = timeCard.createDiv({ cls: 'history-chart' });
 
-		// 3. 字数统计卡片 (新增)
+		// 3. 字数统计卡片
 		const historyCard = container.createDiv({ cls: 'status-card' });
 		historyCard.createDiv({ cls: 'status-title', text: '字数统计' });
 
@@ -1116,16 +1265,18 @@ class WritingStatusView extends ItemView {
 	}
 
 	updateData() {
-		if (!this.goalWordEl) return; 
-
+		// 更新状态徽章
 		if (this.plugin.isTracking) {
 			this.statusBadgeEl.innerText = '▶ 记录中';
 			this.statusBadgeEl.style.background = 'var(--color-green)';
+			this.statusBadgeEl.style.color = '#ffffff';
 		} else {
 			this.statusBadgeEl.innerText = '⏸ 已暂停';
 			this.statusBadgeEl.style.background = 'var(--text-muted)';
+			this.statusBadgeEl.style.color = '#ffffff';
 		}
 
+		// 更新目标进度
 		let targetGoal = this.plugin.settings.defaultGoal;
 		const view = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
 		if (view?.file) {
@@ -1138,25 +1289,29 @@ class WritingStatusView extends ItemView {
 		const todayStat = this.plugin.settings.dailyHistory[today] || { focusMs: 0, slackMs: 0, addedWords: 0 };
 		const added = Math.max(0, todayStat.addedWords);
 
-		this.goalWordEl.innerText = targetGoal.toString();
-		this.todayWordEl.innerText = added.toString();
+		// 更新目标进度显示：当前 / 目标 百分比
+		this.todayWordEl.innerText = added.toLocaleString();
+		this.goalWordEl.innerText = targetGoal.toLocaleString();
 
 		const percent = targetGoal > 0 ? Math.min(Math.round((added / targetGoal) * 100), 100) : 0;
-		this.percentEl.innerText = `${percent}%`;
+		this.percentEl.innerText = ` ${percent}%`;
 		this.progressFillEl.style.width = `${percent}%`;
 		if (percent >= 100) {
 			this.progressFillEl.style.background = 'var(--color-green)';
+			this.todayWordEl.style.color = 'var(--color-green)';
 		} else {
 			this.progressFillEl.style.background = 'var(--interactive-accent)';
+			this.todayWordEl.style.color = 'var(--text-normal)';
 		}
 
+		// 更新时间统计
 		const focusSec = Math.floor(this.plugin.focusMs / 1000);
 		const slackSec = Math.floor(this.plugin.slackMs / 1000);
 		const totalSec = focusSec + slackSec;
 
-		this.focusTimeEl.innerText = this.plugin.formatTime(focusSec);
-		this.slackTimeEl.innerText = this.plugin.formatTime(slackSec);
-		this.totalTimeEl.innerText = this.plugin.formatTime(totalSec);
+		this.focusTimeEl.innerText = formatTime(focusSec);
+		this.slackTimeEl.innerText = formatTime(slackSec);
+		this.totalTimeEl.innerText = formatTime(totalSec);
 
 		// 计算字数统计数据 (周/月/年/总计)
 		let weekWords = 0;
@@ -1186,10 +1341,29 @@ class WritingStatusView extends ItemView {
 	renderChart() {
 		this.chartContainerEl.empty();
 		
-		// 新增：让整个图表区变成可点击的按钮效果
-		this.chartContainerEl.style.cursor = 'pointer';
-		this.chartContainerEl.setAttribute('aria-label', '点击进入字数统计详情');
-		this.chartContainerEl.onclick = () => {
+		// 添加标题（大字）
+		const chartTitle = this.chartContainerEl.createDiv({ 
+			text: '近7日字数统计', 
+			cls: 'history-chart-title'
+		});
+		
+		// 添加副标题（小字，可点击）
+		const chartSubtitle = this.chartContainerEl.createDiv({ 
+			text: '点击查看详情', 
+			cls: 'history-chart-subtitle'
+		});
+		
+		chartSubtitle.setAttribute('aria-label', '点击进入字数统计详情');
+		chartSubtitle.onclick = () => {
+			new HistoryStatsModal(this.plugin.app, this.plugin.settings.dailyHistory).open();
+		};
+		
+		// 创建横向柱状图容器
+		const chartBars = this.chartContainerEl.createDiv({ 
+			attr: { style: 'display: flex; flex-direction: column; gap: 6px; cursor: pointer;' } 
+		});
+		
+		chartBars.onclick = () => {
 			new HistoryStatsModal(this.plugin.app, this.plugin.settings.dailyHistory).open();
 		};
 
@@ -1197,26 +1371,35 @@ class WritingStatusView extends ItemView {
 		const dates = Object.keys(history).sort().slice(-7);
 
 		if (dates.length === 0) {
-			this.chartContainerEl.createDiv({ text: '暂无历史数据', attr: { style: 'color: var(--text-muted); font-size: 0.8em; margin: auto;' } });
+			chartBars.createDiv({ text: '暂无历史数据', attr: { style: 'color: var(--text-muted); font-size: 0.8em; padding: 10px 0;' } });
 			return;
 		}
 
-		const maxWords = Math.max(...dates.map(d => history[d].addedWords), 100); 
+		const maxWords = Math.max(...dates.map(d => history[d].addedWords), 100);
 
 		dates.forEach(date => {
 			const stat = history[date];
-			const col = this.chartContainerEl.createDiv({ cls: 'chart-col' });
+			const row = chartBars.createDiv({ attr: { style: 'display: flex; align-items: center; gap: 8px;' } });
 			
-			const barHeightPercent = Math.max(2, (Math.max(0, stat.addedWords) / maxWords) * 100);
+			// 日期标签
+			const dateLabel = row.createDiv({ 
+				text: date.substring(5), 
+				attr: { style: 'font-size: 0.7em; color: var(--text-muted); min-width: 35px; text-align: right; flex-shrink: 0;' } 
+			});
 			
-			const bar = col.createDiv({ cls: 'chart-bar' });
-			bar.style.height = `${barHeightPercent}%`;
+			// 横向柱状图
+			const barContainer = row.createDiv({ attr: { style: 'flex: 1; height: 18px; background: var(--background-modifier-border); border-radius: 3px; overflow: hidden; position: relative; min-width: 0;' } });
+			const barWidthPercent = Math.max(2, (Math.max(0, stat.addedWords) / maxWords) * 100);
+			const bar = barContainer.createDiv({ attr: { style: `width: ${barWidthPercent}%; height: 100%; background: var(--interactive-accent); border-radius: 3px; transition: width 0.4s ease;` } });
 			
 			const focusHours = (stat.focusMs / 3600000).toFixed(1);
 			bar.setAttribute('title', `日期: ${date}\n字数: ${Math.max(0, stat.addedWords)}\n专注时长: ${focusHours}h`);
 			
-			const dateStr = date.substring(5);
-			col.createDiv({ cls: 'chart-label', text: dateStr });
+			// 字数值
+			const valueLabel = row.createDiv({ 
+				text: formatCount(Math.max(0, stat.addedWords)), 
+				attr: { style: 'font-size: 0.75em; font-weight: bold; font-family: var(--font-monospace); min-width: 40px; text-align: right; flex-shrink: 0;' } 
+			});
 		});
 	}
 
@@ -1282,6 +1465,19 @@ class AccurateCountSettingTab extends PluginSettingTab {
 		const {containerEl} = this;
 		containerEl.empty();
 
+		// 平台检测 - 移动端显示提示
+		if (isMobile()) {
+			const mobileNotice = containerEl.createDiv({
+				cls: 'setting-item-description',
+				attr: {
+					style: 'background: var(--background-secondary); padding: 12px; border-radius: 6px; margin-bottom: 20px; border-left: 3px solid var(--interactive-accent);'
+				}
+			});
+			mobileNotice.createEl('strong', { text: '💡 移动端模式' });
+			mobileNotice.createEl('br');
+			mobileNotice.appendText('部分高级功能(悬浮便签、OBS 直播叠加层、文本文件导出)仅在桌面端可用,以优化移动设备性能和电池续航。');
+		}
+
 		containerEl.createEl('h2', {text: '精准字数与目标设置'});
 
 		new Setting(containerEl)
@@ -1292,6 +1488,7 @@ class AccurateCountSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.showGoal = value;
 					await this.plugin.saveSettings();
+					this.plugin.updateWordCount(); // 立即更新状态栏显示
 				}));
 
 		new Setting(containerEl)
@@ -1302,8 +1499,12 @@ class AccurateCountSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.showExplorerCounts = value;
 					await this.plugin.saveSettings();
-					// 切换开关时立即刷新一次显示
-					this.plugin.refreshFolderCounts();
+					// 切换开关时重新构建缓存或清除显示
+					if (value) {
+						await this.plugin.buildFolderCache();
+					} else {
+						this.plugin.refreshFolderCounts();
+					}
 				}));
 
 		new Setting(containerEl)
@@ -1318,7 +1519,9 @@ class AccurateCountSettingTab extends PluginSettingTab {
 					}
 				}));
 
-		containerEl.createEl('h2', {text: '悬浮便签设置'});
+		// 移动端隐藏桌面专属功能
+		if (isDesktop()) {
+			containerEl.createEl('h2', {text: '悬浮便签设置'});
 		
 		new Setting(containerEl)
 			.setName('闲置时透明度 (仅背景)')
@@ -1360,10 +1563,15 @@ class AccurateCountSettingTab extends PluginSettingTab {
 			};
 		});
 
-		containerEl.createEl('h2', {text: '数据统计与输出设置'});
+		// 桌面端专属功能结束
+		}
 
-		// 已修复滑动条设置被截断缺少结尾括号的语法错误
-		new Setting(containerEl)
+		// 移动端隐藏以下设置: 显示文件列表字数、精准专注度判定阈值
+		if (isDesktop()) {
+			containerEl.createEl('h2', {text: '数据统计与输出设置'});
+
+			// 已修复滑动条设置被截断缺少结尾括号的语法错误
+			new Setting(containerEl)
 		    .setName('精准专注度判定阈值 (秒)')
 		    .setDesc('在此时间内没有键盘输入，即使软件处于聚焦状态，也会被判定为“摸鱼”。')
 		    .addSlider(slider => slider
@@ -1502,6 +1710,9 @@ class AccurateCountSettingTab extends PluginSettingTab {
 					this.plugin.settings.obsPath = value;
 					await this.plugin.saveSettings();
 				}));
+
+		// 桌面端专属功能结束
+		}
 	}
 }
 // ===========================================
@@ -1682,7 +1893,7 @@ class FloatingStickyNote extends Component {
 			new Notice("✅ 已转存为文件");
 		};
 
-		closeBtn.onclick = () => this.unload();
+		closeBtn.onclick = () => this.close();
 
 		await this.renderContent();
 		this.setupDragging(headerEl);
@@ -1742,6 +1953,8 @@ class FloatingStickyNote extends Component {
 	}
 
 	onunload() {
+		// 只清理 DOM 和从 activeNotes 移除
+		// 不删除持久化状态，除非是用户主动关闭（通过 close() 方法）
 		if (this.containerEl) {
 			this.containerEl.remove();
 		}
@@ -1749,11 +1962,18 @@ class FloatingStickyNote extends Component {
 		if (activeIndex > -1) {
 			this.plugin.activeNotes.splice(activeIndex, 1);
 		}
+	}
+	
+	// 新增：用户主动关闭便签时调用
+	close() {
+		// 从持久化存储中删除
 		const stateIndex = this.plugin.settings.openNotes.findIndex(n => n.id === this.state.id);
 		if (stateIndex !== -1) {
 			this.plugin.settings.openNotes.splice(stateIndex, 1);
 			this.plugin.saveSettings();
 		}
+		// 调用 unload 清理 DOM
+		this.unload();
 	}
 
 	setupDragging(handle: HTMLElement) {
@@ -1787,10 +2007,7 @@ class FloatingStickyNote extends Component {
 
 	injectCSS() {
 		const styleId = 'sticky-note-plugin-styles-v15'; 
-		if (!document.getElementById(styleId)) {
-			const style = document.createElement('style');
-			style.id = styleId;
-			style.innerHTML = `
+		const styleContent = `
 				.my-floating-sticky-note { 
 					position: fixed; width: 320px; height: 450px; min-width: 200px; min-height: 200px; 
 					border: 1px solid rgba(0,0,0,0.1) !important; 
@@ -1806,17 +2023,48 @@ class FloatingStickyNote extends Component {
 					background-color: var(--note-bg-color) !important;
 				}
 				
-				.my-sticky-header { padding: 8px 12px; background-color: transparent !important; border-bottom: 1px solid transparent !important; cursor: grab; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; align-items: center; user-select: none; flex-shrink: 0; min-width: 0; transition: background-color 0.2s ease, border-color 0.2s ease; }
+				.my-sticky-header { 
+					padding: 8px 12px; 
+					background-color: transparent !important; 
+					border-bottom: 1px solid transparent !important; 
+					cursor: grab; 
+					display: flex; 
+					flex-direction: row !important; 
+					align-items: center; 
+					justify-content: space-between !important; 
+					user-select: none; 
+					flex-shrink: 0; 
+					min-width: 0; 
+					transition: background-color 0.2s ease, border-color 0.2s ease; 
+					gap: 10px;
+				}
 				.my-floating-sticky-note:hover .my-sticky-header { background-color: rgba(0, 0, 0, 0.04) !important; border-bottom: 1px solid rgba(0,0,0,0.06) !important; }
 				
 				.my-sticky-header:active { cursor: grabbing; }
 				
-				.my-sticky-title-wrapper { display: flex; align-items: center; gap: 6px; overflow: hidden; flex-grow: 1; margin-right: 10px; }
-				.my-sticky-title-icon { display: flex; align-items: center; color: var(--note-text-color); opacity: 0.6; }
+				.my-sticky-title-wrapper { 
+					display: flex; 
+					align-items: center; 
+					gap: 6px; 
+					overflow: hidden; 
+					flex-grow: 1; 
+					flex-shrink: 1;
+					min-width: 0;
+				}
+				.my-sticky-title-icon { display: flex; align-items: center; color: var(--note-text-color); opacity: 0.6; flex-shrink: 0; }
 				.my-sticky-title-icon svg { width: 14px; height: 14px; }
-				.my-sticky-title { font-weight: bold; font-size: 0.9em; color: var(--note-text-color) !important; pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+				.my-sticky-title { font-weight: bold; font-size: 0.9em; color: var(--note-text-color) !important; pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 1; min-width: 0; }
 				
-				.my-sticky-controls { display: flex; align-items: center; gap: 4px; flex-shrink: 0; position: relative; opacity: 0; pointer-events: none; transition: opacity 0.2s ease; }
+				.my-sticky-controls { 
+					display: flex; 
+					align-items: center; 
+					gap: 4px; 
+					flex-shrink: 0; 
+					position: relative; 
+					opacity: 0; 
+					pointer-events: none; 
+					transition: opacity 0.2s ease; 
+				}
 				.my-floating-sticky-note:hover .my-sticky-controls { opacity: 1; pointer-events: auto; }
 				
 				.my-sticky-btn, .my-sticky-close { background: transparent !important; border: none; box-shadow: none; cursor: pointer; padding: 4px; border-radius: 4px; color: var(--note-text-color) !important; opacity: 0.5; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
@@ -1842,8 +2090,7 @@ class FloatingStickyNote extends Component {
 				
 				.my-sticky-content h1.inline-title { display: none; }
 			`;
-			document.head.appendChild(style);
-		}
+		injectGlobalStyle(styleId, styleContent);
 	}
 }
 
@@ -1852,7 +2099,7 @@ class FloatingStickyNote extends Component {
 // ===========================================
 class HistoryStatsModal extends Modal {
 	history: Record<string, DailyStat>;
-	currentTab: 'day' | 'week' | 'month' | 'year' = 'month';
+	currentTab: '7day' | 'day' | 'week' | 'month' | 'year' = 'month';
 	chartContainer!: HTMLElement;
 
 	constructor(app: App, history: Record<string, DailyStat>) {
@@ -1870,6 +2117,7 @@ class HistoryStatsModal extends Modal {
 		// 创建 Tab 切换组
 		const tabGroup = contentEl.createDiv({ cls: 'stats-tab-group' });
 		const tabs = [
+			{ id: '7day', name: '近7日' },
 			{ id: 'day', name: '近30日' },
 			{ id: 'week', name: '按周' },
 			{ id: 'month', name: '按月' },
@@ -1880,7 +2128,7 @@ class HistoryStatsModal extends Modal {
 			const btn = tabGroup.createEl('button', { text: tab.name, cls: 'stats-tab-btn' });
 			if (this.currentTab === tab.id) btn.addClass('is-active');
 			btn.onclick = () => {
-				this.currentTab = tab.id as any;
+				this.currentTab = tab.id as 'day' | 'week' | 'month' | 'year' | '7day';
 				tabGroup.querySelectorAll('.stats-tab-btn').forEach(b => b.removeClass('is-active'));
 				btn.addClass('is-active');
 				this.renderData();
@@ -1898,6 +2146,7 @@ class HistoryStatsModal extends Modal {
 		
 		// 根据 Tab 限制显示数量，防止太挤
 		let displayKeys = keys;
+		if (this.currentTab === '7day') displayKeys = keys.slice(-7); // 近7日
 		if (this.currentTab === 'day') displayKeys = keys.slice(-30);
 		if (this.currentTab === 'week') displayKeys = keys.slice(-12); // 近12周
 
@@ -1921,7 +2170,7 @@ class HistoryStatsModal extends Modal {
 			bar.setAttribute('title', `时间: ${key}\n总字数: ${data.words.toLocaleString()}\n专注总计: ${focusHours}小时`);
 
 			col.createDiv({ cls: 'stats-large-label', text: this.formatLabel(key) });
-			col.createDiv({ cls: 'stats-large-value', text: this.formatCount(data.words) });
+			col.createDiv({ cls: 'stats-large-value', text: formatCount(data.words) });
 		});
 	}
 
@@ -1932,7 +2181,9 @@ class HistoryStatsModal extends Modal {
 			const m = window.moment(date);
 			let key = date; // 默认按日
 
-			if (this.currentTab === 'week') {
+			if (this.currentTab === '7day') {
+				key = date; // 近7日也按日显示
+			} else if (this.currentTab === 'week') {
 				key = `${m.year()}年 第${m.isoWeek()}周`;
 			} else if (this.currentTab === 'month') {
 				key = m.format('YYYY-MM');
@@ -1948,15 +2199,9 @@ class HistoryStatsModal extends Modal {
 	}
 
 	formatLabel(key: string): string {
-		if (this.currentTab === 'day') return key.substring(5); // 04-15
+		if (this.currentTab === '7day' || this.currentTab === 'day') return key.substring(5); // 04-15
 		if (this.currentTab === 'month') return key.substring(2); // 24-04
 		return key; // week 和 year 直接显示
-	}
-
-	formatCount(count: number): string {
-		if (count >= 10000) return (count / 10000).toFixed(1) + 'w';
-		if (count >= 1000) return (count / 1000).toFixed(1) + 'k';
-		return count.toString();
 	}
 
 	onClose() {
@@ -1967,21 +2212,10 @@ class HistoryStatsModal extends Modal {
 // ===========================================
 // 类：OBS 直播叠加层 HTTP Server
 // ===========================================
-interface ObsStatsPayload {
-	isTracking: boolean;
-	focusTime: string;
-	slackTime: string;
-	totalTime: string;
-	sessionWords: number;
-	todayWords: number;
-	goal: number;
-	percent: number;
-	currentFile: string;
-}
 
 class ObsOverlayServer {
 	private plugin: AccurateChineseCountPlugin;
-	private server: any;
+	private server: import('./src/types/node').NodeHTTPServer | null = null;
 	private port: number;
 
 	constructor(plugin: AccurateChineseCountPlugin, port: number) {
@@ -1990,13 +2224,12 @@ class ObsOverlayServer {
 	}
 
 	start(): boolean {
-		if (!Platform.isDesktop) return false;
+		if (!isDesktop()) return false;
 		try {
-			// @ts-ignore
-			const http = window.require('http');
+			const http = window.require('http') as import('./src/types/node').NodeHTTP;
 			const plugin = this.plugin;
 
-			this.server = http.createServer((req: any, res: any) => {
+			this.server = http.createServer((req: import('./src/types/node').NodeHTTPRequest, res: import('./src/types/node').NodeHTTPResponse) => {
 				const url = new URL(req.url, `http://localhost:${this.port}`);
 
 				if (url.pathname === '/api/stats') {
@@ -2016,19 +2249,54 @@ class ObsOverlayServer {
 
 			this.server.listen(this.port, '127.0.0.1', () => {
 				console.log(`[WebNovel Assistant] OBS Overlay server started at http://127.0.0.1:${this.port}`);
+				new Notice(`OBS 叠加层已启动: http://127.0.0.1:${this.port}`);
 			});
 
-			this.server.on('error', (e: any) => {
+			this.server.on('error', async (e: NodeJS.ErrnoException) => {
+				console.error('[WebNovel Assistant] OBS 服务器错误:', e);
+				
+				// 降级: 自动切换到文件导出模式
+				this.plugin.settings.enableObs = false;
+				this.plugin.settings.enableLegacyObsExport = true;
+				await this.plugin.saveSettings();
+				
 				if (e.code === 'EADDRINUSE') {
-					new Notice(`端口 ${this.port} 已被占用，OBS 叠加层启动失败！请在设置中更换端口。`);
+					const suggestedPorts = [this.port + 1, this.port + 2, this.port + 10];
+					new Notice(
+						`端口 ${this.port} 已被占用！\n` +
+						`已自动切换到文件导出模式\n\n` +
+						`如需使用 OBS HTTP 服务器，请:\n` +
+						`1. 在设置中更换端口 (建议: ${suggestedPorts.join(', ')})\n` +
+						`2. 重新启用 OBS 服务器`,
+						15000
+					);
 				} else {
-					console.error('[WebNovel Assistant] OBS Overlay server error:', e);
+					new Notice(
+						`OBS 服务器启动失败\n` +
+						`已自动切换到文件导出模式\n\n` +
+						`错误: ${e.message}\n` +
+						`您可以在设置中配置文件导出路径`,
+						12000
+					);
 				}
 			});
 
 			return true;
 		} catch (e) {
-			console.error('[WebNovel Assistant] Failed to start OBS Overlay server:', e);
+			console.error('[WebNovel Assistant] 无法启动 OBS 服务器:', e);
+			
+			// 降级: 自动切换到文件导出模式
+			this.plugin.settings.enableObs = false;
+			this.plugin.settings.enableLegacyObsExport = true;
+			this.plugin.saveSettings();
+			
+			new Notice(
+				'OBS 服务器启动失败\n' +
+				'已自动切换到文件导出模式\n\n' +
+				'可能原因: Node.js 模块不可用\n' +
+				'您可以在设置中配置文件导出路径',
+				12000
+			);
 			return false;
 		}
 	}

@@ -1,5 +1,16 @@
-node_modules/
-main.js
+# Obsidian 用户数据
 data.json
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 编译输出
+*.js.map
+
+# 操作系统
 .DS_Store
-*.map
+Thumbs.db
+desktop.ini
