@@ -1,5 +1,6 @@
 import { App, Notice, PluginSettingTab, Setting } from 'obsidian';
 import { isDesktop, isMobile } from '../utils/platform';
+import { ObsOverlayServer } from '../services/ObsServer';
 
 // 前向声明，避免循环依赖
 type AccurateChineseCountPlugin = any;
@@ -36,7 +37,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		containerEl.createEl('h2', {text: '精准字数与目标设置'});
 
 		new Setting(containerEl)
-			.setName('显示目标进度')
+			.setName('显示章节目标进度')
 			.setDesc('在状态栏显示当前文件的字数完成进度。')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.showGoal)
@@ -62,13 +63,27 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				}));
 
 		new Setting(containerEl)
-			.setName('默认字数目标 (全局)')
+			.setName('默认章节目标字数')
+			.setDesc('每个章节的目标字数，可在文件 frontmatter 中用 word-goal 单独设置。')
 			.addText(text => text
 				.setValue(this.plugin.settings.defaultGoal.toString())
 				.onChange(async (value) => {
 					const parsed = parseInt(value);
 					if (!isNaN(parsed)) {
 						this.plugin.settings.defaultGoal = parsed;
+						await this.plugin.saveSettings();
+					}
+				}));
+
+		new Setting(containerEl)
+			.setName('当日目标字数')
+			.setDesc('今日新增字数的目标，用于跟踪每日写作进度。')
+			.addText(text => text
+				.setValue((this.plugin.settings.dailyGoal || 5000).toString())
+				.onChange(async (value) => {
+					const parsed = parseInt(value);
+					if (!isNaN(parsed)) {
+						this.plugin.settings.dailyGoal = parsed;
 						await this.plugin.saveSettings();
 					}
 				}));
@@ -156,7 +171,104 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			};
 		});
 
+		this.displayForeshadowingSettings(containerEl);
+		this.displayEyeCareSettings(containerEl);
 		this.displayDataSettings(containerEl);
+	}
+
+	private displayForeshadowingSettings(containerEl: HTMLElement): void {
+		containerEl.createEl('h2', { text: '伏笔标注设置' });
+
+		new Setting(containerEl)
+			.setName('伏笔文件名')
+			.setDesc('标注的伏笔将保存到当前文件夹下的此文件中（无需 .md 后缀）。')
+			.addText(text => text
+				.setPlaceholder('伏笔')
+				.setValue(this.plugin.settings.foreshadowing?.fileName || '伏笔')
+				.onChange(async (value) => {
+					const trimmed = value.trim().replace(/\.md$/i, '');
+					if (!this.plugin.settings.foreshadowing) {
+						this.plugin.settings.foreshadowing = { fileName: '伏笔', showTimestamp: true, defaultTags: [] };
+					}
+					this.plugin.settings.foreshadowing.fileName = trimmed || '伏笔';
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('显示时间戳')
+			.setDesc('在伏笔条目标题中显示标注时间。')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.foreshadowing?.showTimestamp !== false)
+				.onChange(async (value) => {
+					if (!this.plugin.settings.foreshadowing) {
+						this.plugin.settings.foreshadowing = { fileName: '伏笔', showTimestamp: true, defaultTags: [] };
+					}
+					this.plugin.settings.foreshadowing.showTimestamp = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('常用标签')
+			.setDesc('用空格分隔，标注伏笔时可快速点击添加。')
+			.addText(text => {
+				const tags = this.plugin.settings.foreshadowing?.defaultTags || [];
+				text
+					.setPlaceholder('人物 情节 世界观 道具 伏线')
+					.setValue(tags.join(' '))
+					.onChange(async (value) => {
+						if (!this.plugin.settings.foreshadowing) {
+							this.plugin.settings.foreshadowing = { fileName: '伏笔', showTimestamp: true, defaultTags: [] };
+						}
+						this.plugin.settings.foreshadowing.defaultTags = value.trim()
+							? value.trim().split(/\s+/).filter(Boolean)
+							: [];
+						await this.plugin.saveSettings();
+					});
+				text.inputEl.style.width = '100%';
+			});
+	}
+
+	private displayEyeCareSettings(containerEl: HTMLElement): void {
+		containerEl.createEl('h2', { text: '护眼模式' });
+
+		new Setting(containerEl)
+			.setName('启用护眼模式')
+			.setDesc('将编辑区和阅读区的背景色替换为护眼色，其他界面保持不变。')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.eyeCareEnabled ?? false)
+				.onChange(async (value) => {
+					this.plugin.settings.eyeCareEnabled = value;
+					await this.plugin.saveSettings();
+					if (value) {
+						this.plugin.applyEyeCare();
+					} else {
+						this.plugin.removeEyeCare();
+					}
+				}));
+
+		new Setting(containerEl)
+			.setName('护眼背景色')
+			.setDesc('推荐使用低饱和度的绿色或暖色调，减少视觉疲劳。')
+			.addColorPicker(picker => picker
+				.setValue(this.plugin.settings.eyeCareColor || '#E8F5E9')
+				.onChange(async (value) => {
+					this.plugin.settings.eyeCareColor = value;
+					await this.plugin.saveSettings();
+					if (this.plugin.settings.eyeCareEnabled) {
+						this.plugin.applyEyeCare();
+					}
+				}))
+			.addExtraButton(btn => btn
+				.setIcon('reset')
+				.setTooltip('恢复默认颜色 (#E8F5E9)')
+				.onClick(async () => {
+					this.plugin.settings.eyeCareColor = '#E8F5E9';
+					await this.plugin.saveSettings();
+					if (this.plugin.settings.eyeCareEnabled) {
+						this.plugin.applyEyeCare();
+					}
+					this.display(); // 刷新设置页面
+				}));
 	}
 
 	private displayDataSettings(containerEl: HTMLElement): void {
@@ -189,9 +301,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 					if (value) {
 						if (!this.plugin.obsServer) {
-							// 动态导入避免循环依赖
-							const { ObsServer } = await import('../services/ObsServer');
-							this.plugin.obsServer = new ObsServer(this.plugin, this.plugin.settings.obsPort);
+							this.plugin.obsServer = new ObsOverlayServer(this.plugin, this.plugin.settings.obsPort);
 						}
 						this.plugin.obsServer.start();
 					} else {
@@ -276,7 +386,14 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			}));
 		
 		new Setting(containerEl)
-			.setName('显示目标进度')
+			.setName('显示当日目标进度')
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.obsShowDailyGoal ?? true).onChange(async (v) => {
+				this.plugin.settings.obsShowDailyGoal = v;
+				await this.plugin.saveSettings();
+			}));
+
+		new Setting(containerEl)
+			.setName('显示章节目标进度')
 			.addToggle(toggle => toggle.setValue(this.plugin.settings.obsShowTodayWords).onChange(async (v) => { 
 				this.plugin.settings.obsShowTodayWords = v; 
 				await this.plugin.saveSettings(); 

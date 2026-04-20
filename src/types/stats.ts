@@ -20,12 +20,18 @@ export interface ObsStatsPayload {
 	totalTime: string;
 	/** 本场净增字数 */
 	sessionWords: number;
-	/** 今日已写字数 */
+	/** 今日已写字数（当前章节总字数） */
 	todayWords: number;
-	/** 目标字数 */
+	/** 章节目标字数 */
 	goal: number;
-	/** 完成百分比(0-100) */
+	/** 章节完成百分比(0-100) */
 	percent: number;
+	/** 今日新增总字数 */
+	dailyWords: number;
+	/** 当日目标字数 */
+	dailyGoal: number;
+	/** 当日完成百分比(0-100) */
+	dailyPercent: number;
 	/** 当前文件名 */
 	currentFile: string;
 }

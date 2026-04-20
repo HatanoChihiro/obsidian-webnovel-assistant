@@ -1,0 +1,469 @@
+import { ItemView, MarkdownView, Menu, Notice, TFile, WorkspaceLeaf } from 'obsidian';
+import { ForeshadowingStatus } from '../types/foreshadowing';
+import { ForeshadowingRecoveryModal } from './ForeshadowingModal';
+
+type AccurateChineseCountPlugin = any;
+
+export const FORESHADOWING_VIEW_TYPE = 'foreshadowing-view';
+
+interface ParsedEntry {
+	sourceFile: string;
+	createdAt: string;
+	contents: { source: string; time: string; text: string }[]; // 支持多个引用
+	description: string;
+	tags: string[];
+	status: ForeshadowingStatus;
+	recoveryFile?: string;
+	recoveredAt?: string;
+}
+
+/**
+ * 伏笔面板视图
+ * 在侧边栏显示当前文件夹的伏笔列表，支持按状态筛选和直接回收操作
+ */
+export class ForeshadowingView extends ItemView {
+	plugin: AccurateChineseCountPlugin;
+	private currentFolder: string = '';
+	private filterStatus: 'all' | ForeshadowingStatus = 'all';
+
+	constructor(leaf: WorkspaceLeaf, plugin: AccurateChineseCountPlugin) {
+		super(leaf);
+		this.plugin = plugin;
+	}
+
+	getViewType() { return FORESHADOWING_VIEW_TYPE; }
+	getDisplayText() { return '伏笔'; }
+	getIcon() { return 'bookmark'; }
+
+	async onOpen() {
+		// 监听活动文件变化，自动切换文件夹
+		this.registerEvent(
+			this.app.workspace.on('active-leaf-change', () => this.onActiveFileChange())
+		);
+		// 监听文件修改，刷新视图
+		this.registerEvent(
+			this.app.vault.on('modify', (file) => {
+				const fileName = (this.plugin.settings.foreshadowing?.fileName || '伏笔') + '.md';
+				if (file instanceof TFile && file.name === fileName) {
+					this.refresh();
+				}
+			})
+		);
+		await this.onActiveFileChange();
+	}
+
+	private async onActiveFileChange() {
+		const activeFile = this.app.workspace.getActiveViewOfType(MarkdownView)?.file;
+		if (!activeFile) return;
+
+		const folder = activeFile.parent?.path || '';
+		if (folder !== this.currentFolder) {
+			this.currentFolder = folder;
+			await this.refresh();
+		}
+	}
+
+	async refresh() {
+		const container = this.containerEl.children[1] as HTMLElement;
+		container.empty();
+		container.addClass('foreshadowing-view-container');
+
+		// 标题栏
+		const header = container.createDiv({ cls: 'foreshadowing-view-header' });
+		const titleRow = header.createDiv({ cls: 'foreshadowing-view-title-row' });
+		titleRow.createSpan({ text: '伏笔', cls: 'foreshadowing-view-title' });
+
+		// 当前文件夹标签
+		const folderLabel = header.createDiv({ cls: 'foreshadowing-view-folder' });
+		folderLabel.setText(this.currentFolder || '根目录');
+
+		// 筛选按钮
+		const filterRow = header.createDiv({ cls: 'foreshadowing-view-filter-row' });
+		const filters: { label: string; value: 'all' | ForeshadowingStatus }[] = [
+			{ label: '全部', value: 'all' },
+			{ label: '未回收', value: ForeshadowingStatus.Pending },
+			{ label: '已回收', value: ForeshadowingStatus.Recovered },
+			{ label: '已废弃', value: ForeshadowingStatus.Deprecated },
+		];
+		filters.forEach(f => {
+			const btn = filterRow.createEl('button', { text: f.label, cls: 'foreshadowing-filter-btn' });
+			if (this.filterStatus === f.value) btn.addClass('is-active');
+			btn.onclick = () => {
+				this.filterStatus = f.value;
+				this.refresh();
+			};
+		});
+
+		// 读取伏笔文件
+		const entries = await this.loadEntries();
+		if (entries === null) {
+			const empty = container.createDiv({ cls: 'foreshadowing-view-empty' });
+			empty.createEl('p', { text: '当前文件夹下没有伏笔文件' });
+			const fileName = this.plugin.settings.foreshadowing?.fileName || '伏笔';
+			empty.createEl('p', { text: `（${fileName}.md）`, cls: 'foreshadowing-view-hint' });
+			return;
+		}
+
+		// 筛选
+		const filtered = this.filterStatus === 'all'
+			? entries
+			: entries.filter(e => e.status === this.filterStatus);
+
+		if (filtered.length === 0) {
+			container.createDiv({ cls: 'foreshadowing-view-empty', text: '没有符合条件的伏笔' });
+			return;
+		}
+
+		// 按状态分组
+		const groups: { status: ForeshadowingStatus; label: string; items: ParsedEntry[] }[] = [
+			{ status: ForeshadowingStatus.Pending, label: '未回收', items: [] },
+			{ status: ForeshadowingStatus.Recovered, label: '已回收', items: [] },
+			{ status: ForeshadowingStatus.Deprecated, label: '已废弃', items: [] },
+		];
+		filtered.forEach(e => {
+			const g = groups.find(g => g.status === e.status);
+			if (g) g.items.push(e);
+		});
+
+		const list = container.createDiv({ cls: 'foreshadowing-view-list' });
+
+		groups.forEach(group => {
+			if (group.items.length === 0) return;
+
+			// 分组标题
+			const groupHeader = list.createDiv({ cls: 'foreshadowing-group-header' });
+			groupHeader.createSpan({ text: `${group.label}`, cls: 'foreshadowing-group-label' });
+			groupHeader.createSpan({ text: `${group.items.length}`, cls: 'foreshadowing-group-count' });
+
+			// 条目列表
+			group.items.forEach(entry => this.renderEntry(list, entry));
+		});
+
+		this.injectStyles();
+	}
+
+	private renderEntry(container: HTMLElement, entry: ParsedEntry) {
+		const card = container.createDiv({ cls: `foreshadowing-entry-card status-${entry.status === ForeshadowingStatus.Pending ? 'pending' : entry.status === ForeshadowingStatus.Recovered ? 'recovered' : 'deprecated'}` });
+
+		// 说明（主标题）
+		const descRow = card.createDiv({ cls: 'foreshadowing-entry-desc' });
+		descRow.createSpan({ text: entry.description, cls: 'foreshadowing-entry-desc-text' });
+
+		// 引用内容（可能多条）
+		const quotesEl = card.createDiv({ cls: 'foreshadowing-entry-quotes' });
+		entry.contents.forEach(c => {
+			const quoteEl = quotesEl.createDiv({ cls: 'foreshadowing-entry-quote' });
+			if (c.source || c.time) {
+				quoteEl.createDiv({
+					text: `${c.source ? `[[${c.source}]]` : ''}${c.time ? ` · ${c.time}` : ''}`,
+					cls: 'foreshadowing-entry-quote-meta'
+				});
+			}
+			quoteEl.createDiv({ text: c.text, cls: 'foreshadowing-entry-quote-text' });
+		});
+
+		// 底部信息行
+		const footer = card.createDiv({ cls: 'foreshadowing-entry-footer' });
+
+		// 标签
+		if (entry.tags.length > 0) {
+			const tagsEl = footer.createDiv({ cls: 'foreshadowing-entry-tags' });
+			entry.tags.forEach(tag => {
+				tagsEl.createSpan({ text: `#${tag}`, cls: 'foreshadowing-entry-tag' });
+			});
+		}
+
+		// 操作按钮
+		const actions = footer.createDiv({ cls: 'foreshadowing-entry-actions' });
+
+		// 跳转按钮：单条引用直接跳转，多条引用显示选择菜单
+		const jumpBtn = actions.createEl('button', { text: '跳转', cls: 'foreshadowing-action-btn' });
+		jumpBtn.onclick = async (e) => {
+			// 收集所有有来源的引用
+			const sources = entry.contents
+				.filter(c => c.source)
+				.map(c => c.source);
+			// 加上标题行的来源（如果不重复）
+			if (!sources.includes(entry.sourceFile)) sources.unshift(entry.sourceFile);
+
+			if (sources.length <= 1) {
+				// 单个来源，直接跳转
+				const target = sources[0] || entry.sourceFile;
+				const file = this.app.vault.getMarkdownFiles().find(f => f.basename === target);
+				if (file) {
+					await this.app.workspace.getLeaf(false).openFile(file);
+				} else {
+					new Notice(`找不到文件：${target}`);
+				}
+			} else {
+				// 多个来源，显示下拉菜单
+				const menu = new Menu();
+				for (const source of sources) {
+					menu.addItem((item: any) => {
+						item.setTitle(source).onClick(async () => {
+							const file = this.app.vault.getMarkdownFiles().find(f => f.basename === source);
+							if (file) {
+								await this.app.workspace.getLeaf(false).openFile(file);
+							} else {
+								new Notice(`找不到文件：${source}`);
+							}
+						});
+					});
+				}
+				menu.showAtMouseEvent(e);
+			}
+		};
+
+		// 回收按钮（仅未回收状态显示）
+		if (entry.status === ForeshadowingStatus.Pending) {
+			const recoverBtn = actions.createEl('button', { text: '标记回收', cls: 'foreshadowing-action-btn foreshadowing-recover-btn' });
+			recoverBtn.onclick = () => {
+				const foreshadowingFile = this.getForeshadowingFile();
+				if (!foreshadowingFile) return;
+				new ForeshadowingRecoveryModal(
+					this.app,
+					entry.contents[0]?.text || '',
+					this.currentFolder,
+					async (recoveryFileName) => {
+						const success = await this.plugin.foreshadowingManager.markAsRecovered(
+							foreshadowingFile, entry.sourceFile, entry.createdAt, recoveryFileName
+						);
+						if (success) {
+							new Notice(`✅ 已标记为回收于 [[${recoveryFileName}]]`);
+							await this.refresh();
+						} else {
+							new Notice('❌ 标记失败，请检查伏笔文件');
+						}
+					}
+				).open();
+			};
+
+			// 废弃按钮（未回收状态显示）
+			const deprecateBtn = actions.createEl('button', { text: '废弃', cls: 'foreshadowing-action-btn foreshadowing-deprecate-btn' });
+			deprecateBtn.onclick = async () => {
+				const foreshadowingFile = this.getForeshadowingFile();
+				if (!foreshadowingFile) return;
+				const success = await this.plugin.foreshadowingManager.markAsDeprecated(
+					foreshadowingFile, entry.sourceFile, entry.createdAt
+				);
+				if (success) {
+					new Notice('已标记为废弃');
+					await this.refresh();
+				} else {
+					new Notice('❌ 操作失败');
+				}
+			};
+		}
+
+		// 恢复按钮（已废弃状态显示）
+		if (entry.status === ForeshadowingStatus.Deprecated) {
+			const restoreBtn = actions.createEl('button', { text: '恢复', cls: 'foreshadowing-action-btn' });
+			restoreBtn.onclick = async () => {
+				const foreshadowingFile = this.getForeshadowingFile();
+				if (!foreshadowingFile) return;
+				const success = await this.plugin.foreshadowingManager.markAsPending(
+					foreshadowingFile, entry.sourceFile, entry.createdAt
+				);
+				if (success) {
+					new Notice('已恢复为未回收');
+					await this.refresh();
+				} else {
+					new Notice('❌ 操作失败');
+				}
+			};
+		}
+
+		// 已回收时显示回收章节
+		if (entry.status === ForeshadowingStatus.Recovered && entry.recoveryFile) {
+			const recoveryEl = card.createDiv({ cls: 'foreshadowing-entry-recovery' });
+			recoveryEl.createSpan({ text: '回收于：', cls: 'foreshadowing-entry-recovery-label' });
+			const recoveryLink = recoveryEl.createEl('a', { text: entry.recoveryFile, cls: 'foreshadowing-entry-recovery-link' });
+			recoveryLink.onclick = async () => {
+				const file = this.app.vault.getMarkdownFiles().find(f => f.basename === entry.recoveryFile);
+				if (file) await this.app.workspace.getLeaf(false).openFile(file);
+			};
+		}
+	}
+
+	private getForeshadowingFile(): TFile | null {
+		const fileName = (this.plugin.settings.foreshadowing?.fileName || '伏笔') + '.md';
+		const path = this.currentFolder ? `${this.currentFolder}/${fileName}` : fileName;
+		const file = this.app.vault.getAbstractFileByPath(path);
+		return file instanceof TFile ? file : null;
+	}
+
+	private async loadEntries(): Promise<ParsedEntry[] | null> {
+		const file = this.getForeshadowingFile();
+		if (!file) return null;
+
+		const content = await this.app.vault.read(file);
+		return this.parseEntries(content);
+	}
+
+	/**
+	 * 解析伏笔文件内容为结构化数据
+	 */
+	private parseEntries(content: string): ParsedEntry[] {
+		const entries: ParsedEntry[] = [];
+		// 按 --- 分割条目
+		const blocks = content.split(/\n---\n/);
+
+		for (const block of blocks) {
+			const trimmed = block.trim();
+			if (!trimmed || !trimmed.startsWith('## ')) continue;
+
+			// 解析标题行：## [[来源文件]] - 时间
+			const titleMatch = trimmed.match(/^## \[\[(.+?)\]\](?:\s*-\s*(.+))?/m);
+			if (!titleMatch) continue;
+
+			const sourceFile = titleMatch[1];
+			const createdAt = titleMatch[2]?.trim() || '';
+
+			// 解析所有引用块（支持多条）
+			const contents: { source: string; time: string; text: string }[] = [];
+			const lines = trimmed.split('\n');
+			let i = 0;
+
+			// 跳过标题行
+			while (i < lines.length && lines[i].startsWith('## ')) i++;
+
+			// 收集引用块
+			while (i < lines.length) {
+				const line = lines[i];
+				if (line.startsWith('> ')) {
+					// 检查上一行是否是来源标注（> [[文件]] - 时间）
+					let source = '';
+					let time = '';
+					const quoteLines: string[] = [];
+
+					// 第一行可能是来源标注
+					const sourceLine = line.replace(/^> /, '');
+					const sourceMatch = sourceLine.match(/^\[\[(.+?)\]\](?:\s*-\s*(.+))?$/);
+					if (sourceMatch) {
+						source = sourceMatch[1];
+						time = sourceMatch[2]?.trim() || '';
+						i++;
+						// 收集后续引用行
+						while (i < lines.length && lines[i].startsWith('> ')) {
+							quoteLines.push(lines[i].replace(/^> /, ''));
+							i++;
+						}
+					} else {
+						// 普通引用行（第一条，来源来自标题行）
+						while (i < lines.length && lines[i].startsWith('> ')) {
+							quoteLines.push(lines[i].replace(/^> /, ''));
+							i++;
+						}
+					}
+
+					if (quoteLines.length > 0) {
+						// 如果没有内联来源标注，用标题行的来源和时间
+						contents.push({
+							source: source || sourceFile,
+							time: time || createdAt,
+							text: quoteLines.join('\n')
+						});
+					}
+				} else {
+					i++;
+				}
+			}
+
+			// 如果没有解析到引用，用第一个 > 行
+			if (contents.length === 0) {
+				const firstQuote = lines.find(l => l.startsWith('> '));
+				if (firstQuote) {
+					contents.push({ source: sourceFile, time: createdAt, text: firstQuote.replace(/^> /, '') });
+				}
+			}
+
+			// 解析说明
+			const descMatch = trimmed.match(/\*\*说明\*\*：(.+)/);
+			const description = descMatch ? descMatch[1].trim() : '';
+
+			// 解析标签
+			const tagsMatch = trimmed.match(/\*\*标签\*\*：(.+)/);
+			const tags = tagsMatch
+				? tagsMatch[1].trim().split(/\s+/).map(t => t.replace(/^#/, ''))
+				: [];
+
+			// 解析状态
+			const statusMatch = trimmed.match(/\*\*状态\*\*：(.+)/);
+			const statusText = statusMatch ? statusMatch[1].trim() : '未回收';
+			let status = ForeshadowingStatus.Pending;
+			if (statusText === '已回收') status = ForeshadowingStatus.Recovered;
+			else if (statusText === '已废弃') status = ForeshadowingStatus.Deprecated;
+
+			// 解析回收信息
+			const recoveryMatch = trimmed.match(/\*\*回收于\*\*：\[\[(.+?)\]\](?:\s*-\s*(.+))?/);
+			const recoveryFile = recoveryMatch ? recoveryMatch[1] : undefined;
+			const recoveredAt = recoveryMatch ? recoveryMatch[2]?.trim() : undefined;
+
+			if (description) {
+				entries.push({ sourceFile, createdAt, contents, description, tags, status, recoveryFile, recoveredAt });
+			}
+		}
+
+		return entries;
+	}
+
+	private injectStyles() {
+		const styleId = 'foreshadowing-view-styles';
+		if (document.getElementById(styleId)) return;
+
+		const style = document.createElement('style');
+		style.id = styleId;
+		style.innerHTML = `
+			.foreshadowing-view-container { padding: 12px; overflow-y: auto; }
+
+			.foreshadowing-view-header { margin-bottom: 12px; }
+			.foreshadowing-view-title-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+			.foreshadowing-view-title { font-size: 1.1em; font-weight: bold; color: var(--text-normal); }
+			.foreshadowing-view-folder { font-size: 0.75em; color: var(--text-muted); margin-bottom: 8px; }
+
+			.foreshadowing-view-filter-row { display: flex; gap: 4px; flex-wrap: wrap; }
+			.foreshadowing-filter-btn { padding: 2px 8px; border-radius: 10px; border: 1px solid var(--background-modifier-border); background: transparent; color: var(--text-muted); cursor: pointer; font-size: 0.8em; }
+			.foreshadowing-filter-btn:hover { border-color: var(--interactive-accent); color: var(--interactive-accent); }
+			.foreshadowing-filter-btn.is-active { background: var(--interactive-accent); color: var(--text-on-accent); border-color: var(--interactive-accent); }
+
+			.foreshadowing-view-empty { color: var(--text-muted); font-size: 0.9em; padding: 20px 0; text-align: center; }
+			.foreshadowing-view-hint { font-size: 0.8em; }
+
+			.foreshadowing-group-header { display: flex; align-items: center; gap: 6px; margin: 12px 0 6px; padding-bottom: 4px; border-bottom: 1px solid var(--background-modifier-border); }
+			.foreshadowing-group-label { font-size: 0.8em; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+			.foreshadowing-group-count { font-size: 0.75em; background: var(--background-modifier-border); color: var(--text-muted); padding: 1px 6px; border-radius: 8px; }
+
+			.foreshadowing-entry-card { background: var(--background-secondary); border-radius: 6px; padding: 10px 12px; margin-bottom: 8px; border-left: 3px solid var(--background-modifier-border); }
+			.foreshadowing-entry-card.status-pending { border-left-color: var(--color-orange, #f59e0b); }
+			.foreshadowing-entry-card.status-recovered { border-left-color: var(--color-green, #10b981); opacity: 0.75; }
+			.foreshadowing-entry-card.status-deprecated { border-left-color: var(--text-muted); opacity: 0.5; }
+
+			.foreshadowing-entry-desc { margin-bottom: 6px; }
+			.foreshadowing-entry-desc-text { font-weight: 600; font-size: 0.9em; color: var(--text-normal); }
+
+			.foreshadowing-entry-quotes { margin-bottom: 6px; }
+			.foreshadowing-entry-quote { margin-bottom: 4px; }
+			.foreshadowing-entry-quote-meta { font-size: 0.72em; color: var(--text-muted); margin-bottom: 2px; }
+			.foreshadowing-entry-quote-text { font-size: 0.82em; color: var(--text-muted); padding-left: 8px; border-left: 2px solid var(--background-modifier-border); line-height: 1.5; white-space: pre-wrap; }
+
+			.foreshadowing-entry-footer { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+			.foreshadowing-entry-tags { display: flex; gap: 4px; flex-wrap: wrap; }
+			.foreshadowing-entry-tag { font-size: 0.72em; color: var(--interactive-accent); background: var(--background-primary); padding: 1px 6px; border-radius: 8px; border: 1px solid var(--interactive-accent); opacity: 0.8; }
+
+			.foreshadowing-entry-actions { display: flex; gap: 4px; flex-shrink: 0; }
+			.foreshadowing-action-btn { padding: 2px 8px; border-radius: 4px; border: 1px solid var(--background-modifier-border); background: transparent; color: var(--text-muted); cursor: pointer; font-size: 0.75em; }
+			.foreshadowing-action-btn:hover { border-color: var(--interactive-accent); color: var(--interactive-accent); }
+			.foreshadowing-recover-btn { border-color: var(--color-orange, #f59e0b); color: var(--color-orange, #f59e0b); }
+			.foreshadowing-recover-btn:hover { background: var(--color-orange, #f59e0b); color: white; }
+			.foreshadowing-deprecate-btn { border-color: var(--text-muted); color: var(--text-muted); }
+			.foreshadowing-deprecate-btn:hover { background: var(--text-muted); color: white; }
+
+			.foreshadowing-entry-recovery { font-size: 0.78em; color: var(--text-muted); margin-top: 4px; }
+			.foreshadowing-entry-recovery-label { }
+			.foreshadowing-entry-recovery-link { color: var(--color-green, #10b981); cursor: pointer; text-decoration: underline; }
+		`;
+		document.head.appendChild(style);
+	}
+
+	async onClose() {}
+}

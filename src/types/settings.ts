@@ -3,6 +3,7 @@
  * 
  * 本文件包含插件设置、主题配置和便签状态相关的类型定义
  */
+import { ForeshadowingSettings } from './foreshadowing';
 
 /**
  * 每日统计数据
@@ -64,6 +65,8 @@ export interface StickyNoteState {
 export interface AccurateCountSettings {
 	/** 默认目标字数 */
 	defaultGoal: number;
+	/** 当日目标字数（今日新增总字数目标） */
+	dailyGoal: number;
 	/** 是否显示目标进度 */
 	showGoal: boolean;
 	/** 是否在文件浏览器中显示字数统计 */
@@ -102,6 +105,14 @@ export interface AccurateCountSettings {
 	obsShowTotalTime: boolean;
 	/** OBS 叠加层是否显示今日字数 */
 	obsShowTodayWords: boolean;
+	/** OBS 叠加层是否显示当日目标进度 */
+	obsShowDailyGoal: boolean;
 	/** OBS 叠加层是否显示本场净增字数 */
 	obsShowSessionWords: boolean;
+	/** 伏笔标注功能设置 */
+	foreshadowing: ForeshadowingSettings;
+	/** 护眼模式：是否启用编辑区绿色背景 */
+	eyeCareEnabled: boolean;
+	/** 护眼模式背景色（十六进制） */
+	eyeCareColor: string;
 }

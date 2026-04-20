@@ -18,6 +18,11 @@ export class WritingStatusView extends ItemView {
 	todayWordEl!: HTMLElement;
 	percentEl!: HTMLElement;
 	progressFillEl!: HTMLElement;
+	// 当日目标
+	dailyWordEl!: HTMLElement;
+	dailyGoalEl!: HTMLElement;
+	dailyPercentEl!: HTMLElement;
+	dailyProgressFillEl!: HTMLElement;
 	focusTimeEl!: HTMLElement;
 	slackTimeEl!: HTMLElement;
 	totalTimeEl!: HTMLElement;
@@ -66,15 +71,24 @@ export class WritingStatusView extends ItemView {
 		const titleRow = goalCard.createDiv({ cls: 'status-title' });
 		titleRow.createSpan({ text: '今日状态' });
 		this.statusBadgeEl = titleRow.createSpan({ cls: 'status-title-badge', text: '已暂停' });
-		
-		// 目标进度显示
+
+		// 当日目标进度
+		goalCard.createDiv({ cls: 'status-goal-label', text: '当日目标' });
+		const dailyRow = goalCard.createDiv({ cls: 'goal-display-row-right' });
+		this.dailyWordEl = dailyRow.createSpan({ cls: 'goal-current', text: '0' });
+		dailyRow.createSpan({ cls: 'goal-separator', text: ' / ' });
+		this.dailyGoalEl = dailyRow.createSpan({ cls: 'goal-target', text: '0' });
+		this.dailyPercentEl = dailyRow.createSpan({ cls: 'goal-percent', text: '0%' });
+		const dailyProgressBg = goalCard.createDiv({ cls: 'progress-bar-bg' });
+		this.dailyProgressFillEl = dailyProgressBg.createDiv({ cls: 'progress-bar-fill' });
+
+		// 章节目标进度
+		goalCard.createDiv({ cls: 'status-goal-label', text: '章节目标' });
 		const goalRow = goalCard.createDiv({ cls: 'goal-display-row-right' });
 		this.todayWordEl = goalRow.createSpan({ cls: 'goal-current', text: '0' });
 		goalRow.createSpan({ cls: 'goal-separator', text: ' / ' });
 		this.goalWordEl = goalRow.createSpan({ cls: 'goal-target', text: '0' });
 		this.percentEl = goalRow.createSpan({ cls: 'goal-percent', text: '0%' });
-		
-		// 进度条
 		const progressBg = goalCard.createDiv({ cls: 'progress-bar-bg' });
 		this.progressFillEl = progressBg.createDiv({ cls: 'progress-bar-fill' });
 	}
@@ -138,24 +152,36 @@ export class WritingStatusView extends ItemView {
 			this.statusBadgeEl.style.color = '#ffffff';
 		}
 
-		// 更新目标进度
+		// 当日目标进度（今日新增 vs dailyGoal）
+		const today = window.moment().format('YYYY-MM-DD');
+		const todayStat = this.plugin.settings.dailyHistory[today] || { focusMs: 0, slackMs: 0, addedWords: 0 };
+		const dailyAdded = Math.max(0, todayStat.addedWords);
+		const dailyGoal = this.plugin.settings.dailyGoal || 0;
+
+		this.dailyWordEl.innerText = dailyAdded.toLocaleString();
+		this.dailyGoalEl.innerText = dailyGoal.toLocaleString();
+		const dailyPercent = dailyGoal > 0 ? Math.min(Math.round((dailyAdded / dailyGoal) * 100), 100) : 0;
+		this.dailyPercentEl.innerText = ` ${dailyPercent}%`;
+		this.dailyProgressFillEl.style.width = `${dailyPercent}%`;
+		this.dailyProgressFillEl.style.background = dailyPercent >= 100 ? 'var(--color-green)' : 'var(--interactive-accent)';
+		this.dailyWordEl.style.color = dailyPercent >= 100 ? 'var(--color-green)' : 'var(--text-normal)';
+
+		// 章节目标进度（当前文件总字数 vs 章节目标）
 		let targetGoal = this.plugin.settings.defaultGoal;
 		const view = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
+		let chapterWords = 0;
 		if (view?.file) {
 			const cache = this.plugin.app.metadataCache.getFileCache(view.file);
 			const fmGoal = parseInt(cache?.frontmatter?.['word-goal']);
 			if (!isNaN(fmGoal)) targetGoal = fmGoal;
+			chapterWords = this.plugin.calculateAccurateWords(view.getViewData());
 		}
 
-		const today = window.moment().format('YYYY-MM-DD');
-		const todayStat = this.plugin.settings.dailyHistory[today] || { focusMs: 0, slackMs: 0, addedWords: 0 };
-		const added = Math.max(0, todayStat.addedWords);
-
-		// 更新目标进度显示
-		this.todayWordEl.innerText = added.toLocaleString();
+		// 更新章节目标进度显示
+		this.todayWordEl.innerText = chapterWords.toLocaleString();
 		this.goalWordEl.innerText = targetGoal.toLocaleString();
 
-		const percent = targetGoal > 0 ? Math.min(Math.round((added / targetGoal) * 100), 100) : 0;
+		const percent = targetGoal > 0 ? Math.min(Math.round((chapterWords / targetGoal) * 100), 100) : 0;
 		this.percentEl.innerText = ` ${percent}%`;
 		this.progressFillEl.style.width = `${percent}%`;
 		if (percent >= 100) {

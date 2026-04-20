@@ -14,15 +14,20 @@ import { CacheManager } from './src/services/CacheManager';
 import { DebounceManager } from './src/services/DebounceManager';
 import { SettingsManager } from './src/core/SettingsManager';
 import { FileExplorerPatcher } from './src/services/FileExplorerPatcher';
+import { ChapterSorter } from './src/services/ChapterSorter';
 import { GoalModal } from './src/ui/GoalModal';
 import { HistoryStatsModal } from './src/ui/HistoryModal';
 import { AccurateCountSettingTab } from './src/ui/SettingsTab';
 import { FloatingStickyNote } from './src/ui/StickyNote';
 import { WritingStatusView, STATUS_VIEW_TYPE } from './src/ui/StatusView';
+import { ForeshadowingView, FORESHADOWING_VIEW_TYPE } from './src/ui/ForeshadowingView';
 import { ObsOverlayServer } from './src/services/ObsServer';
+import { ForeshadowingManager } from './src/services/ForeshadowingManager';
+import { ForeshadowingInputModal, ForeshadowingRecoveryModal, ConfirmCreateForeshadowingFileModal } from './src/ui/ForeshadowingModal';
 
 const DEFAULT_SETTINGS: AccurateCountSettings = {
 	defaultGoal: 3000,
+	dailyGoal: 5000,
 	showGoal: true,
 	showExplorerCounts: true,
 	enableSmartChapterSort: false, // 默认关闭，避免与其他插件冲突
@@ -49,7 +54,15 @@ const DEFAULT_SETTINGS: AccurateCountSettings = {
 	obsShowSlackTime: true,
 	obsShowTotalTime: true,
 	obsShowTodayWords: true,
+	obsShowDailyGoal: true,
 	obsShowSessionWords: true, // 已还原
+	foreshadowing: {
+		fileName: '伏笔',
+		showTimestamp: true,
+		defaultTags: ['人物', '情节', '世界观', '道具', '伏线'],
+	},
+	eyeCareEnabled: false,
+	eyeCareColor: '#E8F5E9',
 }
 
 export default class AccurateChineseCountPlugin extends Plugin {
@@ -77,6 +90,7 @@ export default class AccurateChineseCountPlugin extends Plugin {
 	debounceManager: DebounceManager;
 	settingsManager: SettingsManager;
 	fileExplorerPatcher: FileExplorerPatcher;
+	foreshadowingManager!: ForeshadowingManager;
 
 	constructor(app: App, manifest: any) {
 		super(app, manifest);
@@ -103,6 +117,7 @@ export default class AccurateChineseCountPlugin extends Plugin {
 		// ==========================================
 		await this.loadSettings();
 		this.injectGlobalStyles();
+		if (this.settings.eyeCareEnabled) this.applyEyeCare();
 		this.statusBarItemEl = this.addStatusBarItem();
 		this.addSettingTab(new AccurateCountSettingTab(this.app, this));
 
@@ -176,6 +191,7 @@ export default class AccurateChineseCountPlugin extends Plugin {
 		// - ✅ 历史统计图表
 		// ==========================================
 		this.registerView(STATUS_VIEW_TYPE, (leaf) => new WritingStatusView(leaf, this));
+		this.registerView(FORESHADOWING_VIEW_TYPE, (leaf) => new ForeshadowingView(leaf, this));
 
 		this.app.workspace.onLayoutReady(() => {
 			this.settings.openNotes.forEach(state => {
@@ -226,6 +242,16 @@ export default class AccurateChineseCountPlugin extends Plugin {
 
 		this.addRibbonIcon('bar-chart-2', '打开/关闭写作实时状态面板', () => {
 			this.toggleStatusView(); 
+		});
+
+		this.addRibbonIcon('bookmark', '打开/关闭伏笔面板', () => {
+			this.toggleForeshadowingView();
+		});
+
+		this.addCommand({
+			id: 'toggle-foreshadowing-view',
+			name: '打开/关闭伏笔面板',
+			callback: () => this.toggleForeshadowingView()
 		});
 
 		this.addCommand({
@@ -431,7 +457,7 @@ export default class AccurateChineseCountPlugin extends Plugin {
 
 			if (file instanceof TFolder) {
 				menu.addItem((item) => {
-					item.setTitle('合并导出')
+					item.setTitle('合并章节')
 						.setIcon('documents')
 						.onClick(async () => {
 							const notice = new Notice(`正在扫描并合并《${file.name}》...`, 0);
@@ -440,7 +466,10 @@ export default class AccurateChineseCountPlugin extends Plugin {
 							const collectFiles = (folder: TFolder) => {
 								for (const child of folder.children) {
 									if (child instanceof TFile && child.extension === 'md') {
-										mdFiles.push(child);
+										// 只收集有章节编号的文件
+										if (ChapterSorter.isChapterFile(child.name)) {
+											mdFiles.push(child);
+										}
 									} else if (child instanceof TFolder) {
 										collectFiles(child);
 									}
@@ -450,14 +479,18 @@ export default class AccurateChineseCountPlugin extends Plugin {
 
 							if (mdFiles.length === 0) {
 								notice.hide();
-								new Notice(`文件夹《${file.name}》中没有找到 Markdown 文件！`);
+								new Notice(`文件夹《${file.name}》中没有找到章节文件！`);
 								return;
 							}
 
-							// 确保有序
-							mdFiles.sort((a, b) => a.path.localeCompare(b.path, 'zh', { numeric: true }));
+							// 按章节编号排序
+							mdFiles.sort((a, b) => {
+								const aNum = ChapterSorter.extractChapterNumber(a.name) ?? 0;
+								const bNum = ChapterSorter.extractChapterNumber(b.name) ?? 0;
+								return aNum - bNum;
+							});
 
-							let mergedContent = `# 【合并导出】${file.name}\n\n`;
+							let mergedContent = `# 【合并章节】${file.name}\n\n`;
 							let totalWords = 0;
 
 							for (const mdFile of mdFiles) {
@@ -467,10 +500,10 @@ export default class AccurateChineseCountPlugin extends Plugin {
 								totalWords += this.calculateAccurateWords(content);
 							}
 
-							let exportPath = `${file.parent?.path === '/' ? '' : file.parent?.path + '/'}${file.name}_合并导出.md`;
+							let exportPath = `${file.parent?.path === '/' ? '' : file.parent?.path + '/'}${file.name}_合并章节.md`;
 							let counter = 1;
 							while (this.app.vault.getAbstractFileByPath(exportPath)) {
-								exportPath = `${file.parent?.path === '/' ? '' : file.parent?.path + '/'}${file.name}_合并导出(${counter}).md`;
+								exportPath = `${file.parent?.path === '/' ? '' : file.parent?.path + '/'}${file.name}_合并章节(${counter}).md`;
 								counter++;
 							}
 
@@ -478,7 +511,7 @@ export default class AccurateChineseCountPlugin extends Plugin {
 								const newFile = await this.app.vault.create(exportPath, mergedContent.trim());
 								notice.hide();
 								await this.app.workspace.getLeaf(false).openFile(newFile);
-								new Notice(`✅ 合并成功！\n共合并 ${mdFiles.length} 个文件\n总计 ${totalWords.toLocaleString()} 字`, 8000);
+								new Notice(`✅ 合并成功！\n共合并 ${mdFiles.length} 个章节\n总计 ${totalWords.toLocaleString()} 字`, 8000);
 							} catch (error) {
 								console.error(error);
 								notice.hide();
@@ -495,6 +528,11 @@ export default class AccurateChineseCountPlugin extends Plugin {
 					item.setTitle('将选中内容抽出为便签').setIcon('quote').onClick(() => { 
 						const note = new FloatingStickyNote(this.app, this, { content: editor.getSelection(), title: '选中片段' });
 						note.load();
+					});
+				});
+				menu.addItem((item) => {
+					item.setTitle('标注为伏笔').setIcon('bookmark').onClick(() => {
+						this.app.commands.executeCommandById('web-novel-assistant:mark-as-foreshadowing');
 					});
 				});
 			}
@@ -562,6 +600,177 @@ export default class AccurateChineseCountPlugin extends Plugin {
 				this.saveSettings();
 			}
 		}, 60 * 1000));
+
+		// ==========================================
+		// 伏笔标注功能
+		// ==========================================
+		this.foreshadowingManager = new ForeshadowingManager(this.app, this);
+
+		// Markdown 后处理器：在预览模式下为"未回收"状态注入勾选框
+		this.registerMarkdownPostProcessor((el, ctx) => {
+			const file = this.app.vault.getAbstractFileByPath(ctx.sourcePath);
+			if (!(file instanceof TFile)) return;
+
+			// 只在伏笔文件中生效
+			const foreshadowingFileName = (this.settings.foreshadowing?.fileName || '伏笔') + '.md';
+			if (file.name !== foreshadowingFileName) return;
+
+			// 找所有包含 **状态**：未回收 的段落
+			el.querySelectorAll('p, li').forEach((p) => {
+				const text = p.textContent || '';
+				if (!text.includes('状态') || !text.includes('未回收')) return;
+
+				// 找到包含"状态"的 strong 元素
+				const strongs = p.querySelectorAll('strong');
+				let statusStrong: Element | null = null;
+				strongs.forEach(s => {
+					if (s.textContent === '状态') statusStrong = s;
+				});
+				if (!statusStrong) return;
+
+				// 注入勾选框
+				const checkbox = document.createElement('input');
+				checkbox.type = 'checkbox';
+				checkbox.title = '点击标记为已回收';
+				checkbox.style.cssText = 'margin-left:8px;cursor:pointer;vertical-align:middle;width:15px;height:15px;accent-color:var(--interactive-accent);';
+
+				checkbox.addEventListener('change', async (e) => {
+					e.preventDefault();
+					checkbox.checked = false; // 先还原，等用户确认后再更新文件
+
+					// 从 ctx.getSectionInfo 获取当前段落所在的行号范围
+					// 向上找最近的 H2 标题来定位条目
+					const content = await this.app.vault.read(file);
+					const lines = content.split('\n');
+
+					// 找到包含"**状态**：未回收"的行索引
+					const sectionInfo = ctx.getSectionInfo(el);
+					if (!sectionInfo) return;
+
+					// 在文件内容中找到对应的状态行，向上找 H2 标题
+					let titleLine = -1;
+					let createdAt = '';
+					let sourceFileName = '';
+					let contentPreview = '';
+
+					for (let i = sectionInfo.lineStart; i >= 0; i--) {
+						const match = lines[i].match(/^## \[\[(.+?)\]\](?:\s*-\s*(.+))?$/);
+						if (match) {
+							sourceFileName = match[1];
+							createdAt = match[2]?.trim() || '';
+							titleLine = i;
+							break;
+						}
+					}
+
+					if (titleLine === -1) return;
+
+					// 找内容预览（第一个引用行）
+					for (let i = titleLine + 1; i < lines.length; i++) {
+						if (lines[i].startsWith('> ')) {
+							contentPreview = lines[i].replace(/^> /, '');
+							break;
+						}
+						if (/^## \[\[/.test(lines[i])) break;
+					}
+
+					new ForeshadowingRecoveryModal(this.app, contentPreview, file.parent?.path || '', async (recoveryFileName) => {
+						const success = await this.foreshadowingManager.markAsRecovered(
+							file, sourceFileName, createdAt, recoveryFileName
+						);
+						if (success) {
+							new Notice(`✅ 已标记为回收于 [[${recoveryFileName}]]`);
+						} else {
+							new Notice('❌ 未找到对应的伏笔条目');
+						}
+					}).open();
+				});
+
+				p.appendChild(checkbox);
+			});
+		});
+
+		// 命令：标注为伏笔
+		this.addCommand({
+			id: 'mark-as-foreshadowing',
+			name: '标注为伏笔',
+			hotkeys: [{ modifiers: ['Mod', 'Shift'], key: 'f' }],
+			editorCheckCallback: (checking, editor, view) => {
+				const selection = editor.getSelection();
+				if (!selection || !selection.trim()) return false;
+				if (checking) return true;
+
+				const sourceFile = view.file;
+				if (!sourceFile) return false;
+
+				const doMark = (description: string, tags: string[]) => {
+					this.foreshadowingManager.addForeshadowing(sourceFile, selection, description, tags)
+						.then(({ file: targetFile, merged }) => {
+							if (merged) {
+								new Notice(`✅ 已合并到同名伏笔条目「${targetFile.name}」`, 5000);
+							} else {
+								new Notice(`✅ 已标注为伏笔，保存至「${targetFile.name}」`, 5000);
+							}
+							// 提供打开伏笔文件的选项
+							const openNotice = new Notice(`📌 点击此处打开伏笔文件`, 8000);
+							openNotice.noticeEl.style.cursor = 'pointer';
+							openNotice.noticeEl.onclick = () => {
+								this.foreshadowingManager.openForeshadowingFile(targetFile);
+								openNotice.hide();
+							};
+						})
+						.catch((err) => {
+							console.error('[ForeshadowingManager] addForeshadowing failed:', err);
+							new Notice(`❌ 标注失败：${err}`);
+						});
+				};
+
+				// 检查伏笔文件是否存在
+				if (!this.foreshadowingManager.foreshadowingFileExists(sourceFile)) {
+					const filePath = this.foreshadowingManager.getForeshadowingFilePath(sourceFile);
+					const fileName = this.settings.foreshadowing?.fileName || '伏笔';
+					const folderPath = sourceFile.parent?.path || '';
+					new ConfirmCreateForeshadowingFileModal(this.app, fileName, folderPath, () => {
+						new ForeshadowingInputModal(this.app, this, sourceFile.basename, selection, doMark).open();
+					}).open();
+				} else {
+					new ForeshadowingInputModal(this.app, this, sourceFile.basename, selection, doMark).open();
+				}
+				return true;
+			}
+		});
+
+		// 命令：标记伏笔已回收（仅在伏笔文件中可用）
+		this.addCommand({
+			id: 'mark-foreshadowing-recovered',
+			name: '标记伏笔已回收',
+			editorCheckCallback: (checking, editor, view) => {
+				const file = view.file;
+				if (!file) return false;
+				const foreshadowingFileName = (this.settings.foreshadowing?.fileName || '伏笔') + '.md';
+				if (file.name !== foreshadowingFileName) return false;
+				if (checking) return true;
+
+				const cursorLine = editor.getCursor().line;
+				const entryInfo = this.foreshadowingManager.getEntryAtCursor(editor, cursorLine);
+				if (!entryInfo) {
+					new Notice('❌ 请将光标放在伏笔条目内');
+					return true;
+				}
+
+				new ForeshadowingRecoveryModal(this.app, entryInfo.contentPreview, file.parent?.path || '', async (recoveryFileName) => {
+					const success = await this.foreshadowingManager.markAsRecovered(
+						file, entryInfo.sourceFile, entryInfo.createdAt, recoveryFileName
+					);
+					if (success) {
+						new Notice(`✅ 已标记为回收于 [[${recoveryFileName}]]`);
+					} else {
+						new Notice('❌ 未找到对应的伏笔条目，请确认光标位置');
+					}
+				}).open();
+				return true;
+			}
+		});
 	}
 
 	onunload() {
@@ -667,6 +876,20 @@ export default class AccurateChineseCountPlugin extends Plugin {
 
 	async loadSettings() {
 		this.settings = await this.settingsManager.loadSettings();
+	}
+
+	async toggleForeshadowingView() {
+		const { workspace } = this.app;
+		const leaves = workspace.getLeavesOfType(FORESHADOWING_VIEW_TYPE);
+		if (leaves.length > 0) {
+			leaves.forEach(leaf => leaf.detach());
+		} else {
+			const rightLeaf = workspace.getRightLeaf(false);
+			if (rightLeaf) {
+				await rightLeaf.setViewState({ type: FORESHADOWING_VIEW_TYPE, active: true });
+				workspace.revealLeaf(rightLeaf);
+			}
+		}
 	}
 
 	async saveSettings() {
@@ -875,15 +1098,26 @@ export default class AccurateChineseCountPlugin extends Plugin {
 		}
 
 		const todayAdded = Math.max(0, todayStat.addedWords);
+
+		// 章节字数（当前文件总字数）
+		let chapterWords = 0;
+		const view2 = this.app.workspace.getActiveViewOfType(MarkdownView);
+		if (view2) chapterWords = this.calculateAccurateWords(view2.getViewData());
+
+		const dailyGoal = this.settings.dailyGoal || 0;
+
 		return {
 			isTracking: this.isTracking,
 			focusTime: formatTime(focusSec),
 			slackTime: formatTime(slackSec),
 			totalTime: formatTime(totalSec),
 			sessionWords: Math.max(0, this.sessionAddedWords),
-			todayWords: todayAdded,
+			todayWords: chapterWords,
 			goal: targetGoal,
-			percent: targetGoal > 0 ? Math.min(Math.round((todayAdded / targetGoal) * 100), 100) : 0,
+			percent: targetGoal > 0 ? Math.min(Math.round((chapterWords / targetGoal) * 100), 100) : 0,
+			dailyWords: todayAdded,
+			dailyGoal: dailyGoal,
+			dailyPercent: dailyGoal > 0 ? Math.min(Math.round((todayAdded / dailyGoal) * 100), 100) : 0,
 			currentFile: currentFile,
 		};
 	}
@@ -923,9 +1157,18 @@ export default class AccurateChineseCountPlugin extends Plugin {
 		}
 
 		let todayGoalHtml = '';
+		if (this.settings.obsShowDailyGoal) {
+			todayGoalHtml += `\n\t<div class="goal-row">
+		<span class="goal-label">当日目标进度</span>
+		<span class="goal-value"><span id="dailyWords" class="current-val">0</span> <span class="sep">/</span> <span id="dailyGoalValue" class="target-val">0</span><span class="percent" id="dailyPercentText">0%</span></span>
+	</div>
+	<div class="progress-bg">
+		<div class="progress-fill" id="dailyProgressFill" style="width: 0%"></div>
+	</div>`;
+		}
 		if (this.settings.obsShowTodayWords) {
-			todayGoalHtml = `\n\t<div class="goal-row">
-		<span class="goal-label">目标进度</span>
+			todayGoalHtml += `\n\t<div class="goal-row"${this.settings.obsShowDailyGoal ? ' style="margin-top:8px"' : ''}>
+		<span class="goal-label">章节目标进度</span>
 		<span class="goal-value"><span id="todayWords" class="current-val">0</span> <span class="sep">/</span> <span id="goalValue" class="target-val">0</span><span class="percent" id="percentText">0%</span></span>
 	</div>
 	<div class="progress-bg">
@@ -1146,10 +1389,15 @@ function update() {
 					fill.style.width = d.percent + '%';
 					fill.className = 'progress-fill' + (d.percent >= 100 ? ' done' : '');
 				}
-				const goalValContainer = document.querySelector('.goal-value');
-				if (goalValContainer) {
-					if (d.percent >= 100) goalValContainer.classList.add('done');
-					else goalValContainer.classList.remove('done');
+			}
+			if (d.dailyWords !== lastData.dailyWords) safeSetText('dailyWords', d.dailyWords.toLocaleString());
+			if (d.dailyGoal !== lastData.dailyGoal) safeSetText('dailyGoalValue', d.dailyGoal.toLocaleString());
+			if (d.dailyPercent !== lastData.dailyPercent) {
+				safeSetText('dailyPercentText', d.dailyPercent + '%');
+				const dailyFill = document.getElementById('dailyProgressFill');
+				if (dailyFill) {
+					dailyFill.style.width = d.dailyPercent + '%';
+					dailyFill.className = 'progress-fill' + (d.dailyPercent >= 100 ? ' done' : '');
 				}
 			}
 			if (d.sessionWords !== lastData.sessionWords) safeSetText('sessionWords', d.sessionWords.toLocaleString());
@@ -1235,7 +1483,8 @@ update();
 				.status-title-badge { font-size: 0.75em; background: var(--interactive-accent); color: #ffffff; padding: 2px 6px; border-radius: 4px; font-weight: normal; }
 				
 				/* 目标进度显示 - 右对齐，上方留空 */
-				.goal-display-row-right { display: flex; align-items: baseline; justify-content: flex-end; gap: 4px; margin-top: 18px; margin-bottom: 12px; font-family: var(--font-monospace); flex-wrap: wrap; }
+				.status-goal-label { font-size: 0.78em; color: var(--text-muted); margin-top: 14px; margin-bottom: 2px; font-weight: 500; }
+				.goal-display-row-right { display: flex; align-items: baseline; justify-content: flex-end; gap: 4px; margin-top: 4px; margin-bottom: 8px; font-family: var(--font-monospace); flex-wrap: wrap; }
 				.goal-current { font-size: 1.8em; font-weight: bold; color: var(--text-normal); }
 				.goal-separator { font-size: 1.1em; color: var(--text-muted); opacity: 0.5; }
 				.goal-target { font-size: 1.4em; color: var(--text-muted); opacity: 0.8; }
@@ -1294,6 +1543,34 @@ update();
 
 	removeGlobalStyles() {
 		removeGlobalStyle('accurate-count-global-styles');
+	}
+
+	/**
+	 * 应用护眼模式 CSS（编辑区和阅读区背景色）
+	 */
+	applyEyeCare() {
+		const color = this.settings.eyeCareColor || '#E8F5E9';
+		const css = `
+			.workspace-leaf-content[data-type="markdown"] .view-content {
+				background-color: ${color} !important;
+			}
+			.markdown-source-view .cm-editor .cm-scroller,
+			.markdown-reading-view .markdown-preview-view {
+				background-color: transparent !important;
+			}
+		`;
+		removeGlobalStyle('accurate-count-eye-care');
+		const style = document.createElement('style');
+		style.id = 'accurate-count-eye-care';
+		style.innerHTML = css;
+		document.head.appendChild(style);
+	}
+
+	/**
+	 * 移除护眼模式 CSS
+	 */
+	removeEyeCare() {
+		removeGlobalStyle('accurate-count-eye-care');
 	}
 }
 

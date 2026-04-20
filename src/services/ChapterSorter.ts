@@ -104,8 +104,8 @@ export class ChapterSorter {
 		if (aChapter !== null) return -1;
 		if (bChapter !== null) return 1;
 		
-		// 5. 都没有章节编号：按字母排序
-		return a.name.localeCompare(b.name, 'zh-CN', { numeric: true });
+		// 5. 都没有章节编号：保持原始顺序（兼容 manual-sorting 等手动排序插件）
+		return 0;
 	}
 
 	/**

@@ -82,13 +82,51 @@ export class FileExplorerPatcher {
 			// 这个方法在 Obsidian 渲染文件列表时被调用
 			// @ts-ignore
 			this.explorerView.getSortedFolderItems = function(folder: TFolder) {
-				// 调用原始方法获取排序后的项目
-				const sortedItems = originalGetSortedFolderItems.call(this, folder);
+				// 调用原始方法获取排序后的项目（可能已经被 manual-sorting 处理过）
+				const sortedItems: any[] = originalGetSortedFolderItems.call(this, folder);
 				
-				// 使用我们的智能排序重新排序
-				return sortedItems.sort((a: any, b: any) => {
-					return ChapterSorter.compareFiles(a.file, b.file);
+				// 分离章节文件和非章节文件
+				const chapterItems: { item: any; num: number }[] = [];
+				const nonChapterItems: { item: any; originalIndex: number }[] = [];
+				let firstChapterIndex = -1; // 章节文件在原列表中第一次出现的位置
+				
+				sortedItems.forEach((item: any, index: number) => {
+					const num = ChapterSorter.extractChapterNumber(item.file?.name || '');
+					if (num !== null) {
+						chapterItems.push({ item, num });
+						if (firstChapterIndex === -1) firstChapterIndex = index;
+					} else {
+						nonChapterItems.push({ item, originalIndex: index });
+					}
 				});
+				
+				// 没有章节文件，直接返回原始结果（完全不干预）
+				if (chapterItems.length === 0) return sortedItems;
+				
+				// 章节文件按编号排序
+				chapterItems.sort((a, b) => a.num - b.num);
+				
+				// 重建列表：
+				// 非章节文件保持原来的相对顺序，
+				// 章节文件作为一个整体块插入到第一个章节文件原来的位置
+				const result: any[] = [];
+				let chaptersInserted = false;
+				
+				nonChapterItems.forEach(({ item, originalIndex }) => {
+					// 在第一个章节文件原来的位置之前，先插入所有章节文件
+					if (!chaptersInserted && originalIndex >= firstChapterIndex) {
+						chapterItems.forEach(c => result.push(c.item));
+						chaptersInserted = true;
+					}
+					result.push(item);
+				});
+				
+				// 如果章节文件在所有非章节文件之后，追加到末尾
+				if (!chaptersInserted) {
+					chapterItems.forEach(c => result.push(c.item));
+				}
+				
+				return result;
 			};
 			
 			console.log('[ChapterSorter] Successfully patched getSortedFolderItems');
