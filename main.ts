@@ -10,6 +10,7 @@ import {
 	isDesktop,
 	isMobile
 } from './src/utils';
+import { REGEX_PATTERNS } from './src/constants';
 import { CacheManager } from './src/services/CacheManager';
 import { DebounceManager } from './src/services/DebounceManager';
 import { SettingsManager } from './src/core/SettingsManager';
@@ -21,6 +22,8 @@ import { AccurateCountSettingTab } from './src/ui/SettingsTab';
 import { FloatingStickyNote } from './src/ui/StickyNote';
 import { WritingStatusView, STATUS_VIEW_TYPE } from './src/ui/StatusView';
 import { ForeshadowingView, FORESHADOWING_VIEW_TYPE } from './src/ui/ForeshadowingView';
+import { TimelineView, TIMELINE_VIEW_TYPE, TimelineAddFromSelectionModal } from './src/ui/TimelineView';
+import { TimelineManager } from './src/services/TimelineManager';
 import { ObsOverlayServer } from './src/services/ObsServer';
 import { ForeshadowingManager } from './src/services/ForeshadowingManager';
 import { ForeshadowingInputModal, ForeshadowingRecoveryModal, ConfirmCreateForeshadowingFileModal } from './src/ui/ForeshadowingModal';
@@ -61,6 +64,10 @@ const DEFAULT_SETTINGS: AccurateCountSettings = {
 		showTimestamp: true,
 		defaultTags: ['人物', '情节', '世界观', '道具', '伏线'],
 	},
+	timeline: {
+		fileName: '时间线',
+		defaultTypes: ['主线', '支线', '伏笔', '世界观', '人物'],
+	},
 	eyeCareEnabled: false,
 	eyeCareColor: '#E8F5E9',
 }
@@ -94,27 +101,32 @@ export default class AccurateChineseCountPlugin extends Plugin {
 
 	constructor(app: App, manifest: any) {
 		super(app, manifest);
-		this.cacheManager = new CacheManager();
+		this.cacheManager = new CacheManager(this);
 		this.debounceManager = new DebounceManager();
 		this.settingsManager = new SettingsManager(this, DEFAULT_SETTINGS);
 		this.fileExplorerPatcher = new FileExplorerPatcher(this.app);
 	}
 
 	async onload() {
-		// ==========================================
-		// 平台检测和功能分级 (需求 8.1, 8.2, 8.4, 8.6)
-		// ==========================================
-		// 本插件采用平台检测和功能分级策略:
-		// - 核心功能: 所有平台都支持 (字数统计、目标追踪、状态栏、设置)
-		// - 扩展功能: 仅桌面端支持 (便签、OBS、状态视图、Worker、缓存)
-		// 
-		// 移动端 Lite 模式: 只加载核心功能，提供轻量级体验
-		// 桌面端完整模式: 加载所有功能，提供完整功能体验
-		// ==========================================
+		// 加载核心功能（包含所有桌面端和移动端功能）
+		await this.setupCoreFeatures();
+		
+		// 定期保存设置
+		this.registerInterval(window.setInterval(() => {
+			if (this.isTracking) {
+				this.saveSettings();
+			}
+		}, 60 * 1000));
+	}
 
-		// ==========================================
-		// 1. 全平台核心功能 (字数统计、目标、设置页)
-		// ==========================================
+	/**
+	 * 设置核心功能（所有平台）
+	 * - 字数统计
+	 * - 目标追踪
+	 * - 状态栏显示
+	 * - 设置页面
+	 */
+	private async setupCoreFeatures(): Promise<void> {
 		await this.loadSettings();
 		this.injectGlobalStyles();
 		if (this.settings.eyeCareEnabled) this.applyEyeCare();
@@ -192,6 +204,7 @@ export default class AccurateChineseCountPlugin extends Plugin {
 		// ==========================================
 		this.registerView(STATUS_VIEW_TYPE, (leaf) => new WritingStatusView(leaf, this));
 		this.registerView(FORESHADOWING_VIEW_TYPE, (leaf) => new ForeshadowingView(leaf, this));
+		this.registerView(TIMELINE_VIEW_TYPE, (leaf) => new TimelineView(leaf, this));
 
 		this.app.workspace.onLayoutReady(() => {
 			this.settings.openNotes.forEach(state => {
@@ -205,8 +218,41 @@ export default class AccurateChineseCountPlugin extends Plugin {
 			}, 1000);
 		});
 
-		this.registerEvent(this.app.vault.on('modify', (file) => {
+		this.registerEvent(this.app.vault.on('modify', async (file) => {
 			if (file instanceof TFile && file.extension === 'md') {
+				// 检查是否是非编辑器修改（例如悬浮便签）
+				const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+				const isActiveFile = activeView?.file?.path === file.path;
+				
+				// 如果不是当前活动文件，说明是通过其他方式修改的（如悬浮便签）
+				// 需要更新每日历史统计
+				if (!isActiveFile) {
+					try {
+						const content = await this.app.vault.cachedRead(file);
+						const newWordCount = this.calculateAccurateWords(content);
+						
+						// 从缓存中获取旧的字数
+						const oldWordCount = this.cacheManager.getFileCache(file.path) || 0;
+						const delta = newWordCount - oldWordCount;
+						
+						// 只有当字数有变化时才更新历史统计
+						if (delta !== 0) {
+							const today = window.moment().format('YYYY-MM-DD');
+							if (!this.settings.dailyHistory[today]) {
+								this.settings.dailyHistory[today] = { focusMs: 0, slackMs: 0, addedWords: 0 };
+							}
+							this.settings.dailyHistory[today].addedWords += delta;
+							
+							// 标记需要保存设置
+							this.debounceManager.debounce('save-settings', () => {
+								this.saveSettings();
+							}, 1000);
+						}
+					} catch (error) {
+						console.error('[Plugin] 更新每日历史统计失败:', error);
+					}
+				}
+				
 				// 使用防抖，500ms 后才更新缓存和刷新显示
 				this.debounceManager.debounce('folder-refresh', () => {
 					this.updateFileCacheAndRefresh(file);
@@ -248,10 +294,20 @@ export default class AccurateChineseCountPlugin extends Plugin {
 			this.toggleForeshadowingView();
 		});
 
+		this.addRibbonIcon('calendar-clock', '打开/关闭时间线面板', () => {
+			this.toggleTimelineView();
+		});
+
 		this.addCommand({
 			id: 'toggle-foreshadowing-view',
 			name: '打开/关闭伏笔面板',
 			callback: () => this.toggleForeshadowingView()
+		});
+
+		this.addCommand({
+			id: 'toggle-timeline-view',
+			name: '打开/关闭时间线面板',
+			callback: () => this.toggleTimelineView()
 		});
 
 		this.addCommand({
@@ -310,135 +366,34 @@ export default class AccurateChineseCountPlugin extends Plugin {
 			editorCallback: async (editor, view) => {
 				const currentFile = view.file;
 				if (!currentFile) return;
-				const fileName = currentFile.basename;
-				
-				// 中文数字映射
-				const chineseToArabic: Record<string, number> = {
-					'零': 0, '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9, '十': 10,
-					'〇': 0, '壹': 1, '贰': 2, '叁': 3, '肆': 4, '伍': 5, '陆': 6, '柒': 7, '捌': 8, '玖': 9, '拾': 10,
-					'百': 100, '佰': 100, '千': 1000, '仟': 1000, '万': 10000, '萬': 10000
-				};
-				
-				const arabicToChinese = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
-				
-				// 解析中文数字（支持一到九十九）
-				const parseChineseNumber = (str: string): number => {
-					if (str === '十') return 10;
-					if (str.startsWith('十')) return 10 + (chineseToArabic[str[1]] || 0);
-					if (str.includes('十')) {
-						const parts = str.split('十');
-						const tens = chineseToArabic[parts[0]] || 0;
-						const ones = parts[1] ? (chineseToArabic[parts[1]] || 0) : 0;
-						return tens * 10 + ones;
-					}
-					return chineseToArabic[str] || 0;
-				};
-				
-				// 转换数字为中文（支持一到九十九）
-				const toChineseNumber = (num: number): string => {
-					if (num <= 10) return arabicToChinese[num];
-					if (num < 20) return '十' + (num === 10 ? '' : arabicToChinese[num - 10]);
-					const tens = Math.floor(num / 10);
-					const ones = num % 10;
-					return arabicToChinese[tens] + '十' + (ones === 0 ? '' : arabicToChinese[ones]);
-				};
-				
-				// 智能检测文件夹中的最大章节数，用于自动补零
-				const detectMaxChapterInFolder = (folder: TFolder | null, prefix: string): number => {
-					if (!folder) return 0;
-					let maxNum = 0;
-					for (const child of folder.children) {
-						if (child instanceof TFile && child.extension === 'md') {
-							// 使用更宽松的匹配，支持各种前缀（包括 Chapter、第等）
-							const match = child.basename.match(/^([^0-9]*)(\d+)/);
-							if (match) {
-								// 比较前缀（不区分大小写）
-								const childPrefix = match[1];
-								if (childPrefix.toLowerCase() === prefix.toLowerCase()) {
-									const num = parseInt(match[2], 10);
-									if (num > maxNum) maxNum = num;
-								}
-							}
-						}
-					}
-					return maxNum;
-				};
-				
-				// 尝试匹配阿拉伯数字格式：第1章、第01章、001章等
-				let match = fileName.match(/^([^0-9]*)(\d+)([章节回]?)(.*)$/);
-				if (match) {
-					const prefix = match[1];
-					const currentNumStr = match[2];
-					const chapterUnit = match[3];
-					// 不再复制标题部分 (suffix)
-					const nextNum = parseInt(currentNumStr, 10) + 1;
-					
-					// 智能补零：检测文件夹中的最大章节数
-					const folderPath = currentFile.parent;
-					const maxChapter = detectMaxChapterInFolder(folderPath, prefix);
-					
-					// 如果当前是补零格式（如01、001），或者文件夹中有更大的章节数，则自动补零
-					let paddingLength = currentNumStr.length;
-					if (maxChapter >= 100 && paddingLength < 3) paddingLength = 3;
-					else if (maxChapter >= 10 && paddingLength < 2) paddingLength = 2;
-					
-					const nextNumStr = nextNum.toString().padStart(paddingLength, '0');
-					// 只使用前缀、编号和章节单位，不包含标题
-					const newFileName = `${prefix}${nextNumStr}${chapterUnit}.md`;
-					const newFilePath = folderPath ? `${folderPath.path}/${newFileName}` : newFileName;
 
-					const existingFile = this.app.vault.getAbstractFileByPath(newFilePath);
-					if (existingFile) {
-						await this.app.workspace.getLeaf(false).openFile(existingFile as TFile);
-						return;
-					}
-					try {
-						const newFile = await this.app.vault.create(newFilePath, "");
-						await this.app.workspace.getLeaf(false).openFile(newFile);
-						new Notice(`✅ 已创建: ${newFileName}`);
-					} catch (error) { 
-						console.error(error);
-						new Notice(`❌ 创建失败: ${error}`);
-					}
+				const folderPath = currentFile.parent;
+				const siblingNames = folderPath
+					? folderPath.children
+						.filter((f): f is TFile => f instanceof TFile && f.extension === 'md')
+						.map(f => f.basename)
+					: [];
+
+				const newFileName = ChapterSorter.getNextChapterName(currentFile.basename, siblingNames);
+				if (!newFileName) {
+					new Notice('当前文件名不包含可识别的数字（阿拉伯数字或中文数字），无法自动递增！');
 					return;
 				}
-				
-				// 尝试匹配中文数字格式：第一章、第二十三章等
-				match = fileName.match(/^([^零一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]*)([零一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]+)([章节回]?)(.*)$/);
-				if (match) {
-					const prefix = match[1];
-					const currentNumStr = match[2];
-					const chapterUnit = match[3];
-					// 不再复制标题部分 (suffix)
-					const currentNum = parseChineseNumber(currentNumStr);
-					if (currentNum === 0) {
-						new Notice("无法识别中文数字，请检查文件名格式！");
-						return;
-					}
-					const nextNum = currentNum + 1;
-					const nextNumStr = toChineseNumber(nextNum);
-					// 只使用前缀、编号和章节单位，不包含标题
-					const newFileName = `${prefix}${nextNumStr}${chapterUnit}.md`;
-					const folderPath = currentFile.parent;
-					const newFilePath = folderPath ? `${folderPath.path}/${newFileName}` : newFileName;
 
-					const existingFile = this.app.vault.getAbstractFileByPath(newFilePath);
-					if (existingFile) {
-						await this.app.workspace.getLeaf(false).openFile(existingFile as TFile);
-						return;
-					}
-					try {
-						const newFile = await this.app.vault.create(newFilePath, "");
-						await this.app.workspace.getLeaf(false).openFile(newFile);
-						new Notice(`✅ 已创建: ${newFileName}`);
-					} catch (error) { 
-						console.error(error);
-						new Notice(`❌ 创建失败: ${error}`);
-					}
+				const newFilePath = folderPath ? `${folderPath.path}/${newFileName}` : newFileName;
+				const existingFile = this.app.vault.getAbstractFileByPath(newFilePath);
+				if (existingFile) {
+					await this.app.workspace.getLeaf(false).openFile(existingFile as TFile);
 					return;
 				}
-				
-				new Notice("当前文件名不包含可识别的数字（阿拉伯数字或中文数字），无法自动递增！");
+				try {
+					const newFile = await this.app.vault.create(newFilePath, '');
+					await this.app.workspace.getLeaf(false).openFile(newFile);
+					new Notice(`✅ 已创建: ${newFileName}`);
+				} catch (error) {
+					console.error(error);
+					new Notice(`❌ 创建失败: ${error}`);
+				}
 			}
 		});
 
@@ -533,6 +488,39 @@ export default class AccurateChineseCountPlugin extends Plugin {
 				menu.addItem((item) => {
 					item.setTitle('标注为伏笔').setIcon('bookmark').onClick(() => {
 						this.app.commands.executeCommandById('web-novel-assistant:mark-as-foreshadowing');
+					});
+				});
+				menu.addItem((item) => {
+					item.setTitle('添加到时间线').setIcon('calendar-clock').onClick(async () => {
+						const selection = editor.getSelection();
+						if (!selection.trim()) { new Notice('请先选中文字'); return; }
+						const sourceFile = view.file?.basename || '';
+						const folderPath = view.file?.parent?.path || '';
+						const fileName = (this.settings.timeline?.fileName || '时间线') + '.md';
+						const filePath = folderPath ? `${folderPath}/${fileName}` : fileName;
+
+						new TimelineAddFromSelectionModal(
+							this.app,
+							this,
+							this.settings.timeline?.fileName || '时间线',
+							selection.trim(),
+							sourceFile,
+							folderPath,
+							async (entry) => {
+								const manager = new TimelineManager(this.app, this, folderPath);
+								const newContent = await manager.appendEntry({
+									time: entry.time,
+									description: entry.description,
+									chapter: entry.chapter,
+									type: entry.type,
+									rawBlock: '',
+								});
+								new Notice('✅ 已添加到时间线');
+								// 刷新面板（如果已打开）
+								const leaves = this.app.workspace.getLeavesOfType(TIMELINE_VIEW_TYPE);
+								if (leaves.length > 0) (leaves[0].view as TimelineView).refresh();
+							}
+						).open();
 					});
 				});
 			}
@@ -813,6 +801,16 @@ export default class AccurateChineseCountPlugin extends Plugin {
 		if (!this.settings.showExplorerCounts) return;
 
 		try {
+			// 先尝试从持久化存储加载缓存
+			const loaded = await this.cacheManager.loadCache();
+			if (loaded) {
+				// 缓存加载成功，直接刷新显示
+				this.refreshFolderCounts();
+				console.log('[Plugin] 已从持久化存储加载缓存');
+				return;
+			}
+
+			// 缓存加载失败或不存在，重新构建
 			const notice = new Notice('正在构建文件夹字数缓存...', 0);
 			
 			await this.cacheManager.buildInitialCache(
@@ -892,12 +890,57 @@ export default class AccurateChineseCountPlugin extends Plugin {
 		}
 	}
 
+	async toggleTimelineView() {
+		const { workspace } = this.app;
+		const leaves = workspace.getLeavesOfType(TIMELINE_VIEW_TYPE);
+		if (leaves.length > 0) {
+			leaves.forEach(leaf => leaf.detach());
+		} else {
+			const rightLeaf = workspace.getRightLeaf(false);
+			if (rightLeaf) {
+				await rightLeaf.setViewState({ type: TIMELINE_VIEW_TYPE, active: true });
+				workspace.revealLeaf(rightLeaf);
+			}
+		}
+	}
+
 	async saveSettings() {
 		await this.settingsManager.saveSettings();
 	}
 
 	calculateAccurateWords(text: string): number {
-		return text.replace(/\s+/g, '').length;
+		// 过滤 Markdown 语法符号，保留正文内容（含标点）
+		// 使用 constants.ts 中预编译的正则表达式，提升性能
+		let cleaned = text
+			// 移除 frontmatter
+			.replace(REGEX_PATTERNS.FRONTMATTER, '')
+			// 移除代码块
+			.replace(REGEX_PATTERNS.CODE_BLOCK, '')
+			.replace(REGEX_PATTERNS.INLINE_CODE, '')
+			// 移除标题 # 符号
+			.replace(REGEX_PATTERNS.HEADING, '')
+			// 移除加粗/斜体符号 ** * __ _
+			.replace(REGEX_PATTERNS.BOLD, '$2')
+			.replace(REGEX_PATTERNS.ITALIC, '$2')
+			// 移除 Obsidian 内部链接括号 [[文件名]] → 文件名
+			.replace(REGEX_PATTERNS.INTERNAL_LINK, (_, name, alias) => alias || name)
+			// 移除普通链接 [文字](url) → 文字
+			.replace(REGEX_PATTERNS.LINK, '$1')
+			// 移除图片 ![alt](url)
+			.replace(REGEX_PATTERNS.IMAGE, '')
+			// 移除 HTML 标签
+			.replace(REGEX_PATTERNS.HTML_TAG, '')
+			// 移除引用符号 >
+			.replace(REGEX_PATTERNS.QUOTE, '')
+			// 移除分隔线
+			.replace(REGEX_PATTERNS.SEPARATOR, '')
+			// 移除无序列表符号 - * +
+			.replace(REGEX_PATTERNS.UNORDERED_LIST, '')
+			// 移除有序列表符号 1.
+			.replace(REGEX_PATTERNS.ORDERED_LIST, '')
+			// 移除空白字符
+			.replace(REGEX_PATTERNS.WHITESPACE, '');
+		return cleaned.length;
 	}
 
 	handleEditorChange() {
@@ -1512,9 +1555,9 @@ update();
 				.stats-tab-btn:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
 				.stats-tab-btn.is-active { background: var(--interactive-accent); color: var(--text-on-accent); font-weight: bold; }
 				
-				.stats-large-chart-container { display: flex; align-items: flex-end; justify-content: space-around; height: 300px; padding: 20px 0 10px 0; border-bottom: 1px dashed var(--background-modifier-border); margin-top: 10px; overflow-x: auto; gap: 8px;}
-				.stats-large-col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; min-width: 35px; flex: 1; max-width: 60px; }
-				.stats-large-bar { width: 100%; background: var(--interactive-accent); border-radius: 4px 4px 0 0; opacity: 0.8; transition: height 0.4s ease, opacity 0.2s; cursor: crosshair; }
+				.stats-large-chart-container { display: flex; align-items: flex-end; justify-content: flex-start; height: 260px; padding: 20px 8px 10px 8px; border-bottom: 1px dashed var(--background-modifier-border); margin-top: 10px; overflow-x: auto; gap: 4px;}
+				.stats-large-col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; min-width: 20px; flex: 1; max-width: 36px; }
+				.stats-large-bar { width: 70%; min-width: 8px; max-width: 24px; border-radius: 3px 3px 0 0; opacity: 0.85; transition: height 0.4s ease, opacity 0.2s; cursor: crosshair; }
 				.stats-large-bar:hover { opacity: 1; filter: brightness(1.2); }
 				.stats-large-label { font-size: 0.7em; margin-top: 8px; color: var(--text-muted); white-space: nowrap; }
 				.stats-large-value { font-size: 0.75em; margin-top: 4px; font-weight: bold; font-family: var(--font-monospace); }
@@ -1537,6 +1580,88 @@ update();
 					/* 优化移动端卡片间距 */
 					.status-card { padding: 18px; margin-bottom: 18px; }
 				}
+
+				/* 伏笔面板样式 */
+				.foreshadowing-view-container { padding: 12px; overflow-y: auto; }
+				.foreshadowing-view-header { margin-bottom: 12px; }
+				.foreshadowing-view-title-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+				.foreshadowing-view-title { font-size: 1.1em; font-weight: bold; color: var(--text-normal); }
+				.foreshadowing-view-folder { font-size: 0.75em; color: var(--text-muted); margin-bottom: 8px; }
+				.foreshadowing-view-filter-row { display: flex; gap: 4px; flex-wrap: wrap; }
+				.foreshadowing-filter-btn { padding: 2px 8px; border-radius: 10px; border: 1px solid var(--background-modifier-border); background: transparent; color: var(--text-muted); cursor: pointer; font-size: 0.8em; }
+				.foreshadowing-filter-btn:hover { border-color: var(--interactive-accent); color: var(--interactive-accent); }
+				.foreshadowing-filter-btn.is-active { background: var(--interactive-accent); color: var(--text-on-accent); border-color: var(--interactive-accent); }
+				.foreshadowing-view-empty { color: var(--text-muted); font-size: 0.9em; padding: 20px 0; text-align: center; }
+				.foreshadowing-view-hint { font-size: 0.8em; }
+				.foreshadowing-group-header { display: flex; align-items: center; gap: 6px; margin: 12px 0 6px; padding-bottom: 4px; border-bottom: 1px solid var(--background-modifier-border); }
+				.foreshadowing-group-label { font-size: 0.8em; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+				.foreshadowing-group-count { font-size: 0.75em; background: var(--background-modifier-border); color: var(--text-muted); padding: 1px 6px; border-radius: 8px; }
+				.foreshadowing-entry-card { background: var(--background-secondary); border-radius: 6px; padding: 10px 12px; margin-bottom: 8px; border-left: 3px solid var(--background-modifier-border); }
+				.foreshadowing-entry-card.status-pending { border-left-color: var(--color-orange, #f59e0b); }
+				.foreshadowing-entry-card.status-recovered { border-left-color: var(--color-green, #10b981); opacity: 0.75; }
+				.foreshadowing-entry-card.status-deprecated { border-left-color: var(--text-muted); opacity: 0.5; }
+				.foreshadowing-entry-desc { margin-bottom: 6px; }
+				.foreshadowing-entry-desc-text { font-weight: 600; font-size: 0.9em; color: var(--text-normal); }
+				.foreshadowing-entry-quotes { margin-bottom: 6px; }
+				.foreshadowing-entry-quote { margin-bottom: 4px; }
+				.foreshadowing-entry-quote-meta { font-size: 0.72em; color: var(--text-muted); margin-bottom: 2px; }
+				.foreshadowing-entry-quote-text { font-size: 0.82em; color: var(--text-muted); padding-left: 8px; border-left: 2px solid var(--background-modifier-border); line-height: 1.5; white-space: pre-wrap; }
+				.foreshadowing-entry-footer { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+				.foreshadowing-entry-tags { display: flex; gap: 4px; flex-wrap: wrap; }
+				.foreshadowing-entry-tag { font-size: 0.72em; color: var(--interactive-accent); background: var(--background-primary); padding: 1px 6px; border-radius: 8px; border: 1px solid var(--interactive-accent); opacity: 0.8; }
+				.foreshadowing-entry-actions { display: flex; gap: 4px; flex-shrink: 0; }
+				.foreshadowing-action-btn { padding: 2px 8px; border-radius: 4px; border: 1px solid var(--background-modifier-border); background: transparent; color: var(--text-muted); cursor: pointer; font-size: 0.75em; }
+				.foreshadowing-action-btn:hover { border-color: var(--interactive-accent); color: var(--interactive-accent); }
+				.foreshadowing-recover-btn { border-color: var(--color-orange, #f59e0b); color: var(--color-orange, #f59e0b); }
+				.foreshadowing-recover-btn:hover { background: var(--color-orange, #f59e0b); color: white; }
+				.foreshadowing-deprecate-btn { border-color: var(--text-muted); color: var(--text-muted); }
+				.foreshadowing-deprecate-btn:hover { background: var(--text-muted); color: white; }
+				.foreshadowing-entry-recovery { font-size: 0.78em; color: var(--text-muted); margin-top: 4px; }
+				.foreshadowing-entry-recovery-link { color: var(--color-green, #10b981); cursor: pointer; text-decoration: underline; }
+
+				/* 时间线面板样式 */
+				.timeline-view-container { padding: 12px; overflow-y: auto; }
+				.timeline-view-header { margin-bottom: 12px; }
+				.timeline-view-title-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+				.timeline-view-title { font-size: 1.1em; font-weight: bold; color: var(--text-normal); }
+				.timeline-add-btn { background: var(--interactive-accent); color: var(--text-on-accent); border: none; border-radius: 50%; width: 24px; height: 24px; font-size: 1.2em; cursor: pointer; display: flex; align-items: center; justify-content: center; line-height: 1; padding: 0; }
+				.timeline-add-btn:hover { filter: brightness(1.1); }
+				.timeline-view-folder { font-size: 0.75em; color: var(--text-muted); }
+				.timeline-view-empty { color: var(--text-muted); font-size: 0.9em; padding: 20px 0; text-align: center; }
+				.timeline-view-hint { font-size: 0.8em; }
+				.timeline-create-btn { margin-top: 10px; }
+				.timeline-list { padding-top: 8px; }
+				.timeline-item { display: flex; gap: 10px; margin-bottom: 4px; cursor: grab; }
+				.timeline-item:active { cursor: grabbing; }
+				.timeline-dragging { opacity: 0.4; }
+				.timeline-drag-over-top .timeline-content { border-top: 2px solid var(--interactive-accent) !important; }
+				.timeline-drag-over-bottom .timeline-content { border-bottom: 2px solid var(--interactive-accent) !important; }
+				.timeline-line { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; width: 16px; padding-top: 4px; }
+				.timeline-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--interactive-accent); flex-shrink: 0; }
+				.timeline-connector { width: 2px; flex: 1; background: var(--background-modifier-border); min-height: 20px; margin-top: 4px; }
+				.timeline-content { flex: 1; background: var(--background-secondary); border-radius: 6px; padding: 8px 10px 8px 22px; margin-bottom: 8px; min-width: 0; position: relative; }
+				.timeline-content:hover .timeline-actions { opacity: 1; pointer-events: auto; }
+				.timeline-drag-handle { position: absolute; top: 8px; left: 6px; color: var(--text-muted); opacity: 0; font-size: 1em; cursor: grab; line-height: 1; transition: opacity 0.15s; user-select: none; }
+				.timeline-content:hover .timeline-drag-handle { opacity: 0.4; }
+				.timeline-drag-handle:hover { opacity: 1 !important; cursor: grab; }
+				.timeline-time { font-weight: 600; font-size: 0.9em; color: var(--interactive-accent); margin-bottom: 4px; }
+				.timeline-list-item { display: flex; flex-direction: column; margin-bottom: 6px; padding-left: 8px; border-left: 2px solid var(--background-modifier-border); }
+				.timeline-desc { font-size: 0.85em; color: var(--text-normal); line-height: 1.5; white-space: pre-wrap; }
+				.timeline-desc::before { content: "- "; color: var(--text-muted); }
+				.timeline-footer { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+				.timeline-chapter-link { font-size: 0.78em; color: var(--text-accent); cursor: pointer; text-decoration: underline; }
+				.timeline-chapter-link:hover { color: var(--interactive-accent); }
+				.timeline-type-tag { font-size: 0.72em; color: var(--text-muted); background: var(--background-primary); padding: 1px 6px; border-radius: 8px; border: 1px solid var(--background-modifier-border); }
+				.timeline-actions { position: absolute; top: 6px; right: 6px; display: flex; gap: 3px; opacity: 0; pointer-events: none; transition: opacity 0.15s; }
+				.timeline-action-btn { padding: 2px 7px; border-radius: 4px; border: 1px solid var(--background-modifier-border); background: var(--background-primary); color: var(--text-muted); cursor: pointer; font-size: 0.72em; }
+				.timeline-action-btn:hover { border-color: var(--interactive-accent); color: var(--interactive-accent); }
+				.timeline-delete-btn:hover { border-color: var(--color-red, #ef4444); color: var(--color-red, #ef4444); }
+				.timeline-edit-form { background: var(--background-secondary); border-radius: 6px; padding: 10px 12px; margin-bottom: 12px; border: 1px solid var(--interactive-accent); }
+				.timeline-form-title { font-weight: 600; font-size: 0.9em; margin-bottom: 8px; color: var(--text-normal); }
+				.timeline-form-label { display: block; font-size: 0.78em; color: var(--text-muted); margin-bottom: 3px; margin-top: 8px; }
+				.timeline-form-input { width: 100%; padding: 5px 8px; border-radius: 4px; border: 1px solid var(--background-modifier-border); background: var(--background-primary); color: var(--text-normal); font-size: 0.85em; box-sizing: border-box; }
+				.timeline-form-textarea { width: 100%; height: 60px; padding: 5px 8px; border-radius: 4px; border: 1px solid var(--background-modifier-border); background: var(--background-primary); color: var(--text-normal); font-size: 0.85em; resize: vertical; box-sizing: border-box; font-family: var(--font-text); }
+				.timeline-form-btns { display: flex; justify-content: flex-end; gap: 6px; margin-top: 10px; }
 			`;
 		injectGlobalStyle(styleId, styleContent);
 	}

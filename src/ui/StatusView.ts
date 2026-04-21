@@ -71,6 +71,19 @@ export class WritingStatusView extends ItemView {
 		const titleRow = goalCard.createDiv({ cls: 'status-title' });
 		titleRow.createSpan({ text: '今日状态' });
 		this.statusBadgeEl = titleRow.createSpan({ cls: 'status-title-badge', text: '已暂停' });
+		this.statusBadgeEl.style.cursor = 'pointer';
+		this.statusBadgeEl.title = '点击开始/暂停统计';
+		this.statusBadgeEl.addEventListener('click', () => {
+			this.plugin.isTracking = !this.plugin.isTracking;
+			if (this.plugin.isTracking) {
+				this.plugin.lastTickTime = Date.now();
+				this.plugin.worker?.postMessage('start');
+			} else {
+				this.plugin.worker?.postMessage('stop');
+			}
+			this.plugin.updateWordCount();
+			this.plugin.refreshStatusViews();
+		});
 
 		// 当日目标进度
 		goalCard.createDiv({ cls: 'status-goal-label', text: '当日目标' });
@@ -163,8 +176,10 @@ export class WritingStatusView extends ItemView {
 		const dailyPercent = dailyGoal > 0 ? Math.min(Math.round((dailyAdded / dailyGoal) * 100), 100) : 0;
 		this.dailyPercentEl.innerText = ` ${dailyPercent}%`;
 		this.dailyProgressFillEl.style.width = `${dailyPercent}%`;
-		this.dailyProgressFillEl.style.background = dailyPercent >= 100 ? 'var(--color-green)' : 'var(--interactive-accent)';
-		this.dailyWordEl.style.color = dailyPercent >= 100 ? 'var(--color-green)' : 'var(--text-normal)';
+		// 当日进度：未完成灰色，完成橙金色
+		const dailyDone = dailyGoal > 0 && dailyAdded >= dailyGoal;
+		this.dailyProgressFillEl.style.background = dailyDone ? '#F5A623' : 'var(--background-modifier-border)';
+		this.dailyWordEl.style.color = dailyDone ? '#F5A623' : 'var(--text-normal)';
 
 		// 章节目标进度（当前文件总字数 vs 章节目标）
 		let targetGoal = this.plugin.settings.defaultGoal;
@@ -184,13 +199,10 @@ export class WritingStatusView extends ItemView {
 		const percent = targetGoal > 0 ? Math.min(Math.round((chapterWords / targetGoal) * 100), 100) : 0;
 		this.percentEl.innerText = ` ${percent}%`;
 		this.progressFillEl.style.width = `${percent}%`;
-		if (percent >= 100) {
-			this.progressFillEl.style.background = 'var(--color-green)';
-			this.todayWordEl.style.color = 'var(--color-green)';
-		} else {
-			this.progressFillEl.style.background = 'var(--interactive-accent)';
-			this.todayWordEl.style.color = 'var(--text-normal)';
-		}
+		// 章节进度：未完成灰色，完成紫色
+		const chapterDone = targetGoal > 0 && chapterWords >= targetGoal;
+		this.progressFillEl.style.background = chapterDone ? '#8B5CF6' : 'var(--background-modifier-border)';
+		this.todayWordEl.style.color = chapterDone ? '#8B5CF6' : 'var(--text-normal)';
 
 		// 更新时间统计
 		const focusSec = Math.floor(this.plugin.focusMs / 1000);

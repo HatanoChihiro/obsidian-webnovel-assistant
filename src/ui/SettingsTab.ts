@@ -172,6 +172,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		});
 
 		this.displayForeshadowingSettings(containerEl);
+		this.displayTimelineSettings(containerEl);
 		this.displayEyeCareSettings(containerEl);
 		this.displayDataSettings(containerEl);
 	}
@@ -220,6 +221,45 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 							this.plugin.settings.foreshadowing = { fileName: '伏笔', showTimestamp: true, defaultTags: [] };
 						}
 						this.plugin.settings.foreshadowing.defaultTags = value.trim()
+							? value.trim().split(/\s+/).filter(Boolean)
+							: [];
+						await this.plugin.saveSettings();
+					});
+				text.inputEl.style.width = '100%';
+			});
+	}
+
+	private displayTimelineSettings(containerEl: HTMLElement): void {
+		containerEl.createEl('h2', { text: '时间线设置' });
+
+		new Setting(containerEl)
+			.setName('时间线文件名')
+			.setDesc('时间线数据保存到当前文件夹下的此文件中（无需 .md 后缀）。')
+			.addText(text => text
+				.setPlaceholder('时间线')
+				.setValue(this.plugin.settings.timeline?.fileName || '时间线')
+				.onChange(async (value) => {
+					const trimmed = value.trim().replace(/\.md$/i, '');
+					if (!this.plugin.settings.timeline) {
+						this.plugin.settings.timeline = { fileName: '时间线', defaultTypes: [] };
+					}
+					this.plugin.settings.timeline.fileName = trimmed || '时间线';
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('常用类型')
+			.setDesc('用空格分隔，添加时间线事件时可从下拉列表选择。')
+			.addText(text => {
+				const types = this.plugin.settings.timeline?.defaultTypes || [];
+				text
+					.setPlaceholder('主线 支线 伏笔 世界观 人物')
+					.setValue(types.join(' '))
+					.onChange(async (value) => {
+						if (!this.plugin.settings.timeline) {
+							this.plugin.settings.timeline = { fileName: '时间线', defaultTypes: [] };
+						}
+						this.plugin.settings.timeline.defaultTypes = value.trim()
 							? value.trim().split(/\s+/).filter(Boolean)
 							: [];
 						await this.plugin.saveSettings();

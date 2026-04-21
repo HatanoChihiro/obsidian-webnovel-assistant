@@ -66,13 +66,22 @@ export class HistoryStatsModal extends Modal {
 
 		const maxWords = Math.max(...displayKeys.map(k => aggregated[k].words), 100);
 
-		displayKeys.forEach(key => {
+		displayKeys.forEach((key, i) => {
 			const data = aggregated[key];
 			const col = this.chartContainer.createDiv({ cls: 'stats-large-col' });
 			
 			const heightPercent = Math.max(2, (data.words / maxWords) * 100);
 			const bar = col.createDiv({ cls: 'stats-large-bar' });
 			bar.style.height = `${heightPercent}%`;
+
+			// 根据相对高度给柱子上色：高的橙金，中等紫色，低的蓝色
+			const ratio = data.words / maxWords;
+			let barColor: string;
+			if (ratio >= 0.8) barColor = '#F5A623';
+			else if (ratio >= 0.5) barColor = '#8B5CF6';
+			else if (ratio >= 0.2) barColor = 'var(--interactive-accent)';
+			else barColor = 'var(--background-modifier-border)';
+			bar.style.background = barColor;
 			
 			// 悬停提示
 			const focusHours = (data.focusMs / 3600000).toFixed(1);
@@ -110,7 +119,12 @@ export class HistoryStatsModal extends Modal {
 	formatLabel(key: string): string {
 		if (this.currentTab === '7day' || this.currentTab === 'day') return key.substring(5); // 04-15
 		if (this.currentTab === 'month') return key.substring(2); // 24-04
-		return key; // week 和 year 直接显示
+		if (this.currentTab === 'week') {
+			// "2024年 第18周" → "W18"
+			const match = key.match(/第(\d+)周/);
+			return match ? `W${match[1]}` : key;
+		}
+		return key;
 	}
 
 	onClose() {

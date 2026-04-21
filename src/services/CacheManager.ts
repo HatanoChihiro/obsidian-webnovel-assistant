@@ -1,4 +1,5 @@
 import { TFile, TFolder, Vault } from 'obsidian';
+import { CACHE_CONFIG } from '../constants';
 
 /**
  * 缓存条目接口
@@ -10,15 +11,89 @@ export interface CacheEntry {
 }
 
 /**
+ * 持久化缓存数据接口
+ */
+export interface CacheData {
+	version: number;
+	timestamp: number;
+	entries: Array<[string, CacheEntry]>;
+}
+
+/**
  * 缓存管理器
  * 负责管理文件夹字数缓存，实现增量更新和失效策略
+ * 支持缓存持久化，提升启动速度
  */
 export class CacheManager {
 	private cache: Map<string, CacheEntry>;
-	private maxCacheSize: number = 10000; // 最多缓存 10000 个条目
+	private maxCacheSize: number = CACHE_CONFIG.MAX_SIZE;
+	private plugin: any; // 插件实例，用于持久化
 
-	constructor() {
+	constructor(plugin?: any) {
 		this.cache = new Map();
+		this.plugin = plugin;
+	}
+
+	/**
+	 * 从持久化存储加载缓存
+	 */
+	async loadCache(): Promise<boolean> {
+		if (!this.plugin) return false;
+
+		try {
+			const data = await this.plugin.loadData();
+			if (!data || !data.cacheData) {
+				console.log('[CacheManager] 没有找到持久化缓存');
+				return false;
+			}
+
+			const cacheData: CacheData = data.cacheData;
+			
+			// 检查版本
+			if (cacheData.version !== 1) {
+				console.warn('[CacheManager] 缓存版本不匹配，忽略');
+				return false;
+			}
+
+			// 检查缓存是否过期（超过 7 天）
+			const age = Date.now() - cacheData.timestamp;
+			const maxAge = 7 * 24 * 60 * 60 * 1000; // 7 天
+			if (age > maxAge) {
+				console.log('[CacheManager] 缓存已过期，将重新构建');
+				return false;
+			}
+
+			// 加载缓存
+			this.cache = new Map(cacheData.entries);
+			console.log(`[CacheManager] 已加载 ${this.cache.size} 个缓存条目（${Math.round(age / 1000 / 60)} 分钟前）`);
+			return true;
+		} catch (error) {
+			console.error('[CacheManager] 加载缓存失败:', error);
+			return false;
+		}
+	}
+
+	/**
+	 * 保存缓存到持久化存储
+	 */
+	async saveCache(): Promise<void> {
+		if (!this.plugin) return;
+
+		try {
+			const cacheData: CacheData = {
+				version: 1,
+				timestamp: Date.now(),
+				entries: Array.from(this.cache.entries())
+			};
+
+			const data = await this.plugin.loadData() || {};
+			data.cacheData = cacheData;
+			await this.plugin.saveData(data);
+			
+			console.log(`[CacheManager] 已保存 ${this.cache.size} 个缓存条目`);
+		} catch (error) {
+			console.error('[CacheManager] 保存缓存失败:', error);
+		}
 	}
 
 	/**
@@ -93,6 +168,9 @@ export class CacheManager {
 			if (failCount > 0) {
 				console.warn(`[CacheManager] 警告: ${failCount} 个文件读取失败，缓存可能不完整`);
 			}
+
+			// 保存缓存到持久化存储
+			await this.saveCache();
 		} catch (error) {
 			console.error('[CacheManager] 缓存构建失败:', error);
 			throw error;
@@ -148,6 +226,11 @@ export class CacheManager {
 		if (this.cache.size > this.maxCacheSize) {
 			this.clearOldEntries();
 		}
+
+		// 异步保存缓存（不阻塞）
+		this.saveCache().catch(err => {
+			console.error('[CacheManager] 保存缓存失败:', err);
+		});
 	}
 
 	/**
@@ -195,6 +278,16 @@ export class CacheManager {
 			size: this.cache.size,
 			memoryUsage
 		};
+	}
+
+	/**
+	 * 获取文件的缓存字数
+	 * @param filePath 文件路径
+	 * @returns 缓存的字数，如果不存在则返回 null
+	 */
+	getFileCache(filePath: string): number | null {
+		const entry = this.cache.get(filePath);
+		return entry ? entry.wordCount : null;
 	}
 
 	/**

@@ -1,5 +1,6 @@
 import { Plugin } from 'obsidian';
 import { AccurateCountSettings } from '../types/settings';
+import { VALIDATION_RULES } from '../constants';
 
 /**
  * 验证结果接口
@@ -33,39 +34,41 @@ export class SettingsManager {
 			field: 'obsPort',
 			validate: (port) => {
 				const p = Number(port);
-				return !isNaN(p) && p >= 1024 && p <= 65535;
+				return !isNaN(p) && p >= VALIDATION_RULES.PORT_RANGE.min && p <= VALIDATION_RULES.PORT_RANGE.max;
 			},
-			errorMessage: '端口号必须在 1024-65535 之间'
+			errorMessage: `端口号必须在 ${VALIDATION_RULES.PORT_RANGE.min}-${VALIDATION_RULES.PORT_RANGE.max} 之间`
 		},
 		{
 			field: 'idleTimeoutThreshold',
 			validate: (timeout) => {
 				const t = Number(timeout);
-				return !isNaN(t) && t >= 10000 && t <= 3600000;
+				const min = VALIDATION_RULES.IDLE_TIMEOUT_RANGE.min * 1000;
+				const max = VALIDATION_RULES.IDLE_TIMEOUT_RANGE.max * 1000;
+				return !isNaN(t) && t >= min && t <= max;
 			},
-			errorMessage: '空闲超时必须在 10-3600 秒之间'
+			errorMessage: `空闲超时必须在 ${VALIDATION_RULES.IDLE_TIMEOUT_RANGE.min}-${VALIDATION_RULES.IDLE_TIMEOUT_RANGE.max} 秒之间`
 		},
 		{
 			field: 'noteOpacity',
 			validate: (opacity) => {
 				const o = Number(opacity);
-				return !isNaN(o) && o >= 0.1 && o <= 1.0;
+				return !isNaN(o) && o >= VALIDATION_RULES.OPACITY_RANGE.min && o <= VALIDATION_RULES.OPACITY_RANGE.max;
 			},
-			errorMessage: '便签不透明度必须在 0.1-1.0 之间'
+			errorMessage: `便签不透明度必须在 ${VALIDATION_RULES.OPACITY_RANGE.min}-${VALIDATION_RULES.OPACITY_RANGE.max} 之间`
 		},
 		{
 			field: 'obsOverlayOpacity',
 			validate: (opacity) => {
 				const o = Number(opacity);
-				return !isNaN(o) && o >= 0 && o <= 1.0;
+				return !isNaN(o) && o >= 0 && o <= VALIDATION_RULES.OPACITY_RANGE.max;
 			},
-			errorMessage: 'OBS 叠加层不透明度必须在 0-1.0 之间'
+			errorMessage: `OBS 叠加层不透明度必须在 0-${VALIDATION_RULES.OPACITY_RANGE.max} 之间`
 		},
 		{
 			field: 'defaultGoal',
 			validate: (goal) => {
 				const g = Number(goal);
-				return !isNaN(g) && g >= 0;
+				return !isNaN(g) && g >= VALIDATION_RULES.MIN_GOAL;
 			},
 			errorMessage: '默认目标字数必须为非负数'
 		}
@@ -84,8 +87,8 @@ export class SettingsManager {
 		try {
 			const data = await this.plugin.loadData();
 			
-			// 与默认设置合并
-			this.settings = Object.assign({}, this.defaultSettings, data);
+			// 与默认设置合并（深度合并，确保嵌套对象的新字段不丢失）
+			this.settings = this.deepMerge(this.defaultSettings, data || {});
 			
 			// 数据迁移
 			this.settings = this.migrateSettings(this.settings, data);
@@ -172,6 +175,34 @@ export class SettingsManager {
 		}
 
 		return fixed;
+	}
+
+	/**
+	 * 深度合并两个对象，default 的字段优先级低于 source
+	 * 对嵌套对象递归合并，确保新增字段有默认值
+	 */
+	private deepMerge<T extends Record<string, unknown>>(defaults: T, source: Partial<T>): T {
+		const result = { ...defaults };
+		for (const key of Object.keys(source) as (keyof T)[]) {
+			const srcVal = source[key];
+			const defVal = defaults[key];
+			if (
+				srcVal !== null &&
+				typeof srcVal === 'object' &&
+				!Array.isArray(srcVal) &&
+				defVal !== null &&
+				typeof defVal === 'object' &&
+				!Array.isArray(defVal)
+			) {
+				result[key] = this.deepMerge(
+					defVal as Record<string, unknown>,
+					srcVal as Record<string, unknown>
+				) as T[keyof T];
+			} else if (srcVal !== undefined) {
+				result[key] = srcVal as T[keyof T];
+			}
+		}
+		return result;
 	}
 
 	/**

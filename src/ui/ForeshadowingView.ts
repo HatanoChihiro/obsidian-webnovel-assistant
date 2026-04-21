@@ -1,6 +1,7 @@
-import { ItemView, MarkdownView, Menu, Notice, TFile, WorkspaceLeaf } from 'obsidian';
+import { MarkdownView, Menu, Notice, TFile, WorkspaceLeaf } from 'obsidian';
 import { ForeshadowingStatus } from '../types/foreshadowing';
 import { ForeshadowingRecoveryModal } from './ForeshadowingModal';
+import { CreativeView } from './CreativeView';
 
 type AccurateChineseCountPlugin = any;
 
@@ -21,46 +22,19 @@ interface ParsedEntry {
  * 伏笔面板视图
  * 在侧边栏显示当前文件夹的伏笔列表，支持按状态筛选和直接回收操作
  */
-export class ForeshadowingView extends ItemView {
-	plugin: AccurateChineseCountPlugin;
-	private currentFolder: string = '';
+export class ForeshadowingView extends CreativeView {
 	private filterStatus: 'all' | ForeshadowingStatus = 'all';
 
 	constructor(leaf: WorkspaceLeaf, plugin: AccurateChineseCountPlugin) {
-		super(leaf);
-		this.plugin = plugin;
+		super(leaf, plugin);
 	}
 
 	getViewType() { return FORESHADOWING_VIEW_TYPE; }
 	getDisplayText() { return '伏笔'; }
 	getIcon() { return 'bookmark'; }
 
-	async onOpen() {
-		// 监听活动文件变化，自动切换文件夹
-		this.registerEvent(
-			this.app.workspace.on('active-leaf-change', () => this.onActiveFileChange())
-		);
-		// 监听文件修改，刷新视图
-		this.registerEvent(
-			this.app.vault.on('modify', (file) => {
-				const fileName = (this.plugin.settings.foreshadowing?.fileName || '伏笔') + '.md';
-				if (file instanceof TFile && file.name === fileName) {
-					this.refresh();
-				}
-			})
-		);
-		await this.onActiveFileChange();
-	}
-
-	private async onActiveFileChange() {
-		const activeFile = this.app.workspace.getActiveViewOfType(MarkdownView)?.file;
-		if (!activeFile) return;
-
-		const folder = activeFile.parent?.path || '';
-		if (folder !== this.currentFolder) {
-			this.currentFolder = folder;
-			await this.refresh();
-		}
+	protected getWatchFileName(): string {
+		return this.plugin.settings.foreshadowing?.fileName || '伏笔';
 	}
 
 	async refresh() {
@@ -286,10 +260,7 @@ export class ForeshadowingView extends ItemView {
 	}
 
 	private getForeshadowingFile(): TFile | null {
-		const fileName = (this.plugin.settings.foreshadowing?.fileName || '伏笔') + '.md';
-		const path = this.currentFolder ? `${this.currentFolder}/${fileName}` : fileName;
-		const file = this.app.vault.getAbstractFileByPath(path);
-		return file instanceof TFile ? file : null;
+		return this.plugin.foreshadowingManager.getForeshadowingFileByFolder(this.currentFolder);
 	}
 
 	private async loadEntries(): Promise<ParsedEntry[] | null> {
@@ -408,62 +379,6 @@ export class ForeshadowingView extends ItemView {
 	}
 
 	private injectStyles() {
-		const styleId = 'foreshadowing-view-styles';
-		if (document.getElementById(styleId)) return;
-
-		const style = document.createElement('style');
-		style.id = styleId;
-		style.innerHTML = `
-			.foreshadowing-view-container { padding: 12px; overflow-y: auto; }
-
-			.foreshadowing-view-header { margin-bottom: 12px; }
-			.foreshadowing-view-title-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
-			.foreshadowing-view-title { font-size: 1.1em; font-weight: bold; color: var(--text-normal); }
-			.foreshadowing-view-folder { font-size: 0.75em; color: var(--text-muted); margin-bottom: 8px; }
-
-			.foreshadowing-view-filter-row { display: flex; gap: 4px; flex-wrap: wrap; }
-			.foreshadowing-filter-btn { padding: 2px 8px; border-radius: 10px; border: 1px solid var(--background-modifier-border); background: transparent; color: var(--text-muted); cursor: pointer; font-size: 0.8em; }
-			.foreshadowing-filter-btn:hover { border-color: var(--interactive-accent); color: var(--interactive-accent); }
-			.foreshadowing-filter-btn.is-active { background: var(--interactive-accent); color: var(--text-on-accent); border-color: var(--interactive-accent); }
-
-			.foreshadowing-view-empty { color: var(--text-muted); font-size: 0.9em; padding: 20px 0; text-align: center; }
-			.foreshadowing-view-hint { font-size: 0.8em; }
-
-			.foreshadowing-group-header { display: flex; align-items: center; gap: 6px; margin: 12px 0 6px; padding-bottom: 4px; border-bottom: 1px solid var(--background-modifier-border); }
-			.foreshadowing-group-label { font-size: 0.8em; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
-			.foreshadowing-group-count { font-size: 0.75em; background: var(--background-modifier-border); color: var(--text-muted); padding: 1px 6px; border-radius: 8px; }
-
-			.foreshadowing-entry-card { background: var(--background-secondary); border-radius: 6px; padding: 10px 12px; margin-bottom: 8px; border-left: 3px solid var(--background-modifier-border); }
-			.foreshadowing-entry-card.status-pending { border-left-color: var(--color-orange, #f59e0b); }
-			.foreshadowing-entry-card.status-recovered { border-left-color: var(--color-green, #10b981); opacity: 0.75; }
-			.foreshadowing-entry-card.status-deprecated { border-left-color: var(--text-muted); opacity: 0.5; }
-
-			.foreshadowing-entry-desc { margin-bottom: 6px; }
-			.foreshadowing-entry-desc-text { font-weight: 600; font-size: 0.9em; color: var(--text-normal); }
-
-			.foreshadowing-entry-quotes { margin-bottom: 6px; }
-			.foreshadowing-entry-quote { margin-bottom: 4px; }
-			.foreshadowing-entry-quote-meta { font-size: 0.72em; color: var(--text-muted); margin-bottom: 2px; }
-			.foreshadowing-entry-quote-text { font-size: 0.82em; color: var(--text-muted); padding-left: 8px; border-left: 2px solid var(--background-modifier-border); line-height: 1.5; white-space: pre-wrap; }
-
-			.foreshadowing-entry-footer { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
-			.foreshadowing-entry-tags { display: flex; gap: 4px; flex-wrap: wrap; }
-			.foreshadowing-entry-tag { font-size: 0.72em; color: var(--interactive-accent); background: var(--background-primary); padding: 1px 6px; border-radius: 8px; border: 1px solid var(--interactive-accent); opacity: 0.8; }
-
-			.foreshadowing-entry-actions { display: flex; gap: 4px; flex-shrink: 0; }
-			.foreshadowing-action-btn { padding: 2px 8px; border-radius: 4px; border: 1px solid var(--background-modifier-border); background: transparent; color: var(--text-muted); cursor: pointer; font-size: 0.75em; }
-			.foreshadowing-action-btn:hover { border-color: var(--interactive-accent); color: var(--interactive-accent); }
-			.foreshadowing-recover-btn { border-color: var(--color-orange, #f59e0b); color: var(--color-orange, #f59e0b); }
-			.foreshadowing-recover-btn:hover { background: var(--color-orange, #f59e0b); color: white; }
-			.foreshadowing-deprecate-btn { border-color: var(--text-muted); color: var(--text-muted); }
-			.foreshadowing-deprecate-btn:hover { background: var(--text-muted); color: white; }
-
-			.foreshadowing-entry-recovery { font-size: 0.78em; color: var(--text-muted); margin-top: 4px; }
-			.foreshadowing-entry-recovery-label { }
-			.foreshadowing-entry-recovery-link { color: var(--color-green, #10b981); cursor: pointer; text-decoration: underline; }
-		`;
-		document.head.appendChild(style);
+		// CSS 已统一在 main.ts 的 injectGlobalStyles() 中注入
 	}
-
-	async onClose() {}
 }

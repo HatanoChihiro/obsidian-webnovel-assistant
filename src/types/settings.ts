@@ -5,6 +5,14 @@
  */
 import { ForeshadowingSettings } from './foreshadowing';
 
+/** 时间线功能相关设置 */
+export interface TimelineSettings {
+	/** 时间线文件名（不含 .md 后缀，默认：时间线） */
+	fileName: string;
+	/** 默认类型标签列表 */
+	defaultTypes: string[];
+}
+
 /**
  * 每日统计数据
  */
@@ -111,6 +119,8 @@ export interface AccurateCountSettings {
 	obsShowSessionWords: boolean;
 	/** 伏笔标注功能设置 */
 	foreshadowing: ForeshadowingSettings;
+	/** 时间线功能设置 */
+	timeline: TimelineSettings;
 	/** 护眼模式：是否启用编辑区绿色背景 */
 	eyeCareEnabled: boolean;
 	/** 护眼模式背景色（十六进制） */

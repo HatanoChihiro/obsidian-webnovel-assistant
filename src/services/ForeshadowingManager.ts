@@ -9,6 +9,9 @@ type AccurateChineseCountPlugin = any;
  * 负责伏笔文件的读写、格式化、状态更新
  */
 export class ForeshadowingManager {
+	/** 正则表达式缓存，避免重复编译 */
+	private static readonly entryPatternCache = new Map<string, RegExp>();
+
 	constructor(
 		private app: App,
 		private plugin: AccurateChineseCountPlugin
@@ -227,6 +230,32 @@ export class ForeshadowingManager {
 	}
 
 	/**
+	 * 获取缓存的条目匹配正则表达式
+	 * @param sourceFile 来源文件名
+	 * @param createdAt 创建时间
+	 * @param status 要匹配的状态（如 "未回收|已废弃"）
+	 */
+	private getEntryPattern(sourceFile: string, createdAt: string, status: string): RegExp {
+		const key = `${sourceFile}:${createdAt}:${status}`;
+		
+		if (!ForeshadowingManager.entryPatternCache.has(key)) {
+			// 转义正则特殊字符
+			const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+			
+			const pattern = new RegExp(
+				`(## \\[\\[${escapeRegex(sourceFile)}\\]\\]` +
+				(createdAt ? `[^\\n]*${escapeRegex(createdAt)}` : '') +
+				`[\\s\\S]*?)(\\*\\*状态\\*\\*：)(${status})`,
+				'm'
+			);
+			
+			ForeshadowingManager.entryPatternCache.set(key, pattern);
+		}
+		
+		return ForeshadowingManager.entryPatternCache.get(key)!;
+	}
+
+	/**
 	 * 将指定条目标记为已回收，更新状态和回收信息
 	 * 通过来源文件名 + 创建时间定位条目
 	 */
@@ -239,17 +268,8 @@ export class ForeshadowingManager {
 		const content = await this.app.vault.read(targetFile);
 		const now = window.moment().format('YYYY-MM-DD HH:mm');
 
-		// 转义正则特殊字符
-		const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-		// 匹配目标条目的状态行（在对应标题之后）
-		// 策略：找到标题行，然后在该条目范围内替换状态
-		const titlePattern = new RegExp(
-			`(## \\[\\[${escapeRegex(sourceFile)}\\]\\]` +
-			(createdAt ? `[^\\n]*${escapeRegex(createdAt)}` : '') +
-			`[\\s\\S]*?)(\\*\\*状态\\*\\*：)(未回收|已废弃)`,
-			'm'
-		);
+		// 使用缓存的正则表达式
+		const titlePattern = this.getEntryPattern(sourceFile, createdAt, '未回收|已废弃');
 
 		if (!titlePattern.test(content)) return false;
 
@@ -273,14 +293,9 @@ export class ForeshadowingManager {
 		createdAt: string
 	): Promise<boolean> {
 		const content = await this.app.vault.read(targetFile);
-		const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-		const titlePattern = new RegExp(
-			`(## \\[\\[${escapeRegex(sourceFile)}\\]\\]` +
-			(createdAt ? `[^\\n]*${escapeRegex(createdAt)}` : '') +
-			`[\\s\\S]*?)(\\*\\*状态\\*\\*：)(未回收)`,
-			'm'
-		);
+		// 使用缓存的正则表达式
+		const titlePattern = this.getEntryPattern(sourceFile, createdAt, '未回收');
 
 		if (!titlePattern.test(content)) return false;
 
@@ -302,14 +317,9 @@ export class ForeshadowingManager {
 		createdAt: string
 	): Promise<boolean> {
 		const content = await this.app.vault.read(targetFile);
-		const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-		const titlePattern = new RegExp(
-			`(## \\[\\[${escapeRegex(sourceFile)}\\]\\]` +
-			(createdAt ? `[^\\n]*${escapeRegex(createdAt)}` : '') +
-			`[\\s\\S]*?)(\\*\\*状态\\*\\*：)(已废弃)`,
-			'm'
-		);
+		// 使用缓存的正则表达式
+		const titlePattern = this.getEntryPattern(sourceFile, createdAt, '已废弃');
 
 		if (!titlePattern.test(content)) return false;
 
@@ -323,5 +333,15 @@ export class ForeshadowingManager {
 	}
 	async openForeshadowingFile(targetFile: TFile): Promise<void> {
 		await this.app.workspace.getLeaf('tab').openFile(targetFile);
+	}
+
+	/**
+	 * 根据文件夹路径获取伏笔文件（供视图使用）
+	 */
+	getForeshadowingFileByFolder(folderPath: string): TFile | null {
+		const fileName = this.plugin.settings.foreshadowing?.fileName || '伏笔';
+		const path = folderPath ? `${folderPath}/${fileName}.md` : `${fileName}.md`;
+		const file = this.app.vault.getAbstractFileByPath(path);
+		return file instanceof TFile ? file : null;
 	}
 }
