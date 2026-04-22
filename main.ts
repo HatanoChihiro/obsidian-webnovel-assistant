@@ -318,7 +318,7 @@ export default class AccurateChineseCountPlugin extends Plugin {
 
 		this.addCommand({
 			id: 'toggle-tracking',
-			name: '开始/暂停 码字与时长统计',
+			name: '开始/暂停 摸鱼时间统计',
 			callback: () => {
 				this.isTracking = !this.isTracking;
 				if (this.isTracking) {
@@ -346,7 +346,7 @@ export default class AccurateChineseCountPlugin extends Plugin {
 
 		this.addCommand({
 			id: 'reset-stream-session',
-			name: '重置直播统计数据 (清零时长与今日字数)',
+			name: '重置直播统计数据 (清空时长和净增字数)',
 			callback: () => {
 				this.focusMs = 0;
 				this.slackMs = 0;
@@ -362,7 +362,7 @@ export default class AccurateChineseCountPlugin extends Plugin {
 
 		this.addCommand({
 			id: 'create-next-chapter',
-			name: '自动生成下一章 (带编号递增)',
+			name: '自动创建下一章 (智能递增)',
 			editorCallback: async (editor, view) => {
 				const currentFile = view.file;
 				if (!currentFile) return;

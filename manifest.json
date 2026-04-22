@@ -1,7 +1,7 @@
 {
   "id": "web-novel-assistant",
   "name": "WebNovel Assistant",
-  "version": "1.1.3",
+  "version": "2.0.0",
   "minAppVersion": "0.15.0",
   "description": "专为网文小说创作服务",
   "author": "HatanoChihiro",
