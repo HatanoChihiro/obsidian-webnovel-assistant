@@ -73,6 +73,40 @@ export function isMobile(): boolean {
 }
 
 /**
+ * 检查是否为平板设备
+ * 平板定义：移动设备且屏幕宽度 >= 768px
+ * @returns 如果是平板返回 true
+ * 
+ * @example
+ * ```typescript
+ * if (isTablet()) {
+ *   // 启用平板优化功能
+ * }
+ * ```
+ */
+export function isTablet(): boolean {
+	return isMobile() && window.innerWidth >= 768;
+}
+
+/**
+ * 获取平台层级
+ * @returns 'desktop' | 'tablet' | 'mobile'
+ * 
+ * @example
+ * ```typescript
+ * const tier = getPlatformTier();
+ * if (tier === 'tablet') {
+ *   // 启用部分高级功能
+ * }
+ * ```
+ */
+export function getPlatformTier(): 'desktop' | 'tablet' | 'mobile' {
+	if (isDesktop()) return 'desktop';
+	if (isTablet()) return 'tablet';
+	return 'mobile';
+}
+
+/**
  * 检查是否为 iOS 设备
  * @returns 如果是 iOS 返回 true
  */
@@ -108,6 +142,7 @@ export function getPlatformName(): string {
 /**
  * 检查是否支持高级功能
  * 高级功能包括: OBS 服务器、悬浮便签、Worker 等
+ * 桌面端支持所有高级功能
  * @returns 如果支持高级功能返回 true
  * 
  * @example
@@ -120,6 +155,24 @@ export function getPlatformName(): string {
  */
 export function supportsAdvancedFeatures(): boolean {
 	return isDesktop();
+}
+
+/**
+ * 检查是否支持面板功能
+ * 面板功能包括: 伏笔面板、时间线面板、状态视图面板
+ * 桌面端和平板端支持面板功能
+ * @returns 如果支持面板功能返回 true
+ * 
+ * @example
+ * ```typescript
+ * if (supportsPanelFeatures()) {
+ *   // 启用伏笔面板
+ *   // 启用时间线面板
+ * }
+ * ```
+ */
+export function supportsPanelFeatures(): boolean {
+	return isDesktop() || isTablet();
 }
 
 /**

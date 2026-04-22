@@ -31,8 +31,11 @@ export {
 	isMobile,
 	isIOS,
 	isAndroid,
+	isTablet,
 	getPlatformName,
+	getPlatformTier,
 	supportsAdvancedFeatures,
 	supportsNodeModules,
+	supportsPanelFeatures,
 	getTouchTargetSize
 } from './platform';
