@@ -980,22 +980,35 @@ export default class AccurateChineseCountPlugin extends Plugin {
 	}
 
 	/**
-	 * �����ļ�����������
+	 * 构建文件浏览器缓存
 	 */
 	async buildFolderCache(): Promise<void> {
 		if (!this.settings.showExplorerCounts) return;
 
 		try {
-			// �ȳ��Դӳ־û��洢���ػ���
+			// 先尝试从持久化存储加载缓存
 			const loaded = await this.cacheManager.loadCache();
-			if (loaded) {
-				// ������سɹ���ֱ��ˢ����ʾ
+			
+			// 检查缓存完整性：对比缓存条目数和实际文件数
+			const allFiles = this.app.vault.getMarkdownFiles();
+			const cacheStats = this.cacheManager.getCacheStats();
+			
+			// 如果缓存条目数明显少于文件数（考虑到还有文件夹缓存，所以用 0.5 倍作为阈值）
+			const shouldRebuild = !loaded || cacheStats.size < allFiles.length * 0.5;
+			
+			if (loaded && !shouldRebuild) {
+				// 加载成功且缓存完整，直接刷新显示
 				this.refreshFolderCounts();
-				console.log('[Plugin] �Ѵӳ־û��洢���ػ���');
+				console.log('[Plugin] 已从持久化存储加载缓存');
 				return;
 			}
+			
+			// 缓存不完整或不存在，重新构建
+			if (loaded && shouldRebuild) {
+				console.log(`[Plugin] 缓存不完整（${cacheStats.size} 条目 vs ${allFiles.length} 文件），重新构建...`);
+			}
 
-			// 如果缓存失败或不存在，重新构建
+			// 重新构建缓存
 			const notice = new Notice('正在构建文件浏览器缓存...', 0);
 			
 			await this.cacheManager.buildInitialCache(
@@ -1024,7 +1037,7 @@ export default class AccurateChineseCountPlugin extends Plugin {
 	}
 
 	/**
-	 * �����ļ����沢ˢ����ʾ
+	 * 更新文件缓存并刷新显示
 	 */
 	async updateFileCacheAndRefresh(file: TFile): Promise<void> {
 		try {
@@ -1033,8 +1046,8 @@ export default class AccurateChineseCountPlugin extends Plugin {
 			this.cacheManager.updateFileCache(file, wordCount, this.app.vault);
 			this.refreshFolderCounts();
 		} catch (error) {
-			console.error('[Plugin] �����ļ�����ʧ��:', error);
-			// �ļ���ȡʧ��ʱ��ʹ����ʧЧ
+			console.error('[Plugin] 更新文件缓存失败:', error);
+			// 文件读取失败时，使缓存失效
 			this.cacheManager.invalidateCache(file.path, this.app.vault);
 		}
 	}
@@ -1094,36 +1107,36 @@ export default class AccurateChineseCountPlugin extends Plugin {
 	}
 
 	calculateAccurateWords(text: string): number {
-		// ���� Markdown �﷨���ţ������������ݣ�����㣩
-		// ʹ�� constants.ts ��Ԥ������������ʽ����������
+		// 清理 Markdown 语法标记，只保留纯文本内容（用于计数）
+		// 使用 constants.ts 中预定义的正则表达式（性能优化）
 		let cleaned = text
-			// �Ƴ� frontmatter
+			// 移除 frontmatter
 			.replace(REGEX_PATTERNS.FRONTMATTER, '')
-			// �Ƴ������
+			// 移除代码块
 			.replace(REGEX_PATTERNS.CODE_BLOCK, '')
 			.replace(REGEX_PATTERNS.INLINE_CODE, '')
-			// �Ƴ����� # ����
+			// 移除标题 # 符号
 			.replace(REGEX_PATTERNS.HEADING, '')
-			// �Ƴ��Ӵ�/б����� ** * __ _
+			// 移除粗体/斜体符号 ** * __ _
 			.replace(REGEX_PATTERNS.BOLD, '$2')
 			.replace(REGEX_PATTERNS.ITALIC, '$2')
-			// �Ƴ� Obsidian �ڲ��������� [[�ļ���]] �� �ļ���
+			// 移除 Obsidian 内部链接语法 [[文件名]] → 文件名
 			.replace(REGEX_PATTERNS.INTERNAL_LINK, (_, name, alias) => alias || name)
-			// �Ƴ���ͨ���� [����](url) �� ����
+			// 移除普通链接 [文本](url) → 文本
 			.replace(REGEX_PATTERNS.LINK, '$1')
-			// �Ƴ�ͼƬ ![alt](url)
+			// 移除图片 ![alt](url)
 			.replace(REGEX_PATTERNS.IMAGE, '')
-			// �Ƴ� HTML ��ǩ
+			// 移除 HTML 标签
 			.replace(REGEX_PATTERNS.HTML_TAG, '')
-			// �Ƴ����÷��� >
+			// 移除引用符号 >
 			.replace(REGEX_PATTERNS.QUOTE, '')
-			// �Ƴ��ָ���
+			// 移除分隔线
 			.replace(REGEX_PATTERNS.SEPARATOR, '')
-			// �Ƴ������б����� - * +
+			// 移除无序列表符号 - * +
 			.replace(REGEX_PATTERNS.UNORDERED_LIST, '')
-			// �Ƴ������б����� 1.
+			// 移除有序列表符号 1.
 			.replace(REGEX_PATTERNS.ORDERED_LIST, '')
-			// �Ƴ��հ��ַ�
+			// 移除空白字符
 			.replace(REGEX_PATTERNS.WHITESPACE, '');
 		return cleaned.length;
 	}
@@ -1164,7 +1177,7 @@ export default class AccurateChineseCountPlugin extends Plugin {
 		const totalCount = this.calculateAccurateWords(view.getViewData());
 		const displaySessionWords = Math.max(0, this.sessionAddedWords);
 		
-		const stateStr = this.isTracking ? "??��¼��" : "??����ͣ";
+		const stateStr = this.isTracking ? "⏱️记录中" : "⏸️已暂停";
 
 		if (this.settings.showGoal && view.file) {
 			const cache = this.app.metadataCache.getFileCache(view.file);
@@ -1176,14 +1189,14 @@ export default class AccurateChineseCountPlugin extends Plugin {
 
 			if (targetGoal > 0) {
 				const percent = Math.min(Math.round((totalCount / targetGoal) * 100), 100);
-				let emoji = percent >= 100 ? '?' : '??';
-				this.statusBarItemEl.setText(`[${stateStr}] ${emoji} ����: ${totalCount} / ${targetGoal} (${percent}%) | ����: ${displaySessionWords}`);
+				let emoji = percent >= 100 ? '✅' : '📝';
+				this.statusBarItemEl.setText(`[${stateStr}] ${emoji} 字数: ${totalCount} / ${targetGoal} (${percent}%) | 净增: ${displaySessionWords}`);
 				return;
 			}
 		}
 
 		const cnChars = (view.getViewData().match(/[\u4e00-\u9fa5]/g) || []).length;
-		this.statusBarItemEl.setText(`[${stateStr}] ?? ����: ${totalCount} (������: ${cnChars}) | ����: ${displaySessionWords}`);
+		this.statusBarItemEl.setText(`[${stateStr}] 📝 字数: ${totalCount} (中文字: ${cnChars}) | 净增: ${displaySessionWords}`);
 	}
 
 	setupWorker() {
@@ -1660,7 +1673,7 @@ update();
 		}
 		const fileExplorerItems = (fileExplorer.view as unknown as FileExplorerView).fileItems;
 
-		// --- ������ùرգ�����������е�������ǩ���˳� ---
+		// --- 如果功能关闭，清除所有现有的字数标签并退出 ---
 		if (!this.settings.showExplorerCounts) {
 			for (const path in fileExplorerItems) {
 				const item = fileExplorerItems[path];
@@ -1672,23 +1685,23 @@ update();
 			return;
 		}
 
-		// --- ʹ�û����ȡ���� ---
+		// --- 使用缓存获取字数 ---
 		for (const path in fileExplorerItems) {
 			const item = fileExplorerItems[path];
-			// ֧���ļ���(TFolder)���ĵ�(TFile)
+			// 支持文件夹(TFolder)和文档(TFile)
 			if (item.el && (item.file instanceof TFolder || (item.file instanceof TFile && item.file.extension === 'md'))) {
-				// �ӻ����ȡ����
+				// 从缓存获取字数
 				const count = this.cacheManager.getFolderCount(path) || 0;
 				let countEl = item.el.querySelector('.folder-word-count');
 				
 				if (!countEl) {
-					// �����ҵ���������
+					// 如果找不到，创建新的
 					const titleContent = item.el.querySelector('.nav-folder-title-content') || item.el.querySelector('.nav-file-title-content');
 					if (titleContent) countEl = titleContent.createEl('span', { cls: 'folder-word-count' });
 				}
 				
 				if (countEl) {
-					// ֻ���������� 0 ʱ����ʾ
+					// 只在字数大于 0 时才显示
 					countEl.setText(count > 0 ? ` (${formatCount(count)})` : "");
 					(countEl as HTMLElement).style.fontSize = '0.8em';
 					(countEl as HTMLElement).style.opacity = '0.5';

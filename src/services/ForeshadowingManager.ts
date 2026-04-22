@@ -35,11 +35,10 @@ export class ForeshadowingManager {
 	}
 
 	/**
-	 * 创建伏笔文件（带初始标题）
+	 * 创建伏笔文件（空文件，不添加标题）
 	 */
 	async createForeshadowingFile(sourceFile: TFile): Promise<TFile> {
 		const path = this.getForeshadowingFilePath(sourceFile);
-		const fileName = this.plugin.settings.foreshadowing.fileName || '伏笔';
 
 		// 确保文件夹存在
 		const folder = sourceFile.parent?.path;
@@ -47,8 +46,8 @@ export class ForeshadowingManager {
 			await this.app.vault.createFolder(folder);
 		}
 
-		const initialContent = `# ${fileName}\n\n`;
-		return await this.app.vault.create(path, initialContent);
+		// 创建空文件，不添加标题（避免影响第一条伏笔的解析）
+		return await this.app.vault.create(path, '');
 	}
 
 	/**
