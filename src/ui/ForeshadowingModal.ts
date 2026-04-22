@@ -141,6 +141,36 @@ export class ForeshadowingInputModal extends Modal {
 // ─────────────────────────────────────────────
 
 /**
+ * 章节选择建议模态框
+ */
+class ChapterSuggestModal extends SuggestModal<string> {
+	private chapters: string[];
+	private onSubmit: (chapter: string) => void;
+
+	constructor(app: App, chapters: string[], onSubmit: (chapter: string) => void) {
+		super(app);
+		this.chapters = chapters;
+		this.onSubmit = onSubmit;
+		this.setPlaceholder('输入章节名称进行搜索...');
+	}
+
+	getSuggestions(query: string): string[] {
+		const lowerQuery = query.toLowerCase();
+		return this.chapters.filter(chapter =>
+			chapter.toLowerCase().includes(lowerQuery)
+		);
+	}
+
+	renderSuggestion(chapter: string, el: HTMLElement) {
+		el.createEl('div', { text: chapter });
+	}
+
+	onChooseSuggestion(chapter: string, evt: MouseEvent | KeyboardEvent) {
+		this.onSubmit(chapter);
+	}
+}
+
+/**
  * 标记伏笔已回收时弹出的对话框
  * 用户选择或输入回收章节文件名
  */
@@ -149,6 +179,7 @@ export class ForeshadowingRecoveryModal extends Modal {
 	private folderPath: string;
 	private onSubmit: (recoveryFileName: string) => void;
 	private inputEl!: HTMLInputElement;
+	private chapters: string[] = [];
 
 	constructor(
 		app: App,
@@ -160,6 +191,15 @@ export class ForeshadowingRecoveryModal extends Modal {
 		this.contentPreview = contentPreview;
 		this.folderPath = folderPath;
 		this.onSubmit = onSubmit;
+		
+		// 获取同文件夹下的章节文件
+		const folder = this.app.vault.getAbstractFileByPath(this.folderPath);
+		if (folder && 'children' in folder) {
+			(folder as any).children.forEach((child: any) => {
+				if (child.extension === 'md') this.chapters.push(child.basename);
+			});
+			this.chapters.sort((a, b) => a.localeCompare(b, 'zh-CN'));
+		}
 	}
 
 	onOpen() {
@@ -188,31 +228,25 @@ export class ForeshadowingRecoveryModal extends Modal {
 		});
 		this.inputEl.style.cssText = 'width:100%;margin-bottom:8px;padding:6px 8px;border-radius:4px;border:1px solid var(--background-modifier-border);background:var(--background-primary);color:var(--text-normal);';
 
-		// 只列出同文件夹下的 md 文件供参考
-		const folder = this.app.vault.getAbstractFileByPath(this.folderPath);
-		const mdFiles: string[] = [];
-		if (folder && 'children' in folder) {
-			(folder as any).children.forEach((child: any) => {
-				if (child.extension === 'md') mdFiles.push(child.basename);
-			});
-			mdFiles.sort((a, b) => a.localeCompare(b, 'zh-CN'));
-		}
-
-		if (mdFiles.length > 0) {
+		// 如果有章节文件，显示选择按钮
+		if (this.chapters.length > 0) {
+			const btnRow = contentEl.createDiv();
+			btnRow.style.cssText = 'display:flex;gap:8px;margin-bottom:12px;';
+			
+			const selectBtn = btnRow.createEl('button', { text: '📋 从列表选择' });
+			selectBtn.style.cssText = 'flex:1;padding:6px 12px;border-radius:4px;border:1px solid var(--interactive-accent);color:var(--interactive-accent);background:transparent;cursor:pointer;';
+			selectBtn.onclick = () => {
+				this.close();
+				new ChapterSuggestModal(this.app, this.chapters, (chapter) => {
+					this.onSubmit(chapter);
+				}).open();
+			};
+			
 			const hint = contentEl.createEl('p', {
-				text: '💡 提示：输入文件名关键词可快速定位',
+				text: `💡 当前文件夹有 ${this.chapters.length} 个章节文件`,
 				cls: 'setting-item-description'
 			});
 			hint.style.marginBottom = '12px';
-
-			// 简单的 datalist 自动补全
-			const datalist = contentEl.createEl('datalist');
-			datalist.id = 'foreshadowing-file-list';
-			for (const name of mdFiles) {
-				const option = datalist.createEl('option');
-				option.value = name;
-			}
-			this.inputEl.setAttribute('list', 'foreshadowing-file-list');
 		}
 
 		// 按钮区

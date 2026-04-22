@@ -1,5 +1,5 @@
 import { App, Notice, PluginSettingTab, Setting } from 'obsidian';
-import { isDesktop, isMobile } from '../utils/platform';
+import { isDesktop, isMobile, getPlatformTier } from '../utils/platform';
 import { ObsOverlayServer } from '../services/ObsServer';
 
 // 前向声明，避免循环依赖
@@ -21,17 +21,74 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		const {containerEl} = this;
 		containerEl.empty();
 
-		// 平台检测 - 移动端显示提示
-		if (isMobile()) {
+		// 平台检测 - 显示对应提示
+		const tier = getPlatformTier();
+		if (tier === 'mobile') {
 			const mobileNotice = containerEl.createDiv({
 				cls: 'setting-item-description',
 				attr: {
 					style: 'background: var(--background-secondary); padding: 12px; border-radius: 6px; margin-bottom: 20px; border-left: 3px solid var(--interactive-accent);'
 				}
 			});
-			mobileNotice.createEl('strong', { text: '💡 移动端模式' });
+			mobileNotice.createEl('strong', { text: '📱 移动端模式' });
 			mobileNotice.createEl('br');
-			mobileNotice.appendText('部分高级功能(悬浮便签、OBS 直播叠加层、文本文件导出)仅在桌面端可用,以优化移动设备性能和电池续航。');
+			mobileNotice.appendText('部分高级功能(面板、悬浮便签、OBS)仅在桌面端或平板端可用,以优化移动设备性能和电池续航。');
+			
+			// 移动端专属设置
+			containerEl.createEl('h2', {text: '移动端设置'});
+			
+			new Setting(containerEl)
+				.setName('显示浮动字数统计')
+				.setDesc('在屏幕上显示一个小巧的浮动窗口，实时显示字数和进度。可拖动位置。')
+				.addToggle(toggle => toggle
+					.setValue(this.plugin.settings.showMobileFloatingStats)
+					.onChange(async (value) => {
+						this.plugin.settings.showMobileFloatingStats = value;
+						await this.plugin.saveSettings();
+						
+						// 立即应用更改
+						if (value) {
+							if (!this.plugin.mobileFloatingStats) {
+								this.plugin.mobileFloatingStats = new (await import('./MobileFloatingStats')).MobileFloatingStats(this.app, this.plugin);
+							}
+							this.plugin.mobileFloatingStats.load();
+						} else {
+							this.plugin.mobileFloatingStats?.unload();
+						}
+					}));
+		} else if (tier === 'tablet') {
+			const tabletNotice = containerEl.createDiv({
+				cls: 'setting-item-description',
+				attr: {
+					style: 'background: var(--background-secondary); padding: 12px; border-radius: 6px; margin-bottom: 20px; border-left: 3px solid var(--interactive-accent);'
+				}
+			});
+			tabletNotice.createEl('strong', { text: '📱 平板端模式' });
+			tabletNotice.createEl('br');
+			tabletNotice.appendText('已启用面板功能（伏笔、时间线、状态视图）。悬浮便签和 OBS 功能仅在桌面端可用。');
+			
+			// 平板端专属设置
+			containerEl.createEl('h2', {text: '平板端设置'});
+			
+			new Setting(containerEl)
+				.setName('显示浮动字数统计')
+				.setDesc('在屏幕上显示一个小巧的浮动窗口，实时显示字数和进度。可拖动位置。')
+				.addToggle(toggle => toggle
+					.setValue(this.plugin.settings.showMobileFloatingStats)
+					.onChange(async (value) => {
+						this.plugin.settings.showMobileFloatingStats = value;
+						await this.plugin.saveSettings();
+						
+						// 立即应用更改
+						if (value) {
+							if (!this.plugin.mobileFloatingStats) {
+								this.plugin.mobileFloatingStats = new (await import('./MobileFloatingStats')).MobileFloatingStats(this.app, this.plugin);
+							}
+							this.plugin.mobileFloatingStats.load();
+						} else {
+							this.plugin.mobileFloatingStats?.unload();
+						}
+					}));
 		}
 
 		containerEl.createEl('h2', {text: '精准字数与目标设置'});
@@ -88,32 +145,35 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					}
 				}));
 
-		new Setting(containerEl)
-			.setName('启用智能章节排序')
-			.setDesc('自动识别章节编号（支持阿拉伯数字和中文数字），按数字大小排序而非字符串排序。例如："第1章"、"第2章"、"第10章"或"第一章"、"第二章"、"第十章"。')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.enableSmartChapterSort)
-				.onChange(async (value) => {
-					this.plugin.settings.enableSmartChapterSort = value;
-					await this.plugin.saveSettings();
-					
-					if (value) {
-						// 启用智能排序
-						const success = this.plugin.fileExplorerPatcher.enable();
-						if (success) {
-							new Notice('✅ 智能章节排序已启用');
+		// 智能章节排序（仅桌面端）
+		if (isDesktop()) {
+			new Setting(containerEl)
+				.setName('启用智能章节排序')
+				.setDesc('自动识别章节编号（支持阿拉伯数字和中文数字），按数字大小排序而非字符串排序。例如："第1章"、"第2章"、"第10章"或"第一章"、"第二章"、"第十章"。')
+				.addToggle(toggle => toggle
+					.setValue(this.plugin.settings.enableSmartChapterSort)
+					.onChange(async (value) => {
+						this.plugin.settings.enableSmartChapterSort = value;
+						await this.plugin.saveSettings();
+						
+						if (value) {
+							// 启用智能排序
+							const success = this.plugin.fileExplorerPatcher.enable();
+							if (success) {
+								new Notice('✅ 智能章节排序已启用');
+							} else {
+								new Notice('❌ 启用失败，请重启 Obsidian 后重试');
+								this.plugin.settings.enableSmartChapterSort = false;
+								await this.plugin.saveSettings();
+								toggle.setValue(false);
+							}
 						} else {
-							new Notice('❌ 启用失败，请重启 Obsidian 后重试');
-							this.plugin.settings.enableSmartChapterSort = false;
-							await this.plugin.saveSettings();
-							toggle.setValue(false);
+							// 禁用智能排序
+							this.plugin.fileExplorerPatcher.disable();
+							new Notice('智能章节排序已禁用');
 						}
-					} else {
-						// 禁用智能排序
-						this.plugin.fileExplorerPatcher.disable();
-						new Notice('智能章节排序已禁用');
-					}
-				}));
+					}));
+		}
 
 		// 移动端隐藏桌面专属功能
 		if (isDesktop()) {
@@ -340,9 +400,12 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					this.plugin.settings.enableObs = value;
 					await this.plugin.saveSettings();
 					if (value) {
-						if (!this.plugin.obsServer) {
-							this.plugin.obsServer = new ObsOverlayServer(this.plugin, this.plugin.settings.obsPort);
+						// 先停止旧服务器（如果存在）
+						if (this.plugin.obsServer) {
+							this.plugin.obsServer.stop();
 						}
+						// 使用当前端口创建新服务器
+						this.plugin.obsServer = new ObsOverlayServer(this.plugin, this.plugin.settings.obsPort);
 						this.plugin.obsServer.start();
 					} else {
 						this.plugin.obsServer?.stop();
@@ -359,6 +422,14 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					if (!isNaN(parsed) && parsed > 0 && parsed < 65536) {
 						this.plugin.settings.obsPort = parsed;
 						await this.plugin.saveSettings();
+						
+						// 如果 OBS 服务器正在运行，重启以应用新端口
+						if (this.plugin.settings.enableObs && this.plugin.obsServer) {
+							this.plugin.obsServer.stop();
+							this.plugin.obsServer = new ObsOverlayServer(this.plugin, this.plugin.settings.obsPort);
+							this.plugin.obsServer.start();
+							new Notice(`OBS 叠加层已重启，新端口：${parsed}`);
+						}
 					}
 				}));
 
