@@ -2122,11 +2122,7 @@ update();
 				background-color: transparent !important;
 			}
 		`;
-		removeGlobalStyle('accurate-count-eye-care');
-		const style = document.createElement('style');
-		style.id = 'accurate-count-eye-care';
-		style.innerHTML = css;
-		document.head.appendChild(style);
+		injectGlobalStyle('accurate-count-eye-care', css);
 	}
 
 	removeEyeCare() {

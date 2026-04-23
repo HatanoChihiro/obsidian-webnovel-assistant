@@ -9,8 +9,9 @@ type AccurateChineseCountPlugin = any;
  * 负责伏笔文件的读写、格式化、状态更新
  */
 export class ForeshadowingManager {
-	/** 正则表达式缓存，避免重复编译 */
+	/** 正则表达式缓存，避免重复编译（最多缓存 100 个） */
 	private static readonly entryPatternCache = new Map<string, RegExp>();
+	private static readonly MAX_CACHE_SIZE = 100;
 
 	constructor(
 		private app: App,
@@ -250,6 +251,12 @@ export class ForeshadowingManager {
 		const key = `${sourceFile}:${createdAt}:${status}`;
 		
 		if (!ForeshadowingManager.entryPatternCache.has(key)) {
+			// LRU 缓存：超过限制时删除最早的条目
+			if (ForeshadowingManager.entryPatternCache.size >= ForeshadowingManager.MAX_CACHE_SIZE) {
+				const firstKey = ForeshadowingManager.entryPatternCache.keys().next().value;
+				ForeshadowingManager.entryPatternCache.delete(firstKey);
+			}
+			
 			// 转义正则特殊字符
 			const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 			

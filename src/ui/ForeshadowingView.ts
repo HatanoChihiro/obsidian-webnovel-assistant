@@ -422,8 +422,4 @@ export class ForeshadowingView extends CreativeView {
 
 		return entries;
 	}
-
-	private injectStyles() {
-		// CSS 已统一在 main.ts 的 injectGlobalStyles() 中注入
-	}
 }

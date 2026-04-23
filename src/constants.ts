@@ -95,31 +95,6 @@ export const VIEW_TYPES = {
 } as const;
 
 // ==========================================
-// 命令 ID 常量
-// ==========================================
-export const COMMAND_IDS = {
-	// 便签相关
-	NEW_STICKY_NOTE: 'accurate-count:new-sticky-note',
-	SAVE_STICKY_NOTE: 'accurate-count:save-sticky-note',
-	
-	// 伏笔相关
-	ADD_FORESHADOWING: 'accurate-count:add-foreshadowing',
-	MARK_RECOVERED: 'accurate-count:mark-recovered',
-	
-	// 时间线相关
-	ADD_TO_TIMELINE: 'accurate-count:add-to-timeline',
-	
-	// 视图相关
-	TOGGLE_STATUS_VIEW: 'accurate-count:toggle-status-view',
-	TOGGLE_FORESHADOWING_VIEW: 'accurate-count:toggle-foreshadowing-view',
-	TOGGLE_TIMELINE_VIEW: 'accurate-count:toggle-timeline-view',
-	
-	// 目标相关
-	SET_CHAPTER_GOAL: 'accurate-count:set-chapter-goal',
-	CLEAR_CHAPTER_GOAL: 'accurate-count:clear-chapter-goal',
-} as const;
-
-// ==========================================
 // 正则表达式常量
 // ==========================================
 export const REGEX_PATTERNS = {
@@ -131,10 +106,6 @@ export const REGEX_PATTERNS = {
 	NUMBER: /\d+/g,
 	/** 标点符号 */
 	PUNCTUATION: /[，。！？；：""''（）【】《》、·…—～]/g,
-	/** 章节编号（数字） */
-	CHAPTER_NUMBER: /\d+/,
-	/** 中文数字 */
-	CHINESE_CHAPTER_NUMBER: /[零一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]+/,
 	
 	// Markdown 清理正则（用于字数统计）
 	/** Frontmatter */
