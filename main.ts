@@ -39,7 +39,7 @@ const DEFAULT_SETTINGS: AccurateCountSettings = {
 	enableSmartChapterSort: false, // 默认关闭，避免与用户习惯冲突
 	chapterNamingRules: [
 		{ name: '阿拉伯数字（第1章、第01章）', pattern: '^第?(\\d+)[章节回卷部册篇]?', enabled: true },
-		{ name: '中文数字（第一章、第二章）', pattern: '^第?([一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]+)[章节回卷部册篇]?', enabled: true },
+		{ name: '中文数字（第一章、第二章）', pattern: '^第?([零一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]+)[章节回卷部册篇]?', enabled: true },
 		{ name: '纯数字（1、01、001）', pattern: '^(\\d+)$', enabled: true },
 	],
 	workspaceFolders: [],
@@ -517,12 +517,8 @@ export default class AccurateChineseCountPlugin extends Plugin {
 								return;
 							}
 
-							// 按章节编号排序
-							mdFiles.sort((a, b) => {
-								const aNum = ChapterSorter.extractChapterNumber(a.name) ?? 0;
-								const bNum = ChapterSorter.extractChapterNumber(b.name) ?? 0;
-								return aNum - bNum;
-							});
+							// 按章节编号排序（使用 ChapterSorter 的排序逻辑）
+							mdFiles.sort((a, b) => ChapterSorter.compareFiles(a, b));
 
 							let mergedContent = `# 合并章节：${file.name}\n\n`;
 							let totalWords = 0;
@@ -595,7 +591,11 @@ export default class AccurateChineseCountPlugin extends Plugin {
 								new Notice('✅ 已添加到时间线');
 								// 刷新面板（如果已打开）
 								const leaves = this.app.workspace.getLeavesOfType(TIMELINE_VIEW_TYPE);
-								if (leaves.length > 0) await (leaves[0].view as TimelineView).refresh();
+								if (leaves.length > 0) {
+									// 确保文件写入完成后再刷新
+									await new Promise(resolve => setTimeout(resolve, 100));
+									await (leaves[0].view as TimelineView).refresh();
+								}
 							}
 						).open();
 					});
@@ -967,7 +967,11 @@ export default class AccurateChineseCountPlugin extends Plugin {
 								});
 								new Notice('✅ 已添加到时间线');
 								const leaves = this.app.workspace.getLeavesOfType(TIMELINE_VIEW_TYPE);
-								if (leaves.length > 0) await (leaves[0].view as TimelineView).refresh();
+								if (leaves.length > 0) {
+									// 确保文件写入完成后再刷新
+									await new Promise(resolve => setTimeout(resolve, 100));
+									await (leaves[0].view as TimelineView).refresh();
+								}
 							}
 						).open();
 					});

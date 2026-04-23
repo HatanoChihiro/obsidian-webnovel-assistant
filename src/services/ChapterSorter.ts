@@ -8,7 +8,7 @@ import { ChapterNamingRule } from '../types/settings';
  * 提供智能数字排序功能，支持：
  * - 自定义章节命名规则（正则表达式）
  * - 阿拉伯数字：1, 01, 001
- * - 中文数字：一、二、三...九十九
+ * - 中文数字：一、二、三...九百九十九
  * - 混合格式：第1章、第一章、Chapter 01
  * - 小数点章节：1.1, 49.1
  */
@@ -27,21 +27,47 @@ export class ChapterSorter {
 	}
 
 	/**
-	 * 解析中文数字（支持一到九十九）
+	 * 解析中文数字（支持一到九百九十九）
 	 */
 	private static parseChineseNumber(str: string): number {
-		if (str === '十') return 10;
-		if (str.startsWith('十')) {
-			const ones = str.length > 1 ? (this.chineseToArabic[str[1]] || 0) : 0;
-			return 10 + ones;
+		let result = 0;
+		let temp = 0;
+		
+		for (let i = 0; i < str.length; i++) {
+			const char = str[i];
+			const num = this.chineseToArabic[char];
+			
+			if (num !== undefined) {
+				// 数字字符
+				if (num === 0) {
+					// 零：跳过
+					continue;
+				} else if (num < 10) {
+					// 个位数字
+					temp = num;
+				} else if (num === 10) {
+					// 十
+					if (temp === 0) {
+						// 单独的"十"或"十X"格式
+						temp = 1;
+					}
+					result += temp * 10;
+					temp = 0;
+				} else if (num === 100) {
+					// 百
+					if (temp === 0) {
+						temp = 1;
+					}
+					result += temp * 100;
+					temp = 0;
+				}
+			}
 		}
-		if (str.includes('十')) {
-			const parts = str.split('十');
-			const tens = this.chineseToArabic[parts[0]] || 0;
-			const ones = parts[1] ? (this.chineseToArabic[parts[1]] || 0) : 0;
-			return tens * 10 + ones;
-		}
-		return this.chineseToArabic[str] || 0;
+		
+		// 加上剩余的个位数
+		result += temp;
+		
+		return result;
 	}
 
 	/**
@@ -160,15 +186,45 @@ export class ChapterSorter {
 	}
 
 	/**
-	 * 将阿拉伯数字转换为中文数字（支持一到九十九）
+	 * 将阿拉伯数字转换为中文数字（支持一到九百九十九）
 	 */
 	static toChineseNumber(num: number): string {
-		const arabicToChinese = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
-		if (num <= 10) return arabicToChinese[num];
-		if (num < 20) return '十' + (num === 10 ? '' : arabicToChinese[num - 10]);
+		if (num === 0) return '零';
+		if (num > 999) return num.toString(); // 超过999返回阿拉伯数字
+		
+		const digits = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
+		let result = '';
+		
+		// 百位
+		const hundreds = Math.floor(num / 100);
+		if (hundreds > 0) {
+			result += digits[hundreds] + '百';
+			num %= 100;
+			
+			// 如果十位是0但个位不是0，需要加"零"
+			if (num > 0 && num < 10) {
+				result += '零';
+			}
+		}
+		
+		// 十位
 		const tens = Math.floor(num / 10);
-		const ones = num % 10;
-		return arabicToChinese[tens] + '十' + (ones === 0 ? '' : arabicToChinese[ones]);
+		if (tens > 0) {
+			// 如果是100-109，十位的"一"可以省略
+			if (hundreds === 0 && tens === 1) {
+				result += '十';
+			} else {
+				result += digits[tens] + '十';
+			}
+			num %= 10;
+		}
+		
+		// 个位
+		if (num > 0) {
+			result += digits[num];
+		}
+		
+		return result;
 	}
 
 	/**

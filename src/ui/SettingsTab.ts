@@ -215,7 +215,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				if (!this.plugin.settings.chapterNamingRules) {
 					this.plugin.settings.chapterNamingRules = [
 						{ name: '阿拉伯数字（第1章、第01章）', pattern: '^第?(\\d+)[章节回卷部册篇]?', enabled: true },
-						{ name: '中文数字（第一章、第二章）', pattern: '^第?([一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]+)[章节回卷部册篇]?', enabled: true },
+						{ name: '中文数字（第一章、第二章）', pattern: '^第?([零一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]+)[章节回卷部册篇]?', enabled: true },
 						{ name: '纯数字（1、01、001）', pattern: '^(\\d+)$', enabled: true },
 					];
 				}
