@@ -290,11 +290,53 @@ export class FloatingStickyNote extends Component {
 
 		// 创建内容区域
 		this.contentContainer = this.containerEl.createDiv({ cls: 'my-sticky-content markdown-rendered' });
+		// 防止 contentContainer 接收焦点
+		this.contentContainer.tabIndex = -1;
 		this.textareaEl = this.containerEl.createEl('textarea', { cls: 'my-sticky-textarea' });
 
 		// 阻止 textarea 中的快捷键事件冒泡到 Obsidian
+		// 使用捕获阶段和 stopImmediatePropagation 确保优先处理
 		this.textareaEl.addEventListener('keydown', (e) => {
-			// 阻止事件冒泡，防止触发 Obsidian 的全局快捷键
+			// 对于空格和回车，阻止默认行为后手动插入
+			if (e.key === ' ') {
+				e.preventDefault();
+				e.stopImmediatePropagation();
+				const start = this.textareaEl.selectionStart;
+				const end = this.textareaEl.selectionEnd;
+				const value = this.textareaEl.value;
+				this.textareaEl.value = value.substring(0, start) + ' ' + value.substring(end);
+				this.textareaEl.selectionStart = this.textareaEl.selectionEnd = start + 1;
+				// 触发 input 事件
+				this.textareaEl.dispatchEvent(new Event('input', { bubbles: true }));
+				// 保持焦点
+				this.textareaEl.focus();
+				return false;
+			}
+			if (e.key === 'Enter') {
+				e.preventDefault();
+				e.stopImmediatePropagation();
+				const start = this.textareaEl.selectionStart;
+				const end = this.textareaEl.selectionEnd;
+				const value = this.textareaEl.value;
+				this.textareaEl.value = value.substring(0, start) + '\n' + value.substring(end);
+				this.textareaEl.selectionStart = this.textareaEl.selectionEnd = start + 1;
+				// 触发 input 事件
+				this.textareaEl.dispatchEvent(new Event('input', { bubbles: true }));
+				// 保持焦点
+				this.textareaEl.focus();
+				return false;
+			}
+			// 其他键正常传播，但阻止冒泡到 Obsidian
+			e.stopPropagation();
+		}, { capture: true });
+		
+		// 在冒泡阶段再次阻止，双重保险
+		this.textareaEl.addEventListener('keydown', (e) => {
+			e.stopPropagation();
+		}, { capture: false });
+		
+		// 阻止 mousedown 事件冒泡，防止触发标题栏的拖拽
+		this.textareaEl.addEventListener('mousedown', (e) => {
 			e.stopPropagation();
 		});
 
@@ -384,6 +426,14 @@ export class FloatingStickyNote extends Component {
 			}
 			await this.renderContent();
 			this.saveState();
+			
+			// 确保编辑模式下焦点在 textarea
+			if (this.state.isEditing) {
+				// 使用 requestAnimationFrame 确保在下一帧设置焦点
+				requestAnimationFrame(() => {
+					this.textareaEl.focus();
+				});
+			}
 		};
 
 		saveBtn.onclick = async () => {
@@ -526,6 +576,11 @@ export class FloatingStickyNote extends Component {
 			this.contentContainer.style.display = 'none';
 			this.textareaEl.style.display = 'block';
 			this.textareaEl.value = this.state.content || "";
+			// 设置焦点，确保可以正常输入
+			// 使用较长的延迟确保 DOM 更新和异步操作完成
+			setTimeout(() => {
+				this.textareaEl.focus();
+			}, 50);
 		} else {
 			this.textareaEl.style.display = 'none';
 			this.contentContainer.style.display = 'block';
