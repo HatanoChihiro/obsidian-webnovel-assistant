@@ -1,17 +1,30 @@
 import { TAbstractFile, TFile, TFolder } from 'obsidian';
 import { CHINESE_NUMBERS } from '../constants';
+import { ChapterNamingRule } from '../types/settings';
 
 /**
  * 章节排序服务
  * 
  * 提供智能数字排序功能，支持：
+ * - 自定义章节命名规则（正则表达式）
  * - 阿拉伯数字：1, 01, 001
  * - 中文数字：一、二、三...九十九
  * - 混合格式：第1章、第一章、Chapter 01
+ * - 小数点章节：1.1, 49.1
  */
 export class ChapterSorter {
 	// 中文数字映射表（从常量导入）
 	private static readonly chineseToArabic = CHINESE_NUMBERS;
+
+	// 自定义章节命名规则（由插件设置提供）
+	private static customRules: ChapterNamingRule[] = [];
+
+	/**
+	 * 设置自定义章节命名规则
+	 */
+	static setCustomRules(rules: ChapterNamingRule[]) {
+		this.customRules = rules;
+	}
 
 	/**
 	 * 解析中文数字（支持一到九十九）
@@ -32,35 +45,71 @@ export class ChapterSorter {
 	}
 
 	/**
-	 * 从文件名中提取章节编号
+	 * 从文件名中提取章节编号（使用自定义规则）
 	 * 
-	 * 支持的格式：
-	 * - 第1章、第01章、第001章
-	 * - 第一章、第二十三章
-	 * - 第一卷、第二卷、第1卷
-	 * - Chapter 1、Ch01
-	 * - 1.md、01.md
-	 * 
-	 * @returns 章节编号，如果无法识别则返回 null
+	 * @returns { number: 章节编号, ruleIndex: 规则索引 } 或 null
 	 */
-	static extractChapterNumber(filename: string): number | null {
+	static extractChapterNumber(filename: string): { number: number; ruleIndex: number } | null {
 		// 移除文件扩展名
 		const basename = filename.replace(/\.md$/i, '');
-		
+
+		// 如果有自定义规则，优先使用
+		if (this.customRules && this.customRules.length > 0) {
+			for (let i = 0; i < this.customRules.length; i++) {
+				const rule = this.customRules[i];
+				if (!rule.enabled) continue;
+
+				try {
+					const regex = new RegExp(rule.pattern, 'i');
+					const match = basename.match(regex);
+					if (match && match[1]) {
+						// 尝试解析为数字
+						const numStr = match[1];
+						
+						// 检查是否是小数点格式
+						if (numStr.includes('.')) {
+							const num = parseFloat(numStr);
+							if (!isNaN(num)) {
+								return { number: num, ruleIndex: i };
+							}
+						}
+						
+						// 检查是否是阿拉伯数字
+						const arabicNum = parseInt(numStr, 10);
+						if (!isNaN(arabicNum)) {
+							return { number: arabicNum, ruleIndex: i };
+						}
+						
+						// 尝试解析中文数字
+						const chineseNum = this.parseChineseNumber(numStr);
+						if (chineseNum > 0) {
+							return { number: chineseNum, ruleIndex: i };
+						}
+					}
+				} catch (error) {
+					console.error(`[ChapterSorter] 无效的正则表达式: ${rule.pattern}`, error);
+				}
+			}
+			// 如果启用了自定义规则但都不匹配，返回 null（不参与排序）
+			return null;
+		}
+
+		// 没有自定义规则时，使用默认逻辑（向后兼容）
 		// 尝试匹配阿拉伯数字格式
-		// 匹配：第1章、第01章、第1卷、Chapter 1、Ch01、001章、1-标题
-		const arabicMatch = basename.match(/(?:第|chapter|ch)?(\d+)(?:[章节回卷部册篇\s\-]|$)/i);
+		const arabicMatch = basename.match(/(?:第|chapter|ch)?(\d+(?:\.\d+)?)(?:[章节回卷部册篇\s\-]|$)/i);
 		if (arabicMatch) {
-			return parseInt(arabicMatch[1], 10);
+			const num = parseFloat(arabicMatch[1]);
+			if (!isNaN(num)) {
+				return { number: num, ruleIndex: 0 };
+			}
 		}
 		
 		// 尝试匹配中文数字格式
-		// 匹配：第一章、第二十三章、第一卷、第二卷
 		const chineseMatch = basename.match(/(?:第)?([零一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]+)(?:[章节回卷部册篇]|$)/);
 		if (chineseMatch) {
 			const num = this.parseChineseNumber(chineseMatch[1]);
 			if (num > 0) {
-				return num;
+				return { number: num, ruleIndex: 1 };
 			}
 		}
 		
@@ -73,9 +122,9 @@ export class ChapterSorter {
 	 * 
 	 * 排序规则：
 	 * 1. 文件夹优先于文件
-	 * 2. 有章节编号的文件按编号排序
-	 * 3. 无章节编号的文件按字母排序
-	 * 4. 章节文件排在非章节文件前面
+	 * 2. 按规则索引分组（规则顺序决定大块排序）
+	 * 3. 同一规则内按章节编号排序
+	 * 4. 无章节编号的文件保持原始顺序
 	 */
 	static compareFiles(a: TAbstractFile, b: TAbstractFile): number {
 		// 1. 文件夹优先
@@ -84,16 +133,21 @@ export class ChapterSorter {
 		if (aIsFolder && !bIsFolder) return -1;
 		if (!aIsFolder && bIsFolder) return 1;
 		
-		// 2. 提取章节编号
+		// 2. 提取章节编号和规则索引
 		const aChapter = ChapterSorter.extractChapterNumber(a.name);
 		const bChapter = ChapterSorter.extractChapterNumber(b.name);
 		
-		// 3. 都有章节编号：按编号排序
+		// 3. 都有章节编号：先按规则索引排序，再按编号排序
 		if (aChapter !== null && bChapter !== null) {
-			if (aChapter !== bChapter) {
-				return aChapter - bChapter;
+			// 先按规则索引排序（规则顺序决定大块排序）
+			if (aChapter.ruleIndex !== bChapter.ruleIndex) {
+				return aChapter.ruleIndex - bChapter.ruleIndex;
 			}
-			// 编号相同，按文件名排序（处理"第1章 标题A"和"第1章 标题B"的情况）
+			// 同一规则内按编号排序
+			if (aChapter.number !== bChapter.number) {
+				return aChapter.number - bChapter.number;
+			}
+			// 编号相同，按文件名排序
 			return a.name.localeCompare(b.name, 'zh-CN', { numeric: true });
 		}
 		
@@ -101,7 +155,7 @@ export class ChapterSorter {
 		if (aChapter !== null) return -1;
 		if (bChapter !== null) return 1;
 		
-		// 5. 都没有章节编号：保持原始顺序（兼容 manual-sorting 等手动排序插件）
+		// 5. 都没有章节编号：保持原始顺序
 		return 0;
 	}
 
@@ -119,10 +173,26 @@ export class ChapterSorter {
 
 	/**
 	 * 根据当前文件名生成下一章的文件名
-	 * 支持阿拉伯数字和中文数字格式
+	 * 支持阿拉伯数字、小数点和中文数字格式
 	 * @returns 新文件名（含 .md），或 null 表示无法识别
 	 */
 	static getNextChapterName(basename: string, siblingNames: string[]): string | null {
+		// 优先尝试小数点格式：1.1、49.1 等（只计算小数点后一位）
+		const decimalMatch = basename.match(/^([^0-9]*)(\d+)\.(\d+)(.*)$/);
+		if (decimalMatch) {
+			const prefix = decimalMatch[1];
+			const mainNum = parseInt(decimalMatch[2], 10);
+			const subNum = parseInt(decimalMatch[3], 10);
+			const suffix = decimalMatch[4];
+			
+			// 小数点后一位到 9 就进位到下一个主章节
+			if (subNum >= 9) {
+				return `${prefix}${mainNum + 1}.0${suffix}.md`;
+			} else {
+				return `${prefix}${mainNum}.${subNum + 1}${suffix}.md`;
+			}
+		}
+
 		// 尝试阿拉伯数字格式：第1章、第01章、Chapter 1 等
 		const arabicMatch = basename.match(/^([^0-9]*)(\d+)([章节回卷部册篇]?)(.*)$/);
 		if (arabicMatch) {

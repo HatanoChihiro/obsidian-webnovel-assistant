@@ -67,6 +67,16 @@ export interface StickyNoteState {
 	zoomLevel?: number;
 }
 
+/** 章节命名规则 */
+export interface ChapterNamingRule {
+	/** 规则名称 */
+	name: string;
+	/** 正则表达式模式 */
+	pattern: string;
+	/** 是否启用 */
+	enabled: boolean;
+}
+
 /**
  * 插件设置接口
  */
@@ -81,6 +91,10 @@ export interface AccurateCountSettings {
 	showExplorerCounts: boolean;
 	/** 是否启用智能章节排序 */
 	enableSmartChapterSort: boolean;
+	/** 章节命名规则列表（用于自定义排序和合并） */
+	chapterNamingRules: ChapterNamingRule[];
+	/** 工作区文件夹路径（留空则全局生效） */
+	workspaceFolders: string[];
 	/** 是否启用 OBS 直播叠加层 */
 	enableObs: boolean;
 	/** 是否启用旧版 OBS 文件导出模式 */
@@ -125,4 +139,6 @@ export interface AccurateCountSettings {
 	eyeCareEnabled: boolean;
 	/** 护眼模式背景色（十六进制） */
 	eyeCareColor: string;
+	/** 是否显示移动端浮动字数统计窗口 */
+	showMobileFloatingStats: boolean;
 }

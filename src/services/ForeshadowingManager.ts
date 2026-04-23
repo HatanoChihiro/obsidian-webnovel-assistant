@@ -82,11 +82,23 @@ export class ForeshadowingManager {
 		// 状态
 		lines.push(`**状态**：${entry.status}`);
 
-		// 回收信息（已回收时显示）
-		if (entry.status === ForeshadowingStatus.Recovered && entry.recoveryFile) {
-			const recoveryTimestamp = entry.recoveredAt ? ` - ${entry.recoveredAt}` : '';
-			lines.push('');
-			lines.push(`**回收于**：[[${entry.recoveryFile}]]${recoveryTimestamp}`);
+		// 回收信息（已回收时显示，支持多章节）
+		if (entry.status === ForeshadowingStatus.Recovered) {
+			// 优先使用新格式（多章节）
+			if (entry.recoveryFiles && entry.recoveryFiles.length > 0) {
+				lines.push('');
+				lines.push(`**回收于**：`);
+				entry.recoveryFiles.forEach((file, index) => {
+					const time = entry.recoveredAts && entry.recoveredAts[index] ? ` - ${entry.recoveredAts[index]}` : '';
+					lines.push(`- [[${file}]]${time}`);
+				});
+			}
+			// 向后兼容：如果只有旧格式（单章节）
+			else if (entry.recoveryFile) {
+				const recoveryTimestamp = entry.recoveredAt ? ` - ${entry.recoveredAt}` : '';
+				lines.push('');
+				lines.push(`**回收于**：[[${entry.recoveryFile}]]${recoveryTimestamp}`);
+			}
 		}
 
 		lines.push('');
@@ -256,13 +268,14 @@ export class ForeshadowingManager {
 
 	/**
 	 * 将指定条目标记为已回收，更新状态和回收信息
+	 * 支持多章节回收
 	 * 通过来源文件名 + 创建时间定位条目
 	 */
 	async markAsRecovered(
 		targetFile: TFile,
 		sourceFile: string,
 		createdAt: string,
-		recoveryFile: string
+		recoveryFiles: string[]
 	): Promise<boolean> {
 		const content = await this.app.vault.read(targetFile);
 		const now = window.moment().format('YYYY-MM-DD HH:mm');
@@ -275,9 +288,46 @@ export class ForeshadowingManager {
 		const newContent = content.replace(
 			titlePattern,
 			(match, before, statusLabel) => {
-				return `${before}${statusLabel}已回收\n\n**回收于**：[[${recoveryFile}]] - ${now}`;
+				// 生成回收信息（多章节格式）
+				const recoveryLines = recoveryFiles.map(file => `- [[${file}]] - ${now}`).join('\n');
+				return `${before}${statusLabel}已回收\n\n**回收于**：\n${recoveryLines}`;
 			}
 		);
+
+		await this.app.vault.modify(targetFile, newContent);
+		return true;
+	}
+
+	/**
+	 * 添加回收章节到已回收的伏笔条目
+	 * 用于在已回收的伏笔上追加新的回收章节
+	 */
+	async addRecoveryChapter(
+		targetFile: TFile,
+		sourceFile: string,
+		createdAt: string,
+		newRecoveryFile: string
+	): Promise<boolean> {
+		const content = await this.app.vault.read(targetFile);
+		const now = window.moment().format('YYYY-MM-DD HH:mm');
+
+		// 查找已回收条目的回收列表
+		const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+		const pattern = new RegExp(
+			`(## \\[\\[${escapeRegex(sourceFile)}\\]\\]` +
+			(createdAt ? `[^\\n]*${escapeRegex(createdAt)}` : '') +
+			`[\\s\\S]*?\\*\\*回收于\\*\\*：\\n)([\\s\\S]*?)(\\n\\n|$)`,
+			'm'
+		);
+
+		const match = pattern.exec(content);
+		if (!match) return false;
+
+		// 在回收列表末尾追加新章节
+		const newLine = `- [[${newRecoveryFile}]] - ${now}\n`;
+		const newContent = content.slice(0, match.index + match[1].length + match[2].length) +
+			newLine +
+			content.slice(match.index + match[1].length + match[2].length);
 
 		await this.app.vault.modify(targetFile, newContent);
 		return true;

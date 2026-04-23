@@ -141,7 +141,134 @@ export class ForeshadowingInputModal extends Modal {
 // ─────────────────────────────────────────────
 
 /**
- * 章节选择建议模态框
+ * 章节多选建议模态框
+ */
+class ChapterMultiSelectModal extends Modal {
+	private chapters: string[];
+	private selectedChapters: Set<string> = new Set();
+	private onSubmit: (chapters: string[]) => void;
+	private listEl!: HTMLElement;
+
+	constructor(app: App, chapters: string[], onSubmit: (chapters: string[]) => void) {
+		super(app);
+		this.chapters = chapters;
+		this.onSubmit = onSubmit;
+	}
+
+	onOpen() {
+		const { contentEl } = this;
+		contentEl.empty();
+
+		contentEl.createEl('h2', { text: '选择回收章节' });
+		contentEl.createEl('p', { 
+			text: '可以选择多个章节（支持一个伏笔在多个章节中回收）',
+			cls: 'setting-item-description'
+		});
+
+		// 搜索框
+		const searchInput = contentEl.createEl('input', {
+			type: 'text',
+			placeholder: '搜索章节...'
+		});
+		searchInput.style.cssText = 'width:100%;margin-bottom:12px;padding:6px 8px;border-radius:4px;border:1px solid var(--background-modifier-border);background:var(--background-primary);color:var(--text-normal);';
+
+		// 章节列表
+		this.listEl = contentEl.createDiv({ cls: 'chapter-multi-select-list' });
+		this.listEl.style.cssText = 'max-height:300px;overflow-y:auto;border:1px solid var(--background-modifier-border);border-radius:4px;margin-bottom:12px;';
+
+		this.renderChapterList(this.chapters);
+
+		// 搜索功能
+		searchInput.addEventListener('input', () => {
+			const query = searchInput.value.toLowerCase();
+			const filtered = this.chapters.filter(ch => ch.toLowerCase().includes(query));
+			this.renderChapterList(filtered);
+		});
+
+		// 已选择的章节显示
+		const selectedEl = contentEl.createDiv({ cls: 'selected-chapters' });
+		selectedEl.style.cssText = 'margin-bottom:12px;padding:8px;background:var(--background-secondary);border-radius:4px;min-height:30px;';
+		const updateSelected = () => {
+			selectedEl.empty();
+			if (this.selectedChapters.size === 0) {
+				selectedEl.createSpan({ text: '未选择章节', cls: 'setting-item-description' });
+			} else {
+				selectedEl.createSpan({ text: `已选择 ${this.selectedChapters.size} 个章节：`, cls: 'setting-item-description' });
+				selectedEl.createEl('br');
+				Array.from(this.selectedChapters).forEach(ch => {
+					const tag = selectedEl.createSpan({ text: ch, cls: 'tag' });
+					tag.style.cssText = 'display:inline-block;margin:4px 4px 0 0;padding:2px 8px;background:var(--interactive-accent);color:var(--text-on-accent);border-radius:12px;font-size:0.9em;';
+				});
+			}
+		};
+
+		// 按钮区
+		const btnContainer = contentEl.createDiv();
+		btnContainer.style.cssText = 'display:flex;justify-content:flex-end;gap:10px;';
+
+		const cancelBtn = btnContainer.createEl('button', { text: '取消' });
+		cancelBtn.onclick = () => this.close();
+
+		const confirmBtn = btnContainer.createEl('button', { text: '确认', cls: 'mod-cta' });
+		confirmBtn.onclick = () => {
+			if (this.selectedChapters.size === 0) {
+				new Notice('❌ 请至少选择一个章节');
+				return;
+			}
+			this.onSubmit(Array.from(this.selectedChapters));
+			this.close();
+		};
+
+		// 初始化显示
+		updateSelected();
+
+		// 监听选择变化
+		this.listEl.addEventListener('change', () => updateSelected());
+	}
+
+	private renderChapterList(chapters: string[]) {
+		this.listEl.empty();
+		chapters.forEach(chapter => {
+			const item = this.listEl.createDiv({ cls: 'chapter-item' });
+			item.style.cssText = 'padding:8px 12px;border-bottom:1px solid var(--background-modifier-border);cursor:pointer;display:flex;align-items:center;gap:8px;';
+			
+			const checkbox = item.createEl('input', { type: 'checkbox' });
+			checkbox.checked = this.selectedChapters.has(chapter);
+			checkbox.style.cssText = 'cursor:pointer;';
+			
+			const label = item.createSpan({ text: chapter });
+			label.style.cssText = 'flex:1;cursor:pointer;';
+
+			const toggle = () => {
+				if (this.selectedChapters.has(chapter)) {
+					this.selectedChapters.delete(chapter);
+					checkbox.checked = false;
+				} else {
+					this.selectedChapters.add(chapter);
+					checkbox.checked = true;
+				}
+				this.listEl.dispatchEvent(new Event('change'));
+			};
+
+			checkbox.addEventListener('change', toggle);
+			label.addEventListener('click', toggle);
+			item.addEventListener('click', (e) => {
+				if (e.target !== checkbox && e.target !== label) toggle();
+			});
+		});
+
+		if (chapters.length === 0) {
+			this.listEl.createDiv({ text: '没有找到匹配的章节', cls: 'setting-item-description' }).style.padding = '12px';
+		}
+	}
+
+	onClose() {
+		this.contentEl.empty();
+	}
+}
+
+/**
+ * 章节选择建议模态框（单选，向后兼容）
  */
 class ChapterSuggestModal extends SuggestModal<string> {
 	private chapters: string[];
@@ -172,12 +299,12 @@ class ChapterSuggestModal extends SuggestModal<string> {
 
 /**
  * 标记伏笔已回收时弹出的对话框
- * 用户选择或输入回收章节文件名
+ * 用户选择或输入回收章节文件名（支持多章节）
  */
 export class ForeshadowingRecoveryModal extends Modal {
 	private contentPreview: string;
 	private folderPath: string;
-	private onSubmit: (recoveryFileName: string) => void;
+	private onSubmit: (recoveryFileNames: string[]) => void;
 	private inputEl!: HTMLInputElement;
 	private chapters: string[] = [];
 
@@ -185,7 +312,7 @@ export class ForeshadowingRecoveryModal extends Modal {
 		app: App,
 		contentPreview: string,
 		folderPath: string,
-		onSubmit: (recoveryFileName: string) => void
+		onSubmit: (recoveryFileNames: string[]) => void
 	) {
 		super(app);
 		this.contentPreview = contentPreview;
@@ -220,11 +347,11 @@ export class ForeshadowingRecoveryModal extends Modal {
 		// 文件选择
 		new Setting(contentEl)
 			.setName('回收章节')
-			.setDesc('输入完成回收的章节文件名（无需 .md 后缀）');
+			.setDesc('输入完成回收的章节文件名（无需 .md 后缀），多个章节用逗号或空格分隔');
 
 		this.inputEl = contentEl.createEl('input', {
 			type: 'text',
-			placeholder: '例如：第十章',
+			placeholder: '例如：第十章, 第十一章',
 		});
 		this.inputEl.style.cssText = 'width:100%;margin-bottom:8px;padding:6px 8px;border-radius:4px;border:1px solid var(--background-modifier-border);background:var(--background-primary);color:var(--text-normal);';
 
@@ -233,12 +360,12 @@ export class ForeshadowingRecoveryModal extends Modal {
 			const btnRow = contentEl.createDiv();
 			btnRow.style.cssText = 'display:flex;gap:8px;margin-bottom:12px;';
 			
-			const selectBtn = btnRow.createEl('button', { text: '📋 从列表选择' });
+			const selectBtn = btnRow.createEl('button', { text: '📋 从列表选择（支持多选）' });
 			selectBtn.style.cssText = 'flex:1;padding:6px 12px;border-radius:4px;border:1px solid var(--interactive-accent);color:var(--interactive-accent);background:transparent;cursor:pointer;';
 			selectBtn.onclick = () => {
 				this.close();
-				new ChapterSuggestModal(this.app, this.chapters, (chapter) => {
-					this.onSubmit(chapter);
+				new ChapterMultiSelectModal(this.app, this.chapters, (selectedChapters) => {
+					this.onSubmit(selectedChapters);
 				}).open();
 			};
 			
@@ -270,14 +397,16 @@ export class ForeshadowingRecoveryModal extends Modal {
 	}
 
 	private submit() {
-		const value = this.inputEl.value.trim().replace(/\.md$/i, '');
+		const value = this.inputEl.value.trim().replace(/\.md$/gi, '');
 		if (!value) {
 			this.inputEl.style.borderColor = 'var(--background-modifier-error)';
 			new Notice('❌ 请输入回收章节名');
 			this.inputEl.focus();
 			return;
 		}
-		this.onSubmit(value);
+		// 支持逗号或空格分隔多个章节
+		const chapters = value.split(/[,，\s]+/).filter(Boolean).map(ch => ch.trim());
+		this.onSubmit(chapters);
 		this.close();
 	}
 

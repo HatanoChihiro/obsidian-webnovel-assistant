@@ -14,7 +14,9 @@ interface ParsedEntry {
 	description: string;
 	tags: string[];
 	status: ForeshadowingStatus;
-	recoveryFile?: string;
+	recoveryFiles?: string[]; // 支持多章节回收
+	recoveredAts?: string[];
+	recoveryFile?: string; // 向后兼容
 	recoveredAt?: string;
 }
 
@@ -198,12 +200,13 @@ export class ForeshadowingView extends CreativeView {
 					this.app,
 					entry.contents[0]?.text || '',
 					this.currentFolder,
-					async (recoveryFileName) => {
+					async (recoveryFileNames) => {
 						const success = await this.plugin.foreshadowingManager.markAsRecovered(
-							foreshadowingFile, entry.sourceFile, entry.createdAt, recoveryFileName
+							foreshadowingFile, entry.sourceFile, entry.createdAt, recoveryFileNames
 						);
 						if (success) {
-							new Notice(`✅ 已标记为回收于 [[${recoveryFileName}]]`);
+							const fileList = recoveryFileNames.map(f => `[[${f}]]`).join('、');
+							new Notice(`✅ 已标记为回收：${fileList}`);
 							// 文件修改会自动触发刷新，但在某些平台可能有延迟，添加备用刷新
 							setTimeout(() => this.refresh(), 100);
 						} else {
@@ -250,15 +253,30 @@ export class ForeshadowingView extends CreativeView {
 			};
 		}
 
-		// 已回收时显示回收章节
-		if (entry.status === ForeshadowingStatus.Recovered && entry.recoveryFile) {
+		// 已回收时显示回收章节（支持多章节）
+		if (entry.status === ForeshadowingStatus.Recovered) {
 			const recoveryEl = card.createDiv({ cls: 'foreshadowing-entry-recovery' });
 			recoveryEl.createSpan({ text: '回收于：', cls: 'foreshadowing-entry-recovery-label' });
-			const recoveryLink = recoveryEl.createEl('a', { text: entry.recoveryFile, cls: 'foreshadowing-entry-recovery-link' });
-			recoveryLink.onclick = async () => {
-				const file = this.app.vault.getMarkdownFiles().find(f => f.basename === entry.recoveryFile);
-				if (file) await this.app.workspace.getLeaf(false).openFile(file);
-			};
+			
+			// 优先使用新格式（多章节）
+			if (entry.recoveryFiles && entry.recoveryFiles.length > 0) {
+				entry.recoveryFiles.forEach((file, index) => {
+					if (index > 0) recoveryEl.createSpan({ text: '、' });
+					const recoveryLink = recoveryEl.createEl('a', { text: file, cls: 'foreshadowing-entry-recovery-link' });
+					recoveryLink.onclick = async () => {
+						const targetFile = this.app.vault.getMarkdownFiles().find(f => f.basename === file);
+						if (targetFile) await this.app.workspace.getLeaf(false).openFile(targetFile);
+					};
+				});
+			}
+			// 向后兼容：如果只有旧格式（单章节）
+			else if (entry.recoveryFile) {
+				const recoveryLink = recoveryEl.createEl('a', { text: entry.recoveryFile, cls: 'foreshadowing-entry-recovery-link' });
+				recoveryLink.onclick = async () => {
+					const file = this.app.vault.getMarkdownFiles().find(f => f.basename === entry.recoveryFile);
+					if (file) await this.app.workspace.getLeaf(false).openFile(file);
+				};
+			}
 		}
 	}
 
@@ -368,13 +386,37 @@ export class ForeshadowingView extends CreativeView {
 			if (statusText === '已回收') status = ForeshadowingStatus.Recovered;
 			else if (statusText === '已废弃') status = ForeshadowingStatus.Deprecated;
 
-			// 解析回收信息
-			const recoveryMatch = trimmed.match(/\*\*回收于\*\*：\[\[(.+?)\]\](?:\s*-\s*(.+))?/);
-			const recoveryFile = recoveryMatch ? recoveryMatch[1] : undefined;
-			const recoveredAt = recoveryMatch ? recoveryMatch[2]?.trim() : undefined;
+			// 解析回收信息（支持多章节）
+			// 新格式：**回收于**：\n- [[章节1]] - 时间\n- [[章节2]] - 时间
+			const recoveryListMatch = trimmed.match(/\*\*回收于\*\*：\n((?:- \[\[.+?\]\].*\n?)+)/);
+			let recoveryFiles: string[] | undefined;
+			let recoveredAts: string[] | undefined;
+			let recoveryFile: string | undefined;
+			let recoveredAt: string | undefined;
+
+			if (recoveryListMatch) {
+				// 多章节格式
+				const listLines = recoveryListMatch[1].trim().split('\n');
+				recoveryFiles = [];
+				recoveredAts = [];
+				listLines.forEach(line => {
+					const match = line.match(/^- \[\[(.+?)\]\](?:\s*-\s*(.+))?$/);
+					if (match) {
+						recoveryFiles!.push(match[1]);
+						recoveredAts!.push(match[2]?.trim() || '');
+					}
+				});
+			} else {
+				// 旧格式（单章节）：**回收于**：[[章节]] - 时间
+				const singleRecoveryMatch = trimmed.match(/\*\*回收于\*\*：\[\[(.+?)\]\](?:\s*-\s*(.+))?/);
+				if (singleRecoveryMatch) {
+					recoveryFile = singleRecoveryMatch[1];
+					recoveredAt = singleRecoveryMatch[2]?.trim();
+				}
+			}
 
 			if (description) {
-				entries.push({ sourceFile, createdAt, contents, description, tags, status, recoveryFile, recoveredAt });
+				entries.push({ sourceFile, createdAt, contents, description, tags, status, recoveryFiles, recoveredAts, recoveryFile, recoveredAt });
 			}
 		}
 

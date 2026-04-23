@@ -86,14 +86,14 @@ export class FileExplorerPatcher {
 				const sortedItems: any[] = originalGetSortedFolderItems.call(this, folder);
 				
 				// 分离章节文件和非章节文件
-				const chapterItems: { item: any; num: number }[] = [];
+				const chapterItems: { item: any; chapterInfo: { number: number; ruleIndex: number } }[] = [];
 				const nonChapterItems: { item: any; originalIndex: number }[] = [];
 				let firstChapterIndex = -1; // 章节文件在原列表中第一次出现的位置
 				
 				sortedItems.forEach((item: any, index: number) => {
-					const num = ChapterSorter.extractChapterNumber(item.file?.name || '');
-					if (num !== null) {
-						chapterItems.push({ item, num });
+					const chapterInfo = ChapterSorter.extractChapterNumber(item.file?.name || '');
+					if (chapterInfo !== null) {
+						chapterItems.push({ item, chapterInfo });
 						if (firstChapterIndex === -1) firstChapterIndex = index;
 					} else {
 						nonChapterItems.push({ item, originalIndex: index });
@@ -103,8 +103,15 @@ export class FileExplorerPatcher {
 				// 没有章节文件，直接返回原始结果（完全不干预）
 				if (chapterItems.length === 0) return sortedItems;
 				
-				// 章节文件按编号排序
-				chapterItems.sort((a, b) => a.num - b.num);
+				// 章节文件按规则索引和编号排序
+				chapterItems.sort((a, b) => {
+					// 先按规则索引排序
+					if (a.chapterInfo.ruleIndex !== b.chapterInfo.ruleIndex) {
+						return a.chapterInfo.ruleIndex - b.chapterInfo.ruleIndex;
+					}
+					// 同一规则内按编号排序
+					return a.chapterInfo.number - b.chapterInfo.number;
+				});
 				
 				// 重建列表：
 				// 非章节文件保持原来的相对顺序，

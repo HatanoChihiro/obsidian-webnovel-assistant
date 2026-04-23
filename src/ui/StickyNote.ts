@@ -292,6 +292,12 @@ export class FloatingStickyNote extends Component {
 		this.contentContainer = this.containerEl.createDiv({ cls: 'my-sticky-content markdown-rendered' });
 		this.textareaEl = this.containerEl.createEl('textarea', { cls: 'my-sticky-textarea' });
 
+		// 阻止 textarea 中的快捷键事件冒泡到 Obsidian
+		this.textareaEl.addEventListener('keydown', (e) => {
+			// 阻止事件冒泡，防止触发 Obsidian 的全局快捷键
+			e.stopPropagation();
+		});
+
 		// 创建调色板弹窗
 		const popupEl = this.createPalettePopup(controlsEl);
 

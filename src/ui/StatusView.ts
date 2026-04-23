@@ -1,6 +1,7 @@
-import { ItemView, MarkdownView, WorkspaceLeaf } from 'obsidian';
+import { ItemView, MarkdownView, WorkspaceLeaf, Platform } from 'obsidian';
 import { formatTime, formatCount } from '../utils/format';
 import { HistoryStatsModal } from './HistoryModal';
+import { isMobile } from '../utils/platform';
 
 // 前向声明
 type AccurateChineseCountPlugin = any;
@@ -70,20 +71,24 @@ export class WritingStatusView extends ItemView {
 		const goalCard = container.createDiv({ cls: 'status-card' });
 		const titleRow = goalCard.createDiv({ cls: 'status-title' });
 		titleRow.createSpan({ text: '今日状态' });
-		this.statusBadgeEl = titleRow.createSpan({ cls: 'status-title-badge', text: '已暂停' });
-		this.statusBadgeEl.style.cursor = 'pointer';
-		this.statusBadgeEl.title = '点击开始/暂停统计';
-		this.statusBadgeEl.addEventListener('click', () => {
-			this.plugin.isTracking = !this.plugin.isTracking;
-			if (this.plugin.isTracking) {
-				this.plugin.lastTickTime = Date.now();
-				this.plugin.worker?.postMessage('start');
-			} else {
-				this.plugin.worker?.postMessage('stop');
-			}
-			this.plugin.updateWordCount();
-			this.plugin.refreshStatusViews();
-		});
+		
+		// 桌面端才显示"开始/暂停"按钮（移动端没有 Worker，无法追踪时间）
+		if (!isMobile()) {
+			this.statusBadgeEl = titleRow.createSpan({ cls: 'status-title-badge', text: '已暂停' });
+			this.statusBadgeEl.style.cursor = 'pointer';
+			this.statusBadgeEl.title = '点击开始/暂停统计';
+			this.statusBadgeEl.addEventListener('click', () => {
+				this.plugin.isTracking = !this.plugin.isTracking;
+				if (this.plugin.isTracking) {
+					this.plugin.lastTickTime = Date.now();
+					this.plugin.worker?.postMessage('start');
+				} else {
+					this.plugin.worker?.postMessage('stop');
+				}
+				this.plugin.updateWordCount();
+				this.plugin.refreshStatusViews();
+			});
+		}
 
 		// 当日目标进度
 		goalCard.createDiv({ cls: 'status-goal-label', text: '当日目标' });
@@ -107,6 +112,9 @@ export class WritingStatusView extends ItemView {
 	}
 
 	private createTimeCard(container: Element) {
+		// 移动端不显示时间统计卡片（没有 Worker，无法追踪时间）
+		if (isMobile()) return;
+		
 		const timeCard = container.createDiv({ cls: 'status-card' });
 		timeCard.createDiv({ cls: 'status-title', text: '本次统计' });
 
@@ -154,15 +162,17 @@ export class WritingStatusView extends ItemView {
 	}
 
 	updateData() {
-		// 更新状态徽章
-		if (this.plugin.isTracking) {
-			this.statusBadgeEl.innerText = '▶ 记录中';
-			this.statusBadgeEl.style.background = 'var(--color-green)';
-			this.statusBadgeEl.style.color = '#ffffff';
-		} else {
-			this.statusBadgeEl.innerText = '⏸ 已暂停';
-			this.statusBadgeEl.style.background = 'var(--text-muted)';
-			this.statusBadgeEl.style.color = '#ffffff';
+		// 桌面端才更新状态徽章（移动端没有这个元素）
+		if (!isMobile() && this.statusBadgeEl) {
+			if (this.plugin.isTracking) {
+				this.statusBadgeEl.innerText = '▶ 记录中';
+				this.statusBadgeEl.style.background = 'var(--color-green)';
+				this.statusBadgeEl.style.color = '#ffffff';
+			} else {
+				this.statusBadgeEl.innerText = '⏸ 已暂停';
+				this.statusBadgeEl.style.background = 'var(--text-muted)';
+				this.statusBadgeEl.style.color = '#ffffff';
+			}
 		}
 
 		// 当日目标进度（今日新增 vs dailyGoal）
@@ -204,14 +214,16 @@ export class WritingStatusView extends ItemView {
 		this.progressFillEl.style.background = chapterDone ? '#8B5CF6' : 'var(--background-modifier-border)';
 		this.todayWordEl.style.color = chapterDone ? '#8B5CF6' : 'var(--text-normal)';
 
-		// 更新时间统计
-		const focusSec = Math.floor(this.plugin.focusMs / 1000);
-		const slackSec = Math.floor(this.plugin.slackMs / 1000);
-		const totalSec = focusSec + slackSec;
+		// 桌面端才更新时间统计（移动端没有这些元素）
+		if (!isMobile()) {
+			const focusSec = Math.floor(this.plugin.focusMs / 1000);
+			const slackSec = Math.floor(this.plugin.slackMs / 1000);
+			const totalSec = focusSec + slackSec;
 
-		this.focusTimeEl.innerText = formatTime(focusSec);
-		this.slackTimeEl.innerText = formatTime(slackSec);
-		this.totalTimeEl.innerText = formatTime(totalSec);
+			if (this.focusTimeEl) this.focusTimeEl.innerText = formatTime(focusSec);
+			if (this.slackTimeEl) this.slackTimeEl.innerText = formatTime(slackSec);
+			if (this.totalTimeEl) this.totalTimeEl.innerText = formatTime(totalSec);
+		}
 
 		// 计算字数统计数据
 		this.updateWordStats();

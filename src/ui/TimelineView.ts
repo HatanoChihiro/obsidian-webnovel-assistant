@@ -594,13 +594,14 @@ export class TimelineView extends CreativeView {
 			const items: { description: string; chapter: string }[] = [];
 			const eventBlocks = eventsContainer.querySelectorAll('.timeline-event-block');
 			
-			eventBlocks.forEach((block: HTMLElement) => {
-				const descInput = block.querySelector('textarea') as HTMLTextAreaElement;
+			eventBlocks.forEach((block) => {
+				const htmlBlock = block as HTMLElement;
+				const descInput = htmlBlock.querySelector('textarea') as HTMLTextAreaElement;
 				const description = descInput.value.trim();
 				
 				// 收集该事件的所有章节
 				const chapters: string[] = [];
-				const selects = block.querySelectorAll('select');
+				const selects = htmlBlock.querySelectorAll('select');
 				selects.forEach((select: HTMLSelectElement) => {
 					const value = select.value.trim();
 					if (value) chapters.push(value);

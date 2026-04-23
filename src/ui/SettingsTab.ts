@@ -94,15 +94,36 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		containerEl.createEl('h2', {text: '精准字数与目标设置'});
 
 		new Setting(containerEl)
-			.setName('显示章节目标进度')
-			.setDesc('在状态栏显示当前文件的字数完成进度。')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.showGoal)
-				.onChange(async (value) => {
-					this.plugin.settings.showGoal = value;
-					await this.plugin.saveSettings();
-					this.plugin.updateWordCount();
-				}));
+			.setName('工作区文件夹')
+			.setDesc('插件功能只在指定的文件夹下生效，留空则全局生效。多个文件夹用逗号分隔。')
+			.addTextArea(text => {
+				const folders = this.plugin.settings.workspaceFolders || [];
+				text
+					.setPlaceholder('例如：小说/第一卷, 小说/第二卷')
+					.setValue(folders.join(', '))
+					.onChange(async (value) => {
+						this.plugin.settings.workspaceFolders = value.trim()
+							? value.split(',').map(f => f.trim()).filter(Boolean)
+							: [];
+						await this.plugin.saveSettings();
+					});
+				text.inputEl.style.width = '100%';
+				text.inputEl.style.minHeight = '60px';
+			});
+
+		// 桌面端才显示"显示章节目标进度"设置（移动端状态栏不支持显示进度）
+		if (!isMobile()) {
+			new Setting(containerEl)
+				.setName('显示章节目标进度')
+				.setDesc('在状态栏显示当前文件的字数完成进度。')
+				.addToggle(toggle => toggle
+					.setValue(this.plugin.settings.showGoal)
+					.onChange(async (value) => {
+						this.plugin.settings.showGoal = value;
+						await this.plugin.saveSettings();
+						this.plugin.updateWordCount();
+					}));
+		}
 
 		new Setting(containerEl)
 			.setName('显示文件列表字数')
@@ -113,7 +134,15 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					this.plugin.settings.showExplorerCounts = value;
 					await this.plugin.saveSettings();
 					if (value) {
-						await this.plugin.buildFolderCache();
+						// 移动端需要延迟，确保文件浏览器已加载
+						if (isMobile()) {
+							new Notice('正在构建缓存，请稍候...');
+							setTimeout(async () => {
+								await this.plugin.buildFolderCache();
+							}, 1000);
+						} else {
+							await this.plugin.buildFolderCache();
+						}
 					} else {
 						this.plugin.refreshFolderCounts();
 					}
@@ -149,7 +178,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		if (isDesktop()) {
 			new Setting(containerEl)
 				.setName('启用智能章节排序')
-				.setDesc('自动识别章节编号（支持阿拉伯数字和中文数字），按数字大小排序而非字符串排序。例如："第1章"、"第2章"、"第10章"或"第一章"、"第二章"、"第十章"。')
+				.setDesc('自动识别章节编号（支持自定义规则），按数字大小排序而非字符串排序。')
 				.addToggle(toggle => toggle
 					.setValue(this.plugin.settings.enableSmartChapterSort)
 					.onChange(async (value) => {
@@ -173,6 +202,130 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 							new Notice('智能章节排序已禁用');
 						}
 					}));
+
+			// 章节命名规则设置
+			if (this.plugin.settings.enableSmartChapterSort) {
+				containerEl.createEl('h3', { text: '章节命名规则' });
+				containerEl.createEl('p', {
+					text: '自定义章节命名规则，只有匹配的章节才会参与排序和合并。规则按顺序匹配，决定大块排序。',
+					cls: 'setting-item-description'
+				});
+
+				// 确保规则数组存在
+				if (!this.plugin.settings.chapterNamingRules) {
+					this.plugin.settings.chapterNamingRules = [
+						{ name: '阿拉伯数字（第1章、第01章）', pattern: '^第?(\\d+)[章节回卷部册篇]?', enabled: true },
+						{ name: '中文数字（第一章、第二章）', pattern: '^第?([一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]+)[章节回卷部册篇]?', enabled: true },
+						{ name: '纯数字（1、01、001）', pattern: '^(\\d+)$', enabled: true },
+					];
+				}
+
+				const rulesContainer = containerEl.createDiv({ cls: 'chapter-naming-rules-container' });
+				rulesContainer.style.cssText = 'margin-bottom:20px;';
+
+				const renderRules = () => {
+					rulesContainer.empty();
+					this.plugin.settings.chapterNamingRules.forEach((rule, index) => {
+						const ruleEl = rulesContainer.createDiv({ cls: 'chapter-naming-rule' });
+						ruleEl.style.cssText = 'padding:12px;margin-bottom:8px;background:var(--background-secondary);border-radius:6px;';
+
+						const headerRow = ruleEl.createDiv();
+						headerRow.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:8px;';
+
+						// 启用/禁用开关
+						const toggle = headerRow.createEl('input', { type: 'checkbox' });
+						toggle.checked = rule.enabled;
+						toggle.style.cssText = 'cursor:pointer;';
+						toggle.onchange = async () => {
+							rule.enabled = toggle.checked;
+							await this.plugin.saveSettings();
+							// 更新 ChapterSorter
+							const { ChapterSorter } = await import('../services/ChapterSorter');
+							ChapterSorter.setCustomRules(this.plugin.settings.chapterNamingRules);
+							this.plugin.fileExplorerPatcher.refreshManually();
+						};
+
+						// 规则名称
+						const nameInput = headerRow.createEl('input', { type: 'text', value: rule.name });
+						nameInput.style.cssText = 'flex:1;padding:4px 8px;border-radius:4px;border:1px solid var(--background-modifier-border);background:var(--background-primary);';
+						nameInput.onchange = async () => {
+							rule.name = nameInput.value;
+							await this.plugin.saveSettings();
+						};
+
+						// 上移/下移按钮
+						if (index > 0) {
+							const upBtn = headerRow.createEl('button', { text: '↑' });
+							upBtn.style.cssText = 'padding:2px 8px;cursor:pointer;';
+							upBtn.onclick = async () => {
+								const temp = this.plugin.settings.chapterNamingRules[index - 1];
+								this.plugin.settings.chapterNamingRules[index - 1] = this.plugin.settings.chapterNamingRules[index];
+								this.plugin.settings.chapterNamingRules[index] = temp;
+								await this.plugin.saveSettings();
+								const { ChapterSorter } = await import('../services/ChapterSorter');
+								ChapterSorter.setCustomRules(this.plugin.settings.chapterNamingRules);
+								this.plugin.fileExplorerPatcher.refreshManually();
+								renderRules();
+							};
+						}
+						if (index < this.plugin.settings.chapterNamingRules.length - 1) {
+							const downBtn = headerRow.createEl('button', { text: '↓' });
+							downBtn.style.cssText = 'padding:2px 8px;cursor:pointer;';
+							downBtn.onclick = async () => {
+								const temp = this.plugin.settings.chapterNamingRules[index + 1];
+								this.plugin.settings.chapterNamingRules[index + 1] = this.plugin.settings.chapterNamingRules[index];
+								this.plugin.settings.chapterNamingRules[index] = temp;
+								await this.plugin.saveSettings();
+								const { ChapterSorter } = await import('../services/ChapterSorter');
+								ChapterSorter.setCustomRules(this.plugin.settings.chapterNamingRules);
+								this.plugin.fileExplorerPatcher.refreshManually();
+								renderRules();
+							};
+						}
+
+						// 删除按钮
+						const deleteBtn = headerRow.createEl('button', { text: '删除' });
+						deleteBtn.style.cssText = 'padding:2px 8px;cursor:pointer;color:var(--text-error);';
+						deleteBtn.onclick = async () => {
+							this.plugin.settings.chapterNamingRules.splice(index, 1);
+							await this.plugin.saveSettings();
+							const { ChapterSorter } = await import('../services/ChapterSorter');
+							ChapterSorter.setCustomRules(this.plugin.settings.chapterNamingRules);
+							this.plugin.fileExplorerPatcher.refreshManually();
+							renderRules();
+						};
+
+						// 正则表达式输入
+						const patternRow = ruleEl.createDiv();
+						patternRow.style.cssText = 'display:flex;align-items:center;gap:8px;';
+						patternRow.createSpan({ text: '正则：', cls: 'setting-item-description' });
+						const patternInput = patternRow.createEl('input', { type: 'text', value: rule.pattern });
+						patternInput.style.cssText = 'flex:1;padding:4px 8px;border-radius:4px;border:1px solid var(--background-modifier-border);background:var(--background-primary);font-family:monospace;';
+						patternInput.onchange = async () => {
+							rule.pattern = patternInput.value;
+							await this.plugin.saveSettings();
+							const { ChapterSorter } = await import('../services/ChapterSorter');
+							ChapterSorter.setCustomRules(this.plugin.settings.chapterNamingRules);
+							this.plugin.fileExplorerPatcher.refreshManually();
+						};
+					});
+
+					// 添加新规则按钮
+					const addBtn = rulesContainer.createEl('button', { text: '+ 添加新规则' });
+					addBtn.style.cssText = 'padding:8px 16px;cursor:pointer;';
+					addBtn.onclick = async () => {
+						this.plugin.settings.chapterNamingRules.push({
+							name: '新规则',
+							pattern: '^(\\d+)',
+							enabled: true
+						});
+						await this.plugin.saveSettings();
+						renderRules();
+					};
+				};
+
+				renderRules();
+			}
 		}
 
 		// 移动端隐藏桌面专属功能

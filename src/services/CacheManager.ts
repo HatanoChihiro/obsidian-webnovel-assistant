@@ -100,23 +100,30 @@ export class CacheManager {
 	 * 初始化缓存 - 一次性读取所有文件构建完整缓存
 	 * @param vault Obsidian Vault 实例
 	 * @param calculateWords 字数计算函数
+	 * @param isFileInWorkspace 工作区检查函数（可选）
 	 */
 	async buildInitialCache(
 		vault: Vault,
-		calculateWords: (content: string) => number
+		calculateWords: (content: string) => number,
+		isFileInWorkspace?: (file: TFile) => boolean
 	): Promise<void> {
 		console.log('[CacheManager] 开始构建初始缓存...');
 		const startTime = Date.now();
 
 		try {
 			const allFiles = vault.getMarkdownFiles();
+			// 如果提供了工作区检查函数，只处理工作区内的文件
+			const filesToProcess = isFileInWorkspace 
+				? allFiles.filter(f => isFileInWorkspace(f))
+				: allFiles;
+			
 			const fileCounts = new Map<string, number>();
 			
 			let successCount = 0;
 			let failCount = 0;
 
 			// 批量读取所有文件并计算字数
-			for (const file of allFiles) {
+			for (const file of filesToProcess) {
 				try {
 					const content = await vault.cachedRead(file);
 					const count = calculateWords(content);
@@ -227,10 +234,7 @@ export class CacheManager {
 			this.clearOldEntries();
 		}
 
-		// 异步保存缓存（不阻塞）
-		this.saveCache().catch(err => {
-			console.error('[CacheManager] 保存缓存失败:', err);
-		});
+		console.log(`[CacheManager] 已更新文件缓存: ${file.path} (${oldCount} → ${newWordCount}, Δ${delta})`);
 	}
 
 	/**

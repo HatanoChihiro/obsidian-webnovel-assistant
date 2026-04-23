@@ -24,3 +24,9 @@ desktop.ini
 *.jpg
 *.png
 *.gif
+
+# 编辑器配置（个人开发，不需要共享）
+.vscode/
+
+# 开发文档（不需要上传）
+ENCODING_GUIDE.md

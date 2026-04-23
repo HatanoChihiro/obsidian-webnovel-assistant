@@ -23,9 +23,13 @@ export interface ForeshadowingEntry {
 	status: ForeshadowingStatus;
 	/** 创建时间，格式 YYYY-MM-DD HH:mm */
 	createdAt: string;
-	/** 回收时间，格式 YYYY-MM-DD HH:mm（仅已回收时有值） */
+	/** 回收时间列表（支持多章节回收） */
+	recoveredAts?: string[];
+	/** 回收章节文件名列表（支持多章节回收） */
+	recoveryFiles?: string[];
+	/** 旧版单个回收时间（向后兼容） */
 	recoveredAt?: string;
-	/** 回收章节文件名（不含 .md 后缀） */
+	/** 旧版单个回收章节文件名（向后兼容） */
 	recoveryFile?: string;
 }
 
