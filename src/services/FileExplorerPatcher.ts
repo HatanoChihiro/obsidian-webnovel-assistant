@@ -1,18 +1,20 @@
-import { App, TAbstractFile, TFolder } from 'obsidian';
+import { App, TFolder } from 'obsidian';
 import { ChapterSorter } from './ChapterSorter';
 
 /**
  * 文件浏览器补丁管理器
- * 
+ *
  * 使用 Monkey Patch 技术拦截 Obsidian 文件浏览器的排序逻辑，
  * 应用智能章节排序
- * 
+ *
  * 实现参考：https://github.com/kh4f/manual-sorting
  */
 export class FileExplorerPatcher {
 	private app: App;
 	private enabled: boolean = false;
 	private explorerView: any = null;
+	private originalGetSortedFolderItems: any = null;
+	private eventRefs: any[] = [];
 
 	constructor(app: App) {
 		this.app = app;
@@ -29,13 +31,13 @@ export class FileExplorerPatcher {
 			if (success) {
 				this.enabled = true;
 				console.log('[ChapterSorter] Smart chapter sorting enabled');
-				
+
 				// 延迟初始排序，确保 DOM 已经准备好
 				setTimeout(() => this.refresh(), 1000);
-				
+
 				// 监听文件系统事件
 				this.setupFileSystemListeners();
-				
+
 				return true;
 			}
 
@@ -49,7 +51,7 @@ export class FileExplorerPatcher {
 
 	/**
 	 * Patch 文件浏览器的 getSortedFolderItems 方法
-	 * 
+	 *
 	 * 参考 manual-sorting 插件的实现：
 	 * https://github.com/kh4f/manual-sorting/blob/main/src/managers/patcher.ts
 	 */
@@ -71,25 +73,28 @@ export class FileExplorerPatcher {
 
 			// 保存原始的 getSortedFolderItems 方法
 			// @ts-ignore
-			const originalGetSortedFolderItems = this.explorerView.getSortedFolderItems;
-			
-			if (!originalGetSortedFolderItems) {
+			this.originalGetSortedFolderItems = this.explorerView.getSortedFolderItems;
+
+			if (!this.originalGetSortedFolderItems) {
 				console.warn('[ChapterSorter] getSortedFolderItems method not found');
 				return false;
 			}
-			
+
+			// 闭包引用，供 patch 函数内使用
+			const savedOriginal = this.originalGetSortedFolderItems;
+
 			// Patch getSortedFolderItems 方法 - 这是关键！
 			// 这个方法在 Obsidian 渲染文件列表时被调用
 			// @ts-ignore
 			this.explorerView.getSortedFolderItems = function(folder: TFolder) {
 				// 调用原始方法获取排序后的项目（可能已经被 manual-sorting 处理过）
-				const sortedItems: any[] = originalGetSortedFolderItems.call(this, folder);
-				
+				const sortedItems: any[] = savedOriginal.call(this, folder);
+
 				// 分离章节文件和非章节文件
 				const chapterItems: { item: any; chapterInfo: { number: number; ruleIndex: number } }[] = [];
 				const nonChapterItems: { item: any; originalIndex: number }[] = [];
 				let firstChapterIndex = -1; // 章节文件在原列表中第一次出现的位置
-				
+
 				sortedItems.forEach((item: any, index: number) => {
 					const chapterInfo = ChapterSorter.extractChapterNumber(item.file?.name || '');
 					if (chapterInfo !== null) {
@@ -99,10 +104,10 @@ export class FileExplorerPatcher {
 						nonChapterItems.push({ item, originalIndex: index });
 					}
 				});
-				
+
 				// 没有章节文件，直接返回原始结果（完全不干预）
 				if (chapterItems.length === 0) return sortedItems;
-				
+
 				// 章节文件按规则索引和编号排序
 				chapterItems.sort((a, b) => {
 					// 先按规则索引排序
@@ -112,13 +117,13 @@ export class FileExplorerPatcher {
 					// 同一规则内按编号排序
 					return a.chapterInfo.number - b.chapterInfo.number;
 				});
-				
+
 				// 重建列表：
 				// 非章节文件保持原来的相对顺序，
 				// 章节文件作为一个整体块插入到第一个章节文件原来的位置
 				const result: any[] = [];
 				let chaptersInserted = false;
-				
+
 				nonChapterItems.forEach(({ item, originalIndex }) => {
 					// 在第一个章节文件原来的位置之前，先插入所有章节文件
 					if (!chaptersInserted && originalIndex >= firstChapterIndex) {
@@ -127,15 +132,15 @@ export class FileExplorerPatcher {
 					}
 					result.push(item);
 				});
-				
+
 				// 如果章节文件在所有非章节文件之后，追加到末尾
 				if (!chaptersInserted) {
 					chapterItems.forEach(c => result.push(c.item));
 				}
-				
+
 				return result;
 			};
-			
+
 			console.log('[ChapterSorter] Successfully patched getSortedFolderItems');
 			return true;
 		} catch (error) {
@@ -146,14 +151,14 @@ export class FileExplorerPatcher {
 
 	/**
 	 * 触发文件浏览器刷新
-	 * 
+	 *
 	 * 调用 explorerView.sort() 会触发 Obsidian 重新渲染文件列表，
 	 * 此时会调用我们 patch 的 getSortedFolderItems 方法
 	 */
 	private refresh(): void {
 		try {
 			if (!this.explorerView) return;
-			
+
 			// @ts-ignore
 			if (this.explorerView.sort) {
 				// @ts-ignore
@@ -170,8 +175,6 @@ export class FileExplorerPatcher {
 	/**
 	 * 设置文件系统事件监听器
 	 */
-	private eventRefs: any[] = [];
-
 	private setupFileSystemListeners(): void {
 		// 监听文件创建
 		const createRef = this.app.vault.on('create', () => {
@@ -208,18 +211,25 @@ export class FileExplorerPatcher {
 
 		try {
 			this.enabled = false;
-			
+
 			// 移除事件监听器
 			this.eventRefs.forEach(ref => {
 				this.app.vault.offref(ref);
 			});
 			this.eventRefs = [];
-			
+
+			// 恢复原始排序方法
+			if (this.originalGetSortedFolderItems && this.explorerView) {
+				// @ts-ignore
+				this.explorerView.getSortedFolderItems = this.originalGetSortedFolderItems;
+				this.originalGetSortedFolderItems = null;
+
+				// 触发刷新以应用恢复的排序
+				this.refresh();
+				console.log('[ChapterSorter] Original sorting method restored');
+			}
+
 			console.log('[ChapterSorter] Smart chapter sorting disabled');
-			
-			// 注意：这里没有恢复原始方法，因为我们没有保存它
-			// 如果需要完全恢复，需要在 patch 时保存原始方法
-			// 但通常禁用插件后会重新加载 Obsidian，所以不是问题
 		} catch (error) {
 			console.error('[ChapterSorter] Failed to disable smart sorting:', error);
 		}

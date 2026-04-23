@@ -1,6 +1,7 @@
 import { App, Notice, PluginSettingTab, Setting } from 'obsidian';
 import { isDesktop, isMobile, getPlatformTier } from '../utils/platform';
 import { ObsOverlayServer } from '../services/ObsServer';
+import { MobileFloatingStats } from './MobileFloatingStats';
 
 // 前向声明，避免循环依赖
 type AccurateChineseCountPlugin = any;
@@ -49,7 +50,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 						// 立即应用更改
 						if (value) {
 							if (!this.plugin.mobileFloatingStats) {
-								this.plugin.mobileFloatingStats = new (await import('./MobileFloatingStats')).MobileFloatingStats(this.app, this.plugin);
+								this.plugin.mobileFloatingStats = new MobileFloatingStats(this.app, this.plugin);
 							}
 							this.plugin.mobileFloatingStats.load();
 						} else {
@@ -82,7 +83,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 						// 立即应用更改
 						if (value) {
 							if (!this.plugin.mobileFloatingStats) {
-								this.plugin.mobileFloatingStats = new (await import('./MobileFloatingStats')).MobileFloatingStats(this.app, this.plugin);
+								this.plugin.mobileFloatingStats = new MobileFloatingStats(this.app, this.plugin);
 							}
 							this.plugin.mobileFloatingStats.load();
 						} else {
