@@ -170,27 +170,32 @@ export class FileExplorerPatcher {
 	/**
 	 * 设置文件系统事件监听器
 	 */
+	private eventRefs: any[] = [];
+
 	private setupFileSystemListeners(): void {
 		// 监听文件创建
-		this.app.vault.on('create', () => {
+		const createRef = this.app.vault.on('create', () => {
 			if (this.enabled) {
 				setTimeout(() => this.refresh(), 100);
 			}
 		});
+		this.eventRefs.push(createRef);
 
 		// 监听文件删除
-		this.app.vault.on('delete', () => {
+		const deleteRef = this.app.vault.on('delete', () => {
 			if (this.enabled) {
 				setTimeout(() => this.refresh(), 100);
 			}
 		});
+		this.eventRefs.push(deleteRef);
 
 		// 监听文件重命名
-		this.app.vault.on('rename', () => {
+		const renameRef = this.app.vault.on('rename', () => {
 			if (this.enabled) {
 				setTimeout(() => this.refresh(), 100);
 			}
 		});
+		this.eventRefs.push(renameRef);
 
 		console.log('[ChapterSorter] File system listeners setup complete');
 	}
@@ -203,6 +208,13 @@ export class FileExplorerPatcher {
 
 		try {
 			this.enabled = false;
+			
+			// 移除事件监听器
+			this.eventRefs.forEach(ref => {
+				this.app.vault.offref(ref);
+			});
+			this.eventRefs = [];
+			
 			console.log('[ChapterSorter] Smart chapter sorting disabled');
 			
 			// 注意：这里没有恢复原始方法，因为我们没有保存它

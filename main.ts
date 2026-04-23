@@ -693,12 +693,6 @@ export default class AccurateChineseCountPlugin extends Plugin {
 			}
 		});
 
-		this.registerInterval(window.setInterval(() => {
-			if (this.isTracking) {
-				this.saveSettings();
-			}
-		}, 60 * 1000));
-
 		// ==========================================
 		// 伏笔标注功能
 		// ==========================================
@@ -1440,7 +1434,7 @@ export default class AccurateChineseCountPlugin extends Plugin {
 					console.log('[WebNovel Assistant] Worker 已重启，追踪状态已恢复');
 				}
 				
-				// ֪ͨ�û�
+				// 通知用户
 				new Notice('⚠️ 时间追踪 Worker 已自动重启\n追踪功能已恢复正常', 5000);
 			}, 5000);
 		};
@@ -1508,7 +1502,13 @@ export default class AccurateChineseCountPlugin extends Plugin {
 				if (!isNaN(fmGoal)) currentGoal = fmGoal;
 			}
 			fs.writeFileSync(path.join(dir, 'obs_words_goal.txt'), currentGoal.toString(), 'utf8');
-		} catch (e) { if (force) console.error(e); }
+		} catch (e) { 
+			if (force) {
+				console.error('[WebNovel Assistant] Legacy OBS export failed:', e);
+			} else {
+				console.warn('[WebNovel Assistant] Legacy OBS export failed (silent mode):', e);
+			}
+		}
 	}
 
 	getObsStats(): ObsStatsPayload {
@@ -1520,20 +1520,17 @@ export default class AccurateChineseCountPlugin extends Plugin {
 
 		let targetGoal = this.settings.defaultGoal;
 		let currentFile = '';
+		let chapterWords = 0;
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (view?.file) {
 			currentFile = view.file.basename;
 			const cache = this.app.metadataCache.getFileCache(view.file);
 			const fmGoal = parseInt(cache?.frontmatter?.['word-goal']);
 			if (!isNaN(fmGoal)) targetGoal = fmGoal;
+			chapterWords = this.calculateAccurateWords(view.getViewData());
 		}
 
 		const todayAdded = Math.max(0, todayStat.addedWords);
-
-		let chapterWords = 0;
-		const view2 = this.app.workspace.getActiveViewOfType(MarkdownView);
-		if (view2) chapterWords = this.calculateAccurateWords(view2.getViewData());
-
 		const dailyGoal = this.settings.dailyGoal || 0;
 
 		return {
@@ -1550,6 +1547,16 @@ export default class AccurateChineseCountPlugin extends Plugin {
 			dailyPercent: dailyGoal > 0 ? Math.min(Math.round((todayAdded / dailyGoal) * 100), 100) : 0,
 			currentFile: currentFile,
 		};
+	}
+
+	/**
+	 * 过滤用户自定义 CSS，防止 XSS 注入
+	 */
+	private sanitizeCss(css: string): string {
+		if (!css) return '';
+		return css
+			.replace(/<\/style/gi, '<\\/style')
+			.replace(/<script[\s\S]*?<\/script>/gi, '');
 	}
 
 	buildObsOverlayHtml(): string {
@@ -1619,11 +1626,13 @@ export default class AccurateChineseCountPlugin extends Plugin {
 <head>
 <meta charset="UTF-8">
 <style>
-* { margin: 0; padding: 0; box-sizing: border-box; 
 * { 
+    margin: 0; 
+    padding: 0; 
+    box-sizing: border-box; 
     -webkit-font-smoothing: antialiased; 
     -moz-osx-font-smoothing: grayscale; 
-} }
+}
 body {
 	background: transparent;
 	font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
@@ -1783,7 +1792,7 @@ body {
 .goal-value .percent { font-size: 14px; color: ${accentColor}; font-weight: normal; }
 
 /* Custom User CSS */
-${this.settings.obsCustomCss || ''}
+${this.sanitizeCss(this.settings.obsCustomCss)}
 </style>
 </head>
 <body>
