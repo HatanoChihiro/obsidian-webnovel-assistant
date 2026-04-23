@@ -205,6 +205,14 @@ export default class AccurateChineseCountPlugin extends Plugin {
 					}, 1500);
 				});
 			}
+			// 监听布局变化，确保文件浏览器就绪后刷新字数
+			this.registerEvent(this.app.workspace.on('layout-change', () => {
+				if (this.settings.showExplorerCounts) {
+					this.debounceManager.debounce('mobile-folder-refresh', () => {
+						this.refreshFolderCounts();
+					}, 300);
+				}
+			}));
 			
 			// 移动端：注册"复制全文"命令（解决移动端全选限制）
 			this.addCommand({
@@ -887,6 +895,24 @@ export default class AccurateChineseCountPlugin extends Plugin {
 			}));
 		}
 		
+		// 平板端：如果启用了文件浏览器字数统计，构建缓存
+		if (this.settings.showExplorerCounts) {
+			this.app.workspace.onLayoutReady(() => {
+				// 平板端需要延迟，确保文件浏览器完全加载
+				setTimeout(() => {
+					this.buildFolderCache();
+				}, 1000);
+			});
+			// 监听布局变化，确保文件浏览器就绪后刷新字数
+			this.registerEvent(this.app.workspace.on('layout-change', () => {
+				if (this.settings.showExplorerCounts) {
+					this.debounceManager.debounce('tablet-folder-refresh', () => {
+						this.refreshFolderCounts();
+					}, 300);
+				}
+			}));
+		}
+
 		// 注册面板视图
 		this.registerView(STATUS_VIEW_TYPE, (leaf) => new WritingStatusView(leaf, this));
 		this.registerView(FORESHADOWING_VIEW_TYPE, (leaf) => new ForeshadowingView(leaf, this));
