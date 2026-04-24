@@ -1,6 +1,5 @@
 import { ItemView, MarkdownView, TFile, WorkspaceLeaf } from 'obsidian';
-
-type AccurateChineseCountPlugin = any;
+import type { WebNovelAssistantPlugin } from '../types/plugin';
 
 /**
  * 创作工具面板基类
@@ -8,10 +7,10 @@ type AccurateChineseCountPlugin = any;
  * ForeshadowingView 和 TimelineView 都继承此类
  */
 export abstract class CreativeView extends ItemView {
-	plugin: AccurateChineseCountPlugin;
+	plugin: WebNovelAssistantPlugin;
 	currentFolder: string = '';
 
-	constructor(leaf: WorkspaceLeaf, plugin: AccurateChineseCountPlugin) {
+	constructor(leaf: WorkspaceLeaf, plugin: WebNovelAssistantPlugin) {
 		super(leaf);
 		this.plugin = plugin;
 	}

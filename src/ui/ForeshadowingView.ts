@@ -2,8 +2,7 @@ import { MarkdownView, Menu, Notice, TFile, WorkspaceLeaf } from 'obsidian';
 import { ForeshadowingStatus } from '../types/foreshadowing';
 import { ForeshadowingRecoveryModal } from './ForeshadowingModal';
 import { CreativeView } from './CreativeView';
-
-type AccurateChineseCountPlugin = any;
+import type { WebNovelAssistantPlugin } from '../types/plugin';
 
 export const FORESHADOWING_VIEW_TYPE = 'foreshadowing-view';
 
@@ -27,7 +26,7 @@ interface ParsedEntry {
 export class ForeshadowingView extends CreativeView {
 	private filterStatus: 'all' | ForeshadowingStatus = 'all';
 
-	constructor(leaf: WorkspaceLeaf, plugin: AccurateChineseCountPlugin) {
+	constructor(leaf: WorkspaceLeaf, plugin: WebNovelAssistantPlugin) {
 		super(leaf, plugin);
 	}
 

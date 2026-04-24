@@ -1,5 +1,6 @@
 ﻿import { App, Plugin, PluginSettingTab, Setting, MarkdownView, Modal, TFile, Notice, TFolder, MarkdownRenderer, Component, setIcon, ItemView, WorkspaceLeaf, Platform } from 'obsidian';
 import { AccurateCountSettings, DailyStat, ThemeScheme, StickyNoteState } from './src/types/settings';
+import { WebNovelAssistantPlugin } from './src/types/plugin';
 import { ObsStatsPayload } from './src/types/stats';
 import {
 	hexToRgba,
@@ -82,7 +83,7 @@ const DEFAULT_SETTINGS: AccurateCountSettings = {
 	showMobileFloatingStats: true, // 默认显示移动端浮窗
 }
 
-export default class AccurateChineseCountPlugin extends Plugin {
+export default class AccurateChineseCountPlugin extends Plugin implements WebNovelAssistantPlugin {
 
 	
 	settings!: AccurateCountSettings;
@@ -273,10 +274,17 @@ export default class AccurateChineseCountPlugin extends Plugin {
 		// - ✓ 文件夹合并功能
 		// - ✓ 历史统计图表
 		// ==========================================
-		this.registerView(STATUS_VIEW_TYPE, (leaf) => new WritingStatusView(leaf, this));
-		this.registerView(FORESHADOWING_VIEW_TYPE, (leaf) => new ForeshadowingView(leaf, this));
-		this.registerView(TIMELINE_VIEW_TYPE, (leaf) => new TimelineView(leaf, this));
+		
+		// 初始化伏笔管理器
+		this.foreshadowingManager = new ForeshadowingManager(this.app, this);
 
+		// 注册共享功能
+		this.registerCommonViews();
+		this.registerCommonRibbonIcons();
+		this.registerCommonCommands();
+		this.registerCommonMenus();
+
+		// 桌面端专属：悬浮便签
 		this.app.workspace.onLayoutReady(() => {
 			this.settings.openNotes.forEach(state => {
 				const note = new FloatingStickyNote(this.app, this, { state });
@@ -373,36 +381,7 @@ export default class AccurateChineseCountPlugin extends Plugin {
 			note.load();
 		});
 
-		this.addRibbonIcon('bar-chart-2', '打开/关闭写作实时状态面板', () => {
-			this.toggleStatusView(); 
-		});
-
-		this.addRibbonIcon('bookmark', '打开/关闭伏笔面板', () => {
-			this.toggleForeshadowingView();
-		});
-
-		this.addRibbonIcon('calendar-clock', '打开/关闭时间线面板', () => {
-			this.toggleTimelineView();
-		});
-
-		this.addCommand({
-			id: 'toggle-foreshadowing-view',
-			name: '打开/关闭伏笔面板',
-			callback: () => this.toggleForeshadowingView()
-		});
-
-		this.addCommand({
-			id: 'toggle-timeline-view',
-			name: '打开/关闭时间线面板',
-			callback: () => this.toggleTimelineView()
-		});
-
-		this.addCommand({
-			id: 'toggle-writing-status-view',
-			name: '打开/关闭写作实时状态面板',
-			callback: () => this.toggleStatusView()
-		});
-
+		// 桌面端专属命令
 		this.addCommand({
 			id: 'toggle-tracking',
 			name: '开始/暂停 摸鱼时间统计',
@@ -484,11 +463,9 @@ export default class AccurateChineseCountPlugin extends Plugin {
 			}
 		});
 
+		// 桌面端专属：文件菜单 - 抽出为便签和合并章节
 		this.registerEvent(this.app.workspace.on('file-menu', (menu, file) => {
 			if (file instanceof TFile && file.extension === 'md') {
-				menu.addItem((item) => {
-					item.setTitle('设定本章目标字数').setIcon('target').onClick(() => { new GoalModal(this.app, file).open(); });
-				});
 				menu.addItem((item) => {
 					item.setTitle('抽出为便签').setIcon('popup-open').onClick(() => { 
 						const stickyNote = new FloatingStickyNote(this.app, this, { file: file });
@@ -560,6 +537,7 @@ export default class AccurateChineseCountPlugin extends Plugin {
 			}
 		}));
 
+		// 桌面端专属：编辑器菜单 - 抽出为便签
 		this.registerEvent(this.app.workspace.on('editor-menu', (menu, editor, view) => {
 			if (editor.somethingSelected()) {
 				menu.addItem((item) => {
@@ -568,51 +546,8 @@ export default class AccurateChineseCountPlugin extends Plugin {
 						note.load();
 					});
 				});
-				menu.addItem((item) => {
-					item.setTitle('标注为伏笔').setIcon('bookmark').onClick(() => {
-						this.app.commands.executeCommandById('web-novel-assistant:mark-as-foreshadowing');
-					});
-				});
-				menu.addItem((item) => {
-					item.setTitle('添加到时间线').setIcon('calendar-clock').onClick(async () => {
-						const selection = editor.getSelection();
-						if (!selection.trim()) { new Notice('请先选中文字'); return; }
-						const sourceFile = view.file?.basename || '';
-						const folderPath = view.file?.parent?.path || '';
-
-						new TimelineAddFromSelectionModal(
-							this.app,
-							this,
-							this.settings.timeline?.fileName || '时间线',
-							selection.trim(),
-							sourceFile,
-							folderPath,
-							async (entry) => {
-								const manager = new TimelineManager(this.app, this, folderPath);
-								await manager.appendEntry({
-									time: entry.time,
-									description: entry.description,
-									chapter: entry.chapter,
-									type: entry.type,
-									rawBlock: '',
-								});
-								new Notice('✅ 已添加到时间线');
-								// 刷新面板（如果已打开）
-								const leaves = this.app.workspace.getLeavesOfType(TIMELINE_VIEW_TYPE);
-								if (leaves.length > 0) {
-									// 确保文件写入完成后再刷新
-									await new Promise(resolve => setTimeout(resolve, 100));
-									await (leaves[0].view as TimelineView).refresh();
-								}
-							}
-						).open();
-					});
-				});
 			}
 			if (view.file) {
-				menu.addItem((item) => {
-					item.setTitle('设定本章目标字数').setIcon('target').onClick(() => { new GoalModal(this.app, view.file!).open(); });
-				});
 				menu.addItem((item) => {
 					item.setTitle('当前文件抽出为便签').setIcon('popup-open').onClick(() => { 
 						const note = new FloatingStickyNote(this.app, this, { file: view.file! });
@@ -702,9 +637,8 @@ export default class AccurateChineseCountPlugin extends Plugin {
 		});
 
 		// ==========================================
-		// 伏笔标注功能
+		// 桌面端专属：伏笔标注功能 - Markdown 渲染后处理
 		// ==========================================
-		this.foreshadowingManager = new ForeshadowingManager(this.app, this);
 
 		// Markdown 渲染后处理：在预览模式下为"未回收"状态注入复选框
 		this.registerMarkdownPostProcessor((el, ctx) => {
@@ -790,6 +724,53 @@ export default class AccurateChineseCountPlugin extends Plugin {
 				p.appendChild(checkbox);
 			});
 		});
+	}
+
+	/**
+	 * 注册共享视图（平板端和桌面端都需要）
+	 */
+	private registerCommonViews(): void {
+		this.registerView(STATUS_VIEW_TYPE, (leaf) => new WritingStatusView(leaf, this));
+		this.registerView(FORESHADOWING_VIEW_TYPE, (leaf) => new ForeshadowingView(leaf, this));
+		this.registerView(TIMELINE_VIEW_TYPE, (leaf) => new TimelineView(leaf, this));
+	}
+
+	/**
+	 * 注册共享 Ribbon 图标（平板端和桌面端都需要）
+	 */
+	private registerCommonRibbonIcons(): void {
+		this.addRibbonIcon('bar-chart-2', '打开/关闭写作实时状态面板', () => {
+			this.toggleStatusView();
+		});
+		this.addRibbonIcon('bookmark', '打开/关闭伏笔面板', () => {
+			this.toggleForeshadowingView();
+		});
+		this.addRibbonIcon('calendar-clock', '打开/关闭时间线面板', () => {
+			this.toggleTimelineView();
+		});
+	}
+
+	/**
+	 * 注册共享命令（平板端和桌面端都需要）
+	 */
+	private registerCommonCommands(): void {
+		this.addCommand({
+			id: 'toggle-foreshadowing-view',
+			name: '打开/关闭伏笔面板',
+			callback: () => this.toggleForeshadowingView()
+		});
+
+		this.addCommand({
+			id: 'toggle-timeline-view',
+			name: '打开/关闭时间线面板',
+			callback: () => this.toggleTimelineView()
+		});
+
+		this.addCommand({
+			id: 'toggle-writing-status-view',
+			name: '打开/关闭写作实时状态面板',
+			callback: () => this.toggleStatusView()
+		});
 
 		this.addCommand({
 			id: 'mark-as-foreshadowing',
@@ -810,13 +791,15 @@ export default class AccurateChineseCountPlugin extends Plugin {
 							} else {
 								new Notice(`✅ 已标注为伏笔，保存至「${targetFile.name}」`, 5000);
 							}
-							// 提供打开伏笔文件的选项
-							const openNotice = new Notice(`💡 点击此处打开伏笔文件`, 8000);
-							openNotice.noticeEl.style.cursor = 'pointer';
-							openNotice.noticeEl.onclick = () => {
-								this.foreshadowingManager.openForeshadowingFile(targetFile);
-								openNotice.hide();
-							};
+							// 桌面端提供打开伏笔文件的选项
+							if (isDesktop()) {
+								const openNotice = new Notice(`💡 点击此处打开伏笔文件`, 8000);
+								openNotice.noticeEl.style.cursor = 'pointer';
+								openNotice.noticeEl.onclick = () => {
+									this.foreshadowingManager.openForeshadowingFile(targetFile);
+									openNotice.hide();
+								};
+							}
 						})
 						.catch((err) => {
 							console.error('[ForeshadowingManager] addForeshadowing failed:', err);
@@ -824,9 +807,7 @@ export default class AccurateChineseCountPlugin extends Plugin {
 						});
 				};
 
-				// 检测伏笔文件是否存在
 				if (!this.foreshadowingManager.foreshadowingFileExists(sourceFile)) {
-					const filePath = this.foreshadowingManager.getForeshadowingFilePath(sourceFile);
 					const fileName = this.settings.foreshadowing?.fileName || '伏笔';
 					const folderPath = sourceFile.parent?.path || '';
 					new ConfirmCreateForeshadowingFileModal(this.app, fileName, folderPath, () => {
@@ -873,80 +854,10 @@ export default class AccurateChineseCountPlugin extends Plugin {
 	}
 
 	/**
-	 * 设置平板端中间模式
-	 * 启用面板功能，但不启用重度功能（Worker、OBS、缓存）
+	 * 注册共享菜单（平板端和桌面端都需要）
 	 */
-	private setupTabletMode(): void {
-		// 平板端：根据设置决定是否启用浮动字数统计窗口
-		if (this.settings.showMobileFloatingStats) {
-			this.mobileFloatingStats = new MobileFloatingStats(this.app, this);
-			this.app.workspace.onLayoutReady(() => {
-				this.mobileFloatingStats?.load();
-			});
-			
-			// 监听编辑器变化，更新浮窗（使用自适应防抖）
-			this.registerEvent(this.app.workspace.on('editor-change', () => {
-				this.adaptiveDebounceManager.debounce('mobile-stats-update', () => {
-					this.mobileFloatingStats?.update();
-				});
-			}));
-			this.registerEvent(this.app.workspace.on('active-leaf-change', () => {
-				this.mobileFloatingStats?.update();
-			}));
-		}
-		
-		// 平板端：如果启用了文件浏览器字数统计，构建缓存
-		if (this.settings.showExplorerCounts) {
-			this.app.workspace.onLayoutReady(() => {
-				// 平板端需要延迟，确保文件浏览器完全加载
-				setTimeout(() => {
-					this.buildFolderCache();
-				}, 1000);
-			});
-			// 监听布局变化，确保文件浏览器就绪后刷新字数
-			this.registerEvent(this.app.workspace.on('layout-change', () => {
-				if (this.settings.showExplorerCounts) {
-					this.debounceManager.debounce('tablet-folder-refresh', () => {
-						this.refreshFolderCounts();
-					}, 300);
-				}
-			}));
-		}
-
-		// 注册面板视图
-		this.registerView(STATUS_VIEW_TYPE, (leaf) => new WritingStatusView(leaf, this));
-		this.registerView(FORESHADOWING_VIEW_TYPE, (leaf) => new ForeshadowingView(leaf, this));
-		this.registerView(TIMELINE_VIEW_TYPE, (leaf) => new TimelineView(leaf, this));
-
-		// 注册 ribbon 图标
-		this.addRibbonIcon('bar-chart-2', '打开/关闭写作实时状态面板', () => {
-			this.toggleStatusView();
-		});
-		this.addRibbonIcon('bookmark', '打开/关闭伏笔面板', () => {
-			this.toggleForeshadowingView();
-		});
-		this.addRibbonIcon('calendar-clock', '打开/关闭时间线面板', () => {
-			this.toggleTimelineView();
-		});
-
-		// 注册命令
-		this.addCommand({
-			id: 'toggle-foreshadowing-view',
-			name: '打开/关闭伏笔面板',
-			callback: () => this.toggleForeshadowingView()
-		});
-		this.addCommand({
-			id: 'toggle-timeline-view',
-			name: '打开/关闭时间线面板',
-			callback: () => this.toggleTimelineView()
-		});
-		this.addCommand({
-			id: 'toggle-writing-status-view',
-			name: '打开/关闭写作实时状态面板',
-			callback: () => this.toggleStatusView()
-		});
-
-		// 注册右键菜单
+	private registerCommonMenus(): void {
+		// 文件右键菜单
 		this.registerEvent(this.app.workspace.on('file-menu', (menu, file) => {
 			if (file instanceof TFile && file.extension === 'md') {
 				menu.addItem((item) => {
@@ -955,6 +866,7 @@ export default class AccurateChineseCountPlugin extends Plugin {
 			}
 		}));
 
+		// 编辑器右键菜单
 		this.registerEvent(this.app.workspace.on('editor-menu', (menu, editor, view) => {
 			if (editor.somethingSelected()) {
 				menu.addItem((item) => {
@@ -1003,82 +915,57 @@ export default class AccurateChineseCountPlugin extends Plugin {
 				});
 			}
 		}));
+	}
+
+	/**
+	 * 设置平板端中间模式
+	 * 启用面板功能，但不启用重度功能（Worker、OBS、缓存）
+	 */
+	private setupTabletMode(): void {
+		// 平板端：根据设置决定是否启用浮动字数统计窗口
+		if (this.settings.showMobileFloatingStats) {
+			this.mobileFloatingStats = new MobileFloatingStats(this.app, this);
+			this.app.workspace.onLayoutReady(() => {
+				this.mobileFloatingStats?.load();
+			});
+			
+			// 监听编辑器变化，更新浮窗（使用自适应防抖）
+			this.registerEvent(this.app.workspace.on('editor-change', () => {
+				this.adaptiveDebounceManager.debounce('mobile-stats-update', () => {
+					this.mobileFloatingStats?.update();
+				});
+			}));
+			this.registerEvent(this.app.workspace.on('active-leaf-change', () => {
+				this.mobileFloatingStats?.update();
+			}));
+		}
+		
+		// 平板端：如果启用了文件浏览器字数统计，构建缓存
+		if (this.settings.showExplorerCounts) {
+			this.app.workspace.onLayoutReady(() => {
+				// 平板端需要延迟，确保文件浏览器完全加载
+				setTimeout(() => {
+					this.buildFolderCache();
+				}, 1000);
+			});
+			// 监听布局变化，确保文件浏览器就绪后刷新字数
+			this.registerEvent(this.app.workspace.on('layout-change', () => {
+				if (this.settings.showExplorerCounts) {
+					this.debounceManager.debounce('tablet-folder-refresh', () => {
+						this.refreshFolderCounts();
+					}, 300);
+				}
+			}));
+		}
 
 		// 初始化伏笔管理器
 		this.foreshadowingManager = new ForeshadowingManager(this.app, this);
 
-		// 注册伏笔标注命令
-		this.addCommand({
-			id: 'mark-as-foreshadowing',
-			name: '标注为伏笔',
-			editorCheckCallback: (checking, editor, view) => {
-				const selection = editor.getSelection();
-				if (!selection || !selection.trim()) return false;
-				if (checking) return true;
-
-				const sourceFile = view.file;
-				if (!sourceFile) return false;
-
-				const doMark = (description: string, tags: string[]) => {
-					this.foreshadowingManager.addForeshadowing(sourceFile, selection, description, tags)
-						.then(({ file: targetFile, merged }) => {
-							if (merged) {
-								new Notice(`✅ 已合并到同名伏笔条目「${targetFile.name}」`, 5000);
-							} else {
-								new Notice(`✅ 已标注为伏笔，保存至「${targetFile.name}」`, 5000);
-							}
-						})
-						.catch((err) => {
-							console.error('[ForeshadowingManager] addForeshadowing failed:', err);
-							new Notice(`❌ 标注失败：${err}`);
-						});
-				};
-
-				if (!this.foreshadowingManager.foreshadowingFileExists(sourceFile)) {
-					const fileName = this.settings.foreshadowing?.fileName || '伏笔';
-					const folderPath = sourceFile.parent?.path || '';
-					new ConfirmCreateForeshadowingFileModal(this.app, fileName, folderPath, () => {
-						new ForeshadowingInputModal(this.app, this, sourceFile.basename, selection, doMark).open();
-					}).open();
-				} else {
-					new ForeshadowingInputModal(this.app, this, sourceFile.basename, selection, doMark).open();
-				}
-				return true;
-			}
-		});
-
-		// 注册标记伏笔已回收命令
-		this.addCommand({
-			id: 'mark-foreshadowing-recovered',
-			name: '标记伏笔已回收',
-			editorCheckCallback: (checking, editor, view) => {
-				const file = view.file;
-				if (!file) return false;
-				const foreshadowingFileName = (this.settings.foreshadowing?.fileName || '伏笔') + '.md';
-				if (file.name !== foreshadowingFileName) return false;
-				if (checking) return true;
-
-				const cursorLine = editor.getCursor().line;
-				const entryInfo = this.foreshadowingManager.getEntryAtCursor(editor, cursorLine);
-				if (!entryInfo) {
-					new Notice('❌ 请将光标放在伏笔条目上');
-					return true;
-				}
-
-				new ForeshadowingRecoveryModal(this.app, entryInfo.contentPreview, file.parent?.path || '', async (recoveryFileNames) => {
-					const success = await this.foreshadowingManager.markAsRecovered(
-						file, entryInfo.sourceFile, entryInfo.createdAt, recoveryFileNames
-					);
-					if (success) {
-						const fileList = recoveryFileNames.map(f => `[[${f}]]`).join('、');
-						new Notice(`✅ 已标记为已回收：${fileList}`);
-					} else {
-						new Notice('❌ 未找到对应的伏笔条目，请确认光标位置');
-					}
-				}).open();
-				return true;
-			}
-		});
+		// 注册共享功能
+		this.registerCommonViews();
+		this.registerCommonRibbonIcons();
+		this.registerCommonCommands();
+		this.registerCommonMenus();
 	}
 
 	onunload() {

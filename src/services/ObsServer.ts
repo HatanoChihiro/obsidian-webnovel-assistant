@@ -1,7 +1,5 @@
 import { Notice, Platform } from 'obsidian';
-
-// 前向声明
-type AccurateChineseCountPlugin = any;
+import type { WebNovelAssistantPlugin } from '../types/plugin';
 
 /**
  * OBS 直播叠加层 HTTP Server
@@ -12,11 +10,11 @@ type AccurateChineseCountPlugin = any;
  * - /: 返回完整的 HTML 叠加层页面
  */
 export class ObsOverlayServer {
-	private plugin: AccurateChineseCountPlugin;
+	private plugin: WebNovelAssistantPlugin;
 	private server: import('../types/node').NodeHTTPServer | null = null;
 	private port: number;
 
-	constructor(plugin: AccurateChineseCountPlugin, port: number) {
+	constructor(plugin: WebNovelAssistantPlugin, port: number) {
 		this.plugin = plugin;
 		this.port = port;
 	}

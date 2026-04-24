@@ -2,20 +2,18 @@ import { App, Component, MarkdownRenderer, Notice, TFile, setIcon, Modal, Settin
 import { StickyNoteState } from '../types/settings';
 import { hexToRgba } from '../utils/format';
 import { injectGlobalStyle } from '../utils/dom';
-
-// 前向声明，避免循环依赖
-type AccurateChineseCountPlugin = any;
+import type { WebNovelAssistantPlugin } from '../types/plugin';
 
 /**
  * 保存便签对话框
  */
 class SaveStickyNoteModal extends Modal {
-	plugin: AccurateChineseCountPlugin;
+	plugin: WebNovelAssistantPlugin;
 	onSubmit: (fileName: string, folderPath: string) => void;
 	fileNameInput!: HTMLInputElement;
 	folderPathInput!: HTMLInputElement;
 
-	constructor(app: App, plugin: AccurateChineseCountPlugin, onSubmit: (fileName: string, folderPath: string) => void) {
+	constructor(app: App, plugin: WebNovelAssistantPlugin, onSubmit: (fileName: string, folderPath: string) => void) {
 		super(app);
 		this.plugin = plugin;
 		this.onSubmit = onSubmit;
@@ -188,7 +186,7 @@ class ConfirmCloseModal extends Modal {
  */
 export class FloatingStickyNote extends Component {
 	app: App;
-	plugin: AccurateChineseCountPlugin;
+	plugin: WebNovelAssistantPlugin;
 	state: StickyNoteState;
 	containerEl!: HTMLElement;
 	contentContainer!: HTMLDivElement;
@@ -196,7 +194,7 @@ export class FloatingStickyNote extends Component {
 	initialContent: string; // 用于检测未保存的更改
 	lastSavedContent: string = ""; // 最后一次保存的内容
 
-	constructor(app: App, plugin: AccurateChineseCountPlugin, options: { file?: TFile, content?: string, title?: string, state?: StickyNoteState }) {
+	constructor(app: App, plugin: WebNovelAssistantPlugin, options: { file?: TFile, content?: string, title?: string, state?: StickyNoteState }) {
 		super();
 		this.app = app;
 		this.plugin = plugin;
@@ -294,46 +292,28 @@ export class FloatingStickyNote extends Component {
 		this.contentContainer.tabIndex = -1;
 		this.textareaEl = this.containerEl.createEl('textarea', { cls: 'my-sticky-textarea' });
 
-		// 阻止 textarea 中的快捷键事件冒泡到 Obsidian
-		// 使用捕获阶段和 stopImmediatePropagation 确保优先处理
-		this.textareaEl.addEventListener('keydown', (e) => {
-			// 对于空格和回车，阻止默认行为后手动插入
-			if (e.key === ' ') {
-				e.preventDefault();
-				e.stopImmediatePropagation();
-				const start = this.textareaEl.selectionStart;
-				const end = this.textareaEl.selectionEnd;
-				const value = this.textareaEl.value;
-				this.textareaEl.value = value.substring(0, start) + ' ' + value.substring(end);
-				this.textareaEl.selectionStart = this.textareaEl.selectionEnd = start + 1;
-				// 触发 input 事件
-				this.textareaEl.dispatchEvent(new Event('input', { bubbles: true }));
-				// 保持焦点
-				this.textareaEl.focus();
-				return false;
-			}
-			if (e.key === 'Enter') {
-				e.preventDefault();
-				e.stopImmediatePropagation();
-				const start = this.textareaEl.selectionStart;
-				const end = this.textareaEl.selectionEnd;
-				const value = this.textareaEl.value;
-				this.textareaEl.value = value.substring(0, start) + '\n' + value.substring(end);
-				this.textareaEl.selectionStart = this.textareaEl.selectionEnd = start + 1;
-				// 触发 input 事件
-				this.textareaEl.dispatchEvent(new Event('input', { bubbles: true }));
-				// 保持焦点
-				this.textareaEl.focus();
-				return false;
-			}
-			// 其他键正常传播，但阻止冒泡到 Obsidian
-			e.stopPropagation();
-		}, { capture: true });
+		// 1. 只需要在 textarea 级别阻止普通的事件冒泡即可
+		const stopPropagation = (e: Event) => e.stopPropagation();
+		this.textareaEl.addEventListener('keydown', stopPropagation);
+		this.textareaEl.addEventListener('keyup', stopPropagation);
+		this.textareaEl.addEventListener('keypress', stopPropagation);
 		
-		// 在冒泡阶段再次阻止，双重保险
-		this.textareaEl.addEventListener('keydown', (e) => {
-			e.stopPropagation();
-		}, { capture: false });
+		// 2. 【核心修复】解决按空格/回车自动跳转文档并抢夺焦点的问题
+		this.textareaEl.addEventListener('focus', () => {
+			// 获取当前 Obsidian 后台认为的"活动面板"
+			const activeLeaf = this.app.workspace.activeLeaf;
+			// 如果当前的活动面板不是 Markdown 编辑器（比如停留在了文件浏览器或搜索栏）
+			// 此时按下空格/回车会被它们拦截，触发"打开所选文件"的 Bug。
+			if (activeLeaf && activeLeaf.view.getViewType() !== 'markdown') {
+				// 找一个已打开的 Markdown 视图
+				const mdLeaves = this.app.workspace.getLeavesOfType('markdown');
+				if (mdLeaves.length > 0) {
+					// 悄悄将 Obsidian 的逻辑焦点转移到 Markdown 视图上
+					// { focus: false } 是关键：它只修改内部状态，绝不会抢走你 textarea 里的打字光标！
+					this.app.workspace.setActiveLeaf(mdLeaves[0], { focus: false });
+				}
+			}
+		});
 		
 		// 阻止 mousedown 事件冒泡，防止触发标题栏的拖拽
 		this.textareaEl.addEventListener('mousedown', (e) => {

@@ -1,4 +1,5 @@
 import { App, MarkdownView } from 'obsidian';
+import type { WebNovelAssistantPlugin } from '../types/plugin';
 
 /**
  * 移动端浮动统计窗口
@@ -12,7 +13,7 @@ import { App, MarkdownView } from 'obsidian';
  */
 export class MobileFloatingStats {
 	private app: App;
-	private plugin: any;
+	private plugin: WebNovelAssistantPlugin;
 	private containerEl: HTMLElement | null = null;
 	private position: { x: number; y: number } = { x: 20, y: 100 };
 	private isDragging: boolean = false;
@@ -22,7 +23,7 @@ export class MobileFloatingStats {
 	private wordCountEl: HTMLElement | null = null;
 	private progressEl: HTMLElement | null = null;
 
-	constructor(app: App, plugin: any) {
+	constructor(app: App, plugin: WebNovelAssistantPlugin) {
 		this.app = app;
 		this.plugin = plugin;
 		this.loadPosition();

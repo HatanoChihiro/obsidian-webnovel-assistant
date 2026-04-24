@@ -1,6 +1,5 @@
 import { App, Modal, Notice, Setting, SuggestModal, TFile } from 'obsidian';
-
-type AccurateChineseCountPlugin = any;
+import type { WebNovelAssistantPlugin } from '../types/plugin';
 
 // ─────────────────────────────────────────────
 // 1. 标注伏笔输入对话框
@@ -11,7 +10,7 @@ type AccurateChineseCountPlugin = any;
  * 用户填写补充说明和标签
  */
 export class ForeshadowingInputModal extends Modal {
-	private plugin: AccurateChineseCountPlugin;
+	private plugin: WebNovelAssistantPlugin;
 	private sourceFileName: string;
 	private selectedContent: string;
 	private onSubmit: (description: string, tags: string[]) => void;
@@ -21,7 +20,7 @@ export class ForeshadowingInputModal extends Modal {
 
 	constructor(
 		app: App,
-		plugin: AccurateChineseCountPlugin,
+		plugin: WebNovelAssistantPlugin,
 		sourceFileName: string,
 		selectedContent: string,
 		onSubmit: (description: string, tags: string[]) => void

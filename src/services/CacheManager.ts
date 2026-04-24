@@ -1,5 +1,6 @@
 import { TFile, TFolder, Vault } from 'obsidian';
 import { CACHE_CONFIG } from '../constants';
+import type { WebNovelAssistantPlugin } from '../types/plugin';
 
 /**
  * 缓存条目接口
@@ -27,9 +28,12 @@ export interface CacheData {
 export class CacheManager {
 	private cache: Map<string, CacheEntry>;
 	private maxCacheSize: number = CACHE_CONFIG.MAX_SIZE;
-	private plugin: any; // 插件实例，用于持久化
+	private plugin: WebNovelAssistantPlugin; // 插件实例，用于持久化
+	
+	// 写入队列：确保数据保存的原子性
+	private saveQueue: Promise<void> = Promise.resolve();
 
-	constructor(plugin?: any) {
+	constructor(plugin: WebNovelAssistantPlugin) {
 		this.cache = new Map();
 		this.plugin = plugin;
 	}
@@ -74,26 +78,33 @@ export class CacheManager {
 	}
 
 	/**
-	 * 保存缓存到持久化存储
+	 * 保存缓存到持久化存储（原子操作）
 	 */
 	async saveCache(): Promise<void> {
 		if (!this.plugin) return;
 
-		try {
-			const cacheData: CacheData = {
-				version: 1,
-				timestamp: Date.now(),
-				entries: Array.from(this.cache.entries())
-			};
+		// 将保存操作加入队列，确保串行执行
+		this.saveQueue = this.saveQueue.then(async () => {
+			try {
+				const cacheData: CacheData = {
+					version: 1,
+					timestamp: Date.now(),
+					entries: Array.from(this.cache.entries())
+				};
 
-			const data = await this.plugin.loadData() || {};
-			data.cacheData = cacheData;
-			await this.plugin.saveData(data);
-			
-			console.log(`[CacheManager] 已保存 ${this.cache.size} 个缓存条目`);
-		} catch (error) {
-			console.error('[CacheManager] 保存缓存失败:', error);
-		}
+				// 原子操作：读取最新数据，修改，然后保存
+				const data = await this.plugin.loadData() || {};
+				data.cacheData = cacheData;
+				await this.plugin.saveData(data);
+				
+				console.log(`[CacheManager] 已保存 ${this.cache.size} 个缓存条目`);
+			} catch (error) {
+				console.error('[CacheManager] 保存缓存失败:', error);
+			}
+		});
+
+		// 等待当前保存操作完成
+		return this.saveQueue;
 	}
 
 	/**

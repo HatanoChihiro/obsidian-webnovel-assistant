@@ -1,8 +1,6 @@
 import { App, Editor, Notice, TFile, TFolder } from 'obsidian';
 import { ForeshadowingEntry, ForeshadowingStatus } from '../types/foreshadowing';
-
-// 避免循环依赖
-type AccurateChineseCountPlugin = any;
+import type { WebNovelAssistantPlugin } from '../types/plugin';
 
 /**
  * 伏笔管理服务
@@ -15,7 +13,7 @@ export class ForeshadowingManager {
 
 	constructor(
 		private app: App,
-		private plugin: AccurateChineseCountPlugin
+		private plugin: WebNovelAssistantPlugin
 	) {}
 
 	/**

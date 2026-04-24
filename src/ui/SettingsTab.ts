@@ -2,18 +2,16 @@ import { App, Notice, PluginSettingTab, Setting } from 'obsidian';
 import { isDesktop, isMobile, getPlatformTier } from '../utils/platform';
 import { ObsOverlayServer } from '../services/ObsServer';
 import { MobileFloatingStats } from './MobileFloatingStats';
-
-// 前向声明，避免循环依赖
-type AccurateChineseCountPlugin = any;
+import type { WebNovelAssistantPlugin } from '../types/plugin';
 
 /**
  * 插件设置面板
  * 提供所有配置选项的界面
  */
 export class AccurateCountSettingTab extends PluginSettingTab {
-	plugin: AccurateChineseCountPlugin;
+	plugin: WebNovelAssistantPlugin;
 
-	constructor(app: App, plugin: AccurateChineseCountPlugin) {
+	constructor(app: App, plugin: WebNovelAssistantPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}

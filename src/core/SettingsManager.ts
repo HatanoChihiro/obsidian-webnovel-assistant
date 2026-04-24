@@ -27,6 +27,9 @@ export class SettingsManager {
 	private plugin: Plugin;
 	private settings: AccurateCountSettings;
 	private defaultSettings: AccurateCountSettings;
+	
+	// 写入队列：确保数据保存的原子性
+	private saveQueue: Promise<void> = Promise.resolve();
 
 	// 验证规则
 	private validationRules: ValidationRule[] = [
@@ -117,25 +120,40 @@ export class SettingsManager {
 	}
 
 	/**
-	 * 保存设置
+	 * 保存设置（原子操作）
 	 */
 	async saveSettings(): Promise<void> {
-		try {
-			// 从插件获取最新的设置（因为插件可能直接修改了 settings 对象）
-			const pluginSettings = (this.plugin as any).settings;
-			if (pluginSettings) {
-				this.settings = pluginSettings;
+		// 将保存操作加入队列，确保串行执行
+		this.saveQueue = this.saveQueue.then(async () => {
+			try {
+				// 从插件获取最新的设置（因为插件可能直接修改了 settings 对象）
+				const pluginSettings = (this.plugin as any).settings;
+				if (pluginSettings) {
+					this.settings = pluginSettings;
+				}
+				
+				// 原子操作：读取最新数据，合并设置，然后保存
+				const data = await this.plugin.loadData() || {};
+				// 显式保护 cacheData，避免被 settings 中的同名字段覆盖
+				const cacheData = data.cacheData;
+				const newData = { ...data, ...this.settings };
+				if (cacheData !== undefined) {
+					newData.cacheData = cacheData;
+				}
+				await this.plugin.saveData(newData);
+			} catch (error) {
+				console.error('[SettingsManager] 保存设置失败:', error);
+				
+				// 导入 Notice 类型
+				const { Notice } = require('obsidian');
+				new Notice('保存设置失败，请检查磁盘空间和权限');
+				
+				throw error;
 			}
-			await this.plugin.saveData(this.settings);
-		} catch (error) {
-			console.error('[SettingsManager] 保存设置失败:', error);
-			
-			// 导入 Notice 类型
-			const { Notice } = require('obsidian');
-			new Notice('保存设置失败，请检查磁盘空间和权限');
-			
-			throw error;
-		}
+		});
+
+		// 等待当前保存操作完成
+		return this.saveQueue;
 	}
 
 	/**

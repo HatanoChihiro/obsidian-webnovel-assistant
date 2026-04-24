@@ -1,8 +1,7 @@
-import { ItemView, MarkdownView, Menu, Modal, Notice, Setting, TFile, WorkspaceLeaf } from 'obsidian';
+import { ItemView, MarkdownView, Menu, Modal, Notice, Setting, TFile, WorkspaceLeaf, App } from 'obsidian';
 import { TimelineManager, TimelineEntry } from '../services/TimelineManager';
 import { CreativeView } from './CreativeView';
-
-type AccurateChineseCountPlugin = any;
+import type { WebNovelAssistantPlugin } from '../types/plugin';
 
 export const TIMELINE_VIEW_TYPE = 'timeline-view';
 
@@ -21,11 +20,11 @@ export class TimelineAddModal extends Modal {
 	private folderPath: string;
 	private onSubmit: (entry: any) => void;
 	private returnFullEntry: boolean; // true 时返回完整 TimelineEntry，false 时返回简化对象
-	private plugin: AccurateChineseCountPlugin;
+	private plugin: WebNovelAssistantPlugin;
 
 	constructor(
-		app: any,
-		plugin: AccurateChineseCountPlugin,
+		app: App,
+		plugin: WebNovelAssistantPlugin,
 		description: string,
 		sourceFile: string,
 		folderPath: string,
@@ -212,8 +211,8 @@ export class TimelineAddModal extends Modal {
  */
 export class TimelineAddFromSelectionModal extends TimelineAddModal {
 	constructor(
-		app: any,
-		plugin: AccurateChineseCountPlugin,
+		app: App,
+		plugin: WebNovelAssistantPlugin,
 		timelineFileName: string,
 		description: string,
 		sourceFile: string,
@@ -232,7 +231,7 @@ export class TimelineView extends CreativeView {
 	private manager!: TimelineManager;
 	private editingIndex: number = -1;
 
-	constructor(leaf: WorkspaceLeaf, plugin: AccurateChineseCountPlugin) {
+	constructor(leaf: WorkspaceLeaf, plugin: WebNovelAssistantPlugin) {
 		super(leaf, plugin);
 		this.manager = new TimelineManager(this.app, this.plugin);
 	}
@@ -384,7 +383,15 @@ export class TimelineView extends CreativeView {
 			if (!it.description && !it.chapter) continue;
 			const itemEl = content.createDiv({ cls: 'timeline-list-item' });
 			if (it.description) {
-				itemEl.createDiv({ text: it.description, cls: 'timeline-desc' });
+				const descEl = itemEl.createDiv({ cls: 'timeline-desc' });
+				// 支持多行描述：将换行符转换为 <br> 标签
+				const lines = it.description.split('\n');
+				lines.forEach((line, index) => {
+					descEl.appendText(line);
+					if (index < lines.length - 1) {
+						descEl.createEl('br');
+					}
+				});
 			}
 			
 			// 支持多章节：将逗号分隔的章节显示为多个链接
@@ -813,159 +820,9 @@ export class TimelineView extends CreativeView {
 
 	// ─── 文件操作 ───────────────────────────────────────
 
-	private getTimelineFilePath(): string {
-		const fileName = (this.plugin.settings.timeline?.fileName || '时间线') + '.md';
-		return this.currentFolder ? `${this.currentFolder}/${fileName}` : fileName;
-	}
-
-	private getTimelineFile(): TFile | null {
-		const path = this.getTimelineFilePath();
-		const file = this.app.vault.getAbstractFileByPath(path);
-		return file instanceof TFile ? file : null;
-	}
-
-	private async createTimelineFile(): Promise<TFile> {
-		const path = this.getTimelineFilePath();
-		return await this.app.vault.create(path, '');
-	}
-
-	private async loadEntries(): Promise<TimelineEntry[] | null> {
-		const file = this.getTimelineFile();
-		if (!file) return null;
-		const content = await this.app.vault.read(file);
-		return this.parseEntries(content);
-	}
-
-	private parseEntries(content: string): TimelineEntry[] {
-		const entries: TimelineEntry[] = [];
-
-		// 和伏笔系统一样，按 \n---\n 分割
-		const blocks = content.split(/\n---\n/);
-
-		for (const block of blocks) {
-			const trimmed = block.trim();
-			if (!trimmed.startsWith('## ')) continue;
-
-			const lines = trimmed.split('\n');
-			const time = lines[0].replace(/^## /, '').trim();
-
-			// 描述：H2 之后、第一个 ** 字段之前的非空行
-			const descLines: string[] = [];
-			let i = 1;
-			while (i < lines.length && !lines[i].startsWith('**')) {
-				if (lines[i].trim()) descLines.push(lines[i].trim());
-				i++;
-			}
-			const description = descLines.join('\n');
-
-			// 解析列表项（新格式：- 描述 [[章节]]）
-			const items: { description: string; chapter: string }[] = [];
-			const typeMatch = trimmed.match(/\*\*类型\*\*：(.+)/);
-
-			for (const line of lines.slice(1)) {
-				if (line.startsWith('- ')) {
-					const itemText = line.slice(2);
-					const chapterMatch = itemText.match(/\[\[(.+?)\]\]/);
-					const chapter = chapterMatch ? chapterMatch[1] : '';
-					const desc = itemText.replace(/\[\[.+?\]\]/g, '').trim();
-					items.push({ description: desc, chapter });
-				}
-			}
-
-			// 兼容旧格式（无列表项时用 description）
-			const finalItems = items.length > 0 ? items : [{ description, chapter: '' }];
-
-			entries.push({
-				time,
-				description: finalItems.map(i => i.description).filter(Boolean).join('\n'),
-				chapter: finalItems.map(i => i.chapter).filter(Boolean).join(', '),
-				type: typeMatch ? typeMatch[1].trim() : '',
-				rawBlock: trimmed,
-				items: finalItems,
-			});
-		}
-
-		return entries;
-	}
-
-	private formatEntry(entry: TimelineEntry): string {
-		const lines: string[] = [];
-		lines.push(`## ${entry.time}`);
-		lines.push('');
-
-		// 如果有 items 列表，用列表格式输出所有项
-		const items = (entry as any).items as { description: string; chapter: string }[] | undefined;
-		if (items && items.length > 0) {
-			for (const it of items) {
-				const parts: string[] = [];
-				if (it.description) parts.push(it.description);
-				if (it.chapter) parts.push(`[[${it.chapter}]]`);
-				if (parts.length > 0) lines.push(`- ${parts.join(' ')}`);
-			}
-		} else {
-			// 单条格式
-			const itemParts: string[] = [];
-			if (entry.description) itemParts.push(entry.description);
-			if (entry.chapter) itemParts.push(`[[${entry.chapter}]]`);
-			if (itemParts.length > 0) lines.push(`- ${itemParts.join(' ')}`);
-		}
-
-		if (entry.type) {
-			lines.push('');
-			lines.push(`**类型**：${entry.type}`);
-		}
-		lines.push('');
-		lines.push('---');
-		lines.push('');
-		lines.push('');
-		return lines.join('\n');
-	}
-
 	async appendEntry(entry: TimelineEntry): Promise<string> {
 		this.manager.currentFolder = this.currentFolder;
 		return await this.manager.appendEntry(entry);
-	}
-
-	private async updateEntry(index: number, updated: TimelineEntry): Promise<void> {
-		const file = this.getTimelineFile();
-		if (!file) return;
-		const entries = await this.loadEntries();
-		if (!entries) return;
-		entries[index] = updated;
-		const newContent = await this.writeAllEntries(file, entries);
-		this.editingIndex = -1;
-		this.renderFromContent(newContent);
-	}
-
-	private async deleteEntry(index: number): Promise<boolean> {
-		const file = this.getTimelineFile();
-		if (!file) return false;
-		const entries = await this.loadEntries();
-		if (!entries) return false;
-		entries.splice(index, 1);
-		const newContent = await this.writeAllEntries(file, entries);
-		this.renderFromContent(newContent);
-		return true;
-	}
-
-	private async moveEntry(fromIndex: number, toIndex: number): Promise<void> {
-		const file = this.getTimelineFile();
-		if (!file) return;
-		const entries = await this.loadEntries();
-		if (!entries) return;
-		const [moved] = entries.splice(fromIndex, 1);
-		entries.splice(toIndex, 0, moved);
-		const newContent = await this.writeAllEntries(file, entries);
-		this.renderFromContent(newContent);
-	}
-
-	private async writeAllEntries(file: TFile, entries: TimelineEntry[]): Promise<string> {
-		let content = '';
-		for (const entry of entries) {
-			content += this.formatEntry(entry);
-		}
-		await this.app.vault.modify(file, content);
-		return content;
 	}
 
 	/**
@@ -992,7 +849,7 @@ export class TimelineView extends CreativeView {
 			async (entry) => {
 				const existing = await this.app.vault.read(file!);
 				const separator = existing.endsWith('\n') ? '' : '\n';
-				await this.app.vault.modify(file!, existing + separator + this.formatEntry(entry));
+				await this.app.vault.modify(file!, existing + separator + this.manager.formatEntry(entry));
 				new Notice('✅ 已添加到时间线');
 				// 如果面板已打开，刷新
 				const leaves = this.app.workspace.getLeavesOfType(TIMELINE_VIEW_TYPE);
