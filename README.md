@@ -1,6 +1,10 @@
 # WebNovel Assistant
 
-专为网文小说创作设计的 Obsidian 插件。
+专为网文小说创作设计的 Obsidian 插件 | Obsidian Plugin for Chinese Web Novel Writing
+
+一个功能强大的 Obsidian 插件，专为中文网络小说作者打造，提供字数统计、写作目标追踪、伏笔管理、时间线系统、OBS 直播叠加层等丰富功能。
+
+**关键词**：Obsidian 插件、网文写作、小说创作、字数统计、写作工具、中文写作、创意写作、Markdown 编辑器
 
 [![GitHub release](https://img.shields.io/github/v/release/HatanoChihiro/obsidian-webnovel-assistant)](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/releases)
 [![License](https://img.shields.io/github/license/HatanoChihiro/obsidian-webnovel-assistant)](LICENSE)
@@ -137,4 +141,10 @@
 ---
 
 **祝你写作愉快！** ✍️
+
+---
+
+## 🔍 搜索关键词
+
+Obsidian 插件、Obsidian plugin、网文写作、网络小说、小说创作工具、中文写作、字数统计、word count、写作目标、writing goals、伏笔管理、时间线、timeline、OBS 叠加层、直播写作、creative writing、markdown editor、productivity tool、作家工具、novelist tool、中文网文、起点、晋江、番茄小说
 
