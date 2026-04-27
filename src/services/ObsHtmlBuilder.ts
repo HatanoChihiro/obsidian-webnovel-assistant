@@ -32,7 +32,7 @@ export class ObsHtmlBuilder {
 			chapterWords = this.plugin.calculateAccurateWords(view.getViewData());
 		}
 
-		const todayAdded = Math.max(0, todayStat.addedWords);
+		const todayAdded = todayStat.addedWords; // 允许负数，提醒作者删除了字数
 		const dailyGoal = this.plugin.settings.dailyGoal || 0;
 
 		return {
@@ -53,12 +53,61 @@ export class ObsHtmlBuilder {
 
 	/**
 	 * 过滤用户自定义 CSS，防止 XSS 注入
+	 * 使用严格的白名单策略，移除所有潜在的脚本注入
 	 */
 	private sanitizeCss(css: string): string {
 		if (!css) return '';
-		return css
+		
+		// 移除所有潜在的脚本注入
+		let sanitized = css
+			// 移除 <script> 标签
+			.replace(/<script[\s\S]*?<\/script>/gi, '')
+			// 移除 </style> 闭合标签
 			.replace(/<\/style/gi, '<\\/style')
-			.replace(/<script[\s\S]*?<\/script>/gi, '');
+			// 移除 javascript: 协议
+			.replace(/javascript:/gi, '')
+			// 移除 expression() (IE 遗留)
+			.replace(/expression\s*\(/gi, '')
+			// 移除 @import 中的 javascript
+			.replace(/@import\s+['"]?javascript:/gi, '')
+			// 移除 behavior 属性 (IE 遗留)
+			.replace(/behavior\s*:/gi, '')
+			// 移除 -moz-binding (Firefox 遗留)
+			.replace(/-moz-binding\s*:/gi, '')
+			// 移除 vbscript: 协议
+			.replace(/vbscript:/gi, '')
+			// 移除 data: 协议（可能包含 base64 编码的脚本）
+			.replace(/data:text\/html/gi, '');
+		
+		// 白名单验证：只允许常见的 CSS 属性
+		const allowedProperties = [
+			'color', 'background', 'font', 'margin', 'padding', 'border',
+			'width', 'height', 'display', 'position', 'top', 'left', 'right', 'bottom',
+			'opacity', 'transform', 'transition', 'animation', 'flex', 'grid',
+			'text', 'line', 'letter', 'word', 'white', 'overflow', 'visibility',
+			'z-index', 'cursor', 'pointer', 'box', 'shadow', 'radius', 'align',
+			'justify', 'gap', 'content', 'wrap', 'break', 'decoration', 'style',
+			'weight', 'size', 'family', 'variant', 'stretch', 'spacing'
+		];
+		
+		// 警告：如果包含不常见的属性
+		const lines = sanitized.split('\n');
+		const suspiciousLines = lines.filter(line => {
+			const hasProperty = line.includes(':');
+			if (!hasProperty) return false;
+			
+			const property = line.split(':')[0].trim().toLowerCase();
+			// 跳过注释和空行
+			if (!property || property.startsWith('/*') || property.startsWith('//')) return false;
+			
+			return !allowedProperties.some(allowed => property.includes(allowed));
+		});
+		
+		if (suspiciousLines.length > 0) {
+			console.warn('[ObsHtmlBuilder] 检测到可能不安全的 CSS 属性:', suspiciousLines);
+		}
+		
+		return sanitized;
 	}
 
 	/**

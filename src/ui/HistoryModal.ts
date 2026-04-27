@@ -21,7 +21,7 @@ export class HistoryStatsModal extends Modal {
 		contentEl.empty();
 		contentEl.addClass('history-stats-modal');
 
-		contentEl.createEl('h2', { text: '📈 字数统计' });
+		contentEl.createEl('h2', { text: '字数统计' });
 
 		// 创建 Tab 切换组
 		const tabGroup = contentEl.createDiv({ cls: 'stats-tab-group' });
@@ -64,23 +64,31 @@ export class HistoryStatsModal extends Modal {
 			return;
 		}
 
-		const maxWords = Math.max(...displayKeys.map(k => aggregated[k].words), 100);
+		// 计算最大绝对值（支持负数）
+		const maxAbsWords = Math.max(...displayKeys.map(k => Math.abs(aggregated[k].words)), 100);
 
 		displayKeys.forEach((key, i) => {
 			const data = aggregated[key];
 			const col = this.chartContainer.createDiv({ cls: 'stats-large-col' });
 			
-			const heightPercent = Math.max(2, (data.words / maxWords) * 100);
+			// 使用绝对值计算高度（支持负数）
+			const heightPercent = Math.max(2, (Math.abs(data.words) / maxAbsWords) * 100);
 			const bar = col.createDiv({ cls: 'stats-large-bar' });
 			bar.style.height = `${heightPercent}%`;
 
-			// 根据相对高度给柱子上色：高的橙金，中等紫色，低的蓝色
-			const ratio = data.words / maxWords;
+			// 负数显示红色，正数根据相对高度上色
 			let barColor: string;
-			if (ratio >= 0.8) barColor = '#F5A623';
-			else if (ratio >= 0.5) barColor = '#8B5CF6';
-			else if (ratio >= 0.2) barColor = 'var(--interactive-accent)';
-			else barColor = 'var(--background-modifier-border)';
+			if (data.words < 0) {
+				// 负数：红色警告
+				barColor = '#E74C3C';
+			} else {
+				// 正数：根据相对高度给柱子上色（高的橙金，中等紫色，低的蓝色）
+				const ratio = data.words / maxAbsWords;
+				if (ratio >= 0.8) barColor = '#F5A623';
+				else if (ratio >= 0.5) barColor = '#8B5CF6';
+				else if (ratio >= 0.2) barColor = 'var(--interactive-accent)';
+				else barColor = 'var(--background-modifier-border)';
+			}
 			bar.style.background = barColor;
 			
 			// 悬停提示
@@ -88,7 +96,11 @@ export class HistoryStatsModal extends Modal {
 			bar.setAttribute('title', `时间: ${key}\n总字数: ${data.words.toLocaleString()}\n专注总计: ${focusHours}小时`);
 
 			col.createDiv({ cls: 'stats-large-label', text: this.formatLabel(key) });
-			col.createDiv({ cls: 'stats-large-value', text: formatCount(data.words) });
+			// 负数值显示为红色
+			const valueEl = col.createDiv({ cls: 'stats-large-value', text: formatCount(data.words) });
+			if (data.words < 0) {
+				valueEl.style.color = '#E74C3C';
+			}
 		});
 	}
 
@@ -110,7 +122,7 @@ export class HistoryStatsModal extends Modal {
 			}
 
 			if (!result[key]) result[key] = { words: 0, focusMs: 0 };
-			result[key].words += Math.max(0, stat.addedWords || 0);
+			result[key].words += (stat.addedWords || 0); // 允许负数
 			result[key].focusMs += (stat.focusMs || 0);
 		}
 		return result;

@@ -163,11 +163,11 @@ export class WritingStatusView extends ItemView {
 		// 桌面端才更新状态徽章（移动端没有这个元素）
 		if (!isMobile() && this.statusBadgeEl) {
 			if (this.plugin.isTracking) {
-				this.statusBadgeEl.innerText = '▶ 记录中';
+				this.statusBadgeEl.innerText = '记录中';
 				this.statusBadgeEl.style.background = 'var(--color-green)';
 				this.statusBadgeEl.style.color = '#ffffff';
 			} else {
-				this.statusBadgeEl.innerText = '⏸ 已暂停';
+				this.statusBadgeEl.innerText = '已暂停';
 				this.statusBadgeEl.style.background = 'var(--text-muted)';
 				this.statusBadgeEl.style.color = '#ffffff';
 			}
@@ -176,18 +176,45 @@ export class WritingStatusView extends ItemView {
 		// 当日目标进度（今日新增 vs dailyGoal）
 		const today = window.moment().format('YYYY-MM-DD');
 		const todayStat = this.plugin.settings.dailyHistory[today] || { focusMs: 0, slackMs: 0, addedWords: 0 };
-		const dailyAdded = Math.max(0, todayStat.addedWords);
+		const dailyAdded = todayStat.addedWords; // 允许负数，提醒作者删除了字数
 		const dailyGoal = this.plugin.settings.dailyGoal || 0;
 
 		this.dailyWordEl.innerText = dailyAdded.toLocaleString();
 		this.dailyGoalEl.innerText = dailyGoal.toLocaleString();
-		const dailyPercent = dailyGoal > 0 ? Math.min(Math.round((dailyAdded / dailyGoal) * 100), 100) : 0;
+		
+		// 负数显示为负百分比，正数显示正常百分比
+		let dailyPercent = 0;
+		if (dailyAdded < 0) {
+			// 负数：显示负百分比（不限制范围）
+			dailyPercent = dailyGoal > 0 ? Math.round((dailyAdded / dailyGoal) * 100) : 0;
+		} else {
+			// 正数：显示正常百分比（最大 100%）
+			dailyPercent = dailyGoal > 0 ? Math.min(Math.round((dailyAdded / dailyGoal) * 100), 100) : 0;
+		}
 		this.dailyPercentEl.innerText = ` ${dailyPercent}%`;
-		this.dailyProgressFillEl.style.width = `${dailyPercent}%`;
-		// 当日进度：未完成灰色，完成橙金色
+		
+		// 进度条宽度：负数显示为 0%，正数正常显示
+		const dailyProgressWidth = Math.max(0, dailyPercent);
+		this.dailyProgressFillEl.style.width = `${dailyProgressWidth}%`;
+		
+		// 当日进度：负数红色，未完成灰色，完成橙金色
 		const dailyDone = dailyGoal > 0 && dailyAdded >= dailyGoal;
-		this.dailyProgressFillEl.style.background = dailyDone ? '#F5A623' : 'var(--background-modifier-border)';
-		this.dailyWordEl.style.color = dailyDone ? '#F5A623' : 'var(--text-normal)';
+		if (dailyAdded < 0) {
+			// 负数：红色警告
+			this.dailyProgressFillEl.style.background = '#E74C3C';
+			this.dailyWordEl.style.color = '#E74C3C';
+			this.dailyPercentEl.style.color = '#E74C3C';
+		} else if (dailyDone) {
+			// 完成：橙金色
+			this.dailyProgressFillEl.style.background = '#F5A623';
+			this.dailyWordEl.style.color = '#F5A623';
+			this.dailyPercentEl.style.color = '#F5A623';
+		} else {
+			// 未完成：灰色
+			this.dailyProgressFillEl.style.background = 'var(--background-modifier-border)';
+			this.dailyWordEl.style.color = 'var(--text-normal)';
+			this.dailyPercentEl.style.color = 'var(--interactive-accent)';
+		}
 
 		// 章节目标进度（当前文件总字数 vs 章节目标）
 		let targetGoal = this.plugin.settings.defaultGoal;
@@ -245,10 +272,10 @@ export class WritingStatusView extends ItemView {
 			if (dateMoment.isSame(now, 'year')) yearWords += dailyAdded;
 		}
 
-		if (this.weekWordEl) this.weekWordEl.innerText = Math.max(0, weekWords).toLocaleString();
-		if (this.monthWordEl) this.monthWordEl.innerText = Math.max(0, monthWords).toLocaleString();
-		if (this.yearWordEl) this.yearWordEl.innerText = Math.max(0, yearWords).toLocaleString();
-		if (this.historyTotalWordEl) this.historyTotalWordEl.innerText = Math.max(0, totalWords).toLocaleString();
+		if (this.weekWordEl) this.weekWordEl.innerText = weekWords.toLocaleString();
+		if (this.monthWordEl) this.monthWordEl.innerText = monthWords.toLocaleString();
+		if (this.yearWordEl) this.yearWordEl.innerText = yearWords.toLocaleString();
+		if (this.historyTotalWordEl) this.historyTotalWordEl.innerText = totalWords.toLocaleString();
 	}
 
 	renderChart() {
@@ -291,10 +318,12 @@ export class WritingStatusView extends ItemView {
 			return;
 		}
 
-		const maxWords = Math.max(...dates.map(d => history[d].addedWords), 100);
+		// 计算最大绝对值，用于缩放（支持负数）
+		const maxAbsWords = Math.max(...dates.map(d => Math.abs(history[d].addedWords)), 100);
 
 		dates.forEach(date => {
 			const stat = history[date];
+			const words = stat.addedWords;
 			const row = chartBars.createDiv({ 
 				attr: { style: 'display: flex; align-items: center; gap: 8px;' } 
 			});
@@ -305,22 +334,24 @@ export class WritingStatusView extends ItemView {
 				attr: { style: 'font-size: 0.7em; color: var(--text-muted); min-width: 35px; text-align: right; flex-shrink: 0;' } 
 			});
 			
-			// 横向柱状图
+			// 横向柱状图（支持负数）
 			const barContainer = row.createDiv({ 
 				attr: { style: 'flex: 1; height: 18px; background: var(--background-modifier-border); border-radius: 3px; overflow: hidden; position: relative; min-width: 0;' } 
 			});
-			const barWidthPercent = Math.max(2, (Math.max(0, stat.addedWords) / maxWords) * 100);
+			
+			const barWidthPercent = Math.max(2, (Math.abs(words) / maxAbsWords) * 100);
+			const barColor = words >= 0 ? 'var(--interactive-accent)' : '#E74C3C'; // 负数用红色
 			const bar = barContainer.createDiv({ 
-				attr: { style: `width: ${barWidthPercent}%; height: 100%; background: var(--interactive-accent); border-radius: 3px; transition: width 0.4s ease;` } 
+				attr: { style: `width: ${barWidthPercent}%; height: 100%; background: ${barColor}; border-radius: 3px; transition: width 0.4s ease;` } 
 			});
 			
 			const focusHours = (stat.focusMs / 3600000).toFixed(1);
-			bar.setAttribute('title', `日期: ${date}\n字数: ${Math.max(0, stat.addedWords)}\n专注时长: ${focusHours}h`);
+			bar.setAttribute('title', `日期: ${date}\n字数: ${words}\n专注时长: ${focusHours}h`);
 			
-			// 字数值
-			row.createDiv({ 
-				text: formatCount(Math.max(0, stat.addedWords)), 
-				attr: { style: 'font-size: 0.75em; font-weight: bold; font-family: var(--font-monospace); min-width: 40px; text-align: right; flex-shrink: 0;' } 
+			// 字数值（负数显示为红色）
+			const valueEl = row.createDiv({ 
+				text: formatCount(words), 
+				attr: { style: `font-size: 0.75em; font-weight: bold; font-family: var(--font-monospace); min-width: 40px; text-align: right; flex-shrink: 0; ${words < 0 ? 'color: #E74C3C;' : ''}` } 
 			});
 		});
 	}

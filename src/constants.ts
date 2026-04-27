@@ -159,25 +159,25 @@ export const TIME_FORMATS = {
 // ==========================================
 export const MESSAGES = {
 	// 成功消息
-	SUCCESS_SAVE: '✅ 已保存',
-	SUCCESS_ADD: '✅ 已添加',
-	SUCCESS_DELETE: '✅ 已删除',
-	SUCCESS_UPDATE: '✅ 已更新',
+	SUCCESS_SAVE: '[成功] 已保存',
+	SUCCESS_ADD: '[成功] 已添加',
+	SUCCESS_DELETE: '[成功] 已删除',
+	SUCCESS_UPDATE: '[成功] 已更新',
 	
 	// 错误消息
-	ERROR_SAVE: '❌ 保存失败',
-	ERROR_ADD: '❌ 添加失败',
-	ERROR_DELETE: '❌ 删除失败',
-	ERROR_INVALID_INPUT: '❌ 输入无效',
-	ERROR_FILE_NOT_FOUND: '❌ 文件不存在',
+	ERROR_SAVE: '[错误] 保存失败',
+	ERROR_ADD: '[错误] 添加失败',
+	ERROR_DELETE: '[错误] 删除失败',
+	ERROR_INVALID_INPUT: '[错误] 输入无效',
+	ERROR_FILE_NOT_FOUND: '[错误] 文件不存在',
 	
 	// 警告消息
-	WARNING_WORKER_RESTART: '⚠️ 时间追踪 Worker 已自动重启',
-	WARNING_CACHE_FULL: '⚠️ 缓存已满，清理旧数据',
+	WARNING_WORKER_RESTART: '[警告] 时间追踪 Worker 已自动重启',
+	WARNING_CACHE_FULL: '[警告] 缓存已满，清理旧数据',
 	
 	// 提示消息
-	INFO_LOADING: '⏳ 加载中...',
-	INFO_PROCESSING: '⏳ 处理中...',
+	INFO_LOADING: '[处理中] 加载中...',
+	INFO_PROCESSING: '[处理中] 处理中...',
 } as const;
 
 // ==========================================

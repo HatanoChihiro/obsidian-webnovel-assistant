@@ -37,7 +37,7 @@ export class ForeshadowingInputModal extends Modal {
 		contentEl.empty();
 		contentEl.addClass('foreshadowing-input-modal');
 
-		contentEl.createEl('h2', { text: '📌 标注为伏笔' });
+		contentEl.createEl('h2', { text: '标注为伏笔' });
 
 		// 来源和内容预览
 		const infoEl = contentEl.createDiv({ cls: 'foreshadowing-info' });
@@ -120,7 +120,7 @@ export class ForeshadowingInputModal extends Modal {
 		const description = this.descriptionEl.value.trim();
 		if (!description) {
 			this.descriptionEl.style.borderColor = 'var(--background-modifier-error)';
-			new Notice('❌ 请填写补充说明');
+			new Notice('[错误] 请填写补充说明');
 			this.descriptionEl.focus();
 			return;
 		}
@@ -211,7 +211,7 @@ class ChapterMultiSelectModal extends Modal {
 		const confirmBtn = btnContainer.createEl('button', { text: '确认', cls: 'mod-cta' });
 		confirmBtn.onclick = () => {
 			if (this.selectedChapters.size === 0) {
-				new Notice('❌ 请至少选择一个章节');
+				new Notice('[错误] 请至少选择一个章节');
 				return;
 			}
 			this.onSubmit(Array.from(this.selectedChapters));
@@ -332,7 +332,7 @@ export class ForeshadowingRecoveryModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 
-		contentEl.createEl('h2', { text: '✅ 标记伏笔已回收' });
+		contentEl.createEl('h2', { text: '标记伏笔已回收' });
 
 		// 内容预览
 		const preview = this.contentPreview.length > 60
@@ -359,7 +359,7 @@ export class ForeshadowingRecoveryModal extends Modal {
 			const btnRow = contentEl.createDiv();
 			btnRow.style.cssText = 'display:flex;gap:8px;margin-bottom:12px;';
 			
-			const selectBtn = btnRow.createEl('button', { text: '📋 从列表选择（支持多选）' });
+			const selectBtn = btnRow.createEl('button', { text: '从列表选择（支持多选）' });
 			selectBtn.style.cssText = 'flex:1;padding:6px 12px;border-radius:4px;border:1px solid var(--interactive-accent);color:var(--interactive-accent);background:transparent;cursor:pointer;';
 			selectBtn.onclick = () => {
 				this.close();
@@ -369,7 +369,7 @@ export class ForeshadowingRecoveryModal extends Modal {
 			};
 			
 			const hint = contentEl.createEl('p', {
-				text: `💡 当前文件夹有 ${this.chapters.length} 个章节文件`,
+				text: `提示：当前文件夹有 ${this.chapters.length} 个章节文件`,
 				cls: 'setting-item-description'
 			});
 			hint.style.marginBottom = '12px';
@@ -399,7 +399,7 @@ export class ForeshadowingRecoveryModal extends Modal {
 		const value = this.inputEl.value.trim().replace(/\.md$/gi, '');
 		if (!value) {
 			this.inputEl.style.borderColor = 'var(--background-modifier-error)';
-			new Notice('❌ 请输入回收章节名');
+			new Notice('[错误] 请输入回收章节名');
 			this.inputEl.focus();
 			return;
 		}
@@ -442,7 +442,7 @@ export class ConfirmCreateForeshadowingFileModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 
-		contentEl.createEl('h2', { text: '📄 创建伏笔文件' });
+		contentEl.createEl('h2', { text: '创建伏笔文件' });
 
 		const location = this.folderPath
 			? `「${this.folderPath}/${this.fileName}.md」`

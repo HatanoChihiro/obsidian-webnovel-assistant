@@ -850,7 +850,7 @@ export class TimelineView extends CreativeView {
 				const existing = await this.app.vault.read(file!);
 				const separator = existing.endsWith('\n') ? '' : '\n';
 				await this.app.vault.modify(file!, existing + separator + this.manager.formatEntry(entry));
-				new Notice('✅ 已添加到时间线');
+				new Notice('[成功] 已添加到时间线');
 				// 如果面板已打开，刷新
 				const leaves = this.app.workspace.getLeavesOfType(TIMELINE_VIEW_TYPE);
 				if (leaves.length > 0) {
