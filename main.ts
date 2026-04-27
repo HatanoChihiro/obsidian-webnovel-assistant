@@ -97,6 +97,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 
 	sessionAddedWords: number = 0;
 	lastFileWords: number = 0; 
+	isFileJustSwitched: boolean = true; // 标记文件是否刚切换
 
 	lastEditTime: number = Date.now();
 	
@@ -1247,7 +1248,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 
 	/**
 	 * 处理编辑器内容变化
-	 * 更新字数统计和每日历史
+	 * 实时更新字数统计和每日历史
 	 */
 	handleEditorChange() {
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
@@ -1264,9 +1265,36 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		const currentCount = this.calculateAccurateWords(view.getViewData());
 		const delta = currentCount - this.lastFileWords;
 		
-		// 只有当 delta 有效时才更新（避免文件切换时的异常值）
-		// 如果 lastFileWords 为 0（刚切换文件），不记录到历史
-		if (this.lastFileWords > 0) {
+		// 如果文件刚切换，只更新基准值，不记录变化
+		// 但如果是从 0 开始的变化（空白文档第一次输入），则应该记录
+		if (this.isFileJustSwitched) {
+			this.isFileJustSwitched = false;
+			
+			// 如果 lastFileWords 是 0（空白文档）且有新增内容，应该记录
+			if (this.lastFileWords === 0 && delta > 0) {
+				this.sessionAddedWords += delta;
+				
+				const today = window.moment().format('YYYY-MM-DD');
+				if (!this.settings.dailyHistory[today]) {
+					this.settings.dailyHistory[today] = { focusMs: 0, slackMs: 0, addedWords: 0 };
+				}
+				this.settings.dailyHistory[today].addedWords += delta;
+			}
+			
+			this.lastFileWords = currentCount;
+			
+			// 立即更新缓存
+			if (view.file) {
+				this.cacheManager.updateFileCache(view.file, currentCount, this.app.vault);
+			}
+			
+			this.updateWordCount();
+			this.refreshStatusViews();
+			return;
+		}
+		
+		// 实时记录字数变化（包括负数）
+		if (delta !== 0) {
 			this.sessionAddedWords += delta;
 			
 			const today = window.moment().format('YYYY-MM-DD');
@@ -1277,6 +1305,11 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		}
 		
 		this.lastFileWords = currentCount;
+		
+		// 立即更新缓存
+		if (view.file) {
+			this.cacheManager.updateFileCache(view.file, currentCount, this.app.vault);
+		}
 
 		this.updateWordCount();
 		this.refreshStatusViews();
@@ -1288,11 +1321,13 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		// 只统计工作区内的文件
 		if (view?.file && !this.isFileInWorkspace(view.file)) {
 			this.lastFileWords = 0;
+			this.isFileJustSwitched = true;
 			this.statusBarItemEl.setText('');
 			return;
 		}
 		
 		this.lastFileWords = view ? this.calculateAccurateWords(view.getViewData()) : 0;
+		this.isFileJustSwitched = true; // 标记文件刚切换
 		this.updateWordCount();
 		this.refreshStatusViews();
 	}
