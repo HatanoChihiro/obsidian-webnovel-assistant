@@ -421,4 +421,12 @@ export class ForeshadowingView extends CreativeView {
 
 		return entries;
 	}
+
+	/**
+	 * 注入样式（空方法，样式已在 main.ts 中全局注入）
+	 */
+	private injectStyles() {
+		// 样式已在 main.ts 的 injectGlobalStyles() 中全局注入
+		// 此方法保留用于向后兼容
+	}
 }
