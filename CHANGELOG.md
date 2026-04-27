@@ -1,12 +1,5 @@
 # WebNovel Assistant 更新日志
 
-## 🔧 v2.1.4 - 紧急修复
-
-### 修复
-- 修复伏笔面板无法打开的严重bug（`injectStyles is not a function`）
-
----
-
 ## 🔧 v2.1.3 - 稳定性与安全性增强
 
 ### 修复
