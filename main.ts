@@ -98,6 +98,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	sessionAddedWords: number = 0;
 	lastFileWords: number = 0; 
 	isFileJustSwitched: boolean = true; // 标记文件是否刚切换
+	lastFileSwitchTime: number = 0; // 文件切换的时间戳
+	private readonly FILE_SWITCH_THRESHOLD_MS = 100; // 文件切换后的时间阈值（100ms）
 
 	lastEditTime: number = Date.now();
 	
@@ -1005,10 +1007,12 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			}
 		});
 		
+		// 立即保存设置（确保所有数据都被保存）
 		this.saveSettings();
+		
 		this.removeGlobalStyles();
 		
-		// 清理防抖管理器
+		// 清理防抖管理器（在保存设置之后）
 		this.debounceManager.cancelAll();
 		this.adaptiveDebounceManager.cancelAll();
 		
@@ -1265,32 +1269,27 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		const currentCount = this.calculateAccurateWords(view.getViewData());
 		const delta = currentCount - this.lastFileWords;
 		
-		// 如果文件刚切换，只更新基准值，不记录变化
-		// 但如果是从 0 开始的变化（空白文档第一次输入），则应该记录
+		// 如果文件刚切换，检查是否是编辑器初始化还是真实编辑
 		if (this.isFileJustSwitched) {
-			this.isFileJustSwitched = false;
+			const timeSinceSwitch = Date.now() - this.lastFileSwitchTime;
 			
-			// 如果 lastFileWords 是 0（空白文档）且有新增内容，应该记录
-			if (this.lastFileWords === 0 && delta > 0) {
-				this.sessionAddedWords += delta;
+			// 如果在切换后很短时间内（100ms）触发，认为是编辑器初始化，跳过
+			if (timeSinceSwitch < this.FILE_SWITCH_THRESHOLD_MS) {
+				this.isFileJustSwitched = false;
+				this.lastFileWords = currentCount;
 				
-				const today = window.moment().format('YYYY-MM-DD');
-				if (!this.settings.dailyHistory[today]) {
-					this.settings.dailyHistory[today] = { focusMs: 0, slackMs: 0, addedWords: 0 };
+				// 立即更新缓存
+				if (view.file) {
+					this.cacheManager.updateFileCache(view.file, currentCount, this.app.vault);
 				}
-				this.settings.dailyHistory[today].addedWords += delta;
+				
+				this.updateWordCount();
+				this.refreshStatusViews();
+				return;
 			}
 			
-			this.lastFileWords = currentCount;
-			
-			// 立即更新缓存
-			if (view.file) {
-				this.cacheManager.updateFileCache(view.file, currentCount, this.app.vault);
-			}
-			
-			this.updateWordCount();
-			this.refreshStatusViews();
-			return;
+			// 如果时间超过阈值，认为是真实编辑，继续处理
+			this.isFileJustSwitched = false;
 		}
 		
 		// 实时记录字数变化（包括负数）
@@ -1302,6 +1301,11 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 				this.settings.dailyHistory[today] = { focusMs: 0, slackMs: 0, addedWords: 0 };
 			}
 			this.settings.dailyHistory[today].addedWords += delta;
+			
+			// 防抖保存设置（避免频繁写入磁盘）
+			this.debounceManager.debounce('save-settings', () => {
+				this.saveSettings();
+			}, 1000);
 		}
 		
 		this.lastFileWords = currentCount;
@@ -1322,12 +1326,14 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		if (view?.file && !this.isFileInWorkspace(view.file)) {
 			this.lastFileWords = 0;
 			this.isFileJustSwitched = true;
+			this.lastFileSwitchTime = Date.now();
 			this.statusBarItemEl.setText('');
 			return;
 		}
 		
 		this.lastFileWords = view ? this.calculateAccurateWords(view.getViewData()) : 0;
 		this.isFileJustSwitched = true; // 标记文件刚切换
+		this.lastFileSwitchTime = Date.now(); // 记录切换时间
 		this.updateWordCount();
 		this.refreshStatusViews();
 	}
