@@ -188,9 +188,9 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 							// 启用智能排序
 							const success = this.plugin.fileExplorerPatcher.enable();
 							if (success) {
-								new Notice('✅ 智能章节排序已启用');
+								new Notice('[成功] 智能章节排序已启用');
 							} else {
-								new Notice('❌ 启用失败，请重启 Obsidian 后重试');
+								new Notice('[错误] 启用失败，请重启 Obsidian 后重试');
 								this.plugin.settings.enableSmartChapterSort = false;
 								await this.plugin.saveSettings();
 								toggle.setValue(false);

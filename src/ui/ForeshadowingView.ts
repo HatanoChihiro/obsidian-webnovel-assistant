@@ -205,11 +205,11 @@ export class ForeshadowingView extends CreativeView {
 						);
 						if (success) {
 							const fileList = recoveryFileNames.map(f => `[[${f}]]`).join('、');
-							new Notice(`✅ 已标记为回收：${fileList}`);
+							new Notice(`[成功] 已标记为回收：${fileList}`);
 							// 文件修改会自动触发刷新，但在某些平台可能有延迟，添加备用刷新
 							setTimeout(() => this.refresh(), 100);
 						} else {
-							new Notice('❌ 标记失败，请检查伏笔文件');
+							new Notice('[错误] 标记失败，请检查伏笔文件');
 						}
 					}
 				).open();
@@ -228,7 +228,7 @@ export class ForeshadowingView extends CreativeView {
 					// 文件修改会自动触发刷新，但在某些平台可能有延迟，添加备用刷新
 					setTimeout(() => this.refresh(), 100);
 				} else {
-					new Notice('❌ 操作失败');
+					new Notice('[错误] 操作失败');
 				}
 			};
 		}
@@ -247,7 +247,7 @@ export class ForeshadowingView extends CreativeView {
 					// 文件修改会自动触发刷新，但在某些平台可能有延迟，添加备用刷新
 					setTimeout(() => this.refresh(), 100);
 				} else {
-					new Notice('❌ 操作失败');
+					new Notice('[错误] 操作失败');
 				}
 			};
 		}

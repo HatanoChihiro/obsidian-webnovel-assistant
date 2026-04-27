@@ -72,7 +72,7 @@ class SaveStickyNoteModal extends Modal {
 		
 		// 提示信息
 		contentEl.createEl('p', { 
-			text: '💡 提示：默认保存到当前工作文件夹',
+			text: '提示：默认保存到当前工作文件夹',
 			cls: 'setting-item-description'
 		});
 		
@@ -95,7 +95,7 @@ class SaveStickyNoteModal extends Modal {
 			const folderPath = this.folderPathInput.value.trim();
 			
 			if (!fileName) {
-				new Notice('❌ 请输入文件名');
+				new Notice('[错误] 请输入文件名');
 				this.fileNameInput.focus();
 				return;
 			}
@@ -134,7 +134,7 @@ class ConfirmCloseModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 		
-		contentEl.createEl('h2', { text: '⚠️ 有未保存的更改' });
+		contentEl.createEl('h2', { text: '有未保存的更改' });
 		
 		contentEl.createEl('p', { 
 			text: '便签内容已修改但尚未保存，是否要保存更改？'
@@ -193,6 +193,7 @@ export class FloatingStickyNote extends Component {
 	textareaEl!: HTMLTextAreaElement;
 	initialContent: string; // 用于检测未保存的更改
 	lastSavedContent: string = ""; // 最后一次保存的内容
+	private resizeObserver: ResizeObserver | null = null; // ResizeObserver 实例
 
 	constructor(app: App, plugin: WebNovelAssistantPlugin, options: { file?: TFile, content?: string, title?: string, state?: StickyNoteState }) {
 		super();
@@ -427,7 +428,7 @@ export class FloatingStickyNote extends Component {
 				if (file instanceof TFile) {
 					await this.app.vault.modify(file, this.state.content || "");
 					this.lastSavedContent = this.state.content || ""; // 更新最后保存的内容
-					new Notice("✅ 便签已同步至原文档");
+					new Notice("[成功] 便签已同步至原文档");
 				}
 				return; 
 			}
@@ -445,7 +446,7 @@ export class FloatingStickyNote extends Component {
 					
 					// 检查文件是否已存在
 					if (this.app.vault.getAbstractFileByPath(fullPath)) {
-						new Notice(`❌ 文件已存在: ${fullPath}`);
+						new Notice(`[错误] 文件已存在: ${fullPath}`);
 						return;
 					}
 					
@@ -460,10 +461,10 @@ export class FloatingStickyNote extends Component {
 					if (titleEl) titleEl.innerText = this.state.title;
 					
 					this.saveState();
-					new Notice(`✅ 已保存为: ${fullPath}`);
+					new Notice(`[成功] 已保存为: ${fullPath}`);
 				} catch (error) {
 					console.error('保存便签失败:', error);
-					new Notice(`❌ 保存失败: ${error}`);
+					new Notice(`[错误] 保存失败: ${error}`);
 				}
 			});
 			modal.open();
@@ -496,7 +497,7 @@ export class FloatingStickyNote extends Component {
 							const file = this.app.vault.getAbstractFileByPath(this.state.filePath);
 							if (file instanceof TFile) {
 								await this.app.vault.modify(file, this.state.content || "");
-								new Notice("✅ 便签已保存");
+								new Notice("[成功] 便签已保存");
 							}
 							this.close();
 						} else {
@@ -508,15 +509,15 @@ export class FloatingStickyNote extends Component {
 									}
 									const fullPath = folderPath ? `${folderPath}/${fileName}` : fileName;
 									if (this.app.vault.getAbstractFileByPath(fullPath)) {
-										new Notice(`❌ 文件已存在: ${fullPath}`);
+										new Notice(`[错误] 文件已存在: ${fullPath}`);
 										return;
 									}
 									await this.app.vault.create(fullPath, this.state.content || "");
-									new Notice(`✅ 已保存为: ${fullPath}`);
+									new Notice(`[成功] 已保存为: ${fullPath}`);
 									this.close();
 								} catch (error) {
 									console.error('保存便签失败:', error);
-									new Notice(`❌ 保存失败: ${error}`);
+									new Notice(`[错误] 保存失败: ${error}`);
 								}
 							});
 							saveModal.open();
@@ -583,6 +584,12 @@ export class FloatingStickyNote extends Component {
 	}
 
 	onunload() {
+		// 清理 ResizeObserver
+		if (this.resizeObserver) {
+			this.resizeObserver.disconnect();
+			this.resizeObserver = null;
+		}
+		
 		if (this.containerEl) {
 			this.containerEl.remove();
 		}
@@ -627,13 +634,13 @@ export class FloatingStickyNote extends Component {
 	}
 
 	setupResizing() {
-		const observer = new ResizeObserver(() => {
+		this.resizeObserver = new ResizeObserver(() => {
 			if (this.state.isPinned) return; 
 			this.state.width = this.containerEl.style.width;
 			this.state.height = this.containerEl.style.height;
 			this.saveState();
 		});
-		observer.observe(this.containerEl);
+		this.resizeObserver.observe(this.containerEl);
 	}
 
 	injectCSS() {

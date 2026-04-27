@@ -130,7 +130,7 @@ export class ErrorHandler {
 		} catch (error) {
 			this.logError(context, '操作失败', error);
 			if (showNotice) {
-				this.showError(`❌ ${context} 失败`);
+				this.showError(`[错误] ${context} 失败`);
 			}
 			return null;
 		}
@@ -149,7 +149,7 @@ export class ErrorHandler {
 		} catch (error) {
 			this.logError(context, '操作失败', error);
 			if (showNotice) {
-				this.showError(`❌ ${context} 失败`);
+				this.showError(`[错误] ${context} 失败`);
 			}
 			return null;
 		}

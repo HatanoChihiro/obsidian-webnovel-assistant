@@ -179,9 +179,9 @@ export function showInfo(message: string, timeout: number = 3000): void {
 export async function copyToClipboard(text: string): Promise<void> {
 	try {
 		await navigator.clipboard.writeText(text);
-		showSuccess('✅ 已复制到剪贴板');
+		showSuccess('[成功] 已复制到剪贴板');
 	} catch (error) {
-		showError('❌ 复制失败');
+		showError('[错误] 复制失败');
 		console.error('Copy to clipboard failed:', error);
 	}
 }

@@ -96,7 +96,7 @@ export abstract class BaseFormModal extends Modal {
 	protected validateNotEmpty(value: string, fieldName: string): boolean {
 		if (!value.trim()) {
 			const { Notice } = require('obsidian');
-			new Notice(`❌ 请填写${fieldName}`);
+			new Notice(`[错误] 请填写${fieldName}`);
 			return false;
 		}
 		return true;
@@ -114,7 +114,7 @@ export abstract class BaseFormModal extends Modal {
 		const len = value.trim().length;
 		if (len < minLength || len > maxLength) {
 			const { Notice } = require('obsidian');
-			new Notice(`❌ ${fieldName}长度必须在 ${minLength}-${maxLength} 之间`);
+			new Notice(`[错误] ${fieldName}长度必须在 ${minLength}-${maxLength} 之间`);
 			return false;
 		}
 		return true;

@@ -105,6 +105,11 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	obsServer: ObsOverlayServer | null = null;
 	mobileFloatingStats: MobileFloatingStats | null = null;
 	obsHtmlBuilder: ObsHtmlBuilder;
+	
+	// Worker 重启控制
+	private workerRestartAttempts: number = 0;
+	private readonly MAX_WORKER_RESTARTS: number = 5;
+	private workerRestartTimer: number | null = null;
 
 	// 服务优化组件
 	cacheManager: CacheManager;
@@ -225,10 +230,10 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 				editorCallback: (editor, view) => {
 					const content = editor.getValue();
 					navigator.clipboard.writeText(content).then(() => {
-						new Notice(`✅ 已复制全文（${content.length} 字符）`);
+						new Notice(`[成功] 已复制全文（${content.length} 字符）`);
 					}).catch(err => {
 						console.error('[Plugin] 复制失败:', err);
-						new Notice('❌ 复制失败，请重试');
+						new Notice('[错误] 复制失败，请重试');
 					});
 				}
 			});
@@ -245,10 +250,10 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 							try {
 								const content = await this.app.vault.read(file);
 								await navigator.clipboard.writeText(content);
-								new Notice(`✅ 已复制全文（${content.length} 字符）`);
+								new Notice(`[成功] 已复制全文（${content.length} 字符）`);
 							} catch (err) {
 								console.error('[Plugin] 复制失败:', err);
-								new Notice('❌ 复制失败，请重试');
+								new Notice('[错误] 复制失败，请重试');
 							}
 						});
 					});
@@ -313,6 +318,16 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 				// 如果不是当前活动文件，说明是通过其他方式修改的（如批量操作、便签保存）
 				// 需要更新每日历史统计
 				if (!isActiveFile) {
+					// 排除合并章节文件（文件名包含 "_合并章节"）
+					const isMergedFile = file.basename.includes('_合并章节');
+					if (isMergedFile) {
+						// 仍然更新缓存，但不计入历史统计
+						this.debounceManager.debounce('folder-refresh', () => {
+							this.updateFileCacheAndRefresh(file);
+						}, 500);
+						return;
+					}
+					
 					try {
 						const content = await this.app.vault.cachedRead(file);
 						const newWordCount = this.calculateAccurateWords(content);
@@ -393,10 +408,10 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 				if (this.isTracking) {
 					this.lastTickTime = Date.now();
 					this.worker?.postMessage('start');
-					new Notice("⏱️ 摸鱼时间统计已开始");
+					new Notice("[记录中] 摸鱼时间统计已开始");
 				} else {
 					this.worker?.postMessage('stop');
-					new Notice("⏸️ 摸鱼时间统计已暂停");
+					new Notice("[已暂停] 摸鱼时间统计已暂停");
 				}
 				this.updateWordCount();
 				this.exportLegacyOBS(true);
@@ -458,10 +473,10 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 				try {
 					const newFile = await this.app.vault.create(newFilePath, '');
 					await this.app.workspace.getLeaf(false).openFile(newFile);
-					new Notice(`✅ 已创建: ${newFileName}`);
+					new Notice(`[成功] 已创建: ${newFileName}`);
 				} catch (error) {
 					console.error(error);
-					new Notice(`❌ 创建失败: ${error}`);
+					new Notice(`[错误] 创建失败: ${error}`);
 				}
 			}
 		});
@@ -529,7 +544,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 								const newFile = await this.app.vault.create(exportPath, mergedContent.trim());
 								notice.hide();
 								await this.app.workspace.getLeaf(false).openFile(newFile);
-								new Notice(`✅ 合并成功！\n已合并 ${mdFiles.length} 个章节\n总计 ${totalWords.toLocaleString()} 字`, 8000);
+								new Notice(`[成功] 合并成功！\n已合并 ${mdFiles.length} 个章节\n总计 ${totalWords.toLocaleString()} 字`, 8000);
 							} catch (error) {
 								console.error(error);
 								notice.hide();
@@ -605,7 +620,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 					return;
 				}
 				this.fileExplorerPatcher.refreshManually();
-				new Notice('✅ 章节排序已刷新\n\n💡 提示：排序会自动适应，通常不需要手动刷新');
+				new Notice('[成功] 章节排序已刷新\n\n[提示] 排序会自动适应，通常不需要手动刷新');
 			}
 		});
 
@@ -630,10 +645,10 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 					);
 					notice.hide();
 					this.refreshFolderCounts();
-					new Notice('✅ 缓存重建完成！');
+					new Notice('[成功] 缓存重建完成！');
 				} catch (error) {
 					notice.hide();
-					new Notice(`❌ 缓存重建失败: ${error}`);
+					new Notice(`[错误] 缓存重建失败: ${error}`);
 					console.error('[Plugin] 缓存重建失败:', error);
 				}
 			}
@@ -717,9 +732,9 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 						);
 						if (success) {
 							const fileList = recoveryFileNames.map(f => `[[${f}]]`).join('、');
-							new Notice(`✅ 已标记为已回收：${fileList}`);
+							new Notice(`[成功] 已标记为已回收：${fileList}`);
 						} else {
-							new Notice('❌ 未找到对应的伏笔条目');
+							new Notice('[错误] 未找到对应的伏笔条目');
 						}
 					}).open();
 				});
@@ -790,13 +805,13 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 					this.foreshadowingManager.addForeshadowing(sourceFile, selection, description, tags)
 						.then(({ file: targetFile, merged }) => {
 							if (merged) {
-								new Notice(`✅ 已合并到同名伏笔条目「${targetFile.name}」`, 5000);
+								new Notice(`[成功] 已合并到同名伏笔条目「${targetFile.name}」`, 5000);
 							} else {
-								new Notice(`✅ 已标注为伏笔，保存至「${targetFile.name}」`, 5000);
+								new Notice(`[成功] 已标注为伏笔，保存至「${targetFile.name}」`, 5000);
 							}
 							// 桌面端提供打开伏笔文件的选项
 							if (isDesktop()) {
-								const openNotice = new Notice(`💡 点击此处打开伏笔文件`, 8000);
+								const openNotice = new Notice(`[提示] 点击此处打开伏笔文件`, 8000);
 								openNotice.noticeEl.style.cursor = 'pointer';
 								openNotice.noticeEl.onclick = () => {
 									this.foreshadowingManager.openForeshadowingFile(targetFile);
@@ -806,7 +821,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 						})
 						.catch((err) => {
 							console.error('[ForeshadowingManager] addForeshadowing failed:', err);
-							new Notice(`❌ 标注失败：${err}`);
+							new Notice(`[错误] 标注失败：${err}`);
 						});
 				};
 
@@ -836,7 +851,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 				const cursorLine = editor.getCursor().line;
 				const entryInfo = this.foreshadowingManager.getEntryAtCursor(editor, cursorLine);
 				if (!entryInfo) {
-					new Notice('❌ 请将光标放在伏笔条目上');
+					new Notice('[错误] 请将光标放在伏笔条目上');
 					return true;
 				}
 
@@ -846,9 +861,9 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 					);
 					if (success) {
 						const fileList = recoveryFileNames.map(f => `[[${f}]]`).join('、');
-						new Notice(`✅ 已标记为已回收：${fileList}`);
+						new Notice(`[成功] 已标记为已回收：${fileList}`);
 					} else {
-						new Notice('❌ 未找到对应的伏笔条目，请确认光标位置');
+						new Notice('[错误] 未找到对应的伏笔条目，请确认光标位置');
 					}
 				}).open();
 				return true;
@@ -900,7 +915,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 									type: entry.type,
 									rawBlock: '',
 								});
-								new Notice('✅ 已添加到时间线');
+								new Notice('[成功] 已添加到时间线');
 								const leaves = this.app.workspace.getLeavesOfType(TIMELINE_VIEW_TYPE);
 								if (leaves.length > 0) {
 									// 确保文件写入完成后再刷新
@@ -972,6 +987,12 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	}
 
 	onunload() {
+		// 清理 Worker 重启定时器
+		if (this.workerRestartTimer) {
+			clearTimeout(this.workerRestartTimer);
+			this.workerRestartTimer = null;
+		}
+		
 		// 保存所有便签的当前状态（位置、大小、内容等）
 		this.activeNotes.forEach(note => {
 			const index = this.settings.openNotes.findIndex(n => n.id === note.state.id);
@@ -1234,20 +1255,28 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		
 		// 只统计工作区内的文件
 		if (view.file && !this.isFileInWorkspace(view.file)) return;
+		
+		// 排除合并章节文件（文件名包含 "_合并章节"）
+		if (view.file && view.file.basename.includes('_合并章节')) return;
         
 		this.lastEditTime = Date.now(); 
         
 		const currentCount = this.calculateAccurateWords(view.getViewData());
 		const delta = currentCount - this.lastFileWords;
 		
-		this.sessionAddedWords += delta;
-		this.lastFileWords = currentCount;
-
-		const today = window.moment().format('YYYY-MM-DD');
-		if (!this.settings.dailyHistory[today]) {
-			this.settings.dailyHistory[today] = { focusMs: 0, slackMs: 0, addedWords: 0 };
+		// 只有当 delta 有效时才更新（避免文件切换时的异常值）
+		// 如果 lastFileWords 为 0（刚切换文件），不记录到历史
+		if (this.lastFileWords > 0) {
+			this.sessionAddedWords += delta;
+			
+			const today = window.moment().format('YYYY-MM-DD');
+			if (!this.settings.dailyHistory[today]) {
+				this.settings.dailyHistory[today] = { focusMs: 0, slackMs: 0, addedWords: 0 };
+			}
+			this.settings.dailyHistory[today].addedWords += delta;
 		}
-		this.settings.dailyHistory[today].addedWords += delta;
+		
+		this.lastFileWords = currentCount;
 
 		this.updateWordCount();
 		this.refreshStatusViews();
@@ -1287,7 +1316,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		const totalCount = this.calculateAccurateWords(view.getViewData());
 		const displaySessionWords = Math.max(0, this.sessionAddedWords);
 		
-		const stateStr = this.isTracking ? "⏱️记录中" : "⏸️已暂停";
+		const stateStr = this.isTracking ? "[记录中]" : "[已暂停]";
 
 		if (this.settings.showGoal && view.file) {
 			const cache = this.app.metadataCache.getFileCache(view.file);
@@ -1299,17 +1328,24 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 
 			if (targetGoal > 0) {
 				const percent = Math.min(Math.round((totalCount / targetGoal) * 100), 100);
-				let emoji = percent >= 100 ? '✅' : '📝';
-				this.statusBarItemEl.setText(`[${stateStr}] ${emoji} 字数: ${totalCount} / ${targetGoal} (${percent}%) | 净增: ${displaySessionWords}`);
+				const status = percent >= 100 ? '[完成]' : '';
+				this.statusBarItemEl.setText(`[${stateStr}] ${status} 字数: ${totalCount} / ${targetGoal} (${percent}%) | 净增: ${displaySessionWords}`);
 				return;
 			}
 		}
 
 		const cnChars = (view.getViewData().match(/[\u4e00-\u9fa5]/g) || []).length;
-		this.statusBarItemEl.setText(`[${stateStr}] 📝 字数: ${totalCount} (中文字: ${cnChars}) | 净增: ${displaySessionWords}`);
+		this.statusBarItemEl.setText(`[${stateStr}] 字数: ${totalCount} (中文字: ${cnChars}) | 净增: ${displaySessionWords}`);
 	}
 
 	setupWorker() {
+		// 检查是否达到最大重启次数
+		if (this.workerRestartAttempts >= this.MAX_WORKER_RESTARTS) {
+			new Notice('[警告] 时间追踪功能多次启动失败，已自动禁用。请重启 Obsidian 或检查浏览器设置。', 8000);
+			console.error('[Plugin] Worker 达到最大重启次数，已停止尝试');
+			return;
+		}
+		
 		const workerCode = `
 			let interval;
 			self.onmessage = function(e) {
@@ -1325,8 +1361,9 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.worker = new Worker(URL.createObjectURL(blob));
 
 		this.worker.onerror = (error) => {
+			this.workerRestartAttempts++;
 			console.error(
-				'[WebNovel Assistant] Worker 错误:',
+				`[WebNovel Assistant] Worker 错误 (尝试 ${this.workerRestartAttempts}/${this.MAX_WORKER_RESTARTS}):`,
 				'\n  消息:', error.message,
 				'\n  文件:', error.filename,
 				'\n  行号:', error.lineno,
@@ -1340,18 +1377,26 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 				this.worker = null;
 			}
 
-			setTimeout(() => {
+			// 清除之前的重启定时器
+			if (this.workerRestartTimer) {
+				clearTimeout(this.workerRestartTimer);
+				this.workerRestartTimer = null;
+			}
+
+			this.workerRestartTimer = window.setTimeout(() => {
 				console.log('[WebNovel Assistant] 正在重启 Worker...');
 
 				this.setupWorker();
 
-				if (wasTracking) {
-					this.worker?.postMessage('start');
+				if (wasTracking && this.worker) {
+					this.worker.postMessage('start');
 					console.log('[WebNovel Assistant] Worker 已重启，追踪状态已恢复');
 				}
 				
 				// 通知用户
-				new Notice('⚠️ 时间追踪 Worker 已自动重启\n追踪功能已恢复正常', 5000);
+				if (this.workerRestartAttempts < this.MAX_WORKER_RESTARTS) {
+					new Notice('[警告] 时间追踪 Worker 已自动重启\n追踪功能已恢复正常', 5000);
+				}
 			}, 5000);
 		};
 		
@@ -1378,10 +1423,19 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		    }
 		    
 			this.refreshStatusViews();
+			
 			if (this.settings.enableLegacyObsExport) this.exportLegacyOBS();
 			if (this.settings.enableObs && this.obsServer) {
 			}
 		};
+		
+		// Worker 成功运行 60 秒后重置重启计数器（只设置一次）
+		if (this.workerRestartAttempts > 0) {
+			setTimeout(() => {
+				this.workerRestartAttempts = 0;
+				console.log('[Plugin] Worker 运行稳定，重启计数器已重置');
+			}, 60000);
+		}
 	}
 
 	refreshStatusViews() {
@@ -1389,6 +1443,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		for (const leaf of leaves) {
 			if (leaf.view instanceof WritingStatusView) {
 				leaf.view.updateData();
+				leaf.view.renderChart(); // 刷新图表显示
 			}
 		}
 	}
