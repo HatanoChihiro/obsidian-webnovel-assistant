@@ -4,7 +4,7 @@
 
 一个功能强大的 Obsidian 插件，专为中文网络小说作者打造，提供字数统计、写作目标追踪、伏笔管理、时间线系统、OBS 直播叠加层等丰富功能。
 
-**关键词**：Obsidian 插件、网文写作、小说创作、字数统计、写作工具、中文写作、创意写作、Markdown 编辑器
+**关键词**：Obsidian 插件、创作插件、网文写作、小说创作、字数统计、写作工具、中文写作、创意写作、Markdown 编辑器
 
 [![GitHub release](https://img.shields.io/github/v/release/HatanoChihiro/obsidian-webnovel-assistant)](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/releases)
 [![License](https://img.shields.io/github/license/HatanoChihiro/obsidian-webnovel-assistant)](LICENSE)
