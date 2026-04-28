@@ -2,6 +2,7 @@ import { MarkdownView } from 'obsidian';
 import { hexToRgba, formatTime } from '../utils';
 import { ObsStatsPayload } from '../types/stats';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
+import type { DailyStat } from '../types/settings';
 
 /**
  * OBS 叠加层 HTML 构建器

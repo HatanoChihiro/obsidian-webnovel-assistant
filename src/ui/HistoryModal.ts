@@ -1,5 +1,5 @@
 import { App, Modal } from 'obsidian';
-import { DailyStat } from '../types/stats';
+import { DailyStat } from '../types/settings';
 import { formatCount } from '../utils/format';
 
 /**

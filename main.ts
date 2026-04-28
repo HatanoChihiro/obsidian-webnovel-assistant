@@ -50,7 +50,7 @@ const DEFAULT_SETTINGS: AccurateCountSettings = {
 	obsPath: "",
 	openNotes: [],
 	noteOpacity: 0.9,
-	dailyHistory: {},
+	dailyHistory: {}, // @deprecated 保留用于降级兼容，实际数据已迁移到 history-data.json
 	idleTimeoutThreshold: 60 * 1000,
 	noteThemes: [
 		{ bg: '#FDF3B8', text: '#2C3E50' }, // 鹅黄色

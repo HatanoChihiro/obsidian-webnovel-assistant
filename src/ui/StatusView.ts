@@ -3,6 +3,7 @@ import { formatTime, formatCount } from '../utils/format';
 import { HistoryStatsModal } from './HistoryModal';
 import { isMobile } from '../utils/platform';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
+import type { DailyStat } from '../types/settings';
 
 export const STATUS_VIEW_TYPE = 'writing-status-view';
 
