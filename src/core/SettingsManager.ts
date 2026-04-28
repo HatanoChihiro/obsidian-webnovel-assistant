@@ -132,14 +132,18 @@ export class SettingsManager {
 					this.settings = pluginSettings;
 				}
 				
-				// 原子操作：读取最新数据，合并设置，然后保存
+				// 读取旧数据进行合并
 				const data = await this.plugin.loadData() || {};
-				// 显式保护 cacheData，避免被 settings 中的同名字段覆盖
-				const cacheData = data.cacheData;
-				const newData = { ...data, ...this.settings };
-				if (cacheData !== undefined) {
-					newData.cacheData = cacheData;
+				
+				// 瘦身策略：清理已分离至独立文件的旧数据字段
+				if ('cacheData' in data) {
+					delete data.cacheData;
 				}
+				if ('historyData' in data) { // 之前版本的历史数据
+					delete data.historyData;
+				}
+				
+				const newData = { ...data, ...this.settings };
 				await this.plugin.saveData(newData);
 			} catch (error) {
 				console.error('[SettingsManager] 保存设置失败:', error);

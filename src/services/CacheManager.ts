@@ -29,6 +29,7 @@ export class CacheManager {
 	private cache: Map<string, CacheEntry>;
 	private maxCacheSize: number = CACHE_CONFIG.MAX_SIZE;
 	private plugin: WebNovelAssistantPlugin; // 插件实例，用于持久化
+	private cacheFilePath: string; // 独立缓存文件路径
 	
 	// 写入队列：确保数据保存的原子性
 	private saveQueue: Promise<void> = Promise.resolve();
@@ -36,6 +37,7 @@ export class CacheManager {
 	constructor(plugin: WebNovelAssistantPlugin) {
 		this.cache = new Map();
 		this.plugin = plugin;
+		this.cacheFilePath = `${plugin.manifest.dir}/cache-data.json`;
 	}
 
 	/**
@@ -45,13 +47,30 @@ export class CacheManager {
 		if (!this.plugin) return false;
 
 		try {
-			const data = await this.plugin.loadData();
-			if (!data || !data.cacheData) {
+			let cacheData: CacheData | undefined;
+			const adapter = this.plugin.app.vault.adapter;
+
+			// 首选：从独立缓存文件加载
+			if (await adapter.exists(this.cacheFilePath)) {
+				const content = await adapter.read(this.cacheFilePath);
+				cacheData = JSON.parse(content);
+				console.log('[CacheManager] 已从独立文件读取缓存数据');
+			} else {
+				// 兼容：从 data.json 读取旧版缓存进行迁移
+				const data = await this.plugin.loadData();
+				if (data && data.cacheData) {
+					cacheData = data.cacheData as CacheData;
+					console.log('[CacheManager] 检测到旧版本位于 data.json 的缓存数据，将通过首次保存迁移到独立文件');
+					
+					// 触发持久化至新独立文件。原 data.json 中的数据会在下次保存设置时由于没有保留逻辑而被自发剥离清理掉
+					this.saveCache().catch(e => console.warn('缓存初始迁移保存失败:', e));
+				}
+			}
+
+			if (!cacheData) {
 				console.log('[CacheManager] 没有找到持久化缓存');
 				return false;
 			}
-
-			const cacheData: CacheData = data.cacheData;
 			
 			// 检查版本
 			if (cacheData.version !== 1) {
@@ -92,12 +111,12 @@ export class CacheManager {
 					entries: Array.from(this.cache.entries())
 				};
 
-				// 原子操作：读取最新数据，修改，然后保存
-				const data = await this.plugin.loadData() || {};
-				data.cacheData = cacheData;
-				await this.plugin.saveData(data);
+				// 直接序列化并写入到独立的 cache-data.json 文件
+				const adapter = this.plugin.app.vault.adapter;
+				const content = JSON.stringify(cacheData, null, 2);
+				await adapter.write(this.cacheFilePath, content);
 				
-				console.log(`[CacheManager] 已保存 ${this.cache.size} 个缓存条目`);
+				console.log(`[CacheManager] 已保存 ${this.cache.size} 个缓存条目到独立文件`);
 			} catch (error) {
 				console.error('[CacheManager] 保存缓存失败:', error);
 			}

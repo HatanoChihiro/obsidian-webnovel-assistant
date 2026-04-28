@@ -18,6 +18,7 @@ import type { FloatingStickyNote } from '../ui/StickyNote';
 import type { MobileFloatingStats } from '../ui/MobileFloatingStats';
 import type { WordCounter } from '../services/WordCounter';
 import type { EditorTracker } from '../services/EditorTracker';
+import type { StyleManager } from '../services/StyleManager';
 
 /**
  * WebNovel Assistant 插件接口
@@ -40,6 +41,7 @@ export interface WebNovelAssistantPlugin {
 	foreshadowingManager: ForeshadowingManager;
 	wordCounter: WordCounter;
 	editorTracker: EditorTracker;
+	styleManager: StyleManager;
 	
 	// 追踪状态
 	isTracking: boolean;

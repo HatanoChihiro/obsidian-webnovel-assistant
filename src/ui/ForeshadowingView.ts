@@ -113,8 +113,6 @@ export class ForeshadowingView extends CreativeView {
 			// 条目列表
 			group.items.forEach(entry => this.renderEntry(list, entry));
 		});
-
-		this.injectStyles();
 	}
 
 	private renderEntry(container: HTMLElement, entry: ParsedEntry) {

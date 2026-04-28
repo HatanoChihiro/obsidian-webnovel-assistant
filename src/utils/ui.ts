@@ -43,8 +43,18 @@ export function toggleView(
 	const leaves = app.workspace.getLeavesOfType(viewType);
 	
 	if (leaves.length > 0) {
-		// 视图已打开，关闭它
-		app.workspace.detachLeavesOfType(viewType);
+		const leaf = leaves[0];
+		// 检查视图当前是否真正显示在界面上
+		// 如果被其他 Tab 挡住，isShown() 会返回 false
+		const isVisible = leaf.view.containerEl.isShown();
+
+		if (isVisible) {
+			// 如果已经在前台可见，说明用户的真实意图是关闭它
+			app.workspace.detachLeavesOfType(viewType);
+		} else {
+			// 如果在后台，说明用户的真实意图是切换到它
+			app.workspace.revealLeaf(leaf);
+		}
 	} else {
 		// 视图未打开，创建新视图
 		const leaf = app.workspace.getLeaf(position === 'left' ? 'split' : 'tab');
@@ -52,6 +62,8 @@ export function toggleView(
 			type: viewType,
 			active: true,
 		});
+		// 新建后确保它被前台聚焦
+		app.workspace.revealLeaf(leaf);
 	}
 }
 

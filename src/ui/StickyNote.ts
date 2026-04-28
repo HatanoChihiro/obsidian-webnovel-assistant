@@ -265,7 +265,9 @@ export class FloatingStickyNote extends Component {
 		
 		if (!this.plugin.settings.openNotes.find((n: StickyNoteState) => n.id === this.state.id)) {
 			this.plugin.settings.openNotes.push(this.state);
-			this.plugin.saveSettings();
+			this.plugin.saveSettings().catch(err => {
+				console.error('[StickyNote] 保存设置失败:', err);
+			});
 		}
 	}
 
@@ -579,7 +581,9 @@ export class FloatingStickyNote extends Component {
 		const index = this.plugin.settings.openNotes.findIndex((n: StickyNoteState) => n.id === this.state.id);
 		if (index !== -1) {
 			this.plugin.settings.openNotes[index] = this.state;
-			this.plugin.saveSettings();
+			this.plugin.saveSettings().catch(err => {
+				console.error('[StickyNote] 保存状态失败:', err);
+			});
 		}
 	}
 
@@ -603,7 +607,9 @@ export class FloatingStickyNote extends Component {
 		const stateIndex = this.plugin.settings.openNotes.findIndex((n: StickyNoteState) => n.id === this.state.id);
 		if (stateIndex !== -1) {
 			this.plugin.settings.openNotes.splice(stateIndex, 1);
-			this.plugin.saveSettings();
+			this.plugin.saveSettings().catch(err => {
+				console.error('[StickyNote] 关闭时保存设置失败:', err);
+			});
 		}
 		this.unload();
 	}

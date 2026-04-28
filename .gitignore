@@ -1,6 +1,7 @@
 # Obsidian 用户数据
 data.json
 history-data.json
+cache-data.json
 
 # Node.js
 node_modules/
