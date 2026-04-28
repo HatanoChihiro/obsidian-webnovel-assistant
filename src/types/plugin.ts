@@ -17,6 +17,7 @@ import type { ObsOverlayServer } from '../services/ObsServer';
 import type { FloatingStickyNote } from '../ui/StickyNote';
 import type { MobileFloatingStats } from '../ui/MobileFloatingStats';
 import type { WordCounter } from '../services/WordCounter';
+import type { EditorTracker } from '../services/EditorTracker';
 
 /**
  * WebNovel Assistant 插件接口
@@ -38,6 +39,7 @@ export interface WebNovelAssistantPlugin {
 	fileExplorerPatcher: FileExplorerPatcher;
 	foreshadowingManager: ForeshadowingManager;
 	wordCounter: WordCounter;
+	editorTracker: EditorTracker;
 	
 	// 追踪状态
 	isTracking: boolean;
