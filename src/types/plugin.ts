@@ -11,7 +11,7 @@ import type { ForeshadowingManager } from '../services/ForeshadowingManager';
 import type { TimelineManager } from '../services/TimelineManager';
 import type { FileExplorerPatcher } from '../services/FileExplorerPatcher';
 import type { SettingsManager } from '../core/SettingsManager';
-import type { DebounceManager } from '../services/DebounceManager';
+import type { HistoryDataManager } from '../services/HistoryDataManager';
 import type { AdaptiveDebounceManager } from '../services/AdaptiveDebounceManager';
 import type { ObsOverlayServer } from '../services/ObsServer';
 import type { FloatingStickyNote } from '../ui/StickyNote';
@@ -31,9 +31,9 @@ export interface WebNovelAssistantPlugin {
 	
 	// 服务管理器
 	cacheManager: CacheManager;
-	debounceManager: DebounceManager;
 	adaptiveDebounceManager: AdaptiveDebounceManager;
 	settingsManager: SettingsManager;
+	historyManager: HistoryDataManager;
 	fileExplorerPatcher: FileExplorerPatcher;
 	foreshadowingManager: ForeshadowingManager;
 	

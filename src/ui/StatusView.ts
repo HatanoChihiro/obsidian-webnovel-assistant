@@ -175,7 +175,7 @@ export class WritingStatusView extends ItemView {
 
 		// 当日目标进度（今日新增 vs dailyGoal）
 		const today = window.moment().format('YYYY-MM-DD');
-		const todayStat = this.plugin.settings.dailyHistory[today] || { focusMs: 0, slackMs: 0, addedWords: 0 };
+		const todayStat = this.plugin.historyManager.getDailyStat(today) || { focusMs: 0, slackMs: 0, addedWords: 0 };
 		const dailyAdded = todayStat.addedWords; // 允许负数，提醒作者删除了字数
 		const dailyGoal = this.plugin.settings.dailyGoal || 0;
 
@@ -262,7 +262,7 @@ export class WritingStatusView extends ItemView {
 		
 		const now = window.moment();
 
-		for (const [dateStr, stat] of Object.entries(this.plugin.settings.dailyHistory)) {
+		for (const [dateStr, stat] of Object.entries(this.plugin.historyManager.getHistory())) {
 			const dailyAdded = stat.addedWords || 0;
 			totalWords += dailyAdded;
 			
@@ -295,7 +295,7 @@ export class WritingStatusView extends ItemView {
 		
 		chartSubtitle.setAttribute('aria-label', '点击进入字数统计详情');
 		chartSubtitle.onclick = () => {
-			new HistoryStatsModal(this.plugin.app, this.plugin.settings.dailyHistory).open();
+			new HistoryStatsModal(this.plugin.app, this.plugin.historyManager.getHistory()).open();
 		};
 		
 		// 创建横向柱状图容器
@@ -304,10 +304,10 @@ export class WritingStatusView extends ItemView {
 		});
 		
 		chartBars.onclick = () => {
-			new HistoryStatsModal(this.plugin.app, this.plugin.settings.dailyHistory).open();
+			new HistoryStatsModal(this.plugin.app, this.plugin.historyManager.getHistory()).open();
 		};
 
-		const history = this.plugin.settings.dailyHistory;
+		const history = this.plugin.historyManager.getHistory();
 		const dates = Object.keys(history).sort().slice(-7);
 
 		if (dates.length === 0) {

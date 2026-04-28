@@ -2,6 +2,7 @@ import { App, Notice, PluginSettingTab, Setting } from 'obsidian';
 import { isDesktop, isMobile, getPlatformTier } from '../utils/platform';
 import { ObsOverlayServer } from '../services/ObsServer';
 import { MobileFloatingStats } from './MobileFloatingStats';
+import { VALIDATION_RULES } from '../constants';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 
 /**
@@ -571,7 +572,8 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.obsPort.toString())
 				.onChange(async (value) => {
 					const parsed = parseInt(value);
-					if (!isNaN(parsed) && parsed > 0 && parsed < 65536) {
+					if (parsed >= VALIDATION_RULES.PORT_RANGE.min && 
+					    parsed <= VALIDATION_RULES.PORT_RANGE.max) {
 						this.plugin.settings.obsPort = parsed;
 						await this.plugin.saveSettings();
 						
@@ -582,6 +584,8 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 							this.plugin.obsServer.start();
 							new Notice(`OBS 叠加层已重启，新端口：${parsed}`);
 						}
+					} else if (!isNaN(parsed)) {
+						new Notice(`端口号必须在 ${VALIDATION_RULES.PORT_RANGE.min}-${VALIDATION_RULES.PORT_RANGE.max} 之间`);
 					}
 				}));
 

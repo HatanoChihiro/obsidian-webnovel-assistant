@@ -99,7 +99,10 @@ export interface AccurateCountSettings {
 	enableObs: boolean;
 	/** 是否启用旧版 OBS 文件导出模式 */
 	enableLegacyObsExport: boolean;
-	/** 每日历史统计数据(键为日期 YYYY-MM-DD) */
+	/** 
+	 * 每日历史统计数据(键为日期 YYYY-MM-DD)
+	 * @deprecated 已迁移到 HistoryDataManager，保留此字段仅为降级兼容
+	 */
 	dailyHistory: Record<string, DailyStat>;
 	/** OBS 文件导出路径 */
 	obsPath: string;

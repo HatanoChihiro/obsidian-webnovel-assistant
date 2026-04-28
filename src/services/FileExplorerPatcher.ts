@@ -176,28 +176,21 @@ export class FileExplorerPatcher {
 	 * 设置文件系统事件监听器
 	 */
 	private setupFileSystemListeners(): void {
+		const handler = () => {
+			if (!this.enabled) return; // 守卫：禁用后不触发
+			setTimeout(() => this.refresh(), 100);
+		};
+
 		// 监听文件创建
-		const createRef = this.app.vault.on('create', () => {
-			if (this.enabled) {
-				setTimeout(() => this.refresh(), 100);
-			}
-		});
+		const createRef = this.app.vault.on('create', handler);
 		this.eventRefs.push(createRef);
 
 		// 监听文件删除
-		const deleteRef = this.app.vault.on('delete', () => {
-			if (this.enabled) {
-				setTimeout(() => this.refresh(), 100);
-			}
-		});
+		const deleteRef = this.app.vault.on('delete', handler);
 		this.eventRefs.push(deleteRef);
 
 		// 监听文件重命名
-		const renameRef = this.app.vault.on('rename', () => {
-			if (this.enabled) {
-				setTimeout(() => this.refresh(), 100);
-			}
-		});
+		const renameRef = this.app.vault.on('rename', handler);
 		this.eventRefs.push(renameRef);
 
 		console.log('[ChapterSorter] File system listeners setup complete');
@@ -212,21 +205,33 @@ export class FileExplorerPatcher {
 		try {
 			this.enabled = false;
 
-			// 移除事件监听器
-			this.eventRefs.forEach(ref => {
-				this.app.vault.offref(ref);
-			});
+			// 移除事件监听器（添加 try-catch 确保清理完整）
+			try {
+				this.eventRefs.forEach(ref => {
+					try {
+						this.app.vault.offref(ref);
+					} catch (e) {
+						// 忽略单个清理失败
+					}
+				});
+			} catch (error) {
+				console.error('[ChapterSorter] 清理事件监听器失败:', error);
+			}
 			this.eventRefs = [];
 
 			// 恢复原始排序方法
-			if (this.originalGetSortedFolderItems && this.explorerView) {
-				// @ts-ignore
-				this.explorerView.getSortedFolderItems = this.originalGetSortedFolderItems;
-				this.originalGetSortedFolderItems = null;
+			try {
+				if (this.originalGetSortedFolderItems && this.explorerView) {
+					// @ts-ignore
+					this.explorerView.getSortedFolderItems = this.originalGetSortedFolderItems;
+					this.originalGetSortedFolderItems = null;
 
-				// 触发刷新以应用恢复的排序
-				this.refresh();
-				console.log('[ChapterSorter] Original sorting method restored');
+					// 触发刷新以应用恢复的排序
+					this.refresh();
+					console.log('[ChapterSorter] Original sorting method restored');
+				}
+			} catch (error) {
+				console.error('[ChapterSorter] 恢复排序方法失败:', error);
 			}
 
 			console.log('[ChapterSorter] Smart chapter sorting disabled');

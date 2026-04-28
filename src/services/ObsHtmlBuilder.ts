@@ -18,7 +18,7 @@ export class ObsHtmlBuilder {
 		const slackSec = Math.floor(this.plugin.slackMs / 1000);
 		const totalSec = focusSec + slackSec;
 		const today = window.moment().format('YYYY-MM-DD');
-		const todayStat = this.plugin.settings.dailyHistory[today] || { focusMs: 0, slackMs: 0, addedWords: 0 };
+		const todayStat = this.plugin.historyManager.getDailyStat(today) || { focusMs: 0, slackMs: 0, addedWords: 0 };
 
 		let targetGoal = this.plugin.settings.defaultGoal;
 		let currentFile = '';

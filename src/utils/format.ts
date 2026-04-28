@@ -61,6 +61,7 @@ export function formatTime(totalSeconds: number): string {
 /**
  * 格式化字数显示
  * 将大数字转换为更易读的格式 (1000 -> 1k, 10000 -> 1w)
+ * 支持负数显示
  * @param count - 字数
  * @returns 格式化的字数字符串
  * 
@@ -69,14 +70,22 @@ export function formatTime(totalSeconds: number): string {
  * formatCount(500) // '500'
  * formatCount(1500) // '1.5k'
  * formatCount(15000) // '1.5w'
+ * formatCount(-1500) // '-1.5k'
+ * formatCount(-15000) // '-1.5w'
  * ```
  */
 export function formatCount(count: number): string {
-	if (count >= 10000) {
-		return (count / 10000).toFixed(1) + 'w';
+	const isNegative = count < 0;
+	const absCount = Math.abs(count);
+	
+	let result: string;
+	if (absCount >= 10000) {
+		result = (absCount / 10000).toFixed(1) + 'w';
+	} else if (absCount >= 1000) {
+		result = (absCount / 1000).toFixed(1) + 'k';
+	} else {
+		result = absCount.toString();
 	}
-	if (count >= 1000) {
-		return (count / 1000).toFixed(1) + 'k';
-	}
-	return count.toString();
+	
+	return isNegative ? '-' + result : result;
 }
