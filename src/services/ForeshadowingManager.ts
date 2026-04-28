@@ -398,4 +398,159 @@ export class ForeshadowingManager {
 		const file = this.app.vault.getAbstractFileByPath(path);
 		return file instanceof TFile ? file : null;
 	}
+
+	/**
+	 * 解析伏笔文件内容为结构化数据
+	 * 统一的解析逻辑，供 View 层调用
+	 */
+	parseEntries(content: string): Array<{
+		sourceFile: string;
+		createdAt: string;
+		contents: { source: string; time: string; text: string }[];
+		description: string;
+		tags: string[];
+		status: ForeshadowingStatus;
+		recoveryFiles?: string[];
+		recoveredAts?: string[];
+		recoveryFile?: string;
+		recoveredAt?: string;
+	}> {
+		const entries: Array<{
+			sourceFile: string;
+			createdAt: string;
+			contents: { source: string; time: string; text: string }[];
+			description: string;
+			tags: string[];
+			status: ForeshadowingStatus;
+			recoveryFiles?: string[];
+			recoveredAts?: string[];
+			recoveryFile?: string;
+			recoveredAt?: string;
+		}> = [];
+
+		// 按 --- 分割条目
+		const blocks = content.split(/\n---\n/);
+
+		for (const block of blocks) {
+			const trimmed = block.trim();
+			if (!trimmed || !trimmed.startsWith('## ')) continue;
+
+			// 解析标题行：## [[来源文件]] - 时间
+			const titleMatch = trimmed.match(/^## \[\[(.+?)\]\](?:\s*-\s*(.+))?/m);
+			if (!titleMatch) continue;
+
+			const sourceFile = titleMatch[1];
+			const createdAt = titleMatch[2]?.trim() || '';
+
+			// 解析所有引用块（支持多条）
+			const contents: { source: string; time: string; text: string }[] = [];
+			const lines = trimmed.split('\n');
+			let i = 0;
+
+			// 跳过标题行
+			while (i < lines.length && lines[i].startsWith('## ')) i++;
+
+			// 收集引用块
+			while (i < lines.length) {
+				const line = lines[i];
+				if (line.startsWith('> ')) {
+					// 检查上一行是否是来源标注（> [[文件]] - 时间）
+					let source = '';
+					let time = '';
+					const quoteLines: string[] = [];
+
+					// 第一行可能是来源标注
+					const sourceLine = line.replace(/^> /, '');
+					const sourceMatch = sourceLine.match(/^\[\[(.+?)\]\](?:\s*-\s*(.+))?$/);
+					if (sourceMatch) {
+						source = sourceMatch[1];
+						time = sourceMatch[2]?.trim() || '';
+						i++;
+						// 收集后续引用行
+						while (i < lines.length && lines[i].startsWith('> ')) {
+							quoteLines.push(lines[i].replace(/^> /, ''));
+							i++;
+						}
+					} else {
+						// 普通引用行（第一条，来源来自标题行）
+						while (i < lines.length && lines[i].startsWith('> ')) {
+							quoteLines.push(lines[i].replace(/^> /, ''));
+							i++;
+						}
+					}
+
+					if (quoteLines.length > 0) {
+						// 如果没有内联来源标注，用标题行的来源和时间
+						contents.push({
+							source: source || sourceFile,
+							time: time || createdAt,
+							text: quoteLines.join('\n')
+						});
+					}
+				} else {
+					i++;
+				}
+			}
+
+			// 如果没有解析到引用，用第一个 > 行
+			if (contents.length === 0) {
+				const firstQuote = lines.find(l => l.startsWith('> '));
+				if (firstQuote) {
+					contents.push({ source: sourceFile, time: createdAt, text: firstQuote.replace(/^> /, '') });
+				}
+			}
+
+			// 解析说明
+			const descMatch = trimmed.match(/\*\*说明\*\*：(.+)/);
+			const description = descMatch ? descMatch[1].trim() : '';
+
+			// 解析标签
+			const tagsMatch = trimmed.match(/\*\*标签\*\*：(.+)/);
+			const tags = tagsMatch
+				? tagsMatch[1].trim().split(/\s+/).map(t => t.replace(/^#/, ''))
+				: [];
+
+			// 解析状态
+			const statusMatch = trimmed.match(/\*\*状态\*\*：(.+)/);
+			const statusText = statusMatch ? statusMatch[1].trim() : '未回收';
+			let status = ForeshadowingStatus.Pending;
+			if (statusText === '已回收') status = ForeshadowingStatus.Recovered;
+			else if (statusText === '已废弃') status = ForeshadowingStatus.Deprecated;
+
+			// 解析回收信息（支持多章节）
+			// 新格式：**回收于**：\n- [[章节1]] - 时间\n- [[章节2]] - 时间
+			const recoveryListMatch = trimmed.match(/\*\*回收于\*\*：\n((?:- \[\[.+?\]\].*\n?)+)/);
+			let recoveryFiles: string[] | undefined;
+			let recoveredAts: string[] | undefined;
+			let recoveryFile: string | undefined;
+			let recoveredAt: string | undefined;
+
+			if (recoveryListMatch) {
+				// 多章节格式
+				const listLines = recoveryListMatch[1].trim().split('\n');
+				recoveryFiles = [];
+				recoveredAts = [];
+				listLines.forEach(line => {
+					const match = line.match(/^- \[\[(.+?)\]\](?:\s*-\s*(.+))?$/);
+					if (match) {
+						recoveryFiles!.push(match[1]);
+						recoveredAts!.push(match[2]?.trim() || '');
+					}
+				});
+			} else {
+				// 旧格式（单章节）：**回收于**：[[章节]] - 时间
+				const singleRecoveryMatch = trimmed.match(/\*\*回收于\*\*：\[\[(.+?)\]\](?:\s*-\s*(.+))?/);
+				if (singleRecoveryMatch) {
+					recoveryFile = singleRecoveryMatch[1];
+					recoveredAt = singleRecoveryMatch[2]?.trim();
+				}
+			}
+
+			if (description) {
+				entries.push({ sourceFile, createdAt, contents, description, tags, status, recoveryFiles, recoveredAts, recoveryFile, recoveredAt });
+			}
+		}
+
+		return entries;
+	}
 }
