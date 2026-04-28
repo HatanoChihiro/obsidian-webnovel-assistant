@@ -16,6 +16,7 @@ import type { AdaptiveDebounceManager } from '../services/AdaptiveDebounceManage
 import type { ObsOverlayServer } from '../services/ObsServer';
 import type { FloatingStickyNote } from '../ui/StickyNote';
 import type { MobileFloatingStats } from '../ui/MobileFloatingStats';
+import type { WordCounter } from '../services/WordCounter';
 
 /**
  * WebNovel Assistant 插件接口
@@ -36,6 +37,7 @@ export interface WebNovelAssistantPlugin {
 	historyManager: HistoryDataManager;
 	fileExplorerPatcher: FileExplorerPatcher;
 	foreshadowingManager: ForeshadowingManager;
+	wordCounter: WordCounter;
 	
 	// 追踪状态
 	isTracking: boolean;
