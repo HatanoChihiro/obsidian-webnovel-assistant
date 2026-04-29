@@ -177,6 +177,244 @@ export class StyleManager {
 				.timeline-form-input { width: 100%; padding: 5px 8px; border-radius: 4px; border: 1px solid var(--background-modifier-border); background: var(--background-primary); color: var(--text-normal); font-size: 0.85em; box-sizing: border-box; }
 				.timeline-form-textarea { width: 100%; height: 60px; padding: 5px 8px; border-radius: 4px; border: 1px solid var(--background-modifier-border); background: var(--background-primary); color: var(--text-normal); font-size: 0.85em; resize: vertical; box-sizing: border-box; font-family: var(--font-text); }
 				.timeline-form-btns { display: flex; justify-content: flex-end; gap: 6px; margin-top: 10px; }
+
+				/* ==========================================
+				 * 沉浸模式 (Immersive Mode) CSS
+				 * ========================================== */
+				body.immersive-mode-active .workspace-ribbon,
+				body.immersive-mode-active .workspace-tab-header-container,
+				body.immersive-mode-active .titlebar,
+				body.immersive-mode-active .status-bar,
+				body.immersive-mode-active .workspace-split.mod-left-split,
+				body.immersive-mode-active .workspace-split.mod-right-split,
+				body.immersive-mode-active .floating-sticky-note,
+				body.immersive-mode-active .my-floating-sticky-note,
+				body.immersive-mode-active .view-header {
+					display: none !important;
+				}
+
+				body.immersive-mode-active .workspace {
+					margin-top: 40px !important;
+					height: calc(100vh - 40px) !important;
+					top: 0 !important;
+				}
+
+				/* 沉浸模式：调整内容边距 */
+				.immersive-mode-active .foreshadowing-view-container,
+				.immersive-mode-active .timeline-view-container,
+				.immersive-mode-active .view-content,
+				.immersive-mode-active .cm-scroller,
+				.immersive-mode-active .markdown-preview-view {
+					padding-top: 30px !important;
+				}
+
+				/* 沉浸模式：卡片式面板布局与边界强化 */
+				.immersive-mode-active .workspace-leaf {
+					background-color: var(--background-primary) !important;
+					border: 1px solid var(--background-modifier-border) !important;
+					border-radius: 12px !important;
+					margin: 8px !important;
+					box-shadow: 0 4px 15px rgba(0,0,0,0.05) !important;
+					overflow: hidden !important;
+					transition: box-shadow 0.3s ease;
+				}
+
+				.immersive-mode-active .workspace-leaf:hover {
+					box-shadow: 0 6px 20px rgba(0,0,0,0.1) !important;
+				}
+
+				.immersive-mode-active .workspace-split {
+					background-color: var(--background-secondary) !important; /* 整体底色，凸显卡片感 */
+					gap: 0 !important;
+				}
+
+				/* 辅助面板内容微调 */
+				.immersive-mode-active .foreshadowing-view-container,
+				.immersive-mode-active .timeline-view-container {
+					background-color: transparent !important;
+				}
+
+				/* 设置选项卡样式 */
+				.webnovel-settings-tabs {
+					display: flex;
+					gap: 10px;
+					margin-bottom: 25px;
+					border-bottom: 1px solid var(--background-modifier-border);
+					padding-bottom: 10px;
+					overflow-x: auto;
+				}
+
+				.webnovel-tab-item {
+					padding: 6px 16px;
+					border-radius: 6px;
+					cursor: pointer;
+					background: var(--background-secondary);
+					color: var(--text-muted);
+					font-weight: 500;
+					transition: all 0.2s ease;
+					white-space: nowrap;
+				}
+
+				.webnovel-tab-item:hover {
+					background: var(--background-modifier-hover);
+					color: var(--text-normal);
+				}
+
+				.webnovel-tab-item.is-active {
+					background: var(--interactive-accent);
+					color: var(--text-on-accent);
+				}
+
+				/* 沉浸模式：智能滚动条 (仅在鼠标移入时显示) */
+				.immersive-mode-active *::-webkit-scrollbar {
+					width: 4px !important;
+					height: 4px !important;
+				}
+
+				.immersive-mode-active *::-webkit-scrollbar-thumb {
+					background-color: transparent !important;
+					border-radius: 4px !important;
+				}
+
+				.immersive-mode-active *:hover::-webkit-scrollbar-thumb {
+					background-color: var(--scrollbar-thumb-bg, rgba(128, 128, 128, 0.3)) !important;
+				}
+
+				.immersive-top-bar {
+					position: fixed;
+					top: 0;
+					left: 0;
+					right: 0;
+					height: 40px;
+					background: var(--interactive-accent);
+					color: var(--text-on-accent);
+					z-index: 100;
+					display: flex;
+					align-items: center;
+					justify-content: space-between;
+					padding: 0 16px;
+					font-family: var(--font-interface);
+					box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+				}
+
+				.immersive-top-bar-left {
+					display: flex;
+					align-items: center;
+					gap: 12px;
+					font-weight: bold;
+					font-size: 1.1em;
+				}
+
+				.immersive-top-bar-center {
+					display: flex;
+					align-items: center;
+					gap: 20px;
+					font-size: 0.9em;
+				}
+
+				.immersive-top-bar-center .stat-item {
+					background: rgba(0,0,0,0.15);
+					padding: 4px 10px;
+					border-radius: 12px;
+				}
+
+				.immersive-top-bar-center .stat-item.focus {
+					background: rgba(16, 185, 129, 0.25); /* 绿色强调专注 */
+				}
+
+				.immersive-top-bar-center .stat-item.slack {
+					background: rgba(245, 158, 11, 0.25); /* 橙色强调摸鱼 */
+				}
+
+				.immersive-exit-btn {
+					background: rgba(255, 255, 255, 0.1);
+					color: var(--text-on-accent);
+					border: 1px solid rgba(255, 255, 255, 0.3);
+					padding: 4px 12px;
+					border-radius: 6px;
+					cursor: pointer;
+					font-size: 0.85em;
+					opacity: 0; /* 默认完全隐藏 */
+					transition: all 0.3s ease;
+				}
+
+				.immersive-exit-btn:hover {
+					opacity: 1 !important;
+					background: rgba(255, 255, 255, 0.3) !important;
+				}
+
+				/* 鼠标靠近右侧区域时自动显示提示 */
+				.immersive-top-bar-right:hover .immersive-exit-btn {
+					opacity: 0.7;
+				}
+
+				.immersive-panel-title {
+					margin: 0 0 10px 0;
+					font-size: 1.1em;
+					color: var(--text-normal);
+				}
+
+				/* 章节列表 */
+				.immersive-chapter-list {
+					display: flex;
+					flex-direction: column;
+					gap: 4px;
+					overflow-y: auto;
+				}
+				.immersive-chapter-item {
+					display: flex;
+					justify-content: space-between;
+					padding: 6px 10px;
+					border-radius: 4px;
+					cursor: pointer;
+					transition: background 0.2s;
+				}
+				.immersive-chapter-item:hover {
+					background: var(--background-modifier-hover);
+				}
+				.immersive-chapter-count {
+					font-size: 0.8em;
+					color: var(--text-muted);
+				}
+
+				/* 便签列表 */
+				.immersive-sticky-dock {
+					display: flex;
+					flex-direction: row;
+					gap: 15px;
+					overflow-x: auto;
+					overflow-y: hidden;
+					padding: 10px 5px;
+					height: 100%;
+					align-items: center;
+				}
+				.immersive-sticky-card {
+					flex: 0 0 200px; /* 固定宽度，不伸缩 */
+					width: 200px;
+					height: 200px; /* 正方形 */
+					border-radius: 8px;
+					padding: 12px;
+					box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+					display: flex;
+					flex-direction: column;
+					transition: transform 0.2s;
+				}
+				.immersive-sticky-card:hover {
+					transform: translateY(-5px);
+				}
+				.immersive-sticky-card textarea {
+					flex: 1;
+					width: 100%;
+					border: none;
+					background: transparent;
+					resize: none;
+					font-family: inherit;
+					color: inherit;
+				}
+				.immersive-sticky-card textarea:focus {
+					outline: none;
+					box-shadow: none;
+				}
 			`;
 		injectGlobalStyle(styleId, styleContent);
 	}

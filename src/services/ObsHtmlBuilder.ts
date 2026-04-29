@@ -23,10 +23,12 @@ export class ObsHtmlBuilder {
 
 		let targetGoal = this.plugin.settings.defaultGoal;
 		let currentFile = '';
+		let currentFolder = '';
 		let chapterWords = 0;
 		const view = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
 		if (view?.file) {
 			currentFile = view.file.basename;
+			currentFolder = view.file.parent?.isRoot() ? '' : (view.file.parent?.name || '');
 			const cache = this.plugin.app.metadataCache.getFileCache(view.file);
 			const fmGoal = parseInt(cache?.frontmatter?.['word-goal']);
 			if (!isNaN(fmGoal)) targetGoal = fmGoal;
@@ -44,11 +46,12 @@ export class ObsHtmlBuilder {
 			sessionWords: Math.max(0, this.plugin.sessionAddedWords),
 			todayWords: chapterWords,
 			goal: targetGoal,
-			percent: targetGoal > 0 ? Math.min(Math.round((chapterWords / targetGoal) * 100), 100) : 0,
-			dailyWords: todayAdded,
+			percent: targetGoal > 0 ? Math.max(0, Math.min(Math.round((chapterWords / targetGoal) * 100), 100)) : 0,
+			dailyWords: Math.max(0, todayAdded),
 			dailyGoal: dailyGoal,
-			dailyPercent: dailyGoal > 0 ? Math.min(Math.round((todayAdded / dailyGoal) * 100), 100) : 0,
+			dailyPercent: dailyGoal > 0 ? Math.max(0, Math.min(Math.round((todayAdded / dailyGoal) * 100), 100)) : 0,
 			currentFile: currentFile,
+			currentFolder: currentFolder,
 		};
 	}
 

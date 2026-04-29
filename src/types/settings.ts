@@ -144,4 +144,40 @@ export interface AccurateCountSettings {
 	eyeCareColor: string;
 	/** 是否显示移动端浮动字数统计窗口 */
 	showMobileFloatingStats: boolean;
+
+	// === 沉浸模式 (Immersive Mode) 设置 ===
+	/** 沉浸模式：是否显示左侧章节列表 */
+	immersiveShowChapterList: boolean;
+	/** 沉浸模式：是否显示右侧参考文档区 */
+	immersiveShowReference: boolean;
+	/** 沉浸模式：是否显示下方悬浮便签陈列区 */
+	immersiveShowStickyNotes: boolean;
+	/** 沉浸模式：是否显示下方伏笔面板 */
+	immersiveShowForeshadowing: boolean;
+	/** 沉浸模式：是否显示下方时间线面板 */
+	immersiveShowTimeline: boolean;
+	/** 沉浸模式数据仪表盘：是否显示总计时间 */
+	immersiveShowTotalTime: boolean;
+	/** 沉浸模式数据仪表盘：是否显示专注时间 */
+	immersiveShowFocusTime: boolean;
+	/** 沉浸模式数据仪表盘：是否显示摸鱼时间 */
+	immersiveShowSlackTime: boolean;
+	/** 沉浸模式数据仪表盘：是否显示章节目标进度 */
+	immersiveShowChapterProgress: boolean;
+	/** 沉浸模式数据仪表盘：是否显示今日目标进度 */
+	immersiveShowDailyProgress: boolean;
+	/** 沉浸模式数据仪表盘：是否显示本场净增字数 */
+	immersiveShowSessionWords: boolean;
+	/** 沉浸模式：左侧面板宽度百分比 */
+	immersiveLeftSize: number;
+	/** 沉浸模式：右侧面板宽度百分比 */
+	immersiveRightSize: number;
+	/** 沉浸模式：底部面板高度百分比 */
+	immersiveBottomSize: number;
+	/** 沉浸模式：辅助面板内部各子面板的比例数组 */
+	immersiveBottomInternalSizes: number[];
+	/** 下一个新建便签的主题索引（用于颜色轮换） */
+	nextNoteThemeIndex: number;
+	/** 沉浸模式：辅助面板位置 ('top' | 'bottom') */
+	immersivePanelPosition: 'top' | 'bottom';
 }

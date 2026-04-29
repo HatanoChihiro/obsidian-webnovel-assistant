@@ -35,7 +35,10 @@ import { ObsOverlayServer } from './src/services/ObsServer';
 import { ForeshadowingManager } from './src/services/ForeshadowingManager';
 import { ForeshadowingInputModal, ForeshadowingRecoveryModal, ConfirmCreateForeshadowingFileModal } from './src/ui/ForeshadowingModal';
 import { ObsHtmlBuilder } from './src/services/ObsHtmlBuilder';
-
+import { ImmersiveModeManager } from './src/ui/ImmersiveModeManager';
+import { ImmersiveChapterListView } from './src/ui/ImmersiveChapterListView';
+import { ImmersiveStickyNotesView } from './src/ui/ImmersiveStickyNotesView';
+import { VIEW_TYPES } from './src/constants';
 const DEFAULT_SETTINGS: AccurateCountSettings = {
 	defaultGoal: 3000,
 	dailyGoal: 5000,
@@ -85,7 +88,26 @@ const DEFAULT_SETTINGS: AccurateCountSettings = {
 	eyeCareEnabled: false,
 	eyeCareColor: '#E8F5E9',
 	showMobileFloatingStats: true, // 默认显示移动端浮窗
-}
+	
+	// 沉浸模式默认设置
+	immersiveShowChapterList: true,
+	immersiveShowReference: true,
+	immersiveShowStickyNotes: true,
+	immersiveShowForeshadowing: true,
+	immersiveShowTimeline: true,
+	immersiveShowTotalTime: true,
+	immersiveShowFocusTime: true,
+	immersiveShowSlackTime: true,
+	immersiveShowChapterProgress: true,
+	immersiveShowDailyProgress: true,
+	immersiveShowSessionWords: true,
+	nextNoteThemeIndex: 0,
+	immersivePanelPosition: 'bottom',
+	immersiveLeftSize: 11,
+	immersiveRightSize: 30,
+	immersiveBottomSize: 20,
+	immersiveBottomInternalSizes: [70, 16, 14],
+};
 
 export default class AccurateChineseCountPlugin extends Plugin implements WebNovelAssistantPlugin {
 
@@ -100,6 +122,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 
 	sessionAddedWords: number = 0;
 	lastFileWords: number = 0; 
+	lastFilePath: string = ''; 
 
 	lastEditTime: number = Date.now();
 	
@@ -124,6 +147,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	wordCounter: WordCounter;
 	editorTracker!: EditorTracker;
 	styleManager!: StyleManager;
+	immersiveModeManager!: ImmersiveModeManager;
+	private isLayoutReady: boolean = false;
 
 	constructor(app: App, manifest: any) {
 		super(app, manifest);
@@ -134,6 +159,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.fileExplorerPatcher = new FileExplorerPatcher(this.app);
 		this.obsHtmlBuilder = new ObsHtmlBuilder(this);
 		this.wordCounter = new WordCounter();
+		this.immersiveModeManager = new ImmersiveModeManager(this.app, this);
 		// editorTracker 和 styleManager 需要在 onload 后初始化（依赖 this）
 	}
 
@@ -157,6 +183,10 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 				console.error('[Plugin] 定期保存历史数据失败:', err);
 			});
 		}, 60 * 1000));
+
+		this.app.workspace.onLayoutReady(() => {
+			this.isLayoutReady = true;
+		});
 	}
 
 	/**
@@ -346,8 +376,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 						const oldWordCount = this.cacheManager.getFileCache(file.path) || 0;
 						const delta = newWordCount - oldWordCount;
 
-						// 只有当字数有变化时才更新历史统计
-						if (delta !== 0) {
+						// [BUGFIX] 只有在布局就绪后才记录历史增量，避免启动时的系统性微差导致的负数
+						if (delta !== 0 && this.isLayoutReady) {
 							// [BUGFIX] 立即同步更新内存缓存，防止因为防抖导致突发多次 modify 事件时重复计算相同的 delta
 							this.cacheManager.updateFileCache(file, newWordCount, this.app.vault);
 
@@ -411,23 +441,52 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			note.load();
 		});
 
-		// 桌面端专属命令
+		this.setupDesktopFeatures();
+	}
+
+	// 专注计时逻辑
+	/**
+	 * 开始专注计时
+	 */
+	public startTracking() {
+		if (this.isTracking) return;
+		
+		// 确保 Worker 已初始化
+		if (!this.worker) {
+			this.setupWorker();
+		}
+		
+		this.isTracking = true;
+		this.lastTickTime = Date.now();
+		this.lastEditTime = Date.now(); // 立即激活输入状态，避免一开始就被算作摸鱼
+		
+		this.worker?.postMessage('start');
+		this.editorTracker.updateWordCount();
+		this.exportLegacyOBS(true);
+		this.refreshStatusViews();
+		new Notice("[记录中] 专注计时已开始");
+	}
+
+	/**
+	 * 停止专注计时
+	 */
+	public stopTracking() {
+		if (!this.isTracking) return;
+		this.isTracking = false;
+		this.worker?.postMessage('stop');
+		this.editorTracker.updateWordCount();
+		this.exportLegacyOBS(true);
+		this.refreshStatusViews();
+		new Notice("[已暂停] 专注计时已暂停");
+	}
+
+	private setupDesktopFeatures(): void {
 		this.addCommand({
 			id: 'toggle-tracking',
-			name: '开始/暂停 摸鱼时间统计',
+			name: '开始/暂停 专注时间统计',
 			callback: () => {
-				this.isTracking = !this.isTracking;
-				if (this.isTracking) {
-					this.lastTickTime = Date.now();
-					this.worker?.postMessage('start');
-					new Notice("[记录中] 摸鱼时间统计已开始");
-				} else {
-					this.worker?.postMessage('stop');
-					new Notice("[已暂停] 摸鱼时间统计已暂停");
-				}
-				this.editorTracker.updateWordCount();
-				this.exportLegacyOBS(true);
-				this.refreshStatusViews(); 
+				if (this.isTracking) this.stopTracking();
+				else this.startTracking();
 			}
 		});
 
@@ -453,6 +512,16 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 				this.exportLegacyOBS(true); 
 				this.refreshStatusViews();
 				new Notice('直播数据已重置！统计已暂停，请手动开始新的场次。');
+			}
+		});
+
+		this.addCommand({
+			id: 'reset-immersive-layout',
+			name: '重置沉浸模式布局 (回到默认比例和位置)',
+			callback: () => {
+				this.settings.immersiveLayout = null;
+				this.saveSettings();
+				new Notice('沉浸模式布局已重置，下次进入生效');
 			}
 		});
 
@@ -763,6 +832,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.registerView(STATUS_VIEW_TYPE, (leaf) => new WritingStatusView(leaf, this));
 		this.registerView(FORESHADOWING_VIEW_TYPE, (leaf) => new ForeshadowingView(leaf, this));
 		this.registerView(TIMELINE_VIEW_TYPE, (leaf) => new TimelineView(leaf, this));
+		this.registerView(VIEW_TYPES.IMMERSIVE_CHAPTER_LIST, (leaf) => new ImmersiveChapterListView(leaf, this));
+		this.registerView(VIEW_TYPES.IMMERSIVE_STICKY_NOTES, (leaf) => new ImmersiveStickyNotesView(leaf, this));
 	}
 
 	/**
@@ -777,6 +848,9 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		});
 		this.addRibbonIcon('calendar-clock', '打开/关闭时间线面板', () => {
 			this.toggleTimelineView();
+		});
+		this.addRibbonIcon('expand', '进入/退出全屏沉浸写作模式', () => {
+			this.immersiveModeManager.toggleImmersiveMode();
 		});
 	}
 
@@ -800,6 +874,22 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			id: 'toggle-writing-status-view',
 			name: '打开/关闭写作实时状态面板',
 			callback: () => this.toggleStatusView()
+		});
+
+		this.addCommand({
+			id: 'toggle-immersive-mode',
+			name: '进入/退出全屏沉浸写作模式',
+			callback: () => this.immersiveModeManager.toggleImmersiveMode()
+		});
+
+		this.addCommand({
+			id: 'reset-immersive-layout',
+			name: '重置沉浸模式布局 (修复界面错乱)',
+			callback: async () => {
+				this.settings.immersiveLayout = null;
+				await this.saveSettings();
+				new Notice('沉浸模式布局已重置，下次进入将使用默认比例。');
+			}
 		});
 
 		this.addCommand({

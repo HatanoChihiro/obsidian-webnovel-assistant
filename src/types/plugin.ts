@@ -51,6 +51,7 @@ export interface WebNovelAssistantPlugin {
 	lastEditTime: number;
 	lastTickTime: number;
 	lastFileWords: number;
+	lastFilePath: string;
 	
 	// Worker 和服务
 	worker: Worker | null;

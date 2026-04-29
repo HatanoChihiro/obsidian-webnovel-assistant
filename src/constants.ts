@@ -92,6 +92,8 @@ export const VIEW_TYPES = {
 	FORESHADOWING: 'foreshadowing-view',
 	TIMELINE: 'timeline-view',
 	CREATIVE: 'creative-view',
+	IMMERSIVE_CHAPTER_LIST: 'immersive-chapter-list-view',
+	IMMERSIVE_STICKY_NOTES: 'immersive-sticky-notes-view',
 } as const;
 
 // ==========================================

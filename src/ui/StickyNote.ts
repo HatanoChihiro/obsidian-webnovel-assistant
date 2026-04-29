@@ -205,6 +205,11 @@ export class FloatingStickyNote extends Component {
 			if (!this.state.zoomLevel) this.state.zoomLevel = 1;
 			if (!this.state.textColor) this.state.textColor = '#2C3E50'; 
 		} else {
+			// 获取当前主题并轮转索引
+			const themes = this.plugin.settings.noteThemes;
+			const themeIndex = (this.plugin.settings.nextNoteThemeIndex || 0) % themes.length;
+			const theme = themes[themeIndex];
+
 			this.state = {
 				id: Math.random().toString(36).substring(2, 11),
 				filePath: options.file?.path,
@@ -214,12 +219,18 @@ export class FloatingStickyNote extends Component {
 				left: "150px",
 				width: "320px",
 				height: "450px",
-				color: this.plugin.settings.noteThemes[0].bg,
-				textColor: this.plugin.settings.noteThemes[0].text,
+				color: theme.bg,
+				textColor: theme.text,
 				isEditing: !options.file && !options.content,
 				isPinned: false,
 				zoomLevel: 1 
 			};
+
+			// 更新下一次的索引并持久化
+			this.plugin.settings.nextNoteThemeIndex = (themeIndex + 1) % themes.length;
+			this.plugin.saveSettings().catch(err => {
+				console.error('[StickyNote] 更新颜色索引失败:', err);
+			});
 		}
 		
 		// 保存初始内容，用于检测是否有未保存的更改

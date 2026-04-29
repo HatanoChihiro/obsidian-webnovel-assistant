@@ -180,7 +180,7 @@ export class WritingStatusView extends ItemView {
 		const dailyAdded = todayStat.addedWords; // 允许负数，提醒作者删除了字数
 		const dailyGoal = this.plugin.settings.dailyGoal || 0;
 
-		this.dailyWordEl.innerText = dailyAdded.toLocaleString();
+		this.dailyWordEl.innerText = Math.max(0, dailyAdded).toLocaleString();
 		this.dailyGoalEl.innerText = dailyGoal.toLocaleString();
 		
 		// 负数显示为负百分比，正数显示正常百分比

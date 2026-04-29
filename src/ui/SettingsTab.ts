@@ -1,6 +1,7 @@
 import { App, Notice, PluginSettingTab, Setting } from 'obsidian';
 import { isDesktop, isMobile, getPlatformTier } from '../utils/platform';
 import { ObsOverlayServer } from '../services/ObsServer';
+import { ChapterSorter } from '../services/ChapterSorter';
 import { MobileFloatingStats } from './MobileFloatingStats';
 import { VALIDATION_RULES } from '../constants';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
@@ -11,6 +12,7 @@ import type { WebNovelAssistantPlugin } from '../types/plugin';
  */
 export class AccurateCountSettingTab extends PluginSettingTab {
 	plugin: WebNovelAssistantPlugin;
+	private activeTab: string = 'general';
 
 	constructor(app: App, plugin: WebNovelAssistantPlugin) {
 		super(app, plugin);
@@ -21,69 +23,71 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		const {containerEl} = this;
 		containerEl.empty();
 
-		// 平台检测 - 显示对应提示
+		containerEl.createEl('h1', { text: 'WebNovel Assistant 设置' });
+
+		// 创建选项卡头部
+		const navContainer = containerEl.createDiv({ cls: 'webnovel-settings-tabs' });
+		const tabs = [
+			{ id: 'general', name: '基础设置' },
+			{ id: 'immersive', name: '沉浸模式' },
+			{ id: 'sticky', name: '悬浮便签' },
+			{ id: 'creative', name: '创作工具' },
+			{ id: 'obs', name: '直播输出' }
+		];
+
+		tabs.forEach(tab => {
+			const tabEl = navContainer.createDiv({
+				cls: `webnovel-tab-item ${this.activeTab === tab.id ? 'is-active' : ''}`,
+				text: tab.name
+			});
+			tabEl.onclick = () => {
+				this.activeTab = tab.id;
+				this.display();
+			};
+		});
+
+		// 渲染对应选项卡内容
+		if (this.activeTab === 'general') {
+			this.displayGeneralSettings(containerEl);
+		} else if (this.activeTab === 'immersive') {
+			this.displayImmersiveModeSettings(containerEl);
+		} else if (this.activeTab === 'sticky') {
+			this.displayStickyNoteSettings(containerEl);
+		} else if (this.activeTab === 'creative') {
+			this.displayForeshadowingSettings(containerEl);
+			this.displayTimelineSettings(containerEl);
+			this.displayEyeCareSettings(containerEl);
+		} else if (this.activeTab === 'obs') {
+			this.displayDataSettings(containerEl);
+		}
+	}
+
+	private displayGeneralSettings(containerEl: HTMLElement): void {
+		// 平台检测提示
 		const tier = getPlatformTier();
-		if (tier === 'mobile') {
+		if (tier !== 'desktop') {
 			const mobileNotice = containerEl.createDiv({
 				cls: 'setting-item-description',
 				attr: {
 					style: 'background: var(--background-secondary); padding: 12px; border-radius: 6px; margin-bottom: 20px; border-left: 3px solid var(--interactive-accent);'
 				}
 			});
-			mobileNotice.createEl('strong', { text: '📱 移动端模式' });
+			mobileNotice.createEl('strong', { text: tier === 'mobile' ? '📱 移动端模式' : '📱 平板端模式' });
 			mobileNotice.createEl('br');
-			mobileNotice.appendText('部分高级功能(面板、悬浮便签、OBS)仅在桌面端或平板端可用,以优化移动设备性能和电池续航。');
-			
-			// 移动端专属设置
-			containerEl.createEl('h2', {text: '移动端设置'});
+			mobileNotice.appendText(tier === 'mobile' 
+				? '部分高级功能(面板、便签、OBS)仅在桌面端可用。' 
+				: '已启用面板功能。便签和 OBS 仅在桌面端可用。');
 			
 			new Setting(containerEl)
 				.setName('显示浮动字数统计')
-				.setDesc('在屏幕上显示一个小巧的浮动窗口，实时显示字数和进度。可拖动位置。')
+				.setDesc('在屏幕上显示浮动小窗，实时显示字数进度。')
 				.addToggle(toggle => toggle
 					.setValue(this.plugin.settings.showMobileFloatingStats)
 					.onChange(async (value) => {
 						this.plugin.settings.showMobileFloatingStats = value;
 						await this.plugin.saveSettings();
-						
-						// 立即应用更改
 						if (value) {
-							if (!this.plugin.mobileFloatingStats) {
-								this.plugin.mobileFloatingStats = new MobileFloatingStats(this.app, this.plugin);
-							}
-							this.plugin.mobileFloatingStats.load();
-						} else {
-							this.plugin.mobileFloatingStats?.unload();
-						}
-					}));
-		} else if (tier === 'tablet') {
-			const tabletNotice = containerEl.createDiv({
-				cls: 'setting-item-description',
-				attr: {
-					style: 'background: var(--background-secondary); padding: 12px; border-radius: 6px; margin-bottom: 20px; border-left: 3px solid var(--interactive-accent);'
-				}
-			});
-			tabletNotice.createEl('strong', { text: '📱 平板端模式' });
-			tabletNotice.createEl('br');
-			tabletNotice.appendText('已启用面板功能（伏笔、时间线、状态视图）。悬浮便签和 OBS 功能仅在桌面端可用。');
-			
-			// 平板端专属设置
-			containerEl.createEl('h2', {text: '平板端设置'});
-			
-			new Setting(containerEl)
-				.setName('显示浮动字数统计')
-				.setDesc('在屏幕上显示一个小巧的浮动窗口，实时显示字数和进度。可拖动位置。')
-				.addToggle(toggle => toggle
-					.setValue(this.plugin.settings.showMobileFloatingStats)
-					.onChange(async (value) => {
-						this.plugin.settings.showMobileFloatingStats = value;
-						await this.plugin.saveSettings();
-						
-						// 立即应用更改
-						if (value) {
-							if (!this.plugin.mobileFloatingStats) {
-								this.plugin.mobileFloatingStats = new MobileFloatingStats(this.app, this.plugin);
-							}
+							if (!this.plugin.mobileFloatingStats) this.plugin.mobileFloatingStats = new MobileFloatingStats(this.app, this.plugin);
 							this.plugin.mobileFloatingStats.load();
 						} else {
 							this.plugin.mobileFloatingStats?.unload();
@@ -91,303 +95,320 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					}));
 		}
 
-		containerEl.createEl('h2', {text: '精准字数与目标设置'});
+		containerEl.createEl('h2', {text: '核心功能设置'});
 
 		new Setting(containerEl)
 			.setName('工作区文件夹')
-			.setDesc('插件功能只在指定的文件夹下生效，留空则全局生效。多个文件夹用逗号分隔。')
+			.setDesc('留空全局生效。多个用逗号分隔。')
 			.addTextArea(text => {
-				const folders = this.plugin.settings.workspaceFolders || [];
-				text
-					.setPlaceholder('例如：小说/第一卷, 小说/第二卷')
-					.setValue(folders.join(', '))
+				text.setPlaceholder('例如：小说/第一卷')
+					.setValue((this.plugin.settings.workspaceFolders || []).join(', '))
 					.onChange(async (value) => {
-						this.plugin.settings.workspaceFolders = value.trim()
-							? value.split(',').map(f => f.trim()).filter(Boolean)
-							: [];
+						this.plugin.settings.workspaceFolders = value.trim() ? value.split(',').map(f => f.trim()).filter(Boolean) : [];
 						await this.plugin.saveSettings();
 					});
 				text.inputEl.style.width = '100%';
-				text.inputEl.style.minHeight = '60px';
 			});
 
-		// 桌面端才显示"显示章节目标进度"设置（移动端状态栏不支持显示进度）
-		if (!isMobile()) {
-			new Setting(containerEl)
-				.setName('显示章节目标进度')
-				.setDesc('在状态栏显示当前文件的字数完成进度。')
-				.addToggle(toggle => toggle
-					.setValue(this.plugin.settings.showGoal)
-					.onChange(async (value) => {
-						this.plugin.settings.showGoal = value;
-						await this.plugin.saveSettings();
-						this.plugin.updateWordCount();
-					}));
-		}
+		new Setting(containerEl)
+			.setName('显示状态栏进度')
+			.setDesc('在 Obsidian 底部状态栏显示当前章节进度。')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.showGoal)
+				.onChange(async (value) => {
+					this.plugin.settings.showGoal = value;
+					await this.plugin.saveSettings();
+					this.plugin.updateWordCount();
+				}));
 
 		new Setting(containerEl)
 			.setName('显示文件列表字数')
-			.setDesc('在侧边栏文件树中显示文件夹和文档的汇总字数。')
+			.setDesc('在侧边栏文件树中显示汇总字数。')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.showExplorerCounts)
 				.onChange(async (value) => {
 					this.plugin.settings.showExplorerCounts = value;
 					await this.plugin.saveSettings();
-					if (value) {
-						// 移动端需要延迟，确保文件浏览器已加载
-						if (isMobile()) {
-							new Notice('正在构建缓存，请稍候...');
-							setTimeout(async () => {
-								await this.plugin.buildFolderCache();
-							}, 1000);
-						} else {
-							await this.plugin.buildFolderCache();
-						}
-					} else {
-						this.plugin.refreshFolderCounts();
-					}
+					if (value) await this.plugin.buildFolderCache();
+					else this.plugin.refreshFolderCounts();
 				}));
 
 		new Setting(containerEl)
-			.setName('默认章节目标字数')
-			.setDesc('每个章节的目标字数，可在文件 frontmatter 中用 word-goal 单独设置。')
-			.addText(text => text
-				.setValue(this.plugin.settings.defaultGoal.toString())
-				.onChange(async (value) => {
-					const parsed = parseInt(value);
-					if (!isNaN(parsed)) {
-						this.plugin.settings.defaultGoal = parsed;
-						await this.plugin.saveSettings();
-					}
-				}));
+			.setName('默认章节目标')
+			.addText(text => text.setValue(this.plugin.settings.defaultGoal.toString()).onChange(async (v) => {
+				const p = parseInt(v); if (!isNaN(p)) { this.plugin.settings.defaultGoal = p; await this.plugin.saveSettings(); }
+			}));
 
 		new Setting(containerEl)
-			.setName('当日目标字数')
-			.setDesc('今日新增字数的目标，用于跟踪每日写作进度。')
-			.addText(text => text
-				.setValue((this.plugin.settings.dailyGoal || 5000).toString())
-				.onChange(async (value) => {
-					const parsed = parseInt(value);
-					if (!isNaN(parsed)) {
-						this.plugin.settings.dailyGoal = parsed;
-						await this.plugin.saveSettings();
-					}
-				}));
+			.setName('当日新增目标')
+			.addText(text => text.setValue((this.plugin.settings.dailyGoal || 5000).toString()).onChange(async (v) => {
+				const p = parseInt(v); if (!isNaN(p)) { this.plugin.settings.dailyGoal = p; await this.plugin.saveSettings(); }
+			}));
 
-		// 智能章节排序（仅桌面端）
 		if (isDesktop()) {
 			new Setting(containerEl)
 				.setName('启用智能章节排序')
-				.setDesc('自动识别章节编号（支持自定义规则），按数字大小排序而非字符串排序。')
+				.setDesc('自动识别章节编号进行数字排序。')
 				.addToggle(toggle => toggle
 					.setValue(this.plugin.settings.enableSmartChapterSort)
 					.onChange(async (value) => {
 						this.plugin.settings.enableSmartChapterSort = value;
 						await this.plugin.saveSettings();
-						
-						if (value) {
-							// 启用智能排序
-							const success = this.plugin.fileExplorerPatcher.enable();
-							if (success) {
-								new Notice('[成功] 智能章节排序已启用');
-							} else {
-								new Notice('[错误] 启用失败，请重启 Obsidian 后重试');
-								this.plugin.settings.enableSmartChapterSort = false;
-								await this.plugin.saveSettings();
-								toggle.setValue(false);
-							}
-						} else {
-							// 禁用智能排序
-							this.plugin.fileExplorerPatcher.disable();
-							new Notice('智能章节排序已禁用');
-						}
+						if (value) this.plugin.fileExplorerPatcher.enable();
+						else this.plugin.fileExplorerPatcher.disable();
+						this.display();
 					}));
-
-			// 章节命名规则设置
+			
 			if (this.plugin.settings.enableSmartChapterSort) {
-				containerEl.createEl('h3', { text: '章节命名规则' });
-				containerEl.createEl('p', {
-					text: '自定义章节命名规则，只有匹配的章节才会参与排序和合并。规则按顺序匹配，决定大块排序。',
-					cls: 'setting-item-description'
-				});
-
-				// 确保规则数组存在
-				if (!this.plugin.settings.chapterNamingRules) {
-					this.plugin.settings.chapterNamingRules = [
-						{ name: '阿拉伯数字（第1章、第01章）', pattern: '^第?(\\d+)[章节回卷部册篇]?', enabled: true },
-						{ name: '中文数字（第一章、第二章）', pattern: '^第?([零一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]+)[章节回卷部册篇]?', enabled: true },
-						{ name: '纯数字（1、01、001）', pattern: '^(\\d+)$', enabled: true },
-					];
-				}
-
-				const rulesContainer = containerEl.createDiv({ cls: 'chapter-naming-rules-container' });
-				rulesContainer.style.cssText = 'margin-bottom:20px;';
-
-				const renderRules = () => {
-					rulesContainer.empty();
-					this.plugin.settings.chapterNamingRules.forEach((rule, index) => {
-						const ruleEl = rulesContainer.createDiv({ cls: 'chapter-naming-rule' });
-						ruleEl.style.cssText = 'padding:12px;margin-bottom:8px;background:var(--background-secondary);border-radius:6px;';
-
-						const headerRow = ruleEl.createDiv();
-						headerRow.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:8px;';
-
-						// 启用/禁用开关
-						const toggle = headerRow.createEl('input', { type: 'checkbox' });
-						toggle.checked = rule.enabled;
-						toggle.style.cssText = 'cursor:pointer;';
-						toggle.onchange = async () => {
-							rule.enabled = toggle.checked;
-							await this.plugin.saveSettings();
-							// 更新 ChapterSorter
-							const { ChapterSorter } = await import('../services/ChapterSorter');
-							ChapterSorter.setCustomRules(this.plugin.settings.chapterNamingRules);
-							this.plugin.fileExplorerPatcher.refreshManually();
-						};
-
-						// 规则名称
-						const nameInput = headerRow.createEl('input', { type: 'text', value: rule.name });
-						nameInput.style.cssText = 'flex:1;padding:4px 8px;border-radius:4px;border:1px solid var(--background-modifier-border);background:var(--background-primary);';
-						nameInput.onchange = async () => {
-							rule.name = nameInput.value;
-							await this.plugin.saveSettings();
-						};
-
-						// 上移/下移按钮
-						if (index > 0) {
-							const upBtn = headerRow.createEl('button', { text: '↑' });
-							upBtn.style.cssText = 'padding:2px 8px;cursor:pointer;';
-							upBtn.onclick = async () => {
-								const temp = this.plugin.settings.chapterNamingRules[index - 1];
-								this.plugin.settings.chapterNamingRules[index - 1] = this.plugin.settings.chapterNamingRules[index];
-								this.plugin.settings.chapterNamingRules[index] = temp;
-								await this.plugin.saveSettings();
-								const { ChapterSorter } = await import('../services/ChapterSorter');
-								ChapterSorter.setCustomRules(this.plugin.settings.chapterNamingRules);
-								this.plugin.fileExplorerPatcher.refreshManually();
-								renderRules();
-							};
-						}
-						if (index < this.plugin.settings.chapterNamingRules.length - 1) {
-							const downBtn = headerRow.createEl('button', { text: '↓' });
-							downBtn.style.cssText = 'padding:2px 8px;cursor:pointer;';
-							downBtn.onclick = async () => {
-								const temp = this.plugin.settings.chapterNamingRules[index + 1];
-								this.plugin.settings.chapterNamingRules[index + 1] = this.plugin.settings.chapterNamingRules[index];
-								this.plugin.settings.chapterNamingRules[index] = temp;
-								await this.plugin.saveSettings();
-								const { ChapterSorter } = await import('../services/ChapterSorter');
-								ChapterSorter.setCustomRules(this.plugin.settings.chapterNamingRules);
-								this.plugin.fileExplorerPatcher.refreshManually();
-								renderRules();
-							};
-						}
-
-						// 删除按钮
-						const deleteBtn = headerRow.createEl('button', { text: '删除' });
-						deleteBtn.style.cssText = 'padding:2px 8px;cursor:pointer;color:var(--text-error);';
-						deleteBtn.onclick = async () => {
-							this.plugin.settings.chapterNamingRules.splice(index, 1);
-							await this.plugin.saveSettings();
-							const { ChapterSorter } = await import('../services/ChapterSorter');
-							ChapterSorter.setCustomRules(this.plugin.settings.chapterNamingRules);
-							this.plugin.fileExplorerPatcher.refreshManually();
-							renderRules();
-						};
-
-						// 正则表达式输入
-						const patternRow = ruleEl.createDiv();
-						patternRow.style.cssText = 'display:flex;align-items:center;gap:8px;';
-						patternRow.createSpan({ text: '正则：', cls: 'setting-item-description' });
-						const patternInput = patternRow.createEl('input', { type: 'text', value: rule.pattern });
-						patternInput.style.cssText = 'flex:1;padding:4px 8px;border-radius:4px;border:1px solid var(--background-modifier-border);background:var(--background-primary);font-family:monospace;';
-						patternInput.onchange = async () => {
-							rule.pattern = patternInput.value;
-							await this.plugin.saveSettings();
-							const { ChapterSorter } = await import('../services/ChapterSorter');
-							ChapterSorter.setCustomRules(this.plugin.settings.chapterNamingRules);
-							this.plugin.fileExplorerPatcher.refreshManually();
-						};
-					});
-
-					// 添加新规则按钮
-					const addBtn = rulesContainer.createEl('button', { text: '+ 添加新规则' });
-					addBtn.style.cssText = 'padding:8px 16px;cursor:pointer;';
-					addBtn.onclick = async () => {
-						this.plugin.settings.chapterNamingRules.push({
-							name: '新规则',
-							pattern: '^(\\d+)',
-							enabled: true
-						});
-						await this.plugin.saveSettings();
-						renderRules();
-					};
-				};
-
-				renderRules();
+				this.displaySortingRules(containerEl);
 			}
-		}
-
-		// 移动端隐藏桌面专属功能
-		if (isDesktop()) {
-			this.displayDesktopSettings(containerEl);
 		}
 	}
 
-	private displayDesktopSettings(containerEl: HTMLElement): void {
-		containerEl.createEl('h2', {text: '悬浮便签设置'});
+	private displaySortingRules(containerEl: HTMLElement): void {
+		new Setting(containerEl)
+			.setName('排序规则配置')
+			.setHeading();
+		
+		const rulesContainer = containerEl.createDiv({ style: 'width: 100%;' });
+		
+		const renderRules = () => {
+			rulesContainer.empty();
+			this.plugin.settings.chapterNamingRules.forEach((rule, index) => {
+				const s = new Setting(rulesContainer);
+				s.settingEl.style.background = 'var(--background-secondary)';
+				s.settingEl.style.borderRadius = '8px';
+				s.settingEl.style.marginBottom = '10px';
+				s.settingEl.style.padding = '10px 15px';
+				s.settingEl.style.borderTop = 'none';
+				s.settingEl.style.display = 'flex';
+				s.settingEl.style.alignItems = 'center';
+				s.settingEl.style.gap = '10px';
+				
+				// 移除默认的 info 区域，腾出空间
+				s.infoEl.remove();
+
+				s.addToggle(chk => chk
+					.setValue(rule.enabled)
+					.onChange(async (value) => {
+						rule.enabled = value;
+						await this.plugin.saveSettings();
+						ChapterSorter.setCustomRules(this.plugin.settings.chapterNamingRules);
+						this.plugin.fileExplorerPatcher.refreshManually();
+					}));
+
+				s.addText(text => {
+					text.setValue(rule.name)
+						.setPlaceholder('名称')
+						.onChange(async (value) => {
+							rule.name = value;
+							await this.plugin.saveSettings();
+						});
+					text.inputEl.style.flex = '1 1 0px';
+					text.inputEl.style.minWidth = '0';
+				});
+
+				s.addText(text => {
+					text.setValue(rule.pattern)
+						.setPlaceholder('正则表达式')
+						.onChange(async (value) => {
+							rule.pattern = value;
+							await this.plugin.saveSettings();
+							ChapterSorter.setCustomRules(this.plugin.settings.chapterNamingRules);
+							this.plugin.fileExplorerPatcher.refreshManually();
+						});
+					text.inputEl.style.flex = '3 1 0px';
+					text.inputEl.style.minWidth = '0';
+					text.inputEl.style.fontFamily = 'monospace';
+				});
+
+				s.addButton(btn => btn
+					.setButtonText('删除')
+					.setWarning()
+					.onClick(async () => {
+						this.plugin.settings.chapterNamingRules.splice(index, 1);
+						await this.plugin.saveSettings();
+						ChapterSorter.setCustomRules(this.plugin.settings.chapterNamingRules);
+						this.plugin.fileExplorerPatcher.refreshManually();
+						renderRules();
+					}));
+			});
+
+			const addBtnRow = new Setting(rulesContainer);
+			addBtnRow.infoEl.remove();
+			addBtnRow.settingEl.style.borderTop = 'none';
+			addBtnRow.settingEl.style.padding = '0';
+			addBtnRow.addButton(btn => btn
+				.setButtonText('+ 添加新规则')
+				.onClick(async () => {
+					this.plugin.settings.chapterNamingRules.push({ name: '新规则', pattern: '^(\\d+)', enabled: true });
+					await this.plugin.saveSettings();
+					renderRules();
+				}).buttonEl.style.width = '100%');
+		};
+		renderRules();
+	}
+
+	private displayStickyNoteSettings(containerEl: HTMLElement): void {
+		if (!isDesktop()) {
+			containerEl.createEl('p', { text: '⚠️ 悬浮便签功能仅在桌面端可用。', cls: 'setting-item-description' });
+			return;
+		}
+
+		containerEl.createEl('h2', {text: '悬浮便签 (Sticky Notes)'});
 		
 		new Setting(containerEl)
-			.setName('闲置时透明度 (仅背景)')
-			.setDesc('调节便签在闲置时的纯背景透明度。拖动滑块时已打开的便签会实时预览！')
-			.addSlider(slider => slider
-				.setLimits(0.1, 1, 0.05)
-				.setValue(this.plugin.settings.noteOpacity)
-				.setDynamicTooltip()
-				.onChange(async (value) => {
-					this.plugin.settings.noteOpacity = value;
-					await this.plugin.saveSettings();
-					this.plugin.activeNotes.forEach((note: any) => note.updateVisuals());
-				}));
+			.setName('闲置透明度')
+			.addSlider(slider => slider.setLimits(0.1, 1, 0.05).setValue(this.plugin.settings.noteOpacity).onChange(async (v) => {
+				this.plugin.settings.noteOpacity = v; await this.plugin.saveSettings();
+				this.plugin.activeNotes.forEach((n: any) => n.updateVisuals());
+			}));
 
-		const colorSetting = new Setting(containerEl)
-			.setName('自定义主题方案 (背景色 + 文字色)')
-			.setDesc('自定义便签调色板中的 6 种预设组合。左侧为背景色，右侧为对应的文字/图标色。');
-		
-		const colorContainer = colorSetting.controlEl.createDiv({ 
-			attr: { style: 'display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;' } 
-		});
+		const colorSetting = new Setting(containerEl).setName('主题色方案').setDesc('自定义 6 种预设配色。');
+		const colorContainer = colorSetting.controlEl.createDiv({ attr: { style: 'display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;' } });
 		
 		this.plugin.settings.noteThemes.forEach((theme: any, index: number) => {
-			const themeDiv = colorContainer.createDiv({ 
-				attr: { style: 'display: flex; align-items: center; gap: 6px; background: var(--background-modifier-form-field); padding: 4px 8px; border-radius: 6px;' } 
-			});
-			
-			const bgInput = themeDiv.createEl('input', { type: 'color', value: theme.bg });
-			bgInput.style.cssText = 'cursor: pointer; border: none; padding: 0; width: 24px; height: 24px; border-radius: 4px;';
-			
-			themeDiv.createSpan({ 
-				text: 'Aa', 
-				attr: { style: 'font-weight: bold; font-family: serif; color: var(--text-muted); padding-left: 2px;' } 
-			});
-			
-			const textInput = themeDiv.createEl('input', { type: 'color', value: theme.text });
-			textInput.style.cssText = 'cursor: pointer; border: none; padding: 0; width: 24px; height: 24px; border-radius: 4px;';
+			const themeDiv = colorContainer.createDiv({ attr: { style: 'display: flex; align-items: center; gap: 4px; background: var(--background-modifier-form-field); padding: 4px; border-radius: 4px;' } });
+			const bg = themeDiv.createEl('input', { type: 'color', value: theme.bg });
+			const txt = themeDiv.createEl('input', { type: 'color', value: theme.text });
+			bg.onchange = async (e) => { this.plugin.settings.noteThemes[index].bg = (e.target as HTMLInputElement).value; await this.plugin.saveSettings(); };
+			txt.onchange = async (e) => { this.plugin.settings.noteThemes[index].text = (e.target as HTMLInputElement).value; await this.plugin.saveSettings(); };
+		});
+	}
 
-			bgInput.onchange = async (e) => {
-				this.plugin.settings.noteThemes[index].bg = (e.target as HTMLInputElement).value;
-				await this.plugin.saveSettings();
-			};
-			textInput.onchange = async (e) => {
-				this.plugin.settings.noteThemes[index].text = (e.target as HTMLInputElement).value;
-				await this.plugin.saveSettings();
-			};
+	private displayImmersiveModeSettings(containerEl: HTMLElement): void {
+
+		containerEl.createEl('h3', { text: '辅助面板开关' });
+		containerEl.createEl('p', {
+			text: '自由拼接您的沉浸空间。辅助面板的位置可在下方统一设置。',
+			cls: 'setting-item-description'
 		});
 
-		this.displayForeshadowingSettings(containerEl);
-		this.displayTimelineSettings(containerEl);
-		this.displayEyeCareSettings(containerEl);
-		this.displayDataSettings(containerEl);
+		new Setting(containerEl)
+			.setName('显示左侧章节列表')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.immersiveShowChapterList)
+				.onChange(async (value) => {
+					this.plugin.settings.immersiveShowChapterList = value;
+					// 清除保存的布局快照，强制重新生成
+					this.plugin.settings.immersiveLayout = null;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('显示右侧参考文档区')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.immersiveShowReference)
+				.onChange(async (value) => {
+					this.plugin.settings.immersiveShowReference = value;
+					// 清除保存的布局快照，强制重新生成
+					this.plugin.settings.immersiveLayout = null;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('显示悬浮便签陈列区')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.immersiveShowStickyNotes)
+				.onChange(async (value) => {
+					this.plugin.settings.immersiveShowStickyNotes = value;
+					// 清除保存的布局快照，强制重新生成
+					this.plugin.settings.immersiveLayout = null;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('显示伏笔面板')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.immersiveShowForeshadowing)
+				.onChange(async (value) => {
+					this.plugin.settings.immersiveShowForeshadowing = value;
+					// 清除保存的布局快照，强制重新生成
+					this.plugin.settings.immersiveLayout = null;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('显示时间线面板')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.immersiveShowTimeline)
+				.onChange(async (value) => {
+					this.plugin.settings.immersiveShowTimeline = value;
+					// 清除保存的布局快照，强制重新生成
+					this.plugin.settings.immersiveLayout = null;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('辅助面板显示位置')
+			.setDesc('辅助面板（便签、伏笔、时间线）作为一个整体显示在主编辑区的上方或下方。')
+			.addDropdown(dropdown => dropdown
+				.addOption('bottom', '主视图下方')
+				.addOption('top', '主视图上方')
+				.setValue(this.plugin.settings.immersivePanelPosition || 'bottom')
+				.onChange(async (value) => {
+					this.plugin.settings.immersivePanelPosition = value as 'top' | 'bottom';
+					// 清除保存的布局快照，强制重新生成以应用位置更改
+					this.plugin.settings.immersiveLayout = null;
+					await this.plugin.saveSettings();
+					new Notice(`位置已切换为: ${value === 'top' ? '上方' : '下方'}，下次进入沉浸模式生效`);
+				}));
+
+		containerEl.createEl('h3', { text: '顶部仪表盘数据开关' });
+
+		new Setting(containerEl)
+			.setName('显示总计时间')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.immersiveShowTotalTime)
+				.onChange(async (value) => {
+					this.plugin.settings.immersiveShowTotalTime = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('显示专注时间')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.immersiveShowFocusTime)
+				.onChange(async (value) => {
+					this.plugin.settings.immersiveShowFocusTime = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('显示摸鱼时间')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.immersiveShowSlackTime)
+				.onChange(async (value) => {
+					this.plugin.settings.immersiveShowSlackTime = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('显示章节目标进度')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.immersiveShowChapterProgress)
+				.onChange(async (value) => {
+					this.plugin.settings.immersiveShowChapterProgress = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('显示今日目标进度')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.immersiveShowDailyProgress)
+				.onChange(async (value) => {
+					this.plugin.settings.immersiveShowDailyProgress = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('显示本场净增')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.immersiveShowSessionWords)
+				.onChange(async (value) => {
+					this.plugin.settings.immersiveShowSessionWords = value;
+					await this.plugin.saveSettings();
+				}));
 	}
 
 	private displayForeshadowingSettings(containerEl: HTMLElement): void {

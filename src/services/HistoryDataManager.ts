@@ -136,6 +136,8 @@ export class HistoryDataManager {
 		return this.historyData[date];
 	}
 
+
+
 	/**
 	 * 增加指定日期的字数统计
 	 * 自动设置脏标记
