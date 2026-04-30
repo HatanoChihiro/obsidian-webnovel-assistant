@@ -2,6 +2,7 @@
 data.json
 history-data.json
 cache-data.json
+notes-data.json
 
 # Node.js
 node_modules/

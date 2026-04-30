@@ -54,7 +54,8 @@ import { Platform } from 'obsidian';
  * ```
  */
 export function isDesktop(): boolean {
-	return Platform.isDesktop || Platform.isDesktopApp;
+	// Obsidian 官方定义：非移动设备即为桌面端
+	return !Platform.isMobile;
 }
 
 /**
@@ -69,7 +70,7 @@ export function isDesktop(): boolean {
  * ```
  */
 export function isMobile(): boolean {
-	return Platform.isMobile || Platform.isMobileApp;
+	return Platform.isMobile;
 }
 
 /**
@@ -85,7 +86,13 @@ export function isMobile(): boolean {
  * ```
  */
 export function isTablet(): boolean {
-	return isMobile() && window.innerWidth >= 768;
+	// 平板定义：是移动设备，但不是手机，或者屏幕足够宽
+	const isMobileEnv = Platform.isMobile;
+	const isPhone = document.body.classList.contains('is-phone');
+	const isIpad = Platform.isIpad;
+	const isWide = window.innerWidth >= 768;
+	
+	return isMobileEnv && (isIpad || (isWide && !isPhone));
 }
 
 /**

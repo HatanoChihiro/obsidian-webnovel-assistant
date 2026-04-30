@@ -83,7 +83,7 @@ export interface ChapterNamingRule {
 export interface AccurateCountSettings {
 	/** 默认目标字数 */
 	defaultGoal: number;
-	/** 当日目标字数（今日新增总字数目标） */
+	/** 今日目标字数（今日新增总字数目标） */
 	dailyGoal: number;
 	/** 是否显示目标进度 */
 	showGoal: boolean;
@@ -106,7 +106,10 @@ export interface AccurateCountSettings {
 	dailyHistory: Record<string, DailyStat>;
 	/** OBS 文件导出路径 */
 	obsPath: string;
-	/** 打开的便签列表 */
+	/** 
+	 * 打开的便签列表 
+	 * @deprecated 已迁移到 StickyNoteDataManager，保留此字段仅为降级兼容
+	 */
 	openNotes: StickyNoteState[];
 	/** 便签不透明度(0.1-1.0) */
 	noteOpacity: number;
@@ -130,7 +133,7 @@ export interface AccurateCountSettings {
 	obsShowTotalTime: boolean;
 	/** OBS 叠加层是否显示今日字数 */
 	obsShowTodayWords: boolean;
-	/** OBS 叠加层是否显示当日目标进度 */
+	/** OBS 叠加层是否显示今日目标进度 */
 	obsShowDailyGoal: boolean;
 	/** OBS 叠加层是否显示本场净增字数 */
 	obsShowSessionWords: boolean;
@@ -144,6 +147,8 @@ export interface AccurateCountSettings {
 	eyeCareColor: string;
 	/** 是否显示移动端浮动字数统计窗口 */
 	showMobileFloatingStats: boolean;
+	/** 便签是否自动保存（全局设置） */
+	stickyNoteAutoSave: boolean;
 
 	// === 沉浸模式 (Immersive Mode) 设置 ===
 	/** 沉浸模式：是否显示左侧章节列表 */
@@ -180,4 +185,10 @@ export interface AccurateCountSettings {
 	nextNoteThemeIndex: number;
 	/** 沉浸模式：辅助面板位置 ('top' | 'bottom') */
 	immersivePanelPosition: 'top' | 'bottom';
+	/** 沉浸模式：便签显示尺寸 (px) */
+	immersiveNoteSize: number;
+	/** 沉浸模式：便签字体大小 (px) */
+	immersiveNoteFontSize: number;
+	/** 沉浸模式：是否开启打字机模式适配 (优化滚动跳转) */
+	immersiveTypewriterMode: boolean;
 }

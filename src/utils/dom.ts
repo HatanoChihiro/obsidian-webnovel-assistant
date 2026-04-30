@@ -14,8 +14,9 @@
  * ```
  */
 export function injectGlobalStyle(styleId: string, cssContent: string): void {
-	// 检查是否已存在
-	if (document.getElementById(styleId)) {
+	const existingStyle = document.getElementById(styleId);
+	if (existingStyle) {
+		existingStyle.innerHTML = cssContent;
 		return;
 	}
 	

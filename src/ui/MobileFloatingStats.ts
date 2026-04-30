@@ -109,6 +109,12 @@ export class MobileFloatingStats {
 	 */
 	unload(): void {
 		if (this.containerEl) {
+			// 移除全局监听器以防止内存泄漏
+			document.removeEventListener('touchmove', this.touchMoveHandler);
+			document.removeEventListener('touchend', this.touchEndHandler);
+			document.removeEventListener('mousemove', this.mouseMoveHandler);
+			document.removeEventListener('mouseup', this.mouseUpHandler);
+			
 			this.containerEl.remove();
 			this.containerEl = null;
 		}
@@ -122,8 +128,8 @@ export class MobileFloatingStats {
 
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (!view || !view.file) {
-			this.wordCountEl!.textContent = '0字';
-			this.progressEl!.textContent = '0%';
+			if (this.wordCountEl) this.wordCountEl.textContent = '0字';
+			if (this.progressEl) this.progressEl.textContent = '0%';
 			return;
 		}
 
@@ -134,23 +140,28 @@ export class MobileFloatingStats {
 		// 获取目标字数
 		let targetGoal = this.plugin.settings.defaultGoal;
 		const cache = this.app.metadataCache.getFileCache(view.file);
-		const fmGoal = parseInt(cache?.frontmatter?.['word-goal']);
-		if (!isNaN(fmGoal)) targetGoal = fmGoal;
+		const fmGoal = cache?.frontmatter?.['word-goal'];
+		if (fmGoal !== undefined) {
+			const parsed = parseInt(fmGoal);
+			if (!isNaN(parsed)) targetGoal = parsed;
+		}
 
 		// 计算进度
 		const percent = targetGoal > 0 ? Math.min(Math.round((wordCount / targetGoal) * 100), 100) : 0;
 
 		// 更新显示
-		this.wordCountEl!.textContent = wordCount.toLocaleString() + '字';
-		this.progressEl!.textContent = percent + '%';
-
-		// 进度颜色变化
-		if (percent >= 100) {
-			this.progressEl!.style.color = '#10b981'; // 绿色
-		} else if (percent >= 80) {
-			this.progressEl!.style.color = '#f59e0b'; // 橙色
-		} else {
-			this.progressEl!.style.color = 'var(--text-accent)';
+		if (this.wordCountEl) this.wordCountEl.textContent = wordCount.toLocaleString() + '字';
+		if (this.progressEl) {
+			this.progressEl.textContent = percent + '%';
+			
+			// 进度颜色变化
+			if (percent >= 100) {
+				this.progressEl.style.color = '#10b981'; // 绿色
+			} else if (percent >= 80) {
+				this.progressEl.style.color = '#f59e0b'; // 橙色
+			} else {
+				this.progressEl.style.color = 'var(--text-accent)';
+			}
 		}
 	}
 
@@ -158,81 +169,70 @@ export class MobileFloatingStats {
 	 * 绑定拖动事件
 	 */
 	private bindDragEvents(element: HTMLElement): void {
-		// 触摸事件
+		// 触摸开始
 		element.addEventListener('touchstart', (e) => {
 			this.isDragging = true;
 			const touch = e.touches[0];
 			this.dragOffset.x = touch.clientX - this.position.x;
 			this.dragOffset.y = touch.clientY - this.position.y;
-			
-			if (this.containerEl) {
-				this.containerEl.style.opacity = '0.7';
-			}
-			
+			if (this.containerEl) this.containerEl.style.opacity = '0.7';
 			e.preventDefault();
 		}, { passive: false });
 
-		document.addEventListener('touchmove', (e) => {
-			if (!this.isDragging || !this.containerEl) return;
-			
-			const touch = e.touches[0];
-			this.position.x = touch.clientX - this.dragOffset.x;
-			this.position.y = touch.clientY - this.dragOffset.y;
-			
-			// 限制在屏幕范围内
-			this.position.x = Math.max(0, Math.min(this.position.x, window.innerWidth - this.containerEl.offsetWidth));
-			this.position.y = Math.max(0, Math.min(this.position.y, window.innerHeight - this.containerEl.offsetHeight));
-			
-			this.containerEl.style.left = `${this.position.x}px`;
-			this.containerEl.style.top = `${this.position.y}px`;
-			
-			e.preventDefault();
-		}, { passive: false });
-
-		document.addEventListener('touchend', () => {
-			if (this.isDragging) {
-				this.isDragging = false;
-				if (this.containerEl) {
-					this.containerEl.style.opacity = '0.9';
-				}
-				this.savePosition();
-			}
-		});
-
-		// 鼠标事件（平板端可能使用鼠标）
+		// 鼠标按下
 		element.addEventListener('mousedown', (e) => {
 			this.isDragging = true;
 			this.dragOffset.x = e.clientX - this.position.x;
 			this.dragOffset.y = e.clientY - this.position.y;
-			
-			if (this.containerEl) {
-				this.containerEl.style.opacity = '0.7';
-			}
+			if (this.containerEl) this.containerEl.style.opacity = '0.7';
 		});
 
-		document.addEventListener('mousemove', (e) => {
-			if (!this.isDragging || !this.containerEl) return;
-			
-			this.position.x = e.clientX - this.dragOffset.x;
-			this.position.y = e.clientY - this.dragOffset.y;
-			
-			// 限制在屏幕范围内
-			this.position.x = Math.max(0, Math.min(this.position.x, window.innerWidth - this.containerEl.offsetWidth));
-			this.position.y = Math.max(0, Math.min(this.position.y, window.innerHeight - this.containerEl.offsetHeight));
-			
-			this.containerEl.style.left = `${this.position.x}px`;
-			this.containerEl.style.top = `${this.position.y}px`;
-		});
+		// 注册全局处理函数（用于移除）
+		document.addEventListener('touchmove', this.touchMoveHandler, { passive: false });
+		document.addEventListener('touchend', this.touchEndHandler);
+		document.addEventListener('mousemove', this.mouseMoveHandler);
+		document.addEventListener('mouseup', this.mouseUpHandler);
+	}
 
-		document.addEventListener('mouseup', () => {
-			if (this.isDragging) {
-				this.isDragging = false;
-				if (this.containerEl) {
-					this.containerEl.style.opacity = '0.9';
-				}
-				this.savePosition();
-			}
-		});
+	private touchMoveHandler = (e: TouchEvent) => {
+		if (!this.isDragging || !this.containerEl) return;
+		const touch = e.touches[0];
+		this.updatePosition(touch.clientX, touch.clientY);
+		e.preventDefault();
+	};
+
+	private touchEndHandler = () => {
+		this.endDragging();
+	};
+
+	private mouseMoveHandler = (e: MouseEvent) => {
+		if (!this.isDragging || !this.containerEl) return;
+		this.updatePosition(e.clientX, e.clientY);
+	};
+
+	private mouseUpHandler = () => {
+		this.endDragging();
+	};
+
+	private updatePosition(clientX: number, clientY: number): void {
+		if (!this.containerEl) return;
+		this.position.x = clientX - this.dragOffset.x;
+		this.position.y = clientY - this.dragOffset.y;
+		
+		// 限制在屏幕范围内
+		this.position.x = Math.max(0, Math.min(this.position.x, window.innerWidth - this.containerEl.offsetWidth));
+		this.position.y = Math.max(0, Math.min(this.position.y, window.innerHeight - this.containerEl.offsetHeight));
+		
+		this.containerEl.style.left = `${this.position.x}px`;
+		this.containerEl.style.top = `${this.position.y}px`;
+	}
+
+	private endDragging(): void {
+		if (this.isDragging) {
+			this.isDragging = false;
+			if (this.containerEl) this.containerEl.style.opacity = '0.9';
+			this.savePosition();
+		}
 	}
 
 	/**

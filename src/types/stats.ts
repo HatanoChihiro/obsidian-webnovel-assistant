@@ -28,9 +28,9 @@ export interface ObsStatsPayload {
 	percent: number;
 	/** 今日新增总字数 */
 	dailyWords: number;
-	/** 当日目标字数 */
+	/** 今日目标字数 */
 	dailyGoal: number;
-	/** 当日完成百分比(0-100) */
+	/** 今日完成百分比(0-100) */
 	dailyPercent: number;
 	/** 当前文件名 */
 	currentFile: string;

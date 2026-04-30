@@ -18,7 +18,7 @@ export class WritingStatusView extends ItemView {
 	todayWordEl!: HTMLElement;
 	percentEl!: HTMLElement;
 	progressFillEl!: HTMLElement;
-	// 当日目标
+	// 今日目标
 	dailyWordEl!: HTMLElement;
 	dailyGoalEl!: HTMLElement;
 	dailyPercentEl!: HTMLElement;
@@ -89,8 +89,8 @@ export class WritingStatusView extends ItemView {
 			});
 		}
 
-		// 当日目标进度
-		goalCard.createDiv({ cls: 'status-goal-label', text: '当日目标' });
+		// 今日目标进度
+		goalCard.createDiv({ cls: 'status-goal-label', text: '今日目标' });
 		const dailyRow = goalCard.createDiv({ cls: 'goal-display-row-right' });
 		this.dailyWordEl = dailyRow.createSpan({ cls: 'goal-current', text: '0' });
 		dailyRow.createSpan({ cls: 'goal-separator', text: ' / ' });
@@ -174,7 +174,7 @@ export class WritingStatusView extends ItemView {
 			}
 		}
 
-		// 当日目标进度（今日新增 vs dailyGoal）
+		// 今日目标进度（今日新增 vs dailyGoal）
 		const today = window.moment().format('YYYY-MM-DD');
 		const todayStat = this.plugin.historyManager.getDailyStat(today) || { focusMs: 0, slackMs: 0, addedWords: 0 };
 		const dailyAdded = todayStat.addedWords; // 允许负数，提醒作者删除了字数
@@ -198,7 +198,7 @@ export class WritingStatusView extends ItemView {
 		const dailyProgressWidth = Math.max(0, dailyPercent);
 		this.dailyProgressFillEl.style.width = `${dailyProgressWidth}%`;
 		
-		// 当日进度：负数红色，未完成灰色，完成橙金色
+		// 今日进度：负数红色，未完成灰色，完成橙金色
 		const dailyDone = dailyGoal > 0 && dailyAdded >= dailyGoal;
 		if (dailyAdded < 0) {
 			// 负数：红色警告

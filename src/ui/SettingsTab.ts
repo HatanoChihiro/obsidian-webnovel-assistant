@@ -27,13 +27,21 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 
 		// 创建选项卡头部
 		const navContainer = containerEl.createDiv({ cls: 'webnovel-settings-tabs' });
-		const tabs = [
+		// 根据平台过滤选项卡
+		const tier = getPlatformTier();
+		const allTabs = [
 			{ id: 'general', name: '基础设置' },
-			{ id: 'immersive', name: '沉浸模式' },
-			{ id: 'sticky', name: '悬浮便签' },
-			{ id: 'creative', name: '创作工具' },
-			{ id: 'obs', name: '直播输出' }
+			{ id: 'immersive', name: '沉浸模式', desktopOnly: true },
+			{ id: 'sticky', name: '悬浮便签', desktopOnly: true },
+			{ id: 'creative', name: '创作工具', tabletSupported: true },
+			{ id: 'obs', name: '数据输出', desktopOnly: true }
 		];
+
+		const tabs = allTabs.filter(tab => {
+			if (tier === 'desktop') return true;
+			if (tier === 'tablet') return tab.id === 'general' || tab.tabletSupported;
+			return tab.id === 'general';
+		});
 
 		tabs.forEach(tab => {
 			const tabEl = navContainer.createDiv({
@@ -140,7 +148,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			}));
 
 		new Setting(containerEl)
-			.setName('当日新增目标')
+			.setName('今日目标字数')
 			.addText(text => text.setValue((this.plugin.settings.dailyGoal || 5000).toString()).onChange(async (v) => {
 				const p = parseInt(v); if (!isNaN(p)) { this.plugin.settings.dailyGoal = p; await this.plugin.saveSettings(); }
 			}));
@@ -255,14 +263,22 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			return;
 		}
 
-		containerEl.createEl('h2', {text: '悬浮便签 (Sticky Notes)'});
-		
 		new Setting(containerEl)
 			.setName('闲置透明度')
 			.addSlider(slider => slider.setLimits(0.1, 1, 0.05).setValue(this.plugin.settings.noteOpacity).onChange(async (v) => {
 				this.plugin.settings.noteOpacity = v; await this.plugin.saveSettings();
 				this.plugin.activeNotes.forEach((n: any) => n.updateVisuals());
 			}));
+
+		new Setting(containerEl)
+			.setName('便签自动保存')
+			.setDesc('开启后，在便签中输入内容会实时保存到内存和文件；关闭后，仅在关闭便签时提示手动保存。')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.stickyNoteAutoSave)
+				.onChange(async (value) => {
+					this.plugin.settings.stickyNoteAutoSave = value;
+					await this.plugin.saveSettings();
+				}));
 
 		const colorSetting = new Setting(containerEl).setName('主题色方案').setDesc('自定义 6 种预设配色。');
 		const colorContainer = colorSetting.controlEl.createDiv({ attr: { style: 'display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;' } });
@@ -277,12 +293,33 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 	}
 
 	private displayImmersiveModeSettings(containerEl: HTMLElement): void {
+		containerEl.createEl('h3', { text: '编辑器适配' });
 
-		containerEl.createEl('h3', { text: '辅助面板开关' });
-		containerEl.createEl('p', {
-			text: '自由拼接您的沉浸空间。辅助面板的位置可在下方统一设置。',
-			cls: 'setting-item-description'
-		});
+		new Setting(containerEl)
+			.setName('适配打字机模式 (Typewriter Scroll)')
+			.setDesc('开启后将优化沉浸模式下的滚动区域（增加页边距和滚动内边距），解决配合打字机插件使用时的界面跳动问题。若不使用打字机插件，建议关闭以获得原生编辑器体验。')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.immersiveTypewriterMode)
+				.onChange(async (value) => {
+					this.plugin.settings.immersiveTypewriterMode = value;
+					await this.plugin.saveSettings();
+					
+					// 立即切换 body class 实现无感生效
+					if (value) {
+						document.body.classList.add('immersive-typewriter-mode');
+					} else {
+						document.body.classList.remove('immersive-typewriter-mode');
+					}
+					
+					// 强制刷新所有编辑器以应用滚动内边距
+					this.app.workspace.iterateAllLeaves(leaf => {
+						if (leaf.view instanceof MarkdownView) {
+							(leaf.view as any).editor?.refresh();
+						}
+					});
+				}));
+
+		containerEl.createEl('h3', { text: '辅助面板显示开关' });
 
 		new Setting(containerEl)
 			.setName('显示左侧章节列表')
@@ -352,6 +389,32 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					this.plugin.settings.immersiveLayout = null;
 					await this.plugin.saveSettings();
 					new Notice(`位置已切换为: ${value === 'top' ? '上方' : '下方'}，下次进入沉浸模式生效`);
+				}));
+
+		containerEl.createEl('h3', { text: '沉浸模式便签设置' });
+		
+		new Setting(containerEl)
+			.setName('便签显示尺寸 (px)')
+			.setDesc('沉浸模式下便签的正方形边长。')
+			.addSlider(slider => slider
+				.setLimits(150, 600, 10)
+				.setValue(this.plugin.settings.immersiveNoteSize || 280)
+				.setDynamicTooltip()
+				.onChange(async (value) => {
+					this.plugin.settings.immersiveNoteSize = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('便签字体大小 (px)')
+			.setDesc('沉浸模式下便签文本框内的字体大小。')
+			.addSlider(slider => slider
+				.setLimits(10, 30, 1)
+				.setValue(this.plugin.settings.immersiveNoteFontSize || 14)
+				.setDynamicTooltip()
+				.onChange(async (value) => {
+					this.plugin.settings.immersiveNoteFontSize = value;
+					await this.plugin.saveSettings();
 				}));
 
 		containerEl.createEl('h3', { text: '顶部仪表盘数据开关' });
@@ -566,7 +629,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 
 	private displayObsSettings(containerEl: HTMLElement): void {
 		new Setting(containerEl)
-			.setName('启用 OBS 直播叠加层')
+			.setName('启用数据叠加层 (OBS/直播)')
 			.setDesc('在本地启动 HTTP 服务，OBS 通过「浏览器源」加载实时统计面板，零磁盘 I/O。')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.enableObs)
@@ -674,7 +737,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			}));
 		
 		new Setting(containerEl)
-			.setName('显示当日目标进度')
+			.setName('显示今日目标进度')
 			.addToggle(toggle => toggle.setValue(this.plugin.settings.obsShowDailyGoal ?? true).onChange(async (v) => {
 				this.plugin.settings.obsShowDailyGoal = v;
 				await this.plugin.saveSettings();
@@ -695,7 +758,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			}));
 
 		new Setting(containerEl)
-			.setName('复制 OBS 叠加层 URL')
+			.setName('复制数据叠加层 URL')
 			.setDesc('点击后复制 URL，在 OBS 中添加「浏览器源」并粘贴此 URL。')
 			.addButton(btn => btn
 				.setButtonText('复制 URL')

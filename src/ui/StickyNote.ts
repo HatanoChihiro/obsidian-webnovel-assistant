@@ -1,13 +1,14 @@
-import { App, Component, MarkdownRenderer, Notice, TFile, setIcon, Modal, Setting, MarkdownView } from 'obsidian';
+import { App, Component, MarkdownRenderer, Notice, TFile, setIcon, Modal, Setting, MarkdownView, Platform } from 'obsidian';
 import { StickyNoteState } from '../types/settings';
 import { hexToRgba } from '../utils/format';
 import { injectGlobalStyle } from '../utils/dom';
+import { isDesktop } from '../utils/platform';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 
 /**
  * 保存便签对话框
  */
-class SaveStickyNoteModal extends Modal {
+export class SaveStickyNoteModal extends Modal {
 	plugin: WebNovelAssistantPlugin;
 	onSubmit: (fileName: string, folderPath: string) => void;
 	fileNameInput!: HTMLInputElement;
@@ -122,7 +123,7 @@ class SaveStickyNoteModal extends Modal {
 /**
  * 确认关闭便签对话框
  */
-class ConfirmCloseModal extends Modal {
+export class ConfirmCloseModal extends Modal {
 	onSubmit: (shouldSave: boolean) => void;
 
 	constructor(app: App, onSubmit: (shouldSave: boolean) => void) {
@@ -237,7 +238,37 @@ export class FloatingStickyNote extends Component {
 		this.initialContent = this.state.content || "";
 	}
 
+	/**
+	 * 静默销毁实例（通常由同步逻辑调用）
+	 * 不触发保存提示，不从 settings 中删除，仅清理 DOM 和监听器
+	 */
+	destroy() {
+		this.unload();
+	}
+
+	onunload() {
+		if (this.resizeObserver) {
+			this.resizeObserver.disconnect();
+			this.resizeObserver = null;
+		}
+		
+		if (this.containerEl) {
+			this.containerEl.remove();
+		}
+		
+		// 从插件的 activeNotes 列表中移除自身
+		const index = this.plugin.activeNotes.indexOf(this);
+		if (index !== -1) {
+			this.plugin.activeNotes.splice(index, 1);
+		}
+	}
+
 	async onload() {
+		// 终极防御：非桌面端禁止加载浮动 UI
+		if (!isDesktop()) {
+			this.unload();
+			return;
+		}
 		this.plugin.activeNotes.push(this);
 		
 		this.injectCSS();
@@ -274,10 +305,11 @@ export class FloatingStickyNote extends Component {
 		this.createHeader();
 		await this.renderContent();
 		
-		if (!this.plugin.settings.openNotes.find((n: StickyNoteState) => n.id === this.state.id)) {
-			this.plugin.settings.openNotes.push(this.state);
-			this.plugin.saveSettings().catch(err => {
-				console.error('[StickyNote] 保存设置失败:', err);
+		const notes = this.plugin.stickyNoteManager.getNotes();
+		if (!notes.find((n: StickyNoteState) => n.id === this.state.id)) {
+			notes.push(this.state);
+			this.plugin.stickyNoteManager.saveNotes(notes).catch(err => {
+				console.error('[StickyNote] 保存便签列表失败:', err);
 			});
 		}
 	}
@@ -332,6 +364,26 @@ export class FloatingStickyNote extends Component {
 		// 阻止 mousedown 事件冒泡，防止触发标题栏的拖拽
 		this.textareaEl.addEventListener('mousedown', (e) => {
 			e.stopPropagation();
+		});
+
+		// 监听输入以实现自动保存
+		this.textareaEl.addEventListener('input', () => {
+			if (this.plugin.settings.stickyNoteAutoSave) {
+				const debounceKey = `save-note-${this.state.id}`;
+				(this.plugin as any).adaptiveDebounceManager.debounceFixed(debounceKey, async () => {
+					this.state.content = this.textareaEl.value;
+					this.saveState();
+					
+					// 如果关联了文件，同步写入文件
+					if (this.state.filePath) {
+						const file = this.app.vault.getAbstractFileByPath(this.state.filePath);
+						if (file instanceof TFile) {
+							await this.app.vault.modify(file, this.state.content || "");
+							this.lastSavedContent = this.state.content || ""; // 同步后更新“最后保存”内容
+						}
+					}
+				}, 500);
+			}
 		});
 
 		// 创建调色板弹窗
@@ -589,39 +641,17 @@ export class FloatingStickyNote extends Component {
 	}
 
 	saveState() {
-		const index = this.plugin.settings.openNotes.findIndex((n: StickyNoteState) => n.id === this.state.id);
-		if (index !== -1) {
-			this.plugin.settings.openNotes[index] = this.state;
-			this.plugin.saveSettings().catch(err => {
-				console.error('[StickyNote] 保存状态失败:', err);
-			});
-		}
+		this.plugin.stickyNoteManager.updateNote(this.state);
+		this.plugin.stickyNoteManager.saveNotes(this.plugin.stickyNoteManager.getNotes()).catch(err => {
+			console.error('[StickyNote] 保存状态失败:', err);
+		});
 	}
 
-	onunload() {
-		// 清理 ResizeObserver
-		if (this.resizeObserver) {
-			this.resizeObserver.disconnect();
-			this.resizeObserver = null;
-		}
-		
-		if (this.containerEl) {
-			this.containerEl.remove();
-		}
-		const activeIndex = this.plugin.activeNotes.indexOf(this);
-		if (activeIndex > -1) {
-			this.plugin.activeNotes.splice(activeIndex, 1);
-		}
-	}
-	
 	close() {
-		const stateIndex = this.plugin.settings.openNotes.findIndex((n: StickyNoteState) => n.id === this.state.id);
-		if (stateIndex !== -1) {
-			this.plugin.settings.openNotes.splice(stateIndex, 1);
-			this.plugin.saveSettings().catch(err => {
-				console.error('[StickyNote] 关闭时保存设置失败:', err);
-			});
-		}
+		this.plugin.stickyNoteManager.removeNote(this.state.id);
+		this.plugin.stickyNoteManager.saveNotes(this.plugin.stickyNoteManager.getNotes()).catch(err => {
+			console.error('[StickyNote] 移除便签失败:', err);
+		});
 		this.unload();
 	}
 
@@ -652,10 +682,18 @@ export class FloatingStickyNote extends Component {
 
 	setupResizing() {
 		this.resizeObserver = new ResizeObserver(() => {
-			if (this.state.isPinned) return; 
-			this.state.width = this.containerEl.style.width;
-			this.state.height = this.containerEl.style.height;
-			this.saveState();
+			if (this.state.isPinned) return;
+			
+			// 如果元素当前被隐藏（如在沉浸模式下），不保存 0x0 的尺寸
+			// 这能防止从沉浸模式切回时，便签尺寸变成 0 或空导致无法调整
+			const width = this.containerEl.style.width;
+			const height = this.containerEl.style.height;
+			
+			if (width && width !== '0px' && height && height !== '0px') {
+				this.state.width = width;
+				this.state.height = height;
+				this.saveState();
+			}
 		});
 		this.resizeObserver.observe(this.containerEl);
 	}
@@ -664,7 +702,7 @@ export class FloatingStickyNote extends Component {
 		const styleId = 'sticky-note-plugin-styles-v15'; 
 		const styleContent = `
 			.my-floating-sticky-note { 
-				position: fixed; width: 320px; height: 450px; min-width: 200px; min-height: 200px; 
+				position: fixed; min-width: 200px; min-height: 200px; 
 				border: 1px solid rgba(0,0,0,0.1) !important; 
 				box-shadow: 0 10px 30px rgba(0,0,0,0.15); 
 				border-radius: 8px; z-index: var(--layer-popover, 40); 

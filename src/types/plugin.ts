@@ -12,6 +12,7 @@ import type { TimelineManager } from '../services/TimelineManager';
 import type { FileExplorerPatcher } from '../services/FileExplorerPatcher';
 import type { SettingsManager } from '../core/SettingsManager';
 import type { HistoryDataManager } from '../services/HistoryDataManager';
+import type { StickyNoteDataManager } from '../services/StickyNoteDataManager';
 import type { AdaptiveDebounceManager } from '../services/AdaptiveDebounceManager';
 import type { ObsOverlayServer } from '../services/ObsServer';
 import type { FloatingStickyNote } from '../ui/StickyNote';
@@ -37,6 +38,7 @@ export interface WebNovelAssistantPlugin {
 	adaptiveDebounceManager: AdaptiveDebounceManager;
 	settingsManager: SettingsManager;
 	historyManager: HistoryDataManager;
+	stickyNoteManager: StickyNoteDataManager;
 	fileExplorerPatcher: FileExplorerPatcher;
 	foreshadowingManager: ForeshadowingManager;
 	wordCounter: WordCounter;

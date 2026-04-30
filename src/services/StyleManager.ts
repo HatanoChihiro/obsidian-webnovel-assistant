@@ -195,17 +195,42 @@ export class StyleManager {
 
 				body.immersive-mode-active .workspace {
 					margin-top: 40px !important;
-					height: calc(100vh - 40px) !important;
+					height: calc(100% - 40px) !important;
 					top: 0 !important;
 				}
 
-				/* 沉浸模式：调整内容边距 */
+				/* 沉浸模式：编辑器布局适配 */
+				/* 默认非适配状态 */
+				.immersive-mode-active .view-content {
+					padding-top: 30px !important;
+				}
+
+				/* 适配开启状态 (通过 body class 控制) */
+				body.immersive-typewriter-mode.immersive-mode-active .view-content {
+					padding-top: 0 !important;
+				}
+
+				/* 打字机模式优化：使用 scroll-padding 和内容留白 */
+				body.immersive-typewriter-mode.immersive-mode-active .markdown-source-view.mod-cm6 .cm-scroller {
+					scroll-padding-top: 10vh !important;
+					scroll-padding-bottom: 15vh !important;
+					padding-top: 20px !important;
+				}
+				body.immersive-typewriter-mode.immersive-mode-active .markdown-source-view.mod-cm6 .cm-content {
+					padding-bottom: 40vh !important;
+				}
+
+				/* 面板类容器始终保持正常的顶边距 */
 				.immersive-mode-active .foreshadowing-view-container,
 				.immersive-mode-active .timeline-view-container,
-				.immersive-mode-active .view-content,
-				.immersive-mode-active .cm-scroller,
-				.immersive-mode-active .markdown-preview-view {
+				.immersive-mode-active .markdown-reading-view .markdown-preview-view {
 					padding-top: 30px !important;
+				}
+
+				.immersive-mode-active .workspace-split {
+					gap: 8px !important;
+					padding: 8px !important;
+					background-color: var(--background-secondary) !important;
 				}
 
 				/* 沉浸模式：卡片式面板布局与边界强化 */
@@ -213,20 +238,15 @@ export class StyleManager {
 					background-color: var(--background-primary) !important;
 					border: 1px solid var(--background-modifier-border) !important;
 					border-radius: 12px !important;
-					margin: 8px !important;
+					margin: 0 !important;
 					box-shadow: 0 4px 15px rgba(0,0,0,0.05) !important;
-					overflow: hidden !important;
-					transition: box-shadow 0.3s ease;
 				}
 
 				.immersive-mode-active .workspace-leaf:hover {
 					box-shadow: 0 6px 20px rgba(0,0,0,0.1) !important;
 				}
 
-				.immersive-mode-active .workspace-split {
-					background-color: var(--background-secondary) !important; /* 整体底色，凸显卡片感 */
-					gap: 0 !important;
-				}
+
 
 				/* 辅助面板内容微调 */
 				.immersive-mode-active .foreshadowing-view-container,
