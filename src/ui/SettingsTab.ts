@@ -712,6 +712,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 						this.plugin.obsServer.start();
 					} else {
 						this.plugin.obsServer?.stop();
+						this.plugin.obsServer = null;
 					}
 				}));
 

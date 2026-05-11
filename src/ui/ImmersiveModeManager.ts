@@ -176,6 +176,26 @@ export class ImmersiveModeManager {
 		};
 
 		// 1. 软重置：清理非 Markdown 视图，保留主编辑器
+		let mainLeaf: WorkspaceLeaf | null = null;
+		const markdownLeaves = workspace.getLeavesOfType("markdown");
+		mainLeaf = markdownLeaves.find(l => l.active) || markdownLeaves[0];
+		if (!mainLeaf) {
+			mainLeaf = workspace.getLeaf(true);
+		}
+
+		// 彻底关闭主工作区的所有其他叶子
+		workspace.iterateRootLeaves(leaf => {
+			if (leaf !== mainLeaf) {
+				leaf.detach();
+			}
+		});
+
+		// 确保文件已加载
+		await mainLeaf.setViewState({
+			type: "markdown",
+			state: { file: activeFile.path },
+			active: true
+		});
 		const showBottom = immersive.immersiveShowStickyNotes || immersive.immersiveShowForeshadowing || immersive.immersiveShowTimeline;
 		if (showBottom) {
 			const isTop = immersive.immersivePanelPosition === 'top';
