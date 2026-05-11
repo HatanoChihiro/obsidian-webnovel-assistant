@@ -1,14 +1,16 @@
 import { Plugin, Notice } from 'obsidian';
-import { AccurateCountSettings } from '../types/settings';
+import { AccurateCountSettings, ImmersiveModeSettings, ObsSettings } from '../types/settings';
 import { VALIDATION_RULES } from '../constants';
 import { ValidationResult } from '../utils/validation';
+import { SerializedWriter } from '../utils/SerializedWriter';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 
 /**
- * 验证规则接口
+ * 验证规则接口（支持嵌套路径）
  */
 interface ValidationRule {
-	field: keyof AccurateCountSettings;
+	/** 验证路径：嵌套字段用点号分隔，如 'obs.obsPort' */
+	path: string;
 	validate: (value: unknown) => boolean;
 	errorMessage: string;
 }
@@ -21,14 +23,14 @@ export class SettingsManager {
 	private plugin: Plugin;
 	private settings: AccurateCountSettings;
 	private defaultSettings: AccurateCountSettings;
-	
-	// 写入队列：确保数据保存的原子性
-	private saveQueue: Promise<void> = Promise.resolve();
 
-	// 验证规则
+	// 串行写入器：确保数据保存的原子性
+	private writer = new SerializedWriter();
+
+	// 验证规则（支持嵌套路径）
 	private validationRules: ValidationRule[] = [
 		{
-			field: 'obsPort',
+			path: 'obs.obsPort',
 			validate: (port) => {
 				const p = Number(port);
 				return !isNaN(p) && p >= VALIDATION_RULES.PORT_RANGE.min && p <= VALIDATION_RULES.PORT_RANGE.max;
@@ -36,7 +38,7 @@ export class SettingsManager {
 			errorMessage: `端口号必须在 ${VALIDATION_RULES.PORT_RANGE.min}-${VALIDATION_RULES.PORT_RANGE.max} 之间`
 		},
 		{
-			field: 'idleTimeoutThreshold',
+			path: 'idleTimeoutThreshold',
 			validate: (timeout) => {
 				const t = Number(timeout);
 				const min = VALIDATION_RULES.IDLE_TIMEOUT_RANGE.min * 1000;
@@ -46,7 +48,7 @@ export class SettingsManager {
 			errorMessage: `空闲超时必须在 ${VALIDATION_RULES.IDLE_TIMEOUT_RANGE.min}-${VALIDATION_RULES.IDLE_TIMEOUT_RANGE.max} 秒之间`
 		},
 		{
-			field: 'noteOpacity',
+			path: 'noteOpacity',
 			validate: (opacity) => {
 				const o = Number(opacity);
 				return !isNaN(o) && o >= VALIDATION_RULES.OPACITY_RANGE.min && o <= VALIDATION_RULES.OPACITY_RANGE.max;
@@ -54,7 +56,7 @@ export class SettingsManager {
 			errorMessage: `便签不透明度必须在 ${VALIDATION_RULES.OPACITY_RANGE.min}-${VALIDATION_RULES.OPACITY_RANGE.max} 之间`
 		},
 		{
-			field: 'obsOverlayOpacity',
+			path: 'obs.obsOverlayOpacity',
 			validate: (opacity) => {
 				const o = Number(opacity);
 				return !isNaN(o) && o >= 0 && o <= VALIDATION_RULES.OPACITY_RANGE.max;
@@ -62,7 +64,7 @@ export class SettingsManager {
 			errorMessage: `OBS 叠加层不透明度必须在 0-${VALIDATION_RULES.OPACITY_RANGE.max} 之间`
 		},
 		{
-			field: 'defaultGoal',
+			path: 'defaultGoal',
 			validate: (goal) => {
 				const g = Number(goal);
 				return !isNaN(g) && g >= VALIDATION_RULES.MIN_GOAL;
@@ -83,13 +85,13 @@ export class SettingsManager {
 	async loadSettings(): Promise<AccurateCountSettings> {
 		try {
 			const data = await this.plugin.loadData();
-			
+
 			// 与默认设置合并（深度合并，确保嵌套对象的新字段不丢失）
 			this.settings = this.deepMerge(this.defaultSettings, data || {});
-			
+
 			// 数据迁移
 			this.settings = this.migrateSettings(this.settings, data);
-			
+
 			// 验证设置
 			const validation = this.validateSettings(this.settings);
 			if (!validation.valid) {
@@ -97,14 +99,14 @@ export class SettingsManager {
 				// 使用默认值替换无效值
 				this.settings = this.fixInvalidSettings(this.settings);
 			}
-			
+
 			console.log('[SettingsManager] 设置加载成功');
 			return this.settings;
 		} catch (error) {
 			console.error('[SettingsManager] 加载设置失败:', error);
-			
+
 			new Notice('加载设置失败，已使用默认设置');
-			
+
 			// 返回默认设置
 			this.settings = { ...this.defaultSettings };
 			return this.settings;
@@ -116,17 +118,17 @@ export class SettingsManager {
 	 */
 	async saveSettings(): Promise<void> {
 		// 将保存操作加入队列，确保串行执行
-		this.saveQueue = this.saveQueue.then(async () => {
+		return this.writer.enqueue(async () => {
 			try {
 				// 从插件获取最新的设置（因为插件可能直接修改了 settings 对象）
 				const pluginSettings = (this.plugin as WebNovelAssistantPlugin).settings;
 				if (pluginSettings) {
 					this.settings = pluginSettings;
 				}
-				
+
 				// 读取旧数据进行合并
 				const data = await this.plugin.loadData() || {};
-				
+
 				// 瘦身策略：清理已分离至独立文件的旧数据字段
 				if ('cacheData' in data) {
 					delete data.cacheData;
@@ -134,20 +136,24 @@ export class SettingsManager {
 				if ('historyData' in data) { // 之前版本的历史数据
 					delete data.historyData;
 				}
-				
+				// 清理已移除的废弃字段
+				if ('dailyHistory' in data) {
+					delete data.dailyHistory;
+				}
+				if ('openNotes' in data) {
+					delete data.openNotes;
+				}
+
 				const newData = { ...data, ...this.settings };
 				await this.plugin.saveData(newData);
 			} catch (error) {
 				console.error('[SettingsManager] 保存设置失败:', error);
-				
+
 				new Notice('保存设置失败，请检查磁盘空间和权限');
-				
+
 				throw error;
 			}
 		});
-
-		// 等待当前保存操作完成
-		return this.saveQueue;
 	}
 
 	/**
@@ -155,7 +161,37 @@ export class SettingsManager {
 	 * 主要用于 onunload 生命周期
 	 */
 	async flush(): Promise<void> {
-		await this.saveQueue;
+		await this.writer.flush();
+	}
+
+	/**
+	 * 通过点号路径获取嵌套设置值
+	 */
+	private getNestedValue(obj: Record<string, unknown>, path: string): unknown {
+		const parts = path.split('.');
+		let current: unknown = obj;
+		for (const part of parts) {
+			if (current === null || current === undefined || typeof current !== 'object') {
+				return undefined;
+			}
+			current = (current as Record<string, unknown>)[part];
+		}
+		return current;
+	}
+
+	/**
+	 * 通过点号路径设置嵌套设置值
+	 */
+	private setNestedValue(obj: Record<string, unknown>, path: string, value: unknown): void {
+		const parts = path.split('.');
+		let current: Record<string, unknown> = obj;
+		for (let i = 0; i < parts.length - 1; i++) {
+			if (!(parts[i] in current) || typeof current[parts[i]] !== 'object' || current[parts[i]] === null) {
+				current[parts[i]] = {} as Record<string, unknown>;
+			}
+			current = current[parts[i]] as Record<string, unknown>;
+		}
+		current[parts[parts.length - 1]] = value;
 	}
 
 	/**
@@ -165,7 +201,7 @@ export class SettingsManager {
 		const errors: string[] = [];
 
 		for (const rule of this.validationRules) {
-			const value = settings[rule.field];
+			const value = this.getNestedValue(settings as Record<string, unknown>, rule.path);
 			if (value !== undefined && !rule.validate(value)) {
 				errors.push(rule.errorMessage);
 			}
@@ -184,12 +220,13 @@ export class SettingsManager {
 		const fixed = { ...settings };
 
 		for (const rule of this.validationRules) {
-			const value = fixed[rule.field];
+			const value = this.getNestedValue(fixed as unknown as Record<string, unknown>, rule.path);
 			if (value !== undefined && !rule.validate(value)) {
 				// 使用默认值替换
-				fixed[rule.field] = this.defaultSettings[rule.field] as never;
+				const defaultValue = this.getNestedValue(this.defaultSettings as unknown as Record<string, unknown>, rule.path);
+				this.setNestedValue(fixed as unknown as Record<string, unknown>, rule.path, defaultValue);
 				console.warn(
-					`[SettingsManager] 修复无效设置: ${rule.field} = ${value} -> ${this.defaultSettings[rule.field]}`
+					`[SettingsManager] 修复无效设置: ${rule.path} = ${value} -> ${defaultValue}`
 				);
 			}
 		}
@@ -227,6 +264,7 @@ export class SettingsManager {
 
 	/**
 	 * 迁移旧版本设置
+	 * 包括: 旧版便签颜色迁移, 扁平化 immersive/obs 设置到嵌套结构
 	 */
 	private migrateSettings(
 		settings: AccurateCountSettings,
@@ -234,7 +272,7 @@ export class SettingsManager {
 	): AccurateCountSettings {
 		const migrated = { ...settings };
 
-		// 迁移旧版便签颜色到新版主题
+		// 1. 迁移旧版便签颜色到新版主题
 		if (oldData && typeof oldData === 'object' && 'noteColors' in oldData) {
 			const noteColors = (oldData as { noteColors?: string[] }).noteColors;
 			if (noteColors && Array.isArray(noteColors) && (!migrated.noteThemes || migrated.noteThemes.length === 0)) {
@@ -243,6 +281,73 @@ export class SettingsManager {
 					text: '#2C3E50'
 				}));
 				console.log('[SettingsManager] 已迁移旧版便签颜色到新版主题');
+			}
+		}
+
+		// 2. 迁移扁平化 immersive 设置到嵌套结构
+		if (oldData && typeof oldData === 'object') {
+			const old = oldData as Record<string, unknown>;
+			const immersiveKeys = [
+				'immersiveShowChapterList', 'immersiveShowReference', 'immersiveShowStickyNotes',
+				'immersiveShowForeshadowing', 'immersiveShowTimeline', 'immersiveShowTotalTime',
+				'immersiveShowFocusTime', 'immersiveShowSlackTime', 'immersiveShowChapterProgress',
+				'immersiveShowDailyProgress', 'immersiveShowSessionWords', 'immersiveLeftSize',
+				'immersiveRightSize', 'immersiveBottomSize', 'immersiveBottomInternalSizes',
+				'immersivePanelPosition', 'immersiveNoteSize', 'immersiveNoteFontSize',
+				'immersiveTypewriterMode', 'immersiveLayout'
+			];
+
+			let hasFlatImmersive = false;
+			for (const key of immersiveKeys) {
+				if (key in old) {
+					hasFlatImmersive = true;
+					break;
+				}
+			}
+
+			if (hasFlatImmersive) {
+				const immersive: Partial<ImmersiveModeSettings> = {};
+				for (const key of immersiveKeys) {
+					if (key in old) {
+						(immersive as Record<string, unknown>)[key] = old[key];
+					}
+				}
+				// 深度合并：保留嵌套默认值中旧数据没有覆盖的字段
+				migrated.immersive = this.deepMerge(
+					this.defaultSettings.immersive as Record<string, unknown>,
+					immersive as Record<string, unknown>
+				) as ImmersiveModeSettings;
+				console.log('[SettingsManager] 已迁移扁平化沉浸模式设置到嵌套结构');
+			}
+
+			// 3. 迁移扁平化 obs 设置到嵌套结构
+			const obsKeys = [
+				'enableObs', 'enableLegacyObsExport', 'obsPath', 'obsPort',
+				'obsOverlayTheme', 'obsOverlayOpacity', 'obsCustomCss',
+				'obsShowFocusTime', 'obsShowSlackTime', 'obsShowTotalTime',
+				'obsShowTodayWords', 'obsShowDailyGoal', 'obsShowSessionWords'
+			];
+
+			let hasFlatObs = false;
+			for (const key of obsKeys) {
+				if (key in old) {
+					hasFlatObs = true;
+					break;
+				}
+			}
+
+			if (hasFlatObs) {
+				const obs: Partial<ObsSettings> = {};
+				for (const key of obsKeys) {
+					if (key in old) {
+						(obs as Record<string, unknown>)[key] = old[key];
+					}
+				}
+				migrated.obs = this.deepMerge(
+					this.defaultSettings.obs as Record<string, unknown>,
+					obs as Record<string, unknown>
+				) as ObsSettings;
+				console.log('[SettingsManager] 已迁移扁平化 OBS 设置到嵌套结构');
 			}
 		}
 
@@ -268,7 +373,7 @@ export class SettingsManager {
 
 		// 更新设置
 		this.settings = Object.assign(this.settings, partial);
-		
+
 		// 保存
 		await this.saveSettings();
 	}

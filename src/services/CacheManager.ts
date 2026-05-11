@@ -1,5 +1,6 @@
 import { TFile, TFolder, Vault } from 'obsidian';
 import { CACHE_CONFIG } from '../constants';
+import { SerializedWriter } from '../utils/SerializedWriter';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 
 /**
@@ -32,8 +33,8 @@ export class CacheManager {
 	private plugin: WebNovelAssistantPlugin; // 插件实例，用于持久化
 	private cacheFilePath: string; // 独立缓存文件路径
 	
-	// 写入队列：确保数据保存的原子性
-	private saveQueue: Promise<void> = Promise.resolve();
+	// 串行写入器：确保数据保存的原子性
+	private writer = new SerializedWriter();
 
 	constructor(plugin: WebNovelAssistantPlugin) {
 		this.cache = new Map();
@@ -104,7 +105,7 @@ export class CacheManager {
 		if (!this.plugin) return;
 
 		// 将保存操作加入队列，确保串行执行
-		this.saveQueue = this.saveQueue.then(async () => {
+		return this.writer.enqueue(async () => {
 			try {
 				const cacheData: CacheData = {
 					version: 2, // 升级版本以支持 isFolder 属性
@@ -122,9 +123,6 @@ export class CacheManager {
 				console.error('[CacheManager] 保存缓存失败:', error);
 			}
 		});
-
-		// 等待当前保存操作完成
-		return this.saveQueue;
 	}
 
 	/**

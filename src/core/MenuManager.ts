@@ -1,6 +1,8 @@
 import { TFile, TFolder, Notice, MarkdownView } from 'obsidian';
 import type AccurateChineseCountPlugin from '../../main';
 import { GoalModal } from '../ui/GoalModal';
+import { copyDocumentContent } from '../utils/ui';
+import { isDesktop } from '../utils/platform';
 import { ChapterSorter } from '../services/ChapterSorter';
 import { TimelineAddFromSelectionModal } from '../ui/TimelineView';
 import { TimelineManager } from '../services/TimelineManager';
@@ -23,22 +25,13 @@ export class MenuManager {
 				
 				// 复制本文档：全平台均显示，内容包含「标题 + 空行 + 正文」
 				menu.addItem((item) => {
-					item.setTitle('复制本文档').setIcon('copy').onClick(async () => {
-						try {
-							const rawContent = await this.plugin.app.vault.read(file);
-							const title = file.basename;
-							const contentWithTitle = `${title}\n\n${rawContent}`;
-							await navigator.clipboard.writeText(contentWithTitle);
-							new Notice(`[成功] 已复制本文档`);
-						} catch (err) {
-							console.error('[Plugin] 复制失败:', err);
-							new Notice('[错误] 复制失败，请重试');
-						}
+					item.setTitle("复制本文档").setIcon("copy").onClick(async () => {
+						copyDocumentContent(file.basename, await this.plugin.app.vault.read(file));
 					});
 				});
 
 				// 抽出为便签：仅桌面端
-				if (this.plugin.app.isMobile === false) {
+				if (isDesktop()) {
 					menu.addItem((item) => {
 						item.setTitle('抽出为便签').setIcon('popup-open').onClick(() => { 
 							this.plugin.createStickyNote({ file: file });
@@ -47,7 +40,7 @@ export class MenuManager {
 				}
 			}
 
-			if (file instanceof TFolder && this.plugin.app.isMobile === false) {
+			if (file instanceof TFolder && isDesktop()) {
 				menu.addItem((item) => {
 					item.setTitle('合并章节')
 						.setIcon('documents')
@@ -103,7 +96,7 @@ export class MenuManager {
 					});
 				});
 
-				if (this.plugin.app.isMobile === false) {
+				if (isDesktop()) {
 					menu.addItem((item) => {
 						item.setTitle('抽出为便签').setIcon('quote').onClick(() => { 
 							this.plugin.createStickyNote({ content: editor.getSelection(), title: '选中片段' });
@@ -121,21 +114,12 @@ export class MenuManager {
 
 				// 复制本文档：全平台均显示，内容包含「标题 + 空行 + 正文」
 				menu.addItem((item) => {
-					item.setTitle('复制本文档').setIcon('copy').onClick(async () => {
-						try {
-							const rawContent = await this.plugin.app.vault.read(view.file!);
-							const title = view.file!.basename;
-							const contentWithTitle = `${title}\n\n${rawContent}`;
-							await navigator.clipboard.writeText(contentWithTitle);
-							new Notice(`[成功] 已复制本文档`);
-						} catch (err) {
-							console.error('[Plugin] 复制失败:', err);
-							new Notice('[错误] 复制失败，请重试');
-						}
+					item.setTitle("复制本文档").setIcon("copy").onClick(async () => {
+						copyDocumentContent(view.file!.basename, await this.plugin.app.vault.read(view.file!));
 					});
 				});
 
-				if (this.plugin.app.isMobile === false) {
+				if (isDesktop()) {
 					menu.addItem((item) => {
 						item.setTitle('当前文件抽出为便签').setIcon('popup-open').onClick(() => { 
 							this.plugin.createStickyNote({ file: view.file! });

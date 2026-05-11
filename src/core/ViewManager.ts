@@ -1,4 +1,5 @@
 import { WorkspaceLeaf } from 'obsidian';
+import { isDesktop, isMobile } from '../utils/platform';
 import type AccurateChineseCountPlugin from '../../main';
 import { VIEW_TYPES } from '../constants';
 import { WritingStatusView, STATUS_VIEW_TYPE } from '../ui/StatusView';
@@ -19,7 +20,7 @@ export class ViewManager {
 		this.plugin.registerView(FORESHADOWING_VIEW_TYPE, (leaf) => new ForeshadowingView(leaf, this.plugin));
 		this.plugin.registerView(TIMELINE_VIEW_TYPE, (leaf) => new TimelineView(leaf, this.plugin));
 		
-		if (this.plugin.app.isMobile === false) { // Desktop
+		if (isDesktop()) { // Desktop
 			this.plugin.registerView(VIEW_TYPES.IMMERSIVE_CHAPTER_LIST, (leaf) => new ImmersiveChapterListView(leaf, this.plugin));
 			this.plugin.registerView(VIEW_TYPES.IMMERSIVE_STICKY_NOTES, (leaf) => new ImmersiveStickyNotesView(leaf, this.plugin));
 		}
@@ -39,7 +40,7 @@ export class ViewManager {
 			leaf = leaves[0];
 			workspace.detachLeaf(leaf);
 		} else {
-			if (this.plugin.app.isMobile) {
+			if (isMobile()) {
 				const rightLeaf = workspace.getRightLeaf(false);
 				if (rightLeaf) {
 					leaf = rightLeaf;
@@ -61,7 +62,7 @@ export class ViewManager {
 			
 			if (leaf) {
 				workspace.revealLeaf(leaf);
-				if (this.plugin.app.isMobile) {
+				if (isMobile()) {
 					workspace.rightSplit?.expand();
 				}
 			}

@@ -3,7 +3,7 @@
  * 
  * 用于解决循环依赖问题，为服务层和 UI 层提供类型安全的插件引用
  */
-import { App, TFile } from 'obsidian';
+import { App, EventRef, TFile } from 'obsidian';
 import { AccurateCountSettings } from './settings';
 import { ObsStatsPayload } from './stats';
 import type { CacheManager } from '../services/CacheManager';
@@ -22,6 +22,11 @@ import type { EditorTracker } from '../services/EditorTracker';
 import type { StyleManager } from '../services/StyleManager';
 import type { WorkerManager } from '../services/WorkerManager';
 import type { MarkdownPostProcessor } from '../services/MarkdownPostProcessor';
+import type { CommandManager } from '../core/CommandManager';
+import type { ViewManager } from '../core/ViewManager';
+import type { MenuManager } from '../core/MenuManager';
+import type { ImmersiveModeManager } from '../ui/ImmersiveModeManager';
+import type { FileEventManager } from '../services/FileEventManager';
 
 /**
  * WebNovel Assistant 插件接口
@@ -31,6 +36,10 @@ import type { MarkdownPostProcessor } from '../services/MarkdownPostProcessor';
 export interface WebNovelAssistantPlugin {
 	// Obsidian 核心
 	app: App;
+	registerEvent(eventRef: EventRef): EventRef;
+
+	// 启动状态
+	isLayoutReady: boolean;
 
 	// 设置
 	settings: AccurateCountSettings;
@@ -43,9 +52,9 @@ export interface WebNovelAssistantPlugin {
 	stickyNoteManager: StickyNoteDataManager;
 	fileExplorerPatcher: FileExplorerPatcher;
 	wordCounter: WordCounter;
-	commandManager: any; // CommandManager
-	viewManager: any;    // ViewManager
-	menuManager: any;    // MenuManager
+	commandManager: CommandManager;
+	viewManager: ViewManager;
+	menuManager: MenuManager;
 	
 	// 以下属性在 onload 中初始化，可能为 undefined
 	foreshadowingManager?: ForeshadowingManager;
@@ -53,7 +62,8 @@ export interface WebNovelAssistantPlugin {
 	styleManager?: StyleManager;
 	workerManager?: WorkerManager;
 	markdownPostProcessor?: MarkdownPostProcessor;
-	immersiveModeManager?: any; // ImmersiveModeManager
+	immersiveModeManager?: ImmersiveModeManager;
+	fileEventManager?: FileEventManager;
 	
 	// 追踪状态
 	isTracking: boolean;
@@ -100,9 +110,7 @@ export interface WebNovelAssistantPlugin {
 	buildObsOverlayHtml(): string;
 	exportLegacyOBS(force?: boolean): void;
 	
-	// 样式管理
-	injectGlobalStyles(): void;
-	removeGlobalStyles(): void;
+	// 样式管理（静态样式由 styles.css 自动加载）
 	applyEyeCare(): void;
 	removeEyeCare(): void;
 }

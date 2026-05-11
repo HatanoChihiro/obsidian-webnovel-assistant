@@ -163,9 +163,7 @@ export class ImmersiveModeManager {
 	 */
 	private async buildImmersiveLayout(activeFile: TFile): Promise<void> {
 		const { workspace } = this.app;
-		const { settings } = this.plugin;
-
-
+		const immersive = this.plugin.settings.immersive;
 
 		// 辅助函数：从 leaf 向上找到真正的 WorkspaceSplit（跳过 WorkspaceTabs）
 		const getParentSplit = (leaf: any): any => {
@@ -178,44 +176,14 @@ export class ImmersiveModeManager {
 		};
 
 		// 1. 软重置：清理非 Markdown 视图，保留主编辑器
-		let mainLeaf: WorkspaceLeaf | null = null;
-		const markdownLeaves = workspace.getLeavesOfType('markdown');
-		mainLeaf = markdownLeaves.find(l => l.active) || markdownLeaves[0];
-		if (!mainLeaf) {
-			mainLeaf = workspace.getLeaf(true);
-		}
-
-		// 彻底关闭主工作区的所有其他叶子
-		workspace.iterateRootLeaves(leaf => {
-			if (leaf !== mainLeaf) {
-				leaf.detach();
-			}
-		});
-
-		// 确保文件已加载
-		await mainLeaf.setViewState({
-			type: 'markdown',
-			state: { file: activeFile.path },
-			active: true
-		});
-
-		// 收集需要延迟应用比例的 split 信息
-		const pendingSizes: Array<{ split: any; sizes: number[] }> = [];
-
-		// 收集叶子引用，用于退出时精确抓取比例
-		let finalLeftLeaf: WorkspaceLeaf | null = null;
-		let finalRightLeaf: WorkspaceLeaf | null = null;
-		let finalBottomLeaf: WorkspaceLeaf | null = null;
-
-		// 2. 创建底部/顶部辅助面板区域
-		const showBottom = settings.immersiveShowStickyNotes || settings.immersiveShowForeshadowing || settings.immersiveShowTimeline;
+		const showBottom = immersive.immersiveShowStickyNotes || immersive.immersiveShowForeshadowing || immersive.immersiveShowTimeline;
 		if (showBottom) {
-			const isTop = settings.immersivePanelPosition === 'top';
+			const isTop = immersive.immersivePanelPosition === 'top';
 			const bottomSplitLeaf = workspace.createLeafBySplit(mainLeaf, 'horizontal', isTop);
 			finalBottomLeaf = bottomSplitLeaf;
 
 			// 记录比例
-			const bottomSize = settings.immersiveBottomSize || 25;
+			const bottomSize = immersive.immersiveBottomSize || 25;
 			const parentSplit = getParentSplit(mainLeaf);
 			if (parentSplit && parentSplit.children) {
 				const size0 = isTop ? bottomSize : 100 - bottomSize;
@@ -228,18 +196,18 @@ export class ImmersiveModeManager {
 			let isFirst = true;
 			let bottomPanelCount = 0;
 
-			if (settings.immersiveShowStickyNotes) {
+			if (immersive.immersiveShowStickyNotes) {
 				await currentBottomLeaf.setViewState({ type: VIEW_TYPES.IMMERSIVE_STICKY_NOTES });
 				isFirst = false;
 				bottomPanelCount++;
 			}
-			if (settings.immersiveShowForeshadowing) {
+			if (immersive.immersiveShowForeshadowing) {
 				if (!isFirst) currentBottomLeaf = workspace.createLeafBySplit(currentBottomLeaf, 'vertical', false);
 				await currentBottomLeaf.setViewState({ type: VIEW_TYPES.FORESHADOWING });
 				isFirst = false;
 				bottomPanelCount++;
 			}
-			if (settings.immersiveShowTimeline) {
+			if (immersive.immersiveShowTimeline) {
 				if (!isFirst) currentBottomLeaf = workspace.createLeafBySplit(currentBottomLeaf, 'vertical', false);
 				await currentBottomLeaf.setViewState({ type: VIEW_TYPES.TIMELINE });
 				bottomPanelCount++;
@@ -249,7 +217,7 @@ export class ImmersiveModeManager {
 			if (bottomPanelCount > 1) {
 				const bottomInternalSplit = getParentSplit(bottomSplitLeaf);
 				if (bottomInternalSplit && bottomInternalSplit.direction === 'vertical' && bottomInternalSplit.children) {
-					const savedSizes = settings.immersiveBottomInternalSizes;
+					const savedSizes = immersive.immersiveBottomInternalSizes;
 					if (savedSizes && savedSizes.length === bottomInternalSplit.children.length) {
 						pendingSizes.push({ split: bottomInternalSplit, sizes: savedSizes });
 					}
@@ -258,10 +226,10 @@ export class ImmersiveModeManager {
 		}
 
 		// 3. 创建左侧章节列表
-		if (settings.immersiveShowChapterList) {
+		if (immersive.immersiveShowChapterList) {
 			const leftLeaf = workspace.createLeafBySplit(mainLeaf, 'vertical', true);
 			finalLeftLeaf = leftLeaf;
-			const leftSize = settings.immersiveLeftSize || 15;
+			const leftSize = immersive.immersiveLeftSize || 15;
 			const parentSplit = getParentSplit(mainLeaf);
 			if (parentSplit && parentSplit.children) {
 				pendingSizes.push({ split: parentSplit, sizes: [leftSize, 100 - leftSize] });
@@ -271,15 +239,15 @@ export class ImmersiveModeManager {
 		}
 
 		// 4. 创建右侧参考区
-		if (settings.immersiveShowReference) {
+		if (immersive.immersiveShowReference) {
 			const rightLeaf = workspace.createLeafBySplit(mainLeaf, 'vertical', false);
 			finalRightLeaf = rightLeaf;
-			const rightSize = settings.immersiveRightSize || 15;
+			const rightSize = immersive.immersiveRightSize || 15;
 			const parentSplit = getParentSplit(mainLeaf);
 			if (parentSplit && parentSplit.children) {
 				const childCount = parentSplit.children.length;
 				if (childCount === 3) {
-					const leftSize = settings.immersiveLeftSize || 15;
+					const leftSize = immersive.immersiveLeftSize || 15;
 					const centerSize = 100 - leftSize - rightSize;
 					pendingSizes.push({ split: parentSplit, sizes: [leftSize, centerSize, rightSize] });
 				} else {
@@ -419,7 +387,7 @@ export class ImmersiveModeManager {
 
 	private renderTopBarContent(): void {
 		if (!this.topBarEl) return;
-		const { settings } = this.plugin;
+		const immersive = this.plugin.settings.immersive;
 		const stats = this.plugin.obsHtmlBuilder.getObsStats();
 
 		const updateStatEl = (key: string, show: boolean, text: string) => {
@@ -433,12 +401,12 @@ export class ImmersiveModeManager {
 			}
 		};
 
-		updateStatEl('totalTime', !!settings.immersiveShowTotalTime, `总计 (${stats.totalTime})`);
-		updateStatEl('focusTime', !!settings.immersiveShowFocusTime, `专注 (${stats.focusTime})`);
-		updateStatEl('slackTime', !!settings.immersiveShowSlackTime, `摸鱼 (${stats.slackTime})`);
-		updateStatEl('chapterProgress', !!settings.immersiveShowChapterProgress, `章节进度 (${stats.todayWords}/${stats.goal})`);
-		updateStatEl('dailyProgress', !!settings.immersiveShowDailyProgress, `今日进度 (${stats.dailyWords}/${stats.dailyGoal})`);
-		updateStatEl('sessionWords', !!settings.immersiveShowSessionWords, `本场净增 (${stats.sessionWords})`);
+		updateStatEl('totalTime', !!immersive.immersiveShowTotalTime, `总计 (${stats.totalTime})`);
+		updateStatEl('focusTime', !!immersive.immersiveShowFocusTime, `专注 (${stats.focusTime})`);
+		updateStatEl('slackTime', !!immersive.immersiveShowSlackTime, `摸鱼 (${stats.slackTime})`);
+		updateStatEl('chapterProgress', !!immersive.immersiveShowChapterProgress, `章节进度 (${stats.todayWords}/${stats.goal})`);
+		updateStatEl('dailyProgress', !!immersive.immersiveShowDailyProgress, `今日进度 (${stats.dailyWords}/${stats.dailyGoal})`);
+		updateStatEl('sessionWords', !!immersive.immersiveShowSessionWords, `本场净增 (${stats.sessionWords})`);
 	}
 
 	/**
@@ -447,7 +415,7 @@ export class ImmersiveModeManager {
 	 */
 	private saveCurrentPanelSizes(): void {
 		const { workspace } = this.app;
-		const { settings } = this.plugin;
+		const immersive = this.plugin.settings.immersive;
 
 		/**
 		 * 辅助函数：从 leaf 向上找到指定的 WorkspaceSplit
@@ -481,7 +449,7 @@ export class ImmersiveModeManager {
 					// 寻找包含左侧面板的子容器
 					const child = split.children.find(c => c.containerEl && c.containerEl.contains(leftLeaf.containerEl));
 					if (child) {
-						settings.immersiveLeftSize = Math.round((child.containerEl.offsetWidth / totalWidth) * 100);
+						immersive.immersiveLeftSize = Math.round((child.containerEl.offsetWidth / totalWidth) * 100);
 					}
 				}
 			}
@@ -498,7 +466,7 @@ export class ImmersiveModeManager {
 					if (child) {
 						const pct = Math.round((child.containerEl.offsetWidth / totalWidth) * 100);
 						if (pct > 0 && pct < 100) {
-							settings.immersiveRightSize = pct;
+							immersive.immersiveRightSize = pct;
 						}
 					}
 				}
@@ -514,7 +482,7 @@ export class ImmersiveModeManager {
 					// 寻找包含辅助面板的子容器
 					const child = split.children.find(c => c.containerEl && c.containerEl.contains(anyBottomLeaf.containerEl));
 					if (child) {
-						settings.immersiveBottomSize = Math.round((child.containerEl.offsetHeight / totalHeight) * 100);
+						immersive.immersiveBottomSize = Math.round((child.containerEl.offsetHeight / totalHeight) * 100);
 					}
 				}
 			}
@@ -537,17 +505,17 @@ export class ImmersiveModeManager {
 						}
 					}
 					if (internalSizes.length === split.children.length) {
-						settings.immersiveBottomInternalSizes = internalSizes;
+						immersive.immersiveBottomInternalSizes = internalSizes;
 					}
 				}
 			}
 		}
 
 		console.log('[WebNovel Assistant] 沉浸模式比例已保存:', {
-			left: settings.immersiveLeftSize,
-			right: settings.immersiveRightSize,
-			bottom: settings.immersiveBottomSize,
-			bottomInternal: settings.immersiveBottomInternalSizes,
+			left: immersive.immersiveLeftSize,
+			right: immersive.immersiveRightSize,
+			bottom: immersive.immersiveBottomSize,
+			bottomInternal: immersive.immersiveBottomInternalSizes,
 		});
 	}
 }

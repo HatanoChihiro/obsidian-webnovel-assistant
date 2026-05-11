@@ -1,5 +1,5 @@
 import { App, Plugin, PluginSettingTab, Setting, MarkdownView, Modal, TFile, Notice, TFolder, MarkdownRenderer, Component, setIcon, ItemView, WorkspaceLeaf, Platform, PluginManifest } from 'obsidian';
-import { AccurateCountSettings, DailyStat, ThemeScheme, StickyNoteState } from './src/types/settings';
+import { AccurateCountSettings, ThemeScheme } from './src/types/settings';
 import { WebNovelAssistantPlugin } from './src/types/plugin';
 import { ObsStatsPayload } from './src/types/stats';
 import {
@@ -49,6 +49,7 @@ import { Extension } from '@codemirror/state';
 import { createWordCountGutter } from './src/editor/WordCountGutter';
 import { WorkerManager } from './src/services/WorkerManager';
 import { MarkdownPostProcessor } from './src/services/MarkdownPostProcessor';
+import { FileEventManager } from './src/services/FileEventManager';
 
 export default class AccurateChineseCountPlugin extends Plugin implements WebNovelAssistantPlugin {
 	public wordCountExtensionHolder: Extension[] = [];
@@ -91,7 +92,6 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	viewManager: ViewManager;
 	menuManager: MenuManager;
 	private isLayoutReady: boolean = false;
-	private wordCountElCache = new WeakMap<HTMLElement, HTMLElement>();
 
 	constructor(app: App, manifest: PluginManifest) {
 		super(app, manifest);
@@ -100,7 +100,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.settingsManager = new SettingsManager(this, DEFAULT_SETTINGS);
 		this.historyManager = new HistoryDataManager(this);
 		this.stickyNoteManager = new StickyNoteDataManager(this);
-		this.fileExplorerPatcher = new FileExplorerPatcher(this.app);
+		this.fileExplorerPatcher = new FileExplorerPatcher(this.app, this);
 		this.obsHtmlBuilder = new ObsHtmlBuilder(this);
 		this.wordCounter = new WordCounter();
 		this.immersiveModeManager = new ImmersiveModeManager(this.app, this);
@@ -109,6 +109,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.menuManager = new MenuManager(this);
 		this.workerManager = new WorkerManager(this);
 		this.markdownPostProcessor = new MarkdownPostProcessor(this);
+	this.fileEventManager = new FileEventManager(this);
 		// editorTracker 和 styleManager 需要在 onload 后初始化（依赖 this）
 	}
 
@@ -149,13 +150,6 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		await this.loadSettings();
 		await this.historyManager.loadHistory(); // 加载历史数据
 		
-		// 加载便签数据并处理迁移
-		await this.stickyNoteManager.loadNotes();
-		if (this.settings.openNotes && this.settings.openNotes.length > 0) {
-			console.log('[Plugin] 数据清理：旧版便签数据已迁移，从 settings 中移除');
-			this.settings.openNotes = [];
-			await this.saveSettings();
-		}
 		
 		// 加载浮动便签
 		await this.loadFloatingNotes();
@@ -170,11 +164,10 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.editorTracker = new EditorTracker(this.app, this);
 		this.styleManager = new StyleManager(this.settings);
 		
-		this.styleManager.injectGlobalStyles();
 		if (this.settings.eyeCareEnabled) this.styleManager.applyEyeCare();
 		
 		// 初始化打字机模式状态
-		if (this.settings.immersiveTypewriterMode) {
+		if (this.settings.immersive.immersiveTypewriterMode) {
 			document.body.classList.add('immersive-typewriter-mode');
 		}
 		
@@ -291,121 +284,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 				this.buildFolderCache();
 			}, 500);
 		});
-
-		// 监听文件修改事件
-		this.registerEvent(this.app.vault.on('modify', async (file) => {
-			if (file instanceof TFile && file.extension === 'md') {
-				// 只处理符合字数统计条件的文件
-				if (!this.isEligibleForWordCount(file)) return;
-				
-				const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-				const isActiveFile = activeView?.file?.path === file.path;
-
-				// 如果不是当前活动文件，说明是通过其他方式修改的（如批量操作、便签保存）
-				// 需要更新每日历史统计
-				// 注：_合并章节 文件已在 isEligibleForWordCount 中被拦截，无需重复判断
-				if (!isActiveFile) {
-					
-					try {
-						const content = await this.app.vault.cachedRead(file);
-						const newWordCount = this.calculateAccurateWords(content);
-						
-						// 从缓存中获取旧的字数
-						const oldWordCount = this.cacheManager.getFileCache(file.path);
-						
-						// [BUGFIX] 如果是新文件、刚被重命名的文件、或刚通过云同步进入工作区的文件，
-						// 缓存中可能没有它，不能视为 0 字，否则会导致历史字数暴涨！
-						if (oldWordCount === null) {
-							// 没有旧数据，不计算增量，直接更新缓存即可
-							this.cacheManager.updateFileCache(file, newWordCount, this.app.vault);
-							
-							// 使用防抖更新缓存和刷新显示
-							this.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
-								this.updateFileCacheAndRefresh(file);
-							}, 500);
-							return;
-						}
-
-						const delta = newWordCount - oldWordCount;
-						if (delta !== 0) {
-							// [BUGFIX] 无论布局是否就绪，都必须立即更新缓存基准！
-							// 否则，如果在启动过程中文件发生了修改（如同步、索引更新），
-							// 缓存将维持旧值，导致布局就绪后的下一次修改产生一个包含启动期所有变动的大 delta。
-							this.cacheManager.updateFileCache(file, newWordCount, this.app.vault);
-
-							// 只有在布局就绪后才记录历史增量，避免启动时的系统性微差导致的统计异常
-							if (this.isLayoutReady) {
-								const today = window.moment().format('YYYY-MM-DD');
-								this.historyManager.addWords(today, delta);
-								
-								// [BUGFIX] 同时更新本次运行的累计字数，确保非活动文件的修改（如便签、同步）
-								// 也能即时反映在状态栏和实时统计视图中。
-								this.sessionAddedWords += delta;
-
-								// 防抖保存设置（历史数据会在独立周期保存）
-								this.adaptiveDebounceManager.debounceFixed('save-settings', () => {
-									this.saveSettings().catch(err => {
-										console.error('[Plugin] 保存设置失败:', err);
-									});
-								}, 1000);
-							}
-						}
-					} catch (error) {
-						console.error('[Plugin] 更新每日历史统计失败:', error);
-					}
-				}
-
-				// 使用防抖（500ms）更新缓存和刷新显示
-				this.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
-					this.updateFileCacheAndRefresh(file);
-				}, 500);
-			}
-		}));
-		
-		// 监听文件删除事件
-		this.registerEvent(this.app.vault.on('delete', (file) => {
-			if (file instanceof TFile && file.extension === 'md') {
-				// 只处理符合字数统计条件的文件
-				if (!this.isEligibleForWordCount(file)) return;
-				
-				// 使缓存失效
-				this.cacheManager.invalidateCache(file.path, this.app.vault);
-				
-				// 防抖刷新显示
-				this.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
-					this.refreshFolderCounts();
-				}, 500);
-			}
-		}));
-		
-		// 监听文件重命名事件
-		this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
-			if (file instanceof TFile && file.extension === 'md') {
-				// 重命名时，旧文件虽然没了，但新文件如果不符合条件（例如重命名为非章节名），就不该更新它的缓存。
-				// 但如果是从章节名改成了非章节名，我们也应该把旧名字从缓存中删掉。
-				if (!this.isFileInWorkspace(file)) return;
-				
-				// [BUGFIX] 重命名时，应该将旧路径的字数转移到新路径的缓存中！
-				// 否则下次 modify 时，getFileCache 返回 null，会被当成全新的文件（之前是 0）导致字数暴涨！
-				const oldCache = this.cacheManager.getFileCache(oldPath);
-				
-				this.cacheManager.invalidateCache(oldPath, this.app.vault);
-				
-				if (this.isEligibleForWordCount(file) && oldCache !== null) {
-					// 主动设置新路径的缓存，防止被后续操作误判为新文件
-					this.cacheManager.updateFileCache(file, oldCache, this.app.vault);
-				}
-
-				this.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
-					this.updateFileCacheAndRefresh(file);
-				}, 500);
-			}
-		}));
-		this.registerEvent(this.app.workspace.on('layout-change', () => {
-			this.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
-				this.refreshFolderCounts();
-			}, 500);
-		}));
+		// 桌面端文件事件监听（由 FileEventManager 管理）
+		this.fileEventManager?.setup();
 
 		this.addRibbonIcon('sticky-note', '新建空白悬浮便签', () => {
 			this.createStickyNote({ content: '', title: '新便签' });
@@ -450,8 +330,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.workerManager.setup();
 
 		// 启动 OBS 叠加层 HTTP Server
-		if (this.settings.enableObs) {
-			this.obsServer = new ObsOverlayServer(this, this.settings.obsPort);
+		if (this.settings.obs.enableObs) {
+			this.obsServer = new ObsOverlayServer(this, this.settings.obs.obsPort);
 			this.obsServer.start();
 		}
 
@@ -706,14 +586,9 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 
 		// 5. 清理定时器和防抖
 		this.adaptiveDebounceManager.cancelAll();
-		if (this.workerRestartTimer) {
-			clearTimeout(this.workerRestartTimer);
-			this.workerRestartTimer = null;
-		}
 
-		// 6. 移除样式
+		// 6. 移除动态样式
 		if (this.styleManager) {
-			this.styleManager.removeGlobalStyles();
 			this.styleManager.removeEyeCare();
 		}
 
@@ -905,15 +780,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.editorTracker.updateWordCount();
 	}
 
-	injectGlobalStyles(): void {
-		this.styleManager.injectGlobalStyles();
-	}
-
-	removeGlobalStyles(): void {
-		this.styleManager.removeGlobalStyles();
-	}
-
-	applyEyeCare(): void {
+applyEyeCare(): void {
 		this.styleManager.applyEyeCare();
 	}
 
@@ -934,44 +801,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	}
 
 	exportLegacyOBS(force: boolean = false) {
-		if (!isDesktop() || !this.settings.enableLegacyObsExport || !this.settings.obsPath) return;
-		try {
-			const fs = window.require('fs') as import('./src/types/node').NodeFS;
-			const path = window.require('path') as import('./src/types/node').NodePath;
-			const dir = this.settings.obsPath;
-			
-			// [安全] 路径校验：防止路径遍历攻击
-			// 确保路径不包含 .. 且不是根目录等危险路径
-			if (dir.includes('..') || dir === '/' || /^[A-Z]:\\?$/i.test(dir)) {
-				throw new Error('无效或危险的 OBS 导出路径');
-			}
-
-			if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-
-			const totalSec = Math.floor((this.focusMs + this.slackMs) / 1000);
-			const focusSec = Math.floor(this.focusMs / 1000);
-			const slackSec = totalSec - focusSec;
-
-			fs.writeFileSync(path.join(dir, 'obs_focus_time.txt'), formatTime(focusSec), 'utf8');
-			fs.writeFileSync(path.join(dir, 'obs_slack_time.txt'), formatTime(slackSec), 'utf8');
-			fs.writeFileSync(path.join(dir, 'obs_total_time.txt'), formatTime(totalSec), 'utf8');
-			fs.writeFileSync(path.join(dir, 'obs_words_done.txt'), Math.max(0, this.sessionAddedWords).toString(), 'utf8');
-
-			let currentGoal = this.settings.defaultGoal;
-			const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-			if (view?.file) {
-				const cache = this.app.metadataCache.getFileCache(view.file);
-				const fmGoal = parseGoal(cache?.frontmatter?.['word-goal']);
-				if (fmGoal > 0) currentGoal = fmGoal;
-			}
-			fs.writeFileSync(path.join(dir, 'obs_words_goal.txt'), currentGoal.toString(), 'utf8');
-		} catch (e) { 
-			if (force) {
-				console.error('[WebNovel Assistant] Legacy OBS export failed:', e);
-			} else {
-				console.warn('[WebNovel Assistant] Legacy OBS export failed (silent mode):', e);
-			}
-		}
+		this.obsHtmlBuilder.exportLegacyOBS(force);
 	}
 
 	getObsStats(): ObsStatsPayload {
@@ -981,93 +811,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	buildObsOverlayHtml(): string {
 		return this.obsHtmlBuilder.buildObsOverlayHtml();
 	}
-	// [BUGFIX] 此方法内部无任何 await，移除多余的 async 标记，
-	// 避免调用方误以为需要 await 从而产生隐式的 Promise 包装开销。
 	refreshFolderCounts() {
-		try {
-			const fileExplorer = this.app.workspace.getLeavesOfType("file-explorer")[0];
-			if (!fileExplorer || !fileExplorer.view) return;
-
-			const view = fileExplorer.view;
-			if (!view.fileItems || typeof view.fileItems !== 'object') return;
-			const fileExplorerItems = view.fileItems;
-
-			// 如果功能关闭，清理所有已存在的统计标记并退出
-			if (!this.settings.showExplorerCounts) {
-				for (const path in fileExplorerItems) {
-					const item = fileExplorerItems[path];
-					if (item.el) {
-						const countEl = this.wordCountElCache.get(item.el) || item.el.querySelector('.folder-word-count');
-						if (countEl) {
-							countEl.remove();
-							this.wordCountElCache.delete(item.el);
-						}
-					}
-				}
-				return;
-			}
-			// --- 使用缓存获取字数 ---
-			let updatedCount = 0;
-			for (const path in fileExplorerItems) {
-				const item = fileExplorerItems[path];
-				// 仅处理 TFolder 和 .md TFile
-				if (item.el && (item.file instanceof TFolder || (item.file instanceof TFile && item.file.extension === 'md'))) {
-					
-					// 检查是否在工作区内
-					let isInWorkspace = true;
-					if (item.file instanceof TFile) {
-						isInWorkspace = this.isEligibleForWordCount(item.file);
-					} else if (item.file instanceof TFolder) {
-						if (this.settings.workspaceFolders && this.settings.workspaceFolders.length > 0) {
-							const folderPath = item.file.path;
-							isInWorkspace = this.settings.workspaceFolders.some(workspace => {
-								const normalizedWorkspace = workspace.replace(/^\/+|\/+$/g, '');
-								return folderPath.startsWith(normalizedWorkspace) || normalizedWorkspace.startsWith(folderPath);
-							});
-						}
-					}
-					
-					if (!isInWorkspace) continue;
-					
-					// 从缓存获取字数
-					const count = this.cacheManager.getFolderCount(path);
-					if (count === null) continue;
-					
-					const labelText = count > 0 ? ` (${formatCount(count)})` : "";
-					let countEl = this.wordCountElCache.get(item.el) as HTMLElement;
-					
-					if (!countEl) {
-						// 尝试从 DOM 获取（可能是上次遗留的）
-						countEl = item.el.querySelector('.folder-word-count') as HTMLElement;
-						if (!countEl) {
-							const titleContent = item.el.querySelector('.nav-folder-title-content') || item.el.querySelector('.nav-file-title-content');
-							if (titleContent) {
-								countEl = titleContent.createEl('span', { cls: 'folder-word-count' });
-								countEl.style.fontSize = '0.8em';
-								countEl.style.opacity = '0.5';
-								countEl.style.marginLeft = '5px';
-							}
-						}
-						// 存入缓存
-						if (countEl) {
-							this.wordCountElCache.set(item.el, countEl);
-						}
-					}
-					
-					// 仅在文本变化时更新，减少 DOM 抖动
-					if (countEl && countEl.textContent !== labelText) {
-						countEl.textContent = labelText;
-						updatedCount++;
-					}
-				}
-			}
-			
-			if (updatedCount > 0) {
-				console.debug(`[WebNovel Assistant] refreshFolderCounts: Updated ${updatedCount} items`);
-			}
-		} catch (error) {
-			console.error('[WebNovel Assistant] refreshFolderCounts failed:', error);
-		}
+		this.fileExplorerPatcher.refreshFolderCounts();
 	}
 
 }

@@ -203,7 +203,7 @@ export class ImmersiveStickyNotesView extends ItemView {
 
 			const noteCard = dockContainer.createDiv({ cls: 'immersive-sticky-card' });
 			noteCard.style.backgroundColor = noteData.color || '#FDF3B8';
-			const noteSize = (this.plugin.settings.immersiveNoteSize || 280) + 'px';
+			const noteSize = (this.plugin.settings.immersive.immersiveNoteSize || 280) + 'px';
 			noteCard.style.width = noteSize; 
 			noteCard.style.height = noteSize;
 			noteCard.style.flex = '0 0 auto';
@@ -305,7 +305,7 @@ export class ImmersiveStickyNotesView extends ItemView {
 			textarea.style.border = 'none';
 			textarea.style.background = 'transparent';
 			textarea.style.color = 'inherit';
-			textarea.style.fontSize = (this.plugin.settings.immersiveNoteFontSize || 14) + 'px';
+			textarea.style.fontSize = (this.plugin.settings.immersive.immersiveNoteFontSize || 14) + 'px';
 			textarea.style.lineHeight = '1.5';
 			textarea.style.fontFamily = 'inherit';
 			textarea.style.outline = 'none';

@@ -2,6 +2,7 @@ import { App, Editor, Notice, TFile, TFolder } from 'obsidian';
 import { ForeshadowingEntry, ForeshadowingStatus, ParsedForeshadowingEntry } from '../types/foreshadowing';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { escapeRegex } from '../utils/validation';
+import { SerializedWriter } from '../utils/SerializedWriter';
 
 /**
  * 伏笔管理服务
@@ -12,8 +13,8 @@ export class ForeshadowingManager {
 	private static readonly entryPatternCache = new Map<string, RegExp>();
 	private static readonly MAX_CACHE_SIZE = 100;
 	
-	/** 写入队列：确保对伏笔文件的读改写操作是原子的 [M-E4] */
-	private saveQueue: Promise<any> = Promise.resolve();
+	/** 串行写入器：确保对伏笔文件的读改写操作是原子的 [M-E4] */
+	private writer = new SerializedWriter();
 
 	constructor(
 		private app: App,
@@ -160,7 +161,7 @@ export class ForeshadowingManager {
 		description: string,
 		tags: string[]
 	): Promise<{ file: TFile; merged: boolean }> {
-		return this.saveQueue = this.saveQueue.then(async () => {
+		return this.writer.enqueue(async () => {
 			let targetFile: TFile | null = null;
 
 			if (this.foreshadowingFileExists(sourceFile)) {
@@ -288,7 +289,7 @@ export class ForeshadowingManager {
 		createdAt: string,
 		recoveryFiles: string[]
 	): Promise<boolean> {
-		return this.saveQueue = this.saveQueue.then(async () => {
+		return this.writer.enqueue(async () => {
 			const content = await this.app.vault.read(targetFile);
 			const now = window.moment().format('YYYY-MM-DD HH:mm');
 

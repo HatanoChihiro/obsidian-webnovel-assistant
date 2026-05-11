@@ -133,6 +133,6 @@ export class WorkerManager {
 		}, 60000);
 		
 		this.plugin.refreshStatusViews();
-		if (this.plugin.settings.enableLegacyObsExport) this.plugin.exportLegacyOBS();
+		if (this.plugin.settings.obs.enableLegacyObsExport) this.plugin.exportLegacyOBS();
 	}
 }

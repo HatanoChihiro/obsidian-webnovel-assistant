@@ -365,9 +365,9 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			.setName('适配打字机模式 (Typewriter Scroll)')
 			.setDesc('开启后将优化沉浸模式下的滚动区域（增加页边距和滚动内边距），解决配合打字机插件使用时的界面跳动问题。若不使用打字机插件，建议关闭以获得原生编辑器体验。')
 			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.immersiveTypewriterMode)
+				.setValue(this.plugin.settings.immersive.immersiveTypewriterMode)
 				.onChange(async (value) => {
-					this.plugin.settings.immersiveTypewriterMode = value;
+					this.plugin.settings.immersive.immersiveTypewriterMode = value;
 					await this.plugin.saveSettings();
 
 					// 立即切换 body class 实现无感生效
@@ -390,55 +390,55 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('显示左侧章节列表')
 			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.immersiveShowChapterList)
+				.setValue(this.plugin.settings.immersive.immersiveShowChapterList)
 				.onChange(async (value) => {
-					this.plugin.settings.immersiveShowChapterList = value;
+					this.plugin.settings.immersive.immersiveShowChapterList = value;
 					// 清除保存的布局快照，强制重新生成
-					this.plugin.settings.immersiveLayout = null;
+					this.plugin.settings.immersive.immersiveLayout = null;
 					await this.plugin.saveSettings();
 				}));
 
 		new Setting(containerEl)
 			.setName('显示右侧参考文档区')
 			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.immersiveShowReference)
+				.setValue(this.plugin.settings.immersive.immersiveShowReference)
 				.onChange(async (value) => {
-					this.plugin.settings.immersiveShowReference = value;
+					this.plugin.settings.immersive.immersiveShowReference = value;
 					// 清除保存的布局快照，强制重新生成
-					this.plugin.settings.immersiveLayout = null;
+					this.plugin.settings.immersive.immersiveLayout = null;
 					await this.plugin.saveSettings();
 				}));
 
 		new Setting(containerEl)
 			.setName('显示悬浮便签陈列区')
 			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.immersiveShowStickyNotes)
+				.setValue(this.plugin.settings.immersive.immersiveShowStickyNotes)
 				.onChange(async (value) => {
-					this.plugin.settings.immersiveShowStickyNotes = value;
+					this.plugin.settings.immersive.immersiveShowStickyNotes = value;
 					// 清除保存的布局快照，强制重新生成
-					this.plugin.settings.immersiveLayout = null;
+					this.plugin.settings.immersive.immersiveLayout = null;
 					await this.plugin.saveSettings();
 				}));
 
 		new Setting(containerEl)
 			.setName('显示伏笔面板')
 			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.immersiveShowForeshadowing)
+				.setValue(this.plugin.settings.immersive.immersiveShowForeshadowing)
 				.onChange(async (value) => {
-					this.plugin.settings.immersiveShowForeshadowing = value;
+					this.plugin.settings.immersive.immersiveShowForeshadowing = value;
 					// 清除保存的布局快照，强制重新生成
-					this.plugin.settings.immersiveLayout = null;
+					this.plugin.settings.immersive.immersiveLayout = null;
 					await this.plugin.saveSettings();
 				}));
 
 		new Setting(containerEl)
 			.setName('显示时间线面板')
 			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.immersiveShowTimeline)
+				.setValue(this.plugin.settings.immersive.immersiveShowTimeline)
 				.onChange(async (value) => {
-					this.plugin.settings.immersiveShowTimeline = value;
+					this.plugin.settings.immersive.immersiveShowTimeline = value;
 					// 清除保存的布局快照，强制重新生成
-					this.plugin.settings.immersiveLayout = null;
+					this.plugin.settings.immersive.immersiveLayout = null;
 					await this.plugin.saveSettings();
 				}));
 
@@ -448,11 +448,11 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			.addDropdown(dropdown => dropdown
 				.addOption('bottom', '主视图下方')
 				.addOption('top', '主视图上方')
-				.setValue(this.plugin.settings.immersivePanelPosition || 'bottom')
+				.setValue(this.plugin.settings.immersive.immersivePanelPosition || 'bottom')
 				.onChange(async (value) => {
-					this.plugin.settings.immersivePanelPosition = value as 'top' | 'bottom';
+					this.plugin.settings.immersive.immersivePanelPosition = value as 'top' | 'bottom';
 					// 清除保存的布局快照，强制重新生成以应用位置更改
-					this.plugin.settings.immersiveLayout = null;
+					this.plugin.settings.immersive.immersiveLayout = null;
 					await this.plugin.saveSettings();
 					new Notice(`位置已切换为: ${value === 'top' ? '上方' : '下方'}，下次进入沉浸模式生效`);
 				}));
@@ -464,10 +464,10 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			.setDesc('沉浸模式下便签的正方形边长。')
 			.addSlider(slider => slider
 				.setLimits(150, 600, 10)
-				.setValue(this.plugin.settings.immersiveNoteSize || 280)
+				.setValue(this.plugin.settings.immersive.immersiveNoteSize || 280)
 				.setDynamicTooltip()
 				.onChange(async (value) => {
-					this.plugin.settings.immersiveNoteSize = value;
+					this.plugin.settings.immersive.immersiveNoteSize = value;
 					await this.plugin.saveSettings();
 				}));
 
@@ -476,10 +476,10 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			.setDesc('沉浸模式下便签文本框内的字体大小。')
 			.addSlider(slider => slider
 				.setLimits(10, 30, 1)
-				.setValue(this.plugin.settings.immersiveNoteFontSize || 14)
+				.setValue(this.plugin.settings.immersive.immersiveNoteFontSize || 14)
 				.setDynamicTooltip()
 				.onChange(async (value) => {
-					this.plugin.settings.immersiveNoteFontSize = value;
+					this.plugin.settings.immersive.immersiveNoteFontSize = value;
 					await this.plugin.saveSettings();
 				}));
 
@@ -488,54 +488,54 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('显示总计时间')
 			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.immersiveShowTotalTime)
+				.setValue(this.plugin.settings.immersive.immersiveShowTotalTime)
 				.onChange(async (value) => {
-					this.plugin.settings.immersiveShowTotalTime = value;
+					this.plugin.settings.immersive.immersiveShowTotalTime = value;
 					await this.plugin.saveSettings();
 				}));
 
 		new Setting(containerEl)
 			.setName('显示专注时间')
 			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.immersiveShowFocusTime)
+				.setValue(this.plugin.settings.immersive.immersiveShowFocusTime)
 				.onChange(async (value) => {
-					this.plugin.settings.immersiveShowFocusTime = value;
+					this.plugin.settings.immersive.immersiveShowFocusTime = value;
 					await this.plugin.saveSettings();
 				}));
 
 		new Setting(containerEl)
 			.setName('显示摸鱼时间')
 			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.immersiveShowSlackTime)
+				.setValue(this.plugin.settings.immersive.immersiveShowSlackTime)
 				.onChange(async (value) => {
-					this.plugin.settings.immersiveShowSlackTime = value;
+					this.plugin.settings.immersive.immersiveShowSlackTime = value;
 					await this.plugin.saveSettings();
 				}));
 
 		new Setting(containerEl)
 			.setName('显示章节目标进度')
 			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.immersiveShowChapterProgress)
+				.setValue(this.plugin.settings.immersive.immersiveShowChapterProgress)
 				.onChange(async (value) => {
-					this.plugin.settings.immersiveShowChapterProgress = value;
+					this.plugin.settings.immersive.immersiveShowChapterProgress = value;
 					await this.plugin.saveSettings();
 				}));
 
 		new Setting(containerEl)
 			.setName('显示今日目标进度')
 			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.immersiveShowDailyProgress)
+				.setValue(this.plugin.settings.immersive.immersiveShowDailyProgress)
 				.onChange(async (value) => {
-					this.plugin.settings.immersiveShowDailyProgress = value;
+					this.plugin.settings.immersive.immersiveShowDailyProgress = value;
 					await this.plugin.saveSettings();
 				}));
 
 		new Setting(containerEl)
 			.setName('显示本场净增')
 			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.immersiveShowSessionWords)
+				.setValue(this.plugin.settings.immersive.immersiveShowSessionWords)
 				.onChange(async (value) => {
-					this.plugin.settings.immersiveShowSessionWords = value;
+					this.plugin.settings.immersive.immersiveShowSessionWords = value;
 					await this.plugin.saveSettings();
 				}));
 	}
@@ -698,9 +698,9 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			.setName('启用数据叠加层 (OBS/直播)')
 			.setDesc('在本地启动 HTTP 服务，OBS 通过「浏览器源」加载实时统计面板，零磁盘 I/O。')
 			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.enableObs)
+				.setValue(this.plugin.settings.obs.enableObs)
 				.onChange(async (value) => {
-					this.plugin.settings.enableObs = value;
+					this.plugin.settings.obs.enableObs = value;
 					await this.plugin.saveSettings();
 					if (value) {
 						// 先停止旧服务器（如果存在）
@@ -708,7 +708,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 							this.plugin.obsServer.stop();
 						}
 						// 使用当前端口创建新服务器
-						this.plugin.obsServer = new ObsOverlayServer(this.plugin, this.plugin.settings.obsPort);
+						this.plugin.obsServer = new ObsOverlayServer(this.plugin, this.plugin.settings.obs.obsPort);
 						this.plugin.obsServer.start();
 					} else {
 						this.plugin.obsServer?.stop();
@@ -719,18 +719,18 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			.setName('叠加层端口')
 			.setDesc('OBS 浏览器源访问的端口号，修改后需重启叠加层。')
 			.addText(text => text
-				.setValue(this.plugin.settings.obsPort.toString())
+				.setValue(this.plugin.settings.obs.obsPort.toString())
 				.onChange(async (value) => {
 					const parsed = parseInt(value, 10);
 					if (parsed >= VALIDATION_RULES.PORT_RANGE.min &&
 						parsed <= VALIDATION_RULES.PORT_RANGE.max) {
-						this.plugin.settings.obsPort = parsed;
+						this.plugin.settings.obs.obsPort = parsed;
 						await this.plugin.saveSettings();
 
 						// 如果 OBS 服务器正在运行，重启以应用新端口
-						if (this.plugin.settings.enableObs && this.plugin.obsServer) {
+						if (this.plugin.settings.obs.enableObs && this.plugin.obsServer) {
 							this.plugin.obsServer.stop();
-							this.plugin.obsServer = new ObsOverlayServer(this.plugin, this.plugin.settings.obsPort);
+							this.plugin.obsServer = new ObsOverlayServer(this.plugin, this.plugin.settings.obs.obsPort);
 							this.plugin.obsServer.start();
 							new Notice(`OBS 叠加层已重启，新端口：${parsed}`);
 						}
@@ -744,10 +744,10 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			.setDesc('调整 OBS 叠加层卡片背景的透明度 (0为完全透明)。')
 			.addSlider(slider => slider
 				.setLimits(0, 1, 0.05)
-				.setValue(this.plugin.settings.obsOverlayOpacity ?? 0.85)
+				.setValue(this.plugin.settings.obs.obsOverlayOpacity ?? 0.85)
 				.setDynamicTooltip()
 				.onChange(async (value) => {
-					this.plugin.settings.obsOverlayOpacity = value;
+					this.plugin.settings.obs.obsOverlayOpacity = value;
 					await this.plugin.saveSettings();
 				}));
 
@@ -756,9 +756,9 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			.setDesc('通过覆盖 CSS 类名修改样式')
 			.addTextArea(text => {
 				text.setPlaceholder('/* 例：修改摸鱼时间为绿色 */ .time-value.slack { color: #4CAF50 !important; }')
-					.setValue(this.plugin.settings.obsCustomCss)
+					.setValue(this.plugin.settings.obs.obsCustomCss)
 					.onChange(async (value) => {
-						this.plugin.settings.obsCustomCss = value;
+						this.plugin.settings.obs.obsCustomCss = value;
 						await this.plugin.saveSettings();
 					});
 				text.inputEl.style.cssText = 'width: 100%; height: 100px; font-family: monospace;';
@@ -773,9 +773,9 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				this.plugin.settings.noteThemes.forEach((theme: any, index: number) => {
 					dropdown.addOption(`note-${index}`, `便签预设色 ${index + 1}`);
 				});
-				dropdown.setValue(this.plugin.settings.obsOverlayTheme);
+				dropdown.setValue(this.plugin.settings.obs.obsOverlayTheme);
 				dropdown.onChange(async (value) => {
-					this.plugin.settings.obsOverlayTheme = value;
+					this.plugin.settings.obs.obsOverlayTheme = value;
 					await this.plugin.saveSettings();
 				});
 			});
@@ -783,43 +783,43 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		// OBS 显示选项
 		new Setting(containerEl)
 			.setName('显示总计时间')
-			.addToggle(toggle => toggle.setValue(this.plugin.settings.obsShowTotalTime).onChange(async (v) => {
-				this.plugin.settings.obsShowTotalTime = v;
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.obs.obsShowTotalTime).onChange(async (v) => {
+				this.plugin.settings.obs.obsShowTotalTime = v;
 				await this.plugin.saveSettings();
 			}));
 
 		new Setting(containerEl)
 			.setName('显示专注时间')
-			.addToggle(toggle => toggle.setValue(this.plugin.settings.obsShowFocusTime).onChange(async (v) => {
-				this.plugin.settings.obsShowFocusTime = v;
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.obs.obsShowFocusTime).onChange(async (v) => {
+				this.plugin.settings.obs.obsShowFocusTime = v;
 				await this.plugin.saveSettings();
 			}));
 
 		new Setting(containerEl)
 			.setName('显示摸鱼时间')
-			.addToggle(toggle => toggle.setValue(this.plugin.settings.obsShowSlackTime).onChange(async (v) => {
-				this.plugin.settings.obsShowSlackTime = v;
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.obs.obsShowSlackTime).onChange(async (v) => {
+				this.plugin.settings.obs.obsShowSlackTime = v;
 				await this.plugin.saveSettings();
 			}));
 
 		new Setting(containerEl)
 			.setName('显示今日目标进度')
-			.addToggle(toggle => toggle.setValue(this.plugin.settings.obsShowDailyGoal ?? true).onChange(async (v) => {
-				this.plugin.settings.obsShowDailyGoal = v;
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.obs.obsShowDailyGoal ?? true).onChange(async (v) => {
+				this.plugin.settings.obs.obsShowDailyGoal = v;
 				await this.plugin.saveSettings();
 			}));
 
 		new Setting(containerEl)
 			.setName('显示章节目标进度')
-			.addToggle(toggle => toggle.setValue(this.plugin.settings.obsShowTodayWords).onChange(async (v) => {
-				this.plugin.settings.obsShowTodayWords = v;
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.obs.obsShowTodayWords).onChange(async (v) => {
+				this.plugin.settings.obs.obsShowTodayWords = v;
 				await this.plugin.saveSettings();
 			}));
 
 		new Setting(containerEl)
 			.setName('显示本场净增')
-			.addToggle(toggle => toggle.setValue(this.plugin.settings.obsShowSessionWords).onChange(async (v) => {
-				this.plugin.settings.obsShowSessionWords = v;
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.obs.obsShowSessionWords).onChange(async (v) => {
+				this.plugin.settings.obs.obsShowSessionWords = v;
 				await this.plugin.saveSettings();
 			}));
 
@@ -829,7 +829,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			.addButton(btn => btn
 				.setButtonText('复制 URL')
 				.onClick(() => {
-					const url = `http://127.0.0.1:${this.plugin.settings.obsPort}/`;
+					const url = `http://127.0.0.1:${this.plugin.settings.obs.obsPort}/`;
 					navigator.clipboard.writeText(url);
 					new Notice(`已复制: ${url}`);
 				}));
@@ -842,9 +842,9 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			.setName('启用本地文本文件导出')
 			.setDesc('开启后，插件将像以前一样每秒将专注时间、摸鱼时间等数据写入纯文本文件中。')
 			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.enableLegacyObsExport)
+				.setValue(this.plugin.settings.obs.enableLegacyObsExport)
 				.onChange(async (value) => {
-					this.plugin.settings.enableLegacyObsExport = value;
+					this.plugin.settings.obs.enableLegacyObsExport = value;
 					await this.plugin.saveSettings();
 				}));
 
@@ -853,9 +853,9 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			.setDesc('请填入绝对路径 (例如 D:\\OBS\\Stats)')
 			.addText(text => text
 				.setPlaceholder('请输入文件夹路径')
-				.setValue(this.plugin.settings.obsPath)
+				.setValue(this.plugin.settings.obs.obsPath)
 				.onChange(async (value) => {
-					this.plugin.settings.obsPath = value;
+					this.plugin.settings.obs.obsPath = value;
 					await this.plugin.saveSettings();
 				}));
 	}

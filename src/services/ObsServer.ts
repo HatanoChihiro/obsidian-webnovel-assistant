@@ -61,8 +61,8 @@ export class ObsOverlayServer {
 				console.error('[WebNovel Assistant] OBS 服务器错误:', e);
 				
 				// 降级: 自动切换到文件导出模式
-				this.plugin.settings.enableObs = false;
-				this.plugin.settings.enableLegacyObsExport = true;
+				this.plugin.settings.obs.enableObs = false;
+				this.plugin.settings.obs.enableLegacyObsExport = true;
 				await this.plugin.saveSettings();
 				
 				if (e.code === 'EADDRINUSE') {
@@ -91,8 +91,8 @@ export class ObsOverlayServer {
 			console.error('[WebNovel Assistant] 无法启动 OBS 服务器:', e);
 			
 			// 降级: 自动切换到文件导出模式
-			this.plugin.settings.enableObs = false;
-			this.plugin.settings.enableLegacyObsExport = true;
+			this.plugin.settings.obs.enableObs = false;
+			this.plugin.settings.obs.enableLegacyObsExport = true;
 			this.plugin.saveSettings();
 			
 			new Notice(

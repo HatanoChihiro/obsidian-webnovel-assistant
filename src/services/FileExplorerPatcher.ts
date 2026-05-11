@@ -1,5 +1,7 @@
 import { App, EventRef, TFolder, TFile } from 'obsidian';
+import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ChapterSorter } from './ChapterSorter';
+import { formatCount } from '../utils';
 
 /**
  * 文件浏览器补丁管理器
@@ -9,12 +11,15 @@ import { ChapterSorter } from './ChapterSorter';
  */
 export class FileExplorerPatcher {
 	private app: App;
+	private plugin: WebNovelAssistantPlugin;
 	private enabled: boolean = false;
 	private unpatchFunc: (() => void) | null = null;
 	private eventRefs: EventRef[] = [];
+	private wordCountElCache = new WeakMap<HTMLElement, HTMLElement>();
 
-	constructor(app: App) {
+	constructor(app: App, plugin: WebNovelAssistantPlugin) {
 		this.app = app;
+		this.plugin = plugin;
 	}
 
 	/**
@@ -210,6 +215,93 @@ export class FileExplorerPatcher {
 
 	isEnabled(): boolean {
 		return this.enabled;
+	}
+
+	refreshFolderCounts() {
+		try {
+			const fileExplorer = this.app.workspace.getLeavesOfType("file-explorer")[0];
+			if (!fileExplorer || !fileExplorer.view) return;
+
+			const view = fileExplorer.view;
+			if (!view.fileItems || typeof view.fileItems !== 'object') return;
+			const fileExplorerItems = view.fileItems;
+
+			// 如果功能关闭，清理所有已存在的统计标记并退出
+			if (!this.plugin.settings.showExplorerCounts) {
+				for (const path in fileExplorerItems) {
+					const item = fileExplorerItems[path];
+					if (item.el) {
+						const countEl = this.wordCountElCache.get(item.el) || item.el.querySelector('.folder-word-count');
+						if (countEl) {
+							countEl.remove();
+							this.wordCountElCache.delete(item.el);
+						}
+					}
+				}
+				return;
+			}
+			// --- 使用缓存获取字数 ---
+			let updatedCount = 0;
+			for (const path in fileExplorerItems) {
+				const item = fileExplorerItems[path];
+				// 仅处理 TFolder 和 .md TFile
+				if (item.el && (item.file instanceof TFolder || (item.file instanceof TFile && item.file.extension === 'md'))) {
+
+					// 检查是否在工作区内
+					let isInWorkspace = true;
+					if (item.file instanceof TFile) {
+						isInWorkspace = this.plugin.isEligibleForWordCount(item.file);
+					} else if (item.file instanceof TFolder) {
+						if (this.plugin.settings.workspaceFolders && this.plugin.settings.workspaceFolders.length > 0) {
+							const folderPath = item.file.path;
+							isInWorkspace = this.plugin.settings.workspaceFolders.some(workspace => {
+								const normalizedWorkspace = workspace.replace(/^\/+|\/+$/g, '');
+								return folderPath.startsWith(normalizedWorkspace) || normalizedWorkspace.startsWith(folderPath);
+							});
+						}
+					}
+
+					if (!isInWorkspace) continue;
+
+					// 从缓存获取字数
+					const count = this.plugin.cacheManager.getFolderCount(path);
+					if (count === null) continue;
+
+					const labelText = count > 0 ? ` (${formatCount(count)})` : "";
+					let countEl = this.wordCountElCache.get(item.el) as HTMLElement;
+
+					if (!countEl) {
+						// 尝试从 DOM 获取（可能是上次遗留的）
+						countEl = item.el.querySelector('.folder-word-count') as HTMLElement;
+						if (!countEl) {
+							const titleContent = item.el.querySelector('.nav-folder-title-content') || item.el.querySelector('.nav-file-title-content');
+							if (titleContent) {
+								countEl = titleContent.createEl('span', { cls: 'folder-word-count' });
+								countEl.style.fontSize = '0.8em';
+								countEl.style.opacity = '0.5';
+								countEl.style.marginLeft = '5px';
+							}
+						}
+						// 存入缓存
+						if (countEl) {
+							this.wordCountElCache.set(item.el, countEl);
+						}
+					}
+
+					// 仅在文本变化时更新，减少 DOM 抖动
+					if (countEl && countEl.textContent !== labelText) {
+						countEl.textContent = labelText;
+						updatedCount++;
+					}
+				}
+			}
+
+			if (updatedCount > 0) {
+				console.debug(`[WebNovel Assistant] refreshFolderCounts: Updated ${updatedCount} items`);
+			}
+		} catch (error) {
+			console.error('[WebNovel Assistant] refreshFolderCounts failed:', error);
+		}
 	}
 
 	refreshManually(): void {
