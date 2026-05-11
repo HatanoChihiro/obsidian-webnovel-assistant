@@ -20,7 +20,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 	}
 
 	display(): void {
-		const {containerEl} = this;
+		const { containerEl } = this;
 		containerEl.empty();
 
 		containerEl.createEl('h1', { text: 'WebNovel Assistant 设置' });
@@ -82,10 +82,10 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			});
 			mobileNotice.createEl('strong', { text: tier === 'mobile' ? '📱 移动端模式' : '📱 平板端模式' });
 			mobileNotice.createEl('br');
-			mobileNotice.appendText(tier === 'mobile' 
-				? '部分高级功能(面板、便签、OBS)仅在桌面端可用。' 
+			mobileNotice.appendText(tier === 'mobile'
+				? '部分高级功能(面板、便签、OBS)仅在桌面端可用。'
 				: '已启用面板功能。便签和 OBS 仅在桌面端可用。');
-			
+
 			new Setting(containerEl)
 				.setName('显示浮动字数统计')
 				.setDesc('在屏幕上显示浮动小窗，实时显示字数进度。')
@@ -103,7 +103,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					}));
 		}
 
-		containerEl.createEl('h2', {text: '核心功能设置'});
+		containerEl.createEl('h2', { text: '核心功能设置' });
 
 		new Setting(containerEl)
 			.setName('工作区文件夹')
@@ -142,6 +142,47 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				}));
 
 		new Setting(containerEl)
+			.setName('启用字数实时提醒')
+			.setDesc('开启后，将在编辑器的左侧行号区域，按照设定的字数间隔实时显示当前行的累计字数。')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.enableWordCountGutter)
+				.onChange(async (value) => {
+					this.plugin.settings.enableWordCountGutter = value;
+					await this.plugin.saveSettings();
+					// 触发事件通知扩展重新配置或挂载
+					this.app.workspace.trigger('webnovel:word-count-gutter-settings-changed');
+				}));
+
+		new Setting(containerEl)
+			.setName('字数提醒间隔')
+			.setDesc('设置每隔多少字在左侧显示一次提示标签。')
+			.addText(text => text
+				.setValue((this.plugin.settings.wordCountInterval || 2000).toString())
+				.onChange(async (v) => {
+					const p = parseInt(v);
+					if (!isNaN(p) && p > 0) {
+						this.plugin.settings.wordCountInterval = p;
+						await this.plugin.saveSettings();
+						this.app.workspace.trigger('webnovel:word-count-gutter-settings-changed');
+					}
+				}));
+
+		new Setting(containerEl)
+			.setName('启用严格章节模式')
+			.setDesc('所有涉及字数相关（目标、统计、字数提醒等）的功能均只在符合命名规则的文档中生效。')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.enableStrictChapterMode)
+				.onChange(async (value) => {
+					this.plugin.settings.enableStrictChapterMode = value;
+					await this.plugin.saveSettings();
+					this.plugin.updateWordCount();
+					// 如果开启了文件夹统计，切换模式时需要重建缓存以保证数据一致性
+					if (this.plugin.settings.showExplorerCounts) {
+						this.plugin.buildFolderCache();
+					}
+				}));
+
+		new Setting(containerEl)
 			.setName('默认章节目标')
 			.addText(text => text.setValue(this.plugin.settings.defaultGoal.toString()).onChange(async (v) => {
 				const p = parseInt(v); if (!isNaN(p)) { this.plugin.settings.defaultGoal = p; await this.plugin.saveSettings(); }
@@ -166,7 +207,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 						else this.plugin.fileExplorerPatcher.disable();
 						this.display();
 					}));
-			
+
 			if (this.plugin.settings.enableSmartChapterSort) {
 				this.displaySortingRules(containerEl);
 			}
@@ -177,9 +218,9 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('排序规则配置')
 			.setHeading();
-		
+
 		const rulesContainer = containerEl.createDiv({ style: 'width: 100%;' });
-		
+
 		const renderRules = () => {
 			rulesContainer.empty();
 			this.plugin.settings.chapterNamingRules.forEach((rule, index) => {
@@ -192,9 +233,31 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				s.settingEl.style.display = 'flex';
 				s.settingEl.style.alignItems = 'center';
 				s.settingEl.style.gap = '10px';
-				
+
 				// 移除默认的 info 区域，腾出空间
 				s.infoEl.remove();
+
+				// ── 上移/下移按鈕列 ──
+				const rules = this.plugin.settings.chapterNamingRules;
+				const orderBtns = s.settingEl.createDiv({ attr: { style: 'display:flex;flex-direction:column;gap:2px;flex-shrink:0;' } });
+				const upBtn = orderBtns.createEl('button', { text: '▲', attr: { title: '上移', style: 'font-size:10px;padding:1px 5px;cursor:pointer;line-height:1.2;' } });
+				const downBtn = orderBtns.createEl('button', { text: '▼', attr: { title: '下移', style: 'font-size:10px;padding:1px 5px;cursor:pointer;line-height:1.2;' } });
+				if (index === 0) upBtn.disabled = true;
+				if (index === rules.length - 1) downBtn.disabled = true;
+				upBtn.onclick = async () => {
+					[rules[index - 1], rules[index]] = [rules[index], rules[index - 1]];
+					await this.plugin.saveSettings();
+					ChapterSorter.setCustomRules(rules);
+					this.plugin.fileExplorerPatcher.refreshManually();
+					renderRules();
+				};
+				downBtn.onclick = async () => {
+					[rules[index + 1], rules[index]] = [rules[index], rules[index + 1]];
+					await this.plugin.saveSettings();
+					ChapterSorter.setCustomRules(rules);
+					this.plugin.fileExplorerPatcher.refreshManually();
+					renderRules();
+				};
 
 				s.addToggle(chk => chk
 					.setValue(rule.enabled)
@@ -282,7 +345,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 
 		const colorSetting = new Setting(containerEl).setName('主题色方案').setDesc('自定义 6 种预设配色。');
 		const colorContainer = colorSetting.controlEl.createDiv({ attr: { style: 'display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;' } });
-		
+
 		this.plugin.settings.noteThemes.forEach((theme: any, index: number) => {
 			const themeDiv = colorContainer.createDiv({ attr: { style: 'display: flex; align-items: center; gap: 4px; background: var(--background-modifier-form-field); padding: 4px; border-radius: 4px;' } });
 			const bg = themeDiv.createEl('input', { type: 'color', value: theme.bg });
@@ -303,14 +366,14 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.immersiveTypewriterMode = value;
 					await this.plugin.saveSettings();
-					
+
 					// 立即切换 body class 实现无感生效
 					if (value) {
 						document.body.classList.add('immersive-typewriter-mode');
 					} else {
 						document.body.classList.remove('immersive-typewriter-mode');
 					}
-					
+
 					// 强制刷新所有编辑器以应用滚动内边距
 					this.app.workspace.iterateAllLeaves(leaf => {
 						if (leaf.view instanceof MarkdownView) {
@@ -392,7 +455,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				}));
 
 		containerEl.createEl('h3', { text: '沉浸模式便签设置' });
-		
+
 		new Setting(containerEl)
 			.setName('便签显示尺寸 (px)')
 			.setDesc('沉浸模式下便签的正方形边长。')
@@ -609,7 +672,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 	}
 
 	private displayDataSettings(containerEl: HTMLElement): void {
-		containerEl.createEl('h2', {text: '数据统计与输出设置'});
+		containerEl.createEl('h2', { text: '数据统计与输出设置' });
 
 		new Setting(containerEl)
 			.setName('精准专注度判定阈值 (秒)')
@@ -656,11 +719,11 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.obsPort.toString())
 				.onChange(async (value) => {
 					const parsed = parseInt(value);
-					if (parsed >= VALIDATION_RULES.PORT_RANGE.min && 
-					    parsed <= VALIDATION_RULES.PORT_RANGE.max) {
+					if (parsed >= VALIDATION_RULES.PORT_RANGE.min &&
+						parsed <= VALIDATION_RULES.PORT_RANGE.max) {
 						this.plugin.settings.obsPort = parsed;
 						await this.plugin.saveSettings();
-						
+
 						// 如果 OBS 服务器正在运行，重启以应用新端口
 						if (this.plugin.settings.enableObs && this.plugin.obsServer) {
 							this.plugin.obsServer.stop();
@@ -717,25 +780,25 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		// OBS 显示选项
 		new Setting(containerEl)
 			.setName('显示总计时间')
-			.addToggle(toggle => toggle.setValue(this.plugin.settings.obsShowTotalTime).onChange(async (v) => { 
-				this.plugin.settings.obsShowTotalTime = v; 
-				await this.plugin.saveSettings(); 
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.obsShowTotalTime).onChange(async (v) => {
+				this.plugin.settings.obsShowTotalTime = v;
+				await this.plugin.saveSettings();
 			}));
-		
+
 		new Setting(containerEl)
 			.setName('显示专注时间')
-			.addToggle(toggle => toggle.setValue(this.plugin.settings.obsShowFocusTime).onChange(async (v) => { 
-				this.plugin.settings.obsShowFocusTime = v; 
-				await this.plugin.saveSettings(); 
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.obsShowFocusTime).onChange(async (v) => {
+				this.plugin.settings.obsShowFocusTime = v;
+				await this.plugin.saveSettings();
 			}));
-		
+
 		new Setting(containerEl)
 			.setName('显示摸鱼时间')
-			.addToggle(toggle => toggle.setValue(this.plugin.settings.obsShowSlackTime).onChange(async (v) => { 
-				this.plugin.settings.obsShowSlackTime = v; 
-				await this.plugin.saveSettings(); 
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.obsShowSlackTime).onChange(async (v) => {
+				this.plugin.settings.obsShowSlackTime = v;
+				await this.plugin.saveSettings();
 			}));
-		
+
 		new Setting(containerEl)
 			.setName('显示今日目标进度')
 			.addToggle(toggle => toggle.setValue(this.plugin.settings.obsShowDailyGoal ?? true).onChange(async (v) => {
@@ -745,16 +808,16 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('显示章节目标进度')
-			.addToggle(toggle => toggle.setValue(this.plugin.settings.obsShowTodayWords).onChange(async (v) => { 
-				this.plugin.settings.obsShowTodayWords = v; 
-				await this.plugin.saveSettings(); 
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.obsShowTodayWords).onChange(async (v) => {
+				this.plugin.settings.obsShowTodayWords = v;
+				await this.plugin.saveSettings();
 			}));
-		
+
 		new Setting(containerEl)
 			.setName('显示本场净增')
-			.addToggle(toggle => toggle.setValue(this.plugin.settings.obsShowSessionWords).onChange(async (v) => { 
-				this.plugin.settings.obsShowSessionWords = v; 
-				await this.plugin.saveSettings(); 
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.obsShowSessionWords).onChange(async (v) => {
+				this.plugin.settings.obsShowSessionWords = v;
+				await this.plugin.saveSettings();
 			}));
 
 		new Setting(containerEl)
@@ -770,8 +833,8 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 	}
 
 	private displayLegacyExportSettings(containerEl: HTMLElement): void {
-		containerEl.createEl('h3', {text: '文本文件导出 (兼容)'});
-		
+		containerEl.createEl('h3', { text: '文本文件导出 (兼容)' });
+
 		new Setting(containerEl)
 			.setName('启用本地文本文件导出')
 			.setDesc('开启后，插件将像以前一样每秒将专注时间、摸鱼时间等数据写入纯文本文件中。')

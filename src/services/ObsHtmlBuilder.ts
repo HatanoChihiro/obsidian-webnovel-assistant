@@ -68,20 +68,20 @@ export class ObsHtmlBuilder {
 			.replace(/<script[\s\S]*?<\/script>/gi, '')
 			// 移除 </style> 闭合标签
 			.replace(/<\/style/gi, '<\\/style')
+			// [安全] 全面拦截 @import（防止加载外部恶意 CSS）
+			.replace(/@import\b[^;]*/gi, '/* @import blocked */')
 			// 移除 javascript: 协议
 			.replace(/javascript:/gi, '')
+			// [安全] 拦截 url() 中的危险协议（javascript/data/vbscript）
+			.replace(/url\s*\(\s*['"]?\s*(?:javascript|data|vbscript):/gi, 'url(blocked:')
 			// 移除 expression() (IE 遗留)
 			.replace(/expression\s*\(/gi, '')
-			// 移除 @import 中的 javascript
-			.replace(/@import\s+['"]?javascript:/gi, '')
 			// 移除 behavior 属性 (IE 遗留)
 			.replace(/behavior\s*:/gi, '')
 			// 移除 -moz-binding (Firefox 遗留)
 			.replace(/-moz-binding\s*:/gi, '')
 			// 移除 vbscript: 协议
-			.replace(/vbscript:/gi, '')
-			// 移除 data: 协议（可能包含 base64 编码的脚本）
-			.replace(/data:text\/html/gi, '');
+			.replace(/vbscript:/gi, '');
 		
 		// 白名单验证：只允许常见的 CSS 属性
 		const allowedProperties = [
@@ -152,7 +152,7 @@ export class ObsHtmlBuilder {
 		let todayGoalHtml = '';
 		if (this.plugin.settings.obsShowDailyGoal) {
 			todayGoalHtml += `\n\t<div class="goal-row">
-		<span class="goal-label">每日目标字数</span>
+		<span class="goal-label">今日目标字数</span>
 		<span class="goal-value"><span id="dailyWords" class="current-val">0</span> <span class="sep">/</span> <span id="dailyGoalValue" class="target-val">0</span><span class="percent" id="dailyPercentText">0%</span></span>
 	</div>
 	<div class="progress-bg">

@@ -20,11 +20,8 @@ export class EditorTracker {
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (!view) return;
 		
-		// 只统计工作区内的文件
-		if (view.file && !this.plugin.isFileInWorkspace(view.file)) return;
-		
-		// 排除合并章节文件（文件名包含 "_合并章节"）
-		if (view.file && view.file.basename.includes('_合并章节')) return;
+		// 严格模式：必须符合字数统计条件（工作区、排除合并章节、严格章节模式）
+		if (view.file && !this.plugin.isEligibleForWordCount(view.file)) return;
         
 		this.plugin.lastEditTime = Date.now(); 
         
@@ -56,6 +53,10 @@ export class EditorTracker {
 		}
 		
 		this.plugin.lastFileWords = currentCount;
+		
+		// [BUGFIX] 同步更新文件浏览器缓存
+		// 极其重要：这确保了后续 modify 事件（由自动保存触发）计算出的 delta 为 0，防止重复统计。
+		this.plugin.cacheManager.updateFileCache(view.file, currentCount, this.app.vault);
 
 		this.updateWordCount();
 		this.plugin.refreshStatusViews();
@@ -68,8 +69,8 @@ export class EditorTracker {
 	handleFileChange(): void {
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 		
-		// 只统计工作区内的文件
-		if (view?.file && !this.plugin.isFileInWorkspace(view.file)) {
+		// 严格模式：必须符合字数统计条件
+		if (view?.file && !this.plugin.isEligibleForWordCount(view.file)) {
 			this.plugin.lastFileWords = 0;
 			this.plugin.statusBarItemEl.setText('');
 			return;
@@ -77,6 +78,12 @@ export class EditorTracker {
 		
 		this.plugin.lastFileWords = view ? this.plugin.calculateAccurateWords(view.getViewData()) : 0;
 		this.plugin.lastFilePath = view?.file?.path || '';
+		
+		// [BUGFIX] 切换文件时立即同步缓存基准
+		if (view?.file) {
+			this.plugin.cacheManager.updateFileCache(view.file, this.plugin.lastFileWords, this.app.vault);
+		}
+		
 		this.updateWordCount();
 		this.plugin.refreshStatusViews();
 	}
@@ -91,8 +98,8 @@ export class EditorTracker {
 			return; 
 		}
 
-		// 只显示工作区内文件的字数统计
-		if (view.file && !this.plugin.isFileInWorkspace(view.file)) {
+		// 严格模式：只显示符合字数统计条件的文件的字数统计
+		if (view.file && !this.plugin.isEligibleForWordCount(view.file)) {
 			this.plugin.statusBarItemEl.setText('');
 			return;
 		}

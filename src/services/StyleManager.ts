@@ -6,7 +6,7 @@ import type { AccurateCountSettings } from '../types/settings';
  * 负责全局样式注入、护眼模式等样式相关功能
  */
 export class StyleManager {
-	constructor(private settings: AccurateCountSettings) {}
+	constructor(private settings: AccurateCountSettings) { }
 
 	/**
 	 * 注入全局样式
@@ -43,6 +43,59 @@ export class StyleManager {
 				.history-chart-title { font-size: 0.95em; font-weight: 600; color: var(--text-normal); margin-bottom: 4px; }
 				.history-chart-subtitle { font-size: 0.75em; color: var(--text-muted); margin-bottom: 8px; cursor: pointer; }
 				.history-chart-subtitle:hover { color: var(--interactive-accent); text-decoration: underline; }
+
+				/* 字数实时提醒 (行号字数统计) 样式 - 完全零宽度，绝不占用/推挤正文排版 */
+				.webnovel-word-count-gutter { width: 0px !important; min-width: 0px !important; border: none !important; padding: 0 !important; margin: 0 !important; overflow: visible !important; }
+				
+				/* 当本插件的 Gutter 是唯一的 Gutter 时（即没开行号等），清除 Obsidian 默认给 Gutter 容器加的所有边距，彻底消除缩进占位 */
+				.cm-gutters:has(.webnovel-word-count-gutter:only-child) {
+					margin-right: 0 !important;
+					padding-right: 0 !important;
+					border-right: none !important;
+					background: transparent !important;
+				}
+
+				/* 非工作区/非章节时，直接隐藏整个容器（如果只有我们的话） */
+				.cm-editor:not(.webnovel-show-gutter) .cm-gutters:has(.webnovel-word-count-gutter:only-child) {
+					display: none !important;
+				}
+
+				/* 非工作区/非章节时，隐藏我们的 gutter */
+				.cm-editor:not(.webnovel-show-gutter) .webnovel-word-count-gutter {
+					display: none !important;
+				}
+
+				/* 默认隐藏标签 */
+				.webnovel-word-count-marker-wrapper { display: none; }
+				
+				/* 激活状态下悬浮显示，使用 wrapper 完美消解宽高影响 */
+				.webnovel-show-gutter .webnovel-word-count-marker-wrapper { 
+					display: flex;
+					align-items: center; /* 依托内部的零宽字符实现完美的文本基线级垂直居中 */
+					justify-content: flex-end;
+					width: 0px !important;
+					/* 移除所有硬编码高度，完全靠 \u200B 撑开，绝对匹配当前编辑器行高 */
+					overflow: visible !important;
+				}
+				
+				.webnovel-show-gutter .webnovel-word-count-marker {
+					display: inline-block; 
+					font-size: 0.75em; 
+					color: var(--text-on-accent); 
+					background-color: #F5A623; 
+					border-radius: 4px; 
+					padding: 2px 4px; 
+					line-height: 1; 
+					font-family: var(--font-monospace); 
+					font-weight: bold; 
+					box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+					white-space: nowrap;
+					z-index: 99;
+					pointer-events: none; /* 避免阻挡鼠标点击左侧区域 */
+					/* 相对于 wrapper 向左推，微调使其对齐文本行 */
+					margin-right: 12px;
+					/* 移除 margin-top，完全交给 flex-center 自动调度 */
+				}
 
 				.history-stats-modal { min-width: 600px; }
 				.stats-tab-group { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid var(--background-modifier-border); padding-bottom: 10px; }

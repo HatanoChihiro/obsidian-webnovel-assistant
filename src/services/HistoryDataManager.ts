@@ -77,12 +77,12 @@ export class HistoryDataManager {
 	 * 使用队列确保串行化，避免并发写入冲突
 	 */
 	async saveHistory(): Promise<void> {
-		if (!this.dirty) {
-			// 无变更，跳过保存
-			return;
-		}
-
+		// [BUGFIX] 将脏标记检查移入队列内部，防止竞态：
+		// 如果在队列排队期间有新的 addWords() 设置 dirty=true，
+		// 旧的保存完成后不会误重置新变更的 dirty 标记。
 		this.saveQueue = this.saveQueue.then(async () => {
+			if (!this.dirty) return;
+
 			try {
 				const adapter = this.plugin.app.vault.adapter;
 				const content = JSON.stringify(this.historyData, null, 2);

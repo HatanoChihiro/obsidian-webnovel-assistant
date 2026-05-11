@@ -1,19 +1,16 @@
-import { App, TFolder } from 'obsidian';
+import { App, TFolder, TFile } from 'obsidian';
 import { ChapterSorter } from './ChapterSorter';
 
 /**
  * 文件浏览器补丁管理器
  *
- * 使用 Monkey Patch 技术拦截 Obsidian 文件浏览器的排序逻辑，
- * 应用智能章节排序
- *
- * 实现参考：https://github.com/kh4f/manual-sorting
+ * 使用 Prototype Patch 技术拦截 Obsidian 文件浏览器的排序逻辑。
+ * 这种方式比 Instance Patch 更稳定，且能更好地与其他插件（如 manual-sorting）协作。
  */
 export class FileExplorerPatcher {
 	private app: App;
 	private enabled: boolean = false;
-	private explorerView: any = null;
-	private originalGetSortedFolderItems: any = null;
+	private unpatchFunc: (() => void) | null = null;
 	private eventRefs: any[] = [];
 
 	constructor(app: App) {
@@ -25,234 +22,193 @@ export class FileExplorerPatcher {
 	 */
 	enable(): boolean {
 		if (this.enabled) return true;
-
+		
 		try {
-			const success = this.patchFileExplorer();
+			const success = this.patchFileExplorerPrototype();
 			if (success) {
 				this.enabled = true;
-				console.log('[ChapterSorter] Smart chapter sorting enabled');
-
-				// 延迟初始排序，确保 DOM 已经准备好
-				setTimeout(() => this.refresh(), 1000);
-
-				// 监听文件系统事件
+				console.log('[WebNovel Assistant] Smart chapter sorting enabled (Prototype Patch)');
+				
+				// 立即触发一次刷新
+				this.refreshAllExplorers();
+				
+				// 监听文件系统事件以自动刷新
 				this.setupFileSystemListeners();
-
 				return true;
 			}
-
-			console.error('[ChapterSorter] Failed to patch file explorer');
 			return false;
 		} catch (error) {
-			console.error('[ChapterSorter] Failed to enable smart sorting:', error);
+			console.error('[WebNovel Assistant] Failed to enable smart sorting:', error);
 			return false;
 		}
 	}
 
 	/**
-	 * Patch 文件浏览器的 getSortedFolderItems 方法
-	 *
-	 * 参考 manual-sorting 插件的实现：
-	 * https://github.com/kh4f/manual-sorting/blob/main/src/managers/patcher.ts
+	 * Patch FileExplorerView 的原型方法
 	 */
-	private patchFileExplorer(): boolean {
+	private patchFileExplorerPrototype(): boolean {
 		try {
-			// 获取文件浏览器视图
+			// 1. 获取文件浏览器视图实例以找到原型
 			const fileExplorerLeaf = this.app.workspace.getLeavesOfType('file-explorer')[0];
 			if (!fileExplorerLeaf) {
-				console.warn('[ChapterSorter] File Explorer leaf not found');
+				// 如果当前没有打开文件浏览器，无法获取原型，等待稍后重试
+				console.log('[WebNovel Assistant] File Explorer not found, will retry patching when ready');
 				return false;
 			}
 
-			// @ts-ignore
-			this.explorerView = fileExplorerLeaf.view;
-			if (!this.explorerView) {
-				console.warn('[ChapterSorter] File Explorer view not found');
+			const view = fileExplorerLeaf.view as any;
+			if (!view) return false;
+
+			const proto = Object.getPrototypeOf(view);
+			if (!proto || !proto.getSortedFolderItems) {
+				console.warn('[WebNovel Assistant] FileExplorerView prototype or method not found');
 				return false;
 			}
 
-			// 保存原始的 getSortedFolderItems 方法
-			// @ts-ignore
-			this.originalGetSortedFolderItems = this.explorerView.getSortedFolderItems;
-
-			if (!this.originalGetSortedFolderItems) {
-				console.warn('[ChapterSorter] getSortedFolderItems method not found');
-				return false;
+			// 2. 检查是否已经 patch 过
+			if (proto.getSortedFolderItems.__webnovel_patched) {
+				console.log('[WebNovel Assistant] FileExplorerView already patched');
+				return true;
 			}
 
-			// 闭包引用，供 patch 函数内使用
-			const savedOriginal = this.originalGetSortedFolderItems;
+			// 3. 执行 Patch
+			const originalMethod = proto.getSortedFolderItems;
+			const self = this;
 
-			// Patch getSortedFolderItems 方法 - 这是关键！
-			// 这个方法在 Obsidian 渲染文件列表时被调用
-			// @ts-ignore
-			this.explorerView.getSortedFolderItems = function(folder: TFolder) {
-				// 调用原始方法获取排序后的项目（可能已经被 manual-sorting 处理过）
-				const sortedItems: any[] = savedOriginal.call(this, folder);
+			proto.getSortedFolderItems = function(folder: TFolder) {
+				// 调用原始方法（或其他插件的 Patch）
+				const sortedItems: any[] = originalMethod.call(this, folder);
 
-				// 分离章节文件和非章节文件
-				const chapterItems: { item: any; chapterInfo: { number: number; ruleIndex: number } }[] = [];
-				const nonChapterItems: { item: any; originalIndex: number }[] = [];
-				let firstChapterIndex = -1; // 章节文件在原列表中第一次出现的位置
+				// 如果插件全局禁用或模式未开启，直接返回
+				if (!self.enabled) return sortedItems;
+				if (!Array.isArray(sortedItems) || sortedItems.length === 0) return sortedItems;
 
-				sortedItems.forEach((item: any, index: number) => {
-					const chapterInfo = ChapterSorter.extractChapterNumber(item.file?.name || '');
-					if (chapterInfo !== null) {
-						chapterItems.push({ item, chapterInfo });
-						if (firstChapterIndex === -1) firstChapterIndex = index;
-					} else {
-						nonChapterItems.push({ item, originalIndex: index });
+				// 1. 识别受控项目及其位置
+				const smartItems: { item: any; chapterInfo: { number: number; ruleIndex: number }; pos: number }[] = [];
+				
+				for (let i = 0; i < sortedItems.length; i++) {
+					const item = sortedItems[i];
+					if (item && item.file instanceof TFile) {
+						const chapterInfo = ChapterSorter.extractChapterNumber(item.file.name);
+						if (chapterInfo !== null) {
+							smartItems.push({ item, chapterInfo, pos: i });
+						}
 					}
-				});
+				}
 
-				// 没有章节文件，直接返回原始结果（完全不干预）
-				if (chapterItems.length === 0) return sortedItems;
+				// 只有多于一个受控项目时才需要重新排序
+				if (smartItems.length < 2) return sortedItems;
 
-				// 章节文件按规则索引和编号排序
-				chapterItems.sort((a, b) => {
-					// 先按规则索引排序
+				// 2. 内部排序
+				// 策略：规则优先级 > 章节编号 > 原始相对位置（稳定性保证）
+				const sortedSmartItems = [...smartItems].sort((a, b) => {
+					// 规则顺序
 					if (a.chapterInfo.ruleIndex !== b.chapterInfo.ruleIndex) {
 						return a.chapterInfo.ruleIndex - b.chapterInfo.ruleIndex;
 					}
-					// 同一规则内按编号排序
-					return a.chapterInfo.number - b.chapterInfo.number;
-				});
-
-				// 重建列表：
-				// 非章节文件保持原来的相对顺序，
-				// 章节文件作为一个整体块插入到第一个章节文件原来的位置
-				const result: any[] = [];
-				let chaptersInserted = false;
-
-				nonChapterItems.forEach(({ item, originalIndex }) => {
-					// 在第一个章节文件原来的位置之前，先插入所有章节文件
-					if (!chaptersInserted && originalIndex >= firstChapterIndex) {
-						chapterItems.forEach(c => result.push(c.item));
-						chaptersInserted = true;
+					// 章节编号
+					if (a.chapterInfo.number !== b.chapterInfo.number) {
+						return a.chapterInfo.number - b.chapterInfo.number;
 					}
-					result.push(item);
+					// [关键] 稳定性：如果规则和编号一致，保持 originalMethod 返回的顺序
+					// 这确保了 manual-sorting 对非章节（或相同编号章节）的手动排序依然有效
+					return a.pos - b.pos;
 				});
 
-				// 如果章节文件在所有非章节文件之后，追加到末尾
-				if (!chaptersInserted) {
-					chapterItems.forEach(c => result.push(c.item));
-				}
+				// 3. 原位填充
+				const result = [...sortedItems];
+				const originalPositions = smartItems.map(si => si.pos);
+				
+				originalPositions.forEach((pos, i) => {
+					result[pos] = sortedSmartItems[i].item;
+				});
 
 				return result;
 			};
 
-			console.log('[ChapterSorter] Successfully patched getSortedFolderItems');
+			// 标记
+			proto.getSortedFolderItems.__webnovel_patched = true;
+			
+			// 保存还原函数
+			this.unpatchFunc = () => {
+				proto.getSortedFolderItems = originalMethod;
+				console.log('[WebNovel Assistant] FileExplorerView unpatched');
+			};
+
 			return true;
 		} catch (error) {
-			console.error('[ChapterSorter] Failed to patch file explorer:', error);
+			console.error('[WebNovel Assistant] Error patching prototype:', error);
 			return false;
 		}
 	}
 
 	/**
-	 * 触发文件浏览器刷新
-	 *
-	 * 调用 explorerView.sort() 会触发 Obsidian 重新渲染文件列表，
-	 * 此时会调用我们 patch 的 getSortedFolderItems 方法
+	 * 刷新所有文件浏览器视图
 	 */
-	private refresh(): void {
-		try {
-			if (!this.explorerView) return;
-
-			// @ts-ignore
-			if (this.explorerView.sort) {
-				// @ts-ignore
-				this.explorerView.sort();
-				console.log('[ChapterSorter] Explorer refreshed');
-			} else {
-				console.warn('[ChapterSorter] sort() method not found');
+	private refreshAllExplorers(): void {
+		const leaves = this.app.workspace.getLeavesOfType('file-explorer');
+		leaves.forEach(leaf => {
+			const view = leaf.view as any;
+			if (view && typeof view.sort === 'function') {
+				try {
+					view.sort();
+				} catch (e) {
+					// 忽略刷新错误
+				}
 			}
-		} catch (error) {
-			console.error('[ChapterSorter] Failed to refresh explorer:', error);
-		}
+		});
 	}
 
 	/**
-	 * 设置文件系统事件监听器
+	 * 文件系统事件监听
 	 */
 	private setupFileSystemListeners(): void {
 		const handler = () => {
-			if (!this.enabled) return; // 守卫：禁用后不触发
-			setTimeout(() => this.refresh(), 100);
+			if (!this.enabled) return;
+			// 稍微延迟确保 Obsidian 内部状态已更新
+			setTimeout(() => this.refreshAllExplorers(), 100);
 		};
 
-		// 监听文件创建
-		const createRef = this.app.vault.on('create', handler);
-		this.eventRefs.push(createRef);
-
-		// 监听文件删除
-		const deleteRef = this.app.vault.on('delete', handler);
-		this.eventRefs.push(deleteRef);
-
-		// 监听文件重命名
-		const renameRef = this.app.vault.on('rename', handler);
-		this.eventRefs.push(renameRef);
-
-		console.log('[ChapterSorter] File system listeners setup complete');
+		this.eventRefs.push(this.app.vault.on('create', handler));
+		this.eventRefs.push(this.app.vault.on('delete', handler));
+		this.eventRefs.push(this.app.vault.on('rename', handler));
 	}
 
 	/**
-	 * 禁用智能排序，恢复原始排序
+	 * 禁用智能排序
 	 */
 	disable(): void {
-		if (!this.enabled) return;
+		this.enabled = false;
+		
+		// 清理事件
+		this.eventRefs.forEach(ref => this.app.vault.offref(ref));
+		this.eventRefs = [];
 
-		try {
-			this.enabled = false;
+		// 注意：通常不建议在运行时还原 Prototype Patch，因为可能有其他插件在你的 patch 之上又加了一层。
+		// 这里我们通过 this.enabled 状态位在运行期间静默化逻辑。
+		// 只有在真正卸载插件时才考虑物理还原。
+		
+		this.refreshAllExplorers();
+		console.log('[WebNovel Assistant] Smart chapter sorting disabled (logic bypassed)');
+	}
 
-			// 移除事件监听器（添加 try-catch 确保清理完整）
-			try {
-				this.eventRefs.forEach(ref => {
-					try {
-						this.app.vault.offref(ref);
-					} catch (e) {
-						// 忽略单个清理失败
-					}
-				});
-			} catch (error) {
-				console.error('[ChapterSorter] 清理事件监听器失败:', error);
-			}
-			this.eventRefs = [];
-
-			// 恢复原始排序方法
-			try {
-				if (this.originalGetSortedFolderItems && this.explorerView) {
-					// @ts-ignore
-					this.explorerView.getSortedFolderItems = this.originalGetSortedFolderItems;
-					this.originalGetSortedFolderItems = null;
-
-					// 触发刷新以应用恢复的排序
-					this.refresh();
-					console.log('[ChapterSorter] Original sorting method restored');
-				}
-			} catch (error) {
-				console.error('[ChapterSorter] 恢复排序方法失败:', error);
-			}
-
-			console.log('[ChapterSorter] Smart chapter sorting disabled');
-		} catch (error) {
-			console.error('[ChapterSorter] Failed to disable smart sorting:', error);
+	/**
+	 * 物理还原补丁（仅在插件 unload 时调用）
+	 */
+	unpatch(): void {
+		if (this.unpatchFunc) {
+			this.unpatchFunc();
+			this.unpatchFunc = null;
 		}
 	}
 
-	/**
-	 * 检查是否已启用
-	 */
 	isEnabled(): boolean {
 		return this.enabled;
 	}
 
-	/**
-	 * 手动触发排序刷新
-	 */
 	refreshManually(): void {
 		if (this.enabled) {
-			this.refresh();
+			this.refreshAllExplorers();
 		}
 	}
 }

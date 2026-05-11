@@ -1,11 +1,11 @@
 {
   "name": "web-novel-assistant",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "Obsidian plugin for web novel writing — accurate word count, goal tracking, focus/slack timer, sticky notes, OBS integration, history stats",
   "main": "main.js",
   "scripts": {
-    "dev": "esbuild main.ts --bundle --format=cjs --external:obsidian --outfile=main.js --watch",
-    "build": "esbuild main.ts --bundle --format=cjs --external:obsidian --minify --outfile=main.js"
+    "dev": "esbuild main.ts --bundle --format=cjs --external:obsidian --external:@codemirror/* --outfile=main.js --watch",
+    "build": "esbuild main.ts --bundle --format=cjs --external:obsidian --external:@codemirror/* --minify --outfile=main.js"
   },
   "keywords": [
     "obsidian",

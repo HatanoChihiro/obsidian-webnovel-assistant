@@ -147,8 +147,6 @@ export class CacheManager {
 				? allFiles.filter(f => isFileInWorkspace(f))
 				: allFiles;
 			
-			const fileCounts = new Map<string, number>();
-			
 			let successCount = 0;
 			let failCount = 0;
 
@@ -157,41 +155,16 @@ export class CacheManager {
 				try {
 					const content = await vault.cachedRead(file);
 					const count = calculateWords(content);
-					fileCounts.set(file.path, count);
 
-					// 记录单文件缓存
-					this.cache.set(file.path, {
-						path: file.path,
-						wordCount: count,
-						lastModified: file.stat.mtime
-					});
+					// [BUGFIX] 使用 updateFileCache 而非直接 set，以复用时间戳守卫逻辑。
+					// 这样可以防止扫描过程中的旧字数覆盖掉启动瞬时产生的 modify 变动。
+					this.updateFileCache(file, count, vault);
 					
 					successCount++;
 				} catch (error) {
 					console.error(`[CacheManager] 读取文件失败: ${file.path}`, error);
 					failCount++;
 					// 继续处理其他文件，不中断整个缓存构建
-				}
-			}
-
-			// 构建文件夹聚合缓存
-			for (const [filePath, count] of fileCounts.entries()) {
-				const file = vault.getAbstractFileByPath(filePath);
-				if (file instanceof TFile) {
-					let parent = file.parent;
-					while (parent) {
-						const existing = this.cache.get(parent.path);
-						if (existing) {
-							existing.wordCount += count;
-						} else {
-							this.cache.set(parent.path, {
-								path: parent.path,
-								wordCount: count,
-								lastModified: Date.now()
-							});
-						}
-						parent = parent.parent;
-					}
 				}
 			}
 
@@ -232,6 +205,14 @@ export class CacheManager {
 	 */
 	updateFileCache(file: TFile, newWordCount: number, vault: Vault): void {
 		const oldEntry = this.cache.get(file.path);
+		
+		// [BUGFIX] 时间戳校验：防止旧的异步读取结果覆盖新的缓存。
+		// 如果现有缓存的时间戳晚于当前文件的修改时间，说明已经有更近的修改（如编辑器实时更新）写入了缓存，应跳过。
+		if (oldEntry && oldEntry.lastModified > file.stat.mtime) {
+			console.debug(`[CacheManager] 忽略过时的缓存更新: ${file.path} (现有: ${oldEntry.lastModified}, 传入: ${file.stat.mtime})`);
+			return;
+		}
+
 		const oldCount = oldEntry ? oldEntry.wordCount : 0;
 		const delta = newWordCount - oldCount;
 

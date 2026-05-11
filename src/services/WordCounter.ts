@@ -23,6 +23,8 @@ export class WordCounter {
 			.replace(REGEX_PATTERNS.INLINE_CODE(), '')
 			// 移除标题 # 符号
 			.replace(REGEX_PATTERNS.HEADING, '')
+			// 移除删除线符号 ~~text~~，保留内容（调用工厂函数）
+			.replace(REGEX_PATTERNS.STRIKETHROUGH(), '$1')
 			// 移除粗体/斜体符号 ** * __ _（调用工厂函数）
 			.replace(REGEX_PATTERNS.BOLD(), '$2')
 			.replace(REGEX_PATTERNS.ITALIC(), '$2')
@@ -32,12 +34,18 @@ export class WordCounter {
 			.replace(REGEX_PATTERNS.LINK(), '$1')
 			// 移除图片 ![alt](url)（调用工厂函数）
 			.replace(REGEX_PATTERNS.IMAGE(), '')
+			// 移除脚注引用标记 [^note]（调用工厂函数）
+			.replace(REGEX_PATTERNS.FOOTNOTE_REF(), '')
 			// 移除 HTML 标签（调用工厂函数）
 			.replace(REGEX_PATTERNS.HTML_TAG(), '')
 			// 移除引用符号 >
 			.replace(REGEX_PATTERNS.QUOTE, '')
 			// 移除分隔线
 			.replace(REGEX_PATTERNS.SEPARATOR, '')
+			// 移除表格分隔行 |---|---|
+			.replace(REGEX_PATTERNS.TABLE_SEPARATOR, '')
+			// 移除任务列表标记 - [ ] / - [x]
+			.replace(REGEX_PATTERNS.TASK_LIST, '')
 			// 移除无序列表符号 - * +
 			.replace(REGEX_PATTERNS.UNORDERED_LIST, '')
 			// 移除有序列表符号 1.

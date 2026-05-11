@@ -147,8 +147,16 @@ export interface AccurateCountSettings {
 	eyeCareColor: string;
 	/** 是否显示移动端浮动字数统计窗口 */
 	showMobileFloatingStats: boolean;
+
+	/** 严格章节模式：只在章节文档中计算字数、进度和提醒 */
+	enableStrictChapterMode: boolean;
+
 	/** 便签是否自动保存（全局设置） */
 	stickyNoteAutoSave: boolean;
+	/** 是否启用字数实时提醒（在左侧行号区显示累计字数） */
+	enableWordCountGutter: boolean;
+	/** 字数实时提醒的字数间隔 */
+	wordCountInterval: number;
 
 	// === 沉浸模式 (Immersive Mode) 设置 ===
 	/** 沉浸模式：是否显示左侧章节列表 */
@@ -191,4 +199,6 @@ export interface AccurateCountSettings {
 	immersiveNoteFontSize: number;
 	/** 沉浸模式：是否开启打字机模式适配 (优化滚动跳转) */
 	immersiveTypewriterMode: boolean;
+	/** 沉浸模式：布局持久化数据 (null 表示使用默认值) */
+	immersiveLayout: Record<string, number> | null;
 }

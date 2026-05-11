@@ -240,6 +240,7 @@ export class ImmersiveStickyNotesView extends ItemView {
 			closeBtn.style.lineHeight = '1';
 			closeBtn.style.cursor = 'pointer';
 			closeBtn.style.padding = '0 4px';
+			closeBtn.title = '关闭便签';
 			
 			const performRemove = async () => {
 				this.plugin.stickyNoteManager.removeNote(noteData.id);

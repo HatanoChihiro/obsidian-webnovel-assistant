@@ -195,6 +195,7 @@ export class FloatingStickyNote extends Component {
 	initialContent: string; // 用于检测未保存的更改
 	lastSavedContent: string = ""; // 最后一次保存的内容
 	private resizeObserver: ResizeObserver | null = null; // ResizeObserver 实例
+	private resizeTimer: number | null = null;           // ResizeObserver 防抖计时器
 
 	constructor(app: App, plugin: WebNovelAssistantPlugin, options: { file?: TFile, content?: string, title?: string, state?: StickyNoteState }) {
 		super();
@@ -247,9 +248,16 @@ export class FloatingStickyNote extends Component {
 	}
 
 	onunload() {
+		// 清理 ResizeObserver
 		if (this.resizeObserver) {
 			this.resizeObserver.disconnect();
 			this.resizeObserver = null;
+		}
+
+		// [BUGFIX] 清理可能尚在延迟中的 resize 防抖计时器，防止其在实例销毁后还尝试操作 DOM。
+		if (this.resizeTimer !== null) {
+			window.clearTimeout(this.resizeTimer);
+			this.resizeTimer = null;
 		}
 		
 		if (this.containerEl) {
@@ -327,6 +335,8 @@ export class FloatingStickyNote extends Component {
 		// 创建按钮
 		const pinBtn = this.createButton(controlsEl, 'pin', this.state.isPinned);
 		const saveBtn = this.createButton(controlsEl, 'save');
+		saveBtn.title = '保存便签内容 (Ctrl+S)';
+		saveBtn.style.opacity = '0.5';
 		const toggleEditBtn = this.createButton(controlsEl, this.state.isEditing ? 'eye' : 'pencil');
 		const paletteBtn = this.createButton(controlsEl, 'palette', false, 'palette-btn-target');
 		const closeBtn = controlsEl.createEl('button', { cls: 'my-sticky-close' });
@@ -366,8 +376,18 @@ export class FloatingStickyNote extends Component {
 			e.stopPropagation();
 		});
 
-		// 监听输入以实现自动保存
+		// 监听输入以实现自动保存和视觉反馈
 		this.textareaEl.addEventListener('input', () => {
+			// 视觉反馈：如果内容与最后保存的不一致，高亮保存按钮
+			const isDirty = this.textareaEl.value !== this.lastSavedContent;
+			if (isDirty && !this.plugin.settings.stickyNoteAutoSave) {
+				saveBtn.style.opacity = '1';
+				saveBtn.style.color = 'var(--interactive-accent)';
+			} else {
+				saveBtn.style.opacity = '0.5';
+				saveBtn.style.color = '';
+			}
+
 			if (this.plugin.settings.stickyNoteAutoSave) {
 				const debounceKey = `save-note-${this.state.id}`;
 				(this.plugin as any).adaptiveDebounceManager.debounceFixed(debounceKey, async () => {
@@ -382,6 +402,9 @@ export class FloatingStickyNote extends Component {
 							this.lastSavedContent = this.state.content || ""; // 同步后更新“最后保存”内容
 						}
 					}
+					// 自动保存后恢复按钮状态
+					saveBtn.style.opacity = '0.5';
+					saveBtn.style.color = '';
 				}, 500);
 			}
 		});
@@ -621,12 +644,17 @@ export class FloatingStickyNote extends Component {
 		if (this.state.isEditing) {
 			this.contentContainer.style.display = 'none';
 			this.textareaEl.style.display = 'block';
-			this.textareaEl.value = this.state.content || "";
-			// 设置焦点，确保可以正常输入
-			// 使用较长的延迟确保 DOM 更新和异步操作完成
-			setTimeout(() => {
-				this.textareaEl.focus();
-			}, 50);
+			
+			// 核心修复：如果当前文本框正处于聚焦状态（用户正在输入），不要强行覆盖它的值
+			// 否则会打断中文输入法 (IME) 的组合过程
+			if (document.activeElement !== this.textareaEl) {
+				const newContent = this.state.content || "";
+				if (this.textareaEl.value !== newContent) {
+					this.textareaEl.value = newContent;
+				}
+				// 仅在非聚焦时尝试恢复焦点，避免干扰正常输入循环
+				// setTimeout(() => { this.textareaEl.focus(); }, 50);
+			}
 		} else {
 			this.textareaEl.style.display = 'none';
 			this.contentContainer.style.display = 'block';
@@ -657,43 +685,57 @@ export class FloatingStickyNote extends Component {
 
 	setupDragging(handle: HTMLElement) {
 		let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+
+		// [BUGFIX] 使用 addEventListener/removeEventListener 替代直接赋值 document.onmouseXXX，
+		// 直接赋值会覆盖其他组件可能注册的同名处理器。
+		const onMouseMove = (e: MouseEvent) => {
+			pos1 = pos3 - e.clientX;
+			pos2 = pos4 - e.clientY;
+			pos3 = e.clientX;
+			pos4 = e.clientY;
+			this.state.top  = (this.containerEl.offsetTop  - pos2) + "px";
+			this.state.left = (this.containerEl.offsetLeft - pos1) + "px";
+			this.containerEl.style.top  = this.state.top;
+			this.containerEl.style.left = this.state.left;
+		};
+
+		const onMouseUp = () => {
+			document.removeEventListener('mousemove', onMouseMove);
+			document.removeEventListener('mouseup', onMouseUp);
+			this.saveState();
+		};
+
 		handle.onmousedown = (e) => {
-			if (this.state.isPinned) return; 
+			if (this.state.isPinned) return;
 			const target = e.target as HTMLElement;
 			if (target.tagName === 'BUTTON' || target.closest('.my-sticky-btn') || target.closest('.my-sticky-close')) return;
 			pos3 = e.clientX; pos4 = e.clientY;
-			document.onmouseup = () => { 
-				document.onmouseup = null; 
-				document.onmousemove = null; 
-				this.saveState(); 
-			};
-			document.onmousemove = (e) => {
-				pos1 = pos3 - e.clientX; 
-				pos2 = pos4 - e.clientY;
-				pos3 = e.clientX; 
-				pos4 = e.clientY;
-				this.state.top = (this.containerEl.offsetTop - pos2) + "px";
-				this.state.left = (this.containerEl.offsetLeft - pos1) + "px";
-				this.containerEl.style.top = this.state.top;
-				this.containerEl.style.left = this.state.left;
-			};
+			document.addEventListener('mousemove', onMouseMove);
+			document.addEventListener('mouseup', onMouseUp);
 		};
 	}
 
 	setupResizing() {
 		this.resizeObserver = new ResizeObserver(() => {
 			if (this.state.isPinned) return;
-			
-			// 如果元素当前被隐藏（如在沉浸模式下），不保存 0x0 的尺寸
-			// 这能防止从沉浸模式切回时，便签尺寸变成 0 或空导致无法调整
-			const width = this.containerEl.style.width;
-			const height = this.containerEl.style.height;
-			
-			if (width && width !== '0px' && height && height !== '0px') {
-				this.state.width = width;
-				this.state.height = height;
-				this.saveState();
+
+			// [BUGFIX] 添加 300ms 防抖：ResizeObserver 在用户拖动调整大小时每帧触发一次，
+			// 如果每帧都执行 saveState()（内含文件 I/O）会导致每秒最高 60 次文件写入。
+			if (this.resizeTimer !== null) {
+				window.clearTimeout(this.resizeTimer);
 			}
+			this.resizeTimer = window.setTimeout(() => {
+				this.resizeTimer = null;
+
+				// 如果元素当前被隐藏（如在沉浸模式下），不保存 0x0 的尺寸
+				const width  = this.containerEl.style.width;
+				const height = this.containerEl.style.height;
+				if (width && width !== '0px' && height && height !== '0px') {
+					this.state.width  = width;
+					this.state.height = height;
+					this.saveState();
+				}
+			}, 300);
 		});
 		this.resizeObserver.observe(this.containerEl);
 	}

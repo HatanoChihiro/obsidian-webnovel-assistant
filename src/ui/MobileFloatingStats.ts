@@ -43,7 +43,7 @@ export class MobileFloatingStats {
 					position: fixed;
 					left: ${this.position.x}px;
 					top: ${this.position.y}px;
-					z-index: 9999;
+					z-index: 50;
 					background: var(--background-primary);
 					border: 1px solid var(--background-modifier-border);
 					border-radius: 6px;

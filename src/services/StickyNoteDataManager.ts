@@ -27,7 +27,13 @@ export class StickyNoteDataManager {
 			// 1. 尝试从独立文件读取
 			if (await adapter.exists(this.notesFilePath)) {
 				const content = await adapter.read(this.notesFilePath);
-				this.notesData = JSON.parse(content);
+				// [BUGFIX] 对解析结果进行类型守卫：若文件内容损坏（如 {} 或非数组），
+				// 直接使用会导致 forEach/map 等调用崩溃，安全降级为空数组。
+				const parsed = JSON.parse(content);
+				this.notesData = Array.isArray(parsed) ? parsed : [];
+				if (!Array.isArray(parsed)) {
+					console.warn('[StickyNoteDataManager] 便签数据格式异常，已重置为空数组');
+				}
 				console.log(`[StickyNoteDataManager] 已从独立文件加载 ${this.notesData.length} 个便签`);
 				return this.notesData;
 			}

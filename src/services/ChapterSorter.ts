@@ -21,9 +21,29 @@ export class ChapterSorter {
 
 	/**
 	 * 设置自定义章节命名规则
+	 * 会对用户输入的正则表达式进行预编译验证，过滤掉无效规则，
+	 * 并限制模式长度，降低灾难性回溯（ReDoS）导致 UI 冻结的风险。
 	 */
 	static setCustomRules(rules: ChapterNamingRule[]) {
-		this.customRules = rules;
+		this.customRules = rules.filter(rule => {
+			// 禁用的规则跳过验证
+			if (!rule.enabled) return true;
+
+			// [安全] 限制正则长度，过于复杂的模式更易触发灾难性回溯
+			if (rule.pattern.length > 200) {
+				console.warn(`[ChapterSorter] 正则表达式过长（>200字符），已跳过: "${rule.name}"`);
+				return false;
+			}
+
+			// [安全] 预编译验证语法，语法错误的规则直接丢弃，避免运行时每次排序都抛出异常
+			try {
+				new RegExp(rule.pattern, 'i');
+				return true;
+			} catch {
+				console.error(`[ChapterSorter] 无效的正则表达式，已跳过规则 "${rule.name}": ${rule.pattern}`);
+				return false;
+			}
+		});
 	}
 
 	/**
@@ -88,29 +108,35 @@ export class ChapterSorter {
 				try {
 					const regex = new RegExp(rule.pattern, 'i');
 					const match = basename.match(regex);
-					if (match && match[1]) {
-						// 尝试解析为数字
-						const numStr = match[1];
-						
-						// 检查是否是小数点格式
-						if (numStr.includes('.')) {
-							const num = parseFloat(numStr);
-							if (!isNaN(num)) {
-								return { number: num, ruleIndex: i };
+					if (match) {
+						// 如果有捕获组，尝试解析为数字
+						if (match[1]) {
+							const numStr = match[1];
+							
+							// 检查是否是小数点格式
+							if (numStr.includes('.')) {
+								const num = parseFloat(numStr);
+								if (!isNaN(num)) {
+									return { number: num, ruleIndex: i };
+								}
+							}
+							
+							// 检查是否是阿拉伯数字
+							const arabicNum = parseInt(numStr, 10);
+							if (!isNaN(arabicNum)) {
+								return { number: arabicNum, ruleIndex: i };
+							}
+							
+							// 尝试解析中文数字
+							const chineseNum = this.parseChineseNumber(numStr);
+							if (chineseNum > 0) {
+								return { number: chineseNum, ruleIndex: i };
 							}
 						}
-						
-						// 检查是否是阿拉伯数字
-						const arabicNum = parseInt(numStr, 10);
-						if (!isNaN(arabicNum)) {
-							return { number: arabicNum, ruleIndex: i };
-						}
-						
-						// 尝试解析中文数字
-						const chineseNum = this.parseChineseNumber(numStr);
-						if (chineseNum > 0) {
-							return { number: chineseNum, ruleIndex: i };
-						}
+						// [关键扩展] 规则匹配但没有捕获组，或捕获组不是数字
+						// 视为“具名章节”（如：大纲、番外、楔子），使用 -1 让其排在该规则分组的最前面
+						// 规则的先后顺序（ruleIndex）决定该分组在整个文件列表中的位置
+						return { number: -1, ruleIndex: i };
 					}
 				} catch (error) {
 					console.error(`[ChapterSorter] 无效的正则表达式: ${rule.pattern}`, error);

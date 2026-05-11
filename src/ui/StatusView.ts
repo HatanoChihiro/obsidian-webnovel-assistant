@@ -35,6 +35,9 @@ export class WritingStatusView extends ItemView {
 	yearWordEl!: HTMLElement;
 	historyTotalWordEl!: HTMLElement;
 
+	private chartBarsContainer!: HTMLElement;
+	private chartBarEls: { container: HTMLElement, dateEl: HTMLElement, barEl: HTMLElement, valueEl: HTMLElement }[] = [];
+
 	constructor(leaf: WorkspaceLeaf, plugin: WebNovelAssistantPlugin) {
 		super(leaf);
 		this.plugin = plugin;
@@ -77,15 +80,14 @@ export class WritingStatusView extends ItemView {
 			this.statusBadgeEl.style.cursor = 'pointer';
 			this.statusBadgeEl.title = '点击开始/暂停统计';
 			this.statusBadgeEl.addEventListener('click', () => {
-				this.plugin.isTracking = !this.plugin.isTracking;
+				// [BUGFIX] 使用统一的 startTracking/stopTracking API，
+				// 避免绕过 Worker 初始化检查、OBS 导出、lastEditTime 设置等逻辑。
+				const p = this.plugin as any;
 				if (this.plugin.isTracking) {
-					this.plugin.lastTickTime = Date.now();
-					this.plugin.worker?.postMessage('start');
+					p.stopTracking();
 				} else {
-					this.plugin.worker?.postMessage('stop');
+					p.startTracking();
 				}
-				this.plugin.updateWordCount();
-				this.plugin.refreshStatusViews();
 			});
 		}
 
@@ -135,6 +137,32 @@ export class WritingStatusView extends ItemView {
 
 		// 近7日图表
 		this.chartContainerEl = timeCard.createDiv({ cls: 'history-chart' });
+
+		// 添加标题
+		this.chartContainerEl.createDiv({ 
+			text: '近7日字数统计', 
+			cls: 'history-chart-title'
+		});
+		
+		// 添加副标题
+		const chartSubtitle = this.chartContainerEl.createDiv({ 
+			text: '点击查看详情', 
+			cls: 'history-chart-subtitle'
+		});
+		
+		chartSubtitle.setAttribute('aria-label', '点击进入字数统计详情');
+		chartSubtitle.onclick = () => {
+			new HistoryStatsModal(this.plugin.app, this.plugin.historyManager.getHistory()).open();
+		};
+		
+		// 创建横向柱状图容器
+		this.chartBarsContainer = this.chartContainerEl.createDiv({ 
+			attr: { style: 'display: flex; flex-direction: column; gap: 6px; cursor: pointer;' } 
+		});
+		
+		this.chartBarsContainer.onclick = () => {
+			new HistoryStatsModal(this.plugin.app, this.plugin.historyManager.getHistory()).open();
+		};
 	}
 
 	private createHistoryCard(container: Element) {
@@ -280,80 +308,81 @@ export class WritingStatusView extends ItemView {
 	}
 
 	renderChart() {
-		this.chartContainerEl.empty();
-		
-		// 添加标题
-		const chartTitle = this.chartContainerEl.createDiv({ 
-			text: '近7日字数统计', 
-			cls: 'history-chart-title'
-		});
-		
-		// 添加副标题
-		const chartSubtitle = this.chartContainerEl.createDiv({ 
-			text: '点击查看详情', 
-			cls: 'history-chart-subtitle'
-		});
-		
-		chartSubtitle.setAttribute('aria-label', '点击进入字数统计详情');
-		chartSubtitle.onclick = () => {
-			new HistoryStatsModal(this.plugin.app, this.plugin.historyManager.getHistory()).open();
-		};
-		
-		// 创建横向柱状图容器
-		const chartBars = this.chartContainerEl.createDiv({ 
-			attr: { style: 'display: flex; flex-direction: column; gap: 6px; cursor: pointer;' } 
-		});
-		
-		chartBars.onclick = () => {
-			new HistoryStatsModal(this.plugin.app, this.plugin.historyManager.getHistory()).open();
-		};
-
 		const history = this.plugin.historyManager.getHistory();
 		const dates = Object.keys(history).sort().slice(-7);
 
 		if (dates.length === 0) {
-			chartBars.createDiv({ 
+			this.chartBarsContainer.empty();
+			this.chartBarsContainer.createDiv({ 
 				text: '暂无历史数据', 
 				attr: { style: 'color: var(--text-muted); font-size: 0.8em; padding: 10px 0;' } 
 			});
+			this.chartBarEls = []; // 清空缓存
 			return;
+		}
+
+		// 如果 DOM 数量不匹配，重建 DOM
+		if (this.chartBarEls.length !== dates.length) {
+			this.chartBarsContainer.empty();
+			this.chartBarEls = [];
+			
+			for (let i = 0; i < dates.length; i++) {
+				const row = this.chartBarsContainer.createDiv({ 
+					attr: { style: 'display: flex; align-items: center; gap: 8px;' } 
+				});
+				
+				const dateEl = row.createDiv({ 
+					attr: { style: 'font-size: 0.7em; color: var(--text-muted); min-width: 35px; text-align: right; flex-shrink: 0;' } 
+				});
+				
+				const barContainer = row.createDiv({ 
+					attr: { style: 'flex: 1; height: 18px; background: var(--background-modifier-border); border-radius: 3px; overflow: hidden; position: relative; min-width: 0;' } 
+				});
+				
+				const barEl = barContainer.createDiv({ 
+					attr: { style: `height: 100%; border-radius: 3px; transition: width 0.4s ease;` } 
+				});
+				
+				const valueEl = row.createDiv({ 
+					attr: { style: `font-size: 0.75em; font-weight: bold; font-family: var(--font-monospace); min-width: 40px; text-align: right; flex-shrink: 0;` } 
+				});
+				
+				this.chartBarEls.push({ container: row, dateEl, barEl, valueEl });
+			}
 		}
 
 		// 计算最大绝对值，用于缩放（支持负数）
 		const maxAbsWords = Math.max(...dates.map(d => Math.abs(history[d].addedWords)), 100);
 
-		dates.forEach(date => {
+		dates.forEach((date, index) => {
 			const stat = history[date];
 			const words = stat.addedWords;
-			const row = chartBars.createDiv({ 
-				attr: { style: 'display: flex; align-items: center; gap: 8px;' } 
-			});
+			const els = this.chartBarEls[index];
 			
-			// 日期标签
-			row.createDiv({ 
-				text: date.substring(5), 
-				attr: { style: 'font-size: 0.7em; color: var(--text-muted); min-width: 35px; text-align: right; flex-shrink: 0;' } 
-			});
+			// 更新日期
+			const shortDate = date.substring(5);
+			if (els.dateEl.innerText !== shortDate) els.dateEl.innerText = shortDate;
 			
-			// 横向柱状图（支持负数）
-			const barContainer = row.createDiv({ 
-				attr: { style: 'flex: 1; height: 18px; background: var(--background-modifier-border); border-radius: 3px; overflow: hidden; position: relative; min-width: 0;' } 
-			});
-			
+			// 更新宽度和颜色
 			const barWidthPercent = Math.max(2, (Math.abs(words) / maxAbsWords) * 100);
 			const barColor = words >= 0 ? 'var(--interactive-accent)' : '#E74C3C'; // 负数用红色
-			const bar = barContainer.createDiv({ 
-				attr: { style: `width: ${barWidthPercent}%; height: 100%; background: ${barColor}; border-radius: 3px; transition: width 0.4s ease;` } 
-			});
+			
+			els.barEl.style.width = `${barWidthPercent}%`;
+			els.barEl.style.background = barColor;
 			
 			const focusHours = (stat.focusMs / 3600000).toFixed(1);
-			bar.setAttribute('title', `日期: ${date}\n字数: ${words}\n专注时长: ${focusHours}h`);
+			els.barEl.setAttribute('title', `日期: ${date}\n字数: ${words}\n专注时长: ${focusHours}h`);
 			
-			// 字数值（负数显示为红色）
-			const valueEl = row.createDiv({ 
-				text: formatCount(words), 
-				attr: { style: `font-size: 0.75em; font-weight: bold; font-family: var(--font-monospace); min-width: 40px; text-align: right; flex-shrink: 0; ${words < 0 ? 'color: #E74C3C;' : ''}` } 
-			});
+			// 更新字数值
+			const formattedWords = formatCount(words);
+			if (els.valueEl.innerText !== formattedWords) {
+				els.valueEl.innerText = formattedWords;
+				if (words < 0) {
+					els.valueEl.style.color = '#E74C3C';
+				} else {
+					els.valueEl.style.color = '';
+				}
+			}
 		});
 	}
 

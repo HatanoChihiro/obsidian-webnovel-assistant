@@ -69,6 +69,8 @@ export interface WebNovelAssistantPlugin {
 	loadSettings(): Promise<void>;
 	calculateAccurateWords(text: string): number;
 	isFileInWorkspace(file: TFile): boolean;
+	/** 检查文件是否符合字数统计的条件（工作区 + 排除合并文件 + 严格章节模式） */
+	isEligibleForWordCount(file: TFile): boolean;
 	updateWordCount(): void;
 	
 	// 视图管理

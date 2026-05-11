@@ -31,6 +31,10 @@ export class ObsOverlayServer {
 			const plugin = this.plugin;
 
 			this.server = http.createServer((req: import('../types/node').NodeHTTPRequest, res: import('../types/node').NodeHTTPResponse) => {
+				// [安全] 校验请求基本有效性
+				if (!req.url) { res.writeHead(400); res.end(); return; }
+				if (req.method !== 'GET') { res.writeHead(405); res.end(); return; }
+
 				const url = new URL(req.url, `http://localhost:${this.port}`);
 
 				if (url.pathname === '/api/stats') {

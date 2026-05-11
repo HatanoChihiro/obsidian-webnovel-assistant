@@ -138,6 +138,14 @@ export const REGEX_PATTERNS = {
 	UNORDERED_LIST: /^[\s]*[-*+]\s/gm,
 	/** 有序列表符号（gm 标志，保持不变） */
 	ORDERED_LIST: /^[\s]*\d+\.\s/gm,
+	/** 删除线（工厂函数，避免 g 标志状态残留） */
+	STRIKETHROUGH: () => /~~(.*?)~~/g,
+	/** 脚注引用标记（工厂函数，避免 g 标志状态残留） */
+	FOOTNOTE_REF: () => /\[\^[^\]]+\]/g,
+	/** 任务列表标记（gm 标志，保持不变） */
+	TASK_LIST: /^[\s]*[-*+]\s\[[ xX]\]\s/gm,
+	/** 表格分隔行（gm 标志，保持不变） */
+	TABLE_SEPARATOR: /^\|?[\s:]*-{3,}[\s:]*(?:\|[\s:]*-{3,}[\s:]*)*\|?\s*$/gm,
 	/** 空白字符（工厂函数，避免 g 标志状态残留） */
 	WHITESPACE: () => /\s+/g,
 } as const;
@@ -209,3 +217,84 @@ export const VALIDATION_RULES = {
 	/** 目标字数最小值 */
 	MIN_GOAL: 0,
 } as const;
+
+import type { AccurateCountSettings } from './types/settings';
+
+export const DEFAULT_SETTINGS: AccurateCountSettings = {
+	defaultGoal: 3000,
+	dailyGoal: 5000,
+	showGoal: true,
+	showExplorerCounts: false, // 默认关闭，避免性能问题
+	enableSmartChapterSort: false, // 默认关闭，避免与用户习惯冲突
+	chapterNamingRules: [
+		{ name: '阿拉伯数字（第1章、第01章）', pattern: '^第?(\\d+)[章节回卷部册篇]?', enabled: true },
+		{ name: '中文数字（第一章、第二章）', pattern: '^第?([零一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]+)[章节回卷部册篇]?', enabled: true },
+		{ name: '纯数字（1、01、001）', pattern: '^(\\d+)$', enabled: true },
+	],
+	workspaceFolders: [],
+	enableObs: false,
+	enableLegacyObsExport: false,
+	obsPath: "",
+	openNotes: [],
+	noteOpacity: 0.9,
+	dailyHistory: {}, // @deprecated 保留用于降级兼容，实际数据已迁移到 history-data.json
+	idleTimeoutThreshold: 60 * 1000,
+	noteThemes: [
+		{ bg: '#FDF3B8', text: '#2C3E50' }, // 鹅黄色
+		{ bg: '#FCDDEC', text: '#5D2E46' }, // 樱花粉
+		{ bg: '#CCE8CF', text: '#2A4A30' }, // 豆沙绿
+		{ bg: '#2C3E50', text: '#F8F9FA' }, // 暗夜蓝
+		{ bg: '#E8DFF5', text: '#4A3B69' }, // 薰衣草
+		{ bg: '#FDE0C1', text: '#593D2B' }  // 杏仁黄
+	],
+	obsPort: 24816,
+	obsOverlayTheme: 'dark',
+	obsOverlayOpacity: 0.85,
+	obsCustomCss: '',
+	obsShowFocusTime: true,
+	obsShowSlackTime: true,
+	obsShowTotalTime: true,
+	obsShowTodayWords: true,
+	obsShowDailyGoal: true,
+	obsShowSessionWords: true, // 已恢复
+	foreshadowing: {
+		fileName: '伏笔',
+		showTimestamp: true,
+		defaultTags: ['人物', '情节', '世界观', '道具', '线索'],
+	},
+	timeline: {
+		fileName: '时间线',
+		defaultTypes: ['主线', '支线', '回忆', '伏笔线', '暗线'],
+	},
+	eyeCareEnabled: false,
+	eyeCareColor: '#E8F5E9',
+	showMobileFloatingStats: true, // 默认显示移动端浮窗
+	enableStrictChapterMode: false, // 严格章节模式，默认关闭
+	enableWordCountGutter: true,
+	wordCountInterval: 2000,
+	
+	// 沉浸模式默认设置
+	immersiveShowChapterList: true,
+	immersiveShowReference: true,
+	immersiveShowStickyNotes: true,
+	immersiveShowForeshadowing: true,
+	immersiveShowTimeline: true,
+	immersiveShowTotalTime: true,
+	immersiveShowFocusTime: true,
+	immersiveShowSlackTime: true,
+	immersiveShowChapterProgress: true,
+	immersiveShowDailyProgress: true,
+	immersiveShowSessionWords: true,
+	nextNoteThemeIndex: 0,
+	immersivePanelPosition: 'bottom',
+	immersiveLeftSize: 11,
+	immersiveRightSize: 30,
+	immersiveBottomSize: 20,
+	immersiveBottomInternalSizes: [70, 16, 14],
+	stickyNoteAutoSave: true,
+	immersiveNoteSize: 280,
+	immersiveNoteFontSize: 14,
+	immersiveTypewriterMode: false,
+	immersiveLayout: null,
+};
+

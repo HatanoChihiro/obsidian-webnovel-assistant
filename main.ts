@@ -40,81 +40,15 @@ import { ImmersiveChapterListView } from './src/ui/ImmersiveChapterListView';
 import { ImmersiveStickyNotesView } from './src/ui/ImmersiveStickyNotesView';
 import { StickyNoteDataManager } from './src/services/StickyNoteDataManager';
 import { VIEW_TYPES } from './src/constants';
-const DEFAULT_SETTINGS: AccurateCountSettings = {
-	defaultGoal: 3000,
-	dailyGoal: 5000,
-	showGoal: true,
-	showExplorerCounts: false, // 默认关闭，避免性能问题
-	enableSmartChapterSort: false, // 默认关闭，避免与用户习惯冲突
-	chapterNamingRules: [
-		{ name: '阿拉伯数字（第1章、第01章）', pattern: '^第?(\\d+)[章节回卷部册篇]?', enabled: true },
-		{ name: '中文数字（第一章、第二章）', pattern: '^第?([零一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]+)[章节回卷部册篇]?', enabled: true },
-		{ name: '纯数字（1、01、001）', pattern: '^(\\d+)$', enabled: true },
-	],
-	workspaceFolders: [],
-	enableObs: false,
-	enableLegacyObsExport: false,
-	obsPath: "",
-	openNotes: [],
-	noteOpacity: 0.9,
-	dailyHistory: {}, // @deprecated 保留用于降级兼容，实际数据已迁移到 history-data.json
-	idleTimeoutThreshold: 60 * 1000,
-	noteThemes: [
-		{ bg: '#FDF3B8', text: '#2C3E50' }, // 鹅黄色
-		{ bg: '#FCDDEC', text: '#5D2E46' }, // 樱花粉
-		{ bg: '#CCE8CF', text: '#2A4A30' }, // 豆沙绿
-		{ bg: '#2C3E50', text: '#F8F9FA' }, // 暗夜蓝
-		{ bg: '#E8DFF5', text: '#4A3B69' }, // 薰衣草
-		{ bg: '#FDE0C1', text: '#593D2B' }  // 杏仁黄
-	],
-	obsPort: 24816,
-	obsOverlayTheme: 'dark',
-	obsOverlayOpacity: 0.85,
-	obsCustomCss: '',
-	obsShowFocusTime: true,
-	obsShowSlackTime: true,
-	obsShowTotalTime: true,
-	obsShowTodayWords: true,
-	obsShowDailyGoal: true,
-	obsShowSessionWords: true, // 已恢复
-	foreshadowing: {
-		fileName: '伏笔',
-		showTimestamp: true,
-		defaultTags: ['人物', '情节', '世界观', '道具', '线索'],
-	},
-	timeline: {
-		fileName: '时间线',
-		defaultTypes: ['主线', '支线', '回忆', '伏笔线', '暗线'],
-	},
-	eyeCareEnabled: false,
-	eyeCareColor: '#E8F5E9',
-	showMobileFloatingStats: true, // 默认显示移动端浮窗
-	
-	// 沉浸模式默认设置
-	immersiveShowChapterList: true,
-	immersiveShowReference: true,
-	immersiveShowStickyNotes: true,
-	immersiveShowForeshadowing: true,
-	immersiveShowTimeline: true,
-	immersiveShowTotalTime: true,
-	immersiveShowFocusTime: true,
-	immersiveShowSlackTime: true,
-	immersiveShowChapterProgress: true,
-	immersiveShowDailyProgress: true,
-	immersiveShowSessionWords: true,
-	nextNoteThemeIndex: 0,
-	immersivePanelPosition: 'bottom',
-	immersiveLeftSize: 11,
-	immersiveRightSize: 30,
-	immersiveBottomSize: 20,
-	immersiveBottomInternalSizes: [70, 16, 14],
-	stickyNoteAutoSave: true,
-	immersiveNoteSize: 280,
-	immersiveNoteFontSize: 14,
-	immersiveTypewriterMode: false,
-};
+import { DEFAULT_SETTINGS } from './src/constants';
+import { CommandManager } from './src/core/CommandManager';
+import { ViewManager } from './src/core/ViewManager';
+import { MenuManager } from './src/core/MenuManager';
+import { Extension } from '@codemirror/state';
+import { createWordCountGutter } from './src/editor/WordCountGutter';
 
 export default class AccurateChineseCountPlugin extends Plugin implements WebNovelAssistantPlugin {
+	public wordCountExtensionHolder: Extension[] = [];
 
 	
 	settings!: AccurateCountSettings;
@@ -154,7 +88,11 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	styleManager!: StyleManager;
 	stickyNoteManager: StickyNoteDataManager;
 	immersiveModeManager!: ImmersiveModeManager;
+	commandManager: CommandManager;
+	viewManager: ViewManager;
+	menuManager: MenuManager;
 	private isLayoutReady: boolean = false;
+	private wordCountElCache = new WeakMap<HTMLElement, HTMLElement>();
 
 	constructor(app: App, manifest: any) {
 		super(app, manifest);
@@ -167,6 +105,9 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.obsHtmlBuilder = new ObsHtmlBuilder(this);
 		this.wordCounter = new WordCounter();
 		this.immersiveModeManager = new ImmersiveModeManager(this.app, this);
+		this.commandManager = new CommandManager(this);
+		this.viewManager = new ViewManager(this);
+		this.menuManager = new MenuManager(this);
 		// editorTracker 和 styleManager 需要在 onload 后初始化（依赖 this）
 	}
 
@@ -242,6 +183,27 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.statusBarItemEl = this.addStatusBarItem();
 		this.addSettingTab(new AccurateCountSettingTab(this.app, this));
 
+		// 注册分章提醒编辑器扩展（使用可变数组，方便动态重载）
+		if (this.settings.enableWordCountGutter) {
+			this.wordCountExtensionHolder.push(createWordCountGutter(this));
+		}
+		this.registerEditorExtension(this.wordCountExtensionHolder);
+
+		// 监听设置变更以动态热更新扩展
+		this.registerEvent(this.app.workspace.on('webnovel:word-count-gutter-settings-changed', () => {
+			this.wordCountExtensionHolder.length = 0;
+			if (this.settings.enableWordCountGutter) {
+				this.wordCountExtensionHolder.push(createWordCountGutter(this));
+			}
+			// 通知 Obsidian 全局刷新所有编辑器的 Extension
+			this.app.workspace.updateOptions();
+		}));
+
+		this.commandManager.registerAllCommands();
+		this.viewManager.registerAllViews();
+		this.menuManager.registerAllMenus();
+		this.registerCommonRibbonIcons();
+
 		this.registerEvent(this.app.workspace.on('editor-change', () => {
 			// 使用自适应防抖：根据输入速度自动调整延迟
 			this.adaptiveDebounceManager.debounce('editor-update', () => {
@@ -295,39 +257,6 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 					}, 300);
 				}
 			}));
-			
-			this.addCommand({
-				id: 'copy-full-content-mobile',
-				name: '复制全文',
-				editorCallback: (editor, view) => {
-					const content = editor.getValue();
-					navigator.clipboard.writeText(content).then(() => {
-						new Notice(`[成功] 已复制全文（${content.length} 字符）`);
-					}).catch(err => {
-						new Notice('[错误] 复制失败，请重试');
-					});
-				}
-			});
-			
-			this.registerEvent(this.app.workspace.on('file-menu', (menu, file) => {
-				if (file instanceof TFile && file.extension === 'md') {
-					menu.addItem((item) => {
-						item.setTitle('设定本章目标字数').setIcon('target').onClick(() => { new GoalModal(this.app, file).open(); });
-					});
-					menu.addItem((item) => {
-						item.setTitle('复制全文').setIcon('copy').onClick(async () => {
-							try {
-								const content = await this.app.vault.read(file);
-								await navigator.clipboard.writeText(content);
-								new Notice(`[成功] 已复制全文（${content.length} 字符）`);
-							} catch (err) {
-								console.error('[Plugin] 复制失败:', err);
-								new Notice('[错误] 复制失败，请重试');
-							}
-						});
-					});
-				}
-			}));
 			return; // 🛑 关键：手机端执行到这里直接终止，不加载下方的高级重度功能
 		}
 
@@ -352,11 +281,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		// - ✓ 历史统计图表
 		// ==========================================
 		
-		// 注册功能
-		this.registerCommonViews();
-		this.registerCommonRibbonIcons();
-		this.registerCommonCommands();
-		this.registerCommonMenus();
+		// 功能已由 Manager 注册
 
 		this.app.workspace.onLayoutReady(() => {
 			// 延迟构建缓存，避免阻塞启动
@@ -369,47 +294,60 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		// 监听文件修改事件
 		this.registerEvent(this.app.vault.on('modify', async (file) => {
 			if (file instanceof TFile && file.extension === 'md') {
-				// 只处理工作区内的文件
-				if (!this.isFileInWorkspace(file)) return;
+				// 只处理符合字数统计条件的文件
+				if (!this.isEligibleForWordCount(file)) return;
 				
 				const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
 				const isActiveFile = activeView?.file?.path === file.path;
 
 				// 如果不是当前活动文件，说明是通过其他方式修改的（如批量操作、便签保存）
 				// 需要更新每日历史统计
+				// 注：_合并章节 文件已在 isEligibleForWordCount 中被拦截，无需重复判断
 				if (!isActiveFile) {
-					// 排除合并章节文件（文件名包含 "_合并章节"）
-					const isMergedFile = file.basename.includes('_合并章节');
-					if (isMergedFile) {
-						// 仍然更新缓存，但不计入历史统计
-						this.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
-							this.updateFileCacheAndRefresh(file);
-						}, 500);
-						return;
-					}
 					
 					try {
 						const content = await this.app.vault.cachedRead(file);
 						const newWordCount = this.calculateAccurateWords(content);
 						
 						// 从缓存中获取旧的字数
-						const oldWordCount = this.cacheManager.getFileCache(file.path) || 0;
-						const delta = newWordCount - oldWordCount;
+						const oldWordCount = this.cacheManager.getFileCache(file.path);
+						
+						// [BUGFIX] 如果是新文件、刚被重命名的文件、或刚通过云同步进入工作区的文件，
+						// 缓存中可能没有它，不能视为 0 字，否则会导致历史字数暴涨！
+						if (oldWordCount === null) {
+							// 没有旧数据，不计算增量，直接更新缓存即可
+							this.cacheManager.updateFileCache(file, newWordCount, this.app.vault);
+							
+							// 使用防抖更新缓存和刷新显示
+							this.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
+								this.updateFileCacheAndRefresh(file);
+							}, 500);
+							return;
+						}
 
-						// [BUGFIX] 只有在布局就绪后才记录历史增量，避免启动时的系统性微差导致的负数
-						if (delta !== 0 && this.isLayoutReady) {
-							// [BUGFIX] 立即同步更新内存缓存，防止因为防抖导致突发多次 modify 事件时重复计算相同的 delta
+						const delta = newWordCount - oldWordCount;
+						if (delta !== 0) {
+							// [BUGFIX] 无论布局是否就绪，都必须立即更新缓存基准！
+							// 否则，如果在启动过程中文件发生了修改（如同步、索引更新），
+							// 缓存将维持旧值，导致布局就绪后的下一次修改产生一个包含启动期所有变动的大 delta。
 							this.cacheManager.updateFileCache(file, newWordCount, this.app.vault);
 
-							const today = window.moment().format('YYYY-MM-DD');
-							this.historyManager.addWords(today, delta);
+							// 只有在布局就绪后才记录历史增量，避免启动时的系统性微差导致的统计异常
+							if (this.isLayoutReady) {
+								const today = window.moment().format('YYYY-MM-DD');
+								this.historyManager.addWords(today, delta);
+								
+								// [BUGFIX] 同时更新本次运行的累计字数，确保非活动文件的修改（如便签、同步）
+								// 也能即时反映在状态栏和实时统计视图中。
+								this.sessionAddedWords += delta;
 
-							// 防抖保存设置（历史数据会在独立周期保存）
-							this.adaptiveDebounceManager.debounceFixed('save-settings', () => {
-								this.saveSettings().catch(err => {
-									console.error('[Plugin] 保存设置失败:', err);
-								});
-							}, 1000);
+								// 防抖保存设置（历史数据会在独立周期保存）
+								this.adaptiveDebounceManager.debounceFixed('save-settings', () => {
+									this.saveSettings().catch(err => {
+										console.error('[Plugin] 保存设置失败:', err);
+									});
+								}, 1000);
+							}
 						}
 					} catch (error) {
 						console.error('[Plugin] 更新每日历史统计失败:', error);
@@ -426,8 +364,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		// 监听文件删除事件
 		this.registerEvent(this.app.vault.on('delete', (file) => {
 			if (file instanceof TFile && file.extension === 'md') {
-				// 只处理工作区内的文件
-				if (!this.isFileInWorkspace(file)) return;
+				// 只处理符合字数统计条件的文件
+				if (!this.isEligibleForWordCount(file)) return;
 				
 				// 使缓存失效
 				this.cacheManager.invalidateCache(file.path, this.app.vault);
@@ -442,9 +380,21 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		// 监听文件重命名事件
 		this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
 			if (file instanceof TFile && file.extension === 'md') {
-				// 只处理工作区内的文件
+				// 重命名时，旧文件虽然没了，但新文件如果不符合条件（例如重命名为非章节名），就不该更新它的缓存。
+				// 但如果是从章节名改成了非章节名，我们也应该把旧名字从缓存中删掉。
 				if (!this.isFileInWorkspace(file)) return;
+				
+				// [BUGFIX] 重命名时，应该将旧路径的字数转移到新路径的缓存中！
+				// 否则下次 modify 时，getFileCache 返回 null，会被当成全新的文件（之前是 0）导致字数暴涨！
+				const oldCache = this.cacheManager.getFileCache(oldPath);
+				
 				this.cacheManager.invalidateCache(oldPath, this.app.vault);
+				
+				if (this.isEligibleForWordCount(file) && oldCache !== null) {
+					// 主动设置新路径的缓存，防止被后续操作误判为新文件
+					this.cacheManager.updateFileCache(file, oldCache, this.app.vault);
+				}
+
 				this.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
 					this.updateFileCacheAndRefresh(file);
 				}, 500);
@@ -500,176 +450,6 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	}
 
 	private setupDesktopFeatures(): void {
-		this.addCommand({
-			id: 'toggle-tracking',
-			name: '开始/暂停 专注时间统计',
-			callback: () => {
-				if (this.isTracking) this.stopTracking();
-				else this.startTracking();
-			}
-		});
-
-		this.addCommand({
-			id: 'create-blank-sticky-note',
-			name: '新建空白悬浮便签',
-			callback: () => {
-				this.createStickyNote({ content: '', title: '新便签' });
-			}
-		});
-
-		this.addCommand({
-			id: 'reset-stream-session',
-			name: '重置直播统计数据 (清空时长和净增字数)',
-			callback: () => {
-				this.focusMs = 0;
-				this.slackMs = 0;
-				this.sessionAddedWords = 0;
-				this.isTracking = false; 
-				this.worker?.postMessage('stop');
-				this.editorTracker.handleFileChange(); 
-				this.exportLegacyOBS(true); 
-				this.refreshStatusViews();
-				new Notice('直播数据已重置！统计已暂停，请手动开始新的场次。');
-			}
-		});
-
-		this.addCommand({
-			id: 'reset-immersive-layout',
-			name: '重置沉浸模式布局 (回到默认比例和位置)',
-			callback: () => {
-				this.settings.immersiveLayout = null;
-				this.saveSettings();
-				new Notice('沉浸模式布局已重置，下次进入生效');
-			}
-		});
-
-		this.addCommand({
-			id: 'create-next-chapter',
-			name: '自动创建下一章 (智能递增)',
-			editorCallback: async (editor, view) => {
-				const currentFile = view.file;
-				if (!currentFile) return;
-
-				const folderPath = currentFile.parent;
-				const siblingNames = folderPath
-					? folderPath.children
-						.filter((f): f is TFile => f instanceof TFile && f.extension === 'md')
-						.map(f => f.basename)
-					: [];
-
-				const newFileName = ChapterSorter.getNextChapterName(currentFile.basename, siblingNames);
-				if (!newFileName) {
-					new Notice('当前文件名无法识别章节号（仅支持数字或汉字），无法自动创建');
-					return;
-				}
-
-				const newFilePath = folderPath ? `${folderPath.path}/${newFileName}` : newFileName;
-				const existingFile = this.app.vault.getAbstractFileByPath(newFilePath);
-				if (existingFile) {
-					await this.app.workspace.getLeaf(false).openFile(existingFile as TFile);
-					return;
-				}
-				try {
-					const newFile = await this.app.vault.create(newFilePath, '');
-					await this.app.workspace.getLeaf(false).openFile(newFile);
-					new Notice(`[成功] 已创建: ${newFileName}`);
-				} catch (error) {
-					console.error(error);
-					new Notice(`[错误] 创建失败: ${error}`);
-				}
-			}
-		});
-
-		// 桌面端专属：文件菜单 - 抽出为便签和合并章节
-		this.registerEvent(this.app.workspace.on('file-menu', (menu, file) => {
-			if (file instanceof TFile && file.extension === 'md') {
-				menu.addItem((item) => {
-					item.setTitle('抽出为便签').setIcon('popup-open').onClick(() => { 
-						this.createStickyNote({ file: file });
-					});
-				});
-			}
-
-			if (file instanceof TFolder) {
-				menu.addItem((item) => {
-					item.setTitle('合并章节')
-						.setIcon('documents')
-						.onClick(async () => {
-							const notice = new Notice(`正在扫描并合并${file.name}...`, 0);
-							const mdFiles: TFile[] = [];
-							
-							const collectFiles = (folder: TFolder) => {
-								for (const child of folder.children) {
-									if (child instanceof TFile && child.extension === 'md') {
-										// 只收集智能排序识别的文件
-										if (ChapterSorter.isChapterFile(child.name)) {
-											mdFiles.push(child);
-										}
-									} else if (child instanceof TFolder) {
-										collectFiles(child);
-									}
-								}
-							};
-							collectFiles(file);
-
-							if (mdFiles.length === 0) {
-								notice.hide();
-								new Notice(`文件夹${file.name}中没有找到章节文件`);
-								return;
-							}
-
-							// 按章节编号排序（使用 ChapterSorter 的排序逻辑）
-							mdFiles.sort((a, b) => ChapterSorter.compareFiles(a, b));
-
-							let mergedContent = `# 合并章节：${file.name}\n\n`;
-							let totalWords = 0;
-
-							for (const mdFile of mdFiles) {
-								const content = await this.app.vault.cachedRead(mdFile);
-								mergedContent += `\n\n## ${mdFile.basename}\n\n`;
-								mergedContent += content;
-								totalWords += this.calculateAccurateWords(content);
-							}
-
-							let exportPath = `${file.parent?.path === '/' ? '' : file.parent?.path + '/'}${file.name}_合并章节.md`;
-							let counter = 1;
-							while (this.app.vault.getAbstractFileByPath(exportPath)) {
-								exportPath = `${file.parent?.path === '/' ? '' : file.parent?.path + '/'}${file.name}_合并章节(${counter}).md`;
-								counter++;
-							}
-
-							try {
-								const newFile = await this.app.vault.create(exportPath, mergedContent.trim());
-								notice.hide();
-								await this.app.workspace.getLeaf(false).openFile(newFile);
-								new Notice(`[成功] 合并成功！\n已合并 ${mdFiles.length} 个章节\n总计 ${totalWords.toLocaleString()} 字`, 8000);
-							} catch (error) {
-								console.error(error);
-								notice.hide();
-								new Notice("合并失败，请检查文件权限");
-							}
-						});
-				});
-			}
-		}));
-
-		// 桌面端专属：编辑器菜单 - 抽出为便签
-		this.registerEvent(this.app.workspace.on('editor-menu', (menu, editor, view) => {
-			if (editor.somethingSelected()) {
-				menu.addItem((item) => {
-					item.setTitle('抽出为便签').setIcon('quote').onClick(() => { 
-						this.createStickyNote({ content: editor.getSelection(), title: '选中片段' });
-					});
-				});
-			}
-			if (view.file) {
-				menu.addItem((item) => {
-					item.setTitle('当前文件抽出为便签').setIcon('popup-open').onClick(() => { 
-						this.createStickyNote({ file: view.file! });
-					});
-				});
-			}
-		}));
 
 		this.setupWorker();
 
@@ -686,69 +466,12 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			
 			// 延迟设置，确保文件浏览器已加载
 			this.app.workspace.onLayoutReady(() => {
-				setTimeout(() => {
-					const success = this.fileExplorerPatcher.enable();
-					if (success) {
-						console.log('[WebNovel Assistant] Smart chapter sorting enabled');
-					} else {
-						console.warn('[WebNovel Assistant] Failed to enable smart chapter sorting');
-					}
-				}, 1000);
+				this.fileExplorerPatcher.enable();
 			});
 		}
 
-		this.addCommand({
-			id: 'copy-obs-overlay-url',
-			name: '复制 OBS 叠加层 URL 到剪贴板',
-			callback: () => {
-				const url = `http://127.0.0.1:${this.settings.obsPort}/`;
-				navigator.clipboard.writeText(url);
-				new Notice(`已复制: ${url}`);
-			}
-		});
-
-		this.addCommand({
-			id: 'refresh-chapter-sort',
-			name: '手动刷新章节排序（通常不需要）',
-			callback: () => {
-				if (!this.settings.enableSmartChapterSort) {
-					new Notice('请先在设置中启用"智能章节排序"功能');
-					return;
-				}
-				this.fileExplorerPatcher.refreshManually();
-				new Notice('[成功] 章节排序已刷新\n\n[提示] 排序会自动适应，通常不需要手动刷新');
-			}
-		});
-
-		this.addCommand({
-			id: 'rebuild-folder-cache',
-			name: '重建文件夹字数缓存',
-			callback: async () => {
-				if (!this.settings.showExplorerCounts) {
-					new Notice('请先在设置中启用"文件浏览器字数统计"功能');
-					return;
-				}
-				
-				// 清空缓存
-				this.cacheManager.clearCache();
-				
-				// 重新构建
-				const notice = new Notice('正在重建文件浏览器缓存...', 0);
-				try {
-					await this.cacheManager.buildInitialCache(
-						this.app.vault,
-						this.calculateAccurateWords.bind(this)
-					);
-					notice.hide();
-					this.refreshFolderCounts();
-					new Notice('[成功] 缓存重建完成！');
-				} catch (error) {
-					notice.hide();
-					new Notice(`[错误] 缓存重建失败: ${error}`);
-					console.error('[Plugin] 缓存重建失败:', error);
-				}
-			}
-		});
+		// 注意：copy-obs-overlay-url / refresh-chapter-sort / rebuild-folder-cache
+		// 这三条命令已由 CommandManager.registerAllCommands() 统一注册，此处不再重复。
 
 		// ==========================================
 		// 桌面端专属：伏笔标注功能 - Markdown 渲染后处理
@@ -840,20 +563,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		});
 	}
 
-	/**
-	 * 注册共享视图（平板端和桌面端都需要）
-	 */
-	private registerCommonViews(): void {
-		this.registerView(STATUS_VIEW_TYPE, (leaf) => new WritingStatusView(leaf, this));
-		this.registerView(FORESHADOWING_VIEW_TYPE, (leaf) => new ForeshadowingView(leaf, this));
-		this.registerView(TIMELINE_VIEW_TYPE, (leaf) => new TimelineView(leaf, this));
-		
-		// 沉浸模式视图仅在桌面端注册
-		if (isDesktop()) {
-			this.registerView(VIEW_TYPES.IMMERSIVE_CHAPTER_LIST, (leaf) => new ImmersiveChapterListView(leaf, this));
-			this.registerView(VIEW_TYPES.IMMERSIVE_STICKY_NOTES, (leaf) => new ImmersiveStickyNotesView(leaf, this));
-		}
-	}
+
 
 	/**
 	 * 注册共享 Ribbon 图标（平板端和桌面端都需要）
@@ -877,191 +587,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		}
 	}
 
-	/**
-	 * 注册共享命令（平板端和桌面端都需要）
-	 */
-	private registerCommonCommands(): void {
-		this.addCommand({
-			id: 'toggle-foreshadowing-view',
-			name: '打开/关闭伏笔面板',
-			callback: () => this.toggleForeshadowingView()
-		});
 
-		this.addCommand({
-			id: 'toggle-timeline-view',
-			name: '打开/关闭时间线面板',
-			callback: () => this.toggleTimelineView()
-		});
-
-		this.addCommand({
-			id: 'toggle-writing-status-view',
-			name: '打开/关闭写作实时状态面板',
-			callback: () => this.toggleStatusView()
-		});
-
-		// 沉浸模式命令仅限桌面端
-		if (isDesktop()) {
-			this.addCommand({
-				id: 'toggle-immersive-mode',
-				name: '进入/退出全屏沉浸写作模式',
-				callback: () => this.immersiveModeManager.toggleImmersiveMode()
-			});
-		}
-
-		this.addCommand({
-			id: 'reset-immersive-layout',
-			name: '重置沉浸模式布局 (修复界面错乱)',
-			callback: async () => {
-				this.settings.immersiveLayout = null;
-				await this.saveSettings();
-				new Notice('沉浸模式布局已重置，下次进入将使用默认比例。');
-			}
-		});
-
-		this.addCommand({
-			id: 'mark-as-foreshadowing',
-			name: '标注为伏笔',
-			editorCheckCallback: (checking, editor, view) => {
-				const selection = editor.getSelection();
-				if (!selection || !selection.trim()) return false;
-				if (checking) return true;
-
-				const sourceFile = view.file;
-				if (!sourceFile) return false;
-
-				const doMark = (description: string, tags: string[]) => {
-					this.foreshadowingManager.addForeshadowing(sourceFile, selection, description, tags)
-						.then(({ file: targetFile, merged }) => {
-							if (merged) {
-								new Notice(`[成功] 已合并到同名伏笔条目「${targetFile.name}」`, 5000);
-							} else {
-								new Notice(`[成功] 已标注为伏笔，保存至「${targetFile.name}」`, 5000);
-							}
-							// 桌面端提供打开伏笔文件的选项
-							if (isDesktop()) {
-								const openNotice = new Notice(`[提示] 点击此处打开伏笔文件`, 8000);
-								openNotice.noticeEl.style.cursor = 'pointer';
-								openNotice.noticeEl.onclick = () => {
-									this.foreshadowingManager.openForeshadowingFile(targetFile);
-									openNotice.hide();
-								};
-							}
-						})
-						.catch((err) => {
-							console.error('[ForeshadowingManager] addForeshadowing failed:', err);
-							new Notice(`[错误] 标注失败：${err}`);
-						});
-				};
-
-				if (!this.foreshadowingManager.foreshadowingFileExists(sourceFile)) {
-					const fileName = this.settings.foreshadowing?.fileName || '伏笔';
-					const folderPath = sourceFile.parent?.path || '';
-					new ConfirmCreateForeshadowingFileModal(this.app, fileName, folderPath, () => {
-						new ForeshadowingInputModal(this.app, this, sourceFile.basename, selection, doMark).open();
-					}).open();
-				} else {
-					new ForeshadowingInputModal(this.app, this, sourceFile.basename, selection, doMark).open();
-				}
-				return true;
-			}
-		});
-
-		this.addCommand({
-			id: 'mark-foreshadowing-recovered',
-			name: '标记伏笔已回收',
-			editorCheckCallback: (checking, editor, view) => {
-				const file = view.file;
-				if (!file) return false;
-				const foreshadowingFileName = (this.settings.foreshadowing?.fileName || '伏笔') + '.md';
-				if (file.name !== foreshadowingFileName) return false;
-				if (checking) return true;
-
-				const cursorLine = editor.getCursor().line;
-				const entryInfo = this.foreshadowingManager.getEntryAtCursor(editor, cursorLine);
-				if (!entryInfo) {
-					new Notice('[错误] 请将光标放在伏笔条目上');
-					return true;
-				}
-
-				new ForeshadowingRecoveryModal(this.app, entryInfo.contentPreview, file.parent?.path || '', async (recoveryFileNames) => {
-					const success = await this.foreshadowingManager.markAsRecovered(
-						file, entryInfo.sourceFile, entryInfo.createdAt, recoveryFileNames
-					);
-					if (success) {
-						const fileList = recoveryFileNames.map(f => `[[${f}]]`).join('、');
-						new Notice(`[成功] 已标记为已回收：${fileList}`);
-					} else {
-						new Notice('[错误] 未找到对应的伏笔条目，请确认光标位置');
-					}
-				}).open();
-				return true;
-			}
-		});
-	}
-
-	/**
-	 * 注册共享菜单（平板端和桌面端都需要）
-	 */
-	private registerCommonMenus(): void {
-		// 文件右键菜单
-		this.registerEvent(this.app.workspace.on('file-menu', (menu, file) => {
-			if (file instanceof TFile && file.extension === 'md') {
-				menu.addItem((item) => {
-					item.setTitle('设定本章目标字数').setIcon('target').onClick(() => { new GoalModal(this.app, file).open(); });
-				});
-			}
-		}));
-
-		// 编辑器右键菜单
-		this.registerEvent(this.app.workspace.on('editor-menu', (menu, editor, view) => {
-			if (editor.somethingSelected()) {
-				menu.addItem((item) => {
-					item.setTitle('标注为伏笔').setIcon('bookmark').onClick(() => {
-						(this.app as any).commands.executeCommandById('web-novel-assistant:mark-as-foreshadowing');
-					});
-				});
-				menu.addItem((item) => {
-					item.setTitle('添加到时间线').setIcon('calendar-clock').onClick(async () => {
-						const selection = editor.getSelection();
-						if (!selection.trim()) { new Notice('请先选中文字'); return; }
-						const sourceFile = view.file?.basename || '';
-						const folderPath = view.file?.parent?.path || '';
-
-						new TimelineAddFromSelectionModal(
-							this.app,
-							this,
-							this.settings.timeline?.fileName || '时间线',
-							selection.trim(),
-							sourceFile,
-							folderPath,
-							async (entry) => {
-								const manager = new TimelineManager(this.app, this, folderPath);
-								await manager.appendEntry({
-									time: entry.time,
-									description: entry.description,
-									chapter: entry.chapter,
-									type: entry.type,
-									rawBlock: '',
-								});
-								new Notice('[成功] 已添加到时间线');
-								const leaves = this.app.workspace.getLeavesOfType(TIMELINE_VIEW_TYPE);
-								if (leaves.length > 0) {
-									// 确保文件写入完成后再刷新
-									await new Promise(resolve => setTimeout(resolve, 100));
-									await (leaves[0].view as TimelineView).refresh();
-								}
-							}
-						).open();
-					});
-				});
-			}
-			if (view.file) {
-				menu.addItem((item) => {
-					item.setTitle('设定本章目标字数').setIcon('target').onClick(() => { new GoalModal(this.app, view.file!).open(); });
-				});
-			}
-		}));
-	}
 
 	/**
 	 * 统一的浮动统计窗口设置
@@ -1093,11 +619,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		// 平板端：根据设置决定是否启用浮动字数统计窗口
 		this.setupFloatingStats();
 		
-		// 平板端也启用常用的面板和命令
-		this.registerCommonViews();
-		this.registerCommonRibbonIcons();
-		this.registerCommonCommands();
-		this.registerCommonMenus();
+		// 注意：视图、命令和菜单已在 setupCoreFeatures() 中通过 Manager 统一注册，
+		// 此处只需注册平板端特有的 Ribbon 图标和浮窗
 
 		// 平板端：如果启用了文件浏览器字数统计，构建缓存
 		if (this.settings.showExplorerCounts) {
@@ -1136,6 +659,25 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		}
 	}
 
+
+	/**
+	 * 将所有活跃悬浮便签的当前内容强制同步到管理器
+	 * 通常在切换工作区（如进入沉浸模式）或插件卸载前调用
+	 */
+	public syncActiveNotesToManager(): void {
+		if (!isDesktop()) return;
+		this.activeNotes.forEach(note => {
+			if (note.state.isEditing && note.textareaEl) {
+				note.state.content = note.textareaEl.value;
+			}
+			this.stickyNoteManager.updateNote(note.state);
+		});
+		// [BUGFIX] updateNote 只更新内存，需要在此显式触发持久化，
+		// 防止进入沉浸模式或插件卸载时便签内容丢失。
+		this.stickyNoteManager.saveNotes(this.stickyNoteManager.getNotes()).catch(err => {
+			console.error('[Plugin] syncActiveNotesToManager 保存便签失败:', err);
+		});
+	}
 
 	/**
 	 * 同步沉浸模式产生的便签变更到桌面悬浮便签
@@ -1200,6 +742,13 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	 * 刷新所有沉浸模式便签列表视图
 	 */
 	public refreshImmersiveNotes() {
+		// 如果当前有文本框正处于编辑状态，暂时跳过全量刷新，防止打断 IME 输入
+		const activeEl = document.activeElement;
+		if (activeEl && activeEl.tagName.toLowerCase() === 'textarea' && 
+			(activeEl.closest('.immersive-sticky-card') || activeEl.closest('.my-sticky-note'))) {
+			return;
+		}
+
 		this.app.workspace.getLeavesOfType(VIEW_TYPES.IMMERSIVE_STICKY_NOTES).forEach(leaf => {
 			if (leaf.view.getViewType() === VIEW_TYPES.IMMERSIVE_STICKY_NOTES) {
 				(leaf.view as any).renderNotes?.();
@@ -1258,6 +807,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		// 7. 卸载文件浏览器补丁
 		if (this.fileExplorerPatcher) {
 			this.fileExplorerPatcher.disable();
+			this.fileExplorerPatcher.unpatch();
 		}
 
 		// 8. 强制保存数据
@@ -1286,7 +836,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			// 检查缓存完整性：对比缓存条目数和实际文件数
 			const allFiles = this.app.vault.getMarkdownFiles();
 			// 只统计工作区内的文件
-			const workspaceFiles = allFiles.filter(f => this.isFileInWorkspace(f));
+			const workspaceFiles = allFiles.filter(f => this.isEligibleForWordCount(f));
 			const cacheStats = this.cacheManager.getCacheStats();
 			
 			console.log(`[Plugin] 缓存完整性检查: ${cacheStats.size} 条目 vs ${workspaceFiles.length} 文件（工作区）`);
@@ -1322,7 +872,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			await this.cacheManager.buildInitialCache(
 				this.app.vault,
 				this.calculateAccurateWords.bind(this),
-				this.isFileInWorkspace.bind(this)
+				this.isEligibleForWordCount.bind(this)
 			);
 			
 			notice.hide();
@@ -1376,43 +926,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		}
 	}
 
-	/**
-	 * 统一的视图切换方法
-	 * @param viewType 视图类型
-	 */
-	private async toggleView(viewType: string): Promise<void> {
-		const { workspace } = this.app;
-		const leaves = workspace.getLeavesOfType(viewType);
-		
-		if (leaves.length > 0) {
-			leaves.forEach(leaf => leaf.detach());
-		} else {
-			// 在侧边栏打开
-			let leaf: WorkspaceLeaf | null = null;
-			
-			// 尝试获取右侧边栏叶子
-			const rightLeaf = workspace.getRightLeaf(false);
-			if (rightLeaf) {
-				leaf = rightLeaf;
-				await leaf.setViewState({ type: viewType, active: true });
-			} else {
-				// 备选方案：创建一个新的叶子
-				leaf = workspace.getLeaf('tab');
-				await leaf.setViewState({ type: viewType, active: true });
-			}
-			
-			if (leaf) {
-				workspace.revealLeaf(leaf);
-				// 如果是移动端或平板端，确保侧边栏展开
-				if (isMobile()) {
-					(this.app.workspace as any).rightSplit?.expand();
-				}
-			}
-		}
-	}
-
 	async toggleStatusView() {
-		await this.toggleView(STATUS_VIEW_TYPE);
+		await this.viewManager.toggleView(STATUS_VIEW_TYPE);
 	}
 
 	async loadSettings() {
@@ -1420,11 +935,11 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	}
 
 	async toggleForeshadowingView() {
-		await this.toggleView(FORESHADOWING_VIEW_TYPE);
+		await this.viewManager.toggleView(FORESHADOWING_VIEW_TYPE);
 	}
 
 	async toggleTimelineView() {
-		await this.toggleView(TIMELINE_VIEW_TYPE);
+		await this.viewManager.toggleView(TIMELINE_VIEW_TYPE);
 	}
 
 	async saveSettings() {
@@ -1447,8 +962,29 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		return this.settings.workspaceFolders.some(folder => {
 			// 标准化文件夹路径（移除首尾斜杠）
 			const normalizedFolder = folder.replace(/^\/+|\/+$/g, '');
-			return filePath.startsWith(normalizedFolder + '/') || filePath.startsWith(normalizedFolder);
+			if (normalizedFolder === '') return true; // 如果填了 / 或为空，默认匹配所有
+			return filePath === normalizedFolder + '.md' || filePath.startsWith(normalizedFolder + '/');
 		});
+	}
+
+	/**
+	 * 检查文件是否符合字数统计的条件
+	 * @param file 要检查的文件
+	 * @returns 如果符合条件返回 true
+	 */
+	isEligibleForWordCount(file: TFile): boolean {
+		// 1. 必须在工作区内
+		if (!this.isFileInWorkspace(file)) return false;
+		
+		// 2. 硬编码排除合并章节文件（防止导出合集时突然导致字数暴增）
+		if (file.basename.includes('_合并章节')) return false;
+		
+		// 3. 如果开启了严格章节模式，则必须是符合命名规则的章节文件
+		if (this.settings.enableStrictChapterMode && !ChapterSorter.isChapterFile(file.name)) {
+			return false;
+		}
+		
+		return true;
 	}
 
 	calculateAccurateWords(text: string): number {
@@ -1495,7 +1031,12 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			};
 		`;
 		const blob = new Blob([workerCode], { type: 'application/javascript' });
-		this.worker = new Worker(URL.createObjectURL(blob));
+		// [BUGFIX] 先保存 URL 再立即 revoke：Worker 构造函数内部已持有资源引用，
+		// 调用 revokeObjectURL 不影响 Worker 运行，但可释放浏览器端的 URL 注册表条目，
+		// 防止每次 Worker 重启时产生内存泄漏。
+		const blobUrl = URL.createObjectURL(blob);
+		this.worker = new Worker(blobUrl);
+		URL.revokeObjectURL(blobUrl);
 
 		this.worker.onerror = (error) => {
 			this.workerRestartAttempts++;
@@ -1632,7 +1173,9 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	buildObsOverlayHtml(): string {
 		return this.obsHtmlBuilder.buildObsOverlayHtml();
 	}
-	async refreshFolderCounts() {
+	// [BUGFIX] 此方法内部无任何 await，移除多余的 async 标记，
+	// 避免调用方误以为需要 await 从而产生隐式的 Promise 包装开销。
+	refreshFolderCounts() {
 		try {
 			const fileExplorer = this.app.workspace.getLeavesOfType("file-explorer")[0];
 			if (!fileExplorer || !fileExplorer.view) return;
@@ -1646,8 +1189,11 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 				for (const path in fileExplorerItems) {
 					const item = fileExplorerItems[path];
 					if (item.el) {
-						const countEl = item.el.querySelector('.folder-word-count');
-						if (countEl) countEl.remove();
+						const countEl = this.wordCountElCache.get(item.el) || item.el.querySelector('.folder-word-count');
+						if (countEl) {
+							countEl.remove();
+							this.wordCountElCache.delete(item.el);
+						}
 					}
 				}
 				return;
@@ -1662,7 +1208,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 					// 检查是否在工作区内
 					let isInWorkspace = true;
 					if (item.file instanceof TFile) {
-						isInWorkspace = this.isFileInWorkspace(item.file);
+						isInWorkspace = this.isEligibleForWordCount(item.file);
 					} else if (item.file instanceof TFolder) {
 						if (this.settings.workspaceFolders && this.settings.workspaceFolders.length > 0) {
 							const folderPath = item.file.path;
@@ -1680,15 +1226,23 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 					if (count === null) continue;
 					
 					const labelText = count > 0 ? ` (${formatCount(count)})` : "";
-					let countEl = item.el.querySelector('.folder-word-count') as HTMLElement;
+					let countEl = this.wordCountElCache.get(item.el) as HTMLElement;
 					
 					if (!countEl) {
-						const titleContent = item.el.querySelector('.nav-folder-title-content') || item.el.querySelector('.nav-file-title-content');
-						if (titleContent) {
-							countEl = titleContent.createEl('span', { cls: 'folder-word-count' });
-							countEl.style.fontSize = '0.8em';
-							countEl.style.opacity = '0.5';
-							countEl.style.marginLeft = '5px';
+						// 尝试从 DOM 获取（可能是上次遗留的）
+						countEl = item.el.querySelector('.folder-word-count') as HTMLElement;
+						if (!countEl) {
+							const titleContent = item.el.querySelector('.nav-folder-title-content') || item.el.querySelector('.nav-file-title-content');
+							if (titleContent) {
+								countEl = titleContent.createEl('span', { cls: 'folder-word-count' });
+								countEl.style.fontSize = '0.8em';
+								countEl.style.opacity = '0.5';
+								countEl.style.marginLeft = '5px';
+							}
+						}
+						// 存入缓存
+						if (countEl) {
+							this.wordCountElCache.set(item.el, countEl);
 						}
 					}
 					

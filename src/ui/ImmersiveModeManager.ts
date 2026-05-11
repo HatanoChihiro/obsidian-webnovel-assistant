@@ -12,7 +12,7 @@ export class ImmersiveModeManager {
 	private isImmersiveActive: boolean = false;
 	private savedLayout: any = null;
 	private savedActiveFile: TFile | null = null;
-	
+
 	private topBarEl: HTMLElement | null = null;
 	private updateInterval: number | null = null;
 	private immersiveNovelTitle: string = '';
@@ -21,6 +21,9 @@ export class ImmersiveModeManager {
 	private activeLeftLeaf: WorkspaceLeaf | null = null;
 	private activeRightLeaf: WorkspaceLeaf | null = null;
 	private activeBottomLeaf: WorkspaceLeaf | null = null;
+
+	// 顶部栏元素缓存
+	private topBarStatsEls: Record<string, HTMLElement> = {};
 
 	constructor(app: App, plugin: WebNovelAssistantPlugin) {
 		this.app = app;
@@ -52,13 +55,17 @@ export class ImmersiveModeManager {
 		this.immersiveNovelTitle = activeView.file.parent?.isRoot() ? activeView.file.basename : (activeView.file.parent?.name || '未命名小说');
 
 		try {
+			// 0. 强制同步所有活跃悬浮便签到管理器，确保数据最新
+			this.plugin.syncActiveNotesToManager();
+			await this.plugin.stickyNoteManager.saveNotes(this.plugin.stickyNoteManager.getNotes());
+
 			// 1. 抓取当前整个工作区的快照
 			this.savedLayout = (this.app.workspace as any).getLayout();
-			
+
 			// 2. 注入全局 CSS 类和顶部 Dashboard
 			document.body.classList.add('immersive-mode-active');
 			this.createTopBar();
-			
+
 			// 3. 构建排版
 			await this.buildImmersiveLayout(this.savedActiveFile);
 
@@ -69,7 +76,7 @@ export class ImmersiveModeManager {
 				});
 			}
 			this.plugin.startTracking();
-			
+
 			this.isImmersiveActive = true;
 			new Notice('已进入全屏沉浸模式');
 		} catch (error) {
@@ -94,14 +101,14 @@ export class ImmersiveModeManager {
 			// 2. 还原布局 (如果可能)
 			if (this.savedLayout) {
 				await (this.app.workspace as any).setLayout(this.savedLayout);
-				
+
 				// 还原布局后，如果文件发生了变化（例如在沉浸模式中切换了章节），则重新打开该文件
 				if (currentMainFile) {
 					// 延迟一帧确保布局还原完成
 					requestAnimationFrame(async () => {
 						const leaves = this.app.workspace.getLeavesOfType('markdown');
 						const targetLeaf = leaves.find(l => (l as any).active) || leaves[0] || this.app.workspace.getLeaf(false);
-						
+
 						await targetLeaf.setViewState({
 							type: 'markdown',
 							state: { file: currentMainFile.path },
@@ -112,7 +119,7 @@ export class ImmersiveModeManager {
 			} else {
 				console.warn('[ImmersiveModeManager] 退出时未找到保存的布局，跳过布局还原');
 			}
-			
+
 			// 3. 自动化清理：退出全屏 + 停止计时
 			if (document.fullscreenElement) {
 				document.exitFullscreen().catch(() => {
@@ -120,8 +127,8 @@ export class ImmersiveModeManager {
 				});
 			}
 
-			// 4. 反向同步便签
-			this.plugin.app.workspace.trigger('webnovel:notes-changed');
+			// 4. 反向同步便签（确保沉浸模式下的修改持久化到 notes-data.json 和浮动便签）
+			await this.plugin.stickyNoteManager.saveNotes(this.plugin.stickyNoteManager.getNotes());
 			this.plugin.syncFloatingNotes();
 			this.plugin.stopTracking();
 
@@ -132,14 +139,14 @@ export class ImmersiveModeManager {
 			// 5. 终极清理：移除样式、顶栏，清空内存引用
 			document.body.classList.remove('immersive-mode-active');
 			this.removeTopBar();
-			
+
 			this.isImmersiveActive = false;
 			this.savedLayout = null;
 			this.savedActiveFile = null;
-			
+
 			// 确保工作区能够响应
 			this.app.workspace.requestSaveLayout();
-			
+
 			// 清理引用
 			this.activeLeftLeaf = null;
 			this.activeRightLeaf = null;
@@ -309,23 +316,23 @@ export class ImmersiveModeManager {
 			let hasFailure = false;
 			for (const { split, sizes } of pendingSizes) {
 				if (!split || !split.children || !split.containerEl) continue;
-				
+
 				const isHorizontal = split.direction === 'horizontal';
-				const totalSize = isHorizontal 
-					? split.containerEl.offsetHeight 
+				const totalSize = isHorizontal
+					? split.containerEl.offsetHeight
 					: split.containerEl.offsetWidth;
-				
+
 				// 如果父容器尺寸还未准备好，标记失败并等待重试
 				if (totalSize === 0) {
 					hasFailure = true;
 					continue;
 				}
-				
+
 				const childCount = Math.min(split.children.length, sizes.length);
 				for (let i = 0; i < childCount; i++) {
 					// 1. 设置内部记录
 					split.children[i].size = sizes[i];
-					
+
 					// 2. 应用物理尺寸
 					if (typeof split.setElSize === 'function' && split.children[i].containerEl) {
 						const pixelSize = Math.round((sizes[i] / 100) * totalSize);
@@ -355,16 +362,41 @@ export class ImmersiveModeManager {
 	 */
 	private createTopBar(): void {
 		if (this.topBarEl) return;
-		
+
 		this.topBarEl = document.createElement('div');
 		this.topBarEl.id = 'immersive-top-bar';
 		this.topBarEl.className = 'immersive-top-bar';
-		
+
+		// 构建固定的骨架 DOM
+		const leftDiv = this.topBarEl.createDiv({ cls: 'immersive-top-bar-left' });
+		leftDiv.createSpan({ cls: 'novel-title', text: this.immersiveNovelTitle });
+
+		const centerDiv = this.topBarEl.createDiv({ cls: 'immersive-top-bar-center' });
+
+		const rightDiv = this.topBarEl.createDiv({ cls: 'immersive-top-bar-right' });
+		const exitBtn = rightDiv.createEl('button', { cls: 'immersive-exit-btn', text: '退出沉浸模式' });
+		exitBtn.addEventListener('click', () => this.exitImmersiveMode());
+
+		// 缓存数据容器，由 renderTopBarContent 动态更新内部内容
+		this.topBarStatsEls = {
+			totalTime: centerDiv.createSpan({ cls: 'stat-item' }),
+			focusTime: centerDiv.createSpan({ cls: 'stat-item focus' }),
+			slackTime: centerDiv.createSpan({ cls: 'stat-item slack' }),
+			chapterProgress: centerDiv.createSpan({ cls: 'stat-item' }),
+			dailyProgress: centerDiv.createSpan({ cls: 'stat-item' }),
+			sessionWords: centerDiv.createSpan({ cls: 'stat-item' })
+		};
+
+		// 初始隐藏不需要显示的元素
+		for (const el of Object.values(this.topBarStatsEls)) {
+			el.style.display = 'none';
+		}
+
 		// 插入到 body
 		document.body.appendChild(this.topBarEl);
-		
+
 		this.renderTopBarContent();
-		
+
 		// 每秒刷新一次数据
 		this.updateInterval = window.setInterval(() => {
 			this.renderTopBarContent();
@@ -386,44 +418,24 @@ export class ImmersiveModeManager {
 		if (!this.topBarEl) return;
 		const { settings } = this.plugin;
 		const stats = this.plugin.obsHtmlBuilder.getObsStats();
-		
-		// 构建 HTML
-		let html = `<div class="immersive-top-bar-left">
-			<span class="novel-title">${this.immersiveNovelTitle}</span>
-		</div>
-		<div class="immersive-top-bar-center">`;
-		
-		if (settings.immersiveShowTotalTime) {
-			html += `<span class="stat-item">总计 (${stats.totalTime})</span>`;
-		}
-		if (settings.immersiveShowFocusTime) {
-			html += `<span class="stat-item focus">专注 (${stats.focusTime})</span>`;
-		}
-		if (settings.immersiveShowSlackTime) {
-			html += `<span class="stat-item slack">摸鱼 (${stats.slackTime})</span>`;
-		}
-		if (settings.immersiveShowChapterProgress) {
-			html += `<span class="stat-item">章节进度 (${stats.todayWords}/${stats.goal})</span>`;
-		}
-		if (settings.immersiveShowDailyProgress) {
-			html += `<span class="stat-item">今日进度 (${stats.dailyWords}/${stats.dailyGoal})</span>`;
-		}
-		if (settings.immersiveShowSessionWords) {
-			html += `<span class="stat-item">本场净增 (${stats.sessionWords})</span>`;
-		}
-		
-		html += `</div>
-		<div class="immersive-top-bar-right">
-			<button class="immersive-exit-btn">退出沉浸模式</button>
-		</div>`;
-		
-		this.topBarEl.innerHTML = html;
-		
-		// 绑定退出事件
-		const exitBtn = this.topBarEl.querySelector('.immersive-exit-btn');
-		if (exitBtn) {
-			exitBtn.addEventListener('click', () => this.exitImmersiveMode());
-		}
+
+		const updateStatEl = (key: string, show: boolean, text: string) => {
+			const el = this.topBarStatsEls[key];
+			if (!el) return;
+			if (show) {
+				if (el.style.display === 'none') el.style.display = '';
+				if (el.innerText !== text) el.innerText = text;
+			} else {
+				if (el.style.display !== 'none') el.style.display = 'none';
+			}
+		};
+
+		updateStatEl('totalTime', !!settings.immersiveShowTotalTime, `总计 (${stats.totalTime})`);
+		updateStatEl('focusTime', !!settings.immersiveShowFocusTime, `专注 (${stats.focusTime})`);
+		updateStatEl('slackTime', !!settings.immersiveShowSlackTime, `摸鱼 (${stats.slackTime})`);
+		updateStatEl('chapterProgress', !!settings.immersiveShowChapterProgress, `章节进度 (${stats.todayWords}/${stats.goal})`);
+		updateStatEl('dailyProgress', !!settings.immersiveShowDailyProgress, `今日进度 (${stats.dailyWords}/${stats.dailyGoal})`);
+		updateStatEl('sessionWords', !!settings.immersiveShowSessionWords, `本场净增 (${stats.sessionWords})`);
 	}
 
 	/**
