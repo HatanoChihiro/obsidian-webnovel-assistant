@@ -196,6 +196,9 @@ export class ImmersiveModeManager {
 			state: { file: activeFile.path },
 			active: true
 		});
+		let finalLeftLeaf: WorkspaceLeaf | null = null;
+		let finalRightLeaf: WorkspaceLeaf | null = null;
+		let finalBottomLeaf: WorkspaceLeaf | null = null;
 		const showBottom = immersive.immersiveShowStickyNotes || immersive.immersiveShowForeshadowing || immersive.immersiveShowTimeline;
 		if (showBottom) {
 			const isTop = immersive.immersivePanelPosition === 'top';
