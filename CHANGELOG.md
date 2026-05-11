@@ -1,20 +1,12 @@
 # WebNovel Assistant 更新日志
 
-## 🔧 v2.2.3 - 代码质量修复与平台适配
+## 🔧 v2.2.3 - 优化与适配
 
-### 🐛 Bug 修复
-- **伏笔回收功能崩溃**: 修复 `ForeshadowingRecoveryModal` 中 `TFolder` 未导入导致 `instanceof` 检查抛出 ReferenceError，伏笔回收操作完全无法执行的问题
-- **WorkerManager/MarkdownPostProcessor 未初始化**: 修复构造函数中缺少 `new WorkerManager(this)` 和 `new MarkdownPostProcessor(this)` 导致插件加载崩溃的问题
-- **removeNote() 保存跳过**: 修复 `StickyNoteDataManager.removeNote()` 显式设置 `dirty=true` 后被 `saveNotes()` early return 跳过的问题
-- **沉浸模式定时器泄漏**: 修复 `ImmersiveModeManager.createTopBar()` 中 `registerInterval` 返回值未赋给 `updateInterval`，导致退出沉浸模式后定时器仍在运行的问题
-- **FileExplorer Patch 无防御**: 为 `getSortedFolderItems` patch 添加 try-catch，异常时回退到原始方法
-- **字数实时提醒在移动端误加载**: 限制该功能仅在桌面端生效，移动端/平板端不再加载编辑器 gutter 扩展及对应设置项
-
-### ⚡ 代码质量提升
-- **类型增强**: 创建 `obsidian-ex.d.ts` 通过 module augmentation 为 Obsidian 内部 API 提供类型声明，消除 29 处 `as any`（仅保留 3 处不可避免的运行时类型断言）
-- **伏笔类型重构**: 抽取 `ParsedForeshadowingEntry` 接口，统一解析数据结构，新增 `rawBlock?` 字段
-- **伏笔写入原子化**: `addForeshadowing` 和 `markAsRecovered` 采用 saveQueue 串行化，避免并发写入损坏文件
-- **CommandManager 防御性访问**: 为 `foreshadowingManager` 可选属性添加 null check，避免运行时崩溃
+- **字数实时提醒仅桌面端生效**: 移动端和平板端不再加载该功能及对应设置项
+- **伏笔回收修复**: 修复伏笔标记回收时崩溃的问题
+- **沉浸模式修复**: 退出沉浸模式后定时器不再持续运行
+- **便签保存修复**: 删除便签时数据不再可能被跳过保存
+- **文件排序防御**: 文件浏览器智能排序异常时自动回退，不再静默崩溃
 
 ---
 
