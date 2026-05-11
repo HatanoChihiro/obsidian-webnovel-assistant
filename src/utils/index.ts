@@ -13,6 +13,7 @@ export {
 	validateRange,
 	validateOpacity,
 	validateIdleTimeout,
+	escapeRegex,
 	type ValidationResult
 } from './validation';
 

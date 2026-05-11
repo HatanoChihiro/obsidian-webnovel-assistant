@@ -21,8 +21,8 @@ export class WordCounter {
 			// 移除代码块（调用工厂函数）
 			.replace(REGEX_PATTERNS.CODE_BLOCK(), '')
 			.replace(REGEX_PATTERNS.INLINE_CODE(), '')
-			// 移除标题 # 符号
-			.replace(REGEX_PATTERNS.HEADING, '')
+			// 移除标题 # 符号（调用工厂函数）
+			.replace(REGEX_PATTERNS.HEADING(), '')
 			// 移除删除线符号 ~~text~~，保留内容（调用工厂函数）
 			.replace(REGEX_PATTERNS.STRIKETHROUGH(), '$1')
 			// 移除粗体/斜体符号 ** * __ _（调用工厂函数）

@@ -4,11 +4,16 @@
  */
 
 /**
- * 验证结果接口
+ * 验证结果接口（统一定义，全项目唯一）
+ * 
+ * - SettingsManager 批量验证时使用 errors 数组收集多个错误
+ * - 单项验证函数返回时 errors 数组长度为 0 或 1
  */
 export interface ValidationResult {
+	/** 验证是否通过 */
 	valid: boolean;
-	error?: string;
+	/** 错误消息列表 */
+	errors: string[];
 }
 
 /**
@@ -19,40 +24,33 @@ export interface ValidationResult {
  * 
  * @example
  * ```typescript
- * validatePort(24816) // { valid: true }
- * validatePort(80) // { valid: false, error: '端口号必须在 1024-65535 之间' }
- * validatePort(70000) // { valid: false, error: '端口号必须在 1024-65535 之间' }
+ * validatePort(24816) // { valid: true, errors: [] }
+ * validatePort(80) // { valid: false, errors: ['端口号必须在 1024-65535 之间'] }
  * ```
  */
 export function validatePort(port: number): ValidationResult {
 	if (port < 1024 || port > 65535) {
 		return {
 			valid: false,
-			error: '端口号必须在 1024-65535 之间'
+			errors: ['端口号必须在 1024-65535 之间']
 		};
 	}
-	return { valid: true };
+	return { valid: true, errors: [] };
 }
 
 /**
  * 验证文件路径是否有效
  * @param path - 文件路径
  * @returns 验证结果
- * 
- * @example
- * ```typescript
- * validatePath('/valid/path') // { valid: true }
- * validatePath('') // { valid: false, error: '路径不能为空' }
- * ```
  */
 export function validatePath(path: string): ValidationResult {
 	if (!path || path.trim().length === 0) {
 		return {
 			valid: false,
-			error: '路径不能为空'
+			errors: ['路径不能为空']
 		};
 	}
-	return { valid: true };
+	return { valid: true, errors: [] };
 }
 
 /**
@@ -62,12 +60,6 @@ export function validatePath(path: string): ValidationResult {
  * @param max - 最大值
  * @param fieldName - 字段名称(用于错误消息)
  * @returns 验证结果
- * 
- * @example
- * ```typescript
- * validateRange(50, 10, 100, '超时时间') // { valid: true }
- * validateRange(5, 10, 100, '超时时间') // { valid: false, error: '超时时间必须在 10 到 100 之间' }
- * ```
  */
 export function validateRange(
 	value: number,
@@ -78,10 +70,10 @@ export function validateRange(
 	if (value < min || value > max) {
 		return {
 			valid: false,
-			error: `${fieldName}必须在 ${min} 到 ${max} 之间`
+			errors: [`${fieldName}必须在 ${min} 到 ${max} 之间`]
 		};
 	}
-	return { valid: true };
+	return { valid: true, errors: [] };
 }
 
 /**
@@ -89,13 +81,6 @@ export function validateRange(
  * 不透明度必须在 0.1-1.0 之间
  * @param opacity - 不透明度值
  * @returns 验证结果
- * 
- * @example
- * ```typescript
- * validateOpacity(0.9) // { valid: true }
- * validateOpacity(0.05) // { valid: false, error: '不透明度必须在 0.1-1.0 之间' }
- * validateOpacity(1.5) // { valid: false, error: '不透明度必须在 0.1-1.0 之间' }
- * ```
  */
 export function validateOpacity(opacity: number): ValidationResult {
 	return validateRange(opacity, 0.1, 1.0, '不透明度');
@@ -106,13 +91,17 @@ export function validateOpacity(opacity: number): ValidationResult {
  * 超时时间必须在 10-3600 秒之间
  * @param timeoutSeconds - 超时时间(秒)
  * @returns 验证结果
- * 
- * @example
- * ```typescript
- * validateIdleTimeout(60) // { valid: true }
- * validateIdleTimeout(5) // { valid: false, error: '空闲超时必须在 10 到 3600 之间' }
- * ```
  */
 export function validateIdleTimeout(timeoutSeconds: number): ValidationResult {
 	return validateRange(timeoutSeconds, 10, 3600, '空闲超时');
+}
+
+/**
+ * 转义正则表达式特殊字符（公共工具函数）
+ * 用于将用户输入安全地嵌入到正则表达式中
+ * @param s - 要转义的字符串
+ * @returns 转义后的字符串
+ */
+export function escapeRegex(s: string): string {
+	return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

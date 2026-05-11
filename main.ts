@@ -756,10 +756,12 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		});
 	}
 
-	async onunload() {
-		// 0. 确保退出沉浸模式
+	onunload() {
+		// 0. 确保退出沉浸模式（fire-and-forget，无法等待）
 		if (this.immersiveModeManager) {
-			await this.immersiveModeManager.exitImmersiveMode();
+			this.immersiveModeManager.exitImmersiveMode().catch(e =>
+				console.error('[WebNovel Assistant] 退出沉浸模式失败:', e)
+			);
 		}
 
 		// 1. 停止 OBS 服务器
@@ -774,7 +776,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			this.mobileFloatingStats = null;
 		}
 
-		// 3. 卸载所有活跃便签并保存状态
+		// 3. 卸载所有活跃便签并同步最新内容到内存
 		if (this.activeNotes) {
 			[...this.activeNotes].forEach(note => {
 				const currentContent = note.state.isEditing ? (note as any).textareaEl?.value : note.state.content;
@@ -810,15 +812,11 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			this.fileExplorerPatcher.unpatch();
 		}
 
-		// 8. 强制保存数据
-		try {
-			await this.saveSettings();
-			await this.historyManager.saveHistory();
-			await this.stickyNoteManager.saveNotes(this.stickyNoteManager.getNotes());
-			console.log('[WebNovel Assistant] 所有数据已安全保存');
-		} catch (e) {
-			console.error('[WebNovel Assistant] 卸载时保存数据失败:', e);
-		}
+		// 8. 尽力保存数据（fire-and-forget，Obsidian 不会等待异步 onunload）
+		// 注意：大部分数据在运行过程中已通过队列持续保存，此处是最后的兜底
+		this.saveSettings().catch(e => console.error('[WebNovel Assistant] 卸载时保存设置失败:', e));
+		this.historyManager.saveHistory().catch(e => console.error('[WebNovel Assistant] 卸载时保存历史失败:', e));
+		this.stickyNoteManager.saveNotes(this.stickyNoteManager.getNotes()).catch(e => console.error('[WebNovel Assistant] 卸载时保存便签失败:', e));
 
 		console.log('[WebNovel Assistant] Plugin unloaded and resources cleaned up');
 	}

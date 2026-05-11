@@ -1,7 +1,11 @@
 /**
  * 统计数据类型定义
  * 
- * 本文件包含 OBS 叠加层统计数据、缓存条目和验证结果相关的类型定义
+ * 本文件包含 OBS 叠加层统计数据相关的类型定义
+ * 
+ * 注意：
+ * - CacheEntry 已统一定义在 services/CacheManager.ts 中（唯一使用方）
+ * - ValidationResult 已统一定义在 utils/validation.ts 中
  */
 
 /**
@@ -36,30 +40,4 @@ export interface ObsStatsPayload {
 	currentFile: string;
 	/** 当前所在文件夹名 */
 	currentFolder: string;
-}
-
-/**
- * 缓存条目
- * 
- * 用于文件夹字数缓存系统
- */
-export interface CacheEntry {
-	/** 文件或文件夹路径 */
-	path: string;
-	/** 字数统计 */
-	wordCount: number;
-	/** 最后修改时间戳(毫秒) */
-	lastModified: number;
-}
-
-/**
- * 验证结果
- * 
- * 用于配置验证系统
- */
-export interface ValidationResult {
-	/** 验证是否通过 */
-	valid: boolean;
-	/** 错误消息列表 */
-	errors: string[];
 }

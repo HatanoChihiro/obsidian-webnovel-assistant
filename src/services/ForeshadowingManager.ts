@@ -1,6 +1,7 @@
 import { App, Editor, Notice, TFile, TFolder } from 'obsidian';
 import { ForeshadowingEntry, ForeshadowingStatus } from '../types/foreshadowing';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
+import { escapeRegex } from '../utils/validation';
 
 /**
  * 伏笔管理服务
@@ -126,8 +127,6 @@ export class ForeshadowingManager {
 		found: boolean;
 		insertPos: number; // 在第一个引用块之后插入新引用的字符位置
 	} {
-		const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
 		// 匹配 **说明**：<description> 这一行
 		const descPattern = new RegExp(
 			`\\*\\*说明\\*\\*：${escapeRegex(description)}`,
@@ -255,9 +254,6 @@ export class ForeshadowingManager {
 				ForeshadowingManager.entryPatternCache.delete(firstKey);
 			}
 			
-			// 转义正则特殊字符
-			const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-			
 			const pattern = new RegExp(
 				`(## \\[\\[${escapeRegex(sourceFile)}\\]\\]` +
 				(createdAt ? `[^\\n]*${escapeRegex(createdAt)}` : '') +
@@ -317,7 +313,6 @@ export class ForeshadowingManager {
 		const now = window.moment().format('YYYY-MM-DD HH:mm');
 
 		// 查找已回收条目的回收列表
-		const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 		const pattern = new RegExp(
 			`(## \\[\\[${escapeRegex(sourceFile)}\\]\\]` +
 			(createdAt ? `[^\\n]*${escapeRegex(createdAt)}` : '') +

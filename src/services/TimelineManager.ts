@@ -1,5 +1,6 @@
 import { App, TFile } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
+import { escapeRegex } from '../utils/validation';
 
 export interface TimelineEntry {
 	time: string;
@@ -209,7 +210,6 @@ export class TimelineManager {
 		if (!file) file = await this.createTimelineFile();
 		const existing = await this.app.vault.read(file);
 
-		const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 		const headerPattern = new RegExp(
 			`(## ${escapeRegex(entry.time)}\\n)([\\s\\S]*?)(\\n---\\n)`,
 			'm'

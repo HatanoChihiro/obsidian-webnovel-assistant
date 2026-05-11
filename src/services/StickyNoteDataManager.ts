@@ -95,7 +95,7 @@ export class StickyNoteDataManager {
 	}
 
 	/**
-	 * 更新单个便签数据
+	 * 更新单个便签数据（自动触发持久化）
 	 */
 	updateNote(noteState: StickyNoteState): void {
 		const index = this.notesData.findIndex(n => n.id === noteState.id);
@@ -105,14 +105,22 @@ export class StickyNoteDataManager {
 			this.notesData.push({ ...noteState });
 		}
 		this.dirty = true;
+		// 自动触发持久化，避免调用方遗漏保存
+		this.saveNotes(this.notesData).catch(err => {
+			console.error('[StickyNoteDataManager] updateNote 自动保存失败:', err);
+		});
 	}
 
 	/**
-	 * 移除便签
+	 * 移除便签（自动触发持久化）
 	 */
 	removeNote(id: string): void {
 		this.notesData = this.notesData.filter(n => n.id !== id);
 		this.dirty = true;
+		// 自动触发持久化
+		this.saveNotes(this.notesData).catch(err => {
+			console.error('[StickyNoteDataManager] removeNote 自动保存失败:', err);
+		});
 	}
 
 	/**

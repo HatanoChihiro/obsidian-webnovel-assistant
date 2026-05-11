@@ -60,6 +60,11 @@ function formatCount(count) {
   return isNegative ? "-" + result : result;
 }
 
+// src/utils/validation.ts
+function escapeRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 // src/utils/dom.ts
 function injectGlobalStyle(styleId, cssContent) {
   const existingStyle = document.getElementById(styleId);
@@ -163,8 +168,8 @@ var REGEX_PATTERNS = {
   CODE_BLOCK: () => /```[\s\S]*?```/g,
   /** 行内代码（工厂函数，避免 g 标志状态残留） */
   INLINE_CODE: () => /`[^`]*`/g,
-  /** 标题符号（gm 标志，保持不变） */
-  HEADING: /^#{1,6}\s/gm,
+  /** 标题符号（工厂函数，避免 gm 标志状态残留） */
+  HEADING: () => /^#{1,6}\s/gm,
   /** 加粗（工厂函数，避免 g 标志状态残留） */
   BOLD: () => /(\*\*|__)(.*?)\1/g,
   /** 斜体（工厂函数，避免 g 标志状态残留） */
@@ -1440,7 +1445,7 @@ var WordCounter = class {
    * @returns 纯文本字符数
    */
   calculateAccurateWords(text) {
-    let cleaned = text.replace(REGEX_PATTERNS.FRONTMATTER, "").replace(REGEX_PATTERNS.CODE_BLOCK(), "").replace(REGEX_PATTERNS.INLINE_CODE(), "").replace(REGEX_PATTERNS.HEADING, "").replace(REGEX_PATTERNS.STRIKETHROUGH(), "$1").replace(REGEX_PATTERNS.BOLD(), "$2").replace(REGEX_PATTERNS.ITALIC(), "$2").replace(REGEX_PATTERNS.INTERNAL_LINK(), (_, name, alias) => alias || name).replace(REGEX_PATTERNS.LINK(), "$1").replace(REGEX_PATTERNS.IMAGE(), "").replace(REGEX_PATTERNS.FOOTNOTE_REF(), "").replace(REGEX_PATTERNS.HTML_TAG(), "").replace(REGEX_PATTERNS.QUOTE, "").replace(REGEX_PATTERNS.SEPARATOR, "").replace(REGEX_PATTERNS.TABLE_SEPARATOR, "").replace(REGEX_PATTERNS.TASK_LIST, "").replace(REGEX_PATTERNS.UNORDERED_LIST, "").replace(REGEX_PATTERNS.ORDERED_LIST, "").replace(REGEX_PATTERNS.WHITESPACE(), "");
+    let cleaned = text.replace(REGEX_PATTERNS.FRONTMATTER, "").replace(REGEX_PATTERNS.CODE_BLOCK(), "").replace(REGEX_PATTERNS.INLINE_CODE(), "").replace(REGEX_PATTERNS.HEADING(), "").replace(REGEX_PATTERNS.STRIKETHROUGH(), "$1").replace(REGEX_PATTERNS.BOLD(), "$2").replace(REGEX_PATTERNS.ITALIC(), "$2").replace(REGEX_PATTERNS.INTERNAL_LINK(), (_, name, alias) => alias || name).replace(REGEX_PATTERNS.LINK(), "$1").replace(REGEX_PATTERNS.IMAGE(), "").replace(REGEX_PATTERNS.FOOTNOTE_REF(), "").replace(REGEX_PATTERNS.HTML_TAG(), "").replace(REGEX_PATTERNS.QUOTE, "").replace(REGEX_PATTERNS.SEPARATOR, "").replace(REGEX_PATTERNS.TABLE_SEPARATOR, "").replace(REGEX_PATTERNS.TASK_LIST, "").replace(REGEX_PATTERNS.UNORDERED_LIST, "").replace(REGEX_PATTERNS.ORDERED_LIST, "").replace(REGEX_PATTERNS.WHITESPACE(), "");
     return cleaned.length;
   }
 };
@@ -4656,7 +4661,6 @@ var TimelineManager = class {
     let file = this.getTimelineFile();
     if (!file) file = await this.createTimelineFile();
     const existing = await this.app.vault.read(file);
-    const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const headerPattern = new RegExp(
       `(## ${escapeRegex(entry.time)}\\n)([\\s\\S]*?)(\\n---\\n)`,
       "m"
@@ -5454,7 +5458,6 @@ var ForeshadowingManager = class _ForeshadowingManager {
    * 用于判断是否需要合并
    */
   findEntryByDescription(content, description) {
-    const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const descPattern = new RegExp(
       `\\*\\*\u8BF4\u660E\\*\\*\uFF1A${escapeRegex(description)}`,
       "m"
@@ -5549,7 +5552,6 @@ ${newQuote}`;
         const firstKey = _ForeshadowingManager.entryPatternCache.keys().next().value;
         _ForeshadowingManager.entryPatternCache.delete(firstKey);
       }
-      const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const pattern = new RegExp(
         `(## \\[\\[${escapeRegex(sourceFile)}\\]\\]` + (createdAt ? `[^\\n]*${escapeRegex(createdAt)}` : "") + `[\\s\\S]*?)(\\*\\*\u72B6\u6001\\*\\*\uFF1A)(${status})`,
         "m"
@@ -5588,7 +5590,6 @@ ${recoveryLines}`;
   async addRecoveryChapter(targetFile, sourceFile, createdAt, newRecoveryFile) {
     const content = await this.app.vault.read(targetFile);
     const now = window.moment().format("YYYY-MM-DD HH:mm");
-    const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const pattern = new RegExp(
       `(## \\[\\[${escapeRegex(sourceFile)}\\]\\]` + (createdAt ? `[^\\n]*${escapeRegex(createdAt)}` : "") + `[\\s\\S]*?\\*\\*\u56DE\u6536\u4E8E\\*\\*\uFF1A\\n)([\\s\\S]*?)(\\n\\n|$)`,
       "m"
@@ -6632,7 +6633,7 @@ var StickyNoteDataManager = class {
     return this.notesData;
   }
   /**
-   * 更新单个便签数据
+   * 更新单个便签数据（自动触发持久化）
    */
   updateNote(noteState) {
     const index = this.notesData.findIndex((n) => n.id === noteState.id);
@@ -6642,13 +6643,19 @@ var StickyNoteDataManager = class {
       this.notesData.push({ ...noteState });
     }
     this.dirty = true;
+    this.saveNotes(this.notesData).catch((err) => {
+      console.error("[StickyNoteDataManager] updateNote \u81EA\u52A8\u4FDD\u5B58\u5931\u8D25:", err);
+    });
   }
   /**
-   * 移除便签
+   * 移除便签（自动触发持久化）
    */
   removeNote(id) {
     this.notesData = this.notesData.filter((n) => n.id !== id);
     this.dirty = true;
+    this.saveNotes(this.notesData).catch((err) => {
+      console.error("[StickyNoteDataManager] removeNote \u81EA\u52A8\u4FDD\u5B58\u5931\u8D25:", err);
+    });
   }
   /**
    * 检查是否有未保存的更改
@@ -6837,7 +6844,7 @@ var CommandManager = class {
         if (checking) return true;
         const file = view.file;
         if (!file) return false;
-        const submitCallback = (tags, description) => {
+        const submitCallback = (description, tags) => {
           this.plugin.foreshadowingManager.addForeshadowing(file, selectedText, description, tags).then(({ file: foreshadowFile, merged }) => {
             if (merged) {
               new import_obsidian19.Notice(`[\u6210\u529F] \u5DF2\u5408\u5E76\u5230\u540C\u540D\u4F0F\u7B14\u6761\u76EE\u300C${foreshadowFile.name}\u300D`, 5e3);
@@ -8186,9 +8193,11 @@ var AccurateChineseCountPlugin = class extends import_obsidian24.Plugin {
       }
     });
   }
-  async onunload() {
+  onunload() {
     if (this.immersiveModeManager) {
-      await this.immersiveModeManager.exitImmersiveMode();
+      this.immersiveModeManager.exitImmersiveMode().catch(
+        (e) => console.error("[WebNovel Assistant] \u9000\u51FA\u6C89\u6D78\u6A21\u5F0F\u5931\u8D25:", e)
+      );
     }
     if (this.obsServer) {
       this.obsServer.stop();
@@ -8224,14 +8233,9 @@ var AccurateChineseCountPlugin = class extends import_obsidian24.Plugin {
       this.fileExplorerPatcher.disable();
       this.fileExplorerPatcher.unpatch();
     }
-    try {
-      await this.saveSettings();
-      await this.historyManager.saveHistory();
-      await this.stickyNoteManager.saveNotes(this.stickyNoteManager.getNotes());
-      console.log("[WebNovel Assistant] \u6240\u6709\u6570\u636E\u5DF2\u5B89\u5168\u4FDD\u5B58");
-    } catch (e) {
-      console.error("[WebNovel Assistant] \u5378\u8F7D\u65F6\u4FDD\u5B58\u6570\u636E\u5931\u8D25:", e);
-    }
+    this.saveSettings().catch((e) => console.error("[WebNovel Assistant] \u5378\u8F7D\u65F6\u4FDD\u5B58\u8BBE\u7F6E\u5931\u8D25:", e));
+    this.historyManager.saveHistory().catch((e) => console.error("[WebNovel Assistant] \u5378\u8F7D\u65F6\u4FDD\u5B58\u5386\u53F2\u5931\u8D25:", e));
+    this.stickyNoteManager.saveNotes(this.stickyNoteManager.getNotes()).catch((e) => console.error("[WebNovel Assistant] \u5378\u8F7D\u65F6\u4FDD\u5B58\u4FBF\u7B7E\u5931\u8D25:", e));
     console.log("[WebNovel Assistant] Plugin unloaded and resources cleaned up");
   }
   /**

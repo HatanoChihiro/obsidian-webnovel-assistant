@@ -1,14 +1,7 @@
 import { Plugin } from 'obsidian';
 import { AccurateCountSettings } from '../types/settings';
 import { VALIDATION_RULES } from '../constants';
-
-/**
- * 验证结果接口
- */
-export interface ValidationResult {
-	valid: boolean;
-	errors: string[];
-}
+import { ValidationResult } from '../utils/validation';
 
 /**
  * 验证规则接口

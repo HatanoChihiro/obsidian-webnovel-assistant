@@ -208,7 +208,7 @@ export class CommandManager {
 				const file = view.file;
 				if (!file) return false;
 				
-				const submitCallback = (tags: string[], description: string) => {
+				const submitCallback = (description: string, tags: string[]) => {
 					this.plugin.foreshadowingManager.addForeshadowing(file, selectedText, description, tags)
 						.then(({ file: foreshadowFile, merged }) => {
 							if (merged) {
