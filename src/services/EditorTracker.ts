@@ -1,6 +1,6 @@
 import { App, MarkdownView } from 'obsidian';
 import { WebNovelAssistantPlugin } from '../types/plugin';
-import { isMobile } from '../utils';
+import { isMobile, parseGoal } from '../utils';
 
 /**
  * 编辑器追踪服务
@@ -118,10 +118,8 @@ export class EditorTracker {
 		if (this.plugin.settings.showGoal && view.file) {
 			const cache = this.app.metadataCache.getFileCache(view.file);
 			let targetGoal = this.plugin.settings.defaultGoal;
-			if (cache?.frontmatter && cache.frontmatter['word-goal']) {
-				const fmGoal = parseInt(cache.frontmatter['word-goal']);
-				if (!isNaN(fmGoal)) targetGoal = fmGoal;
-			}
+			const fmGoal = parseGoal(cache?.frontmatter?.['word-goal']);
+			if (fmGoal > 0) targetGoal = fmGoal;
 
 			if (targetGoal > 0) {
 				const percent = Math.min(Math.round((totalCount / targetGoal) * 100), 100);

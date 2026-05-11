@@ -232,7 +232,7 @@ export function setStyles(
 	styles: Record<string, string>
 ): void {
 	Object.entries(styles).forEach(([key, value]) => {
-		(element.style as any)[key] = value;
+		element.style.setProperty(key, value);
 	});
 }
 
@@ -277,8 +277,8 @@ export function getAllViewTypes(): typeof VIEW_TYPES {
 export function refreshViews(app: App, viewType: string): void {
 	const leaves = app.workspace.getLeavesOfType(viewType);
 	leaves.forEach(leaf => {
-		if (leaf.view && typeof (leaf.view as any).refresh === 'function') {
-			(leaf.view as any).refresh();
+		if (leaf.view && typeof leaf.view.refresh === 'function') {
+			leaf.view.refresh();
 		}
 	});
 }

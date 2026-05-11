@@ -40,13 +40,13 @@ export class ObsOverlayServer {
 				if (url.pathname === '/api/stats') {
 					res.writeHead(200, {
 						'Content-Type': 'application/json',
-						'Access-Control-Allow-Origin': '*'
+						'Access-Control-Allow-Origin': 'http://localhost'
 					});
 					res.end(JSON.stringify(plugin.getObsStats()));
 				} else {
 					res.writeHead(200, {
 						'Content-Type': 'text/html; charset=utf-8',
-						'Access-Control-Allow-Origin': '*'
+						'Access-Control-Allow-Origin': 'http://localhost'
 					});
 					res.end(plugin.buildObsOverlayHtml());
 				}

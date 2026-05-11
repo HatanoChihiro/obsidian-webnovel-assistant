@@ -9,6 +9,7 @@ export interface CacheEntry {
 	path: string;
 	wordCount: number;
 	lastModified: number;
+	isFolder?: boolean; // [优化] 标记是否为文件夹，防止 LRU 清理 [M-P5]
 }
 
 /**
@@ -73,8 +74,8 @@ export class CacheManager {
 			}
 			
 			// 检查版本
-			if (cacheData.version !== 1) {
-				console.warn('[CacheManager] 缓存版本不匹配，忽略');
+			if (cacheData.version !== 2) {
+				console.warn(`[CacheManager] 缓存版本不匹配 (${cacheData.version} != 2)，忽略并重建`);
 				return false;
 			}
 
@@ -106,7 +107,7 @@ export class CacheManager {
 		this.saveQueue = this.saveQueue.then(async () => {
 			try {
 				const cacheData: CacheData = {
-					version: 1,
+					version: 2, // 升级版本以支持 isFolder 属性
 					timestamp: Date.now(),
 					entries: Array.from(this.cache.entries())
 				};
@@ -220,7 +221,8 @@ export class CacheManager {
 		this.cache.set(file.path, {
 			path: file.path,
 			wordCount: newWordCount,
-			lastModified: file.stat.mtime
+			lastModified: file.stat.mtime,
+			isFolder: false
 		});
 
 		// 递归更新所有父文件夹
@@ -234,7 +236,8 @@ export class CacheManager {
 				this.cache.set(parent.path, {
 					path: parent.path,
 					wordCount: Math.max(0, delta),
-					lastModified: Date.now()
+					lastModified: Date.now(),
+					isFolder: true
 				});
 			}
 			parent = parent.parent;
@@ -312,13 +315,15 @@ export class CacheManager {
 		console.warn('[CacheManager] 缓存大小超过限制，正在清理...');
 		
 		const entries = Array.from(this.cache.entries());
-		entries.sort((a, b) => a[1].lastModified - b[1].lastModified);
-
-		const toDelete = Math.floor(entries.length * 0.2);
-		for (let i = 0; i < toDelete; i++) {
-			this.cache.delete(entries[i][0]);
+		// [BUGFIX] 文件夹条目不应被清理，否则会导致文件夹统计失效 [M-P5]
+		const fileEntries = entries.filter(e => !e[1].isFolder);
+		fileEntries.sort((a, b) => a[1].lastModified - b[1].lastModified);
+		
+		const toDeleteCount = Math.floor(fileEntries.length * 0.2);
+		for (let i = 0; i < toDeleteCount; i++) {
+			this.cache.delete(fileEntries[i][0]);
 		}
-
-		console.log(`[CacheManager] 已清理 ${toDelete} 个旧缓存条目`);
+		
+		console.log(`[CacheManager] 已从 ${entries.length} 个条目中清理 ${toDeleteCount} 个旧文件缓存（保留所有文件夹缓存）`);
 	}
 }

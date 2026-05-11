@@ -141,6 +141,8 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					else this.plugin.refreshFolderCounts();
 				}));
 
+			// 字数实时提醒仅桌面端可用
+			if (isDesktop()) {
 		new Setting(containerEl)
 			.setName('启用字数实时提醒')
 			.setDesc('开启后，将在编辑器的左侧行号区域，按照设定的字数间隔实时显示当前行的累计字数。')
@@ -159,7 +161,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			.addText(text => text
 				.setValue((this.plugin.settings.wordCountInterval || 2000).toString())
 				.onChange(async (v) => {
-					const p = parseInt(v);
+					const p = parseInt(v, 10);
 					if (!isNaN(p) && p > 0) {
 						this.plugin.settings.wordCountInterval = p;
 						await this.plugin.saveSettings();
@@ -167,6 +169,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					}
 				}));
 
+			}
 		new Setting(containerEl)
 			.setName('启用严格章节模式')
 			.setDesc('所有涉及字数相关（目标、统计、字数提醒等）的功能均只在符合命名规则的文档中生效。')
@@ -185,13 +188,13 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('默认章节目标')
 			.addText(text => text.setValue(this.plugin.settings.defaultGoal.toString()).onChange(async (v) => {
-				const p = parseInt(v); if (!isNaN(p)) { this.plugin.settings.defaultGoal = p; await this.plugin.saveSettings(); }
+				const p = parseInt(v, 10); if (!isNaN(p)) { this.plugin.settings.defaultGoal = p; await this.plugin.saveSettings(); }
 			}));
 
 		new Setting(containerEl)
 			.setName('今日目标字数')
 			.addText(text => text.setValue((this.plugin.settings.dailyGoal || 5000).toString()).onChange(async (v) => {
-				const p = parseInt(v); if (!isNaN(p)) { this.plugin.settings.dailyGoal = p; await this.plugin.saveSettings(); }
+				const p = parseInt(v, 10); if (!isNaN(p)) { this.plugin.settings.dailyGoal = p; await this.plugin.saveSettings(); }
 			}));
 
 		if (isDesktop()) {
@@ -377,7 +380,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					// 强制刷新所有编辑器以应用滚动内边距
 					this.app.workspace.iterateAllLeaves(leaf => {
 						if (leaf.view instanceof MarkdownView) {
-							(leaf.view as any).editor?.refresh();
+							(leaf.view ).editor?.refresh();
 						}
 					});
 				}));
@@ -718,7 +721,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			.addText(text => text
 				.setValue(this.plugin.settings.obsPort.toString())
 				.onChange(async (value) => {
-					const parsed = parseInt(value);
+					const parsed = parseInt(value, 10);
 					if (parsed >= VALIDATION_RULES.PORT_RANGE.min &&
 						parsed <= VALIDATION_RULES.PORT_RANGE.max) {
 						this.plugin.settings.obsPort = parsed;

@@ -20,6 +20,8 @@ import type { MobileFloatingStats } from '../ui/MobileFloatingStats';
 import type { WordCounter } from '../services/WordCounter';
 import type { EditorTracker } from '../services/EditorTracker';
 import type { StyleManager } from '../services/StyleManager';
+import type { WorkerManager } from '../services/WorkerManager';
+import type { MarkdownPostProcessor } from '../services/MarkdownPostProcessor';
 
 /**
  * WebNovel Assistant 插件接口
@@ -40,10 +42,18 @@ export interface WebNovelAssistantPlugin {
 	historyManager: HistoryDataManager;
 	stickyNoteManager: StickyNoteDataManager;
 	fileExplorerPatcher: FileExplorerPatcher;
-	foreshadowingManager: ForeshadowingManager;
 	wordCounter: WordCounter;
-	editorTracker: EditorTracker;
-	styleManager: StyleManager;
+	commandManager: any; // CommandManager
+	viewManager: any;    // ViewManager
+	menuManager: any;    // MenuManager
+	
+	// 以下属性在 onload 中初始化，可能为 undefined
+	foreshadowingManager?: ForeshadowingManager;
+	editorTracker?: EditorTracker;
+	styleManager?: StyleManager;
+	workerManager?: WorkerManager;
+	markdownPostProcessor?: MarkdownPostProcessor;
+	immersiveModeManager?: any; // ImmersiveModeManager
 	
 	// 追踪状态
 	isTracking: boolean;
@@ -56,7 +66,6 @@ export interface WebNovelAssistantPlugin {
 	lastFilePath: string;
 	
 	// Worker 和服务
-	worker: Worker | null;
 	obsServer: ObsOverlayServer | null;
 	
 	// UI 组件
@@ -72,6 +81,8 @@ export interface WebNovelAssistantPlugin {
 	/** 检查文件是否符合字数统计的条件（工作区 + 排除合并文件 + 严格章节模式） */
 	isEligibleForWordCount(file: TFile): boolean;
 	updateWordCount(): void;
+	startTracking(): void;
+	stopTracking(): void;
 	
 	// 视图管理
 	toggleStatusView(): Promise<void>;
@@ -82,7 +93,7 @@ export interface WebNovelAssistantPlugin {
 	// 缓存管理
 	buildFolderCache(): Promise<void>;
 	updateFileCacheAndRefresh(file: TFile): Promise<void>;
-	refreshFolderCounts(): Promise<void>;
+	refreshFolderCounts(): void;
 	
 	// OBS 相关
 	getObsStats(): ObsStatsPayload;

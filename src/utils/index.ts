@@ -14,6 +14,7 @@ export {
 	validateOpacity,
 	validateIdleTimeout,
 	escapeRegex,
+	parseGoal,
 	type ValidationResult
 } from './validation';
 

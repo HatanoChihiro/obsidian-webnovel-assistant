@@ -105,3 +105,18 @@ export function validateIdleTimeout(timeoutSeconds: number): ValidationResult {
 export function escapeRegex(s: string): string {
 	return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
+
+/**
+ * 安全解析 Frontmatter 中的目标字数
+ * 兼容数字、字符串类型，处理 NaN 情况 [M-T4]
+ * @param value - frontmatter 中的原始值
+ * @returns 解析后的数字，无效时返回 0
+ */
+export function parseGoal(value: any): number {
+	if (typeof value === 'number') return Math.max(0, Math.floor(value));
+	if (typeof value === 'string') {
+		const parsed = parseInt(value, 10);
+		return isNaN(parsed) ? 0 : Math.max(0, parsed);
+	}
+	return 0;
+}

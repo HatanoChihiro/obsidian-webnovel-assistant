@@ -1,4 +1,4 @@
-import { ItemView, MarkdownView, Menu, Modal, Notice, Setting, TFile, WorkspaceLeaf, App } from 'obsidian';
+import { ItemView, MarkdownView, Menu, Modal, Notice, Setting, TFile, TFolder, WorkspaceLeaf, App } from 'obsidian';
 import { TimelineManager, TimelineEntry } from '../services/TimelineManager';
 import { CreativeView } from './CreativeView';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
@@ -68,8 +68,8 @@ export class TimelineAddModal extends Modal {
 		// 获取当前文件夹下的所有 md 文件
 		const getChapterFiles = (): string[] => {
 			const folder = this.folderPath ? this.app.vault.getAbstractFileByPath(this.folderPath) : null;
-			if (folder && 'children' in folder) {
-				return (folder as any).children
+			if (folder instanceof TFolder) {
+				return folder.children
 					.filter((c: any) => c.extension === 'md')
 					.map((c: any) => c.basename)
 					.sort();
@@ -187,15 +187,12 @@ export class TimelineAddModal extends Modal {
 				}
 			}
 			
-			const entry = {
+			const entry: TimelineEntry = {
 				time,
 				description: descInput.value.trim(),
 				chapter: uniqueChapters.join(', '), // 用逗号+空格连接
 				type: typeValue,
-			};
-			// 如果需要返回完整 TimelineEntry，添加 rawBlock 字段
-			if (this.returnFullEntry) {
-				(entry as any).rawBlock = '';
+				rawBlock: ''
 			}
 			this.onSubmit(entry);
 			this.close();
@@ -267,7 +264,7 @@ export class TimelineView extends CreativeView {
 		titleRow.createSpan({ text: '时间线', cls: 'timeline-view-title' });
 
 		const addBtn = titleRow.createEl('button', { cls: 'timeline-add-btn', title: '新增事件' });
-		addBtn.innerHTML = '+';
+		addBtn.setText('+');
 		addBtn.onclick = () => this.showAddForm(container);
 
 		header.createDiv({ cls: 'timeline-view-folder', text: this.currentFolder || '根目录' });
@@ -461,8 +458,8 @@ export class TimelineView extends CreativeView {
 		// 获取当前文件夹下的所有 md 文件
 		const folder = this.app.vault.getAbstractFileByPath(this.currentFolder);
 		const chapterFiles: string[] = [];
-		if (folder && 'children' in folder) {
-			(folder as any).children
+		if (folder instanceof TFolder) {
+			folder.children
 				.filter((c: any) => c.extension === 'md')
 				.forEach((c: any) => {
 					chapterFiles.push(c.basename);
@@ -687,8 +684,8 @@ export class TimelineView extends CreativeView {
 		// 获取当前文件夹下的所有 md 文件
 		const folder = this.app.vault.getAbstractFileByPath(this.currentFolder);
 		const chapterFiles: string[] = [];
-		if (folder && 'children' in folder) {
-			(folder as any).children
+		if (folder instanceof TFolder) {
+			folder.children
 				.filter((c: any) => c.extension === 'md')
 				.forEach((c: any) => {
 					chapterFiles.push(c.basename);

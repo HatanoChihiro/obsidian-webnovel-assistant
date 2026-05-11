@@ -16,13 +16,13 @@
 export function injectGlobalStyle(styleId: string, cssContent: string): void {
 	const existingStyle = document.getElementById(styleId);
 	if (existingStyle) {
-		existingStyle.innerHTML = cssContent;
+		existingStyle.textContent = cssContent;
 		return;
 	}
 	
 	const style = document.createElement('style');
 	style.id = styleId;
-	style.innerHTML = cssContent;
+	style.textContent = cssContent;
 	document.head.appendChild(style);
 }
 

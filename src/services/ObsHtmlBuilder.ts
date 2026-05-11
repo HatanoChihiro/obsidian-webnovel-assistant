@@ -1,5 +1,5 @@
 import { MarkdownView } from 'obsidian';
-import { hexToRgba, formatTime } from '../utils';
+import { hexToRgba, formatTime, parseGoal } from '../utils';
 import { ObsStatsPayload } from '../types/stats';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { DailyStat } from '../types/settings';
@@ -30,8 +30,8 @@ export class ObsHtmlBuilder {
 			currentFile = view.file.basename;
 			currentFolder = view.file.parent?.isRoot() ? '' : (view.file.parent?.name || '');
 			const cache = this.plugin.app.metadataCache.getFileCache(view.file);
-			const fmGoal = parseInt(cache?.frontmatter?.['word-goal']);
-			if (!isNaN(fmGoal)) targetGoal = fmGoal;
+			const fmGoal = parseGoal(cache?.frontmatter?.['word-goal']);
+			if (fmGoal > 0) targetGoal = fmGoal;
 			chapterWords = this.plugin.calculateAccurateWords(view.getViewData());
 		}
 
@@ -84,15 +84,13 @@ export class ObsHtmlBuilder {
 			.replace(/vbscript:/gi, '');
 		
 		// 白名单验证：只允许常见的 CSS 属性
-		const allowedProperties = [
+		const allowedProperties = new Set([
 			'color', 'background', 'font', 'margin', 'padding', 'border',
 			'width', 'height', 'display', 'position', 'top', 'left', 'right', 'bottom',
 			'opacity', 'transform', 'transition', 'animation', 'flex', 'grid',
-			'text', 'line', 'letter', 'word', 'white', 'overflow', 'visibility',
-			'z-index', 'cursor', 'pointer', 'box', 'shadow', 'radius', 'align',
-			'justify', 'gap', 'content', 'wrap', 'break', 'decoration', 'style',
-			'weight', 'size', 'family', 'variant', 'stretch', 'spacing'
-		];
+			'text-align', 'text-decoration', 'text-overflow', 'line-height', 'letter-spacing', 'word-break', 'white-space', 'overflow', 'visibility',
+			'z-index', 'cursor', 'pointer', 'box-shadow', 'border-radius', 'align-items', 'justify-content', 'gap', 'flex-wrap', 'font-weight', 'font-size', 'font-family', 'font-variant', 'font-stretch'
+		]);
 		
 		// 警告：如果包含不常见的属性
 		const lines = sanitized.split('\n');
@@ -104,7 +102,8 @@ export class ObsHtmlBuilder {
 			// 跳过注释和空行
 			if (!property || property.startsWith('/*') || property.startsWith('//')) return false;
 			
-			return !allowedProperties.some(allowed => property.includes(allowed));
+			// [安全] 精确匹配属性名，防止 'content-xxx' 等绕过 [M-S3]
+			return !allowedProperties.has(property);
 		});
 		
 		if (suspiciousLines.length > 0) {

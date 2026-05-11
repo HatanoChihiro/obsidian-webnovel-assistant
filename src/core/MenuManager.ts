@@ -96,7 +96,7 @@ export class MenuManager {
 								const leaves = this.plugin.app.workspace.getLeavesOfType('timeline-view');
 								if (leaves.length > 0) {
 									await new Promise(resolve => setTimeout(resolve, 100)); // 给文件写入一点时间
-									await (leaves[0].view as any).refresh();
+									await leaves[0].view.refresh?.();
 								}
 							}
 						).open();

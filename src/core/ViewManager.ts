@@ -25,7 +25,12 @@ export class ViewManager {
 		}
 	}
 
+	private isToggling = false;
+
 	async toggleView(viewType: string) {
+		if (this.isToggling) return;
+		this.isToggling = true;
+		try {
 		const { workspace } = this.plugin.app;
 		let leaf: WorkspaceLeaf | null = null;
 		const leaves = workspace.getLeavesOfType(viewType);
@@ -57,9 +62,12 @@ export class ViewManager {
 			if (leaf) {
 				workspace.revealLeaf(leaf);
 				if (this.plugin.app.isMobile) {
-					(workspace as any).rightSplit?.expand();
+					workspace.rightSplit?.expand();
 				}
 			}
+		}
+		} finally {
+			this.isToggling = false;
 		}
 	}
 }

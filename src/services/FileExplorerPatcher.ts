@@ -1,4 +1,4 @@
-import { App, TFolder, TFile } from 'obsidian';
+import { App, EventRef, TFolder, TFile } from 'obsidian';
 import { ChapterSorter } from './ChapterSorter';
 
 /**
@@ -11,7 +11,7 @@ export class FileExplorerPatcher {
 	private app: App;
 	private enabled: boolean = false;
 	private unpatchFunc: (() => void) | null = null;
-	private eventRefs: any[] = [];
+	private eventRefs: EventRef[] = [];
 
 	constructor(app: App) {
 		this.app = app;
@@ -76,8 +76,10 @@ export class FileExplorerPatcher {
 			const self = this;
 
 			proto.getSortedFolderItems = function(folder: TFolder) {
-				// 调用原始方法（或其他插件的 Patch）
-				const sortedItems: any[] = originalMethod.call(this, folder);
+					// [H-O1] 防御性 Patch：如果排序逻辑抛出异常，回退到原始方法
+					try {
+						// 调用原始方法（或其他插件的 Patch）
+						const sortedItems: any[] = originalMethod.call(this, folder);
 
 				// 如果插件全局禁用或模式未开启，直接返回
 				if (!self.enabled) return sortedItems;
@@ -124,6 +126,10 @@ export class FileExplorerPatcher {
 				});
 
 				return result;
+				} catch (e) {
+					console.warn('[WebNovel Assistant] Patch 执行失败，回退到原始排序:', e);
+					return originalMethod.call(this, folder);
+				}
 			};
 
 			// 标记
@@ -148,7 +154,7 @@ export class FileExplorerPatcher {
 	private refreshAllExplorers(): void {
 		const leaves = this.app.workspace.getLeavesOfType('file-explorer');
 		leaves.forEach(leaf => {
-			const view = leaf.view as any;
+			const view = leaf.view;
 			if (view && typeof view.sort === 'function') {
 				try {
 					view.sort();

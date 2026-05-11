@@ -1,4 +1,4 @@
-import { App, Modal, Notice, Setting, SuggestModal, TFile } from 'obsidian';
+import { App, Modal, Notice, Setting, SuggestModal, TFile, TFolder } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 
 // ─────────────────────────────────────────────
@@ -319,12 +319,12 @@ export class ForeshadowingRecoveryModal extends Modal {
 		this.onSubmit = onSubmit;
 		
 		// 获取同文件夹下的章节文件
-		const folder = this.app.vault.getAbstractFileByPath(this.folderPath);
-		if (folder && 'children' in folder) {
-			(folder as any).children.forEach((child: any) => {
-				if (child.extension === 'md') this.chapters.push(child.basename);
-			});
-			this.chapters.sort((a, b) => a.localeCompare(b, 'zh-CN'));
+		const folder = this.folderPath ? this.app.vault.getAbstractFileByPath(this.folderPath) : null;
+		if (folder instanceof TFolder) {
+			this.chapters = folder.children
+				.filter((c): c is TFile => c instanceof TFile && c.extension === 'md')
+				.map((c) => c.basename)
+				.sort((a, b) => a.localeCompare(b, 'zh-CN'));
 		}
 	}
 

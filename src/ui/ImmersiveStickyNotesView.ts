@@ -59,7 +59,7 @@ export class ImmersiveStickyNotesView extends ItemView {
 		this.plugin.settings.nextNoteThemeIndex = (themeIndex + 1) % Math.max(1, themes.length);
 
 		const newNote: StickyNoteState = {
-			id: Math.random().toString(36).substr(2, 9),
+			id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5),
 			filePath: filePath,
 			content: content || '',
 			title: title || '新建便签',
@@ -322,7 +322,7 @@ export class ImmersiveStickyNotesView extends ItemView {
 				// 如果开启了自动保存，则实时同步到管理器和文件
 				if (this.plugin.settings.stickyNoteAutoSave) {
 					const debounceKey = `immersive-save-note-${noteData.id}`;
-					(this.plugin as any).adaptiveDebounceManager.debounceFixed(debounceKey, async () => {
+					this.plugin.adaptiveDebounceManager.debounceFixed(debounceKey, async () => {
 						await this.plugin.stickyNoteManager.saveNotes(this.plugin.stickyNoteManager.getNotes());
 						this.lastSavedContents.set(noteData.id, textarea.value);
 						

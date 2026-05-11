@@ -208,8 +208,10 @@ export class CommandManager {
 				const file = view.file;
 				if (!file) return false;
 				
+					if (!this.plugin.foreshadowingManager) return false;
+					const fm = this.plugin.foreshadowingManager;
 				const submitCallback = (description: string, tags: string[]) => {
-					this.plugin.foreshadowingManager.addForeshadowing(file, selectedText, description, tags)
+					fm.addForeshadowing(file, selectedText, description, tags)
 						.then(({ file: foreshadowFile, merged }) => {
 							if (merged) {
 								new Notice(`[成功] 已合并到同名伏笔条目「${foreshadowFile.name}」`, 5000);
@@ -220,7 +222,7 @@ export class CommandManager {
 								const notice = new Notice('[提示] 点击此处打开伏笔文件', 8000);
 								notice.noticeEl.style.cursor = 'pointer';
 								notice.noticeEl.onclick = () => {
-									this.plugin.foreshadowingManager.openForeshadowingFile(foreshadowFile);
+									fm.openForeshadowingFile(foreshadowFile);
 									notice.hide();
 								};
 							}
@@ -231,7 +233,7 @@ export class CommandManager {
 						});
 				};
 
-				if (this.plugin.foreshadowingManager.foreshadowingFileExists(file)) {
+				if (fm.foreshadowingFileExists(file)) {
 					new ForeshadowingInputModal(this.plugin.app, this.plugin, file.basename, selectedText, submitCallback).open();
 				} else {
 					const fileName = this.plugin.settings.foreshadowing?.fileName || '伏笔';
@@ -254,9 +256,11 @@ export class CommandManager {
 				const foreshadowingFileName = (this.plugin.settings.foreshadowing?.fileName || '伏笔') + '.md';
 				if (file.name !== foreshadowingFileName) return false;
 				if (checking) return true;
+					if (!this.plugin.foreshadowingManager) return false;
+					const fm = this.plugin.foreshadowingManager;
 
 				const cursorLine = editor.getCursor().line;
-				const entry = this.plugin.foreshadowingManager.getEntryAtCursor(editor, cursorLine);
+				const entry = fm.getEntryAtCursor(editor, cursorLine);
 
 				if (entry) {
 					new ForeshadowingRecoveryModal(
@@ -264,7 +268,7 @@ export class CommandManager {
 						entry.contentPreview,
 						file.parent?.path || '',
 						async (selectedChapters) => {
-							const success = await this.plugin.foreshadowingManager.markAsRecovered(
+							const success = await fm.markAsRecovered(
 								file, entry.sourceFile, entry.createdAt, selectedChapters
 							);
 							if (success) {

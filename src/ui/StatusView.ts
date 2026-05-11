@@ -1,7 +1,6 @@
 import { ItemView, MarkdownView, WorkspaceLeaf, Platform } from 'obsidian';
-import { formatTime, formatCount } from '../utils/format';
+import { formatTime, formatCount, parseGoal, isMobile } from '../utils';
 import { HistoryStatsModal } from './HistoryModal';
-import { isMobile } from '../utils/platform';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { DailyStat } from '../types/settings';
 
@@ -82,11 +81,10 @@ export class WritingStatusView extends ItemView {
 			this.statusBadgeEl.addEventListener('click', () => {
 				// [BUGFIX] 使用统一的 startTracking/stopTracking API，
 				// 避免绕过 Worker 初始化检查、OBS 导出、lastEditTime 设置等逻辑。
-				const p = this.plugin as any;
 				if (this.plugin.isTracking) {
-					p.stopTracking();
+					this.plugin.stopTracking();
 				} else {
-					p.startTracking();
+					this.plugin.startTracking();
 				}
 			});
 		}
@@ -251,8 +249,8 @@ export class WritingStatusView extends ItemView {
 		let chapterWords = 0;
 		if (view?.file) {
 			const cache = this.plugin.app.metadataCache.getFileCache(view.file);
-			const fmGoal = parseInt(cache?.frontmatter?.['word-goal']);
-			if (!isNaN(fmGoal)) targetGoal = fmGoal;
+			const fmGoal = parseGoal(cache?.frontmatter?.['word-goal']);
+			if (fmGoal > 0) targetGoal = fmGoal;
 			chapterWords = this.plugin.calculateAccurateWords(view.getViewData());
 		}
 
@@ -307,9 +305,16 @@ export class WritingStatusView extends ItemView {
 		if (this.historyTotalWordEl) this.historyTotalWordEl.innerText = totalWords.toLocaleString();
 	}
 
+	private lastHistorySnapshot: string = '';
+
 	renderChart() {
 		const history = this.plugin.historyManager.getHistory();
 		const dates = Object.keys(history).sort().slice(-7);
+		
+		// [优化] 性能保护：对比历史数据快照，如果 7 日内数据未变，则跳过重绘 [H-P1]
+		const currentSnapshot = dates.map(d => `${d}:${history[d].addedWords}`).join('|');
+		if (this.lastHistorySnapshot === currentSnapshot) return;
+		this.lastHistorySnapshot = currentSnapshot;
 
 		if (dates.length === 0) {
 			this.chartBarsContainer.empty();

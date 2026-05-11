@@ -1,7 +1,8 @@
-import { Plugin } from 'obsidian';
+import { Plugin, Notice } from 'obsidian';
 import { AccurateCountSettings } from '../types/settings';
 import { VALIDATION_RULES } from '../constants';
 import { ValidationResult } from '../utils/validation';
+import type { WebNovelAssistantPlugin } from '../types/plugin';
 
 /**
  * 验证规则接口
@@ -102,8 +103,6 @@ export class SettingsManager {
 		} catch (error) {
 			console.error('[SettingsManager] 加载设置失败:', error);
 			
-			// 导入 Notice 类型
-			const { Notice } = require('obsidian');
 			new Notice('加载设置失败，已使用默认设置');
 			
 			// 返回默认设置
@@ -120,7 +119,7 @@ export class SettingsManager {
 		this.saveQueue = this.saveQueue.then(async () => {
 			try {
 				// 从插件获取最新的设置（因为插件可能直接修改了 settings 对象）
-				const pluginSettings = (this.plugin as any).settings;
+				const pluginSettings = (this.plugin as WebNovelAssistantPlugin).settings;
 				if (pluginSettings) {
 					this.settings = pluginSettings;
 				}
@@ -141,8 +140,6 @@ export class SettingsManager {
 			} catch (error) {
 				console.error('[SettingsManager] 保存设置失败:', error);
 				
-				// 导入 Notice 类型
-				const { Notice } = require('obsidian');
 				new Notice('保存设置失败，请检查磁盘空间和权限');
 				
 				throw error;
@@ -151,6 +148,14 @@ export class SettingsManager {
 
 		// 等待当前保存操作完成
 		return this.saveQueue;
+	}
+
+	/**
+	 * 强制等待所有待处理的保存操作完成
+	 * 主要用于 onunload 生命周期
+	 */
+	async flush(): Promise<void> {
+		await this.saveQueue;
 	}
 
 	/**

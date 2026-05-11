@@ -30,16 +30,21 @@ export class StickyNoteDataManager {
 				// [BUGFIX] 对解析结果进行类型守卫：若文件内容损坏（如 {} 或非数组），
 				// 直接使用会导致 forEach/map 等调用崩溃，安全降级为空数组。
 				const parsed = JSON.parse(content);
-				this.notesData = Array.isArray(parsed) ? parsed : [];
-				if (!Array.isArray(parsed)) {
-					console.warn('[StickyNoteDataManager] 便签数据格式异常，已重置为空数组');
+				const rawNotes = Array.isArray(parsed) ? parsed : [];
+				
+				// [BUGFIX] 验证每个条目的结构，确保至少有 id
+				this.notesData = rawNotes.filter(n => n && typeof n === 'object' && typeof n.id === 'string');
+				
+				if (this.notesData.length !== rawNotes.length) {
+					console.warn(`[StickyNoteDataManager] 过滤掉 ${rawNotes.length - this.notesData.length} 个无效便签条目`);
 				}
+				
 				console.log(`[StickyNoteDataManager] 已从独立文件加载 ${this.notesData.length} 个便签`);
 				return this.notesData;
 			}
 
 			// 2. 迁移逻辑：如果独立文件不存在，检查 settings 中是否有旧数据
-			const settings = (this.plugin as any).settings;
+			const settings = this.plugin.settings;
 			if (settings && settings.openNotes && settings.openNotes.length > 0) {
 				console.log(`[StickyNoteDataManager] 检测到旧版便签数据，开始迁移...`);
 				this.notesData = [...settings.openNotes];
@@ -66,6 +71,10 @@ export class StickyNoteDataManager {
 	 */
 	async saveNotes(notes: StickyNoteState[]): Promise<void> {
 		this.notesData = notes;
+		
+		// 如果已经在保存中，且数据没有后续变更，不再重复添加队列任务
+		if (this.dirty) return this.saveQueue;
+		
 		this.dirty = true;
 		
 		// 使用队列确保顺序写入，防止文件损坏
@@ -104,11 +113,19 @@ export class StickyNoteDataManager {
 		} else {
 			this.notesData.push({ ...noteState });
 		}
-		this.dirty = true;
-		// 自动触发持久化，避免调用方遗漏保存
+		
+		// 自动触发持久化，不再显式设置 dirty=true，交给 saveNotes 处理
 		this.saveNotes(this.notesData).catch(err => {
 			console.error('[StickyNoteDataManager] updateNote 自动保存失败:', err);
 		});
+	}
+
+	/**
+	 * 强制等待所有待处理的保存操作完成
+	 * 主要用于 onunload 生命周期
+	 */
+	async flush(): Promise<void> {
+		await this.saveQueue;
 	}
 
 	/**
@@ -116,8 +133,6 @@ export class StickyNoteDataManager {
 	 */
 	removeNote(id: string): void {
 		this.notesData = this.notesData.filter(n => n.id !== id);
-		this.dirty = true;
-		// 自动触发持久化
 		this.saveNotes(this.notesData).catch(err => {
 			console.error('[StickyNoteDataManager] removeNote 自动保存失败:', err);
 		});

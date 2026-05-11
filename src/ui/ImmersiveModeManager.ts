@@ -60,7 +60,9 @@ export class ImmersiveModeManager {
 			await this.plugin.stickyNoteManager.saveNotes(this.plugin.stickyNoteManager.getNotes());
 
 			// 1. 抓取当前整个工作区的快照
-			this.savedLayout = (this.app.workspace as any).getLayout();
+			if (typeof this.app.workspace.getLayout === 'function') {
+				this.savedLayout = this.app.workspace.getLayout();
+			}
 
 			// 2. 注入全局 CSS 类和顶部 Dashboard
 			document.body.classList.add('immersive-mode-active');
@@ -72,7 +74,7 @@ export class ImmersiveModeManager {
 			// 4. 自动化：开启全屏 + 开启计时
 			if (!document.fullscreenElement) {
 				document.documentElement.requestFullscreen().catch(() => {
-					(this.app as any).commands.executeCommandById('app:toggle-full-screen');
+					this.app.commands.executeCommandById('app:toggle-full-screen');
 				});
 			}
 			this.plugin.startTracking();
@@ -98,16 +100,16 @@ export class ImmersiveModeManager {
 			// 1.5 记录退出前那一刻主编辑区正在编辑的文件，以便在还原布局后重新定位
 			const currentMainFile = this.app.workspace.getActiveViewOfType(MarkdownView)?.file;
 
-			// 2. 还原布局 (如果可能)
-			if (this.savedLayout) {
-				await (this.app.workspace as any).setLayout(this.savedLayout);
+			// 2. 还原布局 (如果可能) [M-A5]
+			if (this.savedLayout && typeof this.app.workspace.setLayout === 'function') {
+				await this.app.workspace.setLayout(this.savedLayout);
 
 				// 还原布局后，如果文件发生了变化（例如在沉浸模式中切换了章节），则重新打开该文件
 				if (currentMainFile) {
 					// 延迟一帧确保布局还原完成
 					requestAnimationFrame(async () => {
 						const leaves = this.app.workspace.getLeavesOfType('markdown');
-						const targetLeaf = leaves.find(l => (l as any).active) || leaves[0] || this.app.workspace.getLeaf(false);
+						const targetLeaf = leaves.find(l => l.active) || leaves[0] || this.app.workspace.getLeaf(false);
 
 						await targetLeaf.setViewState({
 							type: 'markdown',
@@ -123,7 +125,7 @@ export class ImmersiveModeManager {
 			// 3. 自动化清理：退出全屏 + 停止计时
 			if (document.fullscreenElement) {
 				document.exitFullscreen().catch(() => {
-					(this.app as any).commands.executeCommandById('app:toggle-full-screen');
+					this.app.commands.executeCommandById('app:toggle-full-screen');
 				});
 			}
 
@@ -178,7 +180,7 @@ export class ImmersiveModeManager {
 		// 1. 软重置：清理非 Markdown 视图，保留主编辑器
 		let mainLeaf: WorkspaceLeaf | null = null;
 		const markdownLeaves = workspace.getLeavesOfType('markdown');
-		mainLeaf = markdownLeaves.find(l => (l as any).active) || markdownLeaves[0];
+		mainLeaf = markdownLeaves.find(l => l.active) || markdownLeaves[0];
 		if (!mainLeaf) {
 			mainLeaf = workspace.getLeaf(true);
 		}
@@ -398,9 +400,10 @@ export class ImmersiveModeManager {
 		this.renderTopBarContent();
 
 		// 每秒刷新一次数据
-		this.updateInterval = window.setInterval(() => {
+		// [优化] 使用插件的 registerInterval 管理定时器，确保插件卸载时自动清理，防止内存泄漏 [M-P6]
+		this.updateInterval = this.plugin.registerInterval(window.setInterval(() => {
 			this.renderTopBarContent();
-		}, 1000);
+		}, 1000));
 	}
 
 	private removeTopBar(): void {

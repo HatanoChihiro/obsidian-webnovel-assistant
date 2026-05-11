@@ -142,7 +142,7 @@ export class MobileFloatingStats {
 		const cache = this.app.metadataCache.getFileCache(view.file);
 		const fmGoal = cache?.frontmatter?.['word-goal'];
 		if (fmGoal !== undefined) {
-			const parsed = parseInt(fmGoal);
+			const parsed = parseInt(fmGoal, 10);
 			if (!isNaN(parsed)) targetGoal = parsed;
 		}
 

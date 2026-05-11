@@ -41,7 +41,7 @@ export class GoalModal extends Modal {
 	}
 
 	async saveGoal() {
-		const goalNum = parseInt(this.goalInput);
+		const goalNum = parseInt(this.goalInput, 10);
 		await this.app.fileManager.processFrontMatter(this.file, (frontmatter) => {
 			if (isNaN(goalNum) || goalNum <= 0) {
 				delete frontmatter['word-goal'];

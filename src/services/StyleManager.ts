@@ -14,7 +14,10 @@ export class StyleManager {
 	 */
 	injectGlobalStyles(): void {
 		const styleId = 'accurate-count-global-styles';
-		const styleContent = `
+		injectGlobalStyle(styleId, StyleManager.STATIC_STYLES);
+	}
+
+	private static readonly STATIC_STYLES = `
 				.folder-word-count { font-variant-numeric: tabular-nums; pointer-events: none; }
 
 				.status-view-container { padding: 15px; }
@@ -489,8 +492,6 @@ export class StyleManager {
 					box-shadow: none;
 				}
 			`;
-		injectGlobalStyle(styleId, styleContent);
-	}
 
 	/**
 	 * 移除全局样式
