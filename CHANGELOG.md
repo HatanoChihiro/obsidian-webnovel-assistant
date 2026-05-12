@@ -1,12 +1,39 @@
 # WebNovel Assistant 更新日志
 
-## 🔧 v2.2.3 - 优化与适配
+## 🚀 v2.3.0 - 全面重构与代码质量提升
 
-- **字数实时提醒仅桌面端生效**: 移动端和平板端不再加载该功能及对应设置项
-- **伏笔回收修复**: 修复伏笔标记回收时崩溃的问题
-- **沉浸模式修复**: 退出沉浸模式后定时器不再持续运行
-- **便签保存修复**: 删除便签时数据不再可能被跳过保存
-- **文件排序防御**: 文件浏览器智能排序异常时自动回退，不再静默崩溃
+### 架构重构
+- **主类瘦身**: 提取 FileEventManager、迁移 refreshFolderCounts/exportLegacyOBS 到各自所属 Manager，main.ts 大幅精简
+- **Settings 子接口拆分**: 沉浸模式 15 个字段和 OBS 10 个字段从扁平结构重组为 `immersive`/`obs` 嵌套子接口，附带旧数据自动迁移兼容
+- **CSS 提取**: 约 490 行静态 CSS 从 StyleManager.ts 迁移到 `styles.css`，由 Obsidian 自动加载，StyleManager 仅保留动态样式（护眼模式）
+- **SerializedWriter 统一**: 提取通用串行写入器，SettingsManager/CacheManager/StickyNoteDataManager/ForeshadowingManager 共用，消除 4 处重复的 saveQueue+dirty+flush 实现
+- **重复逻辑提取**: `copyDocumentContent` 共享方法替代 3 处复制逻辑，平台检测统一使用 `isDesktop()`/`isMobile()` 工具函数
+- **类型安全**: plugin.ts 四个 `any` 字段替换为具体类型，core 三文件统一使用 `WebNovelAssistantPlugin` 接口
+
+### Bug 修复
+- **便签重启恢复**: 修复悬浮便签关闭软件后状态丢失，根因是 `loadFloatingNotes()` 调用空内存数组而非磁盘读取
+- **设置持久化**: 修复沉浸模式/OBS 设置重启后丢失，根因是 Obsidian loadData 返回对象 delete 无效 + shallow spread 复制隐含扁平键
+- **OBS overlay 关闭**: 修复 OBS 叠加层无法正常停止，增加 `closeAllConnections()` 处理 HTTP keep-alive 连接
+- **护眼模式**: 修复颜色切换不生效，StyleManager.updateSettings() 未被调用导致使用旧快照
+- **便签文档同步**: 新增 `refresh-cw` 同步按钮，手动从关联文档同步内容到悬浮便签
+- **伏笔写入竞态**: `addRecoveryChapter` 未用 SerializedWriter 包裹，修复为与其他写方法一致的串行化
+- **BaseModal 运行时崩溃**: 添加缺失的 `Notice` 导入
+- **StickyNoteDataManager 标志泄漏**: catch 中 `_isWriting` 未重置为 false，会导致文件变更监听器永久屏蔽
+
+### 代码清理
+- 删除 ~730 行死代码（ui.ts/dom.ts/platform.ts 未使用工具函数）
+- 清理 17 个无用 import（main.ts 13 个 + 4 个 View 文件）
+- 替换可消除的 `any` 类型（MenuItem、ThemeScheme、FloatingStickyNote 等）
+- `parseInt` 补全基数参数（radix=10）
+- `substr` → `substring`（deprecated API）
+- CacheManager 逐文件更新日志降级为 `console.debug`
+
+### v2.2.3 原有修复（已并入）
+- 字数实时提醒仅桌面端生效，移动端/平板端不再加载该功能及对应设置项
+- 伏笔回收修复：修复标记回收时崩溃的问题
+- 沉浸模式修复：退出后定时器不再持续运行
+- 便签保存修复：删除便签时数据不再可能被跳过保存
+- 文件排序防御：智能排序异常时自动回退，不再静默崩溃
 
 ---
 
