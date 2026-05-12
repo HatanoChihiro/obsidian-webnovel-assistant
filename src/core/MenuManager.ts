@@ -165,22 +165,28 @@ export class MenuManager {
 			totalWords += this.plugin.calculateAccurateWords(content);
 		}
 
-		let exportPath = `${file.parent?.path === '/' ? '' : file.parent?.path + '/'}${file.name}_合并章节.md`;
-		let counter = 1;
-		while (this.plugin.app.vault.getAbstractFileByPath(exportPath)) {
-			exportPath = `${file.parent?.path === '/' ? '' : file.parent?.path + '/'}${file.name}_合并章节(${counter}).md`;
-			counter++;
-		}
+		const exportPath = `${file.path}/${file.name}_合并章节.md`;
+
+		const existingFile = this.plugin.app.vault.getAbstractFileByPath(exportPath) as TFile | null;
 
 		try {
-			const newFile = await this.plugin.app.vault.create(exportPath, mergedContent.trim());
+			let mergedFile: TFile;
+			if (existingFile) {
+				mergedFile = existingFile;
+				await this.plugin.app.vault.modify(existingFile, mergedContent.trim());
+			} else {
+				mergedFile = await this.plugin.app.vault.create(exportPath, mergedContent.trim());
+			}
 			notice.hide();
-			await this.plugin.app.workspace.getLeaf(false).openFile(newFile);
-			new Notice(`[成功] 合并成功！\n已合并 ${mdFiles.length} 个章节\n总计 ${totalWords.toLocaleString()} 字`, 8000);
+			await this.plugin.app.workspace.getLeaf(false).openFile(mergedFile);
+			const overwriteHint = existingFile ? '\n合并章节文件已存在，自动覆盖' : '';
+			new Notice(`[成功] 合并成功！
+已合并 ${mdFiles.length} 个章节
+总计 ${totalWords.toLocaleString()} 字${overwriteHint}`, 8000);
 		} catch (error) {
 			console.error(error);
 			notice.hide();
-			new Notice("合并失败，请检查文件权限");
+			new Notice('合并失败，请检查文件权限');
 		}
 	}
 }
