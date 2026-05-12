@@ -1,5 +1,6 @@
 import { Extension, StateField, RangeSetBuilder } from '@codemirror/state';
 import { EditorView, GutterMarker, gutter, ViewPlugin, ViewUpdate } from '@codemirror/view';
+import { App, MarkdownView, TFile, editorInfoField } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ChapterSorter } from '../services/ChapterSorter';
 
@@ -34,32 +35,16 @@ class WordCountMarker extends GutterMarker {
 
 /**
  * 可靠地从 CodeMirror View 中获取对应的 Obsidian TFile
- * （由于 Obsidian 可能复用 EditorView，因此每次实时提取）
  */
-function getFileFromView(view: EditorView, plugin: WebNovelAssistantPlugin): any {
-	// 方法1：如果 view 上已经挂载了 file
-	if ((view as any).file) return (view as any).file;
-
-	// 方法2：从 CodeMirror 的 state values 中寻找 Obsidian 的 editorInfoField
-	const values = (view.state as any).values;
-	if (Array.isArray(values)) {
-		const editorInfo = values.find((v: any) => v && v.file && typeof v.file.path === 'string');
-		if (editorInfo) return editorInfo.file;
+function getFileFromView(view: EditorView): TFile | null {
+	try {
+		// 官方推荐方式：从 state field 中获取 editorInfo
+		return view.state.field(editorInfoField).file || null;
+	} catch (e) {
+		// 降级方案：如果 field 不存在
+		if ((view as any).file) return (view as any).file;
+		return null;
 	}
-
-	// 方法3：最强力的 DOM 匹配。遍历所有叶子节点，看哪个叶子节点的 DOM 包含了当前编辑器的 DOM
-	let file = null;
-	plugin.app.workspace.iterateAllLeaves(l => {
-		const leafView = l.view as any;
-		if (!leafView) return;
-
-		const cm = leafView.editor?.cm || leafView.editor?.cm?.cm;
-		// 优先通过引用比对，如果引用失效，则通过 DOM 层级比对
-		if (cm === view || (leafView.containerEl && leafView.containerEl.contains(view.dom))) {
-			file = leafView.file;
-		}
-	});
-	return file;
 }
 
 /**
@@ -78,7 +63,7 @@ export function createWordCountGutter(plugin: WebNovelAssistantPlugin): Extensio
 
 	// 简化方案：我们可以在 view 层面进行挂载，通过 plugin 提供的计算方法获取。
 
-	const wordCountStateField = StateField.define<{ lineCounts: number[], markers: any }>({
+	const wordCountStateField = StateField.define<{ lineCounts: number[] }>({
 		create(state) {
 			const lineCounts: number[] = [];
 			const doc = state.doc;
@@ -89,30 +74,39 @@ export function createWordCountGutter(plugin: WebNovelAssistantPlugin): Extensio
 				lineCounts.push(plugin.calculateAccurateWords(lineText));
 			}
 
-			return { lineCounts, markers: null };
+			return { lineCounts };
 		},
 		update(value, tr) {
 			if (!tr.docChanged) {
 				return value;
 			}
 
-			// 简单的全量计算，因为对于单章（即使是 1 万字），
-			// 也就是几百行代码，正则计算耗时在 1-2ms 内，完全不会卡顿。
-			// 但是为了进一步优化，我们只在真正需要的时候（比如行数变化或者文本大幅变化）才重新算。
-			const lineCounts: number[] = [];
-			const doc = tr.state.doc;
-			const lines = doc.lines;
+			// [优化] 增量计算：只重新计算发生变化的行
+			// 利用 tr.changes.iterChanges 获取变动范围
+			let lineCounts = [...value.lineCounts];
+			
+			tr.changes.iterChanges((fromA, toA, fromB, toB, text) => {
+				// fromA/toA 是旧文档中的位置，fromB/toB 是新文档中的位置
+				// text 是插入的新文本内容
+				
+				const startLine = tr.startState.doc.lineAt(fromA).number;
+				const endLine = tr.startState.doc.lineAt(toA).number;
+				const deletedLinesCount = endLine - startLine + 1;
+				
+				const addedLinesCount = text.lines;
+				const addedCounts: number[] = [];
+				
+				// 计算新插入行的字数
+				for (let i = 1; i <= addedLinesCount; i++) {
+					const lineText = text.line(i).toString();
+					addedCounts.push(plugin.calculateAccurateWords(lineText));
+				}
+				
+				// 替换旧行的字数记录
+				lineCounts.splice(startLine - 1, deletedLinesCount, ...addedCounts);
+			});
 
-			// 注意：这里为了不阻塞主线程，如果行数过大（>5000行），可以考虑优化
-			// 但网文单章极少超过 5000 行。
-			for (let i = 1; i <= lines; i++) {
-				const lineText = doc.line(i).text;
-				// 复用核心的字数计算逻辑
-				const count = plugin.calculateAccurateWords(lineText);
-				lineCounts.push(count);
-			}
-
-			return { lineCounts, markers: null };
+			return { lineCounts };
 		}
 	});
 
@@ -123,7 +117,7 @@ export function createWordCountGutter(plugin: WebNovelAssistantPlugin): Extensio
 			if (!plugin.settings.enableWordCountGutter) return builder.finish();
 
 			// 获取当前视图对应的文件（实时获取，不缓存，避免复用视图导致判断错误）
-			const file = getFileFromView(view, plugin);
+			const file = getFileFromView(view);
 
 			// 是否展示分章标签：
 			// - 如果开启了严格章节模式，则必须是章节文件才显示
@@ -135,7 +129,7 @@ export function createWordCountGutter(plugin: WebNovelAssistantPlugin): Extensio
 				return builder.finish();
 			}
 
-			const interval = parseInt(plugin.settings.wordCountInterval as any) || 2000;
+			const interval = plugin.settings.wordCountInterval || 2000;
 			const state = view.state.field(wordCountStateField);
 
 			let currentTotal = 0;
@@ -177,7 +171,7 @@ export function createWordCountGutter(plugin: WebNovelAssistantPlugin): Extensio
 				return;
 			}
 
-			const file = getFileFromView(view, plugin);
+			const file = getFileFromView(view);
 			const inWorkspace = file && plugin.isFileInWorkspace(file);
 
 			// 如果开启了严格章节模式，还需要是章节文件

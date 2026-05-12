@@ -1,7 +1,8 @@
 import { App, Editor, Notice, TFile, TFolder } from 'obsidian';
-import { ForeshadowingEntry, ForeshadowingStatus } from '../types/foreshadowing';
+import { ForeshadowingEntry, ForeshadowingStatus, ParsedForeshadowingEntry } from '../types/foreshadowing';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { escapeRegex } from '../utils/validation';
+import { SerializedWriter } from '../utils/SerializedWriter';
 
 /**
  * 伏笔管理服务
@@ -11,6 +12,9 @@ export class ForeshadowingManager {
 	/** 正则表达式缓存，避免重复编译（最多缓存 100 个） */
 	private static readonly entryPatternCache = new Map<string, RegExp>();
 	private static readonly MAX_CACHE_SIZE = 100;
+	
+	/** 串行写入器：确保对伏笔文件的读改写操作是原子的 [M-E4] */
+	private writer = new SerializedWriter();
 
 	constructor(
 		private app: App,
@@ -157,43 +161,50 @@ export class ForeshadowingManager {
 		description: string,
 		tags: string[]
 	): Promise<{ file: TFile; merged: boolean }> {
-		let targetFile: TFile | null = null;
+		return this.writer.enqueue(async () => {
+			let targetFile: TFile | null = null;
 
-		if (this.foreshadowingFileExists(sourceFile)) {
-			const path = this.getForeshadowingFilePath(sourceFile);
-			targetFile = this.app.vault.getAbstractFileByPath(path) as TFile;
-		} else {
-			targetFile = await this.createForeshadowingFile(sourceFile);
-		}
+			if (this.foreshadowingFileExists(sourceFile)) {
+				const path = this.getForeshadowingFilePath(sourceFile);
+				targetFile = this.app.vault.getAbstractFileByPath(path) as TFile;
+			} else {
+				targetFile = await this.createForeshadowingFile(sourceFile);
+			}
 
-		const now = window.moment().format('YYYY-MM-DD HH:mm');
+			const now = window.moment().format('YYYY-MM-DD HH:mm');
 
-		// 检查是否已存在相同说明的条目
-		const existingContent = await this.app.vault.read(targetFile);
-		const { found, insertPos } = this.findEntryByDescription(existingContent, description);
+			// 检查是否已存在相同说明的条目
+			const existingContent = await this.app.vault.read(targetFile);
+			const { found, insertPos } = this.findEntryByDescription(existingContent, description);
 
-		if (found && insertPos !== -1) {
-			// 合并：在已有条目的引用块末尾追加新引用（带来源和时间）
-			const newQuote = content.trim().split('\n')
-				.map(line => `> ${line}`)
-				.join('\n');
-			const insertion = `\n\n> [[${sourceFile.basename}]] - ${now}\n${newQuote}`;
-			const newContent = existingContent.slice(0, insertPos) + insertion + existingContent.slice(insertPos);
-			await this.app.vault.modify(targetFile, newContent);
-			return { file: targetFile, merged: true };
-		}
+			if (found && insertPos !== -1) {
+				// 合并：在已有条目的引用块末尾追加新引用（带来源和时间）
+				const newQuote = content.trim().split('\n')
+					.map(line => `> ${line}`)
+					.join('\n');
+				const insertion = `\n\n> [[${sourceFile.basename}]] - ${now}\n${newQuote}`;
+				const newContent = existingContent.slice(0, insertPos) + insertion + existingContent.slice(insertPos);
+				await this.app.vault.modify(targetFile, newContent);
+				return { file: targetFile, merged: true };
+			}
 
-		// 新建条目
-		const entry: ForeshadowingEntry = {
-			sourceFile: sourceFile.basename,
-			content: content.trim(),
-			description,
-			tags,
-			status: ForeshadowingStatus.Pending,
-			createdAt: now,
-		};
-		await this.appendEntry(targetFile, entry);
-		return { file: targetFile, merged: false };
+			// 新建条目
+			const entry: ForeshadowingEntry = {
+				sourceFile: sourceFile.basename,
+				content: content.trim(),
+				description,
+				tags,
+				status: ForeshadowingStatus.Pending,
+				createdAt: now,
+			};
+			
+			const formatted = this.formatEntry(entry);
+			// 确保文件末尾有换行再追加
+			const separator = existingContent.endsWith('\n') ? '' : '\n';
+			await this.app.vault.modify(targetFile, existingContent + separator + formatted);
+			
+			return { file: targetFile, merged: false };
+		});
 	}
 
 	/**
@@ -278,25 +289,29 @@ export class ForeshadowingManager {
 		createdAt: string,
 		recoveryFiles: string[]
 	): Promise<boolean> {
-		const content = await this.app.vault.read(targetFile);
-		const now = window.moment().format('YYYY-MM-DD HH:mm');
+		return this.writer.enqueue(async () => {
+			const content = await this.app.vault.read(targetFile);
+			const now = window.moment().format('YYYY-MM-DD HH:mm');
 
-		// 使用缓存的正则表达式
-		const titlePattern = this.getEntryPattern(sourceFile, createdAt, '未回收|已废弃');
+			// 使用缓存的正则表达式
+			const titlePattern = this.getEntryPattern(sourceFile, createdAt, '未回收|已废弃');
 
-		if (!titlePattern.test(content)) return false;
+			let found = false;
+			const newContent = content.replace(
+				titlePattern,
+				(match, before, statusLabel) => {
+					found = true;
+					// 生成回收信息（多章节格式）
+					const recoveryLines = recoveryFiles.map(file => `- [[${file}]] - ${now}`).join('\n');
+					return `${before}${statusLabel}已回收\n\n**回收于**：\n${recoveryLines}`;
+				}
+			);
 
-		const newContent = content.replace(
-			titlePattern,
-			(match, before, statusLabel) => {
-				// 生成回收信息（多章节格式）
-				const recoveryLines = recoveryFiles.map(file => `- [[${file}]] - ${now}`).join('\n');
-				return `${before}${statusLabel}已回收\n\n**回收于**：\n${recoveryLines}`;
-			}
-		);
+			if (!found) return false;
 
-		await this.app.vault.modify(targetFile, newContent);
-		return true;
+			await this.app.vault.modify(targetFile, newContent);
+			return true;
+		});
 	}
 
 	/**
@@ -309,30 +324,31 @@ export class ForeshadowingManager {
 		createdAt: string,
 		newRecoveryFile: string
 	): Promise<boolean> {
-		const content = await this.app.vault.read(targetFile);
-		const now = window.moment().format('YYYY-MM-DD HH:mm');
+		return this.writer.enqueue(async () => {
+			const content = await this.app.vault.read(targetFile);
+			const now = window.moment().format('YYYY-MM-DD HH:mm');
 
-		// 查找已回收条目的回收列表
-		const pattern = new RegExp(
-			`(## \\[\\[${escapeRegex(sourceFile)}\\]\\]` +
-			(createdAt ? `[^\\n]*${escapeRegex(createdAt)}` : '') +
-			`[\\s\\S]*?\\*\\*回收于\\*\\*：\\n)([\\s\\S]*?)(\\n\\n|$)`,
-			'm'
-		);
+			// 查找已回收条目的回收列表
+			const pattern = new RegExp(
+				`(## \\[\\[${escapeRegex(sourceFile)}\\]\\]` +
+				(createdAt ? `[^\\n]*${escapeRegex(createdAt)}` : '') +
+				`[\\s\\S]*?\\*\\*回收于\\*\\*：\\n)([\\s\\S]*?)(\\n\\n|$)`,
+				'm'
+			);
 
-		const match = pattern.exec(content);
-		if (!match) return false;
+			const match = pattern.exec(content);
+			if (!match) return false;
 
-		// 在回收列表末尾追加新章节
-		const newLine = `- [[${newRecoveryFile}]] - ${now}\n`;
-		const newContent = content.slice(0, match.index + match[1].length + match[2].length) +
-			newLine +
-			content.slice(match.index + match[1].length + match[2].length);
+			// 在回收列表末尾追加新章节
+			const newLine = `- [[${newRecoveryFile}]] - ${now}\n`;
+			const newContent = content.slice(0, match.index + match[1].length + match[2].length) +
+				newLine +
+				content.slice(match.index + match[1].length + match[2].length);
 
-		await this.app.vault.modify(targetFile, newContent);
-		return true;
+			await this.app.vault.modify(targetFile, newContent);
+			return true;
+		});
 	}
-
 	/**
 	 * 将指定条目标记为已废弃
 	 */
@@ -398,30 +414,8 @@ export class ForeshadowingManager {
 	 * 解析伏笔文件内容为结构化数据
 	 * 统一的解析逻辑，供 View 层调用
 	 */
-	parseEntries(content: string): Array<{
-		sourceFile: string;
-		createdAt: string;
-		contents: { source: string; time: string; text: string }[];
-		description: string;
-		tags: string[];
-		status: ForeshadowingStatus;
-		recoveryFiles?: string[];
-		recoveredAts?: string[];
-		recoveryFile?: string;
-		recoveredAt?: string;
-	}> {
-		const entries: Array<{
-			sourceFile: string;
-			createdAt: string;
-			contents: { source: string; time: string; text: string }[];
-			description: string;
-			tags: string[];
-			status: ForeshadowingStatus;
-			recoveryFiles?: string[];
-			recoveredAts?: string[];
-			recoveryFile?: string;
-			recoveredAt?: string;
-		}> = [];
+	parseEntries(content: string): ParsedForeshadowingEntry[] {
+		const entries: ParsedForeshadowingEntry[] = [];
 
 		// 按 --- 分割条目
 		const blocks = content.split(/\n---\n/);

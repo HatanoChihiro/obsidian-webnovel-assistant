@@ -1,4 +1,5 @@
 import { StickyNoteState } from '../types/settings';
+import { SerializedWriter } from '../utils/SerializedWriter';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 
 /**
@@ -9,8 +10,8 @@ export class StickyNoteDataManager {
 	private notesData: StickyNoteState[] = [];
 	private plugin: WebNovelAssistantPlugin;
 	private notesFilePath: string;
-	private saveQueue: Promise<void> = Promise.resolve();
-	private dirty: boolean = false;
+	private writer = new SerializedWriter();
+	private _isWriting = false;
 
 	constructor(plugin: WebNovelAssistantPlugin) {
 		this.plugin = plugin;
@@ -30,28 +31,19 @@ export class StickyNoteDataManager {
 				// [BUGFIX] 对解析结果进行类型守卫：若文件内容损坏（如 {} 或非数组），
 				// 直接使用会导致 forEach/map 等调用崩溃，安全降级为空数组。
 				const parsed = JSON.parse(content);
-				this.notesData = Array.isArray(parsed) ? parsed : [];
-				if (!Array.isArray(parsed)) {
-					console.warn('[StickyNoteDataManager] 便签数据格式异常，已重置为空数组');
+				const rawNotes = Array.isArray(parsed) ? parsed : [];
+				
+				// [BUGFIX] 验证每个条目的结构，确保至少有 id
+				this.notesData = rawNotes.filter(n => n && typeof n === 'object' && typeof n.id === 'string');
+				
+				if (this.notesData.length !== rawNotes.length) {
+					console.warn(`[StickyNoteDataManager] 过滤掉 ${rawNotes.length - this.notesData.length} 个无效便签条目`);
 				}
+				
 				console.log(`[StickyNoteDataManager] 已从独立文件加载 ${this.notesData.length} 个便签`);
 				return this.notesData;
 			}
 
-			// 2. 迁移逻辑：如果独立文件不存在，检查 settings 中是否有旧数据
-			const settings = (this.plugin as any).settings;
-			if (settings && settings.openNotes && settings.openNotes.length > 0) {
-				console.log(`[StickyNoteDataManager] 检测到旧版便签数据，开始迁移...`);
-				this.notesData = [...settings.openNotes];
-				this.dirty = true;
-				
-				// 标记迁移成功，保存到新文件并从旧设置中移除
-				await this.saveNotes(this.notesData);
-				
-				// 注意：这里先不从 settings 中彻底删除，交给 main.ts 在启动完成后统一处理，确保安全
-				console.log(`[StickyNoteDataManager] 已迁移 ${this.notesData.length} 个便签到独立文件`);
-				return this.notesData;
-			}
 
 			console.log("[StickyNoteDataManager] 未发现现有便签数据");
 			return [];
@@ -66,25 +58,21 @@ export class StickyNoteDataManager {
 	 */
 	async saveNotes(notes: StickyNoteState[]): Promise<void> {
 		this.notesData = notes;
-		this.dirty = true;
 		
-		// 使用队列确保顺序写入，防止文件损坏
-		this.saveQueue = this.saveQueue.then(async () => {
-			if (!this.dirty) return;
-			
+		// 使用串行写入器确保顺序写入，防止文件损坏
+		return this.writer.enqueue(async () => {
 			try {
 				const adapter = this.plugin.app.vault.adapter;
+				this._isWriting = true;
 				const content = JSON.stringify(this.notesData, null, 2);
 				await adapter.write(this.notesFilePath, content);
-				this.dirty = false;
+				this._isWriting = false;
 				// 触发全局事件，通知其他组件同步数据
 				this.plugin.app.workspace.trigger('webnovel:notes-changed');
 			} catch (error) {
 				console.error("[StickyNoteDataManager] 保存便签数据失败:", error);
 			}
 		});
-		
-		return this.saveQueue;
 	}
 
 	/**
@@ -104,11 +92,19 @@ export class StickyNoteDataManager {
 		} else {
 			this.notesData.push({ ...noteState });
 		}
-		this.dirty = true;
-		// 自动触发持久化，避免调用方遗漏保存
+		
+		// 自动触发持久化，不再显式设置 dirty=true，交给 saveNotes 处理
 		this.saveNotes(this.notesData).catch(err => {
 			console.error('[StickyNoteDataManager] updateNote 自动保存失败:', err);
 		});
+	}
+
+	/**
+	 * 强制等待所有待处理的保存操作完成
+	 * 主要用于 onunload 生命周期
+	 */
+	async flush(): Promise<void> {
+		await this.writer.flush();
 	}
 
 	/**
@@ -116,8 +112,6 @@ export class StickyNoteDataManager {
 	 */
 	removeNote(id: string): void {
 		this.notesData = this.notesData.filter(n => n.id !== id);
-		this.dirty = true;
-		// 自动触发持久化
 		this.saveNotes(this.notesData).catch(err => {
 			console.error('[StickyNoteDataManager] removeNote 自动保存失败:', err);
 		});
@@ -127,6 +121,17 @@ export class StickyNoteDataManager {
 	 * 检查是否有未保存的更改
 	 */
 	isDirty(): boolean {
-		return this.dirty;
+		return this.writer.isDirty();
 	}
+
+	getIsWriting(): boolean {
+		return this._isWriting;
+	}
+	/**
+	 * 获取便签数据文件的 Vault 相对路径
+	 */
+	getNotesFilePath(): string {
+		return this.notesFilePath;
+	}
+
 }

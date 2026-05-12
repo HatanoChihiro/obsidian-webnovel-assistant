@@ -219,6 +219,25 @@ export const VALIDATION_RULES = {
 } as const;
 
 import type { AccurateCountSettings } from './types/settings';
+// 已迁移到嵌套结构的扁平化字段名（用于设置迁移和清理）
+export const FLAT_OBS_KEYS = [
+	'enableObs', 'enableLegacyObsExport', 'obsPath', 'obsPort',
+	'obsOverlayTheme', 'obsOverlayOpacity', 'obsCustomCss',
+	'obsShowFocusTime', 'obsShowSlackTime', 'obsShowTotalTime',
+	'obsShowTodayWords', 'obsShowDailyGoal', 'obsShowSessionWords'
+];
+
+export const FLAT_IMMERSIVE_KEYS = [
+	'immersiveShowChapterList', 'immersiveShowReference', 'immersiveShowStickyNotes',
+	'immersiveShowForeshadowing', 'immersiveShowTimeline', 'immersiveShowTotalTime',
+	'immersiveShowFocusTime', 'immersiveShowSlackTime', 'immersiveShowChapterProgress',
+	'immersiveShowDailyProgress', 'immersiveShowSessionWords', 'immersiveLeftSize',
+	'immersiveRightSize', 'immersiveBottomSize', 'immersiveBottomInternalSizes',
+	'immersivePanelPosition', 'immersiveNoteSize', 'immersiveNoteFontSize',
+	'immersiveTypewriterMode', 'immersiveLayout'
+];
+
+
 
 export const DEFAULT_SETTINGS: AccurateCountSettings = {
 	defaultGoal: 3000,
@@ -232,12 +251,7 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 		{ name: '纯数字（1、01、001）', pattern: '^(\\d+)$', enabled: true },
 	],
 	workspaceFolders: [],
-	enableObs: false,
-	enableLegacyObsExport: false,
-	obsPath: "",
-	openNotes: [],
 	noteOpacity: 0.9,
-	dailyHistory: {}, // @deprecated 保留用于降级兼容，实际数据已迁移到 history-data.json
 	idleTimeoutThreshold: 60 * 1000,
 	noteThemes: [
 		{ bg: '#FDF3B8', text: '#2C3E50' }, // 鹅黄色
@@ -247,16 +261,6 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 		{ bg: '#E8DFF5', text: '#4A3B69' }, // 薰衣草
 		{ bg: '#FDE0C1', text: '#593D2B' }  // 杏仁黄
 	],
-	obsPort: 24816,
-	obsOverlayTheme: 'dark',
-	obsOverlayOpacity: 0.85,
-	obsCustomCss: '',
-	obsShowFocusTime: true,
-	obsShowSlackTime: true,
-	obsShowTotalTime: true,
-	obsShowTodayWords: true,
-	obsShowDailyGoal: true,
-	obsShowSessionWords: true, // 已恢复
 	foreshadowing: {
 		fileName: '伏笔',
 		showTimestamp: true,
@@ -272,29 +276,48 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 	enableStrictChapterMode: false, // 严格章节模式，默认关闭
 	enableWordCountGutter: true,
 	wordCountInterval: 2000,
-	
-	// 沉浸模式默认设置
-	immersiveShowChapterList: true,
-	immersiveShowReference: true,
-	immersiveShowStickyNotes: true,
-	immersiveShowForeshadowing: true,
-	immersiveShowTimeline: true,
-	immersiveShowTotalTime: true,
-	immersiveShowFocusTime: true,
-	immersiveShowSlackTime: true,
-	immersiveShowChapterProgress: true,
-	immersiveShowDailyProgress: true,
-	immersiveShowSessionWords: true,
 	nextNoteThemeIndex: 0,
-	immersivePanelPosition: 'bottom',
-	immersiveLeftSize: 11,
-	immersiveRightSize: 30,
-	immersiveBottomSize: 20,
-	immersiveBottomInternalSizes: [70, 16, 14],
 	stickyNoteAutoSave: true,
-	immersiveNoteSize: 280,
-	immersiveNoteFontSize: 14,
-	immersiveTypewriterMode: false,
-	immersiveLayout: null,
+
+	// 沉浸模式默认设置
+	immersive: {
+		immersiveShowChapterList: true,
+		immersiveShowReference: true,
+		immersiveShowStickyNotes: true,
+		immersiveShowForeshadowing: true,
+		immersiveShowTimeline: true,
+		immersiveShowTotalTime: true,
+		immersiveShowFocusTime: true,
+		immersiveShowSlackTime: true,
+		immersiveShowChapterProgress: true,
+		immersiveShowDailyProgress: true,
+		immersiveShowSessionWords: true,
+		immersiveLeftSize: 11,
+		immersiveRightSize: 30,
+		immersiveBottomSize: 20,
+		immersiveBottomInternalSizes: [70, 16, 14],
+		immersivePanelPosition: 'bottom',
+		immersiveNoteSize: 280,
+		immersiveNoteFontSize: 14,
+		immersiveTypewriterMode: false,
+		immersiveLayout: null,
+	},
+
+	// OBS 数据输出默认设置
+	obs: {
+		enableObs: false,
+		enableLegacyObsExport: false,
+		obsPath: '',
+		obsPort: 24816,
+		obsOverlayTheme: 'dark',
+		obsOverlayOpacity: 0.85,
+		obsCustomCss: '',
+		obsShowFocusTime: true,
+		obsShowSlackTime: true,
+		obsShowTotalTime: true,
+		obsShowTodayWords: true,
+		obsShowDailyGoal: true,
+		obsShowSessionWords: true,
+	},
 };
 

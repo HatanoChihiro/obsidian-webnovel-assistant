@@ -1,5 +1,5 @@
 import { MarkdownView } from 'obsidian';
-import { hexToRgba, formatTime } from '../utils';
+import { hexToRgba, formatTime, parseGoal, isDesktop } from '../utils';
 import { ObsStatsPayload } from '../types/stats';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { DailyStat } from '../types/settings';
@@ -30,8 +30,8 @@ export class ObsHtmlBuilder {
 			currentFile = view.file.basename;
 			currentFolder = view.file.parent?.isRoot() ? '' : (view.file.parent?.name || '');
 			const cache = this.plugin.app.metadataCache.getFileCache(view.file);
-			const fmGoal = parseInt(cache?.frontmatter?.['word-goal']);
-			if (!isNaN(fmGoal)) targetGoal = fmGoal;
+			const fmGoal = parseGoal(cache?.frontmatter?.['word-goal']);
+			if (fmGoal > 0) targetGoal = fmGoal;
 			chapterWords = this.plugin.calculateAccurateWords(view.getViewData());
 		}
 
@@ -84,15 +84,13 @@ export class ObsHtmlBuilder {
 			.replace(/vbscript:/gi, '');
 		
 		// 白名单验证：只允许常见的 CSS 属性
-		const allowedProperties = [
+		const allowedProperties = new Set([
 			'color', 'background', 'font', 'margin', 'padding', 'border',
 			'width', 'height', 'display', 'position', 'top', 'left', 'right', 'bottom',
 			'opacity', 'transform', 'transition', 'animation', 'flex', 'grid',
-			'text', 'line', 'letter', 'word', 'white', 'overflow', 'visibility',
-			'z-index', 'cursor', 'pointer', 'box', 'shadow', 'radius', 'align',
-			'justify', 'gap', 'content', 'wrap', 'break', 'decoration', 'style',
-			'weight', 'size', 'family', 'variant', 'stretch', 'spacing'
-		];
+			'text-align', 'text-decoration', 'text-overflow', 'line-height', 'letter-spacing', 'word-break', 'white-space', 'overflow', 'visibility',
+			'z-index', 'cursor', 'pointer', 'box-shadow', 'border-radius', 'align-items', 'justify-content', 'gap', 'flex-wrap', 'font-weight', 'font-size', 'font-family', 'font-variant', 'font-stretch'
+		]);
 		
 		// 警告：如果包含不常见的属性
 		const lines = sanitized.split('\n');
@@ -104,7 +102,8 @@ export class ObsHtmlBuilder {
 			// 跳过注释和空行
 			if (!property || property.startsWith('/*') || property.startsWith('//')) return false;
 			
-			return !allowedProperties.some(allowed => property.includes(allowed));
+			// [安全] 精确匹配属性名，防止 'content-xxx' 等绕过 [M-S3]
+			return !allowedProperties.has(property);
 		});
 		
 		if (suspiciousLines.length > 0) {
@@ -115,18 +114,62 @@ export class ObsHtmlBuilder {
 	}
 
 	/**
+	 * 导出旧版 OBS 文本文件（写入 txt 到指定目录）
+	 */
+	exportLegacyOBS(force?: boolean) {
+		if (!isDesktop() || !this.plugin.settings.obs.enableLegacyObsExport || !this.plugin.settings.obs.obsPath) return;
+		try {
+			const fs = window.require('fs') as import('../types/node').NodeFS;
+			const path = window.require('path') as import('../types/node').NodePath;
+			const dir = this.plugin.settings.obs.obsPath;
+
+			// [安全] 路径校验：防止路径遍历攻击
+			// 确保路径不包含 .. 且不是根目录等危险路径
+			if (dir.includes('..') || dir === '/' || /^[A-Z]:\\?$/i.test(dir)) {
+				throw new Error('无效或危险的 OBS 导出路径');
+			}
+
+			if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+			const totalSec = Math.floor((this.plugin.focusMs + this.plugin.slackMs) / 1000);
+			const focusSec = Math.floor(this.plugin.focusMs / 1000);
+			const slackSec = totalSec - focusSec;
+
+			fs.writeFileSync(path.join(dir, 'obs_focus_time.txt'), formatTime(focusSec), 'utf8');
+			fs.writeFileSync(path.join(dir, 'obs_slack_time.txt'), formatTime(slackSec), 'utf8');
+			fs.writeFileSync(path.join(dir, 'obs_total_time.txt'), formatTime(totalSec), 'utf8');
+			fs.writeFileSync(path.join(dir, 'obs_words_done.txt'), Math.max(0, this.plugin.sessionAddedWords).toString(), 'utf8');
+
+			let currentGoal = this.plugin.settings.defaultGoal;
+			const view = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
+			if (view?.file) {
+				const cache = this.plugin.app.metadataCache.getFileCache(view.file);
+				const fmGoal = parseGoal(cache?.frontmatter?.['word-goal']);
+				if (fmGoal > 0) currentGoal = fmGoal;
+			}
+			fs.writeFileSync(path.join(dir, 'obs_words_goal.txt'), currentGoal.toString(), 'utf8');
+		} catch (e) {
+			if (force) {
+				console.error('[WebNovel Assistant] Legacy OBS export failed:', e);
+			} else {
+				console.warn('[WebNovel Assistant] Legacy OBS export failed (silent mode):', e);
+			}
+		}
+	}
+
+	/**
 	 * 构建 OBS 叠加层 HTML
 	 */
 	buildObsOverlayHtml(): string {
-		const theme = this.plugin.settings.obsOverlayTheme || 'dark';
+		const theme = this.plugin.settings.obs.obsOverlayTheme || 'dark';
 		let isDark = theme === 'dark';
 		
-		const overlayOpacity = this.plugin.settings.obsOverlayOpacity ?? 0.85;
+		const overlayOpacity = this.plugin.settings.obs.obsOverlayOpacity ?? 0.85;
 		let cardBg = isDark ? `rgba(20, 20, 30, ${overlayOpacity})` : `rgba(255, 255, 255, ${overlayOpacity})`;
 		let textColor = isDark ? '#E8E8E8' : '#2C3E50';
 		
 		if (theme.startsWith('note-')) {
-			const index = parseInt(theme.split('-')[1]);
+			const index = parseInt(theme.split('-')[1], 10);
 			const noteTheme = this.plugin.settings.noteThemes[index];
 			if (noteTheme) {
 				cardBg = hexToRgba(noteTheme.bg, overlayOpacity);
@@ -141,16 +184,16 @@ export class ObsHtmlBuilder {
 		const redColor = '#E74C3C';
 
 		let timeRowHtml = '';
-		if (this.plugin.settings.obsShowFocusTime || this.plugin.settings.obsShowSlackTime || this.plugin.settings.obsShowTotalTime) {
+		if (this.plugin.settings.obs.obsShowFocusTime || this.plugin.settings.obs.obsShowSlackTime || this.plugin.settings.obs.obsShowTotalTime) {
 			timeRowHtml = `\n\t<div class="time-row">`;
-			if (this.plugin.settings.obsShowTotalTime) timeRowHtml += `\n\t\t<div class="time-item"><div class="time-label">总计时间</div><div class="time-value" id="totalTime">00:00:00</div></div>`;
-			if (this.plugin.settings.obsShowFocusTime) timeRowHtml += `\n\t\t<div class="time-item"><div class="time-label">专注时间</div><div class="time-value focus" id="focusTime">00:00:00</div></div>`;
-			if (this.plugin.settings.obsShowSlackTime) timeRowHtml += `\n\t\t<div class="time-item"><div class="time-label">摸鱼时间</div><div class="time-value slack" id="slackTime">00:00:00</div></div>`;
+			if (this.plugin.settings.obs.obsShowTotalTime) timeRowHtml += `\n\t\t<div class="time-item"><div class="time-label">总计时间</div><div class="time-value" id="totalTime">00:00:00</div></div>`;
+			if (this.plugin.settings.obs.obsShowFocusTime) timeRowHtml += `\n\t\t<div class="time-item"><div class="time-label">专注时间</div><div class="time-value focus" id="focusTime">00:00:00</div></div>`;
+			if (this.plugin.settings.obs.obsShowSlackTime) timeRowHtml += `\n\t\t<div class="time-item"><div class="time-label">摸鱼时间</div><div class="time-value slack" id="slackTime">00:00:00</div></div>`;
 			timeRowHtml += `\n\t</div>\n\t<div class="divider"></div>`;
 		}
 
 		let todayGoalHtml = '';
-		if (this.plugin.settings.obsShowDailyGoal) {
+		if (this.plugin.settings.obs.obsShowDailyGoal) {
 			todayGoalHtml += `\n\t<div class="goal-row">
 		<span class="goal-label">今日目标字数</span>
 		<span class="goal-value"><span id="dailyWords" class="current-val">0</span> <span class="sep">/</span> <span id="dailyGoalValue" class="target-val">0</span><span class="percent" id="dailyPercentText">0%</span></span>
@@ -159,8 +202,8 @@ export class ObsHtmlBuilder {
 		<div class="progress-fill" id="dailyProgressFill" style="width: 0%"></div>
 	</div>`;
 		}
-		if (this.plugin.settings.obsShowTodayWords) {
-			todayGoalHtml += `\n\t<div class="goal-row"${this.plugin.settings.obsShowDailyGoal ? ' style="margin-top:8px"' : ''}>
+		if (this.plugin.settings.obs.obsShowTodayWords) {
+			todayGoalHtml += `\n\t<div class="goal-row"${this.plugin.settings.obs.obsShowDailyGoal ? ' style="margin-top:8px"' : ''}>
 		<span class="goal-label">本章目标字数</span>
 		<span class="goal-value"><span id="todayWords" class="current-val">0</span> <span class="sep">/</span> <span id="goalValue" class="target-val">0</span><span class="percent" id="percentText">0%</span></span>
 	</div>
@@ -170,7 +213,7 @@ export class ObsHtmlBuilder {
 		}
 
 		let sessionRowHtml = '';
-		if (this.plugin.settings.obsShowSessionWords) {
+		if (this.plugin.settings.obs.obsShowSessionWords) {
 			sessionRowHtml = `\n\t<div class="session-row">
 		<span>本场净增</span>
 		<span class="val" id="sessionWords">0</span>
@@ -348,7 +391,7 @@ body {
 .goal-value .percent { font-size: 14px; color: ${accentColor}; font-weight: normal; }
 
 /* Custom User CSS */
-${this.sanitizeCss(this.plugin.settings.obsCustomCss)}
+${this.sanitizeCss(this.plugin.settings.obs.obsCustomCss)}
 </style>
 </head>
 <body>

@@ -77,46 +77,58 @@ export interface ChapterNamingRule {
 	enabled: boolean;
 }
 
-/**
- * 插件设置接口
- */
-export interface AccurateCountSettings {
-	/** 默认目标字数 */
-	defaultGoal: number;
-	/** 今日目标字数（今日新增总字数目标） */
-	dailyGoal: number;
-	/** 是否显示目标进度 */
-	showGoal: boolean;
-	/** 是否在文件浏览器中显示字数统计 */
-	showExplorerCounts: boolean;
-	/** 是否启用智能章节排序 */
-	enableSmartChapterSort: boolean;
-	/** 章节命名规则列表（用于自定义排序和合并） */
-	chapterNamingRules: ChapterNamingRule[];
-	/** 工作区文件夹路径（留空则全局生效） */
-	workspaceFolders: string[];
-	/** 是否启用 OBS 直播叠加层 */
+/** 沉浸模式设置 */
+export interface ImmersiveModeSettings {
+	/** 是否显示左侧章节列表 */
+	immersiveShowChapterList: boolean;
+	/** 是否显示右侧参考文档区 */
+	immersiveShowReference: boolean;
+	/** 是否显示下方悬浮便签陈列区 */
+	immersiveShowStickyNotes: boolean;
+	/** 是否显示下方伏笔面板 */
+	immersiveShowForeshadowing: boolean;
+	/** 是否显示下方时间线面板 */
+	immersiveShowTimeline: boolean;
+	/** 数据仪表盘：是否显示总计时间 */
+	immersiveShowTotalTime: boolean;
+	/** 数据仪表盘：是否显示专注时间 */
+	immersiveShowFocusTime: boolean;
+	/** 数据仪表盘：是否显示摸鱼时间 */
+	immersiveShowSlackTime: boolean;
+	/** 数据仪表盘：是否显示章节目标进度 */
+	immersiveShowChapterProgress: boolean;
+	/** 数据仪表盘：是否显示今日目标进度 */
+	immersiveShowDailyProgress: boolean;
+	/** 数据仪表盘：是否显示本场净增字数 */
+	immersiveShowSessionWords: boolean;
+	/** 左侧面板宽度百分比 */
+	immersiveLeftSize: number;
+	/** 右侧面板宽度百分比 */
+	immersiveRightSize: number;
+	/** 底部面板高度百分比 */
+	immersiveBottomSize: number;
+	/** 辅助面板内部各子面板的比例数组 */
+	immersiveBottomInternalSizes: number[];
+	/** 辅助面板位置 ('top' | 'bottom') */
+	immersivePanelPosition: 'top' | 'bottom';
+	/** 便签显示尺寸 (px) */
+	immersiveNoteSize: number;
+	/** 便签字体大小 (px) */
+	immersiveNoteFontSize: number;
+	/** 是否开启打字机模式适配 */
+	immersiveTypewriterMode: boolean;
+	/** 布局持久化数据 (null 表示使用默认值) */
+	immersiveLayout: Record<string, number> | null;
+}
+
+/** OBS 数据输出设置 */
+export interface ObsSettings {
+	/** 是否启用 OBS HTTP 服务器叠加层 */
 	enableObs: boolean;
 	/** 是否启用旧版 OBS 文件导出模式 */
 	enableLegacyObsExport: boolean;
-	/** 
-	 * 每日历史统计数据(键为日期 YYYY-MM-DD)
-	 * @deprecated 已迁移到 HistoryDataManager，保留此字段仅为降级兼容
-	 */
-	dailyHistory: Record<string, DailyStat>;
 	/** OBS 文件导出路径 */
 	obsPath: string;
-	/** 
-	 * 打开的便签列表 
-	 * @deprecated 已迁移到 StickyNoteDataManager，保留此字段仅为降级兼容
-	 */
-	openNotes: StickyNoteState[];
-	/** 便签不透明度(0.1-1.0) */
-	noteOpacity: number;
-	/** 便签主题配色列表 */
-	noteThemes: ThemeScheme[];
-	/** 空闲超时阈值(毫秒) */
-	idleTimeoutThreshold: number;
 	/** OBS HTTP 服务器端口 */
 	obsPort: number;
 	/** OBS 叠加层主题 */
@@ -137,6 +149,32 @@ export interface AccurateCountSettings {
 	obsShowDailyGoal: boolean;
 	/** OBS 叠加层是否显示本场净增字数 */
 	obsShowSessionWords: boolean;
+}
+
+/**
+ * 插件设置接口
+ */
+export interface AccurateCountSettings {
+	/** 默认目标字数 */
+	defaultGoal: number;
+	/** 今日目标字数（今日新增总字数目标） */
+	dailyGoal: number;
+	/** 是否显示目标进度 */
+	showGoal: boolean;
+	/** 是否在文件浏览器中显示字数统计 */
+	showExplorerCounts: boolean;
+	/** 是否启用智能章节排序 */
+	enableSmartChapterSort: boolean;
+	/** 章节命名规则列表（用于自定义排序和合并） */
+	chapterNamingRules: ChapterNamingRule[];
+	/** 工作区文件夹路径（留空则全局生效） */
+	workspaceFolders: string[];
+	/** 便签不透明度(0.1-1.0) */
+	noteOpacity: number;
+	/** 便签主题配色列表 */
+	noteThemes: ThemeScheme[];
+	/** 空闲超时阈值(毫秒) */
+	idleTimeoutThreshold: number;
 	/** 伏笔标注功能设置 */
 	foreshadowing: ForeshadowingSettings;
 	/** 时间线功能设置 */
@@ -158,47 +196,12 @@ export interface AccurateCountSettings {
 	/** 字数实时提醒的字数间隔 */
 	wordCountInterval: number;
 
-	// === 沉浸模式 (Immersive Mode) 设置 ===
-	/** 沉浸模式：是否显示左侧章节列表 */
-	immersiveShowChapterList: boolean;
-	/** 沉浸模式：是否显示右侧参考文档区 */
-	immersiveShowReference: boolean;
-	/** 沉浸模式：是否显示下方悬浮便签陈列区 */
-	immersiveShowStickyNotes: boolean;
-	/** 沉浸模式：是否显示下方伏笔面板 */
-	immersiveShowForeshadowing: boolean;
-	/** 沉浸模式：是否显示下方时间线面板 */
-	immersiveShowTimeline: boolean;
-	/** 沉浸模式数据仪表盘：是否显示总计时间 */
-	immersiveShowTotalTime: boolean;
-	/** 沉浸模式数据仪表盘：是否显示专注时间 */
-	immersiveShowFocusTime: boolean;
-	/** 沉浸模式数据仪表盘：是否显示摸鱼时间 */
-	immersiveShowSlackTime: boolean;
-	/** 沉浸模式数据仪表盘：是否显示章节目标进度 */
-	immersiveShowChapterProgress: boolean;
-	/** 沉浸模式数据仪表盘：是否显示今日目标进度 */
-	immersiveShowDailyProgress: boolean;
-	/** 沉浸模式数据仪表盘：是否显示本场净增字数 */
-	immersiveShowSessionWords: boolean;
-	/** 沉浸模式：左侧面板宽度百分比 */
-	immersiveLeftSize: number;
-	/** 沉浸模式：右侧面板宽度百分比 */
-	immersiveRightSize: number;
-	/** 沉浸模式：底部面板高度百分比 */
-	immersiveBottomSize: number;
-	/** 沉浸模式：辅助面板内部各子面板的比例数组 */
-	immersiveBottomInternalSizes: number[];
 	/** 下一个新建便签的主题索引（用于颜色轮换） */
 	nextNoteThemeIndex: number;
-	/** 沉浸模式：辅助面板位置 ('top' | 'bottom') */
-	immersivePanelPosition: 'top' | 'bottom';
-	/** 沉浸模式：便签显示尺寸 (px) */
-	immersiveNoteSize: number;
-	/** 沉浸模式：便签字体大小 (px) */
-	immersiveNoteFontSize: number;
-	/** 沉浸模式：是否开启打字机模式适配 (优化滚动跳转) */
-	immersiveTypewriterMode: boolean;
-	/** 沉浸模式：布局持久化数据 (null 表示使用默认值) */
-	immersiveLayout: Record<string, number> | null;
+
+	// === 嵌套子设置 ===
+	/** 沉浸模式设置 */
+	immersive: ImmersiveModeSettings;
+	/** OBS 数据输出设置 */
+	obs: ObsSettings;
 }

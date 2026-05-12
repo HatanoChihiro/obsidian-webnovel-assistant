@@ -1,5 +1,6 @@
 import { WorkspaceLeaf } from 'obsidian';
-import type AccurateChineseCountPlugin from '../../main';
+import { isDesktop, isMobile } from '../utils/platform';
+import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { VIEW_TYPES } from '../constants';
 import { WritingStatusView, STATUS_VIEW_TYPE } from '../ui/StatusView';
 import { ForeshadowingView, FORESHADOWING_VIEW_TYPE } from '../ui/ForeshadowingView';
@@ -8,9 +9,9 @@ import { ImmersiveChapterListView } from '../ui/ImmersiveChapterListView';
 import { ImmersiveStickyNotesView } from '../ui/ImmersiveStickyNotesView';
 
 export class ViewManager {
-	private plugin: AccurateChineseCountPlugin;
+	private plugin: WebNovelAssistantPlugin;
 
-	constructor(plugin: AccurateChineseCountPlugin) {
+	constructor(plugin: WebNovelAssistantPlugin) {
 		this.plugin = plugin;
 	}
 
@@ -19,13 +20,18 @@ export class ViewManager {
 		this.plugin.registerView(FORESHADOWING_VIEW_TYPE, (leaf) => new ForeshadowingView(leaf, this.plugin));
 		this.plugin.registerView(TIMELINE_VIEW_TYPE, (leaf) => new TimelineView(leaf, this.plugin));
 		
-		if (this.plugin.app.isMobile === false) { // Desktop
+		if (isDesktop()) { // Desktop
 			this.plugin.registerView(VIEW_TYPES.IMMERSIVE_CHAPTER_LIST, (leaf) => new ImmersiveChapterListView(leaf, this.plugin));
 			this.plugin.registerView(VIEW_TYPES.IMMERSIVE_STICKY_NOTES, (leaf) => new ImmersiveStickyNotesView(leaf, this.plugin));
 		}
 	}
 
+	private isToggling = false;
+
 	async toggleView(viewType: string) {
+		if (this.isToggling) return;
+		this.isToggling = true;
+		try {
 		const { workspace } = this.plugin.app;
 		let leaf: WorkspaceLeaf | null = null;
 		const leaves = workspace.getLeavesOfType(viewType);
@@ -34,7 +40,7 @@ export class ViewManager {
 			leaf = leaves[0];
 			workspace.detachLeaf(leaf);
 		} else {
-			if (this.plugin.app.isMobile) {
+			if (isMobile()) {
 				const rightLeaf = workspace.getRightLeaf(false);
 				if (rightLeaf) {
 					leaf = rightLeaf;
@@ -56,10 +62,13 @@ export class ViewManager {
 			
 			if (leaf) {
 				workspace.revealLeaf(leaf);
-				if (this.plugin.app.isMobile) {
-					(workspace as any).rightSplit?.expand();
+				if (isMobile()) {
+					workspace.rightSplit?.expand();
 				}
 			}
+		}
+		} finally {
+			this.isToggling = false;
 		}
 	}
 }

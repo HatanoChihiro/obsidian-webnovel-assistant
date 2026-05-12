@@ -1,4 +1,4 @@
-import { ItemView, MarkdownView, Menu, Modal, Notice, Setting, TFile, WorkspaceLeaf, App } from 'obsidian';
+import { ItemView, Modal, Notice, Setting, TFile, TFolder, WorkspaceLeaf, App } from 'obsidian';
 import { TimelineManager, TimelineEntry } from '../services/TimelineManager';
 import { CreativeView } from './CreativeView';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
@@ -68,8 +68,8 @@ export class TimelineAddModal extends Modal {
 		// 获取当前文件夹下的所有 md 文件
 		const getChapterFiles = (): string[] => {
 			const folder = this.folderPath ? this.app.vault.getAbstractFileByPath(this.folderPath) : null;
-			if (folder && 'children' in folder) {
-				return (folder as any).children
+			if (folder instanceof TFolder) {
+				return folder.children
 					.filter((c: any) => c.extension === 'md')
 					.map((c: any) => c.basename)
 					.sort();
@@ -187,15 +187,12 @@ export class TimelineAddModal extends Modal {
 				}
 			}
 			
-			const entry = {
+			const entry: TimelineEntry = {
 				time,
 				description: descInput.value.trim(),
 				chapter: uniqueChapters.join(', '), // 用逗号+空格连接
 				type: typeValue,
-			};
-			// 如果需要返回完整 TimelineEntry，添加 rawBlock 字段
-			if (this.returnFullEntry) {
-				(entry as any).rawBlock = '';
+				rawBlock: ''
 			}
 			this.onSubmit(entry);
 			this.close();
@@ -230,6 +227,7 @@ export class TimelineAddFromSelectionModal extends TimelineAddModal {
 export class TimelineView extends CreativeView {
 	private manager!: TimelineManager;
 	private editingIndex: number = -1;
+	private filterType: string = 'all';
 
 	constructor(leaf: WorkspaceLeaf, plugin: WebNovelAssistantPlugin) {
 		super(leaf, plugin);
@@ -247,7 +245,14 @@ export class TimelineView extends CreativeView {
 	protected async onFolderChange() {
 		this.manager.currentFolder = this.currentFolder;
 		this.editingIndex = -1;
+		this.filterType = 'all';
 		await this.refresh();
+	}
+
+	private getTypeFilterOptions(entries: TimelineEntry[]): string[] {
+		const fromSettings = this.plugin.settings.timeline?.defaultTypes || [];
+		const fromEntries = entries.map(e => e.type).filter(Boolean);
+		return [...new Set([...fromSettings, ...fromEntries])];
 	}
 
 	async refresh() {
@@ -267,7 +272,7 @@ export class TimelineView extends CreativeView {
 		titleRow.createSpan({ text: '时间线', cls: 'timeline-view-title' });
 
 		const addBtn = titleRow.createEl('button', { cls: 'timeline-add-btn', title: '新增事件' });
-		addBtn.innerHTML = '+';
+		addBtn.setText('+');
 		addBtn.onclick = () => this.showAddForm(container);
 
 		header.createDiv({ cls: 'timeline-view-folder', text: this.currentFolder || '根目录' });
@@ -288,20 +293,39 @@ export class TimelineView extends CreativeView {
 
 		const entries = this.manager.parseEntries(content);
 
-		if (entries.length === 0) {
-			container.createDiv({ cls: 'timeline-view-empty' }).createEl('p', { text: '时间线为空，点击 + 添加第一个事件' });
+// 类型筛选
+		const typeOptions = this.getTypeFilterOptions(entries);
+		if (typeOptions.length > 0) {
+			const typeRow = header.createDiv({ cls: 'timeline-view-filter-row' });
+			const allBtn = typeRow.createEl('button', { text: '全部类型', cls: 'timeline-filter-btn' });
+			if (this.filterType === 'all') allBtn.addClass('is-active');
+			allBtn.onclick = () => { this.filterType = 'all'; this.refresh(); };
+			typeOptions.forEach(type => {
+				const btn = typeRow.createEl('button', { text: type, cls: 'timeline-filter-btn' });
+				if (this.filterType === type) btn.addClass('is-active');
+				btn.onclick = () => { this.filterType = type; this.refresh(); };
+			});
+		}
+
+		// 筛选后渲染
+		const filtered = this.filterType === 'all'
+			? entries
+			: entries.filter(e => e.type === this.filterType);
+
+		if (filtered.length === 0) {
+			container.createDiv({ cls: 'timeline-view-empty' }).createEl('p', { text: '没有符合条件的时间线事件' });
 			return;
 		}
 
 		const timeline = container.createDiv({ cls: 'timeline-list' });
-		entries.forEach((entry, index) => {
-			if (this.editingIndex === index) {
-				this.renderEditForm(timeline, entry, index, entries);
+		filtered.forEach(entry => {
+			const originalIndex = entries.indexOf(entry);
+			if (this.editingIndex === originalIndex) {
+				this.renderEditForm(timeline, entry, originalIndex, entries);
 			} else {
-				this.renderEntry(timeline, entry, index, entries);
+				this.renderEntry(timeline, entry, originalIndex, entries);
 			}
-		});
-	}
+		});	}
 
 	private renderEntry(container: HTMLElement, entry: TimelineEntry, index: number, allEntries: TimelineEntry[]) {
 		const item = container.createDiv({ cls: 'timeline-item' });
@@ -343,7 +367,7 @@ export class TimelineView extends CreativeView {
 		});
 		item.addEventListener('drop', async (e) => {
 			e.preventDefault();
-			const fromIndex = parseInt(e.dataTransfer?.getData('text/plain') || '-1');
+			const fromIndex = parseInt(e.dataTransfer?.getData('text/plain') || '-1', 10);
 			const rect = item.getBoundingClientRect();
 			const midY = rect.top + rect.height / 2;
 			// 鼠标在上半部分：插入到目标之前；下半部分：插入到目标之后
@@ -461,8 +485,8 @@ export class TimelineView extends CreativeView {
 		// 获取当前文件夹下的所有 md 文件
 		const folder = this.app.vault.getAbstractFileByPath(this.currentFolder);
 		const chapterFiles: string[] = [];
-		if (folder && 'children' in folder) {
-			(folder as any).children
+		if (folder instanceof TFolder) {
+			folder.children
 				.filter((c: any) => c.extension === 'md')
 				.forEach((c: any) => {
 					chapterFiles.push(c.basename);
@@ -687,8 +711,8 @@ export class TimelineView extends CreativeView {
 		// 获取当前文件夹下的所有 md 文件
 		const folder = this.app.vault.getAbstractFileByPath(this.currentFolder);
 		const chapterFiles: string[] = [];
-		if (folder && 'children' in folder) {
-			(folder as any).children
+		if (folder instanceof TFolder) {
+			folder.children
 				.filter((c: any) => c.extension === 'md')
 				.forEach((c: any) => {
 					chapterFiles.push(c.basename);

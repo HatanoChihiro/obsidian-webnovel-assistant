@@ -133,7 +133,7 @@ export class ImmersiveChapterListView extends ItemView {
 						refLeaf.containerEl.classList.add('immersive-reference-view');
 						
 						// 更新设置并保存
-						this.plugin.settings.immersiveShowReference = true;
+						this.plugin.settings.immersive.immersiveShowReference = true;
 						this.plugin.saveSettings();
 					}
 				}

@@ -1,4 +1,4 @@
-import { Modal, Setting } from 'obsidian';
+import { Modal, Notice, Setting } from 'obsidian';
 import { STYLES } from '../constants';
 
 /**
@@ -95,7 +95,6 @@ export abstract class BaseFormModal extends Modal {
 	 */
 	protected validateNotEmpty(value: string, fieldName: string): boolean {
 		if (!value.trim()) {
-			const { Notice } = require('obsidian');
 			new Notice(`[错误] 请填写${fieldName}`);
 			return false;
 		}
@@ -113,7 +112,6 @@ export abstract class BaseFormModal extends Modal {
 	): boolean {
 		const len = value.trim().length;
 		if (len < minLength || len > maxLength) {
-			const { Notice } = require('obsidian');
 			new Notice(`[错误] ${fieldName}长度必须在 ${minLength}-${maxLength} 之间`);
 			return false;
 		}

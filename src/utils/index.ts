@@ -1,6 +1,5 @@
 /**
  * 工具函数统一导出
- * 提供便捷的导入方式
  */
 
 // 格式化工具
@@ -14,29 +13,22 @@ export {
 	validateOpacity,
 	validateIdleTimeout,
 	escapeRegex,
+	parseGoal,
 	type ValidationResult
 } from './validation';
 
 // DOM 操作工具
 export {
 	injectGlobalStyle,
-	removeGlobalStyle,
-	createElement,
-	safeSetText,
-	toggleClass
+	removeGlobalStyle
 } from './dom';
 
 // 平台检测工具
 export {
 	isDesktop,
 	isMobile,
-	isIOS,
-	isAndroid,
-	isTablet,
-	getPlatformName,
-	getPlatformTier,
-	supportsAdvancedFeatures,
-	supportsNodeModules,
-	supportsPanelFeatures,
-	getTouchTargetSize
+	getPlatformTier
 } from './platform';
+
+// UI 工具
+export { copyDocumentContent } from './ui';

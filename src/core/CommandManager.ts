@@ -1,14 +1,16 @@
 import { MarkdownView, Notice, TFile, TFolder } from 'obsidian';
-import type AccurateChineseCountPlugin from '../../main';
+import { isDesktop, isMobile } from '../utils/platform';
+import type { WebNovelAssistantPlugin } from '../types/plugin';
+import { copyDocumentContent } from '../utils/ui';
 import { ChapterSorter } from '../services/ChapterSorter';
 import { ForeshadowingInputModal, ConfirmCreateForeshadowingFileModal, ForeshadowingRecoveryModal } from '../ui/ForeshadowingModal';
 import { TimelineAddFromSelectionModal } from '../ui/TimelineView';
 import { TimelineManager } from '../services/TimelineManager';
 
 export class CommandManager {
-	private plugin: AccurateChineseCountPlugin;
+	private plugin: WebNovelAssistantPlugin;
 
-	constructor(plugin: AccurateChineseCountPlugin) {
+	constructor(plugin: WebNovelAssistantPlugin) {
 		this.plugin = plugin;
 	}
 
@@ -41,7 +43,7 @@ export class CommandManager {
 			callback: () => this.plugin.toggleTimelineView()
 		});
 
-		if (this.plugin.app.isMobile === false) { // Desktop
+		if (isDesktop()) { // Desktop
 			this.plugin.addCommand({
 				id: 'toggle-immersive-mode',
 				name: '进入/退出全屏沉浸写作模式',
@@ -52,7 +54,7 @@ export class CommandManager {
 				id: 'reset-immersive-layout',
 				name: '重置沉浸模式布局 (回到默认比例和位置)',
 				callback: async () => {
-					this.plugin.settings.immersiveLayout = null;
+					this.plugin.settings.immersive.immersiveLayout = null;
 					await this.plugin.saveSettings();
 					new Notice('沉浸模式布局已重置，下次进入生效');
 				}
@@ -61,7 +63,7 @@ export class CommandManager {
 	}
 
 	private registerTrackingCommands() {
-		if (this.plugin.app.isMobile === false) { // Desktop
+		if (isDesktop()) { // Desktop
 			this.plugin.addCommand({
 				id: 'toggle-tracking',
 				name: '开始/暂停 专注时间统计',
@@ -79,7 +81,7 @@ export class CommandManager {
 					this.plugin.slackMs = 0;
 					this.plugin.sessionAddedWords = 0;
 					this.plugin.isTracking = false;
-					this.plugin.worker?.postMessage('stop');
+					this.plugin.workerManager?.postMessage('stop');
 					this.plugin.editorTracker.handleFileChange();
 					this.plugin.exportLegacyOBS(true);
 					this.plugin.refreshStatusViews();
@@ -90,7 +92,7 @@ export class CommandManager {
 	}
 
 	private registerStickyNoteCommands() {
-		if (this.plugin.app.isMobile === false) { // Desktop
+		if (isDesktop()) { // Desktop
 			this.plugin.addCommand({
 				id: 'create-blank-sticky-note',
 				name: '新建空白悬浮便签',
@@ -102,7 +104,7 @@ export class CommandManager {
 	}
 
 	private registerChapterCommands() {
-		if (this.plugin.app.isMobile === false) { // Desktop
+		if (isDesktop()) { // Desktop
 			this.plugin.addCommand({
 				id: 'create-next-chapter',
 				name: '自动创建下一章 (智能递增)',
@@ -183,12 +185,12 @@ export class CommandManager {
 	}
 
 	private registerObsCommands() {
-		if (this.plugin.app.isMobile === false) { // Desktop
+		if (isDesktop()) { // Desktop
 			this.plugin.addCommand({
 				id: 'copy-obs-overlay-url',
 				name: '复制 OBS 叠加层 URL 到剪贴板',
 				callback: () => {
-					const url = `http://127.0.0.1:${this.plugin.settings.obsPort}/`;
+					const url = `http://127.0.0.1:${this.plugin.settings.obs.obsPort}/`;
 					navigator.clipboard.writeText(url);
 					new Notice(`已复制: ${url}`);
 				}
@@ -208,19 +210,21 @@ export class CommandManager {
 				const file = view.file;
 				if (!file) return false;
 				
+					if (!this.plugin.foreshadowingManager) return false;
+					const fm = this.plugin.foreshadowingManager;
 				const submitCallback = (description: string, tags: string[]) => {
-					this.plugin.foreshadowingManager.addForeshadowing(file, selectedText, description, tags)
+					fm.addForeshadowing(file, selectedText, description, tags)
 						.then(({ file: foreshadowFile, merged }) => {
 							if (merged) {
 								new Notice(`[成功] 已合并到同名伏笔条目「${foreshadowFile.name}」`, 5000);
 							} else {
 								new Notice(`[成功] 已标注为伏笔，保存至「${foreshadowFile.name}」`, 5000);
 							}
-							if (this.plugin.app.isMobile === false) {
+							if (isDesktop()) {
 								const notice = new Notice('[提示] 点击此处打开伏笔文件', 8000);
 								notice.noticeEl.style.cursor = 'pointer';
 								notice.noticeEl.onclick = () => {
-									this.plugin.foreshadowingManager.openForeshadowingFile(foreshadowFile);
+									fm.openForeshadowingFile(foreshadowFile);
 									notice.hide();
 								};
 							}
@@ -231,7 +235,7 @@ export class CommandManager {
 						});
 				};
 
-				if (this.plugin.foreshadowingManager.foreshadowingFileExists(file)) {
+				if (fm.foreshadowingFileExists(file)) {
 					new ForeshadowingInputModal(this.plugin.app, this.plugin, file.basename, selectedText, submitCallback).open();
 				} else {
 					const fileName = this.plugin.settings.foreshadowing?.fileName || '伏笔';
@@ -254,9 +258,11 @@ export class CommandManager {
 				const foreshadowingFileName = (this.plugin.settings.foreshadowing?.fileName || '伏笔') + '.md';
 				if (file.name !== foreshadowingFileName) return false;
 				if (checking) return true;
+					if (!this.plugin.foreshadowingManager) return false;
+					const fm = this.plugin.foreshadowingManager;
 
 				const cursorLine = editor.getCursor().line;
-				const entry = this.plugin.foreshadowingManager.getEntryAtCursor(editor, cursorLine);
+				const entry = fm.getEntryAtCursor(editor, cursorLine);
 
 				if (entry) {
 					new ForeshadowingRecoveryModal(
@@ -264,7 +270,7 @@ export class CommandManager {
 						entry.contentPreview,
 						file.parent?.path || '',
 						async (selectedChapters) => {
-							const success = await this.plugin.foreshadowingManager.markAsRecovered(
+							const success = await fm.markAsRecovered(
 								file, entry.sourceFile, entry.createdAt, selectedChapters
 							);
 							if (success) {
@@ -290,21 +296,7 @@ export class CommandManager {
 			id: 'copy-full-content-mobile',
 			name: '复制本文档',
 			editorCallback: (editor, view) => {
-				const rawContent = editor.getValue();
-
-				// 从当前文件获取标题（文件名去掉 .md 后缀）
-				const title = view.file?.basename ?? '';
-
-				// 在正文首行前插入标题和空行，方便粘贴到其他平台时保留章节名
-				const contentWithTitle = title
-					? `${title}\n\n${rawContent}`
-					: rawContent;
-
-				navigator.clipboard.writeText(contentWithTitle).then(() => {
-					new Notice(`[成功] 已复制本文档`);
-				}).catch(() => {
-					new Notice('[错误] 复制失败，请重试');
-				});
+				copyDocumentContent(view.file?.basename ?? '', editor.getValue());
 			}
 		});
 	}

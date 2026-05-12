@@ -1,23 +1,12 @@
-import { MarkdownView, Menu, Notice, TFile, WorkspaceLeaf } from 'obsidian';
-import { ForeshadowingStatus } from '../types/foreshadowing';
+import { Menu, MenuItem, Notice, TFile, WorkspaceLeaf } from 'obsidian';
+import { ForeshadowingStatus, ParsedForeshadowingEntry } from '../types/foreshadowing';
 import { ForeshadowingRecoveryModal } from './ForeshadowingModal';
 import { CreativeView } from './CreativeView';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 
 export const FORESHADOWING_VIEW_TYPE = 'foreshadowing-view';
 
-interface ParsedEntry {
-	sourceFile: string;
-	createdAt: string;
-	contents: { source: string; time: string; text: string }[]; // 支持多个引用
-	description: string;
-	tags: string[];
-	status: ForeshadowingStatus;
-	recoveryFiles?: string[]; // 支持多章节回收
-	recoveredAts?: string[];
-	recoveryFile?: string; // 向后兼容
-	recoveredAt?: string;
-}
+
 
 /**
  * 伏笔面板视图
@@ -25,6 +14,7 @@ interface ParsedEntry {
  */
 export class ForeshadowingView extends CreativeView {
 	private filterStatus: 'all' | ForeshadowingStatus = 'all';
+	private filterTag: string = 'all';
 
 	constructor(leaf: WorkspaceLeaf, plugin: WebNovelAssistantPlugin) {
 		super(leaf, plugin);
@@ -36,6 +26,17 @@ export class ForeshadowingView extends CreativeView {
 
 	protected getWatchFileName(): string {
 		return this.plugin.settings.foreshadowing?.fileName || '伏笔';
+	}
+
+	protected async onFolderChange() {
+		this.filterTag = 'all';
+		await super.onFolderChange();
+	}
+
+	private getTagFilterOptions(entries: ParsedForeshadowingEntry[]): string[] {
+		const fromSettings = this.plugin.settings.foreshadowing?.defaultTags || [];
+		const fromEntries = entries.flatMap(e => e.tags);
+		return [...new Set([...fromSettings, ...fromEntries])];
 	}
 
 	async refresh() {
@@ -79,10 +80,24 @@ export class ForeshadowingView extends CreativeView {
 			return;
 		}
 
+		// 标签筛选行
+		const tagOptions = this.getTagFilterOptions(entries);
+		if (tagOptions.length > 0) {
+			const tagRow = header.createDiv({ cls: 'foreshadowing-view-filter-row foreshadowing-view-tag-filter-row' });
+			const allTagBtn = tagRow.createEl('button', { text: '全部标签', cls: 'foreshadowing-filter-btn' });
+			if (this.filterTag === 'all') allTagBtn.addClass('is-active');
+			allTagBtn.onclick = () => { this.filterTag = 'all'; this.refresh(); };
+			tagOptions.forEach(tag => {
+				const btn = tagRow.createEl('button', { text: `#${tag}`, cls: 'foreshadowing-filter-btn' });
+				if (this.filterTag === tag) btn.addClass('is-active');
+				btn.onclick = () => { this.filterTag = tag; this.refresh(); };
+			});
+		}
+
 		// 筛选
-		const filtered = this.filterStatus === 'all'
-			? entries
-			: entries.filter(e => e.status === this.filterStatus);
+		let filtered = entries;
+		if (this.filterStatus !== 'all') filtered = filtered.filter(e => e.status === this.filterStatus);
+		if (this.filterTag !== 'all') filtered = filtered.filter(e => e.tags.includes(this.filterTag));
 
 		if (filtered.length === 0) {
 			container.createDiv({ cls: 'foreshadowing-view-empty', text: '没有符合条件的伏笔' });
@@ -90,7 +105,7 @@ export class ForeshadowingView extends CreativeView {
 		}
 
 		// 按状态分组
-		const groups: { status: ForeshadowingStatus; label: string; items: ParsedEntry[] }[] = [
+		const groups: { status: ForeshadowingStatus; label: string; items: ParsedForeshadowingEntry[] }[] = [
 			{ status: ForeshadowingStatus.Pending, label: '未回收', items: [] },
 			{ status: ForeshadowingStatus.Recovered, label: '已回收', items: [] },
 			{ status: ForeshadowingStatus.Deprecated, label: '已废弃', items: [] },
@@ -115,7 +130,7 @@ export class ForeshadowingView extends CreativeView {
 		});
 	}
 
-	private renderEntry(container: HTMLElement, entry: ParsedEntry) {
+	private renderEntry(container: HTMLElement, entry: ParsedForeshadowingEntry) {
 		const card = container.createDiv({ cls: `foreshadowing-entry-card status-${entry.status === ForeshadowingStatus.Pending ? 'pending' : entry.status === ForeshadowingStatus.Recovered ? 'recovered' : 'deprecated'}` });
 
 		// 说明（主标题）
@@ -172,7 +187,7 @@ export class ForeshadowingView extends CreativeView {
 				// 多个来源，显示下拉菜单
 				const menu = new Menu();
 				for (const source of sources) {
-					menu.addItem((item: any) => {
+					menu.addItem((item: MenuItem) => {
 						item.setTitle(source).onClick(async () => {
 							const file = this.app.vault.getMarkdownFiles().find(f => f.basename === source);
 							if (file) {
@@ -198,6 +213,10 @@ export class ForeshadowingView extends CreativeView {
 					entry.contents[0]?.text || '',
 					this.currentFolder,
 					async (recoveryFileNames) => {
+						if (!this.plugin.foreshadowingManager) {
+							new Notice('伏笔管理器尚未就绪');
+							return;
+						}
 						const success = await this.plugin.foreshadowingManager.markAsRecovered(
 							foreshadowingFile, entry.sourceFile, entry.createdAt, recoveryFileNames
 						);
@@ -218,6 +237,7 @@ export class ForeshadowingView extends CreativeView {
 			deprecateBtn.onclick = async () => {
 				const foreshadowingFile = this.getForeshadowingFile();
 				if (!foreshadowingFile) return;
+				if (!this.plugin.foreshadowingManager) return;
 				const success = await this.plugin.foreshadowingManager.markAsDeprecated(
 					foreshadowingFile, entry.sourceFile, entry.createdAt
 				);
@@ -237,6 +257,7 @@ export class ForeshadowingView extends CreativeView {
 			restoreBtn.onclick = async () => {
 				const foreshadowingFile = this.getForeshadowingFile();
 				if (!foreshadowingFile) return;
+				if (!this.plugin.foreshadowingManager) return;
 				const success = await this.plugin.foreshadowingManager.markAsPending(
 					foreshadowingFile, entry.sourceFile, entry.createdAt
 				);
@@ -278,12 +299,13 @@ export class ForeshadowingView extends CreativeView {
 	}
 
 	private getForeshadowingFile(): TFile | null {
+		if (!this.plugin.foreshadowingManager) return null;
 		return this.plugin.foreshadowingManager.getForeshadowingFileByFolder(this.currentFolder);
 	}
 
-	private async loadEntries(): Promise<ParsedEntry[] | null> {
+	private async loadEntries(): Promise<ParsedForeshadowingEntry[] | null> {
 		const file = this.getForeshadowingFile();
-		if (!file) return null;
+		if (!file || !this.plugin.foreshadowingManager) return null;
 
 		const content = await this.app.vault.read(file);
 		// 使用 Manager 的统一解析逻辑

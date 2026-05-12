@@ -14,7 +14,6 @@ import { DailyStat } from '../types/settings';
 export class HistoryDataManager {
 	private plugin: Plugin;
 	private historyData: Record<string, DailyStat> = {};
-	private saveQueue: Promise<void> = Promise.resolve();
 	private dirty: boolean = false; // 脏标记：只保存有变更的数据
 	private historyFilePath: string;
 
@@ -34,7 +33,16 @@ export class HistoryDataManager {
 			const adapter = this.plugin.app.vault.adapter;
 			if (await adapter.exists(this.historyFilePath)) {
 				const content = await adapter.read(this.historyFilePath);
-				this.historyData = JSON.parse(content);
+				const parsed = JSON.parse(content);
+				
+				// [BUGFIX] 数据验证：确保解析结果为对象而非 null 或数组
+				if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+					this.historyData = parsed;
+				} else {
+					console.warn('[HistoryDataManager] 历史数据格式无效，已重置为空对象');
+					this.historyData = {};
+				}
+				
 				console.log(`[HistoryDataManager] 已从独立文件加载 ${Object.keys(this.historyData).length} 条历史记录`);
 				return this.historyData;
 			}
@@ -43,7 +51,7 @@ export class HistoryDataManager {
 			const data = await this.plugin.loadData();
 			
 			// 从 data.json 的 historyData key 迁移
-			if (data && data.historyData && Object.keys(data.historyData).length > 0) {
+			if (data && data.historyData && typeof data.historyData === 'object' && !Array.isArray(data.historyData)) {
 				console.log('[HistoryDataManager] 检测到 data.json 中的历史数据，开始迁移到独立文件');
 				this.historyData = data.historyData;
 				this.dirty = true;
@@ -53,7 +61,7 @@ export class HistoryDataManager {
 			}
 			
 			// 从旧版 dailyHistory key 迁移
-			if (data && data.dailyHistory && Object.keys(data.dailyHistory).length > 0) {
+			if (data && data.dailyHistory && typeof data.dailyHistory === 'object' && !Array.isArray(data.dailyHistory)) {
 				console.log('[HistoryDataManager] 检测到旧版历史数据，开始迁移到独立文件');
 				this.historyData = data.dailyHistory;
 				this.dirty = true;
@@ -68,34 +76,60 @@ export class HistoryDataManager {
 			return {};
 		} catch (error) {
 			console.error('[HistoryDataManager] 加载历史数据失败:', error);
+			this.historyData = {};
 			return {};
 		}
 	}
 
 	/**
 	 * 保存历史数据到独立文件
-	 * 使用队列确保串行化，避免并发写入冲突
+	 * [M-P4] 优化：使用 busy/pending 模式替代简单的 promise 链，防止大规模并发调用导致内存泄漏
 	 */
+	private isSaving = false;
+	private pendingSave: Promise<void> | null = null;
+
 	async saveHistory(): Promise<void> {
-		// [BUGFIX] 将脏标记检查移入队列内部，防止竞态：
-		// 如果在队列排队期间有新的 addWords() 设置 dirty=true，
-		// 旧的保存完成后不会误重置新变更的 dirty 标记。
-		this.saveQueue = this.saveQueue.then(async () => {
-			if (!this.dirty) return;
-
-			try {
-				const adapter = this.plugin.app.vault.adapter;
-				const content = JSON.stringify(this.historyData, null, 2);
-				await adapter.write(this.historyFilePath, content);
-				this.dirty = false;
-				console.log('[HistoryDataManager] 历史数据已保存到独立文件');
-			} catch (error) {
-				console.error('[HistoryDataManager] 保存历史数据失败:', error);
-				throw error;
+		if (!this.dirty) return;
+		
+		if (this.isSaving) {
+			if (!this.pendingSave) {
+				this.pendingSave = new Promise((resolve) => {
+					// 500ms 后执行一次最终保存
+					setTimeout(async () => {
+						this.pendingSave = null;
+						await this.saveHistory();
+						resolve();
+					}, 500);
+				});
 			}
-		});
+			return this.pendingSave;
+		}
 
-		return this.saveQueue;
+		this.isSaving = true;
+		try {
+			const adapter = this.plugin.app.vault.adapter;
+			const content = JSON.stringify(this.historyData, null, 2);
+			await adapter.write(this.historyFilePath, content);
+			this.dirty = false;
+			console.log('[HistoryDataManager] 历史数据已保存到独立文件');
+		} catch (error) {
+			console.error('[HistoryDataManager] 保存历史数据失败:', error);
+		} finally {
+			this.isSaving = false;
+		}
+	}
+
+	/**
+	 * 强制等待所有待处理的保存操作完成
+	 * 主要用于 onunload 生命周期
+	 */
+	async flush(): Promise<void> {
+		if (this.dirty) {
+			await this.saveHistory();
+		}
+		if (this.pendingSave) {
+			await this.pendingSave;
+		}
 	}
 
 	/**

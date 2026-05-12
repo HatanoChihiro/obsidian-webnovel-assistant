@@ -1,0 +1,118 @@
+import type { WebNovelAssistantPlugin } from '../types/plugin';
+import { TFile, MarkdownView } from 'obsidian';
+
+export class FileEventManager {
+	private plugin: WebNovelAssistantPlugin;
+
+	constructor(plugin: WebNovelAssistantPlugin) {
+		this.plugin = plugin;
+	}
+
+	setup(): void {
+		this.registerModifyHandler();
+		this.registerDeleteHandler();
+		this.registerRenameHandler();
+		this.registerLayoutChangeHandler();
+		this.registerNotesFileHandler();
+	}
+
+	private registerModifyHandler(): void {
+		this.plugin.registerEvent(this.plugin.app.vault.on('modify', async (file) => {
+			if (file instanceof TFile && file.extension === 'md') {
+				if (!this.plugin.isEligibleForWordCount(file)) return;
+
+				const activeView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
+				const isActiveFile = activeView?.file?.path === file.path;
+
+				if (!isActiveFile) {
+					try {
+						const content = await this.plugin.app.vault.cachedRead(file);
+						const newWordCount = this.plugin.calculateAccurateWords(content);
+						const oldWordCount = this.plugin.cacheManager.getFileCache(file.path);
+
+						if (oldWordCount === null) {
+							this.plugin.cacheManager.updateFileCache(file, newWordCount, this.plugin.app.vault);
+							this.plugin.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
+								this.plugin.updateFileCacheAndRefresh(file);
+							}, 500);
+							return;
+						}
+
+						const delta = newWordCount - oldWordCount;
+						if (delta !== 0) {
+							this.plugin.cacheManager.updateFileCache(file, newWordCount, this.plugin.app.vault);
+
+							if (this.plugin.isLayoutReady) {
+								const today = window.moment().format('YYYY-MM-DD');
+								this.plugin.historyManager.addWords(today, delta);
+								this.plugin.sessionAddedWords += delta;
+
+								this.plugin.adaptiveDebounceManager.debounceFixed('save-settings', () => {
+									this.plugin.saveSettings().catch(err => {
+										console.error('[Plugin] 保存设置失败:', err);
+									});
+								}, 1000);
+							}
+						}
+					} catch (error) {
+						console.error('[Plugin] 更新每日历史统计失败:', error);
+					}
+				}
+
+				this.plugin.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
+					this.plugin.updateFileCacheAndRefresh(file);
+				}, 500);
+			}
+		}));
+	}
+
+	private registerDeleteHandler(): void {
+		this.plugin.registerEvent(this.plugin.app.vault.on('delete', (file) => {
+			if (file instanceof TFile && file.extension === 'md') {
+				if (!this.plugin.isEligibleForWordCount(file)) return;
+
+				this.plugin.cacheManager.invalidateCache(file.path, this.plugin.app.vault);
+				this.plugin.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
+					this.plugin.refreshFolderCounts();
+				}, 500);
+			}
+		}));
+	}
+
+	private registerRenameHandler(): void {
+		this.plugin.registerEvent(this.plugin.app.vault.on('rename', (file, oldPath) => {
+			if (file instanceof TFile && file.extension === 'md') {
+				if (!this.plugin.isFileInWorkspace(file)) return;
+
+				const oldCache = this.plugin.cacheManager.getFileCache(oldPath);
+				this.plugin.cacheManager.invalidateCache(oldPath, this.plugin.app.vault);
+
+				if (this.plugin.isEligibleForWordCount(file) && oldCache !== null) {
+					this.plugin.cacheManager.updateFileCache(file, oldCache, this.plugin.app.vault);
+				}
+
+				this.plugin.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
+					this.plugin.updateFileCacheAndRefresh(file);
+				}, 500);
+			}
+		}));
+	}
+
+	private registerLayoutChangeHandler(): void {
+		this.plugin.registerEvent(this.plugin.app.workspace.on('layout-change', () => {
+			this.plugin.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
+				this.plugin.refreshFolderCounts();
+			}, 500);
+		}));
+	}
+
+	private registerNotesFileHandler(): void {
+		const notesFilePath = this.plugin.stickyNoteManager.getNotesFilePath();
+		this.plugin.registerEvent(this.plugin.app.vault.on('modify', async (file) => {
+			if (file instanceof TFile && file.path === notesFilePath && !this.plugin.stickyNoteManager.getIsWriting()) {
+				await this.plugin.stickyNoteManager.loadNotes();
+				this.plugin.syncFloatingNotes();
+			}
+		}));
+	}
+}

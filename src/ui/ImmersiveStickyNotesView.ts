@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, debounce, FuzzySuggestModal, TFile, App, Notice } from 'obsidian';
+import { ItemView, WorkspaceLeaf, FuzzySuggestModal, TFile, App, Notice } from 'obsidian';
 import { VIEW_TYPES } from '../constants';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { StickyNoteState } from '../types/settings';
@@ -59,7 +59,7 @@ export class ImmersiveStickyNotesView extends ItemView {
 		this.plugin.settings.nextNoteThemeIndex = (themeIndex + 1) % Math.max(1, themes.length);
 
 		const newNote: StickyNoteState = {
-			id: Math.random().toString(36).substr(2, 9),
+			id: Date.now().toString(36) + Math.random().toString(36).substring(2, 7),
 			filePath: filePath,
 			content: content || '',
 			title: title || '新建便签',
@@ -203,7 +203,7 @@ export class ImmersiveStickyNotesView extends ItemView {
 
 			const noteCard = dockContainer.createDiv({ cls: 'immersive-sticky-card' });
 			noteCard.style.backgroundColor = noteData.color || '#FDF3B8';
-			const noteSize = (this.plugin.settings.immersiveNoteSize || 280) + 'px';
+			const noteSize = (this.plugin.settings.immersive.immersiveNoteSize || 280) + 'px';
 			noteCard.style.width = noteSize; 
 			noteCard.style.height = noteSize;
 			noteCard.style.flex = '0 0 auto';
@@ -305,7 +305,7 @@ export class ImmersiveStickyNotesView extends ItemView {
 			textarea.style.border = 'none';
 			textarea.style.background = 'transparent';
 			textarea.style.color = 'inherit';
-			textarea.style.fontSize = (this.plugin.settings.immersiveNoteFontSize || 14) + 'px';
+			textarea.style.fontSize = (this.plugin.settings.immersive.immersiveNoteFontSize || 14) + 'px';
 			textarea.style.lineHeight = '1.5';
 			textarea.style.fontFamily = 'inherit';
 			textarea.style.outline = 'none';
@@ -322,7 +322,7 @@ export class ImmersiveStickyNotesView extends ItemView {
 				// 如果开启了自动保存，则实时同步到管理器和文件
 				if (this.plugin.settings.stickyNoteAutoSave) {
 					const debounceKey = `immersive-save-note-${noteData.id}`;
-					(this.plugin as any).adaptiveDebounceManager.debounceFixed(debounceKey, async () => {
+					this.plugin.adaptiveDebounceManager.debounceFixed(debounceKey, async () => {
 						await this.plugin.stickyNoteManager.saveNotes(this.plugin.stickyNoteManager.getNotes());
 						this.lastSavedContents.set(noteData.id, textarea.value);
 						

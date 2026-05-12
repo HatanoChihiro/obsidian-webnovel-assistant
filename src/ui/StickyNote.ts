@@ -1,5 +1,5 @@
 import { App, Component, MarkdownRenderer, Notice, TFile, setIcon, Modal, Setting, MarkdownView, Platform } from 'obsidian';
-import { StickyNoteState } from '../types/settings';
+import { StickyNoteState, ThemeScheme } from '../types/settings';
 import { hexToRgba } from '../utils/format';
 import { injectGlobalStyle } from '../utils/dom';
 import { isDesktop } from '../utils/platform';
@@ -213,7 +213,7 @@ export class FloatingStickyNote extends Component {
 			const theme = themes[themeIndex];
 
 			this.state = {
-				id: Math.random().toString(36).substring(2, 11),
+				id: crypto.randomUUID().substring(0, 8),
 				filePath: options.file?.path,
 				content: options.content || "",
 				title: options.title || (options.file ? options.file.basename : "新便签"),
@@ -248,6 +248,8 @@ export class FloatingStickyNote extends Component {
 	}
 
 	onunload() {
+		// [L-P7] 确保在组件卸载时移除所有可能的全局拖拽监听器
+		this.cleanupDragging();
 		// 清理 ResizeObserver
 		if (this.resizeObserver) {
 			this.resizeObserver.disconnect();
@@ -337,6 +339,8 @@ export class FloatingStickyNote extends Component {
 		const saveBtn = this.createButton(controlsEl, 'save');
 		saveBtn.title = '保存便签内容 (Ctrl+S)';
 		saveBtn.style.opacity = '0.5';
+		const syncBtn = this.state.filePath ? this.createButton(controlsEl, 'refresh-cw') : null;
+		if (syncBtn) syncBtn.title = '从关联文档同步内容';
 		const toggleEditBtn = this.createButton(controlsEl, this.state.isEditing ? 'eye' : 'pencil');
 		const paletteBtn = this.createButton(controlsEl, 'palette', false, 'palette-btn-target');
 		const closeBtn = controlsEl.createEl('button', { cls: 'my-sticky-close' });
@@ -390,7 +394,7 @@ export class FloatingStickyNote extends Component {
 
 			if (this.plugin.settings.stickyNoteAutoSave) {
 				const debounceKey = `save-note-${this.state.id}`;
-				(this.plugin as any).adaptiveDebounceManager.debounceFixed(debounceKey, async () => {
+				this.plugin.adaptiveDebounceManager.debounceFixed(debounceKey, async () => {
 					this.state.content = this.textareaEl.value;
 					this.saveState();
 					
@@ -413,7 +417,7 @@ export class FloatingStickyNote extends Component {
 		const popupEl = this.createPalettePopup(controlsEl);
 
 		// 绑定事件
-		this.bindHeaderEvents(pinBtn, saveBtn, toggleEditBtn, paletteBtn, closeBtn, popupEl, titleWrapper);
+		this.bindHeaderEvents(pinBtn, saveBtn, syncBtn, toggleEditBtn, paletteBtn, closeBtn, popupEl, titleWrapper);
 		this.setupDragging(headerEl);
 		this.setupResizing();
 	}
@@ -427,7 +431,7 @@ export class FloatingStickyNote extends Component {
 
 	private createPalettePopup(parent: HTMLElement): HTMLElement {
 		const popupEl = parent.createDiv({ cls: 'my-sticky-palette-popup' });
-		this.plugin.settings.noteThemes.forEach((theme: any) => {
+		this.plugin.settings.noteThemes.forEach((theme: ThemeScheme) => {
 			const swatch = popupEl.createDiv({ cls: 'my-sticky-swatch' });
 			swatch.style.backgroundColor = theme.bg;
 			swatch.style.color = theme.text;
@@ -456,6 +460,7 @@ export class FloatingStickyNote extends Component {
 	private bindHeaderEvents(
 		pinBtn: HTMLButtonElement,
 		saveBtn: HTMLButtonElement,
+		syncBtn: HTMLButtonElement | null,
 		toggleEditBtn: HTMLButtonElement,
 		paletteBtn: HTMLButtonElement,
 		closeBtn: HTMLButtonElement,
@@ -473,6 +478,21 @@ export class FloatingStickyNote extends Component {
 			this.updateVisuals();
 			this.saveState();
 		};
+
+		if (syncBtn) {
+			syncBtn.onclick = async () => {
+				if (this.state.filePath) {
+					const file = this.app.vault.getAbstractFileByPath(this.state.filePath);
+					if (file instanceof TFile) {
+						this.state.content = await this.app.vault.read(file);
+						this.lastSavedContent = this.state.content;
+						if (this.state.isEditing) this.textareaEl.value = this.state.content || '';
+						await this.renderContent();
+						new Notice('[成功] 已从文档同步内容');
+					}
+				}
+			};
+		}
 
 		toggleEditBtn.onclick = async () => {
 			if (this.state.isEditing) {
@@ -683,11 +703,24 @@ export class FloatingStickyNote extends Component {
 		this.unload();
 	}
 
+
+	private currentMouseMove: ((e: MouseEvent) => void) | null = null;
+	private currentMouseUp: (() => void) | null = null;
+
+	private cleanupDragging() {
+		if (this.currentMouseMove) {
+			document.removeEventListener('mousemove', this.currentMouseMove);
+			this.currentMouseMove = null;
+		}
+		if (this.currentMouseUp) {
+			document.removeEventListener('mouseup', this.currentMouseUp);
+			this.currentMouseUp = null;
+		}
+	}
+
 	setupDragging(handle: HTMLElement) {
 		let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
 
-		// [BUGFIX] 使用 addEventListener/removeEventListener 替代直接赋值 document.onmouseXXX，
-		// 直接赋值会覆盖其他组件可能注册的同名处理器。
 		const onMouseMove = (e: MouseEvent) => {
 			pos1 = pos3 - e.clientX;
 			pos2 = pos4 - e.clientY;
@@ -700,19 +733,26 @@ export class FloatingStickyNote extends Component {
 		};
 
 		const onMouseUp = () => {
-			document.removeEventListener('mousemove', onMouseMove);
-			document.removeEventListener('mouseup', onMouseUp);
+			this.cleanupDragging();
 			this.saveState();
 		};
 
-		handle.onmousedown = (e) => {
+		// [L-P7] 使用 registerDomEvent 注册 mousedown，这会在组件 unload 时自动清理
+		this.registerDomEvent(handle, 'mousedown', (e: MouseEvent) => {
 			if (this.state.isPinned) return;
 			const target = e.target as HTMLElement;
 			if (target.tagName === 'BUTTON' || target.closest('.my-sticky-btn') || target.closest('.my-sticky-close')) return;
-			pos3 = e.clientX; pos4 = e.clientY;
+			
+			pos3 = e.clientX; 
+			pos4 = e.clientY;
+			
+			this.cleanupDragging(); // 先清理旧的（如果有）
+			this.currentMouseMove = onMouseMove;
+			this.currentMouseUp = onMouseUp;
+
 			document.addEventListener('mousemove', onMouseMove);
 			document.addEventListener('mouseup', onMouseUp);
-		};
+		});
 	}
 
 	setupResizing() {
