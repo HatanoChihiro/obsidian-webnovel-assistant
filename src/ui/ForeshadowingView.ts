@@ -14,6 +14,7 @@ export const FORESHADOWING_VIEW_TYPE = 'foreshadowing-view';
  */
 export class ForeshadowingView extends CreativeView {
 	private filterStatus: 'all' | ForeshadowingStatus = 'all';
+	private filterTag: string = 'all';
 
 	constructor(leaf: WorkspaceLeaf, plugin: WebNovelAssistantPlugin) {
 		super(leaf, plugin);
@@ -25,6 +26,17 @@ export class ForeshadowingView extends CreativeView {
 
 	protected getWatchFileName(): string {
 		return this.plugin.settings.foreshadowing?.fileName || '伏笔';
+	}
+
+	protected async onFolderChange() {
+		this.filterTag = 'all';
+		await super.onFolderChange();
+	}
+
+	private getTagFilterOptions(entries: ParsedForeshadowingEntry[]): string[] {
+		const fromSettings = this.plugin.settings.foreshadowing?.defaultTags || [];
+		const fromEntries = entries.flatMap(e => e.tags);
+		return [...new Set([...fromSettings, ...fromEntries])];
 	}
 
 	async refresh() {
@@ -68,10 +80,24 @@ export class ForeshadowingView extends CreativeView {
 			return;
 		}
 
-		// 筛选
-		const filtered = this.filterStatus === 'all'
-			? entries
-			: entries.filter(e => e.status === this.filterStatus);
+		// æ ç­¾ç­éè¡
+		const tagOptions = this.getTagFilterOptions(entries);
+		if (tagOptions.length > 0) {
+			const tagRow = header.createDiv({ cls: 'foreshadowing-view-filter-row foreshadowing-view-tag-filter-row' });
+			const allTagBtn = tagRow.createEl('button', { text: 'å¨é¨æ ç­¾', cls: 'foreshadowing-filter-btn' });
+			if (this.filterTag === 'all') allTagBtn.addClass('is-active');
+			allTagBtn.onclick = () => { this.filterTag = 'all'; this.refresh(); };
+			tagOptions.forEach(tag => {
+				const btn = tagRow.createEl('button', { text: `#${tag}`, cls: 'foreshadowing-filter-btn' });
+				if (this.filterTag === tag) btn.addClass('is-active');
+				btn.onclick = () => { this.filterTag = tag; this.refresh(); };
+			});
+		}
+
+		// ç­é
+		let filtered = entries;
+		if (this.filterStatus !== 'all') filtered = filtered.filter(e => e.status === this.filterStatus);
+		if (this.filterTag !== 'all') filtered = filtered.filter(e => e.tags.includes(this.filterTag));
 
 		if (filtered.length === 0) {
 			container.createDiv({ cls: 'foreshadowing-view-empty', text: '没有符合条件的伏笔' });

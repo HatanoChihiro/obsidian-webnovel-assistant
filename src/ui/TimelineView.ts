@@ -227,6 +227,7 @@ export class TimelineAddFromSelectionModal extends TimelineAddModal {
 export class TimelineView extends CreativeView {
 	private manager!: TimelineManager;
 	private editingIndex: number = -1;
+	private filterType: string = 'all';
 
 	constructor(leaf: WorkspaceLeaf, plugin: WebNovelAssistantPlugin) {
 		super(leaf, plugin);
@@ -244,7 +245,14 @@ export class TimelineView extends CreativeView {
 	protected async onFolderChange() {
 		this.manager.currentFolder = this.currentFolder;
 		this.editingIndex = -1;
+		this.filterType = 'all';
 		await this.refresh();
+	}
+
+	private getTypeFilterOptions(entries: TimelineEntry[]): string[] {
+		const fromSettings = this.plugin.settings.timeline?.defaultTypes || [];
+		const fromEntries = entries.map(e => e.type).filter(Boolean);
+		return [...new Set([...fromSettings, ...fromEntries])];
 	}
 
 	async refresh() {
@@ -285,20 +293,39 @@ export class TimelineView extends CreativeView {
 
 		const entries = this.manager.parseEntries(content);
 
-		if (entries.length === 0) {
-			container.createDiv({ cls: 'timeline-view-empty' }).createEl('p', { text: '时间线为空，点击 + 添加第一个事件' });
+		// ç±»åç­é
+		const typeOptions = this.getTypeFilterOptions(entries);
+		if (typeOptions.length > 0) {
+			const typeRow = header.createDiv({ cls: 'timeline-view-filter-row' });
+			const allBtn = typeRow.createEl('button', { text: '全部类型', cls: 'timeline-filter-btn' });
+			if (this.filterType === 'all') allBtn.addClass('is-active');
+			allBtn.onclick = () => { this.filterType = 'all'; this.refresh(); };
+			typeOptions.forEach(type => {
+				const btn = typeRow.createEl('button', { text: type, cls: 'timeline-filter-btn' });
+				if (this.filterType === type) btn.addClass('is-active');
+				btn.onclick = () => { this.filterType = type; this.refresh(); };
+			});
+		}
+
+		// ç­éåæ¸²æ
+		const filtered = this.filterType === 'all'
+			? entries
+			: entries.filter(e => e.type === this.filterType);
+
+		if (filtered.length === 0) {
+			container.createDiv({ cls: 'timeline-view-empty' }).createEl('p', { text: '没有符合条件的时间线事件' });
 			return;
 		}
 
 		const timeline = container.createDiv({ cls: 'timeline-list' });
-		entries.forEach((entry, index) => {
-			if (this.editingIndex === index) {
-				this.renderEditForm(timeline, entry, index, entries);
+		filtered.forEach(entry => {
+			const originalIndex = entries.indexOf(entry);
+			if (this.editingIndex === originalIndex) {
+				this.renderEditForm(timeline, entry, originalIndex, entries);
 			} else {
-				this.renderEntry(timeline, entry, index, entries);
+				this.renderEntry(timeline, entry, originalIndex, entries);
 			}
-		});
-	}
+		});	}
 
 	private renderEntry(container: HTMLElement, entry: TimelineEntry, index: number, allEntries: TimelineEntry[]) {
 		const item = container.createDiv({ cls: 'timeline-item' });
