@@ -90,15 +90,16 @@ export class FileExplorerPatcher {
 				if (!self.enabled) return sortedItems;
 				if (!Array.isArray(sortedItems) || sortedItems.length === 0) return sortedItems;
 
-				// 1. 识别受控项目及其位置
-				const smartItems: { item: any; chapterInfo: { number: number; ruleIndex: number }; pos: number }[] = [];
+
+				// 识别受控项目及其位置（支持文件夹和文件的混合排序）
+				const smartItems: { item: any; chapterInfo: { number: number; ruleIndex: number }; isFolder: boolean; pos: number }[] = [];
 				
 				for (let i = 0; i < sortedItems.length; i++) {
 					const item = sortedItems[i];
-					if (item && item.file instanceof TFile) {
+					if (item && (item.file instanceof TFile || item.file instanceof TFolder)) {
 						const chapterInfo = ChapterSorter.extractChapterNumber(item.file.name);
 						if (chapterInfo !== null) {
-							smartItems.push({ item, chapterInfo, pos: i });
+							smartItems.push({ item, chapterInfo, isFolder: item.file instanceof TFolder, pos: i });
 						}
 					}
 				}
@@ -109,6 +110,9 @@ export class FileExplorerPatcher {
 				// 2. 内部排序
 				// 策略：规则优先级 > 章节编号 > 原始相对位置（稳定性保证）
 				const sortedSmartItems = [...smartItems].sort((a, b) => {
+					// 文件夹优先排在文件前
+					if (a.isFolder !== b.isFolder) return a.isFolder ? -1 : 1;
+
 					// 规则顺序
 					if (a.chapterInfo.ruleIndex !== b.chapterInfo.ruleIndex) {
 						return a.chapterInfo.ruleIndex - b.chapterInfo.ruleIndex;

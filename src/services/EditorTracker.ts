@@ -20,9 +20,12 @@ export class EditorTracker {
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (!view) return;
 		
-		// 严格模式：必须符合字数统计条件（工作区、排除合并章节、严格章节模式）
-		if (view.file && !this.plugin.isEligibleForWordCount(view.file)) return;
-        
+		// 非工作区文件：仍显示基本字数，但不追踪增量/历史
+		if (view.file && !this.plugin.isEligibleForWordCount(view.file)) {
+			this.updateWordCount();
+			return;
+		}
+
 		this.plugin.lastEditTime = Date.now(); 
         
 		// [BUGFIX] 如果当前文件与上次记录的文件不符，说明 active-leaf-change 还没来得及更新 lastFileWords
@@ -72,7 +75,7 @@ export class EditorTracker {
 		// 严格模式：必须符合字数统计条件
 		if (view?.file && !this.plugin.isEligibleForWordCount(view.file)) {
 			this.plugin.lastFileWords = 0;
-			this.plugin.statusBarItemEl.setText('');
+			this.updateWordCount();
 			return;
 		}
 		
@@ -98,9 +101,11 @@ export class EditorTracker {
 			return; 
 		}
 
-		// 严格模式：只显示符合字数统计条件的文件的字数统计
+		// 非工作区/非章节文件：只显示基本字数，不显示追踪和进度
 		if (view.file && !this.plugin.isEligibleForWordCount(view.file)) {
-			this.plugin.statusBarItemEl.setText('');
+			const totalCount = this.plugin.calculateAccurateWords(view.getViewData());
+			const cnChars = (view.getViewData().match(/[一-龥]/g) || []).length;
+			this.plugin.statusBarItemEl.setText(`字数: ${totalCount} (中文字: ${cnChars})`);
 			return;
 		}
 
