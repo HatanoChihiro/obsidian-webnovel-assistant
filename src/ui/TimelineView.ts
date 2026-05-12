@@ -340,7 +340,7 @@ export class TimelineView extends CreativeView {
 		});
 		item.addEventListener('drop', async (e) => {
 			e.preventDefault();
-			const fromIndex = parseInt(e.dataTransfer?.getData('text/plain') || '-1');
+			const fromIndex = parseInt(e.dataTransfer?.getData('text/plain') || '-1', 10);
 			const rect = item.getBoundingClientRect();
 			const midY = rect.top + rect.height / 2;
 			// 鼠标在上半部分：插入到目标之前；下半部分：插入到目标之后

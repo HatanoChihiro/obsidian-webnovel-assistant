@@ -169,7 +169,7 @@ export class ObsHtmlBuilder {
 		let textColor = isDark ? '#E8E8E8' : '#2C3E50';
 		
 		if (theme.startsWith('note-')) {
-			const index = parseInt(theme.split('-')[1]);
+			const index = parseInt(theme.split('-')[1], 10);
 			const noteTheme = this.plugin.settings.noteThemes[index];
 			if (noteTheme) {
 				cardBg = hexToRgba(noteTheme.bg, overlayOpacity);
