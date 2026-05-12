@@ -1,6 +1,6 @@
 import { Plugin, Notice } from 'obsidian';
 import { AccurateCountSettings, ImmersiveModeSettings, ObsSettings } from '../types/settings';
-import { VALIDATION_RULES } from '../constants';
+import { VALIDATION_RULES, FLAT_OBS_KEYS, FLAT_IMMERSIVE_KEYS } from '../constants';
 import { ValidationResult } from '../utils/validation';
 import { SerializedWriter } from '../utils/SerializedWriter';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
@@ -9,11 +9,18 @@ import type { WebNovelAssistantPlugin } from '../types/plugin';
  * 验证规则接口（支持嵌套路径）
  */
 interface ValidationRule {
-	/** 验证路径：嵌套字段用点号分隔，如 'obs.obsPort' */
 	path: string;
 	validate: (value: unknown) => boolean;
 	errorMessage: string;
 }
+
+/**
+ * 需要保留的旧数据键（不属于 AccurateCountSettings 但需要保留用于兼容）
+ */
+const STALE_KEYS = new Set([
+	'cacheData', 'historyData', 'dailyHistory', 'openNotes',
+	...FLAT_OBS_KEYS, ...FLAT_IMMERSIVE_KEYS
+]);
 
 /**
  * 设置管理器
@@ -24,10 +31,8 @@ export class SettingsManager {
 	private settings: AccurateCountSettings;
 	private defaultSettings: AccurateCountSettings;
 
-	// 串行写入器：确保数据保存的原子性
 	private writer = new SerializedWriter();
 
-	// 验证规则（支持嵌套路径）
 	private validationRules: ValidationRule[] = [
 		{
 			path: 'obs.obsPort',
@@ -79,24 +84,19 @@ export class SettingsManager {
 		this.settings = { ...defaultSettings };
 	}
 
-	/**
-	 * 加载设置
-	 */
 	async loadSettings(): Promise<AccurateCountSettings> {
 		try {
 			const data = await this.plugin.loadData();
 
-			// 与默认设置合并（深度合并，确保嵌套对象的新字段不丢失）
-			this.settings = this.deepMerge(this.defaultSettings, data || {});
-
-			// 数据迁移
+			this.settings = this.deepMerge(this.defaultSettings, (data || {}) as Partial<AccurateCountSettings>);
 			this.settings = this.migrateSettings(this.settings, data);
 
-			// 验证设置
+			// 从内存对象中剥离扁平键（deepMerge 会把旧数据的扁平键合并为顶层属性）
+			this.stripStaleKeys(this.settings as unknown as Record<string, unknown>);
+
 			const validation = this.validateSettings(this.settings);
 			if (!validation.valid) {
 				console.warn('[SettingsManager] 设置验证失败:', validation.errors);
-				// 使用默认值替换无效值
 				this.settings = this.fixInvalidSettings(this.settings);
 			}
 
@@ -104,69 +104,45 @@ export class SettingsManager {
 			return this.settings;
 		} catch (error) {
 			console.error('[SettingsManager] 加载设置失败:', error);
-
 			new Notice('加载设置失败，已使用默认设置');
-
-			// 返回默认设置
-			this.settings = { ...this.defaultSettings };
+			this.settings = this.deepMerge(this.defaultSettings, {} as Partial<AccurateCountSettings>);
 			return this.settings;
 		}
 	}
 
-	/**
-	 * 保存设置（原子操作）
-	 */
 	async saveSettings(): Promise<void> {
-		// 将保存操作加入队列，确保串行执行
 		return this.writer.enqueue(async () => {
 			try {
-				// 从插件获取最新的设置（因为插件可能直接修改了 settings 对象）
-				const pluginSettings = (this.plugin as WebNovelAssistantPlugin).settings;
+				const pluginSettings = (this.plugin as unknown as WebNovelAssistantPlugin).settings;
 				if (pluginSettings) {
 					this.settings = pluginSettings;
 				}
+				// 剥离可能残留的扁平键（用户直接修改 settings 对象不会自动清理）
+				this.stripStaleKeys(this.settings as unknown as Record<string, unknown>);
 
-				// 读取旧数据进行合并
+				// 读取旧数据，只保留不属于 STALE_KEYS 的字段
 				const data = await this.plugin.loadData() || {};
-
-				// 瘦身策略：清理已分离至独立文件的旧数据字段
-				if ('cacheData' in data) {
-					delete data.cacheData;
-				}
-				if ('historyData' in data) { // 之前版本的历史数据
-					delete data.historyData;
-				}
-				// 清理已移除的废弃字段
-				if ('dailyHistory' in data) {
-					delete data.dailyHistory;
-				}
-				if ('openNotes' in data) {
-					delete data.openNotes;
+				const cleanedData: Record<string, unknown> = {};
+				for (const key of Object.keys(data)) {
+					if (!STALE_KEYS.has(key)) {
+						(cleanedData as Record<string, unknown>)[key] = (data as Record<string, unknown>)[key];
+					}
 				}
 
-				const newData = { ...data, ...this.settings };
+				const newData = { ...cleanedData, ...this.settings };
 				await this.plugin.saveData(newData);
 			} catch (error) {
 				console.error('[SettingsManager] 保存设置失败:', error);
-
 				new Notice('保存设置失败，请检查磁盘空间和权限');
-
 				throw error;
 			}
 		});
 	}
 
-	/**
-	 * 强制等待所有待处理的保存操作完成
-	 * 主要用于 onunload 生命周期
-	 */
 	async flush(): Promise<void> {
 		await this.writer.flush();
 	}
 
-	/**
-	 * 通过点号路径获取嵌套设置值
-	 */
 	private getNestedValue(obj: Record<string, unknown>, path: string): unknown {
 		const parts = path.split('.');
 		let current: unknown = obj;
@@ -179,9 +155,6 @@ export class SettingsManager {
 		return current;
 	}
 
-	/**
-	 * 通过点号路径设置嵌套设置值
-	 */
 	private setNestedValue(obj: Record<string, unknown>, path: string, value: unknown): void {
 		const parts = path.split('.');
 		let current: Record<string, unknown> = obj;
@@ -194,50 +167,42 @@ export class SettingsManager {
 		current[parts[parts.length - 1]] = value;
 	}
 
-	/**
-	 * 验证设置
-	 */
 	validateSettings(settings: Partial<AccurateCountSettings>): ValidationResult {
 		const errors: string[] = [];
-
 		for (const rule of this.validationRules) {
 			const value = this.getNestedValue(settings as Record<string, unknown>, rule.path);
 			if (value !== undefined && !rule.validate(value)) {
 				errors.push(rule.errorMessage);
 			}
 		}
-
-		return {
-			valid: errors.length === 0,
-			errors
-		};
+		return { valid: errors.length === 0, errors };
 	}
 
-	/**
-	 * 修复无效设置
-	 */
 	private fixInvalidSettings(settings: AccurateCountSettings): AccurateCountSettings {
 		const fixed = { ...settings };
-
 		for (const rule of this.validationRules) {
 			const value = this.getNestedValue(fixed as unknown as Record<string, unknown>, rule.path);
 			if (value !== undefined && !rule.validate(value)) {
-				// 使用默认值替换
 				const defaultValue = this.getNestedValue(this.defaultSettings as unknown as Record<string, unknown>, rule.path);
 				this.setNestedValue(fixed as unknown as Record<string, unknown>, rule.path, defaultValue);
-				console.warn(
-					`[SettingsManager] 修复无效设置: ${rule.path} = ${value} -> ${defaultValue}`
-				);
+				console.warn(`[SettingsManager] 修复无效设置: ${rule.path} = ${value} -> ${defaultValue}`);
 			}
 		}
-
 		return fixed;
 	}
 
 	/**
-	 * 深度合并两个对象，default 的字段优先级低于 source
-	 * 对嵌套对象递归合并，确保新增字段有默认值
+	 * 从设置对象中剥离已废弃的扁平键
+	 * deepMerge 会把旧数据的扁平键合并为顶层属性（TS看不见但JS能spread），必须显式清理
 	 */
+	private stripStaleKeys(obj: Record<string, unknown>): void {
+		for (const key of STALE_KEYS) {
+			if (key in obj) {
+				delete obj[key];
+			}
+		}
+	}
+
 	private deepMerge<T extends Record<string, unknown>>(defaults: T, source: Partial<T>): T {
 		const result = { ...defaults };
 		for (const key of Object.keys(source) as (keyof T)[]) {
@@ -262,17 +227,12 @@ export class SettingsManager {
 		return result;
 	}
 
-	/**
-	 * 迁移旧版本设置
-	 * 包括: 旧版便签颜色迁移, 扁平化 immersive/obs 设置到嵌套结构
-	 */
 	private migrateSettings(
 		settings: AccurateCountSettings,
 		oldData: unknown
 	): AccurateCountSettings {
-		const migrated = { ...settings };
+		const migrated = this.deepMerge(this.defaultSettings, settings as Partial<AccurateCountSettings>) as unknown as AccurateCountSettings;
 
-		// 1. 迁移旧版便签颜色到新版主题
 		if (oldData && typeof oldData === 'object' && 'noteColors' in oldData) {
 			const noteColors = (oldData as { noteColors?: string[] }).noteColors;
 			if (noteColors && Array.isArray(noteColors) && (!migrated.noteThemes || migrated.noteThemes.length === 0)) {
@@ -284,18 +244,9 @@ export class SettingsManager {
 			}
 		}
 
-		// 2. 迁移扁平化 immersive 设置到嵌套结构
 		if (oldData && typeof oldData === 'object') {
 			const old = oldData as Record<string, unknown>;
-			const immersiveKeys = [
-				'immersiveShowChapterList', 'immersiveShowReference', 'immersiveShowStickyNotes',
-				'immersiveShowForeshadowing', 'immersiveShowTimeline', 'immersiveShowTotalTime',
-				'immersiveShowFocusTime', 'immersiveShowSlackTime', 'immersiveShowChapterProgress',
-				'immersiveShowDailyProgress', 'immersiveShowSessionWords', 'immersiveLeftSize',
-				'immersiveRightSize', 'immersiveBottomSize', 'immersiveBottomInternalSizes',
-				'immersivePanelPosition', 'immersiveNoteSize', 'immersiveNoteFontSize',
-				'immersiveTypewriterMode', 'immersiveLayout'
-			];
+			const immersiveKeys = FLAT_IMMERSIVE_KEYS;
 
 			let hasFlatImmersive = false;
 			for (const key of immersiveKeys) {
@@ -312,7 +263,6 @@ export class SettingsManager {
 						(immersive as Record<string, unknown>)[key] = old[key];
 					}
 				}
-				// 深度合并：保留嵌套默认值中旧数据没有覆盖的字段
 				migrated.immersive = this.deepMerge(
 					this.defaultSettings.immersive as Record<string, unknown>,
 					immersive as Record<string, unknown>
@@ -320,13 +270,7 @@ export class SettingsManager {
 				console.log('[SettingsManager] 已迁移扁平化沉浸模式设置到嵌套结构');
 			}
 
-			// 3. 迁移扁平化 obs 设置到嵌套结构
-			const obsKeys = [
-				'enableObs', 'enableLegacyObsExport', 'obsPath', 'obsPort',
-				'obsOverlayTheme', 'obsOverlayOpacity', 'obsCustomCss',
-				'obsShowFocusTime', 'obsShowSlackTime', 'obsShowTotalTime',
-				'obsShowTodayWords', 'obsShowDailyGoal', 'obsShowSessionWords'
-			];
+			const obsKeys = FLAT_OBS_KEYS;
 
 			let hasFlatObs = false;
 			for (const key of obsKeys) {
@@ -354,33 +298,20 @@ export class SettingsManager {
 		return migrated;
 	}
 
-	/**
-	 * 获取当前设置
-	 */
 	getSettings(): AccurateCountSettings {
 		return this.settings;
 	}
 
-	/**
-	 * 更新设置
-	 */
 	async updateSettings(partial: Partial<AccurateCountSettings>): Promise<void> {
-		// 验证新设置
 		const validation = this.validateSettings(partial);
 		if (!validation.valid) {
 			throw new Error(`设置验证失败: ${validation.errors.join(', ')}`);
 		}
 
-		// 更新设置
 		this.settings = Object.assign(this.settings, partial);
-
-		// 保存
 		await this.saveSettings();
 	}
 
-	/**
-	 * 重置为默认设置
-	 */
 	async resetToDefaults(): Promise<void> {
 		this.settings = { ...this.defaultSettings };
 		await this.saveSettings();

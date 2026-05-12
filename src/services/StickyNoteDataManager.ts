@@ -11,6 +11,7 @@ export class StickyNoteDataManager {
 	private plugin: WebNovelAssistantPlugin;
 	private notesFilePath: string;
 	private writer = new SerializedWriter();
+	private _isWriting = false;
 
 	constructor(plugin: WebNovelAssistantPlugin) {
 		this.plugin = plugin;
@@ -62,8 +63,10 @@ export class StickyNoteDataManager {
 		return this.writer.enqueue(async () => {
 			try {
 				const adapter = this.plugin.app.vault.adapter;
+				this._isWriting = true;
 				const content = JSON.stringify(this.notesData, null, 2);
 				await adapter.write(this.notesFilePath, content);
+				this._isWriting = false;
 				// 触发全局事件，通知其他组件同步数据
 				this.plugin.app.workspace.trigger('webnovel:notes-changed');
 			} catch (error) {
@@ -120,4 +123,15 @@ export class StickyNoteDataManager {
 	isDirty(): boolean {
 		return this.writer.isDirty();
 	}
+
+	getIsWriting(): boolean {
+		return this._isWriting;
+	}
+	/**
+	 * 获取便签数据文件的 Vault 相对路径
+	 */
+	getNotesFilePath(): string {
+		return this.notesFilePath;
+	}
+
 }

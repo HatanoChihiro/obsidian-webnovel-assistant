@@ -31,10 +31,25 @@ export class ImmersiveModeManager {
 	}
 
 	/**
+	 * 从 leaf 向上找到真正的 WorkspaceSplit（跳过 WorkspaceTabs）
+	 * @param leaf 起始叶子
+	 * @param direction 可选，限定只返回指定方向的 split
+	 */
+	private getParentSplit(leaf: any, direction?: 'vertical' | 'horizontal'): any {
+		let node = leaf.parent;
+		while (node && node.parent) {
+			if (node.direction !== undefined) {
+				if (!direction || node.direction === direction) return node;
+			}
+			node = node.parent;
+		}
+		return node;
+	}
+
+	/**
 	 * 切换沉浸模式状态
 	 */
 	public async toggleImmersiveMode(): Promise<void> {
-		// 增强状态检测：即使 isImmersiveActive 为 false，如果 DOM 中仍有标记，也应执行退出逻辑进行清理
 		if (this.isImmersiveActive || document.body.classList.contains('immersive-mode-active')) {
 			await this.exitImmersiveMode();
 		} else {
@@ -84,7 +99,7 @@ export class ImmersiveModeManager {
 		} catch (error) {
 			console.error('[ImmersiveModeManager] 进入沉浸模式失败:', error);
 			new Notice('[错误] 进入沉浸模式失败！');
-			await this.exitImmersiveMode(); // 失败时强制执行退出逻辑清理现场
+			await this.exitImmersiveMode();
 		}
 	}
 
@@ -93,20 +108,18 @@ export class ImmersiveModeManager {
 	 */
 	public async exitImmersiveMode(): Promise<void> {
 		try {
-			// 1. 保存当前的辅助面板比例 (核心功能)
+			// 1. 保存当前的辅助面板比例
 			this.saveCurrentPanelSizes();
 			await this.plugin.saveSettings();
 
-			// 1.5 记录退出前那一刻主编辑区正在编辑的文件，以便在还原布局后重新定位
+			// 1.5 记录退出前那一刻主编辑区正在编辑的文件
 			const currentMainFile = this.app.workspace.getActiveViewOfType(MarkdownView)?.file;
 
-			// 2. 还原布局 (如果可能) [M-A5]
+			// 2. 还原布局
 			if (this.savedLayout && typeof this.app.workspace.setLayout === 'function') {
 				await this.app.workspace.setLayout(this.savedLayout);
 
-				// 还原布局后，如果文件发生了变化（例如在沉浸模式中切换了章节），则重新打开该文件
 				if (currentMainFile) {
-					// 延迟一帧确保布局还原完成
 					requestAnimationFrame(async () => {
 						const leaves = this.app.workspace.getLeavesOfType('markdown');
 						const targetLeaf = leaves.find(l => l.active) || leaves[0] || this.app.workspace.getLeaf(false);
@@ -129,7 +142,7 @@ export class ImmersiveModeManager {
 				});
 			}
 
-			// 4. 反向同步便签（确保沉浸模式下的修改持久化到 notes-data.json 和浮动便签）
+			// 4. 反向同步便签
 			await this.plugin.stickyNoteManager.saveNotes(this.plugin.stickyNoteManager.getNotes());
 			this.plugin.syncFloatingNotes();
 			this.plugin.stopTracking();
@@ -138,7 +151,6 @@ export class ImmersiveModeManager {
 			console.error('[ImmersiveModeManager] 退出沉浸模式时发生错误:', error);
 			new Notice('[警告] 退出沉浸模式出现异常，已强制清理界面');
 		} finally {
-			// 5. 终极清理：移除样式、顶栏，清空内存引用
 			document.body.classList.remove('immersive-mode-active');
 			this.removeTopBar();
 
@@ -146,10 +158,8 @@ export class ImmersiveModeManager {
 			this.savedLayout = null;
 			this.savedActiveFile = null;
 
-			// 确保工作区能够响应
 			this.app.workspace.requestSaveLayout();
 
-			// 清理引用
 			this.activeLeftLeaf = null;
 			this.activeRightLeaf = null;
 			this.activeBottomLeaf = null;
@@ -159,21 +169,11 @@ export class ImmersiveModeManager {
 	}
 
 	/**
-	 * 动态构建沉浸模式布局 (仅在第一次或没有保存过布局时调用)
+	 * 动态构建沉浸模式布局
 	 */
 	private async buildImmersiveLayout(activeFile: TFile): Promise<void> {
 		const { workspace } = this.app;
 		const immersive = this.plugin.settings.immersive;
-
-		// 辅助函数：从 leaf 向上找到真正的 WorkspaceSplit（跳过 WorkspaceTabs）
-		const getParentSplit = (leaf: any): any => {
-			let node = leaf.parent; // 第一层通常是 WorkspaceTabs
-			// 向上遍历，直到找到有 direction 属性的 WorkspaceSplit
-			while (node && node.direction === undefined && node.parent) {
-				node = node.parent;
-			}
-			return node;
-		};
 
 		// 1. 软重置：清理非 Markdown 视图，保留主编辑器
 		let mainLeaf: WorkspaceLeaf | null = null;
@@ -196,18 +196,21 @@ export class ImmersiveModeManager {
 			state: { file: activeFile.path },
 			active: true
 		});
+
 		let finalLeftLeaf: WorkspaceLeaf | null = null;
 		let finalRightLeaf: WorkspaceLeaf | null = null;
 		let finalBottomLeaf: WorkspaceLeaf | null = null;
+		const pendingSizes: Array<{ split: any; sizes: number[] }> = [];
+
+		// 2. 创建底部辅助面板
 		const showBottom = immersive.immersiveShowStickyNotes || immersive.immersiveShowForeshadowing || immersive.immersiveShowTimeline;
 		if (showBottom) {
 			const isTop = immersive.immersivePanelPosition === 'top';
 			const bottomSplitLeaf = workspace.createLeafBySplit(mainLeaf, 'horizontal', isTop);
 			finalBottomLeaf = bottomSplitLeaf;
 
-			// 记录比例
 			const bottomSize = immersive.immersiveBottomSize || 25;
-			const parentSplit = getParentSplit(mainLeaf);
+			const parentSplit = this.getParentSplit(mainLeaf);
 			if (parentSplit && parentSplit.children) {
 				const size0 = isTop ? bottomSize : 100 - bottomSize;
 				const size1 = isTop ? 100 - bottomSize : bottomSize;
@@ -238,7 +241,7 @@ export class ImmersiveModeManager {
 
 			// 捕获辅助面板内部的 vertical split
 			if (bottomPanelCount > 1) {
-				const bottomInternalSplit = getParentSplit(bottomSplitLeaf);
+				const bottomInternalSplit = this.getParentSplit(bottomSplitLeaf);
 				if (bottomInternalSplit && bottomInternalSplit.direction === 'vertical' && bottomInternalSplit.children) {
 					const savedSizes = immersive.immersiveBottomInternalSizes;
 					if (savedSizes && savedSizes.length === bottomInternalSplit.children.length) {
@@ -253,10 +256,9 @@ export class ImmersiveModeManager {
 			const leftLeaf = workspace.createLeafBySplit(mainLeaf, 'vertical', true);
 			finalLeftLeaf = leftLeaf;
 			const leftSize = immersive.immersiveLeftSize || 15;
-			const parentSplit = getParentSplit(mainLeaf);
+			const parentSplit = this.getParentSplit(mainLeaf);
 			if (parentSplit && parentSplit.children) {
 				pendingSizes.push({ split: parentSplit, sizes: [leftSize, 100 - leftSize] });
-
 			}
 			await leftLeaf.setViewState({ type: VIEW_TYPES.IMMERSIVE_CHAPTER_LIST });
 		}
@@ -266,7 +268,7 @@ export class ImmersiveModeManager {
 			const rightLeaf = workspace.createLeafBySplit(mainLeaf, 'vertical', false);
 			finalRightLeaf = rightLeaf;
 			const rightSize = immersive.immersiveRightSize || 15;
-			const parentSplit = getParentSplit(mainLeaf);
+			const parentSplit = this.getParentSplit(mainLeaf);
 			if (parentSplit && parentSplit.children) {
 				const childCount = parentSplit.children.length;
 				if (childCount === 3) {
@@ -276,7 +278,6 @@ export class ImmersiveModeManager {
 				} else {
 					pendingSizes.push({ split: parentSplit, sizes: [100 - rightSize, rightSize] });
 				}
-
 			}
 			await rightLeaf.setViewState({ type: 'markdown' });
 			rightLeaf.containerEl.classList.add('immersive-reference-view');
@@ -285,7 +286,7 @@ export class ImmersiveModeManager {
 		// 5. 延迟应用所有比例
 		this.applyPendingSizes(pendingSizes);
 
-		// 6. 记录叶子引用（用于退出时精确计算比例）
+		// 6. 记录叶子引用
 		this.activeLeftLeaf = finalLeftLeaf;
 		this.activeRightLeaf = finalRightLeaf;
 		this.activeBottomLeaf = finalBottomLeaf;
@@ -295,14 +296,7 @@ export class ImmersiveModeManager {
 	}
 
 	/**
-	 * 延迟应用面板比例
-	 * 策略：将百分比转换为像素后使用 setElSize 应用
-	 * - setElSize 接受像素值，是 Obsidian 拖拽 resize handle 时使用的同一方法
-	 * - 同时设置 .size 以保持内部状态一致
-	 */
-	/**
-	 * 延迟应用面板比例
-	 * 策略：使用递归重试机制，确保在 DOM 渲染完成（offsetWidth > 0）后再应用比例
+	 * 延迟应用面板比例（递归重试，确保 DOM 渲染完成后生效）
 	 */
 	private applyPendingSizes(pendingSizes: Array<{ split: any; sizes: number[] }>): void {
 		const apply = (attempt = 0) => {
@@ -315,7 +309,6 @@ export class ImmersiveModeManager {
 					? split.containerEl.offsetHeight
 					: split.containerEl.offsetWidth;
 
-				// 如果父容器尺寸还未准备好，标记失败并等待重试
 				if (totalSize === 0) {
 					hasFailure = true;
 					continue;
@@ -323,10 +316,8 @@ export class ImmersiveModeManager {
 
 				const childCount = Math.min(split.children.length, sizes.length);
 				for (let i = 0; i < childCount; i++) {
-					// 1. 设置内部记录
 					split.children[i].size = sizes[i];
 
-					// 2. 应用物理尺寸
 					if (typeof split.setElSize === 'function' && split.children[i].containerEl) {
 						const pixelSize = Math.round((sizes[i] / 100) * totalSize);
 						split.setElSize(split.children[i].containerEl, pixelSize);
@@ -334,21 +325,14 @@ export class ImmersiveModeManager {
 				}
 			}
 
-			// 如果有失败项，在下一帧或延时后重试，最多重试 5 次
-			// 增加 isImmersiveActive 检查，防止退出后仍在后台尝试调整比例
 			if (hasFailure && attempt < 5 && this.isImmersiveActive) {
 				setTimeout(() => apply(attempt + 1), 100 * (attempt + 1));
 			}
 		};
 
-		// 初始调用
 		requestAnimationFrame(() => apply(0));
-		// 备用调用，防止某些极端情况下 requestAnimationFrame 不触发
 		setTimeout(() => apply(0), 300);
 	}
-
-
-
 
 	/**
 	 * 创建顶部仪表盘
@@ -360,7 +344,6 @@ export class ImmersiveModeManager {
 		this.topBarEl.id = 'immersive-top-bar';
 		this.topBarEl.className = 'immersive-top-bar';
 
-		// 构建固定的骨架 DOM
 		const leftDiv = this.topBarEl.createDiv({ cls: 'immersive-top-bar-left' });
 		leftDiv.createSpan({ cls: 'novel-title', text: this.immersiveNovelTitle });
 
@@ -370,7 +353,6 @@ export class ImmersiveModeManager {
 		const exitBtn = rightDiv.createEl('button', { cls: 'immersive-exit-btn', text: '退出沉浸模式' });
 		exitBtn.addEventListener('click', () => this.exitImmersiveMode());
 
-		// 缓存数据容器，由 renderTopBarContent 动态更新内部内容
 		this.topBarStatsEls = {
 			totalTime: centerDiv.createSpan({ cls: 'stat-item' }),
 			focusTime: centerDiv.createSpan({ cls: 'stat-item focus' }),
@@ -380,18 +362,13 @@ export class ImmersiveModeManager {
 			sessionWords: centerDiv.createSpan({ cls: 'stat-item' })
 		};
 
-		// 初始隐藏不需要显示的元素
 		for (const el of Object.values(this.topBarStatsEls)) {
 			el.style.display = 'none';
 		}
 
-		// 插入到 body
 		document.body.appendChild(this.topBarEl);
-
 		this.renderTopBarContent();
 
-		// 每秒刷新一次数据
-		// [优化] 使用插件的 registerInterval 管理定时器，确保插件卸载时自动清理，防止内存泄漏 [M-P6]
 		this.updateInterval = this.plugin.registerInterval(window.setInterval(() => {
 			this.renderTopBarContent();
 		}, 1000));
@@ -434,27 +411,11 @@ export class ImmersiveModeManager {
 
 	/**
 	 * 保存当前面板比例
-	 * 从 WorkspaceSplit 子节点的 containerEl 测量（与 setElSize 同级），避免累积误差
 	 */
 	private saveCurrentPanelSizes(): void {
 		const { workspace } = this.app;
 		const immersive = this.plugin.settings.immersive;
 
-		/**
-		 * 辅助函数：从 leaf 向上找到指定的 WorkspaceSplit
-		 */
-		const getParentSplit = (leaf: any, direction?: 'vertical' | 'horizontal'): any => {
-			let node = leaf.parent;
-			while (node && node.parent) {
-				if (node.direction !== undefined) {
-					if (!direction || node.direction === direction) return node;
-				}
-				node = node.parent;
-			}
-			return node;
-		};
-
-		// 1. 使用保存的引用或尝试查找 Leaf
 		const leftLeaf = this.activeLeftLeaf || workspace.getLeavesOfType(VIEW_TYPES.IMMERSIVE_CHAPTER_LIST)[0];
 		const refLeaf = this.activeRightLeaf || workspace.getLeavesOfType('markdown').find(l => l.containerEl.classList.contains('immersive-reference-view'));
 		const anyBottomLeaf = this.activeBottomLeaf || [
@@ -465,11 +426,10 @@ export class ImmersiveModeManager {
 
 		// 2. 保存左侧面板比例
 		if (leftLeaf && leftLeaf.containerEl && leftLeaf.containerEl.offsetParent) {
-			const split = getParentSplit(leftLeaf);
+			const split = this.getParentSplit(leftLeaf);
 			if (split && split.direction === 'vertical' && split.containerEl && split.children) {
 				const totalWidth = split.containerEl.offsetWidth;
 				if (totalWidth > 0) {
-					// 寻找包含左侧面板的子容器
 					const child = split.children.find(c => c.containerEl && c.containerEl.contains(leftLeaf.containerEl));
 					if (child) {
 						immersive.immersiveLeftSize = Math.round((child.containerEl.offsetWidth / totalWidth) * 100);
@@ -480,11 +440,10 @@ export class ImmersiveModeManager {
 
 		// 3. 保存右侧面板比例
 		if (refLeaf && refLeaf.containerEl && refLeaf.containerEl.offsetParent) {
-			const split = getParentSplit(refLeaf, 'vertical');
+			const split = this.getParentSplit(refLeaf, 'vertical');
 			if (split && split.direction === 'vertical' && split.containerEl && split.children) {
 				const totalWidth = split.containerEl.offsetWidth;
 				if (totalWidth > 0) {
-					// 寻找包含右侧参考面板的子容器
 					const child = split.children.find(c => c.containerEl && c.containerEl.contains(refLeaf.containerEl));
 					if (child) {
 						const pct = Math.round((child.containerEl.offsetWidth / totalWidth) * 100);
@@ -496,13 +455,12 @@ export class ImmersiveModeManager {
 			}
 		}
 
-		// 4. 保存水平分割比例（主编辑区 vs 底部辅助面板高度）
+		// 4. 保存水平分割比例
 		if (anyBottomLeaf) {
-			const split = getParentSplit(anyBottomLeaf, 'horizontal');
+			const split = this.getParentSplit(anyBottomLeaf, 'horizontal');
 			if (split && split.direction === 'horizontal' && split.containerEl && split.children) {
 				const totalHeight = split.containerEl.offsetHeight;
 				if (totalHeight > 0) {
-					// 寻找包含辅助面板的子容器
 					const child = split.children.find(c => c.containerEl && c.containerEl.contains(anyBottomLeaf.containerEl));
 					if (child) {
 						immersive.immersiveBottomSize = Math.round((child.containerEl.offsetHeight / totalHeight) * 100);
@@ -511,13 +469,13 @@ export class ImmersiveModeManager {
 			}
 		}
 
-		// 5. 保存底部面板内部比例（便签/伏笔/时间线之间）
+		// 5. 保存底部面板内部比例
 		const stickyLeaf = workspace.getLeavesOfType(VIEW_TYPES.IMMERSIVE_STICKY_NOTES)[0];
 		const foreLeaf = workspace.getLeavesOfType(VIEW_TYPES.FORESHADOWING)[0];
 		const timeLeaf = workspace.getLeavesOfType(VIEW_TYPES.TIMELINE)[0];
 		const bottomLeaves = [stickyLeaf, foreLeaf, timeLeaf].filter(l => l);
 		if (bottomLeaves.length > 1) {
-			const split = getParentSplit(bottomLeaves[0]);
+			const split = this.getParentSplit(bottomLeaves[0]);
 			if (split && split.direction === 'vertical' && split.containerEl && split.children) {
 				const totalWidth = split.containerEl.offsetWidth;
 				if (totalWidth > 0) {

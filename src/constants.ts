@@ -219,6 +219,25 @@ export const VALIDATION_RULES = {
 } as const;
 
 import type { AccurateCountSettings } from './types/settings';
+// 已迁移到嵌套结构的扁平化字段名（用于设置迁移和清理）
+export const FLAT_OBS_KEYS = [
+	'enableObs', 'enableLegacyObsExport', 'obsPath', 'obsPort',
+	'obsOverlayTheme', 'obsOverlayOpacity', 'obsCustomCss',
+	'obsShowFocusTime', 'obsShowSlackTime', 'obsShowTotalTime',
+	'obsShowTodayWords', 'obsShowDailyGoal', 'obsShowSessionWords'
+];
+
+export const FLAT_IMMERSIVE_KEYS = [
+	'immersiveShowChapterList', 'immersiveShowReference', 'immersiveShowStickyNotes',
+	'immersiveShowForeshadowing', 'immersiveShowTimeline', 'immersiveShowTotalTime',
+	'immersiveShowFocusTime', 'immersiveShowSlackTime', 'immersiveShowChapterProgress',
+	'immersiveShowDailyProgress', 'immersiveShowSessionWords', 'immersiveLeftSize',
+	'immersiveRightSize', 'immersiveBottomSize', 'immersiveBottomInternalSizes',
+	'immersivePanelPosition', 'immersiveNoteSize', 'immersiveNoteFontSize',
+	'immersiveTypewriterMode', 'immersiveLayout'
+];
+
+
 
 export const DEFAULT_SETTINGS: AccurateCountSettings = {
 	defaultGoal: 3000,

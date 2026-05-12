@@ -1,19 +1,15 @@
-import { App, Plugin, PluginSettingTab, Setting, MarkdownView, Modal, TFile, Notice, TFolder, MarkdownRenderer, Component, setIcon, ItemView, WorkspaceLeaf, Platform, PluginManifest } from 'obsidian';
-import { AccurateCountSettings, ThemeScheme } from './src/types/settings';
+import { App, Plugin, MarkdownView, TFile, Notice, PluginManifest } from 'obsidian';
+import { AccurateCountSettings } from './src/types/settings';
 import { WebNovelAssistantPlugin } from './src/types/plugin';
 import { ObsStatsPayload } from './src/types/stats';
 import {
 	hexToRgba,
 	formatTime,
-	formatCount,
-	injectGlobalStyle,
-	removeGlobalStyle,
 	isDesktop,
 	isMobile,
 	getPlatformTier,
 	parseGoal
 } from './src/utils';
-import { REGEX_PATTERNS } from './src/constants';
 import { CacheManager } from './src/services/CacheManager';
 import { AdaptiveDebounceManager } from './src/services/AdaptiveDebounceManager';
 import { SettingsManager } from './src/core/SettingsManager';
@@ -40,8 +36,7 @@ import { ImmersiveModeManager } from './src/ui/ImmersiveModeManager';
 import { ImmersiveChapterListView } from './src/ui/ImmersiveChapterListView';
 import { ImmersiveStickyNotesView } from './src/ui/ImmersiveStickyNotesView';
 import { StickyNoteDataManager } from './src/services/StickyNoteDataManager';
-import { VIEW_TYPES } from './src/constants';
-import { DEFAULT_SETTINGS } from './src/constants';
+import { VIEW_TYPES, DEFAULT_SETTINGS } from './src/constants';
 import { CommandManager } from './src/core/CommandManager';
 import { ViewManager } from './src/core/ViewManager';
 import { MenuManager } from './src/core/MenuManager';
@@ -442,7 +437,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		// 仅在桌面端加载浮动便签，移动端/平板端由于交互限制不启用
 		if (!isDesktop()) return;
 
-		const notes = this.stickyNoteManager.getNotes();
+		const notes = await this.stickyNoteManager.loadNotes();
 
 		for (const noteState of notes) {
 			// 避免重复加载
@@ -560,7 +555,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 
 		// 1. 停止 OBS 服务器
 		if (this.obsServer) {
-			this.obsServer.stop();
+			this.obsServer.stop().catch(() => {});
 			this.obsServer = null;
 		}
 
@@ -780,7 +775,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.editorTracker.updateWordCount();
 	}
 
-applyEyeCare(): void {
+	applyEyeCare(): void {
+		this.styleManager.updateSettings(this.settings);
 		this.styleManager.applyEyeCare();
 	}
 
@@ -816,5 +812,3 @@ applyEyeCare(): void {
 	}
 
 }
-
-

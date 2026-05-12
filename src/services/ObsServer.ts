@@ -3,7 +3,7 @@ import type { WebNovelAssistantPlugin } from '../types/plugin';
 
 /**
  * OBS 直播叠加层 HTTP Server
- * 
+ *
  * 提供 HTTP 服务器用于 OBS 浏览器源实时获取写作统计数据
  * 支持两个端点:
  * - /api/stats: 返回 JSON 格式的统计数据
@@ -25,7 +25,11 @@ export class ObsOverlayServer {
 	 */
 	start(): boolean {
 		if (!Platform.isDesktop) return false;
-		
+		if (this.server) {
+			console.warn('[WebNovel Assistant] OBS 服务器已在运行，跳过重复启动');
+			return true;
+		}
+
 		try {
 			const http = window.require('http') as import('../types/node').NodeHTTP;
 			const plugin = this.plugin;
@@ -35,7 +39,9 @@ export class ObsOverlayServer {
 				if (!req.url) { res.writeHead(400); res.end(); return; }
 				if (req.method !== 'GET') { res.writeHead(405); res.end(); return; }
 
-				const url = new URL(req.url, `http://localhost:${this.port}`);
+				let url: URL;
+				try { url = new URL(req.url, `http://localhost:${this.port}`); }
+				catch { res.writeHead(400); res.end(); return; }
 
 				if (url.pathname === '/api/stats') {
 					res.writeHead(200, {
@@ -59,28 +65,21 @@ export class ObsOverlayServer {
 
 			this.server.on('error', async (e: NodeJS.ErrnoException) => {
 				console.error('[WebNovel Assistant] OBS 服务器错误:', e);
-				
-				// 降级: 自动切换到文件导出模式
-				this.plugin.settings.obs.enableObs = false;
-				this.plugin.settings.obs.enableLegacyObsExport = true;
-				await this.plugin.saveSettings();
-				
+
+				// 清理引用，防止后续 start() 被守卫拦截
+				this.server = null;
+
 				if (e.code === 'EADDRINUSE') {
 					const suggestedPorts = [this.port + 1, this.port + 2, this.port + 10];
 					new Notice(
 						`端口 ${this.port} 已被占用！\n` +
-						`已自动切换到文件导出模式\n\n` +
-						`如需使用 OBS HTTP 服务器，请:\n` +
-						`1. 在设置中更换端口 (建议: ${suggestedPorts.join(', ')})\n` +
-						`2. 重新启用 OBS 服务器`,
+						`请更换端口后重试 (建议: ${suggestedPorts.join(', ')})`,
 						15000
 					);
 				} else {
 					new Notice(
 						`OBS 服务器启动失败\n` +
-						`已自动切换到文件导出模式\n\n` +
-						`错误: ${e.message}\n` +
-						`您可以在设置中配置文件导出路径`,
+						`错误: ${e.message}`,
 						12000
 					);
 				}
@@ -89,17 +88,11 @@ export class ObsOverlayServer {
 			return true;
 		} catch (e) {
 			console.error('[WebNovel Assistant] 无法启动 OBS 服务器:', e);
-			
-			// 降级: 自动切换到文件导出模式
-			this.plugin.settings.obs.enableObs = false;
-			this.plugin.settings.obs.enableLegacyObsExport = true;
-			this.plugin.saveSettings();
-			
+			this.server = null;
+
 			new Notice(
 				'OBS 服务器启动失败\n' +
-				'已自动切换到文件导出模式\n\n' +
-				'可能原因: Node.js 模块不可用\n' +
-				'您可以在设置中配置文件导出路径',
+				'可能原因: Node.js 模块不可用',
 				12000
 			);
 			return false;
@@ -109,10 +102,18 @@ export class ObsOverlayServer {
 	/**
 	 * 停止 OBS HTTP 服务器
 	 */
-	stop() {
+	async stop(): Promise<void> {
 		if (this.server) {
-			this.server.close();
+			const server = this.server;
 			this.server = null;
+			// 强制关闭所有活跃连接（OBS 浏览器源会保持 keep-alive 连接）
+			if (typeof server.closeAllConnections === 'function') {
+				server.closeAllConnections();
+			}
+			await new Promise<void>((resolve) => {
+				server.close(() => resolve());
+			});
+			console.log('[WebNovel Assistant] OBS Overlay server stopped');
 		}
 	}
 
@@ -120,9 +121,9 @@ export class ObsOverlayServer {
 	 * 更新服务器端口
 	 * 如果端口变化，会自动重启服务器
 	 */
-	updatePort(newPort: number) {
+	async updatePort(newPort: number) {
 		if (this.port === newPort && this.server) return;
-		this.stop();
+		await this.stop();
 		this.port = newPort;
 		this.start();
 	}

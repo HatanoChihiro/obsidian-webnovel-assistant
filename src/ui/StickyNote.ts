@@ -339,6 +339,8 @@ export class FloatingStickyNote extends Component {
 		const saveBtn = this.createButton(controlsEl, 'save');
 		saveBtn.title = '保存便签内容 (Ctrl+S)';
 		saveBtn.style.opacity = '0.5';
+		const syncBtn = this.state.filePath ? this.createButton(controlsEl, 'refresh-cw') : null;
+		if (syncBtn) syncBtn.title = '从关联文档同步内容';
 		const toggleEditBtn = this.createButton(controlsEl, this.state.isEditing ? 'eye' : 'pencil');
 		const paletteBtn = this.createButton(controlsEl, 'palette', false, 'palette-btn-target');
 		const closeBtn = controlsEl.createEl('button', { cls: 'my-sticky-close' });
@@ -415,7 +417,7 @@ export class FloatingStickyNote extends Component {
 		const popupEl = this.createPalettePopup(controlsEl);
 
 		// 绑定事件
-		this.bindHeaderEvents(pinBtn, saveBtn, toggleEditBtn, paletteBtn, closeBtn, popupEl, titleWrapper);
+		this.bindHeaderEvents(pinBtn, saveBtn, syncBtn, toggleEditBtn, paletteBtn, closeBtn, popupEl, titleWrapper);
 		this.setupDragging(headerEl);
 		this.setupResizing();
 	}
@@ -458,6 +460,7 @@ export class FloatingStickyNote extends Component {
 	private bindHeaderEvents(
 		pinBtn: HTMLButtonElement,
 		saveBtn: HTMLButtonElement,
+		syncBtn: HTMLButtonElement | null,
 		toggleEditBtn: HTMLButtonElement,
 		paletteBtn: HTMLButtonElement,
 		closeBtn: HTMLButtonElement,
@@ -475,6 +478,21 @@ export class FloatingStickyNote extends Component {
 			this.updateVisuals();
 			this.saveState();
 		};
+
+		if (syncBtn) {
+			syncBtn.onclick = async () => {
+				if (this.state.filePath) {
+					const file = this.app.vault.getAbstractFileByPath(this.state.filePath);
+					if (file instanceof TFile) {
+						this.state.content = await this.app.vault.read(file);
+						this.lastSavedContent = this.state.content;
+						if (this.state.isEditing) this.textareaEl.value = this.state.content || '';
+						await this.renderContent();
+						new Notice('[成功] 已从文档同步内容');
+					}
+				}
+			};
+		}
 
 		toggleEditBtn.onclick = async () => {
 			if (this.state.isEditing) {

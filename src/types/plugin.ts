@@ -1,6 +1,6 @@
 /**
  * 插件接口类型定义
- * 
+ *
  * 用于解决循环依赖问题，为服务层和 UI 层提供类型安全的插件引用
  */
 import { App, EventRef, TFile } from 'obsidian';
@@ -15,6 +15,7 @@ import type { HistoryDataManager } from '../services/HistoryDataManager';
 import type { StickyNoteDataManager } from '../services/StickyNoteDataManager';
 import type { AdaptiveDebounceManager } from '../services/AdaptiveDebounceManager';
 import type { ObsOverlayServer } from '../services/ObsServer';
+import type { ObsHtmlBuilder } from '../services/ObsHtmlBuilder';
 import type { FloatingStickyNote } from '../ui/StickyNote';
 import type { MobileFloatingStats } from '../ui/MobileFloatingStats';
 import type { WordCounter } from '../services/WordCounter';
@@ -30,7 +31,7 @@ import type { FileEventManager } from '../services/FileEventManager';
 
 /**
  * WebNovel Assistant 插件接口
- * 
+ *
  * 定义了插件类对外暴露的属性和方法，供服务层和 UI 层使用
  */
 export interface WebNovelAssistantPlugin {
@@ -43,8 +44,8 @@ export interface WebNovelAssistantPlugin {
 
 	// 设置
 	settings: AccurateCountSettings;
-	
-	// 服务管理器
+
+	// 服务管理器（构造函数中初始化，始终可用）
 	cacheManager: CacheManager;
 	adaptiveDebounceManager: AdaptiveDebounceManager;
 	settingsManager: SettingsManager;
@@ -55,16 +56,17 @@ export interface WebNovelAssistantPlugin {
 	commandManager: CommandManager;
 	viewManager: ViewManager;
 	menuManager: MenuManager;
-	
+	obsHtmlBuilder: ObsHtmlBuilder;
+	workerManager: WorkerManager;
+	markdownPostProcessor: MarkdownPostProcessor;
+	immersiveModeManager: ImmersiveModeManager;
+	fileEventManager: FileEventManager;
+
 	// 以下属性在 onload 中初始化，可能为 undefined
 	foreshadowingManager?: ForeshadowingManager;
 	editorTracker?: EditorTracker;
 	styleManager?: StyleManager;
-	workerManager?: WorkerManager;
-	markdownPostProcessor?: MarkdownPostProcessor;
-	immersiveModeManager?: ImmersiveModeManager;
-	fileEventManager?: FileEventManager;
-	
+
 	// 追踪状态
 	isTracking: boolean;
 	focusMs: number;
@@ -74,15 +76,15 @@ export interface WebNovelAssistantPlugin {
 	lastTickTime: number;
 	lastFileWords: number;
 	lastFilePath: string;
-	
+
 	// Worker 和服务
 	obsServer: ObsOverlayServer | null;
-	
+
 	// UI 组件
 	activeNotes: FloatingStickyNote[];
 	mobileFloatingStats: MobileFloatingStats | null;
 	statusBarItemEl: HTMLElement;
-	
+
 	// 核心方法
 	saveSettings(): Promise<void>;
 	loadSettings(): Promise<void>;
@@ -93,24 +95,24 @@ export interface WebNovelAssistantPlugin {
 	updateWordCount(): void;
 	startTracking(): void;
 	stopTracking(): void;
-	
+
 	// 视图管理
 	toggleStatusView(): Promise<void>;
 	toggleForeshadowingView(): Promise<void>;
 	toggleTimelineView(): Promise<void>;
 	refreshStatusViews(): void;
-	
+
 	// 缓存管理
 	buildFolderCache(): Promise<void>;
 	updateFileCacheAndRefresh(file: TFile): Promise<void>;
 	refreshFolderCounts(): void;
-	
+
 	// OBS 相关
 	getObsStats(): ObsStatsPayload;
 	buildObsOverlayHtml(): string;
 	exportLegacyOBS(force?: boolean): void;
-	
-	// 样式管理（静态样式由 styles.css 自动加载）
+
+	// 样式管理
 	applyEyeCare(): void;
 	removeEyeCare(): void;
 }

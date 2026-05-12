@@ -705,13 +705,13 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					if (value) {
 						// 先停止旧服务器（如果存在）
 						if (this.plugin.obsServer) {
-							this.plugin.obsServer.stop();
+							await this.plugin.obsServer.stop();
 						}
 						// 使用当前端口创建新服务器
 						this.plugin.obsServer = new ObsOverlayServer(this.plugin, this.plugin.settings.obs.obsPort);
 						this.plugin.obsServer.start();
 					} else {
-						this.plugin.obsServer?.stop();
+						await this.plugin.obsServer?.stop();
 						this.plugin.obsServer = null;
 					}
 				}));
@@ -730,7 +730,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 
 						// 如果 OBS 服务器正在运行，重启以应用新端口
 						if (this.plugin.settings.obs.enableObs && this.plugin.obsServer) {
-							this.plugin.obsServer.stop();
+							await this.plugin.obsServer.stop();
 							this.plugin.obsServer = new ObsOverlayServer(this.plugin, this.plugin.settings.obs.obsPort);
 							this.plugin.obsServer.start();
 							new Notice(`OBS 叠加层已重启，新端口：${parsed}`);

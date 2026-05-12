@@ -99,7 +99,8 @@ export interface NodeHTTPResponse {
  */
 export interface NodeHTTPServer {
 	listen(port: number, hostname: string, callback?: () => void): void;
-	close(): void;
+	close(callback?: () => void): void;
+	closeAllConnections?(): void;
 	on(event: 'error', listener: (error: NodeJS.ErrnoException) => void): void;
 }
 
