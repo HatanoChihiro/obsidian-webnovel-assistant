@@ -80,11 +80,11 @@ export class ForeshadowingView extends CreativeView {
 			return;
 		}
 
-		// æ ç­¾ç­éè¡
+		// 标签筛选行
 		const tagOptions = this.getTagFilterOptions(entries);
 		if (tagOptions.length > 0) {
 			const tagRow = header.createDiv({ cls: 'foreshadowing-view-filter-row foreshadowing-view-tag-filter-row' });
-			const allTagBtn = tagRow.createEl('button', { text: 'å¨é¨æ ç­¾', cls: 'foreshadowing-filter-btn' });
+			const allTagBtn = tagRow.createEl('button', { text: '全部标签', cls: 'foreshadowing-filter-btn' });
 			if (this.filterTag === 'all') allTagBtn.addClass('is-active');
 			allTagBtn.onclick = () => { this.filterTag = 'all'; this.refresh(); };
 			tagOptions.forEach(tag => {
@@ -94,7 +94,7 @@ export class ForeshadowingView extends CreativeView {
 			});
 		}
 
-		// ç­é
+		// 筛选
 		let filtered = entries;
 		if (this.filterStatus !== 'all') filtered = filtered.filter(e => e.status === this.filterStatus);
 		if (this.filterTag !== 'all') filtered = filtered.filter(e => e.tags.includes(this.filterTag));

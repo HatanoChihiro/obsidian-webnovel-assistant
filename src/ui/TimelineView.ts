@@ -293,7 +293,7 @@ export class TimelineView extends CreativeView {
 
 		const entries = this.manager.parseEntries(content);
 
-		// ç±»åç­é
+// 类型筛选
 		const typeOptions = this.getTypeFilterOptions(entries);
 		if (typeOptions.length > 0) {
 			const typeRow = header.createDiv({ cls: 'timeline-view-filter-row' });
@@ -307,7 +307,7 @@ export class TimelineView extends CreativeView {
 			});
 		}
 
-		// ç­éåæ¸²æ
+		// 筛选后渲染
 		const filtered = this.filterType === 'all'
 			? entries
 			: entries.filter(e => e.type === this.filterType);
