@@ -1,4 +1,4 @@
-import { Modal, Setting } from 'obsidian';
+import { Modal, Notice, Setting } from 'obsidian';
 import { STYLES } from '../constants';
 
 /**

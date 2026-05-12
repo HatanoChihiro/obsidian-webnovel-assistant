@@ -1,14 +1,11 @@
-import { App, Plugin, MarkdownView, TFile, Notice, PluginManifest } from 'obsidian';
+import { App, Plugin, TFile, Notice, PluginManifest } from 'obsidian';
 import { AccurateCountSettings } from './src/types/settings';
 import { WebNovelAssistantPlugin } from './src/types/plugin';
 import { ObsStatsPayload } from './src/types/stats';
 import {
-	hexToRgba,
-	formatTime,
 	isDesktop,
 	isMobile,
-	getPlatformTier,
-	parseGoal
+	getPlatformTier
 } from './src/utils';
 import { CacheManager } from './src/services/CacheManager';
 import { AdaptiveDebounceManager } from './src/services/AdaptiveDebounceManager';
@@ -19,22 +16,16 @@ import { ChapterSorter } from './src/services/ChapterSorter';
 import { WordCounter } from './src/services/WordCounter';
 import { EditorTracker } from './src/services/EditorTracker';
 import { StyleManager } from './src/services/StyleManager';
-import { GoalModal } from './src/ui/GoalModal';
-import { HistoryStatsModal } from './src/ui/HistoryModal';
 import { AccurateCountSettingTab } from './src/ui/SettingsTab';
 import { FloatingStickyNote } from './src/ui/StickyNote';
 import { WritingStatusView, STATUS_VIEW_TYPE } from './src/ui/StatusView';
 import { ForeshadowingView, FORESHADOWING_VIEW_TYPE } from './src/ui/ForeshadowingView';
-import { TimelineView, TIMELINE_VIEW_TYPE, TimelineAddFromSelectionModal } from './src/ui/TimelineView';
+import { TimelineView, TIMELINE_VIEW_TYPE } from './src/ui/TimelineView';
 import { MobileFloatingStats } from './src/ui/MobileFloatingStats';
-import { TimelineManager } from './src/services/TimelineManager';
 import { ObsOverlayServer } from './src/services/ObsServer';
 import { ForeshadowingManager } from './src/services/ForeshadowingManager';
-import { ForeshadowingInputModal, ForeshadowingRecoveryModal, ConfirmCreateForeshadowingFileModal } from './src/ui/ForeshadowingModal';
 import { ObsHtmlBuilder } from './src/services/ObsHtmlBuilder';
 import { ImmersiveModeManager } from './src/ui/ImmersiveModeManager';
-import { ImmersiveChapterListView } from './src/ui/ImmersiveChapterListView';
-import { ImmersiveStickyNotesView } from './src/ui/ImmersiveStickyNotesView';
 import { StickyNoteDataManager } from './src/services/StickyNoteDataManager';
 import { VIEW_TYPES, DEFAULT_SETTINGS } from './src/constants';
 import { CommandManager } from './src/core/CommandManager';
@@ -280,7 +271,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			}, 500);
 		});
 		// 桌面端文件事件监听（由 FileEventManager 管理）
-		this.fileEventManager?.setup();
+		this.fileEventManager.setup();
 
 		this.addRibbonIcon('sticky-note', '新建空白悬浮便签', () => {
 			this.createStickyNote({ content: '', title: '新便签' });
@@ -784,8 +775,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.styleManager.removeEyeCare();
 	}
 
-	// setupWorker 已抽离到 WorkerManager.setup()
-
+	
 	refreshStatusViews() {
 		const leaves = this.app.workspace.getLeavesOfType(STATUS_VIEW_TYPE);
 		for (const leaf of leaves) {

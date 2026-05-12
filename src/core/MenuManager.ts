@@ -1,5 +1,5 @@
 import { TFile, TFolder, Notice, MarkdownView } from 'obsidian';
-import type AccurateChineseCountPlugin from '../../main';
+import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { GoalModal } from '../ui/GoalModal';
 import { copyDocumentContent } from '../utils/ui';
 import { isDesktop } from '../utils/platform';
@@ -8,9 +8,9 @@ import { TimelineAddFromSelectionModal } from '../ui/TimelineView';
 import { TimelineManager } from '../services/TimelineManager';
 
 export class MenuManager {
-	private plugin: AccurateChineseCountPlugin;
+	private plugin: WebNovelAssistantPlugin;
 
-	constructor(plugin: AccurateChineseCountPlugin) {
+	constructor(plugin: WebNovelAssistantPlugin) {
 		this.plugin = plugin;
 	}
 

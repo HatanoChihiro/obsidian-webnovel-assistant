@@ -1,4 +1,4 @@
-import { ItemView, MarkdownView, Menu, Modal, Notice, Setting, TFile, TFolder, WorkspaceLeaf, App } from 'obsidian';
+import { ItemView, Modal, Notice, Setting, TFile, TFolder, WorkspaceLeaf, App } from 'obsidian';
 import { TimelineManager, TimelineEntry } from '../services/TimelineManager';
 import { CreativeView } from './CreativeView';
 import type { WebNovelAssistantPlugin } from '../types/plugin';

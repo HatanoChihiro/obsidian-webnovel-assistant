@@ -3,6 +3,8 @@ import { isDesktop, isMobile, getPlatformTier } from '../utils/platform';
 import { ObsOverlayServer } from '../services/ObsServer';
 import { ChapterSorter } from '../services/ChapterSorter';
 import { MobileFloatingStats } from './MobileFloatingStats';
+import { FloatingStickyNote } from './StickyNote';
+import type { ThemeScheme } from '../types/settings';
 import { VALIDATION_RULES } from '../constants';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 
@@ -333,7 +335,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			.setName('闲置透明度')
 			.addSlider(slider => slider.setLimits(0.1, 1, 0.05).setValue(this.plugin.settings.noteOpacity).onChange(async (v) => {
 				this.plugin.settings.noteOpacity = v; await this.plugin.saveSettings();
-				this.plugin.activeNotes.forEach((n: any) => n.updateVisuals());
+				this.plugin.activeNotes.forEach((n: FloatingStickyNote) => n.updateVisuals());
 			}));
 
 		new Setting(containerEl)
@@ -349,7 +351,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		const colorSetting = new Setting(containerEl).setName('主题色方案').setDesc('自定义 6 种预设配色。');
 		const colorContainer = colorSetting.controlEl.createDiv({ attr: { style: 'display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;' } });
 
-		this.plugin.settings.noteThemes.forEach((theme: any, index: number) => {
+		this.plugin.settings.noteThemes.forEach((theme: ThemeScheme, index: number) => {
 			const themeDiv = colorContainer.createDiv({ attr: { style: 'display: flex; align-items: center; gap: 4px; background: var(--background-modifier-form-field); padding: 4px; border-radius: 4px;' } });
 			const bg = themeDiv.createEl('input', { type: 'color', value: theme.bg });
 			const txt = themeDiv.createEl('input', { type: 'color', value: theme.text });
@@ -771,7 +773,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			.addDropdown(dropdown => {
 				dropdown.addOption('dark', '暗色 (深色背景+白字)');
 				dropdown.addOption('light', '亮色 (浅色背景+深字)');
-				this.plugin.settings.noteThemes.forEach((theme: any, index: number) => {
+				this.plugin.settings.noteThemes.forEach((theme: ThemeScheme, index: number) => {
 					dropdown.addOption(`note-${index}`, `便签预设色 ${index + 1}`);
 				});
 				dropdown.setValue(this.plugin.settings.obs.obsOverlayTheme);

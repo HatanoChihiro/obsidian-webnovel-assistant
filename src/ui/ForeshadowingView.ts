@@ -1,4 +1,4 @@
-import { MarkdownView, Menu, Notice, TFile, WorkspaceLeaf } from 'obsidian';
+import { Menu, MenuItem, Notice, TFile, WorkspaceLeaf } from 'obsidian';
 import { ForeshadowingStatus, ParsedForeshadowingEntry } from '../types/foreshadowing';
 import { ForeshadowingRecoveryModal } from './ForeshadowingModal';
 import { CreativeView } from './CreativeView';
@@ -161,7 +161,7 @@ export class ForeshadowingView extends CreativeView {
 				// 多个来源，显示下拉菜单
 				const menu = new Menu();
 				for (const source of sources) {
-					menu.addItem((item: any) => {
+					menu.addItem((item: MenuItem) => {
 						item.setTitle(source).onClick(async () => {
 							const file = this.app.vault.getMarkdownFiles().find(f => f.basename === source);
 							if (file) {

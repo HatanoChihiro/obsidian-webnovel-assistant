@@ -1,6 +1,6 @@
 import { WorkspaceLeaf } from 'obsidian';
 import { isDesktop, isMobile } from '../utils/platform';
-import type AccurateChineseCountPlugin from '../../main';
+import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { VIEW_TYPES } from '../constants';
 import { WritingStatusView, STATUS_VIEW_TYPE } from '../ui/StatusView';
 import { ForeshadowingView, FORESHADOWING_VIEW_TYPE } from '../ui/ForeshadowingView';
@@ -9,9 +9,9 @@ import { ImmersiveChapterListView } from '../ui/ImmersiveChapterListView';
 import { ImmersiveStickyNotesView } from '../ui/ImmersiveStickyNotesView';
 
 export class ViewManager {
-	private plugin: AccurateChineseCountPlugin;
+	private plugin: WebNovelAssistantPlugin;
 
-	constructor(plugin: AccurateChineseCountPlugin) {
+	constructor(plugin: WebNovelAssistantPlugin) {
 		this.plugin = plugin;
 	}
 

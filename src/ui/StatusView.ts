@@ -1,4 +1,4 @@
-import { ItemView, MarkdownView, WorkspaceLeaf, Platform } from 'obsidian';
+import { ItemView, MarkdownView, WorkspaceLeaf } from 'obsidian';
 import { formatTime, formatCount, parseGoal, isMobile } from '../utils';
 import { HistoryStatsModal } from './HistoryModal';
 import type { WebNovelAssistantPlugin } from '../types/plugin';

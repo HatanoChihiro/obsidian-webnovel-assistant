@@ -324,30 +324,31 @@ export class ForeshadowingManager {
 		createdAt: string,
 		newRecoveryFile: string
 	): Promise<boolean> {
-		const content = await this.app.vault.read(targetFile);
-		const now = window.moment().format('YYYY-MM-DD HH:mm');
+		return this.writer.enqueue(async () => {
+			const content = await this.app.vault.read(targetFile);
+			const now = window.moment().format('YYYY-MM-DD HH:mm');
 
-		// 查找已回收条目的回收列表
-		const pattern = new RegExp(
-			`(## \\[\\[${escapeRegex(sourceFile)}\\]\\]` +
-			(createdAt ? `[^\\n]*${escapeRegex(createdAt)}` : '') +
-			`[\\s\\S]*?\\*\\*回收于\\*\\*：\\n)([\\s\\S]*?)(\\n\\n|$)`,
-			'm'
-		);
+			// 查找已回收条目的回收列表
+			const pattern = new RegExp(
+				`(## \\[\\[${escapeRegex(sourceFile)}\\]\\]` +
+				(createdAt ? `[^\\n]*${escapeRegex(createdAt)}` : '') +
+				`[\\s\\S]*?\\*\\*回收于\\*\\*：\\n)([\\s\\S]*?)(\\n\\n|$)`,
+				'm'
+			);
 
-		const match = pattern.exec(content);
-		if (!match) return false;
+			const match = pattern.exec(content);
+			if (!match) return false;
 
-		// 在回收列表末尾追加新章节
-		const newLine = `- [[${newRecoveryFile}]] - ${now}\n`;
-		const newContent = content.slice(0, match.index + match[1].length + match[2].length) +
-			newLine +
-			content.slice(match.index + match[1].length + match[2].length);
+			// 在回收列表末尾追加新章节
+			const newLine = `- [[${newRecoveryFile}]] - ${now}\n`;
+			const newContent = content.slice(0, match.index + match[1].length + match[2].length) +
+				newLine +
+				content.slice(match.index + match[1].length + match[2].length);
 
-		await this.app.vault.modify(targetFile, newContent);
-		return true;
+			await this.app.vault.modify(targetFile, newContent);
+			return true;
+		});
 	}
-
 	/**
 	 * 将指定条目标记为已废弃
 	 */

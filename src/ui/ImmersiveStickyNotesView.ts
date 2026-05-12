@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, debounce, FuzzySuggestModal, TFile, App, Notice } from 'obsidian';
+import { ItemView, WorkspaceLeaf, FuzzySuggestModal, TFile, App, Notice } from 'obsidian';
 import { VIEW_TYPES } from '../constants';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { StickyNoteState } from '../types/settings';
@@ -59,7 +59,7 @@ export class ImmersiveStickyNotesView extends ItemView {
 		this.plugin.settings.nextNoteThemeIndex = (themeIndex + 1) % Math.max(1, themes.length);
 
 		const newNote: StickyNoteState = {
-			id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5),
+			id: Date.now().toString(36) + Math.random().toString(36).substring(2, 7),
 			filePath: filePath,
 			content: content || '',
 			title: title || '新建便签',

@@ -1,6 +1,6 @@
 import { MarkdownView, Notice, TFile, TFolder } from 'obsidian';
 import { isDesktop, isMobile } from '../utils/platform';
-import type AccurateChineseCountPlugin from '../../main';
+import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { copyDocumentContent } from '../utils/ui';
 import { ChapterSorter } from '../services/ChapterSorter';
 import { ForeshadowingInputModal, ConfirmCreateForeshadowingFileModal, ForeshadowingRecoveryModal } from '../ui/ForeshadowingModal';
@@ -8,9 +8,9 @@ import { TimelineAddFromSelectionModal } from '../ui/TimelineView';
 import { TimelineManager } from '../services/TimelineManager';
 
 export class CommandManager {
-	private plugin: AccurateChineseCountPlugin;
+	private plugin: WebNovelAssistantPlugin;
 
-	constructor(plugin: AccurateChineseCountPlugin) {
+	constructor(plugin: WebNovelAssistantPlugin) {
 		this.plugin = plugin;
 	}
 

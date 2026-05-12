@@ -10,7 +10,7 @@ export class ImmersiveModeManager {
 	private app: App;
 	private plugin: WebNovelAssistantPlugin;
 	private isImmersiveActive: boolean = false;
-	private savedLayout: any = null;
+	private savedLayout: Record<string, unknown> | null = null;
 	private savedActiveFile: TFile | null = null;
 
 	private topBarEl: HTMLElement | null = null;
@@ -35,7 +35,7 @@ export class ImmersiveModeManager {
 	 * @param leaf 起始叶子
 	 * @param direction 可选，限定只返回指定方向的 split
 	 */
-	private getParentSplit(leaf: any, direction?: 'vertical' | 'horizontal'): any {
+	private getParentSplit(leaf: WorkspaceLeaf, direction?: 'vertical' | 'horizontal'): any {
 		let node = leaf.parent;
 		while (node && node.parent) {
 			if (node.direction !== undefined) {
@@ -200,7 +200,7 @@ export class ImmersiveModeManager {
 		let finalLeftLeaf: WorkspaceLeaf | null = null;
 		let finalRightLeaf: WorkspaceLeaf | null = null;
 		let finalBottomLeaf: WorkspaceLeaf | null = null;
-		const pendingSizes: Array<{ split: any; sizes: number[] }> = [];
+		const pendingSizes: Array<{ split: { children: any[]; containerEl: HTMLElement }; sizes: number[] }> = [];
 
 		// 2. 创建底部辅助面板
 		const showBottom = immersive.immersiveShowStickyNotes || immersive.immersiveShowForeshadowing || immersive.immersiveShowTimeline;
@@ -298,7 +298,7 @@ export class ImmersiveModeManager {
 	/**
 	 * 延迟应用面板比例（递归重试，确保 DOM 渲染完成后生效）
 	 */
-	private applyPendingSizes(pendingSizes: Array<{ split: any; sizes: number[] }>): void {
+	private applyPendingSizes(pendingSizes: Array<{ split: { children: any[]; containerEl: HTMLElement }; sizes: number[] }>): void {
 		const apply = (attempt = 0) => {
 			let hasFailure = false;
 			for (const { split, sizes } of pendingSizes) {

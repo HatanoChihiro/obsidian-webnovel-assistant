@@ -246,7 +246,7 @@ export class CacheManager {
 			this.clearOldEntries();
 		}
 
-		console.log(`[CacheManager] 已更新文件缓存: ${file.path} (${oldCount} → ${newWordCount}, Δ${delta})`);
+		console.debug(`[CacheManager] 已更新文件缓存: ${file.path} (${oldCount} → ${newWordCount}, Δ${delta})`);
 	}
 
 	/**
