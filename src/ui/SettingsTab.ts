@@ -29,13 +29,12 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 
 		// 创建选项卡头部
 		const navContainer = containerEl.createDiv({ cls: 'webnovel-settings-tabs' });
-		// 根据平台过滤选项卡
 		const tier = getPlatformTier();
 		const allTabs = [
-			{ id: 'general', name: '基础设置' },
+			{ id: 'general', name: '通用' },
+			{ id: 'wordcount', name: '字数统计', tabletSupported: true },
+			{ id: 'creative', name: '创作辅助', tabletSupported: true },
 			{ id: 'immersive', name: '沉浸模式', desktopOnly: true },
-			{ id: 'sticky', name: '悬浮便签', desktopOnly: true },
-			{ id: 'creative', name: '创作工具', tabletSupported: true },
 			{ id: 'obs', name: '数据输出', desktopOnly: true }
 		];
 
@@ -59,19 +58,18 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		// 渲染对应选项卡内容
 		if (this.activeTab === 'general') {
 			this.displayGeneralSettings(containerEl);
+		} else if (this.activeTab === 'wordcount') {
+			this.displayWordCountSettings(containerEl);
+		} else if (this.activeTab === 'creative') {
+			this.displayCreativeSettings(containerEl);
 		} else if (this.activeTab === 'immersive') {
 			this.displayImmersiveModeSettings(containerEl);
-		} else if (this.activeTab === 'sticky') {
-			this.displayStickyNoteSettings(containerEl);
-		} else if (this.activeTab === 'creative') {
-			this.displayForeshadowingSettings(containerEl);
-			this.displayTimelineSettings(containerEl);
-			this.displayEyeCareSettings(containerEl);
 		} else if (this.activeTab === 'obs') {
 			this.displayDataSettings(containerEl);
 		}
 	}
 
+	// ── 通用设置 ──
 	private displayGeneralSettings(containerEl: HTMLElement): void {
 		// 平台检测提示
 		const tier = getPlatformTier();
@@ -105,7 +103,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					}));
 		}
 
-		containerEl.createEl('h2', { text: '核心功能设置' });
+		containerEl.createEl('h2', { text: '工作区与章节' });
 
 		new Setting(containerEl)
 			.setName('工作区文件夹')
@@ -119,6 +117,85 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					});
 				text.inputEl.style.width = '100%';
 			});
+
+		new Setting(containerEl)
+			.setName('严格章节模式')
+			.setDesc('所有涉及字数相关（目标、统计、字数提醒等）的功能均只在符合命名规则的文档中生效。')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.enableStrictChapterMode)
+				.onChange(async (value) => {
+					this.plugin.settings.enableStrictChapterMode = value;
+					await this.plugin.saveSettings();
+					this.plugin.updateWordCount();
+					if (this.plugin.settings.showExplorerCounts) {
+						this.plugin.buildFolderCache();
+					}
+				}));
+
+		if (isDesktop()) {
+			new Setting(containerEl)
+				.setName('智能章节排序')
+				.setDesc('自动识别章节编号进行数字排序。')
+				.addToggle(toggle => toggle
+					.setValue(this.plugin.settings.enableSmartChapterSort)
+					.onChange(async (value) => {
+						this.plugin.settings.enableSmartChapterSort = value;
+						await this.plugin.saveSettings();
+						if (value) this.plugin.fileExplorerPatcher.enable();
+						else this.plugin.fileExplorerPatcher.disable();
+						this.display();
+					}));
+
+			if (this.plugin.settings.enableSmartChapterSort) {
+				this.displaySortingRules(containerEl);
+			}
+		}
+
+		containerEl.createEl('h2', { text: '护眼模式' });
+
+		new Setting(containerEl)
+			.setName('启用护眼模式')
+			.setDesc('将编辑区和阅读区的背景色替换为护眼色，其他界面保持不变。')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.eyeCareEnabled ?? false)
+				.onChange(async (value) => {
+					this.plugin.settings.eyeCareEnabled = value;
+					await this.plugin.saveSettings();
+					if (value) {
+						this.plugin.applyEyeCare();
+					} else {
+						this.plugin.removeEyeCare();
+					}
+				}));
+
+		new Setting(containerEl)
+			.setName('护眼背景色')
+			.setDesc('推荐使用低饱和度的绿色或暖色调，减少视觉疲劳。')
+			.addColorPicker(picker => picker
+				.setValue(this.plugin.settings.eyeCareColor || '#E8F5E9')
+				.onChange(async (value) => {
+					this.plugin.settings.eyeCareColor = value;
+					await this.plugin.saveSettings();
+					if (this.plugin.settings.eyeCareEnabled) {
+						this.plugin.applyEyeCare();
+					}
+				}))
+			.addExtraButton(btn => btn
+				.setIcon('reset')
+				.setTooltip('恢复默认颜色 (#E8F5E9)')
+				.onClick(async () => {
+					this.plugin.settings.eyeCareColor = '#E8F5E9';
+					await this.plugin.saveSettings();
+					if (this.plugin.settings.eyeCareEnabled) {
+						this.plugin.applyEyeCare();
+					}
+					this.display();
+				}));
+	}
+
+	// ── 字数统计设置 ──
+	private displayWordCountSettings(containerEl: HTMLElement): void {
+		containerEl.createEl('h2', { text: '字数显示' });
 
 		new Setting(containerEl)
 			.setName('显示状态栏进度')
@@ -143,82 +220,58 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					else this.plugin.refreshFolderCounts();
 				}));
 
-			// 字数实时提醒仅桌面端可用
-			if (isDesktop()) {
-		new Setting(containerEl)
-			.setName('启用字数实时提醒')
-			.setDesc('开启后，将在编辑器的左侧行号区域，按照设定的字数间隔实时显示当前行的累计字数。')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.enableWordCountGutter)
-				.onChange(async (value) => {
-					this.plugin.settings.enableWordCountGutter = value;
-					await this.plugin.saveSettings();
-					// 触发事件通知扩展重新配置或挂载
-					this.app.workspace.trigger('webnovel:word-count-gutter-settings-changed');
-				}));
-
-		new Setting(containerEl)
-			.setName('字数提醒间隔')
-			.setDesc('设置每隔多少字在左侧显示一次提示标签。')
-			.addText(text => text
-				.setValue((this.plugin.settings.wordCountInterval || 2000).toString())
-				.onChange(async (v) => {
-					const p = parseInt(v, 10);
-					if (!isNaN(p) && p > 0) {
-						this.plugin.settings.wordCountInterval = p;
+		if (isDesktop()) {
+			new Setting(containerEl)
+				.setName('字数实时提醒')
+				.setDesc('开启后，将在编辑器的左侧行号区域，按照设定的字数间隔实时显示当前行的累计字数。')
+				.addToggle(toggle => toggle
+					.setValue(this.plugin.settings.enableWordCountGutter)
+					.onChange(async (value) => {
+						this.plugin.settings.enableWordCountGutter = value;
 						await this.plugin.saveSettings();
 						this.app.workspace.trigger('webnovel:word-count-gutter-settings-changed');
-					}
-				}));
+					}));
 
-			}
-		new Setting(containerEl)
-			.setName('启用严格章节模式')
-			.setDesc('所有涉及字数相关（目标、统计、字数提醒等）的功能均只在符合命名规则的文档中生效。')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.enableStrictChapterMode)
-				.onChange(async (value) => {
-					this.plugin.settings.enableStrictChapterMode = value;
-					await this.plugin.saveSettings();
-					this.plugin.updateWordCount();
-					// 如果开启了文件夹统计，切换模式时需要重建缓存以保证数据一致性
-					if (this.plugin.settings.showExplorerCounts) {
-						this.plugin.buildFolderCache();
-					}
-				}));
+			new Setting(containerEl)
+				.setName('字数提醒间隔')
+				.setDesc('设置每隔多少字在左侧显示一次提示标签。')
+				.addText(text => text
+					.setValue((this.plugin.settings.wordCountInterval || 2000).toString())
+					.onChange(async (v) => {
+						const p = parseInt(v, 10);
+						if (!isNaN(p) && p > 0) {
+							this.plugin.settings.wordCountInterval = p;
+							await this.plugin.saveSettings();
+							this.app.workspace.trigger('webnovel:word-count-gutter-settings-changed');
+						}
+					}));
+		}
+
+		containerEl.createEl('h2', { text: '写作目标' });
 
 		new Setting(containerEl)
 			.setName('默认章节目标')
+			.setDesc('每个章节的默认目标字数。')
 			.addText(text => text.setValue(this.plugin.settings.defaultGoal.toString()).onChange(async (v) => {
 				const p = parseInt(v, 10); if (!isNaN(p)) { this.plugin.settings.defaultGoal = p; await this.plugin.saveSettings(); }
 			}));
 
 		new Setting(containerEl)
 			.setName('今日目标字数')
+			.setDesc('今日新增总字数目标。')
 			.addText(text => text.setValue((this.plugin.settings.dailyGoal || 5000).toString()).onChange(async (v) => {
 				const p = parseInt(v, 10); if (!isNaN(p)) { this.plugin.settings.dailyGoal = p; await this.plugin.saveSettings(); }
 			}));
-
-		if (isDesktop()) {
-			new Setting(containerEl)
-				.setName('启用智能章节排序')
-				.setDesc('自动识别章节编号进行数字排序。')
-				.addToggle(toggle => toggle
-					.setValue(this.plugin.settings.enableSmartChapterSort)
-					.onChange(async (value) => {
-						this.plugin.settings.enableSmartChapterSort = value;
-						await this.plugin.saveSettings();
-						if (value) this.plugin.fileExplorerPatcher.enable();
-						else this.plugin.fileExplorerPatcher.disable();
-						this.display();
-					}));
-
-			if (this.plugin.settings.enableSmartChapterSort) {
-				this.displaySortingRules(containerEl);
-			}
-		}
 	}
 
+	// ── 创作辅助设置 ──
+	private displayCreativeSettings(containerEl: HTMLElement): void {
+		this.displayStickyNoteSettings(containerEl);
+		this.displayForeshadowingSettings(containerEl);
+		this.displayTimelineSettings(containerEl);
+	}
+
+	// ── 排序规则 ──
 	private displaySortingRules(containerEl: HTMLElement): void {
 		new Setting(containerEl)
 			.setName('排序规则配置')
@@ -239,10 +292,8 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				s.settingEl.style.alignItems = 'center';
 				s.settingEl.style.gap = '10px';
 
-				// 移除默认的 info 区域，腾出空间
 				s.infoEl.remove();
 
-				// ── 上移/下移按鈕列 ──
 				const rules = this.plugin.settings.chapterNamingRules;
 				const orderBtns = s.settingEl.createDiv({ attr: { style: 'display:flex;flex-direction:column;gap:2px;flex-shrink:0;' } });
 				const upBtn = orderBtns.createEl('button', { text: '▲', attr: { title: '上移', style: 'font-size:10px;padding:1px 5px;cursor:pointer;line-height:1.2;' } });
@@ -259,7 +310,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				downBtn.onclick = async () => {
 					[rules[index + 1], rules[index]] = [rules[index], rules[index + 1]];
 					await this.plugin.saveSettings();
-					ChapterSorter.setCustomRules(rules);
+					ChapterSorter.setCustomRules(this.plugin.settings.chapterNamingRules);
 					this.plugin.fileExplorerPatcher.refreshManually();
 					renderRules();
 				};
@@ -325,11 +376,14 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		renderRules();
 	}
 
+	// ── 悬浮便签设置 ──
 	private displayStickyNoteSettings(containerEl: HTMLElement): void {
 		if (!isDesktop()) {
 			containerEl.createEl('p', { text: '⚠️ 悬浮便签功能仅在桌面端可用。', cls: 'setting-item-description' });
 			return;
 		}
+
+		containerEl.createEl('h2', { text: '悬浮便签' });
 
 		new Setting(containerEl)
 			.setName('闲置透明度')
@@ -360,6 +414,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		});
 	}
 
+	// ── 沉浸模式设置 ──
 	private displayImmersiveModeSettings(containerEl: HTMLElement): void {
 		containerEl.createEl('h3', { text: '编辑器适配' });
 
@@ -372,17 +427,15 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					this.plugin.settings.immersive.immersiveTypewriterMode = value;
 					await this.plugin.saveSettings();
 
-					// 立即切换 body class 实现无感生效
 					if (value) {
 						document.body.classList.add('immersive-typewriter-mode');
 					} else {
 						document.body.classList.remove('immersive-typewriter-mode');
 					}
 
-					// 强制刷新所有编辑器以应用滚动内边距
 					this.app.workspace.iterateAllLeaves(leaf => {
 						if (leaf.view instanceof MarkdownView) {
-							(leaf.view ).editor?.refresh();
+							(leaf.view).editor?.refresh();
 						}
 					});
 				}));
@@ -395,7 +448,6 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.immersive.immersiveShowChapterList)
 				.onChange(async (value) => {
 					this.plugin.settings.immersive.immersiveShowChapterList = value;
-					// 清除保存的布局快照，强制重新生成
 					this.plugin.settings.immersive.immersiveLayout = null;
 					await this.plugin.saveSettings();
 				}));
@@ -406,7 +458,6 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.immersive.immersiveShowReference)
 				.onChange(async (value) => {
 					this.plugin.settings.immersive.immersiveShowReference = value;
-					// 清除保存的布局快照，强制重新生成
 					this.plugin.settings.immersive.immersiveLayout = null;
 					await this.plugin.saveSettings();
 				}));
@@ -417,7 +468,6 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.immersive.immersiveShowStickyNotes)
 				.onChange(async (value) => {
 					this.plugin.settings.immersive.immersiveShowStickyNotes = value;
-					// 清除保存的布局快照，强制重新生成
 					this.plugin.settings.immersive.immersiveLayout = null;
 					await this.plugin.saveSettings();
 				}));
@@ -428,7 +478,6 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.immersive.immersiveShowForeshadowing)
 				.onChange(async (value) => {
 					this.plugin.settings.immersive.immersiveShowForeshadowing = value;
-					// 清除保存的布局快照，强制重新生成
 					this.plugin.settings.immersive.immersiveLayout = null;
 					await this.plugin.saveSettings();
 				}));
@@ -439,7 +488,6 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.immersive.immersiveShowTimeline)
 				.onChange(async (value) => {
 					this.plugin.settings.immersive.immersiveShowTimeline = value;
-					// 清除保存的布局快照，强制重新生成
 					this.plugin.settings.immersive.immersiveLayout = null;
 					await this.plugin.saveSettings();
 				}));
@@ -453,7 +501,6 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.immersive.immersivePanelPosition || 'bottom')
 				.onChange(async (value) => {
 					this.plugin.settings.immersive.immersivePanelPosition = value as 'top' | 'bottom';
-					// 清除保存的布局快照，强制重新生成以应用位置更改
 					this.plugin.settings.immersive.immersiveLayout = null;
 					await this.plugin.saveSettings();
 					new Notice(`位置已切换为: ${value === 'top' ? '上方' : '下方'}，下次进入沉浸模式生效`);
@@ -542,8 +589,9 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				}));
 	}
 
+	// ── 伏笔标注设置 ──
 	private displayForeshadowingSettings(containerEl: HTMLElement): void {
-		containerEl.createEl('h2', { text: '伏笔标注设置' });
+		containerEl.createEl('h2', { text: '伏笔标注' });
 
 		new Setting(containerEl)
 			.setName('伏笔文件名')
@@ -594,8 +642,9 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			});
 	}
 
+	// ── 时间线设置 ──
 	private displayTimelineSettings(containerEl: HTMLElement): void {
-		containerEl.createEl('h2', { text: '时间线设置' });
+		containerEl.createEl('h2', { text: '时间线' });
 
 		new Setting(containerEl)
 			.setName('时间线文件名')
@@ -633,51 +682,9 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			});
 	}
 
-	private displayEyeCareSettings(containerEl: HTMLElement): void {
-		containerEl.createEl('h2', { text: '护眼模式' });
-
-		new Setting(containerEl)
-			.setName('启用护眼模式')
-			.setDesc('将编辑区和阅读区的背景色替换为护眼色，其他界面保持不变。')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.eyeCareEnabled ?? false)
-				.onChange(async (value) => {
-					this.plugin.settings.eyeCareEnabled = value;
-					await this.plugin.saveSettings();
-					if (value) {
-						this.plugin.applyEyeCare();
-					} else {
-						this.plugin.removeEyeCare();
-					}
-				}));
-
-		new Setting(containerEl)
-			.setName('护眼背景色')
-			.setDesc('推荐使用低饱和度的绿色或暖色调，减少视觉疲劳。')
-			.addColorPicker(picker => picker
-				.setValue(this.plugin.settings.eyeCareColor || '#E8F5E9')
-				.onChange(async (value) => {
-					this.plugin.settings.eyeCareColor = value;
-					await this.plugin.saveSettings();
-					if (this.plugin.settings.eyeCareEnabled) {
-						this.plugin.applyEyeCare();
-					}
-				}))
-			.addExtraButton(btn => btn
-				.setIcon('reset')
-				.setTooltip('恢复默认颜色 (#E8F5E9)')
-				.onClick(async () => {
-					this.plugin.settings.eyeCareColor = '#E8F5E9';
-					await this.plugin.saveSettings();
-					if (this.plugin.settings.eyeCareEnabled) {
-						this.plugin.applyEyeCare();
-					}
-					this.display(); // 刷新设置页面
-				}));
-	}
-
+	// ── 数据输出设置 ──
 	private displayDataSettings(containerEl: HTMLElement): void {
-		containerEl.createEl('h2', { text: '数据统计与输出设置' });
+		containerEl.createEl('h2', { text: '专注度判定' });
 
 		new Setting(containerEl)
 			.setName('精准专注度判定阈值 (秒)')
@@ -696,6 +703,8 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 	}
 
 	private displayObsSettings(containerEl: HTMLElement): void {
+		containerEl.createEl('h3', { text: 'OBS 数据叠加层' });
+
 		new Setting(containerEl)
 			.setName('启用数据叠加层 (OBS/直播)')
 			.setDesc('在本地启动 HTTP 服务，OBS 通过「浏览器源」加载实时统计面板，零磁盘 I/O。')
@@ -705,11 +714,9 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					this.plugin.settings.obs.enableObs = value;
 					await this.plugin.saveSettings();
 					if (value) {
-						// 先停止旧服务器（如果存在）
 						if (this.plugin.obsServer) {
 							await this.plugin.obsServer.stop();
 						}
-						// 使用当前端口创建新服务器
 						this.plugin.obsServer = new ObsOverlayServer(this.plugin, this.plugin.settings.obs.obsPort);
 						this.plugin.obsServer.start();
 					} else {
@@ -730,7 +737,6 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 						this.plugin.settings.obs.obsPort = parsed;
 						await this.plugin.saveSettings();
 
-						// 如果 OBS 服务器正在运行，重启以应用新端口
 						if (this.plugin.settings.obs.enableObs && this.plugin.obsServer) {
 							await this.plugin.obsServer.stop();
 							this.plugin.obsServer = new ObsOverlayServer(this.plugin, this.plugin.settings.obs.obsPort);
@@ -783,7 +789,6 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				});
 			});
 
-		// OBS 显示选项
 		new Setting(containerEl)
 			.setName('显示总计时间')
 			.addToggle(toggle => toggle.setValue(this.plugin.settings.obs.obsShowTotalTime).onChange(async (v) => {

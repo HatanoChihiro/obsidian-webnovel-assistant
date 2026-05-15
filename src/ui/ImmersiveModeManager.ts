@@ -293,6 +293,9 @@ export class ImmersiveModeManager {
 
 		// 确保主编辑器聚焦
 		workspace.setActiveLeaf(mainLeaf, { focus: true });
+
+		// 字数提醒刷新：沉浸模式布局切换后，CSS和行高可能还未稳定，强制延迟刷新编辑器扩展确保gutter位置正确
+		setTimeout(() => this.app.workspace.updateOptions(), 300);
 	}
 
 	/**
