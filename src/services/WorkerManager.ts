@@ -117,12 +117,15 @@ export class WorkerManager {
 		const isTypingActive = (now - this.plugin.lastEditTime) < this.plugin.settings.idleTimeoutThreshold;
 		const today = window.moment().format('YYYY-MM-DD');
 
+		const hour = new Date().getHours();
 		if (isAppFocused && isTypingActive) {
 			this.plugin.focusMs += delta;
 			this.plugin.historyManager.addFocusTime(today, delta);
+			this.plugin.historyManager.addHourlyFocusTime(today, hour, delta);
 		} else {
 			this.plugin.slackMs += delta;
 			this.plugin.historyManager.addSlackTime(today, delta);
+			this.plugin.historyManager.addHourlySlackTime(today, hour, delta);
 		}
 		
 		// 调度保存

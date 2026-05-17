@@ -23,6 +23,8 @@ export interface DailyStat {
 	slackMs: number;
 	/** 新增字数 */
 	addedWords: number;
+	hourlyFocus?: number[];
+	hourlySlack?: number[];
 }
 
 /**

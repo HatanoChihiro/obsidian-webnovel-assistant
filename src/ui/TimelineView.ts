@@ -43,6 +43,7 @@ export class TimelineAddModal extends Modal {
 	onOpen() {
 		const { contentEl } = this;
 		contentEl.empty();
+		contentEl.addClass('timeline-add-modal');
 		contentEl.createEl('h2', { text: '添加到时间线' });
 
 		const inputStyle = 'width:100%;margin-bottom:8px;padding:6px 8px;border-radius:4px;border:1px solid var(--background-modifier-border);background:var(--background-primary);color:var(--text-normal);box-sizing:border-box;';
@@ -476,7 +477,7 @@ export class TimelineView extends CreativeView {
 		// 事件列表标题
 		form.createEl('label', { text: '事件列表', cls: 'timeline-form-label' });
 		form.createDiv({ cls: 'timeline-form-hint', text: '每个事件可以有自己的描述和关联章节' })
-			.style.cssText = 'font-size:0.85em;color:var(--text-muted);margin-bottom:8px;';
+			
 		
 		// 事件列表容器
 		const eventsContainer = form.createDiv();
@@ -702,7 +703,7 @@ export class TimelineView extends CreativeView {
 		form.createEl('label', { text: '关联章节（可选）', cls: 'timeline-form-label' });
 		const chapterInputDesc = form.createDiv({ cls: 'timeline-form-hint' });
 		chapterInputDesc.setText('点击 + 号添加更多章节');
-		chapterInputDesc.style.cssText = 'font-size:0.85em;color:var(--text-muted);margin-bottom:4px;';
+		chapterInputDesc
 		
 		// 章节列表容器
 		const chapterListContainer = form.createDiv();

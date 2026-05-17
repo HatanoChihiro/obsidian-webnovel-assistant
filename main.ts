@@ -781,7 +781,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		for (const leaf of leaves) {
 			if (leaf.view instanceof WritingStatusView) {
 				leaf.view.updateData();
-				leaf.view.renderChart(); // 刷新图表显示
+				leaf.view.renderMiniChart(); // 刷新热力图显示
 			}
 		}
 	}

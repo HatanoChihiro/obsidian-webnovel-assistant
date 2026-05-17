@@ -163,7 +163,9 @@ export class HistoryDataManager {
 			this.historyData[date] = {
 				focusMs: 0,
 				slackMs: 0,
-				addedWords: 0
+				addedWords: 0,
+				hourlyFocus: new Array(24).fill(0),
+				hourlySlack: new Array(24).fill(0)
 			};
 			this.dirty = true;
 		}
@@ -199,6 +201,26 @@ export class HistoryDataManager {
 	addSlackTime(date: string, ms: number): void {
 		const stat = this.getOrCreateDailyStat(date);
 		stat.slackMs += ms;
+		this.dirty = true;
+	}
+
+	/**
+	 * 增加指定日期指定小时的专注时长
+	 */
+	addHourlyFocusTime(date: string, hour: number, ms: number): void {
+		const stat = this.getOrCreateDailyStat(date);
+		if (!stat.hourlyFocus) stat.hourlyFocus = new Array(24).fill(0);
+		stat.hourlyFocus[hour] += ms;
+		this.dirty = true;
+	}
+
+	/**
+	 * 增加指定日期指定小时的摸鱼时长
+	 */
+	addHourlySlackTime(date: string, hour: number, ms: number): void {
+		const stat = this.getOrCreateDailyStat(date);
+		if (!stat.hourlySlack) stat.hourlySlack = new Array(24).fill(0);
+		stat.hourlySlack[hour] += ms;
 		this.dirty = true;
 	}
 
