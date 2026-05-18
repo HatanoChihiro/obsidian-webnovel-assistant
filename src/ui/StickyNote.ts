@@ -828,7 +828,7 @@ export class FloatingStickyNote extends Component {
 			}
 			.my-sticky-title-icon { display: flex; align-items: center; color: var(--note-text-color); opacity: 0.6; flex-shrink: 0; }
 			.my-sticky-title-icon svg { width: 14px; height: 14px; }
-			.my-sticky-title { font-weight: bold; font-size: 0.9em; color: var(--note-text-color) !important; pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 1; min-width: 0; }
+			.my-sticky-title { font-weight: bold; font-size: 13px; color: var(--note-text-color) !important; pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 1; min-width: 0; }
 			
 			.my-sticky-controls { 
 				display: flex; 

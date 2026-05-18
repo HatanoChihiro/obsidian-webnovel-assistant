@@ -229,8 +229,8 @@ export class ImmersiveStickyNotesView extends ItemView {
 
 			const titleSpan = titleEl.createSpan();
 			titleSpan.setText(noteData.title || '便签');
-			titleSpan.style.fontWeight = 'bold';
-			titleSpan.style.fontSize = '0.9em';
+			
+			
 			titleSpan.style.whiteSpace = 'nowrap';
 			titleSpan.style.overflow = 'hidden';
 			titleSpan.style.textOverflow = 'ellipsis';

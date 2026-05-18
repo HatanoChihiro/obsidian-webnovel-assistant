@@ -1,4 +1,4 @@
-import { App, Modal } from 'obsidian';
+﻿import { App, Modal } from 'obsidian';
 import { DailyStat } from '../types/settings';
 import { formatCount } from '../utils/format';
 
@@ -11,7 +11,8 @@ export const HEAT_LEVELS = [
 ];
 
 export function getHeatClass(words: number): string {
-	if (words <= 0) return HEAT_LEVELS[0].cls;
+	if (words < 0) return "heat-negative";
+if (words === 0) return HEAT_LEVELS[0].cls;
 	for (let i = HEAT_LEVELS.length - 1; i >= 0; i--) {
 		if (words >= HEAT_LEVELS[i].min) return HEAT_LEVELS[i].cls;
 	}
@@ -28,16 +29,20 @@ function formatDuration(ms: number): string {
 }
 
 export function calcStreak(history: Record<string, DailyStat>): number {
-	let streak = 0;
-	let date = window.moment().format('YYYY-MM-DD');
-	while (true) {
-		const stat = history[date];
-		if (stat && stat.addedWords > 0) {
-			streak++;
-			date = window.moment(date).subtract(1, 'day').format('YYYY-MM-DD');
-		} else break;
-	}
-	return streak;
+let streak = 0;
+const today = window.moment().format("YYYY-MM-DD");
+// Start from yesterday; add today if already written
+let date = window.moment().subtract(1, "day").format("YYYY-MM-DD");
+while (true) {
+const stat = history[date];
+if (stat && stat.addedWords !== 0) {
+streak++;
+date = window.moment(date).subtract(1, "day").format("YYYY-MM-DD");
+} else break;
+}
+const todayStat = history[today];
+if (todayStat && todayStat.addedWords !== 0) streak++;
+return streak;
 }
 
 export function calcFocusRate(history: Record<string, DailyStat>, startDate: string, endDate: string): number {
@@ -95,20 +100,31 @@ export function calcDailyAverage(history: Record<string, DailyStat>, startDate: 
 	return daysWithData > 0 ? Math.round(totalWords / daysWithData) : 0;
 }
 
+function getCurrentKey(tab: string): string {
+	const now = window.moment();
+	if (tab === 'day') return now.format('YYYY-MM-DD');
+	if (tab === 'week') return `${now.isoWeekYear()}年W${String(now.isoWeek()).padStart(2, '0')}`;
+	if (tab === 'month') return now.format('YYYY-MM');
+	if (tab === 'year') return now.format('YYYY');
+	return '';
+}
+
 export class HistoryStatsModal extends Modal {
 	history: Record<string, DailyStat>;
-	currentTab: '7day' | 'day' | 'week' | 'month' | 'year' = '7day';
+	currentTab: 'day' | 'week' | 'month' | 'year' = 'day';
 	currentMetric: 'words' | 'totalTime' | 'focusTime' | 'slackTime' = 'words';
-	heatRange: '3m' | '6m' | '1y' | 'all' = '1y';
-	chartType: 'bar' | 'line' = 'bar';
 	chartContainer!: HTMLElement;
+	scrollWrapper!: HTMLElement;
 	heatContainer!: HTMLElement;
+	heatDateRowEl!: HTMLElement;
+	heatStartInput!: HTMLInputElement;
+	heatEndInput!: HTMLInputElement;
+	customStartDate: string = '';
+	customEndDate: string = '';
 	efficiencyContainer!: HTMLElement;
 	titleEl!: HTMLElement;
 	tabGroupEl!: HTMLElement;
 	metricGroupEl!: HTMLElement;
-	chartTypeBarBtn!: HTMLElement;
-	chartTypeLineBtn!: HTMLElement;
 
 	constructor(app: App, history: Record<string, DailyStat>) {
 		super(app);
@@ -121,32 +137,69 @@ export class HistoryStatsModal extends Modal {
 		contentEl.addClass('history-stats-modal');
 		this.modalEl.addClass('history-stats-modal-wide');
 
-		this.titleEl = contentEl.createEl('h2', { text: '写作数据' });
+		this.titleEl = contentEl.createEl('h2', { text: '写作数据追踪' });
 
 		// === 效率总览 ===
 		this.efficiencyContainer = contentEl.createDiv({ cls: 'stats-efficiency-row' });
 		this.renderEfficiency();
 
 		// === 热力图 ===
-		contentEl.createEl('h3', { text: '写作热力图', cls: 'stats-section-title' });
+		contentEl.createEl('h3', { text: '365热力图', cls: 'stats-section-title' });
 
-		const heatRangeRow = contentEl.createDiv({ cls: 'stats-heat-range-row' });
-		const ranges = [
-			{ id: '3m', name: '近3月' },
-			{ id: '6m', name: '近6月' },
-			{ id: '1y', name: '近1年' },
-			{ id: 'all', name: '全部' },
-		];
-		ranges.forEach(r => {
-			const btn = heatRangeRow.createEl('button', { text: r.name, cls: 'stats-tab-btn' });
-			if (this.heatRange === r.id) btn.addClass('is-active');
-			btn.onclick = () => {
-				this.heatRange = r.id as any;
-				heatRangeRow.querySelectorAll('.stats-tab-btn').forEach(b => b.removeClass('is-active'));
-				btn.addClass('is-active');
-				this.renderHeatmap();
-			};
-		});
+		this.heatDateRowEl = contentEl.createDiv({ cls: 'stats-heat-date-row' });
+		this.heatDateRowEl.createDiv({ cls: 'stats-heat-date-label', text: '起始' });
+		const defaultStart = window.moment().clone().startOf('year').format('YYYY-MM-DD');
+		const defaultEnd = window.moment().clone().endOf('year').format('YYYY-MM-DD');
+		this.heatStartInput = this.heatDateRowEl.createEl('input', {
+			type: 'date',
+			cls: 'stats-heat-date-input'
+		}) as HTMLInputElement;
+		this.heatStartInput.value = defaultStart;
+		this.heatDateRowEl.createDiv({ cls: 'stats-heat-date-label', text: '结束' });
+		this.heatEndInput = this.heatDateRowEl.createEl('input', {
+			type: 'date',
+			cls: 'stats-heat-date-input'
+		}) as HTMLInputElement;
+		this.heatEndInput.value = defaultEnd;
+
+		const resetBtn = this.heatDateRowEl.createEl('button', { text: '重置', cls: 'stats-tab-btn' });
+		resetBtn.onclick = () => {
+			this.customStartDate = '';
+			this.customEndDate = '';
+			const now = window.moment();
+			this.heatStartInput.value = now.clone().startOf('year').format('YYYY-MM-DD');
+			this.heatEndInput.value = now.clone().endOf('year').format('YYYY-MM-DD');
+			this.renderHeatmap();
+			this.renderEfficiency();
+		};
+
+		this.heatStartInput.onchange = () => {
+			const val = this.heatStartInput.value;
+			if (val) {
+				this.customStartDate = val;
+				this.customEndDate = window.moment(val).add(1, 'year').format('YYYY-MM-DD');
+				this.heatEndInput.value = this.customEndDate;
+			} else {
+				this.customStartDate = '';
+				this.customEndDate = '';
+			}
+			this.renderHeatmap();
+			this.renderEfficiency();
+		};
+
+		this.heatEndInput.onchange = () => {
+			const val = this.heatEndInput.value;
+			if (val) {
+				this.customEndDate = val;
+				this.customStartDate = window.moment(val).subtract(1, 'year').format('YYYY-MM-DD');
+				this.heatStartInput.value = this.customStartDate;
+			} else {
+				this.customStartDate = '';
+				this.customEndDate = '';
+			}
+			this.renderHeatmap();
+			this.renderEfficiency();
+		};
 
 		this.heatContainer = contentEl.createDiv({ cls: 'stats-heatmap-container' });
 		this.renderHeatmap();
@@ -154,97 +207,80 @@ export class HistoryStatsModal extends Modal {
 		// === 详细统计 ===
 		contentEl.createEl('h3', { text: '详细统计', cls: 'stats-section-title' });
 
-		this.tabGroupEl = contentEl.createDiv({ cls: 'stats-tab-group' });
-		const tabs = [
-			{ id: '7day', name: '近7日' },
-			{ id: 'day', name: '近30日' },
-			{ id: 'week', name: '按周' },
-			{ id: 'month', name: '按月' },
-			{ id: 'year', name: '按年' }
-		];
-		tabs.forEach(tab => {
-			const btn = this.tabGroupEl.createEl('button', { text: tab.name, cls: 'stats-tab-btn' });
-			if (this.currentTab === tab.id) btn.addClass('is-active');
-			btn.onclick = () => {
-				this.currentTab = tab.id as any;
-				this.tabGroupEl.querySelectorAll('.stats-tab-btn').forEach(b => b.removeClass('is-active'));
-				btn.addClass('is-active');
-				this.renderData();
-			};
-		});
+		const filterRow = contentEl.createDiv({ cls: "stats-filter-row" });
 
-		// 指标 + 图表类型切换
-		const bottomRow = contentEl.createDiv({ cls: 'stats-tab-group' });
-		this.metricGroupEl = bottomRow.createDiv({ cls: 'stats-metric-tabs' });
-		const metricTabs = [
-			{ id: 'words', name: '字数' },
-			{ id: 'totalTime', name: '总时间' },
-			{ id: 'focusTime', name: '专注' },
-			{ id: 'slackTime', name: '摸鱼' }
-		];
-		metricTabs.forEach(tab => {
-			const btn = this.metricGroupEl.createEl('button', { text: tab.name, cls: 'stats-tab-btn' });
-			if (this.currentMetric === tab.id) btn.addClass('is-active');
-			btn.onclick = () => {
-				this.currentMetric = tab.id as any;
-				this.metricGroupEl.querySelectorAll('.stats-tab-btn').forEach(b => b.removeClass('is-active'));
-				btn.addClass('is-active');
-				this.renderData();
-			};
-		});
+this.tabGroupEl = filterRow.createDiv({ cls: "stats-time-tabs" });
+const tabs = [
+{ id: "day", name: "近30日" },
+{ id: "week", name: "按周" },
+{ id: "month", name: "按月" },
+{ id: "year", name: "按年" }
+];
+tabs.forEach(tab => {
+const btn = this.tabGroupEl.createEl("button", { text: tab.name, cls: "stats-tab-btn" });
+if (this.currentTab === tab.id) btn.addClass("is-active");
+btn.onclick = () => {
+this.currentTab = tab.id as any;
+this.tabGroupEl.querySelectorAll(".stats-tab-btn").forEach(b => b.removeClass("is-active"));
+btn.addClass("is-active");
+this.renderData();
+};
+});
 
-		const typeGroup = bottomRow.createDiv({ cls: 'stats-chart-type-row' });
-		this.chartTypeBarBtn = typeGroup.createEl('button', { text: '柱状图', cls: 'stats-chart-type-btn' });
-		this.chartTypeLineBtn = typeGroup.createEl('button', { text: '折线图', cls: 'stats-chart-type-btn' });
-		if (this.chartType === 'bar') this.chartTypeBarBtn.addClass('is-active');
-		else this.chartTypeLineBtn.addClass('is-active');
-
-		this.chartTypeBarBtn.onclick = () => {
-			this.chartType = 'bar';
-			this.chartTypeBarBtn.addClass('is-active');
-			this.chartTypeLineBtn.removeClass('is-active');
-			this.renderData();
-		};
-		this.chartTypeLineBtn.onclick = () => {
-			this.chartType = 'line';
-			this.chartTypeLineBtn.addClass('is-active');
-			this.chartTypeBarBtn.removeClass('is-active');
-			this.renderData();
-		};
-
-		this.chartContainer = contentEl.createDiv({ cls: 'stats-large-chart-container' });
+this.metricGroupEl = filterRow.createDiv({ cls: "stats-metric-tabs" });
+const metricTabs = [
+{ id: "words", name: "字数" },
+{ id: "totalTime", name: "总时间" },
+{ id: "focusTime", name: "专注" },
+{ id: "slackTime", name: "摸鱼" }
+];
+metricTabs.forEach(tab => {
+const btn = this.metricGroupEl.createEl("button", { text: tab.name, cls: "stats-tab-btn" });
+if (this.currentMetric === tab.id) btn.addClass("is-active");
+btn.onclick = () => {
+this.currentMetric = tab.id as any;
+this.metricGroupEl.querySelectorAll(".stats-tab-btn").forEach(b => b.removeClass("is-active"));
+btn.addClass("is-active");
+this.renderData();
+};
+});
+this.scrollWrapper = contentEl.createDiv({ cls: 'stats-chart-scroll-wrapper' });
+		this.chartContainer = this.scrollWrapper.createDiv({ cls: 'stats-large-chart-container' });
 		this.renderData();
+
+		this.scrollWrapper.addEventListener('wheel', (evt: WheelEvent) => {
+			if (evt.shiftKey) return;
+			evt.preventDefault();
+			this.scrollWrapper.scrollLeft += evt.deltaY;
+		}, { passive: false });
 	}
 
 	private renderEfficiency(): void {
 		this.efficiencyContainer.empty();
 
-		const now = window.moment();
-		const endDate = now.format('YYYY-MM-DD');
-		let startDate: string;
-
-		if (this.heatRange === '3m') startDate = now.clone().subtract(3, 'months').format('YYYY-MM-DD');
-		else if (this.heatRange === '6m') startDate = now.clone().subtract(6, 'months').format('YYYY-MM-DD');
-		else if (this.heatRange === '1y') startDate = now.clone().subtract(1, 'year').format('YYYY-MM-DD');
-		else startDate = '0000-00-00';
+		const rangeStart = this.customStartDate || window.moment().clone().startOf('year').format('YYYY-MM-DD');
+		const rangeEnd = this.customEndDate || window.moment().format('YYYY-MM-DD');
 
 		const streak = calcStreak(this.history);
-		const focusRate = calcFocusRate(this.history, startDate, endDate);
-		const activeHours = calcActiveHours(this.history, startDate, endDate);
-		const dailyAvg = calcDailyAverage(this.history, startDate, endDate);
+		const focusRate = calcFocusRate(this.history, rangeStart, rangeEnd);
+		const activeHours = calcActiveHours(this.history, rangeStart, rangeEnd);
+		const dailyAvg = calcDailyAverage(this.history, rangeStart, rangeEnd);
 
-		const metrics = [
-			{ label: '连续写作', value: `${streak}天`, icon: '🔥' },
-			{ label: '专注效率', value: `${focusRate}%`, icon: '🎯' },
-			{ label: '活跃时段', value: activeHours.length > 0 ? activeHours.join('、') : '--', icon: '⏰' },
-			{ label: '日均字数', value: formatCount(dailyAvg), icon: '📝' },
-		];
+		let totalWords = 0;
+			for (const stat of Object.values(this.history)) { totalWords += stat.addedWords || 0; }
+
+			const metrics = [
+				{ label: '连续创作', value: `${streak}天` },
+				{ label: '专注效率', value: `${focusRate}%` },
+				{ label: '活跃时段', value: activeHours.length > 0 ? activeHours.join('、') : '--' },
+				{ label: '日均字数', value: formatCount(dailyAvg) },
+				{ label: '累计字数', value: formatCount(totalWords) },
+			];
 
 		metrics.forEach(m => {
 			const card = this.efficiencyContainer.createDiv({ cls: 'stats-efficiency-card' });
-			card.createDiv({ cls: 'stats-efficiency-icon', text: m.icon });
-			card.createDiv({ cls: 'stats-efficiency-value', text: m.value });
 			card.createDiv({ cls: 'stats-efficiency-label', text: m.label });
+			card.createDiv({ cls: 'stats-efficiency-value', text: m.value });
 		});
 	}
 
@@ -252,36 +288,54 @@ export class HistoryStatsModal extends Modal {
 		this.heatContainer.empty();
 
 		const now = window.moment();
-		let startMoment: moment.Moment;
+		const rangeStart = this.customStartDate
+			? window.moment(this.customStartDate)
+			: now.clone().startOf('year');
+		const rangeEnd = this.customEndDate
+			? window.moment(this.customEndDate)
+			: now.clone().endOf('year');
 
-		if (this.heatRange === '3m') startMoment = now.clone().subtract(3, 'months');
-		else if (this.heatRange === '6m') startMoment = now.clone().subtract(6, 'months');
-		else if (this.heatRange === '1y') startMoment = now.clone().subtract(1, 'year');
-		else {
-			const dates = Object.keys(this.history).sort();
-			startMoment = dates.length > 0 ? window.moment(dates[0]) : now.clone().subtract(1, 'year');
-		}
+		const alignedStart = rangeStart.clone().isoWeekday(1);
+		const alignedEnd = rangeEnd.clone().isoWeekday(7);
 
-		const alignedStart = startMoment.clone().isoWeekday(1);
-		const alignedEnd = now.clone().isoWeekday(7);
-
-		const monthRow = this.heatContainer.createDiv({ cls: 'stats-heatmap-months' });
-		let lastMonth = -1;
 		const totalWeeks = Math.ceil(alignedEnd.diff(alignedStart, 'days') / 7) + 1;
 
-		for (let w = 0; w < totalWeeks; w++) {
-			const weekDate = alignedStart.clone().add(w, 'weeks');
-			const month = weekDate.month();
-			if (month !== lastMonth) {
+		// 图例放右上角 — 先清除旧的
+		const existingLegend = this.heatDateRowEl.querySelector(".stats-heatmap-legend-inline");
+		if (existingLegend) existingLegend.remove();
+		const legendRow = this.heatDateRowEl.createDiv({ cls: 'stats-heatmap-legend-inline' });
+		// Negative words legend cell
+const negCell = legendRow.createDiv({ cls: "stats-heatmap-legend-cell heat-negative" });
+negCell.setAttribute("title", "删减/负增长");
+
+HEAT_LEVELS.forEach(level => {
+			const cell = legendRow.createDiv({ cls: `stats-heatmap-legend-cell ${level.cls}` });
+			const nextLevel = HEAT_LEVELS[HEAT_LEVELS.indexOf(level) + 1];
+			if (level.min === 0) {
+				cell.setAttribute('title', '0字');
+			} else if (nextLevel) {
+				cell.setAttribute('title', `${level.min}字 - ${nextLevel.min - 1}字`);
+			} else {
+				cell.setAttribute('title', `${level.min}字+`);
+			}
+		});
+
+		// 月份标注行
+		const monthRow = this.heatContainer.createDiv({ cls: 'stats-heatmap-months' });
+		const totalMonths = rangeEnd.diff(rangeStart, 'months') + 1;
+		for (let m = 0; m < totalMonths; m++) {
+			const monthStart = rangeStart.clone().add(m, 'months').startOf('month');
+			if (monthStart.isAfter(rangeEnd)) continue;
+			const w = Math.floor(monthStart.clone().isoWeekday(1).add(7, 'days').diff(alignedStart, 'days') / 7);
+			if (w >= 0 && w < totalWeeks) {
 				const spacer = monthRow.createDiv({ cls: 'stats-heatmap-month-label' });
-				spacer.setText(weekDate.format('MMM'));
-				spacer.style.marginLeft = `${w * 15}px`;
-				lastMonth = month;
+				spacer.setText(monthStart.format('MMM'));
+				spacer.style.left = `calc(28px + ${w} * (100% - 28px) / ${totalWeeks})`;
 			}
 		}
 
 		const gridContainer = this.heatContainer.createDiv({ cls: 'stats-heatmap-grid' });
-		const dayLabels = ['', '周一', '', '周三', '', '周五', ''];
+		const dayLabels = ['一', '二', '三', '四', '五', '六', '日'];
 
 		for (let dayOfWeek = 0; dayOfWeek < 7; dayOfWeek++) {
 			const row = gridContainer.createDiv({ cls: 'stats-heatmap-row' });
@@ -294,29 +348,24 @@ export class HistoryStatsModal extends Modal {
 				const stat = this.history[dateStr];
 
 				const cell = row.createDiv({ cls: 'stats-heatmap-cell' });
+				cell.setAttribute('title', dateStr);
+
+				if (cellDate.isSame(now, 'day')) {
+					cell.addClass('stats-heatmap-today');
+				}
 
 				if (stat) {
 					const words = stat.addedWords || 0;
 					cell.addClass(getHeatClass(words));
 					const focusH = (stat.focusMs / 3600000).toFixed(1);
 					cell.setAttribute('title', `${dateStr}\n字数: ${words}\n专注: ${focusH}h`);
+				} else if (cellDate.isAfter(now, 'day')) {
+					cell.addClass('stats-heatmap-future');
 				} else {
 					cell.addClass('heat-0');
 				}
-
-				if (cellDate.isAfter(now, 'day')) {
-					cell.addClass('stats-heatmap-future');
-				}
 			}
 		}
-
-		// 颜色说明（用 CSS 类渲染色块）
-		const legendRow = this.heatContainer.createDiv({ cls: 'stats-heatmap-legend' });
-		legendRow.createSpan({ text: '少', cls: 'stats-heatmap-legend-text' });
-		HEAT_LEVELS.forEach(level => {
-			legendRow.createDiv({ cls: `stats-heatmap-legend-cell ${level.cls}` });
-		});
-		legendRow.createSpan({ text: '多', cls: 'stats-heatmap-legend-text' });
 
 		this.renderEfficiency();
 	}
@@ -325,11 +374,10 @@ export class HistoryStatsModal extends Modal {
 		this.chartContainer.empty();
 		const aggregated = this.aggregateData();
 		const keys = Object.keys(aggregated).sort();
+		const currentKey = getCurrentKey(this.currentTab);
 
 		let displayKeys = keys;
-		if (this.currentTab === '7day') displayKeys = keys.slice(-7);
 		if (this.currentTab === 'day') displayKeys = keys.slice(-30);
-		if (this.currentTab === 'week') displayKeys = keys.slice(-12);
 
 		if (displayKeys.length === 0) {
 			this.chartContainer.createDiv({ text: '暂无数据', cls: 'stats-empty-msg' });
@@ -344,21 +392,17 @@ export class HistoryStatsModal extends Modal {
 			return 0;
 		};
 
-		if (this.chartType === 'bar') {
-			this.renderBarChart(displayKeys, aggregated, getValue);
-		} else {
-			this.renderLineChart(displayKeys, aggregated, getValue);
+			this.renderBarChart(displayKeys, aggregated, getValue, currentKey);
 		}
-	}
 
 	private renderBarChart(
 		displayKeys: string[],
 		aggregated: Record<string, { words: number, focusMs: number, slackMs: number }>,
-		getValue: (data: { words: number, focusMs: number, slackMs: number }) => number
+		getValue: (data: { words: number, focusMs: number, slackMs: number }) => number,
+		currentKey: string
 	): void {
 		this.chartContainer.addClass('stats-bar-mode');
-		this.chartContainer.removeClass('stats-line-mode');
-
+		
 		const maxAbsValue = Math.max(...displayKeys.map(k => Math.abs(getValue(aggregated[k]))), 1);
 
 		displayKeys.forEach((key) => {
@@ -370,7 +414,7 @@ export class HistoryStatsModal extends Modal {
 			const bar = col.createDiv({ cls: 'stats-large-bar' });
 			bar.style.height = `${heightPercent}%`;
 
-			// 柱状图颜色用 CSS 类，统一主题色
+
 			if (val < 0) {
 				bar.addClass('bar-negative');
 			} else {
@@ -384,7 +428,7 @@ export class HistoryStatsModal extends Modal {
 			const totalMs = data.focusMs + data.slackMs;
 			bar.setAttribute('title', `时间: ${key}\n总字数: ${data.words.toLocaleString()}\n总计时间: ${formatDuration(totalMs)}\n专注时间: ${formatDuration(data.focusMs)}\n摸鱼时间: ${formatDuration(data.slackMs)}`);
 
-			col.createDiv({ cls: 'stats-large-label', text: this.formatLabel(key) });
+			col.createDiv({ cls: 'stats-large-label', text: this.formatLabel(key, key === currentKey) });
 
 			let displayStr = '';
 			if (this.currentMetric === 'words') {
@@ -398,125 +442,135 @@ export class HistoryStatsModal extends Modal {
 				valueEl.addClass('bar-negative-text');
 			}
 		});
+
+		
+		this.renderTrendOverlay(displayKeys, aggregated, getValue, maxAbsValue);
+		this.scrollToCurrent(displayKeys, currentKey);
 	}
 
-	private renderLineChart(
-		displayKeys: string[],
-		aggregated: Record<string, { words: number, focusMs: number, slackMs: number }>,
-		getValue: (data: { words: number, focusMs: number, slackMs: number }) => number
-	): void {
-		this.chartContainer.removeClass('stats-bar-mode');
-		this.chartContainer.addClass('stats-line-mode');
 
-		const values = displayKeys.map(k => getValue(aggregated[k]));
-		const maxVal = Math.max(...values, 0);
-		const minVal = Math.min(...values, 0);
+				private renderTrendOverlay(
+			displayKeys: string[],
+			aggregated: Record<string, { words: number, focusMs: number, slackMs: number }>,
+			getValue: (data: { words: number, focusMs: number, slackMs: number }) => number,
+			maxAbsValue: number
+		): void {
+			if (displayKeys.length < 2) return;
 
-		const svgW = 900;
-		const chartH = 140;
-		const padTop = 16;
-		const padBottom = 28;
-		const padLeft = 50;
-		const padRight = 16;
-		const svgH = chartH + padTop + padBottom;
+			// Use requestAnimationFrame to measure actual bar positions after layout
+			requestAnimationFrame(() => {
+				const container = this.chartContainer;
+				const bars = container.querySelectorAll(".stats-large-bar") as NodeListOf<HTMLElement>;
+				if (bars.length < 2) return;
 
-		const dataRange = maxVal - minVal || 1;
-		const yScale = chartH / dataRange;
-		const xStep = (svgW - padLeft - padRight) / (displayKeys.length - 1 || 1);
+				const containerRect = container.getBoundingClientRect();
+				const containerH = container.offsetHeight;
 
-		const yTicks = this.calcYTicks(minVal, maxVal);
-		const fmtY = (v: number) => this.currentMetric === 'words' ? formatCount(v) : formatDuration(v);
+const points: { x: number, y: number, val: number }[] = [];
+let baseline = 0;
+bars.forEach((bar, i) => {
+const barRect = bar.getBoundingClientRect();
+const x = barRect.left - containerRect.left + barRect.width / 2;
+const yShift = barRect.top - containerRect.top + 6;
+baseline = barRect.bottom - containerRect.top;
+const val = getValue(aggregated[displayKeys[i]]);
+points.push({ x, y: yShift, val });
+});
+// Clamp: trend line must not go below bar baseline
+baseline = Math.round(baseline);
+points.forEach(p => { p.y = Math.min(p.y, baseline); });
+	// If all points clamped to baseline, trend line has no useful shape — skip overlay
+	const allClamped = points.every(p => p.y >= baseline - 2);
+	if (allClamped) return;
 
-		let svg = `<svg viewBox="0 0 ${svgW} ${svgH}" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;font-family:var(--font-monospace);">`;
+				const totalW = container.scrollWidth;
+				const svgW = Math.max(totalW, container.offsetWidth);
 
-		for (const tick of yTicks) {
-			const yy = padTop + chartH - (tick - minVal) * yScale;
-			svg += `<line x1="${padLeft}" y1="${yy}" x2="${svgW - padRight}" y2="${yy}" stroke="var(--background-modifier-border)" stroke-dasharray="4,4"/>`;
-			svg += `<text x="${padLeft - 6}" y="${yy + 4}" fill="var(--text-muted)" font-size="10" text-anchor="end">${fmtY(tick)}</text>`;
+				let svg = `<svg class="stats-trend-overlay" viewBox="0 0 ${svgW} ${containerH}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" style="width:${svgW}px;height:${containerH}px">`;
+
+				// Gradient definition
+				svg += `<defs><linearGradient id="trendGrad" x1="0" y1="0" x2="0" y2="1">`;
+					svg += `<stop offset="0%" stop-color="var(--interactive-accent)" stop-opacity="0.25"/>`;
+					svg += `<stop offset="50%" stop-color="var(--interactive-accent)" stop-opacity="0.08"/>`;
+					svg += `<stop offset="100%" stop-color="var(--interactive-accent)" stop-opacity="0"/>`;
+				svg += `</linearGradient>`;
+svg += `<clipPath id="trendClip"><rect x="0" y="0" width="${svgW}" height="${baseline}"/></clipPath>`;
+svg += `</defs>`;
+
+// Build smooth curve path (catmull-rom to cubic bezier)
+					const curvePath = this.buildSmoothCurvePath(points);
+					const bottomY = baseline;
+					const fillClose = ` L${points[points.length - 1].x.toFixed(1)},${bottomY} L${points[0].x.toFixed(1)},${bottomY} Z`;
+					svg += `<path d="${curvePath}${fillClose}" fill="url(#trendGrad)" clip-path="url(#trendClip)"/>`;
+
+					// Dashed trend curve
+					svg += `<path d="${curvePath}" fill="none" stroke="var(--interactive-accent)" stroke-width="1.2" stroke-dasharray="6,4" opacity="0.35" clip-path="url(#trendClip)"/>`;
+
+					svg += "</svg>";
+
+				// Remove previous overlay if exists
+				const existing = container.querySelector(".stats-trend-overlay-wrapper");
+				if (existing) existing.remove();
+
+				container.createDiv({ cls: "stats-trend-overlay-wrapper" }).innerHTML = svg;
+			});
 		}
 
-		if (minVal < 0 && maxVal > 0) {
-			const zy = padTop + chartH - (0 - minVal) * yScale;
-			svg += `<line x1="${padLeft}" y1="${zy}" x2="${svgW - padRight}" y2="${zy}" stroke="var(--text-muted)" stroke-width="1"/>`;
+		private buildSmoothCurvePath(points: { x: number, y: number }[]): string {
+		if (points.length < 2) return '';
+		if (points.length === 2) {
+			return `M${points[0].x.toFixed(1)},${points[0].y.toFixed(1)} L${points[1].x.toFixed(1)},${points[1].y.toFixed(1)}`;
 		}
 
-		let pts = '';
-		displayKeys.forEach((key, i) => {
-			const v = getValue(aggregated[key]);
-			const x = padLeft + i * xStep;
-			const y = padTop + chartH - (v - minVal) * yScale;
-			pts += `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)} `;
-		});
+		// Catmull-Rom to Cubic Bezier conversion
+		// For each segment i→i+1, compute control points from surrounding points
+		const hTension = 0.4;
+const vTension = 0.2;
+		let path = `M${points[0].x.toFixed(1)},${points[0].y.toFixed(1)}`;
 
-		const zeroY = padTop + chartH - (0 - minVal) * yScale;
-		const fillPts = pts + `L${padLeft + (displayKeys.length - 1) * xStep},${zeroY} L${padLeft},${zeroY} Z`;
+		for (let i = 0; i < points.length - 1; i++) {
+			const p0 = points[Math.max(0, i - 1)];
+			const p1 = points[i];
+			const p2 = points[i + 1];
+			const p3 = points[Math.min(points.length - 1, i + 2)];
 
-		svg += `<defs><linearGradient id="lg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--interactive-accent)" stop-opacity="0.25"/><stop offset="100%" stop-color="var(--interactive-accent)" stop-opacity="0.02"/></linearGradient></defs>`;
-		svg += `<path d="${fillPts}" fill="url(#lg)"/>`;
-		svg += `<path d="${pts}" fill="none" stroke="var(--interactive-accent)" stroke-width="2" stroke-linejoin="round"/>`;
+			const cp1x = p1.x + (p2.x - p0.x) * hTension;
+			const cp1y = p1.y + (p2.y - p0.y) * vTension;
+			const cp2x = p2.x - (p3.x - p1.x) * hTension;
+			const cp2y = p2.y - (p3.y - p1.y) * vTension;
 
-		displayKeys.forEach((key, i) => {
-			const d = aggregated[key];
-			const v = getValue(d);
-			const x = padLeft + i * xStep;
-			const y = padTop + chartH - (v - minVal) * yScale;
-			const col = v < 0 ? 'var(--color-red, #ef4444)' : 'var(--interactive-accent)';
-			svg += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="${col}" stroke="white" stroke-width="1" style="cursor:crosshair;"><title>${key}\n字数: ${formatCount(d.words)}\n${this.currentMetric === 'words' ? '值: ' + formatCount(v) : '时间: ' + formatDuration(v)}</title></circle>`;
-		});
+			path += ` C${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`;
+		}
 
-		displayKeys.forEach((key, i) => {
-			const x = padLeft + i * xStep;
-			svg += `<text x="${x.toFixed(1)}" y="${svgH - 4}" fill="var(--text-muted)" font-size="10" text-anchor="middle">${this.formatLabel(key)}</text>`;
-		});
-
-		svg += `</svg>`;
-		this.chartContainer.createDiv({ cls: 'stats-line-chart' }).innerHTML = svg;
+		return path;
 	}
+		private scrollToCurrent(displayKeys: string[], currentKey: string): void {
+			const idx = displayKeys.indexOf(currentKey);
+			if (idx < 0) return;
+			if (idx === 0) return;
 
-	private calcYTicks(min: number, max: number): number[] {
-		const range = max - min || 1;
-		const rawStep = range / 5;
-		const magnitude = Math.pow(10, Math.floor(Math.log10(rawStep)));
-		let step: number;
-		const normalized = rawStep / magnitude;
-		if (normalized <= 1) step = magnitude;
-		else if (normalized <= 2) step = 2 * magnitude;
-		else if (normalized <= 5) step = 5 * magnitude;
-		else step = 10 * magnitude;
-
-		if (this.currentMetric !== 'words') {
-			const minStepMs = 60000;
-			if (step < minStepMs) step = minStepMs;
-			if (step < 5 * 60000) step = 5 * 60000;
-			else if (step < 15 * 60000) step = 15 * 60000;
-			else if (step < 30 * 60000) step = 30 * 60000;
-			else if (step < 3600000) step = 3600000;
-		} else {
-			if (step < 100) step = 100;
-			else if (step < 500) step = 500;
-			else if (step < 1000) step = 1000;
+			const wrapper = this.scrollWrapper;
+			const container = this.chartContainer;
+			const cols = container.querySelectorAll(".stats-large-col");
+			if (cols[idx]) {
+				const colEl = cols[idx] as HTMLElement;
+				const scrollTarget = colEl.offsetLeft - wrapper.offsetWidth / 2 + colEl.offsetWidth / 2;
+				wrapper.scrollTo({ left: Math.max(0, scrollTarget), behavior: "smooth" });
+			}
 		}
-
-		const ticks: number[] = [];
-		let tick = Math.ceil(min / step) * step;
-		while (tick <= max) {
-			ticks.push(tick);
-			tick += step;
-		}
-		return ticks;
-	}
 
 	aggregateData() {
 		const result: Record<string, { words: number, focusMs: number, slackMs: number }> = {};
 
+		// 只聚合 history 中实际存在的数据，不填充空时间段
 		for (const [date, stat] of Object.entries(this.history)) {
 			const m = window.moment(date);
 			let key = date;
 
-			if (this.currentTab === '7day') {
+			if (this.currentTab === 'day') {
 				key = date;
 			} else if (this.currentTab === 'week') {
-				key = `${m.year()}年 第${m.isoWeek()}周`;
+				key = `${m.isoWeekYear()}年W${String(m.isoWeek()).padStart(2, '0')}`;
 			} else if (this.currentTab === 'month') {
 				key = m.format('YYYY-MM');
 			} else if (this.currentTab === 'year') {
@@ -528,15 +582,34 @@ export class HistoryStatsModal extends Modal {
 			result[key].focusMs += (stat.focusMs || 0);
 			result[key].slackMs += (stat.slackMs || 0);
 		}
+
+		// 仅对日级别标签页补充缺失日期（确保近7日/近30日完整）
+		const now = window.moment();
+		if (this.currentTab === 'day') {
+			const start = now.clone().subtract(29, 'days');
+			let d = start.clone();
+			while (d.isSameOrBefore(now, 'day')) {
+				const key = d.format('YYYY-MM-DD');
+				if (!result[key]) result[key] = { words: 0, focusMs: 0, slackMs: 0 };
+				d.add(1, 'day');
+			}
+		}
+
 		return result;
 	}
 
-	formatLabel(key: string): string {
-		if (this.currentTab === '7day' || this.currentTab === 'day') return key.substring(5);
+	formatLabel(key: string, isCurrent: boolean): string {
+		if (isCurrent) {
+		if (this.currentTab === 'day') return '今日';
+		if (this.currentTab === 'week') return '本周';
+		if (this.currentTab === 'month') return '本月';
+		if (this.currentTab === 'year') return '今年';
+		}
+		if (this.currentTab === 'day') return key.substring(5);
 		if (this.currentTab === 'month') return key.substring(2);
 		if (this.currentTab === 'week') {
-			const match = key.match(/第(\d+)周/);
-			return match ? `W${match[1]}` : key;
+			const match = key.match(/(\d{4})年W(\d+)/);
+			return match ? `${match[1].substring(2)}W${match[2]}` : key;
 		}
 		return key;
 	}

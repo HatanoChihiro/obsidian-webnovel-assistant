@@ -95,20 +95,20 @@
 
 /* 覆盖 Obsidian 默认 modal 宽度 */
 .modal.history-stats-modal-wide { width: 960px; max-width: 95vw; }
-.history-stats-modal h2 { color: var(--interactive-accent); border-bottom: 2px solid var(--interactive-accent); padding-bottom: 6px; margin-bottom: 14px; font-size: 18px; }
+.history-stats-modal h2 { color: var(--interactive-accent); border-bottom: 2px solid var(--interactive-accent); padding-bottom: 6px; margin-bottom: 10px; margin-top: 4px; font-size: 20px; }
 .stats-tab-group { display: flex; gap: 6px; margin-bottom: 14px; border-bottom: 1px solid var(--background-modifier-border); padding-bottom: 6px; align-items: center; }
 .stats-tab-btn { background: transparent; border: none; box-shadow: none; color: var(--text-muted); cursor: pointer; padding: 4px 8px; border-radius: 4px; transition: all 0.2s; font-size: 12px; }
 .stats-tab-btn:hover { background: color-mix(in srgb, var(--interactive-accent) 15%, transparent); color: var(--interactive-accent); }
 .stats-tab-btn.is-active { background: var(--interactive-accent); color: var(--text-on-accent); font-weight: bold; }
 
 /* 效率总览 — 主体色顶边 + 背景微染 */
-.stats-efficiency-row { display: flex; gap: 10px; margin-bottom: 14px; }
-.stats-efficiency-card { flex: 1; background: color-mix(in srgb, var(--interactive-accent) 6%, var(--background-secondary)); border-radius: 8px; padding: 8px 12px; text-align: center; border-top: 3px solid var(--interactive-accent); }
-.stats-efficiency-icon { font-size: 16px; margin-bottom: 2px; }
-.stats-efficiency-value { font-size: 14px; font-weight: bold; color: var(--interactive-accent); font-family: var(--font-monospace); }
-.stats-efficiency-label { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+.stats-efficiency-row { display: flex; gap: 14px; margin-bottom: 20px; }
+.stats-efficiency-card { flex: 1; background: color-mix(in srgb, var(--interactive-accent) 6%, var(--background-secondary)); border-radius: 8px; padding: 16px 14px 14px; text-align: center; border-top: 3px solid var(--interactive-accent); }
+.stats-efficiency-label { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; }
+.stats-efficiency-value { font-size: 18px; font-weight: bold; color: var(--interactive-accent); font-family: var(--font-monospace); }
 
 /* 热力图色阶 — 主体色渐变 */
+.heat-negative { background: var(--color-red, #ef4444); }
 .heat-0 { background: var(--background-modifier-border); }
 .heat-1 { background: color-mix(in srgb, var(--interactive-accent) 28%, var(--background-primary)); }
 .heat-2 { background: color-mix(in srgb, var(--interactive-accent) 50%, var(--background-primary)); }
@@ -123,42 +123,49 @@
 .bar-negative-text { color: var(--color-red, #ef4444); }
 
 /* 段标题 — 主体色点缀 */
-.stats-section-title { margin-top: 16px; margin-bottom: 6px; font-size: 14px; padding-left: 10px; border-left: 3px solid var(--interactive-accent); }
+.stats-section-title { margin-top: 24px; margin-bottom: 10px; font-size: 14px; padding-left: 10px; border-left: 3px solid var(--interactive-accent); }
 
 /* 图表类型切换 */
-.stats-tab-group .stats-metric-tabs { display: flex; gap: 6px; }
-.stats-chart-type-row { display: flex; gap: 4px; margin-left: auto; align-items: center; }
-.stats-chart-type-btn { background: var(--background-secondary); border: 1px solid var(--background-modifier-border); border-radius: 4px; padding: 3px 10px; color: var(--text-muted); cursor: pointer; font-size: 11px; transition: all 0.2s; }
-.stats-chart-type-btn:hover { border-color: var(--interactive-accent); color: var(--interactive-accent); }
-.stats-chart-type-btn.is-active { background: var(--interactive-accent); color: var(--text-on-accent); border-color: var(--interactive-accent); }
+.stats-filter-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; border-bottom: 1px solid var(--background-modifier-border); padding-bottom: 6px; }
+.stats-time-tabs { display: flex; gap: 6px; }
+.stats-metric-tabs { display: flex; gap: 6px; }
+
+/* 图表滚动容器 */
+.stats-chart-scroll-wrapper { overflow-x: auto; overflow-y: hidden; max-height: 250px; scrollbar-width: none; }
+.stats-chart-scroll-wrapper::-webkit-scrollbar { display: none; }
 
 /* 柱状图容器 */
 .stats-large-chart-container { position: relative; height: 210px; padding: 8px 4px; margin-top: 8px; }
 .stats-large-chart-container.stats-bar-mode { display: flex; align-items: flex-end; gap: 6px; }
-.stats-large-chart-container.stats-line-mode { height: auto; }
-.stats-large-col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; min-width: 28px; flex: 1; max-width: 48px; }
-.stats-large-bar { width: 60%; min-width: 10px; max-width: 28px; border-radius: 3px 3px 0 0; opacity: 0.85; transition: height 0.4s ease, opacity 0.2s; cursor: crosshair; }
+.stats-large-col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; min-width: 40px; flex: 0 0 40px; position: relative; z-index: 2; }
+.stats-large-bar { width: 50%; min-width: 10px; max-width: 24px; border-radius: 3px 3px 0 0; opacity: 0.85; transition: height 0.4s ease, opacity 0.2s; cursor: crosshair; }
 .stats-large-bar:hover { opacity: 1; }
-.stats-large-label { font-size: 10px; margin-top: 8px; color: var(--text-muted); white-space: nowrap; }
-.stats-large-value { font-size: 11px; margin-top: 4px; font-weight: bold; font-family: var(--font-monospace); white-space: nowrap; }
+.stats-large-label { font-size: 9px; margin-top: 6px; color: var(--text-muted); white-space: nowrap; }
+.stats-large-value { font-size: 10px; margin-top: 2px; font-weight: bold; font-family: var(--font-monospace); white-space: nowrap; }
 
-/* 折线图 */
-.stats-line-chart svg { width: 100%; height: auto; }
+/* 趋势叠加层 */
+.stats-trend-overlay-wrapper { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
+.stats-trend-overlay { width: 100%; height: 100%; }
 .stats-empty-msg { color: var(--text-muted); padding: 40px 0; text-align: center; }
 
 /* 热力图布局 */
-.stats-heat-range-row { display: flex; gap: 6px; margin-bottom: 10px; }
-.stats-heatmap-container { margin-bottom: 16px; overflow-x: auto; }
-.stats-heatmap-months { position: relative; height: 20px; margin-bottom: 4px; margin-left: 32px; }
+.stats-heat-range-row { display: flex; gap: 6px; margin-bottom: 10px; align-items: center; }
+.stats-heat-date-row { display: flex; gap: 8px; margin-bottom: 10px; align-items: center; }
+.stats-heat-date-label { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+.stats-heat-date-input { padding: 5px 10px; border-radius: 6px; border: 1px solid color-mix(in srgb, var(--interactive-accent) 30%, var(--background-modifier-border)); background: color-mix(in srgb, var(--interactive-accent) 4%, var(--background-primary)); color: var(--text-normal); font-size: 13px; font-family: var(--font-monospace); transition: border-color 0.2s; }
+.stats-heat-date-input:focus { outline: none; border-color: var(--interactive-accent); }
+.stats-heat-date-input::-webkit-calendar-picker-indicator { filter: opacity(0.5); cursor: pointer; }
+.stats-heatmap-container { margin-bottom: 16px; }
+.stats-heatmap-legend-inline { display: flex; gap: 3px; margin-left: auto; align-items: center; }
+.stats-heatmap-months { position: relative; height: 20px; margin-bottom: 4px; margin-left: 28px; }
 .stats-heatmap-month-label { position: absolute; font-size: 10px; color: var(--text-muted); }
-.stats-heatmap-grid { display: flex; flex-direction: column; gap: 2px; }
-.stats-heatmap-row { display: flex; gap: 2px; }
-.stats-heatmap-day-label { width: 28px; font-size: 9px; color: var(--text-muted); text-align: right; flex-shrink: 0; line-height: 13px; padding-right: 2px; }
-.stats-heatmap-cell { width: 13px; height: 13px; border-radius: 2px; flex-shrink: 0; }
+.stats-heatmap-grid { display: flex; flex-direction: column; gap: 2px; width: 100%; }
+.stats-heatmap-row { display: flex; gap: 2px; width: 100%; }
+.stats-heatmap-day-label { width: 28px; font-size: 9px; color: var(--text-muted); text-align: right; flex-shrink: 0; line-height: 1; padding-right: 2px; display: flex; align-items: center; justify-content: flex-end; }
+.stats-heatmap-cell { flex: 1; aspect-ratio: 1; border-radius: 2px; min-width: 0; }
+.stats-heatmap-today { outline: 2px solid var(--interactive-accent); outline-offset: 1px; border-radius: 3px; }
 .stats-heatmap-future { border: 1px dashed var(--background-modifier-border); background: transparent !important; }
-.stats-heatmap-legend { display: flex; align-items: center; gap: 3px; margin-top: 8px; justify-content: flex-end; }
-.stats-heatmap-legend-text { font-size: 9px; color: var(--text-muted); }
-.stats-heatmap-legend-cell { width: 12px; height: 12px; border-radius: 2px; }
+.stats-heatmap-legend-cell { width: 14px; height: 14px; border-radius: 2px; }
 
 /* 侧边栏迷你柱状图 */
 .mini-chart-container { display: flex; align-items: flex-end; gap: 6px; cursor: pointer; height: 80px; margin-top: 8px; }
@@ -358,20 +365,20 @@ body.immersive-typewriter-mode.immersive-mode-active .markdown-source-view.mod-c
 .immersive-mode-active .workspace-split {
 	gap: 8px !important;
 	padding: 8px !important;
-	background-color: var(--background-secondary) !important;
+	background-color: color-mix(in srgb, var(--interactive-accent) 3%, var(--background-secondary)) !important;
 }
 
 /* 沉浸模式：卡片式面板布局与边界强化 */
 .immersive-mode-active .workspace-leaf {
 	background-color: var(--background-primary) !important;
-	border: 1px solid var(--background-modifier-border) !important;
+	border: 1px solid color-mix(in srgb, var(--interactive-accent) 20%, var(--background-modifier-border)) !important;
 	border-radius: 12px !important;
 	margin: 0 !important;
-	box-shadow: 0 4px 15px rgba(0,0,0,0.05) !important;
+	box-shadow: 0 4px 15px color-mix(in srgb, var(--interactive-accent) 8%, rgba(0,0,0,0.05)) !important;
 }
 
 .immersive-mode-active .workspace-leaf:hover {
-	box-shadow: 0 6px 20px rgba(0,0,0,0.1) !important;
+	box-shadow: 0 6px 20px color-mix(in srgb, var(--interactive-accent) 12%, rgba(0,0,0,0.1)) !important;
 }
 
 /* 辅助面板内容微调 */
@@ -440,7 +447,7 @@ body.immersive-typewriter-mode.immersive-mode-active .markdown-source-view.mod-c
 	justify-content: space-between;
 	padding: 0 16px;
 	font-family: var(--font-interface);
-	box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+	box-shadow: 0 2px 8px color-mix(in srgb, var(--interactive-accent) 30%, rgba(0,0,0,0.15));
 }
 
 .immersive-top-bar-left {
@@ -448,45 +455,45 @@ body.immersive-typewriter-mode.immersive-mode-active .markdown-source-view.mod-c
 	align-items: center;
 	gap: 12px;
 	font-weight: bold;
-	font-size: 1.1em;
+	font-size: 14px;
 }
 
 .immersive-top-bar-center {
 	display: flex;
 	align-items: center;
 	gap: 20px;
-	font-size: 0.9em;
+	font-size: 12px;
 }
 
 .immersive-top-bar-center .stat-item {
-	background: rgba(0,0,0,0.15);
+	background: color-mix(in srgb, var(--text-on-accent) 15%, var(--interactive-accent));
 	padding: 4px 10px;
 	border-radius: 12px;
 }
 
 .immersive-top-bar-center .stat-item.focus {
-	background: rgba(16, 185, 129, 0.25); /* 绿色强调专注 */
+	background: color-mix(in srgb, #10b981 25%, var(--interactive-accent));
 }
 
 .immersive-top-bar-center .stat-item.slack {
-	background: rgba(245, 158, 11, 0.25); /* 橙色强调摸鱼 */
+	background: color-mix(in srgb, #f59e0b 25%, var(--interactive-accent));
 }
 
 .immersive-exit-btn {
-	background: rgba(255, 255, 255, 0.1);
+	background: color-mix(in srgb, var(--text-on-accent) 10%, transparent);
 	color: var(--text-on-accent);
-	border: 1px solid rgba(255, 255, 255, 0.3);
+	border: 1px solid color-mix(in srgb, var(--text-on-accent) 30%, transparent);
 	padding: 4px 12px;
 	border-radius: 6px;
 	cursor: pointer;
-	font-size: 0.85em;
-	opacity: 0; /* 默认完全隐藏 */
+	font-size: 12px;
+	opacity: 0;
 	transition: all 0.3s ease;
 }
 
 .immersive-exit-btn:hover {
 	opacity: 1 !important;
-	background: rgba(255, 255, 255, 0.3) !important;
+	background: color-mix(in srgb, var(--text-on-accent) 25%, transparent) !important;
 }
 
 /* 鼠标靠近右侧区域时自动显示提示 */
@@ -496,8 +503,8 @@ body.immersive-typewriter-mode.immersive-mode-active .markdown-source-view.mod-c
 
 .immersive-panel-title {
 	margin: 0 0 10px 0;
-	font-size: 1.1em;
-	color: var(--text-normal);
+	font-size: 15px;
+	color: var(--interactive-accent);
 }
 
 /* 章节列表 */
@@ -514,13 +521,15 @@ body.immersive-typewriter-mode.immersive-mode-active .markdown-source-view.mod-c
 	border-radius: 4px;
 	cursor: pointer;
 	transition: background 0.2s;
+	font-size: 13px;
 }
 .immersive-chapter-item:hover {
-	background: var(--background-modifier-hover);
+	background: color-mix(in srgb, var(--interactive-accent) 10%, var(--background-modifier-hover));
 }
 .immersive-chapter-count {
-	font-size: 0.8em;
-	color: var(--text-muted);
+	font-size: 12px;
+	color: var(--interactive-accent);
+	font-family: var(--font-monospace);
 }
 
 /* 便签列表 */
@@ -547,6 +556,10 @@ body.immersive-typewriter-mode.immersive-mode-active .markdown-source-view.mod-c
 }
 .immersive-sticky-card:hover {
 	transform: translateY(-5px);
+}
+.immersive-mode-active .immersive-sticky-title span:first-child {
+	font-weight: bold;
+	font-size: 13px;
 }
 .immersive-sticky-card textarea {
 	flex: 1;
