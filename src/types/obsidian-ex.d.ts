@@ -20,6 +20,15 @@ declare module 'obsidian' {
         iterateRootLeaves(callback: (leaf: WorkspaceLeaf) => void): void;
         createLeafBySplit(leaf: WorkspaceLeaf, direction: 'horizontal' | 'vertical', before: boolean): WorkspaceLeaf;
         rightSplit?: WorkspaceSplit;
+
+        // 插件自定义事件
+        on(name: 'webnovel:notes-changed', callback: () => void): EventRef;
+        on(name: 'webnovel:word-count-gutter-settings-changed', callback: () => void): EventRef;
+        trigger(name: 'webnovel:notes-changed'): void;
+        trigger(name: 'webnovel:word-count-gutter-settings-changed'): void;
+
+        // 内部 API
+        detachLeaf(leaf: WorkspaceLeaf): void;
     }
 
     interface WorkspaceSplit {

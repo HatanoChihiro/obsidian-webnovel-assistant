@@ -24,10 +24,12 @@ import { TimelineView, TIMELINE_VIEW_TYPE } from './src/ui/TimelineView';
 import { MobileFloatingStats } from './src/ui/MobileFloatingStats';
 import { ObsOverlayServer } from './src/services/ObsServer';
 import { ForeshadowingManager } from './src/services/ForeshadowingManager';
+import { RankingManager } from './src/services/RankingManager';
 import { ObsHtmlBuilder } from './src/services/ObsHtmlBuilder';
 import { ImmersiveModeManager } from './src/ui/ImmersiveModeManager';
 import { StickyNoteDataManager } from './src/services/StickyNoteDataManager';
 import { VIEW_TYPES, DEFAULT_SETTINGS } from './src/constants';
+import { RANKING_VIEW_TYPE } from './src/ui/RankingView';
 import { CommandManager } from './src/core/CommandManager';
 import { ViewManager } from './src/core/ViewManager';
 import { MenuManager } from './src/core/MenuManager';
@@ -51,7 +53,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 
 	sessionAddedWords: number = 0;
 	lastFileWords: number = 0; 
-	lastFilePath: string = ''; 
+	lastFilePath: string = '';
+	lastRankingFolder: string = ''; 
 
 	lastEditTime: number = Date.now();
 	
@@ -69,15 +72,17 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	historyManager: HistoryDataManager;
 	fileExplorerPatcher: FileExplorerPatcher;
 	foreshadowingManager!: ForeshadowingManager;
+	rankingManager!: RankingManager;
 	wordCounter: WordCounter;
 	editorTracker!: EditorTracker;
+		fileEventManager!: FileEventManager;
 	styleManager!: StyleManager;
 	stickyNoteManager: StickyNoteDataManager;
 	immersiveModeManager!: ImmersiveModeManager;
 	commandManager: CommandManager;
 	viewManager: ViewManager;
 	menuManager: MenuManager;
-	private isLayoutReady: boolean = false;
+	isLayoutReady: boolean = false;
 
 	constructor(app: App, manifest: PluginManifest) {
 		super(app, manifest);
@@ -159,6 +164,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		
 		// 初始化管理器 (依赖 this)
 		this.foreshadowingManager = new ForeshadowingManager(this.app, this);
+		this.rankingManager = new RankingManager(this.app, this);
 		
 		this.statusBarItemEl = this.addStatusBarItem();
 		this.addSettingTab(new AccurateCountSettingTab(this.app, this));
@@ -577,6 +583,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		if (this.styleManager) {
 			this.styleManager.removeEyeCare();
 		}
+		// 清除打字机模式标记
+		document.body.classList.remove('immersive-typewriter-mode');
 
 		// 7. 卸载文件浏览器补丁
 		if (this.fileExplorerPatcher) {
@@ -591,7 +599,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			this.stickyNoteManager.saveNotes(this.stickyNoteManager.getNotes())
 		]).catch(e => console.error('[WebNovel Assistant] 卸载时数据刷新失败:', e));
 
-		console.log('[WebNovel Assistant] Plugin unloaded and resources cleaned up');
+		console.debug('[WebNovel Assistant] Plugin unloaded and resources cleaned up');
 	}
 
 	/**
@@ -610,11 +618,23 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			const workspaceFiles = allFiles.filter(f => this.isEligibleForWordCount(f));
 			const cacheStats = this.cacheManager.getCacheStats();
 			
-			console.log(`[Plugin] 缓存完整性检查: ${cacheStats.size} 条目 vs ${workspaceFiles.length} 文件（工作区）`);
+			console.debug(`[Plugin] 缓存完整性检查: ${cacheStats.size} 条目 vs ${workspaceFiles.length} 文件（工作区）`);
 			
 			// 缓存应该包含：文件数 + 文件夹数
 			// 更严格的检查：缓存条目数应该至少等于文件数（因为还有文件夹）
-			const shouldRebuild = !loaded || cacheStats.size < workspaceFiles.length;
+			let shouldRebuild = !loaded || cacheStats.size < workspaceFiles.length;
+			// 严格章节模式下旧缓存可能包含非章节文件数据，需要重建
+			if (loaded && !shouldRebuild && this.settings.enableStrictChapterMode) {
+				for (const [path, entry] of this.cacheManager.getEntries()) {
+					if (!entry.isFolder) {
+						const file = this.app.vault.getAbstractFileByPath(path);
+						if (file instanceof TFile && !this.isEligibleForWordCount(file)) {
+							shouldRebuild = true;
+							break;
+						}
+					}
+				}
+			}
 			
 			if (loaded && !shouldRebuild) {
 				// 加载成功且缓存完整，直接刷新显示
@@ -626,15 +646,17 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 				} else {
 					this.refreshFolderCounts();
 				}
-				console.log('[Plugin] 已从持久化存储加载缓存');
+				console.debug('[Plugin] 已从持久化存储加载缓存');
 				return;
 			}
 			
 			// 缓存不完整或不存在，重新构建
 			if (loaded && shouldRebuild) {
-				console.log(`[Plugin] 缓存不完整（${cacheStats.size} 条目 vs ${workspaceFiles.length} 文件），重新构建...`);
+				console.debug(`[Plugin] 缓存不完整（${cacheStats.size} 条目 vs ${workspaceFiles.length} 文件），重新构建...`);
+				// 清除旧缓存，否则非章节文件条目和父文件夹累积数据会残留
+				this.cacheManager.clearCache();
 			} else if (!loaded) {
-				console.log('[Plugin] 缓存不存在，开始构建...');
+				console.debug('[Plugin] 缓存不存在，开始构建...');
 			}
 
 			// 重新构建缓存
@@ -711,6 +733,10 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 
 	async toggleTimelineView() {
 		await this.viewManager.toggleView(TIMELINE_VIEW_TYPE);
+	}
+
+	async toggleRankingView() {
+		await this.viewManager.toggleView(RANKING_VIEW_TYPE);
 	}
 
 	async saveSettings() {
@@ -790,7 +816,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.obsHtmlBuilder.exportLegacyOBS(force);
 	}
 
-	getObsStats(): ObsStatsPayload {
+	async getObsStats(): Promise<ObsStatsPayload> {
 		return this.obsHtmlBuilder.getObsStats();
 	}
 

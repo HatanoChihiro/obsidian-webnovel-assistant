@@ -44,7 +44,12 @@ export abstract class CreativeView extends ItemView {
 	}
 
 	protected async onActiveFileChange() {
-		const activeFile = this.app.workspace.getActiveViewOfType(MarkdownView)?.file;
+		let activeFile = this.app.workspace.getActiveViewOfType(MarkdownView)?.file;
+		// 当侧面板获得焦点时，MarkdownView 不再是活跃视图，
+		// 使用 getActiveFile() 回退以保持文件夹上下文
+		if (!activeFile) {
+			activeFile = this.app.workspace.getActiveFile();
+		}
 		if (!activeFile) return;
 		const folder = activeFile.parent?.path || '';
 		if (folder !== this.currentFolder) {

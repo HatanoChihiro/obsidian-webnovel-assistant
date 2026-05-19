@@ -1,6 +1,7 @@
 import { TFile, TFolder, Vault } from 'obsidian';
 import { CACHE_CONFIG } from '../constants';
 import { SerializedWriter } from '../utils/SerializedWriter';
+import { getPluginDir } from '../utils/platform';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 
 /**
@@ -39,7 +40,7 @@ export class CacheManager {
 	constructor(plugin: WebNovelAssistantPlugin) {
 		this.cache = new Map();
 		this.plugin = plugin;
-		this.cacheFilePath = `${plugin.manifest.dir}/cache-data.json`;
+		this.cacheFilePath = `${getPluginDir(plugin)}/cache-data.json`;
 	}
 
 	/**
@@ -56,13 +57,13 @@ export class CacheManager {
 			if (await adapter.exists(this.cacheFilePath)) {
 				const content = await adapter.read(this.cacheFilePath);
 				cacheData = JSON.parse(content);
-				console.log('[CacheManager] 已从独立文件读取缓存数据');
+				console.debug('[CacheManager] 已从独立文件读取缓存数据');
 			} else {
 				// 兼容：从 data.json 读取旧版缓存进行迁移
 				const data = await this.plugin.loadData();
 				if (data && data.cacheData) {
 					cacheData = data.cacheData as CacheData;
-					console.log('[CacheManager] 检测到旧版本位于 data.json 的缓存数据，将通过首次保存迁移到独立文件');
+					console.debug('[CacheManager] 检测到旧版本位于 data.json 的缓存数据，将通过首次保存迁移到独立文件');
 					
 					// 触发持久化至新独立文件。原 data.json 中的数据会在下次保存设置时由于没有保留逻辑而被自发剥离清理掉
 					this.saveCache().catch(e => console.warn('缓存初始迁移保存失败:', e));
@@ -70,7 +71,7 @@ export class CacheManager {
 			}
 
 			if (!cacheData) {
-				console.log('[CacheManager] 没有找到持久化缓存');
+				console.debug('[CacheManager] 没有找到持久化缓存');
 				return false;
 			}
 			
@@ -84,18 +85,25 @@ export class CacheManager {
 			const age = Date.now() - cacheData.timestamp;
 			const maxAge = 7 * 24 * 60 * 60 * 1000; // 7 天
 			if (age > maxAge) {
-				console.log('[CacheManager] 缓存已过期，将重新构建');
+				console.debug('[CacheManager] 缓存已过期，将重新构建');
 				return false;
 			}
 
 			// 加载缓存
 			this.cache = new Map(cacheData.entries);
-			console.log(`[CacheManager] 已加载 ${this.cache.size} 个缓存条目（${Math.round(age / 1000 / 60)} 分钟前）`);
+			console.debug(`[CacheManager] 已加载 ${this.cache.size} 个缓存条目（${Math.round(age / 1000 / 60)} 分钟前）`);
 			return true;
 		} catch (error) {
 			console.error('[CacheManager] 加载缓存失败:', error);
 			return false;
 		}
+	}
+
+	/**
+	 * 获取所有缓存条目的迭代器
+	 */
+	getEntries(): IterableIterator<[string, CacheEntry]> {
+		return this.cache.entries();
 	}
 
 	/**
@@ -118,7 +126,7 @@ export class CacheManager {
 				const content = JSON.stringify(cacheData, null, 2);
 				await adapter.write(this.cacheFilePath, content);
 				
-				console.log(`[CacheManager] 已保存 ${this.cache.size} 个缓存条目到独立文件`);
+				console.debug(`[CacheManager] 已保存 ${this.cache.size} 个缓存条目到独立文件`);
 			} catch (error) {
 				console.error('[CacheManager] 保存缓存失败:', error);
 			}
@@ -136,7 +144,7 @@ export class CacheManager {
 		calculateWords: (content: string) => number,
 		isFileInWorkspace?: (file: TFile) => boolean
 	): Promise<void> {
-		console.log('[CacheManager] 开始构建初始缓存...');
+		console.debug('[CacheManager] 开始构建初始缓存...');
 		const startTime = Date.now();
 
 		try {
@@ -168,7 +176,7 @@ export class CacheManager {
 			}
 
 			const elapsed = Date.now() - startTime;
-			console.log(
+			console.debug(
 				`[CacheManager] 缓存构建完成: ${successCount} 个文件成功, ` +
 				`${failCount} 个文件失败, ` +
 				`${this.cache.size} 个缓存条目, 耗时 ${elapsed}ms`
@@ -184,6 +192,22 @@ export class CacheManager {
 			console.error('[CacheManager] 缓存构建失败:', error);
 			throw error;
 		}
+	}
+
+	/**
+	 * 获取文件夹字数（从缓存条目直接求和，不依赖文件夹缓存条目）
+	 * @param folderPath 文件夹路径
+	 * @returns 字数
+	 */
+	getFolderWordCount(folderPath: string): number {
+		let total = 0;
+		const prefix = folderPath ? folderPath + '/' : '';
+		for (const [path, entry] of this.cache) {
+			if (!entry.isFolder && path.startsWith(prefix)) {
+				total += entry.wordCount;
+			}
+		}
+		return total;
 	}
 
 	/**
@@ -281,7 +305,7 @@ export class CacheManager {
 	 */
 	clearCache(): void {
 		this.cache.clear();
-		console.log('[CacheManager] 缓存已清空');
+		console.debug('[CacheManager] 缓存已清空');
 	}
 
 	/**
@@ -319,9 +343,22 @@ export class CacheManager {
 		
 		const toDeleteCount = Math.floor(fileEntries.length * 0.2);
 		for (let i = 0; i < toDeleteCount; i++) {
-			this.cache.delete(fileEntries[i][0]);
+			const [path, entry] = fileEntries[i];
+			// 从父文件夹中减去被清理文件的字数
+			const file = this.plugin.app.vault.getAbstractFileByPath(path);
+			if (file) {
+				let parent = file.parent;
+				while (parent) {
+					const parentEntry = this.cache.get(parent.path);
+					if (parentEntry) {
+						parentEntry.wordCount = Math.max(0, parentEntry.wordCount - entry.wordCount);
+					}
+					parent = parent.parent;
+				}
+			}
+			this.cache.delete(path);
 		}
 		
-		console.log(`[CacheManager] 已从 ${entries.length} 个条目中清理 ${toDeleteCount} 个旧文件缓存（保留所有文件夹缓存）`);
+		console.debug(`[CacheManager] 已从 ${entries.length} 个条目中清理 ${toDeleteCount} 个旧文件缓存（保留所有文件夹缓存）`);
 	}
 }

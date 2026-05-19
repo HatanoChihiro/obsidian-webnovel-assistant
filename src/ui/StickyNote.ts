@@ -382,6 +382,8 @@ export class FloatingStickyNote extends Component {
 
 		// 监听输入以实现自动保存和视觉反馈
 		this.textareaEl.addEventListener('input', () => {
+			// 始终同步内存中的 content，确保 onunload 时数据不丢失
+			this.state.content = this.textareaEl.value;
 			// 视觉反馈：如果内容与最后保存的不一致，高亮保存按钮
 			const isDirty = this.textareaEl.value !== this.lastSavedContent;
 			if (isDirty && !this.plugin.settings.stickyNoteAutoSave) {

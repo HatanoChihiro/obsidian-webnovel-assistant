@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
-    "target": "ES2018",
+    "target": "ES2021",
+    "lib": ["ES2021", "DOM"],
     "module": "Node16",
     "moduleResolution": "Node16",
     "strict": true,
@@ -12,10 +13,11 @@
     "alwaysStrict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true
   },
   "include": [
     "main.ts",
     "src/**/*"
   ]
-}
+}

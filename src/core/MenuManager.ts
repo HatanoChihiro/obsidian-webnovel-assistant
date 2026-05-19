@@ -6,6 +6,8 @@ import { isDesktop } from '../utils/platform';
 import { ChapterSorter } from '../services/ChapterSorter';
 import { TimelineAddFromSelectionModal } from '../ui/TimelineView';
 import { TimelineManager } from '../services/TimelineManager';
+import { RankingManager } from '../services/RankingManager';
+import { RankingAddModal } from '../ui/RankingModal';
 
 export class MenuManager {
 	private plugin: WebNovelAssistantPlugin;
@@ -47,6 +49,15 @@ export class MenuManager {
 						.onClick(() => this.handleMergeChapters(file));
 				});
 			}
+
+			// 榜单追踪：文件和文件夹右键菜单
+			if (file instanceof TFile || file instanceof TFolder) {
+				menu.addItem((item) => {
+					item.setTitle('开启榜单追踪').setIcon('trophy').onClick(() => {
+						this.openRankingModal(file);
+					});
+				});
+			}
 		}));
 
 		this.plugin.registerEvent(this.plugin.app.workspace.on('editor-menu', (menu, editor, view) => {
@@ -67,6 +78,16 @@ export class MenuManager {
 						
 						const chapterName = view.file?.basename || '';
 						const folderPath = view.file?.parent?.path || '';
+						
+						// 读取已有条目中的类型，传入 Modal 供选择
+						const tlManager = new TimelineManager(this.plugin.app, this.plugin, folderPath);
+						const tlFile = tlManager.getTimelineFile();
+						const localTypes: string[] = [];
+						if (tlFile) {
+							const tlContent = await this.plugin.app.vault.read(tlFile);
+							const tlEntries = tlManager.parseEntries(tlContent);
+							localTypes.push(...new Set(tlEntries.map((e: any) => e.type).filter(Boolean)));
+						}
 						
 						new TimelineAddFromSelectionModal(
 							this.plugin.app,
@@ -91,7 +112,8 @@ export class MenuManager {
 									await new Promise(resolve => setTimeout(resolve, 100)); // 给文件写入一点时间
 									await leaves[0].view.refresh?.();
 								}
-							}
+							},
+							localTypes
 						).open();
 					});
 				});
@@ -126,8 +148,42 @@ export class MenuManager {
 						});
 					});
 				}
+
+				// 榜单追踪
+				menu.addItem((item) => {
+					item.setTitle('开启榜单追踪').setIcon('trophy').onClick(() => {
+						this.openRankingModal(view.file!);
+					});
+				});
 			}
 		}));
+	}
+
+	private openRankingModal(file: TFile | TFolder) {
+		const folderPath = file instanceof TFile ? (file.parent?.path || '') : file.path;
+		const manager = new RankingManager(this.plugin.app, this.plugin, folderPath);
+		const rankingFile = manager.getRankingFile();
+
+		if (!rankingFile) {
+			// 首次新建
+			new RankingAddModal(this.plugin.app, this.plugin, manager, 1, '', async (entry) => {
+				await manager.addEntry(entry);
+				new Notice('[成功] 已创建榜单追踪');
+				this.plugin.toggleRankingView();
+			}).open();
+		} else {
+			// 已有榜单记录，新增榜单
+			manager.loadEntries().then(entries => {
+				const nextPeriod = manager.getNextPeriod(entries || []);
+				const lastPlatform = entries && entries.length > 0
+					? entries[entries.length - 1].platform : '';
+				new RankingAddModal(this.plugin.app, this.plugin, manager, nextPeriod, lastPlatform, async (entry) => {
+					await manager.addEntry(entry);
+					new Notice('[成功] 已新增榜单');
+					this.plugin.toggleRankingView();
+				}).open();
+			});
+		}
 	}
 
 	private async handleMergeChapters(file: TFolder) {

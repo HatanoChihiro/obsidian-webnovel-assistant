@@ -7,7 +7,6 @@ import { STYLES } from '../constants';
  * 减少 Modal 类之间的代码重复
  */
 export abstract class BaseFormModal extends Modal {
-	protected contentEl: HTMLElement;
 
 	/**
 	 * 创建输入字段（文本或文本域）

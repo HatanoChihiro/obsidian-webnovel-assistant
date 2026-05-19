@@ -11,6 +11,7 @@ yarn-debug.log*
 yarn-error.log*
 
 # 编译输出
+main.js
 *.js.map
 
 # 操作系统

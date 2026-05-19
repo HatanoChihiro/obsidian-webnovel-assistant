@@ -1,4 +1,4 @@
-import { App, Notice, PluginSettingTab, Setting } from 'obsidian';
+import { App, MarkdownView, Notice, PluginSettingTab, Setting } from 'obsidian';
 import { isDesktop, isMobile, getPlatformTier } from '../utils/platform';
 import { ObsOverlayServer } from '../services/ObsServer';
 import { ChapterSorter } from '../services/ChapterSorter';
@@ -17,7 +17,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 	private activeTab: string = 'general';
 
 	constructor(app: App, plugin: WebNovelAssistantPlugin) {
-		super(app, plugin);
+		super(app, plugin as any);
 		this.plugin = plugin;
 	}
 
@@ -269,6 +269,27 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		this.displayStickyNoteSettings(containerEl);
 		this.displayForeshadowingSettings(containerEl);
 		this.displayTimelineSettings(containerEl);
+		this.displayRankingSettings(containerEl);
+	}
+
+	// ── 榜单追踪 ──
+	private displayRankingSettings(containerEl: HTMLElement): void {
+		containerEl.createEl('h2', { text: '榜单追踪' });
+
+		new Setting(containerEl)
+			.setName('榜单记录文件名')
+			.setDesc('榜单数据保存到当前文件夹下的此文件中（无需 .md 后缀）。')
+			.addText(text => text
+				.setPlaceholder('榜单记录')
+				.setValue(this.plugin.settings.ranking?.fileName || '榜单记录')
+				.onChange(async (value) => {
+					const trimmed = value.trim().replace(/\.md$/i, '');
+					if (!this.plugin.settings.ranking) {
+						this.plugin.settings.ranking = { fileName: '榜单记录' };
+					}
+					this.plugin.settings.ranking.fileName = trimmed || '榜单记录';
+					await this.plugin.saveSettings();
+				}));
 	}
 
 	// ── 排序规则 ──
@@ -277,7 +298,8 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			.setName('排序规则配置')
 			.setHeading();
 
-		const rulesContainer = containerEl.createDiv({ style: 'width: 100%;' });
+		const rulesContainer = containerEl.createDiv();
+	rulesContainer.style.width = '100%';
 
 		const renderRules = () => {
 			rulesContainer.empty();
@@ -580,6 +602,15 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				}));
 
 		new Setting(containerEl)
+			.setName('显示榜单目标进度')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.immersive.immersiveShowRankingProgress)
+				.onChange(async (value) => {
+					this.plugin.settings.immersive.immersiveShowRankingProgress = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
 			.setName('显示本场净增')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.immersive.immersiveShowSessionWords)
@@ -588,7 +619,6 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 	}
-
 	// ── 伏笔标注设置 ──
 	private displayForeshadowingSettings(containerEl: HTMLElement): void {
 		containerEl.createEl('h2', { text: '伏笔标注' });

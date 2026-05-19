@@ -33,7 +33,7 @@ export class FileEventManager {
 						if (oldWordCount === null) {
 							this.plugin.cacheManager.updateFileCache(file, newWordCount, this.plugin.app.vault);
 							this.plugin.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
-								this.plugin.updateFileCacheAndRefresh(file);
+								this.plugin.refreshFolderCounts();
 							}, 500);
 							return;
 						}
@@ -57,11 +57,16 @@ export class FileEventManager {
 					} catch (error) {
 						console.error('[Plugin] 更新每日历史统计失败:', error);
 					}
+					// 非活跃文件：缓存已更新，只刷新显示
+					this.plugin.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
+						this.plugin.refreshFolderCounts();
+					}, 500);
+				} else {
+					// 活跃文件：由 EditorTracker 追踪，这里只刷新文件浏览器显示
+					this.plugin.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
+						this.plugin.updateFileCacheAndRefresh(file);
+					}, 500);
 				}
-
-				this.plugin.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
-					this.plugin.updateFileCacheAndRefresh(file);
-				}, 500);
 			}
 		}));
 	}

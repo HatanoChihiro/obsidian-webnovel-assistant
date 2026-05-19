@@ -1,5 +1,6 @@
 import { Plugin } from 'obsidian';
 import { DailyStat } from '../types/settings';
+import { getPluginDir } from '../utils/platform';
 
 /**
  * 历史数据管理器
@@ -20,7 +21,7 @@ export class HistoryDataManager {
 	constructor(plugin: Plugin) {
 		this.plugin = plugin;
 		// 历史数据文件路径：.obsidian/plugins/WebNovel Assistant/history-data.json
-		this.historyFilePath = `${plugin.manifest.dir}/history-data.json`;
+		this.historyFilePath = `${getPluginDir(plugin)}/history-data.json`;
 	}
 
 	/**
@@ -43,7 +44,7 @@ export class HistoryDataManager {
 					this.historyData = {};
 				}
 				
-				console.log(`[HistoryDataManager] 已从独立文件加载 ${Object.keys(this.historyData).length} 条历史记录`);
+				console.debug(`[HistoryDataManager] 已从独立文件加载 ${Object.keys(this.historyData).length} 条历史记录`);
 				return this.historyData;
 			}
 
@@ -52,27 +53,27 @@ export class HistoryDataManager {
 			
 			// 从 data.json 的 historyData key 迁移
 			if (data && data.historyData && typeof data.historyData === 'object' && !Array.isArray(data.historyData)) {
-				console.log('[HistoryDataManager] 检测到 data.json 中的历史数据，开始迁移到独立文件');
+				console.debug('[HistoryDataManager] 检测到 data.json 中的历史数据，开始迁移到独立文件');
 				this.historyData = data.historyData;
 				this.dirty = true;
 				await this.saveHistory();
-				console.log(`[HistoryDataManager] 已迁移 ${Object.keys(this.historyData).length} 条历史记录到独立文件`);
+				console.debug(`[HistoryDataManager] 已迁移 ${Object.keys(this.historyData).length} 条历史记录到独立文件`);
 				return this.historyData;
 			}
 			
 			// 从旧版 dailyHistory key 迁移
 			if (data && data.dailyHistory && typeof data.dailyHistory === 'object' && !Array.isArray(data.dailyHistory)) {
-				console.log('[HistoryDataManager] 检测到旧版历史数据，开始迁移到独立文件');
+				console.debug('[HistoryDataManager] 检测到旧版历史数据，开始迁移到独立文件');
 				this.historyData = data.dailyHistory;
 				this.dirty = true;
 				await this.saveHistory();
-				console.log(`[HistoryDataManager] 已迁移 ${Object.keys(this.historyData).length} 条历史记录到独立文件`);
+				console.debug(`[HistoryDataManager] 已迁移 ${Object.keys(this.historyData).length} 条历史记录到独立文件`);
 				// 注意：不删除旧 dailyHistory key，保证降级安全
 				return this.historyData;
 			}
 
 			// 无历史数据
-			console.log('[HistoryDataManager] 无历史数据，创建空记录');
+			console.debug('[HistoryDataManager] 无历史数据，创建空记录');
 			return {};
 		} catch (error) {
 			console.error('[HistoryDataManager] 加载历史数据失败:', error);
@@ -111,7 +112,7 @@ export class HistoryDataManager {
 			const content = JSON.stringify(this.historyData, null, 2);
 			await adapter.write(this.historyFilePath, content);
 			this.dirty = false;
-			console.log('[HistoryDataManager] 历史数据已保存到独立文件');
+			console.debug('[HistoryDataManager] 历史数据已保存到独立文件');
 		} catch (error) {
 			console.error('[HistoryDataManager] 保存历史数据失败:', error);
 		} finally {
@@ -124,9 +125,9 @@ export class HistoryDataManager {
 	 * 主要用于 onunload 生命周期
 	 */
 	async flush(): Promise<void> {
-		if (this.dirty) {
-			await this.saveHistory();
-		}
+		// 卸载时强制写入，不依赖 dirty 标志防止数据丢失
+		this.dirty = true;
+		await this.saveHistory();
 		if (this.pendingSave) {
 			await this.pendingSave;
 		}
@@ -208,6 +209,7 @@ export class HistoryDataManager {
 	 * 增加指定日期指定小时的专注时长
 	 */
 	addHourlyFocusTime(date: string, hour: number, ms: number): void {
+		if (hour < 0 || hour > 23) return;
 		const stat = this.getOrCreateDailyStat(date);
 		if (!stat.hourlyFocus) stat.hourlyFocus = new Array(24).fill(0);
 		stat.hourlyFocus[hour] += ms;
@@ -218,6 +220,7 @@ export class HistoryDataManager {
 	 * 增加指定日期指定小时的摸鱼时长
 	 */
 	addHourlySlackTime(date: string, hour: number, ms: number): void {
+		if (hour < 0 || hour > 23) return;
 		const stat = this.getOrCreateDailyStat(date);
 		if (!stat.hourlySlack) stat.hourlySlack = new Array(24).fill(0);
 		stat.hourlySlack[hour] += ms;

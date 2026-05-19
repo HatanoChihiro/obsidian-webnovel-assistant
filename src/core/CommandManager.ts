@@ -43,6 +43,12 @@ export class CommandManager {
 			callback: () => this.plugin.toggleTimelineView()
 		});
 
+		this.plugin.addCommand({
+			id: 'toggle-ranking-view',
+			name: '打开/关闭榜单追踪面板',
+			callback: () => this.plugin.toggleRankingView()
+		});
+
 		if (isDesktop()) { // Desktop
 			this.plugin.addCommand({
 				id: 'toggle-immersive-mode',
@@ -82,7 +88,7 @@ export class CommandManager {
 					this.plugin.sessionAddedWords = 0;
 					this.plugin.isTracking = false;
 					this.plugin.workerManager?.postMessage('stop');
-					this.plugin.editorTracker.handleFileChange();
+					this.plugin.editorTracker?.handleFileChange();
 					this.plugin.exportLegacyOBS(true);
 					this.plugin.refreshStatusViews();
 					new Notice('直播数据已重置！统计已暂停，请手动开始新的场次。');
@@ -156,7 +162,8 @@ export class CommandManager {
 					try {
 						await this.plugin.cacheManager.buildInitialCache(
 							this.plugin.app.vault,
-							this.plugin.calculateAccurateWords.bind(this.plugin)
+							this.plugin.calculateAccurateWords.bind(this.plugin),
+							this.plugin.isEligibleForWordCount.bind(this.plugin)
 						);
 						notice.hide();
 						this.plugin.refreshFolderCounts();
@@ -236,12 +243,15 @@ export class CommandManager {
 				};
 
 				if (fm.foreshadowingFileExists(file)) {
-					new ForeshadowingInputModal(this.plugin.app, this.plugin, file.basename, selectedText, submitCallback).open();
+					fm.getExistingTags(file).then(extraTags => {
+						new ForeshadowingInputModal(this.plugin.app, this.plugin, file.basename, selectedText, submitCallback, extraTags).open();
+					});
 				} else {
 					const fileName = this.plugin.settings.foreshadowing?.fileName || '伏笔';
 					const folderPath = file.parent?.path || '';
-					new ConfirmCreateForeshadowingFileModal(this.plugin.app, fileName, folderPath, () => {
-						new ForeshadowingInputModal(this.plugin.app, this.plugin, file.basename, selectedText, submitCallback).open();
+					new ConfirmCreateForeshadowingFileModal(this.plugin.app, fileName, folderPath, async () => {
+						const extraTags = await fm.getExistingTags(file);
+					new ForeshadowingInputModal(this.plugin.app, this.plugin, file.basename, selectedText, submitCallback, extraTags).open();
 					}).open();
 				}
 				return true;

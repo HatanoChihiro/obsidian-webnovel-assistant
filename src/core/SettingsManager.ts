@@ -88,7 +88,7 @@ export class SettingsManager {
 		try {
 			const data = await this.plugin.loadData();
 
-			this.settings = this.deepMerge(this.defaultSettings, (data || {}) as Partial<AccurateCountSettings>);
+			this.settings = this.deepMerge(this.defaultSettings as unknown as Record<string, unknown>, ((data || {}) as Record<string, unknown>)) as unknown as AccurateCountSettings;
 			this.settings = this.migrateSettings(this.settings, data);
 
 			// 从内存对象中剥离扁平键（deepMerge 会把旧数据的扁平键合并为顶层属性）
@@ -100,12 +100,12 @@ export class SettingsManager {
 				this.settings = this.fixInvalidSettings(this.settings);
 			}
 
-			console.log('[SettingsManager] 设置加载成功');
+			console.debug('[SettingsManager] 设置加载成功');
 			return this.settings;
 		} catch (error) {
 			console.error('[SettingsManager] 加载设置失败:', error);
 			new Notice('加载设置失败，已使用默认设置');
-			this.settings = this.deepMerge(this.defaultSettings, {} as Partial<AccurateCountSettings>);
+			this.settings = this.deepMerge(this.defaultSettings as unknown as Record<string, unknown>, {}) as unknown as AccurateCountSettings;
 			return this.settings;
 		}
 	}
@@ -231,7 +231,7 @@ export class SettingsManager {
 		settings: AccurateCountSettings,
 		oldData: unknown
 	): AccurateCountSettings {
-		const migrated = this.deepMerge(this.defaultSettings, settings as Partial<AccurateCountSettings>) as unknown as AccurateCountSettings;
+		const migrated = this.deepMerge(this.defaultSettings as unknown as Record<string, unknown>, settings as unknown as Record<string, unknown>) as unknown as AccurateCountSettings;
 
 		if (oldData && typeof oldData === 'object' && 'noteColors' in oldData) {
 			const noteColors = (oldData as { noteColors?: string[] }).noteColors;
@@ -240,7 +240,7 @@ export class SettingsManager {
 					bg: color,
 					text: '#2C3E50'
 				}));
-				console.log('[SettingsManager] 已迁移旧版便签颜色到新版主题');
+				console.debug('[SettingsManager] 已迁移旧版便签颜色到新版主题');
 			}
 		}
 
@@ -264,10 +264,10 @@ export class SettingsManager {
 					}
 				}
 				migrated.immersive = this.deepMerge(
-					this.defaultSettings.immersive as Record<string, unknown>,
-					immersive as Record<string, unknown>
-				) as ImmersiveModeSettings;
-				console.log('[SettingsManager] 已迁移扁平化沉浸模式设置到嵌套结构');
+					this.defaultSettings.immersive as unknown as Record<string, unknown>,
+					immersive as unknown as Record<string, unknown>
+				) as unknown as ImmersiveModeSettings;
+				console.debug('[SettingsManager] 已迁移扁平化沉浸模式设置到嵌套结构');
 			}
 
 			const obsKeys = FLAT_OBS_KEYS;
@@ -288,10 +288,10 @@ export class SettingsManager {
 					}
 				}
 				migrated.obs = this.deepMerge(
-					this.defaultSettings.obs as Record<string, unknown>,
-					obs as Record<string, unknown>
-				) as ObsSettings;
-				console.log('[SettingsManager] 已迁移扁平化 OBS 设置到嵌套结构');
+					this.defaultSettings.obs as unknown as Record<string, unknown>,
+					obs as unknown as Record<string, unknown>
+				) as unknown as ObsSettings;
+				console.debug('[SettingsManager] 已迁移扁平化 OBS 设置到嵌套结构');
 			}
 		}
 
@@ -315,6 +315,6 @@ export class SettingsManager {
 	async resetToDefaults(): Promise<void> {
 		this.settings = { ...this.defaultSettings };
 		await this.saveSettings();
-		console.log('[SettingsManager] 已重置为默认设置');
+		console.debug('[SettingsManager] 已重置为默认设置');
 	}
 }

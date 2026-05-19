@@ -21,6 +21,7 @@ export class TimelineAddModal extends Modal {
 	private onSubmit: (entry: any) => void;
 	private returnFullEntry: boolean; // true 时返回完整 TimelineEntry，false 时返回简化对象
 	private plugin: WebNovelAssistantPlugin;
+	private typeOptions: string[];
 
 	constructor(
 		app: App,
@@ -29,7 +30,8 @@ export class TimelineAddModal extends Modal {
 		sourceFile: string,
 		folderPath: string,
 		onSubmit: (entry: any) => void,
-		returnFullEntry: boolean = true
+		returnFullEntry: boolean = true,
+		typeOptions: string[] = []
 	) {
 		super(app);
 		this.plugin = plugin;
@@ -38,6 +40,7 @@ export class TimelineAddModal extends Modal {
 		this.folderPath = folderPath;
 		this.onSubmit = onSubmit;
 		this.returnFullEntry = returnFullEntry;
+		this.typeOptions = typeOptions;
 	}
 
 	onOpen() {
@@ -136,9 +139,10 @@ export class TimelineAddModal extends Modal {
 		// 添加空选项
 		const emptyOption = typeSelect.createEl('option', { value: '', text: '-- 选择类型 --' });
 		
-		// 从设置中获取默认类型列表
-		const defaultTypes = this.plugin.settings.timeline?.defaultTypes || ['主线', '支线', '伏笔', '世界观', '人物'];
-		defaultTypes.forEach((type: string) => {
+		// 合并全局默认类型 + 文件已有类型
+		const globalTypes = this.plugin.settings.timeline?.defaultTypes || ['主线', '支线', '伏笔', '世界观', '人物'];
+		const allTypes = [...new Set([...globalTypes, ...this.typeOptions])];
+		allTypes.forEach((type: string) => {
 			typeSelect.createEl('option', { value: type, text: type });
 		});
 		
@@ -181,11 +185,6 @@ export class TimelineAddModal extends Modal {
 			let typeValue = typeSelect.value;
 			if (typeValue === '__custom__') {
 				typeValue = customInput.value.trim();
-				// 如果是自定义类型且不为空，添加到设置中
-				if (typeValue && !this.plugin.settings.timeline.defaultTypes.includes(typeValue)) {
-					this.plugin.settings.timeline.defaultTypes.push(typeValue);
-					await this.plugin.saveSettings();
-				}
 			}
 			
 			const entry: TimelineEntry = {
@@ -215,9 +214,10 @@ export class TimelineAddFromSelectionModal extends TimelineAddModal {
 		description: string,
 		sourceFile: string,
 		folderPath: string,
-		onSubmit: (entry: { time: string; description: string; chapter: string; type: string }) => void
+		onSubmit: (entry: { time: string; description: string; chapter: string; type: string }) => void,
+		typeOptions: string[] = []
 	) {
-		super(app, plugin, description, sourceFile, folderPath, onSubmit, false);
+		super(app, plugin, description, sourceFile, folderPath, onSubmit, false, typeOptions);
 	}
 }
 
@@ -274,7 +274,7 @@ export class TimelineView extends CreativeView {
 
 		const addBtn = titleRow.createEl('button', { cls: 'timeline-add-btn', title: '新增事件' });
 		addBtn.setText('+');
-		addBtn.onclick = () => this.showAddForm(container);
+		addBtn.onclick = () => this.showAddForm(container, typeOptions);
 
 		header.createDiv({ cls: 'timeline-view-folder', text: this.currentFolder || '根目录' });
 
@@ -587,8 +587,9 @@ export class TimelineView extends CreativeView {
 		const typeSelect = form.createEl('select', { cls: 'timeline-form-input' });
 		
 		typeSelect.createEl('option', { value: '', text: '-- 选择类型 --' });
-		const defaultTypes = this.plugin.settings.timeline?.defaultTypes || ['主线', '支线', '伏笔', '世界观', '人物'];
-		defaultTypes.forEach((type: string) => {
+		// 合并全局默认类型 + 文件已有类型
+		const editTypeOptions = this.getTypeFilterOptions(allEntries);
+		editTypeOptions.forEach((type: string) => {
 			const option = typeSelect.createEl('option', { value: type, text: type });
 			if (type === entry.type) option.selected = true;
 		});
@@ -598,7 +599,7 @@ export class TimelineView extends CreativeView {
 		customInput.placeholder = '输入自定义类型';
 		customInput.style.cssText = 'margin-top:4px;display:none;';
 		
-		if (entry.type && !defaultTypes.includes(entry.type)) {
+		if (entry.type && !editTypeOptions.includes(entry.type)) {
 			typeSelect.value = '__custom__';
 			customInput.value = entry.type;
 			customInput.style.display = 'block';
@@ -655,12 +656,7 @@ export class TimelineView extends CreativeView {
 			let typeValue = typeSelect.value;
 			if (typeValue === '__custom__') {
 				typeValue = customInput.value.trim();
-				if (typeValue && !this.plugin.settings.timeline.defaultTypes.includes(typeValue)) {
-					this.plugin.settings.timeline.defaultTypes.push(typeValue);
-					await this.plugin.saveSettings();
-				}
 			}
-			
 			const updated: TimelineEntry = {
 				time: timeInput.value.trim(),
 				description: items.map(it => it.description).filter(Boolean).join('\n'),
@@ -684,7 +680,7 @@ export class TimelineView extends CreativeView {
 		setTimeout(() => timeInput.focus(), 50);
 	}
 
-	private showAddForm(container: HTMLElement) {
+	private showAddForm(container: HTMLElement, typeOptions: string[] = []) {
 		// 如果已有添加表单，不重复创建
 		if (container.querySelector('.timeline-add-form')) return;
 
@@ -771,9 +767,11 @@ export class TimelineView extends CreativeView {
 		// 添加空选项
 		typeSelect.createEl('option', { value: '', text: '-- 选择类型 --' });
 		
-		// 从设置中获取默认类型列表
-		const defaultTypes = this.plugin.settings.timeline?.defaultTypes || ['主线', '支线', '伏笔', '世界观', '人物'];
-		defaultTypes.forEach((type: string) => {
+		// 合并全局默认类型 + 文件已有类型
+		// 合并全局默认类型 + 文件已有类型
+		const globalTypes = this.plugin.settings.timeline?.defaultTypes || ['主线', '支线', '伏笔', '世界观', '人物'];
+		const allTypes = [...new Set([...globalTypes, ...typeOptions])];
+		allTypes.forEach((type: string) => {
 			typeSelect.createEl('option', { value: type, text: type });
 		});
 		
@@ -821,11 +819,6 @@ export class TimelineView extends CreativeView {
 			let typeValue = typeSelect.value;
 			if (typeValue === '__custom__') {
 				typeValue = customInput.value.trim();
-				// 如果是自定义类型且不为空，添加到设置中
-				if (typeValue && !this.plugin.settings.timeline.defaultTypes.includes(typeValue)) {
-					this.plugin.settings.timeline.defaultTypes.push(typeValue);
-					await this.plugin.saveSettings();
-				}
 			}
 			
 			const entry: TimelineEntry = {
@@ -864,6 +857,11 @@ export class TimelineView extends CreativeView {
 			new Notice(`已创建时间线文件：${fileName}`);
 		}
 
+		// 读取已有条目中的类型，传入 Modal 供选择
+		const existingContent = await this.app.vault.read(file);
+		const existingEntries = this.manager.parseEntries(existingContent);
+		const localTypes = [...new Set(existingEntries.map(e => e.type).filter(Boolean))];
+
 		// 弹出输入 Modal
 		const modal = new TimelineAddModal(
 			this.app,
@@ -882,7 +880,8 @@ export class TimelineView extends CreativeView {
 					(leaves[0].view as TimelineView).refresh();
 				}
 			},
-			true // 返回完整 TimelineEntry
+			true, // 返回完整 TimelineEntry
+			localTypes
 		);
 		modal.open();
 	}

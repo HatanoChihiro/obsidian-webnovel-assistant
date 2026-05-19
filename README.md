@@ -1,5 +1,7 @@
 # WebNovel Assistant
 
+A powerful Obsidian plugin designed for Chinese web novel writers. Features accurate word count, writing goal tracking, focus/slack time analysis, foreshadowing management, timeline system, sticky notes, and OBS streaming overlay — all optimized for the Chinese writing workflow.
+
 专为网文小说创作设计的 Obsidian 插件 | Obsidian Plugin for Chinese Web Novel Writing
 
 一个功能强大的 Obsidian 插件，专为中文网络小说作者打造，提供字数统计、写作目标追踪、伏笔管理、时间线系统、OBS 直播叠加层等丰富功能。
@@ -8,6 +10,8 @@
 
 [![GitHub release](https://img.shields.io/github/v/release/HatanoChihiro/obsidian-webnovel-assistant)](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/releases)
 [![License](https://img.shields.io/github/license/HatanoChihiro/obsidian-webnovel-assistant)](LICENSE)
+
+<img width="2560" height="1380" alt="image" src="https://github.com/user-attachments/assets/b96bb383-8292-4348-8461-0e51ec84cb5d" />
 
 ---
 
@@ -27,9 +31,12 @@
 - **辅助面板**: 快速唤出章节列表、伏笔追踪、时间线与多功能悬浮便签
 - **卡片式布局**: 现代化的辅助面板设计，支持自定义位置与大小
 
+<img width="2560" height="1440" alt="image" src="https://github.com/user-attachments/assets/8cbeeae9-b838-41aa-a36c-1655923ee46e" />
+
 ### 📊 字数统计与目标追踪
 - 实时统计字数，适配中文创作平台计算规则
-- 章节目标、今日目标，进度可视化
+- 章节目标、今日目标、榜单目标，进度可视化
+- 写作状态面板显示当前作品信息（目录名、总字数）
 - **严格章节模式**: 字数统计、进度条及提醒仅在符合规则的章节中生效，写大纲不计入进度
 - **字数实时提醒**: 在编辑器左侧行号区域实时显示累计字数提醒，支持自定义间隔
 - **高稳定性架构**: 采用编辑器事件与文件系统双重校验，彻底解决字数统计跳变问题
@@ -41,12 +48,15 @@
 - 历史统计图表（日/周/月/年），支持横向滚动
 - Worker 线程处理，不影响编辑性能
 
+<img width="1318" height="974" alt="image" src="https://github.com/user-attachments/assets/00ebd058-2e13-4ba6-8faf-a87d2c9b7493" />
+
 ### 📝 创作辅助工具
 - **悬浮便签**: 多端同步、自动保存、独立存储、支持 Markdown 渲染
 - **选项卡式设置**: 模块化设置页面，分类更清晰，操作更便捷
 - **伏笔管理**: 标注、追踪、多章节回收
 - **时间线系统**: 事件记录、多章节关联、类型分类
-- **智能章节排序**：自动识别章节编号排序，支持“大纲”、“番外”等具名章节
+- **榜单追踪**: 追踪签约平台的榜单任务，自动计算字数增量，到期自动关闭，起始字数可手动修改
+- **智能章节排序**：自动识别章节编号排序，支持”大纲”、”番外”等具名章节
 - **规则排序优化**：设置页面支持通过 ▲/▼ 按钮自由调整排序规则优先级
 - **合并章节**：一键合并文件夹内所有章节
 
@@ -97,6 +107,7 @@
 | 打开/关闭写作实时状态面板 | 显示详细统计和历史图表 |
 | 打开/关闭伏笔面板 | 管理伏笔标注和回收 |
 | 打开/关闭时间线面板 | 管理故事时间线 |
+| 打开/关闭榜单面板 | 管理榜单追踪任务 |
 | 开始/暂停 摸鱼时间统计 | 切换时间追踪 |
 | 标注为伏笔 | 将选中文字标注为伏笔 |
 | 新建空白悬浮便签 | 创建浮动便签 |
@@ -120,6 +131,7 @@
 | 沉浸模式便签尺寸 | 280 | 沉浸模式下便签卡片的正方形边长 |
 | 伏笔文件名 | 伏笔 | 伏笔文件的名称 |
 | 时间线文件名 | 时间线 | 时间线文件的名称 |
+| 榜单文件名 | 榜单记录 | 榜单记录文件的名称 |
 
 更多设置请查看 **[用户使用指南](USER_GUIDE.md)**
 
@@ -153,8 +165,4 @@
 
 **祝你写作愉快！** ✍️
 
----
-
-## 🔍 搜索关键词
-
-Obsidian 插件、Obsidian plugin、网文写作、网络小说、小说创作工具、中文写作、字数统计、word count、写作目标、writing goals、伏笔管理、时间线、timeline、OBS 叠加层、直播写作、creative writing、markdown editor、productivity tool、作家工具、novelist tool、中文网文、起点、晋江、番茄小说
+

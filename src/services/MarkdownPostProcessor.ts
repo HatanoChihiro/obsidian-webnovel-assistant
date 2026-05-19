@@ -89,7 +89,7 @@ export class MarkdownPostProcessor {
 				}
 
 				new ForeshadowingRecoveryModal(this.plugin.app, contentPreview, file.parent?.path || '', async (recoveryFileNames) => {
-					const success = await this.plugin.foreshadowingManager.markAsRecovered(
+					const success = await this.plugin.foreshadowingManager?.markAsRecovered(
 						file, sourceFileName, createdAt, recoveryFileNames
 					);
 					if (success) {

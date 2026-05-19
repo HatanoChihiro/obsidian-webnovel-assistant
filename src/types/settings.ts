@@ -4,6 +4,7 @@
  * 本文件包含插件设置、主题配置和便签状态相关的类型定义
  */
 import { ForeshadowingSettings } from './foreshadowing';
+import { RankingSettings } from './ranking';
 
 /** 时间线功能相关设置 */
 export interface TimelineSettings {
@@ -104,6 +105,8 @@ export interface ImmersiveModeSettings {
 	/** 数据仪表盘：是否显示本场净增字数 */
 	immersiveShowSessionWords: boolean;
 	/** 左侧面板宽度百分比 */
+	/** 数据仪表盘：是否显示榜单进度 */
+	immersiveShowRankingProgress: boolean;
 	immersiveLeftSize: number;
 	/** 右侧面板宽度百分比 */
 	immersiveRightSize: number;
@@ -181,6 +184,8 @@ export interface AccurateCountSettings {
 	foreshadowing: ForeshadowingSettings;
 	/** 时间线功能设置 */
 	timeline: TimelineSettings;
+	/** 榜单追踪功能设置 */
+	ranking: RankingSettings;
 	/** 护眼模式：是否启用编辑区绿色背景 */
 	eyeCareEnabled: boolean;
 	/** 护眼模式背景色（十六进制） */

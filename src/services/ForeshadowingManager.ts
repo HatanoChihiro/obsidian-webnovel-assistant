@@ -262,7 +262,9 @@ export class ForeshadowingManager {
 			// LRU 缓存：超过限制时删除最早的条目
 			if (ForeshadowingManager.entryPatternCache.size >= ForeshadowingManager.MAX_CACHE_SIZE) {
 				const firstKey = ForeshadowingManager.entryPatternCache.keys().next().value;
-				ForeshadowingManager.entryPatternCache.delete(firstKey);
+				if (firstKey !== undefined) {
+					ForeshadowingManager.entryPatternCache.delete(firstKey);
+				}
 			}
 			
 			const pattern = new RegExp(
@@ -357,20 +359,20 @@ export class ForeshadowingManager {
 		sourceFile: string,
 		createdAt: string
 	): Promise<boolean> {
-		const content = await this.app.vault.read(targetFile);
+		return this.writer.enqueue(async () => {
+			const content = await this.app.vault.read(targetFile);
 
-		// 使用缓存的正则表达式
-		const titlePattern = this.getEntryPattern(sourceFile, createdAt, '未回收');
+			const titlePattern = this.getEntryPattern(sourceFile, createdAt, '未回收');
+			const newContent = content.replace(
+				titlePattern,
+				(match, before, statusLabel) => `${before}${statusLabel}已废弃`
+			);
 
-		if (!titlePattern.test(content)) return false;
+			if (newContent === content) return false;
 
-		const newContent = content.replace(
-			titlePattern,
-			(match, before, statusLabel) => `${before}${statusLabel}已废弃`
-		);
-
-		await this.app.vault.modify(targetFile, newContent);
-		return true;
+			await this.app.vault.modify(targetFile, newContent);
+			return true;
+		});
 	}
 
 	/**
@@ -381,21 +383,30 @@ export class ForeshadowingManager {
 		sourceFile: string,
 		createdAt: string
 	): Promise<boolean> {
-		const content = await this.app.vault.read(targetFile);
+		return this.writer.enqueue(async () => {
+			const content = await this.app.vault.read(targetFile);
 
-		// 使用缓存的正则表达式
-		const titlePattern = this.getEntryPattern(sourceFile, createdAt, '已废弃');
+			const titlePattern = this.getEntryPattern(sourceFile, createdAt, '已废弃');
+			const newContent = content.replace(
+				titlePattern,
+				(match, before, statusLabel) => `${before}${statusLabel}未回收`
+			);
 
-		if (!titlePattern.test(content)) return false;
+			if (newContent === content) return false;
 
-		const newContent = content.replace(
-			titlePattern,
-			(match, before, statusLabel) => `${before}${statusLabel}未回收`
-		);
-
-		await this.app.vault.modify(targetFile, newContent);
-		return true;
+			await this.app.vault.modify(targetFile, newContent);
+			return true;
+		});
 	}
+	async getExistingTags(sourceFile: TFile): Promise<string[]> {
+		const folder = sourceFile.parent?.path || '';
+		const foreshadowFile = this.getForeshadowingFileByFolder(folder);
+		if (!foreshadowFile) return [];
+		const content = await this.app.vault.cachedRead(foreshadowFile);
+		const entries = this.parseEntries(content);
+		return [...new Set(entries.flatMap(e => e.tags))];
+	}
+
 	async openForeshadowingFile(targetFile: TFile): Promise<void> {
 		await this.app.workspace.getLeaf('tab').openFile(targetFile);
 	}

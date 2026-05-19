@@ -56,38 +56,31 @@ export function calcFocusRate(history: Record<string, DailyStat>, startDate: str
 	return totalFocus + totalSlack > 0 ? Math.round(totalFocus / (totalFocus + totalSlack) * 100) : 0;
 }
 
-export function calcActiveHours(history: Record<string, DailyStat>, startDate: string, endDate: string): string[] {
-	const hourlyTotals = new Array(24).fill(0);
-	for (const [date, stat] of Object.entries(history)) {
-		if (date >= startDate && date <= endDate && stat.hourlyFocus) {
-			for (let h = 0; h < 24; h++) {
-				hourlyTotals[h] += stat.hourlyFocus[h] || 0;
+export function calcActiveHours(history: Record<string, DailyStat>, startDate: string, endDate: string): string {
+		const hourlyTotals = new Array(24).fill(0);
+		for (const [date, stat] of Object.entries(history)) {
+			if (date >= startDate && date <= endDate && stat.hourlyFocus) {
+				for (let h = 0; h < 24; h++) {
+					hourlyTotals[h] += stat.hourlyFocus[h] || 0;
+				}
 			}
 		}
-	}
-	const ranked = hourlyTotals.map((v, i) => ({ hour: i, total: v }))
-		.filter(x => x.total > 0)
-		.sort((a, b) => b.total - a.total);
+		const ranked = hourlyTotals.map((v, i) => ({ hour: i, total: v }))
+			.filter(x => x.total > 0)
+			.sort((a, b) => b.total - a.total);
 
-	if (ranked.length === 0) return [];
+		if (ranked.length === 0) return '';
 
-	const ranges: string[] = [];
-	let rangeStart = ranked[0].hour;
-	let rangeEnd = ranked[0].hour;
-
-	for (let i = 1; i < Math.min(ranked.length, 3); i++) {
-		if (ranked[i].hour === rangeEnd + 1 || ranked[i].hour === rangeStart - 1) {
-			rangeStart = Math.min(rangeStart, ranked[i].hour);
-			rangeEnd = Math.max(rangeEnd, ranked[i].hour);
-		} else {
-			ranges.push(`${rangeStart}-${rangeEnd + 1}时`);
-			rangeStart = ranked[i].hour;
-			rangeEnd = ranked[i].hour;
+		// Expand from peak hour to adjacent active hours
+		let lo = ranked[0].hour;
+		let hi = ranked[0].hour;
+		for (let i = 1; i < ranked.length; i++) {
+			if (ranked[i].hour === lo - 1) lo = ranked[i].hour;
+			else if (ranked[i].hour === hi + 1) hi = ranked[i].hour;
+			else break;
 		}
+		return `${lo}-${hi + 1}\u65F6`;
 	}
-	ranges.push(`${rangeStart}-${rangeEnd + 1}时`);
-	return ranges;
-}
 
 export function calcDailyAverage(history: Record<string, DailyStat>, startDate: string, endDate: string): number {
 	let totalWords = 0, daysWithData = 0;
@@ -272,7 +265,7 @@ this.scrollWrapper = contentEl.createDiv({ cls: 'stats-chart-scroll-wrapper' });
 			const metrics = [
 				{ label: '连续创作', value: `${streak}天` },
 				{ label: '专注效率', value: `${focusRate}%` },
-				{ label: '活跃时段', value: activeHours.length > 0 ? activeHours.join('、') : '--' },
+				{ label: '活跃时段', value: activeHours || '--' },
 				{ label: '日均字数', value: formatCount(dailyAvg) },
 				{ label: '累计字数', value: formatCount(totalWords) },
 			];

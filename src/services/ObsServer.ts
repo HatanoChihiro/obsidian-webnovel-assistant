@@ -34,7 +34,7 @@ export class ObsOverlayServer {
 			const http = window.require('http') as import('../types/node').NodeHTTP;
 			const plugin = this.plugin;
 
-			this.server = http.createServer((req: import('../types/node').NodeHTTPRequest, res: import('../types/node').NodeHTTPResponse) => {
+			this.server = http.createServer(async (req: import('../types/node').NodeHTTPRequest, res: import('../types/node').NodeHTTPResponse) => {
 				// [安全] 校验请求基本有效性
 				if (!req.url) { res.writeHead(400); res.end(); return; }
 				if (req.method !== 'GET') { res.writeHead(405); res.end(); return; }
@@ -48,7 +48,8 @@ export class ObsOverlayServer {
 						'Content-Type': 'application/json',
 						'Access-Control-Allow-Origin': 'http://localhost'
 					});
-					res.end(JSON.stringify(plugin.getObsStats()));
+					const stats = await plugin.getObsStats();
+					res.end(JSON.stringify(stats));
 				} else {
 					res.writeHead(200, {
 						'Content-Type': 'text/html; charset=utf-8',
@@ -59,7 +60,7 @@ export class ObsOverlayServer {
 			});
 
 			this.server.listen(this.port, '127.0.0.1', () => {
-				console.log(`[WebNovel Assistant] OBS Overlay server started at http://127.0.0.1:${this.port}`);
+				console.debug(`[WebNovel Assistant] OBS Overlay server started at http://127.0.0.1:${this.port}`);
 				new Notice(`OBS 叠加层已启动: http://127.0.0.1:${this.port}`);
 			});
 
@@ -113,7 +114,7 @@ export class ObsOverlayServer {
 			await new Promise<void>((resolve) => {
 				server.close(() => resolve());
 			});
-			console.log('[WebNovel Assistant] OBS Overlay server stopped');
+			console.debug('[WebNovel Assistant] OBS Overlay server stopped');
 		}
 	}
 

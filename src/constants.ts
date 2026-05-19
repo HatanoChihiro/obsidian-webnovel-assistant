@@ -91,6 +91,7 @@ export const VIEW_TYPES = {
 	STATUS: 'status-view',
 	FORESHADOWING: 'foreshadowing-view',
 	TIMELINE: 'timeline-view',
+	RANKING: 'ranking-view',
 	CREATIVE: 'creative-view',
 	IMMERSIVE_CHAPTER_LIST: 'immersive-chapter-list-view',
 	IMMERSIVE_STICKY_NOTES: 'immersive-sticky-notes-view',
@@ -231,7 +232,7 @@ export const FLAT_IMMERSIVE_KEYS = [
 	'immersiveShowChapterList', 'immersiveShowReference', 'immersiveShowStickyNotes',
 	'immersiveShowForeshadowing', 'immersiveShowTimeline', 'immersiveShowTotalTime',
 	'immersiveShowFocusTime', 'immersiveShowSlackTime', 'immersiveShowChapterProgress',
-	'immersiveShowDailyProgress', 'immersiveShowSessionWords', 'immersiveLeftSize',
+	'immersiveShowDailyProgress', 'immersiveShowSessionWords', 'immersiveShowRankingProgress', 'immersiveLeftSize',
 	'immersiveRightSize', 'immersiveBottomSize', 'immersiveBottomInternalSizes',
 	'immersivePanelPosition', 'immersiveNoteSize', 'immersiveNoteFontSize',
 	'immersiveTypewriterMode', 'immersiveLayout'
@@ -270,6 +271,9 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 		fileName: '时间线',
 		defaultTypes: ['主线', '支线', '回忆', '伏笔线', '暗线'],
 	},
+	ranking: {
+		fileName: '榜单记录',
+	},
 	eyeCareEnabled: false,
 	eyeCareColor: '#E8F5E9',
 	showMobileFloatingStats: true, // 默认显示移动端浮窗
@@ -292,6 +296,7 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 		immersiveShowChapterProgress: true,
 		immersiveShowDailyProgress: true,
 		immersiveShowSessionWords: true,
+			immersiveShowRankingProgress: true,
 		immersiveLeftSize: 11,
 		immersiveRightSize: 30,
 		immersiveBottomSize: 20,

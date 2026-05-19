@@ -1,5 +1,6 @@
 import { StickyNoteState } from '../types/settings';
 import { SerializedWriter } from '../utils/SerializedWriter';
+import { getPluginDir } from '../utils/platform';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 
 /**
@@ -15,7 +16,7 @@ export class StickyNoteDataManager {
 
 	constructor(plugin: WebNovelAssistantPlugin) {
 		this.plugin = plugin;
-		this.notesFilePath = `${plugin.manifest.dir}/notes-data.json`;
+		this.notesFilePath = `${getPluginDir(plugin)}/notes-data.json`;
 	}
 
 	/**
@@ -40,12 +41,12 @@ export class StickyNoteDataManager {
 					console.warn(`[StickyNoteDataManager] 过滤掉 ${rawNotes.length - this.notesData.length} 个无效便签条目`);
 				}
 				
-				console.log(`[StickyNoteDataManager] 已从独立文件加载 ${this.notesData.length} 个便签`);
+				console.debug(`[StickyNoteDataManager] 已从独立文件加载 ${this.notesData.length} 个便签`);
 				return this.notesData;
 			}
 
 
-			console.log("[StickyNoteDataManager] 未发现现有便签数据");
+			console.debug("[StickyNoteDataManager] 未发现现有便签数据");
 			return [];
 		} catch (error) {
 			console.error("[StickyNoteDataManager] 加载便签数据失败:", error);
@@ -61,16 +62,17 @@ export class StickyNoteDataManager {
 		
 		// 使用串行写入器确保顺序写入，防止文件损坏
 		return this.writer.enqueue(async () => {
+			this._isWriting = true;
 			try {
 				const adapter = this.plugin.app.vault.adapter;
-				this._isWriting = true;
 				const content = JSON.stringify(this.notesData, null, 2);
 				await adapter.write(this.notesFilePath, content);
-				this._isWriting = false;
 				// 触发全局事件，通知其他组件同步数据
 				this.plugin.app.workspace.trigger('webnovel:notes-changed');
 			} catch (error) {
 				console.error("[StickyNoteDataManager] 保存便签数据失败:", error);
+			} finally {
+				this._isWriting = false;
 			}
 		});
 	}

@@ -30,7 +30,7 @@ export class EditorTracker {
         
 		// [BUGFIX] 如果当前文件与上次记录的文件不符，说明 active-leaf-change 还没来得及更新 lastFileWords
 		// 此时不应计算 delta，而是应该先同步文件状态
-		if (view.file.path !== this.plugin.lastFilePath) {
+		if (!view.file || view.file.path !== this.plugin.lastFilePath) {
 			this.handleFileChange();
 			return;
 		}
@@ -59,7 +59,9 @@ export class EditorTracker {
 		
 		// [BUGFIX] 同步更新文件浏览器缓存
 		// 极其重要：这确保了后续 modify 事件（由自动保存触发）计算出的 delta 为 0，防止重复统计。
+		if (view.file) {
 		this.plugin.cacheManager.updateFileCache(view.file, currentCount, this.app.vault);
+	}
 
 		this.updateWordCount();
 		this.plugin.refreshStatusViews();

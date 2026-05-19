@@ -14,6 +14,7 @@ export class ForeshadowingInputModal extends Modal {
 	private sourceFileName: string;
 	private selectedContent: string;
 	private onSubmit: (description: string, tags: string[]) => void;
+	private extraTags: string[];
 
 	private descriptionEl!: HTMLTextAreaElement;
 	private tagsEl!: HTMLInputElement;
@@ -23,13 +24,15 @@ export class ForeshadowingInputModal extends Modal {
 		plugin: WebNovelAssistantPlugin,
 		sourceFileName: string,
 		selectedContent: string,
-		onSubmit: (description: string, tags: string[]) => void
+		onSubmit: (description: string, tags: string[]) => void,
+		extraTags: string[] = []
 	) {
 		super(app);
 		this.plugin = plugin;
 		this.sourceFileName = sourceFileName;
 		this.selectedContent = selectedContent;
 		this.onSubmit = onSubmit;
+		this.extraTags = extraTags;
 	}
 
 	onOpen() {
@@ -77,11 +80,12 @@ export class ForeshadowingInputModal extends Modal {
 		this.tagsEl.style.cssText = 'width:100%;margin-bottom:8px;padding:6px 8px;border-radius:4px;border:1px solid var(--background-modifier-border);background:var(--background-primary);color:var(--text-normal);';
 
 		// 常用标签快捷按钮
-		const defaultTags: string[] = this.plugin.settings.foreshadowing?.defaultTags || ['人物', '情节', '世界观', '道具', '伏线'];
-		if (defaultTags.length > 0) {
+		const globalTags: string[] = this.plugin.settings.foreshadowing?.defaultTags || ['人物', '情节', '世界观', '道具', '伏线'];
+		const allTags = [...new Set([...globalTags, ...this.extraTags])];
+		if (allTags.length > 0) {
 			const tagBtnContainer = contentEl.createDiv({ cls: 'foreshadowing-tag-buttons' });
 			tagBtnContainer.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px;';
-			for (const tag of defaultTags) {
+			for (const tag of allTags) {
 				const btn = tagBtnContainer.createEl('button', { text: `#${tag}` });
 				btn.style.cssText = 'padding:2px 10px;border-radius:12px;border:1px solid var(--interactive-accent);color:var(--interactive-accent);background:transparent;cursor:pointer;font-size:0.85em;';
 				btn.onclick = () => {

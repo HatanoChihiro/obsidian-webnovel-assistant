@@ -32,11 +32,11 @@ export class ImmersiveModeManager {
 
 	/**
 	 * 从 leaf 向上找到真正的 WorkspaceSplit（跳过 WorkspaceTabs）
-	 * @param leaf 起始叶子
+	 * @param leaf 赴始叶子
 	 * @param direction 可选，限定只返回指定方向的 split
 	 */
 	private getParentSplit(leaf: WorkspaceLeaf, direction?: 'vertical' | 'horizontal'): any {
-		let node = leaf.parent;
+		let node: any = leaf.parent;
 		while (node && node.parent) {
 			if (node.direction !== undefined) {
 				if (!direction || node.direction === direction) return node;
@@ -200,7 +200,7 @@ export class ImmersiveModeManager {
 		let finalLeftLeaf: WorkspaceLeaf | null = null;
 		let finalRightLeaf: WorkspaceLeaf | null = null;
 		let finalBottomLeaf: WorkspaceLeaf | null = null;
-		const pendingSizes: Array<{ split: { children: any[]; containerEl: HTMLElement }; sizes: number[] }> = [];
+		const pendingSizes: Array<{ split: any; sizes: number[] }> = [];
 
 		// 2. 创建底部辅助面板
 		const showBottom = immersive.immersiveShowStickyNotes || immersive.immersiveShowForeshadowing || immersive.immersiveShowTimeline;
@@ -294,14 +294,13 @@ export class ImmersiveModeManager {
 		// 确保主编辑器聚焦
 		workspace.setActiveLeaf(mainLeaf, { focus: true });
 
-		// 字数提醒刷新：沉浸模式布局切换后，CSS和行高可能还未稳定，强制延迟刷新编辑器扩展确保gutter位置正确
 		setTimeout(() => this.app.workspace.updateOptions(), 300);
 	}
 
 	/**
 	 * 延迟应用面板比例（递归重试，确保 DOM 渲染完成后生效）
 	 */
-	private applyPendingSizes(pendingSizes: Array<{ split: { children: any[]; containerEl: HTMLElement }; sizes: number[] }>): void {
+	private applyPendingSizes(pendingSizes: Array<{ split: any; sizes: number[] }>): void {
 		const apply = (attempt = 0) => {
 			let hasFailure = false;
 			for (const { split, sizes } of pendingSizes) {
@@ -362,6 +361,7 @@ export class ImmersiveModeManager {
 			slackTime: centerDiv.createSpan({ cls: 'stat-item slack' }),
 			chapterProgress: centerDiv.createSpan({ cls: 'stat-item' }),
 			dailyProgress: centerDiv.createSpan({ cls: 'stat-item' }),
+			rankingProgress: centerDiv.createSpan({ cls: 'stat-item' }),
 			sessionWords: centerDiv.createSpan({ cls: 'stat-item' })
 		};
 
@@ -388,28 +388,33 @@ export class ImmersiveModeManager {
 		}
 	}
 
-	private renderTopBarContent(): void {
+	private async renderTopBarContent(): Promise<void> {
 		if (!this.topBarEl) return;
-		const immersive = this.plugin.settings.immersive;
-		const stats = this.plugin.obsHtmlBuilder.getObsStats();
+		try {
+			const immersive = this.plugin.settings.immersive;
+			const stats = await this.plugin.obsHtmlBuilder.getObsStats();
 
-		const updateStatEl = (key: string, show: boolean, text: string) => {
-			const el = this.topBarStatsEls[key];
-			if (!el) return;
-			if (show) {
-				if (el.style.display === 'none') el.style.display = '';
-				if (el.innerText !== text) el.innerText = text;
-			} else {
-				if (el.style.display !== 'none') el.style.display = 'none';
-			}
-		};
+			const updateStatEl = (key: string, show: boolean, text: string) => {
+				const el = this.topBarStatsEls[key];
+				if (!el) return;
+				if (show) {
+					if (el.style.display === 'none') el.style.display = '';
+					if (el.innerText !== text) el.innerText = text;
+				} else {
+					if (el.style.display !== 'none') el.style.display = 'none';
+				}
+			};
 
-		updateStatEl('totalTime', !!immersive.immersiveShowTotalTime, `总计 (${stats.totalTime})`);
-		updateStatEl('focusTime', !!immersive.immersiveShowFocusTime, `专注 (${stats.focusTime})`);
-		updateStatEl('slackTime', !!immersive.immersiveShowSlackTime, `摸鱼 (${stats.slackTime})`);
-		updateStatEl('chapterProgress', !!immersive.immersiveShowChapterProgress, `章节进度 (${stats.todayWords}/${stats.goal})`);
-		updateStatEl('dailyProgress', !!immersive.immersiveShowDailyProgress, `今日进度 (${stats.dailyWords}/${stats.dailyGoal})`);
-		updateStatEl('sessionWords', !!immersive.immersiveShowSessionWords, `本场净增 (${stats.sessionWords})`);
+			updateStatEl('totalTime', !!immersive.immersiveShowTotalTime, `总计 (${stats.totalTime})`);
+			updateStatEl('focusTime', !!immersive.immersiveShowFocusTime, `专注 (${stats.focusTime})`);
+			updateStatEl('slackTime', !!immersive.immersiveShowSlackTime, `摸鱼 (${stats.slackTime})`);
+			updateStatEl('chapterProgress', !!immersive.immersiveShowChapterProgress, `章节进度 (${stats.todayWords}/${stats.goal})`);
+			updateStatEl('dailyProgress', !!immersive.immersiveShowDailyProgress, `今日进度 (${stats.dailyWords}/${stats.dailyGoal})`);
+			updateStatEl('rankingProgress', !!immersive.immersiveShowRankingProgress, `榜单进度 (${stats.rankingWords}/${stats.rankingGoal})`);
+			updateStatEl('sessionWords', !!immersive.immersiveShowSessionWords, `本场净增 (${stats.sessionWords})`);
+		} catch (e) {
+			console.error('[ImmersiveModeManager] renderTopBarContent failed:', e);
+		}
 	}
 
 	/**
@@ -433,7 +438,7 @@ export class ImmersiveModeManager {
 			if (split && split.direction === 'vertical' && split.containerEl && split.children) {
 				const totalWidth = split.containerEl.offsetWidth;
 				if (totalWidth > 0) {
-					const child = split.children.find(c => c.containerEl && c.containerEl.contains(leftLeaf.containerEl));
+					const child = split.children.find((c: any) => c.containerEl && c.containerEl.contains(leftLeaf.containerEl));
 					if (child) {
 						immersive.immersiveLeftSize = Math.round((child.containerEl.offsetWidth / totalWidth) * 100);
 					}
@@ -447,7 +452,7 @@ export class ImmersiveModeManager {
 			if (split && split.direction === 'vertical' && split.containerEl && split.children) {
 				const totalWidth = split.containerEl.offsetWidth;
 				if (totalWidth > 0) {
-					const child = split.children.find(c => c.containerEl && c.containerEl.contains(refLeaf.containerEl));
+					const child = split.children.find((c: any) => c.containerEl && c.containerEl.contains(refLeaf.containerEl));
 					if (child) {
 						const pct = Math.round((child.containerEl.offsetWidth / totalWidth) * 100);
 						if (pct > 0 && pct < 100) {
@@ -464,7 +469,7 @@ export class ImmersiveModeManager {
 			if (split && split.direction === 'horizontal' && split.containerEl && split.children) {
 				const totalHeight = split.containerEl.offsetHeight;
 				if (totalHeight > 0) {
-					const child = split.children.find(c => c.containerEl && c.containerEl.contains(anyBottomLeaf.containerEl));
+					const child = split.children.find((c: any) => c.containerEl && c.containerEl.contains(anyBottomLeaf.containerEl));
 					if (child) {
 						immersive.immersiveBottomSize = Math.round((child.containerEl.offsetHeight / totalHeight) * 100);
 					}
@@ -495,7 +500,7 @@ export class ImmersiveModeManager {
 			}
 		}
 
-		console.log('[WebNovel Assistant] 沉浸模式比例已保存:', {
+		console.debug('[WebNovel Assistant] 沉浸模式比例已保存:', {
 			left: immersive.immersiveLeftSize,
 			right: immersive.immersiveRightSize,
 			bottom: immersive.immersiveBottomSize,

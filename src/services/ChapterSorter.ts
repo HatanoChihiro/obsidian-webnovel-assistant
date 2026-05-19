@@ -55,7 +55,7 @@ export class ChapterSorter {
 		
 		for (let i = 0; i < str.length; i++) {
 			const char = str[i];
-			const num = this.chineseToArabic[char];
+			const num = char in this.chineseToArabic ? this.chineseToArabic[char as keyof typeof this.chineseToArabic] : undefined;
 			
 			if (num !== undefined) {
 				// 数字字符

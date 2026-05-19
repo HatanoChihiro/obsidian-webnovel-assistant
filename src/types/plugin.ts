@@ -3,11 +3,12 @@
  *
  * 用于解决循环依赖问题，为服务层和 UI 层提供类型安全的插件引用
  */
-import { App, EventRef, TFile } from 'obsidian';
+import { App, Command, EventRef, PluginManifest, TFile, ViewCreator, WorkspaceLeaf } from 'obsidian';
 import { AccurateCountSettings } from './settings';
 import { ObsStatsPayload } from './stats';
 import type { CacheManager } from '../services/CacheManager';
 import type { ForeshadowingManager } from '../services/ForeshadowingManager';
+import type { RankingManager } from '../services/RankingManager';
 import type { TimelineManager } from '../services/TimelineManager';
 import type { FileExplorerPatcher } from '../services/FileExplorerPatcher';
 import type { SettingsManager } from '../core/SettingsManager';
@@ -37,7 +38,13 @@ import type { FileEventManager } from '../services/FileEventManager';
 export interface WebNovelAssistantPlugin {
 	// Obsidian 核心
 	app: App;
-	registerEvent(eventRef: EventRef): EventRef;
+	manifest: PluginManifest;
+	// 注意：Obsidian 运行时实际返回 EventRef，但官方 .d.ts 声明为 void
+	registerEvent(eventRef: EventRef): void;
+	registerView(type: string, viewCreator: ViewCreator): void;
+	registerInterval(id: number): number;
+	loadData(): Promise<any>;
+	addCommand(command: Command): Command;
 
 	// 启动状态
 	isLayoutReady: boolean;
@@ -64,6 +71,8 @@ export interface WebNovelAssistantPlugin {
 
 	// 以下属性在 onload 中初始化，可能为 undefined
 	foreshadowingManager?: ForeshadowingManager;
+	rankingManager?: RankingManager;
+	timelineManager?: TimelineManager;
 	editorTracker?: EditorTracker;
 	styleManager?: StyleManager;
 
@@ -76,6 +85,7 @@ export interface WebNovelAssistantPlugin {
 	lastTickTime: number;
 	lastFileWords: number;
 	lastFilePath: string;
+	lastRankingFolder: string;
 
 	// Worker 和服务
 	obsServer: ObsOverlayServer | null;
@@ -100,6 +110,7 @@ export interface WebNovelAssistantPlugin {
 	toggleStatusView(): Promise<void>;
 	toggleForeshadowingView(): Promise<void>;
 	toggleTimelineView(): Promise<void>;
+	toggleRankingView(): Promise<void>;
 	refreshStatusViews(): void;
 
 	// 缓存管理
@@ -108,11 +119,18 @@ export interface WebNovelAssistantPlugin {
 	refreshFolderCounts(): void;
 
 	// OBS 相关
-	getObsStats(): ObsStatsPayload;
+	getObsStats(): Promise<ObsStatsPayload>;
 	buildObsOverlayHtml(): string;
 	exportLegacyOBS(force?: boolean): void;
 
 	// 样式管理
 	applyEyeCare(): void;
 	removeEyeCare(): void;
+
+	// 便签同步
+	syncFloatingNotes(): void;
+	syncActiveNotesToManager(): void;
+
+	// 便签创建
+	createStickyNote(options: any): void;
 }

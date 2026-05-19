@@ -34,7 +34,7 @@ export class ImmersiveChapterListView extends ItemView {
 	/**
 	 * 刷新章节列表内容
 	 */
-	private async refresh() {
+	public async refresh() {
 		const { containerEl } = this;
 		containerEl.empty();
 		
@@ -44,7 +44,7 @@ export class ImmersiveChapterListView extends ItemView {
 		let currentFolder: TFolder | null = null;
 		const activeFile = this.app.workspace.getActiveFile();
 		if (activeFile) {
-			currentFolder = activeFile.parent;
+			currentFolder = activeFile.parent ?? this.app.vault.getRoot();
 		}
 
 		// 如果通过 activeFile 没找到，尝试从所有 Markdown 叶子中找
@@ -53,7 +53,7 @@ export class ImmersiveChapterListView extends ItemView {
 			for (const leaf of mdLeaves) {
 				const view = leaf.view as any;
 				if (view && view.file) {
-					currentFolder = view.file.parent;
+					currentFolder = view.file.parent ?? this.app.vault.getRoot();
 					break;
 				}
 			}

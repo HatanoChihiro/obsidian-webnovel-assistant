@@ -2,6 +2,7 @@ import { MarkdownView } from 'obsidian';
 import { hexToRgba, formatTime, parseGoal, isDesktop } from '../utils';
 import { ObsStatsPayload } from '../types/stats';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
+import { RankingManager } from './RankingManager';
 import type { DailyStat } from '../types/settings';
 
 /**
@@ -14,7 +15,7 @@ export class ObsHtmlBuilder {
 	/**
 	 * 获取 OBS 统计数据
 	 */
-	getObsStats(): ObsStatsPayload {
+	async getObsStats(): Promise<ObsStatsPayload> {
 		const focusSec = Math.floor(this.plugin.focusMs / 1000);
 		const slackSec = Math.floor(this.plugin.slackMs / 1000);
 		const totalSec = focusSec + slackSec;
@@ -38,6 +39,30 @@ export class ObsHtmlBuilder {
 		const todayAdded = todayStat.addedWords; // 允许负数，提醒作者删除了字数
 		const dailyGoal = this.plugin.settings.dailyGoal || 0;
 
+
+		// 榜单进度：基于目录判断，无活跃 MarkdownView 时使用上次文件夹
+		let rankingWords = 0;
+		let rankingGoal = 0;
+		let rankingFolder = '';
+		if (view?.file) {
+			rankingFolder = view.file.parent?.path || '';
+			this.plugin.lastRankingFolder = rankingFolder;
+		} else if (this.plugin.lastRankingFolder) {
+			rankingFolder = this.plugin.lastRankingFolder;
+		}
+		if (rankingFolder && this.plugin.rankingManager) {
+			const manager = new RankingManager(this.plugin.app, this.plugin, rankingFolder);
+			const rankingFile = manager.getRankingFile();
+			if (rankingFile) {
+				const rankingContent = await this.plugin.app.vault.cachedRead(rankingFile);
+				const entries = manager.parseEntries(rankingContent);
+				const active = manager.getActiveRanking(entries);
+				if (active) {
+					rankingWords = manager.calcProgress(active);
+					rankingGoal = active.wordTarget;
+				}
+			}
+		}
 		return {
 			isTracking: this.plugin.isTracking,
 			focusTime: formatTime(focusSec),
@@ -52,6 +77,8 @@ export class ObsHtmlBuilder {
 			dailyPercent: dailyGoal > 0 ? Math.max(0, Math.min(Math.round((todayAdded / dailyGoal) * 100), 100)) : 0,
 			currentFile: currentFile,
 			currentFolder: currentFolder,
+			rankingWords: rankingWords,
+			rankingGoal: rankingGoal,
 		};
 	}
 
@@ -85,32 +112,30 @@ export class ObsHtmlBuilder {
 		
 		// 白名单验证：只允许常见的 CSS 属性
 		const allowedProperties = new Set([
-			'color', 'background', 'font', 'margin', 'padding', 'border',
+			'color', 'background', 'background-color', 'background-image', 'font', 'margin', 'padding', 'border',
 			'width', 'height', 'display', 'position', 'top', 'left', 'right', 'bottom',
 			'opacity', 'transform', 'transition', 'animation', 'flex', 'grid',
 			'text-align', 'text-decoration', 'text-overflow', 'line-height', 'letter-spacing', 'word-break', 'white-space', 'overflow', 'visibility',
 			'z-index', 'cursor', 'pointer', 'box-shadow', 'border-radius', 'align-items', 'justify-content', 'gap', 'flex-wrap', 'font-weight', 'font-size', 'font-family', 'font-variant', 'font-stretch'
 		]);
 		
-		// 警告：如果包含不常见的属性
+		// 白名单过滤：只允许安全的 CSS 属性，剥理不在白名单中的行
 		const lines = sanitized.split('\n');
-		const suspiciousLines = lines.filter(line => {
-			const hasProperty = line.includes(':');
-			if (!hasProperty) return false;
-			
-			const property = line.split(':')[0].trim().toLowerCase();
-			// 跳过注释和空行
-			if (!property || property.startsWith('/*') || property.startsWith('//')) return false;
-			
-			// [安全] 精确匹配属性名，防止 'content-xxx' 等绕过 [M-S3]
-			return !allowedProperties.has(property);
+		const filtered = lines.filter(line => {
+			const colonIdx = line.indexOf(':');
+			if (colonIdx < 0) return true; // preserve selectors, comments, blank lines
+		
+			const property = line.slice(0, colonIdx).trim().toLowerCase();
+			if (!property || property.startsWith('/*') || property.startsWith('//')) return true;
+		
+			return allowedProperties.has(property);
 		});
 		
-		if (suspiciousLines.length > 0) {
-			console.warn('[ObsHtmlBuilder] 检测到可能不安全的 CSS 属性:', suspiciousLines);
+		if (filtered.length < lines.length) {
+			console.warn('[ObsHtmlBuilder] 已剥理不安全的 CSS 属性，原', lines.length, '行，过滤后', filtered.length, '行');
 		}
 		
-		return sanitized;
+		return filtered.join('\n')
 	}
 
 	/**

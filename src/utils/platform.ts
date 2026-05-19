@@ -14,13 +14,18 @@ export function isMobile(): boolean {
 
 function isTablet(): boolean {
 	const isPhone = document.body.classList.contains('is-phone');
-	const isIpad = Platform.isIpad;
 	const isWide = window.innerWidth >= 768;
-	return Platform.isMobile && (isIpad || (isWide && !isPhone));
+	// 兼容旧版 Obsidian：isTablet/isIpad 可能不存在
+	const platformTablet = (Platform as any).isTablet || (Platform as any).isIpad || false;
+	return Platform.isMobile && (platformTablet || (isWide && !isPhone));
 }
 
 export function getPlatformTier(): 'desktop' | 'tablet' | 'mobile' {
 	if (isDesktop()) return 'desktop';
 	if (isTablet()) return 'tablet';
 	return 'mobile';
+}
+
+export function getPluginDir(plugin: { manifest: { dir?: string; id?: string } }): string {
+	return plugin.manifest.dir || `.obsidian/plugins/${plugin.manifest.id || 'web-novel-assistant'}`;
 }
