@@ -1,27 +1,21 @@
 # WebNovel Assistant
 
-A powerful Obsidian plugin designed for Chinese web novel writers. Features accurate word count, writing goal tracking, focus/slack time analysis, foreshadowing management, timeline system, sticky notes, and OBS streaming overlay — all optimized for the Chinese writing workflow.
+**[English](#english)** | **中文**
 
-专为网文小说创作设计的 Obsidian 插件 | Obsidian Plugin for Chinese Web Novel Writing
-
-一个功能强大的 Obsidian 插件，专为中文网络小说作者打造，提供字数统计、写作目标追踪、伏笔管理、时间线系统、OBS 直播叠加层等丰富功能。
-
-**关键词**：Obsidian 插件、创作插件、网文写作、小说创作、字数统计、写作工具、中文写作、创意写作、Markdown 编辑器
+---
 
 [![GitHub release](https://img.shields.io/github/v/release/HatanoChihiro/obsidian-webnovel-assistant)](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/releases)
 [![License](https://img.shields.io/github/license/HatanoChihiro/obsidian-webnovel-assistant)](LICENSE)
 
-<img width="2560" height="1380" alt="image" src="https://github.com/user-attachments/assets/b96bb383-8292-4348-8461-0e51ec84cb5d" />
+一个功能强大的 Obsidian 插件，专为中文网络小说作者打造，提供字数统计、写作目标追踪、伏笔管理、时间线系统、OBS 直播叠加层等丰富功能。
 
----
+<img width="2560" height="1380" alt="status-view" src="assets/status-view.png" />
 
 ## 📖 文档
 
 - **[用户使用指南](USER_GUIDE.md)** - 完整的功能说明和使用教程
 - **[OBS 叠加层 CSS 指南](OBS_OVERLAY_CSS_GUIDE.md)** - 自定义 OBS 样式
 - **[更新日志](CHANGELOG.md)** - 版本更新记录
-
----
 
 ## ✨ 核心功能
 
@@ -31,7 +25,7 @@ A powerful Obsidian plugin designed for Chinese web novel writers. Features accu
 - **辅助面板**: 快速唤出章节列表、伏笔追踪、时间线与多功能悬浮便签
 - **卡片式布局**: 现代化的辅助面板设计，支持自定义位置与大小
 
-<img width="2560" height="1440" alt="image" src="https://github.com/user-attachments/assets/8cbeeae9-b838-41aa-a36c-1655923ee46e" />
+<img width="2560" height="1440" alt="immersive-mode" src="assets/immersive-mode.png" />
 
 ### 📊 字数统计与目标追踪
 - 实时统计字数，适配中文创作平台计算规则
@@ -48,7 +42,7 @@ A powerful Obsidian plugin designed for Chinese web novel writers. Features accu
 - 历史统计图表（日/周/月/年），支持横向滚动
 - Worker 线程处理，不影响编辑性能
 
-<img width="1318" height="974" alt="image" src="https://github.com/user-attachments/assets/00ebd058-2e13-4ba6-8faf-a87d2c9b7493" />
+<img width="1318" height="974" alt="history-chart" src="assets/history-chart.png" />
 
 ### 📝 创作辅助工具
 - **悬浮便签**: 多端同步、自动保存、独立存储、支持 Markdown 渲染
@@ -56,7 +50,7 @@ A powerful Obsidian plugin designed for Chinese web novel writers. Features accu
 - **伏笔管理**: 标注、追踪、多章节回收
 - **时间线系统**: 事件记录、多章节关联、类型分类
 - **榜单追踪**: 追踪签约平台的榜单任务，自动计算字数增量，到期自动关闭，起始字数可手动修改
-- **智能章节排序**：自动识别章节编号排序，支持”大纲”、”番外”等具名章节
+- **智能章节排序**：自动识别章节编号排序，支持"大纲"、"番外"等具名章节
 - **规则排序优化**：设置页面支持通过 ▲/▼ 按钮自由调整排序规则优先级
 - **合并章节**：一键合并文件夹内所有章节
 
@@ -71,21 +65,22 @@ A powerful Obsidian plugin designed for Chinese web novel writers. Features accu
 - **复制本文档**: 一键复制当前章节，并在首行自动添加文档标题，完美适配社交媒体与发布平台分享
 - 跨设备字数统计同步优化
 
----
-
 ## 📥 安装
 
-### 方法 1: 使用 BRAT（推荐）
+### 从 Obsidian 社区插件市场安装（推荐）
+1. 打开 **设置 → 第三方插件 → 浏览**
+2. 搜索 **"WebNovel Assistant"**
+3. 点击 **安装**，然后 **启用**
+
+### 使用 BRAT 安装
 1. 安装 [BRAT](https://github.com/TfTHacker/obsidian42-brat) 插件
 2. 在 BRAT 设置中添加此仓库：`HatanoChihiro/obsidian-webnovel-assistant`
 3. 启用插件
 
-### 方法 2: 手动安装
+### 手动安装
 1. 从 [Releases](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/releases) 下载最新版本
 2. 解压到 `.obsidian/plugins/web-novel-assistant/`
 3. 重启 Obsidian 并启用插件
-
----
 
 ## 🚀 快速开始
 
@@ -96,8 +91,6 @@ A powerful Obsidian plugin designed for Chinese web novel writers. Features accu
 5. **插件设置**中可自定义各项功能
 
 详细使用方法请查看 **[用户使用指南](USER_GUIDE.md)**
-
----
 
 ## 🎯 主要命令
 
@@ -116,8 +109,6 @@ A powerful Obsidian plugin designed for Chinese web novel writers. Features accu
 
 > **提示**：所有命令都可以在 Obsidian 设置 → 快捷键中自定义快捷键
 
----
-
 ## ⚙️ 主要设置
 
 | 设置 | 默认值 | 说明 |
@@ -135,8 +126,6 @@ A powerful Obsidian plugin designed for Chinese web novel writers. Features accu
 
 更多设置请查看 **[用户使用指南](USER_GUIDE.md)**
 
----
-
 ## 🎨 OBS 叠加层快速设置
 
 1. 插件设置 → 启用 **OBS 叠加层**
@@ -146,13 +135,9 @@ A powerful Obsidian plugin designed for Chinese web novel writers. Features accu
 
 详细自定义方法请查看 **[OBS 叠加层 CSS 指南](OBS_OVERLAY_CSS_GUIDE.md)**
 
----
-
 ## 📄 许可证
 
 [MIT License](LICENSE)
-
----
 
 ## 💖 支持项目
 
@@ -161,8 +146,60 @@ A powerful Obsidian plugin designed for Chinese web novel writers. Features accu
 - 🐛 [提交问题](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/issues)
 - 💡 [功能建议](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/discussions)
 
----
-
 **祝你写作愉快！** ✍️
 
-
+---
+
+<a id="english"></a>
+
+# WebNovel Assistant
+
+**English** | **[中文](#webnovel-assistant)**
+
+A powerful Obsidian plugin designed for Chinese web novel writers. Features accurate word count, writing goal tracking, focus/slack time analysis, foreshadowing management, timeline system, sticky notes, and OBS streaming overlay — all optimized for the Chinese writing workflow.
+
+<img width="2560" height="1380" alt="status-view" src="assets/status-view.png" />
+
+## Features
+
+- **Accurate Word Count** — Tailored for Chinese web novel platforms, excludes Markdown syntax and punctuation
+- **Writing Goals** — Chapter goal, daily goal, and ranking goal with real-time progress tracking
+- **Focus Timer** — Automatic focus/slack time detection with Web Worker threading
+- **Immersive Mode** — Full-screen distraction-free writing with dashboard and auxiliary panels
+- **Foreshadowing Manager** — Mark, track, and recover story foreshadowing across chapters
+- **Timeline System** — Track story events with multi-chapter associations and custom types
+- **Sticky Notes** — Floating notes with auto-save and Markdown rendering
+- **OBS Overlay** — Real-time writing stats overlay for live streaming (local HTTP server, 127.0.0.1 only)
+- **Smart Chapter Sorting** — Auto-detect chapter numbers (Arabic/Chinese) and sort in file explorer
+- **Chapter Merge & Export** — One-click merge all chapters into a single file
+- **Mobile Support** — Floating word count, touch-optimized controls, cross-device sync
+
+## Installation
+
+### From Obsidian Community Plugins (Recommended)
+1. Open **Settings → Community Plugins → Browse**
+2. Search for **"WebNovel Assistant"**
+3. Click **Install**, then **Enable**
+
+### Using BRAT
+1. Install the [BRAT](https://github.com/TfTHacker/obsidian42-brat) plugin
+2. Add this repository: `HatanoChihiro/obsidian-webnovel-assistant`
+3. Enable the plugin
+
+### Manual Installation
+1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/releases)
+2. Create folder `.obsidian/plugins/web-novel-assistant/` in your vault
+3. Copy the downloaded files into that folder
+4. Restart Obsidian and enable the plugin in Settings → Community Plugins
+
+## Quick Start
+
+1. After installation, open any Markdown file
+2. The **status bar** displays real-time word count
+3. Use **Command Palette** (Ctrl/Cmd + P) and search "WebNovel" to access all commands
+4. Configure features in **Settings → WebNovel Assistant**
+5. See the full [User Guide](USER_GUIDE.md) for detailed instructions
+
+## License
+
+[MIT License](LICENSE)

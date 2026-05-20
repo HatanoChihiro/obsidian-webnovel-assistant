@@ -483,20 +483,14 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			}
 		});
 
-		// 2. 更新或新建便签
-		notes.forEach(noteState => {
-			const activeNote = this.activeNotes.find(n => n.state.id === noteState.id);
-			if (activeNote) {
-				// 更新现有的
-				activeNote.state = noteState;
-				activeNote.renderContent(); // 重新渲染内容
-				activeNote.updateVisuals(); // 重新定位和着色
-			} else {
-				// 新建在沉浸模式中创建的便签
+		// 2. 处理沉浸模式中新建的便签
+		const activeIds = new Set(this.activeNotes.map(n => n.state.id));
+		for (const noteState of notes) {
+			if (!activeIds.has(noteState.id)) {
 				const newNote = new FloatingStickyNote(this.app, this, { state: noteState });
 				newNote.load();
 			}
-		});
+		}
 	}
 
 	/**
