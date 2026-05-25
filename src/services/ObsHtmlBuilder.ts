@@ -135,51 +135,7 @@ export class ObsHtmlBuilder {
 			console.warn('[ObsHtmlBuilder] 已剥理不安全的 CSS 属性，原', lines.length, '行，过滤后', filtered.length, '行');
 		}
 		
-		return filtered.join('\n')
-	}
-
-	/**
-	 * 导出旧版 OBS 文本文件（写入 txt 到指定目录）
-	 */
-	exportLegacyOBS(force?: boolean) {
-		if (!isDesktop() || !this.plugin.settings.obs.enableLegacyObsExport || !this.plugin.settings.obs.obsPath) return;
-		try {
-			const fs = window.require('fs') as import('../types/node').NodeFS;
-			const path = window.require('path') as import('../types/node').NodePath;
-			const dir = this.plugin.settings.obs.obsPath;
-
-			// [安全] 路径校验：防止路径遍历攻击
-			// 确保路径不包含 .. 且不是根目录等危险路径
-			if (dir.includes('..') || dir === '/' || /^[A-Z]:\\?$/i.test(dir)) {
-				throw new Error('无效或危险的 OBS 导出路径');
-			}
-
-			if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-
-			const totalSec = Math.floor((this.plugin.focusMs + this.plugin.slackMs) / 1000);
-			const focusSec = Math.floor(this.plugin.focusMs / 1000);
-			const slackSec = totalSec - focusSec;
-
-			fs.writeFileSync(path.join(dir, 'obs_focus_time.txt'), formatTime(focusSec), 'utf8');
-			fs.writeFileSync(path.join(dir, 'obs_slack_time.txt'), formatTime(slackSec), 'utf8');
-			fs.writeFileSync(path.join(dir, 'obs_total_time.txt'), formatTime(totalSec), 'utf8');
-			fs.writeFileSync(path.join(dir, 'obs_words_done.txt'), Math.max(0, this.plugin.sessionAddedWords).toString(), 'utf8');
-
-			let currentGoal = this.plugin.settings.defaultGoal;
-			const view = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
-			if (view?.file) {
-				const cache = this.plugin.app.metadataCache.getFileCache(view.file);
-				const fmGoal = parseGoal(cache?.frontmatter?.['word-goal']);
-				if (fmGoal > 0) currentGoal = fmGoal;
-			}
-			fs.writeFileSync(path.join(dir, 'obs_words_goal.txt'), currentGoal.toString(), 'utf8');
-		} catch (e) {
-			if (force) {
-				console.error('[WebNovel Assistant] Legacy OBS export failed:', e);
-			} else {
-				console.warn('[WebNovel Assistant] Legacy OBS export failed (silent mode):', e);
-			}
-		}
+		return filtered.join('\n');
 	}
 
 	/**

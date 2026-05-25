@@ -102,7 +102,7 @@ body.webnovel-custom-dragging .nav-folder-title-content {
 .webnovel-word-count-gutter { width: 0px !important; min-width: 0px !important; border: none !important; padding: 0 !important; margin: 0 !important; overflow: visible !important; }
 
 /* 当本插件的 Gutter 是唯一的 Gutter 时（即没开行号等），清除 Obsidian 默认给 Gutter 容器加的所有边距，彻底消除缩进占位 */
-.cm-gutters:has(.webnovel-word-count-gutter:only-child) {
+.cm-gutters.is-only-word-count-gutter {
 	margin-right: 0 !important;
 	padding-right: 0 !important;
 	border-right: none !important;
@@ -110,7 +110,7 @@ body.webnovel-custom-dragging .nav-folder-title-content {
 }
 
 /* 非工作区/非章节时，直接隐藏整个容器（如果只有我们的话） */
-.cm-editor:not(.webnovel-show-gutter) .cm-gutters:has(.webnovel-word-count-gutter:only-child) {
+.cm-editor:not(.webnovel-show-gutter) .cm-gutters.is-only-word-count-gutter {
 	display: none !important;
 }
 
@@ -209,7 +209,6 @@ body.webnovel-custom-dragging .nav-folder-title-content {
 /* 趋势叠加层 */
 .stats-trend-overlay-wrapper { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
 .stats-trend-overlay { width: 100%; height: 100%; }
-.stats-empty-msg { color: var(--text-muted); padding: 40px 0; text-align: center; }
 
 /* 热力图布局 */
 .stats-heat-range-row { display: flex; gap: 6px; margin-bottom: 10px; align-items: center; }
@@ -452,20 +451,6 @@ body.immersive-mode-active .workspace {
 	padding-top: 30px !important;
 }
 
-/* 适配开启状态 (通过 body class 控制) */
-body.immersive-typewriter-mode.immersive-mode-active .view-content {
-	padding-top: 0 !important;
-}
-
-/* 打字机模式优化：使用 scroll-padding 和内容留白 */
-body.immersive-typewriter-mode.immersive-mode-active .markdown-source-view.mod-cm6 .cm-scroller {
-	scroll-padding-top: 10vh !important;
-	scroll-padding-bottom: 15vh !important;
-	padding-top: 20px !important;
-}
-body.immersive-typewriter-mode.immersive-mode-active .markdown-source-view.mod-cm6 .cm-content {
-	padding-bottom: 40vh !important;
-}
 
 /* 面板类容器始终保持正常的顶边距 */
 .immersive-mode-active .foreshadowing-view-container,
@@ -998,7 +983,7 @@ body.immersive-typewriter-mode.immersive-mode-active .markdown-source-view.mod-c
 }
 
 /* 隐藏主页的标签页标题栏 (Tab Title Bar) */
-.workspace-leaf-content:has(.webnovel-homepage) .view-header {
+.workspace-leaf-content.is-webnovel-homepage .view-header {
 	display: none !important;
 }
 
@@ -1025,31 +1010,31 @@ body.immersive-typewriter-mode.immersive-mode-active .markdown-source-view.mod-c
 }
 
 /* 主页全宽显示 — Reading View */
-.markdown-preview-view:has(.webnovel-homepage-root) {
+.workspace-leaf-content.is-webnovel-homepage .markdown-preview-view {
 	max-width: none !important;
 	width: 100% !important;
 	margin-inline: 0 !important;
 }
-.markdown-preview-view:has(.webnovel-homepage-root) .markdown-preview-sizer {
+.workspace-leaf-content.is-webnovel-homepage .markdown-preview-sizer {
 	max-width: none !important;
 	width: 100% !important;
 	margin: 0 !important;
 	margin-inline: 0 !important;
 	padding: 20px 30px !important;
 }
-.markdown-preview-view:has(.webnovel-homepage-root) .markdown-reading-view {
+.workspace-leaf-content.is-webnovel-homepage .markdown-reading-view {
 	max-width: none !important;
 	width: 100% !important;
 	margin-inline: 0 !important;
 }
 
 /* 护眼模式：主页不生效 */
-.workspace-leaf-content:has(.webnovel-homepage-root) .view-content {
+.workspace-leaf-content.is-webnovel-homepage .view-content {
 	background-color: var(--background-primary) !important;
 }
 
 /* 主页 <pre> 重置 */
-.markdown-preview-view:has(.webnovel-homepage-root) pre {
+.workspace-leaf-content.is-webnovel-homepage pre {
 	font-family: inherit !important;
 	font-size: inherit !important;
 	line-height: inherit !important;

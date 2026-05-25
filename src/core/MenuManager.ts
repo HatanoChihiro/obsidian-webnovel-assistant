@@ -37,7 +37,7 @@ export class MenuManager {
 				if (isDesktop()) {
 					menu.addItem((item) => {
 						item.setTitle('抽出为便签').setIcon('popup-open').onClick(() => {
-							this.plugin.createStickyNote({ file: file });
+							this.plugin.createStickyNote({ file: file }).catch(console.error);
 						});
 					});
 				}
@@ -132,7 +132,7 @@ export class MenuManager {
 					if (isDesktop()) {
 						menu.addItem((item) => {
 							item.setTitle('抽出为便签').setIcon('quote').onClick(() => {
-								this.plugin.createStickyNote({ content: editor.getSelection(), title: '选中片段' });
+								this.plugin.createStickyNote({ content: editor.getSelection(), title: '选中片段' }).catch(console.error);
 							});
 						});
 					}
@@ -155,7 +155,7 @@ export class MenuManager {
 					if (isDesktop()) {
 						menu.addItem((item) => {
 							item.setTitle('当前文件抽出为便签').setIcon('popup-open').onClick(() => {
-								this.plugin.createStickyNote({ file: view.file! });
+								this.plugin.createStickyNote({ file: view.file! }).catch(console.error);
 							});
 						});
 					}

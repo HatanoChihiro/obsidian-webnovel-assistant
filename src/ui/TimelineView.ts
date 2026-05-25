@@ -2,6 +2,7 @@ import { ItemView, Modal, Notice, Setting, TFile, TFolder, WorkspaceLeaf, App } 
 import { TimelineManager, TimelineEntry } from '../services/TimelineManager';
 import { CreativeView } from './CreativeView';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
+import { rafThrottle } from '../utils/dom';
 
 export const TIMELINE_VIEW_TYPE = 'timeline-view';
 
@@ -334,38 +335,56 @@ export class TimelineView extends CreativeView {
 		item.setAttribute('draggable', 'true');
 
 		// 拖拽事件
+		const onDrag = rafThrottle((e: DragEvent) => {
+			if (!e.clientX && !e.clientY) return; // 拖拽结束瞬间可能为 0
+			const pointerX = e.clientX;
+			const pointerY = e.clientY;
+			const target = document.elementFromPoint(pointerX, pointerY) as HTMLElement;
+			if (!target) return;
+			const targetItem = target.closest('.timeline-item') as HTMLElement;
+			
+			container.querySelectorAll('.timeline-drag-over-top, .timeline-drag-over-bottom').forEach(el => {
+				if (el !== targetItem) {
+					el.removeClass('timeline-drag-over-top');
+					el.removeClass('timeline-drag-over-bottom');
+				}
+			});
+
+			if (!targetItem) return;
+
+			const rect = targetItem.getBoundingClientRect();
+			const midY = rect.top + rect.height / 2;
+			if (pointerY < midY) {
+				targetItem.removeClass('timeline-drag-over-bottom');
+				targetItem.addClass('timeline-drag-over-top');
+			} else {
+				targetItem.removeClass('timeline-drag-over-top');
+				targetItem.addClass('timeline-drag-over-bottom');
+			}
+		});
+
 		item.addEventListener('dragstart', (e) => {
 			e.dataTransfer?.setData('text/plain', String(index));
 			setTimeout(() => item.addClass('timeline-dragging'), 0);
 		});
+		
+		item.addEventListener('drag', onDrag);
+		
 		item.addEventListener('dragend', () => {
+			onDrag.cancel();
 			item.removeClass('timeline-dragging');
 			container.querySelectorAll('.timeline-drag-over-top, .timeline-drag-over-bottom').forEach(el => {
 				el.removeClass('timeline-drag-over-top');
 				el.removeClass('timeline-drag-over-bottom');
 			});
 		});
+		
+		// 仅用于允许放下（防止原生拦截）
 		item.addEventListener('dragover', (e) => {
 			e.preventDefault();
-			container.querySelectorAll('.timeline-drag-over-top, .timeline-drag-over-bottom').forEach(el => {
-				el.removeClass('timeline-drag-over-top');
-				el.removeClass('timeline-drag-over-bottom');
-			});
-			const rect = item.getBoundingClientRect();
-			const midY = rect.top + rect.height / 2;
-			if (e.clientY < midY) {
-				item.addClass('timeline-drag-over-top');
-			} else {
-				item.addClass('timeline-drag-over-bottom');
-			}
+			if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
 		});
-		item.addEventListener('dragleave', (e) => {
-			// 只在真正离开条目时清除
-			if (!item.contains(e.relatedTarget as Node)) {
-				item.removeClass('timeline-drag-over-top');
-				item.removeClass('timeline-drag-over-bottom');
-			}
-		});
+		
 		item.addEventListener('drop', async (e) => {
 			e.preventDefault();
 			const fromIndex = parseInt(e.dataTransfer?.getData('text/plain') || '-1', 10);

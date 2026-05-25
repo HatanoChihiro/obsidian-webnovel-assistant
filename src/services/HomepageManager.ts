@@ -302,6 +302,16 @@ export class HomepageManager {
 		}
 	}
 
+	async renameHomepageFile(oldPath: string, newPath: string): Promise<void> {
+		const file = this.app.vault.getAbstractFileByPath(oldPath);
+		if (file instanceof TFile) {
+			await this.app.fileManager.renameFile(file, newPath);
+			console.debug(`[HomepageManager] 创作主页已从 ${oldPath} 重命名为 ${newPath}`);
+		} else {
+			console.warn(`[HomepageManager] 找不到旧主页文件: ${oldPath}，将仅更新设置。`);
+		}
+	}
+
 	refreshHomepageViews(): void {
 		const homepagePath = this.getHomepageFilePath();
 

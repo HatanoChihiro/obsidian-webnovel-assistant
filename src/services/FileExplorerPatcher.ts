@@ -1,6 +1,7 @@
 import { App, EventRef, TFolder, TFile } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ChapterSorter } from './ChapterSorter';
+import { rafThrottle } from '../utils/dom';
 
 interface SortEntity {
 	isBlock: boolean;
@@ -285,8 +286,25 @@ export class FileExplorerPatcher {
 		this.eventRefs.push(this.app.vault.on('delete', (file) => {
 			if (!this.enabled) return;
 			if (file && file.path && this.plugin.settings.customSortOrder) {
-				if (this.plugin.settings.customSortOrder[file.path] !== undefined) {
-					delete this.plugin.settings.customSortOrder[file.path];
+				let changed = false;
+				const deletedPath = file.path;
+				
+				if (this.plugin.settings.customSortOrder[deletedPath] !== undefined) {
+					delete this.plugin.settings.customSortOrder[deletedPath];
+					changed = true;
+				}
+				
+				if (file instanceof TFolder) {
+					const oldPrefix = `${deletedPath}/`;
+					for (const key in this.plugin.settings.customSortOrder) {
+						if (key.startsWith(oldPrefix)) {
+							delete this.plugin.settings.customSortOrder[key];
+							changed = true;
+						}
+					}
+				}
+
+				if (changed) {
 					this.plugin.saveSettings().catch(() => {});
 				}
 			}
@@ -295,10 +313,31 @@ export class FileExplorerPatcher {
 		this.eventRefs.push(this.app.vault.on('rename', (file, oldPath) => {
 			if (!this.enabled) return;
 			if (this.plugin.settings.customSortOrder && oldPath) {
+				let changed = false;
+				
 				const orderValue = this.plugin.settings.customSortOrder[oldPath];
-				if (orderValue !== undefined && file instanceof TFile) {
+				if (orderValue !== undefined) {
 					delete this.plugin.settings.customSortOrder[oldPath];
 					this.plugin.settings.customSortOrder[file.path] = orderValue;
+					changed = true;
+				}
+				
+				if (file instanceof TFolder) {
+					const oldPrefix = `${oldPath}/`;
+					const newPrefix = `${file.path}/`;
+					const keys = Object.keys(this.plugin.settings.customSortOrder);
+					for (const key of keys) {
+						if (key.startsWith(oldPrefix)) {
+							const val = this.plugin.settings.customSortOrder[key];
+							delete this.plugin.settings.customSortOrder[key];
+							const newKey = newPrefix + key.substring(oldPrefix.length);
+							this.plugin.settings.customSortOrder[newKey] = val;
+							changed = true;
+						}
+					}
+				}
+
+				if (changed) {
 					this.plugin.saveSettings().catch(() => {});
 				}
 			}
@@ -327,6 +366,7 @@ export class FileExplorerPatcher {
 		this.eventRefs = [];
 		this.teardownDragSort();
 		this.refreshAllExplorers();
+		document.querySelectorAll('.folder-word-count').forEach(el => el.remove());
 		console.debug('[WebNovel Assistant] Smart chapter sorting disabled');
 	}
 
@@ -336,6 +376,7 @@ export class FileExplorerPatcher {
 			this.unpatchFunc();
 			this.unpatchFunc = null;
 		}
+		document.querySelectorAll('.folder-word-count').forEach(el => el.remove());
 	}
 
 	isEnabled(): boolean {
@@ -425,11 +466,9 @@ export class FileExplorerPatcher {
 	// ========== 拖拽排序 ==========
 
 	private _dragStartHandler = this._onDragStart.bind(this);
-	private _dragOverHandler = this._onDragOver.bind(this);
+	private _dragHandler = rafThrottle(this._onDrag.bind(this));
 	private _dropHandler = this._onDrop.bind(this);
 	private _dragEndHandler = this._onDragEnd.bind(this);
-	private _dragEnterHandler = this._onDragEnter.bind(this);
-	private _dragLeaveHandler = this._onDragLeave.bind(this);
 
 	private initDragSort(): void {
 		if (!this.plugin.settings.enableSmartChapterSort) return;
@@ -442,25 +481,26 @@ export class FileExplorerPatcher {
 		this._dragContainerEl = containerEl;
 
 		containerEl.addEventListener('dragstart', this._dragStartHandler, true);
-		containerEl.addEventListener('dragover', this._dragOverHandler, true);
+		containerEl.addEventListener('drag', this._dragHandler, true);
 		containerEl.addEventListener('drop', this._dropHandler, true);
 		containerEl.addEventListener('dragend', this._dragEndHandler, true);
-		containerEl.addEventListener('dragenter', this._dragEnterHandler, true);
-		containerEl.addEventListener('dragleave', this._dragLeaveHandler, true);
 	}
 
 	private teardownDragSort(): void {
 		if (this._dragContainerEl) {
 			this._dragContainerEl.removeEventListener('dragstart', this._dragStartHandler, true);
-			this._dragContainerEl.removeEventListener('dragover', this._dragOverHandler, true);
+			this._dragContainerEl.removeEventListener('drag', this._dragHandler, true);
 			this._dragContainerEl.removeEventListener('drop', this._dropHandler, true);
 			this._dragContainerEl.removeEventListener('dragend', this._dragEndHandler, true);
-			this._dragContainerEl.removeEventListener('dragenter', this._dragEnterHandler, true);
-			this._dragContainerEl.removeEventListener('dragleave', this._dragLeaveHandler, true);
 			this._dragContainerEl = null;
+		}
+		if (this._dragHandler && (this._dragHandler as any).cancel) {
+			(this._dragHandler as any).cancel();
 		}
 		this._removeDropIndicator();
 		this._dragSourcePath = null;
+		document.body.classList.remove('webnovel-custom-dragging');
+		this._removeNativeDropHighlight();
 	}
 
 	private _getPathFromItemEl(itemEl: HTMLElement): string | null {
@@ -534,13 +574,25 @@ export class FileExplorerPatcher {
 		targetEl.classList.add('webnovel-native-drop');
 	}
 
-	private _onDragOver(e: DragEvent): void {
+	private _onDrag(e: DragEvent): void {
 		if (!this.enabled || !this._dragSourcePath) return;
 
-		const target = e.target as HTMLElement;
+		// 利用 RAF 节流时记录的 clientX / clientY
+		const pointerX = e.clientX;
+		const pointerY = e.clientY;
+
+		// 找到光标正下方的 DOM 元素
+		const target = document.elementFromPoint(pointerX, pointerY) as HTMLElement;
+		if (!target) {
+			this._removeDropIndicator();
+			this._removeNativeDropHighlight();
+			return;
+		}
+
 		const targetItem = target.closest('.nav-file, .nav-folder') as HTMLElement;
 		if (!targetItem) {
 			this._removeDropIndicator();
+			this._removeNativeDropHighlight();
 			return;
 		}
 
@@ -558,6 +610,7 @@ export class FileExplorerPatcher {
 
 		if (!targetPath || targetPath === this._dragSourcePath) {
 			this._removeDropIndicator();
+			this._removeNativeDropHighlight();
 			return;
 		}
 
@@ -616,7 +669,7 @@ export class FileExplorerPatcher {
 			const lastRect = lastChapter.getBoundingClientRect();
 			const midY = (firstRect.top + lastRect.bottom) / 2;
 
-			if (e.clientY < midY) {
+			if (pointerY < midY) {
 				insertBefore = true;
 				indicatorTargetEl = firstChapter;
 			} else {
@@ -626,7 +679,7 @@ export class FileExplorerPatcher {
 			this._removeNativeDropHighlight();
 		} else {
 			const rect = targetItem.getBoundingClientRect();
-			const y = e.clientY - rect.top;
+			const y = pointerY - rect.top;
 			
 			if (targetIsFolder) {
 				if (y < rect.height * 0.25) {
@@ -638,6 +691,8 @@ export class FileExplorerPatcher {
 				} else {
 					this._removeDropIndicator();
 					this._addNativeDropHighlight(targetItem);
+					// allow native drop
+					e.preventDefault();
 					return;
 				}
 			} else {
@@ -648,78 +703,9 @@ export class FileExplorerPatcher {
 		}
 
 		e.preventDefault();
-		e.stopPropagation();
 		if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
 
 		this._showDropIndicator(indicatorTargetEl, insertBefore);
-	}
-
-	private _onDragEnter(e: DragEvent): void {
-		if (!this.enabled || !this._dragSourcePath) return;
-
-		const target = e.target as HTMLElement;
-		const targetItem = target.closest('.nav-file, .nav-folder') as HTMLElement;
-		if (!targetItem) return;
-
-		const targetFileName = this.getFileNameFromEl(targetItem, null);
-		const isChapterTarget = targetFileName && ChapterSorter.extractChapterNumber(targetFileName) !== null;
-		
-		let targetPath = this._getPathFromItemEl(targetItem);
-		let blockKey = '';
-
-		if (isChapterTarget) {
-			const folderPath = this._getFolderPathFromItemEl(targetItem);
-			blockKey = folderPath === '/' ? '/__CHAPTER_BLOCK__' : `${folderPath}/__CHAPTER_BLOCK__`;
-			targetPath = blockKey;
-		}
-
-		if (!targetPath || targetPath === this._dragSourcePath) return;
-
-		let sourceFolderPath = '';
-		if (this._dragSourcePath.endsWith('/__CHAPTER_BLOCK__')) {
-			sourceFolderPath = this._dragSourcePath.slice(0, -18);
-			if (sourceFolderPath === '') sourceFolderPath = '/';
-		} else {
-			const sourceFile = this.app.vault.getAbstractFileByPath(this._dragSourcePath);
-			if (sourceFile && sourceFile.parent) sourceFolderPath = sourceFile.parent.path;
-		}
-
-		let targetFolderPath = '';
-		const targetIsFolder = targetItem.classList.contains('nav-folder');
-		
-		if (isChapterTarget) {
-			targetFolderPath = this._getFolderPathFromItemEl(targetItem);
-		} else {
-			const destFile = this.app.vault.getAbstractFileByPath(targetPath);
-			if (destFile && destFile.parent) targetFolderPath = destFile.parent.path;
-		}
-
-		if (!sourceFolderPath || !targetFolderPath || sourceFolderPath !== targetFolderPath) return;
-
-		if (targetIsFolder) {
-			const rect = targetItem.getBoundingClientRect();
-			const y = e.clientY - rect.top;
-			if (y < rect.height * 0.25 || y > rect.height * 0.75) {
-				e.preventDefault();
-				e.stopPropagation();
-			}
-		} else {
-			e.preventDefault();
-			e.stopPropagation();
-		}
-	}
-
-	private _onDragLeave(e: DragEvent): void {
-		if (!this.enabled || !this._dragSourcePath) return;
-		const target = e.target as HTMLElement;
-		const targetItem = target.closest('.nav-file, .nav-folder') as HTMLElement;
-		if (!targetItem) return;
-		
-		const targetIsFolder = targetItem.classList.contains('nav-folder');
-		if (!targetIsFolder) {
-			e.preventDefault();
-			e.stopPropagation();
-		}
 	}
 
 	private _onDrop(e: DragEvent): void {

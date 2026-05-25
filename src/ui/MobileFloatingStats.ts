@@ -243,21 +243,21 @@ export class MobileFloatingStats {
 			x: this.position.x,
 			y: this.position.y
 		};
-		localStorage.setItem('mobile-floating-stats-state', JSON.stringify(state));
+		this.plugin.settings.mobileFloatingStatsState = state;
+		this.plugin.saveSettings().catch(err => {
+			console.error('[MobileFloatingStats] 保存位置设置失败:', err);
+		});
 	}
 
 	/**
 	 * 加载位置
 	 */
 	private loadPosition(): void {
-		try {
-			const saved = localStorage.getItem('mobile-floating-stats-state');
-			if (saved) {
-				const state = JSON.parse(saved);
-				this.position = { x: state.x || 20, y: state.y || 100 };
-			}
-		} catch (error) {
-			console.error('[MobileFloatingStats] 加载位置失败:', error);
+		const saved = this.plugin.settings.mobileFloatingStatsState;
+		if (saved && typeof saved.x === 'number' && typeof saved.y === 'number') {
+			this.position = { x: saved.x, y: saved.y };
+		} else {
+			this.position = { x: 20, y: 100 };
 		}
 	}
 }

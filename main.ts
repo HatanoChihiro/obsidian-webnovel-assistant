@@ -167,10 +167,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		
 		if (this.settings.eyeCareEnabled) this.styleManager.applyEyeCare();
 		
-		// 初始化打字机模式状态
-		if (this.settings.immersive.immersiveTypewriterMode) {
-			document.body.classList.add('immersive-typewriter-mode');
-		}
+
 		
 		// 初始化管理器 (依赖 this)
 		this.foreshadowingManager = new ForeshadowingManager(this.app, this);
@@ -297,7 +294,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.fileEventManager.setup();
 
 		this.addRibbonIcon('sticky-note', '新建空白悬浮便签', () => {
-			this.createStickyNote({ content: '', title: '新便签' });
+			this.createStickyNote({ content: '', title: '新便签' }).catch(console.error);
 		});
 
 		this.setupDesktopFeatures();
@@ -316,7 +313,6 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		
 		this.workerManager.postMessage('start');
 		this.editorTracker.updateWordCount();
-		this.exportLegacyOBS(true);
 		this.refreshStatusViews();
 		new Notice("[记录中] 专注计时已开始");
 	}
@@ -329,7 +325,6 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.isTracking = false;
 		this.workerManager.postMessage('stop');
 		this.editorTracker.updateWordCount();
-		this.exportLegacyOBS(true);
 		this.refreshStatusViews();
 		new Notice("[已暂停] 专注计时已暂停");
 	}
@@ -412,8 +407,15 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 
 		this.registerMarkdownCodeBlockProcessor('webnovel-homepage', async (source, el, ctx) => {
 			if (!isHomepage(ctx)) return;
-			// 添加标记类供 CSS :has() 定位
+			// 添加标记类供 CSS 定位，替代低性能的 :has() 选择器
 			el.classList.add('webnovel-homepage-root');
+			
+			// 找到父级的 workspace-leaf-content 注入特定类，彻底摆脱 :has()
+			const leafContent = el.closest('.workspace-leaf-content');
+			if (leafContent) {
+				leafContent.classList.add('is-webnovel-homepage');
+			}
+			
 			await renderer.renderHomepage(el);
 		});
 
@@ -595,6 +597,10 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		const isOnHomepage = activeFile && activeFile.path === homepagePath;
 
 		if (isOnHomepage) {
+			// 添加专门的高性能 CSS 类名，替代原先的 :has() 选择器
+			const leafContent = view.containerEl.closest('.workspace-leaf-content') || view.containerEl;
+			leafContent.classList.add('is-webnovel-homepage');
+			
 			// 进入主页：记录原状态并切换到预览模式
 			if (!this._leafOriginalStates.has(leaf)) {
 				const stateToSave = view.getState();
@@ -621,7 +627,11 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			}
 			this.homepageManager?.refreshHomepageViews();
 		} else {
-			// 离开了主页：恢复进入前的状态
+			// 离开了主页：移除 CSS 标识
+			const leafContent = view.containerEl.closest('.workspace-leaf-content') || view.containerEl;
+			leafContent.classList.remove('is-webnovel-homepage');
+			
+			// 恢复进入前的状态
 			if (this._leafOriginalStates.has(leaf)) {
 				const originalState = this._leafOriginalStates.get(leaf);
 				this._leafOriginalStates.delete(leaf);
@@ -744,8 +754,7 @@ onunload() {
 		if (this.styleManager) {
 			this.styleManager.removeEyeCare();
 		}
-		// 清除打字机模式标记
-		document.body.classList.remove('immersive-typewriter-mode');
+
 
 		// 7. 卸载文件浏览器补丁
 		if (this.fileExplorerPatcher) {
@@ -965,6 +974,18 @@ onunload() {
 		
 		// 2. 硬编码排除合并章节文件（防止导出合集时突然导致字数暴增）
 		if (file.basename.includes('_合并章节')) return false;
+
+		// 2.5 动态排除插件生成的元数据文件（如作品信息、伏笔、时间线、榜单记录等）
+		const basename = file.basename;
+		if (
+			basename === this.settings.novelInfo?.fileName ||
+			basename === this.settings.foreshadowing?.fileName ||
+			basename === this.settings.timeline?.fileName ||
+			basename === this.settings.ranking?.fileName ||
+			file.path === this.settings.homepagePath
+		) {
+			return false;
+		}
 		
 		// 3. 如果开启了严格章节模式，则必须是符合命名规则的章节文件
 		if (this.settings.enableStrictChapterMode && !ChapterSorter.isChapterFile(file.name) && !this.isFileInStrictChapterException(file)) {
@@ -1000,11 +1021,16 @@ onunload() {
 				leaf.view.renderMiniChart(); // 刷新热力图显示
 			}
 		}
+
+		// 同步刷新榜单追踪面板，使其字数进度即时更新
+		const rankingLeaves = this.app.workspace.getLeavesOfType(RANKING_VIEW_TYPE);
+		for (const leaf of rankingLeaves) {
+			if (leaf.view && typeof (leaf.view as any).refresh === 'function') {
+				(leaf.view as any).refresh();
+			}
+		}
 	}
 
-	exportLegacyOBS(force: boolean = false) {
-		this.obsHtmlBuilder.exportLegacyOBS(force);
-	}
 
 	async getObsStats(): Promise<ObsStatsPayload> {
 		return this.obsHtmlBuilder.getObsStats();

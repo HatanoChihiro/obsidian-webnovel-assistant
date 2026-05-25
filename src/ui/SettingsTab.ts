@@ -133,6 +133,35 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					}));
 
 			new Setting(containerEl)
+				.setName('自定义主页文件名')
+				.setDesc('修改创作主页在文件树中的默认名称（无需加 .md 后缀）。留空则恢复默认的"创作主页"。修改后将自动重命名现有主页。')
+				.addText(text => {
+					const currentPath = this.plugin.homepageManager?.getHomepageFilePath() || '创作主页.md';
+					const currentName = currentPath.split('/').pop()?.replace(/\.md$/, '') || '创作主页';
+					
+					text.setPlaceholder('创作主页')
+						.setValue(currentName);
+					
+					let tempValue = text.getValue();
+					text.onChange((value) => { tempValue = value; });
+					
+					text.inputEl.addEventListener('blur', async () => {
+						const basename = tempValue.trim() || '创作主页';
+						const oldPath = this.plugin.homepageManager?.getHomepageFilePath() || '创作主页.md';
+						
+						const lastSlash = oldPath.lastIndexOf('/');
+						const oldDir = lastSlash >= 0 ? oldPath.substring(0, lastSlash + 1) : '';
+						const newPath = oldDir + basename + '.md';
+
+						if (newPath !== oldPath) {
+							this.plugin.settings.homepagePath = newPath;
+							await this.plugin.saveSettings();
+							this.plugin.homepageManager?.renameHomepageFile(oldPath, newPath).catch(console.error);
+						}
+					});
+				});
+
+			new Setting(containerEl)
 				.setName('自定义欢迎语')
 				.setDesc('显示在创作主页顶部的欢迎语，留空则根据时间动态问候。')
 				.addText(text => text
@@ -521,30 +550,6 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 
 	// ── 沉浸模式设置 ──
 	private displayImmersiveModeSettings(containerEl: HTMLElement): void {
-		containerEl.createEl('h3', { text: '编辑器适配' });
-
-		new Setting(containerEl)
-			.setName('适配打字机模式 (Typewriter Scroll)')
-			.setDesc('开启后将优化沉浸模式下的滚动区域（增加页边距和滚动内边距），解决配合打字机插件使用时的界面跳动问题。若不使用打字机插件，建议关闭以获得原生编辑器体验。')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.immersive.immersiveTypewriterMode)
-				.onChange(async (value) => {
-					this.plugin.settings.immersive.immersiveTypewriterMode = value;
-					await this.plugin.saveSettings();
-
-					if (value) {
-						document.body.classList.add('immersive-typewriter-mode');
-					} else {
-						document.body.classList.remove('immersive-typewriter-mode');
-					}
-
-					this.app.workspace.iterateAllLeaves(leaf => {
-						if (leaf.view instanceof MarkdownView) {
-							(leaf.view).editor?.refresh();
-						}
-					});
-				}));
-
 		containerEl.createEl('h3', { text: '辅助面板显示开关' });
 
 		new Setting(containerEl)
@@ -812,7 +817,6 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				}));
 
 		this.displayObsSettings(containerEl);
-		this.displayLegacyExportSettings(containerEl);
 	}
 
 	private displayObsSettings(containerEl: HTMLElement): void {
@@ -953,31 +957,6 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					const url = `http://127.0.0.1:${this.plugin.settings.obs.obsPort}/`;
 					navigator.clipboard.writeText(url);
 					new Notice(`已复制: ${url}`);
-				}));
-	}
-
-	private displayLegacyExportSettings(containerEl: HTMLElement): void {
-		containerEl.createEl('h3', { text: '文本文件导出 (兼容)' });
-
-		new Setting(containerEl)
-			.setName('启用本地文本文件导出')
-			.setDesc('开启后，插件将像以前一样每秒将专注时间、摸鱼时间等数据写入纯文本文件中。')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.obs.enableLegacyObsExport)
-				.onChange(async (value) => {
-					this.plugin.settings.obs.enableLegacyObsExport = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('数据输出路径 (绝对路径)')
-			.setDesc('请填入绝对路径 (例如 D:\\OBS\\Stats)')
-			.addText(text => text
-				.setPlaceholder('请输入文件夹路径')
-				.setValue(this.plugin.settings.obs.obsPath)
-				.onChange(async (value) => {
-					this.plugin.settings.obs.obsPath = value;
-					await this.plugin.saveSettings();
 				}));
 	}
 }

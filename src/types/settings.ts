@@ -121,8 +121,6 @@ export interface ImmersiveModeSettings {
 	immersiveNoteSize: number;
 	/** 便签字体大小 (px) */
 	immersiveNoteFontSize: number;
-	/** 是否开启打字机模式适配 */
-	immersiveTypewriterMode: boolean;
 	/** 布局持久化数据 (null 表示使用默认值) */
 	immersiveLayout: Record<string, number> | null;
 }
@@ -131,10 +129,6 @@ export interface ImmersiveModeSettings {
 export interface ObsSettings {
 	/** 是否启用 OBS HTTP 服务器叠加层 */
 	enableObs: boolean;
-	/** 是否启用旧版 OBS 文件导出模式 */
-	enableLegacyObsExport: boolean;
-	/** OBS 文件导出路径 */
-	obsPath: string;
 	/** OBS HTTP 服务器端口 */
 	obsPort: number;
 	/** OBS 叠加层主题 */
@@ -195,6 +189,8 @@ export interface AccurateCountSettings {
 	eyeCareColor: string;
 	/** 是否显示移动端浮动字数统计窗口 */
 	showMobileFloatingStats: boolean;
+	/** 移动端浮动窗口状态 (x, y) */
+	mobileFloatingStatsState: { x: number, y: number } | null;
 
 	/** 严格章节模式：只在章节文档中计算字数、进度和提醒 */
 	enableStrictChapterMode: boolean;

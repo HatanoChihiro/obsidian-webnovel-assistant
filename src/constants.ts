@@ -222,7 +222,7 @@ export const VALIDATION_RULES = {
 import type { AccurateCountSettings } from './types/settings';
 // 已迁移到嵌套结构的扁平化字段名（用于设置迁移和清理）
 export const FLAT_OBS_KEYS = [
-	'enableObs', 'enableLegacyObsExport', 'obsPath', 'obsPort',
+	'enableObs', 'obsPort',
 	'obsOverlayTheme', 'obsOverlayOpacity', 'obsCustomCss',
 	'obsShowFocusTime', 'obsShowSlackTime', 'obsShowTotalTime',
 	'obsShowTodayWords', 'obsShowDailyGoal', 'obsShowSessionWords'
@@ -234,8 +234,7 @@ export const FLAT_IMMERSIVE_KEYS = [
 	'immersiveShowFocusTime', 'immersiveShowSlackTime', 'immersiveShowChapterProgress',
 	'immersiveShowDailyProgress', 'immersiveShowSessionWords', 'immersiveShowRankingProgress', 'immersiveLeftSize',
 	'immersiveRightSize', 'immersiveBottomSize', 'immersiveBottomInternalSizes',
-	'immersivePanelPosition', 'immersiveNoteSize', 'immersiveNoteFontSize',
-	'immersiveTypewriterMode', 'immersiveLayout'
+	'immersivePanelPosition', 'immersiveNoteSize', 'immersiveNoteFontSize', 'immersiveLayout'
 ];
 
 
@@ -278,6 +277,7 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 	eyeCareEnabled: false,
 	eyeCareColor: '#E8F5E9',
 	showMobileFloatingStats: true, // 默认显示移动端浮窗
+	mobileFloatingStatsState: null, // 默认无保存状态
 	enableStrictChapterMode: false, // 严格章节模式，默认关闭
 	strictChapterExceptions: [],
 	enableWordCountGutter: true,
@@ -306,15 +306,12 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 		immersivePanelPosition: 'bottom',
 		immersiveNoteSize: 280,
 		immersiveNoteFontSize: 14,
-		immersiveTypewriterMode: false,
 		immersiveLayout: null,
 	},
 
 	// OBS 数据输出默认设置
 	obs: {
 		enableObs: false,
-		enableLegacyObsExport: false,
-		obsPath: '',
 		obsPort: 24816,
 		obsOverlayTheme: 'dark',
 		obsOverlayOpacity: 0.85,

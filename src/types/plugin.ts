@@ -126,7 +126,6 @@ export interface WebNovelAssistantPlugin {
 	// OBS 相关
 	getObsStats(): Promise<ObsStatsPayload>;
 	buildObsOverlayHtml(): string;
-	exportLegacyOBS(force?: boolean): void;
 
 	// 样式管理
 	applyEyeCare(): void;
@@ -137,5 +136,5 @@ export interface WebNovelAssistantPlugin {
 	syncActiveNotesToManager(): void;
 
 	// 便签创建
-	createStickyNote(options: any): void;
+	createStickyNote(options: any): Promise<void>;
 }

@@ -38,13 +38,18 @@
 
 ### 安装方法
 
-#### 方法 1: 使用 BRAT（推荐）
+#### 从 Obsidian 社区插件市场安装（推荐）
+1. 打开 **设置 → 第三方插件 → 浏览**
+2. 搜索 **"WebNovel Assistant"**
+3. 点击 **安装**，然后 **启用**
+
+#### 使用 BRAT
 1. 安装 [BRAT](https://github.com/TfTHacker/obsidian42-brat) 插件
 2. 在 BRAT 设置中添加此仓库：`HatanoChihiro/obsidian-webnovel-assistant`
 3. 启用插件
 
-#### 方法 2: 手动安装
-1. 从 [Releases](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/releases) 下载最新版本的 `main.js` 和 `manifest.json`
+#### 手动安装
+1. 从 [Releases](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/releases) 下载最新版本的 `main.js` 和 `manifest.json`以及 `styles.css`
 2. 在 Obsidian 库中创建文件夹：`.obsidian/plugins/web-novel-assistant/`
 3. 将下载的文件放入该文件夹
 4. 重启 Obsidian，在设置 → 第三方插件中启用
@@ -102,7 +107,7 @@
 
 #### 相关设置
 - **辅助面板位置**: 可选“主视图上方”或“主视图下方”。
-- **适配打字机模式**: 专门为 `Typewriter Scroll` 等插件设计的兼容模式。开启后会注入特定的滚动内边距（Scroll-Padding），解决在卡片布局下打字时的界面跳动问题。如果不使用打字机插件，建议关闭以获得原生编辑器体验。
+
 - **沉浸模式便签尺寸**: 自定义便签列表中的卡片边长（默认 280px）。
 - **沉浸模式便签字号**: 调整便签预览时的字体大小。
 
@@ -471,7 +476,7 @@
 > **注意**：
 > - 便签支持**自动保存**（需在设置中开启），即使重启 Obsidian，只要未关闭的便签都会恢复。
 > - 在沉浸模式下，便签以**网格卡片**形式排列在底部/顶部辅助面板中。
-> - **兼容性优化**: 深度适配打字机模式（Typewriter Scroll），通过智能滚动内边距（Scroll-Padding）确保滚动平滑无跳动。
+
 - **同步机制**: 正常模式下的悬浮便签与沉浸模式下的卡片视图共享同一份数据。你在任意一端做的修改，另一端都会实时响应。
 
 #### 相关设置

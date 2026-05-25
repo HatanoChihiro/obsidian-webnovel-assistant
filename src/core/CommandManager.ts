@@ -90,7 +90,6 @@ export class CommandManager {
 					this.plugin.isTracking = false;
 					this.plugin.workerManager?.postMessage('stop');
 					this.plugin.editorTracker?.handleFileChange();
-					this.plugin.exportLegacyOBS(true);
 					this.plugin.refreshStatusViews();
 					new Notice('直播数据已重置！统计已暂停，请手动开始新的场次。');
 				}
@@ -104,7 +103,7 @@ export class CommandManager {
 				id: 'create-blank-sticky-note',
 				name: '新建空白悬浮便签',
 				callback: () => {
-					this.plugin.createStickyNote({ content: '', title: '新便签' });
+					this.plugin.createStickyNote({ content: '', title: '新便签' }).catch(console.error);
 				}
 			});
 

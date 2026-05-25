@@ -437,7 +437,9 @@ export class HomepageRenderer {
 		const entries = await manager.loadEntries();
 		if (!entries || entries.length === 0) return null;
 
-		const entry = entries[entries.length - 1];
+		// 优先显示进行中的榜单，如果没有则显示最新添加的
+		const entry = entries.find(e => e.status === '进行中') || entries[entries.length - 1];
+		
 		const progress = manager.calcProgress(entry) || entry.completedWords || 0;
 		const now = window.moment();
 		const daysLeft = Math.max(0, window.moment(entry.endDate).diff(now.clone().startOf('day'), 'days') + 1);

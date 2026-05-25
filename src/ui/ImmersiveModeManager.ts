@@ -279,7 +279,10 @@ export class ImmersiveModeManager {
 					pendingSizes.push({ split: parentSplit, sizes: [100 - rightSize, rightSize] });
 				}
 			}
-			await rightLeaf.setViewState({ type: 'markdown' });
+			await rightLeaf.setViewState({ 
+				type: 'markdown',
+				state: { mode: 'preview' }
+			});
 			rightLeaf.containerEl.classList.add('immersive-reference-view');
 		}
 

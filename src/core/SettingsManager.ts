@@ -220,7 +220,7 @@ export class SettingsManager {
 					defVal as Record<string, unknown>,
 					srcVal as Record<string, unknown>
 				) as T[keyof T];
-			} else if (srcVal !== undefined) {
+			} else if (srcVal !== undefined && srcVal !== null) {
 				result[key] = srcVal as T[keyof T];
 			}
 		}
@@ -313,7 +313,7 @@ export class SettingsManager {
 			throw new Error(`设置验证失败: ${validation.errors.join(', ')}`);
 		}
 
-		this.settings = Object.assign(this.settings, partial);
+		this.settings = this.deepMerge(this.settings as unknown as Record<string, unknown>, partial as unknown as Record<string, unknown>) as unknown as AccurateCountSettings;
 		await this.saveSettings();
 	}
 

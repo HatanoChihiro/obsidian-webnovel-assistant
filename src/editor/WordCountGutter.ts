@@ -94,21 +94,38 @@ export function createWordCountGutter(plugin: WebNovelAssistantPlugin): Extensio
 			this.updateClass(update.view);
 		}
 		updateClass(view: EditorView) {
-			if (!plugin.settings.enableWordCountGutter) {
+			const gutters = view.dom.querySelector('.cm-gutters');
+			const isHidden = !plugin.settings.enableWordCountGutter;
+			
+			if (isHidden) {
 				view.dom.classList.remove('webnovel-show-gutter');
-				return;
+			} else {
+				const file = getFileFromView(view);
+				const inWorkspace = file && plugin.isFileInWorkspace(file);
+				const strictOk = !plugin.settings.enableStrictChapterMode ||
+					(file && ChapterSorter.isChapterFile(file.name));
+
+				if (inWorkspace && strictOk) {
+					view.dom.classList.add('webnovel-show-gutter');
+				} else {
+					view.dom.classList.remove('webnovel-show-gutter');
+				}
 			}
 
-			const file = getFileFromView(view);
-			const inWorkspace = file && plugin.isFileInWorkspace(file);
-
-			const strictOk = !plugin.settings.enableStrictChapterMode ||
-				(file && ChapterSorter.isChapterFile(file.name));
-
-			if (inWorkspace && strictOk) {
-				view.dom.classList.add('webnovel-show-gutter');
-			} else {
-				view.dom.classList.remove('webnovel-show-gutter');
+			// 手动管理 cm-gutters 的类名以替换 :has()
+			if (gutters) {
+				const onlyChild = gutters.children.length === 1 && gutters.children[0].classList.contains('webnovel-word-count-gutter');
+				if (onlyChild) {
+					gutters.classList.add('is-only-word-count-gutter');
+					if (!view.dom.classList.contains('webnovel-show-gutter')) {
+						gutters.classList.add('is-word-count-gutter-hidden');
+					} else {
+						gutters.classList.remove('is-word-count-gutter-hidden');
+					}
+				} else {
+					gutters.classList.remove('is-only-word-count-gutter');
+					gutters.classList.remove('is-word-count-gutter-hidden');
+				}
 			}
 		}
 	});
