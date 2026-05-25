@@ -5,6 +5,7 @@
  */
 import { ForeshadowingSettings } from './foreshadowing';
 import { RankingSettings } from './ranking';
+import { NovelInfoSettings } from './homepage';
 
 /** 时间线功能相关设置 */
 export interface TimelineSettings {
@@ -174,6 +175,8 @@ export interface AccurateCountSettings {
 	chapterNamingRules: ChapterNamingRule[];
 	/** 工作区文件夹路径（留空则全局生效） */
 	workspaceFolders: string[];
+	/** 是否显示所有悬浮便签 */
+	showFloatingNotes: boolean;
 	/** 便签不透明度(0.1-1.0) */
 	noteOpacity: number;
 	/** 便签主题配色列表 */
@@ -195,6 +198,9 @@ export interface AccurateCountSettings {
 
 	/** 严格章节模式：只在章节文档中计算字数、进度和提醒 */
 	enableStrictChapterMode: boolean;
+	/** 严格章节模式例外目录：这些目录下的文件不受严格章节模式限制，始终计入字数 */
+	strictChapterExceptions: string[];
+
 
 	/** 便签是否自动保存（全局设置） */
 	stickyNoteAutoSave: boolean;
@@ -211,4 +217,23 @@ export interface AccurateCountSettings {
 	immersive: ImmersiveModeSettings;
 	/** OBS 数据输出设置 */
 	obs: ObsSettings;
+	/** 是否启用创作主页 */
+	enableHomepage: boolean;
+	/** 是否在启动时自动打开创作主页 */
+	openHomepageOnStartup: boolean;
+	/** 创作主页文件路径（Vault 相对路径，默认：创作主页.md） */
+	homepagePath: string;
+	/** 作品信息文件设置 */
+	novelInfo: NovelInfoSettings;
+	/** 主页欢迎语 */
+	homepageWelcome: string;
+	/** 热力图自定义开始日期 */
+	heatmapStartDate: string;
+	/** 热力图自定义结束日期 */
+	heatmapEndDate: string;
+	/** 创作主页文件在文件树中的置顶位置 */
+	homepagePinPosition: 'none' | 'top' | 'bottom';
+	/** 非章节文件自定义排序（路径 → 排序位置） */
+	customSortOrder: Record<string, number>;
+
 }

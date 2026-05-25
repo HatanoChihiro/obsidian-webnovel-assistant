@@ -5,6 +5,8 @@ import { ChapterSorter } from '../services/ChapterSorter';
 
 export class ImmersiveChapterListView extends ItemView {
 	plugin: WebNovelAssistantPlugin;
+	private lastScrollTop: number = 0;
+	private isInitialLoad: boolean = true;
 
 	constructor(leaf: WorkspaceLeaf, plugin: WebNovelAssistantPlugin) {
 		super(leaf);
@@ -36,9 +38,17 @@ export class ImmersiveChapterListView extends ItemView {
 	 */
 	public async refresh() {
 		const { containerEl } = this;
+		
+		// 我们不再从 oldListContainer 中临时读取，而是依赖 scroll 事件更新的 lastScrollTop
+		// 这样可以避免多次快速刷新时导致位置丢失
 		containerEl.empty();
 		
 		const listContainer = containerEl.createDiv({ cls: 'immersive-chapter-list' });
+		
+		// 实时记录用户的滚动位置
+		listContainer.addEventListener('scroll', () => {
+			this.lastScrollTop = listContainer.scrollTop;
+		}, { passive: true });
 		
 		// 尝试获取当前活动的文件所在文件夹
 		let currentFolder: TFolder | null = null;
@@ -77,13 +87,21 @@ export class ImmersiveChapterListView extends ItemView {
 			files.sort((a, b) => a.basename.localeCompare(b.basename, undefined, { numeric: true }));
 		}
 
+		let activeItemEl: HTMLElement | null = null;
+
 		for (const file of files) {
 			const itemEl = listContainer.createDiv({ cls: 'immersive-chapter-item' });
+			if (activeFile && file.path === activeFile.path) {
+				itemEl.addClass('is-active');
+				activeItemEl = itemEl;
+			}
 			itemEl.createSpan({ text: file.basename });
 			
 			const wordCount = this.plugin.cacheManager.getFileCache(file.path) || 0;
 			if (this.plugin.settings.showExplorerCounts) {
-				itemEl.createSpan({ text: `${wordCount}字`, cls: 'immersive-chapter-count' });
+				if (ChapterSorter.isChapterFile(file.basename)) {
+					itemEl.createSpan({ text: `${wordCount}字`, cls: 'immersive-chapter-count' });
+				}
 			}
 
 			// 左键：在主编辑器打开
@@ -138,15 +156,38 @@ export class ImmersiveChapterListView extends ItemView {
 					}
 				}
 				
-				// 2. 确保目标叶子是 Markdown 类型并打开文件
+				// 2. 确保目标叶子是 Markdown 类型并打开文件为阅读视图
 				if (refLeaf) {
-					if (refLeaf.view.getViewType() !== 'markdown') {
-						await refLeaf.setViewState({ type: 'markdown', active: false });
-					}
-					await refLeaf.openFile(file);
+					// 获取当前或初始状态
+					const currentState = refLeaf.view.getViewType() === 'markdown' && typeof (refLeaf.view as any).getState === 'function' 
+						? (refLeaf.view as any).getState() 
+						: {};
+					
+					// 强制设为阅读模式
+					currentState.file = file.path;
+					currentState.mode = 'preview';
+					currentState.source = false;
+
+					await refLeaf.setViewState({ 
+						type: 'markdown', 
+						state: currentState, 
+						active: false 
+					});
 				}
 			});
 		}
+
+		// 恢复滚动位置，或者在初始时滚动到激活文档
+		requestAnimationFrame(() => {
+			if (listContainer) {
+				if (this.isInitialLoad && activeItemEl) {
+					activeItemEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+					this.isInitialLoad = false;
+				} else {
+					listContainer.scrollTop = this.lastScrollTop;
+				}
+			}
+		});
 	}
 
 	async onClose() {

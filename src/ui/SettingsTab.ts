@@ -32,16 +32,15 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		const tier = getPlatformTier();
 		const allTabs = [
 			{ id: 'general', name: '通用' },
-			{ id: 'wordcount', name: '字数统计', tabletSupported: true },
-			{ id: 'creative', name: '创作辅助', tabletSupported: true },
+			{ id: 'wordcount', name: '字数统计' },
+			{ id: 'creative', name: '创作辅助' },
 			{ id: 'immersive', name: '沉浸模式', desktopOnly: true },
 			{ id: 'obs', name: '数据输出', desktopOnly: true }
 		];
 
 		const tabs = allTabs.filter(tab => {
 			if (tier === 'desktop') return true;
-			if (tier === 'tablet') return tab.id === 'general' || tab.tabletSupported;
-			return tab.id === 'general';
+			return !tab.desktopOnly;
 		});
 
 		tabs.forEach(tab => {
@@ -106,6 +105,72 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		containerEl.createEl('h2', { text: '工作区与章节' });
 
 		new Setting(containerEl)
+			.setName('启用创作主页')
+			.setDesc('开启后自动在工作区下生成创作主页，关闭后删除主页文件（作品信息不受影响）。')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.enableHomepage)
+				.onChange(async (value) => {
+					this.plugin.settings.enableHomepage = value;
+					await this.plugin.saveSettings();
+					if (value) {
+						this.plugin.homepageManager?.ensureHomepageExists().catch(err => console.error('主页创建失败:', err));
+						this.plugin.homepageManager?.ensureNovelInfoFiles().catch(err => console.error('作品信息创建失败:', err));
+					} else {
+						this.plugin.homepageManager?.deleteHomepage().catch(err => console.error('主页删除失败:', err));
+					}
+					this.display();
+				}));
+
+		if (this.plugin.settings.enableHomepage) {
+			new Setting(containerEl)
+				.setName('启动时自动打开主页')
+				.setDesc('每次开启 Obsidian 时自动打开创作主页。')
+				.addToggle(toggle => toggle
+					.setValue(this.plugin.settings.openHomepageOnStartup)
+					.onChange(async (value) => {
+						this.plugin.settings.openHomepageOnStartup = value;
+						await this.plugin.saveSettings();
+					}));
+
+			new Setting(containerEl)
+				.setName('自定义欢迎语')
+				.setDesc('显示在创作主页顶部的欢迎语，留空则根据时间动态问候。')
+				.addText(text => text
+					.setPlaceholder('欢迎回到创作中心')
+					.setValue(this.plugin.settings.homepageWelcome || '')
+					.onChange(async (value) => {
+						this.plugin.settings.homepageWelcome = value.trim();
+						await this.plugin.saveSettings();
+						this.plugin.homepageManager?.refreshHomepageViews();
+					}));
+
+			new Setting(containerEl)
+				.setName('主页在文件树中的位置')
+				.setDesc('固定创作主页在文件浏览器中的位置，防止新增作品时需要手动拖拽。')
+				.addDropdown(dropdown => dropdown
+					.addOptions({
+						'none': '不固定（由排序规则或拖拽自定义）',
+						'top': '固定在最顶部',
+						'bottom': '固定在最底部'
+					})
+					.setValue(this.plugin.settings.homepagePinPosition || 'top')
+					.onChange(async (value: string) => {
+						this.plugin.settings.homepagePinPosition = value as 'none' | 'top' | 'bottom';
+						await this.plugin.saveSettings();
+						if (value !== 'none') {
+							this.plugin.fileExplorerPatcher.enable();
+						}
+						// 触发文件树刷新
+						this.app.workspace.getLeavesOfType('file-explorer').forEach(leaf => {
+							const view = leaf.view as any;
+							if (view && typeof view.sort === 'function') {
+								try { view.sort(); } catch (e) {}
+							}
+						});
+					}));
+		}
+
+		new Setting(containerEl)
 			.setName('工作区文件夹')
 			.setDesc('留空全局生效。多个用逗号分隔。')
 			.addTextArea(text => {
@@ -130,7 +195,28 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					if (this.plugin.settings.showExplorerCounts) {
 						this.plugin.buildFolderCache();
 					}
+					this.display();
 				}));
+		if (this.plugin.settings.enableStrictChapterMode) {
+			new Setting(containerEl)
+				.setName('例外目录')
+				.setDesc('这些目录下的文件不受严格章节模式限制，始终计入字数。多个目录用逗号分隔。')
+				.addTextArea(text => {
+					text
+						.setPlaceholder('例如：短篇小说, 杂文')
+						.setValue((this.plugin.settings.strictChapterExceptions || []).join(', '))
+						.onChange(async (value) => {
+							this.plugin.settings.strictChapterExceptions = value.trim() ? value.split(',').map(f => f.trim()).filter(Boolean) : [];
+							await this.plugin.saveSettings();
+							this.plugin.updateWordCount();
+							if (this.plugin.settings.showExplorerCounts) {
+								this.plugin.buildFolderCache();
+							}
+						});
+					text.inputEl.style.width = '100%';
+				});
+		}
+
 
 		if (isDesktop()) {
 			new Setting(containerEl)
@@ -400,10 +486,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 
 	// ── 悬浮便签设置 ──
 	private displayStickyNoteSettings(containerEl: HTMLElement): void {
-		if (!isDesktop()) {
-			containerEl.createEl('p', { text: '⚠️ 悬浮便签功能仅在桌面端可用。', cls: 'setting-item-description' });
-			return;
-		}
+		if (!isDesktop()) return;
 
 		containerEl.createEl('h2', { text: '悬浮便签' });
 

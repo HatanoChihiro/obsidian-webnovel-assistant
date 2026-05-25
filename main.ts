@@ -1,4 +1,4 @@
-import { App, Plugin, TFile, Notice, PluginManifest } from 'obsidian';
+import { App, Plugin, TFile, Notice, PluginManifest, MarkdownView } from 'obsidian';
 import { AccurateCountSettings } from './src/types/settings';
 import { WebNovelAssistantPlugin } from './src/types/plugin';
 import { ObsStatsPayload } from './src/types/stats';
@@ -38,6 +38,9 @@ import { createWordCountGutter } from './src/editor/WordCountGutter';
 import { WorkerManager } from './src/services/WorkerManager';
 import { MarkdownPostProcessor } from './src/services/MarkdownPostProcessor';
 import { FileEventManager } from './src/services/FileEventManager';
+import { HomepageManager } from './src/services/HomepageManager';
+import { HomepageRenderer } from './src/services/HomepageRenderer';
+import { NewNovelModal } from './src/ui/NewNovelModal';
 
 export default class AccurateChineseCountPlugin extends Plugin implements WebNovelAssistantPlugin {
 	public wordCountExtensionHolder: Extension[] = [];
@@ -57,6 +60,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	lastRankingFolder: string = ''; 
 
 	lastEditTime: number = Date.now();
+	private _unloading = false;
 	
 	workerManager!: WorkerManager;
 	markdownPostProcessor!: MarkdownPostProcessor;
@@ -79,6 +83,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	styleManager!: StyleManager;
 	stickyNoteManager: StickyNoteDataManager;
 	immersiveModeManager!: ImmersiveModeManager;
+	homepageManager!: HomepageManager;
 	commandManager: CommandManager;
 	viewManager: ViewManager;
 	menuManager: MenuManager;
@@ -140,8 +145,13 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	private async setupCoreFeatures(): Promise<void> {
 		await this.loadSettings();
 		await this.historyManager.loadHistory(); // 加载历史数据
+		await this.cacheManager.loadCache(); // 提前加载缓存数据，避免启动时主页字数显示为 0
 		
-		
+		// 应用便签显示状态
+		if (this.settings.showFloatingNotes === false) {
+			document.body.classList.add('webnovel-notes-hidden');
+		}
+
 		// 加载浮动便签
 		await this.loadFloatingNotes();
 		
@@ -189,6 +199,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.viewManager.registerAllViews();
 		this.menuManager.registerAllMenus();
 		this.registerCommonRibbonIcons();
+		
 
 		this.registerEvent(this.app.workspace.on('editor-change', () => {
 			// 使用自适应防抖：根据输入速度自动调整延迟
@@ -198,6 +209,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		}));
 		this.registerEvent(this.app.workspace.on('active-leaf-change', () => {
 			this.editorTracker.handleFileChange();
+			this.handleHomepageViewMode();
 		}));
 		this.registerEvent(this.app.metadataCache.on('changed', () => {
 			// 使用防抖避免高频更新
@@ -209,6 +221,11 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		// 初始化当前文件的字数
 		this.editorTracker.handleFileChange();
 		this.editorTracker.updateWordCount(); // 初始化状态栏显示
+
+		// ==========================================
+		// 创作主页（跨平台支持）
+		// ==========================================
+		this.setupHomepage();
 
 		// ==========================================
 		// 2. 平台检测和功能分级 (需求 8.1, 8.3)
@@ -327,8 +344,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			this.obsServer.start();
 		}
 
-		// 启用智能章节排序
-		if (this.settings.enableSmartChapterSort) {
+		// 启用文件浏览器补丁（智能章节排序 或 创作主页置顶）
+		if (this.settings.enableSmartChapterSort || this.settings.homepagePinPosition !== 'none') {
 			// 初始化自定义章节命名规则
 			ChapterSorter.setCustomRules(this.settings.chapterNamingRules || []);
 			
@@ -347,31 +364,63 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 
 		// Markdown 渲染后处理：在预览模式下为"未回收"状态注入复选框
 		this.registerMarkdownPostProcessor(this.markdownPostProcessor.getProcessor());
+
+		// 创作主页相关代码已被移动到 setupHomepage() 中，并在所有平台运行
 	}
 
+	private setupHomepage(): void {
+		// 创作主页动态渲染：6 个 Obsidian 专用代码块处理器
+		this.homepageManager = new HomepageManager(this.app, this);
+		const renderer = new HomepageRenderer(this.app, this);
+
+		if (this.settings.enableHomepage) {
+			this.app.workspace.onLayoutReady(async () => {
+				try {
+					await this.homepageManager!.ensureHomepageExists();
+					
+					// 如果开启了启动时自动打开主页
+					if (this.settings.openHomepageOnStartup) {
+						const homepagePath = this.homepageManager?.getHomepageFilePath();
+						if (homepagePath) {
+							const file = this.app.vault.getAbstractFileByPath(homepagePath);
+							if (file instanceof TFile) {
+								const leaves = this.app.workspace.getLeavesOfType('markdown');
+								const isAlreadyOpen = leaves.some(leaf => (leaf.view as any).file?.path === homepagePath);
+								if (!isAlreadyOpen) {
+									const activeLeaf = this.app.workspace.getLeaf(false);
+									await activeLeaf.openFile(file);
+								}
+							}
+						}
+					}
+				} catch (err) {
+					console.error('[Plugin] 创作主页初始化失败:', err);
+				}
+			});
+		} else {
+			this.homepageManager.deleteHomepage().catch(err =>
+				console.error('[Plugin] 创作主页文件删除失败:', err)
+			);
+		}
+
+		const isHomepage = (ctx: any): boolean => {
+			const file = this.app.vault.getAbstractFileByPath(ctx.sourcePath);
+			if (!(file instanceof TFile)) return false;
+			const cache = this.app.metadataCache.getFileCache(file);
+			return !!cache?.frontmatter?.homepage;
+		};
+
+		this.registerMarkdownCodeBlockProcessor('webnovel-homepage', async (source, el, ctx) => {
+			if (!isHomepage(ctx)) return;
+			// 添加标记类供 CSS :has() 定位
+			el.classList.add('webnovel-homepage-root');
+			await renderer.renderHomepage(el);
+		});
+
+	}
 
 
 	/**
-	 * 注册共享 Ribbon 图标（平板端和桌面端都需要）
-	 */
-	private registerCommonRibbonIcons(): void {
-		this.addRibbonIcon('bar-chart-2', '打开/关闭写作实时状态面板', () => {
-			this.toggleStatusView();
-		});
-		this.addRibbonIcon('bookmark', '打开/关闭伏笔面板', () => {
-			this.toggleForeshadowingView();
-		});
-		this.addRibbonIcon('calendar-clock', '打开/关闭时间线面板', () => {
-			this.toggleTimelineView();
-		});
-
-		// 沉浸模式入口仅限桌面端
-		if (isDesktop()) {
-			this.addRibbonIcon('expand', '进入/退出全屏沉浸写作模式', () => {
-				this.immersiveModeManager.toggleImmersiveMode();
-			});
-		}
-	}
 
 
 
@@ -434,6 +483,9 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		// 仅在桌面端加载浮动便签，移动端/平板端由于交互限制不启用
 		if (!isDesktop()) return;
 
+			// 清除可能残留的便签 DOM（如插件上次未正常卸载）
+			document.body.querySelectorAll('.my-floating-sticky-note').forEach(el => el.remove());
+			this.activeNotes = [];
 		const notes = await this.stickyNoteManager.loadNotes();
 
 		for (const noteState of notes) {
@@ -470,7 +522,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	 */
 	public syncFloatingNotes(): void {
 		// 仅在桌面端同步浮动便签
-		if (!isDesktop()) return;
+		if (!isDesktop() || this._unloading) return;
 
 		const notes = this.stickyNoteManager.getNotes();
 
@@ -483,12 +535,18 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			}
 		});
 
-		// 2. 处理沉浸模式中新建的便签
+		// 2. 处理沉浸模式中新建或编辑过的便签
 		const activeIds = new Set(this.activeNotes.map(n => n.state.id));
 		for (const noteState of notes) {
 			if (!activeIds.has(noteState.id)) {
 				const newNote = new FloatingStickyNote(this.app, this, { state: noteState });
 				newNote.load();
+			} else {
+				// 更新已存在的便签内容和状态
+				const existingNote = this.activeNotes.find(n => n.state.id === noteState.id);
+				if (existingNote) {
+					existingNote.updateFromState(noteState);
+				}
 			}
 		}
 	}
@@ -518,6 +576,89 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		}
 	}
 
+	private _leafOriginalStates = new WeakMap<any, any>();
+
+	/**
+	 * 主页视图模式管理
+	 * 精确记录叶子进入主页前的状态，离开时完美还原
+	 */
+	private handleHomepageViewMode(): void {
+		if (!this.settings.enableHomepage) return;
+		const homepagePath = this.homepageManager?.getHomepageFilePath();
+		if (!homepagePath) return;
+
+		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+		if (!view) return;
+
+		const leaf = view.leaf;
+		const activeFile = view.file;
+		const isOnHomepage = activeFile && activeFile.path === homepagePath;
+
+		if (isOnHomepage) {
+			// 进入主页：记录原状态并切换到预览模式
+			if (!this._leafOriginalStates.has(leaf)) {
+				const stateToSave = view.getState();
+				if (stateToSave.mode === 'preview') {
+					// 针对 Obsidian 重启时恢复会话，或用户原本在阅读模式的情况
+					// 我们将其原状态“修正”为系统的默认模式（通常是 source/编辑模式）
+					// 这样切出主页到其他文档时，就不会把其他文档也变成阅读模式
+					stateToSave.mode = (this.app.vault as any).getConfig?.('defaultViewMode') || 'source';
+					stateToSave.source = false;
+				}
+				this._leafOriginalStates.set(leaf, stateToSave);
+			}
+			if (view.getMode() !== 'preview') {
+				// 使用 setTimeout 避免与 Obsidian 内部的文件打开/导航 Promise 产生竞态条件
+				setTimeout(() => {
+					// 获取最新状态避免过期
+					const latestView = this.app.workspace.getActiveViewOfType(MarkdownView);
+					if (latestView && latestView.file?.path === homepagePath) {
+						const state = latestView.getState();
+						state.mode = 'preview';
+						latestView.leaf.setViewState({ type: 'markdown', state, active: true });
+					}
+				}, 50);
+			}
+			this.homepageManager?.refreshHomepageViews();
+		} else {
+			// 离开了主页：恢复进入前的状态
+			if (this._leafOriginalStates.has(leaf)) {
+				const originalState = this._leafOriginalStates.get(leaf);
+				this._leafOriginalStates.delete(leaf);
+				
+				const currentState = view.getState();
+				if (currentState.mode !== originalState.mode || currentState.source !== originalState.source) {
+					// 使用 setTimeout 避免切换回其他文档时，被 Obsidian 自身的默认加载状态覆盖
+					const targetPath = activeFile?.path;
+					setTimeout(() => {
+						const latestView = this.app.workspace.getActiveViewOfType(MarkdownView);
+						if (latestView && latestView.file?.path === targetPath) {
+							const newState = latestView.getState();
+							newState.mode = originalState.mode;
+							newState.source = originalState.source;
+							latestView.leaf.setViewState({ type: 'markdown', state: newState, active: true });
+						}
+					}, 50);
+				}
+			}
+		}
+	}
+
+	/**
+	 * 切换所有悬浮便签的显示/隐藏状态
+	 */
+	public async toggleFloatingNotesVisibility() {
+		this.settings.showFloatingNotes = !this.settings.showFloatingNotes;
+		await this.saveSettings();
+		if (this.settings.showFloatingNotes) {
+			document.body.classList.remove('webnovel-notes-hidden');
+			new Notice('[显示] 悬浮便签已显示');
+		} else {
+			document.body.classList.add('webnovel-notes-hidden');
+			new Notice('[隐藏] 悬浮便签已隐藏');
+		}
+	}
+
 	/**
 	 * 刷新所有沉浸模式便签列表视图
 	 */
@@ -536,7 +677,33 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		});
 	}
 
-	onunload() {
+	
+	private registerCommonRibbonIcons(): void {
+		this.addRibbonIcon('bar-chart-2', '打开/关闭写作实时状态面板', () => {
+			this.toggleStatusView();
+		});
+		this.addRibbonIcon('bookmark', '打开/关闭伏笔面板', () => {
+			this.toggleForeshadowingView();
+		});
+		this.addRibbonIcon('calendar-clock', '打开/关闭时间线面板', () => {
+			this.toggleTimelineView();
+		});
+		this.addRibbonIcon('trophy', '打开/关闭榜单追踪面板', () => {
+			this.toggleRankingView();
+		});
+
+		if (isDesktop()) {
+			this.addRibbonIcon('expand', '进入/退出全屏沉浸写作模式', () => {
+				this.immersiveModeManager.toggleImmersiveMode();
+			});
+		}
+	}
+onunload() {
+		this._unloading = true;
+		// 立即移除所有便签 DOM（最先执行，确保视觉上立刻消失）
+		document.body.classList.remove('webnovel-notes-hidden');
+		document.body.querySelectorAll('.my-floating-sticky-note').forEach(el => el.remove());
+
 		// 0. 确保退出沉浸模式（fire-and-forget，无法等待）
 		if (this.immersiveModeManager) {
 			this.immersiveModeManager.exitImmersiveMode().catch(e =>
@@ -593,7 +760,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			this.stickyNoteManager.saveNotes(this.stickyNoteManager.getNotes())
 		]).catch(e => console.error('[WebNovel Assistant] 卸载时数据刷新失败:', e));
 
-		console.debug('[WebNovel Assistant] Plugin unloaded and resources cleaned up');
+		console.log('[WebNovel Assistant] Plugin unloaded and resources cleaned up');
 	}
 
 	/**
@@ -612,7 +779,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			const workspaceFiles = allFiles.filter(f => this.isEligibleForWordCount(f));
 			const cacheStats = this.cacheManager.getCacheStats();
 			
-			console.debug(`[Plugin] 缓存完整性检查: ${cacheStats.size} 条目 vs ${workspaceFiles.length} 文件（工作区）`);
+			console.log(`[Plugin] 缓存完整性检查: ${cacheStats.size} 条目 vs ${workspaceFiles.length} 文件（工作区）`);
 			
 			// 缓存应该包含：文件数 + 文件夹数
 			// 更严格的检查：缓存条目数应该至少等于文件数（因为还有文件夹）
@@ -636,41 +803,53 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 				if (isMobile()) {
 					setTimeout(() => {
 						this.refreshFolderCounts();
+						if (this.settings.enableHomepage) this.homepageManager?.refreshHomepageViews();
 					}, 500);
 				} else {
 					this.refreshFolderCounts();
+					if (this.settings.enableHomepage) this.homepageManager?.refreshHomepageViews();
 				}
-				console.debug('[Plugin] 已从持久化存储加载缓存');
+				console.log('[Plugin] 已从持久化存储加载缓存');
 				return;
 			}
 			
-			// 缓存不完整或不存在，重新构建
-			if (loaded && shouldRebuild) {
-				console.debug(`[Plugin] 缓存不完整（${cacheStats.size} 条目 vs ${workspaceFiles.length} 文件），重新构建...`);
-				// 清除旧缓存，否则非章节文件条目和父文件夹累积数据会残留
-				this.cacheManager.clearCache();
-			} else if (!loaded) {
-				console.debug('[Plugin] 缓存不存在，开始构建...');
+			// 缓存不完整或不存在
+			if (!loaded) {
+				console.log('[Plugin] 缓存不存在，开始构建...');
+				// 全量构建
+				const notice = new Notice('正在构建文件浏览器缓存...', 0);
+				await this.cacheManager.buildInitialCache(
+					this.app.vault,
+					this.calculateAccurateWords.bind(this),
+					this.isEligibleForWordCount.bind(this)
+				);
+				notice.hide();
+			} else {
+				console.log(`[Plugin] 缓存不完整（${cacheStats.size} 条目 vs ${workspaceFiles.length} 文件），增量补全...`);
+				// 增量补全：只处理缓存中缺失的文件
+				const cachedPaths = new Set(Array.from(this.cacheManager.getEntries(), ([k]) => k));
+				const missingFiles = workspaceFiles.filter(f => !cachedPaths.has(f.path));
+				for (const file of missingFiles) {
+					try {
+						const content = await this.app.vault.cachedRead(file);
+						const count = this.calculateAccurateWords(content);
+						this.cacheManager.updateFileCache(file, count, this.app.vault);
+					} catch (e) {
+						// 忽略单个文件失败
+					}
+				}
+				await this.cacheManager.saveCache();
 			}
 
-			// 重新构建缓存
-			const notice = new Notice('正在构建文件浏览器缓存...', 0);
-			
-			await this.cacheManager.buildInitialCache(
-				this.app.vault,
-				this.calculateAccurateWords.bind(this),
-				this.isEligibleForWordCount.bind(this)
-			);
-			
-			notice.hide();
-			
 			// 移动端需要额外延迟，确保文件浏览器完全准备好
 			if (isMobile()) {
 				setTimeout(() => {
-					this.refreshFolderCounts();
+						this.refreshFolderCounts();
+						if (this.settings.enableHomepage) this.homepageManager?.refreshHomepageViews();
 				}, 500);
 			} else {
-				this.refreshFolderCounts();
+					this.refreshFolderCounts();
+					if (this.settings.enableHomepage) this.homepageManager?.refreshHomepageViews();
 			}
 			
 			new Notice('文件浏览器缓存构建完成', 3000);
@@ -733,6 +912,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		await this.viewManager.toggleView(RANKING_VIEW_TYPE);
 	}
 
+
 	async saveSettings() {
 		await this.settingsManager.saveSettings();
 	}
@@ -758,6 +938,22 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		});
 	}
 
+
+
+	/**
+	 * 检查文件是否在严格章节模式例外目录内
+	 */
+	isFileInStrictChapterException(file: TFile): boolean {
+		if (!this.settings.strictChapterExceptions || this.settings.strictChapterExceptions.length === 0) {
+			return false;
+		}
+		const filePath = file.path;
+		return this.settings.strictChapterExceptions.some(folder => {
+			const normalizedFolder = folder.replace(/^\/+|\/+$/g, '');
+			if (normalizedFolder === '') return false;
+			return filePath === normalizedFolder + '.md' || filePath.startsWith(normalizedFolder + '/');
+		});
+	}
 	/**
 	 * 检查文件是否符合字数统计的条件
 	 * @param file 要检查的文件
@@ -771,7 +967,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		if (file.basename.includes('_合并章节')) return false;
 		
 		// 3. 如果开启了严格章节模式，则必须是符合命名规则的章节文件
-		if (this.settings.enableStrictChapterMode && !ChapterSorter.isChapterFile(file.name)) {
+		if (this.settings.enableStrictChapterMode && !ChapterSorter.isChapterFile(file.name) && !this.isFileInStrictChapterException(file)) {
 			return false;
 		}
 		

@@ -29,6 +29,7 @@ import type { ViewManager } from '../core/ViewManager';
 import type { MenuManager } from '../core/MenuManager';
 import type { ImmersiveModeManager } from '../ui/ImmersiveModeManager';
 import type { FileEventManager } from '../services/FileEventManager';
+import type { HomepageManager } from '../services/HomepageManager';
 
 /**
  * WebNovel Assistant 插件接口
@@ -75,6 +76,7 @@ export interface WebNovelAssistantPlugin {
 	timelineManager?: TimelineManager;
 	editorTracker?: EditorTracker;
 	styleManager?: StyleManager;
+	homepageManager?: HomepageManager;
 
 	// 追踪状态
 	isTracking: boolean;
@@ -100,6 +102,8 @@ export interface WebNovelAssistantPlugin {
 	loadSettings(): Promise<void>;
 	calculateAccurateWords(text: string): number;
 	isFileInWorkspace(file: TFile): boolean;
+	/** 检查文件是否在严格章节模式例外目录内 */
+	isFileInStrictChapterException(file: TFile): boolean;
 	/** 检查文件是否符合字数统计的条件（工作区 + 排除合并文件 + 严格章节模式） */
 	isEligibleForWordCount(file: TFile): boolean;
 	updateWordCount(): void;
@@ -111,6 +115,7 @@ export interface WebNovelAssistantPlugin {
 	toggleForeshadowingView(): Promise<void>;
 	toggleTimelineView(): Promise<void>;
 	toggleRankingView(): Promise<void>;
+	toggleFloatingNotesVisibility(): Promise<void>;
 	refreshStatusViews(): void;
 
 	// 缓存管理

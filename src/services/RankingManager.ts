@@ -114,6 +114,8 @@ export class RankingManager {
 
 			const entry = entries.find(e => e.period === period && (e.status === '进行中' || e.status === '未开始'));
 			if (!entry) return;
+			
+			if (entry.status === status && (completedWords === undefined || entry.completedWords === completedWords)) return;
 
 			entry.status = status;
 			if (completedWords !== undefined) entry.completedWords = completedWords;
@@ -135,7 +137,7 @@ export class RankingManager {
 			const content = await this.app.vault.read(file);
 			const entries = this.parseEntries(content);
 			const entry = entries.find(e => e.period === period && e.status === '进行中');
-			if (!entry) return;
+			if (!entry || entry.completedWords === completedWords) return;
 			entry.completedWords = completedWords;
 			let newContent = '';
 			for (const e of entries) {

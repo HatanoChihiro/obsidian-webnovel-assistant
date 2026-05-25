@@ -252,6 +252,7 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 		{ name: '纯数字（1、01、001）', pattern: '^(\\d+)$', enabled: true },
 	],
 	workspaceFolders: [],
+	showFloatingNotes: true,
 	noteOpacity: 0.9,
 	idleTimeoutThreshold: 60 * 1000,
 	noteThemes: [
@@ -278,6 +279,7 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 	eyeCareColor: '#E8F5E9',
 	showMobileFloatingStats: true, // 默认显示移动端浮窗
 	enableStrictChapterMode: false, // 严格章节模式，默认关闭
+	strictChapterExceptions: [],
 	enableWordCountGutter: true,
 	wordCountInterval: 2000,
 	nextNoteThemeIndex: 0,
@@ -324,5 +326,16 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 		obsShowDailyGoal: true,
 		obsShowSessionWords: true,
 	},
+
+	// 创作主页默认设置
+	enableHomepage: false,
+	openHomepageOnStartup: false,
+	homepagePath: '',
+	homepageWelcome: '欢迎回到创作中心',
+	heatmapStartDate: '',
+	heatmapEndDate: '',
+	novelInfo: { fileName: '作品信息' },
+	homepagePinPosition: 'top',
+	customSortOrder: {},
 };
 

@@ -7,7 +7,7 @@
 [![GitHub release](https://img.shields.io/github/v/release/HatanoChihiro/obsidian-webnovel-assistant)](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/releases)
 [![License](https://img.shields.io/github/license/HatanoChihiro/obsidian-webnovel-assistant)](LICENSE)
 
-一个功能强大的 Obsidian 插件，专为中文网络小说作者打造，提供字数统计、写作目标追踪、伏笔管理、时间线系统、OBS 直播叠加层等丰富功能。
+一个功能强大的 Obsidian 插件，专为中文网络小说作者打造，提供创作主页、字数统计、写作目标追踪、伏笔管理、时间线系统、OBS 直播叠加层等丰富功能。
 
 <img width="2560" height="1380" alt="status-view" src="assets/status-view.png" />
 
@@ -18,6 +18,15 @@
 - **[更新日志](CHANGELOG.md)** - 版本更新记录
 
 ## ✨ 核心功能
+
+### 🏠 创作主页
+- **全宽仪表盘**: 2行×2列网格布局，全宽填满编辑器
+- **动态欢迎语**: 根据时间段自动变化，显示总字数与今日新增
+- **作品总览**: 连载中（含榜单追踪）、存稿中、已暂停、已完结一目了然
+- **数据面板**: 效率总览、365热力图、近30日趋势
+- **一键新建**: 右侧新建作品按钮，弹窗填写元数据后自动创建
+
+<img width="2560" height="1440" alt="homepage" src="assets/homepage.png" />
 
 ### 🌑 沉浸写作模式
 - **全屏专注**: 隐藏所有干扰元素，提供沉浸式创作环境
@@ -164,6 +173,7 @@ A powerful Obsidian plugin designed for Chinese web novel writers. Features accu
 
 - **Accurate Word Count** — Tailored for Chinese web novel platforms, excludes Markdown syntax and punctuation
 - **Writing Goals** — Chapter goal, daily goal, and ranking goal with real-time progress tracking
+- **Creative Homepage** — Full-width dashboard with 2×2 grid layout, dynamic welcome, novel overview, stats panel, one-click new novel
 - **Focus Timer** — Automatic focus/slack time detection with Web Worker threading
 - **Immersive Mode** — Full-screen distraction-free writing with dashboard and auxiliary panels
 - **Foreshadowing Manager** — Mark, track, and recover story foreshadowing across chapters

@@ -15,11 +15,11 @@ export class StyleManager {
 	applyEyeCare(): void {
 		const color = this.settings.eyeCareColor || '#E8F5E9';
 		const css = `
-			.workspace-leaf-content[data-type="markdown"] .view-content {
+			.workspace-leaf-content[data-type="markdown"]:not(:has(.webnovel-homepage)) .view-content {
 				background-color: ${color} !important;
 			}
-			.markdown-source-view .cm-editor .cm-scroller,
-			.markdown-reading-view .markdown-preview-view {
+			.workspace-leaf-content[data-type="markdown"]:not(:has(.webnovel-homepage)) .markdown-source-view .cm-editor .cm-scroller,
+			.workspace-leaf-content[data-type="markdown"]:not(:has(.webnovel-homepage)) .markdown-reading-view .markdown-preview-view {
 				background-color: transparent !important;
 			}
 		`;

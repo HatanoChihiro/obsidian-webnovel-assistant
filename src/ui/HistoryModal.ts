@@ -1,4 +1,4 @@
-﻿import { App, Modal } from 'obsidian';
+import { App, Modal } from 'obsidian';
 import { DailyStat } from '../types/settings';
 import { formatCount } from '../utils/format';
 
@@ -102,8 +102,11 @@ function getCurrentKey(tab: string): string {
 	return '';
 }
 
+import type { WebNovelAssistantPlugin } from '../types/plugin';
+
 export class HistoryStatsModal extends Modal {
-	history: Record<string, DailyStat>;
+	plugin: WebNovelAssistantPlugin;
+	get history() { return this.plugin.historyManager.getHistory(); }
 	currentTab: 'day' | 'week' | 'month' | 'year' = 'day';
 	currentMetric: 'words' | 'totalTime' | 'focusTime' | 'slackTime' = 'words';
 	chartContainer!: HTMLElement;
@@ -112,16 +115,14 @@ export class HistoryStatsModal extends Modal {
 	heatDateRowEl!: HTMLElement;
 	heatStartInput!: HTMLInputElement;
 	heatEndInput!: HTMLInputElement;
-	customStartDate: string = '';
-	customEndDate: string = '';
 	efficiencyContainer!: HTMLElement;
 	titleEl!: HTMLElement;
 	tabGroupEl!: HTMLElement;
 	metricGroupEl!: HTMLElement;
 
-	constructor(app: App, history: Record<string, DailyStat>) {
+	constructor(app: App, plugin: WebNovelAssistantPlugin) {
 		super(app);
-		this.history = history;
+		this.plugin = plugin;
 	}
 
 	onOpen() {
@@ -137,7 +138,7 @@ export class HistoryStatsModal extends Modal {
 		this.renderEfficiency();
 
 		// === 热力图 ===
-		contentEl.createEl('h3', { text: '365热力图', cls: 'stats-section-title' });
+		contentEl.createEl('h3', { text: '热力图', cls: 'stats-section-title' });
 
 		this.heatDateRowEl = contentEl.createDiv({ cls: 'stats-heat-date-row' });
 		this.heatDateRowEl.createDiv({ cls: 'stats-heat-date-label', text: '起始' });
@@ -147,18 +148,20 @@ export class HistoryStatsModal extends Modal {
 			type: 'date',
 			cls: 'stats-heat-date-input'
 		}) as HTMLInputElement;
-		this.heatStartInput.value = defaultStart;
+		this.heatStartInput.value = this.plugin.settings.heatmapStartDate || defaultStart;
 		this.heatDateRowEl.createDiv({ cls: 'stats-heat-date-label', text: '结束' });
 		this.heatEndInput = this.heatDateRowEl.createEl('input', {
 			type: 'date',
 			cls: 'stats-heat-date-input'
 		}) as HTMLInputElement;
-		this.heatEndInput.value = defaultEnd;
+		this.heatEndInput.value = this.plugin.settings.heatmapEndDate || defaultEnd;
 
-		const resetBtn = this.heatDateRowEl.createEl('button', { text: '重置', cls: 'stats-tab-btn' });
-		resetBtn.onclick = () => {
-			this.customStartDate = '';
-			this.customEndDate = '';
+		const resetBtn = this.heatDateRowEl.createEl('button', { text: '今年', cls: 'stats-tab-btn' });
+		resetBtn.onclick = async () => {
+			this.plugin.settings.heatmapStartDate = '';
+			this.plugin.settings.heatmapEndDate = '';
+			await this.plugin.saveSettings();
+			this.plugin.homepageManager?.refreshHomepageViews();
 			const now = window.moment();
 			this.heatStartInput.value = now.clone().startOf('year').format('YYYY-MM-DD');
 			this.heatEndInput.value = now.clone().endOf('year').format('YYYY-MM-DD');
@@ -166,30 +169,34 @@ export class HistoryStatsModal extends Modal {
 			this.renderEfficiency();
 		};
 
-		this.heatStartInput.onchange = () => {
+		this.heatStartInput.onchange = async () => {
 			const val = this.heatStartInput.value;
 			if (val) {
-				this.customStartDate = val;
-				this.customEndDate = window.moment(val).add(1, 'year').format('YYYY-MM-DD');
-				this.heatEndInput.value = this.customEndDate;
+				this.plugin.settings.heatmapStartDate = val;
+				this.plugin.settings.heatmapEndDate = window.moment(val).add(1, 'year').format('YYYY-MM-DD');
+				this.heatEndInput.value = this.plugin.settings.heatmapEndDate;
 			} else {
-				this.customStartDate = '';
-				this.customEndDate = '';
+				this.plugin.settings.heatmapStartDate = '';
+				this.plugin.settings.heatmapEndDate = '';
 			}
+			await this.plugin.saveSettings();
+			this.plugin.homepageManager?.refreshHomepageViews();
 			this.renderHeatmap();
 			this.renderEfficiency();
 		};
 
-		this.heatEndInput.onchange = () => {
+		this.heatEndInput.onchange = async () => {
 			const val = this.heatEndInput.value;
 			if (val) {
-				this.customEndDate = val;
-				this.customStartDate = window.moment(val).subtract(1, 'year').format('YYYY-MM-DD');
-				this.heatStartInput.value = this.customStartDate;
+				this.plugin.settings.heatmapEndDate = val;
+				this.plugin.settings.heatmapStartDate = window.moment(val).subtract(1, 'year').format('YYYY-MM-DD');
+				this.heatStartInput.value = this.plugin.settings.heatmapStartDate;
 			} else {
-				this.customStartDate = '';
-				this.customEndDate = '';
+				this.plugin.settings.heatmapStartDate = '';
+				this.plugin.settings.heatmapEndDate = '';
 			}
+			await this.plugin.saveSettings();
+			this.plugin.homepageManager?.refreshHomepageViews();
 			this.renderHeatmap();
 			this.renderEfficiency();
 		};
@@ -251,8 +258,8 @@ this.scrollWrapper = contentEl.createDiv({ cls: 'stats-chart-scroll-wrapper' });
 	private renderEfficiency(): void {
 		this.efficiencyContainer.empty();
 
-		const rangeStart = this.customStartDate || window.moment().clone().startOf('year').format('YYYY-MM-DD');
-		const rangeEnd = this.customEndDate || window.moment().format('YYYY-MM-DD');
+		const rangeStart = this.plugin.settings.heatmapStartDate || window.moment().clone().startOf('year').format('YYYY-MM-DD');
+		const rangeEnd = this.plugin.settings.heatmapEndDate || window.moment().format('YYYY-MM-DD');
 
 		const streak = calcStreak(this.history);
 		const focusRate = calcFocusRate(this.history, rangeStart, rangeEnd);
@@ -281,11 +288,11 @@ this.scrollWrapper = contentEl.createDiv({ cls: 'stats-chart-scroll-wrapper' });
 		this.heatContainer.empty();
 
 		const now = window.moment();
-		const rangeStart = this.customStartDate
-			? window.moment(this.customStartDate)
+		const rangeStart = this.plugin.settings.heatmapStartDate
+			? window.moment(this.plugin.settings.heatmapStartDate)
 			: now.clone().startOf('year');
-		const rangeEnd = this.customEndDate
-			? window.moment(this.customEndDate)
+		const rangeEnd = this.plugin.settings.heatmapEndDate
+			? window.moment(this.plugin.settings.heatmapEndDate)
 			: now.clone().endOf('year');
 
 		const alignedStart = rangeStart.clone().isoWeekday(1);
@@ -505,7 +512,13 @@ svg += `</defs>`;
 				const existing = container.querySelector(".stats-trend-overlay-wrapper");
 				if (existing) existing.remove();
 
-				container.createDiv({ cls: "stats-trend-overlay-wrapper" }).innerHTML = svg;
+				const wrapper = container.createDiv({ cls: "stats-trend-overlay-wrapper" });
+				const parser = new DOMParser();
+				const svgDoc = parser.parseFromString(svg, 'image/svg+xml');
+				const svgEl = svgDoc.documentElement;
+				if (svgEl && !(svgEl instanceof HTMLElement && svgEl.querySelector('parsererror'))) {
+					wrapper.appendChild(wrapper.doc.importNode(svgEl, true));
+				}
 			});
 		}
 

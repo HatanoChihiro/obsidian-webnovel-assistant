@@ -22,6 +22,7 @@ export class CommandManager {
 		this.registerObsCommands();
 		this.registerForeshadowingCommands();
 		this.registerMobileCommands();
+		this.registerHomepageCommands();
 	}
 
 	private registerViewCommands() {
@@ -104,6 +105,14 @@ export class CommandManager {
 				name: '新建空白悬浮便签',
 				callback: () => {
 					this.plugin.createStickyNote({ content: '', title: '新便签' });
+				}
+			});
+
+			this.plugin.addCommand({
+				id: 'toggle-floating-notes',
+				name: '显示/隐藏所有悬浮便签',
+				callback: () => {
+					this.plugin.toggleFloatingNotesVisibility();
 				}
 			});
 		}
@@ -307,6 +316,31 @@ export class CommandManager {
 			name: '复制本文档',
 			editorCallback: (editor, view) => {
 				copyDocumentContent(view.file?.basename ?? '', editor.getValue());
+			}
+		});
+	}
+
+	private registerHomepageCommands() {
+		this.plugin.addCommand({
+			id: 'open-creative-homepage',
+			name: '打开创作主页',
+			callback: () => {
+				const file = this.plugin.homepageManager?.getHomepageFile();
+				if (file) {
+					this.plugin.app.workspace.getLeaf(false).openFile(file);
+				} else {
+					new Notice('创作主页文件不存在，请重启插件');
+				}
+			}
+		});
+
+		this.plugin.addCommand({
+			id: 'refresh-creative-homepage',
+			name: '刷新创作主页',
+			callback: async () => {
+				await this.plugin.homepageManager?.refreshHomepage();
+				this.plugin.homepageManager?.refreshHomepageViews();
+				new Notice('[成功] 创作主页已刷新');
 			}
 		});
 	}

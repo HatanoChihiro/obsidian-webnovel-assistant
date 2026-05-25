@@ -1,4 +1,4 @@
-import { ItemView, MarkdownView, WorkspaceLeaf } from 'obsidian';
+import { ItemView, MarkdownView, WorkspaceLeaf, TFile } from 'obsidian';
 import { formatTime, formatCount, parseGoal, isMobile } from '../utils';
 import { HistoryStatsModal, calcStreak, calcFocusRate, calcActiveHours, calcDailyAverage } from './HistoryModal';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
@@ -36,7 +36,9 @@ export class WritingStatusView extends ItemView {
 	historyTotalWordEl!: HTMLElement;
 	workNameEl!: HTMLElement;
 	workWordCountEl!: HTMLElement;
+	workGoalEl!: HTMLElement;
 
+	private lastActiveFolderPath: string | null = null;
 	private rankingSaveTimer: number | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: WebNovelAssistantPlugin) {
@@ -75,6 +77,11 @@ export class WritingStatusView extends ItemView {
 		const row = card.createDiv({ cls: 'work-info-row' });
 		this.workNameEl = row.createSpan({ cls: 'work-info-name', text: '--' });
 		this.workWordCountEl = row.createSpan({ cls: 'work-info-count', text: '' });
+		this.workGoalEl = card.createDiv({ cls: 'work-info-goal' });
+		this.workGoalEl.style.display = 'none';
+		this.workGoalEl.style.fontSize = '12px';
+		this.workGoalEl.style.color = 'var(--text-muted)';
+		this.workGoalEl.style.marginTop = '4px';
 	}
 
 	private createGoalCard(container: Element) {
@@ -190,12 +197,12 @@ export class WritingStatusView extends ItemView {
 		chartTitleRow.createSpan({ text: '近7日写作', cls: 'history-chart-title' });
 		const chartLink = chartTitleRow.createSpan({ text: '详情', cls: 'history-chart-subtitle' });
 		chartLink.onclick = () => {
-			new HistoryStatsModal(this.plugin.app, this.plugin.historyManager.getHistory()).open();
+			new HistoryStatsModal(this.plugin.app, this.plugin).open();
 		};
 
 		this.miniChartEl = chartSection.createDiv({ cls: 'mini-chart-container' });
 		this.miniChartEl.onclick = () => {
-			new HistoryStatsModal(this.plugin.app, this.plugin.historyManager.getHistory()).open();
+			new HistoryStatsModal(this.plugin.app, this.plugin).open();
 		};
 
 		this.efficiencySummaryEl = chartSection.createDiv({ cls: 'mini-efficiency-summary', text: '--' });
@@ -231,15 +238,50 @@ export class WritingStatusView extends ItemView {
 
 	async updateData() {
 		// 更新作品信息
-		const activeFile = this.app.workspace.getActiveViewOfType(MarkdownView)?.file
+		let activeFile = this.app.workspace.getActiveViewOfType(MarkdownView)?.file
 			?? this.app.workspace.getActiveFile();
-		if (activeFile) {
-			const folder = activeFile.parent;
-			const folderName = folder ? (folder.isRoot() ? '根目录' : folder.name) : '--';
-			const folderPath = folder ? folder.path : '';
-			const wordCount = folder ? this.plugin.cacheManager.getFolderWordCount(folderPath) : 0;
+			
+		let folderPath = '';
+		let folderName = '--';
+		
+		if (activeFile && activeFile.parent) {
+			this.lastActiveFolderPath = activeFile.parent.path;
+			folderPath = activeFile.parent.path;
+			folderName = activeFile.parent.isRoot() ? '根目录' : activeFile.parent.name;
+		} else if (this.lastActiveFolderPath) {
+			folderPath = this.lastActiveFolderPath;
+			const folder = this.app.vault.getAbstractFileByPath(folderPath);
+			if (folder) folderName = folder.name;
+		}
+
+		if (folderPath) {
+			const wordCount = this.plugin.cacheManager.getFolderWordCount(folderPath);
 			this.workNameEl.innerText = folderName;
 			this.workWordCountEl.innerText = wordCount > 0 ? `${wordCount.toLocaleString()}字` : '';
+
+			const infoFile = this.app.vault.getAbstractFileByPath(`${folderPath}/${this.plugin.settings.novelInfo.fileName}.md`);
+			let wordGoal = 0;
+			if (infoFile instanceof TFile) {
+				const content = await this.app.vault.cachedRead(infoFile);
+				const match = content.match(/目标字数[^\d\n\r]*?(\d+)/);
+				if (match) {
+					wordGoal = parseInt(match[1], 10);
+				}
+			}
+			if (wordGoal > 0) {
+				const pct = Math.round((wordCount / wordGoal) * 100);
+				this.workGoalEl.empty();
+				this.workGoalEl.createSpan({ text: '总进度' });
+				const pctSpan = this.workGoalEl.createSpan({ text: `${pct}%` });
+				pctSpan.style.fontWeight = '600';
+				pctSpan.style.fontFamily = 'var(--font-monospace)';
+				this.workGoalEl.style.display = 'flex';
+				this.workGoalEl.style.justifyContent = 'space-between';
+				this.workGoalEl.style.alignItems = 'center';
+				this.workGoalEl.style.marginTop = '8px';
+			} else {
+				this.workGoalEl.style.display = 'none';
+			}
 		}
 
 		if (!isMobile() && this.statusBadgeEl) {

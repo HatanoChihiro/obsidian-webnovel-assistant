@@ -247,6 +247,24 @@ export class FloatingStickyNote extends Component {
 		this.unload();
 	}
 
+	/**
+	 * 从另一个状态对象更新当前便签的显示（通常由同步逻辑调用）
+	 */
+	updateFromState(newState: StickyNoteState) {
+		this.state = { ...this.state, ...newState };
+		this.lastSavedContent = this.state.content || "";
+		if (this.textareaEl && this.state.content !== this.textareaEl.value) {
+			this.textareaEl.value = this.state.content || "";
+		}
+		
+		const titleEl = this.containerEl?.querySelector('.my-sticky-title') as HTMLElement;
+		if (titleEl && this.state.title) {
+			titleEl.innerText = this.state.title;
+		}
+		
+		this.updateVisuals();
+	}
+
 	onunload() {
 		// [L-P7] 确保在组件卸载时移除所有可能的全局拖拽监听器
 		this.cleanupDragging();

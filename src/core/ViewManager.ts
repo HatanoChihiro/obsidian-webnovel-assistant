@@ -40,7 +40,7 @@ export class ViewManager {
 
 		if (leaves.length > 0) {
 			leaf = leaves[0];
-			workspace.detachLeaf(leaf);
+			leaf.detach();
 		} else {
 			if (isMobile()) {
 				const rightLeaf = workspace.getRightLeaf(false);

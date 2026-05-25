@@ -26,9 +26,6 @@ declare module 'obsidian' {
         on(name: 'webnovel:word-count-gutter-settings-changed', callback: () => void): EventRef;
         trigger(name: 'webnovel:notes-changed'): void;
         trigger(name: 'webnovel:word-count-gutter-settings-changed'): void;
-
-        // 内部 API
-        detachLeaf(leaf: WorkspaceLeaf): void;
     }
 
     interface WorkspaceSplit {

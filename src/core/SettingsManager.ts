@@ -244,6 +244,11 @@ export class SettingsManager {
 			}
 		}
 
+		// 清理旧版 homepagePath 默认值，让 getHomepageFilePath() 动态推导到工作区下
+		if (migrated.homepagePath === '创作主页.md') {
+			migrated.homepagePath = '';
+		}
+
 		if (oldData && typeof oldData === 'object') {
 			const old = oldData as Record<string, unknown>;
 			const immersiveKeys = FLAT_IMMERSIVE_KEYS;
