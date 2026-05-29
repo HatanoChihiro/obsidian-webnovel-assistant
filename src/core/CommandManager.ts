@@ -6,6 +6,7 @@ import { ChapterSorter } from '../services/ChapterSorter';
 import { ForeshadowingInputModal, ConfirmCreateForeshadowingFileModal, ForeshadowingRecoveryModal } from '../ui/ForeshadowingModal';
 import { TimelineAddFromSelectionModal } from '../ui/TimelineView';
 import { TimelineManager } from '../services/TimelineManager';
+import { AdvancedSearchModal } from '../ui/AdvancedSearchModal';
 
 export class CommandManager {
 	private plugin: WebNovelAssistantPlugin;
@@ -23,6 +24,7 @@ export class CommandManager {
 		this.registerForeshadowingCommands();
 		this.registerMobileCommands();
 		this.registerHomepageCommands();
+		this.registerSearchCommands();
 	}
 
 	private registerViewCommands() {
@@ -340,6 +342,16 @@ export class CommandManager {
 				await this.plugin.homepageManager?.refreshHomepage();
 				this.plugin.homepageManager?.refreshHomepageViews();
 				new Notice('[成功] 创作主页已刷新');
+			}
+		});
+	}
+
+	private registerSearchCommands() {
+		this.plugin.addCommand({
+			id: 'advanced-webnovel-search',
+			name: '高级搜索 (筛选书籍/全局/多选目录)',
+			callback: () => {
+				new AdvancedSearchModal(this.plugin.app, this.plugin).open();
 			}
 		});
 	}
