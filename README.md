@@ -61,6 +61,7 @@
 - **榜单追踪**: 追踪签约平台的榜单任务，自动计算字数增量，到期自动关闭，起始字数可手动修改
 - **智能章节排序**：自动识别章节编号排序，支持"大纲"、"番外"等具名章节
 - **规则排序优化**：设置页面支持通过 ▲/▼ 按钮自由调整排序规则优先级
+- **高级搜索**：支持当前书籍/全局/自定义范围搜索，树形目录多选
 - **合并章节**：一键合并文件夹内所有章节
 
 ### 🎥 直播功能
@@ -113,6 +114,7 @@
 | 开始/暂停 摸鱼时间统计 | 切换时间追踪 |
 | 标注为伏笔 | 将选中文字标注为伏笔 |
 | 新建空白悬浮便签 | 创建浮动便签 |
+| 高级搜索 (筛选书籍/全局/多选目录) | 跨范围搜索内容 |
 | 自动创建下一章 | 智能递增章节编号 |
 | 重置直播统计数据 | 清空当前会话数据 |
 
@@ -181,6 +183,7 @@ A powerful Obsidian plugin designed for Chinese web novel writers. Features accu
 - **Sticky Notes** — Floating notes with auto-save and Markdown rendering
 - **OBS Overlay** — Real-time writing stats overlay for live streaming (local HTTP server, 127.0.0.1 only)
 - **Smart Chapter Sorting** — Auto-detect chapter numbers (Arabic/Chinese) and sort in file explorer
+- **Advanced Search** — Search across current book, global, or custom folder scopes with tree-based directory selection
 - **Chapter Merge & Export** — One-click merge all chapters into a single file
 - **Mobile Support** — Floating word count, touch-optimized controls, cross-device sync
 

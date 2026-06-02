@@ -141,13 +141,36 @@ export class ForeshadowingView extends CreativeView {
 		const quotesEl = card.createDiv({ cls: 'foreshadowing-entry-quotes' });
 		entry.contents.forEach(c => {
 			const quoteEl = quotesEl.createDiv({ cls: 'foreshadowing-entry-quote' });
+			const target = c.source || entry.sourceFile;
+			
 			if (c.source || c.time) {
-				quoteEl.createDiv({
+				const metaEl = quoteEl.createDiv({
 					text: `${c.source ? `[[${c.source}]]` : ''}${c.time ? ` · ${c.time}` : ''}`,
 					cls: 'foreshadowing-entry-quote-meta'
 				});
+				metaEl.style.cursor = 'pointer';
+				metaEl.title = '点击跳转到该引用所在的具体段落';
+				metaEl.onclick = async () => {
+					const file = this.app.vault.getMarkdownFiles().find(f => f.basename === target);
+					if (file) {
+						await this.openFileWithSmartLocate(file, c.text);
+					} else {
+						new Notice(`找不到文件：${target}`);
+					}
+				};
 			}
-			quoteEl.createDiv({ text: c.text, cls: 'foreshadowing-entry-quote-text' });
+			
+			const textEl = quoteEl.createDiv({ text: c.text, cls: 'foreshadowing-entry-quote-text' });
+			textEl.style.cursor = 'pointer';
+			textEl.title = '点击跳转到原文的具体位置';
+			textEl.onclick = async () => {
+				const file = this.app.vault.getMarkdownFiles().find(f => f.basename === target);
+				if (file) {
+					await this.openFileWithSmartLocate(file, c.text);
+				} else {
+					new Notice(`找不到文件：${target}`);
+				}
+			};
 		});
 
 		// 底部信息行
@@ -167,33 +190,30 @@ export class ForeshadowingView extends CreativeView {
 		// 跳转按钮：单条引用直接跳转，多条引用显示选择菜单
 		const jumpBtn = actions.createEl('button', { text: '跳转', cls: 'foreshadowing-action-btn' });
 		jumpBtn.onclick = async (e) => {
-			// 收集所有有来源的引用
-			const sources = entry.contents
-				.filter(c => c.source)
-				.map(c => c.source);
-			// 加上标题行的来源（如果不重复）
-			if (!sources.includes(entry.sourceFile)) sources.unshift(entry.sourceFile);
-
-			if (sources.length <= 1) {
+			if (entry.contents.length <= 1) {
 				// 单个来源，直接跳转
-				const target = sources[0] || entry.sourceFile;
+				const target = entry.contents[0]?.source || entry.sourceFile;
+				const text = entry.contents[0]?.text || '';
 				const file = this.app.vault.getMarkdownFiles().find(f => f.basename === target);
 				if (file) {
-					await this.app.workspace.getLeaf(false).openFile(file);
+					await this.openFileWithSmartLocate(file, text);
 				} else {
 					new Notice(`找不到文件：${target}`);
 				}
 			} else {
 				// 多个来源，显示下拉菜单
 				const menu = new Menu();
-				for (const source of sources) {
+				for (const c of entry.contents) {
+					const target = c.source || entry.sourceFile;
+					// 截断部分文字作为菜单标题
+					const shortText = c.text.length > 10 ? c.text.substring(0, 10) + '...' : c.text;
 					menu.addItem((item: MenuItem) => {
-						item.setTitle(source).onClick(async () => {
-							const file = this.app.vault.getMarkdownFiles().find(f => f.basename === source);
+						item.setTitle(`${target} (${shortText})`).onClick(async () => {
+							const file = this.app.vault.getMarkdownFiles().find(f => f.basename === target);
 							if (file) {
-								await this.app.workspace.getLeaf(false).openFile(file);
+								await this.openFileWithSmartLocate(file, c.text);
 							} else {
-								new Notice(`找不到文件：${source}`);
+								new Notice(`找不到文件：${target}`);
 							}
 						});
 					});
@@ -310,5 +330,38 @@ export class ForeshadowingView extends CreativeView {
 		const content = await this.app.vault.read(file);
 		// 使用 Manager 的统一解析逻辑
 		return this.plugin.foreshadowingManager.parseEntries(content);
+	}
+
+	/**
+	 * 使用智能文本匹配进行精准跳转
+	 */
+	private async openFileWithSmartLocate(file: TFile, searchText: string) {
+		const leaf = this.app.workspace.getLeaf(false);
+		
+		if (!searchText) {
+			await leaf.openFile(file);
+			return;
+		}
+
+		const content = await this.app.vault.cachedRead(file);
+		let targetLine = 0;
+		
+		const cleanSearch = searchText.trim();
+		if (cleanSearch) {
+			// 完全匹配
+			let index = content.indexOf(cleanSearch);
+			
+			// 降级匹配（忽略两端多余空格等情况）
+			if (index === -1 && cleanSearch.length > 20) {
+				const shortSearch = cleanSearch.substring(0, 20);
+				index = content.indexOf(shortSearch);
+			}
+			
+			if (index !== -1) {
+				targetLine = content.substring(0, index).split('\n').length - 1;
+			}
+		}
+
+		await leaf.openFile(file, { eState: { line: targetLine } });
 	}
 }
