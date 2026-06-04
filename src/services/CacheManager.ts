@@ -57,21 +57,17 @@ export class CacheManager {
 			if (await adapter.exists(this.cacheFilePath)) {
 				const content = await adapter.read(this.cacheFilePath);
 				cacheData = JSON.parse(content);
-				console.debug('[CacheManager] 已从独立文件读取缓存数据');
 			} else {
 				// 兼容：从 data.json 读取旧版缓存进行迁移
 				const data = await this.plugin.loadData();
 				if (data && data.cacheData) {
 					cacheData = data.cacheData as CacheData;
-					console.debug('[CacheManager] 检测到旧版本位于 data.json 的缓存数据，将通过首次保存迁移到独立文件');
-					
 					// 触发持久化至新独立文件。原 data.json 中的数据会在下次保存设置时由于没有保留逻辑而被自发剥离清理掉
 					this.saveCache().catch(e => console.warn('缓存初始迁移保存失败:', e));
 				}
 			}
 
 			if (!cacheData) {
-				console.debug('[CacheManager] 没有找到持久化缓存');
 				return false;
 			}
 			
@@ -85,13 +81,11 @@ export class CacheManager {
 			const age = Date.now() - cacheData.timestamp;
 			const maxAge = 7 * 24 * 60 * 60 * 1000; // 7 天
 			if (age > maxAge) {
-				console.debug('[CacheManager] 缓存已过期，将重新构建');
 				return false;
 			}
 
 			// 加载缓存
 			this.cache = new Map(cacheData.entries);
-			console.debug(`[CacheManager] 已加载 ${this.cache.size} 个缓存条目（${Math.round(age / 1000 / 60)} 分钟前）`);
 			return true;
 		} catch (error) {
 			console.error('[CacheManager] 加载缓存失败:', error);
@@ -126,7 +120,6 @@ export class CacheManager {
 				const content = JSON.stringify(cacheData, null, 2);
 				await adapter.write(this.cacheFilePath, content);
 				
-				console.debug(`[CacheManager] 已保存 ${this.cache.size} 个缓存条目到独立文件`);
 			} catch (error) {
 				console.error('[CacheManager] 保存缓存失败:', error);
 			}
@@ -144,7 +137,6 @@ export class CacheManager {
 		calculateWords: (content: string) => number,
 		isFileInWorkspace?: (file: TFile) => boolean
 	): Promise<void> {
-		console.debug('[CacheManager] 开始构建初始缓存...');
 		const startTime = Date.now();
 
 		try {
@@ -176,12 +168,6 @@ export class CacheManager {
 			}
 
 			const elapsed = Date.now() - startTime;
-			console.debug(
-				`[CacheManager] 缓存构建完成: ${successCount} 个文件成功, ` +
-				`${failCount} 个文件失败, ` +
-				`${this.cache.size} 个缓存条目, 耗时 ${elapsed}ms`
-			);
-			
 			if (failCount > 0) {
 				console.warn(`[CacheManager] 警告: ${failCount} 个文件读取失败，缓存可能不完整`);
 			}
@@ -232,7 +218,6 @@ export class CacheManager {
 		// [BUGFIX] 时间戳校验：防止旧的异步读取结果覆盖新的缓存。
 		// 如果现有缓存的时间戳晚于当前文件的修改时间，说明已经有更近的修改（如编辑器实时更新）写入了缓存，应跳过。
 		if (oldEntry && oldEntry.lastModified > file.stat.mtime) {
-			console.debug(`[CacheManager] 忽略过时的缓存更新: ${file.path} (现有: ${oldEntry.lastModified}, 传入: ${file.stat.mtime})`);
 			return;
 		}
 
@@ -270,7 +255,6 @@ export class CacheManager {
 			this.clearOldEntries();
 		}
 
-		console.debug(`[CacheManager] 已更新文件缓存: ${file.path} (${oldCount} → ${newWordCount}, Δ${delta})`);
 	}
 
 	/**
@@ -305,7 +289,6 @@ export class CacheManager {
 	 */
 	clearCache(): void {
 		this.cache.clear();
-		console.debug('[CacheManager] 缓存已清空');
 	}
 
 	/**
@@ -359,6 +342,5 @@ export class CacheManager {
 			this.cache.delete(path);
 		}
 		
-		console.debug(`[CacheManager] 已从 ${entries.length} 个条目中清理 ${toDeleteCount} 个旧文件缓存（保留所有文件夹缓存）`);
 	}
 }

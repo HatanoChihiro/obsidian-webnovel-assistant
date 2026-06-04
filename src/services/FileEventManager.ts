@@ -13,60 +13,70 @@ export class FileEventManager {
 		this.registerDeleteHandler();
 		this.registerRenameHandler();
 		this.registerLayoutChangeHandler();
-		this.registerNotesFileHandler();
 	}
 
 	private registerModifyHandler(): void {
+		const notesFilePath = this.plugin.stickyNoteManager.getNotesFilePath();
+
 		this.plugin.registerEvent(this.plugin.app.vault.on('modify', async (file) => {
-			if (file instanceof TFile && file.extension === 'md') {
-				if (!this.plugin.isEligibleForWordCount(file)) return;
+			if (!(file instanceof TFile) || file.extension !== 'md') return;
 
-				const activeView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
-				const isActiveFile = activeView?.file?.path === file.path;
+			// [优化] 合并原先的两个 modify 监听器：便签文件同步 + 字数缓存更新
+			// 便签文件外部变更同步（如多端同步工具修改了 notes-data.json）
+			if (file.path === notesFilePath && !this.plugin.stickyNoteManager.getIsWriting()) {
+				await this.plugin.stickyNoteManager.loadNotes();
+				this.plugin.syncFloatingNotes();
+				return;
+			}
 
-				if (!isActiveFile) {
-					try {
-						const content = await this.plugin.app.vault.cachedRead(file);
-						const newWordCount = this.plugin.calculateAccurateWords(content);
-						const oldWordCount = this.plugin.cacheManager.getFileCache(file.path);
+			// 字数缓存更新逻辑
+			if (!this.plugin.isEligibleForWordCount(file)) return;
 
-						if (oldWordCount === null) {
-							this.plugin.cacheManager.updateFileCache(file, newWordCount, this.plugin.app.vault);
-							this.plugin.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
-								this.plugin.refreshFolderCounts();
-							}, 500);
-							return;
-						}
+			const activeView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
+			const isActiveFile = activeView?.file?.path === file.path;
 
-						const delta = newWordCount - oldWordCount;
-						if (delta !== 0) {
-							this.plugin.cacheManager.updateFileCache(file, newWordCount, this.plugin.app.vault);
+			if (!isActiveFile) {
+				try {
+					const content = await this.plugin.app.vault.cachedRead(file);
+					const newWordCount = this.plugin.calculateAccurateWords(content);
+					const oldWordCount = this.plugin.cacheManager.getFileCache(file.path);
 
-							if (this.plugin.isLayoutReady) {
-								const today = window.moment().format('YYYY-MM-DD');
-								this.plugin.historyManager.addWords(today, delta);
-								this.plugin.sessionAddedWords += delta;
-
-								this.plugin.adaptiveDebounceManager.debounceFixed('save-settings', () => {
-									this.plugin.saveSettings().catch(err => {
-										console.error('[Plugin] 保存设置失败:', err);
-									});
-								}, 1000);
-							}
-						}
-					} catch (error) {
-						console.error('[Plugin] 更新每日历史统计失败:', error);
+					if (oldWordCount === null) {
+						this.plugin.cacheManager.updateFileCache(file, newWordCount, this.plugin.app.vault);
+						this.plugin.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
+							this.plugin.refreshFolderCounts();
+						}, 500);
+						return;
 					}
-					// 非活跃文件：缓存已更新，只刷新显示
-					this.plugin.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
-						this.plugin.refreshFolderCounts();
-					}, 500);
-				} else {
-					// 活跃文件：由 EditorTracker 追踪，这里只刷新文件浏览器显示
-					this.plugin.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
-						this.plugin.updateFileCacheAndRefresh(file);
-					}, 500);
+
+					const delta = newWordCount - oldWordCount;
+					if (delta !== 0) {
+						this.plugin.cacheManager.updateFileCache(file, newWordCount, this.plugin.app.vault);
+
+						if (this.plugin.isLayoutReady) {
+							const today = window.moment().format('YYYY-MM-DD');
+							this.plugin.historyManager.addWords(today, delta);
+							this.plugin.sessionAddedWords += delta;
+
+							this.plugin.adaptiveDebounceManager.debounceFixed('save-settings', () => {
+								this.plugin.saveSettings().catch(err => {
+									console.error('[Plugin] 保存设置失败:', err);
+								});
+							}, 1000);
+						}
+					}
+				} catch (error) {
+					console.error('[Plugin] 更新每日历史统计失败:', error);
 				}
+				// 非活跃文件：缓存已更新，只刷新显示
+				this.plugin.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
+					this.plugin.refreshFolderCounts();
+				}, 500);
+			} else {
+				// 活跃文件：由 EditorTracker 追踪，这里只刷新文件浏览器显示
+				this.plugin.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
+					this.plugin.updateFileCacheAndRefresh(file);
+				}, 500);
 			}
 		}));
 	}
@@ -111,13 +121,5 @@ export class FileEventManager {
 		}));
 	}
 
-	private registerNotesFileHandler(): void {
-		const notesFilePath = this.plugin.stickyNoteManager.getNotesFilePath();
-		this.plugin.registerEvent(this.plugin.app.vault.on('modify', async (file) => {
-			if (file instanceof TFile && file.path === notesFilePath && !this.plugin.stickyNoteManager.getIsWriting()) {
-				await this.plugin.stickyNoteManager.loadNotes();
-				this.plugin.syncFloatingNotes();
-			}
-		}));
-	}
+
 }

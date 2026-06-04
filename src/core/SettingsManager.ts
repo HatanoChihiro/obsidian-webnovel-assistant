@@ -100,7 +100,6 @@ export class SettingsManager {
 				this.settings = this.fixInvalidSettings(this.settings);
 			}
 
-			console.debug('[SettingsManager] 设置加载成功');
 			return this.settings;
 		} catch (error) {
 			console.error('[SettingsManager] 加载设置失败:', error);
@@ -240,7 +239,6 @@ export class SettingsManager {
 					bg: color,
 					text: '#2C3E50'
 				}));
-				console.debug('[SettingsManager] 已迁移旧版便签颜色到新版主题');
 			}
 		}
 
@@ -272,7 +270,6 @@ export class SettingsManager {
 					this.defaultSettings.immersive as unknown as Record<string, unknown>,
 					immersive as unknown as Record<string, unknown>
 				) as unknown as ImmersiveModeSettings;
-				console.debug('[SettingsManager] 已迁移扁平化沉浸模式设置到嵌套结构');
 			}
 
 			const obsKeys = FLAT_OBS_KEYS;
@@ -296,7 +293,6 @@ export class SettingsManager {
 					this.defaultSettings.obs as unknown as Record<string, unknown>,
 					obs as unknown as Record<string, unknown>
 				) as unknown as ObsSettings;
-				console.debug('[SettingsManager] 已迁移扁平化 OBS 设置到嵌套结构');
 			}
 		}
 
@@ -320,6 +316,5 @@ export class SettingsManager {
 	async resetToDefaults(): Promise<void> {
 		this.settings = { ...this.defaultSettings };
 		await this.saveSettings();
-		console.debug('[SettingsManager] 已重置为默认设置');
 	}
 }

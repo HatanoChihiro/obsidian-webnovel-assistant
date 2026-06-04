@@ -1,11 +1,14 @@
 {
   "name": "web-novel-assistant",
-  "version": "2.6.3",
+  "version": "2.6.4",
   "description": "Obsidian plugin for web novel writing — accurate word count, goal tracking, focus/slack timer, sticky notes, OBS integration, history stats",
   "main": "main.js",
   "scripts": {
     "dev": "esbuild main.ts --bundle --format=cjs --external:obsidian --external:@codemirror/* --outfile=main.js --watch",
-    "build": "esbuild main.ts --bundle --format=cjs --external:obsidian --external:@codemirror/* --minify --outfile=main.js"
+    "build": "esbuild main.ts --bundle --format=cjs --external:obsidian --external:@codemirror/* --minify --outfile=main.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src/ main.ts"
   },
   "keywords": [
     "obsidian",
@@ -27,9 +30,13 @@
     "url": "https://github.com/HatanoChihiro/obsidian-webnovel-assistant.git"
   },
   "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
     "esbuild": "^0.28.0",
+    "eslint": "^9.0.0",
     "obsidian": "^1.12.3",
     "tslib": "^2.8.1",
-    "typescript": "^6.0.2"
+    "typescript": "^6.0.2",
+    "vitest": "^3.0.0"
   }
 }

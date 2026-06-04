@@ -1,6 +1,7 @@
 import { App, MarkdownView } from 'obsidian';
 import { WebNovelAssistantPlugin } from '../types/plugin';
 import { isMobile, parseGoal } from '../utils';
+import { REGEX_PATTERNS } from '../constants';
 
 /**
  * 编辑器追踪服务
@@ -106,7 +107,7 @@ export class EditorTracker {
 		// 非工作区/非章节文件：只显示基本字数，不显示追踪和进度
 		if (view.file && !this.plugin.isEligibleForWordCount(view.file)) {
 			const totalCount = this.plugin.calculateAccurateWords(view.getViewData());
-			const cnChars = (view.getViewData().match(/[一-龥]/g) || []).length;
+			const cnChars = (view.getViewData().match(REGEX_PATTERNS.CHINESE()) || []).length;
 			this.plugin.statusBarItemEl.setText(`字数: ${totalCount} (中文字: ${cnChars})`);
 			return;
 		}
@@ -136,7 +137,7 @@ export class EditorTracker {
 			}
 		}
 
-		const cnChars = (view.getViewData().match(/[\u4e00-\u9fa5]/g) || []).length;
+		const cnChars = (view.getViewData().match(REGEX_PATTERNS.CHINESE()) || []).length;
 		this.plugin.statusBarItemEl.setText(`[${stateStr}] 字数: ${totalCount} (中文字: ${cnChars}) | 净增: ${displaySessionWords}`);
 	}
 }

@@ -41,12 +41,10 @@ export class StickyNoteDataManager {
 					console.warn(`[StickyNoteDataManager] 过滤掉 ${rawNotes.length - this.notesData.length} 个无效便签条目`);
 				}
 				
-				console.debug(`[StickyNoteDataManager] 已从独立文件加载 ${this.notesData.length} 个便签`);
 				return this.notesData;
 			}
 
 
-			console.debug("[StickyNoteDataManager] 未发现现有便签数据");
 			return [];
 		} catch (error) {
 			console.error("[StickyNoteDataManager] 加载便签数据失败:", error);

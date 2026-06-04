@@ -54,7 +54,6 @@ export class WorkerManager {
 		if (this.restartAttempts > 0) {
 			setTimeout(() => {
 				this.restartAttempts = 0;
-				console.debug('[WorkerManager] Worker 运行稳定，重启计数器已重置');
 			}, 60000);
 		}
 	}
@@ -91,13 +90,11 @@ export class WorkerManager {
 		this.terminate();
 
 		this.restartTimer = window.setTimeout(() => {
-			console.debug('[WorkerManager] 正在重启 Worker...');
 			this.setup();
 
 			if (wasTracking && this.worker) {
 				this.worker.postMessage('start');
 				this.plugin.lastTickTime = Date.now();
-				console.debug('[WorkerManager] Worker 已重启，追踪状态已恢复');
 			}
 			
 			if (this.restartAttempts < this.MAX_RESTARTS) {

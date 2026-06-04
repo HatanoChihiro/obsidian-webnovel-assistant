@@ -24,6 +24,7 @@ export class ObsOverlayServer {
 	 * @returns 是否成功启动
 	 */
 	start(): boolean {
+		// [安全] 桌面端守卫：window.require('http') 仅在桌面端可用，移动端直接跳过
 		if (!Platform.isDesktop) return false;
 		if (this.server) {
 			console.warn('[WebNovel Assistant] OBS 服务器已在运行，跳过重复启动');
@@ -46,21 +47,20 @@ export class ObsOverlayServer {
 				if (url.pathname === '/api/stats') {
 					res.writeHead(200, {
 						'Content-Type': 'application/json',
-						'Access-Control-Allow-Origin': 'http://localhost'
+						'Access-Control-Allow-Origin': '*'
 					});
 					const stats = await plugin.getObsStats();
 					res.end(JSON.stringify(stats));
 				} else {
 					res.writeHead(200, {
 						'Content-Type': 'text/html; charset=utf-8',
-						'Access-Control-Allow-Origin': 'http://localhost'
+						'Access-Control-Allow-Origin': '*'
 					});
 					res.end(plugin.buildObsOverlayHtml());
 				}
 			});
 
 			this.server.listen(this.port, '127.0.0.1', () => {
-				console.debug(`[WebNovel Assistant] OBS Overlay server started at http://127.0.0.1:${this.port}`);
 				new Notice(`OBS 叠加层已启动: http://127.0.0.1:${this.port}`);
 			});
 
@@ -114,7 +114,6 @@ export class ObsOverlayServer {
 			await new Promise<void>((resolve) => {
 				server.close(() => resolve());
 			});
-			console.debug('[WebNovel Assistant] OBS Overlay server stopped');
 		}
 	}
 

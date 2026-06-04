@@ -503,11 +503,5 @@ export class ImmersiveModeManager {
 			}
 		}
 
-		console.debug('[WebNovel Assistant] 沉浸模式比例已保存:', {
-			left: immersive.immersiveLeftSize,
-			right: immersive.immersiveRightSize,
-			bottom: immersive.immersiveBottomSize,
-			bottomInternal: immersive.immersiveBottomInternalSizes,
-		});
 	}
 }

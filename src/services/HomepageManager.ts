@@ -75,7 +75,6 @@ export class HomepageManager {
 			}
 			const content = this.generateHomepageContent();
 			const file = await this.app.vault.create(filePath, content);
-			console.debug('[HomepageManager] 创作主页文件已创建');
 			return file;
 		} catch (e) {
 			const existing = this.getHomepageFile();
@@ -245,7 +244,6 @@ export class HomepageManager {
 			'',
 		];
 		const file = await this.app.vault.create(filePath, lines.join('\n'));
-		console.debug(`[HomepageManager] 已创建作品信息文件: ${filePath}`);
 		return file;
 	}
 
@@ -298,7 +296,6 @@ export class HomepageManager {
 		const file = this.getHomepageFile();
 		if (file) {
 			await this.app.vault.delete(file);
-			console.debug('[HomepageManager] 创作主页文件已删除');
 		}
 	}
 
@@ -306,7 +303,6 @@ export class HomepageManager {
 		const file = this.app.vault.getAbstractFileByPath(oldPath);
 		if (file instanceof TFile) {
 			await this.app.fileManager.renameFile(file, newPath);
-			console.debug(`[HomepageManager] 创作主页已从 ${oldPath} 重命名为 ${newPath}`);
 		} else {
 			console.warn(`[HomepageManager] 找不到旧主页文件: ${oldPath}，将仅更新设置。`);
 		}

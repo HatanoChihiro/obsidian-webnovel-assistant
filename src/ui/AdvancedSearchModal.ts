@@ -1,14 +1,14 @@
 import { App, Modal, Setting, TFolder, TFile, TAbstractFile, MarkdownView, prepareSimpleSearch, SearchResult } from 'obsidian';
-import WebNovelAssistantPlugin from '../main';
+import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ChapterSorter } from '../services/ChapterSorter';
 
 export class AdvancedSearchModal extends Modal {
 	plugin: WebNovelAssistantPlugin;
 	query: string = '';
-	scope: 'global' | 'current' | 'custom' = 'current';
+	searchScope: 'global' | 'current' | 'custom' = 'current';
 	selectedFolders: Set<string> = new Set();
-	resultsContainer: HTMLElement;
-	customScopeContainer: HTMLElement;
+	resultsContainer!: HTMLElement;
+	customScopeContainer!: HTMLElement;
 	
 	constructor(app: App, plugin: WebNovelAssistantPlugin) {
 		super(app);
@@ -46,9 +46,9 @@ export class AdvancedSearchModal extends Modal {
 				dropdown.addOption('global', '全局搜索 (所有文件)');
 				dropdown.addOption('current', '当前书籍 (自动识别当前阅读的作品)');
 				dropdown.addOption('custom', '自定义范围 (选择特定的分卷/书籍)');
-				dropdown.setValue(this.scope);
+				dropdown.setValue(this.searchScope);
 				dropdown.onChange(value => {
-					this.scope = value as 'global' | 'current' | 'custom';
+					this.searchScope = value as 'global' | 'current' | 'custom';
 					this.renderCustomScopeSettings(this.customScopeContainer);
 				});
 			});
@@ -74,7 +74,7 @@ export class AdvancedSearchModal extends Modal {
 	private renderCustomScopeSettings(container: HTMLElement) {
 		container.empty();
 		
-		if (this.scope !== 'custom') {
+		if (this.searchScope !== 'custom') {
 			container.style.display = 'none';
 			return;
 		}
@@ -258,20 +258,32 @@ export class AdvancedSearchModal extends Modal {
 		let folder = activeView.file.parent;
 		if (!folder || folder.isRoot()) return null;
 
-		// 向上查找顶级作品目录（根目录的直接子目录，或命中 workspaceFolders 的目录）
+		// 向上查找当前作品目录：
+		// - 有 workspaceFolders 时：工作区文件夹的直接子目录即为作品目录
+		// - 无 workspaceFolders 时：根目录的直接子目录即为作品目录
 		const workspaceFolders = this.plugin.settings.workspaceFolders || [];
 		
 		while (folder && !folder.isRoot()) {
+			const parent: TFolder | null = folder.parent;
+			if (!parent) break;
+
 			if (workspaceFolders.length > 0) {
+				// 如果当前目录的父目录是工作区目录，那当前目录就是作品目录
+				if (workspaceFolders.includes(parent.path)) {
+					return folder.path;
+				}
+				// 特殊情况：当前目录本身就是工作区目录，说明文件直接在工作区根下
+				// 此时没有作品子目录层级，用工作区目录本身作为范围
 				if (workspaceFolders.includes(folder.path)) {
 					return folder.path;
 				}
 			} else {
-				if (folder.parent?.isRoot()) {
+				// 无工作区设置时，根目录的直接子目录就是作品目录
+				if (parent.isRoot()) {
 					return folder.path;
 				}
 			}
-			folder = folder.parent;
+			folder = parent;
 		}
 		
 		return null;
@@ -291,16 +303,16 @@ export class AdvancedSearchModal extends Modal {
 		const allFiles = this.app.vault.getMarkdownFiles();
 		let targetFiles: TFile[] = [];
 
-		if (this.scope === 'global') {
+		if (this.searchScope === 'global') {
 			targetFiles = allFiles;
-		} else if (this.scope === 'current') {
+		} else if (this.searchScope === 'current') {
 			const bookPath = this.getCurrentBookPath();
 			if (bookPath) {
 				targetFiles = allFiles.filter(f => f.path.startsWith(bookPath + '/'));
 			} else {
 				targetFiles = allFiles; // fallback
 			}
-		} else if (this.scope === 'custom') {
+		} else if (this.searchScope === 'custom') {
 			if (this.selectedFolders.size > 0) {
 				const selectedArray = Array.from(this.selectedFolders);
 				targetFiles = allFiles.filter(f => selectedArray.some(path => f.path === path || f.path.startsWith(path + '/')));

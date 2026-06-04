@@ -5,7 +5,7 @@ import { copyDocumentContent } from '../utils/ui';
 import { isDesktop } from '../utils/platform';
 import { ChapterSorter } from '../services/ChapterSorter';
 import { TimelineAddFromSelectionModal } from '../ui/TimelineView';
-import { TimelineManager } from '../services/TimelineManager';
+import { TimelineManager, TimelineEntry } from '../services/TimelineManager';
 import { RankingManager } from '../services/RankingManager';
 import { RankingAddModal } from '../ui/RankingModal';
 import { NewNovelModal } from '../ui/NewNovelModal';
@@ -97,7 +97,7 @@ export class MenuManager {
 							if (tlFile) {
 								const tlContent = await this.plugin.app.vault.read(tlFile);
 								const tlEntries = tlManager.parseEntries(tlContent);
-								localTypes.push(...new Set(tlEntries.map((e: any) => e.type).filter(Boolean)));
+								localTypes.push(...new Set(tlEntries.map((e: TimelineEntry) => e.type).filter(Boolean)));
 							}
 
 							new TimelineAddFromSelectionModal(

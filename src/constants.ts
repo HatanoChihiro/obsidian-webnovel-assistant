@@ -98,6 +98,20 @@ export const VIEW_TYPES = {
 } as const;
 
 // ==========================================
+// 平台延迟配置（毫秒）
+// ==========================================
+export const PLATFORM_DELAYS = {
+	/** 桌面端文件浏览器初始化延迟 */
+	DESKTOP_EXPLORER_DELAY: 500,
+	/** 平板端文件浏览器初始化延迟 */
+	TABLET_EXPLORER_DELAY: 1000,
+	/** 移动端文件浏览器初始化延迟 */
+	MOBILE_EXPLORER_DELAY: 1500,
+	/** 移动端/平板端缓存刷新延迟 */
+	MOBILE_CACHE_REFRESH_DELAY: 500,
+} as const;
+
+// ==========================================
 // 正则表达式常量
 // ==========================================
 export const REGEX_PATTERNS = {
@@ -298,7 +312,7 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 		immersiveShowChapterProgress: true,
 		immersiveShowDailyProgress: true,
 		immersiveShowSessionWords: true,
-			immersiveShowRankingProgress: true,
+		immersiveShowRankingProgress: true,
 		immersiveLeftSize: 11,
 		immersiveRightSize: 30,
 		immersiveBottomSize: 20,

@@ -102,7 +102,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					}));
 		}
 
-		containerEl.createEl('h2', { text: '工作区与章节' });
+		new Setting(containerEl).setName('工作区与章节').setHeading();
 
 		new Setting(containerEl)
 			.setName('启用创作主页')
@@ -145,7 +145,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					let tempValue = text.getValue();
 					text.onChange((value) => { tempValue = value; });
 					
-					text.inputEl.addEventListener('blur', async () => {
+					const saveAction = async () => {
 						const basename = tempValue.trim() || '创作主页';
 						const oldPath = this.plugin.homepageManager?.getHomepageFilePath() || '创作主页.md';
 						
@@ -157,6 +157,16 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 							this.plugin.settings.homepagePath = newPath;
 							await this.plugin.saveSettings();
 							this.plugin.homepageManager?.renameHomepageFile(oldPath, newPath).catch(console.error);
+							new Notice(`主页已重命名为: ${basename}`);
+						}
+					};
+
+					text.inputEl.addEventListener('change', saveAction);
+					// 按回车也可以保存
+					text.inputEl.addEventListener('keydown', (e) => {
+						if (e.key === 'Enter') {
+							e.preventDefault();
+							text.inputEl.blur();
 						}
 					});
 				});
@@ -191,9 +201,9 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 						}
 						// 触发文件树刷新
 						this.app.workspace.getLeavesOfType('file-explorer').forEach(leaf => {
-							const view = leaf.view as any;
+							const view = leaf.view as unknown as Record<string, unknown>;
 							if (view && typeof view.sort === 'function') {
-								try { view.sort(); } catch (e) {}
+								try { (view.sort as () => void)(); } catch { /* 内部 API，容错处理 */ }
 							}
 						});
 					}));
@@ -247,26 +257,24 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		}
 
 
-		if (isDesktop()) {
-			new Setting(containerEl)
-				.setName('智能章节排序')
-				.setDesc('自动识别章节编号进行数字排序。')
-				.addToggle(toggle => toggle
-					.setValue(this.plugin.settings.enableSmartChapterSort)
-					.onChange(async (value) => {
-						this.plugin.settings.enableSmartChapterSort = value;
-						await this.plugin.saveSettings();
-						if (value) this.plugin.fileExplorerPatcher.enable();
-						else this.plugin.fileExplorerPatcher.disable();
-						this.display();
-					}));
+		new Setting(containerEl)
+			.setName('智能章节排序')
+			.setDesc('自动识别章节编号进行数字排序。')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.enableSmartChapterSort)
+				.onChange(async (value) => {
+					this.plugin.settings.enableSmartChapterSort = value;
+					await this.plugin.saveSettings();
+					if (value) this.plugin.fileExplorerPatcher.enable();
+					else this.plugin.fileExplorerPatcher.disable();
+					this.display();
+				}));
 
-			if (this.plugin.settings.enableSmartChapterSort) {
-				this.displaySortingRules(containerEl);
-			}
+		if (this.plugin.settings.enableSmartChapterSort) {
+			this.displaySortingRules(containerEl);
 		}
 
-		containerEl.createEl('h2', { text: '护眼模式' });
+		new Setting(containerEl).setName('护眼模式').setHeading();
 
 		new Setting(containerEl)
 			.setName('启用护眼模式')
@@ -310,7 +318,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 
 	// ── 字数统计设置 ──
 	private displayWordCountSettings(containerEl: HTMLElement): void {
-		containerEl.createEl('h2', { text: '字数显示' });
+		new Setting(containerEl).setName('字数显示').setHeading();
 
 		new Setting(containerEl)
 			.setName('显示状态栏进度')
@@ -362,7 +370,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					}));
 		}
 
-		containerEl.createEl('h2', { text: '写作目标' });
+		new Setting(containerEl).setName('写作目标').setHeading();
 
 		new Setting(containerEl)
 			.setName('默认章节目标')
@@ -389,7 +397,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 
 	// ── 榜单追踪 ──
 	private displayRankingSettings(containerEl: HTMLElement): void {
-		containerEl.createEl('h2', { text: '榜单追踪' });
+		new Setting(containerEl).setName('榜单追踪').setHeading();
 
 		new Setting(containerEl)
 			.setName('榜单记录文件名')
@@ -414,7 +422,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			.setHeading();
 
 		const rulesContainer = containerEl.createDiv();
-	rulesContainer.style.width = '100%';
+		rulesContainer.style.width = '100%';
 
 		const renderRules = () => {
 			rulesContainer.empty();
@@ -476,6 +484,26 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					text.setValue(rule.pattern)
 						.setPlaceholder('正则表达式')
 						.onChange(async (value) => {
+							// [安全] ReDoS 防护：长度限制
+							if (value.length > 200) {
+								new Notice('⚠️ 正则表达式过长（>200字符），请简化模式');
+								return;
+							}
+
+							// [安全] ReDoS 防护：禁止嵌套量词（如 (a+)+、(a*)*）
+							if (/([+*])\)?[+*]/.test(value)) {
+								new Notice('⚠️ 检测到嵌套量词模式，可能导致灾难性回溯（ReDoS）');
+								return;
+							}
+
+							// [安全] 语法校验
+							try {
+								new RegExp(value, 'i');
+							} catch {
+								new Notice('⚠️ 正则表达式语法无效');
+								return;
+							}
+
 							rule.pattern = value;
 							await this.plugin.saveSettings();
 							ChapterSorter.setCustomRules(this.plugin.settings.chapterNamingRules);
@@ -517,7 +545,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 	private displayStickyNoteSettings(containerEl: HTMLElement): void {
 		if (!isDesktop()) return;
 
-		containerEl.createEl('h2', { text: '悬浮便签' });
+		new Setting(containerEl).setName('悬浮便签').setHeading();
 
 		new Setting(containerEl)
 			.setName('闲置透明度')
@@ -550,7 +578,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 
 	// ── 沉浸模式设置 ──
 	private displayImmersiveModeSettings(containerEl: HTMLElement): void {
-		containerEl.createEl('h3', { text: '辅助面板显示开关' });
+		new Setting(containerEl).setName('辅助面板显示开关').setHeading();
 
 		new Setting(containerEl)
 			.setName('显示左侧章节列表')
@@ -616,7 +644,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					new Notice(`位置已切换为: ${value === 'top' ? '上方' : '下方'}，下次进入沉浸模式生效`);
 				}));
 
-		containerEl.createEl('h3', { text: '沉浸模式便签设置' });
+		new Setting(containerEl).setName('沉浸模式便签设置').setHeading();
 
 		new Setting(containerEl)
 			.setName('便签显示尺寸 (px)')
@@ -642,7 +670,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 
-		containerEl.createEl('h3', { text: '顶部仪表盘数据开关' });
+		new Setting(containerEl).setName('顶部仪表盘数据开关').setHeading();
 
 		new Setting(containerEl)
 			.setName('显示总计时间')
@@ -709,7 +737,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 	}
 	// ── 伏笔标注设置 ──
 	private displayForeshadowingSettings(containerEl: HTMLElement): void {
-		containerEl.createEl('h2', { text: '伏笔标注' });
+		new Setting(containerEl).setName('伏笔标注').setHeading();
 
 		new Setting(containerEl)
 			.setName('伏笔文件名')
@@ -762,7 +790,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 
 	// ── 时间线设置 ──
 	private displayTimelineSettings(containerEl: HTMLElement): void {
-		containerEl.createEl('h2', { text: '时间线' });
+		new Setting(containerEl).setName('时间线').setHeading();
 
 		new Setting(containerEl)
 			.setName('时间线文件名')
@@ -802,7 +830,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 
 	// ── 数据输出设置 ──
 	private displayDataSettings(containerEl: HTMLElement): void {
-		containerEl.createEl('h2', { text: '专注度判定' });
+		new Setting(containerEl).setName('专注度判定').setHeading();
 
 		new Setting(containerEl)
 			.setName('精准专注度判定阈值 (秒)')
@@ -820,7 +848,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 	}
 
 	private displayObsSettings(containerEl: HTMLElement): void {
-		containerEl.createEl('h3', { text: 'OBS 数据叠加层' });
+		new Setting(containerEl).setName('OBS 数据叠加层').setHeading();
 
 		new Setting(containerEl)
 			.setName('启用数据叠加层 (OBS/直播)')

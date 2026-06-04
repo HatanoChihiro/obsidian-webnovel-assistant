@@ -42,8 +42,6 @@ export class FileExplorerPatcher {
 			if (success) {
 				this.enabled = true;
 				this.enableRetries = 0;
-				console.debug('[WebNovel Assistant] Smart chapter sorting enabled');
-
 				this.refreshAllExplorers();
 				this.setupFileSystemListeners();
 				this.initDragSort();
@@ -367,7 +365,6 @@ export class FileExplorerPatcher {
 		this.teardownDragSort();
 		this.refreshAllExplorers();
 		document.querySelectorAll('.folder-word-count').forEach(el => el.remove());
-		console.debug('[WebNovel Assistant] Smart chapter sorting disabled');
 	}
 
 	unpatch(): void {

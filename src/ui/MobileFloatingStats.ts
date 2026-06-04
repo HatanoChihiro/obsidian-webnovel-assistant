@@ -255,7 +255,11 @@ export class MobileFloatingStats {
 	private loadPosition(): void {
 		const saved = this.plugin.settings.mobileFloatingStatsState;
 		if (saved && typeof saved.x === 'number' && typeof saved.y === 'number') {
-			this.position = { x: saved.x, y: saved.y };
+			// 校验位置不超过当前屏幕范围，防止大屏设备保存的位置在小屏设备上导致浮窗不可见
+			this.position = {
+				x: Math.min(saved.x, window.innerWidth - 100),
+				y: Math.min(saved.y, window.innerHeight - 50)
+			};
 		} else {
 			this.position = { x: 20, y: 100 };
 		}

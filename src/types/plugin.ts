@@ -2,6 +2,9 @@
  * 插件接口类型定义
  *
  * 用于解决循环依赖问题，为服务层和 UI 层提供类型安全的插件引用
+ * 
+ * [重构] 将单一巨型接口拆分为功能子接口，通过交叉类型组合
+ * 好处：各子系统只需依赖自己关心的接口子集，降低耦合
  */
 import { App, Command, EventRef, PluginManifest, TFile, ViewCreator, WorkspaceLeaf } from 'obsidian';
 import { AccurateCountSettings } from './settings';
@@ -31,12 +34,98 @@ import type { ImmersiveModeManager } from '../ui/ImmersiveModeManager';
 import type { FileEventManager } from '../services/FileEventManager';
 import type { HomepageManager } from '../services/HomepageManager';
 
+// ==========================================
+// 辅助类型
+// ==========================================
+
+/** 创建便签的选项 */
+export interface CreateStickyNoteOptions {
+	/** 关联的文件（从文件创建便签） */
+	file?: TFile;
+	/** 便签内容 */
+	content?: string;
+	/** 便签标题 */
+	title?: string;
+}
+
+// ==========================================
+// 功能子接口
+// ==========================================
+
+/** 追踪状态相关的属性和方法 */
+export interface TrackingContext {
+	isTracking: boolean;
+	focusMs: number;
+	slackMs: number;
+	sessionAddedWords: number;
+	lastEditTime: number;
+	lastTickTime: number;
+	lastFileWords: number;
+	lastFilePath: string;
+	lastRankingFolder: string;
+	startTracking(): void;
+	stopTracking(): void;
+}
+
+/** 缓存管理相关 */
+export interface CacheContext {
+	cacheManager: CacheManager;
+	buildFolderCache(): Promise<void>;
+	updateFileCacheAndRefresh(file: TFile): Promise<void>;
+	refreshFolderCounts(): void;
+}
+
+/** 视图管理相关 */
+export interface ViewContext {
+	toggleStatusView(): Promise<void>;
+	toggleForeshadowingView(): Promise<void>;
+	toggleTimelineView(): Promise<void>;
+	toggleRankingView(): Promise<void>;
+	toggleFloatingNotesVisibility(): Promise<void>;
+	refreshStatusViews(): void;
+}
+
+/** 样式管理相关 */
+export interface StyleContext {
+	applyEyeCare(): void;
+	removeEyeCare(): void;
+}
+
+/** 便签管理相关 */
+export interface StickyNoteContext {
+	activeNotes: FloatingStickyNote[];
+	stickyNoteManager: StickyNoteDataManager;
+	syncFloatingNotes(): void;
+	syncActiveNotesToManager(): void;
+	createStickyNote(options: CreateStickyNoteOptions): Promise<void>;
+}
+
+/** OBS 集成相关 */
+export interface ObsContext {
+	obsServer: ObsOverlayServer | null;
+	obsHtmlBuilder: ObsHtmlBuilder;
+	getObsStats(): Promise<ObsStatsPayload>;
+	buildObsOverlayHtml(): string;
+}
+
+// ==========================================
+// 主接口（交叉类型组合）
+// ==========================================
+
 /**
  * WebNovel Assistant 插件接口
  *
- * 定义了插件类对外暴露的属性和方法，供服务层和 UI 层使用
+ * 定义了插件类对外暴露的属性和方法，供服务层和 UI 层使用。
+ * 通过交叉类型组合多个功能子接口，保持向后兼容。
  */
-export interface WebNovelAssistantPlugin {
+export interface WebNovelAssistantPlugin extends
+	TrackingContext,
+	CacheContext,
+	ViewContext,
+	StyleContext,
+	StickyNoteContext,
+	ObsContext {
+
 	// Obsidian 核心
 	app: App;
 	manifest: PluginManifest;
@@ -54,17 +143,14 @@ export interface WebNovelAssistantPlugin {
 	settings: AccurateCountSettings;
 
 	// 服务管理器（构造函数中初始化，始终可用）
-	cacheManager: CacheManager;
 	adaptiveDebounceManager: AdaptiveDebounceManager;
 	settingsManager: SettingsManager;
 	historyManager: HistoryDataManager;
-	stickyNoteManager: StickyNoteDataManager;
 	fileExplorerPatcher: FileExplorerPatcher;
 	wordCounter: WordCounter;
 	commandManager: CommandManager;
 	viewManager: ViewManager;
 	menuManager: MenuManager;
-	obsHtmlBuilder: ObsHtmlBuilder;
 	workerManager: WorkerManager;
 	markdownPostProcessor: MarkdownPostProcessor;
 	immersiveModeManager: ImmersiveModeManager;
@@ -78,22 +164,7 @@ export interface WebNovelAssistantPlugin {
 	styleManager?: StyleManager;
 	homepageManager?: HomepageManager;
 
-	// 追踪状态
-	isTracking: boolean;
-	focusMs: number;
-	slackMs: number;
-	sessionAddedWords: number;
-	lastEditTime: number;
-	lastTickTime: number;
-	lastFileWords: number;
-	lastFilePath: string;
-	lastRankingFolder: string;
-
-	// Worker 和服务
-	obsServer: ObsOverlayServer | null;
-
 	// UI 组件
-	activeNotes: FloatingStickyNote[];
 	mobileFloatingStats: MobileFloatingStats | null;
 	statusBarItemEl: HTMLElement;
 
@@ -107,34 +178,4 @@ export interface WebNovelAssistantPlugin {
 	/** 检查文件是否符合字数统计的条件（工作区 + 排除合并文件 + 严格章节模式） */
 	isEligibleForWordCount(file: TFile): boolean;
 	updateWordCount(): void;
-	startTracking(): void;
-	stopTracking(): void;
-
-	// 视图管理
-	toggleStatusView(): Promise<void>;
-	toggleForeshadowingView(): Promise<void>;
-	toggleTimelineView(): Promise<void>;
-	toggleRankingView(): Promise<void>;
-	toggleFloatingNotesVisibility(): Promise<void>;
-	refreshStatusViews(): void;
-
-	// 缓存管理
-	buildFolderCache(): Promise<void>;
-	updateFileCacheAndRefresh(file: TFile): Promise<void>;
-	refreshFolderCounts(): void;
-
-	// OBS 相关
-	getObsStats(): Promise<ObsStatsPayload>;
-	buildObsOverlayHtml(): string;
-
-	// 样式管理
-	applyEyeCare(): void;
-	removeEyeCare(): void;
-
-	// 便签同步
-	syncFloatingNotes(): void;
-	syncActiveNotesToManager(): void;
-
-	// 便签创建
-	createStickyNote(options: any): Promise<void>;
 }

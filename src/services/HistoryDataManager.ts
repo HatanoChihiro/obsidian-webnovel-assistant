@@ -44,7 +44,6 @@ export class HistoryDataManager {
 					this.historyData = {};
 				}
 				
-				console.debug(`[HistoryDataManager] 已从独立文件加载 ${Object.keys(this.historyData).length} 条历史记录`);
 				return this.historyData;
 			}
 
@@ -53,27 +52,22 @@ export class HistoryDataManager {
 			
 			// 从 data.json 的 historyData key 迁移
 			if (data && data.historyData && typeof data.historyData === 'object' && !Array.isArray(data.historyData)) {
-				console.debug('[HistoryDataManager] 检测到 data.json 中的历史数据，开始迁移到独立文件');
 				this.historyData = data.historyData;
 				this.dirty = true;
 				await this.saveHistory();
-				console.debug(`[HistoryDataManager] 已迁移 ${Object.keys(this.historyData).length} 条历史记录到独立文件`);
 				return this.historyData;
 			}
 			
 			// 从旧版 dailyHistory key 迁移
 			if (data && data.dailyHistory && typeof data.dailyHistory === 'object' && !Array.isArray(data.dailyHistory)) {
-				console.debug('[HistoryDataManager] 检测到旧版历史数据，开始迁移到独立文件');
 				this.historyData = data.dailyHistory;
 				this.dirty = true;
 				await this.saveHistory();
-				console.debug(`[HistoryDataManager] 已迁移 ${Object.keys(this.historyData).length} 条历史记录到独立文件`);
 				// 注意：不删除旧 dailyHistory key，保证降级安全
 				return this.historyData;
 			}
 
 			// 无历史数据
-			console.debug('[HistoryDataManager] 无历史数据，创建空记录');
 			return {};
 		} catch (error) {
 			console.error('[HistoryDataManager] 加载历史数据失败:', error);
@@ -112,7 +106,6 @@ export class HistoryDataManager {
 			const content = JSON.stringify(this.historyData, null, 2);
 			await adapter.write(this.historyFilePath, content);
 			this.dirty = false;
-			console.debug('[HistoryDataManager] 历史数据已保存到独立文件');
 		} catch (error) {
 			console.error('[HistoryDataManager] 保存历史数据失败:', error);
 		} finally {

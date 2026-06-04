@@ -207,7 +207,6 @@ export class AdaptiveDebounceManager {
 		});
 		this.timers.clear();
 		this.speedStats.clear();
-		console.debug('[AdaptiveDebounceManager] 所有防抖操作已取消');
 	}
 
 	/**
