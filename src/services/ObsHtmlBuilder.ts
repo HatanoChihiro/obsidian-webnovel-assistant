@@ -1,6 +1,6 @@
 import { MarkdownView } from 'obsidian';
 import { hexToRgba, formatTime, parseGoal, isDesktop } from '../utils';
-import { ObsStatsPayload } from '../types/stats';
+import type { ObsStatsPayload } from '../types/stats';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { RankingManager } from './RankingManager';
 import type { DailyStat } from '../types/settings';
@@ -19,7 +19,7 @@ export class ObsHtmlBuilder {
 		const focusSec = Math.floor(this.plugin.focusMs / 1000);
 		const slackSec = Math.floor(this.plugin.slackMs / 1000);
 		const totalSec = focusSec + slackSec;
-		const today = window.moment().format('YYYY-MM-DD');
+		const today = activeWindow.moment().format('YYYY-MM-DD');
 		const todayStat = this.plugin.historyManager.getDailyStat(today) || { focusMs: 0, slackMs: 0, addedWords: 0 };
 
 		let targetGoal = this.plugin.settings.defaultGoal;
@@ -90,7 +90,7 @@ export class ObsHtmlBuilder {
 		if (!css) return '';
 		
 		// 移除所有潜在的脚本注入
-		let sanitized = css
+		const sanitized = css
 			// 移除 <script> 标签
 			.replace(/<script[\s\S]*?<\/script>/gi, '')
 			// 移除 </style> 闭合标签
@@ -427,7 +427,7 @@ function update() {
 		})
 		.catch(() => {})
 		.finally(() => {
-			setTimeout(update, 500);
+			window.setTimeout(update, 500);
 		});
 }
 update();

@@ -1,5 +1,6 @@
-import { App, Modal } from 'obsidian';
-import { DailyStat } from '../types/settings';
+import type { App} from 'obsidian';
+import { Modal } from 'obsidian';
+import type { DailyStat } from '../types/settings';
 import { formatCount } from '../utils/format';
 
 // 热力图等级 → CSS 类名
@@ -30,14 +31,14 @@ function formatDuration(ms: number): string {
 
 export function calcStreak(history: Record<string, DailyStat>): number {
 let streak = 0;
-const today = window.moment().format("YYYY-MM-DD");
+const today = activeWindow.moment().format("YYYY-MM-DD");
 // Start from yesterday; add today if already written
-let date = window.moment().subtract(1, "day").format("YYYY-MM-DD");
+let date = activeWindow.moment().subtract(1, "day").format("YYYY-MM-DD");
 while (true) {
 const stat = history[date];
 if (stat && stat.addedWords !== 0) {
 streak++;
-date = window.moment(date).subtract(1, "day").format("YYYY-MM-DD");
+date = activeWindow.moment(date).subtract(1, "day").format("YYYY-MM-DD");
 } else break;
 }
 const todayStat = history[today];
@@ -94,7 +95,7 @@ export function calcDailyAverage(history: Record<string, DailyStat>, startDate: 
 }
 
 function getCurrentKey(tab: string): string {
-	const now = window.moment();
+	const now = activeWindow.moment();
 	if (tab === 'day') return now.format('YYYY-MM-DD');
 	if (tab === 'week') return `${now.isoWeekYear()}年W${String(now.isoWeek()).padStart(2, '0')}`;
 	if (tab === 'month') return now.format('YYYY-MM');
@@ -142,8 +143,8 @@ export class HistoryStatsModal extends Modal {
 
 		this.heatDateRowEl = contentEl.createDiv({ cls: 'stats-heat-date-row' });
 		this.heatDateRowEl.createDiv({ cls: 'stats-heat-date-label', text: '起始' });
-		const defaultStart = window.moment().clone().startOf('year').format('YYYY-MM-DD');
-		const defaultEnd = window.moment().clone().endOf('year').format('YYYY-MM-DD');
+		const defaultStart = activeWindow.moment().clone().startOf('year').format('YYYY-MM-DD');
+		const defaultEnd = activeWindow.moment().clone().endOf('year').format('YYYY-MM-DD');
 		this.heatStartInput = this.heatDateRowEl.createEl('input', {
 			type: 'date',
 			cls: 'stats-heat-date-input'
@@ -162,7 +163,7 @@ export class HistoryStatsModal extends Modal {
 			this.plugin.settings.heatmapEndDate = '';
 			await this.plugin.saveSettings();
 			this.plugin.homepageManager?.refreshHomepageViews();
-			const now = window.moment();
+			const now = activeWindow.moment();
 			this.heatStartInput.value = now.clone().startOf('year').format('YYYY-MM-DD');
 			this.heatEndInput.value = now.clone().endOf('year').format('YYYY-MM-DD');
 			this.renderHeatmap();
@@ -173,7 +174,7 @@ export class HistoryStatsModal extends Modal {
 			const val = this.heatStartInput.value;
 			if (val) {
 				this.plugin.settings.heatmapStartDate = val;
-				this.plugin.settings.heatmapEndDate = window.moment(val).add(1, 'year').format('YYYY-MM-DD');
+				this.plugin.settings.heatmapEndDate = activeWindow.moment(val).add(1, 'year').format('YYYY-MM-DD');
 				this.heatEndInput.value = this.plugin.settings.heatmapEndDate;
 			} else {
 				this.plugin.settings.heatmapStartDate = '';
@@ -189,7 +190,7 @@ export class HistoryStatsModal extends Modal {
 			const val = this.heatEndInput.value;
 			if (val) {
 				this.plugin.settings.heatmapEndDate = val;
-				this.plugin.settings.heatmapStartDate = window.moment(val).subtract(1, 'year').format('YYYY-MM-DD');
+				this.plugin.settings.heatmapStartDate = activeWindow.moment(val).subtract(1, 'year').format('YYYY-MM-DD');
 				this.heatStartInput.value = this.plugin.settings.heatmapStartDate;
 			} else {
 				this.plugin.settings.heatmapStartDate = '';
@@ -258,8 +259,8 @@ this.scrollWrapper = contentEl.createDiv({ cls: 'stats-chart-scroll-wrapper' });
 	private renderEfficiency(): void {
 		this.efficiencyContainer.empty();
 
-		const rangeStart = this.plugin.settings.heatmapStartDate || window.moment().clone().startOf('year').format('YYYY-MM-DD');
-		const rangeEnd = this.plugin.settings.heatmapEndDate || window.moment().format('YYYY-MM-DD');
+		const rangeStart = this.plugin.settings.heatmapStartDate || activeWindow.moment().clone().startOf('year').format('YYYY-MM-DD');
+		const rangeEnd = this.plugin.settings.heatmapEndDate || activeWindow.moment().format('YYYY-MM-DD');
 
 		const streak = calcStreak(this.history);
 		const focusRate = calcFocusRate(this.history, rangeStart, rangeEnd);
@@ -287,12 +288,12 @@ this.scrollWrapper = contentEl.createDiv({ cls: 'stats-chart-scroll-wrapper' });
 	private renderHeatmap(): void {
 		this.heatContainer.empty();
 
-		const now = window.moment();
+		const now = activeWindow.moment();
 		const rangeStart = this.plugin.settings.heatmapStartDate
-			? window.moment(this.plugin.settings.heatmapStartDate)
+			? activeWindow.moment(this.plugin.settings.heatmapStartDate)
 			: now.clone().startOf('year');
 		const rangeEnd = this.plugin.settings.heatmapEndDate
-			? window.moment(this.plugin.settings.heatmapEndDate)
+			? activeWindow.moment(this.plugin.settings.heatmapEndDate)
 			: now.clone().endOf('year');
 
 		const alignedStart = rangeStart.clone().isoWeekday(1);
@@ -330,7 +331,7 @@ HEAT_LEVELS.forEach(level => {
 			if (w >= 0 && w < totalWeeks) {
 				const spacer = monthRow.createDiv({ cls: 'stats-heatmap-month-label' });
 				spacer.setText(monthStart.format('MMM'));
-				spacer.style.left = `calc(28px + ${w} * (100% - 28px) / ${totalWeeks})`;
+				spacer.setCssStyles({ left: `calc(28px + ${w} * (100% - 28px) / ${totalWeeks})` });
 			}
 		}
 
@@ -412,7 +413,7 @@ HEAT_LEVELS.forEach(level => {
 			const val = getValue(data);
 			const heightPercent = Math.max(2, (Math.abs(val) / maxAbsValue) * 100);
 			const bar = col.createDiv({ cls: 'stats-large-bar' });
-			bar.style.height = `${heightPercent}%`;
+			bar.setCssStyles({ height: `${heightPercent}%` });
 
 
 			if (val < 0) {
@@ -458,7 +459,7 @@ HEAT_LEVELS.forEach(level => {
 			if (displayKeys.length < 2) return;
 
 			// Use requestAnimationFrame to measure actual bar positions after layout
-			requestAnimationFrame(() => {
+			activeWindow.requestAnimationFrame(() => {
 				const container = this.chartContainer;
 				const bars = container.querySelectorAll(".stats-large-bar") as NodeListOf<HTMLElement>;
 				if (bars.length < 2) return;
@@ -570,7 +571,7 @@ const vTension = 0.2;
 
 		// 只聚合 history 中实际存在的数据，不填充空时间段
 		for (const [date, stat] of Object.entries(this.history)) {
-			const m = window.moment(date);
+			const m = activeWindow.moment(date);
 			let key = date;
 
 			if (this.currentTab === 'day') {
@@ -590,10 +591,10 @@ const vTension = 0.2;
 		}
 
 		// 仅对日级别标签页补充缺失日期（确保近7日/近30日完整）
-		const now = window.moment();
+		const now = activeWindow.moment();
 		if (this.currentTab === 'day') {
 			const start = now.clone().subtract(29, 'days');
-			let d = start.clone();
+			const d = start.clone();
 			while (d.isSameOrBefore(now, 'day')) {
 				const key = d.format('YYYY-MM-DD');
 				if (!result[key]) result[key] = { words: 0, focusMs: 0, slackMs: 0 };

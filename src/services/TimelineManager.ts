@@ -1,4 +1,5 @@
-import { App, TFile } from 'obsidian';
+import type { App} from 'obsidian';
+import { TFile } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { escapeRegex } from '../utils/validation';
 import { SerializedWriter } from '../utils/SerializedWriter';

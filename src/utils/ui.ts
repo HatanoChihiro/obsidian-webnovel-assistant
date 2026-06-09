@@ -1,10 +1,12 @@
 import { Notice } from 'obsidian';
+import { REGEX_PATTERNS } from '../constants';
 
 /**
- * 复制文档内容到剪贴板（标题 + 空行 + 正文）
+ * 复制文档内容到剪贴板（去除属性区 + 标题 + 空行 + 正文）
  */
 export async function copyDocumentContent(title: string, rawContent: string): Promise<void> {
-	const contentWithTitle = title ? `${title}\n\n${rawContent}` : rawContent;
+	const cleanContent = rawContent.replace(REGEX_PATTERNS.FRONTMATTER, '').trimStart();
+	const contentWithTitle = title ? `${title}\n\n${cleanContent}` : cleanContent;
 	try {
 		await navigator.clipboard.writeText(contentWithTitle);
 		new Notice('[成功] 已复制本文档');

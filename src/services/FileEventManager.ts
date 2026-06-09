@@ -32,8 +32,7 @@ export class FileEventManager {
 			// 字数缓存更新逻辑
 			if (!this.plugin.isEligibleForWordCount(file)) return;
 
-			const activeView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
-			const isActiveFile = activeView?.file?.path === file.path;
+			const isActiveFile = file.path === this.plugin.editorTracker?.getActiveFilePath();
 
 			if (!isActiveFile) {
 				try {
@@ -54,7 +53,7 @@ export class FileEventManager {
 						this.plugin.cacheManager.updateFileCache(file, newWordCount, this.plugin.app.vault);
 
 						if (this.plugin.isLayoutReady) {
-							const today = window.moment().format('YYYY-MM-DD');
+							const today = activeWindow.moment().format('YYYY-MM-DD');
 							this.plugin.historyManager.addWords(today, delta);
 							this.plugin.sessionAddedWords += delta;
 

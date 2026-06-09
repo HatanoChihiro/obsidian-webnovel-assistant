@@ -1,0 +1,257 @@
+import type { App, TAbstractFile} from 'obsidian';
+import { TFile, TFolder, parseFrontMatterAliases } from 'obsidian';
+import type { WebNovelAssistantPlugin } from '../types/plugin';
+
+export interface LoreEntry {
+	file: TFile;
+	heading: string | null;
+}
+
+/**
+ * 设定管理器 (前身为角色管理器)
+ * 负责解析和缓存各作品目录下 `loreFolderName` (例如 "设定") 文件夹中的设定文件。
+ * 支持单文件模式以及字典大纲模式（按标题切分词条）。
+ */
+export class CharacterManager {
+	private app: App;
+	private plugin: WebNovelAssistantPlugin;
+
+	// 例如： "小说A" -> "张三" -> { file: TFile, heading: '张三' }
+	private characterCache: Map<string, Map<string, LoreEntry>> = new Map();
+
+	private lowercaseKeyMap: Map<string, Map<string, string>> = new Map();
+	
+	public cacheVersion: number = 0;
+
+	constructor(app: App, plugin: WebNovelAssistantPlugin) {
+		this.app = app;
+		this.plugin = plugin;
+	}
+
+	public async initialize(): Promise<void> {
+		await this.rebuildCache();
+
+		// 监听文件变化
+		this.plugin.registerEvent(
+			this.app.vault.on('create', (file) => this.handleFileChange(file))
+		);
+		this.plugin.registerEvent(
+			this.app.vault.on('delete', (file) => this.handleFileChange(file))
+		);
+		this.plugin.registerEvent(
+			this.app.vault.on('rename', (file, oldPath) => {
+				this.handleFileChange(file);
+			})
+		);
+		this.plugin.registerEvent(
+			this.app.metadataCache.on('changed', (file) => {
+				this.handleFileChange(file);
+			})
+		);
+	}
+
+	/**
+	 * 全量重建设定缓存
+	 */
+	public async rebuildCache(): Promise<void> {
+		const newCache = new Map<string, Map<string, LoreEntry>>();
+		const newLowerMap = new Map<string, Map<string, string>>();
+		
+		const files = this.app.vault.getMarkdownFiles();
+		for (const file of files) {
+			await this.addFileToCacheIfValidInto(file, newCache, newLowerMap);
+		}
+		
+		this.characterCache = newCache;
+		this.lowercaseKeyMap = newLowerMap;
+		
+		this.cacheVersion++;
+		
+		// 注意：这里的 dispatch 配合 CharacterHoverExtension 中的 cacheVersion 检测，
+		// 共同实现了“文件保存后，哪怕没有打字或滚动也能立即刷新高亮”的效果。
+		// 没有 dispatch，CM 的 update 事件就不会触发；没有 cacheVersion 比较，
+		// 即使触发了 update，由于 docChanged 为 false 也不会重建装饰器。
+		this.app.workspace.iterateAllLeaves((leaf) => {
+			const view = leaf.view;
+			if (view.getViewType() === 'markdown') {
+				const editor = (view as any).editor;
+				if (editor && editor.cm) {
+					editor.cm.dispatch({});
+				}
+			}
+		});
+	}
+
+	private handleFileChange(file: TAbstractFile): void {
+		if (file instanceof TFile && file.extension === 'md') {
+			const bookPath = this.getBookPathForFile(file);
+			if (bookPath) {
+				const loreFolderName = this.plugin.settings.loreFolderName || '设定';
+				const parentPath = file.parent?.path || '';
+				const expectedLorePath = bookPath === '/' ? loreFolderName : `${bookPath}/${loreFolderName}`;
+				if (parentPath === expectedLorePath || parentPath.startsWith(expectedLorePath + '/')) {
+					this.plugin.adaptiveDebounceManager.debounceFixed('rebuild-character-cache', () => {
+						this.rebuildCache().then(() => {
+							this.app.workspace.updateOptions();
+						}).catch(e => console.error(e));
+					}, 500);
+				}
+			}
+		} else if (file instanceof TFolder) {
+			this.plugin.adaptiveDebounceManager.debounceFixed('rebuild-character-cache', () => {
+				this.rebuildCache().then(() => {
+					this.app.workspace.updateOptions();
+				}).catch(e => console.error(e));
+			}, 500);
+		}
+	}
+
+	/**
+	 * 获取指定作品（bookPath）下的所有角色名
+	 */
+	public getCharactersForBook(bookPath: string): string[] {
+		const bookCache = this.characterCache.get(bookPath);
+		if (!bookCache) return [];
+		// 按照长度降序排序，避免 "张三" 和 "张三丰" 匹配时被 "张三" 抢占
+		return Array.from(bookCache.keys()).sort((a, b) => b.length - a.length);
+	}
+
+	/**
+	 * 获取指定作品下，指定设定名对应的缓存条目
+	 */
+	public getCharacterFile(bookPath: string, characterName: string): LoreEntry | null {
+		const bookCache = this.characterCache.get(bookPath);
+		if (!bookCache) return null;
+		
+		let entry = bookCache.get(characterName);
+		if (entry) return entry;
+		
+		// Fallback: 忽略大小写查找 (O(1))
+		const lowerMap = this.lowercaseKeyMap.get(bookPath);
+		if (lowerMap) {
+			const originalKey = lowerMap.get(characterName.toLowerCase());
+			if (originalKey) {
+				return bookCache.get(originalKey) || null;
+			}
+		}
+		
+		return null;
+	}
+
+	/**
+	 * 给定一个任意文件（通常是当前正在编辑的文件），返回它所属的作品目录路径
+	 * （复用了 AdvancedSearchModal 的向上查找逻辑）
+	 */
+	public getBookPathForFile(file: TFile | null): string | null {
+		if (!file) return null;
+		
+		let folder = file.parent;
+		if (!folder || folder.isRoot()) return null;
+
+		const workspaceFolders = this.plugin.settings.workspaceFolders || [];
+		
+		while (folder && !folder.isRoot()) {
+			const parent: TFolder | null = folder.parent;
+			if (!parent) break;
+
+			if (workspaceFolders.length > 0) {
+				if (workspaceFolders.includes(parent.path)) {
+					return folder.path;
+				}
+				if (workspaceFolders.includes(folder.path)) {
+					return folder.path;
+				}
+			} else {
+				if (parent.isRoot()) {
+					return folder.path;
+				}
+			}
+			folder = parent;
+		}
+		
+		return null;
+	}
+
+	/**
+	 * 检查一个文件是否是设定文件，并加入缓存
+	 */
+	private async addFileToCacheIfValidInto(
+		file: TFile, 
+		targetCache: Map<string, Map<string, LoreEntry>>,
+		targetLowerMap: Map<string, Map<string, string>>
+	): Promise<void> {
+		const bookPath = this.getBookPathForFile(file);
+		if (!bookPath) return;
+
+		const loreFolderName = this.plugin.settings.loreFolderName || '设定';
+		const parentPath = file.parent?.path || '';
+		const expectedLorePath = bookPath === '/' ? loreFolderName : `${bookPath}/${loreFolderName}`;
+
+		if (parentPath === expectedLorePath || parentPath.startsWith(expectedLorePath + '/')) {
+			if (!targetCache.has(bookPath)) {
+				targetCache.set(bookPath, new Map());
+				targetLowerMap.set(bookPath, new Map());
+			}
+			
+			const bookCache = targetCache.get(bookPath)!;
+			const lowerMap = targetLowerMap.get(bookPath)!;
+			
+			const addEntry = (key: string, entry: LoreEntry) => {
+				bookCache.set(key, entry);
+				lowerMap.set(key.toLowerCase(), key);
+			};
+			const fileCache = this.app.metadataCache.getFileCache(file);
+			
+			// 1. 解析 YAML 中的 aliases (别名)
+			if (fileCache && fileCache.frontmatter) {
+				const aliases = parseFrontMatterAliases(fileCache.frontmatter) || [];
+				for (const alias of aliases) {
+					if (alias && typeof alias === 'string') {
+						addEntry(alias, { file, heading: null });
+					}
+				}
+			}
+
+			// 2. 字典模式：解析各级标题作为正名，并在下方的正文里提取别名
+			if (fileCache && fileCache.headings) {
+				const content = await this.app.vault.cachedRead(file);
+				const lines = content.split('\n');
+
+				for (let i = 0; i < fileCache.headings.length; i++) {
+					const heading = fileCache.headings[i];
+					if (heading.level !== 2) continue; // 强制仅识别二级标题作为词条正名
+
+					const rawHeading = heading.heading.trim();
+					if (!rawHeading) continue;
+					
+					// 清理 Markdown 格式标记
+					const headingText = rawHeading.replace(/\*\*|__/g, '').replace(/\*|_/g, '').replace(/`/g, '');
+					if (!headingText) continue;
+
+					// 提取标题正名
+					addEntry(headingText, { file, heading: headingText });
+
+					// 截取当前标题到下一个标题之间的内容，防止别名串写
+					const startLine = heading.position.end.line + 1;
+					const nextHeading = fileCache.headings[i + 1];
+					const endLine = nextHeading ? nextHeading.position.start.line : lines.length;
+
+					let chunk = lines.slice(startLine, endLine).join('\n');
+					
+					// 查找 `别名：`、`**别名**：` 等格式
+					const aliasMatch = chunk.match(/(?:\*\*|__)?别名(?:\*\*|__)?\s*[:：]\s*([^\n]+)/);
+					if (aliasMatch && aliasMatch[1]) {
+						// 支持用逗号、顿号分隔多个别名
+						const rawAliases = aliasMatch[1].split(/[,，、/|]/);
+						for (let a of rawAliases) {
+							a = a.trim();
+							if (a) {
+								addEntry(a, { file, heading: headingText });
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}

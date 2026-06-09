@@ -1,5 +1,5 @@
-import { Plugin } from 'obsidian';
-import { DailyStat } from '../types/settings';
+import type { Plugin } from 'obsidian';
+import type { DailyStat } from '../types/settings';
 import { getPluginDir } from '../utils/platform';
 
 /**
@@ -90,7 +90,7 @@ export class HistoryDataManager {
 			if (!this.pendingSave) {
 				this.pendingSave = new Promise((resolve) => {
 					// 500ms 后执行一次最终保存
-					setTimeout(async () => {
+					activeWindow.setTimeout(async () => {
 						this.pendingSave = null;
 						await this.saveHistory();
 						resolve();
@@ -123,6 +123,21 @@ export class HistoryDataManager {
 		await this.saveHistory();
 		if (this.pendingSave) {
 			await this.pendingSave;
+		}
+	}
+
+	flushSync(): void {
+		if (!this.dirty) return;
+		try {
+			const adapter = this.plugin.app.vault.adapter as any;
+			if (adapter.fs && adapter.fs.writeFileSync && adapter.getBasePath && adapter.path) {
+				const fullPath = adapter.path.join(adapter.getBasePath(), this.historyFilePath);
+				const content = JSON.stringify(this.historyData, null, 2);
+				adapter.fs.writeFileSync(fullPath, content);
+				this.dirty = false;
+			}
+		} catch (error) {
+			console.error('[HistoryDataManager] flushSync 失败:', error);
 		}
 	}
 
@@ -204,7 +219,10 @@ export class HistoryDataManager {
 	addHourlyFocusTime(date: string, hour: number, ms: number): void {
 		if (hour < 0 || hour > 23) return;
 		const stat = this.getOrCreateDailyStat(date);
-		if (!stat.hourlyFocus) stat.hourlyFocus = new Array(24).fill(0);
+		if (!stat.hourlyFocus || stat.hourlyFocus.length !== 24) {
+			const old = stat.hourlyFocus || [];
+			stat.hourlyFocus = new Array(24).fill(0).map((_, i) => old[i] || 0);
+		}
 		stat.hourlyFocus[hour] += ms;
 		this.dirty = true;
 	}
@@ -215,7 +233,10 @@ export class HistoryDataManager {
 	addHourlySlackTime(date: string, hour: number, ms: number): void {
 		if (hour < 0 || hour > 23) return;
 		const stat = this.getOrCreateDailyStat(date);
-		if (!stat.hourlySlack) stat.hourlySlack = new Array(24).fill(0);
+		if (!stat.hourlySlack || stat.hourlySlack.length !== 24) {
+			const old = stat.hourlySlack || [];
+			stat.hourlySlack = new Array(24).fill(0).map((_, i) => old[i] || 0);
+		}
 		stat.hourlySlack[hour] += ms;
 		this.dirty = true;
 	}

@@ -1,4 +1,5 @@
-import { ItemView, MarkdownView, TFile, WorkspaceLeaf } from 'obsidian';
+import type { WorkspaceLeaf } from 'obsidian';
+import { ItemView, MarkdownView, TFile } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 
 /**

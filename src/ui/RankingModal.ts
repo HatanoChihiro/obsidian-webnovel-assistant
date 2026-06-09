@@ -1,7 +1,8 @@
-import { App, Modal } from 'obsidian';
+import type { App} from 'obsidian';
+import { Modal } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { RankingEntry } from '../types/ranking';
-import { RankingManager } from '../services/RankingManager';
+import type { RankingManager } from '../services/RankingManager';
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -55,8 +56,8 @@ export class RankingAddModal extends Modal {
 		});
 
 		// 起始时间
-		const today = window.moment().format('YYYY-MM-DD');
-		const nextWeek = window.moment().add(6, 'days').format('YYYY-MM-DD');
+		const today = activeWindow.moment().format('YYYY-MM-DD');
+		const nextWeek = activeWindow.moment().add(6, 'days').format('YYYY-MM-DD');
 
 		const startContainer = contentEl.createDiv();
 		startContainer.createEl('label', { text: '起始时间', attr: { style: 'display:block;margin-bottom:4px;font-weight:bold;' } });
@@ -79,7 +80,7 @@ export class RankingAddModal extends Modal {
 		startInput.addEventListener('change', () => {
 			const startVal = startInput.value;
 			if (DATE_REGEX.test(startVal)) {
-				endInput.value = window.moment(startVal).add(6, 'days').format('YYYY-MM-DD');
+				endInput.value = activeWindow.moment(startVal).add(6, 'days').format('YYYY-MM-DD');
 			}
 		});
 

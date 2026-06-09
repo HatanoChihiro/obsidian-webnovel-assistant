@@ -126,7 +126,7 @@ export const REGEX_PATTERNS = {
 	
 	// Markdown 清理正则（用于字数统计）
 	/** Frontmatter（不带 g 标志，只匹配开头） */
-	FRONTMATTER: /^---[\s\S]*?---\n?/,
+	FRONTMATTER: /^---\r?\n[\s\S]*?\r?\n---(?=\r?\n|$)/,
 	/** 代码块（工厂函数，避免 g 标志状态残留） */
 	CODE_BLOCK: () => /```[\s\S]*?```/g,
 	/** 行内代码（工厂函数，避免 g 标志状态残留） */
@@ -163,6 +163,12 @@ export const REGEX_PATTERNS = {
 	TABLE_SEPARATOR: /^\|?[\s:]*-{3,}[\s:]*(?:\|[\s:]*-{3,}[\s:]*)*\|?\s*$/gm,
 	/** 空白字符（工厂函数，避免 g 标志状态残留） */
 	WHITESPACE: () => /\s+/g,
+	/** 中日韩字符（工厂函数，避免 g 标志状态残留） */
+	CJK_CHAR: () => /[\u4e00-\u9fa5\u3040-\u309f\u30a0-\u30ff]/g,
+	/** 英文单词及数字组合（工厂函数，避免 g 标志状态残留） */
+	WORD_TOKEN: () => /[a-zA-Z0-9\u00C0-\u024F\u0400-\u04FF]+/g,
+	/** 全角标点（工厂函数，避免 g 标志状态残留） */
+	FULLWIDTH_PUNCT: () => /[，。！？、；：“”‘’（）《》【】……——]/g,
 } as const;
 
 // ==========================================
@@ -243,17 +249,20 @@ export const FLAT_OBS_KEYS = [
 ];
 
 export const FLAT_IMMERSIVE_KEYS = [
-	'immersiveShowChapterList', 'immersiveShowReference', 'immersiveShowStickyNotes',
-	'immersiveShowForeshadowing', 'immersiveShowTimeline', 'immersiveShowTotalTime',
+	'immersiveTopSlots', 'immersiveBottomSlots', 'immersiveLeftSlots', 'immersiveRightSlots',
+	'immersiveTopSize', 'immersiveBottomSize', 'immersiveLeftSize', 'immersiveRightSize',
+	'immersiveShowTotalTime',
 	'immersiveShowFocusTime', 'immersiveShowSlackTime', 'immersiveShowChapterProgress',
-	'immersiveShowDailyProgress', 'immersiveShowSessionWords', 'immersiveShowRankingProgress', 'immersiveLeftSize',
-	'immersiveRightSize', 'immersiveBottomSize', 'immersiveBottomInternalSizes',
-	'immersivePanelPosition', 'immersiveNoteSize', 'immersiveNoteFontSize', 'immersiveLayout'
+	'immersiveShowDailyProgress', 'immersiveShowSessionWords', 'immersiveShowRankingProgress', 
+	'immersiveHideProperties',
+	'immersiveTopInternalSizes', 'immersiveBottomInternalSizes', 'immersiveLeftInternalSizes', 'immersiveRightInternalSizes',
+	'immersiveNoteSize', 'immersiveNoteFontSize', 'immersiveLayout'
 ];
 
 
 
 export const DEFAULT_SETTINGS: AccurateCountSettings = {
+	wordCountMethod: 'webnovel',
 	defaultGoal: 3000,
 	dailyGoal: 5000,
 	showGoal: true,
@@ -301,11 +310,20 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 
 	// 沉浸模式默认设置
 	immersive: {
-		immersiveShowChapterList: true,
-		immersiveShowReference: true,
-		immersiveShowStickyNotes: true,
-		immersiveShowForeshadowing: true,
-		immersiveShowTimeline: true,
+		immersiveTopSlots: [],
+		immersiveBottomSlots: ['immersive-sticky-notes-view', 'foreshadowing-view', 'timeline-view'],
+		immersiveLeftSlots: ['immersive-chapter-list-view'],
+		immersiveRightSlots: ['reference-view', 'webnovel-corkboard'],
+		immersiveTopSize: 20,
+		immersiveBottomSize: 20,
+		immersiveLeftSize: 20,
+		immersiveRightSize: 20,
+
+		immersiveTopInternalSizes: [],
+		immersiveBottomInternalSizes: [],
+		immersiveLeftInternalSizes: [],
+		immersiveRightInternalSizes: [],
+		
 		immersiveShowTotalTime: true,
 		immersiveShowFocusTime: true,
 		immersiveShowSlackTime: true,
@@ -313,11 +331,9 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 		immersiveShowDailyProgress: true,
 		immersiveShowSessionWords: true,
 		immersiveShowRankingProgress: true,
-		immersiveLeftSize: 11,
-		immersiveRightSize: 30,
-		immersiveBottomSize: 20,
-		immersiveBottomInternalSizes: [70, 16, 14],
-		immersivePanelPosition: 'bottom',
+		
+		immersiveHideProperties: true,
+		
 		immersiveNoteSize: 280,
 		immersiveNoteFontSize: 14,
 		immersiveLayout: null,
@@ -348,5 +364,6 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 	novelInfo: { fileName: '作品信息' },
 	homepagePinPosition: 'top',
 	customSortOrder: {},
+	loreFolderName: '设定',
 };
 

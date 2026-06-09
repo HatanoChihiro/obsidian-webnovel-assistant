@@ -11,6 +11,7 @@ export class WorkerManager {
 	private restartAttempts: number = 0;
 	private readonly MAX_RESTARTS: number = 5;
 	private restartTimer: number | null = null;
+	private restartResetTimer: number | null = null;
 
 	constructor(plugin: WebNovelAssistantPlugin) {
 		this.plugin = plugin;
@@ -28,6 +29,7 @@ export class WorkerManager {
 
 		const workerCode = `
 			let interval;
+			self.postMessage('ready');
 			self.onmessage = function(e) {
 				if (e.data === 'start') {
 					clearInterval(interval);
@@ -40,20 +42,26 @@ export class WorkerManager {
 		const blob = new Blob([workerCode], { type: 'application/javascript' });
 		const blobUrl = URL.createObjectURL(blob);
 		this.worker = new Worker(blobUrl);
-		URL.revokeObjectURL(blobUrl);
 
 		this.worker.onerror = (error) => {
 			this.handleError(error);
 		};
 
-		this.worker.onmessage = () => {
+		let urlRevoked = false;
+		this.worker.onmessage = (e) => {
+			if (!urlRevoked) {
+				URL.revokeObjectURL(blobUrl);
+				urlRevoked = true;
+			}
+			if (e.data === 'ready') return;
 			this.handleMessage();
 		};
 
 		// 稳定运行 60s 后重置计数器
 		if (this.restartAttempts > 0) {
-			setTimeout(() => {
+			this.restartResetTimer = activeWindow.setTimeout(() => {
 				this.restartAttempts = 0;
+				this.restartResetTimer = null;
 			}, 60000);
 		}
 	}
@@ -70,8 +78,12 @@ export class WorkerManager {
 	 */
 	public terminate(): void {
 		if (this.restartTimer) {
-			clearTimeout(this.restartTimer);
+			activeWindow.clearTimeout(this.restartTimer);
 			this.restartTimer = null;
+		}
+		if (this.restartResetTimer) {
+			activeWindow.clearTimeout(this.restartResetTimer);
+			this.restartResetTimer = null;
 		}
 		if (this.worker) {
 			this.worker.terminate();
@@ -89,7 +101,7 @@ export class WorkerManager {
 		const wasTracking = this.plugin.isTracking;
 		this.terminate();
 
-		this.restartTimer = window.setTimeout(() => {
+		this.restartTimer = activeWindow.setTimeout(() => {
 			this.setup();
 
 			if (wasTracking && this.worker) {
@@ -111,9 +123,9 @@ export class WorkerManager {
 		const delta = now - this.plugin.lastTickTime;
 		this.plugin.lastTickTime = now;
 		
-		const isAppFocused = document.hasFocus();
+		const isAppFocused = activeDocument.hasFocus();
 		const isTypingActive = (now - this.plugin.lastEditTime) < this.plugin.settings.idleTimeoutThreshold;
-		const today = window.moment().format('YYYY-MM-DD');
+		const today = activeWindow.moment().format('YYYY-MM-DD');
 
 		const hour = new Date().getHours();
 		if (isAppFocused && isTypingActive) {

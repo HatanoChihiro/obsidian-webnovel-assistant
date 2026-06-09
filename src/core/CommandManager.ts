@@ -50,6 +50,12 @@ export class CommandManager {
 			callback: () => this.plugin.toggleRankingView()
 		});
 
+		this.plugin.addCommand({
+			id: 'open-corkboard-view',
+			name: '打开/关闭章节一览面板',
+			callback: () => this.plugin.viewManager.toggleView('webnovel-corkboard')
+		});
+
 		if (isDesktop()) { // Desktop
 			this.plugin.addCommand({
 				id: 'toggle-immersive-mode',
@@ -237,8 +243,8 @@ export class CommandManager {
 							}
 							if (isDesktop()) {
 								const notice = new Notice('[提示] 点击此处打开伏笔文件', 8000);
-								notice.noticeEl.style.cursor = 'pointer';
-								notice.noticeEl.onclick = () => {
+								notice.messageEl.setCssStyles({ cursor: 'pointer' });
+								notice.messageEl.onclick = () => {
 									fm.openForeshadowingFile(foreshadowFile);
 									notice.hide();
 								};

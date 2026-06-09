@@ -29,10 +29,9 @@ export abstract class BaseFormModal extends Modal {
 		) as HTMLInputElement | HTMLTextAreaElement;
 		
 		el.value = defaultValue;
-		el.style.cssText = STYLES.INPUT_STYLE;
-		
+		el.addClass('wn-base-input');
 		if (type === 'textarea') {
-			(el as HTMLTextAreaElement).style.cssText += 'height:80px;resize:vertical;font-family:var(--font-text);';
+			el.addClass('wn-base-textarea');
 		}
 		
 		return el;
@@ -43,7 +42,7 @@ export abstract class BaseFormModal extends Modal {
 	 */
 	protected createButtonContainer(): HTMLElement {
 		const container = this.contentEl.createDiv();
-		container.style.cssText = STYLES.BUTTON_CONTAINER_STYLE;
+		container.addClass('wn-base-button-container');
 		return container;
 	}
 
@@ -80,11 +79,10 @@ export abstract class BaseFormModal extends Modal {
 		if (tags.length === 0) return;
 
 		const tagBtnContainer = container.createDiv({ cls: 'tag-buttons' });
-		tagBtnContainer.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px;';
-
+		tagBtnContainer.addClass('wn-base-tag-button-container');
 		for (const tag of tags) {
 			const btn = tagBtnContainer.createEl('button', { text: `#${tag}` });
-			btn.style.cssText = STYLES.TAG_BUTTON_STYLE;
+			btn.addClass('wn-base-tag-button');
 			btn.onclick = () => onTagClick(tag);
 		}
 	}
@@ -121,7 +119,7 @@ export abstract class BaseFormModal extends Modal {
 	 * 自动聚焦到指定元素
 	 */
 	protected autoFocus(element: HTMLInputElement | HTMLTextAreaElement, delay: number = 50): void {
-		setTimeout(() => {
+		activeWindow.setTimeout(() => {
 			element.focus();
 			if (element instanceof HTMLInputElement) {
 				element.select();

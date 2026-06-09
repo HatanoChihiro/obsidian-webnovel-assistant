@@ -5,7 +5,8 @@ import { copyDocumentContent } from '../utils/ui';
 import { isDesktop } from '../utils/platform';
 import { ChapterSorter } from '../services/ChapterSorter';
 import { TimelineAddFromSelectionModal } from '../ui/TimelineView';
-import { TimelineManager, TimelineEntry } from '../services/TimelineManager';
+import type { TimelineEntry } from '../services/TimelineManager';
+import { TimelineManager } from '../services/TimelineManager';
 import { RankingManager } from '../services/RankingManager';
 import { RankingAddModal } from '../ui/RankingModal';
 import { NewNovelModal } from '../ui/NewNovelModal';
@@ -120,7 +121,7 @@ export class MenuManager {
 									// 刷新时间线视图
 									const leaves = this.plugin.app.workspace.getLeavesOfType('timeline-view');
 									if (leaves.length > 0) {
-										await new Promise(resolve => setTimeout(resolve, 100)); // 给文件写入一点时间
+										await new Promise(resolve => activeWindow.setTimeout(resolve, 100)); // 给文件写入一点时间
 										await leaves[0].view.refresh?.();
 									}
 								},

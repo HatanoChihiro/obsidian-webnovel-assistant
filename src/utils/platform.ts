@@ -13,8 +13,8 @@ export function isMobile(): boolean {
 }
 
 function isTablet(): boolean {
-	const isPhone = document.body.classList.contains('is-phone');
-	const isWide = window.innerWidth >= 768;
+	const isPhone = activeDocument.body.classList.contains('is-phone');
+	const isWide = activeWindow.innerWidth >= 768;
 	// 兼容旧版 Obsidian：isTablet/isIpad 可能不存在
 	const platformTablet = (Platform as any).isTablet || (Platform as any).isIpad || false;
 	return Platform.isMobile && (platformTablet || (isWide && !isPhone));

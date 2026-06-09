@@ -1,4 +1,4 @@
-import { WorkspaceLeaf } from 'obsidian';
+import type { WorkspaceLeaf } from 'obsidian';
 import { CreativeView } from './CreativeView';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { RankingEntry } from '../types/ranking';
@@ -104,12 +104,12 @@ export class RankingView extends CreativeView {
 		if (entry.status === '进行中') {
 			const progress = this.manager.calcProgress(entry);
 			// 异步更新进度文件，避免在 UI 渲染主路径中同步读写文件
-			setTimeout(() => {
+			activeWindow.setTimeout(() => {
 				this.manager.updateProgress(entry.period, progress);
 			}, 100);
 			const percent = entry.wordTarget > 0 ? Math.min(Math.round((progress / entry.wordTarget) * 100), 100) : 0;
 			const remaining = entry.wordTarget - progress;
-			const daysLeft = Math.max(0, window.moment(entry.endDate).diff(window.moment().startOf('day'), 'days') + 1);
+			const daysLeft = Math.max(0, activeWindow.moment(entry.endDate).diff(activeWindow.moment().startOf('day'), 'days') + 1);
 
 			const progressSection = card.createDiv({ cls: 'ranking-card-progress' });
 			const progressLabel = progressSection.createDiv({ cls: 'ranking-progress-label' });
@@ -118,7 +118,7 @@ export class RankingView extends CreativeView {
 
 			const progressBg = progressSection.createDiv({ cls: 'progress-bar-bg' });
 			const progressFill = progressBg.createDiv({ cls: 'progress-bar-fill' });
-			progressFill.style.width = `${Math.max(percent, 0)}%`;
+			progressFill.setCssStyles({ width: `${Math.max(percent, 0)}%` });
 			if (percent >= 100) {
 				progressFill.addClass('is-done');
 			}

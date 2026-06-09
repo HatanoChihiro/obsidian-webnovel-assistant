@@ -1,7 +1,8 @@
-import { App, Plugin, TFile, Notice, PluginManifest, MarkdownView } from 'obsidian';
-import { AccurateCountSettings } from './src/types/settings';
-import { WebNovelAssistantPlugin } from './src/types/plugin';
-import { ObsStatsPayload } from './src/types/stats';
+import type { App, PluginManifest} from 'obsidian';
+import { Plugin, TFile, Notice, MarkdownView } from 'obsidian';
+import type { AccurateCountSettings } from './src/types/settings';
+import type { WebNovelAssistantPlugin } from './src/types/plugin';
+import type { ObsStatsPayload } from './src/types/stats';
 import {
 	isDesktop,
 	isMobile,
@@ -22,6 +23,7 @@ import { WritingStatusView, STATUS_VIEW_TYPE } from './src/ui/StatusView';
 import { ForeshadowingView, FORESHADOWING_VIEW_TYPE } from './src/ui/ForeshadowingView';
 import { TimelineView, TIMELINE_VIEW_TYPE } from './src/ui/TimelineView';
 import { MobileFloatingStats } from './src/ui/MobileFloatingStats';
+import { AddLoreModal } from './src/ui/AddLoreModal';
 import { ObsOverlayServer } from './src/services/ObsServer';
 import { ForeshadowingManager } from './src/services/ForeshadowingManager';
 import { RankingManager } from './src/services/RankingManager';
@@ -33,13 +35,15 @@ import { RANKING_VIEW_TYPE } from './src/ui/RankingView';
 import { CommandManager } from './src/core/CommandManager';
 import { ViewManager } from './src/core/ViewManager';
 import { MenuManager } from './src/core/MenuManager';
-import { Extension } from '@codemirror/state';
-import { createWordCountGutter } from './src/editor/WordCountGutter';
+import type { Extension } from '@codemirror/state';
+import { createWordCountGutter, forceWordCountGutterUpdate } from './src/editor/WordCountGutter';
 import { WorkerManager } from './src/services/WorkerManager';
 import { MarkdownPostProcessor } from './src/services/MarkdownPostProcessor';
 import { FileEventManager } from './src/services/FileEventManager';
 import { HomepageManager } from './src/services/HomepageManager';
 import { HomepageRenderer } from './src/services/HomepageRenderer';
+import { CharacterManager } from './src/services/CharacterManager';
+import { buildCharacterHoverExtension } from './src/editor/CharacterHoverExtension';
 
 export default class AccurateChineseCountPlugin extends Plugin implements WebNovelAssistantPlugin {
 	public wordCountExtensionHolder: Extension[] = [];
@@ -87,6 +91,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	commandManager: CommandManager;
 	viewManager: ViewManager;
 	menuManager: MenuManager;
+	characterManager: CharacterManager;
 	isLayoutReady: boolean = false;
 
 	constructor(app: App, manifest: PluginManifest) {
@@ -94,6 +99,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.cacheManager = new CacheManager(this);
 		this.adaptiveDebounceManager = new AdaptiveDebounceManager();
 		this.settingsManager = new SettingsManager(this, DEFAULT_SETTINGS);
+		this.characterManager = new CharacterManager(this.app, this);
 		this.historyManager = new HistoryDataManager(this);
 		this.stickyNoteManager = new StickyNoteDataManager(this);
 		this.fileExplorerPatcher = new FileExplorerPatcher(this.app, this);
@@ -110,11 +116,19 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	}
 
 	async onload() {
+		// 必须首先加载设置，否则其他依赖 settings 的模块会崩溃
+		await this.loadSettings();
+
+		// 初始化角色缓存 (仅桌面端)
+		if (isDesktop()) {
+			await this.characterManager.initialize();
+		}
+
 		// 加载核心功能（桌面端、平板端和移动端功能）
 		await this.setupCoreFeatures();
 		
 		// 定期保存设置和缓存
-		this.registerInterval(window.setInterval(() => {
+		this.registerInterval(activeWindow.setInterval(() => {
 			if (this.isTracking) {
 				this.saveSettings().catch(err => {
 					console.error('[Plugin] 定期保存设置失败:', err);
@@ -143,13 +157,12 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	 * - 设置页面
 	 */
 	private async setupCoreFeatures(): Promise<void> {
-		await this.loadSettings();
 		await this.historyManager.loadHistory(); // 加载历史数据
 		await this.cacheManager.loadCache(); // 提前加载缓存数据，避免启动时主页字数显示为 0
 		
 		// 应用便签显示状态
 		if (this.settings.showFloatingNotes === false) {
-			document.body.classList.add('webnovel-notes-hidden');
+			activeDocument.body.classList.add('webnovel-notes-hidden');
 		}
 
 		// 加载浮动便签
@@ -190,10 +203,27 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			}
 			// 通知 Obsidian 全局刷新所有编辑器的 Extension
 			this.app.workspace.updateOptions();
+			
+			// 派发空 dispatch 强刷状态
+			this.app.workspace.iterateAllLeaves(leaf => {
+				if (leaf.view.getViewType() === 'markdown') {
+					const editor = (leaf.view as any).editor;
+					if (editor && editor.cm) {
+						editor.cm.dispatch({ effects: forceWordCountGutterUpdate.of(null) });
+					}
+				}
+			});
 		}));
 
 		this.commandManager.registerAllCommands();
 		this.viewManager.registerAllViews();
+		
+		// 注册编辑器扩展（设定速查仅在桌面端可用）
+		if (isDesktop()) {
+			this.registerEditorExtension(buildCharacterHoverExtension(this.app, this));
+		}
+
+		// 初始化工作区样式和功能
 		this.menuManager.registerAllMenus();
 		this.registerCommonRibbonIcons();
 		
@@ -208,7 +238,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			this.editorTracker.handleFileChange();
 			this.handleHomepageViewMode();
 		}));
-		this.registerEvent(this.app.metadataCache.on('changed', () => {
+		this.registerEvent(this.app.metadataCache.on('changed', (file) => {
+			if (file instanceof TFile && !this.isFileInWorkspace(file)) return;
 			// 使用防抖避免高频更新
 			this.adaptiveDebounceManager.debounceFixed('word-count-update', () => {
 				this.editorTracker.updateWordCount();
@@ -218,6 +249,27 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		// 初始化当前文件的字数
 		this.editorTracker.handleFileChange();
 		this.editorTracker.updateWordCount(); // 初始化状态栏显示
+
+		// 注册右键菜单添加设定（设定功能目前仅桌面端可用）
+		if (isDesktop()) {
+			this.registerEvent(this.app.workspace.on('editor-menu', (menu, editor, view) => {
+				const selection = editor.getSelection();
+				if (selection && selection.length > 0 && selection.length < 50) {
+					menu.addItem((item) => {
+						item.setTitle('添加为新设定')
+							.setIcon('book-plus')
+							.onClick(() => {
+								const bookPath = this.characterManager.getBookPathForFile(view.file);
+								if (bookPath) {
+									new AddLoreModal(this.app, this, selection.trim(), bookPath).open();
+								} else {
+									new Notice('无法确定当前文件所属作品目录，无法添加设定。');
+								}
+							});
+					});
+				}
+			}));
+		}
 
 		// ==========================================
 		// 创作主页（跨平台支持）
@@ -251,7 +303,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			if (this.settings.showExplorerCounts) {
 				this.app.workspace.onLayoutReady(() => {
 					// 移动端需要更长的延迟，确保文件浏览器完全加载
-						setTimeout(() => {
+						activeWindow.setTimeout(() => {
 						this.buildFolderCache();
 					}, PLATFORM_DELAYS.MOBILE_EXPLORER_DELAY);
 				});
@@ -293,7 +345,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.app.workspace.onLayoutReady(() => {
 			// 延迟构建缓存，避免阻塞启动
 			// 500ms 是一个平衡点：既不会阻塞启动，又能快速显示字数
-			setTimeout(() => {
+			activeWindow.setTimeout(() => {
 				this.buildFolderCache();
 			}, PLATFORM_DELAYS.DESKTOP_EXPLORER_DELAY);
 		});
@@ -475,7 +527,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		if (this.settings.showExplorerCounts) {
 			this.app.workspace.onLayoutReady(() => {
 				// 平板端需要延迟，确保文件浏览器完全加载
-					setTimeout(() => {
+					activeWindow.setTimeout(() => {
 						this.buildFolderCache();
 					}, PLATFORM_DELAYS.TABLET_EXPLORER_DELAY);
 			});
@@ -498,7 +550,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		if (!isDesktop()) return;
 
 			// 清除可能残留的便签 DOM（如插件上次未正常卸载）
-			document.body.querySelectorAll('.my-floating-sticky-note').forEach(el => el.remove());
+			activeDocument.body.querySelectorAll('.my-floating-sticky-note').forEach(el => el.remove());
 			this.activeNotes = [];
 		const notes = await this.stickyNoteManager.loadNotes();
 
@@ -572,7 +624,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		// 如果在移动端调用（如通过命令），由于交互限制，仅给予提示或在沉浸模式中处理
 		if (!isDesktop()) {
 			// 在沉浸模式中创建是允许的，因为它会渲染到辅助面板视图中
-			if (!document.body.classList.contains('immersive-mode-active')) {
+			if (!activeDocument.body.classList.contains('immersive-mode-active')) {
 				new Notice('悬浮便签功能仅在桌面端可用');
 				return;
 			}
@@ -582,9 +634,9 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		await note.load();
 		
 		// 如果处于沉浸模式，立即刷新便签列表视图
-		if (document.body.classList.contains('immersive-mode-active')) {
+		if (activeDocument.body.classList.contains('immersive-mode-active')) {
 			// 给一点额外时间让设置/文件持久化完成
-			setTimeout(() => {
+			activeWindow.setTimeout(() => {
 				this.refreshImmersiveNotes();
 			}, 200);
 		}
@@ -628,8 +680,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			if (view.getMode() !== 'preview') {
 				// 使用 setTimeout 避免与 Obsidian 内部的文件打开/导航 Promise 产生竞态条件
 				// [BUGFIX] 使用计时器取消机制防止快速切换时的竞态
-				if (this._homepageTimer) clearTimeout(this._homepageTimer);
-				this._homepageTimer = setTimeout(() => {
+				if (this._homepageTimer) activeWindow.clearTimeout(this._homepageTimer);
+				this._homepageTimer = activeWindow.setTimeout(() => {
 					this._homepageTimer = null;
 					// 获取最新状态避免过期
 					const latestView = this.app.workspace.getActiveViewOfType(MarkdownView);
@@ -656,8 +708,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 					// 使用 setTimeout 避免切换回其他文档时，被 Obsidian 自身的默认加载状态覆盖
 					const targetPath = activeFile?.path;
 					// [BUGFIX] 使用计时器取消机制防止快速切换时的竞态
-					if (this._homepageTimer) clearTimeout(this._homepageTimer);
-					this._homepageTimer = setTimeout(() => {
+					if (this._homepageTimer) activeWindow.clearTimeout(this._homepageTimer);
+					this._homepageTimer = activeWindow.setTimeout(() => {
 						this._homepageTimer = null;
 						const latestView = this.app.workspace.getActiveViewOfType(MarkdownView);
 						if (latestView && latestView.file?.path === targetPath) {
@@ -679,10 +731,10 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.settings.showFloatingNotes = !this.settings.showFloatingNotes;
 		await this.saveSettings();
 		if (this.settings.showFloatingNotes) {
-			document.body.classList.remove('webnovel-notes-hidden');
+			activeDocument.body.classList.remove('webnovel-notes-hidden');
 			new Notice('[显示] 悬浮便签已显示');
 		} else {
-			document.body.classList.add('webnovel-notes-hidden');
+			activeDocument.body.classList.add('webnovel-notes-hidden');
 			new Notice('[隐藏] 悬浮便签已隐藏');
 		}
 	}
@@ -692,7 +744,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	 */
 	public refreshImmersiveNotes() {
 		// 如果当前有文本框正处于编辑状态，暂时跳过全量刷新，防止打断 IME 输入
-		const activeEl = document.activeElement;
+		const activeEl = activeDocument.activeElement;
 		if (activeEl && activeEl.tagName.toLowerCase() === 'textarea' && 
 			(activeEl.closest('.immersive-sticky-card') || activeEl.closest('.my-sticky-note'))) {
 			return;
@@ -714,8 +766,11 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.addRibbonIcon('bookmark', '打开/关闭伏笔面板', () => {
 			this.toggleForeshadowingView();
 		});
-		this.addRibbonIcon('calendar-clock', '打开/关闭时间线面板', () => {
+		this.addRibbonIcon('calendar-clock', '打开/关闭时间线', () => {
 			this.toggleTimelineView();
+		});
+		this.addRibbonIcon('layout-grid', '打开/关闭章节一览', () => {
+			this.toggleCorkboardView();
 		});
 		this.addRibbonIcon('trophy', '打开/关闭榜单追踪面板', () => {
 			this.toggleRankingView();
@@ -730,8 +785,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 onunload() {
 		this._unloading = true;
 		// 立即移除所有便签 DOM（最先执行，确保视觉上立刻消失）
-		document.body.classList.remove('webnovel-notes-hidden');
-		document.body.querySelectorAll('.my-floating-sticky-note').forEach(el => el.remove());
+		activeDocument.body.classList.remove('webnovel-notes-hidden');
+		activeDocument.body.querySelectorAll('.my-floating-sticky-note').forEach(el => el.remove());
 
 		// 0. 确保退出沉浸模式（fire-and-forget，无法等待）
 		if (this.immersiveModeManager) {
@@ -768,6 +823,10 @@ onunload() {
 
 		// 5. 清理定时器和防抖
 		this.adaptiveDebounceManager.cancelAll();
+		if (this._homepageTimer) {
+			activeWindow.clearTimeout(this._homepageTimer);
+			this._homepageTimer = null;
+		}
 
 		// 6. 移除动态样式
 		if (this.styleManager) {
@@ -782,9 +841,15 @@ onunload() {
 		}
 
 		// 8. 强制刷新所有管理器队列
+		try {
+			// 历史数据同步落盘
+			this.historyManager.flushSync();
+		} catch(e) {
+			console.error('[WebNovel Assistant] 历史数据同步落盘失败:', e);
+		}
+		
 		Promise.all([
 			this.settingsManager.flush(),
-			this.historyManager.flush(),
 			this.stickyNoteManager.saveNotes(this.stickyNoteManager.getNotes())
 		]).catch(e => console.error('[WebNovel Assistant] 卸载时数据刷新失败:', e));
 
@@ -797,8 +862,8 @@ onunload() {
 		if (!this.settings.showExplorerCounts) return;
 
 		try {
-			// 先尝试从持久化存储加载缓存
-			const loaded = await this.cacheManager.loadCache();
+			// 避免发生双重 loadCache，如果缓存已有数据则视为已加载
+			const loaded = this.cacheManager.getCacheStats().size > 0 ? true : await this.cacheManager.loadCache();
 			
 			// 检查缓存完整性：对比缓存条目数和实际文件数
 			const allFiles = this.app.vault.getMarkdownFiles();
@@ -826,7 +891,7 @@ onunload() {
 				// 加载成功且缓存完整，直接刷新显示
 				// 移动端需要额外延迟，确保文件浏览器完全准备好
 				if (isMobile()) {
-					setTimeout(() => {
+					activeWindow.setTimeout(() => {
 						this.refreshFolderCounts();
 						if (this.settings.enableHomepage) this.homepageManager?.refreshHomepageViews();
 					}, PLATFORM_DELAYS.MOBILE_CACHE_REFRESH_DELAY);
@@ -865,7 +930,7 @@ onunload() {
 
 			// 移动端需要额外延迟，确保文件浏览器完全准备好
 			if (isMobile()) {
-				setTimeout(() => {
+				activeWindow.setTimeout(() => {
 						this.refreshFolderCounts();
 						if (this.settings.enableHomepage) this.homepageManager?.refreshHomepageViews();
 				}, PLATFORM_DELAYS.MOBILE_CACHE_REFRESH_DELAY);
@@ -934,6 +999,10 @@ onunload() {
 		await this.viewManager.toggleView(RANKING_VIEW_TYPE);
 	}
 
+	async toggleCorkboardView() {
+		await this.viewManager.toggleView('webnovel-corkboard');
+	}
+
 
 	async saveSettings() {
 		await this.settingsManager.saveSettings();
@@ -995,7 +1064,7 @@ onunload() {
 			basename === this.settings.foreshadowing?.fileName ||
 			basename === this.settings.timeline?.fileName ||
 			basename === this.settings.ranking?.fileName ||
-			file.path === this.settings.homepagePath
+			file.path === this.homepageManager?.getHomepageFilePath()
 		) {
 			return false;
 		}
@@ -1009,7 +1078,7 @@ onunload() {
 	}
 
 	calculateAccurateWords(text: string): number {
-		return this.wordCounter.calculateAccurateWords(text);
+		return this.wordCounter.calculateAccurateWords(text, this.settings.wordCountMethod);
 	}
 
 	updateWordCount(): void {

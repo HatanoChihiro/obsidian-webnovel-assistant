@@ -29,6 +29,7 @@ desktop.ini
 *.png
 *.gif
 !assets/*.png
+!assets/*.gif
 
 # 编辑器配置
 .vscode/

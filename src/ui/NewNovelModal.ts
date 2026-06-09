@@ -1,4 +1,5 @@
-import { App, Modal, Setting } from 'obsidian';
+import type { App} from 'obsidian';
+import { Modal, Setting } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { NovelMetadata } from '../types/homepage';
 

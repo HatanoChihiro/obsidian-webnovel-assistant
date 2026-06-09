@@ -1,0 +1,135 @@
+import type { App, WorkspaceLeaf } from 'obsidian';
+import { MarkdownView } from 'obsidian';
+import type { Extension } from '@codemirror/state';
+import type { DecorationSet, EditorView, ViewUpdate } from '@codemirror/view';
+import { ViewPlugin, Decoration } from '@codemirror/view';
+import type { WebNovelAssistantPlugin } from '../types/plugin';
+
+/**
+ * 构造角色名悬停的 CodeMirror 扩展
+ */
+export function buildCharacterHoverExtension(app: App, plugin: WebNovelAssistantPlugin): Extension {
+	
+	// 定义高亮装饰样式
+	const matchMark = Decoration.mark({ class: 'wn-character-match' });
+
+	// 构建 ViewPlugin
+	const hoverPlugin = ViewPlugin.fromClass(class {
+		decorations: DecorationSet;
+		private activeFile: any = null;
+		private hasTriedFindFile: boolean = false;
+		private cachedPattern: RegExp | null = null;
+		private cachedCharsLength: number = -1;
+		private lastCacheVersion: number = -1;
+
+		constructor(view: EditorView) {
+			this.lastCacheVersion = plugin.characterManager?.cacheVersion || 0;
+			this.decorations = this.buildDecorations(view);
+		}
+
+		update(update: ViewUpdate) {
+			const currentVersion = plugin.characterManager?.cacheVersion || 0;
+			if (update.docChanged || update.viewportChanged || this.lastCacheVersion !== currentVersion) {
+				this.lastCacheVersion = currentVersion;
+				this.decorations = this.buildDecorations(update.view);
+			}
+		}
+
+		private getFile(view: EditorView) {
+			if (this.hasTriedFindFile) return this.activeFile;
+			this.hasTriedFindFile = true;
+			app.workspace.iterateAllLeaves((leaf: WorkspaceLeaf) => {
+				const v = leaf.view;
+				if (v instanceof MarkdownView && v.editor) {
+					const cmEditor = v.editor as unknown as { cm: EditorView };
+					if (cmEditor.cm === view) {
+						this.activeFile = v.file;
+					}
+				}
+			});
+			return this.activeFile;
+		}
+
+		buildDecorations(view: EditorView): DecorationSet {
+			const builder = [];
+			
+			const activeFile = this.getFile(view);
+
+			if (!activeFile) {
+				return Decoration.none;
+			}
+
+			if (!plugin.characterManager) return Decoration.none;
+			
+			const bookPath = plugin.characterManager.getBookPathForFile(activeFile);
+			if (!bookPath) return Decoration.none;
+
+			const characters = plugin.characterManager.getCharactersForBook(bookPath);
+			if (characters.length === 0) return Decoration.none;
+
+			// 缓存正则以避免每次键盘输入都重新编译大量正则
+			if (this.cachedCharsLength !== characters.length || !this.cachedPattern) {
+				const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+				this.cachedPattern = new RegExp(`(${characters.map(escapeRegExp).join('|')})`, 'g');
+				this.cachedCharsLength = characters.length;
+			}
+			const pattern = this.cachedPattern;
+
+			// 只扫描当前视口内的文本
+			for (const { from, to } of view.visibleRanges) {
+				pattern.lastIndex = 0; // 必须重置，因为我们在循环里重用同一个带 /g 的正则
+				const text = view.state.doc.sliceString(from, to);
+				let match;
+				while ((match = pattern.exec(text)) !== null) {
+					const start = from + match.index;
+					const end = start + match[0].length;
+					
+					// 为每个匹配项挂载专属 class 和数据属性，以便 hover 事件读取
+					builder.push(Decoration.mark({
+						class: 'wn-character-match',
+						attributes: { 
+							'data-character': match[0], 
+							'data-bookpath': bookPath,
+							'data-sourcepath': activeFile.path
+						}
+					}).range(start, end));
+				}
+			}
+
+			// 需要排序后提供给 DecorationSet
+			return Decoration.set(builder.sort((a, b) => a.from - b.from));
+		}
+	}, {
+		decorations: v => v.decorations,
+		eventHandlers: {
+			mouseover(e: MouseEvent, view: EditorView) {
+				const target = (e.target as HTMLElement)?.closest('.wn-character-match') as HTMLElement;
+				if (target) {
+					const characterName = target.getAttribute('data-character');
+					const bookPath = target.getAttribute('data-bookpath');
+					const sourcePath = target.getAttribute('data-sourcepath') || '';
+					
+					if (characterName && bookPath && plugin.characterManager) {
+						const charEntry = plugin.characterManager.getCharacterFile(bookPath, characterName);
+						if (charEntry) {
+							// 触发 Obsidian 的原生悬停预览
+							// 组合链接文本：如果是字典模式，带上标题锚点 (e.g. "人物志.md#张三")
+							const linktext = charEntry.heading ? `${charEntry.file.path}#${charEntry.heading}` : charEntry.file.path;
+							
+							(app.workspace as any).trigger('hover-link', {
+								event: e,
+								source: 'editor',
+								hoverParent: view.contentDOM,
+								targetEl: target,
+								linktext: linktext,
+								sourcePath: sourcePath
+							});
+						}
+					}
+				}
+			}
+		}
+	});
+
+	return hoverPlugin;
+}

@@ -1,5 +1,7 @@
-import { ItemView, Modal, Notice, Setting, TFile, TFolder, WorkspaceLeaf, App } from 'obsidian';
-import { TimelineManager, TimelineEntry } from '../services/TimelineManager';
+import type { TFile, WorkspaceLeaf, App } from 'obsidian';
+import { ItemView, Modal, Notice, Setting, TFolder } from 'obsidian';
+import type { TimelineEntry } from '../services/TimelineManager';
+import { TimelineManager } from '../services/TimelineManager';
 import { CreativeView } from './CreativeView';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { rafThrottle } from '../utils/dom';
@@ -55,21 +57,18 @@ export class TimelineAddModal extends Modal {
 		new Setting(contentEl).setName('时间点').setDesc('例如：永历三年春 / 2024-03-15');
 		const timeInput = contentEl.createEl('input', { type: 'text' });
 		timeInput.placeholder = '时间点（必填）';
-		timeInput.style.cssText = inputStyle;
-
+		timeInput.setAttribute('style', inputStyle);
 		new Setting(contentEl).setName('事件描述');
 		const descInput = contentEl.createEl('textarea');
 		descInput.value = this.description;
-		descInput.style.cssText = inputStyle + 'height:80px;resize:vertical;font-family:var(--font-text);';
-
+		descInput.setAttribute('style', inputStyle + 'height:80px;resize:vertical;font-family:var(--font-text);');
 		new Setting(contentEl)
 			.setName('关联章节（可选）')
 			.setDesc('点击 + 号添加更多章节');
 		
 		// 章节列表容器
 		const chapterListContainer = contentEl.createDiv();
-		chapterListContainer.style.cssText = 'margin-bottom:12px;';
-		
+		chapterListContainer.setAttribute('style', 'margin-bottom:12px;');
 		// 获取当前文件夹下的所有 md 文件
 		const getChapterFiles = (): string[] => {
 			const folder = this.folderPath ? this.app.vault.getAbstractFileByPath(this.folderPath) : null;
@@ -88,11 +87,9 @@ export class TimelineAddModal extends Modal {
 		// 创建章节选择行
 		const createChapterRow = (initialValue: string = '') => {
 			const row = chapterListContainer.createDiv();
-			row.style.cssText = 'display:flex;gap:8px;margin-bottom:8px;align-items:center;';
-			
+			row.setAttribute('style', 'display:flex;gap:8px;margin-bottom:8px;align-items:center;');
 			const select = row.createEl('select');
-			select.style.cssText = 'flex:1;padding:6px 8px;border-radius:4px;border:1px solid var(--background-modifier-border);background:var(--background-primary);color:var(--text-normal);';
-			
+			select.setAttribute('style', 'flex:1;padding:6px 8px;border-radius:4px;border:1px solid var(--background-modifier-border);background:var(--background-primary);color:var(--text-normal);');
 			// 添加空选项
 			select.createEl('option', { value: '', text: '-- 选择章节 --' });
 			
@@ -104,7 +101,7 @@ export class TimelineAddModal extends Modal {
 			
 			// 删除按钮
 			const removeBtn = row.createEl('button', { text: '−', cls: 'timeline-chapter-remove-btn' });
-			removeBtn.style.cssText = 'width:32px;height:32px;padding:0;border-radius:4px;background:var(--background-modifier-error);color:var(--text-on-accent);border:none;cursor:pointer;font-size:20px;line-height:1;';
+			removeBtn.setAttribute('style', 'width:32px;height:32px;padding:0;border-radius:4px;background:var(--background-modifier-error);color:var(--text-on-accent);border:none;cursor:pointer;font-size:20px;line-height:1;');
 			removeBtn.title = '删除此章节';
 			removeBtn.onclick = () => {
 				row.remove();
@@ -126,7 +123,7 @@ export class TimelineAddModal extends Modal {
 		
 		// 添加按钮
 		const addBtn = chapterListContainer.createEl('button', { text: '+ 添加章节', cls: 'timeline-chapter-add-btn' });
-		addBtn.style.cssText = 'width:100%;padding:6px;border-radius:4px;background:var(--interactive-accent);color:var(--text-on-accent);border:none;cursor:pointer;margin-top:4px;';
+		addBtn.setAttribute('style', 'width:100%;padding:6px;border-radius:4px;background:var(--interactive-accent);color:var(--text-on-accent);border:none;cursor:pointer;margin-top:4px;');
 		addBtn.onclick = () => {
 			// 在添加按钮之前插入新行
 			const { row } = createChapterRow();
@@ -135,8 +132,7 @@ export class TimelineAddModal extends Modal {
 
 		new Setting(contentEl).setName('类型（可选）');
 		const typeSelect = contentEl.createEl('select');
-		typeSelect.style.cssText = inputStyle;
-		
+		typeSelect.setAttribute('style', inputStyle);
 		// 添加空选项
 		const emptyOption = typeSelect.createEl('option', { value: '', text: '-- 选择类型 --' });
 		
@@ -153,20 +149,19 @@ export class TimelineAddModal extends Modal {
 		// 自定义输入框（初始隐藏）
 		const customInput = contentEl.createEl('input', { type: 'text' });
 		customInput.placeholder = '输入自定义类型';
-		customInput.style.cssText = inputStyle + 'display:none;margin-top:4px;';
-		
+		customInput.setAttribute('style', inputStyle + 'display:none;margin-top:4px;');
 		// 切换显示自定义输入框
 		typeSelect.addEventListener('change', () => {
 			if (typeSelect.value === '__custom__') {
-				customInput.style.display = 'block';
+				customInput.setCssStyles({ display: 'block' });
 				customInput.focus();
 			} else {
-				customInput.style.display = 'none';
+				customInput.setCssStyles({ display: 'none' });
 			}
 		});
 
 		const btnContainer = contentEl.createDiv();
-		btnContainer.style.cssText = 'display:flex;justify-content:flex-end;gap:10px;margin-top:16px;';
+		btnContainer.setAttribute('style', 'display:flex;justify-content:flex-end;gap:10px;margin-top:16px;');
 		btnContainer.createEl('button', { text: '取消' }).onclick = () => this.close();
 		const saveBtn = btnContainer.createEl('button', { text: '添加', cls: 'mod-cta' });
 		saveBtn.onclick = async () => {
@@ -198,7 +193,7 @@ export class TimelineAddModal extends Modal {
 			this.onSubmit(entry);
 			this.close();
 		};
-		setTimeout(() => timeInput.focus(), 50);
+		activeWindow.setTimeout(() => timeInput.focus(), 50);
 	}
 
 	onClose() { this.contentEl.empty(); }
@@ -339,7 +334,7 @@ export class TimelineView extends CreativeView {
 			if (!e.clientX && !e.clientY) return; // 拖拽结束瞬间可能为 0
 			const pointerX = e.clientX;
 			const pointerY = e.clientY;
-			const target = document.elementFromPoint(pointerX, pointerY) as HTMLElement;
+			const target = activeDocument.elementFromPoint(pointerX, pointerY) as HTMLElement;
 			if (!target) return;
 			const targetItem = target.closest('.timeline-item') as HTMLElement;
 			
@@ -365,7 +360,7 @@ export class TimelineView extends CreativeView {
 
 		item.addEventListener('dragstart', (e) => {
 			e.dataTransfer?.setData('text/plain', String(index));
-			setTimeout(() => item.addClass('timeline-dragging'), 0);
+			activeWindow.setTimeout(() => item.addClass('timeline-dragging'), 0);
 		});
 		
 		item.addEventListener('drag', onDrag);
@@ -500,8 +495,7 @@ export class TimelineView extends CreativeView {
 		
 		// 事件列表容器
 		const eventsContainer = form.createDiv();
-		eventsContainer.style.cssText = 'margin-bottom:12px;';
-		
+		eventsContainer.setAttribute('style', 'margin-bottom:12px;');
 		// 获取当前文件夹下的所有 md 文件
 		const folder = this.app.vault.getAbstractFileByPath(this.currentFolder);
 		const chapterFiles: string[] = [];
@@ -520,31 +514,26 @@ export class TimelineView extends CreativeView {
 		// 创建单个事件编辑块
 		const createEventBlock = (item: { description: string; chapter: string } = { description: '', chapter: '' }) => {
 			const eventBlock = eventsContainer.createDiv({ cls: 'timeline-event-block' });
-			eventBlock.style.cssText = 'border:1px solid var(--background-modifier-border);border-radius:6px;padding:12px;margin-bottom:12px;background:var(--background-secondary);';
-			
+			eventBlock.setAttribute('style', 'border:1px solid var(--background-modifier-border);border-radius:6px;padding:12px;margin-bottom:12px;background:var(--background-secondary);');
 			// 事件描述
 			eventBlock.createEl('label', { text: '事件描述', cls: 'timeline-form-label' });
 			const descInput = eventBlock.createEl('textarea', { cls: 'timeline-form-textarea' });
 			descInput.value = item.description;
 			descInput.placeholder = '描述这个事件...';
-			descInput.style.cssText = 'margin-bottom:8px;height:60px;';
-			
+			descInput.setAttribute('style', 'margin-bottom:8px;height:60px;');
 			// 关联章节
 			eventBlock.createEl('label', { text: '关联章节', cls: 'timeline-form-label' });
 			const chapterListContainer = eventBlock.createDiv();
-			chapterListContainer.style.cssText = 'margin-bottom:8px;';
-			
+			chapterListContainer.setAttribute('style', 'margin-bottom:8px;');
 			// 解析已有的章节
 			const existingChapters = item.chapter ? item.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean) : [];
 			
 			// 创建章节选择行
 			const createChapterRow = (initialValue: string = '') => {
 				const row = chapterListContainer.createDiv();
-				row.style.cssText = 'display:flex;gap:8px;margin-bottom:4px;align-items:center;';
-				
+				row.setAttribute('style', 'display:flex;gap:8px;margin-bottom:4px;align-items:center;');
 				const select = row.createEl('select', { cls: 'timeline-form-input' });
-				select.style.cssText = 'flex:1;';
-				
+				select.setAttribute('style', 'flex:1;');
 				select.createEl('option', { value: '', text: '-- 选择章节 --' });
 				chapterFiles.forEach(file => {
 					const option = select.createEl('option', { value: file, text: file });
@@ -552,7 +541,7 @@ export class TimelineView extends CreativeView {
 				});
 				
 				const removeBtn = row.createEl('button', { text: '−' });
-				removeBtn.style.cssText = 'width:28px;height:28px;padding:0;border-radius:4px;background:var(--background-modifier-error);color:var(--text-on-accent);border:none;cursor:pointer;font-size:16px;';
+				removeBtn.setAttribute('style', 'width:28px;height:28px;padding:0;border-radius:4px;background:var(--background-modifier-error);color:var(--text-on-accent);border:none;cursor:pointer;font-size:16px;');
 				removeBtn.onclick = () => {
 					row.remove();
 					if (chapterListContainer.children.length === 1) createChapterRow();
@@ -570,7 +559,7 @@ export class TimelineView extends CreativeView {
 			
 			// 添加章节按钮
 			const addChapterBtn = chapterListContainer.createEl('button', { text: '+ 添加章节' });
-			addChapterBtn.style.cssText = 'width:100%;padding:4px;border-radius:4px;background:var(--interactive-accent);color:var(--text-on-accent);border:none;cursor:pointer;font-size:12px;margin-top:4px;';
+			addChapterBtn.setAttribute('style', 'width:100%;padding:4px;border-radius:4px;background:var(--interactive-accent);color:var(--text-on-accent);border:none;cursor:pointer;font-size:12px;margin-top:4px;');
 			addChapterBtn.onclick = () => {
 				const { row } = createChapterRow();
 				chapterListContainer.insertBefore(row, addChapterBtn);
@@ -578,7 +567,7 @@ export class TimelineView extends CreativeView {
 			
 			// 删除事件按钮
 			const deleteEventBtn = eventBlock.createEl('button', { text: '删除此事件' });
-			deleteEventBtn.style.cssText = 'width:100%;padding:6px;border-radius:4px;background:var(--background-modifier-error);color:var(--text-on-accent);border:none;cursor:pointer;margin-top:8px;';
+			deleteEventBtn.setAttribute('style', 'width:100%;padding:6px;border-radius:4px;background:var(--background-modifier-error);color:var(--text-on-accent);border:none;cursor:pointer;margin-top:8px;');
 			deleteEventBtn.onclick = () => {
 				eventBlock.remove();
 				// 至少保留一个事件块
@@ -595,7 +584,7 @@ export class TimelineView extends CreativeView {
 		
 		// 添加事件按钮
 		const addEventBtn = eventsContainer.createEl('button', { text: '+ 添加事件' });
-		addEventBtn.style.cssText = 'width:100%;padding:8px;border-radius:4px;background:var(--interactive-accent);color:var(--text-on-accent);border:none;cursor:pointer;margin-top:8px;';
+		addEventBtn.setAttribute('style', 'width:100%;padding:8px;border-radius:4px;background:var(--interactive-accent);color:var(--text-on-accent);border:none;cursor:pointer;margin-top:8px;');
 		addEventBtn.onclick = () => {
 			const { eventBlock } = createEventBlock();
 			eventsContainer.insertBefore(eventBlock, addEventBtn);
@@ -616,20 +605,19 @@ export class TimelineView extends CreativeView {
 		
 		const customInput = form.createEl('input', { type: 'text', cls: 'timeline-form-input' });
 		customInput.placeholder = '输入自定义类型';
-		customInput.style.cssText = 'margin-top:4px;display:none;';
-		
+		customInput.setAttribute('style', 'margin-top:4px;display:none;');
 		if (entry.type && !editTypeOptions.includes(entry.type)) {
 			typeSelect.value = '__custom__';
 			customInput.value = entry.type;
-			customInput.style.display = 'block';
+			customInput.setCssStyles({ display: 'block' });
 		}
 		
 		typeSelect.addEventListener('change', () => {
 			if (typeSelect.value === '__custom__') {
-				customInput.style.display = 'block';
+				customInput.setCssStyles({ display: 'block' });
 				customInput.focus();
 			} else {
-				customInput.style.display = 'none';
+				customInput.setCssStyles({ display: 'none' });
 			}
 		});
 
@@ -696,7 +684,7 @@ export class TimelineView extends CreativeView {
 			await this.renderFromContent(newContent);
 		};
 
-		setTimeout(() => timeInput.focus(), 50);
+		activeWindow.setTimeout(() => timeInput.focus(), 50);
 	}
 
 	private showAddForm(container: HTMLElement, typeOptions: string[] = []) {
@@ -718,12 +706,10 @@ export class TimelineView extends CreativeView {
 		form.createEl('label', { text: '关联章节（可选）', cls: 'timeline-form-label' });
 		const chapterInputDesc = form.createDiv({ cls: 'timeline-form-hint' });
 		chapterInputDesc.setText('点击 + 号添加更多章节');
-		chapterInputDesc
 		
 		// 章节列表容器
 		const chapterListContainer = form.createDiv();
-		chapterListContainer.style.cssText = 'margin-bottom:12px;';
-		
+		chapterListContainer.setAttribute('style', 'margin-bottom:12px;');
 		// 获取当前文件夹下的所有 md 文件
 		const folder = this.app.vault.getAbstractFileByPath(this.currentFolder);
 		const chapterFiles: string[] = [];
@@ -739,11 +725,9 @@ export class TimelineView extends CreativeView {
 		// 创建章节选择行
 		const createChapterRow = (initialValue: string = '') => {
 			const row = chapterListContainer.createDiv();
-			row.style.cssText = 'display:flex;gap:8px;margin-bottom:8px;align-items:center;';
-			
+			row.setAttribute('style', 'display:flex;gap:8px;margin-bottom:8px;align-items:center;');
 			const select = row.createEl('select', { cls: 'timeline-form-input' });
-			select.style.cssText = 'flex:1;';
-			
+			select.setAttribute('style', 'flex:1;');
 			// 添加空选项
 			select.createEl('option', { value: '', text: '-- 选择章节 --' });
 			
@@ -755,7 +739,7 @@ export class TimelineView extends CreativeView {
 			
 			// 删除按钮
 			const removeBtn = row.createEl('button', { text: '−', cls: 'timeline-chapter-remove-btn' });
-			removeBtn.style.cssText = 'width:32px;height:32px;padding:0;border-radius:4px;background:var(--background-modifier-error);color:var(--text-on-accent);border:none;cursor:pointer;font-size:20px;line-height:1;';
+			removeBtn.setAttribute('style', 'width:32px;height:32px;padding:0;border-radius:4px;background:var(--background-modifier-error);color:var(--text-on-accent);border:none;cursor:pointer;font-size:20px;line-height:1;');
 			removeBtn.title = '删除此章节';
 			removeBtn.onclick = () => {
 				row.remove();
@@ -773,7 +757,7 @@ export class TimelineView extends CreativeView {
 		
 		// 添加按钮
 		const addBtn = chapterListContainer.createEl('button', { text: '+ 添加章节', cls: 'timeline-chapter-add-btn' });
-		addBtn.style.cssText = 'width:100%;padding:6px;border-radius:4px;background:var(--interactive-accent);color:var(--text-on-accent);border:none;cursor:pointer;margin-top:4px;';
+		addBtn.setAttribute('style', 'width:100%;padding:6px;border-radius:4px;background:var(--interactive-accent);color:var(--text-on-accent);border:none;cursor:pointer;margin-top:4px;');
 		addBtn.onclick = () => {
 			// 在添加按钮之前插入新行
 			const { row } = createChapterRow();
@@ -800,15 +784,14 @@ export class TimelineView extends CreativeView {
 		// 自定义输入框（初始隐藏）
 		const customInput = form.createEl('input', { type: 'text', cls: 'timeline-form-input' });
 		customInput.placeholder = '输入自定义类型';
-		customInput.style.cssText = 'margin-top:4px;display:none;';
-		
+		customInput.setAttribute('style', 'margin-top:4px;display:none;');
 		// 切换显示自定义输入框
 		typeSelect.addEventListener('change', () => {
 			if (typeSelect.value === '__custom__') {
-				customInput.style.display = 'block';
+				customInput.setCssStyles({ display: 'block' });
 				customInput.focus();
 			} else {
-				customInput.style.display = 'none';
+				customInput.setCssStyles({ display: 'none' });
 			}
 		});
 
@@ -852,7 +835,7 @@ export class TimelineView extends CreativeView {
 			this.renderFromContent(newContent);
 		};
 
-		setTimeout(() => timeInput.focus(), 50);
+		activeWindow.setTimeout(() => timeInput.focus(), 50);
 	}
 
 	// ─── 文件操作 ───────────────────────────────────────

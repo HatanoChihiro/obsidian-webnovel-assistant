@@ -1,6 +1,7 @@
-import { TAbstractFile, TFile, TFolder } from 'obsidian';
+import type { TAbstractFile} from 'obsidian';
+import { TFile, TFolder } from 'obsidian';
 import { CHINESE_NUMBERS } from '../constants';
-import { ChapterNamingRule } from '../types/settings';
+import type { ChapterNamingRule } from '../types/settings';
 
 /**
  * 章节排序服务

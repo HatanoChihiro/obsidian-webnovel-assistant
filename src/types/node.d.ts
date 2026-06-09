@@ -2,7 +2,7 @@
  * Node.js 模块类型声明
  * 
  * 本文件为 Electron/Node.js 环境中的模块提供类型定义
- * 这些模块通过 window.require() 在桌面端动态加载
+ * 这些模块通过 activeWindow.require() 在桌面端动态加载
  */
 
 /**

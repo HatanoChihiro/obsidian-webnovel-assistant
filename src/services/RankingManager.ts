@@ -1,4 +1,5 @@
-import { App, TFile, TFolder } from 'obsidian';
+import type { App} from 'obsidian';
+import { TFile, TFolder } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { RankingEntry, RankingStatus } from '../types/ranking';
 import { ChapterSorter } from './ChapterSorter';
@@ -184,7 +185,7 @@ export class RankingManager {
 		const entries = await this.loadEntries();
 		if (!entries) return false;
 
-		const today = window.moment().format('YYYY-MM-DD');
+		const today = activeWindow.moment().format('YYYY-MM-DD');
 		let changed = false;
 
 		for (const entry of entries) {
@@ -205,7 +206,7 @@ export class RankingManager {
 		const entries = await this.loadEntries();
 		if (!entries) return false;
 
-		const today = window.moment().format('YYYY-MM-DD');
+		const today = activeWindow.moment().format('YYYY-MM-DD');
 		let changed = false;
 
 		for (const entry of entries) {

@@ -1,6 +1,9 @@
-import { Extension, StateField, RangeSet, RangeSetBuilder, EditorState } from '@codemirror/state';
-import { EditorView, GutterMarker, gutter, ViewPlugin, ViewUpdate } from '@codemirror/view';
-import { App, MarkdownView, TFile, editorInfoField } from 'obsidian';
+import type { Extension, RangeSet, EditorState } from '@codemirror/state';
+import { StateField, RangeSetBuilder, StateEffect } from '@codemirror/state';
+import type { EditorView, ViewUpdate } from '@codemirror/view';
+import { GutterMarker, gutter, ViewPlugin } from '@codemirror/view';
+import type { TFile} from 'obsidian';
+import { App, MarkdownView, editorInfoField } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ChapterSorter } from '../services/ChapterSorter';
 
@@ -13,11 +16,11 @@ class WordCountMarker extends GutterMarker {
 	}
 
 	toDOM() {
-		const wrapper = document.createElement('div');
+		const wrapper = activeDocument.createElement('div');
 		wrapper.className = 'webnovel-word-count-marker-wrapper';
-		wrapper.appendChild(document.createTextNode('​'));
+		wrapper.appendChild(activeDocument.createTextNode('​'));
 
-		const span = document.createElement('span');
+		const span = activeDocument.createElement('span');
 		span.className = 'webnovel-word-count-marker';
 		span.textContent = this.count + '字';
 
@@ -37,6 +40,8 @@ function getFileFromState(state: EditorState): TFile | null {
 		return null;
 	}
 }
+
+export const forceWordCountGutterUpdate = StateEffect.define<null>();
 
 function computeMarkers(state: EditorState, plugin: WebNovelAssistantPlugin): RangeSet<WordCountMarker> {
 	const builder = new RangeSetBuilder<WordCountMarker>();
@@ -74,7 +79,13 @@ export function createWordCountGutter(plugin: WebNovelAssistantPlugin): Extensio
 			return computeMarkers(state, plugin);
 		},
 		update(value, tr) {
-			if (!tr.docChanged) return value;
+			let forceUpdate = false;
+			for (const e of tr.effects) {
+				if (e.is(forceWordCountGutterUpdate)) {
+					forceUpdate = true;
+				}
+			}
+			if (!tr.docChanged && !forceUpdate) return value;
 			return computeMarkers(tr.state, plugin);
 		}
 	});

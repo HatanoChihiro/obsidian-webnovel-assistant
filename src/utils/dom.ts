@@ -3,31 +3,7 @@
  * 提供样式注入等辅助功能
  */
 
-/**
- * 注入全局样式到文档头部
- */
-export function injectGlobalStyle(styleId: string, cssContent: string): void {
-	const existingStyle = document.getElementById(styleId);
-	if (existingStyle) {
-		existingStyle.textContent = cssContent;
-		return;
-	}
 
-	const style = document.createElement('style');
-	style.id = styleId;
-	style.textContent = cssContent;
-	document.head.appendChild(style);
-}
-
-/**
- * 移除全局样式
- */
-export function removeGlobalStyle(styleId: string): void {
-	const style = document.getElementById(styleId);
-	if (style) {
-		style.remove();
-	}
-}
 
 /**
  * 基于 requestAnimationFrame 的高频事件节流函数
@@ -42,7 +18,7 @@ export function rafThrottle<T extends (...args: any[]) => void>(fn: T) {
 
 		if (raf) return;
 
-		raf = window.requestAnimationFrame(() => {
+		raf = activeWindow.requestAnimationFrame(() => {
 			raf = 0;
 			if (latestArgs) {
 				fn(...latestArgs);
@@ -51,7 +27,7 @@ export function rafThrottle<T extends (...args: any[]) => void>(fn: T) {
 	};
 
 	throttled.cancel = () => {
-		window.cancelAnimationFrame(raf);
+		activeWindow.cancelAnimationFrame(raf);
 		raf = 0;
 	};
 

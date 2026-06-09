@@ -9,7 +9,7 @@
 
 一个功能强大的 Obsidian 插件，专为中文网络小说作者打造，提供创作主页、字数统计、写作目标追踪、伏笔管理、时间线系统、OBS 直播叠加层等丰富功能。
 
-<img width="2560" height="1380" alt="status-view" src="assets/status-view.png" />
+<img width="1280" alt="homepage" src="assets/homepage.png" />
 
 ## 📖 文档
 
@@ -26,18 +26,18 @@
 - **数据面板**: 效率总览、365热力图、近30日趋势
 - **一键新建**: 右侧新建作品按钮，弹窗填写元数据后自动创建
 
-<img width="2560" height="1440" alt="homepage" src="assets/homepage.png" />
+<img width="1280" alt="homepage" src="assets/homepage.gif" />
 
 ### 🌑 沉浸写作模式
 - **全屏专注**: 隐藏所有干扰元素，提供沉浸式创作环境
 - **动态仪表盘**: 实时显示小说标题、计时器、字数统计及专注度分析
-- **辅助面板**: 快速唤出章节列表、伏笔追踪、时间线与多功能悬浮便签
-- **卡片式布局**: 现代化的辅助面板设计，支持自定义位置与大小
+- **插槽化布局**: 自由分配辅助面板到上下左右四个区域，主编辑区自动贴边
 
-<img width="2560" height="1440" alt="immersive-mode" src="assets/immersive-mode.png" />
+<img width="1280" alt="immersive-mode" src="assets/immersive-mode.png" />
 
 ### 📊 字数统计与目标追踪
 - 实时统计字数，适配中文创作平台计算规则
+- **字数统计模式**：支持网文模式、标准模式、Obsidian 原生模式三种统计方式切换
 - 章节目标、今日目标、榜单目标，进度可视化
 - 写作状态面板显示当前作品信息（目录名、总字数）
 - **严格章节模式**: 字数统计、进度条及提醒仅在符合规则的章节中生效，写大纲不计入进度
@@ -45,22 +45,40 @@
 - **高稳定性架构**: 采用编辑器事件与文件系统双重校验，彻底解决字数统计跳变问题
 - 文件浏览器显示文件夹字数（高性能缓存，支持万级文件秒开）
 
+<img width="1280" alt="word-count-gutter" src="assets/word-count-gutter.gif" />
+
 ### ⏱️ 专注时间追踪
 - 自动区分专注时间与摸鱼时间
 - **写作数据追踪**: 365热力图、柱状图+虚线趋势曲线、效率总览卡片、累计字数统计
 - 历史统计图表（日/周/月/年），支持横向滚动
 - Worker 线程处理，不影响编辑性能
 
-<img width="1318" height="974" alt="history-chart" src="assets/history-chart.png" />
+<img width="1280" alt="history-chart" src="assets/history-chart.gif" />
 
 ### 📝 创作辅助工具
-- **悬浮便签**: 多端同步、自动保存、独立存储、支持 Markdown 渲染
-- **选项卡式设置**: 模块化设置页面，分类更清晰，操作更便捷
-- **伏笔管理**: 标注、追踪、多章节回收
-- **时间线系统**: 事件记录、多章节关联、类型分类
-- **榜单追踪**: 追踪签约平台的榜单任务，自动计算字数增量，到期自动关闭，起始字数可手动修改
 - **智能章节排序**：自动识别章节编号排序，支持"大纲"、"番外"等具名章节
 - **规则排序优化**：设置页面支持通过 ▲/▼ 按钮自由调整排序规则优先级
+- **悬浮便签**: 多端同步、自动保存、独立存储、支持 Markdown 渲染
+
+<img width="1280" alt="sticky-note" src="assets/sticky-note.gif" />
+
+- **伏笔管理**: 标注、追踪、多章节回收
+
+<img width="1280" alt="foreshadowing" src="assets/foreshadowing.gif" />
+
+- **时间线系统**: 事件记录、多章节关联、类型分类
+
+<img width="1280" alt="timeline" src="assets/timeline.gif" />
+
+- **章节一览**：卡片式展示所有章节，支持状态标记和摘要编辑
+
+<img width="1280" alt="corkboard" src="assets/corkboard.gif" />
+
+- **设定速查**：字典式设定库，正文自动标注角色/道具名，悬停精准定位词条卡片，右键"边写边建"
+
+<img width="1280" alt="lore-lookup" src="assets/lore-lookup.gif" />
+
+- **榜单追踪**: 追踪签约平台的榜单任务，自动计算字数增量，到期自动关闭，起始字数可手动修改
 - **高级搜索**：支持当前书籍/全局/自定义范围搜索，树形目录多选
 - **合并章节**：一键合并文件夹内所有章节
 
@@ -111,6 +129,7 @@
 | 打开/关闭伏笔面板 | 管理伏笔标注和回收 |
 | 打开/关闭时间线面板 | 管理故事时间线 |
 | 打开/关闭榜单面板 | 管理榜单追踪任务 |
+| 打开/关闭章节一览面板 | 卡片式展示章节纲要 |
 | 开始/暂停 摸鱼时间统计 | 切换时间追踪 |
 | 标注为伏笔 | 将选中文字标注为伏笔 |
 | 新建空白悬浮便签 | 创建浮动便签 |
@@ -129,11 +148,12 @@
 | 文件浏览器字数统计 | 关闭 | 显示文件夹字数（大型项目建议关闭） |
 | 智能章节排序 | 关闭 | 自动按章节编号排序 |
 | 护眼模式 | 关闭 | 编辑器背景护眼色 |
-| 沉浸模式面板位置 | 下方 | 辅助面板出现的屏幕位置（上方/下方） |
 | 沉浸模式便签尺寸 | 280 | 沉浸模式下便签卡片的正方形边长 |
 | 伏笔文件名 | 伏笔 | 伏笔文件的名称 |
 | 时间线文件名 | 时间线 | 时间线文件的名称 |
 | 榜单文件名 | 榜单记录 | 榜单记录文件的名称 |
+| 设定文件夹名称 | 设定 | 存放设定文档的文件夹名称（支持字典大纲模式） |
+| 字数统计模式 | 网文模式 | 统计算法：网文模式（标点算字）、标准模式（英文算词）、原生模式（忽略标点） |
 
 更多设置请查看 **[用户使用指南](USER_GUIDE.md)**
 
@@ -169,7 +189,7 @@
 
 A powerful Obsidian plugin designed for Chinese web novel writers. Features accurate word count, writing goal tracking, focus/slack time analysis, foreshadowing management, timeline system, sticky notes, and OBS streaming overlay — all optimized for the Chinese writing workflow.
 
-<img width="2560" height="1380" alt="status-view" src="assets/status-view.png" />
+<img width="1280" alt="homepage" src="assets/homepage.gif" />
 
 ## Features
 
@@ -177,12 +197,15 @@ A powerful Obsidian plugin designed for Chinese web novel writers. Features accu
 - **Writing Goals** — Chapter goal, daily goal, and ranking goal with real-time progress tracking
 - **Creative Homepage** — Full-width dashboard with 2×2 grid layout, dynamic welcome, novel overview, stats panel, one-click new novel
 - **Focus Timer** — Automatic focus/slack time detection with Web Worker threading
-- **Immersive Mode** — Full-screen distraction-free writing with dashboard and auxiliary panels
+- **Immersive Mode** — Full-screen distraction-free writing with dashboard and slot-based layout
 - **Foreshadowing Manager** — Mark, track, and recover story foreshadowing across chapters
 - **Timeline System** — Track story events with multi-chapter associations and custom types
 - **Sticky Notes** — Floating notes with auto-save and Markdown rendering
 - **OBS Overlay** — Real-time writing stats overlay for live streaming (local HTTP server, 127.0.0.1 only)
 - **Smart Chapter Sorting** — Auto-detect chapter numbers (Arabic/Chinese) and sort in file explorer
+- **Lore Quick Lookup** — Dictionary-style lore database, auto-highlight names in text, hover to preview anchored lore cards, right-click to add new entries
+- **Word Count Modes** — Switch between webnovel, standard, and Obsidian native counting algorithms
+- **Chapter Corkboard** — Card-based chapter overview with status tracking and synopsis editing
 - **Advanced Search** — Search across current book, global, or custom folder scopes with tree-based directory selection
 - **Chapter Merge & Export** — One-click merge all chapters into a single file
 - **Mobile Support** — Floating word count, touch-optimized controls, cross-device sync

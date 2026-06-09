@@ -1,7 +1,7 @@
-import { App, Component, MarkdownRenderer, Notice, TFile, setIcon, Modal, Setting, MarkdownView, Platform } from 'obsidian';
-import { StickyNoteState, ThemeScheme } from '../types/settings';
+import type { App} from 'obsidian';
+import { Component, MarkdownRenderer, Notice, TFile, setIcon, Modal, Setting, MarkdownView, Platform } from 'obsidian';
+import type { StickyNoteState, ThemeScheme } from '../types/settings';
 import { hexToRgba } from '../utils/format';
-import { injectGlobalStyle } from '../utils/dom';
 import { isDesktop } from '../utils/platform';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 
@@ -36,20 +36,20 @@ export class SaveStickyNoteModal extends Modal {
 			.setDesc('输入文件名（无需 .md 后缀）')
 			.addText(text => {
 				this.fileNameInput = text.inputEl;
-				text.setValue(`便签_${window.moment().format('YYYYMMDD_HHmmss')}`)
+				text.setValue(`便签_${activeWindow.moment().format('YYYYMMDD_HHmmss')}`)
 					.onChange(() => {
 						// 实时验证文件名
 						const fileName = this.fileNameInput.value.trim();
 						if (!fileName) {
-							this.fileNameInput.style.borderColor = 'var(--background-modifier-error)';
+							this.fileNameInput.setCssStyles({ borderColor: 'var(--background-modifier-error)' });
 						} else {
-							this.fileNameInput.style.borderColor = '';
+							this.fileNameInput.setCssStyles({ borderColor: '' });
 						}
 					});
-				text.inputEl.style.width = '100%';
+				text.inputEl.setCssStyles({ width: '100%' });
 				
 				// 自动选中文件名（不包括时间戳）
-				setTimeout(() => {
+				activeWindow.setTimeout(() => {
 					const underscoreIndex = text.inputEl.value.indexOf('_');
 					if (underscoreIndex > 0) {
 						text.inputEl.setSelectionRange(0, underscoreIndex);
@@ -68,7 +68,7 @@ export class SaveStickyNoteModal extends Modal {
 				this.folderPathInput = text.inputEl;
 				text.setValue(defaultFolder)
 					.setPlaceholder('例如: 我的文件夹/子文件夹');
-				text.inputEl.style.width = '100%';
+				text.inputEl.setCssStyles({ width: '100%' });
 			});
 		
 		// 提示信息
@@ -79,10 +79,10 @@ export class SaveStickyNoteModal extends Modal {
 		
 		// 按钮
 		const buttonContainer = contentEl.createDiv({ cls: 'modal-button-container' });
-		buttonContainer.style.display = 'flex';
-		buttonContainer.style.justifyContent = 'flex-end';
-		buttonContainer.style.gap = '10px';
-		buttonContainer.style.marginTop = '20px';
+		buttonContainer.setCssStyles({ display: 'flex' });
+		buttonContainer.setCssStyles({ justifyContent: 'flex-end' });
+		buttonContainer.setCssStyles({ gap: '10px' });
+		buttonContainer.setCssStyles({ marginTop: '20px' });
 		
 		const cancelBtn = buttonContainer.createEl('button', { text: '取消' });
 		cancelBtn.onclick = () => this.close();
@@ -143,10 +143,10 @@ export class ConfirmCloseModal extends Modal {
 		
 		// 按钮
 		const buttonContainer = contentEl.createDiv({ cls: 'modal-button-container' });
-		buttonContainer.style.display = 'flex';
-		buttonContainer.style.justifyContent = 'flex-end';
-		buttonContainer.style.gap = '10px';
-		buttonContainer.style.marginTop = '20px';
+		buttonContainer.setCssStyles({ display: 'flex' });
+		buttonContainer.setCssStyles({ justifyContent: 'flex-end' });
+		buttonContainer.setCssStyles({ gap: '10px' });
+		buttonContainer.setCssStyles({ marginTop: '20px' });
 		
 		const dontSaveBtn = buttonContainer.createEl('button', { text: '不保存' });
 		dontSaveBtn.onclick = () => {
@@ -276,7 +276,7 @@ export class FloatingStickyNote extends Component {
 
 		// [BUGFIX] 清理可能尚在延迟中的 resize 防抖计时器，防止其在实例销毁后还尝试操作 DOM。
 		if (this.resizeTimer !== null) {
-			window.clearTimeout(this.resizeTimer);
+			activeWindow.clearTimeout(this.resizeTimer);
 			this.resizeTimer = null;
 		}
 		
@@ -294,13 +294,11 @@ export class FloatingStickyNote extends Component {
 	async onload() {
 		// 终极防御：非桌面端禁止加载浮动 UI
 		if (!isDesktop()) {
-			this.unload();
 			return;
 		}
 		this.plugin.activeNotes.push(this);
 		
-		this.injectCSS();
-		this.containerEl = document.body.createDiv({ cls: 'my-floating-sticky-note' });
+		this.containerEl = activeDocument.body.createDiv({ cls: 'my-floating-sticky-note' });
 		
 		if (this.state.filePath && !this.state.content) {
 			const file = this.app.vault.getAbstractFileByPath(this.state.filePath);
@@ -356,7 +354,7 @@ export class FloatingStickyNote extends Component {
 		const pinBtn = this.createButton(controlsEl, 'pin', this.state.isPinned);
 		const saveBtn = this.createButton(controlsEl, 'save');
 		saveBtn.title = '保存便签内容 (Ctrl+S)';
-		saveBtn.style.opacity = '0.5';
+		saveBtn.setCssStyles({ opacity: '0.5' });
 		const syncBtn = this.state.filePath ? this.createButton(controlsEl, 'refresh-cw') : null;
 		if (syncBtn) syncBtn.title = '从关联文档同步内容';
 		const toggleEditBtn = this.createButton(controlsEl, this.state.isEditing ? 'eye' : 'pencil');
@@ -378,11 +376,9 @@ export class FloatingStickyNote extends Component {
 		
 		// 2. 【核心修复】解决按空格/回车自动跳转文档并抢夺焦点的问题
 		this.textareaEl.addEventListener('focus', () => {
-			// 获取当前 Obsidian 后台认为的"活动面板"
-			const activeLeaf = this.app.workspace.activeLeaf;
-			// 如果当前的活动面板不是 Markdown 编辑器（比如停留在了文件浏览器或搜索栏）
-			// 此时按下空格/回车会被它们拦截，触发"打开所选文件"的 Bug。
-			if (activeLeaf && activeLeaf.view.getViewType() !== 'markdown') {
+			// 获取当前活动视图，如果不是 Markdown 视图（比如停留在了文件浏览器或搜索栏）
+			const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+			if (!activeView) {
 				// 找一个已打开的 Markdown 视图
 				const mdLeaves = this.app.workspace.getLeavesOfType('markdown');
 				if (mdLeaves.length > 0) {
@@ -405,11 +401,11 @@ export class FloatingStickyNote extends Component {
 			// 视觉反馈：如果内容与最后保存的不一致，高亮保存按钮
 			const isDirty = this.textareaEl.value !== this.lastSavedContent;
 			if (isDirty && !this.plugin.settings.stickyNoteAutoSave) {
-				saveBtn.style.opacity = '1';
-				saveBtn.style.color = 'var(--interactive-accent)';
+				saveBtn.setCssStyles({ opacity: '1' });
+				saveBtn.setCssStyles({ color: 'var(--interactive-accent)' });
 			} else {
-				saveBtn.style.opacity = '0.5';
-				saveBtn.style.color = '';
+				saveBtn.setCssStyles({ opacity: '0.5' });
+				saveBtn.setCssStyles({ color: '' });
 			}
 
 			if (this.plugin.settings.stickyNoteAutoSave) {
@@ -427,8 +423,8 @@ export class FloatingStickyNote extends Component {
 						}
 					}
 					// 自动保存后恢复按钮状态
-					saveBtn.style.opacity = '0.5';
-					saveBtn.style.color = '';
+					saveBtn.setCssStyles({ opacity: '0.5' });
+					saveBtn.setCssStyles({ color: '' });
 				}, 500);
 			}
 		});
@@ -453,8 +449,8 @@ export class FloatingStickyNote extends Component {
 		const popupEl = parent.createDiv({ cls: 'my-sticky-palette-popup' });
 		this.plugin.settings.noteThemes.forEach((theme: ThemeScheme) => {
 			const swatch = popupEl.createDiv({ cls: 'my-sticky-swatch' });
-			swatch.style.backgroundColor = theme.bg;
-			swatch.style.color = theme.text;
+			swatch.setCssStyles({ backgroundColor: theme.bg });
+			swatch.setCssStyles({ color: theme.text });
 			swatch.innerText = "Aa"; 
 			
 			swatch.onclick = (e) => { 
@@ -539,7 +535,7 @@ export class FloatingStickyNote extends Component {
 			// 确保编辑模式下焦点在 textarea
 			if (this.state.isEditing) {
 				// 使用 requestAnimationFrame 确保在下一帧设置焦点
-				requestAnimationFrame(() => {
+				activeWindow.requestAnimationFrame(() => {
 					this.textareaEl.focus();
 				});
 			}
@@ -664,11 +660,11 @@ export class FloatingStickyNote extends Component {
 	}
 
 	updateVisuals() {
-		this.containerEl.style.top = this.state.top;
-		this.containerEl.style.left = this.state.left;
-		this.containerEl.style.width = this.state.width;
-		this.containerEl.style.height = this.state.height;
-		this.containerEl.style.resize = this.state.isPinned ? 'none' : 'both';
+		this.containerEl.setCssStyles({ top: this.state.top });
+		this.containerEl.setCssStyles({ left: this.state.left });
+		this.containerEl.setCssStyles({ width: this.state.width });
+		this.containerEl.setCssStyles({ height: this.state.height });
+		this.containerEl.setCssStyles({ resize: this.state.isPinned ? 'none' : 'both' });
 		this.containerEl.style.setProperty('--sticky-zoom', (this.state.zoomLevel || 1).toString());
 		
 		const bgWithAlpha = hexToRgba(this.state.color, this.plugin.settings.noteOpacity);
@@ -682,29 +678,29 @@ export class FloatingStickyNote extends Component {
 
 	async renderContent() {
 		if (this.state.isEditing) {
-			this.contentContainer.style.display = 'none';
-			this.textareaEl.style.display = 'block';
+			this.contentContainer.setCssStyles({ display: 'none' });
+			this.textareaEl.setCssStyles({ display: 'block' });
 			
 			// 核心修复：如果当前文本框正处于聚焦状态（用户正在输入），不要强行覆盖它的值
 			// 否则会打断中文输入法 (IME) 的组合过程
-			if (document.activeElement !== this.textareaEl) {
+			if (activeDocument.activeElement !== this.textareaEl) {
 				const newContent = this.state.content || "";
 				if (this.textareaEl.value !== newContent) {
 					this.textareaEl.value = newContent;
 				}
 				// 仅在非聚焦时尝试恢复焦点，避免干扰正常输入循环
-				// setTimeout(() => { this.textareaEl.focus(); }, 50);
+				// activeWindow.setTimeout(() => { this.textareaEl.focus(); }, 50);
 			}
 		} else {
-			this.textareaEl.style.display = 'none';
-			this.contentContainer.style.display = 'block';
+			this.textareaEl.setCssStyles({ display: 'none' });
+			this.contentContainer.setCssStyles({ display: 'block' });
 			this.contentContainer.empty();
 			let text = this.state.content || "";
 			if (this.state.filePath) {
 				const file = this.app.vault.getAbstractFileByPath(this.state.filePath);
 				if (file instanceof TFile) text = await this.app.vault.read(file);
 			}
-			await MarkdownRenderer.renderMarkdown(text, this.contentContainer, this.state.filePath || '', this);
+			await MarkdownRenderer.render(this.app, text, this.contentContainer, this.state.filePath || '', this);
 		}
 	}
 
@@ -729,11 +725,11 @@ export class FloatingStickyNote extends Component {
 
 	private cleanupDragging() {
 		if (this.currentMouseMove) {
-			document.removeEventListener('mousemove', this.currentMouseMove);
+			activeDocument.removeEventListener('mousemove', this.currentMouseMove);
 			this.currentMouseMove = null;
 		}
 		if (this.currentMouseUp) {
-			document.removeEventListener('mouseup', this.currentMouseUp);
+			activeDocument.removeEventListener('mouseup', this.currentMouseUp);
 			this.currentMouseUp = null;
 		}
 	}
@@ -748,8 +744,8 @@ export class FloatingStickyNote extends Component {
 			pos4 = e.clientY;
 			this.state.top  = (this.containerEl.offsetTop  - pos2) + "px";
 			this.state.left = (this.containerEl.offsetLeft - pos1) + "px";
-			this.containerEl.style.top  = this.state.top;
-			this.containerEl.style.left = this.state.left;
+			this.containerEl.setCssStyles({ top: this.state.top });
+			this.containerEl.setCssStyles({ left: this.state.left });
 		};
 
 		const onMouseUp = () => {
@@ -770,8 +766,8 @@ export class FloatingStickyNote extends Component {
 			this.currentMouseMove = onMouseMove;
 			this.currentMouseUp = onMouseUp;
 
-			document.addEventListener('mousemove', onMouseMove);
-			document.addEventListener('mouseup', onMouseUp);
+			activeDocument.addEventListener('mousemove', onMouseMove);
+			activeDocument.addEventListener('mouseup', onMouseUp);
 		});
 	}
 
@@ -782,9 +778,9 @@ export class FloatingStickyNote extends Component {
 			// [BUGFIX] 添加 300ms 防抖：ResizeObserver 在用户拖动调整大小时每帧触发一次，
 			// 如果每帧都执行 saveState()（内含文件 I/O）会导致每秒最高 60 次文件写入。
 			if (this.resizeTimer !== null) {
-				window.clearTimeout(this.resizeTimer);
+				activeWindow.clearTimeout(this.resizeTimer);
 			}
-			this.resizeTimer = window.setTimeout(() => {
+			this.resizeTimer = activeWindow.setTimeout(() => {
 				this.resizeTimer = null;
 
 				// 如果元素当前被隐藏（如在沉浸模式下），不保存 0x0 的尺寸
@@ -800,91 +796,4 @@ export class FloatingStickyNote extends Component {
 		this.resizeObserver.observe(this.containerEl);
 	}
 
-	injectCSS() {
-		const styleId = 'sticky-note-plugin-styles-v15'; 
-		const styleContent = `
-			.my-floating-sticky-note { 
-				position: fixed; min-width: 200px; min-height: 200px; 
-				border: 1px solid rgba(0,0,0,0.1) !important; 
-				box-shadow: 0 10px 30px rgba(0,0,0,0.15); 
-				border-radius: 8px; z-index: var(--layer-popover, 40); 
-				display: flex; flex-direction: column; overflow: hidden; 
-				transition: background-color 0.2s ease, box-shadow 0.3s ease; 
-				background-color: var(--note-bg-color-alpha, transparent) !important; 
-			}
-			
-			.my-floating-sticky-note:hover { 
-				box-shadow: 0 12px 35px rgba(0,0,0,0.22); 
-				background-color: var(--note-bg-color) !important;
-			}
-			
-			.my-sticky-header { 
-				padding: 8px 12px; 
-				background-color: transparent !important; 
-				border-bottom: 1px solid transparent !important; 
-				cursor: grab; 
-				display: flex; 
-				flex-direction: row !important; 
-				align-items: center; 
-				justify-content: space-between !important; 
-				user-select: none; 
-				flex-shrink: 0; 
-				min-width: 0; 
-				transition: background-color 0.2s ease, border-color 0.2s ease; 
-				gap: 10px;
-			}
-			.my-floating-sticky-note:hover .my-sticky-header { background-color: rgba(0, 0, 0, 0.04) !important; border-bottom: 1px solid rgba(0,0,0,0.06) !important; }
-			
-			.my-sticky-header:active { cursor: grabbing; }
-			
-			.my-sticky-title-wrapper { 
-				display: flex; 
-				align-items: center; 
-				gap: 6px; 
-				overflow: hidden; 
-				flex-grow: 1; 
-				flex-shrink: 1;
-				min-width: 0;
-			}
-			.my-sticky-title-icon { display: flex; align-items: center; color: var(--note-text-color); opacity: 0.6; flex-shrink: 0; }
-			.my-sticky-title-icon svg { width: 14px; height: 14px; }
-			.my-sticky-title { font-weight: bold; font-size: 13px; color: var(--note-text-color) !important; pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 1; min-width: 0; }
-			
-			.my-sticky-controls { 
-				display: flex; 
-				align-items: center; 
-				gap: 4px; 
-				flex-shrink: 0; 
-				position: relative; 
-				opacity: 0; 
-				pointer-events: none; 
-				transition: opacity 0.2s ease; 
-			}
-			.my-floating-sticky-note:hover .my-sticky-controls { opacity: 1; pointer-events: auto; }
-			
-			.my-sticky-btn, .my-sticky-close { background: transparent !important; border: none; box-shadow: none; cursor: pointer; padding: 4px; border-radius: 4px; color: var(--note-text-color) !important; opacity: 0.5; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
-			.my-sticky-btn svg, .my-sticky-close svg { width: 16px; height: 16px; stroke-width: 2px; }
-			.my-sticky-btn:hover { background-color: rgba(0,0,0,0.08) !important; opacity: 1; }
-			.my-sticky-btn.is-active { color: var(--interactive-accent) !important; background-color: rgba(0,0,0,0.06) !important; opacity: 1;}
-			
-			.my-sticky-close:hover { color: #e74c3c !important; background-color: rgba(231, 76, 60, 0.1) !important; opacity: 1;}
-			
-			.my-sticky-palette-popup { display: none; position: absolute; top: 32px; right: 25px; background-color: var(--background-primary); border: 1px solid var(--background-modifier-border); border-radius: 8px; padding: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); z-index: var(--layer-menu, 50); grid-template-columns: repeat(3, 1fr); gap: 8px; }
-			.my-sticky-palette-popup.is-active { display: grid; animation: popupFadeIn 0.15s ease-out; }
-			@keyframes popupFadeIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
-			
-			.my-sticky-swatch { width: 26px; height: 26px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.15); cursor: pointer; transition: transform 0.1s, border-color 0.1s; display: flex; align-items: center; justify-content: center; font-weight: bold; font-family: serif; font-size: 13px;}
-			.my-sticky-swatch:hover { transform: scale(1.15); border-color: rgba(0,0,0,0.5); }
-			
-			.my-sticky-content { padding: 15px; overflow-y: auto; font-size: calc(0.9em * var(--sticky-zoom, 1)); flex-grow: 1; color: var(--note-text-color) !important; padding-bottom: 25px; background-color: transparent !important; }
-			
-			.my-sticky-content * { color: inherit; }
-			
-			.my-sticky-textarea { flex-grow: 1; width: 100%; height: calc(100% - 10px); resize: none; border: none; background: transparent !important; color: var(--note-text-color) !important; font-family: var(--font-text); font-size: calc(0.9em * var(--sticky-zoom, 1)); padding: 15px; outline: none; box-shadow: none; display: none; line-height: 1.5; }
-			.my-sticky-textarea:focus { box-shadow: none; background-color: transparent !important; }
-			
-			.my-sticky-content h1.inline-title { display: none; }
-		`;
-		injectGlobalStyle(styleId, styleContent);
-	}
 }

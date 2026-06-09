@@ -1,4 +1,5 @@
-import { App, EventRef, TFolder, TFile } from 'obsidian';
+import type { App, EventRef} from 'obsidian';
+import { TFolder, TFile } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ChapterSorter } from './ChapterSorter';
 import { rafThrottle } from '../utils/dom';
@@ -50,7 +51,7 @@ export class FileExplorerPatcher {
 
 			if (this.enableRetries < 10) {
 				this.enableRetries++;
-				setTimeout(() => this.enable(), 500 * this.enableRetries);
+				activeWindow.setTimeout(() => this.enable(), 500 * this.enableRetries);
 			}
 			return false;
 		} catch (error) {
@@ -120,7 +121,7 @@ export class FileExplorerPatcher {
 
 					const sortedEntities = self.sortEntities(entities);
 
-					let finalResult: any[] = [];
+					const finalResult: any[] = [];
 					for (const entity of sortedEntities) {
 						if (entity.isBlock && entity.items) {
 							finalResult.push(...entity.items);
@@ -246,7 +247,7 @@ export class FileExplorerPatcher {
 					if (logicItems.length > 0) {
 						const currentChildren = Array.from(contentEl.children) as HTMLElement[];
 						let needReorder = false;
-						let targetOrderEls: HTMLElement[] = [];
+						const targetOrderEls: HTMLElement[] = [];
 						
 						for (const item of logicItems) {
 							if (item && item.el && item.el.parentElement === contentEl) {
@@ -277,7 +278,7 @@ export class FileExplorerPatcher {
 	private setupFileSystemListeners(): void {
 		const handler = () => {
 			if (!this.enabled) return;
-			setTimeout(() => this.refreshAllExplorers(), 100);
+			activeWindow.setTimeout(() => this.refreshAllExplorers(), 100);
 		};
 
 		this.eventRefs.push(this.app.vault.on('create', handler));
@@ -306,7 +307,7 @@ export class FileExplorerPatcher {
 					this.plugin.saveSettings().catch(() => {});
 				}
 			}
-			setTimeout(() => this.refreshAllExplorers(), 100);
+			activeWindow.setTimeout(() => this.refreshAllExplorers(), 100);
 		}));
 		this.eventRefs.push(this.app.vault.on('rename', (file, oldPath) => {
 			if (!this.enabled) return;
@@ -339,9 +340,12 @@ export class FileExplorerPatcher {
 					this.plugin.saveSettings().catch(() => {});
 				}
 			}
-			setTimeout(() => this.refreshAllExplorers(), 100);
+			activeWindow.setTimeout(() => this.refreshAllExplorers(), 100);
 		}));
-		this.eventRefs.push(this.app.metadataCache.on('changed', handler));
+		this.eventRefs.push(this.app.metadataCache.on('changed', (file) => {
+			if (file instanceof TFile && !this.plugin.isFileInWorkspace(file)) return;
+			handler();
+		}));
 		
 		// 监听布局变化，确保在文件浏览器重新加载时重置拖拽事件
 		this.eventRefs.push(this.app.workspace.on('layout-change', () => {
@@ -364,7 +368,7 @@ export class FileExplorerPatcher {
 		this.eventRefs = [];
 		this.teardownDragSort();
 		this.refreshAllExplorers();
-		document.querySelectorAll('.folder-word-count').forEach(el => el.remove());
+		activeDocument.querySelectorAll('.folder-word-count').forEach(el => el.remove());
 	}
 
 	unpatch(): void {
@@ -373,7 +377,7 @@ export class FileExplorerPatcher {
 			this.unpatchFunc();
 			this.unpatchFunc = null;
 		}
-		document.querySelectorAll('.folder-word-count').forEach(el => el.remove());
+		activeDocument.querySelectorAll('.folder-word-count').forEach(el => el.remove());
 	}
 
 	isEnabled(): boolean {
@@ -433,9 +437,9 @@ export class FileExplorerPatcher {
 							const mountEl = titleContent?.parentElement;
 							if (mountEl) {
 								countEl = mountEl.createEl('span', { cls: 'folder-word-count' });
-								countEl.style.fontSize = '0.8em';
-								countEl.style.opacity = '0.5';
-								countEl.style.marginLeft = '5px';
+								countEl.setCssStyles({ fontSize: '0.8em' });
+								countEl.setCssStyles({ opacity: '0.5' });
+								countEl.setCssStyles({ marginLeft: '5px' });
 							}
 						}
 						if (countEl) {
@@ -496,7 +500,7 @@ export class FileExplorerPatcher {
 		}
 		this._removeDropIndicator();
 		this._dragSourcePath = null;
-		document.body.classList.remove('webnovel-custom-dragging');
+		activeDocument.body.classList.remove('webnovel-custom-dragging');
 		this._removeNativeDropHighlight();
 	}
 
@@ -554,7 +558,7 @@ export class FileExplorerPatcher {
 			itemEl.classList.add('webnovel-dragging');
 		}
 
-		document.body.classList.add('webnovel-custom-dragging');
+		activeDocument.body.classList.add('webnovel-custom-dragging');
 	}
 
 	private _removeNativeDropHighlight(): void {
@@ -579,7 +583,7 @@ export class FileExplorerPatcher {
 		const pointerY = e.clientY;
 
 		// 找到光标正下方的 DOM 元素
-		const target = document.elementFromPoint(pointerX, pointerY) as HTMLElement;
+		const target = activeDocument.elementFromPoint(pointerX, pointerY) as HTMLElement;
 		if (!target) {
 			this._removeDropIndicator();
 			this._removeNativeDropHighlight();
@@ -731,7 +735,7 @@ export class FileExplorerPatcher {
 			}
 		}
 		this._dragSourcePath = null;
-		document.body.classList.remove('webnovel-custom-dragging');
+		activeDocument.body.classList.remove('webnovel-custom-dragging');
 		this._removeNativeDropHighlight();
 	}
 

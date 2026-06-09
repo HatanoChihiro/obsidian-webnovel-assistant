@@ -1,7 +1,8 @@
-import { Plugin, Notice } from 'obsidian';
-import { AccurateCountSettings, ImmersiveModeSettings, ObsSettings } from '../types/settings';
+import type { Plugin} from 'obsidian';
+import { Notice } from 'obsidian';
+import type { AccurateCountSettings, ImmersiveModeSettings, ObsSettings } from '../types/settings';
 import { VALIDATION_RULES, FLAT_OBS_KEYS, FLAT_IMMERSIVE_KEYS } from '../constants';
-import { ValidationResult } from '../utils/validation';
+import type { ValidationResult } from '../utils/validation';
 import { SerializedWriter } from '../utils/SerializedWriter';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 
@@ -245,6 +246,23 @@ export class SettingsManager {
 		// 清理旧版 homepagePath 默认值，让 getHomepageFilePath() 动态推导到工作区下
 		if (migrated.homepagePath === '创作主页.md') {
 			migrated.homepagePath = '';
+		}
+
+		// 清理弃用的沉浸模式设置字段
+		if (migrated.immersive) {
+			const obsoleteKeys = [
+				'immersiveShowChapterList',
+				'immersiveShowReference',
+				'immersiveShowStickyNotes',
+				'immersiveShowForeshadowing',
+				'immersiveShowTimeline',
+				'immersivePanelPosition'
+			];
+			for (const key of obsoleteKeys) {
+				if (key in migrated.immersive) {
+					delete (migrated.immersive as any)[key];
+				}
+			}
 		}
 
 		if (oldData && typeof oldData === 'object') {

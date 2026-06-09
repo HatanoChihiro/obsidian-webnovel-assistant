@@ -1,4 +1,5 @@
-import { MarkdownPostProcessorContext, TFile, Notice } from 'obsidian';
+import type { MarkdownPostProcessorContext} from 'obsidian';
+import { TFile, Notice } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ForeshadowingRecoveryModal } from '../ui/ForeshadowingModal';
 
@@ -45,12 +46,11 @@ export class MarkdownPostProcessor {
 			if (!statusStrong) return;
 
 			// 注入复选框
-			const checkbox = document.createElement('input');
+			const checkbox = activeDocument.createElement('input');
 			checkbox.type = 'checkbox';
 			checkbox.title = '标记为已回收';
 			checkbox.className = 'foreshadowing-recovery-checkbox';
-			checkbox.style.cssText = 'margin-left:8px;cursor:pointer;vertical-align:middle;width:15px;height:15px;accent-color:var(--interactive-accent);';
-
+			checkbox.setAttribute('style', 'margin-left:8px;cursor:pointer;vertical-align:middle;width:15px;height:15px;accent-color:var(--interactive-accent);');
 			checkbox.addEventListener('change', async (e) => {
 				e.preventDefault();
 				checkbox.checked = false; // 先恢复，等用户确认后再更新文件

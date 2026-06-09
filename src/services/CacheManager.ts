@@ -1,4 +1,5 @@
-import { TFile, TFolder, Vault } from 'obsidian';
+import type { TFile, Vault } from 'obsidian';
+import { TFolder } from 'obsidian';
 import { CACHE_CONFIG } from '../constants';
 import { SerializedWriter } from '../utils/SerializedWriter';
 import { getPluginDir } from '../utils/platform';
@@ -326,19 +327,7 @@ export class CacheManager {
 		
 		const toDeleteCount = Math.floor(fileEntries.length * 0.2);
 		for (let i = 0; i < toDeleteCount; i++) {
-			const [path, entry] = fileEntries[i];
-			// 从父文件夹中减去被清理文件的字数
-			const file = this.plugin.app.vault.getAbstractFileByPath(path);
-			if (file) {
-				let parent = file.parent;
-				while (parent) {
-					const parentEntry = this.cache.get(parent.path);
-					if (parentEntry) {
-						parentEntry.wordCount = Math.max(0, parentEntry.wordCount - entry.wordCount);
-					}
-					parent = parent.parent;
-				}
-			}
+			const [path] = fileEntries[i];
 			this.cache.delete(path);
 		}
 		

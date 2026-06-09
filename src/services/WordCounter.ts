@@ -21,6 +21,9 @@ export class WordCounter {
 	private readonly reFootnoteRef = REGEX_PATTERNS.FOOTNOTE_REF();
 	private readonly reHtmlTag = REGEX_PATTERNS.HTML_TAG();
 	private readonly reWhitespace = REGEX_PATTERNS.WHITESPACE();
+	private readonly reCjkChar = REGEX_PATTERNS.CJK_CHAR();
+	private readonly reWordToken = REGEX_PATTERNS.WORD_TOKEN();
+	private readonly reFullwidthPunct = REGEX_PATTERNS.FULLWIDTH_PUNCT();
 
 	/**
 	 * 重置所有带 /g 标志的正则实例的 lastIndex
@@ -39,21 +42,29 @@ export class WordCounter {
 		this.reFootnoteRef.lastIndex = 0;
 		this.reHtmlTag.lastIndex = 0;
 		this.reWhitespace.lastIndex = 0;
+		this.reCjkChar.lastIndex = 0;
+		this.reWordToken.lastIndex = 0;
+		this.reFullwidthPunct.lastIndex = 0;
 	}
 
 	/**
 	 * 计算准确字数
 	 * 清理所有 Markdown 语法标记，只保留纯文本内容
 	 * 
+	 * 
+	 * ⚠️ 注意：standard/obsidian 模式下，逐行调用会导致跨行英文单词
+	 *    被拆分为多个词分别计数，与整篇统计结果存在微小偏差。
+	 *    行号栏（WordCountGutter）场景下此偏差可接受。
+	 * 
 	 * @param text - 原始 Markdown 文本
 	 * @returns 纯文本字符数
 	 */
-	calculateAccurateWords(text: string): number {
+	calculateAccurateWords(text: string, method: 'webnovel' | 'standard' | 'obsidian' = 'webnovel'): number {
 		// 重置所有正则的 lastIndex 状态
 		this.resetAllRegex();
 
 		// 清理 Markdown 语法标记，只保留纯文本内容（用于计数）
-		let cleaned = text
+		const cleaned = text
 			// 移除 frontmatter（无 /g 标志，无需重置）
 			.replace(REGEX_PATTERNS.FRONTMATTER, '')
 			// 移除代码块
@@ -87,10 +98,31 @@ export class WordCounter {
 			// 移除无序列表符号 - * +
 			.replace(REGEX_PATTERNS.UNORDERED_LIST, '')
 			// 移除有序列表符号 1.
-			.replace(REGEX_PATTERNS.ORDERED_LIST, '')
-			// 移除空白字符
-			.replace(this.reWhitespace, '');
-		
-		return cleaned.length;
+			.replace(REGEX_PATTERNS.ORDERED_LIST, '');
+
+		// 1. 网文模式：移除空白字符后，所有字符均算1个字（含中英数字和标点）
+		if (method === 'webnovel') {
+			return cleaned.replace(this.reWhitespace, '').length;
+		}
+
+		// 2 & 3. 中文精确模式 / Obsidian 原生模式
+		let count = 0;
+		// 统计中日韩字符
+		const cjkMatches = cleaned.match(this.reCjkChar);
+		if (cjkMatches) count += cjkMatches.length;
+
+		// 统计英文单词和数字组合
+		const nonCjk = cleaned.replace(this.reCjkChar, ' ');
+		this.reCjkChar.lastIndex = 0; // replace 后重置
+		const wordMatches = nonCjk.match(this.reWordToken);
+		if (wordMatches) count += wordMatches.length;
+
+		// 仅在“标准模式”下统计全角标点
+		if (method === 'standard') {
+			const punctuationMatches = cleaned.match(this.reFullwidthPunct);
+			if (punctuationMatches) count += punctuationMatches.length;
+		}
+
+		return count;
 	}
 }

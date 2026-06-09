@@ -1,4 +1,5 @@
-import { App, MarkdownView } from 'obsidian';
+import type { App} from 'obsidian';
+import { MarkdownView } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 
 /**
@@ -36,7 +37,7 @@ export class MobileFloatingStats {
 		if (this.containerEl) return;
 
 		// 创建容器 - 简化为一横排，优化触摸目标
-		this.containerEl = document.body.createDiv({
+		this.containerEl = activeDocument.body.createDiv({
 			cls: 'mobile-floating-stats',
 			attr: {
 				style: `
@@ -110,10 +111,10 @@ export class MobileFloatingStats {
 	unload(): void {
 		if (this.containerEl) {
 			// 移除全局监听器以防止内存泄漏
-			document.removeEventListener('touchmove', this.touchMoveHandler);
-			document.removeEventListener('touchend', this.touchEndHandler);
-			document.removeEventListener('mousemove', this.mouseMoveHandler);
-			document.removeEventListener('mouseup', this.mouseUpHandler);
+			activeDocument.removeEventListener('touchmove', this.touchMoveHandler);
+			activeDocument.removeEventListener('touchend', this.touchEndHandler);
+			activeDocument.removeEventListener('mousemove', this.mouseMoveHandler);
+			activeDocument.removeEventListener('mouseup', this.mouseUpHandler);
 			
 			this.containerEl.remove();
 			this.containerEl = null;
@@ -156,11 +157,11 @@ export class MobileFloatingStats {
 			
 			// 进度颜色变化
 			if (percent >= 100) {
-				this.progressEl.style.color = '#10b981'; // 绿色
+				this.progressEl.setCssStyles({ color: '#10b981' }); // 绿色
 			} else if (percent >= 80) {
-				this.progressEl.style.color = '#f59e0b'; // 橙色
+				this.progressEl.setCssStyles({ color: '#f59e0b' }); // 橙色
 			} else {
-				this.progressEl.style.color = 'var(--text-accent)';
+				this.progressEl.setCssStyles({ color: 'var(--text-accent)' });
 			}
 		}
 	}
@@ -175,7 +176,7 @@ export class MobileFloatingStats {
 			const touch = e.touches[0];
 			this.dragOffset.x = touch.clientX - this.position.x;
 			this.dragOffset.y = touch.clientY - this.position.y;
-			if (this.containerEl) this.containerEl.style.opacity = '0.7';
+			if (this.containerEl) this.containerEl.setCssStyles({ opacity: '0.7' });
 			e.preventDefault();
 		}, { passive: false });
 
@@ -184,14 +185,14 @@ export class MobileFloatingStats {
 			this.isDragging = true;
 			this.dragOffset.x = e.clientX - this.position.x;
 			this.dragOffset.y = e.clientY - this.position.y;
-			if (this.containerEl) this.containerEl.style.opacity = '0.7';
+			if (this.containerEl) this.containerEl.setCssStyles({ opacity: '0.7' });
 		});
 
 		// 注册全局处理函数（用于移除）
-		document.addEventListener('touchmove', this.touchMoveHandler, { passive: false });
-		document.addEventListener('touchend', this.touchEndHandler);
-		document.addEventListener('mousemove', this.mouseMoveHandler);
-		document.addEventListener('mouseup', this.mouseUpHandler);
+		activeDocument.addEventListener('touchmove', this.touchMoveHandler, { passive: false });
+		activeDocument.addEventListener('touchend', this.touchEndHandler);
+		activeDocument.addEventListener('mousemove', this.mouseMoveHandler);
+		activeDocument.addEventListener('mouseup', this.mouseUpHandler);
 	}
 
 	private touchMoveHandler = (e: TouchEvent) => {
@@ -220,17 +221,17 @@ export class MobileFloatingStats {
 		this.position.y = clientY - this.dragOffset.y;
 		
 		// 限制在屏幕范围内
-		this.position.x = Math.max(0, Math.min(this.position.x, window.innerWidth - this.containerEl.offsetWidth));
-		this.position.y = Math.max(0, Math.min(this.position.y, window.innerHeight - this.containerEl.offsetHeight));
+		this.position.x = Math.max(0, Math.min(this.position.x, activeWindow.innerWidth - this.containerEl.offsetWidth));
+		this.position.y = Math.max(0, Math.min(this.position.y, activeWindow.innerHeight - this.containerEl.offsetHeight));
 		
-		this.containerEl.style.left = `${this.position.x}px`;
-		this.containerEl.style.top = `${this.position.y}px`;
+		this.containerEl.setCssStyles({ left: `${this.position.x}px` });
+		this.containerEl.setCssStyles({ top: `${this.position.y}px` });
 	}
 
 	private endDragging(): void {
 		if (this.isDragging) {
 			this.isDragging = false;
-			if (this.containerEl) this.containerEl.style.opacity = '0.9';
+			if (this.containerEl) this.containerEl.setCssStyles({ opacity: '0.9' });
 			this.savePosition();
 		}
 	}
@@ -257,8 +258,8 @@ export class MobileFloatingStats {
 		if (saved && typeof saved.x === 'number' && typeof saved.y === 'number') {
 			// 校验位置不超过当前屏幕范围，防止大屏设备保存的位置在小屏设备上导致浮窗不可见
 			this.position = {
-				x: Math.min(saved.x, window.innerWidth - 100),
-				y: Math.min(saved.y, window.innerHeight - 50)
+				x: Math.min(saved.x, activeWindow.innerWidth - 100),
+				y: Math.min(saved.y, activeWindow.innerHeight - 50)
 			};
 		} else {
 			this.position = { x: 20, y: 100 };

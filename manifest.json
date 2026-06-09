@@ -1,8 +1,8 @@
 {
   "id": "web-novel-assistant",
   "name": "WebNovel Assistant",
-  "version": "2.6.4",
-  "minAppVersion": "1.5.0",
+  "version": "3.0.0",
+  "minAppVersion": "1.6.0",
   "description": "Track word count, writing goals, focus time, and manage foreshadowing for Chinese web novel writing with OBS streaming overlay support.",
   "author": "HatanoChihiro",
   "authorUrl": "https://github.com/HatanoChihiro",

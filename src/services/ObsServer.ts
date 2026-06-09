@@ -24,7 +24,7 @@ export class ObsOverlayServer {
 	 * @returns 是否成功启动
 	 */
 	start(): boolean {
-		// [安全] 桌面端守卫：window.require('http') 仅在桌面端可用，移动端直接跳过
+		// [安全] 桌面端守卫：activeWindow.require('http') 仅在桌面端可用，移动端直接跳过
 		if (!Platform.isDesktop) return false;
 		if (this.server) {
 			console.warn('[WebNovel Assistant] OBS 服务器已在运行，跳过重复启动');
@@ -32,7 +32,7 @@ export class ObsOverlayServer {
 		}
 
 		try {
-			const http = window.require('http') as import('../types/node').NodeHTTP;
+			const http = activeWindow.require('http') as import('../types/node').NodeHTTP;
 			const plugin = this.plugin;
 
 			this.server = http.createServer(async (req: import('../types/node').NodeHTTPRequest, res: import('../types/node').NodeHTTPResponse) => {

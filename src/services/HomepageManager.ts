@@ -1,6 +1,7 @@
-import { App, TFile, TFolder } from 'obsidian';
+import type { App} from 'obsidian';
+import { TFile, TFolder } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
-import { NovelMetadata, NovelFolderInfo } from '../types/homepage';
+import type { NovelMetadata, NovelFolderInfo } from '../types/homepage';
 
 const DEFAULT_NOVEL_META: NovelMetadata = {
 	name: '',
@@ -295,7 +296,7 @@ export class HomepageManager {
 		async deleteHomepage(): Promise<void> {
 		const file = this.getHomepageFile();
 		if (file) {
-			await this.app.vault.delete(file);
+			await this.app.fileManager.trashFile(file);
 		}
 	}
 
@@ -312,7 +313,7 @@ export class HomepageManager {
 		const homepagePath = this.getHomepageFilePath();
 
 		// 1. 直接定位到主页的渲染根节点，进行局部重绘，避免整个视图闪烁
-		const containerEls = document.querySelectorAll('.webnovel-homepage-root');
+		const containerEls = activeDocument.querySelectorAll('.webnovel-homepage-root');
 		if (containerEls.length > 0) {
 			// 动态引入 HomepageRenderer 避免循环依赖
 			import('./HomepageRenderer.js').then(({ HomepageRenderer }) => {

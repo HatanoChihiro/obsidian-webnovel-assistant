@@ -1,4 +1,4 @@
-import { StickyNoteState } from '../types/settings';
+import type { StickyNoteState } from '../types/settings';
 import { SerializedWriter } from '../utils/SerializedWriter';
 import { getPluginDir } from '../utils/platform';
 import type { WebNovelAssistantPlugin } from '../types/plugin';

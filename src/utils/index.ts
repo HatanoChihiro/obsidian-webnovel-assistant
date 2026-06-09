@@ -19,8 +19,7 @@ export {
 
 // DOM 操作工具
 export {
-	injectGlobalStyle,
-	removeGlobalStyle
+	rafThrottle
 } from './dom';
 
 // 平台检测工具

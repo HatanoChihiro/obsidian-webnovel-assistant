@@ -1,4 +1,3 @@
-import { injectGlobalStyle, removeGlobalStyle } from '../utils';
 import type { AccurateCountSettings } from '../types/settings';
 
 /**
@@ -14,23 +13,16 @@ export class StyleManager {
 	 */
 	applyEyeCare(): void {
 		const color = this.settings.eyeCareColor || '#E8F5E9';
-		const css = `
-			.workspace-leaf-content[data-type="markdown"]:not(:has(.webnovel-homepage)) .view-content {
-				background-color: ${color} !important;
-			}
-			.workspace-leaf-content[data-type="markdown"]:not(:has(.webnovel-homepage)) .markdown-source-view .cm-editor .cm-scroller,
-			.workspace-leaf-content[data-type="markdown"]:not(:has(.webnovel-homepage)) .markdown-reading-view .markdown-preview-view {
-				background-color: transparent !important;
-			}
-		`;
-		injectGlobalStyle('accurate-count-eye-care', css);
+		activeDocument.body.classList.add('webnovel-eye-care-enabled');
+		activeDocument.body.style.setProperty('--webnovel-eye-care-color', color);
 	}
 
 	/**
 	 * 移除护眼模式
 	 */
 	removeEyeCare(): void {
-		removeGlobalStyle('accurate-count-eye-care');
+		activeDocument.body.classList.remove('webnovel-eye-care-enabled');
+		activeDocument.body.style.removeProperty('--webnovel-eye-care-color');
 	}
 
 	/**

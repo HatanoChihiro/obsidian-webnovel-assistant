@@ -148,4 +148,50 @@ describe('WordCounter', () => {
 			expect(result2).toBe(result3);
 		});
 	});
+	describe('字数统计模式', () => {
+		it('网文模式：所有非空白字符均算1字', () => {
+			expect(counter.calculateAccurateWords('你好世界，hello！', 'webnovel')).toBe(11);
+		});
+
+		it('标准模式：CJK字符+英文单词+全角标点', () => {
+			expect(counter.calculateAccurateWords('你好世界，hello！', 'standard')).toBe(7);
+			// 4中文 + 1全角逗号 + 1英文单词(hello) + 1全角感叹号 = 7
+		});
+
+		it('原生模式：CJK字符+英文单词，忽略标点', () => {
+			expect(counter.calculateAccurateWords('你好世界，hello！', 'obsidian')).toBe(5);
+			// 4中文 + 1英文单词(hello) = 5
+		});
+
+		it('纯英文 - 网文模式逐字符计数', () => {
+			expect(counter.calculateAccurateWords('hello world', 'webnovel')).toBe(10);
+		});
+
+		it('纯英文 - 标准/原生模式按单词计数', () => {
+			expect(counter.calculateAccurateWords('hello world', 'standard')).toBe(2);
+			expect(counter.calculateAccurateWords('hello world', 'obsidian')).toBe(2);
+		});
+
+		it('数字组合在标准/原生模式下算1个词', () => {
+			expect(counter.calculateAccurateWords('2024年', 'standard')).toBe(2);
+			expect(counter.calculateAccurateWords('2024年', 'obsidian')).toBe(2);
+		});
+
+		it('半角标点在标准模式下不算字', () => {
+			expect(counter.calculateAccurateWords('你好,世界!', 'standard')).toBe(4);
+		});
+
+		it('全角标点在原生模式下不算字', () => {
+			expect(counter.calculateAccurateWords('你好，世界！', 'obsidian')).toBe(4);
+		});
+
+		it('中英混合文本三种模式对比', () => {
+			const text = '他说了OK，然后离开。';
+			expect(counter.calculateAccurateWords(text, 'webnovel')).toBe(11);
+			expect(counter.calculateAccurateWords(text, 'standard')).toBe(10);
+			// 7中文 + 1英文(OK) + 2全角标点(，。) = 10
+			expect(counter.calculateAccurateWords(text, 'obsidian')).toBe(8);
+			// 7中文 + 1英文(OK) = 8
+		});
+	});
 });

@@ -1,4 +1,5 @@
-import { App, MarkdownView, WorkspaceLeaf, Notice, TFile } from 'obsidian';
+import type { App, WorkspaceLeaf, TFile } from 'obsidian';
+import { MarkdownView, Notice } from 'obsidian';
 import { VIEW_TYPES } from '../constants';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 
@@ -18,9 +19,12 @@ export class ImmersiveModeManager {
 	private immersiveNovelTitle: string = '';
 
 	// 追踪当前沉浸模式中的活跃叶子，用于精确抓取比例
+	private activeTopLeaf: WorkspaceLeaf | null = null;
 	private activeLeftLeaf: WorkspaceLeaf | null = null;
 	private activeRightLeaf: WorkspaceLeaf | null = null;
 	private activeBottomLeaf: WorkspaceLeaf | null = null;
+	
+	private layoutChangeRef: any = null;
 
 	// 顶部栏元素缓存
 	private topBarStatsEls: Record<string, HTMLElement> = {};
@@ -50,7 +54,7 @@ export class ImmersiveModeManager {
 	 * 切换沉浸模式状态
 	 */
 	public async toggleImmersiveMode(): Promise<void> {
-		if (this.isImmersiveActive || document.body.classList.contains('immersive-mode-active')) {
+		if (this.isImmersiveActive || activeDocument.body.classList.contains('immersive-mode-active')) {
 			await this.exitImmersiveMode();
 		} else {
 			await this.enterImmersiveMode();
@@ -79,16 +83,19 @@ export class ImmersiveModeManager {
 				this.savedLayout = this.app.workspace.getLayout();
 			}
 
-			// 2. 注入全局 CSS 类和顶部 Dashboard
-			document.body.classList.add('immersive-mode-active');
+			// 2. 注入全局 CSS 类和 Dashboard
+			activeDocument.body.classList.add('immersive-mode-active');
+			if (this.plugin.settings.immersive.immersiveHideProperties) {
+				activeDocument.body.classList.add('immersive-hide-properties');
+			}
 			this.createTopBar();
 
 			// 3. 构建排版
 			await this.buildImmersiveLayout(this.savedActiveFile);
 
 			// 4. 自动化：开启全屏 + 开启计时
-			if (!document.fullscreenElement) {
-				document.documentElement.requestFullscreen().catch(() => {
+			if (!activeDocument.fullscreenElement) {
+				activeDocument.documentElement.requestFullscreen().catch(() => {
 					this.app.commands.executeCommandById('app:toggle-full-screen');
 				});
 			}
@@ -120,7 +127,7 @@ export class ImmersiveModeManager {
 				await this.app.workspace.setLayout(this.savedLayout);
 
 				if (currentMainFile) {
-					requestAnimationFrame(async () => {
+					activeWindow.requestAnimationFrame(async () => {
 						const leaves = this.app.workspace.getLeavesOfType('markdown');
 						const targetLeaf = leaves.find(l => l.active) || leaves[0] || this.app.workspace.getLeaf(false);
 
@@ -136,8 +143,8 @@ export class ImmersiveModeManager {
 			}
 
 			// 3. 自动化清理：退出全屏 + 停止计时
-			if (document.fullscreenElement) {
-				document.exitFullscreen().catch(() => {
+			if (activeDocument.fullscreenElement) {
+				activeDocument.exitFullscreen().catch(() => {
 					this.app.commands.executeCommandById('app:toggle-full-screen');
 				});
 			}
@@ -151,7 +158,12 @@ export class ImmersiveModeManager {
 			console.error('[ImmersiveModeManager] 退出沉浸模式时发生错误:', error);
 			new Notice('[警告] 退出沉浸模式出现异常，已强制清理界面');
 		} finally {
-			document.body.classList.remove('immersive-mode-active');
+			if (this.layoutChangeRef) {
+				this.app.workspace.offref(this.layoutChangeRef);
+				this.layoutChangeRef = null;
+			}
+			activeDocument.body.classList.remove('immersive-mode-active');
+			activeDocument.body.classList.remove('immersive-hide-properties');
 			this.removeTopBar();
 
 			this.isImmersiveActive = false;
@@ -160,6 +172,7 @@ export class ImmersiveModeManager {
 
 			this.app.workspace.requestSaveLayout();
 
+			this.activeTopLeaf = null;
 			this.activeLeftLeaf = null;
 			this.activeRightLeaf = null;
 			this.activeBottomLeaf = null;
@@ -190,114 +203,96 @@ export class ImmersiveModeManager {
 			}
 		});
 
-		// 确保文件已加载
+		// 获取当前状态以保留 source (Live Preview) 等设置
+		const currentState = mainLeaf.getViewState();
 		await mainLeaf.setViewState({
 			type: "markdown",
-			state: { file: activeFile.path },
+			state: { ...currentState.state, file: activeFile.path, mode: 'source' },
 			active: true
 		});
 
-		let finalLeftLeaf: WorkspaceLeaf | null = null;
-		let finalRightLeaf: WorkspaceLeaf | null = null;
-		let finalBottomLeaf: WorkspaceLeaf | null = null;
 		const pendingSizes: Array<{ split: any; sizes: number[] }> = [];
 
-		// 2. 创建底部辅助面板
-		const showBottom = immersive.immersiveShowStickyNotes || immersive.immersiveShowForeshadowing || immersive.immersiveShowTimeline;
-		if (showBottom) {
-			const isTop = immersive.immersivePanelPosition === 'top';
-			const bottomSplitLeaf = workspace.createLeafBySplit(mainLeaf, 'horizontal', isTop);
-			finalBottomLeaf = bottomSplitLeaf;
-
-			const bottomSize = immersive.immersiveBottomSize || 25;
-			const parentSplit = this.getParentSplit(mainLeaf);
+		const createSlotLeaves = async (slots: string[], direction: 'vertical' | 'horizontal', before: boolean, size: number, internalSizes: number[]) => {
+			if (!slots || slots.length === 0) return null;
+			const firstLeaf = workspace.createLeafBySplit(mainLeaf!, direction, before);
+			
+			const parentSplit = this.getParentSplit(mainLeaf!);
 			if (parentSplit && parentSplit.children) {
-				const size0 = isTop ? bottomSize : 100 - bottomSize;
-				const size1 = isTop ? 100 - bottomSize : bottomSize;
-				pendingSizes.push({ split: parentSplit, sizes: [size0, size1] });
-			}
-
-			// 填充辅助子面板
-			let currentBottomLeaf = bottomSplitLeaf;
-			let isFirst = true;
-			let bottomPanelCount = 0;
-
-			if (immersive.immersiveShowStickyNotes) {
-				await currentBottomLeaf.setViewState({ type: VIEW_TYPES.IMMERSIVE_STICKY_NOTES });
-				isFirst = false;
-				bottomPanelCount++;
-			}
-			if (immersive.immersiveShowForeshadowing) {
-				if (!isFirst) currentBottomLeaf = workspace.createLeafBySplit(currentBottomLeaf, 'vertical', false);
-				await currentBottomLeaf.setViewState({ type: VIEW_TYPES.FORESHADOWING });
-				isFirst = false;
-				bottomPanelCount++;
-			}
-			if (immersive.immersiveShowTimeline) {
-				if (!isFirst) currentBottomLeaf = workspace.createLeafBySplit(currentBottomLeaf, 'vertical', false);
-				await currentBottomLeaf.setViewState({ type: VIEW_TYPES.TIMELINE });
-				bottomPanelCount++;
-			}
-
-			// 捕获辅助面板内部的 vertical split
-			if (bottomPanelCount > 1) {
-				const bottomInternalSplit = this.getParentSplit(bottomSplitLeaf);
-				if (bottomInternalSplit && bottomInternalSplit.direction === 'vertical' && bottomInternalSplit.children) {
-					const savedSizes = immersive.immersiveBottomInternalSizes;
-					if (savedSizes && savedSizes.length === bottomInternalSplit.children.length) {
-						pendingSizes.push({ split: bottomInternalSplit, sizes: savedSizes });
-					}
-				}
-			}
-		}
-
-		// 3. 创建左侧章节列表
-		if (immersive.immersiveShowChapterList) {
-			const leftLeaf = workspace.createLeafBySplit(mainLeaf, 'vertical', true);
-			finalLeftLeaf = leftLeaf;
-			const leftSize = immersive.immersiveLeftSize || 15;
-			const parentSplit = this.getParentSplit(mainLeaf);
-			if (parentSplit && parentSplit.children) {
-				pendingSizes.push({ split: parentSplit, sizes: [leftSize, 100 - leftSize] });
-			}
-			await leftLeaf.setViewState({ type: VIEW_TYPES.IMMERSIVE_CHAPTER_LIST });
-		}
-
-		// 4. 创建右侧参考区
-		if (immersive.immersiveShowReference) {
-			const rightLeaf = workspace.createLeafBySplit(mainLeaf, 'vertical', false);
-			finalRightLeaf = rightLeaf;
-			const rightSize = immersive.immersiveRightSize || 15;
-			const parentSplit = this.getParentSplit(mainLeaf);
-			if (parentSplit && parentSplit.children) {
+				// 获取同级 children 的数量
 				const childCount = parentSplit.children.length;
-				if (childCount === 3) {
-					const leftSize = immersive.immersiveLeftSize || 15;
-					const centerSize = 100 - leftSize - rightSize;
-					pendingSizes.push({ split: parentSplit, sizes: [leftSize, centerSize, rightSize] });
-				} else {
-					pendingSizes.push({ split: parentSplit, sizes: [100 - rightSize, rightSize] });
+				if (childCount === 2) {
+					const size0 = before ? size : 100 - size;
+					const size1 = before ? 100 - size : size;
+					pendingSizes.push({ split: parentSplit, sizes: [size0, size1] });
+				} else if (childCount === 3) {
+					// 只有在左右两侧都有时才会出现 childCount 3
+					const otherSize = before ? immersive.immersiveRightSize : immersive.immersiveLeftSize;
+					const centerSize = 100 - size - otherSize;
+					const sizes = before ? [size, centerSize, otherSize] : [otherSize, centerSize, size];
+					pendingSizes.push({ split: parentSplit, sizes });
 				}
 			}
-			await rightLeaf.setViewState({ 
-				type: 'markdown',
-				state: { mode: 'preview' }
-			});
-			rightLeaf.containerEl.classList.add('immersive-reference-view');
-		}
 
-		// 5. 延迟应用所有比例
+			let currentLeaf = firstLeaf;
+			for (let i = 0; i < slots.length; i++) {
+				const viewType = slots[i];
+				if (i > 0) {
+					// 内部切分使用与外部相反的切割方向
+					const internalDir = direction === 'vertical' ? 'horizontal' : 'vertical';
+					currentLeaf = workspace.createLeafBySplit(currentLeaf, internalDir, false);
+				}
+				if (viewType === 'reference-view') {
+					await currentLeaf.setViewState({ 
+						type: 'markdown',
+						state: { mode: 'preview' }
+					});
+					currentLeaf.containerEl.classList.add('immersive-reference-view');
+				} else {
+					await currentLeaf.setViewState({ type: viewType });
+				}
+			}
+
+			if (slots.length > 1) {
+				const internalDir = direction === 'vertical' ? 'horizontal' : 'vertical';
+				const internalSplit = this.getParentSplit(currentLeaf, internalDir);
+				if (internalSplit && internalSplit.children && internalSplit.children.length === slots.length) {
+					let finalInternalSizes = internalSizes;
+					if (!finalInternalSizes || finalInternalSizes.length !== slots.length) {
+						const avg = 100 / slots.length;
+						finalInternalSizes = new Array(slots.length).fill(avg);
+					}
+					pendingSizes.push({ split: internalSplit, sizes: finalInternalSizes });
+				}
+			}
+
+			return firstLeaf;
+		};
+
+		// 动态构建：空槽不创建，主编辑区自动贴边
+		// 我们先切上下，再切左右
+		this.activeTopLeaf = await createSlotLeaves(immersive.immersiveTopSlots, 'horizontal', true, immersive.immersiveTopSize, immersive.immersiveTopInternalSizes);
+		this.activeBottomLeaf = await createSlotLeaves(immersive.immersiveBottomSlots, 'horizontal', false, immersive.immersiveBottomSize, immersive.immersiveBottomInternalSizes);
+		this.activeLeftLeaf = await createSlotLeaves(immersive.immersiveLeftSlots, 'vertical', true, immersive.immersiveLeftSize, immersive.immersiveLeftInternalSizes);
+		this.activeRightLeaf = await createSlotLeaves(immersive.immersiveRightSlots, 'vertical', false, immersive.immersiveRightSize, immersive.immersiveRightInternalSizes);
+
+		// 延迟应用所有比例
 		this.applyPendingSizes(pendingSizes);
-
-		// 6. 记录叶子引用
-		this.activeLeftLeaf = finalLeftLeaf;
-		this.activeRightLeaf = finalRightLeaf;
-		this.activeBottomLeaf = finalBottomLeaf;
 
 		// 确保主编辑器聚焦
 		workspace.setActiveLeaf(mainLeaf, { focus: true });
 
-		setTimeout(() => this.app.workspace.updateOptions(), 300);
+		activeWindow.setTimeout(() => this.app.workspace.updateOptions(), 300);
+		
+		// 监听布局变化，实时保存比例
+		this.layoutChangeRef = this.app.workspace.on('layout-change', () => {
+			if (!this.isImmersiveActive) return;
+			this.plugin.adaptiveDebounceManager.debounceFixed('immersive-save-sizes', () => {
+				if (!this.isImmersiveActive) return;
+				this.saveCurrentPanelSizes();
+				this.plugin.saveSettings().catch(() => {});
+			}, 1000);
+		});
 	}
 
 	/**
@@ -331,12 +326,12 @@ export class ImmersiveModeManager {
 			}
 
 			if (hasFailure && attempt < 5 && this.isImmersiveActive) {
-				setTimeout(() => apply(attempt + 1), 100 * (attempt + 1));
+				activeWindow.setTimeout(() => apply(attempt + 1), 100 * (attempt + 1));
 			}
 		};
 
-		requestAnimationFrame(() => apply(0));
-		setTimeout(() => apply(0), 300);
+		activeWindow.requestAnimationFrame(() => apply(0));
+		activeWindow.setTimeout(() => apply(0), 300);
 	}
 
 	/**
@@ -345,7 +340,7 @@ export class ImmersiveModeManager {
 	private createTopBar(): void {
 		if (this.topBarEl) return;
 
-		this.topBarEl = document.createElement('div');
+		this.topBarEl = activeDocument.createElement('div');
 		this.topBarEl.id = 'immersive-top-bar';
 		this.topBarEl.className = 'immersive-top-bar';
 
@@ -369,20 +364,20 @@ export class ImmersiveModeManager {
 		};
 
 		for (const el of Object.values(this.topBarStatsEls)) {
-			el.style.display = 'none';
+			el.setCssStyles({ display: 'none' });
 		}
 
-		document.body.appendChild(this.topBarEl);
+		activeDocument.body.appendChild(this.topBarEl);
 		this.renderTopBarContent();
 
-		this.updateInterval = this.plugin.registerInterval(window.setInterval(() => {
+		this.updateInterval = this.plugin.registerInterval(activeWindow.setInterval(() => {
 			this.renderTopBarContent();
 		}, 1000));
 	}
 
 	private removeTopBar(): void {
 		if (this.updateInterval) {
-			window.clearInterval(this.updateInterval);
+			activeWindow.clearInterval(this.updateInterval);
 			this.updateInterval = null;
 		}
 		if (this.topBarEl) {
@@ -401,10 +396,10 @@ export class ImmersiveModeManager {
 				const el = this.topBarStatsEls[key];
 				if (!el) return;
 				if (show) {
-					if (el.style.display === 'none') el.style.display = '';
+					if (el.getCssPropertyValue('display') === 'none') el.setCssStyles({ display: '' });
 					if (el.innerText !== text) el.innerText = text;
 				} else {
-					if (el.style.display !== 'none') el.style.display = 'none';
+					if (el.style.display !== 'none') el.setCssStyles({ display: 'none' });
 				}
 			};
 
@@ -424,84 +419,46 @@ export class ImmersiveModeManager {
 	 * 保存当前面板比例
 	 */
 	private saveCurrentPanelSizes(): void {
-		const { workspace } = this.app;
 		const immersive = this.plugin.settings.immersive;
 
-		const leftLeaf = this.activeLeftLeaf || workspace.getLeavesOfType(VIEW_TYPES.IMMERSIVE_CHAPTER_LIST)[0];
-		const refLeaf = this.activeRightLeaf || workspace.getLeavesOfType('markdown').find(l => l.containerEl.classList.contains('immersive-reference-view'));
-		const anyBottomLeaf = this.activeBottomLeaf || [
-			workspace.getLeavesOfType(VIEW_TYPES.IMMERSIVE_STICKY_NOTES)[0],
-			workspace.getLeavesOfType(VIEW_TYPES.FORESHADOWING)[0],
-			workspace.getLeavesOfType(VIEW_TYPES.TIMELINE)[0]
-		].find(l => l);
-
-		// 2. 保存左侧面板比例
-		if (leftLeaf && leftLeaf.containerEl && leftLeaf.containerEl.offsetParent) {
-			const split = this.getParentSplit(leftLeaf);
-			if (split && split.direction === 'vertical' && split.containerEl && split.children) {
-				const totalWidth = split.containerEl.offsetWidth;
-				if (totalWidth > 0) {
-					const child = split.children.find((c: any) => c.containerEl && c.containerEl.contains(leftLeaf.containerEl));
-					if (child) {
-						immersive.immersiveLeftSize = Math.round((child.containerEl.offsetWidth / totalWidth) * 100);
+		const saveSize = (leaf: WorkspaceLeaf | null, direction: 'horizontal' | 'vertical', setter: (size: number) => void, internalSetter: (sizes: number[]) => void, slotCount: number) => {
+			if (leaf && leaf.containerEl && leaf.containerEl.offsetParent) {
+				const split = this.getParentSplit(leaf, direction);
+				if (split && split.direction === direction && split.containerEl && split.children) {
+					const totalSize = direction === 'horizontal' ? split.containerEl.offsetHeight : split.containerEl.offsetWidth;
+					if (totalSize > 0) {
+						const child = split.children.find((c: any) => c.containerEl && c.containerEl.contains(leaf.containerEl));
+						if (child) {
+							const size = direction === 'horizontal' ? child.containerEl.offsetHeight : child.containerEl.offsetWidth;
+							const pct = Math.round((size / totalSize) * 100);
+							if (pct > 0 && pct < 100) {
+								setter(pct);
+							}
+						}
 					}
 				}
-			}
-		}
 
-		// 3. 保存右侧面板比例
-		if (refLeaf && refLeaf.containerEl && refLeaf.containerEl.offsetParent) {
-			const split = this.getParentSplit(refLeaf, 'vertical');
-			if (split && split.direction === 'vertical' && split.containerEl && split.children) {
-				const totalWidth = split.containerEl.offsetWidth;
-				if (totalWidth > 0) {
-					const child = split.children.find((c: any) => c.containerEl && c.containerEl.contains(refLeaf.containerEl));
-					if (child) {
-						const pct = Math.round((child.containerEl.offsetWidth / totalWidth) * 100);
-						if (pct > 0 && pct < 100) {
-							immersive.immersiveRightSize = pct;
+				if (slotCount > 1) {
+					const internalDir = direction === 'vertical' ? 'horizontal' : 'vertical';
+					const internalSplit = this.getParentSplit(leaf, internalDir);
+					if (internalSplit && internalSplit.direction === internalDir && internalSplit.containerEl && internalSplit.children) {
+						const totalIntSize = internalDir === 'horizontal' ? internalSplit.containerEl.offsetHeight : internalSplit.containerEl.offsetWidth;
+						if (totalIntSize > 0 && internalSplit.children.length === slotCount) {
+							const newSizes: number[] = [];
+							for (const c of internalSplit.children) {
+								const s = internalDir === 'horizontal' ? c.containerEl.offsetHeight : c.containerEl.offsetWidth;
+								newSizes.push(Math.round((s / totalIntSize) * 100));
+							}
+							internalSetter(newSizes);
 						}
 					}
 				}
 			}
-		}
+		};
 
-		// 4. 保存水平分割比例
-		if (anyBottomLeaf) {
-			const split = this.getParentSplit(anyBottomLeaf, 'horizontal');
-			if (split && split.direction === 'horizontal' && split.containerEl && split.children) {
-				const totalHeight = split.containerEl.offsetHeight;
-				if (totalHeight > 0) {
-					const child = split.children.find((c: any) => c.containerEl && c.containerEl.contains(anyBottomLeaf.containerEl));
-					if (child) {
-						immersive.immersiveBottomSize = Math.round((child.containerEl.offsetHeight / totalHeight) * 100);
-					}
-				}
-			}
-		}
-
-		// 5. 保存底部面板内部比例
-		const stickyLeaf = workspace.getLeavesOfType(VIEW_TYPES.IMMERSIVE_STICKY_NOTES)[0];
-		const foreLeaf = workspace.getLeavesOfType(VIEW_TYPES.FORESHADOWING)[0];
-		const timeLeaf = workspace.getLeavesOfType(VIEW_TYPES.TIMELINE)[0];
-		const bottomLeaves = [stickyLeaf, foreLeaf, timeLeaf].filter(l => l);
-		if (bottomLeaves.length > 1) {
-			const split = this.getParentSplit(bottomLeaves[0]);
-			if (split && split.direction === 'vertical' && split.containerEl && split.children) {
-				const totalWidth = split.containerEl.offsetWidth;
-				if (totalWidth > 0) {
-					const internalSizes: number[] = [];
-					for (const child of split.children) {
-						if (child.containerEl) {
-							internalSizes.push(Math.round((child.containerEl.offsetWidth / totalWidth) * 100));
-						}
-					}
-					if (internalSizes.length === split.children.length) {
-						immersive.immersiveBottomInternalSizes = internalSizes;
-					}
-				}
-			}
-		}
-
+		saveSize(this.activeTopLeaf, 'horizontal', s => immersive.immersiveTopSize = s, s => immersive.immersiveTopInternalSizes = s, immersive.immersiveTopSlots.length);
+		saveSize(this.activeBottomLeaf, 'horizontal', s => immersive.immersiveBottomSize = s, s => immersive.immersiveBottomInternalSizes = s, immersive.immersiveBottomSlots.length);
+		saveSize(this.activeLeftLeaf, 'vertical', s => immersive.immersiveLeftSize = s, s => immersive.immersiveLeftInternalSizes = s, immersive.immersiveLeftSlots.length);
+		saveSize(this.activeRightLeaf, 'vertical', s => immersive.immersiveRightSize = s, s => immersive.immersiveRightInternalSizes = s, immersive.immersiveRightSlots.length);
 	}
 }

@@ -1,4 +1,5 @@
-import { ItemView, WorkspaceLeaf, TFile, TFolder } from 'obsidian';
+import type { WorkspaceLeaf, TFolder } from 'obsidian';
+import { ItemView, TFile } from 'obsidian';
 import { VIEW_TYPES } from '../constants';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ChapterSorter } from '../services/ChapterSorter';
@@ -72,14 +73,14 @@ export class ImmersiveChapterListView extends ItemView {
 		if (!currentFolder) {
 			listContainer.createEl('p', { text: '正在加载文件夹信息...', cls: 'immersive-empty-text' });
 			// 如果还是没找到，可能是主编辑器还没准备好，1秒后重试一次
-			setTimeout(() => {
+			activeWindow.setTimeout(() => {
 				if (this.app.workspace.getActiveFile()) this.refresh();
 			}, 1000);
 			return;
 		}
 
 		// 获取该文件夹下的所有 Markdown 文件，并排序
-		let files = currentFolder.children.filter(f => f instanceof TFile && f.extension === 'md') as TFile[];
+		const files = currentFolder.children.filter(f => f instanceof TFile && f.extension === 'md') as TFile[];
 		
 		if (this.plugin.settings.enableSmartChapterSort) {
 			files.sort((a, b) => ChapterSorter.compareFiles(a, b));
@@ -151,7 +152,9 @@ export class ImmersiveChapterListView extends ItemView {
 						refLeaf.containerEl.classList.add('immersive-reference-view');
 						
 						// 更新设置并保存
-						this.plugin.settings.immersive.immersiveShowReference = true;
+						if (!this.plugin.settings.immersive.immersiveRightSlots.includes('reference-view')) {
+							this.plugin.settings.immersive.immersiveRightSlots.push('reference-view');
+						}
 						this.plugin.saveSettings();
 					}
 				}
@@ -178,7 +181,7 @@ export class ImmersiveChapterListView extends ItemView {
 		}
 
 		// 恢复滚动位置，或者在初始时滚动到激活文档
-		requestAnimationFrame(() => {
+		activeWindow.requestAnimationFrame(() => {
 			if (listContainer) {
 				if (this.isInitialLoad && activeItemEl) {
 					activeItemEl.scrollIntoView({ block: 'center', behavior: 'smooth' });

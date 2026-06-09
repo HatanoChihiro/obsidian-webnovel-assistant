@@ -1,4 +1,5 @@
-import { ItemView, WorkspaceLeaf, FuzzySuggestModal, TFile, App, Notice } from 'obsidian';
+import type { WorkspaceLeaf, App} from 'obsidian';
+import { ItemView, FuzzySuggestModal, TFile, Notice } from 'obsidian';
 import { VIEW_TYPES } from '../constants';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { StickyNoteState } from '../types/settings';
@@ -31,6 +32,8 @@ class FileSuggestModal extends FuzzySuggestModal<TFile> {
 export class ImmersiveStickyNotesView extends ItemView {
 	plugin: WebNovelAssistantPlugin;
 	private lastSavedContents: Map<string, string> = new Map();
+	private resizeObserver: ResizeObserver | null = null;
+	private isVertical: boolean = false;
 
 	constructor(leaf: WorkspaceLeaf, plugin: WebNovelAssistantPlugin) {
 		super(leaf);
@@ -88,51 +91,55 @@ export class ImmersiveStickyNotesView extends ItemView {
 	async renderNotes() {
 		const { containerEl } = this;
 		containerEl.empty();
-		containerEl.style.position = 'relative';
-		containerEl.style.display = 'flex';
-		containerEl.style.flexDirection = 'column';
-		containerEl.style.height = '100%';
-		containerEl.style.overflow = 'hidden';
+		containerEl.setCssStyles({ position: 'relative' });
+		containerEl.setCssStyles({ display: 'flex' });
+		containerEl.setCssStyles({ flexDirection: 'column' });
+		containerEl.setCssStyles({ height: '100%' });
+		containerEl.setCssStyles({ overflow: 'hidden' });
+
+		if (this.resizeObserver) {
+			this.resizeObserver.disconnect();
+		}
 		
 		// 悬浮触发区（顶部一条不可见的区域，用来唤出工具栏）
 		const hoverTrigger = containerEl.createDiv({ cls: 'immersive-sticky-trigger' });
-		hoverTrigger.style.position = 'absolute';
-		hoverTrigger.style.top = '0';
-		hoverTrigger.style.left = '0';
-		hoverTrigger.style.right = '0';
-		hoverTrigger.style.height = '15px';
-		hoverTrigger.style.zIndex = '9';
+		hoverTrigger.setCssStyles({ position: 'absolute' });
+		hoverTrigger.setCssStyles({ top: '0' });
+		hoverTrigger.setCssStyles({ left: '0' });
+		hoverTrigger.setCssStyles({ right: '0' });
+		hoverTrigger.setCssStyles({ height: '15px' });
+		hoverTrigger.setCssStyles({ zIndex: '9' });
 		
 		// 工具栏
 		const toolbar = containerEl.createDiv({ cls: 'immersive-sticky-toolbar' });
-		toolbar.style.display = 'flex';
-		toolbar.style.gap = '8px';
-		toolbar.style.padding = '8px';
-		toolbar.style.borderBottom = '1px solid var(--background-modifier-border)';
-		toolbar.style.backgroundColor = 'var(--background-secondary)';
-		toolbar.style.position = 'absolute';
-		toolbar.style.top = '0';
-		toolbar.style.left = '0';
-		toolbar.style.right = '0';
-		toolbar.style.zIndex = '10';
+		toolbar.setCssStyles({ display: 'flex' });
+		toolbar.setCssStyles({ gap: '8px' });
+		toolbar.setCssStyles({ padding: '8px' });
+		toolbar.setCssStyles({ borderBottom: '1px solid var(--background-modifier-border)' });
+		toolbar.setCssStyles({ backgroundColor: 'var(--background-secondary)' });
+		toolbar.setCssStyles({ position: 'absolute' });
+		toolbar.setCssStyles({ top: '0' });
+		toolbar.setCssStyles({ left: '0' });
+		toolbar.setCssStyles({ right: '0' });
+		toolbar.setCssStyles({ zIndex: '10' });
 		
 		// 自动隐藏逻辑
-		toolbar.style.opacity = '0';
-		toolbar.style.transition = 'opacity 0.2s';
-		toolbar.style.pointerEvents = 'none';
+		toolbar.setCssStyles({ opacity: '0' });
+		toolbar.setCssStyles({ transition: 'opacity 0.2s' });
+		toolbar.setCssStyles({ pointerEvents: 'none' });
 		
 		let hideTimeout: number;
 
 		const showToolbar = () => {
-			clearTimeout(hideTimeout);
-			toolbar.style.opacity = '1';
-			toolbar.style.pointerEvents = 'auto';
+			activeWindow.clearTimeout(hideTimeout);
+			toolbar.setCssStyles({ opacity: '1' });
+			toolbar.setCssStyles({ pointerEvents: 'auto' });
 		};
 
 		const hideToolbar = () => {
-			hideTimeout = window.setTimeout(() => {
-				toolbar.style.opacity = '0';
-				toolbar.style.pointerEvents = 'none';
+			hideTimeout = activeWindow.setTimeout(() => {
+				toolbar.setCssStyles({ opacity: '0' });
+				toolbar.setCssStyles({ pointerEvents: 'none' });
 			}, 200);
 		};
 
@@ -153,21 +160,44 @@ export class ImmersiveStickyNotesView extends ItemView {
 		};
 		
 		const dockContainer = containerEl.createDiv({ cls: 'immersive-sticky-dock' });
-		dockContainer.style.flex = '1';
-		dockContainer.style.overflowX = 'auto'; // 横向滚动
-		dockContainer.style.overflowY = 'hidden';
-		dockContainer.style.display = 'flex';
-		dockContainer.style.flexDirection = 'row';
-		dockContainer.style.flexWrap = 'nowrap'; // 强制不换行
-		dockContainer.style.gap = '10px';
-		dockContainer.style.padding = '10px';
+		dockContainer.setCssStyles({ flex: '1' });
+		dockContainer.setCssStyles({ display: 'flex' });
+		dockContainer.setCssStyles({ flexWrap: 'nowrap' }); // 强制不换行
+		dockContainer.setCssStyles({ gap: '10px' });
+		dockContainer.setCssStyles({ padding: '10px' });
 		// 给顶部留出空间以免被悬浮的工具栏在显示时挡住内容（即使工具栏隐藏）
-		dockContainer.style.paddingTop = '10px';
-		dockContainer.style.alignItems = 'center'; // 垂直居中显示 300x300 的便签
+		dockContainer.setCssStyles({ paddingTop: '10px' });
+		dockContainer.setCssStyles({ alignItems: 'center' }); // 居中显示
 		
+		this.resizeObserver = new ResizeObserver(entries => {
+			for (const entry of entries) {
+				const { width, height } = entry.contentRect;
+				// 如果高度明显大于宽度，且宽度不足以并排两个便签，则切换为垂直布局
+				const shouldBeVertical = height > width * 1.2 || width < 450;
+				if (this.isVertical !== shouldBeVertical) {
+					this.isVertical = shouldBeVertical;
+					if (this.isVertical) {
+						dockContainer.setCssStyles({ flexDirection: 'column' });
+						dockContainer.setCssStyles({ overflowX: 'hidden' });
+						dockContainer.setCssStyles({ overflowY: 'auto' });
+					} else {
+						dockContainer.setCssStyles({ flexDirection: 'row' });
+						dockContainer.setCssStyles({ overflowX: 'auto' });
+						dockContainer.setCssStyles({ overflowY: 'hidden' });
+					}
+				}
+			}
+		});
+		this.resizeObserver.observe(containerEl);
+		
+		// 初始默认设为横向（会被 observer 立即覆盖）
+		dockContainer.setCssStyles({ flexDirection: 'row' });
+		dockContainer.setCssStyles({ overflowX: 'auto' });
+		dockContainer.setCssStyles({ overflowY: 'hidden' });
+
 		// 滚轮转换为横向滚动
 		dockContainer.addEventListener('wheel', (evt) => {
-			if (evt.shiftKey) return; // 按住 shift 原生即支持横向滚动
+			if (evt.shiftKey || this.isVertical) return; // 按住 shift，或者已经是垂直布局，原生即支持垂直/横向滚动
 			
 			// 如果在文本框内且可以垂直滚动，则优先原生的垂直滚动
 			const target = evt.target as HTMLElement;
@@ -202,44 +232,44 @@ export class ImmersiveStickyNotesView extends ItemView {
 			}
 
 			const noteCard = dockContainer.createDiv({ cls: 'immersive-sticky-card' });
-			noteCard.style.backgroundColor = noteData.color || '#FDF3B8';
+			noteCard.setCssStyles({ backgroundColor: noteData.color || '#FDF3B8' });
 			const noteSize = (this.plugin.settings.immersive.immersiveNoteSize || 280) + 'px';
-			noteCard.style.width = noteSize; 
-			noteCard.style.height = noteSize;
-			noteCard.style.flex = '0 0 auto';
-			noteCard.style.display = 'flex';
-			noteCard.style.flexDirection = 'column';
-			noteCard.style.borderRadius = '8px';
-			noteCard.style.boxShadow = '0 4px 10px rgba(0,0,0,0.15)';
-			noteCard.style.overflow = 'hidden';
-			noteCard.style.boxSizing = 'border-box';
+			noteCard.setCssStyles({ width: noteSize }); 
+			noteCard.setCssStyles({ height: noteSize });
+			noteCard.setCssStyles({ flex: '0 0 auto' });
+			noteCard.setCssStyles({ display: 'flex' });
+			noteCard.setCssStyles({ flexDirection: 'column' });
+			noteCard.setCssStyles({ borderRadius: '8px' });
+			noteCard.setCssStyles({ boxShadow: '0 4px 10px rgba(0,0,0,0.15)' });
+			noteCard.setCssStyles({ overflow: 'hidden' });
+			noteCard.setCssStyles({ boxSizing: 'border-box' });
 
 			if (noteData.textColor) {
-				noteCard.style.color = noteData.textColor;
+				noteCard.setCssStyles({ color: noteData.textColor });
 			}
 			
 			// 标题栏与关闭按钮
 			const titleEl = noteCard.createDiv({ cls: 'immersive-sticky-title' });
-			titleEl.style.display = 'flex';
-			titleEl.style.justifyContent = 'space-between';
-			titleEl.style.alignItems = 'center';
-			titleEl.style.padding = '4px 8px';
-			titleEl.style.borderBottom = '1px solid rgba(0,0,0,0.1)';
-			titleEl.style.backgroundColor = 'rgba(0,0,0,0.05)';
+			titleEl.setCssStyles({ display: 'flex' });
+			titleEl.setCssStyles({ justifyContent: 'space-between' });
+			titleEl.setCssStyles({ alignItems: 'center' });
+			titleEl.setCssStyles({ padding: '4px 8px' });
+			titleEl.setCssStyles({ borderBottom: '1px solid rgba(0,0,0,0.1)' });
+			titleEl.setCssStyles({ backgroundColor: 'rgba(0,0,0,0.05)' });
 
 			const titleSpan = titleEl.createSpan();
 			titleSpan.setText(noteData.title || '便签');
 			
 			
-			titleSpan.style.whiteSpace = 'nowrap';
-			titleSpan.style.overflow = 'hidden';
-			titleSpan.style.textOverflow = 'ellipsis';
+			titleSpan.setCssStyles({ whiteSpace: 'nowrap' });
+			titleSpan.setCssStyles({ overflow: 'hidden' });
+			titleSpan.setCssStyles({ textOverflow: 'ellipsis' });
 
 			const closeBtn = titleEl.createSpan({ cls: 'clickable-icon', text: '×' });
-			closeBtn.style.fontSize = '1.2em';
-			closeBtn.style.lineHeight = '1';
-			closeBtn.style.cursor = 'pointer';
-			closeBtn.style.padding = '0 4px';
+			closeBtn.setCssStyles({ fontSize: '1.2em' });
+			closeBtn.setCssStyles({ lineHeight: '1' });
+			closeBtn.setCssStyles({ cursor: 'pointer' });
+			closeBtn.setCssStyles({ padding: '0 4px' });
 			closeBtn.title = '关闭便签';
 			
 			const performRemove = async () => {
@@ -298,22 +328,22 @@ export class ImmersiveStickyNotesView extends ItemView {
 
 			const textarea = noteCard.createEl('textarea');
 			textarea.value = noteData.content || '';
-			textarea.style.flex = '1';
-			textarea.style.minHeight = '200px'; // 确保文本区有足够空间
-			textarea.style.resize = 'none';
-			textarea.style.padding = '8px';
-			textarea.style.border = 'none';
-			textarea.style.background = 'transparent';
-			textarea.style.color = 'inherit';
-			textarea.style.fontSize = (this.plugin.settings.immersive.immersiveNoteFontSize || 14) + 'px';
-			textarea.style.lineHeight = '1.5';
-			textarea.style.fontFamily = 'inherit';
-			textarea.style.outline = 'none';
-			textarea.style.width = '100%';
-			textarea.style.boxSizing = 'border-box';
+			textarea.setCssStyles({ flex: '1' });
+			textarea.setCssStyles({ minHeight: '200px' }); // 确保文本区有足够空间
+			textarea.setCssStyles({ resize: 'none' });
+			textarea.setCssStyles({ padding: '8px' });
+			textarea.setCssStyles({ border: 'none' });
+			textarea.setCssStyles({ background: 'transparent' });
+			textarea.setCssStyles({ color: 'inherit' });
+			textarea.setCssStyles({ fontSize: (this.plugin.settings.immersive.immersiveNoteFontSize || 14) + 'px' });
+			textarea.setCssStyles({ lineHeight: '1.5' });
+			textarea.setCssStyles({ fontFamily: 'inherit' });
+			textarea.setCssStyles({ outline: 'none' });
+			textarea.setCssStyles({ width: '100%' });
+			textarea.setCssStyles({ boxSizing: 'border-box' });
 
 			// 移除之前的 autoResize 逻辑，因为现在是固定比例正方形
-			textarea.style.overflowY = 'auto'; // 如果内容超过正方形，允许内部滚动
+			textarea.setCssStyles({ overflowY: 'auto' }); // 如果内容超过正方形，允许内部滚动
 			
 			// 绑定输入监听
 			textarea.addEventListener('input', () => {
@@ -339,12 +369,15 @@ export class ImmersiveStickyNotesView extends ItemView {
 	}
 
 	async onOpen() {
-		this.containerEl.style.display = 'flex';
-		this.containerEl.style.flexDirection = 'column';
+		this.containerEl.setCssStyles({ display: 'flex' });
+		this.containerEl.setCssStyles({ flexDirection: 'column' });
 		await this.renderNotes();
 	}
 
 	async onClose() {
-		// Cleanup
+		if (this.resizeObserver) {
+			this.resizeObserver.disconnect();
+			this.resizeObserver = null;
+		}
 	}
 }

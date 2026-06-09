@@ -3,9 +3,9 @@
  * 
  * 本文件包含插件设置、主题配置和便签状态相关的类型定义
  */
-import { ForeshadowingSettings } from './foreshadowing';
-import { RankingSettings } from './ranking';
-import { NovelInfoSettings } from './homepage';
+import type { ForeshadowingSettings } from './foreshadowing';
+import type { RankingSettings } from './ranking';
+import type { NovelInfoSettings } from './homepage';
 
 /** 时间线功能相关设置 */
 export interface TimelineSettings {
@@ -83,16 +83,30 @@ export interface ChapterNamingRule {
 
 /** 沉浸模式设置 */
 export interface ImmersiveModeSettings {
-	/** 是否显示左侧章节列表 */
-	immersiveShowChapterList: boolean;
-	/** 是否显示右侧参考文档区 */
-	immersiveShowReference: boolean;
-	/** 是否显示下方悬浮便签陈列区 */
-	immersiveShowStickyNotes: boolean;
-	/** 是否显示下方伏笔面板 */
-	immersiveShowForeshadowing: boolean;
-	/** 是否显示下方时间线面板 */
-	immersiveShowTimeline: boolean;
+	/** 沉浸模式：顶部插槽组件 ID 列表 */
+	immersiveTopSlots: string[];
+	/** 沉浸模式：底部插槽组件 ID 列表 */
+	immersiveBottomSlots: string[];
+	/** 沉浸模式：左侧插槽组件 ID 列表 */
+	immersiveLeftSlots: string[];
+	/** 沉浸模式：右侧插槽组件 ID 列表 */
+	immersiveRightSlots: string[];
+	
+	/** 顶部区域占比 */
+	immersiveTopSize: number;
+	/** 底部区域占比 */
+	immersiveBottomSize: number;
+	/** 左侧区域占比 */
+	immersiveLeftSize: number;
+	/** 右侧区域占比 */
+	immersiveRightSize: number;
+
+	/** 内部组件占比 */
+	immersiveTopInternalSizes: number[];
+	immersiveBottomInternalSizes: number[];
+	immersiveLeftInternalSizes: number[];
+	immersiveRightInternalSizes: number[];
+
 	/** 数据仪表盘：是否显示总计时间 */
 	immersiveShowTotalTime: boolean;
 	/** 数据仪表盘：是否显示专注时间 */
@@ -105,18 +119,12 @@ export interface ImmersiveModeSettings {
 	immersiveShowDailyProgress: boolean;
 	/** 数据仪表盘：是否显示本场净增字数 */
 	immersiveShowSessionWords: boolean;
-	/** 左侧面板宽度百分比 */
 	/** 数据仪表盘：是否显示榜单进度 */
 	immersiveShowRankingProgress: boolean;
-	immersiveLeftSize: number;
-	/** 右侧面板宽度百分比 */
-	immersiveRightSize: number;
-	/** 底部面板高度百分比 */
-	immersiveBottomSize: number;
-	/** 辅助面板内部各子面板的比例数组 */
-	immersiveBottomInternalSizes: number[];
-	/** 辅助面板位置 ('top' | 'bottom') */
-	immersivePanelPosition: 'top' | 'bottom';
+
+	/** 是否隐藏笔记属性面板 */
+	immersiveHideProperties: boolean;
+
 	/** 便签显示尺寸 (px) */
 	immersiveNoteSize: number;
 	/** 便签字体大小 (px) */
@@ -155,6 +163,8 @@ export interface ObsSettings {
  * 插件设置接口
  */
 export interface AccurateCountSettings {
+	/** 字数统计方式 */
+	wordCountMethod: 'webnovel' | 'standard' | 'obsidian';
 	/** 默认目标字数 */
 	defaultGoal: number;
 	/** 今日目标字数（今日新增总字数目标） */
@@ -231,5 +241,8 @@ export interface AccurateCountSettings {
 	homepagePinPosition: 'none' | 'top' | 'bottom';
 	/** 非章节文件自定义排序（路径 → 排序位置） */
 	customSortOrder: Record<string, number>;
+	
+	/** 设定文件夹名称（相对作品根目录，用于人物卡悬停） */
+	loreFolderName: string;
 
 }

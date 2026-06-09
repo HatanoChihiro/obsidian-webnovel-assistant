@@ -6,9 +6,10 @@
  * [重构] 将单一巨型接口拆分为功能子接口，通过交叉类型组合
  * 好处：各子系统只需依赖自己关心的接口子集，降低耦合
  */
-import { App, Command, EventRef, PluginManifest, TFile, ViewCreator, WorkspaceLeaf } from 'obsidian';
-import { AccurateCountSettings } from './settings';
-import { ObsStatsPayload } from './stats';
+import type { App, Command, EventRef, PluginManifest, TFile, ViewCreator} from 'obsidian';
+import { WorkspaceLeaf } from 'obsidian';
+import type { AccurateCountSettings } from './settings';
+import type { ObsStatsPayload } from './stats';
 import type { CacheManager } from '../services/CacheManager';
 import type { ForeshadowingManager } from '../services/ForeshadowingManager';
 import type { RankingManager } from '../services/RankingManager';
@@ -18,6 +19,7 @@ import type { SettingsManager } from '../core/SettingsManager';
 import type { HistoryDataManager } from '../services/HistoryDataManager';
 import type { StickyNoteDataManager } from '../services/StickyNoteDataManager';
 import type { AdaptiveDebounceManager } from '../services/AdaptiveDebounceManager';
+import type { CharacterManager } from '../services/CharacterManager';
 import type { ObsOverlayServer } from '../services/ObsServer';
 import type { ObsHtmlBuilder } from '../services/ObsHtmlBuilder';
 import type { FloatingStickyNote } from '../ui/StickyNote';
@@ -144,6 +146,7 @@ export interface WebNovelAssistantPlugin extends
 
 	// 服务管理器（构造函数中初始化，始终可用）
 	adaptiveDebounceManager: AdaptiveDebounceManager;
+	characterManager: CharacterManager;
 	settingsManager: SettingsManager;
 	historyManager: HistoryDataManager;
 	fileExplorerPatcher: FileExplorerPatcher;
@@ -171,6 +174,9 @@ export interface WebNovelAssistantPlugin extends
 	// 核心方法
 	saveSettings(): Promise<void>;
 	loadSettings(): Promise<void>;
+	/**
+	 * 计算准确字数
+	 */
 	calculateAccurateWords(text: string): number;
 	isFileInWorkspace(file: TFile): boolean;
 	/** 检查文件是否在严格章节模式例外目录内 */

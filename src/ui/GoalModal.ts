@@ -1,4 +1,5 @@
-import { App, Modal, Setting, TFile } from 'obsidian';
+import type { App, TFile } from 'obsidian';
+import { Modal, Setting } from 'obsidian';
 
 /**
  * 目标字数设定弹窗

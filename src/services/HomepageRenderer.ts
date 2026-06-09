@@ -1,4 +1,5 @@
-import { App, Notice, TFile, TFolder, setIcon } from 'obsidian';
+import type { App} from 'obsidian';
+import { Notice, TFile, TFolder, setIcon } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { NovelFolderInfo } from '../types/homepage';
 import { calcStreak, calcFocusRate, calcActiveHours, calcDailyAverage, getHeatClass, HEAT_LEVELS } from '../ui/HistoryModal';
@@ -90,7 +91,7 @@ export class HomepageRenderer {
 		if (this.plugin.settings.homepageWelcome) {
 			title.textContent = this.plugin.settings.homepageWelcome;
 		} else {
-			const hour = window.moment().hour();
+			const hour = activeWindow.moment().hour();
 			let welcomeText = '';
 			let iconName = '';
 			if (hour < 6) { welcomeText = '夜深了，注意休息'; iconName = 'moon'; }
@@ -117,7 +118,7 @@ export class HomepageRenderer {
 
 		// 今日进度
 		const history = this.plugin.historyManager.getHistory();
-		const today = window.moment().format('YYYY-MM-DD');
+		const today = activeWindow.moment().format('YYYY-MM-DD');
 		const todayWords = history[today]?.addedWords || 0;
 
 		const progressRow = section.createDiv({ cls: 'homepage-progress-row' });
@@ -183,9 +184,9 @@ export class HomepageRenderer {
 				const progressPercent = target > 0 ? Math.min(100, Math.max(0, (progress / target) * 100)) : 0;
 				const progressBg = rankContainer.createDiv({ cls: 'homepage-ongoing-progress-bar-bg' });
 				const progressFill = progressBg.createDiv({ cls: 'homepage-ongoing-progress-bar-fill' });
-				progressFill.style.width = `${progressPercent}%`;
+				progressFill.setCssStyles({ width: `${progressPercent}%` });
 				// 进度条颜色区分状态
-				if (progressPercent >= 100) progressFill.style.background = 'var(--color-green, #10b981)';
+				if (progressPercent >= 100) progressFill.setCssStyles({ background: 'var(--color-green, #10b981)' });
 
 				if (daysLeft > 0 && rankingInfo.entry.status === '进行中') {
 					const bottomRow = rankContainer.createDiv({ cls: 'homepage-ranking-row homepage-ranking-sub' });
@@ -302,8 +303,8 @@ export class HomepageRenderer {
 		container.empty();
 		container.createDiv({ cls: 'homepage-section-label', text: '效率总览' });
 
-		const yearStart = window.moment().clone().startOf('year').format('YYYY-MM-DD');
-		const yearEnd = window.moment().format('YYYY-MM-DD');
+		const yearStart = activeWindow.moment().clone().startOf('year').format('YYYY-MM-DD');
+		const yearEnd = activeWindow.moment().format('YYYY-MM-DD');
 
 		const streak = calcStreak(history);
 		const focusRate = calcFocusRate(history, yearStart, yearEnd);
@@ -333,12 +334,12 @@ export class HomepageRenderer {
 		container.empty();
 		container.createDiv({ cls: 'homepage-section-label', text: '热力图' });
 
-		const now = window.moment();
+		const now = activeWindow.moment();
 		const rangeStart = this.plugin.settings.heatmapStartDate
-			? window.moment(this.plugin.settings.heatmapStartDate)
+			? activeWindow.moment(this.plugin.settings.heatmapStartDate)
 			: now.clone().startOf('year');
 		const rangeEnd = this.plugin.settings.heatmapEndDate
-			? window.moment(this.plugin.settings.heatmapEndDate)
+			? activeWindow.moment(this.plugin.settings.heatmapEndDate)
 			: now.clone().endOf('year');
 
 		const alignedStart = rangeStart.clone().isoWeekday(1);
@@ -379,7 +380,7 @@ export class HomepageRenderer {
 		container.empty();
 		container.createDiv({ cls: 'homepage-section-label', text: '近30日趋势' });
 
-		const now = window.moment();
+		const now = activeWindow.moment();
 		const days: { date: string; words: number }[] = [];
 		for (let i = 29; i >= 0; i--) {
 			const dateStr = now.clone().subtract(i, 'days').format('YYYY-MM-DD');
@@ -401,7 +402,7 @@ export class HomepageRenderer {
 			const val = day.words;
 			const heightPercent = Math.max(2, (Math.abs(val) / maxAbsValue) * 100);
 			const bar = chartArea.createDiv({ cls: 'homepage-chart-bar' });
-			bar.style.height = `${heightPercent}%`;
+			bar.setCssStyles({ height: `${heightPercent}%` });
 
 			if (val < 0) {
 				bar.addClass('bar-negative');
@@ -441,8 +442,8 @@ export class HomepageRenderer {
 		const entry = entries.find(e => e.status === '进行中') || entries[entries.length - 1];
 		
 		const progress = manager.calcProgress(entry) || entry.completedWords || 0;
-		const now = window.moment();
-		const daysLeft = Math.max(0, window.moment(entry.endDate).diff(now.clone().startOf('day'), 'days') + 1);
+		const now = activeWindow.moment();
+		const daysLeft = Math.max(0, activeWindow.moment(entry.endDate).diff(now.clone().startOf('day'), 'days') + 1);
 
 		let statusText = '';
 		switch (entry.status) {

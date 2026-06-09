@@ -1,4 +1,4 @@
-import { WorkspaceLeaf } from 'obsidian';
+import type { WorkspaceLeaf } from 'obsidian';
 import { isDesktop, isMobile } from '../utils/platform';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { VIEW_TYPES } from '../constants';
@@ -8,6 +8,7 @@ import { TimelineView, TIMELINE_VIEW_TYPE } from '../ui/TimelineView';
 import { RankingView, RANKING_VIEW_TYPE } from '../ui/RankingView';
 import { ImmersiveChapterListView } from '../ui/ImmersiveChapterListView';
 import { ImmersiveStickyNotesView } from '../ui/ImmersiveStickyNotesView';
+import { CorkboardView, CORKBOARD_VIEW_TYPE } from '../ui/CorkboardView';
 
 export class ViewManager {
 	private plugin: WebNovelAssistantPlugin;
@@ -21,6 +22,7 @@ export class ViewManager {
 		this.plugin.registerView(FORESHADOWING_VIEW_TYPE, (leaf) => new ForeshadowingView(leaf, this.plugin));
 		this.plugin.registerView(TIMELINE_VIEW_TYPE, (leaf) => new TimelineView(leaf, this.plugin));
 		this.plugin.registerView(RANKING_VIEW_TYPE, (leaf) => new RankingView(leaf, this.plugin));
+		this.plugin.registerView(CORKBOARD_VIEW_TYPE, (leaf) => new CorkboardView(leaf, this.plugin));
 		
 		if (isDesktop()) { // Desktop
 			this.plugin.registerView(VIEW_TYPES.IMMERSIVE_CHAPTER_LIST, (leaf) => new ImmersiveChapterListView(leaf, this.plugin));

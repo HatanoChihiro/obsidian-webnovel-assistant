@@ -60,11 +60,11 @@ export class AdaptiveDebounceManager {
 		
 		// 取消之前的定时器
 		if (this.timers.has(key)) {
-			window.clearTimeout(this.timers.get(key));
+			activeWindow.clearTimeout(this.timers.get(key));
 		}
 
 		// 设置新的定时器
-		const timer = window.setTimeout(() => {
+		const timer = activeWindow.setTimeout(() => {
 			callback();
 			this.timers.delete(key);
 		}, delay);
@@ -82,11 +82,11 @@ export class AdaptiveDebounceManager {
 	debounceFixed(key: string, callback: DebounceCallback, delay: number): void {
 		// 取消之前的定时器
 		if (this.timers.has(key)) {
-			window.clearTimeout(this.timers.get(key));
+			activeWindow.clearTimeout(this.timers.get(key));
 		}
 
 		// 设置新的定时器
-		const timer = window.setTimeout(() => {
+		const timer = activeWindow.setTimeout(() => {
 			callback();
 			this.timers.delete(key);
 		}, delay);
@@ -117,6 +117,15 @@ export class AdaptiveDebounceManager {
 	 * 更新输入速度统计
 	 */
 	private updateSpeedStats(key: string, now: number): void {
+		if (this.speedStats.size > 500) {
+			let deleted = 0;
+			for (const k of this.speedStats.keys()) {
+				this.speedStats.delete(k);
+				deleted++;
+				if (deleted > 250) break;
+			}
+		}
+
 		let stats = this.speedStats.get(key);
 		
 		if (!stats) {
@@ -193,7 +202,7 @@ export class AdaptiveDebounceManager {
 	cancel(key: string): void {
 		const timer = this.timers.get(key);
 		if (timer) {
-			window.clearTimeout(timer);
+			activeWindow.clearTimeout(timer);
 			this.timers.delete(key);
 		}
 	}
@@ -203,7 +212,7 @@ export class AdaptiveDebounceManager {
 	 */
 	cancelAll(): void {
 		this.timers.forEach((timer) => {
-			window.clearTimeout(timer);
+			activeWindow.clearTimeout(timer);
 		});
 		this.timers.clear();
 		this.speedStats.clear();
