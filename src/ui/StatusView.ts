@@ -297,7 +297,7 @@ export class WritingStatusView extends ItemView {
 			}
 		}
 
-		const today = activeWindow.moment().format('YYYY-MM-DD');
+		const today = window.moment().format('YYYY-MM-DD');
 		const todayStat = this.plugin.historyManager.getDailyStat(today) || { focusMs: 0, slackMs: 0, addedWords: 0 };
 		const dailyAdded = todayStat.addedWords;
 		const dailyGoal = this.plugin.settings.dailyGoal || 0;
@@ -364,15 +364,15 @@ export class WritingStatusView extends ItemView {
 					this.rankingPercentEl.innerText = ` ${rankingPercent}%`;
 					const rankingDone = active.wordTarget > 0 && progress >= active.wordTarget;
 					const rankingState = rankingDone ? 'done' : 'normal';
-					const daysLeft = Math.max(0, activeWindow.moment(active.endDate).diff(activeWindow.moment().startOf('day'), 'days') + 1);
+					const daysLeft = Math.max(0, window.moment(active.endDate).diff(window.moment().startOf('day'), 'days') + 1);
 					const endShort = active.endDate.substring(5);
 					this.rankingTimeDescEl.setText(endShort + '截止，' + (rankingDone ? '已达标！' : '还剩' + daysLeft + '天'));
 					this.rankingTimeDescEl.toggleClass('ranking-reached', rankingDone);
 					this.setProgressState(this.rankingProgressFillEl, this.rankingWordEl, this.rankingPercentEl, rankingState, rankingPercent);
 
 					// 防抖持久化完成字数
-					if (this.rankingSaveTimer) activeWindow.clearTimeout(this.rankingSaveTimer);
-					this.rankingSaveTimer = activeWindow.setTimeout(() => {
+					if (this.rankingSaveTimer) window.clearTimeout(this.rankingSaveTimer);
+					this.rankingSaveTimer = window.setTimeout(() => {
 						manager.updateProgress(active.period, progress);
 					}, 5000);
 				}
@@ -403,13 +403,13 @@ export class WritingStatusView extends ItemView {
 		let yearWords = 0;
 		let totalWords = 0;
 
-		const now = activeWindow.moment();
+		const now = window.moment();
 
 		for (const [dateStr, stat] of Object.entries(this.plugin.historyManager.getHistory())) {
 			const dailyAdded = stat.addedWords || 0;
 			totalWords += dailyAdded;
 
-			const dateMoment = activeWindow.moment(dateStr);
+			const dateMoment = window.moment(dateStr);
 			if (dateMoment.isSame(now, 'isoWeek')) weekWords += dailyAdded;
 			if (dateMoment.isSame(now, 'month')) monthWords += dailyAdded;
 			if (dateMoment.isSame(now, 'year')) yearWords += dailyAdded;
@@ -469,7 +469,7 @@ export class WritingStatusView extends ItemView {
 			col.createDiv({ cls: 'mini-chart-value', text: displayStr });
 		});
 
-		const now = activeWindow.moment();
+		const now = window.moment();
 		const endDate = now.format('YYYY-MM-DD');
 		const startDate = now.clone().subtract(7, 'days').format('YYYY-MM-DD');
 		const streak = calcStreak(history);
@@ -488,7 +488,7 @@ export class WritingStatusView extends ItemView {
 	}
 
 	async onClose() {
-		if (this.rankingSaveTimer) activeWindow.clearTimeout(this.rankingSaveTimer);
+		if (this.rankingSaveTimer) window.clearTimeout(this.rankingSaveTimer);
 		await super.onClose();
 	}
 }

@@ -73,7 +73,7 @@ export class ImmersiveChapterListView extends ItemView {
 		if (!currentFolder) {
 			listContainer.createEl('p', { text: '正在加载文件夹信息...', cls: 'immersive-empty-text' });
 			// 如果还是没找到，可能是主编辑器还没准备好，1秒后重试一次
-			activeWindow.setTimeout(() => {
+			window.setTimeout(() => {
 				if (this.app.workspace.getActiveFile()) this.refresh();
 			}, 1000);
 			return;
@@ -181,7 +181,7 @@ export class ImmersiveChapterListView extends ItemView {
 		}
 
 		// 恢复滚动位置，或者在初始时滚动到激活文档
-		activeWindow.requestAnimationFrame(() => {
+		window.requestAnimationFrame(() => {
 			if (listContainer) {
 				if (this.isInitialLoad && activeItemEl) {
 					activeItemEl.scrollIntoView({ block: 'center', behavior: 'smooth' });

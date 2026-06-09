@@ -357,7 +357,7 @@ export class AdvancedSearchModal extends Modal {
 
 			// 防卡死：每处理 50 个文件让出一次主线程
 			if (i % 50 === 0) {
-				await new Promise(resolve => activeWindow.setTimeout(resolve, 0));
+				await new Promise(resolve => window.setTimeout(resolve, 0));
 			}
 		}
 

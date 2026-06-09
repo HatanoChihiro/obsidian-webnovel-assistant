@@ -46,7 +46,7 @@ export class EditorTracker {
 		if (delta !== 0) {
 			this.plugin.sessionAddedWords += delta;
 			
-			const today = activeWindow.moment().format('YYYY-MM-DD');
+			const today = window.moment().format('YYYY-MM-DD');
 			this.plugin.historyManager.addWords(today, delta);
 			
 			// 防抖保存历史数据（1秒后保存，避免频繁写入）

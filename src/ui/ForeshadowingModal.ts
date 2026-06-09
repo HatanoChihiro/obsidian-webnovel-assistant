@@ -66,7 +66,7 @@ export class ForeshadowingInputModal extends Modal {
 			cls: 'foreshadowing-description',
 			placeholder: '例如：这是主角身世的伏笔，将在第十章揭晓...',
 		});
-		this.descriptionEl.setAttribute('style', 'width:100%;height:80px;resize:vertical;margin-bottom:12px;padding:8px;border-radius:4px;border:1px solid var(--background-modifier-border);background:var(--background-primary);color:var(--text-normal);font-family:var(--font-text);');
+		this.descriptionEl.setCssStyles({ 'width': '100%', 'height': '80px', 'resize': 'vertical', 'marginBottom': '12px', 'padding': '8px', 'borderRadius': '4px', 'border': '1px solid var(--background-modifier-border)', 'background': 'var(--background-primary)', 'color': 'var(--text-normal)', 'fontFamily': 'var(--font-text)' });
 		// 标签（可选）
 		new Setting(contentEl)
 			.setName('标签（可选）')
@@ -77,16 +77,16 @@ export class ForeshadowingInputModal extends Modal {
 			placeholder: '例如：人物 情节 世界观',
 			cls: 'foreshadowing-tags-input'
 		});
-		this.tagsEl.setAttribute('style', 'width:100%;margin-bottom:8px;padding:6px 8px;border-radius:4px;border:1px solid var(--background-modifier-border);background:var(--background-primary);color:var(--text-normal);');
+		this.tagsEl.setCssStyles({ 'width': '100%', 'marginBottom': '8px', 'padding': '6px 8px', 'borderRadius': '4px', 'border': '1px solid var(--background-modifier-border)', 'background': 'var(--background-primary)', 'color': 'var(--text-normal)' });
 		// 常用标签快捷按钮
 		const globalTags: string[] = this.plugin.settings.foreshadowing?.defaultTags || ['人物', '情节', '世界观', '道具', '伏线'];
 		const allTags = [...new Set([...globalTags, ...this.extraTags])];
 		if (allTags.length > 0) {
 			const tagBtnContainer = contentEl.createDiv({ cls: 'foreshadowing-tag-buttons' });
-			tagBtnContainer.setAttribute('style', 'display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px;');
+			tagBtnContainer.setCssStyles({ 'display': 'flex', 'flexWrap': 'wrap', 'gap': '6px', 'marginBottom': '16px' });
 			for (const tag of allTags) {
 				const btn = tagBtnContainer.createEl('button', { text: `#${tag}` });
-				btn.setAttribute('style', 'padding:2px 10px;border-radius:12px;border:1px solid var(--interactive-accent);color:var(--interactive-accent);background:transparent;cursor:pointer;font-size:0.85em;');
+				btn.setCssStyles({ 'padding': '2px 10px', 'borderRadius': '12px', 'border': '1px solid var(--interactive-accent)', 'color': 'var(--interactive-accent)', 'background': 'transparent', 'cursor': 'pointer', 'fontSize': '0.85em' });
 				btn.onclick = () => {
 					const current = this.tagsEl.value.trim();
 					const existing = current ? current.split(/\s+/) : [];
@@ -99,7 +99,7 @@ export class ForeshadowingInputModal extends Modal {
 
 		// 按钮区
 		const btnContainer = contentEl.createDiv();
-		btnContainer.setAttribute('style', 'display:flex;justify-content:flex-end;gap:10px;margin-top:8px;');
+		btnContainer.setCssStyles({ 'display': 'flex', 'justifyContent': 'flex-end', 'gap': '10px', 'marginTop': '8px' });
 		const cancelBtn = btnContainer.createEl('button', { text: '取消' });
 		cancelBtn.onclick = () => this.close();
 
@@ -107,7 +107,7 @@ export class ForeshadowingInputModal extends Modal {
 		confirmBtn.onclick = () => this.submit();
 
 		// 聚焦说明输入框
-		activeWindow.setTimeout(() => this.descriptionEl.focus(), 50);
+		window.setTimeout(() => this.descriptionEl.focus(), 50);
 
 		// Ctrl+Enter 提交
 		contentEl.addEventListener('keydown', (e) => {
@@ -171,10 +171,10 @@ class ChapterMultiSelectModal extends Modal {
 			type: 'text',
 			placeholder: '搜索章节...'
 		});
-		searchInput.setAttribute('style', 'width:100%;margin-bottom:12px;padding:6px 8px;border-radius:4px;border:1px solid var(--background-modifier-border);background:var(--background-primary);color:var(--text-normal);');
+		searchInput.setCssStyles({ 'width': '100%', 'marginBottom': '12px', 'padding': '6px 8px', 'borderRadius': '4px', 'border': '1px solid var(--background-modifier-border)', 'background': 'var(--background-primary)', 'color': 'var(--text-normal)' });
 		// 章节列表
 		this.listEl = contentEl.createDiv({ cls: 'chapter-multi-select-list' });
-		this.listEl.setAttribute('style', 'max-height:300px;overflow-y:auto;border:1px solid var(--background-modifier-border);border-radius:4px;margin-bottom:12px;');
+		this.listEl.setCssStyles({ 'maxHeight': '300px', 'overflowY': 'auto', 'border': '1px solid var(--background-modifier-border)', 'borderRadius': '4px', 'marginBottom': '12px' });
 		this.renderChapterList(this.chapters);
 
 		// 搜索功能
@@ -186,7 +186,7 @@ class ChapterMultiSelectModal extends Modal {
 
 		// 已选择的章节显示
 		const selectedEl = contentEl.createDiv({ cls: 'selected-chapters' });
-		selectedEl.setAttribute('style', 'margin-bottom:12px;padding:8px;background:var(--background-secondary);border-radius:4px;min-height:30px;');
+		selectedEl.setCssStyles({ 'marginBottom': '12px', 'padding': '8px', 'background': 'var(--background-secondary)', 'borderRadius': '4px', 'minHeight': '30px' });
 		const updateSelected = () => {
 			selectedEl.empty();
 			if (this.selectedChapters.size === 0) {
@@ -196,14 +196,14 @@ class ChapterMultiSelectModal extends Modal {
 				selectedEl.createEl('br');
 				Array.from(this.selectedChapters).forEach(ch => {
 					const tag = selectedEl.createSpan({ text: ch, cls: 'tag' });
-					tag.setAttribute('style', 'display:inline-block;margin:4px 4px 0 0;padding:2px 8px;background:var(--interactive-accent);color:var(--text-on-accent);border-radius:12px;font-size:0.9em;');
+					tag.setCssStyles({ 'display': 'inline-block', 'margin': '4px 4px 0 0', 'padding': '2px 8px', 'background': 'var(--interactive-accent)', 'color': 'var(--text-on-accent)', 'borderRadius': '12px', 'fontSize': '0.9em' });
 				});
 			}
 		};
 
 		// 按钮区
 		const btnContainer = contentEl.createDiv();
-		btnContainer.setAttribute('style', 'display:flex;justify-content:flex-end;gap:10px;');
+		btnContainer.setCssStyles({ 'display': 'flex', 'justifyContent': 'flex-end', 'gap': '10px' });
 		const cancelBtn = btnContainer.createEl('button', { text: '取消' });
 		cancelBtn.onclick = () => this.close();
 
@@ -228,12 +228,12 @@ class ChapterMultiSelectModal extends Modal {
 		this.listEl.empty();
 		chapters.forEach(chapter => {
 			const item = this.listEl.createDiv({ cls: 'chapter-item' });
-			item.setAttribute('style', 'padding:8px 12px;border-bottom:1px solid var(--background-modifier-border);cursor:pointer;display:flex;align-items:center;gap:8px;');
+			item.setCssStyles({ 'padding': '8px 12px', 'borderBottom': '1px solid var(--background-modifier-border)', 'cursor': 'pointer', 'display': 'flex', 'alignItems': 'center', 'gap': '8px' });
 			const checkbox = item.createEl('input', { type: 'checkbox' });
 			checkbox.checked = this.selectedChapters.has(chapter);
-			checkbox.setAttribute('style', 'cursor:pointer;');
+			checkbox.setCssStyles({ 'cursor': 'pointer' });
 			const label = item.createSpan({ text: chapter });
-			label.setAttribute('style', 'flex:1;cursor:pointer;');
+			label.setCssStyles({ 'flex': '1', 'cursor': 'pointer' });
 			const toggle = () => {
 				if (this.selectedChapters.has(chapter)) {
 					this.selectedChapters.delete(chapter);
@@ -348,13 +348,13 @@ export class ForeshadowingRecoveryModal extends Modal {
 			type: 'text',
 			placeholder: '例如：第十章, 第十一章',
 		});
-		this.inputEl.setAttribute('style', 'width:100%;margin-bottom:8px;padding:6px 8px;border-radius:4px;border:1px solid var(--background-modifier-border);background:var(--background-primary);color:var(--text-normal);');
+		this.inputEl.setCssStyles({ 'width': '100%', 'marginBottom': '8px', 'padding': '6px 8px', 'borderRadius': '4px', 'border': '1px solid var(--background-modifier-border)', 'background': 'var(--background-primary)', 'color': 'var(--text-normal)' });
 		// 如果有章节文件，显示选择按钮
 		if (this.chapters.length > 0) {
 			const btnRow = contentEl.createDiv();
-			btnRow.setAttribute('style', 'display:flex;gap:8px;margin-bottom:12px;');
+			btnRow.setCssStyles({ 'display': 'flex', 'gap': '8px', 'marginBottom': '12px' });
 			const selectBtn = btnRow.createEl('button', { text: '从列表选择（支持多选）' });
-			selectBtn.setAttribute('style', 'flex:1;padding:6px 12px;border-radius:4px;border:1px solid var(--interactive-accent);color:var(--interactive-accent);background:transparent;cursor:pointer;');
+			selectBtn.setCssStyles({ 'flex': '1', 'padding': '6px 12px', 'borderRadius': '4px', 'border': '1px solid var(--interactive-accent)', 'color': 'var(--interactive-accent)', 'background': 'transparent', 'cursor': 'pointer' });
 			selectBtn.onclick = () => {
 				this.close();
 				new ChapterMultiSelectModal(this.app, this.chapters, (selectedChapters) => {
@@ -371,14 +371,14 @@ export class ForeshadowingRecoveryModal extends Modal {
 
 		// 按钮区
 		const btnContainer = contentEl.createDiv();
-		btnContainer.setAttribute('style', 'display:flex;justify-content:flex-end;gap:10px;margin-top:16px;');
+		btnContainer.setCssStyles({ 'display': 'flex', 'justifyContent': 'flex-end', 'gap': '10px', 'marginTop': '16px' });
 		const cancelBtn = btnContainer.createEl('button', { text: '取消' });
 		cancelBtn.onclick = () => this.close();
 
 		const confirmBtn = btnContainer.createEl('button', { text: '确认回收', cls: 'mod-cta' });
 		confirmBtn.onclick = () => this.submit();
 
-		activeWindow.setTimeout(() => this.inputEl.focus(), 50);
+		window.setTimeout(() => this.inputEl.focus(), 50);
 
 		this.inputEl.addEventListener('keydown', (e) => {
 			if (e.key === 'Enter') {
@@ -446,7 +446,7 @@ export class ConfirmCreateForeshadowingFileModal extends Modal {
 		});
 
 		const btnContainer = contentEl.createDiv();
-		btnContainer.setAttribute('style', 'display:flex;justify-content:flex-end;gap:10px;margin-top:20px;');
+		btnContainer.setCssStyles({ 'display': 'flex', 'justifyContent': 'flex-end', 'gap': '10px', 'marginTop': '20px' });
 		const cancelBtn = btnContainer.createEl('button', { text: '取消' });
 		cancelBtn.onclick = () => this.close();
 

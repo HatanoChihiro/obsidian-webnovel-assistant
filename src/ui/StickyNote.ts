@@ -36,7 +36,7 @@ export class SaveStickyNoteModal extends Modal {
 			.setDesc('输入文件名（无需 .md 后缀）')
 			.addText(text => {
 				this.fileNameInput = text.inputEl;
-				text.setValue(`便签_${activeWindow.moment().format('YYYYMMDD_HHmmss')}`)
+				text.setValue(`便签_${window.moment().format('YYYYMMDD_HHmmss')}`)
 					.onChange(() => {
 						// 实时验证文件名
 						const fileName = this.fileNameInput.value.trim();
@@ -49,7 +49,7 @@ export class SaveStickyNoteModal extends Modal {
 				text.inputEl.setCssStyles({ width: '100%' });
 				
 				// 自动选中文件名（不包括时间戳）
-				activeWindow.setTimeout(() => {
+				window.setTimeout(() => {
 					const underscoreIndex = text.inputEl.value.indexOf('_');
 					if (underscoreIndex > 0) {
 						text.inputEl.setSelectionRange(0, underscoreIndex);
@@ -276,7 +276,7 @@ export class FloatingStickyNote extends Component {
 
 		// [BUGFIX] 清理可能尚在延迟中的 resize 防抖计时器，防止其在实例销毁后还尝试操作 DOM。
 		if (this.resizeTimer !== null) {
-			activeWindow.clearTimeout(this.resizeTimer);
+			window.clearTimeout(this.resizeTimer);
 			this.resizeTimer = null;
 		}
 		
@@ -535,7 +535,7 @@ export class FloatingStickyNote extends Component {
 			// 确保编辑模式下焦点在 textarea
 			if (this.state.isEditing) {
 				// 使用 requestAnimationFrame 确保在下一帧设置焦点
-				activeWindow.requestAnimationFrame(() => {
+				window.requestAnimationFrame(() => {
 					this.textareaEl.focus();
 				});
 			}
@@ -689,7 +689,7 @@ export class FloatingStickyNote extends Component {
 					this.textareaEl.value = newContent;
 				}
 				// 仅在非聚焦时尝试恢复焦点，避免干扰正常输入循环
-				// activeWindow.setTimeout(() => { this.textareaEl.focus(); }, 50);
+				// window.setTimeout(() => { this.textareaEl.focus(); }, 50);
 			}
 		} else {
 			this.textareaEl.setCssStyles({ display: 'none' });
@@ -778,9 +778,9 @@ export class FloatingStickyNote extends Component {
 			// [BUGFIX] 添加 300ms 防抖：ResizeObserver 在用户拖动调整大小时每帧触发一次，
 			// 如果每帧都执行 saveState()（内含文件 I/O）会导致每秒最高 60 次文件写入。
 			if (this.resizeTimer !== null) {
-				activeWindow.clearTimeout(this.resizeTimer);
+				window.clearTimeout(this.resizeTimer);
 			}
-			this.resizeTimer = activeWindow.setTimeout(() => {
+			this.resizeTimer = window.setTimeout(() => {
 				this.resizeTimer = null;
 
 				// 如果元素当前被隐藏（如在沉浸模式下），不保存 0x0 的尺寸

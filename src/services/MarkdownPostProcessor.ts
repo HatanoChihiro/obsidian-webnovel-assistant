@@ -50,7 +50,7 @@ export class MarkdownPostProcessor {
 			checkbox.type = 'checkbox';
 			checkbox.title = '标记为已回收';
 			checkbox.className = 'foreshadowing-recovery-checkbox';
-			checkbox.setAttribute('style', 'margin-left:8px;cursor:pointer;vertical-align:middle;width:15px;height:15px;accent-color:var(--interactive-accent);');
+			checkbox.setCssStyles({ 'marginLeft': '8px', 'cursor': 'pointer', 'verticalAlign': 'middle', 'width': '15px', 'height': '15px', 'accentColor': 'var(--interactive-accent)' });
 			checkbox.addEventListener('change', async (e) => {
 				e.preventDefault();
 				checkbox.checked = false; // 先恢复，等用户确认后再更新文件

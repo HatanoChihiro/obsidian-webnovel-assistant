@@ -19,7 +19,7 @@ export class ObsHtmlBuilder {
 		const focusSec = Math.floor(this.plugin.focusMs / 1000);
 		const slackSec = Math.floor(this.plugin.slackMs / 1000);
 		const totalSec = focusSec + slackSec;
-		const today = activeWindow.moment().format('YYYY-MM-DD');
+		const today = window.moment().format('YYYY-MM-DD');
 		const todayStat = this.plugin.historyManager.getDailyStat(today) || { focusMs: 0, slackMs: 0, addedWords: 0 };
 
 		let targetGoal = this.plugin.settings.defaultGoal;
@@ -403,7 +403,7 @@ function update() {
 				safeSetText('percentText', d.percent + '%');
 				const fill = document.getElementById('progressFill');
 				if (fill) {
-					fill.style.width = d.percent + '%';
+					fill.setCssStyles({ 'width': d.percent + '%' });
 					fill.className = 'progress-fill' + (d.percent >= 100 ? ' done' : '');
 				}
 			}
@@ -413,7 +413,7 @@ function update() {
 				safeSetText('dailyPercentText', d.dailyPercent + '%');
 				const dailyFill = document.getElementById('dailyProgressFill');
 				if (dailyFill) {
-					dailyFill.style.width = d.dailyPercent + '%';
+					dailyFill.setCssStyles({ 'width': d.dailyPercent + '%' });
 					dailyFill.className = 'progress-fill' + (d.dailyPercent >= 100 ? ' done' : '');
 				}
 			}

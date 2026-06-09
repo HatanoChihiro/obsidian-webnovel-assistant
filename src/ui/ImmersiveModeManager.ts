@@ -127,7 +127,7 @@ export class ImmersiveModeManager {
 				await this.app.workspace.setLayout(this.savedLayout);
 
 				if (currentMainFile) {
-					activeWindow.requestAnimationFrame(async () => {
+					window.requestAnimationFrame(async () => {
 						const leaves = this.app.workspace.getLeavesOfType('markdown');
 						const targetLeaf = leaves.find(l => l.active) || leaves[0] || this.app.workspace.getLeaf(false);
 
@@ -282,7 +282,7 @@ export class ImmersiveModeManager {
 		// 确保主编辑器聚焦
 		workspace.setActiveLeaf(mainLeaf, { focus: true });
 
-		activeWindow.setTimeout(() => this.app.workspace.updateOptions(), 300);
+		window.setTimeout(() => this.app.workspace.updateOptions(), 300);
 		
 		// 监听布局变化，实时保存比例
 		this.layoutChangeRef = this.app.workspace.on('layout-change', () => {
@@ -326,12 +326,12 @@ export class ImmersiveModeManager {
 			}
 
 			if (hasFailure && attempt < 5 && this.isImmersiveActive) {
-				activeWindow.setTimeout(() => apply(attempt + 1), 100 * (attempt + 1));
+				window.setTimeout(() => apply(attempt + 1), 100 * (attempt + 1));
 			}
 		};
 
-		activeWindow.requestAnimationFrame(() => apply(0));
-		activeWindow.setTimeout(() => apply(0), 300);
+		window.requestAnimationFrame(() => apply(0));
+		window.setTimeout(() => apply(0), 300);
 	}
 
 	/**
@@ -370,14 +370,14 @@ export class ImmersiveModeManager {
 		activeDocument.body.appendChild(this.topBarEl);
 		this.renderTopBarContent();
 
-		this.updateInterval = this.plugin.registerInterval(activeWindow.setInterval(() => {
+		this.updateInterval = this.plugin.registerInterval(window.setInterval(() => {
 			this.renderTopBarContent();
 		}, 1000));
 	}
 
 	private removeTopBar(): void {
 		if (this.updateInterval) {
-			activeWindow.clearInterval(this.updateInterval);
+			window.clearInterval(this.updateInterval);
 			this.updateInterval = null;
 		}
 		if (this.topBarEl) {

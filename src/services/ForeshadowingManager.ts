@@ -173,7 +173,7 @@ export class ForeshadowingManager {
 				targetFile = await this.createForeshadowingFile(sourceFile);
 			}
 
-			const now = activeWindow.moment().format('YYYY-MM-DD HH:mm');
+			const now = window.moment().format('YYYY-MM-DD HH:mm');
 
 			// 检查是否已存在相同说明的条目
 			const existingContent = await this.app.vault.read(targetFile);
@@ -295,7 +295,7 @@ export class ForeshadowingManager {
 	): Promise<boolean> {
 		return this.writer.enqueue(async () => {
 			const content = await this.app.vault.read(targetFile);
-			const now = activeWindow.moment().format('YYYY-MM-DD HH:mm');
+			const now = window.moment().format('YYYY-MM-DD HH:mm');
 
 			// 使用缓存的正则表达式
 			const titlePattern = this.getEntryPattern(sourceFile, createdAt, '未回收|已废弃');
@@ -330,7 +330,7 @@ export class ForeshadowingManager {
 	): Promise<boolean> {
 		return this.writer.enqueue(async () => {
 			const content = await this.app.vault.read(targetFile);
-			const now = activeWindow.moment().format('YYYY-MM-DD HH:mm');
+			const now = window.moment().format('YYYY-MM-DD HH:mm');
 
 			// 查找已回收条目的回收列表
 			const pattern = new RegExp(

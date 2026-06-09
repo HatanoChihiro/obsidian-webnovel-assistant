@@ -119,7 +119,7 @@ export abstract class BaseFormModal extends Modal {
 	 * 自动聚焦到指定元素
 	 */
 	protected autoFocus(element: HTMLInputElement | HTMLTextAreaElement, delay: number = 50): void {
-		activeWindow.setTimeout(() => {
+		window.setTimeout(() => {
 			element.focus();
 			if (element instanceof HTMLInputElement) {
 				element.select();

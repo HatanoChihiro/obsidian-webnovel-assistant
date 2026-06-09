@@ -246,7 +246,7 @@ export class ForeshadowingView extends CreativeView {
 							const fileList = recoveryFileNames.map(f => `[[${f}]]`).join('、');
 							new Notice(`[成功] 已标记为回收：${fileList}`);
 							// 文件修改会自动触发刷新，但在某些平台可能有延迟，添加备用刷新
-							activeWindow.setTimeout(() => this.refresh(), 100);
+							window.setTimeout(() => this.refresh(), 100);
 						} else {
 							new Notice('[错误] 标记失败，请检查伏笔文件');
 						}
@@ -266,7 +266,7 @@ export class ForeshadowingView extends CreativeView {
 				if (success) {
 					new Notice('已标记为废弃');
 					// 文件修改会自动触发刷新，但在某些平台可能有延迟，添加备用刷新
-					activeWindow.setTimeout(() => this.refresh(), 100);
+					window.setTimeout(() => this.refresh(), 100);
 				} else {
 					new Notice('[错误] 操作失败');
 				}
@@ -286,7 +286,7 @@ export class ForeshadowingView extends CreativeView {
 				if (success) {
 					new Notice('已恢复为未回收');
 					// 文件修改会自动触发刷新，但在某些平台可能有延迟，添加备用刷新
-					activeWindow.setTimeout(() => this.refresh(), 100);
+					window.setTimeout(() => this.refresh(), 100);
 				} else {
 					new Notice('[错误] 操作失败');
 				}

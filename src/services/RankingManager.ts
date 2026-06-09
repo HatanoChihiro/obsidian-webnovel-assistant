@@ -185,7 +185,7 @@ export class RankingManager {
 		const entries = await this.loadEntries();
 		if (!entries) return false;
 
-		const today = activeWindow.moment().format('YYYY-MM-DD');
+		const today = window.moment().format('YYYY-MM-DD');
 		let changed = false;
 
 		for (const entry of entries) {
@@ -206,7 +206,7 @@ export class RankingManager {
 		const entries = await this.loadEntries();
 		if (!entries) return false;
 
-		const today = activeWindow.moment().format('YYYY-MM-DD');
+		const today = window.moment().format('YYYY-MM-DD');
 		let changed = false;
 
 		for (const entry of entries) {

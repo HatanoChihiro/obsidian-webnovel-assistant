@@ -1,4 +1,4 @@
-import type { WorkspaceLeaf, TFile} from 'obsidian';
+import { TFile, type WorkspaceLeaf } from 'obsidian';
 import { ItemView, Notice, Menu } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ChapterSorter } from '../services/ChapterSorter';
@@ -183,7 +183,7 @@ export class CorkboardView extends ItemView {
 								console.error(err);
 								new Notice('状态更新失败');
 							} finally {
-								activeWindow.setTimeout(() => { this.isSavingMetadata = false; }, 500);
+								window.setTimeout(() => { this.isSavingMetadata = false; }, 500);
 							}
 						});
 				});
@@ -268,7 +268,7 @@ export class CorkboardView extends ItemView {
 					console.error(err);
 					new Notice('保存摘要失败，请检查文件状态');
 				} finally {
-					activeWindow.setTimeout(() => { this.isSavingMetadata = false; }, 500);
+					window.setTimeout(() => { this.isSavingMetadata = false; }, 500);
 				}
 			}
 			

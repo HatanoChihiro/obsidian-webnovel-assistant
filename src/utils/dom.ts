@@ -18,7 +18,7 @@ export function rafThrottle<T extends (...args: any[]) => void>(fn: T) {
 
 		if (raf) return;
 
-		raf = activeWindow.requestAnimationFrame(() => {
+		raf = window.requestAnimationFrame(() => {
 			raf = 0;
 			if (latestArgs) {
 				fn(...latestArgs);
@@ -27,7 +27,7 @@ export function rafThrottle<T extends (...args: any[]) => void>(fn: T) {
 	};
 
 	throttled.cancel = () => {
-		activeWindow.cancelAnimationFrame(raf);
+		window.cancelAnimationFrame(raf);
 		raf = 0;
 	};
 

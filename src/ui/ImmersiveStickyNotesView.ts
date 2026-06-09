@@ -89,8 +89,12 @@ export class ImmersiveStickyNotesView extends ItemView {
 	}
 
 	async renderNotes() {
-		const { containerEl } = this;
+		// 清空容器
+		const containerEl = this.containerEl;
 		containerEl.empty();
+		
+		this.isVertical = false;
+
 		containerEl.setCssStyles({ position: 'relative' });
 		containerEl.setCssStyles({ display: 'flex' });
 		containerEl.setCssStyles({ flexDirection: 'column' });
@@ -131,13 +135,13 @@ export class ImmersiveStickyNotesView extends ItemView {
 		let hideTimeout: number;
 
 		const showToolbar = () => {
-			activeWindow.clearTimeout(hideTimeout);
+			window.clearTimeout(hideTimeout);
 			toolbar.setCssStyles({ opacity: '1' });
 			toolbar.setCssStyles({ pointerEvents: 'auto' });
 		};
 
 		const hideToolbar = () => {
-			hideTimeout = activeWindow.setTimeout(() => {
+			hideTimeout = window.setTimeout(() => {
 				toolbar.setCssStyles({ opacity: '0' });
 				toolbar.setCssStyles({ pointerEvents: 'none' });
 			}, 200);
@@ -176,24 +180,14 @@ export class ImmersiveStickyNotesView extends ItemView {
 				const shouldBeVertical = height > width * 1.2 || width < 450;
 				if (this.isVertical !== shouldBeVertical) {
 					this.isVertical = shouldBeVertical;
-					if (this.isVertical) {
-						dockContainer.setCssStyles({ flexDirection: 'column' });
-						dockContainer.setCssStyles({ overflowX: 'hidden' });
-						dockContainer.setCssStyles({ overflowY: 'auto' });
-					} else {
-						dockContainer.setCssStyles({ flexDirection: 'row' });
-						dockContainer.setCssStyles({ overflowX: 'auto' });
-						dockContainer.setCssStyles({ overflowY: 'hidden' });
-					}
+					dockContainer.toggleClass('immersive-vertical-layout', this.isVertical);
 				}
 			}
 		});
 		this.resizeObserver.observe(containerEl);
 		
 		// 初始默认设为横向（会被 observer 立即覆盖）
-		dockContainer.setCssStyles({ flexDirection: 'row' });
-		dockContainer.setCssStyles({ overflowX: 'auto' });
-		dockContainer.setCssStyles({ overflowY: 'hidden' });
+		dockContainer.toggleClass('immersive-vertical-layout', false);
 
 		// 滚轮转换为横向滚动
 		dockContainer.addEventListener('wheel', (evt) => {

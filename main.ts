@@ -128,7 +128,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		await this.setupCoreFeatures();
 		
 		// 定期保存设置和缓存
-		this.registerInterval(activeWindow.setInterval(() => {
+		this.registerInterval(window.setInterval(() => {
 			if (this.isTracking) {
 				this.saveSettings().catch(err => {
 					console.error('[Plugin] 定期保存设置失败:', err);
@@ -303,7 +303,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			if (this.settings.showExplorerCounts) {
 				this.app.workspace.onLayoutReady(() => {
 					// 移动端需要更长的延迟，确保文件浏览器完全加载
-						activeWindow.setTimeout(() => {
+						window.setTimeout(() => {
 						this.buildFolderCache();
 					}, PLATFORM_DELAYS.MOBILE_EXPLORER_DELAY);
 				});
@@ -345,7 +345,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.app.workspace.onLayoutReady(() => {
 			// 延迟构建缓存，避免阻塞启动
 			// 500ms 是一个平衡点：既不会阻塞启动，又能快速显示字数
-			activeWindow.setTimeout(() => {
+			window.setTimeout(() => {
 				this.buildFolderCache();
 			}, PLATFORM_DELAYS.DESKTOP_EXPLORER_DELAY);
 		});
@@ -527,7 +527,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		if (this.settings.showExplorerCounts) {
 			this.app.workspace.onLayoutReady(() => {
 				// 平板端需要延迟，确保文件浏览器完全加载
-					activeWindow.setTimeout(() => {
+					window.setTimeout(() => {
 						this.buildFolderCache();
 					}, PLATFORM_DELAYS.TABLET_EXPLORER_DELAY);
 			});
@@ -636,7 +636,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		// 如果处于沉浸模式，立即刷新便签列表视图
 		if (activeDocument.body.classList.contains('immersive-mode-active')) {
 			// 给一点额外时间让设置/文件持久化完成
-			activeWindow.setTimeout(() => {
+			window.setTimeout(() => {
 				this.refreshImmersiveNotes();
 			}, 200);
 		}
@@ -680,8 +680,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			if (view.getMode() !== 'preview') {
 				// 使用 setTimeout 避免与 Obsidian 内部的文件打开/导航 Promise 产生竞态条件
 				// [BUGFIX] 使用计时器取消机制防止快速切换时的竞态
-				if (this._homepageTimer) activeWindow.clearTimeout(this._homepageTimer);
-				this._homepageTimer = activeWindow.setTimeout(() => {
+				if (this._homepageTimer) window.clearTimeout(this._homepageTimer);
+				this._homepageTimer = window.setTimeout(() => {
 					this._homepageTimer = null;
 					// 获取最新状态避免过期
 					const latestView = this.app.workspace.getActiveViewOfType(MarkdownView);
@@ -708,8 +708,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 					// 使用 setTimeout 避免切换回其他文档时，被 Obsidian 自身的默认加载状态覆盖
 					const targetPath = activeFile?.path;
 					// [BUGFIX] 使用计时器取消机制防止快速切换时的竞态
-					if (this._homepageTimer) activeWindow.clearTimeout(this._homepageTimer);
-					this._homepageTimer = activeWindow.setTimeout(() => {
+					if (this._homepageTimer) window.clearTimeout(this._homepageTimer);
+					this._homepageTimer = window.setTimeout(() => {
 						this._homepageTimer = null;
 						const latestView = this.app.workspace.getActiveViewOfType(MarkdownView);
 						if (latestView && latestView.file?.path === targetPath) {
@@ -824,7 +824,7 @@ onunload() {
 		// 5. 清理定时器和防抖
 		this.adaptiveDebounceManager.cancelAll();
 		if (this._homepageTimer) {
-			activeWindow.clearTimeout(this._homepageTimer);
+			window.clearTimeout(this._homepageTimer);
 			this._homepageTimer = null;
 		}
 
@@ -891,7 +891,7 @@ onunload() {
 				// 加载成功且缓存完整，直接刷新显示
 				// 移动端需要额外延迟，确保文件浏览器完全准备好
 				if (isMobile()) {
-					activeWindow.setTimeout(() => {
+					window.setTimeout(() => {
 						this.refreshFolderCounts();
 						if (this.settings.enableHomepage) this.homepageManager?.refreshHomepageViews();
 					}, PLATFORM_DELAYS.MOBILE_CACHE_REFRESH_DELAY);
@@ -930,7 +930,7 @@ onunload() {
 
 			// 移动端需要额外延迟，确保文件浏览器完全准备好
 			if (isMobile()) {
-				activeWindow.setTimeout(() => {
+				window.setTimeout(() => {
 						this.refreshFolderCounts();
 						if (this.settings.enableHomepage) this.homepageManager?.refreshHomepageViews();
 				}, PLATFORM_DELAYS.MOBILE_CACHE_REFRESH_DELAY);

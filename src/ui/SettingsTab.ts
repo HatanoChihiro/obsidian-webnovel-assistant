@@ -26,7 +26,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		containerEl.createEl('h1', { text: 'WebNovel Assistant 设置' });
+		new Setting(containerEl).setName('WebNovel Assistant 设置').setHeading();
 
 		// 创建选项卡头部
 		const navContainer = containerEl.createDiv({ cls: 'webnovel-settings-tabs' });
@@ -1001,7 +1001,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 						this.plugin.settings.obs.obsCustomCss = value;
 						await this.plugin.saveSettings();
 					});
-				text.inputEl.setAttribute('style', 'width: 100%; height: 100px; font-family: monospace;');
+				text.inputEl.setCssStyles({ 'width': '100%', 'height': '100px', 'fontFamily': 'monospace' });
 				return text;
 			});
 
