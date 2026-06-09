@@ -3,7 +3,7 @@ import { StateField, RangeSetBuilder, StateEffect } from '@codemirror/state';
 import type { EditorView, ViewUpdate } from '@codemirror/view';
 import { GutterMarker, gutter, ViewPlugin } from '@codemirror/view';
 import type { TFile} from 'obsidian';
-import { App, MarkdownView, editorInfoField } from 'obsidian';
+import { editorInfoField } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ChapterSorter } from '../services/ChapterSorter';
 
@@ -36,7 +36,7 @@ class WordCountMarker extends GutterMarker {
 function getFileFromState(state: EditorState): TFile | null {
 	try {
 		return state.field(editorInfoField).file || null;
-	} catch (e) {
+	} catch {
 		return null;
 	}
 }
@@ -151,7 +151,7 @@ export function createWordCountGutter(plugin: WebNovelAssistantPlugin): Extensio
 function getFileFromView(view: EditorView): TFile | null {
 	try {
 		return view.state.field(editorInfoField).file || null;
-	} catch (e) {
+	} catch {
 		if ((view as any).file) return (view as any).file;
 		return null;
 	}

@@ -128,7 +128,7 @@ body .markdown-source-view.mod-cm6 .cm-editor.webnovel-show-gutter .cm-scroller 
 	align-items: center; /* 依托内部的零宽字符实现完美的文本基线级垂直居中 */
 	justify-content: flex-end;
 	width: 0px;
-	/* 移除所有硬编码高度，完全靠 ​ 撑开，绝对匹配当前编辑器行高 */
+	/* 移除所有硬编码高度，完全靠 ​​ 撑开，绝对匹配当前编辑器行高 */
 	overflow: visible;
 }
 
@@ -390,7 +390,7 @@ body .history-stats-modal .stats-chart-scroll-wrapper:hover::-webkit-scrollbar-t
 .ranking-status-pending { background: var(--text-muted); color: var(--text-on-accent); }
 .ranking-card-info-row { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-normal); font-weight: 500; flex-wrap: nowrap; overflow: hidden; margin-bottom: 4px; }
 .ranking-card-platform { }
-.ranking-card-position::before { content: '·'; margin-right: 6px; }
+.ranking-card-position::before { content: '路'; margin-right: 6px; }
 .ranking-card-cycle-row { font-size: 12px; color: var(--text-muted); margin-bottom: 10px; }
 .ranking-card-cycle-below { text-align: right; margin-top: 4px; }
 .ranking-card-progress { margin-bottom: 6px; }
@@ -1081,7 +1081,7 @@ body.immersive-mode-active .workspace {
 /* 右列最后一个区块也拉伸到底部，与左列齐平 */
 .homepage-grid-right .homepage-grid-cell:last-child {
 	flex-grow: 1;
-	margin-top: 24px; /* 让整个图表区块离热力图稍微远一点，并且间接让内部柱状图矮一点 */
+	margin-top: 24px; /* 让整个图表区块离热力图稍远一点，并且间接让内部柱状图短一点 */
 }
 
 /* 左列卡片：滚动布局，不再需要网格列覆盖 */
@@ -1240,7 +1240,7 @@ body.immersive-mode-active .workspace {
 	margin-left: 18px;
 }
 
-/* 人物卡文本匹配悬停提示 */
+/* 人物卡片文本匹配悬停提示 */
 .wn-character-match {
 	border-bottom: 1px dashed var(--interactive-accent);
 	cursor: pointer;
@@ -1250,7 +1250,7 @@ body.immersive-mode-active .workspace {
 	background-color: color-mix(in srgb, var(--interactive-accent) 20%, transparent);
 }
 
-/* ── 大纲软木板 (Corkboard) ── */
+/* ── 大翰软木板 (Corkboard) ── */
 .wn-corkboard-container {
 	padding: 20px;
 	background-color: var(--background-primary);
@@ -1478,7 +1478,7 @@ body.immersive-mode-active .workspace {
 /* ==========================================================================
    沉浸模式属性面板隐藏
    ========================================================================== */
-/* 负责主编辑区：使用极高优先级覆盖源模式和实时预览模式 */
+/* 负责主编辑区：使用极高优先级覆盖源码模式和实时预览模式 */
 body.immersive-hide-properties div.workspace-leaf-content[data-type="markdown"] div.markdown-source-view div.metadata-container,
 body.immersive-hide-properties div.workspace-leaf-content[data-type="markdown"] div.metadata-container {
 	display: none;
@@ -1544,13 +1544,13 @@ body.immersive-hide-properties .markdown-reading-view .frontmatter {
 /* ==========================================================================
    护眼模式 (Eye Care)
    ========================================================================== */
-body.webnovel-eye-care-enabled .workspace-leaf-content[data-type="markdown"]:not(:has(.webnovel-homepage)) {
+body.webnovel-eye-care-enabled .workspace-leaf-content[data-type="markdown"]:not(.is-webnovel-homepage) {
 	--background-primary: var(--webnovel-eye-care-color, #E8F5E9);
 	--background-primary-alt: var(--webnovel-eye-care-color, #E8F5E9);
 }
-body.webnovel-eye-care-enabled .workspace-leaf-content[data-type="markdown"]:not(:has(.webnovel-homepage)) .view-content,
-body.webnovel-eye-care-enabled .workspace-leaf-content[data-type="markdown"]:not(:has(.webnovel-homepage)) .markdown-source-view .cm-editor .cm-scroller,
-body.webnovel-eye-care-enabled .workspace-leaf-content[data-type="markdown"]:not(:has(.webnovel-homepage)) .markdown-reading-view .markdown-preview-view {
+body.webnovel-eye-care-enabled .workspace-leaf-content[data-type="markdown"]:not(.is-webnovel-homepage) .view-content,
+body.webnovel-eye-care-enabled .workspace-leaf-content[data-type="markdown"]:not(.is-webnovel-homepage) .markdown-source-view .cm-editor .cm-scroller,
+body.webnovel-eye-care-enabled .workspace-leaf-content[data-type="markdown"]:not(.is-webnovel-homepage) .markdown-reading-view .markdown-preview-view {
 	background-color: var(--webnovel-eye-care-color, #E8F5E9);
 }
 
@@ -1637,3 +1637,306 @@ body .my-sticky-textarea { flex-grow: 1; width: 100%; height: calc(100% - 10px);
 body .my-sticky-textarea:focus { box-shadow: none; background-color: transparent; }
 
 body .my-sticky-content h1.inline-title { display: none; }
+.immersive-sticky-dock {
+    flex: 1;
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 10px;
+    padding: 10px;
+    padding-top: 10px;
+    align-items: center;
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+.immersive-sticky-dock.immersive-vertical-layout.immersive-vertical-layout {
+    flex-direction: column;
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+/* ==========================================
+   创作主页：字体与宽度锁定 (Defensive High-Specificity Overrides)
+   使用层级叠加 (Class Chaining) 代替 !important，确保样式不被第三方主题(如Minimal)劫持
+   ========================================== */
+body .workspace-leaf-content.is-webnovel-homepage.is-webnovel-homepage {
+    --font-text-size: 16px;
+    --editor-font-size: 16px;
+    --line-width: 100%;
+    --line-width-adaptive: 100%;
+    --max-width: none;
+    font-size: 16px;
+}
+
+body .workspace-leaf-content.is-webnovel-homepage.is-webnovel-homepage .markdown-source-view.markdown-source-view,
+body .workspace-leaf-content.is-webnovel-homepage.is-webnovel-homepage .markdown-preview-view.markdown-preview-view,
+body .workspace-leaf-content.is-webnovel-homepage.is-webnovel-homepage .markdown-preview-sizer.markdown-preview-sizer,
+body .workspace-leaf-content.is-webnovel-homepage.is-webnovel-homepage .homepage-grid-container.homepage-grid-container {
+    --font-text-size: 16px;
+    --editor-font-size: 16px;
+    --line-width: 100%;
+    --line-width-adaptive: 100%;
+    --max-width: none;
+    font-size: 16px;
+    max-width: none;
+    width: 100%;
+}
+
+/* ==========================================
+   全部自定义视图：字体与缩放防御锁定 (Defensive High-Specificity Overrides)
+   保护所有插件自建视图（大纲、时间线、统计、便签）免受 Minimal 等主题全局字号缩放污染
+   ========================================== */
+body .workspace-leaf-content[data-type="webnovel-corkboard"][data-type="webnovel-corkboard"],
+body .workspace-leaf-content[data-type="webnovel-timeline"][data-type="webnovel-timeline"],
+body .workspace-leaf-content[data-type="webnovel-status"][data-type="webnovel-status"],
+body .workspace-leaf-content[data-type="immersive-sticky-notes"][data-type="immersive-sticky-notes"] {
+    --font-text-size: 16px;
+    --editor-font-size: 16px;
+    font-size: 16px;
+}
+
+body .workspace-leaf-content[data-type="webnovel-corkboard"][data-type="webnovel-corkboard"] .view-content,
+body .workspace-leaf-content[data-type="webnovel-timeline"][data-type="webnovel-timeline"] .view-content,
+body .workspace-leaf-content[data-type="webnovel-status"][data-type="webnovel-status"] .view-content,
+body .workspace-leaf-content[data-type="immersive-sticky-notes"][data-type="immersive-sticky-notes"] .view-content {
+    font-size: 16px;
+    --font-text-size: 16px;
+    --editor-font-size: 16px;
+}
+
+/* ==========================================================================
+   webnovel-* CSS classes: replacing inline setCssStyles/setCssProps calls
+   All styles previously set via JS are now defined here as CSS classes.
+   ========================================================================== */
+
+/* ── AdvancedSearchModal ── */
+.webnovel-search-folder-list {
+    max-height: 250px;
+    overflow-y: auto;
+    border: 1px solid var(--background-modifier-border);
+    padding: 10px;
+    border-radius: 5px;
+    margin-top: 10px;
+}
+.webnovel-search-folder-name { font-weight: bold; }
+.webnovel-search-checkbox { margin-left: 10px; }
+.webnovel-search-file-name { color: var(--text-muted); }
+
+/* ── ForeshadowingModal ── */
+.webnovel-modal-textarea {
+    width: 100%;
+    height: 80px;
+    resize: vertical;
+    margin-bottom: 12px;
+    padding: 8px;
+    border-radius: 4px;
+    border: 1px solid var(--background-modifier-border);
+    background: var(--background-primary);
+    color: var(--text-normal);
+    font-family: var(--font-text);
+    box-sizing: border-box;
+}
+.webnovel-modal-input {
+    width: 100%;
+    margin-bottom: 8px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--background-modifier-border);
+    background: var(--background-primary);
+    color: var(--text-normal);
+    box-sizing: border-box;
+}
+.webnovel-modal-list {
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    margin-bottom: 12px;
+}
+.webnovel-modal-selected {
+    margin-bottom: 12px;
+    padding: 8px;
+    background: var(--background-secondary);
+    border-radius: 4px;
+    min-height: 30px;
+}
+.webnovel-modal-selected-tag {
+    display: inline-block;
+    margin: 4px 4px 0 0;
+    padding: 2px 8px;
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border-radius: 12px;
+    font-size: 0.9em;
+}
+.webnovel-modal-chapter-item {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.webnovel-modal-event-block {
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    padding: 12px;
+    margin-bottom: 12px;
+    background: var(--background-secondary);
+}
+.webnovel-modal-empty { padding: 12px; }
+
+/* ── MarkdownPostProcessor (foreshadowing checkbox) ── */
+.webnovel-foreshadowing-checkbox {
+    margin-left: 8px;
+    cursor: pointer;
+    vertical-align: middle;
+    width: 15px;
+    height: 15px;
+    accent-color: var(--interactive-accent);
+}
+
+/* ── FileExplorerPatcher ── */
+.webnovel-folder-word-count-detail {
+    font-size: 0.8em;
+    opacity: 0.5;
+    margin-left: 5px;
+}
+
+/* ── SettingsTab ── */
+.webnovel-settings-input-full { width: 100%; }
+.webnovel-settings-rules-container { width: 100%; }
+.webnovel-settings-rule-item {
+    background: var(--background-secondary);
+    border-radius: 8px;
+    margin-bottom: 10px;
+    padding: 10px 15px;
+    border-top: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.webnovel-settings-btn-full { width: 100%; }
+
+/* ── StatusView ── */
+.webnovel-work-goal {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+
+/* ── ImmersiveStickyNotesView ── */
+.webnovel-immersive-sticky-container {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+.webnovel-immersive-hover-trigger {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 15px;
+    z-index: 9;
+}
+.webnovel-immersive-toolbar {
+    display: flex;
+    gap: 8px;
+    padding: 8px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    background-color: var(--background-secondary);
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 10;
+}
+.webnovel-immersive-dock {
+    flex: 1;
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 10px;
+    padding: 10px;
+    padding-top: 10px;
+    align-items: center;
+}
+.webnovel-immersive-note-card {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    border-radius: 8px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+    overflow: hidden;
+    box-sizing: border-box;
+}
+.webnovel-immersive-note-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 8px;
+    border-bottom: 1px solid rgba(0,0,0,0.1);
+    background-color: rgba(0,0,0,0.05);
+}
+.webnovel-immersive-note-close {
+    font-size: 1.2em;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 4px;
+}
+.webnovel-immersive-note-textarea {
+    flex: 1;
+    min-height: 200px;
+    resize: none;
+    padding: 8px;
+    border: none;
+    background: transparent;
+    color: inherit;
+    line-height: 1.5;
+    font-family: inherit;
+    outline: none;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* ── Utility ── */
+.webnovel-ellipsis {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ==========================================================================
+   webnovel-* CSS classes: replacing remaining Object.assign(el.style, {...}) calls
+   ========================================================================== */
+
+/* ── ForeshadowingModal ── */
+.webnovel-chapter-label { flex: 1; cursor: pointer; }
+.webnovel-btn-row { display: flex; gap: 8px; margin-bottom: 12px; }
+.webnovel-select-btn { flex: 1; padding: 6px 12px; border-radius: 4px; border: 1px solid var(--interactive-accent); color: var(--interactive-accent); background: transparent; cursor: pointer; }
+.webnovel-btn-container-end { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+
+/* ── TimelineView / TimelineAddModal ── */
+.webnovel-tl-input { width: 100%; margin-bottom: 8px; padding: 6px 8px; border-radius: 4px; border: 1px solid var(--background-modifier-border); background: var(--background-primary); color: var(--text-normal); box-sizing: border-box; }
+.webnovel-tl-textarea { width: 100%; height: 80px; margin-bottom: 8px; padding: 6px 8px; border-radius: 4px; border: 1px solid var(--background-modifier-border); background: var(--background-primary); color: var(--text-normal); resize: vertical; font-family: var(--font-text); box-sizing: border-box; }
+.webnovel-tl-chapter-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
+.webnovel-tl-chapter-row-sm { display: flex; gap: 8px; margin-bottom: 4px; align-items: center; }
+.webnovel-tl-chapter-select { flex: 1; padding: 6px 8px; border-radius: 4px; border: 1px solid var(--background-modifier-border); background: var(--background-primary); color: var(--text-normal); }
+.webnovel-tl-remove-btn { width: 32px; height: 32px; padding: 0; border-radius: 4px; background: var(--background-modifier-error); color: var(--text-on-accent); border: none; cursor: pointer; font-size: 20px; line-height: 1; }
+.webnovel-tl-remove-btn-sm { width: 28px; height: 28px; padding: 0; border-radius: 4px; background: var(--background-modifier-error); color: var(--text-on-accent); border: none; cursor: pointer; font-size: 16px; }
+.webnovel-tl-add-btn { width: 100%; padding: 6px; border-radius: 4px; background: var(--interactive-accent); color: var(--text-on-accent); border: none; cursor: pointer; margin-top: 4px; }
+.webnovel-tl-add-btn-sm { width: 100%; padding: 4px; border-radius: 4px; background: var(--interactive-accent); color: var(--text-on-accent); border: none; cursor: pointer; font-size: 12px; margin-top: 4px; }
+.webnovel-tl-custom-hidden { margin-top: 4px; display: none; }
+.webnovel-tl-desc-input-edit { margin-bottom: 8px; height: 60px; }
+.webnovel-tl-delete-event-btn { width: 100%; padding: 6px; border-radius: 4px; background: var(--background-modifier-error); color: var(--text-on-accent); border: none; cursor: pointer; margin-top: 8px; }
+.webnovel-tl-add-event-btn { width: 100%; padding: 8px; border-radius: 4px; background: var(--interactive-accent); color: var(--text-on-accent); border: none; cursor: pointer; margin-top: 8px; }
+
+/* ── StatusView ── */
+.webnovel-pct-bold-mono { font-weight: 600; font-family: var(--font-monospace); }
+
+/* ── SettingsTab ── */
+.webnovel-rule-name-input { flex: 1 1 0px; min-width: 0; }
+.webnovel-rule-pattern-input { flex: 3 1 0px; min-width: 0; font-family: monospace; }
+.webnovel-add-btn-row { border-top: none; padding: 0; }
+.webnovel-obs-css-input { width: 100%; height: 100px; font-family: monospace; }

@@ -59,7 +59,7 @@ export class WorkerManager {
 
 		// 稳定运行 60s 后重置计数器
 		if (this.restartAttempts > 0) {
-			this.restartResetTimer = activeWindow.setTimeout(() => {
+			this.restartResetTimer = window.setTimeout(() => {
 				this.restartAttempts = 0;
 				this.restartResetTimer = null;
 			}, 60000);
@@ -78,11 +78,11 @@ export class WorkerManager {
 	 */
 	public terminate(): void {
 		if (this.restartTimer) {
-			activeWindow.clearTimeout(this.restartTimer);
+			window.clearTimeout(this.restartTimer);
 			this.restartTimer = null;
 		}
 		if (this.restartResetTimer) {
-			activeWindow.clearTimeout(this.restartResetTimer);
+			window.clearTimeout(this.restartResetTimer);
 			this.restartResetTimer = null;
 		}
 		if (this.worker) {
@@ -101,7 +101,7 @@ export class WorkerManager {
 		const wasTracking = this.plugin.isTracking;
 		this.terminate();
 
-		this.restartTimer = activeWindow.setTimeout(() => {
+		this.restartTimer = window.setTimeout(() => {
 			this.setup();
 
 			if (wasTracking && this.worker) {
@@ -125,7 +125,7 @@ export class WorkerManager {
 		
 		const isAppFocused = activeDocument.hasFocus();
 		const isTypingActive = (now - this.plugin.lastEditTime) < this.plugin.settings.idleTimeoutThreshold;
-		const today = activeWindow.moment().format('YYYY-MM-DD');
+		const today = window.moment().format('YYYY-MM-DD');
 
 		const hour = new Date().getHours();
 		if (isAppFocused && isTypingActive) {

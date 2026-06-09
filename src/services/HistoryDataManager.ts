@@ -90,7 +90,7 @@ export class HistoryDataManager {
 			if (!this.pendingSave) {
 				this.pendingSave = new Promise((resolve) => {
 					// 500ms 后执行一次最终保存
-					activeWindow.setTimeout(async () => {
+					window.setTimeout(async () => {
 						this.pendingSave = null;
 						await this.saveHistory();
 						resolve();

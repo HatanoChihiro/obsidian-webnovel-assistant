@@ -1,5 +1,5 @@
 import type { App, TAbstractFile} from 'obsidian';
-import { Modal, Setting, TFolder, TFile, MarkdownView, prepareSimpleSearch, SearchResult } from 'obsidian';
+import { Modal, Setting, TFolder, TFile, MarkdownView, prepareSimpleSearch } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ChapterSorter } from '../services/ChapterSorter';
 
@@ -35,7 +35,7 @@ export class AdvancedSearchModal extends Modal {
 				text.inputEl.addEventListener('keydown', (e) => {
 					if (e.key === 'Enter') {
 						e.preventDefault();
-						this.executeSearch();
+						void this.executeSearch();
 					}
 				});
 			});
@@ -64,7 +64,7 @@ export class AdvancedSearchModal extends Modal {
 				.setButtonText('开始搜索')
 				.setCta()
 				.onClick(() => {
-					this.executeSearch();
+					void this.executeSearch();
 				})
 			);
 
@@ -76,11 +76,11 @@ export class AdvancedSearchModal extends Modal {
 		container.empty();
 		
 		if (this.searchScope !== 'custom') {
-			container.setCssStyles({ display: 'none' });
+			container.style.display = 'none';
 			return;
 		}
-		
-		container.setCssStyles({ display: 'block' });
+
+		container.style.display = 'block';
 		container.createEl('h4', { text: '选择要搜索的目录或文件（支持多选）：', cls: 'setting-item-name' });
 		
 		const folders = this.getTopLevelFolders();
@@ -91,13 +91,7 @@ export class AdvancedSearchModal extends Modal {
 		}
 
 		// 为每个目录创建一个树形选择器
-		const listContainer = container.createDiv({ cls: 'advanced-search-folder-list' });
-		listContainer.setCssStyles({ maxHeight: '250px' });
-		listContainer.setCssStyles({ overflowY: 'auto' });
-		listContainer.setCssStyles({ border: '1px solid var(--background-modifier-border)' });
-		listContainer.setCssStyles({ padding: '10px' });
-		listContainer.setCssStyles({ borderRadius: '5px' });
-		listContainer.setCssStyles({ marginTop: '10px' });
+		const listContainer = container.createDiv({ cls: 'advanced-search-folder-list webnovel-search-folder-list' });
 
 		for (const folder of folders) {
 			this.renderFolderTree(listContainer, folder);
@@ -122,11 +116,11 @@ export class AdvancedSearchModal extends Modal {
 			childrenContainer = itemContainer.createDiv({ cls: 'advanced-search-tree-children' });
 			
 			arrow.addEventListener('click', () => {
-				if (childrenContainer!.getCssPropertyValue('display') === 'none' || childrenContainer!.getCssPropertyValue('display') === '') {
-					childrenContainer!.setCssStyles({ display: 'block' });
+				if (childrenContainer!.style.display === 'none' || childrenContainer!.style.display === '') {
+					childrenContainer!.style.display = 'block';
 					arrow.innerText = '▼ ';
 				} else {
-					childrenContainer!.setCssStyles({ display: 'none' });
+					childrenContainer!.style.display = 'none';
 					arrow.innerText = '▶ ';
 				}
 			});
@@ -137,13 +131,13 @@ export class AdvancedSearchModal extends Modal {
 		
 		const label = headerEl.createSpan({ text: folder.name, cls: 'advanced-search-tree-name' });
 		if (folder instanceof TFolder) {
-			label.setCssStyles({ fontWeight: 'bold' });
+			label.addClass('webnovel-search-folder-name');
 		}
 		
 		const checkbox = headerEl.createEl('input');
 		checkbox.type = 'checkbox';
 		checkbox.dataset.path = folder.path;
-		checkbox.setCssStyles({ marginLeft: '10px' });
+		checkbox.addClass('webnovel-search-checkbox');
 		
 		checkbox.addEventListener('change', () => {
 			this.toggleSelection(folder, checkbox.checked);
@@ -161,12 +155,12 @@ export class AdvancedSearchModal extends Modal {
 					fileHeader.createSpan({ cls: 'advanced-search-tree-spacer' });
 					
 					const fileLabel = fileHeader.createSpan({ text: child.name, cls: 'advanced-search-tree-name' });
-					fileLabel.setCssStyles({ color: 'var(--text-muted)' });
+					fileLabel.addClass('webnovel-search-file-name');
 					
 					const fileCheckbox = fileHeader.createEl('input');
 					fileCheckbox.type = 'checkbox';
 					fileCheckbox.dataset.path = child.path;
-					fileCheckbox.setCssStyles({ marginLeft: '10px' });
+					fileCheckbox.addClass('webnovel-search-checkbox');
 					
 					fileCheckbox.addEventListener('change', () => {
 						this.toggleSelection(child, fileCheckbox.checked);
@@ -357,7 +351,7 @@ export class AdvancedSearchModal extends Modal {
 
 			// 防卡死：每处理 50 个文件让出一次主线程
 			if (i % 50 === 0) {
-				await new Promise(resolve => activeWindow.setTimeout(resolve, 0));
+				await new Promise(resolve => window.setTimeout(resolve, 0));
 			}
 		}
 
@@ -392,9 +386,9 @@ export class AdvancedSearchModal extends Modal {
 				matchEl.createEl('span', { text: snippet.suffix + '...' });
 
 				// 点击跳转
-				matchEl.addEventListener('click', async () => {
+				matchEl.addEventListener('click', () => {
 					const leaf = this.app.workspace.getLeaf(false); // 在当前活动叶子节点打开
-					await leaf.openFile(result.file, { eState: { line: snippet.linesBefore } });
+					void leaf.openFile(result.file, { eState: { line: snippet.linesBefore } });
 					this.close();
 				});
 			}

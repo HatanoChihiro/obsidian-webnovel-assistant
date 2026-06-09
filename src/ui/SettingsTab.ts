@@ -1,6 +1,6 @@
 import type { App} from 'obsidian';
-import { MarkdownView, Notice, PluginSettingTab, Setting } from 'obsidian';
-import { isDesktop, isMobile, getPlatformTier } from '../utils/platform';
+import { Notice, PluginSettingTab, Setting } from 'obsidian';
+import { isDesktop, getPlatformTier } from '../utils/platform';
 import { ObsOverlayServer } from '../services/ObsServer';
 import { ChapterSorter } from '../services/ChapterSorter';
 import { MobileFloatingStats } from './MobileFloatingStats';
@@ -26,7 +26,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		containerEl.createEl('h1', { text: 'WebNovel Assistant 设置' });
+		new Setting(containerEl).setName('设置').setHeading();
 
 		// 创建选项卡头部
 		const navContainer = containerEl.createDiv({ cls: 'webnovel-settings-tabs' });
@@ -93,7 +93,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.showMobileFloatingStats)
 					.onChange(async (value) => {
 						this.plugin.settings.showMobileFloatingStats = value;
-						await this.plugin.saveSettings();
+						void this.plugin.saveSettings();
 						if (value) {
 							if (!this.plugin.mobileFloatingStats) this.plugin.mobileFloatingStats = new MobileFloatingStats(this.app, this.plugin);
 							this.plugin.mobileFloatingStats.load();
@@ -162,7 +162,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 						}
 					};
 
-					text.inputEl.addEventListener('change', saveAction);
+					text.inputEl.addEventListener('change', () => { void saveAction(); });
 					// 按回车也可以保存
 					text.inputEl.addEventListener('keydown', (e) => {
 						if (e.key === 'Enter') {
@@ -220,7 +220,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 						this.plugin.settings.workspaceFolders = value.trim() ? value.split(',').map(f => f.trim()).filter(Boolean) : [];
 						await this.plugin.saveSettings();
 					});
-				text.inputEl.setCssStyles({ width: '100%' });
+				text.inputEl.addClass('webnovel-settings-input-full');
 			});
 
 		new Setting(containerEl)
@@ -233,7 +233,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 					this.plugin.updateWordCount();
 					if (this.plugin.settings.showExplorerCounts) {
-						this.plugin.buildFolderCache();
+						void this.plugin.buildFolderCache();
 					}
 					this.display();
 				}));
@@ -250,10 +250,10 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 							await this.plugin.saveSettings();
 							this.plugin.updateWordCount();
 							if (this.plugin.settings.showExplorerCounts) {
-								this.plugin.buildFolderCache();
+								void this.plugin.buildFolderCache();
 							}
 						});
-					text.inputEl.setCssStyles({ width: '100%' });
+					text.inputEl.addClass('webnovel-settings-input-full');
 				});
 		}
 
@@ -446,20 +446,13 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			.setHeading();
 
 		const rulesContainer = containerEl.createDiv();
-		rulesContainer.setCssStyles({ width: '100%' });
+		rulesContainer.addClass('webnovel-settings-rules-container');
 
 		const renderRules = () => {
 			rulesContainer.empty();
 			this.plugin.settings.chapterNamingRules.forEach((rule, index) => {
 				const s = new Setting(rulesContainer);
-				s.settingEl.setCssStyles({ background: 'var(--background-secondary)' });
-				s.settingEl.setCssStyles({ borderRadius: '8px' });
-				s.settingEl.setCssStyles({ marginBottom: '10px' });
-				s.settingEl.setCssStyles({ padding: '10px 15px' });
-				s.settingEl.setCssStyles({ borderTop: 'none' });
-				s.settingEl.setCssStyles({ display: 'flex' });
-				s.settingEl.setCssStyles({ alignItems: 'center' });
-				s.settingEl.setCssStyles({ gap: '10px' });
+s.settingEl.addClass('webnovel-settings-rule-item');
 
 				s.infoEl.remove();
 
@@ -500,8 +493,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 							rule.name = value;
 							await this.plugin.saveSettings();
 						});
-					text.inputEl.setCssStyles({ flex: '1 1 0px' });
-					text.inputEl.setCssStyles({ minWidth: '0' });
+					text.inputEl.addClass('webnovel-rule-name-input');
 				});
 
 				s.addText(text => {
@@ -533,9 +525,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 							ChapterSorter.setCustomRules(this.plugin.settings.chapterNamingRules);
 							this.plugin.fileExplorerPatcher.refreshManually();
 						});
-					text.inputEl.setCssStyles({ flex: '3 1 0px' });
-					text.inputEl.setCssStyles({ minWidth: '0' });
-					text.inputEl.setCssStyles({ fontFamily: 'monospace' });
+					text.inputEl.addClass('webnovel-rule-pattern-input');
 				});
 
 				s.addButton(btn => btn
@@ -552,15 +542,14 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 
 			const addBtnRow = new Setting(rulesContainer);
 			addBtnRow.infoEl.remove();
-			addBtnRow.settingEl.setCssStyles({ borderTop: 'none' });
-			addBtnRow.settingEl.setCssStyles({ padding: '0' });
+			addBtnRow.settingEl.addClass('webnovel-add-btn-row');
 			addBtnRow.addButton(btn => btn
 				.setButtonText('+ 添加新规则')
 				.onClick(async () => {
 					this.plugin.settings.chapterNamingRules.push({ name: '新规则', pattern: '^(\\d+)', enabled: true });
 					await this.plugin.saveSettings();
 					renderRules();
-				}).buttonEl.setCssStyles({ width: '100%' }));
+				}).buttonEl.addClass('webnovel-settings-btn-full'));
 		};
 		renderRules();
 	}
@@ -846,7 +835,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 							: [];
 						await this.plugin.saveSettings();
 					});
-				text.inputEl.setCssStyles({ width: '100%' });
+				text.inputEl.addClass('webnovel-settings-input-full');
 			});
 	}
 
@@ -910,7 +899,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 							: [];
 						await this.plugin.saveSettings();
 					});
-				text.inputEl.setCssStyles({ width: '100%' });
+				text.inputEl.addClass('webnovel-settings-input-full');
 			});
 	}
 
@@ -1001,7 +990,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 						this.plugin.settings.obs.obsCustomCss = value;
 						await this.plugin.saveSettings();
 					});
-				text.inputEl.setAttribute('style', 'width: 100%; height: 100px; font-family: monospace;');
+				text.inputEl.addClass('webnovel-obs-css-input');
 				return text;
 			});
 
@@ -1069,7 +1058,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				.setButtonText('复制 URL')
 				.onClick(() => {
 					const url = `http://127.0.0.1:${this.plugin.settings.obs.obsPort}/`;
-					navigator.clipboard.writeText(url);
+					void navigator.clipboard.writeText(url);
 					new Notice(`已复制: ${url}`);
 				}));
 	}

@@ -10,9 +10,6 @@ import type { WebNovelAssistantPlugin } from '../types/plugin';
  */
 export function buildCharacterHoverExtension(app: App, plugin: WebNovelAssistantPlugin): Extension {
 	
-	// 定义高亮装饰样式
-	const matchMark = Decoration.mark({ class: 'wn-character-match' });
-
 	// 构建 ViewPlugin
 	const hoverPlugin = ViewPlugin.fromClass(class {
 		decorations: DecorationSet;

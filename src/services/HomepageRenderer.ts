@@ -2,7 +2,7 @@ import type { App} from 'obsidian';
 import { Notice, TFile, TFolder, setIcon } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { NovelFolderInfo } from '../types/homepage';
-import { calcStreak, calcFocusRate, calcActiveHours, calcDailyAverage, getHeatClass, HEAT_LEVELS } from '../ui/HistoryModal';
+import { calcStreak, calcFocusRate, calcActiveHours, calcDailyAverage, getHeatClass } from '../ui/HistoryModal';
 import { RankingManager } from '../services/RankingManager';
 import { NewNovelModal } from '../ui/NewNovelModal';
 
@@ -59,7 +59,8 @@ export class HomepageRenderer {
 		// ResizeObserver：根据编辑器面板宽度动态切换单列/双列布局
 		const updateLayout = () => {
 			const width = container.clientWidth;
-			if (width < 1200) {
+			// 将阈值从 1200 降低到 800，避免稍微放大字体或缩小窗口就变成单列
+			if (width < 800) {
 				grid.addClass('homepage-single-column');
 			} else {
 				grid.removeClass('homepage-single-column');
@@ -91,7 +92,7 @@ export class HomepageRenderer {
 		if (this.plugin.settings.homepageWelcome) {
 			title.textContent = this.plugin.settings.homepageWelcome;
 		} else {
-			const hour = activeWindow.moment().hour();
+			const hour = window.moment().hour();
 			let welcomeText = '';
 			let iconName = '';
 			if (hour < 6) { welcomeText = '夜深了，注意休息'; iconName = 'moon'; }
@@ -109,16 +110,17 @@ export class HomepageRenderer {
 		const addBtn = headerRow.createDiv({ cls: 'homepage-add-novel-btn' });
 		addBtn.textContent = '+ 新增作品';
 		addBtn.onclick = () => {
-			new NewNovelModal(this.plugin.app, this.plugin, async (result) => {
-				await this.plugin.homepageManager!.createNewNovel(result.name, result.meta);
-				new Notice('[成功] 已创建作品: ' + result.name);
-				this.plugin.homepageManager!.refreshHomepageViews();
+			new NewNovelModal(this.plugin.app, this.plugin, (result) => {
+				void this.plugin.homepageManager!.createNewNovel(result.name, result.meta).then(() => {
+					new Notice('[成功] 已创建作品: ' + result.name);
+					this.plugin.homepageManager!.refreshHomepageViews();
+				});
 			}).open();
 		};
 
 		// 今日进度
 		const history = this.plugin.historyManager.getHistory();
-		const today = activeWindow.moment().format('YYYY-MM-DD');
+		const today = window.moment().format('YYYY-MM-DD');
 		const todayWords = history[today]?.addedWords || 0;
 
 		const progressRow = section.createDiv({ cls: 'homepage-progress-row' });
@@ -184,9 +186,9 @@ export class HomepageRenderer {
 				const progressPercent = target > 0 ? Math.min(100, Math.max(0, (progress / target) * 100)) : 0;
 				const progressBg = rankContainer.createDiv({ cls: 'homepage-ongoing-progress-bar-bg' });
 				const progressFill = progressBg.createDiv({ cls: 'homepage-ongoing-progress-bar-fill' });
-				progressFill.setCssStyles({ width: `${progressPercent}%` });
+				progressFill.style.width = `${progressPercent}%`;
 				// 进度条颜色区分状态
-				if (progressPercent >= 100) progressFill.setCssStyles({ background: 'var(--color-green, #10b981)' });
+				if (progressPercent >= 100) progressFill.addClass('is-done');
 
 				if (daysLeft > 0 && rankingInfo.entry.status === '进行中') {
 					const bottomRow = rankContainer.createDiv({ cls: 'homepage-ranking-row homepage-ranking-sub' });
@@ -303,8 +305,8 @@ export class HomepageRenderer {
 		container.empty();
 		container.createDiv({ cls: 'homepage-section-label', text: '效率总览' });
 
-		const yearStart = activeWindow.moment().clone().startOf('year').format('YYYY-MM-DD');
-		const yearEnd = activeWindow.moment().format('YYYY-MM-DD');
+		const yearStart = window.moment().clone().startOf('year').format('YYYY-MM-DD');
+		const yearEnd = window.moment().format('YYYY-MM-DD');
 
 		const streak = calcStreak(history);
 		const focusRate = calcFocusRate(history, yearStart, yearEnd);
@@ -334,12 +336,12 @@ export class HomepageRenderer {
 		container.empty();
 		container.createDiv({ cls: 'homepage-section-label', text: '热力图' });
 
-		const now = activeWindow.moment();
+		const now = window.moment();
 		const rangeStart = this.plugin.settings.heatmapStartDate
-			? activeWindow.moment(this.plugin.settings.heatmapStartDate)
+			? window.moment(this.plugin.settings.heatmapStartDate)
 			: now.clone().startOf('year');
 		const rangeEnd = this.plugin.settings.heatmapEndDate
-			? activeWindow.moment(this.plugin.settings.heatmapEndDate)
+			? window.moment(this.plugin.settings.heatmapEndDate)
 			: now.clone().endOf('year');
 
 		const alignedStart = rangeStart.clone().isoWeekday(1);
@@ -380,7 +382,7 @@ export class HomepageRenderer {
 		container.empty();
 		container.createDiv({ cls: 'homepage-section-label', text: '近30日趋势' });
 
-		const now = activeWindow.moment();
+		const now = window.moment();
 		const days: { date: string; words: number }[] = [];
 		for (let i = 29; i >= 0; i--) {
 			const dateStr = now.clone().subtract(i, 'days').format('YYYY-MM-DD');
@@ -402,7 +404,7 @@ export class HomepageRenderer {
 			const val = day.words;
 			const heightPercent = Math.max(2, (Math.abs(val) / maxAbsValue) * 100);
 			const bar = chartArea.createDiv({ cls: 'homepage-chart-bar' });
-			bar.setCssStyles({ height: `${heightPercent}%` });
+			bar.style.height = `${heightPercent}%`;
 
 			if (val < 0) {
 				bar.addClass('bar-negative');
@@ -442,8 +444,8 @@ export class HomepageRenderer {
 		const entry = entries.find(e => e.status === '进行中') || entries[entries.length - 1];
 		
 		const progress = manager.calcProgress(entry) || entry.completedWords || 0;
-		const now = activeWindow.moment();
-		const daysLeft = Math.max(0, activeWindow.moment(entry.endDate).diff(now.clone().startOf('day'), 'days') + 1);
+		const now = window.moment();
+		const daysLeft = Math.max(0, window.moment(entry.endDate).diff(now.clone().startOf('day'), 'days') + 1);
 
 		let statusText = '';
 		switch (entry.status) {
@@ -472,7 +474,7 @@ export class HomepageRenderer {
 		) as TFile[];
 		const target = mdFiles[0];
 		if (target) {
-			this.app.workspace.getLeaf(false).openFile(target);
+			void this.app.workspace.getLeaf(false).openFile(target);
 		}
 	}
 }

@@ -51,7 +51,7 @@ export class FileExplorerPatcher {
 
 			if (this.enableRetries < 10) {
 				this.enableRetries++;
-				activeWindow.setTimeout(() => this.enable(), 500 * this.enableRetries);
+				window.setTimeout(() => this.enable(), 500 * this.enableRetries);
 			}
 			return false;
 		} catch (error) {
@@ -74,19 +74,18 @@ export class FileExplorerPatcher {
 			if (proto.getSortedFolderItems.__webnovel_patched) return true;
 
 			const originalMethod = proto.getSortedFolderItems;
-			const self = this;
+			proto.getSortedFolderItems = (function(patcher: FileExplorerPatcher) {
+				return function(this: any, folder: TFolder, bypass?: boolean) {
+					try {
+						const sortedItems: any[] = originalMethod.call(this, folder, bypass);
 
-			proto.getSortedFolderItems = function(folder: TFolder, bypass?: boolean) {
-				try {
-					const sortedItems: any[] = originalMethod.call(this, folder, bypass);
+						if (!patcher.enabled || bypass || !Array.isArray(sortedItems) || sortedItems.length === 0) {
+							return sortedItems;
+						}
 
-					if (!self.enabled || bypass || !Array.isArray(sortedItems) || sortedItems.length === 0) {
-						return sortedItems;
-					}
-
-					if (!self.plugin.settings.enableSmartChapterSort) {
-						return self.applyHomepagePin(sortedItems);
-					}
+						if (!patcher.plugin.settings.enableSmartChapterSort) {
+							return patcher.applyHomepagePin(sortedItems);
+						}
 
 					const chapterItems: { item: any; chapterInfo: { number: number; ruleIndex: number }; isFolder: boolean }[] = [];
 					const entities: SortEntity[] = [];
@@ -119,7 +118,7 @@ export class FileExplorerPatcher {
 						entities.push({ isBlock: true, path: blockKey, items: chapterItems.map(c => c.item) });
 					}
 
-					const sortedEntities = self.sortEntities(entities);
+					const sortedEntities = patcher.sortEntities(entities);
 
 					const finalResult: any[] = [];
 					for (const entity of sortedEntities) {
@@ -130,12 +129,14 @@ export class FileExplorerPatcher {
 						}
 					}
 
-					return self.applyHomepagePin(finalResult);
+					return patcher.applyHomepagePin(finalResult);
 				} catch (e) {
 					console.error('[WebNovel Assistant] getSortedFolderItems error:', e);
 					return originalMethod.call(this, folder, bypass);
 				}
 			};
+
+			})(this);
 
 			proto.getSortedFolderItems.__webnovel_patched = true;
 
@@ -196,7 +197,7 @@ export class FileExplorerPatcher {
 		leaves.forEach(leaf => {
 			const view = leaf.view;
 			if (view && typeof (view as any).sort === 'function') {
-				try { (view as any).sort(); } catch (e) {}
+				try { (view as any).sort(); } catch (e) { /* intentionally ignored */ }
 			}
 		});
 		this.applyDOMSort();
@@ -278,7 +279,7 @@ export class FileExplorerPatcher {
 	private setupFileSystemListeners(): void {
 		const handler = () => {
 			if (!this.enabled) return;
-			activeWindow.setTimeout(() => this.refreshAllExplorers(), 100);
+			window.setTimeout(() => this.refreshAllExplorers(), 100);
 		};
 
 		this.eventRefs.push(this.app.vault.on('create', handler));
@@ -307,7 +308,7 @@ export class FileExplorerPatcher {
 					this.plugin.saveSettings().catch(() => {});
 				}
 			}
-			activeWindow.setTimeout(() => this.refreshAllExplorers(), 100);
+			window.setTimeout(() => this.refreshAllExplorers(), 100);
 		}));
 		this.eventRefs.push(this.app.vault.on('rename', (file, oldPath) => {
 			if (!this.enabled) return;
@@ -340,7 +341,7 @@ export class FileExplorerPatcher {
 					this.plugin.saveSettings().catch(() => {});
 				}
 			}
-			activeWindow.setTimeout(() => this.refreshAllExplorers(), 100);
+			window.setTimeout(() => this.refreshAllExplorers(), 100);
 		}));
 		this.eventRefs.push(this.app.metadataCache.on('changed', (file) => {
 			if (file instanceof TFile && !this.plugin.isFileInWorkspace(file)) return;
@@ -437,10 +438,7 @@ export class FileExplorerPatcher {
 							const mountEl = titleContent?.parentElement;
 							if (mountEl) {
 								countEl = mountEl.createEl('span', { cls: 'folder-word-count' });
-								countEl.setCssStyles({ fontSize: '0.8em' });
-								countEl.setCssStyles({ opacity: '0.5' });
-								countEl.setCssStyles({ marginLeft: '5px' });
-							}
+								countEl.addClass('webnovel-folder-word-count-detail');}
 						}
 						if (countEl) {
 							this.wordCountElCache.set(item.el, countEl);
@@ -800,8 +798,9 @@ export class FileExplorerPatcher {
 		const prevPath = prevSibling ? getEntityPath(prevSibling) : null;
 		const nextPath = nextSibling ? getEntityPath(nextSibling) : null;
 
-		const targetFolder = folderPath === '/' ? this.app.vault.getRoot() : this.app.vault.getAbstractFileByPath(folderPath) as TFolder;
-		if (!targetFolder) return;
+		const abstractFile = folderPath === '/' ? this.app.vault.getRoot() : this.app.vault.getAbstractFileByPath(folderPath);
+		if (!(abstractFile instanceof TFolder)) return;
+		const targetFolder = abstractFile;
 
 		const nonChapterPaths: string[] = [];
 		let hasChapters = false;

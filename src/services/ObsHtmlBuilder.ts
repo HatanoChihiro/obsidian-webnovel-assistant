@@ -1,9 +1,8 @@
 import { MarkdownView } from 'obsidian';
-import { hexToRgba, formatTime, parseGoal, isDesktop } from '../utils';
+import { hexToRgba, formatTime, parseGoal } from '../utils';
 import type { ObsStatsPayload } from '../types/stats';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { RankingManager } from './RankingManager';
-import type { DailyStat } from '../types/settings';
 
 /**
  * OBS 叠加层 HTML 构建器
@@ -19,7 +18,7 @@ export class ObsHtmlBuilder {
 		const focusSec = Math.floor(this.plugin.focusMs / 1000);
 		const slackSec = Math.floor(this.plugin.slackMs / 1000);
 		const totalSec = focusSec + slackSec;
-		const today = activeWindow.moment().format('YYYY-MM-DD');
+		const today = window.moment().format('YYYY-MM-DD');
 		const todayStat = this.plugin.historyManager.getDailyStat(today) || { focusMs: 0, slackMs: 0, addedWords: 0 };
 
 		let targetGoal = this.plugin.settings.defaultGoal;

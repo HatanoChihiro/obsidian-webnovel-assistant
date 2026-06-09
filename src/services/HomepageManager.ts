@@ -72,7 +72,7 @@ export class HomepageManager {
 			const filePath = this.getHomepageFilePath();
 			const dir = filePath.substring(0, filePath.lastIndexOf('/'));
 			if (dir) {
-				try { await this.app.vault.createFolder(dir); } catch {} 
+				try { await this.app.vault.createFolder(dir); } catch { /* folder already exists */ } 
 			}
 			const content = this.generateHomepageContent();
 			const file = await this.app.vault.create(filePath, content);
@@ -316,12 +316,12 @@ export class HomepageManager {
 		const containerEls = activeDocument.querySelectorAll('.webnovel-homepage-root');
 		if (containerEls.length > 0) {
 			// 动态引入 HomepageRenderer 避免循环依赖
-			import('./HomepageRenderer.js').then(({ HomepageRenderer }) => {
-				const renderer = new HomepageRenderer(this.app, this.plugin);
-				containerEls.forEach(el => {
-					renderer.renderHomepage(el as HTMLElement);
-				});
-			});
+import('./HomepageRenderer.js').then(async ({ HomepageRenderer }) => {
+					const renderer = new HomepageRenderer(this.app, this.plugin);
+					for (const el of containerEls) {
+						await renderer.renderHomepage(el as HTMLElement);
+					}
+}).catch(err => console.error('[HomepageManager] refreshHomepageViews failed:', err));
 		}
 
 		// 2. 作为后备方案，仍然触发 previewMode 的 rerender

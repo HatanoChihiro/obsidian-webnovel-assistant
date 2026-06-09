@@ -27,11 +27,11 @@ export class ImmersiveChapterListView extends ItemView {
 	}
 
 	async onOpen() {
-		this.refresh();
+		void this.refresh();
 		
 		// 监听工作区事件，当文件切换或布局改变时自动刷新列表
-		this.registerEvent(this.app.workspace.on('active-leaf-change', () => this.refresh()));
-		this.registerEvent(this.app.workspace.on('layout-change', () => this.refresh()));
+		this.registerEvent(this.app.workspace.on('active-leaf-change', () => { void this.refresh(); }));
+		this.registerEvent(this.app.workspace.on('layout-change', () => { void this.refresh(); }));
 	}
 
 	/**
@@ -73,8 +73,8 @@ export class ImmersiveChapterListView extends ItemView {
 		if (!currentFolder) {
 			listContainer.createEl('p', { text: '正在加载文件夹信息...', cls: 'immersive-empty-text' });
 			// 如果还是没找到，可能是主编辑器还没准备好，1秒后重试一次
-			activeWindow.setTimeout(() => {
-				if (this.app.workspace.getActiveFile()) this.refresh();
+			window.setTimeout(() => {
+				if (this.app.workspace.getActiveFile()) void this.refresh();
 			}, 1000);
 			return;
 		}
@@ -109,12 +109,12 @@ export class ImmersiveChapterListView extends ItemView {
 			itemEl.addEventListener('click', () => {
 				const leaves = this.app.workspace.getLeavesOfType('markdown');
 				if (leaves.length > 0) {
-					leaves[0].openFile(file);
+					void leaves[0].openFile(file);
 				}
 			});
 
 			// 右键：自动添加并打开参考文档
-			itemEl.addEventListener('contextmenu', async (e) => {
+			itemEl.addEventListener('contextmenu', (e) => {
 				e.preventDefault();
 				
 				const { workspace } = this.app;
@@ -155,7 +155,7 @@ export class ImmersiveChapterListView extends ItemView {
 						if (!this.plugin.settings.immersive.immersiveRightSlots.includes('reference-view')) {
 							this.plugin.settings.immersive.immersiveRightSlots.push('reference-view');
 						}
-						this.plugin.saveSettings();
+						void this.plugin.saveSettings();
 					}
 				}
 				
@@ -171,7 +171,7 @@ export class ImmersiveChapterListView extends ItemView {
 					currentState.mode = 'preview';
 					currentState.source = false;
 
-					await refLeaf.setViewState({ 
+					void refLeaf.setViewState({ 
 						type: 'markdown', 
 						state: currentState, 
 						active: false 
@@ -181,7 +181,7 @@ export class ImmersiveChapterListView extends ItemView {
 		}
 
 		// 恢复滚动位置，或者在初始时滚动到激活文档
-		activeWindow.requestAnimationFrame(() => {
+		window.requestAnimationFrame(() => {
 			if (listContainer) {
 				if (this.isInitialLoad && activeItemEl) {
 					activeItemEl.scrollIntoView({ block: 'center', behavior: 'smooth' });

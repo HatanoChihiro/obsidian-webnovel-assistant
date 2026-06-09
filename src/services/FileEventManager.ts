@@ -1,5 +1,5 @@
 import type { WebNovelAssistantPlugin } from '../types/plugin';
-import { TFile, MarkdownView } from 'obsidian';
+import { TFile } from 'obsidian';
 
 export class FileEventManager {
 	private plugin: WebNovelAssistantPlugin;
@@ -32,7 +32,7 @@ export class FileEventManager {
 			// 字数缓存更新逻辑
 			if (!this.plugin.isEligibleForWordCount(file)) return;
 
-			const isActiveFile = file.path === this.plugin.editorTracker?.getActiveFilePath();
+			const isActiveFile = file.path === this.plugin.app.workspace.getActiveFile()?.path;
 
 			if (!isActiveFile) {
 				try {
@@ -53,7 +53,7 @@ export class FileEventManager {
 						this.plugin.cacheManager.updateFileCache(file, newWordCount, this.plugin.app.vault);
 
 						if (this.plugin.isLayoutReady) {
-							const today = activeWindow.moment().format('YYYY-MM-DD');
+							const today = window.moment().format('YYYY-MM-DD');
 							this.plugin.historyManager.addWords(today, delta);
 							this.plugin.sessionAddedWords += delta;
 
@@ -74,7 +74,7 @@ export class FileEventManager {
 			} else {
 				// 活跃文件：由 EditorTracker 追踪，这里只刷新文件浏览器显示
 				this.plugin.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
-					this.plugin.updateFileCacheAndRefresh(file);
+					void this.plugin.updateFileCacheAndRefresh(file);
 				}, 500);
 			}
 		}));
@@ -106,7 +106,7 @@ export class FileEventManager {
 				}
 
 				this.plugin.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
-					this.plugin.updateFileCacheAndRefresh(file);
+					void this.plugin.updateFileCacheAndRefresh(file);
 				}, 500);
 			}
 		}));

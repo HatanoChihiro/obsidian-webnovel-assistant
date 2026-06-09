@@ -68,7 +68,7 @@ export class ForeshadowingView extends CreativeView {
 			if (this.filterStatus === f.value) btn.addClass('is-active');
 			btn.onclick = () => {
 				this.filterStatus = f.value;
-				this.refresh();
+				void this.refresh();
 			};
 		});
 
@@ -88,11 +88,11 @@ export class ForeshadowingView extends CreativeView {
 			const tagRow = header.createDiv({ cls: 'foreshadowing-view-filter-row foreshadowing-view-tag-filter-row' });
 			const allTagBtn = tagRow.createEl('button', { text: '全部标签', cls: 'foreshadowing-filter-btn' });
 			if (this.filterTag === 'all') allTagBtn.addClass('is-active');
-			allTagBtn.onclick = () => { this.filterTag = 'all'; this.refresh(); };
+			allTagBtn.onclick = () => { this.filterTag = 'all'; void this.refresh(); };
 			tagOptions.forEach(tag => {
 				const btn = tagRow.createEl('button', { text: `#${tag}`, cls: 'foreshadowing-filter-btn' });
 				if (this.filterTag === tag) btn.addClass('is-active');
-				btn.onclick = () => { this.filterTag = tag; this.refresh(); };
+				btn.onclick = () => { this.filterTag = tag; void this.refresh(); };
 			});
 		}
 
@@ -150,7 +150,7 @@ export class ForeshadowingView extends CreativeView {
 					text: `${c.source ? `[[${c.source}]]` : ''}${c.time ? ` · ${c.time}` : ''}`,
 					cls: 'foreshadowing-entry-quote-meta'
 				});
-				metaEl.setCssStyles({ cursor: 'pointer' });
+				metaEl.style.cursor = 'pointer';
 				metaEl.title = '点击跳转到该引用所在的具体段落';
 				metaEl.onclick = async () => {
 					const file = this.app.vault.getMarkdownFiles().find(f => f.basename === target);
@@ -163,7 +163,7 @@ export class ForeshadowingView extends CreativeView {
 			}
 			
 			const textEl = quoteEl.createDiv({ text: c.text, cls: 'foreshadowing-entry-quote-text' });
-			textEl.setCssStyles({ cursor: 'pointer' });
+			textEl.style.cursor = 'pointer';
 			textEl.title = '点击跳转到原文的具体位置';
 			textEl.onclick = async () => {
 				const file = this.app.vault.getMarkdownFiles().find(f => f.basename === target);
@@ -234,42 +234,44 @@ export class ForeshadowingView extends CreativeView {
 					this.app,
 					entry.contents[0]?.text || '',
 					this.currentFolder,
-					async (recoveryFileNames) => {
+					(recoveryFileNames) => {
 						if (!this.plugin.foreshadowingManager) {
 							new Notice('伏笔管理器尚未就绪');
 							return;
 						}
-						const success = await this.plugin.foreshadowingManager.markAsRecovered(
+						void this.plugin.foreshadowingManager.markAsRecovered(
 							foreshadowingFile, entry.sourceFile, entry.createdAt, recoveryFileNames
-						);
-						if (success) {
-							const fileList = recoveryFileNames.map(f => `[[${f}]]`).join('、');
-							new Notice(`[成功] 已标记为回收：${fileList}`);
-							// 文件修改会自动触发刷新，但在某些平台可能有延迟，添加备用刷新
-							activeWindow.setTimeout(() => this.refresh(), 100);
-						} else {
-							new Notice('[错误] 标记失败，请检查伏笔文件');
-						}
+						).then(success => {
+							if (success) {
+								const fileList = recoveryFileNames.map(f => `[[${f}]]`).join('、');
+								new Notice(`[成功] 已标记为回收：${fileList}`);
+								// 文件修改会自动触发刷新，但在某些平台可能有延迟，添加备用刷新
+								window.setTimeout(() => void this.refresh(), 100);
+							} else {
+								new Notice('[错误] 标记失败，请检查伏笔文件');
+							}
+						}).catch(err => console.error('[ForeshadowingView] markAsRecovered failed:', err));
 					}
 				).open();
 			};
 
 			// 废弃按钮（未回收状态显示）
 			const deprecateBtn = actions.createEl('button', { text: '废弃', cls: 'foreshadowing-action-btn foreshadowing-deprecate-btn' });
-			deprecateBtn.onclick = async () => {
+			deprecateBtn.onclick = () => {
 				const foreshadowingFile = this.getForeshadowingFile();
 				if (!foreshadowingFile) return;
 				if (!this.plugin.foreshadowingManager) return;
-				const success = await this.plugin.foreshadowingManager.markAsDeprecated(
-					foreshadowingFile, entry.sourceFile, entry.createdAt
-				);
-				if (success) {
-					new Notice('已标记为废弃');
-					// 文件修改会自动触发刷新，但在某些平台可能有延迟，添加备用刷新
-					activeWindow.setTimeout(() => this.refresh(), 100);
-				} else {
-					new Notice('[错误] 操作失败');
-				}
+					void this.plugin.foreshadowingManager.markAsDeprecated(
+						foreshadowingFile, entry.sourceFile, entry.createdAt
+					).then(success => {
+						if (success) {
+							new Notice('已标记为废弃');
+							// 文件修改会自动触发刷新，但在某些平台可能有延迟，添加备用刷新
+							window.setTimeout(() => void this.refresh(), 100);
+						} else {
+							new Notice('[错误] 操作失败');
+						}
+					}).catch(err => console.error('[ForeshadowingView] markAsDeprecated failed:', err));
 			};
 		}
 
@@ -286,7 +288,7 @@ export class ForeshadowingView extends CreativeView {
 				if (success) {
 					new Notice('已恢复为未回收');
 					// 文件修改会自动触发刷新，但在某些平台可能有延迟，添加备用刷新
-					activeWindow.setTimeout(() => this.refresh(), 100);
+					window.setTimeout(() => void this.refresh(), 100);
 				} else {
 					new Notice('[错误] 操作失败');
 				}

@@ -69,7 +69,7 @@ export class WritingStatusView extends ItemView {
 		this.createTimeCard(container);
 		this.createHistoryCard(container);
 
-		this.updateData();
+		void this.updateData();
 		this.renderMiniChart();
 	}
 
@@ -79,10 +79,7 @@ export class WritingStatusView extends ItemView {
 		this.workNameEl = row.createSpan({ cls: 'work-info-name', text: '--' });
 		this.workWordCountEl = row.createSpan({ cls: 'work-info-count', text: '' });
 		this.workGoalEl = card.createDiv({ cls: 'work-info-goal' });
-		this.workGoalEl.setCssStyles({ display: 'none' });
-		this.workGoalEl.setCssStyles({ fontSize: '12px' });
-		this.workGoalEl.setCssStyles({ color: 'var(--text-muted)' });
-		this.workGoalEl.setCssStyles({ marginTop: '4px' });
+		this.workGoalEl.addClass('webnovel-work-goal'); this.workGoalEl.style.display = 'none';
 	}
 
 	private createGoalCard(container: Element) {
@@ -92,7 +89,7 @@ export class WritingStatusView extends ItemView {
 
 		if (!isMobile()) {
 			this.statusBadgeEl = titleRow.createSpan({ cls: 'status-title-badge', text: '已暂停' });
-			this.statusBadgeEl.setCssStyles({ cursor: 'pointer' });
+			this.statusBadgeEl.style.cursor = 'pointer';
 			this.statusBadgeEl.title = '点击开始/暂停统计';
 			this.statusBadgeEl.addEventListener('click', () => {
 				if (this.plugin.isTracking) {
@@ -129,21 +126,21 @@ export class WritingStatusView extends ItemView {
 
 		// 榜单目标
 		const rankingLabelRow = goalCard.createDiv({ cls: 'status-goal-row ranking-goal-section' });
-		rankingLabelRow.setCssStyles({ display: 'none' });
+		rankingLabelRow.style.display = 'none';
 		rankingLabelRow.createSpan({ cls: 'status-goal-label', text: '榜单目标' });
 		this.rankingPercentEl = rankingLabelRow.createSpan({ cls: 'goal-percent', text: '0%' });
 
 		const rankingRow = goalCard.createDiv({ cls: 'goal-display-row-right ranking-goal-section' });
-		rankingRow.setCssStyles({ display: 'none' });
+		rankingRow.style.display = 'none';
 		this.rankingWordEl = rankingRow.createSpan({ cls: 'goal-current', text: '0' });
 		rankingRow.createSpan({ cls: 'goal-separator', text: ' / ' });
 		this.rankingTargetEl = rankingRow.createSpan({ cls: 'goal-target', text: '0' });
 		const rankingProgressBg = goalCard.createDiv({ cls: 'progress-bar-bg ranking-goal-section' });
-		rankingProgressBg.setCssStyles({ display: 'none' });
+		rankingProgressBg.style.display = 'none';
 		this.rankingProgressFillEl = rankingProgressBg.createDiv({ cls: 'progress-bar-fill' });
 
 		const rankingTimeDesc = goalCard.createDiv({ cls: 'ranking-time-desc ranking-goal-section' });
-		rankingTimeDesc.setCssStyles({ display: 'none' });
+		rankingTimeDesc.style.display = 'none';
 		this.rankingTimeDescEl = rankingTimeDesc;
 
 		this.rankingSectionEls = [rankingLabelRow, rankingRow, rankingProgressBg, rankingTimeDesc];
@@ -216,7 +213,7 @@ export class WritingStatusView extends ItemView {
 		state: 'normal' | 'negative' | 'done',
 		width: number
 	): void {
-		fillEl.setCssStyles({ width: `${width}%` });
+		fillEl.style.width = `${width}%`;
 		fillEl.removeClass('is-negative');
 		fillEl.removeClass('is-done');
 		wordEl.removeClass('is-negative');
@@ -274,30 +271,24 @@ export class WritingStatusView extends ItemView {
 				this.workGoalEl.empty();
 				this.workGoalEl.createSpan({ text: '总进度' });
 				const pctSpan = this.workGoalEl.createSpan({ text: `${pct}%` });
-				pctSpan.setCssStyles({ fontWeight: '600' });
-				pctSpan.setCssStyles({ fontFamily: 'var(--font-monospace)' });
-				this.workGoalEl.setCssStyles({ display: 'flex' });
-				this.workGoalEl.setCssStyles({ justifyContent: 'space-between' });
-				this.workGoalEl.setCssStyles({ alignItems: 'center' });
-				this.workGoalEl.setCssStyles({ marginTop: '8px' });
+				pctSpan.addClass('webnovel-pct-bold-mono');
+				this.workGoalEl.style.display = 'flex';
 			} else {
-				this.workGoalEl.setCssStyles({ display: 'none' });
+				this.workGoalEl.style.display = 'none';
 			}
 		}
 
 		if (!isMobile() && this.statusBadgeEl) {
 			if (this.plugin.isTracking) {
 				this.statusBadgeEl.innerText = '记录中';
-				this.statusBadgeEl.setCssStyles({ background: '' });
-				this.statusBadgeEl.setCssStyles({ color: '' });
+				this.statusBadgeEl.style.background = ''; this.statusBadgeEl.style.color = '';
 			} else {
 				this.statusBadgeEl.innerText = '已暂停';
-				this.statusBadgeEl.setCssStyles({ background: 'var(--text-muted)' });
-				this.statusBadgeEl.setCssStyles({ color: '' });
+				this.statusBadgeEl.style.background = 'var(--text-muted)'; this.statusBadgeEl.style.color = '';
 			}
 		}
 
-		const today = activeWindow.moment().format('YYYY-MM-DD');
+		const today = window.moment().format('YYYY-MM-DD');
 		const todayStat = this.plugin.historyManager.getDailyStat(today) || { focusMs: 0, slackMs: 0, addedWords: 0 };
 		const dailyAdded = todayStat.addedWords;
 		const dailyGoal = this.plugin.settings.dailyGoal || 0;
@@ -364,23 +355,23 @@ export class WritingStatusView extends ItemView {
 					this.rankingPercentEl.innerText = ` ${rankingPercent}%`;
 					const rankingDone = active.wordTarget > 0 && progress >= active.wordTarget;
 					const rankingState = rankingDone ? 'done' : 'normal';
-					const daysLeft = Math.max(0, activeWindow.moment(active.endDate).diff(activeWindow.moment().startOf('day'), 'days') + 1);
+					const daysLeft = Math.max(0, window.moment(active.endDate).diff(window.moment().startOf('day'), 'days') + 1);
 					const endShort = active.endDate.substring(5);
 					this.rankingTimeDescEl.setText(endShort + '截止，' + (rankingDone ? '已达标！' : '还剩' + daysLeft + '天'));
 					this.rankingTimeDescEl.toggleClass('ranking-reached', rankingDone);
 					this.setProgressState(this.rankingProgressFillEl, this.rankingWordEl, this.rankingPercentEl, rankingState, rankingPercent);
 
 					// 防抖持久化完成字数
-					if (this.rankingSaveTimer) activeWindow.clearTimeout(this.rankingSaveTimer);
-					this.rankingSaveTimer = activeWindow.setTimeout(() => {
-						manager.updateProgress(active.period, progress);
+					if (this.rankingSaveTimer) window.clearTimeout(this.rankingSaveTimer);
+					this.rankingSaveTimer = window.setTimeout(() => {
+						void manager.updateProgress(active.period, progress);
 					}, 5000);
 				}
 			}
 		}
 		if (this.rankingSectionEls) {
 			for (const el of this.rankingSectionEls) {
-				el.setCssStyles({ display: hasActiveRanking ? '' : 'none' });
+				el.style.display = hasActiveRanking ? '' : 'none';
 			}
 		}
 
@@ -403,13 +394,13 @@ export class WritingStatusView extends ItemView {
 		let yearWords = 0;
 		let totalWords = 0;
 
-		const now = activeWindow.moment();
+		const now = window.moment();
 
 		for (const [dateStr, stat] of Object.entries(this.plugin.historyManager.getHistory())) {
 			const dailyAdded = stat.addedWords || 0;
 			totalWords += dailyAdded;
 
-			const dateMoment = activeWindow.moment(dateStr);
+			const dateMoment = window.moment(dateStr);
 			if (dateMoment.isSame(now, 'isoWeek')) weekWords += dailyAdded;
 			if (dateMoment.isSame(now, 'month')) monthWords += dailyAdded;
 			if (dateMoment.isSame(now, 'year')) yearWords += dailyAdded;
@@ -448,7 +439,7 @@ export class WritingStatusView extends ItemView {
 
 			const heightPercent = Math.max(3, (Math.abs(words) / maxAbsValue) * 100);
 			const bar = col.createDiv({ cls: 'mini-chart-bar' });
-			bar.setCssStyles({ height: `${heightPercent}%` });
+			bar.style.height = `${heightPercent}%`;
 
 			if (words < 0) {
 				bar.addClass('bar-negative');
@@ -469,7 +460,7 @@ export class WritingStatusView extends ItemView {
 			col.createDiv({ cls: 'mini-chart-value', text: displayStr });
 		});
 
-		const now = activeWindow.moment();
+		const now = window.moment();
 		const endDate = now.format('YYYY-MM-DD');
 		const startDate = now.clone().subtract(7, 'days').format('YYYY-MM-DD');
 		const streak = calcStreak(history);
@@ -488,7 +479,7 @@ export class WritingStatusView extends ItemView {
 	}
 
 	async onClose() {
-		if (this.rankingSaveTimer) activeWindow.clearTimeout(this.rankingSaveTimer);
+		if (this.rankingSaveTimer) window.clearTimeout(this.rankingSaveTimer);
 		await super.onClose();
 	}
 }

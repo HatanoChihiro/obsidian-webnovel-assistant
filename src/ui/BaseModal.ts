@@ -1,5 +1,4 @@
 import { Modal, Notice, Setting } from 'obsidian';
-import { STYLES } from '../constants';
 
 /**
  * 基础表单 Modal 类
@@ -26,7 +25,7 @@ export abstract class BaseFormModal extends Modal {
 				type: type === 'text' ? 'text' : undefined,
 				placeholder
 			}
-		) as HTMLInputElement | HTMLTextAreaElement;
+		);
 		
 		el.value = defaultValue;
 		el.addClass('wn-base-input');
@@ -119,7 +118,7 @@ export abstract class BaseFormModal extends Modal {
 	 * 自动聚焦到指定元素
 	 */
 	protected autoFocus(element: HTMLInputElement | HTMLTextAreaElement, delay: number = 50): void {
-		activeWindow.setTimeout(() => {
+		window.setTimeout(() => {
 			element.focus();
 			if (element instanceof HTMLInputElement) {
 				element.select();

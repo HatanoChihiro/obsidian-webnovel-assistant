@@ -35,4 +35,4 @@ desktop.ini
 .vscode/
 
 # 内部开发文档
-CODE_REVIEW_*.md
+CODE_*.md

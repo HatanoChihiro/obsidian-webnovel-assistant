@@ -65,7 +65,7 @@ export class ViewManager {
 			}
 			
 			if (leaf) {
-				workspace.revealLeaf(leaf);
+				void workspace.revealLeaf(leaf);
 				if (isMobile()) {
 					workspace.rightSplit?.expand();
 				}

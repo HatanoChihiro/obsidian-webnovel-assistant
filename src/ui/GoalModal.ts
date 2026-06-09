@@ -29,7 +29,7 @@ export class GoalModal extends Modal {
 				text.inputEl.focus();
 				text.onChange(value => { this.goalInput = value; });
 				text.inputEl.addEventListener('keydown', (e) => { 
-					if (e.key === 'Enter') this.saveGoal(); 
+					if (e.key === 'Enter') void this.saveGoal(); 
 				});
 			});
 
@@ -37,7 +37,7 @@ export class GoalModal extends Modal {
 			.addButton(btn => btn
 				.setButtonText('保存')
 				.setCta()
-				.onClick(() => { this.saveGoal(); })
+				.onClick(() => { void this.saveGoal(); })
 			);
 	}
 

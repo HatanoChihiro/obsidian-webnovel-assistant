@@ -1,5 +1,5 @@
 import type { TFile, WorkspaceLeaf, App } from 'obsidian';
-import { ItemView, Modal, Notice, Setting, TFolder } from 'obsidian';
+import { Modal, Notice, Setting, TFolder } from 'obsidian';
 import type { TimelineEntry } from '../services/TimelineManager';
 import { TimelineManager } from '../services/TimelineManager';
 import { CreativeView } from './CreativeView';
@@ -52,23 +52,23 @@ export class TimelineAddModal extends Modal {
 		contentEl.addClass('timeline-add-modal');
 		contentEl.createEl('h2', { text: '添加到时间线' });
 
-		const inputStyle = 'width:100%;margin-bottom:8px;padding:6px 8px;border-radius:4px;border:1px solid var(--background-modifier-border);background:var(--background-primary);color:var(--text-normal);box-sizing:border-box;';
+		
 
 		new Setting(contentEl).setName('时间点').setDesc('例如：永历三年春 / 2024-03-15');
 		const timeInput = contentEl.createEl('input', { type: 'text' });
 		timeInput.placeholder = '时间点（必填）';
-		timeInput.setAttribute('style', inputStyle);
+		timeInput.addClass('webnovel-tl-input');
 		new Setting(contentEl).setName('事件描述');
 		const descInput = contentEl.createEl('textarea');
 		descInput.value = this.description;
-		descInput.setAttribute('style', inputStyle + 'height:80px;resize:vertical;font-family:var(--font-text);');
+		descInput.addClass('webnovel-tl-textarea');
 		new Setting(contentEl)
 			.setName('关联章节（可选）')
 			.setDesc('点击 + 号添加更多章节');
 		
 		// 章节列表容器
 		const chapterListContainer = contentEl.createDiv();
-		chapterListContainer.setAttribute('style', 'margin-bottom:12px;');
+		chapterListContainer.style.marginBottom = '12px';
 		// 获取当前文件夹下的所有 md 文件
 		const getChapterFiles = (): string[] => {
 			const folder = this.folderPath ? this.app.vault.getAbstractFileByPath(this.folderPath) : null;
@@ -82,14 +82,13 @@ export class TimelineAddModal extends Modal {
 		};
 		
 		const chapterFiles = getChapterFiles();
-		const selectedChapters: string[] = this.sourceFile ? [this.sourceFile] : [];
-		
+
 		// 创建章节选择行
 		const createChapterRow = (initialValue: string = '') => {
 			const row = chapterListContainer.createDiv();
-			row.setAttribute('style', 'display:flex;gap:8px;margin-bottom:8px;align-items:center;');
+			row.addClass('webnovel-tl-chapter-row');
 			const select = row.createEl('select');
-			select.setAttribute('style', 'flex:1;padding:6px 8px;border-radius:4px;border:1px solid var(--background-modifier-border);background:var(--background-primary);color:var(--text-normal);');
+			select.addClass('webnovel-tl-chapter-select');
 			// 添加空选项
 			select.createEl('option', { value: '', text: '-- 选择章节 --' });
 			
@@ -101,7 +100,7 @@ export class TimelineAddModal extends Modal {
 			
 			// 删除按钮
 			const removeBtn = row.createEl('button', { text: '−', cls: 'timeline-chapter-remove-btn' });
-			removeBtn.setAttribute('style', 'width:32px;height:32px;padding:0;border-radius:4px;background:var(--background-modifier-error);color:var(--text-on-accent);border:none;cursor:pointer;font-size:20px;line-height:1;');
+			removeBtn.addClass('webnovel-tl-remove-btn');
 			removeBtn.title = '删除此章节';
 			removeBtn.onclick = () => {
 				row.remove();
@@ -123,7 +122,7 @@ export class TimelineAddModal extends Modal {
 		
 		// 添加按钮
 		const addBtn = chapterListContainer.createEl('button', { text: '+ 添加章节', cls: 'timeline-chapter-add-btn' });
-		addBtn.setAttribute('style', 'width:100%;padding:6px;border-radius:4px;background:var(--interactive-accent);color:var(--text-on-accent);border:none;cursor:pointer;margin-top:4px;');
+		addBtn.addClass('webnovel-tl-add-btn');
 		addBtn.onclick = () => {
 			// 在添加按钮之前插入新行
 			const { row } = createChapterRow();
@@ -132,9 +131,9 @@ export class TimelineAddModal extends Modal {
 
 		new Setting(contentEl).setName('类型（可选）');
 		const typeSelect = contentEl.createEl('select');
-		typeSelect.setAttribute('style', inputStyle);
+		typeSelect.addClass('webnovel-tl-input');
 		// 添加空选项
-		const emptyOption = typeSelect.createEl('option', { value: '', text: '-- 选择类型 --' });
+		typeSelect.createEl('option', { value: '', text: '-- 选择类型 --' });
 		
 		// 合并全局默认类型 + 文件已有类型
 		const globalTypes = this.plugin.settings.timeline?.defaultTypes || ['主线', '支线', '伏笔', '世界观', '人物'];
@@ -144,24 +143,24 @@ export class TimelineAddModal extends Modal {
 		});
 		
 		// 添加"自定义"选项
-		const customOption = typeSelect.createEl('option', { value: '__custom__', text: '-- 自定义 --' });
+		typeSelect.createEl('option', { value: '__custom__', text: '-- 自定义 --' });
 		
 		// 自定义输入框（初始隐藏）
 		const customInput = contentEl.createEl('input', { type: 'text' });
 		customInput.placeholder = '输入自定义类型';
-		customInput.setAttribute('style', inputStyle + 'display:none;margin-top:4px;');
+		customInput.addClass('webnovel-tl-input webnovel-tl-custom-hidden');
 		// 切换显示自定义输入框
 		typeSelect.addEventListener('change', () => {
 			if (typeSelect.value === '__custom__') {
-				customInput.setCssStyles({ display: 'block' });
+				customInput.style.display = 'block';
 				customInput.focus();
 			} else {
-				customInput.setCssStyles({ display: 'none' });
+				customInput.style.display = 'none';
 			}
 		});
 
 		const btnContainer = contentEl.createDiv();
-		btnContainer.setAttribute('style', 'display:flex;justify-content:flex-end;gap:10px;margin-top:16px;');
+		btnContainer.addClass('wn-base-button-container');
 		btnContainer.createEl('button', { text: '取消' }).onclick = () => this.close();
 		const saveBtn = btnContainer.createEl('button', { text: '添加', cls: 'mod-cta' });
 		saveBtn.onclick = async () => {
@@ -193,7 +192,7 @@ export class TimelineAddModal extends Modal {
 			this.onSubmit(entry);
 			this.close();
 		};
-		activeWindow.setTimeout(() => timeInput.focus(), 50);
+		window.setTimeout(() => timeInput.focus(), 50);
 	}
 
 	onClose() { this.contentEl.empty(); }
@@ -296,11 +295,11 @@ export class TimelineView extends CreativeView {
 			const typeRow = header.createDiv({ cls: 'timeline-view-filter-row' });
 			const allBtn = typeRow.createEl('button', { text: '全部类型', cls: 'timeline-filter-btn' });
 			if (this.filterType === 'all') allBtn.addClass('is-active');
-			allBtn.onclick = () => { this.filterType = 'all'; this.refresh(); };
+			allBtn.onclick = () => { this.filterType = 'all'; void this.refresh(); };
 			typeOptions.forEach(type => {
 				const btn = typeRow.createEl('button', { text: type, cls: 'timeline-filter-btn' });
 				if (this.filterType === type) btn.addClass('is-active');
-				btn.onclick = () => { this.filterType = type; this.refresh(); };
+				btn.onclick = () => { this.filterType = type; void this.refresh(); };
 			});
 		}
 
@@ -360,7 +359,7 @@ export class TimelineView extends CreativeView {
 
 		item.addEventListener('dragstart', (e) => {
 			e.dataTransfer?.setData('text/plain', String(index));
-			activeWindow.setTimeout(() => item.addClass('timeline-dragging'), 0);
+			window.setTimeout(() => item.addClass('timeline-dragging'), 0);
 		});
 		
 		item.addEventListener('drag', onDrag);
@@ -380,7 +379,7 @@ export class TimelineView extends CreativeView {
 			if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
 		});
 		
-		item.addEventListener('drop', async (e) => {
+		item.addEventListener('drop', (e) => {
 			e.preventDefault();
 			const fromIndex = parseInt(e.dataTransfer?.getData('text/plain') || '-1', 10);
 			const rect = item.getBoundingClientRect();
@@ -392,8 +391,9 @@ export class TimelineView extends CreativeView {
 			item.removeClass('timeline-drag-over-top');
 			item.removeClass('timeline-drag-over-bottom');
 			if (fromIndex !== -1 && fromIndex !== toIndex) {
-				const newContent = await this.manager.moveEntry(fromIndex, toIndex);
+				void this.manager.moveEntry(fromIndex, toIndex).then(async (newContent) => {
 				await this.renderFromContent(newContent || null);
+				});
 			}
 		});
 
@@ -469,7 +469,7 @@ export class TimelineView extends CreativeView {
 		const editBtn = actions.createEl('button', { text: '编辑', cls: 'timeline-action-btn' });
 		editBtn.onclick = () => {
 			this.editingIndex = index;
-			this.refresh();
+			void this.refresh();
 		};
 
 		const deleteBtn = actions.createEl('button', { text: '删除', cls: 'timeline-action-btn timeline-delete-btn' });
@@ -495,7 +495,7 @@ export class TimelineView extends CreativeView {
 		
 		// 事件列表容器
 		const eventsContainer = form.createDiv();
-		eventsContainer.setAttribute('style', 'margin-bottom:12px;');
+		eventsContainer.style.marginBottom = '12px';
 		// 获取当前文件夹下的所有 md 文件
 		const folder = this.app.vault.getAbstractFileByPath(this.currentFolder);
 		const chapterFiles: string[] = [];
@@ -514,26 +514,26 @@ export class TimelineView extends CreativeView {
 		// 创建单个事件编辑块
 		const createEventBlock = (item: { description: string; chapter: string } = { description: '', chapter: '' }) => {
 			const eventBlock = eventsContainer.createDiv({ cls: 'timeline-event-block' });
-			eventBlock.setAttribute('style', 'border:1px solid var(--background-modifier-border);border-radius:6px;padding:12px;margin-bottom:12px;background:var(--background-secondary);');
+			eventBlock.addClass('webnovel-modal-event-block');
 			// 事件描述
 			eventBlock.createEl('label', { text: '事件描述', cls: 'timeline-form-label' });
 			const descInput = eventBlock.createEl('textarea', { cls: 'timeline-form-textarea' });
 			descInput.value = item.description;
 			descInput.placeholder = '描述这个事件...';
-			descInput.setAttribute('style', 'margin-bottom:8px;height:60px;');
+			descInput.addClass('webnovel-tl-desc-input-edit');
 			// 关联章节
 			eventBlock.createEl('label', { text: '关联章节', cls: 'timeline-form-label' });
 			const chapterListContainer = eventBlock.createDiv();
-			chapterListContainer.setAttribute('style', 'margin-bottom:8px;');
+			chapterListContainer.style.marginBottom = '8px';
 			// 解析已有的章节
 			const existingChapters = item.chapter ? item.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean) : [];
 			
 			// 创建章节选择行
 			const createChapterRow = (initialValue: string = '') => {
 				const row = chapterListContainer.createDiv();
-				row.setAttribute('style', 'display:flex;gap:8px;margin-bottom:4px;align-items:center;');
+				row.addClass('webnovel-tl-chapter-row-sm');
 				const select = row.createEl('select', { cls: 'timeline-form-input' });
-				select.setAttribute('style', 'flex:1;');
+				select.style.flex = '1';
 				select.createEl('option', { value: '', text: '-- 选择章节 --' });
 				chapterFiles.forEach(file => {
 					const option = select.createEl('option', { value: file, text: file });
@@ -541,7 +541,7 @@ export class TimelineView extends CreativeView {
 				});
 				
 				const removeBtn = row.createEl('button', { text: '−' });
-				removeBtn.setAttribute('style', 'width:28px;height:28px;padding:0;border-radius:4px;background:var(--background-modifier-error);color:var(--text-on-accent);border:none;cursor:pointer;font-size:16px;');
+				removeBtn.addClass('webnovel-tl-remove-btn-sm');
 				removeBtn.onclick = () => {
 					row.remove();
 					if (chapterListContainer.children.length === 1) createChapterRow();
@@ -559,7 +559,7 @@ export class TimelineView extends CreativeView {
 			
 			// 添加章节按钮
 			const addChapterBtn = chapterListContainer.createEl('button', { text: '+ 添加章节' });
-			addChapterBtn.setAttribute('style', 'width:100%;padding:4px;border-radius:4px;background:var(--interactive-accent);color:var(--text-on-accent);border:none;cursor:pointer;font-size:12px;margin-top:4px;');
+			addChapterBtn.addClass('webnovel-tl-add-btn-sm');
 			addChapterBtn.onclick = () => {
 				const { row } = createChapterRow();
 				chapterListContainer.insertBefore(row, addChapterBtn);
@@ -567,7 +567,7 @@ export class TimelineView extends CreativeView {
 			
 			// 删除事件按钮
 			const deleteEventBtn = eventBlock.createEl('button', { text: '删除此事件' });
-			deleteEventBtn.setAttribute('style', 'width:100%;padding:6px;border-radius:4px;background:var(--background-modifier-error);color:var(--text-on-accent);border:none;cursor:pointer;margin-top:8px;');
+			deleteEventBtn.addClass('webnovel-tl-delete-event-btn');
 			deleteEventBtn.onclick = () => {
 				eventBlock.remove();
 				// 至少保留一个事件块
@@ -584,7 +584,7 @@ export class TimelineView extends CreativeView {
 		
 		// 添加事件按钮
 		const addEventBtn = eventsContainer.createEl('button', { text: '+ 添加事件' });
-		addEventBtn.setAttribute('style', 'width:100%;padding:8px;border-radius:4px;background:var(--interactive-accent);color:var(--text-on-accent);border:none;cursor:pointer;margin-top:8px;');
+		addEventBtn.addClass('webnovel-tl-add-event-btn');
 		addEventBtn.onclick = () => {
 			const { eventBlock } = createEventBlock();
 			eventsContainer.insertBefore(eventBlock, addEventBtn);
@@ -605,19 +605,19 @@ export class TimelineView extends CreativeView {
 		
 		const customInput = form.createEl('input', { type: 'text', cls: 'timeline-form-input' });
 		customInput.placeholder = '输入自定义类型';
-		customInput.setAttribute('style', 'margin-top:4px;display:none;');
+		customInput.addClass('webnovel-tl-custom-hidden');
 		if (entry.type && !editTypeOptions.includes(entry.type)) {
 			typeSelect.value = '__custom__';
 			customInput.value = entry.type;
-			customInput.setCssStyles({ display: 'block' });
+			customInput.style.display = 'block';
 		}
 		
 		typeSelect.addEventListener('change', () => {
 			if (typeSelect.value === '__custom__') {
-				customInput.setCssStyles({ display: 'block' });
+				customInput.style.display = 'block';
 				customInput.focus();
 			} else {
-				customInput.setCssStyles({ display: 'none' });
+				customInput.style.display = 'none';
 			}
 		});
 
@@ -626,7 +626,7 @@ export class TimelineView extends CreativeView {
 		const cancelBtn = btnRow.createEl('button', { text: '取消', cls: 'timeline-action-btn' });
 		cancelBtn.onclick = () => {
 			this.editingIndex = -1;
-			this.refresh();
+			void this.refresh();
 		};
 		const saveBtn = btnRow.createEl('button', { text: '保存', cls: 'timeline-action-btn mod-cta' });
 		saveBtn.onclick = async () => {
@@ -681,10 +681,10 @@ export class TimelineView extends CreativeView {
 			
 			const newContent = await this.manager.updateEntry(index, updated);
 			this.editingIndex = -1;
-			await this.renderFromContent(newContent);
+			await void this.renderFromContent(newContent);
 		};
 
-		activeWindow.setTimeout(() => timeInput.focus(), 50);
+		window.setTimeout(() => timeInput.focus(), 50);
 	}
 
 	private showAddForm(container: HTMLElement, typeOptions: string[] = []) {
@@ -709,7 +709,7 @@ export class TimelineView extends CreativeView {
 		
 		// 章节列表容器
 		const chapterListContainer = form.createDiv();
-		chapterListContainer.setAttribute('style', 'margin-bottom:12px;');
+		chapterListContainer.style.marginBottom = '12px';
 		// 获取当前文件夹下的所有 md 文件
 		const folder = this.app.vault.getAbstractFileByPath(this.currentFolder);
 		const chapterFiles: string[] = [];
@@ -725,9 +725,9 @@ export class TimelineView extends CreativeView {
 		// 创建章节选择行
 		const createChapterRow = (initialValue: string = '') => {
 			const row = chapterListContainer.createDiv();
-			row.setAttribute('style', 'display:flex;gap:8px;margin-bottom:8px;align-items:center;');
+			row.addClass('webnovel-tl-chapter-row');
 			const select = row.createEl('select', { cls: 'timeline-form-input' });
-			select.setAttribute('style', 'flex:1;');
+			select.style.flex = '1';
 			// 添加空选项
 			select.createEl('option', { value: '', text: '-- 选择章节 --' });
 			
@@ -739,7 +739,7 @@ export class TimelineView extends CreativeView {
 			
 			// 删除按钮
 			const removeBtn = row.createEl('button', { text: '−', cls: 'timeline-chapter-remove-btn' });
-			removeBtn.setAttribute('style', 'width:32px;height:32px;padding:0;border-radius:4px;background:var(--background-modifier-error);color:var(--text-on-accent);border:none;cursor:pointer;font-size:20px;line-height:1;');
+			removeBtn.addClass('webnovel-tl-remove-btn');
 			removeBtn.title = '删除此章节';
 			removeBtn.onclick = () => {
 				row.remove();
@@ -757,7 +757,7 @@ export class TimelineView extends CreativeView {
 		
 		// 添加按钮
 		const addBtn = chapterListContainer.createEl('button', { text: '+ 添加章节', cls: 'timeline-chapter-add-btn' });
-		addBtn.setAttribute('style', 'width:100%;padding:6px;border-radius:4px;background:var(--interactive-accent);color:var(--text-on-accent);border:none;cursor:pointer;margin-top:4px;');
+		addBtn.addClass('webnovel-tl-add-btn');
 		addBtn.onclick = () => {
 			// 在添加按钮之前插入新行
 			const { row } = createChapterRow();
@@ -784,14 +784,14 @@ export class TimelineView extends CreativeView {
 		// 自定义输入框（初始隐藏）
 		const customInput = form.createEl('input', { type: 'text', cls: 'timeline-form-input' });
 		customInput.placeholder = '输入自定义类型';
-		customInput.setAttribute('style', 'margin-top:4px;display:none;');
+		customInput.addClass('webnovel-tl-custom-hidden');
 		// 切换显示自定义输入框
 		typeSelect.addEventListener('change', () => {
 			if (typeSelect.value === '__custom__') {
-				customInput.setCssStyles({ display: 'block' });
+				customInput.style.display = 'block';
 				customInput.focus();
 			} else {
-				customInput.setCssStyles({ display: 'none' });
+				customInput.style.display = 'none';
 			}
 		});
 
@@ -832,10 +832,10 @@ export class TimelineView extends CreativeView {
 			};
 			const newContent = await this.manager.appendEntry(entry);
 			form.remove();
-			this.renderFromContent(newContent);
+			void this.renderFromContent(newContent);
 		};
 
-		activeWindow.setTimeout(() => timeInput.focus(), 50);
+		window.setTimeout(() => timeInput.focus(), 50);
 	}
 
 	// ─── 文件操作 ───────────────────────────────────────
@@ -871,16 +871,17 @@ export class TimelineView extends CreativeView {
 			selectedText.trim(),
 			sourceFile,
 			folderPath,
-			async (entry) => {
-				const existing = await this.app.vault.read(file!);
+			(entry) => {
+				void this.app.vault.read(file).then(async (existing) => {
 				const separator = existing.endsWith('\n') ? '' : '\n';
-				await this.app.vault.modify(file!, existing + separator + this.manager.formatEntry(entry));
+				await this.app.vault.modify(file, existing + separator + this.manager.formatEntry(entry));
 				new Notice('[成功] 已添加到时间线');
 				// 如果面板已打开，刷新
 				const leaves = this.app.workspace.getLeavesOfType(TIMELINE_VIEW_TYPE);
 				if (leaves.length > 0) {
-					(leaves[0].view as TimelineView).refresh();
+					void (leaves[0].view as TimelineView).refresh();
 				}
+				});
 			},
 			true, // 返回完整 TimelineEntry
 			localTypes

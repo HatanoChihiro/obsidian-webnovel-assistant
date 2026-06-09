@@ -1,8 +1,7 @@
-import type { WorkspaceLeaf, TFile} from 'obsidian';
+import { TFile, type WorkspaceLeaf } from 'obsidian';
 import { ItemView, Notice, Menu } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ChapterSorter } from '../services/ChapterSorter';
-import { WordCounter } from '../services/WordCounter';
 
 export const CORKBOARD_VIEW_TYPE = 'webnovel-corkboard';
 
@@ -18,17 +17,17 @@ export class CorkboardView extends ItemView {
 		// 监听文件或元数据变化以刷新视图
 		this.registerEvent(this.app.vault.on('rename', () => {
 			if (this.isSavingMetadata) return;
-			this.reloadBoard();
+			void this.reloadBoard();
 		}));
 		this.registerEvent(this.app.vault.on('delete', () => {
 			if (this.isSavingMetadata) return;
-			this.reloadBoard();
+			void this.reloadBoard();
 		}));
 		this.registerEvent(this.app.metadataCache.on('changed', (file) => {
 			if (this.isSavingMetadata) return;
 			if (file instanceof TFile && !this.plugin.isFileInWorkspace(file)) return;
 			this.plugin.adaptiveDebounceManager.debounceFixed('corkboard-refresh', () => {
-				this.reloadBoard();
+				void this.reloadBoard();
 			}, 1000);
 		}));
 		// 监听活动叶子节点变化，以便自动切换小说
@@ -38,7 +37,7 @@ export class CorkboardView extends ItemView {
 				const newBookPath = this.plugin.characterManager.getBookPathForFile(activeFile);
 				if (newBookPath && newBookPath !== this.currentBookPath) {
 					this.currentBookPath = newBookPath;
-					this.reloadBoard();
+					void this.reloadBoard();
 				}
 			}
 		}));
@@ -156,12 +155,12 @@ export class CorkboardView extends ItemView {
 		titleEl.setText(file.basename);
 		titleEl.onclick = () => {
 			// 点击标题打开文件
-			this.app.workspace.getLeaf(false).openFile(file);
+			void this.app.workspace.getLeaf(false).openFile(file);
 		};
 
 		const statusEl = cardHeader.createDiv('wn-corkboard-card-status');
 		statusEl.setText(status);
-		statusEl.setCssStyles({ cursor: 'pointer' });
+		statusEl.style.cursor = 'pointer';
 		statusEl.title = '点击切换状态';
 
 		statusEl.onclick = (evt: MouseEvent) => {
@@ -183,7 +182,7 @@ export class CorkboardView extends ItemView {
 								console.error(err);
 								new Notice('状态更新失败');
 							} finally {
-								activeWindow.setTimeout(() => { this.isSavingMetadata = false; }, 500);
+								window.setTimeout(() => { this.isSavingMetadata = false; }, 500);
 							}
 						});
 				});
@@ -227,7 +226,7 @@ export class CorkboardView extends ItemView {
 		// 如果已经在编辑中，避免重复创建
 		if (container.querySelector('textarea')) return;
 
-		textEl.setCssStyles({ display: 'none' });
+		textEl.style.display = 'none';
 
 		const textarea = container.createEl('textarea', {
 			cls: 'wn-corkboard-textarea'
@@ -240,11 +239,11 @@ export class CorkboardView extends ItemView {
 		textarea.setSelectionRange(currentSynopsis.length, currentSynopsis.length);
 
 		// 自适应高度
-		textarea.setCssStyles({ height: 'auto' });
-		textarea.setCssStyles({ height: textarea.scrollHeight + 'px' });
+		textarea.style.height = 'auto';
+		textarea.style.height = textarea.scrollHeight + 'px';
 		textarea.oninput = () => {
-			textarea.setCssStyles({ height: 'auto' });
-			textarea.setCssStyles({ height: textarea.scrollHeight + 'px' });
+			textarea.style.height = 'auto';
+			textarea.style.height = textarea.scrollHeight + 'px';
 		};
 
 		let isSaving = false;
@@ -268,12 +267,12 @@ export class CorkboardView extends ItemView {
 					console.error(err);
 					new Notice('保存摘要失败，请检查文件状态');
 				} finally {
-					activeWindow.setTimeout(() => { this.isSavingMetadata = false; }, 500);
+					window.setTimeout(() => { this.isSavingMetadata = false; }, 500);
 				}
 			}
 			
 			textarea.remove();
-			textEl.setCssStyles({ display: 'block' });
+			textEl.style.display = 'block';
 		};
 
 		// 失去焦点时保存

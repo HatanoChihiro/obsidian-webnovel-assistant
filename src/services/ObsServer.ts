@@ -32,10 +32,10 @@ export class ObsOverlayServer {
 		}
 
 		try {
-			const http = activeWindow.require('http') as import('../types/node').NodeHTTP;
+			const http = activeWindow.require('http');
 			const plugin = this.plugin;
 
-			this.server = http.createServer(async (req: import('../types/node').NodeHTTPRequest, res: import('../types/node').NodeHTTPResponse) => {
+			this.server = http.createServer((req: import('../types/node').NodeHTTPRequest, res: import('../types/node').NodeHTTPResponse) => {
 				// [安全] 校验请求基本有效性
 				if (!req.url) { res.writeHead(400); res.end(); return; }
 				if (req.method !== 'GET') { res.writeHead(405); res.end(); return; }
@@ -49,8 +49,9 @@ export class ObsOverlayServer {
 						'Content-Type': 'application/json',
 						'Access-Control-Allow-Origin': '*'
 					});
-					const stats = await plugin.getObsStats();
+					void plugin.getObsStats().then(stats => {
 					res.end(JSON.stringify(stats));
+					});
 				} else {
 					res.writeHead(200, {
 						'Content-Type': 'text/html; charset=utf-8',
@@ -64,7 +65,7 @@ export class ObsOverlayServer {
 				new Notice(`OBS 叠加层已启动: http://127.0.0.1:${this.port}`);
 			});
 
-			this.server.on('error', async (e: NodeJS.ErrnoException) => {
+			this.server.on('error', (e: NodeJS.ErrnoException) => {
 				console.error('[WebNovel Assistant] OBS 服务器错误:', e);
 
 				// 清理引用，防止后续 start() 被守卫拦截

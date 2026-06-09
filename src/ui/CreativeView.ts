@@ -30,14 +30,14 @@ export abstract class CreativeView extends ItemView {
 	async onOpen() {
 		// 监听活动文件变化，自动切换文件夹
 		this.registerEvent(
-			this.app.workspace.on('active-leaf-change', () => this.onActiveFileChange())
+			this.app.workspace.on('active-leaf-change', () => { void this.onActiveFileChange(); })
 		);
 		// 监听对应文件修改，自动刷新
 		this.registerEvent(
 			this.app.vault.on('modify', (file) => {
 				const watchName = this.getWatchFileName() + '.md';
 				if (file instanceof TFile && file.name === watchName) {
-					this.refresh();
+					void this.refresh();
 				}
 			})
 		);

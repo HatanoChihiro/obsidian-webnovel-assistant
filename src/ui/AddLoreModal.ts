@@ -71,12 +71,12 @@ export class AddLoreModal extends Modal {
 				if (value === '__NEW__') {
 					this.isCreatingNew = true;
 					this.loreCategory = '';
-					textComponent.inputEl.setCssStyles({ display: 'block' });
+					textComponent.inputEl.style.display = 'block';
 					textComponent.inputEl.focus();
 				} else {
 					this.isCreatingNew = false;
 					this.loreCategory = value;
-					textComponent.inputEl.setCssStyles({ display: 'none' });
+					textComponent.inputEl.style.display = 'none';
 				}
 			});
 		});
@@ -90,7 +90,7 @@ export class AddLoreModal extends Modal {
 						this.loreCategory = value;
 					}
 				});
-			text.inputEl.setCssStyles({ display: 'none' }); // 默认隐藏
+			text.inputEl.style.display = 'none'; // 默认隐藏
 			return text;
 		});
 
@@ -154,7 +154,11 @@ export class AddLoreModal extends Modal {
 		}
 
 		const filePath = `${expectedLorePath}/${this.loreCategory}.md`;
-		let targetFile = this.app.vault.getAbstractFileByPath(filePath) as TFile;
+		let targetFile = this.app.vault.getAbstractFileByPath(filePath);
+
+		if (!(targetFile instanceof TFile)) {
+			targetFile = null;
+		}
 
 		let contentToAppend = `\n\n## ${this.loreName.trim()}\n\n`;
 		if (this.loreAliases.trim()) {

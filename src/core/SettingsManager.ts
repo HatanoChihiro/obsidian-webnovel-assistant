@@ -125,7 +125,7 @@ export class SettingsManager {
 				const cleanedData: Record<string, unknown> = {};
 				for (const key of Object.keys(data)) {
 					if (!STALE_KEYS.has(key)) {
-						(cleanedData as Record<string, unknown>)[key] = (data as Record<string, unknown>)[key];
+						cleanedData[key] = data[key];
 					}
 				}
 

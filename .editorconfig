@@ -26,6 +26,10 @@ indent_style = space
 indent_size = 2
 trim_trailing_whitespace = false
 
+# CSS files
+[*.css]
+charset = utf-8
+
 # YAML files
 [*.{yml,yaml}]
 indent_style = space

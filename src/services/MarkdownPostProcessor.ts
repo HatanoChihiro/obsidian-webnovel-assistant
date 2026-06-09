@@ -50,8 +50,8 @@ export class MarkdownPostProcessor {
 			checkbox.type = 'checkbox';
 			checkbox.title = '标记为已回收';
 			checkbox.className = 'foreshadowing-recovery-checkbox';
-			checkbox.setAttribute('style', 'margin-left:8px;cursor:pointer;vertical-align:middle;width:15px;height:15px;accent-color:var(--interactive-accent);');
-			checkbox.addEventListener('change', async (e) => {
+			checkbox.addClass('webnovel-foreshadowing-checkbox');
+			checkbox.addEventListener('change', (e) => {
 				e.preventDefault();
 				checkbox.checked = false; // 先恢复，等用户确认后再更新文件
 
@@ -59,46 +59,48 @@ export class MarkdownPostProcessor {
 				const sectionInfo = ctx.getSectionInfo(el);
 				if (!sectionInfo) return;
 
-				const content = await this.plugin.app.vault.read(file);
-				const lines = content.split('\n');
+				void this.plugin.app.vault.read(file).then(async (content) => {
+					const lines = content.split('\n');
 
-				let titleLine = -1;
-				let sourceFileName = '';
-				let createdAt = '';
-				let contentPreview = '';
+					let titleLine = -1;
+					let sourceFileName = '';
+					let createdAt = '';
+					let contentPreview = '';
 
-				for (let i = sectionInfo.lineStart; i >= 0; i--) {
-					const match = lines[i].match(/^## \[\[(.+?)\]\](?:\s*-\s*(.+))?$/);
-					if (match) {
-						sourceFileName = match[1];
-						createdAt = match[2]?.trim() || '';
-						titleLine = i;
-						break;
+					for (let i = sectionInfo.lineStart; i >= 0; i--) {
+						const match = lines[i].match(/^## \[\[(.+?)\]\](?:\s*-\s*(.+))?$/);
+						if (match) {
+							sourceFileName = match[1];
+							createdAt = match[2]?.trim() || '';
+							titleLine = i;
+							break;
+						}
 					}
-				}
 
-				if (titleLine === -1) return;
+					if (titleLine === -1) return;
 
-				// 提取内容预览
-				for (let i = titleLine + 1; i < lines.length; i++) {
-					if (lines[i].startsWith('> ')) {
-						contentPreview = lines[i].replace(/^> /, '');
-						break;
+					// 提取内容预览
+					for (let i = titleLine + 1; i < lines.length; i++) {
+						if (lines[i].startsWith('> ')) {
+							contentPreview = lines[i].replace(/^> /, '');
+							break;
+						}
+						if (/^## \[\[/.test(lines[i])) break;
 					}
-					if (/^## \[\[/.test(lines[i])) break;
-				}
 
-				new ForeshadowingRecoveryModal(this.plugin.app, contentPreview, file.parent?.path || '', async (recoveryFileNames) => {
-					const success = await this.plugin.foreshadowingManager?.markAsRecovered(
-						file, sourceFileName, createdAt, recoveryFileNames
-					);
-					if (success) {
-						const fileList = recoveryFileNames.map(f => `[[${f}]]`).join('、');
-						new Notice(`[成功] 已标记为已回收：${fileList}`);
-					} else {
-						new Notice('[错误] 未找到对应的伏笔条目');
-					}
-				}).open();
+					new ForeshadowingRecoveryModal(this.plugin.app, contentPreview, file.parent?.path || '', (recoveryFileNames) => {
+						void this.plugin.foreshadowingManager?.markAsRecovered(
+							file, sourceFileName, createdAt, recoveryFileNames
+						).then(success => {
+							if (success) {
+								const fileList = recoveryFileNames.map(f => `[[${f}]]`).join('、');
+								new Notice(`[成功] 已标记为已回收：${fileList}`);
+							} else {
+								new Notice('[错误] 未找到对应的伏笔条目');
+							}
+						});
+					}).open();
+				});
 			});
 
 			p.appendChild(checkbox);

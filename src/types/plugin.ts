@@ -7,7 +7,6 @@
  * 好处：各子系统只需依赖自己关心的接口子集，降低耦合
  */
 import type { App, Command, EventRef, PluginManifest, TFile, ViewCreator} from 'obsidian';
-import { WorkspaceLeaf } from 'obsidian';
 import type { AccurateCountSettings } from './settings';
 import type { ObsStatsPayload } from './stats';
 import type { CacheManager } from '../services/CacheManager';

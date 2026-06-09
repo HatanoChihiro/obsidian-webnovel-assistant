@@ -1,5 +1,5 @@
-import { MarkdownView, Notice, TFile, TFolder } from 'obsidian';
-import { isDesktop, isMobile } from '../utils/platform';
+import { Notice, TFile } from 'obsidian';
+import { isDesktop } from '../utils/platform';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { copyDocumentContent } from '../utils/ui';
 import { ChapterSorter } from '../services/ChapterSorter';
@@ -29,38 +29,38 @@ export class CommandManager {
 		this.plugin.addCommand({
 			id: 'toggle-writing-status-view',
 			name: '打开/关闭写作实时状态面板',
-			callback: () => this.plugin.toggleStatusView()
+			callback: () => { void this.plugin.toggleStatusView(); }
 		});
 
 		this.plugin.addCommand({
 			id: 'toggle-foreshadowing-view',
 			name: '打开/关闭伏笔面板',
-			callback: () => this.plugin.toggleForeshadowingView()
+			callback: () => { void this.plugin.toggleForeshadowingView(); }
 		});
 
 		this.plugin.addCommand({
 			id: 'toggle-timeline-view',
 			name: '打开/关闭时间线面板',
-			callback: () => this.plugin.toggleTimelineView()
+			callback: () => { void this.plugin.toggleTimelineView(); }
 		});
 
 		this.plugin.addCommand({
 			id: 'toggle-ranking-view',
 			name: '打开/关闭榜单追踪面板',
-			callback: () => this.plugin.toggleRankingView()
+			callback: () => { void this.plugin.toggleRankingView(); }
 		});
 
 		this.plugin.addCommand({
 			id: 'open-corkboard-view',
 			name: '打开/关闭章节一览面板',
-			callback: () => this.plugin.viewManager.toggleView('webnovel-corkboard')
+			callback: () => { void this.plugin.viewManager.toggleView('webnovel-corkboard'); }
 		});
 
 		if (isDesktop()) { // Desktop
 			this.plugin.addCommand({
 				id: 'toggle-immersive-mode',
 				name: '进入/退出全屏沉浸写作模式',
-				callback: () => this.plugin.immersiveModeManager.toggleImmersiveMode()
+				callback: () => { void this.plugin.immersiveModeManager.toggleImmersiveMode(); }
 			});
 
 			this.plugin.addCommand({
@@ -117,7 +117,7 @@ export class CommandManager {
 				id: 'toggle-floating-notes',
 				name: '显示/隐藏所有悬浮便签',
 				callback: () => {
-					this.plugin.toggleFloatingNotesVisibility();
+					void this.plugin.toggleFloatingNotesVisibility();
 				}
 			});
 		}
@@ -147,9 +147,12 @@ export class CommandManager {
 
 					const newFilePath = folderPath && folderPath.path !== '/' ? `${folderPath.path}/${newFileName}` : newFileName;
 					const existingFile = this.plugin.app.vault.getAbstractFileByPath(newFilePath);
-					if (existingFile) {
-						await this.plugin.app.workspace.getLeaf(false).openFile(existingFile as TFile);
+					if (existingFile instanceof TFile) {
+
+						await this.plugin.app.workspace.getLeaf(false).openFile(existingFile);
+
 						return;
+
 					}
 					try {
 						const newFile = await this.plugin.app.vault.create(newFilePath, '');
@@ -212,7 +215,7 @@ export class CommandManager {
 				name: '复制 OBS 叠加层 URL 到剪贴板',
 				callback: () => {
 					const url = `http://127.0.0.1:${this.plugin.settings.obs.obsPort}/`;
-					navigator.clipboard.writeText(url);
+					void navigator.clipboard.writeText(url);
 					new Notice(`已复制: ${url}`);
 				}
 			});
@@ -243,9 +246,9 @@ export class CommandManager {
 							}
 							if (isDesktop()) {
 								const notice = new Notice('[提示] 点击此处打开伏笔文件', 8000);
-								notice.messageEl.setCssStyles({ cursor: 'pointer' });
-								notice.messageEl.onclick = () => {
-									fm.openForeshadowingFile(foreshadowFile);
+								notice.noticeEl.style.cursor = 'pointer';
+								notice.noticeEl.onclick = () => {
+									void fm.openForeshadowingFile(foreshadowFile);
 									notice.hide();
 								};
 							}
@@ -259,13 +262,14 @@ export class CommandManager {
 				if (fm.foreshadowingFileExists(file)) {
 					fm.getExistingTags(file).then(extraTags => {
 						new ForeshadowingInputModal(this.plugin.app, this.plugin, file.basename, selectedText, submitCallback, extraTags).open();
-					});
+					}).catch(err => console.error('[CommandManager] getExistingTags failed:', err));
 				} else {
 					const fileName = this.plugin.settings.foreshadowing?.fileName || '伏笔';
 					const folderPath = file.parent?.path || '';
-					new ConfirmCreateForeshadowingFileModal(this.plugin.app, fileName, folderPath, async () => {
-						const extraTags = await fm.getExistingTags(file);
-					new ForeshadowingInputModal(this.plugin.app, this.plugin, file.basename, selectedText, submitCallback, extraTags).open();
+					new ConfirmCreateForeshadowingFileModal(this.plugin.app, fileName, folderPath, () => {
+						void fm.getExistingTags(file).then(extraTags => {
+							new ForeshadowingInputModal(this.plugin.app, this.plugin, file.basename, selectedText, submitCallback, extraTags).open();
+						});
 					}).open();
 				}
 				return true;
@@ -293,18 +297,19 @@ export class CommandManager {
 						this.plugin.app,
 						entry.contentPreview,
 						file.parent?.path || '',
-						async (selectedChapters) => {
-							const success = await fm.markAsRecovered(
+						(selectedChapters) => {
+							void fm.markAsRecovered(
 								file, entry.sourceFile, entry.createdAt, selectedChapters
-							);
-							if (success) {
-								const links = selectedChapters.map(c => `[[${c}]]`).join('、');
-								new Notice(`[成功] 已标记为已回收：${links}`);
-							} else {
-								new Notice('[错误] 未找到对应的伏笔条目，请确认光标位置');
-							}
-						}
-					).open();
+							).then(success => {
+								if (success) {
+									const links = selectedChapters.map(c => `[[${c}]]`).join('、');
+									new Notice(`[成功] 已标记为已回收：${links}`);
+								} else {
+									new Notice('[错误] 未找到对应的伏笔条目，请确认光标位置');
+								}
+							}).catch(err => console.error('[CommandManager] markAsRecovered failed:', err));
+					}
+				).open();
 					return true;
 				} else {
 					new Notice('[错误] 请将光标放在伏笔条目上');
@@ -332,7 +337,7 @@ export class CommandManager {
 			callback: () => {
 				const file = this.plugin.homepageManager?.getHomepageFile();
 				if (file) {
-					this.plugin.app.workspace.getLeaf(false).openFile(file);
+					void this.plugin.app.workspace.getLeaf(false).openFile(file);
 				} else {
 					new Notice('创作主页文件不存在，请重启插件');
 				}

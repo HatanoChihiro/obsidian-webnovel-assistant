@@ -20,8 +20,8 @@ import { StyleManager } from './src/services/StyleManager';
 import { AccurateCountSettingTab } from './src/ui/SettingsTab';
 import { FloatingStickyNote } from './src/ui/StickyNote';
 import { WritingStatusView, STATUS_VIEW_TYPE } from './src/ui/StatusView';
-import { ForeshadowingView, FORESHADOWING_VIEW_TYPE } from './src/ui/ForeshadowingView';
-import { TimelineView, TIMELINE_VIEW_TYPE } from './src/ui/TimelineView';
+import { FORESHADOWING_VIEW_TYPE } from './src/ui/ForeshadowingView';
+import { TIMELINE_VIEW_TYPE } from './src/ui/TimelineView';
 import { MobileFloatingStats } from './src/ui/MobileFloatingStats';
 import { AddLoreModal } from './src/ui/AddLoreModal';
 import { ObsOverlayServer } from './src/services/ObsServer';
@@ -128,7 +128,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		await this.setupCoreFeatures();
 		
 		// 定期保存设置和缓存
-		this.registerInterval(activeWindow.setInterval(() => {
+		this.registerInterval(window.setInterval(() => {
 			if (this.isTracking) {
 				this.saveSettings().catch(err => {
 					console.error('[Plugin] 定期保存设置失败:', err);
@@ -303,8 +303,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			if (this.settings.showExplorerCounts) {
 				this.app.workspace.onLayoutReady(() => {
 					// 移动端需要更长的延迟，确保文件浏览器完全加载
-						activeWindow.setTimeout(() => {
-						this.buildFolderCache();
+						window.setTimeout(() => {
+						void this.buildFolderCache();
 					}, PLATFORM_DELAYS.MOBILE_EXPLORER_DELAY);
 				});
 			}
@@ -345,8 +345,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.app.workspace.onLayoutReady(() => {
 			// 延迟构建缓存，避免阻塞启动
 			// 500ms 是一个平衡点：既不会阻塞启动，又能快速显示字数
-			activeWindow.setTimeout(() => {
-				this.buildFolderCache();
+			window.setTimeout(() => {
+				void this.buildFolderCache();
 			}, PLATFORM_DELAYS.DESKTOP_EXPLORER_DELAY);
 		});
 		// 桌面端文件事件监听（由 FileEventManager 管理）
@@ -430,7 +430,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		if (this.settings.enableHomepage) {
 			this.app.workspace.onLayoutReady(async () => {
 				try {
-					await this.homepageManager!.ensureHomepageExists();
+					await this.homepageManager.ensureHomepageExists();
 					
 					// 如果开启了启动时自动打开主页
 					if (this.settings.openHomepageOnStartup) {
@@ -527,8 +527,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		if (this.settings.showExplorerCounts) {
 			this.app.workspace.onLayoutReady(() => {
 				// 平板端需要延迟，确保文件浏览器完全加载
-					activeWindow.setTimeout(() => {
-						this.buildFolderCache();
+					window.setTimeout(() => {
+						void this.buildFolderCache();
 					}, PLATFORM_DELAYS.TABLET_EXPLORER_DELAY);
 			});
 			// 监听布局变化，确保文件浏览器就绪后刷新字数
@@ -636,7 +636,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		// 如果处于沉浸模式，立即刷新便签列表视图
 		if (activeDocument.body.classList.contains('immersive-mode-active')) {
 			// 给一点额外时间让设置/文件持久化完成
-			activeWindow.setTimeout(() => {
+			window.setTimeout(() => {
 				this.refreshImmersiveNotes();
 			}, 200);
 		}
@@ -680,15 +680,15 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			if (view.getMode() !== 'preview') {
 				// 使用 setTimeout 避免与 Obsidian 内部的文件打开/导航 Promise 产生竞态条件
 				// [BUGFIX] 使用计时器取消机制防止快速切换时的竞态
-				if (this._homepageTimer) activeWindow.clearTimeout(this._homepageTimer);
-				this._homepageTimer = activeWindow.setTimeout(() => {
+				if (this._homepageTimer) window.clearTimeout(this._homepageTimer);
+				this._homepageTimer = window.setTimeout(() => {
 					this._homepageTimer = null;
 					// 获取最新状态避免过期
 					const latestView = this.app.workspace.getActiveViewOfType(MarkdownView);
 					if (latestView && latestView.file?.path === homepagePath) {
 						const state = latestView.getState();
 						state.mode = 'preview';
-						latestView.leaf.setViewState({ type: 'markdown', state, active: true });
+						void latestView.leaf.setViewState({ type: 'markdown', state, active: true });
 					}
 				}, 50);
 			}
@@ -708,15 +708,15 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 					// 使用 setTimeout 避免切换回其他文档时，被 Obsidian 自身的默认加载状态覆盖
 					const targetPath = activeFile?.path;
 					// [BUGFIX] 使用计时器取消机制防止快速切换时的竞态
-					if (this._homepageTimer) activeWindow.clearTimeout(this._homepageTimer);
-					this._homepageTimer = activeWindow.setTimeout(() => {
+					if (this._homepageTimer) window.clearTimeout(this._homepageTimer);
+					this._homepageTimer = window.setTimeout(() => {
 						this._homepageTimer = null;
 						const latestView = this.app.workspace.getActiveViewOfType(MarkdownView);
 						if (latestView && latestView.file?.path === targetPath) {
 							const newState = latestView.getState();
 							newState.mode = originalState.mode;
 							newState.source = originalState.source;
-							latestView.leaf.setViewState({ type: 'markdown', state: newState, active: true });
+							void latestView.leaf.setViewState({ type: 'markdown', state: newState, active: true });
 						}
 					}, 50);
 				}
@@ -761,24 +761,24 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	
 	private registerCommonRibbonIcons(): void {
 		this.addRibbonIcon('bar-chart-2', '打开/关闭写作实时状态面板', () => {
-			this.toggleStatusView();
+			void this.toggleStatusView();
 		});
 		this.addRibbonIcon('bookmark', '打开/关闭伏笔面板', () => {
-			this.toggleForeshadowingView();
+			void this.toggleForeshadowingView();
 		});
 		this.addRibbonIcon('calendar-clock', '打开/关闭时间线', () => {
-			this.toggleTimelineView();
+			void this.toggleTimelineView();
 		});
 		this.addRibbonIcon('layout-grid', '打开/关闭章节一览', () => {
-			this.toggleCorkboardView();
+			void this.toggleCorkboardView();
 		});
 		this.addRibbonIcon('trophy', '打开/关闭榜单追踪面板', () => {
-			this.toggleRankingView();
+			void this.toggleRankingView();
 		});
 
 		if (isDesktop()) {
 			this.addRibbonIcon('expand', '进入/退出全屏沉浸写作模式', () => {
-				this.immersiveModeManager.toggleImmersiveMode();
+				void this.immersiveModeManager.toggleImmersiveMode();
 			});
 		}
 	}
@@ -824,7 +824,7 @@ onunload() {
 		// 5. 清理定时器和防抖
 		this.adaptiveDebounceManager.cancelAll();
 		if (this._homepageTimer) {
-			activeWindow.clearTimeout(this._homepageTimer);
+			window.clearTimeout(this._homepageTimer);
 			this._homepageTimer = null;
 		}
 
@@ -891,7 +891,7 @@ onunload() {
 				// 加载成功且缓存完整，直接刷新显示
 				// 移动端需要额外延迟，确保文件浏览器完全准备好
 				if (isMobile()) {
-					activeWindow.setTimeout(() => {
+					window.setTimeout(() => {
 						this.refreshFolderCounts();
 						if (this.settings.enableHomepage) this.homepageManager?.refreshHomepageViews();
 					}, PLATFORM_DELAYS.MOBILE_CACHE_REFRESH_DELAY);
@@ -921,7 +921,7 @@ onunload() {
 						const content = await this.app.vault.cachedRead(file);
 						const count = this.calculateAccurateWords(content);
 						this.cacheManager.updateFileCache(file, count, this.app.vault);
-					} catch (e) {
+					} catch {
 						// 忽略单个文件失败
 					}
 				}
@@ -930,7 +930,7 @@ onunload() {
 
 			// 移动端需要额外延迟，确保文件浏览器完全准备好
 			if (isMobile()) {
-				activeWindow.setTimeout(() => {
+				window.setTimeout(() => {
 						this.refreshFolderCounts();
 						if (this.settings.enableHomepage) this.homepageManager?.refreshHomepageViews();
 				}, PLATFORM_DELAYS.MOBILE_CACHE_REFRESH_DELAY);
@@ -1099,7 +1099,7 @@ onunload() {
 		const leaves = this.app.workspace.getLeavesOfType(STATUS_VIEW_TYPE);
 		for (const leaf of leaves) {
 			if (leaf.view instanceof WritingStatusView) {
-				leaf.view.updateData();
+				void leaf.view.updateData();
 				leaf.view.renderMiniChart(); // 刷新热力图显示
 			}
 		}

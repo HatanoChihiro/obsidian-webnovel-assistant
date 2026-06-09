@@ -1,10 +1,10 @@
-import { TFile, TFolder, Notice, MarkdownView } from 'obsidian';
+import { TFile, TFolder, Notice } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { GoalModal } from '../ui/GoalModal';
 import { copyDocumentContent } from '../utils/ui';
 import { isDesktop } from '../utils/platform';
 import { ChapterSorter } from '../services/ChapterSorter';
-import { TimelineAddFromSelectionModal } from '../ui/TimelineView';
+import { TimelineAddModal } from '../ui/TimelineView';
 import type { TimelineEntry } from '../services/TimelineManager';
 import { TimelineManager } from '../services/TimelineManager';
 import { RankingManager } from '../services/RankingManager';
@@ -29,8 +29,8 @@ export class MenuManager {
 
 				// 复制本文档：全平台均显示，内容包含「标题 + 空行 + 正文」
 				menu.addItem((item) => {
-					item.setTitle("复制本文档").setIcon("copy").onClick(async () => {
-						copyDocumentContent(file.basename, await this.plugin.app.vault.read(file));
+					item.setTitle("复制本文档").setIcon("copy").onClick(() => {
+						void this.plugin.app.vault.read(file).then(content => copyDocumentContent(file.basename, content));
 					});
 				});
 
@@ -64,9 +64,10 @@ export class MenuManager {
 			// 新建作品
 			menu.addItem((item) => {
 				item.setTitle('新建作品').setIcon('book-open').onClick(() => {
-					new NewNovelModal(this.plugin.app, this.plugin, async (result) => {
-						await this.plugin.homepageManager!.createNewNovel(result.name, result.meta);
-						new Notice('[成功] 已创建作品: ' + result.name);
+					new NewNovelModal(this.plugin.app, this.plugin, (result) => {
+						void this.plugin.homepageManager!.createNewNovel(result.name, result.meta).then(() => {
+							new Notice('[成功] 已创建作品: ' + result.name);
+						});
 					}).open();
 				});
 			});
@@ -81,7 +82,7 @@ export class MenuManager {
 					});
 
 					menu.addItem((item) => {
-						item.setTitle('添加到时间线').setIcon('calendar-clock').onClick(async () => {
+						item.setTitle('添加到时间线').setIcon('calendar-clock').onClick(() => { void (async () => {
 							const selectedText = editor.getSelection();
 							if (!selectedText.trim()) {
 								new Notice('请先选中文字');
@@ -101,33 +102,32 @@ export class MenuManager {
 								localTypes.push(...new Set(tlEntries.map((e: TimelineEntry) => e.type).filter(Boolean)));
 							}
 
-							new TimelineAddFromSelectionModal(
+							new TimelineAddModal(
 								this.plugin.app,
 								this.plugin,
-								this.plugin.settings.timeline?.fileName || '时间线',
 								selectedText.trim(),
 								chapterName,
 								folderPath,
-								async (result) => {
-									await new TimelineManager(this.plugin.app, this.plugin, folderPath).appendEntry({
+								(result) => {
+									void new TimelineManager(this.plugin.app, this.plugin, folderPath).appendEntry({
 										time: result.time,
 										description: result.description,
 										chapter: result.chapter,
 										type: result.type,
 										rawBlock: ''
-									});
+									}).then(async () => {
 									new Notice('[成功] 已添加到时间线');
 
 									// 刷新时间线视图
 									const leaves = this.plugin.app.workspace.getLeavesOfType('timeline-view');
 									if (leaves.length > 0) {
-										await new Promise(resolve => activeWindow.setTimeout(resolve, 100)); // 给文件写入一点时间
+										await new Promise(resolve => window.setTimeout(resolve, 100)); // 给文件写入一点时间
 										await leaves[0].view.refresh?.();
 									}
-								},
-								localTypes
-							).open();
-						});
+								});
+							},
+								false, localTypes).open();
+						})();});
 					});
 
 					if (isDesktop()) {
@@ -148,9 +148,9 @@ export class MenuManager {
 
 					// 复制本文档：全平台均显示，内容包含「标题 + 空行 + 正文」
 					menu.addItem((item) => {
-						item.setTitle("复制本文档").setIcon("copy").onClick(async () => {
+						item.setTitle("复制本文档").setIcon("copy").onClick(() => { void (async () => {
 							copyDocumentContent(view.file!.basename, await this.plugin.app.vault.read(view.file!));
-						});
+						})();});
 					});
 
 					if (isDesktop()) {
@@ -226,9 +226,10 @@ export class MenuManager {
 
 		for (const mdFile of mdFiles) {
 			const content = await this.plugin.app.vault.cachedRead(mdFile);
+			const stripped = this.stripFrontmatter(mdFile, content);
 			mergedContent += `\n\n## ${mdFile.basename}\n\n`;
-			mergedContent += content;
-			totalWords += this.plugin.calculateAccurateWords(content);
+			mergedContent += stripped;
+			totalWords += this.plugin.calculateAccurateWords(stripped);
 		}
 
 		const exportPath = `${file.path}/${file.name}_合并章节.md`;
@@ -247,12 +248,34 @@ export class MenuManager {
 			await this.plugin.app.workspace.getLeaf(false).openFile(mergedFile);
 			const overwriteHint = existingFile ? '\n合并章节文件已存在，自动覆盖' : '';
 			new Notice(`[成功] 合并成功！
-	已合并 ${mdFiles.length} 个章节
-	总计 ${totalWords.toLocaleString()} 字${overwriteHint}`, 8000);
+		已合并 ${mdFiles.length} 个章节
+		总计 ${totalWords.toLocaleString()} 字${overwriteHint}`, 8000);
 		} catch (error) {
 			console.error(error);
 			notice.hide();
 			new Notice('合并失败，请检查文件权限');
 		}
+	}
+
+	/**
+	 * 剥离 Markdown 文件的 YAML frontmatter（文档属性）
+	 * 使用 Obsidian metadataCache 的 frontmatterPosition 精确定位
+	 * 如果 cache 不可用，则用正则兜底
+	 */
+	private stripFrontmatter(file: TFile, content: string): string {
+		const cache = this.plugin.app.metadataCache.getFileCache(file);
+		const pos = cache?.frontmatterPosition;
+		if (pos) {
+			// frontmatterPosition.end.line 是 frontmatter 结束行（含 --- 行）
+			// 从下一行开始截取正文
+			const lines = content.split('\n');
+			const bodyStart = pos.end.line + 1;
+			if (bodyStart < lines.length) {
+				return lines.slice(bodyStart).join('\n');
+			}
+			return '';
+		}
+		// 兜底：正则匹配 frontmatter
+		return content.replace(/^---\n.*?\n---\n?/, '');
 	}
 }

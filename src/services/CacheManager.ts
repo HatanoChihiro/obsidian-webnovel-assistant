@@ -1,5 +1,4 @@
 import type { TFile, Vault } from 'obsidian';
-import { TFolder } from 'obsidian';
 import { CACHE_CONFIG } from '../constants';
 import { SerializedWriter } from '../utils/SerializedWriter';
 import { getPluginDir } from '../utils/platform';
@@ -147,7 +146,6 @@ export class CacheManager {
 				? allFiles.filter(f => isFileInWorkspace(f))
 				: allFiles;
 			
-			let successCount = 0;
 			let failCount = 0;
 
 			// 批量读取所有文件并计算字数
@@ -159,8 +157,6 @@ export class CacheManager {
 					// [BUGFIX] 使用 updateFileCache 而非直接 set，以复用时间戳守卫逻辑。
 					// 这样可以防止扫描过程中的旧字数覆盖掉启动瞬时产生的 modify 变动。
 					this.updateFileCache(file, count, vault);
-					
-					successCount++;
 				} catch (error) {
 					console.error(`[CacheManager] 读取文件失败: ${file.path}`, error);
 					failCount++;
@@ -168,7 +164,6 @@ export class CacheManager {
 				}
 			}
 
-			const elapsed = Date.now() - startTime;
 			if (failCount > 0) {
 				console.warn(`[CacheManager] 警告: ${failCount} 个文件读取失败，缓存可能不完整`);
 			}

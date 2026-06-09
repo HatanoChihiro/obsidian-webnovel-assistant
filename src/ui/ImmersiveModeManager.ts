@@ -1,6 +1,5 @@
 import type { App, WorkspaceLeaf, TFile } from 'obsidian';
 import { MarkdownView, Notice } from 'obsidian';
-import { VIEW_TYPES } from '../constants';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 
 /**
@@ -127,11 +126,11 @@ export class ImmersiveModeManager {
 				await this.app.workspace.setLayout(this.savedLayout);
 
 				if (currentMainFile) {
-					activeWindow.requestAnimationFrame(async () => {
+					window.requestAnimationFrame(() => {
 						const leaves = this.app.workspace.getLeavesOfType('markdown');
 						const targetLeaf = leaves.find(l => l.active) || leaves[0] || this.app.workspace.getLeaf(false);
 
-						await targetLeaf.setViewState({
+						void targetLeaf.setViewState({
 							type: 'markdown',
 							state: { file: currentMainFile.path },
 							active: true
@@ -215,9 +214,9 @@ export class ImmersiveModeManager {
 
 		const createSlotLeaves = async (slots: string[], direction: 'vertical' | 'horizontal', before: boolean, size: number, internalSizes: number[]) => {
 			if (!slots || slots.length === 0) return null;
-			const firstLeaf = workspace.createLeafBySplit(mainLeaf!, direction, before);
+			const firstLeaf = workspace.createLeafBySplit(mainLeaf, direction, before);
 			
-			const parentSplit = this.getParentSplit(mainLeaf!);
+			const parentSplit = this.getParentSplit(mainLeaf);
 			if (parentSplit && parentSplit.children) {
 				// 获取同级 children 的数量
 				const childCount = parentSplit.children.length;
@@ -282,7 +281,7 @@ export class ImmersiveModeManager {
 		// 确保主编辑器聚焦
 		workspace.setActiveLeaf(mainLeaf, { focus: true });
 
-		activeWindow.setTimeout(() => this.app.workspace.updateOptions(), 300);
+		window.setTimeout(() => this.app.workspace.updateOptions(), 300);
 		
 		// 监听布局变化，实时保存比例
 		this.layoutChangeRef = this.app.workspace.on('layout-change', () => {
@@ -326,12 +325,12 @@ export class ImmersiveModeManager {
 			}
 
 			if (hasFailure && attempt < 5 && this.isImmersiveActive) {
-				activeWindow.setTimeout(() => apply(attempt + 1), 100 * (attempt + 1));
+				window.setTimeout(() => apply(attempt + 1), 100 * (attempt + 1));
 			}
 		};
 
-		activeWindow.requestAnimationFrame(() => apply(0));
-		activeWindow.setTimeout(() => apply(0), 300);
+		window.requestAnimationFrame(() => apply(0));
+		window.setTimeout(() => apply(0), 300);
 	}
 
 	/**
@@ -351,7 +350,7 @@ export class ImmersiveModeManager {
 
 		const rightDiv = this.topBarEl.createDiv({ cls: 'immersive-top-bar-right' });
 		const exitBtn = rightDiv.createEl('button', { cls: 'immersive-exit-btn', text: '退出沉浸模式' });
-		exitBtn.addEventListener('click', () => this.exitImmersiveMode());
+		exitBtn.addEventListener('click', () => { void this.exitImmersiveMode(); });
 
 		this.topBarStatsEls = {
 			totalTime: centerDiv.createSpan({ cls: 'stat-item' }),
@@ -364,20 +363,20 @@ export class ImmersiveModeManager {
 		};
 
 		for (const el of Object.values(this.topBarStatsEls)) {
-			el.setCssStyles({ display: 'none' });
+			el.style.display = 'none';
 		}
 
 		activeDocument.body.appendChild(this.topBarEl);
-		this.renderTopBarContent();
+		void this.renderTopBarContent();
 
-		this.updateInterval = this.plugin.registerInterval(activeWindow.setInterval(() => {
-			this.renderTopBarContent();
+		this.updateInterval = this.plugin.registerInterval(window.setInterval(() => {
+			void this.renderTopBarContent();
 		}, 1000));
 	}
 
 	private removeTopBar(): void {
 		if (this.updateInterval) {
-			activeWindow.clearInterval(this.updateInterval);
+			window.clearInterval(this.updateInterval);
 			this.updateInterval = null;
 		}
 		if (this.topBarEl) {
@@ -396,10 +395,10 @@ export class ImmersiveModeManager {
 				const el = this.topBarStatsEls[key];
 				if (!el) return;
 				if (show) {
-					if (el.getCssPropertyValue('display') === 'none') el.setCssStyles({ display: '' });
+					if (el.style.display === 'none') el.style.display = ''
 					if (el.innerText !== text) el.innerText = text;
 				} else {
-					if (el.style.display !== 'none') el.setCssStyles({ display: 'none' });
+					if (el.style.display !== 'none') el.style.display = 'none';
 				}
 			};
 

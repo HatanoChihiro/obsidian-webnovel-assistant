@@ -1,5 +1,5 @@
 import type { TAbstractFile} from 'obsidian';
-import { TFile, TFolder } from 'obsidian';
+import { TFolder } from 'obsidian';
 import { CHINESE_NUMBERS } from '../constants';
 import type { ChapterNamingRule } from '../types/settings';
 
@@ -149,7 +149,7 @@ export class ChapterSorter {
 
 		// 没有自定义规则时，使用默认逻辑（向后兼容）
 		// 尝试匹配阿拉伯数字格式
-		const arabicMatch = basename.match(/(?:第|chapter|ch)?(\d+(?:\.\d+)?)(?:[章节回卷部册篇\s\-]|$)/i);
+		const arabicMatch = basename.match(/(?:第|chapter|ch)?(\d+(?:\.\d+)?)(?:[章节回卷部册篇\s-]|$)/i);
 		if (arabicMatch) {
 			const num = parseFloat(arabicMatch[1]);
 			if (!isNaN(num)) {
@@ -315,7 +315,7 @@ export class ChapterSorter {
 		return null;
 	}
 	static sortFiles(files: TAbstractFile[]): TAbstractFile[] {
-		return files.slice().sort(this.compareFiles);
+		return files.slice().sort((a, b) => ChapterSorter.compareFiles(a, b));
 	}
 
 	/**

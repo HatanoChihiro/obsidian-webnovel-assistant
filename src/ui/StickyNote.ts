@@ -1,5 +1,5 @@
 import type { App} from 'obsidian';
-import { Component, MarkdownRenderer, Notice, TFile, setIcon, Modal, Setting, MarkdownView, Platform } from 'obsidian';
+import { Component, MarkdownRenderer, Notice, TFile, setIcon, Modal, Setting, MarkdownView } from 'obsidian';
 import type { StickyNoteState, ThemeScheme } from '../types/settings';
 import { hexToRgba } from '../utils/format';
 import { isDesktop } from '../utils/platform';
@@ -36,20 +36,20 @@ export class SaveStickyNoteModal extends Modal {
 			.setDesc('输入文件名（无需 .md 后缀）')
 			.addText(text => {
 				this.fileNameInput = text.inputEl;
-				text.setValue(`便签_${activeWindow.moment().format('YYYYMMDD_HHmmss')}`)
+				text.setValue(`便签_${window.moment().format('YYYYMMDD_HHmmss')}`)
 					.onChange(() => {
 						// 实时验证文件名
 						const fileName = this.fileNameInput.value.trim();
 						if (!fileName) {
-							this.fileNameInput.setCssStyles({ borderColor: 'var(--background-modifier-error)' });
+							this.fileNameInput.style.borderColor = 'var(--background-modifier-error)';
 						} else {
-							this.fileNameInput.setCssStyles({ borderColor: '' });
+							this.fileNameInput.style.borderColor = '';
 						}
 					});
-				text.inputEl.setCssStyles({ width: '100%' });
+				text.inputEl.addClass('webnovel-settings-input-full');
 				
 				// 自动选中文件名（不包括时间戳）
-				activeWindow.setTimeout(() => {
+				window.setTimeout(() => {
 					const underscoreIndex = text.inputEl.value.indexOf('_');
 					if (underscoreIndex > 0) {
 						text.inputEl.setSelectionRange(0, underscoreIndex);
@@ -68,7 +68,7 @@ export class SaveStickyNoteModal extends Modal {
 				this.folderPathInput = text.inputEl;
 				text.setValue(defaultFolder)
 					.setPlaceholder('例如: 我的文件夹/子文件夹');
-				text.inputEl.setCssStyles({ width: '100%' });
+				text.inputEl.addClass('webnovel-settings-input-full');
 			});
 		
 		// 提示信息
@@ -79,10 +79,7 @@ export class SaveStickyNoteModal extends Modal {
 		
 		// 按钮
 		const buttonContainer = contentEl.createDiv({ cls: 'modal-button-container' });
-		buttonContainer.setCssStyles({ display: 'flex' });
-		buttonContainer.setCssStyles({ justifyContent: 'flex-end' });
-		buttonContainer.setCssStyles({ gap: '10px' });
-		buttonContainer.setCssStyles({ marginTop: '20px' });
+		buttonContainer.addClass('webnovel-btn-container-end');
 		
 		const cancelBtn = buttonContainer.createEl('button', { text: '取消' });
 		cancelBtn.onclick = () => this.close();
@@ -143,10 +140,7 @@ export class ConfirmCloseModal extends Modal {
 		
 		// 按钮
 		const buttonContainer = contentEl.createDiv({ cls: 'modal-button-container' });
-		buttonContainer.setCssStyles({ display: 'flex' });
-		buttonContainer.setCssStyles({ justifyContent: 'flex-end' });
-		buttonContainer.setCssStyles({ gap: '10px' });
-		buttonContainer.setCssStyles({ marginTop: '20px' });
+		buttonContainer.addClass('webnovel-btn-container-end');
 		
 		const dontSaveBtn = buttonContainer.createEl('button', { text: '不保存' });
 		dontSaveBtn.onclick = () => {
@@ -276,7 +270,7 @@ export class FloatingStickyNote extends Component {
 
 		// [BUGFIX] 清理可能尚在延迟中的 resize 防抖计时器，防止其在实例销毁后还尝试操作 DOM。
 		if (this.resizeTimer !== null) {
-			activeWindow.clearTimeout(this.resizeTimer);
+			window.clearTimeout(this.resizeTimer);
 			this.resizeTimer = null;
 		}
 		
@@ -354,7 +348,7 @@ export class FloatingStickyNote extends Component {
 		const pinBtn = this.createButton(controlsEl, 'pin', this.state.isPinned);
 		const saveBtn = this.createButton(controlsEl, 'save');
 		saveBtn.title = '保存便签内容 (Ctrl+S)';
-		saveBtn.setCssStyles({ opacity: '0.5' });
+		saveBtn.style.opacity = '0.5';
 		const syncBtn = this.state.filePath ? this.createButton(controlsEl, 'refresh-cw') : null;
 		if (syncBtn) syncBtn.title = '从关联文档同步内容';
 		const toggleEditBtn = this.createButton(controlsEl, this.state.isEditing ? 'eye' : 'pencil');
@@ -401,16 +395,15 @@ export class FloatingStickyNote extends Component {
 			// 视觉反馈：如果内容与最后保存的不一致，高亮保存按钮
 			const isDirty = this.textareaEl.value !== this.lastSavedContent;
 			if (isDirty && !this.plugin.settings.stickyNoteAutoSave) {
-				saveBtn.setCssStyles({ opacity: '1' });
-				saveBtn.setCssStyles({ color: 'var(--interactive-accent)' });
+				saveBtn.style.opacity = '1'; saveBtn.style.color = 'var(--interactive-accent)';
 			} else {
-				saveBtn.setCssStyles({ opacity: '0.5' });
-				saveBtn.setCssStyles({ color: '' });
+				saveBtn.style.opacity = '0.5';
+				saveBtn.style.color = '';
 			}
 
 			if (this.plugin.settings.stickyNoteAutoSave) {
 				const debounceKey = `save-note-${this.state.id}`;
-				this.plugin.adaptiveDebounceManager.debounceFixed(debounceKey, async () => {
+				this.plugin.adaptiveDebounceManager.debounceFixed(debounceKey, () => {
 					this.state.content = this.textareaEl.value;
 					this.saveState();
 					
@@ -418,13 +411,13 @@ export class FloatingStickyNote extends Component {
 					if (this.state.filePath) {
 						const file = this.app.vault.getAbstractFileByPath(this.state.filePath);
 						if (file instanceof TFile) {
-							await this.app.vault.modify(file, this.state.content || "");
+							void this.app.vault.modify(file, this.state.content || "");
 							this.lastSavedContent = this.state.content || ""; // 同步后更新“最后保存”内容
 						}
 					}
 					// 自动保存后恢复按钮状态
-					saveBtn.setCssStyles({ opacity: '0.5' });
-					saveBtn.setCssStyles({ color: '' });
+					saveBtn.style.opacity = '0.5';
+					saveBtn.style.color = '';
 				}, 500);
 			}
 		});
@@ -449,8 +442,7 @@ export class FloatingStickyNote extends Component {
 		const popupEl = parent.createDiv({ cls: 'my-sticky-palette-popup' });
 		this.plugin.settings.noteThemes.forEach((theme: ThemeScheme) => {
 			const swatch = popupEl.createDiv({ cls: 'my-sticky-swatch' });
-			swatch.setCssStyles({ backgroundColor: theme.bg });
-			swatch.setCssStyles({ color: theme.text });
+			Object.assign(swatch.style, { backgroundColor: theme.bg, color: theme.text });
 			swatch.innerText = "Aa"; 
 			
 			swatch.onclick = (e) => { 
@@ -496,7 +488,7 @@ export class FloatingStickyNote extends Component {
 		};
 
 		if (syncBtn) {
-			syncBtn.onclick = async () => {
+			syncBtn.onclick = () => { void (async () => {
 				if (this.state.filePath) {
 					const file = this.app.vault.getAbstractFileByPath(this.state.filePath);
 					if (file instanceof TFile) {
@@ -507,10 +499,11 @@ export class FloatingStickyNote extends Component {
 						new Notice('[成功] 已从文档同步内容');
 					}
 				}
+			})();
 			};
 		}
 
-		toggleEditBtn.onclick = async () => {
+		toggleEditBtn.onclick = () => { void (async () => {
 			if (this.state.isEditing) {
 				this.state.content = this.textareaEl.value;
 				if (this.state.filePath) {
@@ -535,13 +528,14 @@ export class FloatingStickyNote extends Component {
 			// 确保编辑模式下焦点在 textarea
 			if (this.state.isEditing) {
 				// 使用 requestAnimationFrame 确保在下一帧设置焦点
-				activeWindow.requestAnimationFrame(() => {
+				window.requestAnimationFrame(() => {
 					this.textareaEl.focus();
 				});
 			}
+		})();
 		};
 
-		saveBtn.onclick = async () => {
+		saveBtn.onclick = () => { void (async () => {
 			if (this.state.isEditing) {
 				this.state.content = this.textareaEl.value;
 			}
@@ -550,7 +544,7 @@ export class FloatingStickyNote extends Component {
 			if (this.state.filePath) { 
 				const file = this.app.vault.getAbstractFileByPath(this.state.filePath);
 				if (file instanceof TFile) {
-					await this.app.vault.modify(file, this.state.content || "");
+					void this.app.vault.modify(file, this.state.content || "");
 					this.lastSavedContent = this.state.content || ""; // 更新最后保存的内容
 					new Notice("[成功] 便签已同步至原文档");
 				}
@@ -558,40 +552,43 @@ export class FloatingStickyNote extends Component {
 			}
 			
 			// 新便签：弹出对话框让用户自定义文件名和保存位置
-			const modal = new SaveStickyNoteModal(this.app, this.plugin, async (fileName: string, folderPath: string) => {
-				try {
-					// 确保文件名以 .md 结尾
-					if (!fileName.endsWith('.md')) {
-						fileName += '.md';
+			const modal = new SaveStickyNoteModal(this.app, this.plugin, (fileName: string, folderPath: string) => {
+				void (async () => {
+					try {
+						// 确保文件名以 .md 结尾
+						if (!fileName.endsWith('.md')) {
+							fileName += '.md';
+						}
+
+						// 构建完整路径
+						const fullPath = folderPath ? `${folderPath}/${fileName}` : fileName;
+
+						// 检查文件是否已存在
+						if (this.app.vault.getAbstractFileByPath(fullPath)) {
+							new Notice(`[错误] 文件已存在: ${fullPath}`);
+							return;
+						}
+
+						// 创建文件
+						const file = await this.app.vault.create(fullPath, this.state.content || "");
+						this.state.filePath = file.path;
+						this.state.title = file.basename;
+						this.lastSavedContent = this.state.content || ""; // 更新最后保存的内容
+
+						// 更新标题显示
+						const titleEl = titleWrapper.querySelector('.my-sticky-title') as HTMLElement;
+						if (titleEl) titleEl.innerText = this.state.title;
+
+						this.saveState();
+						new Notice(`[成功] 已保存为: ${fullPath}`);
+					} catch (error) {
+						console.error('保存便签失败:', error);
+						new Notice(`[错误] 保存失败: ${error}`);
 					}
-					
-					// 构建完整路径
-					const fullPath = folderPath ? `${folderPath}/${fileName}` : fileName;
-					
-					// 检查文件是否已存在
-					if (this.app.vault.getAbstractFileByPath(fullPath)) {
-						new Notice(`[错误] 文件已存在: ${fullPath}`);
-						return;
-					}
-					
-					// 创建文件
-					const file = await this.app.vault.create(fullPath, this.state.content || "");
-					this.state.filePath = file.path;
-					this.state.title = file.basename;
-					this.lastSavedContent = this.state.content || ""; // 更新最后保存的内容
-					
-					// 更新标题显示
-					const titleEl = titleWrapper.querySelector('.my-sticky-title') as HTMLElement;
-					if (titleEl) titleEl.innerText = this.state.title;
-					
-					this.saveState();
-					new Notice(`[成功] 已保存为: ${fullPath}`);
-				} catch (error) {
-					console.error('保存便签失败:', error);
-					new Notice(`[错误] 保存失败: ${error}`);
-				}
+				})();
 			});
 			modal.open();
+		})();
 		};
 
 		closeBtn.onclick = () => {
@@ -609,47 +606,51 @@ export class FloatingStickyNote extends Component {
 			
 			if (shouldPrompt) {
 				// 弹出确认对话框
-				const modal = new ConfirmCloseModal(this.app, async (shouldSave: boolean) => {
-					if (shouldSave) {
-						// 用户选择保存
-						if (this.state.isEditing) {
-							this.state.content = this.textareaEl.value;
-						}
-						
-						// 如果已经关联了文件，直接保存
-						if (this.state.filePath) {
-							const file = this.app.vault.getAbstractFileByPath(this.state.filePath);
-							if (file instanceof TFile) {
-								await this.app.vault.modify(file, this.state.content || "");
-								new Notice("[成功] 便签已保存");
+				const modal = new ConfirmCloseModal(this.app, (shouldSave: boolean) => {
+					void (async () => {
+						if (shouldSave) {
+							// 用户选择保存
+							if (this.state.isEditing) {
+								this.state.content = this.textareaEl.value;
 							}
-							this.close();
-						} else {
-							// 新便签，弹出保存对话框
-							const saveModal = new SaveStickyNoteModal(this.app, this.plugin, async (fileName: string, folderPath: string) => {
-								try {
-									if (!fileName.endsWith('.md')) {
-										fileName += '.md';
-									}
-									const fullPath = folderPath ? `${folderPath}/${fileName}` : fileName;
-									if (this.app.vault.getAbstractFileByPath(fullPath)) {
-										new Notice(`[错误] 文件已存在: ${fullPath}`);
-										return;
-									}
-									await this.app.vault.create(fullPath, this.state.content || "");
-									new Notice(`[成功] 已保存为: ${fullPath}`);
-									this.close();
-								} catch (error) {
-									console.error('保存便签失败:', error);
-									new Notice(`[错误] 保存失败: ${error}`);
+							
+							// 如果已经关联了文件，直接保存
+							if (this.state.filePath) {
+								const file = this.app.vault.getAbstractFileByPath(this.state.filePath);
+								if (file instanceof TFile) {
+									await this.app.vault.modify(file, this.state.content || "");
+									new Notice("[成功] 便签已保存");
 								}
-							});
-							saveModal.open();
+								this.close();
+							} else {
+								// 新便签，弹出保存对话框
+								const saveModal = new SaveStickyNoteModal(this.app, this.plugin, (fileName: string, folderPath: string) => {
+									void (async () => {
+										try {
+											if (!fileName.endsWith('.md')) {
+												fileName += '.md';
+											}
+											const fullPath = folderPath ? `${folderPath}/${fileName}` : fileName;
+											if (this.app.vault.getAbstractFileByPath(fullPath)) {
+												new Notice(`[错误] 文件已存在: ${fullPath}`);
+												return;
+											}
+											await this.app.vault.create(fullPath, this.state.content || "");
+											new Notice(`[成功] 已保存为: ${fullPath}`);
+											this.close();
+										} catch (error) {
+											console.error('保存便签失败:', error);
+											new Notice(`[错误] 保存失败: ${error}`);
+										}
+									})();
+								});
+								saveModal.open();
+							}
+						} else {
+							// 用户选择不保存，直接关闭
+							this.close();
 						}
-					} else {
-						// 用户选择不保存，直接关闭
-						this.close();
-					}
+					})();
 				});
 				modal.open();
 			} else {
@@ -660,11 +661,7 @@ export class FloatingStickyNote extends Component {
 	}
 
 	updateVisuals() {
-		this.containerEl.setCssStyles({ top: this.state.top });
-		this.containerEl.setCssStyles({ left: this.state.left });
-		this.containerEl.setCssStyles({ width: this.state.width });
-		this.containerEl.setCssStyles({ height: this.state.height });
-		this.containerEl.setCssStyles({ resize: this.state.isPinned ? 'none' : 'both' });
+		Object.assign(this.containerEl.style, { top: this.state.top, left: this.state.left, width: this.state.width, height: this.state.height, resize: this.state.isPinned ? 'none' : 'both' });
 		this.containerEl.style.setProperty('--sticky-zoom', (this.state.zoomLevel || 1).toString());
 		
 		const bgWithAlpha = hexToRgba(this.state.color, this.plugin.settings.noteOpacity);
@@ -678,8 +675,7 @@ export class FloatingStickyNote extends Component {
 
 	async renderContent() {
 		if (this.state.isEditing) {
-			this.contentContainer.setCssStyles({ display: 'none' });
-			this.textareaEl.setCssStyles({ display: 'block' });
+				this.contentContainer.style.display = 'none'; this.textareaEl.style.display = 'block';
 			
 			// 核心修复：如果当前文本框正处于聚焦状态（用户正在输入），不要强行覆盖它的值
 			// 否则会打断中文输入法 (IME) 的组合过程
@@ -689,11 +685,10 @@ export class FloatingStickyNote extends Component {
 					this.textareaEl.value = newContent;
 				}
 				// 仅在非聚焦时尝试恢复焦点，避免干扰正常输入循环
-				// activeWindow.setTimeout(() => { this.textareaEl.focus(); }, 50);
+				// window.setTimeout(() => { this.textareaEl.focus(); }, 50);
 			}
 		} else {
-			this.textareaEl.setCssStyles({ display: 'none' });
-			this.contentContainer.setCssStyles({ display: 'block' });
+			this.textareaEl.style.display = 'none'; this.contentContainer.style.display = 'block';
 			this.contentContainer.empty();
 			let text = this.state.content || "";
 			if (this.state.filePath) {
@@ -744,8 +739,7 @@ export class FloatingStickyNote extends Component {
 			pos4 = e.clientY;
 			this.state.top  = (this.containerEl.offsetTop  - pos2) + "px";
 			this.state.left = (this.containerEl.offsetLeft - pos1) + "px";
-			this.containerEl.setCssStyles({ top: this.state.top });
-			this.containerEl.setCssStyles({ left: this.state.left });
+					Object.assign(this.containerEl.style, { top: this.state.top, left: this.state.left });
 		};
 
 		const onMouseUp = () => {
@@ -778,9 +772,9 @@ export class FloatingStickyNote extends Component {
 			// [BUGFIX] 添加 300ms 防抖：ResizeObserver 在用户拖动调整大小时每帧触发一次，
 			// 如果每帧都执行 saveState()（内含文件 I/O）会导致每秒最高 60 次文件写入。
 			if (this.resizeTimer !== null) {
-				activeWindow.clearTimeout(this.resizeTimer);
+				window.clearTimeout(this.resizeTimer);
 			}
-			this.resizeTimer = activeWindow.setTimeout(() => {
+			this.resizeTimer = window.setTimeout(() => {
 				this.resizeTimer = null;
 
 				// 如果元素当前被隐藏（如在沉浸模式下），不保存 0x0 的尺寸

@@ -1,5 +1,5 @@
 import type { App} from 'obsidian';
-import { Modal, Notice, Setting, SuggestModal, TFile, TFolder } from 'obsidian';
+import { Modal, Notice, Setting, TFile, TFolder } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 
 // ─────────────────────────────────────────────
@@ -66,7 +66,7 @@ export class ForeshadowingInputModal extends Modal {
 			cls: 'foreshadowing-description',
 			placeholder: '例如：这是主角身世的伏笔，将在第十章揭晓...',
 		});
-		this.descriptionEl.setAttribute('style', 'width:100%;height:80px;resize:vertical;margin-bottom:12px;padding:8px;border-radius:4px;border:1px solid var(--background-modifier-border);background:var(--background-primary);color:var(--text-normal);font-family:var(--font-text);');
+		this.descriptionEl.addClass('webnovel-modal-textarea');
 		// 标签（可选）
 		new Setting(contentEl)
 			.setName('标签（可选）')
@@ -77,16 +77,16 @@ export class ForeshadowingInputModal extends Modal {
 			placeholder: '例如：人物 情节 世界观',
 			cls: 'foreshadowing-tags-input'
 		});
-		this.tagsEl.setAttribute('style', 'width:100%;margin-bottom:8px;padding:6px 8px;border-radius:4px;border:1px solid var(--background-modifier-border);background:var(--background-primary);color:var(--text-normal);');
+		this.tagsEl.addClass('webnovel-modal-input');
 		// 常用标签快捷按钮
 		const globalTags: string[] = this.plugin.settings.foreshadowing?.defaultTags || ['人物', '情节', '世界观', '道具', '伏线'];
 		const allTags = [...new Set([...globalTags, ...this.extraTags])];
 		if (allTags.length > 0) {
 			const tagBtnContainer = contentEl.createDiv({ cls: 'foreshadowing-tag-buttons' });
-			tagBtnContainer.setAttribute('style', 'display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px;');
+			tagBtnContainer.addClass('wn-base-tag-button-container');
 			for (const tag of allTags) {
 				const btn = tagBtnContainer.createEl('button', { text: `#${tag}` });
-				btn.setAttribute('style', 'padding:2px 10px;border-radius:12px;border:1px solid var(--interactive-accent);color:var(--interactive-accent);background:transparent;cursor:pointer;font-size:0.85em;');
+				btn.addClass('wn-base-tag-button');
 				btn.onclick = () => {
 					const current = this.tagsEl.value.trim();
 					const existing = current ? current.split(/\s+/) : [];
@@ -99,7 +99,7 @@ export class ForeshadowingInputModal extends Modal {
 
 		// 按钮区
 		const btnContainer = contentEl.createDiv();
-		btnContainer.setAttribute('style', 'display:flex;justify-content:flex-end;gap:10px;margin-top:8px;');
+		btnContainer.addClass('wn-base-button-container');
 		const cancelBtn = btnContainer.createEl('button', { text: '取消' });
 		cancelBtn.onclick = () => this.close();
 
@@ -107,7 +107,7 @@ export class ForeshadowingInputModal extends Modal {
 		confirmBtn.onclick = () => this.submit();
 
 		// 聚焦说明输入框
-		activeWindow.setTimeout(() => this.descriptionEl.focus(), 50);
+		window.setTimeout(() => this.descriptionEl.focus(), 50);
 
 		// Ctrl+Enter 提交
 		contentEl.addEventListener('keydown', (e) => {
@@ -121,7 +121,7 @@ export class ForeshadowingInputModal extends Modal {
 	private submit() {
 		const description = this.descriptionEl.value.trim();
 		if (!description) {
-			this.descriptionEl.setCssStyles({ borderColor: 'var(--background-modifier-error)' });
+			this.descriptionEl.style.borderColor = 'var(--background-modifier-error)';
 			new Notice('[错误] 请填写补充说明');
 			this.descriptionEl.focus();
 			return;
@@ -171,10 +171,10 @@ class ChapterMultiSelectModal extends Modal {
 			type: 'text',
 			placeholder: '搜索章节...'
 		});
-		searchInput.setAttribute('style', 'width:100%;margin-bottom:12px;padding:6px 8px;border-radius:4px;border:1px solid var(--background-modifier-border);background:var(--background-primary);color:var(--text-normal);');
+		searchInput.addClass('webnovel-modal-input');
 		// 章节列表
 		this.listEl = contentEl.createDiv({ cls: 'chapter-multi-select-list' });
-		this.listEl.setAttribute('style', 'max-height:300px;overflow-y:auto;border:1px solid var(--background-modifier-border);border-radius:4px;margin-bottom:12px;');
+		this.listEl.addClass('webnovel-modal-list');
 		this.renderChapterList(this.chapters);
 
 		// 搜索功能
@@ -186,7 +186,7 @@ class ChapterMultiSelectModal extends Modal {
 
 		// 已选择的章节显示
 		const selectedEl = contentEl.createDiv({ cls: 'selected-chapters' });
-		selectedEl.setAttribute('style', 'margin-bottom:12px;padding:8px;background:var(--background-secondary);border-radius:4px;min-height:30px;');
+		selectedEl.addClass('webnovel-modal-selected');
 		const updateSelected = () => {
 			selectedEl.empty();
 			if (this.selectedChapters.size === 0) {
@@ -196,14 +196,14 @@ class ChapterMultiSelectModal extends Modal {
 				selectedEl.createEl('br');
 				Array.from(this.selectedChapters).forEach(ch => {
 					const tag = selectedEl.createSpan({ text: ch, cls: 'tag' });
-					tag.setAttribute('style', 'display:inline-block;margin:4px 4px 0 0;padding:2px 8px;background:var(--interactive-accent);color:var(--text-on-accent);border-radius:12px;font-size:0.9em;');
+					tag.addClass('webnovel-modal-selected-tag');
 				});
 			}
 		};
 
 		// 按钮区
 		const btnContainer = contentEl.createDiv();
-		btnContainer.setAttribute('style', 'display:flex;justify-content:flex-end;gap:10px;');
+		btnContainer.addClass('wn-base-button-container');
 		const cancelBtn = btnContainer.createEl('button', { text: '取消' });
 		cancelBtn.onclick = () => this.close();
 
@@ -228,12 +228,11 @@ class ChapterMultiSelectModal extends Modal {
 		this.listEl.empty();
 		chapters.forEach(chapter => {
 			const item = this.listEl.createDiv({ cls: 'chapter-item' });
-			item.setAttribute('style', 'padding:8px 12px;border-bottom:1px solid var(--background-modifier-border);cursor:pointer;display:flex;align-items:center;gap:8px;');
+			item.addClass('webnovel-modal-chapter-item');
 			const checkbox = item.createEl('input', { type: 'checkbox' });
 			checkbox.checked = this.selectedChapters.has(chapter);
-			checkbox.setAttribute('style', 'cursor:pointer;');
-			const label = item.createSpan({ text: chapter });
-			label.setAttribute('style', 'flex:1;cursor:pointer;');
+			checkbox.style.cursor = 'pointer';
+			const label = item.createSpan({ text: chapter, cls: 'webnovel-chapter-label' });
 			const toggle = () => {
 				if (this.selectedChapters.has(chapter)) {
 					this.selectedChapters.delete(chapter);
@@ -253,42 +252,12 @@ class ChapterMultiSelectModal extends Modal {
 		});
 
 		if (chapters.length === 0) {
-			this.listEl.createDiv({ text: '没有找到匹配的章节', cls: 'setting-item-description' }).setCssStyles({ padding: '12px' });
+			this.listEl.createDiv({ text: '没有找到匹配的章节', cls: 'setting-item-description webnovel-modal-empty' });
 		}
 	}
 
 	onClose() {
 		this.contentEl.empty();
-	}
-}
-
-/**
- * 章节选择建议模态框（单选，向后兼容）
- */
-class ChapterSuggestModal extends SuggestModal<string> {
-	private chapters: string[];
-	private onSubmit: (chapter: string) => void;
-
-	constructor(app: App, chapters: string[], onSubmit: (chapter: string) => void) {
-		super(app);
-		this.chapters = chapters;
-		this.onSubmit = onSubmit;
-		this.setPlaceholder('输入章节名称进行搜索...');
-	}
-
-	getSuggestions(query: string): string[] {
-		const lowerQuery = query.toLowerCase();
-		return this.chapters.filter(chapter =>
-			chapter.toLowerCase().includes(lowerQuery)
-		);
-	}
-
-	renderSuggestion(chapter: string, el: HTMLElement) {
-		el.createEl('div', { text: chapter });
-	}
-
-	onChooseSuggestion(chapter: string, evt: MouseEvent | KeyboardEvent) {
-		this.onSubmit(chapter);
 	}
 }
 
@@ -348,13 +317,11 @@ export class ForeshadowingRecoveryModal extends Modal {
 			type: 'text',
 			placeholder: '例如：第十章, 第十一章',
 		});
-		this.inputEl.setAttribute('style', 'width:100%;margin-bottom:8px;padding:6px 8px;border-radius:4px;border:1px solid var(--background-modifier-border);background:var(--background-primary);color:var(--text-normal);');
+		this.inputEl.addClass('webnovel-modal-input');
 		// 如果有章节文件，显示选择按钮
 		if (this.chapters.length > 0) {
-			const btnRow = contentEl.createDiv();
-			btnRow.setAttribute('style', 'display:flex;gap:8px;margin-bottom:12px;');
-			const selectBtn = btnRow.createEl('button', { text: '从列表选择（支持多选）' });
-			selectBtn.setAttribute('style', 'flex:1;padding:6px 12px;border-radius:4px;border:1px solid var(--interactive-accent);color:var(--interactive-accent);background:transparent;cursor:pointer;');
+			const btnRow = contentEl.createDiv({ cls: 'webnovel-btn-row' });
+			const selectBtn = btnRow.createEl('button', { text: '从列表选择（支持多选）', cls: 'webnovel-select-btn' });
 			selectBtn.onclick = () => {
 				this.close();
 				new ChapterMultiSelectModal(this.app, this.chapters, (selectedChapters) => {
@@ -366,19 +333,19 @@ export class ForeshadowingRecoveryModal extends Modal {
 				text: `提示：当前文件夹有 ${this.chapters.length} 个章节文件`,
 				cls: 'setting-item-description'
 			});
-			hint.setCssStyles({ marginBottom: '12px' });
+			hint.style.marginBottom = '12px';
 		}
 
 		// 按钮区
 		const btnContainer = contentEl.createDiv();
-		btnContainer.setAttribute('style', 'display:flex;justify-content:flex-end;gap:10px;margin-top:16px;');
+		btnContainer.addClass('wn-base-button-container');
 		const cancelBtn = btnContainer.createEl('button', { text: '取消' });
 		cancelBtn.onclick = () => this.close();
 
 		const confirmBtn = btnContainer.createEl('button', { text: '确认回收', cls: 'mod-cta' });
 		confirmBtn.onclick = () => this.submit();
 
-		activeWindow.setTimeout(() => this.inputEl.focus(), 50);
+		window.setTimeout(() => this.inputEl.focus(), 50);
 
 		this.inputEl.addEventListener('keydown', (e) => {
 			if (e.key === 'Enter') {
@@ -391,7 +358,7 @@ export class ForeshadowingRecoveryModal extends Modal {
 	private submit() {
 		const value = this.inputEl.value.trim().replace(/\.md$/gi, '');
 		if (!value) {
-			this.inputEl.setCssStyles({ borderColor: 'var(--background-modifier-error)' });
+			this.inputEl.style.borderColor = 'var(--background-modifier-error)';
 			new Notice('[错误] 请输入回收章节名');
 			this.inputEl.focus();
 			return;
@@ -445,8 +412,7 @@ export class ConfirmCreateForeshadowingFileModal extends Modal {
 			text: `当前文件夹下不存在 ${location}，是否创建？`
 		});
 
-		const btnContainer = contentEl.createDiv();
-		btnContainer.setAttribute('style', 'display:flex;justify-content:flex-end;gap:10px;margin-top:20px;');
+		const btnContainer = contentEl.createDiv({ cls: 'webnovel-btn-container-end' });
 		const cancelBtn = btnContainer.createEl('button', { text: '取消' });
 		cancelBtn.onclick = () => this.close();
 
