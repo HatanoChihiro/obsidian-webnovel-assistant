@@ -1,5 +1,9 @@
 ﻿# WebNovel Assistant 更新日志
 
+## 🔧 v3.1.2
+
+- 移除不必要的 eslint-disable 注释
+
 ## 🔧 v3.1.1
 
 - 修复因代码迁移导致的部分显示BUG
