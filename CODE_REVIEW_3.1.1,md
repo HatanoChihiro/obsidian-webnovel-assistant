@@ -1,0 +1,89 @@
+Date: Jun 9, 2026
+Version: 3.1.1
+Commit: b817d18
+Failed
+
+## Releases
+
+- **Recommendation**: Missing GitHub artifact attestations for release assets
+  - main.js
+  - styles.css
+  - Artifact attestations let users cryptographically verify the provenance of the release assets, proving they were built from the source repository. https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds
+
+## Behavior
+
+- **Recommendation**: **Vault Enumeration**: Enumerates all files in the vault (`vault.getFiles`, `getMarkdownFiles`, etc.). Gives the plugin access to every file path in the vault.
+- **Recommendation**: **Clipboard Access**: Reads or writes the system clipboard. May expose content copied from outside Obsidian.
+- **Pass**: **Vault Read**: Reads individual vault files via the Obsidian API (`vault.read`, `vault.cachedRead`)
+- **Pass**: **Vault Write**: Creates or modifies vault files via the Obsidian API (`vault.modify`, `vault.create`, etc.)
+
+## Source code
+
+- **Error**: Unexpected undescribed directive comment. Include descriptions to explain why the comment is necessary.
+  - src/utils/dom.ts:12
+- **Error**: Disabling '@typescript-eslint/no-explicit-any' is not allowed.
+  - src/utils/dom.ts:12
+- **Warning**: Promises must be awaited, end with a call to .catch, end with a call to .then with a rejection handler or be explicitly marked as ignored with the `void` operator.
+  - src/core/CommandManager.ts:328, src/core/MenuManager.ts:155, src/core/MenuManager.ts:190-198, src/ui/CorkboardView.ts:217-221, src/ui/CorkboardView.ts:280, src/ui/ImmersiveStickyNotesView.ts:84, src/ui/ImmersiveStickyNotesView.ts:215
+- **Warning**: Unsafe assignment of an `any` value.
+  - src/core/MenuManager.ts:113, src/core/MenuManager.ts:114, src/core/MenuManager.ts:115, src/core/MenuManager.ts:116, src/core/SettingsManager.ts:90, src/core/SettingsManager.ts:124, src/services/CacheManager.ts:59, src/services/ForeshadowingManager.ts:268, src/services/HistoryDataManager.ts:37, src/services/HistoryDataManager.ts:41, src/services/HistoryDataManager.ts:51, src/services/HistoryDataManager.ts:55, src/services/HistoryDataManager.ts:63, src/services/StickyNoteDataManager.ts:34, src/ui/HistoryModal.ts:69, src/ui/MobileFloatingStats.ts:144
+- **Warning**: Unsafe member access .time on an `any` value.
+  - src/core/MenuManager.ts:113
+- **Warning**: Unsafe member access .description on an `any` value.
+  - src/core/MenuManager.ts:114
+- **Warning**: Unsafe member access .chapter on an `any` value.
+  - src/core/MenuManager.ts:115
+- **Warning**: Unsafe member access .type on an `any` value.
+  - src/core/MenuManager.ts:116
+- **Warning**: Passes unsafe values into typed parameters
+  - @typescript-eslint/no-unsafe-argument
+  - src/core/SettingsManager.ts:126, src/services/ForeshadowingManager.ts:270, src/ui/GoalModal.ts:27, src/ui/MobileFloatingStats.ts:146, src/ui/TimelineView.ts:506, src/ui/TimelineView.ts:720, src/ui/TimelineView.ts:877
+- **Warning**: Unsafe member access [key] on an `any` value.
+  - src/core/SettingsManager.ts:128
+- **Warning**: 'MarkdownView' is defined but never used.
+  - src/services/CharacterManager.ts:2
+- **Warning**: A method that is not declared with `this: void` may cause unintentional scoping of `this` when separated from its object.
+Consider using an arrow function or explicitly `.bind()`ing the method to avoid calling the method with an unintended `this` value. 
+If a function does not access `this`, it can be annotated with `this: void`.
+  - src/services/FileExplorerPatcher.ts:77
+- **Warning**: Unsafe member access .historyData on an `any` value.
+  - src/services/HistoryDataManager.ts:54, src/services/HistoryDataManager.ts:54, src/services/HistoryDataManager.ts:54, src/services/HistoryDataManager.ts:55
+- **Warning**: Unsafe member access .dailyHistory on an `any` value.
+  - src/services/HistoryDataManager.ts:62, src/services/HistoryDataManager.ts:62, src/services/HistoryDataManager.ts:62, src/services/HistoryDataManager.ts:63
+- **Warning**: This assertion is unnecessary since it does not change the type of the expression.
+  - src/services/ObsServer.ts:57
+- **Warning**: Unsafe assignment of type `any[]` to a variable of type `StickyNoteState[]`.
+  - src/services/StickyNoteDataManager.ts:38
+- **Warning**: Unsafe member access .id on an `any` value.
+  - src/services/StickyNoteDataManager.ts:38
+- **Warning**: Returns unsafe values from typed code
+  - @typescript-eslint/no-unsafe-return
+  - src/services/WordCounter.ts:81, src/ui/TimelineView.ts:76-79, src/ui/TimelineView.ts:78
+- **Warning**: 'ErrnoException' is an 'error' type that acts as 'any' and overrides all other types in this union type.
+  - src/types/node.d.ts:11
+- **Warning**: 'Buffer' is an 'error' type that acts as 'any' and overrides all other types in this union type.
+  - src/types/node.d.ts:13, src/types/node.d.ts:38
+- **Warning**: Unsafe member access ['status'] on an `any` value.
+  - src/ui/CorkboardView.ts:177
+- **Warning**: Unsafe member access ['synopsis'] on an `any` value.
+  - src/ui/CorkboardView.ts:263
+- **Warning**: Unsafe call of an `any` typed value.
+  - src/ui/GoalModal.ts:27
+- **Warning**: Unsafe member access .toString on an `any` value.
+  - src/ui/GoalModal.ts:27
+- **Warning**: Unsafe member access ['word-goal'] on an `any` value.
+  - src/ui/GoalModal.ts:48, src/ui/GoalModal.ts:50
+- **Warning**: Unsafe assignment of type `any[]` to a variable of type `number[]`.
+  - src/ui/ImmersiveModeManager.ts:264
+- **Warning**: Promise-returning method provided where a void return was expected by extended/implemented type 'ItemView'.
+  - src/ui/ImmersiveStickyNotesView.ts:91-293
+- **Warning**: Unexpected any. Specify a different type.
+  - src/ui/TimelineView.ts:24, src/ui/TimelineView.ts:35, src/ui/TimelineView.ts:77, src/ui/TimelineView.ts:78, src/ui/TimelineView.ts:504, src/ui/TimelineView.ts:505, src/ui/TimelineView.ts:718, src/ui/TimelineView.ts:719
+- **Warning**: Unsafe member access .extension on an `any` value.
+  - src/ui/TimelineView.ts:77, src/ui/TimelineView.ts:504, src/ui/TimelineView.ts:718
+- **Warning**: Unsafe member access .basename on an `any` value.
+  - src/ui/TimelineView.ts:78, src/ui/TimelineView.ts:506, src/ui/TimelineView.ts:720
+
+## Dependencies
+
+- **Pass**: No vulnerable dependencies found.

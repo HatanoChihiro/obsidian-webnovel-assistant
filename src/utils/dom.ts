@@ -9,7 +9,6 @@
  * 基于 requestAnimationFrame 的高频事件节流函数
  * 适用于 drag, touchmove, scroll 等对屏幕刷新率敏感的事件
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export interface RafThrottledFn<T extends (...args: never[]) => void> {
 	(...args: Parameters<T>): void;
 	cancel: () => void;
