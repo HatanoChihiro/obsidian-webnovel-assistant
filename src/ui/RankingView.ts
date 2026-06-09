@@ -118,7 +118,7 @@ export class RankingView extends CreativeView {
 
 			const progressBg = progressSection.createDiv({ cls: 'progress-bar-bg' });
 			const progressFill = progressBg.createDiv({ cls: 'progress-bar-fill' });
-			progressFill.style.width = `${Math.max(percent, 0)}%`;
+			progressFill.setCssProps({ width: `${Math.max(percent, 0)}%` });
 			if (percent >= 100) {
 				progressFill.addClass('is-done');
 			}

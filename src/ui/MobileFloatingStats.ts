@@ -157,11 +157,11 @@ export class MobileFloatingStats {
 			
 			// 进度颜色变化
 			if (percent >= 100) {
-				this.progressEl.style.color = '#10b981'; // 绿色
+				this.progressEl.setCssProps({ color: '#10b981' }); // 绿色
 			} else if (percent >= 80) {
-				this.progressEl.style.color = '#f59e0b'; // 橙色
+				this.progressEl.setCssProps({ color: '#f59e0b' }); // 橙色
 			} else {
-				this.progressEl.style.color = 'var(--text-accent)';
+				this.progressEl.setCssProps({ color: 'var(--text-accent)' });
 			}
 		}
 	}
@@ -176,7 +176,7 @@ export class MobileFloatingStats {
 			const touch = e.touches[0];
 			this.dragOffset.x = touch.clientX - this.position.x;
 			this.dragOffset.y = touch.clientY - this.position.y;
-			if (this.containerEl) this.containerEl.style.opacity = '0.7';
+			if (this.containerEl) this.containerEl.setCssProps({ opacity: '0.7' });
 			e.preventDefault();
 		}, { passive: false });
 
@@ -185,7 +185,7 @@ export class MobileFloatingStats {
 			this.isDragging = true;
 			this.dragOffset.x = e.clientX - this.position.x;
 			this.dragOffset.y = e.clientY - this.position.y;
-			if (this.containerEl) this.containerEl.style.opacity = '0.7';
+			if (this.containerEl) this.containerEl.setCssProps({ opacity: '0.7' });
 		});
 
 		// 注册全局处理函数（用于移除）
@@ -224,13 +224,13 @@ export class MobileFloatingStats {
 		this.position.x = Math.max(0, Math.min(this.position.x, activeWindow.innerWidth - this.containerEl.offsetWidth));
 		this.position.y = Math.max(0, Math.min(this.position.y, activeWindow.innerHeight - this.containerEl.offsetHeight));
 		
-		Object.assign(this.containerEl.style, { left: `${this.position.x}px`, top: `${this.position.y}px` });
+		this.containerEl.setCssProps({ left: `${this.position.x}px`, top: `${this.position.y}px` });
 	}
 
 	private endDragging(): void {
 		if (this.isDragging) {
 			this.isDragging = false;
-			if (this.containerEl) this.containerEl.style.opacity = '0.9';
+			if (this.containerEl) this.containerEl.setCssProps({ opacity: '0.9' });
 			this.savePosition();
 		}
 	}

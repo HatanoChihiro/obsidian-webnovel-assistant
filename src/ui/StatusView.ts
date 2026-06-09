@@ -79,7 +79,7 @@ export class WritingStatusView extends ItemView {
 		this.workNameEl = row.createSpan({ cls: 'work-info-name', text: '--' });
 		this.workWordCountEl = row.createSpan({ cls: 'work-info-count', text: '' });
 		this.workGoalEl = card.createDiv({ cls: 'work-info-goal' });
-		this.workGoalEl.addClass('webnovel-work-goal'); this.workGoalEl.style.display = 'none';
+		this.workGoalEl.addClass('webnovel-work-goal'); this.workGoalEl.hide();
 	}
 
 	private createGoalCard(container: Element) {
@@ -89,7 +89,7 @@ export class WritingStatusView extends ItemView {
 
 		if (!isMobile()) {
 			this.statusBadgeEl = titleRow.createSpan({ cls: 'status-title-badge', text: '已暂停' });
-			this.statusBadgeEl.style.cursor = 'pointer';
+			this.statusBadgeEl.setCssProps({ cursor: 'pointer' });
 			this.statusBadgeEl.title = '点击开始/暂停统计';
 			this.statusBadgeEl.addEventListener('click', () => {
 				if (this.plugin.isTracking) {
@@ -126,21 +126,21 @@ export class WritingStatusView extends ItemView {
 
 		// 榜单目标
 		const rankingLabelRow = goalCard.createDiv({ cls: 'status-goal-row ranking-goal-section' });
-		rankingLabelRow.style.display = 'none';
+		rankingLabelRow.hide();
 		rankingLabelRow.createSpan({ cls: 'status-goal-label', text: '榜单目标' });
 		this.rankingPercentEl = rankingLabelRow.createSpan({ cls: 'goal-percent', text: '0%' });
 
 		const rankingRow = goalCard.createDiv({ cls: 'goal-display-row-right ranking-goal-section' });
-		rankingRow.style.display = 'none';
+		rankingRow.hide();
 		this.rankingWordEl = rankingRow.createSpan({ cls: 'goal-current', text: '0' });
 		rankingRow.createSpan({ cls: 'goal-separator', text: ' / ' });
 		this.rankingTargetEl = rankingRow.createSpan({ cls: 'goal-target', text: '0' });
 		const rankingProgressBg = goalCard.createDiv({ cls: 'progress-bar-bg ranking-goal-section' });
-		rankingProgressBg.style.display = 'none';
+		rankingProgressBg.hide();
 		this.rankingProgressFillEl = rankingProgressBg.createDiv({ cls: 'progress-bar-fill' });
 
 		const rankingTimeDesc = goalCard.createDiv({ cls: 'ranking-time-desc ranking-goal-section' });
-		rankingTimeDesc.style.display = 'none';
+		rankingTimeDesc.hide();
 		this.rankingTimeDescEl = rankingTimeDesc;
 
 		this.rankingSectionEls = [rankingLabelRow, rankingRow, rankingProgressBg, rankingTimeDesc];
@@ -213,7 +213,7 @@ export class WritingStatusView extends ItemView {
 		state: 'normal' | 'negative' | 'done',
 		width: number
 	): void {
-		fillEl.style.width = `${width}%`;
+		fillEl.setCssProps({ width: `${width}%` });
 		fillEl.removeClass('is-negative');
 		fillEl.removeClass('is-done');
 		wordEl.removeClass('is-negative');
@@ -272,19 +272,19 @@ export class WritingStatusView extends ItemView {
 				this.workGoalEl.createSpan({ text: '总进度' });
 				const pctSpan = this.workGoalEl.createSpan({ text: `${pct}%` });
 				pctSpan.addClass('webnovel-pct-bold-mono');
-				this.workGoalEl.style.display = 'flex';
+				this.workGoalEl.show();
 			} else {
-				this.workGoalEl.style.display = 'none';
+				this.workGoalEl.hide();
 			}
 		}
 
 		if (!isMobile() && this.statusBadgeEl) {
 			if (this.plugin.isTracking) {
 				this.statusBadgeEl.innerText = '记录中';
-				this.statusBadgeEl.style.background = ''; this.statusBadgeEl.style.color = '';
+				this.statusBadgeEl.setCssProps({ background: '' }); this.statusBadgeEl.setCssProps({ color: '' });
 			} else {
 				this.statusBadgeEl.innerText = '已暂停';
-				this.statusBadgeEl.style.background = 'var(--text-muted)'; this.statusBadgeEl.style.color = '';
+				this.statusBadgeEl.setCssProps({ background: 'var(--text-muted)' }); this.statusBadgeEl.setCssProps({ color: '' });
 			}
 		}
 
@@ -371,7 +371,7 @@ export class WritingStatusView extends ItemView {
 		}
 		if (this.rankingSectionEls) {
 			for (const el of this.rankingSectionEls) {
-				el.style.display = hasActiveRanking ? '' : 'none';
+				if (hasActiveRanking) { el.show(); } else { el.hide(); }
 			}
 		}
 
@@ -439,7 +439,7 @@ export class WritingStatusView extends ItemView {
 
 			const heightPercent = Math.max(3, (Math.abs(words) / maxAbsValue) * 100);
 			const bar = col.createDiv({ cls: 'mini-chart-bar' });
-			bar.style.height = `${heightPercent}%`;
+			bar.setCssProps({ height: `${heightPercent}%` });
 
 			if (words < 0) {
 				bar.addClass('bar-negative');

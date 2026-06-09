@@ -390,7 +390,7 @@ body .history-stats-modal .stats-chart-scroll-wrapper:hover::-webkit-scrollbar-t
 .ranking-status-pending { background: var(--text-muted); color: var(--text-on-accent); }
 .ranking-card-info-row { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-normal); font-weight: 500; flex-wrap: nowrap; overflow: hidden; margin-bottom: 4px; }
 .ranking-card-platform { }
-.ranking-card-position::before { content: '路'; margin-right: 6px; }
+.ranking-card-position::before { content: '\00b7'; margin-right: 6px; }
 .ranking-card-cycle-row { font-size: 12px; color: var(--text-muted); margin-bottom: 10px; }
 .ranking-card-cycle-below { text-align: right; margin-top: 4px; }
 .ranking-card-progress { margin-bottom: 6px; }

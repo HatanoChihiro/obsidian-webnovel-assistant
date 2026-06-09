@@ -112,7 +112,7 @@ export function escapeRegex(s: string): string {
  * @param value - frontmatter 中的原始值
  * @returns 解析后的数字，无效时返回 0
  */
-export function parseGoal(value: any): number {
+export function parseGoal(value: unknown): number {
 	if (typeof value === 'number') return Math.max(0, Math.floor(value));
 	if (typeof value === 'string') {
 		const parsed = parseInt(value, 10);

@@ -221,7 +221,7 @@ tabs.forEach(tab => {
 const btn = this.tabGroupEl.createEl("button", { text: tab.name, cls: "stats-tab-btn" });
 if (this.currentTab === tab.id) btn.addClass("is-active");
 btn.onclick = () => {
-this.currentTab = tab.id as any;
+this.currentTab = tab.id as typeof this.currentTab;
 this.tabGroupEl.querySelectorAll(".stats-tab-btn").forEach(b => b.removeClass("is-active"));
 btn.addClass("is-active");
 this.renderData();
@@ -239,7 +239,7 @@ metricTabs.forEach(tab => {
 const btn = this.metricGroupEl.createEl("button", { text: tab.name, cls: "stats-tab-btn" });
 if (this.currentMetric === tab.id) btn.addClass("is-active");
 btn.onclick = () => {
-this.currentMetric = tab.id as any;
+this.currentMetric = tab.id as typeof this.currentMetric;
 this.metricGroupEl.querySelectorAll(".stats-tab-btn").forEach(b => b.removeClass("is-active"));
 btn.addClass("is-active");
 this.renderData();
@@ -331,7 +331,7 @@ HEAT_LEVELS.forEach(level => {
 			if (w >= 0 && w < totalWeeks) {
 				const spacer = monthRow.createDiv({ cls: 'stats-heatmap-month-label' });
 				spacer.setText(monthStart.format('MMM'));
-				spacer.style.left = `calc(28px + ${w} * (100% - 28px) / ${totalWeeks})`;
+				spacer.setCssProps({ left: `calc(28px + ${w} * (100% - 28px) / ${totalWeeks})` });
 			}
 		}
 
@@ -413,7 +413,7 @@ HEAT_LEVELS.forEach(level => {
 			const val = getValue(data);
 			const heightPercent = Math.max(2, (Math.abs(val) / maxAbsValue) * 100);
 			const bar = col.createDiv({ cls: 'stats-large-bar' });
-			bar.style.height = `${heightPercent}%`;
+			bar.setCssProps({ height: `${heightPercent}%` });
 
 
 			if (val < 0) {
@@ -517,7 +517,7 @@ svg += `</defs>`;
 				const parser = new DOMParser();
 				const svgDoc = parser.parseFromString(svg, 'image/svg+xml');
 				const svgEl = svgDoc.documentElement;
-				if (svgEl && svgEl instanceof Element && !svgEl.querySelector('parsererror')) {
+				if (svgEl && svgEl.instanceOf(Element) && !svgEl.querySelector('parsererror')) {
 					wrapper.appendChild(wrapper.doc.importNode(svgEl, true));
 				}
 			});

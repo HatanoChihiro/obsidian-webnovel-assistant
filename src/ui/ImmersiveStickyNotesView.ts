@@ -24,7 +24,7 @@ class FileSuggestModal extends FuzzySuggestModal<TFile> {
 		return file.path;
 	}
 
-	onChooseItem(file: TFile, evt: MouseEvent | KeyboardEvent): void {
+	onChooseItem(file: TFile, _evt: MouseEvent | KeyboardEvent): void {
 		this.onChoose(file);
 	}
 }
@@ -106,14 +106,14 @@ export class ImmersiveStickyNotesView extends ItemView {
 
 		const showToolbar = () => {
 			window.clearTimeout(hideTimeout);
-			toolbar.style.opacity = '1';
-			toolbar.style.pointerEvents = 'auto';
+			toolbar.setCssProps({ opacity: '1' });
+			toolbar.setCssStyles({ pointerEvents: 'auto' });
 		};
 
 		const hideToolbar = () => {
 			hideTimeout = window.setTimeout(() => {
-				toolbar.style.opacity = '0';
-				toolbar.style.pointerEvents = 'none';
+				toolbar.setCssProps({ opacity: '0' });
+				toolbar.setCssStyles({ pointerEvents: 'none' });
 			}, 200);
 		};
 
@@ -191,12 +191,12 @@ export class ImmersiveStickyNotesView extends ItemView {
 			}
 
 			const noteCard = dockContainer.createDiv({ cls: 'immersive-sticky-card' });
-			noteCard.style.backgroundColor = noteData.color || '#FDF3B8';
+			noteCard.setCssStyles({ backgroundColor: noteData.color || '#FDF3B8' });
 			const noteSize = (this.plugin.settings.immersive.immersiveNoteSize || 280) + 'px';
 			/* width/height set below */ 
-			noteCard.style.width = noteSize; noteCard.style.height = noteSize;
+			noteCard.setCssProps({ width: noteSize }); noteCard.setCssProps({ height: noteSize });
 			noteCard.addClass('webnovel-immersive-note-card');if (noteData.textColor) {
-				noteCard.style.color = noteData.textColor;
+				noteCard.setCssProps({ color: noteData.textColor });
 			}
 			
 			// 标题栏与关闭按钮
@@ -266,7 +266,7 @@ export class ImmersiveStickyNotesView extends ItemView {
 			textarea.value = noteData.content || '';
 			textarea.addClass('webnovel-immersive-note-textarea'); // 确保文本区有足够空间
 			// resize, padding, border, background, color handled by webnovel-immersive-note-textarea CSS
-			textarea.style.fontSize = (this.plugin.settings.immersive.immersiveNoteFontSize || 14) + 'px';
+			textarea.setCssStyles({ fontSize: (this.plugin.settings.immersive.immersiveNoteFontSize || 14) + 'px' });
 			/* lineHeight, fontFamily, outline, width, boxSizing handled by webnovel-immersive-note-textarea CSS */ // 如果内容超过正方形，允许内部滚动
 			
 			// 绑定输入监听

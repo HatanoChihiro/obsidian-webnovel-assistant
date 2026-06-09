@@ -49,7 +49,7 @@ export abstract class CreativeView extends ItemView {
 		// 当侧面板获得焦点时，MarkdownView 不再是活跃视图，
 		// 使用 getActiveFile() 回退以保持文件夹上下文
 		if (!activeFile) {
-			activeFile = this.app.workspace.getActiveFile();
+			activeFile = this.app.workspace.getActiveFile() || undefined;
 		}
 		if (!activeFile) return;
 		const folder = activeFile.parent?.path || '';

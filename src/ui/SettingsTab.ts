@@ -1,5 +1,6 @@
 import type { App} from 'obsidian';
 import { Notice, PluginSettingTab, Setting } from 'obsidian';
+import type { Plugin } from 'obsidian';
 import { isDesktop, getPlatformTier } from '../utils/platform';
 import { ObsOverlayServer } from '../services/ObsServer';
 import { ChapterSorter } from '../services/ChapterSorter';
@@ -18,7 +19,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 	private activeTab: string = 'general';
 
 	constructor(app: App, plugin: WebNovelAssistantPlugin) {
-		super(app, plugin as any);
+		super(app, plugin as unknown as Plugin);
 		this.plugin = plugin;
 	}
 

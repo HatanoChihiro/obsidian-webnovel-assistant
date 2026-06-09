@@ -14,7 +14,7 @@ export class StyleManager {
 	applyEyeCare(): void {
 		const color = this.settings.eyeCareColor || '#E8F5E9';
 		activeDocument.body.classList.add('webnovel-eye-care-enabled');
-		activeDocument.body.style.setProperty('--webnovel-eye-care-color', color);
+		activeDocument.body.setCssProps({ '--webnovel-eye-care-color': color });
 	}
 
 	/**

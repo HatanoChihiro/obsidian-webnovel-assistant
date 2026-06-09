@@ -1,5 +1,5 @@
 import type { App, PluginManifest} from 'obsidian';
-import { Plugin, TFile, Notice, MarkdownView } from 'obsidian';
+import { Plugin, TFile, Notice, MarkdownView, type MarkdownPostProcessorContext } from 'obsidian';
 import type { AccurateCountSettings } from './src/types/settings';
 import type { WebNovelAssistantPlugin } from './src/types/plugin';
 import type { ObsStatsPayload } from './src/types/stats';
@@ -207,7 +207,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			// 派发空 dispatch 强刷状态
 			this.app.workspace.iterateAllLeaves(leaf => {
 				if (leaf.view.getViewType() === 'markdown') {
-					const editor = (leaf.view as any).editor;
+					const view = leaf.view as MarkdownView;
+						const editor = view.editor;
 					if (editor && editor.cm) {
 						editor.cm.dispatch({ effects: forceWordCountGutterUpdate.of(null) });
 					}
@@ -460,7 +461,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			);
 		}
 
-		const isHomepage = (ctx: any): boolean => {
+		const isHomepage = (ctx: MarkdownPostProcessorContext): boolean => {
 			const file = this.app.vault.getAbstractFileByPath(ctx.sourcePath);
 			if (!(file instanceof TFile)) return false;
 			const cache = this.app.metadataCache.getFileCache(file);
@@ -631,7 +632,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		}
 
 		const note = new FloatingStickyNote(this.app, this, options);
-		await note.load();
+		note.load();
 		
 		// 如果处于沉浸模式，立即刷新便签列表视图
 		if (activeDocument.body.classList.contains('immersive-mode-active')) {
@@ -672,7 +673,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 					// 针对 Obsidian 重启时恢复会话，或用户原本在阅读模式的情况
 					// 我们将其原状态“修正”为系统的默认模式（通常是 source/编辑模式）
 					// 这样切出主页到其他文档时，就不会把其他文档也变成阅读模式
-					stateToSave.mode = (this.app.vault as any).getConfig?.('defaultViewMode') || 'source';
+					stateToSave.mode = (this.app.vault.getConfig('defaultViewMode') as string) || 'source';
 					stateToSave.source = false;
 				}
 				this._leafOriginalStates.set(leaf, stateToSave);

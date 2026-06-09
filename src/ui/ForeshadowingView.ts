@@ -150,7 +150,7 @@ export class ForeshadowingView extends CreativeView {
 					text: `${c.source ? `[[${c.source}]]` : ''}${c.time ? ` · ${c.time}` : ''}`,
 					cls: 'foreshadowing-entry-quote-meta'
 				});
-				metaEl.style.cursor = 'pointer';
+				metaEl.setCssProps({ cursor: 'pointer' });
 				metaEl.title = '点击跳转到该引用所在的具体段落';
 				metaEl.onclick = async () => {
 					const file = this.app.vault.getMarkdownFiles().find(f => f.basename === target);
@@ -163,7 +163,7 @@ export class ForeshadowingView extends CreativeView {
 			}
 			
 			const textEl = quoteEl.createDiv({ text: c.text, cls: 'foreshadowing-entry-quote-text' });
-			textEl.style.cursor = 'pointer';
+			textEl.setCssProps({ cursor: 'pointer' });
 			textEl.title = '点击跳转到原文的具体位置';
 			textEl.onclick = async () => {
 				const file = this.app.vault.getMarkdownFiles().find(f => f.basename === target);

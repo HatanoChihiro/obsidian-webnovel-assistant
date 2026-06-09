@@ -16,7 +16,8 @@ function isTablet(): boolean {
 	const isPhone = activeDocument.body.classList.contains('is-phone');
 	const isWide = activeWindow.innerWidth >= 768;
 	// 兼容旧版 Obsidian：isTablet/isIpad 可能不存在
-	const platformTablet = (Platform as any).isTablet || (Platform as any).isIpad || false;
+	const extendedPlatform = Platform as unknown as { isTablet?: boolean; isIpad?: boolean };
+	const platformTablet = extendedPlatform.isTablet || extendedPlatform.isIpad || false;
 	return Platform.isMobile && (platformTablet || (isWide && !isPhone));
 }
 

@@ -121,7 +121,7 @@ export class ForeshadowingInputModal extends Modal {
 	private submit() {
 		const description = this.descriptionEl.value.trim();
 		if (!description) {
-			this.descriptionEl.style.borderColor = 'var(--background-modifier-error)';
+			this.descriptionEl.setCssStyles({ borderColor: 'var(--background-modifier-error)' });
 			new Notice('[错误] 请填写补充说明');
 			this.descriptionEl.focus();
 			return;
@@ -231,7 +231,7 @@ class ChapterMultiSelectModal extends Modal {
 			item.addClass('webnovel-modal-chapter-item');
 			const checkbox = item.createEl('input', { type: 'checkbox' });
 			checkbox.checked = this.selectedChapters.has(chapter);
-			checkbox.style.cursor = 'pointer';
+			checkbox.setCssProps({ cursor: 'pointer' });
 			const label = item.createSpan({ text: chapter, cls: 'webnovel-chapter-label' });
 			const toggle = () => {
 				if (this.selectedChapters.has(chapter)) {
@@ -333,7 +333,7 @@ export class ForeshadowingRecoveryModal extends Modal {
 				text: `提示：当前文件夹有 ${this.chapters.length} 个章节文件`,
 				cls: 'setting-item-description'
 			});
-			hint.style.marginBottom = '12px';
+			hint.setCssStyles({ marginBottom: '12px' });
 		}
 
 		// 按钮区
@@ -358,7 +358,7 @@ export class ForeshadowingRecoveryModal extends Modal {
 	private submit() {
 		const value = this.inputEl.value.trim().replace(/\.md$/gi, '');
 		if (!value) {
-			this.inputEl.style.borderColor = 'var(--background-modifier-error)';
+			this.inputEl.setCssStyles({ borderColor: 'var(--background-modifier-error)' });
 			new Notice('[错误] 请输入回收章节名');
 			this.inputEl.focus();
 			return;

@@ -260,7 +260,7 @@ export class SettingsManager {
 			];
 			for (const key of obsoleteKeys) {
 				if (key in migrated.immersive) {
-					delete (migrated.immersive as any)[key];
+					delete (migrated.immersive as unknown as Record<string, unknown>)[key];
 				}
 			}
 		}

@@ -3,12 +3,13 @@ import { TFolder, TFile } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ChapterSorter } from './ChapterSorter';
 import { rafThrottle } from '../utils/dom';
+import type { FileExplorerItem, FileExplorerView } from 'obsidian';
 
 interface SortEntity {
 	isBlock: boolean;
 	path: string;
-	item?: any;
-	items?: any[];
+	item?: FileExplorerItem;
+	items?: FileExplorerItem[];
 	isFolder?: boolean;
 }
 
@@ -65,19 +66,19 @@ export class FileExplorerPatcher {
 			const fileExplorerLeaf = this.app.workspace.getLeavesOfType('file-explorer')[0];
 			if (!fileExplorerLeaf) return false;
 
-			const view = fileExplorerLeaf.view as any;
+			const view = fileExplorerLeaf.view as FileExplorerView;
 			if (!view) return false;
 
-			const proto = Object.getPrototypeOf(view);
+			const proto = Object.getPrototypeOf(view) as FileExplorerView;
 			if (!proto || !proto.getSortedFolderItems) return false;
 
-			if (proto.getSortedFolderItems.__webnovel_patched) return true;
+			if ((proto.getSortedFolderItems as unknown as { __webnovel_patched?: boolean }).__webnovel_patched) return true;
 
 			const originalMethod = proto.getSortedFolderItems;
 			proto.getSortedFolderItems = (function(patcher: FileExplorerPatcher) {
-				return function(this: any, folder: TFolder, bypass?: boolean) {
+				return function(this: FileExplorerView, folder: TFolder, bypass?: boolean) {
 					try {
-						const sortedItems: any[] = originalMethod.call(this, folder, bypass);
+						const sortedItems: FileExplorerItem[] = originalMethod.call(this, folder, bypass);
 
 						if (!patcher.enabled || bypass || !Array.isArray(sortedItems) || sortedItems.length === 0) {
 							return sortedItems;
@@ -87,7 +88,7 @@ export class FileExplorerPatcher {
 							return patcher.applyHomepagePin(sortedItems);
 						}
 
-					const chapterItems: { item: any; chapterInfo: { number: number; ruleIndex: number }; isFolder: boolean }[] = [];
+					const chapterItems: { item: FileExplorerItem; chapterInfo: { number: number; ruleIndex: number }; isFolder: boolean }[] = [];
 					const entities: SortEntity[] = [];
 
 					for (let i = 0; i < sortedItems.length; i++) {
@@ -120,7 +121,7 @@ export class FileExplorerPatcher {
 
 					const sortedEntities = patcher.sortEntities(entities);
 
-					const finalResult: any[] = [];
+					const finalResult: FileExplorerItem[] = [];
 					for (const entity of sortedEntities) {
 						if (entity.isBlock && entity.items) {
 							finalResult.push(...entity.items);
@@ -138,7 +139,7 @@ export class FileExplorerPatcher {
 
 			})(this);
 
-			proto.getSortedFolderItems.__webnovel_patched = true;
+			(proto.getSortedFolderItems as unknown as { __webnovel_patched?: boolean }).__webnovel_patched = true;
 
 			this.unpatchFunc = () => {
 				proto.getSortedFolderItems = originalMethod;
@@ -174,7 +175,7 @@ export class FileExplorerPatcher {
 		});
 	}
 
-	private applyHomepagePin(sortedItems: any[]): any[] {
+	private applyHomepagePin(sortedItems: FileExplorerItem[]): FileExplorerItem[] {
 		const pinPos = this.plugin.settings.homepagePinPosition;
 		if (pinPos && pinPos !== 'none' && this.plugin.homepageManager && Array.isArray(sortedItems)) {
 			const hpPath = this.plugin.homepageManager.getHomepageFilePath();
@@ -196,8 +197,8 @@ export class FileExplorerPatcher {
 		const leaves = this.app.workspace.getLeavesOfType('file-explorer');
 		leaves.forEach(leaf => {
 			const view = leaf.view;
-			if (view && typeof (view as any).sort === 'function') {
-				try { (view as any).sort(); } catch (e) { /* intentionally ignored */ }
+			if (view && typeof view.sort === 'function') {
+				try { view.sort(); } catch { /* intentionally ignored */ }
 			}
 		});
 		this.applyDOMSort();
@@ -209,7 +210,7 @@ export class FileExplorerPatcher {
 		try {
 			const leaves = this.app.workspace.getLeavesOfType('file-explorer');
 			for (const leaf of leaves) {
-				const view = leaf.view as any;
+				const view = leaf.view as FileExplorerView;
 				if (!view || !view.fileItems) continue;
 
 				const foldersToCheck = new Set<string>();
@@ -240,7 +241,7 @@ export class FileExplorerPatcher {
 
 					if (!contentEl || !folderFile) continue;
 
-					let logicItems: any[] = [];
+					let logicItems: FileExplorerItem[] = [];
 					if (view.getSortedFolderItems) {
 						logicItems = view.getSortedFolderItems(folderFile);
 					}
@@ -353,7 +354,7 @@ export class FileExplorerPatcher {
 			if (!this.enabled) return;
 			const leaf = this.app.workspace.getLeavesOfType('file-explorer')[0];
 			if (leaf) {
-				const containerEl = (leaf.view as any)?.containerEl as HTMLElement | undefined;
+				const containerEl = (leaf.view as FileExplorerView)?.containerEl as HTMLElement | undefined;
 				// 如果容器发生了变化（例如重建了面板），则重新初始化事件
 				if (containerEl && containerEl !== this._dragContainerEl) {
 					this.teardownDragSort();
@@ -407,7 +408,6 @@ export class FileExplorerPatcher {
 				}
 				return;
 			}
-			let updatedCount = 0;
 			for (const path in fileExplorerItems) {
 				const item = fileExplorerItems[path];
 				if (item.el && (item.file instanceof TFolder || (item.file instanceof TFile && item.file.extension === 'md'))) {
@@ -447,7 +447,6 @@ export class FileExplorerPatcher {
 
 					if (countEl && countEl.textContent !== labelText) {
 						countEl.textContent = labelText;
-						updatedCount++;
 					}
 				}
 			}
@@ -474,7 +473,7 @@ export class FileExplorerPatcher {
 
 		const leaf = this.app.workspace.getLeavesOfType('file-explorer')[0];
 		if (!leaf) return;
-		const containerEl = (leaf.view as any)?.containerEl as HTMLElement | undefined;
+		const containerEl = (leaf.view as FileExplorerView)?.containerEl as HTMLElement | undefined;
 		if (!containerEl) return;
 
 		this._dragContainerEl = containerEl;
@@ -493,8 +492,8 @@ export class FileExplorerPatcher {
 			this._dragContainerEl.removeEventListener('dragend', this._dragEndHandler, true);
 			this._dragContainerEl = null;
 		}
-		if (this._dragHandler && (this._dragHandler as any).cancel) {
-			(this._dragHandler as any).cancel();
+		if (this._dragHandler) {
+			this._dragHandler.cancel();
 		}
 		this._removeDropIndicator();
 		this._dragSourcePath = null;
@@ -720,7 +719,7 @@ export class FileExplorerPatcher {
 		}
 	}
 
-	private _onDragEnd(e: DragEvent): void {
+	private _onDragEnd(_e: DragEvent): void {
 		this._removeDropIndicator();
 		this._cleanupDragState();
 	}
@@ -866,7 +865,7 @@ export class FileExplorerPatcher {
 		this.refreshAllExplorers();
 	}
 
-	private getFileNameFromEl(el: HTMLElement, view: any): string | null {
+	private getFileNameFromEl(el: HTMLElement, view?: FileExplorerView | null): string | null {
 		const dataPath = this._getPathFromItemEl(el);
 		if (dataPath) {
 			const file = this.app.vault.getAbstractFileByPath(dataPath);

@@ -1,6 +1,7 @@
 import type { App} from 'obsidian';
 import { Notice, TFile, TFolder, setIcon } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
+import type { RankingEntry } from '../types/ranking';
 import type { NovelFolderInfo } from '../types/homepage';
 import { calcStreak, calcFocusRate, calcActiveHours, calcDailyAverage, getHeatClass } from '../ui/HistoryModal';
 import { RankingManager } from '../services/RankingManager';
@@ -69,7 +70,7 @@ export class HomepageRenderer {
 		updateLayout();
 		const viewDom = container.closest('.markdown-source-view') || container.closest('.markdown-preview-view');
 		if (viewDom) {
-			const anyContainer = container as any;
+			const anyContainer = container as unknown as { __homepageResizeObs?: ResizeObserver };
 			if (anyContainer.__homepageResizeObs) {
 				anyContainer.__homepageResizeObs.disconnect();
 			}
@@ -186,7 +187,7 @@ export class HomepageRenderer {
 				const progressPercent = target > 0 ? Math.min(100, Math.max(0, (progress / target) * 100)) : 0;
 				const progressBg = rankContainer.createDiv({ cls: 'homepage-ongoing-progress-bar-bg' });
 				const progressFill = progressBg.createDiv({ cls: 'homepage-ongoing-progress-bar-fill' });
-				progressFill.style.width = `${progressPercent}%`;
+				progressFill.setCssProps({ width: `${progressPercent}%` });
 				// 进度条颜色区分状态
 				if (progressPercent >= 100) progressFill.addClass('is-done');
 
@@ -404,7 +405,7 @@ export class HomepageRenderer {
 			const val = day.words;
 			const heightPercent = Math.max(2, (Math.abs(val) / maxAbsValue) * 100);
 			const bar = chartArea.createDiv({ cls: 'homepage-chart-bar' });
-			bar.style.height = `${heightPercent}%`;
+			bar.setCssProps({ height: `${heightPercent}%` });
 
 			if (val < 0) {
 				bar.addClass('bar-negative');
@@ -434,7 +435,7 @@ export class HomepageRenderer {
 	private async getLatestRanking(folderPath: string): Promise<{
 		period: number; position: string; wordTarget: number;
 		progress: number; statusText: string; daysLeft: number;
-		entry: any;
+		entry: RankingEntry;
 	} | null> {
 		const manager = new RankingManager(this.app, this.plugin, folderPath);
 		const entries = await manager.loadEntries();
@@ -469,9 +470,9 @@ export class HomepageRenderer {
 	navigateToNovel(folderPath: string): void {
 		const folder = this.app.vault.getAbstractFileByPath(folderPath);
 		if (!(folder instanceof TFolder)) return;
-		const mdFiles = folder.children.filter(c =>
-			c instanceof TFile && (c as any).extension === 'md' && !(c as any).name.startsWith('_')
-		) as TFile[];
+		const mdFiles = folder.children.filter(
+			(c): c is TFile => c instanceof TFile && c.extension === 'md' && !c.name.startsWith('_')
+		);
 		const target = mdFiles[0];
 		if (target) {
 			void this.app.workspace.getLeaf(false).openFile(target);

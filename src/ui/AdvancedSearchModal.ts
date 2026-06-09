@@ -76,11 +76,11 @@ export class AdvancedSearchModal extends Modal {
 		container.empty();
 		
 		if (this.searchScope !== 'custom') {
-			container.style.display = 'none';
+			container.hide();
 			return;
 		}
 
-		container.style.display = 'block';
+		container.show();
 		container.createEl('h4', { text: '选择要搜索的目录或文件（支持多选）：', cls: 'setting-item-name' });
 		
 		const folders = this.getTopLevelFolders();
@@ -114,13 +114,13 @@ export class AdvancedSearchModal extends Modal {
 			const arrow = headerEl.createSpan({ text: '▶ ', cls: 'advanced-search-tree-arrow' });
 			
 			childrenContainer = itemContainer.createDiv({ cls: 'advanced-search-tree-children' });
-			
+
 			arrow.addEventListener('click', () => {
 				if (childrenContainer!.style.display === 'none' || childrenContainer!.style.display === '') {
-					childrenContainer!.style.display = 'block';
+					childrenContainer!.setCssProps({ display: 'block' });
 					arrow.innerText = '▼ ';
 				} else {
-					childrenContainer!.style.display = 'none';
+					childrenContainer!.setCssProps({ display: 'none' });
 					arrow.innerText = '▶ ';
 				}
 			});

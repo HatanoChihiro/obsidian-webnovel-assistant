@@ -1,4 +1,26 @@
 import { Notice, Platform } from 'obsidian';
+
+/** Minimal Node.js http types for OBS server */
+interface IncomingMessage {
+    url?: string;
+    method?: string;
+}
+
+interface ServerResponse {
+    writeHead(statusCode: number, headers?: Record<string, string>): this;
+    end(data?: string): void;
+}
+
+interface ServerError extends Error {
+    code?: string;
+}
+
+interface HttpServer {
+    listen(port: number, host: string, callback?: () => void): void;
+    on(event: 'error', callback: (err: ServerError) => void): this;
+    close(callback?: () => void): void;
+    closeAllConnections?(): void;
+}
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 
 /**
@@ -11,7 +33,7 @@ import type { WebNovelAssistantPlugin } from '../types/plugin';
  */
 export class ObsOverlayServer {
 	private plugin: WebNovelAssistantPlugin;
-	private server: import('../types/node').NodeHTTPServer | null = null;
+	private server: HttpServer | null = null;
 	private port: number;
 
 	constructor(plugin: WebNovelAssistantPlugin, port: number) {
@@ -32,10 +54,10 @@ export class ObsOverlayServer {
 		}
 
 		try {
-			const http = activeWindow.require('http');
+			const http = window.require('http') as unknown as { createServer(handler: (req: IncomingMessage, res: ServerResponse) => void): HttpServer };
 			const plugin = this.plugin;
 
-			this.server = http.createServer((req: import('../types/node').NodeHTTPRequest, res: import('../types/node').NodeHTTPResponse) => {
+			this.server = http.createServer((req: IncomingMessage, res: ServerResponse) => {
 				// [安全] 校验请求基本有效性
 				if (!req.url) { res.writeHead(400); res.end(); return; }
 				if (req.method !== 'GET') { res.writeHead(405); res.end(); return; }
@@ -65,7 +87,7 @@ export class ObsOverlayServer {
 				new Notice(`OBS 叠加层已启动: http://127.0.0.1:${this.port}`);
 			});
 
-			this.server.on('error', (e: NodeJS.ErrnoException) => {
+			this.server.on('error', (e: ServerError) => {
 				console.error('[WebNovel Assistant] OBS 服务器错误:', e);
 
 				// 清理引用，防止后续 start() 被守卫拦截

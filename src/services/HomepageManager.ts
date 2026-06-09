@@ -1,4 +1,4 @@
-import type { App} from 'obsidian';
+import type { App, MarkdownView } from 'obsidian';
 import { TFile, TFolder } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { NovelMetadata, NovelFolderInfo } from '../types/homepage';
@@ -211,7 +211,7 @@ export class HomepageManager {
 			switch (key) {
 				case 'status': meta.status = ['已完结', '已暂停', '存稿中'].includes(value) ? value as NovelMetadata['status'] : '连载中'; break;
 				case 'wordGoal': meta.wordGoal = parseInt(value) || 0; break;
-				default: (meta as any)[key] = value; break;
+				default: (meta as unknown as Record<string, unknown>)[key] = value; break;
 			}
 		}
 
@@ -325,11 +325,14 @@ import('./HomepageRenderer.js').then(async ({ HomepageRenderer }) => {
 		}
 
 		// 2. 作为后备方案，仍然触发 previewMode 的 rerender
-		this.app.workspace.getLeavesOfType('markdown').forEach(leaf => {
-			const view = leaf.view as any;
-			if (view?.file?.path === homepagePath && view?.previewMode) {
-				// 传递 true 强制重新渲染代码块（如果 API 支持）
-				view.previewMode.rerender(true);
+		this.app.workspace.iterateAllLeaves(leaf => {
+			const view = leaf.view;
+			if (view && view.getViewType() === 'markdown') {
+				const mdView = view as MarkdownView;
+				if (mdView?.file?.path === homepagePath && mdView?.previewMode) {
+					// 传递 true 强制重新渲染代码块（如果 API 支持）
+					mdView.previewMode.rerender(true);
+				}
 			}
 		});
 	}

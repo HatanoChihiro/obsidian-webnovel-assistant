@@ -246,8 +246,8 @@ export class CommandManager {
 							}
 							if (isDesktop()) {
 								const notice = new Notice('[提示] 点击此处打开伏笔文件', 8000);
-								notice.noticeEl.style.cursor = 'pointer';
-								notice.noticeEl.onclick = () => {
+								notice.messageEl.addClass('wn-clickable');
+								notice.messageEl.onclick = () => {
 									void fm.openForeshadowingFile(foreshadowFile);
 									notice.hide();
 								};

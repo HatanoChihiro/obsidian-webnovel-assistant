@@ -1,4 +1,4 @@
-import type { App, WorkspaceLeaf } from 'obsidian';
+import type { App, WorkspaceLeaf, TFile } from 'obsidian';
 import { MarkdownView } from 'obsidian';
 import type { Extension } from '@codemirror/state';
 import type { DecorationSet, EditorView, ViewUpdate } from '@codemirror/view';
@@ -13,7 +13,7 @@ export function buildCharacterHoverExtension(app: App, plugin: WebNovelAssistant
 	// 构建 ViewPlugin
 	const hoverPlugin = ViewPlugin.fromClass(class {
 		decorations: DecorationSet;
-		private activeFile: any = null;
+		private activeFile: TFile | null = null;
 		private hasTriedFindFile: boolean = false;
 		private cachedPattern: RegExp | null = null;
 		private cachedCharsLength: number = -1;
@@ -113,7 +113,7 @@ export function buildCharacterHoverExtension(app: App, plugin: WebNovelAssistant
 							// 组合链接文本：如果是字典模式，带上标题锚点 (e.g. "人物志.md#张三")
 							const linktext = charEntry.heading ? `${charEntry.file.path}#${charEntry.heading}` : charEntry.file.path;
 							
-							(app.workspace as any).trigger('hover-link', {
+							(app.workspace as unknown as { trigger: (name: string, data: unknown) => void }).trigger('hover-link', {
 								event: e,
 								source: 'editor',
 								hoverParent: view.contentDOM,

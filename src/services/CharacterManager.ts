@@ -1,5 +1,5 @@
 import type { App, TAbstractFile} from 'obsidian';
-import { TFile, TFolder, parseFrontMatterAliases } from 'obsidian';
+import { TFile, TFolder, parseFrontMatterAliases, MarkdownView } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 
 export interface LoreEntry {
@@ -74,9 +74,10 @@ export class CharacterManager {
 		this.app.workspace.iterateAllLeaves((leaf) => {
 			const view = leaf.view;
 			if (view.getViewType() === 'markdown') {
-				const editor = (view as any).editor;
-				if (editor && editor.cm) {
-					editor.cm.dispatch({});
+				const editor = this.app.workspace.activeEditor?.editor;
+				const editorView = editor?.cm;
+				if (editorView) {
+					editorView.dispatch({});
 				}
 			}
 		});
@@ -123,7 +124,7 @@ export class CharacterManager {
 		const bookCache = this.characterCache.get(bookPath);
 		if (!bookCache) return null;
 		
-		let entry = bookCache.get(characterName);
+		const entry = bookCache.get(characterName);
 		if (entry) return entry;
 		
 		// Fallback: 忽略大小写查找 (O(1))
@@ -236,7 +237,7 @@ export class CharacterManager {
 					const nextHeading = fileCache.headings[i + 1];
 					const endLine = nextHeading ? nextHeading.position.start.line : lines.length;
 
-					let chunk = lines.slice(startLine, endLine).join('\n');
+					const chunk = lines.slice(startLine, endLine).join('\n');
 					
 					// 查找 `别名：`、`**别名**：` 等格式
 					const aliasMatch = chunk.match(/(?:\*\*|__)?别名(?:\*\*|__)?\s*[:：]\s*([^\n]+)/);

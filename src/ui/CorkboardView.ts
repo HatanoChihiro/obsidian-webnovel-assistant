@@ -160,7 +160,7 @@ export class CorkboardView extends ItemView {
 
 		const statusEl = cardHeader.createDiv('wn-corkboard-card-status');
 		statusEl.setText(status);
-		statusEl.style.cursor = 'pointer';
+		statusEl.setCssProps({ cursor: 'pointer' });
 		statusEl.title = '点击切换状态';
 
 		statusEl.onclick = (evt: MouseEvent) => {
@@ -226,7 +226,7 @@ export class CorkboardView extends ItemView {
 		// 如果已经在编辑中，避免重复创建
 		if (container.querySelector('textarea')) return;
 
-		textEl.style.display = 'none';
+		textEl.hide();
 
 		const textarea = container.createEl('textarea', {
 			cls: 'wn-corkboard-textarea'
@@ -239,11 +239,11 @@ export class CorkboardView extends ItemView {
 		textarea.setSelectionRange(currentSynopsis.length, currentSynopsis.length);
 
 		// 自适应高度
-		textarea.style.height = 'auto';
-		textarea.style.height = textarea.scrollHeight + 'px';
+		textarea.setCssProps({ height: 'auto' });
+		textarea.setCssProps({ height: textarea.scrollHeight + 'px' });
 		textarea.oninput = () => {
-			textarea.style.height = 'auto';
-			textarea.style.height = textarea.scrollHeight + 'px';
+			textarea.setCssProps({ height: 'auto' });
+			textarea.setCssProps({ height: textarea.scrollHeight + 'px' });
 		};
 
 		let isSaving = false;
@@ -272,7 +272,7 @@ export class CorkboardView extends ItemView {
 			}
 			
 			textarea.remove();
-			textEl.style.display = 'block';
+			textEl.show();
 		};
 
 		// 失去焦点时保存

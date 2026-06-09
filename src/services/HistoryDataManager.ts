@@ -129,7 +129,7 @@ export class HistoryDataManager {
 	flushSync(): void {
 		if (!this.dirty) return;
 		try {
-			const adapter = this.plugin.app.vault.adapter as any;
+			const adapter = this.plugin.app.vault.adapter;
 			if (adapter.fs && adapter.fs.writeFileSync && adapter.getBasePath && adapter.path) {
 				const fullPath = adapter.path.join(adapter.getBasePath(), this.historyFilePath);
 				const content = JSON.stringify(this.historyData, null, 2);

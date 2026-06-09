@@ -1,5 +1,5 @@
 import type { WorkspaceLeaf, TFolder } from 'obsidian';
-import { ItemView, TFile } from 'obsidian';
+import { ItemView, TFile, MarkdownView } from 'obsidian';
 import { VIEW_TYPES } from '../constants';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ChapterSorter } from '../services/ChapterSorter';
@@ -62,7 +62,7 @@ export class ImmersiveChapterListView extends ItemView {
 		if (!currentFolder) {
 			const mdLeaves = this.app.workspace.getLeavesOfType('markdown');
 			for (const leaf of mdLeaves) {
-				const view = leaf.view as any;
+				const view = leaf.view as unknown as { file?: TFile };
 				if (view && view.file) {
 					currentFolder = view.file.parent ?? this.app.vault.getRoot();
 					break;
@@ -162,8 +162,9 @@ export class ImmersiveChapterListView extends ItemView {
 				// 2. 确保目标叶子是 Markdown 类型并打开文件为阅读视图
 				if (refLeaf) {
 					// 获取当前或初始状态
-					const currentState = refLeaf.view.getViewType() === 'markdown' && typeof (refLeaf.view as any).getState === 'function' 
-						? (refLeaf.view as any).getState() 
+					const mdView = refLeaf.view.getViewType() === 'markdown' ? refLeaf.view as MarkdownView : null;
+						const currentState = mdView && typeof mdView.getState === 'function'
+						? mdView.getState()
 						: {};
 					
 					// 强制设为阅读模式

@@ -134,7 +134,7 @@ export interface WebNovelAssistantPlugin extends
 	registerEvent(eventRef: EventRef): void;
 	registerView(type: string, viewCreator: ViewCreator): void;
 	registerInterval(id: number): number;
-	loadData(): Promise<any>;
+	loadData(): Promise<unknown>;
 	addCommand(command: Command): Command;
 
 	// 启动状态

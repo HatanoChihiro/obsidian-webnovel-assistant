@@ -152,7 +152,8 @@ function getFileFromView(view: EditorView): TFile | null {
 	try {
 		return view.state.field(editorInfoField).file || null;
 	} catch {
-		if ((view as any).file) return (view as any).file;
+		const v = view as unknown as { file?: TFile };
+		if (v.file) return v.file;
 		return null;
 	}
 }

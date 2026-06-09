@@ -71,12 +71,12 @@ export class AddLoreModal extends Modal {
 				if (value === '__NEW__') {
 					this.isCreatingNew = true;
 					this.loreCategory = '';
-					textComponent.inputEl.style.display = 'block';
+					textComponent.inputEl.show();
 					textComponent.inputEl.focus();
 				} else {
 					this.isCreatingNew = false;
 					this.loreCategory = value;
-					textComponent.inputEl.style.display = 'none';
+					textComponent.inputEl.hide();
 				}
 			});
 		});
@@ -90,7 +90,7 @@ export class AddLoreModal extends Modal {
 						this.loreCategory = value;
 					}
 				});
-			text.inputEl.style.display = 'none'; // 默认隐藏
+			text.inputEl.hide(); // 默认隐藏
 			return text;
 		});
 
@@ -143,7 +143,7 @@ export class AddLoreModal extends Modal {
 		if (!loreFolder) {
 			try {
 				await this.app.vault.createFolder(expectedLorePath);
-			} catch (e) {
+			} catch {
 				// 再次检查是否已被并发创建
 				loreFolder = this.app.vault.getAbstractFileByPath(expectedLorePath);
 				if (!loreFolder) {

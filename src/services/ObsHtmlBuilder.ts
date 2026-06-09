@@ -402,7 +402,7 @@ function update() {
 				safeSetText('percentText', d.percent + '%');
 				const fill = document.getElementById('progressFill');
 				if (fill) {
-					fill.style.width = d.percent + '%';
+					fill.setAttribute('style', 'width: ' + d.percent + '%');
 					fill.className = 'progress-fill' + (d.percent >= 100 ? ' done' : '');
 				}
 			}
@@ -412,7 +412,7 @@ function update() {
 				safeSetText('dailyPercentText', d.dailyPercent + '%');
 				const dailyFill = document.getElementById('dailyProgressFill');
 				if (dailyFill) {
-					dailyFill.style.width = d.dailyPercent + '%';
+					dailyFill.setAttribute('style', 'width: ' + d.dailyPercent + '%');
 					dailyFill.className = 'progress-fill' + (d.dailyPercent >= 100 ? ' done' : '');
 				}
 			}

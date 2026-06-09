@@ -68,7 +68,7 @@ export class TimelineAddModal extends Modal {
 		
 		// 章节列表容器
 		const chapterListContainer = contentEl.createDiv();
-		chapterListContainer.style.marginBottom = '12px';
+		chapterListContainer.setCssProps({ marginBottom: '12px' });
 		// 获取当前文件夹下的所有 md 文件
 		const getChapterFiles = (): string[] => {
 			const folder = this.folderPath ? this.app.vault.getAbstractFileByPath(this.folderPath) : null;
@@ -148,14 +148,14 @@ export class TimelineAddModal extends Modal {
 		// 自定义输入框（初始隐藏）
 		const customInput = contentEl.createEl('input', { type: 'text' });
 		customInput.placeholder = '输入自定义类型';
-		customInput.addClass('webnovel-tl-input webnovel-tl-custom-hidden');
+		customInput.addClass('webnovel-tl-input', 'webnovel-tl-custom-hidden');
 		// 切换显示自定义输入框
 		typeSelect.addEventListener('change', () => {
 			if (typeSelect.value === '__custom__') {
-				customInput.style.display = 'block';
+				customInput.setCssProps({ display: 'block' });
 				customInput.focus();
 			} else {
-				customInput.style.display = 'none';
+				customInput.setCssProps({ display: 'none' });
 			}
 		});
 
@@ -495,7 +495,7 @@ export class TimelineView extends CreativeView {
 		
 		// 事件列表容器
 		const eventsContainer = form.createDiv();
-		eventsContainer.style.marginBottom = '12px';
+		eventsContainer.setCssProps({ marginBottom: '12px' });
 		// 获取当前文件夹下的所有 md 文件
 		const folder = this.app.vault.getAbstractFileByPath(this.currentFolder);
 		const chapterFiles: string[] = [];
@@ -524,7 +524,7 @@ export class TimelineView extends CreativeView {
 			// 关联章节
 			eventBlock.createEl('label', { text: '关联章节', cls: 'timeline-form-label' });
 			const chapterListContainer = eventBlock.createDiv();
-			chapterListContainer.style.marginBottom = '8px';
+			chapterListContainer.setCssProps({ marginBottom: '8px' });
 			// 解析已有的章节
 			const existingChapters = item.chapter ? item.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean) : [];
 			
@@ -533,7 +533,7 @@ export class TimelineView extends CreativeView {
 				const row = chapterListContainer.createDiv();
 				row.addClass('webnovel-tl-chapter-row-sm');
 				const select = row.createEl('select', { cls: 'timeline-form-input' });
-				select.style.flex = '1';
+				select.setCssProps({ flex: '1' });
 				select.createEl('option', { value: '', text: '-- 选择章节 --' });
 				chapterFiles.forEach(file => {
 					const option = select.createEl('option', { value: file, text: file });
@@ -609,15 +609,15 @@ export class TimelineView extends CreativeView {
 		if (entry.type && !editTypeOptions.includes(entry.type)) {
 			typeSelect.value = '__custom__';
 			customInput.value = entry.type;
-			customInput.style.display = 'block';
+			customInput.setCssProps({ display: 'block' });
 		}
 		
 		typeSelect.addEventListener('change', () => {
 			if (typeSelect.value === '__custom__') {
-				customInput.style.display = 'block';
+				customInput.setCssProps({ display: 'block' });
 				customInput.focus();
 			} else {
-				customInput.style.display = 'none';
+				customInput.setCssProps({ display: 'none' });
 			}
 		});
 
@@ -681,7 +681,7 @@ export class TimelineView extends CreativeView {
 			
 			const newContent = await this.manager.updateEntry(index, updated);
 			this.editingIndex = -1;
-			await void this.renderFromContent(newContent);
+			await this.renderFromContent(newContent);
 		};
 
 		window.setTimeout(() => timeInput.focus(), 50);
@@ -709,7 +709,7 @@ export class TimelineView extends CreativeView {
 		
 		// 章节列表容器
 		const chapterListContainer = form.createDiv();
-		chapterListContainer.style.marginBottom = '12px';
+		chapterListContainer.setCssProps({ marginBottom: '12px' });
 		// 获取当前文件夹下的所有 md 文件
 		const folder = this.app.vault.getAbstractFileByPath(this.currentFolder);
 		const chapterFiles: string[] = [];
@@ -727,7 +727,7 @@ export class TimelineView extends CreativeView {
 			const row = chapterListContainer.createDiv();
 			row.addClass('webnovel-tl-chapter-row');
 			const select = row.createEl('select', { cls: 'timeline-form-input' });
-			select.style.flex = '1';
+			select.setCssProps({ flex: '1' });
 			// 添加空选项
 			select.createEl('option', { value: '', text: '-- 选择章节 --' });
 			
@@ -788,10 +788,10 @@ export class TimelineView extends CreativeView {
 		// 切换显示自定义输入框
 		typeSelect.addEventListener('change', () => {
 			if (typeSelect.value === '__custom__') {
-				customInput.style.display = 'block';
+				customInput.setCssProps({ display: 'block' });
 				customInput.focus();
 			} else {
-				customInput.style.display = 'none';
+				customInput.setCssProps({ display: 'none' });
 			}
 		});
 

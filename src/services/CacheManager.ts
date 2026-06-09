@@ -60,8 +60,8 @@ export class CacheManager {
 			} else {
 				// 兼容：从 data.json 读取旧版缓存进行迁移
 				const data = await this.plugin.loadData();
-				if (data && data.cacheData) {
-					cacheData = data.cacheData as CacheData;
+				if (data && (data as Record<string, unknown>).cacheData) {
+					cacheData = (data as Record<string, unknown>).cacheData as CacheData;
 					// 触发持久化至新独立文件。原 data.json 中的数据会在下次保存设置时由于没有保留逻辑而被自发剥离清理掉
 					this.saveCache().catch(e => console.warn('缓存初始迁移保存失败:', e));
 				}
@@ -170,6 +170,7 @@ export class CacheManager {
 
 			// 保存缓存到持久化存储
 			await this.saveCache();
+			console.log(`[CacheManager] 初始缓存构建完成，用时 ${Date.now() - startTime}ms`);
 		} catch (error) {
 			console.error('[CacheManager] 缓存构建失败:', error);
 			throw error;
@@ -208,7 +209,7 @@ export class CacheManager {
 	 * @param newWordCount 新的字数
 	 * @param vault Vault 实例
 	 */
-	updateFileCache(file: TFile, newWordCount: number, vault: Vault): void {
+	updateFileCache(file: TFile, newWordCount: number, _vault: Vault): void {
 		const oldEntry = this.cache.get(file.path);
 		
 		// [BUGFIX] 时间戳校验：防止旧的异步读取结果覆盖新的缓存。

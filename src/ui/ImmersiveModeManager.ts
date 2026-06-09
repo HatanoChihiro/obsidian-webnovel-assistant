@@ -1,4 +1,4 @@
-import type { App, WorkspaceLeaf, TFile } from 'obsidian';
+import type { App, EventRef, WorkspaceLeaf, TFile, WorkspaceSplit, WorkspaceItem } from 'obsidian';
 import { MarkdownView, Notice } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 
@@ -23,7 +23,7 @@ export class ImmersiveModeManager {
 	private activeRightLeaf: WorkspaceLeaf | null = null;
 	private activeBottomLeaf: WorkspaceLeaf | null = null;
 	
-	private layoutChangeRef: any = null;
+	private layoutChangeRef: EventRef | null = null;
 
 	// 顶部栏元素缓存
 	private topBarStatsEls: Record<string, HTMLElement> = {};
@@ -38,15 +38,17 @@ export class ImmersiveModeManager {
 	 * @param leaf 赴始叶子
 	 * @param direction 可选，限定只返回指定方向的 split
 	 */
-	private getParentSplit(leaf: WorkspaceLeaf, direction?: 'vertical' | 'horizontal'): any {
-		let node: any = leaf.parent;
-		while (node && node.parent) {
+	private getParentSplit(leaf: WorkspaceLeaf, direction?: 'vertical' | 'horizontal'): WorkspaceSplit | null {
+		// Traverse up the parent chain; parent may be WorkspaceTabs or WorkspaceSplit
+		let node: WorkspaceSplit | null = (leaf.parent as unknown as WorkspaceSplit) ?? null;
+		while (node) {
 			if (node.direction !== undefined) {
 				if (!direction || node.direction === direction) return node;
 			}
-			node = node.parent;
+			if (!node.parent) break;
+			node = (node.parent as unknown as WorkspaceSplit) ?? null;
 		}
-		return node;
+		return null;
 	}
 
 	/**
@@ -79,7 +81,7 @@ export class ImmersiveModeManager {
 
 			// 1. 抓取当前整个工作区的快照
 			if (typeof this.app.workspace.getLayout === 'function') {
-				this.savedLayout = this.app.workspace.getLayout();
+				this.savedLayout = this.app.workspace.getLayout() as Record<string, unknown>;
 			}
 
 			// 2. 注入全局 CSS 类和 Dashboard
@@ -210,7 +212,7 @@ export class ImmersiveModeManager {
 			active: true
 		});
 
-		const pendingSizes: Array<{ split: any; sizes: number[] }> = [];
+		const pendingSizes: Array<{ split: WorkspaceSplit; sizes: number[] }> = [];
 
 		const createSlotLeaves = async (slots: string[], direction: 'vertical' | 'horizontal', before: boolean, size: number, internalSizes: number[]) => {
 			if (!slots || slots.length === 0) return null;
@@ -297,7 +299,7 @@ export class ImmersiveModeManager {
 	/**
 	 * 延迟应用面板比例（递归重试，确保 DOM 渲染完成后生效）
 	 */
-	private applyPendingSizes(pendingSizes: Array<{ split: any; sizes: number[] }>): void {
+	private applyPendingSizes(pendingSizes: Array<{ split: WorkspaceSplit; sizes: number[] }>): void {
 		const apply = (attempt = 0) => {
 			let hasFailure = false;
 			for (const { split, sizes } of pendingSizes) {
@@ -319,7 +321,7 @@ export class ImmersiveModeManager {
 
 					if (typeof split.setElSize === 'function' && split.children[i].containerEl) {
 						const pixelSize = Math.round((sizes[i] / 100) * totalSize);
-						split.setElSize(split.children[i].containerEl, pixelSize);
+						split.setElSize(split.children[i].containerEl!, pixelSize);
 					}
 				}
 			}
@@ -363,7 +365,7 @@ export class ImmersiveModeManager {
 		};
 
 		for (const el of Object.values(this.topBarStatsEls)) {
-			el.style.display = 'none';
+			el.hide();
 		}
 
 		activeDocument.body.appendChild(this.topBarEl);
@@ -395,10 +397,10 @@ export class ImmersiveModeManager {
 				const el = this.topBarStatsEls[key];
 				if (!el) return;
 				if (show) {
-					if (el.style.display === 'none') el.style.display = ''
+					if ((!el.isShown())) el.show()
 					if (el.innerText !== text) el.innerText = text;
 				} else {
-					if (el.style.display !== 'none') el.style.display = 'none';
+					if (el.isShown()) el.hide();
 				}
 			};
 
@@ -426,9 +428,9 @@ export class ImmersiveModeManager {
 				if (split && split.direction === direction && split.containerEl && split.children) {
 					const totalSize = direction === 'horizontal' ? split.containerEl.offsetHeight : split.containerEl.offsetWidth;
 					if (totalSize > 0) {
-						const child = split.children.find((c: any) => c.containerEl && c.containerEl.contains(leaf.containerEl));
+						const child = split.children.find((c: WorkspaceItem) => c.containerEl && c.containerEl.contains(leaf.containerEl));
 						if (child) {
-							const size = direction === 'horizontal' ? child.containerEl.offsetHeight : child.containerEl.offsetWidth;
+							const size = direction === 'horizontal' ? child.containerEl!.offsetHeight : child.containerEl!.offsetWidth;
 							const pct = Math.round((size / totalSize) * 100);
 							if (pct > 0 && pct < 100) {
 								setter(pct);
@@ -445,7 +447,7 @@ export class ImmersiveModeManager {
 						if (totalIntSize > 0 && internalSplit.children.length === slotCount) {
 							const newSizes: number[] = [];
 							for (const c of internalSplit.children) {
-								const s = internalDir === 'horizontal' ? c.containerEl.offsetHeight : c.containerEl.offsetWidth;
+								const s = internalDir === 'horizontal' ? c.containerEl?.offsetHeight || 0 : c.containerEl?.offsetWidth || 0;
 								newSizes.push(Math.round((s / totalIntSize) * 100));
 							}
 							internalSetter(newSizes);

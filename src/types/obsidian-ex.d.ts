@@ -1,11 +1,12 @@
 import 'obsidian';
+import type { EditorView } from '@codemirror/view';
 
 declare module 'obsidian' {
     interface App {
         plugins: {
             enabledPlugins: Set<string>;
             plugins: {
-                [id: string]: any;
+                [id: string]: unknown;
             };
         };
         commands: {
@@ -14,8 +15,8 @@ declare module 'obsidian' {
     }
 
     interface Workspace {
-        getLayout(): any;
-        setLayout(layout: any): Promise<void>;
+        getLayout(): unknown;
+        setLayout(layout: unknown): Promise<void>;
         requestSaveLayout(): void;
         iterateRootLeaves(callback: (leaf: WorkspaceLeaf) => void): void;
         createLeafBySplit(leaf: WorkspaceLeaf, direction: 'horizontal' | 'vertical', before: boolean): WorkspaceLeaf;
@@ -30,12 +31,24 @@ declare module 'obsidian' {
 
     interface WorkspaceSplit {
         expand(): void;
+        type: string;
+        direction?: 'horizontal' | 'vertical';
+        children: WorkspaceItem[];
+        containerEl?: HTMLElement;
+        parent?: WorkspaceSplit;
+        setElSize?(el: HTMLElement, size: number): void;
+    }
+    
+    interface WorkspaceItem {
+        type: string;
+        size?: number;
+        containerEl?: HTMLElement;
     }
 
     interface WorkspaceLeaf {
         id: string;
         active: boolean;
-        parent: any;
+        parent: WorkspaceSplit;
         containerEl: HTMLElement;
     }
 
@@ -44,28 +57,59 @@ declare module 'obsidian' {
         read(path: string): Promise<string>;
         write(path: string, data: string): Promise<void>;
         mkdir(path: string): Promise<void>;
+        fs?: { writeFileSync(path: string, data: string): void };
+        getBasePath?(): string;
+        path?: { join(...paths: string[]): string };
     }
 
     interface View {
-        fileItems?: Record<string, any>;
-        refresh?(): void;
+        fileItems?: Record<string, FileExplorerItem>;
+        refresh?(): void | Promise<void>;
         sort?(): void;
         renderNotes?(): void;
         editor?: Editor;
     }
 
+    interface MarkdownView extends View {
+        file: TFile;
+        editor: Editor;
+    }
+
     interface Editor {
         refresh(): void;
+        cm?: EditorView;
+    }
+
+    interface Vault {
+        getConfig(key: string): unknown;
     }
 
     interface MetadataCache {
-        on(name: 'changed', callback: (file: TFile) => any, ctx?: any): EventRef;
+        on(name: 'changed', callback: (file: TFile) => void, ctx?: unknown): EventRef;
+    }
+
+    export interface FileExplorerView extends View {
+        fileItems: Record<string, FileExplorerItem>;
+        getSortedFolderItems(folder: TFolder, bypass?: boolean): FileExplorerItem[];
+    }
+
+    export interface FileExplorerItem {
+        file: TFile | TFolder;
+        el: HTMLElement;
+        titleEl: HTMLElement;
+        titleInnerEl: HTMLElement;
+        selfEl: HTMLElement;
+        innerEl: HTMLElement;
+        collapsed: boolean;
+        children?: FileExplorerItem[];
+        setCollapsed(collapsed: boolean): Promise<void>;
     }
 }
 
 declare global {
     interface Window {
-        require(module: 'fs'): any;
-        require(module: 'path'): any;
+        require(module: 'fs'): unknown;
+        require(module: 'path'): unknown;
+        require(module: 'http'): unknown;
     }
 }
