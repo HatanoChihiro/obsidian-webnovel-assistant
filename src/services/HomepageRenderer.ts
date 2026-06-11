@@ -3,6 +3,8 @@ import { Notice, TFile, TFolder, setIcon } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { RankingEntry } from '../types/ranking';
 import type { NovelFolderInfo } from '../types/homepage';
+import { getRankingStatusText, getNovelStatusText, getNovelInfoLabel } from '../i18n/data-keys';
+import { t } from '../i18n';
 import { calcStreak, calcFocusRate, calcActiveHours, calcDailyAverage, getHeatClass } from '../ui/HistoryModal';
 import { RankingManager } from '../services/RankingManager';
 import { NewNovelModal } from '../ui/NewNovelModal';
@@ -83,7 +85,7 @@ export class HomepageRenderer {
 	// 欢迎语 + 今日进度 + 新增作品按钮
 	async renderWelcome(container: HTMLElement): Promise<void> {
 		container.empty();
-		
+
 		const section = container.createDiv({ cls: 'homepage-welcome-section' });
 
 		// 欢迎语 + 新增按钮同行
@@ -96,24 +98,24 @@ export class HomepageRenderer {
 			const hour = window.moment().hour();
 			let welcomeText = '';
 			let iconName = '';
-			if (hour < 6) { welcomeText = '夜深了，注意休息'; iconName = 'moon'; }
-			else if (hour < 9) { welcomeText = '早上好，今天也要充满灵感'; iconName = 'sun'; }
-			else if (hour < 12) { welcomeText = '上午好，开始创作吧'; iconName = 'coffee'; }
-			else if (hour < 14) { welcomeText = '中午好，休息一下吧'; iconName = 'utensils'; }
-			else if (hour < 18) { welcomeText = '下午好，保持专注'; iconName = 'rocket'; }
-			else if (hour < 22) { welcomeText = '晚上好，今天写了多少？'; iconName = 'moon-star'; }
-			else { welcomeText = '夜深了，注意休息'; iconName = 'moon'; }
+			if (hour < 6) { welcomeText = t('homepage.welcome-night'); iconName = 'moon'; }
+			else if (hour < 9) { welcomeText = t('homepage.welcome-morning'); iconName = 'sun'; }
+			else if (hour < 12) { welcomeText = t('homepage.welcome-forenoon'); iconName = 'coffee'; }
+			else if (hour < 14) { welcomeText = t('homepage.welcome-noon'); iconName = 'utensils'; }
+			else if (hour < 18) { welcomeText = t('homepage.welcome-afternoon'); iconName = 'rocket'; }
+			else if (hour < 22) { welcomeText = t('homepage.welcome-evening'); iconName = 'moon-star'; }
+			else { welcomeText = t('homepage.welcome-night'); iconName = 'moon'; }
 
 			const iconEl = title.createSpan({ cls: 'homepage-welcome-icon' });
 			setIcon(iconEl, iconName);
 			title.createSpan({ text: welcomeText });
 		}
 		const addBtn = headerRow.createDiv({ cls: 'homepage-add-novel-btn' });
-		addBtn.textContent = '+ 新增作品';
+		addBtn.textContent = t('homepage.add-novel');
 		addBtn.onclick = () => {
 			new NewNovelModal(this.plugin.app, this.plugin, (result) => {
 				void this.plugin.homepageManager!.createNewNovel(result.name, result.meta).then(() => {
-					new Notice('[成功] 已创建作品: ' + result.name);
+					new Notice(t('notice.novel-created', { name: result.name }));
 					this.plugin.homepageManager!.refreshHomepageViews();
 				});
 			}).open();
@@ -130,24 +132,24 @@ export class HomepageRenderer {
 		for (const [, entry] of this.plugin.cacheManager.getEntries()) {
 			if (!entry.isFolder) totalWords += entry.wordCount;
 		}
-		progressRow.createDiv({ cls: 'homepage-progress-label', text: '作品总字数' });
+		progressRow.createDiv({ cls: 'homepage-progress-label', text: t('homepage.total-words') });
 		progressRow.createDiv({ cls: 'homepage-progress-value', text: totalWords.toLocaleString() });
 		progressRow.createDiv({ cls: 'homepage-progress-separator' });
-		progressRow.createDiv({ cls: 'homepage-progress-label', text: '今日新增' });
+		progressRow.createDiv({ cls: 'homepage-progress-label', text: t('homepage.today-added') });
 		progressRow.createDiv({ cls: 'homepage-progress-value', text: todayWords.toLocaleString() });
 
-		
+
 	}
 
-	// 连载中作品列表（含榜单信息）
+	// 连载中作品列表（含任务信息）
 	async renderOngoing(container: HTMLElement): Promise<void> {
 		const allNovels = await this.getAllNovelsWithMetadata();
-		const ongoing = allNovels.filter(n => n.metadata?.status === '连载中');
+		const ongoing = allNovels.filter(n => n.metadata?.status === 'ongoing');
 		container.empty();
-		container.createDiv({ cls: 'homepage-section-label', text: '连载中' });
+		container.createDiv({ cls: 'homepage-section-label', text: getNovelStatusText('ongoing') });
 
 		if (ongoing.length === 0) {
-			container.createDiv({ cls: 'stats-empty-msg', text: '暂无连载作品' });
+			container.createDiv({ cls: 'stats-empty-msg', text: t('homepage.no-ongoing') });
 			return;
 		}
 
@@ -164,9 +166,9 @@ export class HomepageRenderer {
 			nameEl.textContent = displayName;
 			nameEl.onclick = () => this.navigateToNovel(novel.folderPath);
 			const countEl = header.createDiv({ cls: 'homepage-ongoing-count' });
-			countEl.textContent = `${novel.wordCount.toLocaleString()} 字`;
+			countEl.textContent = novel.wordCount.toLocaleString() + ' ' + t('common.word-char');
 
-			// 榜单信息（最近一条）
+			// 任务信息（最近一条）
 			const rankingInfo = await this.getLatestRanking(novel.folderPath);
 			if (rankingInfo) {
 				const rankContainer = item.createDiv({ cls: 'homepage-ongoing-ranking' });
@@ -178,10 +180,10 @@ export class HomepageRenderer {
 
 				const topRow = rankContainer.createDiv({ cls: 'homepage-ranking-row' });
 				const leftWrapper = topRow.createDiv({ cls: 'homepage-ranking-left-wrapper' });
-				leftWrapper.createSpan({ cls: 'homepage-ranking-title-inline', text: '当前任务' });
-				const periodText = `第${rankingInfo.period}期 ${rankingInfo.position}`;
+				leftWrapper.createSpan({ cls: 'homepage-ranking-title-inline', text: t('homepage.current-task') });
+				const periodText = t('common.period-prefix', { period: rankingInfo.period }) + ' ' + rankingInfo.position;
 				leftWrapper.createSpan({ cls: 'homepage-ranking-period', text: periodText });
-				topRow.createSpan({ cls: 'homepage-ranking-progress', text: `${progress.toLocaleString()} / ${target.toLocaleString()} 字 (${statusText})` });
+				topRow.createSpan({ cls: 'homepage-ranking-progress', text: progress.toLocaleString() + ' / ' + target.toLocaleString() + ' ' + t('common.word-char') + ' (' + statusText + ')' });
 
 				// 动态进度条作为分割线
 				const progressPercent = target > 0 ? Math.min(100, Math.max(0, (progress / target) * 100)) : 0;
@@ -191,15 +193,15 @@ export class HomepageRenderer {
 				// 进度条颜色区分状态
 				if (progressPercent >= 100) progressFill.addClass('is-done');
 
-				if (daysLeft > 0 && rankingInfo.entry.status === '进行中') {
+				if (daysLeft > 0 && rankingInfo.entry.status === 'active') {
 					const bottomRow = rankContainer.createDiv({ cls: 'homepage-ranking-row homepage-ranking-sub' });
-					bottomRow.createSpan({ cls: 'homepage-ranking-days', text: `距结束还有 ${daysLeft} 天` });
+					bottomRow.createSpan({ cls: 'homepage-ranking-days', text: t('homepage.days-remaining', { days: daysLeft }) });
 					const remaining = target - progress;
 					if (remaining > 0) {
 						const dailyNeeded = Math.round(remaining / daysLeft);
-						bottomRow.createSpan({ cls: 'homepage-ranking-daily', text: `日均需完成 ${dailyNeeded.toLocaleString()} 字` });
+						bottomRow.createSpan({ cls: 'homepage-ranking-daily', text: t('homepage.daily-needed', { words: dailyNeeded.toLocaleString() }) });
 					} else {
-						bottomRow.createSpan({ cls: 'homepage-ranking-daily', text: `已达成目标！` });
+						bottomRow.createSpan({ cls: 'homepage-ranking-daily', text: t('homepage.goal-reached') });
 					}
 				}
 			}
@@ -209,12 +211,12 @@ export class HomepageRenderer {
 	// 已完结作品卡片
 	async renderCompleted(container: HTMLElement): Promise<void> {
 		const allNovels = await this.getAllNovelsWithMetadata();
-		const completed = allNovels.filter(n => n.metadata?.status === '已完结');
+		const completed = allNovels.filter(n => n.metadata?.status === 'completed');
 		container.empty();
-		container.createDiv({ cls: 'homepage-section-label', text: '已完结' });
+		container.createDiv({ cls: 'homepage-section-label', text: getNovelStatusText('completed') });
 
 		if (completed.length === 0) {
-			container.createDiv({ cls: 'stats-empty-msg', text: '暂无完结作品' });
+			container.createDiv({ cls: 'stats-empty-msg', text: t('homepage.no-completed') });
 			return;
 		}
 
@@ -228,9 +230,9 @@ export class HomepageRenderer {
 			nameEl.textContent = displayName;
 			nameEl.onclick = () => this.navigateToNovel(novel.folderPath);
 
-			this.createFieldEl(card, '总字数', novel.wordCount.toLocaleString());
-			this.createFieldEl(card, '主角', novel.metadata?.protagonist || '--');
-			this.createFieldEl(card, '类型', novel.metadata?.genre || '--');
+			this.createFieldEl(card, getNovelInfoLabel('wordGoal'), novel.wordCount.toLocaleString());
+			this.createFieldEl(card, getNovelInfoLabel('protagonist'), novel.metadata?.protagonist || '--');
+			this.createFieldEl(card, getNovelInfoLabel('genre'), novel.metadata?.genre || '--');
 
 			if (novel.metadata?.synopsis) {
 				card.createDiv({ cls: 'homepage-completed-synopsis', text: novel.metadata.synopsis });
@@ -241,12 +243,12 @@ export class HomepageRenderer {
 	// 存稿中作品卡片
 	async renderDrafting(container: HTMLElement): Promise<void> {
 		const allNovels = await this.getAllNovelsWithMetadata();
-		const drafting = allNovels.filter(n => n.metadata?.status === '存稿中');
+		const drafting = allNovels.filter(n => n.metadata?.status === 'stockpiling');
 		container.empty();
-		container.createDiv({ cls: 'homepage-section-label', text: '存稿中' });
+		container.createDiv({ cls: 'homepage-section-label', text: getNovelStatusText('stockpiling') });
 
 		if (drafting.length === 0) {
-			container.createDiv({ cls: 'stats-empty-msg', text: '暂无存稿作品' });
+			container.createDiv({ cls: 'stats-empty-msg', text: t('homepage.no-drafting') });
 			return;
 		}
 
@@ -260,8 +262,8 @@ export class HomepageRenderer {
 			nameEl.textContent = displayName;
 			nameEl.onclick = () => this.navigateToNovel(novel.folderPath);
 
-			this.createFieldEl(card, '总字数', novel.wordCount.toLocaleString());
-			this.createFieldEl(card, '类型', novel.metadata?.genre || '--');
+			this.createFieldEl(card, getNovelInfoLabel('wordGoal'), novel.wordCount.toLocaleString());
+			this.createFieldEl(card, getNovelInfoLabel('genre'), novel.metadata?.genre || '--');
 
 			if (novel.metadata?.synopsis) {
 				card.createDiv({ cls: 'homepage-completed-synopsis', text: novel.metadata.synopsis });
@@ -272,12 +274,12 @@ export class HomepageRenderer {
 	// 已暂停作品卡片
 	async renderPaused(container: HTMLElement): Promise<void> {
 		const allNovels = await this.getAllNovelsWithMetadata();
-		const paused = allNovels.filter(n => n.metadata?.status === '已暂停');
+		const paused = allNovels.filter(n => n.metadata?.status === 'paused');
 		container.empty();
-		container.createDiv({ cls: 'homepage-section-label', text: '已暂停' });
+		container.createDiv({ cls: 'homepage-section-label', text: getNovelStatusText('paused') });
 
 		if (paused.length === 0) {
-			container.createDiv({ cls: 'stats-empty-msg', text: '暂无暂停作品' });
+			container.createDiv({ cls: 'stats-empty-msg', text: t('homepage.no-paused') });
 			return;
 		}
 
@@ -291,8 +293,8 @@ export class HomepageRenderer {
 			nameEl.textContent = displayName;
 			nameEl.onclick = () => this.navigateToNovel(novel.folderPath);
 
-			this.createFieldEl(card, '总字数', novel.wordCount.toLocaleString());
-			this.createFieldEl(card, '类型', novel.metadata?.genre || '--');
+			this.createFieldEl(card, getNovelInfoLabel('wordGoal'), novel.wordCount.toLocaleString());
+			this.createFieldEl(card, getNovelInfoLabel('genre'), novel.metadata?.genre || '--');
 
 			if (novel.metadata?.synopsis) {
 				card.createDiv({ cls: 'homepage-completed-synopsis', text: novel.metadata.synopsis });
@@ -304,7 +306,7 @@ export class HomepageRenderer {
 	renderStatsSummary(container: HTMLElement): void {
 		const history = this.plugin.historyManager.getHistory();
 		container.empty();
-		container.createDiv({ cls: 'homepage-section-label', text: '效率总览' });
+		container.createDiv({ cls: 'homepage-section-label', text: t('homepage.efficiency-overview') });
 
 		const yearStart = window.moment().clone().startOf('year').format('YYYY-MM-DD');
 		const yearEnd = window.moment().format('YYYY-MM-DD');
@@ -317,11 +319,11 @@ export class HomepageRenderer {
 
 		const row = container.createDiv({ cls: 'stats-efficiency-row' });
 		const metrics = [
-			{ label: '连续创作', value: `${streak}天` },
-			{ label: '专注效率', value: `${focusRate}%` },
-			{ label: '活跃时段', value: activeHours || '--' },
-			{ label: '日均字数', value: dailyAvg.toLocaleString() },
-			{ label: '累计字数', value: totalWords.toLocaleString() },
+			{ label: t('common.consecutive-creation'), value: `${streak}${t('common.word-char').charAt(0)}` },
+			{ label: t('common.focus-efficiency'), value: `${focusRate}%` },
+			{ label: t('common.active-period'), value: activeHours || '--' },
+			{ label: t('common.daily-word-average'), value: dailyAvg.toLocaleString() },
+			{ label: t('common.accumulated-words'), value: totalWords.toLocaleString() },
 		];
 
 		for (const m of metrics) {
@@ -335,7 +337,7 @@ export class HomepageRenderer {
 	renderHeatmap(container: HTMLElement): void {
 		const history = this.plugin.historyManager.getHistory();
 		container.empty();
-		container.createDiv({ cls: 'homepage-section-label', text: '热力图' });
+		container.createDiv({ cls: 'homepage-section-label', text: t('homepage.heatmap') });
 
 		const now = window.moment();
 		const rangeStart = this.plugin.settings.heatmapStartDate
@@ -367,7 +369,7 @@ export class HomepageRenderer {
 				if (stat) {
 					const words = stat.addedWords || 0;
 					cell.addClass(getHeatClass(words));
-					cell.setAttribute('title', `${dateStr}: ${words.toLocaleString()} 字`);
+					cell.setAttribute('title', dateStr + ': ' + words.toLocaleString() + ' ' + t('common.word-char'));
 				} else if (cellDate.isAfter(now, 'day')) {
 					cell.addClass('stats-heatmap-future');
 				} else {
@@ -381,7 +383,7 @@ export class HomepageRenderer {
 	renderBarChart(container: HTMLElement): void {
 		const history = this.plugin.historyManager.getHistory();
 		container.empty();
-		container.createDiv({ cls: 'homepage-section-label', text: '近30日趋势' });
+		container.createDiv({ cls: 'homepage-section-label', text: t('homepage.trend-30days') });
 
 		const now = window.moment();
 		const days: { date: string; words: number }[] = [];
@@ -393,7 +395,7 @@ export class HomepageRenderer {
 		}
 
 		if (days.length === 0) {
-			container.createDiv({ cls: 'stats-empty-msg', text: '暂无数据' });
+			container.createDiv({ cls: 'stats-empty-msg', text: t('common.no-data') });
 			return;
 		}
 
@@ -416,7 +418,7 @@ export class HomepageRenderer {
 				else if (ratio >= 0.2) bar.addClass('bar-low');
 				else bar.addClass('bar-minimal');
 			}
-			bar.setAttribute('title', `${day.date}: ${day.words.toLocaleString()} 字`);
+			bar.setAttribute('title', day.date + ': ' + day.words.toLocaleString() + ' ' + t('common.word-char'));
 		}
 	}
 
@@ -431,7 +433,7 @@ export class HomepageRenderer {
 		return folders;
 	}
 
-	// 辅助方法：获取最近一条榜单记录
+	// 辅助方法：获取最近一条任务记录
 	private async getLatestRanking(folderPath: string): Promise<{
 		period: number; position: string; wordTarget: number;
 		progress: number; statusText: string; daysLeft: number;
@@ -441,19 +443,19 @@ export class HomepageRenderer {
 		const entries = await manager.loadEntries();
 		if (!entries || entries.length === 0) return null;
 
-		// 优先显示进行中的榜单，如果没有则显示最新添加的
-		const entry = entries.find(e => e.status === '进行中') || entries[entries.length - 1];
-		
+		// 优先显示进行中的任务，如果没有则显示最新添加的
+		const entry = entries.find(e => e.status === 'active') || entries[entries.length - 1];
+
 		const progress = manager.calcProgress(entry) || entry.completedWords || 0;
 		const now = window.moment();
 		const daysLeft = Math.max(0, window.moment(entry.endDate).diff(now.clone().startOf('day'), 'days') + 1);
 
 		let statusText = '';
 		switch (entry.status) {
-			case '进行中': statusText = '进行中'; break;
-			case '已完成': statusText = '已完成!'; break;
-			case '未完成': statusText = '未完成!'; break;
-			case '未开始': statusText = '未开始'; break;
+			case 'active': statusText = getRankingStatusText('active'); break;
+			case 'completed': statusText = getRankingStatusText('completed') + '!'; break;
+			case 'incomplete': statusText = getRankingStatusText('incomplete') + '!'; break;
+			case 'notStarted': statusText = getRankingStatusText('notStarted'); break;
 		}
 
 		return {

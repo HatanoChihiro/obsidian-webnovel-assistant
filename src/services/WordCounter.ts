@@ -78,7 +78,7 @@ export class WordCounter {
 			.replace(this.reBold, '$2')
 			.replace(this.reItalic, '$2')
 			// 移除 Obsidian 内部链接语法 [[文件名]] → 文件名
-			.replace(this.reInternalLink, (_, name, alias) => alias || name)
+			.replace(this.reInternalLink, (_: string, name: string, alias: string) => alias || name)
 			// 移除普通链接 [文本](url) → 文本
 			.replace(this.reLink, '$1')
 			// 移除图片 ![alt](url)

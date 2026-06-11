@@ -187,29 +187,6 @@ export const TIME_FORMATS = {
 
 // ==========================================
 // 通知消息常量
-// ==========================================
-export const MESSAGES = {
-	// 成功消息
-	SUCCESS_SAVE: '[成功] 已保存',
-	SUCCESS_ADD: '[成功] 已添加',
-	SUCCESS_DELETE: '[成功] 已删除',
-	SUCCESS_UPDATE: '[成功] 已更新',
-	
-	// 错误消息
-	ERROR_SAVE: '[错误] 保存失败',
-	ERROR_ADD: '[错误] 添加失败',
-	ERROR_DELETE: '[错误] 删除失败',
-	ERROR_INVALID_INPUT: '[错误] 输入无效',
-	ERROR_FILE_NOT_FOUND: '[错误] 文件不存在',
-	
-	// 警告消息
-	WARNING_WORKER_RESTART: '[警告] 时间追踪 Worker 已自动重启',
-	WARNING_CACHE_FULL: '[警告] 缓存已满，清理旧数据',
-	
-	// 提示消息
-	INFO_LOADING: '[处理中] 加载中...',
-	INFO_PROCESSING: '[处理中] 处理中...',
-} as const;
 
 // ==========================================
 // 样式常量
@@ -262,17 +239,20 @@ export const FLAT_IMMERSIVE_KEYS = [
 
 
 export const DEFAULT_SETTINGS: AccurateCountSettings = {
+	language: 'auto',
 	wordCountMethod: 'webnovel',
 	defaultGoal: 3000,
 	dailyGoal: 5000,
 	showGoal: true,
 	showExplorerCounts: false, // 默认关闭，避免性能问题
 	enableSmartChapterSort: false, // 默认关闭，避免与用户习惯冲突
-	chapterNamingRules: [
-		{ name: '阿拉伯数字（第1章、第01章）', pattern: '^第?(\\d+)[章节回卷部册篇]?', enabled: true },
-		{ name: '中文数字（第一章、第二章）', pattern: '^第?([零一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]+)[章节回卷部册篇]?', enabled: true },
-		{ name: '纯数字（1、01、001）', pattern: '^(\\d+)$', enabled: true },
-	],
+		chapterNamingRules: [
+			{ name: '阿拉伯数字（第1章、第01章）', pattern: '^第?(\\d+)[章节回卷部册篇]?', enabled: true },
+			{ name: '中文数字（第一章、第二章）', pattern: '^第?([零一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]+)[章节回卷部册篇]?', enabled: true },
+			{ name: '纯数字（1、01、001）', pattern: '^(\\d+)$', enabled: true },
+			{ name: 'Chapter Number (Chapter 1, Ch.1)', pattern: '^[Cc]h(?:apter)?\\.?\\s*(\\d+)', enabled: false },
+			{ name: 'Part Number (Part 1, Pt.1)', pattern: '^[Pp]t\\.?\\s*(\\d+)', enabled: false },
+		],
 	workspaceFolders: [],
 	showFloatingNotes: true,
 	noteOpacity: 0.9,
@@ -295,7 +275,7 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 		defaultTypes: ['主线', '支线', '回忆', '伏笔线', '暗线'],
 	},
 	ranking: {
-		fileName: '榜单记录',
+		fileName: '限时任务',
 	},
 	eyeCareEnabled: false,
 	eyeCareColor: '#E8F5E9',
@@ -358,7 +338,7 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 	enableHomepage: false,
 	openHomepageOnStartup: false,
 	homepagePath: '',
-	homepageWelcome: '欢迎回到创作中心',
+	homepageWelcome: '',
 	heatmapStartDate: '',
 	heatmapEndDate: '',
 	novelInfo: { fileName: '作品信息' },

@@ -1,5 +1,35 @@
 ﻿# WebNovel Assistant 更新日志
 
+## 🚀 v3.2.0
+
+本次更新全面支持英文环境！
+
+### ✨ 新增双语支持
+- **自动匹配系统语言**：首次安装自动检测 Obsidian 语言设置，中文环境显示中文，其他环境显示英文
+- **完整英文体验**：所有面板、弹窗、文档标签、状态值均已翻译
+- **语言切换无缝衔接**：切换语言后保留自定义文档名，自动匹配旧语言文档，不会重复生成
+- **跨语言文档兼容**：英文模式下可识别中文旧文档（如 `伏笔.md`），中文模式也可识别英文文档
+
+### ⚡ 使用体验优化
+- **文档自动重命名**：在设置中修改默认文档名时，自动批量重命名所有工作区下的旧文档
+- **限时任务追踪**：「榜单追踪」更名为「限时任务追踪」，适配更多创作场景
+- **标签分隔符改进**：伏笔标签改为逗号分隔（如 `#人物, #情节`），对英文标签更友好，旧数据自动兼容
+
+---
+
+This update brings full English language support!
+
+### ✨ New Bilingual Support
+- **Auto-detect system language**: On first install, the plugin detects your Obsidian language — Chinese environments get Chinese UI, all others get English
+- **Complete English experience**: All panels, dialogs, document labels, and status values are fully translated
+- **Seamless language switching**: Changing language preserves your custom document names and auto-matches old-language documents — no duplicate files generated
+- **Cross-language document compatibility**: English mode can read Chinese documents (e.g. `伏笔.md`), and vice versa
+
+### ⚡ Experience Improvements
+- **Auto-rename on settings change**: Changing default document names in settings now automatically renames all existing documents across your workspaces
+- **Timed Task Tracker**: "Ranking Tracker" is now "Timed Task Tracker", better suited for broader writing scenarios
+- **Improved tag separator**: Foreshadowing tags now use comma separation (e.g. `#Character, #Plot`) — friendlier for English tags, with backward compatibility for old space-separated data
+
 ## 🔧 v3.1.2
 
 - 移除不必要的 eslint-disable 注释

@@ -2,16 +2,17 @@
  * 榜单追踪功能相关类型定义
  */
 
-/** 榜单条目状态 */
-export type RankingStatus = '进行中' | '已完成' | '未完成' | '未开始';
+/** 限时任务条目状态（内部 key 为英文，显示文本通过 i18n 获取） */
+export type RankingStatus = 'active' | 'completed' | 'incomplete' | 'notStarted';
 
-/** 榜单条目（解析后的结构化数据） */
+/** 限时任务条目（解析后的结构化数据） */
+// 限时任务类型（内部仍用 Ranking 命名，待后续重构改为 Task）
 export interface RankingEntry {
 	/** 期数 */
 	period: number;
-	/** 签约平台 */
+	/** 任务名称 */
 	platform: string;
-	/** 榜单位置 */
+	/** 任务详情 */
 	position: string;
 	/** 字数要求 */
 	wordTarget: number;
@@ -29,8 +30,8 @@ export interface RankingEntry {
 	rawBlock: string;
 }
 
-/** 榜单功能设置 */
+/** 限时任务功能设置 */
 export interface RankingSettings {
-	/** 榜单记录文件名（不含 .md 后缀，默认：榜单记录） */
+	/** 限时任务文件名（不含 .md 后缀，默认：限时任务） */
 	fileName: string;
 }

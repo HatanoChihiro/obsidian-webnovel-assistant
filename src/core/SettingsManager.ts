@@ -1,4 +1,7 @@
 import type { Plugin} from 'obsidian';
+import { t } from '../i18n';
+import { detectLocale } from '../i18n';
+import { getLocalizedDefaults } from '../i18n/data-keys';
 import { Notice } from 'obsidian';
 import type { AccurateCountSettings, ImmersiveModeSettings, ObsSettings } from '../types/settings';
 import { VALIDATION_RULES, FLAT_OBS_KEYS, FLAT_IMMERSIVE_KEYS } from '../constants';
@@ -41,7 +44,7 @@ export class SettingsManager {
 				const p = Number(port);
 				return !isNaN(p) && p >= VALIDATION_RULES.PORT_RANGE.min && p <= VALIDATION_RULES.PORT_RANGE.max;
 			},
-			errorMessage: `端口号必须在 ${VALIDATION_RULES.PORT_RANGE.min}-${VALIDATION_RULES.PORT_RANGE.max} 之间`
+			errorMessage: t('notice.port-range-invalid', { min: String(VALIDATION_RULES.PORT_RANGE.min), max: String(VALIDATION_RULES.PORT_RANGE.max) })
 		},
 		{
 			path: 'idleTimeoutThreshold',
@@ -51,7 +54,7 @@ export class SettingsManager {
 				const max = VALIDATION_RULES.IDLE_TIMEOUT_RANGE.max * 1000;
 				return !isNaN(t) && t >= min && t <= max;
 			},
-			errorMessage: `空闲超时必须在 ${VALIDATION_RULES.IDLE_TIMEOUT_RANGE.min}-${VALIDATION_RULES.IDLE_TIMEOUT_RANGE.max} 秒之间`
+			errorMessage: t('validation.range', { fieldName: t('validation.idle-timeout'), min: String(VALIDATION_RULES.IDLE_TIMEOUT_RANGE.min), max: String(VALIDATION_RULES.IDLE_TIMEOUT_RANGE.max) })
 		},
 		{
 			path: 'noteOpacity',
@@ -59,7 +62,7 @@ export class SettingsManager {
 				const o = Number(opacity);
 				return !isNaN(o) && o >= VALIDATION_RULES.OPACITY_RANGE.min && o <= VALIDATION_RULES.OPACITY_RANGE.max;
 			},
-			errorMessage: `便签不透明度必须在 ${VALIDATION_RULES.OPACITY_RANGE.min}-${VALIDATION_RULES.OPACITY_RANGE.max} 之间`
+			errorMessage: t('validation.range', { fieldName: t('validation.opacity'), min: String(VALIDATION_RULES.OPACITY_RANGE.min), max: String(VALIDATION_RULES.OPACITY_RANGE.max) })
 		},
 		{
 			path: 'obs.obsOverlayOpacity',
@@ -67,7 +70,7 @@ export class SettingsManager {
 				const o = Number(opacity);
 				return !isNaN(o) && o >= 0 && o <= VALIDATION_RULES.OPACITY_RANGE.max;
 			},
-			errorMessage: `OBS 叠加层不透明度必须在 0-${VALIDATION_RULES.OPACITY_RANGE.max} 之间`
+			errorMessage: t('validation.range', { fieldName: t('validation.opacity'), min: '0', max: String(VALIDATION_RULES.OPACITY_RANGE.max) })
 		},
 		{
 			path: 'defaultGoal',
@@ -75,14 +78,46 @@ export class SettingsManager {
 				const g = Number(goal);
 				return !isNaN(g) && g >= VALIDATION_RULES.MIN_GOAL;
 			},
-			errorMessage: '默认目标字数必须为非负数'
+			errorMessage: t('validation.please-fill', { fieldName: t('setting.default-chapter-goal') })
 		}
 	];
 
 	constructor(plugin: Plugin, defaultSettings: AccurateCountSettings) {
 		this.plugin = plugin;
-		this.defaultSettings = defaultSettings;
-		this.settings = { ...defaultSettings };
+		this.defaultSettings = this.adjustDefaultsForLocale(defaultSettings);
+		this.settings = { ...this.defaultSettings };
+	}
+
+	/**
+	 * 根据当前语言调整默认设置（仅影响首次安装时的默认值，不覆盖已有用户数据）
+	 */
+	private adjustDefaultsForLocale(defaults: AccurateCountSettings): AccurateCountSettings {
+		const locale = detectLocale();
+		if (locale === 'zh-CN') return defaults;
+
+		const adjusted = { ...defaults };
+		const localized = getLocalizedDefaults(locale);
+
+		// 调整文件名/文件夹名默认值
+		adjusted.novelInfo = { ...defaults.novelInfo, fileName: localized.novelInfoFileName };
+		adjusted.foreshadowing = { ...defaults.foreshadowing, fileName: localized.foreshadowingFileName };
+		adjusted.timeline = { ...defaults.timeline, fileName: localized.timelineFileName };
+		adjusted.ranking = { ...defaults.ranking, fileName: localized.rankingFileName };
+		adjusted.loreFolderName = localized.loreFolderName;
+
+		// 调整标签/类型默认值
+		adjusted.foreshadowing = { ...adjusted.foreshadowing, defaultTags: localized.defaultTags };
+		adjusted.timeline = { ...adjusted.timeline, defaultTypes: localized.defaultTypes };
+
+		// 调整章节命名规则默认值
+		if (adjusted.chapterNamingRules) {
+			adjusted.chapterNamingRules = defaults.chapterNamingRules.map((rule, i) => ({
+				...rule,
+				// 英文环境：rule 1(中文数字) 默认关闭，rule 3/4(Chapter/Part) 默认启用
+				enabled: i === 1 ? false : true,
+			}));
+		}
+		return adjusted;
 	}
 
 	async loadSettings(): Promise<AccurateCountSettings> {
@@ -121,7 +156,7 @@ export class SettingsManager {
 				this.stripStaleKeys(this.settings as unknown as Record<string, unknown>);
 
 				// 读取旧数据，只保留不属于 STALE_KEYS 的字段
-				const data = await this.plugin.loadData() || {};
+				const data = (await this.plugin.loadData() || {}) as Record<string, unknown>;
 				const cleanedData: Record<string, unknown> = {};
 				for (const key of Object.keys(data)) {
 					if (!STALE_KEYS.has(key)) {

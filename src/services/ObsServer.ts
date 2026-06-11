@@ -1,15 +1,7 @@
 import { Notice, Platform } from 'obsidian';
-
-/** Minimal Node.js http types for OBS server */
-interface IncomingMessage {
-    url?: string;
-    method?: string;
-}
-
-interface ServerResponse {
-    writeHead(statusCode: number, headers?: Record<string, string>): this;
-    end(data?: string): void;
-}
+import { t } from '../i18n';
+import type { IncomingMessage, ServerResponse } from 'http';
+import type { WebNovelAssistantPlugin } from '../types/plugin';
 
 interface ServerError extends Error {
     code?: string;
@@ -21,7 +13,6 @@ interface HttpServer {
     close(callback?: () => void): void;
     closeAllConnections?(): void;
 }
-import type { WebNovelAssistantPlugin } from '../types/plugin';
 
 /**
  * OBS 直播叠加层 HTTP Server
@@ -84,7 +75,7 @@ export class ObsOverlayServer {
 			});
 
 			this.server.listen(this.port, '127.0.0.1', () => {
-				new Notice(`OBS 叠加层已启动: http://127.0.0.1:${this.port}`);
+				new Notice(t('notice.obs-overlay-started', { url: `http://127.0.0.1:${this.port}` }));
 			});
 
 			this.server.on('error', (e: ServerError) => {
@@ -96,14 +87,12 @@ export class ObsOverlayServer {
 				if (e.code === 'EADDRINUSE') {
 					const suggestedPorts = [this.port + 1, this.port + 2, this.port + 10];
 					new Notice(
-						`端口 ${this.port} 已被占用！\n` +
-						`请更换端口后重试 (建议: ${suggestedPorts.join(', ')})`,
+						t('notice.obs-port-in-use', { port: String(this.port), suggestions: suggestedPorts.join(', ') }),
 						15000
 					);
 				} else {
 					new Notice(
-						`OBS 服务器启动失败\n` +
-						`错误: ${e.message}`,
+						t('notice.obs-start-failed', { message: e.message }),
 						12000
 					);
 				}
@@ -115,8 +104,7 @@ export class ObsOverlayServer {
 			this.server = null;
 
 			new Notice(
-				'OBS 服务器启动失败\n' +
-				'可能原因: Node.js 模块不可用',
+				t('notice.obs-module-unavailable'),
 				12000
 			);
 			return false;

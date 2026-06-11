@@ -22,7 +22,7 @@ export class StyleManager {
 	 */
 	removeEyeCare(): void {
 		activeDocument.body.classList.remove('webnovel-eye-care-enabled');
-		activeDocument.body.style.removeProperty('--webnovel-eye-care-color');
+		activeDocument.body.setCssProps({ '--webnovel-eye-care-color': null });
 	}
 
 	/**

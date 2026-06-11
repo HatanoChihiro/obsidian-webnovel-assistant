@@ -1,6 +1,7 @@
 import type { App, EventRef, WorkspaceLeaf, TFile, WorkspaceSplit, WorkspaceItem } from 'obsidian';
 import { MarkdownView, Notice } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
+import { t } from '../i18n';
 
 /**
  * 沉浸模式管理器
@@ -68,11 +69,11 @@ export class ImmersiveModeManager {
 	private async enterImmersiveMode(): Promise<void> {
 		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (!activeView || !activeView.file) {
-			new Notice('[错误] 请先打开一个小说章节，再进入沉浸模式！');
+			new Notice(t('immersive.please-open-chapter'));
 			return;
 		}
 		this.savedActiveFile = activeView.file;
-		this.immersiveNovelTitle = activeView.file.parent?.isRoot() ? activeView.file.basename : (activeView.file.parent?.name || '未命名小说');
+		this.immersiveNovelTitle = activeView.file.parent?.isRoot() ? activeView.file.basename : (activeView.file.parent?.name || t('common.unnamed-novel'));
 
 		try {
 			// 0. 强制同步所有活跃悬浮便签到管理器，确保数据最新
@@ -103,10 +104,10 @@ export class ImmersiveModeManager {
 			this.plugin.startTracking();
 
 			this.isImmersiveActive = true;
-			new Notice('已进入全屏沉浸模式');
+			new Notice(t('immersive.enter'));
 		} catch (error) {
 			console.error('[ImmersiveModeManager] 进入沉浸模式失败:', error);
-			new Notice('[错误] 进入沉浸模式失败！');
+			new Notice(t('immersive.enter-failed'));
 			await this.exitImmersiveMode();
 		}
 	}
@@ -157,7 +158,7 @@ export class ImmersiveModeManager {
 
 		} catch (error) {
 			console.error('[ImmersiveModeManager] 退出沉浸模式时发生错误:', error);
-			new Notice('[警告] 退出沉浸模式出现异常，已强制清理界面');
+			new Notice(t('immersive.exit-warning'));
 		} finally {
 			if (this.layoutChangeRef) {
 				this.app.workspace.offref(this.layoutChangeRef);
@@ -178,7 +179,7 @@ export class ImmersiveModeManager {
 			this.activeRightLeaf = null;
 			this.activeBottomLeaf = null;
 
-			new Notice('已退出沉浸模式');
+			new Notice(t('immersive.exited'));
 		}
 	}
 
@@ -261,7 +262,7 @@ export class ImmersiveModeManager {
 					let finalInternalSizes = internalSizes;
 					if (!finalInternalSizes || finalInternalSizes.length !== slots.length) {
 						const avg = 100 / slots.length;
-						finalInternalSizes = new Array(slots.length).fill(avg);
+						finalInternalSizes = new Array<number>(slots.length).fill(avg);
 					}
 					pendingSizes.push({ split: internalSplit, sizes: finalInternalSizes });
 				}
@@ -351,7 +352,7 @@ export class ImmersiveModeManager {
 		const centerDiv = this.topBarEl.createDiv({ cls: 'immersive-top-bar-center' });
 
 		const rightDiv = this.topBarEl.createDiv({ cls: 'immersive-top-bar-right' });
-		const exitBtn = rightDiv.createEl('button', { cls: 'immersive-exit-btn', text: '退出沉浸模式' });
+		const exitBtn = rightDiv.createEl('button', { cls: 'immersive-exit-btn', text: t('immersive.exit-btn') });
 		exitBtn.addEventListener('click', () => { void this.exitImmersiveMode(); });
 
 		this.topBarStatsEls = {
@@ -404,13 +405,13 @@ export class ImmersiveModeManager {
 				}
 			};
 
-			updateStatEl('totalTime', !!immersive.immersiveShowTotalTime, `总计 (${stats.totalTime})`);
-			updateStatEl('focusTime', !!immersive.immersiveShowFocusTime, `专注 (${stats.focusTime})`);
-			updateStatEl('slackTime', !!immersive.immersiveShowSlackTime, `摸鱼 (${stats.slackTime})`);
-			updateStatEl('chapterProgress', !!immersive.immersiveShowChapterProgress, `章节进度 (${stats.todayWords}/${stats.goal})`);
-			updateStatEl('dailyProgress', !!immersive.immersiveShowDailyProgress, `今日进度 (${stats.dailyWords}/${stats.dailyGoal})`);
-			updateStatEl('rankingProgress', !!immersive.immersiveShowRankingProgress, `榜单进度 (${stats.rankingWords}/${stats.rankingGoal})`);
-			updateStatEl('sessionWords', !!immersive.immersiveShowSessionWords, `本场净增 (${stats.sessionWords})`);
+			updateStatEl('totalTime', !!immersive.immersiveShowTotalTime, `${t('immersive.total-time')} (${stats.totalTime})`);
+			updateStatEl('focusTime', !!immersive.immersiveShowFocusTime, `${t('immersive.focus-time')} (${stats.focusTime})`);
+			updateStatEl('slackTime', !!immersive.immersiveShowSlackTime, `${t('immersive.slack-time')} (${stats.slackTime})`);
+			updateStatEl('chapterProgress', !!immersive.immersiveShowChapterProgress, `${t('immersive.chapter-progress')} (${stats.todayWords}/${stats.goal})`);
+			updateStatEl('dailyProgress', !!immersive.immersiveShowDailyProgress, `${t('immersive.daily-progress')} (${stats.dailyWords}/${stats.dailyGoal})`);
+			updateStatEl('rankingProgress', !!immersive.immersiveShowRankingProgress, `${t('immersive.ranking-progress')} (${stats.rankingWords}/${stats.rankingGoal})`);
+			updateStatEl('sessionWords', !!immersive.immersiveShowSessionWords, `${t('immersive.session-words')} (${stats.sessionWords})`);
 		} catch (e) {
 			console.error('[ImmersiveModeManager] renderTopBarContent failed:', e);
 		}

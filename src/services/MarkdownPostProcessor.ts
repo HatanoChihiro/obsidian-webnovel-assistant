@@ -2,6 +2,8 @@ import type { MarkdownPostProcessorContext} from 'obsidian';
 import { TFile, Notice } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ForeshadowingRecoveryModal } from '../ui/ForeshadowingModal';
+import { FORESHADOWING_STATUS_MAP, getForeshadowingStatusText, getDefaultFileName } from '../i18n/data-keys';
+import { t } from '../i18n';
 
 /**
  * Markdown 后处理器
@@ -23,7 +25,7 @@ export class MarkdownPostProcessor {
 			if (!(file instanceof TFile)) return;
 
 			// 只在伏笔文件中生效
-			const foreshadowingFileName = (this.plugin.settings.foreshadowing?.fileName || '伏笔') + '.md';
+			const foreshadowingFileName = (this.plugin.settings.foreshadowing?.fileName || getDefaultFileName('foreshadowingFileName')) + '.md';
 			if (file.name !== foreshadowingFileName) return;
 
 			// 查找并注入复选框
@@ -35,20 +37,21 @@ export class MarkdownPostProcessor {
 		// 查找所有包含 **状态**：未回收 的段落
 		el.querySelectorAll('p, li').forEach((p) => {
 			const text = p.textContent || '';
-			if (!text.includes('状态') || !text.includes('未回收')) return;
+			if (!text.includes('状态') && !text.includes('Status')) return;
+			if (!text.includes('未回收') && !text.includes('pending') && !text.includes('Pending')) return;
 
 			// 找到包含"状态"的 strong 元素
 			const strongs = p.querySelectorAll('strong');
 			let statusStrong: Element | null = null;
 			strongs.forEach(s => {
-				if (s.textContent === '状态') statusStrong = s;
+				if (s.textContent === '状态' || s.textContent === 'Status') statusStrong = s;
 			});
 			if (!statusStrong) return;
 
 			// 注入复选框
 			const checkbox = activeDocument.createElement('input');
 			checkbox.type = 'checkbox';
-			checkbox.title = '标记为已回收';
+			checkbox.title = t('common.mark-recovered');
 			checkbox.className = 'foreshadowing-recovery-checkbox';
 			checkbox.addClass('webnovel-foreshadowing-checkbox');
 			checkbox.addEventListener('change', (e) => {
@@ -94,9 +97,9 @@ export class MarkdownPostProcessor {
 						).then(success => {
 							if (success) {
 								const fileList = recoveryFileNames.map(f => `[[${f}]]`).join('、');
-								new Notice(`[成功] 已标记为已回收：${fileList}`);
+												new Notice(t('notice.foreshadowing-recovered', { links: fileList }));
 							} else {
-								new Notice('[错误] 未找到对应的伏笔条目');
+								new Notice(t('notice.foreshadowing-entry-not-found'));
 							}
 						});
 					}).open();

@@ -2,11 +2,11 @@
  * 伏笔标注相关类型定义
  */
 
-/** 伏笔状态枚举 */
+/** 伏笔状态枚举（内部 key 为英文，显示文本通过 i18n 获取） */
 export enum ForeshadowingStatus {
-	Pending    = "未回收",
-	Recovered  = "已回收",
-	Deprecated = "已废弃"
+	Pending    = "pending",
+	Recovered  = "recovered",
+	Deprecated = "deprecated"
 }
 
 /** 伏笔数据解析结构（供视图展示） */

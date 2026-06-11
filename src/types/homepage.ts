@@ -8,7 +8,7 @@ export interface NovelInfoSettings {
 
 export interface NovelMetadata {
 	name: string;
-	status: '连载中' | '存稿中' | '已暂停' | '已完结';
+	status: 'ongoing' | 'stockpiling' | 'paused' | 'completed';
 	synopsis: string;
 	protagonist: string;
 	wordGoal: number;

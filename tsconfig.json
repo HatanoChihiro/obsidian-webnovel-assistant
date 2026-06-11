@@ -12,6 +12,7 @@
     "noImplicitThis": true,
     "alwaysStrict": true,
     "esModuleInterop": true,
+    "resolveJsonModule": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "noEmit": true

@@ -2,6 +2,7 @@ import type { App} from 'obsidian';
 import { Modal, Setting } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { NovelMetadata } from '../types/homepage';
+import { t } from '../i18n';
 
 export class NewNovelModal extends Modal {
 	private plugin: WebNovelAssistantPlugin;
@@ -22,44 +23,44 @@ export class NewNovelModal extends Modal {
 	onOpen() {
 		const { contentEl } = this;
 		contentEl.empty();
-		contentEl.createEl('h2', { text: '新建作品' });
+		contentEl.createEl('h2', { text: t('modal.new-novel') });
 
 		new Setting(contentEl)
-			.setName('作品名称')
-			.setDesc('将作为文件夹名称')
+			.setName(t('modal.novel-name'))
+			.setDesc(t('modal.novel-name-desc'))
 			.addText(text => {
-				text.setPlaceholder('请输入作品名称');
+				text.setPlaceholder(t('modal.novel-name-placeholder'));
 				text.onChange(value => { this.novelName = value; });
 				text.inputEl.focus();
 			});
 
 		new Setting(contentEl)
-			.setName('简介/文案')
-			.setDesc('可选')
+			.setName(t('modal.synopsis'))
+			.setDesc(t('modal.synopsis-desc'))
 			.addText(text => {
-				text.setPlaceholder('一句话简介...');
+				text.setPlaceholder(t('modal.synopsis-placeholder'));
 				text.onChange(value => { this.synopsis = value; });
 			});
 
 		new Setting(contentEl)
-			.setName('类型')
-			.setDesc('可选')
+			.setName(t('modal.genre'))
+			.setDesc(t('modal.genre-desc'))
 			.addText(text => {
-				text.setPlaceholder('玄幻、都市、科幻...');
+				text.setPlaceholder(t('modal.genre-placeholder'));
 				text.onChange(value => { this.genre = value; });
 			});
 
 		new Setting(contentEl)
-			.setName('总字数目标')
-			.setDesc('可选，用于进度条')
+			.setName(t('modal.total-word-goal'))
+			.setDesc(t('modal.total-word-goal-desc'))
 			.addText(text => {
-				text.setPlaceholder('例如 500000');
+				text.setPlaceholder(t('modal.total-word-goal-placeholder'));
 				text.onChange(value => { this.wordGoal = value; });
 			});
 
 		new Setting(contentEl)
 			.addButton(btn => btn
-				.setButtonText('创建')
+				.setButtonText(t('common.create'))
 				.setCta()
 				.onClick(() => { this.submit(); })
 			);

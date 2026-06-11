@@ -4,6 +4,7 @@ import { VIEW_TYPES } from '../constants';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { StickyNoteState } from '../types/settings';
 import { SaveStickyNoteModal, ConfirmCloseModal } from './StickyNote';
+import { t } from '../i18n';
 
 class FileSuggestModal extends FuzzySuggestModal<TFile> {
 	plugin: WebNovelAssistantPlugin;
@@ -13,7 +14,7 @@ class FileSuggestModal extends FuzzySuggestModal<TFile> {
 		super(app);
 		this.plugin = plugin;
 		this.onChoose = onChoose;
-		this.setPlaceholder('搜索要作为便签打开的文档...');
+		this.setPlaceholder(t('immersive.search-file-placeholder'));
 	}
 
 	getItems(): TFile[] {
@@ -45,7 +46,7 @@ export class ImmersiveStickyNotesView extends ItemView {
 	}
 
 	getDisplayText(): string {
-		return '便签列表';
+		return t('view.immersive-sticky-notes');
 	}
 	
 	getIcon(): string {
@@ -65,7 +66,7 @@ export class ImmersiveStickyNotesView extends ItemView {
 			id: Date.now().toString(36) + Math.random().toString(36).substring(2, 7),
 			filePath: filePath,
 			content: content || '',
-			title: title || '新建便签',
+			title: title || t('immersive.new-note-title'),
 			top: '100px', // 在沉浸模式下这些值不重要，但需要给个默认值
 			left: '100px',
 			width: '300px',
@@ -80,7 +81,7 @@ export class ImmersiveStickyNotesView extends ItemView {
 		// 初始化最后保存的内容
 		this.lastSavedContents.set(newNote.id, newNote.content || '');
 
-		this.plugin.stickyNoteManager.saveNotes(this.plugin.stickyNoteManager.getNotes()).then(() => {
+		void this.plugin.stickyNoteManager.saveNotes(this.plugin.stickyNoteManager.getNotes()).then(() => {
 			this.renderNotes(); // 重新渲染列表
 		}).catch(err => console.error('[ImmersiveStickyNotesView] saveNotes failed:', err));
 		
@@ -122,10 +123,10 @@ export class ImmersiveStickyNotesView extends ItemView {
 		toolbar.addEventListener('mouseenter', showToolbar);
 		toolbar.addEventListener('mouseleave', hideToolbar);
 
-		const newBlankBtn = toolbar.createEl('button', { text: '新建空白便签' });
+		const newBlankBtn = toolbar.createEl('button', { text: t('immersive.new-blank-note') });
 		newBlankBtn.onclick = () => this.createNewNote();
 
-		const openFileBtn = toolbar.createEl('button', { text: '打开文件为便签' });
+		const openFileBtn = toolbar.createEl('button', { text: t('immersive.open-file-as-note') });
 		openFileBtn.onclick = () => {
 			new FileSuggestModal(this.app, this.plugin, (file) => {
 				void this.app.vault.read(file).then(content => {
@@ -180,7 +181,7 @@ export class ImmersiveStickyNotesView extends ItemView {
 		const notes = this.plugin.stickyNoteManager.getNotes();
 		
 		if (notes.length === 0) {
-			dockContainer.createEl('p', { text: '暂无打开的便签。点击上方按钮新建或打开文件。', cls: 'immersive-empty-text' });
+			dockContainer.createEl('p', { text: t('immersive.no-notes-hint'), cls: 'immersive-empty-text' });
 			return;
 		}
 
@@ -202,17 +203,17 @@ export class ImmersiveStickyNotesView extends ItemView {
 			// 标题栏与关闭按钮
 			const titleEl = noteCard.createDiv({ cls: 'immersive-sticky-title' });
 			titleEl.addClass('webnovel-immersive-note-title');const titleSpan = titleEl.createSpan();
-			titleSpan.setText(noteData.title || '便签');
+			titleSpan.setText(noteData.title || t('immersive.note-default-title'));
 			
 			
 			titleSpan.addClass('webnovel-ellipsis');const closeBtn = titleEl.createSpan({ cls: 'clickable-icon', text: '×' });
-			closeBtn.addClass('webnovel-immersive-note-close');closeBtn.title = '关闭便签';
+			closeBtn.addClass('webnovel-immersive-note-close');closeBtn.title = t('immersive.close-note-tooltip');
 			
 			const performRemove = async () => {
 				this.plugin.stickyNoteManager.removeNote(noteData.id);
 				this.lastSavedContents.delete(noteData.id);
 				void this.plugin.stickyNoteManager.saveNotes(this.plugin.stickyNoteManager.getNotes());
-				this.renderNotes();
+				void this.renderNotes();
 			};
 
 			closeBtn.onclick = () => {
@@ -229,7 +230,7 @@ export class ImmersiveStickyNotesView extends ItemView {
 								const file = this.app.vault.getAbstractFileByPath(noteData.filePath);
 								if (file instanceof TFile) {
 									void this.app.vault.modify(file, currentContent);
-									new Notice("[成功] 便签已保存");
+									new Notice(t('modal.note-saved'));
 								}
 								void performRemove();
 							} else {
@@ -238,14 +239,14 @@ export class ImmersiveStickyNotesView extends ItemView {
 									try {
 										const fullPath = (folderPath ? `${folderPath}/` : '') + (fileName.endsWith('.md') ? fileName : `${fileName}.md`);
 										if (this.app.vault.getAbstractFileByPath(fullPath)) {
-											new Notice(`[错误] 文件已存在: ${fullPath}`);
+											new Notice(t('modal.file-already-exists', { path: fullPath }));
 											return;
 										}
 										void this.app.vault.create(fullPath, currentContent);
-										new Notice(`[成功] 已保存为: ${fullPath}`);
+										new Notice(t('modal.saved-as', { path: fullPath }));
 										void performRemove();
 									} catch (error) {
-										new Notice(`[错误] 保存失败: ${error}`);
+										new Notice(t('modal.save-failed', { error: String(error) }));
 									}
 								});
 								saveModal.open();

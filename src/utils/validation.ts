@@ -3,6 +3,8 @@
  * 提供端口号、文件路径、数值范围等验证功能
  */
 
+import { t } from '../i18n';
+
 /**
  * 验证结果接口（统一定义，全项目唯一）
  * 
@@ -25,14 +27,14 @@ export interface ValidationResult {
  * @example
  * ```typescript
  * validatePort(24816) // { valid: true, errors: [] }
- * validatePort(80) // { valid: false, errors: ['端口号必须在 1024-65535 之间'] }
+ * validatePort(80) // { valid: false, errors: [t('validation.port-range')] }
  * ```
  */
 export function validatePort(port: number): ValidationResult {
 	if (port < 1024 || port > 65535) {
 		return {
 			valid: false,
-			errors: ['端口号必须在 1024-65535 之间']
+			errors: [t('validation.port-range')]
 		};
 	}
 	return { valid: true, errors: [] };
@@ -47,7 +49,7 @@ export function validatePath(path: string): ValidationResult {
 	if (!path || path.trim().length === 0) {
 		return {
 			valid: false,
-			errors: ['路径不能为空']
+			errors: [t('validation.path-empty')]
 		};
 	}
 	return { valid: true, errors: [] };
@@ -70,7 +72,7 @@ export function validateRange(
 	if (value < min || value > max) {
 		return {
 			valid: false,
-			errors: [`${fieldName}必须在 ${min} 到 ${max} 之间`]
+			errors: [t('validation.range', { fieldName, min: String(min), max: String(max) })]
 		};
 	}
 	return { valid: true, errors: [] };
@@ -83,7 +85,7 @@ export function validateRange(
  * @returns 验证结果
  */
 export function validateOpacity(opacity: number): ValidationResult {
-	return validateRange(opacity, 0.1, 1.0, '不透明度');
+	return validateRange(opacity, 0.1, 1.0, t('validation.opacity'));
 }
 
 /**
@@ -93,7 +95,7 @@ export function validateOpacity(opacity: number): ValidationResult {
  * @returns 验证结果
  */
 export function validateIdleTimeout(timeoutSeconds: number): ValidationResult {
-	return validateRange(timeoutSeconds, 10, 3600, '空闲超时');
+	return validateRange(timeoutSeconds, 10, 3600, t('validation.idle-timeout'));
 }
 
 /**

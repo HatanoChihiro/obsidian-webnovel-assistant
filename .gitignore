@@ -31,8 +31,8 @@ desktop.ini
 !assets/*.png
 !assets/*.gif
 
-# 编辑器配置
+# 编辑器/IDE 配置
 .vscode/
-
+.dev/
 # 内部开发文档
 CODE_*.md

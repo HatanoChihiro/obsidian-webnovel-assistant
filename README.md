@@ -7,7 +7,7 @@
 [![GitHub release](https://img.shields.io/github/v/release/HatanoChihiro/obsidian-webnovel-assistant)](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/releases)
 [![License](https://img.shields.io/github/license/HatanoChihiro/obsidian-webnovel-assistant)](LICENSE)
 
-一个功能强大的 Obsidian 插件，专为中文网络小说作者打造，提供创作主页、字数统计、写作目标追踪、伏笔管理、时间线系统、OBS 直播叠加层等丰富功能。
+一个功能强大的 Obsidian 插件，为网络小说作者打造，支持中文和英文双语界面，提供创作主页、字数统计、写作目标追踪、伏笔管理、时间线系统、限时任务追踪、OBS 直播叠加层等丰富功能。
 
 <img width="1280" alt="homepage" src="assets/homepage.png" />
 
@@ -22,7 +22,7 @@
 ### 🏠 创作主页
 - **全宽仪表盘**: 2行×2列网格布局，全宽填满编辑器
 - **动态欢迎语**: 根据时间段自动变化，显示总字数与今日新增
-- **作品总览**: 连载中（含榜单追踪）、存稿中、已暂停、已完结一目了然
+- **作品总览**: 连载中（含限时任务追踪）、存稿中、已暂停、已完结一目了然
 - **数据面板**: 效率总览、365热力图、近30日趋势
 - **一键新建**: 右侧新建作品按钮，弹窗填写元数据后自动创建
 
@@ -38,7 +38,7 @@
 ### 📊 字数统计与目标追踪
 - 实时统计字数，适配中文创作平台计算规则
 - **字数统计模式**：支持网文模式、标准模式、Obsidian 原生模式三种统计方式切换
-- 章节目标、今日目标、榜单目标，进度可视化
+- 章节目标、今日目标、限时目标，进度可视化
 - 写作状态面板显示当前作品信息（目录名、总字数）
 - **严格章节模式**: 字数统计、进度条及提醒仅在符合规则的章节中生效，写大纲不计入进度
 - **字数实时提醒**: 在编辑器左侧行号区域实时显示累计字数提醒，支持自定义间隔
@@ -78,7 +78,7 @@
 
 <img width="1280" alt="lore-lookup" src="assets/lore-lookup.gif" />
 
-- **榜单追踪**: 追踪签约平台的榜单任务，自动计算字数增量，到期自动关闭，起始字数可手动修改
+- **限时任务追踪**: 追踪签约平台的限时任务，自动计算字数增量，到期自动关闭，起始字数可手动修改
 - **高级搜索**：支持当前书籍/全局/自定义范围搜索，树形目录多选
 - **合并章节**：一键合并文件夹内所有章节
 
@@ -128,7 +128,7 @@
 | 打开/关闭写作实时状态面板 | 显示详细统计和历史图表 |
 | 打开/关闭伏笔面板 | 管理伏笔标注和回收 |
 | 打开/关闭时间线面板 | 管理故事时间线 |
-| 打开/关闭榜单面板 | 管理榜单追踪任务 |
+| 打开/关闭限时任务面板 | 管理限时任务追踪任务 |
 | 打开/关闭章节一览面板 | 卡片式展示章节纲要 |
 | 开始/暂停 摸鱼时间统计 | 切换时间追踪 |
 | 标注为伏笔 | 将选中文字标注为伏笔 |
@@ -143,6 +143,7 @@
 
 | 设置 | 默认值 | 说明 |
 |------|--------|------|
+| 语言/Language | 跟随系统 | 界面语言（中文/English），首次安装自动检测 Obsidian 语言 |
 | 默认目标字数 | 3000 | 新文件的默认章节目标 |
 | 今日目标字数 | 5000 | 今日写作目标 |
 | 文件浏览器字数统计 | 关闭 | 显示文件夹字数（大型项目建议关闭） |
@@ -151,7 +152,7 @@
 | 沉浸模式便签尺寸 | 280 | 沉浸模式下便签卡片的正方形边长 |
 | 伏笔文件名 | 伏笔 | 伏笔文件的名称 |
 | 时间线文件名 | 时间线 | 时间线文件的名称 |
-| 榜单文件名 | 榜单记录 | 榜单记录文件的名称 |
+| 限时任务文件名 | 限时任务 | 限时任务文件的名称 |
 | 设定文件夹名称 | 设定 | 存放设定文档的文件夹名称（支持字典大纲模式） |
 | 字数统计模式 | 网文模式 | 统计算法：网文模式（标点算字）、标准模式（英文算词）、原生模式（忽略标点） |
 
@@ -187,14 +188,14 @@
 
 **English** | **[中文](#webnovel-assistant)**
 
-A powerful Obsidian plugin designed for Chinese web novel writers. Features accurate word count, writing goal tracking, focus/slack time analysis, foreshadowing management, timeline system, sticky notes, and OBS streaming overlay — all optimized for the Chinese writing workflow.
+A powerful Obsidian plugin for web novel writers with bilingual support (Chinese & English). Features accurate word count, writing goal tracking, focus/slack time analysis, foreshadowing management, timeline system, timed task tracker, sticky notes, and OBS streaming overlay.
 
 <img width="1280" alt="homepage" src="assets/homepage.gif" />
 
 ## Features
 
 - **Accurate Word Count** — Tailored for Chinese web novel platforms, excludes Markdown syntax and punctuation
-- **Writing Goals** — Chapter goal, daily goal, and ranking goal with real-time progress tracking
+- **Writing Goals** — Chapter goal, daily goal, and timed task goal with real-time progress tracking
 - **Creative Homepage** — Full-width dashboard with 2×2 grid layout, dynamic welcome, novel overview, stats panel, one-click new novel
 - **Focus Timer** — Automatic focus/slack time detection with Web Worker threading
 - **Immersive Mode** — Full-screen distraction-free writing with dashboard and slot-based layout
@@ -208,6 +209,9 @@ A powerful Obsidian plugin designed for Chinese web novel writers. Features accu
 - **Chapter Corkboard** — Card-based chapter overview with status tracking and synopsis editing
 - **Advanced Search** — Search across current book, global, or custom folder scopes with tree-based directory selection
 - **Chapter Merge & Export** — One-click merge all chapters into a single file
+- **Timed Task Tracker** — Track timed writing tasks with auto-calculated word increments, deadline alerts, and progress visualization
+- **Bilingual Support** — Full Chinese & English UI, auto-detect system language, seamless language switching with cross-language document compatibility
+- **Copy Document** — One-click copy entire document with auto-prepended title, perfect for mobile sharing
 - **Mobile Support** — Floating word count, touch-optimized controls, cross-device sync
 
 ## Installation

@@ -3,6 +3,7 @@ import { ItemView, TFile, MarkdownView } from 'obsidian';
 import { VIEW_TYPES } from '../constants';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ChapterSorter } from '../services/ChapterSorter';
+import { t } from '../i18n';
 
 export class ImmersiveChapterListView extends ItemView {
 	plugin: WebNovelAssistantPlugin;
@@ -19,7 +20,7 @@ export class ImmersiveChapterListView extends ItemView {
 	}
 
 	getDisplayText(): string {
-		return '沉浸章节列表';
+		return t('view.immersive-chapter-list');
 	}
 	
 	getIcon(): string {
@@ -71,7 +72,7 @@ export class ImmersiveChapterListView extends ItemView {
 		}
 
 		if (!currentFolder) {
-			listContainer.createEl('p', { text: '正在加载文件夹信息...', cls: 'immersive-empty-text' });
+			listContainer.createEl('p', { text: t('immersive.loading-folder'), cls: 'immersive-empty-text' });
 			// 如果还是没找到，可能是主编辑器还没准备好，1秒后重试一次
 			window.setTimeout(() => {
 				if (this.app.workspace.getActiveFile()) void this.refresh();
@@ -101,7 +102,7 @@ export class ImmersiveChapterListView extends ItemView {
 			const wordCount = this.plugin.cacheManager.getFileCache(file.path) || 0;
 			if (this.plugin.settings.showExplorerCounts) {
 				if (ChapterSorter.isChapterFile(file.basename)) {
-					itemEl.createSpan({ text: `${wordCount}字`, cls: 'immersive-chapter-count' });
+					itemEl.createSpan({ text: `${wordCount}${t('common.word-char')}`, cls: 'immersive-chapter-count' });
 				}
 			}
 

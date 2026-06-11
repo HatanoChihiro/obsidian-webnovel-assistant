@@ -2,6 +2,9 @@ import { TFile, type WorkspaceLeaf } from 'obsidian';
 import { ItemView, Notice, Menu } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ChapterSorter } from '../services/ChapterSorter';
+import { CORKBOARD_STATUS_MAP, getCorkboardStatusText, getCorkboardStatusKeys } from '../i18n/data-keys';
+import { t } from '../i18n';
+import { getDefaultFileNameCandidates } from '../i18n/data-keys';
 
 export const CORKBOARD_VIEW_TYPE = 'webnovel-corkboard';
 
@@ -48,7 +51,7 @@ export class CorkboardView extends ItemView {
 	}
 
 	getDisplayText(): string {
-		return '章节一览';
+		return t('view.corkboard');
 	}
 
 	getIcon(): string {
@@ -78,9 +81,9 @@ export class CorkboardView extends ItemView {
 		} else {
 			this.container.empty();
 			const header = this.container.createDiv('wn-corkboard-header');
-			header.createEl('h2', { text: '章节一览' });
-			header.createEl('p', { 
-				text: '请先打开某个作品的章节文件，以识别当前作品。',
+			header.createEl('h2', { text: t('view.corkboard') });
+			header.createEl('p', {
+				text: t('corkboard.please-open-file'),
 				cls: 'wn-corkboard-hint'
 			});
 		}
@@ -90,24 +93,24 @@ export class CorkboardView extends ItemView {
 		this.container.empty();
 
 		const header = this.container.createDiv('wn-corkboard-header');
-		header.createEl('h2', { text: '章节一览' });
-		
+		header.createEl('h2', { text: t('view.corkboard') });
+
 		if (!this.currentBookPath) {
-			header.createEl('p', { 
-				text: '请先打开某个作品的章节文件，以识别当前作品。',
+			header.createEl('p', {
+				text: t('corkboard.please-open-file'),
 				cls: 'wn-corkboard-hint'
 			});
 			return;
 		}
 
-		let displayBookName = 'Vault 根目录';
+		let displayBookName = t('corkboard.vault-root');
 		if (this.currentBookPath && this.currentBookPath !== '/') {
 			const parts = this.currentBookPath.split('/');
 			displayBookName = parts[parts.length - 1];
 		}
 
-		header.createEl('p', { 
-			text: `当前作品: ${displayBookName}`,
+		header.createEl('p', {
+			text: t('corkboard.current-novel', { name: displayBookName }),
 			cls: 'wn-corkboard-hint'
 		});
 
@@ -120,7 +123,7 @@ export class CorkboardView extends ItemView {
 				return false;
 			}
 			// 排除设定文件夹
-			const lorePath = this.plugin.settings.loreFolderName || '设定';
+			const lorePath = this.plugin.settings.loreFolderName || t('common.default-lore-folder-name');
 			if (file.path.includes(`/${lorePath}/`) || file.path.startsWith(`${lorePath}/`)) {
 				return false;
 			}
@@ -144,11 +147,12 @@ export class CorkboardView extends ItemView {
 		const frontmatter = cache?.frontmatter;
 		// 优先取 synopsis，其次取 摘要
 		const synopsis = (frontmatter?.synopsis || frontmatter?.['摘要'] || '') as string;
-		// 状态
-		const status = (frontmatter?.status || frontmatter?.['状态'] || '待写') as string;
+		// 状态（通过映射表解析中文旧值与英文新值，向后兼容）
+		const rawStatus = (frontmatter?.status || frontmatter?.['状态'] || 'unwritten') as string;
+		const status = CORKBOARD_STATUS_MAP[rawStatus] ?? rawStatus;
 
 		const card = grid.createDiv('wn-corkboard-card');
-		
+
 		// 头部：标题与状态
 		const cardHeader = card.createDiv('wn-corkboard-card-header');
 		const titleEl = cardHeader.createDiv('wn-corkboard-card-title');
@@ -159,28 +163,28 @@ export class CorkboardView extends ItemView {
 		};
 
 		const statusEl = cardHeader.createDiv('wn-corkboard-card-status');
-		statusEl.setText(status);
+		statusEl.setText(getCorkboardStatusText(status));
 		statusEl.setCssProps({ cursor: 'pointer' });
-		statusEl.title = '点击切换状态';
+		statusEl.title = t('corkboard.click-to-change-status');
 
 		statusEl.onclick = (evt: MouseEvent) => {
 			const menu = new Menu();
-			const states = ['待写', '大纲', '草稿', '修稿中', '已完稿'];
-			for (const s of states) {
+			const statusKeys = getCorkboardStatusKeys();
+			for (const s of statusKeys) {
 				menu.addItem((item) => {
-					item.setTitle(s)
+					item.setTitle(getCorkboardStatusText(s))
 						.setChecked(s === status)
 						.onClick(async () => {
 							try {
 								this.isSavingMetadata = true;
 								await this.app.fileManager.processFrontMatter(file, (fm) => {
-									fm['status'] = s;
+									(fm as Record<string, unknown>)['status'] = s;
 								});
-								statusEl.setText(s);
-								new Notice(`状态已更新：${s}`);
+								statusEl.setText(getCorkboardStatusText(s));
+								new Notice(t('corkboard.status-updated', { status: getCorkboardStatusText(s) }));
 							} catch (err) {
 								console.error(err);
-								new Notice('状态更新失败');
+								new Notice(t('corkboard.status-update-failed'));
 							} finally {
 								window.setTimeout(() => { this.isSavingMetadata = false; }, 500);
 							}
@@ -193,9 +197,9 @@ export class CorkboardView extends ItemView {
 		// 内容区：大纲摘要（点击编辑）
 		const contentEl = card.createDiv('wn-corkboard-card-content');
 		const textEl = contentEl.createDiv('wn-corkboard-card-text');
-		
+
 		if (synopsis.trim() === '') {
-			textEl.setText('点击添加章节摘要...');
+			textEl.setText(t('common.click-add-synopsis'));
 			textEl.addClass('is-empty');
 		} else {
 			textEl.setText(synopsis);
@@ -211,14 +215,14 @@ export class CorkboardView extends ItemView {
 		// 获取精准字数统计
 		const cachedCount = this.plugin.cacheManager.getFileCache(file.path);
 		if (cachedCount !== null && cachedCount > 0) {
-			footerEl.setText(`${cachedCount} 字`);
+			footerEl.setText(`${cachedCount}${t('common.word-char')}`);
 		} else {
 			footerEl.setText(`...`);
-			this.app.vault.cachedRead(file).then(content => {
+			void this.app.vault.cachedRead(file).then(content => {
 				if (!footerEl.isConnected) return;
 				const count = this.plugin.calculateAccurateWords(content);
-				footerEl.setText(`${count} 字`);
-			});
+				footerEl.setText(`${count}${t('common.word-char')}`);
+			}).catch(err => console.error("[CorkboardView] cachedRead failed:", err));
 		}
 	}
 
@@ -233,7 +237,7 @@ export class CorkboardView extends ItemView {
 		});
 		const currentSynopsis = textEl.hasClass('is-empty') ? '' : textEl.innerText;
 		textarea.value = currentSynopsis;
-		
+
 		// 自动聚焦并选中末尾
 		textarea.focus();
 		textarea.setSelectionRange(currentSynopsis.length, currentSynopsis.length);
@@ -252,32 +256,32 @@ export class CorkboardView extends ItemView {
 			isSaving = true;
 			const newValue = textarea.value.trim();
 			if (newValue !== currentSynopsis) {
-				textEl.setText(newValue || '点击添加章节摘要...');
+				textEl.setText(newValue || t('common.click-add-synopsis'));
 				textEl.toggleClass('is-empty', newValue === '');
-				
+
 				// 保存到 Markdown 属性中
 				try {
 					this.isSavingMetadata = true;
 					await this.app.fileManager.processFrontMatter(file, (fm) => {
 						// 默认使用 synopsis 字段
-						fm['synopsis'] = newValue;
+						(fm as Record<string, unknown>)['synopsis'] = newValue;
 					});
-					new Notice(`已保存摘要：${file.basename}`);
+					new Notice(t('common.synopsis-saved', { name: file.basename }));
 				} catch (err) {
 					console.error(err);
-					new Notice('保存摘要失败，请检查文件状态');
+					new Notice(t('corkboard.synopsis-save-failed'));
 				} finally {
 					window.setTimeout(() => { this.isSavingMetadata = false; }, 500);
 				}
 			}
-			
+
 			textarea.remove();
 			textEl.show();
 		};
 
 		// 失去焦点时保存
 		textarea.onblur = () => {
-			saveChanges();
+			void saveChanges();
 		};
 
 		// 按 Ctrl+Enter 或者直接在空旷处点击也可以保存

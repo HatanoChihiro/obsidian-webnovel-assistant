@@ -1,4 +1,5 @@
 import { Notice } from 'obsidian';
+import { t } from '../i18n';
 import { REGEX_PATTERNS } from '../constants';
 
 /**
@@ -9,9 +10,9 @@ export async function copyDocumentContent(title: string, rawContent: string): Pr
 	const contentWithTitle = title ? `${title}\n\n${cleanContent}` : cleanContent;
 	try {
 		await navigator.clipboard.writeText(contentWithTitle);
-		new Notice('[成功] 已复制本文档');
+		new Notice(t('notice.copy-success'));
 	} catch (err) {
 		console.error('[Plugin] 复制失败:', err);
-		new Notice('[错误] 复制失败，请重试');
+		new Notice(t('notice.copy-failed'));
 	}
 }

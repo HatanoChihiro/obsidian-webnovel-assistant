@@ -4,6 +4,7 @@ import { formatTime, formatCount, parseGoal, isMobile } from '../utils';
 import { HistoryStatsModal, calcStreak, calcFocusRate, calcActiveHours, calcDailyAverage } from './HistoryModal';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { RankingManager } from '../services/RankingManager';
+import { t } from '../i18n';
 
 export const STATUS_VIEW_TYPE = 'writing-status-view';
 
@@ -52,7 +53,7 @@ export class WritingStatusView extends ItemView {
 	}
 
 	getDisplayText() {
-		return "写作实时状态";
+		return t('view.status');
 	}
 
 	getIcon() {
@@ -85,12 +86,12 @@ export class WritingStatusView extends ItemView {
 	private createGoalCard(container: Element) {
 		const goalCard = container.createDiv({ cls: 'status-card' });
 		const titleRow = goalCard.createDiv({ cls: 'status-title' });
-		titleRow.createSpan({ text: '今日状态' });
+		titleRow.createSpan({ text: t('common.today-status') });
 
 		if (!isMobile()) {
-			this.statusBadgeEl = titleRow.createSpan({ cls: 'status-title-badge', text: '已暂停' });
+			this.statusBadgeEl = titleRow.createSpan({ cls: 'status-title-badge', text: t('status.paused') });
 			this.statusBadgeEl.setCssProps({ cursor: 'pointer' });
-			this.statusBadgeEl.title = '点击开始/暂停统计';
+			this.statusBadgeEl.title = t('common.click-to-toggle-status');
 			this.statusBadgeEl.addEventListener('click', () => {
 				if (this.plugin.isTracking) {
 					this.plugin.stopTracking();
@@ -102,7 +103,7 @@ export class WritingStatusView extends ItemView {
 
 		// 今日目标：小标题 + 百分比居右同行
 		const dailyLabelRow = goalCard.createDiv({ cls: 'status-goal-row' });
-		dailyLabelRow.createSpan({ cls: 'status-goal-label', text: '今日目标' });
+		dailyLabelRow.createSpan({ cls: 'status-goal-label', text: t('common.today-goal') });
 		this.dailyPercentEl = dailyLabelRow.createSpan({ cls: 'goal-percent', text: '0%' });
 
 		const dailyRow = goalCard.createDiv({ cls: 'goal-display-row-right' });
@@ -114,7 +115,7 @@ export class WritingStatusView extends ItemView {
 
 		// 章节目标：小标题 + 百分比居右同行
 		const chapterLabelRow = goalCard.createDiv({ cls: 'status-goal-row' });
-		chapterLabelRow.createSpan({ cls: 'status-goal-label', text: '章节目标' });
+		chapterLabelRow.createSpan({ cls: 'status-goal-label', text: t('common.chapter-goal') });
 		this.percentEl = chapterLabelRow.createSpan({ cls: 'goal-percent', text: '0%' });
 
 		const goalRow = goalCard.createDiv({ cls: 'goal-display-row-right' });
@@ -124,10 +125,10 @@ export class WritingStatusView extends ItemView {
 		const progressBg = goalCard.createDiv({ cls: 'progress-bar-bg' });
 		this.progressFillEl = progressBg.createDiv({ cls: 'progress-bar-fill' });
 
-		// 榜单目标
+		// 任务目标
 		const rankingLabelRow = goalCard.createDiv({ cls: 'status-goal-row ranking-goal-section' });
 		rankingLabelRow.hide();
-		rankingLabelRow.createSpan({ cls: 'status-goal-label', text: '榜单目标' });
+		rankingLabelRow.createSpan({ cls: 'status-goal-label', text: t('common.ranking-goal') });
 		this.rankingPercentEl = rankingLabelRow.createSpan({ cls: 'goal-percent', text: '0%' });
 
 		const rankingRow = goalCard.createDiv({ cls: 'goal-display-row-right ranking-goal-section' });
@@ -150,50 +151,50 @@ export class WritingStatusView extends ItemView {
 		if (isMobile()) return;
 
 		const timeCard = container.createDiv({ cls: 'status-card' });
-		timeCard.createDiv({ cls: 'status-title', text: '专注计时' });
+		timeCard.createDiv({ cls: 'status-title', text: t('common.focus-timing') });
 		const totalBox = timeCard.createDiv({ cls: 'time-box time-box-total' });
-		totalBox.createDiv({ cls: 'time-box-title', text: '总计耗时' });
+		totalBox.createDiv({ cls: 'time-box-title', text: t('common.total-elapsed') });
 		this.totalTimeEl = totalBox.createDiv({ cls: 'time-box-value', text: '00:00:00' });
 
 		const timeGrid = timeCard.createDiv({ cls: 'time-grid' });
 
 		const focusBox = timeGrid.createDiv({ cls: 'time-box' });
-		focusBox.createDiv({ cls: 'time-box-title', text: '专注时长' });
+		focusBox.createDiv({ cls: 'time-box-title', text: t('common.focus-duration') });
 		this.focusTimeEl = focusBox.createDiv({ cls: 'time-box-value', text: '00:00:00' });
 
 		const slackBox = timeGrid.createDiv({ cls: 'time-box' });
-		slackBox.createDiv({ cls: 'time-box-title', text: '摸鱼时长' });
+		slackBox.createDiv({ cls: 'time-box-title', text: t('common.slack-duration') });
 		this.slackTimeEl = slackBox.createDiv({ cls: 'time-box-value', text: '00:00:00' });
 	}
 
 	private createHistoryCard(container: Element) {
 		const historyCard = container.createDiv({ cls: 'status-card' });
-		historyCard.createDiv({ cls: 'status-title', text: '字数统计' });
+		historyCard.createDiv({ cls: 'status-title', text: t('common.word-count') });
 
 		const historyGrid = historyCard.createDiv({ cls: 'time-grid' });
 
 		const weekBox = historyGrid.createDiv({ cls: 'time-box' });
-		weekBox.createDiv({ cls: 'time-box-title', text: '本周净增' });
+		weekBox.createDiv({ cls: 'time-box-title', text: t('common.weekly-net') });
 		this.weekWordEl = weekBox.createDiv({ cls: 'time-box-value', text: '0' });
 
 		const monthBox = historyGrid.createDiv({ cls: 'time-box' });
-		monthBox.createDiv({ cls: 'time-box-title', text: '本月净增' });
+		monthBox.createDiv({ cls: 'time-box-title', text: t('common.monthly-net') });
 		this.monthWordEl = monthBox.createDiv({ cls: 'time-box-value', text: '0' });
 
 		const yearBox = historyGrid.createDiv({ cls: 'time-box' });
-		yearBox.createDiv({ cls: 'time-box-title', text: '今年净增' });
+		yearBox.createDiv({ cls: 'time-box-title', text: t('common.yearly-net') });
 		this.yearWordEl = yearBox.createDiv({ cls: 'time-box-value', text: '0' });
 
 		const histTotalBox = historyGrid.createDiv({ cls: 'time-box' });
-		histTotalBox.createDiv({ cls: 'time-box-title', text: '累计总字数' });
+		histTotalBox.createDiv({ cls: 'time-box-title', text: t('common.total-accumulated') });
 		this.historyTotalWordEl = histTotalBox.createDiv({ cls: 'time-box-value', text: '0' });
 
 		// 近7日迷你柱状图
 		const chartSection = historyCard.createDiv({ cls: 'history-chart' });
 
 		const chartTitleRow = chartSection.createDiv({ cls: 'history-chart-title-row' });
-		chartTitleRow.createSpan({ text: '近7日写作', cls: 'history-chart-title' });
-		const chartLink = chartTitleRow.createSpan({ text: '详情', cls: 'history-chart-subtitle' });
+		chartTitleRow.createSpan({ text: t('common.recent-7days-writing'), cls: 'history-chart-title' });
+		const chartLink = chartTitleRow.createSpan({ text: t('common.details'), cls: 'history-chart-subtitle' });
 		chartLink.onclick = () => {
 			new HistoryStatsModal(this.plugin.app, this.plugin).open();
 		};
@@ -245,7 +246,7 @@ export class WritingStatusView extends ItemView {
 		if (activeFile && activeFile.parent) {
 			this.lastActiveFolderPath = activeFile.parent.path;
 			folderPath = activeFile.parent.path;
-			folderName = activeFile.parent.isRoot() ? '根目录' : activeFile.parent.name;
+			folderName = activeFile.parent.isRoot() ? t('common.root-directory') : activeFile.parent.name;
 		} else if (this.lastActiveFolderPath) {
 			folderPath = this.lastActiveFolderPath;
 			const folder = this.app.vault.getAbstractFileByPath(folderPath);
@@ -255,13 +256,13 @@ export class WritingStatusView extends ItemView {
 		if (folderPath) {
 			const wordCount = this.plugin.cacheManager.getFolderWordCount(folderPath);
 			this.workNameEl.innerText = folderName;
-			this.workWordCountEl.innerText = wordCount > 0 ? `${wordCount.toLocaleString()}字` : '';
+			this.workWordCountEl.innerText = wordCount > 0 ? `${wordCount.toLocaleString()}${t('common.word-char')}` : '';
 
-			const infoFile = this.app.vault.getAbstractFileByPath(`${folderPath}/${this.plugin.settings.novelInfo.fileName}.md`);
+			const infoFile = this.plugin.homepageManager?.findNovelInfoFile(folderPath);
 			let wordGoal = 0;
 			if (infoFile instanceof TFile) {
 				const content = await this.app.vault.cachedRead(infoFile);
-				const match = content.match(/目标字数[^\d\n\r]*?(\d+)/);
+				const match = content.match(/(?:目标字数|Word Goal)[^\d\n\r]*?(\d+)/);
 				if (match) {
 					wordGoal = parseInt(match[1], 10);
 				}
@@ -269,7 +270,7 @@ export class WritingStatusView extends ItemView {
 			if (wordGoal > 0) {
 				const pct = Math.round((wordCount / wordGoal) * 100);
 				this.workGoalEl.empty();
-				this.workGoalEl.createSpan({ text: '总进度' });
+				this.workGoalEl.createSpan({ text: t('common.total-progress') });
 				const pctSpan = this.workGoalEl.createSpan({ text: `${pct}%` });
 				pctSpan.addClass('webnovel-pct-bold-mono');
 				this.workGoalEl.show();
@@ -280,10 +281,10 @@ export class WritingStatusView extends ItemView {
 
 		if (!isMobile() && this.statusBadgeEl) {
 			if (this.plugin.isTracking) {
-				this.statusBadgeEl.innerText = '记录中';
+				this.statusBadgeEl.innerText = t('status.recording');
 				this.statusBadgeEl.setCssProps({ background: '' }); this.statusBadgeEl.setCssProps({ color: '' });
 			} else {
-				this.statusBadgeEl.innerText = '已暂停';
+				this.statusBadgeEl.innerText = t('status.paused');
 				this.statusBadgeEl.setCssProps({ background: 'var(--text-muted)' }); this.statusBadgeEl.setCssProps({ color: '' });
 			}
 		}
@@ -328,7 +329,7 @@ export class WritingStatusView extends ItemView {
 		const chapterState = chapterDone ? 'done' : 'normal';
 		this.setProgressState(this.progressFillEl, this.todayWordEl, null, chapterState, percent);
 
-		// 榜单目标进度：基于目录判断，无活跃 MarkdownView 时使用上次文件夹
+		// 任务目标进度：基于目录判断，无活跃 MarkdownView 时使用上次文件夹
 		let rankingFolder = '';
 		const rankingFile = this.app.workspace.getActiveViewOfType(MarkdownView)?.file;
 		if (rankingFile) {
@@ -357,7 +358,7 @@ export class WritingStatusView extends ItemView {
 					const rankingState = rankingDone ? 'done' : 'normal';
 					const daysLeft = Math.max(0, window.moment(active.endDate).diff(window.moment().startOf('day'), 'days') + 1);
 					const endShort = active.endDate.substring(5);
-					this.rankingTimeDescEl.setText(endShort + '截止，' + (rankingDone ? '已达标！' : '还剩' + daysLeft + '天'));
+					this.rankingTimeDescEl.setText(rankingDone ? t('common.ranking-deadline-reached', { date: endShort }) : t('common.ranking-deadline-remaining', { date: endShort, days: String(daysLeft) }));
 					this.rankingTimeDescEl.toggleClass('ranking-reached', rankingDone);
 					this.setProgressState(this.rankingProgressFillEl, this.rankingWordEl, this.rankingPercentEl, rankingState, rankingPercent);
 
@@ -425,7 +426,7 @@ export class WritingStatusView extends ItemView {
 		this.miniChartEl.empty();
 
 		if (dates.length === 0) {
-			this.miniChartEl.createDiv({ text: '暂无数据', cls: 'mini-chart-empty' });
+			this.miniChartEl.createDiv({ text: t('common.no-data'), cls: 'mini-chart-empty' });
 			this.efficiencySummaryEl.setText('--');
 			return;
 		}
@@ -452,7 +453,7 @@ export class WritingStatusView extends ItemView {
 			}
 
 			const focusH = (stat?.focusMs || 0) / 3600000;
-			bar.setAttribute('title', `${date}\n字数: ${words}\n专注: ${focusH.toFixed(1)}h`);
+			bar.setAttribute('title', `${date}\n${t('modal.metric-words')}: ${words}\n${t('modal.metric-focus-time')}: ${focusH.toFixed(1)}h`);
 
 			col.createDiv({ cls: 'mini-chart-label', text: date.substring(8) });
 
@@ -469,10 +470,10 @@ export class WritingStatusView extends ItemView {
 		const dailyAvg = calcDailyAverage(history, startDate, endDate);
 
 		const parts = [
-			`连续${streak}天`,
-			`专注${focusRate}%`,
-			activeHours ? `活跃${activeHours}` : '',
-			`日均${formatCount(dailyAvg)}`,
+			t('common.consecutive-days', { count: streak }),
+			t('common.focus-percent', { rate: focusRate }),
+			activeHours ? t('common.active-hours', { hours: activeHours }) : '',
+			t('common.daily-average', { count: formatCount(dailyAvg) }),
 		].filter(Boolean);
 
 		this.efficiencySummaryEl.setText(parts.join(' · '));

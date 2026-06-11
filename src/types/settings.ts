@@ -119,7 +119,7 @@ export interface ImmersiveModeSettings {
 	immersiveShowDailyProgress: boolean;
 	/** 数据仪表盘：是否显示本场净增字数 */
 	immersiveShowSessionWords: boolean;
-	/** 数据仪表盘：是否显示榜单进度 */
+	/** 数据仪表盘：是否显示任务进度 */
 	immersiveShowRankingProgress: boolean;
 
 	/** 是否隐藏笔记属性面板 */
@@ -163,6 +163,8 @@ export interface ObsSettings {
  * 插件设置接口
  */
 export interface AccurateCountSettings {
+	/** 界面语言 */
+	language: 'zh-CN' | 'en' | 'auto';
 	/** 字数统计方式 */
 	wordCountMethod: 'webnovel' | 'standard' | 'obsidian';
 	/** 默认目标字数 */
@@ -191,7 +193,7 @@ export interface AccurateCountSettings {
 	foreshadowing: ForeshadowingSettings;
 	/** 时间线功能设置 */
 	timeline: TimelineSettings;
-	/** 榜单追踪功能设置 */
+	/** 限时任务追踪功能设置 */
 	ranking: RankingSettings;
 	/** 护眼模式：是否启用编辑区绿色背景 */
 	eyeCareEnabled: boolean;

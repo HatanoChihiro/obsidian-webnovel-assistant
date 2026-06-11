@@ -2,6 +2,7 @@ import type { App, TAbstractFile} from 'obsidian';
 import { Modal, Setting, TFolder, TFile, MarkdownView, prepareSimpleSearch } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ChapterSorter } from '../services/ChapterSorter';
+import { t } from '../i18n';
 
 export class AdvancedSearchModal extends Modal {
 	plugin: WebNovelAssistantPlugin;
@@ -20,14 +21,14 @@ export class AdvancedSearchModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 
-		contentEl.createEl('h2', { text: '高级搜索' });
+		contentEl.createEl('h2', { text: t('modal.advanced-search') });
 
 		// 搜索关键词
 		new Setting(contentEl)
-			.setName('搜索关键词')
-			.setDesc('支持多个关键词（空格分隔）')
+			.setName(t('modal.search-keyword'))
+			.setDesc(t('modal.search-keyword-desc'))
 			.addText(text => {
-				text.setPlaceholder('输入想要搜索的内容...')
+				text.setPlaceholder(t('modal.search-keyword-placeholder'))
 				.onChange(value => {
 					this.query = value;
 				});
@@ -42,11 +43,11 @@ export class AdvancedSearchModal extends Modal {
 
 		// 搜索范围选择
 		new Setting(contentEl)
-			.setName('搜索范围')
+			.setName(t('modal.search-scope'))
 			.addDropdown(dropdown => {
-				dropdown.addOption('global', '全局搜索 (所有文件)');
-				dropdown.addOption('current', '当前书籍 (自动识别当前阅读的作品)');
-				dropdown.addOption('custom', '自定义范围 (选择特定的分卷/书籍)');
+				dropdown.addOption('global', t('modal.scope-global'));
+				dropdown.addOption('current', t('modal.scope-current'));
+				dropdown.addOption('custom', t('modal.scope-custom'));
 				dropdown.setValue(this.searchScope);
 				dropdown.onChange(value => {
 					this.searchScope = value as 'global' | 'current' | 'custom';
@@ -61,7 +62,7 @@ export class AdvancedSearchModal extends Modal {
 		// 搜索按钮
 		new Setting(contentEl)
 			.addButton(btn => btn
-				.setButtonText('开始搜索')
+				.setButtonText(t('modal.start-search'))
 				.setCta()
 				.onClick(() => {
 					void this.executeSearch();
@@ -81,12 +82,12 @@ export class AdvancedSearchModal extends Modal {
 		}
 
 		container.show();
-		container.createEl('h4', { text: '选择要搜索的目录或文件（支持多选）：', cls: 'setting-item-name' });
+		container.createEl('h4', { text: t('modal.select-folders-hint'), cls: 'setting-item-name' });
 		
 		const folders = this.getTopLevelFolders();
 		
 		if (folders.length === 0) {
-			container.createEl('p', { text: '未找到任何顶级目录', cls: 'setting-item-description' });
+			container.createEl('p', { text: t('modal.no-top-level-folders'), cls: 'setting-item-description' });
 			return;
 		}
 
@@ -287,12 +288,12 @@ export class AdvancedSearchModal extends Modal {
 	private async executeSearch() {
 		if (!this.query.trim()) {
 			this.resultsContainer.empty();
-			this.resultsContainer.createEl('div', { text: '请输入搜索关键词', cls: 'advanced-search-empty' });
+			this.resultsContainer.createEl('div', { text: t('modal.please-enter-keyword'), cls: 'advanced-search-empty' });
 			return;
 		}
 
 		this.resultsContainer.empty();
-		this.resultsContainer.createEl('div', { text: '正在搜索，请稍候...', cls: 'advanced-search-loading' });
+		this.resultsContainer.createEl('div', { text: t('modal.searching'), cls: 'advanced-search-loading' });
 
 		// 1. 获取目标文件列表
 		const allFiles = this.app.vault.getMarkdownFiles();
@@ -316,7 +317,7 @@ export class AdvancedSearchModal extends Modal {
 
 		if (targetFiles.length === 0) {
 			this.resultsContainer.empty();
-			this.resultsContainer.createEl('div', { text: '未找到符合范围的文件', cls: 'advanced-search-empty' });
+			this.resultsContainer.createEl('div', { text: t('modal.no-files-in-scope'), cls: 'advanced-search-empty' });
 			return;
 		}
 
@@ -363,13 +364,13 @@ export class AdvancedSearchModal extends Modal {
 		this.resultsContainer.empty();
 
 		if (results.length === 0) {
-			this.resultsContainer.createEl('div', { text: '未找到相关结果', cls: 'advanced-search-empty' });
+			this.resultsContainer.createEl('div', { text: t('modal.no-results'), cls: 'advanced-search-empty' });
 			return;
 		}
 
-		this.resultsContainer.createEl('div', { 
-			text: `找到 ${results.length} 个包含匹配的文件`, 
-			cls: 'advanced-search-summary' 
+		this.resultsContainer.createEl('div', {
+			text: t('modal.found-matching-files', { count: results.length }),
+			cls: 'advanced-search-summary'
 		});
 
 		const listEl = this.resultsContainer.createDiv({ cls: 'advanced-search-results-list' });
@@ -377,7 +378,7 @@ export class AdvancedSearchModal extends Modal {
 		for (const result of results) {
 			const fileItem = listEl.createDiv({ cls: 'advanced-search-file-item' });
 			
-			fileItem.createEl('div', { text: `${result.file.basename} (${result.totalMatches}处匹配)`, cls: 'advanced-search-file-title' });
+			fileItem.createEl('div', { text: `${result.file.basename} (${t('modal.matches-count', { count: result.totalMatches })})`, cls: 'advanced-search-file-title' });
 
 			for (const snippet of result.snippets) {
 				const matchEl = fileItem.createDiv({ cls: 'advanced-search-match-item' });
@@ -394,7 +395,7 @@ export class AdvancedSearchModal extends Modal {
 			}
 
 			if (result.totalMatches > result.snippets.length) {
-				fileItem.createDiv({ text: `...以及另外 ${result.totalMatches - result.snippets.length} 处匹配`, cls: 'advanced-search-match-more' });
+				fileItem.createDiv({ text: t('modal.more-matches', { count: result.totalMatches - result.snippets.length }), cls: 'advanced-search-match-more' });
 			}
 		}
 	}

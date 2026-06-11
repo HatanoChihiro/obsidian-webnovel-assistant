@@ -1,5 +1,6 @@
 import type { App, TFile } from 'obsidian';
 import { Modal, Setting } from 'obsidian';
+import { t } from '../i18n';
 
 /**
  * 目标字数设定弹窗
@@ -16,26 +17,27 @@ export class GoalModal extends Modal {
 
 	onOpen() {
 		const {contentEl} = this;
-		contentEl.createEl('h2', {text: `为《${this.file.basename}》设定目标`});
+		contentEl.createEl('h2', {text: t('modal.set-goal-title', { name: this.file.basename })});
 
 		new Setting(contentEl)
-			.setName('目标字数')
-			.setDesc('输入 0 或清空则恢复全局默认目标。')
+			.setName(t('modal.goal-word-count'))
+			.setDesc(t('modal.goal-word-count-desc'))
 			.addText(text => {
 				const cache = this.app.metadataCache.getFileCache(this.file);
-				if (cache?.frontmatter && cache.frontmatter['word-goal']) {
-					text.setValue(cache.frontmatter['word-goal'].toString());
+				const fmGoal = cache?.frontmatter?.['word-goal'] as unknown;
+				if (fmGoal !== undefined && fmGoal !== null) {
+					text.setValue(String(fmGoal));
 				}
 				text.inputEl.focus();
 				text.onChange(value => { this.goalInput = value; });
-				text.inputEl.addEventListener('keydown', (e) => { 
-					if (e.key === 'Enter') void this.saveGoal(); 
+				text.inputEl.addEventListener('keydown', (e) => {
+					if (e.key === 'Enter') void this.saveGoal();
 				});
 			});
 
 		new Setting(contentEl)
 			.addButton(btn => btn
-				.setButtonText('保存')
+				.setButtonText(t('common.save'))
 				.setCta()
 				.onClick(() => { void this.saveGoal(); })
 			);
@@ -44,10 +46,11 @@ export class GoalModal extends Modal {
 	async saveGoal() {
 		const goalNum = parseInt(this.goalInput, 10);
 		await this.app.fileManager.processFrontMatter(this.file, (frontmatter) => {
+			const fm = frontmatter as Record<string, unknown>;
 			if (isNaN(goalNum) || goalNum <= 0) {
-				delete frontmatter['word-goal'];
+				delete fm['word-goal'];
 			} else {
-				frontmatter['word-goal'] = goalNum;
+				fm['word-goal'] = goalNum;
 			}
 		});
 		this.close();

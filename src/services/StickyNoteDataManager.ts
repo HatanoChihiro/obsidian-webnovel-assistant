@@ -31,7 +31,7 @@ export class StickyNoteDataManager {
 				const content = await adapter.read(this.notesFilePath);
 				// [BUGFIX] 对解析结果进行类型守卫：若文件内容损坏（如 {} 或非数组），
 				// 直接使用会导致 forEach/map 等调用崩溃，安全降级为空数组。
-				const parsed = JSON.parse(content);
+				const parsed = JSON.parse(content) as StickyNoteState[];
 				const rawNotes = Array.isArray(parsed) ? parsed : [];
 				
 				// [BUGFIX] 验证每个条目的结构，确保至少有 id

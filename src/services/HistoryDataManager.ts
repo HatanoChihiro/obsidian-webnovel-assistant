@@ -34,7 +34,7 @@ export class HistoryDataManager {
 			const adapter = this.plugin.app.vault.adapter;
 			if (await adapter.exists(this.historyFilePath)) {
 				const content = await adapter.read(this.historyFilePath);
-				const parsed = JSON.parse(content);
+				const parsed = JSON.parse(content) as Record<string, DailyStat>;
 				
 				// [BUGFIX] 数据验证：确保解析结果为对象而非 null 或数组
 				if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
@@ -48,11 +48,11 @@ export class HistoryDataManager {
 			}
 
 			// 如果独立文件不存在，尝试从旧位置迁移
-			const data = await this.plugin.loadData();
+			const data = await this.plugin.loadData() as Record<string, unknown> | null;
 			
 			// 从 data.json 的 historyData key 迁移
 			if (data && data.historyData && typeof data.historyData === 'object' && !Array.isArray(data.historyData)) {
-				this.historyData = data.historyData;
+				this.historyData = data.historyData as Record<string, DailyStat>;
 				this.dirty = true;
 				await this.saveHistory();
 				return this.historyData;
@@ -60,7 +60,7 @@ export class HistoryDataManager {
 			
 			// 从旧版 dailyHistory key 迁移
 			if (data && data.dailyHistory && typeof data.dailyHistory === 'object' && !Array.isArray(data.dailyHistory)) {
-				this.historyData = data.dailyHistory;
+				this.historyData = data.dailyHistory as Record<string, DailyStat>;
 				this.dirty = true;
 				await this.saveHistory();
 				// 注意：不删除旧 dailyHistory key，保证降级安全

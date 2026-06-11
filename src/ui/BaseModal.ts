@@ -1,4 +1,5 @@
 import { Modal, Notice, Setting } from 'obsidian';
+import { t } from '../i18n';
 
 /**
  * 基础表单 Modal 类
@@ -49,7 +50,7 @@ export abstract class BaseFormModal extends Modal {
 	 * 在按钮容器中添加取消按钮
 	 */
 	protected addCancelButton(container: HTMLElement): HTMLButtonElement {
-		const btn = container.createEl('button', { text: '取消' });
+		const btn = container.createEl('button', { text: t('common.cancel') });
 		btn.onclick = () => this.close();
 		return btn;
 	}
@@ -59,7 +60,7 @@ export abstract class BaseFormModal extends Modal {
 	 */
 	protected addSubmitButton(
 		container: HTMLElement,
-		text: string = '提交',
+		text: string = t('common.submit'),
 		onSubmit: () => void = () => this.onSubmit()
 	): HTMLButtonElement {
 		const btn = container.createEl('button', { text, cls: 'mod-cta' });
@@ -91,7 +92,7 @@ export abstract class BaseFormModal extends Modal {
 	 */
 	protected validateNotEmpty(value: string, fieldName: string): boolean {
 		if (!value.trim()) {
-			new Notice(`[错误] 请填写${fieldName}`);
+			new Notice(t('validation.please-fill', { fieldName }));
 			return false;
 		}
 		return true;
@@ -108,7 +109,7 @@ export abstract class BaseFormModal extends Modal {
 	): boolean {
 		const len = value.trim().length;
 		if (len < minLength || len > maxLength) {
-			new Notice(`[错误] ${fieldName}长度必须在 ${minLength}-${maxLength} 之间`);
+			new Notice(t('validation.field-name', { fieldName, min: minLength, max: maxLength }));
 			return false;
 		}
 		return true;

@@ -1,5 +1,6 @@
 import { Notice } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
+import { t } from '../i18n';
 
 /**
  * Worker 管理器
@@ -22,7 +23,7 @@ export class WorkerManager {
 	 */
 	public setup(): void {
 		if (this.restartAttempts >= this.MAX_RESTARTS) {
-			new Notice('[警告] 时间追踪功能多次启动失败，已自动禁用。请重启 Obsidian 或检查浏览器设置。', 8000);
+			new Notice(t('notice.worker-max-restarts'), 8000);
 			console.error('[WorkerManager] Worker 达到最大重启次数，已停止尝试');
 			return;
 		}

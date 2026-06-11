@@ -1,4 +1,5 @@
 import { TFile, TFolder, Notice } from 'obsidian';
+import { t } from '../i18n';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { GoalModal } from '../ui/GoalModal';
 import { copyDocumentContent } from '../utils/ui';
@@ -22,14 +23,14 @@ export class MenuManager {
 		this.plugin.registerEvent(this.plugin.app.workspace.on('file-menu', (menu, file) => {
 			if (file instanceof TFile && file.extension === 'md') {
 				menu.addItem((item) => {
-					item.setTitle('设定本章目标字数').setIcon('target').onClick(() => {
+					item.setTitle(t('menu.set-chapter-goal')).setIcon('target').onClick(() => {
 						new GoalModal(this.plugin.app, file).open();
 					});
 				});
 
 				// 复制本文档：全平台均显示，内容包含「标题 + 空行 + 正文」
 				menu.addItem((item) => {
-					item.setTitle("复制本文档").setIcon("copy").onClick(() => {
+					item.setTitle(t('menu.copy-document')).setIcon("copy").onClick(() => {
 						void this.plugin.app.vault.read(file).then(content => copyDocumentContent(file.basename, content));
 					});
 				});
@@ -37,7 +38,7 @@ export class MenuManager {
 				// 抽出为便签：仅桌面端
 				if (isDesktop()) {
 					menu.addItem((item) => {
-						item.setTitle('抽出为便签').setIcon('popup-open').onClick(() => {
+						item.setTitle(t('menu.extract-sticky-note')).setIcon('popup-open').onClick(() => {
 							this.plugin.createStickyNote({ file: file }).catch(console.error);
 						});
 					});
@@ -46,16 +47,16 @@ export class MenuManager {
 
 			if (file instanceof TFolder && isDesktop()) {
 				menu.addItem((item) => {
-					item.setTitle('合并章节')
+					item.setTitle(t('menu.merge-chapters'))
 						.setIcon('documents')
 						.onClick(() => this.handleMergeChapters(file));
 				});
 			}
 
-			// 榜单追踪：文件和文件夹右键菜单
+			// 限时任务：文件和文件夹右键菜单
 			if (file instanceof TFile || file instanceof TFolder) {
 				menu.addItem((item) => {
-					item.setTitle('开启榜单追踪').setIcon('trophy').onClick(() => {
+					item.setTitle(t('menu.start-ranking-tracking')).setIcon('trophy').onClick(() => {
 						this.openRankingModal(file);
 					});
 				});
@@ -63,10 +64,10 @@ export class MenuManager {
 
 			// 新建作品
 			menu.addItem((item) => {
-				item.setTitle('新建作品').setIcon('book-open').onClick(() => {
+				item.setTitle(t('menu.create-novel')).setIcon('book-open').onClick(() => {
 					new NewNovelModal(this.plugin.app, this.plugin, (result) => {
 						void this.plugin.homepageManager!.createNewNovel(result.name, result.meta).then(() => {
-							new Notice('[成功] 已创建作品: ' + result.name);
+							new Notice(t('notice.novel-created', { name: result.name }));
 						});
 					}).open();
 				});
@@ -76,16 +77,16 @@ export class MenuManager {
 		this.plugin.registerEvent(this.plugin.app.workspace.on('editor-menu', (menu, editor, view) => {
 				if (editor.somethingSelected()) {
 					menu.addItem((item) => {
-						item.setTitle('标注为伏笔').setIcon('bookmark').onClick(() => {
+						item.setTitle(t('menu.mark-as-foreshadowing')).setIcon('bookmark').onClick(() => {
 							this.plugin.app.commands.executeCommandById('web-novel-assistant:mark-as-foreshadowing');
 						});
 					});
 
 					menu.addItem((item) => {
-						item.setTitle('添加到时间线').setIcon('calendar-clock').onClick(() => { void (async () => {
+						item.setTitle(t('menu.add-to-timeline')).setIcon('calendar-clock').onClick(() => { void (async () => {
 							const selectedText = editor.getSelection();
 							if (!selectedText.trim()) {
-								new Notice('请先选中文字');
+								new Notice(t('notice.select-text-first'));
 								return;
 							}
 
@@ -116,7 +117,7 @@ export class MenuManager {
 										type: result.type,
 										rawBlock: ''
 									}).then(async () => {
-									new Notice('[成功] 已添加到时间线');
+									new Notice(t('notice.timeline-added'));
 
 									// 刷新时间线视图
 									const leaves = this.plugin.app.workspace.getLeavesOfType('timeline-view');
@@ -135,8 +136,8 @@ export class MenuManager {
 
 					if (isDesktop()) {
 						menu.addItem((item) => {
-							item.setTitle('抽出为便签').setIcon('quote').onClick(() => {
-								this.plugin.createStickyNote({ content: editor.getSelection(), title: '选中片段' }).catch(console.error);
+							item.setTitle(t('menu.extract-sticky-note')).setIcon('quote').onClick(() => {
+								this.plugin.createStickyNote({ content: editor.getSelection(), title: t('notice.selected-segment') }).catch(console.error);
 							});
 						});
 					}
@@ -144,29 +145,29 @@ export class MenuManager {
 
 				if (view.file) {
 					menu.addItem((item) => {
-						item.setTitle('设定本章目标字数').setIcon('target').onClick(() => {
+						item.setTitle(t('menu.set-chapter-goal')).setIcon('target').onClick(() => {
 							new GoalModal(this.plugin.app, view.file!).open();
 						});
 					});
 
 					// 复制本文档：全平台均显示，内容包含「标题 + 空行 + 正文」
 					menu.addItem((item) => {
-						item.setTitle("复制本文档").setIcon("copy").onClick(() => { void (async () => {
+						item.setTitle(t('menu.copy-document')).setIcon("copy").onClick(() => { void (async () => {
 							copyDocumentContent(view.file!.basename, await this.plugin.app.vault.read(view.file!));
 						})();});
 					});
 
 					if (isDesktop()) {
 						menu.addItem((item) => {
-							item.setTitle('当前文件抽出为便签').setIcon('popup-open').onClick(() => {
+							item.setTitle(t('menu.current-file-extract-note')).setIcon('popup-open').onClick(() => {
 								this.plugin.createStickyNote({ file: view.file! }).catch(console.error);
 							});
 						});
 					}
 
-					// 榜单追踪
+					// 限时任务追踪
 					menu.addItem((item) => {
-						item.setTitle('开启榜单追踪').setIcon('trophy').onClick(() => {
+						item.setTitle(t('menu.start-ranking-tracking')).setIcon('trophy').onClick(() => {
 							this.openRankingModal(view.file!);
 						});
 					});
@@ -183,24 +184,24 @@ export class MenuManager {
 			// 首次新建
 			new RankingAddModal(this.plugin.app, this.plugin, manager, 1, '', async (entry) => {
 				await manager.addEntry(entry);
-				new Notice('[成功] 已创建榜单追踪');
+				new Notice(t('notice.ranking-created'));
 			}).open();
 		} else {
-			// 已有榜单记录，新增榜单
-			manager.loadEntries().then(entries => {
+			// 已有任务记录，新增任务
+			void manager.loadEntries().then(entries => {
 				const nextPeriod = manager.getNextPeriod(entries || []);
 				const lastPlatform = entries && entries.length > 0
 					? entries[entries.length - 1].platform : '';
 				new RankingAddModal(this.plugin.app, this.plugin, manager, nextPeriod, lastPlatform, async (entry) => {
 					await manager.addEntry(entry);
-					new Notice('[成功] 已新增榜单');
+					new Notice(t('notice.ranking-added'));
 				}).open();
 			});
 		}
 	}
 
 	private async handleMergeChapters(file: TFolder) {
-		const notice = new Notice(`正在扫描并合并${file.name}...`, 0);
+		const notice = new Notice(t('notice.merging-folder', { name: file.name }), 0);
 		const mdFiles: TFile[] = [];
 
 		const collectFiles = (folder: TFolder) => {
@@ -218,13 +219,13 @@ export class MenuManager {
 
 		if (mdFiles.length === 0) {
 			notice.hide();
-			new Notice(`文件夹${file.name}中没有找到章节文件`);
+			new Notice(t('notice.no-chapter-files-in-folder', { name: file.name }));
 			return;
 		}
 
 		mdFiles.sort((a, b) => ChapterSorter.compareFiles(a, b));
 
-		let mergedContent = `# 合并章节：${file.name}\n\n`;
+		let mergedContent = `# ${t('merge.chapter-title', { name: file.name })}\n\n`;
 		let totalWords = 0;
 
 		for (const mdFile of mdFiles) {
@@ -235,7 +236,7 @@ export class MenuManager {
 			totalWords += this.plugin.calculateAccurateWords(stripped);
 		}
 
-		const exportPath = `${file.path}/${file.name}_合并章节.md`;
+		const exportPath = `${file.path}/${file.name}_${t('merge.filename-suffix')}.md`;
 
 		const existingFile = this.plugin.app.vault.getAbstractFileByPath(exportPath) as TFile | null;
 
@@ -249,14 +250,14 @@ export class MenuManager {
 			}
 			notice.hide();
 			await this.plugin.app.workspace.getLeaf(false).openFile(mergedFile);
-			const overwriteHint = existingFile ? '\n合并章节文件已存在，自动覆盖' : '';
-			new Notice(`[成功] 合并成功！
-		已合并 ${mdFiles.length} 个章节
-		总计 ${totalWords.toLocaleString()} 字${overwriteHint}`, 8000);
+			const overwriteHint = existingFile ? t('notice.merge-overwrite-hint') : '';
+			new Notice(t('notice.merge-success', { count: String(mdFiles.length), words: totalWords.toLocaleString(), overwriteHint }), 8000);
+
+
 		} catch (error) {
 			console.error(error);
 			notice.hide();
-			new Notice('合并失败，请检查文件权限');
+			new Notice(t('notice.merge-failed'));
 		}
 	}
 

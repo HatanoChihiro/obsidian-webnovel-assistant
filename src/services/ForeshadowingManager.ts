@@ -5,6 +5,7 @@ import { ForeshadowingStatus } from '../types/foreshadowing';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { escapeRegex } from '../utils/validation';
 import { SerializedWriter } from '../utils/SerializedWriter';
+import { FORESHADOWING_STATUS_MAP, FORESHADOWING_LABEL_MAP, getForeshadowingLabel, getForeshadowingStatusText, getDefaultFileName, getDefaultFileNameCandidates } from '../i18n/data-keys';
 
 /**
  * 伏笔管理服务
@@ -26,24 +27,55 @@ export class ForeshadowingManager {
 	/**
 	 * 获取伏笔文件路径（与来源文件同文件夹）
 	 */
+	/**
+	 * 获取伏笔文件路径（新建时使用当前语言的文件名）
+	 */
 	getForeshadowingFilePath(sourceFile: TFile): string {
-		const fileName = this.plugin.settings.foreshadowing.fileName || '伏笔';
 		const folder = sourceFile.parent?.path || '';
+		// 新建时优先使用用户设置，fallback 到当前语言的默认文件名
+		const fileName = this.plugin.settings.foreshadowing.fileName || getDefaultFileName('foreshadowingFileName');
 		return folder ? `${folder}/${fileName}.md` : `${fileName}.md`;
 	}
 
 	/**
-	 * 检查伏笔文件是否存在
+	 * 检查伏笔文件是否存在（支持多语言文件名查找）
 	 */
 	foreshadowingFileExists(sourceFile: TFile): boolean {
-		const path = this.getForeshadowingFilePath(sourceFile);
-		return !!this.app.vault.getAbstractFileByPath(path);
+		return !!this.findForeshadowingFile(sourceFile.parent?.path || '');
+	}
+
+	/**
+	 * 查找伏笔文件（支持多语言文件名 fallback）
+	 */
+	findForeshadowingFile(folderPath: string): TFile | null {
+		const candidates = new Set<string>();
+		candidates.add(this.plugin.settings.foreshadowing?.fileName || getDefaultFileName('foreshadowingFileName'));
+		for (const name of getDefaultFileNameCandidates('foreshadowingFileName')) candidates.add(name);
+		for (const fileName of candidates) {
+			const path = folderPath ? folderPath + "/" + fileName + ".md" : fileName + ".md";
+			const file = this.app.vault.getAbstractFileByPath(path);
+			if (file instanceof TFile) return file;
+		}
+		return null;
 	}
 
 	/**
 	 * 创建伏笔文件（空文件，不添加标题）
+	 * 如已有任何语言版本则直接返回
 	 */
 	async createForeshadowingFile(sourceFile: TFile): Promise<TFile> {
+		// 检查是否已有伏笔文件（多语言查找）
+		const existing = this.findForeshadowingFile(sourceFile.parent?.path || '');
+		if (existing) {
+			// 如果找到的文件名与当前设置不一致，自动重命名
+			const expectedName = this.plugin.settings.foreshadowing?.fileName || getDefaultFileName('foreshadowingFileName');
+			if (existing.name !== expectedName + '.md') {
+				const newPath = (sourceFile.parent?.path || '') + '/' + expectedName + '.md';
+				try { await this.app.fileManager.renameFile(existing, newPath); } catch (e) { console.warn('[ForeshadowingManager] 重命名伏笔文件失败:', e); }
+			}
+			return this.app.vault.getAbstractFileByPath((sourceFile.parent?.path || '') + '/' + expectedName + '.md') || existing;
+		}
+
 		const path = this.getForeshadowingFilePath(sourceFile);
 
 		// 确保文件夹存在
@@ -76,24 +108,24 @@ export class ForeshadowingManager {
 		lines.push('');
 
 		// 说明
-		lines.push(`**说明**：${entry.description}`);
+		lines.push(`**${getForeshadowingLabel('description')}**：${entry.description}`);
 		lines.push('');
 
 		// 标签（有标签才显示）
 		if (entry.tags.length > 0) {
-			lines.push(`**标签**：${entry.tags.map(t => `#${t}`).join(' ')}`);
+			lines.push(`**${getForeshadowingLabel('tags')}**：${entry.tags.map(t => `#${t}`).join(', ')}`);
 			lines.push('');
 		}
 
 		// 状态
-		lines.push(`**状态**：${entry.status}`);
+		lines.push(`**${getForeshadowingLabel('status')}**：${getForeshadowingStatusText(entry.status)}`);
 
 		// 回收信息（已回收时显示，支持多章节）
 		if (entry.status === ForeshadowingStatus.Recovered) {
 			// 优先使用新格式（多章节）
 			if (entry.recoveryFiles && entry.recoveryFiles.length > 0) {
 				lines.push('');
-				lines.push(`**回收于**：`);
+				lines.push(`**${getForeshadowingLabel('recoveredAt')}**：`);
 				entry.recoveryFiles.forEach((file, index) => {
 					const time = entry.recoveredAts && entry.recoveredAts[index] ? ` - ${entry.recoveredAts[index]}` : '';
 					lines.push(`- [[${file}]]${time}`);
@@ -103,7 +135,7 @@ export class ForeshadowingManager {
 			else if (entry.recoveryFile) {
 				const recoveryTimestamp = entry.recoveredAt ? ` - ${entry.recoveredAt}` : '';
 				lines.push('');
-				lines.push(`**回收于**：[[${entry.recoveryFile}]]${recoveryTimestamp}`);
+				lines.push(`**${getForeshadowingLabel('recoveredAt')}**：[[${entry.recoveryFile}]]${recoveryTimestamp}`);
 			}
 		}
 
@@ -135,7 +167,7 @@ export class ForeshadowingManager {
 	} {
 		// 匹配 **说明**：<description> 这一行
 		const descPattern = new RegExp(
-			`\\*\\*说明\\*\\*：${escapeRegex(description)}`,
+			`\\*\\*(?:说明|Description)\\*\\*：${escapeRegex(description)}`,
 			'm'
 		);
 		const descMatch = descPattern.exec(content);
@@ -166,9 +198,16 @@ export class ForeshadowingManager {
 		return this.writer.enqueue(async () => {
 			let targetFile: TFile | null = null;
 
-			if (this.foreshadowingFileExists(sourceFile)) {
-				const path = this.getForeshadowingFilePath(sourceFile);
-				const abstractFile = this.app.vault.getAbstractFileByPath(path);
+			const foundFile = this.findForeshadowingFile(sourceFile.parent?.path || '');
+				if (foundFile) {
+				// 如果找到的文件名与当前设置不一致，自动重命名
+				const expectedName = this.plugin.settings.foreshadowing?.fileName || getDefaultFileName('foreshadowingFileName');
+				if (foundFile.name !== expectedName + '.md') {
+					const newPath = (sourceFile.parent?.path || '') + '/' + expectedName + '.md';
+					try { await this.app.fileManager.renameFile(foundFile, newPath); } catch (e) { console.warn('[ForeshadowingManager] 重命名伏笔文件失败:', e); }
+				}
+				const targetPath = (sourceFile.parent?.path || '') + '/' + expectedName + '.md';
+				const abstractFile = this.app.vault.getAbstractFileByPath(targetPath);
 				if (!(abstractFile instanceof TFile)) return { file: sourceFile, merged: false };
 				targetFile = abstractFile;
 			} else {
@@ -265,7 +304,7 @@ export class ForeshadowingManager {
 		if (!ForeshadowingManager.entryPatternCache.has(key)) {
 			// LRU 缓存：超过限制时删除最早的条目
 			if (ForeshadowingManager.entryPatternCache.size >= ForeshadowingManager.MAX_CACHE_SIZE) {
-				const firstKey = ForeshadowingManager.entryPatternCache.keys().next().value;
+				const firstKey: string | undefined = ForeshadowingManager.entryPatternCache.keys().next().value;
 				if (firstKey !== undefined) {
 					ForeshadowingManager.entryPatternCache.delete(firstKey);
 				}
@@ -274,7 +313,7 @@ export class ForeshadowingManager {
 			const pattern = new RegExp(
 				`(## \\[\\[${escapeRegex(sourceFile)}\\]\\]` +
 				(createdAt ? `[^\\n]*${escapeRegex(createdAt)}` : '') +
-				`[\\s\\S]*?)(\\*\\*状态\\*\\*：)(${status})`,
+				`[\\s\\S]*?)(\\*\\*(?:状态|Status)\\*\\*：)(${status})`,
 				'm'
 			);
 			
@@ -300,7 +339,7 @@ export class ForeshadowingManager {
 			const now = window.moment().format('YYYY-MM-DD HH:mm');
 
 			// 使用缓存的正则表达式
-			const titlePattern = this.getEntryPattern(sourceFile, createdAt, '未回收|已废弃');
+			const titlePattern = this.getEntryPattern(sourceFile, createdAt, '未回收|已废弃|pending|deprecated|Pending|Deprecated');
 
 			let found = false;
 			const newContent = content.replace(
@@ -309,7 +348,7 @@ export class ForeshadowingManager {
 					found = true;
 					// 生成回收信息（多章节格式）
 					const recoveryLines = recoveryFiles.map(file => `- [[${file}]] - ${now}`).join('\n');
-					return `${before}${statusLabel}已回收\n\n**回收于**：\n${recoveryLines}`;
+					return `${before}${statusLabel}${getForeshadowingStatusText(ForeshadowingStatus.Recovered)}\n\n**${getForeshadowingLabel('recoveredAt')}**：\n${recoveryLines}`;
 				}
 			);
 
@@ -338,7 +377,7 @@ export class ForeshadowingManager {
 			const pattern = new RegExp(
 				`(## \\[\\[${escapeRegex(sourceFile)}\\]\\]` +
 				(createdAt ? `[^\\n]*${escapeRegex(createdAt)}` : '') +
-				`[\\s\\S]*?\\*\\*回收于\\*\\*：\\n)([\\s\\S]*?)(\\n\\n|$)`,
+				`[\\s\\S]*?\\*\\*(?:回收于|Recovered at)\\*\\*：\\n)([\\s\\S]*?)(\\n\\n|$)`,
 				'm'
 			);
 
@@ -366,10 +405,10 @@ export class ForeshadowingManager {
 		return this.writer.enqueue(async () => {
 			const content = await this.app.vault.read(targetFile);
 
-			const titlePattern = this.getEntryPattern(sourceFile, createdAt, '未回收');
+			const titlePattern = this.getEntryPattern(sourceFile, createdAt, '未回收|pending|Pending');
 			const newContent = content.replace(
 				titlePattern,
-				(match, before, statusLabel) => `${before}${statusLabel}已废弃`
+				(match, before, statusLabel) => `${before}${statusLabel}${getForeshadowingStatusText(ForeshadowingStatus.Deprecated)}`
 			);
 
 			if (newContent === content) return false;
@@ -390,10 +429,10 @@ export class ForeshadowingManager {
 		return this.writer.enqueue(async () => {
 			const content = await this.app.vault.read(targetFile);
 
-			const titlePattern = this.getEntryPattern(sourceFile, createdAt, '已废弃');
+			const titlePattern = this.getEntryPattern(sourceFile, createdAt, '已废弃|deprecated|Deprecated');
 			const newContent = content.replace(
 				titlePattern,
-				(match, before, statusLabel) => `${before}${statusLabel}未回收`
+				(match, before, statusLabel) => `${before}${statusLabel}${getForeshadowingStatusText(ForeshadowingStatus.Pending)}`
 			);
 
 			if (newContent === content) return false;
@@ -415,14 +454,8 @@ export class ForeshadowingManager {
 		await this.app.workspace.getLeaf('tab').openFile(targetFile);
 	}
 
-	/**
-	 * 根据文件夹路径获取伏笔文件（供视图使用）
-	 */
 	getForeshadowingFileByFolder(folderPath: string): TFile | null {
-		const fileName = this.plugin.settings.foreshadowing?.fileName || '伏笔';
-		const path = folderPath ? `${folderPath}/${fileName}.md` : `${fileName}.md`;
-		const file = this.app.vault.getAbstractFileByPath(path);
-		return file instanceof TFile ? file : null;
+		return this.findForeshadowingFile(folderPath);
 	}
 
 	/**
@@ -505,25 +538,28 @@ export class ForeshadowingManager {
 			}
 
 			// 解析说明
-			const descMatch = trimmed.match(/\*\*说明\*\*：(.+)/);
+			const descMatch = trimmed.match(/\*\*(?:说明|Description)\*\*：(.+)/);
 			const description = descMatch ? descMatch[1].trim() : '';
 
 			// 解析标签
-			const tagsMatch = trimmed.match(/\*\*标签\*\*：(.+)/);
+			const tagsMatch = trimmed.match(/\*\*(?:标签|Tags)\*\*：(.+)/);
 			const tags = tagsMatch
-				? tagsMatch[1].trim().split(/\s+/).map(t => t.replace(/^#/, ''))
+				? tagsMatch[1].trim().split(/[,，\s]+/).map(t => t.replace(/^#/, ''))
 				: [];
 
 			// 解析状态
-			const statusMatch = trimmed.match(/\*\*状态\*\*：(.+)/);
-			const statusText = statusMatch ? statusMatch[1].trim() : '未回收';
+			const statusMatch = trimmed.match(/\*\*(?:状态|Status)\*\*：(.+)/);
+			const rawStatusText = statusMatch ? statusMatch[1].trim() : '';
 			let status = ForeshadowingStatus.Pending;
-			if (statusText === '已回收') status = ForeshadowingStatus.Recovered;
-			else if (statusText === '已废弃') status = ForeshadowingStatus.Deprecated;
+			if (rawStatusText) {
+				const mapped = FORESHADOWING_STATUS_MAP[rawStatusText];
+				if (mapped === 'recovered') status = ForeshadowingStatus.Recovered;
+				else if (mapped === 'deprecated') status = ForeshadowingStatus.Deprecated;
+			}
 
 			// 解析回收信息（支持多章节）
 			// 新格式：**回收于**：\n- [[章节1]] - 时间\n- [[章节2]] - 时间
-			const recoveryListMatch = trimmed.match(/\*\*回收于\*\*：\n((?:- \[\[.+?\]\].*\n?)+)/);
+			const recoveryListMatch = trimmed.match(/\*\*(?:回收于|Recovered at)\*\*：\n((?:- \[\[.+?\]\].*\n?)+)/);
 			let recoveryFiles: string[] | undefined;
 			let recoveredAts: string[] | undefined;
 			let recoveryFile: string | undefined;
@@ -543,7 +579,7 @@ export class ForeshadowingManager {
 				});
 			} else {
 				// 旧格式（单章节）：**回收于**：[[章节]] - 时间
-				const singleRecoveryMatch = trimmed.match(/\*\*回收于\*\*：\[\[(.+?)\]\](?:\s*-\s*(.+))?/);
+				const singleRecoveryMatch = trimmed.match(/\*\*(?:回收于|Recovered at)\*\*：\[\[(.+?)\]\](?:\s*-\s*(.+))?/);
 				if (singleRecoveryMatch) {
 					recoveryFile = singleRecoveryMatch[1];
 					recoveredAt = singleRecoveryMatch[2]?.trim();

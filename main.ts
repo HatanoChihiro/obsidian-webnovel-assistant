@@ -1,5 +1,5 @@
 import type { App, PluginManifest} from 'obsidian';
-import { Plugin, TFile, Notice, MarkdownView, type MarkdownPostProcessorContext } from 'obsidian';
+import { Plugin, TFile, TFolder, Notice, MarkdownView, type MarkdownPostProcessorContext } from 'obsidian';
 import type { AccurateCountSettings } from './src/types/settings';
 import type { WebNovelAssistantPlugin } from './src/types/plugin';
 import type { ObsStatsPayload } from './src/types/stats';
@@ -43,6 +43,8 @@ import { FileEventManager } from './src/services/FileEventManager';
 import { HomepageManager } from './src/services/HomepageManager';
 import { HomepageRenderer } from './src/services/HomepageRenderer';
 import { CharacterManager } from './src/services/CharacterManager';
+import { t, setLocale, detectLocale, type Locale } from './src/i18n';
+import { getDefaultFileName, getDefaultFileNameCandidates } from './src/i18n/data-keys';
 import { buildCharacterHoverExtension } from './src/editor/CharacterHoverExtension';
 
 export default class AccurateChineseCountPlugin extends Plugin implements WebNovelAssistantPlugin {
@@ -119,6 +121,19 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		// 必须首先加载设置，否则其他依赖 settings 的模块会崩溃
 		await this.loadSettings();
 
+		// 初始化国际化
+		const langSetting = this.settings.language || 'auto';
+		const locale = langSetting === 'auto' ? detectLocale() : langSetting;
+		await setLocale(locale as Locale);
+
+
+		// 旧版本 locale 迁移修复已废弃——现在 findXxxFile() 支持多语言 fallback 查找，无需强制回退
+
+		// 迁移旧默认欢迎语为空，使动态问候生效
+		if (this.settings.homepageWelcome === '欢迎回到创作中心' || this.settings.homepageWelcome === 'Welcome back to your creative space') {
+			this.settings.homepageWelcome = '';
+			void this.saveSettings();
+		}
 		// 初始化角色缓存 (仅桌面端)
 		if (isDesktop()) {
 			await this.characterManager.initialize();
@@ -257,14 +272,14 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 				const selection = editor.getSelection();
 				if (selection && selection.length > 0 && selection.length < 50) {
 					menu.addItem((item) => {
-						item.setTitle('添加为新设定')
+						item.setTitle(t('menu.add-as-new-lore'))
 							.setIcon('book-plus')
 							.onClick(() => {
 								const bookPath = this.characterManager.getBookPathForFile(view.file);
 								if (bookPath) {
 									new AddLoreModal(this.app, this, selection.trim(), bookPath).open();
 								} else {
-									new Notice('无法确定当前文件所属作品目录，无法添加设定。');
+									new Notice(t('notice.add-to-lore-failed'));
 								}
 							});
 					});
@@ -353,8 +368,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		// 桌面端文件事件监听（由 FileEventManager 管理）
 		this.fileEventManager.setup();
 
-		this.addRibbonIcon('sticky-note', '新建空白悬浮便签', () => {
-			this.createStickyNote({ content: '', title: '新便签' }).catch(console.error);
+		this.addRibbonIcon('sticky-note', t('command.create-blank-sticky-note'), () => {
+			this.createStickyNote({ content: '', title: t('notice.new-note-title') }).catch(console.error);
 		});
 
 		this.setupDesktopFeatures();
@@ -374,7 +389,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.workerManager.postMessage('start');
 		this.editorTracker.updateWordCount();
 		this.refreshStatusViews();
-		new Notice("[记录中] 专注计时已开始");
+		new Notice(t('notice.tracking-started'));
 	}
 
 	/**
@@ -386,7 +401,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.workerManager.postMessage('stop');
 		this.editorTracker.updateWordCount();
 		this.refreshStatusViews();
-		new Notice("[已暂停] 专注计时已暂停");
+		new Notice(t('notice.tracking-stopped'));
 	}
 
 	private setupDesktopFeatures(): void {
@@ -626,7 +641,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		if (!isDesktop()) {
 			// 在沉浸模式中创建是允许的，因为它会渲染到辅助面板视图中
 			if (!activeDocument.body.classList.contains('immersive-mode-active')) {
-				new Notice('悬浮便签功能仅在桌面端可用');
+				new Notice(t('notice.floating-notes-desktop-only'));
 				return;
 			}
 		}
@@ -733,10 +748,10 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		await this.saveSettings();
 		if (this.settings.showFloatingNotes) {
 			activeDocument.body.classList.remove('webnovel-notes-hidden');
-			new Notice('[显示] 悬浮便签已显示');
+			new Notice(t('notice.floating-notes-shown'));
 		} else {
 			activeDocument.body.classList.add('webnovel-notes-hidden');
-			new Notice('[隐藏] 悬浮便签已隐藏');
+			new Notice(t('notice.floating-notes-hidden'));
 		}
 	}
 
@@ -761,24 +776,24 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 
 	
 	private registerCommonRibbonIcons(): void {
-		this.addRibbonIcon('bar-chart-2', '打开/关闭写作实时状态面板', () => {
+		this.addRibbonIcon('bar-chart-2', t('command.toggle-status-view'), () => {
 			void this.toggleStatusView();
 		});
-		this.addRibbonIcon('bookmark', '打开/关闭伏笔面板', () => {
+		this.addRibbonIcon('bookmark', t('command.toggle-foreshadowing-view'), () => {
 			void this.toggleForeshadowingView();
 		});
-		this.addRibbonIcon('calendar-clock', '打开/关闭时间线', () => {
+		this.addRibbonIcon('calendar-clock', t('command.toggle-timeline-view'), () => {
 			void this.toggleTimelineView();
 		});
-		this.addRibbonIcon('layout-grid', '打开/关闭章节一览', () => {
+		this.addRibbonIcon('layout-grid', t('command.toggle-corkboard-view'), () => {
 			void this.toggleCorkboardView();
 		});
-		this.addRibbonIcon('trophy', '打开/关闭榜单追踪面板', () => {
+		this.addRibbonIcon('trophy', t('command.toggle-ranking-view'), () => {
 			void this.toggleRankingView();
 		});
 
 		if (isDesktop()) {
-			this.addRibbonIcon('expand', '进入/退出全屏沉浸写作模式', () => {
+			this.addRibbonIcon('expand', t('command.toggle-immersive-mode'), () => {
 				void this.immersiveModeManager.toggleImmersiveMode();
 			});
 		}
@@ -906,7 +921,7 @@ onunload() {
 			// 缓存不完整或不存在
 			if (!loaded) {
 				// 全量构建
-				const notice = new Notice('正在构建文件浏览器缓存...', 0);
+				const notice = new Notice(t('notice.building-explorer-cache'), 0);
 				await this.cacheManager.buildInitialCache(
 					this.app.vault,
 					this.calculateAccurateWords.bind(this),
@@ -940,7 +955,7 @@ onunload() {
 					if (this.settings.enableHomepage) this.homepageManager?.refreshHomepageViews();
 			}
 			
-			new Notice('文件浏览器缓存构建完成', 3000);
+			new Notice(t('notice.explorer-cache-complete'), 3000);
 		} catch (error) {
 			console.error('[Plugin] 缓存构建失败:', error);
 			
@@ -949,9 +964,7 @@ onunload() {
 			await this.saveSettings();
 			
 			new Notice(
-				'文件浏览器缓存构建失败，已自动禁用该功能\n' +
-				'您仍可以正常使用其他功能\n' +
-				`错误: ${error instanceof Error ? error.message : String(error)}`,
+				t('notice.explorer-cache-failed', { error: error instanceof Error ? error.message : String(error) }),
 				10000
 			);
 		}
@@ -1010,6 +1023,117 @@ onunload() {
 	}
 
 	/**
+	 * 检查文件名是否为插件生成的元数据文件（支持多语言文件名）
+	 */
+	isPluginGeneratedFile(basename: string): boolean {
+		const checks: Array<{ setting: string | undefined; field: string }> = [
+			{ setting: this.settings.novelInfo?.fileName, field: "novelInfoFileName" },
+			{ setting: this.settings.foreshadowing?.fileName, field: "foreshadowingFileName" },
+			{ setting: this.settings.timeline?.fileName, field: "timelineFileName" },
+			{ setting: this.settings.ranking?.fileName, field: "rankingFileName" },
+		];
+		for (const { setting, field } of checks) {
+		if (basename === setting) return true;
+			for (const name of getDefaultFileNameCandidates(field)) {
+				if (basename === name) return true;
+			}
+		}
+		return false;
+	}
+/**
+	 * 重命名工作区内所有功能性文档/文件夹
+	 * @param oldName 旧文件名（不含 .md 后缀）或旧文件夹名
+	 * @param newName 新文件名或新文件夹名
+	 * @param type file 或 folder
+	 * @returns 重命名的数量
+	 */
+	async renameAllFunctionalFiles(oldName: string, newName: string, type: 'file' | 'folder'): Promise<number> {
+		if (!oldName || !newName || oldName === newName) return 0;
+
+		let count = 0;
+		const workspaceFolders = this.settings.workspaceFolders;
+
+		// 收集需要扫描的父文件夹
+		const scanPaths: string[] = [];
+		if (workspaceFolders && workspaceFolders.length > 0) {
+			for (const f of workspaceFolders) {
+				const normalized = f.replace(/^\/+|\/+$/g, '');;
+				if (normalized) scanPaths.push(normalized);
+			}
+		}
+
+		for (const folderPath of scanPaths) {
+			const parent = this.app.vault.getAbstractFileByPath(folderPath);
+			if (!(parent instanceof TFolder)) continue;
+
+			for (const child of parent.children) {
+				if (!(child instanceof TFolder)) continue;
+				if (child.name.startsWith('_') || child.name.startsWith('.')) continue;
+
+				if (type === 'file') {
+					const oldPath = child.path + '/' + oldName + '.md';
+					const file = this.app.vault.getAbstractFileByPath(oldPath);
+					if (file instanceof TFile) {
+						const newPath = child.path + '/' + newName + '.md';
+						try {
+							await this.app.fileManager.renameFile(file, newPath);
+							count++;
+						} catch (e) {
+							console.warn('[WebNovel Assistant] 重命名失败:', oldPath, e);
+						}
+					}
+				} else {
+					const oldPath = child.path + '/' + oldName;
+					const folder = this.app.vault.getAbstractFileByPath(oldPath);
+					if (folder instanceof TFolder) {
+						const newPath = child.path + '/' + newName;
+						try {
+							await this.app.fileManager.renameFile(folder, newPath);
+							count++;
+						} catch (e) {
+							console.warn('[WebNovel Assistant] 重命名失败:', oldPath, e);
+						}
+					}
+				}
+			}
+		}
+
+		// 如果没有工作区，扫描 vault 根目录的直接子文件夹
+		if (scanPaths.length === 0) {
+			const root = this.app.vault.getRoot();
+			for (const child of root.children) {
+				if (!(child instanceof TFolder)) continue;
+				if (child.name.startsWith('_') || child.name.startsWith('.')) continue;
+
+				if (type === 'file') {
+					const oldPath = child.path + '/' + oldName + '.md';
+					const file = this.app.vault.getAbstractFileByPath(oldPath);
+					if (file instanceof TFile) {
+						try {
+							await this.app.fileManager.renameFile(file, child.path + '/' + newName + '.md');
+							count++;
+						} catch (e) {
+							console.warn('[WebNovel Assistant] 重命名失败:', oldPath, e);
+						}
+					}
+				} else {
+					const oldPath = child.path + '/' + oldName;
+					const folder = this.app.vault.getAbstractFileByPath(oldPath);
+					if (folder instanceof TFolder) {
+						try {
+							await this.app.fileManager.renameFile(folder, child.path + '/' + newName);
+							count++;
+						} catch (e) {
+							console.warn('[WebNovel Assistant] 重命名失败:', oldPath, e);
+						}
+					}
+				}
+			}
+		}
+
+		return count;
+	}
+/**
 	 * 检查文件是否在工作区文件夹内
 	 * @param file 要检查的文件
 	 * @returns 如果工作区为空或文件在工作区内，返回 true
@@ -1058,13 +1182,10 @@ onunload() {
 		// 2. 硬编码排除合并章节文件（防止导出合集时突然导致字数暴增）
 		if (file.basename.includes('_合并章节')) return false;
 
-		// 2.5 动态排除插件生成的元数据文件（如作品信息、伏笔、时间线、榜单记录等）
+		// 2.5 动态排除插件生成的元数据文件（如作品信息、伏笔、时间线、限时任务等）
 		const basename = file.basename;
 		if (
-			basename === this.settings.novelInfo?.fileName ||
-			basename === this.settings.foreshadowing?.fileName ||
-			basename === this.settings.timeline?.fileName ||
-			basename === this.settings.ranking?.fileName ||
+			this.isPluginGeneratedFile(basename) ||
 			file.path === this.homepageManager?.getHomepageFilePath()
 		) {
 			return false;
@@ -1105,7 +1226,7 @@ onunload() {
 			}
 		}
 
-		// 同步刷新榜单追踪面板，使其字数进度即时更新
+		// 同步刷新限时任务面板，使其字数进度即时更新
 		const rankingLeaves = this.app.workspace.getLeavesOfType(RANKING_VIEW_TYPE);
 		for (const leaf of rankingLeaves) {
 			const view = leaf.view as unknown as { refresh?: () => void };

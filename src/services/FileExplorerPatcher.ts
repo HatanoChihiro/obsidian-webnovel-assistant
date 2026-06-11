@@ -74,7 +74,7 @@ export class FileExplorerPatcher {
 
 			if ((proto.getSortedFolderItems as unknown as { __webnovel_patched?: boolean }).__webnovel_patched) return true;
 
-			const originalMethod = proto.getSortedFolderItems;
+			const originalMethod: (this: FileExplorerView, folder: TFolder, bypass?: boolean) => FileExplorerItem[] = proto.getSortedFolderItems;
 			proto.getSortedFolderItems = (function(patcher: FileExplorerPatcher) {
 				return function(this: FileExplorerView, folder: TFolder, bypass?: boolean) {
 					try {
@@ -94,10 +94,19 @@ export class FileExplorerPatcher {
 					for (let i = 0; i < sortedItems.length; i++) {
 						const item = sortedItems[i];
 						if (item && item.file) {
-							const chapterInfo = ChapterSorter.extractChapterNumber(item.file.name);
-							if (chapterInfo !== null) {
-								chapterItems.push({ item, chapterInfo, isFolder: item.file instanceof TFolder });
+							// 工作区过滤：只对工作区内的文件应用章节排序
+							const isInWorkspace = item.file instanceof TFile
+								? patcher.plugin.isFileInWorkspace(item.file)
+								: true; // 文件夹不参与工作区过滤
+							if (isInWorkspace) {
+								const chapterInfo = ChapterSorter.extractChapterNumber(item.file.name);
+								if (chapterInfo !== null) {
+									chapterItems.push({ item, chapterInfo, isFolder: item.file instanceof TFolder });
+								} else {
+									entities.push({ isBlock: false, path: item.file.path, item: item, isFolder: item.file instanceof TFolder });
+								}
 							} else {
+								// 工作区外的文件不参与智能排序，保持原位
 								entities.push({ isBlock: false, path: item.file.path, item: item, isFolder: item.file instanceof TFolder });
 							}
 						}

@@ -36,9 +36,9 @@ export interface ObsStatsPayload {
 	dailyGoal: number;
 	/** 今日完成百分比(0-100) */
 	dailyPercent: number;
-	/** 榜单已增字数 */
+	/** 任务已增字数 */
 	rankingWords: number;
-	/** 榜单目标字数 */
+	/** 任务目标字数 */
 	rankingGoal: number;
 	/** 当前文件名 */
 	currentFile: string;

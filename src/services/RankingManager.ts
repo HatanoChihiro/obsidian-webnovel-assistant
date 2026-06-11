@@ -1,7 +1,9 @@
+// 限时任务追踪管理器（内部仍用 Ranking 命名，待后续重构改为 Task）
 import type { App} from 'obsidian';
 import { TFile, TFolder } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { RankingEntry, RankingStatus } from '../types/ranking';
+import { RANKING_STATUS_MAP, RANKING_LABEL_MAP, getRankingLabel, getRankingStatusText, getRankingPeriodTitle, getDefaultFileName, getDefaultFileNameCandidates } from '../i18n/data-keys';
 import { ChapterSorter } from './ChapterSorter';
 import { SerializedWriter } from '../utils/SerializedWriter';
 
@@ -15,17 +17,40 @@ export class RankingManager {
 	) {}
 
 	getRankingFilePath(): string {
-		const fileName = (this.plugin.settings.ranking?.fileName || '榜单记录') + '.md';
+		const fileName = (this.plugin.settings.ranking?.fileName || getDefaultFileName('rankingFileName')) + '.md';
 		return this.currentFolder ? `${this.currentFolder}/${fileName}` : fileName;
 	}
 
-	getRankingFile(): TFile | null {
-		const path = this.getRankingFilePath();
-		const file = this.app.vault.getAbstractFileByPath(path);
-		return file instanceof TFile ? file : null;
+findRankingFile(): TFile | null {
+		const candidates = new Set<string>();
+		candidates.add(this.plugin.settings.ranking?.fileName || getDefaultFileName('rankingFileName'));
+		for (const name of getDefaultFileNameCandidates('rankingFileName')) candidates.add(name);
+		for (const fileName of candidates) {
+			const path = this.currentFolder ? this.currentFolder + "/" + fileName + ".md" : fileName + ".md";
+			const file = this.app.vault.getAbstractFileByPath(path);
+			if (file instanceof TFile) return file;
+		}
+		return null;
 	}
 
-	async createRankingFile(): Promise<TFile> {
+	getRankingFile(): TFile | null {
+		return this.findRankingFile();
+	}
+
+async createRankingFile(): Promise<TFile> {
+		// 检查是否已有限时任务文件（多语言查找）
+		const existing = this.findRankingFile();
+		if (existing) {
+			// 如果找到的文件名与当前设置不一致，自动重命名
+			const expectedName = this.plugin.settings.ranking?.fileName || getDefaultFileName('rankingFileName');
+			if (existing.name !== expectedName + '.md') {
+				const newPath = this.currentFolder ? this.currentFolder + '/' + expectedName + '.md' : expectedName + '.md';
+				try { await this.app.fileManager.renameFile(existing, newPath); } catch (e) { console.warn('[RankingManager] 重命名限时任务文件失败:', e); }
+			}
+			const foundPath = this.currentFolder ? this.currentFolder + '/' + expectedName + '.md' : expectedName + '.md';
+			return this.app.vault.getAbstractFileByPath(foundPath) || existing;
+		}
+
 		const path = this.getRankingFilePath();
 		return await this.app.vault.create(path, '');
 	}
@@ -46,7 +71,7 @@ export class RankingManager {
 			if (!trimmed.startsWith('## ')) continue;
 
 			const firstLine = trimmed.split('\n')[0];
-			const periodMatch = firstLine.match(/^## 第(\d+)期/);
+			const periodMatch = firstLine.match(/^## 第(\d+)期/) || firstLine.match(/^## Period (\d+)/);
 			if (!periodMatch) continue;
 			const period = parseInt(periodMatch[1], 10);
 
@@ -54,19 +79,20 @@ export class RankingManager {
 			const metaRegex = /\*\*(.+?)\*\*[：:]\s*(.+)/g;
 			let m;
 			while ((m = metaRegex.exec(trimmed)) !== null) {
-				meta[m[1]] = m[2].trim();
+				const key = RANKING_LABEL_MAP[m[1]] || m[1];
+				meta[key] = m[2].trim();
 			}
 
 			entries.push({
 				period,
-				platform: meta['平台'] || '',
-				position: meta['位置'] || '',
-				wordTarget: parseInt(meta['字数要求'] || '0', 10),
-				startDate: meta['起始时间'] || '',
-				endDate: meta['结束时间'] || '',
-				startSnapshot: parseInt(meta['起始字数'] || '0', 10),
-				status: (meta['状态'] as RankingStatus) || '未开始',
-				completedWords: meta['完成字数'] ? parseInt(meta['完成字数'], 10) : undefined,
+				platform: meta['platform'] || '',
+				position: meta['position'] || '',
+				wordTarget: parseInt(meta['wordTarget'] || '0', 10),
+				startDate: meta['startDate'] || '',
+				endDate: meta['endDate'] || '',
+				startSnapshot: parseInt(meta['startSnapshot'] || '0', 10),
+				status: (RANKING_STATUS_MAP[meta['status']] as RankingStatus) || 'notStarted',
+				completedWords: meta['completedWords'] ? parseInt(meta['completedWords'], 10) : undefined,
 				rawBlock: trimmed,
 			});
 		}
@@ -76,18 +102,18 @@ export class RankingManager {
 
 	formatEntry(entry: RankingEntry): string {
 		const lines: string[] = [];
-		lines.push(`## 第${entry.period}期`);
+		lines.push(`## ${getRankingPeriodTitle(entry.period)}`);
 		lines.push('');
-		lines.push(`**平台**：${entry.platform}`);
-		lines.push(`**位置**：${entry.position}`);
-		lines.push(`**字数要求**：${entry.wordTarget}`);
-		lines.push(`**起始时间**：${entry.startDate}`);
-		lines.push(`**结束时间**：${entry.endDate}`);
-		lines.push(`**起始字数**：${entry.startSnapshot}`);
+		lines.push(`**${getRankingLabel('platform')}**：${entry.platform}`);
+		lines.push(`**${getRankingLabel('position')}**：${entry.position}`);
+		lines.push(`**${getRankingLabel('wordTarget')}**：${entry.wordTarget}`);
+		lines.push(`**${getRankingLabel('startDate')}**：${entry.startDate}`);
+		lines.push(`**${getRankingLabel('endDate')}**：${entry.endDate}`);
+		lines.push(`**${getRankingLabel('startSnapshot')}**：${entry.startSnapshot}`);
 		if (entry.completedWords !== undefined) {
-			lines.push(`**完成字数**：${entry.completedWords}`);
+			lines.push(`**${getRankingLabel('completedWords')}**：${entry.completedWords}`);
 		}
-		lines.push(`**状态**：${entry.status}`);
+		lines.push(`**${getRankingLabel('status')}**：${getRankingStatusText(entry.status)}`);
 		lines.push('');
 		lines.push('---');
 		lines.push('');
@@ -113,7 +139,7 @@ export class RankingManager {
 			const content = await this.app.vault.read(file);
 			const entries = this.parseEntries(content);
 
-			const entry = entries.find(e => e.period === period && (e.status === '进行中' || e.status === '未开始'));
+			const entry = entries.find(e => e.period === period && (e.status === 'active' || e.status === 'notStarted'));
 			if (!entry) return;
 			
 			if (entry.status === status && (completedWords === undefined || entry.completedWords === completedWords)) return;
@@ -130,14 +156,14 @@ export class RankingManager {
 		});
 	}
 
-	/** 更新进行中榜单的完成字数（实时持久化） */
+	/** 更新进行中任务的完成字数（实时持久化） */
 	async updateProgress(period: number, completedWords: number): Promise<void> {
 		return this.writer.enqueue(async () => {
 			const file = this.getRankingFile();
 			if (!file) return;
 			const content = await this.app.vault.read(file);
 			const entries = this.parseEntries(content);
-			const entry = entries.find(e => e.period === period && e.status === '进行中');
+			const entry = entries.find(e => e.period === period && e.status === 'active');
 			if (!entry || entry.completedWords === completedWords) return;
 			entry.completedWords = completedWords;
 			let newContent = '';
@@ -148,9 +174,9 @@ export class RankingManager {
 		});
 	}
 
-	/** 获取当前进行中的榜单 */
+	/** 获取当前进行中的任务 */
 	getActiveRanking(entries: RankingEntry[]): RankingEntry | null {
-		return entries.find(e => e.status === '进行中') || null;
+		return entries.find(e => e.status === 'active') || null;
 	}
 
 	/** 获取下一期期数 */
@@ -180,7 +206,7 @@ export class RankingManager {
 		return total;
 	}
 
-	/** 检查并关闭已过期的进行中榜单 */
+	/** 检查并关闭已过期的进行中任务 */
 	async checkAndCloseExpired(): Promise<boolean> {
 		const entries = await this.loadEntries();
 		if (!entries) return false;
@@ -189,11 +215,11 @@ export class RankingManager {
 		let changed = false;
 
 		for (const entry of entries) {
-			if (entry.status === '进行中' && entry.endDate < today) {
+			if (entry.status === 'active' && entry.endDate < today) {
 				const progress = this.calcProgress(entry);
 				// 如果缓存未就绪（progress=0 但 startSnapshot>0），跳过关闭以避免误判
 				if (progress === 0 && entry.startSnapshot > 0) continue;
-				const status: RankingStatus = progress >= entry.wordTarget ? '已完成' : '未完成';
+				const status: RankingStatus = progress >= entry.wordTarget ? 'completed' : 'incomplete';
 				await this.updateEntryStatus(entry.period, status, progress);
 				changed = true;
 			}
@@ -201,7 +227,7 @@ export class RankingManager {
 		return changed;
 	}
 
-	/** 检查进行中但尚未到开始时间的榜单，标记为进行中 */
+	/** 检查进行中但尚未到开始时间的任务，标记为进行中 */
 	async activatePendingRankings(): Promise<boolean> {
 		const entries = await this.loadEntries();
 		if (!entries) return false;
@@ -210,8 +236,8 @@ export class RankingManager {
 		let changed = false;
 
 		for (const entry of entries) {
-			if (entry.status === '未开始' && entry.startDate <= today) {
-				await this.updateEntryStatus(entry.period, '进行中');
+			if (entry.status === 'notStarted' && entry.startDate <= today) {
+				await this.updateEntryStatus(entry.period, 'active');
 				changed = true;
 			}
 		}

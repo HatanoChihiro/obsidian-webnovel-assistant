@@ -2,10 +2,12 @@ import type { App, MarkdownView } from 'obsidian';
 import { TFile, TFolder } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { NovelMetadata, NovelFolderInfo } from '../types/homepage';
+import { NOVEL_INFO_LABEL_MAP, NOVEL_STATUS_MAP, getNovelInfoLabel, getNovelStatusText, getDefaultFileName, getDefaultFileNameCandidates } from '../i18n/data-keys';
+import { t } from '../i18n';
 
 const DEFAULT_NOVEL_META: NovelMetadata = {
 	name: '',
-	status: '连载中',
+	status: 'ongoing',
 	synopsis: '',
 	protagonist: '',
 	wordGoal: 0,
@@ -14,15 +16,8 @@ const DEFAULT_NOVEL_META: NovelMetadata = {
 	endDate: '',
 };
 
-const META_LABELS: Record<string, string> = {
-	'状态': 'status',
-	'简介': 'synopsis',
-	'主角': 'protagonist',
-	'类型': 'genre',
-	'目标字数': 'wordGoal',
-	'开始日期': 'startDate',
-	'完结日期': 'endDate',
-};
+// Use NOVEL_INFO_LABEL_MAP from data-keys.ts for bidirectional parsing
+// (supports both Chinese and English labels in markdown files)
 
 export class HomepageManager {
 	private app: App;
@@ -42,9 +37,9 @@ export class HomepageManager {
 		const folders = this.plugin.settings.workspaceFolders;
 		if (folders && folders.length > 0) {
 			const first = folders[0].replace(/^\/+|\/+$/g, '');
-			if (first) return `${first}/创作主页.md`;
+			if (first) return `${first}/${t('common.default-homepage-name')}.md`;
 		}
-		return '创作主页.md';
+		return `${t('common.default-homepage-name')}.md`;
 	}
 
 	getHomepageFile(): TFile | null {
@@ -54,7 +49,7 @@ export class HomepageManager {
 	}
 
 	getNovelInfoFileName(): string {
-		return this.plugin.settings.novelInfo?.fileName || '作品信息';
+		return this.plugin.settings.novelInfo?.fileName || getDefaultFileName('novelInfoFileName');
 	}
 
 	async ensureHomepageExists(): Promise<TFile> {
@@ -124,9 +119,8 @@ export class HomepageManager {
 						// 排除以 _ 或 . 开头的辅助文件夹
 						if (child.name.startsWith('_') || child.name.startsWith('.')) continue;
 
-						// 仅加载包含作品信息文件的目录
-						const infoFilePath = `${child.path}/${this.getNovelInfoFileName()}.md`;
-						if (!(this.app.vault.getAbstractFileByPath(infoFilePath) instanceof TFile)) continue;
+						// 仅加载包含作品信息文件的目录（支持多语言文件名查找）
+						if (!this.findNovelInfoFile(child.path)) continue;
 
 						folders.push({
 							folderPath: child.path,
@@ -143,9 +137,8 @@ export class HomepageManager {
 				if (!(child instanceof TFolder)) continue;
 				if (child.name.startsWith('_') || child.name.startsWith('.')) continue;
 
-				// 仅加载包含作品信息文件的目录
-				const infoFilePath = `${child.path}/${this.getNovelInfoFileName()}.md`;
-				if (!(this.app.vault.getAbstractFileByPath(infoFilePath) instanceof TFile)) continue;
+				// 仅加载包含作品信息文件的目录（支持多语言文件名查找）
+				if (!this.findNovelInfoFile(child.path)) continue;
 
 				folders.push({
 					folderPath: child.path,
@@ -160,10 +153,19 @@ export class HomepageManager {
 	}
 
 	findNovelInfoFile(folderPath: string): TFile | null {
-		const fileName = this.getNovelInfoFileName();
-		const filePath = folderPath ? `${folderPath}/${fileName}.md` : `${fileName}.md`;
-		const file = this.app.vault.getAbstractFileByPath(filePath);
-		return file instanceof TFile ? file : null;
+		// 按优先级尝试：当前设置值 → 当前语言默认值 → 其他语言默认值
+		const candidates = new Set<string>();
+		const primary = this.getNovelInfoFileName();
+		candidates.add(primary);
+		for (const name of getDefaultFileNameCandidates('novelInfoFileName')) {
+			candidates.add(name);
+		}
+		for (const fileName of candidates) {
+			const filePath = folderPath ? `${folderPath}/${fileName}.md` : `${fileName}.md`;
+			const file = this.app.vault.getAbstractFileByPath(filePath);
+			if (file instanceof TFile) return file;
+		}
+		return null;
 	}
 
 	// 解析作品信息.md 的 **label**：value 格式
@@ -205,11 +207,15 @@ export class HomepageManager {
 			if (!match) continue;
 			const label = match[1];
 			const value = match[2].trim();
-			const key = META_LABELS[label];
+			const key = NOVEL_INFO_LABEL_MAP[label];
 			if (!key) continue;
 
 			switch (key) {
-				case 'status': meta.status = ['已完结', '已暂停', '存稿中'].includes(value) ? value as NovelMetadata['status'] : '连载中'; break;
+				case 'status': {
+					const mapped = NOVEL_STATUS_MAP[value];
+					meta.status = mapped ? mapped as NovelMetadata['status'] : 'ongoing';
+					break;
+				}
 				case 'wordGoal': meta.wordGoal = parseInt(value) || 0; break;
 				default: (meta as unknown as Record<string, unknown>)[key] = value; break;
 			}
@@ -224,24 +230,38 @@ export class HomepageManager {
 			await this.app.vault.createFolder(folderPath);
 		}
 
+		// 检查是否已有作品信息文件（多语言查找）
+		const existing = this.findNovelInfoFile(folderPath);
+		if (existing) {
+			// 如果找到的文件名与当前设置不一致，自动重命名
+			const expectedName = this.getNovelInfoFileName();
+			if (existing.name !== expectedName + '.md') {
+				const newPath = folderPath + '/' + expectedName + '.md';
+				try {
+					await this.app.fileManager.renameFile(existing, newPath);
+				} catch (e) {
+					console.warn('[HomepageManager] 重命名作品信息文件失败:', e);
+				}
+			}
+			return this.app.vault.getAbstractFileByPath(folderPath + '/' + expectedName + '.md') || existing;
+		}
+
+		// 新建时优先使用用户设置，fallback 到当前语言的默认文件名
 		const fileName = this.getNovelInfoFileName();
 		const filePath = `${folderPath}/${fileName}.md`;
-
-		const existing = this.app.vault.getAbstractFileByPath(filePath);
-		if (existing instanceof TFile) return existing;
 
 		const today = new Date().toISOString().slice(0, 10);
 		const folderName = folderPath.split('/').pop() || folderPath;
 		const meta = { ...DEFAULT_NOVEL_META, name: folderName, startDate: today, ...overrides };
 
 		const lines = [
-			`**状态**：${meta.status}`,
-			`**简介**：${meta.synopsis}`,
-			`**主角**：${meta.protagonist}`,
-			`**类型**：${meta.genre}`,
-			`**目标字数**：${meta.wordGoal || ''}`,
-			`**开始日期**：${meta.startDate}`,
-			`**完结日期**：${meta.endDate || ''}`,
+			`**${getNovelInfoLabel('status')}**：${getNovelStatusText(meta.status)}`,
+			`**${getNovelInfoLabel('synopsis')}**：${meta.synopsis}`,
+			`**${getNovelInfoLabel('protagonist')}**：${meta.protagonist}`,
+			`**${getNovelInfoLabel('genre')}**：${meta.genre}`,
+			`**${getNovelInfoLabel('wordGoal')}**：${meta.wordGoal || ''}`,
+			`**${getNovelInfoLabel('startDate')}**：${meta.startDate}`,
+			`**${getNovelInfoLabel('endDate')}**：${meta.endDate || ''}`,
 			'',
 		];
 		const file = await this.app.vault.create(filePath, lines.join('\n'));

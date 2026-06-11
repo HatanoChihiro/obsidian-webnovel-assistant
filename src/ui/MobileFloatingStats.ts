@@ -1,6 +1,7 @@
 import type { App} from 'obsidian';
 import { MarkdownView } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
+import { t } from '../i18n';
 
 /**
  * 移动端浮动统计窗口
@@ -65,7 +66,7 @@ export class MobileFloatingStats {
 
 		// 字数显示
 		this.wordCountEl = this.containerEl.createSpan({
-			text: '0字',
+			text: `0${t('common.word-char')}`, 
 			attr: {
 				style: `
 					font-weight: 500;
@@ -129,7 +130,7 @@ export class MobileFloatingStats {
 
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (!view || !view.file) {
-			if (this.wordCountEl) this.wordCountEl.textContent = '0字';
+			if (this.wordCountEl) this.wordCountEl.textContent = `0${t('common.word-char')}`; 
 			if (this.progressEl) this.progressEl.textContent = '0%';
 			return;
 		}
@@ -141,9 +142,9 @@ export class MobileFloatingStats {
 		// 获取目标字数
 		let targetGoal = this.plugin.settings.defaultGoal;
 		const cache = this.app.metadataCache.getFileCache(view.file);
-		const fmGoal = cache?.frontmatter?.['word-goal'];
+		const fmGoal = cache?.frontmatter?.['word-goal'] as unknown;
 		if (fmGoal !== undefined) {
-			const parsed = parseInt(fmGoal, 10);
+			const parsed = parseInt(fmGoal as string, 10);
 			if (!isNaN(parsed)) targetGoal = parsed;
 		}
 
@@ -151,7 +152,7 @@ export class MobileFloatingStats {
 		const percent = targetGoal > 0 ? Math.min(Math.round((wordCount / targetGoal) * 100), 100) : 0;
 
 		// 更新显示
-		if (this.wordCountEl) this.wordCountEl.textContent = wordCount.toLocaleString() + '字';
+		if (this.wordCountEl) this.wordCountEl.textContent = wordCount.toLocaleString() + t('common.word-char'); 
 		if (this.progressEl) {
 			this.progressEl.textContent = percent + '%';
 			

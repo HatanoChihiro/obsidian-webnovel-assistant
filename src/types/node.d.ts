@@ -8,9 +8,9 @@ declare module 'fs' {
     export function writeFileSync(path: string, data: string | Uint8Array, options?: { encoding?: string; mode?: number; flag?: string } | string | null): void;
     export function mkdirSync(path: string, options?: { recursive?: boolean; mode?: number | string }): string | undefined;
     export function unlinkSync(path: string): void;
-    export function readFile(path: string, encoding: string, callback: (err: NodeJS.ErrnoException | null, data: string) => void): void;
+    export function readFile(path: string, encoding: string, callback: (err: Error | null, data: string) => void): void;
     export function rmdirSync(path: string, options?: { recursive?: boolean }): void;
-    export function readFileSync(path: string, options?: { encoding?: string; flag?: string } | string | null): string | Buffer;
+    export function readFileSync(path: string, options?: { encoding?: string; flag?: string } | string | null): string | Uint8Array;
 }
 
 declare module 'path' {
@@ -27,7 +27,7 @@ declare module 'http' {
         on(event: string, listener: (...args: unknown[]) => void): this;
         removeAllListeners(event?: string): this;
     }
-    
+
     export interface IncomingMessage {
         url?: string;
         method?: string;
@@ -35,19 +35,8 @@ declare module 'http' {
 
     export interface ServerResponse {
         writeHead(statusCode: number, headers?: Record<string, string | string[]>): this;
-        end(data?: string | Buffer | Uint8Array, encoding?: string, callback?: () => void): this;
+        end(data?: string | Uint8Array, encoding?: string, callback?: () => void): this;
     }
 
     export function createServer(requestListener?: (req: IncomingMessage, res: ServerResponse) => void): Server;
-}
-
-declare global {
-    namespace NodeJS {
-        interface ErrnoException extends Error {
-            errno?: number;
-            code?: string;
-            path?: string;
-            syscall?: string;
-        }
-    }
 }

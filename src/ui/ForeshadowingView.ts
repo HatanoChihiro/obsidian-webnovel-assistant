@@ -5,6 +5,8 @@ import { ForeshadowingStatus } from '../types/foreshadowing';
 import { ForeshadowingRecoveryModal } from './ForeshadowingModal';
 import { CreativeView } from './CreativeView';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
+import { getForeshadowingStatusText, getForeshadowingLabel, getDefaultFileName } from '../i18n/data-keys';
+import { t } from '../i18n';
 
 export const FORESHADOWING_VIEW_TYPE = 'foreshadowing-view';
 
@@ -23,11 +25,11 @@ export class ForeshadowingView extends CreativeView {
 	}
 
 	getViewType() { return FORESHADOWING_VIEW_TYPE; }
-	getDisplayText() { return '伏笔'; }
+	getDisplayText() { return t('view.foreshadowing'); }
 	getIcon() { return 'bookmark'; }
 
 	protected getWatchFileName(): string {
-		return this.plugin.settings.foreshadowing?.fileName || '伏笔';
+		return this.plugin.settings.foreshadowing?.fileName || getDefaultFileName('foreshadowingFileName');
 	}
 
 	protected async onFolderChange() {
@@ -49,19 +51,19 @@ export class ForeshadowingView extends CreativeView {
 		// 标题栏
 		const header = container.createDiv({ cls: 'foreshadowing-view-header' });
 		const titleRow = header.createDiv({ cls: 'foreshadowing-view-title-row' });
-		titleRow.createSpan({ text: '伏笔', cls: 'foreshadowing-view-title' });
+		titleRow.createSpan({ text: t('view.foreshadowing'), cls: 'foreshadowing-view-title' });
 
 		// 当前文件夹标签
 		const folderLabel = header.createDiv({ cls: 'foreshadowing-view-folder' });
-		folderLabel.setText(this.currentFolder || '根目录');
+		folderLabel.setText(this.currentFolder || t('common.root-directory'));
 
 		// 筛选按钮
 		const filterRow = header.createDiv({ cls: 'foreshadowing-view-filter-row' });
 		const filters: { label: string; value: 'all' | ForeshadowingStatus }[] = [
-			{ label: '全部', value: 'all' },
-			{ label: '未回收', value: ForeshadowingStatus.Pending },
-			{ label: '已回收', value: ForeshadowingStatus.Recovered },
-			{ label: '已废弃', value: ForeshadowingStatus.Deprecated },
+			{ label: t('common.all'), value: 'all' },
+			{ label: getForeshadowingStatusText('pending'), value: ForeshadowingStatus.Pending },
+			{ label: getForeshadowingStatusText('recovered'), value: ForeshadowingStatus.Recovered },
+			{ label: getForeshadowingStatusText('deprecated'), value: ForeshadowingStatus.Deprecated },
 		];
 		filters.forEach(f => {
 			const btn = filterRow.createEl('button', { text: f.label, cls: 'foreshadowing-filter-btn' });
@@ -76,8 +78,8 @@ export class ForeshadowingView extends CreativeView {
 		const entries = await this.loadEntries();
 		if (entries === null) {
 			const empty = container.createDiv({ cls: 'foreshadowing-view-empty' });
-			empty.createEl('p', { text: '当前文件夹下没有伏笔文件' });
-			const fileName = this.plugin.settings.foreshadowing?.fileName || '伏笔';
+			empty.createEl('p', { text: t('common.no-files-hint', { type: t('common.default-foreshadowing-filename') }) });
+			const fileName = this.plugin.settings.foreshadowing?.fileName || getDefaultFileName('foreshadowingFileName');
 			empty.createEl('p', { text: `（${fileName}.md）`, cls: 'foreshadowing-view-hint' });
 			return;
 		}
@@ -86,7 +88,7 @@ export class ForeshadowingView extends CreativeView {
 		const tagOptions = this.getTagFilterOptions(entries);
 		if (tagOptions.length > 0) {
 			const tagRow = header.createDiv({ cls: 'foreshadowing-view-filter-row foreshadowing-view-tag-filter-row' });
-			const allTagBtn = tagRow.createEl('button', { text: '全部标签', cls: 'foreshadowing-filter-btn' });
+			const allTagBtn = tagRow.createEl('button', { text: t('common.all-tags'), cls: 'foreshadowing-filter-btn' });
 			if (this.filterTag === 'all') allTagBtn.addClass('is-active');
 			allTagBtn.onclick = () => { this.filterTag = 'all'; void this.refresh(); };
 			tagOptions.forEach(tag => {
@@ -102,15 +104,15 @@ export class ForeshadowingView extends CreativeView {
 		if (this.filterTag !== 'all') filtered = filtered.filter(e => e.tags.includes(this.filterTag));
 
 		if (filtered.length === 0) {
-			container.createDiv({ cls: 'foreshadowing-view-empty', text: '没有符合条件的伏笔' });
+			container.createDiv({ cls: 'foreshadowing-view-empty', text: t('common.no-matching-foreshadowing') });
 			return;
 		}
 
 		// 按状态分组
 		const groups: { status: ForeshadowingStatus; label: string; items: ParsedForeshadowingEntry[] }[] = [
-			{ status: ForeshadowingStatus.Pending, label: '未回收', items: [] },
-			{ status: ForeshadowingStatus.Recovered, label: '已回收', items: [] },
-			{ status: ForeshadowingStatus.Deprecated, label: '已废弃', items: [] },
+			{ status: ForeshadowingStatus.Pending, label: getForeshadowingStatusText('pending'), items: [] },
+			{ status: ForeshadowingStatus.Recovered, label: getForeshadowingStatusText('recovered'), items: [] },
+			{ status: ForeshadowingStatus.Deprecated, label: getForeshadowingStatusText('deprecated'), items: [] },
 		];
 		filtered.forEach(e => {
 			const g = groups.find(g => g.status === e.status);
@@ -151,26 +153,26 @@ export class ForeshadowingView extends CreativeView {
 					cls: 'foreshadowing-entry-quote-meta'
 				});
 				metaEl.setCssProps({ cursor: 'pointer' });
-				metaEl.title = '点击跳转到该引用所在的具体段落';
+				metaEl.title = t('common.jump-to-reference');
 				metaEl.onclick = async () => {
 					const file = this.app.vault.getMarkdownFiles().find(f => f.basename === target);
 					if (file) {
 						await this.openFileWithSmartLocate(file, c.text);
 					} else {
-						new Notice(`找不到文件：${target}`);
+						new Notice(t('common.file-not-found', { name: target }));
 					}
 				};
 			}
 			
 			const textEl = quoteEl.createDiv({ text: c.text, cls: 'foreshadowing-entry-quote-text' });
 			textEl.setCssProps({ cursor: 'pointer' });
-			textEl.title = '点击跳转到原文的具体位置';
+			textEl.title = t('common.jump-to-original');
 			textEl.onclick = async () => {
 				const file = this.app.vault.getMarkdownFiles().find(f => f.basename === target);
 				if (file) {
 					await this.openFileWithSmartLocate(file, c.text);
 				} else {
-					new Notice(`找不到文件：${target}`);
+					new Notice(t('common.file-not-found', { name: target }));
 				}
 			};
 		});
@@ -190,7 +192,7 @@ export class ForeshadowingView extends CreativeView {
 		const actions = footer.createDiv({ cls: 'foreshadowing-entry-actions' });
 
 		// 跳转按钮：单条引用直接跳转，多条引用显示选择菜单
-		const jumpBtn = actions.createEl('button', { text: '跳转', cls: 'foreshadowing-action-btn' });
+		const jumpBtn = actions.createEl('button', { text: t('common.jump'), cls: 'foreshadowing-action-btn' });
 		jumpBtn.onclick = async (e) => {
 			if (entry.contents.length <= 1) {
 				// 单个来源，直接跳转
@@ -200,7 +202,7 @@ export class ForeshadowingView extends CreativeView {
 				if (file) {
 					await this.openFileWithSmartLocate(file, text);
 				} else {
-					new Notice(`找不到文件：${target}`);
+					new Notice(t('common.file-not-found', { name: target }));
 				}
 			} else {
 				// 多个来源，显示下拉菜单
@@ -215,7 +217,7 @@ export class ForeshadowingView extends CreativeView {
 							if (file) {
 								await this.openFileWithSmartLocate(file, c.text);
 							} else {
-								new Notice(`找不到文件：${target}`);
+								new Notice(t('common.file-not-found', { name: target }));
 							}
 						});
 					});
@@ -226,7 +228,7 @@ export class ForeshadowingView extends CreativeView {
 
 		// 回收按钮（仅未回收状态显示）
 		if (entry.status === ForeshadowingStatus.Pending) {
-			const recoverBtn = actions.createEl('button', { text: '标记回收', cls: 'foreshadowing-action-btn foreshadowing-recover-btn' });
+			const recoverBtn = actions.createEl('button', { text: t('common.mark-recovered'), cls: 'foreshadowing-action-btn foreshadowing-recover-btn' });
 			recoverBtn.onclick = () => {
 				const foreshadowingFile = this.getForeshadowingFile();
 				if (!foreshadowingFile) return;
@@ -236,7 +238,7 @@ export class ForeshadowingView extends CreativeView {
 					this.currentFolder,
 					(recoveryFileNames) => {
 						if (!this.plugin.foreshadowingManager) {
-							new Notice('伏笔管理器尚未就绪');
+							new Notice(t('common.foreshadowing-manager-not-ready'));
 							return;
 						}
 						void this.plugin.foreshadowingManager.markAsRecovered(
@@ -244,11 +246,11 @@ export class ForeshadowingView extends CreativeView {
 						).then(success => {
 							if (success) {
 								const fileList = recoveryFileNames.map(f => `[[${f}]]`).join('、');
-								new Notice(`[成功] 已标记为回收：${fileList}`);
+								new Notice(t('notice.foreshadowing-recovered', { links: fileList }));
 								// 文件修改会自动触发刷新，但在某些平台可能有延迟，添加备用刷新
 								window.setTimeout(() => void this.refresh(), 100);
 							} else {
-								new Notice('[错误] 标记失败，请检查伏笔文件');
+								new Notice(t('common.mark-failed-check-file'));
 							}
 						}).catch(err => console.error('[ForeshadowingView] markAsRecovered failed:', err));
 					}
@@ -256,7 +258,7 @@ export class ForeshadowingView extends CreativeView {
 			};
 
 			// 废弃按钮（未回收状态显示）
-			const deprecateBtn = actions.createEl('button', { text: '废弃', cls: 'foreshadowing-action-btn foreshadowing-deprecate-btn' });
+			const deprecateBtn = actions.createEl('button', { text: t('common.deprecate'), cls: 'foreshadowing-action-btn foreshadowing-deprecate-btn' });
 			deprecateBtn.onclick = () => {
 				const foreshadowingFile = this.getForeshadowingFile();
 				if (!foreshadowingFile) return;
@@ -265,11 +267,11 @@ export class ForeshadowingView extends CreativeView {
 						foreshadowingFile, entry.sourceFile, entry.createdAt
 					).then(success => {
 						if (success) {
-							new Notice('已标记为废弃');
+							new Notice(t('common.deprecated-marked'));
 							// 文件修改会自动触发刷新，但在某些平台可能有延迟，添加备用刷新
 							window.setTimeout(() => void this.refresh(), 100);
 						} else {
-							new Notice('[错误] 操作失败');
+							new Notice(t('common.operation-failed'));
 						}
 					}).catch(err => console.error('[ForeshadowingView] markAsDeprecated failed:', err));
 			};
@@ -277,7 +279,7 @@ export class ForeshadowingView extends CreativeView {
 
 		// 恢复按钮（已废弃状态显示）
 		if (entry.status === ForeshadowingStatus.Deprecated) {
-			const restoreBtn = actions.createEl('button', { text: '恢复', cls: 'foreshadowing-action-btn' });
+			const restoreBtn = actions.createEl('button', { text: t('common.restore'), cls: 'foreshadowing-action-btn' });
 			restoreBtn.onclick = async () => {
 				const foreshadowingFile = this.getForeshadowingFile();
 				if (!foreshadowingFile) return;
@@ -286,11 +288,11 @@ export class ForeshadowingView extends CreativeView {
 					foreshadowingFile, entry.sourceFile, entry.createdAt
 				);
 				if (success) {
-					new Notice('已恢复为未回收');
+					new Notice(t('common.restored-to-pending'));
 					// 文件修改会自动触发刷新，但在某些平台可能有延迟，添加备用刷新
 					window.setTimeout(() => void this.refresh(), 100);
 				} else {
-					new Notice('[错误] 操作失败');
+					new Notice(t('common.operation-failed'));
 				}
 			};
 		}
@@ -298,7 +300,7 @@ export class ForeshadowingView extends CreativeView {
 		// 已回收时显示回收章节（支持多章节）
 		if (entry.status === ForeshadowingStatus.Recovered) {
 			const recoveryEl = card.createDiv({ cls: 'foreshadowing-entry-recovery' });
-			recoveryEl.createSpan({ text: '回收于：', cls: 'foreshadowing-entry-recovery-label' });
+			recoveryEl.createSpan({ text: getForeshadowingLabel('recoveredAt') + '：', cls: 'foreshadowing-entry-recovery-label' });
 			
 			// 优先使用新格式（多章节）
 			if (entry.recoveryFiles && entry.recoveryFiles.length > 0) {

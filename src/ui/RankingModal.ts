@@ -1,8 +1,10 @@
+// 限时任务新增对话框（内部仍用 Ranking 命名，待后续重构改为 Task）
 import type { App} from 'obsidian';
 import { Modal } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { RankingEntry } from '../types/ranking';
 import type { RankingManager } from '../services/RankingManager';
+import { t } from '../i18n';
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -33,22 +35,21 @@ export class RankingAddModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 		contentEl.addClass('ranking-add-modal');
-		contentEl.createEl('h2', { text: '新增榜单' });
+		contentEl.createEl('h2', { text: t('modal.new-ranking') });
 
 		const inputStyle = 'width:100%;margin-bottom:8px;padding:6px 8px;border-radius:4px;border:1px solid var(--background-modifier-border);background:var(--background-primary);color:var(--text-normal);box-sizing:border-box;';
 
-		// 签约平台
+		// 任务名称
 		const platformContainer = contentEl.createDiv();
-		platformContainer.createEl('label', { text: '签约平台', attr: { style: 'display:block;margin-bottom:4px;font-weight:bold;' } });
-		const platformReadOnly = this.defaultPlatform !== '';
+		platformContainer.createEl('label', { text: t('modal.platform'), attr: { style: 'display:block;margin-bottom:4px;font-weight:bold;' } });
 		const platformInput = platformContainer.createEl('input', {
-			attr: { style: inputStyle + (platformReadOnly ? 'opacity:0.6;' : ''), placeholder: platformReadOnly ? '' : '如：起点中文网', ...(platformReadOnly ? { readonly: 'true' } : {}) },
+			attr: { style: inputStyle, placeholder: t('modal.platform-placeholder') },
 			value: this.defaultPlatform,
 		});
 
-		// 榜单期数
+		// 任务期数
 		const periodContainer = contentEl.createDiv();
-		periodContainer.createEl('label', { text: '榜单期数', attr: { style: 'display:block;margin-bottom:4px;font-weight:bold;' } });
+		periodContainer.createEl('label', { text: t('modal.ranking-period'), attr: { style: 'display:block;margin-bottom:4px;font-weight:bold;' } });
 		const periodInput = periodContainer.createEl('input', {
 			type: 'number',
 			attr: { style: inputStyle, min: '1' },
@@ -60,7 +61,7 @@ export class RankingAddModal extends Modal {
 		const nextWeek = window.moment().add(6, 'days').format('YYYY-MM-DD');
 
 		const startContainer = contentEl.createDiv();
-		startContainer.createEl('label', { text: '起始时间', attr: { style: 'display:block;margin-bottom:4px;font-weight:bold;' } });
+		startContainer.createEl('label', { text: t('modal.start-date'), attr: { style: 'display:block;margin-bottom:4px;font-weight:bold;' } });
 		const startInput = startContainer.createEl('input', {
 			type: 'text',
 			attr: { style: inputStyle, placeholder: 'YYYY-MM-DD' },
@@ -69,7 +70,7 @@ export class RankingAddModal extends Modal {
 
 		// 结束时间
 		const endContainer = contentEl.createDiv();
-		endContainer.createEl('label', { text: '结束时间', attr: { style: 'display:block;margin-bottom:4px;font-weight:bold;' } });
+		endContainer.createEl('label', { text: t('modal.end-date'), attr: { style: 'display:block;margin-bottom:4px;font-weight:bold;' } });
 		const endInput = endContainer.createEl('input', {
 			type: 'text',
 			attr: { style: inputStyle, placeholder: 'YYYY-MM-DD' },
@@ -84,40 +85,40 @@ export class RankingAddModal extends Modal {
 			}
 		});
 
-		// 榜单位置
+		// 任务详情
 		const positionContainer = contentEl.createDiv();
-		positionContainer.createEl('label', { text: '榜单位置', attr: { style: 'display:block;margin-bottom:4px;font-weight:bold;' } });
+		positionContainer.createEl('label', { text: t('modal.ranking-position'), attr: { style: 'display:block;margin-bottom:4px;font-weight:bold;' } });
 		const positionInput = positionContainer.createEl('input', {
-			attr: { style: inputStyle, placeholder: '如：新书榜第3名' },
+			attr: { style: inputStyle, placeholder: t('modal.ranking-position-placeholder') },
 		});
 
 		// 字数要求
 		const targetContainer = contentEl.createDiv();
-		targetContainer.createEl('label', { text: '字数要求', attr: { style: 'display:block;margin-bottom:4px;font-weight:bold;' } });
+		targetContainer.createEl('label', { text: t('modal.word-target'), attr: { style: 'display:block;margin-bottom:4px;font-weight:bold;' } });
 		const targetInput = targetContainer.createEl('input', {
 			type: 'number',
-			attr: { style: inputStyle, min: '1', placeholder: '如：30000' },
+			attr: { style: inputStyle, min: '1', placeholder: t('modal.word-target-placeholder') },
 		});
 
 		// 起始字数（显示当前值，允许修改）
 		const snapshotContainer = contentEl.createDiv();
-		snapshotContainer.createEl('label', { text: '起始字数', attr: { style: 'display:block;margin-bottom:4px;font-weight:bold;' } });
+		snapshotContainer.createEl('label', { text: t('modal.starting-word-count'), attr: { style: 'display:block;margin-bottom:4px;font-weight:bold;' } });
 		const currentWords = this.manager.getChapterWordCount();
 		const snapshotInput = snapshotContainer.createEl('input', {
 			type: 'number',
 			attr: { style: inputStyle, min: '0' },
 			value: String(currentWords),
 		});
-		snapshotContainer.createDiv({ text: '当前文件夹章节总字数，可手动调整', attr: { style: 'font-size:12px;color:var(--text-muted);margin-bottom:8px;' } });
+		snapshotContainer.createDiv({ text: t('modal.starting-word-count-hint'), attr: { style: 'font-size:12px;color:var(--text-muted);margin-bottom:8px;' } });
 
 		// 按钮
 		const btnContainer = contentEl.createDiv({
 			attr: { style: 'display:flex;justify-content:flex-end;gap:10px;margin-top:16px;' },
 		});
-		const cancelBtn = btnContainer.createEl('button', { text: '取消' });
+		const cancelBtn = btnContainer.createEl('button', { text: t('common.cancel') });
 		cancelBtn.onclick = () => this.close();
 
-		const submitBtn = btnContainer.createEl('button', { text: '确定', cls: 'mod-cta' });
+		const submitBtn = btnContainer.createEl('button', { text: t('common.determine'), cls: 'mod-cta' });
 		submitBtn.onclick = async () => {
 			const platform = platformInput.value.trim();
 			const period = parseInt(periodInput.value, 10);
@@ -139,7 +140,7 @@ export class RankingAddModal extends Modal {
 				startDate,
 				endDate,
 				startSnapshot,
-				status: startDate <= today ? '进行中' : '未开始',
+				status: startDate <= today ? 'active' : 'notStarted',
 				rawBlock: '',
 			};
 

@@ -1,6 +1,7 @@
 import type { App} from 'obsidian';
 import { Modal, Notice, Setting, TFile, TFolder } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
+import { t } from '../i18n';
 
 // ─────────────────────────────────────────────
 // 1. 标注伏笔输入对话框
@@ -41,45 +42,45 @@ export class ForeshadowingInputModal extends Modal {
 		contentEl.empty();
 		contentEl.addClass('foreshadowing-input-modal');
 
-		contentEl.createEl('h2', { text: '标注为伏笔' });
+		contentEl.createEl('h2', { text: t('modal.mark-foreshadowing') });
 
 		// 来源和内容预览
 		const infoEl = contentEl.createDiv({ cls: 'foreshadowing-info' });
 		infoEl.createEl('div', {
-			text: `来源：${this.sourceFileName}`,
+			text: t('modal.source-label', { name: this.sourceFileName }),
 			cls: 'foreshadowing-source'
 		});
 		const preview = this.selectedContent.length > 80
 			? this.selectedContent.slice(0, 80) + '…'
 			: this.selectedContent;
 		infoEl.createEl('div', {
-			text: `内容：「${preview}」`,
+			text: t('modal.content-label', { preview }),
 			cls: 'foreshadowing-preview'
 		});
 
 		// 补充说明（必填）
 		new Setting(contentEl)
-			.setName('补充说明')
-			.setDesc('请输入伏笔的说明信息（必填）');
+			.setName(t('modal.supplementary-note'))
+			.setDesc(t('modal.supplementary-note-desc'));
 
 		this.descriptionEl = contentEl.createEl('textarea', {
 			cls: 'foreshadowing-description',
-			placeholder: '例如：这是主角身世的伏笔，将在第十章揭晓...',
+			placeholder: t('modal.supplementary-note-placeholder'),
 		});
 		this.descriptionEl.addClass('webnovel-modal-textarea');
 		// 标签（可选）
 		new Setting(contentEl)
-			.setName('标签（可选）')
-			.setDesc('多个标签用空格分隔，无需加 #');
+			.setName(t('modal.tags-optional'))
+			.setDesc(t('modal.tags-desc'));
 
 		this.tagsEl = contentEl.createEl('input', {
 			type: 'text',
-			placeholder: '例如：人物 情节 世界观',
+			placeholder: t('modal.tags-placeholder'),
 			cls: 'foreshadowing-tags-input'
 		});
 		this.tagsEl.addClass('webnovel-modal-input');
 		// 常用标签快捷按钮
-		const globalTags: string[] = this.plugin.settings.foreshadowing?.defaultTags || ['人物', '情节', '世界观', '道具', '伏线'];
+		const globalTags: string[] = this.plugin.settings.foreshadowing?.defaultTags || [];
 		const allTags = [...new Set([...globalTags, ...this.extraTags])];
 		if (allTags.length > 0) {
 			const tagBtnContainer = contentEl.createDiv({ cls: 'foreshadowing-tag-buttons' });
@@ -89,9 +90,9 @@ export class ForeshadowingInputModal extends Modal {
 				btn.addClass('wn-base-tag-button');
 				btn.onclick = () => {
 					const current = this.tagsEl.value.trim();
-					const existing = current ? current.split(/\s+/) : [];
+					const existing = current ? current.split(/[,，\s]+/) : [];
 					if (!existing.includes(tag)) {
-						this.tagsEl.value = [...existing, tag].join(' ');
+						this.tagsEl.value = [...existing, tag].join(', ');
 					}
 				};
 			}
@@ -100,10 +101,10 @@ export class ForeshadowingInputModal extends Modal {
 		// 按钮区
 		const btnContainer = contentEl.createDiv();
 		btnContainer.addClass('wn-base-button-container');
-		const cancelBtn = btnContainer.createEl('button', { text: '取消' });
+		const cancelBtn = btnContainer.createEl('button', { text: t('common.cancel') });
 		cancelBtn.onclick = () => this.close();
 
-		const confirmBtn = btnContainer.createEl('button', { text: '确认标注', cls: 'mod-cta' });
+		const confirmBtn = btnContainer.createEl('button', { text: t('modal.confirm-mark'), cls: 'mod-cta' });
 		confirmBtn.onclick = () => this.submit();
 
 		// 聚焦说明输入框
@@ -122,12 +123,12 @@ export class ForeshadowingInputModal extends Modal {
 		const description = this.descriptionEl.value.trim();
 		if (!description) {
 			this.descriptionEl.setCssStyles({ borderColor: 'var(--background-modifier-error)' });
-			new Notice('[错误] 请填写补充说明');
+			new Notice(t('modal.please-fill-note'));
 			this.descriptionEl.focus();
 			return;
 		}
 		const tagsRaw = this.tagsEl.value.trim();
-		const tags = tagsRaw ? tagsRaw.split(/\s+/).filter(Boolean) : [];
+		const tags = tagsRaw ? tagsRaw.split(/[,，\s]+/).filter(Boolean) : [];
 		this.onSubmit(description, tags);
 		this.close();
 	}
@@ -160,16 +161,16 @@ class ChapterMultiSelectModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 
-		contentEl.createEl('h2', { text: '选择回收章节' });
+		contentEl.createEl('h2', { text: t('modal.select-recovery-chapters') });
 		contentEl.createEl('p', { 
-			text: '可以选择多个章节（支持一个伏笔在多个章节中回收）',
+			text: t('modal.multi-recovery-hint'),
 			cls: 'setting-item-description'
 		});
 
 		// 搜索框
 		const searchInput = contentEl.createEl('input', {
 			type: 'text',
-			placeholder: '搜索章节...'
+			placeholder: t('modal.search-chapters')
 		});
 		searchInput.addClass('webnovel-modal-input');
 		// 章节列表
@@ -190,9 +191,9 @@ class ChapterMultiSelectModal extends Modal {
 		const updateSelected = () => {
 			selectedEl.empty();
 			if (this.selectedChapters.size === 0) {
-				selectedEl.createSpan({ text: '未选择章节', cls: 'setting-item-description' });
+				selectedEl.createSpan({ text: t('modal.no-chapter-selected'), cls: 'setting-item-description' });
 			} else {
-				selectedEl.createSpan({ text: `已选择 ${this.selectedChapters.size} 个章节：`, cls: 'setting-item-description' });
+				selectedEl.createSpan({ text: t('modal.chapters-selected-count', { count: this.selectedChapters.size }), cls: 'setting-item-description' });
 				selectedEl.createEl('br');
 				Array.from(this.selectedChapters).forEach(ch => {
 					const tag = selectedEl.createSpan({ text: ch, cls: 'tag' });
@@ -204,13 +205,13 @@ class ChapterMultiSelectModal extends Modal {
 		// 按钮区
 		const btnContainer = contentEl.createDiv();
 		btnContainer.addClass('wn-base-button-container');
-		const cancelBtn = btnContainer.createEl('button', { text: '取消' });
+		const cancelBtn = btnContainer.createEl('button', { text: t('common.cancel') });
 		cancelBtn.onclick = () => this.close();
 
-		const confirmBtn = btnContainer.createEl('button', { text: '确认', cls: 'mod-cta' });
+		const confirmBtn = btnContainer.createEl('button', { text: t('common.confirm'), cls: 'mod-cta' });
 		confirmBtn.onclick = () => {
 			if (this.selectedChapters.size === 0) {
-				new Notice('[错误] 请至少选择一个章节');
+				new Notice(t('modal.please-select-chapter'));
 				return;
 			}
 			this.onSubmit(Array.from(this.selectedChapters));
@@ -252,7 +253,7 @@ class ChapterMultiSelectModal extends Modal {
 		});
 
 		if (chapters.length === 0) {
-			this.listEl.createDiv({ text: '没有找到匹配的章节', cls: 'setting-item-description webnovel-modal-empty' });
+			this.listEl.createDiv({ text: t('modal.no-matching-chapters'), cls: 'setting-item-description webnovel-modal-empty' });
 		}
 	}
 
@@ -297,31 +298,31 @@ export class ForeshadowingRecoveryModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 
-		contentEl.createEl('h2', { text: '标记伏笔已回收' });
+		contentEl.createEl('h2', { text: t('modal.mark-recovered') });
 
 		// 内容预览
 		const preview = this.contentPreview.length > 60
 			? this.contentPreview.slice(0, 60) + '…'
 			: this.contentPreview;
 		contentEl.createEl('p', {
-			text: `伏笔：「${preview}」`,
+			text: t('modal.foreshadowing-preview', { preview }),
 			cls: 'foreshadowing-preview'
 		});
 
 		// 文件选择
 		new Setting(contentEl)
-			.setName('回收章节')
-			.setDesc('输入完成回收的章节文件名（无需 .md 后缀），多个章节用逗号或空格分隔');
+			.setName(t('modal.recovery-chapter'))
+			.setDesc(t('modal.recovery-chapter-desc'));
 
 		this.inputEl = contentEl.createEl('input', {
 			type: 'text',
-			placeholder: '例如：第十章, 第十一章',
+			placeholder: t('modal.recovery-placeholder'),
 		});
 		this.inputEl.addClass('webnovel-modal-input');
 		// 如果有章节文件，显示选择按钮
 		if (this.chapters.length > 0) {
 			const btnRow = contentEl.createDiv({ cls: 'webnovel-btn-row' });
-			const selectBtn = btnRow.createEl('button', { text: '从列表选择（支持多选）', cls: 'webnovel-select-btn' });
+			const selectBtn = btnRow.createEl('button', { text: t('modal.select-from-list'), cls: 'webnovel-select-btn' });
 			selectBtn.onclick = () => {
 				this.close();
 				new ChapterMultiSelectModal(this.app, this.chapters, (selectedChapters) => {
@@ -330,7 +331,7 @@ export class ForeshadowingRecoveryModal extends Modal {
 			};
 			
 			const hint = contentEl.createEl('p', {
-				text: `提示：当前文件夹有 ${this.chapters.length} 个章节文件`,
+				text: t('modal.chapter-count-hint', { count: this.chapters.length }),
 				cls: 'setting-item-description'
 			});
 			hint.setCssStyles({ marginBottom: '12px' });
@@ -339,10 +340,10 @@ export class ForeshadowingRecoveryModal extends Modal {
 		// 按钮区
 		const btnContainer = contentEl.createDiv();
 		btnContainer.addClass('wn-base-button-container');
-		const cancelBtn = btnContainer.createEl('button', { text: '取消' });
+		const cancelBtn = btnContainer.createEl('button', { text: t('common.cancel') });
 		cancelBtn.onclick = () => this.close();
 
-		const confirmBtn = btnContainer.createEl('button', { text: '确认回收', cls: 'mod-cta' });
+		const confirmBtn = btnContainer.createEl('button', { text: t('modal.confirm-recovery'), cls: 'mod-cta' });
 		confirmBtn.onclick = () => this.submit();
 
 		window.setTimeout(() => this.inputEl.focus(), 50);
@@ -359,7 +360,7 @@ export class ForeshadowingRecoveryModal extends Modal {
 		const value = this.inputEl.value.trim().replace(/\.md$/gi, '');
 		if (!value) {
 			this.inputEl.setCssStyles({ borderColor: 'var(--background-modifier-error)' });
-			new Notice('[错误] 请输入回收章节名');
+			new Notice(t('modal.please-enter-recovery-chapter'));
 			this.inputEl.focus();
 			return;
 		}
@@ -402,21 +403,21 @@ export class ConfirmCreateForeshadowingFileModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 
-		contentEl.createEl('h2', { text: '创建伏笔文件' });
+		contentEl.createEl('h2', { text: t('modal.create-foreshadowing-file') });
 
 		const location = this.folderPath
 			? `「${this.folderPath}/${this.fileName}.md」`
 			: `「${this.fileName}.md」`;
 
 		contentEl.createEl('p', {
-			text: `当前文件夹下不存在 ${location}，是否创建？`
+			text: t('modal.foreshadowing-file-not-exist', { location })
 		});
 
 		const btnContainer = contentEl.createDiv({ cls: 'webnovel-btn-container-end' });
-		const cancelBtn = btnContainer.createEl('button', { text: '取消' });
+		const cancelBtn = btnContainer.createEl('button', { text: t('common.cancel') });
 		cancelBtn.onclick = () => this.close();
 
-		const confirmBtn = btnContainer.createEl('button', { text: '创建并继续', cls: 'mod-cta' });
+		const confirmBtn = btnContainer.createEl('button', { text: t('modal.create-and-continue'), cls: 'mod-cta' });
 		confirmBtn.onclick = () => {
 			this.onConfirm();
 			this.close();

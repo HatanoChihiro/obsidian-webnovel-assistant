@@ -56,7 +56,7 @@ export class CacheManager {
 			// 首选：从独立缓存文件加载
 			if (await adapter.exists(this.cacheFilePath)) {
 				const content = await adapter.read(this.cacheFilePath);
-				cacheData = JSON.parse(content);
+				cacheData = JSON.parse(content) as CacheData;
 			} else {
 				// 兼容：从 data.json 读取旧版缓存进行迁移
 				const data = await this.plugin.loadData();

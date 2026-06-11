@@ -1,4 +1,5 @@
 import type { App} from 'obsidian';
+import { t } from '../i18n';
 import { MarkdownView } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { isMobile, parseGoal } from '../utils';
@@ -109,7 +110,7 @@ export class EditorTracker {
 		if (view.file && !this.plugin.isEligibleForWordCount(view.file)) {
 			const totalCount = this.plugin.calculateAccurateWords(view.getViewData());
 			const cnChars = (view.getViewData().match(REGEX_PATTERNS.CHINESE()) || []).length;
-			this.plugin.statusBarItemEl.setText(`字数: ${totalCount} (中文字: ${cnChars})`);
+			this.plugin.statusBarItemEl.setText(t('common.word-count-status', { count: String(totalCount), cnCount: String(cnChars) }));
 			return;
 		}
 
@@ -122,7 +123,7 @@ export class EditorTracker {
 		const totalCount = this.plugin.calculateAccurateWords(view.getViewData());
 		const displaySessionWords = Math.max(0, this.plugin.sessionAddedWords);
 		
-		const stateStr = this.plugin.isTracking ? "[记录中]" : "[已暂停]";
+		const stateStr = this.plugin.isTracking ? t('status.tracking-active') : t('status.tracking-paused');
 
 		if (this.plugin.settings.showGoal && view.file) {
 			const cache = this.app.metadataCache.getFileCache(view.file);
@@ -132,13 +133,13 @@ export class EditorTracker {
 
 			if (targetGoal > 0) {
 				const percent = Math.min(Math.round((totalCount / targetGoal) * 100), 100);
-				const status = percent >= 100 ? '[完成]' : '';
-				this.plugin.statusBarItemEl.setText(`[${stateStr}] ${status} 字数: ${totalCount} / ${targetGoal} (${percent}%) | 净增: ${displaySessionWords}`);
+				const status = percent >= 100 ? t('status.completed') : '';
+				this.plugin.statusBarItemEl.setText(t('common.status-bar-format', { state: stateStr, status: `${status} ${t('common.word-count-progress', { current: String(totalCount), target: String(targetGoal), percent: String(percent) })} | ${t('common.net-increase', { count: String(displaySessionWords) })}` }));
 				return;
 			}
 		}
 
 		const cnChars = (view.getViewData().match(REGEX_PATTERNS.CHINESE()) || []).length;
-		this.plugin.statusBarItemEl.setText(`[${stateStr}] 字数: ${totalCount} (中文字: ${cnChars}) | 净增: ${displaySessionWords}`);
+		this.plugin.statusBarItemEl.setText(t('common.status-bar-format', { state: stateStr, status: `${t('common.word-count-status', { count: String(totalCount), cnCount: String(cnChars) })} | ${t('common.net-increase', { count: String(displaySessionWords) })}` }));
 	}
 }

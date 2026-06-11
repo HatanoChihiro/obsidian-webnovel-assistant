@@ -5,6 +5,8 @@ import { copyDocumentContent } from '../utils/ui';
 import { ChapterSorter } from '../services/ChapterSorter';
 import { ForeshadowingInputModal, ConfirmCreateForeshadowingFileModal, ForeshadowingRecoveryModal } from '../ui/ForeshadowingModal';
 import { AdvancedSearchModal } from '../ui/AdvancedSearchModal';
+import { t } from '../i18n';
+import { getDefaultFileName } from '../i18n/data-keys';
 
 export class CommandManager {
 	private plugin: WebNovelAssistantPlugin;
@@ -28,48 +30,48 @@ export class CommandManager {
 	private registerViewCommands() {
 		this.plugin.addCommand({
 			id: 'toggle-writing-status-view',
-			name: '打开/关闭写作实时状态面板',
+			name: t('command.toggle-status-view'),
 			callback: () => { void this.plugin.toggleStatusView(); }
 		});
 
 		this.plugin.addCommand({
 			id: 'toggle-foreshadowing-view',
-			name: '打开/关闭伏笔面板',
+			name: t('command.toggle-foreshadowing-view'),
 			callback: () => { void this.plugin.toggleForeshadowingView(); }
 		});
 
 		this.plugin.addCommand({
 			id: 'toggle-timeline-view',
-			name: '打开/关闭时间线面板',
+			name: t('command.toggle-timeline-view'),
 			callback: () => { void this.plugin.toggleTimelineView(); }
 		});
 
 		this.plugin.addCommand({
 			id: 'toggle-ranking-view',
-			name: '打开/关闭榜单追踪面板',
+			name: t('command.toggle-ranking-view'),
 			callback: () => { void this.plugin.toggleRankingView(); }
 		});
 
 		this.plugin.addCommand({
 			id: 'open-corkboard-view',
-			name: '打开/关闭章节一览面板',
+			name: t('command.toggle-corkboard-view'),
 			callback: () => { void this.plugin.viewManager.toggleView('webnovel-corkboard'); }
 		});
 
 		if (isDesktop()) { // Desktop
 			this.plugin.addCommand({
 				id: 'toggle-immersive-mode',
-				name: '进入/退出全屏沉浸写作模式',
+				name: t('command.toggle-immersive-mode'),
 				callback: () => { void this.plugin.immersiveModeManager.toggleImmersiveMode(); }
 			});
 
 			this.plugin.addCommand({
 				id: 'reset-immersive-layout',
-				name: '重置沉浸模式布局 (回到默认比例和位置)',
+				name: t('command.reset-immersive-layout'),
 				callback: async () => {
 					this.plugin.settings.immersive.immersiveLayout = null;
 					await this.plugin.saveSettings();
-					new Notice('沉浸模式布局已重置，下次进入生效');
+					new Notice(t('notice.immersive-layout-reset'));
 				}
 			});
 		}
@@ -79,7 +81,7 @@ export class CommandManager {
 		if (isDesktop()) { // Desktop
 			this.plugin.addCommand({
 				id: 'toggle-tracking',
-				name: '开始/暂停 专注时间统计',
+				name: t('command.toggle-tracking'),
 				callback: () => {
 					if (this.plugin.isTracking) this.plugin.stopTracking();
 					else this.plugin.startTracking();
@@ -88,7 +90,7 @@ export class CommandManager {
 
 			this.plugin.addCommand({
 				id: 'reset-stream-session',
-				name: '重置直播统计数据 (清空时长和净增字数)',
+				name: t('command.reset-stream-session'),
 				callback: () => {
 					this.plugin.focusMs = 0;
 					this.plugin.slackMs = 0;
@@ -97,7 +99,7 @@ export class CommandManager {
 					this.plugin.workerManager?.postMessage('stop');
 					this.plugin.editorTracker?.handleFileChange();
 					this.plugin.refreshStatusViews();
-					new Notice('直播数据已重置！统计已暂停，请手动开始新的场次。');
+					new Notice(t('notice.stream-data-reset'));
 				}
 			});
 		}
@@ -107,15 +109,15 @@ export class CommandManager {
 		if (isDesktop()) { // Desktop
 			this.plugin.addCommand({
 				id: 'create-blank-sticky-note',
-				name: '新建空白悬浮便签',
+				name: t('command.create-blank-sticky-note'),
 				callback: () => {
-					this.plugin.createStickyNote({ content: '', title: '新便签' }).catch(console.error);
+					this.plugin.createStickyNote({ content: '', title: t('notice.new-note-title') }).catch(console.error);
 				}
 			});
 
 			this.plugin.addCommand({
 				id: 'toggle-floating-notes',
-				name: '显示/隐藏所有悬浮便签',
+				name: t('command.toggle-floating-notes'),
 				callback: () => {
 					void this.plugin.toggleFloatingNotesVisibility();
 				}
@@ -127,7 +129,7 @@ export class CommandManager {
 		if (isDesktop()) { // Desktop
 			this.plugin.addCommand({
 				id: 'create-next-chapter',
-				name: '自动创建下一章 (智能递增)',
+				name: t('command.create-next-chapter'),
 				editorCallback: async (editor, view) => {
 					const currentFile = view.file;
 					if (!currentFile) return;
@@ -141,7 +143,7 @@ export class CommandManager {
 
 					const newFileName = ChapterSorter.getNextChapterName(currentFile.basename, siblingNames);
 					if (!newFileName) {
-						new Notice('当前文件名无法识别章节号（仅支持数字或汉字），无法自动创建');
+						new Notice(t('notice.chapter-number-unrecognized'));
 						return;
 					}
 
@@ -157,25 +159,25 @@ export class CommandManager {
 					try {
 						const newFile = await this.plugin.app.vault.create(newFilePath, '');
 						await this.plugin.app.workspace.getLeaf(false).openFile(newFile);
-						new Notice(`[成功] 已创建: ${newFileName}`);
+						new Notice(t('notice.chapter-created', { name: newFileName }));
 					} catch (error) {
 						console.error(error);
-						new Notice(`[错误] 创建失败: ${error}`);
+						new Notice(t('notice.chapter-create-failed', { error: String(error) }));
 					}
 				}
 			});
 			
 			this.plugin.addCommand({
 				id: 'rebuild-folder-cache',
-				name: '重建文件夹字数缓存',
+				name: t('command.rebuild-folder-cache'),
 				callback: async () => {
 					if (!this.plugin.settings.showExplorerCounts) {
-						new Notice('请先在设置中启用"文件浏览器字数统计"功能');
+						new Notice(t('notice.enable-explorer-counts-first'));
 						return;
 					}
 					
 					this.plugin.cacheManager.clearCache();
-					const notice = new Notice('正在重建文件浏览器缓存...', 0);
+					const notice = new Notice(t('notice.rebuilding-explorer-cache'), 0);
 					try {
 						await this.plugin.cacheManager.buildInitialCache(
 							this.plugin.app.vault,
@@ -184,10 +186,10 @@ export class CommandManager {
 						);
 						notice.hide();
 						this.plugin.refreshFolderCounts();
-						new Notice('[成功] 缓存重建完成！');
+						new Notice(t('notice.cache-rebuild-complete'));
 					} catch (error) {
 						notice.hide();
-						new Notice(`[错误] 缓存重建失败: ${error}`);
+						new Notice(`t('notice.cache-rebuild-failed', { error: String(error) })`);
 						console.error('[Plugin] 缓存重建失败:', error);
 					}
 				}
@@ -195,14 +197,14 @@ export class CommandManager {
 
 			this.plugin.addCommand({
 				id: 'refresh-chapter-sort',
-				name: '手动刷新章节排序（通常不需要）',
+				name: t('command.refresh-chapter-sort'),
 				callback: () => {
 					if (!this.plugin.settings.enableSmartChapterSort) {
-						new Notice('请先在设置中启用"智能章节排序"功能');
+						new Notice(t('notice.enable-smart-sort-first'));
 						return;
 					}
 					this.plugin.fileExplorerPatcher.refreshManually();
-					new Notice('[成功] 章节排序已刷新\\n\\n[提示] 排序会自动适应，通常不需要手动刷新');
+					new Notice(t('notice.chapter-sort-refreshed'));
 				}
 			});
 		}
@@ -212,11 +214,11 @@ export class CommandManager {
 		if (isDesktop()) { // Desktop
 			this.plugin.addCommand({
 				id: 'copy-obs-overlay-url',
-				name: '复制 OBS 叠加层 URL 到剪贴板',
+				name: t('command.copy-obs-overlay-url'),
 				callback: () => {
 					const url = `http://127.0.0.1:${this.plugin.settings.obs.obsPort}/`;
 					void navigator.clipboard.writeText(url);
-					new Notice(`已复制: ${url}`);
+					new Notice(`t('notice.obs-url-copied', { url })`);
 				}
 			});
 		}
@@ -225,7 +227,7 @@ export class CommandManager {
 	private registerForeshadowingCommands() {
 		this.plugin.addCommand({
 			id: 'mark-as-foreshadowing',
-			name: '标注为伏笔',
+			name: t('command.mark-as-foreshadowing'),
 			editorCheckCallback: (checking, editor, view) => {
 				const selectedText = editor.getSelection();
 				if (!selectedText || !selectedText.trim()) return false;
@@ -240,12 +242,12 @@ export class CommandManager {
 					fm.addForeshadowing(file, selectedText, description, tags)
 						.then(({ file: foreshadowFile, merged }) => {
 							if (merged) {
-								new Notice(`[成功] 已合并到同名伏笔条目「${foreshadowFile.name}」`, 5000);
+								new Notice(t('notice.foreshadowing-merged', { name: foreshadowFile.name }), 5000);
 							} else {
-								new Notice(`[成功] 已标注为伏笔，保存至「${foreshadowFile.name}」`, 5000);
+								new Notice(t('notice.foreshadowing-marked', { name: foreshadowFile.name }), 5000);
 							}
 							if (isDesktop()) {
-								const notice = new Notice('[提示] 点击此处打开伏笔文件', 8000);
+								const notice = new Notice(t('notice.foreshadowing-click-to-open'), 8000);
 								notice.messageEl.addClass('wn-clickable');
 								notice.messageEl.onclick = () => {
 									void fm.openForeshadowingFile(foreshadowFile);
@@ -255,7 +257,7 @@ export class CommandManager {
 						})
 						.catch(err => {
 							console.error('[ForeshadowingManager] addForeshadowing failed:', err);
-							new Notice(`[错误] 标注失败：${err}`);
+							new Notice(t('notice.foreshadowing-mark-failed', { error: String(err) }));
 						});
 				};
 
@@ -264,7 +266,7 @@ export class CommandManager {
 						new ForeshadowingInputModal(this.plugin.app, this.plugin, file.basename, selectedText, submitCallback, extraTags).open();
 					}).catch(err => console.error('[CommandManager] getExistingTags failed:', err));
 				} else {
-					const fileName = this.plugin.settings.foreshadowing?.fileName || '伏笔';
+					const fileName = this.plugin.settings.foreshadowing?.fileName || getDefaultFileName('foreshadowingFileName');
 					const folderPath = file.parent?.path || '';
 					new ConfirmCreateForeshadowingFileModal(this.plugin.app, fileName, folderPath, () => {
 						void fm.getExistingTags(file).then(extraTags => {
@@ -278,12 +280,12 @@ export class CommandManager {
 
 		this.plugin.addCommand({
 			id: 'mark-foreshadowing-recovered',
-			name: '标记伏笔已回收',
+			name: t('command.mark-foreshadowing-recovered'),
 			editorCheckCallback: (checking, editor, view) => {
 				const file = view.file;
 				if (!file) return false;
 				
-				const foreshadowingFileName = (this.plugin.settings.foreshadowing?.fileName || '伏笔') + '.md';
+				const foreshadowingFileName = (this.plugin.settings.foreshadowing?.fileName || getDefaultFileName('foreshadowingFileName')) + '.md';
 				if (file.name !== foreshadowingFileName) return false;
 				if (checking) return true;
 					if (!this.plugin.foreshadowingManager) return false;
@@ -303,16 +305,16 @@ export class CommandManager {
 							).then(success => {
 								if (success) {
 									const links = selectedChapters.map(c => `[[${c}]]`).join('、');
-									new Notice(`[成功] 已标记为已回收：${links}`);
+									new Notice(t('notice.foreshadowing-recovered', { links }));
 								} else {
-									new Notice('[错误] 未找到对应的伏笔条目，请确认光标位置');
+									new Notice(t('notice.foreshadowing-entry-not-found'));
 								}
 							}).catch(err => console.error('[CommandManager] markAsRecovered failed:', err));
 					}
 				).open();
 					return true;
 				} else {
-					new Notice('[错误] 请将光标放在伏笔条目上');
+					new Notice(t('notice.foreshadowing-cursor-hint'));
 					return true;
 				}
 			}
@@ -323,9 +325,9 @@ export class CommandManager {
 		// 复制本文档：桌面端和移动端均生效（移动端无右键菜单，该命令尤为实用）
 		this.plugin.addCommand({
 			id: 'copy-full-content-mobile',
-			name: '复制本文档',
+			name: t('command.copy-document'),
 			editorCallback: (editor, view) => {
-				copyDocumentContent(view.file?.basename ?? '', editor.getValue());
+				void copyDocumentContent(view.file?.basename ?? '', editor.getValue());
 			}
 		});
 	}
@@ -333,24 +335,24 @@ export class CommandManager {
 	private registerHomepageCommands() {
 		this.plugin.addCommand({
 			id: 'open-creative-homepage',
-			name: '打开创作主页',
+			name: t('command.open-creative-homepage'),
 			callback: () => {
 				const file = this.plugin.homepageManager?.getHomepageFile();
 				if (file) {
 					void this.plugin.app.workspace.getLeaf(false).openFile(file);
 				} else {
-					new Notice('创作主页文件不存在，请重启插件');
+					new Notice(t('notice.homepage-file-not-exist'));
 				}
 			}
 		});
 
 		this.plugin.addCommand({
 			id: 'refresh-creative-homepage',
-			name: '刷新创作主页',
+			name: t('command.refresh-creative-homepage'),
 			callback: async () => {
 				await this.plugin.homepageManager?.refreshHomepage();
 				this.plugin.homepageManager?.refreshHomepageViews();
-				new Notice('[成功] 创作主页已刷新');
+				new Notice(t('notice.homepage-refreshed'));
 			}
 		});
 	}
@@ -358,7 +360,7 @@ export class CommandManager {
 	private registerSearchCommands() {
 		this.plugin.addCommand({
 			id: 'advanced-webnovel-search',
-			name: '高级搜索 (筛选书籍/全局/多选目录)',
+			name: t('command.advanced-search'),
 			callback: () => {
 				new AdvancedSearchModal(this.plugin.app, this.plugin).open();
 			}

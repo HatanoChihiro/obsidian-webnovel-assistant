@@ -6,6 +6,7 @@ import type { TFile} from 'obsidian';
 import { editorInfoField } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ChapterSorter } from '../services/ChapterSorter';
+import { t } from '../i18n';
 
 class WordCountMarker extends GutterMarker {
 	count: number;
@@ -22,7 +23,7 @@ class WordCountMarker extends GutterMarker {
 
 		const span = activeDocument.createElement('span');
 		span.className = 'webnovel-word-count-marker';
-		span.textContent = this.count + '字';
+		span.textContent = this.count + t('gutter.word-count');
 
 		wrapper.appendChild(span);
 		return wrapper;

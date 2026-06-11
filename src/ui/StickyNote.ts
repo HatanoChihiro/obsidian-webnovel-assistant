@@ -4,6 +4,7 @@ import type { StickyNoteState, ThemeScheme } from '../types/settings';
 import { hexToRgba } from '../utils/format';
 import { isDesktop } from '../utils/platform';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
+import { t } from '../i18n';
 
 /**
  * 保存便签对话框
@@ -24,7 +25,7 @@ export class SaveStickyNoteModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 		
-		contentEl.createEl('h2', { text: '保存便签为文件' });
+		contentEl.createEl('h2', { text: t('modal.save-sticky-note') });
 		
 		// 获取当前活动文件的文件夹路径
 		const activeFile = this.app.workspace.getActiveFile();
@@ -32,11 +33,11 @@ export class SaveStickyNoteModal extends Modal {
 		
 		// 文件名输入
 		new Setting(contentEl)
-			.setName('文件名')
-			.setDesc('输入文件名（无需 .md 后缀）')
+			.setName(t('modal.filename'))
+			.setDesc(t('modal.filename-desc'))
 			.addText(text => {
 				this.fileNameInput = text.inputEl;
-				text.setValue(`便签_${window.moment().format('YYYYMMDD_HHmmss')}`)
+				text.setValue(`${t('common.new-note-prefix')}${window.moment().format('YYYYMMDD_HHmmss')}`)
 					.onChange(() => {
 						// 实时验证文件名
 						const fileName = this.fileNameInput.value.trim();
@@ -62,18 +63,18 @@ export class SaveStickyNoteModal extends Modal {
 		
 		// 文件夹路径输入
 		new Setting(contentEl)
-			.setName('保存位置')
-			.setDesc('文件夹路径（留空保存到根目录）')
+			.setName(t('modal.save-location'))
+			.setDesc(t('modal.save-location-desc'))
 			.addText(text => {
 				this.folderPathInput = text.inputEl;
 				text.setValue(defaultFolder)
-					.setPlaceholder('例如: 我的文件夹/子文件夹');
+					.setPlaceholder(t('modal.save-location-placeholder'));
 				text.inputEl.addClass('webnovel-settings-input-full');
 			});
 		
 		// 提示信息
 		contentEl.createEl('p', { 
-			text: '提示：默认保存到当前工作文件夹',
+			text: t('modal.save-hint'),
 			cls: 'setting-item-description'
 		});
 		
@@ -81,11 +82,11 @@ export class SaveStickyNoteModal extends Modal {
 		const buttonContainer = contentEl.createDiv({ cls: 'modal-button-container' });
 		buttonContainer.addClass('webnovel-btn-container-end');
 		
-		const cancelBtn = buttonContainer.createEl('button', { text: '取消' });
+		const cancelBtn = buttonContainer.createEl('button', { text: t('common.cancel') });
 		cancelBtn.onclick = () => this.close();
 		
 		const saveBtn = buttonContainer.createEl('button', { 
-			text: '保存',
+			text: t('common.save'),
 			cls: 'mod-cta'
 		});
 		saveBtn.onclick = () => {
@@ -93,7 +94,7 @@ export class SaveStickyNoteModal extends Modal {
 			const folderPath = this.folderPathInput.value.trim();
 			
 			if (!fileName) {
-				new Notice('[错误] 请输入文件名');
+				new Notice(t('modal.please-enter-filename'));
 				this.fileNameInput.focus();
 				return;
 			}
@@ -132,27 +133,27 @@ export class ConfirmCloseModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 		
-		contentEl.createEl('h2', { text: '有未保存的更改' });
+		contentEl.createEl('h2', { text: t('modal.unsaved-changes') });
 		
 		contentEl.createEl('p', { 
-			text: '便签内容已修改但尚未保存，是否要保存更改？'
+			text: t('modal.unsaved-changes-desc')
 		});
 		
 		// 按钮
 		const buttonContainer = contentEl.createDiv({ cls: 'modal-button-container' });
 		buttonContainer.addClass('webnovel-btn-container-end');
 		
-		const dontSaveBtn = buttonContainer.createEl('button', { text: '不保存' });
+		const dontSaveBtn = buttonContainer.createEl('button', { text: t('modal.do-not-save') });
 		dontSaveBtn.onclick = () => {
 			this.onSubmit(false);
 			this.close();
 		};
 		
-		const cancelBtn = buttonContainer.createEl('button', { text: '取消' });
+		const cancelBtn = buttonContainer.createEl('button', { text: t('common.cancel') });
 		cancelBtn.onclick = () => this.close();
 		
 		const saveBtn = buttonContainer.createEl('button', { 
-			text: '保存',
+			text: t('common.save'),
 			cls: 'mod-cta'
 		});
 		saveBtn.onclick = () => {
@@ -210,7 +211,7 @@ export class FloatingStickyNote extends Component {
 				id: crypto.randomUUID().substring(0, 8),
 				filePath: options.file?.path,
 				content: options.content || "",
-				title: options.title || (options.file ? options.file.basename : "新便签"),
+				title: options.title || (options.file ? options.file.basename : t('notice.new-note-title')),
 				top: "150px",
 				left: "150px",
 				width: "320px",
@@ -349,10 +350,10 @@ export class FloatingStickyNote extends Component {
 		// 创建按钮
 		const pinBtn = this.createButton(controlsEl, 'pin', this.state.isPinned);
 		const saveBtn = this.createButton(controlsEl, 'save');
-		saveBtn.title = '保存便签内容 (Ctrl+S)';
+		saveBtn.title = t('common.note-save-content');
 		saveBtn.setCssProps({ opacity: '0.5' });
 		const syncBtn = this.state.filePath ? this.createButton(controlsEl, 'refresh-cw') : null;
-		if (syncBtn) syncBtn.title = '从关联文档同步内容';
+		if (syncBtn) syncBtn.title = t('common.note-sync-from-doc');
 		const toggleEditBtn = this.createButton(controlsEl, this.state.isEditing ? 'eye' : 'pencil');
 		const paletteBtn = this.createButton(controlsEl, 'palette', false, 'palette-btn-target');
 		const closeBtn = controlsEl.createEl('button', { cls: 'my-sticky-close' });
@@ -498,7 +499,7 @@ export class FloatingStickyNote extends Component {
 						this.lastSavedContent = this.state.content;
 						if (this.state.isEditing) this.textareaEl.value = this.state.content || '';
 						await this.renderContent();
-						new Notice('[成功] 已从文档同步内容');
+						new Notice(t('modal.note-synced'));
 					}
 				}
 			})();
@@ -548,7 +549,7 @@ export class FloatingStickyNote extends Component {
 				if (file instanceof TFile) {
 					void this.app.vault.modify(file, this.state.content || "");
 					this.lastSavedContent = this.state.content || ""; // 更新最后保存的内容
-					new Notice("[成功] 便签已同步至原文档");
+					new Notice(t('modal.note-synced-to-doc'));
 				}
 				return; 
 			}
@@ -567,7 +568,7 @@ export class FloatingStickyNote extends Component {
 
 						// 检查文件是否已存在
 						if (this.app.vault.getAbstractFileByPath(fullPath)) {
-							new Notice(`[错误] 文件已存在: ${fullPath}`);
+							new Notice(t('modal.file-already-exists', { path: fullPath }));
 							return;
 						}
 
@@ -582,10 +583,10 @@ export class FloatingStickyNote extends Component {
 						if (titleEl) titleEl.innerText = this.state.title;
 
 						this.saveState();
-						new Notice(`[成功] 已保存为: ${fullPath}`);
+						new Notice(t('modal.saved-as', { path: fullPath }));
 					} catch (error) {
 						console.error('保存便签失败:', error);
-						new Notice(`[错误] 保存失败: ${error}`);
+						new Notice(t('modal.save-failed', { error: String(error) }));
 					}
 				})();
 			});
@@ -621,7 +622,7 @@ export class FloatingStickyNote extends Component {
 								const file = this.app.vault.getAbstractFileByPath(this.state.filePath);
 								if (file instanceof TFile) {
 									await this.app.vault.modify(file, this.state.content || "");
-									new Notice("[成功] 便签已保存");
+									new Notice(t('modal.note-saved'));
 								}
 								this.close();
 							} else {
@@ -634,15 +635,15 @@ export class FloatingStickyNote extends Component {
 											}
 											const fullPath = folderPath ? `${folderPath}/${fileName}` : fileName;
 											if (this.app.vault.getAbstractFileByPath(fullPath)) {
-												new Notice(`[错误] 文件已存在: ${fullPath}`);
+												new Notice(t('modal.file-already-exists', { path: fullPath }));
 												return;
 											}
 											await this.app.vault.create(fullPath, this.state.content || "");
-											new Notice(`[成功] 已保存为: ${fullPath}`);
+											new Notice(t('modal.saved-as', { path: fullPath }));
 											this.close();
 										} catch (error) {
 											console.error('保存便签失败:', error);
-											new Notice(`[错误] 保存失败: ${error}`);
+											new Notice(t('modal.save-failed', { error: String(error) }));
 										}
 									})();
 								});
@@ -667,12 +668,13 @@ export class FloatingStickyNote extends Component {
 
 		const bgWithAlpha = hexToRgba(this.state.color, this.plugin.settings.noteOpacity);
 
-		// CSS 自定义属性必须用 style.setProperty，setCssProps 无法设置
-		this.containerEl.style.setProperty('--sticky-zoom', (this.state.zoomLevel || 1).toString());
-		this.containerEl.style.setProperty('--note-bg-color', this.state.color);
-		this.containerEl.style.setProperty('--note-bg-color-alpha', bgWithAlpha);
-		this.containerEl.style.setProperty('--note-text-color', this.state.textColor || '#2C3E50');
-
+			// CSS 自定义属性通过 setCssProps 设置
+			this.containerEl.setCssProps({
+				"--sticky-zoom": (this.state.zoomLevel || 1).toString(),
+				"--note-bg-color": this.state.color,
+				"--note-bg-color-alpha": bgWithAlpha,
+				"--note-text-color": this.state.textColor || "#2C3E50",
+			});
 		this.containerEl.classList.toggle('is-pinned', this.state.isPinned);
 	}
 

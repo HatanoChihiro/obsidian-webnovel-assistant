@@ -1,4 +1,5 @@
 import { MarkdownView } from 'obsidian';
+import { t } from '../i18n';
 import { hexToRgba, formatTime, parseGoal } from '../utils';
 import type { ObsStatsPayload } from '../types/stats';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
@@ -39,7 +40,7 @@ export class ObsHtmlBuilder {
 		const dailyGoal = this.plugin.settings.dailyGoal || 0;
 
 
-		// 榜单进度：基于目录判断，无活跃 MarkdownView 时使用上次文件夹
+		// 任务进度：基于目录判断，无活跃 MarkdownView 时使用上次文件夹
 		let rankingWords = 0;
 		let rankingGoal = 0;
 		let rankingFolder = '';
@@ -166,16 +167,16 @@ export class ObsHtmlBuilder {
 		let timeRowHtml = '';
 		if (this.plugin.settings.obs.obsShowFocusTime || this.plugin.settings.obs.obsShowSlackTime || this.plugin.settings.obs.obsShowTotalTime) {
 			timeRowHtml = `\n\t<div class="time-row">`;
-			if (this.plugin.settings.obs.obsShowTotalTime) timeRowHtml += `\n\t\t<div class="time-item"><div class="time-label">总计时间</div><div class="time-value" id="totalTime">00:00:00</div></div>`;
-			if (this.plugin.settings.obs.obsShowFocusTime) timeRowHtml += `\n\t\t<div class="time-item"><div class="time-label">专注时间</div><div class="time-value focus" id="focusTime">00:00:00</div></div>`;
-			if (this.plugin.settings.obs.obsShowSlackTime) timeRowHtml += `\n\t\t<div class="time-item"><div class="time-label">摸鱼时间</div><div class="time-value slack" id="slackTime">00:00:00</div></div>`;
+			if (this.plugin.settings.obs.obsShowTotalTime) timeRowHtml += `\n\t\t<div class="time-item"><div class="time-label">${t('obs.total-time')}</div><div class="time-value" id="totalTime">00:00:00</div></div>`;
+			if (this.plugin.settings.obs.obsShowFocusTime) timeRowHtml += `\n\t\t<div class="time-item"><div class="time-label">${t('obs.focus-time')}</div><div class="time-value focus" id="focusTime">00:00:00</div></div>`;
+			if (this.plugin.settings.obs.obsShowSlackTime) timeRowHtml += `\n\t\t<div class="time-item"><div class="time-label">${t('obs.slack-time')}</div><div class="time-value slack" id="slackTime">00:00:00</div></div>`;
 			timeRowHtml += `\n\t</div>\n\t<div class="divider"></div>`;
 		}
 
 		let todayGoalHtml = '';
 		if (this.plugin.settings.obs.obsShowDailyGoal) {
 			todayGoalHtml += `\n\t<div class="goal-row">
-		<span class="goal-label">今日目标字数</span>
+		<span class="goal-label">${t('obs.daily-goal')}</span>
 		<span class="goal-value"><span id="dailyWords" class="current-val">0</span> <span class="sep">/</span> <span id="dailyGoalValue" class="target-val">0</span><span class="percent" id="dailyPercentText">0%</span></span>
 	</div>
 	<div class="progress-bg">
@@ -184,7 +185,7 @@ export class ObsHtmlBuilder {
 		}
 		if (this.plugin.settings.obs.obsShowTodayWords) {
 			todayGoalHtml += `\n\t<div class="goal-row"${this.plugin.settings.obs.obsShowDailyGoal ? ' style="margin-top:8px"' : ''}>
-		<span class="goal-label">本章目标字数</span>
+		<span class="goal-label">${t('obs.chapter-goal')}</span>
 		<span class="goal-value"><span id="todayWords" class="current-val">0</span> <span class="sep">/</span> <span id="goalValue" class="target-val">0</span><span class="percent" id="percentText">0%</span></span>
 	</div>
 	<div class="progress-bg">
@@ -195,7 +196,7 @@ export class ObsHtmlBuilder {
 		let sessionRowHtml = '';
 		if (this.plugin.settings.obs.obsShowSessionWords) {
 			sessionRowHtml = `\n\t<div class="session-row">
-		<span>本场净增</span>
+		<span>${t('obs.session-words')}</span>
 		<span class="val" id="sessionWords">0</span>
 	</div>`;
 		}

@@ -1,6 +1,7 @@
 import type { App, TAbstractFile} from 'obsidian';
-import { TFile, TFolder, parseFrontMatterAliases, MarkdownView } from 'obsidian';
+import { TFile, TFolder, parseFrontMatterAliases } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
+import { getDefaultFileName, getDefaultFileNameCandidates } from '../i18n/data-keys';
 
 export interface LoreEntry {
 	file: TFile;
@@ -83,14 +84,25 @@ export class CharacterManager {
 		});
 	}
 
-	private handleFileChange(file: TAbstractFile): void {
+	/**
+	 * 检查路径是否在设定文件夹内（支持多语言文件夹名）
+	 */
+	private isLorePath(bookPath: string, parentPath: string): boolean {
+		const candidates = new Set<string>();
+		candidates.add(this.plugin.settings.loreFolderName || getDefaultFileName('loreFolderName'));
+		for (const name of getDefaultFileNameCandidates('loreFolderName')) candidates.add(name);
+		for (const loreFolderName of candidates) {
+			const expectedLorePath = bookPath === "/" ? loreFolderName : bookPath + "/" + loreFolderName;
+			if (parentPath === expectedLorePath || parentPath.startsWith(expectedLorePath + "/")) return true;
+		}
+		return false;
+	}
+private handleFileChange(file: TAbstractFile): void {
 		if (file instanceof TFile && file.extension === 'md') {
 			const bookPath = this.getBookPathForFile(file);
 			if (bookPath) {
-				const loreFolderName = this.plugin.settings.loreFolderName || '设定';
 				const parentPath = file.parent?.path || '';
-				const expectedLorePath = bookPath === '/' ? loreFolderName : `${bookPath}/${loreFolderName}`;
-				if (parentPath === expectedLorePath || parentPath.startsWith(expectedLorePath + '/')) {
+				if (this.isLorePath(bookPath, parentPath)) {
 					this.plugin.adaptiveDebounceManager.debounceFixed('rebuild-character-cache', () => {
 						this.rebuildCache().then(() => {
 							this.app.workspace.updateOptions();
@@ -184,11 +196,9 @@ export class CharacterManager {
 		const bookPath = this.getBookPathForFile(file);
 		if (!bookPath) return;
 
-		const loreFolderName = this.plugin.settings.loreFolderName || '设定';
 		const parentPath = file.parent?.path || '';
-		const expectedLorePath = bookPath === '/' ? loreFolderName : `${bookPath}/${loreFolderName}`;
 
-		if (parentPath === expectedLorePath || parentPath.startsWith(expectedLorePath + '/')) {
+		if (this.isLorePath(bookPath, parentPath)) {
 			if (!targetCache.has(bookPath)) {
 				targetCache.set(bookPath, new Map());
 				targetLowerMap.set(bookPath, new Map());
@@ -240,7 +250,7 @@ export class CharacterManager {
 					const chunk = lines.slice(startLine, endLine).join('\n');
 					
 					// 查找 `别名：`、`**别名**：` 等格式
-					const aliasMatch = chunk.match(/(?:\*\*|__)?别名(?:\*\*|__)?\s*[:：]\s*([^\n]+)/);
+					const aliasMatch = chunk.match(/(?:\*\*|__)?(?:别名|Alias)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/);
 					if (aliasMatch && aliasMatch[1]) {
 						// 支持用逗号、顿号分隔多个别名
 						const rawAliases = aliasMatch[1].split(/[,，、/|]/);

@@ -2,6 +2,7 @@ import type { App} from 'obsidian';
 import { Modal } from 'obsidian';
 import type { DailyStat } from '../types/settings';
 import { formatCount } from '../utils/format';
+import { t } from '../i18n';
 
 // 热力图等级 → CSS 类名
 export const HEAT_LEVELS = [
@@ -80,7 +81,7 @@ export function calcActiveHours(history: Record<string, DailyStat>, startDate: s
 			else if (ranked[i].hour === hi + 1) hi = ranked[i].hour;
 			else break;
 		}
-		return `${lo}-${hi + 1}\u65F6`;
+		return t('common.active-hours-range', { start: lo, end: hi + 1 });
 	}
 
 export function calcDailyAverage(history: Record<string, DailyStat>, startDate: string, endDate: string): number {
@@ -132,17 +133,17 @@ export class HistoryStatsModal extends Modal {
 		contentEl.addClass('history-stats-modal');
 		this.modalEl.addClass('history-stats-modal-wide');
 
-		this.titleEl = contentEl.createEl('h2', { text: '写作数据追踪' });
+		this.titleEl = contentEl.createEl('h2', { text: t('modal.writing-data-tracking') });
 
 		// === 效率总览 ===
 		this.efficiencyContainer = contentEl.createDiv({ cls: 'stats-efficiency-row' });
 		this.renderEfficiency();
 
 		// === 热力图 ===
-		contentEl.createEl('h3', { text: '热力图', cls: 'stats-section-title' });
+		contentEl.createEl('h3', { text: t('modal.heatmap'), cls: 'stats-section-title' });
 
 		this.heatDateRowEl = contentEl.createDiv({ cls: 'stats-heat-date-row' });
-		this.heatDateRowEl.createDiv({ cls: 'stats-heat-date-label', text: '起始' });
+		this.heatDateRowEl.createDiv({ cls: 'stats-heat-date-label', text: t('modal.start-date-label') });
 		const defaultStart = window.moment().clone().startOf('year').format('YYYY-MM-DD');
 		const defaultEnd = window.moment().clone().endOf('year').format('YYYY-MM-DD');
 		this.heatStartInput = this.heatDateRowEl.createEl('input', {
@@ -150,14 +151,14 @@ export class HistoryStatsModal extends Modal {
 			cls: 'stats-heat-date-input'
 		});
 		this.heatStartInput.value = this.plugin.settings.heatmapStartDate || defaultStart;
-		this.heatDateRowEl.createDiv({ cls: 'stats-heat-date-label', text: '结束' });
+		this.heatDateRowEl.createDiv({ cls: 'stats-heat-date-label', text: t('modal.end-date-label') });
 		this.heatEndInput = this.heatDateRowEl.createEl('input', {
 			type: 'date',
 			cls: 'stats-heat-date-input'
 		});
 		this.heatEndInput.value = this.plugin.settings.heatmapEndDate || defaultEnd;
 
-		const resetBtn = this.heatDateRowEl.createEl('button', { text: '今年', cls: 'stats-tab-btn' });
+		const resetBtn = this.heatDateRowEl.createEl('button', { text: t('modal.this-year'), cls: 'stats-tab-btn' });
 		resetBtn.onclick = async () => {
 			this.plugin.settings.heatmapStartDate = '';
 			this.plugin.settings.heatmapEndDate = '';
@@ -206,16 +207,16 @@ export class HistoryStatsModal extends Modal {
 		this.renderHeatmap();
 
 		// === 详细统计 ===
-		contentEl.createEl('h3', { text: '详细统计', cls: 'stats-section-title' });
+		contentEl.createEl('h3', { text: t('modal.detailed-stats'), cls: 'stats-section-title' });
 
 		const filterRow = contentEl.createDiv({ cls: "stats-filter-row" });
 
 this.tabGroupEl = filterRow.createDiv({ cls: "stats-time-tabs" });
 const tabs = [
-{ id: "day", name: "近30日" },
-{ id: "week", name: "按周" },
-{ id: "month", name: "按月" },
-{ id: "year", name: "按年" }
+{ id: "day", name: t("modal.last-30-days") },
+{ id: "week", name: t("modal.by-week") },
+{ id: "month", name: t("modal.by-month") },
+{ id: "year", name: t("modal.by-year") }
 ];
 tabs.forEach(tab => {
 const btn = this.tabGroupEl.createEl("button", { text: tab.name, cls: "stats-tab-btn" });
@@ -230,10 +231,10 @@ this.renderData();
 
 this.metricGroupEl = filterRow.createDiv({ cls: "stats-metric-tabs" });
 const metricTabs = [
-{ id: "words", name: "字数" },
-{ id: "totalTime", name: "总时间" },
-{ id: "focusTime", name: "专注" },
-{ id: "slackTime", name: "摸鱼" }
+{ id: "words", name: t("modal.metric-words") },
+{ id: "totalTime", name: t("modal.metric-total-time") },
+{ id: "focusTime", name: t("modal.metric-focus-time") },
+{ id: "slackTime", name: t("modal.metric-slack-time") }
 ];
 metricTabs.forEach(tab => {
 const btn = this.metricGroupEl.createEl("button", { text: tab.name, cls: "stats-tab-btn" });
@@ -271,11 +272,11 @@ this.scrollWrapper = contentEl.createDiv({ cls: 'stats-chart-scroll-wrapper' });
 			for (const stat of Object.values(this.history)) { totalWords += stat.addedWords || 0; }
 
 			const metrics = [
-				{ label: '连续创作', value: `${streak}天` },
-				{ label: '专注效率', value: `${focusRate}%` },
-				{ label: '活跃时段', value: activeHours || '--' },
-				{ label: '日均字数', value: formatCount(dailyAvg) },
-				{ label: '累计字数', value: formatCount(totalWords) },
+				{ label: t('common.consecutive-creation'), value: t('common.consecutive-days', { count: streak }) },
+				{ label: t('common.focus-efficiency'), value: t('common.focus-percent', { rate: focusRate }) },
+				{ label: t('common.active-period'), value: activeHours || '--' },
+				{ label: t('common.daily-word-average'), value: formatCount(dailyAvg) },
+				{ label: t('common.accumulated-words'), value: formatCount(totalWords) },
 			];
 
 		metrics.forEach(m => {
@@ -307,17 +308,17 @@ this.scrollWrapper = contentEl.createDiv({ cls: 'stats-chart-scroll-wrapper' });
 		const legendRow = this.heatDateRowEl.createDiv({ cls: 'stats-heatmap-legend-inline' });
 		// Negative words legend cell
 const negCell = legendRow.createDiv({ cls: "stats-heatmap-legend-cell heat-negative" });
-negCell.setAttribute("title", "删减/负增长");
+negCell.setAttribute("title", t('modal.legend-negative'));
 
 HEAT_LEVELS.forEach(level => {
 			const cell = legendRow.createDiv({ cls: `stats-heatmap-legend-cell ${level.cls}` });
 			const nextLevel = HEAT_LEVELS[HEAT_LEVELS.indexOf(level) + 1];
 			if (level.min === 0) {
-				cell.setAttribute('title', '0字');
+				cell.setAttribute('title', t('modal.legend-0'));
 			} else if (nextLevel) {
-				cell.setAttribute('title', `${level.min}字 - ${nextLevel.min - 1}字`);
+				cell.setAttribute('title', t('modal.legend-range', { min: level.min, max: nextLevel.min - 1 }));
 			} else {
-				cell.setAttribute('title', `${level.min}字+`);
+				cell.setAttribute('title', t('modal.legend-plus', { min: level.min }));
 			}
 		});
 
@@ -336,7 +337,7 @@ HEAT_LEVELS.forEach(level => {
 		}
 
 		const gridContainer = this.heatContainer.createDiv({ cls: 'stats-heatmap-grid' });
-		const dayLabels = ['一', '二', '三', '四', '五', '六', '日'];
+		const dayLabels = t('common.heatmap-day-labels').split('');
 
 		for (let dayOfWeek = 0; dayOfWeek < 7; dayOfWeek++) {
 			const row = gridContainer.createDiv({ cls: 'stats-heatmap-row' });
@@ -359,7 +360,9 @@ HEAT_LEVELS.forEach(level => {
 					const words = stat.addedWords || 0;
 					cell.addClass(getHeatClass(words));
 					const focusH = (stat.focusMs / 3600000).toFixed(1);
-					cell.setAttribute('title', `${dateStr}\n字数: ${words}\n专注: ${focusH}h`);
+					cell.setAttribute('title', `${dateStr}
+${t('modal.metric-words')}: ${words}
+${t('modal.metric-focus-time')}: ${focusH}h}`);
 				} else if (cellDate.isAfter(now, 'day')) {
 					cell.addClass('stats-heatmap-future');
 				} else {
@@ -381,7 +384,7 @@ HEAT_LEVELS.forEach(level => {
 		if (this.currentTab === 'day') displayKeys = keys.slice(-30);
 
 		if (displayKeys.length === 0) {
-			this.chartContainer.createDiv({ text: '暂无数据', cls: 'stats-empty-msg' });
+			this.chartContainer.createDiv({ text: t('modal.no-data'), cls: 'stats-empty-msg' });
 			return;
 		}
 
@@ -427,7 +430,11 @@ HEAT_LEVELS.forEach(level => {
 			}
 
 			const totalMs = data.focusMs + data.slackMs;
-			bar.setAttribute('title', `时间: ${key}\n总字数: ${data.words.toLocaleString()}\n总计时间: ${formatDuration(totalMs)}\n专注时间: ${formatDuration(data.focusMs)}\n摸鱼时间: ${formatDuration(data.slackMs)}`);
+			bar.setAttribute('title', `${t('modal.metric-words')}: ${key}
+${t('common.accumulated-words')}: ${data.words.toLocaleString()}
+${t('modal.metric-total-time')}: ${formatDuration(totalMs)}
+${t('modal.metric-focus-time')}: ${formatDuration(data.focusMs)}
+${t('modal.metric-slack-time')}: ${formatDuration(data.slackMs)}`);
 
 			col.createDiv({ cls: 'stats-large-label', text: this.formatLabel(key, key === currentKey) });
 
@@ -607,10 +614,10 @@ const vTension = 0.2;
 
 	formatLabel(key: string, isCurrent: boolean): string {
 		if (isCurrent) {
-		if (this.currentTab === 'day') return '今日';
-		if (this.currentTab === 'week') return '本周';
-		if (this.currentTab === 'month') return '本月';
-		if (this.currentTab === 'year') return '今年';
+		if (this.currentTab === 'day') return t('common.today');
+		if (this.currentTab === 'week') return t('common.this-week');
+		if (this.currentTab === 'month') return t('common.this-month');
+		if (this.currentTab === 'year') return t('common.this-year');
 		}
 		if (this.currentTab === 'day') return key.substring(5);
 		if (this.currentTab === 'month') return key.substring(2);
