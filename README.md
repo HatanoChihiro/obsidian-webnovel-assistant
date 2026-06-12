@@ -20,7 +20,7 @@ Full bilingual UI (Chinese & English) — homepage, word count, goal tracking, f
 
 <br /><br />
 
-<img width="1280" alt="homepage" src="assets/homepage.png" />
+<img width="100%" alt="homepage" src="assets/homepage.png" />
 
 </div>
 
@@ -28,91 +28,43 @@ Full bilingual UI (Chinese & English) — homepage, word count, goal tracking, f
 
 ## ✨ Feature Highlights
 
-<table>
-<tr>
-<td width="50%">
-
 ### 🏠 Creative Homepage
-- **Full-width Dashboard** — 2×2 grid fills editor
-- **Dynamic Welcome** — time-based greeting, total words & net increase
-- **Novel Overview** — In Progress / Drafting / Paused / Completed
-- **Stats Panel** — efficiency card, 365 heatmap, 30-day trend
-- **One-Click New Novel** — metadata dialog → auto-create workspace
+<sub>Full-width Dashboard · Dynamic Welcome · Novel Overview · Stats Panel · One-Click New Novel</sub>
 
-</td>
-<td width="50%">
-
-<img width="640" alt="homepage" src="assets/homepage.gif" />
-
-</td>
-</tr>
-<tr>
-<td width="50%">
+<img width="100%" alt="homepage" src="assets/homepage.gif" />
 
 ### 🌑 Immersive Writing Mode
-- **Full-screen Focus** — hide all distractions
-- **Dynamic Dashboard** — title, timer, words & focus score
-- **Slot-based Layout** — panels to top/bottom/left/right, main area auto-snaps
+<sub>Full-screen Focus · Dynamic Dashboard · Slot-based Layout</sub>
 
-</td>
-<td width="50%">
-
-<img width="640" alt="immersive-mode" src="assets/immersive-mode.png" />
-
-</td>
-</tr>
-<tr>
-<td width="50%">
+<img width="100%" alt="immersive-mode" src="assets/immersive-mode.png" />
 
 ### 📊 Word Count & Goals
-- **3 Counting Modes** — Webnovel / Standard / Obsidian Native
-- **Multi-direction Goal Tracking** — chapter, daily & timed task goals, real-time progress
-- **Strict Chapter Mode** — restrict which documents count as "chapters" for precise word stats
-- **Smart Chapter Sorting** — overrides Obsidian's sort logic, supports regex patterns
-- **Real-time Word Reminder** — left gutter area shows live word count progress
-- **Folder Word Count Display** — file & folder word counts shown in explorer sidebar
+<sub>3 Counting Modes · Multi-direction Goal Tracking · Strict Chapter Mode · Smart Chapter Sorting · Real-time Word Reminder · Folder Word Count Display</sub>
 
-</td>
-<td width="50%">
-
-<img width="640" alt="word-count-gutter" src="assets/word-count-gutter.gif" />
-
-</td>
-</tr>
-<tr>
-<td width="50%">
+<img width="100%" alt="word-count-gutter" src="assets/word-count-gutter.gif" />
 
 ### ⏱️ Focus Time Tracking
-- Auto focus vs. slack detection
-- Web Worker — zero editing impact
-- **365 Heatmap**, bar+line trend, efficiency card, cumulative stats
+<sub>Auto focus vs. slack detection · Web Worker · 365 Heatmap · Bar+line trend · Efficiency card</sub>
 
-</td>
-<td width="50%">
-
-<img width="640" alt="history-chart" src="assets/history-chart.gif" />
-
-</td>
-</tr>
-</table>
+<img width="100%" alt="history-chart" src="assets/history-chart.gif" />
 
 ### 📝 Creative Assistants
 
 <table>
 <tr>
-<td width="33%" align="center"><b>Foreshadowing Manager</b><br /><sub>Mark → Track → Recover across chapters</sub><br /><br /><img width="320" alt="foreshadowing" src="assets/foreshadowing.gif" /></td>
-<td width="33%" align="center"><b>Timeline System</b><br /><sub>Events, multi-chapter links, custom types</sub><br /><br /><img width="320" alt="timeline" src="assets/timeline.gif" /></td>
-<td width="33%" align="center"><b>Chapter Corkboard</b><br /><sub>Card overview, status & synopsis editing</sub><br /><br /><img width="320" alt="corkboard" src="assets/corkboard.gif" /></td>
+<td width="33%" align="center"><b>Foreshadowing Manager</b><br /><sub>Mark → Track → Recover across chapters</sub><br /><br /><img width="100%" alt="foreshadowing" src="assets/foreshadowing.gif" /></td>
+<td width="33%" align="center"><b>Timeline System</b><br /><sub>Events, multi-chapter links, custom types</sub><br /><br /><img width="100%" alt="timeline" src="assets/timeline.gif" /></td>
+<td width="33%" align="center"><b>Chapter Corkboard</b><br /><sub>Card overview, status & synopsis editing</sub><br /><br /><img width="100%" alt="corkboard" src="assets/corkboard.gif" /></td>
 </tr>
 <tr>
-<td width="33%" align="center"><b>Lore Quick Lookup</b><br /><sub>Auto-highlight, hover preview, right-click add</sub><br /><br /><img width="320" alt="lore-lookup" src="assets/lore-lookup.gif" /></td>
-<td width="33%" align="center"><b>Sticky Notes</b><br /><sub>Floating, auto-save, sync, Markdown render</sub><br /><br /><img width="320" alt="sticky-note" src="assets/sticky-note.gif" /></td>
-<td width="33%" align="center"><b>Task Tracker</b><br /><sub>Create periodic tasks, self-driven deadlines</sub><br /><br /><img width="320" alt="task" src="assets/task.gif" /></td>
+<td width="33%" align="center"><b>Lore Quick Lookup</b><br /><sub>Auto-highlight, hover preview, right-click add</sub><br /><br /><img width="100%" alt="lore-lookup" src="assets/lore-lookup.gif" /></td>
+<td width="33%" align="center"><b>Sticky Notes</b><br /><sub>Floating, auto-save, sync, Markdown render</sub><br /><br /><img width="100%" alt="sticky-note" src="assets/sticky-note.gif" /></td>
+<td width="33%" align="center"><b>Task Tracker</b><br /><sub>Create periodic tasks, self-driven deadlines</sub><br /><br /><img width="100%" alt="task" src="assets/task.gif" /></td>
 </tr>
 <tr>
-<td width="33%" align="center"><b>Advanced Search</b><br /><sub>Search by book, global or custom scope, quick jump</sub><br /><br /><img width="320" alt="search" src="assets/search.gif" /></td>
-<td width="33%" align="center"><b>Merge Chapters</b><br /><sub>Merge all chapters in a folder by sort order</sub><br /><br /><img width="320" alt="merge" src="assets/merge.gif" /></td>
-<td width="33%" align="center"><b>Auto-Create Next Chapter</b><br /><sub>Auto-create numbered chapter documents</sub><br /><br /><img width="320" alt="auto-create-next" src="assets/auto-create-next.gif" /></td>
+<td width="33%" align="center"><b>Advanced Search</b><br /><sub>Search by book, global or custom scope</sub><br /><br /><img width="100%" alt="search" src="assets/search.gif" /></td>
+<td width="33%" align="center"><b>Merge Chapters</b><br /><sub>Merge all chapters in a folder by sort order</sub><br /><br /><img width="100%" alt="merge" src="assets/merge.gif" /></td>
+<td width="33%" align="center"><b>Auto-Create Next Chapter</b><br /><sub>Auto-create numbered chapter documents</sub><br /><br /><img width="100%" alt="auto-create-next" src="assets/auto-create-next.gif" /></td>
 </tr>
 </table>
 
@@ -233,7 +185,7 @@ See [OBS Overlay CSS Guide](doc/OBS_OVERLAY_CSS_GUIDE_EN.md) for full customizat
 
 <br /><br />
 
-<img width="1280" alt="homepage" src="assets/homepage.png" />
+<img width="100%" alt="homepage" src="assets/homepage.png" />
 
 </div>
 
@@ -241,91 +193,43 @@ See [OBS Overlay CSS Guide](doc/OBS_OVERLAY_CSS_GUIDE_EN.md) for full customizat
 
 ## ✨ 功能一览
 
-<table>
-<tr>
-<td width="50%">
-
 ### 🏠 创作主页
-- **全宽仪表盘** — 2行×2列网格，填满编辑器
-- **动态欢迎语** — 根据时段变化，显示总字数与今日净增
-- **作品总览** — 连载中/存稿中/已暂停/已完结一目了然
-- **数据面板** — 效率总览、365热力图、30日趋势
-- **一键新建** — 弹窗填元数据 → 自动创建工作区
+<sub>全宽仪表盘 · 动态欢迎语 · 作品总览 · 数据面板 · 一键新建</sub>
 
-</td>
-<td width="50%">
-
-<img width="640" alt="homepage" src="assets/homepage.gif" />
-
-</td>
-</tr>
-<tr>
-<td width="50%">
+<img width="100%" alt="homepage" src="assets/homepage.gif" />
 
 ### 🌑 沉浸写作模式
-- **全屏专注** — 隐藏所有干扰
-- **动态仪表盘** — 标题、计时器、字数与专注度
-- **插槽化布局** — 辅助面板分配上下左右，主区自动贴边
+<sub>全屏专注 · 动态仪表盘 · 插槽化布局</sub>
 
-</td>
-<td width="50%">
-
-<img width="640" alt="immersive-mode" src="assets/immersive-mode.png" />
-
-</td>
-</tr>
-<tr>
-<td width="50%">
+<img width="100%" alt="immersive-mode" src="assets/immersive-mode.png" />
 
 ### 📊 字数统计与目标追踪
-- **3种字数统计模式** — 网文/标准/Obsidian原生
-- **多向目标追踪** — 章节、今日、任务目标，实时进度可视化
-- **严格章节模式** — 限制“章节”所包括的文档，精准计算字数
-- **智能章节排序** — 覆盖Obsidian排序逻辑，支持正则表达式
-- **实时字数提醒** — 编辑器左侧行号位置提示实时字数进度
-- **文件夹字数显示** — 列表右侧显示文档和文件夹字数
+<sub>3种字数统计模式 · 多向目标追踪 · 严格章节模式 · 智能章节排序 · 实时字数提醒 · 文件夹字数显示</sub>
 
-</td>
-<td width="50%">
-
-<img width="640" alt="word-count-gutter" src="assets/word-count-gutter.gif" />
-
-</td>
-</tr>
-<tr>
-<td width="50%">
+<img width="100%" alt="word-count-gutter" src="assets/word-count-gutter.gif" />
 
 ### ⏱️ 专注时间追踪
-- 自动区分专注与摸鱼
-- Worker 线程 — 不影响编辑
-- **365热力图**、柱状+趋势、效率卡片、累计字数
+<sub>自动区分专注与摸鱼 · Worker线程 · 365热力图 · 柱状+趋势 · 效率卡片</sub>
 
-</td>
-<td width="50%">
-
-<img width="640" alt="history-chart" src="assets/history-chart.gif" />
-
-</td>
-</tr>
-</table>
+<img width="100%" alt="history-chart" src="assets/history-chart.gif" />
 
 ### 📝 创作辅助工具
 
 <table>
 <tr>
-<td width="33%" align="center"><b>伏笔管理</b><br /><sub>标注 → 追踪 → 多章节回收</sub><br /><br /><img width="320" alt="foreshadowing" src="assets/foreshadowing.gif" /></td>
-<td width="33%" align="center"><b>时间线系统</b><br /><sub>事件记录、多章节关联、类型分类</sub><br /><br /><img width="320" alt="timeline" src="assets/timeline.gif" /></td>
-<td width="33%" align="center"><b>章节一览</b><br /><sub>卡片式展示、状态标记、摘要编辑</sub><br /><br /><img width="320" alt="corkboard" src="assets/corkboard.gif" /></td>
+<td width="33%" align="center"><b>伏笔管理</b><br /><sub>标注 → 追踪 → 多章节回收</sub><br /><br /><img width="100%" alt="foreshadowing" src="assets/foreshadowing.gif" /></td>
+<td width="33%" align="center"><b>时间线系统</b><br /><sub>事件记录、多章节关联、类型分类</sub><br /><br /><img width="100%" alt="timeline" src="assets/timeline.gif" /></td>
+<td width="33%" align="center"><b>章节一览</b><br /><sub>卡片式展示、状态标记、摘要编辑</sub><br /><br /><img width="100%" alt="corkboard" src="assets/corkboard.gif" /></td>
 </tr>
 <tr>
-<td width="33%" align="center"><b>设定速查</b><br /><sub>自动标注、悬停预览、右键边写边建</sub><br /><br /><img width="320" alt="lore-lookup" src="assets/lore-lookup.gif" /></td>
-<td width="33%" align="center"><b>悬浮便签</b><br /><sub>多端同步、自动保存、Markdown渲染</sub><br /><br /><img width="320" alt="sticky-note" src="assets/sticky-note.gif" /></td>
-<td width="33%" align="center"><b>任务追踪</b><br /><sub>创建周期任务，自我驱动</sub><br /><br /><img width="320" alt="task" src="assets/task.gif" /></td>
+<td width="33%" align="center"><b>设定速查</b><br /><sub>自动标注、悬停预览、右键边写边建</sub><br /><br /><img width="100%" alt="lore-lookup" src="assets/lore-lookup.gif" /></td>
+<td width="33%" align="center"><b>悬浮便签</b><br /><sub>多端同步、自动保存、Markdown渲染</sub><br /><br /><img width="100%" alt="sticky-note" src="assets/sticky-note.gif" /></td>
+<td width="33%" align="center"><b>任务追踪</b><br /><sub>创建周期任务，自我驱动</sub><br /><br /><img width="100%" alt="task" src="assets/task.gif" /></td>
 </tr>
 <tr>
-<td width="33%" align="center"><b>高级搜索</b><br /><sub>支持当前书籍、全局、自定义，快速跳转</sub><br /><br /><img width="320" alt="search" src="assets/search.gif" /></td>
-<td width="33%" align="center"><b>合并章节</b><br /><sub>按照排序合并目录内所有章节</sub><br /><br /><img width="320" alt="merge" src="assets/merge.gif" /></td>
-<td width="33%" align="center"><b>自动创建下一章</b><br /><sub>自动创建带标号章节文档</sub><br /><br /><img width="320" alt="auto-create-next" src="assets/auto-create-next.gif" /></td>
+<td width="33%" align="center"><b>高级搜索</b><br /><sub>支持当前书籍、全局、自定义，快速跳转</sub><br /><br /><img width="100%" alt="search" src="assets/search.gif" /></td>
+<td width="33%" align="center"><b>合并章节</b><br /><sub>按照排序合并目录内所有章节</sub><br /><br /><img width="100%" alt="merge" src="assets/merge.gif" /></td>
+<td width="33%" align="center"><b>自动创建下一章</b><br /><sub>自动创建带标号章节文档</sub><br /><br /><img width="100%" alt="auto-create-next" src="assets/auto-create-next.gif" /></td>
 </tr>
 </table>
 
