@@ -4,7 +4,6 @@ import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ChapterSorter } from '../services/ChapterSorter';
 import { CORKBOARD_STATUS_MAP, getCorkboardStatusText, getCorkboardStatusKeys } from '../i18n/data-keys';
 import { t } from '../i18n';
-import { getDefaultFileNameCandidates } from '../i18n/data-keys';
 
 export const CORKBOARD_VIEW_TYPE = 'webnovel-corkboard';
 

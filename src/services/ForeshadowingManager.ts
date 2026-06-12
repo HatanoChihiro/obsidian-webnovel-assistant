@@ -5,7 +5,7 @@ import { ForeshadowingStatus } from '../types/foreshadowing';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { escapeRegex } from '../utils/validation';
 import { SerializedWriter } from '../utils/SerializedWriter';
-import { FORESHADOWING_STATUS_MAP, FORESHADOWING_LABEL_MAP, getForeshadowingLabel, getForeshadowingStatusText, getDefaultFileName, getDefaultFileNameCandidates } from '../i18n/data-keys';
+import { FORESHADOWING_STATUS_MAP, getForeshadowingLabel, getForeshadowingStatusText, getDefaultFileName, getDefaultFileNameCandidates } from '../i18n/data-keys';
 
 /**
  * 伏笔管理服务
@@ -73,7 +73,8 @@ export class ForeshadowingManager {
 				const newPath = (sourceFile.parent?.path || '') + '/' + expectedName + '.md';
 				try { await this.app.fileManager.renameFile(existing, newPath); } catch (e) { console.warn('[ForeshadowingManager] 重命名伏笔文件失败:', e); }
 			}
-			return this.app.vault.getAbstractFileByPath((sourceFile.parent?.path || '') + '/' + expectedName + '.md') || existing;
+			const found = this.app.vault.getAbstractFileByPath((sourceFile.parent?.path || '') + '/' + expectedName + '.md');
+				return found instanceof TFile ? found : existing;
 		}
 
 		const path = this.getForeshadowingFilePath(sourceFile);
@@ -304,7 +305,7 @@ export class ForeshadowingManager {
 		if (!ForeshadowingManager.entryPatternCache.has(key)) {
 			// LRU 缓存：超过限制时删除最早的条目
 			if (ForeshadowingManager.entryPatternCache.size >= ForeshadowingManager.MAX_CACHE_SIZE) {
-				const firstKey: string | undefined = ForeshadowingManager.entryPatternCache.keys().next().value;
+				const firstKey = Array.from(ForeshadowingManager.entryPatternCache.keys())[0];
 				if (firstKey !== undefined) {
 					ForeshadowingManager.entryPatternCache.delete(firstKey);
 				}

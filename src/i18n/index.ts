@@ -7,6 +7,11 @@ export type Locale = 'zh-CN' | 'en';
 
 const SUPPORTED_LOCALES: readonly Locale[] = ['zh-CN', 'en'];
 
+/** 类型守卫：校验 string 是否为合法 Locale */
+function isLocale(value: string): value is Locale {
+	return (SUPPORTED_LOCALES as readonly string[]).includes(value);
+}
+
 let currentLocale: Locale = 'zh-CN';
 let translations: Record<string, string> = {};
 
@@ -27,13 +32,13 @@ export function getSupportedLocales(): readonly Locale[] {
 /**
  * 设置语言并加载对应翻译
  */
-export async function setLocale(locale: Locale): Promise<void> {
-	if (!SUPPORTED_LOCALES.includes(locale)) {
+export async function setLocale(locale: string): Promise<void> {
+	const validatedLocale: Locale = isLocale(locale) ? locale : 'zh-CN';
+	if (!isLocale(locale)) {
 		console.warn(`[i18n] Unsupported locale: ${locale}, falling back to zh-CN`);
-		locale = 'zh-CN';
 	}
-	currentLocale = locale;
-	translations = await loadTranslations(locale);
+	currentLocale = validatedLocale;
+	translations = await loadTranslations(validatedLocale);
 }
 
 /**

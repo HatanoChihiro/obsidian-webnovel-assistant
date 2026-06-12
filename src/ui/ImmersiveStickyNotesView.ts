@@ -89,7 +89,7 @@ export class ImmersiveStickyNotesView extends ItemView {
 		void this.plugin.saveSettings();
 	}
 
-	async renderNotes() {
+	renderNotes() {
 		// 清空容器
 		const containerEl = this.containerEl;
 		containerEl.empty();
@@ -294,7 +294,7 @@ export class ImmersiveStickyNotesView extends ItemView {
 	}
 
 	async onOpen() {
-		this.containerEl.addClass('webnovel-immersive-sticky-container');await this.renderNotes();
+		this.containerEl.addClass('webnovel-immersive-sticky-container');this.renderNotes();
 	}
 
 	async onClose() {

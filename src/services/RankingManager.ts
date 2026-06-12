@@ -48,7 +48,8 @@ async createRankingFile(): Promise<TFile> {
 				try { await this.app.fileManager.renameFile(existing, newPath); } catch (e) { console.warn('[RankingManager] 重命名限时任务文件失败:', e); }
 			}
 			const foundPath = this.currentFolder ? this.currentFolder + '/' + expectedName + '.md' : expectedName + '.md';
-			return this.app.vault.getAbstractFileByPath(foundPath) || existing;
+			const found = this.app.vault.getAbstractFileByPath(foundPath);
+				return found instanceof TFile ? found : existing;
 		}
 
 		const path = this.getRankingFilePath();

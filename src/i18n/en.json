@@ -536,7 +536,7 @@
   "common.word-count-status": "Words: {count} (Chinese: {cnCount})",
   "common.word-count-progress": "Words: {current} / {target} ({percent}%)",
   "common.net-increase": "Net: {count}",
-  "common.status-bar-format": "[{state}] {status} {progress}",
+  "common.status-bar-format": "[{state}] {status}",
   "common.click-to-toggle-status": "Click to toggle status",
   "common.click-to-switch-status": "Click to switch status",
   "common.click-add-synopsis": "Click to add chapter synopsis...",

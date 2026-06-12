@@ -43,8 +43,8 @@ import { FileEventManager } from './src/services/FileEventManager';
 import { HomepageManager } from './src/services/HomepageManager';
 import { HomepageRenderer } from './src/services/HomepageRenderer';
 import { CharacterManager } from './src/services/CharacterManager';
-import { t, setLocale, detectLocale, type Locale } from './src/i18n';
-import { getDefaultFileName, getDefaultFileNameCandidates } from './src/i18n/data-keys';
+import { t, setLocale, detectLocale } from './src/i18n';
+import { getDefaultFileNameCandidates, type DefaultFileNameKey } from './src/i18n/data-keys';
 import { buildCharacterHoverExtension } from './src/editor/CharacterHoverExtension';
 
 export default class AccurateChineseCountPlugin extends Plugin implements WebNovelAssistantPlugin {
@@ -124,7 +124,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		// 初始化国际化
 		const langSetting = this.settings.language || 'auto';
 		const locale = langSetting === 'auto' ? detectLocale() : langSetting;
-		await setLocale(locale as Locale);
+		await setLocale(locale);
 
 
 		// 旧版本 locale 迁移修复已废弃——现在 findXxxFile() 支持多语言 fallback 查找，无需强制回退
@@ -1026,7 +1026,7 @@ onunload() {
 	 * 检查文件名是否为插件生成的元数据文件（支持多语言文件名）
 	 */
 	isPluginGeneratedFile(basename: string): boolean {
-		const checks: Array<{ setting: string | undefined; field: string }> = [
+		const checks: Array<{ setting: string | undefined; field: DefaultFileNameKey }> = [
 			{ setting: this.settings.novelInfo?.fileName, field: "novelInfoFileName" },
 			{ setting: this.settings.foreshadowing?.fileName, field: "foreshadowingFileName" },
 			{ setting: this.settings.timeline?.fileName, field: "timelineFileName" },
@@ -1040,24 +1040,31 @@ onunload() {
 		}
 		return false;
 	}
-/**
-	 * 重命名工作区内所有功能性文档/文件夹
-	 * @param oldName 旧文件名（不含 .md 后缀）或旧文件夹名
-	 * @param newName 新文件名或新文件夹名
-	 * @param type file 或 folder
-	 * @returns 重命名的数量
-	 */
-	async renameAllFunctionalFiles(oldName: string, newName: string, type: 'file' | 'folder'): Promise<number> {
+	/**
+		 * 重命名工作区内所有功能性文档/文件夹
+		 * @param oldName 旧文件名（不含 .md 后缀）或旧文件夹名
+		 * @param newName 新文件名或新文件夹名
+		 * @param type file 或 folder
+		 * @returns 重命名的数量
+		 */
+	public async renameAllFunctionalFiles(oldName: string, newName: string, type: 'file' | 'folder', field?: DefaultFileNameKey): Promise<number> {
 		if (!oldName || !newName || oldName === newName) return 0;
 
 		let count = 0;
 		const workspaceFolders = this.settings.workspaceFolders;
 
+		// 构建 oldName 的候选列表：oldName + 多语言 fallback 名
+		const oldNameCandidates = new Set<string>();
+		oldNameCandidates.add(oldName);
+		if (field) {
+			for (const name of getDefaultFileNameCandidates(field)) oldNameCandidates.add(name);
+		}
+
 		// 收集需要扫描的父文件夹
 		const scanPaths: string[] = [];
 		if (workspaceFolders && workspaceFolders.length > 0) {
 			for (const f of workspaceFolders) {
-				const normalized = f.replace(/^\/+|\/+$/g, '');;
+				const normalized = f.replace(/^\/+/g, '').replace(/\/+$/g, '');
 				if (normalized) scanPaths.push(normalized);
 			}
 		}
@@ -1071,27 +1078,33 @@ onunload() {
 				if (child.name.startsWith('_') || child.name.startsWith('.')) continue;
 
 				if (type === 'file') {
-					const oldPath = child.path + '/' + oldName + '.md';
-					const file = this.app.vault.getAbstractFileByPath(oldPath);
-					if (file instanceof TFile) {
-						const newPath = child.path + '/' + newName + '.md';
-						try {
-							await this.app.fileManager.renameFile(file, newPath);
-							count++;
-						} catch (e) {
-							console.warn('[WebNovel Assistant] 重命名失败:', oldPath, e);
+					for (const candidate of oldNameCandidates) {
+						const oldPath = child.path + '/' + candidate + '.md';
+						const file = this.app.vault.getAbstractFileByPath(oldPath);
+						if (file instanceof TFile) {
+							const newPath = child.path + '/' + newName + '.md';
+							try {
+								await this.app.fileManager.renameFile(file, newPath);
+								count++;
+							} catch (e) {
+								console.warn('[WebNovel Assistant] 重命名失败:', oldPath, e);
+							}
+							break;
 						}
 					}
 				} else {
-					const oldPath = child.path + '/' + oldName;
-					const folder = this.app.vault.getAbstractFileByPath(oldPath);
-					if (folder instanceof TFolder) {
-						const newPath = child.path + '/' + newName;
-						try {
-							await this.app.fileManager.renameFile(folder, newPath);
-							count++;
-						} catch (e) {
-							console.warn('[WebNovel Assistant] 重命名失败:', oldPath, e);
+					for (const candidate of oldNameCandidates) {
+						const oldPath = child.path + '/' + candidate;
+						const folder = this.app.vault.getAbstractFileByPath(oldPath);
+						if (folder instanceof TFolder) {
+							const newPath = child.path + '/' + newName;
+							try {
+								await this.app.fileManager.renameFile(folder, newPath);
+								count++;
+							} catch (e) {
+								console.warn('[WebNovel Assistant] 重命名失败:', oldPath, e);
+							}
+							break;
 						}
 					}
 				}
@@ -1106,25 +1119,31 @@ onunload() {
 				if (child.name.startsWith('_') || child.name.startsWith('.')) continue;
 
 				if (type === 'file') {
-					const oldPath = child.path + '/' + oldName + '.md';
-					const file = this.app.vault.getAbstractFileByPath(oldPath);
-					if (file instanceof TFile) {
-						try {
-							await this.app.fileManager.renameFile(file, child.path + '/' + newName + '.md');
-							count++;
-						} catch (e) {
-							console.warn('[WebNovel Assistant] 重命名失败:', oldPath, e);
+					for (const candidate of oldNameCandidates) {
+						const oldPath = child.path + '/' + candidate + '.md';
+						const file = this.app.vault.getAbstractFileByPath(oldPath);
+						if (file instanceof TFile) {
+							try {
+								await this.app.fileManager.renameFile(file, child.path + '/' + newName + '.md');
+								count++;
+							} catch (e) {
+								console.warn('[WebNovel Assistant] 重命名失败:', oldPath, e);
+							}
+							break;
 						}
 					}
 				} else {
-					const oldPath = child.path + '/' + oldName;
-					const folder = this.app.vault.getAbstractFileByPath(oldPath);
-					if (folder instanceof TFolder) {
-						try {
-							await this.app.fileManager.renameFile(folder, child.path + '/' + newName);
-							count++;
-						} catch (e) {
-							console.warn('[WebNovel Assistant] 重命名失败:', oldPath, e);
+					for (const candidate of oldNameCandidates) {
+						const oldPath = child.path + '/' + candidate;
+						const folder = this.app.vault.getAbstractFileByPath(oldPath);
+						if (folder instanceof TFolder) {
+							try {
+								await this.app.fileManager.renameFile(folder, child.path + '/' + newName);
+								count++;
+							} catch (e) {
+								console.warn('[WebNovel Assistant] 重命名失败:', oldPath, e);
+							}
+							break;
 						}
 					}
 				}

@@ -53,8 +53,6 @@ onOpen() {
 
 		// 查找设定文件夹（支持多语言）
 		const loreFolder = this.findLoreFolder();
-		// 当前语言的默认文件夹名（用于显示和新创建）
-		const currentLoreName = getDefaultFileName('loreFolderName');
 
 		// 收集现有的分类文档
 		const categoryFiles: string[] = [];
@@ -153,8 +151,8 @@ onOpen() {
 	async saveLore() {
 // 查找已有的设定文件夹（支持多语言）
 		let loreFolder = this.findLoreFolder();
-		// 当前语言的默认文件夹名（用于新建）
-		const currentLoreName = getDefaultFileName('loreFolderName');
+		// 新建时优先使用用户设置，fallback 到当前语言的默认文件夹名
+		const currentLoreName = this.plugin.settings.loreFolderName || getDefaultFileName('loreFolderName');
 		const expectedLorePath = this.bookPath === '/' ? currentLoreName : this.bookPath + '/' + currentLoreName;
 		
 		// 如果没有设定文件夹，用当前语言名创建
@@ -163,7 +161,8 @@ onOpen() {
 				await this.app.vault.createFolder(expectedLorePath);
 			} catch {
 				// 再次检查是否已被并发创建
-				loreFolder = this.app.vault.getAbstractFileByPath(expectedLorePath);
+				const abstractFile = this.app.vault.getAbstractFileByPath(expectedLorePath);
+				loreFolder = abstractFile instanceof TFolder ? abstractFile : null;
 				if (!loreFolder) {
 					new Notice(t('modal.lore-cannot-create-folder'));
 					return false;

@@ -94,7 +94,8 @@ export class TimelineManager {
 				try { await this.app.fileManager.renameFile(existing, newPath); } catch (e) { console.warn('[TimelineManager] 重命名时间线文件失败:', e); }
 			}
 			const foundPath = this.currentFolder ? this.currentFolder + '/' + expectedName + '.md' : expectedName + '.md';
-			return this.app.vault.getAbstractFileByPath(foundPath) || existing;
+			const found = this.app.vault.getAbstractFileByPath(foundPath);
+				return found instanceof TFile ? found : existing;
 		}
 
 		const path = this.getTimelineFilePath();

@@ -404,14 +404,17 @@ const DEFAULT_TYPES = {
 	'en': ['Main', 'Subplot', 'Flashback', 'Foreshadowing', 'Hidden'],
 } as const;
 
+/** 默认文件名键类型 */
+export type DefaultFileNameKey = keyof typeof DEFAULT_NAMES['zh-CN'];
+
 /** 获取当前语言的默认文件名 */
-export function getDefaultFileName(field: keyof typeof DEFAULT_NAMES['zh-CN']): string {
+export function getDefaultFileName(field: DefaultFileNameKey): string {
 	return DEFAULT_NAMES[getLocale()][field];
 }
 
 /** 获取所有语言的默认文件名候选列表（用于文件查找的 fallback） */
-export function getDefaultFileNameCandidates(field: keyof typeof DEFAULT_NAMES['zh-CN']): string[] {
-		const candidates = Object.values(DEFAULT_NAMES).map(names => names[field]);
+export function getDefaultFileNameCandidates(field: DefaultFileNameKey): string[] {
+		const candidates: string[] = Object.values(DEFAULT_NAMES).map(names => names[field]);
 		// 旧版本遗留的文件名，用于向后兼容查找
 		const legacyNames: Record<string, string[]> = {
 			rankingFileName: ['榜单记录', 'Ranking'],

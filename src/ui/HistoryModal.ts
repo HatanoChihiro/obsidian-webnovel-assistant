@@ -59,7 +59,7 @@ export function calcFocusRate(history: Record<string, DailyStat>, startDate: str
 }
 
 export function calcActiveHours(history: Record<string, DailyStat>, startDate: string, endDate: string): string {
-		const hourlyTotals = new Array(24).fill(0);
+		const hourlyTotals = new Array<number>(24).fill(0);
 		for (const [date, stat] of Object.entries(history)) {
 			if (date >= startDate && date <= endDate && stat.hourlyFocus) {
 				for (let h = 0; h < 24; h++) {

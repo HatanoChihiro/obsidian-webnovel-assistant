@@ -243,7 +243,8 @@ export class HomepageManager {
 					console.warn('[HomepageManager] 重命名作品信息文件失败:', e);
 				}
 			}
-			return this.app.vault.getAbstractFileByPath(folderPath + '/' + expectedName + '.md') || existing;
+			const found = this.app.vault.getAbstractFileByPath(folderPath + '/' + expectedName + '.md');
+				return found instanceof TFile ? found : existing;
 		}
 
 		// 新建时优先使用用户设置，fallback 到当前语言的默认文件名

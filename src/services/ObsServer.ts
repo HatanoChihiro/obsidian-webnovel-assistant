@@ -21,7 +21,11 @@ interface HttpServer {
  * 支持两个端点:
  * - /api/stats: 返回 JSON 格式的统计数据
  * - /: 返回完整的 HTML 叠加层页面
+ *
+ * 注意：Node.js 内置模块 "http" 仅在桌面端（Electron 环境）可用，
+ * import type 语句在编译时擦除，移动端不会受影响。
  */
+
 export class ObsOverlayServer {
 	private plugin: WebNovelAssistantPlugin;
 	private server: HttpServer | null = null;
@@ -45,7 +49,7 @@ export class ObsOverlayServer {
 		}
 
 		try {
-			const http = window.require('http') as unknown as { createServer(handler: (req: IncomingMessage, res: ServerResponse) => void): HttpServer };
+			const http = window.require('http') as { createServer(handler: (req: IncomingMessage, res: ServerResponse) => void): HttpServer };
 			const plugin = this.plugin;
 
 			this.server = http.createServer((req: IncomingMessage, res: ServerResponse) => {

@@ -1,5 +1,15 @@
 ﻿# WebNovel Assistant 更新日志
 
+## 🔧 v3.2.1
+
+- 修复因添加英语支持而造成的部分页面显示问题
+- 调整作品信息的设置选项至通用栏
+- 修复在作品中右键添加新设定无法按照自定义文件夹名创建目录的BUG
+
+- Fixed display issues caused by the addition of English support
+- Moved the novel info filename setting to the General section
+- Fixed a bug where right-click "Add New Lore" created folders using the default name instead of the custom name
+
 ## 🚀 v3.2.0
 
 本次更新全面支持英文环境！

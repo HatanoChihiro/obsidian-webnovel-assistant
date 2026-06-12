@@ -124,7 +124,7 @@ export class SettingsManager {
 		try {
 			const data = await this.plugin.loadData();
 
-			this.settings = this.deepMerge(this.defaultSettings as unknown as Record<string, unknown>, ((data || {}) as Record<string, unknown>)) as unknown as AccurateCountSettings;
+			this.settings = this.mergeSettings((data || {}) as Record<string, unknown>);
 			this.settings = this.migrateSettings(this.settings, data);
 
 			// 从内存对象中剥离扁平键（deepMerge 会把旧数据的扁平键合并为顶层属性）
@@ -140,7 +140,7 @@ export class SettingsManager {
 		} catch (error) {
 			console.error('[SettingsManager] 加载设置失败:', error);
 			new Notice('加载设置失败，已使用默认设置');
-			this.settings = this.deepMerge(this.defaultSettings as unknown as Record<string, unknown>, {}) as unknown as AccurateCountSettings;
+			this.settings = this.mergeSettings({});
 			return this.settings;
 		}
 	}
@@ -262,6 +262,17 @@ export class SettingsManager {
 		return result;
 	}
 
+	/**
+	 * 将默认设置与来源数据合并，返回完整的 AccurateCountSettings。
+	 * 封装 deepMerge 的类型断言链，使调用方无需重复 as unknown as。
+	 */
+	private mergeSettings(source: Record<string, unknown>): AccurateCountSettings {
+		return this.deepMerge(
+			this.defaultSettings as unknown as Record<string, unknown>,
+			source
+		) as unknown as AccurateCountSettings;
+	}
+
 	private migrateSettings(
 		settings: AccurateCountSettings,
 		oldData: unknown
@@ -362,7 +373,7 @@ export class SettingsManager {
 			throw new Error(`设置验证失败: ${validation.errors.join(', ')}`);
 		}
 
-		this.settings = this.deepMerge(this.settings as unknown as Record<string, unknown>, partial as unknown as Record<string, unknown>) as unknown as AccurateCountSettings;
+		this.settings = this.mergeSettings(partial as unknown as Record<string, unknown>);
 		await this.saveSettings();
 	}
 

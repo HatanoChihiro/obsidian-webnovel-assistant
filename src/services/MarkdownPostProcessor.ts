@@ -2,7 +2,7 @@ import type { MarkdownPostProcessorContext} from 'obsidian';
 import { TFile, Notice } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ForeshadowingRecoveryModal } from '../ui/ForeshadowingModal';
-import { FORESHADOWING_STATUS_MAP, getForeshadowingStatusText, getDefaultFileName } from '../i18n/data-keys';
+import { getDefaultFileName } from '../i18n/data-keys';
 import { t } from '../i18n';
 
 /**

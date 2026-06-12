@@ -536,7 +536,7 @@
   "common.word-count-status": "字数: {count} (中文字: {cnCount})",
   "common.word-count-progress": "字数: {current} / {target} ({percent}%)",
   "common.net-increase": "净增: {count}",
-  "common.status-bar-format": "[{state}] {status} {progress}",
+  "common.status-bar-format": "[{state}] {status}",
   "common.click-to-toggle-status": "点击切换状态",
   "common.click-to-switch-status": "点击切换状态",
   "common.click-add-synopsis": "点击添加章节摘要...",

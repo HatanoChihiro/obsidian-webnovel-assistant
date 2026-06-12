@@ -126,6 +126,29 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName(t('setting.workspace-and-chapters')).setHeading();
 
 		new Setting(containerEl)
+			.setName(t('setting.novel-info-filename'))
+			.setDesc(t('setting.novel-info-filename-desc'))
+			.addText(text => {
+				const oldName = this.plugin.settings.novelInfo?.fileName || getDefaultFileName('novelInfoFileName');
+				text.setPlaceholder(getDefaultFileName('novelInfoFileName'))
+				.setValue(oldName);
+				let tempValue = oldName;
+				text.onChange((value) => { tempValue = value.trim().replace(/.md$/i, ''); });
+
+				const saveAction = async () => {
+					const newName = tempValue || getDefaultFileName('novelInfoFileName');
+					if (newName === oldName) return;
+					if (!this.plugin.settings.novelInfo) { this.plugin.settings.novelInfo = { fileName: newName }; }
+					else { this.plugin.settings.novelInfo.fileName = newName; }
+					await this.plugin.saveSettings();
+					const count = await this.plugin.renameAllFunctionalFiles(oldName, newName, 'file', 'novelInfoFileName');
+					if (count > 0) new Notice(t('notice.files-renamed', { count: String(count) }));
+				};
+
+				text.inputEl.addEventListener('change', () => { saveAction().catch(console.error); });
+				text.inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); text.inputEl.blur(); } });
+			});
+		new Setting(containerEl)
 			.setName(t('setting.enable-homepage'))
 			.setDesc(t('setting.enable-homepage-desc'))
 			.addToggle(toggle => toggle
@@ -182,7 +205,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 						}
 					};
 
-					text.inputEl.addEventListener('change', () => { void saveAction(); });
+					text.inputEl.addEventListener('change', () => { saveAction().catch(console.error); });
 					// 按回车也可以保存
 					text.inputEl.addEventListener('keydown', (e) => {
 						if (e.key === 'Enter') {
@@ -459,37 +482,14 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					if (!this.plugin.settings.ranking) { this.plugin.settings.ranking = { fileName: newName }; }
 					else { this.plugin.settings.ranking.fileName = newName; }
 					await this.plugin.saveSettings();
-					const count = await this.plugin.renameAllFunctionalFiles(oldName, newName, 'file');
+					const count = await this.plugin.renameAllFunctionalFiles(oldName, newName, 'file', 'rankingFileName');
 					if (count > 0) new Notice(t('notice.files-renamed', { count: String(count) }));
 				};
 
-				text.inputEl.addEventListener('change', () => { void saveAction(); });
+				text.inputEl.addEventListener('change', () => { saveAction().catch(console.error); });
 				text.inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); text.inputEl.blur(); } });
 			})
 
-		new Setting(containerEl)
-			.setName(t('setting.novel-info-filename'))
-			.setDesc(t('setting.novel-info-filename-desc'))
-			.addText(text => {
-				const oldName = this.plugin.settings.novelInfo?.fileName || getDefaultFileName('novelInfoFileName');
-				text.setPlaceholder(getDefaultFileName('novelInfoFileName'))
-					.setValue(oldName);
-				let tempValue = oldName;
-				text.onChange((value) => { tempValue = value.trim().replace(/.md$/i, ''); });
-
-				const saveAction = async () => {
-					const newName = tempValue || getDefaultFileName('novelInfoFileName');
-					if (newName === oldName) return;
-					if (!this.plugin.settings.novelInfo) { this.plugin.settings.novelInfo = { fileName: newName }; }
-					else { this.plugin.settings.novelInfo.fileName = newName; }
-					await this.plugin.saveSettings();
-					const count = await this.plugin.renameAllFunctionalFiles(oldName, newName, 'file');
-					if (count > 0) new Notice(t('notice.files-renamed', { count: String(count) }));
-				};
-
-				text.inputEl.addEventListener('change', () => { void saveAction(); });
-				text.inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); text.inputEl.blur(); } });
-				});
 	}
 
 	// ── 排序规则 ──
@@ -859,11 +859,11 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					if (!this.plugin.settings.foreshadowing) { this.plugin.settings.foreshadowing = { fileName: newName, showTimestamp: true, defaultTags: [] }; }
 					else { this.plugin.settings.foreshadowing.fileName = newName; }
 					await this.plugin.saveSettings();
-					const count = await this.plugin.renameAllFunctionalFiles(oldName, newName, 'file');
+					const count = await this.plugin.renameAllFunctionalFiles(oldName, newName, 'file', 'foreshadowingFileName');
 					if (count > 0) new Notice(t('notice.files-renamed', { count: String(count) }));
 				};
 
-				text.inputEl.addEventListener('change', () => { void saveAction(); });
+				text.inputEl.addEventListener('change', () => { saveAction().catch(console.error); });
 				text.inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); text.inputEl.blur(); } });
 			})
 
@@ -928,11 +928,11 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					if (newName === oldName) return;
 					this.plugin.settings.loreFolderName = newName;
 					await this.plugin.saveSettings();
-					const count = await this.plugin.renameAllFunctionalFiles(oldName, newName, 'folder');
+					const count = await this.plugin.renameAllFunctionalFiles(oldName, newName, 'folder', 'loreFolderName');
 					if (count > 0) new Notice(t('notice.files-renamed', { count: String(count) }));
 				};
 
-				text.inputEl.addEventListener('change', () => { void saveAction(); });
+				text.inputEl.addEventListener('change', () => { saveAction().catch(console.error); });
 				text.inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); text.inputEl.blur(); } });
 			})
 	}
@@ -957,11 +957,11 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					if (!this.plugin.settings.timeline) { this.plugin.settings.timeline = { fileName: newName, defaultTypes: [] }; }
 					else { this.plugin.settings.timeline.fileName = newName; }
 					await this.plugin.saveSettings();
-					const count = await this.plugin.renameAllFunctionalFiles(oldName, newName, 'file');
+					const count = await this.plugin.renameAllFunctionalFiles(oldName, newName, 'file', 'timelineFileName');
 					if (count > 0) new Notice(t('notice.files-renamed', { count: String(count) }));
 				};
 
-				text.inputEl.addEventListener('change', () => { void saveAction(); });
+				text.inputEl.addEventListener('change', () => { saveAction().catch(console.error); });
 				text.inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); text.inputEl.blur(); } });
 			})
 

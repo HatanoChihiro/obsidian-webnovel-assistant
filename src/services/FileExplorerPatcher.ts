@@ -75,8 +75,8 @@ export class FileExplorerPatcher {
 			if ((proto.getSortedFolderItems as unknown as { __webnovel_patched?: boolean }).__webnovel_patched) return true;
 
 			const originalMethod: (this: FileExplorerView, folder: TFolder, bypass?: boolean) => FileExplorerItem[] = proto.getSortedFolderItems;
-			proto.getSortedFolderItems = (function(patcher: FileExplorerPatcher) {
-				return function(this: FileExplorerView, folder: TFolder, bypass?: boolean) {
+			const patcher = this;
+			proto.getSortedFolderItems = function(this: FileExplorerView, folder: TFolder, bypass?: boolean) {
 					try {
 						const sortedItems: FileExplorerItem[] = originalMethod.call(this, folder, bypass);
 
@@ -145,8 +145,6 @@ export class FileExplorerPatcher {
 					return originalMethod.call(this, folder, bypass);
 				}
 			};
-
-			})(this);
 
 			(proto.getSortedFolderItems as unknown as { __webnovel_patched?: boolean }).__webnovel_patched = true;
 

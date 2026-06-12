@@ -28,12 +28,14 @@ desktop.ini
 *.jpg
 *.png
 *.gif
+*.webp
 !assets/*.png
 !assets/*.gif
+!assets/*.webp
 
 # 编辑器/IDE 配置
 .vscode/
-.dev/
 
 # 内部开发文档
 CODE_*.md
+.claude/
