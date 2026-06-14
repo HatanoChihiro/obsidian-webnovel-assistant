@@ -15,6 +15,7 @@ export class AdvancedSearchModal extends Modal {
 	constructor(app: App, plugin: WebNovelAssistantPlugin) {
 		super(app);
 		this.plugin = plugin;
+		this.query = this.plugin.settings.advancedSearchQuery || '';
 	}
 
 	onOpen() {
@@ -29,6 +30,7 @@ export class AdvancedSearchModal extends Modal {
 			.setDesc(t('modal.search-keyword-desc'))
 			.addText(text => {
 				text.setPlaceholder(t('modal.search-keyword-placeholder'))
+				.setValue(this.query)
 				.onChange(value => {
 					this.query = value;
 				});
@@ -286,6 +288,11 @@ export class AdvancedSearchModal extends Modal {
 	}
 
 	private async executeSearch() {
+		if (this.query !== this.plugin.settings.advancedSearchQuery) {
+			this.plugin.settings.advancedSearchQuery = this.query;
+			void this.plugin.saveSettings();
+		}
+
 		if (!this.query.trim()) {
 			this.resultsContainer.empty();
 			this.resultsContainer.createEl('div', { text: t('modal.please-enter-keyword'), cls: 'advanced-search-empty' });
@@ -390,7 +397,8 @@ export class AdvancedSearchModal extends Modal {
 				matchEl.addEventListener('click', () => {
 					const leaf = this.app.workspace.getLeaf(false); // 在当前活动叶子节点打开
 					void leaf.openFile(result.file, { eState: { line: snippet.linesBefore } });
-					this.close();
+					// 用户要求点击后不默认关闭面板
+					// this.close();
 				});
 			}
 

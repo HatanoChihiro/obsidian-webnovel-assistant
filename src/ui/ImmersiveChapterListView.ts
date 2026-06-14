@@ -1,5 +1,6 @@
 import type { WorkspaceLeaf, TFolder } from 'obsidian';
-import { ItemView, TFile, MarkdownView } from 'obsidian';
+import { ItemView, TFile } from 'obsidian';
+import type { MarkdownView } from 'obsidian';
 import { VIEW_TYPES } from '../constants';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ChapterSorter } from '../services/ChapterSorter';

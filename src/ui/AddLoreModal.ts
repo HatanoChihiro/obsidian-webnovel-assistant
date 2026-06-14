@@ -1,4 +1,5 @@
-import { App, Modal, Setting, TFile, TFolder, Notice, TextComponent } from 'obsidian';
+import { Modal, Setting, TFile, TFolder, Notice } from 'obsidian';
+import type { App, TextComponent } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { t } from '../i18n';
 import { getDefaultFileName, getDefaultFileNameCandidates, getLoreLabel } from '../i18n/data-keys';

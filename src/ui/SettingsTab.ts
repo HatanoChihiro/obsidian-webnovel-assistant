@@ -260,7 +260,30 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				text.setPlaceholder(t('setting.workspace-folders-placeholder'))
 					.setValue((this.plugin.settings.workspaceFolders || []).join(', '))
 					.onChange(async (value) => {
+						const oldFolders = this.plugin.settings.workspaceFolders || [];
+						const oldFirst = oldFolders.length > 0 ? oldFolders[0].replace(/^\/+|\/+$/g, '') : '';
+						
+						// 记录在改变 workspaceFolders 之前的旧主页路径
+						const currentPath = this.plugin.homepageManager?.getHomepageFilePath();
+
 						this.plugin.settings.workspaceFolders = value.trim() ? value.split(',').map(f => f.trim()).filter(Boolean) : [];
+						const newFolders = this.plugin.settings.workspaceFolders;
+						const newFirst = newFolders.length > 0 ? newFolders[0].replace(/^\/+|\/+$/g, '') : '';
+						
+						if (oldFirst !== newFirst) {
+							if (currentPath) {
+								const basename = currentPath.split('/').pop() || `${t('common.default-homepage-name')}.md`;
+								const expectedOldPath = oldFirst ? `${oldFirst}/${basename}` : basename;
+								
+								// 如果当前主页在原工作区根目录下，自动跟随移动到新工作区
+								if (currentPath === expectedOldPath) {
+									const newPath = newFirst ? `${newFirst}/${basename}` : basename;
+									this.plugin.settings.homepagePath = newPath;
+									this.plugin.homepageManager?.renameHomepageFile(currentPath, newPath).catch(console.error);
+								}
+							}
+						}
+
 						await this.plugin.saveSettings();
 					});
 				text.inputEl.addClass('webnovel-settings-input-full');

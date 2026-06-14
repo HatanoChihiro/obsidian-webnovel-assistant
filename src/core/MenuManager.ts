@@ -31,7 +31,7 @@ export class MenuManager {
 				// 复制本文档：全平台均显示，内容包含「标题 + 空行 + 正文」
 				menu.addItem((item) => {
 					item.setTitle(t('menu.copy-document')).setIcon("copy").onClick(() => {
-						void this.plugin.app.vault.read(file).then(content => copyDocumentContent(file.basename, content));
+						this.plugin.app.vault.read(file).then(content => copyDocumentContent(file.basename, content)).catch(console.error);
 					});
 				});
 
@@ -49,7 +49,7 @@ export class MenuManager {
 				menu.addItem((item) => {
 					item.setTitle(t('menu.merge-chapters'))
 						.setIcon('documents')
-						.onClick(() => this.handleMergeChapters(file));
+						.onClick(() => { this.handleMergeChapters(file).catch(console.error); });
 				});
 			}
 
@@ -66,9 +66,9 @@ export class MenuManager {
 			menu.addItem((item) => {
 				item.setTitle(t('menu.create-novel')).setIcon('book-open').onClick(() => {
 					new NewNovelModal(this.plugin.app, this.plugin, (result) => {
-						void this.plugin.homepageManager!.createNewNovel(result.name, result.meta).then(() => {
+						this.plugin.homepageManager!.createNewNovel(result.name, result.meta).then(() => {
 							new Notice(t('notice.novel-created', { name: result.name }));
-						});
+						}).catch(console.error);
 					}).open();
 				});
 			});
@@ -83,7 +83,7 @@ export class MenuManager {
 					});
 
 					menu.addItem((item) => {
-						item.setTitle(t('menu.add-to-timeline')).setIcon('calendar-clock').onClick(() => { void (async () => {
+						item.setTitle(t('menu.add-to-timeline')).setIcon('calendar-clock').onClick(() => { (async () => {
 							const selectedText = editor.getSelection();
 							if (!selectedText.trim()) {
 								new Notice(t('notice.select-text-first'));
@@ -110,7 +110,7 @@ export class MenuManager {
 								chapterName,
 								folderPath,
 								(result) => {
-									void new TimelineManager(this.plugin.app, this.plugin, folderPath).appendEntry({
+									new TimelineManager(this.plugin.app, this.plugin, folderPath).appendEntry({
 										time: result.time,
 										description: result.description,
 										chapter: result.chapter,
@@ -128,10 +128,10 @@ export class MenuManager {
 											await refreshPromise;
 										}
 									}
-								});
+								}).catch(console.error);
 							},
 								false, localTypes).open();
-						})();});
+						})().catch(console.error);});
 					});
 
 					if (isDesktop()) {
@@ -152,9 +152,9 @@ export class MenuManager {
 
 					// 复制本文档：全平台均显示，内容包含「标题 + 空行 + 正文」
 					menu.addItem((item) => {
-						item.setTitle(t('menu.copy-document')).setIcon("copy").onClick(() => { void (async () => {
-							copyDocumentContent(view.file!.basename, await this.plugin.app.vault.read(view.file!));
-						})();});
+						item.setTitle(t('menu.copy-document')).setIcon("copy").onClick(() => { (async () => {
+							await copyDocumentContent(view.file!.basename, await this.plugin.app.vault.read(view.file!));
+						})().catch(console.error);});
 					});
 
 					if (isDesktop()) {
@@ -188,7 +188,7 @@ export class MenuManager {
 			}).open();
 		} else {
 			// 已有任务记录，新增任务
-			void manager.loadEntries().then(entries => {
+			manager.loadEntries().then(entries => {
 				const nextPeriod = manager.getNextPeriod(entries || []);
 				const lastPlatform = entries && entries.length > 0
 					? entries[entries.length - 1].platform : '';
@@ -196,7 +196,7 @@ export class MenuManager {
 					await manager.addEntry(entry);
 					new Notice(t('notice.ranking-added'));
 				}).open();
-			});
+			}).catch(console.error);
 		}
 	}
 

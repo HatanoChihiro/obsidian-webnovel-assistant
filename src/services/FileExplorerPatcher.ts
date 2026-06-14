@@ -75,17 +75,23 @@ export class FileExplorerPatcher {
 			if ((proto.getSortedFolderItems as unknown as { __webnovel_patched?: boolean }).__webnovel_patched) return true;
 
 			const originalMethod: (this: FileExplorerView, folder: TFolder, bypass?: boolean) => FileExplorerItem[] = proto.getSortedFolderItems;
-			const patcher = this;
+			const isPatcherEnabled = () => this.enabled;
+			const getPlugin = () => this.plugin;
+			const applyPin = (items: FileExplorerItem[]) => this.applyHomepagePin(items);
+			const doSort = (entities: SortEntity[]) => this.sortEntities(entities);
+
 			proto.getSortedFolderItems = function(this: FileExplorerView, folder: TFolder, bypass?: boolean) {
 					try {
 						const sortedItems: FileExplorerItem[] = originalMethod.call(this, folder, bypass);
 
-						if (!patcher.enabled || bypass || !Array.isArray(sortedItems) || sortedItems.length === 0) {
+						if (!isPatcherEnabled() || bypass || !Array.isArray(sortedItems) || sortedItems.length === 0) {
 							return sortedItems;
 						}
 
-						if (!patcher.plugin.settings.enableSmartChapterSort) {
-							return patcher.applyHomepagePin(sortedItems);
+						const plugin = getPlugin();
+
+						if (!plugin.settings.enableSmartChapterSort) {
+							return applyPin(sortedItems);
 						}
 
 					const chapterItems: { item: FileExplorerItem; chapterInfo: { number: number; ruleIndex: number }; isFolder: boolean }[] = [];
@@ -96,7 +102,7 @@ export class FileExplorerPatcher {
 						if (item && item.file) {
 							// 工作区过滤：只对工作区内的文件应用章节排序
 							const isInWorkspace = item.file instanceof TFile
-								? patcher.plugin.isFileInWorkspace(item.file)
+								? plugin.isFileInWorkspace(item.file)
 								: true; // 文件夹不参与工作区过滤
 							if (isInWorkspace) {
 								const chapterInfo = ChapterSorter.extractChapterNumber(item.file.name);
@@ -128,7 +134,7 @@ export class FileExplorerPatcher {
 						entities.push({ isBlock: true, path: blockKey, items: chapterItems.map(c => c.item) });
 					}
 
-					const sortedEntities = patcher.sortEntities(entities);
+					const sortedEntities = doSort(entities);
 
 					const finalResult: FileExplorerItem[] = [];
 					for (const entity of sortedEntities) {
@@ -139,7 +145,7 @@ export class FileExplorerPatcher {
 						}
 					}
 
-					return patcher.applyHomepagePin(finalResult);
+					return applyPin(finalResult);
 				} catch (e) {
 					console.error('[WebNovel Assistant] getSortedFolderItems error:', e);
 					return originalMethod.call(this, folder, bypass);

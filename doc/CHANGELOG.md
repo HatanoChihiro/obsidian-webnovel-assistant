@@ -1,4 +1,22 @@
-﻿# WebNovel Assistant 更新日志
+# WebNovel Assistant 更新日志
+
+## 🔧 v3.2.2
+
+### 🐞 问题修复
+- 修复了在设置中更改工作区文件夹后，创作主页（Homepage）文件未能跟随移动，导致可能在旧文件夹下重复创建新主页的 Bug。现在更改工作区时，主页将自动移动到新目录。
+
+### ⚡ 高级搜索增强
+- 现在高级搜索会自动记忆您上一次输入的搜索词，无需重复输入
+- 点击搜索结果跳转到对应章节时，搜索面板将保持打开状态，方便您连续查看多个匹配结果
+
+---
+
+### 🐞 Bug Fixes
+- Fixed a bug where changing the workspace folder in settings would not move the Homepage file, causing it to be recreated in the old folder. The Homepage now automatically moves to the new directory when changing the workspace.
+
+### ⚡ Advanced Search Enhanced
+- The advanced search panel now automatically remembers your last used search keyword
+- Clicking a search result will no longer close the search panel by default, allowing you to easily check multiple matching chapters in a row
 
 ## 🔧 v3.2.1
 

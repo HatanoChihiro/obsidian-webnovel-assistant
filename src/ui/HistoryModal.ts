@@ -452,7 +452,7 @@ ${t('modal.metric-slack-time')}: ${formatDuration(data.slackMs)}`);
 		});
 
 		
-		this.renderTrendOverlay(displayKeys, aggregated, getValue, maxAbsValue);
+		this.renderTrendOverlay(displayKeys, aggregated, getValue);
 		this.scrollToCurrent(displayKeys, currentKey);
 	}
 
@@ -460,8 +460,7 @@ ${t('modal.metric-slack-time')}: ${formatDuration(data.slackMs)}`);
 				private renderTrendOverlay(
 			displayKeys: string[],
 			aggregated: Record<string, { words: number, focusMs: number, slackMs: number }>,
-			getValue: (data: { words: number, focusMs: number, slackMs: number }) => number,
-			maxAbsValue: number
+			getValue: (data: { words: number, focusMs: number, slackMs: number }) => number
 		): void {
 			if (displayKeys.length < 2) return;
 

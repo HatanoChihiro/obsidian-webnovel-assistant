@@ -35,7 +35,7 @@ desktop.ini
 
 # 编辑器/IDE 配置
 .vscode/
+.claude/
 
 # 内部开发文档
 CODE_*.md
-.claude/

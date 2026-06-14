@@ -247,4 +247,6 @@ export interface AccurateCountSettings {
 	/** 设定文件夹名称（相对作品根目录，用于人物卡悬停） */
 	loreFolderName: string;
 
+	/** 高级搜索：自动记忆的上一次搜索词 */
+	advancedSearchQuery: string;
 }

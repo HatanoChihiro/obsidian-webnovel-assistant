@@ -29,17 +29,21 @@ export class HomepageManager {
 	}
 
 	getHomepageFilePath(): string {
-		// 用户自定义路径时直接使用
+		let basename = `${t('common.default-homepage-name')}.md`;
+		
+		// 如果用户自定义了路径或文件名，提取其文件名部分
 		if (this.plugin.settings.homepagePath) {
-			return this.plugin.settings.homepagePath;
+			basename = this.plugin.settings.homepagePath.split('/').pop() || basename;
 		}
-		// 默认放在第一个工作区文件夹下
+
+		// 永远动态放在当前第一个工作区文件夹下，抛弃旧的硬编码目录
 		const folders = this.plugin.settings.workspaceFolders;
 		if (folders && folders.length > 0) {
 			const first = folders[0].replace(/^\/+|\/+$/g, '');
-			if (first) return `${first}/${t('common.default-homepage-name')}.md`;
+			if (first) return `${first}/${basename}`;
 		}
-		return `${t('common.default-homepage-name')}.md`;
+		
+		return basename;
 	}
 
 	getHomepageFile(): TFile | null {
@@ -324,6 +328,10 @@ export class HomepageManager {
 	async renameHomepageFile(oldPath: string, newPath: string): Promise<void> {
 		const file = this.app.vault.getAbstractFileByPath(oldPath);
 		if (file instanceof TFile) {
+			const dir = newPath.substring(0, newPath.lastIndexOf('/'));
+			if (dir) {
+				try { await this.app.vault.createFolder(dir); } catch { /* folder already exists */ }
+			}
 			await this.app.fileManager.renameFile(file, newPath);
 		} else {
 			console.warn(`[HomepageManager] 找不到旧主页文件: ${oldPath}，将仅更新设置。`);

@@ -1,7 +1,16 @@
 import { Notice, Platform } from 'obsidian';
 import { t } from '../i18n';
-import type { IncomingMessage, ServerResponse } from 'http';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
+
+interface IncomingMessage {
+    url?: string;
+    method?: string;
+}
+
+interface ServerResponse {
+    writeHead(statusCode: number, headers?: Record<string, string>): this;
+    end(data?: string): void;
+}
 
 interface ServerError extends Error {
     code?: string;

@@ -40,7 +40,7 @@ export class CharacterManager {
 			this.app.vault.on('delete', (file) => this.handleFileChange(file))
 		);
 		this.plugin.registerEvent(
-			this.app.vault.on('rename', (file, oldPath) => {
+			this.app.vault.on('rename', (file, _oldPath) => {
 				this.handleFileChange(file);
 			})
 		);

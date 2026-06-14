@@ -122,7 +122,7 @@ export class SettingsManager {
 
 	async loadSettings(): Promise<AccurateCountSettings> {
 		try {
-			const data = await this.plugin.loadData();
+			const data: unknown = await this.plugin.loadData();
 
 			this.settings = this.mergeSettings((data || {}) as Record<string, unknown>);
 			this.settings = this.migrateSettings(this.settings, data);
