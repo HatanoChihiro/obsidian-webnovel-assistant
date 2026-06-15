@@ -52,7 +52,7 @@ export class TimelineAddModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 		contentEl.addClass('timeline-add-modal');
-		contentEl.createEl('h2', { text: t('modal.add-to-timeline') });
+		new Setting(contentEl).setName(t('modal.add-to-timeline')).setHeading();
 
 		
 

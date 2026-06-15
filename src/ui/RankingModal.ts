@@ -1,6 +1,6 @@
 // 限时任务新增对话框（内部仍用 Ranking 命名，待后续重构改为 Task）
 import type { App} from 'obsidian';
-import { Modal } from 'obsidian';
+import { Modal, Setting } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { RankingEntry } from '../types/ranking';
 import type { RankingManager } from '../services/RankingManager';
@@ -35,7 +35,7 @@ export class RankingAddModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 		contentEl.addClass('ranking-add-modal');
-		contentEl.createEl('h2', { text: t('modal.new-ranking') });
+		new Setting(contentEl).setName(t('modal.new-ranking')).setHeading();
 
 		const inputStyle = 'width:100%;margin-bottom:8px;padding:6px 8px;border-radius:4px;border:1px solid var(--background-modifier-border);background:var(--background-primary);color:var(--text-normal);box-sizing:border-box;';
 

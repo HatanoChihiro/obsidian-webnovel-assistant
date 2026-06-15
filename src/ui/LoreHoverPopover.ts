@@ -70,9 +70,8 @@ export class LoreHoverPopover extends Component {
 		if (this.popoverEl) return;
 
 		// 创建自定义卡片容器
-		this.popoverEl = document.body.createDiv({ cls: 'webnovel-lore-popover' });
-		this.popoverEl.style.position = 'absolute';
-		this.popoverEl.style.zIndex = '1000';
+		this.popoverEl = activeDocument.body.createDiv({ cls: 'webnovel-lore-popover' });
+		this.popoverEl.setCssStyles({ position: 'absolute', zIndex: '1000' });
 		
 		// 监听鼠标进入和离开卡片，保证鼠标移入卡片时不会关闭
 		this.popoverEl.addEventListener('mouseenter', this.onMouseEnterPopover);
@@ -98,8 +97,7 @@ export class LoreHoverPopover extends Component {
 			top = rect.top - popoverRect.height - 5;
 		}
 
-		this.popoverEl.style.top = `${top}px`;
-		this.popoverEl.style.left = `${left}px`;
+		this.popoverEl.setCssStyles({ top: `${top}px`, left: `${left}px` });
 	}
 
 	private async renderCard(container: HTMLElement) {
@@ -107,7 +105,7 @@ export class LoreHoverPopover extends Component {
 		
 		// Header area
 		const header = card.createDiv({ cls: 'wn-lore-card-header' });
-		const titleEl = header.createEl('h3', { cls: 'wn-lore-card-title' });
+		const titleEl = header.createDiv({ cls: 'wn-lore-card-title' });
 		titleEl.setText(this.entry.heading);
 
 		// Body area
@@ -168,7 +166,7 @@ export class LoreHoverPopover extends Component {
 
 			if (chunkToRender) {
 				const markdownContainer = body.createDiv({ cls: 'wn-lore-markdown' });
-				await MarkdownRenderer.renderMarkdown(chunkToRender, markdownContainer, this.entry.file.path, this);
+				await MarkdownRenderer.render(this.plugin.app, chunkToRender, markdownContainer, this.entry.file.path, this);
 			} else {
 				body.createDiv({ cls: 'wn-lore-card-empty', text: 'No content.' });
 			}
@@ -180,7 +178,7 @@ export class LoreHoverPopover extends Component {
 			if (top + popoverRect.height > window.innerHeight) {
 				top = rect.top - popoverRect.height - 5;
 			}
-			this.popoverEl!.style.top = `${top}px`;
+			this.popoverEl!.setCssStyles({ top: `${top}px` });
 
 		} catch (e) {
 			console.error('Failed to render lore popover:', e);

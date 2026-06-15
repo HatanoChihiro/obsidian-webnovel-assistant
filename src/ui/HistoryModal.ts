@@ -1,5 +1,5 @@
 import type { App} from 'obsidian';
-import { Modal } from 'obsidian';
+import { Modal, Setting } from 'obsidian';
 import type { DailyStat } from '../types/settings';
 import { formatCount } from '../utils/format';
 import { t } from '../i18n';
@@ -118,7 +118,6 @@ export class HistoryStatsModal extends Modal {
 	heatStartInput!: HTMLInputElement;
 	heatEndInput!: HTMLInputElement;
 	efficiencyContainer!: HTMLElement;
-	titleEl!: HTMLElement;
 	tabGroupEl!: HTMLElement;
 	metricGroupEl!: HTMLElement;
 
@@ -133,14 +132,14 @@ export class HistoryStatsModal extends Modal {
 		contentEl.addClass('history-stats-modal');
 		this.modalEl.addClass('history-stats-modal-wide');
 
-		this.titleEl = contentEl.createEl('h2', { text: t('modal.writing-data-tracking') });
+		new Setting(contentEl).setName(t('modal.writing-data-tracking')).setHeading();
 
 		// === 效率总览 ===
 		this.efficiencyContainer = contentEl.createDiv({ cls: 'stats-efficiency-row' });
 		this.renderEfficiency();
 
 		// === 热力图 ===
-		contentEl.createEl('h3', { text: t('modal.heatmap'), cls: 'stats-section-title' });
+		new Setting(contentEl).setName(t('modal.heatmap')).setHeading();
 
 		this.heatDateRowEl = contentEl.createDiv({ cls: 'stats-heat-date-row' });
 		this.heatDateRowEl.createDiv({ cls: 'stats-heat-date-label', text: t('modal.start-date-label') });
@@ -207,7 +206,7 @@ export class HistoryStatsModal extends Modal {
 		this.renderHeatmap();
 
 		// === 详细统计 ===
-		contentEl.createEl('h3', { text: t('modal.detailed-stats'), cls: 'stats-section-title' });
+		new Setting(contentEl).setName(t('modal.detailed-stats')).setHeading();
 
 		const filterRow = contentEl.createDiv({ cls: "stats-filter-row" });
 

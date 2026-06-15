@@ -25,7 +25,7 @@ export class SaveStickyNoteModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 		
-		contentEl.createEl('h2', { text: t('modal.save-sticky-note') });
+		new Setting(contentEl).setName(t('modal.save-sticky-note')).setHeading();
 		
 		// 获取当前活动文件的文件夹路径
 		const activeFile = this.app.workspace.getActiveFile();
@@ -133,7 +133,7 @@ export class ConfirmCloseModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 		
-		contentEl.createEl('h2', { text: t('modal.unsaved-changes') });
+		new Setting(contentEl).setName(t('modal.unsaved-changes')).setHeading();
 		
 		contentEl.createEl('p', { 
 			text: t('modal.unsaved-changes-desc')

@@ -22,7 +22,7 @@ export class AdvancedSearchModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 
-		contentEl.createEl('h2', { text: t('modal.advanced-search') });
+		new Setting(contentEl).setName(t('modal.advanced-search')).setHeading();
 
 		// 搜索关键词
 		new Setting(contentEl)
@@ -84,7 +84,7 @@ export class AdvancedSearchModal extends Modal {
 		}
 
 		container.show();
-		container.createEl('h4', { text: t('modal.select-folders-hint'), cls: 'setting-item-name' });
+		new Setting(container).setName(t('modal.select-folders-hint')).setHeading();
 		
 		const folders = this.getTopLevelFolders();
 		

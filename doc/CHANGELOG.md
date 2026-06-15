@@ -1,5 +1,14 @@
 # WebNovel Assistant 更新日志
 
+
+## 🔧 v3.2.4
+
+- 优化部分代码，提升使用体验
+
+---
+
+- Optimized some code to improve user experience
+
 ## 🔧 v3.2.3
 
 ### ⚡ 设定速查卡片增强

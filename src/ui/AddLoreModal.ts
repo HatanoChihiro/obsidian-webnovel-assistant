@@ -42,7 +42,7 @@ export class AddLoreModal extends Modal {
 onOpen() {
 		const { contentEl } = this;
 		contentEl.empty();
-		contentEl.createEl('h2', { text: t('modal.add-new-lore') });
+		new Setting(contentEl).setName(t('modal.add-new-lore')).setHeading();
 
 		new Setting(contentEl)
 			.setName(t('modal.lore-name'))

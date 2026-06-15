@@ -42,7 +42,7 @@ export class ForeshadowingInputModal extends Modal {
 		contentEl.empty();
 		contentEl.addClass('foreshadowing-input-modal');
 
-		contentEl.createEl('h2', { text: t('modal.mark-foreshadowing') });
+		new Setting(contentEl).setName(t('modal.mark-foreshadowing')).setHeading();
 
 		// 来源和内容预览
 		const infoEl = contentEl.createDiv({ cls: 'foreshadowing-info' });
@@ -161,7 +161,7 @@ class ChapterMultiSelectModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 
-		contentEl.createEl('h2', { text: t('modal.select-recovery-chapters') });
+		new Setting(contentEl).setName(t('modal.select-recovery-chapters')).setHeading();
 		contentEl.createEl('p', { 
 			text: t('modal.multi-recovery-hint'),
 			cls: 'setting-item-description'
@@ -298,7 +298,7 @@ export class ForeshadowingRecoveryModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 
-		contentEl.createEl('h2', { text: t('modal.mark-recovered') });
+		new Setting(contentEl).setName(t('modal.mark-recovered')).setHeading();
 
 		// 内容预览
 		const preview = this.contentPreview.length > 60
@@ -403,7 +403,7 @@ export class ConfirmCreateForeshadowingFileModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 
-		contentEl.createEl('h2', { text: t('modal.create-foreshadowing-file') });
+		new Setting(contentEl).setName(t('modal.create-foreshadowing-file')).setHeading();
 
 		const location = this.folderPath
 			? `「${this.folderPath}/${this.fileName}.md」`

@@ -17,7 +17,7 @@ export class GoalModal extends Modal {
 
 	onOpen() {
 		const {contentEl} = this;
-		contentEl.createEl('h2', {text: t('modal.set-goal-title', { name: this.file.basename })});
+		new Setting(contentEl).setName(t('modal.set-goal-title', { name: this.file.basename })).setHeading();
 
 		new Setting(contentEl)
 			.setName(t('modal.goal-word-count'))

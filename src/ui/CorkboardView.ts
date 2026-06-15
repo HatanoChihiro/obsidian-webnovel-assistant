@@ -80,7 +80,7 @@ export class CorkboardView extends ItemView {
 		} else {
 			this.container.empty();
 			const header = this.container.createDiv('wn-corkboard-header');
-			header.createEl('h2', { text: t('view.corkboard') });
+			header.createDiv({ text: t('view.corkboard'), cls: 'wn-corkboard-title' });
 			header.createEl('p', {
 				text: t('corkboard.please-open-file'),
 				cls: 'wn-corkboard-hint'
@@ -92,7 +92,7 @@ export class CorkboardView extends ItemView {
 		this.container.empty();
 
 		const header = this.container.createDiv('wn-corkboard-header');
-		header.createEl('h2', { text: t('view.corkboard') });
+		header.createDiv({ text: t('view.corkboard'), cls: 'wn-corkboard-title' });
 
 		if (!this.currentBookPath) {
 			header.createEl('p', {

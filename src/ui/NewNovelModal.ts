@@ -23,7 +23,7 @@ export class NewNovelModal extends Modal {
 	onOpen() {
 		const { contentEl } = this;
 		contentEl.empty();
-		contentEl.createEl('h2', { text: t('modal.new-novel') });
+		new Setting(contentEl).setName(t('modal.new-novel')).setHeading();
 
 		new Setting(contentEl)
 			.setName(t('modal.novel-name'))
