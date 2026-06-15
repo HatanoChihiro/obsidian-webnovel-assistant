@@ -1,11 +1,11 @@
 import type { App, TAbstractFile} from 'obsidian';
-import { TFile, TFolder, parseFrontMatterAliases } from 'obsidian';
+import { TFile, TFolder } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { getDefaultFileName, getDefaultFileNameCandidates } from '../i18n/data-keys';
 
 export interface LoreEntry {
 	file: TFile;
-	heading: string | null;
+	heading: string;
 }
 
 /**
@@ -212,18 +212,8 @@ private handleFileChange(file: TAbstractFile): void {
 				lowerMap.set(key.toLowerCase(), key);
 			};
 			const fileCache = this.app.metadataCache.getFileCache(file);
-			
-			// 1. 解析 YAML 中的 aliases (别名)
-			if (fileCache && fileCache.frontmatter) {
-				const aliases = parseFrontMatterAliases(fileCache.frontmatter) || [];
-				for (const alias of aliases) {
-					if (alias && typeof alias === 'string') {
-						addEntry(alias, { file, heading: null });
-					}
-				}
-			}
 
-			// 2. 字典模式：解析各级标题作为正名，并在下方的正文里提取别名
+			// 字典模式：解析各级标题作为正名，并在下方的正文里提取别名
 			if (fileCache && fileCache.headings) {
 				const content = await this.app.vault.cachedRead(file);
 				const lines = content.split('\n');

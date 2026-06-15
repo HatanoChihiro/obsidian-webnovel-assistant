@@ -1,9 +1,9 @@
 {
   "id": "web-novel-assistant",
   "name": "WebNovel Assistant",
-  "version": "3.2.2",
+  "version": "3.2.3",
   "minAppVersion": "1.8.7",
-  "description": "A comprehensive Obsidian plugin for web novel writers. Track word counts, goals, and focus time. Manage foreshadowing, timelines, and timed tasks. Includes a bilingual UI and OBS overlay.",
+  "description": "A comprehensive plugin for web novel writers. Track word counts, goals, and focus time. Manage foreshadowing, timelines, and timed tasks. Includes a bilingual UI and OBS overlay.",
   "author": "HatanoChihiro",
   "authorUrl": "https://github.com/HatanoChihiro",
   "isDesktopOnly": false

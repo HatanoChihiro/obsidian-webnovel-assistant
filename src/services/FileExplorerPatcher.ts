@@ -74,6 +74,7 @@ export class FileExplorerPatcher {
 
 			if ((proto.getSortedFolderItems as unknown as { __webnovel_patched?: boolean }).__webnovel_patched) return true;
 
+			// eslint-disable-next-line @typescript-eslint/unbound-method -- 必须提取原始方法引用以便在补丁中通过 call(this) 动态绑定
 			const originalMethod: (this: FileExplorerView, folder: TFolder, bypass?: boolean) => FileExplorerItem[] = proto.getSortedFolderItems;
 			const isPatcherEnabled = () => this.enabled;
 			const getPlugin = () => this.plugin;

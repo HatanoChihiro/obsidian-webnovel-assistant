@@ -1940,3 +1940,110 @@ body .workspace-leaf-content[data-type="immersive-sticky-notes"][data-type="imme
 .webnovel-rule-pattern-input { flex: 3 1 0px; min-width: 0; font-family: monospace; }
 .webnovel-add-btn-row { border-top: none; padding: 0; }
 .webnovel-obs-css-input { width: 100%; height: 100px; font-family: monospace; }
+
+/* ── Exquisite Lore Hover Card ── */
+.webnovel-lore-popover {
+    padding: 16px !important;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    background: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    max-width: 400px;
+    max-height: 500px;
+    display: flex;
+    flex-direction: column;
+}
+
+.webnovel-lore-popover .wn-lore-card {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    flex: 1;
+    min-height: 0;
+}
+
+.webnovel-lore-popover .wn-lore-card-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    margin-bottom: 10px;
+}
+
+.webnovel-lore-popover .wn-lore-card-title {
+    margin: 0;
+    font-size: 1.2em;
+    font-weight: bold;
+    color: var(--text-normal);
+    line-height: 1;
+}
+
+.webnovel-lore-popover .wn-lore-card-badges {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-bottom: 1px; /* Optically align baseline if needed */
+}
+
+.webnovel-lore-popover .wn-lore-card-badge {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 0.8em;
+    line-height: 1.2;
+}
+
+.webnovel-lore-popover .wn-lore-card-body {
+    overflow-y: auto;
+    font-size: 0.95em;
+    line-height: 1.6;
+    color: var(--text-normal);
+    flex: 1;
+    min-height: 0;
+}
+
+.webnovel-lore-popover .wn-lore-card-loading,
+.webnovel-lore-popover .wn-lore-card-empty {
+    font-style: italic;
+    color: var(--text-muted);
+}
+
+.webnovel-lore-popover .wn-lore-markdown p:first-child {
+    margin-top: 0;
+}
+
+.webnovel-lore-popover .wn-lore-markdown p:last-child {
+    margin-bottom: 0;
+}
+
+/* Custom ultra-thin scrollbar */
+.webnovel-lore-popover .wn-lore-card-body::-webkit-scrollbar {
+    width: 4px;
+}
+.webnovel-lore-popover .wn-lore-card-body::-webkit-scrollbar-track {
+    background: transparent;
+}
+.webnovel-lore-popover .wn-lore-card-body::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 2px;
+}
+.webnovel-lore-popover .wn-lore-card-body:hover::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--interactive-accent) 50%, var(--text-muted));
+}
+
+/* Reset subheading sizes inside the lore card */
+.webnovel-lore-popover .wn-lore-markdown h1,
+.webnovel-lore-popover .wn-lore-markdown h2,
+.webnovel-lore-popover .wn-lore-markdown h3,
+.webnovel-lore-popover .wn-lore-markdown h4,
+.webnovel-lore-popover .wn-lore-markdown h5,
+.webnovel-lore-popover .wn-lore-markdown h6 {
+    font-size: 1em !important;
+    margin-top: 0.8em;
+    margin-bottom: 0.4em;
+}
+

@@ -4,6 +4,7 @@ import type { Extension } from '@codemirror/state';
 import type { DecorationSet, EditorView, ViewUpdate } from '@codemirror/view';
 import { ViewPlugin, Decoration } from '@codemirror/view';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
+import { LoreHoverPopover } from '../ui/LoreHoverPopover';
 
 /**
  * 构造角色名悬停的 CodeMirror 扩展
@@ -99,28 +100,16 @@ export function buildCharacterHoverExtension(app: App, plugin: WebNovelAssistant
 	}, {
 		decorations: v => v.decorations,
 		eventHandlers: {
-			mouseover(e: MouseEvent, view: EditorView) {
+			mouseover(e: MouseEvent, _view: EditorView) {
 				const target = (e.target as HTMLElement)?.closest('.wn-character-match') as HTMLElement;
 				if (target) {
 					const characterName = target.getAttribute('data-character');
 					const bookPath = target.getAttribute('data-bookpath');
-					const sourcePath = target.getAttribute('data-sourcepath') || '';
 					
 					if (characterName && bookPath && plugin.characterManager) {
 						const charEntry = plugin.characterManager.getCharacterFile(bookPath, characterName);
 						if (charEntry) {
-							// 触发 Obsidian 的原生悬停预览
-							// 组合链接文本：如果是字典模式，带上标题锚点 (e.g. "人物志.md#张三")
-							const linktext = charEntry.heading ? `${charEntry.file.path}#${charEntry.heading}` : charEntry.file.path;
-							
-							(app.workspace as unknown as { trigger: (name: string, data: unknown) => void }).trigger('hover-link', {
-								event: e,
-								source: 'editor',
-								hoverParent: view.contentDOM,
-								targetEl: target,
-								linktext: linktext,
-								sourcePath: sourcePath
-							});
+							new LoreHoverPopover(target, charEntry, plugin);
 						}
 					}
 				}

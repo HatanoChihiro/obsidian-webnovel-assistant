@@ -1,5 +1,19 @@
 # WebNovel Assistant 更新日志
 
+## 🔧 v3.2.3
+
+### ⚡ 设定速查卡片增强
+
+- 全面重构卡片样式，脱离 Obsidian 原生预览机制，采用全新极简徽章设计
+- 新增悬停 1 秒防误触延迟，且不再受原生选项（需按住 Ctrl）的限制
+
+---
+
+### ⚡ Enhanced Lore Cards
+
+- Completely refactored the card style, breaking away from the native Obsidian preview to introduce a clean, black-and-white badge design.
+- Added a 1-second hover delay to prevent accidental triggers. It is also no longer restricted by the native "Require Ctrl" option.
+
 ## 🔧 v3.2.2
 
 ### 🐞 问题修复
