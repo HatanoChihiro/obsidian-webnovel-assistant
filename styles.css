@@ -80,7 +80,7 @@ body.webnovel-custom-dragging .nav-folder-title-content {
 	background: color-mix(in srgb, var(--background-primary) 55%, transparent);
 	backdrop-filter: blur(10px);
 	-webkit-backdrop-filter: blur(10px);
-	padding: 10px;
+	padding: 8px;
 	border-radius: 8px;
 	text-align: center;
 	border: 1px solid var(--background-modifier-border);
@@ -439,11 +439,8 @@ body.webnovel-notes-hidden .my-floating-sticky-note {
 	display: none;
 }
 
-body.immersive-mode-active .workspace {
-	margin-top: 40px;
-	height: calc(100% - 40px);
-	top: 0;
-}
+/* 使用类链(Class Chaining)提升权重，消除第三方主题和原生工具栏遗留的偏移，避免使用 !important */
+
 
 /* 沉浸模式：编辑器布局适配 */
 /* 默认非适配状态 */
@@ -460,21 +457,36 @@ body.immersive-mode-active .workspace {
 }
 
 .immersive-mode-active .workspace-split {
-	gap: 8px;
-	padding: 8px;
 	background-color: color-mix(in srgb, var(--interactive-accent) 3%, var(--background-secondary));
 }
 
+/* 防止嵌套的 workspace-split 产生双重 padding 导致缩进不一致 */
+.immersive-mode-active .workspace-split .workspace-split {
+	background-color: transparent;
+}
+
 /* 沉浸模式：卡片式面板布局与边界强化 */
-.immersive-mode-active .workspace-leaf {
+/* 沉浸模式：卡片式面板布局与边界强化 
+   通过提高选择器特异性 (body.immersive-mode-active ...) 来覆盖主题样式，避免使用 !important 
+*/
+body.immersive-mode-active .workspace-leaf.workspace-leaf {
+	background-color: transparent;
+	padding: 8px;
+	border: none;
+	box-sizing: border-box;
+}
+
+body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-content {
+	position: relative;
 	background-color: var(--background-primary);
 	border: 1px solid color-mix(in srgb, var(--interactive-accent) 20%, var(--background-modifier-border));
 	border-radius: 12px;
-	margin: 0;
+	box-sizing: border-box;
 	box-shadow: 0 4px 15px color-mix(in srgb, var(--interactive-accent) 8%, rgba(0,0,0,0.05));
+	overflow: hidden;
 }
 
-.immersive-mode-active .workspace-leaf:hover {
+body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-content:hover {
 	box-shadow: 0 6px 20px color-mix(in srgb, var(--interactive-accent) 12%, rgba(0,0,0,0.1));
 }
 
@@ -485,35 +497,20 @@ body.immersive-mode-active .workspace {
 }
 
 /* 设置选项卡样式 */
-.webnovel-settings-tabs {
-	display: flex;
-	gap: 10px;
-	margin-bottom: 25px;
-	border-bottom: 1px solid var(--background-modifier-border);
-	padding-bottom: 10px;
-	overflow-x: auto;
-}
 
-.webnovel-tab-item {
-	padding: 6px 16px;
-	border-radius: 6px;
-	cursor: pointer;
-	background: var(--background-secondary);
-	color: var(--text-muted);
-	font-weight: 500;
-	transition: all 0.2s ease;
-	white-space: nowrap;
-}
 
-.webnovel-tab-item:hover {
-	background: var(--background-modifier-hover);
-	color: var(--text-normal);
-}
 
-.webnovel-tab-item.is-active {
-	background: var(--interactive-accent);
-	color: var(--text-on-accent);
-}
+
+.theme-dark 
+
+
+
+
+
+
+
+
+
 
 /* 沉浸模式：智能滚动条 (仅在鼠标移入时显示) */
 .immersive-mode-active *::-webkit-scrollbar {
@@ -1401,7 +1398,7 @@ body.immersive-mode-active .workspace {
 .wn-layout-top, .wn-layout-bottom {
 	background-color: var(--background-primary);
 	border-radius: 6px;
-	padding: 10px;
+	padding: 8px;
 	border: 1px dashed var(--text-muted);
 }
 
@@ -1415,7 +1412,7 @@ body.immersive-mode-active .workspace {
 	flex: 1;
 	background-color: var(--background-primary);
 	border-radius: 6px;
-	padding: 10px;
+	padding: 8px;
 	border: 1px dashed var(--text-muted);
 }
 
@@ -1625,7 +1622,7 @@ body .my-sticky-btn.is-active { color: var(--interactive-accent); background-col
 
 body .my-sticky-close:hover { color: #e74c3c; background-color: rgba(231, 76, 60, 0.1); opacity: 1;}
 
-body .my-sticky-palette-popup { display: none; position: absolute; top: 32px; right: 25px; background-color: var(--background-primary); border: 1px solid var(--background-modifier-border); border-radius: 8px; padding: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); z-index: var(--layer-menu, 50); grid-template-columns: repeat(3, 1fr); gap: 8px; }
+body .my-sticky-palette-popup { display: none; position: absolute; top: 32px; right: 25px; background-color: var(--background-primary); border: 1px solid var(--background-modifier-border); border-radius: 8px; padding: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); z-index: var(--layer-menu, 50); grid-template-columns: repeat(3, 1fr); gap: 8px; }
 body .my-sticky-palette-popup.is-active { display: grid; animation: popupFadeIn 0.15s ease-out; }
 
 body .my-sticky-swatch { width: 26px; height: 26px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.15); cursor: pointer; transition: transform 0.1s, border-color 0.1s; display: flex; align-items: center; justify-content: center; font-weight: bold; font-family: serif; font-size: 13px;}
@@ -1644,7 +1641,7 @@ body .my-sticky-content h1.inline-title { display: none; }
     display: flex;
     flex-wrap: nowrap;
     gap: 10px;
-    padding: 10px;
+    padding: 8px;
     padding-top: 10px;
     align-items: center;
     flex-direction: row;
@@ -1716,7 +1713,7 @@ body .workspace-leaf-content[data-type="immersive-sticky-notes"][data-type="imme
     max-height: 250px;
     overflow-y: auto;
     border: 1px solid var(--background-modifier-border);
-    padding: 10px;
+    padding: 8px;
     border-radius: 5px;
     margin-top: 10px;
 }
@@ -1860,7 +1857,7 @@ body .workspace-leaf-content[data-type="immersive-sticky-notes"][data-type="imme
     display: flex;
     flex-wrap: nowrap;
     gap: 10px;
-    padding: 10px;
+    padding: 8px;
     padding-top: 10px;
     align-items: center;
 }
@@ -1927,11 +1924,11 @@ body .workspace-leaf-content[data-type="immersive-sticky-notes"][data-type="imme
 .webnovel-tl-chapter-select { flex: 1; padding: 6px 8px; border-radius: 4px; border: 1px solid var(--background-modifier-border); background: var(--background-primary); color: var(--text-normal); }
 .webnovel-tl-remove-btn { width: 32px; height: 32px; padding: 0; border-radius: 4px; background: var(--background-modifier-error); color: var(--text-on-accent); border: none; cursor: pointer; font-size: 20px; line-height: 1; }
 .webnovel-tl-remove-btn-sm { width: 28px; height: 28px; padding: 0; border-radius: 4px; background: var(--background-modifier-error); color: var(--text-on-accent); border: none; cursor: pointer; font-size: 16px; }
-.webnovel-tl-add-btn { width: 100%; padding: 6px; border-radius: 4px; background: var(--interactive-accent); color: var(--text-on-accent); border: none; cursor: pointer; margin-top: 4px; }
+.webnovel-tl-add-btn { width: 100%; padding: 8px; border-radius: 4px; background: var(--interactive-accent); color: var(--text-on-accent); border: none; cursor: pointer; margin-top: 4px; }
 .webnovel-tl-add-btn-sm { width: 100%; padding: 4px; border-radius: 4px; background: var(--interactive-accent); color: var(--text-on-accent); border: none; cursor: pointer; font-size: 12px; margin-top: 4px; }
 .webnovel-tl-custom-hidden { margin-top: 4px; display: none; }
 .webnovel-tl-desc-input-edit { margin-bottom: 8px; height: 60px; }
-.webnovel-tl-delete-event-btn { width: 100%; padding: 6px; border-radius: 4px; background: var(--background-modifier-error); color: var(--text-on-accent); border: none; cursor: pointer; margin-top: 8px; }
+.webnovel-tl-delete-event-btn { width: 100%; padding: 8px; border-radius: 4px; background: var(--background-modifier-error); color: var(--text-on-accent); border: none; cursor: pointer; margin-top: 8px; }
 .webnovel-tl-add-event-btn { width: 100%; padding: 8px; border-radius: 4px; background: var(--interactive-accent); color: var(--text-on-accent); border: none; cursor: pointer; margin-top: 8px; }
 
 /* ── StatusView ── */
@@ -2049,3 +2046,127 @@ body .webnovel-lore-popover .wn-lore-markdown h6 {
     margin-bottom: 0.4em;
 }
 
+
+
+/* ѡ������ͳ�������� */
+.cm-tooltip-selection-count {
+  padding: 4px 8px;
+  background-color: var(--background-secondary);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  font-size: var(--font-ui-smaller);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 100;
+  pointer-events: none;
+  opacity: 0.85;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  animation: webnovel-tooltip-fadein 0.2s cubic-bezier(0.2, 0, 0, 1) forwards;
+}
+
+@keyframes webnovel-tooltip-fadein {
+  0% { opacity: 0; transform: translateY(4px) scale(0.95); }
+  100% { opacity: 0.85; transform: translateY(0) scale(1); }
+}
+
+/* 沉浸模式：隐藏分割把手，仅悬浮时显示 */
+body.immersive-mode-active .workspace-leaf-resize-handle {
+	opacity: 0 !important;
+	transition: opacity 0.2s ease !important;
+}
+
+body.immersive-mode-active .workspace-leaf-resize-handle:hover,
+body.immersive-mode-active .workspace-leaf-resize-handle.is-active {
+	opacity: 1 !important;
+	background-color: var(--interactive-accent) !important;
+}
+
+/* 深度主题防御：重置主流第三方主题(如 Border) 可能添加的全局容器边距 */
+body.immersive-mode-active.immersive-mode-active .app-container.app-container {
+	padding: 0;
+	margin: 0;
+	height: 100%;
+	width: 100%;
+}
+
+body.immersive-mode-active.immersive-mode-active .app-container.app-container .workspace.workspace {
+	margin: 0;
+	margin-top: 40px;
+	padding: 0;
+	height: calc(100% - 40px);
+	top: 0;
+	bottom: 0;
+	left: 0;
+	right: 0;
+	width: 100%;
+}
+
+body.immersive-mode-active.immersive-mode-active .horizontal-main-container.horizontal-main-container {
+	padding: 0;
+	margin: 0;
+	height: 100%;
+	bottom: 0;
+}
+
+body.immersive-mode-active.immersive-mode-active .app-container.app-container .workspace.workspace .workspace-split.workspace-split,
+body.immersive-mode-active.immersive-mode-active .app-container.app-container .workspace.workspace .workspace-split.mod-root {
+	padding: 0;
+	margin: 0;
+}
+
+body.immersive-mode-active.immersive-mode-active .app-container.app-container .workspace.workspace .workspace-leaf.workspace-leaf {
+	margin: 0;
+}
+
+/* 深度主题防御：清除主题可能使用伪元素在 body 上创建的悬浮边框 */
+body.immersive-mode-active.immersive-mode-active::before,
+body.immersive-mode-active.immersive-mode-active::after {
+	display: none !important;
+}
+
+/* 当前激活(选中)卡片的浅色高亮提示 */
+body.immersive-mode-active .workspace-leaf.mod-active.workspace-leaf .workspace-leaf-content {
+	border: 1px solid color-mix(in srgb, var(--interactive-accent) 80%, var(--background-modifier-border));
+	box-shadow: 0 0 0 1px color-mix(in srgb, var(--interactive-accent) 30%, transparent), 0 4px 15px color-mix(in srgb, var(--interactive-accent) 8%, rgba(0,0,0,0.05));
+}
+
+.webnovel-settings-tabs {
+	display: flex;
+	gap: 6px;
+	margin-bottom: 25px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	padding-bottom: 0;
+	overflow-x: auto;
+}
+
+.webnovel-tab-item {
+	padding: 8px 16px;
+	border-radius: 6px 6px 0 0;
+	cursor: pointer;
+	background: var(--background-primary);
+	color: var(--text-muted);
+	font-weight: 500;
+	transition: all 0.2s ease;
+	white-space: nowrap;
+	border: 1px solid var(--background-modifier-border);
+	border-bottom: none;
+	margin-bottom: -1px;
+	box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.02);
+}
+
+.theme-dark .webnovel-tab-item {
+	background: var(--background-secondary);
+}
+
+.webnovel-tab-item:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.webnovel-tab-item.is-active {
+	background: var(--background-modifier-active-hover);
+	color: var(--interactive-accent);
+	font-weight: 600;
+	border-bottom: 3px solid var(--interactive-accent);
+}

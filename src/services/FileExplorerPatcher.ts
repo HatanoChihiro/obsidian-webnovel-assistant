@@ -4,6 +4,8 @@ import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ChapterSorter } from './ChapterSorter';
 import { rafThrottle } from '../utils/dom';
 import type { FileExplorerItem, FileExplorerView } from 'obsidian';
+// @ts-expect-error: monkey-around is ESM but esbuild bundles it fine
+import { around } from 'monkey-around';
 
 interface SortEntity {
 	isBlock: boolean;
@@ -72,92 +74,87 @@ export class FileExplorerPatcher {
 			const proto = Object.getPrototypeOf(view) as FileExplorerView;
 			if (!proto || !proto.getSortedFolderItems) return false;
 
-			if ((proto.getSortedFolderItems as unknown as { __webnovel_patched?: boolean }).__webnovel_patched) return true;
+			if (this.unpatchFunc) return true; // Already patched
 
-			// eslint-disable-next-line @typescript-eslint/unbound-method -- 必须提取原始方法引用以便在补丁中通过 call(this) 动态绑定
-			const originalMethod: (this: FileExplorerView, folder: TFolder, bypass?: boolean) => FileExplorerItem[] = proto.getSortedFolderItems;
 			const isPatcherEnabled = () => this.enabled;
 			const getPlugin = () => this.plugin;
 			const applyPin = (items: FileExplorerItem[]) => this.applyHomepagePin(items);
 			const doSort = (entities: SortEntity[]) => this.sortEntities(entities);
 
-			proto.getSortedFolderItems = function(this: FileExplorerView, folder: TFolder, bypass?: boolean) {
-					try {
-						const sortedItems: FileExplorerItem[] = originalMethod.call(this, folder, bypass);
+			// [BUGFIX] 使用 monkey-around 库替代暴力的 prototype 覆写，保障与第三方插件（如智能文件夹类插件）的兼容性
+			this.unpatchFunc = around(proto, {
+				getSortedFolderItems: (next: (...args: unknown[]) => FileExplorerItem[]) => {
+					return function (this: FileExplorerView, folder: TFolder, bypass?: boolean) {
+						try {
+							const sortedItems: FileExplorerItem[] = next.call(this, folder, bypass) as FileExplorerItem[];
 
-						if (!isPatcherEnabled() || bypass || !Array.isArray(sortedItems) || sortedItems.length === 0) {
-							return sortedItems;
-						}
+							if (!isPatcherEnabled() || bypass || !Array.isArray(sortedItems) || sortedItems.length === 0) {
+								return sortedItems;
+							}
 
-						const plugin = getPlugin();
+							const plugin = getPlugin();
 
-						if (!plugin.settings.enableSmartChapterSort) {
-							return applyPin(sortedItems);
-						}
+							if (!plugin.settings.enableSmartChapterSort) {
+								return applyPin(sortedItems);
+							}
 
-					const chapterItems: { item: FileExplorerItem; chapterInfo: { number: number; ruleIndex: number }; isFolder: boolean }[] = [];
-					const entities: SortEntity[] = [];
+							const chapterItems: { item: FileExplorerItem; chapterInfo: { number: number; ruleIndex: number }; isFolder: boolean }[] = [];
+							const entities: SortEntity[] = [];
 
-					for (let i = 0; i < sortedItems.length; i++) {
-						const item = sortedItems[i];
-						if (item && item.file) {
-							// 工作区过滤：只对工作区内的文件应用章节排序
-							const isInWorkspace = item.file instanceof TFile
-								? plugin.isFileInWorkspace(item.file)
-								: true; // 文件夹不参与工作区过滤
-							if (isInWorkspace) {
-								const chapterInfo = ChapterSorter.extractChapterNumber(item.file.name);
-								if (chapterInfo !== null) {
-									chapterItems.push({ item, chapterInfo, isFolder: item.file instanceof TFolder });
-								} else {
-									entities.push({ isBlock: false, path: item.file.path, item: item, isFolder: item.file instanceof TFolder });
+							for (let i = 0; i < sortedItems.length; i++) {
+								const item = sortedItems[i];
+								if (item && item.file) {
+									const isInWorkspace = item.file instanceof TFile
+										? plugin.isFileInWorkspace(item.file)
+										: true;
+									if (isInWorkspace) {
+										const chapterInfo = ChapterSorter.extractChapterNumber(item.file.name);
+										if (chapterInfo !== null) {
+											chapterItems.push({ item, chapterInfo, isFolder: item.file instanceof TFolder });
+										} else {
+											entities.push({ isBlock: false, path: item.file.path, item: item, isFolder: item.file instanceof TFolder });
+										}
+									} else {
+										entities.push({ isBlock: false, path: item.file.path, item: item, isFolder: item.file instanceof TFolder });
+									}
 								}
-							} else {
-								// 工作区外的文件不参与智能排序，保持原位
-								entities.push({ isBlock: false, path: item.file.path, item: item, isFolder: item.file instanceof TFolder });
 							}
+
+							if (chapterItems.length > 0) {
+								chapterItems.sort((a, b) => {
+									if (a.chapterInfo.ruleIndex !== b.chapterInfo.ruleIndex) {
+										return a.chapterInfo.ruleIndex - b.chapterInfo.ruleIndex;
+									}
+									if (a.isFolder !== b.isFolder) return a.isFolder ? -1 : 1;
+									if (a.chapterInfo.number !== b.chapterInfo.number) {
+										return a.chapterInfo.number - b.chapterInfo.number;
+									}
+									return 0;
+								});
+								
+								const blockKey = folder.path === '/' ? '/__CHAPTER_BLOCK__' : `${folder.path}/__CHAPTER_BLOCK__`;
+								entities.push({ isBlock: true, path: blockKey, items: chapterItems.map(c => c.item) });
+							}
+
+							const sortedEntities = doSort(entities);
+
+							const finalResult: FileExplorerItem[] = [];
+							for (const entity of sortedEntities) {
+								if (entity.isBlock && entity.items) {
+									finalResult.push(...entity.items);
+								} else if (entity.item) {
+									finalResult.push(entity.item);
+								}
+							}
+
+							return applyPin(finalResult);
+						} catch (e) {
+							console.error('[WebNovel Assistant] getSortedFolderItems error:', e);
+							return next.call(this, folder, bypass) as FileExplorerItem[];
 						}
-					}
-
-					if (chapterItems.length > 0) {
-						chapterItems.sort((a, b) => {
-							if (a.chapterInfo.ruleIndex !== b.chapterInfo.ruleIndex) {
-								return a.chapterInfo.ruleIndex - b.chapterInfo.ruleIndex;
-							}
-							if (a.isFolder !== b.isFolder) return a.isFolder ? -1 : 1;
-							if (a.chapterInfo.number !== b.chapterInfo.number) {
-								return a.chapterInfo.number - b.chapterInfo.number;
-							}
-							return 0;
-						});
-						
-						const blockKey = folder.path === '/' ? '/__CHAPTER_BLOCK__' : `${folder.path}/__CHAPTER_BLOCK__`;
-						entities.push({ isBlock: true, path: blockKey, items: chapterItems.map(c => c.item) });
-					}
-
-					const sortedEntities = doSort(entities);
-
-					const finalResult: FileExplorerItem[] = [];
-					for (const entity of sortedEntities) {
-						if (entity.isBlock && entity.items) {
-							finalResult.push(...entity.items);
-						} else if (entity.item) {
-							finalResult.push(entity.item);
-						}
-					}
-
-					return applyPin(finalResult);
-				} catch (e) {
-					console.error('[WebNovel Assistant] getSortedFolderItems error:', e);
-					return originalMethod.call(this, folder, bypass);
+					};
 				}
-			};
-
-			(proto.getSortedFolderItems as unknown as { __webnovel_patched?: boolean }).__webnovel_patched = true;
-
-			this.unpatchFunc = () => {
-				proto.getSortedFolderItems = originalMethod;
-			};
+			});
 
 			return true;
 		} catch (error) {

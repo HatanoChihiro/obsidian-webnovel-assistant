@@ -229,7 +229,12 @@ export class ImmersiveModeManager {
 					pendingSizes.push({ split: parentSplit, sizes: [size0, size1] });
 				} else if (childCount === 3) {
 					// 只有在左右两侧都有时才会出现 childCount 3
-					const otherSize = before ? immersive.immersiveRightSize : immersive.immersiveLeftSize;
+					let otherSize = 0;
+					if (direction === 'horizontal') {
+						otherSize = before ? immersive.immersiveBottomSize : immersive.immersiveTopSize;
+					} else {
+						otherSize = before ? immersive.immersiveRightSize : immersive.immersiveLeftSize;
+					}
 					const centerSize = 100 - size - otherSize;
 					const sizes = before ? [size, centerSize, otherSize] : [otherSize, centerSize, size];
 					pendingSizes.push({ split: parentSplit, sizes });
@@ -245,9 +250,13 @@ export class ImmersiveModeManager {
 					currentLeaf = workspace.createLeafBySplit(currentLeaf, internalDir, false);
 				}
 				if (viewType === 'reference-view') {
+					const state: Record<string, string> = { mode: 'preview' };
+					if (immersive.lastReferenceFilePath) {
+						state.file = immersive.lastReferenceFilePath;
+					}
 					await currentLeaf.setViewState({ 
 						type: 'markdown',
-						state: { mode: 'preview' }
+						state
 					});
 					currentLeaf.containerEl.classList.add('immersive-reference-view');
 				} else {
@@ -457,6 +466,16 @@ export class ImmersiveModeManager {
 				}
 			}
 		};
+
+		// 记录当前参考文档区打开的文件
+		this.app.workspace.iterateRootLeaves(leaf => {
+			if (leaf.containerEl && leaf.containerEl.classList.contains('immersive-reference-view')) {
+				const mdView = leaf.view.getViewType() === 'markdown' ? leaf.view as MarkdownView : null;
+				if (mdView && mdView.file) {
+					immersive.lastReferenceFilePath = mdView.file.path;
+				}
+			}
+		});
 
 		saveSize(this.activeTopLeaf, 'horizontal', s => immersive.immersiveTopSize = s, s => immersive.immersiveTopInternalSizes = s, immersive.immersiveTopSlots.length);
 		saveSize(this.activeBottomLeaf, 'horizontal', s => immersive.immersiveBottomSize = s, s => immersive.immersiveBottomInternalSizes = s, immersive.immersiveBottomSlots.length);

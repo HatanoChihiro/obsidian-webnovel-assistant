@@ -537,8 +537,9 @@
   "common.word-count-progress": "字数: {current} / {target} ({percent}%)",
   "common.net-increase": "净增: {count}",
   "common.status-bar-format": "[{state}] {status}",
+  "common.selection-count": "{count} 选中",
   "common.click-to-toggle-status": "点击切换状态",
-  "common.click-to-switch-status": "点击切换状态",
+  "common.click-to-switch-status": "点击切换全屏状态",
   "common.click-add-synopsis": "点击添加章节摘要...",
   "common.status-updated": "状态已更新：{status}",
   "common.status-update-failed": "状态更新失败",
@@ -560,9 +561,9 @@
   "common.default-foreshadowing-filename": "伏笔",
   "common.default-timeline-filename": "时间线",
   "common.default-ranking-filename": "限时任务",
-	"setting.novel-info-filename": "作品信息文件名",
-	"setting.novel-info-filename-desc": "每个作品文件夹下的作品信息文件名称（无需 .md 后缀）。修改后会自动重命名所有已存在的文件。",
-	"notice.files-renamed": "已重命名 {count} 个文件",
+  "setting.novel-info-filename": "作品信息文件名",
+  "setting.novel-info-filename-desc": "每个作品文件夹下的作品信息文件名称（无需 .md 后缀）。修改后会自动重命名所有已存在的文件。",
+  "notice.files-renamed": "已重命名 {count} 个文件",
   "common.default-novel-info-filename": "作品信息",
   "common.default-welcome": "欢迎回到创作中心",
   "common.default-lore-folder": "设定",
@@ -598,5 +599,7 @@
   "corkboard.status-updated": "状态已更新：{status}",
   "corkboard.status-update-failed": "状态更新失败",
   "corkboard.synopsis-save-failed": "保存摘要失败，请检查文件状态",
-  "common.default-lore-folder-name": "设定"
+  "common.default-lore-folder-name": "设定",
+  "setting.enable-selection-count": "启用选中字数统计悬浮窗",
+  "setting.enable-selection-count-desc": "选中大于1个字符时，在光标附近悬浮显示当前选区内的准确字数。"
 }

@@ -26,6 +26,7 @@ import { MobileFloatingStats } from './src/ui/MobileFloatingStats';
 import { AddLoreModal } from './src/ui/AddLoreModal';
 import { ObsOverlayServer } from './src/services/ObsServer';
 import { ForeshadowingManager } from './src/services/ForeshadowingManager';
+import { TimelineManager } from './src/services/TimelineManager';
 import { RankingManager } from './src/services/RankingManager';
 import { ObsHtmlBuilder } from './src/services/ObsHtmlBuilder';
 import { ImmersiveModeManager } from './src/ui/ImmersiveModeManager';
@@ -35,6 +36,7 @@ import { RANKING_VIEW_TYPE } from './src/ui/RankingView';
 import { CommandManager } from './src/core/CommandManager';
 import { ViewManager } from './src/core/ViewManager';
 import { MenuManager } from './src/core/MenuManager';
+import { selectionCountTooltipExtension } from './src/editor/SelectionCountTooltip';
 import type { Extension } from '@codemirror/state';
 import { createWordCountGutter, forceWordCountGutterUpdate } from './src/editor/WordCountGutter';
 import { WorkerManager } from './src/services/WorkerManager';
@@ -238,6 +240,9 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		if (isDesktop()) {
 			this.registerEditorExtension(buildCharacterHoverExtension(this.app, this));
 		}
+		
+		// 注册全平台通用的选区字数悬浮窗扩展
+		this.registerEditorExtension(selectionCountTooltipExtension(this));
 
 		// 初始化工作区样式和功能
 		this.menuManager.registerAllMenus();
@@ -858,10 +863,12 @@ onunload() {
 
 		// 8. 强制刷新所有管理器队列
 		try {
-			// 历史数据同步落盘
-			this.historyManager.flushSync();
+			// [BUGFIX] 历史数据同步：调用异步 flush，它已被重构为立即无视防抖延迟写盘
+			this.historyManager.flush().catch(e => {
+				console.error('[WebNovel Assistant] 历史数据落盘失败:', e);
+			});
 		} catch(e) {
-			console.error('[WebNovel Assistant] 历史数据同步落盘失败:', e);
+			console.error('[WebNovel Assistant] 历史数据同步调用失败:', e);
 		}
 		
 		Promise.all([

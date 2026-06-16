@@ -537,6 +537,7 @@
   "common.word-count-progress": "Words: {current} / {target} ({percent}%)",
   "common.net-increase": "Net: {count}",
   "common.status-bar-format": "[{state}] {status}",
+  "common.selection-count": "{count} selected",
   "common.click-to-toggle-status": "Click to toggle status",
   "common.click-to-switch-status": "Click to switch status",
   "common.click-add-synopsis": "Click to add chapter synopsis...",
@@ -560,9 +561,9 @@
   "common.default-foreshadowing-filename": "Foreshadowing",
   "common.default-timeline-filename": "Timeline",
   "common.default-ranking-filename": "Time-limited Task",
-	"setting.novel-info-filename": "Novel Info Filename",
-	"setting.novel-info-filename-desc": "The name of the novel info file in each work folder (no .md suffix needed). Changing this will automatically rename all existing files.",
-	"notice.files-renamed": "Renamed {count} file(s)",
+  "setting.novel-info-filename": "Novel Info Filename",
+  "setting.novel-info-filename-desc": "The name of the novel info file in each work folder (no .md suffix needed). Changing this will automatically rename all existing files.",
+  "notice.files-renamed": "Renamed {count} file(s)",
   "common.default-novel-info-filename": "Work Info",
   "common.default-welcome": "Welcome back to the Creative Center",
   "common.default-lore-folder": "Lore",
@@ -598,5 +599,7 @@
   "corkboard.status-updated": "Status updated: {status}",
   "corkboard.status-update-failed": "Status update failed",
   "corkboard.synopsis-save-failed": "Synopsis save failed, please check the file status",
-  "common.default-lore-folder-name": "Lore"
+  "common.default-lore-folder-name": "Lore",
+  "setting.enable-selection-count": "Enable Selection Word Count Tooltip",
+  "setting.enable-selection-count-desc": "Display accurate word count in a tooltip near the cursor when selecting text (more than 1 character)."
 }

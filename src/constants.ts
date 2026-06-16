@@ -285,6 +285,7 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 	strictChapterExceptions: [],
 	enableWordCountGutter: true,
 	wordCountInterval: 2000,
+	enableSelectionWordCount: true,
 	nextNoteThemeIndex: 0,
 	stickyNoteAutoSave: true,
 

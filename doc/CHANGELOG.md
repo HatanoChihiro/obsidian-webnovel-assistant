@@ -1,5 +1,17 @@
 # WebNovel Assistant 更新日志
 
+## ✨ v3.2.5
+
+- **新增**：框选任意文本即可在光标附近悬浮显示选中字数。可在设置中开启或关闭，与设置的统计方式一致。
+- **修复**：修复了打开四面插槽后沉浸模式布局记忆不准确的BUG
+- **优化**：优化沉浸模式布局及显示样式，当前聚焦卡片高亮显示，参考文档会自动记录上次打开的文件
+
+---
+
+- **Feature**: Selecting any text now displays a floating word count tooltip near the cursor. This can be toggled in settings and is consistent with your chosen counting method.
+- **Fix**: Fixed a bug where Immersive Mode layout ratios were not remembered accurately when slots on all four sides were opened.
+- **Optimize**: Optimized Immersive Mode layout and display styles. The currently focused card is now visually highlighted, and the reference document view automatically remembers the last opened file.
+
 
 ## 🔧 v3.2.4
 

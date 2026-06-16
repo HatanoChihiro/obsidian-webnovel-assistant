@@ -29,7 +29,21 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		new Setting(containerEl).setName(t('setting.heading')).setHeading();
+
+		// Add GitHub link box
+		const githubBox = containerEl.createDiv({
+			attr: {
+				style: 'background: var(--background-secondary); padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; font-size: 14px; border: 1px solid var(--background-modifier-border);'
+			}
+		});
+		const isZh = this.plugin.settings.language === 'zh-CN' || (this.plugin.settings.language === 'auto' && window.localStorage.getItem('language') === 'zh');
+		const prefixText = isZh ? '详情及用户指南见 Github：' : 'See details and user guide on Github: ';
+		githubBox.createSpan({ text: prefixText, attr: { style: 'color: var(--text-muted);' } });
+		githubBox.createEl('a', {
+			text: 'HatanoChihiro/obsidian-webnovel-assistant',
+			href: 'https://github.com/HatanoChihiro/obsidian-webnovel-assistant',
+			attr: { style: 'font-weight: 600; color: var(--interactive-accent); text-decoration: none;' }
+		});
 
 		// 创建选项卡头部
 		const navContainer = containerEl.createDiv({ cls: 'webnovel-settings-tabs' });
@@ -428,6 +442,17 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 
 		if (isDesktop()) {
 			new Setting(containerEl)
+				.setName(t('setting.enable-selection-count'))
+				.setDesc(t('setting.enable-selection-count-desc'))
+				.addToggle(toggle => toggle
+					.setValue(this.plugin.settings.enableSelectionWordCount)
+					.onChange(async (value) => {
+						this.plugin.settings.enableSelectionWordCount = value;
+						await this.plugin.saveSettings();
+						// Reconfigure extensions if needed or it will check dynamically
+					}));
+
+			new Setting(containerEl)
 				.setName(t('setting.word-count-gutter'))
 				.setDesc(t('setting.word-count-gutter-desc'))
 				.addToggle(toggle => toggle
@@ -436,21 +461,24 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 						this.plugin.settings.enableWordCountGutter = value;
 						await this.plugin.saveSettings();
 						this.app.workspace.trigger('webnovel:word-count-gutter-settings-changed');
+						this.display(); // 刷新界面以显示/隐藏间隔输入框
 					}));
 
-			new Setting(containerEl)
-				.setName(t('setting.word-count-interval'))
-				.setDesc(t('setting.word-count-interval-desc'))
-				.addText(text => text
-					.setValue((this.plugin.settings.wordCountInterval || 2000).toString())
-					.onChange(async (v) => {
-						const p = parseInt(v, 10);
-						if (!isNaN(p) && p > 0) {
-							this.plugin.settings.wordCountInterval = p;
-							await this.plugin.saveSettings();
-							this.app.workspace.trigger('webnovel:word-count-gutter-settings-changed');
-						}
-					}));
+			if (this.plugin.settings.enableWordCountGutter) {
+				new Setting(containerEl)
+					.setName(t('setting.word-count-interval'))
+					.setDesc(t('setting.word-count-interval-desc'))
+					.addText(text => text
+						.setValue((this.plugin.settings.wordCountInterval || 2000).toString())
+						.onChange(async (v) => {
+							const p = parseInt(v, 10);
+							if (!isNaN(p) && p > 0) {
+								this.plugin.settings.wordCountInterval = p;
+								await this.plugin.saveSettings();
+								this.app.workspace.trigger('webnovel:word-count-gutter-settings-changed');
+							}
+						}));
+			}
 		}
 
 		new Setting(containerEl).setName(t('setting.writing-goals')).setHeading();

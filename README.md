@@ -156,6 +156,16 @@ See [OBS Overlay CSS Guide](doc/OBS_OVERLAY_CSS_GUIDE_EN.md) for full customizat
 
 ⭐ Star · 🐛 [Issues](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/issues) · 💡 [Discussions](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/discussions)
 
+<br />
+
+If this plugin helps with your writing, consider buying the author a coffee ☕. Your support is the greatest motivation for continuous updates!
+
+<br />
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/hatanochihiro)
+
+<br />
+
 **Happy writing!** ✍️
 
 </div>
@@ -320,6 +330,14 @@ See [OBS Overlay CSS Guide](doc/OBS_OVERLAY_CSS_GUIDE_EN.md) for full customizat
 [MIT License](LICENSE)
 
 ⭐ Star · 🐛 [提交问题](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/issues) · 💡 [功能建议](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/discussions)
+
+<br />
+
+如果这个插件对你的码字事业有所帮助，欢迎请作者喝杯咖啡 ☕，你的支持是我持续更新的最大动力！
+
+<img width="500" alt="赞赏码" src="assets/donate.png" />
+
+<br />
 
 **祝你写作愉快！** ✍️
 

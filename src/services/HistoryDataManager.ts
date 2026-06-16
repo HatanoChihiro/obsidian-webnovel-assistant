@@ -81,23 +81,32 @@ export class HistoryDataManager {
 	 * [M-P4] 优化：使用 busy/pending 模式替代简单的 promise 链，防止大规模并发调用导致内存泄漏
 	 */
 	private isSaving = false;
-	private pendingSave: Promise<void> | null = null;
+	private pendingSaveTimer: number | null = null;
+	private pendingSaveResolve: (() => void) | null = null;
+	private pendingSavePromise: Promise<void> | null = null;
 
-	async saveHistory(): Promise<void> {
+	async saveHistory(forceImmediate = false): Promise<void> {
 		if (!this.dirty) return;
 		
-		if (this.isSaving) {
-			if (!this.pendingSave) {
-				this.pendingSave = new Promise((resolve) => {
+		if (this.isSaving && !forceImmediate) {
+			if (!this.pendingSavePromise) {
+				this.pendingSavePromise = new Promise((resolve) => {
+					this.pendingSaveResolve = resolve;
 					// 500ms 后执行一次最终保存
-					window.setTimeout(async () => {
-						this.pendingSave = null;
+					this.pendingSaveTimer = window.setTimeout(async () => {
+						this.clearPendingTimer();
 						await this.saveHistory();
 						resolve();
 					}, 500);
 				});
 			}
-			return this.pendingSave;
+			return this.pendingSavePromise;
+		}
+
+		if (forceImmediate) {
+			this.clearPendingTimer();
+			// 如果已经是强制写入，无视 isSaving 锁（风险极低，因为只在退出或明确要求时调用）
+			this.isSaving = false; 
 		}
 
 		this.isSaving = true;
@@ -113,6 +122,18 @@ export class HistoryDataManager {
 		}
 	}
 
+	private clearPendingTimer() {
+		if (this.pendingSaveTimer !== null) {
+			window.clearTimeout(this.pendingSaveTimer);
+			this.pendingSaveTimer = null;
+		}
+		if (this.pendingSaveResolve) {
+			this.pendingSaveResolve();
+			this.pendingSaveResolve = null;
+		}
+		this.pendingSavePromise = null;
+	}
+
 	/**
 	 * 强制等待所有待处理的保存操作完成
 	 * 主要用于 onunload 生命周期
@@ -120,10 +141,7 @@ export class HistoryDataManager {
 	async flush(): Promise<void> {
 		// 卸载时强制写入，不依赖 dirty 标志防止数据丢失
 		this.dirty = true;
-		await this.saveHistory();
-		if (this.pendingSave) {
-			await this.pendingSave;
-		}
+		await this.saveHistory(true);
 	}
 
 	flushSync(): void {

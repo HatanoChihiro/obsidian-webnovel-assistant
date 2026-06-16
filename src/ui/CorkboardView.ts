@@ -148,7 +148,7 @@ export class CorkboardView extends ItemView {
 		const synopsis = (frontmatter?.synopsis || frontmatter?.['摘要'] || '') as string;
 		// 状态（通过映射表解析中文旧值与英文新值，向后兼容）
 		const rawStatus = (frontmatter?.status || frontmatter?.['状态'] || 'unwritten') as string;
-		const status = CORKBOARD_STATUS_MAP[rawStatus] ?? rawStatus;
+		let status = CORKBOARD_STATUS_MAP[rawStatus] ?? rawStatus;
 
 		const card = grid.createDiv('wn-corkboard-card');
 
@@ -177,8 +177,9 @@ export class CorkboardView extends ItemView {
 							try {
 								this.isSavingMetadata = true;
 								await this.app.fileManager.processFrontMatter(file, (fm) => {
-									(fm as Record<string, unknown>)['status'] = s;
+									(fm as Record<string, unknown>)['status'] = getCorkboardStatusText(s);
 								});
+								status = s;
 								statusEl.setText(getCorkboardStatusText(s));
 								new Notice(t('corkboard.status-updated', { status: getCorkboardStatusText(s) }));
 							} catch (err) {

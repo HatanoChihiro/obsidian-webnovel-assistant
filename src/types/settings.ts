@@ -131,6 +131,8 @@ export interface ImmersiveModeSettings {
 	immersiveNoteFontSize: number;
 	/** 布局持久化数据 (null 表示使用默认值) */
 	immersiveLayout: Record<string, number> | null;
+	/** 记忆参考文档的路径 */
+	lastReferenceFilePath?: string;
 }
 
 /** OBS 数据输出设置 */
@@ -216,6 +218,8 @@ export interface AccurateCountSettings {
 	enableWordCountGutter: boolean;
 	/** 字数实时提醒的字数间隔 */
 	wordCountInterval: number;
+	/** 是否启用选区字数统计悬浮窗 */
+	enableSelectionWordCount: boolean;
 
 	/** 下一个新建便签的主题索引（用于颜色轮换） */
 	nextNoteThemeIndex: number;

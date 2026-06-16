@@ -323,9 +323,26 @@ export class CacheManager {
 		
 		const toDeleteCount = Math.floor(fileEntries.length * 0.2);
 		for (let i = 0; i < toDeleteCount; i++) {
-			const [path] = fileEntries[i];
+			const [path, entry] = fileEntries[i];
+			const wordCount = entry.wordCount;
 			this.cache.delete(path);
+			
+			// [BUGFIX] 从所有父文件夹中扣除被淘汰文件的字数，防止重新加入时导致字数膨胀
+			let parentPath = path;
+			while (parentPath.includes('/')) {
+				parentPath = parentPath.substring(0, parentPath.lastIndexOf('/'));
+				if (!parentPath) break;
+				const parentEntry = this.cache.get(parentPath);
+				if (parentEntry && parentEntry.isFolder) {
+					parentEntry.wordCount = Math.max(0, parentEntry.wordCount - wordCount);
+					parentEntry.lastModified = Date.now();
+				}
+			}
+			// 处理根目录（Obsidian中根目录可能被特殊处理，如果有条目也需扣减）
+			const rootEntry = this.cache.get('/');
+			if (rootEntry && rootEntry.isFolder) {
+				rootEntry.wordCount = Math.max(0, rootEntry.wordCount - wordCount);
+			}
 		}
-		
 	}
 }

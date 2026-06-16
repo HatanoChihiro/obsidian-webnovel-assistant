@@ -102,8 +102,14 @@ export class ImmersiveStickyNotesView extends ItemView {
 		
 		// 悬浮触发区（顶部一条不可见的区域，用来唤出工具栏）
 		const hoverTrigger = containerEl.createDiv({ cls: 'immersive-sticky-trigger' });
-		hoverTrigger.addClass('webnovel-immersive-hover-trigger');const toolbar = containerEl.createDiv({ cls: 'immersive-sticky-toolbar' });
-		toolbar.addClass('webnovel-immersive-toolbar');let hideTimeout: number;
+		hoverTrigger.addClass('webnovel-immersive-hover-trigger');
+		
+		const toolbar = containerEl.createDiv({ cls: 'immersive-sticky-toolbar' });
+		toolbar.addClass('webnovel-immersive-toolbar');
+		toolbar.setCssProps({ opacity: '0' });
+		toolbar.setCssStyles({ pointerEvents: 'none', transition: 'opacity 0.2s ease' });
+		
+		let hideTimeout: number;
 
 		const showToolbar = () => {
 			window.clearTimeout(hideTimeout);
