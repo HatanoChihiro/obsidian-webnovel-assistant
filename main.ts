@@ -26,7 +26,7 @@ import { MobileFloatingStats } from './src/ui/MobileFloatingStats';
 import { AddLoreModal } from './src/ui/AddLoreModal';
 import { ObsOverlayServer } from './src/services/ObsServer';
 import { ForeshadowingManager } from './src/services/ForeshadowingManager';
-import { TimelineManager } from './src/services/TimelineManager';
+
 import { RankingManager } from './src/services/RankingManager';
 import { ObsHtmlBuilder } from './src/services/ObsHtmlBuilder';
 import { ImmersiveModeManager } from './src/ui/ImmersiveModeManager';
@@ -982,7 +982,7 @@ onunload() {
 	 */
 	async updateFileCacheAndRefresh(file: TFile): Promise<void> {
 		try {
-			const content = await this.app.vault.cachedRead(file);
+			const content = await this.app.vault.read(file);
 			const wordCount = this.calculateAccurateWords(content);
 			this.cacheManager.updateFileCache(file, wordCount, this.app.vault);
 			this.refreshFolderCounts();

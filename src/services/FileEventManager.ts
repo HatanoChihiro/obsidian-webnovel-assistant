@@ -9,10 +9,29 @@ export class FileEventManager {
 	}
 
 	setup(): void {
+		this.registerCreateHandler();
 		this.registerModifyHandler();
 		this.registerDeleteHandler();
 		this.registerRenameHandler();
 		this.registerLayoutChangeHandler();
+	}
+
+	private registerCreateHandler(): void {
+		this.plugin.registerEvent(this.plugin.app.vault.on('create', async (file) => {
+			if (!(file instanceof TFile) || file.extension !== 'md') return;
+			if (!this.plugin.isEligibleForWordCount(file)) return;
+
+			try {
+				const content = await this.plugin.app.vault.read(file);
+				const wordCount = this.plugin.calculateAccurateWords(content);
+				this.plugin.cacheManager.updateFileCache(file, wordCount, this.plugin.app.vault);
+				this.plugin.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
+					this.plugin.refreshFolderCounts();
+				}, 500);
+			} catch (error) {
+				console.error('[Plugin] 新文件字数统计失败:', error);
+			}
+		}));
 	}
 
 	private registerModifyHandler(): void {
@@ -36,7 +55,7 @@ export class FileEventManager {
 
 			if (!isActiveFile) {
 				try {
-					const content = await this.plugin.app.vault.cachedRead(file);
+					const content = await this.plugin.app.vault.read(file);
 					const newWordCount = this.plugin.calculateAccurateWords(content);
 					const oldWordCount = this.plugin.cacheManager.getFileCache(file.path);
 

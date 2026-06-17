@@ -2071,15 +2071,15 @@ body .webnovel-lore-popover .wn-lore-markdown h6 {
 }
 
 /* 沉浸模式：隐藏分割把手，仅悬浮时显示 */
-body.immersive-mode-active .workspace-leaf-resize-handle {
-	opacity: 0 !important;
-	transition: opacity 0.2s ease !important;
+body.immersive-mode-active.immersive-mode-active .workspace-leaf-resize-handle {
+	opacity: 0;
+	transition: opacity 0.2s ease;
 }
 
-body.immersive-mode-active .workspace-leaf-resize-handle:hover,
-body.immersive-mode-active .workspace-leaf-resize-handle.is-active {
-	opacity: 1 !important;
-	background-color: var(--interactive-accent) !important;
+body.immersive-mode-active.immersive-mode-active .workspace-leaf-resize-handle:hover,
+body.immersive-mode-active.immersive-mode-active .workspace-leaf-resize-handle.is-active {
+	opacity: 1;
+	background-color: var(--interactive-accent);
 }
 
 /* 深度主题防御：重置主流第三方主题(如 Border) 可能添加的全局容器边距 */
@@ -2120,9 +2120,9 @@ body.immersive-mode-active.immersive-mode-active .app-container.app-container .w
 }
 
 /* 深度主题防御：清除主题可能使用伪元素在 body 上创建的悬浮边框 */
-body.immersive-mode-active.immersive-mode-active::before,
-body.immersive-mode-active.immersive-mode-active::after {
-	display: none !important;
+body.immersive-mode-active.immersive-mode-active.immersive-mode-active::before,
+body.immersive-mode-active.immersive-mode-active.immersive-mode-active::after {
+	display: none;
 }
 
 /* 当前激活(选中)卡片的浅色高亮提示 */

@@ -84,13 +84,20 @@ export class EditorTracker {
 			return;
 		}
 		
-		this.plugin.lastFileWords = view ? this.plugin.calculateAccurateWords(view.getViewData()) : 0;
-		this.plugin.lastFilePath = view?.file?.path || '';
+		let currentWords = view ? this.plugin.calculateAccurateWords(view.getViewData()) : 0;
 		
-		// [BUGFIX] 切换文件时立即同步缓存基准
 		if (view?.file) {
-			this.plugin.cacheManager.updateFileCache(view.file, this.plugin.lastFileWords, this.app.vault);
+			const existingCache = this.plugin.cacheManager.getFileCache(view.file.path);
+			// [BUGFIX] 如果视图在被销毁或未就绪（如退出沉浸模式或切换预览态）时返回空数据，
+			// 但缓存中确实有字数，我们必须信任缓存，防止被误判的 0 覆盖，导致字数丢失。
+			if (currentWords === 0 && existingCache !== null && existingCache > 0) {
+				currentWords = existingCache;
+			}
+			this.plugin.cacheManager.updateFileCache(view.file, currentWords, this.app.vault);
 		}
+
+		this.plugin.lastFileWords = currentWords;
+		this.plugin.lastFilePath = view?.file?.path || '';
 		
 		this.updateWordCount();
 		this.plugin.refreshStatusViews();

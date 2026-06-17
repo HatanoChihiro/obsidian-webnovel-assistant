@@ -1,5 +1,13 @@
 # WebNovel Assistant 更新日志
 
+## 🔧 v3.2.6
+
+- 修复了新创建或被其他设备（如 Obsidian Sync）后台同步修改的文件在未点开前不会自动统计字数的 BUG
+- 修复沉浸模式中被设置成参考文档的章节在退出后不计算字数的 BUG
+- Fix: Fixed an issue where newly created files or files modified in the background via other devices (e.g., Obsidian Sync) would not update their word count automatically until opened.
+- Fix: Fixed a bug where the word count of chapters set as reference documents in Immersive Mode was not calculated after exiting the mode.
+
+
 ## ✨ v3.2.5
 
 - **新增**：框选任意文本即可在光标附近悬浮显示选中字数。可在设置中开启或关闭，与设置的统计方式一致。

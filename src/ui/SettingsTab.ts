@@ -1,5 +1,5 @@
-import type { App} from 'obsidian';
-import { Notice, PluginSettingTab, Setting } from 'obsidian';
+import type { App } from 'obsidian';
+import { PluginSettingTab, Setting, Notice, getLanguage } from 'obsidian';
 import type { Plugin } from 'obsidian';
 import { isDesktop, getPlatformTier } from '../utils/platform';
 import { ObsOverlayServer } from '../services/ObsServer';
@@ -36,7 +36,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				style: 'background: var(--background-secondary); padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; font-size: 14px; border: 1px solid var(--background-modifier-border);'
 			}
 		});
-		const isZh = this.plugin.settings.language === 'zh-CN' || (this.plugin.settings.language === 'auto' && window.localStorage.getItem('language') === 'zh');
+		const isZh = this.plugin.settings.language === 'zh-CN' || (this.plugin.settings.language === 'auto' && getLanguage().startsWith('zh'));
 		const prefixText = isZh ? '详情及用户指南见 Github：' : 'See details and user guide on Github: ';
 		githubBox.createSpan({ text: prefixText, attr: { style: 'color: var(--text-muted);' } });
 		githubBox.createEl('a', {

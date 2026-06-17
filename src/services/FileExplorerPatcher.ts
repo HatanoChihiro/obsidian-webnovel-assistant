@@ -86,7 +86,7 @@ export class FileExplorerPatcher {
 				getSortedFolderItems: (next: (...args: unknown[]) => FileExplorerItem[]) => {
 					return function (this: FileExplorerView, folder: TFolder, bypass?: boolean) {
 						try {
-							const sortedItems: FileExplorerItem[] = next.call(this, folder, bypass) as FileExplorerItem[];
+							const sortedItems: FileExplorerItem[] = next.call(this, folder, bypass);
 
 							if (!isPatcherEnabled() || bypass || !Array.isArray(sortedItems) || sortedItems.length === 0) {
 								return sortedItems;
@@ -150,7 +150,7 @@ export class FileExplorerPatcher {
 							return applyPin(finalResult);
 						} catch (e) {
 							console.error('[WebNovel Assistant] getSortedFolderItems error:', e);
-							return next.call(this, folder, bypass) as FileExplorerItem[];
+							return next.call(this, folder, bypass);
 						}
 					};
 				}
