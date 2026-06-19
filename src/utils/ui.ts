@@ -1,3 +1,4 @@
+import { Logger } from '../utils/Logger';
 import { Notice } from 'obsidian';
 import { t } from '../i18n';
 import { REGEX_PATTERNS } from '../constants';
@@ -12,7 +13,7 @@ export async function copyDocumentContent(title: string, rawContent: string): Pr
 		await navigator.clipboard.writeText(contentWithTitle);
 		new Notice(t('notice.copy-success'));
 	} catch (err) {
-		console.error('[Plugin] 复制失败:', err);
+		Logger.error('[Plugin] 复制失败:', err);
 		new Notice(t('notice.copy-failed'));
 	}
 }

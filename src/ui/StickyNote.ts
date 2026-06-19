@@ -1,3 +1,4 @@
+import { Logger } from '../utils/Logger';
 import type { App} from 'obsidian';
 import { Component, MarkdownRenderer, Notice, TFile, setIcon, Modal, Setting, MarkdownView } from 'obsidian';
 import type { StickyNoteState, ThemeScheme } from '../types/settings';
@@ -42,9 +43,9 @@ export class SaveStickyNoteModal extends Modal {
 						// 实时验证文件名
 						const fileName = this.fileNameInput.value.trim();
 						if (!fileName) {
-							this.fileNameInput.setCssStyles({ borderColor: 'var(--background-modifier-error)' });
+							this.fileNameInput.addClass('wn-border-error');
 						} else {
-							this.fileNameInput.setCssStyles({ borderColor: '' });
+							this.fileNameInput.removeClass('wn-border-error');
 						}
 					});
 				text.inputEl.addClass('webnovel-settings-input-full');
@@ -226,7 +227,7 @@ export class FloatingStickyNote extends Component {
 			// 更新下一次的索引并持久化
 			this.plugin.settings.nextNoteThemeIndex = (themeIndex + 1) % themes.length;
 			this.plugin.saveSettings().catch(err => {
-				console.error('[StickyNote] 更新颜色索引失败:', err);
+				Logger.error('[StickyNote] 更新颜色索引失败:', err);
 			});
 		}
 		
@@ -331,7 +332,7 @@ export class FloatingStickyNote extends Component {
 			if (!notes.find((n: StickyNoteState) => n.id === this.state.id)) {
 				notes.push(this.state);
 				this.plugin.stickyNoteManager.saveNotes(notes).catch(err => {
-					console.error('[StickyNote] 保存便签列表失败:', err);
+					Logger.error('[StickyNote] 保存便签列表失败:', err);
 				});
 			}
 		})();
@@ -351,7 +352,7 @@ export class FloatingStickyNote extends Component {
 		const pinBtn = this.createButton(controlsEl, 'pin', this.state.isPinned);
 		const saveBtn = this.createButton(controlsEl, 'save');
 		saveBtn.title = t('common.note-save-content');
-		saveBtn.setCssProps({ opacity: '0.5' });
+		saveBtn.removeClass('is-active');
 		const syncBtn = this.state.filePath ? this.createButton(controlsEl, 'refresh-cw') : null;
 		if (syncBtn) syncBtn.title = t('common.note-sync-from-doc');
 		const toggleEditBtn = this.createButton(controlsEl, this.state.isEditing ? 'eye' : 'pencil');
@@ -398,10 +399,10 @@ export class FloatingStickyNote extends Component {
 			// 视觉反馈：如果内容与最后保存的不一致，高亮保存按钮
 			const isDirty = this.textareaEl.value !== this.lastSavedContent;
 			if (isDirty && !this.plugin.settings.stickyNoteAutoSave) {
-				saveBtn.setCssProps({ opacity: '1' }); saveBtn.setCssProps({ color: 'var(--interactive-accent)' });
+				saveBtn.addClass('is-active');
 			} else {
-				saveBtn.setCssProps({ opacity: '0.5' });
-				saveBtn.setCssProps({ color: '' });
+				saveBtn.removeClass('is-active');
+				
 			}
 
 			if (this.plugin.settings.stickyNoteAutoSave) {
@@ -414,13 +415,13 @@ export class FloatingStickyNote extends Component {
 					if (this.state.filePath) {
 						const file = this.app.vault.getAbstractFileByPath(this.state.filePath);
 						if (file instanceof TFile) {
-							void this.app.vault.modify(file, this.state.content || "");
+							void this.app.vault.process(file, () => this.state.content || '' || "");
 							this.lastSavedContent = this.state.content || ""; // 同步后更新“最后保存”内容
 						}
 					}
 					// 自动保存后恢复按钮状态
-					saveBtn.setCssProps({ opacity: '0.5' });
-					saveBtn.setCssProps({ color: '' });
+					saveBtn.removeClass('is-active');
+					
 				}, 500);
 			}
 		});
@@ -511,7 +512,7 @@ export class FloatingStickyNote extends Component {
 				this.state.content = this.textareaEl.value;
 				if (this.state.filePath) {
 					const file = this.app.vault.getAbstractFileByPath(this.state.filePath);
-					if (file instanceof TFile) await this.app.vault.modify(file, this.state.content);
+					if (file instanceof TFile) await this.app.vault.process(file, () => this.state.content || '');
 				}
 				this.state.isEditing = false;
 				setIcon(toggleEditBtn, 'pencil');
@@ -547,7 +548,7 @@ export class FloatingStickyNote extends Component {
 			if (this.state.filePath) { 
 				const file = this.app.vault.getAbstractFileByPath(this.state.filePath);
 				if (file instanceof TFile) {
-					void this.app.vault.modify(file, this.state.content || "");
+					void this.app.vault.process(file, () => this.state.content || '' || "");
 					this.lastSavedContent = this.state.content || ""; // 更新最后保存的内容
 					new Notice(t('modal.note-synced-to-doc'));
 				}
@@ -585,7 +586,7 @@ export class FloatingStickyNote extends Component {
 						this.saveState();
 						new Notice(t('modal.saved-as', { path: fullPath }));
 					} catch (error) {
-						console.error('保存便签失败:', error);
+						Logger.error('保存便签失败:', error);
 						new Notice(t('modal.save-failed', { error: String(error) }));
 					}
 				})();
@@ -621,7 +622,7 @@ export class FloatingStickyNote extends Component {
 							if (this.state.filePath) {
 								const file = this.app.vault.getAbstractFileByPath(this.state.filePath);
 								if (file instanceof TFile) {
-									await this.app.vault.modify(file, this.state.content || "");
+									await this.app.vault.process(file, () => this.state.content || '' || "");
 									new Notice(t('modal.note-saved'));
 								}
 								this.close();
@@ -642,7 +643,7 @@ export class FloatingStickyNote extends Component {
 											new Notice(t('modal.saved-as', { path: fullPath }));
 											this.close();
 										} catch (error) {
-											console.error('保存便签失败:', error);
+											Logger.error('保存便签失败:', error);
 											new Notice(t('modal.save-failed', { error: String(error) }));
 										}
 									})();
@@ -680,7 +681,7 @@ export class FloatingStickyNote extends Component {
 
 	async renderContent() {
 		if (this.state.isEditing) {
-				this.contentContainer.setCssProps({ display: 'none' }); this.textareaEl.setCssProps({ display: 'block' });
+				this.contentContainer.addClass('wn-hidden'); this.contentContainer.removeClass('wn-show-block'); this.textareaEl.removeClass('wn-hidden'); this.textareaEl.addClass('wn-show-block');
 			
 			// 核心修复：如果当前文本框正处于聚焦状态（用户正在输入），不要强行覆盖它的值
 			// 否则会打断中文输入法 (IME) 的组合过程
@@ -693,7 +694,7 @@ export class FloatingStickyNote extends Component {
 				// window.setTimeout(() => { this.textareaEl.focus(); }, 50);
 			}
 		} else {
-			this.textareaEl.setCssProps({ display: 'none' }); this.contentContainer.setCssProps({ display: 'block' });
+			this.textareaEl.addClass('wn-hidden'); this.textareaEl.removeClass('wn-show-block'); this.contentContainer.removeClass('wn-hidden'); this.contentContainer.addClass('wn-show-block');
 			this.contentContainer.empty();
 			let text = this.state.content || "";
 			if (this.state.filePath) {
@@ -707,14 +708,14 @@ export class FloatingStickyNote extends Component {
 	saveState() {
 		this.plugin.stickyNoteManager.updateNote(this.state);
 		this.plugin.stickyNoteManager.saveNotes(this.plugin.stickyNoteManager.getNotes()).catch(err => {
-			console.error('[StickyNote] 保存状态失败:', err);
+			Logger.error('[StickyNote] 保存状态失败:', err);
 		});
 	}
 
 	close() {
 		this.plugin.stickyNoteManager.removeNote(this.state.id);
 		this.plugin.stickyNoteManager.saveNotes(this.plugin.stickyNoteManager.getNotes()).catch(err => {
-			console.error('[StickyNote] 移除便签失败:', err);
+			Logger.error('[StickyNote] 移除便签失败:', err);
 		});
 		this.unload();
 	}

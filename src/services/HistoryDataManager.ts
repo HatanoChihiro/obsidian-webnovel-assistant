@@ -1,3 +1,4 @@
+import { Logger } from '../utils/Logger';
 import type { Plugin } from 'obsidian';
 import type { DailyStat } from '../types/settings';
 import { getPluginDir } from '../utils/platform';
@@ -40,7 +41,7 @@ export class HistoryDataManager {
 				if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
 					this.historyData = parsed;
 				} else {
-					console.warn('[HistoryDataManager] 历史数据格式无效，已重置为空对象');
+					Logger.warn('[HistoryDataManager] 历史数据格式无效，已重置为空对象');
 					this.historyData = {};
 				}
 				
@@ -70,7 +71,7 @@ export class HistoryDataManager {
 			// 无历史数据
 			return {};
 		} catch (error) {
-			console.error('[HistoryDataManager] 加载历史数据失败:', error);
+			Logger.error('[HistoryDataManager] 加载历史数据失败:', error);
 			this.historyData = {};
 			return {};
 		}
@@ -116,7 +117,7 @@ export class HistoryDataManager {
 			await adapter.write(this.historyFilePath, content);
 			this.dirty = false;
 		} catch (error) {
-			console.error('[HistoryDataManager] 保存历史数据失败:', error);
+			Logger.error('[HistoryDataManager] 保存历史数据失败:', error);
 		} finally {
 			this.isSaving = false;
 		}
@@ -142,21 +143,6 @@ export class HistoryDataManager {
 		// 卸载时强制写入，不依赖 dirty 标志防止数据丢失
 		this.dirty = true;
 		await this.saveHistory(true);
-	}
-
-	flushSync(): void {
-		if (!this.dirty) return;
-		try {
-			const adapter = this.plugin.app.vault.adapter;
-			if (adapter.fs && adapter.fs.writeFileSync && adapter.getBasePath && adapter.path) {
-				const fullPath = adapter.path.join(adapter.getBasePath(), this.historyFilePath);
-				const content = JSON.stringify(this.historyData, null, 2);
-				adapter.fs.writeFileSync(fullPath, content);
-				this.dirty = false;
-			}
-		} catch (error) {
-			console.error('[HistoryDataManager] flushSync 失败:', error);
-		}
 	}
 
 	/**
@@ -209,6 +195,22 @@ export class HistoryDataManager {
 		const stat = this.getOrCreateDailyStat(date);
 		stat.addedWords += words;
 		this.dirty = true;
+	}
+
+	/**
+	 * 重置指定日期的写作统计数据（字数、专注时间等归零）
+	 */
+	resetDailyStat(date: string): void {
+		if (this.historyData[date]) {
+			this.historyData[date] = {
+				focusMs: 0,
+				slackMs: 0,
+				addedWords: 0,
+				hourlyFocus: new Array(24).fill(0),
+				hourlySlack: new Array(24).fill(0)
+			};
+			this.dirty = true;
+		}
 	}
 
 	/**

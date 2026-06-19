@@ -347,5 +347,6 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 	customSortOrder: {},
 	loreFolderName: '设定',
 	advancedSearchQuery: '',
+	debugMode: false,
 };
 

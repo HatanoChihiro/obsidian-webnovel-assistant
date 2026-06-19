@@ -1,3 +1,4 @@
+import { Logger } from '../utils/Logger';
 import type { App, EventRef} from 'obsidian';
 import { TFolder, TFile } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
@@ -35,6 +36,7 @@ export class FileExplorerPatcher {
 	}
 
 	private enableRetries = 0;
+	private retryTimer: number | null = null;
 
 	enable(): boolean {
 		if (this.enabled) return true;
@@ -54,11 +56,11 @@ export class FileExplorerPatcher {
 
 			if (this.enableRetries < 10) {
 				this.enableRetries++;
-				window.setTimeout(() => this.enable(), 500 * this.enableRetries);
+				this.retryTimer = window.setTimeout(() => this.enable(), 500 * this.enableRetries);
 			}
 			return false;
 		} catch (error) {
-			console.error('[WebNovel Assistant] Failed to enable smart sorting:', error);
+			Logger.error('[WebNovel Assistant] Failed to enable smart sorting:', error);
 			return false;
 		}
 	}
@@ -83,7 +85,7 @@ export class FileExplorerPatcher {
 
 			// [BUGFIX] 使用 monkey-around 库替代暴力的 prototype 覆写，保障与第三方插件（如智能文件夹类插件）的兼容性
 			this.unpatchFunc = around(proto, {
-				getSortedFolderItems: (next: (...args: unknown[]) => FileExplorerItem[]) => {
+				getSortedFolderItems: (next: (folder: TFolder, bypass?: boolean) => FileExplorerItem[]) => {
 					return function (this: FileExplorerView, folder: TFolder, bypass?: boolean) {
 						try {
 							const sortedItems: FileExplorerItem[] = next.call(this, folder, bypass);
@@ -149,7 +151,7 @@ export class FileExplorerPatcher {
 
 							return applyPin(finalResult);
 						} catch (e) {
-							console.error('[WebNovel Assistant] getSortedFolderItems error:', e);
+							Logger.error('[WebNovel Assistant] getSortedFolderItems error:', e);
 							return next.call(this, folder, bypass);
 						}
 					};
@@ -158,7 +160,7 @@ export class FileExplorerPatcher {
 
 			return true;
 		} catch (error) {
-			console.error('[WebNovel Assistant] Error patching prototype:', error);
+			Logger.error('[WebNovel Assistant] Error patching prototype:', error);
 			return false;
 		}
 	}
@@ -376,12 +378,17 @@ export class FileExplorerPatcher {
 	}
 
 	disable(): void {
+		if (this.retryTimer !== null) {
+			window.clearTimeout(this.retryTimer);
+			this.retryTimer = null;
+		}
+
 		this.enabled = false;
 		this.eventRefs.forEach(ref => this.app.vault.offref(ref));
 		this.eventRefs = [];
 		this.teardownDragSort();
 		this.refreshAllExplorers();
-		activeDocument.querySelectorAll('.folder-word-count').forEach(el => el.remove());
+		activeDocument.querySelectorAll('.wn-folder-word-count').forEach(el => el.remove());
 	}
 
 	unpatch(): void {
@@ -390,7 +397,7 @@ export class FileExplorerPatcher {
 			this.unpatchFunc();
 			this.unpatchFunc = null;
 		}
-		activeDocument.querySelectorAll('.folder-word-count').forEach(el => el.remove());
+		activeDocument.querySelectorAll('.wn-folder-word-count').forEach(el => el.remove());
 	}
 
 	isEnabled(): boolean {
@@ -410,7 +417,7 @@ export class FileExplorerPatcher {
 				for (const path in fileExplorerItems) {
 					const item = fileExplorerItems[path];
 					if (item.el) {
-						const countEl = this.wordCountElCache.get(item.el) || item.el.querySelector('.folder-word-count');
+						const countEl = this.wordCountElCache.get(item.el) || item.el.querySelector('.wn-folder-word-count');
 						if (countEl) {
 							countEl.remove();
 							this.wordCountElCache.delete(item.el);
@@ -421,7 +428,10 @@ export class FileExplorerPatcher {
 			}
 			for (const path in fileExplorerItems) {
 				const item = fileExplorerItems[path];
-				if (item.el && (item.file instanceof TFolder || (item.file instanceof TFile && item.file.extension === 'md'))) {
+				if (!item.el) continue;
+
+				let isEligible = false;
+				if (item.file instanceof TFolder || (item.file instanceof TFile && item.file.extension === 'md')) {
 					let isInWorkspace = true;
 					if (item.file instanceof TFile) {
 						isInWorkspace = this.plugin.isEligibleForWordCount(item.file);
@@ -434,35 +444,40 @@ export class FileExplorerPatcher {
 							});
 						}
 					}
-					if (!isInWorkspace) continue;
+					isEligible = isInWorkspace;
+				}
 
-					const count = this.plugin.cacheManager.getFolderCount(path);
-					if (count === null) continue;
+				let count: number | null = null;
+				if (isEligible) {
+					count = this.plugin.cacheManager.getFolderCount(path);
+				}
 
-					const labelText = count > 0 ? ` (${count.toLocaleString()})` : "";
-					let countEl = this.wordCountElCache.get(item.el) as HTMLElement;
+				const labelText = (count !== null && count > 0) ? ` (${count.toLocaleString()})` : "";
+				let countEl = this.wordCountElCache.get(item.el) as HTMLElement | undefined | null;
 
+				if (!countEl) {
+					countEl = item.el.querySelector('.wn-folder-word-count') as HTMLElement | null;
 					if (!countEl) {
-						countEl = item.el.querySelector('.folder-word-count') as HTMLElement;
-						if (!countEl) {
-							const titleContent = item.el.querySelector('.nav-folder-title-content') || item.el.querySelector('.nav-file-title-content');
-							const mountEl = titleContent?.parentElement;
-							if (mountEl) {
-								countEl = mountEl.createEl('span', { cls: 'folder-word-count' });
-								countEl.addClass('webnovel-folder-word-count-detail');}
-						}
-						if (countEl) {
-							this.wordCountElCache.set(item.el, countEl);
-						}
-					}
+						if (!labelText) continue;
 
-					if (countEl && countEl.textContent !== labelText) {
-						countEl.textContent = labelText;
+						const titleContent = item.el.querySelector('.nav-folder-title-content') || item.el.querySelector('.nav-file-title-content');
+						const mountEl = titleContent?.parentElement;
+						if (mountEl) {
+							countEl = mountEl.createEl('span', { cls: 'wn-folder-word-count' });
+							countEl.addClass('webnovel-wn-folder-word-count-detail');
+						}
 					}
+					if (countEl) {
+						this.wordCountElCache.set(item.el, countEl);
+					}
+				}
+
+				if (countEl && countEl.textContent !== labelText) {
+					countEl.textContent = labelText;
 				}
 			}
 		} catch (error) {
-			console.error('[WebNovel Assistant] refreshFolderCounts failed:', error);
+			Logger.error('[WebNovel Assistant] refreshFolderCounts failed:', error);
 		}
 	}
 
@@ -543,8 +558,17 @@ export class FileExplorerPatcher {
 		const itemEl = titleEl.closest('.nav-file, .nav-folder') as HTMLElement;
 		if (!itemEl) return;
 
+		const filePath = this._getPathFromItemEl(itemEl);
+		if (!filePath) return;
+
 		const fileName = this.getFileNameFromEl(itemEl, null);
-		const isChapter = fileName && ChapterSorter.extractChapterNumber(fileName) !== null;
+		let isChapter = false;
+		if (fileName) {
+			const file = this.app.vault.getAbstractFileByPath(filePath);
+			if (file instanceof TFile && this.plugin.isFileInWorkspace(file) && ChapterSorter.extractChapterNumber(fileName) !== null) {
+				isChapter = true;
+			}
+		}
 
 		if (isChapter) {
 			const folderPath = this._getFolderPathFromItemEl(itemEl);
@@ -560,8 +584,6 @@ export class FileExplorerPatcher {
 				}
 			}
 		} else {
-			const filePath = this._getPathFromItemEl(itemEl);
-			if (!filePath) return;
 			this._dragSourcePath = filePath;
 			itemEl.classList.add('webnovel-dragging');
 		}
@@ -606,9 +628,16 @@ export class FileExplorerPatcher {
 		}
 
 		const targetFileName = this.getFileNameFromEl(targetItem, null);
-		const isChapterTarget = targetFileName && ChapterSorter.extractChapterNumber(targetFileName) !== null;
-		
 		let targetPath = this._getPathFromItemEl(targetItem);
+		let isChapterTarget = false;
+
+		if (targetPath && targetFileName) {
+			const targetFile = this.app.vault.getAbstractFileByPath(targetPath);
+			if (targetFile instanceof TFile && this.plugin.isFileInWorkspace(targetFile) && ChapterSorter.extractChapterNumber(targetFileName) !== null) {
+				isChapterTarget = true;
+			}
+		}
+
 		let blockKey = '';
 
 		if (isChapterTarget) {

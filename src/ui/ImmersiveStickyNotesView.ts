@@ -18,7 +18,7 @@ class FileSuggestModal extends FuzzySuggestModal<TFile> {
 	}
 
 	getItems(): TFile[] {
-		return this.app.vault.getMarkdownFiles();
+		return this.plugin.getTrackedMarkdownFiles();
 	}
 
 	getItemText(file: TFile): string {
@@ -235,7 +235,7 @@ export class ImmersiveStickyNotesView extends ItemView {
 							if (noteData.filePath) {
 								const file = this.app.vault.getAbstractFileByPath(noteData.filePath);
 								if (file instanceof TFile) {
-									void this.app.vault.modify(file, currentContent);
+									void this.app.vault.process(file, () => currentContent);
 									new Notice(t('modal.note-saved'));
 								}
 								void performRemove();
@@ -290,7 +290,7 @@ export class ImmersiveStickyNotesView extends ItemView {
 						if (noteData.filePath) {
 							const file = this.app.vault.getAbstractFileByPath(noteData.filePath);
 							if (file instanceof TFile) {
-								void this.app.vault.modify(file, textarea.value);
+								void this.app.vault.process(file, () => textarea.value);
 							}
 						}
 					}, 500);

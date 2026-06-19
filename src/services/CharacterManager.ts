@@ -1,5 +1,5 @@
 import type { App, TAbstractFile} from 'obsidian';
-import { TFile, TFolder } from 'obsidian';
+import { TFile, TFolder, type MarkdownView } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { getDefaultFileName, getDefaultFileNameCandidates } from '../i18n/data-keys';
 
@@ -75,8 +75,8 @@ export class CharacterManager {
 		this.app.workspace.iterateAllLeaves((leaf) => {
 			const view = leaf.view;
 			if (view.getViewType() === 'markdown') {
-				const editor = this.app.workspace.activeEditor?.editor;
-				const editorView = editor?.cm;
+				const editor = (view as MarkdownView).editor;
+				const editorView = (editor as unknown as { cm?: { dispatch: (tr: object) => void } })?.cm;
 				if (editorView) {
 					editorView.dispatch({});
 				}
@@ -103,19 +103,25 @@ private handleFileChange(file: TAbstractFile): void {
 			if (bookPath) {
 				const parentPath = file.parent?.path || '';
 				if (this.isLorePath(bookPath, parentPath)) {
-					this.plugin.adaptiveDebounceManager.debounceFixed('rebuild-character-cache', () => {
-						this.rebuildCache().then(() => {
+					this.plugin.adaptiveDebounceManager.debounceFixed('rebuild-character-cache', () => { void (async () => {
+						try {
+							await this.rebuildCache();
 							this.app.workspace.updateOptions();
-						}).catch(e => console.error(e));
-					}, 500);
+						} catch (e) {
+							console.error(e);
+						}
+					})(); }, 500);
 				}
 			}
 		} else if (file instanceof TFolder) {
-			this.plugin.adaptiveDebounceManager.debounceFixed('rebuild-character-cache', () => {
-				this.rebuildCache().then(() => {
+			this.plugin.adaptiveDebounceManager.debounceFixed('rebuild-character-cache', () => { void (async () => {
+				try {
+					await this.rebuildCache();
 					this.app.workspace.updateOptions();
-				}).catch(e => console.error(e));
-			}, 500);
+				} catch (e) {
+					console.error(e);
+				}
+			})(); }, 500);
 		}
 	}
 

@@ -1,4 +1,4 @@
-import { Notice, TFile } from 'obsidian';
+import { Notice, TFile, type App, Modal } from 'obsidian';
 import { isDesktop } from '../utils/platform';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { copyDocumentContent } from '../utils/ui';
@@ -7,6 +7,34 @@ import { ForeshadowingInputModal, ConfirmCreateForeshadowingFileModal, Foreshado
 import { AdvancedSearchModal } from '../ui/AdvancedSearchModal';
 import { t } from '../i18n';
 import { getDefaultFileName } from '../i18n/data-keys';
+
+class ConfirmResetDailyStatsModal extends Modal {
+	constructor(app: App, private onConfirm: () => void) {
+		super(app);
+	}
+
+	onOpen() {
+		const { contentEl } = this;
+		contentEl.empty();
+		contentEl.createDiv({ text: t('command.reset-daily-stats-title'), cls: 'modal-title' });
+		const p = contentEl.createEl('p', { text: t('command.reset-daily-stats-warning') });
+		p.setCssStyles({ color: 'var(--text-error)' });
+
+		const btnContainer = contentEl.createDiv({ cls: 'wn-base-button-container' });
+		const cancelBtn = btnContainer.createEl('button', { text: t('common.cancel') });
+		cancelBtn.onclick = () => this.close();
+
+		const confirmBtn = btnContainer.createEl('button', { text: t('common.confirm'), cls: 'mod-warning' });
+		confirmBtn.onclick = () => {
+			this.onConfirm();
+			this.close();
+		};
+	}
+
+	onClose() {
+		this.contentEl.empty();
+	}
+}
 
 export class CommandManager {
 	private plugin: WebNovelAssistantPlugin;
@@ -97,12 +125,36 @@ export class CommandManager {
 					this.plugin.sessionAddedWords = 0;
 					this.plugin.isTracking = false;
 					this.plugin.workerManager?.postMessage('stop');
-					this.plugin.editorTracker?.handleFileChange();
+					void this.plugin.editorTracker?.handleFileChange();
 					this.plugin.refreshStatusViews();
 					new Notice(t('notice.stream-data-reset'));
 				}
 			});
 		}
+
+		this.plugin.addCommand({
+			id: 'reset-daily-stats',
+			name: t('command.reset-daily-stats'),
+			callback: () => {
+				new ConfirmResetDailyStatsModal(this.plugin.app, () => {
+					const today = window.moment().format('YYYY-MM-DD');
+					this.plugin.historyManager.resetDailyStat(today);
+					void this.plugin.historyManager.saveHistory(true);
+					this.plugin.refreshStatusViews();
+					
+					// 如果开启了直播状态视图（悬浮窗），也要重置内存变量
+					this.plugin.focusMs = 0;
+					this.plugin.slackMs = 0;
+					this.plugin.sessionAddedWords = 0;
+					if (this.plugin.isTracking) {
+						this.plugin.stopTracking();
+					}
+					void this.plugin.editorTracker?.handleFileChange();
+
+					new Notice(t('notice.daily-stats-reset'));
+				}).open();
+			}
+		});
 	}
 
 	private registerStickyNoteCommands() {
@@ -189,7 +241,7 @@ export class CommandManager {
 						new Notice(t('notice.cache-rebuild-complete'));
 					} catch (error) {
 						notice.hide();
-						new Notice(`t('notice.cache-rebuild-failed', { error: String(error) })`);
+						new Notice(t('notice.cache-rebuild-failed', { error: String(error) }));
 						console.error('[Plugin] 缓存重建失败:', error);
 					}
 				}
@@ -218,7 +270,7 @@ export class CommandManager {
 				callback: () => {
 					const url = `http://127.0.0.1:${this.plugin.settings.obs.obsPort}/`;
 					void navigator.clipboard.writeText(url);
-					new Notice(`t('notice.obs-url-copied', { url })`);
+					new Notice(t('notice.obs-url-copied', { url }));
 				}
 			});
 		}
@@ -239,8 +291,9 @@ export class CommandManager {
 					if (!this.plugin.foreshadowingManager) return false;
 					const fm = this.plugin.foreshadowingManager;
 				const submitCallback = (description: string, tags: string[]) => {
-					fm.addForeshadowing(file, selectedText, description, tags)
-						.then(({ file: foreshadowFile, merged }) => {
+					void (async () => {
+						try {
+							const { file: foreshadowFile, merged } = await fm.addForeshadowing(file, selectedText, description, tags);
 							if (merged) {
 								new Notice(t('notice.foreshadowing-merged', { name: foreshadowFile.name }), 5000);
 							} else {
@@ -254,24 +307,34 @@ export class CommandManager {
 									notice.hide();
 								};
 							}
-						})
-						.catch(err => {
+						} catch (err) {
 							console.error('[ForeshadowingManager] addForeshadowing failed:', err);
 							new Notice(t('notice.foreshadowing-mark-failed', { error: String(err) }));
-						});
+						}
+					})();
 				};
 
 				if (fm.foreshadowingFileExists(file)) {
-					fm.getExistingTags(file).then(extraTags => {
-						new ForeshadowingInputModal(this.plugin.app, this.plugin, file.basename, selectedText, submitCallback, extraTags).open();
-					}).catch(err => console.error('[CommandManager] getExistingTags failed:', err));
+					void (async () => {
+						try {
+							const extraTags = await fm.getExistingTags(file);
+							new ForeshadowingInputModal(this.plugin.app, this.plugin, file.basename, selectedText, submitCallback, extraTags).open();
+						} catch (err) {
+							console.error('[CommandManager] getExistingTags failed:', err);
+						}
+					})();
 				} else {
 					const fileName = this.plugin.settings.foreshadowing?.fileName || getDefaultFileName('foreshadowingFileName');
 					const folderPath = file.parent?.path || '';
 					new ConfirmCreateForeshadowingFileModal(this.plugin.app, fileName, folderPath, () => {
-						void fm.getExistingTags(file).then(extraTags => {
-							new ForeshadowingInputModal(this.plugin.app, this.plugin, file.basename, selectedText, submitCallback, extraTags).open();
-						});
+						void (async () => {
+							try {
+								const extraTags = await fm.getExistingTags(file);
+								new ForeshadowingInputModal(this.plugin.app, this.plugin, file.basename, selectedText, submitCallback, extraTags).open();
+							} catch (err) {
+								console.error('[CommandManager] getExistingTags failed:', err);
+							}
+						})();
 					}).open();
 				}
 				return true;
@@ -300,18 +363,24 @@ export class CommandManager {
 						entry.contentPreview,
 						file.parent?.path || '',
 						(selectedChapters) => {
-							void fm.markAsRecovered(
-								file, entry.sourceFile, entry.createdAt, selectedChapters
-							).then(success => {
-								if (success) {
-									const links = selectedChapters.map(c => `[[${c}]]`).join('、');
-									new Notice(t('notice.foreshadowing-recovered', { links }));
-								} else {
-									new Notice(t('notice.foreshadowing-entry-not-found'));
+							void (async () => {
+								try {
+									const success = await fm.markAsRecovered(
+										file, entry.sourceFile, entry.createdAt, selectedChapters
+									);
+									if (success) {
+										const links = selectedChapters.map(c => `[[${c}]]`).join('、');
+										new Notice(t('notice.foreshadowing-recovered', { links }));
+									} else {
+										new Notice(t('notice.foreshadowing-entry-not-found'));
+									}
+								} catch (err) {
+									console.error('[CommandManager] markAsRecovered failed:', err);
+									new Notice(t('notice.foreshadowing-recovery-failed', { error: String(err) }));
 								}
-							}).catch(err => console.error('[CommandManager] markAsRecovered failed:', err));
-					}
-				).open();
+							})();
+						}
+					).open();
 					return true;
 				} else {
 					new Notice(t('notice.foreshadowing-cursor-hint'));

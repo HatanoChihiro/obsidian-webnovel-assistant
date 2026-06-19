@@ -117,13 +117,10 @@ export class AdaptiveDebounceManager {
 	 * 更新输入速度统计
 	 */
 	private updateSpeedStats(key: string, now: number): void {
+		// 防止内存泄漏，清理过期的按键统计
 		if (this.speedStats.size > 500) {
-			let deleted = 0;
-			for (const k of this.speedStats.keys()) {
-				this.speedStats.delete(k);
-				deleted++;
-				if (deleted > 250) break;
-			}
+			const keysToDelete = Array.from(this.speedStats.keys()).slice(0, 250);
+			keysToDelete.forEach(k => this.speedStats.delete(k));
 		}
 
 		let stats = this.speedStats.get(key);

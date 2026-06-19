@@ -1,6 +1,7 @@
 // 限时任务追踪管理器（内部仍用 Ranking 命名，待后续重构改为 Task）
 import type { App} from 'obsidian';
-import { TFile, TFolder } from 'obsidian';
+import { TFile, TFolder, normalizePath } from 'obsidian';
+import { t } from '../i18n';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { RankingEntry, RankingStatus } from '../types/ranking';
 import { RANKING_STATUS_MAP, RANKING_LABEL_MAP, getRankingLabel, getRankingStatusText, getRankingPeriodTitle, getDefaultFileName, getDefaultFileNameCandidates } from '../i18n/data-keys';
@@ -18,7 +19,7 @@ export class RankingManager {
 
 	getRankingFilePath(): string {
 		const fileName = (this.plugin.settings.ranking?.fileName || getDefaultFileName('rankingFileName')) + '.md';
-		return this.currentFolder ? `${this.currentFolder}/${fileName}` : fileName;
+		return normalizePath(this.currentFolder ? `${this.currentFolder}/${fileName}` : fileName);
 	}
 
 findRankingFile(): TFile | null {
@@ -26,7 +27,7 @@ findRankingFile(): TFile | null {
 		candidates.add(this.plugin.settings.ranking?.fileName || getDefaultFileName('rankingFileName'));
 		for (const name of getDefaultFileNameCandidates('rankingFileName')) candidates.add(name);
 		for (const fileName of candidates) {
-			const path = this.currentFolder ? this.currentFolder + "/" + fileName + ".md" : fileName + ".md";
+			const path = normalizePath(this.currentFolder ? this.currentFolder + "/" + fileName + ".md" : fileName + ".md");
 			const file = this.app.vault.getAbstractFileByPath(path);
 			if (file instanceof TFile) return file;
 		}
@@ -44,10 +45,10 @@ async createRankingFile(): Promise<TFile> {
 			// 如果找到的文件名与当前设置不一致，自动重命名
 			const expectedName = this.plugin.settings.ranking?.fileName || getDefaultFileName('rankingFileName');
 			if (existing.name !== expectedName + '.md') {
-				const newPath = this.currentFolder ? this.currentFolder + '/' + expectedName + '.md' : expectedName + '.md';
-				try { await this.app.fileManager.renameFile(existing, newPath); } catch (e) { console.warn('[RankingManager] 重命名限时任务文件失败:', e); }
+				const newPath = normalizePath(this.currentFolder ? this.currentFolder + '/' + expectedName + '.md' : expectedName + '.md');
+				try { await this.app.fileManager.renameFile(existing, newPath); } catch (e) { console.warn('[RankingManager] 重命名任务目标文件失败:', e); }
 			}
-			const foundPath = this.currentFolder ? this.currentFolder + '/' + expectedName + '.md' : expectedName + '.md';
+			const foundPath = normalizePath(this.currentFolder ? this.currentFolder + '/' + expectedName + '.md' : expectedName + '.md');
 			const found = this.app.vault.getAbstractFileByPath(foundPath);
 				return found instanceof TFile ? found : existing;
 		}
@@ -72,9 +73,9 @@ async createRankingFile(): Promise<TFile> {
 			if (!trimmed.startsWith('## ')) continue;
 
 			const firstLine = trimmed.split('\n')[0];
-			const periodMatch = firstLine.match(/^## 第(\d+)期/) || firstLine.match(/^## Period (\d+)/);
+			const periodMatch = firstLine.match(new RegExp(`(?:第(\\d+)期|Period (\\d+)|${t('ranking.period-prefix')}(\\d+))`));
 			if (!periodMatch) continue;
-			const period = parseInt(periodMatch[1], 10);
+			const period = parseInt(periodMatch[1] || periodMatch[2] || periodMatch[3], 10);
 
 			const meta: Record<string, string> = {};
 			const metaRegex = /\*\*(.+?)\*\*[：:]\s*(.+)/g;
@@ -126,10 +127,10 @@ async createRankingFile(): Promise<TFile> {
 			let file = this.getRankingFile();
 			if (!file) file = await this.createRankingFile();
 
-			const existing = await this.app.vault.read(file);
-			const sep = existing.trim() ? '\n' : '';
-			const newContent = existing.trimEnd() + sep + this.formatEntry(entry);
-			await this.app.vault.modify(file, newContent);
+			await this.app.vault.process(file, (existing) => {
+				const sep = existing.trim() ? '\n' : '';
+				return existing.trimEnd() + sep + this.formatEntry(entry);
+			});
 		});
 	}
 
@@ -137,23 +138,24 @@ async createRankingFile(): Promise<TFile> {
 		return this.writer.enqueue(async () => {
 			const file = this.getRankingFile();
 			if (!file) return;
-			const content = await this.app.vault.read(file);
-			const entries = this.parseEntries(content);
+			await this.app.vault.process(file, (content) => {
+				const entries = this.parseEntries(content);
 
-			const entry = entries.find(e => e.period === period && (e.status === 'active' || e.status === 'notStarted'));
-			if (!entry) return;
-			
-			if (entry.status === status && (completedWords === undefined || entry.completedWords === completedWords)) return;
+				const entry = entries.find(e => e.period === period && (e.status === 'active' || e.status === 'notStarted'));
+				if (!entry) return content;
+				
+				if (entry.status === status && (completedWords === undefined || entry.completedWords === completedWords)) return content;
 
-			entry.status = status;
-			if (completedWords !== undefined) entry.completedWords = completedWords;
+				entry.status = status;
+				if (completedWords !== undefined) entry.completedWords = completedWords;
 
-			// 全量重写
-			let newContent = '';
-			for (const e of entries) {
-				newContent += this.formatEntry(e);
-			}
-			await this.app.vault.modify(file, newContent);
+				// 全量重写
+				let newContent = '';
+				for (const e of entries) {
+					newContent += this.formatEntry(e);
+				}
+				return newContent;
+			});
 		});
 	}
 
@@ -162,16 +164,18 @@ async createRankingFile(): Promise<TFile> {
 		return this.writer.enqueue(async () => {
 			const file = this.getRankingFile();
 			if (!file) return;
-			const content = await this.app.vault.read(file);
-			const entries = this.parseEntries(content);
-			const entry = entries.find(e => e.period === period && e.status === 'active');
-			if (!entry || entry.completedWords === completedWords) return;
-			entry.completedWords = completedWords;
-			let newContent = '';
-			for (const e of entries) {
-				newContent += this.formatEntry(e);
-			}
-			await this.app.vault.modify(file, newContent);
+			await this.app.vault.process(file, (content) => {
+				const entries = this.parseEntries(content);
+				const entry = entries.find(e => e.period === period && e.status === 'active');
+				if (!entry || entry.completedWords === completedWords) return content;
+				
+				entry.completedWords = completedWords;
+				let newContent = '';
+				for (const e of entries) {
+					newContent += this.formatEntry(e);
+				}
+				return newContent;
+			});
 		});
 	}
 

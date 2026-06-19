@@ -1,3 +1,4 @@
+import { Logger } from '../utils/Logger';
 import type { App} from 'obsidian';
 import { t } from '../i18n';
 import { MarkdownView } from 'obsidian';
@@ -34,7 +35,7 @@ export class EditorTracker {
 		// [BUGFIX] 如果当前文件与上次记录的文件不符，说明 active-leaf-change 还没来得及更新 lastFileWords
 		// 此时不应计算 delta，而是应该先同步文件状态
 		if (!view.file || view.file.path !== this.plugin.lastFilePath) {
-			this.handleFileChange();
+			void this.handleFileChange();
 			return;
 		}
 
@@ -53,7 +54,7 @@ export class EditorTracker {
 			// 防抖保存历史数据（1秒后保存，避免频繁写入）
 			this.plugin.adaptiveDebounceManager.debounceFixed('save-history', () => {
 				this.plugin.historyManager.saveHistory().catch(err => {
-					console.error('[Plugin] 保存历史数据失败:', err);
+					Logger.error('[Plugin] 保存历史数据失败:', err);
 				});
 			}, 1000);
 		}
@@ -74,7 +75,7 @@ export class EditorTracker {
 	 * 处理文件切换
 	 * 重置字数统计
 	 */
-	handleFileChange(): void {
+	async handleFileChange(): Promise<void> {
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 		
 		// 严格模式：必须符合字数统计条件
@@ -84,16 +85,23 @@ export class EditorTracker {
 			return;
 		}
 		
-		let currentWords = view ? this.plugin.calculateAccurateWords(view.getViewData()) : 0;
+		let currentWords = 0;
 		
 		if (view?.file) {
 			const existingCache = this.plugin.cacheManager.getFileCache(view.file.path);
-			// [BUGFIX] 如果视图在被销毁或未就绪（如退出沉浸模式或切换预览态）时返回空数据，
-			// 但缓存中确实有字数，我们必须信任缓存，防止被误判的 0 覆盖，导致字数丢失。
-			if (currentWords === 0 && existingCache !== null && existingCache > 0) {
+			
+			if (existingCache !== null) {
 				currentWords = existingCache;
+			} else {
+				// 只有在缓存缺失时才去安全地读取实际文件内容（避免 active-leaf-change 瞬间 view.getViewData 数据陈旧）
+				try {
+					const content = await this.app.vault.cachedRead(view.file);
+					currentWords = this.plugin.calculateAccurateWords(content);
+					this.plugin.cacheManager.updateFileCache(view.file, currentWords, this.app.vault);
+				} catch (e) {
+					Logger.error('[EditorTracker] failed to read file on change', e);
+				}
 			}
-			this.plugin.cacheManager.updateFileCache(view.file, currentWords, this.app.vault);
 		}
 
 		this.plugin.lastFileWords = currentWords;

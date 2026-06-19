@@ -170,7 +170,7 @@ export class CacheManager {
 
 			// 保存缓存到持久化存储
 			await this.saveCache();
-			console.log(`[CacheManager] 初始缓存构建完成，用时 ${Date.now() - startTime}ms`);
+			console.debug(`[CacheManager] 初始缓存构建完成，用时 ${Date.now() - startTime}ms`);
 		} catch (error) {
 			console.error('[CacheManager] 缓存构建失败:', error);
 			throw error;
@@ -209,13 +209,13 @@ export class CacheManager {
 	 * @param newWordCount 新的字数
 	 * @param vault Vault 实例
 	 */
-	updateFileCache(file: TFile, newWordCount: number, _vault: Vault): void {
+	updateFileCache(file: TFile, newWordCount: number, _vault: Vault): number {
 		const oldEntry = this.cache.get(file.path);
 		
 		// [BUGFIX] 时间戳校验：防止旧的异步读取结果覆盖新的缓存。
 		// 如果现有缓存的时间戳晚于当前文件的修改时间，说明已经有更近的修改（如编辑器实时更新）写入了缓存，应跳过。
 		if (oldEntry && oldEntry.lastModified > file.stat.mtime) {
-			return;
+			return 0;
 		}
 
 		const oldCount = oldEntry ? oldEntry.wordCount : 0;
@@ -247,11 +247,12 @@ export class CacheManager {
 			parent = parent.parent;
 		}
 
-		// 检查缓存大小
+		// 清理缓存大小
 		if (this.cache.size > this.maxCacheSize) {
 			this.clearOldEntries();
 		}
 
+		return delta;
 	}
 
 	/**

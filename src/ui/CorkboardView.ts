@@ -116,7 +116,7 @@ export class CorkboardView extends ItemView {
 		const grid = this.container.createDiv('wn-corkboard-grid');
 
 		// 获取该作品下所有章节文件
-		const files = this.app.vault.getMarkdownFiles().filter(file => {
+		const files = this.plugin.getTrackedMarkdownFiles().filter(file => {
 			// 必须是章节文件
 			if (!ChapterSorter.isChapterFile(file.name)) {
 				return false;
@@ -144,10 +144,10 @@ export class CorkboardView extends ItemView {
 	private renderCard(grid: HTMLElement, file: TFile): void {
 		const cache = this.app.metadataCache.getFileCache(file);
 		const frontmatter = cache?.frontmatter;
-		// 优先取 synopsis，其次取 摘要
-		const synopsis = (frontmatter?.synopsis || frontmatter?.['摘要'] || '') as string;
-		// 状态（通过映射表解析中文旧值与英文新值，向后兼容）
-		const rawStatus = (frontmatter?.status || frontmatter?.['状态'] || 'unwritten') as string;
+		// 优先取 synopsis，其次取 摘要，再取首字母大写的版本
+		const synopsis = (frontmatter?.synopsis || frontmatter?.Synopsis || frontmatter?.['摘要'] || '') as string;
+		// 状态（通过映射表解析中文旧值与英文新值，向后兼容，包括首字母大写）
+		const rawStatus = (frontmatter?.status || frontmatter?.Status || frontmatter?.['状态'] || 'unwritten') as string;
 		let status = CORKBOARD_STATUS_MAP[rawStatus] ?? rawStatus;
 
 		const card = grid.createDiv('wn-corkboard-card');

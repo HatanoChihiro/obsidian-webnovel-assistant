@@ -1,5 +1,5 @@
-import { StateField, Extension, EditorState } from '@codemirror/state';
-import { showTooltip, Tooltip } from '@codemirror/view';
+import { StateField, type Extension, type EditorState } from '@codemirror/state';
+import { showTooltip, type Tooltip } from '@codemirror/view';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { t } from '../i18n';
 

@@ -1,3 +1,4 @@
+import { Logger } from '../utils/Logger';
 import type { App} from 'obsidian';
 import { MarkdownView } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
@@ -41,62 +42,26 @@ export class MobileFloatingStats {
 		this.containerEl = activeDocument.body.createDiv({
 			cls: 'mobile-floating-stats',
 			attr: {
-				style: `
-					position: fixed;
-					left: ${this.position.x}px;
-					top: ${this.position.y}px;
-					z-index: 50;
-					background: var(--background-primary);
-					border: 1px solid var(--background-modifier-border);
-					border-radius: 6px;
-					box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-					padding: 10px 16px;
-					min-height: 44px;
-					font-size: 13px;
-					user-select: none;
-					touch-action: none;
-					cursor: move;
-					display: flex;
-					align-items: center;
-					gap: 12px;
-					opacity: 0.9;
-				`
+				style: `left: ${this.position.x}px; top: ${this.position.y}px;`
 			}
 		});
 
 		// 字数显示
 		this.wordCountEl = this.containerEl.createSpan({
 			text: `0${t('common.word-char')}`, 
-			attr: {
-				style: `
-					font-weight: 500;
-					color: var(--text-normal);
-					white-space: nowrap;
-				`
-			}
+			cls: 'mobile-floating-word-count'
 		});
 
 		// 分隔符
 		this.containerEl.createSpan({
 			text: '|',
-			attr: {
-				style: `
-					color: var(--text-muted);
-					opacity: 0.5;
-				`
-			}
+			cls: 'mobile-floating-divider'
 		});
 
 		// 进度显示
 		this.progressEl = this.containerEl.createSpan({
 			text: '0%',
-			attr: {
-				style: `
-					font-weight: 500;
-					color: var(--text-accent);
-					white-space: nowrap;
-				`
-			}
+			cls: 'mobile-floating-progress'
 		});
 
 		// 绑定拖动事件
@@ -158,11 +123,11 @@ export class MobileFloatingStats {
 			
 			// 进度颜色变化
 			if (percent >= 100) {
-				this.progressEl.setCssProps({ color: '#10b981' }); // 绿色
+				this.progressEl.removeClass('wn-text-orange', 'wn-text-accent'); this.progressEl.addClass('wn-text-green'); // 绿色
 			} else if (percent >= 80) {
-				this.progressEl.setCssProps({ color: '#f59e0b' }); // 橙色
+				this.progressEl.removeClass('wn-text-green', 'wn-text-accent'); this.progressEl.addClass('wn-text-orange'); // 橙色
 			} else {
-				this.progressEl.setCssProps({ color: 'var(--text-accent)' });
+				this.progressEl.removeClass('wn-text-green', 'wn-text-orange'); this.progressEl.addClass('wn-text-accent');
 			}
 		}
 	}
@@ -177,8 +142,11 @@ export class MobileFloatingStats {
 			const touch = e.touches[0];
 			this.dragOffset.x = touch.clientX - this.position.x;
 			this.dragOffset.y = touch.clientY - this.position.y;
-			if (this.containerEl) this.containerEl.setCssProps({ opacity: '0.7' });
+			if (this.containerEl) this.containerEl.addClass('is-dragging');
 			e.preventDefault();
+			
+			activeDocument.addEventListener('touchmove', this.touchMoveHandler, { passive: false });
+			activeDocument.addEventListener('touchend', this.touchEndHandler);
 		}, { passive: false });
 
 		// 鼠标按下
@@ -186,14 +154,11 @@ export class MobileFloatingStats {
 			this.isDragging = true;
 			this.dragOffset.x = e.clientX - this.position.x;
 			this.dragOffset.y = e.clientY - this.position.y;
-			if (this.containerEl) this.containerEl.setCssProps({ opacity: '0.7' });
+			if (this.containerEl) this.containerEl.addClass('is-dragging');
+			
+			activeDocument.addEventListener('mousemove', this.mouseMoveHandler);
+			activeDocument.addEventListener('mouseup', this.mouseUpHandler);
 		});
-
-		// 注册全局处理函数（用于移除）
-		activeDocument.addEventListener('touchmove', this.touchMoveHandler, { passive: false });
-		activeDocument.addEventListener('touchend', this.touchEndHandler);
-		activeDocument.addEventListener('mousemove', this.mouseMoveHandler);
-		activeDocument.addEventListener('mouseup', this.mouseUpHandler);
 	}
 
 	private touchMoveHandler = (e: TouchEvent) => {
@@ -225,14 +190,19 @@ export class MobileFloatingStats {
 		this.position.x = Math.max(0, Math.min(this.position.x, activeWindow.innerWidth - this.containerEl.offsetWidth));
 		this.position.y = Math.max(0, Math.min(this.position.y, activeWindow.innerHeight - this.containerEl.offsetHeight));
 		
-		this.containerEl.setCssProps({ left: `${this.position.x}px`, top: `${this.position.y}px` });
+		this.containerEl.setCssStyles({ left: `${this.position.x}px` }); this.containerEl.setCssStyles({ top: `${this.position.y}px` });
 	}
 
 	private endDragging(): void {
 		if (this.isDragging) {
 			this.isDragging = false;
-			if (this.containerEl) this.containerEl.setCssProps({ opacity: '0.9' });
+			if (this.containerEl) this.containerEl.removeClass('is-dragging');
 			this.savePosition();
+			
+			activeDocument.removeEventListener('touchmove', this.touchMoveHandler);
+			activeDocument.removeEventListener('touchend', this.touchEndHandler);
+			activeDocument.removeEventListener('mousemove', this.mouseMoveHandler);
+			activeDocument.removeEventListener('mouseup', this.mouseUpHandler);
 		}
 	}
 
@@ -245,8 +215,8 @@ export class MobileFloatingStats {
 			y: this.position.y
 		};
 		this.plugin.settings.mobileFloatingStatsState = state;
-		this.plugin.saveSettings().catch(err => {
-			console.error('[MobileFloatingStats] 保存位置设置失败:', err);
+		void this.plugin.saveSettings().catch(err => {
+			Logger.error('[MobileFloatingStats] 保存位置设置失败:', err);
 		});
 	}
 

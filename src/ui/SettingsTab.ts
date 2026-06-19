@@ -32,17 +32,15 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 
 		// Add GitHub link box
 		const githubBox = containerEl.createDiv({
-			attr: {
-				style: 'background: var(--background-secondary); padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; font-size: 14px; border: 1px solid var(--background-modifier-border);'
-			}
+			cls: 'wn-settings-banner'
 		});
 		const isZh = this.plugin.settings.language === 'zh-CN' || (this.plugin.settings.language === 'auto' && getLanguage().startsWith('zh'));
 		const prefixText = isZh ? '详情及用户指南见 Github：' : 'See details and user guide on Github: ';
-		githubBox.createSpan({ text: prefixText, attr: { style: 'color: var(--text-muted);' } });
+		githubBox.createSpan({ text: prefixText, cls: 'text-muted' });
 		githubBox.createEl('a', {
 			text: 'HatanoChihiro/obsidian-webnovel-assistant',
-			href: 'https://github.com/HatanoChihiro/obsidian-webnovel-assistant',
-			attr: { style: 'font-weight: 600; color: var(--interactive-accent); text-decoration: none;' }
+			href: 'https://github.com/HatanoChihiro/obsidian-webnovel-assistant/releases',
+			cls: 'wn-github-link'
 		});
 
 		// 创建选项卡头部
@@ -92,10 +90,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		const tier = getPlatformTier();
 		if (tier !== 'desktop') {
 			const mobileNotice = containerEl.createDiv({
-				cls: 'setting-item-description',
-				attr: {
-					style: 'background: var(--background-secondary); padding: 12px; border-radius: 6px; margin-bottom: 20px; border-left: 3px solid var(--interactive-accent);'
-				}
+				cls: 'setting-item-description wn-settings-warning'
 			});
 			mobileNotice.createEl('strong', { text: tier === 'mobile' ? t('setting.mobile-mode') : t('setting.tablet-mode') });
 			mobileNotice.createEl('br');
@@ -561,9 +556,9 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				s.infoEl.remove();
 
 				const rules = this.plugin.settings.chapterNamingRules;
-				const orderBtns = s.settingEl.createDiv({ attr: { style: 'display:flex;flex-direction:column;gap:2px;flex-shrink:0;' } });
-				const upBtn = orderBtns.createEl('button', { text: '▲', attr: { title: t('setting.move-up'), style: 'font-size:10px;padding:1px 5px;cursor:pointer;line-height:1.2;' } });
-				const downBtn = orderBtns.createEl('button', { text: '▼', attr: { title: t('setting.move-down'), style: 'font-size:10px;padding:1px 5px;cursor:pointer;line-height:1.2;' } });
+				const orderBtns = s.settingEl.createDiv({ cls: 'wn-settings-order-btns' });
+				const upBtn = orderBtns.createEl('button', { text: '▲', attr: { title: t('setting.move-up') }, cls: 'wn-settings-order-btn' });
+				const downBtn = orderBtns.createEl('button', { text: '▼', attr: { title: t('setting.move-down') }, cls: 'wn-settings-order-btn' });
 				if (index === 0) upBtn.disabled = true;
 				if (index === rules.length - 1) downBtn.disabled = true;
 				upBtn.onclick = async () => {
@@ -682,10 +677,9 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				}));
 
 		const colorSetting = new Setting(containerEl).setName(t('setting.theme-colors')).setDesc(t('setting.theme-colors-desc'));
-		const colorContainer = colorSetting.controlEl.createDiv({ attr: { style: 'display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;' } });
-
+		const colorContainer = colorSetting.controlEl.createDiv({ cls: 'wn-settings-color-grid' });
 		this.plugin.settings.noteThemes.forEach((theme: ThemeScheme, index: number) => {
-			const themeDiv = colorContainer.createDiv({ attr: { style: 'display: flex; align-items: center; gap: 4px; background: var(--background-modifier-form-field); padding: 4px; border-radius: 4px;' } });
+			const themeDiv = colorContainer.createDiv({ cls: 'wn-settings-color-item' });
 			const bg = themeDiv.createEl('input', { type: 'color', value: theme.bg });
 			const txt = themeDiv.createEl('input', { type: 'color', value: theme.text });
 			bg.onchange = async (e) => { this.plugin.settings.noteThemes[index].bg = (e.target as HTMLInputElement).value; await this.plugin.saveSettings(); };

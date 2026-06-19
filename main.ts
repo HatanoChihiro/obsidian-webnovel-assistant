@@ -1,5 +1,5 @@
 import type { App, PluginManifest} from 'obsidian';
-import { Plugin, TFile, TFolder, Notice, MarkdownView, type MarkdownPostProcessorContext } from 'obsidian';
+import { Plugin, TFile, TFolder, Notice, MarkdownView, MarkdownRenderChild, type MarkdownPostProcessorContext, Vault, type TAbstractFile } from 'obsidian';
 import type { AccurateCountSettings } from './src/types/settings';
 import type { WebNovelAssistantPlugin } from './src/types/plugin';
 import type { ObsStatsPayload } from './src/types/stats';
@@ -256,7 +256,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			});
 		}));
 		this.registerEvent(this.app.workspace.on('active-leaf-change', () => {
-			this.editorTracker.handleFileChange();
+			void this.editorTracker.handleFileChange();
 			this.handleHomepageViewMode();
 		}));
 		this.registerEvent(this.app.metadataCache.on('changed', (file) => {
@@ -268,7 +268,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		}));
 		
 		// 初始化当前文件的字数
-		this.editorTracker.handleFileChange();
+		void this.editorTracker.handleFileChange();
 		this.editorTracker.updateWordCount(); // 初始化状态栏显示
 
 		// 注册右键菜单添加设定（设定功能目前仅桌面端可用）
@@ -465,8 +465,10 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 							return view instanceof MarkdownView && view.file?.path === homepagePath;
 						});
 								if (!isAlreadyOpen) {
-									const activeLeaf = this.app.workspace.getLeaf(false);
-									await activeLeaf.openFile(file);
+									const leaf = this.app.workspace.getLeaf(false);
+									if (leaf) {
+										await leaf.openFile(file);
+									}
 								}
 							}
 						}
@@ -490,15 +492,26 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 
 		this.registerMarkdownCodeBlockProcessor('webnovel-homepage', async (source, el, ctx) => {
 			if (!isHomepage(ctx)) return;
-			// 添加标记类供 CSS 定位，替代低性能的 :has() 选择器
-			el.classList.add('webnovel-homepage-root');
-			
-			// 找到父级的 workspace-leaf-content 注入特定类，彻底摆脱 :has()
-			const leafContent = el.closest('.workspace-leaf-content');
-			if (leafContent) {
-				leafContent.classList.add('is-webnovel-homepage');
-			}
-			
+
+			const component = new MarkdownRenderChild(el);
+			ctx.addChild(component);
+
+			component.onload = () => {
+				el.classList.add('webnovel-homepage-root');
+				const leafContent = el.closest('.workspace-leaf-content');
+				if (leafContent) leafContent.classList.add('is-webnovel-homepage');
+			};
+
+			component.onunload = () => {
+				const leafContent = el.closest('.workspace-leaf-content');
+				if (leafContent) leafContent.classList.remove('is-webnovel-homepage');
+				const anyContainer = el as unknown as { __homepageResizeObs?: ResizeObserver };
+				if (anyContainer.__homepageResizeObs) {
+					anyContainer.__homepageResizeObs.disconnect();
+					delete anyContainer.__homepageResizeObs;
+				}
+			};
+
 			await renderer.renderHomepage(el);
 		});
 
@@ -806,7 +819,13 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 onunload() {
 		this._unloading = true;
 		// 立即移除所有便签 DOM（最先执行，确保视觉上立刻消失）
-		activeDocument.body.classList.remove('webnovel-notes-hidden');
+		activeDocument.body.classList.remove(
+			'webnovel-notes-hidden',
+			'webnovel-custom-dragging',
+			'webnovel-eye-care-enabled',
+			'immersive-mode-active',
+			'immersive-hide-properties'
+		);
 		activeDocument.body.querySelectorAll('.my-floating-sticky-note').forEach(el => el.remove());
 
 		// 0. 确保退出沉浸模式（fire-and-forget，无法等待）
@@ -881,6 +900,34 @@ onunload() {
 	/**
 	 * 构建文件浏览器缓存
 	 */
+	
+	/**
+	 * R22: 替代全局 getMarkdownFiles() 的按需遍历方法
+	 * 优先在指定的 workspacePaths 范围内递归获取 markdown 文件，以减少大型 vault 扫描消耗。
+	 */
+	getTrackedMarkdownFiles(): TFile[] {
+		const workspacePaths = this.settings.workspacePaths || [];
+		if (workspacePaths.length === 0) {
+			return this.app.vault.getMarkdownFiles().filter(f => this.isEligibleForWordCount(f));
+		}
+		
+		const workspaceFiles: TFile[] = [];
+		for (const wp of workspacePaths) {
+			const folder = this.app.vault.getAbstractFileByPath(wp);
+			if (folder instanceof TFolder) {
+				Vault.recurseChildren(folder, (file: TAbstractFile) => {
+					if (file instanceof TFile && file.extension === 'md' && this.isEligibleForWordCount(file)) {
+						workspaceFiles.push(file);
+					}
+				});
+			} else if (folder instanceof TFile && folder.extension === 'md' && this.isEligibleForWordCount(folder)) {
+				workspaceFiles.push(folder);
+			}
+		}
+		return workspaceFiles;
+	}
+
+
 	async buildFolderCache(): Promise<void> {
 		if (!this.settings.showExplorerCounts) return;
 
@@ -982,6 +1029,13 @@ onunload() {
 	 */
 	async updateFileCacheAndRefresh(file: TFile): Promise<void> {
 		try {
+			// [BUGFIX] 重命名或后台刷新时需再次校验资格，防止将重命名后已不再符合要求的文档（如_合并章节）加入缓存
+			if (!this.isEligibleForWordCount(file)) {
+				this.cacheManager.invalidateCache(file.path, this.app.vault);
+				this.refreshFolderCounts();
+				return;
+			}
+			
 			const content = await this.app.vault.read(file);
 			const wordCount = this.calculateAccurateWords(content);
 			this.cacheManager.updateFileCache(file, wordCount, this.app.vault);

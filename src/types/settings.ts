@@ -183,6 +183,7 @@ export interface AccurateCountSettings {
 	chapterNamingRules: ChapterNamingRule[];
 	/** 工作区文件夹路径（留空则全局生效） */
 	workspaceFolders: string[];
+	workspacePaths?: string[];
 	/** 是否显示所有悬浮便签 */
 	showFloatingNotes: boolean;
 	/** 便签不透明度(0.1-1.0) */
@@ -253,4 +254,7 @@ export interface AccurateCountSettings {
 
 	/** 高级搜索：自动记忆的上一次搜索词 */
 	advancedSearchQuery: string;
+
+	/** 是否开启调试模式（在控制台输出详细日志） */
+	debugMode: boolean;
 }

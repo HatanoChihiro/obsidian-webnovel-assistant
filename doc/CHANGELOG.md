@@ -1,4 +1,11 @@
-# WebNovel Assistant 更新日志
+## 🔧 v3.2.7
+
+- 修复了众多字数统计和显示上的bug
+
+---
+
+- Fix: Fixed various bugs in word count statistics and display.
+
 
 ## 🔧 v3.2.6
 

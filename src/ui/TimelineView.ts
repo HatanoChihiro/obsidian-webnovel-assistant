@@ -165,7 +165,7 @@ export class TimelineAddModal extends Modal {
 		btnContainer.addClass('wn-base-button-container');
 		btnContainer.createEl('button', { text: t('common.cancel') }).onclick = () => this.close();
 		const saveBtn = btnContainer.createEl('button', { text: t('common.add'), cls: 'mod-cta' });
-		saveBtn.onclick = async () => {
+		saveBtn.onclick = () => {
 			const time = timeInput.value.trim();
 			if (!time) { new Notice(t('modal.please-fill-time-point')); timeInput.focus(); return; }
 			
@@ -282,10 +282,10 @@ export class TimelineView extends CreativeView {
 			empty.createEl('p', { text: t('common.no-files-hint', { type: t('common.default-timeline-filename') }) });
 			empty.createEl('p', { text: `（${fileName}.md）`, cls: 'timeline-view-hint' });
 			const createBtn = empty.createEl('button', { text: t('common.create-timeline-file'), cls: 'mod-cta timeline-create-btn' });
-			createBtn.onclick = async () => {
+			createBtn.onclick = () => { void (async () => { try {
 				await this.manager.createTimelineFile();
 				await this.refresh();
-			};
+			} catch(e) { console.error(e); } })(); };
 			return;
 		}
 
@@ -393,9 +393,14 @@ export class TimelineView extends CreativeView {
 			item.removeClass('timeline-drag-over-top');
 			item.removeClass('timeline-drag-over-bottom');
 			if (fromIndex !== -1 && fromIndex !== toIndex) {
-				void this.manager.moveEntry(fromIndex, toIndex).then(async (newContent) => {
-				await this.renderFromContent(newContent || null);
-				});
+				void (async () => {
+					try {
+						const newContent = await this.manager.moveEntry(fromIndex, toIndex);
+						await this.renderFromContent(newContent || null);
+					} catch (e) {
+						console.error('[TimelineView] 移动记录失败:', e);
+					}
+				})();
 			}
 		});
 
@@ -445,11 +450,11 @@ export class TimelineView extends CreativeView {
 						text: chapterName, 
 						cls: 'timeline-chapter-link' 
 					});
-					link.onclick = async () => {
-						const file = this.app.vault.getMarkdownFiles().find(f => f.basename === chapterName);
+					link.onclick = () => { void (async () => { try {
+						const file = this.app.metadataCache.getFirstLinkpathDest(chapterName, '');
 						if (file) await this.app.workspace.getLeaf(false).openFile(file);
 						else new Notice(t('common.file-not-found', { name: chapterName }));
-					};
+					} catch(e) { console.error(e); } })(); };
 					
 					// 在链接之间添加分隔符
 					if (index < chapters.length - 1) {
@@ -475,10 +480,10 @@ export class TimelineView extends CreativeView {
 		};
 
 		const deleteBtn = actions.createEl('button', { text: t('common.delete'), cls: 'timeline-action-btn timeline-delete-btn' });
-		deleteBtn.onclick = async () => {
+		deleteBtn.onclick = () => { void (async () => { try {
 			const newContent = await this.manager.deleteEntry(index);
 			await this.renderFromContent(newContent || null);
-		};
+		} catch(e) { console.error(e); } })(); };
 	}
 
 	private renderEditForm(container: HTMLElement, entry: TimelineEntry, index: number, allEntries: TimelineEntry[]) {
@@ -631,7 +636,7 @@ export class TimelineView extends CreativeView {
 			void this.refresh();
 		};
 		const saveBtn = btnRow.createEl('button', { text: t('common.save'), cls: 'timeline-action-btn mod-cta' });
-		saveBtn.onclick = async () => {
+		saveBtn.onclick = () => { void (async () => { try {
 			// 收集所有事件
 			const items: { description: string; chapter: string }[] = [];
 			const eventBlocks = eventsContainer.querySelectorAll('.timeline-event-block');
@@ -684,7 +689,7 @@ export class TimelineView extends CreativeView {
 			const newContent = await this.manager.updateEntry(index, updated);
 			this.editingIndex = -1;
 			await this.renderFromContent(newContent);
-		};
+		} catch(e) { console.error(e); } })(); };
 
 		window.setTimeout(() => timeInput.focus(), 50);
 	}
@@ -802,7 +807,7 @@ export class TimelineView extends CreativeView {
 		cancelBtn.onclick = () => form.remove();
 
 		const saveBtn = btnRow.createEl('button', { text: t('common.add'), cls: 'timeline-action-btn mod-cta' });
-		saveBtn.onclick = async () => {
+		saveBtn.onclick = () => { void (async () => { try {
 			const time = timeInput.value.trim();
 			if (!time) {
 				new Notice(t('modal.please-fill-time-point'));
@@ -835,7 +840,7 @@ export class TimelineView extends CreativeView {
 			const newContent = await this.manager.appendEntry(entry);
 			form.remove();
 			void this.renderFromContent(newContent);
-		};
+		} catch(e) { console.error(e); } })(); };
 
 		window.setTimeout(() => timeInput.focus(), 50);
 	}
@@ -873,18 +878,21 @@ export class TimelineView extends CreativeView {
 			selectedText.trim(),
 			sourceFile,
 			folderPath,
-			(entry) => {
-				void this.app.vault.read(file).then(async (existing) => {
-				const separator = existing.endsWith('\n') ? '' : '\n';
-				await this.app.vault.modify(file, existing + separator + this.manager.formatEntry(entry));
-				new Notice(t('notice.timeline-added'));
-				// 如果面板已打开，刷新
-				const leaves = this.app.workspace.getLeavesOfType(TIMELINE_VIEW_TYPE);
-				if (leaves.length > 0) {
-					void (leaves[0].view as TimelineView).refresh();
+			(entry) => { void (async () => {
+				try {
+					const existing = await this.app.vault.read(file);
+					const separator = existing.endsWith('\n') ? '' : '\n';
+					await this.app.vault.process(file, () => existing + separator + this.manager.formatEntry(entry));
+					new Notice(t('notice.timeline-added'));
+					// 如果面板已打开，刷新
+					const leaves = this.app.workspace.getLeavesOfType(TIMELINE_VIEW_TYPE);
+					if (leaves.length > 0) {
+						void (leaves[0].view as TimelineView).refresh();
+					}
+				} catch (e) {
+					console.error('[TimelineView] 写入新记录失败:', e);
 				}
-				});
-			},
+			})(); },
 			true, // 返回完整 TimelineEntry
 			localTypes
 		);

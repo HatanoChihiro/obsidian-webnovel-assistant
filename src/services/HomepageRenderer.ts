@@ -114,10 +114,13 @@ export class HomepageRenderer {
 		addBtn.textContent = t('homepage.add-novel');
 		addBtn.onclick = () => {
 			new NewNovelModal(this.plugin.app, this.plugin, (result) => {
-				void this.plugin.homepageManager!.createNewNovel(result.name, result.meta).then(() => {
-					new Notice(t('notice.novel-created', { name: result.name }));
-					this.plugin.homepageManager!.refreshHomepageViews();
-				});
+				void (async () => {
+					try {
+						await this.plugin.homepageManager!.createNewNovel(result.name, result.meta);
+						new Notice(t('notice.novel-created', { name: result.name }));
+						this.plugin.homepageManager!.refreshHomepageViews();
+					} catch(e) { console.error(e); }
+				})();
 			}).open();
 		};
 

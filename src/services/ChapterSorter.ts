@@ -1,3 +1,4 @@
+import { Logger } from '../utils/Logger';
 import type { TAbstractFile} from 'obsidian';
 import { TFolder } from 'obsidian';
 import { CHINESE_NUMBERS } from '../constants';
@@ -32,7 +33,7 @@ export class ChapterSorter {
 
 			// [安全] 限制正则长度，过于复杂的模式更易触发灾难性回溯
 			if (rule.pattern.length > 200) {
-				console.warn(`[ChapterSorter] 正则表达式过长（>200字符），已跳过: "${rule.name}"`);
+				Logger.warn(`[ChapterSorter] 正则表达式过长（>200字符），已跳过: "${rule.name}"`);
 				return false;
 			}
 
@@ -41,7 +42,7 @@ export class ChapterSorter {
 				new RegExp(rule.pattern, 'i');
 				return true;
 			} catch {
-				console.error(`[ChapterSorter] 无效的正则表达式，已跳过规则 "${rule.name}": ${rule.pattern}`);
+				Logger.error(`[ChapterSorter] 无效的正则表达式，已跳过规则 "${rule.name}": ${rule.pattern}`);
 				return false;
 			}
 		});
@@ -140,7 +141,7 @@ export class ChapterSorter {
 						return { number: -1, ruleIndex: i };
 					}
 				} catch (error) {
-					console.error(`[ChapterSorter] 无效的正则表达式: ${rule.pattern}`, error);
+					Logger.error(`[ChapterSorter] 无效的正则表达式: ${rule.pattern}`, error);
 				}
 			}
 			// 如果启用了自定义规则但都不匹配，返回 null（不参与排序）

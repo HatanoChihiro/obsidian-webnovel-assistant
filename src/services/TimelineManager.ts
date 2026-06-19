@@ -1,10 +1,10 @@
 import type { App} from 'obsidian';
-import { TFile } from 'obsidian';
+import { TFile, normalizePath } from 'obsidian';
+import { t } from '../i18n';
 
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 
 import { escapeRegex } from '../utils/validation';
-import { t } from '../i18n';
 import { getDefaultFileName, getDefaultFileNameCandidates, getTimelineLabel } from '../i18n/data-keys';
 
 import { SerializedWriter } from '../utils/SerializedWriter';
@@ -59,7 +59,7 @@ export class TimelineManager {
 
 		const fileName = (this.plugin.settings.timeline?.fileName || getDefaultFileName('timelineFileName')) + '.md';
 
-		return this.currentFolder ? `${this.currentFolder}/${fileName}` : fileName;
+		return normalizePath(this.currentFolder ? `${this.currentFolder}/${fileName}` : fileName);
 
 	}
 
@@ -71,7 +71,7 @@ export class TimelineManager {
 		candidates.add(this.plugin.settings.timeline?.fileName || t('common.default-timeline-filename'));
 		for (const name of getDefaultFileNameCandidates('timelineFileName')) candidates.add(name);
 		for (const fileName of candidates) {
-			const path = this.currentFolder ? this.currentFolder + "/" + fileName + ".md" : fileName + ".md";
+			const path = normalizePath(this.currentFolder ? `${this.currentFolder}/${fileName}.md` : `${fileName}.md`);
 			const file = this.app.vault.getAbstractFileByPath(path);
 			if (file instanceof TFile) return file;
 		}
@@ -90,10 +90,10 @@ export class TimelineManager {
 			// 如果找到的文件名与当前设置不一致，自动重命名
 			const expectedName = this.plugin.settings.timeline?.fileName || getDefaultFileName('timelineFileName');
 			if (existing.name !== expectedName + '.md') {
-				const newPath = this.currentFolder ? this.currentFolder + '/' + expectedName + '.md' : expectedName + '.md';
+				const newPath = normalizePath(this.currentFolder ? this.currentFolder + '/' + expectedName + '.md' : expectedName + '.md');
 				try { await this.app.fileManager.renameFile(existing, newPath); } catch (e) { console.warn('[TimelineManager] 重命名时间线文件失败:', e); }
 			}
-			const foundPath = this.currentFolder ? this.currentFolder + '/' + expectedName + '.md' : expectedName + '.md';
+			const foundPath = normalizePath(this.currentFolder ? this.currentFolder + '/' + expectedName + '.md' : expectedName + '.md');
 			const found = this.app.vault.getAbstractFileByPath(foundPath);
 				return found instanceof TFile ? found : existing;
 		}
@@ -143,7 +143,7 @@ export class TimelineManager {
 			const items: { description: string; chapter: string }[] = [];
 
 			// 匹配类型行：优先当前语言，兼容中文旧格式
-				const typeMatch = trimmed.match(/\*\*(?:Type|类型)\*\*：(.+)/);
+				const typeMatch = trimmed.match(new RegExp(`\\*\\*(?:Type|类型|${t('timeline.type-label')})\\*\\*：(.+)`));
 
 
 
@@ -442,142 +442,70 @@ export class TimelineManager {
 	async appendEntry(entry: TimelineEntry): Promise<string> {
 			return this.writer.enqueue(async () => {
 			let file = this.getTimelineFile();
-
 			if (!file) file = await this.createTimelineFile();
 
-			const existing = await this.app.vault.read(file);
+			let finalContent = '';
+			await this.app.vault.process(file, (existing) => {
+				const headerPattern = new RegExp(
+					`(## ${escapeRegex(entry.time)}\\n)([\\s\\S]*?)(\\n---\\n)`,
+					'm'
+				);
+				const match = headerPattern.exec(existing);
 
+				let newContent: string;
+				if (match) {
+					const fullMatch = match[0];
+					const header = match[1];
+					const body = match[2];
+					const separator = match[3];
 
+					const descriptions = entry.description ? entry.description.split('\n').filter(line => line.trim()) : [];
+					const newItemLines: string[] = [];
 
-			const headerPattern = new RegExp(
+					if (descriptions.length > 0) {
+						const firstLineParts: string[] = [descriptions[0]];
+						if (entry.chapter) {
+							const chapters = entry.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean);
+							const chapterLinks = chapters.map(c => `[[${c}]]`).join(' ');
+							if (chapterLinks) firstLineParts.push(chapterLinks);
+						}
+						newItemLines.push(`- ${firstLineParts.join(' ')}`);
 
-				`(## ${escapeRegex(entry.time)}\\n)([\\s\\S]*?)(\\n---\\n)`,
-
-				'm'
-
-			);
-
-			const match = headerPattern.exec(existing);
-
-
-
-			let newContent: string;
-
-			if (match) {
-
-				// 合并到已存在的时间点
-
-				const fullMatch = match[0];
-
-				const header = match[1];
-
-				const body = match[2];
-
-				const separator = match[3];
-
-
-
-				// 处理多行描述
-
-				const descriptions = entry.description ? entry.description.split('\n').filter(line => line.trim()) : [];
-
-				const newItemLines: string[] = [];
-
-			
-
-				if (descriptions.length > 0) {
-
-					const firstLineParts: string[] = [descriptions[0]];
-
-				
-
-					// 支持多章节
-
-					if (entry.chapter) {
-
+						for (let i = 1; i < descriptions.length; i++) {
+							newItemLines.push(`  ${descriptions[i]}`);
+						}
+					} else if (entry.chapter) {
 						const chapters = entry.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean);
-
 						const chapterLinks = chapters.map(c => `[[${c}]]`).join(' ');
-
-						if (chapterLinks) firstLineParts.push(chapterLinks);
-
+						if (chapterLinks) newItemLines.push(`- ${chapterLinks}`);
 					}
 
-				
-
-					newItemLines.push(`- ${firstLineParts.join(' ')}`);
-
-				
-
-					// 后续行作为缩进的列表项
-
-					for (let i = 1; i < descriptions.length; i++) {
-
-						newItemLines.push(`  ${descriptions[i]}`);
-
-					}
-
-				} else if (entry.chapter) {
-
-					// 只有章节链接，没有描述
-
-					const chapters = entry.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean);
-
-					const chapterLinks = chapters.map(c => `[[${c}]]`).join(' ');
-
-					if (chapterLinks) newItemLines.push(`- ${chapterLinks}`);
-
-				}
-
-
-
-				// 兼容两种语言的类型标签
 					let boldIndex = body.indexOf(`\n**${getTimelineLabel('type')}**`);
 					if (boldIndex === -1) boldIndex = body.indexOf('\n**类型**');
 					if (boldIndex === -1) boldIndex = body.indexOf('\n**Type**');
 
-				let newBody: string;
-
-				if (newItemLines.length > 0) {
-
-					const newItemText = newItemLines.join('\n');
-
-					if (boldIndex !== -1) {
-
-						newBody = body.slice(0, boldIndex) + '\n' + newItemText + body.slice(boldIndex);
-
+					let newBody: string;
+					if (newItemLines.length > 0) {
+						const newItemText = newItemLines.join('\n');
+						if (boldIndex !== -1) {
+							newBody = body.slice(0, boldIndex) + '\n' + newItemText + body.slice(boldIndex);
+						} else {
+							newBody = body.trimEnd() + '\n' + newItemText + '\n';
+						}
 					} else {
-
-						newBody = body.trimEnd() + '\n' + newItemText + '\n';
-
+						newBody = body;
 					}
 
+					newContent = existing.replace(fullMatch, header + newBody + separator);
 				} else {
-
-					newBody = body;
-
+					const sep = existing.endsWith('\n') || existing === '' ? '' : '\n';
+					newContent = existing + sep + this.formatEntry(entry);
 				}
 
-
-
-				newContent = existing.replace(fullMatch, header + newBody + separator);
-
-			} else {
-
-				// 创建新的时间点
-
-				const sep = existing.endsWith('\n') || existing === '' ? '' : '\n';
-
-				newContent = existing + sep + this.formatEntry(entry);
-
-			}
-
-
-
-			await this.app.vault.modify(file, newContent);
-
-			return newContent;
-
+				finalContent = newContent;
+				return newContent;
+			});
+			return finalContent;
 			});
 		}
 
@@ -639,18 +567,16 @@ export class TimelineManager {
 
 
 	async writeAllEntries(file: TFile, entries: TimelineEntry[]): Promise<string> {
-		let content = '';
-
-		for (const entry of entries) {
-
-			content += this.formatEntry(entry);
-
-		}
-
-		await this.app.vault.modify(file, content);
-
-		return content;
-
+		let finalContent = '';
+		await this.app.vault.process(file, (_existing) => {
+			let content = '';
+			for (const entry of entries) {
+				content += this.formatEntry(entry);
+			}
+			finalContent = content;
+			return content;
+		});
+		return finalContent;
 	}
 }
 

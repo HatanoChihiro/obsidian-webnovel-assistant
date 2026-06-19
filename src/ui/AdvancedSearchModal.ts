@@ -86,9 +86,9 @@ export class AdvancedSearchModal extends Modal {
 		container.show();
 		new Setting(container).setName(t('modal.select-folders-hint')).setHeading();
 		
-		const folders = this.getTopLevelFolders();
+		const items = this.getTopLevelItems();
 		
-		if (folders.length === 0) {
+		if (items.length === 0) {
 			container.createEl('p', { text: t('modal.no-top-level-folders'), cls: 'setting-item-description' });
 			return;
 		}
@@ -96,8 +96,12 @@ export class AdvancedSearchModal extends Modal {
 		// 为每个目录创建一个树形选择器
 		const listContainer = container.createDiv({ cls: 'advanced-search-folder-list webnovel-search-folder-list' });
 
-		for (const folder of folders) {
-			this.renderFolderTree(listContainer, folder);
+		for (const item of items) {
+			if (item instanceof TFolder) {
+				this.renderFolderTree(listContainer, item);
+			} else if (item instanceof TFile) {
+				this.renderFileTreeItem(listContainer, item);
+			}
 		}
 		
 		this.updateCheckboxStates();
@@ -132,7 +136,8 @@ export class AdvancedSearchModal extends Modal {
 			headerEl.createSpan({ cls: 'advanced-search-tree-spacer' });
 		}
 		
-		const label = headerEl.createSpan({ text: folder.name, cls: 'advanced-search-tree-name' });
+		const displayName = folder.isRoot() ? '/' : folder.name;
+		const label = headerEl.createSpan({ text: displayName, cls: 'advanced-search-tree-name' });
 		if (folder instanceof TFolder) {
 			label.addClass('webnovel-search-folder-name');
 		}
@@ -152,25 +157,29 @@ export class AdvancedSearchModal extends Modal {
 					this.renderFolderTree(childrenContainer, child);
 				} else if (child instanceof TFile) {
 					// 渲染文件
-					const fileItem = childrenContainer.createDiv({ cls: 'advanced-search-tree-item' });
-					const fileHeader = fileItem.createDiv({ cls: 'advanced-search-tree-header' });
-					
-					fileHeader.createSpan({ cls: 'advanced-search-tree-spacer' });
-					
-					const fileLabel = fileHeader.createSpan({ text: child.name, cls: 'advanced-search-tree-name' });
-					fileLabel.addClass('webnovel-search-file-name');
-					
-					const fileCheckbox = fileHeader.createEl('input');
-					fileCheckbox.type = 'checkbox';
-					fileCheckbox.dataset.path = child.path;
-					fileCheckbox.addClass('webnovel-search-checkbox');
-					
-					fileCheckbox.addEventListener('change', () => {
-						this.toggleSelection(child, fileCheckbox.checked);
-					});
+					this.renderFileTreeItem(childrenContainer, child);
 				}
 			}
 		}
+	}
+
+	private renderFileTreeItem(container: HTMLElement, file: TFile) {
+		const fileItem = container.createDiv({ cls: 'advanced-search-tree-item' });
+		const fileHeader = fileItem.createDiv({ cls: 'advanced-search-tree-header' });
+		
+		fileHeader.createSpan({ cls: 'advanced-search-tree-spacer' });
+		
+		const fileLabel = fileHeader.createSpan({ text: file.name, cls: 'advanced-search-tree-name' });
+		fileLabel.addClass('webnovel-search-file-name');
+		
+		const fileCheckbox = fileHeader.createEl('input');
+		fileCheckbox.type = 'checkbox';
+		fileCheckbox.dataset.path = file.path;
+		fileCheckbox.addClass('webnovel-search-checkbox');
+		
+		fileCheckbox.addEventListener('change', () => {
+			this.toggleSelection(file, fileCheckbox.checked);
+		});
 	}
 
 	private toggleSelection(item: TAbstractFile, isChecked: boolean) {
@@ -205,8 +214,10 @@ export class AdvancedSearchModal extends Modal {
 			let currentPath = item.path;
 			while (currentPath.includes('/')) {
 				currentPath = currentPath.substring(0, currentPath.lastIndexOf('/'));
+				if (currentPath === '') break;
 				this.selectedFolders.delete(currentPath);
 			}
+			this.selectedFolders.delete('/');
 		}
 		
 		this.updateCheckboxStates();
@@ -226,27 +237,20 @@ export class AdvancedSearchModal extends Modal {
 		});
 	}
 
-	private getTopLevelFolders(): TFolder[] {
-		// 获取直接位于根目录下的所有文件夹，或者如果是工作区模式，则获取工作区指定的文件夹
-		const rootFolders: TFolder[] = [];
+	private getTopLevelItems(): TAbstractFile[] {
+		// 自定义范围应始终显示整个库的所有顶层文件夹和MD文件，让用户可以自由选择
+		const rootItems: TAbstractFile[] = [];
+		const root = this.app.vault.getRoot();
 		
-		if (this.plugin.settings.workspaceFolders && this.plugin.settings.workspaceFolders.length > 0) {
-			for (const path of this.plugin.settings.workspaceFolders) {
-				const folder = this.app.vault.getAbstractFileByPath(path);
-				if (folder instanceof TFolder) {
-					rootFolders.push(folder);
-				}
-			}
-		} else {
-			const root = this.app.vault.getRoot();
-			for (const child of root.children) {
-				if (child instanceof TFolder && !child.name.startsWith('.')) {
-					rootFolders.push(child);
-				}
+		for (const child of root.children) {
+			if (child instanceof TFolder && !child.name.startsWith('.')) {
+				rootItems.push(child);
+			} else if (child instanceof TFile && child.extension === 'md' && !child.name.startsWith('.')) {
+				rootItems.push(child);
 			}
 		}
 		
-		return rootFolders;
+		return rootItems;
 	}
 
 	private getCurrentBookPath(): string | null {
@@ -303,22 +307,22 @@ export class AdvancedSearchModal extends Modal {
 		this.resultsContainer.createEl('div', { text: t('modal.searching'), cls: 'advanced-search-loading' });
 
 		// 1. 获取目标文件列表
-		const allFiles = this.app.vault.getMarkdownFiles();
+		const allMarkdownFiles = this.app.vault.getMarkdownFiles();
 		let targetFiles: TFile[] = [];
 
 		if (this.searchScope === 'global') {
-			targetFiles = allFiles;
+			targetFiles = allMarkdownFiles;
 		} else if (this.searchScope === 'current') {
 			const bookPath = this.getCurrentBookPath();
 			if (bookPath) {
-				targetFiles = allFiles.filter(f => f.path.startsWith(bookPath + '/'));
+				targetFiles = allMarkdownFiles.filter(f => f.path.startsWith(bookPath + '/'));
 			} else {
-				targetFiles = allFiles; // fallback
+				targetFiles = this.plugin.getTrackedMarkdownFiles(); // fallback
 			}
 		} else if (this.searchScope === 'custom') {
 			if (this.selectedFolders.size > 0) {
 				const selectedArray = Array.from(this.selectedFolders);
-				targetFiles = allFiles.filter(f => selectedArray.some(path => f.path === path || f.path.startsWith(path + '/')));
+				targetFiles = allMarkdownFiles.filter(f => selectedArray.some(path => path === '/' || f.path === path || f.path.startsWith(path + '/')));
 			}
 		}
 

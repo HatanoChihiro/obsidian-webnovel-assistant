@@ -184,6 +184,7 @@ export interface WebNovelAssistantPlugin extends
 	/** 检查文件是否符合字数统计的条件（工作区 + 排除合并文件 + 严格章节模式） */
 	isEligibleForWordCount(file: TFile): boolean;
 	updateWordCount(): void;
+	getTrackedMarkdownFiles(): TFile[];
 		/** 检查文件名是否为插件生成的元数据文件 */
 		isPluginGeneratedFile(basename: string): boolean;
 		/** 重命名工作区内所有功能性文档/文件夹（支持多语言候选名） */

@@ -31,7 +31,14 @@ export class MenuManager {
 				// 复制本文档：全平台均显示，内容包含「标题 + 空行 + 正文」
 				menu.addItem((item) => {
 					item.setTitle(t('menu.copy-document')).setIcon("copy").onClick(() => {
-						this.plugin.app.vault.read(file).then(content => copyDocumentContent(file.basename, content)).catch(console.error);
+						void (async () => {
+							try {
+								const content = await this.plugin.app.vault.read(file);
+								await copyDocumentContent(file.basename, content);
+							} catch (e) {
+								console.error(e);
+							}
+						})();
 					});
 				});
 
@@ -66,9 +73,14 @@ export class MenuManager {
 			menu.addItem((item) => {
 				item.setTitle(t('menu.create-novel')).setIcon('book-open').onClick(() => {
 					new NewNovelModal(this.plugin.app, this.plugin, (result) => {
-						this.plugin.homepageManager!.createNewNovel(result.name, result.meta).then(() => {
-							new Notice(t('notice.novel-created', { name: result.name }));
-						}).catch(console.error);
+						void (async () => {
+							try {
+								await this.plugin.homepageManager!.createNewNovel(result.name, result.meta);
+								new Notice(t('notice.novel-created', { name: result.name }));
+							} catch (e) {
+								console.error(e);
+							}
+						})();
 					}).open();
 				});
 			});

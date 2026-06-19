@@ -1,3 +1,5 @@
+import { Notice } from 'obsidian';
+import { Logger } from '../utils/Logger';
 import type { WorkspaceLeaf } from 'obsidian';
 import { CreativeView } from './CreativeView';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
@@ -144,23 +146,29 @@ export class RankingView extends CreativeView {
 	}
 
 	private showAddModal() {
-		void this.manager.loadEntries().then(existingEntries => {
-			const nextPeriod = this.manager.getNextPeriod(existingEntries || []);
-			const lastPlatform = existingEntries && existingEntries.length > 0
-				? existingEntries[existingEntries.length - 1].platform
-				: '';
+		void (async () => {
+			try {
+				const existingEntries = await this.manager.loadEntries();
+				const nextPeriod = this.manager.getNextPeriod(existingEntries || []);
+				const lastPlatform = existingEntries && existingEntries.length > 0
+					? existingEntries[existingEntries.length - 1].platform
+					: '';
 
-			new RankingAddModal(
-				this.app,
-				this.plugin,
-				this.manager,
-				nextPeriod,
-				lastPlatform,
-				async (entry) => {
-					await this.manager.addEntry(entry);
-					await this.refresh();
-				}
-			).open();
-		});
+				new RankingAddModal(
+					this.app,
+					this.plugin,
+					this.manager,
+					nextPeriod,
+					lastPlatform,
+					async (entry) => {
+						await this.manager.addEntry(entry);
+						new Notice(t('notice.ranking-added'));
+						await this.refresh();
+					}
+				).open();
+			} catch (err) {
+				Logger.error('[RankingView] showAddModal failed:', err);
+			}
+		})();
 	}
 }

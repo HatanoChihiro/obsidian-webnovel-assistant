@@ -1,3 +1,4 @@
+import { Logger } from '../utils/Logger';
 import { Notice, Platform } from 'obsidian';
 import { t } from '../i18n';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
@@ -53,7 +54,7 @@ export class ObsOverlayServer {
 		// [安全] 桌面端守卫：activeWindow.require('http') 仅在桌面端可用，移动端直接跳过
 		if (!Platform.isDesktop) return false;
 		if (this.server) {
-			console.warn('[WebNovel Assistant] OBS 服务器已在运行，跳过重复启动');
+			Logger.warn('[WebNovel Assistant] OBS 服务器已在运行，跳过重复启动');
 			return true;
 		}
 
@@ -80,11 +81,11 @@ export class ObsOverlayServer {
 							res.end(JSON.stringify(stats));
 						})
 						.catch(err => {
-							console.error('[WebNovel Assistant] ObsServer stats error:', err);
+							Logger.error('[WebNovel Assistant] ObsServer stats error:', err);
 							if (!(res as { headersSent?: boolean }).headersSent) {
 								res.writeHead(500, { 'Content-Type': 'application/json' });
 							}
-							res.end(JSON.stringify({ error: 'Internal server error', message: String(err) }));
+							res.end(JSON.stringify({ error: 'Internal server error' }));
 						});
 				} else {
 					res.writeHead(200, {
@@ -100,7 +101,7 @@ export class ObsOverlayServer {
 			});
 
 			this.server.on('error', (e: ServerError) => {
-				console.error('[WebNovel Assistant] OBS 服务器错误:', e);
+				Logger.error('[WebNovel Assistant] OBS 服务器错误:', e);
 
 				// 清理引用，防止后续 start() 被守卫拦截
 				this.server = null;
@@ -121,7 +122,7 @@ export class ObsOverlayServer {
 
 			return true;
 		} catch (e) {
-			console.error('[WebNovel Assistant] 无法启动 OBS 服务器:', e);
+			Logger.error('[WebNovel Assistant] 无法启动 OBS 服务器:', e);
 			this.server = null;
 
 			new Notice(

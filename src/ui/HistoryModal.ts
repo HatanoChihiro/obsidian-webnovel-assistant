@@ -492,39 +492,79 @@ points.forEach(p => { p.y = Math.min(p.y, baseline); });
 				const totalW = container.scrollWidth;
 				const svgW = Math.max(totalW, container.offsetWidth);
 
-				let svg = `<svg class="stats-trend-overlay" viewBox="0 0 ${svgW} ${containerH}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" style="width:${svgW}px;height:${containerH}px">`;
+				const svgNS = 'http://www.w3.org/2000/svg';
+				const svgEl = activeDocument.createElementNS(svgNS, 'svg');
+				svgEl.setAttribute('class', 'stats-trend-overlay');
+				svgEl.setAttribute('viewBox', `0 0 ${svgW} ${containerH}`);
+				svgEl.setAttribute('preserveAspectRatio', 'none');
+				svgEl.setCssStyles({ width: `${svgW}px` });
+				svgEl.setCssStyles({ height: `${containerH}px` });
 
-				// Gradient definition
-				svg += `<defs><linearGradient id="trendGrad" x1="0" y1="0" x2="0" y2="1">`;
-					svg += `<stop offset="0%" stop-color="var(--interactive-accent)" stop-opacity="0.25"/>`;
-					svg += `<stop offset="50%" stop-color="var(--interactive-accent)" stop-opacity="0.08"/>`;
-					svg += `<stop offset="100%" stop-color="var(--interactive-accent)" stop-opacity="0"/>`;
-				svg += `</linearGradient>`;
-svg += `<clipPath id="trendClip"><rect x="0" y="0" width="${svgW}" height="${baseline}"/></clipPath>`;
-svg += `</defs>`;
+				const defsEl = activeDocument.createElementNS(svgNS, 'defs');
+				
+				const linearGradient = activeDocument.createElementNS(svgNS, 'linearGradient');
+				linearGradient.setAttribute('id', 'trendGrad');
+				linearGradient.setAttribute('x1', '0');
+				linearGradient.setAttribute('y1', '0');
+				linearGradient.setAttribute('x2', '0');
+				linearGradient.setAttribute('y2', '1');
+				
+				const stop1 = activeDocument.createElementNS(svgNS, 'stop');
+				stop1.setAttribute('offset', '0%');
+				stop1.setAttribute('stop-color', 'var(--interactive-accent)');
+				stop1.setAttribute('stop-opacity', '0.25');
+				linearGradient.appendChild(stop1);
+				
+				const stop2 = activeDocument.createElementNS(svgNS, 'stop');
+				stop2.setAttribute('offset', '50%');
+				stop2.setAttribute('stop-color', 'var(--interactive-accent)');
+				stop2.setAttribute('stop-opacity', '0.08');
+				linearGradient.appendChild(stop2);
+				
+				const stop3 = activeDocument.createElementNS(svgNS, 'stop');
+				stop3.setAttribute('offset', '100%');
+				stop3.setAttribute('stop-color', 'var(--interactive-accent)');
+				stop3.setAttribute('stop-opacity', '0');
+				linearGradient.appendChild(stop3);
+				defsEl.appendChild(linearGradient);
+				
+				const clipPath = activeDocument.createElementNS(svgNS, 'clipPath');
+				clipPath.setAttribute('id', 'trendClip');
+				const rect = activeDocument.createElementNS(svgNS, 'rect');
+				rect.setAttribute('x', '0');
+				rect.setAttribute('y', '0');
+				rect.setAttribute('width', svgW.toString());
+				rect.setAttribute('height', baseline.toString());
+				clipPath.appendChild(rect);
+				defsEl.appendChild(clipPath);
+				
+				svgEl.appendChild(defsEl);
 
-// Build smooth curve path (catmull-rom to cubic bezier)
-					const curvePath = this.buildSmoothCurvePath(points);
-					const bottomY = baseline;
-					const fillClose = ` L${points[points.length - 1].x.toFixed(1)},${bottomY} L${points[0].x.toFixed(1)},${bottomY} Z`;
-					svg += `<path d="${curvePath}${fillClose}" fill="url(#trendGrad)" clip-path="url(#trendClip)"/>`;
+				const curvePath = this.buildSmoothCurvePath(points);
+				const bottomY = baseline;
+				const fillClose = ` L${points[points.length - 1].x.toFixed(1)},${bottomY} L${points[0].x.toFixed(1)},${bottomY} Z`;
+				
+				const path1 = activeDocument.createElementNS(svgNS, 'path');
+				path1.setAttribute('d', curvePath + fillClose);
+				path1.setAttribute('fill', 'url(#trendGrad)');
+				path1.setAttribute('clip-path', 'url(#trendClip)');
+				svgEl.appendChild(path1);
+				
+				const path2 = activeDocument.createElementNS(svgNS, 'path');
+				path2.setAttribute('d', curvePath);
+				path2.setAttribute('fill', 'none');
+				path2.setAttribute('stroke', 'var(--interactive-accent)');
+				path2.setAttribute('stroke-width', '1.2');
+				path2.setAttribute('stroke-dasharray', '6,4');
+				path2.setAttribute('opacity', '0.35');
+				path2.setAttribute('clip-path', 'url(#trendClip)');
+				svgEl.appendChild(path2);
 
-					// Dashed trend curve
-					svg += `<path d="${curvePath}" fill="none" stroke="var(--interactive-accent)" stroke-width="1.2" stroke-dasharray="6,4" opacity="0.35" clip-path="url(#trendClip)"/>`;
-
-					svg += "</svg>";
-
-				// Remove previous overlay if exists
 				const existing = container.querySelector(".stats-trend-overlay-wrapper");
 				if (existing) existing.remove();
 
 				const wrapper = container.createDiv({ cls: "stats-trend-overlay-wrapper" });
-				const parser = new DOMParser();
-				const svgDoc = parser.parseFromString(svg, 'image/svg+xml');
-				const svgEl = svgDoc.documentElement;
-				if (svgEl && svgEl.instanceOf(Element) && !svgEl.querySelector('parsererror')) {
-					wrapper.appendChild(wrapper.doc.importNode(svgEl, true));
-				}
+				wrapper.appendChild(svgEl);
 			});
 		}
 

@@ -1,3 +1,4 @@
+import { Logger } from '../utils/Logger';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { TFile } from 'obsidian';
 
@@ -29,16 +30,16 @@ export class FileEventManager {
 					this.plugin.refreshFolderCounts();
 				}, 500);
 			} catch (error) {
-				console.error('[Plugin] 新文件字数统计失败:', error);
+				Logger.error('[Plugin] 新文件字数统计失败:', error);
 			}
 		}));
 	}
 
 	private registerModifyHandler(): void {
-		const notesFilePath = this.plugin.stickyNoteManager.getNotesFilePath();
-
 		this.plugin.registerEvent(this.plugin.app.vault.on('modify', async (file) => {
 			if (!(file instanceof TFile) || file.extension !== 'md') return;
+
+			const notesFilePath = this.plugin.stickyNoteManager.getNotesFilePath();
 
 			// [优化] 合并原先的两个 modify 监听器：便签文件同步 + 字数缓存更新
 			// 便签文件外部变更同步（如多端同步工具修改了 notes-data.json）
@@ -67,9 +68,8 @@ export class FileEventManager {
 						return;
 					}
 
-					const delta = newWordCount - oldWordCount;
+					const delta = this.plugin.cacheManager.updateFileCache(file, newWordCount, this.plugin.app.vault);
 					if (delta !== 0) {
-						this.plugin.cacheManager.updateFileCache(file, newWordCount, this.plugin.app.vault);
 
 						if (this.plugin.isLayoutReady) {
 							const today = window.moment().format('YYYY-MM-DD');
@@ -78,13 +78,13 @@ export class FileEventManager {
 
 							this.plugin.adaptiveDebounceManager.debounceFixed('save-settings', () => {
 								this.plugin.saveSettings().catch(err => {
-									console.error('[Plugin] 保存设置失败:', err);
+									Logger.error('[Plugin] 保存设置失败:', err);
 								});
 							}, 1000);
 						}
 					}
 				} catch (error) {
-					console.error('[Plugin] 更新每日历史统计失败:', error);
+					Logger.error('[Plugin] 更新每日历史统计失败:', error);
 				}
 				// 非活跃文件：缓存已更新，只刷新显示
 				this.plugin.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {

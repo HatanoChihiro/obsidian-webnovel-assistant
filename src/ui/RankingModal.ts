@@ -37,22 +37,22 @@ export class RankingAddModal extends Modal {
 		contentEl.addClass('ranking-add-modal');
 		new Setting(contentEl).setName(t('modal.new-ranking')).setHeading();
 
-		const inputStyle = 'width:100%;margin-bottom:8px;padding:6px 8px;border-radius:4px;border:1px solid var(--background-modifier-border);background:var(--background-primary);color:var(--text-normal);box-sizing:border-box;';
-
 		// 任务名称
 		const platformContainer = contentEl.createDiv();
-		platformContainer.createEl('label', { text: t('modal.platform'), attr: { style: 'display:block;margin-bottom:4px;font-weight:bold;' } });
+		platformContainer.createEl('label', { text: t('modal.platform'), cls: 'wn-ranking-label' });
 		const platformInput = platformContainer.createEl('input', {
-			attr: { style: inputStyle, placeholder: t('modal.platform-placeholder') },
+			attr: { placeholder: t('modal.platform-placeholder') },
+			cls: 'wn-ranking-input',
 			value: this.defaultPlatform,
 		});
 
 		// 任务期数
 		const periodContainer = contentEl.createDiv();
-		periodContainer.createEl('label', { text: t('modal.ranking-period'), attr: { style: 'display:block;margin-bottom:4px;font-weight:bold;' } });
+		periodContainer.createEl('label', { text: t('modal.ranking-period'), cls: 'wn-ranking-label' });
 		const periodInput = periodContainer.createEl('input', {
 			type: 'number',
-			attr: { style: inputStyle, min: '1' },
+			attr: { min: '1' },
+			cls: 'wn-ranking-input',
 			value: String(this.defaultPeriod),
 		});
 
@@ -61,19 +61,21 @@ export class RankingAddModal extends Modal {
 		const nextWeek = window.moment().add(6, 'days').format('YYYY-MM-DD');
 
 		const startContainer = contentEl.createDiv();
-		startContainer.createEl('label', { text: t('modal.start-date'), attr: { style: 'display:block;margin-bottom:4px;font-weight:bold;' } });
+		startContainer.createEl('label', { text: t('modal.start-date'), cls: 'wn-ranking-label' });
 		const startInput = startContainer.createEl('input', {
 			type: 'text',
-			attr: { style: inputStyle, placeholder: 'YYYY-MM-DD' },
+			attr: { placeholder: 'YYYY-MM-DD' },
+			cls: 'wn-ranking-input',
 			value: today,
 		});
 
 		// 结束时间
 		const endContainer = contentEl.createDiv();
-		endContainer.createEl('label', { text: t('modal.end-date'), attr: { style: 'display:block;margin-bottom:4px;font-weight:bold;' } });
+		endContainer.createEl('label', { text: t('modal.end-date'), cls: 'wn-ranking-label' });
 		const endInput = endContainer.createEl('input', {
 			type: 'text',
-			attr: { style: inputStyle, placeholder: 'YYYY-MM-DD' },
+			attr: { placeholder: 'YYYY-MM-DD' },
+			cls: 'wn-ranking-input',
 			value: nextWeek,
 		});
 
@@ -87,34 +89,35 @@ export class RankingAddModal extends Modal {
 
 		// 任务详情
 		const positionContainer = contentEl.createDiv();
-		positionContainer.createEl('label', { text: t('modal.ranking-position'), attr: { style: 'display:block;margin-bottom:4px;font-weight:bold;' } });
+		positionContainer.createEl('label', { text: t('modal.ranking-position'), cls: 'wn-ranking-label' });
 		const positionInput = positionContainer.createEl('input', {
-			attr: { style: inputStyle, placeholder: t('modal.ranking-position-placeholder') },
+			attr: { placeholder: t('modal.ranking-position-placeholder') },
+			cls: 'wn-ranking-input',
 		});
 
 		// 字数要求
 		const targetContainer = contentEl.createDiv();
-		targetContainer.createEl('label', { text: t('modal.word-target'), attr: { style: 'display:block;margin-bottom:4px;font-weight:bold;' } });
+		targetContainer.createEl('label', { text: t('modal.word-target'), cls: 'wn-ranking-label' });
 		const targetInput = targetContainer.createEl('input', {
 			type: 'number',
-			attr: { style: inputStyle, min: '1', placeholder: t('modal.word-target-placeholder') },
+			attr: { min: '1', placeholder: t('modal.word-target-placeholder') },
+			cls: 'wn-ranking-input',
 		});
 
 		// 起始字数（显示当前值，允许修改）
 		const snapshotContainer = contentEl.createDiv();
-		snapshotContainer.createEl('label', { text: t('modal.starting-word-count'), attr: { style: 'display:block;margin-bottom:4px;font-weight:bold;' } });
+		snapshotContainer.createEl('label', { text: t('modal.starting-word-count'), cls: 'wn-ranking-label' });
 		const currentWords = this.manager.getChapterWordCount();
 		const snapshotInput = snapshotContainer.createEl('input', {
 			type: 'number',
-			attr: { style: inputStyle, min: '0' },
+			attr: { min: '0' },
+			cls: 'wn-ranking-input',
 			value: String(currentWords),
 		});
-		snapshotContainer.createDiv({ text: t('modal.starting-word-count-hint'), attr: { style: 'font-size:12px;color:var(--text-muted);margin-bottom:8px;' } });
+		snapshotContainer.createDiv({ text: t('modal.starting-word-count-hint'), cls: 'wn-ranking-hint' });
 
 		// 按钮
-		const btnContainer = contentEl.createDiv({
-			attr: { style: 'display:flex;justify-content:flex-end;gap:10px;margin-top:16px;' },
-		});
+		const btnContainer = contentEl.createDiv({ cls: 'wn-ranking-btn-container' });
 		const cancelBtn = btnContainer.createEl('button', { text: t('common.cancel') });
 		cancelBtn.onclick = () => this.close();
 

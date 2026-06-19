@@ -1,3 +1,4 @@
+import { Logger } from '../utils/Logger';
 import type { Plugin} from 'obsidian';
 import { t } from '../i18n';
 import { detectLocale } from '../i18n';
@@ -132,13 +133,13 @@ export class SettingsManager {
 
 			const validation = this.validateSettings(this.settings);
 			if (!validation.valid) {
-				console.warn('[SettingsManager] 设置验证失败:', validation.errors);
+				Logger.warn('[SettingsManager] 设置验证失败:', validation.errors);
 				this.settings = this.fixInvalidSettings(this.settings);
 			}
 
 			return this.settings;
 		} catch (error) {
-			console.error('[SettingsManager] 加载设置失败:', error);
+			Logger.error('[SettingsManager] 加载设置失败:', error);
 			new Notice('加载设置失败，已使用默认设置');
 			this.settings = this.mergeSettings({});
 			return this.settings;
@@ -167,7 +168,7 @@ export class SettingsManager {
 				const newData = { ...cleanedData, ...this.settings };
 				await this.plugin.saveData(newData);
 			} catch (error) {
-				console.error('[SettingsManager] 保存设置失败:', error);
+				Logger.error('[SettingsManager] 保存设置失败:', error);
 				new Notice('保存设置失败，请检查磁盘空间和权限');
 				throw error;
 			}
@@ -220,7 +221,7 @@ export class SettingsManager {
 			if (value !== undefined && !rule.validate(value)) {
 				const defaultValue = this.getNestedValue(this.defaultSettings as unknown as Record<string, unknown>, rule.path);
 				this.setNestedValue(fixed as unknown as Record<string, unknown>, rule.path, defaultValue);
-				console.warn(`[SettingsManager] 修复无效设置: ${rule.path} = ${value} -> ${defaultValue}`);
+				Logger.warn(`[SettingsManager] 修复无效设置: ${rule.path} = ${value} -> ${defaultValue}`);
 			}
 		}
 		return fixed;

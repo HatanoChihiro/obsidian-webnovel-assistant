@@ -155,7 +155,7 @@ export class ForeshadowingView extends CreativeView {
 				metaEl.setCssProps({ cursor: 'pointer' });
 				metaEl.title = t('common.jump-to-reference');
 				metaEl.onclick = async () => {
-					const file = this.app.vault.getMarkdownFiles().find(f => f.basename === target);
+					const file = this.app.metadataCache.getFirstLinkpathDest(target, '');
 					if (file) {
 						await this.openFileWithSmartLocate(file, c.text);
 					} else {
@@ -168,7 +168,7 @@ export class ForeshadowingView extends CreativeView {
 			textEl.setCssProps({ cursor: 'pointer' });
 			textEl.title = t('common.jump-to-original');
 			textEl.onclick = async () => {
-				const file = this.app.vault.getMarkdownFiles().find(f => f.basename === target);
+				const file = this.app.metadataCache.getFirstLinkpathDest(target, '');
 				if (file) {
 					await this.openFileWithSmartLocate(file, c.text);
 				} else {
@@ -198,7 +198,7 @@ export class ForeshadowingView extends CreativeView {
 				// 单个来源，直接跳转
 				const target = entry.contents[0]?.source || entry.sourceFile;
 				const text = entry.contents[0]?.text || '';
-				const file = this.app.vault.getMarkdownFiles().find(f => f.basename === target);
+				const file = this.app.metadataCache.getFirstLinkpathDest(target, '');
 				if (file) {
 					await this.openFileWithSmartLocate(file, text);
 				} else {
@@ -213,7 +213,7 @@ export class ForeshadowingView extends CreativeView {
 					const shortText = c.text.length > 10 ? c.text.substring(0, 10) + '...' : c.text;
 					menu.addItem((item: MenuItem) => {
 						item.setTitle(`${target} (${shortText})`).onClick(async () => {
-							const file = this.app.vault.getMarkdownFiles().find(f => f.basename === target);
+							const file = this.app.metadataCache.getFirstLinkpathDest(target, '');
 							if (file) {
 								await this.openFileWithSmartLocate(file, c.text);
 							} else {
@@ -241,18 +241,23 @@ export class ForeshadowingView extends CreativeView {
 							new Notice(t('common.foreshadowing-manager-not-ready'));
 							return;
 						}
-						void this.plugin.foreshadowingManager.markAsRecovered(
-							foreshadowingFile, entry.sourceFile, entry.createdAt, recoveryFileNames
-						).then(success => {
-							if (success) {
-								const fileList = recoveryFileNames.map(f => `[[${f}]]`).join('、');
-								new Notice(t('notice.foreshadowing-recovered', { links: fileList }));
-								// 文件修改会自动触发刷新，但在某些平台可能有延迟，添加备用刷新
-								window.setTimeout(() => void this.refresh(), 100);
-							} else {
-								new Notice(t('common.mark-failed-check-file'));
+						void (async () => {
+							try {
+								const success = await this.plugin.foreshadowingManager!.markAsRecovered(
+									foreshadowingFile, entry.sourceFile, entry.createdAt, recoveryFileNames
+								);
+								if (success) {
+									const fileList = recoveryFileNames.map(f => `[[${f}]]`).join('、');
+									new Notice(t('notice.foreshadowing-recovered', { links: fileList }));
+									// 文件修改会自动触发刷新，但在某些平台可能有延迟，添加备用刷新
+									window.setTimeout(() => void this.refresh(), 100);
+								} else {
+									new Notice(t('common.mark-failed-check-file'));
+								}
+							} catch (err) {
+								console.error('[ForeshadowingView] markAsRecovered failed:', err);
 							}
-						}).catch(err => console.error('[ForeshadowingView] markAsRecovered failed:', err));
+						})();
 					}
 				).open();
 			};
@@ -263,9 +268,11 @@ export class ForeshadowingView extends CreativeView {
 				const foreshadowingFile = this.getForeshadowingFile();
 				if (!foreshadowingFile) return;
 				if (!this.plugin.foreshadowingManager) return;
-					void this.plugin.foreshadowingManager.markAsDeprecated(
-						foreshadowingFile, entry.sourceFile, entry.createdAt
-					).then(success => {
+				void (async () => {
+					try {
+						const success = await this.plugin.foreshadowingManager!.markAsDeprecated(
+							foreshadowingFile, entry.sourceFile, entry.createdAt
+						);
 						if (success) {
 							new Notice(t('common.deprecated-marked'));
 							// 文件修改会自动触发刷新，但在某些平台可能有延迟，添加备用刷新
@@ -273,7 +280,10 @@ export class ForeshadowingView extends CreativeView {
 						} else {
 							new Notice(t('common.operation-failed'));
 						}
-					}).catch(err => console.error('[ForeshadowingView] markAsDeprecated failed:', err));
+					} catch (err) {
+						console.error('[ForeshadowingView] markAsDeprecated failed:', err);
+					}
+				})();
 			};
 		}
 
@@ -308,7 +318,7 @@ export class ForeshadowingView extends CreativeView {
 					if (index > 0) recoveryEl.createSpan({ text: '、' });
 					const recoveryLink = recoveryEl.createEl('a', { text: file, cls: 'foreshadowing-entry-recovery-link' });
 					recoveryLink.onclick = async () => {
-						const targetFile = this.app.vault.getMarkdownFiles().find(f => f.basename === file);
+						const targetFile = this.app.metadataCache.getFirstLinkpathDest(file, '');
 						if (targetFile) await this.app.workspace.getLeaf(false).openFile(targetFile);
 					};
 				});
@@ -317,7 +327,7 @@ export class ForeshadowingView extends CreativeView {
 			else if (entry.recoveryFile) {
 				const recoveryLink = recoveryEl.createEl('a', { text: entry.recoveryFile, cls: 'foreshadowing-entry-recovery-link' });
 				recoveryLink.onclick = async () => {
-					const file = this.app.vault.getMarkdownFiles().find(f => f.basename === entry.recoveryFile);
+					const file = this.app.metadataCache.getFirstLinkpathDest(entry.recoveryFile as string, '');
 					if (file) await this.app.workspace.getLeaf(false).openFile(file);
 				};
 			}

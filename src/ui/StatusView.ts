@@ -20,6 +20,7 @@ export class WritingStatusView extends ItemView {
 		rankingPercentEl!: HTMLElement;
 		rankingProgressFillEl!: HTMLElement;
 		rankingSectionEls!: HTMLElement[];
+		chapterSectionEls!: HTMLElement[];
 		rankingTimeDescEl!: HTMLElement;
 		dailyWordEl!: HTMLElement;
 	dailyGoalEl!: HTMLElement;
@@ -63,7 +64,7 @@ export class WritingStatusView extends ItemView {
 	async onOpen() {
 		const container = this.containerEl.children[1];
 		container.empty();
-		container.addClass('status-view-container');
+		container.addClass('wn-status-view-container');
 
 		this.createWorkInfoCard(container);
 		this.createGoalCard(container);
@@ -75,22 +76,22 @@ export class WritingStatusView extends ItemView {
 	}
 
 	private createWorkInfoCard(container: Element) {
-		const card = container.createDiv({ cls: 'status-card work-info-card' });
-		const row = card.createDiv({ cls: 'work-info-row' });
-		this.workNameEl = row.createSpan({ cls: 'work-info-name', text: '--' });
-		this.workWordCountEl = row.createSpan({ cls: 'work-info-count', text: '' });
+		const card = container.createDiv({ cls: 'wn-status-card wn-work-info-card' });
+		const row = card.createDiv({ cls: 'wn-work-info-row' });
+		this.workNameEl = row.createSpan({ cls: 'wn-work-info-name', text: '--' });
+		this.workWordCountEl = row.createSpan({ cls: 'wn-work-info-count', text: '' });
 		this.workGoalEl = card.createDiv({ cls: 'work-info-goal' });
 		this.workGoalEl.addClass('webnovel-work-goal'); this.workGoalEl.hide();
 	}
 
 	private createGoalCard(container: Element) {
-		const goalCard = container.createDiv({ cls: 'status-card' });
-		const titleRow = goalCard.createDiv({ cls: 'status-title' });
+		const goalCard = container.createDiv({ cls: 'wn-status-card' });
+		const titleRow = goalCard.createDiv({ cls: 'wn-status-title' });
 		titleRow.createSpan({ text: t('common.today-status') });
 
 		if (!isMobile()) {
-			this.statusBadgeEl = titleRow.createSpan({ cls: 'status-title-badge', text: t('status.paused') });
-			this.statusBadgeEl.setCssProps({ cursor: 'pointer' });
+			this.statusBadgeEl = titleRow.createSpan({ cls: 'wn-status-title-badge', text: t('status.paused') });
+			this.statusBadgeEl.addClass('wn-clickable');
 			this.statusBadgeEl.title = t('common.click-to-toggle-status');
 			this.statusBadgeEl.addEventListener('click', () => {
 				if (this.plugin.isTracking) {
@@ -125,6 +126,8 @@ export class WritingStatusView extends ItemView {
 		const progressBg = goalCard.createDiv({ cls: 'progress-bar-bg' });
 		this.progressFillEl = progressBg.createDiv({ cls: 'progress-bar-fill' });
 
+		this.chapterSectionEls = [chapterLabelRow, goalRow, progressBg];
+
 		// 任务目标
 		const rankingLabelRow = goalCard.createDiv({ cls: 'status-goal-row ranking-goal-section' });
 		rankingLabelRow.hide();
@@ -150,8 +153,8 @@ export class WritingStatusView extends ItemView {
 	private createTimeCard(container: Element) {
 		if (isMobile()) return;
 
-		const timeCard = container.createDiv({ cls: 'status-card' });
-		timeCard.createDiv({ cls: 'status-title', text: t('common.focus-timing') });
+		const timeCard = container.createDiv({ cls: 'wn-status-card' });
+		timeCard.createDiv({ cls: 'wn-status-title', text: t('common.focus-timing') });
 		const totalBox = timeCard.createDiv({ cls: 'time-box time-box-total' });
 		totalBox.createDiv({ cls: 'time-box-title', text: t('common.total-elapsed') });
 		this.totalTimeEl = totalBox.createDiv({ cls: 'time-box-value', text: '00:00:00' });
@@ -168,8 +171,8 @@ export class WritingStatusView extends ItemView {
 	}
 
 	private createHistoryCard(container: Element) {
-		const historyCard = container.createDiv({ cls: 'status-card' });
-		historyCard.createDiv({ cls: 'status-title', text: t('common.word-count') });
+		const historyCard = container.createDiv({ cls: 'wn-status-card' });
+		historyCard.createDiv({ cls: 'wn-status-title', text: t('common.word-count') });
 
 		const historyGrid = historyCard.createDiv({ cls: 'time-grid' });
 
@@ -239,8 +242,13 @@ export class WritingStatusView extends ItemView {
 		// 更新作品信息
 		const activeFile = this.app.workspace.getActiveViewOfType(MarkdownView)?.file
 			?? this.app.workspace.getActiveFile();
-			
-		let folderPath = '';
+
+		if (activeFile && !this.plugin.isEligibleForWordCount(activeFile)) {
+			this.workNameEl.innerText = '--';
+			this.workWordCountEl.innerText = '';
+			this.workGoalEl.hide();
+		} else {
+			let folderPath = '';
 		let folderName = '--';
 		
 		if (activeFile && activeFile.parent) {
@@ -278,14 +286,15 @@ export class WritingStatusView extends ItemView {
 				this.workGoalEl.hide();
 			}
 		}
+		}
 
 		if (!isMobile() && this.statusBadgeEl) {
 			if (this.plugin.isTracking) {
 				this.statusBadgeEl.innerText = t('status.recording');
-				this.statusBadgeEl.setCssProps({ background: '' }); this.statusBadgeEl.setCssProps({ color: '' });
+				this.statusBadgeEl.removeClass('wn-bg-muted'); 
 			} else {
 				this.statusBadgeEl.innerText = t('status.paused');
-				this.statusBadgeEl.setCssProps({ background: 'var(--text-muted)' }); this.statusBadgeEl.setCssProps({ color: '' });
+				this.statusBadgeEl.addClass('wn-bg-muted'); 
 			}
 		}
 
@@ -312,7 +321,7 @@ export class WritingStatusView extends ItemView {
 		let targetGoal = this.plugin.settings.defaultGoal;
 		const view = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
 		let chapterWords = 0;
-		if (view?.file) {
+		if (view?.file && this.plugin.isEligibleForWordCount(view.file)) {
 			const cache = this.plugin.app.metadataCache.getFileCache(view.file);
 			const fmGoal = parseGoal(cache?.frontmatter?.['word-goal']);
 			if (fmGoal > 0) targetGoal = fmGoal;

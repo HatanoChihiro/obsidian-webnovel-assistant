@@ -1,3 +1,4 @@
+import { Logger } from '../utils/Logger';
 import { Notice } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { t } from '../i18n';
@@ -24,7 +25,7 @@ export class WorkerManager {
 	public setup(): void {
 		if (this.restartAttempts >= this.MAX_RESTARTS) {
 			new Notice(t('notice.worker-max-restarts'), 8000);
-			console.error('[WorkerManager] Worker 达到最大重启次数，已停止尝试');
+			Logger.error('[WorkerManager] Worker 达到最大重启次数，已停止尝试');
 			return;
 		}
 
@@ -94,7 +95,7 @@ export class WorkerManager {
 
 	private handleError(error: ErrorEvent): void {
 		this.restartAttempts++;
-		console.error(
+		Logger.error(
 			`[WorkerManager] Worker 错误 (尝试 ${this.restartAttempts}/${this.MAX_RESTARTS}):`,
 			'\n  消息:', error.message
 		);
@@ -142,7 +143,7 @@ export class WorkerManager {
 		// 调度保存
 		this.plugin.adaptiveDebounceManager.debounceFixed('save-history-worker', () => {
 			this.plugin.historyManager.saveHistory().catch(err => {
-				console.error('[WorkerManager] 保存历史数据失败:', err);
+				Logger.error('[WorkerManager] 保存历史数据失败:', err);
 			});
 		}, 60000);
 		

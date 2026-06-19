@@ -122,7 +122,7 @@ export class ForeshadowingInputModal extends Modal {
 	private submit() {
 		const description = this.descriptionEl.value.trim();
 		if (!description) {
-			this.descriptionEl.setCssStyles({ borderColor: 'var(--background-modifier-error)' });
+			this.descriptionEl.addClass('wn-border-error');
 			new Notice(t('modal.please-fill-note'));
 			this.descriptionEl.focus();
 			return;
@@ -232,7 +232,7 @@ class ChapterMultiSelectModal extends Modal {
 			item.addClass('webnovel-modal-chapter-item');
 			const checkbox = item.createEl('input', { type: 'checkbox' });
 			checkbox.checked = this.selectedChapters.has(chapter);
-			checkbox.setCssProps({ cursor: 'pointer' });
+			checkbox.addClass('wn-clickable');
 			const label = item.createSpan({ text: chapter, cls: 'webnovel-chapter-label' });
 			const toggle = () => {
 				if (this.selectedChapters.has(chapter)) {
@@ -334,7 +334,7 @@ export class ForeshadowingRecoveryModal extends Modal {
 				text: t('modal.chapter-count-hint', { count: this.chapters.length }),
 				cls: 'setting-item-description'
 			});
-			hint.setCssStyles({ marginBottom: '12px' });
+			hint.addClass('wn-mb-12');
 		}
 
 		// 按钮区
@@ -359,7 +359,7 @@ export class ForeshadowingRecoveryModal extends Modal {
 	private submit() {
 		const value = this.inputEl.value.trim().replace(/\.md$/gi, '');
 		if (!value) {
-			this.inputEl.setCssStyles({ borderColor: 'var(--background-modifier-error)' });
+			this.inputEl.addClass('wn-border-error');
 			new Notice(t('modal.please-enter-recovery-chapter'));
 			this.inputEl.focus();
 			return;

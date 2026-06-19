@@ -1,5 +1,6 @@
+import { Logger } from '../utils/Logger';
 import type { App, MarkdownView } from 'obsidian';
-import { TFile, TFolder } from 'obsidian';
+import { TFile, normalizePath, TFolder } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { NovelMetadata, NovelFolderInfo } from '../types/homepage';
 import { NOVEL_INFO_LABEL_MAP, NOVEL_STATUS_MAP, getNovelInfoLabel, getNovelStatusText, getDefaultFileName, getDefaultFileNameCandidates } from '../i18n/data-keys';
@@ -40,7 +41,7 @@ export class HomepageManager {
 		const folders = this.plugin.settings.workspaceFolders;
 		if (folders && folders.length > 0) {
 			const first = folders[0].replace(/^\/+|\/+$/g, '');
-			if (first) return `${first}/${basename}`;
+			if (first) return normalizePath(`${first}/${basename}`);
 		}
 		
 		return basename;
@@ -60,10 +61,9 @@ export class HomepageManager {
 		const existing = this.getHomepageFile();
 		if (existing) {
 			const newContent = this.generateHomepageContent();
-			const oldContent = await this.app.vault.cachedRead(existing);
-			if (oldContent !== newContent) {
-				await this.app.vault.modify(existing, newContent);
-			}
+			await this.app.vault.process(existing, (oldContent) => {
+				return oldContent !== newContent ? newContent : oldContent;
+			});
 			return existing;
 		}
 
@@ -80,10 +80,9 @@ export class HomepageManager {
 			const existing = this.getHomepageFile();
 			if (existing) {
 			const newContent = this.generateHomepageContent();
-			const oldContent = await this.app.vault.cachedRead(existing);
-			if (oldContent !== newContent) {
-				await this.app.vault.modify(existing, newContent);
-			}
+			await this.app.vault.process(existing, (oldContent) => {
+				return oldContent !== newContent ? newContent : oldContent;
+			});
 			return existing;
 		}
 			throw e;
@@ -93,7 +92,7 @@ export class HomepageManager {
 	async refreshHomepage(): Promise<void> {
 		const file = this.getHomepageFile();
 		if (!file) return;
-		await this.app.vault.modify(file, this.generateHomepageContent());
+		await this.app.vault.process(file, () => this.generateHomepageContent());
 	}
 
 	generateHomepageContent(): string {
@@ -165,7 +164,7 @@ export class HomepageManager {
 			candidates.add(name);
 		}
 		for (const fileName of candidates) {
-			const filePath = folderPath ? `${folderPath}/${fileName}.md` : `${fileName}.md`;
+			const filePath = folderPath ? normalizePath(`${folderPath}/${fileName}.md`) : `${fileName}.md`;
 			const file = this.app.vault.getAbstractFileByPath(filePath);
 			if (file instanceof TFile) return file;
 		}
@@ -240,20 +239,20 @@ export class HomepageManager {
 			// 如果找到的文件名与当前设置不一致，自动重命名
 			const expectedName = this.getNovelInfoFileName();
 			if (existing.name !== expectedName + '.md') {
-				const newPath = folderPath + '/' + expectedName + '.md';
+				const newPath = normalizePath(folderPath + '/' + expectedName + '.md');
 				try {
 					await this.app.fileManager.renameFile(existing, newPath);
 				} catch (e) {
-					console.warn('[HomepageManager] 重命名作品信息文件失败:', e);
+					Logger.warn('[HomepageManager] 重命名作品信息文件失败:', e);
 				}
 			}
-			const found = this.app.vault.getAbstractFileByPath(folderPath + '/' + expectedName + '.md');
+			const found = this.app.vault.getAbstractFileByPath(normalizePath(folderPath + '/' + expectedName + '.md'));
 				return found instanceof TFile ? found : existing;
 		}
 
 		// 新建时优先使用用户设置，fallback 到当前语言的默认文件名
 		const fileName = this.getNovelInfoFileName();
-		const filePath = `${folderPath}/${fileName}.md`;
+		const filePath = normalizePath(`${folderPath}/${fileName}.md`);
 
 		const today = new Date().toISOString().slice(0, 10);
 		const folderName = folderPath.split('/').pop() || folderPath;
@@ -309,7 +308,7 @@ export class HomepageManager {
 		const parentFolder = workspaceFolders && workspaceFolders.length > 0
 			? workspaceFolders[0].replace(/^\/+|\/+$/g, '')
 			: '';
-		const folderPath = parentFolder ? `${parentFolder}/${novelName}` : novelName;
+		const folderPath = parentFolder ? normalizePath(`${parentFolder}/${novelName}`) : novelName;
 
 		const infoFile = await this.createNovelInfoFile(folderPath, { name: novelName, ...overrides });
 
@@ -334,7 +333,7 @@ export class HomepageManager {
 			}
 			await this.app.fileManager.renameFile(file, newPath);
 		} else {
-			console.warn(`[HomepageManager] 找不到旧主页文件: ${oldPath}，将仅更新设置。`);
+			Logger.warn(`[HomepageManager] 找不到旧主页文件: ${oldPath}，将仅更新设置。`);
 		}
 	}
 
@@ -350,7 +349,7 @@ import('./HomepageRenderer.js').then(async ({ HomepageRenderer }) => {
 					for (const el of containerEls) {
 						await renderer.renderHomepage(el as HTMLElement);
 					}
-}).catch(err => console.error('[HomepageManager] refreshHomepageViews failed:', err));
+}).catch(err => Logger.error('[HomepageManager] refreshHomepageViews failed:', err));
 		}
 
 		// 2. 作为后备方案，仍然触发 previewMode 的 rerender

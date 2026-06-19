@@ -1,3 +1,4 @@
+import { Logger } from '../utils/Logger';
 import { MarkdownView } from 'obsidian';
 import { t } from '../i18n';
 import { hexToRgba, formatTime, parseGoal } from '../utils';
@@ -132,7 +133,7 @@ export class ObsHtmlBuilder {
 		});
 		
 		if (filtered.length < lines.length) {
-			console.warn('[ObsHtmlBuilder] 已剥理不安全的 CSS 属性，原', lines.length, '行，过滤后', filtered.length, '行');
+			Logger.warn('[ObsHtmlBuilder] 已剥理不安全的 CSS 属性，原', lines.length, '行，过滤后', filtered.length, '行');
 		}
 		
 		return filtered.join('\n');
@@ -323,7 +324,7 @@ body {
 .goal-value .target-val { opacity: 0.8; }
 
 
-.goal-value.done .current-val { color: #E74C3C !important; }
+.overlay-card .goal-value.done .current-val { color: #E74C3C; }
 
 
 .time-row {

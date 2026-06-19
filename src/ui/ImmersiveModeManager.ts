@@ -1,3 +1,4 @@
+import { Logger } from '../utils/Logger';
 import type { App, EventRef, WorkspaceLeaf, TFile, WorkspaceSplit, WorkspaceItem } from 'obsidian';
 import { MarkdownView, Notice } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
@@ -106,7 +107,7 @@ export class ImmersiveModeManager {
 			this.isImmersiveActive = true;
 			new Notice(t('immersive.enter'));
 		} catch (error) {
-			console.error('[ImmersiveModeManager] 进入沉浸模式失败:', error);
+			Logger.error('[ImmersiveModeManager] 进入沉浸模式失败:', error);
 			new Notice(t('immersive.enter-failed'));
 			await this.exitImmersiveMode();
 		}
@@ -141,7 +142,7 @@ export class ImmersiveModeManager {
 					});
 				}
 			} else {
-				console.warn('[ImmersiveModeManager] 退出时未找到保存的布局，跳过布局还原');
+				Logger.warn('[ImmersiveModeManager] 退出时未找到保存的布局，跳过布局还原');
 			}
 
 			// 3. 自动化清理：退出全屏 + 停止计时
@@ -157,7 +158,7 @@ export class ImmersiveModeManager {
 			this.plugin.stopTracking();
 
 		} catch (error) {
-			console.error('[ImmersiveModeManager] 退出沉浸模式时发生错误:', error);
+			Logger.error('[ImmersiveModeManager] 退出沉浸模式时发生错误:', error);
 			new Notice(t('immersive.exit-warning'));
 		} finally {
 			if (this.layoutChangeRef) {
@@ -293,7 +294,7 @@ export class ImmersiveModeManager {
 		// 确保主编辑器聚焦
 		workspace.setActiveLeaf(mainLeaf, { focus: true });
 
-		window.setTimeout(() => this.app.workspace.updateOptions(), 300);
+		this.plugin.registerInterval(window.setTimeout(() => this.app.workspace.updateOptions(), 300) as unknown as number);
 		
 		// 监听布局变化，实时保存比例
 		this.layoutChangeRef = this.app.workspace.on('layout-change', () => {
@@ -337,12 +338,12 @@ export class ImmersiveModeManager {
 			}
 
 			if (hasFailure && attempt < 5 && this.isImmersiveActive) {
-				window.setTimeout(() => apply(attempt + 1), 100 * (attempt + 1));
+				this.plugin.registerInterval(window.setTimeout(() => apply(attempt + 1), 100 * (attempt + 1)) as unknown as number);
 			}
 		};
 
 		window.requestAnimationFrame(() => apply(0));
-		window.setTimeout(() => apply(0), 300);
+		this.plugin.registerInterval(window.setTimeout(() => apply(0), 300) as unknown as number);
 	}
 
 	/**
@@ -422,7 +423,7 @@ export class ImmersiveModeManager {
 			updateStatEl('rankingProgress', !!immersive.immersiveShowRankingProgress, `${t('immersive.ranking-progress')} (${stats.rankingWords}/${stats.rankingGoal})`);
 			updateStatEl('sessionWords', !!immersive.immersiveShowSessionWords, `${t('immersive.session-words')} (${stats.sessionWords})`);
 		} catch (e) {
-			console.error('[ImmersiveModeManager] renderTopBarContent failed:', e);
+			Logger.error('[ImmersiveModeManager] renderTopBarContent failed:', e);
 		}
 	}
 

@@ -1,3 +1,4 @@
+import { Logger } from '../utils/Logger';
 /**
  * 国际化 (i18n) 核心
  * 提供翻译函数 t() 和语言切换能力
@@ -35,7 +36,7 @@ export function getSupportedLocales(): readonly Locale[] {
 export async function setLocale(locale: string): Promise<void> {
 	const validatedLocale: Locale = isLocale(locale) ? locale : 'zh-CN';
 	if (!isLocale(locale)) {
-		console.warn(`[i18n] Unsupported locale: ${locale}, falling back to zh-CN`);
+		Logger.warn(`[i18n] Unsupported locale: ${locale}, falling back to zh-CN`);
 	}
 	currentLocale = validatedLocale;
 	translations = await loadTranslations(validatedLocale);
@@ -76,7 +77,7 @@ async function loadTranslations(locale: Locale): Promise<Record<string, string>>
 				return (await import('./zh-CN.json')).default;
 		}
 	} catch (err) {
-		console.error(`[i18n] Failed to load translations for ${locale}:`, err);
+		Logger.error(`[i18n] Failed to load translations for ${locale}:`, err);
 		return {};
 	}
 }

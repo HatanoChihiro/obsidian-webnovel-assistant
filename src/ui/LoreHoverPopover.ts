@@ -1,3 +1,4 @@
+import { Logger } from '../utils/Logger';
 import { Component, MarkdownRenderer } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { LoreEntry } from '../services/CharacterManager';
@@ -29,6 +30,20 @@ export class LoreHoverPopover extends Component {
 
 		// 监听鼠标离开目标元素
 		this.targetEl.addEventListener('mouseleave', this.onMouseLeaveTarget);
+	}
+
+	
+	override onunload() {
+		if (this.showTimeout !== null) {
+			window.clearTimeout(this.showTimeout);
+			this.showTimeout = null;
+		}
+		if (this.closeTimeout !== null) {
+			window.clearTimeout(this.closeTimeout);
+			this.closeTimeout = null;
+		}
+		this.hide();
+		super.onunload();
 	}
 
 	private onMouseLeaveTarget = () => {
@@ -71,7 +86,7 @@ export class LoreHoverPopover extends Component {
 
 		// 创建自定义卡片容器
 		this.popoverEl = activeDocument.body.createDiv({ cls: 'webnovel-lore-popover' });
-		this.popoverEl.setCssStyles({ position: 'absolute', zIndex: '1000' });
+		this.popoverEl.addClass('wn-absolute-top');
 		
 		// 监听鼠标进入和离开卡片，保证鼠标移入卡片时不会关闭
 		this.popoverEl.addEventListener('mouseenter', this.onMouseEnterPopover);
@@ -181,7 +196,7 @@ export class LoreHoverPopover extends Component {
 			this.popoverEl!.setCssStyles({ top: `${top}px` });
 
 		} catch (e) {
-			console.error('Failed to render lore popover:', e);
+			Logger.error('Failed to render lore popover:', e);
 			loadingEl.setText('Failed to load lore data.');
 		}
 	}

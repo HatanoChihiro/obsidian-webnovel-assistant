@@ -1,3 +1,4 @@
+import { Logger } from '../utils/Logger';
 import type { StickyNoteState } from '../types/settings';
 import { SerializedWriter } from '../utils/SerializedWriter';
 import { getPluginDir } from '../utils/platform';
@@ -38,7 +39,7 @@ export class StickyNoteDataManager {
 				this.notesData = rawNotes.filter(n => n && typeof n === 'object' && typeof n.id === 'string');
 				
 				if (this.notesData.length !== rawNotes.length) {
-					console.warn(`[StickyNoteDataManager] 过滤掉 ${rawNotes.length - this.notesData.length} 个无效便签条目`);
+					Logger.warn(`[StickyNoteDataManager] 过滤掉 ${rawNotes.length - this.notesData.length} 个无效便签条目`);
 				}
 				
 				return this.notesData;
@@ -47,7 +48,7 @@ export class StickyNoteDataManager {
 
 			return [];
 		} catch (error) {
-			console.error("[StickyNoteDataManager] 加载便签数据失败:", error);
+			Logger.error("[StickyNoteDataManager] 加载便签数据失败:", error);
 			return [];
 		}
 	}
@@ -56,19 +57,18 @@ export class StickyNoteDataManager {
 	 * 保存便签数据
 	 */
 	async saveNotes(notes: StickyNoteState[]): Promise<void> {
-		this.notesData = notes;
-		
 		// 使用串行写入器确保顺序写入，防止文件损坏
 		return this.writer.enqueue(async () => {
 			this._isWriting = true;
 			try {
 				const adapter = this.plugin.app.vault.adapter;
-				const content = JSON.stringify(this.notesData, null, 2);
+				const content = JSON.stringify(notes, null, 2);
 				await adapter.write(this.notesFilePath, content);
+				this.notesData = notes;
 				// 触发全局事件，通知其他组件同步数据
 				this.plugin.app.workspace.trigger('webnovel:notes-changed');
 			} catch (error) {
-				console.error("[StickyNoteDataManager] 保存便签数据失败:", error);
+				Logger.error("[StickyNoteDataManager] 保存便签数据失败:", error);
 			} finally {
 				this._isWriting = false;
 			}
@@ -95,7 +95,7 @@ export class StickyNoteDataManager {
 		
 		// 自动触发持久化，不再显式设置 dirty=true，交给 saveNotes 处理
 		this.saveNotes(this.notesData).catch(err => {
-			console.error('[StickyNoteDataManager] updateNote 自动保存失败:', err);
+			Logger.error('[StickyNoteDataManager] updateNote 自动保存失败:', err);
 		});
 	}
 
@@ -113,7 +113,7 @@ export class StickyNoteDataManager {
 	removeNote(id: string): void {
 		this.notesData = this.notesData.filter(n => n.id !== id);
 		this.saveNotes(this.notesData).catch(err => {
-			console.error('[StickyNoteDataManager] removeNote 自动保存失败:', err);
+			Logger.error('[StickyNoteDataManager] removeNote 自动保存失败:', err);
 		});
 	}
 
