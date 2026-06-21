@@ -30,6 +30,8 @@ import { ForeshadowingManager } from './src/services/ForeshadowingManager';
 import { RankingManager } from './src/services/RankingManager';
 import { ObsHtmlBuilder } from './src/services/ObsHtmlBuilder';
 import { ImmersiveModeManager } from './src/ui/ImmersiveModeManager';
+import { HomepageManager } from './src/services/HomepageManager';
+import { StatisticsManager } from './src/services/StatisticsManager';
 import { StickyNoteDataManager } from './src/services/StickyNoteDataManager';
 import { VIEW_TYPES, DEFAULT_SETTINGS, PLATFORM_DELAYS } from './src/constants';
 import { RANKING_VIEW_TYPE } from './src/ui/RankingView';
@@ -88,6 +90,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	wordCounter: WordCounter;
 	editorTracker!: EditorTracker;
 	fileEventManager!: FileEventManager;
+	statisticsManager: StatisticsManager;
 	styleManager!: StyleManager;
 	stickyNoteManager: StickyNoteDataManager;
 	immersiveModeManager!: ImmersiveModeManager;
@@ -113,6 +116,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.commandManager = new CommandManager(this);
 		this.viewManager = new ViewManager(this);
 		this.menuManager = new MenuManager(this);
+		this.statisticsManager = new StatisticsManager(this);
 		this.workerManager = new WorkerManager(this);
 		this.markdownPostProcessor = new MarkdownPostProcessor(this);
 		this.fileEventManager = new FileEventManager(this);
@@ -191,9 +195,12 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			this.refreshImmersiveNotes();
 		}));
 		
-		// 初始化服务（依赖 this）
 		this.editorTracker = new EditorTracker(this.app, this);
 		this.styleManager = new StyleManager(this.settings);
+		this.fileEventManager = new FileEventManager(this);
+		
+		this.fileEventManager.setup();
+		this.statisticsManager.setup();
 		
 		if (this.settings.eyeCareEnabled) this.styleManager.applyEyeCare();
 		

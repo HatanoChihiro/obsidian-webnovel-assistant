@@ -25,8 +25,10 @@ declare module 'obsidian' {
         // 插件自定义事件
         on(name: 'webnovel:notes-changed', callback: () => void): EventRef;
         on(name: 'webnovel:word-count-gutter-settings-changed', callback: () => void): EventRef;
+        on(name: 'webnovel:file-word-count-updated', callback: (file: TFile, delta: number) => void): EventRef;
         trigger(name: 'webnovel:notes-changed'): void;
         trigger(name: 'webnovel:word-count-gutter-settings-changed'): void;
+        trigger(name: 'webnovel:file-word-count-updated', file: TFile, delta: number): void;
     }
 
     interface WorkspaceSplit {

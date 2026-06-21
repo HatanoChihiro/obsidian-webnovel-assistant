@@ -46,17 +46,7 @@ export class EditorTracker {
 		// 注意：不检查 lastFileWords > 0，因为这会导致第一个字不被记录
 		// 只要 delta !== 0 就记录
 		if (delta !== 0) {
-			this.plugin.sessionAddedWords += delta;
-			
-			const today = window.moment().format('YYYY-MM-DD');
-			this.plugin.historyManager.addWords(today, delta);
-			
-			// 防抖保存历史数据（1秒后保存，避免频繁写入）
-			this.plugin.adaptiveDebounceManager.debounceFixed('save-history', () => {
-				this.plugin.historyManager.saveHistory().catch(err => {
-					Logger.error('[Plugin] 保存历史数据失败:', err);
-				});
-			}, 1000);
+			this.plugin.app.workspace.trigger('webnovel:file-word-count-updated', view.file, delta);
 		}
 		
 		this.plugin.lastFileWords = currentCount;

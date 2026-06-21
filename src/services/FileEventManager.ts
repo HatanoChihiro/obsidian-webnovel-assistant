@@ -72,15 +72,7 @@ export class FileEventManager {
 					if (delta !== 0) {
 
 						if (this.plugin.isLayoutReady) {
-							const today = window.moment().format('YYYY-MM-DD');
-							this.plugin.historyManager.addWords(today, delta);
-							this.plugin.sessionAddedWords += delta;
-
-							this.plugin.adaptiveDebounceManager.debounceFixed('save-settings', () => {
-								this.plugin.saveSettings().catch(err => {
-									Logger.error('[Plugin] 保存设置失败:', err);
-								});
-							}, 1000);
+							this.plugin.app.workspace.trigger('webnovel:file-word-count-updated', file, delta);
 						}
 					}
 				} catch (error) {

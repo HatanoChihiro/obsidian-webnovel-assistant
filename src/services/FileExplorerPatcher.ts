@@ -456,7 +456,7 @@ export class FileExplorerPatcher {
 				let countEl = this.wordCountElCache.get(item.el) as HTMLElement | undefined | null;
 
 				if (!countEl) {
-					countEl = item.el.querySelector('.wn-folder-word-count') as HTMLElement | null;
+					countEl = item.el.querySelector<HTMLElement>('.wn-folder-word-count');
 					if (!countEl) {
 						if (!labelText) continue;
 

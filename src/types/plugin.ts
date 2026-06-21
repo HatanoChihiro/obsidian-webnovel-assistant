@@ -35,6 +35,7 @@ import type { MenuManager } from '../core/MenuManager';
 import type { ImmersiveModeManager } from '../ui/ImmersiveModeManager';
 import type { FileEventManager } from '../services/FileEventManager';
 import type { HomepageManager } from '../services/HomepageManager';
+import type { StatisticsManager } from '../services/StatisticsManager';
 
 // ==========================================
 // 辅助类型
@@ -158,6 +159,7 @@ export interface WebNovelAssistantPlugin extends
 	markdownPostProcessor: MarkdownPostProcessor;
 	immersiveModeManager: ImmersiveModeManager;
 	fileEventManager: FileEventManager;
+	statisticsManager: StatisticsManager;
 
 	// 以下属性在 onload 中初始化，可能为 undefined
 	foreshadowingManager?: ForeshadowingManager;
