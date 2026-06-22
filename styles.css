@@ -118,13 +118,13 @@ body.webnovel-custom-dragging .nav-folder-title-content {
 
 .progress-bar-fill { height: 100%; background: linear-gradient(90deg, color-mix(in srgb, var(--interactive-accent) 70%, transparent), var(--interactive-accent)); border-radius: 4px; transition: width 0.3s ease; box-shadow: 0 0 4px color-mix(in srgb, var(--interactive-accent) 50%, transparent); }
 
-.progress-bar-fill.is-negative { background: var(--color-red, #ef4444); }
+.progress-bar-fill.is-negative { background: color-mix(in srgb, color-mix(in srgb, var(--color-red, #ef4444) 80%, var(--interactive-accent)) 70%, var(--background-primary)); }
 
 .progress-bar-fill.is-done { background: var(--interactive-accent); }
 
 
 
-.goal-current.is-negative, .goal-percent.is-negative { color: var(--color-red, #ef4444); }
+.goal-current.is-negative, .goal-percent.is-negative { color: color-mix(in srgb, color-mix(in srgb, var(--color-red, #ef4444) 80%, var(--interactive-accent)) 85%, var(--text-normal)); }
 
 .goal-current.is-done, .goal-percent.is-done { color: var(--interactive-accent); }
 
@@ -311,8 +311,11 @@ body .markdown-source-view.mod-cm6 .cm-editor.webnovel-show-gutter .cm-scroller 
 /* 覆盖 Obsidian 默认 modal 宽度 */
 
 .modal.history-stats-modal-wide { width: 960px; max-width: 95vw; }
-
-.history-stats-modal h2 { color: var(--interactive-accent); border-bottom: 2px solid var(--interactive-accent); padding-bottom: 6px; margin-bottom: 10px; margin-top: 4px; font-size: 20px; }
+.history-stats-modal .setting-item.setting-item-heading { padding: 4px 0 6px 0; margin: 4px 0 10px 0; border: none; min-height: unset; background: transparent; }
+.history-stats-modal .setting-item.setting-item-heading.stats-subheading { margin-top: 24px; }
+.history-stats-modal .setting-item.setting-item-heading .setting-item-info { margin-left: 0; }
+.history-stats-modal .setting-item.setting-item-heading .setting-item-name { color: var(--interactive-accent); font-size: 20px; font-weight: 700; }
+.history-stats-modal .setting-item.setting-item-heading.stats-subheading .setting-item-name { font-size: 16px; font-weight: 600; color: var(--interactive-accent); opacity: 0.85; }
 
 .stats-tab-group { display: flex; gap: 6px; margin-bottom: 14px; border-bottom: 1px solid var(--background-modifier-border); padding-bottom: 6px; align-items: center; }
 
@@ -338,7 +341,7 @@ body .markdown-source-view.mod-cm6 .cm-editor.webnovel-show-gutter .cm-scroller 
 
 /* 热力图色阶 — 主体色渐变 */
 
-.heat-negative { background: var(--color-red, #ef4444); }
+.heat-negative { background: color-mix(in srgb, color-mix(in srgb, var(--color-red, #ef4444) 80%, var(--interactive-accent)) 70%, var(--background-primary)); }
 
 .heat-0 { background: var(--background-modifier-border); }
 
@@ -352,7 +355,7 @@ body .markdown-source-view.mod-cm6 .cm-editor.webnovel-show-gutter .cm-scroller 
 
 /* 柱状图色阶 — 主体色渐变 */
 
-.bar-negative { background: var(--color-red, #ef4444); }
+.bar-negative { background: color-mix(in srgb, color-mix(in srgb, var(--color-red, #ef4444) 80%, var(--interactive-accent)) 70%, var(--background-primary)); }
 
 .bar-minimal { background: color-mix(in srgb, var(--interactive-accent) 15%, var(--background-modifier-border)); }
 
@@ -362,7 +365,7 @@ body .markdown-source-view.mod-cm6 .cm-editor.webnovel-show-gutter .cm-scroller 
 
 .bar-high { background: var(--interactive-accent); }
 
-.bar-negative-text { color: var(--color-red, #ef4444); }
+.bar-negative-text { color: color-mix(in srgb, color-mix(in srgb, var(--color-red, #ef4444) 80%, var(--interactive-accent)) 85%, var(--text-normal)); }
 
 
 
@@ -760,7 +763,7 @@ body .history-stats-modal .stats-chart-scroll-wrapper:hover::-webkit-scrollbar-t
 
 .ranking-card-done { border-top-color: var(--color-green, #10b981); }
 
-.ranking-card-failed { border-top-color: var(--color-red, #ef4444); }
+.ranking-card-failed { border-top-color: color-mix(in srgb, color-mix(in srgb, var(--color-red, #ef4444) 80%, var(--interactive-accent)) 85%, var(--text-normal)); }
 
 .ranking-card-pending { border-top-color: var(--text-muted); }
 
@@ -774,7 +777,7 @@ body .history-stats-modal .stats-chart-scroll-wrapper:hover::-webkit-scrollbar-t
 
 .ranking-status-done { background: var(--color-green, #10b981); color: var(--text-on-accent); }
 
-.ranking-status-failed { background: var(--color-red, #ef4444); color: var(--text-on-accent); }
+.ranking-status-failed { background: color-mix(in srgb, color-mix(in srgb, var(--color-red, #ef4444) 80%, var(--interactive-accent)) 85%, var(--text-normal)); color: var(--text-on-accent); }
 
 .ranking-status-pending { background: var(--text-muted); color: var(--text-on-accent); }
 

@@ -48,7 +48,7 @@ import { HomepageManager } from './src/services/HomepageManager';
 import { HomepageRenderer } from './src/services/HomepageRenderer';
 import { CharacterManager } from './src/services/CharacterManager';
 import { t, setLocale, detectLocale } from './src/i18n';
-import { getDefaultFileNameCandidates, type DefaultFileNameKey } from './src/i18n/data-keys';
+import { getDefaultFileName, getDefaultFileNameCandidates, type DefaultFileNameKey } from './src/i18n/data-keys';
 import { buildCharacterHoverExtension } from './src/editor/CharacterHoverExtension';
 
 export default class AccurateChineseCountPlugin extends Plugin implements WebNovelAssistantPlugin {
@@ -378,7 +378,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			}, PLATFORM_DELAYS.DESKTOP_EXPLORER_DELAY);
 		});
 		// 桌面端文件事件监听（由 FileEventManager 管理）
-		this.fileEventManager.setup();
+		// 已经在公用区域注册过，无需重复注册
 
 		this.addRibbonIcon('sticky-note', t('command.create-blank-sticky-note'), () => {
 			this.createStickyNote({ content: '', title: t('notice.new-note-title') }).catch(console.error);
@@ -1276,6 +1276,17 @@ onunload() {
 			file.path === this.homepageManager?.getHomepageFilePath()
 		) {
 			return false;
+		}
+
+		// 2.6 排除设定文件夹及其内置多语言 fallback
+		const candidates = new Set<string>();
+		candidates.add(this.settings.loreFolderName || getDefaultFileName('loreFolderName'));
+		for (const name of getDefaultFileNameCandidates('loreFolderName')) candidates.add(name);
+		
+		for (const lorePath of candidates) {
+			if (file.path.includes(`/${lorePath}/`) || file.path.startsWith(`${lorePath}/`)) {
+				return false;
+			}
 		}
 		
 		// 3. 如果开启了严格章节模式，则必须是符合命名规则的章节文件

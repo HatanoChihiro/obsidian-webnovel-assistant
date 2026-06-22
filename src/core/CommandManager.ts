@@ -178,8 +178,7 @@ export class CommandManager {
 	}
 
 	private registerChapterCommands() {
-		if (isDesktop()) { // Desktop
-			this.plugin.addCommand({
+		this.plugin.addCommand({
 				id: 'create-next-chapter',
 				name: t('command.create-next-chapter'),
 				editorCallback: async (editor, view) => {
@@ -259,7 +258,6 @@ export class CommandManager {
 					new Notice(t('notice.chapter-sort-refreshed'));
 				}
 			});
-		}
 	}
 
 	private registerObsCommands() {

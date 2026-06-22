@@ -85,7 +85,8 @@ export class ImmersiveChapterListView extends ItemView {
 		const files = currentFolder.children.filter(f => f instanceof TFile && f.extension === 'md') as TFile[];
 		
 		if (this.plugin.settings.enableSmartChapterSort) {
-			files.sort((a, b) => ChapterSorter.compareFiles(a, b));
+			const customOrder = this.plugin.settings.customSortOrder || {};
+			files.sort((a, b) => ChapterSorter.compareFilesWithCustomOrder(a, b, customOrder));
 		} else {
 			files.sort((a, b) => a.basename.localeCompare(b.basename, undefined, { numeric: true }));
 		}
@@ -102,7 +103,8 @@ export class ImmersiveChapterListView extends ItemView {
 			
 			const wordCount = this.plugin.cacheManager.getFileCache(file.path) || 0;
 			if (this.plugin.settings.showExplorerCounts) {
-				if (ChapterSorter.isChapterFile(file.basename)) {
+				const strictOk = !this.plugin.settings.enableStrictChapterMode || ChapterSorter.isChapterFile(file.basename);
+				if (strictOk) {
 					itemEl.createSpan({ text: `${wordCount}${t('common.word-char')}`, cls: 'immersive-chapter-count' });
 				}
 			}

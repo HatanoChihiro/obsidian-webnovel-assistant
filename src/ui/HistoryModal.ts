@@ -139,7 +139,7 @@ export class HistoryStatsModal extends Modal {
 		this.renderEfficiency();
 
 		// === 热力图 ===
-		new Setting(contentEl).setName(t('modal.heatmap')).setHeading();
+		new Setting(contentEl).setName(t('modal.heatmap')).setHeading().settingEl.addClass('stats-subheading');
 
 		this.heatDateRowEl = contentEl.createDiv({ cls: 'stats-heat-date-row' });
 		this.heatDateRowEl.createDiv({ cls: 'stats-heat-date-label', text: t('modal.start-date-label') });
@@ -206,7 +206,7 @@ export class HistoryStatsModal extends Modal {
 		this.renderHeatmap();
 
 		// === 详细统计 ===
-		new Setting(contentEl).setName(t('modal.detailed-stats')).setHeading();
+		new Setting(contentEl).setName(t('modal.detailed-stats')).setHeading().settingEl.addClass('stats-subheading');
 
 		const filterRow = contentEl.createDiv({ cls: "stats-filter-row" });
 

@@ -258,9 +258,9 @@ export class CacheManager {
 	/**
 	 * 使缓存失效
 	 * @param path 文件或文件夹路径
-	 * @param vault Vault 实例
+	 * @param _vault Vault 实例
 	 */
-	invalidateCache(path: string, vault: Vault): void {
+	invalidateCache(path: string, _vault: Vault): void {
 		const entry = this.cache.get(path);
 		if (!entry) return;
 
@@ -268,17 +268,21 @@ export class CacheManager {
 		this.cache.delete(path);
 
 		// 递归失效所有父文件夹（减去该路径的字数）
-		const abstractFile = vault.getAbstractFileByPath(path);
-		if (abstractFile) {
-			let parent = abstractFile.parent;
-			while (parent) {
-				const parentEntry = this.cache.get(parent.path);
-				if (parentEntry) {
-					parentEntry.wordCount = Math.max(0, parentEntry.wordCount - wordCount);
-					parentEntry.lastModified = Date.now();
-				}
-				parent = parent.parent;
+		let parentPath = path;
+		while (parentPath.includes('/')) {
+			parentPath = parentPath.substring(0, parentPath.lastIndexOf('/'));
+			if (!parentPath) break;
+			const parentEntry = this.cache.get(parentPath);
+			if (parentEntry && parentEntry.isFolder) {
+				parentEntry.wordCount = Math.max(0, parentEntry.wordCount - wordCount);
+				parentEntry.lastModified = Date.now();
 			}
+		}
+		// 处理根目录
+		const rootEntry = this.cache.get('/');
+		if (rootEntry && rootEntry.isFolder) {
+			rootEntry.wordCount = Math.max(0, rootEntry.wordCount - wordCount);
+			rootEntry.lastModified = Date.now();
 		}
 	}
 

@@ -214,6 +214,51 @@ export class ChapterSorter {
 	}
 
 	/**
+	 * 结合用户在文件浏览器中的自定义拖拽顺序，进行混合智能排序
+	 * 逻辑与 FileExplorerPatcher 完全对齐：
+	 * - 章节被打包成虚拟的 __CHAPTER_BLOCK__ 块，在自定义排序中占有一个位置
+	 * - 非章节文件拥有各自的路径作为位置
+	 * - 如果同时没有自定义顺序，章节块（0）会排在普通文件（1）前面，也就是章节在前的默认行为
+	 */
+	static compareFilesWithCustomOrder(a: TAbstractFile, b: TAbstractFile, customOrder: Record<string, number>): number {
+		const aChapter = this.extractChapterNumber(a.name);
+		const bChapter = this.extractChapterNumber(b.name);
+
+		// 如果两者都是章节，按照章节的内部智能规则对比
+		if (aChapter !== null && bChapter !== null) {
+			return this.compareFiles(a, b);
+		}
+
+		const getSortData = (file: TAbstractFile, isChap: boolean) => {
+			let pathForOrder = file.path;
+			if (isChap) {
+				const parentPath = file.parent ? file.parent.path : '/';
+				pathForOrder = parentPath === '/' ? '/__CHAPTER_BLOCK__' : `${parentPath}/__CHAPTER_BLOCK__`;
+			}
+			const order = customOrder[pathForOrder];
+			return { 
+				hasOrder: order !== undefined, 
+				order: order !== undefined ? order : (isChap ? 0 : 1) // 默认章节块优先级(0)高于普通文件(1)
+			};
+		};
+
+		const aData = getSortData(a, aChapter !== null);
+		const bData = getSortData(b, bChapter !== null);
+
+		// 如果两者都被手动拖拽过，按拖拽顺序
+		if (aData.hasOrder && bData.hasOrder) return aData.order - bData.order;
+		// 如果只有一方被拖拽过，有明确顺序的优先
+		if (aData.hasOrder) return -1;
+		if (bData.hasOrder) return 1;
+
+		// 都没有被拖拽过，比较默认优先级（章节块 0 vs 普通文件 1）
+		if (aData.order !== bData.order) return aData.order - bData.order;
+
+		// 如果是同类型（比如都是普通文件），按文件名拼音/数字排序
+		return a.name.localeCompare(b.name, 'zh-CN', { numeric: true });
+	}
+
+	/**
 	 * 将阿拉伯数字转换为中文数字（支持一到九百九十九）
 	 */
 	static toChineseNumber(num: number): string {

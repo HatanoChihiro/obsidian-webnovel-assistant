@@ -117,8 +117,8 @@ export class CorkboardView extends ItemView {
 
 		// 获取该作品下所有章节文件
 		const files = this.plugin.getTrackedMarkdownFiles().filter(file => {
-			// 必须是章节文件
-			if (!ChapterSorter.isChapterFile(file.name)) {
+			// 只有在开启严格章节模式时，才强制要求必须是章节命名格式
+			if (this.plugin.settings.enableStrictChapterMode && !ChapterSorter.isChapterFile(file.name)) {
 				return false;
 			}
 			// 排除设定文件夹
@@ -131,7 +131,8 @@ export class CorkboardView extends ItemView {
 		});
 
 		if (this.plugin.settings.enableSmartChapterSort) {
-			files.sort((a, b) => ChapterSorter.compareFiles(a, b));
+			const customOrder = this.plugin.settings.customSortOrder || {};
+			files.sort((a, b) => ChapterSorter.compareFilesWithCustomOrder(a, b, customOrder));
 		} else {
 			files.sort((a, b) => a.basename.localeCompare(b.basename, undefined, { numeric: true }));
 		}

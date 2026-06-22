@@ -219,7 +219,8 @@ export class MenuManager {
 		const collectFiles = (folder: TFolder) => {
 			for (const child of folder.children) {
 				if (child instanceof TFile && child.extension === 'md') {
-					if (ChapterSorter.isChapterFile(child.name)) {
+					const strictOk = !this.plugin.settings.enableStrictChapterMode || ChapterSorter.isChapterFile(child.name);
+					if (strictOk) {
 						mdFiles.push(child);
 					}
 				} else if (child instanceof TFolder) {
@@ -235,9 +236,10 @@ export class MenuManager {
 			return;
 		}
 
-		mdFiles.sort((a, b) => ChapterSorter.compareFiles(a, b));
+		const customOrder = this.plugin.settings.customSortOrder || {};
+		mdFiles.sort((a, b) => ChapterSorter.compareFilesWithCustomOrder(a, b, customOrder));
 
-		let mergedContent = `# ${t('merge.chapter-title', { name: file.name })}\n\n`;
+		let mergedContent = `# ${file.name}`;
 		let totalWords = 0;
 
 		for (const mdFile of mdFiles) {

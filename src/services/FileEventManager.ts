@@ -1,6 +1,6 @@
 import { Logger } from '../utils/Logger';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
-import { TFile } from 'obsidian';
+import { TFile, TFolder } from 'obsidian';
 
 export class FileEventManager {
 	private plugin: WebNovelAssistantPlugin;
@@ -92,33 +92,93 @@ export class FileEventManager {
 	}
 
 	private registerDeleteHandler(): void {
-		this.plugin.registerEvent(this.plugin.app.vault.on('delete', (file) => {
-			if (file instanceof TFile && file.extension === 'md') {
-				if (!this.plugin.isEligibleForWordCount(file)) return;
+		this.plugin.registerEvent(this.plugin.app.vault.on('delete', (abstractFile) => {
+			if (abstractFile instanceof TFile && abstractFile.extension === 'md') {
+				const oldWordCount = this.plugin.cacheManager.getFileCache(abstractFile.path);
+				
+				if (oldWordCount !== null) {
+					this.plugin.cacheManager.invalidateCache(abstractFile.path, this.plugin.app.vault);
+					
+					if (this.plugin.isLayoutReady) {
+						this.plugin.app.workspace.trigger('webnovel:file-word-count-updated', abstractFile, -oldWordCount);
+					}
 
-				this.plugin.cacheManager.invalidateCache(file.path, this.plugin.app.vault);
-				this.plugin.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
-					this.plugin.refreshFolderCounts();
-				}, 500);
+					this.plugin.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
+						this.plugin.refreshFolderCounts();
+					}, 500);
+				}
+			} else if (abstractFile instanceof TFolder) {
+				// Handle folder deletion
+				const prefix = abstractFile.path + '/';
+				let totalDelta = 0;
+				const entries = Array.from(this.plugin.cacheManager.getEntries());
+				for (const [path, entry] of entries) {
+					if (!entry.isFolder && path.startsWith(prefix)) {
+						totalDelta -= entry.wordCount;
+						this.plugin.cacheManager.invalidateCache(path, this.plugin.app.vault);
+					}
+				}
+				if (totalDelta !== 0) {
+					if (this.plugin.isLayoutReady) {
+						this.plugin.app.workspace.trigger('webnovel:file-word-count-updated', abstractFile as unknown as TFile, totalDelta);
+					}
+					this.plugin.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
+						this.plugin.refreshFolderCounts();
+					}, 500);
+				}
 			}
 		}));
 	}
 
 	private registerRenameHandler(): void {
-		this.plugin.registerEvent(this.plugin.app.vault.on('rename', (file, oldPath) => {
-			if (file instanceof TFile && file.extension === 'md') {
-				if (!this.plugin.isFileInWorkspace(file)) return;
-
+		this.plugin.registerEvent(this.plugin.app.vault.on('rename', (abstractFile, oldPath) => {
+			if (abstractFile instanceof TFile && abstractFile.extension === 'md') {
 				const oldCache = this.plugin.cacheManager.getFileCache(oldPath);
 				this.plugin.cacheManager.invalidateCache(oldPath, this.plugin.app.vault);
+				
+				if (!this.plugin.isFileInWorkspace(abstractFile)) {
+					// Moved out of workspace, effectively deleted
+					if (oldCache !== null && this.plugin.isLayoutReady) {
+						this.plugin.app.workspace.trigger('webnovel:file-word-count-updated', abstractFile, -oldCache);
+					}
+					this.plugin.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
+						this.plugin.refreshFolderCounts();
+					}, 500);
+					return;
+				}
 
-				if (this.plugin.isEligibleForWordCount(file) && oldCache !== null) {
-					this.plugin.cacheManager.updateFileCache(file, oldCache, this.plugin.app.vault);
+				if (this.plugin.isEligibleForWordCount(abstractFile) && oldCache !== null) {
+					this.plugin.cacheManager.updateFileCache(abstractFile, oldCache, this.plugin.app.vault);
 				}
 
 				this.plugin.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
-					void this.plugin.updateFileCacheAndRefresh(file);
+					void this.plugin.updateFileCacheAndRefresh(abstractFile);
 				}, 500);
+			} else if (abstractFile instanceof TFolder) {
+				// Handle folder rename
+				const oldPrefix = oldPath + '/';
+				const newPrefix = abstractFile.path + '/';
+				
+				const entries = Array.from(this.plugin.cacheManager.getEntries());
+				let hasChanges = false;
+				for (const [path, entry] of entries) {
+					if (!entry.isFolder && path.startsWith(oldPrefix)) {
+						hasChanges = true;
+						const oldWordCount = entry.wordCount;
+						this.plugin.cacheManager.invalidateCache(path, this.plugin.app.vault);
+						
+						const newFilePath = newPrefix + path.substring(oldPrefix.length);
+						const newFile = this.plugin.app.vault.getAbstractFileByPath(newFilePath);
+						if (newFile instanceof TFile && this.plugin.isEligibleForWordCount(newFile)) {
+							this.plugin.cacheManager.updateFileCache(newFile, oldWordCount, this.plugin.app.vault);
+						}
+					}
+				}
+				if (hasChanges) {
+					this.plugin.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
+						this.plugin.refreshFolderCounts();
+					}, 500);
+				}
 			}
 		}));
 	}

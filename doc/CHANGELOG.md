@@ -1,9 +1,31 @@
-## 🔧 v3.2.7
+## 🔧 v3.2.9
 
-- 修复了众多字数统计和显示上的bug
+### 修复若干bug和优化部分功能
+
+- 修复了在未开启严格章节模式的情况下，部分功能仍只匹配章节文档的BUG
+- 修复了删除文件夹下章节文件时，文件夹无法自动重新计算字数，也不会记录字数减少的bug
+- 为移动端注册“重建文件夹字数缓存”的命令，方便出现计算错误时重置缓存
+- 优化“合并章节”功能，正文内仅显示小说名作为一级标题
+- 优化部分UI显示，配色更柔和
 
 ---
 
+### Fixes and Optimizations
+
+- Fixed an issue where some features still only matched chapter files when strict chapter mode was not enabled
+- Fixed a bug where a folder would not automatically recalculate its word count when chapter files within it were deleted, and would not record the decrease in word count
+- Registered a "Rebuild Folder Word Count Cache" command for mobile devices to easily reset the cache when calculation errors occur
+- Optimized "Merge Chapter" function to only show the novel title as a level 1 heading in the main text
+- Optimized UI display for a softer color scheme
+
+## 🔧 v3.2.8
+
+- 修复非专注计时状态下本场净增仍在增加的BUG
+- fixed a bug where the net increase in word count continued to increase in non-focus mode
+
+## 🔧 v3.2.7
+
+- 修复了众多字数统计和显示上的bug
 - Fix: Fixed various bugs in word count statistics and display.
 
 
@@ -11,6 +33,9 @@
 
 - 修复了新创建或被其他设备（如 Obsidian Sync）后台同步修改的文件在未点开前不会自动统计字数的 BUG
 - 修复沉浸模式中被设置成参考文档的章节在退出后不计算字数的 BUG
+
+---
+
 - Fix: Fixed an issue where newly created files or files modified in the background via other devices (e.g., Obsidian Sync) would not update their word count automatically until opened.
 - Fix: Fixed a bug where the word count of chapters set as reference documents in Immersive Mode was not calculated after exiting the mode.
 
@@ -31,9 +56,6 @@
 ## 🔧 v3.2.4
 
 - 优化部分代码，提升使用体验
-
----
-
 - Optimized some code to improve user experience
 
 ## 🔧 v3.2.3

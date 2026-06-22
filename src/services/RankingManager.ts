@@ -203,9 +203,12 @@ async createRankingFile(): Promise<TFile> {
 
 		let total = 0;
 		for (const child of folder.children) {
-			if (child instanceof TFile && child.extension === 'md' && ChapterSorter.isChapterFile(child.name)) {
-				const count = this.plugin.cacheManager.getFolderCount(child.path);
-				if (count !== null) total += count;
+			if (child instanceof TFile && child.extension === 'md') {
+				const strictOk = !this.plugin.settings.enableStrictChapterMode || ChapterSorter.isChapterFile(child.name);
+				if (strictOk) {
+					const count = this.plugin.cacheManager.getFolderCount(child.path);
+					if (count !== null) total += count;
+				}
 			}
 		}
 		return total;
