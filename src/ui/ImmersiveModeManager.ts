@@ -3,6 +3,7 @@ import type { App, EventRef, WorkspaceLeaf, TFile, WorkspaceSplit, WorkspaceItem
 import { MarkdownView, Notice } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { t } from '../i18n';
+import { TaskManager } from '../services/TaskManager';
 
 /**
  * 沉浸模式管理器
@@ -371,7 +372,7 @@ export class ImmersiveModeManager {
 			slackTime: centerDiv.createSpan({ cls: 'stat-item slack' }),
 			chapterProgress: centerDiv.createSpan({ cls: 'stat-item' }),
 			dailyProgress: centerDiv.createSpan({ cls: 'stat-item' }),
-			rankingProgress: centerDiv.createSpan({ cls: 'stat-item' }),
+			taskProgress: centerDiv.createSpan({ cls: 'stat-item' }),
 			sessionWords: centerDiv.createSpan({ cls: 'stat-item' })
 		};
 
@@ -402,7 +403,33 @@ export class ImmersiveModeManager {
 		if (!this.topBarEl) return;
 		try {
 			const immersive = this.plugin.settings.immersive;
-			const stats = await this.plugin.obsHtmlBuilder.getObsStats();
+			const stats = this.plugin.statisticsManager.getCoreStats();
+			
+			let taskWords = 0;
+			let taskGoal = 0;
+			if (immersive.immersiveShowTaskProgress) {
+				let taskFolder = '';
+				const view = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
+				if (view?.file) {
+					taskFolder = view.file.parent?.path || '';
+					this.plugin.lastTaskFolder = taskFolder;
+				} else if (this.plugin.lastTaskFolder) {
+					taskFolder = this.plugin.lastTaskFolder;
+				}
+				if (taskFolder && this.plugin.taskManager) {
+					const manager = new TaskManager(this.plugin.app, this.plugin, taskFolder);
+					const taskFile = manager.getTaskFile();
+					if (taskFile) {
+						const taskContent = await this.plugin.app.vault.cachedRead(taskFile);
+						const entries = manager.parseEntries(taskContent);
+						const active = manager.getActiveTask(entries);
+						if (active) {
+							taskWords = manager.calcProgress(active);
+							taskGoal = active.wordTarget;
+						}
+					}
+				}
+			}
 
 			const updateStatEl = (key: string, show: boolean, text: string) => {
 				const el = this.topBarStatsEls[key];
@@ -420,7 +447,7 @@ export class ImmersiveModeManager {
 			updateStatEl('slackTime', !!immersive.immersiveShowSlackTime, `${t('immersive.slack-time')} (${stats.slackTime})`);
 			updateStatEl('chapterProgress', !!immersive.immersiveShowChapterProgress, `${t('immersive.chapter-progress')} (${stats.todayWords}/${stats.goal})`);
 			updateStatEl('dailyProgress', !!immersive.immersiveShowDailyProgress, `${t('immersive.daily-progress')} (${stats.dailyWords}/${stats.dailyGoal})`);
-			updateStatEl('rankingProgress', !!immersive.immersiveShowRankingProgress, `${t('immersive.ranking-progress')} (${stats.rankingWords}/${stats.rankingGoal})`);
+			updateStatEl('taskProgress', !!immersive.immersiveShowTaskProgress, `${t('immersive.task-progress')} (${taskWords}/${taskGoal})`);
 			updateStatEl('sessionWords', !!immersive.immersiveShowSessionWords, `${t('immersive.session-words')} (${stats.sessionWords})`);
 		} catch (e) {
 			Logger.error('[ImmersiveModeManager] renderTopBarContent failed:', e);

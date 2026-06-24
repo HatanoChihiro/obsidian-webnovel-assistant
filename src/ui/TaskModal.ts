@@ -1,27 +1,27 @@
-// 限时任务新增对话框（内部仍用 Ranking 命名，待后续重构改为 Task）
+// 限时任务新增对话框（内部仍用 Task 命名，待后续重构改为 Task）
 import type { App} from 'obsidian';
 import { Modal, Setting } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
-import type { RankingEntry } from '../types/ranking';
-import type { RankingManager } from '../services/RankingManager';
+import type { TaskEntry } from '../types/task';
+import type { TaskManager } from '../services/TaskManager';
 import { t } from '../i18n';
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
-export class RankingAddModal extends Modal {
+export class TaskAddModal extends Modal {
 	private plugin: WebNovelAssistantPlugin;
-	private manager: RankingManager;
+	private manager: TaskManager;
 	private defaultPeriod: number;
 	private defaultPlatform: string;
-	private onSubmit: (entry: RankingEntry) => Promise<void>;
+	private onSubmit: (entry: TaskEntry) => Promise<void>;
 
 	constructor(
 		app: App,
 		plugin: WebNovelAssistantPlugin,
-		manager: RankingManager,
+		manager: TaskManager,
 		defaultPeriod: number,
 		defaultPlatform: string,
-		onSubmit: (entry: RankingEntry) => Promise<void>
+		onSubmit: (entry: TaskEntry) => Promise<void>
 	) {
 		super(app);
 		this.plugin = plugin;
@@ -34,25 +34,25 @@ export class RankingAddModal extends Modal {
 	onOpen() {
 		const { contentEl } = this;
 		contentEl.empty();
-		contentEl.addClass('ranking-add-modal');
-		new Setting(contentEl).setName(t('modal.new-ranking')).setHeading();
+		contentEl.addClass('task-add-modal');
+		new Setting(contentEl).setName(t('modal.new-task')).setHeading();
 
 		// 任务名称
 		const platformContainer = contentEl.createDiv();
-		platformContainer.createEl('label', { text: t('modal.platform'), cls: 'wn-ranking-label' });
+		platformContainer.createEl('label', { text: t('modal.platform'), cls: 'wn-task-label' });
 		const platformInput = platformContainer.createEl('input', {
 			attr: { placeholder: t('modal.platform-placeholder') },
-			cls: 'wn-ranking-input',
+			cls: 'wn-task-input',
 			value: this.defaultPlatform,
 		});
 
 		// 任务期数
 		const periodContainer = contentEl.createDiv();
-		periodContainer.createEl('label', { text: t('modal.ranking-period'), cls: 'wn-ranking-label' });
+		periodContainer.createEl('label', { text: t('modal.task-period'), cls: 'wn-task-label' });
 		const periodInput = periodContainer.createEl('input', {
 			type: 'number',
 			attr: { min: '1' },
-			cls: 'wn-ranking-input',
+			cls: 'wn-task-input',
 			value: String(this.defaultPeriod),
 		});
 
@@ -61,21 +61,21 @@ export class RankingAddModal extends Modal {
 		const nextWeek = window.moment().add(6, 'days').format('YYYY-MM-DD');
 
 		const startContainer = contentEl.createDiv();
-		startContainer.createEl('label', { text: t('modal.start-date'), cls: 'wn-ranking-label' });
+		startContainer.createEl('label', { text: t('modal.start-date'), cls: 'wn-task-label' });
 		const startInput = startContainer.createEl('input', {
 			type: 'text',
 			attr: { placeholder: 'YYYY-MM-DD' },
-			cls: 'wn-ranking-input',
+			cls: 'wn-task-input',
 			value: today,
 		});
 
 		// 结束时间
 		const endContainer = contentEl.createDiv();
-		endContainer.createEl('label', { text: t('modal.end-date'), cls: 'wn-ranking-label' });
+		endContainer.createEl('label', { text: t('modal.end-date'), cls: 'wn-task-label' });
 		const endInput = endContainer.createEl('input', {
 			type: 'text',
 			attr: { placeholder: 'YYYY-MM-DD' },
-			cls: 'wn-ranking-input',
+			cls: 'wn-task-input',
 			value: nextWeek,
 		});
 
@@ -89,35 +89,35 @@ export class RankingAddModal extends Modal {
 
 		// 任务详情
 		const positionContainer = contentEl.createDiv();
-		positionContainer.createEl('label', { text: t('modal.ranking-position'), cls: 'wn-ranking-label' });
+		positionContainer.createEl('label', { text: t('modal.task-position'), cls: 'wn-task-label' });
 		const positionInput = positionContainer.createEl('input', {
-			attr: { placeholder: t('modal.ranking-position-placeholder') },
-			cls: 'wn-ranking-input',
+			attr: { placeholder: t('modal.task-position-placeholder') },
+			cls: 'wn-task-input',
 		});
 
 		// 字数要求
 		const targetContainer = contentEl.createDiv();
-		targetContainer.createEl('label', { text: t('modal.word-target'), cls: 'wn-ranking-label' });
+		targetContainer.createEl('label', { text: t('modal.word-target'), cls: 'wn-task-label' });
 		const targetInput = targetContainer.createEl('input', {
 			type: 'number',
 			attr: { min: '1', placeholder: t('modal.word-target-placeholder') },
-			cls: 'wn-ranking-input',
+			cls: 'wn-task-input',
 		});
 
 		// 起始字数（显示当前值，允许修改）
 		const snapshotContainer = contentEl.createDiv();
-		snapshotContainer.createEl('label', { text: t('modal.starting-word-count'), cls: 'wn-ranking-label' });
+		snapshotContainer.createEl('label', { text: t('modal.starting-word-count'), cls: 'wn-task-label' });
 		const currentWords = this.manager.getChapterWordCount();
 		const snapshotInput = snapshotContainer.createEl('input', {
 			type: 'number',
 			attr: { min: '0' },
-			cls: 'wn-ranking-input',
+			cls: 'wn-task-input',
 			value: String(currentWords),
 		});
-		snapshotContainer.createDiv({ text: t('modal.starting-word-count-hint'), cls: 'wn-ranking-hint' });
+		snapshotContainer.createDiv({ text: t('modal.starting-word-count-hint'), cls: 'wn-task-hint' });
 
 		// 按钮
-		const btnContainer = contentEl.createDiv({ cls: 'wn-ranking-btn-container' });
+		const btnContainer = contentEl.createDiv({ cls: 'wn-task-btn-container' });
 		const cancelBtn = btnContainer.createEl('button', { text: t('common.cancel') });
 		cancelBtn.onclick = () => this.close();
 
@@ -135,7 +135,7 @@ export class RankingAddModal extends Modal {
 				return;
 			}
 
-			const entry: RankingEntry = {
+			const entry: TaskEntry = {
 				period,
 				platform,
 				position,

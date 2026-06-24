@@ -35,9 +35,9 @@ const FORESHADOWING_STATUS = {
 		deprecated: '已废弃',
 	},
 	'en': {
-		pending: 'Pending',
-		recovered: 'Recovered',
-		deprecated: 'Deprecated',
+		pending: 'Unresolved',
+		recovered: 'Resolved',
+		deprecated: 'Abandoned',
 	},
 } as const;
 
@@ -48,6 +48,9 @@ export const FORESHADOWING_STATUS_MAP: Record<string, string> = {
 	'recovered': 'recovered',
 	'deprecated': 'deprecated',
 	// 英文本地化值（首字母大写）
+	'Unresolved': 'pending',
+	'Resolved': 'recovered',
+	'Abandoned': 'deprecated',
 	'Pending': 'pending',
 	'Recovered': 'recovered',
 	'Deprecated': 'deprecated',
@@ -86,8 +89,8 @@ const TIMELINE_LABELS = {
 // ==========================================
 // 限时任务文件字段标签
 // ==========================================
-// 限时任务（内部仍用 ranking 命名，待后续重构改为 task）
-const RANKING_LABELS = {
+// 限时任务（内部仍用 task 命名，待后续重构改为 task）
+const TASK_LABELS = {
 	'zh-CN': {
 		platform: '名称',
 		position: '详情',
@@ -118,7 +121,7 @@ const RANKING_LABELS = {
 // 限时任务状态值
 // ==========================================
 // 限时任务状态
-const RANKING_STATUS = {
+const TASK_STATUS = {
 	'zh-CN': {
 		active: '进行中',
 		completed: '已完成',
@@ -134,7 +137,7 @@ const RANKING_STATUS = {
 } as const;
 
 /** 限时任务状态双向解析映射 */
-export const RANKING_STATUS_MAP: Record<string, string> = {
+export const TASK_STATUS_MAP: Record<string, string> = {
 	'active': 'active',
 	'completed': 'completed',
 	'incomplete': 'incomplete',
@@ -152,7 +155,7 @@ export const RANKING_STATUS_MAP: Record<string, string> = {
 // ==========================================
 // 限时任务字段标签双向解析映射
 // ==========================================
-export const RANKING_LABEL_MAP: Record<string, string> = {
+export const TASK_LABEL_MAP: Record<string, string> = {
 	// 英文 key（新版）
 	'Name': 'platform',
 		'Platform': 'platform',
@@ -337,19 +340,19 @@ export function getTimelineLabel(field: keyof typeof TIMELINE_LABELS['zh-CN']): 
 }
 
 /** 获取限时任务文件的字段标签 */
-export function getRankingLabel(field: keyof typeof RANKING_LABELS['zh-CN']): string {
-	return RANKING_LABELS[getLocale()][field];
+export function getTaskLabel(field: keyof typeof TASK_LABELS['zh-CN']): string {
+	return TASK_LABELS[getLocale()][field];
 }
 
 /** 获取任务期数标题 */
-export function getRankingPeriodTitle(period: number): string {
-	const labels = RANKING_LABELS[getLocale()];
+export function getTaskPeriodTitle(period: number): string {
+	const labels = TASK_LABELS[getLocale()];
 	return `${labels.periodPrefix}${period}${labels.periodSuffix}`;
 }
 
 /** 获取限时任务状态显示文本 */
-export function getRankingStatusText(statusKey: string): string {
-	return RANKING_STATUS[getLocale()][statusKey as keyof typeof RANKING_STATUS['zh-CN']] ?? statusKey;
+export function getTaskStatusText(statusKey: string): string {
+	return TASK_STATUS[getLocale()][statusKey as keyof typeof TASK_STATUS['zh-CN']] ?? statusKey;
 }
 
 /** 获取作品信息字段标签 */
@@ -379,7 +382,7 @@ const DEFAULT_NAMES = {
 	'zh-CN': {
 		foreshadowingFileName: '伏笔',
 		timelineFileName: '时间线',
-		rankingFileName: '限时任务',
+		taskFileName: '限时任务',
 		novelInfoFileName: '作品信息',
 		loreFolderName: '设定',
 		homepageWelcome: '欢迎回到创作中心',
@@ -387,7 +390,7 @@ const DEFAULT_NAMES = {
 	'en': {
 		foreshadowingFileName: 'Foreshadowing',
 		timelineFileName: 'Timeline',
-		rankingFileName: 'Time-limited Task',
+		taskFileName: 'Time-limited Task',
 		novelInfoFileName: 'Novel Info',
 		loreFolderName: 'Lore',
 		homepageWelcome: 'Welcome back to your creative space',
@@ -417,7 +420,7 @@ export function getDefaultFileNameCandidates(field: DefaultFileNameKey): string[
 		const candidates: string[] = Object.values(DEFAULT_NAMES).map(names => names[field]);
 		// 旧版本遗留的文件名，用于向后兼容查找
 		const legacyNames: Record<string, string[]> = {
-			rankingFileName: ['榜单记录', 'Ranking'],
+			taskFileName: ['榜单记录', 'Task'],
 			foreshadowingFileName: ['伏笔'],
 			timelineFileName: ['时间线'],
 			novelInfoFileName: ['作品信息'],
@@ -449,7 +452,7 @@ export function getDefaultTypes(): string[] {
 export function getLocalizedDefaults(locale?: Locale): {
 	foreshadowingFileName: string;
 	timelineFileName: string;
-	rankingFileName: string;
+	taskFileName: string;
 	novelInfoFileName: string;
 	loreFolderName: string;
 	homepageWelcome: string;
@@ -460,7 +463,7 @@ export function getLocalizedDefaults(locale?: Locale): {
 	return {
 		foreshadowingFileName: DEFAULT_NAMES[effectiveLocale].foreshadowingFileName,
 		timelineFileName: DEFAULT_NAMES[effectiveLocale].timelineFileName,
-		rankingFileName: DEFAULT_NAMES[effectiveLocale].rankingFileName,
+		taskFileName: DEFAULT_NAMES[effectiveLocale].taskFileName,
 		novelInfoFileName: DEFAULT_NAMES[effectiveLocale].novelInfoFileName,
 		loreFolderName: DEFAULT_NAMES[effectiveLocale].loreFolderName,
 		homepageWelcome: DEFAULT_NAMES[effectiveLocale].homepageWelcome,

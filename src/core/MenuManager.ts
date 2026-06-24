@@ -8,8 +8,8 @@ import { ChapterSorter } from '../services/ChapterSorter';
 import { TimelineAddModal } from '../ui/TimelineView';
 import type { TimelineEntry } from '../services/TimelineManager';
 import { TimelineManager } from '../services/TimelineManager';
-import { RankingManager } from '../services/RankingManager';
-import { RankingAddModal } from '../ui/RankingModal';
+import { TaskManager } from '../services/TaskManager';
+import { TaskAddModal } from '../ui/TaskModal';
 import { NewNovelModal } from '../ui/NewNovelModal';
 
 export class MenuManager {
@@ -63,8 +63,8 @@ export class MenuManager {
 			// 限时任务：文件和文件夹右键菜单
 			if (file instanceof TFile || file instanceof TFolder) {
 				menu.addItem((item) => {
-					item.setTitle(t('menu.start-ranking-tracking')).setIcon('trophy').onClick(() => {
-						this.openRankingModal(file);
+					item.setTitle(t('menu.start-task-tracking')).setIcon('trophy').onClick(() => {
+						this.openTaskModal(file);
 					});
 				});
 			}
@@ -179,24 +179,24 @@ export class MenuManager {
 
 					// 限时任务追踪
 					menu.addItem((item) => {
-						item.setTitle(t('menu.start-ranking-tracking')).setIcon('trophy').onClick(() => {
-							this.openRankingModal(view.file!);
+						item.setTitle(t('menu.start-task-tracking')).setIcon('trophy').onClick(() => {
+							this.openTaskModal(view.file!);
 						});
 					});
 				}
 			}));
 	}
 
-	private openRankingModal(file: TFile | TFolder) {
+	private openTaskModal(file: TFile | TFolder) {
 		const folderPath = file instanceof TFile ? (file.parent?.path || '') : file.path;
-		const manager = new RankingManager(this.plugin.app, this.plugin, folderPath);
-		const rankingFile = manager.getRankingFile();
+		const manager = new TaskManager(this.plugin.app, this.plugin, folderPath);
+		const taskFile = manager.getTaskFile();
 
-		if (!rankingFile) {
+		if (!taskFile) {
 			// 首次新建
-			new RankingAddModal(this.plugin.app, this.plugin, manager, 1, '', async (entry) => {
+			new TaskAddModal(this.plugin.app, this.plugin, manager, 1, '', async (entry) => {
 				await manager.addEntry(entry);
-				new Notice(t('notice.ranking-created'));
+				new Notice(t('notice.task-created'));
 			}).open();
 		} else {
 			// 已有任务记录，新增任务
@@ -204,9 +204,9 @@ export class MenuManager {
 				const nextPeriod = manager.getNextPeriod(entries || []);
 				const lastPlatform = entries && entries.length > 0
 					? entries[entries.length - 1].platform : '';
-				new RankingAddModal(this.plugin.app, this.plugin, manager, nextPeriod, lastPlatform, async (entry) => {
+				new TaskAddModal(this.plugin.app, this.plugin, manager, nextPeriod, lastPlatform, async (entry) => {
 					await manager.addEntry(entry);
-					new Notice(t('notice.ranking-added'));
+					new Notice(t('notice.task-added'));
 				}).open();
 			}).catch(console.error);
 		}

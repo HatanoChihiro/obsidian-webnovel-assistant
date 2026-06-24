@@ -501,7 +501,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		}
 		this.displayForeshadowingSettings(containerEl);
 		this.displayTimelineSettings(containerEl);
-		this.displayRankingSettings(containerEl);
+		this.displayTaskSettings(containerEl);
 
 		if (tier === 'desktop') {
 			this.displayLoreSettings(containerEl);
@@ -509,26 +509,26 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 	}
 
 	// ── 伏笔设置 ──
-	private displayRankingSettings(containerEl: HTMLElement): void {
-		new Setting(containerEl).setName(t('setting.ranking-tracking')).setHeading();
+	private displayTaskSettings(containerEl: HTMLElement): void {
+		new Setting(containerEl).setName(t('setting.task-tracking')).setHeading();
 
 		new Setting(containerEl)
-			.setName(t('setting.ranking-filename'))
-			.setDesc(t('setting.ranking-filename-desc'))
+			.setName(t('setting.task-filename'))
+			.setDesc(t('setting.task-filename-desc'))
 			.addText(text => {
-				const oldName = this.plugin.settings.ranking?.fileName || getDefaultFileName('rankingFileName');
-				text.setPlaceholder(t('common.default-ranking-filename'))
+				const oldName = this.plugin.settings.task?.fileName || getDefaultFileName('taskFileName');
+				text.setPlaceholder(t('common.default-task-filename'))
 					.setValue(oldName);
 				let tempValue = oldName;
 				text.onChange((value) => { tempValue = value.trim().replace(/.md$/i, ''); });
 
 				const saveAction = async () => {
-					const newName = tempValue || getDefaultFileName('rankingFileName');
+					const newName = tempValue || getDefaultFileName('taskFileName');
 					if (newName === oldName) return;
-					if (!this.plugin.settings.ranking) { this.plugin.settings.ranking = { fileName: newName }; }
-					else { this.plugin.settings.ranking.fileName = newName; }
+					if (!this.plugin.settings.task) { this.plugin.settings.task = { fileName: newName }; }
+					else { this.plugin.settings.task.fileName = newName; }
 					await this.plugin.saveSettings();
-					const count = await this.plugin.renameAllFunctionalFiles(oldName, newName, 'file', 'rankingFileName');
+					const count = await this.plugin.renameAllFunctionalFiles(oldName, newName, 'file', 'taskFileName');
 					if (count > 0) new Notice(t('notice.files-renamed', { count: String(count) }));
 				};
 
@@ -867,11 +867,11 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				}));
 
 		new Setting(containerEl)
-			.setName(t('setting.show-ranking-progress'))
+			.setName(t('setting.show-task-progress'))
 			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.immersive.immersiveShowRankingProgress)
+				.setValue(this.plugin.settings.immersive.immersiveShowTaskProgress)
 				.onChange(async (value) => {
-					this.plugin.settings.immersive.immersiveShowRankingProgress = value;
+					this.plugin.settings.immersive.immersiveShowTaskProgress = value;
 					await this.plugin.saveSettings();
 				}));
 

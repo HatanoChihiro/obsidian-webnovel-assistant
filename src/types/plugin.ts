@@ -9,10 +9,9 @@
 import type { App, Command, EventRef, PluginManifest, TFile, ViewCreator} from 'obsidian';
 import type { AccurateCountSettings } from './settings';
 import type { DefaultFileNameKey } from '../i18n/data-keys';
-import type { ObsStatsPayload } from './stats';
 import type { CacheManager } from '../services/CacheManager';
 import type { ForeshadowingManager } from '../services/ForeshadowingManager';
-import type { RankingManager } from '../services/RankingManager';
+import type { TaskManager } from '../services/TaskManager';
 import type { TimelineManager } from '../services/TimelineManager';
 import type { FileExplorerPatcher } from '../services/FileExplorerPatcher';
 import type { SettingsManager } from '../core/SettingsManager';
@@ -65,7 +64,7 @@ export interface TrackingContext {
 	lastTickTime: number;
 	lastFileWords: number;
 	lastFilePath: string;
-	lastRankingFolder: string;
+	lastTaskFolder: string;
 	startTracking(): void;
 	stopTracking(): void;
 }
@@ -83,7 +82,7 @@ export interface ViewContext {
 	toggleStatusView(): Promise<void>;
 	toggleForeshadowingView(): Promise<void>;
 	toggleTimelineView(): Promise<void>;
-	toggleRankingView(): Promise<void>;
+	toggleTaskView(): Promise<void>;
 	toggleFloatingNotesVisibility(): Promise<void>;
 	refreshStatusViews(): void;
 }
@@ -107,7 +106,6 @@ export interface StickyNoteContext {
 export interface ObsContext {
 	obsServer: ObsOverlayServer | null;
 	obsHtmlBuilder: ObsHtmlBuilder;
-	getObsStats(): Promise<ObsStatsPayload>;
 	buildObsOverlayHtml(): string;
 }
 
@@ -163,7 +161,7 @@ export interface WebNovelAssistantPlugin extends
 
 	// 以下属性在 onload 中初始化，可能为 undefined
 	foreshadowingManager?: ForeshadowingManager;
-	rankingManager?: RankingManager;
+	taskManager?: TaskManager;
 	timelineManager?: TimelineManager;
 	editorTracker?: EditorTracker;
 	styleManager?: StyleManager;

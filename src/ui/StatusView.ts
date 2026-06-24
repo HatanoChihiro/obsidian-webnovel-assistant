@@ -1,9 +1,9 @@
 import type { WorkspaceLeaf} from 'obsidian';
 import { ItemView, MarkdownView, TFile } from 'obsidian';
-import { formatTime, formatCount, parseGoal, isMobile } from '../utils';
+import { formatTime, formatCount, isMobile } from '../utils';
 import { HistoryStatsModal, calcStreak, calcFocusRate, calcActiveHours, calcDailyAverage } from './HistoryModal';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
-import { RankingManager } from '../services/RankingManager';
+import { TaskManager } from '../services/TaskManager';
 import { t } from '../i18n';
 
 export const STATUS_VIEW_TYPE = 'writing-status-view';
@@ -15,13 +15,13 @@ export class WritingStatusView extends ItemView {
 	todayWordEl!: HTMLElement;
 	percentEl!: HTMLElement;
 	progressFillEl!: HTMLElement;
-		rankingWordEl!: HTMLElement;
-		rankingTargetEl!: HTMLElement;
-		rankingPercentEl!: HTMLElement;
-		rankingProgressFillEl!: HTMLElement;
-		rankingSectionEls!: HTMLElement[];
+		taskWordEl!: HTMLElement;
+		taskTargetEl!: HTMLElement;
+		taskPercentEl!: HTMLElement;
+		taskProgressFillEl!: HTMLElement;
+		taskSectionEls!: HTMLElement[];
 		chapterSectionEls!: HTMLElement[];
-		rankingTimeDescEl!: HTMLElement;
+		taskTimeDescEl!: HTMLElement;
 		dailyWordEl!: HTMLElement;
 	dailyGoalEl!: HTMLElement;
 	dailyPercentEl!: HTMLElement;
@@ -42,7 +42,7 @@ export class WritingStatusView extends ItemView {
 	workGoalEl!: HTMLElement;
 
 	private lastActiveFolderPath: string | null = null;
-	private rankingSaveTimer: number | null = null;
+	private taskSaveTimer: number | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: WebNovelAssistantPlugin) {
 		super(leaf);
@@ -129,25 +129,25 @@ export class WritingStatusView extends ItemView {
 		this.chapterSectionEls = [chapterLabelRow, goalRow, progressBg];
 
 		// 任务目标
-		const rankingLabelRow = goalCard.createDiv({ cls: 'status-goal-row ranking-goal-section' });
-		rankingLabelRow.hide();
-		rankingLabelRow.createSpan({ cls: 'status-goal-label', text: t('common.ranking-goal') });
-		this.rankingPercentEl = rankingLabelRow.createSpan({ cls: 'goal-percent', text: '0%' });
+		const taskLabelRow = goalCard.createDiv({ cls: 'status-goal-row task-goal-section' });
+		taskLabelRow.hide();
+		taskLabelRow.createSpan({ cls: 'status-goal-label', text: t('common.task-goal') });
+		this.taskPercentEl = taskLabelRow.createSpan({ cls: 'goal-percent', text: '0%' });
 
-		const rankingRow = goalCard.createDiv({ cls: 'goal-display-row-right ranking-goal-section' });
-		rankingRow.hide();
-		this.rankingWordEl = rankingRow.createSpan({ cls: 'goal-current', text: '0' });
-		rankingRow.createSpan({ cls: 'goal-separator', text: ' / ' });
-		this.rankingTargetEl = rankingRow.createSpan({ cls: 'goal-target', text: '0' });
-		const rankingProgressBg = goalCard.createDiv({ cls: 'progress-bar-bg ranking-goal-section' });
-		rankingProgressBg.hide();
-		this.rankingProgressFillEl = rankingProgressBg.createDiv({ cls: 'progress-bar-fill' });
+		const taskRow = goalCard.createDiv({ cls: 'goal-display-row-right task-goal-section' });
+		taskRow.hide();
+		this.taskWordEl = taskRow.createSpan({ cls: 'goal-current', text: '0' });
+		taskRow.createSpan({ cls: 'goal-separator', text: ' / ' });
+		this.taskTargetEl = taskRow.createSpan({ cls: 'goal-target', text: '0' });
+		const taskProgressBg = goalCard.createDiv({ cls: 'progress-bar-bg task-goal-section' });
+		taskProgressBg.hide();
+		this.taskProgressFillEl = taskProgressBg.createDiv({ cls: 'progress-bar-fill' });
 
-		const rankingTimeDesc = goalCard.createDiv({ cls: 'ranking-time-desc ranking-goal-section' });
-		rankingTimeDesc.hide();
-		this.rankingTimeDescEl = rankingTimeDesc;
+		const taskTimeDesc = goalCard.createDiv({ cls: 'task-time-desc task-goal-section' });
+		taskTimeDesc.hide();
+		this.taskTimeDescEl = taskTimeDesc;
 
-		this.rankingSectionEls = [rankingLabelRow, rankingRow, rankingProgressBg, rankingTimeDesc];
+		this.taskSectionEls = [taskLabelRow, taskRow, taskProgressBg, taskTimeDesc];
 	}
 
 	private createTimeCard(container: Element) {
@@ -298,96 +298,82 @@ export class WritingStatusView extends ItemView {
 			}
 		}
 
-		const today = window.moment().format('YYYY-MM-DD');
-		const todayStat = this.plugin.historyManager.getDailyStat(today) || { focusMs: 0, slackMs: 0, addedWords: 0 };
-		const dailyAdded = todayStat.addedWords;
-		const dailyGoal = this.plugin.settings.dailyGoal || 0;
+		const coreStats = this.plugin.statisticsManager.getCoreStats();
 
-		this.dailyWordEl.innerText = Math.max(0, dailyAdded).toLocaleString();
-		this.dailyGoalEl.innerText = dailyGoal.toLocaleString();
+		this.dailyWordEl.innerText = coreStats.dailyWords.toLocaleString();
+		this.dailyGoalEl.innerText = coreStats.dailyGoal.toLocaleString();
 
 		let dailyPercent = 0;
-		if (dailyAdded < 0) {
-			dailyPercent = dailyGoal > 0 ? Math.round((dailyAdded / dailyGoal) * 100) : 0;
+		if (coreStats.rawDailyWords < 0) {
+			dailyPercent = coreStats.dailyGoal > 0 ? Math.round((coreStats.rawDailyWords / coreStats.dailyGoal) * 100) : 0;
 		} else {
-			dailyPercent = dailyGoal > 0 ? Math.min(Math.round((dailyAdded / dailyGoal) * 100), 100) : 0;
+			dailyPercent = coreStats.dailyPercent;
 		}
 		this.dailyPercentEl.innerText = ` ${dailyPercent}%`;
 
-		const dailyDone = dailyGoal > 0 && dailyAdded >= dailyGoal;
-		const dailyState = dailyAdded < 0 ? 'negative' : dailyDone ? 'done' : 'normal';
+		const dailyDone = coreStats.dailyGoal > 0 && coreStats.rawDailyWords >= coreStats.dailyGoal;
+		const dailyState = coreStats.rawDailyWords < 0 ? 'negative' : dailyDone ? 'done' : 'normal';
 		this.setProgressState(this.dailyProgressFillEl, this.dailyWordEl, this.dailyPercentEl, dailyState, Math.max(0, dailyPercent));
 
-		let targetGoal = this.plugin.settings.defaultGoal;
-		const view = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
-		let chapterWords = 0;
-		if (view?.file && this.plugin.isEligibleForWordCount(view.file)) {
-			const cache = this.plugin.app.metadataCache.getFileCache(view.file);
-			const fmGoal = parseGoal(cache?.frontmatter?.['word-goal']);
-			if (fmGoal > 0) targetGoal = fmGoal;
-			chapterWords = this.plugin.calculateAccurateWords(view.getViewData());
-		}
+		this.todayWordEl.innerText = coreStats.todayWords.toLocaleString();
+		this.goalWordEl.innerText = coreStats.goal.toLocaleString();
 
-		this.todayWordEl.innerText = chapterWords.toLocaleString();
-		this.goalWordEl.innerText = targetGoal.toLocaleString();
+		this.percentEl.innerText = ` ${coreStats.percent}%`;
 
-		const percent = targetGoal > 0 ? Math.min(Math.round((chapterWords / targetGoal) * 100), 100) : 0;
-		this.percentEl.innerText = ` ${percent}%`;
-
-		const chapterDone = targetGoal > 0 && chapterWords >= targetGoal;
+		const chapterDone = coreStats.goal > 0 && coreStats.todayWords >= coreStats.goal;
 		const chapterState = chapterDone ? 'done' : 'normal';
-		this.setProgressState(this.progressFillEl, this.todayWordEl, null, chapterState, percent);
+		this.setProgressState(this.progressFillEl, this.todayWordEl, null, chapterState, coreStats.percent);
 
 		// 任务目标进度：基于目录判断，无活跃 MarkdownView 时使用上次文件夹
-		let rankingFolder = '';
-		const rankingFile = this.app.workspace.getActiveViewOfType(MarkdownView)?.file;
-		if (rankingFile) {
-			rankingFolder = rankingFile.parent?.path || '';
-			this.plugin.lastRankingFolder = rankingFolder;
-		} else if (this.plugin.lastRankingFolder) {
-			rankingFolder = this.plugin.lastRankingFolder;
+		let taskFolder = '';
+		const taskFile = this.app.workspace.getActiveViewOfType(MarkdownView)?.file;
+		if (taskFile) {
+			taskFolder = taskFile.parent?.path || '';
+			this.plugin.lastTaskFolder = taskFolder;
+		} else if (this.plugin.lastTaskFolder) {
+			taskFolder = this.plugin.lastTaskFolder;
 		}
 
-		let hasActiveRanking = false;
-		if (rankingFolder && this.plugin.rankingManager) {
-			const manager = new RankingManager(this.plugin.app, this.plugin, rankingFolder);
-			const rankingFile = manager.getRankingFile();
-			if (rankingFile) {
-				const rankingContent = await this.plugin.app.vault.cachedRead(rankingFile);
-				const entries = manager.parseEntries(rankingContent);
-				const active = manager.getActiveRanking(entries);
+		let hasActiveTask = false;
+		if (taskFolder && this.plugin.taskManager) {
+			const manager = new TaskManager(this.plugin.app, this.plugin, taskFolder);
+			const taskFile = manager.getTaskFile();
+			if (taskFile) {
+				const taskContent = await this.plugin.app.vault.cachedRead(taskFile);
+				const entries = manager.parseEntries(taskContent);
+				const active = manager.getActiveTask(entries);
 				if (active) {
-					hasActiveRanking = true;
+					hasActiveTask = true;
 					const progress = manager.calcProgress(active);
-					const rankingPercent = active.wordTarget > 0 ? Math.min(Math.round((progress / active.wordTarget) * 100), 100) : 0;
-					this.rankingWordEl.innerText = progress.toLocaleString();
-					this.rankingTargetEl.innerText = active.wordTarget.toLocaleString();
-					this.rankingPercentEl.innerText = ` ${rankingPercent}%`;
-					const rankingDone = active.wordTarget > 0 && progress >= active.wordTarget;
-					const rankingState = rankingDone ? 'done' : 'normal';
+					const taskPercent = active.wordTarget > 0 ? Math.min(Math.round((progress / active.wordTarget) * 100), 100) : 0;
+					this.taskWordEl.innerText = progress.toLocaleString();
+					this.taskTargetEl.innerText = active.wordTarget.toLocaleString();
+					this.taskPercentEl.innerText = ` ${taskPercent}%`;
+					const taskDone = active.wordTarget > 0 && progress >= active.wordTarget;
+					const taskState = taskDone ? 'done' : 'normal';
 					const daysLeft = Math.max(0, window.moment(active.endDate).diff(window.moment().startOf('day'), 'days') + 1);
 					const endShort = active.endDate.substring(5);
-					this.rankingTimeDescEl.setText(rankingDone ? t('common.ranking-deadline-reached', { date: endShort }) : t('common.ranking-deadline-remaining', { date: endShort, days: String(daysLeft) }));
-					this.rankingTimeDescEl.toggleClass('ranking-reached', rankingDone);
-					this.setProgressState(this.rankingProgressFillEl, this.rankingWordEl, this.rankingPercentEl, rankingState, rankingPercent);
+					this.taskTimeDescEl.setText(taskDone ? t('common.task-deadline-reached', { date: endShort }) : t('common.task-deadline-remaining', { date: endShort, days: String(daysLeft) }));
+					this.taskTimeDescEl.toggleClass('task-reached', taskDone);
+					this.setProgressState(this.taskProgressFillEl, this.taskWordEl, this.taskPercentEl, taskState, taskPercent);
 
 					// 防抖持久化完成字数
-					if (this.rankingSaveTimer) window.clearTimeout(this.rankingSaveTimer);
-					this.rankingSaveTimer = window.setTimeout(() => {
+					if (this.taskSaveTimer) window.clearTimeout(this.taskSaveTimer);
+					this.taskSaveTimer = window.setTimeout(() => {
 						void manager.updateProgress(active.period, progress);
 					}, 5000);
 				}
 			}
 		}
-		if (this.rankingSectionEls) {
-			for (const el of this.rankingSectionEls) {
-				if (hasActiveRanking) { el.show(); } else { el.hide(); }
+		if (this.taskSectionEls) {
+			for (const el of this.taskSectionEls) {
+				if (hasActiveTask) { el.show(); } else { el.hide(); }
 			}
 		}
 
 		if (!isMobile()) {
-			const focusSec = Math.floor(this.plugin.focusMs / 1000);
-			const slackSec = Math.floor(this.plugin.slackMs / 1000);
+			const focusSec = Math.round(this.plugin.focusMs / 1000);
+			const slackSec = Math.round(this.plugin.slackMs / 1000);
 			const totalSec = focusSec + slackSec;
 
 			if (this.focusTimeEl) this.focusTimeEl.innerText = formatTime(focusSec);
@@ -489,7 +475,7 @@ export class WritingStatusView extends ItemView {
 	}
 
 	async onClose() {
-		if (this.rankingSaveTimer) window.clearTimeout(this.rankingSaveTimer);
+		if (this.taskSaveTimer) window.clearTimeout(this.taskSaveTimer);
 		await super.onClose();
 	}
 }

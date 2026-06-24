@@ -5,7 +5,7 @@ import { VIEW_TYPES } from '../constants';
 import { WritingStatusView, STATUS_VIEW_TYPE } from '../ui/StatusView';
 import { ForeshadowingView, FORESHADOWING_VIEW_TYPE } from '../ui/ForeshadowingView';
 import { TimelineView, TIMELINE_VIEW_TYPE } from '../ui/TimelineView';
-import { RankingView, RANKING_VIEW_TYPE } from '../ui/RankingView';
+import { TaskView, TASK_VIEW_TYPE } from '../ui/TaskView';
 import { ImmersiveChapterListView } from '../ui/ImmersiveChapterListView';
 import { ImmersiveStickyNotesView } from '../ui/ImmersiveStickyNotesView';
 import { CorkboardView, CORKBOARD_VIEW_TYPE } from '../ui/CorkboardView';
@@ -21,7 +21,7 @@ export class ViewManager {
 		this.plugin.registerView(STATUS_VIEW_TYPE, (leaf) => new WritingStatusView(leaf, this.plugin));
 		this.plugin.registerView(FORESHADOWING_VIEW_TYPE, (leaf) => new ForeshadowingView(leaf, this.plugin));
 		this.plugin.registerView(TIMELINE_VIEW_TYPE, (leaf) => new TimelineView(leaf, this.plugin));
-		this.plugin.registerView(RANKING_VIEW_TYPE, (leaf) => new RankingView(leaf, this.plugin));
+		this.plugin.registerView(TASK_VIEW_TYPE, (leaf) => new TaskView(leaf, this.plugin));
 		this.plugin.registerView(CORKBOARD_VIEW_TYPE, (leaf) => new CorkboardView(leaf, this.plugin));
 		
 		if (isDesktop()) { // Desktop

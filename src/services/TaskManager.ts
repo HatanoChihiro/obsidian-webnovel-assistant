@@ -1,14 +1,14 @@
-// 限时任务追踪管理器（内部仍用 Ranking 命名，待后续重构改为 Task）
+// 限时任务追踪管理器（内部仍用 Task 命名，待后续重构改为 Task）
 import type { App} from 'obsidian';
 import { TFile, TFolder, normalizePath } from 'obsidian';
 import { t } from '../i18n';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
-import type { RankingEntry, RankingStatus } from '../types/ranking';
-import { RANKING_STATUS_MAP, RANKING_LABEL_MAP, getRankingLabel, getRankingStatusText, getRankingPeriodTitle, getDefaultFileName, getDefaultFileNameCandidates } from '../i18n/data-keys';
+import type { TaskEntry, TaskStatus } from '../types/task';
+import { TASK_STATUS_MAP, TASK_LABEL_MAP, getTaskLabel, getTaskStatusText, getTaskPeriodTitle, getDefaultFileName, getDefaultFileNameCandidates } from '../i18n/data-keys';
 import { ChapterSorter } from './ChapterSorter';
 import { SerializedWriter } from '../utils/SerializedWriter';
 
-export class RankingManager {
+export class TaskManager {
 	private writer = new SerializedWriter();
 
 	constructor(
@@ -17,15 +17,15 @@ export class RankingManager {
 		public currentFolder: string = ''
 	) {}
 
-	getRankingFilePath(): string {
-		const fileName = (this.plugin.settings.ranking?.fileName || getDefaultFileName('rankingFileName')) + '.md';
+	getTaskFilePath(): string {
+		const fileName = (this.plugin.settings.task?.fileName || getDefaultFileName('taskFileName')) + '.md';
 		return normalizePath(this.currentFolder ? `${this.currentFolder}/${fileName}` : fileName);
 	}
 
-findRankingFile(): TFile | null {
+findTaskFile(): TFile | null {
 		const candidates = new Set<string>();
-		candidates.add(this.plugin.settings.ranking?.fileName || getDefaultFileName('rankingFileName'));
-		for (const name of getDefaultFileNameCandidates('rankingFileName')) candidates.add(name);
+		candidates.add(this.plugin.settings.task?.fileName || getDefaultFileName('taskFileName'));
+		for (const name of getDefaultFileNameCandidates('taskFileName')) candidates.add(name);
 		for (const fileName of candidates) {
 			const path = normalizePath(this.currentFolder ? this.currentFolder + "/" + fileName + ".md" : fileName + ".md");
 			const file = this.app.vault.getAbstractFileByPath(path);
@@ -34,38 +34,38 @@ findRankingFile(): TFile | null {
 		return null;
 	}
 
-	getRankingFile(): TFile | null {
-		return this.findRankingFile();
+	getTaskFile(): TFile | null {
+		return this.findTaskFile();
 	}
 
-async createRankingFile(): Promise<TFile> {
+async createTaskFile(): Promise<TFile> {
 		// 检查是否已有限时任务文件（多语言查找）
-		const existing = this.findRankingFile();
+		const existing = this.findTaskFile();
 		if (existing) {
 			// 如果找到的文件名与当前设置不一致，自动重命名
-			const expectedName = this.plugin.settings.ranking?.fileName || getDefaultFileName('rankingFileName');
+			const expectedName = this.plugin.settings.task?.fileName || getDefaultFileName('taskFileName');
 			if (existing.name !== expectedName + '.md') {
 				const newPath = normalizePath(this.currentFolder ? this.currentFolder + '/' + expectedName + '.md' : expectedName + '.md');
-				try { await this.app.fileManager.renameFile(existing, newPath); } catch (e) { console.warn('[RankingManager] 重命名任务目标文件失败:', e); }
+				try { await this.app.fileManager.renameFile(existing, newPath); } catch (e) { console.warn('[TaskManager] 重命名任务目标文件失败:', e); }
 			}
 			const foundPath = normalizePath(this.currentFolder ? this.currentFolder + '/' + expectedName + '.md' : expectedName + '.md');
 			const found = this.app.vault.getAbstractFileByPath(foundPath);
 				return found instanceof TFile ? found : existing;
 		}
 
-		const path = this.getRankingFilePath();
+		const path = this.getTaskFilePath();
 		return await this.app.vault.create(path, '');
 	}
 
-	async loadEntries(): Promise<RankingEntry[] | null> {
-		const file = this.getRankingFile();
+	async loadEntries(): Promise<TaskEntry[] | null> {
+		const file = this.getTaskFile();
 		if (!file) return null;
 		const content = await this.app.vault.read(file);
 		return this.parseEntries(content);
 	}
 
-	parseEntries(content: string): RankingEntry[] {
-		const entries: RankingEntry[] = [];
+	parseEntries(content: string): TaskEntry[] {
+		const entries: TaskEntry[] = [];
 		const blocks = content.split(/\n---\n/);
 
 		for (const block of blocks) {
@@ -73,7 +73,7 @@ async createRankingFile(): Promise<TFile> {
 			if (!trimmed.startsWith('## ')) continue;
 
 			const firstLine = trimmed.split('\n')[0];
-			const periodMatch = firstLine.match(new RegExp(`(?:第(\\d+)期|Period (\\d+)|${t('ranking.period-prefix')}(\\d+))`));
+			const periodMatch = firstLine.match(new RegExp(`(?:第(\\d+)期|Period (\\d+)|${t('task.period-prefix')}(\\d+))`));
 			if (!periodMatch) continue;
 			const period = parseInt(periodMatch[1] || periodMatch[2] || periodMatch[3], 10);
 
@@ -81,7 +81,7 @@ async createRankingFile(): Promise<TFile> {
 			const metaRegex = /\*\*(.+?)\*\*[：:]\s*(.+)/g;
 			let m;
 			while ((m = metaRegex.exec(trimmed)) !== null) {
-				const key = RANKING_LABEL_MAP[m[1]] || m[1];
+				const key = TASK_LABEL_MAP[m[1]] || m[1];
 				meta[key] = m[2].trim();
 			}
 
@@ -93,7 +93,7 @@ async createRankingFile(): Promise<TFile> {
 				startDate: meta['startDate'] || '',
 				endDate: meta['endDate'] || '',
 				startSnapshot: parseInt(meta['startSnapshot'] || '0', 10),
-				status: (RANKING_STATUS_MAP[meta['status']] as RankingStatus) || 'notStarted',
+				status: (TASK_STATUS_MAP[meta['status']] as TaskStatus) || 'notStarted',
 				completedWords: meta['completedWords'] ? parseInt(meta['completedWords'], 10) : undefined,
 				rawBlock: trimmed,
 			});
@@ -102,30 +102,30 @@ async createRankingFile(): Promise<TFile> {
 		return entries;
 	}
 
-	formatEntry(entry: RankingEntry): string {
+	formatEntry(entry: TaskEntry): string {
 		const lines: string[] = [];
-		lines.push(`## ${getRankingPeriodTitle(entry.period)}`);
+		lines.push(`## ${getTaskPeriodTitle(entry.period)}`);
 		lines.push('');
-		lines.push(`**${getRankingLabel('platform')}**：${entry.platform}`);
-		lines.push(`**${getRankingLabel('position')}**：${entry.position}`);
-		lines.push(`**${getRankingLabel('wordTarget')}**：${entry.wordTarget}`);
-		lines.push(`**${getRankingLabel('startDate')}**：${entry.startDate}`);
-		lines.push(`**${getRankingLabel('endDate')}**：${entry.endDate}`);
-		lines.push(`**${getRankingLabel('startSnapshot')}**：${entry.startSnapshot}`);
+		lines.push(`**${getTaskLabel('platform')}**：${entry.platform}`);
+		lines.push(`**${getTaskLabel('position')}**：${entry.position}`);
+		lines.push(`**${getTaskLabel('wordTarget')}**：${entry.wordTarget}`);
+		lines.push(`**${getTaskLabel('startDate')}**：${entry.startDate}`);
+		lines.push(`**${getTaskLabel('endDate')}**：${entry.endDate}`);
+		lines.push(`**${getTaskLabel('startSnapshot')}**：${entry.startSnapshot}`);
 		if (entry.completedWords !== undefined) {
-			lines.push(`**${getRankingLabel('completedWords')}**：${entry.completedWords}`);
+			lines.push(`**${getTaskLabel('completedWords')}**：${entry.completedWords}`);
 		}
-		lines.push(`**${getRankingLabel('status')}**：${getRankingStatusText(entry.status)}`);
+		lines.push(`**${getTaskLabel('status')}**：${getTaskStatusText(entry.status)}`);
 		lines.push('');
 		lines.push('---');
 		lines.push('');
 		return lines.join('\n');
 	}
 
-	async addEntry(entry: RankingEntry): Promise<void> {
+	async addEntry(entry: TaskEntry): Promise<void> {
 		return this.writer.enqueue(async () => {
-			let file = this.getRankingFile();
-			if (!file) file = await this.createRankingFile();
+			let file = this.getTaskFile();
+			if (!file) file = await this.createTaskFile();
 
 			await this.app.vault.process(file, (existing) => {
 				const sep = existing.trim() ? '\n' : '';
@@ -134,9 +134,9 @@ async createRankingFile(): Promise<TFile> {
 		});
 	}
 
-	async updateEntryStatus(period: number, status: RankingStatus, completedWords?: number): Promise<void> {
+	async updateEntryStatus(period: number, status: TaskStatus, completedWords?: number): Promise<void> {
 		return this.writer.enqueue(async () => {
-			const file = this.getRankingFile();
+			const file = this.getTaskFile();
 			if (!file) return;
 			await this.app.vault.process(file, (content) => {
 				const entries = this.parseEntries(content);
@@ -162,7 +162,7 @@ async createRankingFile(): Promise<TFile> {
 	/** 更新进行中任务的完成字数（实时持久化） */
 	async updateProgress(period: number, completedWords: number): Promise<void> {
 		return this.writer.enqueue(async () => {
-			const file = this.getRankingFile();
+			const file = this.getTaskFile();
 			if (!file) return;
 			await this.app.vault.process(file, (content) => {
 				const entries = this.parseEntries(content);
@@ -180,18 +180,18 @@ async createRankingFile(): Promise<TFile> {
 	}
 
 	/** 获取当前进行中的任务 */
-	getActiveRanking(entries: RankingEntry[]): RankingEntry | null {
+	getActiveTask(entries: TaskEntry[]): TaskEntry | null {
 		return entries.find(e => e.status === 'active') || null;
 	}
 
 	/** 获取下一期期数 */
-	getNextPeriod(entries: RankingEntry[]): number {
+	getNextPeriod(entries: TaskEntry[]): number {
 		if (entries.length === 0) return 1;
 		return Math.max(...entries.map(e => e.period)) + 1;
 	}
 
 	/** 计算当前增量字数 */
-	calcProgress(entry: RankingEntry): number {
+	calcProgress(entry: TaskEntry): number {
 		const currentWords = this.getChapterWordCount();
 		return Math.max(0, currentWords - entry.startSnapshot);
 	}
@@ -227,7 +227,7 @@ async createRankingFile(): Promise<TFile> {
 				const progress = this.calcProgress(entry);
 				// 如果缓存未就绪（progress=0 但 startSnapshot>0），跳过关闭以避免误判
 				if (progress === 0 && entry.startSnapshot > 0) continue;
-				const status: RankingStatus = progress >= entry.wordTarget ? 'completed' : 'incomplete';
+				const status: TaskStatus = progress >= entry.wordTarget ? 'completed' : 'incomplete';
 				await this.updateEntryStatus(entry.period, status, progress);
 				changed = true;
 			}
@@ -236,7 +236,7 @@ async createRankingFile(): Promise<TFile> {
 	}
 
 	/** 检查进行中但尚未到开始时间的任务，标记为进行中 */
-	async activatePendingRankings(): Promise<boolean> {
+	async activatePendingTasks(): Promise<boolean> {
 		const entries = await this.loadEntries();
 		if (!entries) return false;
 

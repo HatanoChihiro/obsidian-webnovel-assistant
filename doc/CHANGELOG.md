@@ -1,3 +1,13 @@
+## 🔧 v3.3.0
+
+- 修复了英文环境下，伏笔面板的描述错误
+- 优化了字数计算的实现方式，可能可以解决部分字数显示bug
+- 修复部分UI界面内的显示错误
+
+- fix: Fixed an error in the description of the Lore panel in English environment
+- optimize: Optimized the implementation of word count calculation, which may solve some word count display bugs
+- fix: Fixed some display errors in the UI
+
 ## 🔧 v3.2.9
 
 ### 修复若干bug和优化部分功能

@@ -4,7 +4,7 @@
  * 本文件包含插件设置、主题配置和便签状态相关的类型定义
  */
 import type { ForeshadowingSettings } from './foreshadowing';
-import type { RankingSettings } from './ranking';
+import type { TaskSettings } from './task';
 import type { NovelInfoSettings } from './homepage';
 
 /** 时间线功能相关设置 */
@@ -120,7 +120,7 @@ export interface ImmersiveModeSettings {
 	/** 数据仪表盘：是否显示本场净增字数 */
 	immersiveShowSessionWords: boolean;
 	/** 数据仪表盘：是否显示任务进度 */
-	immersiveShowRankingProgress: boolean;
+	immersiveShowTaskProgress: boolean;
 
 	/** 是否隐藏笔记属性面板 */
 	immersiveHideProperties: boolean;
@@ -197,7 +197,7 @@ export interface AccurateCountSettings {
 	/** 时间线功能设置 */
 	timeline: TimelineSettings;
 	/** 限时任务追踪功能设置 */
-	ranking: RankingSettings;
+	task: TaskSettings;
 	/** 护眼模式：是否启用编辑区绿色背景 */
 	eyeCareEnabled: boolean;
 	/** 护眼模式背景色（十六进制） */

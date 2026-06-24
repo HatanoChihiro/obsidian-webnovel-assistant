@@ -540,7 +540,7 @@ This way `番外1` → number 1, `番外2` → number 2, and they are automatica
 **Method 2: In the Foreshadowing File**
 1. Open the foreshadowing file (default name: `Foreshadowing.md`)
 2. Place the cursor on the foreshadowing entry
-3. Command palette → `Mark Foreshadowing as Recovered`
+3. Command palette → `Mark Foreshadowing as Resolved`
 4. Select the resolution chapter
 
 #### Related Settings

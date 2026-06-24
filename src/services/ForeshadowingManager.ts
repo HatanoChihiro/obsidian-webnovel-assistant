@@ -343,7 +343,7 @@ export class ForeshadowingManager {
 			const now = window.moment().format('YYYY-MM-DD HH:mm');
 
 			// 使用缓存的正则表达式
-			const titlePattern = this.getEntryPattern(sourceFile, createdAt, '未回收|已废弃|pending|deprecated|Pending|Deprecated');
+			const titlePattern = this.getEntryPattern(sourceFile, createdAt, '未回收|已废弃|pending|deprecated|Pending|Deprecated|Unresolved|Abandoned');
 
 			await this.app.vault.process(targetFile, (content) => {
 				const newContent = content.replace(
@@ -409,7 +409,7 @@ export class ForeshadowingManager {
 	): Promise<boolean> {
 		return this.writer.enqueue(async () => {
 			let found = false;
-			const titlePattern = this.getEntryPattern(sourceFile, createdAt, '未回收|pending|Pending');
+			const titlePattern = this.getEntryPattern(sourceFile, createdAt, '未回收|pending|Pending|Unresolved');
 
 			await this.app.vault.process(targetFile, (content) => {
 				const newContent = content.replace(
@@ -436,7 +436,7 @@ export class ForeshadowingManager {
 	): Promise<boolean> {
 		return this.writer.enqueue(async () => {
 			let found = false;
-			const titlePattern = this.getEntryPattern(sourceFile, createdAt, '已废弃|deprecated|Deprecated');
+			const titlePattern = this.getEntryPattern(sourceFile, createdAt, '已废弃|deprecated|Deprecated|Abandoned');
 
 			await this.app.vault.process(targetFile, (content) => {
 				const newContent = content.replace(

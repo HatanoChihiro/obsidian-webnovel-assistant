@@ -120,7 +120,7 @@ export class FileEventManager {
 				}
 				if (totalDelta !== 0) {
 					if (this.plugin.isLayoutReady) {
-						this.plugin.app.workspace.trigger('webnovel:file-word-count-updated', abstractFile as unknown as TFile, totalDelta);
+						this.plugin.app.workspace.trigger('webnovel:file-word-count-updated', abstractFile, totalDelta);
 					}
 					this.plugin.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
 						this.plugin.refreshFolderCounts();

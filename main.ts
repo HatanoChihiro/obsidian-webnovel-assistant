@@ -2,7 +2,6 @@ import type { App, PluginManifest} from 'obsidian';
 import { Plugin, TFile, TFolder, Notice, MarkdownView, MarkdownRenderChild, type MarkdownPostProcessorContext, Vault, type TAbstractFile } from 'obsidian';
 import type { AccurateCountSettings } from './src/types/settings';
 import type { WebNovelAssistantPlugin } from './src/types/plugin';
-import type { ObsStatsPayload } from './src/types/stats';
 import {
 	isDesktop,
 	isMobile,
@@ -27,14 +26,14 @@ import { AddLoreModal } from './src/ui/AddLoreModal';
 import { ObsOverlayServer } from './src/services/ObsServer';
 import { ForeshadowingManager } from './src/services/ForeshadowingManager';
 
-import { RankingManager } from './src/services/RankingManager';
+import { TaskManager } from './src/services/TaskManager';
 import { ObsHtmlBuilder } from './src/services/ObsHtmlBuilder';
 import { ImmersiveModeManager } from './src/ui/ImmersiveModeManager';
 import { HomepageManager } from './src/services/HomepageManager';
 import { StatisticsManager } from './src/services/StatisticsManager';
 import { StickyNoteDataManager } from './src/services/StickyNoteDataManager';
 import { VIEW_TYPES, DEFAULT_SETTINGS, PLATFORM_DELAYS } from './src/constants';
-import { RANKING_VIEW_TYPE } from './src/ui/RankingView';
+import { TASK_VIEW_TYPE } from './src/ui/TaskView';
 import { CommandManager } from './src/core/CommandManager';
 import { ViewManager } from './src/core/ViewManager';
 import { MenuManager } from './src/core/MenuManager';
@@ -44,7 +43,6 @@ import { createWordCountGutter, forceWordCountGutterUpdate } from './src/editor/
 import { WorkerManager } from './src/services/WorkerManager';
 import { MarkdownPostProcessor } from './src/services/MarkdownPostProcessor';
 import { FileEventManager } from './src/services/FileEventManager';
-import { HomepageManager } from './src/services/HomepageManager';
 import { HomepageRenderer } from './src/services/HomepageRenderer';
 import { CharacterManager } from './src/services/CharacterManager';
 import { t, setLocale, detectLocale } from './src/i18n';
@@ -66,7 +64,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	sessionAddedWords: number = 0;
 	lastFileWords: number = 0; 
 	lastFilePath: string = '';
-	lastRankingFolder: string = ''; 
+	lastTaskFolder: string = ''; 
 
 	lastEditTime: number = Date.now();
 	private _unloading = false;
@@ -86,7 +84,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	historyManager: HistoryDataManager;
 	fileExplorerPatcher: FileExplorerPatcher;
 	foreshadowingManager!: ForeshadowingManager;
-	rankingManager!: RankingManager;
+	taskManager!: TaskManager;
 	wordCounter: WordCounter;
 	editorTracker!: EditorTracker;
 	fileEventManager!: FileEventManager;
@@ -208,7 +206,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		
 		// 初始化管理器 (依赖 this)
 		this.foreshadowingManager = new ForeshadowingManager(this.app, this);
-		this.rankingManager = new RankingManager(this.app, this);
+		this.taskManager = new TaskManager(this.app, this);
 		
 		this.statusBarItemEl = this.addStatusBarItem();
 		this.addSettingTab(new AccurateCountSettingTab(this.app, this));
@@ -813,8 +811,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.addRibbonIcon('layout-grid', t('command.toggle-corkboard-view'), () => {
 			void this.toggleCorkboardView();
 		});
-		this.addRibbonIcon('trophy', t('command.toggle-ranking-view'), () => {
-			void this.toggleRankingView();
+		this.addRibbonIcon('trophy', t('command.toggle-task-view'), () => {
+			void this.toggleTaskView();
 		});
 
 		if (isDesktop()) {
@@ -1077,8 +1075,8 @@ onunload() {
 		await this.viewManager.toggleView(TIMELINE_VIEW_TYPE);
 	}
 
-	async toggleRankingView() {
-		await this.viewManager.toggleView(RANKING_VIEW_TYPE);
+	async toggleTaskView() {
+		await this.viewManager.toggleView(TASK_VIEW_TYPE);
 	}
 
 	async toggleCorkboardView() {
@@ -1098,7 +1096,7 @@ onunload() {
 			{ setting: this.settings.novelInfo?.fileName, field: "novelInfoFileName" },
 			{ setting: this.settings.foreshadowing?.fileName, field: "foreshadowingFileName" },
 			{ setting: this.settings.timeline?.fileName, field: "timelineFileName" },
-			{ setting: this.settings.ranking?.fileName, field: "rankingFileName" },
+			{ setting: this.settings.task?.fileName, field: "taskFileName" },
 		];
 		for (const { setting, field } of checks) {
 		if (basename === setting) return true;
@@ -1325,8 +1323,8 @@ onunload() {
 		}
 
 		// 同步刷新限时任务面板，使其字数进度即时更新
-		const rankingLeaves = this.app.workspace.getLeavesOfType(RANKING_VIEW_TYPE);
-		for (const leaf of rankingLeaves) {
+		const taskLeaves = this.app.workspace.getLeavesOfType(TASK_VIEW_TYPE);
+		for (const leaf of taskLeaves) {
 			const view = leaf.view as unknown as { refresh?: () => void };
 			if (typeof view.refresh === 'function') {
 				view.refresh();
@@ -1334,10 +1332,6 @@ onunload() {
 		}
 	}
 
-
-	async getObsStats(): Promise<ObsStatsPayload> {
-		return this.obsHtmlBuilder.getObsStats();
-	}
 
 	buildObsOverlayHtml(): string {
 		return this.obsHtmlBuilder.buildObsOverlayHtml();

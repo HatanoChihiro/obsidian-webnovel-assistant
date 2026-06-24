@@ -75,9 +75,9 @@ export class CommandManager {
 		});
 
 		this.plugin.addCommand({
-			id: 'toggle-ranking-view',
-			name: t('command.toggle-ranking-view'),
-			callback: () => { void this.plugin.toggleRankingView(); }
+			id: 'toggle-task-view',
+			name: t('command.toggle-task-view'),
+			callback: () => { void this.plugin.toggleTaskView(); }
 		});
 
 		this.plugin.addCommand({

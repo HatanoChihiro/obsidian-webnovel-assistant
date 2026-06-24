@@ -9,11 +9,11 @@
  */
 
 /**
- * OBS 叠加层统计数据负载
+ * 核心统计数据负载 (CoreStatsPayload)
  * 
- * 用于向 OBS 直播叠加层提供实时统计信息
+ * 用于向各个 UI 面板（如沉浸模式、OBS 叠加层）提供统一的实时统计信息
  */
-export interface ObsStatsPayload {
+export interface CoreStatsPayload {
 	/** 是否正在追踪统计 */
 	isTracking: boolean;
 	/** 专注时长(格式化字符串 HH:MM:SS) */
@@ -30,16 +30,14 @@ export interface ObsStatsPayload {
 	goal: number;
 	/** 章节完成百分比(0-100) */
 	percent: number;
-	/** 今日新增总字数 */
+	/** 今日新增总字数 (非负，用于显示) */
 	dailyWords: number;
+	/** 今日实际新增净字数 (允许负数) */
+	rawDailyWords: number;
 	/** 今日目标字数 */
 	dailyGoal: number;
 	/** 今日完成百分比(0-100) */
 	dailyPercent: number;
-	/** 任务已增字数 */
-	rankingWords: number;
-	/** 任务目标字数 */
-	rankingGoal: number;
 	/** 当前文件名 */
 	currentFile: string;
 	/** 当前所在文件夹名 */

@@ -100,21 +100,10 @@ export class MobileFloatingStats {
 			return;
 		}
 
-		// 计算字数
-		const content = view.getViewData();
-		const wordCount = this.plugin.calculateAccurateWords(content);
-
-		// 获取目标字数
-		let targetGoal = this.plugin.settings.defaultGoal;
-		const cache = this.app.metadataCache.getFileCache(view.file);
-		const fmGoal = cache?.frontmatter?.['word-goal'] as unknown;
-		if (fmGoal !== undefined) {
-			const parsed = parseInt(fmGoal as string, 10);
-			if (!isNaN(parsed)) targetGoal = parsed;
-		}
-
-		// 计算进度
-		const percent = targetGoal > 0 ? Math.min(Math.round((wordCount / targetGoal) * 100), 100) : 0;
+		// 通过核心管线获取完全一致的数据
+		const stats = this.plugin.statisticsManager.getCoreStats();
+		const wordCount = stats.todayWords;
+		const percent = stats.percent;
 
 		// 更新显示
 		if (this.wordCountEl) this.wordCountEl.textContent = wordCount.toLocaleString() + t('common.word-char'); 

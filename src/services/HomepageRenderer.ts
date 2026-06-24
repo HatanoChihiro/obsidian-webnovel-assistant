@@ -1,12 +1,12 @@
 import type { App} from 'obsidian';
 import { Notice, TFile, TFolder, setIcon } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
-import type { RankingEntry } from '../types/ranking';
+import type { TaskEntry } from '../types/task';
 import type { NovelFolderInfo } from '../types/homepage';
-import { getRankingStatusText, getNovelStatusText, getNovelInfoLabel } from '../i18n/data-keys';
+import { getTaskStatusText, getNovelStatusText, getNovelInfoLabel } from '../i18n/data-keys';
 import { t } from '../i18n';
 import { calcStreak, calcFocusRate, calcActiveHours, calcDailyAverage, getHeatClass } from '../ui/HistoryModal';
-import { RankingManager } from '../services/RankingManager';
+import { TaskManager } from '../services/TaskManager';
 import { NewNovelModal } from '../ui/NewNovelModal';
 
 export class HomepageRenderer {
@@ -172,21 +172,21 @@ export class HomepageRenderer {
 			countEl.textContent = novel.wordCount.toLocaleString() + ' ' + t('common.word-char');
 
 			// 任务信息（最近一条）
-			const rankingInfo = await this.getLatestRanking(novel.folderPath);
-			if (rankingInfo) {
-				const rankContainer = item.createDiv({ cls: 'homepage-ongoing-ranking' });
+			const taskInfo = await this.getLatestTask(novel.folderPath);
+			if (taskInfo) {
+				const rankContainer = item.createDiv({ cls: 'homepage-ongoing-task' });
 
-				const progress = rankingInfo.progress;
-				const target = rankingInfo.wordTarget;
-				const statusText = rankingInfo.statusText;
-				const daysLeft = rankingInfo.daysLeft;
+				const progress = taskInfo.progress;
+				const target = taskInfo.wordTarget;
+				const statusText = taskInfo.statusText;
+				const daysLeft = taskInfo.daysLeft;
 
-				const topRow = rankContainer.createDiv({ cls: 'homepage-ranking-row' });
-				const leftWrapper = topRow.createDiv({ cls: 'homepage-ranking-left-wrapper' });
-				leftWrapper.createSpan({ cls: 'homepage-ranking-title-inline', text: t('homepage.current-task') });
-				const periodText = t('common.period-prefix', { period: rankingInfo.period }) + ' ' + rankingInfo.position;
-				leftWrapper.createSpan({ cls: 'homepage-ranking-period', text: periodText });
-				topRow.createSpan({ cls: 'homepage-ranking-progress', text: progress.toLocaleString() + ' / ' + target.toLocaleString() + ' ' + t('common.word-char') + ' (' + statusText + ')' });
+				const topRow = rankContainer.createDiv({ cls: 'homepage-task-row' });
+				const leftWrapper = topRow.createDiv({ cls: 'homepage-task-left-wrapper' });
+				leftWrapper.createSpan({ cls: 'homepage-task-title-inline', text: t('homepage.current-task') });
+				const periodText = t('common.period-prefix', { period: taskInfo.period }) + ' ' + taskInfo.position;
+				leftWrapper.createSpan({ cls: 'homepage-task-period', text: periodText });
+				topRow.createSpan({ cls: 'homepage-task-progress', text: progress.toLocaleString() + ' / ' + target.toLocaleString() + ' ' + t('common.word-char') + ' (' + statusText + ')' });
 
 				// 动态进度条作为分割线
 				const progressPercent = target > 0 ? Math.min(100, Math.max(0, (progress / target) * 100)) : 0;
@@ -196,15 +196,15 @@ export class HomepageRenderer {
 				// 进度条颜色区分状态
 				if (progressPercent >= 100) progressFill.addClass('is-done');
 
-				if (daysLeft > 0 && rankingInfo.entry.status === 'active') {
-					const bottomRow = rankContainer.createDiv({ cls: 'homepage-ranking-row homepage-ranking-sub' });
-					bottomRow.createSpan({ cls: 'homepage-ranking-days', text: t('homepage.days-remaining', { days: daysLeft }) });
+				if (daysLeft > 0 && taskInfo.entry.status === 'active') {
+					const bottomRow = rankContainer.createDiv({ cls: 'homepage-task-row homepage-task-sub' });
+					bottomRow.createSpan({ cls: 'homepage-task-days', text: t('homepage.days-remaining', { days: daysLeft }) });
 					const remaining = target - progress;
 					if (remaining > 0) {
 						const dailyNeeded = Math.round(remaining / daysLeft);
-						bottomRow.createSpan({ cls: 'homepage-ranking-daily', text: t('homepage.daily-needed', { words: dailyNeeded.toLocaleString() }) });
+						bottomRow.createSpan({ cls: 'homepage-task-daily', text: t('homepage.daily-needed', { words: dailyNeeded.toLocaleString() }) });
 					} else {
-						bottomRow.createSpan({ cls: 'homepage-ranking-daily', text: t('homepage.goal-reached') });
+						bottomRow.createSpan({ cls: 'homepage-task-daily', text: t('homepage.goal-reached') });
 					}
 				}
 			}
@@ -233,7 +233,7 @@ export class HomepageRenderer {
 			nameEl.textContent = displayName;
 			nameEl.onclick = () => this.navigateToNovel(novel.folderPath);
 
-			this.createFieldEl(card, getNovelInfoLabel('wordGoal'), novel.wordCount.toLocaleString());
+			this.createFieldEl(card, t('homepage.field-total-words'), novel.wordCount.toLocaleString());
 			this.createFieldEl(card, getNovelInfoLabel('protagonist'), novel.metadata?.protagonist || '--');
 			this.createFieldEl(card, getNovelInfoLabel('genre'), novel.metadata?.genre || '--');
 
@@ -265,7 +265,7 @@ export class HomepageRenderer {
 			nameEl.textContent = displayName;
 			nameEl.onclick = () => this.navigateToNovel(novel.folderPath);
 
-			this.createFieldEl(card, getNovelInfoLabel('wordGoal'), novel.wordCount.toLocaleString());
+			this.createFieldEl(card, t('homepage.field-total-words'), novel.wordCount.toLocaleString());
 			this.createFieldEl(card, getNovelInfoLabel('genre'), novel.metadata?.genre || '--');
 
 			if (novel.metadata?.synopsis) {
@@ -296,7 +296,7 @@ export class HomepageRenderer {
 			nameEl.textContent = displayName;
 			nameEl.onclick = () => this.navigateToNovel(novel.folderPath);
 
-			this.createFieldEl(card, getNovelInfoLabel('wordGoal'), novel.wordCount.toLocaleString());
+			this.createFieldEl(card, t('homepage.field-total-words'), novel.wordCount.toLocaleString());
 			this.createFieldEl(card, getNovelInfoLabel('genre'), novel.metadata?.genre || '--');
 
 			if (novel.metadata?.synopsis) {
@@ -437,12 +437,12 @@ export class HomepageRenderer {
 	}
 
 	// 辅助方法：获取最近一条任务记录
-	private async getLatestRanking(folderPath: string): Promise<{
+	private async getLatestTask(folderPath: string): Promise<{
 		period: number; position: string; wordTarget: number;
 		progress: number; statusText: string; daysLeft: number;
-		entry: RankingEntry;
+		entry: TaskEntry;
 	} | null> {
-		const manager = new RankingManager(this.app, this.plugin, folderPath);
+		const manager = new TaskManager(this.app, this.plugin, folderPath);
 		const entries = await manager.loadEntries();
 		if (!entries || entries.length === 0) return null;
 
@@ -455,10 +455,10 @@ export class HomepageRenderer {
 
 		let statusText = '';
 		switch (entry.status) {
-			case 'active': statusText = getRankingStatusText('active'); break;
-			case 'completed': statusText = getRankingStatusText('completed') + '!'; break;
-			case 'incomplete': statusText = getRankingStatusText('incomplete') + '!'; break;
-			case 'notStarted': statusText = getRankingStatusText('notStarted'); break;
+			case 'active': statusText = getTaskStatusText('active'); break;
+			case 'completed': statusText = getTaskStatusText('completed') + '!'; break;
+			case 'incomplete': statusText = getTaskStatusText('incomplete') + '!'; break;
+			case 'notStarted': statusText = getTaskStatusText('notStarted'); break;
 		}
 
 		return {

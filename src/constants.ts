@@ -91,7 +91,7 @@ export const VIEW_TYPES = {
 	STATUS: 'status-view',
 	FORESHADOWING: 'foreshadowing-view',
 	TIMELINE: 'timeline-view',
-	RANKING: 'ranking-view',
+	TASK: 'task-view',
 	CREATIVE: 'creative-view',
 	IMMERSIVE_CHAPTER_LIST: 'immersive-chapter-list-view',
 	IMMERSIVE_STICKY_NOTES: 'immersive-sticky-notes-view',
@@ -230,7 +230,7 @@ export const FLAT_IMMERSIVE_KEYS = [
 	'immersiveTopSize', 'immersiveBottomSize', 'immersiveLeftSize', 'immersiveRightSize',
 	'immersiveShowTotalTime',
 	'immersiveShowFocusTime', 'immersiveShowSlackTime', 'immersiveShowChapterProgress',
-	'immersiveShowDailyProgress', 'immersiveShowSessionWords', 'immersiveShowRankingProgress', 
+	'immersiveShowDailyProgress', 'immersiveShowSessionWords', 'immersiveShowTaskProgress', 
 	'immersiveHideProperties',
 	'immersiveTopInternalSizes', 'immersiveBottomInternalSizes', 'immersiveLeftInternalSizes', 'immersiveRightInternalSizes',
 	'immersiveNoteSize', 'immersiveNoteFontSize', 'immersiveLayout'
@@ -274,7 +274,7 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 		fileName: '时间线',
 		defaultTypes: ['主线', '支线', '回忆', '伏笔线', '暗线'],
 	},
-	ranking: {
+	task: {
 		fileName: '限时任务',
 	},
 	eyeCareEnabled: false,
@@ -311,7 +311,7 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 		immersiveShowChapterProgress: true,
 		immersiveShowDailyProgress: true,
 		immersiveShowSessionWords: true,
-		immersiveShowRankingProgress: true,
+		immersiveShowTaskProgress: true,
 		
 		immersiveHideProperties: true,
 		

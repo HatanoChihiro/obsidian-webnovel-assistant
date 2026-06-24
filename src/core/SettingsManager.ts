@@ -5,6 +5,7 @@ import { detectLocale } from '../i18n';
 import { getLocalizedDefaults } from '../i18n/data-keys';
 import { Notice } from 'obsidian';
 import type { AccurateCountSettings, ImmersiveModeSettings, ObsSettings } from '../types/settings';
+import type { TaskSettings } from '../types/task';
 import { VALIDATION_RULES, FLAT_OBS_KEYS, FLAT_IMMERSIVE_KEYS } from '../constants';
 import type { ValidationResult } from '../utils/validation';
 import { SerializedWriter } from '../utils/SerializedWriter';
@@ -103,7 +104,7 @@ export class SettingsManager {
 		adjusted.novelInfo = { ...defaults.novelInfo, fileName: localized.novelInfoFileName };
 		adjusted.foreshadowing = { ...defaults.foreshadowing, fileName: localized.foreshadowingFileName };
 		adjusted.timeline = { ...defaults.timeline, fileName: localized.timelineFileName };
-		adjusted.ranking = { ...defaults.ranking, fileName: localized.rankingFileName };
+		adjusted.task = { ...defaults.task, fileName: localized.taskFileName };
 		adjusted.loreFolderName = localized.loreFolderName;
 
 		// 调整标签/类型默认值
@@ -280,6 +281,23 @@ export class SettingsManager {
 	): AccurateCountSettings {
 		const migrated = this.deepMerge(this.defaultSettings as unknown as Record<string, unknown>, settings as unknown as Record<string, unknown>) as unknown as AccurateCountSettings;
 
+		if (oldData && typeof oldData === 'object' && 'ranking' in oldData) {
+			const oldRanking = (oldData as Record<string, unknown>).ranking;
+			if (oldRanking && typeof oldRanking === 'object') {
+				migrated.task = this.deepMerge(
+					this.defaultSettings.task as unknown as Record<string, unknown>,
+					oldRanking as Record<string, unknown>
+				) as unknown as TaskSettings;
+			}
+		}
+
+		if (oldData && typeof oldData === 'object' && 'immersiveShowRankingProgress' in oldData) {
+			const oldVal = (oldData as Record<string, unknown>).immersiveShowRankingProgress;
+			if (oldVal !== undefined) {
+				migrated.immersive.immersiveShowTaskProgress = Boolean(oldVal);
+			}
+		}
+
 		if (oldData && typeof oldData === 'object' && 'noteColors' in oldData) {
 			const noteColors = (oldData as { noteColors?: string[] }).noteColors;
 			if (noteColors && Array.isArray(noteColors) && (!migrated.noteThemes || migrated.noteThemes.length === 0)) {
@@ -303,7 +321,8 @@ export class SettingsManager {
 				'immersiveShowStickyNotes',
 				'immersiveShowForeshadowing',
 				'immersiveShowTimeline',
-				'immersivePanelPosition'
+				'immersivePanelPosition',
+				'immersiveShowRankingProgress'
 			];
 			for (const key of obsoleteKeys) {
 				if (key in migrated.immersive) {

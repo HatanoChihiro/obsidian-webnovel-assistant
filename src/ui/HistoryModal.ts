@@ -358,10 +358,10 @@ HEAT_LEVELS.forEach(level => {
 				if (stat) {
 					const words = stat.addedWords || 0;
 					cell.addClass(getHeatClass(words));
-					const focusH = (stat.focusMs / 3600000).toFixed(1);
+					const focusH = ((stat.focusMs || 0) / 3600000).toFixed(1);
 					cell.setAttribute('title', `${dateStr}
 ${t('modal.metric-words')}: ${words}
-${t('modal.metric-focus-time')}: ${focusH}h}`);
+${t('modal.metric-focus-time')}: ${focusH}h`);
 				} else if (cellDate.isAfter(now, 'day')) {
 					cell.addClass('stats-heatmap-future');
 				} else {

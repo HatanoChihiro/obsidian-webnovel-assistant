@@ -76,17 +76,16 @@ export class ObsOverlayServer {
 						'Content-Type': 'application/json',
 						'Access-Control-Allow-Origin': '*'
 					});
-					plugin.getObsStats()
-						.then(stats => {
-							res.end(JSON.stringify(stats));
-						})
-						.catch(err => {
-							Logger.error('[WebNovel Assistant] ObsServer stats error:', err);
-							if (!(res as { headersSent?: boolean }).headersSent) {
-								res.writeHead(500, { 'Content-Type': 'application/json' });
-							}
-							res.end(JSON.stringify({ error: 'Internal server error' }));
-						});
+					try {
+						const stats = plugin.statisticsManager.getCoreStats();
+						res.end(JSON.stringify(stats));
+					} catch (err) {
+						Logger.error('[WebNovel Assistant] ObsServer stats error:', err);
+						if (!(res as { headersSent?: boolean }).headersSent) {
+							res.writeHead(500, { 'Content-Type': 'application/json' });
+						}
+						res.end(JSON.stringify({ error: 'Internal server error' }));
+					}
 				} else {
 					res.writeHead(200, {
 						'Content-Type': 'text/html; charset=utf-8',

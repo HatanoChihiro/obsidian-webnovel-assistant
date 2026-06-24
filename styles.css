@@ -273,9 +273,7 @@ body .markdown-source-view.mod-cm6 .cm-editor.webnovel-show-gutter .cm-scroller 
 	font-size: 0.75em;
 
 	color: var(--text-on-accent);
-
-	background-color: var(--color-yellow, #F5A623);
-
+	background-color: color-mix(in srgb, var(--interactive-accent) 40%, var(--color-yellow, #F5A623) 60%);
 	border-radius: 4px;
 
 	padding: 2px 4px;
@@ -737,87 +735,87 @@ body .history-stats-modal .stats-chart-scroll-wrapper:hover::-webkit-scrollbar-t
 
 /* ========== 榜单追踪面板 ========== */
 
-.ranking-view-container { padding: 18px; overflow-y: auto; }
+.task-view-container { padding: 18px; overflow-y: auto; }
 
-.ranking-view-header { margin-bottom: 12px; }
+.task-view-header { margin-bottom: 12px; }
 
-.ranking-view-title-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.task-view-title-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
 
-.ranking-view-title { font-size: 16px; font-weight: bold; color: var(--interactive-accent); margin-top: 8px; }
+.task-view-title { font-size: 16px; font-weight: bold; color: var(--interactive-accent); margin-top: 8px; }
 
-.ranking-add-btn { background: var(--interactive-accent); color: var(--text-on-accent); border: none; border-radius: 50%; width: 28px; height: 28px; font-size: 1.3em; cursor: pointer; display: flex; align-items: center; justify-content: center; line-height: 1; padding: 0; }
+.task-add-btn { background: var(--interactive-accent); color: var(--text-on-accent); border: none; border-radius: 50%; width: 28px; height: 28px; font-size: 1.3em; cursor: pointer; display: flex; align-items: center; justify-content: center; line-height: 1; padding: 0; }
 
-.ranking-add-btn:hover { filter: brightness(1.1); }
+.task-add-btn:hover { filter: brightness(1.1); }
 
-.ranking-view-folder { font-size: 12px; color: var(--text-muted); }
+.task-view-folder { font-size: 12px; color: var(--text-muted); }
 
-.ranking-view-empty { color: var(--text-muted); font-size: 14px; padding: 24px 0; text-align: center; }
+.task-view-empty { color: var(--text-muted); font-size: 14px; padding: 24px 0; text-align: center; }
 
-.ranking-view-hint { font-size: 12px; }
+.task-view-hint { font-size: 12px; }
 
-.ranking-create-btn { margin-top: 10px; }
+.task-create-btn { margin-top: 10px; }
 
-.ranking-card { background: color-mix(in srgb, var(--interactive-accent) 4%, var(--background-secondary)); border-radius: 8px; padding: 14px 18px; margin-bottom: 12px; border-top: 3px solid var(--interactive-accent); }
+.task-card { background: color-mix(in srgb, var(--interactive-accent) 4%, var(--background-secondary)); border-radius: 8px; padding: 14px 18px; margin-bottom: 12px; border-top: 3px solid var(--interactive-accent); }
 
-.ranking-card-active { border-top-color: var(--interactive-accent); }
+.task-card-active { border-top-color: var(--interactive-accent); }
 
-.ranking-card-done { border-top-color: var(--color-green, #10b981); }
+.task-card-done { border-top-color: var(--color-green, #10b981); }
 
-.ranking-card-failed { border-top-color: color-mix(in srgb, color-mix(in srgb, var(--color-red, #ef4444) 80%, var(--interactive-accent)) 85%, var(--text-normal)); }
+.task-card-failed { border-top-color: color-mix(in srgb, color-mix(in srgb, var(--color-red, #ef4444) 80%, var(--interactive-accent)) 85%, var(--text-normal)); }
 
-.ranking-card-pending { border-top-color: var(--text-muted); }
+.task-card-pending { border-top-color: var(--text-muted); }
 
-.ranking-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.task-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 
-.ranking-card-period { font-weight: 600; font-size: 16px; color: var(--interactive-accent); }
+.task-card-period { font-weight: 600; font-size: 16px; color: var(--interactive-accent); }
 
-.ranking-card-status { font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: normal; }
+.task-card-status { font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: normal; }
 
-.ranking-status-active { background: var(--interactive-accent); color: var(--text-on-accent); }
+.task-status-active { background: var(--interactive-accent); color: var(--text-on-accent); }
 
-.ranking-status-done { background: var(--color-green, #10b981); color: var(--text-on-accent); }
+.task-status-done { background: var(--color-green, #10b981); color: var(--text-on-accent); }
 
-.ranking-status-failed { background: color-mix(in srgb, color-mix(in srgb, var(--color-red, #ef4444) 80%, var(--interactive-accent)) 85%, var(--text-normal)); color: var(--text-on-accent); }
+.task-status-failed { background: color-mix(in srgb, color-mix(in srgb, var(--color-red, #ef4444) 80%, var(--interactive-accent)) 85%, var(--text-normal)); color: var(--text-on-accent); }
 
-.ranking-status-pending { background: var(--text-muted); color: var(--text-on-accent); }
+.task-status-pending { background: var(--text-muted); color: var(--text-on-accent); }
 
-.ranking-card-info-row { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-normal); font-weight: 500; flex-wrap: nowrap; overflow: hidden; margin-bottom: 4px; }
+.task-card-info-row { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-normal); font-weight: 500; flex-wrap: nowrap; overflow: hidden; margin-bottom: 4px; }
 
-.ranking-card-platform { }
+.task-card-platform { }
 
-.ranking-card-position::before { content: '\00b7'; margin-right: 6px; }
+.task-card-position::before { content: '\00b7'; margin-right: 6px; }
 
-.ranking-card-cycle-row { font-size: 12px; color: var(--text-muted); margin-bottom: 10px; }
+.task-card-cycle-row { font-size: 12px; color: var(--text-muted); margin-bottom: 10px; }
 
-.ranking-card-cycle-below { text-align: right; margin-top: 4px; }
+.task-card-cycle-below { text-align: right; margin-top: 4px; }
 
-.ranking-card-progress { margin-bottom: 6px; }
+.task-card-progress { margin-bottom: 6px; }
 
-.ranking-progress-label { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; }
+.task-progress-label { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; }
 
-.ranking-progress-percent { font-weight: 600; color: var(--interactive-accent); }
+.task-progress-percent { font-weight: 600; color: var(--interactive-accent); }
 
-.ranking-card-footer { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted); }
+.task-card-footer { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted); }
 
-.ranking-remaining { color: var(--text-muted); }
+.task-remaining { color: var(--text-muted); }
 
-.ranking-reached { color: var(--color-green, #10b981); font-weight: 600; }
+.task-reached { color: var(--color-green, #10b981); font-weight: 600; }
 
-.ranking-days-left { color: var(--text-muted); }
+.task-days-left { color: var(--text-muted); }
 
-.ranking-card-result { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+.task-card-result { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
 
-.ranking-add-modal h2 { color: var(--interactive-accent); }
+.task-add-modal h2 { color: var(--interactive-accent); }
 
 
 
 /* StatusView 榜单目标区域 */
 
-.ranking-goal-section { }
+.task-goal-section { }
 
-.ranking-time-desc { font-size: 12px; color: var(--text-muted); text-align: right; margin-top: 2px; }
+.task-time-desc { font-size: 12px; color: var(--text-muted); text-align: right; margin-top: 2px; }
 
-.ranking-time-desc.ranking-reached { color: var(--color-green, #10b981); font-weight: 600; }
+.task-time-desc.task-reached { color: var(--color-green, #10b981); font-weight: 600; }
 
 
 
@@ -1607,7 +1605,7 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-.homepage-ongoing-ranking {
+.homepage-ongoing-task {
 
 	display: flex;
 
@@ -1619,7 +1617,7 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-.homepage-ranking-row {
+.homepage-task-row {
 
 	display: flex;
 
@@ -1631,7 +1629,7 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-.homepage-ranking-left-wrapper {
+.homepage-task-left-wrapper {
 
 	display: flex;
 
@@ -1641,7 +1639,7 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-.homepage-ranking-title-inline {
+.homepage-task-title-inline {
 
 	color: var(--text-muted);
 
@@ -1649,7 +1647,7 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-.homepage-ranking-period {
+.homepage-task-period {
 
 	color: var(--text-normal);
 
@@ -1663,7 +1661,7 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-.homepage-ranking-progress {
+.homepage-task-progress {
 
 	color: var(--text-muted);
 
@@ -1673,7 +1671,7 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-.homepage-ranking-sub {
+.homepage-task-sub {
 
 	font-size: 12px;
 
@@ -1681,16 +1679,12 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-.homepage-ranking-days {
-
-	color: var(--color-orange, #f59e0b);
-
+.homepage-task-days {
+	color: color-mix(in srgb, var(--interactive-accent) 40%, var(--color-orange, #f59e0b) 60%);
 }
 
-.homepage-ranking-daily {
-
-	color: var(--color-red, #e53935);
-
+.homepage-task-daily {
+	color: color-mix(in srgb, var(--interactive-accent) 40%, var(--color-red, #e53935) 60%);
 }
 
 
@@ -4346,11 +4340,11 @@ body.immersive-mode-active .workspace-leaf.mod-active.workspace-leaf .workspace-
 }
 
 
-/* ========== Ranking Modal ========== */
-.wn-ranking-input { width: 100%; margin-bottom: 8px; padding: 6px 8px; border-radius: 4px; border: 1px solid var(--background-modifier-border); background: var(--background-primary); color: var(--text-normal); box-sizing: border-box; }
-.wn-ranking-label { display: block; margin-bottom: 4px; font-weight: bold; }
-.wn-ranking-hint { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; }
-.wn-ranking-btn-container { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+/* ========== Task Modal ========== */
+.wn-task-input { width: 100%; margin-bottom: 8px; padding: 6px 8px; border-radius: 4px; border: 1px solid var(--background-modifier-border); background: var(--background-primary); color: var(--text-normal); box-sizing: border-box; }
+.wn-task-label { display: block; margin-bottom: 4px; font-weight: bold; }
+.wn-task-hint { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; }
+.wn-task-btn-container { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
 
 
 /* ========== Mobile Floating Stats ========== */

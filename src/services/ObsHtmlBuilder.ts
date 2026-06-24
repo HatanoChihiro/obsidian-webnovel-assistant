@@ -1,10 +1,8 @@
 import { Logger } from '../utils/Logger';
-import { MarkdownView } from 'obsidian';
 import { t } from '../i18n';
-import { hexToRgba, formatTime, parseGoal } from '../utils';
-import type { ObsStatsPayload } from '../types/stats';
+import { hexToRgba } from '../utils';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
-import { RankingManager } from './RankingManager';
+
 
 /**
  * OBS 叠加层 HTML 构建器
@@ -13,75 +11,7 @@ import { RankingManager } from './RankingManager';
 export class ObsHtmlBuilder {
 	constructor(private plugin: WebNovelAssistantPlugin) {}
 
-	/**
-	 * 获取 OBS 统计数据
-	 */
-	async getObsStats(): Promise<ObsStatsPayload> {
-		const focusSec = Math.floor(this.plugin.focusMs / 1000);
-		const slackSec = Math.floor(this.plugin.slackMs / 1000);
-		const totalSec = focusSec + slackSec;
-		const today = window.moment().format('YYYY-MM-DD');
-		const todayStat = this.plugin.historyManager.getDailyStat(today) || { focusMs: 0, slackMs: 0, addedWords: 0 };
 
-		let targetGoal = this.plugin.settings.defaultGoal;
-		let currentFile = '';
-		let currentFolder = '';
-		let chapterWords = 0;
-		const view = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
-		if (view?.file) {
-			currentFile = view.file.basename;
-			currentFolder = view.file.parent?.isRoot() ? '' : (view.file.parent?.name || '');
-			const cache = this.plugin.app.metadataCache.getFileCache(view.file);
-			const fmGoal = parseGoal(cache?.frontmatter?.['word-goal']);
-			if (fmGoal > 0) targetGoal = fmGoal;
-			chapterWords = this.plugin.calculateAccurateWords(view.getViewData());
-		}
-
-		const todayAdded = todayStat.addedWords; // 允许负数，提醒作者删除了字数
-		const dailyGoal = this.plugin.settings.dailyGoal || 0;
-
-
-		// 任务进度：基于目录判断，无活跃 MarkdownView 时使用上次文件夹
-		let rankingWords = 0;
-		let rankingGoal = 0;
-		let rankingFolder = '';
-		if (view?.file) {
-			rankingFolder = view.file.parent?.path || '';
-			this.plugin.lastRankingFolder = rankingFolder;
-		} else if (this.plugin.lastRankingFolder) {
-			rankingFolder = this.plugin.lastRankingFolder;
-		}
-		if (rankingFolder && this.plugin.rankingManager) {
-			const manager = new RankingManager(this.plugin.app, this.plugin, rankingFolder);
-			const rankingFile = manager.getRankingFile();
-			if (rankingFile) {
-				const rankingContent = await this.plugin.app.vault.cachedRead(rankingFile);
-				const entries = manager.parseEntries(rankingContent);
-				const active = manager.getActiveRanking(entries);
-				if (active) {
-					rankingWords = manager.calcProgress(active);
-					rankingGoal = active.wordTarget;
-				}
-			}
-		}
-		return {
-			isTracking: this.plugin.isTracking,
-			focusTime: formatTime(focusSec),
-			slackTime: formatTime(slackSec),
-			totalTime: formatTime(totalSec),
-			sessionWords: Math.max(0, this.plugin.sessionAddedWords),
-			todayWords: chapterWords,
-			goal: targetGoal,
-			percent: targetGoal > 0 ? Math.max(0, Math.min(Math.round((chapterWords / targetGoal) * 100), 100)) : 0,
-			dailyWords: Math.max(0, todayAdded),
-			dailyGoal: dailyGoal,
-			dailyPercent: dailyGoal > 0 ? Math.max(0, Math.min(Math.round((todayAdded / dailyGoal) * 100), 100)) : 0,
-			currentFile: currentFile,
-			currentFolder: currentFolder,
-			rankingWords: rankingWords,
-			rankingGoal: rankingGoal,
-		};
-	}
 
 	/**
 	 * 过滤用户自定义 CSS，防止 XSS 注入
