@@ -127,7 +127,8 @@ export class MenuManager {
 										description: result.description,
 										chapter: result.chapter,
 										type: result.type,
-										rawBlock: ''
+										rawBlock: '',
+										origin: result.origin
 									}).then(async () => {
 									new Notice(t('notice.timeline-added'));
 
@@ -142,7 +143,7 @@ export class MenuManager {
 									}
 								}).catch(console.error);
 							},
-								false, localTypes).open();
+								false, localTypes, selectedText.trim()).open();
 						})().catch(console.error);});
 					});
 

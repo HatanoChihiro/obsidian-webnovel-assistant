@@ -27,6 +27,7 @@ export class TimelineAddModal extends Modal {
 	private returnFullEntry: boolean; // true 时返回完整 TimelineEntry，false 时返回简化对象
 	private plugin: WebNovelAssistantPlugin;
 	private typeOptions: string[];
+	private origin?: string;
 
 	constructor(
 		app: App,
@@ -36,7 +37,8 @@ export class TimelineAddModal extends Modal {
 		folderPath: string,
 		onSubmit: (entry: TimelineEntry) => void,
 		returnFullEntry: boolean = true,
-		typeOptions: string[] = []
+		typeOptions: string[] = [],
+		origin?: string
 	) {
 		super(app);
 		this.plugin = plugin;
@@ -46,6 +48,7 @@ export class TimelineAddModal extends Modal {
 		this.onSubmit = onSubmit;
 		this.returnFullEntry = returnFullEntry;
 		this.typeOptions = typeOptions;
+		this.origin = origin;
 	}
 
 	onOpen() {
@@ -189,7 +192,8 @@ export class TimelineAddModal extends Modal {
 				description: descInput.value.trim(),
 				chapter: uniqueChapters.join(', '), // 用逗号+空格连接
 				type: typeValue,
-				rawBlock: ''
+				rawBlock: '',
+				origin: this.origin
 			}
 			this.onSubmit(entry);
 			this.close();
@@ -211,10 +215,10 @@ export class TimelineAddFromSelectionModal extends TimelineAddModal {
 		description: string,
 		sourceFile: string,
 		folderPath: string,
-		onSubmit: (entry: { time: string; description: string; chapter: string; type: string }) => void,
+		onSubmit: (entry: { time: string; description: string; chapter: string; type: string; origin?: string }) => void,
 		typeOptions: string[] = []
 	) {
-		super(app, plugin, description, sourceFile, folderPath, onSubmit, false, typeOptions);
+		super(app, plugin, description, sourceFile, folderPath, onSubmit, false, typeOptions, description);
 	}
 }
 
@@ -245,6 +249,58 @@ export class TimelineView extends CreativeView {
 		this.editingIndex = -1;
 		this.filterType = 'all';
 		await this.refresh();
+	}
+
+	private getEventColor(type: string): string {
+		const types = this.plugin.settings.timeline?.defaultTypes || [];
+		const index = types.indexOf(type);
+		if (index === -1) return 'var(--text-accent)';
+		
+		const colors = [
+			'var(--color-red)',
+			'var(--color-blue)',
+			'var(--color-green)',
+			'var(--color-orange)',
+			'var(--color-purple)',
+			'var(--color-cyan)',
+			'var(--color-pink)'
+		];
+		return colors[index % colors.length];
+	}
+
+	/**
+	 * 使用智能文本匹配进行精准跳转
+	 */
+	private async openFileWithSmartLocate(file: TFile, searchText: string) {
+		const leaf = this.app.workspace.getLeaf(false);
+		
+		if (!searchText) {
+			await leaf.openFile(file);
+			return;
+		}
+
+		const content = await this.app.vault.cachedRead(file);
+		let targetLine = 0;
+		
+		const cleanSearch = searchText.trim();
+		if (cleanSearch) {
+			// 将搜索文本中的所有空白字符转换为匹配任意空白字符的正则，这样忽略了换行符
+			const escapedSearch = cleanSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+			const searchPattern = escapedSearch.replace(/\s+/g, '\\s+');
+			
+			let match = content.match(new RegExp(searchPattern));
+			if (!match && cleanSearch.length > 20) {
+				// 降级匹配
+				const shortSearch = cleanSearch.substring(0, 20).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+				match = content.match(new RegExp(shortSearch));
+			}
+
+			if (match && match.index !== undefined) {
+				targetLine = content.substring(0, match.index).split('\n').length - 1;
+			}
+		}
+
+		await leaf.openFile(file, { eState: { line: targetLine } });
 	}
 
 	private getTypeFilterOptions(entries: TimelineEntry[]): string[] {
@@ -452,7 +508,11 @@ export class TimelineView extends CreativeView {
 					});
 					link.onclick = () => { void (async () => { try {
 						const file = this.app.metadataCache.getFirstLinkpathDest(chapterName, '');
-						if (file) await this.app.workspace.getLeaf(false).openFile(file);
+						if (file) {
+							// 优先使用 origin 提供精确高亮，否则降级使用 description
+							const searchText = it.origin || it.description || '';
+							await this.openFileWithSmartLocate(file, searchText);
+						}
 						else new Notice(t('common.file-not-found', { name: chapterName }));
 					} catch(e) { console.error(e); } })(); };
 					

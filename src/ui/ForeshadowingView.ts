@@ -364,17 +364,19 @@ export class ForeshadowingView extends CreativeView {
 		
 		const cleanSearch = searchText.trim();
 		if (cleanSearch) {
-			// 完全匹配
-			let index = content.indexOf(cleanSearch);
+			// 将搜索文本中的所有空白字符转换为匹配任意空白字符的正则，这样忽略了换行符
+			const escapedSearch = cleanSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+			const searchPattern = escapedSearch.replace(/\s+/g, '\\s+');
 			
-			// 降级匹配（忽略两端多余空格等情况）
-			if (index === -1 && cleanSearch.length > 20) {
-				const shortSearch = cleanSearch.substring(0, 20);
-				index = content.indexOf(shortSearch);
+			let match = content.match(new RegExp(searchPattern));
+			if (!match && cleanSearch.length > 20) {
+				// 降级匹配
+				const shortSearch = cleanSearch.substring(0, 20).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+				match = content.match(new RegExp(shortSearch));
 			}
-			
-			if (index !== -1) {
-				targetLine = content.substring(0, index).split('\n').length - 1;
+
+			if (match && match.index !== undefined) {
+				targetLine = content.substring(0, match.index).split('\n').length - 1;
 			}
 		}
 

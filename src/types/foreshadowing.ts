@@ -70,7 +70,10 @@ export interface ForeshadowingEntry {
 export interface ForeshadowingSettings {
 	/** 伏笔文件名（不含 .md 后缀，默认：伏笔） */
 	fileName: string;
-	/** 是否在标题中显示时间戳（默认：true） */
+	/**
+	 * 是否在标题中显示时间戳
+	 * @deprecated 格式已升级，时间戳始终显示在引用来源行中，此配置不再生效
+	 */
 	showTimestamp: boolean;
 	/** 常用标签列表 */
 	defaultTags: string[];

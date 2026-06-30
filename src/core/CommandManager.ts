@@ -4,6 +4,9 @@ import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { copyDocumentContent } from '../utils/ui';
 import { ChapterSorter } from '../services/ChapterSorter';
 import { ForeshadowingInputModal, ConfirmCreateForeshadowingFileModal, ForeshadowingRecoveryModal } from '../ui/ForeshadowingModal';
+import { TimelineAddModal } from '../ui/TimelineView';
+import type { TimelineEntry } from '../services/TimelineManager';
+import { TimelineManager } from '../services/TimelineManager';
 import { AdvancedSearchModal } from '../ui/AdvancedSearchModal';
 import { t } from '../i18n';
 import { getDefaultFileName } from '../i18n/data-keys';
@@ -50,6 +53,7 @@ export class CommandManager {
 		this.registerChapterCommands();
 		this.registerObsCommands();
 		this.registerForeshadowingCommands();
+		this.registerTimelineCommands();
 		this.registerMobileCommands();
 		this.registerHomepageCommands();
 		this.registerSearchCommands();
@@ -387,7 +391,82 @@ export class CommandManager {
 			}
 		});
 	}
-	
+
+	/**
+	 * 注册“添加到时间线”命令面板命令
+	 * 解决移动端无右键菜单导致无法选中文本添加时间线的问题
+	 * 逻辑与 MenuManager.editor-menu 中的时间线菜单项一致
+	 */
+	private registerTimelineCommands() {
+		this.plugin.addCommand({
+			id: 'add-to-timeline',
+			name: t('command.add-to-timeline'),
+			editorCheckCallback: (checking, editor, view) => {
+				// 必须有选中文本才启用该命令
+				const selectedText = editor.getSelection();
+				if (!selectedText || !selectedText.trim()) return false;
+				if (checking) return true;
+
+				const file = view.file;
+				if (!file) return false;
+
+				const chapterName = file.basename;
+				const folderPath = file.parent?.path || '';
+
+				// 读取已有条目中的类型，传入 Modal 供下拉选择
+				void (async () => {
+					try {
+						const tlManager = new TimelineManager(this.plugin.app, this.plugin, folderPath);
+						const tlFile = tlManager.getTimelineFile();
+						const localTypes: string[] = [];
+						if (tlFile) {
+							const tlContent = await this.plugin.app.vault.read(tlFile);
+							const tlEntries = tlManager.parseEntries(tlContent);
+							localTypes.push(
+								...new Set(tlEntries.map((e: TimelineEntry) => e.type).filter(Boolean))
+							);
+						}
+
+						new TimelineAddModal(
+							this.plugin.app,
+							this.plugin,
+							selectedText.trim(),
+							chapterName,
+							folderPath,
+							(result) => {
+								new TimelineManager(this.plugin.app, this.plugin, folderPath).appendEntry({
+									time: result.time,
+									description: result.description,
+									chapter: result.chapter,
+									type: result.type,
+									rawBlock: '',
+									origin: result.origin
+								}).then(async () => {
+									new Notice(t('notice.timeline-added'));
+
+									// 刷新已打开的时间线视图
+									const leaves = this.plugin.app.workspace.getLeavesOfType('timeline-view');
+									if (leaves.length > 0) {
+										// 给文件写入一点时间后再刷新视图
+										await new Promise(resolve => window.setTimeout(resolve, 100));
+										const refreshPromise = leaves[0].view.refresh?.();
+										if (refreshPromise instanceof Promise) {
+											await refreshPromise;
+										}
+									}
+								}).catch(console.error);
+							},
+							false, localTypes, selectedText.trim()
+						).open();
+					} catch (err) {
+						console.error('[CommandManager] add-to-timeline failed:', err);
+					}
+				})();
+				return true;
+			}
+		});
+	}
+
 	private registerMobileCommands() {
 		// 复制本文档：桌面端和移动端均生效（移动端无右键菜单，该命令尤为实用）
 		this.plugin.addCommand({

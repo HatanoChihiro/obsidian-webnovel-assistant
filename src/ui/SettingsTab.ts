@@ -912,18 +912,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				text.inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); text.inputEl.blur(); } });
 			})
 
-		new Setting(containerEl)
-			.setName(t('setting.show-timestamp'))
-			.setDesc(t('setting.show-timestamp-desc'))
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.foreshadowing?.showTimestamp !== false)
-				.onChange(async (value) => {
-					if (!this.plugin.settings.foreshadowing) {
-						this.plugin.settings.foreshadowing = { fileName: getDefaultFileName('foreshadowingFileName'), showTimestamp: true, defaultTags: [] };
-					}
-					this.plugin.settings.foreshadowing.showTimestamp = value;
-					await this.plugin.saveSettings();
-				}));
+
 
 		new Setting(containerEl)
 			.setName(t('setting.common-tags'))

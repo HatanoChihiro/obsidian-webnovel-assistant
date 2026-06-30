@@ -1,7 +1,7 @@
 {
     "name": "web-novel-assistant",
-    "version": "3.3.0",
-    "description": "Obsidian plugin for web novel writing \u2014 accurate word count, goal tracking, focus/slack timer, sticky notes, OBS integration, history stats",
+    "version": "3.3.1",
+    "description": "Obsidian plugin for web novel writing — accurate word count, goal tracking, focus/slack timer, sticky notes, OBS integration, history stats",
     "main": "main.js",
     "scripts": {
         "dev": "esbuild main.ts --bundle --format=cjs --external:obsidian --external:@codemirror/* --outfile=main.js --watch",

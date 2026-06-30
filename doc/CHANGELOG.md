@@ -1,3 +1,13 @@
+## ✨ v3.3.1 时间线与伏笔增强
+
+- 增加“添加时间线”命令，方便移动端操作
+- 时间线现在可以定位到添加时选中的原文段落并高亮显示（仅支持新添加时间线跳转，如果旧时间线想兼容可以参考线格式自行添加原文）
+- 伏笔.md 格式升级，现在采用说明作为标题而非首次添加的章节名，提升阅读体验；旧的伏笔条目会在添加新的合并内容时自动升级为新格式，并兼容老版格式
+
+- add timeline command for mobile devices
+- timelines can now link to the selected paragraph in the original text and highlight it (only supports new timelines; old timelines can be upgraded by manually adding the original text according to the timeline format)
+- lore.md format upgrade: the description is now used as the title instead of the chapter name when it was first added, improving the reading experience; old lore entries will be automatically upgraded to the new format when adding new merged content, and are compatible with the old version
+
 ## 🔧 v3.3.0
 
 - 修复了英文环境下，伏笔面板的描述错误

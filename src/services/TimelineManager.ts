@@ -12,19 +12,13 @@ import { SerializedWriter } from '../utils/SerializedWriter';
 
 
 export interface TimelineEntry {
-
 	time: string;
-
 	description: string;
-
 	chapter: string;
-
 	type: string;
-
 	rawBlock: string;
-
-	items?: { description: string; chapter: string }[];
-
+	origin?: string;
+	items?: { description: string; chapter: string; origin?: string }[];
 }
 
 
@@ -219,7 +213,16 @@ export class TimelineManager {
 
 					const chapter = chapters.join(', ');
 
-					items.push({ description: desc, chapter });
+					// 提取隐藏的原文注释
+					let origin: string | undefined;
+					const originMatch = desc.match(/<!--\s*origin:\s*(.+?)\s*-->/);
+					if (originMatch) {
+						origin = originMatch[1];
+						// 剥离注释
+						desc = desc.replace(/<!--\s*origin:\s*(.+?)\s*-->/g, '').trim();
+					}
+
+					items.push({ description: desc, chapter, origin });
 
 					continue;
 
@@ -335,9 +338,11 @@ export class TimelineManager {
 
 					
 
-					lines.push(`- ${firstLineParts.join(' ')}`);
+					if (it.origin) {
+						firstLineParts.push(`<!-- origin: ${it.origin} -->`);
+					}
 
-					
+					lines.push(`- ${firstLineParts.join(' ')}`);
 
 					// 后续行作为缩进的列表项（Markdown 多行列表项格式）
 
@@ -378,17 +383,15 @@ export class TimelineManager {
 				// 支持多章节
 
 				if (entry.chapter) {
-
 					const chapters = entry.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean);
-
 					const chapterLinks = chapters.map(c => `[[${c}]]`).join(' ');
-
 					if (chapterLinks) firstLineParts.push(chapterLinks);
-
 				}
 
+				if (entry.origin) {
+					firstLineParts.push(`<!-- origin: ${entry.origin.replace(/\n/g, ' ')} -->`);
+				}
 				
-
 				lines.push(`- ${firstLineParts.join(' ')}`);
 
 				
@@ -468,6 +471,9 @@ export class TimelineManager {
 							const chapters = entry.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean);
 							const chapterLinks = chapters.map(c => `[[${c}]]`).join(' ');
 							if (chapterLinks) firstLineParts.push(chapterLinks);
+						}
+						if (entry.origin) {
+							firstLineParts.push(`<!-- origin: ${entry.origin.replace(/\n/g, ' ')} -->`);
 						}
 						newItemLines.push(`- ${firstLineParts.join(' ')}`);
 

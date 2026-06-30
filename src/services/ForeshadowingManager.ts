@@ -166,25 +166,57 @@ export class ForeshadowingManager {
 	 */
 	private findEntryByDescription(content: string, description: string): {
 		found: boolean;
-		insertPos: number; // 在第一个引用块之后插入新引用的字符位置
+		startPos: number; // 整个条目块的起始位置
+		endPos: number;   // 整个条目块的结束位置
+		matchedText: string; // 匹配到的旧格式条目的原始内容，供解析后合并
 	} {
-		// 匹配 **说明**：<description> 这一行
-		const descPattern = new RegExp(
-			`\\*\\*(?:说明|Description)\\*\\*：${escapeRegex(description)}`,
-			'm'
-		);
-		const descMatch = descPattern.exec(content);
-		if (!descMatch) return { found: false, insertPos: -1 };
-
-		// 向上找到这个条目的第一个引用块结束位置（最后一个连续 > 行之后）
-		const beforeDesc = content.slice(0, descMatch.index);
-		// 找到最后一个引用行（> 开头）的末尾
-		const lastQuoteMatch = [...beforeDesc.matchAll(/^> .*/gm)].pop();
-		if (!lastQuoteMatch || lastQuoteMatch.index === undefined) {
-			return { found: false, insertPos: -1 };
+		// 先尝试匹配新格式的标题行: ## 说明
+		const newTitlePattern = new RegExp(`^## \\s*${escapeRegex(description)}\\s*$`, 'm');
+		let match = newTitlePattern.exec(content);
+		
+		let isNewFormat = true;
+		
+		// 如果没找到，退化到旧格式：寻找 **说明**：说明
+		if (!match) {
+			const oldDescPattern = new RegExp(`\\*\\*(?:说明|Description|${t('foreshadowing.description')})\\*\\*：${escapeRegex(description)}`, 'm');
+			match = oldDescPattern.exec(content);
+			isNewFormat = false;
 		}
-		const insertPos = lastQuoteMatch.index + lastQuoteMatch[0].length;
-		return { found: true, insertPos };
+		
+		if (!match) return { found: false, startPos: -1, endPos: -1, matchedText: '' };
+
+		let startPos = -1;
+		if (isNewFormat) {
+			startPos = match.index; // 新格式匹配的就是标题行
+		} else {
+			// 旧格式匹配的是说明行，需要向上找标题行 ## [[...]]
+			const beforeMatch = content.slice(0, match.index);
+			const titleMatch = [...beforeMatch.matchAll(/^## \[\[.+?\]\]/gm)].pop();
+			if (titleMatch && titleMatch.index !== undefined) {
+				startPos = titleMatch.index;
+			}
+		}
+		
+		if (startPos === -1) return { found: false, startPos: -1, endPos: -1, matchedText: '' };
+		
+		// 向下找下一个条目(## )或文件末尾，或者当前条目的 ---
+		const afterStart = content.slice(startPos);
+		const endMatch = afterStart.match(/\n---\n/);
+		let endPos = -1;
+		if (endMatch && endMatch.index !== undefined) {
+			endPos = startPos + endMatch.index + endMatch[0].length;
+		} else {
+			const nextTitleMatch = afterStart.slice(3).match(/^## /m);
+			if (nextTitleMatch && nextTitleMatch.index !== undefined) {
+				endPos = startPos + 3 + nextTitleMatch.index;
+			} else {
+				endPos = content.length;
+			}
+		}
+		
+		const matchedText = content.slice(startPos, endPos);
+
+		return { found: true, startPos, endPos, matchedText };
 	}
 
 	/**
@@ -222,16 +254,56 @@ export class ForeshadowingManager {
 			// 检查是否已存在相同说明的条目
 			let merged = false;
 			await this.app.vault.process(targetFile, (existingContent) => {
-				const { found, insertPos } = this.findEntryByDescription(existingContent, description);
+				const { found, startPos, endPos, matchedText } = this.findEntryByDescription(existingContent, description);
 
-				if (found && insertPos !== -1) {
-					// 合并：在已有条目的引用块末尾追加新引用（带来源和时间）
-					const newQuote = content.trim().split('\n')
-						.map(line => `> ${line}`)
-						.join('\n');
-					const insertion = `\n\n> [[${sourceFile.basename}]] - ${now}\n${newQuote}`;
-					merged = true;
-					return existingContent.slice(0, insertPos) + insertion + existingContent.slice(insertPos);
+				if (found && startPos !== -1) {
+					// 解析旧条目（无论是新旧格式，parseEntries 都能解析）
+					const entries = this.parseEntries(matchedText);
+					if (entries.length > 0) {
+						const entry = entries[0];
+						// 追加新引用内容
+						entry.contents.push({
+							source: sourceFile.basename,
+							time: now,
+							text: content.trim()
+						});
+						
+						// 正确的做法：直接在这里构建格式化字符串替换
+						const lines: string[] = [];
+						lines.push(`## ${entry.description}`);
+						lines.push('');
+						entry.contents.forEach(c => {
+							lines.push(`> [[${c.source}]] - ${c.time}`);
+							c.text.split('\n').forEach(line => lines.push(`> ${line}`));
+							lines.push('');
+						});
+						if (entry.tags.length > 0) {
+							lines.push(`**${getForeshadowingLabel('tags')}**：${entry.tags.map(t => `#${t}`).join(', ')}`);
+							lines.push('');
+						}
+						lines.push(`**${getForeshadowingLabel('status')}**：${getForeshadowingStatusText(entry.status)}`);
+						
+						if (entry.status === ForeshadowingStatus.Recovered) {
+							if (entry.recoveryFiles && entry.recoveryFiles.length > 0) {
+								lines.push('');
+								lines.push(`**${getForeshadowingLabel('recoveredAt')}**：`);
+								entry.recoveryFiles.forEach((file, index) => {
+									const time = entry.recoveredAts && entry.recoveredAts[index] ? ` - ${entry.recoveredAts[index]}` : '';
+									lines.push(`- [[${file}]]${time}`);
+								});
+							} else if (entry.recoveryFile) {
+								const recoveryTimestamp = entry.recoveredAt ? ` - ${entry.recoveredAt}` : '';
+								lines.push('');
+								lines.push(`**${getForeshadowingLabel('recoveredAt')}**：[[${entry.recoveryFile}]]${recoveryTimestamp}`);
+							}
+						}
+						lines.push('');
+						lines.push('---');
+						lines.push('');
+
+						merged = true;
+						return existingContent.slice(0, startPos) + lines.join('\n') + existingContent.slice(endPos);
+					}
 				}
 
 				// 新建条目
@@ -263,11 +335,11 @@ export class ForeshadowingManager {
 		createdAt: string;
 		contentPreview: string;
 	} | null {
-		// 向上查找最近的 H2 标题（## [[...]]）
+		// 向上查找最近的 H2 标题
 		let titleLine = -1;
 		for (let i = cursorLine; i >= 0; i--) {
 			const line = editor.getLine(i);
-			if (/^## \[\[.+\]\]/.test(line)) {
+			if (/^## /.test(line)) {
 				titleLine = i;
 				break;
 			}
@@ -275,12 +347,29 @@ export class ForeshadowingManager {
 		if (titleLine === -1) return null;
 
 		const titleText = editor.getLine(titleLine);
+		let sourceFile = '';
+		let createdAt = '';
+
 		// 提取来源文件名和时间戳
 		const titleMatch = titleText.match(/^## \[\[(.+?)\]\](?:\s*-\s*(.+))?$/);
-		if (!titleMatch) return null;
-
-		const sourceFile = titleMatch[1];
-		const createdAt = titleMatch[2]?.trim() || '';
+		if (titleMatch) {
+			sourceFile = titleMatch[1];
+			createdAt = titleMatch[2]?.trim() || '';
+		} else {
+			// 新格式，需要向下找第一条引用的来源标注
+			for (let i = titleLine + 1; i < editor.lineCount(); i++) {
+				const line = editor.getLine(i);
+				if (line.startsWith('> [[')) {
+					const sourceMatch = line.match(/^> \[\[(.+?)\]\](?:\s*-\s*(.+))?$/);
+					if (sourceMatch) {
+						sourceFile = sourceMatch[1];
+						createdAt = sourceMatch[2]?.trim() || '';
+						break;
+					}
+				}
+				if (/^## /.test(line)) break;
+			}
+		}
 
 		// 向下找第一个引用行作为内容预览
 		let contentPreview = '';
@@ -290,7 +379,7 @@ export class ForeshadowingManager {
 				contentPreview = line.replace(/^> /, '');
 				break;
 			}
-			if (/^## \[\[/.test(line)) break; // 到下一条了
+			if (/^## /.test(line)) break; // 到下一条了
 		}
 
 		return { sourceFile, createdAt, contentPreview };
@@ -314,10 +403,9 @@ export class ForeshadowingManager {
 				}
 			}
 			
+			// 支持新旧格式的定位，捕获整个条目的前半部分作为 before
 			const pattern = new RegExp(
-				`(## \\[\\[${escapeRegex(sourceFile)}\\]\\]` +
-				(createdAt ? `[^\\n]*${escapeRegex(createdAt)}` : '') +
-				`[\\s\\S]*?)(\\*\\*(?:状态|Status)\\*\\*：)(${status})`,
+				`((?:## \\[\\[${escapeRegex(sourceFile)}\\]\\](?:\\s*-\\s*${escapeRegex(createdAt)})?|## .+?\\n(?:> .*\\n)*> \\[\\[${escapeRegex(sourceFile)}\\]\\](?:\\s*-\\s*${escapeRegex(createdAt)})?)[\\s\\S]*?)(\\*\\*(?:状态|Status)\\*\\*：)(${status})`,
 				'm'
 			);
 			
@@ -483,12 +571,26 @@ export class ForeshadowingManager {
 			const trimmed = block.trim();
 			if (!trimmed || !trimmed.startsWith('## ')) continue;
 
-			// 解析标题行：## [[来源文件]] - 时间
-			const titleMatch = trimmed.match(/^## \[\[(.+?)\]\](?:\s*-\s*(.+))?/m);
+			// 解析标题行
+			const titleMatch = trimmed.match(/^## (.*?)$/m);
 			if (!titleMatch) continue;
-
-			const sourceFile = titleMatch[1];
-			const createdAt = titleMatch[2]?.trim() || '';
+			
+			const titleText = titleMatch[1].trim();
+			let sourceFile = '';
+			let createdAt = '';
+			let parsedTitleDescription = '';
+			
+			if (titleText.startsWith('[[')) {
+				// 旧格式
+				const oldMatch = titleText.match(/^\[\[(.+?)\]\](?:\s*-\s*(.+))?$/);
+				if (oldMatch) {
+					sourceFile = oldMatch[1];
+					createdAt = oldMatch[2]?.trim() || '';
+				}
+			} else {
+				// 新格式
+				parsedTitleDescription = titleText;
+			}
 
 			// 解析所有引用块（支持多条）
 			const contents: { source: string; time: string; text: string }[] = [];
@@ -528,7 +630,8 @@ export class ForeshadowingManager {
 					}
 
 					if (quoteLines.length > 0) {
-						// 如果没有内联来源标注，用标题行的来源和时间
+						if (!sourceFile && source) sourceFile = source;
+						if (!createdAt && time) createdAt = time;
 						contents.push({
 							source: source || sourceFile,
 							time: time || createdAt,
@@ -550,7 +653,8 @@ export class ForeshadowingManager {
 
 			// 解析说明
 			const descMatch = trimmed.match(new RegExp(`\\*\\*(?:说明|Description|${t('foreshadowing.description')})\\*\\*：(.+)`));
-			const description = descMatch ? descMatch[1].trim() : '';
+			let description = descMatch ? descMatch[1].trim() : '';
+			if (!description) description = parsedTitleDescription;
 
 			// 解析标签
 			const tagsMatch = trimmed.match(new RegExp(`\\*\\*(?:标签|Tags|${t('foreshadowing.tags')})\\*\\*：(.+)`));

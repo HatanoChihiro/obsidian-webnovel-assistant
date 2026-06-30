@@ -71,24 +71,41 @@ export class MarkdownPostProcessor {
 					let contentPreview = '';
 
 					for (let i = sectionInfo.lineStart; i >= 0; i--) {
-						const match = lines[i].match(/^## \[\[(.+?)\]\](?:\s*-\s*(.+))?$/);
-						if (match) {
-							sourceFileName = match[1];
-							createdAt = match[2]?.trim() || '';
+						if (/^## /.test(lines[i])) {
 							titleLine = i;
+							
+							// 先尝试旧格式：## [[文件]] - 时间
+							const oldMatch = lines[i].match(/^## \[\[(.+?)\]\](?:\s*-\s*(.+))?$/);
+							if (oldMatch) {
+								sourceFileName = oldMatch[1];
+								createdAt = oldMatch[2]?.trim() || '';
+							} else {
+								// 新格式：说明文本作为标题，需要向下寻找第一个引用来源
+								for (let j = titleLine + 1; j < lines.length; j++) {
+									if (lines[j].startsWith('> [[')) {
+										const sourceMatch = lines[j].match(/^> \[\[(.+?)\]\](?:\s*-\s*(.+))?$/);
+										if (sourceMatch) {
+											sourceFileName = sourceMatch[1];
+											createdAt = sourceMatch[2]?.trim() || '';
+											break;
+										}
+									}
+									if (/^## /.test(lines[j])) break;
+								}
+							}
 							break;
 						}
 					}
 
-					if (titleLine === -1) return;
+					if (titleLine === -1 || !sourceFileName) return;
 
 					// 提取内容预览
 					for (let i = titleLine + 1; i < lines.length; i++) {
-						if (lines[i].startsWith('> ')) {
+						if (lines[i].startsWith('> ') && !lines[i].startsWith('> [[')) {
 							contentPreview = lines[i].replace(/^> /, '');
 							break;
 						}
-						if (/^## \[\[/.test(lines[i])) break;
+						if (/^## /.test(lines[i])) break;
 					}
 
 					new ForeshadowingRecoveryModal(this.plugin.app, contentPreview, file.parent?.path || '', (recoveryFileNames) => {
