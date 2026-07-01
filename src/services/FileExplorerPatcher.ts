@@ -241,12 +241,12 @@ export class FileExplorerPatcher {
 					let folderFile: TFolder | null = null;
 
 					if (folderPath === '/') {
-						contentEl = view.containerEl.querySelector('.nav-folder-children') as HTMLElement;
+						contentEl = view.containerEl.querySelector('.nav-folder-children');
 						folderFile = this.app.vault.getRoot();
 					} else {
 						const folderItem = view.fileItems[folderPath];
 						if (!folderItem || !folderItem.el) continue;
-						contentEl = folderItem.el.querySelector('.nav-folder-children') as HTMLElement;
+						contentEl = folderItem.el.querySelector('.nav-folder-children');
 						if (folderItem.file instanceof TFolder) {
 							folderFile = folderItem.file;
 						}

@@ -197,7 +197,7 @@ export class SettingsManager {
 		let current: Record<string, unknown> = obj;
 		for (let i = 0; i < parts.length - 1; i++) {
 			if (!(parts[i] in current) || typeof current[parts[i]] !== 'object' || current[parts[i]] === null) {
-				current[parts[i]] = {} as Record<string, unknown>;
+				current[parts[i]] = {};
 			}
 			current = current[parts[i]] as Record<string, unknown>;
 		}
@@ -207,7 +207,7 @@ export class SettingsManager {
 	validateSettings(settings: Partial<AccurateCountSettings>): ValidationResult {
 		const errors: string[] = [];
 		for (const rule of this.validationRules) {
-			const value = this.getNestedValue(settings as Record<string, unknown>, rule.path);
+			const value = this.getNestedValue(settings as unknown as Record<string, unknown>, rule.path);
 			if (value !== undefined && !rule.validate(value)) {
 				errors.push(rule.errorMessage);
 			}
@@ -255,7 +255,7 @@ export class SettingsManager {
 			) {
 				result[key] = this.deepMerge(
 					defVal as Record<string, unknown>,
-					srcVal as Record<string, unknown>
+					srcVal
 				) as T[keyof T];
 			} else if (srcVal !== undefined && srcVal !== null) {
 				result[key] = srcVal as T[keyof T];
@@ -286,7 +286,7 @@ export class SettingsManager {
 			if (oldRanking && typeof oldRanking === 'object') {
 				migrated.task = this.deepMerge(
 					this.defaultSettings.task as unknown as Record<string, unknown>,
-					oldRanking as Record<string, unknown>
+					oldRanking
 				) as unknown as TaskSettings;
 			}
 		}
@@ -352,7 +352,7 @@ export class SettingsManager {
 				}
 				migrated.immersive = this.deepMerge(
 					this.defaultSettings.immersive as unknown as Record<string, unknown>,
-					immersive as unknown as Record<string, unknown>
+					immersive
 				) as unknown as ImmersiveModeSettings;
 			}
 
@@ -375,7 +375,7 @@ export class SettingsManager {
 				}
 				migrated.obs = this.deepMerge(
 					this.defaultSettings.obs as unknown as Record<string, unknown>,
-					obs as unknown as Record<string, unknown>
+					obs
 				) as unknown as ObsSettings;
 			}
 		}
@@ -393,7 +393,7 @@ export class SettingsManager {
 			throw new Error(`设置验证失败: ${validation.errors.join(', ')}`);
 		}
 
-		this.settings = this.mergeSettings(partial as unknown as Record<string, unknown>);
+		this.settings = this.mergeSettings(partial);
 		await this.saveSettings();
 	}
 

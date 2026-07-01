@@ -245,7 +245,7 @@ export class ForeshadowingView extends CreativeView {
 						void (async () => {
 							try {
 								const success = await this.plugin.foreshadowingManager!.markAsRecovered(
-									foreshadowingFile, entry.sourceFile, entry.createdAt, recoveryFileNames
+									foreshadowingFile, entry.description, recoveryFileNames
 								);
 								if (success) {
 									const fileList = recoveryFileNames.map(f => `[[${f}]]`).join('、');
@@ -272,7 +272,7 @@ export class ForeshadowingView extends CreativeView {
 				void (async () => {
 					try {
 						const success = await this.plugin.foreshadowingManager!.markAsDeprecated(
-							foreshadowingFile, entry.sourceFile, entry.createdAt
+							foreshadowingFile, entry.description
 						);
 						if (success) {
 							new Notice(t('common.deprecated-marked'));
@@ -296,7 +296,7 @@ export class ForeshadowingView extends CreativeView {
 				if (!foreshadowingFile) return;
 				if (!this.plugin.foreshadowingManager) return;
 				const success = await this.plugin.foreshadowingManager.markAsPending(
-					foreshadowingFile, entry.sourceFile, entry.createdAt
+					foreshadowingFile, entry.description
 				);
 				if (success) {
 					new Notice(t('common.restored-to-pending'));

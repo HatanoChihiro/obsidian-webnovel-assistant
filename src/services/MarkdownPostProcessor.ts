@@ -66,38 +66,32 @@ export class MarkdownPostProcessor {
 					const lines = content.split('\n');
 
 					let titleLine = -1;
-					let sourceFileName = '';
-					let createdAt = '';
+					let description = '';
 					let contentPreview = '';
 
 					for (let i = sectionInfo.lineStart; i >= 0; i--) {
 						if (/^## /.test(lines[i])) {
 							titleLine = i;
+							const titleText = lines[i].slice(3).trim();
 							
-							// 先尝试旧格式：## [[文件]] - 时间
-							const oldMatch = lines[i].match(/^## \[\[(.+?)\]\](?:\s*-\s*(.+))?$/);
+							const oldMatch = titleText.match(/^\[\[.+?\]\]/);
 							if (oldMatch) {
-								sourceFileName = oldMatch[1];
-								createdAt = oldMatch[2]?.trim() || '';
-							} else {
-								// 新格式：说明文本作为标题，需要向下寻找第一个引用来源
 								for (let j = titleLine + 1; j < lines.length; j++) {
-									if (lines[j].startsWith('> [[')) {
-										const sourceMatch = lines[j].match(/^> \[\[(.+?)\]\](?:\s*-\s*(.+))?$/);
-										if (sourceMatch) {
-											sourceFileName = sourceMatch[1];
-											createdAt = sourceMatch[2]?.trim() || '';
-											break;
-										}
-									}
 									if (/^## /.test(lines[j])) break;
+									const descMatch = lines[j].match(/\*\*(?:说明|Description|.+)\*\*：(.+)/);
+									if (descMatch) {
+										description = descMatch[1].trim();
+										break;
+									}
 								}
+							} else {
+								description = titleText;
 							}
 							break;
 						}
 					}
 
-					if (titleLine === -1 || !sourceFileName) return;
+					if (titleLine === -1 || !description) return;
 
 					// 提取内容预览
 					for (let i = titleLine + 1; i < lines.length; i++) {
@@ -110,7 +104,7 @@ export class MarkdownPostProcessor {
 
 					new ForeshadowingRecoveryModal(this.plugin.app, this.plugin, contentPreview, file.parent?.path || '', (recoveryFileNames) => {
 						void this.plugin.foreshadowingManager?.markAsRecovered(
-							file, sourceFileName, createdAt, recoveryFileNames
+							file, description, recoveryFileNames
 						).then(success => {
 							if (success) {
 								const fileList = recoveryFileNames.map(f => `[[${f}]]`).join('、');

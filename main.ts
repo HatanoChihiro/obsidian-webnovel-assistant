@@ -711,7 +711,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 					// 针对 Obsidian 重启时恢复会话，或用户原本在阅读模式的情况
 					// 我们将其原状态“修正”为系统的默认模式（通常是 source/编辑模式）
 					// 这样切出主页到其他文档时，就不会把其他文档也变成阅读模式
-					stateToSave.mode = (this.app.vault.getConfig('defaultViewMode') as string) || 'source';
+					stateToSave.mode = this.app.vault.getConfig('defaultViewMode') || 'source';
 					stateToSave.source = false;
 				}
 				this._leafOriginalStates.set(leaf, stateToSave);

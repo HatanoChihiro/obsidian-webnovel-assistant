@@ -370,7 +370,7 @@ export class CommandManager {
 							void (async () => {
 								try {
 									const success = await fm.markAsRecovered(
-										file, entry.sourceFile, entry.createdAt, selectedChapters
+										file, entry.description, selectedChapters
 									);
 									if (success) {
 										const links = selectedChapters.map(c => `[[${c}]]`).join('、');

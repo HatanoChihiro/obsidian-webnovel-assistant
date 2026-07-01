@@ -296,7 +296,7 @@ export class ImmersiveModeManager {
 		// 确保主编辑器聚焦
 		workspace.setActiveLeaf(mainLeaf, { focus: true });
 
-		this.plugin.registerInterval(window.setTimeout(() => this.app.workspace.updateOptions(), 300) as unknown as number);
+		this.plugin.registerInterval(window.setTimeout(() => this.app.workspace.updateOptions(), 300));
 		
 		// 监听布局变化，实时保存比例
 		this.layoutChangeRef = this.app.workspace.on('layout-change', () => {
@@ -340,12 +340,12 @@ export class ImmersiveModeManager {
 			}
 
 			if (hasFailure && attempt < 5 && this.isImmersiveActive) {
-				this.plugin.registerInterval(window.setTimeout(() => apply(attempt + 1), 100 * (attempt + 1)) as unknown as number);
+				this.plugin.registerInterval(window.setTimeout(() => apply(attempt + 1), 100 * (attempt + 1)));
 			}
 		};
 
 		window.requestAnimationFrame(() => apply(0));
-		this.plugin.registerInterval(window.setTimeout(() => apply(0), 300) as unknown as number);
+		this.plugin.registerInterval(window.setTimeout(() => apply(0), 300));
 	}
 
 	/**

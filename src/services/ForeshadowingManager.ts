@@ -94,24 +94,22 @@ export class ForeshadowingManager {
 	 * 将伏笔条目格式化为 Markdown 字符串
 	 */
 	formatEntry(entry: ForeshadowingEntry): string {
-		const showTimestamp = this.plugin.settings.foreshadowing.showTimestamp !== false;
-		const timestamp = showTimestamp ? ` - ${entry.createdAt}` : '';
+		const timestamp = ` - ${entry.createdAt}`;
 		const lines: string[] = [];
 
 		// 标题行
-		lines.push(`## [[${entry.sourceFile}]]${timestamp}`);
+		lines.push(`## ${entry.description}`);
 		lines.push('');
 
 		// 引用块（处理多行内容）
+		lines.push(`> [[${entry.sourceFile}]]${timestamp}`);
 		const contentLines = entry.content.split('\n');
 		for (const line of contentLines) {
 			lines.push(`> ${line}`);
 		}
 		lines.push('');
 
-		// 说明
-		lines.push(`**${getForeshadowingLabel('description')}**：${entry.description}`);
-		lines.push('');
+
 
 		// 标签（有标签才显示）
 		if (entry.tags.length > 0) {
@@ -335,6 +333,7 @@ export class ForeshadowingManager {
 		sourceFile: string;
 		createdAt: string;
 		contentPreview: string;
+		description: string;
 	} | null {
 		// 向上查找最近的 H2 标题
 		let titleLine = -1;
@@ -350,6 +349,7 @@ export class ForeshadowingManager {
 		const titleText = editor.getLine(titleLine);
 		let sourceFile = '';
 		let createdAt = '';
+		let description = '';
 
 		// 提取来源文件名和时间戳
 		const titleMatch = titleText.match(/^## \[\[(.+?)\]\](?:\s*-\s*(.+))?$/);
@@ -383,7 +383,18 @@ export class ForeshadowingManager {
 			if (/^## /.test(line)) break; // 到下一条了
 		}
 
-		return { sourceFile, createdAt, contentPreview };
+		if (!description && titleMatch) {
+			for (let i = titleLine + 1; i < editor.lineCount(); i++) {
+				const line = editor.getLine(i);
+				const descMatch = line.match(/\*\*(?:说明|Description|.*?)\*\*：(.*)/);
+				if (descMatch) {
+					description = descMatch[1].trim();
+					break;
+				}
+				if (/^## /.test(line)) break;
+			}
+		}
+		return { sourceFile, createdAt, contentPreview, description };
 	}
 
 	/**
@@ -406,7 +417,7 @@ export class ForeshadowingManager {
 			
 			// 支持新旧格式的定位，捕获整个条目的前半部分作为 before
 			const pattern = new RegExp(
-				`((?:## \\[\\[${escapeRegex(sourceFile)}\\]\\](?:\\s*-\\s*${escapeRegex(createdAt)})?|## .+?\\n(?:> .*\\n)*> \\[\\[${escapeRegex(sourceFile)}\\]\\](?:\\s*-\\s*${escapeRegex(createdAt)})?)[\\s\\S]*?)(\\*\\*(?:状态|Status)\\*\\*：)(${status})`,
+				`((?:## \\[\\[${escapeRegex(sourceFile)}\\]\\](?:\\s*-\\s*${escapeRegex(createdAt)})?|## .+?\\n(?:(?!## ).*\\n)*?> \\[\\[${escapeRegex(sourceFile)}\\]\\](?:\\s*-\\s*${escapeRegex(createdAt)})?)(?:(?!\\n(?:---|## ))[\\s\\S])*?)(\\*\\*(?:状态|Status)\\*\\*：)(${status})`,
 				'm'
 			);
 			
@@ -416,35 +427,34 @@ export class ForeshadowingManager {
 		return ForeshadowingManager.entryPatternCache.get(key)!;
 	}
 
-	/**
-	 * 将指定条目标记为已回收，更新状态和回收信息
-	 * 支持多章节回收
-	 * 通过来源文件名 + 创建时间定位条目
-	 */
 	async markAsRecovered(
 		targetFile: TFile,
-		sourceFile: string,
-		createdAt: string,
+		description: string,
 		recoveryFiles: string[]
 	): Promise<boolean> {
 		return this.writer.enqueue(async () => {
 			let found = false;
 			const now = window.moment().format('YYYY-MM-DD HH:mm');
 
-			// 使用缓存的正则表达式
-			const titlePattern = this.getEntryPattern(sourceFile, createdAt, '未回收|已废弃|pending|deprecated|Pending|Deprecated|Unresolved|Abandoned');
-
 			await this.app.vault.process(targetFile, (content) => {
-				const newContent = content.replace(
-					titlePattern,
-					(match, before, statusLabel) => {
-						found = true;
-						// 生成回收信息（多章节格式）
-						const recoveryLines = recoveryFiles.map(file => `- [[${file}]] - ${now}`).join('\n');
-						return `${before}${statusLabel}${getForeshadowingStatusText(ForeshadowingStatus.Recovered)}\n\n**${getForeshadowingLabel('recoveredAt')}**：\n${recoveryLines}`;
-					}
-				);
-				return newContent;
+				const { found: isFound, startPos, endPos, matchedText } = this.findEntryByDescription(content, description);
+				if (!isFound) return content;
+				found = true;
+
+				// 替换 matchedText 中的状态和回收信息
+				let newText = matchedText;
+				const statusPattern = /(\*\*(?:状态|Status)\*\*：)(未回收|已废弃|pending|deprecated|Pending|Deprecated|Unresolved|Abandoned)/;
+				if (statusPattern.test(newText)) {
+					const recoveryLines = recoveryFiles.map(file => `- [[${file}]] - ${now}`).join('\n');
+					newText = newText.replace(statusPattern, (match, p1) => {
+						return `${p1}${getForeshadowingStatusText(ForeshadowingStatus.Recovered)}\n\n**${getForeshadowingLabel('recoveredAt')}**：\n${recoveryLines}`;
+					});
+				} else {
+					found = false;
+					return content;
+				}
+
+				return content.slice(0, startPos) + newText + content.slice(endPos);
 			});
 
 			return found;
@@ -493,24 +503,27 @@ export class ForeshadowingManager {
 	 */
 	async markAsDeprecated(
 		targetFile: TFile,
-		sourceFile: string,
-		createdAt: string
+		description: string
 	): Promise<boolean> {
 		return this.writer.enqueue(async () => {
 			let found = false;
-			const titlePattern = this.getEntryPattern(sourceFile, createdAt, '未回收|pending|Pending|Unresolved');
-
 			await this.app.vault.process(targetFile, (content) => {
-				const newContent = content.replace(
-					titlePattern,
-					(match, before, statusLabel) => {
-						found = true;
-						return `${before}${statusLabel}${getForeshadowingStatusText(ForeshadowingStatus.Deprecated)}`;
-					}
-				);
-				return newContent;
-			});
+				const { found: isFound, startPos, endPos, matchedText } = this.findEntryByDescription(content, description);
+				if (!isFound) return content;
 
+				let newText = matchedText;
+				const statusPattern = /(\*\*(?:状态|Status)\*\*：)(未回收|pending|Pending|Unresolved)/;
+				if (statusPattern.test(newText)) {
+					found = true;
+					newText = newText.replace(statusPattern, (match, p1) => {
+						return `${p1}${getForeshadowingStatusText(ForeshadowingStatus.Deprecated)}`;
+					});
+				} else {
+					return content;
+				}
+
+				return content.slice(0, startPos) + newText + content.slice(endPos);
+			});
 			return found;
 		});
 	}
@@ -520,24 +533,27 @@ export class ForeshadowingManager {
 	 */
 	async markAsPending(
 		targetFile: TFile,
-		sourceFile: string,
-		createdAt: string
+		description: string
 	): Promise<boolean> {
 		return this.writer.enqueue(async () => {
 			let found = false;
-			const titlePattern = this.getEntryPattern(sourceFile, createdAt, '已废弃|deprecated|Deprecated|Abandoned');
-
 			await this.app.vault.process(targetFile, (content) => {
-				const newContent = content.replace(
-					titlePattern,
-					(match, before, statusLabel) => {
-						found = true;
-						return `${before}${statusLabel}${getForeshadowingStatusText(ForeshadowingStatus.Pending)}`;
-					}
-				);
-				return newContent;
-			});
+				const { found: isFound, startPos, endPos, matchedText } = this.findEntryByDescription(content, description);
+				if (!isFound) return content;
 
+				let newText = matchedText;
+				const statusPattern = /(\*\*(?:状态|Status)\*\*：)(已废弃|deprecated|Deprecated|Abandoned)/;
+				if (statusPattern.test(newText)) {
+					found = true;
+					newText = newText.replace(statusPattern, (match, p1) => {
+						return `${p1}${getForeshadowingStatusText(ForeshadowingStatus.Pending)}`;
+					});
+				} else {
+					return content;
+				}
+
+				return content.slice(0, startPos) + newText + content.slice(endPos);
+			});
 			return found;
 		});
 	}
