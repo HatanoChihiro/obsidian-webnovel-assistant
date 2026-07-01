@@ -1,7 +1,8 @@
-import type { App} from 'obsidian';
-import { Modal, Notice, Setting, TFile, TFolder } from 'obsidian';
+import type { App } from 'obsidian';
+import { Modal, Notice, Setting } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { t } from '../i18n';
+import { ChapterSorter } from '../services/ChapterSorter';
 
 // ─────────────────────────────────────────────
 // 1. 标注伏笔输入对话框
@@ -267,6 +268,7 @@ class ChapterMultiSelectModal extends Modal {
  * 用户选择或输入回收章节文件名（支持多章节）
  */
 export class ForeshadowingRecoveryModal extends Modal {
+	private plugin: WebNovelAssistantPlugin;
 	private contentPreview: string;
 	private folderPath: string;
 	private onSubmit: (recoveryFileNames: string[]) => void;
@@ -275,23 +277,19 @@ export class ForeshadowingRecoveryModal extends Modal {
 
 	constructor(
 		app: App,
+		plugin: WebNovelAssistantPlugin,
 		contentPreview: string,
 		folderPath: string,
 		onSubmit: (recoveryFileNames: string[]) => void
 	) {
 		super(app);
+		this.plugin = plugin;
 		this.contentPreview = contentPreview;
 		this.folderPath = folderPath;
 		this.onSubmit = onSubmit;
 		
-		// 获取同文件夹下的章节文件
-		const folder = this.folderPath ? this.app.vault.getAbstractFileByPath(this.folderPath) : null;
-		if (folder instanceof TFolder) {
-			this.chapters = folder.children
-				.filter((c): c is TFile => c instanceof TFile && c.extension === 'md')
-				.map((c) => c.basename)
-				.sort((a, b) => a.localeCompare(b, 'zh-CN'));
-		}
+		const targetFiles = ChapterSorter.getAllChapters(this.app, this.plugin, this.folderPath);
+		this.chapters = targetFiles.map(c => c.basename);
 	}
 
 	onOpen() {

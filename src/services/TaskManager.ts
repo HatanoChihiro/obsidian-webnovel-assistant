@@ -1,11 +1,10 @@
 // 限时任务追踪管理器（内部仍用 Task 命名，待后续重构改为 Task）
 import type { App} from 'obsidian';
-import { TFile, TFolder, normalizePath } from 'obsidian';
+import { TFile, normalizePath } from 'obsidian';
 import { t } from '../i18n';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { TaskEntry, TaskStatus } from '../types/task';
 import { TASK_STATUS_MAP, TASK_LABEL_MAP, getTaskLabel, getTaskStatusText, getTaskPeriodTitle, getDefaultFileName, getDefaultFileNameCandidates } from '../i18n/data-keys';
-import { ChapterSorter } from './ChapterSorter';
 import { SerializedWriter } from '../utils/SerializedWriter';
 
 export class TaskManager {
@@ -198,22 +197,11 @@ async createTaskFile(): Promise<TFile> {
 
 	/** 获取当前文件夹中章节文件的总字数 */
 	getChapterWordCount(): number {
-		const folder = this.app.vault.getAbstractFileByPath(this.currentFolder);
-		if (!(folder instanceof TFolder)) return 0;
-
-		let total = 0;
-		for (const child of folder.children) {
-			if (child instanceof TFile && child.extension === 'md') {
-				const strictOk = !this.plugin.settings.enableStrictChapterMode || ChapterSorter.isChapterFile(child.name);
-				if (strictOk) {
-					const count = this.plugin.cacheManager.getFolderCount(child.path);
-					if (count !== null) total += count;
-				}
-			}
-		}
-		return total;
+		const folderPath = this.currentFolder === '/' ? '' : this.currentFolder;
+		// 文件树的字数统计本身就基于缓存，且会包含所有分卷字数
+		const count = this.plugin.cacheManager.getFolderCount(folderPath);
+		return count || 0;
 	}
-
 	/** 检查并关闭已过期的进行中任务 */
 	async checkAndCloseExpired(): Promise<boolean> {
 		const entries = await this.loadEntries();

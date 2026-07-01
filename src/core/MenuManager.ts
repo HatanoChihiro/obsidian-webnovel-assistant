@@ -10,6 +10,7 @@ import type { TimelineEntry } from '../services/TimelineManager';
 import { TimelineManager } from '../services/TimelineManager';
 import { TaskManager } from '../services/TaskManager';
 import { TaskAddModal } from '../ui/TaskModal';
+import { findBookRoot } from '../utils/path';
 import { NewNovelModal } from '../ui/NewNovelModal';
 
 export class MenuManager {
@@ -103,7 +104,7 @@ export class MenuManager {
 							}
 
 							const chapterName = view.file?.basename || '';
-							const folderPath = view.file?.parent?.path || '';
+							const folderPath = findBookRoot(this.plugin.app, this.plugin, view.file) || '';
 
 							// 读取已有条目中的类型，传入 Modal 供选择
 							const tlManager = new TimelineManager(this.plugin.app, this.plugin, folderPath);
@@ -189,7 +190,8 @@ export class MenuManager {
 	}
 
 	private openTaskModal(file: TFile | TFolder) {
-		const folderPath = file instanceof TFile ? (file.parent?.path || '') : file.path;
+		const folderPath = findBookRoot(this.plugin.app, this.plugin, file) || (file instanceof TFolder ? file.path : '');
+		
 		const manager = new TaskManager(this.plugin.app, this.plugin, folderPath);
 		const taskFile = manager.getTaskFile();
 
@@ -215,38 +217,33 @@ export class MenuManager {
 
 	private async handleMergeChapters(file: TFolder) {
 		const notice = new Notice(t('notice.merging-folder', { name: file.name }), 0);
-		const mdFiles: TFile[] = [];
-
-		const collectFiles = (folder: TFolder) => {
-			for (const child of folder.children) {
-				if (child instanceof TFile && child.extension === 'md') {
-					const strictOk = !this.plugin.settings.enableStrictChapterMode || ChapterSorter.isChapterFile(child.name);
-					if (strictOk) {
-						mdFiles.push(child);
-					}
-				} else if (child instanceof TFolder) {
-					collectFiles(child);
-				}
-			}
-		};
-		collectFiles(file);
-
+		const mdFiles = ChapterSorter.getAllChapters(this.plugin.app, this.plugin, file.path);
 		if (mdFiles.length === 0) {
 			notice.hide();
 			new Notice(t('notice.no-chapter-files-in-folder', { name: file.name }));
 			return;
 		}
 
-		const customOrder = this.plugin.settings.customSortOrder || {};
-		mdFiles.sort((a, b) => ChapterSorter.compareFilesWithCustomOrder(a, b, customOrder));
-
 		let mergedContent = `# ${file.name}`;
 		let totalWords = 0;
+		let currentVolume = '';
 
 		for (const mdFile of mdFiles) {
+			const inVolume = mdFile.parent && mdFile.parent.path !== file.path;
+			const volumeName = inVolume ? mdFile.parent!.name : '';
+
+			if (inVolume && volumeName !== currentVolume) {
+				currentVolume = volumeName;
+				mergedContent += `\n\n## ${currentVolume}`;
+			} else if (!inVolume && currentVolume !== '') {
+				currentVolume = '';
+			}
+
 			const content = await this.plugin.app.vault.cachedRead(mdFile);
 			const stripped = this.stripFrontmatter(mdFile, content);
-			mergedContent += `\n\n## ${mdFile.basename}\n\n`;
+			
+			const chapterHeading = inVolume ? '###' : '##';
+			mergedContent += `\n\n${chapterHeading} ${mdFile.basename}\n\n`;
 			mergedContent += stripped;
 			totalWords += this.plugin.calculateAccurateWords(stripped);
 		}

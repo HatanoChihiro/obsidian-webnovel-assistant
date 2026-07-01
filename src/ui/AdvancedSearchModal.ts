@@ -3,6 +3,7 @@ import { Modal, Setting, TFolder, TFile, MarkdownView, prepareSimpleSearch } fro
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ChapterSorter } from '../services/ChapterSorter';
 import { t } from '../i18n';
+import { findBookRoot } from '../utils/path';
 
 export class AdvancedSearchModal extends Modal {
 	plugin: WebNovelAssistantPlugin;
@@ -257,38 +258,8 @@ export class AdvancedSearchModal extends Modal {
 		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (!activeView || !activeView.file) return null;
 		
-		let folder = activeView.file.parent;
-		if (!folder || folder.isRoot()) return null;
-
-		// 向上查找当前作品目录：
-		// - 有 workspaceFolders 时：工作区文件夹的直接子目录即为作品目录
-		// - 无 workspaceFolders 时：根目录的直接子目录即为作品目录
-		const workspaceFolders = this.plugin.settings.workspaceFolders || [];
-		
-		while (folder && !folder.isRoot()) {
-			const parent: TFolder | null = folder.parent;
-			if (!parent) break;
-
-			if (workspaceFolders.length > 0) {
-				// 如果当前目录的父目录是工作区目录，那当前目录就是作品目录
-				if (workspaceFolders.includes(parent.path)) {
-					return folder.path;
-				}
-				// 特殊情况：当前目录本身就是工作区目录，说明文件直接在工作区根下
-				// 此时没有作品子目录层级，用工作区目录本身作为范围
-				if (workspaceFolders.includes(folder.path)) {
-					return folder.path;
-				}
-			} else {
-				// 无工作区设置时，根目录的直接子目录就是作品目录
-				if (parent.isRoot()) {
-					return folder.path;
-				}
-			}
-			folder = parent;
-		}
-		
-		return null;
+		const root = findBookRoot(this.app, this.plugin, activeView.file);
+		return root || null;
 	}
 
 	private async executeSearch() {

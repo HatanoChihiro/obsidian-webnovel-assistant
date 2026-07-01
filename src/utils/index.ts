@@ -31,3 +31,6 @@ export {
 
 // UI 工具
 export { copyDocumentContent } from './ui';
+
+// 路径工具
+export { findBookRoot } from './path';

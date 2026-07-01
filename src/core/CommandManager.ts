@@ -4,6 +4,7 @@ import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { copyDocumentContent } from '../utils/ui';
 import { ChapterSorter } from '../services/ChapterSorter';
 import { ForeshadowingInputModal, ConfirmCreateForeshadowingFileModal, ForeshadowingRecoveryModal } from '../ui/ForeshadowingModal';
+import { findBookRoot } from '../utils/path';
 import { TimelineAddModal } from '../ui/TimelineView';
 import type { TimelineEntry } from '../services/TimelineManager';
 import { TimelineManager } from '../services/TimelineManager';
@@ -189,9 +190,9 @@ export class CommandManager {
 					const currentFile = view.file;
 					if (!currentFile) return;
 
-					const folderPath = currentFile.parent;
-					const siblingNames = folderPath
-						? folderPath.children
+					const folder = currentFile.parent;
+					const siblingNames = folder
+						? folder.children
 							.filter((f): f is TFile => f instanceof TFile && f.extension === 'md')
 							.map(f => f.basename)
 						: [];
@@ -202,7 +203,7 @@ export class CommandManager {
 						return;
 					}
 
-					const newFilePath = folderPath && folderPath.path !== '/' ? `${folderPath.path}/${newFileName}` : newFileName;
+					const newFilePath = folder && folder.path !== '/' ? `${folder.path}/${newFileName}` : newFileName;
 					const existingFile = this.plugin.app.vault.getAbstractFileByPath(newFilePath);
 					if (existingFile instanceof TFile) {
 
@@ -327,7 +328,7 @@ export class CommandManager {
 					})();
 				} else {
 					const fileName = this.plugin.settings.foreshadowing?.fileName || getDefaultFileName('foreshadowingFileName');
-					const folderPath = file.parent?.path || '';
+					const folderPath = findBookRoot(this.plugin.app, this.plugin, file) || '';
 					new ConfirmCreateForeshadowingFileModal(this.plugin.app, fileName, folderPath, () => {
 						void (async () => {
 							try {
@@ -362,8 +363,9 @@ export class CommandManager {
 				if (entry) {
 					new ForeshadowingRecoveryModal(
 						this.plugin.app,
+						this.plugin,
 						entry.contentPreview,
-						file.parent?.path || '',
+						findBookRoot(this.plugin.app, this.plugin, file) || '',
 						(selectedChapters) => {
 							void (async () => {
 								try {
@@ -411,7 +413,7 @@ export class CommandManager {
 				if (!file) return false;
 
 				const chapterName = file.basename;
-				const folderPath = file.parent?.path || '';
+				const folderPath = findBookRoot(this.plugin.app, this.plugin, file) || '';
 
 				// 读取已有条目中的类型，传入 Modal 供下拉选择
 				void (async () => {

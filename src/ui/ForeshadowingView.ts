@@ -234,6 +234,7 @@ export class ForeshadowingView extends CreativeView {
 				if (!foreshadowingFile) return;
 				new ForeshadowingRecoveryModal(
 					this.app,
+					this.plugin,
 					entry.contents[0]?.text || '',
 					this.currentFolder,
 					(recoveryFileNames) => {

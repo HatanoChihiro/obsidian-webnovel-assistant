@@ -1,6 +1,7 @@
 import { Logger } from '../utils/Logger';
 import type { App, EventRef, WorkspaceLeaf, TFile, WorkspaceSplit, WorkspaceItem } from 'obsidian';
 import { MarkdownView, Notice } from 'obsidian';
+import { findBookRoot } from '../utils/path';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { t } from '../i18n';
 import { TaskManager } from '../services/TaskManager';
@@ -411,7 +412,7 @@ export class ImmersiveModeManager {
 				let taskFolder = '';
 				const view = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
 				if (view?.file) {
-					taskFolder = view.file.parent?.path || '';
+					taskFolder = findBookRoot(this.plugin.app, this.plugin, view.file) || '';
 					this.plugin.lastTaskFolder = taskFolder;
 				} else if (this.plugin.lastTaskFolder) {
 					taskFolder = this.plugin.lastTaskFolder;

@@ -2,6 +2,7 @@ import type { App, TAbstractFile} from 'obsidian';
 import { TFile, TFolder, type MarkdownView } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { getDefaultFileName, getDefaultFileNameCandidates } from '../i18n/data-keys';
+import { findBookRoot } from '../utils/path';
 
 export interface LoreEntry {
 	file: TFile;
@@ -159,36 +160,13 @@ private handleFileChange(file: TAbstractFile): void {
 
 	/**
 	 * 给定一个任意文件（通常是当前正在编辑的文件），返回它所属的作品目录路径
-	 * （复用了 AdvancedSearchModal 的向上查找逻辑）
+	 * （底层直接调用全局的 findBookRoot 算法支持跨卷）
 	 */
 	public getBookPathForFile(file: TFile | null): string | null {
 		if (!file) return null;
 		
-		let folder = file.parent;
-		if (!folder || folder.isRoot()) return null;
-
-		const workspaceFolders = this.plugin.settings.workspaceFolders || [];
-		
-		while (folder && !folder.isRoot()) {
-			const parent: TFolder | null = folder.parent;
-			if (!parent) break;
-
-			if (workspaceFolders.length > 0) {
-				if (workspaceFolders.includes(parent.path)) {
-					return folder.path;
-				}
-				if (workspaceFolders.includes(folder.path)) {
-					return folder.path;
-				}
-			} else {
-				if (parent.isRoot()) {
-					return folder.path;
-				}
-			}
-			folder = parent;
-		}
-		
-		return null;
+		const root = findBookRoot(this.app, this.plugin, file);
+		return root || null;
 	}
 
 	/**

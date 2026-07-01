@@ -3,6 +3,7 @@ import { ItemView, MarkdownView, TFile } from 'obsidian';
 import { formatTime, formatCount, isMobile } from '../utils';
 import { HistoryStatsModal, calcStreak, calcFocusRate, calcActiveHours, calcDailyAverage } from './HistoryModal';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
+import { findBookRoot } from '../utils/path';
 import { TaskManager } from '../services/TaskManager';
 import { t } from '../i18n';
 
@@ -328,7 +329,7 @@ export class WritingStatusView extends ItemView {
 		let taskFolder = '';
 		const taskFile = this.app.workspace.getActiveViewOfType(MarkdownView)?.file;
 		if (taskFile) {
-			taskFolder = taskFile.parent?.path || '';
+			taskFolder = findBookRoot(this.plugin.app, this.plugin, taskFile) || '';
 			this.plugin.lastTaskFolder = taskFolder;
 		} else if (this.plugin.lastTaskFolder) {
 			taskFolder = this.plugin.lastTaskFolder;

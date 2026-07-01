@@ -108,7 +108,7 @@ export class MarkdownPostProcessor {
 						if (/^## /.test(lines[i])) break;
 					}
 
-					new ForeshadowingRecoveryModal(this.plugin.app, contentPreview, file.parent?.path || '', (recoveryFileNames) => {
+					new ForeshadowingRecoveryModal(this.plugin.app, this.plugin, contentPreview, file.parent?.path || '', (recoveryFileNames) => {
 						void this.plugin.foreshadowingManager?.markAsRecovered(
 							file, sourceFileName, createdAt, recoveryFileNames
 						).then(success => {

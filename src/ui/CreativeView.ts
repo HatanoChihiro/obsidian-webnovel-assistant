@@ -2,6 +2,8 @@ import type { WorkspaceLeaf } from 'obsidian';
 import { ItemView, MarkdownView, TFile } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 
+import { findBookRoot } from '../utils/path';
+
 /**
  * 创作工具面板基类
  * 提供文件夹跟踪和文件监听的公共逻辑
@@ -52,7 +54,8 @@ export abstract class CreativeView extends ItemView {
 			activeFile = this.app.workspace.getActiveFile() || undefined;
 		}
 		if (!activeFile) return;
-		const folder = activeFile.parent?.path || '';
+		
+		const folder = findBookRoot(this.app, this.plugin, activeFile);
 		if (folder !== this.currentFolder) {
 			this.currentFolder = folder;
 			await this.onFolderChange();

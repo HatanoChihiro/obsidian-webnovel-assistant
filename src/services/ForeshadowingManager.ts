@@ -7,6 +7,7 @@ import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { escapeRegex } from '../utils/validation';
 import { SerializedWriter } from '../utils/SerializedWriter';
 import { FORESHADOWING_STATUS_MAP, getForeshadowingLabel, getForeshadowingStatusText, getDefaultFileName, getDefaultFileNameCandidates } from '../i18n/data-keys';
+import { findBookRoot } from '../utils/path';
 
 /**
  * 伏笔管理服务
@@ -27,22 +28,21 @@ export class ForeshadowingManager {
 
 	/**
 	 * 获取伏笔文件路径（与来源文件同文件夹）
-	 */
-	/**
 	 * 获取伏笔文件路径（新建时使用当前语言的文件名）
 	 */
 	getForeshadowingFilePath(sourceFile: TFile): string {
-		const folder = sourceFile.parent?.path || '';
-		// 新建时优先使用用户设置，fallback 到当前语言的默认文件名
-		const fileName = this.plugin.settings.foreshadowing.fileName || getDefaultFileName('foreshadowingFileName');
-		return normalizePath(folder ? `${folder}/${fileName}.md` : `${fileName}.md`);
+		const folder = findBookRoot(this.app, this.plugin, sourceFile);
+		// 如果未找到任何语言的版本，使用用户设置或当前语言的默认文件名新建
+		const expectedName = this.plugin.settings.foreshadowing?.fileName || getDefaultFileName('foreshadowingFileName');
+		return normalizePath(folder ? `${folder}/${expectedName}.md` : `${expectedName}.md`);
 	}
 
 	/**
 	 * 检查伏笔文件是否存在（支持多语言文件名查找）
 	 */
 	foreshadowingFileExists(sourceFile: TFile): boolean {
-		return !!this.findForeshadowingFile(sourceFile.parent?.path || '');
+		const folder = findBookRoot(this.app, this.plugin, sourceFile);
+		return !!this.findForeshadowingFile(folder);
 	}
 
 	/**
@@ -65,23 +65,23 @@ export class ForeshadowingManager {
 	 * 如已有任何语言版本则直接返回
 	 */
 	async createForeshadowingFile(sourceFile: TFile): Promise<TFile> {
+		const folder = findBookRoot(this.app, this.plugin, sourceFile);
 		// 检查是否已有伏笔文件（多语言查找）
-		const existing = this.findForeshadowingFile(sourceFile.parent?.path || '');
+		const existing = this.findForeshadowingFile(folder);
 		if (existing) {
 			// 如果找到的文件名与当前设置不一致，自动重命名
 			const expectedName = this.plugin.settings.foreshadowing?.fileName || getDefaultFileName('foreshadowingFileName');
 			if (existing.name !== expectedName + '.md') {
-				const newPath = normalizePath((sourceFile.parent?.path || '') + '/' + expectedName + '.md');
+				const newPath = normalizePath(folder + '/' + expectedName + '.md');
 				try { await this.app.fileManager.renameFile(existing, newPath); } catch (e) { console.warn('[ForeshadowingManager] 重命名伏笔文件失败:', e); }
 			}
-			const found = this.app.vault.getAbstractFileByPath(normalizePath((sourceFile.parent?.path || '') + '/' + expectedName + '.md'));
+			const found = this.app.vault.getAbstractFileByPath(normalizePath(folder + '/' + expectedName + '.md'));
 				return found instanceof TFile ? found : existing;
 		}
 
 		const path = this.getForeshadowingFilePath(sourceFile);
 
 		// 确保文件夹存在
-		const folder = sourceFile.parent?.path;
 		if (folder && !this.app.vault.getAbstractFileByPath(folder)) {
 			await this.app.vault.createFolder(folder);
 		}
@@ -233,15 +233,16 @@ export class ForeshadowingManager {
 		return this.writer.enqueue(async () => {
 			let targetFile: TFile | null = null;
 
-			const foundFile = this.findForeshadowingFile(sourceFile.parent?.path || '');
+			const folder = findBookRoot(this.app, this.plugin, sourceFile);
+			const foundFile = this.findForeshadowingFile(folder);
 			if (foundFile) {
 				// 如果找到的文件名与当前设置不一致，自动重命名
 				const expectedName = this.plugin.settings.foreshadowing?.fileName || getDefaultFileName('foreshadowingFileName');
 				if (foundFile.name !== expectedName + '.md') {
-					const newPath = normalizePath((sourceFile.parent?.path || '') + '/' + expectedName + '.md');
+					const newPath = normalizePath(folder + '/' + expectedName + '.md');
 					try { await this.app.fileManager.renameFile(foundFile, newPath); } catch (e) { console.warn('[ForeshadowingManager] 重命名伏笔文件失败:', e); }
 				}
-				const targetPath = normalizePath((sourceFile.parent?.path || '') + '/' + expectedName + '.md');
+				const targetPath = normalizePath(folder + '/' + expectedName + '.md');
 				const abstractFile = this.app.vault.getAbstractFileByPath(targetPath);
 				if (!(abstractFile instanceof TFile)) return { file: sourceFile, merged: false };
 				targetFile = abstractFile;

@@ -1,3 +1,12 @@
+## 🔧 v3.3.2
+
+- 优化超长篇工作逻辑：当单本小说下存在多个分卷文件夹时，会自动向上遍历并定位到作品信息所在的文件夹作为小说目录，新建时间线/伏笔/设定/任务等文档时不会在卷文件夹下重复创建，合并章节时会自动添加卷信息
+- 优化章节读取规则：开启严格章节模式后，在进行伏笔面板回收选择章节、新增时间线关联章节等操作时，会自动忽略非章节文档并按智能顺序进行排列
+
+- optimize ultra-long-form novel workflow: when there are multiple volume folders under a single novel, the plugin will automatically traverse upward to locate the folder containing the novel information as the novel directory. New timeline/lore/setting/task documents will not be created repeatedly under volume folders, and volume information will be automatically added when merging chapters
+- optimize chapter reading rules: when strict chapter mode is enabled, the plugin will automatically ignore non-chapter documents and sort them in smart order when performing actions such as selecting chapters in the lore panel or adding timeline-related chapters
+
+
 ## ✨ v3.3.1 时间线与伏笔增强
 
 - 增加“添加时间线”命令，方便移动端操作

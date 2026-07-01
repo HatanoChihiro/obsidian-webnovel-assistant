@@ -7,6 +7,7 @@ import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { rafThrottle } from '../utils/dom';
 import { t } from '../i18n';
 import { getDefaultFileName } from '../i18n/data-keys';
+import { ChapterSorter } from '../services/ChapterSorter';
 
 export const TIMELINE_VIEW_TYPE = 'timeline-view';
 
@@ -74,16 +75,10 @@ export class TimelineAddModal extends Modal {
 		// 章节列表容器
 		const chapterListContainer = contentEl.createDiv();
 		chapterListContainer.setCssProps({ marginBottom: '12px' });
-		// 获取当前文件夹下的所有 md 文件
+		// 获取当前小说文件夹下的所有章节 md 文件
 		const getChapterFiles = (): string[] => {
-			const folder = this.folderPath ? this.app.vault.getAbstractFileByPath(this.folderPath) : null;
-			if (folder instanceof TFolder) {
-				return folder.children
-					.filter((c): c is TFile => c instanceof TFile && c.extension === 'md')
-					.map(c => c.basename)
-					.sort();
-			}
-			return [];
+			const targetFiles = ChapterSorter.getAllChapters(this.app, this.plugin, this.folderPath);
+			return targetFiles.map(c => c.basename);
 		};
 		
 		const chapterFiles = getChapterFiles();
@@ -563,17 +558,8 @@ export class TimelineView extends CreativeView {
 		// 事件列表容器
 		const eventsContainer = form.createDiv();
 		eventsContainer.setCssProps({ marginBottom: '12px' });
-		// 获取当前文件夹下的所有 md 文件
-		const folder = this.app.vault.getAbstractFileByPath(this.currentFolder);
-		const chapterFiles: string[] = [];
-		if (folder instanceof TFolder) {
-			folder.children
-				.filter((c): c is TFile => c instanceof TFile && c.extension === 'md')
-				.forEach((c) => {
-					chapterFiles.push(c.basename);
-				});
-			chapterFiles.sort();
-		}
+		const targetFiles = ChapterSorter.getAllChapters(this.app, this.plugin, this.currentFolder);
+		const chapterFiles: string[] = targetFiles.map(c => c.basename);
 		
 		// 获取已有的事件列表
 		const existingItems = entry.items && entry.items.length > 0 ? entry.items : [{ description: entry.description, chapter: entry.chapter }];
