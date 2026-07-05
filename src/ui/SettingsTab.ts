@@ -705,7 +705,8 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			'foreshadowing-view': t('setting.layout-view-foreshadowing'),
 			'timeline-view': t('setting.layout-view-timeline'),
 			'reference-view': t('setting.layout-view-reference'),
-			'webnovel-corkboard': t('setting.layout-view-corkboard')
+			'webnovel-corkboard': t('setting.layout-view-corkboard'),
+			'outline': t('setting.layout-view-outline')
 		};
 	}
 
@@ -969,6 +970,17 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				text.inputEl.addEventListener('change', () => { saveAction().catch(console.error); });
 				text.inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); text.inputEl.blur(); } });
 			})
+
+		// 悬浮卡片子标题折叠开关
+		new Setting(containerEl)
+			.setName(t('setting.lore-popover-collapse'))
+			.setDesc(t('setting.lore-popover-collapse-desc'))
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.lorePopoverCollapse)
+				.onChange(async (value: boolean) => {
+					this.plugin.settings.lorePopoverCollapse = value;
+					await this.plugin.saveSettings();
+				}));
 	}
 
 	// ── 时间线设置 ──

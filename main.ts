@@ -1267,7 +1267,13 @@ onunload() {
 		// 2. 硬编码排除合并章节文件（防止导出合集时突然导致字数暴增）
 		if (file.basename.includes('_合并章节')) return false;
 
-		// 2.5 动态排除插件生成的元数据文件（如作品信息、伏笔、时间线、限时任务等）
+		// 2.5 只要当前文件命中已启用的章节命名规则（无论严格章节模式全局开关是否开启），就直接豁免后续黑名单检查（允许用户强行统计设定/伏笔字数）
+		const isExplicitChapter = ChapterSorter.isChapterFile(file.name);
+		if (isExplicitChapter) {
+			return true;
+		}
+
+		// 2.6 动态排除插件生成的元数据文件（如作品信息、伏笔、时间线、限时任务等）
 		const basename = file.basename;
 		if (
 			this.isPluginGeneratedFile(basename) ||
@@ -1276,7 +1282,7 @@ onunload() {
 			return false;
 		}
 
-		// 2.6 排除设定文件夹及其内置多语言 fallback
+		// 2.7 排除设定文件夹及其内置多语言 fallback
 		const candidates = new Set<string>();
 		candidates.add(this.settings.loreFolderName || getDefaultFileName('loreFolderName'));
 		for (const name of getDefaultFileNameCandidates('loreFolderName')) candidates.add(name);
@@ -1287,8 +1293,8 @@ onunload() {
 			}
 		}
 		
-		// 3. 如果开启了严格章节模式，则必须是符合命名规则的章节文件
-		if (this.settings.enableStrictChapterMode && !ChapterSorter.isChapterFile(file.name) && !this.isFileInStrictChapterException(file)) {
+		// 3. 如果开启了严格章节模式，由于上方已经处理过 isStrictChapter 为 true 的情况，这里只要判断 exception 即可
+		if (this.settings.enableStrictChapterMode && !this.isFileInStrictChapterException(file)) {
 			return false;
 		}
 		

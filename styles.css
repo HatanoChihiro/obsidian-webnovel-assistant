@@ -1,10 +1,7 @@
-/* ========== 写作状态面板：主体色统一 ========== */
+/* ========== Writing Status Panel: Unified Accent Color ========== */
 
-
-
+/* Word count indicators */
 .wn-folder-word-count { font-variant-numeric: tabular-nums; pointer-events: none; }
-
-
 
 .wn-work-info-card { border-top: none; padding: 12px 18px; margin-bottom: 8px; }
 
@@ -14,10 +11,9 @@
 
 .wn-work-info-count { font-size: 13px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 
-
-
 .wn-status-view-container { padding: 15px; }
 
+/* Status View / Goal Progress */
 .wn-status-card {
 
 	background: linear-gradient(145deg, color-mix(in srgb, var(--interactive-accent) 6%, color-mix(in srgb, var(--background-secondary) 50%, transparent)), color-mix(in srgb, var(--background-secondary) 50%, transparent));
@@ -44,8 +40,6 @@
 
 }
 
-
-
 /* WebNovel Assistant Drag Indicators */
 
 .webnovel-drag-over-top > .nav-file-title,
@@ -70,8 +64,6 @@
 
 }
 
-
-
 body.webnovel-custom-dragging .nav-file-title-content,
 
 body.webnovel-custom-dragging .nav-folder-title-content {
@@ -90,13 +82,9 @@ body.webnovel-custom-dragging .nav-folder-title-content {
 
 }
 
-
-
 .wn-status-title { font-weight: bold; margin-bottom: 10px; margin-top: 10px; font-size: 16px; display: flex; flex-direction: row; align-items: center; justify-content: space-between; color: var(--interactive-accent); }
 
 .wn-status-title-badge { font-size: 10px; background: var(--interactive-accent); color: var(--text-on-accent); padding: 2px 6px; border-radius: 4px; font-weight: normal; }
-
-
 
 .status-goal-label { font-size: 12px; color: var(--text-muted); margin-bottom: 2px; font-weight: 500; }
 
@@ -112,8 +100,6 @@ body.webnovel-custom-dragging .nav-folder-title-content {
 
 .goal-percent { font-size: 13px; color: var(--interactive-accent); font-weight: 600; }
 
-
-
 .progress-bar-bg { width: 100%; height: 8px; background: color-mix(in srgb, var(--background-modifier-border) 50%, transparent); border-radius: 4px; overflow: hidden; margin-bottom: 4px; box-shadow: inset 0 1px 2px rgba(0,0,0,0.1); }
 
 .progress-bar-fill { height: 100%; background: linear-gradient(90deg, color-mix(in srgb, var(--interactive-accent) 70%, transparent), var(--interactive-accent)); border-radius: 4px; transition: width 0.3s ease; box-shadow: 0 0 4px color-mix(in srgb, var(--interactive-accent) 50%, transparent); }
@@ -122,13 +108,9 @@ body.webnovel-custom-dragging .nav-folder-title-content {
 
 .progress-bar-fill.is-done { background: var(--interactive-accent); }
 
-
-
 .goal-current.is-negative, .goal-percent.is-negative { color: color-mix(in srgb, color-mix(in srgb, var(--color-red, #ef4444) 80%, var(--interactive-accent)) 85%, var(--text-normal)); }
 
 .goal-current.is-done, .goal-percent.is-done { color: var(--interactive-accent); }
-
-
 
 .time-box-total {
 
@@ -180,8 +162,6 @@ body.webnovel-custom-dragging .nav-folder-title-content {
 
 .time-box-value { font-family: var(--font-monospace); font-size: 18px; font-weight: bold; color: var(--interactive-accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-
-
 .history-chart { margin-top: 20px; }
 
 .history-chart-title { font-size: 13px; font-weight: 600; color: var(--interactive-accent); margin-bottom: 4px; }
@@ -190,21 +170,15 @@ body.webnovel-custom-dragging .nav-folder-title-content {
 
 .history-chart-subtitle:hover { color: var(--interactive-accent); text-decoration: underline; }
 
-
-
 .mini-efficiency-summary { font-size: 11px; color: var(--text-muted); margin-top: 16px; text-align: center; }
 
 .history-chart-title-row { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px; }
 
-
-
-/* 字数实时提醒 (行号字数统计) 样式 - 完全零宽度，绝不占用/推挤正文排版 */
+/* Real-time word count reminder (Line number word count) style - zero width, never occupy/push body layout */
 
 body .markdown-source-view.mod-cm6 .cm-editor .cm-scroller .cm-gutters .webnovel-word-count-gutter { width: 0px; min-width: 0px; border: none; padding: 0; margin: 0; overflow: visible; }
 
-
-
-/* 当本插件的 Gutter 是唯一的 Gutter 时（即没开行号等），清除 Obsidian 默认给 Gutter 容器加的所有边距，彻底消除缩进占位 */
+/* When this plugin's Gutter is the only Gutter (e.g. no line numbers), clear all padding Obsidian adds by default to eliminate indentation placeholder */
 
 body .markdown-source-view.mod-cm6 .cm-editor .cm-scroller .cm-gutters.is-only-word-count-gutter {
 
@@ -218,9 +192,7 @@ body .markdown-source-view.mod-cm6 .cm-editor .cm-scroller .cm-gutters.is-only-w
 
 }
 
-
-
-/* 非工作区/非章节时，直接隐藏整个容器（如果只有我们的话） */
+/* Hide entire container when not in workspace/chapter (if only our gutter exists) */
 
 .cm-editor:not(.webnovel-show-gutter) body .markdown-source-view.mod-cm6 .cm-editor .cm-scroller .cm-gutters.is-only-word-count-gutter {
 
@@ -228,9 +200,7 @@ body .markdown-source-view.mod-cm6 .cm-editor .cm-scroller .cm-gutters.is-only-w
 
 }
 
-
-
-/* 非工作区/非章节时，隐藏我们的 gutter */
+/* Hide our gutter when not in workspace/chapter */
 
 body .markdown-source-view.mod-cm6 .cm-editor:not(.webnovel-show-gutter) .cm-scroller .cm-gutters .webnovel-word-count-gutter {
 
@@ -238,33 +208,27 @@ body .markdown-source-view.mod-cm6 .cm-editor:not(.webnovel-show-gutter) .cm-scr
 
 }
 
-
-
-/* 默认隐藏标签 */
+/* Hide label by default */
 
 body .markdown-source-view.mod-cm6 .cm-editor .cm-scroller .cm-gutters .webnovel-word-count-marker-wrapper { display: none; }
 
-
-
-/* 激活状态下悬浮显示，使用 wrapper 完美消解宽高影响 */
+/* Show on hover when active, use wrapper to perfectly eliminate width/height impact */
 
 body .markdown-source-view.mod-cm6 .cm-editor.webnovel-show-gutter .cm-scroller .cm-gutters .webnovel-word-count-marker-wrapper {
 
 	display: flex;
 
-	align-items: center; /* 依托内部的零宽字符实现完美的文本基线级垂直居中 */
+	align-items: center; /* Rely on internal zero-width character for perfect text baseline vertical centering */
 
 	justify-content: flex-end;
 
 	width: 0px;
 
-	/* 移除所有硬编码高度，完全靠 ​​ 撑开，绝对匹配当前编辑器行高 */
+	/* Remove all hardcoded heights, rely on content to expand, absolutely match current editor line height */
 
 	overflow: visible;
 
 }
-
-
 
 body .markdown-source-view.mod-cm6 .cm-editor.webnovel-show-gutter .cm-scroller .cm-gutters .webnovel-word-count-marker {
 
@@ -290,24 +254,21 @@ body .markdown-source-view.mod-cm6 .cm-editor.webnovel-show-gutter .cm-scroller 
 
 	z-index: 99;
 
-	pointer-events: none; /* 避免阻挡鼠标点击左侧区域 */
+	pointer-events: none; /* Avoid blocking mouse clicks in the left area */
 
-	/* 相对于 wrapper 向左推，微调使其对齐文本行 */
+	/* Push left relative to wrapper, fine-tune to align with text line */
 
 	margin-right: 12px;
 
-	/* 移除 margin-top，完全交给 flex-center 自动调度 */
+	/* Remove margin-top, hand over completely to flex-center for auto scheduling */
 
 }
 
+/* ========== Writing Data Panel: Unified Accent Color ========== */
 
+/* Override Obsidian default modal width */
 
-/* ========== 写作数据面板：主体色统一 ========== */
-
-
-
-/* 覆盖 Obsidian 默认 modal 宽度 */
-
+/* History and Stats */
 .modal.history-stats-modal-wide { width: 960px; max-width: 95vw; }
 .history-stats-modal .setting-item.setting-item-heading { padding: 4px 0 6px 0; margin: 4px 0 10px 0; border: none; min-height: unset; background: transparent; }
 .history-stats-modal .setting-item.setting-item-heading.stats-subheading { margin-top: 24px; }
@@ -315,18 +276,19 @@ body .markdown-source-view.mod-cm6 .cm-editor.webnovel-show-gutter .cm-scroller 
 .history-stats-modal .setting-item.setting-item-heading .setting-item-name { color: var(--interactive-accent); font-size: 20px; font-weight: 700; }
 .history-stats-modal .setting-item.setting-item-heading.stats-subheading .setting-item-name { font-size: 16px; font-weight: 600; color: var(--interactive-accent); opacity: 0.85; }
 
+/* Stats Tab Group */
 .stats-tab-group { display: flex; gap: 6px; margin-bottom: 14px; border-bottom: 1px solid var(--background-modifier-border); padding-bottom: 6px; align-items: center; }
 
 .stats-tab-btn { background: transparent; border: none; box-shadow: none; color: var(--text-muted); cursor: pointer; padding: 4px 8px; border-radius: 4px; transition: all 0.2s; font-size: 12px; }
 
+/* Stats Tab Btn */
 .stats-tab-btn:hover { background: color-mix(in srgb, var(--interactive-accent) 15%, transparent); color: var(--interactive-accent); }
 
 .stats-tab-btn.is-active { background: var(--interactive-accent); color: var(--text-on-accent); font-weight: bold; }
 
+/* Efficiency Overview - Accent color top border + tinted background */
 
-
-/* 效率总览 — 主体色顶边 + 背景微染 */
-
+/* Stats Efficiency Row */
 .stats-efficiency-row { display: flex; gap: 14px; margin-bottom: 20px; }
 
 .stats-efficiency-card { flex: 1; background: color-mix(in srgb, var(--interactive-accent) 6%, var(--background-secondary)); border-radius: 8px; padding: 16px 14px 14px; text-align: center; border-top: 3px solid var(--interactive-accent); }
@@ -335,10 +297,9 @@ body .markdown-source-view.mod-cm6 .cm-editor.webnovel-show-gutter .cm-scroller 
 
 .stats-efficiency-value { font-size: 18px; font-weight: bold; color: var(--interactive-accent); font-family: var(--font-monospace); }
 
+/* Heatmap color scale - Accent color gradient */
 
-
-/* 热力图色阶 — 主体色渐变 */
-
+/* Heat Negative */
 .heat-negative { background: color-mix(in srgb, color-mix(in srgb, var(--color-red, #ef4444) 80%, var(--interactive-accent)) 70%, var(--background-primary)); }
 
 .heat-0 { background: var(--background-modifier-border); }
@@ -349,10 +310,9 @@ body .markdown-source-view.mod-cm6 .cm-editor.webnovel-show-gutter .cm-scroller 
 
 .heat-3 { background: color-mix(in srgb, var(--interactive-accent) 78%, var(--background-primary)); }
 
+/* Bar chart color scale - Accent color gradient */
 
-
-/* 柱状图色阶 — 主体色渐变 */
-
+/* Bar Negative */
 .bar-negative { background: color-mix(in srgb, color-mix(in srgb, var(--color-red, #ef4444) 80%, var(--interactive-accent)) 70%, var(--background-primary)); }
 
 .bar-minimal { background: color-mix(in srgb, var(--interactive-accent) 15%, var(--background-modifier-border)); }
@@ -365,24 +325,21 @@ body .markdown-source-view.mod-cm6 .cm-editor.webnovel-show-gutter .cm-scroller 
 
 .bar-negative-text { color: color-mix(in srgb, color-mix(in srgb, var(--color-red, #ef4444) 80%, var(--interactive-accent)) 85%, var(--text-normal)); }
 
+/* Section Title - Accent color decoration */
 
-
-/* 段标题 — 主体色点缀 */
-
+/* Stats Section Title */
 .stats-section-title { margin-top: 24px; margin-bottom: 10px; font-size: 14px; padding-left: 10px; border-left: 3px solid var(--interactive-accent); }
 
+/* Chart type toggle */
 
-
-/* 图表类型切换 */
-
+/* Stats Filter Row */
 .stats-filter-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 
 .stats-time-tabs, .stats-metric-tabs { display: flex; gap: 4px; }
 
+/* Chart scroll container */
 
-
-/* 图表滚动容器 */
-
+/* Stats Chart Scroll Wrapper */
 .stats-chart-scroll-wrapper { width: 100%; overflow-x: scroll; overflow-y: hidden; padding-bottom: 8px; }
 
 .stats-chart-scroll-wrapper:hover { }
@@ -395,10 +352,9 @@ body .history-stats-modal .stats-chart-scroll-wrapper::-webkit-scrollbar-thumb {
 
 body .history-stats-modal .stats-chart-scroll-wrapper:hover::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--interactive-accent) 70%, var(--text-muted)); }
 
+/* Bar chart container */
 
-
-/* 柱状图容器 */
-
+/* Stats Large Chart Container */
 .stats-large-chart-container { position: relative; height: 160px; padding: 8px 4px; margin-top: 8px; }
 
 .stats-large-chart-container.stats-bar-mode { display: flex; align-items: flex-end; gap: 6px; min-width: max-content; }
@@ -413,18 +369,16 @@ body .history-stats-modal .stats-chart-scroll-wrapper:hover::-webkit-scrollbar-t
 
 .stats-large-value { font-size: 10px; margin-top: 2px; font-weight: bold; font-family: var(--font-monospace); white-space: nowrap; }
 
+/* Trend overlay layer */
 
-
-/* 趋势叠加层 */
-
+/* Stats Trend Overlay Wrapper */
 .stats-trend-overlay-wrapper { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
 
 .stats-trend-overlay { width: 100%; height: 100%; }
 
+/* Heatmap layout */
 
-
-/* 热力图布局 */
-
+/* Stats Heat Range Row */
 .stats-heat-range-row { display: flex; gap: 6px; margin-bottom: 10px; align-items: center; }
 
 .stats-heat-date-row { display: flex; gap: 8px; margin-bottom: 10px; align-items: center; }
@@ -459,10 +413,9 @@ body .history-stats-modal .stats-chart-scroll-wrapper:hover::-webkit-scrollbar-t
 
 .stats-heatmap-legend-cell { width: 14px; height: 14px; border-radius: 2px; }
 
+/* Sidebar mini bar chart */
 
-
-/* 侧边栏迷你柱状图 */
-
+/* Mini Chart Container */
 .mini-chart-container { display: flex; align-items: flex-end; gap: 6px; cursor: pointer; height: 80px; margin-top: 8px; }
 
 .mini-chart-col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; min-width: 28px; flex: 1; max-width: 48px; }
@@ -477,13 +430,12 @@ body .history-stats-modal .stats-chart-scroll-wrapper:hover::-webkit-scrollbar-t
 
 .mini-chart-empty { color: var(--text-muted); font-size: 11px; padding: 10px 0; text-align: center; }
 
+/* Mobile touch optimization (Requirement 8.5) */
 
-
-/* 移动端触摸优化 (需求 8.5) */
-
+/* General styling */
 @media (hover: none) and (pointer: coarse) {
 
-	/* 禁用悬停效果 */
+	/* Disable hover effects */
 
 	.stats-tab-btn:hover { background: transparent; color: var(--text-muted); }
 
@@ -499,9 +451,7 @@ body .history-stats-modal .stats-chart-scroll-wrapper:hover::-webkit-scrollbar-t
 
 	.timeline-chapter-link:hover { color: var(--text-accent); }
 
-
-
-	/* 触摸目标 - 最小 44px */
+	/* Touch target - minimum 44px */
 
 	.stats-tab-btn { min-height: 44px; padding: 12px 16px; }
 
@@ -517,9 +467,7 @@ body .history-stats-modal .stats-chart-scroll-wrapper:hover::-webkit-scrollbar-t
 
 	.timeline-chapter-link { min-height: 44px; display: inline-flex; align-items: center; padding: 4px 8px; }
 
-
-
-	/* 增加间距避免误触 */
+	/* Increase spacing to avoid accidental touches */
 
 	.stats-tab-group { gap: 12px; }
 
@@ -531,9 +479,7 @@ body .history-stats-modal .stats-chart-scroll-wrapper:hover::-webkit-scrollbar-t
 
 	.timeline-actions { gap: 6px; }
 
-
-
-	/* 优化移动端卡片间距 */
+	/* Optimize mobile card spacing */
 
 	.wn-status-card { padding: 18px; margin-bottom: 18px; }
 
@@ -541,25 +487,21 @@ body .history-stats-modal .stats-chart-scroll-wrapper:hover::-webkit-scrollbar-t
 
 	.timeline-content { padding: 12px 14px 12px 28px; }
 
+	/* Optimize form input boxes */
 
-
-	/* 优化表单输入框 */
-
+	/* Timeline Form Input */
 	.timeline-form-input { min-height: 44px; padding: 10px 12px; font-size: 0.9em; }
 
 	.timeline-form-textarea { min-height: 80px; padding: 10px 12px; font-size: 0.9em; }
 
+	/* Larger drag handle */
 
-
-	/* 拖拽手柄更大 */
-
+	/* Timeline Drag Handle */
 	.timeline-drag-handle { font-size: 1.2em; left: 8px; }
 
 	.timeline-content:hover .timeline-drag-handle { opacity: 0.6; }
 
 }
-
-
 
 .foreshadowing-view-container { padding: 18px; overflow-y: auto; }
 
@@ -634,8 +576,6 @@ body .history-stats-modal .stats-chart-scroll-wrapper:hover::-webkit-scrollbar-t
 .foreshadowing-entry-recovery { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
 
 .foreshadowing-entry-recovery-link { color: color-mix(in srgb, var(--interactive-accent) 60%, var(--color-green, #10b981)); cursor: pointer; text-decoration: underline; }
-
-
 
 .timeline-view-container { padding: 18px; overflow-y: auto; }
 
@@ -731,10 +671,9 @@ body .history-stats-modal .stats-chart-scroll-wrapper:hover::-webkit-scrollbar-t
 
 .timeline-form-hint { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; }
 
+/* ========== Leaderboard Tracking Panel ========== */
 
-
-/* ========== 榜单追踪面板 ========== */
-
+/* Task View Container */
 .task-view-container { padding: 18px; overflow-y: auto; }
 
 .task-view-header { margin-bottom: 12px; }
@@ -807,20 +746,18 @@ body .history-stats-modal .stats-chart-scroll-wrapper:hover::-webkit-scrollbar-t
 
 .task-add-modal h2 { color: var(--interactive-accent); }
 
+/* StatusView Leaderboard target area */
 
-
-/* StatusView 榜单目标区域 */
-
+/* Task Goal Section */
 .task-goal-section { }
 
 .task-time-desc { font-size: 12px; color: var(--text-muted); text-align: right; margin-top: 2px; }
 
 .task-time-desc.task-reached { color: var(--color-green, #10b981); font-weight: 600; }
 
+/* Foreshadowing/Timeline Modal popup spacing tightened */
 
-
-/* 伏笔/时间线 Modal 弹窗间距收紧 */
-
+/* Foreshadowing View */
 .foreshadowing-input-modal h2 { font-size: 16px; color: var(--interactive-accent); margin: 0 0 8px 0; padding: 0; }
 
 .foreshadowing-input-modal .setting-item { padding: 4px 0; }
@@ -837,14 +774,13 @@ body .history-stats-modal .stats-chart-scroll-wrapper:hover::-webkit-scrollbar-t
 
 .timeline-add-modal .setting-item-description { font-size: 12px; }
 
-
-
 /* ==========================================
 
- * 沉浸模式 (Immersive Mode) CSS
+ * Immersive Mode CSS
 
  * ========================================== */
 
+/* Immersive Mode overrides */
 body.immersive-mode-active .workspace-ribbon,
 
 body.immersive-mode-active .workspace-tab-header-container,
@@ -867,10 +803,9 @@ body.immersive-mode-active .view-header {
 
 }
 
+/* One-click hide sticky notes function */
 
-
-/* 一键隐藏便签功能 */
-
+/* Sticky Notes */
 body.webnovel-notes-hidden .floating-sticky-note,
 
 body.webnovel-notes-hidden .my-floating-sticky-note {
@@ -879,29 +814,16 @@ body.webnovel-notes-hidden .my-floating-sticky-note {
 
 }
 
-
-
-/* 使用类链(Class Chaining)提升权重，消除第三方主题和原生工具栏遗留的偏移，避免使用 !important */
-
-
-
-
-
-/* 沉浸模式：编辑器布局适配 */
-
-/* 默认非适配状态 */
-
+/* Use Class Chaining to increase specificity, eliminate residual offsets from 3rd-party themes and native toolbars, avoid using important_override */
+/* Immersive Mode: Editor layout adaptation */
+/* Default non-adapted state */
 .immersive-mode-active .view-content {
 
 	padding-top: 30px;
 
 }
 
-
-
-
-
-/* 面板类容器始终保持正常的顶边距 */
+/* Panel-like containers always maintain normal top margin */
 
 .immersive-mode-active .foreshadowing-view-container,
 
@@ -913,17 +835,13 @@ body.webnovel-notes-hidden .my-floating-sticky-note {
 
 }
 
-
-
 .immersive-mode-active .workspace-split {
 
 	background-color: color-mix(in srgb, var(--interactive-accent) 3%, var(--background-secondary));
 
 }
 
-
-
-/* 防止嵌套的 workspace-split 产生双重 padding 导致缩进不一致 */
+/* Prevent nested workspace-split from creating double padding causing inconsistent indentation */
 
 .immersive-mode-active .workspace-split .workspace-split {
 
@@ -931,13 +849,11 @@ body.webnovel-notes-hidden .my-floating-sticky-note {
 
 }
 
+/* Immersive Mode: Card-style panel layout and boundary enhancement */
 
+/* Immersive Mode: Card-style panel layout and boundary enhancement 
 
-/* 沉浸模式：卡片式面板布局与边界强化 */
-
-/* 沉浸模式：卡片式面板布局与边界强化 
-
-   通过提高选择器特异性 (body.immersive-mode-active ...) 来覆盖主题样式，避免使用 !important 
+   Override theme styles by increasing selector specificity (body.immersive-mode-active ...), avoid using important_override 
 
 */
 
@@ -952,8 +868,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf {
 	box-sizing: border-box;
 
 }
-
-
 
 body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-content {
 
@@ -973,17 +887,13 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
 body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-content:hover {
 
 	box-shadow: 0 6px 20px color-mix(in srgb, var(--interactive-accent) 12%, rgba(0,0,0,0.1));
 
 }
 
-
-
-/* 辅助面板内容微调 */
+/* Auxiliary panel content fine-tuning */
 
 .immersive-mode-active .foreshadowing-view-container,
 
@@ -993,41 +903,11 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
-/* 设置选项卡样式 */
-
-
-
-
-
-
-
-
+/* Settings tab style */
 
 .theme-dark 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* 沉浸模式：智能滚动条 (仅在鼠标移入时显示) */
+/* Immersive Mode: Smart scrollbar (show only on mouse hover) */
 
 .immersive-mode-active *::-webkit-scrollbar {
 
@@ -1037,8 +917,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
 .immersive-mode-active *::-webkit-scrollbar-thumb {
 
 	background-color: transparent;
@@ -1047,15 +925,11 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
 .immersive-mode-active *:hover::-webkit-scrollbar-thumb {
 
 	background-color: var(--scrollbar-thumb-bg, rgba(128, 128, 128, 0.3));
 
 }
-
-
 
 .immersive-top-bar {
 
@@ -1089,8 +963,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
 .immersive-top-bar-left {
 
 	display: flex;
@@ -1105,8 +977,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
 .immersive-top-bar-center {
 
 	display: flex;
@@ -1119,8 +989,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
 .immersive-top-bar-center .stat-item {
 
 	background: color-mix(in srgb, var(--text-on-accent) 15%, var(--interactive-accent));
@@ -1131,23 +999,17 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
 .immersive-top-bar-center .stat-item.focus {
 
 	background: color-mix(in srgb, var(--color-green, #10b981) 25%, var(--interactive-accent));
 
 }
 
-
-
 .immersive-top-bar-center .stat-item.slack {
 
 	background: color-mix(in srgb, var(--color-orange, #f59e0b) 25%, var(--interactive-accent));
 
 }
-
-
 
 .immersive-exit-btn {
 
@@ -1171,8 +1033,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
 .immersive-exit-btn:hover {
 
 	opacity: 1;
@@ -1181,17 +1041,14 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
+/* Automatically show tooltip when mouse approaches right area */
 
-
-/* 鼠标靠近右侧区域时自动显示提示 */
-
+/* Immersive Top Bar Right */
 .immersive-top-bar-right:hover .immersive-exit-btn {
 
 	opacity: 0.7;
 
 }
-
-
 
 .immersive-panel-title {
 
@@ -1203,10 +1060,9 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
+/* Chapter list */
 
-
-/* 章节列表 */
-
+/* Immersive Chapter List */
 .immersive-chapter-list {
 
 	display: flex;
@@ -1263,9 +1119,7 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
-/* 便签列表 */
+/* Sticky Notes list */
 
 .immersive-sticky-dock {
 
@@ -1289,11 +1143,11 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 .immersive-sticky-card {
 
-	flex: 0 0 200px; /* 固定宽度，不伸缩 */
+	flex: 0 0 200px; /* Fixed width, no flex shrink/grow */
 
 	width: 200px;
 
-	height: 200px; /* 正方形 */
+	height: 200px; /* Square */
 
 	border-radius: 8px;
 
@@ -1351,14 +1205,13 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 /* ==========================================
 
-   创作主页 — 欢迎/连载/完结专用，数据区复用 HistoryModal 类名
+   Creative Homepage - Welcome/Serializing/Completed specific, data area reuses HistoryModal class names
 
    ========================================== */
 
+/* Welcome Area */
 
-
-/* 欢迎区 */
-
+/* Homepage layout */
 .homepage-welcome-section { margin-bottom: 16px; }
 
 .homepage-welcome-header {
@@ -1485,9 +1338,7 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
-/* 连载中列表 */
+/* Serializing list */
 
 .homepage-ongoing-section { }
 
@@ -1687,9 +1538,7 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 	color: color-mix(in srgb, var(--interactive-accent) 40%, var(--color-red, #e53935) 60%);
 }
 
-
-
-/* 存稿中/已暂停卡片 */
+/* Drafting/Paused cards */
 
 .homepage-drafting-card {
 
@@ -1715,9 +1564,7 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
-/* 已完结卡片网格 */
+/* Completed cards grid */
 
 .homepage-completed-grid {
 
@@ -1877,35 +1724,31 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
 /* ==========================================
 
-   主页：隐藏文档属性和内嵌标题
+   Homepage: Hide document properties and inline title
 
-   真实 DOM 结构（调试确认）：
+   Real DOM structure (debug confirmed):
 
      .markdown-reading-view
 
-       └── .markdown-preview-view.webnovel-homepage.show-properties
+       ?-- .markdown-preview-view.webnovel-homepage.show-properties
 
-           └── .markdown-preview-sizer
+           ?-- .markdown-preview-sizer
 
-               ├── .mod-header.mod-ui          ← 包含 inline-title + metadata-container
+               |-- .mod-header.mod-ui          <- contains inline-title + metadata-container
 
-               ├── .el-pre.mod-frontmatter     ← YAML frontmatter 原文块
+               |-- .el-pre.mod-frontmatter     <- YAML frontmatter raw block
 
-               ├── .el-pre                     ← 主页代码块
+               |-- .el-pre                     <- Homepage code block
 
-               └── .mod-footer.mod-ui
+               ?-- .mod-footer.mod-ui
 
-   cssclasses 被 Obsidian 自动应用到 .markdown-preview-view 上。
+   cssclasses is automatically applied by Obsidian to .markdown-preview-view.
 
    ========================================== */
 
-
-
-/* 隐藏整个头部区块（包含 inline-title 和 metadata-container） */
+/* Hide the entire header block (including inline-title and metadata-container) */
 
 .markdown-preview-view.webnovel-homepage .mod-header {
 
@@ -1913,7 +1756,7 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-/* 隐藏 YAML frontmatter 原文块 */
+/* Hide YAML frontmatter raw block */
 
 .markdown-preview-view.webnovel-homepage .el-pre.mod-frontmatter {
 
@@ -1921,7 +1764,7 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-/* Live Preview 模式下同样隐藏属性面板 */
+/* Hide properties panel in Live Preview mode as well */
 
 .markdown-source-view.webnovel-homepage .metadata-container,
 
@@ -1932,8 +1775,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 	display: none;
 
 }
-
-
 
 .stats-empty-msg {
 
@@ -1955,9 +1796,7 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
-/* 隐藏主页的标签页标题栏 (Tab Title Bar) */
+/* Hide Homepage Tab Title Bar */
 
 .workspace-leaf-content.is-webnovel-homepage .view-header {
 
@@ -1965,9 +1804,7 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
-/* 主页区块标签 */
+/* Homepage block label */
 
 .homepage-section-label {
 
@@ -2009,9 +1846,7 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
-/* 主页全宽显示 — Reading View */
+/* Homepage full width display - Reading View */
 
 .workspace-leaf-content.is-webnovel-homepage .markdown-preview-view {
 
@@ -2047,9 +1882,7 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
-/* 护眼模式：主页不生效 */
+/* Eye Care Mode: Homepage not affected */
 
 .workspace-leaf-content.is-webnovel-homepage .view-content {
 
@@ -2057,9 +1890,7 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
-/* 主页 <pre> 重置 */
+/* Homepage <pre> reset */
 
 .workspace-leaf-content.is-webnovel-homepage pre {
 
@@ -2089,9 +1920,7 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
-/* 主页网格布局 */
+/* Homepage grid layout */
 
 .homepage-grid-container {
 
@@ -2141,7 +1970,7 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-/* 左列最后一个区块拉伸到底部，与右列齐平 */
+/* Left column last block stretches to bottom, aligned with right column */
 
 .homepage-grid-left .homepage-grid-cell:last-child {
 
@@ -2149,23 +1978,19 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-/* 右列最后一个区块也拉伸到底部，与左列齐平 */
+/* Right column last block also stretches to bottom, aligned with left column */
 
 .homepage-grid-right .homepage-grid-cell:last-child {
 
 	flex-grow: 1;
 
-	margin-top: 24px; /* 让整个图表区块离热力图稍远一点，并且间接让内部柱状图短一点 */
+	margin-top: 24px; /* Move the entire chart block a bit further from heatmap, and indirectly make internal bar chart shorter */
 
 }
 
+/* Left column cards: scroll layout, grid column override no longer needed */
 
-
-/* 左列卡片：滚动布局，不再需要网格列覆盖 */
-
-
-
-/* 右列效率指标：窄空间下自适应 */
+/* Right column efficiency metrics: adaptive in narrow space */
 
 .homepage-grid-right .stats-efficiency-row {
 
@@ -2179,7 +2004,7 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-/* 主页精简柱状图：细柱、紧挨、无标签、无滚动条 */
+/* Homepage simplified bar chart: thin bars, close together, no labels, no scrollbar */
 
 .homepage-grid-cell:last-child .homepage-section-label {
 
@@ -2227,9 +2052,7 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
-/* JS 动态切换：面板宽度<1200px时回退单列 */
+/* JS dynamic toggle: fallback to single column when panel width < 1200px */
 
 .homepage-single-column {
 
@@ -2251,12 +2074,9 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
+/* ========== Advanced Search Modal ========== */
 
-
-
-
-/* ========== 高级搜索模态框 ========== */
-
+/* Advanced Search Folder List */
 .advanced-search-folder-list {
 
 	display: flex;
@@ -2267,8 +2087,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
 .advanced-search-results-container {
 
 	margin-top: 15px;
@@ -2278,8 +2096,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 	padding-top: 10px;
 
 }
-
-
 
 .advanced-search-loading,
 
@@ -2297,8 +2113,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
 .advanced-search-summary {
 
 	text-align: left;
@@ -2308,8 +2122,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 	color: var(--text-normal);
 
 }
-
-
 
 .advanced-search-results-list {
 
@@ -2325,8 +2137,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
 .advanced-search-file-item {
 
 	padding: 8px 12px;
@@ -2334,8 +2144,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 	border-radius: 6px;
 
 }
-
-
 
 .advanced-search-file-title {
 
@@ -2348,8 +2156,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 	font-size: 0.95em;
 
 }
-
-
 
 .advanced-search-match-item {
 
@@ -2371,15 +2177,11 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
 .advanced-search-match-item:hover {
 
 	background-color: var(--background-modifier-hover);
 
 }
-
-
 
 .advanced-search-match-more {
 
@@ -2392,8 +2194,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 	padding: 4px;
 
 }
-
-
 
 .advanced-search-highlight {
 
@@ -2409,10 +2209,9 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
+/* Tree structure */
 
-
-/* 树状结构 */
-
+/* Advanced Search Tree Header */
 .advanced-search-tree-header {
 
 	display: flex;
@@ -2422,8 +2221,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 	padding: 4px 0;
 
 }
-
-
 
 .advanced-search-tree-arrow {
 
@@ -2437,8 +2234,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
 .advanced-search-tree-spacer {
 
 	width: 18px;
@@ -2446,8 +2241,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 	display: inline-block;
 
 }
-
-
 
 .advanced-search-tree-name {
 
@@ -2461,8 +2254,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
 .advanced-search-tree-children {
 
 	display: none;
@@ -2471,10 +2262,9 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
+/* Character card text match hover tooltip */
 
-
-/* 人物卡片文本匹配悬停提示 */
-
+/* Wn Character Match */
 .wn-character-match {
 
 	border-bottom: 1px dashed var(--interactive-accent);
@@ -2483,18 +2273,15 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
 .wn-character-match:hover {
 
 	background-color: color-mix(in srgb, var(--interactive-accent) 20%, transparent);
 
 }
 
+/* -- Corkboard -- */
 
-
-/* ── 大翰软木板 (Corkboard) ── */
-
+/* Corkboard View */
 .wn-corkboard-container {
 
 	padding: 20px;
@@ -2505,15 +2292,11 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
 .wn-corkboard-header {
 
 	margin-bottom: 20px;
 
 }
-
-
 
 .wn-corkboard-title {
 
@@ -2527,8 +2310,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
 .wn-corkboard-hint {
 
 	color: var(--text-muted);
@@ -2538,8 +2319,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 	margin: 0;
 
 }
-
-
 
 .wn-corkboard-grid {
 
@@ -2552,8 +2331,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 	padding-bottom: 40px;
 
 }
-
-
 
 .wn-corkboard-card {
 
@@ -2575,8 +2352,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
 .wn-corkboard-card:hover {
 
 	transform: translateY(-2px);
@@ -2586,8 +2361,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 	border-color: var(--interactive-accent);
 
 }
-
-
 
 .wn-corkboard-card-header {
 
@@ -2604,8 +2377,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 	background-color: var(--background-secondary-alt);
 
 }
-
-
 
 .wn-corkboard-card-title {
 
@@ -2625,8 +2396,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
 .wn-corkboard-card-title:hover {
 
 	color: var(--interactive-accent);
@@ -2634,8 +2403,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 	text-decoration: underline;
 
 }
-
-
 
 .wn-corkboard-card-status {
 
@@ -2653,8 +2420,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
 .wn-corkboard-card-content {
 
 	flex: 1;
@@ -2669,8 +2434,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
 .wn-corkboard-card-text {
 
 	color: var(--text-normal);
@@ -2683,8 +2446,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
 .wn-corkboard-card-text.is-empty {
 
 	color: var(--text-faint);
@@ -2692,8 +2453,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 	font-style: italic;
 
 }
-
-
 
 .wn-corkboard-textarea {
 
@@ -2723,8 +2482,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
 .wn-corkboard-textarea:focus {
 
 	border: none;
@@ -2732,8 +2489,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 	box-shadow: none;
 
 }
-
-
 
 .wn-corkboard-card-footer {
 
@@ -2753,14 +2508,13 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
 /* ==========================================================================
 
-   沉浸模式所见即所得布局器
+   Immersive Mode WYSIWYG Layout
 
    ========================================================================== */
 
+/* Wn Layout Builder Container */
 .wn-layout-builder-container {
 
 	margin-top: 1em;
@@ -2775,8 +2529,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
 .wn-layout-grid {
 
 	display: flex;
@@ -2786,8 +2538,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 	gap: 10px;
 
 }
-
-
 
 .wn-layout-top, .wn-layout-bottom {
 
@@ -2801,8 +2551,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
 .wn-layout-middle {
 
 	display: flex;
@@ -2812,8 +2560,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 	min-height: 150px;
 
 }
-
-
 
 .wn-layout-left, .wn-layout-right {
 
@@ -2828,8 +2574,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 	border: 1px dashed var(--text-muted);
 
 }
-
-
 
 .wn-layout-center {
 
@@ -2849,8 +2593,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
 .wn-layout-center-text {
 
 	color: var(--text-muted);
@@ -2861,8 +2603,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
 .wn-slot-title {
 
 	display: block;
@@ -2872,8 +2612,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 	color: var(--text-normal);
 
 }
-
-
 
 .wn-slot-list {
 
@@ -2886,8 +2624,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 	margin-bottom: 8px;
 
 }
-
-
 
 .wn-slot-item {
 
@@ -2907,8 +2643,6 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
 .wn-slot-del {
 
 	background: none;
@@ -2925,15 +2659,11 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
 .wn-slot-del:hover {
 
 	color: var(--text-error-hover);
 
 }
-
-
 
 .wn-slot-empty {
 
@@ -2945,16 +2675,15 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 }
 
-
-
 /* ==========================================================================
 
-   沉浸模式属性面板隐藏
+   Immersive Mode properties panel hidden
 
    ========================================================================== */
 
-/* 负责主编辑区：使用极高优先级覆盖源码模式和实时预览模式 */
+/* Responsible for main edit area: use extremely high priority to override source mode and live preview mode */
 
+/* Immersive Hide Properties */
 body.immersive-hide-properties div.workspace-leaf-content[data-type="markdown"] div.markdown-source-view div.metadata-container,
 
 body.immersive-hide-properties div.workspace-leaf-content[data-type="markdown"] div.metadata-container {
@@ -2963,15 +2692,11 @@ body.immersive-hide-properties div.workspace-leaf-content[data-type="markdown"] 
 
 }
 
-
-
 body.immersive-hide-properties .markdown-reading-view .metadata-container {
 
 	display: none;
 
 }
-
-
 
 body.immersive-hide-properties .markdown-reading-view .frontmatter-container {
 
@@ -2979,22 +2704,19 @@ body.immersive-hide-properties .markdown-reading-view .frontmatter-container {
 
 }
 
-
-
 body.immersive-hide-properties .markdown-reading-view .frontmatter {
 
 	display: none;
 
 }
 
-
-
 /* ==========================================================================
 
-   通用模态框表单组件
+   Generic Modal Form Components
 
    ========================================================================== */
 
+/* Wn Base Input */
 .wn-base-input {
 
 	width: 100%;
@@ -3015,8 +2737,6 @@ body.immersive-hide-properties .markdown-reading-view .frontmatter {
 
 }
 
-
-
 .wn-base-textarea {
 
 	height: 80px;
@@ -3026,8 +2746,6 @@ body.immersive-hide-properties .markdown-reading-view .frontmatter {
 	font-family: var(--font-text);
 
 }
-
-
 
 .wn-base-button-container {
 
@@ -3040,8 +2758,6 @@ body.immersive-hide-properties .markdown-reading-view .frontmatter {
 	margin-top: 16px;
 
 }
-
-
 
 .wn-base-tag-button {
 
@@ -3061,8 +2777,6 @@ body.immersive-hide-properties .markdown-reading-view .frontmatter {
 
 }
 
-
-
 .wn-base-tag-button-container {
 
 	display: flex;
@@ -3075,13 +2789,9 @@ body.immersive-hide-properties .markdown-reading-view .frontmatter {
 
 }
 
-
-
-
-
 /* ==========================================================================
 
-   护眼模式 (Eye Care)
+   Eye Care Mode
 
    ========================================================================== */
 
@@ -3103,11 +2813,9 @@ body.webnovel-eye-care-enabled .workspace-leaf-content[data-type="markdown"]:not
 
 }
 
-
-
 /* ==========================================================================
 
-   悬浮便签 (Sticky Notes)
+   Sticky Notes
 
    ========================================================================== */
 
@@ -3129,8 +2837,6 @@ body .my-floating-sticky-note {
 
 }
 
-
-
 body .my-floating-sticky-note:hover { 
 
 	box-shadow: 0 12px 35px rgba(0,0,0,0.22); 
@@ -3138,8 +2844,6 @@ body .my-floating-sticky-note:hover {
 	background-color: var(--note-bg-color);
 
 }
-
-
 
 body .my-sticky-header { 
 
@@ -3173,11 +2877,7 @@ body .my-sticky-header {
 
 body .my-floating-sticky-note:hover .my-sticky-header { background-color: rgba(0, 0, 0, 0.04); border-bottom: 1px solid rgba(0,0,0,0.06); }
 
-
-
 body .my-sticky-header:active { cursor: grabbing; }
-
-
 
 body .my-sticky-title-wrapper { 
 
@@ -3203,8 +2903,6 @@ body .my-sticky-title-icon svg { width: 14px; height: 14px; }
 
 body .my-sticky-title { font-weight: bold; font-size: 13px; color: var(--note-text-color); pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 1; min-width: 0; }
 
-
-
 body .my-sticky-controls { 
 
 	display: flex; 
@@ -3227,8 +2925,6 @@ body .my-sticky-controls {
 
 body .my-floating-sticky-note:hover .my-sticky-controls { opacity: 1; pointer-events: auto; }
 
-
-
 body .my-sticky-btn, body .my-sticky-close { background: transparent; border: none; box-shadow: none; cursor: pointer; padding: 4px; border-radius: 4px; color: var(--note-text-color); opacity: 0.5; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
 
 body .my-sticky-btn svg, body .my-sticky-close svg { width: 16px; height: 16px; stroke-width: 2px; }
@@ -3237,37 +2933,23 @@ body .my-sticky-btn:hover { background-color: rgba(0,0,0,0.08); opacity: 1; }
 
 body .my-sticky-btn.is-active { color: var(--interactive-accent); background-color: rgba(0,0,0,0.06); opacity: 1;}
 
-
-
 body .my-sticky-close:hover { color: #e74c3c; background-color: rgba(231, 76, 60, 0.1); opacity: 1;}
-
-
 
 body .my-sticky-palette-popup { display: none; position: absolute; top: 32px; right: 25px; background-color: var(--background-primary); border: 1px solid var(--background-modifier-border); border-radius: 8px; padding: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); z-index: var(--layer-menu, 50); grid-template-columns: repeat(3, 1fr); gap: 8px; }
 
 body .my-sticky-palette-popup.is-active { display: grid; animation: popupFadeIn 0.15s ease-out; }
 
-
-
 body .my-sticky-swatch { width: 26px; height: 26px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.15); cursor: pointer; transition: transform 0.1s, border-color 0.1s; display: flex; align-items: center; justify-content: center; font-weight: bold; font-family: serif; font-size: 13px;}
 
 body .my-sticky-swatch:hover { transform: scale(1.15); border-color: rgba(0,0,0,0.5); }
 
-
-
 body .my-sticky-content { padding: 15px; overflow-y: auto; font-size: calc(0.9em * var(--sticky-zoom, 1)); flex-grow: 1; color: var(--note-text-color); padding-bottom: 25px; background-color: transparent; }
 
-
-
 body .my-sticky-content * { color: inherit; }
-
-
 
 body .my-sticky-textarea { flex-grow: 1; width: 100%; height: calc(100% - 10px); resize: none; border: none; background: transparent; color: var(--note-text-color); font-family: var(--font-text); font-size: calc(0.9em * var(--sticky-zoom, 1)); padding: 15px; outline: none; box-shadow: none; display: none; line-height: 1.5; }
 
 body .my-sticky-textarea:focus { box-shadow: none; background-color: transparent; }
-
-
 
 body .my-sticky-content h1.inline-title { display: none; }
 
@@ -3305,13 +2987,11 @@ body .my-sticky-content h1.inline-title { display: none; }
 
 }
 
-
-
 /* ==========================================
 
-   创作主页：字体与宽度锁定 (Defensive High-Specificity Overrides)
+   Creative Homepage: Font and Width Lock (Defensive High-Specificity Overrides)
 
-   使用层级叠加 (Class Chaining) 代替 !important，确保样式不被第三方主题(如Minimal)劫持
+   Use Class Chaining instead of important_override, ensure styles are not hijacked by 3rd-party themes (like Minimal)
 
    ========================================== */
 
@@ -3330,8 +3010,6 @@ body .workspace-leaf-content.is-webnovel-homepage.is-webnovel-homepage {
     font-size: 16px;
 
 }
-
-
 
 body .workspace-leaf-content.is-webnovel-homepage.is-webnovel-homepage .markdown-source-view.markdown-source-view,
 
@@ -3359,13 +3037,11 @@ body .workspace-leaf-content.is-webnovel-homepage.is-webnovel-homepage .homepage
 
 }
 
-
-
 /* ==========================================
 
-   全部自定义视图：字体与缩放防御锁定 (Defensive High-Specificity Overrides)
+   All custom views: Font and Scaling Defense Lock (Defensive High-Specificity Overrides)
 
-   保护所有插件自建视图（大纲、时间线、统计、便签）免受 Minimal 等主题全局字号缩放污染
+   Protect all plugin custom views (Outline, Timeline, Stats, Sticky Notes) from global font scaling pollution by themes like Minimal
 
    ========================================== */
 
@@ -3385,8 +3061,6 @@ body .workspace-leaf-content[data-type="immersive-sticky-notes"][data-type="imme
 
 }
 
-
-
 body .workspace-leaf-content[data-type="webnovel-corkboard"][data-type="webnovel-corkboard"] .view-content,
 
 body .workspace-leaf-content[data-type="webnovel-timeline"][data-type="webnovel-timeline"] .view-content,
@@ -3403,8 +3077,6 @@ body .workspace-leaf-content[data-type="immersive-sticky-notes"][data-type="imme
 
 }
 
-
-
 /* ==========================================================================
 
    webnovel-* CSS classes: replacing inline setCssStyles/setCssProps calls
@@ -3413,9 +3085,7 @@ body .workspace-leaf-content[data-type="immersive-sticky-notes"][data-type="imme
 
    ========================================================================== */
 
-
-
-/* ── AdvancedSearchModal ── */
+/* -- AdvancedSearchModal -- */
 
 .webnovel-search-folder-list {
 
@@ -3439,9 +3109,7 @@ body .workspace-leaf-content[data-type="immersive-sticky-notes"][data-type="imme
 
 .webnovel-search-file-name { color: var(--text-muted); }
 
-
-
-/* ── ForeshadowingModal ── */
+/* -- ForeshadowingModal -- */
 
 .webnovel-modal-textarea {
 
@@ -3567,9 +3235,7 @@ body .workspace-leaf-content[data-type="immersive-sticky-notes"][data-type="imme
 
 .webnovel-modal-empty { padding: 12px; }
 
-
-
-/* ── MarkdownPostProcessor (foreshadowing checkbox) ── */
+/* -- MarkdownPostProcessor (foreshadowing checkbox) -- */
 
 .webnovel-foreshadowing-checkbox {
 
@@ -3587,9 +3253,7 @@ body .workspace-leaf-content[data-type="immersive-sticky-notes"][data-type="imme
 
 }
 
-
-
-/* ── FileExplorerPatcher ── */
+/* -- FileExplorerPatcher -- */
 
 .webnovel-wn-folder-word-count-detail {
 
@@ -3601,9 +3265,7 @@ body .workspace-leaf-content[data-type="immersive-sticky-notes"][data-type="imme
 
 }
 
-
-
-/* ── SettingsTab ── */
+/* -- SettingsTab -- */
 
 .webnovel-settings-input-full { width: 100%; }
 
@@ -3631,9 +3293,34 @@ body .workspace-leaf-content[data-type="immersive-sticky-notes"][data-type="imme
 
 .webnovel-settings-btn-full { width: 100%; }
 
+.is-phone .webnovel-settings-rule-item {
+    flex-wrap: wrap;
+    position: relative;
+    padding-right: 35px;
+}
 
+.is-phone .webnovel-settings-rule-item .wn-settings-order-btns {
+    position: absolute;
+    right: 10px;
+    top: 55px;
+}
 
-/* ── StatusView ── */
+.is-phone .webnovel-settings-rule-item .setting-item-control {
+    width: 100%;
+    justify-content: flex-start;
+    margin-top: 5px;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.is-phone .webnovel-rule-name-input,
+.is-phone .webnovel-rule-pattern-input,
+.is-phone .webnovel-settings-rule-item .setting-item-control button {
+    width: 100%;
+    flex: 1 1 100%;
+}
+
+/* -- StatusView -- */
 
 .webnovel-work-goal {
 
@@ -3645,9 +3332,7 @@ body .workspace-leaf-content[data-type="immersive-sticky-notes"][data-type="imme
 
 }
 
-
-
-/* ── ImmersiveStickyNotesView ── */
+/* -- ImmersiveStickyNotesView -- */
 
 .webnovel-immersive-sticky-container {
 
@@ -3795,9 +3480,7 @@ body .workspace-leaf-content[data-type="immersive-sticky-notes"][data-type="imme
 
 }
 
-
-
-/* ── Utility ── */
+/* -- Utility -- */
 
 .webnovel-ellipsis {
 
@@ -3809,17 +3492,13 @@ body .workspace-leaf-content[data-type="immersive-sticky-notes"][data-type="imme
 
 }
 
-
-
 /* ==========================================================================
 
    webnovel-* CSS classes: replacing remaining Object.assign(el.style, {...}) calls
 
    ========================================================================== */
 
-
-
-/* ── ForeshadowingModal ── */
+/* -- ForeshadowingModal -- */
 
 .webnovel-chapter-label { flex: 1; cursor: pointer; }
 
@@ -3829,9 +3508,7 @@ body .workspace-leaf-content[data-type="immersive-sticky-notes"][data-type="imme
 
 .webnovel-btn-container-end { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
 
-
-
-/* ── TimelineView / TimelineAddModal ── */
+/* -- TimelineView / TimelineAddModal -- */
 
 .webnovel-tl-input { width: 100%; margin-bottom: 8px; padding: 6px 8px; border-radius: 4px; border: 1px solid var(--background-modifier-border); background: var(--background-primary); color: var(--text-normal); box-sizing: border-box; }
 
@@ -3859,15 +3536,11 @@ body .workspace-leaf-content[data-type="immersive-sticky-notes"][data-type="imme
 
 .webnovel-tl-add-event-btn { width: 100%; padding: 8px; border-radius: 4px; background: var(--interactive-accent); color: var(--text-on-accent); border: none; cursor: pointer; margin-top: 8px; }
 
-
-
-/* ── StatusView ── */
+/* -- StatusView -- */
 
 .webnovel-pct-bold-mono { font-weight: 600; font-family: var(--font-monospace); }
 
-
-
-/* ── SettingsTab ── */
+/* -- SettingsTab -- */
 
 .webnovel-rule-name-input { flex: 1 1 0px; min-width: 0; }
 
@@ -3877,9 +3550,7 @@ body .workspace-leaf-content[data-type="immersive-sticky-notes"][data-type="imme
 
 .webnovel-obs-css-input { width: 100%; height: 100px; font-family: monospace; }
 
-
-
-/* ── Exquisite Lore Hover Card ── */
+/* -- Exquisite Lore Hover Card -- */
 
 body .webnovel-lore-popover {
 
@@ -3903,8 +3574,6 @@ body .webnovel-lore-popover {
 
 }
 
-
-
 .webnovel-lore-popover .wn-lore-card {
 
     display: flex;
@@ -3918,8 +3587,6 @@ body .webnovel-lore-popover {
     min-height: 0;
 
 }
-
-
 
 .webnovel-lore-popover .wn-lore-card-header {
 
@@ -3939,8 +3606,6 @@ body .webnovel-lore-popover {
 
 }
 
-
-
 .webnovel-lore-popover .wn-lore-card-title {
 
     margin: 0;
@@ -3955,8 +3620,6 @@ body .webnovel-lore-popover {
 
 }
 
-
-
 .webnovel-lore-popover .wn-lore-card-badges {
 
     display: flex;
@@ -3970,8 +3633,6 @@ body .webnovel-lore-popover {
     margin-bottom: -0.5px; /* Optically align baseline if needed */
 
 }
-
-
 
 .webnovel-lore-popover .wn-lore-card-badge {
 
@@ -3989,8 +3650,6 @@ body .webnovel-lore-popover {
 
 }
 
-
-
 .webnovel-lore-popover .wn-lore-card-body {
 
     overflow-y: auto;
@@ -4007,8 +3666,6 @@ body .webnovel-lore-popover {
 
 }
 
-
-
 .webnovel-lore-popover .wn-lore-card-loading,
 
 .webnovel-lore-popover .wn-lore-card-empty {
@@ -4019,23 +3676,17 @@ body .webnovel-lore-popover {
 
 }
 
-
-
 .webnovel-lore-popover .wn-lore-markdown p:first-child {
 
     margin-top: 0;
 
 }
 
-
-
 .webnovel-lore-popover .wn-lore-markdown p:last-child {
 
     margin-bottom: 0;
 
 }
-
-
 
 /* Custom ultra-thin scrollbar */
 
@@ -4065,8 +3716,6 @@ body .webnovel-lore-popover {
 
 }
 
-
-
 /* Reset subheading sizes inside the lore card */
 
 body .webnovel-lore-popover .wn-lore-markdown h1,
@@ -4089,13 +3738,34 @@ body .webnovel-lore-popover .wn-lore-markdown h6 {
 
 }
 
+/* Lore popover: hide default disclosure triangle, use custom indicator */
+.webnovel-lore-popover .wn-lore-markdown summary {
+    list-style: none;
+}
 
+.webnovel-lore-popover .wn-lore-markdown summary::-webkit-details-marker {
+    display: none;
+}
 
+.webnovel-lore-popover .wn-lore-markdown summary::marker {
+    display: none;
+    content: "";
+}
 
+.webnovel-lore-popover .wn-lore-markdown summary .collapse-indicator {
+    transition: transform 100ms ease-in-out;
+    opacity: 0.6;
+}
 
+.webnovel-lore-popover .wn-lore-markdown summary:hover .collapse-indicator {
+    opacity: 1;
+}
 
+.webnovel-lore-popover .wn-lore-markdown details[open] > summary .collapse-indicator {
+    transform: rotate(90deg);
+}
 
-/* ѡ������ͳ�������� */
+/* Selection word count tooltip */
 
 .cm-tooltip-selection-count {
 
@@ -4127,8 +3797,6 @@ body .webnovel-lore-popover .wn-lore-markdown h6 {
 
 }
 
-
-
 @keyframes webnovel-tooltip-fadein {
 
   0% { opacity: 0; transform: translateY(4px) scale(0.95); }
@@ -4137,9 +3805,7 @@ body .webnovel-lore-popover .wn-lore-markdown h6 {
 
 }
 
-
-
-/* 沉浸模式：隐藏分割把手，仅悬浮时显示 */
+/* Immersive Mode: Hide split handle, show only on hover */
 
 body.immersive-mode-active.immersive-mode-active .workspace-leaf-resize-handle {
 
@@ -4148,8 +3814,6 @@ body.immersive-mode-active.immersive-mode-active .workspace-leaf-resize-handle {
 	transition: opacity 0.2s ease;
 
 }
-
-
 
 body.immersive-mode-active.immersive-mode-active .workspace-leaf-resize-handle:hover,
 
@@ -4161,9 +3825,7 @@ body.immersive-mode-active.immersive-mode-active .workspace-leaf-resize-handle.i
 
 }
 
-
-
-/* 深度主题防御：重置主流第三方主题(如 Border) 可能添加的全局容器边距 */
+/* Deep Theme Defense: Reset global container margins potentially added by mainstream 3rd-party themes (like Border) */
 
 body.immersive-mode-active.immersive-mode-active .app-container.app-container {
 
@@ -4176,8 +3838,6 @@ body.immersive-mode-active.immersive-mode-active .app-container.app-container {
 	width: 100%;
 
 }
-
-
 
 body.immersive-mode-active.immersive-mode-active .app-container.app-container .workspace.workspace {
 
@@ -4201,8 +3861,6 @@ body.immersive-mode-active.immersive-mode-active .app-container.app-container .w
 
 }
 
-
-
 body.immersive-mode-active.immersive-mode-active .horizontal-main-container.horizontal-main-container {
 
 	padding: 0;
@@ -4215,8 +3873,6 @@ body.immersive-mode-active.immersive-mode-active .horizontal-main-container.hori
 
 }
 
-
-
 body.immersive-mode-active.immersive-mode-active .app-container.app-container .workspace.workspace .workspace-split.workspace-split,
 
 body.immersive-mode-active.immersive-mode-active .app-container.app-container .workspace.workspace .workspace-split.mod-root {
@@ -4227,17 +3883,13 @@ body.immersive-mode-active.immersive-mode-active .app-container.app-container .w
 
 }
 
-
-
 body.immersive-mode-active.immersive-mode-active .app-container.app-container .workspace.workspace .workspace-leaf.workspace-leaf {
 
 	margin: 0;
 
 }
 
-
-
-/* 深度主题防御：清除主题可能使用伪元素在 body 上创建的悬浮边框 */
+/* Deep Theme Defense: Clear hover borders potentially created by themes using pseudo-elements on body */
 
 body.immersive-mode-active.immersive-mode-active.immersive-mode-active::before,
 
@@ -4247,9 +3899,7 @@ body.immersive-mode-active.immersive-mode-active.immersive-mode-active::after {
 
 }
 
-
-
-/* 当前激活(选中)卡片的浅色高亮提示 */
+/* Light highlight for currently active (selected) card */
 
 body.immersive-mode-active .workspace-leaf.mod-active.workspace-leaf .workspace-leaf-content {
 
@@ -4258,8 +3908,6 @@ body.immersive-mode-active .workspace-leaf.mod-active.workspace-leaf .workspace-
 	box-shadow: 0 0 0 1px color-mix(in srgb, var(--interactive-accent) 30%, transparent), 0 4px 15px color-mix(in srgb, var(--interactive-accent) 8%, rgba(0,0,0,0.05));
 
 }
-
-
 
 .webnovel-settings-tabs {
 
@@ -4276,8 +3924,6 @@ body.immersive-mode-active .workspace-leaf.mod-active.workspace-leaf .workspace-
 	overflow-x: auto;
 
 }
-
-
 
 .webnovel-tab-item {
 
@@ -4307,15 +3953,11 @@ body.immersive-mode-active .workspace-leaf.mod-active.workspace-leaf .workspace-
 
 }
 
-
-
 .theme-dark .webnovel-tab-item {
 
 	background: var(--background-secondary);
 
 }
-
-
 
 .webnovel-tab-item:hover {
 
@@ -4324,8 +3966,6 @@ body.immersive-mode-active .workspace-leaf.mod-active.workspace-leaf .workspace-
 	color: var(--text-normal);
 
 }
-
-
 
 .webnovel-tab-item.is-active {
 
@@ -4339,20 +3979,17 @@ body.immersive-mode-active .workspace-leaf.mod-active.workspace-leaf .workspace-
 
 }
 
-
 /* ========== Task Modal ========== */
 .wn-task-input { width: 100%; margin-bottom: 8px; padding: 6px 8px; border-radius: 4px; border: 1px solid var(--background-modifier-border); background: var(--background-primary); color: var(--text-normal); box-sizing: border-box; }
 .wn-task-label { display: block; margin-bottom: 4px; font-weight: bold; }
 .wn-task-hint { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; }
 .wn-task-btn-container { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
 
-
 /* ========== Mobile Floating Stats ========== */
 .mobile-floating-stats { position: fixed; z-index: 50; background: var(--background-primary); border: 1px solid var(--background-modifier-border); border-radius: 6px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1); padding: 10px 16px; min-height: 44px; font-size: 13px; user-select: none; touch-action: none; cursor: move; display: flex; align-items: center; gap: 12px; opacity: 0.9; }
 .mobile-floating-word-count { font-weight: 500; color: var(--text-normal); white-space: nowrap; }
 .mobile-floating-divider { color: var(--text-muted); opacity: 0.5; }
 .mobile-floating-progress { font-weight: 500; color: var(--text-accent); white-space: nowrap; }
-
 
 /* ========== Settings Tab ========== */
 .wn-settings-banner { background: var(--background-secondary); padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; font-size: 14px; border: 1px solid var(--background-modifier-border); }
@@ -4361,7 +3998,6 @@ body.immersive-mode-active .workspace-leaf.mod-active.workspace-leaf .workspace-
 .wn-settings-order-btn { font-size: 10px; padding: 1px 5px; cursor: pointer; line-height: 1.2; }
 .wn-settings-color-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
 .wn-settings-color-item { display: flex; align-items: center; gap: 4px; background: var(--background-modifier-form-field); padding: 4px; border-radius: 4px; }
-
 
 /* Added utility classes for dynamic styling */
 .wn-clickable { cursor: pointer; }
@@ -4383,3 +4019,104 @@ body .wn-show-block, .wn-show-block { display: block; }
 
 /* Status Badge Muted */
 .wn-status-title-badge.wn-bg-muted { background: var(--text-muted); color: var(--background-primary); border: none; }
+
+/* Fix all modal headings indentation globally */
+body .modal-content .setting-item.setting-item-heading {
+    padding-left: 0;
+    margin-left: 0;
+    border-top: none;
+    margin-top: 0;
+}
+body .modal-content .setting-item.setting-item-heading .setting-item-info,
+body .modal-content .setting-item.setting-item-heading .setting-item-name {
+    padding-left: 0;
+    margin-left: 0;
+}
+
+/* Unified Modal Main Title Size */
+body .modal-content > .setting-item.setting-item-heading:first-child .setting-item-name,
+body .modal-content > .setting-item.setting-item-heading:first-of-type .setting-item-name {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--interactive-accent);
+}
+
+/* ===== Relation Graph View ===== */
+
+/* Graph container: fills the entire view area */
+.wna-relation-graph-container {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Canvas adaptive container */
+.wna-relation-graph-container canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    touch-action: none;
+}
+
+/* Breadcrumb navigation (shown in local mode) */
+.wna-relation-graph-breadcrumb {
+    position: absolute;
+    top: 8px;
+    left: 12px;
+    z-index: 10;
+    font-size: 0.85em;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Breadcrumb clickable link */
+.wna-relation-graph-breadcrumb-link {
+    cursor: pointer;
+    color: var(--interactive-accent);
+    text-decoration: underline;
+}
+
+/* Operation hint text (bottom right) */
+.wna-relation-graph-hint {
+    position: absolute;
+    bottom: 12px;
+    right: 12px;
+    z-index: 10;
+    font-size: 0.75em;
+    color: var(--text-faint);
+    pointer-events: none;
+}
+
+/* Empty state hint when no data */
+.wna-relation-graph-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    color: var(--text-muted);
+    font-size: 0.9em;
+}
+
+/* ========== Lore Graph Styles ========== */
+/* 
+   Extracted hardcoded colors, allowing users to customize via CSS Snippets without recompiling the plugin
+   If not set, defaults from TS code will be used
+*/
+.wna-relation-graph-container {
+    /* Protagonist overlay red (default) */
+    --wna-rg-protagonist-overlay: rgba(224, 108, 117, 0.5);
+    /* Protagonist overlay red (hover highlight) */
+    --wna-rg-protagonist-overlay-hover: rgba(224, 108, 117, 0.8);
+    /* Protagonist glow shadow color */
+    --wna-rg-protagonist-shadow: rgba(224, 108, 117, 0.8);
+    /* Mention Edge Style Variables */
+    --wna-rg-mention-line-color: var(--text-faint);
+    --wna-rg-mention-text-color: var(--text-faint);
+    --wna-rg-mention-border-color: var(--text-faint);
+    --wna-rg-mention-line-dash: 4, 4;
+    --wna-rg-mention-label-dash: 2, 2;
+}

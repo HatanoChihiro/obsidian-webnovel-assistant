@@ -207,6 +207,7 @@
 	"setting.layout-view-timeline": "时间线面板",
 	"setting.layout-view-reference": "参考文档",
 	"setting.layout-view-corkboard": "章节一览",
+	"setting.layout-view-outline": "原生大纲",
 	"setting.layout-top": "上方 (Top)",
 	"setting.layout-left": "左侧 (Left)",
 	"setting.layout-right": "右侧 (Right)",
@@ -217,6 +218,8 @@
 	"setting.move-up": "上移",
 	"setting.move-down": "下移",
 	"setting.homepage-filename-placeholder": "创作主页",
+	"setting.lore-popover-collapse": "悬浮卡片折叠子标题",
+	"setting.lore-popover-collapse-desc": "开启后，设定速查悬浮卡片中的子标题（### 及以下）将默认以折叠形式展示，点击可展开。",
 	"setting.lore-folder-name-placeholder": "默认: 设定",
 	"modal.add-to-timeline": "添加到时间线",
 	"modal.time-point": "时间点",
@@ -604,5 +607,14 @@
 	"command.reset-daily-stats": "重置今日写作统计数据",
 	"command.reset-daily-stats-title": "重置今日写作统计数据",
 	"command.reset-daily-stats-warning": "警告：该操作将会导致今日的所有字数统计、专注时长归零！是否确认？",
-	"notice.daily-stats-reset": "今日写作统计数据已重置"
+	"notice.daily-stats-reset": "今日写作统计数据已重置",
+	"menu.open-relation-graph": "打开设定图谱",
+	"view.relation-graph": "设定图谱",
+	"relation-graph.breadcrumb-all": "全量图谱",
+	"relation-graph.breadcrumb-local": "{name} 的关系网",
+	"relation-graph.no-data": "未找到设定数据，请确保文件包含 ## 二级标题",
+	"relation-graph.tooltip-relations": "关系：{count} 条",
+	"relation-graph.edge-mention": "提及",
+	"relation-graph.hint-double-click-node": "双击节点跳转至文档",
+	"relation-graph.hint-double-click-blank": "双击空白区域返回全量"
 }

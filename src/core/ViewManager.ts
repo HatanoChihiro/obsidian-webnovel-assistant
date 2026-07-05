@@ -9,6 +9,7 @@ import { TaskView, TASK_VIEW_TYPE } from '../ui/TaskView';
 import { ImmersiveChapterListView } from '../ui/ImmersiveChapterListView';
 import { ImmersiveStickyNotesView } from '../ui/ImmersiveStickyNotesView';
 import { CorkboardView, CORKBOARD_VIEW_TYPE } from '../ui/CorkboardView';
+import { RelationGraphView, RELATION_GRAPH_VIEW_TYPE } from '../ui/RelationGraphView';
 
 export class ViewManager {
 	private plugin: WebNovelAssistantPlugin;
@@ -23,6 +24,7 @@ export class ViewManager {
 		this.plugin.registerView(TIMELINE_VIEW_TYPE, (leaf) => new TimelineView(leaf, this.plugin));
 		this.plugin.registerView(TASK_VIEW_TYPE, (leaf) => new TaskView(leaf, this.plugin));
 		this.plugin.registerView(CORKBOARD_VIEW_TYPE, (leaf) => new CorkboardView(leaf, this.plugin));
+		this.plugin.registerView(RELATION_GRAPH_VIEW_TYPE, (leaf) => new RelationGraphView(leaf, this.plugin));
 		
 		if (isDesktop()) { // Desktop
 			this.plugin.registerView(VIEW_TYPES.IMMERSIVE_CHAPTER_LIST, (leaf) => new ImmersiveChapterListView(leaf, this.plugin));

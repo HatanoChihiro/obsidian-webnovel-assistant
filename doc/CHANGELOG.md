@@ -1,3 +1,27 @@
+## 🚀 v3.4.0 设定图谱 (Lore Graph) 全新上线
+
+### 新增设定图谱自动生成功能
+- **角色关系可视化**：一键生成角色的关系图谱，理清复杂人物网络！
+- **智能解析与手动定义**：在设定文件夹内右键开启，插件会自动关联文中的互相提及。你也可以在角色的 ### 关系 子标题下手动定义带有标签的显式关系。
+- **拓展性强**：除了人物，该功能理论上也支持物品、地点等其他分类设定，你可以根据需求自由发挥。
+
+### 其他优化
+- **悬浮卡片折叠**：由于设定卡片内容可能较长，现支持在设置中开启“子标题折叠”功能，开启后卡片内的子段落将默认折叠，点击即可展开，方便查阅。
+- **辅助视图增强**：沉浸模式下的侧边栏现已支持添加 Obsidian 原生的“大纲 (Outline)”视图。
+- **字数统计规则升级**：提升了自定义章节规则的优先级。现在，只要将文件（如时间线、伏笔、设定等文档）名称加入自定义章节规则，它们便能突破硬编码限制，被正常纳入字数统计中。
+- **手机端设置界面优化**：修复了手机无法看到当前启用的章节规则的BUG。
+
+### New Lore Graph Feature
+- **Relationship Visualization**: Generate a relationship graph for your characters with a single click to easily manage complex character networks!
+- **Smart Parsing & Explicit Definitions**: Right-click any lore document to open the graph. The plugin will automatically connect mutually mentioned characters. You can also explicitly define labeled relationships using a ### Relations (or ### 关系) subheading.
+- **Highly Extensible**: While designed for characters, this feature theoretically supports items, locations, and other lore types—feel free to use it creatively!
+
+### Other Optimizations
+- **Collapsible Lore Popovers**: To better handle lengthy lore cards, you can now enable "Subtitle Folding" in the settings. When enabled, subheadings inside hover cards will be collapsed by default and can be expanded on click for easier reading.
+- **Enhanced Auxiliary Views**: Immersive Mode now supports adding the native Obsidian "Outline" view to the sidebar.
+- **Upgraded Word Count Logic**: Elevated the priority of custom chapter rules. You can now track word counts for normally excluded documents (like timelines, foreshadowing, or lore files) by simply adding their names to your custom chapter matching rules.
+- **Mobile Settings Optimization**: Fixed an bug on mobile where the currently enabled chapter rules were not visible.
+
 ## 🔧 v3.3.3
 
 - 修复伏笔无法废弃和回收的BUG

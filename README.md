@@ -57,7 +57,7 @@ Full bilingual UI (Chinese & English) — homepage, word count, goal tracking, f
 <td width="33%" align="center"><b>Chapter Corkboard</b><br /><sub>Card overview, status & synopsis editing</sub><br /><br /><img width="100%" alt="corkboard" src="assets/corkboard.gif" /></td>
 </tr>
 <tr>
-<td width="33%" align="center"><b>Lore Quick Lookup</b><br /><sub>Auto-highlight, hover preview, right-click add</sub><br /><br /><img width="100%" alt="lore-lookup" src="assets/lore-lookup.gif" /></td>
+<td width="33%" align="center"><b>Lore Quick Lookup</b><br /><sub>Auto-highlight, right-click add, relation graph</sub><br /><br /><img width="100%" alt="lore-lookup" src="assets/lore-lookup.gif" /></td>
 <td width="33%" align="center"><b>Sticky Notes</b><br /><sub>Floating, auto-save, sync, Markdown render</sub><br /><br /><img width="100%" alt="sticky-note" src="assets/sticky-note.gif" /></td>
 <td width="33%" align="center"><b>Task Tracker</b><br /><sub>Create periodic tasks, self-driven deadlines</sub><br /><br /><img width="100%" alt="task" src="assets/task.gif" /></td>
 </tr>
@@ -232,7 +232,7 @@ If this plugin helps with your writing, consider buying the author a coffee ☕.
 <td width="33%" align="center"><b>章节一览</b><br /><sub>卡片式展示、状态标记、摘要编辑</sub><br /><br /><img width="100%" alt="corkboard" src="assets/corkboard.gif" /></td>
 </tr>
 <tr>
-<td width="33%" align="center"><b>设定速查</b><br /><sub>自动标注、悬停预览、右键边写边建</sub><br /><br /><img width="100%" alt="lore-lookup" src="assets/lore-lookup.gif" /></td>
+<td width="33%" align="center"><b>设定速查与图谱</b><br /><sub>自动标注、边写边建、自动关系图谱</sub><br /><br /><img width="100%" alt="lore-lookup" src="assets/lore-lookup.gif" /></td>
 <td width="33%" align="center"><b>悬浮便签</b><br /><sub>多端同步、自动保存、Markdown渲染</sub><br /><br /><img width="100%" alt="sticky-note" src="assets/sticky-note.gif" /></td>
 <td width="33%" align="center"><b>任务追踪</b><br /><sub>创建周期任务，自我驱动</sub><br /><br /><img width="100%" alt="task" src="assets/task.gif" /></td>
 </tr>

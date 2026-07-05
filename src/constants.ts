@@ -95,6 +95,7 @@ export const VIEW_TYPES = {
 	CREATIVE: 'creative-view',
 	IMMERSIVE_CHAPTER_LIST: 'immersive-chapter-list-view',
 	IMMERSIVE_STICKY_NOTES: 'immersive-sticky-notes-view',
+	RELATION_GRAPH: 'webnovel-relation-graph',
 } as const;
 
 // ==========================================
@@ -346,6 +347,7 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 	homepagePinPosition: 'top',
 	customSortOrder: {},
 	loreFolderName: '设定',
+	lorePopoverCollapse: false,
 	advancedSearchQuery: '',
 	debugMode: false,
 };

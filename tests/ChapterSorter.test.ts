@@ -151,6 +151,25 @@ describe('ChapterSorter', () => {
 
 			ChapterSorter.setCustomRules([]);
 		});
+
+		it('自定义规则匹配无数字文件时返回 number=-1（如设定、时间线）', () => {
+			ChapterSorter.setCustomRules([
+				{ name: '设定文档', pattern: '^(设定|时间线)', enabled: true }
+			]);
+			
+			// 对于这些原先不是章节的文件，现在有了自定义规则，可以被识别为章节
+			const result1 = ChapterSorter.extractChapterNumber('设定-主角.md');
+			expect(result1).not.toBeNull();
+			expect(result1!.number).toBe(-1);
+			expect(ChapterSorter.isChapterFile('设定-主角.md')).toBe(true);
+
+			const result2 = ChapterSorter.extractChapterNumber('时间线.md');
+			expect(result2).not.toBeNull();
+			expect(result2!.number).toBe(-1);
+			expect(ChapterSorter.isChapterFile('时间线.md')).toBe(true);
+
+			ChapterSorter.setCustomRules([]);
+		});
 	});
 
 	describe('getNextChapterName', () => {

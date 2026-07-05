@@ -702,6 +702,40 @@ Supporting character, a loyal companion.
 
 ---
 
+### Lore Graph
+
+#### Overview
+- **Auto Relationship Parsing**: Generate a relationship graph of characters with a single click, based on the mutual mentions parsed by "Lore Quick Reference" (dashed lines).
+- **Explicit Relationship Definition**: In the character lore Markdown files, use `### Relations` or `### 关系` to establish explicit relationships (solid lines). It supports unordered lists, such as `- [Target Character]: Relationship Description`.
+- **Customizable Styles**: Highly customizable appearance (colors, lines, dashes, etc.), which can be deeply modified via CSS Snippets.
+- **Dynamic Interaction**: Double-click to jump to the character document, scroll wheel to zoom, and right-click to pan the canvas. Hover to highlight related nodes and edges.
+
+#### How to Use
+
+##### Open Lore Graph
+1. Right-click any document **inside the Lore folder**, and select **Open Lore Graph** from the context menu.
+2. The plugin will automatically infer the novel this document belongs to, load global characters, and open the graph view in the right sidebar.
+
+##### Define Explicit Relationships
+1. In the lore document (e.g., `Characters.md`), find the character heading where you want to add relationships (e.g., `## Protagonist`).
+2. Create a level-3 heading named `### Relations` under the character name.
+3. Fill it out in the following format (bold text represents the **Relation Name**, followed by a colon and target characters separated by commas):
+```markdown
+## John Doe
+**Aliases**: Johnny
+**Description**: The Protagonist
+
+### Relations
+- **Childhood Friend**: Jane Doe
+- **Arch-nemesis**: Bob, Alice
+```
+4. The Lore Graph will parse `**Relation Name**: Target Name` and draw arrows and labels with solid lines in the graph.
+
+#### Related Settings
+- **Collapse Lore Cards**: Because lore quick reference cards might have a lot of text, the plugin supports collapsing these subtitles inside the popover. You can enable the collapse feature in the plugin settings panel (expanded globally by default).
+
+---
+
 ### Chapter Overview
 
 #### Overview

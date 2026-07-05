@@ -1,5 +1,5 @@
 import { Logger } from '../utils/Logger';
-import { Component, MarkdownRenderer } from 'obsidian';
+import { Component, MarkdownRenderer, setIcon } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { LoreEntry } from '../services/CharacterManager';
 
@@ -182,6 +182,50 @@ export class LoreHoverPopover extends Component {
 			if (chunkToRender) {
 				const markdownContainer = body.createDiv({ cls: 'wn-lore-markdown' });
 				await MarkdownRenderer.render(this.plugin.app, chunkToRender, markdownContainer, this.entry.file.path, this);
+
+				// 根据设置决定是否折叠子标题（### 及以下级别）
+				if (this.plugin.settings.lorePopoverCollapse) {
+					const headingEls = Array.from(markdownContainer.querySelectorAll('h3, h4, h5, h6'));
+					for (const el of headingEls) {
+						const level = parseInt(el.tagName.substring(1));
+						const siblingsToHide: Element[] = [];
+						let next = el.nextElementSibling;
+
+						// 收集当前标题到下一个同级或更高级标题之间的所有元素
+						while (next) {
+							if (next.tagName.match(/^H[1-6]$/)) {
+								const nextLevel = parseInt(next.tagName.substring(1));
+								if (nextLevel <= level) break;
+							}
+							siblingsToHide.push(next);
+							next = next.nextElementSibling;
+						}
+
+						if (siblingsToHide.length > 0) {
+							const details = activeDocument.createElement('details');
+							const summary = activeDocument.createElement('summary');
+							summary.setCssStyles({ cursor: 'pointer', outline: 'none', display: 'flex', alignItems: 'center' });
+
+							const iconEl = activeDocument.createElement('div');
+							iconEl.addClass('collapse-indicator');
+							iconEl.addClass('collapse-icon');
+							setIcon(iconEl, 'right-triangle');
+							summary.appendChild(iconEl);
+
+							const clonedHeading = el.cloneNode(true) as HTMLElement;
+							clonedHeading.setCssStyles({ display: 'inline-block', margin: '0', marginLeft: '4px' });
+
+							summary.appendChild(clonedHeading);
+							details.appendChild(summary);
+
+							for (const sib of siblingsToHide) {
+								details.appendChild(sib);
+							}
+
+							el.replaceWith(details);
+						}
+					}
+				}
 			} else {
 				body.createDiv({ cls: 'wn-lore-card-empty', text: 'No content.' });
 			}

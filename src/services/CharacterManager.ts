@@ -24,13 +24,21 @@ export class CharacterManager {
 	private lowercaseKeyMap: Map<string, Map<string, string>> = new Map();
 	
 	public cacheVersion: number = 0;
+	private _initialized: boolean = false;
 
 	constructor(app: App, plugin: WebNovelAssistantPlugin) {
 		this.app = app;
 		this.plugin = plugin;
 	}
 
+	public async ensureInitialized(): Promise<void> {
+		if (this._initialized) return;
+		this._initialized = true;
+		await this.initialize();
+	}
+
 	public async initialize(): Promise<void> {
+		this._initialized = true;
 		await this.rebuildCache();
 
 		// 监听文件变化
@@ -88,7 +96,7 @@ export class CharacterManager {
 	/**
 	 * 检查路径是否在设定文件夹内（支持多语言文件夹名）
 	 */
-	private isLorePath(bookPath: string, parentPath: string): boolean {
+	public isLorePath(bookPath: string, parentPath: string): boolean {
 		const candidates = new Set<string>();
 		candidates.add(this.plugin.settings.loreFolderName || getDefaultFileName('loreFolderName'));
 		for (const name of getDefaultFileNameCandidates('loreFolderName')) candidates.add(name);

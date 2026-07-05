@@ -12,6 +12,7 @@ import { TaskManager } from '../services/TaskManager';
 import { TaskAddModal } from '../ui/TaskModal';
 import { findBookRoot } from '../utils/path';
 import { NewNovelModal } from '../ui/NewNovelModal';
+import { RELATION_GRAPH_VIEW_TYPE } from '../ui/RelationGraphView';
 
 export class MenuManager {
 	private plugin: WebNovelAssistantPlugin;
@@ -48,6 +49,24 @@ export class MenuManager {
 					menu.addItem((item) => {
 						item.setTitle(t('menu.extract-sticky-note')).setIcon('popup-open').onClick(() => {
 							this.plugin.createStickyNote({ file: file }).catch(console.error);
+						});
+					});
+				}
+
+				// 关系图谱：仅设定文件
+				const bookPath = this.plugin.characterManager.getBookPathForFile(file) || '';
+				const parentPath = file.parent?.path || '';
+				if (this.plugin.characterManager.isLorePath(bookPath, parentPath)) {
+					menu.addItem((item) => {
+						item.setTitle(t('menu.open-relation-graph')).setIcon('git-fork').onClick(() => {
+							void (async () => {
+								// 类似原生图谱，默认在右侧进行垂直分屏打开
+								const leaf = this.plugin.app.workspace.getLeaf('split', 'vertical');
+								await leaf.setViewState({
+									type: RELATION_GRAPH_VIEW_TYPE,
+									state: { filePath: file.path }
+								});
+							})();
 						});
 					});
 				}
@@ -175,6 +194,24 @@ export class MenuManager {
 						menu.addItem((item) => {
 							item.setTitle(t('menu.current-file-extract-note')).setIcon('popup-open').onClick(() => {
 								this.plugin.createStickyNote({ file: view.file! }).catch(console.error);
+							});
+						});
+					}
+
+					// 关系图谱：仅设定文件
+					const bookPath = this.plugin.characterManager.getBookPathForFile(view.file!) || '';
+					const parentPath = view.file!.parent?.path || '';
+					if (this.plugin.characterManager.isLorePath(bookPath, parentPath)) {
+						menu.addItem((item) => {
+							item.setTitle(t('menu.open-relation-graph')).setIcon('git-fork').onClick(() => {
+								void (async () => {
+									// 和官方一样，默认向右侧垂直分屏打开
+									const leaf = this.plugin.app.workspace.getLeaf('split', 'vertical');
+									await leaf.setViewState({
+										type: RELATION_GRAPH_VIEW_TYPE,
+										state: { filePath: view.file!.path }
+									});
+								})();
 							});
 						});
 					}

@@ -207,6 +207,7 @@
 	"setting.layout-view-timeline": "Timeline Panel",
 	"setting.layout-view-reference": "Reference Document",
 	"setting.layout-view-corkboard": "Chapter Overview",
+	"setting.layout-view-outline": "Outline (Native)",
 	"setting.layout-top": "Top",
 	"setting.layout-left": "Left",
 	"setting.layout-right": "Right",
@@ -217,6 +218,8 @@
 	"setting.move-up": "Move Up",
 	"setting.move-down": "Move Down",
 	"setting.homepage-filename-placeholder": "Creative Homepage",
+	"setting.lore-popover-collapse": "Collapse Subheadings in Hover Card",
+	"setting.lore-popover-collapse-desc": "When enabled, subheadings (### and below) in lore hover cards will be collapsed by default. Click to expand.",
 	"setting.lore-folder-name-placeholder": "Default: Lore",
 	"modal.add-to-timeline": "Add to Timeline",
 	"modal.time-point": "Time Point",
@@ -604,5 +607,14 @@
 	"command.reset-daily-stats": "Reset today writing stats",
 	"command.reset-daily-stats-title": "Reset Today Stats",
 	"command.reset-daily-stats-warning": "Warning: This action will reset all your word count and focus time for today to zero! Are you sure?",
-	"notice.daily-stats-reset": "Today writing stats have been reset"
+	"notice.daily-stats-reset": "Today writing stats have been reset",
+	"menu.open-relation-graph": "Open Relation Graph",
+	"view.relation-graph": "Relation Graph",
+	"relation-graph.breadcrumb-all": "Full Graph",
+	"relation-graph.breadcrumb-local": "{name}'s Relations",
+	"relation-graph.no-data": "No lore data found. Ensure the file contains ## headings.",
+	"relation-graph.tooltip-relations": "Relations: {count}",
+	"relation-graph.edge-mention": "Mentioned",
+	"relation-graph.hint-double-click-node": "Double-click a node to open character lore",
+	"relation-graph.hint-double-click-blank": "Double-click blank area to return to full graph"
 }
