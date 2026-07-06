@@ -100,9 +100,15 @@ export class CharacterManager {
 		const candidates = new Set<string>();
 		candidates.add(this.plugin.settings.loreFolderName || getDefaultFileName('loreFolderName'));
 		for (const name of getDefaultFileNameCandidates('loreFolderName')) candidates.add(name);
+		
+		const pathSegments = parentPath.split('/');
 		for (const loreFolderName of candidates) {
-			const expectedLorePath = bookPath === "/" ? loreFolderName : bookPath + "/" + loreFolderName;
-			if (parentPath === expectedLorePath || parentPath.startsWith(expectedLorePath + "/")) return true;
+			if (bookPath !== "/" && parentPath !== bookPath && !parentPath.startsWith(bookPath + "/")) {
+				continue;
+			}
+			if (pathSegments.includes(loreFolderName)) {
+				return true;
+			}
 		}
 		return false;
 	}

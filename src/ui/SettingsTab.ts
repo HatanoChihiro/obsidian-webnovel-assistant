@@ -503,9 +503,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		this.displayTimelineSettings(containerEl);
 		this.displayTaskSettings(containerEl);
 
-		if (tier === 'desktop') {
-			this.displayLoreSettings(containerEl);
-		}
+		this.displayLoreSettings(containerEl);
 	}
 
 	// ── 伏笔设置 ──
@@ -971,16 +969,18 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				text.inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); text.inputEl.blur(); } });
 			})
 
-		// 悬浮卡片子标题折叠开关
-		new Setting(containerEl)
-			.setName(t('setting.lore-popover-collapse'))
-			.setDesc(t('setting.lore-popover-collapse-desc'))
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.lorePopoverCollapse)
-				.onChange(async (value: boolean) => {
-					this.plugin.settings.lorePopoverCollapse = value;
-					await this.plugin.saveSettings();
-				}));
+		if (isDesktop()) {
+			// 悬浮卡片子标题折叠开关（仅桌面端悬浮卡片生效）
+			new Setting(containerEl)
+				.setName(t('setting.lore-popover-collapse'))
+				.setDesc(t('setting.lore-popover-collapse-desc'))
+				.addToggle(toggle => toggle
+					.setValue(this.plugin.settings.lorePopoverCollapse)
+					.onChange(async (value: boolean) => {
+						this.plugin.settings.lorePopoverCollapse = value;
+						await this.plugin.saveSettings();
+					}));
+		}
 	}
 
 	// ── 时间线设置 ──

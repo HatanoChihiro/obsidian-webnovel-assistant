@@ -10,27 +10,48 @@ export class LoreHoverPopover extends Component {
 	private popoverEl: HTMLElement | null = null;
 	private closeTimeout: number | null = null;
 	private showTimeout: number | null = null;
+	private immediate: boolean = false;
 	
 	constructor(
 		targetEl: HTMLElement,
 		entry: LoreEntry,
-		plugin: WebNovelAssistantPlugin
+		plugin: WebNovelAssistantPlugin,
+		immediate: boolean = false
 	) {
 		super();
 		this.plugin = plugin;
 		this.entry = entry;
 		this.targetEl = targetEl;
+		this.immediate = immediate;
 
-		// 延迟 1000ms 后显示，避免鼠标快速划过时误触
-		this.showTimeout = window.setTimeout(() => {
-			// 确保鼠标没有离开
-			if (!this.targetEl.matches(':hover')) return;
+		if (immediate) {
 			void this.show();
-		}, 1000);
+		} else {
+			// 延迟 1000ms 后显示，避免鼠标快速划过时误触
+			this.showTimeout = window.setTimeout(() => {
+				// 确保鼠标没有离开
+				if (!this.targetEl.matches(':hover')) return;
+				void this.show();
+			}, 1000);
+		}
 
 		// 监听鼠标离开目标元素
 		this.targetEl.addEventListener('mouseleave', this.onMouseLeaveTarget);
+
+		// 监听全局点击以支持点击外部关闭（主要服务于移动端点击触发）
+		if (immediate) {
+			window.setTimeout(() => {
+				activeDocument.addEventListener('click', this.onGlobalClick);
+			}, 0);
+		}
 	}
+
+	private onGlobalClick = (e: MouseEvent) => {
+		const target = e.target as HTMLElement;
+		if (this.popoverEl && !this.popoverEl.contains(target) && !this.targetEl.contains(target)) {
+			this.hide();
+		}
+	};
 
 	
 	override onunload() {
@@ -79,6 +100,7 @@ export class LoreHoverPopover extends Component {
 			this.popoverEl = null;
 		}
 		this.targetEl.removeEventListener('mouseleave', this.onMouseLeaveTarget);
+		activeDocument.removeEventListener('click', this.onGlobalClick);
 	}
 
 	private async show() {
@@ -110,6 +132,10 @@ export class LoreHoverPopover extends Component {
 		// 防止超出屏幕底部 (如果下面空间不够，就显示在上面)
 		if (top + popoverRect.height > window.innerHeight) {
 			top = rect.top - popoverRect.height - 5;
+		}
+
+		if (this.immediate) {
+			this.popoverEl.setCssStyles({ maxHeight: '50vh', overflowY: 'auto' });
 		}
 
 		this.popoverEl.setCssStyles({ top: `${top}px`, left: `${left}px` });

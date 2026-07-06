@@ -59,29 +59,42 @@ export class ForceLayoutEngine {
 
 		// 构建 D3 物理引擎
 		this.simulation = d3.forceSimulation<LayoutNode>(this.nodes)
-			// 弹簧力：连线拉扯
+			// 弹簧力：连线拉扯（保持极短的距离，使图谱紧凑）
 			.force('link', d3.forceLink<LayoutNode, LayoutEdge>(this.edges)
 				.id(d => d.id)
-				.distance(120) // 基础连线长度
+				.distance(80) // 固定短距离，防止线条过长
 				.strength(0.5) // 拉扯刚度
 			)
 			// 万有斥力：节点互相排斥
 			.force('charge', d3.forceManyBody()
-				.strength(-400) // 斥力大小
+				.strength(-400) // 适中的斥力
 				.distanceMax(600) // 超过此距离不再排斥，优化性能
 			)
 			// 主角引力：如果是主角，施加向画布中心的引力，使其成为视觉中心
 			.force('protagonistX', d3.forceX(width / 2).strength((d: LayoutNode) => d.isProtagonist ? 0.2 : 0))
 			.force('protagonistY', d3.forceY(height / 2).strength((d: LayoutNode) => d.isProtagonist ? 0.2 : 0))
-			// 中心引力：防止整体飘走（d3.forceCenter 会平移所有节点使质心居中）
+			// 中心引力：防止整体飘走
 			.force('center', d3.forceCenter(width / 2, height / 2).strength(0.05))
-			// 碰撞检测：防止节点互相重叠
-			.force('collide', d3.forceCollide().radius(25).strength(0.8))
-			// 速度衰减（阻尼）：控制滑动的手感，0.6 接近原生 Obsidian 图谱的“Q弹”感
+			// 碰撞检测：增加到 30，防止节点过于靠近导致中心区域标签重叠
+			.force('collide', d3.forceCollide().radius(30).strength(0.8))
+			// 速度衰减（阻尼）：0.6 接近原生 Obsidian 图谱的“Q弹”感
 			.velocityDecay(0.6)
 			.alphaMin(0.001)
-			// 关闭自动循环，接管到我们自己的 requestAnimationFrame 中
 			.stop();
+	}
+
+	/**
+	 * 计算每条边带来的节点度数
+	 */
+	private calculateDegreeMap(edges: LayoutEdge[]): Map<string, number> {
+		const degreeMap = new Map<string, number>();
+		edges.forEach(e => {
+			const sourceId = typeof e.source === 'string' ? e.source : e.source.id;
+			const targetId = typeof e.target === 'string' ? e.target : e.target.id;
+			degreeMap.set(sourceId, (degreeMap.get(sourceId) || 0) + 1);
+			degreeMap.set(targetId, (degreeMap.get(targetId) || 0) + 1);
+		});
+		return degreeMap;
 	}
 
 	/**

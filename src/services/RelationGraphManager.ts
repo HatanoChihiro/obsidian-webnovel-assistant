@@ -135,8 +135,10 @@ export class RelationGraphManager {
 
 		// 第二步：解析每个角色的关系和正文引用
 		const edges: GraphEdge[] = [];
-		// 有向去重集合：key = "source→target"
-		const edgeKeySet = new Set<string>();
+		// 有向节点对集合，用于过滤掉已经存在显式边的提及关系
+		const directedPairs = new Set<string>();
+		// 用于去重完全相同的显式关系边
+		const uniqueExplicitEdges = new Set<string>();
 
 		for (let i = 0; i < fileCache.headings.length; i++) {
 			const heading = fileCache.headings[i];
@@ -160,9 +162,11 @@ export class RelationGraphManager {
 					characterName, lines, relationSection.startLine, relationSection.endLine, nodeIds
 				);
 				for (const edge of explicitEdges) {
-					const key = `${edge.source}→${edge.target}`;
-					if (!edgeKeySet.has(key)) {
-						edgeKeySet.add(key);
+					const pairKey = `${edge.source}→${edge.target}`;
+					const uniqueKey = `${pairKey}|${edge.label}`;
+					if (!uniqueExplicitEdges.has(uniqueKey)) {
+						uniqueExplicitEdges.add(uniqueKey);
+						directedPairs.add(pairKey); // 记录该方向已存在显式边
 						edges.push(edge);
 					}
 				}
@@ -174,10 +178,10 @@ export class RelationGraphManager {
 				relationSection, nodeIds
 			);
 			for (const edge of mentionEdges) {
-				const key = `${edge.source}→${edge.target}`;
-				// 只有在该方向尚无显式边时才添加隐式引用
-				if (!edgeKeySet.has(key)) {
-					edgeKeySet.add(key);
+				const pairKey = `${edge.source}→${edge.target}`;
+				// 只有在该方向没有任何显式边，且之前没添加过提及边时，才添加
+				if (!directedPairs.has(pairKey)) {
+					directedPairs.add(pairKey);
 					edges.push(edge);
 				}
 			}
@@ -336,8 +340,23 @@ export class RelationGraphManager {
 
 			// 分隔多个目标角色
 			const targets = targetList.split(TARGET_SEPARATOR_REGEX);
-			for (const rawTarget of targets) {
-				const target = rawTarget.trim();
+			for (let rawTarget of targets) {
+				rawTarget = rawTarget.trim();
+				if (!rawTarget) continue;
+
+				// 提取真正的角色名：支持裸文本或 Obsidian 链接格式如 [[#林芝夏]]、[[文件#林芝夏|别名]]、[[林芝夏]]
+				let target = rawTarget;
+				const linkMatch = target.match(/\[\[(.*?)\]\]/);
+				if (linkMatch) {
+					let inner = linkMatch[1];
+					if (inner.includes('|')) inner = inner.split('|')[0];
+					if (inner.includes('#')) {
+						const parts = inner.split('#');
+						inner = parts[parts.length - 1]; // 取 # 后面的真实标题
+					}
+					target = inner.trim();
+				}
+
 				// 只添加指向已知角色节点的边
 				if (target && validNodeIds.has(target) && target !== sourceName) {
 					edges.push({

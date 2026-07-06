@@ -207,7 +207,7 @@ export class SettingsManager {
 	validateSettings(settings: Partial<AccurateCountSettings>): ValidationResult {
 		const errors: string[] = [];
 		for (const rule of this.validationRules) {
-			const value = this.getNestedValue(settings as unknown as Record<string, unknown>, rule.path);
+			const value = this.getNestedValue(settings, rule.path);
 			if (value !== undefined && !rule.validate(value)) {
 				errors.push(rule.errorMessage);
 			}
@@ -218,10 +218,10 @@ export class SettingsManager {
 	private fixInvalidSettings(settings: AccurateCountSettings): AccurateCountSettings {
 		const fixed = { ...settings };
 		for (const rule of this.validationRules) {
-			const value = this.getNestedValue(fixed as unknown as Record<string, unknown>, rule.path);
+			const value = this.getNestedValue(fixed, rule.path);
 			if (value !== undefined && !rule.validate(value)) {
-				const defaultValue = this.getNestedValue(this.defaultSettings as unknown as Record<string, unknown>, rule.path);
-				this.setNestedValue(fixed as unknown as Record<string, unknown>, rule.path, defaultValue);
+				const defaultValue = this.getNestedValue(this.defaultSettings, rule.path);
+				this.setNestedValue(fixed, rule.path, defaultValue);
 				Logger.warn(`[SettingsManager] 修复无效设置: ${rule.path} = ${value} -> ${defaultValue}`);
 			}
 		}

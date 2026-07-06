@@ -1,3 +1,12 @@
+## 🔧 v3.4.1
+
+- 优化设定图谱渲染样式和动画，标签或节点有重叠时，会自动透明化下层节点
+- 修复移动端因为无法设置设定文件夹而无法触发设定图谱的BUG
+
+- Optimize lore graph rendering style and animation: when labels or nodes overlap, the underlying node will be automatically transparent
+- Fix: Fix a bug where the lore graph could not be triggered on mobile devices because the setting folder could not be set
+
+
 ## 🚀 v3.4.0 设定图谱 (Lore Graph) 全新上线
 
 ### 新增设定图谱自动生成功能

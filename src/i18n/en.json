@@ -175,7 +175,7 @@
 	"setting.lore-lookup": "Lore Lookup",
 	"setting.lore-folder-name": "Lore Folder Name",
 	"setting.lore-folder-name-desc-hint": "Tip: ",
-	"setting.lore-folder-name-desc": "All documents in this folder will be scanned and parsed. The plugin automatically extracts headings (## Proper Name) and inline aliases (**Alias**: xxx) from documents. When you type these names in novel text, they get underlined and support precise hover cards.",
+	"setting.lore-folder-name-desc": "All documents in this folder will be scanned and parsed. The plugin automatically extracts headings (## Proper Name) and inline aliases (**Alias**: xxx) from documents. When you type these names in novel text, they get underlined and support precise hover cards. Note: Due to touch interaction limits, hover cards are not supported on mobile. Mobile only supports the relation graph.",
 	"setting.lore-folder-name-desc-prefix": "Specify the folder name where lore entries are stored for each work.",
 	"setting.timeline": "Timeline",
 	"setting.timeline-filename": "Timeline Filename",

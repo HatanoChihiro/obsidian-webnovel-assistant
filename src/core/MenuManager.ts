@@ -199,8 +199,8 @@ export class MenuManager {
 					}
 
 					// 关系图谱：仅设定文件
-					const bookPath = this.plugin.characterManager.getBookPathForFile(view.file!) || '';
-					const parentPath = view.file!.parent?.path || '';
+					const bookPath = this.plugin.characterManager.getBookPathForFile(view.file) || '';
+					const parentPath = view.file.parent?.path || '';
 					if (this.plugin.characterManager.isLorePath(bookPath, parentPath)) {
 						menu.addItem((item) => {
 							item.setTitle(t('menu.open-relation-graph')).setIcon('git-fork').onClick(() => {

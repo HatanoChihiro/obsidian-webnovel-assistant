@@ -175,7 +175,7 @@
 	"setting.lore-lookup": "设定速查",
 	"setting.lore-folder-name": "设定文件夹名称",
 	"setting.lore-folder-name-desc-hint": "提示：",
-	"setting.lore-folder-name-desc": "该文件夹下的所有文档都将被扫描解析。插件会自动提取文档内的标题（## 正名）和正文中的别名（**别名**：xxx）。在小说正文敲出这些名字时，即可自动产生下划线并支持精准悬浮卡片。",
+	"setting.lore-folder-name-desc": "该文件夹下的所有文档都将被扫描解析。插件会自动提取文档内的标题（## 正名）和正文中的别名（**别名**：xxx）。在小说正文敲出这些名字时，即可自动产生下划线并支持精准悬浮卡片。注：受限于触屏交互，正文悬浮卡片不支持移动端，移动端仅支持设定图谱。",
 	"setting.lore-folder-name-desc-prefix": "指定每部作品下存放设定的文件夹名称。",
 	"setting.timeline": "时间线",
 	"setting.timeline-filename": "时间线文件名",

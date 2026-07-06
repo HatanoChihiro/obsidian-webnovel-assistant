@@ -138,10 +138,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			this.settings.homepageWelcome = '';
 			void this.saveSettings();
 		}
-		// 初始化角色缓存 (仅桌面端)
-		if (isDesktop()) {
-			await this.characterManager.initialize();
-		}
+		// 初始化角色缓存 (现已全平台开放)
+		await this.characterManager.initialize();
 
 		// 加载核心功能（桌面端、平板端和移动端功能）
 		await this.setupCoreFeatures();
@@ -241,7 +239,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.commandManager.registerAllCommands();
 		this.viewManager.registerAllViews();
 		
-		// 注册编辑器扩展（设定速查仅在桌面端可用）
+		// 注册编辑器扩展（设定速查悬浮，因移动端体验不佳，仅在桌面端可用）
 		if (isDesktop()) {
 			this.registerEditorExtension(buildCharacterHoverExtension(this.app, this));
 		}

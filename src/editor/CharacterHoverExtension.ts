@@ -6,6 +6,9 @@ import { ViewPlugin, Decoration } from '@codemirror/view';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { LoreHoverPopover } from '../ui/LoreHoverPopover';
 
+const touchStateMap = new WeakMap<EditorView, {startX: number, startY: number}>();
+
+
 /**
  * 构造角色名悬停的 CodeMirror 扩展
  */
@@ -110,6 +113,55 @@ export function buildCharacterHoverExtension(app: App, plugin: WebNovelAssistant
 						const charEntry = plugin.characterManager.getCharacterFile(bookPath, characterName);
 						if (charEntry) {
 							new LoreHoverPopover(target, charEntry, plugin);
+						}
+					}
+				}
+			},
+			click(e: MouseEvent, _view: EditorView) {
+				const target = (e.target as HTMLElement)?.closest('.wn-character-match') as HTMLElement;
+				if (target) {
+					const characterName = target.getAttribute('data-character');
+					const bookPath = target.getAttribute('data-bookpath');
+					
+					if (characterName && bookPath && plugin.characterManager) {
+						const charEntry = plugin.characterManager.getCharacterFile(bookPath, characterName);
+						if (charEntry) {
+							new LoreHoverPopover(target, charEntry, plugin, true);
+						}
+					}
+				}
+			},
+			touchstart(e: TouchEvent, view: EditorView) {
+				if (e.touches.length > 0) {
+					touchStateMap.set(view, {
+						startX: e.touches[0].clientX,
+						startY: e.touches[0].clientY
+					});
+				}
+			},
+			touchend(e: TouchEvent, view: EditorView) {
+				const state = touchStateMap.get(view);
+				if (!state) return;
+				
+				const { startX, startY } = state;
+				touchStateMap.delete(view);
+				
+				if (e.changedTouches.length > 0) {
+					const dx = e.changedTouches[0].clientX - startX;
+					const dy = e.changedTouches[0].clientY - startY;
+					// 如果移动距离小于 10 像素，认为是轻点 (Tap)
+					if (Math.abs(dx) < 10 && Math.abs(dy) < 10) {
+						const target = (e.target as HTMLElement)?.closest('.wn-character-match') as HTMLElement;
+						if (target) {
+							const characterName = target.getAttribute('data-character');
+							const bookPath = target.getAttribute('data-bookpath');
+							
+							if (characterName && bookPath && plugin.characterManager) {
+								const charEntry = plugin.characterManager.getCharacterFile(bookPath, characterName);
+								if (charEntry) {
+									new LoreHoverPopover(target, charEntry, plugin, true);
+								}
+							}
 						}
 					}
 				}

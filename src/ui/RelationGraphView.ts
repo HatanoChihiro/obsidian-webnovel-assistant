@@ -27,6 +27,24 @@ import type { GraphNode, GraphData, GraphEdge } from '../services/RelationGraphM
 import type { LayoutNode } from '../services/ForceLayoutEngine';
 import { t } from '../i18n';
 
+export interface EdgeRenderTask {
+	edge: GraphEdge;
+	src: GraphNode;
+	tgt: GraphNode;
+	drawMode: string;
+	offset: number;
+	isHighlighted: boolean;
+	isDimmed: boolean;
+	isMention: boolean;
+	showLabel: boolean;
+	labelX: number;
+	labelY: number;
+	bgWidth: number;
+	bgHeight: number;
+	priority: number;
+	isOverlapped: boolean;
+}
+
 // ==========================================
 // 常量
 // ==========================================
@@ -38,9 +56,6 @@ const NODE_RADIUS = 5;
 
 /** 节点选中/高亮时的放大半径 */
 const NODE_HIGHLIGHT_RADIUS = 7;
-
-/** 双向边弧线偏移量（像素） */
-const CURVE_OFFSET = 30;
 
 /** 缩放限制 */
 const MIN_SCALE = 0.2;
@@ -126,6 +141,7 @@ export class RelationGraphView extends ItemView {
 	// --- 边偏移量集合（用于处理两节点间存在多条边的情况） ---
 	private edgeOffsetMap: Map<GraphEdge, number> = new Map();
 	private edgeDrawModeMap: Map<GraphEdge, 'hide' | 'bidirectional'> = new Map();
+	private combinedLabelMap: Map<GraphEdge, string> = new Map();
 
 	// --- 事件绑定引用（用于 onClose 清理） ---
 	private boundHandleMouseDown: ((e: MouseEvent) => void) | null = null;
@@ -585,10 +601,10 @@ export class RelationGraphView extends ItemView {
 		const colors = this.getThemeColors();
 
 		// 先绘制边（在节点下方）
-		this.renderEdges(ctx, colors);
+		const edgeTasks = this.renderEdges(ctx, colors);
 
 		// 再绘制节点（在边上方）
-		this.drawNodes(ctx, layout || {nodes: this.graphData.nodes, edges: this.graphData.edges}, colors);
+		this.drawNodes(ctx, layout || {nodes: this.graphData.nodes, edges: this.graphData.edges}, colors, edgeTasks);
 
 		ctx.restore();
 	}
@@ -639,23 +655,54 @@ export class RelationGraphView extends ItemView {
 	}
 
 	/**
+	 * 计算点到线段的距离（用于线与标签的碰撞检测）
+	 */
+	private distToSegment(px: number, py: number, x1: number, y1: number, x2: number, y2: number): number {
+		const l2 = (x2 - x1) ** 2 + (y2 - y1) ** 2;
+		if (l2 === 0) return Math.sqrt((px - x1) ** 2 + (py - y1) ** 2);
+		let t = ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / l2;
+		t = Math.max(0, Math.min(1, t));
+		return Math.sqrt((px - (x1 + t * (x2 - x1))) ** 2 + (py - (y1 + t * (y2 - y1))) ** 2);
+	}
+
+	// ==========================================
+
+	/**
 	 * 渲染所有边（有向箭头 + 关系标签）
 	 */
-	private renderEdges(ctx: CanvasRenderingContext2D, colors: ThemeColors): void {
-		const drawnLabels: {x: number, y: number, w: number, h: number}[] = [];
+	private renderEdges(ctx: CanvasRenderingContext2D, colors: ThemeColors): EdgeRenderTask[] {
+		const edgeTasks: EdgeRenderTask[] = [];
+		const showLabelsGlobally = this.scale >= 0.7;
 
-		// 为了解决线盖住标签的问题，我们需要先统一画所有的线，然后再统一画所有的标签
-		const labelsToDraw: {
-			src: GraphNode, tgt: GraphNode, label: string, offset: number,
-			isMention: boolean, colors: ThemeColors, labelAlpha: number
-		}[] = [];
+		// 找出当前未被淡化的活跃节点
+		const activeNodeIds = new Set<string>();
+		const centerNode = this.selectedNode || this.hoveredNode;
+		if (centerNode) {
+			activeNodeIds.add(centerNode.id);
+			for (const edge of this.graphData.edges) {
+				if (edge.source === centerNode.id) activeNodeIds.add(edge.target);
+				if (edge.target === centerNode.id) activeNodeIds.add(edge.source);
+			}
+		} else {
+			for (const node of this.graphData.nodes) {
+				activeNodeIds.add(node.id);
+			}
+		}
 
-		// 第一遍遍历：只画线
+		ctx.save();
+		ctx.font = '6px sans-serif'; 
+
+		// 第一遍：收集所有边的信息，计算标签的包围盒，并确定优先级
 		for (const edge of this.graphData.edges) {
 			const src = this.graphData.nodes.find(n => n.id === edge.source);
 			const tgt = this.graphData.nodes.find(n => n.id === edge.target);
 			if (!src || !tgt) continue;
 
+			const drawMode = this.edgeDrawModeMap.get(edge);
+			if (drawMode === 'hide') continue;
+
+			const offset = this.edgeOffsetMap.get(edge) || 0;
+			
 			let isHighlighted = false;
 			let isDimmed = false;
 			if (this.selectedNode) {
@@ -666,84 +713,231 @@ export class RelationGraphView extends ItemView {
 				isDimmed = !isHighlighted;
 			}
 
-			// 调细线宽，使其更加精致
+			const isMention = edge.type === 'mention';
+			const showLabel = showLabelsGlobally || isHighlighted;
+
+			let labelX = 0, labelY = 0, bgWidth = 0, bgHeight = 0;
+
+			if (showLabel && edge.label) {
+				const dx = tgt.x - src.x;
+				const dy = tgt.y - src.y;
+				const dist = Math.sqrt(dx * dx + dy * dy);
+				const unitX = dist > 0 ? dx / dist : 0;
+				const unitY = dist > 0 ? dy / dist : 0;
+				const normalX = -unitY;
+				const normalY = unitX;
+
+				labelX = (src.x + tgt.x) / 2 + normalX * offset * 0.5;
+				labelY = (src.y + tgt.y) / 2 + normalY * offset * 0.5;
+
+				// 测量文字宽度
+				const paddingX = 4; // 水平内边距
+				const paddingY = 3; // 垂直内边距
+				const labels = edge.label.split('|');
+				const gap = 4;
+				let totalWidth = 0;
+				for (const l of labels) {
+					totalWidth += ctx.measureText(l).width + paddingX * 2;
+				}
+				bgWidth = totalWidth + gap * (labels.length - 1);
+				bgHeight = 6 + paddingY * 2; // 6px 字体高度 + 上下边距paddingY * 2
+			}
+
+			// 计算优先级（越大越先占据空间，且画在最上层）
+			let priority = 0;
+			if (isHighlighted) priority += 1000;
+			if (!isMention) priority += 100;
+			// 用长度作微调，短边优先显示标签
+			const dist = Math.sqrt(Math.pow(tgt.x - src.x, 2) + Math.pow(tgt.y - src.y, 2));
+			priority -= dist / 1000; 
+
+			edgeTasks.push({
+				edge, src, tgt, drawMode, offset,
+				isHighlighted, isDimmed, isMention, showLabel,
+				labelX, labelY, bgWidth, bgHeight,
+				priority, isOverlapped: false
+			});
+		}
+		ctx.restore();
+
+		// 第二遍：按优先级从高到低进行碰撞检测
+		edgeTasks.sort((a, b) => b.priority - a.priority);
+		
+		const drawnBoxes: {x: number, y: number, w: number, h: number, srcId: string, tgtId: string}[] = [];
+		const drawnLines: {x1: number, y1: number, x2: number, y2: number, srcId: string, tgtId: string}[] = [];
+
+		for (const task of edgeTasks) {
+			if (!task.showLabel || !task.edge.label) continue;
+			
+			// 1. 碰撞检测：与其他优先级更高的标签
+			const isCollidingWithLabel = drawnBoxes.some(b => {
+				// 如果是同一对节点之间的不同标签，允许它们在视觉上稍微靠得近一些甚至轻微重叠
+				// 因为它们已经被物理引擎和弧线逻辑分开，如果依然判定重叠而导致一方透明，会损失重要信息
+				if ((b.srcId === task.src.id && b.tgtId === task.tgt.id) || 
+					(b.srcId === task.tgt.id && b.tgtId === task.src.id)) {
+					return false;
+				}
+				return Math.abs(task.labelX - b.x) < (task.bgWidth + b.w) / 2 + 2 &&
+					   Math.abs(task.labelY - b.y) < (task.bgHeight + b.h) / 2 + 2;
+			});
+
+			// 2. 碰撞检测：与其他优先级更高的连线（防止低优先级标签盖住高优先级线）
+			const isCollidingWithLine = drawnLines.some(line => {
+				// 如果是同一对节点之间的连线（双向关系或者多重边），由于会绘制为弧线，
+				// 它们的标签偏离了中心直线，但不应被视为压住了对方的“直线路径”，否则会导致双方互相透明
+				if ((line.srcId === task.src.id && line.tgtId === task.tgt.id) || 
+					(line.srcId === task.tgt.id && line.tgtId === task.src.id)) {
+					return false;
+				}
+				const dist = this.distToSegment(task.labelX, task.labelY, line.x1, line.y1, line.x2, line.y2);
+				return dist < 8; // 8 像素以内认为标签压到了线
+			});
+
+			// 3. 碰撞检测：与活跃节点（排除起止节点）
+			// 明确关系极为重要，不让步于节点；提及关系则主动让步于节点
+			const shouldYieldToNode = !task.isHighlighted || task.isMention;
+			const isCollidingWithNode = shouldYieldToNode && this.graphData.nodes.some(n => 
+				n.id !== task.src.id && n.id !== task.tgt.id && activeNodeIds.has(n.id) && (
+					(Math.abs(task.labelX - n.x) < task.bgWidth / 2 + 12 &&
+					 Math.abs(task.labelY - n.y) < task.bgHeight / 2 + 12) ||
+					(Math.abs(task.labelX - n.x) < task.bgWidth / 2 + 35 &&
+					 Math.abs(task.labelY - (n.y + 15)) < task.bgHeight / 2 + 8)
+				)
+			);
+
+			if (isCollidingWithLabel || isCollidingWithLine || isCollidingWithNode) {
+				task.isOverlapped = true;
+			} else {
+				drawnBoxes.push({ x: task.labelX, y: task.labelY, w: task.bgWidth, h: task.bgHeight, srcId: task.src.id, tgtId: task.tgt.id });
+				drawnLines.push({ x1: task.src.x, y1: task.src.y, x2: task.tgt.x, y2: task.tgt.y, srcId: task.src.id, tgtId: task.tgt.id });
+			}
+		}
+
+		// 第三遍：画线（由于之前从高到低排序，我们要从后往前画，让低优先级的在底层）
+		for (let i = edgeTasks.length - 1; i >= 0; i--) {
+			const task = edgeTasks[i];
+			const { src, tgt, offset, isHighlighted, isDimmed, isMention, isOverlapped } = task;
+
 			let lineWidth = 0.5;
 			let alpha = 0.5;
 
 			if (isHighlighted) {
-				lineWidth = edge.type === 'mention' ? 0.4 : 0.6;
-				alpha = edge.type === 'mention' ? 0.6 : 0.9;
+				lineWidth = isMention ? 0.4 : 0.6;
+				alpha = isMention ? 0.6 : 0.9;
 			} else if (isDimmed) {
-				lineWidth = edge.type === 'mention' ? 0.15 : 0.2;
-				alpha = edge.type === 'mention' ? 0.1 : 0.15;
+				lineWidth = isMention ? 0.15 : 0.2;
+				alpha = isMention ? 0.1 : 0.15;
 			} else {
-				// 全局无焦点状态：适中透明度和线宽，极细的线更有精致感
-				lineWidth = edge.type === 'mention' ? 0.25 : 0.35;
-				alpha = edge.type === 'mention' ? 0.35 : 0.5;
+				lineWidth = isMention ? 0.25 : 0.35;
+				alpha = isMention ? 0.35 : 0.5;
 			}
 
-			const drawMode = this.edgeDrawModeMap.get(edge);
-			if (drawMode === 'hide') continue;
-
-			const offset = this.edgeOffsetMap.get(edge) || 0;
-			const isBidirectional = drawMode === 'bidirectional';
+			// 如果该边的标签被遮挡，连同整条线一起适度淡化
+			if (isOverlapped) {
+				alpha *= 0.35;
+			}
 
 			ctx.save();
+			
+			// 核心优化：挖空标签区域，防止半透明时连线穿过自己的文字
+			const displayLabel = this.combinedLabelMap.get(task.edge) || task.edge.label;
+			if (task.showLabel && displayLabel) {
+				ctx.beginPath();
+				// 顺时针绘制无限大外围
+				ctx.moveTo(-100000, -100000);
+				ctx.lineTo(100000, -100000);
+				ctx.lineTo(100000, 100000);
+				ctx.lineTo(-100000, 100000);
+				ctx.closePath();
+				
+				const dx = task.tgt.x - task.src.x;
+				const dy = task.tgt.y - task.src.y;
+				const dist = Math.sqrt(dx * dx + dy * dy);
+				const unitX = dist > 0 ? dx / dist : 0;
+				const unitY = dist > 0 ? dy / dist : 0;
+
+				const padding = 0.5;
+				const paddingX = 4;
+				const paddingY = 3;
+				const gap = 4;
+				const labels = displayLabel.split('|');
+				const widths = labels.map(l => ctx.measureText(l).width + paddingX * 2);
+				const totalWidth = widths.reduce((a, b) => a + b, 0) + gap * (labels.length - 1);
+				const bgHeight = 6 + paddingY * 2;
+
+				let currentOffset = -totalWidth / 2;
+
+				for (let i = 0; i < labels.length; i++) {
+					const w = widths[i];
+					const cx = task.labelX + unitX * (currentOffset + w / 2);
+					const cy = task.labelY + unitY * (currentOffset + w / 2);
+					
+					const lx = cx - w / 2 - padding;
+					const ly = cy - bgHeight / 2 - padding;
+					const lw = w + padding * 2;
+					const lh = bgHeight + padding * 2;
+					
+					// 逆时针绘制内圈孔洞
+					ctx.moveTo(lx, ly);
+					ctx.lineTo(lx, ly + lh);
+					ctx.lineTo(lx + lw, ly + lh);
+					ctx.lineTo(lx + lw, ly);
+					ctx.closePath();
+					
+					currentOffset += w + gap;
+				}
+				
+				ctx.clip();
+			}
+
 			ctx.globalAlpha = alpha;
 			ctx.lineWidth = lineWidth;
 			
-			// 默认状态使用普通线色，高亮状态使用主题强调色（亮色），解决浅色模式下透明度叠加变黑的问题
 			if (isHighlighted) {
 				ctx.strokeStyle = colors.accent;
 			} else {
-				ctx.strokeStyle = edge.type === 'mention' ? colors.mentionLineColor : colors.graphLine;
+				ctx.strokeStyle = isMention ? colors.mentionLineColor : colors.graphLine;
 			}
 
-			if (edge.type === 'mention') {
+			if (isMention) {
 				ctx.setLineDash(colors.mentionLineDash);
 			}
 
+			const isBidirectional = task.drawMode === 'bidirectional';
 			if (offset !== 0) {
-				// 有偏移：使用弧线
 				this.drawCurvedArrow(ctx, src, tgt, offset, colors, isBidirectional);
 			} else {
-				// 无偏移：直线 + 箭头
 				this.drawStraightArrow(ctx, src, tgt, colors, isBidirectional);
 			}
-
 			ctx.restore();
+		}
 
-			// 计算标签透明度
+		// 第四遍：画标签（同样从低优先级到高优先级画，确保高优先级盖在最上层）
+		for (let i = edgeTasks.length - 1; i >= 0; i--) {
+			const task = edgeTasks[i];
+			const displayLabel = this.combinedLabelMap.get(task.edge) || task.edge.label;
+			if (!task.showLabel || !displayLabel) continue;
+
+			const { src, tgt, offset, isHighlighted, isDimmed, isMention, isOverlapped } = task;
+
 			let labelAlpha = 1.0;
 			if (isHighlighted) {
 				labelAlpha = 1.0;
 			} else if (isDimmed) {
 				labelAlpha = 0.3;
 			} else {
-				// 全局视角稍微暗一点，融入背景
 				labelAlpha = 0.65;
 			}
 
-			// 把需要画的标签存起来，留到下一遍遍历
-			labelsToDraw.push({
-				src, tgt, label: edge.label, offset, 
-				isMention: edge.type === 'mention', colors, 
-				labelAlpha
-			});
-		}
+			// 如果被重叠，适度淡化，但保持足够的区分度
+			if (isOverlapped) {
+				labelAlpha *= 0.35; 
+			}
 
-		// 第二遍遍历：统一画标签，确保标签一定在线的上方
-		for (const task of labelsToDraw) {
-			const isHighlighted = this.selectedNode ? 
-				(task.src.id === this.selectedNode.id || task.tgt.id === this.selectedNode.id) : 
-				(this.hoveredNode ? (task.src.id === this.hoveredNode.id || task.tgt.id === this.hoveredNode.id) : false);
-
-			this.drawEdgeLabel(
-				ctx, task.src, task.tgt, task.label, 
-				task.offset, task.isMention, task.colors, 
-				task.labelAlpha, isHighlighted, drawnLabels
-			);
+			this.drawEdgeLabel(ctx, src, tgt, displayLabel, offset, isMention, colors, labelAlpha, isHighlighted);
 		}
+		
+		return edgeTasks;
 	}
 
 	/**
@@ -891,12 +1085,11 @@ export class RelationGraphView extends ItemView {
 		isMention: boolean,
 		colors: ThemeColors,
 		labelAlpha: number = 1.0,
-		isHighlighted: boolean = false,
-		drawnLabels?: {x: number, y: number, w: number, h: number}[]
+		isHighlighted: boolean = false
 	): void {
 		if (!label) return;
 
-		// 计算标签位置：连线中点（弧线时加偏移）
+		// 计算标签位置：连线中点（弧线时加法向偏移）
 		const dx = tgt.x - src.x;
 		const dy = tgt.y - src.y;
 		const dist = Math.sqrt(dx * dx + dy * dy);
@@ -906,8 +1099,9 @@ export class RelationGraphView extends ItemView {
 		const normalX = -unitY;
 		const normalY = unitX;
 
-		const labelX = (src.x + tgt.x) / 2 + normalX * curveOffset * 0.6;
-		const labelY = (src.y + tgt.y) / 2 + normalY * curveOffset * 0.6;
+		// 恢复到最优雅的 50% 中心点。去除人工滑动的补丁，依靠物理引擎和弧线偏移自然避让
+		const labelX = (src.x + tgt.x) / 2 + normalX * curveOffset * 0.5;
+		const labelY = (src.y + tgt.y) / 2 + normalY * curveOffset * 0.5;
 
 		ctx.save();
 		ctx.font = '6px sans-serif'; 
@@ -917,55 +1111,43 @@ export class RelationGraphView extends ItemView {
 		ctx.globalAlpha = labelAlpha;
 
 		// 测量文字宽度
-		const textWidth = ctx.measureText(label).width;
-		const paddingX = 4; // 增加水平内边距
-		const paddingY = 3; // 增加垂直内边距
-		const bgWidth = textWidth + paddingX * 2;
+		const paddingX = 4; // 水平内边距
+		const paddingY = 3; // 垂直内边距
+		const gap = 4; // 多个标签之间的间距
+		const labels = label.split('|');
+		const widths = labels.map(l => ctx.measureText(l).width + paddingX * 2);
+		const totalWidth = widths.reduce((a, b) => a + b, 0) + gap * (labels.length - 1);
 		const bgHeight = 6 + paddingY * 2; // 6px 字体高度 + 上下边距
 
-		// 碰撞检测与防重叠滑动
-		let lx = labelX;
-		let ly = labelY;
-		if (drawnLabels) {
-			let attempts = 0;
-			let slideDir = 1;
-			let slideOffset = 0;
-			// 尝试最多滑动10次（正负方向交替），每次步进 10 像素
-			while (attempts < 10) {
-				const isColliding = drawnLabels.some(b => 
-					Math.abs(lx - b.x) < (bgWidth + b.w) / 2 + 1 &&
-					Math.abs(ly - b.y) < (bgHeight + b.h) / 2 + 1
-				);
-				if (!isColliding) break;
-				
-				slideOffset += 10;
-				// 沿连线方向滑动以避开重叠
-				lx = labelX + unitX * slideOffset * slideDir;
-				ly = labelY + unitY * slideOffset * slideDir;
-				slideDir *= -1; 
-				attempts++;
+		let currentOffset = -totalWidth / 2;
+
+		for (let i = 0; i < labels.length; i++) {
+			const w = widths[i];
+			const cx = labelX + unitX * (currentOffset + w / 2);
+			const cy = labelY + unitY * (currentOffset + w / 2);
+
+			// 绘制直角底色背景：使用画布底色（镂盖下方连线）
+			ctx.fillStyle = colors.bgPrimary;
+			ctx.fillRect(cx - w / 2, cy - bgHeight / 2, w, bgHeight);
+
+			// 绘制极细边框
+			ctx.strokeStyle = isHighlighted ? colors.accent : (isMention ? colors.mentionBorderColor : colors.graphLine);
+			ctx.lineWidth = 0.5;
+			if (isMention) {
+				ctx.setLineDash(colors.mentionLabelDash); // 提及类型的标签使用虚线边框
 			}
-			drawnLabels.push({ x: lx, y: ly, w: bgWidth, h: bgHeight });
+			ctx.strokeRect(cx - w / 2, cy - bgHeight / 2, w, bgHeight);
+			if (isMention) {
+				ctx.setLineDash([]); // 恢复实线
+			}
+
+			// 绘制文字：高亮时使用主要文本色，普通情况使用淡色，提及类型且未高亮时使用更淡的 textFaint
+			ctx.fillStyle = isHighlighted ? colors.textNormal : (isMention ? colors.mentionTextColor : colors.textMuted);
+			ctx.fillText(labels[i], cx, cy);
+			
+			currentOffset += w + gap;
 		}
 
-		// 绘制直角底色背景：使用画布底色（镂盖下方连线）
-		ctx.fillStyle = colors.bgPrimary;
-		ctx.fillRect(lx - bgWidth / 2, ly - bgHeight / 2, bgWidth, bgHeight);
-
-		// 绘制极细边框
-		ctx.strokeStyle = isHighlighted ? colors.accent : (isMention ? colors.mentionBorderColor : colors.graphLine);
-		ctx.lineWidth = 0.5;
-		if (isMention) {
-			ctx.setLineDash(colors.mentionLabelDash); // 提及类型的标签使用虚线边框
-		}
-		ctx.strokeRect(lx - bgWidth / 2, ly - bgHeight / 2, bgWidth, bgHeight);
-		if (isMention) {
-			ctx.setLineDash([]); // 恢复实线
-		}
-
-		// 绘制文字：高亮时使用主要文本色，普通情况使用淡色，提及类型且未高亮时使用更淡的 textFaint
-		ctx.fillStyle = isHighlighted ? colors.textNormal : (isMention ? colors.mentionTextColor : colors.textMuted);
-		ctx.fillText(label, lx, ly); 
 		ctx.restore();
 	}
 
@@ -980,7 +1162,23 @@ export class RelationGraphView extends ItemView {
 	}
 
 	/** 绘制所有节点（带有优化） */
-	private drawNodes(ctx: CanvasRenderingContext2D, layout: LayoutData, colors: ThemeColors): void {
+	private drawNodes(ctx: CanvasRenderingContext2D, layout: LayoutData, colors: ThemeColors, edgeTasks: EdgeRenderTask[] = []): void {
+		// 智能截断节点名称，按视觉宽度（中文字符算2，英文字母算1）
+		const truncateNodeName = (name: string): string => {
+			let len = 0;
+			let result = '';
+			for (let i = 0; i < name.length; i++) {
+				const char = name[i];
+				const code = char.charCodeAt(0);
+				len += (code > 255) ? 2 : 1;
+				if (len > 10) { // 限制视觉长度大约为 5个汉字 或 10个英文字母
+					return result + '…';
+				}
+				result += char;
+			}
+			return result;
+		};
+
 		for (const node of this.graphData.nodes) {
 			const isSelected = this.selectedNode?.id === node.id;
 			const isHovered = this.hoveredNode?.id === node.id;
@@ -990,19 +1188,26 @@ export class RelationGraphView extends ItemView {
 			let nodeAlpha = 1.0;
 			let isDimmed = false;
 			if (this.selectedNode && !isSelected) {
-				const isNeighbor = this.graphData.edges.some(
-					e => (e.source === this.selectedNode!.id && e.target === node.id) ||
-						(e.target === this.selectedNode!.id && e.source === node.id)
+				const neighborTasks = edgeTasks.filter(
+					t => (t.src.id === this.selectedNode!.id && t.tgt.id === node.id) ||
+						 (t.tgt.id === this.selectedNode!.id && t.src.id === node.id)
 				);
-				nodeAlpha = isNeighbor ? 1.0 : 0.15;
-				isDimmed = !isNeighbor;
+				const isNeighbor = neighborTasks.length > 0;
+				// 如果该节点的所有关联边都被重叠淡化了，那么该节点也应跟随淡化
+				const allEdgesOverlapped = isNeighbor && neighborTasks.every(t => t.isOverlapped);
+
+				nodeAlpha = isNeighbor ? (allEdgesOverlapped ? 0.35 : 1.0) : 0.15;
+				isDimmed = !isNeighbor || allEdgesOverlapped;
 			} else if (this.hoveredNode && !isHovered) {
-				const isNeighbor = this.graphData.edges.some(
-					e => (e.source === this.hoveredNode!.id && e.target === node.id) ||
-						(e.target === this.hoveredNode!.id && e.source === node.id)
+				const neighborTasks = edgeTasks.filter(
+					t => (t.src.id === this.hoveredNode!.id && t.tgt.id === node.id) ||
+						 (t.tgt.id === this.hoveredNode!.id && t.src.id === node.id)
 				);
-				nodeAlpha = isNeighbor ? 1.0 : 0.3;
-				isDimmed = !isNeighbor;
+				const isNeighbor = neighborTasks.length > 0;
+				const allEdgesOverlapped = isNeighbor && neighborTasks.every(t => t.isOverlapped);
+
+				nodeAlpha = isNeighbor ? (allEdgesOverlapped ? 0.35 : 1.0) : 0.3;
+				isDimmed = !isNeighbor || allEdgesOverlapped;
 			}
 
 			ctx.save();
@@ -1067,8 +1272,8 @@ export class RelationGraphView extends ItemView {
 			ctx.textAlign = 'center';
 			ctx.textBaseline = 'top';
 
-			// 中文名过长时自动截断
-			const displayName = node.id.length > 4 ? node.id.slice(0, 4) + '…' : node.id;
+			// 智能截断名称
+			const displayName = truncateNodeName(node.id);
 
 			// 文字实体 (移除边框)
 			ctx.fillStyle = isSelected || isHovered ? colors.graphText : (isDimmed ? colors.textFaint : colors.textNormal);
@@ -1168,7 +1373,7 @@ export class RelationGraphView extends ItemView {
 								const headingInfo = cache.headings.find(h => h.heading === entry.heading);
 								if (headingInfo) targetLine = headingInfo.position.start.line;
 							}
-							await targetLeaf!.openFile(entry.file, { eState: { line: targetLine } });
+							await targetLeaf.openFile(entry.file, { eState: { line: targetLine } });
 						})();
 					} else {
 						new Notice(`未找到角色 ${node.id} 的设定文件`);
@@ -1220,6 +1425,8 @@ export class RelationGraphView extends ItemView {
 			const pos = this.screenToGraph(e.offsetX, e.offsetY);
 			
 			if (layoutNode) {
+				layoutNode.fx = pos.x;
+				layoutNode.fy = pos.y;
 				layoutNode.x = pos.x;
 				layoutNode.y = pos.y;
 				
@@ -1263,11 +1470,8 @@ export class RelationGraphView extends ItemView {
 		this.isPanning = false;
 
 		if (this.draggedNode) {
-			if (this.engine) {
-				const layoutNode = this.engine.nodes.find(n => n.id === this.draggedNode!.id);
-				if (layoutNode) layoutNode.pinned = false;
-			}
-			this.draggedNode.pinned = false;
+			// 拖拽结束：保留节点的 pinned 状态和 fx/fy，使其永久固定在用户拖拽的位置
+			// 这样下次 tick 依然会维持 fx 和 fy
 			this.draggedNode = null;
 		}
 	}
@@ -1329,7 +1533,7 @@ export class RelationGraphView extends ItemView {
 								const headingInfo = cache.headings.find(h => h.heading === entry.heading);
 								if (headingInfo) targetLine = headingInfo.position.start.line;
 							}
-							await targetLeaf!.openFile(entry.file, { eState: { line: targetLine } });
+							await targetLeaf.openFile(entry.file, { eState: { line: targetLine } });
 						})();
 					} else {
 						new Notice(`未找到角色 ${node.id} 的设定文件`);
@@ -1405,7 +1609,7 @@ export class RelationGraphView extends ItemView {
 						layoutNode.x = pos.x;
 						layoutNode.y = pos.y;
 					}
-					this.engine.alpha = 0.3; // Reheat engine
+					this.engine.alpha = 0.5; // Reheat engine
 				}
 				this.render();
 				return;
@@ -1625,8 +1829,8 @@ export class RelationGraphView extends ItemView {
 	private buildEdgeOffsets(): void {
 		this.edgeOffsetMap.clear();
 		this.edgeDrawModeMap.clear();
+		this.combinedLabelMap.clear();
 
-		// 将边按其连接的节点对进行分组（忽略方向，按字典序组合ID）
 		const pairMap = new Map<string, GraphEdge[]>();
 		for (const edge of this.graphData.edges) {
 			const id1 = edge.source < edge.target ? edge.source : edge.target;
@@ -1637,48 +1841,82 @@ export class RelationGraphView extends ItemView {
 		}
 
 		for (const edges of pairMap.values()) {
-			// 将边按相同 label 和 type 再次分组，以便去重合并双向线
-			const uniqueGroups = new Map<string, GraphEdge[]>();
-			for (const edge of edges) {
-				const groupKey = `${edge.label}|${edge.type}`;
-				if (!uniqueGroups.has(groupKey)) uniqueGroups.set(groupKey, []);
-				uniqueGroups.get(groupKey)!.push(edge);
+			const CURVE_OFFSET = 20;
+			const visualLines: GraphEdge[] = [];
+
+			const forwards = edges.filter(e => e.source < e.target);
+			const backwards = edges.filter(e => e.source > e.target);
+
+			const forwardLabels = new Map<string, GraphEdge[]>();
+			for (const e of forwards) {
+				const k = `${e.label}|${e.type}`;
+				if (!forwardLabels.has(k)) forwardLabels.set(k, []);
+				forwardLabels.get(k)!.push(e);
 			}
 
-			const visibleEdges: GraphEdge[] = [];
+			const backwardLabels = new Map<string, GraphEdge[]>();
+			for (const e of backwards) {
+				const k = `${e.label}|${e.type}`;
+				if (!backwardLabels.has(k)) backwardLabels.set(k, []);
+				backwardLabels.get(k)!.push(e);
+			}
 
-			for (const group of uniqueGroups.values()) {
-				if (group.length > 1) {
-					// 存在多条相同关系的边
-					const hasForward = group.some(e => e.source < e.target);
-					const hasBackward = group.some(e => e.source > e.target);
-					
-					const primary = group[0];
-					visibleEdges.push(primary);
-
-					if (hasForward && hasBackward) {
-						// 双向关系完全相同，标记为主线画双箭头，隐藏其它
-						this.edgeDrawModeMap.set(primary, 'bidirectional');
-					}
-					
-					for (let i = 1; i < group.length; i++) {
-						this.edgeDrawModeMap.set(group[i], 'hide');
-					}
-				} else {
-					visibleEdges.push(group[0]);
+			const bidirectionalKeys = new Set<string>();
+			for (const k of forwardLabels.keys()) {
+				if (backwardLabels.has(k)) {
+					bidirectionalKeys.add(k);
 				}
 			}
 
-			if (visibleEdges.length === 1) {
-				this.edgeOffsetMap.set(visibleEdges[0], 0);
-			} else {
-				// 多条边：计算每条边的曲线偏移量
-				const step = CURVE_OFFSET * 2;
-				const baseOffset = -((visibleEdges.length - 1) * step) / 2;
+			const bidiEdges: GraphEdge[] = [];
+			const fwdEdges: GraphEdge[] = [];
+			const bwdEdges: GraphEdge[] = [];
+
+			for (const e of forwards) {
+				const k = `${e.label}|${e.type}`;
+				if (bidirectionalKeys.has(k)) bidiEdges.push(e);
+				else fwdEdges.push(e);
+			}
+			for (const e of backwards) {
+				const k = `${e.label}|${e.type}`;
+				if (bidirectionalKeys.has(k)) bidiEdges.push(e);
+				else bwdEdges.push(e);
+			}
+
+			const addVisualLine = (group: GraphEdge[], mode: 'bidirectional' | 'normal') => {
+				if (group.length === 0) return;
 				
-				visibleEdges.forEach((edge, index) => {
+				let primary = group.find(e => e.type !== 'mention');
+				if (!primary) primary = group[0];
+				
+				if (mode === 'bidirectional') {
+					this.edgeDrawModeMap.set(primary, 'bidirectional');
+				}
+				
+				const uniqueLabels = Array.from(new Set(group.map(e => e.label))).filter(Boolean);
+				if (uniqueLabels.length > 0) {
+					this.combinedLabelMap.set(primary, uniqueLabels.join('|'));
+				}
+				
+				for (const e of group) {
+					if (e !== primary) this.edgeDrawModeMap.set(e, 'hide');
+				}
+				
+				visualLines.push(primary);
+			};
+
+			addVisualLine(bidiEdges, 'bidirectional');
+			addVisualLine(fwdEdges, 'normal');
+			addVisualLine(bwdEdges, 'normal');
+
+			if (visualLines.length === 1) {
+				this.edgeOffsetMap.set(visualLines[0], 0);
+			} else {
+				const step = CURVE_OFFSET * 2;
+				const baseOffset = -((visualLines.length - 1) * step) / 2;
+				
+				visualLines.forEach((edge, index) => {
 					let offset = baseOffset + index * step;
-					// 如果边的实际方向与字典序相反，则反转偏移量，使得曲线能够整齐排列
 					if (edge.source > edge.target) {
 						offset = -offset;
 					}
