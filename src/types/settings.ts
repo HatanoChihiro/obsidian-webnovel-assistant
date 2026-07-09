@@ -255,6 +255,12 @@ export interface AccurateCountSettings {
 	/** 设定速查悬浮卡片中子标题是否默认折叠 */
 	lorePopoverCollapse: boolean;
 
+	/** 设定图谱是否自动关联提及的设定 */
+	loreGraphAutoLinkMentions: boolean;
+
+	/** 章节一览面板的排序模式 */
+	corkboardSortMode?: 'default' | 'timeline';
+
 	/** 高级搜索：自动记忆的上一次搜索词 */
 	advancedSearchQuery: string;
 

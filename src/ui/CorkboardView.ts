@@ -1,9 +1,10 @@
 import { TFile, type WorkspaceLeaf } from 'obsidian';
-import { ItemView, Notice, Menu } from 'obsidian';
+import { ItemView, Notice, Menu, setIcon } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ChapterSorter } from '../services/ChapterSorter';
 import { CORKBOARD_STATUS_MAP, getCorkboardStatusText, getCorkboardStatusKeys } from '../i18n/data-keys';
 import { t } from '../i18n';
+import { TimelineManager } from '../services/TimelineManager';
 
 export const CORKBOARD_VIEW_TYPE = 'webnovel-corkboard';
 
@@ -11,6 +12,8 @@ export class CorkboardView extends ItemView {
 	private plugin: WebNovelAssistantPlugin;
 	private currentBookPath: string | null = null;
 	private isSavingMetadata: boolean = false;
+	private sortMode: 'default' | 'timeline' = 'default';
+	private collapsedGroups: Set<string> = new Set();
 	private container!: HTMLElement;
 
 	constructor(leaf: WorkspaceLeaf, plugin: WebNovelAssistantPlugin) {
@@ -58,6 +61,7 @@ export class CorkboardView extends ItemView {
 	}
 
 	async onOpen(): Promise<void> {
+		this.sortMode = this.plugin.settings.corkboardSortMode || 'default';
 		this.container = this.contentEl;
 		this.container.empty();
 		this.container.addClass('wn-corkboard-container');
@@ -113,8 +117,6 @@ export class CorkboardView extends ItemView {
 			cls: 'wn-corkboard-hint'
 		});
 
-		const grid = this.container.createDiv('wn-corkboard-grid');
-
 		// 获取该作品下所有章节文件
 		const files = this.plugin.getTrackedMarkdownFiles().filter(file => {
 			// 只有在开启严格章节模式时，才强制要求必须是章节命名格式
@@ -137,8 +139,136 @@ export class CorkboardView extends ItemView {
 			files.sort((a, b) => a.basename.localeCompare(b.basename, undefined, { numeric: true }));
 		}
 
+		// 渲染顶部的多态 Toggle 切换按钮组
+		const toggleGroup = this.container.createDiv('wn-corkboard-toggle-group');
+		
+		const btnDefault = toggleGroup.createEl('span', {
+			text: t('corkboard.sort-default'),
+			cls: `wn-corkboard-toggle-btn ${this.sortMode === 'default' ? 'active' : ''}`
+		});
+
+		toggleGroup.createSpan({ text: '|', cls: 'wn-corkboard-toggle-separator' });
+
+		const btnTimeline = toggleGroup.createEl('span', {
+			text: t('corkboard.sort-timeline'),
+			cls: `wn-corkboard-toggle-btn ${this.sortMode === 'timeline' ? 'active' : ''}`
+		});
+
+		btnDefault.onclick = async () => {
+			if (this.sortMode === 'default') return;
+			this.sortMode = 'default';
+			this.plugin.settings.corkboardSortMode = 'default';
+			await this.plugin.saveSettings();
+			void this.reloadBoard();
+		};
+
+		btnTimeline.onclick = async () => {
+			if (this.sortMode === 'timeline') return;
+			this.sortMode = 'timeline';
+			this.plugin.settings.corkboardSortMode = 'timeline';
+			await this.plugin.saveSettings();
+			void this.reloadBoard();
+		};
+
+		if (this.sortMode === 'timeline') {
+			await this.renderTimelineGroupedBoard(this.container, files);
+		} else {
+			this.renderOrderedBoard(this.container, files);
+		}
+	}
+
+	private renderOrderedBoard(container: HTMLElement, files: TFile[]): void {
+		const grid = container.createDiv('wn-corkboard-grid');
 		for (const file of files) {
 			this.renderCard(grid, file);
+		}
+	}
+
+	private async renderTimelineGroupedBoard(container: HTMLElement, files: TFile[]): Promise<void> {
+		const timelineManager = new TimelineManager(this.app, this.plugin, this.currentBookPath === '/' ? '' : (this.currentBookPath || ''));
+		const entries = await timelineManager.loadEntries();
+
+		const chapterToTimeMap = new Map<string, string>();
+		const orderedTimes: string[] = []; // 保证时间线顺序
+
+		if (entries) {
+			for (const entry of entries) {
+				orderedTimes.push(entry.time);
+				for (const item of entry.items || []) {
+					// chapter 可能有多个，逗号分隔
+					const chaps = item.chapter.split(',').map(c => c.trim());
+					for (const c of chaps) {
+						if (c && !chapterToTimeMap.has(c)) {
+							chapterToTimeMap.set(c, entry.time);
+						}
+					}
+				}
+			}
+		}
+
+		const groups: Record<string, TFile[]> = {};
+		const unscheduled: TFile[] = [];
+
+		for (const file of files) {
+			const time = chapterToTimeMap.get(file.basename);
+			if (time) {
+				if (!groups[time]) groups[time] = [];
+				groups[time].push(file);
+			} else {
+				unscheduled.push(file);
+			}
+		}
+
+		// 渲染折叠组
+		const renderGroup = (time: string, groupFiles: TFile[], isUnscheduled: boolean) => {
+			if (groupFiles.length === 0) return;
+
+			const groupContainer = container.createDiv('wn-corkboard-group');
+			const groupHeader = groupContainer.createDiv('wn-corkboard-group-header');
+			
+			const iconEl = groupHeader.createSpan('wn-corkboard-group-icon');
+			setIcon(iconEl, isUnscheduled ? 'help-circle' : 'calendar-clock');
+			
+			groupHeader.createSpan({ text: time, cls: 'wn-corkboard-group-title' });
+
+			const groupGrid = groupContainer.createDiv('wn-corkboard-grid');
+
+			// 处理折叠状态
+			const isCollapsed = this.collapsedGroups.has(time);
+			if (isCollapsed) {
+				groupGrid.hide();
+				groupHeader.addClass('collapsed');
+			}
+
+			groupHeader.onclick = () => {
+				if (this.collapsedGroups.has(time)) {
+					this.collapsedGroups.delete(time);
+					groupGrid.show();
+					groupHeader.removeClass('collapsed');
+				} else {
+					this.collapsedGroups.add(time);
+					groupGrid.hide();
+					groupHeader.addClass('collapsed');
+				}
+			};
+
+			for (const file of groupFiles) {
+				this.renderCard(groupGrid, file);
+			}
+		};
+
+		// 保证时间线的顺序，同一个组只渲染一次
+		const renderedTimes = new Set<string>();
+		for (const time of orderedTimes) {
+			if (groups[time] && !renderedTimes.has(time)) {
+				renderedTimes.add(time);
+				renderGroup(time, groups[time], false);
+			}
+		}
+
+		// 渲染未安排
+		if (unscheduled.length > 0) {
+			renderGroup(t('corkboard.unscheduled-chapters'), unscheduled, true);
 		}
 	}
 
@@ -153,14 +283,24 @@ export class CorkboardView extends ItemView {
 
 		const card = grid.createDiv('wn-corkboard-card');
 
-		// 头部：标题与状态
 		const cardHeader = card.createDiv('wn-corkboard-card-header');
-		const titleEl = cardHeader.createDiv('wn-corkboard-card-title');
+		const titleContainer = cardHeader.createDiv('wn-corkboard-card-title-container');
+
+		const titleEl = titleContainer.createDiv('wn-corkboard-card-title');
 		titleEl.setText(file.basename);
+
+		const editIcon = titleContainer.createDiv('wn-corkboard-card-title-edit');
+		setIcon(editIcon, 'pencil');
+
 		titleEl.onclick = () => {
 			// 点击标题打开文件
 			void this.app.workspace.getLeaf(false).openFile(file);
 		};
+
+		const startEdit = () => {
+			this.enableTitleEdit(titleContainer, titleEl, editIcon, file);
+		};
+		editIcon.onclick = startEdit;
 
 		const statusEl = cardHeader.createDiv('wn-corkboard-card-status');
 		statusEl.setText(getCorkboardStatusText(status));
@@ -295,6 +435,112 @@ export class CorkboardView extends ItemView {
 				// 取消修改
 				textarea.value = currentSynopsis;
 				textarea.blur();
+			}
+		};
+	}
+
+	private enableTitleEdit(container: HTMLElement, titleEl: HTMLElement, editIcon: HTMLElement, file: TFile): void {
+		// 如果已经在编辑中，避免重复创建
+		if (container.querySelector('input')) return;
+
+		titleEl.hide();
+		editIcon.hide();
+
+		const input = container.createEl('input', {
+			type: 'text',
+			cls: 'wn-corkboard-title-input'
+		});
+		input.value = file.basename;
+		
+		// 继承样式
+		input.setCssProps({
+			border: 'none',
+			background: 'transparent',
+			outline: 'none',
+			fontWeight: '600',
+			fontSize: '1.05em',
+			color: 'var(--text-normal)',
+			padding: '0',
+			width: '100%',
+			minWidth: '50px'
+		});
+
+		// 自动聚焦并全选
+		input.focus();
+		input.select();
+
+		let isSaving = false;
+		const saveChanges = async () => {
+			if (isSaving) return;
+			isSaving = true;
+			const newTitle = input.value.trim();
+			
+			// 取消或者没改变
+			if (!newTitle || newTitle === file.basename) {
+				input.remove();
+				titleEl.show();
+				editIcon.show();
+				return;
+			}
+
+			// 检查非法字符
+			const illegalChars = /[\\/:*?"<>|]/g;
+			if (illegalChars.test(newTitle)) {
+				new Notice(t('corkboard.rename-failed'));
+				input.remove();
+				titleEl.show();
+				editIcon.show();
+				return;
+			}
+
+			const parentPath = file.parent?.path === '/' ? '' : (file.parent?.path || '');
+			const targetPath = parentPath ? `${parentPath}/${newTitle}.md` : `${newTitle}.md`;
+
+			// 检查是否存在同名文件
+			const existFile = this.app.vault.getAbstractFileByPath(targetPath);
+			if (existFile) {
+				new Notice(t('corkboard.rename-failed'));
+				input.remove();
+				titleEl.show();
+				editIcon.show();
+				return;
+			}
+
+			input.disabled = true; // 锁定状态，模拟 loading
+			input.setCssProps({ opacity: '0.6', cursor: 'not-allowed' });
+
+			try {
+				this.isSavingMetadata = true;
+				await this.app.fileManager.renameFile(file, targetPath);
+				
+				// 成功后更新 DOM
+				titleEl.setText(newTitle);
+				new Notice(t('corkboard.rename-success'));
+			} catch (err) {
+				console.error("[CorkboardView] rename failed:", err);
+				new Notice(t('corkboard.rename-failed'));
+			} finally {
+				input.remove();
+				titleEl.show();
+				editIcon.show();
+				// 延迟释放锁定，防止触发全局的 rename 事件刷新
+				window.setTimeout(() => { this.isSavingMetadata = false; }, 500);
+			}
+		};
+
+		// 失去焦点时保存
+		input.onblur = () => {
+			void saveChanges();
+		};
+
+		input.onkeydown = (e) => {
+			if (e.key === 'Enter') {
+				e.preventDefault();
+				input.blur();
+			}
+			if (e.key === 'Escape') {
+				input.value = file.basename;
+				input.blur();
 			}
 		};
 	}

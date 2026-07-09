@@ -1,3 +1,15 @@
+## ✨ v3.4.2
+
+- 章节一览重构为双模式（全章节 / 时间轴看板）。
+- 时间轴看板支持按章节设定中的时间线事件对章节进行分组聚合。
+- 支持在章节一览中点击标题旁的编辑图标直接进行快速重命名。
+- 新增“自动关联提及”设置项：设定图谱现支持关闭隐式提及连线，仅显示明确定义的关系，让图谱更清爽精准。
+
+- The Corkboard is now dual-mode (All Chapters / Timeline Board).
+- The Timeline Board supports grouping chapters by timeline events set in chapter frontmatter.
+- Support for quick renaming chapters directly from the Corkboard by clicking the edit icon.
+- Added "Auto-Link Mentions" toggle: The lore graph now supports disabling implicit mention connections, displaying only explicitly defined relationships for a cleaner and more precise graph.
+
 ## 🔧 v3.4.1
 
 - 优化设定图谱渲染样式和动画，标签或节点有重叠时，会自动透明化下层节点

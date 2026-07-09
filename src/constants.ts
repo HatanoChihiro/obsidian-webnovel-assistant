@@ -348,6 +348,7 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 	customSortOrder: {},
 	loreFolderName: '设定',
 	lorePopoverCollapse: false,
+	loreGraphAutoLinkMentions: true,
 	advancedSearchQuery: '',
 	debugMode: false,
 };

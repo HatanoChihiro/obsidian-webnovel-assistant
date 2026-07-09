@@ -173,16 +173,18 @@ export class RelationGraphManager {
 			}
 
 			// 2b. 隐式引用扫描（排除 ### 关系 块区域）
-			const mentionEdges = this.scanMentions(
-				characterName, lines, sectionStart, sectionEnd,
-				relationSection, nodeIds
-			);
-			for (const edge of mentionEdges) {
-				const pairKey = `${edge.source}→${edge.target}`;
-				// 只有在该方向没有任何显式边，且之前没添加过提及边时，才添加
-				if (!directedPairs.has(pairKey)) {
-					directedPairs.add(pairKey);
-					edges.push(edge);
+			if (this.plugin.settings.loreGraphAutoLinkMentions) {
+				const mentionEdges = this.scanMentions(
+					characterName, lines, sectionStart, sectionEnd,
+					relationSection, nodeIds
+				);
+				for (const edge of mentionEdges) {
+					const pairKey = `${edge.source}→${edge.target}`;
+					// 只有在该方向没有任何显式边，且之前没添加过提及边时，才添加
+					if (!directedPairs.has(pairKey)) {
+						directedPairs.add(pairKey);
+						edges.push(edge);
+					}
 				}
 			}
 		}

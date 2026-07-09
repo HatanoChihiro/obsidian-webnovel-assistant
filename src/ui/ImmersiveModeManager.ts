@@ -119,6 +119,8 @@ export class ImmersiveModeManager {
 	 * 退出沉浸模式并还原环境
 	 */
 	public async exitImmersiveMode(): Promise<void> {
+		if (!this.isImmersiveActive) return;
+
 		try {
 			// 1. 保存当前的辅助面板比例
 			this.saveCurrentPanelSizes();

@@ -981,6 +981,17 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					}));
 		}
+
+		// 设定图谱是否自动关联提及的设定
+		new Setting(containerEl)
+			.setName(t('setting.lore-graph-auto-link-mentions'))
+			.setDesc(t('setting.lore-graph-auto-link-mentions-desc'))
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.loreGraphAutoLinkMentions)
+				.onChange(async (value: boolean) => {
+					this.plugin.settings.loreGraphAutoLinkMentions = value;
+					await this.plugin.saveSettings();
+				}));
 	}
 
 	// ── 时间线设置 ──
