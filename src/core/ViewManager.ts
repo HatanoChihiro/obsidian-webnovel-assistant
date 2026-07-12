@@ -8,7 +8,8 @@ import { TimelineView, TIMELINE_VIEW_TYPE } from '../ui/TimelineView';
 import { TaskView, TASK_VIEW_TYPE } from '../ui/TaskView';
 import { ImmersiveChapterListView } from '../ui/ImmersiveChapterListView';
 import { ImmersiveStickyNotesView } from '../ui/ImmersiveStickyNotesView';
-import { CorkboardView, CORKBOARD_VIEW_TYPE } from '../ui/CorkboardView';
+import { ChapterOverviewView, CORKBOARD_VIEW_TYPE } from '../ui/ChapterOverviewView';
+import { WorkbenchView, WORKBENCH_VIEW_TYPE } from '../ui/WorkbenchView';
 import { RelationGraphView, RELATION_GRAPH_VIEW_TYPE } from '../ui/RelationGraphView';
 
 export class ViewManager {
@@ -23,7 +24,8 @@ export class ViewManager {
 		this.plugin.registerView(FORESHADOWING_VIEW_TYPE, (leaf) => new ForeshadowingView(leaf, this.plugin));
 		this.plugin.registerView(TIMELINE_VIEW_TYPE, (leaf) => new TimelineView(leaf, this.plugin));
 		this.plugin.registerView(TASK_VIEW_TYPE, (leaf) => new TaskView(leaf, this.plugin));
-		this.plugin.registerView(CORKBOARD_VIEW_TYPE, (leaf) => new CorkboardView(leaf, this.plugin));
+		this.plugin.registerView(WORKBENCH_VIEW_TYPE, (leaf) => new WorkbenchView(leaf, this.plugin));
+		this.plugin.registerView(CORKBOARD_VIEW_TYPE, (leaf) => new ChapterOverviewView(leaf, this.plugin));
 		this.plugin.registerView(RELATION_GRAPH_VIEW_TYPE, (leaf) => new RelationGraphView(leaf, this.plugin));
 		
 		if (isDesktop()) { // Desktop
@@ -46,7 +48,14 @@ export class ViewManager {
 			leaf = leaves[0];
 			leaf.detach();
 		} else {
-			if (isMobile()) {
+			if (viewType === 'webnovel-workbench') {
+				leaf = workspace.getLeaf('tab');
+				if (leaf) {
+					await leaf.setViewState({ type: viewType, active: true });
+					void workspace.revealLeaf(leaf);
+					void workspace.setActiveLeaf(leaf, { focus: true });
+				}
+			} else if (isMobile()) {
 				const rightLeaf = workspace.getRightLeaf(false);
 				if (rightLeaf) {
 					leaf = rightLeaf;

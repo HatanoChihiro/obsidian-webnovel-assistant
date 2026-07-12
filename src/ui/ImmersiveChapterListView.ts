@@ -3,6 +3,7 @@ import { ItemView, TFile } from 'obsidian';
 import type { MarkdownView } from 'obsidian';
 import { VIEW_TYPES } from '../constants';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
+import type { ParsedForeshadowingEntry } from '../types/foreshadowing';
 import { ChapterSorter } from '../services/ChapterSorter';
 import { t } from '../i18n';
 
@@ -93,13 +94,65 @@ export class ImmersiveChapterListView extends ItemView {
 
 		let activeItemEl: HTMLElement | null = null;
 
+		// 预解析伏笔（使用 ForeshadowingManager 的公共方法统一处理）
+		const fmFolder = currentFolder.path === '/' ? '' : currentFolder.path;
+		const foreshadowingMap = this.plugin.foreshadowingManager
+			? await this.plugin.foreshadowingManager.buildChapterForeshadowingMap(fmFolder, files, this.app.vault)
+			: new Map<string, ParsedForeshadowingEntry[]>();
+
 		for (const file of files) {
 			const itemEl = listContainer.createDiv({ cls: 'immersive-chapter-item' });
 			if (activeFile && file.path === activeFile.path) {
 				itemEl.addClass('is-active');
 				activeItemEl = itemEl;
 			}
-			itemEl.createSpan({ text: file.basename });
+			
+			const leftContainer = itemEl.createDiv({ cls: 'immersive-chapter-left' });
+			leftContainer.createSpan({ text: file.basename, cls: 'immersive-chapter-title' });
+			
+			// 添加 Badge
+			const badgesContainer = leftContainer.createSpan({ cls: 'immersive-chapter-badges' });
+			const cardForeshadowings = foreshadowingMap.get(file.basename) || [];
+			
+			const pendingForeshadowings = cardForeshadowings.filter(f => f.status === 'pending' || f.status === 'unresolved');
+			if (pendingForeshadowings.length > 0) {
+				const fsBadge = badgesContainer.createEl('span', {
+					cls: 'wn-badge wn-badge-foreshadowing',
+					text: `${t('corkboard.foreshadowing-unresolved') || '待回收'}×${pendingForeshadowings.length}`
+				});
+				fsBadge.title = pendingForeshadowings.map(f => f.description).join('\n');
+			}
+			
+			const recoveredForeshadowings = cardForeshadowings.filter(f => f.status === 'recovered');
+			if (recoveredForeshadowings.length > 0) {
+				const fsBadge = badgesContainer.createEl('span', {
+					cls: 'wn-badge wn-badge-recovered',
+					text: `${t('corkboard.foreshadowing-recovered') || '本章回收'}×${recoveredForeshadowings.length}`
+				});
+				fsBadge.title = recoveredForeshadowings.map(f => f.description).join('\n');
+			}
+			
+			const cache = this.app.metadataCache.getFileCache(file);
+			const frontmatter = cache?.frontmatter;
+			const loreArray = frontmatter?.lore as unknown;
+			if (Array.isArray(loreArray)) {
+				const validLores: string[] = (loreArray as unknown[]).filter((l: unknown): l is string => typeof l === 'string');
+				if (validLores.length > 0) {
+					const maxDisplay = 3;
+					for (let i = 0; i < Math.min(validLores.length, maxDisplay); i++) {
+						badgesContainer.createEl('span', {
+							cls: 'wn-badge wn-badge-lore',
+							text: validLores[i].split('×')[0]
+						});
+					}
+					if (validLores.length > maxDisplay) {
+						badgesContainer.createEl('span', {
+							cls: 'wn-badge wn-badge-lore wn-badge-more',
+							text: `+${validLores.length - maxDisplay}`
+						});
+					}
+				}
+			}
 			
 			const wordCount = this.plugin.cacheManager.getFileCache(file.path) || 0;
 			if (this.plugin.settings.showExplorerCounts) {

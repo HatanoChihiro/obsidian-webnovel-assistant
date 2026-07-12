@@ -18,7 +18,7 @@
  * - 定时器使用 window.requestAnimationFrame 并在 onClose 中清理
  */
 
-import { ItemView, TFile, Notice, MarkdownView } from 'obsidian';
+import { ItemView, Notice, TFile, MarkdownView } from 'obsidian';
 import type { WorkspaceLeaf } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { RelationGraphManager } from '../services/RelationGraphManager';

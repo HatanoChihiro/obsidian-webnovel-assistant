@@ -1,5 +1,5 @@
 import type { App} from 'obsidian';
-import { Notice, TFile, TFolder, setIcon } from 'obsidian';
+import { Notice, setIcon } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { TaskEntry } from '../types/task';
 import type { NovelFolderInfo } from '../types/homepage';
@@ -8,6 +8,7 @@ import { t } from '../i18n';
 import { calcStreak, calcFocusRate, calcActiveHours, calcDailyAverage, getHeatClass } from '../ui/HistoryModal';
 import { TaskManager } from '../services/TaskManager';
 import { NewNovelModal } from '../ui/NewNovelModal';
+import type { WorkbenchView } from '../ui/WorkbenchView';
 
 export class HomepageRenderer {
 	private app: App;
@@ -116,9 +117,22 @@ export class HomepageRenderer {
 			new NewNovelModal(this.plugin.app, this.plugin, (result) => {
 				void (async () => {
 					try {
-						await this.plugin.homepageManager!.createNewNovel(result.name, result.meta);
+						const { folderPath } = await this.plugin.homepageManager!.createNewNovel(result.name, result.meta);
 						new Notice(t('notice.novel-created', { name: result.name }));
 						this.plugin.homepageManager!.refreshHomepageViews();
+						
+						// Open Workbench
+						const viewType = 'webnovel-workbench';
+						const { workspace } = this.plugin.app;
+						const leaves = workspace.getLeavesOfType(viewType);
+						let leaf = leaves.length > 0 ? leaves[0] : null;
+						if (!leaf) {
+							leaf = workspace.getLeaf(false);
+							await leaf.setViewState({ type: viewType, active: true });
+						}
+						if (leaf && leaf.view && leaf.view.getViewType() === viewType) {
+							(leaf.view as WorkbenchView).setBookPath(folderPath);
+						}
 					} catch(e) { console.error(e); }
 				})();
 			}).open();
@@ -322,7 +336,7 @@ export class HomepageRenderer {
 
 		const row = container.createDiv({ cls: 'stats-efficiency-row' });
 		const metrics = [
-			{ label: t('common.consecutive-creation'), value: `${streak}${t('common.word-char').charAt(0)}` },
+			{ label: t('common.consecutive-creation'), value: t('common.consecutive-days', { count: streak }) },
 			{ label: t('common.focus-efficiency'), value: `${focusRate}%` },
 			{ label: t('common.active-period'), value: activeHours || '--' },
 			{ label: t('common.daily-word-average'), value: dailyAvg.toLocaleString() },
@@ -472,15 +486,23 @@ export class HomepageRenderer {
 		};
 	}
 
-	navigateToNovel(folderPath: string): void {
-		const folder = this.app.vault.getAbstractFileByPath(folderPath);
-		if (!(folder instanceof TFolder)) return;
-		const mdFiles = folder.children.filter(
-			(c): c is TFile => c instanceof TFile && c.extension === 'md' && !c.name.startsWith('_')
-		);
-		const target = mdFiles[0];
-		if (target) {
-			void this.app.workspace.getLeaf(false).openFile(target);
-		}
+		navigateToNovel(folderPath: string): void {
+		void (async () => {
+			const viewType = 'webnovel-workbench';
+			const { workspace } = this.app;
+			const leaves = workspace.getLeavesOfType(viewType);
+			let leaf = leaves.length > 0 ? leaves[0] : null;
+			if (!leaf) {
+				leaf = workspace.getLeaf('tab');
+				await leaf.setViewState({ type: viewType, active: true });
+			}
+			if (leaf && leaf.view && leaf.view.getViewType() === viewType) {
+				(leaf.view as WorkbenchView).setBookPath(folderPath);
+			}
+			if (leaf) {
+				void workspace.revealLeaf(leaf);
+				void workspace.setActiveLeaf(leaf, { focus: true });
+			}
+		})();
 	}
-}
+} 

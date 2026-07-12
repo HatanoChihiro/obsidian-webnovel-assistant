@@ -164,7 +164,12 @@ body.webnovel-custom-dragging .nav-folder-title-content {
 
 .history-chart { margin-top: 20px; }
 
-.history-chart-title { font-size: 13px; font-weight: 600; color: var(--interactive-accent); margin-bottom: 4px; }
+.history-chart-title {
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--interactive-accent-hover);
+	margin-bottom: 4px;
+}
 
 .history-chart-subtitle { font-size: 11px; color: var(--text-muted); margin-bottom: 8px; cursor: pointer; }
 
@@ -357,7 +362,7 @@ body .history-stats-modal .stats-chart-scroll-wrapper:hover::-webkit-scrollbar-t
 /* Stats Large Chart Container */
 .stats-large-chart-container { position: relative; height: 160px; padding: 8px 4px; margin-top: 8px; }
 
-.stats-large-chart-container.stats-bar-mode { display: flex; align-items: flex-end; gap: 6px; min-width: max-content; }
+.stats-large-chart-container.stats-bar-mode { display: flex; align-items: baseline; gap: 6px; min-width: max-content; }
 
 .stats-large-col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; min-width: 36px; max-width: 60px; flex: 1; z-index: 1; }
 
@@ -416,7 +421,7 @@ body .history-stats-modal .stats-chart-scroll-wrapper:hover::-webkit-scrollbar-t
 /* Sidebar mini bar chart */
 
 /* Mini Chart Container */
-.mini-chart-container { display: flex; align-items: flex-end; gap: 6px; cursor: pointer; height: 80px; margin-top: 8px; }
+.mini-chart-container { display: flex; align-items: baseline; gap: 6px; cursor: pointer; height: 80px; margin-top: 8px; }
 
 .mini-chart-col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; min-width: 28px; flex: 1; max-width: 48px; }
 
@@ -2016,7 +2021,7 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 	display: flex;
 
-	align-items: flex-end;
+	align-items: baseline;
 
 	gap: 3px;
 
@@ -2282,32 +2287,57 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 /* -- Corkboard -- */
 
 /* Corkboard View */
+body .workspace-leaf-content[data-type="webnovel-workbench"][data-type="webnovel-workbench"] .view-content,
 .wn-corkboard-container {
 
-	padding: 20px;
-
-	background-color: var(--background-primary);
+	padding: 40px;
 
 	overflow-y: auto;
 
 }
 
 .wn-corkboard-header {
-
 	margin-bottom: 20px;
+	position: relative;
+}
 
+.wn-corkboard-header-buttons {
+	position: absolute;
+	top: 0;
+	right: 0;
+	display: flex;
+	gap: 8px;
+}
+
+/* 工作台通用操作按钮（与创作主页「新增作品」风格统一） */
+.wn-corkboard-new-chapter-btn,
+.wn-corkboard-new-lore-btn,
+.wn-corkboard-novel-status-btn,
+.wn-timeline-add-node-btn {
+	display: inline-block;
+	font-size: 13px;
+	padding: 4px 12px;
+	border-radius: 4px;
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border: none;
+	cursor: pointer;
+	font-weight: 500;
+	transition: filter 0.2s;
+}
+
+.wn-corkboard-new-chapter-btn:hover,
+.wn-corkboard-new-lore-btn:hover,
+.wn-corkboard-novel-status-btn:hover,
+.wn-timeline-add-node-btn:hover {
+	filter: brightness(1.1);
 }
 
 .wn-corkboard-title {
-
 	margin: 0 0 10px 0;
-
 	font-weight: 600;
-
-	font-size: var(--h2, 1.6em);
-
-	color: var(--h2-color, var(--text-normal));
-
+	font-size: var(--h2, 1.5em);
+	color: var(--inline-title-color, var(--h2-color, var(--text-normal)));
 }
 
 .wn-corkboard-hint {
@@ -2333,44 +2363,33 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 }
 
 .wn-corkboard-card {
-
 	background-color: var(--background-secondary);
-
 	border: 1px solid var(--background-modifier-border);
-
 	border-radius: 8px;
-
 	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-
 	display: flex;
-
 	flex-direction: column;
-
 	transition: transform 0.2s ease, box-shadow 0.2s ease;
 	overflow: hidden;
-	min-width: 0;
+	width: 280px;
+	min-height: 160px;
+}
+
+.wn-corkboard-grid .wn-corkboard-card {
+	width: 100%;
 }
 
 .wn-corkboard-card:hover {
-
 	transform: translateY(-2px);
-
 	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-
 	border-color: var(--interactive-accent);
-
 }
 
 .wn-corkboard-card-header {
-
 	padding: 12px 16px;
-
 	border-bottom: 1px solid var(--background-modifier-border);
-
 	display: flex;
-
 	justify-content: space-between;
-
 	align-items: center;
 	background-color: var(--background-secondary-alt);
 	min-width: 0;
@@ -2427,17 +2446,12 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 }
 
 .wn-corkboard-card-content {
-
 	flex: 1;
-
 	padding: 16px;
-
 	cursor: text;
-
 	position: relative;
-
-	min-height: 100px;
-
+	min-height: 80px;
+	overflow-y: auto;
 }
 
 .wn-corkboard-card-text {
@@ -2497,21 +2511,14 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 }
 
 .wn-corkboard-card-footer {
-
 	padding: 10px 16px;
-
 	font-size: 0.85em;
-
 	color: var(--text-muted);
-
 	border-top: 1px dashed var(--background-modifier-border);
-
 	background-color: var(--background-primary);
-
 	display: flex;
-
-	justify-content: flex-end;
-
+	justify-content: space-between;
+	align-items: center;
 }
 
 /* Corkboard Timeline Grouping */
@@ -3682,7 +3689,7 @@ body .webnovel-lore-popover {
 
     display: flex;
 
-    align-items: flex-end;
+    align-items: baseline;
 
     justify-content: space-between;
 
@@ -4209,4 +4216,548 @@ body .modal-content > .setting-item.setting-item-heading:first-of-type .setting-
     --wna-rg-mention-border-color: var(--text-faint);
     --wna-rg-mention-line-dash: 4, 4;
     --wna-rg-mention-label-dash: 2, 2;
+}
+/* Timeline Waterfall Layout */
+.wn-timeline-waterfall-layout { display: flex; gap: 20px; height: 100%; overflow: hidden; position: relative; }
+.wn-timeline-waterfall-main { 
+    flex: 1; 
+    display: flex; 
+    flex-direction: column; 
+    overflow-y: auto; 
+    padding-right: 10px; 
+    position: relative;
+    padding-left: 20px; /* Space for the vertical line */
+    background-image: linear-gradient(var(--background-modifier-border), var(--background-modifier-border));
+    background-size: 2px 100%;
+    background-repeat: no-repeat;
+    background-position: 24px 0;
+    background-attachment: local;
+}
+
+.wn-timeline-waterfall-main.is-empty {
+    background-image: none;
+}
+
+.wn-timeline-node { 
+    position: relative;
+    margin-bottom: 10px;
+    z-index: 1;
+    flex-shrink: 0;
+}
+
+/* The dot on the axis */
+.wn-timeline-node-title { 
+    font-weight: 600; 
+    margin-bottom: 10px; 
+    font-size: 1.1em; 
+    color: var(--text-normal);
+    position: relative;
+    display: flex;
+    align-items: center;
+    padding-left: 16px; /* Prevent text overlap with dot */
+}
+
+.wn-timeline-node-title::before {
+    content: '';
+    position: absolute;
+    left: -2px; /* Align perfectly with the vertical line */
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--interactive-accent);
+    border: 2px solid var(--background-primary);
+}
+
+.wn-timeline-item-row {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 5px;
+    padding-left: 16px;
+    border-radius: 6px;
+    transition: background 0.2s;
+}
+
+.wn-timeline-item-desc {
+    width: 200px;
+    min-height: 160px;
+    margin-bottom: 5px;
+    overflow-y: auto;
+    flex-shrink: 0;
+    padding: 10px;
+    background: var(--background-secondary-alt);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    font-size: 0.9em;
+    color: var(--text-muted);
+    white-space: pre-wrap;
+    cursor: text;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.wn-timeline-item-desc:hover {
+    border-color: var(--interactive-accent);
+    box-shadow: 0 0 0 1px var(--interactive-accent);
+}
+
+.wn-timeline-cards-container {
+    min-height: 40px;
+    flex: 1;
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 5px;
+    gap: 10px;
+    align-content: flex-start;
+    min-height: 40px; /* Ensure dropzone area even when empty */
+}
+
+.wn-timeline-gap { 
+    position: relative;
+    padding: 0 0 0 231px;
+    margin: 10px 0;
+    min-height: 10px;
+    display: flex;
+    align-items: center;
+    transition: background 0.2s; 
+    z-index: 1;
+    flex-shrink: 0;
+}
+
+.wn-timeline-sub-gap {
+    margin: 5px 0;
+}
+
+.wn-timeline-gap::after {
+    content: '';
+    position: absolute;
+    left: 4px;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    border-top: 2px dashed var(--background-modifier-border);
+    z-index: -1;
+}
+
+.wn-timeline-gap .wn-timeline-cards-container {
+    min-height: 40px;
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 5px;
+    gap: 10px;
+    align-content: flex-start;
+    width: 100%;
+    min-height: 0;
+}
+
+.wn-timeline-waterfall-sidebar { 
+    width: 320px; 
+    flex-shrink: 0; 
+    background: var(--background-secondary-alt); 
+    border-radius: 8px; 
+    padding: 15px; 
+    display: flex; 
+    flex-direction: column; 
+    overflow-y: auto; 
+    transition: width 0.2s, opacity 0.2s, background 0.2s;
+}
+
+.wn-timeline-waterfall-sidebar.is-empty {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 40px;
+    padding: 0;
+    background: transparent;
+    border-left: 2px dashed transparent;
+    z-index: 100;
+    overflow: hidden;
+}
+
+.wn-timeline-waterfall-sidebar.is-empty * {
+    display: none;
+}
+
+.wn-timeline-waterfall-sidebar.is-empty.dragover {
+    background: var(--background-modifier-hover);
+    border-left-color: var(--interactive-accent);
+}
+
+.wn-timeline-sidebar-header { 
+    display: flex; 
+    align-items: center; 
+    gap: 8px; 
+    font-weight: 600; 
+    margin-bottom: 15px; 
+    color: var(--text-muted); 
+}
+
+.drag-over * { pointer-events: none !important; }
+.drag-over { 
+    background: var(--background-modifier-hover); 
+    border: 1px dashed var(--interactive-accent); 
+}
+.is-dragging { opacity: 0.5; }
+
+.wn-timeline-add-timeline-btn {
+    align-self: flex-start;
+    margin-left: 30px;
+    margin-top: 10px;
+    margin-bottom: 30px;
+    z-index: 1;
+}
+
+
+/* Badges for Corkboard Cards */
+.wn-corkboard-card-badges {
+	display: flex;
+	gap: 4px;
+	flex-wrap: wrap;
+	align-items: center;
+	transform: translateY(-2px);
+}
+
+.wn-badge {
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.75em;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.wn-badge-foreshadowing {
+    background-color: var(--color-red-rgba-20);
+    color: var(--text-error);
+    border: 1px solid var(--text-error);
+}
+
+.wn-badge-recovered {
+    background-color: var(--color-green-rgba-20);
+    color: var(--text-success);
+    border: 1px solid var(--text-success);
+}
+
+.wn-badge-lore {
+    background-color: var(--color-blue-rgba-20);
+    color: var(--text-accent);
+    border: 1px solid var(--text-accent);
+}
+
+.wn-badge-more {
+    opacity: 0.7;
+    background-color: transparent;
+    border: 1px dashed var(--text-accent);
+}
+
+/* Lore Board Layout */
+.wn-lore-board-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 16px;
+}
+
+.wn-lore-board-group {
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    padding: 12px;
+}
+
+.wn-lore-board-group-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    padding-bottom: 8px;
+}
+
+.wn-lore-board-group-title {
+    font-size: 1.1em;
+    font-weight: 600;
+    color: var(--text-normal);
+    cursor: pointer;
+}
+
+.wn-lore-board-group-title:hover {
+    color: var(--text-accent);
+    text-decoration: underline;
+}
+
+.wn-lore-board-group-count {
+    font-size: 0.85em;
+    color: var(--text-muted);
+}
+
+.wn-lore-board-cards {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.wn-lore-board-mini-card {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    background: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    padding: 4px 8px;
+    cursor: pointer;
+    font-size: 0.85em;
+    transition: all 0.2s ease;
+}
+
+.wn-lore-board-mini-card:hover {
+    background: var(--background-modifier-hover);
+    border-color: var(--text-accent);
+}
+
+.wn-lore-board-mini-card-title {
+    color: var(--text-normal);
+}
+
+.wn-lore-board-mini-card-count {
+    color: var(--text-accent);
+    font-weight: bold;
+}
+
+/* Chapter Status UI */
+.wn-chapter-status-header {
+    border-bottom: 1px dashed var(--color-blue);
+    padding-bottom: 4px;
+    margin-bottom: 8px;
+    width: 100%;
+}
+.wn-chapter-status-title {
+    color: var(--color-blue);
+    margin: 0;
+    font-size: 1.4em;
+    font-weight: 700;
+}
+.wn-chapter-status-section {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    width: 100%;
+}
+.wn-chapter-status-section-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--interactive-accent-hover);
+    margin-bottom: 4px;
+}
+.wn-chapter-status-item {
+    font-size: 0.9em;
+    color: var(--text-normal);
+    line-height: 1.4;
+}
+.wn-chapter-status-item:hover {
+    color: var(--color-accent);
+}
+.wn-chapter-status-lore-row {
+    font-size: 0.9em;
+    color: var(--text-normal);
+    line-height: 1.4;
+}
+.wn-chapter-status-lore-item {
+    color: var(--text-normal);
+}
+.wn-chapter-status-lore-item:hover {
+    color: var(--color-accent);
+    text-decoration: underline;
+}
+
+
+.immersive-chapter-left {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	align-items: flex-start;
+}
+.immersive-chapter-title {
+	word-break: break-all;
+}
+.immersive-chapter-badges {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+}
+
+/* ==========================================================================
+   章节状态面板（StatusView）内联样式提取
+   ========================================================================== */
+
+/* badges 容器：垂直排列 */
+.wn-chapter-badges-container {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	align-items: stretch;
+}
+
+/* "待回收" 标题：红色警告色 */
+.wn-chapter-status-section-title.is-pending {
+	color: color-mix(in srgb, color-mix(in srgb, var(--color-red, #ef4444) 80%, var(--interactive-accent)) 85%, var(--text-normal));
+}
+
+/* 已回收伏笔条目：略微淡化 */
+.wn-chapter-status-item.is-recovered {
+	opacity: 0.8;
+}
+
+/* 设定分区：与伏笔区之间的微小间距 */
+.wn-chapter-status-section.is-lore {
+	margin-top: 2px;
+}
+
+/* 设定与伏笔之间的分割线 */
+.wn-chapter-status-divider {
+	height: 1px;
+	background-color: var(--background-modifier-border);
+	margin: 4px 0 8px 0;
+	width: 100%;
+	opacity: 0.6;
+}
+
+/* 设定 badge 行：横向排列 */
+.wn-chapter-lore-row {
+	display: flex;
+	gap: 4px;
+	align-items: center;
+	flex-wrap: wrap;
+}
+
+/* ==========================================================================
+   通用空状态提示
+   ========================================================================== */
+
+/* WorkbenchView 时间线/设定看板的空状态提示 */
+.wn-empty-state-msg {
+	color: var(--text-faint);
+	text-align: center;
+	padding: 40px 20px;
+	font-style: italic;
+}
+
+/* ==========================================================================
+   工作台（WorkbenchView）标题按钮容器
+   ========================================================================== */
+
+/* 头部按钮横向排列，样式已由 CSS 类管理，无需内联 setCssProps */
+.wn-corkboard-header-buttons {
+	display: flex;
+	gap: 8px;
+}
+  
+.wn-lore-board-group-left { display: flex; align-items: center; }
+.wn-lore-board-group-relations { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin-left: 16px; }  
+.wn-lore-board-relation-item { display: flex; align-items: center; gap: 4px; font-size: 12px; }  
+.wn-lore-board-relation-badge { background-color: var(--interactive-accent); color: var(--text-on-accent); padding: 2px 6px; border-radius: 4px; font-size: 12px; font-weight: 500; }  
+.wn-lore-board-relation-targets { color: var(--text-muted); font-size: 12px; } 
+
+/* ==========================================================================
+   移动端优化
+   ========================================================================== */
+.is-mobile .wn-corkboard-card {
+	min-height: 80px;
+}
+
+.is-mobile .wn-corkboard-card-header {
+	padding: 6px 10px;
+}
+
+.is-mobile .wn-corkboard-card-title {
+	font-size: 0.9em;
+}
+
+.is-mobile .wn-corkboard-card-content {
+	padding: 8px 10px;
+	min-height: 50px;
+}
+
+.is-mobile .wn-corkboard-card-text {
+	font-size: 0.85em;
+	line-height: 1.4;
+}
+
+.is-mobile .wn-corkboard-textarea {
+	font-size: 0.85em;
+	line-height: 1.4;
+}
+
+.is-mobile .wn-corkboard-card-footer {
+	padding: 6px 10px;
+	font-size: 0.75em;
+}
+  
+/* Timeline Add Buttons */  
+.wn-timeline-add-sub-event-row {
+    display: flex;
+    justify-content: flex-start;
+    margin-bottom: 10px;
+    padding-left: 16px;
+}
+
+.wn-timeline-add-sub-event-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px dashed var(--interactive-accent);
+    padding: 4px 12px;
+    border-radius: 4px;
+    color: var(--interactive-accent);
+    font-size: 0.9em;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: none;
+}
+
+.wn-timeline-add-sub-event-btn:hover {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+}
+
+.wn-timeline-add-node-row {
+    margin-top: 20px;
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    position: relative;
+    padding-left: 16px;
+}
+
+.wn-timeline-add-node-row::before {
+    content: '';
+    width: 10px;
+    height: 10px;
+    background-color: var(--interactive-accent);
+    border: 2px solid var(--background-primary);
+    border-radius: 50%;
+    position: absolute;
+    left: -2px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+/* wn-timeline-add-node-btn 样式已统一到上方 .wn-corkboard-new-chapter-btn 组 */
+.wn-timeline-add-node-btn {
+    box-shadow: none;
+    margin-left: 0;
+}
+
+/* Sidebar Unscheduled Header */
+.wn-timeline-sidebar-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    line-height: 1;
+}
+
+.wn-timeline-sidebar-header > span {
+    display: flex;
+    align-items: center;
 }

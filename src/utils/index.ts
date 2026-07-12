@@ -34,3 +34,6 @@ export { copyDocumentContent } from './ui';
 
 // 路径工具
 export { findBookRoot } from './path';
+
+// Badge 渲染工具
+export { renderForeshadowingBadges, renderLoreBadges } from './badge';

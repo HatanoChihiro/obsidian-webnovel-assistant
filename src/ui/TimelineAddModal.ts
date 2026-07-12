@@ -1,0 +1,92 @@
+import type { App } from 'obsidian';
+import { Modal } from 'obsidian';
+import type { TimelineEntry } from '../services/TimelineManager';
+import type { WebNovelAssistantPlugin } from '../types/plugin';
+import { t } from '../i18n';
+import { TimelineFormComponent } from './components/TimelineFormComponent';
+
+/**
+ * 统一的时间线条目添加对话框
+ * 支持两种模式：
+ * 1. 从选中文本添加（TimelineAddFromSelectionModal 的替代）
+ * 2. 从时间线视图添加（TimelineAddModal 的替代）
+ */
+export class TimelineAddModal extends Modal {
+	private description: string;
+	private sourceFile: string;
+	private folderPath: string;
+	private onSubmit: (entry: TimelineEntry) => void;
+	private returnFullEntry: boolean; // true 时返回完整 TimelineEntry，false 时返回简化对象
+	private plugin: WebNovelAssistantPlugin;
+	private typeOptions: string[];
+	private origin?: string;
+
+	constructor(
+		app: App,
+		plugin: WebNovelAssistantPlugin,
+		description: string,
+		sourceFile: string,
+		folderPath: string,
+		onSubmit: (entry: TimelineEntry) => void,
+		returnFullEntry: boolean = true,
+		typeOptions: string[] = [],
+		origin?: string
+	) {
+		super(app);
+		this.plugin = plugin;
+		this.description = description;
+		this.sourceFile = sourceFile;
+		this.folderPath = folderPath;
+		this.onSubmit = onSubmit;
+		this.returnFullEntry = returnFullEntry;
+		this.typeOptions = typeOptions;
+		this.origin = origin;
+	}
+
+	onOpen() {
+		const { contentEl } = this;
+		contentEl.empty();
+		contentEl.addClass('timeline-add-modal');
+		
+		const component = new TimelineFormComponent({
+			container: contentEl,
+			app: this.app,
+			plugin: this.plugin,
+			folderPath: this.folderPath,
+			initialEntry: {
+				description: this.description,
+				chapter: this.sourceFile,
+				origin: this.origin
+			},
+			typeOptions: this.typeOptions,
+			onCancel: () => this.close(),
+			onSubmit: (entry: TimelineEntry) => {
+				this.onSubmit(entry);
+				this.close();
+			},
+			title: t('modal.add-to-timeline')
+		});
+		
+		component.render();
+	}
+
+	onClose() { this.contentEl.empty(); }
+}
+
+/**
+ * @deprecated 使用 TimelineAddModal 替代，传入 returnFullEntry=false
+ */
+export class TimelineAddFromSelectionModal extends TimelineAddModal {
+	constructor(
+		app: App,
+		plugin: WebNovelAssistantPlugin,
+		timelineFileName: string,
+		description: string,
+		sourceFile: string,
+		folderPath: string,
+		onSubmit: (entry: { time: string; description: string; chapter: string; type: string; origin?: string }) => void,
+		typeOptions: string[] = []
+	) {
+		super(app, plugin, description, sourceFile, folderPath, onSubmit, false, typeOptions, description);
+	}
+}

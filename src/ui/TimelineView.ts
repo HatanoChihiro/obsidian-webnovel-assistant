@@ -1,5 +1,5 @@
-import type { WorkspaceLeaf, App } from 'obsidian';
-import { Modal, Notice, Setting, TFile, TFolder } from 'obsidian';
+import type { WorkspaceLeaf, App , TFile } from 'obsidian';
+import { Modal, Notice, Setting } from 'obsidian';
 import type { TimelineEntry } from '../services/TimelineManager';
 import { TimelineManager } from '../services/TimelineManager';
 import { CreativeView } from './CreativeView';
@@ -243,6 +243,7 @@ export class TimelineView extends CreativeView {
 		this.manager.currentFolder = this.currentFolder;
 		this.editingIndex = -1;
 		this.filterType = 'all';
+		this.app.workspace.trigger('webnovel-timeline-filter-changed', 'all');
 		await this.refresh();
 	}
 
@@ -343,16 +344,26 @@ export class TimelineView extends CreativeView {
 		const entries = this.manager.parseEntries(content);
 
 // 类型筛选
+		// 类型筛选
 		const typeOptions = this.getTypeFilterOptions(entries);
 		if (typeOptions.length > 0) {
 			const typeRow = header.createDiv({ cls: 'timeline-view-filter-row' });
 			const allBtn = typeRow.createEl('button', { text: t('common.all-types'), cls: 'timeline-filter-btn' });
 			if (this.filterType === 'all') allBtn.addClass('is-active');
-			allBtn.onclick = () => { this.filterType = 'all'; void this.refresh(); };
+			allBtn.onclick = () => { 
+				this.filterType = 'all'; 
+				this.app.workspace.trigger('webnovel-timeline-filter-changed', 'all');
+				void this.refresh(); 
+			};
+			
 			typeOptions.forEach(type => {
 				const btn = typeRow.createEl('button', { text: type, cls: 'timeline-filter-btn' });
 				if (this.filterType === type) btn.addClass('is-active');
-				btn.onclick = () => { this.filterType = type; void this.refresh(); };
+				btn.onclick = () => { 
+					this.filterType = type; 
+					this.app.workspace.trigger('webnovel-timeline-filter-changed', type);
+					void this.refresh(); 
+				};
 			});
 		}
 
@@ -763,17 +774,10 @@ export class TimelineView extends CreativeView {
 		// 章节列表容器
 		const chapterListContainer = form.createDiv();
 		chapterListContainer.setCssProps({ marginBottom: '12px' });
-		// 获取当前文件夹下的所有 md 文件
-		const folder = this.app.vault.getAbstractFileByPath(this.currentFolder);
-		const chapterFiles: string[] = [];
-		if (folder instanceof TFolder) {
-			folder.children
-				.filter((c): c is TFile => c instanceof TFile && c.extension === 'md')
-				.forEach((c) => {
-					chapterFiles.push(c.basename);
-				});
-			chapterFiles.sort();
-		}
+		
+		// 获取当前小说文件夹下的所有章节 md 文件
+		const targetFiles = ChapterSorter.getAllChapters(this.app, this.plugin, this.currentFolder);
+		const chapterFiles: string[] = targetFiles.map(c => c.basename);
 		
 		// 创建章节选择行
 		const createChapterRow = (initialValue: string = '') => {

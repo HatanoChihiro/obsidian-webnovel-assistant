@@ -329,6 +329,16 @@ export class SettingsManager {
 					delete (migrated.immersive as unknown as Record<string, unknown>)[key];
 				}
 			}
+
+			// Migrate corkboard-view back to webnovel-corkboard for compatibility
+			const slotsKeys = ['immersiveTopSlots', 'immersiveBottomSlots', 'immersiveLeftSlots', 'immersiveRightSlots'] as const;
+			for (const key of slotsKeys) {
+				if (Array.isArray(migrated.immersive[key])) {
+					migrated.immersive[key] = migrated.immersive[key].map(slot => 
+						slot === 'corkboard-view' ? 'webnovel-corkboard' : slot
+					);
+				}
+			}
 		}
 
 		if (oldData && typeof oldData === 'object') {

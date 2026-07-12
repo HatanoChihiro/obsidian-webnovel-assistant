@@ -5,13 +5,14 @@ import { GoalModal } from '../ui/GoalModal';
 import { copyDocumentContent } from '../utils/ui';
 import { isDesktop } from '../utils/platform';
 import { ChapterSorter } from '../services/ChapterSorter';
-import { TimelineAddModal } from '../ui/TimelineView';
+import { TimelineAddModal } from '../ui/TimelineAddModal';
 import type { TimelineEntry } from '../services/TimelineManager';
 import { TimelineManager } from '../services/TimelineManager';
 import { TaskManager } from '../services/TaskManager';
 import { TaskAddModal } from '../ui/TaskModal';
 import { findBookRoot } from '../utils/path';
 import { NewNovelModal } from '../ui/NewNovelModal';
+import type { WorkbenchView } from '../ui/WorkbenchView';
 import { RELATION_GRAPH_VIEW_TYPE } from '../ui/RelationGraphView';
 
 export class MenuManager {
@@ -95,8 +96,25 @@ export class MenuManager {
 					new NewNovelModal(this.plugin.app, this.plugin, (result) => {
 						void (async () => {
 							try {
-								await this.plugin.homepageManager!.createNewNovel(result.name, result.meta);
+								const { folderPath } = await this.plugin.homepageManager!.createNewNovel(result.name, result.meta);
 								new Notice(t('notice.novel-created', { name: result.name }));
+								if (this.plugin.homepageManager) {
+									const viewType = 'webnovel-workbench';
+									const { workspace } = this.plugin.app;
+									const leaves = workspace.getLeavesOfType(viewType);
+									let leaf = leaves.length > 0 ? leaves[0] : null;
+									if (!leaf) {
+										leaf = workspace.getLeaf(false);
+										await leaf.setViewState({ type: viewType, active: true });
+									}
+									if (leaf && leaf.view && leaf.view.getViewType() === viewType) {
+										(leaf.view as WorkbenchView).setBookPath(folderPath);
+									}
+									if (leaf) {
+										void workspace.revealLeaf(leaf);
+										void workspace.setActiveLeaf(leaf, { focus: true });
+									}
+								}
 							} catch (e) {
 								console.error(e);
 							}

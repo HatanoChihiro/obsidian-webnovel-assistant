@@ -699,11 +699,12 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 	private getAvailableViews(): Record<string, string> {
 		return {
 			'immersive-chapter-list-view': t('setting.layout-view-chapter-list'),
+			'webnovel-corkboard': t('setting.layout-view-corkboard') || '章节一览',
 			'immersive-sticky-notes-view': t('setting.layout-view-sticky-notes'),
 			'foreshadowing-view': t('setting.layout-view-foreshadowing'),
 			'timeline-view': t('setting.layout-view-timeline'),
 			'reference-view': t('setting.layout-view-reference'),
-			'webnovel-corkboard': t('setting.layout-view-corkboard'),
+			'webnovel-workbench': t('setting.layout-view-workbench'),
 			'outline': t('setting.layout-view-outline')
 		};
 	}
@@ -990,6 +991,17 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.loreGraphAutoLinkMentions)
 				.onChange(async (value: boolean) => {
 					this.plugin.settings.loreGraphAutoLinkMentions = value;
+					await this.plugin.saveSettings();
+				}));
+
+		// 启用跨文件图谱关联
+		new Setting(containerEl)
+			.setName(t('setting.lore-graph-enable-global') || '启用跨文件图谱关联')
+			.setDesc(t('setting.lore-graph-enable-global-desc') || '开启后，图谱将读取整个设定文件夹中的所有文件，生成全局的人物关系图。在设定文件非常多时可能会影响性能。')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.loreGraphEnableGlobal)
+				.onChange(async (value: boolean) => {
+					this.plugin.settings.loreGraphEnableGlobal = value;
 					await this.plugin.saveSettings();
 				}));
 	}

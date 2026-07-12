@@ -1,9 +1,10 @@
 import type { WorkspaceLeaf} from 'obsidian';
-import { ItemView, MarkdownView, TFile } from 'obsidian';
+import { ItemView, TFile, MarkdownView, Notice } from 'obsidian';
 import { formatTime, formatCount, isMobile } from '../utils';
 import { HistoryStatsModal, calcStreak, calcFocusRate, calcActiveHours, calcDailyAverage } from './HistoryModal';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
-import { findBookRoot } from '../utils/path';
+import type { ParsedForeshadowingEntry } from '../types/foreshadowing';
+import { getCurrentBookContext } from '../utils/path';
 import { TaskManager } from '../services/TaskManager';
 import { t } from '../i18n';
 
@@ -28,6 +29,9 @@ export class WritingStatusView extends ItemView {
 	dailyPercentEl!: HTMLElement;
 	dailyProgressFillEl!: HTMLElement;
 	focusTimeEl!: HTMLElement;
+	chapterStatusCardEl!: HTMLElement;
+	chapterBadgesContainer!: HTMLElement;
+	chapterTitleEl!: HTMLElement;
 	slackTimeEl!: HTMLElement;
 	totalTimeEl!: HTMLElement;
 	miniChartEl!: HTMLElement;
@@ -69,6 +73,7 @@ export class WritingStatusView extends ItemView {
 
 		this.createWorkInfoCard(container);
 		this.createGoalCard(container);
+		this.createChapterStatusCard(container);
 		this.createTimeCard(container);
 		this.createHistoryCard(container);
 
@@ -239,30 +244,34 @@ export class WritingStatusView extends ItemView {
 		}
 	}
 
+	private createChapterStatusCard(container: Element) {
+		this.chapterStatusCardEl = container.createDiv({ cls: 'wn-status-card' });
+		this.chapterStatusCardEl.hide();
+
+		const titleRow = this.chapterStatusCardEl.createDiv({ cls: 'wn-status-title' });
+		this.chapterTitleEl = titleRow.createSpan();
+
+		this.chapterBadgesContainer = this.chapterStatusCardEl.createDiv({ 
+			cls: 'wn-corkboard-card-badges', 
+			attr: { style: 'margin-top: 16px;' } 
+		});
+	}
+
 	async updateData() {
 		// 更新作品信息
-		const activeFile = this.app.workspace.getActiveViewOfType(MarkdownView)?.file
-			?? this.app.workspace.getActiveFile();
-
-		if (activeFile && !this.plugin.isEligibleForWordCount(activeFile)) {
-			this.workNameEl.innerText = '--';
-			this.workWordCountEl.innerText = '';
-			this.workGoalEl.hide();
-		} else {
-			let folderPath = '';
-		let folderName = '--';
-		
-		if (activeFile && activeFile.parent) {
-			this.lastActiveFolderPath = activeFile.parent.path;
-			folderPath = activeFile.parent.path;
-			folderName = activeFile.parent.isRoot() ? t('common.root-directory') : activeFile.parent.name;
-		} else if (this.lastActiveFolderPath) {
-			folderPath = this.lastActiveFolderPath;
-			const folder = this.app.vault.getAbstractFileByPath(folderPath);
-			if (folder) folderName = folder.name;
+		const contextPath = getCurrentBookContext(this.app, this.plugin);
+		if (contextPath) {
+			this.lastActiveFolderPath = contextPath;
 		}
+		
+		const folderPath = contextPath || this.lastActiveFolderPath || '';
+		let folderName = '--';
 
 		if (folderPath) {
+			const folder = this.app.vault.getAbstractFileByPath(folderPath);
+			if (folder) {
+                folderName = folder.path === '/' ? t('common.root-directory') : folder.name;
+            }
 			const wordCount = this.plugin.cacheManager.getFolderWordCount(folderPath);
 			this.workNameEl.innerText = folderName;
 			this.workWordCountEl.innerText = wordCount > 0 ? `${wordCount.toLocaleString()}${t('common.word-char')}` : '';
@@ -286,7 +295,10 @@ export class WritingStatusView extends ItemView {
 			} else {
 				this.workGoalEl.hide();
 			}
-		}
+		} else {
+			this.workNameEl.innerText = '--';
+			this.workWordCountEl.innerText = '';
+			this.workGoalEl.hide();
 		}
 
 		if (!isMobile() && this.statusBadgeEl) {
@@ -326,14 +338,7 @@ export class WritingStatusView extends ItemView {
 		this.setProgressState(this.progressFillEl, this.todayWordEl, null, chapterState, coreStats.percent);
 
 		// 任务目标进度：基于目录判断，无活跃 MarkdownView 时使用上次文件夹
-		let taskFolder = '';
-		const taskFile = this.app.workspace.getActiveViewOfType(MarkdownView)?.file;
-		if (taskFile) {
-			taskFolder = findBookRoot(this.plugin.app, this.plugin, taskFile) || '';
-			this.plugin.lastTaskFolder = taskFolder;
-		} else if (this.plugin.lastTaskFolder) {
-			taskFolder = this.plugin.lastTaskFolder;
-		}
+		const taskFolder = folderPath;
 
 		let hasActiveTask = false;
 		if (taskFolder && this.plugin.taskManager) {
@@ -382,7 +387,149 @@ export class WritingStatusView extends ItemView {
 			if (this.totalTimeEl) this.totalTimeEl.innerText = formatTime(totalSec);
 		}
 
+		void this.updateChapterStatus();
 		this.updateWordStats();
+	}
+
+	private async updateChapterStatus() {
+		if (!this.chapterStatusCardEl || !this.chapterBadgesContainer) return;
+
+		const file = this.app.workspace.getActiveFile();
+		if (!file || file.extension !== 'md') {
+			this.chapterStatusCardEl.hide();
+			return;
+		}
+
+		const bookPath = this.plugin.characterManager.getBookPathForFile(file);
+		if (!bookPath || this.plugin.characterManager.isLorePath(bookPath, file.parent?.path || '')) {
+			this.chapterStatusCardEl.hide();
+			return;
+		}
+
+		const fmFolder = bookPath === '/' ? '' : bookPath;
+		const fFile = this.plugin.foreshadowingManager?.findForeshadowingFile(fmFolder);
+		if (fFile && fFile.path === file.path) {
+			this.chapterStatusCardEl.hide();
+			return;
+		}
+
+		this.chapterStatusCardEl.show();
+		this.chapterBadgesContainer.empty();
+		this.chapterBadgesContainer.addClass('wn-chapter-badges-container');
+
+		// 1. Set Chapter Title
+		this.chapterTitleEl.innerText = file.basename;
+
+		const pendingEntries: ParsedForeshadowingEntry[] = [];
+		const recoveredEntries: ParsedForeshadowingEntry[] = [];
+
+		if (fFile) {
+			const content = await this.app.vault.cachedRead(fFile);
+			const entries = this.plugin.foreshadowingManager!.parseEntries(content);
+			const cleanBase = file.basename.toLowerCase().replace(/\s+/g, '');
+			for (const entry of entries) {
+				let targets: string[] = [];
+				if (entry.status === 'pending' || entry.status === 'unresolved') {
+					if (entry.sourceFile) targets.push(entry.sourceFile);
+				} else if (entry.status === 'recovered') {
+					targets = entry.recoveryFiles ? [...entry.recoveryFiles] : (entry.recoveryFile ? [entry.recoveryFile] : []);
+				}
+				for (const target of targets) {
+					if (!target) continue;
+					const cleanTarget = target.toLowerCase().replace(/\s+/g, '');
+					if (cleanBase.includes(cleanTarget) || cleanTarget.includes(cleanBase)) {
+						if (entry.status === 'recovered') {
+							recoveredEntries.push(entry);
+						} else {
+							pendingEntries.push(entry);
+						}
+					}
+				}
+			}
+		}
+
+		const cache = this.app.metadataCache.getFileCache(file);
+		const loreArray = cache?.frontmatter?.lore as unknown;
+		let validLores: string[] = [];
+		if (Array.isArray(loreArray)) {
+			validLores = (loreArray as unknown[]).filter((l: unknown): l is string => typeof l === 'string');
+		}
+
+		if (pendingEntries.length === 0 && recoveredEntries.length === 0 && validLores.length === 0) {
+			this.chapterStatusCardEl.hide();
+			return;
+		}
+
+		// 点击伏笔条目，跳转到正文中对应文本位置
+		const setupJumpEvent = (el: HTMLElement, textToFind: string) => {
+			el.addClass('wn-clickable');
+			el.addEventListener('click', () => {
+				void (async () => {
+					const leaves = this.app.workspace.getLeavesOfType('markdown');
+					let targetLeaf = null;
+					for (const leaf of leaves) {
+						if (leaf.view instanceof MarkdownView && leaf.view.file?.path === file.path) {
+							targetLeaf = leaf;
+							break;
+						}
+					}
+					if (!targetLeaf) targetLeaf = this.app.workspace.getLeaf(false);
+
+					const content = await this.app.vault.cachedRead(file);
+					const cleanSearch = textToFind.trim();
+					if (cleanSearch) {
+						const escapedSearch = cleanSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+						const searchPattern = escapedSearch.replace(/\s+/g, '\\s+');
+						let match = content.match(new RegExp(searchPattern, 'i'));
+						if (!match && cleanSearch.length > 20) {
+							const shortSearch = cleanSearch.substring(0, 20).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+							match = content.match(new RegExp(shortSearch, 'i'));
+						}
+						if (match && match.index !== undefined) {
+							const targetLine = content.substring(0, match.index).split('\n').length - 1;
+							await targetLeaf.openFile(file, { eState: { line: targetLine } });
+						} else {
+							new Notice(t('notice.text-not-found') || '当前正文中未找到对应的文本！');
+						}
+					}
+				})();
+			});
+		};
+
+		if (pendingEntries.length > 0) {
+			const pendingDiv = this.chapterBadgesContainer.createDiv('wn-chapter-status-section');
+			pendingDiv.createDiv({ text: t('corkboard.foreshadowing-unresolved') || '待回收', cls: 'wn-chapter-status-section-title is-pending' });
+			
+			for (const entry of pendingEntries) {
+				const textContent = entry.description || (entry.contents.length > 0 ? entry.contents[0].text : (t('common.unknown-foreshadowing') || '未知伏笔'));
+				const itemEl = pendingDiv.createDiv({ text: textContent, cls: 'wn-chapter-status-item' });
+				const findText = entry.contents.length > 0 ? entry.contents[0].text : entry.description;
+				if (findText) setupJumpEvent(itemEl, findText);
+			}
+		}
+
+		if (recoveredEntries.length > 0) {
+			const recoveredDiv = this.chapterBadgesContainer.createDiv('wn-chapter-status-section');
+			recoveredDiv.createDiv({ text: t('corkboard.foreshadowing-recovered') || '本章回收', cls: 'wn-chapter-status-section-title' });
+			for (const entry of recoveredEntries) {
+				const textContent = entry.description || (entry.contents.length > 0 ? entry.contents[0].text : (t('common.unknown-foreshadowing') || '未知伏笔'));
+				recoveredDiv.createDiv({ text: textContent, cls: 'wn-chapter-status-item is-recovered' });
+			}
+		}
+
+		if (validLores.length > 0) {
+			const loreDiv = this.chapterBadgesContainer.createDiv('wn-chapter-status-section is-lore');
+			
+			// Add a small divider
+			if (pendingEntries.length > 0 || recoveredEntries.length > 0) {
+				loreDiv.createDiv({ cls: 'wn-chapter-status-divider' });
+			}
+			
+			const loreItemsRow = loreDiv.createDiv({ cls: 'wn-chapter-lore-row' });
+			for (const loreNameWithCount of validLores) {
+				loreItemsRow.createSpan({ text: loreNameWithCount, cls: 'wn-badge wn-badge-lore' });
+			}
+		}
 	}
 
 	private updateWordStats() {

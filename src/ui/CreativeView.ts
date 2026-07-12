@@ -1,8 +1,8 @@
 import type { WorkspaceLeaf } from 'obsidian';
-import { ItemView, MarkdownView, TFile } from 'obsidian';
+import { ItemView, TFile } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 
-import { findBookRoot } from '../utils/path';
+import { getCurrentBookContext } from '../utils/path';
 
 /**
  * 创作工具面板基类
@@ -34,6 +34,16 @@ export abstract class CreativeView extends ItemView {
 		this.registerEvent(
 			this.app.workspace.on('active-leaf-change', () => { void this.onActiveFileChange(); })
 		);
+		this.registerEvent(
+			// @ts-expect-error custom event bypass
+			this.app.workspace.on('webnovel-workbench-book-changed', (bookPath: string) => {
+				const folderStr = bookPath === '/' ? '/' : bookPath;
+				if (folderStr && folderStr !== this.currentFolder) {
+					this.currentFolder = folderStr;
+					void this.onFolderChange();
+				}
+			})
+		);
 		// 监听对应文件修改，自动刷新
 		this.registerEvent(
 			this.app.vault.on('modify', (file) => {
@@ -47,18 +57,13 @@ export abstract class CreativeView extends ItemView {
 	}
 
 	protected async onActiveFileChange() {
-		let activeFile = this.app.workspace.getActiveViewOfType(MarkdownView)?.file;
-		// 当侧面板获得焦点时，MarkdownView 不再是活跃视图，
-		// 使用 getActiveFile() 回退以保持文件夹上下文
-		if (!activeFile) {
-			activeFile = this.app.workspace.getActiveFile() || undefined;
-		}
-		if (!activeFile) return;
-		
-		const folder = findBookRoot(this.app, this.plugin, activeFile);
-		if (folder !== this.currentFolder) {
-			this.currentFolder = folder;
-			await this.onFolderChange();
+		const bookPath = getCurrentBookContext(this.app, this.plugin);
+		if (bookPath) {
+			const folderStr = bookPath === '/' ? '/' : bookPath;
+			if (folderStr !== this.currentFolder) {
+				this.currentFolder = folderStr;
+				await this.onFolderChange();
+			}
 		}
 	}
 

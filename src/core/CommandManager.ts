@@ -5,7 +5,7 @@ import { copyDocumentContent } from '../utils/ui';
 import { ChapterSorter } from '../services/ChapterSorter';
 import { ForeshadowingInputModal, ConfirmCreateForeshadowingFileModal, ForeshadowingRecoveryModal } from '../ui/ForeshadowingModal';
 import { findBookRoot } from '../utils/path';
-import { TimelineAddModal } from '../ui/TimelineView';
+import { TimelineAddModal } from '../ui/TimelineAddModal';
 import type { TimelineEntry } from '../services/TimelineManager';
 import { TimelineManager } from '../services/TimelineManager';
 import { AdvancedSearchModal } from '../ui/AdvancedSearchModal';
@@ -86,9 +86,21 @@ export class CommandManager {
 		});
 
 		this.plugin.addCommand({
-			id: 'open-corkboard-view',
-			name: t('command.toggle-corkboard-view'),
-			callback: () => { void this.plugin.viewManager.toggleView('webnovel-corkboard'); }
+			id: 'toggle-workbench-view',
+			name: t('command.toggle-workbench-view') || '打开写作工作台面板',
+			icon: 'laptop',
+			callback: () => {
+				void this.plugin.viewManager.toggleView('webnovel-workbench');
+			}
+		});
+
+		this.plugin.addCommand({
+			id: 'toggle-corkboard-view',
+			name: t('command.open-corkboard') || '打开章节一览',
+			icon: 'library',
+			callback: () => {
+				void this.plugin.viewManager.toggleView('webnovel-corkboard');
+			}
 		});
 
 		if (isDesktop()) { // Desktop

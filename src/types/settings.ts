@@ -258,6 +258,9 @@ export interface AccurateCountSettings {
 	/** 设定图谱是否自动关联提及的设定 */
 	loreGraphAutoLinkMentions: boolean;
 
+	/** 是否启用跨文件图谱关联 */
+	loreGraphEnableGlobal: boolean;
+
 	/** 章节一览面板的排序模式 */
 	corkboardSortMode?: 'default' | 'timeline';
 

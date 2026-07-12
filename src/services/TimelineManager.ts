@@ -572,6 +572,59 @@ export class TimelineManager {
 		}
 
 
+	async syncChapterToEventItem(chapterBasename: string, targetEvents: { time: string, itemIndex?: number }[]): Promise<string> {
+		return this.writer.enqueue(async () => {
+			const file = this.getTimelineFile();
+			if (!file) return '';
+
+			const entries = await this.loadEntries();
+			if (!entries) return '';
+
+			// 1. Remove from all entries
+			for (const entry of entries) {
+				if (entry.items) {
+					for (const item of entry.items) {
+						if (item.chapter) {
+							const chapters = item.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean);
+							const newChapters = chapters.filter(c => c !== chapterBasename);
+							item.chapter = newChapters.join(', ');
+						}
+					}
+					entry.chapter = entry.items.map(it => it.chapter).filter(Boolean).join(', ');
+				} else if (entry.chapter) {
+					const chapters = entry.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean);
+					const newChapters = chapters.filter(c => c !== chapterBasename);
+					entry.chapter = newChapters.join(', ');
+				}
+			}
+
+			// 2. Add to target events
+			for (const target of targetEvents) {
+				const entry = entries.find(e => e.time === target.time);
+				if (entry) {
+					if (!entry.items || entry.items.length === 0) {
+						entry.items = [{ description: entry.description, chapter: '' }];
+					}
+					
+					const itemIdx = target.itemIndex !== undefined && target.itemIndex >= 0 && target.itemIndex < entry.items.length 
+						? target.itemIndex 
+						: 0; // Default to first item
+						
+					const item = entry.items[itemIdx];
+					const chapters = item.chapter ? item.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean) : [];
+					if (!chapters.includes(chapterBasename)) {
+						chapters.push(chapterBasename);
+					}
+					item.chapter = chapters.join(', ');
+					
+					entry.chapter = entry.items.map(it => it.chapter).filter(Boolean).join(', ');
+				}
+			}
+
+			return await this.writeAllEntries(file, entries);
+		});
+	}
+
 	async writeAllEntries(file: TFile, entries: TimelineEntry[]): Promise<string> {
 		let finalContent = '';
 		await this.app.vault.process(file, (_existing) => {

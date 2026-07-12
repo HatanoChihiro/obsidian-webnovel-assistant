@@ -13,11 +13,13 @@ import type { CacheManager } from '../services/CacheManager';
 import type { ForeshadowingManager } from '../services/ForeshadowingManager';
 import type { TaskManager } from '../services/TaskManager';
 import type { TimelineManager } from '../services/TimelineManager';
+import type { ServiceRegistry } from '../core/ServiceRegistry';
 import type { FileExplorerPatcher } from '../services/FileExplorerPatcher';
 import type { SettingsManager } from '../core/SettingsManager';
 import type { HistoryDataManager } from '../services/HistoryDataManager';
 import type { StickyNoteDataManager } from '../services/StickyNoteDataManager';
 import type { AdaptiveDebounceManager } from '../services/AdaptiveDebounceManager';
+import type { LoreSyncService } from '../services/LoreSyncService';
 import type { CharacterManager } from '../services/CharacterManager';
 import type { ObsOverlayServer } from '../services/ObsServer';
 import type { ObsHtmlBuilder } from '../services/ObsHtmlBuilder';
@@ -142,6 +144,9 @@ export interface WebNovelAssistantPlugin extends
 
 	// 设置
 	settings: AccurateCountSettings;
+	
+	// 服务注册中心
+	services: ServiceRegistry;
 
 	// 服务管理器（构造函数中初始化，始终可用）
 	adaptiveDebounceManager: AdaptiveDebounceManager;
@@ -166,6 +171,8 @@ export interface WebNovelAssistantPlugin extends
 	editorTracker?: EditorTracker;
 	styleManager?: StyleManager;
 	homepageManager?: HomepageManager;
+	loreSyncService?: LoreSyncService; // To avoid circular imports if any, but we can import it
+
 
 	// UI 组件
 	mobileFloatingStats: MobileFloatingStats | null;

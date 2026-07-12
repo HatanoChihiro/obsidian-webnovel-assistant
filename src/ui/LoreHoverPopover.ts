@@ -1,5 +1,5 @@
 import { Logger } from '../utils/Logger';
-import { Component, MarkdownRenderer, setIcon } from 'obsidian';
+import { Component, MarkdownRenderer, setIcon, Platform } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { LoreEntry } from '../services/CharacterManager';
 
@@ -23,6 +23,8 @@ export class LoreHoverPopover extends Component {
 		this.entry = entry;
 		this.targetEl = targetEl;
 		this.immediate = immediate;
+
+		if (Platform.isMobile) return;
 
 		if (immediate) {
 			void this.show();

@@ -1,3 +1,35 @@
+## 🚀 v3.5.0 写作工作台全新上线
+
+### 新增写作工作台
+
+- 由原“章节一览”升级而来，现在可以通过工作台快速创建章节，填写章节摘要，切换作品状态
+- 章节卡片自动关联出现的设定与伏笔，一个面板全面掌握作品信息
+- 工作台新增时间轴看板，支持手动拖拽章节卡片到事件节点，支持时间线面板联动排序筛选，自动关联事件
+- 新增设定看板，在工作台内可以看到所有设定的出场次数和出场章节，以及设定之间的关系，添加新设定
+- 原“章节一览”面板仍支持挂载在侧面板和作为沉浸模式组件添加
+
+### 功能优化与修复
+
+- 设定图谱现在支持跨文件关联！在设置-创作辅助中启用
+- 写作实时状态面板中增加章节状态一览，可以快速查看该章节未回收的伏笔及关联设定
+- 沉浸模式的章节列表中显示对应章节的伏笔及关联设定
+- 修复了创作主页中关于效率部分描述错误的问题
+
+### New Writing Workbench
+
+- Upgraded from the original "Chapter Overview", you can now quickly create chapters, fill in chapter synopsis, and switch novel statuses directly from the workbench.
+- Chapter cards automatically associate with appearing lore and foreshadowing, giving you a comprehensive grasp of your novel's information in one panel.
+- Added Timeline Board to the workbench: supports manually dragging chapter cards to event nodes, synchronizes sorting and filtering with the timeline panel, and automatically links events.
+- Added Lore Board: view appearance counts and chapters for all lore, check relationships between lore, and add new lore directly within the workbench.
+- The original "Chapter Overview" panel is still supported as a sidebar view and can be added as an Immersive Mode component.
+
+### Optimizations & Bug Fixes
+
+- The Lore Graph now supports cross-file associations! Enable this feature in Settings - Writing Assistance.
+- Added a chapter status overview to the Writing Status panel, allowing you to quickly check unrecovered foreshadowing and associated lore for the current chapter.
+- Immersive Mode chapter list now displays the foreshadowing and associated lore for each chapter.
+- Fixed an incorrect description regarding efficiency on the Novel Homepage.
+
 ## ✨ v3.4.2
 
 - 章节一览重构为双模式（全章节 / 时间轴看板）。

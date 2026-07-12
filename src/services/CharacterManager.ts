@@ -103,7 +103,7 @@ export class CharacterManager {
 		
 		const pathSegments = parentPath.split('/');
 		for (const loreFolderName of candidates) {
-			if (bookPath !== "/" && parentPath !== bookPath && !parentPath.startsWith(bookPath + "/")) {
+			if (bookPath !== "/" && bookPath !== "" && parentPath !== bookPath && !parentPath.startsWith(bookPath + "/")) {
 				continue;
 			}
 			if (pathSegments.includes(loreFolderName)) {

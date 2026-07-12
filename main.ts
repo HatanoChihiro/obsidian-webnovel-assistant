@@ -27,6 +27,7 @@ import { ObsOverlayServer } from './src/services/ObsServer';
 import { ForeshadowingManager } from './src/services/ForeshadowingManager';
 
 import { TaskManager } from './src/services/TaskManager';
+import type { TimelineManager } from './src/services/TimelineManager';
 import { ObsHtmlBuilder } from './src/services/ObsHtmlBuilder';
 import { ImmersiveModeManager } from './src/ui/ImmersiveModeManager';
 import { HomepageManager } from './src/services/HomepageManager';
@@ -48,6 +49,8 @@ import { CharacterManager } from './src/services/CharacterManager';
 import { t, setLocale, detectLocale } from './src/i18n';
 import { getDefaultFileName, getDefaultFileNameCandidates, type DefaultFileNameKey } from './src/i18n/data-keys';
 import { buildCharacterHoverExtension } from './src/editor/CharacterHoverExtension';
+import { LoreSyncService } from './src/services/LoreSyncService';
+import { ServiceRegistry } from './src/core/ServiceRegistry';
 
 export default class AccurateChineseCountPlugin extends Plugin implements WebNovelAssistantPlugin {
 	public wordCountExtensionHolder: Extension[] = [];
@@ -77,47 +80,57 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	mobileFloatingStats: MobileFloatingStats | null = null;
 	obsHtmlBuilder: ObsHtmlBuilder;
 
-	// 服务优化组件
-	cacheManager: CacheManager;
-	adaptiveDebounceManager: AdaptiveDebounceManager;
-	settingsManager: SettingsManager;
-	historyManager: HistoryDataManager;
-	fileExplorerPatcher: FileExplorerPatcher;
-	foreshadowingManager!: ForeshadowingManager;
-	taskManager!: TaskManager;
-	wordCounter: WordCounter;
-	editorTracker!: EditorTracker;
-	fileEventManager!: FileEventManager;
-	statisticsManager: StatisticsManager;
-	styleManager!: StyleManager;
-	stickyNoteManager: StickyNoteDataManager;
-	immersiveModeManager!: ImmersiveModeManager;
-	homepageManager!: HomepageManager;
-	commandManager: CommandManager;
-	viewManager: ViewManager;
-	menuManager: MenuManager;
-	characterManager: CharacterManager;
+	// 服务注册中心
+	public services: ServiceRegistry;
+
+	// 服务管理器（通过 ServiceRegistry 获取）
+	get cacheManager(): CacheManager { return this.services.get('CacheManager'); }
+	get adaptiveDebounceManager(): AdaptiveDebounceManager { return this.services.get('AdaptiveDebounceManager'); }
+	get settingsManager(): SettingsManager { return this.services.get('SettingsManager'); }
+	get historyManager(): HistoryDataManager { return this.services.get('HistoryDataManager'); }
+	get fileExplorerPatcher(): FileExplorerPatcher { return this.services.get('FileExplorerPatcher'); }
+	get foreshadowingManager(): ForeshadowingManager { return this.services.get('ForeshadowingManager'); }
+	get taskManager(): TaskManager { return this.services.get('TaskManager'); }
+	get wordCounter(): WordCounter { return this.services.get('WordCounter'); }
+	get editorTracker(): EditorTracker { return this.services.get('EditorTracker'); }
+	get fileEventManager(): FileEventManager { return this.services.get('FileEventManager'); }
+	get statisticsManager(): StatisticsManager { return this.services.get('StatisticsManager'); }
+	get styleManager(): StyleManager | undefined { return this.services.getOptional('StyleManager'); }
+	get stickyNoteManager(): StickyNoteDataManager { return this.services.get('StickyNoteDataManager'); }
+	get immersiveModeManager(): ImmersiveModeManager { return this.services.get('ImmersiveModeManager'); }
+	get homepageManager(): HomepageManager { return this.services.get('HomepageManager'); }
+	get commandManager(): CommandManager { return this.services.get('CommandManager'); }
+	get viewManager(): ViewManager { return this.services.get('ViewManager'); }
+	get menuManager(): MenuManager { return this.services.get('MenuManager'); }
+	get loreSyncService(): LoreSyncService { return this.services.get('LoreSyncService'); }
+	get characterManager(): CharacterManager { return this.services.get('CharacterManager'); }
+	get timelineManager(): TimelineManager | undefined { return this.services.getOptional<TimelineManager>('TimelineManager'); }
+
 	isLayoutReady: boolean = false;
 
 	constructor(app: App, manifest: PluginManifest) {
 		super(app, manifest);
-		this.cacheManager = new CacheManager(this);
-		this.adaptiveDebounceManager = new AdaptiveDebounceManager();
-		this.settingsManager = new SettingsManager(this, DEFAULT_SETTINGS);
-		this.characterManager = new CharacterManager(this.app, this);
-		this.historyManager = new HistoryDataManager(this);
-		this.stickyNoteManager = new StickyNoteDataManager(this);
-		this.fileExplorerPatcher = new FileExplorerPatcher(this.app, this);
+		this.services = new ServiceRegistry();
+
+		this.services.register('CacheManager', new CacheManager(this));
+		this.services.register('AdaptiveDebounceManager', new AdaptiveDebounceManager());
+		this.services.register('SettingsManager', new SettingsManager(this, DEFAULT_SETTINGS));
+		this.services.register('CharacterManager', new CharacterManager(this.app, this));
+		this.services.register('LoreSyncService', new LoreSyncService(this));
+		this.services.register('HistoryDataManager', new HistoryDataManager(this));
+		this.services.register('StickyNoteDataManager', new StickyNoteDataManager(this));
+
+		this.services.register('FileExplorerPatcher', new FileExplorerPatcher(this.app, this));
 		this.obsHtmlBuilder = new ObsHtmlBuilder(this);
-		this.wordCounter = new WordCounter();
-		this.immersiveModeManager = new ImmersiveModeManager(this.app, this);
-		this.commandManager = new CommandManager(this);
-		this.viewManager = new ViewManager(this);
-		this.menuManager = new MenuManager(this);
-		this.statisticsManager = new StatisticsManager(this);
+		this.services.register('WordCounter', new WordCounter());
+		this.services.register('ImmersiveModeManager', new ImmersiveModeManager(this.app, this));
+		this.services.register('CommandManager', new CommandManager(this));
+		this.services.register('ViewManager', new ViewManager(this));
+		this.services.register('MenuManager', new MenuManager(this));
+		this.services.register('StatisticsManager', new StatisticsManager(this));
 		this.workerManager = new WorkerManager(this);
 		this.markdownPostProcessor = new MarkdownPostProcessor(this);
-		this.fileEventManager = new FileEventManager(this);
+		this.services.register('FileEventManager', new FileEventManager(this));
 		// editorTracker 和 styleManager 需要在 onload 后初始化（依赖 this）
 	}
 
@@ -140,9 +153,11 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		}
 		// 初始化角色缓存 (现已全平台开放)
 		await this.characterManager.initialize();
+		this.loreSyncService.initialize();
 
 		// 加载核心功能（桌面端、平板端和移动端功能）
 		await this.setupCoreFeatures();
+
 		
 		// 定期保存设置和缓存
 		this.registerInterval(window.setInterval(() => {
@@ -191,9 +206,12 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			this.refreshImmersiveNotes();
 		}));
 		
-		this.editorTracker = new EditorTracker(this.app, this);
-		this.styleManager = new StyleManager(this.settings);
-		this.fileEventManager = new FileEventManager(this);
+		this.services.register('EditorTracker', new EditorTracker(this.app, this));
+		this.services.register('StyleManager', new StyleManager(this.settings));
+		// fileEventManager is already registered in constructor, but we can re-register or ignore.
+		// wait, constructor already registered FileEventManager. So I can just remove it or keep it. Let's register here to overwrite or ignore constructor one.
+		// Actually constructor didn't use app, so constructor registration is fine, but if it was here, I will register here.
+		this.services.register('FileEventManager', new FileEventManager(this));
 		
 		this.fileEventManager.setup();
 		this.statisticsManager.setup();
@@ -203,8 +221,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 
 		
 		// 初始化管理器 (依赖 this)
-		this.foreshadowingManager = new ForeshadowingManager(this.app, this);
-		this.taskManager = new TaskManager(this.app, this);
+		this.services.register('ForeshadowingManager', new ForeshadowingManager(this.app, this));
+		this.services.register('TaskManager', new TaskManager(this.app, this));
 		
 		this.statusBarItemEl = this.addStatusBarItem();
 		this.addSettingTab(new AccurateCountSettingTab(this.app, this));
@@ -257,6 +275,10 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			this.adaptiveDebounceManager.debounce('editor-update', () => {
 				this.editorTracker.handleEditorChange();
 			});
+		}));
+		this.registerEvent(this.app.workspace.on('webnovel-workbench-book-changed', () => {
+			this.refreshStatusViews();
+			void this.editorTracker.handleFileChange();
 		}));
 		this.registerEvent(this.app.workspace.on('active-leaf-change', () => {
 			void this.editorTracker.handleFileChange();
@@ -448,11 +470,13 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 
 	private setupHomepage(): void {
 		// 创作主页动态渲染：6 个 Obsidian 专用代码块处理器
-		this.homepageManager = new HomepageManager(this.app, this);
+		this.services.register('HomepageManager', new HomepageManager(this.app, this));
 		const renderer = new HomepageRenderer(this.app, this);
 
 		if (this.settings.enableHomepage) {
 			this.app.workspace.onLayoutReady(async () => {
+					
+
 				try {
 					await this.homepageManager.ensureHomepageExists();
 					
@@ -468,9 +492,10 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 							return view instanceof MarkdownView && view.file?.path === homepagePath;
 						});
 								if (!isAlreadyOpen) {
-									const leaf = this.app.workspace.getLeaf(false);
+									const leaf = this.app.workspace.getLeaf(true); // 强制在新标签页打开主页
 									if (leaf) {
 										await leaf.openFile(file);
+										this.app.workspace.setActiveLeaf(leaf, { focus: true });
 									}
 								}
 							}
@@ -537,6 +562,10 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			this.adaptiveDebounceManager.debounce('mobile-stats-update', () => {
 				this.mobileFloatingStats?.update();
 			});
+		}));
+		this.registerEvent(this.app.workspace.on('webnovel-workbench-book-changed', () => {
+			this.refreshStatusViews();
+			void this.editorTracker.handleFileChange();
 		}));
 		this.registerEvent(this.app.workspace.on('active-leaf-change', () => {
 			this.mobileFloatingStats?.update();
@@ -806,8 +835,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.addRibbonIcon('calendar-clock', t('command.toggle-timeline-view'), () => {
 			void this.toggleTimelineView();
 		});
-		this.addRibbonIcon('layout-grid', t('command.toggle-corkboard-view'), () => {
-			void this.toggleCorkboardView();
+		this.addRibbonIcon('laptop', t('command.toggle-workbench-view'), () => {
+			void this.toggleWorkbenchView();
 		});
 		this.addRibbonIcon('trophy', t('command.toggle-task-view'), () => {
 			void this.toggleTaskView();
@@ -1077,8 +1106,8 @@ onunload() {
 		await this.viewManager.toggleView(TASK_VIEW_TYPE);
 	}
 
-	async toggleCorkboardView() {
-		await this.viewManager.toggleView('webnovel-corkboard');
+	async toggleWorkbenchView() {
+		await this.viewManager.toggleView('webnovel-workbench');
 	}
 
 

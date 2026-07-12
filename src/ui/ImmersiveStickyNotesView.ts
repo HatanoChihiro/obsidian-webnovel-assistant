@@ -270,7 +270,17 @@ export class ImmersiveStickyNotesView extends ItemView {
 			};
 
 			const textarea = noteCard.createEl('textarea');
-			textarea.value = noteData.content || '';
+			
+			// 剥离 frontmatter 用于显示，但在保存时保留
+			let displayContent = noteData.content || '';
+			let frontmatter = '';
+			const fmMatch = displayContent.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n/);
+			if (fmMatch) {
+				frontmatter = fmMatch[0];
+				displayContent = displayContent.substring(frontmatter.length);
+			}
+			
+			textarea.value = displayContent;
 			textarea.addClass('webnovel-immersive-note-textarea'); // 确保文本区有足够空间
 			// resize, padding, border, background, color handled by webnovel-immersive-note-textarea CSS
 			textarea.setCssStyles({ fontSize: (this.plugin.settings.immersive.immersiveNoteFontSize || 14) + 'px' });
@@ -278,19 +288,19 @@ export class ImmersiveStickyNotesView extends ItemView {
 			
 			// 绑定输入监听
 			textarea.addEventListener('input', () => {
-				noteData.content = textarea.value;
+				noteData.content = frontmatter + textarea.value;
 				
 				// 如果开启了自动保存，则实时同步到管理器和文件
 				if (this.plugin.settings.stickyNoteAutoSave) {
 					const debounceKey = `immersive-save-note-${noteData.id}`;
 					this.plugin.adaptiveDebounceManager.debounceFixed(debounceKey, () => {
 						void this.plugin.stickyNoteManager.saveNotes(this.plugin.stickyNoteManager.getNotes());
-						this.lastSavedContents.set(noteData.id, textarea.value);
+						this.lastSavedContents.set(noteData.id, noteData.content || '');
 						
 						if (noteData.filePath) {
 							const file = this.app.vault.getAbstractFileByPath(noteData.filePath);
 							if (file instanceof TFile) {
-								void this.app.vault.process(file, () => textarea.value);
+								void this.app.vault.process(file, () => noteData.content || '');
 							}
 						}
 					}, 500);

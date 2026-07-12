@@ -13,7 +13,9 @@
  * 同一对角色可拥有两条方向不同的边（如 A→喜欢→B 和 B→厌恶→A）。
  */
 
-import type { App, TFile, CachedMetadata, HeadingCache } from 'obsidian';
+import type { App, CachedMetadata, HeadingCache } from 'obsidian';
+import { TFile, TFolder } from 'obsidian';
+import { findBookRoot } from '../utils/path';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { t } from '../i18n';
 
@@ -116,80 +118,113 @@ export class RelationGraphManager {
 	 * @returns 包含节点和有向边的图谱数据，若无有效数据则返回空图谱
 	 */
 	public async buildGraphData(file: TFile): Promise<GraphData> {
-		const fileCache = this.app.metadataCache.getFileCache(file);
-		if (!fileCache?.headings) {
+		let filesToParse: TFile[] = [file];
+
+		if (this.plugin.settings.loreGraphEnableGlobal) {
+			const bookRoot = findBookRoot(this.app, this.plugin, file);
+			const loreFolderName = this.plugin.settings.loreFolderName || '设定';
+			const lorePath = bookRoot ? (bookRoot === '/' ? loreFolderName : `${bookRoot}/${loreFolderName}`) : '';
+			if (lorePath) {
+				const loreFolder = this.app.vault.getAbstractFileByPath(lorePath);
+				if (loreFolder && loreFolder instanceof TFolder) {
+					const getAllMdFiles = (folder: TFolder): TFile[] => {
+						let results: TFile[] = [];
+						for (const child of folder.children) {
+							if (child instanceof TFile && child.extension === 'md') {
+								results.push(child);
+							} else if (child instanceof TFolder) {
+								results = results.concat(getAllMdFiles(child));
+							}
+						}
+						return results;
+					};
+					const folderFiles = getAllMdFiles(loreFolder);
+					if (folderFiles.length > 0) {
+						filesToParse = folderFiles;
+					}
+				}
+			}
+		}
+
+		const allNodes: GraphNode[] = [];
+		const nodeIds = new Set<string>();
+
+		// 第一步：提取所有节点
+		for (const f of filesToParse) {
+			const fileCache = this.app.metadataCache.getFileCache(f);
+			if (!fileCache?.headings) continue;
+
+			const content = await this.app.vault.cachedRead(f);
+			const lines = content.split('\n');
+			const nodes = this.extractNodes(f, fileCache, lines);
+			
+			for (const node of nodes) {
+				if (!nodeIds.has(node.id)) {
+					nodeIds.add(node.id);
+					allNodes.push(node);
+				}
+			}
+		}
+
+		if (allNodes.length === 0) {
 			return { nodes: [], edges: [] };
 		}
 
-		const content = await this.app.vault.cachedRead(file);
-		const lines = content.split('\n');
-
-		// 第一步：提取所有 ## 二级标题作为节点
-		const nodes = this.extractNodes(file, fileCache, lines);
-		if (nodes.length === 0) {
-			return { nodes: [], edges: [] };
-		}
-
-		// 构建角色名集合，用于后续的隐式引用扫描
-		const nodeIds = new Set(nodes.map(n => n.id));
-
-		// 第二步：解析每个角色的关系和正文引用
-		const edges: GraphEdge[] = [];
-		// 有向节点对集合，用于过滤掉已经存在显式边的提及关系
+		// 第二步：解析关系
+		const allEdges: GraphEdge[] = [];
 		const directedPairs = new Set<string>();
-		// 用于去重完全相同的显式关系边
 		const uniqueExplicitEdges = new Set<string>();
 
-		for (let i = 0; i < fileCache.headings.length; i++) {
-			const heading = fileCache.headings[i];
-			if (heading.level !== 2) continue;
+		for (const f of filesToParse) {
+			const fileCache = this.app.metadataCache.getFileCache(f);
+			if (!fileCache?.headings) continue;
 
-			const characterName = this.cleanHeadingText(heading.heading);
-			if (!characterName || !nodeIds.has(characterName)) continue;
+			const content = await this.app.vault.cachedRead(f);
+			const lines = content.split('\n');
 
-			// 计算当前 ## 标题到下一个 ## 标题之间的行范围
-			const sectionStart = heading.position.end.line + 1;
-			const sectionEnd = this.findNextHeadingLine(fileCache.headings, i, 2, lines.length);
+			for (let i = 0; i < fileCache.headings.length; i++) {
+				const heading = fileCache.headings[i];
+				if (heading.level !== 2) continue;
 
-			// 在该区段内查找 ### 关系 三级标题
-			const relationSection = this.findRelationSection(
-				fileCache.headings, i, sectionStart, sectionEnd, lines
-			);
+				const characterName = this.cleanHeadingText(heading.heading);
+				if (!characterName || !nodeIds.has(characterName)) continue;
 
-			// 2a. 解析显式关系（### 关系 块内的 **类型**：目标 格式）
-			if (relationSection) {
-				const explicitEdges = this.parseExplicitRelations(
-					characterName, lines, relationSection.startLine, relationSection.endLine, nodeIds
-				);
-				for (const edge of explicitEdges) {
-					const pairKey = `${edge.source}→${edge.target}`;
-					const uniqueKey = `${pairKey}|${edge.label}`;
-					if (!uniqueExplicitEdges.has(uniqueKey)) {
-						uniqueExplicitEdges.add(uniqueKey);
-						directedPairs.add(pairKey); // 记录该方向已存在显式边
-						edges.push(edge);
+				const sectionStart = heading.position.end.line + 1;
+				const sectionEnd = this.findNextHeadingLine(fileCache.headings, i, 2, lines.length);
+
+				const relationSection = this.findRelationSection(fileCache.headings, i, sectionStart, sectionEnd, lines);
+
+				if (relationSection) {
+					const explicitEdges = this.parseExplicitRelations(
+						characterName, lines, relationSection.startLine, relationSection.endLine, nodeIds
+					);
+					for (const edge of explicitEdges) {
+						const pairKey = `${edge.source}→${edge.target}`;
+						const uniqueKey = `${pairKey}|${edge.label}`;
+						if (!uniqueExplicitEdges.has(uniqueKey)) {
+							uniqueExplicitEdges.add(uniqueKey);
+							directedPairs.add(pairKey);
+							allEdges.push(edge);
+						}
 					}
 				}
-			}
 
-			// 2b. 隐式引用扫描（排除 ### 关系 块区域）
-			if (this.plugin.settings.loreGraphAutoLinkMentions) {
-				const mentionEdges = this.scanMentions(
-					characterName, lines, sectionStart, sectionEnd,
-					relationSection, nodeIds
-				);
-				for (const edge of mentionEdges) {
-					const pairKey = `${edge.source}→${edge.target}`;
-					// 只有在该方向没有任何显式边，且之前没添加过提及边时，才添加
-					if (!directedPairs.has(pairKey)) {
-						directedPairs.add(pairKey);
-						edges.push(edge);
+				if (this.plugin.settings.loreGraphAutoLinkMentions) {
+					const mentionEdges = this.scanMentions(
+						characterName, lines, sectionStart, sectionEnd, relationSection, nodeIds
+					);
+					for (const edge of mentionEdges) {
+						const pairKey = `${edge.source}→${edge.target}`;
+						if (!directedPairs.has(pairKey)) {
+							directedPairs.add(pairKey);
+							allEdges.push(edge);
+						}
 					}
 				}
 			}
 		}
 
-		return { nodes, edges };
+		return { nodes: allNodes, edges: allEdges };
 	}
 
 	/**
