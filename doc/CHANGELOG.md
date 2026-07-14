@@ -1,3 +1,16 @@
+## 🔧 v3.5.3
+
+- 修复了新建文件夹重命名时被打断的BUG
+- 修复了初次安装时，如果有已开启的文档，则启用失败的BUG
+- 优化了实时字数提醒功能，现在它提示的位置会更加精准
+
+### English Changelog
+
+- Fixed a bug where renaming a newly created folder was interrupted.
+- Fixed a bug where if an already enabled document exists during initial installation, it fails to activate.
+- Optimized the real-time word count reminder feature to display at a more precise location.
+
+
 ## 🔧 v3.5.2
 
 - 修复了部分已知 Bug。

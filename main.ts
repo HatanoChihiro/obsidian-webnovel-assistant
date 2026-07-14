@@ -131,6 +131,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.workerManager = new WorkerManager(this);
 		this.markdownPostProcessor = new MarkdownPostProcessor(this);
 		this.services.register('FileEventManager', new FileEventManager(this));
+		this.services.register('HomepageManager', new HomepageManager(this.app, this));
 		// editorTracker 和 styleManager 需要在 onload 后初始化（依赖 this）
 	}
 
@@ -470,7 +471,6 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 
 	private setupHomepage(): void {
 		// 创作主页动态渲染：6 个 Obsidian 专用代码块处理器
-		this.services.register('HomepageManager', new HomepageManager(this.app, this));
 		const renderer = new HomepageRenderer(this.app, this);
 
 		if (this.settings.enableHomepage) {

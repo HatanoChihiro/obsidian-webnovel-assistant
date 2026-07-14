@@ -55,13 +55,14 @@ function computeMarkers(state: EditorState, plugin: WebNovelAssistantPlugin): Ra
 
 	const interval = plugin.settings.wordCountInterval || 2000;
 	const doc = state.doc;
+	const fullText = doc.toString();
+	const lineCounts = plugin.wordCounter.calculateWordsPerLine(fullText, plugin.settings.wordCountMethod);
 
 	let currentTotal = 0;
 	let nextTarget = interval;
 
 	for (let i = 1; i <= doc.lines; i++) {
-		const lineText = doc.line(i).text;
-		const lineCount = plugin.calculateAccurateWords(lineText);
+		const lineCount = lineCounts[i - 1] || 0;
 		currentTotal += lineCount;
 
 		if (currentTotal >= nextTarget && lineCount > 0) {

@@ -43,19 +43,19 @@ export class CharacterManager {
 
 		// 监听文件变化
 		this.plugin.registerEvent(
-			this.app.vault.on('create', (file) => this.handleFileChange(file))
+			this.app.vault.on('create', (file) => this.handleFileChange(file, 'create'))
 		);
 		this.plugin.registerEvent(
-			this.app.vault.on('delete', (file) => this.handleFileChange(file))
+			this.app.vault.on('delete', (file) => this.handleFileChange(file, 'delete'))
 		);
 		this.plugin.registerEvent(
 			this.app.vault.on('rename', (file, _oldPath) => {
-				this.handleFileChange(file);
+				this.handleFileChange(file, 'rename');
 			})
 		);
 		this.plugin.registerEvent(
 			this.app.metadataCache.on('changed', (file) => {
-				this.handleFileChange(file);
+				this.handleFileChange(file, 'modify');
 			})
 		);
 	}
@@ -112,7 +112,7 @@ export class CharacterManager {
 		}
 		return false;
 	}
-private handleFileChange(file: TAbstractFile): void {
+	private handleFileChange(file: TAbstractFile, eventType: 'create' | 'modify' | 'delete' | 'rename' = 'modify'): void {
 		if (file instanceof TFile && file.extension === 'md') {
 			const bookPath = this.getBookPathForFile(file);
 			if (bookPath) {
@@ -129,6 +129,10 @@ private handleFileChange(file: TAbstractFile): void {
 				}
 			}
 		} else if (file instanceof TFolder) {
+			// [BUGFIX] 新建文件夹时不要无脑重构缓存并触发全局 updateOptions()
+			// 因为 updateOptions() 会强制文件树重新 sort，从而打断用户的重命名操作！
+			if (eventType === 'create') return;
+
 			this.plugin.adaptiveDebounceManager.debounceFixed('rebuild-character-cache', () => { void (async () => {
 				try {
 					await this.rebuildCache();

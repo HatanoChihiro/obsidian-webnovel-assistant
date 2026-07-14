@@ -38,6 +38,7 @@ export class FileExplorerPatcher {
 	private enableRetries = 0;
 	private retryTimer: number | null = null;
 
+
 	enable(): boolean {
 		if (this.enabled) return true;
 
@@ -149,7 +150,13 @@ export class FileExplorerPatcher {
 								}
 							}
 
-							return applyPin(finalResult);
+							// [BUGFIX] 必须原地修改 sortedItems 并返回原数组引用！
+							// Obsidian 的底层 DOM Diff 算法极其依赖数组引用判定。如果返回一个全新的数组实例，
+							// 会导致整个文件夹的 DOM 树被完全销毁重建，从而摧毁新建文件夹时正在等待输入的原生 <input> 元素。
+							sortedItems.length = 0;
+							sortedItems.push(...finalResult);
+
+							return applyPin(sortedItems);
 						} catch (e) {
 							Logger.error('[WebNovel Assistant] getSortedFolderItems error:', e);
 							return next.call(this, folder, bypass);
@@ -207,6 +214,12 @@ export class FileExplorerPatcher {
 	}
 
 	private refreshAllExplorers(): void {
+		// [BUGFIX] 如果文件浏览器中有正在重命名的输入框，绝对不要强行触发 sort()，否则会瞬间摧毁原生的新建重命名输入框！
+		const isInputFocused = activeDocument.activeElement && activeDocument.activeElement.tagName.toLowerCase() === 'input';
+		if (isInputFocused) {
+			return;
+		}
+
 		const leaves = this.app.workspace.getLeavesOfType('file-explorer');
 		leaves.forEach(leaf => {
 			const view = leaf.view;
@@ -291,12 +304,8 @@ export class FileExplorerPatcher {
 	}
 
 	private setupFileSystemListeners(): void {
-		const handler = () => {
-			if (!this.enabled) return;
-			window.setTimeout(() => this.refreshAllExplorers(), 100);
-		};
-
-		this.eventRefs.push(this.app.vault.on('create', handler));
+		// [BUGFIX] 绝对不要在 create 事件中调用 refreshAllExplorers()，否则会打断原生的新建文件夹重命名流程！
+		// 因此去掉了 create 事件和 metadataCache changed 事件的无用监听。
 		this.eventRefs.push(this.app.vault.on('delete', (file) => {
 			if (!this.enabled) return;
 			if (file && file.path && this.plugin.settings.customSortOrder) {
@@ -356,10 +365,6 @@ export class FileExplorerPatcher {
 				}
 			}
 			window.setTimeout(() => this.refreshAllExplorers(), 100);
-		}));
-		this.eventRefs.push(this.app.metadataCache.on('changed', (file) => {
-			if (file instanceof TFile && !this.plugin.isFileInWorkspace(file)) return;
-			handler();
 		}));
 		
 		// 监听布局变化，确保在文件浏览器重新加载时重置拖拽事件

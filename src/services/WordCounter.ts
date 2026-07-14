@@ -59,16 +59,19 @@ export class WordCounter {
 	 * @param text - 原始 Markdown 文本
 	 * @returns 纯文本字符数
 	 */
-	calculateAccurateWords(text: string, method: 'webnovel' | 'standard' | 'obsidian' = 'webnovel'): number {
+	private getCleanedText(text: string): string {
 		// 重置所有正则的 lastIndex 状态
 		this.resetAllRegex();
 
+		// 用于替换多行块时保留对应的换行符，确保清理后的文本行号与原文本1:1对应
+		const preserveNewlines = (match: string) => '\n'.repeat((match.match(/\n/g) || []).length);
+
 		// 清理 Markdown 语法标记，只保留纯文本内容（用于计数）
-		const cleaned = text
-			// 移除 frontmatter（无 /g 标志，无需重置）
-			.replace(REGEX_PATTERNS.FRONTMATTER, '')
-			// 移除代码块
-			.replace(this.reCodeBlock, '')
+		return text
+			// 移除 frontmatter（保留换行符）
+			.replace(REGEX_PATTERNS.FRONTMATTER, preserveNewlines)
+			// 移除代码块（保留换行符）
+			.replace(this.reCodeBlock, preserveNewlines)
 			.replace(this.reInlineCode, '')
 			// 移除标题 # 符号
 			.replace(this.reHeading, '')
@@ -85,12 +88,12 @@ export class WordCounter {
 			.replace(this.reImage, '')
 			// 移除脚注引用标记 [^note]
 			.replace(this.reFootnoteRef, '')
-			// 移除 HTML 标签
-			.replace(this.reHtmlTag, '')
-			// 移除引用符号 >（无 /g 标志，无需重置）
+			// 移除 HTML 标签（保留换行符）
+			.replace(this.reHtmlTag, preserveNewlines)
+			// 移除引用符号 >
 			.replace(REGEX_PATTERNS.QUOTE, '')
 			// 移除分隔线
-			.replace(REGEX_PATTERNS.SEPARATOR, '')
+			.replace(REGEX_PATTERNS.SEPARATOR, preserveNewlines)
 			// 移除表格分隔行 |---|---|
 			.replace(REGEX_PATTERNS.TABLE_SEPARATOR, '')
 			// 移除任务列表标记 - [ ] / - [x]
@@ -99,6 +102,18 @@ export class WordCounter {
 			.replace(REGEX_PATTERNS.UNORDERED_LIST, '')
 			// 移除有序列表符号 1.
 			.replace(REGEX_PATTERNS.ORDERED_LIST, '');
+	}
+
+	/**
+	 * 计算准确字数
+	 * 清理所有 Markdown 语法标记，只保留纯文本内容
+	 * 
+	 * @param text - 原始 Markdown 文本
+	 * @param method - 统计算法
+	 * @returns 纯文本字符数
+	 */
+	calculateAccurateWords(text: string, method: 'webnovel' | 'standard' | 'obsidian' = 'webnovel'): number {
+		const cleaned = this.getCleanedText(text);
 
 		// 1. 网文模式：移除空白字符后，所有字符均算1个字（含中英数字和标点）
 		if (method === 'webnovel') {
@@ -124,5 +139,47 @@ export class WordCounter {
 		}
 
 		return count;
+	}
+
+	/**
+	 * 计算逐行的字数分布（保证总数与 calculateAccurateWords 绝对一致）
+	 * 
+	 * @param text - 原始 Markdown 文本
+	 * @param method - 统计算法
+	 * @returns 每一行的字数数组
+	 */
+	calculateWordsPerLine(text: string, method: 'webnovel' | 'standard' | 'obsidian' = 'webnovel'): number[] {
+		const cleaned = this.getCleanedText(text);
+		const lines = cleaned.split('\n');
+
+		return lines.map(line => {
+			if (!line) return 0;
+			
+			if (method === 'webnovel') {
+				const matches = line.match(/[^\s]/g);
+				return matches ? matches.length : 0;
+			}
+			
+			let count = 0;
+			// 统计中日韩字符
+			// 这里不重置 global regex，因为我们使用 match，或者我们在 match 内部处理？
+			// 注意：避免使用全局状态导致 bug，所以每次手动新建局部正则或不带 g。
+			// Wait, reCjkChar uses /g, which has state if used with exec.
+			// string.match(/.../g) ignores lastIndex and returns all matches.
+			const cjkMatches = line.match(this.reCjkChar);
+			if (cjkMatches) count += cjkMatches.length;
+			
+			const nonCjk = line.replace(this.reCjkChar, ' ');
+			
+			const wordMatches = nonCjk.match(this.reWordToken);
+			if (wordMatches) count += wordMatches.length;
+			
+			if (method === 'standard') {
+				const punctMatches = nonCjk.match(this.reFullwidthPunct);
+				if (punctMatches) count += punctMatches.length;
+			}
+			
+			return count;
+		});
 	}
 }
