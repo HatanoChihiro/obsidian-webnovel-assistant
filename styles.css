@@ -5834,8 +5834,8 @@ body .modal-content>.setting-item.setting-item-heading:first-of-type .setting-it
 	opacity: 0.6;
 }
 
-.wn-timeline-item-delete-btn:hover {
-	opacity: 1 !important;
+.wn-timeline-item-row:hover .wn-timeline-item-delete-btn:hover {
+	opacity: 1;
 	background-color: var(--background-modifier-hover);
 	color: var(--text-error);
 }
@@ -5859,7 +5859,6 @@ body .modal-content>.setting-item.setting-item-heading:first-of-type .setting-it
 	padding-bottom: 5px;
 	gap: 10px;
 	align-content: flex-start;
-	min-height: 40px;
 	/* Ensure dropzone area even when empty */
 }
 
@@ -5891,7 +5890,6 @@ body .modal-content>.setting-item.setting-item-heading:first-of-type .setting-it
 }
 
 .wn-timeline-gap .wn-timeline-cards-container {
-	min-height: 40px;
 	display: flex;
 	flex-wrap: nowrap;
 	overflow-x: auto;
@@ -5946,7 +5944,7 @@ body .modal-content>.setting-item.setting-item-heading:first-of-type .setting-it
 }
 
 .drag-over * {
-	pointer-events: none !important;
+	pointer-events: none;
 }
 
 .drag-over {

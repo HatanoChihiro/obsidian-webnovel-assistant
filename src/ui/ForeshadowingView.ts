@@ -7,6 +7,7 @@ import { CreativeView } from './CreativeView';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { getForeshadowingStatusText, getForeshadowingLabel, getDefaultFileName } from '../i18n/data-keys';
 import { t } from '../i18n';
+import { ChapterSorter } from '../services/ChapterSorter';
 
 export const FORESHADOWING_VIEW_TYPE = 'foreshadowing-view';
 
@@ -323,9 +324,22 @@ export class ForeshadowingView extends CreativeView {
 					if (index > 0) recoveryEl.createSpan({ text: '、' });
 					const recoveryLink = recoveryEl.createEl('a', { text: file, cls: 'foreshadowing-entry-recovery-link' });
 					recoveryLink.onclick = async () => {
-						const sourcePath = this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '';
-						const targetFile = this.app.metadataCache.getFirstLinkpathDest(file, sourcePath);
-						if (targetFile) await this.app.workspace.getLeaf(false).openFile(targetFile);
+						let targetFile: TFile | null = null;
+						if (this.currentFolder) {
+							const chapters = ChapterSorter.getAllChapters(this.app, this.plugin, this.currentFolder);
+							targetFile = chapters.find((c: TFile) => c.basename === file || c.name === file || c.path === file) || null;
+						}
+						if (!targetFile) {
+							const sourcePath = this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '';
+							targetFile = this.app.metadataCache.getFirstLinkpathDest(file, sourcePath);
+						}
+						
+						if (targetFile) {
+							let targetLeaf = this.app.workspace.getLeavesOfType('markdown').find(l => (l.view as unknown as { file?: { path: string } }).file?.path === targetFile?.path);
+							if (!targetLeaf) targetLeaf = this.app.workspace.getLeavesOfType('markdown')[0];
+							if (!targetLeaf) targetLeaf = this.app.workspace.getLeaf('split', 'vertical');
+							await targetLeaf.openFile(targetFile);
+						}
 					};
 				});
 			}
@@ -333,9 +347,23 @@ export class ForeshadowingView extends CreativeView {
 			else if (entry.recoveryFile) {
 				const recoveryLink = recoveryEl.createEl('a', { text: entry.recoveryFile, cls: 'foreshadowing-entry-recovery-link' });
 				recoveryLink.onclick = async () => {
-					const sourcePath = this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '';
-					const file = this.app.metadataCache.getFirstLinkpathDest(entry.recoveryFile as string, sourcePath);
-					if (file) await this.app.workspace.getLeaf(false).openFile(file);
+					let targetFile: TFile | null = null;
+					const recoveryFileStr = entry.recoveryFile as string;
+					if (this.currentFolder) {
+						const chapters = ChapterSorter.getAllChapters(this.app, this.plugin, this.currentFolder);
+						targetFile = chapters.find((c: TFile) => c.basename === recoveryFileStr || c.name === recoveryFileStr || c.path === recoveryFileStr) || null;
+					}
+					if (!targetFile) {
+						const sourcePath = this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '';
+						targetFile = this.app.metadataCache.getFirstLinkpathDest(recoveryFileStr, sourcePath);
+					}
+					
+					if (targetFile) {
+						let targetLeaf = this.app.workspace.getLeavesOfType('markdown').find(l => (l.view as unknown as { file?: { path: string } }).file?.path === targetFile?.path);
+						if (!targetLeaf) targetLeaf = this.app.workspace.getLeavesOfType('markdown')[0];
+						if (!targetLeaf) targetLeaf = this.app.workspace.getLeaf('split', 'vertical');
+						await targetLeaf.openFile(targetFile);
+					}
 				};
 			}
 		}

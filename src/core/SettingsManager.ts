@@ -180,8 +180,7 @@ export class SettingsManager {
 		await this.writer.flush();
 	}
 
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	private getNestedValue(obj: any, path: string): unknown {
+	private getNestedValue(obj: unknown, path: string): unknown {
 		const parts = path.split('.');
 		let current: unknown = obj;
 		for (const part of parts) {
@@ -193,10 +192,8 @@ export class SettingsManager {
 		return current;
 	}
 
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	private setNestedValue(obj: any, path: string, value: unknown): void {
+	private setNestedValue(obj: Record<string, unknown>, path: string, value: unknown): void {
 		const parts = path.split('.');
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
 		let current: Record<string, unknown> = obj;
 		for (let i = 0; i < parts.length - 1; i++) {
 			if (!(parts[i] in current) || typeof current[parts[i]] !== 'object' || current[parts[i]] === null) {

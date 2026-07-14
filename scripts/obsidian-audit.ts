@@ -111,7 +111,69 @@ project.getSourceFiles().forEach(sourceFile => {
 			}
 		}
 	});
+
+	// 7. Check for casting to TFile or TFolder
+	const asExpressions = sourceFile.getDescendantsOfKind(SyntaxKind.AsExpression);
+	asExpressions.forEach(asExpr => {
+		const typeText = asExpr.getTypeNode()?.getText();
+		if (typeText === 'TFile' || typeText === 'TFolder') {
+			console.error(`❌ [Warning] Avoid casting to '${typeText}'. Use an 'instanceof ${typeText}' check to safely narrow the type in ${filePath}:${asExpr.getStartLineNumber()}`);
+			hasErrors = true;
+		}
+	});
+
+	// 8. Check comments for eslint-disable
+	const text = sourceFile.getFullText();
+	const lines = text.split('\n');
+	lines.forEach((line, index) => {
+		if (line.includes('eslint-disable')) {
+			if (line.includes('@typescript-eslint/no-explicit-any')) {
+				console.error(`❌ [Error] Disabling '@typescript-eslint/no-explicit-any' is not allowed in ${filePath}:${index + 1}`);
+				hasErrors = true;
+			} else if (!line.includes('--')) {
+				console.error(`❌ [Error] Unexpected undescribed directive comment in ${filePath}:${index + 1}. Include descriptions to explain why the comment is necessary.`);
+				hasErrors = true;
+			}
+		}
+	});
 });
+
+// 9. CSS Checks
+import * as fs from 'fs';
+const cssPath = path.join(__dirname, '../styles.css');
+if (fs.existsSync(cssPath)) {
+	const cssText = fs.readFileSync(cssPath, 'utf8');
+	const cssLines = cssText.split('\n');
+	let inBlock = false;
+	let propsInBlock: { [key: string]: number } = {};
+
+	cssLines.forEach((line, index) => {
+		if (line.includes('!important')) {
+			console.error(`❌ [Warning] Avoid !important — override styles by increasing selector specificity or using CSS variables instead in styles.css:${index + 1}`);
+			hasErrors = true;
+		}
+
+		if (line.includes('{')) {
+			inBlock = true;
+			propsInBlock = {};
+		}
+		if (inBlock) {
+			const match = line.match(/^\s*([\w-]+)\s*:/);
+			if (match) {
+				const prop = match[1];
+				if (propsInBlock[prop]) {
+					console.error(`❌ [Warning] Unexpected duplicate "${prop}" in styles.css:${index + 1}`);
+					hasErrors = true;
+				} else {
+					propsInBlock[prop] = index + 1;
+				}
+			}
+		}
+		if (line.includes('}')) {
+			inBlock = false;
+		}
+	});
+}
 
 if (hasErrors) {
 	console.error('💥 Audit failed! Please fix the errors above before releasing.');

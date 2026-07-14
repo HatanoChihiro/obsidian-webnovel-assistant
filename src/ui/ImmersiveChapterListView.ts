@@ -57,11 +57,8 @@ export class ImmersiveChapterListView extends ItemView {
 			return;
 		}
 
-		let abstractFolder = this.app.vault.getAbstractFileByPath(bookPath === '/' ? '/' : bookPath);
-		if (!(abstractFolder instanceof TFolder)) {
-			abstractFolder = this.app.vault.getRoot();
-		}
-		const currentFolder = abstractFolder as TFolder;
+		const abstractFolder = this.app.vault.getAbstractFileByPath(bookPath === '/' ? '/' : bookPath);
+		const currentFolder = abstractFolder instanceof TFolder ? abstractFolder : this.app.vault.getRoot();
 
 		const fmFolder = bookPath === '/' ? '' : bookPath;
 		// 获取该作品下所有的 markdown 文件

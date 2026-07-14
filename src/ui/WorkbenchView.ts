@@ -35,8 +35,8 @@ class NewChapterModal extends Modal {
                 if (this.enableTemplate && this.templatePath) {
                     try {
                         const file = this.app.vault.getAbstractFileByPath(this.templatePath);
-                        if (file && 'extension' in file) {
-                            templateContent = await this.app.vault.read(file as TFile);
+                        if (file instanceof TFile) {
+                            templateContent = await this.app.vault.read(file);
                         }
                     } catch (e) {
                         console.error('无法读取模板文件:', e);

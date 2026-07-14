@@ -230,8 +230,8 @@ export class CommandManager {
 					if (this.plugin.settings.enableChapterTemplate && this.plugin.settings.chapterTemplatePath) {
 						try {
 							const file = this.plugin.app.vault.getAbstractFileByPath(this.plugin.settings.chapterTemplatePath);
-							if (file && 'extension' in file) {
-								templateContent = await this.plugin.app.vault.read(file as TFile);
+							if (file instanceof TFile) {
+								templateContent = await this.plugin.app.vault.read(file);
 							}
 						} catch (e) {
 							console.error('无法读取模板文件:', e);
