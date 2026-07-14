@@ -5,7 +5,7 @@
  * 避免在 WorkbenchView / ChapterOverviewView 之间重复维护相同代码。
  */
 
-import type { ParsedForeshadowingEntry } from '../types/foreshadowing';
+import { ForeshadowingStatus, type ParsedForeshadowingEntry } from '../types/foreshadowing';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { LoreHoverPopover } from '../ui/LoreHoverPopover';
 import { t } from '../i18n';
@@ -23,7 +23,7 @@ export function renderForeshadowingBadges(
 ): void {
 	// 待回收
 	const pendingForeshadowings = cardForeshadowings.filter(
-		f => f.status === 'pending' || f.status === 'unresolved'
+		f => f.status === ForeshadowingStatus.Pending
 	);
 	if (pendingForeshadowings.length > 0) {
 		const badge = container.createEl('span', {
@@ -34,7 +34,7 @@ export function renderForeshadowingBadges(
 	}
 
 	// 本章回收
-	const recoveredForeshadowings = cardForeshadowings.filter(f => f.status === 'recovered');
+	const recoveredForeshadowings = cardForeshadowings.filter(f => f.status === ForeshadowingStatus.Recovered);
 	if (recoveredForeshadowings.length > 0) {
 		const badge = container.createEl('span', {
 			cls: 'wn-badge wn-badge-recovered',
@@ -58,7 +58,7 @@ export function renderLoreBadges(
 	loreArray: unknown,
 	bookPath: string,
 	plugin: WebNovelAssistantPlugin,
-	enableHoverAndClick: boolean
+	enableHover: boolean
 ): void {
 	if (!Array.isArray(loreArray) || loreArray.length === 0) return;
 
@@ -70,13 +70,13 @@ export function renderLoreBadges(
 	for (let i = 0; i < validLores.length; i++) {
 		const loreName = validLores[i];
 		const realLoreName = loreName.split('×')[0];
-		const cls = enableHoverAndClick
-			? 'wn-badge wn-badge-lore wn-clickable'
+		const cls = enableHover
+			? 'wn-badge wn-badge-lore wn-hoverable'
 			: 'wn-badge wn-badge-lore';
 
 		const badgeEl = container.createEl('span', { cls, text: loreName });
 
-		if (!enableHoverAndClick) continue;
+		if (!enableHover) continue;
 
 		// Hover 预览
 		let hoverTimeout: number | null = null;
@@ -88,15 +88,6 @@ export function renderLoreBadges(
 		});
 		badgeEl.addEventListener('mouseleave', () => {
 			if (hoverTimeout) window.clearTimeout(hoverTimeout);
-		});
-
-		// 点击跳转
-		badgeEl.addEventListener('click', (e: MouseEvent) => {
-			e.stopPropagation();
-			const entry = plugin.characterManager.getCharacterFile(bookPath, realLoreName);
-			if (entry?.file) {
-				void plugin.app.workspace.getLeaf('tab').openFile(entry.file);
-			}
 		});
 	}
 

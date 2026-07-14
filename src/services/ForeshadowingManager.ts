@@ -507,9 +507,9 @@ export class ForeshadowingManager {
 		for (const entry of entries) {
 			// 确定该条目关联的目标章节名称列表
 			let targets: string[] = [];
-			if (entry.status === 'pending' || entry.status === 'unresolved') {
+			if (entry.status === ForeshadowingStatus.Pending) {
 				if (entry.sourceFile) targets.push(entry.sourceFile);
-			} else if (entry.status === 'recovered') {
+			} else if (entry.status === ForeshadowingStatus.Recovered) {
 				targets = entry.recoveryFiles
 					? [...entry.recoveryFiles]
 					: (entry.recoveryFile ? [entry.recoveryFile] : []);

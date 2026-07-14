@@ -239,7 +239,7 @@ export class GraphRenderer {
 					Math.abs(task.labelY - other.labelY) < (task.bgHeight + other.bgHeight) / 2) {
 					if (task.priority < other.priority) {
 						task.isOverlapped = true;
-					} else if (task.priority === other.priority && task.edge.id < other.edge.id) {
+					} else if (task.priority === other.priority && task.edge.source + task.edge.target < other.edge.source + other.edge.target) {
 						task.isOverlapped = true;
 					}
 				}

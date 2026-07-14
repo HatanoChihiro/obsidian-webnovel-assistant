@@ -76,7 +76,14 @@ export class ImmersiveModeManager {
 			return;
 		}
 		this.savedActiveFile = activeView.file;
-		this.immersiveNovelTitle = activeView.file.parent?.isRoot() ? activeView.file.basename : (activeView.file.parent?.name || t('common.unnamed-novel'));
+		const bookRootPath = findBookRoot(this.app, this.plugin, activeView.file);
+		if (bookRootPath && bookRootPath !== '/') {
+			this.immersiveNovelTitle = bookRootPath.split('/').pop() || t('common.unnamed-novel') || '未命名作品';
+		} else if (bookRootPath === '/') {
+			this.immersiveNovelTitle = this.app.vault.getName();
+		} else {
+			this.immersiveNovelTitle = activeView.file.parent?.isRoot() ? activeView.file.basename : (activeView.file.parent?.name || t('common.unnamed-novel') || '未命名作品');
+		}
 
 		try {
 			// 0. 强制同步所有活跃悬浮便签到管理器，确保数据最新

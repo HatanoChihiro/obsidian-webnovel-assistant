@@ -30,7 +30,8 @@ export class TimelineAddModal extends Modal {
 		onSubmit: (entry: TimelineEntry) => void,
 		returnFullEntry: boolean = true,
 		typeOptions: string[] = [],
-		origin?: string
+		origin?: string,
+		title?: string
 	) {
 		super(app);
 		this.plugin = plugin;
@@ -41,12 +42,15 @@ export class TimelineAddModal extends Modal {
 		this.returnFullEntry = returnFullEntry;
 		this.typeOptions = typeOptions;
 		this.origin = origin;
+		this.title = title || t('modal.add-to-timeline');
 	}
+
+	private title: string;
 
 	onOpen() {
 		const { contentEl } = this;
 		contentEl.empty();
-		contentEl.addClass('timeline-add-modal');
+		contentEl.addClass('wn-timeline-add-modal');
 		
 		const component = new TimelineFormComponent({
 			container: contentEl,
@@ -64,7 +68,7 @@ export class TimelineAddModal extends Modal {
 				this.onSubmit(entry);
 				this.close();
 			},
-			title: t('modal.add-to-timeline')
+			title: this.title
 		});
 		
 		component.render();
@@ -87,6 +91,6 @@ export class TimelineAddFromSelectionModal extends TimelineAddModal {
 		onSubmit: (entry: { time: string; description: string; chapter: string; type: string; origin?: string }) => void,
 		typeOptions: string[] = []
 	) {
-		super(app, plugin, description, sourceFile, folderPath, onSubmit, false, typeOptions, description);
+		super(app, plugin, description, sourceFile, folderPath, onSubmit, false, typeOptions, description, t('modal.add-to-timeline'));
 	}
 }

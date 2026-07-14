@@ -1,4 +1,4 @@
-import type { App} from 'obsidian';
+import type { App } from 'obsidian';
 import { Notice, setIcon } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { TaskEntry } from '../types/task';
@@ -120,7 +120,7 @@ export class HomepageRenderer {
 						const { folderPath } = await this.plugin.homepageManager!.createNewNovel(result.name, result.meta);
 						new Notice(t('notice.novel-created', { name: result.name }));
 						this.plugin.homepageManager!.refreshHomepageViews();
-						
+
 						// Open Workbench
 						const viewType = 'webnovel-workbench';
 						const { workspace } = this.plugin.app;
@@ -133,7 +133,7 @@ export class HomepageRenderer {
 						if (leaf && leaf.view && leaf.view.getViewType() === viewType) {
 							(leaf.view as WorkbenchView).setBookPath(folderPath);
 						}
-					} catch(e) { console.error(e); }
+					} catch (e) { console.error(e); }
 				})();
 			}).open();
 		};
@@ -486,7 +486,7 @@ export class HomepageRenderer {
 		};
 	}
 
-		navigateToNovel(folderPath: string): void {
+	navigateToNovel(folderPath: string): void {
 		void (async () => {
 			const viewType = 'webnovel-workbench';
 			const { workspace } = this.app;

@@ -90,7 +90,7 @@ export const CHINESE_NUMBERS = {
 export const VIEW_TYPES = {
 	STATUS: 'status-view',
 	FORESHADOWING: 'foreshadowing-view',
-	TIMELINE: 'timeline-view',
+	TIMELINE: 'wn-timeline-view',
 	TASK: 'task-view',
 	CREATIVE: 'creative-view',
 	CORKBOARD: 'webnovel-corkboard',
@@ -125,7 +125,7 @@ export const REGEX_PATTERNS = {
 	NUMBER: () => /\d+/g,
 	/** 标点符号（工厂函数，避免 g 标志状态残留） */
 	PUNCTUATION: () => /[，。！？；：""''（）【】《》、·…—～]/g,
-	
+
 	// Markdown 清理正则（用于字数统计）
 	/** Frontmatter（不带 g 标志，只匹配开头） */
 	FRONTMATTER: /^---\r?\n[\s\S]*?\r?\n---(?=\r?\n|$)/,
@@ -196,10 +196,10 @@ export const TIME_FORMATS = {
 export const STYLES = {
 	/** 输入框样式 */
 	INPUT_STYLE: 'width:100%;margin-bottom:8px;padding:6px 8px;border-radius:4px;border:1px solid var(--background-modifier-border);background:var(--background-primary);color:var(--text-normal);box-sizing:border-box;',
-	
+
 	/** 按钮容器样式 */
 	BUTTON_CONTAINER_STYLE: 'display:flex;justify-content:flex-end;gap:10px;margin-top:16px;',
-	
+
 	/** 标签按钮样式 */
 	TAG_BUTTON_STYLE: 'padding:2px 10px;border-radius:12px;border:1px solid var(--interactive-accent);color:var(--interactive-accent);background:transparent;cursor:pointer;font-size:0.85em;',
 } as const;
@@ -232,7 +232,7 @@ export const FLAT_IMMERSIVE_KEYS = [
 	'immersiveTopSize', 'immersiveBottomSize', 'immersiveLeftSize', 'immersiveRightSize',
 	'immersiveShowTotalTime',
 	'immersiveShowFocusTime', 'immersiveShowSlackTime', 'immersiveShowChapterProgress',
-	'immersiveShowDailyProgress', 'immersiveShowSessionWords', 'immersiveShowTaskProgress', 
+	'immersiveShowDailyProgress', 'immersiveShowSessionWords', 'immersiveShowTaskProgress',
 	'immersiveHideProperties',
 	'immersiveTopInternalSizes', 'immersiveBottomInternalSizes', 'immersiveLeftInternalSizes', 'immersiveRightInternalSizes',
 	'immersiveNoteSize', 'immersiveNoteFontSize', 'immersiveLayout'
@@ -247,14 +247,16 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 	dailyGoal: 5000,
 	showGoal: true,
 	showExplorerCounts: false, // 默认关闭，避免性能问题
+	enableChapterTemplate: false,
 	enableSmartChapterSort: false, // 默认关闭，避免与用户习惯冲突
-		chapterNamingRules: [
-			{ name: '阿拉伯数字（第1章、第01章）', pattern: '^第?(\\d+)[章节回卷部册篇]?', enabled: true },
-			{ name: '中文数字（第一章、第二章）', pattern: '^第?([零一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]+)[章节回卷部册篇]?', enabled: true },
-			{ name: '纯数字（1、01、001）', pattern: '^(\\d+)$', enabled: true },
-			{ name: 'Chapter Number (Chapter 1, Ch.1)', pattern: '^[Cc]h(?:apter)?\\.?\\s*(\\d+)', enabled: false },
-			{ name: 'Part Number (Part 1, Pt.1)', pattern: '^[Pp]t\\.?\\s*(\\d+)', enabled: false },
-		],
+	chapterTemplatePath: '',
+	chapterNamingRules: [
+		{ name: '阿拉伯数字（第1章、第01章）', pattern: '^第?(\\d+)[章节回卷部册篇]?', enabled: true },
+		{ name: '中文数字（第一章、第二章）', pattern: '^第?([零一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]+)[章节回卷部册篇]?', enabled: true },
+		{ name: '纯数字（1、01、001）', pattern: '^(\\d+)$', enabled: true },
+		{ name: 'Chapter Number (Chapter 1, Ch.1)', pattern: '^[Cc]h(?:apter)?\\.?\\s*(\\d+)', enabled: false },
+		{ name: 'Part Number (Part 1, Pt.1)', pattern: '^[Pp]t\\.?\\s*(\\d+)', enabled: false },
+	],
 	workspaceFolders: [],
 	showFloatingNotes: true,
 	noteOpacity: 0.9,
@@ -294,7 +296,7 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 	// 沉浸模式默认设置
 	immersive: {
 		immersiveTopSlots: [],
-		immersiveBottomSlots: ['immersive-sticky-notes-view', 'foreshadowing-view', 'timeline-view'],
+		immersiveBottomSlots: ['immersive-sticky-notes-view', 'foreshadowing-view', 'wn-timeline-view'],
 		immersiveLeftSlots: ['immersive-chapter-list-view'],
 		immersiveRightSlots: ['reference-view', 'webnovel-workbench'],
 		immersiveTopSize: 20,
@@ -306,7 +308,7 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 		immersiveBottomInternalSizes: [],
 		immersiveLeftInternalSizes: [],
 		immersiveRightInternalSizes: [],
-		
+
 		immersiveShowTotalTime: true,
 		immersiveShowFocusTime: true,
 		immersiveShowSlackTime: true,
@@ -314,9 +316,9 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 		immersiveShowDailyProgress: true,
 		immersiveShowSessionWords: true,
 		immersiveShowTaskProgress: true,
-		
+
 		immersiveHideProperties: true,
-		
+
 		immersiveNoteSize: 280,
 		immersiveNoteFontSize: 14,
 		immersiveLayout: null,

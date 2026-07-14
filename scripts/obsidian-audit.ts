@@ -44,6 +44,17 @@ project.getSourceFiles().forEach(sourceFile => {
 				}
 			}
 		}
+		// 1c. Check for global timers without window.
+		if (['setTimeout', 'setInterval', 'requestAnimationFrame'].includes(identifier.getText())) {
+			const parent = identifier.getParent();
+			if (parent && parent.getKind() === SyntaxKind.CallExpression) {
+				const callExpr = parent as any;
+				if (callExpr.getExpression() === identifier) {
+					console.error(`❌ [Error] Uses global '${identifier.getText()}' instead of 'window.${identifier.getText()}' in ${filePath}:${identifier.getStartLineNumber()}`);
+					hasErrors = true;
+				}
+			}
+		}
 	});
 
 	// 2. Check for .style assignment (should use setCssProps/setCssStyles)
@@ -89,6 +100,14 @@ project.getSourceFiles().forEach(sourceFile => {
 						hasErrors = true;
 					}
 				}
+			}
+		}
+		// 6. Check for workspace.activeLeaf
+		if (propAccess.getName() === 'activeLeaf') {
+			const left = propAccess.getExpression().getText();
+			if (left.includes('workspace')) {
+				console.error(`❌ [Error] Uses deprecated 'workspace.activeLeaf' in ${filePath}:${propAccess.getStartLineNumber()}. Use 'workspace.getMostRecentLeaf()' or 'workspace.getActiveViewOfType()'.`);
+				hasErrors = true;
 			}
 		}
 	});

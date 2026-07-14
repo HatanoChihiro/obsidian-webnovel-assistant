@@ -22,7 +22,8 @@ Welcome to WebNovel Assistant! An Obsidian plugin designed specifically for web 
   - [Timeline Management](#timeline-management)
   - [Time-Limited Task Tracking](#time-limited-task-tracking)
   - [Lore Quick Reference](#lore-quick-reference)
-  - [Chapter Overview](#chapter-overview)
+  - [Writing Workbench](#writing-workbench)
+  - [Chapter Overview (Classic)](#chapter-overview-classic)
   - [Advanced Search](#advanced-search)
   - [Writing Status Panel](#writing-status-panel)
 - [Multi-Platform Adaptation](#multi-platform-adaptation)
@@ -736,14 +737,46 @@ Supporting character, a loyal companion.
 
 ---
 
-### Chapter Overview
+### Writing Workbench
 
 #### Overview
-- **Card Display**: Displays all chapter files of the current work as a card grid
-- **Status Labels**: Supports marking chapter status (To Write, Outline, Draft, Revising, Final)
-- **Summary Editing**: Click the card content area to directly edit the chapter summary (saved to the frontmatter `synopsis` field)
-- **Word Count**: Each card displays the chapter word count at the bottom
-- **Auto Detection**: Automatically identifies the current work and displays the corresponding chapters when any chapter file is open
+The Writing Workbench is a comprehensive writing management center upgraded from the original "Chapter Overview". It is divided into three main tab panels:
+
+1. **All Chapters Panel**:
+   - Quickly create chapters, modify chapter names, and summaries.
+   - Quickly switch the writing status of the current novel at the top (e.g., To Write, Outline, Serializing).
+   - The badges at the bottom of the card automatically display the **Lore** and **Foreshadowing** appearing in the current chapter. Click to quickly preview them.
+   - **Supports Chapter Templates**: You can enable "Enable Chapter Template" in the settings and specify a template path. Once enabled, creating a new chapter via the workbench or using the "Create Next Chapter" command will automatically use the template content.
+2. **Timeline Panel**:
+   - Displays novel events in a vertical timeline flow.
+   - Supports directly **dragging** chapter cards from the All Chapters panel to a specific timeline node to automatically bind events to chapters.
+   - Supports synchronization with the global timeline panel for sorting and type filtering.
+3. **Lore Panel**:
+   - Browse all lore of the current novel in a grid format.
+   - Automatically counts and displays the **total appearance count** and **appearance chapter list** for each lore entry.
+   - Visually displays the **relationships** between a lore entry and others.
+   - Supports quickly adding new lore directly within the panel.
+
+#### How to Use
+
+##### Open Writing Workbench
+1. Open the command palette (Ctrl/Cmd + P) and type `Toggle Writing Workbench Panel`
+2. Or click the workbench icon in the left Ribbon menu
+3. After opening any chapter file, the workbench will automatically identify the current novel and display its content.
+
+##### Enable Chapter Template
+1. Open plugin settings → **Enable Chapter Template** and toggle it on.
+2. Fill in the relative path to your template document in the input box below (e.g., `Templates/ChapterTemplate.md`).
+3. New chapters will subsequently apply the template content automatically (including chapters created via command).
+
+---
+
+### Chapter Overview (Classic)
+
+#### Overview
+- **Sidebar Mounting**: The original Chapter Overview panel is still available, mainly used to be mounted in Obsidian's left or right sidebars as an auxiliary view, or as a dedicated component in **Immersive Mode**.
+- **Status Labels**: Supports marking chapter status (To Write, Outline, Draft, Revising, Final) and directly editing chapter summaries (saved to the frontmatter `synopsis` field).
+- **Word Count**: Each card displays the chapter word count at the bottom.
 
 #### How to Use
 

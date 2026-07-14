@@ -1,10 +1,11 @@
-import type { WorkspaceLeaf, TFolder } from 'obsidian';
-import { ItemView, TFile } from 'obsidian';
+import type { WorkspaceLeaf } from 'obsidian';
+import { ItemView, TFile, TFolder } from 'obsidian';
 import type { MarkdownView } from 'obsidian';
 import { VIEW_TYPES } from '../constants';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
-import type { ParsedForeshadowingEntry } from '../types/foreshadowing';
+import { ForeshadowingStatus, type ParsedForeshadowingEntry } from '../types/foreshadowing';
 import { ChapterSorter } from '../services/ChapterSorter';
+import { getCurrentBookContext } from '../utils/path';
 import { t } from '../i18n';
 
 export class ImmersiveChapterListView extends ItemView {
@@ -37,155 +38,169 @@ export class ImmersiveChapterListView extends ItemView {
 		this.registerEvent(this.app.workspace.on('layout-change', () => { void this.refresh(); }));
 	}
 
-	/**
-	 * 刷新章节列表内容
-	 */
 	public async refresh() {
 		const { containerEl } = this;
 		
-		// 我们不再从 oldListContainer 中临时读取，而是依赖 scroll 事件更新的 lastScrollTop
-		// 这样可以避免多次快速刷新时导致位置丢失
 		containerEl.empty();
 		
 		const listContainer = containerEl.createDiv({ cls: 'immersive-chapter-list' });
-		
-		// 实时记录用户的滚动位置
 		listContainer.addEventListener('scroll', () => {
 			this.lastScrollTop = listContainer.scrollTop;
 		}, { passive: true });
 		
-		// 尝试获取当前活动的文件所在文件夹
-		let currentFolder: TFolder | null = null;
-		const activeFile = this.app.workspace.getActiveFile();
-		if (activeFile) {
-			currentFolder = activeFile.parent ?? this.app.vault.getRoot();
-		}
-
-		// 如果通过 activeFile 没找到，尝试从所有 Markdown 叶子中找
-		if (!currentFolder) {
-			const mdLeaves = this.app.workspace.getLeavesOfType('markdown');
-			for (const leaf of mdLeaves) {
-				const view = leaf.view as unknown as { file?: TFile };
-				if (view && view.file) {
-					currentFolder = view.file.parent ?? this.app.vault.getRoot();
-					break;
-				}
-			}
-		}
-
-		if (!currentFolder) {
-			listContainer.createEl('p', { text: t('immersive.loading-folder'), cls: 'immersive-empty-text' });
-			// 如果还是没找到，可能是主编辑器还没准备好，1秒后重试一次
+		const bookPath = getCurrentBookContext(this.app, this.plugin);
+		if (bookPath === null) {
+			listContainer.createEl('p', { text: t('immersive.loading-folder') || '正在加载...', cls: 'immersive-empty-text' });
 			window.setTimeout(() => {
 				if (this.app.workspace.getActiveFile()) void this.refresh();
 			}, 1000);
 			return;
 		}
 
-		// 获取该文件夹下的所有 Markdown 文件，并排序
-		const files = currentFolder.children.filter(f => f instanceof TFile && f.extension === 'md') as TFile[];
-		
-		if (this.plugin.settings.enableSmartChapterSort) {
-			const customOrder = this.plugin.settings.customSortOrder || {};
-			files.sort((a, b) => ChapterSorter.compareFilesWithCustomOrder(a, b, customOrder));
-		} else {
-			files.sort((a, b) => a.basename.localeCompare(b.basename, undefined, { numeric: true }));
+		let abstractFolder = this.app.vault.getAbstractFileByPath(bookPath === '/' ? '/' : bookPath);
+		if (!(abstractFolder instanceof TFolder)) {
+			abstractFolder = this.app.vault.getRoot();
 		}
+		const currentFolder = abstractFolder as TFolder;
 
-		let activeItemEl: HTMLElement | null = null;
+		const fmFolder = bookPath === '/' ? '' : bookPath;
+		// 获取该作品下所有的 markdown 文件
+		const allMdFiles = this.plugin.getTrackedMarkdownFiles().filter(f => bookPath === '/' ? true : f.path.startsWith(bookPath + '/'));
 
-		// 预解析伏笔（使用 ForeshadowingManager 的公共方法统一处理）
-		const fmFolder = currentFolder.path === '/' ? '' : currentFolder.path;
 		const foreshadowingMap = this.plugin.foreshadowingManager
-			? await this.plugin.foreshadowingManager.buildChapterForeshadowingMap(fmFolder, files, this.app.vault)
+			? await this.plugin.foreshadowingManager.buildChapterForeshadowingMap(fmFolder, allMdFiles, this.app.vault)
 			: new Map<string, ParsedForeshadowingEntry[]>();
 
-		for (const file of files) {
-			const itemEl = listContainer.createDiv({ cls: 'immersive-chapter-item' });
-			if (activeFile && file.path === activeFile.path) {
-				itemEl.addClass('is-active');
-				activeItemEl = itemEl;
-			}
-			
-			const leftContainer = itemEl.createDiv({ cls: 'immersive-chapter-left' });
-			leftContainer.createSpan({ text: file.basename, cls: 'immersive-chapter-title' });
-			
-			// 添加 Badge
-			const badgesContainer = leftContainer.createSpan({ cls: 'immersive-chapter-badges' });
-			const cardForeshadowings = foreshadowingMap.get(file.basename) || [];
-			
-			const pendingForeshadowings = cardForeshadowings.filter(f => f.status === 'pending' || f.status === 'unresolved');
-			if (pendingForeshadowings.length > 0) {
-				const fsBadge = badgesContainer.createEl('span', {
-					cls: 'wn-badge wn-badge-foreshadowing',
-					text: `${t('corkboard.foreshadowing-unresolved') || '待回收'}×${pendingForeshadowings.length}`
-				});
-				fsBadge.title = pendingForeshadowings.map(f => f.description).join('\n');
-			}
-			
-			const recoveredForeshadowings = cardForeshadowings.filter(f => f.status === 'recovered');
-			if (recoveredForeshadowings.length > 0) {
-				const fsBadge = badgesContainer.createEl('span', {
-					cls: 'wn-badge wn-badge-recovered',
-					text: `${t('corkboard.foreshadowing-recovered') || '本章回收'}×${recoveredForeshadowings.length}`
-				});
-				fsBadge.title = recoveredForeshadowings.map(f => f.description).join('\n');
-			}
-			
-			const cache = this.app.metadataCache.getFileCache(file);
-			const frontmatter = cache?.frontmatter;
-			const loreArray = frontmatter?.lore as unknown;
-			if (Array.isArray(loreArray)) {
-				const validLores: string[] = (loreArray as unknown[]).filter((l: unknown): l is string => typeof l === 'string');
-				if (validLores.length > 0) {
-					const maxDisplay = 3;
-					for (let i = 0; i < Math.min(validLores.length, maxDisplay); i++) {
-						badgesContainer.createEl('span', {
-							cls: 'wn-badge wn-badge-lore',
-							text: validLores[i].split('×')[0]
-						});
-					}
-					if (validLores.length > maxDisplay) {
-						badgesContainer.createEl('span', {
-							cls: 'wn-badge wn-badge-lore wn-badge-more',
-							text: `+${validLores.length - maxDisplay}`
-						});
-					}
-				}
-			}
-			
-			const wordCount = this.plugin.cacheManager.getFileCache(file.path) || 0;
-			if (this.plugin.settings.showExplorerCounts) {
-				const strictOk = !this.plugin.settings.enableStrictChapterMode || ChapterSorter.isChapterFile(file.basename);
-				if (strictOk) {
-					itemEl.createSpan({ text: `${wordCount}${t('common.word-char')}`, cls: 'immersive-chapter-count' });
-				}
-			}
+		const activeFile = this.app.workspace.getActiveFile();
+		const state = { activeItemEl: null as HTMLElement | null };
 
-			// 左键：在主编辑器打开
-			itemEl.addEventListener('click', () => {
-				const leaves = this.app.workspace.getLeavesOfType('markdown');
-				if (leaves.length > 0) {
-					void leaves[0].openFile(file);
+		this.renderFolderRecursively(currentFolder, listContainer, foreshadowingMap, activeFile, state);
+
+		window.requestAnimationFrame(() => {
+			if (listContainer) {
+				if (this.isInitialLoad && state.activeItemEl) {
+					state.activeItemEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+					this.isInitialLoad = false;
+				} else {
+					listContainer.scrollTop = this.lastScrollTop;
 				}
+			}
+		});
+	}
+
+	private renderFolderRecursively(
+		folder: TFolder,
+		container: HTMLElement,
+		foreshadowingMap: Map<string, ParsedForeshadowingEntry[]>,
+		activeFile: TFile | null,
+		state: { activeItemEl: HTMLElement | null }
+	) {
+		const children = folder.children.filter(f => f instanceof TFolder || (f instanceof TFile && f.extension === 'md'));
+
+		if (this.plugin.settings.enableSmartChapterSort) {
+			const customOrder = this.plugin.settings.customSortOrder || {};
+			children.sort((a, b) => ChapterSorter.compareFilesWithCustomOrder(a, b, customOrder));
+		} else {
+			children.sort((a, b) => {
+				const aIsFolder = a instanceof TFolder;
+				const bIsFolder = b instanceof TFolder;
+				if (aIsFolder && !bIsFolder) return -1;
+				if (!aIsFolder && bIsFolder) return 1;
+				return a.name.localeCompare(b.name, undefined, { numeric: true });
 			});
+		}
 
-			// 右键：自动添加并打开参考文档
-			itemEl.addEventListener('contextmenu', (e) => {
+		for (const item of children) {
+			if (item instanceof TFolder) {
+				const details = container.createEl('details', { cls: 'immersive-folder-details' });
+				details.setAttribute('open', '');
+				
+				const summary = details.createEl('summary', { cls: 'immersive-folder-summary' });
+				summary.createSpan({ text: item.name, cls: 'immersive-folder-name' });
+				
+				const childrenContainer = details.createDiv({ cls: 'immersive-folder-children' });
+				this.renderFolderRecursively(item, childrenContainer, foreshadowingMap, activeFile, state);
+			} else if (item instanceof TFile) {
+				const file = item;
+				const itemEl = container.createDiv({ cls: 'immersive-chapter-item' });
+				if (activeFile && file.path === activeFile.path) {
+					itemEl.addClass('is-active');
+					state.activeItemEl = itemEl;
+				}
+				
+				const leftContainer = itemEl.createDiv({ cls: 'immersive-chapter-left' });
+				leftContainer.createSpan({ text: file.basename, cls: 'immersive-chapter-title' });
+				
+				const badgesContainer = leftContainer.createSpan({ cls: 'immersive-chapter-badges' });
+				const cardForeshadowings = foreshadowingMap.get(file.basename) || [];
+				
+				const pendingForeshadowings = cardForeshadowings.filter(f => f.status === ForeshadowingStatus.Pending);
+				if (pendingForeshadowings.length > 0) {
+					const fsBadge = badgesContainer.createEl('span', {
+						cls: 'wn-badge wn-badge-foreshadowing',
+						text: `${t('corkboard.foreshadowing-unresolved') || '待回收'}×${pendingForeshadowings.length}`
+					});
+					fsBadge.title = pendingForeshadowings.map(f => f.description).join('\n');
+				}
+				
+				const recoveredForeshadowings = cardForeshadowings.filter(f => f.status === ForeshadowingStatus.Recovered);
+				if (recoveredForeshadowings.length > 0) {
+					const fsBadge = badgesContainer.createEl('span', {
+						cls: 'wn-badge wn-badge-recovered',
+						text: `${t('corkboard.foreshadowing-recovered') || '本章回收'}×${recoveredForeshadowings.length}`
+					});
+					fsBadge.title = recoveredForeshadowings.map(f => f.description).join('\n');
+				}
+				
+				const cache = this.app.metadataCache.getFileCache(file);
+				const frontmatter = cache?.frontmatter;
+				const loreArray = frontmatter?.lore as unknown;
+				if (Array.isArray(loreArray)) {
+					const validLores: string[] = (loreArray as unknown[]).filter((l: unknown): l is string => typeof l === 'string');
+					if (validLores.length > 0) {
+						const maxDisplay = 3;
+						for (let i = 0; i < Math.min(validLores.length, maxDisplay); i++) {
+							badgesContainer.createEl('span', {
+								cls: 'wn-badge wn-badge-lore',
+								text: validLores[i].split('×')[0]
+							});
+						}
+						if (validLores.length > maxDisplay) {
+							badgesContainer.createEl('span', {
+								cls: 'wn-badge wn-badge-lore wn-badge-more',
+								text: `+${validLores.length - maxDisplay}`
+							});
+						}
+					}
+				}
+				
+				const wordCount = this.plugin.cacheManager.getFileCache(file.path) || 0;
+				if (this.plugin.settings.showExplorerCounts) {
+					const strictOk = !this.plugin.settings.enableStrictChapterMode || ChapterSorter.isChapterFile(file.basename);
+					if (strictOk) {
+						itemEl.createSpan({ text: `${wordCount}${t('common.word-char')}`, cls: 'immersive-chapter-count' });
+					}
+				}
+
+				itemEl.addEventListener('click', () => {
+					const leaves = this.app.workspace.getLeavesOfType('markdown');
+					if (leaves.length > 0) {
+						void leaves[0].openFile(file);
+					}
+				});
+
+				itemEl.addEventListener('contextmenu', (e) => {
 				e.preventDefault();
 				
 				const { workspace } = this.app;
-				// 1. 寻找参考叶子（多级兜底策略）
 				let refLeaf: WorkspaceLeaf | null = null;
 				
-				// 策略 A: 查找带有特定标记的叶子（沉浸模式专用标记）
 				workspace.iterateRootLeaves(leaf => {
 					if (leaf.containerEl && leaf.containerEl.classList.contains('immersive-reference-view')) {
 						refLeaf = leaf;
 					}
 				});
 
-				// 策略 B: 如果没找到标记，但存在多个 Markdown 视图，假设第二个是参考区
 				if (!refLeaf) {
 					const mdLeaves = workspace.getLeavesOfType('markdown');
 					if (mdLeaves.length > 1) {
@@ -193,7 +208,6 @@ export class ImmersiveChapterListView extends ItemView {
 					}
 				}
 
-				// 策略 C: 寻找“空”叶子（即面板占位符，没有打开任何文件时）
 				if (!refLeaf) {
 					const emptyLeaves = workspace.getLeavesOfType('empty');
 					if (emptyLeaves.length > 0) {
@@ -201,14 +215,12 @@ export class ImmersiveChapterListView extends ItemView {
 					}
 				}
 
-				// 策略 D: 确实没面板，则自动创建垂直拆分
 				if (!refLeaf) {
 					const mainLeaf = workspace.getLeavesOfType('markdown')[0];
 					if (mainLeaf) {
 						refLeaf = workspace.createLeafBySplit(mainLeaf, 'vertical', false);
 						refLeaf.containerEl.classList.add('immersive-reference-view');
 						
-						// 更新设置并保存
 						if (!this.plugin.settings.immersive.immersiveRightSlots.includes('reference-view')) {
 							this.plugin.settings.immersive.immersiveRightSlots.push('reference-view');
 						}
@@ -216,15 +228,12 @@ export class ImmersiveChapterListView extends ItemView {
 					}
 				}
 				
-				// 2. 确保目标叶子是 Markdown 类型并打开文件为阅读视图
 				if (refLeaf) {
-					// 获取当前或初始状态
 					const mdView = refLeaf.view.getViewType() === 'markdown' ? refLeaf.view as MarkdownView : null;
-						const currentState = mdView && typeof mdView.getState === 'function'
+					const currentState = mdView && typeof mdView.getState === 'function'
 						? mdView.getState()
 						: {};
 					
-					// 强制设为阅读模式
 					currentState.file = file.path;
 					currentState.mode = 'preview';
 					currentState.source = false;
@@ -237,18 +246,7 @@ export class ImmersiveChapterListView extends ItemView {
 				}
 			});
 		}
-
-		// 恢复滚动位置，或者在初始时滚动到激活文档
-		window.requestAnimationFrame(() => {
-			if (listContainer) {
-				if (this.isInitialLoad && activeItemEl) {
-					activeItemEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
-					this.isInitialLoad = false;
-				} else {
-					listContainer.scrollTop = this.lastScrollTop;
-				}
-			}
-		});
+		}
 	}
 
 	async onClose() {

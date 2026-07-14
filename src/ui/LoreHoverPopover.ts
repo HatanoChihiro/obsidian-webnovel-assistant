@@ -2,6 +2,7 @@ import { Logger } from '../utils/Logger';
 import { Component, MarkdownRenderer, setIcon, Platform } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { LoreEntry } from '../services/CharacterManager';
+import { t } from '../i18n';
 
 export class LoreHoverPopover extends Component {
 	private plugin: WebNovelAssistantPlugin;
@@ -150,6 +151,25 @@ export class LoreHoverPopover extends Component {
 		const header = card.createDiv({ cls: 'wn-lore-card-header' });
 		const titleEl = header.createDiv({ cls: 'wn-lore-card-title' });
 		titleEl.setText(this.entry.heading);
+		titleEl.setCssStyles({ cursor: 'pointer' });
+		titleEl.title = t('corkboard.click-to-open-lore') || '点击打开设定文档'; // fallback title just in case
+
+		titleEl.onclick = () => {
+			let targetLeaf = this.plugin.app.workspace.getLeavesOfType('markdown').find(l => (l.view as unknown as { file?: { path: string } }).file?.path === this.entry.file.path);
+			if (!targetLeaf) targetLeaf = this.plugin.app.workspace.getLeavesOfType('markdown')[0];
+			if (!targetLeaf) targetLeaf = this.plugin.app.workspace.getLeaf('split', 'vertical');
+
+			void (async () => {
+				const cache = this.plugin.app.metadataCache.getFileCache(this.entry.file);
+				let targetLine = 0;
+				if (cache?.headings) {
+					const headingInfo = cache.headings.find(h => h.heading === this.entry.heading);
+					if (headingInfo) targetLine = headingInfo.position.start.line;
+				}
+				await targetLeaf.openFile(this.entry.file, { eState: { line: targetLine } });
+				this.hide();
+			})();
+		};
 
 		// Body area
 		const body = card.createDiv({ cls: 'wn-lore-card-body' });

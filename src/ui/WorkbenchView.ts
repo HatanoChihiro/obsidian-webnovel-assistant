@@ -1,7 +1,7 @@
 import { TFile, type WorkspaceLeaf, ItemView, Notice, Menu, Modal, Setting } from 'obsidian';
 import type { App, ViewStateResult } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
-import type { ParsedForeshadowingEntry } from '../types/foreshadowing';
+import { ForeshadowingStatus, type ParsedForeshadowingEntry } from '../types/foreshadowing';
 import { ChapterSorter } from '../services/ChapterSorter';
 import { findBookRoot } from '../utils/path';
 import { t } from '../i18n';
@@ -12,26 +12,44 @@ import { LoreBoardRenderer } from './components/LoreBoardRenderer';
 import { AddLoreModal } from './AddLoreModal';
 
 class NewChapterModal extends Modal {
-    constructor(app: App, private defaultPrefix: string, private onSubmit: (title: string) => void) {
+    constructor(
+        app: App, 
+        private defaultPrefix: string, 
+        private enableTemplate: boolean,
+        private templatePath: string,
+        private onSubmit: (title: string, templateContent: string) => void
+    ) {
         super(app);
     }
     onOpen() {
         const { contentEl } = this;
-        new Setting(contentEl).setHeading().setName(t('corkboard.new-chapter') || '新增章节');
+        new Setting(contentEl).setHeading().setName(t('corkboard.new-chapter') || '+ 新增章节');
         const inputEl = contentEl.createEl('input', { type: 'text' });
         inputEl.setCssStyles({ width: '100%', marginBottom: '1em' });
         inputEl.value = this.defaultPrefix;
+
         const btn = contentEl.createEl('button', { text: t('common.confirm') || '确认' });
-        btn.onclick = () => {
+        btn.onclick = async () => {
             if (inputEl.value.trim()) {
-                this.onSubmit(inputEl.value.trim());
+                let templateContent = '';
+                if (this.enableTemplate && this.templatePath) {
+                    try {
+                        const file = this.app.vault.getAbstractFileByPath(this.templatePath);
+                        if (file && 'extension' in file) {
+                            templateContent = await this.app.vault.read(file as TFile);
+                        }
+                    } catch (e) {
+                        console.error('无法读取模板文件:', e);
+                    }
+                }
+                this.onSubmit(inputEl.value.trim(), templateContent);
                 this.close();
             }
         };
         inputEl.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') btn.click();
         });
-        setTimeout(() => {
+        window.setTimeout(() => {
             inputEl.focus();
             inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
         }, 50);
@@ -56,7 +74,7 @@ export class WorkbenchView extends ItemView {
         this.plugin = plugin;
 
         // 监听 timeline 筛选事件
-        this.registerEvent(this.app.workspace.on('webnovel-timeline-filter-changed', (filter: string) => {
+        this.registerEvent(this.app.workspace.on('timeline-filter-changed', (filter: string) => {
             this.currentTimelineFilter = filter;
             void this.reloadBoard();
         }));
@@ -232,7 +250,7 @@ export class WorkbenchView extends ItemView {
         hintEl.appendText(t('corkboard.current-novel', { name: displayBookName }) + ' ');
         const switchSpan = hintEl.createSpan({ text: t('corkboard.click-to-switch') || '(点击切换)' });
         switchSpan.setCssStyles({ cursor: 'pointer', color: 'var(--text-muted)' });
-        
+
         switchSpan.onclick = (e) => {
             const menu = new Menu();
             const novels = this.plugin.homepageManager!.getNovelFolders();
@@ -281,18 +299,18 @@ export class WorkbenchView extends ItemView {
                 foreshadowings = this.plugin.foreshadowingManager.parseEntries(content);
             }
         }
-        
+
         const foreshadowingMap = new Map<string, ParsedForeshadowingEntry[]>();
         for (const entry of foreshadowings) {
             let targets: string[] = [];
-            if (entry.status === 'pending' || entry.status === 'unresolved') {
+            if (entry.status === ForeshadowingStatus.Pending) {
                 if (entry.sourceFile) {
                     targets.push(entry.sourceFile);
                 }
-            } else if (entry.status === 'recovered') {
+            } else if (entry.status === ForeshadowingStatus.Recovered) {
                 targets = entry.recoveryFiles ? [...entry.recoveryFiles] : (entry.recoveryFile ? [entry.recoveryFile] : []);
             }
-            
+
             for (const target of targets) {
                 if (!target) continue;
                 const cleanTarget = target.toLowerCase().replace(/\s+/g, '');
@@ -317,12 +335,12 @@ export class WorkbenchView extends ItemView {
         if (infoFile) {
             const meta = await this.plugin.homepageManager?.getNovelMetadata(this.currentBookPath || '');
             let currentStatus = meta?.status || 'ongoing';
-            
+
             const statusBtn = buttonsContainer.createDiv({ cls: 'wn-corkboard-novel-status-btn' });
             statusBtn.textContent = getNovelStatusText(currentStatus);
             statusBtn.onclick = (e: MouseEvent) => {
                 const menu = new Menu();
-                const statuses = ['ongoing', 'stockpiling', 'paused', 'completed'];
+                const statuses = ['ongoing', 'stockpiling', 'paused', 'completed'] as const;
                 for (const st of statuses) {
                     menu.addItem((item) => {
                         item.setTitle(getNovelStatusText(st))
@@ -359,7 +377,7 @@ export class WorkbenchView extends ItemView {
         } else {
             // 右上角：新增章节按钮
             const newChapterBtn = buttonsContainer.createDiv({ cls: 'wn-corkboard-new-chapter-btn' });
-            newChapterBtn.textContent = t('corkboard.new-chapter') || '新增章节';
+            newChapterBtn.textContent = t('corkboard.new-chapter') || '+ 新增章节';
             newChapterBtn.onclick = () => {
                 let defaultPrefix = '01 ';
                 if (files.length > 0) {
@@ -373,15 +391,15 @@ export class WorkbenchView extends ItemView {
                     }
                 }
 
-                new NewChapterModal(this.app, defaultPrefix, (title) => {
+                new NewChapterModal(this.app, defaultPrefix, this.plugin.settings.enableChapterTemplate, this.plugin.settings.chapterTemplatePath, (title, templateContent) => {
                     const folder = this.currentBookPath === '/' ? '' : (this.currentBookPath + '/');
                     const newPath = folder + title + '.md';
                     this.isSavingMetadata = true;
-                    this.app.vault.create(newPath, '').then(_file => {
+                    this.app.vault.create(newPath, templateContent).then(_file => {
                         new Notice((t('corkboard.new-chapter-success') || '创建章节: ') + title);
                         // 留在工作台，仅刷新面?
                         void this.reloadBoard();
-                        setTimeout(() => {
+                        window.setTimeout(() => {
                             this.isSavingMetadata = false;
                         }, 1500); // 避免 metadataCache changed 事件引发的二次刷新跳?
                     }).catch(e => {
@@ -393,109 +411,105 @@ export class WorkbenchView extends ItemView {
             };
         }
 
-// 渲染顶部的多个 Toggle 切换按钮
-const toggleGroup = buffer.createDiv('wn-corkboard-toggle-group');
+        // 渲染顶部的多个 Toggle 切换按钮
+        const toggleGroup = buffer.createDiv('wn-corkboard-toggle-group');
 
-const btnDefault = toggleGroup.createEl('span', {
-    text: t('corkboard.sort-default'),
-    cls: `wn-corkboard-toggle-btn ${this.sortMode === 'default' ? 'active' : ''}`
-});
+        const btnDefault = toggleGroup.createEl('span', {
+            text: t('corkboard.sort-default'),
+            cls: `wn-corkboard-toggle-btn ${this.sortMode === 'default' ? 'active' : ''}`
+        });
 
-toggleGroup.createSpan({ text: '|', cls: 'wn-corkboard-toggle-separator' });
+        const btnTimeline = toggleGroup.createEl('span', {
+            text: t('corkboard.sort-timeline'),
+            cls: `wn-corkboard-toggle-btn ${this.sortMode === 'timeline' ? 'active' : ''}`
+        });
 
-const btnTimeline = toggleGroup.createEl('span', {
-    text: t('corkboard.sort-timeline'),
-    cls: `wn-corkboard-toggle-btn ${this.sortMode === 'timeline' ? 'active' : ''}`
-});
+        const btnLore = toggleGroup.createEl('span', {
+            text: t('corkboard.sort-lore') || '设定',
+            cls: `wn-corkboard-toggle-btn ${this.sortMode === 'lore' ? 'active' : ''}`
+        });
 
-toggleGroup.createSpan({ text: '|', cls: 'wn-corkboard-toggle-separator' });
+        btnDefault.onclick = async () => {
+            if (this.sortMode === 'default') return;
+            this.sortMode = 'default';
+            this.plugin.settings.corkboardSortMode = 'default';
+            await this.plugin.saveSettings();
+            void this.reloadBoard();
+        };
 
-const btnLore = toggleGroup.createEl('span', {
-    text: t('corkboard.sort-lore') || '设定',
-    cls: `wn-corkboard-toggle-btn ${this.sortMode === 'lore' ? 'active' : ''}`
-});
+        btnTimeline.onclick = async () => {
+            if (this.sortMode === 'timeline') return;
+            this.sortMode = 'timeline';
+            this.plugin.settings.corkboardSortMode = 'timeline';
+            await this.plugin.saveSettings();
+            void this.reloadBoard();
+        };
 
-btnDefault.onclick = async () => {
-    if (this.sortMode === 'default') return;
-    this.sortMode = 'default';
-    this.plugin.settings.corkboardSortMode = 'default';
-    await this.plugin.saveSettings();
-    void this.reloadBoard();
-};
+        btnLore.onclick = async () => {
+            if (this.sortMode === 'lore') return;
+            this.sortMode = 'lore';
+            this.plugin.settings.corkboardSortMode = 'lore'; // Need to update Settings interface in types
+            await this.plugin.saveSettings();
+            void this.reloadBoard();
+        };
 
-btnTimeline.onclick = async () => {
-    if (this.sortMode === 'timeline') return;
-    this.sortMode = 'timeline';
-    this.plugin.settings.corkboardSortMode = 'timeline';
-    await this.plugin.saveSettings();
-    void this.reloadBoard();
-};
-
-btnLore.onclick = async () => {
-    if (this.sortMode === 'lore') return;
-    this.sortMode = 'lore';
-    this.plugin.settings.corkboardSortMode = 'lore'; // Need to update Settings interface in types
-    await this.plugin.saveSettings();
-    void this.reloadBoard();
-};
-
-		if (this.sortMode === 'timeline') {
-			await TimelineBoardRenderer.render({
-				app: this.app,
-				plugin: this.plugin,
-				container: buffer,
-				files,
-				foreshadowingMap,
-				currentBookPath: this.currentBookPath || '',
-				currentTimelineFilter: this.currentTimelineFilter,
-				onSaveStateChange: (isSaving) => { this.isSavingMetadata = isSaving; },
-				reloadBoard: () => { void this.reloadBoard(); },
-				getChapterEvents: (file, fallbackMap) => this.getChapterEvents(file, fallbackMap)
-			});
-		} else if (this.sortMode === 'lore') {
-			await LoreBoardRenderer.render({
-				app: this.app,
-				plugin: this.plugin,
-				container: buffer,
-				files,
-				currentBookPath: this.currentBookPath || ''
-			});
-		} else {
-			this.renderOrderedBoard(buffer, files, foreshadowingMap);
-		}
+        if (this.sortMode === 'timeline') {
+            await TimelineBoardRenderer.render({
+                app: this.app,
+                plugin: this.plugin,
+                container: buffer,
+                files,
+                foreshadowingMap,
+                currentBookPath: this.currentBookPath || '',
+                currentTimelineFilter: this.currentTimelineFilter,
+                onSaveStateChange: (isSaving) => { this.isSavingMetadata = isSaving; },
+                reloadBoard: () => { void this.reloadBoard(); },
+                getChapterEvents: (file, fallbackMap) => this.getChapterEvents(file, fallbackMap)
+            });
+        } else if (this.sortMode === 'lore') {
+            await LoreBoardRenderer.render({
+                app: this.app,
+                plugin: this.plugin,
+                container: buffer,
+                files,
+                currentBookPath: this.currentBookPath || ''
+            });
+        } else {
+            this.renderOrderedBoard(buffer, files, foreshadowingMap);
+        }
 
         if (this.currentRenderId !== renderId) return;
         this.container.empty();
         while (buffer.firstChild) {
             this.container.appendChild(buffer.firstChild);
         }
-	}
+    }
 
-	private renderOrderedBoard(container: HTMLElement, files: TFile[], foreshadowingMap: Map<string, ParsedForeshadowingEntry[]>): void {
-		const grid = container.createDiv('wn-corkboard-grid');
-		this.renderCards(grid, files, foreshadowingMap, false);
-	}
+    private renderOrderedBoard(container: HTMLElement, files: TFile[], foreshadowingMap: Map<string, ParsedForeshadowingEntry[]>): void {
+        const grid = container.createDiv('wn-corkboard-grid');
+        this.renderCards(grid, files, foreshadowingMap, false);
+    }
 
-	private renderCards(container: HTMLElement, files: TFile[], foreshadowingMap: Map<string, ParsedForeshadowingEntry[]>, draggable: boolean): void {
-		CorkboardGridRenderer.render({
-			app: this.app,
-			plugin: this.plugin,
-			container,
-			files,
-			foreshadowingMap,
-			draggable,
-			currentBookPath: this.currentBookPath || '',
-			onSaveStateChange: (isSaving) => { this.isSavingMetadata = isSaving; }
-		});
-	}
+    private renderCards(container: HTMLElement, files: TFile[], foreshadowingMap: Map<string, ParsedForeshadowingEntry[]>, draggable: boolean): void {
+        CorkboardGridRenderer.render({
+            app: this.app,
+            plugin: this.plugin,
+            container,
+            files,
+            foreshadowingMap,
+            draggable,
+            currentBookPath: this.currentBookPath || '',
+            onSaveStateChange: (isSaving) => { this.isSavingMetadata = isSaving; }
+        });
+    }
 
-	private getChapterEvents(file: TFile, fallbackMap: Map<string, string[]>): string[] {
-		const cache = this.app.metadataCache.getFileCache(file);
-		const fm = cache?.frontmatter;
-		if (fm && fm.timeline) {
-			if (Array.isArray(fm.timeline)) return fm.timeline.map(String);
-			if (typeof fm.timeline === 'string') return [String(fm.timeline)];
-		}
-		return fallbackMap.get(file.basename) || [];
-	}
+    private getChapterEvents(file: TFile, fallbackMap: Map<string, string[]>): string[] {
+        const cache = this.app.metadataCache.getFileCache(file);
+        const fm = cache?.frontmatter;
+        if (fm && fm.timeline) {
+            if (Array.isArray(fm.timeline)) return fm.timeline.map(String);
+            if (typeof fm.timeline === 'string') return [String(fm.timeline)];
+        }
+        return fallbackMap.get(file.basename) || [];
+    }
 }

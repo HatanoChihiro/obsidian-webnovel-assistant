@@ -180,7 +180,8 @@ export class SettingsManager {
 		await this.writer.flush();
 	}
 
-	private getNestedValue(obj: Record<string, unknown>, path: string): unknown {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	private getNestedValue(obj: any, path: string): unknown {
 		const parts = path.split('.');
 		let current: unknown = obj;
 		for (const part of parts) {
@@ -192,8 +193,10 @@ export class SettingsManager {
 		return current;
 	}
 
-	private setNestedValue(obj: Record<string, unknown>, path: string, value: unknown): void {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	private setNestedValue(obj: any, path: string, value: unknown): void {
 		const parts = path.split('.');
+		// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
 		let current: Record<string, unknown> = obj;
 		for (let i = 0; i < parts.length - 1; i++) {
 			if (!(parts[i] in current) || typeof current[parts[i]] !== 'object' || current[parts[i]] === null) {
@@ -311,6 +314,18 @@ export class SettingsManager {
 		// 清理旧版 homepagePath 默认值，让 getHomepageFilePath() 动态推导到工作区下
 		if (migrated.homepagePath === '创作主页.md') {
 			migrated.homepagePath = '';
+		}
+
+		// 迁移：将旧的 timeline-view 组件 ID 替换为 wn-timeline-view
+		const replaceTimelineView = (slots: string[]) => {
+			const idx = slots.indexOf('timeline-view');
+			if (idx !== -1) slots[idx] = 'wn-timeline-view';
+		};
+		if (migrated.immersive) {
+			replaceTimelineView(migrated.immersive.immersiveTopSlots);
+			replaceTimelineView(migrated.immersive.immersiveBottomSlots);
+			replaceTimelineView(migrated.immersive.immersiveLeftSlots);
+			replaceTimelineView(migrated.immersive.immersiveRightSlots);
 		}
 
 		// 清理弃用的沉浸模式设置字段

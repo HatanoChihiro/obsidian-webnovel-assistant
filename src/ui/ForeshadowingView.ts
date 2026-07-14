@@ -155,7 +155,8 @@ export class ForeshadowingView extends CreativeView {
 				metaEl.setCssProps({ cursor: 'pointer' });
 				metaEl.title = t('common.jump-to-reference');
 				metaEl.onclick = async () => {
-					const file = this.app.metadataCache.getFirstLinkpathDest(target, '');
+					const sourcePath = this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '';
+					const file = this.app.metadataCache.getFirstLinkpathDest(target, sourcePath);
 					if (file) {
 						await this.openFileWithSmartLocate(file, c.text);
 					} else {
@@ -168,7 +169,8 @@ export class ForeshadowingView extends CreativeView {
 			textEl.setCssProps({ cursor: 'pointer' });
 			textEl.title = t('common.jump-to-original');
 			textEl.onclick = async () => {
-				const file = this.app.metadataCache.getFirstLinkpathDest(target, '');
+				const sourcePath = this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '';
+				const file = this.app.metadataCache.getFirstLinkpathDest(target, sourcePath);
 				if (file) {
 					await this.openFileWithSmartLocate(file, c.text);
 				} else {
@@ -198,7 +200,8 @@ export class ForeshadowingView extends CreativeView {
 				// 单个来源，直接跳转
 				const target = entry.contents[0]?.source || entry.sourceFile;
 				const text = entry.contents[0]?.text || '';
-				const file = this.app.metadataCache.getFirstLinkpathDest(target, '');
+				const sourcePath = this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '';
+				const file = this.app.metadataCache.getFirstLinkpathDest(target, sourcePath);
 				if (file) {
 					await this.openFileWithSmartLocate(file, text);
 				} else {
@@ -213,7 +216,8 @@ export class ForeshadowingView extends CreativeView {
 					const shortText = c.text.length > 10 ? c.text.substring(0, 10) + '...' : c.text;
 					menu.addItem((item: MenuItem) => {
 						item.setTitle(`${target} (${shortText})`).onClick(async () => {
-							const file = this.app.metadataCache.getFirstLinkpathDest(target, '');
+							const sourcePath = this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '';
+							const file = this.app.metadataCache.getFirstLinkpathDest(target, sourcePath);
 							if (file) {
 								await this.openFileWithSmartLocate(file, c.text);
 							} else {
@@ -319,7 +323,8 @@ export class ForeshadowingView extends CreativeView {
 					if (index > 0) recoveryEl.createSpan({ text: '、' });
 					const recoveryLink = recoveryEl.createEl('a', { text: file, cls: 'foreshadowing-entry-recovery-link' });
 					recoveryLink.onclick = async () => {
-						const targetFile = this.app.metadataCache.getFirstLinkpathDest(file, '');
+						const sourcePath = this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '';
+						const targetFile = this.app.metadataCache.getFirstLinkpathDest(file, sourcePath);
 						if (targetFile) await this.app.workspace.getLeaf(false).openFile(targetFile);
 					};
 				});
@@ -328,7 +333,8 @@ export class ForeshadowingView extends CreativeView {
 			else if (entry.recoveryFile) {
 				const recoveryLink = recoveryEl.createEl('a', { text: entry.recoveryFile, cls: 'foreshadowing-entry-recovery-link' });
 				recoveryLink.onclick = async () => {
-					const file = this.app.metadataCache.getFirstLinkpathDest(entry.recoveryFile as string, '');
+					const sourcePath = this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '';
+					const file = this.app.metadataCache.getFirstLinkpathDest(entry.recoveryFile as string, sourcePath);
 					if (file) await this.app.workspace.getLeaf(false).openFile(file);
 				};
 			}

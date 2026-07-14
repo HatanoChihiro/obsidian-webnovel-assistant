@@ -24,7 +24,7 @@ import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { RelationGraphManager } from '../services/RelationGraphManager';
 import { ForceLayoutEngine } from '../services/ForceLayoutEngine';
 import type { GraphNode, GraphData, GraphEdge } from '../services/RelationGraphManager';
-import type { LayoutNode } from '../services/ForceLayoutEngine';
+import type { LayoutNode, LayoutEdge } from '../services/ForceLayoutEngine';
 import { t } from '../i18n';
 
 export interface EdgeRenderTask {
@@ -75,9 +75,14 @@ const DPR = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
 // ==========================================
 
 /** 视图状态：用于 Obsidian 的 getState/setState 持久化 */
-interface RelationGraphViewState {
+interface RelationGraphViewState extends Record<string, unknown> {
 	filePath: string;
 	bookPath: string;
+}
+
+export interface LayoutData {
+	nodes: LayoutNode[];
+	edges: LayoutEdge[];
 }
 
 // ==========================================
@@ -752,7 +757,7 @@ export class RelationGraphView extends ItemView {
 			priority -= dist / 1000; 
 
 			edgeTasks.push({
-				edge, src, tgt, drawMode, offset,
+				edge, src, tgt, drawMode: drawMode || 'default', offset,
 				isHighlighted, isDimmed, isMention, showLabel,
 				labelX, labelY, bgWidth, bgHeight,
 				priority, isOverlapped: false
@@ -1431,11 +1436,13 @@ export class RelationGraphView extends ItemView {
 				layoutNode.y = pos.y;
 				
 				// 轻微加热系统，使得被拖拽节点的邻居能够柔和地跟进
-				if (this.engine.isConverged) {
-					this.engine.reheat();
-					this.startAnimationLoop();
-				} else {
-					this.engine.reheat(); // 保持一定的温度让系统有足够的力响应拖拽
+				if (this.engine) {
+					if (this.engine.isConverged) {
+						this.engine.reheat();
+						this.startAnimationLoop();
+					} else {
+						this.engine.reheat(); // 保持一定的温度让系统有足够的力响应拖拽
+					}
 				}
 			}
 			
@@ -1609,7 +1616,7 @@ export class RelationGraphView extends ItemView {
 						layoutNode.x = pos.x;
 						layoutNode.y = pos.y;
 					}
-					this.engine.alpha = 0.5; // Reheat engine
+					this.engine.reheat(); // Reheat engine
 				}
 				this.render();
 				return;

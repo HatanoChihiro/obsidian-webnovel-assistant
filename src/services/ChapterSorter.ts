@@ -200,17 +200,11 @@ export class ChapterSorter {
 	 * 4. 无章节编号的文件保持原始顺序
 	 */
 	static compareFiles(a: TAbstractFile, b: TAbstractFile): number {
-		// 1. 文件夹优先
-		const aIsFolder = a instanceof TFolder;
-		const bIsFolder = b instanceof TFolder;
-		if (aIsFolder && !bIsFolder) return -1;
-		if (!aIsFolder && bIsFolder) return 1;
-		
-		// 2. 提取章节编号和规则索引
+		// 1. 提取章节编号和规则索引
 		const aChapter = ChapterSorter.extractChapterNumber(a.name);
 		const bChapter = ChapterSorter.extractChapterNumber(b.name);
 		
-		// 3. 都有章节编号：先按规则索引排序，再按编号排序
+		// 2. 都有章节编号：先按规则索引排序，再按编号排序
 		if (aChapter !== null && bChapter !== null) {
 			// 先按规则索引排序（规则顺序决定大块排序）
 			if (aChapter.ruleIndex !== bChapter.ruleIndex) {
@@ -220,16 +214,29 @@ export class ChapterSorter {
 			if (aChapter.number !== bChapter.number) {
 				return aChapter.number - bChapter.number;
 			}
-			// 编号相同，按文件名排序
+			
+			// 编号和规则都相同，此时再判定文件夹优先
+			const aIsFolder = a instanceof TFolder;
+			const bIsFolder = b instanceof TFolder;
+			if (aIsFolder && !bIsFolder) return -1;
+			if (!aIsFolder && bIsFolder) return 1;
+			
+			// 最后按文件名排序
 			return a.name.localeCompare(b.name, 'zh-CN', { numeric: true });
 		}
 		
-		// 4. 只有一个有章节编号：有编号的排在前面
+		// 3. 只有一个有章节编号：有编号的排在前面
 		if (aChapter !== null) return -1;
 		if (bChapter !== null) return 1;
 		
-		// 5. 都没有章节编号：保持原始顺序
-		return 0;
+		// 4. 都没有章节编号：此时判定文件夹优先
+		const aIsFolder = a instanceof TFolder;
+		const bIsFolder = b instanceof TFolder;
+		if (aIsFolder && !bIsFolder) return -1;
+		if (!aIsFolder && bIsFolder) return 1;
+		
+		// 5. 保持原始顺序
+		return a.name.localeCompare(b.name, 'zh-CN', { numeric: true });
 	}
 
 	/**

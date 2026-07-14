@@ -71,8 +71,8 @@ export class ForceLayoutEngine {
 				.distanceMax(600) // 超过此距离不再排斥，优化性能
 			)
 			// 主角引力：如果是主角，施加向画布中心的引力，使其成为视觉中心
-			.force('protagonistX', d3.forceX(width / 2).strength((d: LayoutNode) => d.isProtagonist ? 0.2 : 0))
-			.force('protagonistY', d3.forceY(height / 2).strength((d: LayoutNode) => d.isProtagonist ? 0.2 : 0))
+			.force('protagonistX', d3.forceX<LayoutNode>(width / 2).strength((d: LayoutNode) => d.isProtagonist ? 0.2 : 0))
+			.force('protagonistY', d3.forceY<LayoutNode>(height / 2).strength((d: LayoutNode) => d.isProtagonist ? 0.2 : 0))
 			// 中心引力：防止整体飘走
 			.force('center', d3.forceCenter(width / 2, height / 2).strength(0.05))
 			// 碰撞检测：增加到 30，防止节点过于靠近导致中心区域标签重叠
@@ -170,5 +170,10 @@ export class ForceLayoutEngine {
 		if (linkForce) {
 			linkForce.links(this.edges);
 		}
+	}
+
+	/** 获取当前系统的能量（alpha） */
+	public get alpha(): number {
+		return this.simulation.alpha();
 	}
 }

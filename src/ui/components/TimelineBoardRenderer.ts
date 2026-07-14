@@ -1,11 +1,38 @@
 import type { App } from 'obsidian';
-import { setIcon, TFile, Notice } from 'obsidian';
+import { setIcon, TFile, Notice, Modal } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../../types/plugin';
 import type { ParsedForeshadowingEntry } from '../../types/foreshadowing';
 import { TimelineManager } from '../../services/TimelineManager';
 import { CorkboardGridRenderer } from './CorkboardGridRenderer';
 import { TimelineAddModal } from '../TimelineAddModal';
 import { t } from '../../i18n';
+
+class ConfirmDeleteEventModal extends Modal {
+	constructor(app: App, private title: string, private onConfirm: () => void) {
+		super(app);
+	}
+
+	onOpen() {
+		const { contentEl } = this;
+		contentEl.empty();
+		contentEl.createDiv({ text: this.title, cls: 'modal-title' });
+
+		const btnContainer = contentEl.createDiv({ cls: 'wn-base-button-container' });
+		
+		const cancelBtn = btnContainer.createEl('button', { text: t('common.cancel') || '取消' });
+		cancelBtn.onclick = () => this.close();
+
+		const confirmBtn = btnContainer.createEl('button', { text: t('common.confirm') || '确定', cls: 'mod-warning' });
+		confirmBtn.onclick = () => {
+			this.onConfirm();
+			this.close();
+		};
+	}
+
+	onClose() {
+		this.contentEl.empty();
+	}
+}
 
 export interface TimelineBoardOptions {
 	app: App;
@@ -34,8 +61,8 @@ export class TimelineBoardRenderer {
 
 		// Find chapters mapped to each event -> itemIndex
 		const chapterToEventMap = new Map<string, { time: string, itemIndex: number }[]>();
-		
-		if(entries) {
+
+		if (entries) {
 			for (const entry of entries) {
 				if (entry.items && entry.items.length > 0) {
 					for (let i = 0; i < entry.items.length; i++) {
@@ -91,7 +118,7 @@ export class TimelineBoardRenderer {
 				}
 
 				// Small delay to allow Obsidian to process frontmatter before reloading
-				setTimeout(() => {
+				window.setTimeout(() => {
 					onSaveStateChange(false);
 					reloadBoard();
 				}, 200);
@@ -128,7 +155,7 @@ export class TimelineBoardRenderer {
 
 		for (const file of files) {
 			const eventsFromMD = chapterToEventMap.get(file.basename) || [];
-			
+
 			if (eventsFromMD.length === 1) {
 				const key = `${eventsFromMD[0].time}|${eventsFromMD[0].itemIndex}`;
 				if (!fileGroups.has(key)) fileGroups.set(key, []);
@@ -140,7 +167,7 @@ export class TimelineBoardRenderer {
 					if (!fileGroups.has(key)) fileGroups.set(key, []);
 					fileGroups.get(key)!.push(file);
 				} else {
-					const indices = [...new Set(eventsFromMD.map(e => e.itemIndex))].sort((a,b) => a-b);
+					const indices = [...new Set(eventsFromMD.map(e => e.itemIndex))].sort((a, b) => a - b);
 					if (indices.length > 1) {
 						const key = `GAP|${times[0]}|${indices[0]}|${indices[1]}`;
 						if (!fileGroups.has(key)) fileGroups.set(key, []);
@@ -170,17 +197,21 @@ export class TimelineBoardRenderer {
 		if (entries && entries.length > 0) {
 			for (let i = 0; i < entries.length; i++) {
 				const entry = entries[i];
-				
+
 				// 1. The main node container
 				const nodeDiv = mainCol.createDiv('wn-timeline-node');
-				nodeDiv.createDiv({ text: entry.time, cls: 'wn-timeline-node-title' });
-				
+				const titleDiv = nodeDiv.createDiv({ cls: 'wn-timeline-node-title' });
+				if (entry.type) {
+					titleDiv.createSpan({ text: entry.type, cls: 'wn-timeline-type-badge' });
+				}
+				titleDiv.createSpan({ text: entry.time });
+
 				// 2. Render each item row (sub-lane)
 				const items = entry.items && entry.items.length > 0 ? entry.items : [{ description: entry.description, chapter: entry.chapter }];
-				
+
 				for (let itemIdx = 0; itemIdx < items.length; itemIdx++) {
 					const itemRow = nodeDiv.createDiv('wn-timeline-item-row');
-					
+
 					// Description box
 					let descEl: HTMLElement;
 					if (itemIdx === 0 || items[itemIdx].description) {
@@ -188,7 +219,68 @@ export class TimelineBoardRenderer {
 					} else {
 						descEl = itemRow.createDiv({ text: '', cls: 'wn-timeline-item-desc' });
 					}
-					
+
+					// Delete button
+					const deleteBtn = itemRow.createDiv({ cls: 'wn-timeline-item-delete-btn' });
+					setIcon(deleteBtn, 'trash');
+					deleteBtn.onclick = (e) => {
+						e.stopPropagation();
+						new ConfirmDeleteEventModal(app, t('modal.confirm-delete-event') || '确认删除该事件吗？', () => {
+							void (async () => {
+								if (onSaveStateChange) onSaveStateChange(true);
+
+								// Determine which files to clean frontmatter for
+								const eventTimeToRemove = entry.time;
+								const filesToClean: TFile[] = [];
+								if (items.length <= 1) {
+									// Whole entry deleted
+									for (const file of files) {
+										const evts = chapterToEventMap.get(file.basename);
+										if (evts && evts.some(e => e.time === eventTimeToRemove)) {
+											filesToClean.push(file);
+										}
+									}
+								} else {
+									// Only itemIdx deleted
+									for (const file of files) {
+										const evts = chapterToEventMap.get(file.basename);
+										if (evts && evts.some(e => e.time === eventTimeToRemove && e.itemIndex === itemIdx)) {
+											filesToClean.push(file);
+										}
+									}
+								}
+
+								// Clean frontmatter
+								for (const file of filesToClean) {
+									await app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
+										if (fm['timeline']) {
+											if (Array.isArray(fm['timeline'])) {
+												const timelineArr = fm['timeline'] as string[];
+												fm['timeline'] = timelineArr.filter(t => t !== eventTimeToRemove);
+												if ((fm['timeline'] as string[]).length === 0) fm['timeline'] = null;
+											} else if (fm['timeline'] === eventTimeToRemove) {
+												fm['timeline'] = null;
+											}
+										}
+									});
+								}
+
+								const originalIndex = allEntries.indexOf(entry);
+								if (items.length <= 1) {
+									await timelineManager.deleteEntry(originalIndex);
+								} else {
+									items.splice(itemIdx, 1);
+									entry.items = items;
+									await timelineManager.updateEntry(originalIndex, entry);
+								}
+								if (onSaveStateChange) onSaveStateChange(false);
+								window.setTimeout(() => {
+									reloadBoard();
+								}, 200);
+							})();
+						}).open();
+					};
+
 					// Inline edit logic
 					descEl.onclick = (e: MouseEvent) => {
 						e.stopPropagation();
@@ -199,14 +291,14 @@ export class TimelineBoardRenderer {
 						textarea.value = currentDesc;
 						textarea.focus();
 						textarea.setSelectionRange(currentDesc.length, currentDesc.length);
-						
+
 						textarea.setCssProps({ height: 'auto' });
 						textarea.setCssProps({ height: textarea.scrollHeight + 'px' });
 						textarea.oninput = () => {
 							textarea.setCssProps({ height: 'auto' });
 							textarea.setCssProps({ height: textarea.scrollHeight + 'px' });
 						};
-						
+
 						const saveDesc = async () => {
 							const newVal = textarea.value.trim();
 							if (newVal !== currentDesc) {
@@ -222,24 +314,18 @@ export class TimelineBoardRenderer {
 							}
 							reloadBoard();
 						};
-						
+
 						textarea.onblur = saveDesc;
-						textarea.onkeydown = (evt) => {
-							if (evt.key === 'Enter' && !evt.shiftKey) {
-								evt.preventDefault();
-								textarea.blur();
-							}
-						};
 					};
-					
+
 					// Cards container
 					const cardsContainer = itemRow.createDiv('wn-timeline-cards-container');
 					setupDropzone(itemRow, [{ time: entry.time, itemIndex: itemIdx }]);
-					
+
 					const key = `${entry.time}|${itemIdx}`;
 					const filesInItem = fileGroups.get(key) || [];
 					CorkboardGridRenderer.render({
-						app, plugin, container: cardsContainer, files: filesInItem, foreshadowingMap, draggable: true, currentBookPath, onSaveStateChange
+						app, plugin, container: cardsContainer, files: filesInItem, foreshadowingMap, draggable: true, currentBookPath, onSaveStateChange, hideVolumeHeaders: true
 					});
 
 					// Render sub-gap (gap between events in the same time node)
@@ -248,23 +334,23 @@ export class TimelineBoardRenderer {
 						const subGapDiv = nodeDiv.createDiv('wn-timeline-gap wn-timeline-sub-gap');
 						const subCardsContainer = subGapDiv.createDiv('wn-timeline-cards-container');
 						setupDropzone(subGapDiv, [{ time: entry.time, itemIndex: itemIdx }, { time: entry.time, itemIndex: itemIdx + 1 }]);
-						
+
 						const filesInSubGap = fileGroups.get(subGapKey) || [];
 						CorkboardGridRenderer.render({
-							app, plugin, container: subCardsContainer, files: filesInSubGap, foreshadowingMap, draggable: true, currentBookPath, onSaveStateChange
+							app, plugin, container: subCardsContainer, files: filesInSubGap, foreshadowingMap, draggable: true, currentBookPath, onSaveStateChange, hideVolumeHeaders: true
 						});
 					}
 				}
-				
+
 				// ⊕ Add sub-event button
 				const addSubEventRow = nodeDiv.createDiv('wn-timeline-add-sub-event-row');
-				const addSubEventBtn = addSubEventRow.createEl('button', { text: t('corkboard.new-timeline-event') || '新增事件', cls: 'wn-timeline-add-sub-event-btn' });
+				const addSubEventBtn = addSubEventRow.createEl('button', { text: t('corkboard.new-timeline-event') || '+ 添加事件', cls: 'wn-timeline-add-sub-event-btn' });
 				addSubEventBtn.onclick = () => {
 					addSubEventRow.hide();
 					const itemRow = nodeDiv.insertBefore(createDiv('wn-timeline-item-row'), addSubEventRow);
 					const descEl = itemRow.createDiv({ text: '', cls: 'wn-timeline-item-desc' });
 					itemRow.createDiv('wn-timeline-cards-container');
-					
+
 					const textarea = descEl.createEl('textarea', { cls: 'wn-corkboard-textarea' });
 					textarea.focus();
 					textarea.onblur = async () => {
@@ -288,19 +374,19 @@ export class TimelineBoardRenderer {
 						}
 					};
 				};
-				
+
 				// 3. Render Gap to next event if exists
 				if (i < entries.length - 1) {
 					const nextEntry = entries[i + 1];
 					const gapKey = `GAP|${entry.time}|${nextEntry.time}`;
-					
+
 					const gapDiv = mainCol.createDiv('wn-timeline-gap');
 					const cardsContainer = gapDiv.createDiv('wn-timeline-cards-container');
 					setupDropzone(gapDiv, [{ time: entry.time, itemIndex: items.length - 1 }, { time: nextEntry.time, itemIndex: 0 }]);
-					
+
 					const filesInGap = fileGroups.get(gapKey) || [];
 					CorkboardGridRenderer.render({
-						app, plugin, container: cardsContainer, files: filesInGap, foreshadowingMap, draggable: true, currentBookPath, onSaveStateChange
+						app, plugin, container: cardsContainer, files: filesInGap, foreshadowingMap, draggable: true, currentBookPath, onSaveStateChange, hideVolumeHeaders: true
 					});
 				}
 			}
@@ -315,7 +401,7 @@ export class TimelineBoardRenderer {
 			});
 			emptyMsg.setText(t('corkboard.no-timeline') || '当前还没有时间线事件...');
 		}
-		
+
 		// Add Timeline Node Button
 		const addNodeRow = mainCol.createDiv('wn-timeline-add-node-row');
 		const addNodeBtn = addNodeRow.createDiv({ cls: 'wn-timeline-add-node-btn' });
@@ -336,26 +422,30 @@ export class TimelineBoardRenderer {
 				}
 			}
 			const localTypes = [...new Set((allEntries).map(e => e.type).filter(Boolean))];
-			
+
 			const modal = new TimelineAddModal(
 				app,
 				plugin,
 				'',
 				'',
 				currentBookPath === '/' ? '' : (currentBookPath || ''),
-				(entry) => { void (async () => {
-					try {
-						const existing = await app.vault.read(timelineFile);
-						const separator = existing.endsWith('\n') ? '' : '\n';
-						await app.vault.process(timelineFile, () => existing + separator + timelineManager.formatEntry(entry));
-						new Notice(t('notice.timeline-added'));
-						reloadBoard();
-					} catch (e) {
-						console.error('[TimelineBoardRenderer] 写入记录失败:', e);
-					}
-				})(); },
+				(entry) => {
+					void (async () => {
+						try {
+							const existing = await app.vault.read(timelineFile);
+							const separator = existing.endsWith('\n') ? '' : '\n';
+							await app.vault.process(timelineFile, () => existing + separator + timelineManager.formatEntry(entry));
+							new Notice(t('notice.timeline-added'));
+							reloadBoard();
+						} catch (e) {
+							console.error('[TimelineBoardRenderer] 写入记录失败:', e);
+						}
+					})();
+				},
 				true,
-				localTypes
+				localTypes,
+				undefined,
+				t('modal.new-event')
 			);
 			modal.open();
 		};

@@ -58,8 +58,11 @@ export class ChapterCard {
 		setIcon(editIcon, 'pencil');
 
 		titleEl.onclick = () => {
-			// 点击标题打开文件
-			void app.workspace.getLeaf(false).openFile(file);
+			// 点击标题打开文件，优先在已有的 markdown 视图打开，否则分屏打开
+			let targetLeaf = app.workspace.getLeavesOfType('markdown').find(l => (l.view as unknown as { file?: { path: string } }).file?.path === file.path);
+			if (!targetLeaf) targetLeaf = app.workspace.getLeavesOfType('markdown')[0];
+			if (!targetLeaf) targetLeaf = app.workspace.getLeaf('split', 'vertical');
+			void targetLeaf.openFile(file);
 		};
 
 		const startEdit = () => {

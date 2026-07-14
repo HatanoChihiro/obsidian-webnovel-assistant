@@ -2,6 +2,7 @@ import { Notice, TFile, type App, Modal } from 'obsidian';
 import { isDesktop } from '../utils/platform';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { copyDocumentContent } from '../utils/ui';
+import { VIEW_TYPES } from '../constants';
 import { ChapterSorter } from '../services/ChapterSorter';
 import { ForeshadowingInputModal, ConfirmCreateForeshadowingFileModal, ForeshadowingRecoveryModal } from '../ui/ForeshadowingModal';
 import { findBookRoot } from '../utils/path';
@@ -158,7 +159,7 @@ export class CommandManager {
 					this.plugin.historyManager.resetDailyStat(today);
 					void this.plugin.historyManager.saveHistory(true);
 					this.plugin.refreshStatusViews();
-					
+
 					// 如果开启了直播状态视图（悬浮窗），也要重置内存变量
 					this.plugin.focusMs = 0;
 					this.plugin.slackMs = 0;
@@ -196,85 +197,97 @@ export class CommandManager {
 
 	private registerChapterCommands() {
 		this.plugin.addCommand({
-				id: 'create-next-chapter',
-				name: t('command.create-next-chapter'),
-				editorCallback: async (editor, view) => {
-					const currentFile = view.file;
-					if (!currentFile) return;
+			id: 'create-next-chapter',
+			name: t('command.create-next-chapter'),
+			editorCallback: async (editor, view) => {
+				const currentFile = view.file;
+				if (!currentFile) return;
 
-					const folder = currentFile.parent;
-					const siblingNames = folder
-						? folder.children
-							.filter((f): f is TFile => f instanceof TFile && f.extension === 'md')
-							.map(f => f.basename)
-						: [];
+				const folder = currentFile.parent;
+				const siblingNames = folder
+					? folder.children
+						.filter((f): f is TFile => f instanceof TFile && f.extension === 'md')
+						.map(f => f.basename)
+					: [];
 
-					const newFileName = ChapterSorter.getNextChapterName(currentFile.basename, siblingNames);
-					if (!newFileName) {
-						new Notice(t('notice.chapter-number-unrecognized'));
-						return;
-					}
-
-					const newFilePath = folder && folder.path !== '/' ? `${folder.path}/${newFileName}` : newFileName;
-					const existingFile = this.plugin.app.vault.getAbstractFileByPath(newFilePath);
-					if (existingFile instanceof TFile) {
-
-						await this.plugin.app.workspace.getLeaf(false).openFile(existingFile);
-
-						return;
-
-					}
-					try {
-						const newFile = await this.plugin.app.vault.create(newFilePath, '');
-						await this.plugin.app.workspace.getLeaf(false).openFile(newFile);
-						new Notice(t('notice.chapter-created', { name: newFileName }));
-					} catch (error) {
-						console.error(error);
-						new Notice(t('notice.chapter-create-failed', { error: String(error) }));
-					}
+				const newFileName = ChapterSorter.getNextChapterName(currentFile.basename, siblingNames);
+				if (!newFileName) {
+					new Notice(t('notice.chapter-number-unrecognized'));
+					return;
 				}
-			});
-			
-			this.plugin.addCommand({
-				id: 'rebuild-folder-cache',
-				name: t('command.rebuild-folder-cache'),
-				callback: async () => {
-					if (!this.plugin.settings.showExplorerCounts) {
-						new Notice(t('notice.enable-explorer-counts-first'));
-						return;
-					}
-					
-					this.plugin.cacheManager.clearCache();
-					const notice = new Notice(t('notice.rebuilding-explorer-cache'), 0);
-					try {
-						await this.plugin.cacheManager.buildInitialCache(
-							this.plugin.app.vault,
-							this.plugin.calculateAccurateWords.bind(this.plugin),
-							this.plugin.isEligibleForWordCount.bind(this.plugin)
-						);
-						notice.hide();
-						this.plugin.refreshFolderCounts();
-						new Notice(t('notice.cache-rebuild-complete'));
-					} catch (error) {
-						notice.hide();
-						new Notice(t('notice.cache-rebuild-failed', { error: String(error) }));
-						console.error('[Plugin] 缓存重建失败:', error);
-					}
-				}
-			});
 
-			this.plugin.addCommand({
-				id: 'refresh-chapter-sort',
-				name: t('command.refresh-chapter-sort'),
-				callback: () => {
-					if (!this.plugin.settings.enableSmartChapterSort) {
-						new Notice(t('notice.enable-smart-sort-first'));
-						return;
-					}
-					this.plugin.fileExplorerPatcher.refreshManually();
-					new Notice(t('notice.chapter-sort-refreshed'));
+				const newFilePath = folder && folder.path !== '/' ? `${folder.path}/${newFileName}` : newFileName;
+				const existingFile = this.plugin.app.vault.getAbstractFileByPath(newFilePath);
+				if (existingFile instanceof TFile) {
+
+					await this.plugin.app.workspace.getLeaf(false).openFile(existingFile);
+
+					return;
+
 				}
-			});
+				try {
+					let templateContent = '';
+					if (this.plugin.settings.enableChapterTemplate && this.plugin.settings.chapterTemplatePath) {
+						try {
+							const file = this.plugin.app.vault.getAbstractFileByPath(this.plugin.settings.chapterTemplatePath);
+							if (file && 'extension' in file) {
+								templateContent = await this.plugin.app.vault.read(file as TFile);
+							}
+						} catch (e) {
+							console.error('无法读取模板文件:', e);
+						}
+					}
+
+					const newFile = await this.plugin.app.vault.create(newFilePath, templateContent);
+					await this.plugin.app.workspace.getLeaf(false).openFile(newFile);
+					new Notice(t('notice.chapter-created', { name: newFileName }));
+				} catch (error) {
+					console.error(error);
+					new Notice(t('notice.chapter-create-failed', { error: String(error) }));
+				}
+			}
+		});
+
+		this.plugin.addCommand({
+			id: 'rebuild-folder-cache',
+			name: t('command.rebuild-folder-cache'),
+			callback: async () => {
+				if (!this.plugin.settings.showExplorerCounts) {
+					new Notice(t('notice.enable-explorer-counts-first'));
+					return;
+				}
+
+				this.plugin.cacheManager.clearCache();
+				const notice = new Notice(t('notice.rebuilding-explorer-cache'), 0);
+				try {
+					await this.plugin.cacheManager.buildInitialCache(
+						this.plugin.app.vault,
+						this.plugin.calculateAccurateWords.bind(this.plugin),
+						this.plugin.isEligibleForWordCount.bind(this.plugin)
+					);
+					notice.hide();
+					this.plugin.refreshFolderCounts();
+					new Notice(t('notice.cache-rebuild-complete'));
+				} catch (error) {
+					notice.hide();
+					new Notice(t('notice.cache-rebuild-failed', { error: String(error) }));
+					console.error('[Plugin] 缓存重建失败:', error);
+				}
+			}
+		});
+
+		this.plugin.addCommand({
+			id: 'refresh-chapter-sort',
+			name: t('command.refresh-chapter-sort'),
+			callback: () => {
+				if (!this.plugin.settings.enableSmartChapterSort) {
+					new Notice(t('notice.enable-smart-sort-first'));
+					return;
+				}
+				this.plugin.fileExplorerPatcher.refreshManually();
+				new Notice(t('notice.chapter-sort-refreshed'));
+			}
+		});
 	}
 
 	private registerObsCommands() {
@@ -299,12 +312,12 @@ export class CommandManager {
 				const selectedText = editor.getSelection();
 				if (!selectedText || !selectedText.trim()) return false;
 				if (checking) return true;
-				
+
 				const file = view.file;
 				if (!file) return false;
-				
-					if (!this.plugin.foreshadowingManager) return false;
-					const fm = this.plugin.foreshadowingManager;
+
+				if (!this.plugin.foreshadowingManager) return false;
+				const fm = this.plugin.foreshadowingManager;
 				const submitCallback = (description: string, tags: string[]) => {
 					void (async () => {
 						try {
@@ -362,12 +375,12 @@ export class CommandManager {
 			editorCheckCallback: (checking, editor, view) => {
 				const file = view.file;
 				if (!file) return false;
-				
+
 				const foreshadowingFileName = (this.plugin.settings.foreshadowing?.fileName || getDefaultFileName('foreshadowingFileName')) + '.md';
 				if (file.name !== foreshadowingFileName) return false;
 				if (checking) return true;
-					if (!this.plugin.foreshadowingManager) return false;
-					const fm = this.plugin.foreshadowingManager;
+				if (!this.plugin.foreshadowingManager) return false;
+				const fm = this.plugin.foreshadowingManager;
 
 				const cursorLine = editor.getCursor().line;
 				const entry = fm.getEntryAtCursor(editor, cursorLine);
@@ -459,7 +472,7 @@ export class CommandManager {
 									new Notice(t('notice.timeline-added'));
 
 									// 刷新已打开的时间线视图
-									const leaves = this.plugin.app.workspace.getLeavesOfType('timeline-view');
+									const leaves = this.plugin.app.workspace.getLeavesOfType(VIEW_TYPES.TIMELINE);
 									if (leaves.length > 0) {
 										// 给文件写入一点时间后再刷新视图
 										await new Promise(resolve => window.setTimeout(resolve, 100));

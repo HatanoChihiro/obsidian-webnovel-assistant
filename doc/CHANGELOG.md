@@ -1,3 +1,24 @@
+## 🔧 v3.5.1
+
+- 统一了在不同位置下相同功能的描述文本，减少因描述不同而导致的理解门槛；统一了新增时间线节点的弹窗逻辑。
+- 优化了文档打开逻辑：工作区点击章节标题、设定看板点击设定、以及设定速查悬浮卡片点击标题，均默认在左右分屏的新窗口打开，方便对照编辑。
+- 设定面板和悬浮卡片点击设定跳转时，现在能够直接定位到设定文件中的对应标题位置了。
+- 优化了沉浸模式的章节列表：现在会锁定显示当前小说的根目录，不会再因为切换了外部参考文档而乱跳，同时支持树状展示目录内的所有文件夹（如“设定”等），方便直接作为参考打开。
+- 修改了部分CSS类名，避免和其他插件产生冲突，解决部分主题下样式会出现错误的问题。
+- 优化了写作工作台，自动区分分卷章节，事件卡片可在看板内删除，修改了样式，整体设计更精致现代。
+- 添加了章节模板功能，默认关闭，在设置中启用并指定模板后，新增章节与自动创建下一章功能均会自动按照模板生成。
+
+### English Changelog
+
+- Unified descriptive text for identical functions across different locations to reduce comprehension barriers; unified the logic for the "add timeline node" modal.
+- Optimized document opening logic: clicking chapter titles in the workbench, lore in the Lore Board, and titles in the Quick Lore floating card will now open in a split-pane by default for easier side-by-side editing.
+- Clicking on a lore entry in the lore panel or floating card now directly scrolls to the corresponding heading in the lore file.
+- Optimized the chapter list in Immersive Mode: it now locks to the root directory of the current novel, preventing jumping when switching to external reference documents. It also supports tree-view display for all folders (like "Lore") within the directory, making them easy to open as references.
+- Modified some CSS class names to avoid conflicts with other plugins, fixing styling issues in certain themes.
+- Optimized the Writing Workbench to automatically distinguish volume chapters, allow deleting event cards within the board, modify styles, and present a more refined and modern overall design.
+- Added Chapter Template feature (disabled by default). Once enabled and configured in settings, creating a new chapter or using the "Create Next Chapter" command will automatically generate content based on the template.
+
+
 ## 🚀 v3.5.0 写作工作台全新上线
 
 ### 新增写作工作台
@@ -300,10 +321,10 @@ This update brings full English language support!
 
 - 2行×2列网格布局：欢迎语+连载中 / 作品区 / 数据区（效率总览、热力图、趋势图）
 - 全宽填满编辑器可视区域，窄屏自动切换单列布局，适配手机与平板
-- 欢迎语随时间段变化，显示总字数与今日新增，右侧新建作品按钮
+- 欢迎语随时间段变化，显示总字数与今日新增，右侧新增作品按钮
 - 连载中显示榜单追踪进度（如开启），已完结/存稿中/已暂停卡片横向滚动
 - 支持将 `创作主页.md` 永远固定在文件列表的最顶端或最底端，避免新增作品时被自动排序冲走
-- **新建作品弹窗**: 填写名称、简介、类型、总字数目标，自动创建作品文件夹和信息文件
+- **新增作品弹窗**: 填写名称、简介、类型、总字数目标，自动创建作品文件夹和信息文件
 - 开启时在单本创作目录下新增“作品信息.md"，记录作品基本信息和数据
 
 ### ✨ 其他优化

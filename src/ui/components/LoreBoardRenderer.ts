@@ -115,12 +115,24 @@ export class LoreBoardRenderer {
 			const titleSpan = leftContainer.createSpan('wn-lore-board-group-title');
 			titleSpan.setText(loreName);
 			
-			// 点击可跳转到对应设定文件
+			// 点击可跳转到对应设定文件，优先在已有的 markdown 视图打开，否则分屏打开
 			titleSpan.onclick = () => {
 				if (currentBookPath !== null) {
 					const entry = plugin.characterManager.getCharacterFile(currentBookPath, loreName);
 					if (entry && entry.file) {
-						void app.workspace.getLeaf(false).openFile(entry.file);
+						let targetLeaf = app.workspace.getLeavesOfType('markdown').find(l => (l.view as unknown as { file?: { path: string } }).file?.path === entry.file.path);
+						if (!targetLeaf) targetLeaf = app.workspace.getLeavesOfType('markdown')[0];
+						if (!targetLeaf) targetLeaf = app.workspace.getLeaf('split', 'vertical');
+
+						void (async () => {
+							const cache = app.metadataCache.getFileCache(entry.file);
+							let targetLine = 0;
+							if (cache?.headings) {
+								const headingInfo = cache.headings.find(h => h.heading === entry.heading);
+								if (headingInfo) targetLine = headingInfo.position.start.line;
+							}
+							await targetLeaf.openFile(entry.file, { eState: { line: targetLine } });
+						})();
 					} else {
 						new Notice(t('corkboard.lore-not-found') || '找不到对应的设定文件');
 					}
@@ -153,7 +165,10 @@ export class LoreBoardRenderer {
 			for (const item of chapterList) {
 				const miniCard = cardsContainer.createDiv('wn-lore-board-mini-card');
 				miniCard.onclick = () => {
-					void app.workspace.getLeaf(false).openFile(item.chapter);
+					let targetLeaf = app.workspace.getLeavesOfType('markdown').find(l => (l.view as unknown as { file?: { path: string } }).file?.path === item.chapter.path);
+					if (!targetLeaf) targetLeaf = app.workspace.getLeavesOfType('markdown')[0];
+					if (!targetLeaf) targetLeaf = app.workspace.getLeaf('split', 'vertical');
+					void targetLeaf.openFile(item.chapter);
 				};
 				
 				miniCard.createDiv({ text: item.chapter.basename, cls: 'wn-lore-board-mini-card-title' });

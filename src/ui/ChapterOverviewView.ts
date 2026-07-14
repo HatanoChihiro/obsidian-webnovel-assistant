@@ -1,6 +1,6 @@
 import { TFile, type WorkspaceLeaf, ItemView, TFolder } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
-import type { ParsedForeshadowingEntry } from '../types/foreshadowing';
+import { ForeshadowingStatus, type ParsedForeshadowingEntry } from '../types/foreshadowing';
 import { ChapterSorter } from '../services/ChapterSorter';
 import { t } from '../i18n';
 import { getCurrentBookContext } from '../utils/path';
@@ -150,9 +150,9 @@ export class ChapterOverviewView extends ItemView {
             const entries = this.plugin.foreshadowingManager!.parseEntries(content);
             for (const entry of entries) {
                 let targets: string[] = [];
-                if (entry.status === 'pending' || entry.status === 'unresolved') {
+                if (entry.status === ForeshadowingStatus.Pending) {
                     if (entry.sourceFile) targets.push(entry.sourceFile);
-                } else if (entry.status === 'recovered') {
+                } else if (entry.status === ForeshadowingStatus.Recovered) {
                     targets = entry.recoveryFiles ? [...entry.recoveryFiles] : (entry.recoveryFile ? [entry.recoveryFile] : []);
                 }
                 for (const target of targets) {
@@ -180,7 +180,7 @@ export class ChapterOverviewView extends ItemView {
             });
         }
         
-        requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
             if (newGrid && scrollTop > 0) newGrid.scrollTop = scrollTop;
         });
     }

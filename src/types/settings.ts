@@ -262,10 +262,16 @@ export interface AccurateCountSettings {
 	loreGraphEnableGlobal: boolean;
 
 	/** 章节一览面板的排序模式 */
-	corkboardSortMode?: 'default' | 'timeline';
+	corkboardSortMode?: 'default' | 'timeline' | 'lore';
 
 	/** 高级搜索：自动记忆的上一次搜索词 */
 	advancedSearchQuery: string;
+
+	/** 是否启用章节模板 */
+	enableChapterTemplate: boolean;
+
+	/** 默认章节模板路径 */
+	chapterTemplatePath: string;
 
 	/** 是否开启调试模式（在控制台输出详细日志） */
 	debugMode: boolean;

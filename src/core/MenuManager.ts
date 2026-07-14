@@ -4,6 +4,7 @@ import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { GoalModal } from '../ui/GoalModal';
 import { copyDocumentContent } from '../utils/ui';
 import { isDesktop } from '../utils/platform';
+import { VIEW_TYPES } from '../constants';
 import { ChapterSorter } from '../services/ChapterSorter';
 import { TimelineAddModal } from '../ui/TimelineAddModal';
 import type { TimelineEntry } from '../services/TimelineManager';
@@ -90,7 +91,7 @@ export class MenuManager {
 				});
 			}
 
-			// 新建作品
+			// 新增作品
 			menu.addItem((item) => {
 				item.setTitle(t('menu.create-novel')).setIcon('book-open').onClick(() => {
 					new NewNovelModal(this.plugin.app, this.plugin, (result) => {
@@ -125,15 +126,16 @@ export class MenuManager {
 		}));
 
 		this.plugin.registerEvent(this.plugin.app.workspace.on('editor-menu', (menu, editor, view) => {
-				if (editor.somethingSelected()) {
-					menu.addItem((item) => {
-						item.setTitle(t('menu.mark-as-foreshadowing')).setIcon('bookmark').onClick(() => {
-							this.plugin.app.commands.executeCommandById('web-novel-assistant:mark-as-foreshadowing');
-						});
+			if (editor.somethingSelected()) {
+				menu.addItem((item) => {
+					item.setTitle(t('menu.mark-as-foreshadowing')).setIcon('bookmark').onClick(() => {
+						this.plugin.app.commands.executeCommandById('web-novel-assistant:mark-as-foreshadowing');
 					});
+				});
 
-					menu.addItem((item) => {
-						item.setTitle(t('menu.add-to-timeline')).setIcon('calendar-clock').onClick(() => { (async () => {
+				menu.addItem((item) => {
+					item.setTitle(t('menu.add-to-timeline')).setIcon('calendar-clock').onClick(() => {
+						(async () => {
 							const selectedText = editor.getSelection();
 							if (!selectedText.trim()) {
 								new Notice(t('notice.select-text-first'));
@@ -168,85 +170,88 @@ export class MenuManager {
 										rawBlock: '',
 										origin: result.origin
 									}).then(async () => {
-									new Notice(t('notice.timeline-added'));
+										new Notice(t('notice.timeline-added'));
 
-									// 刷新时间线视图
-									const leaves = this.plugin.app.workspace.getLeavesOfType('timeline-view');
-									if (leaves.length > 0) {
-										await new Promise(resolve => window.setTimeout(resolve, 100)); // 给文件写入一点时间
-										const refreshPromise = leaves[0].view.refresh?.();
-										if (refreshPromise instanceof Promise) {
-											await refreshPromise;
+										// 刷新已打开的时间线视图
+										const leaves = this.plugin.app.workspace.getLeavesOfType(VIEW_TYPES.TIMELINE);
+										if (leaves.length > 0) {
+											await new Promise(resolve => window.setTimeout(resolve, 100)); // 给文件写入一点时间
+											const refreshPromise = leaves[0].view.refresh?.();
+											if (refreshPromise instanceof Promise) {
+												await refreshPromise;
+											}
 										}
-									}
-								}).catch(console.error);
-							},
+									}).catch(console.error);
+								},
 								false, localTypes, selectedText.trim()).open();
-						})().catch(console.error);});
+						})().catch(console.error);
 					});
+				});
 
-					if (isDesktop()) {
-						menu.addItem((item) => {
-							item.setTitle(t('menu.extract-sticky-note')).setIcon('quote').onClick(() => {
-								this.plugin.createStickyNote({ content: editor.getSelection(), title: t('notice.selected-segment') }).catch(console.error);
-							});
+				if (isDesktop()) {
+					menu.addItem((item) => {
+						item.setTitle(t('menu.extract-sticky-note')).setIcon('quote').onClick(() => {
+							this.plugin.createStickyNote({ content: editor.getSelection(), title: t('notice.selected-segment') }).catch(console.error);
 						});
-					}
+					});
 				}
+			}
 
-				if (view.file) {
-					menu.addItem((item) => {
-						item.setTitle(t('menu.set-chapter-goal')).setIcon('target').onClick(() => {
-							new GoalModal(this.plugin.app, view.file!).open();
-						});
+			if (view.file) {
+				menu.addItem((item) => {
+					item.setTitle(t('menu.set-chapter-goal')).setIcon('target').onClick(() => {
+						new GoalModal(this.plugin.app, view.file!).open();
 					});
+				});
 
-					// 复制本文档：全平台均显示，内容包含「标题 + 空行 + 正文」
-					menu.addItem((item) => {
-						item.setTitle(t('menu.copy-document')).setIcon("copy").onClick(() => { (async () => {
+				// 复制本文档：全平台均显示，内容包含「标题 + 空行 + 正文」
+				menu.addItem((item) => {
+					item.setTitle(t('menu.copy-document')).setIcon("copy").onClick(() => {
+						(async () => {
 							await copyDocumentContent(view.file!.basename, await this.plugin.app.vault.read(view.file!));
-						})().catch(console.error);});
+						})().catch(console.error);
 					});
+				});
 
-					if (isDesktop()) {
-						menu.addItem((item) => {
-							item.setTitle(t('menu.current-file-extract-note')).setIcon('popup-open').onClick(() => {
-								this.plugin.createStickyNote({ file: view.file! }).catch(console.error);
-							});
-						});
-					}
-
-					// 关系图谱：仅设定文件
-					const bookPath = this.plugin.characterManager.getBookPathForFile(view.file) || '';
-					const parentPath = view.file.parent?.path || '';
-					if (this.plugin.characterManager.isLorePath(bookPath, parentPath)) {
-						menu.addItem((item) => {
-							item.setTitle(t('menu.open-relation-graph')).setIcon('git-fork').onClick(() => {
-								void (async () => {
-									// 和官方一样，默认向右侧垂直分屏打开
-									const leaf = this.plugin.app.workspace.getLeaf('split', 'vertical');
-									await leaf.setViewState({
-										type: RELATION_GRAPH_VIEW_TYPE,
-										state: { filePath: view.file!.path }
-									});
-								})();
-							});
-						});
-					}
-
-					// 限时任务追踪
+				if (isDesktop()) {
 					menu.addItem((item) => {
-						item.setTitle(t('menu.start-task-tracking')).setIcon('trophy').onClick(() => {
-							this.openTaskModal(view.file!);
+						item.setTitle(t('menu.current-file-extract-note')).setIcon('popup-open').onClick(() => {
+							this.plugin.createStickyNote({ file: view.file! }).catch(console.error);
 						});
 					});
 				}
-			}));
+
+				// 关系图谱：仅设定文件
+				const bookPath = this.plugin.characterManager.getBookPathForFile(view.file) || '';
+				const parentPath = view.file.parent?.path || '';
+				if (this.plugin.characterManager.isLorePath(bookPath, parentPath)) {
+					menu.addItem((item) => {
+						item.setTitle(t('menu.open-relation-graph')).setIcon('git-fork').onClick(() => {
+							void (async () => {
+								// 和官方一样，默认向右侧垂直分屏打开
+								const leaf = this.plugin.app.workspace.getLeaf('split', 'vertical');
+								await leaf.setViewState({
+									type: RELATION_GRAPH_VIEW_TYPE,
+									state: { filePath: view.file!.path }
+								});
+							})();
+						});
+					});
+				}
+
+				// 限时任务追踪
+				menu.addItem((item) => {
+					item.setTitle(t('menu.start-task-tracking')).setIcon('trophy').onClick(() => {
+						this.openTaskModal(view.file!);
+					});
+				});
+			}
+		}));
 	}
 
 	private openTaskModal(file: TFile | TFolder) {
 		const folderPath = findBookRoot(this.plugin.app, this.plugin, file) || (file instanceof TFolder ? file.path : '');
-		
+
 		const manager = new TaskManager(this.plugin.app, this.plugin, folderPath);
 		const taskFile = manager.getTaskFile();
 
@@ -296,7 +301,7 @@ export class MenuManager {
 
 			const content = await this.plugin.app.vault.cachedRead(mdFile);
 			const stripped = this.stripFrontmatter(mdFile, content);
-			
+
 			const chapterHeading = inVolume ? '###' : '##';
 			mergedContent += `\n\n${chapterHeading} ${mdFile.basename}\n\n`;
 			mergedContent += stripped;

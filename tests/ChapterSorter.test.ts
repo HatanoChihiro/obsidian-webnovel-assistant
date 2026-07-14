@@ -76,16 +76,16 @@ describe('ChapterSorter', () => {
 	});
 
 	describe('compareFiles — 排序', () => {
-		it('文件夹优先于文件', () => {
-			const folder = new TFolder('卷一', '卷一');
-			const file = new TFile('第1章.md', '第1章.md');
+		it('无编号时，文件夹优先于文件', () => {
+			const folder = new (TFolder as any)('设定集', '设定集');
+			const file = new (TFile as any)('设定A.md', '设定A.md');
 			expect(ChapterSorter.compareFiles(folder, file)).toBeLessThan(0);
 		});
 
 		it('第1章 < 第2章 < 第10章', () => {
-			const ch1 = new TFile('第1章.md', '第1章.md');
-			const ch2 = new TFile('第2章.md', '第2章.md');
-			const ch10 = new TFile('第10章.md', '第10章.md');
+			const ch1 = new (TFile as any)('第1章.md', '第1章.md');
+			const ch2 = new (TFile as any)('第2章.md', '第2章.md');
+			const ch10 = new (TFile as any)('第10章.md', '第10章.md');
 
 			expect(ChapterSorter.compareFiles(ch1, ch2)).toBeLessThan(0);
 			expect(ChapterSorter.compareFiles(ch2, ch10)).toBeLessThan(0);
@@ -93,8 +93,8 @@ describe('ChapterSorter', () => {
 		});
 
 		it('有章节编号的排在无编号之前', () => {
-			const chapter = new TFile('第1章.md', '第1章.md');
-			const notes = new TFile('人物设定.md', '人物设定.md');
+			const chapter = new (TFile as any)('第1章.md', '第1章.md');
+			const notes = new (TFile as any)('人物设定.md', '人物设定.md');
 
 			expect(ChapterSorter.compareFiles(chapter, notes)).toBeLessThan(0);
 		});

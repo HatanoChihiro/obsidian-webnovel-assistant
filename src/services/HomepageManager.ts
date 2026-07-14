@@ -346,7 +346,7 @@ export class HomepageManager {
 			// 动态引入 HomepageRenderer 避免循环依赖
 import('./HomepageRenderer.js').then(async ({ HomepageRenderer }) => {
 					const renderer = new HomepageRenderer(this.app, this.plugin);
-					for (const el of containerEls) {
+					for (const el of Array.from(containerEls)) {
 						await renderer.renderHomepage(el as HTMLElement);
 					}
 }).catch(err => Logger.error('[HomepageManager] refreshHomepageViews failed:', err));

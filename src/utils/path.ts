@@ -110,7 +110,7 @@ export function findBookRoot(app: App, plugin: WebNovelAssistantPlugin, file: TF
  * 避免因点击侧边栏（activeLeaf 改变）导致状态被上一篇打开的文本文件覆盖
  */
 export function getCurrentBookContext(app: App, plugin: WebNovelAssistantPlugin): string | null {
-	const activeLeaf = app.workspace.activeLeaf;
+	const activeLeaf = app.workspace.getMostRecentLeaf();
 	
 	// 1. 优先检查当前活动 Leaf（放宽对 rootSplit 的限制，只要不是别的视图覆盖了上下文就行）
 	if (activeLeaf) {

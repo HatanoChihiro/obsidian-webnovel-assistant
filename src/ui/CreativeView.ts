@@ -35,7 +35,7 @@ export abstract class CreativeView extends ItemView {
 			this.app.workspace.on('active-leaf-change', () => { void this.onActiveFileChange(); })
 		);
 		this.registerEvent(
-			// @ts-expect-error custom event bypass
+			// custom event
 			this.app.workspace.on('webnovel-workbench-book-changed', (bookPath: string) => {
 				const folderStr = bookPath === '/' ? '/' : bookPath;
 				if (folderStr && folderStr !== this.currentFolder) {

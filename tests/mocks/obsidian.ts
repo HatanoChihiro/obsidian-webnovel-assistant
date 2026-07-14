@@ -38,3 +38,5 @@ export class TAbstractFile {
 export class Platform {
 	static isMobile = false;
 }
+
+export class Component {}

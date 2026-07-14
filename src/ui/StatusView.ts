@@ -3,7 +3,7 @@ import { ItemView, TFile, MarkdownView, Notice } from 'obsidian';
 import { formatTime, formatCount, isMobile } from '../utils';
 import { HistoryStatsModal, calcStreak, calcFocusRate, calcActiveHours, calcDailyAverage } from './HistoryModal';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
-import type { ParsedForeshadowingEntry } from '../types/foreshadowing';
+import { ForeshadowingStatus, type ParsedForeshadowingEntry } from '../types/foreshadowing';
 import { getCurrentBookContext } from '../utils/path';
 import { TaskManager } from '../services/TaskManager';
 import { t } from '../i18n';
@@ -429,16 +429,16 @@ export class WritingStatusView extends ItemView {
 			const cleanBase = file.basename.toLowerCase().replace(/\s+/g, '');
 			for (const entry of entries) {
 				let targets: string[] = [];
-				if (entry.status === 'pending' || entry.status === 'unresolved') {
+				if (entry.status === ForeshadowingStatus.Pending) {
 					if (entry.sourceFile) targets.push(entry.sourceFile);
-				} else if (entry.status === 'recovered') {
+				} else if (entry.status === ForeshadowingStatus.Recovered) {
 					targets = entry.recoveryFiles ? [...entry.recoveryFiles] : (entry.recoveryFile ? [entry.recoveryFile] : []);
 				}
 				for (const target of targets) {
 					if (!target) continue;
 					const cleanTarget = target.toLowerCase().replace(/\s+/g, '');
 					if (cleanBase.includes(cleanTarget) || cleanTarget.includes(cleanBase)) {
-						if (entry.status === 'recovered') {
+						if (entry.status === ForeshadowingStatus.Recovered) {
 							recoveredEntries.push(entry);
 						} else {
 							pendingEntries.push(entry);

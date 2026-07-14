@@ -33,6 +33,11 @@ Full bilingual UI (Chinese & English) — homepage, word count, goal tracking, f
 
 <img width="100%" alt="homepage" src="assets/homepage.gif" />
 
+### 🗂️ Writing Workbench
+<sub>All Chapters Panel · Timeline Board · Lore Board</sub>
+
+<img width="100%" alt="workbench" src="assets/workbench.gif" />
+
 ### 🌑 Immersive Writing Mode
 <sub>Full-screen Focus · Dynamic Dashboard · Slot-based Layout</sub>
 
@@ -208,6 +213,11 @@ If this plugin helps with your writing, consider buying the author a coffee ☕.
 
 <img width="100%" alt="homepage" src="assets/homepage.gif" />
 
+### 🗂️ 写作工作台
+<sub>全章节面板 · 时间轴看板 · 设定看板</sub>
+
+<img width="100%" alt="workbench" src="assets/workbench.gif" />
+
 ### 🌑 沉浸写作模式
 <sub>全屏专注 · 动态仪表盘 · 插槽化布局</sub>
 
@@ -330,6 +340,10 @@ If this plugin helps with your writing, consider buying the author a coffee ☕.
 [MIT License](LICENSE)
 
 ⭐ Star · 🐛 [提交问题](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/issues) · 💡 [功能建议](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/discussions)
+
+<br />
+
+**反馈和交流群：964265407**
 
 <br />
 

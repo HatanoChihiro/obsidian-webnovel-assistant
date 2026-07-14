@@ -23,21 +23,21 @@ export class TimelineFormComponent {
 
 	render(): HTMLElement {
 		const { container, app, plugin, folderPath, initialEntry, typeOptions, onCancel, onSubmit, submitText, title } = this.options;
-		const form = container.createDiv({ cls: 'timeline-edit-form timeline-add-form' });
+		const form = container.createDiv({ cls: 'wn-timeline-edit-form timeline-add-form' });
 
 		if (title) {
-			form.createEl('div', { text: title, cls: 'timeline-form-title' });
+			form.createEl('div', { text: title, cls: 'wn-timeline-form-title' });
 		}
 
 		// 时间点
-		form.createEl('label', { text: t('modal.time-point'), cls: 'timeline-form-label' });
-		const timeInput = form.createEl('input', { type: 'text', cls: 'timeline-form-input' });
+		form.createEl('label', { text: t('modal.time-point'), cls: 'wn-timeline-form-label' });
+		const timeInput = form.createEl('input', { type: 'text', cls: 'wn-timeline-form-input' });
 		timeInput.placeholder = t('modal.time-point-desc');
 		if (initialEntry?.time) timeInput.value = initialEntry.time;
 
 		// 事件列表标题
-		form.createEl('label', { text: t('modal.event-list') || t('modal.event-description'), cls: 'timeline-form-label' });
-		form.createDiv({ cls: 'timeline-form-hint', text: t('modal.event-list-hint') || '' });
+		form.createEl('label', { text: t('modal.event-list') || t('modal.event-description'), cls: 'wn-timeline-form-label' });
+		form.createDiv({ cls: 'wn-timeline-form-hint', text: t('modal.event-list-hint') || '' });
 
 		// 事件列表容器
 		const eventsContainer = form.createDiv();
@@ -50,18 +50,18 @@ export class TimelineFormComponent {
 			: [{ description: initialEntry?.description || '', chapter: initialEntry?.chapter || '' }];
 
 		const createEventBlock = (item: { description: string; chapter: string } = { description: '', chapter: '' }) => {
-			const eventBlock = eventsContainer.createDiv({ cls: 'timeline-event-block' });
+			const eventBlock = eventsContainer.createDiv({ cls: 'wn-timeline-event-block' });
 			eventBlock.addClass('webnovel-modal-event-block');
 			
 			// 事件描述
-			eventBlock.createEl('label', { text: t('modal.event-desc-label') || t('modal.event-description'), cls: 'timeline-form-label' });
-			const descInput = eventBlock.createEl('textarea', { cls: 'timeline-form-textarea' });
+			eventBlock.createEl('label', { text: t('modal.event-desc-label') || t('modal.event-description'), cls: 'wn-timeline-form-label' });
+			const descInput = eventBlock.createEl('textarea', { cls: 'wn-timeline-form-textarea' });
 			descInput.value = item.description;
 			descInput.placeholder = t('modal.event-desc-placeholder') || t('modal.describe-event-placeholder');
 			descInput.addClass('webnovel-tl-desc-input-edit');
 			
 			// 关联章节
-			eventBlock.createEl('label', { text: t('modal.related-chapters-optional') || t('modal.related-chapters'), cls: 'timeline-form-label' });
+			eventBlock.createEl('label', { text: t('modal.related-chapters-optional') || t('modal.related-chapters'), cls: 'wn-timeline-form-label' });
 			const chapterListContainer = eventBlock.createDiv();
 			chapterListContainer.setCssProps({ marginBottom: '8px' });
 			
@@ -70,7 +70,7 @@ export class TimelineFormComponent {
 			const createChapterRow = (initialValue: string = '') => {
 				const row = chapterListContainer.createDiv();
 				row.addClass('webnovel-tl-chapter-row-sm');
-				const select = row.createEl('select', { cls: 'timeline-form-input' });
+				const select = row.createEl('select', { cls: 'wn-timeline-form-input' });
 				select.setCssProps({ flex: '1' });
 				select.createEl('option', { value: '', text: t('modal.select-chapter') });
 				chapterFiles.forEach(file => {
@@ -104,7 +104,7 @@ export class TimelineFormComponent {
 			deleteEventBtn.addClass('webnovel-tl-delete-event-btn');
 			deleteEventBtn.onclick = () => {
 				eventBlock.remove();
-				if (eventsContainer.querySelectorAll('.timeline-event-block').length === 0) {
+				if (eventsContainer.querySelectorAll('.webnovel-modal-event-block').length === 0) {
 					createEventBlock();
 				}
 			};
@@ -122,8 +122,8 @@ export class TimelineFormComponent {
 		};
 
 		// 类型
-		form.createEl('label', { text: t('modal.type-optional'), cls: 'timeline-form-label' });
-		const typeSelect = form.createEl('select', { cls: 'timeline-form-input' });
+		form.createEl('label', { text: t('modal.type-optional'), cls: 'wn-timeline-form-label' });
+		const typeSelect = form.createEl('select', { cls: 'wn-timeline-form-input' });
 		typeSelect.createEl('option', { value: '', text: t('modal.select-type') });
 		
 		const globalTypes = plugin.settings.timeline?.defaultTypes || ['主线', '支线', '伏笔', '世界观', '人物'];
@@ -135,7 +135,7 @@ export class TimelineFormComponent {
 		
 		typeSelect.createEl('option', { value: '__custom__', text: t('modal.custom-type') });
 		
-		const customInput = form.createEl('input', { type: 'text', cls: 'timeline-form-input' });
+		const customInput = form.createEl('input', { type: 'text', cls: 'wn-timeline-form-input' });
 		customInput.placeholder = t('modal.custom-type-placeholder');
 		customInput.addClass('webnovel-tl-custom-hidden');
 		
@@ -157,14 +157,14 @@ export class TimelineFormComponent {
 		});
 
 		// 按钮
-		const btnRow = form.createDiv({ cls: 'timeline-form-btns' });
-		const cancelBtn = btnRow.createEl('button', { text: t('common.cancel'), cls: 'timeline-action-btn' });
+		const btnRow = form.createDiv({ cls: 'wn-timeline-form-btns' });
+		const cancelBtn = btnRow.createEl('button', { text: t('common.cancel'), cls: 'wn-timeline-action-btn' });
 		cancelBtn.onclick = () => {
 			form.remove();
 			onCancel();
 		};
 
-		const saveBtn = btnRow.createEl('button', { text: submitText || t('common.add'), cls: 'timeline-action-btn mod-cta' });
+		const saveBtn = btnRow.createEl('button', { text: submitText || t('common.add'), cls: 'wn-timeline-action-btn mod-cta' });
 		saveBtn.onclick = () => {
 			const time = timeInput.value.trim();
 			if (!time) {
@@ -174,7 +174,7 @@ export class TimelineFormComponent {
 			}
 			
 			const items: { description: string; chapter: string }[] = [];
-			const eventBlocks = eventsContainer.querySelectorAll('.timeline-event-block');
+			const eventBlocks = eventsContainer.querySelectorAll('.webnovel-modal-event-block');
 			
 			eventBlocks.forEach((block) => {
 				const htmlBlock = block as HTMLElement;

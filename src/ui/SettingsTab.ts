@@ -140,7 +140,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			.addText(text => {
 				const oldName = this.plugin.settings.novelInfo?.fileName || getDefaultFileName('novelInfoFileName');
 				text.setPlaceholder(getDefaultFileName('novelInfoFileName'))
-				.setValue(oldName);
+					.setValue(oldName);
 				let tempValue = oldName;
 				text.onChange((value) => { tempValue = value.trim().replace(/.md$/i, ''); });
 
@@ -271,19 +271,19 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						const oldFolders = this.plugin.settings.workspaceFolders || [];
 						const oldFirst = oldFolders.length > 0 ? oldFolders[0].replace(/^\/+|\/+$/g, '') : '';
-						
+
 						// 记录在改变 workspaceFolders 之前的旧主页路径
 						const currentPath = this.plugin.homepageManager?.getHomepageFilePath();
 
 						this.plugin.settings.workspaceFolders = value.trim() ? value.split(',').map(f => f.trim()).filter(Boolean) : [];
 						const newFolders = this.plugin.settings.workspaceFolders;
 						const newFirst = newFolders.length > 0 ? newFolders[0].replace(/^\/+|\/+$/g, '') : '';
-						
+
 						if (oldFirst !== newFirst) {
 							if (currentPath) {
 								const basename = currentPath.split('/').pop() || `${t('common.default-homepage-name')}.md`;
 								const expectedOldPath = oldFirst ? `${oldFirst}/${basename}` : basename;
-								
+
 								// 如果当前主页在原工作区根目录下，自动跟随移动到新工作区
 								if (currentPath === expectedOldPath) {
 									const newPath = newFirst ? `${newFirst}/${basename}` : basename;
@@ -332,6 +332,32 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				});
 		}
 
+
+		new Setting(containerEl)
+			.setName(t('setting.chapter-template'))
+			.setDesc(t('setting.chapter-template-desc'))
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.enableChapterTemplate)
+				.onChange(async (value) => {
+					this.plugin.settings.enableChapterTemplate = value;
+					await this.plugin.saveSettings();
+					this.display();
+				}));
+
+		if (this.plugin.settings.enableChapterTemplate) {
+			new Setting(containerEl)
+				.setName(t('setting.chapter-template-path'))
+				.setDesc(t('setting.chapter-template-path-desc'))
+				.addText(text => {
+					text.setPlaceholder('templates/chapter.md')
+						.setValue(this.plugin.settings.chapterTemplatePath || '')
+						.onChange(async (value) => {
+							this.plugin.settings.chapterTemplatePath = value.trim();
+							await this.plugin.saveSettings();
+						});
+					text.inputEl.addClass('webnovel-settings-input-full');
+				});
+		}
 
 		new Setting(containerEl)
 			.setName(t('setting.smart-chapter-sort'))
@@ -549,7 +575,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			rulesContainer.empty();
 			this.plugin.settings.chapterNamingRules.forEach((rule, index) => {
 				const s = new Setting(rulesContainer);
-	s.settingEl.addClass('webnovel-settings-rule-item');
+				s.settingEl.addClass('webnovel-settings-rule-item');
 
 				s.infoEl.remove();
 
@@ -702,7 +728,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			'webnovel-corkboard': t('setting.layout-view-corkboard') || '章节一览',
 			'immersive-sticky-notes-view': t('setting.layout-view-sticky-notes'),
 			'foreshadowing-view': t('setting.layout-view-foreshadowing'),
-			'timeline-view': t('setting.layout-view-timeline'),
+			'wn-timeline-view': t('setting.layout-view-timeline'),
 			'reference-view': t('setting.layout-view-reference'),
 			'webnovel-workbench': t('setting.layout-view-workbench'),
 			'outline': t('setting.layout-view-outline')
@@ -717,7 +743,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		container.empty();
 		const immersive = this.plugin.settings.immersive;
 
-		const createSlotEditor = (parent: HTMLElement, title: string, key: 'immersiveTopSlots'|'immersiveBottomSlots'|'immersiveLeftSlots'|'immersiveRightSlots') => {
+		const createSlotEditor = (parent: HTMLElement, title: string, key: 'immersiveTopSlots' | 'immersiveBottomSlots' | 'immersiveLeftSlots' | 'immersiveRightSlots') => {
 			const wrapper = parent.createDiv('wn-slot-editor');
 			wrapper.createEl('strong', { text: title, cls: 'wn-slot-title' });
 
