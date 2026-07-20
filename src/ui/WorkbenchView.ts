@@ -311,7 +311,7 @@ export class WorkbenchView extends ItemView {
                 this.plugin.fileExplorerPatcher.refreshAllExplorers();
                 void this.reloadBoard();
             } catch (e) {
-                new Notice(t('workbench.rename-failed', { error: String(e) }) || ('重命名失败: ' + e));
+                new Notice(t('workbench.rename-failed', { error: String(e) }) || ('重命名失败: ' + String(e)));
             } finally {
                 window.setTimeout(() => { this.isSavingMetadata = false; }, 500);
             }
@@ -641,17 +641,17 @@ export class WorkbenchView extends ItemView {
         // 渲染顶部的多个 Toggle 切换按钮
         const toggleGroup = buffer.createDiv('wn-corkboard-toggle-group');
 
-        const btnDefault = toggleGroup.createEl('span', {
+        const btnDefault = toggleGroup.createSpan({
             text: t('corkboard.sort-default'),
             cls: `wn-corkboard-toggle-btn ${this.sortMode === 'default' ? 'active' : ''}`
         });
 
-        const btnTimeline = toggleGroup.createEl('span', {
+        const btnTimeline = toggleGroup.createSpan({
             text: t('corkboard.sort-timeline'),
             cls: `wn-corkboard-toggle-btn ${this.sortMode === 'timeline' ? 'active' : ''}`
         });
 
-        const btnLore = toggleGroup.createEl('span', {
+        const btnLore = toggleGroup.createSpan({
             text: t('corkboard.sort-lore'),
             cls: `wn-corkboard-toggle-btn ${this.sortMode === 'lore' ? 'active' : ''}`
         });

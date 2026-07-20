@@ -47,14 +47,14 @@ export class ForeshadowingInputModal extends Modal {
 
 		// 来源和内容预览
 		const infoEl = contentEl.createDiv({ cls: 'foreshadowing-info' });
-		infoEl.createEl('div', {
+		infoEl.createDiv({
 			text: t('modal.source-label', { name: this.sourceFileName }),
 			cls: 'foreshadowing-source'
 		});
 		const preview = this.selectedContent.length > 80
 			? this.selectedContent.slice(0, 80) + '…'
 			: this.selectedContent;
-		infoEl.createEl('div', {
+		infoEl.createDiv({
 			text: t('modal.content-label', { preview }),
 			cls: 'foreshadowing-preview'
 		});

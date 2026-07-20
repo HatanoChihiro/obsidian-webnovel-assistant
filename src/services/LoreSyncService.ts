@@ -1,5 +1,6 @@
 import type { TFile, MarkdownView } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
+import { ChapterSorter } from './ChapterSorter';
 
 export class LoreSyncService {
 	private plugin: WebNovelAssistantPlugin;
@@ -25,6 +26,8 @@ export class LoreSyncService {
 				// 排除设定文件本身，避免无限循环
 				const parentPath = file.parent?.path || '';
 				if (this.plugin.characterManager.isLorePath(bookPath, parentPath)) return;
+				
+				if (!ChapterSorter.isChapterFile(file.name) && !this.plugin.isFileInStrictChapterException(file)) return;
 
 				this.plugin.adaptiveDebounceManager.debounceFixed(`lore-sync-${file.path}`, () => {
 					void this.syncLoreForFile(file);
@@ -47,6 +50,8 @@ export class LoreSyncService {
 				
 				const parentPath = file.parent?.path || '';
 				if (this.plugin.characterManager.isLorePath(bookPath, parentPath)) return;
+
+				if (!ChapterSorter.isChapterFile(file.name) && !this.plugin.isFileInStrictChapterException(file)) return;
 
 				this.plugin.adaptiveDebounceManager.debounceFixed(`lore-sync-${file.path}`, () => {
 					void this.syncLoreForFile(file);

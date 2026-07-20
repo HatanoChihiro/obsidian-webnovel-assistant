@@ -109,7 +109,7 @@ export class LoreHoverPopover extends Component {
 	private async show() {
 		if (this.popoverEl) return;
 
-		this.popoverEl = activeDocument.createElement('div');
+		this.popoverEl = createDiv();
 		this.popoverEl.addClass('webnovel-lore-popover');
 		this.popoverEl.addClass('wn-lore-hover-popover');
 		this.popoverEl.addEventListener('mouseenter', this.onMouseEnterPopover);

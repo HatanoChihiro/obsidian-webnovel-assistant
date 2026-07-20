@@ -485,7 +485,7 @@ export class FileExplorerPatcher {
 						const titleContent = item.el.querySelector('.nav-folder-title-content') || item.el.querySelector('.nav-file-title-content');
 						const mountEl = titleContent?.parentElement;
 						if (mountEl) {
-							countEl = mountEl.createEl('span', { cls: 'wn-folder-word-count' });
+							countEl = mountEl.createSpan({ cls: 'wn-folder-word-count' });
 							countEl.addClass('webnovel-wn-folder-word-count-detail');
 						}
 					}

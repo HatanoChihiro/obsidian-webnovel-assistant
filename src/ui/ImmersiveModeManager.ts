@@ -368,7 +368,7 @@ export class ImmersiveModeManager {
 	private createTopBar(): void {
 		if (this.topBarEl) return;
 
-		this.topBarEl = activeDocument.createElement('div');
+		this.topBarEl = createDiv();
 		this.topBarEl.id = 'immersive-top-bar';
 		this.topBarEl.className = 'immersive-top-bar';
 

@@ -5,6 +5,7 @@ import { HistoryStatsModal, calcStreak, calcFocusRate, calcActiveHours, calcDail
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ForeshadowingStatus, type ParsedForeshadowingEntry } from '../types/foreshadowing';
 import { getCurrentBookContext } from '../utils/path';
+import { ChapterSorter } from '../services/ChapterSorter';
 import { TaskManager } from '../services/TaskManager';
 import { t } from '../i18n';
 
@@ -401,6 +402,11 @@ export class WritingStatusView extends ItemView {
 
 		const bookPath = this.plugin.characterManager.getBookPathForFile(file);
 		if (!bookPath || this.plugin.characterManager.isLorePath(bookPath, file.parent?.path || '')) {
+			this.chapterStatusCardEl.hide();
+			return;
+		}
+
+		if (!ChapterSorter.isChapterFile(file.name) && !this.plugin.isFileInStrictChapterException(file)) {
 			this.chapterStatusCardEl.hide();
 			return;
 		}

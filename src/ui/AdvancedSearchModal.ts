@@ -270,12 +270,12 @@ export class AdvancedSearchModal extends Modal {
 
 		if (!this.query.trim()) {
 			this.resultsContainer.empty();
-			this.resultsContainer.createEl('div', { text: t('modal.please-enter-keyword'), cls: 'advanced-search-empty' });
+			this.resultsContainer.createDiv({ text: t('modal.please-enter-keyword'), cls: 'advanced-search-empty' });
 			return;
 		}
 
 		this.resultsContainer.empty();
-		this.resultsContainer.createEl('div', { text: t('modal.searching'), cls: 'advanced-search-loading' });
+		this.resultsContainer.createDiv({ text: t('modal.searching'), cls: 'advanced-search-loading' });
 
 		// 1. 获取目标文件列表
 		const allMarkdownFiles = this.app.vault.getMarkdownFiles();
@@ -299,7 +299,7 @@ export class AdvancedSearchModal extends Modal {
 
 		if (targetFiles.length === 0) {
 			this.resultsContainer.empty();
-			this.resultsContainer.createEl('div', { text: t('modal.no-files-in-scope'), cls: 'advanced-search-empty' });
+			this.resultsContainer.createDiv({ text: t('modal.no-files-in-scope'), cls: 'advanced-search-empty' });
 			return;
 		}
 
@@ -346,11 +346,11 @@ export class AdvancedSearchModal extends Modal {
 		this.resultsContainer.empty();
 
 		if (results.length === 0) {
-			this.resultsContainer.createEl('div', { text: t('modal.no-results'), cls: 'advanced-search-empty' });
+			this.resultsContainer.createDiv({ text: t('modal.no-results'), cls: 'advanced-search-empty' });
 			return;
 		}
 
-		this.resultsContainer.createEl('div', {
+		this.resultsContainer.createDiv({
 			text: t('modal.found-matching-files', { count: results.length }),
 			cls: 'advanced-search-summary'
 		});
@@ -360,13 +360,13 @@ export class AdvancedSearchModal extends Modal {
 		for (const result of results) {
 			const fileItem = listEl.createDiv({ cls: 'advanced-search-file-item' });
 			
-			fileItem.createEl('div', { text: `${result.file.basename} (${t('modal.matches-count', { count: result.totalMatches })})`, cls: 'advanced-search-file-title' });
+			fileItem.createDiv({ text: `${result.file.basename} (${t('modal.matches-count', { count: result.totalMatches })})`, cls: 'advanced-search-file-title' });
 
 			for (const snippet of result.snippets) {
 				const matchEl = fileItem.createDiv({ cls: 'advanced-search-match-item' });
-				matchEl.createEl('span', { text: '...' + snippet.prefix });
-				matchEl.createEl('span', { text: snippet.highlight, cls: 'advanced-search-highlight' });
-				matchEl.createEl('span', { text: snippet.suffix + '...' });
+				matchEl.createSpan({ text: '...' + snippet.prefix });
+				matchEl.createSpan({ text: snippet.highlight, cls: 'advanced-search-highlight' });
+				matchEl.createSpan({ text: snippet.suffix + '...' });
 
 				// 点击跳转
 				matchEl.addEventListener('click', () => {

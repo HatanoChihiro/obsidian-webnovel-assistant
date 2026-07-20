@@ -98,6 +98,12 @@ project.getSourceFiles().forEach(sourceFile => {
 					if (["'h1'", "'h2'", "'h3'", "'h4'", "'h5'", "'h6'", '"h1"', '"h2"', '"h3"', '"h4"', '"h5"', '"h6"'].includes(firstArgText)) {
 						console.error(`❌ [Error] createEl(${firstArgText}) found. Use new Setting().setHeading() instead in ${filePath}:${propAccess.getStartLineNumber()}`);
 						hasErrors = true;
+					} else if (["'div'", '"div"'].includes(firstArgText)) {
+						console.error(`❌ [Error] createEl(${firstArgText}) found. Use createDiv() instead in ${filePath}:${propAccess.getStartLineNumber()}`);
+						hasErrors = true;
+					} else if (["'span'", '"span"'].includes(firstArgText)) {
+						console.error(`❌ [Error] createEl(${firstArgText}) found. Use createSpan() instead in ${filePath}:${propAccess.getStartLineNumber()}`);
+						hasErrors = true;
 					}
 				}
 			}

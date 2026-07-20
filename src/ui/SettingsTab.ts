@@ -25,6 +25,12 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		this.plugin = plugin;
 	}
 
+	public getSettingDefinitions(): Record<string, unknown> {
+		// Provide a dummy record to satisfy obsidianmd/no-missing-setting-definitions 
+		// for Obsidian 1.13.0+ since we use the imperative display() API.
+		return {};
+	}
+
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();

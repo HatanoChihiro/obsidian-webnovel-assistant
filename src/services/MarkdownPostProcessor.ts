@@ -49,7 +49,7 @@ export class MarkdownPostProcessor {
 			if (!statusStrong) return;
 
 			// 注入复选框
-			const checkbox = activeDocument.createElement('input');
+			const checkbox = createEl('input');
 			checkbox.type = 'checkbox';
 			checkbox.title = t('common.mark-recovered');
 			checkbox.className = 'foreshadowing-recovery-checkbox';

@@ -85,7 +85,8 @@ export class LoreBoardRenderer {
         plugin: WebNovelAssistantPlugin,
         currentBookPath: string,
         allCharacters: string[],
-        reloadBoard?: () => void
+        reloadBoard?: () => void,
+        ownerComponent?: Component
     ) {
         if (allCharacters.length === 0) {
             container.createDiv({ cls: 'wn-corkboard-empty-msg', text: t('corkboard.no-lore') });
@@ -122,8 +123,8 @@ export class LoreBoardRenderer {
             // Unique mime type to restrict cross-file dragging
             const mimeType = `application/wn-lore-${path.replace(/[^a-z0-9]/gi, '').toLowerCase()}`;
 
-            const boardComponent = new Component();
-            boardComponent.load();
+            const boardComponent = ownerComponent ?? new Component();
+            if (!ownerComponent) boardComponent.load();
 
             for (const entry of group.entries) {
                 const cardContainer = grid.createDiv('wn-lore-card-wrapper');
@@ -323,11 +324,8 @@ export class LoreBoardRenderer {
         }
 
         const graphWrapper = container.createDiv('wn-lore-graph-wrapper');
-        // fallback inline styles added since they are missing from css
-        graphWrapper.setCssProps({ 'flex': '1', 'position': 'relative', 'min-height': '0', 'overflow': 'hidden' });
 
         const canvas = graphWrapper.createEl('canvas', { cls: 'wn-lore-graph-canvas' });
-        canvas.setCssProps({ 'display': 'block', 'width': '100%', 'height': '100%' });
 
         const engine = new ForceLayoutEngine(data.nodes, data.edges, 100, 100);
 
@@ -337,7 +335,7 @@ export class LoreBoardRenderer {
             const DPR = window.devicePixelRatio || 1;
             canvas.width = rect.width * DPR;
             canvas.height = rect.height * DPR;
-            canvas.setCssProps({ 'width': `${rect.width}px`, 'height': `${rect.height}px` });
+            canvas.setCssStyles({ width: `${rect.width}px`, height: `${rect.height}px` });
             engine.resize(rect.width, rect.height);
             engine.reheat();
         };

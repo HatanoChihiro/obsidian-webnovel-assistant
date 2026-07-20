@@ -39,7 +39,7 @@ export const selectionCountTooltipExtension = (plugin: WebNovelAssistantPlugin):
 			above: true,       // 尝试显示在上方
 			strictSide: true,
 			create: () => {
-				const dom = activeDocument.createElement('div');
+				const dom = createDiv();
 				dom.className = 'cm-tooltip-selection-count';
 				dom.textContent = t('common.selection-count', { count: String(wordCount) });
 				return { dom };

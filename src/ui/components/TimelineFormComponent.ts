@@ -26,7 +26,7 @@ export class TimelineFormComponent {
 		const form = container.createDiv({ cls: 'wn-timeline-edit-form timeline-add-form' });
 
 		if (title) {
-			form.createEl('div', { text: title, cls: 'wn-timeline-form-title' });
+			form.createDiv({ text: title, cls: 'wn-timeline-form-title' });
 		}
 
 		// 时间点

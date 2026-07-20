@@ -1,3 +1,13 @@
+## 🔧 v3.5.5
+
+- 修复了非章节文档也会自动统计“设定”出场次数的BUG
+- 修复了部分代码会触发官方审查拦截的问题。
+
+### English Changelog
+
+- Fixed a bug where non-chapter documents would also automatically count the number of "Lore" appearances.
+- Fixed a bug where some code triggered official review interception.
+
 ## ✨ v3.5.4
 
 ### 工作台优化升级

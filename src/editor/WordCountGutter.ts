@@ -16,11 +16,11 @@ class WordCountMarker extends GutterMarker {
 	}
 
 	toDOM() {
-		const wrapper = activeDocument.createElement('div');
+		const wrapper = createDiv();
 		wrapper.className = 'webnovel-word-count-marker-wrapper';
 		wrapper.appendChild(activeDocument.createTextNode('​'));
 
-		const span = activeDocument.createElement('span');
+		const span = createSpan();
 		span.className = 'webnovel-word-count-marker';
 		span.textContent = this.count + t('gutter.word-count');
 

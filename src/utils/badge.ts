@@ -31,7 +31,7 @@ export function renderForeshadowingBadges(
 		f => f.status === ForeshadowingStatus.Pending
 	);
 	if (pendingForeshadowings.length > 0) {
-		const badge = container.createEl('span', {
+		const badge = container.createSpan({
 			cls: 'wn-badge wn-badge-foreshadowing',
 			text: `${t('corkboard.foreshadowing-unresolved')}×${pendingForeshadowings.length}`
 		});
@@ -44,7 +44,7 @@ export function renderForeshadowingBadges(
 			f => f.status === ForeshadowingStatus.Recovered && !isRecoveredIn(f, currentBasename)
 		);
 		if (resolvedOriginForeshadowings.length > 0) {
-			const badge = container.createEl('span', {
+			const badge = container.createSpan({
 				cls: 'wn-badge wn-badge-recovered',
 				text: `${t('corkboard.foreshadowing-recovered-origin')}×${resolvedOriginForeshadowings.length}`
 			});
@@ -58,7 +58,7 @@ export function renderForeshadowingBadges(
 		: cardForeshadowings.filter(f => f.status === ForeshadowingStatus.Recovered);
 
 	if (recoveredForeshadowings.length > 0) {
-		const badge = container.createEl('span', {
+		const badge = container.createSpan({
 			cls: 'wn-badge wn-badge-recovered',
 			text: `${t('corkboard.foreshadowing-recovered')}×${recoveredForeshadowings.length}`
 		});
@@ -114,7 +114,7 @@ export function renderLoreBadges(
 			? 'wn-badge wn-badge-lore wn-hoverable'
 			: 'wn-badge wn-badge-lore';
 
-		const badgeEl = container.createEl('span', { cls, text: loreName });
+		const badgeEl = container.createSpan({ cls, text: loreName });
 
 		if (!enableHover) continue;
 
@@ -132,7 +132,7 @@ export function renderLoreBadges(
 	}
 
 	if (maxDisplay && validLores.length > maxDisplay) {
-		container.createEl('span', {
+		container.createSpan({
 			cls: 'wn-badge wn-badge-lore wn-badge-more',
 			text: `+${validLores.length - maxDisplay}`
 		});

@@ -21,6 +21,7 @@ export class Logger {
 	/** 输出普通信息日志 (仅 Debug 模式) */
 	public static info(...args: unknown[]): void {
 		if (this.isDebug) {
+			// eslint-disable-next-line no-console -- Allowed in the wrapper
 			console.log(...args);
 		}
 	}
@@ -28,6 +29,7 @@ export class Logger {
 	/** 输出警告日志 (仅 Debug 模式) */
 	public static warn(...args: unknown[]): void {
 		if (this.isDebug) {
+			// eslint-disable-next-line no-console -- Allowed in the wrapper
 			console.warn(...args);
 		}
 	}
@@ -35,6 +37,7 @@ export class Logger {
 	/** 输出错误日志 (仅 Debug 模式) */
 	public static error(...args: unknown[]): void {
 		if (this.isDebug) {
+			// eslint-disable-next-line no-console -- Allowed in the wrapper
 			console.error(...args);
 		}
 	}
@@ -44,6 +47,7 @@ export class Logger {
 	 * 仅用于插件初始化失败等无法掩盖的崩溃
 	 */
 	public static fatal(...args: unknown[]): void {
+		// eslint-disable-next-line no-console -- Allowed in the wrapper
 		console.error('[WebNovel Assistant FATAL]', ...args);
 	}
 }

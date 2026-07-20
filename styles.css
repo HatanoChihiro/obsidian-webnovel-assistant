@@ -1623,6 +1623,19 @@ body .history-stats-modal .stats-chart-scroll-wrapper:hover::-webkit-scrollbar-t
 }
 
 /* ========== Leaderboard Tracking Panel ========== */
+.wn-lore-graph-wrapper {
+	flex: 1;
+	position: relative;
+	min-height: 0;
+	overflow: hidden;
+}
+
+.wn-lore-graph-canvas {
+	display: block;
+	width: 100%;
+	height: 100%;
+}
+
 
 /* Task View Container */
 .task-view-container {

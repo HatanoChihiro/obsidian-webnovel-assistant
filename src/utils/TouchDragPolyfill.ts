@@ -2,7 +2,7 @@ export class TouchDragPolyfill {
 	static register(container: HTMLElement) {
 		let styleSheet = activeDocument.getElementById('wn-touch-polyfill-style');
 		if (!styleSheet) {
-			styleSheet = activeDocument.createElement('style');
+			styleSheet = createEl('style');
 			styleSheet.id = 'wn-touch-polyfill-style';
 			styleSheet.textContent = `
 				body.is-mobile *[draggable="true"],
