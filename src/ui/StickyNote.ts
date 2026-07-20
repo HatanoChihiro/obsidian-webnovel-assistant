@@ -192,6 +192,7 @@ export class FloatingStickyNote extends Component {
 	lastSavedContent: string = ""; // 最后一次保存的内容
 	private resizeObserver: ResizeObserver | null = null; // ResizeObserver 实例
 	private resizeTimer: number | null = null;           // ResizeObserver 防抖计时器
+	private _isUnloaded: boolean = false;
 
 	constructor(app: App, plugin: WebNovelAssistantPlugin, options: { file?: TFile, content?: string, title?: string, state?: StickyNoteState }) {
 		super();
@@ -262,6 +263,7 @@ export class FloatingStickyNote extends Component {
 	}
 
 	onunload() {
+		this._isUnloaded = true;
 		// [L-P7] 确保在组件卸载时移除所有可能的全局拖拽监听器
 		this.cleanupDragging();
 		// 清理 ResizeObserver
@@ -303,6 +305,7 @@ export class FloatingStickyNote extends Component {
 					this.state.content = await this.app.vault.read(file);
 				}
 			}
+			if (this._isUnloaded) return;
 			
 			// 初始化最后保存的内容
 			this.lastSavedContent = this.state.content || "";
@@ -497,6 +500,7 @@ export class FloatingStickyNote extends Component {
 					const file = this.app.vault.getAbstractFileByPath(this.state.filePath);
 					if (file instanceof TFile) {
 						this.state.content = await this.app.vault.read(file);
+						if (this._isUnloaded) return;
 						this.lastSavedContent = this.state.content;
 						if (this.state.isEditing) this.textareaEl.value = this.state.content || '';
 						await this.renderContent();
@@ -521,6 +525,7 @@ export class FloatingStickyNote extends Component {
 					const file = this.app.vault.getAbstractFileByPath(this.state.filePath);
 					if (file instanceof TFile) {
 						this.state.content = await this.app.vault.read(file);
+						if (this._isUnloaded) return;
 					}
 				}
 				this.state.isEditing = true;

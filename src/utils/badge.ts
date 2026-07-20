@@ -9,6 +9,8 @@ import { ForeshadowingStatus, type ParsedForeshadowingEntry } from '../types/for
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { LoreHoverPopover } from '../ui/LoreHoverPopover';
 import { t } from '../i18n';
+import type { TooltipOptions } from 'obsidian';
+import { setTooltip } from 'obsidian';
 
 
 /**
@@ -19,8 +21,11 @@ import { t } from '../i18n';
  */
 export function renderForeshadowingBadges(
 	container: HTMLElement,
-	cardForeshadowings: ParsedForeshadowingEntry[]
+	cardForeshadowings: ParsedForeshadowingEntry[],
+	currentBasename?: string
 ): void {
+	const tooltipOptions: TooltipOptions = { classes: ['wn-tooltip-left'] };
+
 	// 待回收
 	const pendingForeshadowings = cardForeshadowings.filter(
 		f => f.status === ForeshadowingStatus.Pending
@@ -28,20 +33,52 @@ export function renderForeshadowingBadges(
 	if (pendingForeshadowings.length > 0) {
 		const badge = container.createEl('span', {
 			cls: 'wn-badge wn-badge-foreshadowing',
-			text: `${t('corkboard.foreshadowing-unresolved') || '待回收'}×${pendingForeshadowings.length}`
+			text: `${t('corkboard.foreshadowing-unresolved')}×${pendingForeshadowings.length}`
 		});
-		badge.title = pendingForeshadowings.map(f => f.description).join('\n');
+		setTooltip(badge, pendingForeshadowings.map(f => f.description).join('\n'), tooltipOptions);
 	}
 
-	// 本章回收
-	const recoveredForeshadowings = cardForeshadowings.filter(f => f.status === ForeshadowingStatus.Recovered);
+	// 已回收 (在其他章节回收的，本章只是提出或提及)
+	if (currentBasename) {
+		const resolvedOriginForeshadowings = cardForeshadowings.filter(
+			f => f.status === ForeshadowingStatus.Recovered && !isRecoveredIn(f, currentBasename)
+		);
+		if (resolvedOriginForeshadowings.length > 0) {
+			const badge = container.createEl('span', {
+				cls: 'wn-badge wn-badge-recovered',
+				text: `${t('corkboard.foreshadowing-recovered-origin')}×${resolvedOriginForeshadowings.length}`
+			});
+			setTooltip(badge, resolvedOriginForeshadowings.map(f => f.description).join('\n'), tooltipOptions);
+		}
+	}
+
+	// 本章回收 (在本章实际发生回收的)
+	const recoveredForeshadowings = currentBasename
+		? cardForeshadowings.filter(f => f.status === ForeshadowingStatus.Recovered && isRecoveredIn(f, currentBasename))
+		: cardForeshadowings.filter(f => f.status === ForeshadowingStatus.Recovered);
+
 	if (recoveredForeshadowings.length > 0) {
 		const badge = container.createEl('span', {
 			cls: 'wn-badge wn-badge-recovered',
-			text: `${t('corkboard.foreshadowing-recovered') || '本章回收'}×${recoveredForeshadowings.length}`
+			text: `${t('corkboard.foreshadowing-recovered')}×${recoveredForeshadowings.length}`
 		});
-		badge.title = recoveredForeshadowings.map(f => f.description).join('\n');
+		setTooltip(badge, recoveredForeshadowings.map(f => f.description).join('\n'), tooltipOptions);
 	}
+}
+
+function isMatch(target: string | undefined, basename: string): boolean {
+    if (!target) return false;
+    const targetBase = target.split('|')[0].trim();
+    const lastSlash = targetBase.lastIndexOf('/');
+    const cleanTarget = lastSlash !== -1 ? targetBase.substring(lastSlash + 1) : targetBase;
+    return cleanTarget.toLowerCase() === basename.toLowerCase();
+}
+
+function isRecoveredIn(f: ParsedForeshadowingEntry, basename: string): boolean {
+    if (!basename) return false;
+    if (f.recoveryFiles && f.recoveryFiles.some(r => isMatch(r, basename))) return true;
+    if (f.recoveryFile && isMatch(f.recoveryFile, basename)) return true;
+    return false;
 }
 
 /**
@@ -58,7 +95,8 @@ export function renderLoreBadges(
 	loreArray: unknown,
 	bookPath: string,
 	plugin: WebNovelAssistantPlugin,
-	enableHover: boolean
+	enableHover: boolean,
+	maxDisplay?: number
 ): void {
 	if (!Array.isArray(loreArray) || loreArray.length === 0) return;
 
@@ -67,7 +105,9 @@ export function renderLoreBadges(
 	);
 	if (validLores.length === 0) return;
 
-	for (let i = 0; i < validLores.length; i++) {
+	const limit = maxDisplay ? Math.min(validLores.length, maxDisplay) : validLores.length;
+
+	for (let i = 0; i < limit; i++) {
 		const loreName = validLores[i];
 		const realLoreName = loreName.split('×')[0];
 		const cls = enableHover
@@ -91,4 +131,10 @@ export function renderLoreBadges(
 		});
 	}
 
+	if (maxDisplay && validLores.length > maxDisplay) {
+		container.createEl('span', {
+			cls: 'wn-badge wn-badge-lore wn-badge-more',
+			text: `+${validLores.length - maxDisplay}`
+		});
+	}
 }

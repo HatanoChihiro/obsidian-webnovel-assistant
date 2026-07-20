@@ -27,12 +27,16 @@ declare module 'obsidian' {
         on(name: 'webnovel:word-count-gutter-settings-changed', callback: () => void): EventRef;
         on(name: 'webnovel:file-word-count-updated', callback: (file: TAbstractFile, delta: number) => void): EventRef;
         on(name: 'webnovel-workbench-book-changed', callback: (bookPath: string) => void): EventRef;
+        on(name: 'webnovel-workbench-lore-updated', callback: () => void): EventRef;
+        on(name: 'webnovel-lore-hover-rebuild', callback: () => void): EventRef;
         on(name: 'timeline-filter-changed', callback: (filter: string) => void): EventRef;
         
         trigger(name: 'webnovel:notes-changed'): void;
         trigger(name: 'webnovel:word-count-gutter-settings-changed'): void;
         trigger(name: 'webnovel:file-word-count-updated', file: TAbstractFile, delta: number): void;
         trigger(name: 'webnovel-workbench-book-changed', bookPath: string): void;
+        trigger(name: 'webnovel-workbench-lore-updated'): void;
+        trigger(name: 'webnovel-lore-hover-rebuild'): void;
         trigger(name: 'timeline-filter-changed', filter: string): void;
     }
 

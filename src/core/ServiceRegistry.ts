@@ -51,4 +51,29 @@ export class ServiceRegistry {
 	clear(): void {
 		this.services.clear();
 	}
+
+	/**
+	 * 统一销毁所有支持 cleanup/destroy 的服务
+	 */
+	destroyAll(): void {
+		for (const service of Array.from(this.services.values())) {
+			if (service && typeof service === 'object') {
+				const obj = service as Record<string, unknown>;
+				if (typeof obj.destroy === 'function') {
+					try {
+						(obj as { destroy: () => void }).destroy();
+					} catch (e) {
+						console.error('[ServiceRegistry] Error destroying service:', e);
+					}
+				} else if (typeof obj.cleanup === 'function') {
+					try {
+						(obj as { cleanup: () => void }).cleanup();
+					} catch (e) {
+						console.error('[ServiceRegistry] Error cleaning up service:', e);
+					}
+				}
+			}
+		}
+		this.clear();
+	}
 }

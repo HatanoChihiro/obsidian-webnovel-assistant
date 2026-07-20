@@ -20,6 +20,7 @@ export const FORESHADOWING_VIEW_TYPE = 'foreshadowing-view';
 export class ForeshadowingView extends CreativeView {
 	private filterStatus: 'all' | ForeshadowingStatus = 'all';
 	private filterTag: string = 'all';
+	private pendingRefreshTimer: number | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: WebNovelAssistantPlugin) {
 		super(leaf, plugin);
@@ -36,6 +37,13 @@ export class ForeshadowingView extends CreativeView {
 	protected async onFolderChange() {
 		this.filterTag = 'all';
 		await super.onFolderChange();
+	}
+
+	async onClose() {
+		if (this.pendingRefreshTimer !== null) {
+			window.clearTimeout(this.pendingRefreshTimer);
+			this.pendingRefreshTimer = null;
+		}
 	}
 
 	private getTagFilterOptions(entries: ParsedForeshadowingEntry[]): string[] {
@@ -150,7 +158,7 @@ export class ForeshadowingView extends CreativeView {
 			
 			if (c.source || c.time) {
 				const metaEl = quoteEl.createDiv({
-					text: `${c.source ? `[[${c.source}]]` : ''}${c.time ? ` · ${c.time}` : ''}`,
+					text: `${c.source ? `[[${c.source.split('/').pop() || c.source}]]` : ''}${c.time ? ` · ${c.time}` : ''}`,
 					cls: 'foreshadowing-entry-quote-meta'
 				});
 				metaEl.setCssProps({ cursor: 'pointer' });
@@ -256,7 +264,11 @@ export class ForeshadowingView extends CreativeView {
 									const fileList = recoveryFileNames.map(f => `[[${f}]]`).join('、');
 									new Notice(t('notice.foreshadowing-recovered', { links: fileList }));
 									// 文件修改会自动触发刷新，但在某些平台可能有延迟，添加备用刷新
-									window.setTimeout(() => void this.refresh(), 100);
+									if (this.pendingRefreshTimer) window.clearTimeout(this.pendingRefreshTimer);
+									this.pendingRefreshTimer = window.setTimeout(() => {
+										this.pendingRefreshTimer = null;
+										void this.refresh();
+									}, 100);
 								} else {
 									new Notice(t('common.mark-failed-check-file'));
 								}
@@ -282,7 +294,11 @@ export class ForeshadowingView extends CreativeView {
 						if (success) {
 							new Notice(t('common.deprecated-marked'));
 							// 文件修改会自动触发刷新，但在某些平台可能有延迟，添加备用刷新
-							window.setTimeout(() => void this.refresh(), 100);
+							if (this.pendingRefreshTimer) window.clearTimeout(this.pendingRefreshTimer);
+							this.pendingRefreshTimer = window.setTimeout(() => {
+								this.pendingRefreshTimer = null;
+								void this.refresh();
+							}, 100);
 						} else {
 							new Notice(t('common.operation-failed'));
 						}
@@ -306,7 +322,11 @@ export class ForeshadowingView extends CreativeView {
 				if (success) {
 					new Notice(t('common.restored-to-pending'));
 					// 文件修改会自动触发刷新，但在某些平台可能有延迟，添加备用刷新
-					window.setTimeout(() => void this.refresh(), 100);
+					if (this.pendingRefreshTimer) window.clearTimeout(this.pendingRefreshTimer);
+					this.pendingRefreshTimer = window.setTimeout(() => {
+						this.pendingRefreshTimer = null;
+						void this.refresh();
+					}, 100);
 				} else {
 					new Notice(t('common.operation-failed'));
 				}
@@ -322,7 +342,7 @@ export class ForeshadowingView extends CreativeView {
 			if (entry.recoveryFiles && entry.recoveryFiles.length > 0) {
 				entry.recoveryFiles.forEach((file, index) => {
 					if (index > 0) recoveryEl.createSpan({ text: '、' });
-					const recoveryLink = recoveryEl.createEl('a', { text: file, cls: 'foreshadowing-entry-recovery-link' });
+					const recoveryLink = recoveryEl.createEl('a', { text: file.split('/').pop() || file, cls: 'foreshadowing-entry-recovery-link' });
 					recoveryLink.onclick = async () => {
 						let targetFile: TFile | null = null;
 						if (this.currentFolder) {
@@ -345,10 +365,10 @@ export class ForeshadowingView extends CreativeView {
 			}
 			// 向后兼容：如果只有旧格式（单章节）
 			else if (entry.recoveryFile) {
-				const recoveryLink = recoveryEl.createEl('a', { text: entry.recoveryFile, cls: 'foreshadowing-entry-recovery-link' });
+				const recoveryFileStr = entry.recoveryFile;
+				const recoveryLink = recoveryEl.createEl('a', { text: recoveryFileStr.split('/').pop() || recoveryFileStr, cls: 'foreshadowing-entry-recovery-link' });
 				recoveryLink.onclick = async () => {
 					let targetFile: TFile | null = null;
-					const recoveryFileStr = entry.recoveryFile as string;
 					if (this.currentFolder) {
 						const chapters = ChapterSorter.getAllChapters(this.app, this.plugin, this.currentFolder);
 						targetFile = chapters.find((c: TFile) => c.basename === recoveryFileStr || c.name === recoveryFileStr || c.path === recoveryFileStr) || null;

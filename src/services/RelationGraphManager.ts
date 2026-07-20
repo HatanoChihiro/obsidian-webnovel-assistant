@@ -117,10 +117,12 @@ export class RelationGraphManager {
 	 * @param file 要解析的设定文件（必须位于设定文件夹内）
 	 * @returns 包含节点和有向边的图谱数据，若无有效数据则返回空图谱
 	 */
-	public async buildGraphData(file: TFile): Promise<GraphData> {
+	public async buildGraphData(file: TFile, options?: { enableGlobal?: boolean; autoLinkMentions?: boolean }): Promise<GraphData> {
 		let filesToParse: TFile[] = [file];
+		const enableGlobal = options?.enableGlobal ?? this.plugin.settings.loreGraphEnableGlobal;
+		const autoLinkMentions = options?.autoLinkMentions ?? this.plugin.settings.loreGraphAutoLinkMentions;
 
-		if (this.plugin.settings.loreGraphEnableGlobal) {
+		if (enableGlobal) {
 			const bookRoot = findBookRoot(this.app, this.plugin, file);
 			const loreFolderName = this.plugin.settings.loreFolderName || '设定';
 			const lorePath = bookRoot ? (bookRoot === '/' ? loreFolderName : `${bookRoot}/${loreFolderName}`) : '';
@@ -148,6 +150,7 @@ export class RelationGraphManager {
 
 		const allNodes: GraphNode[] = [];
 		const nodeIds = new Set<string>();
+		const fileDataCache = new Map<TFile, { fileCache: CachedMetadata; lines: string[] }>();
 
 		// 第一步：提取所有节点
 		for (const f of filesToParse) {
@@ -156,6 +159,7 @@ export class RelationGraphManager {
 
 			const content = await this.app.vault.cachedRead(f);
 			const lines = content.split('\n');
+			fileDataCache.set(f, { fileCache, lines });
 			const nodes = this.extractNodes(f, fileCache, lines);
 			
 			for (const node of nodes) {
@@ -176,23 +180,23 @@ export class RelationGraphManager {
 		const uniqueExplicitEdges = new Set<string>();
 
 		for (const f of filesToParse) {
-			const fileCache = this.app.metadataCache.getFileCache(f);
-			if (!fileCache?.headings) continue;
+			const data = fileDataCache.get(f);
+			if (!data) continue;
+			const { fileCache, lines } = data;
+			const headings = fileCache.headings;
+			if (!headings) continue;
 
-			const content = await this.app.vault.cachedRead(f);
-			const lines = content.split('\n');
-
-			for (let i = 0; i < fileCache.headings.length; i++) {
-				const heading = fileCache.headings[i];
+			for (let i = 0; i < headings.length; i++) {
+				const heading = headings[i];
 				if (heading.level !== 2) continue;
 
 				const characterName = this.cleanHeadingText(heading.heading);
 				if (!characterName || !nodeIds.has(characterName)) continue;
 
 				const sectionStart = heading.position.end.line + 1;
-				const sectionEnd = this.findNextHeadingLine(fileCache.headings, i, 2, lines.length);
+				const sectionEnd = this.findNextHeadingLine(headings, i, 2, lines.length);
 
-				const relationSection = this.findRelationSection(fileCache.headings, i, sectionStart, sectionEnd, lines);
+				const relationSection = this.findRelationSection(headings, i, sectionStart, sectionEnd, lines);
 
 				if (relationSection) {
 					const explicitEdges = this.parseExplicitRelations(
@@ -209,7 +213,7 @@ export class RelationGraphManager {
 					}
 				}
 
-				if (this.plugin.settings.loreGraphAutoLinkMentions) {
+				if (autoLinkMentions) {
 					const mentionEdges = this.scanMentions(
 						characterName, lines, sectionStart, sectionEnd, relationSection, nodeIds
 					);

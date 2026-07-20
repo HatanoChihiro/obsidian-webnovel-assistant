@@ -384,7 +384,9 @@ body .markdown-source-view.mod-cm6 .cm-editor.webnovel-show-gutter .cm-scroller 
 
 body .markdown-source-view.mod-cm6 .cm-editor.webnovel-show-gutter .cm-scroller .cm-gutters .webnovel-word-count-marker {
 
-	display: inline-block;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
 
 	font-size: 0.75em;
 
@@ -392,9 +394,9 @@ body .markdown-source-view.mod-cm6 .cm-editor.webnovel-show-gutter .cm-scroller 
 	background-color: color-mix(in srgb, var(--interactive-accent) 40%, var(--color-yellow, #F5A623) 60%);
 	border-radius: 4px;
 
-	padding: 2px 4px;
+	padding: 2px 6px;
 
-	line-height: 1;
+	line-height: 1.2;
 
 	font-family: var(--font-monospace);
 
@@ -1378,6 +1380,35 @@ body .history-stats-modal .stats-chart-scroll-wrapper:hover::-webkit-scrollbar-t
 	margin-top: 4px;
 }
 
+/* SVG Timeline Connection Lines */
+.wn-timeline-svg-path {
+	stroke: var(--text-muted);
+	stroke-width: 1.5;
+	stroke-dasharray: 4, 4;
+	opacity: 0.35;
+	transition: all 0.2s ease;
+}
+
+.wn-timeline-svg-path.is-hovered {
+	stroke: var(--interactive-accent);
+	stroke-width: 2;
+	stroke-dasharray: 4, 4;
+	opacity: 0.6;
+}
+
+.wn-timeline-svg-arrow, 
+.wn-timeline-svg-dot {
+	fill: var(--text-muted);
+	opacity: 0.35;
+	transition: all 0.2s ease;
+}
+
+.wn-timeline-svg-arrow.is-hovered, 
+.wn-timeline-svg-dot.is-hovered {
+	fill: var(--interactive-accent);
+	opacity: 0.6;
+}
+
 .wn-timeline-content {
 	flex: 1;
 	background: color-mix(in srgb, var(--interactive-accent) 4%, var(--background-secondary));
@@ -2200,23 +2231,16 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 /* Sticky Notes list */
 
 .immersive-sticky-dock {
-
+	flex: 1;
 	display: flex;
-
 	flex-direction: row;
-
-	gap: 15px;
-
-	overflow-x: auto;
-
-	overflow-y: hidden;
-
-	padding: 10px 5px;
-
-	height: 100%;
-
+	flex-wrap: nowrap;
+	gap: 10px;
+	padding: 10px 8px 8px 8px;
 	align-items: center;
-
+	overflow-x: auto;
+	overflow-y: hidden;
+	height: 100%;
 }
 
 .immersive-sticky-card {
@@ -3436,6 +3460,8 @@ body .workspace-leaf-content[data-type="webnovel-workbench"][data-type="webnovel
 }
 
 .wn-corkboard-card {
+	position: relative;
+	z-index: 2;
 	background-color: var(--background-secondary);
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 8px;
@@ -3453,8 +3479,8 @@ body .workspace-leaf-content[data-type="webnovel-workbench"][data-type="webnovel
 	font-weight: bold;
 	font-size: 0.9em;
 	color: color-mix(in srgb, var(--text-accent) 40%, var(--text-muted));
-	padding: 10px 0 5px 0;
-	margin-top: 10px;
+	padding: 4px 0 5px 0;
+	margin-top: 4px;
 	margin-left: 0;
 	border-bottom: 1px solid color-mix(in srgb, var(--text-accent) 15%, var(--background-modifier-border));
 }
@@ -4259,29 +4285,7 @@ body .my-sticky-content h1.inline-title {
 	display: none;
 }
 
-.immersive-sticky-dock {
-
-	flex: 1;
-
-	display: flex;
-
-	flex-wrap: nowrap;
-
-	gap: 10px;
-
-	padding: 8px;
-
-	padding-top: 10px;
-
-	align-items: center;
-
-	flex-direction: row;
-
-	overflow-x: auto;
-
-	overflow-y: hidden;
-
-}
+/* Removed duplicate .immersive-sticky-dock */
 
 .immersive-sticky-dock.immersive-vertical-layout.immersive-vertical-layout {
 
@@ -5011,75 +5015,83 @@ body .workspace-leaf-content[data-type="immersive-sticky-notes"][data-type="imme
 
 /* -- Exquisite Lore Hover Card -- */
 
-body .webnovel-lore-popover {
-
-	padding: 16px;
-
-	border-radius: 8px;
-
-	box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-
-	background: var(--background-primary);
-
-	border: 1px solid var(--background-modifier-border);
-
-	max-width: 400px;
-
-	max-height: 500px;
-
-	display: flex;
-
-	flex-direction: column;
-
-}
-
-.webnovel-lore-popover .wn-lore-card {
-
-	display: flex;
-
-	flex-direction: column;
-
-	height: 100%;
-
+.wn-lore-board-content {
 	flex: 1;
-
-	min-height: 0;
-
+	overflow-y: auto;
+	position: relative;
 }
 
-.webnovel-lore-popover .wn-lore-card-header {
-
+.wn-lore-board-toolbar {
 	display: flex;
-
-	align-items: baseline;
-
-	justify-content: space-between;
-
-	gap: 12px;
-
-	padding-bottom: 6px;
-
+	justify-content: flex-start;
+	padding: 8px 16px;
 	border-bottom: 1px solid var(--background-modifier-border);
-
-	margin-bottom: 10px;
-
+	margin-bottom: 16px;
 }
 
-.webnovel-lore-popover .wn-lore-card-title {
+.wn-lore-board-layout-switcher {
+	display: flex;
+	flex-direction: row;
+	gap: 8px;
+}
 
-	margin: 0;
+.wn-lore-board-switcher-btn {
+	padding: 6px 12px;
+	border-radius: 4px;
+	cursor: pointer;
+	color: var(--text-muted);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: transparent;
+	transition: all 0.2s ease;
+}
 
-	font-size: 1.2em;
-
-	font-weight: bold;
-
+.wn-lore-board-switcher-btn:hover {
 	color: var(--text-normal);
-
-	line-height: 1;
-
+	background: var(--background-modifier-hover);
 }
 
-.webnovel-lore-popover .wn-lore-card-badges {
+.wn-lore-board-switcher-btn.is-active {
+	color: var(--interactive-accent);
+	background: var(--background-modifier-active-hover);
+}
+
+.wn-lore-hover-popover {
+	position: fixed;
+	z-index: 1000;
+	box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+	max-width: 400px;
+	max-height: 500px;
+	display: flex;
+	flex-direction: column;
+}
+
+.wn-lore-board-cards-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+	gap: 16px;
+	padding: 16px;
+	align-items: stretch;
+}
+
+.wn-lore-card-wrapper {
+	display: flex;
+	flex-direction: column;
+}
+
+.wn-lore-card-wrapper.is-dragging {
+	opacity: 0.5;
+}
+
+
+
+.wn-lore-card-edit-btn svg {
+	width: 14px;
+	height: 14px;
+}
+
+.wn-lore-card-badges {
 
 	display: flex;
 
@@ -5094,7 +5106,7 @@ body .webnovel-lore-popover {
 
 }
 
-.webnovel-lore-popover .wn-lore-card-badge {
+.wn-lore-card-badge {
 
 	background: var(--interactive-accent);
 
@@ -5110,25 +5122,11 @@ body .webnovel-lore-popover {
 
 }
 
-.webnovel-lore-popover .wn-lore-card-body {
 
-	overflow-y: auto;
 
-	font-size: 0.95em;
+.wn-lore-card-loading,
 
-	line-height: 1.6;
-
-	color: var(--text-normal);
-
-	flex: 1;
-
-	min-height: 0;
-
-}
-
-.webnovel-lore-popover .wn-lore-card-loading,
-
-.webnovel-lore-popover .wn-lore-card-empty {
+.wn-lore-card-empty {
 
 	font-style: italic;
 
@@ -5136,13 +5134,13 @@ body .webnovel-lore-popover {
 
 }
 
-.webnovel-lore-popover .wn-lore-markdown p:first-child {
+.wn-lore-markdown p:first-child {
 
 	margin-top: 0;
 
 }
 
-.webnovel-lore-popover .wn-lore-markdown p:last-child {
+.wn-lore-markdown p:last-child {
 
 	margin-bottom: 0;
 
@@ -5150,19 +5148,19 @@ body .webnovel-lore-popover {
 
 /* Custom ultra-thin scrollbar */
 
-.webnovel-lore-popover .wn-lore-card-body::-webkit-scrollbar {
+.wn-lore-card-body::-webkit-scrollbar {
 
 	width: 4px;
 
 }
 
-.webnovel-lore-popover .wn-lore-card-body::-webkit-scrollbar-track {
+.wn-lore-card-body::-webkit-scrollbar-track {
 
 	background: transparent;
 
 }
 
-.webnovel-lore-popover .wn-lore-card-body::-webkit-scrollbar-thumb {
+.wn-lore-card-body::-webkit-scrollbar-thumb {
 
 	background: transparent;
 
@@ -5170,7 +5168,7 @@ body .webnovel-lore-popover {
 
 }
 
-.webnovel-lore-popover .wn-lore-card-body:hover::-webkit-scrollbar-thumb {
+.wn-lore-card-body:hover::-webkit-scrollbar-thumb {
 
 	background: color-mix(in srgb, var(--interactive-accent) 50%, var(--text-muted));
 
@@ -5178,17 +5176,17 @@ body .webnovel-lore-popover {
 
 /* Reset subheading sizes inside the lore card */
 
-body .webnovel-lore-popover .wn-lore-markdown h1,
+.wn-lore-hover-popover .wn-lore-markdown h1,
 
-body .webnovel-lore-popover .wn-lore-markdown h2,
+.wn-lore-hover-popover .wn-lore-markdown h2,
 
-body .webnovel-lore-popover .wn-lore-markdown h3,
+.wn-lore-hover-popover .wn-lore-markdown h3,
 
-body .webnovel-lore-popover .wn-lore-markdown h4,
+.wn-lore-hover-popover .wn-lore-markdown h4,
 
-body .webnovel-lore-popover .wn-lore-markdown h5,
+.wn-lore-hover-popover .wn-lore-markdown h5,
 
-body .webnovel-lore-popover .wn-lore-markdown h6 {
+.wn-lore-hover-popover .wn-lore-markdown h6 {
 
 	font-size: 1em;
 
@@ -5199,29 +5197,29 @@ body .webnovel-lore-popover .wn-lore-markdown h6 {
 }
 
 /* Lore popover: hide default disclosure triangle, use custom indicator */
-.webnovel-lore-popover .wn-lore-markdown summary {
+.wn-lore-markdown summary {
 	list-style: none;
 }
 
-.webnovel-lore-popover .wn-lore-markdown summary::-webkit-details-marker {
+.wn-lore-markdown summary::-webkit-details-marker {
 	display: none;
 }
 
-.webnovel-lore-popover .wn-lore-markdown summary::marker {
+.wn-lore-markdown summary::marker {
 	display: none;
 	content: "";
 }
 
-.webnovel-lore-popover .wn-lore-markdown summary .collapse-indicator {
+.wn-lore-markdown summary .collapse-indicator {
 	transition: transform 100ms ease-in-out;
 	opacity: 0.6;
 }
 
-.webnovel-lore-popover .wn-lore-markdown summary:hover .collapse-indicator {
+.wn-lore-markdown summary:hover .collapse-indicator {
 	opacity: 1;
 }
 
-.webnovel-lore-popover .wn-lore-markdown details[open]>summary .collapse-indicator {
+.wn-lore-markdown details[open]>summary .collapse-indicator {
 	transform: rotate(90deg);
 }
 
@@ -5643,12 +5641,7 @@ body .modal-content>.setting-item.setting-item-heading:first-of-type .setting-it
 /* ===== Relation Graph View ===== */
 
 /* Graph container: fills the entire view area */
-.wna-relation-graph-container {
-	width: 100%;
-	height: 100%;
-	position: relative;
-	overflow: hidden;
-}
+/* Merged into .wna-relation-graph-container below */
 
 /* Canvas adaptive container */
 .wna-relation-graph-container canvas {
@@ -5706,6 +5699,10 @@ body .modal-content>.setting-item.setting-item-heading:first-of-type .setting-it
    If not set, defaults from TS code will be used
 */
 .wna-relation-graph-container {
+	width: 100%;
+	height: 100%;
+	position: relative;
+	overflow: hidden;
 	/* Protagonist overlay red (default) */
 	--wna-rg-protagonist-overlay: rgba(224, 108, 117, 0.5);
 	/* Protagonist overlay red (hover highlight) */
@@ -5783,6 +5780,7 @@ body .modal-content>.setting-item.setting-item-heading:first-of-type .setting-it
 }
 
 .wn-timeline-item-row {
+	z-index: 2;
 	display: flex;
 	gap: 15px;
 	margin-bottom: 5px;
@@ -5864,8 +5862,8 @@ body .modal-content>.setting-item.setting-item-heading:first-of-type .setting-it
 
 .wn-timeline-gap {
 	position: relative;
-	padding: 0 0 0 231px;
-	margin: 10px 0;
+	padding: 10px 0 10px 231px;
+	margin: 0;
 	min-height: 10px;
 	display: flex;
 	align-items: center;
@@ -5875,7 +5873,8 @@ body .modal-content>.setting-item.setting-item-heading:first-of-type .setting-it
 }
 
 .wn-timeline-sub-gap {
-	margin: 5px 0;
+	padding: 5px 0 5px 231px;
+	margin: 0;
 }
 
 .wn-timeline-gap::after {
@@ -5929,7 +5928,8 @@ body .modal-content>.setting-item.setting-item-heading:first-of-type .setting-it
 	display: none;
 }
 
-.wn-timeline-waterfall-sidebar.is-empty.dragover {
+.wn-timeline-waterfall-sidebar.is-empty.drag-over,
+.wn-timeline-waterfall-sidebar.is-empty.drag-over-chapter {
 	background: var(--background-modifier-hover);
 	border-left-color: var(--interactive-accent);
 }
@@ -5937,19 +5937,47 @@ body .modal-content>.setting-item.setting-item-heading:first-of-type .setting-it
 .wn-timeline-sidebar-header {
 	display: flex;
 	align-items: center;
-	gap: 8px;
+	gap: 6px;
 	font-weight: 600;
 	margin-bottom: 15px;
 	color: var(--text-muted);
+	line-height: 1;
 }
 
-.drag-over * {
+.drag-over *,
+.drag-over-chapter *,
+.drag-over-event *,
+.drag-over-event-top *,
+.drag-over-event-bottom * {
 	pointer-events: none;
 }
 
-.drag-over {
+.drag-over,
+.drag-over-chapter,
+.drag-over-event,
+.drag-over-event-top,
+.drag-over-event-bottom {
 	background: var(--background-modifier-hover);
-	border: 1px dashed var(--interactive-accent);
+}
+
+/* 拖动章节卡片：高亮背景 */
+.wn-timeline-item-row.drag-over-chapter,
+.wn-timeline-gap.drag-over-chapter {
+	background: var(--background-modifier-hover);
+}
+
+/* 拖动事件卡片：位置指示线 */
+.wn-timeline-item-row.drag-over-event-top .wn-timeline-item-desc {
+	border-top: 2px dashed var(--interactive-accent);
+}
+
+.wn-timeline-item-row.drag-over-event-bottom .wn-timeline-item-desc {
+	border-bottom: 2px dashed var(--interactive-accent);
+}
+
+.wn-timeline-gap.drag-over-event {
+	border-top: 2px dashed var(--interactive-accent);
+	background: transparent;
 }
 
 .is-dragging {
@@ -6213,10 +6241,7 @@ body .modal-content>.setting-item.setting-item-heading:first-of-type .setting-it
    ========================================================================== */
 
 /* 头部按钮横向排列，样式已由 CSS 类管理，无需内联 setCssProps */
-.wn-corkboard-header-buttons {
-	display: flex;
-	gap: 8px;
-}
+/* Removed duplicate .wn-corkboard-header-buttons */
 
 .wn-lore-board-group-left {
 	display: flex;
@@ -6344,12 +6369,7 @@ body .modal-content>.setting-item.setting-item-heading:first-of-type .setting-it
 }
 
 /* Sidebar Unscheduled Header */
-.wn-timeline-sidebar-header {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	line-height: 1;
-}
+/* Removed duplicate .wn-timeline-sidebar-header */
 
 .wn-timeline-sidebar-header>span {
 	display: flex;
@@ -6360,6 +6380,7 @@ body .modal-content>.setting-item.setting-item-heading:first-of-type .setting-it
 .immersive-folder-details {
 	margin: 2px 0;
 }
+
 .immersive-folder-summary {
 	cursor: pointer;
 	padding: 4px;
@@ -6369,10 +6390,250 @@ body .modal-content>.setting-item.setting-item-heading:first-of-type .setting-it
 	display: flex;
 	align-items: center;
 }
+
 .immersive-folder-summary::-webkit-details-marker {
 	display: none;
 }
+
 .immersive-folder-children {
 	border-left: 1px solid var(--background-modifier-border);
 	margin-left: 6px;
+}
+
+/* Drag Over Indicators */
+body .drag-over-left {
+	border-left: 2px dashed var(--interactive-accent);
+}
+
+body .drag-over-right {
+	border-right: 2px dashed var(--interactive-accent);
+}
+
+
+
+/* Lore Card */
+
+.wn-corkboard-empty-msg {
+	color: var(--text-faint);
+	text-align: center;
+	padding: 40px 20px;
+	font-style: italic;
+}
+
+.wn-lore-card {
+	background-color: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+	display: flex;
+	flex-direction: column;
+	transition: transform 0.2s ease, box-shadow 0.2s ease;
+	overflow: hidden;
+
+	width: 100%;
+	min-width: 190px;
+	max-width: 300px;
+	margin: 0 auto;
+	aspect-ratio: 6 / 7;
+	height: auto;
+}
+
+.wn-lore-card:hover {
+	transform: translateY(-2px);
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+	border-color: var(--interactive-accent);
+}
+
+/* Removed duplicate .wn-lore-hover-popover */
+
+.wn-lore-hover-popover>div {
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+}
+
+.wn-lore-hover-popover .wn-lore-card {
+	min-height: 0;
+	margin: 0;
+	max-height: 100%;
+}
+
+.wn-lore-card-header {
+	padding: 8px 12px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	background-color: var(--background-secondary-alt);
+	min-width: 0;
+}
+
+.wn-lore-card-title-container {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+	flex: 1;
+}
+
+.wn-lore-card-title {
+	font-weight: 600;
+	font-size: 1.05em;
+	color: var(--text-normal);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	transition: color 0.15s ease;
+}
+
+.wn-lore-card-title:hover {
+	color: var(--interactive-accent);
+}
+
+.wn-lore-card-body {
+	flex: 1;
+	padding: 12px;
+	overflow: hidden;
+	outline: none;
+	font-size: 0.9em;
+	color: var(--text-muted);
+	line-height: 1.5;
+}
+
+.wn-lore-card-body:hover,
+.wn-lore-card-body:focus,
+.wn-lore-card-body:focus-within {
+	overflow-y: auto;
+}
+
+.wn-lore-card-edit-btn {
+	opacity: 0;
+	transition: opacity 0.2s ease;
+	display: flex;
+	align-items: center;
+	color: var(--text-muted);
+}
+
+.wn-lore-card:hover .wn-lore-card-edit-btn {
+	opacity: 1;
+}
+
+.wn-lore-card-edit-btn:hover {
+	color: var(--interactive-accent);
+}
+
+.wn-lore-card.is-dragging {
+	opacity: 0.5;
+	border-color: var(--interactive-accent);
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.wn-lore-card-editor {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.wn-lore-card-loading {
+	font-style: italic;
+	color: var(--text-faint);
+}
+
+/* 重置设定卡片（包含看板卡片和悬浮卡片）内的子标题大小，使其与正文统一 */
+.wn-lore-hover-popover .wn-lore-markdown h1,
+.wn-lore-hover-popover .wn-lore-markdown h2,
+.wn-lore-hover-popover .wn-lore-markdown h3,
+.wn-lore-hover-popover .wn-lore-markdown h4,
+.wn-lore-hover-popover .wn-lore-markdown h5,
+.wn-lore-hover-popover .wn-lore-markdown h6,
+.wn-lore-card .wn-lore-card-body h1,
+.wn-lore-card .wn-lore-card-body h2,
+.wn-lore-card .wn-lore-card-body h3,
+.wn-lore-card .wn-lore-card-body h4,
+.wn-lore-card .wn-lore-card-body h5,
+.wn-lore-card .wn-lore-card-body h6,
+.wn-lore-card .wn-lore-markdown h1,
+.wn-lore-card .wn-lore-markdown h2,
+.wn-lore-card .wn-lore-markdown h3,
+.wn-lore-card .wn-lore-markdown h4,
+.wn-lore-card .wn-lore-markdown h5,
+.wn-lore-card .wn-lore-markdown h6 {
+	font-size: 1em;
+	margin-top: 0.8em;
+	margin-bottom: 0.4em;
+}
+
+/* ========== v3.5.4 Fixes ========== */
+.wn-lore-card-title-container {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.wn-lore-card-title {
+	cursor: pointer;
+}
+
+.wn-lore-card-edit-btn {
+	cursor: pointer;
+}
+
+.wn-lore-card-textarea {
+	height: auto;
+	min-height: 100px;
+	width: 100%;
+	resize: none;
+	overflow: hidden;
+}
+
+.wn-timeline-empty-msg {
+	color: var(--text-muted);
+	text-align: center;
+	padding: 2rem;
+	font-style: italic;
+}
+
+.wn-timeline-svg-layer {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	pointer-events: none;
+}
+
+.wn-status-badges-container {
+	margin-top: 16px;
+}
+
+body .tooltip.wn-tooltip-left {
+	text-align: left;
+}
+
+
+/* ==========================================================================
+   移动端工作台头部优化
+   ========================================================================== */
+.is-mobile .wn-corkboard-header {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+}
+
+.is-mobile .wn-corkboard-title {
+	order: 1;
+	margin-bottom: 8px;
+}
+
+.is-mobile .wn-corkboard-header-buttons {
+	order: 2;
+	position: static;
+	margin-bottom: 8px;
+	width: 100%;
+	justify-content: flex-start;
+}
+
+.is-mobile .wn-corkboard-hint {
+	order: 3;
+	margin-top: 0;
 }

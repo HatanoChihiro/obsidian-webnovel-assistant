@@ -1,8 +1,9 @@
 import type { App, TAbstractFile} from 'obsidian';
-import { TFile, TFolder, type MarkdownView } from 'obsidian';
+import { TFile, TFolder, type MarkdownView, Notice } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { getDefaultFileName, getDefaultFileNameCandidates } from '../i18n/data-keys';
 import { findBookRoot } from '../utils/path';
+import { t } from '../i18n';
 
 export interface LoreEntry {
 	file: TFile;
@@ -68,9 +69,7 @@ export class CharacterManager {
 		const newLowerMap = new Map<string, Map<string, string>>();
 		
 		const files = this.app.vault.getMarkdownFiles();
-		for (const file of files) {
-			await this.addFileToCacheIfValidInto(file, newCache, newLowerMap);
-		}
+		await Promise.all(files.map(file => this.addFileToCacheIfValidInto(file, newCache, newLowerMap)));
 		
 		this.characterCache = newCache;
 		this.lowercaseKeyMap = newLowerMap;
@@ -91,6 +90,8 @@ export class CharacterManager {
 				}
 			}
 		});
+
+		this.app.workspace.trigger('webnovel-workbench-lore-updated');
 	}
 
 	/**
@@ -144,14 +145,31 @@ export class CharacterManager {
 		}
 	}
 
-	/**
-	 * 获取指定作品（bookPath）下的所有角色名
-	 */
 	public getCharactersForBook(bookPath: string): string[] {
 		const bookCache = this.characterCache.get(bookPath);
 		if (!bookCache) return [];
 		// 按照长度降序排序，避免 "张三" 和 "张三丰" 匹配时被 "张三" 抢占
 		return Array.from(bookCache.keys()).sort((a, b) => b.length - a.length);
+	}
+
+	/**
+	 * 获取指定作品（bookPath）下的所有设定条目，保持严格的文件写入顺序（因为 Map 按照插入顺序迭代，而我们在初始化时是按文件自上而下插入的）
+	 */
+	public getLoreEntriesInFileOrder(bookPath: string): LoreEntry[] {
+		const bookCache = this.characterCache.get(bookPath);
+		if (!bookCache) return [];
+		
+		const entries: LoreEntry[] = [];
+		const seen = new Set<string>();
+		
+		for (const entry of bookCache.values()) {
+			if (!seen.has(entry.heading)) {
+				seen.add(entry.heading);
+				entries.push(entry);
+			}
+		}
+		
+		return entries;
 	}
 
 	/**
@@ -176,6 +194,129 @@ export class CharacterManager {
 		return null;
 	}
 
+	public async moveLoreItem(fromEntry: LoreEntry, toEntry: LoreEntry, insertAfter: boolean): Promise<boolean> {
+		if (fromEntry.file.path !== toEntry.file.path) {
+			new Notice(t('character.cross-file-sort-not-supported'));
+			return false;
+		}
+
+		const file = fromEntry.file;
+		const fileCache = this.app.metadataCache.getFileCache(file);
+		if (!fileCache || !fileCache.headings) return false;
+
+		const content = await this.app.vault.read(file);
+		const lines = content.split('\n');
+
+		// 找到两个 heading 的 startLine 和 endLine
+		const getBlock = (headingText: string) => {
+			for (let i = 0; i < fileCache.headings!.length; i++) {
+				const h = fileCache.headings![i];
+				if (h.level === 2 && h.heading.trim().replace(/\*\*|__/g, '').replace(/\*|_/g, '').replace(/`/g, '') === headingText) {
+					const startLine = h.position.start.line;
+					
+					let nextLevelH = null;
+					for (let j = i + 1; j < fileCache.headings!.length; j++) {
+						if (fileCache.headings![j].level <= h.level) {
+							nextLevelH = fileCache.headings![j];
+							break;
+						}
+					}
+					
+					const endLine = nextLevelH ? nextLevelH.position.start.line - 1 : lines.length - 1;
+					return { startLine, endLine };
+				}
+			}
+			return null;
+		};
+
+		const fromBlock = getBlock(fromEntry.heading);
+		const toBlock = getBlock(toEntry.heading);
+
+		if (!fromBlock || !toBlock) return false;
+
+		// 提取 fromBlock 的文本
+		const fromLines = lines.slice(fromBlock.startLine, fromBlock.endLine + 1);
+		
+		// 移除 fromBlock
+		lines.splice(fromBlock.startLine, fromBlock.endLine - fromBlock.startLine + 1);
+
+		// 因为 lines 变了，我们需要重新计算 toBlock 的位置
+		let targetLine = toBlock.startLine;
+		if (fromBlock.startLine < toBlock.startLine) {
+			targetLine -= (fromBlock.endLine - fromBlock.startLine + 1);
+		}
+
+		if (insertAfter) {
+			targetLine += (toBlock.endLine - toBlock.startLine + 1);
+		}
+
+		// 插入 fromLines
+		lines.splice(targetLine, 0, ...fromLines);
+
+		await this.app.vault.modify(file, lines.join('\n'));
+		return true;
+	}
+
+	public async getLoreContent(entry: LoreEntry): Promise<string> {
+		const fileCache = this.app.metadataCache.getFileCache(entry.file);
+		if (!fileCache || !fileCache.headings) return '';
+		
+		const content = await this.app.vault.cachedRead(entry.file);
+		const lines = content.split('\n');
+		
+		for (let i = 0; i < fileCache.headings.length; i++) {
+			const h = fileCache.headings[i];
+			if (h.level === 2 && h.heading.trim().replace(/\*\*|__/g, '').replace(/\*|_/g, '').replace(/`/g, '') === entry.heading) {
+				const startLine = h.position.start.line;
+				let nextLevelH = null;
+				for (let j = i + 1; j < fileCache.headings.length; j++) {
+					if (fileCache.headings[j].level <= h.level) {
+						nextLevelH = fileCache.headings[j];
+						break;
+					}
+				}
+				const endLine = nextLevelH ? nextLevelH.position.start.line - 1 : lines.length - 1;
+				
+				// Exclude the heading line itself, return the body
+				const bodyLines = lines.slice(startLine + 1, endLine + 1);
+				return bodyLines.join('\n').trim();
+			}
+		}
+		return '';
+	}
+
+	public async updateLoreContent(entry: LoreEntry, newContent: string): Promise<boolean> {
+		const file = entry.file;
+		const fileCache = this.app.metadataCache.getFileCache(file);
+		if (!fileCache || !fileCache.headings) return false;
+
+		await this.app.vault.process(file, (data) => {
+			const lines = data.split('\n');
+			for (let i = 0; i < fileCache.headings!.length; i++) {
+				const h = fileCache.headings![i];
+				if (h.level === 2 && h.heading.trim().replace(/\*\*|__/g, '').replace(/\*|_/g, '').replace(/`/g, '') === entry.heading) {
+					const startLine = h.position.start.line;
+					let nextLevelH = null;
+					for (let j = i + 1; j < fileCache.headings!.length; j++) {
+						if (fileCache.headings![j].level <= h.level) {
+							nextLevelH = fileCache.headings![j];
+							break;
+						}
+					}
+					const endLine = nextLevelH ? nextLevelH.position.start.line - 1 : lines.length - 1;
+
+					const newLines = newContent.split('\n');
+					// Replace the lines after the heading up to endLine
+					// Ensure there is at least one blank line before next section if needed, though split/join handles it.
+					lines.splice(startLine + 1, endLine - startLine, ...newLines);
+					return lines.join('\n');
+				}
+			}
+			return data;
+		});
+		return true;
+	}
+
 	/**
 	 * 给定一个任意文件（通常是当前正在编辑的文件），返回它所属的作品目录路径
 	 * （底层直接调用全局的 findBookRoot 算法支持跨卷）
@@ -184,7 +325,7 @@ export class CharacterManager {
 		if (!file) return null;
 		
 		const root = findBookRoot(this.app, this.plugin, file);
-		return root || null;
+		return root === '' ? '/' : root;
 	}
 
 	/**
@@ -215,13 +356,32 @@ export class CharacterManager {
 			};
 			const fileCache = this.app.metadataCache.getFileCache(file);
 
-			// 字典模式：解析各级标题作为正名，并在下方的正文里提取别名
-			if (fileCache && fileCache.headings) {
-				const content = await this.app.vault.cachedRead(file);
-				const lines = content.split('\n');
+			// 统一获取文本（如果有缓存用缓存文本，否则原始读取）
+			const content = await this.app.vault.cachedRead(file);
+			const lines = content.split('\n');
 
-				for (let i = 0; i < fileCache.headings.length; i++) {
-					const heading = fileCache.headings[i];
+			// 如果 metadataCache 没准备好（如重启时），我们手动解析二级标题
+			let headings: { level: number, heading: string, position: { start: { line: number }, end: { line: number } } }[] = [];
+			if (fileCache && fileCache.headings) {
+				headings = fileCache.headings;
+			} else {
+				for (let i = 0; i < lines.length; i++) {
+					const line = lines[i];
+					const match = line.match(/^##\s+(.+)$/);
+					if (match) {
+						headings.push({
+							level: 2,
+							heading: match[1],
+							position: { start: { line: i }, end: { line: i } }
+						});
+					}
+				}
+			}
+
+			// 字典模式：解析各级标题作为正名，并在下方的正文里提取别名
+			if (headings.length > 0) {
+				for (let i = 0; i < headings.length; i++) {
+					const heading = headings[i];
 					if (heading.level !== 2) continue; // 强制仅识别二级标题作为词条正名
 
 					const rawHeading = heading.heading.trim();
@@ -236,7 +396,7 @@ export class CharacterManager {
 
 					// 截取当前标题到下一个标题之间的内容，防止别名串写
 					const startLine = heading.position.end.line + 1;
-					const nextHeading = fileCache.headings[i + 1];
+					const nextHeading = headings[i + 1];
 					const endLine = nextHeading ? nextHeading.position.start.line : lines.length;
 
 					const chunk = lines.slice(startLine, endLine).join('\n');

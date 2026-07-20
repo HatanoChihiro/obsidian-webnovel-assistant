@@ -14,6 +14,7 @@ export class WorkerManager {
 	private readonly MAX_RESTARTS: number = 5;
 	private restartTimer: number | null = null;
 	private restartResetTimer: number | null = null;
+	private blobUrl: string | null = null;
 
 	constructor(plugin: WebNovelAssistantPlugin) {
 		this.plugin = plugin;
@@ -42,20 +43,21 @@ export class WorkerManager {
 			};
 		`;
 		const blob = new Blob([workerCode], { type: 'application/javascript' });
-		const blobUrl = URL.createObjectURL(blob);
-		this.worker = new Worker(blobUrl);
+		this.blobUrl = URL.createObjectURL(blob);
+		this.worker = new Worker(this.blobUrl);
 
 		this.worker.onerror = (error) => {
 			this.handleError(error);
 		};
 
-		let urlRevoked = false;
 		this.worker.onmessage = (e) => {
-			if (!urlRevoked) {
-				URL.revokeObjectURL(blobUrl);
-				urlRevoked = true;
+			if (e.data === 'ready') {
+				if (this.blobUrl) {
+					URL.revokeObjectURL(this.blobUrl);
+					this.blobUrl = null;
+				}
+				return;
 			}
-			if (e.data === 'ready') return;
 			this.handleMessage();
 		};
 
@@ -91,6 +93,10 @@ export class WorkerManager {
 			this.worker.terminate();
 			this.worker = null;
 		}
+		if (this.blobUrl) {
+			URL.revokeObjectURL(this.blobUrl);
+			this.blobUrl = null;
+		}
 	}
 
 	private handleError(error: ErrorEvent): void {
@@ -112,7 +118,7 @@ export class WorkerManager {
 			}
 			
 			if (this.restartAttempts < this.MAX_RESTARTS) {
-				new Notice('[警告] 时间追踪 Worker 已自动重启\n追踪功能已恢复正常', 5000);
+				new Notice(t('notice.worker-restarted'), 5000);
 			}
 		}, 5000);
 	}

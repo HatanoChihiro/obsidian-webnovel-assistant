@@ -3,6 +3,7 @@ import { ItemView, TFile } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 
 import { getCurrentBookContext } from '../utils/path';
+import { TouchDragPolyfill } from '../utils/TouchDragPolyfill';
 
 /**
  * 创作工具面板基类
@@ -12,6 +13,7 @@ import { getCurrentBookContext } from '../utils/path';
 export abstract class CreativeView extends ItemView {
 	plugin: WebNovelAssistantPlugin;
 	currentFolder: string = '';
+	private touchPolyfillCleanup: (() => void) | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: WebNovelAssistantPlugin) {
 		super(leaf);
@@ -30,6 +32,9 @@ export abstract class CreativeView extends ItemView {
 	abstract refresh(): Promise<void>;
 
 	async onOpen() {
+		if (this.touchPolyfillCleanup) this.touchPolyfillCleanup();
+		this.touchPolyfillCleanup = TouchDragPolyfill.register(this.containerEl);
+
 		// 监听活动文件变化，自动切换文件夹
 		this.registerEvent(
 			this.app.workspace.on('active-leaf-change', () => { void this.onActiveFileChange(); })
@@ -75,5 +80,10 @@ export abstract class CreativeView extends ItemView {
 		await this.refresh();
 	}
 
-	async onClose() {}
+	async onClose() {
+		if (this.touchPolyfillCleanup) {
+			this.touchPolyfillCleanup();
+			this.touchPolyfillCleanup = null;
+		}
+	}
 }

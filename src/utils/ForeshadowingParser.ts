@@ -235,7 +235,7 @@ export class ForeshadowingParser {
 
 			// 解析回收信息（支持多章节）
 			// 新格式：**回收于**：\n- [[章节1]] - 时间\n- [[章节2]] - 时间
-			const recoveryListMatch = trimmed.match(new RegExp(`\\*\\*(?:回收于|Recovered at|${t('foreshadowing.recovered-at')})\\*\\*：\\n((?:- \\[\\[.+?\\]\\].*\\n?)+)`));
+			const recoveryListMatch = trimmed.match(new RegExp(`\\*\\*(?:回收于|Recovered at|Resolved in|${t('foreshadowing.recovered-at')})\\*\\*：\\n((?:- \\[\\[.+?\\]\\].*\\n?)+)`));
 			let recoveryFiles: string[] | undefined;
 			let recoveredAts: string[] | undefined;
 			let recoveryFile: string | undefined;
@@ -255,7 +255,7 @@ export class ForeshadowingParser {
 				});
 			} else {
 				// 旧格式（单章节）：**回收于**：[[章节]] - 时间
-				const singleRecoveryMatch = trimmed.match(new RegExp(`\\*\\*(?:回收于|Recovered at|${t('foreshadowing.recovered-at')})\\*\\*：\\[\\[(.+?)\\]\\](?:\\s*-\\s*(.+))?`));
+				const singleRecoveryMatch = trimmed.match(new RegExp(`\\*\\*(?:回收于|Recovered at|Resolved in|${t('foreshadowing.recovered-at')})\\*\\*：\\[\\[(.+?)\\]\\](?:\\s*-\\s*(.+))?`));
 				if (singleRecoveryMatch) {
 					recoveryFile = singleRecoveryMatch[1];
 					recoveredAt = singleRecoveryMatch[2]?.trim();

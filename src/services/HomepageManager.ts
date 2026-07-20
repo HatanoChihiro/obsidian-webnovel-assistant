@@ -1,5 +1,5 @@
 import { Logger } from '../utils/Logger';
-import type { App, MarkdownView } from 'obsidian';
+import { MarkdownView, type App } from 'obsidian';
 import { TFile, normalizePath, TFolder } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { NovelMetadata, NovelFolderInfo } from '../types/homepage';
@@ -129,7 +129,7 @@ export class HomepageManager {
 							folderPath: child.path,
 							folderName: child.name,
 							metadata: null,
-							wordCount: this.plugin.cacheManager.getFolderWordCount(child.path),
+							wordCount: this.plugin.cacheManager.getFolderWordCount(child.path) || 0,
 						});
 					}
 				}
@@ -147,7 +147,7 @@ export class HomepageManager {
 					folderPath: child.path,
 					folderName: child.name,
 					metadata: null,
-					wordCount: this.plugin.cacheManager.getFolderWordCount(child.path),
+					wordCount: this.plugin.cacheManager.getFolderWordCount(child.path) || 0,
 				});
 			}
 		}
@@ -364,4 +364,73 @@ import('./HomepageRenderer.js').then(async ({ HomepageRenderer }) => {
 			}
 		});
 	}
+
+	private _leafOriginalStates = new WeakMap<object, Record<string, unknown>>();
+	private _homepageTimer: number | null = null;
+
+	public handleViewMode(): void {
+		if (!this.plugin.settings.enableHomepage) return;
+		const homepagePath = this.getHomepageFilePath();
+		if (!homepagePath) return;
+
+		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+		if (!view) return;
+
+		const leaf = view.leaf;
+		const activeFile = view.file;
+		const isOnHomepage = activeFile && activeFile.path === homepagePath;
+
+		if (isOnHomepage) {
+			const leafContent = view.containerEl.closest('.workspace-leaf-content') || view.containerEl;
+			leafContent.classList.add('is-webnovel-homepage');
+
+			if (!this._leafOriginalStates.has(leaf)) {
+				const stateToSave = view.getState();
+				if (stateToSave.mode === 'preview') {
+					stateToSave.mode = this.app.vault.getConfig('defaultViewMode') || 'source';
+					stateToSave.source = false;
+				}
+				this._leafOriginalStates.set(leaf, stateToSave);
+			}
+			if (view.getMode() !== 'preview') {
+				if (this._homepageTimer) window.clearTimeout(this._homepageTimer);
+				this._homepageTimer = window.setTimeout(() => {
+					this._homepageTimer = null;
+					const latestView = this.app.workspace.getActiveViewOfType(MarkdownView);
+					if (latestView && latestView.file?.path === homepagePath) {
+						const state = latestView.getState();
+						state.mode = 'preview';
+						void latestView.leaf.setViewState({ type: 'markdown', state, active: true });
+					}
+				}, 50);
+			}
+			this.refreshHomepageViews();
+		} else {
+			const leafContent = view.containerEl.closest('.workspace-leaf-content') || view.containerEl;
+			leafContent.classList.remove('is-webnovel-homepage');
+
+			if (this._leafOriginalStates.has(leaf)) {
+				const originalState = this._leafOriginalStates.get(leaf);
+				this._leafOriginalStates.delete(leaf);
+
+				if (originalState) {
+					const currentState = view.getState();
+					if (currentState.mode !== originalState.mode || currentState.source !== originalState.source) {
+						if (this._homepageTimer) window.clearTimeout(this._homepageTimer);
+						this._homepageTimer = window.setTimeout(() => {
+							this._homepageTimer = null;
+							const latestView = this.app.workspace.getActiveViewOfType(MarkdownView);
+							if (latestView && latestView.leaf === leaf && latestView.file?.path !== homepagePath) {
+								const newState = latestView.getState();
+								newState.mode = originalState.mode;
+								newState.source = originalState.source;
+								void latestView.leaf.setViewState({ type: 'markdown', state: newState, active: true });
+							}
+						}, 50);
+					}
+				}
+			}
+		}
+	}
+
 }

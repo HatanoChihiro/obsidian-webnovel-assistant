@@ -1,7 +1,11 @@
-import type { TFile, Vault } from 'obsidian';
+import { TFile, Notice, type Vault } from 'obsidian';
+import { ChapterSorter } from './ChapterSorter';
+import { getDefaultFileName, getDefaultFileNameCandidates } from '../i18n/data-keys';
+import { PLATFORM_DELAYS } from '../constants';
+import { t } from '../i18n';
 import { CACHE_CONFIG } from '../constants';
 import { SerializedWriter } from '../utils/SerializedWriter';
-import { getPluginDir } from '../utils/platform';
+import { getPluginDir, isMobile } from '../utils/platform';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 
 /**
@@ -56,7 +60,12 @@ export class CacheManager {
 			// 首选：从独立缓存文件加载
 			if (await adapter.exists(this.cacheFilePath)) {
 				const content = await adapter.read(this.cacheFilePath);
-				cacheData = JSON.parse(content) as CacheData;
+				const parsed = JSON.parse(content) as Record<string, unknown>;
+				if (parsed && typeof parsed === 'object' && typeof parsed.version === 'number' && typeof parsed.timestamp === 'number' && Array.isArray(parsed.entries)) {
+					cacheData = parsed as unknown as CacheData;
+				} else {
+					return false;
+				}
 			} else {
 				// 兼容：从 data.json 读取旧版缓存进行迁移
 				const data = await this.plugin.loadData();
@@ -177,28 +186,13 @@ export class CacheManager {
 		}
 	}
 
-	/**
-	 * 获取文件夹字数（从缓存条目直接求和，不依赖文件夹缓存条目）
-	 * @param folderPath 文件夹路径
-	 * @returns 字数
-	 */
-	getFolderWordCount(folderPath: string): number {
-		let total = 0;
-		const prefix = folderPath ? folderPath + '/' : '';
-		for (const [path, entry] of this.cache) {
-			if (!entry.isFolder && path.startsWith(prefix)) {
-				total += entry.wordCount;
-			}
-		}
-		return total;
-	}
 
 	/**
 	 * 获取文件夹字数（从缓存）
 	 * @param folderPath 文件夹路径
 	 * @returns 字数，如果缓存未命中则返回 null
 	 */
-	getFolderCount(folderPath: string): number | null {
+	getFolderWordCount(folderPath: string): number | null {
 		const entry = this.cache.get(folderPath);
 		return entry ? entry.wordCount : null;
 	}
@@ -350,4 +344,167 @@ export class CacheManager {
 			}
 		}
 	}
+
+	private _loreCandidatesCache: Set<string> | null = null;
+
+	resetLoreCache(): void {
+		this._loreCandidatesCache = null;
+	}
+
+	isFileInWorkspace(file: TFile): boolean {
+		if (!this.plugin.settings.workspaceFolders || this.plugin.settings.workspaceFolders.length === 0) {
+			return true;
+		}
+
+		const filePath = file.path;
+		return this.plugin.settings.workspaceFolders.some(folder => {
+			const normalizedFolder = folder.replace(/^\/+|\/+$/g, "");
+			if (normalizedFolder === "") return true;
+			return filePath === normalizedFolder + ".md" || filePath.startsWith(normalizedFolder + "/");
+		});
+	}
+
+	isFileInStrictChapterException(file: TFile): boolean {
+		if (!this.plugin.settings.strictChapterExceptions || this.plugin.settings.strictChapterExceptions.length === 0) {
+			return false;
+		}
+		const filePath = file.path;
+		return this.plugin.settings.strictChapterExceptions.some(folder => {
+			const normalizedFolder = folder.replace(/^\/+|\/+$/g, "");
+			if (normalizedFolder === "") return false;
+			return filePath === normalizedFolder + ".md" || filePath.startsWith(normalizedFolder + "/");
+		});
+	}
+
+	isPluginGeneratedFile(basename: string): boolean {
+		const checks = [
+			{ setting: this.plugin.settings.novelInfo?.fileName, field: "novelInfoFileName" },
+			{ setting: this.plugin.settings.foreshadowing?.fileName, field: "foreshadowingFileName" },
+			{ setting: this.plugin.settings.timeline?.fileName, field: "timelineFileName" },
+			{ setting: this.plugin.settings.task?.fileName, field: "taskFileName" },
+		];
+		for (const { setting, field } of checks) {
+			if (basename === setting) return true;
+			if (!setting && basename === getDefaultFileName(field as Parameters<typeof getDefaultFileName>[0])) return true;
+		}
+		return false;
+	}
+
+	isEligibleForWordCount(file: TFile): boolean {
+		if (!this.isFileInWorkspace(file)) return false;
+		if (file.basename.includes("_合并章节")) return false;
+
+		const isExplicitChapter = ChapterSorter.isChapterFile(file.name);
+		if (isExplicitChapter) return true;
+
+		const basename = file.basename;
+		if (
+			this.isPluginGeneratedFile(basename) ||
+			file.path === this.plugin.homepageManager?.getHomepageFilePath()
+		) {
+			return false;
+		}
+
+		if (!this._loreCandidatesCache) {
+			this._loreCandidatesCache = new Set<string>();
+			this._loreCandidatesCache.add(this.plugin.settings.loreFolderName || getDefaultFileName("loreFolderName"));
+			for (const name of getDefaultFileNameCandidates("loreFolderName")) this._loreCandidatesCache.add(name);
+		}
+
+		for (const lorePath of this._loreCandidatesCache) {
+			if (file.path.includes(`/${lorePath}/`) || file.path.startsWith(`${lorePath}/`)) {
+				return false;
+			}
+		}
+
+		if (this.plugin.settings.enableStrictChapterMode && !this.isFileInStrictChapterException(file)) {
+			return false;
+		}
+
+		return true;
+	}
+
+	async buildFolderCache(): Promise<void> {
+		if (!this.plugin.settings.showExplorerCounts) return;
+
+		try {
+			const loaded = this.getCacheStats().size > 0 ? true : await this.loadCache();
+			const workspaceFiles = this.plugin.getTrackedMarkdownFiles();
+			const cacheStats = this.getCacheStats();
+
+			let shouldRebuild = !loaded || cacheStats.size < workspaceFiles.length;
+			if (loaded && !shouldRebuild && this.plugin.settings.enableStrictChapterMode) {
+				for (const [path, entry] of this.getEntries()) {
+					if (!entry.isFolder) {
+						const file = this.plugin.app.vault.getAbstractFileByPath(path);
+						if (file instanceof TFile && !this.isEligibleForWordCount(file)) {
+							shouldRebuild = true;
+							break;
+						}
+					}
+				}
+			}
+
+			if (loaded && !shouldRebuild) {
+				// eslint-disable-next-line @typescript-eslint/no-unsafe-call -- expected unsafe call
+			if (isMobile()) {
+					const timer = window.setTimeout(() => {
+						this.plugin.fileExplorerPatcher?.refreshFolderCounts();
+						if (this.plugin.settings.enableHomepage) this.plugin.homepageManager?.refreshHomepageViews();
+					}, PLATFORM_DELAYS.MOBILE_CACHE_REFRESH_DELAY);
+					this.plugin.register(() => window.clearTimeout(timer));
+				} else {
+					this.plugin.fileExplorerPatcher?.refreshFolderCounts();
+					if (this.plugin.settings.enableHomepage) this.plugin.homepageManager?.refreshHomepageViews();
+				}
+				return;
+			}
+
+			if (!loaded) {
+				const notice = new Notice(t("notice.building-explorer-cache"), 0);
+				await this.buildInitialCache(
+					this.plugin.app.vault,
+					this.plugin.calculateAccurateWords.bind(this.plugin),
+					this.isEligibleForWordCount.bind(this)
+				);
+				notice.hide();
+			} else {
+				const cachedPaths = new Set(Array.from(this.getEntries(), ([k]) => k));
+				const missingFiles = workspaceFiles.filter(f => !cachedPaths.has(f.path));
+				for (const file of missingFiles) {
+					try {
+						const content = await this.plugin.app.vault.cachedRead(file);
+						const count = this.plugin.calculateAccurateWords(content);
+						this.updateFileCache(file, count, this.plugin.app.vault);
+					} catch (err) {
+						console.warn("[CacheManager] Failed to read file during cache build", err);
+					}
+				}
+				await this.saveCache();
+			}
+
+			// eslint-disable-next-line @typescript-eslint/no-unsafe-call -- expected unsafe call
+			if (isMobile()) {
+				const timer = window.setTimeout(() => {
+					this.plugin.fileExplorerPatcher?.refreshFolderCounts();
+					if (this.plugin.settings.enableHomepage) this.plugin.homepageManager?.refreshHomepageViews();
+				}, PLATFORM_DELAYS.MOBILE_CACHE_REFRESH_DELAY);
+				this.plugin.register(() => window.clearTimeout(timer));
+			} else {
+				this.plugin.fileExplorerPatcher?.refreshFolderCounts();
+				if (this.plugin.settings.enableHomepage) this.plugin.homepageManager?.refreshHomepageViews();
+			}
+
+			new Notice(t("notice.explorer-cache-complete"), 3000);
+		} catch (error) {
+			console.error("[Plugin] 缓存构建失败:", error);
+			this.plugin.settings.showExplorerCounts = false;
+			await this.plugin.saveSettings();
+			new Notice(
+				t("notice.explorer-cache-failed", { error: error instanceof Error ? error.message : String(error) }),
+				10000
+			);
+		}
+	}
+
 }

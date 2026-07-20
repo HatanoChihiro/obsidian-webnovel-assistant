@@ -252,8 +252,7 @@ export class WritingStatusView extends ItemView {
 		this.chapterTitleEl = titleRow.createSpan();
 
 		this.chapterBadgesContainer = this.chapterStatusCardEl.createDiv({ 
-			cls: 'wn-corkboard-card-badges', 
-			attr: { style: 'margin-top: 16px;' } 
+			cls: 'wn-corkboard-card-badges wn-status-badges-container', 
 		});
 	}
 
@@ -272,7 +271,7 @@ export class WritingStatusView extends ItemView {
 			if (folder) {
                 folderName = folder.path === '/' ? t('common.root-directory') : folder.name;
             }
-			const wordCount = this.plugin.cacheManager.getFolderWordCount(folderPath);
+			const wordCount = this.plugin.cacheManager.getFolderWordCount(folderPath) || 0;
 			this.workNameEl.innerText = folderName;
 			this.workWordCountEl.innerText = wordCount > 0 ? `${wordCount.toLocaleString()}${t('common.word-char')}` : '';
 
@@ -421,29 +420,32 @@ export class WritingStatusView extends ItemView {
 		this.chapterTitleEl.innerText = file.basename;
 
 		const pendingEntries: ParsedForeshadowingEntry[] = [];
-		const recoveredEntries: ParsedForeshadowingEntry[] = [];
+		const recoveredHereEntries: ParsedForeshadowingEntry[] = [];
+		const resolvedOriginEntries: ParsedForeshadowingEntry[] = [];
+
+		const cleanBase = file.basename.toLowerCase().replace(/\s+/g, '');
+
+		const isMatch = (target: string | undefined): boolean => {
+			if (!target) return false;
+			const cleanTarget = target.toLowerCase().replace(/\s+/g, '');
+			return cleanBase.includes(cleanTarget) || cleanTarget.includes(cleanBase);
+		};
 
 		if (fFile) {
 			const content = await this.app.vault.cachedRead(fFile);
 			const entries = this.plugin.foreshadowingManager!.parseEntries(content);
-			const cleanBase = file.basename.toLowerCase().replace(/\s+/g, '');
+
 			for (const entry of entries) {
-				let targets: string[] = [];
+				const matchSource = isMatch(entry.sourceFile) || (entry.contents || []).some(c => isMatch(c.source));
+
 				if (entry.status === ForeshadowingStatus.Pending) {
-					if (entry.sourceFile) targets.push(entry.sourceFile);
-				} else if (entry.status === ForeshadowingStatus.Recovered) {
-					targets = entry.recoveryFiles ? [...entry.recoveryFiles] : (entry.recoveryFile ? [entry.recoveryFile] : []);
-				}
-				for (const target of targets) {
-					if (!target) continue;
-					const cleanTarget = target.toLowerCase().replace(/\s+/g, '');
-					if (cleanBase.includes(cleanTarget) || cleanTarget.includes(cleanBase)) {
-						if (entry.status === ForeshadowingStatus.Recovered) {
-							recoveredEntries.push(entry);
-						} else {
-							pendingEntries.push(entry);
-						}
+					if (matchSource) {
+						pendingEntries.push(entry);
 					}
+				} else if (entry.status === ForeshadowingStatus.Recovered) {
+					const matchRecovery = (entry.recoveryFiles || []).some(f => isMatch(f)) || isMatch(entry.recoveryFile);
+					if (matchSource) resolvedOriginEntries.push(entry);
+					if (matchRecovery && !matchSource) recoveredHereEntries.push(entry);
 				}
 			}
 		}
@@ -455,7 +457,7 @@ export class WritingStatusView extends ItemView {
 			validLores = (loreArray as unknown[]).filter((l: unknown): l is string => typeof l === 'string');
 		}
 
-		if (pendingEntries.length === 0 && recoveredEntries.length === 0 && validLores.length === 0) {
+		if (pendingEntries.length === 0 && recoveredHereEntries.length === 0 && resolvedOriginEntries.length === 0 && validLores.length === 0) {
 			this.chapterStatusCardEl.hide();
 			return;
 		}
@@ -487,9 +489,14 @@ export class WritingStatusView extends ItemView {
 						}
 						if (match && match.index !== undefined) {
 							const targetLine = content.substring(0, match.index).split('\n').length - 1;
-							await targetLeaf.openFile(file, { eState: { line: targetLine } });
+							if (targetLeaf.view instanceof MarkdownView && targetLeaf.view.file?.path === file.path) {
+								targetLeaf.setEphemeralState({ line: targetLine });
+								this.app.workspace.setActiveLeaf(targetLeaf, { focus: true });
+							} else {
+								await targetLeaf.openFile(file, { eState: { line: targetLine } });
+							}
 						} else {
-							new Notice(t('notice.text-not-found') || '当前正文中未找到对应的文本！');
+							new Notice(t('notice.text-not-found'));
 						}
 					}
 				})();
@@ -498,21 +505,46 @@ export class WritingStatusView extends ItemView {
 
 		if (pendingEntries.length > 0) {
 			const pendingDiv = this.chapterBadgesContainer.createDiv('wn-chapter-status-section');
-			pendingDiv.createDiv({ text: t('corkboard.foreshadowing-unresolved') || '待回收', cls: 'wn-chapter-status-section-title is-pending' });
+			pendingDiv.createDiv({ text: t('corkboard.foreshadowing-unresolved'), cls: 'wn-chapter-status-section-title is-pending' });
 			
 			for (const entry of pendingEntries) {
-				const textContent = entry.description || (entry.contents.length > 0 ? entry.contents[0].text : (t('common.unknown-foreshadowing') || '未知伏笔'));
+				let matchedContent: { text: string } | undefined;
+				for (const c of entry.contents) {
+					if (isMatch(c.source)) {
+						matchedContent = c;
+						break;
+					}
+				}
+				const textContent = entry.description || (matchedContent ? matchedContent.text : (entry.contents.length > 0 ? entry.contents[0].text : (t('common.unknown-foreshadowing'))));
 				const itemEl = pendingDiv.createDiv({ text: textContent, cls: 'wn-chapter-status-item' });
-				const findText = entry.contents.length > 0 ? entry.contents[0].text : entry.description;
+				const findText = matchedContent ? matchedContent.text : (entry.contents.length > 0 ? entry.contents[0].text : entry.description);
 				if (findText) setupJumpEvent(itemEl, findText);
 			}
 		}
 
-		if (recoveredEntries.length > 0) {
+		if (resolvedOriginEntries.length > 0) {
+			const resolvedOriginDiv = this.chapterBadgesContainer.createDiv('wn-chapter-status-section');
+			resolvedOriginDiv.createDiv({ text: t('corkboard.foreshadowing-recovered-origin'), cls: 'wn-chapter-status-section-title' });
+			for (const entry of resolvedOriginEntries) {
+				let matchedContent: { text: string } | undefined;
+				for (const c of entry.contents) {
+					if (isMatch(c.source)) {
+						matchedContent = c;
+						break;
+					}
+				}
+				const textContent = entry.description || (matchedContent ? matchedContent.text : (entry.contents.length > 0 ? entry.contents[0].text : (t('common.unknown-foreshadowing'))));
+				const itemEl = resolvedOriginDiv.createDiv({ text: textContent, cls: 'wn-chapter-status-item is-recovered' });
+				const findText = matchedContent ? matchedContent.text : (entry.contents.length > 0 ? entry.contents[0].text : entry.description);
+				if (findText) setupJumpEvent(itemEl, findText);
+			}
+		}
+
+		if (recoveredHereEntries.length > 0) {
 			const recoveredDiv = this.chapterBadgesContainer.createDiv('wn-chapter-status-section');
-			recoveredDiv.createDiv({ text: t('corkboard.foreshadowing-recovered') || '本章回收', cls: 'wn-chapter-status-section-title' });
-			for (const entry of recoveredEntries) {
-				const textContent = entry.description || (entry.contents.length > 0 ? entry.contents[0].text : (t('common.unknown-foreshadowing') || '未知伏笔'));
+			recoveredDiv.createDiv({ text: t('corkboard.foreshadowing-recovered'), cls: 'wn-chapter-status-section-title' });
+			for (const entry of recoveredHereEntries) {
+				const textContent = entry.description || (entry.contents.length > 0 ? entry.contents[0].text : (t('common.unknown-foreshadowing')));
 				recoveredDiv.createDiv({ text: textContent, cls: 'wn-chapter-status-item is-recovered' });
 			}
 		}
@@ -521,7 +553,7 @@ export class WritingStatusView extends ItemView {
 			const loreDiv = this.chapterBadgesContainer.createDiv('wn-chapter-status-section is-lore');
 			
 			// Add a small divider
-			if (pendingEntries.length > 0 || recoveredEntries.length > 0) {
+			if (pendingEntries.length > 0 || recoveredHereEntries.length > 0 || resolvedOriginEntries.length > 0) {
 				loreDiv.createDiv({ cls: 'wn-chapter-status-divider' });
 			}
 			

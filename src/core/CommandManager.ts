@@ -88,7 +88,7 @@ export class CommandManager {
 
 		this.plugin.addCommand({
 			id: 'toggle-workbench-view',
-			name: t('command.toggle-workbench-view') || '打开写作工作台面板',
+			name: t('command.toggle-workbench-view'),
 			icon: 'laptop',
 			callback: () => {
 				void this.plugin.viewManager.toggleView('webnovel-workbench');
@@ -97,7 +97,7 @@ export class CommandManager {
 
 		this.plugin.addCommand({
 			id: 'toggle-corkboard-view',
-			name: t('command.open-corkboard') || '打开章节一览',
+			name: t('command.open-corkboard'),
 			icon: 'library',
 			callback: () => {
 				void this.plugin.viewManager.toggleView('webnovel-corkboard');
@@ -181,7 +181,7 @@ export class CommandManager {
 				id: 'create-blank-sticky-note',
 				name: t('command.create-blank-sticky-note'),
 				callback: () => {
-					this.plugin.createStickyNote({ content: '', title: t('notice.new-note-title') }).catch(console.error);
+					this.plugin.stickyNoteManager.createStickyNote({ content: '', title: t('notice.new-note-title') }).catch(console.error);
 				}
 			});
 
@@ -263,7 +263,7 @@ export class CommandManager {
 					await this.plugin.cacheManager.buildInitialCache(
 						this.plugin.app.vault,
 						this.plugin.calculateAccurateWords.bind(this.plugin),
-						this.plugin.isEligibleForWordCount.bind(this.plugin)
+						this.plugin.cacheManager.isEligibleForWordCount.bind(this.plugin.cacheManager)
 					);
 					notice.hide();
 					this.plugin.refreshFolderCounts();

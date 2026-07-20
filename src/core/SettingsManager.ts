@@ -113,11 +113,14 @@ export class SettingsManager {
 
 		// 调整章节命名规则默认值
 		if (adjusted.chapterNamingRules) {
-			adjusted.chapterNamingRules = defaults.chapterNamingRules.map((rule, i) => ({
-				...rule,
-				// 英文环境：rule 1(中文数字) 默认关闭，rule 3/4(Chapter/Part) 默认启用
-				enabled: i === 1 ? false : true,
-			}));
+			// 对于非中文环境，提供英文版本的默认规则，并默认启用英文章节和全能括号
+			adjusted.chapterNamingRules = [
+				{ name: 'Arabic Numerals (Chinese Format)', pattern: '^(?:第(\\d+)[章节回卷部册篇]?|第?(\\d+)[章节回卷部册篇])', enabled: false },
+				{ name: 'Chinese Numerals (Chinese Format)', pattern: '^(?:第([零一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]+)[章节回卷部册篇]?|第?([零一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]+)[章节回卷部册篇])', enabled: false },
+				{ name: 'Pure Numbers & Titles (1, 01, 001 Title)', pattern: '^(\\d+)(?:[ \\-].*)?$', enabled: true },
+				{ name: 'English Chapters (Chapter 1, Ch.1)', pattern: '^[Cc]h(?:apter)?\\.?\\s*(\\d+)', enabled: true },
+				{ name: 'Universal Brackets ( (1), 【30】 )', pattern: '^[（\\(【「{]([0-9零一二三四五六七八九十百千万]+)[）\\)】」}]', enabled: true },
+			];
 		}
 		return adjusted;
 	}

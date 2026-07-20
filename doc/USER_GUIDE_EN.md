@@ -176,8 +176,8 @@ The plugin provides three word count algorithms for different writing scenarios:
 
 | Mode | Rules | Use Case |
 |------|-------|----------|
-| **Web Novel Mode** (default) | All non-whitespace characters count as 1 word each (including punctuation) | Word count rules for platforms like Qidian, JJWXC, and other web novel platforms |
-| **Standard Mode** | Chinese character-by-character + English by word + full-width punctuation counts; half-width punctuation excluded | Common word count scheme in Word, WPS, and other document tools |
+| **Web Novel Mode** | All non-whitespace characters count as 1 word each (including punctuation) | Word count rules for platforms like Qidian, JJWXC, and other web novel platforms |
+| **Standard Mode** (default) | Chinese character-by-character + English by word + full-width punctuation counts; half-width punctuation excluded | Common word count scheme in Word, WPS, and other document tools |
 | **Native Mode** | Chinese character-by-character + English by word, ignoring all punctuation | Closest to Obsidian's built-in word count |
 
 ##### How to Switch
@@ -360,9 +360,9 @@ If word counts are displayed incorrectly:
 > - **Rules without parentheses**: No number is extracted; these are treated as "named chapters" and sorted alphabetically by filename. For example, `前言`, `番外`.
 > - **Rule order determines position**: Groups that match earlier rules are placed above. To place side stories after the main text, put the side story rule below the numbered rules.
 
-##### Default Preset Rules
+##### Default Rules
 
-The plugin comes with 3 common preset rules ready to use:
+The plugin comes with 5 pre-configured rules in settings (the first 3 are enabled by default), which you can toggle anytime:
 
 **Rule 1: Arabic Numerals (第1章, 第01章)**
 ```
@@ -380,13 +380,29 @@ Enabled: Yes
 ```
 Supported formats: `第一章`, `第二十三章`, `第一百章`, `第九百九十九章` (supports one through nine hundred ninety-nine)
 
-**Rule 3: Pure Numbers (1, 01, 001)**
+**Rule 3: Pure Numbers & Titles (1, 01, 001 Title)**
 ```
-Name: Pure Numbers (1, 01, 001)
-Regex: ^(\d+)$
+Name: Pure Numbers & Titles (1, 01, 001 Title)
+Regex: ^(\d+)(?:[ \-].*)?$
 Enabled: Yes
 ```
-Supported formats: `1`, `01`, `001` (pure numeric filenames without prefix or suffix)
+Supported formats: `1`, `01`, `001 Prologue` (pure numeric filenames or numeric followed by a space/hyphen and title, **does NOT include decimals**)
+
+**Rule 4: English Chapters (Chapter 1, Ch.1)**
+```
+Name: English Chapters (Chapter 1, Ch.1)
+Regex: ^[Cc]h(?:apter)?\.?\s*(\d+)
+Enabled: No
+```
+Supported formats: `Chapter 1`, `Ch 01`, `ch.1`
+
+**Rule 5: Universal Brackets ( (1), 【30】 )**
+```
+Name: Universal Brackets ( (1), 【30】 )
+Regex: ^[（\(【「{]([0-9零一二三四五六七八九十百千万]+)[）\)】」}]
+Enabled: No
+```
+Supported formats: `(1)`, `（一）`, `【30】`, `「一百」`, `{2}`
 
 ##### Custom Rule Examples
 
@@ -399,10 +415,12 @@ Regex: ^(\d+\.\d+)
 Enabled: Yes
 ```
 
-**English Chapters** (e.g., Chapter 1, Chapter 01)
+**Mixed Numbers and Decimals** (e.g., 1, 1.5, 2, 2.1)
+
+If you want pure numbers and decimal chapters to be strictly interleaved based on their mathematical value, you must **disable the default pure number rule** and only enable this "all-inclusive" rule (grouping them into the same rule category so the engine can compare their values):
 ```
-Name: English Chapters
-Regex: ^[Cc]hapter\s*(\d+)
+Name: Mixed Numbers and Decimals
+Regex: ^(\d+(?:\.\d+)?)(?:[ \-].*)?$
 Enabled: Yes
 ```
 
@@ -439,14 +457,13 @@ This way `番外1` → number 1, `番外2` → number 2, and they are automatica
 > - Multiple rules can be enabled simultaneously; the plugin matches them in order
 > - `|` means "or" and allows one rule to match multiple filenames
 
-> **Important**:
-> If you have both a **number rule** (e.g., `^(\d+)$`) and a **decimal rule** (e.g., `^(\d+\.\d+)`) enabled, you must place the decimal rule **above** the number rule. Otherwise, decimal chapters will be matched first by the number rule, resulting in incorrect sorting.
->
-> For example: `1.1` would be matched by `^(\d+)$` as `1`, instead of being matched by `^(\d+\.\d+)` as `1.1`.
+> **⚠️ Important**:
+> If you have both a **number rule** (e.g., `^(\d+)(?:[ \-].*)?$`) and a **decimal rule** (e.g., `^(\d+\.\d+)`) enabled, it is recommended to place the decimal rule **above** the number rule. Although the new default number rule has been optimized to prevent mismatches with decimals, order still matters for custom number rules.
 >
 > **Correct order**:
 > 1. Decimal Chapters `^(\d+\.\d+)` ✅
-> 2. Pure Numbers `^(\d+)$` ✅
+> 2. Pure Numbers `^(\d+)(?:[ \-].*)?$` ✅
+
 
 #### Related Settings
 - **Enable Smart Chapter Sorting**: Master toggle.

@@ -725,7 +725,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 	private getAvailableViews(): Record<string, string> {
 		return {
 			'immersive-chapter-list-view': t('setting.layout-view-chapter-list'),
-			'webnovel-corkboard': t('setting.layout-view-corkboard') || '章节一览',
+			'webnovel-corkboard': t('setting.layout-view-corkboard'),
 			'immersive-sticky-notes-view': t('setting.layout-view-sticky-notes'),
 			'foreshadowing-view': t('setting.layout-view-foreshadowing'),
 			'wn-timeline-view': t('setting.layout-view-timeline'),
@@ -988,6 +988,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					if (newName === oldName) return;
 					this.plugin.settings.loreFolderName = newName;
 					await this.plugin.saveSettings();
+					this.plugin.cacheManager?.resetLoreCache();
 					const count = await this.plugin.renameAllFunctionalFiles(oldName, newName, 'folder', 'loreFolderName');
 					if (count > 0) new Notice(t('notice.files-renamed', { count: String(count) }));
 				};
@@ -1022,8 +1023,8 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 
 		// 启用跨文件图谱关联
 		new Setting(containerEl)
-			.setName(t('setting.lore-graph-enable-global') || '启用跨文件图谱关联')
-			.setDesc(t('setting.lore-graph-enable-global-desc') || '开启后，图谱将读取整个设定文件夹中的所有文件，生成全局的人物关系图。在设定文件非常多时可能会影响性能。')
+			.setName(t('setting.lore-graph-enable-global'))
+			.setDesc(t('setting.lore-graph-enable-global-desc'))
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.loreGraphEnableGlobal)
 				.onChange(async (value: boolean) => {

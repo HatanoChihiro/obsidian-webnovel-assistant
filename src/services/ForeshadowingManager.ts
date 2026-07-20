@@ -379,7 +379,7 @@ export class ForeshadowingManager {
 			const pattern = new RegExp(
 				`(## \\[\\[${escapeRegex(sourceFile)}\\]\\]` +
 				(createdAt ? `[^\\n]*${escapeRegex(createdAt)}` : '') +
-				`[\\s\\S]*?\\*\\*(?:回收于|Recovered at)\\*\\*：\\n)([\\s\\S]*?)(\\n\\n|$)`,
+				`[\\s\\S]*?\\*\\*(?:回收于|Recovered at|Resolved in)\\*\\*：\\n)([\\s\\S]*?)(\\n\\n|$)`,
 				'm'
 			);
 
@@ -505,14 +505,24 @@ export class ForeshadowingManager {
 		const entries = this.parseEntries(content);
 
 		for (const entry of entries) {
-			// 确定该条目关联的目标章节名称列表
-			let targets: string[] = [];
+			// 提取所有来源（可能跨多个章节）
+			const targets: string[] = [];
+			const sources = new Set<string>();
+			if (entry.sourceFile) sources.add(entry.sourceFile);
+			if (entry.contents) {
+				entry.contents.forEach(c => {
+					if (c.source) sources.add(c.source);
+				});
+			}
+
 			if (entry.status === ForeshadowingStatus.Pending) {
-				if (entry.sourceFile) targets.push(entry.sourceFile);
+				targets.push(...sources);
 			} else if (entry.status === ForeshadowingStatus.Recovered) {
-				targets = entry.recoveryFiles
+				targets.push(...sources);
+				const recFiles = entry.recoveryFiles
 					? [...entry.recoveryFiles]
 					: (entry.recoveryFile ? [entry.recoveryFile] : []);
+				targets.push(...recFiles);
 			}
 
 			for (const target of targets) {

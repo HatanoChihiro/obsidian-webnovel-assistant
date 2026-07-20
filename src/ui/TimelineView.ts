@@ -268,7 +268,10 @@ export class TimelineView extends CreativeView {
 
 		item.addEventListener('drop', (e) => {
 			e.preventDefault();
-			const fromIndex = parseInt(e.dataTransfer?.getData('text/plain') || '-1', 10);
+			const data = e.dataTransfer?.getData('text/plain');
+			if (!data) return;
+			const fromIndex = parseInt(data, 10);
+			if (isNaN(fromIndex)) return;
 			const rect = item.getBoundingClientRect();
 			const midY = rect.top + rect.height / 2;
 			// 鼠标在上半部分：插入到目标之前；下半部分：插入到目标之后
@@ -332,7 +335,7 @@ export class TimelineView extends CreativeView {
 
 				chapters.forEach((chapterName, index) => {
 					const link = linksContainer.createEl('a', {
-						text: chapterName,
+						text: chapterName.split('/').pop() || chapterName,
 						cls: 'wn-timeline-chapter-link'
 					});
 					link.onclick = () => {
@@ -377,6 +380,7 @@ export class TimelineView extends CreativeView {
 		deleteBtn.onclick = () => {
 			void (async () => {
 				try {
+					await this.syncFrontmatterForEntryUpdate(entry, null);
 					const newContent = await this.manager.deleteEntry(index);
 					await this.renderFromContent(newContent || null);
 				} catch (e) { console.error(e); }
@@ -577,6 +581,7 @@ export class TimelineView extends CreativeView {
 						return;
 					}
 
+					await this.syncFrontmatterForEntryUpdate(entry, updated);
 					const newContent = await this.manager.updateEntry(index, updated);
 					this.editingIndex = -1;
 					await this.renderFromContent(newContent);
@@ -588,6 +593,63 @@ export class TimelineView extends CreativeView {
 	}
 
 
+	private async syncFrontmatterForEntryUpdate(oldEntry: TimelineEntry, newEntry: TimelineEntry | null) {
+		const targetFiles = ChapterSorter.getAllChapters(this.app, this.plugin, this.currentFolder);
+		const oldTime = oldEntry.time;
+		const newTime = newEntry?.time;
+		
+		// 收集新条目中所有涉及的章节
+		const newChapters: string[] = [];
+		if (newEntry?.items) {
+			newEntry.items.forEach(it => {
+				if (it.chapter) {
+					it.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean).forEach(c => newChapters.push(c));
+				}
+			});
+		} else if (newEntry?.chapter) {
+			newEntry.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean).forEach(c => newChapters.push(c));
+		}
+
+		for (const file of targetFiles) {
+			const isNewChapter = newChapters.some(c => c.toLowerCase().trim() === file.basename.toLowerCase().trim());
+			
+			// 如果这个文件不属于旧时间且不属于新时间，就跳过
+			// 但如何知道它是否属于旧时间？我们必须读取它的 frontmatter 才知道
+			// 所以先读取 frontmatter
+			await this.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
+				let currentTimeline: string[] = [];
+				if (fm['timeline']) {
+					currentTimeline = Array.isArray(fm['timeline']) ? (fm['timeline'] as string[]) : [fm['timeline'] as string];
+				}
+
+				let modified = false;
+
+				// Remove old time if present
+				if (oldTime && currentTimeline.includes(oldTime)) {
+					// 只有当它不再被 newChapters 包含，或者 newTime 和 oldTime 不一致时才需要调整
+					// 为了简单，直接先移除旧的，下面再按需加新的
+					currentTimeline = currentTimeline.filter(t => t !== oldTime);
+					modified = true;
+				}
+
+				// Add new time if this file is in newChapters
+				if (newTime && isNewChapter && !currentTimeline.includes(newTime)) {
+					currentTimeline.push(newTime);
+					modified = true;
+				}
+
+				if (modified) {
+					if (currentTimeline.length === 0) {
+						fm['timeline'] = null;
+					} else if (currentTimeline.length === 1) {
+						fm['timeline'] = currentTimeline[0];
+					} else {
+						fm['timeline'] = currentTimeline;
+					}
+				}
+			});
+		}
+	}
 
 	// ─── 文件操作 ───────────────────────────────────────
 
@@ -596,52 +658,4 @@ export class TimelineView extends CreativeView {
 		return await this.manager.appendEntry(entry);
 	}
 
-	/**
-	 * 从正文添加到时间线（供 main.ts 调用）
-	 * 直接弹出 Modal，不依赖面板状态
-	 */
-	async addFromSelection(selectedText: string, sourceFile: string, folderPath: string): Promise<void> {
-		// 确保时间线文件存在
-		const fileName = (this.plugin.settings.timeline?.fileName || getDefaultFileName('timelineFileName')) + '.md';
-		const filePath = folderPath ? `${folderPath}/${fileName}` : fileName;
-		let file = this.app.vault.getAbstractFileByPath(filePath) as TFile | null;
-		if (!file) {
-			file = await this.app.vault.create(filePath, `# ${this.plugin.settings.timeline?.fileName || getDefaultFileName('timelineFileName')}\n\n`);
-			new Notice(t('notice.webnov timeline-file-created', { name: fileName }));
-		}
-
-		// 读取已有条目中的类型，传入 Modal 供选择
-		const existingContent = await this.app.vault.read(file);
-		const existingEntries = this.manager.parseEntries(existingContent);
-		const localTypes = [...new Set(existingEntries.map(e => e.type).filter(Boolean))];
-
-		// 弹出输入 Modal
-		const modal = new TimelineAddModal(
-			this.app,
-			this.plugin,
-			selectedText.trim(),
-			sourceFile,
-			folderPath,
-			(entry) => {
-				void (async () => {
-					try {
-						const existing = await this.app.vault.read(file);
-						const separator = existing.endsWith('\n') ? '' : '\n';
-						await this.app.vault.process(file, () => existing + separator + this.manager.formatEntry(entry));
-						new Notice(t('notice.webnov timeline-added'));
-						// 如果面板已打开，刷新
-						const leaves = this.app.workspace.getLeavesOfType(TIMELINE_VIEW_TYPE);
-						if (leaves.length > 0) {
-							void (leaves[0].view as TimelineView).refresh();
-						}
-					} catch (e) {
-						console.error('[TimelineView] 写入新记录失败:', e);
-					}
-				})();
-			},
-			true, // 返回完整 TimelineEntry
-			localTypes
-		);
-		modal.open();
-	}
 }

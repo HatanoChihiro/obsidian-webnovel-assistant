@@ -143,9 +143,17 @@ export class ObsOverlayServer {
 			if (typeof server.closeAllConnections === 'function') {
 				server.closeAllConnections();
 			}
-			await new Promise<void>((resolve) => {
-				server.close(() => resolve());
-			});
+			await Promise.race([
+				new Promise<void>((resolve) => {
+					server.close(() => resolve());
+				}),
+				new Promise<void>((resolve) => {
+					window.setTimeout(() => {
+						Logger.warn('[WebNovel Assistant] OBS 服务器关闭超时，强制返回');
+						resolve();
+					}, 3000);
+				})
+			]);
 		}
 	}
 

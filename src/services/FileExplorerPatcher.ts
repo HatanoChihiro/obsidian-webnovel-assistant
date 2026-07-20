@@ -21,7 +21,8 @@ export class FileExplorerPatcher {
 	private plugin: WebNovelAssistantPlugin;
 	private enabled: boolean = false;
 	private unpatchFunc: (() => void) | null = null;
-	private eventRefs: EventRef[] = [];
+	private vaultEventRefs: EventRef[] = [];
+	private workspaceEventRefs: EventRef[] = [];
 	private wordCountElCache = new WeakMap<HTMLElement, HTMLElement>();
 	private isApplyingSort = false;
 
@@ -108,12 +109,13 @@ export class FileExplorerPatcher {
 								const item = sortedItems[i];
 								if (item && item.file) {
 									const isInWorkspace = item.file instanceof TFile
-										? plugin.isFileInWorkspace(item.file)
+										? plugin.cacheManager.isFileInWorkspace(item.file)
 										: true;
 									if (isInWorkspace) {
 										const chapterInfo = ChapterSorter.extractChapterNumber(item.file.name);
-										if (chapterInfo !== null) {
-											chapterItems.push({ item, chapterInfo, isFolder: item.file instanceof TFolder });
+										if (chapterInfo !== null || (item.file instanceof TFile && plugin.cacheManager.isEligibleForWordCount(item.file))) {
+											const cInfo = chapterInfo || { number: -1, ruleIndex: 999, numStr: '', isChinese: false, isDecimal: false, rulePattern: '' };
+											chapterItems.push({ item, chapterInfo: cInfo, isFolder: item.file instanceof TFolder });
 										} else {
 											entities.push({ isBlock: false, path: item.file.path, item: item, isFolder: item.file instanceof TFolder });
 										}
@@ -128,6 +130,17 @@ export class FileExplorerPatcher {
 									if (a.chapterInfo.ruleIndex !== b.chapterInfo.ruleIndex) {
 										return a.chapterInfo.ruleIndex - b.chapterInfo.ruleIndex;
 									}
+									
+									// 如果是严格模式下的例外文件（ruleIndex === 999），允许使用 customSortOrder 进行排序
+									if (a.chapterInfo.ruleIndex === 999 && b.chapterInfo.ruleIndex === 999) {
+										const customOrder = plugin.settings.customSortOrder || {};
+										const orderA = customOrder[a.item.file.path];
+										const orderB = customOrder[b.item.file.path];
+										if (orderA !== undefined && orderB !== undefined) return orderA - orderB;
+										if (orderA !== undefined) return -1;
+										if (orderB !== undefined) return 1;
+									}
+
 									if (a.isFolder !== b.isFolder) return a.isFolder ? -1 : 1;
 									if (a.chapterInfo.number !== b.chapterInfo.number) {
 										return a.chapterInfo.number - b.chapterInfo.number;
@@ -213,7 +226,7 @@ export class FileExplorerPatcher {
 		return sortedItems;
 	}
 
-	private refreshAllExplorers(): void {
+	public refreshAllExplorers(): void {
 		// [BUGFIX] 如果文件浏览器中有正在重命名的输入框，绝对不要强行触发 sort()，否则会瞬间摧毁原生的新建重命名输入框！
 		const isInputFocused = activeDocument.activeElement && activeDocument.activeElement.tagName.toLowerCase() === 'input';
 		if (isInputFocused) {
@@ -306,7 +319,7 @@ export class FileExplorerPatcher {
 	private setupFileSystemListeners(): void {
 		// [BUGFIX] 绝对不要在 create 事件中调用 refreshAllExplorers()，否则会打断原生的新建文件夹重命名流程！
 		// 因此去掉了 create 事件和 metadataCache changed 事件的无用监听。
-		this.eventRefs.push(this.app.vault.on('delete', (file) => {
+		this.vaultEventRefs.push(this.app.vault.on('delete', (file) => {
 			if (!this.enabled) return;
 			if (file && file.path && this.plugin.settings.customSortOrder) {
 				let changed = false;
@@ -331,9 +344,10 @@ export class FileExplorerPatcher {
 					this.plugin.saveSettings().catch(() => {});
 				}
 			}
-			window.setTimeout(() => this.refreshAllExplorers(), 100);
+			const timer = window.setTimeout(() => this.refreshAllExplorers(), 100);
+		this.plugin.register(() => window.clearTimeout(timer));
 		}));
-		this.eventRefs.push(this.app.vault.on('rename', (file, oldPath) => {
+		this.vaultEventRefs.push(this.app.vault.on('rename', (file, oldPath) => {
 			if (!this.enabled) return;
 			if (this.plugin.settings.customSortOrder && oldPath) {
 				let changed = false;
@@ -364,11 +378,12 @@ export class FileExplorerPatcher {
 					this.plugin.saveSettings().catch(() => {});
 				}
 			}
-			window.setTimeout(() => this.refreshAllExplorers(), 100);
+			const timer = window.setTimeout(() => this.refreshAllExplorers(), 100);
+		this.plugin.register(() => window.clearTimeout(timer));
 		}));
 		
 		// 监听布局变化，确保在文件浏览器重新加载时重置拖拽事件
-		this.eventRefs.push(this.app.workspace.on('layout-change', () => {
+		this.workspaceEventRefs.push(this.app.workspace.on('layout-change', () => {
 			if (!this.enabled) return;
 			const leaf = this.app.workspace.getLeavesOfType('file-explorer')[0];
 			if (leaf) {
@@ -389,8 +404,10 @@ export class FileExplorerPatcher {
 		}
 
 		this.enabled = false;
-		this.eventRefs.forEach(ref => this.app.vault.offref(ref));
-		this.eventRefs = [];
+		this.vaultEventRefs.forEach(ref => this.app.vault.offref(ref));
+		this.vaultEventRefs = [];
+		this.workspaceEventRefs.forEach(ref => this.app.workspace.offref(ref));
+		this.workspaceEventRefs = [];
 		this.teardownDragSort();
 		this.refreshAllExplorers();
 		activeDocument.querySelectorAll('.wn-folder-word-count').forEach(el => el.remove());
@@ -439,7 +456,7 @@ export class FileExplorerPatcher {
 				if (item.file instanceof TFolder || (item.file instanceof TFile && item.file.extension === 'md')) {
 					let isInWorkspace = true;
 					if (item.file instanceof TFile) {
-						isInWorkspace = this.plugin.isEligibleForWordCount(item.file);
+						isInWorkspace = this.plugin.cacheManager.isEligibleForWordCount(item.file);
 					} else if (item.file instanceof TFolder) {
 						if (this.plugin.settings.workspaceFolders && this.plugin.settings.workspaceFolders.length > 0) {
 							const folderPath = item.file.path;
@@ -454,7 +471,7 @@ export class FileExplorerPatcher {
 
 				let count: number | null = null;
 				if (isEligible) {
-					count = this.plugin.cacheManager.getFolderCount(path);
+					count = this.plugin.cacheManager.getFolderWordCount(path);
 				}
 
 				const labelText = (count !== null && count > 0) ? ` (${count.toLocaleString()})` : "";
@@ -570,7 +587,7 @@ export class FileExplorerPatcher {
 		let isChapter = false;
 		if (fileName) {
 			const file = this.app.vault.getAbstractFileByPath(filePath);
-			if (file instanceof TFile && this.plugin.isFileInWorkspace(file) && ChapterSorter.extractChapterNumber(fileName) !== null) {
+			if (file instanceof TFile && this.plugin.cacheManager.isFileInWorkspace(file) && ChapterSorter.extractChapterNumber(fileName) !== null) {
 				isChapter = true;
 			}
 		}
@@ -638,7 +655,7 @@ export class FileExplorerPatcher {
 
 		if (targetPath && targetFileName) {
 			const targetFile = this.app.vault.getAbstractFileByPath(targetPath);
-			if (targetFile instanceof TFile && this.plugin.isFileInWorkspace(targetFile) && ChapterSorter.extractChapterNumber(targetFileName) !== null) {
+			if (targetFile instanceof TFile && this.plugin.cacheManager.isFileInWorkspace(targetFile) && ChapterSorter.extractChapterNumber(targetFileName) !== null) {
 				isChapterTarget = true;
 			}
 		}

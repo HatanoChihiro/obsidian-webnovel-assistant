@@ -1,3 +1,51 @@
+## ✨ v3.5.4
+
+### 工作台优化升级
+
+- **全章节模式**：支持手动拖拽排序，如果章节存在序号，拖拽后会自动重命名后续章节，方便在开文阶段整理，不支持跨卷拖动；
+  *注意*：当章节内已有正文内容时慎用，有概率引发意想不到的BUG。
+- **时间轴看板**：增加事件卡片的拖拽响应，现在你可以把事件拖拽到任何时间节点下并支持重新排序；单章节关联多个事件时且事件节点本身不相连时，会固定在第一个事件右侧，对其他事件进行虚线连接。
+- **设定看板**：在原有表格视图的基础上，增加了卡片视图和全量设定图谱视图（无视设置），可在看板内切换，卡片视图下支持快速编辑设定和拖动排序，不支持跨文件拖动；看板下的设定图谱仅供查看，不支持双击跳转文档。
+- **章节卡片**：增加了“已回收”状态徽章，同步显示在写作状态侧面板，支持文本高亮跳转
+
+### 功能优化与修复
+
+- 优化了设定悬浮卡片的最大高度和防遮挡逻辑，改善低分辨率屏幕的使用体验
+- 优化了移动端写作工作台布局，按钮不再遮挡标题
+- 优化了实时字数提醒的徽章样式，让字数保持居中显示
+- 修改了插件的默认章节规则，仅限首次安装生效，已安装升级不受影响
+- 修复了智能创建章节的正则表达式解析bug，现在即使你的章节序号被括号包裹，如（1）,也能正确创建下一章节
+- 修复了在工作台新建章节时，自动命名空格会越来越多的BUG
+- 修复了工作台章节卡片上的伏笔相关徽章悬浮内容过长时，可能会溢出屏幕的BUG
+- 修复了章节名为繁体大写数字但自动创建下一章为简体大写数字的BUG
+- 修复了如果章节命名时尾部有多余空格，无法通过时间线看板解除事件关联的BUG
+- 修复了写作状态面板中的“待回收”伏笔点击偶尔无法触发跳转的BUG
+- 修复了移动端工作台卡片拖拽不生效的BUG（部分设备可能仍然存在问题，请提交Issue反馈）
+
+### English Changelog
+
+#### Workbench Optimization
+
+- **All Chapters Board**: Supported manual drag-and-drop reordering. If chapters have sequential numbers, dragging will automatically rename subsequent chapters, making it convenient to organize during the initial writing phase. Cross-volume dragging is not supported.
+  *Note*: Use with caution when chapters already contain text content, as it may cause unexpected bugs.
+- **Timeline Board**: Added drag-and-drop response for event cards. You can now drag events under any time node and reorder them. When a single chapter is associated with multiple disconnected event nodes, it will be fixed to the right of the first event, with dashed lines connecting to the other events.
+- **Lore Board**: Added Card View and Full Lore Graph View (ignoring settings) alongside the original Table View, switchable within the board. The Card View supports quick editing and drag-and-drop sorting (cross-file dragging is not supported). The Lore Graph within the board is for viewing only and does not support double-click document jumping.
+- **Chapter Cards**: Added "Resolved" status badge for foreshadowing, synchronously displayed in the writing status side panel, supporting text highlight jumping.
+
+#### Features and Fixes
+
+- Optimized the maximum height and anti-occlusion logic of lore hover cards, improving the experience on low-resolution screens.
+- Optimized the mobile writing workbench layout; buttons no longer overlap the title.
+- Optimized the real-time word count reminder badge style to keep the text vertically centered.
+- Modified the default chapter rules of the plugin to take effect only on initial installation, without affecting existing installations.
+- Fixed a regex parsing bug in smart chapter creation; now it can correctly create the next chapter even if your chapter number is enclosed in parentheses, such as `(1)`.
+- Fixed a bug where creating new chapters in the workbench would progressively add more trailing spaces to the auto-generated name.
+- Fixed a bug where excessively long hover content on foreshadowing badges on chapter cards might overflow the screen.
+- Fixed a bug where chapter names with Traditional Chinese uppercase numbers would incorrectly generate the next chapter with Simplified Chinese uppercase numbers.
+- Fixed a bug where trailing spaces in chapter names prevented unlinking events via the timeline board.
+- Fixed a bug where clicking "Unresolved" foreshadowing in the writing status panel occasionally failed to trigger the jump.
+- Fixed a bug where card dragging in the mobile workbench was unresponsive (some devices might still experience issues, please submit an Issue report).
+
 ## 🔧 v3.5.3
 
 - 修复了新建文件夹重命名时被打断的BUG

@@ -3,13 +3,15 @@ import type { App, ViewStateResult } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ForeshadowingStatus, type ParsedForeshadowingEntry } from '../types/foreshadowing';
 import { ChapterSorter } from '../services/ChapterSorter';
-import { findBookRoot } from '../utils/path';
+import { getCurrentBookContext } from '../utils/path';
 import { t } from '../i18n';
 import { getNovelStatusText, getNovelInfoLabel } from '../i18n/data-keys';
 import { CorkboardGridRenderer } from './components/CorkboardGridRenderer';
 import { TimelineBoardRenderer } from './components/TimelineBoardRenderer';
 import { LoreBoardRenderer } from './components/LoreBoardRenderer';
 import { AddLoreModal } from './AddLoreModal';
+import { DraggableListHelper } from '../utils/DraggableListHelper';
+import { TouchDragPolyfill } from '../utils/TouchDragPolyfill';
 
 class NewChapterModal extends Modal {
     constructor(
@@ -23,12 +25,12 @@ class NewChapterModal extends Modal {
     }
     onOpen() {
         const { contentEl } = this;
-        new Setting(contentEl).setHeading().setName(t('corkboard.new-chapter') || '+ 新增章节');
+        new Setting(contentEl).setHeading().setName(t('corkboard.new-chapter'));
         const inputEl = contentEl.createEl('input', { type: 'text' });
         inputEl.setCssStyles({ width: '100%', marginBottom: '1em' });
         inputEl.value = this.defaultPrefix;
 
-        const btn = contentEl.createEl('button', { text: t('common.confirm') || '确认' });
+        const btn = contentEl.createEl('button', { text: t('common.confirm') });
         btn.onclick = async () => {
             if (inputEl.value.trim()) {
                 let templateContent = '';
@@ -39,7 +41,7 @@ class NewChapterModal extends Modal {
                             templateContent = await this.app.vault.read(file);
                         }
                     } catch (e) {
-                        console.error('无法读取模板文件:', e);
+                        console.error(t('workbench.error-read-template', { error: String(e) }) || '无法读取模板文件:', e);
                     }
                 }
                 this.onSubmit(inputEl.value.trim(), templateContent);
@@ -57,6 +59,28 @@ class NewChapterModal extends Modal {
     onClose() { this.contentEl.empty(); }
 }
 
+class ConfirmModal extends Modal {
+    constructor(app: App, private message: string, private onConfirm: () => void) {
+        super(app);
+    }
+    onOpen() {
+        const { contentEl } = this;
+        new Setting(contentEl).setHeading().setName(t('common.warning'));
+        contentEl.createEl('p', { text: this.message });
+        const btnContainer = contentEl.createDiv({ cls: 'webnovel-modal-button-container' });
+        
+        const cancelBtn = btnContainer.createEl('button', { text: t('common.cancel') });
+        cancelBtn.onclick = () => this.close();
+        
+        const confirmBtn = btnContainer.createEl('button', { text: t('common.confirm'), cls: 'mod-warning' });
+        confirmBtn.onclick = () => {
+            this.onConfirm();
+            this.close();
+        };
+    }
+    onClose() { this.contentEl.empty(); }
+}
+
 export const WORKBENCH_VIEW_TYPE = 'webnovel-workbench';
 
 export class WorkbenchView extends ItemView {
@@ -68,6 +92,8 @@ export class WorkbenchView extends ItemView {
     private container!: HTMLElement;
     private currentTimelineFilter: string = 'all';
     private currentRenderId: number = 0;
+    private draggableListCleanup: (() => void) | null = null;
+    private touchPolyfillCleanup: (() => void) | null = null;
 
     constructor(leaf: WorkspaceLeaf, plugin: WebNovelAssistantPlugin) {
         super(leaf);
@@ -90,29 +116,24 @@ export class WorkbenchView extends ItemView {
         }));
         this.registerEvent(this.app.vault.on('modify', (file) => {
             if (this.isSavingMetadata) return;
-            if (file instanceof TFile && !this.plugin.isFileInWorkspace(file)) return;
+            if (file instanceof TFile && !this.plugin.cacheManager.isFileInWorkspace(file)) return;
             this.plugin.adaptiveDebounceManager.debounceFixed('corkboard-refresh', () => {
                 void this.reloadBoard();
             }, 1000);
         }));
         this.registerEvent(this.app.metadataCache.on('changed', (file) => {
             if (this.isSavingMetadata) return;
-            if (file instanceof TFile && !this.plugin.isFileInWorkspace(file)) return;
+            if (file instanceof TFile && !this.plugin.cacheManager.isFileInWorkspace(file)) return;
             this.plugin.adaptiveDebounceManager.debounceFixed('corkboard-refresh', () => {
                 void this.reloadBoard();
             }, 1000);
         }));
-        // 监听活动叶子节点变化，以便自动切换小说
         this.registerEvent(this.app.workspace.on('active-leaf-change', (leaf) => {
             if (!leaf || leaf.view.getViewType() !== 'markdown') return;
-            const activeFile = this.app.workspace.getActiveFile();
-            if (activeFile) {
-                const newBookPath = findBookRoot(this.app, this.plugin, activeFile, true);
+            let newBookPath = getCurrentBookContext(this.app, this.plugin);
+            if (newBookPath === '') newBookPath = '/';
+            if (newBookPath !== null) {
                 if (newBookPath !== undefined && newBookPath !== this.currentBookPath) {
-                    // 如果工作台已锁定在某个具体作品上，则只有打开属于「另一部作品」的文件时才切换。
-                    // 以下情况视为"非作品文件"，一律忽略：
-                    //   1. newBookPath 为 '' 或 '/'（Vault 根目录或严格模式未匹配）
-                    //   2. newBookPath 等于某个工作区文件夹本身（文件在工作区顶层，如创作主页）
                     const hasValidBook = this.currentBookPath && this.currentBookPath !== '/' && this.currentBookPath !== '';
                     if (hasValidBook) {
                         const workspaceFolders = this.plugin.settings.workspaceFolders || [];
@@ -127,13 +148,181 @@ export class WorkbenchView extends ItemView {
                 }
             }
         }));
+        this.registerEvent(
+            this.app.workspace.on('webnovel-workbench-lore-updated', () => {
+                void this.reloadBoard();
+            })
+        );
     }
+
+
 
     public setBookPath(path: string) {
         if (this.currentBookPath !== path) {
             this.currentBookPath = path;
             void this.reloadBoard();
             this.app.workspace.trigger('webnovel-workbench-book-changed', path);
+        }
+    }
+
+    private async handleChapterDrop(fromPath: string, toPath: string, insertAfter: boolean) {
+        if (fromPath === toPath) return;
+
+        // 【限制】：为了防止跨卷拖拽产生重命名的bug，默认拖拽只能在同一文件夹下进行
+        const fromFolder = fromPath.substring(0, fromPath.lastIndexOf('/'));
+        const toFolder = toPath.substring(0, toPath.lastIndexOf('/'));
+        if (fromFolder !== toFolder) {
+            new Notice(t('error.cross-volume-drag-not-supported'));
+            return;
+        }
+
+        const files = this.plugin.getTrackedMarkdownFiles().filter(file => {
+            if (this.plugin.settings.enableStrictChapterMode 
+                && !ChapterSorter.isChapterFile(file.name)
+                && !this.plugin.isFileInStrictChapterException(file)) {
+                return false;
+            }
+            const lorePath = this.plugin.settings.loreFolderName || t('common.default-lore-folder-name');
+            if (file.path.includes(`/${lorePath}/`) || file.path.startsWith(`${lorePath}/`)) {
+                return false;
+            }
+            if (this.currentBookPath === '/') return true;
+            return file.path.startsWith(this.currentBookPath + '/');
+        });
+        
+        files.sort((a, b) => ChapterSorter.compareFilesWithCustomOrder(a, b, this.plugin.settings.customSortOrder || {}));
+
+        const fromIdx = files.findIndex(f => f.path === fromPath);
+        const toIdx = files.findIndex(f => f.path === toPath);
+        if (fromIdx === -1 || toIdx === -1) return;
+
+        let targetIdx = insertAfter ? toIdx + 1 : toIdx;
+        if (fromIdx < targetIdx) targetIdx--; 
+
+        if (fromIdx === targetIdx) return;
+
+        const movedFile = files[fromIdx];
+        const newFiles = [...files];
+        newFiles.splice(fromIdx, 1);
+        newFiles.splice(targetIdx, 0, movedFile);
+
+        const startIdx = Math.min(fromIdx, targetIdx);
+        const endIdx = Math.max(fromIdx, targetIdx);
+        const affectedFiles = newFiles.slice(startIdx, endIdx + 1);
+
+        const renameOperations: { file: TFile, oldName: string, newName: string, newPath: string }[] = [];
+        const customOrderUpdates: Record<string, number> = { ...this.plugin.settings.customSortOrder };
+
+        const originalSlots = files.slice(startIdx, endIdx + 1).map(f => ({
+            file: f,
+            ext: ChapterSorter.extractChapterNumber(f.name)
+        }));
+
+        const isMainSequenceDecimal = originalSlots.every(s => s.ext?.isDecimal);
+
+        const mainSlots = originalSlots.filter(s => {
+            if (!s.ext || s.ext.number === -1) return false;
+            if (s.ext.isDecimal && !isMainSequenceDecimal) return false;
+            return true;
+        });
+
+        const mainFiles = affectedFiles.filter(f => {
+            const ext = ChapterSorter.extractChapterNumber(f.name);
+            if (!ext || ext.number === -1) return false;
+            if (ext.isDecimal && !isMainSequenceDecimal) return false;
+            return true;
+        });
+
+        if (mainSlots.length === mainFiles.length && mainSlots.length > 0) {
+            for (let i = 0; i < mainFiles.length; i++) {
+                const file = mainFiles[i];
+                const targetSlot = mainSlots[i];
+                
+                if (file.path === targetSlot.file.path) continue;
+                
+                const ext = ChapterSorter.extractChapterNumber(file.name);
+                if (!ext || !ext.numStr || !ext.rulePattern) continue;
+
+                const targetExt = targetSlot.ext;
+                if (!targetExt) continue;
+
+                let newNumStr = targetExt.number.toString();
+                if (ext.isChinese) {
+                    newNumStr = ChapterSorter.toChineseNumber(targetExt.number);
+                } else {
+                    if (ext.numStr.startsWith('0') && !newNumStr.startsWith('0')) {
+                        newNumStr = newNumStr.padStart(ext.numStr.length, '0');
+                    }
+                }
+
+                const numStr = ext.numStr;
+                const regex = new RegExp(ext.rulePattern, 'i');
+                const newBasename = file.basename.replace(regex, (match: string, p1: string, p2: string) => {
+                    if (p1 === numStr) return match.replace(p1, newNumStr);
+                    if (p2 === numStr) return match.replace(p2, newNumStr);
+                    return match.replace(numStr, newNumStr);
+                });
+                
+                const newName = `${newBasename}.md`;
+                const newPath = file.parent && file.parent.path !== '/' ? `${file.parent.path}/${newName}` : newName;
+                
+                if (newPath !== file.path) {
+                    renameOperations.push({ file, oldName: file.name, newName, newPath });
+                }
+            }
+        }
+
+        let hasCollision = false;
+        let collisionMsg = '';
+        for (const op of renameOperations) {
+            const existing = this.app.vault.getAbstractFileByPath(op.newPath);
+            if (existing && !renameOperations.some(o => o.file.path === op.newPath)) {
+                hasCollision = true;
+                collisionMsg = op.newPath;
+                break;
+            }
+        }
+
+        const executeRenames = async () => {
+            this.isSavingMetadata = true;
+            try {
+                // Step 1: Rename to temporary paths to avoid collisions
+                const tempOps = renameOperations.map(op => {
+                    const tempPath = op.newPath + '_temp_' + Date.now();
+                    return { ...op, tempPath };
+                });
+                
+                for (const op of tempOps) {
+                    await this.app.fileManager.renameFile(op.file, op.tempPath);
+                }
+                
+                // Step 2: Rename from temporary paths to final paths
+                for (const op of tempOps) {
+                    await this.app.fileManager.renameFile(op.file, op.newPath);
+                }
+                
+                newFiles.forEach((f, idx) => {
+                    const finalPath = renameOperations.find(op => op.file === f)?.newPath || f.path;
+                    customOrderUpdates[finalPath] = idx;
+                });
+                
+                this.plugin.settings.customSortOrder = customOrderUpdates;
+                await this.plugin.saveSettings();
+                this.plugin.fileExplorerPatcher.refreshAllExplorers();
+                void this.reloadBoard();
+            } catch (e) {
+                new Notice(t('workbench.rename-failed', { error: String(e) }) || ('重命名失败: ' + e));
+            } finally {
+                window.setTimeout(() => { this.isSavingMetadata = false; }, 500);
+            }
+        };
+
+        if (hasCollision) {
+            new ConfirmModal(this.app, t('workbench.confirm-overwrite-rename', { name: collisionMsg }) || `目标文件 ${collisionMsg} 已存在，是否强制覆盖重命名？`, () => {
+                void executeRenames();
+            }).open();
+        } else {
+            void executeRenames();
         }
     }
     getState(): Record<string, unknown> {
@@ -168,11 +357,31 @@ export class WorkbenchView extends ItemView {
         this.container = this.contentEl;
         this.container.empty();
         this.container.addClass('wn-corkboard-container');
+        
+        if (this.touchPolyfillCleanup) {
+            this.touchPolyfillCleanup();
+        }
+        this.touchPolyfillCleanup = TouchDragPolyfill.register(this.containerEl);
+
+        if (this.draggableListCleanup) {
+            this.draggableListCleanup();
+        }
+        this.draggableListCleanup = DraggableListHelper.init({
+            container: this.container,
+            itemSelector: '.wn-corkboard-card',
+            dragDataMimeType: 'application/wn-chapter-path',
+            getDragData: (el) => el.getAttribute('data-path') || '',
+            canDrag: () => this.sortMode === 'default',
+            onDrop: (fromPath, toPath, insertAfter) => {
+                if (this.sortMode !== 'default') return;
+                void this.handleChapterDrop(fromPath, toPath, insertAfter);
+            }
+        });
 
         // 确定当前所处的作品目录
-        const activeFile = this.app.workspace.getActiveFile();
         if (!this.currentBookPath) {
-            this.currentBookPath = this.plugin.characterManager.getBookPathForFile(activeFile);
+            const context = getCurrentBookContext(this.app, this.plugin);
+            this.currentBookPath = (context === '' || context === null) ? '/' : context;
         }
         if (this.currentBookPath) {
             this.app.workspace.trigger('webnovel-workbench-book-changed', this.currentBookPath);
@@ -182,6 +391,14 @@ export class WorkbenchView extends ItemView {
     }
 
     async onClose(): Promise<void> {
+        if (this.touchPolyfillCleanup) {
+            this.touchPolyfillCleanup();
+            this.touchPolyfillCleanup = null;
+        }
+        if (this.draggableListCleanup) {
+            this.draggableListCleanup();
+            this.draggableListCleanup = null;
+        }
         this.container.empty();
     }
 
@@ -248,7 +465,7 @@ export class WorkbenchView extends ItemView {
 
         const hintEl = header.createEl('p', { cls: 'wn-corkboard-hint' });
         hintEl.appendText(t('corkboard.current-novel', { name: displayBookName }) + ' ');
-        const switchSpan = hintEl.createSpan({ text: t('corkboard.click-to-switch') || '(点击切换)' });
+        const switchSpan = hintEl.createSpan({ text: t('corkboard.click-to-switch') });
         switchSpan.setCssStyles({ cursor: 'pointer', color: 'var(--text-muted)' });
 
         switchSpan.onclick = (e) => {
@@ -269,7 +486,9 @@ export class WorkbenchView extends ItemView {
         // 获取该作品下所有章节文件
         const files = this.plugin.getTrackedMarkdownFiles().filter(file => {
             // 只有在开启严格章节模式时，才强制要求必须是章节命名格式
-            if (this.plugin.settings.enableStrictChapterMode && !ChapterSorter.isChapterFile(file.name)) {
+            if (this.plugin.settings.enableStrictChapterMode 
+                && !ChapterSorter.isChapterFile(file.name)
+                && !this.plugin.isFileInStrictChapterException(file)) {
                 return false;
             }
             // 排除设定文件夹
@@ -302,13 +521,21 @@ export class WorkbenchView extends ItemView {
 
         const foreshadowingMap = new Map<string, ParsedForeshadowingEntry[]>();
         for (const entry of foreshadowings) {
-            let targets: string[] = [];
+            const targets: string[] = [];
+            const sources = new Set<string>();
+            if (entry.sourceFile) sources.add(entry.sourceFile);
+            if (entry.contents) {
+                entry.contents.forEach(c => {
+                    if (c.source) sources.add(c.source);
+                });
+            }
+
             if (entry.status === ForeshadowingStatus.Pending) {
-                if (entry.sourceFile) {
-                    targets.push(entry.sourceFile);
-                }
+                targets.push(...sources);
             } else if (entry.status === ForeshadowingStatus.Recovered) {
-                targets = entry.recoveryFiles ? [...entry.recoveryFiles] : (entry.recoveryFile ? [entry.recoveryFile] : []);
+                targets.push(...sources);
+                const recFiles = entry.recoveryFiles ? [...entry.recoveryFiles] : (entry.recoveryFile ? [entry.recoveryFile] : []);
+                targets.push(...recFiles);
             }
 
             for (const target of targets) {
@@ -370,14 +597,14 @@ export class WorkbenchView extends ItemView {
 
         if (this.sortMode === 'lore') {
             const newLoreBtn = buttonsContainer.createDiv({ cls: 'wn-corkboard-new-lore-btn' });
-            newLoreBtn.textContent = t('modal.add-new-lore') || '添加新设定';
+            newLoreBtn.textContent = t('modal.add-new-lore');
             newLoreBtn.onclick = () => {
                 new AddLoreModal(this.app, this.plugin, '', this.currentBookPath || '').open();
             };
         } else {
             // 右上角：新增章节按钮
             const newChapterBtn = buttonsContainer.createDiv({ cls: 'wn-corkboard-new-chapter-btn' });
-            newChapterBtn.textContent = t('corkboard.new-chapter') || '+ 新增章节';
+            newChapterBtn.textContent = t('corkboard.new-chapter');
             newChapterBtn.onclick = () => {
                 let defaultPrefix = '01 ';
                 if (files.length > 0) {
@@ -385,7 +612,7 @@ export class WorkbenchView extends ItemView {
                     for (let i = files.length - 1; i >= 0; i--) {
                         const nextName = ChapterSorter.getNextChapterName(files[i].basename, siblingNames);
                         if (nextName) {
-                            defaultPrefix = nextName.replace(/\.md$/, '') + ' ';
+                            defaultPrefix = nextName.replace(/\.md$/, '').trimEnd() + ' ';
                             break;
                         }
                     }
@@ -396,7 +623,7 @@ export class WorkbenchView extends ItemView {
                     const newPath = folder + title + '.md';
                     this.isSavingMetadata = true;
                     this.app.vault.create(newPath, templateContent).then(_file => {
-                        new Notice((t('corkboard.new-chapter-success') || '创建章节: ') + title);
+                        new Notice((t('corkboard.new-chapter-success')) + title);
                         // 留在工作台，仅刷新面?
                         void this.reloadBoard();
                         window.setTimeout(() => {
@@ -405,7 +632,7 @@ export class WorkbenchView extends ItemView {
                     }).catch(e => {
                         this.isSavingMetadata = false;
                         console.error(e);
-                        new Notice(t('corkboard.new-chapter-failed') || '章节创建失败');
+                        new Notice(t('corkboard.new-chapter-failed'));
                     });
                 }).open();
             };
@@ -425,7 +652,7 @@ export class WorkbenchView extends ItemView {
         });
 
         const btnLore = toggleGroup.createEl('span', {
-            text: t('corkboard.sort-lore') || '设定',
+            text: t('corkboard.sort-lore'),
             cls: `wn-corkboard-toggle-btn ${this.sortMode === 'lore' ? 'active' : ''}`
         });
 
@@ -468,11 +695,13 @@ export class WorkbenchView extends ItemView {
             });
         } else if (this.sortMode === 'lore') {
             await LoreBoardRenderer.render({
+                ownerComponent: this,
                 app: this.app,
                 plugin: this.plugin,
                 container: buffer,
                 files,
-                currentBookPath: this.currentBookPath || ''
+                currentBookPath: this.currentBookPath || '',
+                reloadBoard: () => { void this.reloadBoard(); }
             });
         } else {
             this.renderOrderedBoard(buffer, files, foreshadowingMap);
@@ -487,7 +716,7 @@ export class WorkbenchView extends ItemView {
 
     private renderOrderedBoard(container: HTMLElement, files: TFile[], foreshadowingMap: Map<string, ParsedForeshadowingEntry[]>): void {
         const grid = container.createDiv('wn-corkboard-grid');
-        this.renderCards(grid, files, foreshadowingMap, false);
+        this.renderCards(grid, files, foreshadowingMap, true);
     }
 
     private renderCards(container: HTMLElement, files: TFile[], foreshadowingMap: Map<string, ParsedForeshadowingEntry[]>, draggable: boolean): void {

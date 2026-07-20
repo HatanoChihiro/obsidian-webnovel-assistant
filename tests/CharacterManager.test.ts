@@ -1,19 +1,27 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { CharacterManager } from '../src/services/CharacterManager';
+import { TFile } from 'obsidian';
 
 describe('CharacterManager', () => {
     let mockApp: any;
     let mockPlugin: any;
 
     beforeEach(() => {
+        vi.clearAllMocks();
+        
         mockApp = {
             vault: {
                 getMarkdownFiles: vi.fn().mockReturnValue([]),
-                on: vi.fn()
+                on: vi.fn(),
+                cachedRead: vi.fn(),
+                read: vi.fn(),
+                modify: vi.fn(),
+                process: vi.fn()
             },
             workspace: {
                 iterateAllLeaves: vi.fn(),
-                updateOptions: vi.fn()
+                updateOptions: vi.fn(),
+                trigger: vi.fn()
             },
             metadataCache: {
                 on: vi.fn(),
@@ -90,6 +98,71 @@ Some lore content...
             const lowerMap = targetLowerMap.get('Book1');
             expect(lowerMap.get('john doe')).toBe('John Doe');
             expect(lowerMap.get('jd')).toBe('JD');
+        });
+    });
+
+    describe('Cache Access Methods', () => {
+        beforeEach(async () => {
+            const manager = new CharacterManager(mockApp, mockPlugin);
+            manager.getBookPathForFile = vi.fn().mockReturnValue('Book1');
+            manager.isLorePath = vi.fn().mockReturnValue(true);
+            
+            const mockFile = { path: 'Book1/Lore/Characters.md', parent: { path: 'Book1/Lore' } };
+            const mockFileCache = {
+                headings: [
+                    { heading: 'John Doe', level: 2, position: { end: { line: 1 }, start: { line: 1 } } },
+                    { heading: 'Jane Doe', level: 2, position: { end: { line: 3 }, start: { line: 3 } } }
+                ]
+            };
+            
+            mockApp.metadataCache.getFileCache = vi.fn().mockReturnValue(mockFileCache);
+            mockApp.vault.cachedRead = vi.fn().mockResolvedValue(`
+## John Doe
+**Alias**: JD
+## Jane Doe
+            `);
+            mockApp.vault.getMarkdownFiles.mockReturnValue([mockFile]);
+            
+            await manager.rebuildCache();
+            // Store the manager on mockApp for other tests to access
+            mockApp.manager = manager;
+        });
+
+        it('getCharactersForBook should return sorted character keys', () => {
+            const manager = mockApp.manager;
+            const keys = manager.getCharactersForBook('Book1');
+            // Sorted by length descending: 'Jane Doe' (8), 'John Doe' (8), 'JD' (2)
+            expect(keys).toContain('John Doe');
+            expect(keys).toContain('Jane Doe');
+            expect(keys).toContain('JD');
+        });
+
+        it('getLoreEntriesInFileOrder should return unique entries', () => {
+            const manager = mockApp.manager;
+            const entries = manager.getLoreEntriesInFileOrder('Book1');
+            
+            expect(entries.length).toBe(2);
+            expect(entries[0].heading).toBe('John Doe');
+            expect(entries[1].heading).toBe('Jane Doe');
+        });
+
+        it('getCharacterFile should find entry by exact match or alias', () => {
+            const manager = mockApp.manager;
+            
+            const exact = manager.getCharacterFile('Book1', 'John Doe');
+            expect(exact).toBeDefined();
+            expect(exact?.heading).toBe('John Doe');
+            
+            const alias = manager.getCharacterFile('Book1', 'JD');
+            expect(alias).toBeDefined();
+            expect(alias?.heading).toBe('John Doe');
+            
+            const lowercase = manager.getCharacterFile('Book1', 'jd');
+            expect(lowercase).toBeDefined();
+            expect(lowercase?.heading).toBe('John Doe');
+            
+            const notFound = manager.getCharacterFile('Book1', 'Missing');
+            expect(notFound).toBeNull();
         });
     });
 });

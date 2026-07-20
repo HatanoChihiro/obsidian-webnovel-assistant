@@ -50,7 +50,7 @@ export class MenuManager {
 				if (isDesktop()) {
 					menu.addItem((item) => {
 						item.setTitle(t('menu.extract-sticky-note')).setIcon('popup-open').onClick(() => {
-							this.plugin.createStickyNote({ file: file }).catch(console.error);
+							this.plugin.stickyNoteManager.createStickyNote({ file: file }).catch(console.error);
 						});
 					});
 				}
@@ -191,7 +191,7 @@ export class MenuManager {
 				if (isDesktop()) {
 					menu.addItem((item) => {
 						item.setTitle(t('menu.extract-sticky-note')).setIcon('quote').onClick(() => {
-							this.plugin.createStickyNote({ content: editor.getSelection(), title: t('notice.selected-segment') }).catch(console.error);
+							this.plugin.stickyNoteManager.createStickyNote({ content: editor.getSelection(), title: t('notice.selected-segment') }).catch(console.error);
 						});
 					});
 				}
@@ -216,7 +216,7 @@ export class MenuManager {
 				if (isDesktop()) {
 					menu.addItem((item) => {
 						item.setTitle(t('menu.current-file-extract-note')).setIcon('popup-open').onClick(() => {
-							this.plugin.createStickyNote({ file: view.file! }).catch(console.error);
+							this.plugin.stickyNoteManager.createStickyNote({ file: view.file! }).catch(console.error);
 						});
 					});
 				}

@@ -264,6 +264,9 @@ export interface AccurateCountSettings {
 	/** 章节一览面板的排序模式 */
 	corkboardSortMode?: 'default' | 'timeline' | 'lore';
 
+	/** 设定看板展示布局 */
+	loreBoardLayout?: 'table' | 'cards' | 'graph';
+
 	/** 高级搜索：自动记忆的上一次搜索词 */
 	advancedSearchQuery: string;
 

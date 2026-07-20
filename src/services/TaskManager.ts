@@ -199,7 +199,7 @@ async createTaskFile(): Promise<TFile> {
 	getChapterWordCount(): number {
 		const folderPath = this.currentFolder === '/' ? '' : this.currentFolder;
 		// 文件树的字数统计本身就基于缓存，且会包含所有分卷字数
-		const count = this.plugin.cacheManager.getFolderCount(folderPath);
+		const count = this.plugin.cacheManager.getFolderWordCount(folderPath);
 		return count || 0;
 	}
 	/** 检查并关闭已过期的进行中任务 */

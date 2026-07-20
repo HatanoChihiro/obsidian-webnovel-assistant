@@ -5,7 +5,6 @@ import { GutterMarker, gutter, ViewPlugin } from '@codemirror/view';
 import type { TFile} from 'obsidian';
 import { editorInfoField } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
-import { ChapterSorter } from '../services/ChapterSorter';
 import { t } from '../i18n';
 
 class WordCountMarker extends GutterMarker {
@@ -50,8 +49,7 @@ function computeMarkers(state: EditorState, plugin: WebNovelAssistantPlugin): Ra
 	if (!plugin.settings.enableWordCountGutter) return builder.finish();
 
 	const file = getFileFromState(state);
-	if (!file || !plugin.isFileInWorkspace(file)) return builder.finish();
-	if (plugin.settings.enableStrictChapterMode && !ChapterSorter.isChapterFile(file.name)) return builder.finish();
+	if (!file || !plugin.cacheManager.isEligibleForWordCount(file)) return builder.finish();
 
 	const interval = plugin.settings.wordCountInterval || 2000;
 	const doc = state.doc;
@@ -114,11 +112,8 @@ export function createWordCountGutter(plugin: WebNovelAssistantPlugin): Extensio
 				view.dom.classList.remove('webnovel-show-gutter');
 			} else {
 				const file = getFileFromView(view);
-				const inWorkspace = file && plugin.isFileInWorkspace(file);
-				const strictOk = !plugin.settings.enableStrictChapterMode ||
-					(file && ChapterSorter.isChapterFile(file.name));
 
-				if (inWorkspace && strictOk) {
+				if (file && plugin.cacheManager.isEligibleForWordCount(file)) {
 					view.dom.classList.add('webnovel-show-gutter');
 				} else {
 					view.dom.classList.remove('webnovel-show-gutter');

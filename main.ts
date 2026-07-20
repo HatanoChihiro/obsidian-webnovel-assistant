@@ -5,8 +5,10 @@ import type { WebNovelAssistantPlugin } from './src/types/plugin';
 import {
 	isDesktop,
 	isMobile,
-	getPlatformTier
+	getPlatformTier,
 } from './src/utils';
+import { DEFAULT_SETTINGS, PLATFORM_DELAYS } from './src/constants';
+import { getDefaultFileNameCandidates, type DefaultFileNameKey } from './src/i18n/data-keys';
 import { CacheManager } from './src/services/CacheManager';
 import { AdaptiveDebounceManager } from './src/services/AdaptiveDebounceManager';
 import { SettingsManager } from './src/core/SettingsManager';
@@ -25,6 +27,7 @@ import { MobileFloatingStats } from './src/ui/MobileFloatingStats';
 import { AddLoreModal } from './src/ui/AddLoreModal';
 import { ObsOverlayServer } from './src/services/ObsServer';
 import { ForeshadowingManager } from './src/services/ForeshadowingManager';
+import { Logger } from './src/utils/Logger';
 
 import { TaskManager } from './src/services/TaskManager';
 import type { TimelineManager } from './src/services/TimelineManager';
@@ -33,7 +36,7 @@ import { ImmersiveModeManager } from './src/ui/ImmersiveModeManager';
 import { HomepageManager } from './src/services/HomepageManager';
 import { StatisticsManager } from './src/services/StatisticsManager';
 import { StickyNoteDataManager } from './src/services/StickyNoteDataManager';
-import { VIEW_TYPES, DEFAULT_SETTINGS, PLATFORM_DELAYS } from './src/constants';
+
 import { TASK_VIEW_TYPE } from './src/ui/TaskView';
 import { CommandManager } from './src/core/CommandManager';
 import { ViewManager } from './src/core/ViewManager';
@@ -47,7 +50,7 @@ import { FileEventManager } from './src/services/FileEventManager';
 import { HomepageRenderer } from './src/services/HomepageRenderer';
 import { CharacterManager } from './src/services/CharacterManager';
 import { t, setLocale, detectLocale } from './src/i18n';
-import { getDefaultFileName, getDefaultFileNameCandidates, type DefaultFileNameKey } from './src/i18n/data-keys';
+
 import { buildCharacterHoverExtension } from './src/editor/CharacterHoverExtension';
 import { LoreSyncService } from './src/services/LoreSyncService';
 import { ServiceRegistry } from './src/core/ServiceRegistry';
@@ -72,10 +75,16 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	lastEditTime: number = Date.now();
 	private _unloading = false;
 	private _homepageTimer: number | null = null;
+	private _loreCandidatesCache: Set<string> | null = null;
 
-	workerManager!: WorkerManager;
-	markdownPostProcessor!: MarkdownPostProcessor;
-	activeNotes: FloatingStickyNote[] = [];
+	
+	get activeNotes(): FloatingStickyNote[] {
+		return this.stickyNoteManager.activeNotes;
+	}
+	set activeNotes(val: FloatingStickyNote[]) {
+		this.stickyNoteManager.activeNotes = val;
+	}
+
 	obsServer: ObsOverlayServer | null = null;
 	mobileFloatingStats: MobileFloatingStats | null = null;
 	obsHtmlBuilder: ObsHtmlBuilder;
@@ -91,6 +100,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	get fileExplorerPatcher(): FileExplorerPatcher { return this.services.get('FileExplorerPatcher'); }
 	get foreshadowingManager(): ForeshadowingManager { return this.services.get('ForeshadowingManager'); }
 	get taskManager(): TaskManager { return this.services.get('TaskManager'); }
+	get workerManager(): WorkerManager { return this.services.get('WorkerManager'); }
+	get markdownPostProcessor(): MarkdownPostProcessor { return this.services.get('MarkdownPostProcessor'); }
 	get wordCounter(): WordCounter { return this.services.get('WordCounter'); }
 	get editorTracker(): EditorTracker { return this.services.get('EditorTracker'); }
 	get fileEventManager(): FileEventManager { return this.services.get('FileEventManager'); }
@@ -110,6 +121,9 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 
 	constructor(app: App, manifest: PluginManifest) {
 		super(app, manifest);
+		
+		Logger.initialize(this);
+		
 		this.services = new ServiceRegistry();
 
 		this.services.register('CacheManager', new CacheManager(this));
@@ -128,9 +142,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.services.register('ViewManager', new ViewManager(this));
 		this.services.register('MenuManager', new MenuManager(this));
 		this.services.register('StatisticsManager', new StatisticsManager(this));
-		this.workerManager = new WorkerManager(this);
-		this.markdownPostProcessor = new MarkdownPostProcessor(this);
-		this.services.register('FileEventManager', new FileEventManager(this));
+		this.services.register('WorkerManager', new WorkerManager(this));
+		this.services.register('MarkdownPostProcessor', new MarkdownPostProcessor(this));
 		this.services.register('HomepageManager', new HomepageManager(this.app, this));
 		// editorTracker 和 styleManager 需要在 onload 后初始化（依赖 this）
 	}
@@ -152,8 +165,12 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			this.settings.homepageWelcome = '';
 			void this.saveSettings();
 		}
-		// 初始化角色缓存 (现已全平台开放)
-		await this.characterManager.initialize();
+		// 初始化角色缓存 (现已全平台开放)，将其移至 onLayoutReady 以避免阻塞启动
+		this.app.workspace.onLayoutReady(() => {
+			this.characterManager.initialize().catch(err => {
+				console.error('[Plugin] characterManager 初始化失败:', err);
+			});
+		});
 		this.loreSyncService.initialize();
 
 		// 加载核心功能（桌面端、平板端和移动端功能）
@@ -190,28 +207,33 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	 * - 设置页面
 	 */
 	private async setupCoreFeatures(): Promise<void> {
-		await this.historyManager.loadHistory(); // 加载历史数据
-		await this.cacheManager.loadCache(); // 提前加载缓存数据，避免启动时主页字数显示为 0
+		// 并行加载历史数据、缓存数据、浮动便签
+		await Promise.all([
+			this.historyManager.loadHistory(),
+			this.cacheManager.loadCache(),
+			this.loadFloatingNotes()
+		]);
 
 		// 应用便签显示状态
 		if (this.settings.showFloatingNotes === false) {
 			activeDocument.body.classList.add('webnovel-notes-hidden');
 		}
 
-		// 加载浮动便签
-		await this.loadFloatingNotes();
-
 		// 监听数据变化事件，保持各视图同步
 		this.registerEvent(this.app.workspace.on('webnovel:notes-changed', () => {
-			this.syncFloatingNotes();
-			this.refreshImmersiveNotes();
+			// eslint-disable-next-line @typescript-eslint/no-unsafe-call -- syncFloatingNotes may not be strictly typed
+			this.stickyNoteManager?.syncFloatingNotes();
+			this.stickyNoteManager?.refreshImmersiveNotes();
+		}));
+
+		this.registerEvent(this.app.workspace.on('layout-change', () => {
+			this.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
+				this.refreshFolderCounts();
+			}, 500);
 		}));
 
 		this.services.register('EditorTracker', new EditorTracker(this.app, this));
 		this.services.register('StyleManager', new StyleManager(this.settings));
-		// fileEventManager is already registered in constructor, but we can re-register or ignore.
-		// wait, constructor already registered FileEventManager. So I can just remove it or keep it. Let's register here to overwrite or ignore constructor one.
-		// Actually constructor didn't use app, so constructor registration is fine, but if it was here, I will register here.
 		this.services.register('FileEventManager', new FileEventManager(this));
 
 		this.fileEventManager.setup();
@@ -283,10 +305,10 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		}));
 		this.registerEvent(this.app.workspace.on('active-leaf-change', () => {
 			void this.editorTracker.handleFileChange();
-			this.handleHomepageViewMode();
+			this.homepageManager?.handleViewMode();
 		}));
 		this.registerEvent(this.app.metadataCache.on('changed', (file) => {
-			if (file instanceof TFile && !this.isFileInWorkspace(file)) return;
+			if (file instanceof TFile && !this.cacheManager.isFileInWorkspace(file)) return;
 			// 使用防抖避免高频更新
 			this.adaptiveDebounceManager.debounceFixed('word-count-update', () => {
 				this.editorTracker.updateWordCount();
@@ -350,9 +372,10 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			if (this.settings.showExplorerCounts) {
 				this.app.workspace.onLayoutReady(() => {
 					// 移动端需要更长的延迟，确保文件浏览器完全加载
-					window.setTimeout(() => {
-						void this.buildFolderCache();
+					const timer = window.setTimeout(() => {
+						void this.cacheManager.buildFolderCache();
 					}, PLATFORM_DELAYS.MOBILE_EXPLORER_DELAY);
+					this.register(() => window.clearTimeout(timer));
 				});
 			}
 			// 监听布局变化，确保文件浏览器就绪后刷新字数
@@ -392,9 +415,10 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.app.workspace.onLayoutReady(() => {
 			// 延迟构建缓存，避免阻塞启动
 			// 500ms 是一个平衡点：既不会阻塞启动，又能快速显示字数
-			window.setTimeout(() => {
-				void this.buildFolderCache();
+			const timer = window.setTimeout(() => {
+				void this.cacheManager.buildFolderCache();
 			}, PLATFORM_DELAYS.DESKTOP_EXPLORER_DELAY);
+			this.register(() => window.clearTimeout(timer));
 		});
 		// 桌面端文件事件监听（由 FileEventManager 管理）
 		// 已经在公用区域注册过，无需重复注册
@@ -593,9 +617,10 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		if (this.settings.showExplorerCounts) {
 			this.app.workspace.onLayoutReady(() => {
 				// 平板端需要延迟，确保文件浏览器完全加载
-				window.setTimeout(() => {
-					void this.buildFolderCache();
+				const timer = window.setTimeout(() => {
+					void this.cacheManager.buildFolderCache();
 				}, PLATFORM_DELAYS.TABLET_EXPLORER_DELAY);
+				this.register(() => window.clearTimeout(timer));
 			});
 			// 监听布局变化，确保文件浏览器就绪后刷新字数
 			this.registerEvent(this.app.workspace.on('layout-change', () => {
@@ -634,54 +659,12 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	 * 将所有活跃悬浮便签的当前内容强制同步到管理器
 	 * 通常在切换工作区（如进入沉浸模式）或插件卸载前调用
 	 */
-	public syncActiveNotesToManager(): void {
-		if (!isDesktop()) return;
-		this.activeNotes.forEach(note => {
-			if (note.state.isEditing && note.textareaEl) {
-				note.state.content = note.textareaEl.value;
-			}
-			this.stickyNoteManager.updateNote(note.state);
-		});
-		// [BUGFIX] updateNote 只更新内存，需要在此显式触发持久化，
-		// 防止进入沉浸模式或插件卸载时便签内容丢失。
-		this.stickyNoteManager.saveNotes(this.stickyNoteManager.getNotes()).catch(err => {
-			console.error('[Plugin] syncActiveNotesToManager 保存便签失败:', err);
-		});
-	}
+	
 
 	/**
 	 * 同步沉浸模式产生的便签变更到桌面悬浮便签
 	 */
-	public syncFloatingNotes(): void {
-		// 仅在桌面端同步浮动便签
-		if (!isDesktop() || this._unloading) return;
-
-		const notes = this.stickyNoteManager.getNotes();
-
-		// 1. 关闭那些已经在沉浸模式中被移除的便签
-		const openNoteIds = new Set(notes.map(n => n.id));
-		[...this.activeNotes].forEach(note => {
-			if (!openNoteIds.has(note.state.id)) {
-				// 静默销毁
-				note.destroy();
-			}
-		});
-
-		// 2. 处理沉浸模式中新建或编辑过的便签
-		const activeIds = new Set(this.activeNotes.map(n => n.state.id));
-		for (const noteState of notes) {
-			if (!activeIds.has(noteState.id)) {
-				const newNote = new FloatingStickyNote(this.app, this, { state: noteState });
-				newNote.load();
-			} else {
-				// 更新已存在的便签内容和状态
-				const existingNote = this.activeNotes.find(n => n.state.id === noteState.id);
-				if (existingNote) {
-					existingNote.updateFromState(noteState);
-				}
-			}
-		}
-	}
+	
 
 	/**
 	 * 创建便签（处理沉浸模式同步）
@@ -702,93 +685,13 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		// 如果处于沉浸模式，立即刷新便签列表视图
 		if (activeDocument.body.classList.contains('immersive-mode-active')) {
 			// 给一点额外时间让设置/文件持久化完成
-			window.setTimeout(() => {
-				this.refreshImmersiveNotes();
+			const timer = window.setTimeout(() => {
+				this.stickyNoteManager?.refreshImmersiveNotes();
 			}, 200);
+			this.register(() => window.clearTimeout(timer));
 		}
 	}
-
-	private _leafOriginalStates = new WeakMap<object, Record<string, unknown>>();
-
-	/**
-	 * 主页视图模式管理
-	 * 精确记录叶子进入主页前的状态，离开时完美还原
-	 */
-	private handleHomepageViewMode(): void {
-		if (!this.settings.enableHomepage) return;
-		const homepagePath = this.homepageManager?.getHomepageFilePath();
-		if (!homepagePath) return;
-
-		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-		if (!view) return;
-
-		const leaf = view.leaf;
-		const activeFile = view.file;
-		const isOnHomepage = activeFile && activeFile.path === homepagePath;
-
-		if (isOnHomepage) {
-			// 添加专门的高性能 CSS 类名，替代原先的 :has() 选择器
-			const leafContent = view.containerEl.closest('.workspace-leaf-content') || view.containerEl;
-			leafContent.classList.add('is-webnovel-homepage');
-
-			// 进入主页：记录原状态并切换到预览模式
-			if (!this._leafOriginalStates.has(leaf)) {
-				const stateToSave = view.getState();
-				if (stateToSave.mode === 'preview') {
-					// 针对 Obsidian 重启时恢复会话，或用户原本在阅读模式的情况
-					// 我们将其原状态“修正”为系统的默认模式（通常是 source/编辑模式）
-					// 这样切出主页到其他文档时，就不会把其他文档也变成阅读模式
-					stateToSave.mode = this.app.vault.getConfig('defaultViewMode') || 'source';
-					stateToSave.source = false;
-				}
-				this._leafOriginalStates.set(leaf, stateToSave);
-			}
-			if (view.getMode() !== 'preview') {
-				// 使用 setTimeout 避免与 Obsidian 内部的文件打开/导航 Promise 产生竞态条件
-				// [BUGFIX] 使用计时器取消机制防止快速切换时的竞态
-				if (this._homepageTimer) window.clearTimeout(this._homepageTimer);
-				this._homepageTimer = window.setTimeout(() => {
-					this._homepageTimer = null;
-					// 获取最新状态避免过期
-					const latestView = this.app.workspace.getActiveViewOfType(MarkdownView);
-					if (latestView && latestView.file?.path === homepagePath) {
-						const state = latestView.getState();
-						state.mode = 'preview';
-						void latestView.leaf.setViewState({ type: 'markdown', state, active: true });
-					}
-				}, 50);
-			}
-			this.homepageManager?.refreshHomepageViews();
-		} else {
-			// 离开了主页：移除 CSS 标识
-			const leafContent = view.containerEl.closest('.workspace-leaf-content') || view.containerEl;
-			leafContent.classList.remove('is-webnovel-homepage');
-
-			// 恢复进入前的状态
-			if (this._leafOriginalStates.has(leaf)) {
-				const originalState = this._leafOriginalStates.get(leaf)!;
-				this._leafOriginalStates.delete(leaf);
-
-				const currentState = view.getState();
-				if (currentState.mode !== originalState.mode || currentState.source !== originalState.source) {
-					// 使用 setTimeout 避免切换回其他文档时，被 Obsidian 自身的默认加载状态覆盖
-					const targetPath = activeFile?.path;
-					// [BUGFIX] 使用计时器取消机制防止快速切换时的竞态
-					if (this._homepageTimer) window.clearTimeout(this._homepageTimer);
-					this._homepageTimer = window.setTimeout(() => {
-						this._homepageTimer = null;
-						const latestView = this.app.workspace.getActiveViewOfType(MarkdownView);
-						if (latestView && latestView.file?.path === targetPath) {
-							const newState = latestView.getState();
-							newState.mode = originalState.mode;
-							newState.source = originalState.source;
-							void latestView.leaf.setViewState({ type: 'markdown', state: newState, active: true });
-						}
-					}, 50);
-				}
-			}
-		}
-	}
+	
 
 	/**
 	 * 切换所有悬浮便签的显示/隐藏状态
@@ -808,21 +711,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	/**
 	 * 刷新所有沉浸模式便签列表视图
 	 */
-	public refreshImmersiveNotes() {
-		// 如果当前有文本框正处于编辑状态，暂时跳过全量刷新，防止打断 IME 输入
-		const activeEl = activeDocument.activeElement;
-		if (activeEl && activeEl.tagName.toLowerCase() === 'textarea' &&
-			(activeEl.closest('.immersive-sticky-card') || activeEl.closest('.my-sticky-note'))) {
-			return;
-		}
-
-		this.app.workspace.getLeavesOfType(VIEW_TYPES.IMMERSIVE_STICKY_NOTES).forEach(leaf => {
-			if (leaf.view.getViewType() === VIEW_TYPES.IMMERSIVE_STICKY_NOTES) {
-				const view = leaf.view as unknown as { renderNotes?: () => void };
-				view.renderNotes?.();
-			}
-		});
-	}
+	
 
 
 	private registerCommonRibbonIcons(): void {
@@ -862,9 +751,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 
 		// 0. 确保退出沉浸模式（fire-and-forget，无法等待）
 		if (this.immersiveModeManager) {
-			this.immersiveModeManager.exitImmersiveMode().catch(e =>
-				console.error('[WebNovel Assistant] 退出沉浸模式失败:', e)
-			);
+			this.immersiveModeManager.cleanup();
 		}
 
 		// 1. 停止 OBS 服务器
@@ -924,9 +811,23 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 
 		Promise.all([
 			this.settingsManager.flush(),
-			this.stickyNoteManager.saveNotes(this.stickyNoteManager.getNotes())
+			this.stickyNoteManager.saveNotes(this.stickyNoteManager.getNotes()),
+			this.cacheManager.saveCache()
 		]).catch(e => console.error('[WebNovel Assistant] 卸载时数据刷新失败:', e));
 
+		// 9. 清理所有的自定义视图，防止未卸载导致 Obsidian 设置面板崩溃
+		try {
+			if (this.viewManager) {
+				this.viewManager.detachAllViews();
+			}
+		} catch (e) {
+			console.error('[WebNovel Assistant] Error in detachAllViews:', e);
+		}
+
+		// 调用 ServiceRegistry 统一清理
+		if (this.services && typeof this.services.destroyAll === 'function') {
+			this.services.destroyAll();
+		}
 	}
 
 	/**
@@ -935,125 +836,29 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 
 	/**
 	 * R22: 替代全局 getMarkdownFiles() 的按需遍历方法
-	 * 优先在指定的 workspacePaths 范围内递归获取 markdown 文件，以减少大型 vault 扫描消耗。
+	 * 优先在指定的 workspaceFolders 范围内递归获取 markdown 文件，以减少大型 vault 扫描消耗。
+	 * [BUGFIX] 统一使用 workspaceFolders（主字段），与 CacheManager.isFileInWorkspace 保持一致。
 	 */
 	getTrackedMarkdownFiles(): TFile[] {
-		const workspacePaths = this.settings.workspacePaths || [];
-		if (workspacePaths.length === 0) {
-			return this.app.vault.getMarkdownFiles().filter(f => this.isEligibleForWordCount(f));
+		const workspaceFolders = this.settings.workspaceFolders || [];
+		if (workspaceFolders.length === 0) {
+			return this.app.vault.getMarkdownFiles().filter(f => this.cacheManager.isEligibleForWordCount(f));
 		}
 
 		const workspaceFiles: TFile[] = [];
-		for (const wp of workspacePaths) {
+		for (const wp of workspaceFolders) {
 			const folder = this.app.vault.getAbstractFileByPath(wp);
 			if (folder instanceof TFolder) {
 				Vault.recurseChildren(folder, (file: TAbstractFile) => {
-					if (file instanceof TFile && file.extension === 'md' && this.isEligibleForWordCount(file)) {
+					if (file instanceof TFile && file.extension === 'md' && this.cacheManager.isEligibleForWordCount(file)) {
 						workspaceFiles.push(file);
 					}
 				});
-			} else if (folder instanceof TFile && folder.extension === 'md' && this.isEligibleForWordCount(folder)) {
+			} else if (folder instanceof TFile && folder.extension === 'md' && this.cacheManager.isEligibleForWordCount(folder)) {
 				workspaceFiles.push(folder);
 			}
 		}
 		return workspaceFiles;
-	}
-
-
-	async buildFolderCache(): Promise<void> {
-		if (!this.settings.showExplorerCounts) return;
-
-		try {
-			// 避免发生双重 loadCache，如果缓存已有数据则视为已加载
-			const loaded = this.cacheManager.getCacheStats().size > 0 ? true : await this.cacheManager.loadCache();
-
-			// 检查缓存完整性：对比缓存条目数和实际文件数
-			const allFiles = this.app.vault.getMarkdownFiles();
-			// 只统计工作区内的文件
-			const workspaceFiles = allFiles.filter(f => this.isEligibleForWordCount(f));
-			const cacheStats = this.cacheManager.getCacheStats();
-
-			// 缓存应该包含：文件数 + 文件夹数
-			// 更严格的检查：缓存条目数应该至少等于文件数（因为还有文件夹）
-			let shouldRebuild = !loaded || cacheStats.size < workspaceFiles.length;
-			// 严格章节模式下旧缓存可能包含非章节文件数据，需要重建
-			if (loaded && !shouldRebuild && this.settings.enableStrictChapterMode) {
-				for (const [path, entry] of this.cacheManager.getEntries()) {
-					if (!entry.isFolder) {
-						const file = this.app.vault.getAbstractFileByPath(path);
-						if (file instanceof TFile && !this.isEligibleForWordCount(file)) {
-							shouldRebuild = true;
-							break;
-						}
-					}
-				}
-			}
-
-			if (loaded && !shouldRebuild) {
-				// 加载成功且缓存完整，直接刷新显示
-				// 移动端需要额外延迟，确保文件浏览器完全准备好
-				if (isMobile()) {
-					window.setTimeout(() => {
-						this.refreshFolderCounts();
-						if (this.settings.enableHomepage) this.homepageManager?.refreshHomepageViews();
-					}, PLATFORM_DELAYS.MOBILE_CACHE_REFRESH_DELAY);
-				} else {
-					this.refreshFolderCounts();
-					if (this.settings.enableHomepage) this.homepageManager?.refreshHomepageViews();
-				}
-				return;
-			}
-
-			// 缓存不完整或不存在
-			if (!loaded) {
-				// 全量构建
-				const notice = new Notice(t('notice.building-explorer-cache'), 0);
-				await this.cacheManager.buildInitialCache(
-					this.app.vault,
-					this.calculateAccurateWords.bind(this),
-					this.isEligibleForWordCount.bind(this)
-				);
-				notice.hide();
-			} else {
-				// 增量补全：只处理缓存中缺失的文件
-				const cachedPaths = new Set(Array.from(this.cacheManager.getEntries(), ([k]) => k));
-				const missingFiles = workspaceFiles.filter(f => !cachedPaths.has(f.path));
-				for (const file of missingFiles) {
-					try {
-						const content = await this.app.vault.cachedRead(file);
-						const count = this.calculateAccurateWords(content);
-						this.cacheManager.updateFileCache(file, count, this.app.vault);
-					} catch {
-						// 忽略单个文件失败
-					}
-				}
-				await this.cacheManager.saveCache();
-			}
-
-			// 移动端需要额外延迟，确保文件浏览器完全准备好
-			if (isMobile()) {
-				window.setTimeout(() => {
-					this.refreshFolderCounts();
-					if (this.settings.enableHomepage) this.homepageManager?.refreshHomepageViews();
-				}, PLATFORM_DELAYS.MOBILE_CACHE_REFRESH_DELAY);
-			} else {
-				this.refreshFolderCounts();
-				if (this.settings.enableHomepage) this.homepageManager?.refreshHomepageViews();
-			}
-
-			new Notice(t('notice.explorer-cache-complete'), 3000);
-		} catch (error) {
-			console.error('[Plugin] 缓存构建失败:', error);
-
-			// 降级: 禁用文件浏览器显示
-			this.settings.showExplorerCounts = false;
-			await this.saveSettings();
-
-			new Notice(
-				t('notice.explorer-cache-failed', { error: error instanceof Error ? error.message : String(error) }),
-				10000
-			);
-		}
 	}
 
 	/**
@@ -1062,7 +867,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	async updateFileCacheAndRefresh(file: TFile): Promise<void> {
 		try {
 			// [BUGFIX] 重命名或后台刷新时需再次校验资格，防止将重命名后已不再符合要求的文档（如_合并章节）加入缓存
-			if (!this.isEligibleForWordCount(file)) {
+			if (!this.cacheManager.isEligibleForWordCount(file)) {
 				this.cacheManager.invalidateCache(file.path, this.app.vault);
 				this.refreshFolderCounts();
 				return;
@@ -1112,27 +917,10 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 
 
 	async saveSettings() {
+		this._loreCandidatesCache = null;
 		await this.settingsManager.saveSettings();
 	}
 
-	/**
-	 * 检查文件名是否为插件生成的元数据文件（支持多语言文件名）
-	 */
-	isPluginGeneratedFile(basename: string): boolean {
-		const checks: Array<{ setting: string | undefined; field: DefaultFileNameKey }> = [
-			{ setting: this.settings.novelInfo?.fileName, field: "novelInfoFileName" },
-			{ setting: this.settings.foreshadowing?.fileName, field: "foreshadowingFileName" },
-			{ setting: this.settings.timeline?.fileName, field: "timelineFileName" },
-			{ setting: this.settings.task?.fileName, field: "taskFileName" },
-		];
-		for (const { setting, field } of checks) {
-			if (basename === setting) return true;
-			for (const name of getDefaultFileNameCandidates(field)) {
-				if (basename === name) return true;
-			}
-		}
-		return false;
-	}
 	/**
 		 * 重命名工作区内所有功能性文档/文件夹
 		 * @param oldName 旧文件名（不含 .md 后缀）或旧文件夹名
@@ -1245,88 +1033,9 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 
 		return count;
 	}
-	/**
-		 * 检查文件是否在工作区文件夹内
-		 * @param file 要检查的文件
-		 * @returns 如果工作区为空或文件在工作区内，返回 true
-		 */
-	isFileInWorkspace(file: TFile): boolean {
-		// 如果没有设置工作区，则全局生效
-		if (!this.settings.workspaceFolders || this.settings.workspaceFolders.length === 0) {
-			return true;
-		}
-
-		// 检查文件路径是否在任一工作区文件夹内
-		const filePath = file.path;
-		return this.settings.workspaceFolders.some(folder => {
-			// 标准化文件夹路径（移除首尾斜杠）
-			const normalizedFolder = folder.replace(/^\/+|\/+$/g, '');
-			if (normalizedFolder === '') return true; // 如果填了 / 或为空，默认匹配所有
-			return filePath === normalizedFolder + '.md' || filePath.startsWith(normalizedFolder + '/');
-		});
-	}
 
 
 
-	/**
-	 * 检查文件是否在严格章节模式例外目录内
-	 */
-	isFileInStrictChapterException(file: TFile): boolean {
-		if (!this.settings.strictChapterExceptions || this.settings.strictChapterExceptions.length === 0) {
-			return false;
-		}
-		const filePath = file.path;
-		return this.settings.strictChapterExceptions.some(folder => {
-			const normalizedFolder = folder.replace(/^\/+|\/+$/g, '');
-			if (normalizedFolder === '') return false;
-			return filePath === normalizedFolder + '.md' || filePath.startsWith(normalizedFolder + '/');
-		});
-	}
-	/**
-	 * 检查文件是否符合字数统计的条件
-	 * @param file 要检查的文件
-	 * @returns 如果符合条件返回 true
-	 */
-	isEligibleForWordCount(file: TFile): boolean {
-		// 1. 必须在工作区内
-		if (!this.isFileInWorkspace(file)) return false;
-
-		// 2. 硬编码排除合并章节文件（防止导出合集时突然导致字数暴增）
-		if (file.basename.includes('_合并章节')) return false;
-
-		// 2.5 只要当前文件命中已启用的章节命名规则（无论严格章节模式全局开关是否开启），就直接豁免后续黑名单检查（允许用户强行统计设定/伏笔字数）
-		const isExplicitChapter = ChapterSorter.isChapterFile(file.name);
-		if (isExplicitChapter) {
-			return true;
-		}
-
-		// 2.6 动态排除插件生成的元数据文件（如作品信息、伏笔、时间线、限时任务等）
-		const basename = file.basename;
-		if (
-			this.isPluginGeneratedFile(basename) ||
-			file.path === this.homepageManager?.getHomepageFilePath()
-		) {
-			return false;
-		}
-
-		// 2.7 排除设定文件夹及其内置多语言 fallback
-		const candidates = new Set<string>();
-		candidates.add(this.settings.loreFolderName || getDefaultFileName('loreFolderName'));
-		for (const name of getDefaultFileNameCandidates('loreFolderName')) candidates.add(name);
-
-		for (const lorePath of candidates) {
-			if (file.path.includes(`/${lorePath}/`) || file.path.startsWith(`${lorePath}/`)) {
-				return false;
-			}
-		}
-
-		// 3. 如果开启了严格章节模式，由于上方已经处理过 isStrictChapter 为 true 的情况，这里只要判断 exception 即可
-		if (this.settings.enableStrictChapterMode && !this.isFileInStrictChapterException(file)) {
-			return false;
-		}
-
-		return true;
-	}
 
 	calculateAccurateWords(text: string): number {
 		return this.wordCounter.calculateAccurateWords(text, this.settings.wordCountMethod);
@@ -1373,4 +1082,35 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.fileExplorerPatcher.refreshFolderCounts();
 	}
 
+
+	
+
+
+	public isFileInWorkspace(file: TFile): boolean {
+		return this.cacheManager.isFileInWorkspace(file);
+	}
+
+	public isFileInStrictChapterException(file: TFile): boolean {
+		return this.cacheManager.isFileInStrictChapterException(file);
+	}
+
+	public isEligibleForWordCount(file: TFile): boolean {
+		return this.cacheManager.isEligibleForWordCount(file);
+	}
+
+	public isPluginGeneratedFile(basename: string): boolean {
+		return this.cacheManager.isPluginGeneratedFile(basename);
+	}
+
+	public async buildFolderCache(): Promise<void> {
+		return this.cacheManager.buildFolderCache();
+	}
+
+	public syncFloatingNotes(): void {
+		this.stickyNoteManager.syncFloatingNotes();
+	}
+
+	public syncActiveNotesToManager(): void {
+		this.stickyNoteManager.syncActiveNotesToManager();
+	}
 }

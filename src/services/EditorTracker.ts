@@ -25,7 +25,7 @@ export class EditorTracker {
 		if (!view) return;
 		
 		// 非工作区文件：仍显示基本字数，但不追踪增量/历史
-		if (view.file && !this.plugin.isEligibleForWordCount(view.file)) {
+		if (view.file && !this.plugin.cacheManager.isEligibleForWordCount(view.file)) {
 			this.updateWordCount();
 			return;
 		}
@@ -69,7 +69,7 @@ export class EditorTracker {
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 		
 		// 严格模式：必须符合字数统计条件
-		if (view?.file && !this.plugin.isEligibleForWordCount(view.file)) {
+		if (view?.file && !this.plugin.cacheManager.isEligibleForWordCount(view.file)) {
 			this.plugin.lastFileWords = 0;
 			this.updateWordCount();
 			return;
@@ -112,7 +112,7 @@ export class EditorTracker {
 		}
 
 		// 非工作区/非章节文件：只显示基本字数，不显示追踪和进度
-		if (view.file && !this.plugin.isEligibleForWordCount(view.file)) {
+		if (view.file && !this.plugin.cacheManager.isEligibleForWordCount(view.file)) {
 			const totalCount = this.plugin.calculateAccurateWords(view.getViewData());
 			const cnChars = (view.getViewData().match(REGEX_PATTERNS.CHINESE()) || []).length;
 			this.plugin.statusBarItemEl.setText(t('common.word-count-status', { count: String(totalCount), cnCount: String(cnChars) }));

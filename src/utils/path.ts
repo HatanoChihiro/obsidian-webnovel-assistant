@@ -115,7 +115,8 @@ export function getCurrentBookContext(app: App, plugin: WebNovelAssistantPlugin)
 	// 1. 优先检查当前活动 Leaf（放宽对 rootSplit 的限制，只要不是别的视图覆盖了上下文就行）
 	if (activeLeaf) {
 		if (activeLeaf.view.getViewType() === 'webnovel-workbench') {
-			return (activeLeaf.view as WorkbenchView).currentBookPath;
+			const bookPath = (activeLeaf.view as WorkbenchView).currentBookPath;
+			if (bookPath !== null && bookPath !== undefined) return bookPath;
 		}
 		if (activeLeaf.view.getViewType() === 'markdown') {
 			const file = app.workspace.getActiveFile();

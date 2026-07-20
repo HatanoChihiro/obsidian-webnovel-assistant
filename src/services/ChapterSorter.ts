@@ -5,6 +5,15 @@ import { CHINESE_NUMBERS } from '../constants';
 import type { ChapterNamingRule } from '../types/settings';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 
+export interface ChapterNumberExtraction {
+	number: number;
+	ruleIndex: number;
+	numStr?: string;
+	isChinese?: boolean;
+	isDecimal?: boolean;
+	rulePattern?: string;
+}
+
 /**
  * 章节排序服务
  * 
@@ -32,7 +41,7 @@ export class ChapterSorter {
 			: allMarkdownFiles.filter(f => f.path.startsWith(folderPath + '/'));
 
 		if (plugin.settings.enableStrictChapterMode) {
-			targetFiles = targetFiles.filter(f => this.isChapterFile(f.basename));
+			targetFiles = targetFiles.filter(f => this.isChapterFile(f.basename) || plugin.isFileInStrictChapterException(f));
 		}
 
 		targetFiles.sort((a, b) => this.compareFilesWithCustomOrder(a, b, plugin.settings.customSortOrder || {}));
@@ -111,12 +120,13 @@ export class ChapterSorter {
 		return result;
 	}
 
+
 	/**
 	 * 从文件名中提取章节编号（使用自定义规则）
 	 * 
-	 * @returns { number: 章节编号, ruleIndex: 规则索引 } 或 null
+	 * @returns { number: 章节编号, ruleIndex: 规则索引, numStr: 数字字符串, isChinese: 是否中文, isDecimal: 是否小数, rulePattern: 规则正则 } 或 null
 	 */
-	static extractChapterNumber(filename: string): { number: number; ruleIndex: number } | null {
+	static extractChapterNumber(filename: string): ChapterNumberExtraction | null {
 		// 移除文件扩展名
 		const basename = filename.replace(/\.md$/i, '');
 
@@ -138,26 +148,26 @@ export class ChapterSorter {
 							if (numStr.includes('.')) {
 								const num = parseFloat(numStr);
 								if (!isNaN(num)) {
-									return { number: num, ruleIndex: i };
+									return { number: num, ruleIndex: i, numStr, isDecimal: true, rulePattern: rule.pattern };
 								}
 							}
 							
 							// 检查是否是阿拉伯数字
 							const arabicNum = parseInt(numStr, 10);
 							if (!isNaN(arabicNum)) {
-								return { number: arabicNum, ruleIndex: i };
+								return { number: arabicNum, ruleIndex: i, numStr, isDecimal: false, rulePattern: rule.pattern };
 							}
 							
 							// 尝试解析中文数字
 							const chineseNum = this.parseChineseNumber(numStr);
 							if (chineseNum > 0) {
-								return { number: chineseNum, ruleIndex: i };
+								return { number: chineseNum, ruleIndex: i, numStr, isChinese: true, isDecimal: false, rulePattern: rule.pattern };
 							}
 						}
 						// [关键扩展] 规则匹配但没有捕获组，或捕获组不是数字
 						// 视为“具名章节”（如：大纲、番外、楔子），使用 -1 让其排在该规则分组的最前面
 						// 规则的先后顺序（ruleIndex）决定该分组在整个文件列表中的位置
-						return { number: -1, ruleIndex: i };
+						return { number: -1, ruleIndex: i, rulePattern: rule.pattern };
 					}
 				} catch (error) {
 					Logger.error(`[ChapterSorter] 无效的正则表达式: ${rule.pattern}`, error);
@@ -168,21 +178,22 @@ export class ChapterSorter {
 		}
 
 		// 没有自定义规则时，使用默认逻辑（向后兼容）
-		// 尝试匹配阿拉伯数字格式
-		const arabicMatch = basename.match(/(?:第|chapter|ch)?(\d+(?:\.\d+)?)(?:[章节回卷部册篇\s-]|$)/i);
+		// 尝试匹配阿拉伯数字格式（要求至少包含前缀或单位，避免把纯数字误判为章节）
+		const arabicMatch = basename.match(/^(?:(?:第\s*|chapter\s*|ch\s*)(\d+(?:\.\d+)?)(?:[章节回卷部册篇\s-]|$)|(?:第\s*|chapter\s*|ch\s*)?(\d+(?:\.\d+)?)(?:[章节回卷部册篇]+))/i);
 		if (arabicMatch) {
-			const num = parseFloat(arabicMatch[1]);
+			const numStr = arabicMatch[1] || arabicMatch[2];
+			const num = parseFloat(numStr);
 			if (!isNaN(num)) {
-				return { number: num, ruleIndex: 0 };
+				return { number: num, ruleIndex: 0, numStr, isDecimal: numStr.includes('.') };
 			}
 		}
-		
-		// 尝试匹配中文数字格式
-		const chineseMatch = basename.match(/(?:第)?([零一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]+)(?:[章节回卷部册篇]|$)/);
+		// 尝试匹配中文数字格式（要求至少包含前缀或单位，避免把纯数字误判为章节）
+		const chineseMatch = basename.match(/^(?:第([零一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]+)(?:[章节回卷部册篇]|$)|(?:第)?([零一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]+)[章节回卷部册篇]+)/);
 		if (chineseMatch) {
-			const num = this.parseChineseNumber(chineseMatch[1]);
+			const numStr = chineseMatch[1] || chineseMatch[2];
+			const num = this.parseChineseNumber(numStr);
 			if (num > 0) {
-				return { number: num, ruleIndex: 1 };
+				return { number: num, ruleIndex: 1, numStr, isChinese: true, isDecimal: false };
 			}
 		}
 		
@@ -285,44 +296,38 @@ export class ChapterSorter {
 	}
 
 	/**
-	 * 将阿拉伯数字转换为中文数字（支持一到九百九十九）
+	 * 将数字转换为中文数字（支持 1-9999）
 	 */
-	static toChineseNumber(num: number): string {
+	static toChineseNumber(num: number, useUppercase: boolean = false): string {
 		if (num === 0) return '零';
-		if (num > 999) return num.toString(); // 超过999返回阿拉伯数字
+		const numStr = num.toString();
+		const chars = useUppercase 
+			? ['零', '壹', '贰', '叁', '肆', '伍', '陆', '柒', '捌', '玖']
+			: ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
+		const units = useUppercase
+			? ['', '拾', '佰', '仟', '万']
+			: ['', '十', '百', '千', '万'];
 		
-		const digits = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
 		let result = '';
-		
-		// 百位
-		const hundreds = Math.floor(num / 100);
-		if (hundreds > 0) {
-			result += digits[hundreds] + '百';
-			num %= 100;
-			
-			// 如果十位是0但个位不是0，需要加"零"
-			if (num > 0 && num < 10) {
-				result += '零';
-			}
-		}
-		
-		// 十位
-		const tens = Math.floor(num / 10);
-		if (tens > 0) {
-			// 如果是100-109，十位的"一"可以省略
-			if (hundreds === 0 && tens === 1) {
-				result += '十';
+		for (let i = 0; i < numStr.length; i++) {
+			const n = parseInt(numStr[i]);
+			const unit = units[numStr.length - 1 - i];
+			if (n === 0) {
+				if (result.length > 0 && result[result.length - 1] !== '零' && i !== numStr.length - 1) {
+					result += '零';
+				}
 			} else {
-				result += digits[tens] + '十';
+				// 处理 "一十" 为 "十" (e.g. 15 -> 十五)
+				if (n === 1 && unit === '十' && i === 0 && numStr.length === 2) {
+					result += unit;
+				} else {
+					result += chars[n] + unit;
+				}
 			}
-			num %= 10;
 		}
-		
-		// 个位
-		if (num > 0) {
-			result += digits[num];
+		if (result.endsWith('零') && result.length > 1) {
+			result = result.slice(0, -1);
 		}
-		
 		return result;
 	}
 
@@ -354,7 +359,12 @@ export class ChapterSorter {
 			const prefix = arabicMatch[1];
 			const currentNumStr = arabicMatch[2];
 			const unit = arabicMatch[3];
+			const suffix = arabicMatch[4];
 			const nextNum = parseInt(currentNumStr, 10) + 1;
+
+			// 提取结构性后缀（如闭合括号、空格、冒号、破折号等），丢弃具体的章节标题
+			const structuralSuffixMatch = suffix.match(/^([ \-_:：，、.)）\]】]*)/);
+			const structuralSuffix = structuralSuffixMatch ? structuralSuffixMatch[1] : '';
 
 			// 智能补零：检测同级文件夹中的最大章节数
 			let paddingLength = currentNumStr.length;
@@ -369,7 +379,7 @@ export class ChapterSorter {
 			else if (maxChapter >= 10 && paddingLength < 2) paddingLength = 2;
 
 			const nextNumStr = nextNum.toString().padStart(paddingLength, '0');
-			return `${prefix}${nextNumStr}${unit}.md`;
+			return `${prefix}${nextNumStr}${unit}${structuralSuffix}.md`;
 		}
 
 		// 尝试中文数字格式：第一章、第二十三章 等
@@ -378,10 +388,17 @@ export class ChapterSorter {
 			const prefix = chineseMatch[1];
 			const currentNumStr = chineseMatch[2];
 			const unit = chineseMatch[3];
+			const suffix = chineseMatch[4];
 			const currentNum = this.parseChineseNumber(currentNumStr);
 			if (currentNum === 0) return null;
-			const nextNumStr = this.toChineseNumber(currentNum + 1);
-			return `${prefix}${nextNumStr}${unit}.md`;
+			
+			const useUppercase = /[壹贰叁肆伍陆柒捌玖拾佰仟萬]/.test(currentNumStr);
+			const nextNumStr = this.toChineseNumber(currentNum + 1, useUppercase);
+			
+			const structuralSuffixMatch = suffix.match(/^([ \-_:：，、.)）\]】]*)/);
+			const structuralSuffix = structuralSuffixMatch ? structuralSuffixMatch[1] : '';
+			
+			return `${prefix}${nextNumStr}${unit}${structuralSuffix}.md`;
 		}
 
 		return null;

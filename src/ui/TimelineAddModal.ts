@@ -76,21 +76,3 @@ export class TimelineAddModal extends Modal {
 
 	onClose() { this.contentEl.empty(); }
 }
-
-/**
- * @deprecated 使用 TimelineAddModal 替代，传入 returnFullEntry=false
- */
-export class TimelineAddFromSelectionModal extends TimelineAddModal {
-	constructor(
-		app: App,
-		plugin: WebNovelAssistantPlugin,
-		timelineFileName: string,
-		description: string,
-		sourceFile: string,
-		folderPath: string,
-		onSubmit: (entry: { time: string; description: string; chapter: string; type: string; origin?: string }) => void,
-		typeOptions: string[] = []
-	) {
-		super(app, plugin, description, sourceFile, folderPath, onSubmit, false, typeOptions, description, t('modal.add-to-timeline'));
-	}
-}

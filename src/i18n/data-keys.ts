@@ -21,7 +21,7 @@ const FORESHADOWING_LABELS = {
 		description: 'Description',
 		tags: 'Tags',
 		status: 'Status',
-		recoveredAt: 'Recovered at',
+		recoveredAt: 'Resolved in',
 	},
 } as const;
 
@@ -66,6 +66,7 @@ export const FORESHADOWING_LABEL_MAP: Record<string, string> = {
 	'Description': 'description',
 	'Tags': 'tags',
 	'Status': 'status',
+	'Resolved in': 'recoveredAt',
 	'Recovered at': 'recoveredAt',
 	// 中文 key（旧版兼容）
 	'说明': 'description',

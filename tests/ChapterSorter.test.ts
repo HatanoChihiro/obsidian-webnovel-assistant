@@ -33,10 +33,9 @@ describe('ChapterSorter', () => {
 			expect(result!.number).toBe(5);
 		});
 
-		it('识别纯数字文件名', () => {
+		it('不再默认识别纯数字文件名', () => {
 			const result = ChapterSorter.extractChapterNumber('42.md');
-			expect(result).not.toBeNull();
-			expect(result!.number).toBe(42);
+			expect(result).toBeNull();
 		});
 
 		it('识别中文数字章节: 第一章', () => {
@@ -232,8 +231,8 @@ describe('ChapterSorter', () => {
 			expect(ChapterSorter.toChineseNumber(0)).toBe('零');
 		});
 
-		it('超过 999 返回阿拉伯数字', () => {
-			expect(ChapterSorter.toChineseNumber(1000)).toBe('1000');
+		it('千位数', () => {
+			expect(ChapterSorter.toChineseNumber(1000)).toBe('一千');
 		});
 	});
 });

@@ -14,13 +14,12 @@ export class FileEventManager {
 		this.registerModifyHandler();
 		this.registerDeleteHandler();
 		this.registerRenameHandler();
-		this.registerLayoutChangeHandler();
 	}
 
 	private registerCreateHandler(): void {
 		this.plugin.registerEvent(this.plugin.app.vault.on('create', async (file) => {
 			if (!(file instanceof TFile) || file.extension !== 'md') return;
-			if (!this.plugin.isEligibleForWordCount(file)) return;
+			if (!this.plugin.cacheManager.isEligibleForWordCount(file)) return;
 
 			try {
 				const content = await this.plugin.app.vault.read(file);
@@ -41,16 +40,15 @@ export class FileEventManager {
 
 			const notesFilePath = this.plugin.stickyNoteManager.getNotesFilePath();
 
-			// [优化] 合并原先的两个 modify 监听器：便签文件同步 + 字数缓存更新
 			// 便签文件外部变更同步（如多端同步工具修改了 notes-data.json）
 			if (file.path === notesFilePath && !this.plugin.stickyNoteManager.getIsWriting()) {
 				await this.plugin.stickyNoteManager.loadNotes();
-				this.plugin.syncFloatingNotes();
+				this.plugin.stickyNoteManager.syncFloatingNotes();
 				return;
 			}
 
 			// 字数缓存更新逻辑
-			if (!this.plugin.isEligibleForWordCount(file)) return;
+			if (!this.plugin.cacheManager.isEligibleForWordCount(file)) return;
 
 			const isActiveFile = file.path === this.plugin.app.workspace.getActiveFile()?.path;
 
@@ -70,7 +68,6 @@ export class FileEventManager {
 
 					const delta = this.plugin.cacheManager.updateFileCache(file, newWordCount, this.plugin.app.vault);
 					if (delta !== 0) {
-
 						if (this.plugin.isLayoutReady) {
 							this.plugin.app.workspace.trigger('webnovel:file-word-count-updated', file, delta);
 						}
@@ -108,7 +105,7 @@ export class FileEventManager {
 					}, 500);
 				}
 			} else if (abstractFile instanceof TFolder) {
-				// Handle folder deletion
+				// 处理文件夹删除
 				const prefix = abstractFile.path + '/';
 				let totalDelta = 0;
 				const entries = Array.from(this.plugin.cacheManager.getEntries());
@@ -132,12 +129,19 @@ export class FileEventManager {
 
 	private registerRenameHandler(): void {
 		this.plugin.registerEvent(this.plugin.app.vault.on('rename', (abstractFile, oldPath) => {
-			if (abstractFile instanceof TFile && abstractFile.extension === 'md') {
+			const isMdFile = abstractFile instanceof TFile && abstractFile.extension === 'md';
+			const wasMdFile = oldPath.endsWith('.md');
+
+			if (isMdFile || wasMdFile) {
 				const oldCache = this.plugin.cacheManager.getFileCache(oldPath);
-				this.plugin.cacheManager.invalidateCache(oldPath, this.plugin.app.vault);
 				
-				if (!this.plugin.isFileInWorkspace(abstractFile)) {
-					// Moved out of workspace, effectively deleted
+				// 只要旧文件曾经是 md，就在缓存中将其移除
+				if (oldCache !== null) {
+					this.plugin.cacheManager.invalidateCache(oldPath, this.plugin.app.vault);
+				}
+				
+				if (abstractFile instanceof TFile && !this.plugin.cacheManager.isFileInWorkspace(abstractFile)) {
+					// 移出了工作区，等同于删除
 					if (oldCache !== null && this.plugin.isLayoutReady) {
 						this.plugin.app.workspace.trigger('webnovel:file-word-count-updated', abstractFile, -oldCache);
 					}
@@ -147,15 +151,19 @@ export class FileEventManager {
 					return;
 				}
 
-				if (this.plugin.isEligibleForWordCount(abstractFile) && oldCache !== null) {
+				// 只有当新文件是 md 且旧缓存存在时，才将旧缓存继承给新路径
+				if (isMdFile && oldCache !== null && abstractFile instanceof TFile) {
 					this.plugin.cacheManager.updateFileCache(abstractFile, oldCache, this.plugin.app.vault);
 				}
 
-				this.plugin.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
-					void this.plugin.updateFileCacheAndRefresh(abstractFile);
-				}, 500);
+				// 只有新文件是 md 时，才进行新一轮的读取和计算
+				if (isMdFile && abstractFile instanceof TFile) {
+					this.plugin.adaptiveDebounceManager.debounceFixed(`file-refresh-${abstractFile.path}`, () => {
+						void this.plugin.updateFileCacheAndRefresh(abstractFile);
+					}, 500);
+				}
 			} else if (abstractFile instanceof TFolder) {
-				// Handle folder rename
+				// 处理文件夹重命名
 				const oldPrefix = oldPath + '/';
 				const newPrefix = abstractFile.path + '/';
 				
@@ -169,7 +177,7 @@ export class FileEventManager {
 						
 						const newFilePath = newPrefix + path.substring(oldPrefix.length);
 						const newFile = this.plugin.app.vault.getAbstractFileByPath(newFilePath);
-						if (newFile instanceof TFile && this.plugin.isEligibleForWordCount(newFile)) {
+						if (newFile instanceof TFile && this.plugin.cacheManager.isEligibleForWordCount(newFile)) {
 							this.plugin.cacheManager.updateFileCache(newFile, oldWordCount, this.plugin.app.vault);
 						}
 					}
@@ -182,14 +190,4 @@ export class FileEventManager {
 			}
 		}));
 	}
-
-	private registerLayoutChangeHandler(): void {
-		this.plugin.registerEvent(this.plugin.app.workspace.on('layout-change', () => {
-			this.plugin.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
-				this.plugin.refreshFolderCounts();
-			}, 500);
-		}));
-	}
-
-
 }

@@ -100,7 +100,7 @@ export class TimelineFormComponent {
 				chapterListContainer.insertBefore(row, addChapterBtn);
 			};
 			
-			const deleteEventBtn = eventBlock.createEl('button', { text: t('modal.delete-this-event') || 'Delete Event' });
+			const deleteEventBtn = eventBlock.createEl('button', { text: t('modal.delete-this-event') });
 			deleteEventBtn.addClass('webnovel-tl-delete-event-btn');
 			deleteEventBtn.onclick = () => {
 				eventBlock.remove();
@@ -114,7 +114,7 @@ export class TimelineFormComponent {
 
 		existingItems.forEach(item => createEventBlock(item));
 
-		const addEventBtn = eventsContainer.createEl('button', { text: t('modal.add-event') || 'Add Event' });
+		const addEventBtn = eventsContainer.createEl('button', { text: t('modal.add-event') });
 		addEventBtn.addClass('webnovel-tl-add-event-btn');
 		addEventBtn.onclick = () => {
 			const { eventBlock } = createEventBlock();

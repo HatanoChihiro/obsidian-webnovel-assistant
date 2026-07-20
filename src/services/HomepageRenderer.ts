@@ -73,13 +73,14 @@ export class HomepageRenderer {
 		updateLayout();
 		const viewDom = container.closest('.markdown-source-view') || container.closest('.markdown-preview-view');
 		if (viewDom) {
-			const anyContainer = container as unknown as { __homepageResizeObs?: ResizeObserver };
-			if (anyContainer.__homepageResizeObs) {
-				anyContainer.__homepageResizeObs.disconnect();
+			const VIEW_OBS_KEY = '__webnovel_homepage_resize_obs__';
+			const viewDomAny = viewDom as unknown as Record<string, ResizeObserver | undefined>;
+			if (viewDomAny[VIEW_OBS_KEY]) {
+				viewDomAny[VIEW_OBS_KEY]?.disconnect();
 			}
 			const resizeObs = new ResizeObserver(() => updateLayout());
 			resizeObs.observe(viewDom);
-			anyContainer.__homepageResizeObs = resizeObs;
+			viewDomAny[VIEW_OBS_KEY] = resizeObs;
 		}
 	}
 

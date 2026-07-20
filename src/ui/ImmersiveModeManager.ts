@@ -78,16 +78,16 @@ export class ImmersiveModeManager {
 		this.savedActiveFile = activeView.file;
 		const bookRootPath = findBookRoot(this.app, this.plugin, activeView.file);
 		if (bookRootPath && bookRootPath !== '/') {
-			this.immersiveNovelTitle = bookRootPath.split('/').pop() || t('common.unnamed-novel') || '未命名作品';
+			this.immersiveNovelTitle = bookRootPath.split('/').pop() || t('common.unnamed-novel');
 		} else if (bookRootPath === '/') {
 			this.immersiveNovelTitle = this.app.vault.getName();
 		} else {
-			this.immersiveNovelTitle = activeView.file.parent?.isRoot() ? activeView.file.basename : (activeView.file.parent?.name || t('common.unnamed-novel') || '未命名作品');
+			this.immersiveNovelTitle = activeView.file.parent?.isRoot() ? activeView.file.basename : (activeView.file.parent?.name || t('common.unnamed-novel'));
 		}
 
 		try {
 			// 0. 强制同步所有活跃悬浮便签到管理器，确保数据最新
-			this.plugin.syncActiveNotesToManager();
+			this.plugin.stickyNoteManager.syncActiveNotesToManager();
 			await this.plugin.stickyNoteManager.saveNotes(this.plugin.stickyNoteManager.getNotes());
 
 			// 1. 抓取当前整个工作区的快照
@@ -117,8 +117,8 @@ export class ImmersiveModeManager {
 			new Notice(t('immersive.enter'));
 		} catch (error) {
 			Logger.error('[ImmersiveModeManager] 进入沉浸模式失败:', error);
+			this.cleanup(); // 同步清理，不依赖状态标志
 			new Notice(t('immersive.enter-failed'));
-			await this.exitImmersiveMode();
 		}
 	}
 
@@ -165,34 +165,36 @@ export class ImmersiveModeManager {
 
 			// 4. 反向同步便签
 			await this.plugin.stickyNoteManager.saveNotes(this.plugin.stickyNoteManager.getNotes());
-			this.plugin.syncFloatingNotes();
+			this.plugin.stickyNoteManager.syncFloatingNotes();
 			this.plugin.stopTracking();
 
 		} catch (error) {
 			Logger.error('[ImmersiveModeManager] 退出沉浸模式时发生错误:', error);
 			new Notice(t('immersive.exit-warning'));
 		} finally {
-			if (this.layoutChangeRef) {
-				this.app.workspace.offref(this.layoutChangeRef);
-				this.layoutChangeRef = null;
-			}
-			activeDocument.body.classList.remove('immersive-mode-active');
-			activeDocument.body.classList.remove('immersive-hide-properties');
-			this.removeTopBar();
-
-			this.isImmersiveActive = false;
-			this.savedLayout = null;
-			this.savedActiveFile = null;
-
+			this.cleanup();
 			this.app.workspace.requestSaveLayout();
-
-			this.activeTopLeaf = null;
-			this.activeLeftLeaf = null;
-			this.activeRightLeaf = null;
-			this.activeBottomLeaf = null;
-
 			new Notice(t('immersive.exited'));
 		}
+	}
+
+	public cleanup(): void {
+		if (this.layoutChangeRef) {
+			this.app.workspace.offref(this.layoutChangeRef);
+			this.layoutChangeRef = null;
+		}
+		activeDocument.body.classList.remove('immersive-mode-active');
+		activeDocument.body.classList.remove('immersive-hide-properties');
+		this.removeTopBar();
+
+		this.isImmersiveActive = false;
+		this.savedLayout = null;
+		this.savedActiveFile = null;
+
+		this.activeTopLeaf = null;
+		this.activeLeftLeaf = null;
+		this.activeRightLeaf = null;
+		this.activeBottomLeaf = null;
 	}
 
 	/**
@@ -305,7 +307,8 @@ export class ImmersiveModeManager {
 		// 确保主编辑器聚焦
 		workspace.setActiveLeaf(mainLeaf, { focus: true });
 
-		this.plugin.registerInterval(window.setTimeout(() => this.app.workspace.updateOptions(), 300));
+		const timer = window.setTimeout(() => this.app.workspace.updateOptions(), 300);
+		this.plugin.register(() => window.clearTimeout(timer));
 		
 		// 监听布局变化，实时保存比例
 		this.layoutChangeRef = this.app.workspace.on('layout-change', () => {
@@ -349,12 +352,14 @@ export class ImmersiveModeManager {
 			}
 
 			if (hasFailure && attempt < 5 && this.isImmersiveActive) {
-				this.plugin.registerInterval(window.setTimeout(() => apply(attempt + 1), 100 * (attempt + 1)));
+				const retryTimer = window.setTimeout(() => apply(attempt + 1), 100 * (attempt + 1));
+				this.plugin.register(() => window.clearTimeout(retryTimer));
 			}
 		};
 
 		window.requestAnimationFrame(() => apply(0));
-		this.plugin.registerInterval(window.setTimeout(() => apply(0), 300));
+		const initTimer = window.setTimeout(() => apply(0), 300);
+		this.plugin.register(() => window.clearTimeout(initTimer));
 	}
 
 	/**

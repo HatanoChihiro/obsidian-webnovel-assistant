@@ -571,6 +571,37 @@ export class TimelineManager {
 			});
 		}
 
+	async moveEventItem(sourceTime: string, sourceItemIndex: number, targetTime: string, targetItemIndex?: number): Promise<string> {
+		return this.writer.enqueue(async () => {
+			const file = this.getTimelineFile();
+			if (!file) return '';
+
+			const entries = await this.loadEntries();
+			if (!entries) return '';
+
+			const sourceEntry = entries.find(e => e.time === sourceTime);
+			const targetEntry = entries.find(e => e.time === targetTime);
+			if (!sourceEntry || !targetEntry) return '';
+			if (!sourceEntry.items || sourceItemIndex < 0 || sourceItemIndex >= sourceEntry.items.length) return '';
+
+			const [movedItem] = sourceEntry.items.splice(sourceItemIndex, 1);
+			sourceEntry.chapter = sourceEntry.items.map(it => it.chapter).filter(Boolean).join(', ');
+			
+			if (sourceEntry.items.length === 0) {
+				entries.splice(entries.indexOf(sourceEntry), 1);
+			}
+
+			if (!targetEntry.items) targetEntry.items = [];
+			let insertIndex = (targetItemIndex !== undefined && targetItemIndex >= 0) ? targetItemIndex : targetEntry.items.length;
+			if (sourceEntry === targetEntry && sourceItemIndex < insertIndex) {
+				insertIndex--;
+			}
+			targetEntry.items.splice(insertIndex, 0, movedItem);
+			targetEntry.chapter = targetEntry.items.map(it => it.chapter).filter(Boolean).join(', ');
+
+			return await this.writeAllEntries(file, entries);
+		});
+	}
 
 	async syncChapterToEventItem(chapterBasename: string, targetEvents: { time: string, itemIndex?: number }[]): Promise<string> {
 		return this.writer.enqueue(async () => {
@@ -580,20 +611,40 @@ export class TimelineManager {
 			const entries = await this.loadEntries();
 			if (!entries) return '';
 
+			// Helper to extract the basename of a link path or alias (e.g. "Folder/Chap|Alias" -> "Chap")
+			const getLinkBasename = (link: string): string => {
+				const pathPart = link.split('|')[0].trim();
+				const lastSlash = pathPart.lastIndexOf('/');
+				return lastSlash !== -1 ? pathPart.substring(lastSlash + 1) : pathPart;
+			};
+
+			// Helper to check if a link points to the target chapter file (case-insensitive and trimmed)
+			const isLinkMatching = (link: string): boolean => {
+				const linkpath = link.split('|')[0].trim();
+				// 1. Try to resolve using Obsidian's metadataCache
+				const dest = this.app.metadataCache.getFirstLinkpathDest(linkpath, file.path);
+				if (dest) {
+					return dest.basename.toLowerCase().trim() === chapterBasename.toLowerCase().trim();
+				}
+				// 2. Fallback to simple basename matching
+				const base = getLinkBasename(link);
+				return base.toLowerCase().trim() === chapterBasename.toLowerCase().trim();
+			};
+
 			// 1. Remove from all entries
 			for (const entry of entries) {
 				if (entry.items) {
 					for (const item of entry.items) {
 						if (item.chapter) {
 							const chapters = item.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean);
-							const newChapters = chapters.filter(c => c !== chapterBasename);
+							const newChapters = chapters.filter(c => !isLinkMatching(c));
 							item.chapter = newChapters.join(', ');
 						}
 					}
 					entry.chapter = entry.items.map(it => it.chapter).filter(Boolean).join(', ');
 				} else if (entry.chapter) {
 					const chapters = entry.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean);
-					const newChapters = chapters.filter(c => c !== chapterBasename);
+					const newChapters = chapters.filter(c => !isLinkMatching(c));
 					entry.chapter = newChapters.join(', ');
 				}
 			}
@@ -612,7 +663,10 @@ export class TimelineManager {
 						
 					const item = entry.items[itemIdx];
 					const chapters = item.chapter ? item.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean) : [];
-					if (!chapters.includes(chapterBasename)) {
+					
+					// Compare using isLinkMatching to avoid adding duplicate links
+					const exists = chapters.some(c => isLinkMatching(c));
+					if (!exists) {
 						chapters.push(chapterBasename);
 					}
 					item.chapter = chapters.join(', ');

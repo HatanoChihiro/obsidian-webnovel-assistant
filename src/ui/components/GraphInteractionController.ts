@@ -1,6 +1,6 @@
-﻿import type { GraphNode } from '../../services/RelationGraphManager';
+import type { GraphNode } from '../../services/RelationGraphManager';
 import type { GraphData } from '../../services/RelationGraphManager';
-import type { GraphRenderState } from './GraphRenderer';
+import { GraphRenderer, type GraphRenderState } from './GraphRenderer';
 
 export interface GraphInteractionCallbacks {
 	requestRender: () => void;
@@ -87,21 +87,23 @@ export class GraphInteractionController {
 
 	private screenToGraph(screenX: number, screenY: number): { x: number; y: number } {
 		const rect = this.canvas.getBoundingClientRect();
-		const x = (screenX - rect.left - this.state.panX) / this.state.scale;
-		const y = (screenY - rect.top - this.state.panY) / this.state.scale;
+		const mouseX = screenX - rect.left;
+		const mouseY = screenY - rect.top;
+		const width = rect.width;
+		const height = rect.height;
+		const x = (mouseX - width / 2 - this.state.panX) / this.state.scale + width / 2;
+		const y = (mouseY - height / 2 - this.state.panY) / this.state.scale + height / 2;
 		return { x, y };
 	}
 
 	private findNodeAt(gx: number, gy: number): GraphNode | null {
 		if (!this.layout) return null;
 		
-		// RADIUS is from GraphRenderer, assumed 5, scaled hit area
-		const hitRadius = 15 / this.state.scale;
 		for (let i = this.layout.nodes.length - 1; i >= 0; i--) {
 			const n = this.layout.nodes[i];
 			const dx = n.x - gx;
 			const dy = n.y - gy;
-			if (dx * dx + dy * dy <= hitRadius * hitRadius) {
+			if (dx * dx + dy * dy <= GraphRenderer.NODE_HIGHLIGHT_RADIUS * GraphRenderer.NODE_HIGHLIGHT_RADIUS) {
 				return n;
 			}
 		}
@@ -188,9 +190,14 @@ export class GraphInteractionController {
 		const rect = this.canvas.getBoundingClientRect();
 		const mouseX = e.clientX - rect.left;
 		const mouseY = e.clientY - rect.top;
+		const width = rect.width;
+		const height = rect.height;
 
-		this.state.panX = mouseX - (mouseX - this.state.panX) * (newScale / oldScale);
-		this.state.panY = mouseY - (mouseY - this.state.panY) * (newScale / oldScale);
+		const dx = mouseX - width / 2;
+		const dy = mouseY - height / 2;
+
+		this.state.panX = dx - (dx - this.state.panX) * (newScale / oldScale);
+		this.state.panY = dy - (dy - this.state.panY) * (newScale / oldScale);
 		this.state.scale = newScale;
 
 		this.callbacks.requestRender();

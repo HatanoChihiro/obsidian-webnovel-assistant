@@ -4,6 +4,7 @@ import type { WebNovelAssistantPlugin } from '../types/plugin';
 export class LoreSyncService {
 	private plugin: WebNovelAssistantPlugin;
 	private isSyncing = false;
+	private regexCache = new Map<string, { version: number, regex: RegExp }>();
 
 	constructor(plugin: WebNovelAssistantPlugin) {
 		this.plugin = plugin;
@@ -70,32 +71,39 @@ export class LoreSyncService {
 			textToScan = content.substring(match[0].length);
 		}
 
+		const currentVersion = this.plugin.characterManager.cacheVersion;
+		let cached = this.regexCache.get(bookPath);
+		
+		if (!cached || cached.version !== currentVersion) {
+			const validNames = loreNames.filter(name => name.length >= 1);
+			if (validNames.length > 0) {
+				const escapedNames = validNames.map(name => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+				const megaRegex = new RegExp(`(${escapedNames.join('|')})`, 'g');
+				cached = { version: currentVersion, regex: megaRegex };
+				this.regexCache.set(bookPath, cached);
+			} else {
+				// Shouldn't happen, but just in case
+				await this.updateFrontmatterLore(file, []);
+				return;
+			}
+		}
+
+		const megaRegex = cached.regex;
+		megaRegex.lastIndex = 0;
+
+		const matchCounts = new Map<string, number>();
+		let regexMatch;
+		while ((regexMatch = megaRegex.exec(textToScan)) !== null) {
+			const foundName = regexMatch[1];
+			matchCounts.set(foundName, (matchCounts.get(foundName) || 0) + 1);
+		}
+
 		const loreCounts = new Map<string, number>();
-
-		// 由于 getCharactersForBook 已经按长度降序排列，直接按序全局正则匹配
-		for (const name of loreNames) {
-			// 过滤掉太短的名字（比如单字）避免大量误杀，中文至少2个字符，除非设置里有单字别名，
-			// 但这里保险起见可以放宽到1（依赖用户的别名设置准确性）
-			if (name.length < 1) continue;
-
-			// 注意转义正则特殊字符
-			const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-			const regex = new RegExp(escapedName, 'g');
-			
-			let count = 0;
-			// 避免重叠匹配或被短别名重复匹配：匹配到后将其替换为空格
-			textToScan = textToScan.replace(regex, () => {
-				count++;
-				return ' '.repeat(name.length);
-			});
-
-			if (count > 0) {
-				// 获取规范名称（主标题）
-				const entry = this.plugin.characterManager.getCharacterFile(bookPath, name);
-				if (entry) {
-					const canonicalName = entry.heading;
-					loreCounts.set(canonicalName, (loreCounts.get(canonicalName) || 0) + count);
-				}
+		for (const [name, count] of matchCounts.entries()) {
+			const entry = this.plugin.characterManager.getCharacterFile(bookPath, name);
+			if (entry) {
+				const canonicalName = entry.heading;
+				loreCounts.set(canonicalName, (loreCounts.get(canonicalName) || 0) + count);
 			}
 		}
 

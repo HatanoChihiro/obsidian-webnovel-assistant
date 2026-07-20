@@ -29,7 +29,7 @@ export class ChapterOverviewView extends ItemView {
         }));
         this.registerEvent(this.app.metadataCache.on('changed', (file) => {
             if (this.isSavingMetadata) return;
-            if (file instanceof TFile && !this.plugin.isFileInWorkspace(file)) return;
+            if (file instanceof TFile && !this.plugin.cacheManager.isFileInWorkspace(file)) return;
             this.plugin.adaptiveDebounceManager.debounceFixed('corkboard-refresh', () => {
                 void this.reloadBoard();
             }, 1000);
@@ -74,7 +74,7 @@ export class ChapterOverviewView extends ItemView {
     }
 
     getDisplayText(): string {
-        return t('view.chapter-overview') || '章节一览';
+        return t('view.chapter-overview');
     }
 
     getIcon(): string {
@@ -104,7 +104,7 @@ export class ChapterOverviewView extends ItemView {
 
         if (!this.currentBookPath) {
             const emptyEl = this.container.createDiv('wn-corkboard-empty');
-            emptyEl.setText(t('corkboard.no-book-open') || '请先打开属于一部小说的文档');
+            emptyEl.setText(t('corkboard.no-book-open'));
             return;
         }
 
@@ -113,17 +113,19 @@ export class ChapterOverviewView extends ItemView {
         
         if (!(folder instanceof TFolder)) {
             const emptyEl = this.container.createDiv('wn-corkboard-empty');
-            emptyEl.setText(t('corkboard.folder-not-found') || '找不到当前书籍文件夹');
+            emptyEl.setText(t('corkboard.folder-not-found'));
             return;
         }
 
         const files = this.plugin.getTrackedMarkdownFiles().filter(file => {
             // 只有在开启严格章节模式时，才强制要求必须是章节命名格式
-            if (this.plugin.settings.enableStrictChapterMode && !ChapterSorter.isChapterFile(file.name)) {
+            if (this.plugin.settings.enableStrictChapterMode 
+                && !ChapterSorter.isChapterFile(file.name)
+                && !this.plugin.isFileInStrictChapterException(file)) {
                 return false;
             }
             // 排除设定文件夹
-            const lorePath = this.plugin.settings.loreFolderName || t('common.default-lore-folder-name') || '设定';
+            const lorePath = this.plugin.settings.loreFolderName || t('common.default-lore-folder-name');
             if (file.path.includes(`/${lorePath}/`) || file.path.startsWith(`${lorePath}/`)) {
                 return false;
             }
@@ -149,11 +151,21 @@ export class ChapterOverviewView extends ItemView {
             const content = await this.app.vault.cachedRead(fFile);
             const entries = this.plugin.foreshadowingManager!.parseEntries(content);
             for (const entry of entries) {
-                let targets: string[] = [];
+                const targets: string[] = [];
+                const sources = new Set<string>();
+                if (entry.sourceFile) sources.add(entry.sourceFile);
+                if (entry.contents) {
+                    entry.contents.forEach(c => {
+                        if (c.source) sources.add(c.source);
+                    });
+                }
+
                 if (entry.status === ForeshadowingStatus.Pending) {
-                    if (entry.sourceFile) targets.push(entry.sourceFile);
+                    targets.push(...sources);
                 } else if (entry.status === ForeshadowingStatus.Recovered) {
-                    targets = entry.recoveryFiles ? [...entry.recoveryFiles] : (entry.recoveryFile ? [entry.recoveryFile] : []);
+                    targets.push(...sources);
+                    const recFiles = entry.recoveryFiles ? [...entry.recoveryFiles] : (entry.recoveryFile ? [entry.recoveryFile] : []);
+                    targets.push(...recFiles);
                 }
                 for (const target of targets) {
                     if (!target) continue;

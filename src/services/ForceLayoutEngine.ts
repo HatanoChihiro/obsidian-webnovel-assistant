@@ -41,6 +41,8 @@ export class ForceLayoutEngine {
 	public readonly edges: LayoutEdge[];
 	private simulation: d3.Simulation<LayoutNode, LayoutEdge>;
 
+	private static readonly ISOLATED_NODE_GRAVITY = 0.08;
+
 	constructor(nodes: LayoutNode[], edges: LayoutEdge[], width: number, height: number) {
 		this.nodes = nodes;
 		// 复制 edges 因为 d3 会直接把 string source/target 修改为对象引用
@@ -57,6 +59,8 @@ export class ForceLayoutEngine {
 			}
 		});
 
+		const degreeMap = this.calculateDegreeMap(this.edges);
+
 		// 构建 D3 物理引擎
 		this.simulation = d3.forceSimulation<LayoutNode>(this.nodes)
 			// 弹簧力：连线拉扯（保持极短的距离，使图谱紧凑）
@@ -68,19 +72,25 @@ export class ForceLayoutEngine {
 			// 万有斥力：节点互相排斥
 			.force('charge', d3.forceManyBody()
 				.strength(-400) // 适中的斥力
-				.distanceMax(600) // 超过此距离不再排斥，优化性能
+				.distanceMax(400) // 最大排斥距离
 			)
-			// 主角引力：如果是主角，施加向画布中心的引力，使其成为视觉中心
-			.force('protagonistX', d3.forceX<LayoutNode>(width / 2).strength((d: LayoutNode) => d.isProtagonist ? 0.2 : 0))
-			.force('protagonistY', d3.forceY<LayoutNode>(height / 2).strength((d: LayoutNode) => d.isProtagonist ? 0.2 : 0))
+			// 聚拢引力：防止孤立节点散落太远，同时维持主角的中心地位
+			.force('gravityX', d3.forceX<LayoutNode>(width / 2).strength((d: LayoutNode) => {
+				if (d.isProtagonist) return 0.2;
+				if ((degreeMap.get(d.id) || 0) === 0) return ForceLayoutEngine.ISOLATED_NODE_GRAVITY; // 孤立节点施加向心力
+				return 0.02; // 其他节点微弱向心力
+			}))
+			.force('gravityY', d3.forceY<LayoutNode>(height / 2).strength((d: LayoutNode) => {
+				if (d.isProtagonist) return 0.2;
+				if ((degreeMap.get(d.id) || 0) === 0) return ForceLayoutEngine.ISOLATED_NODE_GRAVITY;
+				return 0.02;
+			}))
 			// 中心引力：防止整体飘走
 			.force('center', d3.forceCenter(width / 2, height / 2).strength(0.05))
-			// 碰撞检测：增加到 30，防止节点过于靠近导致中心区域标签重叠
-			.force('collide', d3.forceCollide().radius(30).strength(0.8))
+			// 碰撞检测：增加到 40，保证孤立节点聚拢时也不会重叠
+			.force('collide', d3.forceCollide().radius(40).strength(0.8))
 			// 速度衰减（阻尼）：0.6 接近原生 Obsidian 图谱的“Q弹”感
-			.velocityDecay(0.6)
-			.alphaMin(0.001)
-			.stop();
+			.alphaMin(0.001);
 	}
 
 	/**
@@ -131,7 +141,6 @@ export class ForceLayoutEngine {
 	 */
 	public reset(): void {
 		this.simulation.alpha(1).restart();
-		this.simulation.stop();
 	}
 
 	/**
@@ -141,7 +150,6 @@ export class ForceLayoutEngine {
 	public reheat(): void {
 		// alpha(0.3) 相当于赋予了 30% 的热量，可以产生跟随位移，又不会导致全屏乱飞
 		this.simulation.alpha(0.3).restart();
-		this.simulation.stop();
 	}
 
 	/**
@@ -152,6 +160,12 @@ export class ForceLayoutEngine {
 		if (centerForce) {
 			centerForce.x(width / 2).y(height / 2);
 		}
+		
+		const progX = this.simulation.force('protagonistX') as d3.ForceX<LayoutNode>;
+		if (progX) progX.x(width / 2);
+		
+		const progY = this.simulation.force('protagonistY') as d3.ForceY<LayoutNode>;
+		if (progY) progY.y(height / 2);
 	}
 
 	/**

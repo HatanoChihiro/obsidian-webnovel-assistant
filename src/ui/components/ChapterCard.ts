@@ -32,10 +32,13 @@ export class ChapterCard {
 		let status = CORKBOARD_STATUS_MAP[rawStatus] ?? rawStatus;
 
 		const card = grid.createDiv('wn-corkboard-card');
+		card.setAttribute('data-path', file.path);
+		card.setAttribute('data-basename', file.basename);
 
 		if (draggable) {
 			card.setAttribute('draggable', 'true');
 			card.addEventListener('dragstart', (e) => {
+				e.stopPropagation();
 				if (e.dataTransfer) {
 					e.dataTransfer.effectAllowed = 'all';
 					e.dataTransfer.setData('application/wn-chapter-path', file.path);
@@ -128,7 +131,7 @@ export class ChapterCard {
 		const badgesContainer = footerEl.createDiv('wn-corkboard-card-badges');
 
 		// 1. 伏笔 Badge (待回收/已回收)
-		renderForeshadowingBadges(badgesContainer, cardForeshadowings);
+		renderForeshadowingBadges(badgesContainer, cardForeshadowings, file.basename);
 
 		// 2. 设定关联 Badge
 		const loreArray: unknown = frontmatter?.lore;

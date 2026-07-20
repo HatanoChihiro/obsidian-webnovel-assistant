@@ -3,9 +3,10 @@ import { ItemView, TFile, TFolder } from 'obsidian';
 import type { MarkdownView } from 'obsidian';
 import { VIEW_TYPES } from '../constants';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
-import { ForeshadowingStatus, type ParsedForeshadowingEntry } from '../types/foreshadowing';
+import type { ParsedForeshadowingEntry } from '../types/foreshadowing';
 import { ChapterSorter } from '../services/ChapterSorter';
 import { getCurrentBookContext } from '../utils/path';
+import { renderForeshadowingBadges, renderLoreBadges } from '../utils/badge';
 import { t } from '../i18n';
 
 export class ImmersiveChapterListView extends ItemView {
@@ -50,7 +51,7 @@ export class ImmersiveChapterListView extends ItemView {
 		
 		const bookPath = getCurrentBookContext(this.app, this.plugin);
 		if (bookPath === null) {
-			listContainer.createEl('p', { text: t('immersive.loading-folder') || '正在加载...', cls: 'immersive-empty-text' });
+			listContainer.createEl('p', { text: t('immersive.loading-folder'), cls: 'immersive-empty-text' });
 			window.setTimeout(() => {
 				if (this.app.workspace.getActiveFile()) void this.refresh();
 			}, 1000);
@@ -131,50 +132,17 @@ export class ImmersiveChapterListView extends ItemView {
 				const badgesContainer = leftContainer.createSpan({ cls: 'immersive-chapter-badges' });
 				const cardForeshadowings = foreshadowingMap.get(file.basename) || [];
 				
-				const pendingForeshadowings = cardForeshadowings.filter(f => f.status === ForeshadowingStatus.Pending);
-				if (pendingForeshadowings.length > 0) {
-					const fsBadge = badgesContainer.createEl('span', {
-						cls: 'wn-badge wn-badge-foreshadowing',
-						text: `${t('corkboard.foreshadowing-unresolved') || '待回收'}×${pendingForeshadowings.length}`
-					});
-					fsBadge.title = pendingForeshadowings.map(f => f.description).join('\n');
-				}
-				
-				const recoveredForeshadowings = cardForeshadowings.filter(f => f.status === ForeshadowingStatus.Recovered);
-				if (recoveredForeshadowings.length > 0) {
-					const fsBadge = badgesContainer.createEl('span', {
-						cls: 'wn-badge wn-badge-recovered',
-						text: `${t('corkboard.foreshadowing-recovered') || '本章回收'}×${recoveredForeshadowings.length}`
-					});
-					fsBadge.title = recoveredForeshadowings.map(f => f.description).join('\n');
-				}
+				renderForeshadowingBadges(badgesContainer, cardForeshadowings, file.basename);
 				
 				const cache = this.app.metadataCache.getFileCache(file);
 				const frontmatter = cache?.frontmatter;
 				const loreArray = frontmatter?.lore as unknown;
-				if (Array.isArray(loreArray)) {
-					const validLores: string[] = (loreArray as unknown[]).filter((l: unknown): l is string => typeof l === 'string');
-					if (validLores.length > 0) {
-						const maxDisplay = 3;
-						for (let i = 0; i < Math.min(validLores.length, maxDisplay); i++) {
-							badgesContainer.createEl('span', {
-								cls: 'wn-badge wn-badge-lore',
-								text: validLores[i].split('×')[0]
-							});
-						}
-						if (validLores.length > maxDisplay) {
-							badgesContainer.createEl('span', {
-								cls: 'wn-badge wn-badge-lore wn-badge-more',
-								text: `+${validLores.length - maxDisplay}`
-							});
-						}
-					}
-				}
+				const bookPath = getCurrentBookContext(this.app, this.plugin) || '';
+				renderLoreBadges(badgesContainer, loreArray, bookPath, this.plugin, false, 3);
 				
 				const wordCount = this.plugin.cacheManager.getFileCache(file.path) || 0;
 				if (this.plugin.settings.showExplorerCounts) {
-					const strictOk = !this.plugin.settings.enableStrictChapterMode || ChapterSorter.isChapterFile(file.basename);
-					if (strictOk) {
+					if (this.plugin.cacheManager.isEligibleForWordCount(file)) {
 						itemEl.createSpan({ text: `${wordCount}${t('common.word-char')}`, cls: 'immersive-chapter-count' });
 					}
 				}

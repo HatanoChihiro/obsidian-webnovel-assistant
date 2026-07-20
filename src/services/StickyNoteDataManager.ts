@@ -1,4 +1,10 @@
 import { Logger } from '../utils/Logger';
+
+import { isDesktop } from '../utils';
+import { FloatingStickyNote } from '../ui/StickyNote';
+import { Notice, type TFile } from 'obsidian';
+import { VIEW_TYPES } from '../constants';
+import { t } from '../i18n';
 import type { StickyNoteState } from '../types/settings';
 import { SerializedWriter } from '../utils/SerializedWriter';
 import { getPluginDir } from '../utils/platform';
@@ -132,6 +138,105 @@ export class StickyNoteDataManager {
 	 */
 	getNotesFilePath(): string {
 		return this.notesFilePath;
+	}
+
+
+	public activeNotes: FloatingStickyNote[] = [];
+
+	/**
+	 * 将所有活跃悬浮便签的当前内容强制同步到管理器
+	 * 通常在切换工作区（如进入沉浸模式）或插件卸载前调用
+	 */
+	public syncActiveNotesToManager(): void {
+		if (!isDesktop()) return;
+		this.activeNotes.forEach(note => {
+			if (note.state.isEditing && note.textareaEl) {
+				note.state.content = note.textareaEl.value;
+			}
+			this.updateNote(note.state);
+		});
+		// [BUGFIX] updateNote 只更新内存，需要在此显式触发持久化，
+		// 防止进入沉浸模式或插件卸载时便签内容丢失。
+		this.saveNotes(this.getNotes()).catch(err => {
+			Logger.error('[Plugin] syncActiveNotesToManager 保存便签失败:', err);
+		});
+	}
+
+	/**
+	 * 同步沉浸模式产生的便签变更到桌面悬浮便签
+	 */
+	public syncFloatingNotes(): void {
+		// 仅在桌面端同步浮动便签
+		// (this.plugin as unknown as { _unloading?: boolean })._unloading 也可以不用强求，或者用 this.plugin 检查
+		if (!isDesktop() || (this.plugin as unknown as { _unloading?: boolean })._unloading) return;
+
+		const notes = this.getNotes();
+
+		// 1. 关闭那些已经在沉浸模式中被移除的便签
+		const openNoteIds = new Set(notes.map(n => n.id));
+		[...this.activeNotes].forEach(note => {
+			if (!openNoteIds.has(note.state.id)) {
+				// 静默销毁
+				note.destroy();
+			}
+		});
+
+		// 2. 处理沉浸模式中新建或编辑过的便签
+		const activeIds = new Set(this.activeNotes.map(n => n.state.id));
+		for (const noteState of notes) {
+			if (!activeIds.has(noteState.id)) {
+				const newNote = new FloatingStickyNote(this.plugin.app, this.plugin, { state: noteState });
+				newNote.load();
+			} else {
+				// 更新已存在的便签内容和状态
+				const existingNote = this.activeNotes.find(n => n.state.id === noteState.id);
+				if (existingNote) {
+					existingNote.updateFromState(noteState);
+				}
+			}
+		}
+	}
+
+	/**
+	 * 创建便签（处理沉浸模式同步）
+	 */
+	public async createStickyNote(options: { file?: TFile, content?: string, title?: string }) {
+		// 如果在移动端调用（如通过命令），由于交互限制，仅给予提示或在沉浸模式中处理
+		if (!isDesktop()) {
+			// 在沉浸模式中创建是允许的，因为它会渲染到辅助面板视图中
+			if (!activeDocument.body.classList.contains('immersive-mode-active')) {
+				new Notice(t('notice.floating-notes-desktop-only'));
+				return;
+			}
+		}
+
+		const note = new FloatingStickyNote(this.plugin.app, this.plugin, options);
+		note.load();
+
+		// 如果处于沉浸模式，立即刷新便签列表视图
+		if (activeDocument.body.classList.contains('immersive-mode-active')) {
+			// 给一点额外时间让设置/文件持久化完成
+			const timer = window.setTimeout(() => {
+				this.refreshImmersiveNotes();
+			}, 200);
+			this.plugin.register(() => window.clearTimeout(timer));
+		}
+	}
+
+	public refreshImmersiveNotes() {
+		// 如果当前有文本框正处于编辑状态，暂时跳过全量刷新，防止打断 IME 输入
+		const activeEl = activeDocument.activeElement;
+		if (activeEl && activeEl.tagName.toLowerCase() === 'textarea' &&
+			(activeEl.closest('.immersive-sticky-card') || activeEl.closest('.my-sticky-note'))) {
+			return;
+		}
+
+		this.plugin.app.workspace.getLeavesOfType(VIEW_TYPES.IMMERSIVE_STICKY_NOTES).forEach(leaf => {
+			if (leaf.view.getViewType() === VIEW_TYPES.IMMERSIVE_STICKY_NOTES) {
+				const view = leaf.view as unknown as { renderNotes?: () => void };
+				view.renderNotes?.();
+			}
+		});
 	}
 
 }

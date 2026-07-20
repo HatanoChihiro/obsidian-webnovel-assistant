@@ -1,8 +1,8 @@
-import { Logger } from '../utils/Logger';
-import { Component, MarkdownRenderer, setIcon, Platform } from 'obsidian';
+import { Component, Platform } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { LoreEntry } from '../services/CharacterManager';
 import { t } from '../i18n';
+import { LoreCardRenderer } from './components/LoreCardRenderer';
 
 export class LoreHoverPopover extends Component {
 	private plugin: WebNovelAssistantPlugin;
@@ -109,187 +109,56 @@ export class LoreHoverPopover extends Component {
 	private async show() {
 		if (this.popoverEl) return;
 
-		// 创建自定义卡片容器
-		this.popoverEl = activeDocument.body.createDiv({ cls: 'webnovel-lore-popover' });
-		this.popoverEl.addClass('wn-absolute-top');
-		
-		// 监听鼠标进入和离开卡片，保证鼠标移入卡片时不会关闭
+		this.popoverEl = activeDocument.createElement('div');
+		this.popoverEl.addClass('webnovel-lore-popover');
+		this.popoverEl.addClass('wn-lore-hover-popover');
 		this.popoverEl.addEventListener('mouseenter', this.onMouseEnterPopover);
 		this.popoverEl.addEventListener('mouseleave', this.onMouseLeavePopover);
 
-		// 渲染内部 DOM
-		await this.renderCard(this.popoverEl);
+		if (!this.entry || !this.entry.file) {
+			this.popoverEl.createDiv({ cls: 'wn-lore-card-empty', text: t('corkboard.lore-not-found') });
+		} else {
+			const cardContainer = this.popoverEl.createDiv();
+			await LoreCardRenderer.buildCardDOM(cardContainer, this.entry, this.plugin, this, {
+				hideEditButton: true,
+				onTitleClick: () => this.hide()
+			});
+		}
 
-		// 计算位置
+		activeDocument.body.appendChild(this.popoverEl);
+		this.positionPopover();
+	}
+
+	private positionPopover() {
+		if (!this.popoverEl) return;
+
+		// 1. 先限制最大高度，让 DOM 重新排版后再获取其真实尺寸，防止由于超出屏幕而被错误计算
+		// 使用 35vh 限制高度，让小屏幕笔记本更加友好
+		this.popoverEl.setCssStyles({ maxHeight: '35vh', display: 'flex' });
+
 		const rect = this.targetEl.getBoundingClientRect();
 		const popoverRect = this.popoverEl.getBoundingClientRect();
 		
-		let top = rect.bottom + 5;
-		let left = rect.left;
+		// 2. 默认水平居中对齐到目标词汇
+		let left = rect.left + rect.width / 2 - popoverRect.width / 2;
+		let top = rect.bottom + 8; // 默认显示在词汇下方
 
-		// 防止超出屏幕右侧
-		if (left + popoverRect.width > window.innerWidth) {
+		// 3. 水平防溢出处理
+		if (left < 10) left = 10;
+		if (left + popoverRect.width > window.innerWidth - 10) {
 			left = window.innerWidth - popoverRect.width - 10;
 		}
 		
-		// 防止超出屏幕底部 (如果下面空间不够，就显示在上面)
-		if (top + popoverRect.height > window.innerHeight) {
-			top = rect.top - popoverRect.height - 5;
+		// 4. 垂直防溢出处理：如果下方空间不足以放下整个卡片，则将其翻转到词汇上方
+		if (top + popoverRect.height > window.innerHeight - 10) {
+			top = rect.top - popoverRect.height - 8;
 		}
-
-		if (this.immediate) {
-			this.popoverEl.setCssStyles({ maxHeight: '50vh', overflowY: 'auto' });
+		
+		// 极端情况防御：如果放到上方后连顶部也超出了，则贴着顶部显示
+		if (top < 10) {
+			top = 10;
 		}
 
 		this.popoverEl.setCssStyles({ top: `${top}px`, left: `${left}px` });
-	}
-
-	private async renderCard(container: HTMLElement) {
-		const card = container.createDiv({ cls: 'wn-lore-card' });
-		
-		// Header area
-		const header = card.createDiv({ cls: 'wn-lore-card-header' });
-		const titleEl = header.createDiv({ cls: 'wn-lore-card-title' });
-		titleEl.setText(this.entry.heading);
-		titleEl.setCssStyles({ cursor: 'pointer' });
-		titleEl.title = t('corkboard.click-to-open-lore') || '点击打开设定文档'; // fallback title just in case
-
-		titleEl.onclick = () => {
-			let targetLeaf = this.plugin.app.workspace.getLeavesOfType('markdown').find(l => (l.view as unknown as { file?: { path: string } }).file?.path === this.entry.file.path);
-			if (!targetLeaf) targetLeaf = this.plugin.app.workspace.getLeavesOfType('markdown')[0];
-			if (!targetLeaf) targetLeaf = this.plugin.app.workspace.getLeaf('split', 'vertical');
-
-			void (async () => {
-				const cache = this.plugin.app.metadataCache.getFileCache(this.entry.file);
-				let targetLine = 0;
-				if (cache?.headings) {
-					const headingInfo = cache.headings.find(h => h.heading === this.entry.heading);
-					if (headingInfo) targetLine = headingInfo.position.start.line;
-				}
-				await targetLeaf.openFile(this.entry.file, { eState: { line: targetLine } });
-				this.hide();
-			})();
-		};
-
-		// Body area
-		const body = card.createDiv({ cls: 'wn-lore-card-body' });
-		const loadingEl = body.createDiv({ cls: 'wn-lore-card-loading', text: 'Loading...' });
-
-		try {
-			const fileContent = await this.plugin.app.vault.cachedRead(this.entry.file);
-			const fileCache = this.plugin.app.metadataCache.getFileCache(this.entry.file);
-
-			let chunkToRender = '';
-			let aliases: string[] = [];
-
-			if (fileCache && fileCache.headings) {
-				const headings = fileCache.headings;
-				let startIndex = -1;
-				let endIndex = -1;
-
-				for (let i = 0; i < headings.length; i++) {
-					const h = headings[i];
-					const rawHeading = h.heading.replace(/\*\*|__/g, '').replace(/\*|_/g, '').replace(/`/g, '');
-					if (rawHeading === this.entry.heading && h.level === 2) {
-						startIndex = h.position.end.line + 1;
-						// 继续向后查找，直到遇到同级或更高级别（<=2）的标题才截断，从而包含其下的小标题
-						for (let j = i + 1; j < headings.length; j++) {
-							if (headings[j].level <= 2) {
-								endIndex = headings[j].position.start.line;
-								break;
-							}
-						}
-						break;
-					}
-				}
-
-				if (startIndex !== -1) {
-					const lines = fileContent.split('\n');
-					const slice = endIndex === -1 ? lines.slice(startIndex) : lines.slice(startIndex, endIndex);
-					const rawChunk = slice.join('\n');
-
-					const aliasMatch = rawChunk.match(/^(?:\*\*|__)?(?:别名|Alias)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/im);
-					if (aliasMatch && aliasMatch[1]) {
-						aliases = aliasMatch[1].split(/[,，、/|]/).map(s => s.trim()).filter(Boolean);
-						chunkToRender = rawChunk.replace(aliasMatch[0], '').trim();
-					} else {
-						chunkToRender = rawChunk.trim();
-					}
-				}
-			}
-
-			loadingEl.remove();
-
-			if (aliases.length > 0) {
-				const badgesContainer = header.createDiv({ cls: 'wn-lore-card-badges' });
-				for (const alias of aliases) {
-					badgesContainer.createSpan({ cls: 'wn-lore-card-badge', text: alias });
-				}
-			}
-
-			if (chunkToRender) {
-				const markdownContainer = body.createDiv({ cls: 'wn-lore-markdown' });
-				await MarkdownRenderer.render(this.plugin.app, chunkToRender, markdownContainer, this.entry.file.path, this);
-
-				// 根据设置决定是否折叠子标题（### 及以下级别）
-				if (this.plugin.settings.lorePopoverCollapse) {
-					const headingEls = Array.from(markdownContainer.querySelectorAll('h3, h4, h5, h6'));
-					for (const el of headingEls) {
-						const level = parseInt(el.tagName.substring(1));
-						const siblingsToHide: Element[] = [];
-						let next = el.nextElementSibling;
-
-						// 收集当前标题到下一个同级或更高级标题之间的所有元素
-						while (next) {
-							if (next.tagName.match(/^H[1-6]$/)) {
-								const nextLevel = parseInt(next.tagName.substring(1));
-								if (nextLevel <= level) break;
-							}
-							siblingsToHide.push(next);
-							next = next.nextElementSibling;
-						}
-
-						if (siblingsToHide.length > 0) {
-							const details = activeDocument.createElement('details');
-							const summary = activeDocument.createElement('summary');
-							summary.setCssStyles({ cursor: 'pointer', outline: 'none', display: 'flex', alignItems: 'center' });
-
-							const iconEl = activeDocument.createElement('div');
-							iconEl.addClass('collapse-indicator');
-							iconEl.addClass('collapse-icon');
-							setIcon(iconEl, 'right-triangle');
-							summary.appendChild(iconEl);
-
-							const clonedHeading = el.cloneNode(true) as HTMLElement;
-							clonedHeading.setCssStyles({ display: 'inline-block', margin: '0', marginLeft: '4px' });
-
-							summary.appendChild(clonedHeading);
-							details.appendChild(summary);
-
-							for (const sib of siblingsToHide) {
-								details.appendChild(sib);
-							}
-
-							el.replaceWith(details);
-						}
-					}
-				}
-			} else {
-				body.createDiv({ cls: 'wn-lore-card-empty', text: 'No content.' });
-			}
-			
-			// 重新计算位置，因为内容填充后高度变了
-			const rect = this.targetEl.getBoundingClientRect();
-			const popoverRect = this.popoverEl!.getBoundingClientRect();
-			let top = rect.bottom + 5;
-			if (top + popoverRect.height > window.innerHeight) {
-				top = rect.top - popoverRect.height - 5;
-			}
-			this.popoverEl!.setCssStyles({ top: `${top}px` });
-
-		} catch (e) {
-			Logger.error('Failed to render lore popover:', e);
-			loadingEl.setText('Failed to load lore data.');
-		}
 	}
 }

@@ -24,6 +24,7 @@ interface InputSpeedStats {
 export class AdaptiveDebounceManager {
 	private timers: Map<string, number>;
 	private speedStats: Map<string, InputSpeedStats>;
+	private throttleStats: Map<string, number>;
 	
 	// 防抖延迟配置（毫秒）
 	private readonly FAST_TYPING_DELAY = 500;    // 快速输入
@@ -40,6 +41,7 @@ export class AdaptiveDebounceManager {
 	constructor() {
 		this.timers = new Map();
 		this.speedStats = new Map();
+		this.throttleStats = new Map();
 	}
 
 	/**
@@ -103,13 +105,18 @@ export class AdaptiveDebounceManager {
 	 * @param interval 时间间隔（毫秒）
 	 */
 	throttle(key: string, callback: DebounceCallback, interval: number): void {
-		const stats = this.speedStats.get(key);
 		const now = Date.now();
-		const lastTime = stats?.lastInputTime || 0;
+		const lastTime = this.throttleStats.get(key) || 0;
 
 		if (now - lastTime >= interval) {
 			callback();
-			this.updateSpeedStats(key, now);
+			this.throttleStats.set(key, now);
+			
+			// 清理过期的 throttle 记录以防内存泄漏
+			if (this.throttleStats.size > 500) {
+				const keysToDelete = Array.from(this.throttleStats.keys()).slice(0, 250);
+				keysToDelete.forEach(k => this.throttleStats.delete(k));
+			}
 		}
 	}
 
@@ -213,6 +220,7 @@ export class AdaptiveDebounceManager {
 		});
 		this.timers.clear();
 		this.speedStats.clear();
+		this.throttleStats.clear();
 	}
 
 	/**
@@ -238,6 +246,7 @@ export class AdaptiveDebounceManager {
 	 */
 	clearStats(key: string): void {
 		this.speedStats.delete(key);
+		this.throttleStats.delete(key);
 	}
 
 	/**
@@ -245,5 +254,6 @@ export class AdaptiveDebounceManager {
 	 */
 	clearAllStats(): void {
 		this.speedStats.clear();
+		this.throttleStats.clear();
 	}
 }

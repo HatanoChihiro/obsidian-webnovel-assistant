@@ -191,20 +191,6 @@ export const TIME_FORMATS = {
 // 通知消息常量
 
 // ==========================================
-// 样式常量
-// ==========================================
-export const STYLES = {
-	/** 输入框样式 */
-	INPUT_STYLE: 'width:100%;margin-bottom:8px;padding:6px 8px;border-radius:4px;border:1px solid var(--background-modifier-border);background:var(--background-primary);color:var(--text-normal);box-sizing:border-box;',
-
-	/** 按钮容器样式 */
-	BUTTON_CONTAINER_STYLE: 'display:flex;justify-content:flex-end;gap:10px;margin-top:16px;',
-
-	/** 标签按钮样式 */
-	TAG_BUTTON_STYLE: 'padding:2px 10px;border-radius:12px;border:1px solid var(--interactive-accent);color:var(--interactive-accent);background:transparent;cursor:pointer;font-size:0.85em;',
-} as const;
-
-// ==========================================
 // 验证规则常量
 // ==========================================
 export const VALIDATION_RULES = {
@@ -242,20 +228,20 @@ export const FLAT_IMMERSIVE_KEYS = [
 
 export const DEFAULT_SETTINGS: AccurateCountSettings = {
 	language: 'auto',
-	wordCountMethod: 'webnovel',
+	wordCountMethod: 'standard',
 	defaultGoal: 3000,
 	dailyGoal: 5000,
-	showGoal: true,
+	showGoal: false,
 	showExplorerCounts: false, // 默认关闭，避免性能问题
 	enableChapterTemplate: false,
 	enableSmartChapterSort: false, // 默认关闭，避免与用户习惯冲突
 	chapterTemplatePath: '',
 	chapterNamingRules: [
-		{ name: '阿拉伯数字（第1章、第01章）', pattern: '^第?(\\d+)[章节回卷部册篇]?', enabled: true },
-		{ name: '中文数字（第一章、第二章）', pattern: '^第?([零一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]+)[章节回卷部册篇]?', enabled: true },
-		{ name: '纯数字（1、01、001）', pattern: '^(\\d+)$', enabled: true },
-		{ name: 'Chapter Number (Chapter 1, Ch.1)', pattern: '^[Cc]h(?:apter)?\\.?\\s*(\\d+)', enabled: false },
-		{ name: 'Part Number (Part 1, Pt.1)', pattern: '^[Pp]t\\.?\\s*(\\d+)', enabled: false },
+		{ name: '阿拉伯数字（第1章、第01章）', pattern: '^(?:第(\\d+)[章节回卷部册篇]?|第?(\\d+)[章节回卷部册篇])', enabled: true },
+		{ name: '中文数字（第一章、第二章）', pattern: '^(?:第([零一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]+)[章节回卷部册篇]?|第?([零一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]+)[章节回卷部册篇])', enabled: true },
+		{ name: '纯数字及标题（1、01、001 标题）', pattern: '^(\\d+)(?:[ \\-].*)?$', enabled: true },
+		{ name: '英文章节 (Chapter 1, Ch.1)', pattern: '^[Cc]h(?:apter)?\\.?\\s*(\\d+)', enabled: false },
+		{ name: '全能括号 ( (1)、【30】 )', pattern: '^[（\\(【「{]([0-9零一二三四五六七八九十百千万]+)[）\\)】」}]', enabled: false },
 	],
 	workspaceFolders: [],
 	showFloatingNotes: true,
@@ -283,22 +269,22 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 	},
 	eyeCareEnabled: false,
 	eyeCareColor: '#E8F5E9',
-	showMobileFloatingStats: true, // 默认显示移动端浮窗
+	showMobileFloatingStats: false, // 默认不显示移动端浮窗
 	mobileFloatingStatsState: null, // 默认无保存状态
 	enableStrictChapterMode: false, // 严格章节模式，默认关闭
 	strictChapterExceptions: [],
-	enableWordCountGutter: true,
+	enableWordCountGutter: false,
 	wordCountInterval: 2000,
-	enableSelectionWordCount: true,
+	enableSelectionWordCount: false,
 	nextNoteThemeIndex: 0,
 	stickyNoteAutoSave: true,
 
 	// 沉浸模式默认设置
 	immersive: {
-		immersiveTopSlots: [],
-		immersiveBottomSlots: ['immersive-sticky-notes-view', 'foreshadowing-view', 'wn-timeline-view'],
+		immersiveTopSlots: ['immersive-sticky-notes-view', 'foreshadowing-view', 'wn-timeline-view'],
+		immersiveBottomSlots: [],
 		immersiveLeftSlots: ['immersive-chapter-list-view'],
-		immersiveRightSlots: ['reference-view', 'webnovel-workbench'],
+		immersiveRightSlots: ['reference-view'],
 		immersiveTopSize: 20,
 		immersiveBottomSize: 20,
 		immersiveLeftSize: 20,
@@ -351,7 +337,7 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 	customSortOrder: {},
 	loreFolderName: '设定',
 	lorePopoverCollapse: false,
-	loreGraphAutoLinkMentions: true,
+	loreGraphAutoLinkMentions: false,
 	loreGraphEnableGlobal: false,
 	advancedSearchQuery: '',
 	debugMode: false,

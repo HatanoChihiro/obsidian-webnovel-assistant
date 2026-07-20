@@ -37,6 +37,7 @@ import type { ImmersiveModeManager } from '../ui/ImmersiveModeManager';
 import type { FileEventManager } from '../services/FileEventManager';
 import type { HomepageManager } from '../services/HomepageManager';
 import type { StatisticsManager } from '../services/StatisticsManager';
+import type { RelationGraphManager } from '../services/RelationGraphManager';
 
 // ==========================================
 // 辅助类型
@@ -136,6 +137,7 @@ export interface WebNovelAssistantPlugin extends
 	registerEvent(eventRef: EventRef): void;
 	registerView(type: string, viewCreator: ViewCreator): void;
 	registerInterval(id: number): number;
+	register(callback: () => unknown): void;
 	loadData(): Promise<unknown>;
 	addCommand(command: Command): Command;
 
@@ -154,6 +156,7 @@ export interface WebNovelAssistantPlugin extends
 	settingsManager: SettingsManager;
 	historyManager: HistoryDataManager;
 	fileExplorerPatcher: FileExplorerPatcher;
+	cacheManager: CacheManager;
 	wordCounter: WordCounter;
 	commandManager: CommandManager;
 	viewManager: ViewManager;
@@ -168,6 +171,7 @@ export interface WebNovelAssistantPlugin extends
 	foreshadowingManager?: ForeshadowingManager;
 	taskManager?: TaskManager;
 	timelineManager?: TimelineManager;
+	relationGraphManager?: RelationGraphManager;
 	editorTracker?: EditorTracker;
 	styleManager?: StyleManager;
 	homepageManager?: HomepageManager;
