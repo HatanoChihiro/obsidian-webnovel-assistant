@@ -116,6 +116,24 @@ project.getSourceFiles().forEach(sourceFile => {
 				hasErrors = true;
 			}
 		}
+		
+		// 6b. Check for document.createDocumentFragment
+		if (propAccess.getName() === 'createDocumentFragment') {
+			const left = propAccess.getExpression().getText();
+			if (left === 'document' || left === 'activeDocument' || left === 'window.document') {
+				console.error(`❌ [Error] Uses '${left}.createDocumentFragment' instead of Obsidian's 'createFragment' in ${filePath}:${propAccess.getStartLineNumber()}`);
+				hasErrors = true;
+			}
+		}
+
+		// 6c. Check for console.log
+		if (propAccess.getName() === 'log') {
+			const left = propAccess.getExpression().getText();
+			if (left === 'console' || left === 'window.console' || left === 'globalThis.console') {
+				console.error(`❌ [Warning] Avoid unnecessary logging to console ('${left}.log') in ${filePath}:${propAccess.getStartLineNumber()}`);
+				hasErrors = true;
+			}
+		}
 	});
 
 	// 7. Check for casting to TFile or TFolder
@@ -135,6 +153,9 @@ project.getSourceFiles().forEach(sourceFile => {
 		if (line.includes('eslint-disable')) {
 			if (line.includes('@typescript-eslint/no-explicit-any')) {
 				console.error(`❌ [Error] Disabling '@typescript-eslint/no-explicit-any' is not allowed in ${filePath}:${index + 1}`);
+				hasErrors = true;
+			} else if (line.includes('no-console')) {
+				console.error(`❌ [Error] Disabling 'no-console' is not allowed in ${filePath}:${index + 1}`);
 				hasErrors = true;
 			} else if (!line.includes('--')) {
 				console.error(`❌ [Error] Unexpected undescribed directive comment in ${filePath}:${index + 1}. Include descriptions to explain why the comment is necessary.`);

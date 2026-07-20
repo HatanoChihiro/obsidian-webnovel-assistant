@@ -971,13 +971,14 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 	private displayLoreSettings(containerEl: HTMLElement): void {
 		new Setting(containerEl).setName(t('setting.lore-lookup')).setHeading();
 
-		const desc = activeDocument.createDocumentFragment();
-		desc.append(
-			t('setting.lore-folder-name-desc-prefix'),
-			desc.createEl('br'),
-			desc.createEl('strong', { text: t('setting.lore-folder-name-desc-hint') }),
-			t('setting.lore-folder-name-desc')
-		);
+		const desc = createFragment((frag) => {
+			frag.append(
+				t('setting.lore-folder-name-desc-prefix'),
+				frag.createEl('br'),
+				frag.createEl('strong', { text: t('setting.lore-folder-name-desc-hint') }),
+				t('setting.lore-folder-name-desc')
+			);
+		});
 
 		new Setting(containerEl)
 			.setName(t('setting.lore-folder-name'))
