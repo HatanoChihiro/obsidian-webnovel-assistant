@@ -270,6 +270,7 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 	eyeCareEnabled: false,
 	eyeCareColor: '#E8F5E9',
 	showMobileFloatingStats: false, // 默认不显示移动端浮窗
+	enableMobileFocusTimer: false, // 默认不启用移动端计时器
 	mobileFloatingStatsState: null, // 默认无保存状态
 	enableStrictChapterMode: false, // 严格章节模式，默认关闭
 	strictChapterExceptions: [],
@@ -308,6 +309,10 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 		immersiveNoteSize: 280,
 		immersiveNoteFontSize: 14,
 		immersiveLayout: null,
+
+		typewriterEnabled: false,
+		typewriterCenterOffset: 0,
+		typewriterUnfocusedOpacity: 0.4,
 	},
 
 	// OBS 数据输出默认设置
@@ -337,6 +342,7 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 	customSortOrder: {},
 	loreFolderName: '设定',
 	lorePopoverCollapse: false,
+	enableMobileLorePopover: false,
 	loreGraphAutoLinkMentions: false,
 	loreGraphEnableGlobal: false,
 	advancedSearchQuery: '',

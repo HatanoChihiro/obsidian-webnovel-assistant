@@ -1,6 +1,6 @@
 import { Logger } from '../utils/Logger';
 import type { App} from 'obsidian';
-import { Component, MarkdownRenderer, Notice, TFile, setIcon, Modal, Setting, MarkdownView } from 'obsidian';
+import { Component, MarkdownRenderer, Notice, TFile, setIcon, Modal, Setting } from 'obsidian';
 import type { StickyNoteState, ThemeScheme } from '../types/settings';
 import { hexToRgba } from '../utils/format';
 import { isDesktop } from '../utils/platform';
@@ -250,7 +250,7 @@ export class FloatingStickyNote extends Component {
 	updateFromState(newState: StickyNoteState) {
 		this.state = { ...this.state, ...newState };
 		this.lastSavedContent = this.state.content || "";
-		if (this.textareaEl && this.state.content !== this.textareaEl.value) {
+		if (this.textareaEl && activeDocument.activeElement !== this.textareaEl && this.state.content !== this.textareaEl.value) {
 			this.textareaEl.value = this.state.content || "";
 		}
 		
@@ -375,19 +375,9 @@ export class FloatingStickyNote extends Component {
 		this.textareaEl.addEventListener('keyup', stopPropagation);
 		this.textareaEl.addEventListener('keypress', stopPropagation);
 		
-		// 2. 【核心修复】解决按空格/回车自动跳转文档并抢夺焦点的问题
+		// 2. 避免在悬浮便签聚焦时误切活动 Leaf（防止从工作台面板切出）
 		this.textareaEl.addEventListener('focus', () => {
-			// 获取当前活动视图，如果不是 Markdown 视图（比如停留在了文件浏览器或搜索栏）
-			const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-			if (!activeView) {
-				// 找一个已打开的 Markdown 视图
-				const mdLeaves = this.app.workspace.getLeavesOfType('markdown');
-				if (mdLeaves.length > 0) {
-					// 悄悄将 Obsidian 的逻辑焦点转移到 Markdown 视图上
-					// { focus: false } 是关键：它只修改内部状态，绝不会抢走你 textarea 里的打字光标！
-					this.app.workspace.setActiveLeaf(mdLeaves[0], { focus: false });
-				}
-			}
+			// 仅保持 DOM 原生焦点，不做任何 workspace.setActiveLeaf 的强制跳转
 		});
 		
 		// 阻止 mousedown 事件冒泡，防止触发标题栏的拖拽
@@ -399,13 +389,15 @@ export class FloatingStickyNote extends Component {
 		this.textareaEl.addEventListener('input', () => {
 			// 始终同步内存中的 content，确保 onunload 时数据不丢失
 			this.state.content = this.textareaEl.value;
+			// 实时同步数据管理器（防抖保存文件）
+			this.plugin.stickyNoteManager.updateNote(this.state, true);
+
 			// 视觉反馈：如果内容与最后保存的不一致，高亮保存按钮
 			const isDirty = this.textareaEl.value !== this.lastSavedContent;
 			if (isDirty && !this.plugin.settings.stickyNoteAutoSave) {
 				saveBtn.addClass('is-active');
 			} else {
 				saveBtn.removeClass('is-active');
-				
 			}
 
 			if (this.plugin.settings.stickyNoteAutoSave) {
@@ -789,11 +781,9 @@ export class FloatingStickyNote extends Component {
 				this.resizeTimer = null;
 
 				// 如果元素当前被隐藏（如在沉浸模式下），不保存 0x0 的尺寸
-				const width  = this.containerEl.style.width;
-				const height = this.containerEl.style.height;
-				if (width && width !== '0px' && height && height !== '0px') {
-					this.state.width  = width;
-					this.state.height = height;
+				if (this.containerEl.offsetWidth > 0 && this.containerEl.offsetHeight > 0) {
+					this.state.width  = `${this.containerEl.offsetWidth}px`;
+					this.state.height = `${this.containerEl.offsetHeight}px`;
 					this.saveState();
 				}
 			}, 300);

@@ -1,10 +1,9 @@
 import { Logger } from '../utils/Logger';
 import type { App, EventRef, WorkspaceLeaf, TFile, WorkspaceSplit, WorkspaceItem } from 'obsidian';
-import { MarkdownView, Notice } from 'obsidian';
+import { MarkdownView, Notice, ToggleComponent } from 'obsidian';
 import { findBookRoot } from '../utils/path';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { t } from '../i18n';
-import { TaskManager } from '../services/TaskManager';
 
 /**
  * 沉浸模式管理器
@@ -28,6 +27,7 @@ export class ImmersiveModeManager {
 	private activeBottomLeaf: WorkspaceLeaf | null = null;
 	
 	private layoutChangeRef: EventRef | null = null;
+	private pendingTimers: Set<number> = new Set();
 
 	// 顶部栏元素缓存
 	private topBarStatsEls: Record<string, HTMLElement> = {};
@@ -35,6 +35,15 @@ export class ImmersiveModeManager {
 	constructor(app: App, plugin: WebNovelAssistantPlugin) {
 		this.app = app;
 		this.plugin = plugin;
+	}
+
+	private setTimeout(fn: () => void, ms: number): number {
+		const timer = window.setTimeout(() => {
+			this.pendingTimers.delete(timer);
+			fn();
+		}, ms);
+		this.pendingTimers.add(timer);
+		return timer;
 	}
 
 	/**
@@ -93,12 +102,19 @@ export class ImmersiveModeManager {
 			// 1. 抓取当前整个工作区的快照
 			if (typeof this.app.workspace.getLayout === 'function') {
 				this.savedLayout = this.app.workspace.getLayout() as Record<string, unknown>;
+				// 持久化布局快照，防止异常退出导致不可恢复
+				this.plugin.settings._savedImmersiveLayout = JSON.stringify(this.savedLayout);
+				await this.plugin.saveSettings();
 			}
 
 			// 2. 注入全局 CSS 类和 Dashboard
 			activeDocument.body.classList.add('immersive-mode-active');
 			if (this.plugin.settings.immersive.immersiveHideProperties) {
 				activeDocument.body.classList.add('immersive-hide-properties');
+			}
+			if (this.plugin.settings.immersive.typewriterEnabled) {
+				activeDocument.body.classList.add('wn-typewriter-active');
+				activeDocument.body.setCssProps({ '--wn-typewriter-opacity': String(this.plugin.settings.immersive.typewriterUnfocusedOpacity ?? 0.4) });
 			}
 			this.createTopBar();
 
@@ -114,6 +130,16 @@ export class ImmersiveModeManager {
 			this.plugin.startTracking();
 
 			this.isImmersiveActive = true;
+
+			// 进入沉浸模式后立即强刷编辑框位置，触发打字机初始化居中
+			this.app.workspace.updateOptions();
+			this.setTimeout(() => {
+				const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+				if (activeView && activeView.editor && activeView.editor.cm) {
+					activeView.editor.cm.dispatch({});
+				}
+			}, 150);
+
 			new Notice(t('immersive.enter'));
 		} catch (error) {
 			Logger.error('[ImmersiveModeManager] 进入沉浸模式失败:', error);
@@ -172,6 +198,8 @@ export class ImmersiveModeManager {
 			Logger.error('[ImmersiveModeManager] 退出沉浸模式时发生错误:', error);
 			new Notice(t('immersive.exit-warning'));
 		} finally {
+			this.plugin.settings._savedImmersiveLayout = null;
+			await this.plugin.saveSettings();
 			this.cleanup();
 			this.app.workspace.requestSaveLayout();
 			new Notice(t('immersive.exited'));
@@ -179,12 +207,19 @@ export class ImmersiveModeManager {
 	}
 
 	public cleanup(): void {
+		for (const timer of this.pendingTimers) {
+			window.clearTimeout(timer);
+		}
+		this.pendingTimers.clear();
+
 		if (this.layoutChangeRef) {
 			this.app.workspace.offref(this.layoutChangeRef);
 			this.layoutChangeRef = null;
 		}
 		activeDocument.body.classList.remove('immersive-mode-active');
 		activeDocument.body.classList.remove('immersive-hide-properties');
+		activeDocument.body.classList.remove('wn-typewriter-active');
+		activeDocument.body.setCssProps({ '--wn-typewriter-opacity': 'unset' });
 		this.removeTopBar();
 
 		this.isImmersiveActive = false;
@@ -226,6 +261,7 @@ export class ImmersiveModeManager {
 			state: { ...currentState.state, file: activeFile.path, mode: 'source' },
 			active: true
 		});
+		mainLeaf.containerEl.classList.add('immersive-main-editor');
 
 		const pendingSizes: Array<{ split: WorkspaceSplit; sizes: number[] }> = [];
 
@@ -307,8 +343,7 @@ export class ImmersiveModeManager {
 		// 确保主编辑器聚焦
 		workspace.setActiveLeaf(mainLeaf, { focus: true });
 
-		const timer = window.setTimeout(() => this.app.workspace.updateOptions(), 300);
-		this.plugin.register(() => window.clearTimeout(timer));
+		this.setTimeout(() => this.app.workspace.updateOptions(), 300);
 		
 		// 监听布局变化，实时保存比例
 		this.layoutChangeRef = this.app.workspace.on('layout-change', () => {
@@ -352,14 +387,12 @@ export class ImmersiveModeManager {
 			}
 
 			if (hasFailure && attempt < 5 && this.isImmersiveActive) {
-				const retryTimer = window.setTimeout(() => apply(attempt + 1), 100 * (attempt + 1));
-				this.plugin.register(() => window.clearTimeout(retryTimer));
+				this.setTimeout(() => apply(attempt + 1), 100 * (attempt + 1));
 			}
 		};
 
 		window.requestAnimationFrame(() => apply(0));
-		const initTimer = window.setTimeout(() => apply(0), 300);
-		this.plugin.register(() => window.clearTimeout(initTimer));
+		this.setTimeout(() => apply(0), 300);
 	}
 
 	/**
@@ -395,12 +428,31 @@ export class ImmersiveModeManager {
 			el.hide();
 		}
 
+		// 在中间数据栏的最右侧嵌入打字机原生 Toggle 开关
+		const typewriterWrapper = centerDiv.createDiv({ cls: 'stat-item typewriter-toggle-container' });
+		typewriterWrapper.createSpan({ cls: 'typewriter-toggle-label', text: t('setting.immersive-typewriter-title') });
+
+		new ToggleComponent(typewriterWrapper)
+			.setValue(this.plugin.settings.immersive.typewriterEnabled)
+			.setTooltip(t('immersive.typewriter-toggle-tooltip'))
+			.onChange(async (value) => {
+				this.plugin.settings.immersive.typewriterEnabled = value;
+				await this.plugin.saveSettings();
+				if (value) {
+					activeDocument.body.classList.add('wn-typewriter-active');
+					activeDocument.body.setCssProps({ '--wn-typewriter-opacity': String(this.plugin.settings.immersive.typewriterUnfocusedOpacity ?? 0.4) });
+				} else {
+					activeDocument.body.classList.remove('wn-typewriter-active');
+				}
+				this.app.workspace.updateOptions();
+			});
+
 		activeDocument.body.appendChild(this.topBarEl);
 		void this.renderTopBarContent();
 
-		this.updateInterval = this.plugin.registerInterval(window.setInterval(() => {
+		this.updateInterval = window.setInterval(() => {
 			void this.renderTopBarContent();
-		}, 1000));
+		}, 1000);
 	}
 
 	private removeTopBar(): void {
@@ -432,14 +484,14 @@ export class ImmersiveModeManager {
 					taskFolder = this.plugin.lastTaskFolder;
 				}
 				if (taskFolder && this.plugin.taskManager) {
-					const manager = new TaskManager(this.plugin.app, this.plugin, taskFolder);
-					const taskFile = manager.getTaskFile();
+					this.plugin.taskManager.currentFolder = taskFolder;
+					const taskFile = this.plugin.taskManager.getTaskFile();
 					if (taskFile) {
 						const taskContent = await this.plugin.app.vault.cachedRead(taskFile);
-						const entries = manager.parseEntries(taskContent);
-						const active = manager.getActiveTask(entries);
+						const entries = this.plugin.taskManager.parseEntries(taskContent);
+						const active = this.plugin.taskManager.getActiveTask(entries);
 						if (active) {
-							taskWords = manager.calcProgress(active);
+							taskWords = this.plugin.taskManager.calcProgress(active);
 							taskGoal = active.wordTarget;
 						}
 					}

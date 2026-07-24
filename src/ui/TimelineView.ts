@@ -9,6 +9,8 @@ import { t } from '../i18n';
 import { getDefaultFileName } from '../i18n/data-keys';
 import { ChapterSorter } from '../services/ChapterSorter';
 import { TimelineAddModal } from './TimelineAddModal';
+import { openFileAndFocus } from '../utils/leaf';
+
 
 export const TIMELINE_VIEW_TYPE = 'wn-timeline-view';
 
@@ -68,7 +70,7 @@ export class TimelineView extends CreativeView {
 		const leaf = this.app.workspace.getLeaf(false);
 
 		if (!searchText) {
-			await leaf.openFile(file);
+			await openFileAndFocus(this.app, leaf, file);
 			return;
 		}
 
@@ -93,7 +95,7 @@ export class TimelineView extends CreativeView {
 			}
 		}
 
-		await leaf.openFile(file, { eState: { line: targetLine } });
+		await openFileAndFocus(this.app, leaf, file, { eState: { line: targetLine } });
 	}
 
 	private getTypeFilterOptions(entries: TimelineEntry[]): string[] {
@@ -222,9 +224,9 @@ export class TimelineView extends CreativeView {
 			const pointerY = e.clientY;
 			const target = activeDocument.elementFromPoint(pointerX, pointerY) as HTMLElement;
 			if (!target) return;
-			const targetItem = target.closest('.webnov timeline-item') as HTMLElement;
+			const targetItem = target.closest('.wn-timeline-item') as HTMLElement;
 
-			container.querySelectorAll('.webnov timeline-drag-over-top, .webnov timeline-drag-over-bottom').forEach(el => {
+			container.querySelectorAll('.wn-timeline-drag-over-top, .wn-timeline-drag-over-bottom').forEach(el => {
 				if (el !== targetItem) {
 					el.removeClass('wn-timeline-drag-over-top');
 					el.removeClass('wn-timeline-drag-over-bottom');
@@ -254,7 +256,7 @@ export class TimelineView extends CreativeView {
 		item.addEventListener('dragend', () => {
 			onDrag.cancel();
 			item.removeClass('wn-timeline-dragging');
-			container.querySelectorAll('.webnov timeline-drag-over-top, .webnov timeline-drag-over-bottom').forEach(el => {
+			container.querySelectorAll('.wn-timeline-drag-over-top, .wn-timeline-drag-over-bottom').forEach(el => {
 				el.removeClass('wn-timeline-drag-over-top');
 				el.removeClass('wn-timeline-drag-over-bottom');
 			});
@@ -269,17 +271,17 @@ export class TimelineView extends CreativeView {
 		item.addEventListener('drop', (e) => {
 			e.preventDefault();
 			const data = e.dataTransfer?.getData('text/plain');
+			container.querySelectorAll('.wn-timeline-drag-over-top, .wn-timeline-drag-over-bottom').forEach(el => {
+				el.removeClass('wn-timeline-drag-over-top');
+				el.removeClass('wn-timeline-drag-over-bottom');
+			});
 			if (!data) return;
 			const fromIndex = parseInt(data, 10);
 			if (isNaN(fromIndex)) return;
 			const rect = item.getBoundingClientRect();
 			const midY = rect.top + rect.height / 2;
-			// 鼠标在上半部分：插入到目标之前；下半部分：插入到目标之后
 			let toIndex = e.clientY < midY ? index : index + 1;
-			// 调整：如果从上方拖到下方，toIndex 需要减 1
 			if (fromIndex < toIndex) toIndex -= 1;
-			item.removeClass('wn-timeline-drag-over-top');
-			item.removeClass('wn-timeline-drag-over-bottom');
 			if (fromIndex !== -1 && fromIndex !== toIndex) {
 				void (async () => {
 					try {

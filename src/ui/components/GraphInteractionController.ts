@@ -122,6 +122,7 @@ export class GraphInteractionController {
 
 			if (isDoubleClick) {
 				if (node) {
+					this.state.selectedNode = node;
 					this.callbacks.onNodeDoubleClick(node);
 				} else {
 					this.callbacks.onBackgroundDoubleClick();
@@ -159,6 +160,7 @@ export class GraphInteractionController {
 		} else {
 			const pos = this.screenToGraph(e.clientX, e.clientY);
 			const node = this.findNodeAt(pos.x, pos.y);
+			this.canvas.setCssStyles({ cursor: node ? 'pointer' : 'default' });
 			if (node !== this.state.hoveredNode) {
 				this.state.hoveredNode = node;
 				this.callbacks.onNodeHover(node, e);
@@ -217,8 +219,12 @@ export class GraphInteractionController {
 
 			if (isDoubleClick) {
 				e.preventDefault();
-				if (node) this.callbacks.onNodeDoubleClick(node);
-				else this.callbacks.onBackgroundDoubleClick();
+				if (node) {
+					this.state.selectedNode = node;
+					this.callbacks.onNodeDoubleClick(node);
+				} else {
+					this.callbacks.onBackgroundDoubleClick();
+				}
 				return;
 			}
 

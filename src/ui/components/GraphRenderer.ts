@@ -60,7 +60,20 @@ export class GraphRenderer {
 	static readonly NODE_HIGHLIGHT_RADIUS = 7;
 	static readonly DPR = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
 
-	static buildEdgeOffsets(graphData: GraphData, state: GraphRenderState): void {
+	private static edgeCacheMap = new WeakMap<GraphData, { offsetMap: Map<GraphEdge, number>; drawModeMap: Map<GraphEdge, 'hide' | 'bidirectional'>; labelMap: Map<GraphEdge, string> }>();
+
+	static buildEdgeOffsets(graphData: GraphData, state: GraphRenderState, force: boolean = false): void {
+		if (!graphData || !graphData.edges) return;
+
+		// 拓扑结构缓存控制：当 graphData 缓存有效且不要求强制重建时，重用已知计算结果
+		if (!force && this.edgeCacheMap.has(graphData)) {
+			const cached = this.edgeCacheMap.get(graphData)!;
+			state.edgeOffsetMap = cached.offsetMap;
+			state.edgeDrawModeMap = cached.drawModeMap;
+			state.combinedLabelMap = cached.labelMap;
+			return;
+		}
+
 		state.edgeOffsetMap.clear();
 		state.edgeDrawModeMap.clear();
 		state.combinedLabelMap.clear();
@@ -158,6 +171,12 @@ export class GraphRenderer {
 				});
 			}
 		}
+
+		this.edgeCacheMap.set(graphData, {
+			offsetMap: state.edgeOffsetMap,
+			drawModeMap: state.edgeDrawModeMap,
+			labelMap: state.combinedLabelMap
+		});
 	}
 
 	static render(

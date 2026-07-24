@@ -35,6 +35,7 @@ export class ImmersiveStickyNotesView extends ItemView {
 	private lastSavedContents: Map<string, string> = new Map();
 	private resizeObserver: ResizeObserver | null = null;
 	private isVertical: boolean = false;
+	private _isSelfEditing = false;
 
 	constructor(leaf: WorkspaceLeaf, plugin: WebNovelAssistantPlugin) {
 		super(leaf);
@@ -198,6 +199,7 @@ export class ImmersiveStickyNotesView extends ItemView {
 			}
 
 			const noteCard = dockContainer.createDiv({ cls: 'immersive-sticky-card' });
+			noteCard.dataset.noteId = noteData.id;
 			noteCard.setCssStyles({ backgroundColor: noteData.color || '#FDF3B8' });
 			const noteSize = (this.plugin.settings.immersive.immersiveNoteSize || 280) + 'px';
 			/* width/height set below */
@@ -226,8 +228,13 @@ export class ImmersiveStickyNotesView extends ItemView {
 				// 脏检查逻辑
 				const currentContent = noteData.content || '';
 				const lastSaved = this.lastSavedContents.get(noteData.id) || '';
+				const hasContent = currentContent.trim().length > 0;
+				const hasUnsavedChanges = currentContent !== lastSaved;
 
-				if (!this.plugin.settings.stickyNoteAutoSave && currentContent !== lastSaved) {
+				// 统一未保存便签关闭提示逻辑：未关联文件且有内容，或已关联文件且内容未同步
+				const shouldPrompt = (!noteData.filePath && hasContent) || (noteData.filePath && hasUnsavedChanges);
+
+				if (shouldPrompt) {
 					// 弹出确认对话框
 					const modal = new ConfirmCloseModal(this.app, (shouldSave: boolean) => {
 						if (shouldSave) {
@@ -288,29 +295,104 @@ export class ImmersiveStickyNotesView extends ItemView {
 
 			// 绑定输入监听
 			textarea.addEventListener('input', () => {
-				noteData.content = frontmatter + textarea.value;
+				this._isSelfEditing = true;
+				try {
+					const latestNote = this.plugin.stickyNoteManager.getNotes().find(n => n.id === noteData.id) || noteData;
+					latestNote.content = frontmatter + textarea.value;
 
-				// 如果开启了自动保存，则实时同步到管理器和文件
-				if (this.plugin.settings.stickyNoteAutoSave) {
-					const debounceKey = `immersive-save-note-${noteData.id}`;
-					this.plugin.adaptiveDebounceManager.debounceFixed(debounceKey, () => {
-						void this.plugin.stickyNoteManager.saveNotes(this.plugin.stickyNoteManager.getNotes());
-						this.lastSavedContents.set(noteData.id, noteData.content || '');
+					// 实时更新内存与桌面端悬浮便签
+					this.plugin.stickyNoteManager.updateNote(latestNote, true);
 
-						if (noteData.filePath) {
-							const file = this.app.vault.getAbstractFileByPath(noteData.filePath);
-							if (file instanceof TFile) {
-								void this.app.vault.process(file, () => noteData.content || '');
+					// 如果开启了自动保存，则实时同步到文件
+					if (this.plugin.settings.stickyNoteAutoSave) {
+						const debounceKey = `immersive-save-note-${latestNote.id}`;
+						this.plugin.adaptiveDebounceManager.debounceFixed(debounceKey, () => {
+							void this.plugin.stickyNoteManager.saveNotes(this.plugin.stickyNoteManager.getNotes());
+							this.lastSavedContents.set(latestNote.id, latestNote.content || '');
+
+							if (latestNote.filePath) {
+								const file = this.app.vault.getAbstractFileByPath(latestNote.filePath);
+								if (file instanceof TFile) {
+									void this.app.vault.process(file, () => latestNote.content || '');
+								}
 							}
-						}
-					}, 500);
+						}, 500);
+					}
+				} finally {
+					queueMicrotask(() => { this._isSelfEditing = false; });
+				}
+			});
+		}
+	}
+
+	private syncNotesFromManager(): void {
+		if (this._isSelfEditing) return;
+		const currentNotes = this.plugin.stickyNoteManager.getNotes();
+		const dockContainer = this.containerEl.querySelector('.immersive-sticky-dock');
+		if (!dockContainer) {
+			this.renderNotes();
+			return;
+		}
+
+		const cards = dockContainer.querySelectorAll<HTMLElement>('.immersive-sticky-card');
+		const cardNoteIds = Array.from(cards).map(card => card.dataset.noteId).filter((id): id is string => !!id);
+		const currentNoteIds = currentNotes.map(n => n.id);
+
+		// 检查便签数量与 ID 集合是否完全匹配
+		const idsMatch = cardNoteIds.length === currentNoteIds.length &&
+			cardNoteIds.every((id, idx) => id === currentNoteIds[idx]);
+
+		if (!idsMatch) {
+			const activeEl = activeDocument.activeElement;
+			if (activeEl && activeEl.tagName.toLowerCase() === 'textarea' && this.containerEl.contains(activeEl)) {
+				const debounceKey = 'immersive-view-sync-notes';
+				this.plugin.adaptiveDebounceManager.debounceFixed(debounceKey, () => {
+					this.renderNotes();
+				}, 1000);
+				return;
+			}
+			this.renderNotes();
+		} else {
+			cards.forEach(card => {
+				const noteId = card.dataset.noteId;
+				if (!noteId) return;
+				const match = currentNotes.find(n => n.id === noteId);
+				if (!match) return;
+
+				card.setCssStyles({ backgroundColor: match.color || '#FDF3B8' });
+				if (match.textColor) {
+					card.setCssProps({ color: match.textColor });
+				}
+
+				const titleSpan = card.querySelector('.webnovel-immersive-note-title span');
+				if (titleSpan && titleSpan.textContent !== (match.title || t('immersive.note-default-title'))) {
+					titleSpan.textContent = match.title || t('immersive.note-default-title');
+				}
+
+				const ta = card.querySelector<HTMLTextAreaElement>('textarea');
+				if (ta && activeDocument.activeElement !== ta) {
+					let displayContent = match.content || '';
+					const fmMatch = displayContent.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n/);
+					if (fmMatch) {
+						displayContent = displayContent.substring(fmMatch[0].length);
+					}
+					if (ta.value !== displayContent) {
+						ta.value = displayContent;
+					}
 				}
 			});
 		}
 	}
 
 	async onOpen() {
-		this.containerEl.addClass('webnovel-immersive-sticky-container'); this.renderNotes();
+		this.containerEl.addClass('webnovel-immersive-sticky-container');
+		this.renderNotes();
+
+		this.registerEvent(
+			this.app.workspace.on('webnovel:notes-changed', () => {
+				this.syncNotesFromManager();
+			})
+		);
 	}
 
 	async onClose() {

@@ -85,7 +85,6 @@ export interface ViewContext {
 	toggleStatusView(): Promise<void>;
 	toggleForeshadowingView(): Promise<void>;
 	toggleTimelineView(): Promise<void>;
-	toggleTaskView(): Promise<void>;
 	toggleFloatingNotesVisibility(): Promise<void>;
 	refreshStatusViews(): void;
 }

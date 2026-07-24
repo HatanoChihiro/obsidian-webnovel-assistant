@@ -126,7 +126,7 @@ export class CacheManager {
 
 				// 直接序列化并写入到独立的 cache-data.json 文件
 				const adapter = this.plugin.app.vault.adapter;
-				const content = JSON.stringify(cacheData, null, 2);
+				const content = JSON.stringify(cacheData);
 				await adapter.write(this.cacheFilePath, content);
 				
 			} catch (error) {
@@ -346,9 +346,13 @@ export class CacheManager {
 	}
 
 	private _loreCandidatesCache: Set<string> | null = null;
+	private _normalizedWorkspaceFolders: string[] | null = null;
+	private _normalizedStrictExceptions: string[] | null = null;
 
 	resetLoreCache(): void {
 		this._loreCandidatesCache = null;
+		this._normalizedWorkspaceFolders = null;
+		this._normalizedStrictExceptions = null;
 	}
 
 	isFileInWorkspace(file: TFile): boolean {
@@ -356,9 +360,12 @@ export class CacheManager {
 			return true;
 		}
 
+		if (!this._normalizedWorkspaceFolders) {
+			this._normalizedWorkspaceFolders = this.plugin.settings.workspaceFolders.map(folder => folder.replace(/^\/+|\/+$/g, ""));
+		}
+
 		const filePath = file.path;
-		return this.plugin.settings.workspaceFolders.some(folder => {
-			const normalizedFolder = folder.replace(/^\/+|\/+$/g, "");
+		return this._normalizedWorkspaceFolders.some(normalizedFolder => {
 			if (normalizedFolder === "") return true;
 			return filePath === normalizedFolder + ".md" || filePath.startsWith(normalizedFolder + "/");
 		});
@@ -368,9 +375,13 @@ export class CacheManager {
 		if (!this.plugin.settings.strictChapterExceptions || this.plugin.settings.strictChapterExceptions.length === 0) {
 			return false;
 		}
+
+		if (!this._normalizedStrictExceptions) {
+			this._normalizedStrictExceptions = this.plugin.settings.strictChapterExceptions.map(folder => folder.replace(/^\/+|\/+$/g, ""));
+		}
+
 		const filePath = file.path;
-		return this.plugin.settings.strictChapterExceptions.some(folder => {
-			const normalizedFolder = folder.replace(/^\/+|\/+$/g, "");
+		return this._normalizedStrictExceptions.some(normalizedFolder => {
 			if (normalizedFolder === "") return false;
 			return filePath === normalizedFolder + ".md" || filePath.startsWith(normalizedFolder + "/");
 		});
@@ -446,8 +457,7 @@ export class CacheManager {
 			}
 
 			if (loaded && !shouldRebuild) {
-				// eslint-disable-next-line @typescript-eslint/no-unsafe-call -- expected unsafe call
-			if (isMobile()) {
+				if (isMobile()) {
 					const timer = window.setTimeout(() => {
 						this.plugin.fileExplorerPatcher?.refreshFolderCounts();
 						if (this.plugin.settings.enableHomepage) this.plugin.homepageManager?.refreshHomepageViews();
@@ -483,7 +493,6 @@ export class CacheManager {
 				await this.saveCache();
 			}
 
-			// eslint-disable-next-line @typescript-eslint/no-unsafe-call -- expected unsafe call
 			if (isMobile()) {
 				const timer = window.setTimeout(() => {
 					this.plugin.fileExplorerPatcher?.refreshFolderCounts();

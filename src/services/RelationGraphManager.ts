@@ -161,7 +161,7 @@ export class RelationGraphManager {
 			const lines = content.split('\n');
 			fileDataCache.set(f, { fileCache, lines });
 			const nodes = this.extractNodes(f, fileCache, lines);
-			
+
 			for (const node of nodes) {
 				if (!nodeIds.has(node.id)) {
 					nodeIds.add(node.id);
@@ -257,7 +257,7 @@ export class RelationGraphManager {
 			let nodeType: string | undefined = undefined;
 			const sectionStart = heading.position.end.line + 1;
 			const sectionEnd = this.findNextHeadingLine(fileCache.headings, i, 2, lines.length);
-			
+
 			for (let lineIdx = sectionStart; lineIdx < sectionEnd; lineIdx++) {
 				const chunk = lines[lineIdx];
 				// 查找 类型：主角、**类型**：主角 等
@@ -385,7 +385,7 @@ export class RelationGraphManager {
 				rawTarget = rawTarget.trim();
 				if (!rawTarget) continue;
 
-				// 提取真正的角色名：支持裸文本或 Obsidian 链接格式如 [[#林芝夏]]、[[文件#林芝夏|别名]]、[[林芝夏]]
+				// 提取真正的角色名：支持裸文本或 Obsidian 链接格式如 [[#张三]]、[[文件#张三|别名]]、[[张三]]
 				let target = rawTarget;
 				const linkMatch = target.match(/\[\[(.*?)\]\]/);
 				if (linkMatch) {

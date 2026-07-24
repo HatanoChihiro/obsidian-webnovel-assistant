@@ -1,15 +1,23 @@
 import type { WorkspaceLeaf} from 'obsidian';
-import { ItemView, TFile, MarkdownView, Notice } from 'obsidian';
+import { ItemView, TFile, MarkdownView, Notice, setIcon, Menu } from 'obsidian';
 import { formatTime, formatCount, isMobile } from '../utils';
+import { revealAndFocusLeaf, openFileAndFocus } from '../utils/leaf';
+
 import { HistoryStatsModal, calcStreak, calcFocusRate, calcActiveHours, calcDailyAverage } from './HistoryModal';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ForeshadowingStatus, type ParsedForeshadowingEntry } from '../types/foreshadowing';
+import { CORKBOARD_STATUS_MAP, getCorkboardStatusText, getCorkboardStatusKeys } from '../i18n/data-keys';
 import { getCurrentBookContext } from '../utils/path';
 import { ChapterSorter } from '../services/ChapterSorter';
 import { TaskManager } from '../services/TaskManager';
 import { t } from '../i18n';
 
 export const STATUS_VIEW_TYPE = 'writing-status-view';
+
+interface CollapsibleTitleElement extends HTMLElement {
+	refreshTitle?: () => void;
+	setOriginalTitle?: (title: string) => void;
+}
 
 export class WritingStatusView extends ItemView {
 	plugin: WebNovelAssistantPlugin;
@@ -31,6 +39,8 @@ export class WritingStatusView extends ItemView {
 	dailyProgressFillEl!: HTMLElement;
 	focusTimeEl!: HTMLElement;
 	chapterStatusCardEl!: HTMLElement;
+	chapterSubInfoEl!: HTMLElement;
+	chapterStatusBadgeEl!: HTMLElement;
 	chapterBadgesContainer!: HTMLElement;
 	chapterTitleEl!: HTMLElement;
 	slackTimeEl!: HTMLElement;
@@ -49,6 +59,7 @@ export class WritingStatusView extends ItemView {
 
 	private lastActiveFolderPath: string | null = null;
 	private taskSaveTimer: number | null = null;
+	private currentChapterFile: TFile | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: WebNovelAssistantPlugin) {
 		super(leaf);
@@ -82,6 +93,45 @@ export class WritingStatusView extends ItemView {
 		this.renderMiniChart();
 	}
 
+	private setupCollapsibleCard(titleRow: HTMLElement, titleSpan: HTMLElement, contentContainer: HTMLElement, getOriginalTitle: () => string) {
+		titleRow.addClass('wn-collapsible-title', 'wn-clickable');
+		let isCollapsed = false;
+		
+		const iconSpan = titleRow.createSpan({ cls: 'wn-collapsible-icon' });
+		setIcon(iconSpan, 'chevron-down');
+		
+		titleRow.addEventListener('click', (e) => {
+			if ((e.target as HTMLElement).hasClass('wn-status-title-badge')) return;
+			if ((e.target as HTMLElement).closest('.wn-status-title-badge')) return;
+			if ((e.target as HTMLElement).hasClass('wn-chapter-title-badge')) return;
+			if ((e.target as HTMLElement).closest('.wn-chapter-title-badge')) return;
+			
+			isCollapsed = !isCollapsed;
+			if (isCollapsed) {
+				contentContainer.addClass('is-collapsed');
+				titleSpan.setText(t('common.click-to-expand', { title: getOriginalTitle() }));
+				titleSpan.addClass('wn-title-collapsed-hint');
+				titleRow.parentElement?.addClass('is-collapsed');
+				setIcon(iconSpan, 'chevron-right');
+			} else {
+				contentContainer.removeClass('is-collapsed');
+				titleSpan.setText(getOriginalTitle());
+				titleSpan.removeClass('wn-title-collapsed-hint');
+				titleRow.parentElement?.removeClass('is-collapsed');
+				setIcon(iconSpan, 'chevron-down');
+			}
+		});
+
+		// Expose a way to refresh title if it was updated externally while collapsed
+		(titleSpan as CollapsibleTitleElement).refreshTitle = () => {
+			if (isCollapsed) {
+				titleSpan.setText(t('common.click-to-expand', { title: getOriginalTitle() }));
+			} else {
+				titleSpan.setText(getOriginalTitle());
+			}
+		};
+	}
+
 	private createWorkInfoCard(container: Element) {
 		const card = container.createDiv({ cls: 'wn-status-card wn-work-info-card' });
 		const row = card.createDiv({ cls: 'wn-work-info-row' });
@@ -94,10 +144,11 @@ export class WritingStatusView extends ItemView {
 	private createGoalCard(container: Element) {
 		const goalCard = container.createDiv({ cls: 'wn-status-card' });
 		const titleRow = goalCard.createDiv({ cls: 'wn-status-title' });
-		titleRow.createSpan({ text: t('common.today-status') });
+		const titleLeft = titleRow.createDiv({ cls: 'wn-status-title-left' });
+		const titleSpan = titleLeft.createSpan({ text: t('common.today-status') });
 
 		if (!isMobile()) {
-			this.statusBadgeEl = titleRow.createSpan({ cls: 'wn-status-title-badge', text: t('status.paused') });
+			this.statusBadgeEl = titleLeft.createSpan({ cls: 'wn-status-title-badge', text: t('status.paused') });
 			this.statusBadgeEl.addClass('wn-clickable');
 			this.statusBadgeEl.title = t('common.click-to-toggle-status');
 			this.statusBadgeEl.addEventListener('click', () => {
@@ -109,48 +160,51 @@ export class WritingStatusView extends ItemView {
 			});
 		}
 
+		const contentContainer = goalCard.createDiv({ cls: 'wn-status-card-content' });
+		this.setupCollapsibleCard(titleRow, titleSpan, contentContainer, () => t('common.today-status'));
+
 		// 今日目标：小标题 + 百分比居右同行
-		const dailyLabelRow = goalCard.createDiv({ cls: 'status-goal-row' });
+		const dailyLabelRow = contentContainer.createDiv({ cls: 'status-goal-row' });
 		dailyLabelRow.createSpan({ cls: 'status-goal-label', text: t('common.today-goal') });
 		this.dailyPercentEl = dailyLabelRow.createSpan({ cls: 'goal-percent', text: '0%' });
 
-		const dailyRow = goalCard.createDiv({ cls: 'goal-display-row-right' });
+		const dailyRow = contentContainer.createDiv({ cls: 'goal-display-row-right' });
 		this.dailyWordEl = dailyRow.createSpan({ cls: 'goal-current', text: '0' });
 		dailyRow.createSpan({ cls: 'goal-separator', text: ' / ' });
 		this.dailyGoalEl = dailyRow.createSpan({ cls: 'goal-target', text: '0' });
-		const dailyProgressBg = goalCard.createDiv({ cls: 'progress-bar-bg' });
+		const dailyProgressBg = contentContainer.createDiv({ cls: 'progress-bar-bg' });
 		this.dailyProgressFillEl = dailyProgressBg.createDiv({ cls: 'progress-bar-fill' });
 
 		// 章节目标：小标题 + 百分比居右同行
-		const chapterLabelRow = goalCard.createDiv({ cls: 'status-goal-row' });
+		const chapterLabelRow = contentContainer.createDiv({ cls: 'status-goal-row' });
 		chapterLabelRow.createSpan({ cls: 'status-goal-label', text: t('common.chapter-goal') });
 		this.percentEl = chapterLabelRow.createSpan({ cls: 'goal-percent', text: '0%' });
 
-		const goalRow = goalCard.createDiv({ cls: 'goal-display-row-right' });
+		const goalRow = contentContainer.createDiv({ cls: 'goal-display-row-right' });
 		this.todayWordEl = goalRow.createSpan({ cls: 'goal-current', text: '0' });
 		goalRow.createSpan({ cls: 'goal-separator', text: ' / ' });
 		this.goalWordEl = goalRow.createSpan({ cls: 'goal-target', text: '0' });
-		const progressBg = goalCard.createDiv({ cls: 'progress-bar-bg' });
+		const progressBg = contentContainer.createDiv({ cls: 'progress-bar-bg' });
 		this.progressFillEl = progressBg.createDiv({ cls: 'progress-bar-fill' });
 
 		this.chapterSectionEls = [chapterLabelRow, goalRow, progressBg];
 
 		// 任务目标
-		const taskLabelRow = goalCard.createDiv({ cls: 'status-goal-row task-goal-section' });
+		const taskLabelRow = contentContainer.createDiv({ cls: 'status-goal-row task-goal-section' });
 		taskLabelRow.hide();
 		taskLabelRow.createSpan({ cls: 'status-goal-label', text: t('common.task-goal') });
 		this.taskPercentEl = taskLabelRow.createSpan({ cls: 'goal-percent', text: '0%' });
 
-		const taskRow = goalCard.createDiv({ cls: 'goal-display-row-right task-goal-section' });
+		const taskRow = contentContainer.createDiv({ cls: 'goal-display-row-right task-goal-section' });
 		taskRow.hide();
 		this.taskWordEl = taskRow.createSpan({ cls: 'goal-current', text: '0' });
 		taskRow.createSpan({ cls: 'goal-separator', text: ' / ' });
 		this.taskTargetEl = taskRow.createSpan({ cls: 'goal-target', text: '0' });
-		const taskProgressBg = goalCard.createDiv({ cls: 'progress-bar-bg task-goal-section' });
+		const taskProgressBg = contentContainer.createDiv({ cls: 'progress-bar-bg task-goal-section' });
 		taskProgressBg.hide();
 		this.taskProgressFillEl = taskProgressBg.createDiv({ cls: 'progress-bar-fill' });
 
-		const taskTimeDesc = goalCard.createDiv({ cls: 'task-time-desc task-goal-section' });
+		const taskTimeDesc = contentContainer.createDiv({ cls: 'task-time-desc task-goal-section' });
 		taskTimeDesc.hide();
 		this.taskTimeDescEl = taskTimeDesc;
 
@@ -161,12 +215,17 @@ export class WritingStatusView extends ItemView {
 		if (isMobile()) return;
 
 		const timeCard = container.createDiv({ cls: 'wn-status-card' });
-		timeCard.createDiv({ cls: 'wn-status-title', text: t('common.focus-timing') });
-		const totalBox = timeCard.createDiv({ cls: 'time-box time-box-total' });
+		const titleRow = timeCard.createDiv({ cls: 'wn-status-title' });
+		const titleSpan = titleRow.createSpan({ text: t('common.focus-timing') });
+		
+		const contentContainer = timeCard.createDiv({ cls: 'wn-status-card-content' });
+		this.setupCollapsibleCard(titleRow, titleSpan, contentContainer, () => t('common.focus-timing'));
+
+		const totalBox = contentContainer.createDiv({ cls: 'time-box time-box-total' });
 		totalBox.createDiv({ cls: 'time-box-title', text: t('common.total-elapsed') });
 		this.totalTimeEl = totalBox.createDiv({ cls: 'time-box-value', text: '00:00:00' });
 
-		const timeGrid = timeCard.createDiv({ cls: 'time-grid' });
+		const timeGrid = contentContainer.createDiv({ cls: 'time-grid' });
 
 		const focusBox = timeGrid.createDiv({ cls: 'time-box' });
 		focusBox.createDiv({ cls: 'time-box-title', text: t('common.focus-duration') });
@@ -179,9 +238,13 @@ export class WritingStatusView extends ItemView {
 
 	private createHistoryCard(container: Element) {
 		const historyCard = container.createDiv({ cls: 'wn-status-card' });
-		historyCard.createDiv({ cls: 'wn-status-title', text: t('common.word-count') });
+		const titleRow = historyCard.createDiv({ cls: 'wn-status-title' });
+		const titleSpan = titleRow.createSpan({ text: t('common.word-count') });
 
-		const historyGrid = historyCard.createDiv({ cls: 'time-grid' });
+		const contentContainer = historyCard.createDiv({ cls: 'wn-status-card-content' });
+		this.setupCollapsibleCard(titleRow, titleSpan, contentContainer, () => t('common.word-count'));
+
+		const historyGrid = contentContainer.createDiv({ cls: 'time-grid' });
 
 		const weekBox = historyGrid.createDiv({ cls: 'time-box' });
 		weekBox.createDiv({ cls: 'time-box-title', text: t('common.weekly-net') });
@@ -200,7 +263,7 @@ export class WritingStatusView extends ItemView {
 		this.historyTotalWordEl = histTotalBox.createDiv({ cls: 'time-box-value', text: '0' });
 
 		// 近7日迷你柱状图
-		const chartSection = historyCard.createDiv({ cls: 'history-chart' });
+		const chartSection = contentContainer.createDiv({ cls: 'history-chart' });
 
 		const chartTitleRow = chartSection.createDiv({ cls: 'history-chart-title-row' });
 		chartTitleRow.createSpan({ text: t('common.recent-7days-writing'), cls: 'history-chart-title' });
@@ -250,11 +313,61 @@ export class WritingStatusView extends ItemView {
 		this.chapterStatusCardEl.hide();
 
 		const titleRow = this.chapterStatusCardEl.createDiv({ cls: 'wn-status-title' });
-		this.chapterTitleEl = titleRow.createSpan();
+		const titleLeft = titleRow.createDiv({ cls: 'wn-status-title-left' });
+		this.chapterTitleEl = titleLeft.createSpan();
+		this.chapterStatusBadgeEl = titleLeft.createSpan({ cls: 'wn-chapter-title-badge wn-clickable' });
+		this.chapterStatusBadgeEl.title = t('corkboard.click-to-change-status');
+		this.chapterStatusBadgeEl.addEventListener('click', (evt: MouseEvent) => {
+			evt.stopPropagation();
+			const file = this.currentChapterFile;
+			if (!file) return;
 
-		this.chapterBadgesContainer = this.chapterStatusCardEl.createDiv({ 
+			const cache = this.app.metadataCache.getFileCache(file);
+			const frontmatter = cache?.frontmatter;
+			const rawStatus = (frontmatter?.status || frontmatter?.Status || frontmatter?.['状态'] || 'unwritten') as string;
+			const currentStatus = CORKBOARD_STATUS_MAP[rawStatus] ?? rawStatus;
+
+			const menu = new Menu();
+			const statusKeys = getCorkboardStatusKeys();
+			for (const s of statusKeys) {
+				menu.addItem((item) => {
+					item.setTitle(getCorkboardStatusText(s))
+						.setChecked(s === currentStatus)
+						.onClick(async () => {
+							try {
+								await this.app.fileManager.processFrontMatter(file, (fm) => {
+									(fm as Record<string, unknown>)['status'] = getCorkboardStatusText(s);
+								});
+								new Notice(t('corkboard.status-updated', { status: getCorkboardStatusText(s) }));
+								void this.updateChapterStatus();
+							} catch (err) {
+								window.console.error(err);
+								new Notice(t('corkboard.status-update-failed'));
+							}
+						});
+				});
+			}
+			menu.showAtMouseEvent(evt);
+		});
+
+		const contentContainer = this.chapterStatusCardEl.createDiv({ cls: 'wn-status-card-content' });
+		
+		this.chapterSubInfoEl = contentContainer.createDiv({ cls: 'wn-chapter-sub-info' });
+
+		this.chapterBadgesContainer = contentContainer.createDiv({ 
 			cls: 'wn-corkboard-card-badges wn-status-badges-container', 
 		});
+		
+		let chapterOriginalTitle = '--';
+		this.setupCollapsibleCard(titleRow, this.chapterTitleEl, contentContainer, () => chapterOriginalTitle);
+		
+		// Let updateChapterStatus update the title properly
+		(this.chapterTitleEl as CollapsibleTitleElement).setOriginalTitle = (title: string) => {
+			chapterOriginalTitle = title;
+			if ((this.chapterTitleEl as CollapsibleTitleElement).refreshTitle) {
+				(this.chapterTitleEl as CollapsibleTitleElement).refreshTitle!();
+			}
+		};
 	}
 
 	async updateData() {
@@ -391,22 +504,33 @@ export class WritingStatusView extends ItemView {
 		this.updateWordStats();
 	}
 
+	private lastChapterMtime: number = -1;
+	private lastForeshadowingMtime: number = -1;
+	private lastChapterStatusStr: string = '';
+	private lastChapterSynopsisStr: string = '';
+
 	private async updateChapterStatus() {
 		if (!this.chapterStatusCardEl || !this.chapterBadgesContainer) return;
 
 		const file = this.app.workspace.getActiveFile();
 		if (!file || file.extension !== 'md') {
+			this.currentChapterFile = null;
+			this.lastChapterMtime = -1;
 			this.chapterStatusCardEl.hide();
 			return;
 		}
 
 		const bookPath = this.plugin.characterManager.getBookPathForFile(file);
 		if (!bookPath || this.plugin.characterManager.isLorePath(bookPath, file.parent?.path || '')) {
+			this.currentChapterFile = null;
+			this.lastChapterMtime = -1;
 			this.chapterStatusCardEl.hide();
 			return;
 		}
 
 		if (!ChapterSorter.isChapterFile(file.name) && !this.plugin.isFileInStrictChapterException(file)) {
+			this.currentChapterFile = null;
+			this.lastChapterMtime = -1;
 			this.chapterStatusCardEl.hide();
 			return;
 		}
@@ -414,16 +538,58 @@ export class WritingStatusView extends ItemView {
 		const fmFolder = bookPath === '/' ? '' : bookPath;
 		const fFile = this.plugin.foreshadowingManager?.findForeshadowingFile(fmFolder);
 		if (fFile && fFile.path === file.path) {
+			this.currentChapterFile = null;
+			this.lastChapterMtime = -1;
 			this.chapterStatusCardEl.hide();
 			return;
 		}
 
+		const cache = this.app.metadataCache.getFileCache(file);
+		const frontmatter = cache?.frontmatter;
+		
+		const synopsis = (frontmatter?.synopsis || frontmatter?.Synopsis || frontmatter?.['摘要'] || '') as string;
+		const rawStatus = (frontmatter?.status || frontmatter?.Status || frontmatter?.['状态'] || 'unwritten') as string;
+		const status = CORKBOARD_STATUS_MAP[rawStatus] ?? rawStatus;
+		const currentFmtime = fFile ? fFile.stat.mtime : -1;
+
+		if (
+			this.currentChapterFile?.path === file.path &&
+			file.stat.mtime === this.lastChapterMtime &&
+			currentFmtime === this.lastForeshadowingMtime &&
+			status === this.lastChapterStatusStr &&
+			synopsis === this.lastChapterSynopsisStr
+		) {
+			this.chapterStatusCardEl.show();
+			return;
+		}
+
+		this.currentChapterFile = file;
+		this.lastChapterMtime = file.stat.mtime;
+		this.lastForeshadowingMtime = currentFmtime;
+		this.lastChapterStatusStr = status;
+		this.lastChapterSynopsisStr = synopsis;
+
 		this.chapterStatusCardEl.show();
 		this.chapterBadgesContainer.empty();
+		this.chapterSubInfoEl.empty();
 		this.chapterBadgesContainer.addClass('wn-chapter-badges-container');
 
 		// 1. Set Chapter Title
-		this.chapterTitleEl.innerText = file.basename;
+		if ((this.chapterTitleEl as CollapsibleTitleElement).setOriginalTitle) {
+			(this.chapterTitleEl as CollapsibleTitleElement).setOriginalTitle!(file.basename);
+		} else {
+			this.chapterTitleEl.innerText = file.basename;
+		}
+
+		// 2. Set Status and Synopsis
+		this.chapterStatusBadgeEl.setText(getCorkboardStatusText(status));
+		this.chapterStatusBadgeEl.className = `wn-chapter-title-badge status-${status} wn-clickable`;
+		this.chapterStatusBadgeEl.title = t('corkboard.click-to-change-status');
+
+		if (synopsis.trim() !== '') {
+			const synopsisEl = this.chapterSubInfoEl.createDiv({ cls: 'wn-chapter-synopsis-text' });
+			synopsisEl.setText(synopsis);
+		}
 
 		const pendingEntries: ParsedForeshadowingEntry[] = [];
 		const recoveredHereEntries: ParsedForeshadowingEntry[] = [];
@@ -456,16 +622,10 @@ export class WritingStatusView extends ItemView {
 			}
 		}
 
-		const cache = this.app.metadataCache.getFileCache(file);
 		const loreArray = cache?.frontmatter?.lore as unknown;
 		let validLores: string[] = [];
 		if (Array.isArray(loreArray)) {
 			validLores = (loreArray as unknown[]).filter((l: unknown): l is string => typeof l === 'string');
-		}
-
-		if (pendingEntries.length === 0 && recoveredHereEntries.length === 0 && resolvedOriginEntries.length === 0 && validLores.length === 0) {
-			this.chapterStatusCardEl.hide();
-			return;
 		}
 
 		// 点击伏笔条目，跳转到正文中对应文本位置
@@ -497,9 +657,9 @@ export class WritingStatusView extends ItemView {
 							const targetLine = content.substring(0, match.index).split('\n').length - 1;
 							if (targetLeaf.view instanceof MarkdownView && targetLeaf.view.file?.path === file.path) {
 								targetLeaf.setEphemeralState({ line: targetLine });
-								this.app.workspace.setActiveLeaf(targetLeaf, { focus: true });
+								revealAndFocusLeaf(this.app, targetLeaf);
 							} else {
-								await targetLeaf.openFile(file, { eState: { line: targetLine } });
+								await openFileAndFocus(this.app, targetLeaf, file, { eState: { line: targetLine } });
 							}
 						} else {
 							new Notice(t('notice.text-not-found'));
@@ -661,7 +821,10 @@ export class WritingStatusView extends ItemView {
 	}
 
 	async onClose() {
-		if (this.taskSaveTimer) window.clearTimeout(this.taskSaveTimer);
+		if (this.taskSaveTimer !== null) {
+			window.clearTimeout(this.taskSaveTimer);
+			this.taskSaveTimer = null;
+		}
 		await super.onClose();
 	}
 }

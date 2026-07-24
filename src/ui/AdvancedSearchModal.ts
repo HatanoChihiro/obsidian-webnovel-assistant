@@ -124,11 +124,15 @@ export class AdvancedSearchModal extends Modal {
 			childrenContainer = itemContainer.createDiv({ cls: 'advanced-search-tree-children' });
 
 			arrow.addEventListener('click', () => {
-				if (childrenContainer!.style.display === 'none' || childrenContainer!.style.display === '') {
-					childrenContainer!.setCssProps({ display: 'block' });
+				if (!childrenContainer) return;
+				const isHidden = childrenContainer.hasClass('is-hidden') || childrenContainer.getCssPropertyValue('display') === 'none';
+				if (isHidden) {
+					childrenContainer.removeClass('is-hidden');
+					childrenContainer.setCssProps({ display: 'block' });
 					arrow.innerText = '▼ ';
 				} else {
-					childrenContainer!.setCssProps({ display: 'none' });
+					childrenContainer.addClass('is-hidden');
+					childrenContainer.setCssProps({ display: 'none' });
 					arrow.innerText = '▶ ';
 				}
 			});

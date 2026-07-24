@@ -1,13 +1,15 @@
-import { Notice, TFile, TFolder, setIcon, Component, type App } from 'obsidian';
+import { Notice, TFile, TFolder, setIcon, Component, type App, MarkdownView } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../../types/plugin';
 import { t } from '../../i18n';
 import { RelationGraphManager, type GraphEdge } from '../../services/RelationGraphManager';
-import { ForceLayoutEngine, type LayoutNode } from '../../services/ForceLayoutEngine';
+import { ForceLayoutEngine } from '../../services/ForceLayoutEngine';
 import type { LoreEntry } from '../../services/CharacterManager';
 import { GraphRenderer, type GraphRenderState } from './GraphRenderer';
 import { GraphInteractionController } from './GraphInteractionController';
 import { LoreCardRenderer } from './LoreCardRenderer';
 import { DraggableListHelper } from '../../utils/DraggableListHelper';
+import { openFileAndFocus } from '../../utils/leaf';
+
 
 export interface LoreBoardOptions {
     ownerComponent: Component;
@@ -245,7 +247,6 @@ export class LoreBoardRenderer {
                     const entry = plugin.characterManager.getCharacterFile(currentBookPath, loreName);
                     if (entry && entry.file) {
                         let targetLeaf = app.workspace.getLeavesOfType('markdown').find(l => (l.view as unknown as { file?: { path: string } }).file?.path === entry.file.path);
-                        if (!targetLeaf) targetLeaf = app.workspace.getLeavesOfType('markdown')[0];
                         if (!targetLeaf) targetLeaf = app.workspace.getLeaf('split', 'vertical');
 
                         void (async () => {
@@ -255,7 +256,7 @@ export class LoreBoardRenderer {
                                 const headingInfo = cache.headings.find(h => h.heading === entry.heading);
                                 if (headingInfo) targetLine = headingInfo.position.start.line;
                             }
-                            await targetLeaf.openFile(entry.file, { eState: { line: targetLine } });
+                            await openFileAndFocus(app, targetLeaf, entry.file, { eState: { line: targetLine } });
                         })();
                     }
                 }
@@ -285,10 +286,12 @@ export class LoreBoardRenderer {
             for (const item of chapterList) {
                 const miniCard = cardsContainer.createDiv('wn-lore-board-mini-card');
                 miniCard.onclick = () => {
-                    let targetLeaf = app.workspace.getLeavesOfType('markdown').find(l => (l.view as unknown as { file?: { path: string } }).file?.path === item.chapter.path);
-                    if (!targetLeaf) targetLeaf = app.workspace.getLeavesOfType('markdown')[0];
-                    if (!targetLeaf) targetLeaf = app.workspace.getLeaf('split', 'vertical');
-                    void targetLeaf.openFile(item.chapter);
+                    void (async () => {
+                        let targetLeaf = app.workspace.getLeavesOfType('markdown').find(l => (l.view as unknown as { file?: { path: string } }).file?.path === item.chapter.path);
+                        if (!targetLeaf) targetLeaf = app.workspace.getLeavesOfType('markdown')[0];
+                        if (!targetLeaf) targetLeaf = app.workspace.getLeaf('split', 'vertical');
+                        await openFileAndFocus(app, targetLeaf, item.chapter);
+                    })();
                 };
                 miniCard.createDiv({ text: item.chapter.basename, cls: 'wn-lore-board-mini-card-title' });
                 miniCard.createDiv({ text: `×${item.count}`, cls: 'wn-lore-board-mini-card-count' });
@@ -324,32 +327,32 @@ export class LoreBoardRenderer {
         }
 
         const graphWrapper = container.createDiv('wn-lore-graph-wrapper');
-
         const canvas = graphWrapper.createEl('canvas', { cls: 'wn-lore-graph-canvas' });
 
-        const engine = new ForceLayoutEngine(data.nodes, data.edges, 100, 100);
+        // 获取并计算 Canvas 实际物理与设备像素尺寸
+        const rect = graphWrapper.getBoundingClientRect();
+        const initialWidth = rect.width || 600;
+        const initialHeight = rect.height || 400;
+        const DPR = window.devicePixelRatio || 1;
+        canvas.width = initialWidth * DPR;
+        canvas.height = initialHeight * DPR;
+        // 不在 canvas 上设置固定 css width/height 内联样式，由 CSS .wn-lore-graph-canvas (width: 100%; height: 100%) 自适应填充容器
 
-        const resizeCanvas = () => {
-            const rect = graphWrapper.getBoundingClientRect();
-            if (rect.width === 0 || rect.height === 0) return;
-            const DPR = window.devicePixelRatio || 1;
-            canvas.width = rect.width * DPR;
-            canvas.height = rect.height * DPR;
-            canvas.setCssStyles({ width: `${rect.width}px`, height: `${rect.height}px` });
-            engine.resize(rect.width, rect.height);
-            engine.reheat();
-        };
+        // 像 RelationGraphView 一样，在力导向引擎启动前将节点在大圆上均匀分布，避免中心重叠或初始暴弹
+        const cx = initialWidth / 2;
+        const cy = initialHeight / 2;
+        const radius = Math.min(cx, cy) * 0.8;
 
-        // Let ForceLayoutEngine handle node positions
-
-        let animationFrameId = 0;
-
-        resizeCanvas();
-
-        const ro = new ResizeObserver(() => {
-            resizeCanvas();
+        data.nodes.forEach((node, i) => {
+            const angle = (i / data.nodes.length) * Math.PI * 2;
+            node.x = cx + radius * Math.cos(angle);
+            node.y = cy + radius * Math.sin(angle);
+            node.vx = 0;
+            node.vy = 0;
+            node.pinned = false;
         });
-        ro.observe(graphWrapper);
+
+        const engine = new ForceLayoutEngine(data.nodes, data.edges, initialWidth, initialHeight);
 
         let initialScale = 1.0;
         const nodeCount = data.nodes.length;
@@ -382,71 +385,200 @@ export class LoreBoardRenderer {
 
         const colors = GraphRenderer.getThemeColors(activeDocument.body);
 
+        let animationFrameId = 0;
+        let currentAnimationToken = 0;
         let needsRender = true;
+
         const requestRender = () => {
             needsRender = true;
+            if (!animationFrameId && engine) {
+                startAnimationLoop(false);
+            }
         };
 
-        const render = () => {
-            let physicsRunning = false;
-            if (engine) {
+        const startAnimationLoop = (isFirstLoad: boolean = false) => {
+            if (animationFrameId) {
+                window.cancelAnimationFrame(animationFrameId);
+                animationFrameId = 0;
+            }
+
+            const token = ++currentAnimationToken;
+
+            if (isFirstLoad) {
+                state.panX = 0;
+                state.panY = 0;
+                if (nodeCount <= 6) {
+                    state.scale = 2.2;
+                } else if (nodeCount <= 12) {
+                    state.scale = 1.6;
+                } else if (nodeCount <= 25) {
+                    state.scale = 1.2;
+                } else {
+                    state.scale = 1.0;
+                }
+            }
+
+            const loop = () => {
+                if (currentAnimationToken !== token) return;
+                if (!engine || !canvas) return;
+
                 const ticksPerFrame = 3;
+                let physicsRunning = false;
                 for (let i = 0; i < ticksPerFrame; i++) {
                     const running = engine.tick();
                     if (running) physicsRunning = true;
                 }
+
+                // 将 D3 引擎中的坐标同步回 GraphNode 供 GraphRenderer 绘制
+                for (let i = 0; i < engine.nodes.length && i < data.nodes.length; i++) {
+                    data.nodes[i].x = engine.nodes[i].x;
+                    data.nodes[i].y = engine.nodes[i].y;
+                }
+
+                if (physicsRunning || needsRender) {
+                    const w = canvas.width / GraphRenderer.DPR;
+                    const h = canvas.height / GraphRenderer.DPR;
+                    GraphRenderer.render(ctx, w, h, data, state, colors);
+                    needsRender = false;
+                }
+
+                if (physicsRunning) {
+                    animationFrameId = window.requestAnimationFrame(loop);
+                } else {
+                    animationFrameId = 0;
+                }
+            };
+
+            animationFrameId = window.requestAnimationFrame(loop);
+        };
+
+        let isFirstValidResize = true;
+
+        const resizeCanvas = () => {
+            const rect = graphWrapper.getBoundingClientRect();
+            if (rect.width === 0 || rect.height === 0) return;
+            const DPR = window.devicePixelRatio || 1;
+            canvas.width = rect.width * DPR;
+            canvas.height = rect.height * DPR;
+
+            if (isFirstValidResize) {
+                isFirstValidResize = false;
+                // 如果初次渲染发生在离屏 buffer 中 (600x400)，DOM 挂载后根据真实容器尺寸平移节点至真实居中点
+                const dx = (rect.width - initialWidth) / 2;
+                const dy = (rect.height - initialHeight) / 2;
+                if (dx !== 0 || dy !== 0) {
+                    data.nodes.forEach(node => {
+                        node.x += dx;
+                        node.y += dy;
+                    });
+                }
             }
 
-            if (physicsRunning || needsRender) {
-                const w = canvas.width / GraphRenderer.DPR;
-                const h = canvas.height / GraphRenderer.DPR;
-                GraphRenderer.render(ctx, w, h, data, state, colors);
-                needsRender = false;
+            engine.resize(rect.width, rect.height);
+            if (engine.isConverged) {
+                engine.reset();
+                startAnimationLoop(false);
             }
-            animationFrameId = window.requestAnimationFrame(render);
+            requestRender();
         };
-        animationFrameId = window.requestAnimationFrame(render);
+
+        const ro = new ResizeObserver(() => {
+            resizeCanvas();
+        });
+        ro.observe(graphWrapper);
+
+        // 启动初次布局动画
+        startAnimationLoop(true);
 
         const controller = new GraphInteractionController(canvas, state, {
             requestRender: () => requestRender(),
-            onNodeDoubleClick: () => {
-                // 根据需求：屏蔽设定看板中全量图谱节点的双击功能
+            onNodeDoubleClick: (node) => {
+                // 高亮选中双击的节点
+                state.selectedNode = node;
+                requestRender();
+
+                // 双击节点：打开对应设定文档并精准定位至标题行
+                const entry = plugin.characterManager.getCharacterFile(bookPath, node.id);
+                if (entry) {
+                    let targetLeaf = app.workspace.getLeavesOfType('markdown').find(l => 
+                        (l.view instanceof MarkdownView) && l.view.file?.path === entry.file.path
+                    );
+                    if (!targetLeaf) targetLeaf = app.workspace.getLeaf('split', 'vertical');
+
+                    void (async () => {
+                        const cache = app.metadataCache.getFileCache(entry.file);
+                        let targetLine = 0;
+                        if (cache?.headings) {
+                            for (const h of cache.headings) {
+                                const rawHeading = h.heading.replace(/\*\*|__/g, '').replace(/\*|_/g, '').replace(/`/g, '');
+                                if (rawHeading === entry.heading && h.level === 2) {
+                                    targetLine = h.position.start.line;
+                                    break;
+                                }
+                            }
+                        }
+                        await openFileAndFocus(app, targetLeaf, entry.file, { eState: { line: targetLine } });
+                    })();
+                } else {
+                    new Notice(t('relation.character-not-found', { id: node.id }) || `未找到设定 ${node.id} 的设定文件`);
+                }
             },
             onBackgroundDoubleClick: () => {
                 state.isLocalMode = false;
                 state.localFocusNode = null;
+                state.selectedNode = null;
+                requestRender();
             },
             onNodeHover: (node) => {
                 state.hoveredNode = node;
             },
             onNodeDragStart: (node) => {
-                const ln = node as LayoutNode;
-                ln.pinned = true;
-                engine.reheat();
+                const ln = engine.nodes.find(n => n.id === node.id);
+                if (ln) {
+                    ln.pinned = true;
+                    ln.fx = node.x;
+                    ln.fy = node.y;
+                }
+                node.pinned = true;
+                // 注意：单击节点选中时不触发 engine.reheat()，防止图谱因为节点选中而重新打乱跳动
             },
             onNodeDrag: (node, x, y) => {
-                const ln = node as LayoutNode;
-                ln.fx = x;
-                ln.fy = y;
+                const ln = engine.nodes.find(n => n.id === node.id);
+                if (ln) {
+                    ln.fx = x;
+                    ln.fy = y;
+                    ln.x = x;
+                    ln.y = y;
+                }
                 node.x = x;
                 node.y = y;
-                engine.reheat();
+
+                if (engine.isConverged) {
+                    engine.reheat();
+                    startAnimationLoop(false);
+                } else {
+                    engine.reheat();
+                }
+                requestRender();
             },
             onNodeDragEnd: (node) => {
-                const ln = node as LayoutNode;
-                ln.pinned = false;
-                ln.fx = null;
-                ln.fy = null;
+                const ln = engine.nodes.find(n => n.id === node.id);
+                if (ln) {
+                    ln.pinned = true;
+                    ln.fx = node.x;
+                    ln.fy = node.y;
+                }
+                node.pinned = true;
             }
         });
+
         controller.updateLayout(data);
         controller.bindEvents();
 
-        
-        
         ownerComponent.register(() => {
             if (animationFrameId) {
                 cancelAnimationFrame(animationFrameId);
+                animationFrameId = 0;
             }
             controller.unbindEvents();
             ro.disconnect();

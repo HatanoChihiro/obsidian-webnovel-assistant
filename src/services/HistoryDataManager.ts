@@ -113,7 +113,7 @@ export class HistoryDataManager {
 		this.isSaving = true;
 		try {
 			const adapter = this.plugin.app.vault.adapter;
-			const content = JSON.stringify(this.historyData, null, 2);
+			const content = JSON.stringify(this.historyData);
 			await adapter.write(this.historyFilePath, content);
 			this.dirty = false;
 		} catch (error) {

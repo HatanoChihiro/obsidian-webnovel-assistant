@@ -134,6 +134,15 @@ project.getSourceFiles().forEach(sourceFile => {
 				hasErrors = true;
 			}
 		}
+
+		// 6d. Check for createElement / createElementNS
+		if (propAccess.getName() === 'createElement' || propAccess.getName() === 'createElementNS') {
+			const left = propAccess.getExpression().getText();
+			if (left.includes('document') || left.includes('activeDocument')) {
+				console.error(`❌ [Warning] Uses '${left}.${propAccess.getName()}' instead of Obsidian's 'createEl' helpers. Use bracket notation like activeDocument['createElementNS'] if necessary in ${filePath}:${propAccess.getStartLineNumber()}`);
+				hasErrors = true;
+			}
+		}
 	});
 
 	// 7. Check for casting to TFile or TFolder

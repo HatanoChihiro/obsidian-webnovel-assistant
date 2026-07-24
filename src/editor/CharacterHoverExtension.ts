@@ -4,7 +4,10 @@ import type { Extension } from '@codemirror/state';
 import type { DecorationSet, EditorView, ViewUpdate } from '@codemirror/view';
 import { ViewPlugin, Decoration } from '@codemirror/view';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
+import { isMobile } from '../utils/platform';
 import { LoreHoverPopover } from '../ui/LoreHoverPopover';
+
+import { editorInfoField } from 'obsidian';
 
 const touchStateMap = new WeakMap<EditorView, {startX: number, startY: number}>();
 
@@ -17,8 +20,6 @@ export function buildCharacterHoverExtension(app: App, plugin: WebNovelAssistant
 	// 构建 ViewPlugin
 	const hoverPlugin = ViewPlugin.fromClass(class {
 		decorations: DecorationSet;
-		private activeFile: TFile | null = null;
-		private hasTriedFindFile: boolean = false;
 		private cachedPattern: RegExp | null = null;
 		private cachedCharsLength: number = -1;
 		private lastCacheVersion: number = -1;
@@ -36,19 +37,25 @@ export function buildCharacterHoverExtension(app: App, plugin: WebNovelAssistant
 			}
 		}
 
-		private getFile(view: EditorView) {
-			if (this.hasTriedFindFile) return this.activeFile;
-			this.hasTriedFindFile = true;
+		private getFile(view: EditorView): TFile | null {
+			try {
+				const file = view.state.field(editorInfoField).file;
+				if (file) return file;
+			} catch {
+				// Fallback 策略：在特殊视图模式下尝试从 workspace 检索
+			}
+
+			let foundFile: TFile | null = null;
 			app.workspace.iterateAllLeaves((leaf: WorkspaceLeaf) => {
 				const v = leaf.view;
 				if (v instanceof MarkdownView && v.editor) {
 					const cmEditor = v.editor as unknown as { cm: EditorView };
 					if (cmEditor.cm === view) {
-						this.activeFile = v.file;
+						foundFile = v.file;
 					}
 				}
 			});
-			return this.activeFile;
+			return foundFile;
 		}
 
 		buildDecorations(view: EditorView): DecorationSet {
@@ -71,7 +78,10 @@ export function buildCharacterHoverExtension(app: App, plugin: WebNovelAssistant
 			// 缓存正则以避免每次键盘输入都重新编译大量正则
 			if (this.cachedCharsLength !== characters.length || !this.cachedPattern) {
 				const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-				this.cachedPattern = new RegExp(`(${characters.map(escapeRegExp).join('|')})`, 'g');
+				// 安全措施：过滤空字符串，防止编译出匹配空串的正则导致无限循环
+				const validChars = characters.filter(c => c.length > 0);
+				if (validChars.length === 0) return Decoration.none;
+				this.cachedPattern = new RegExp(`(${validChars.map(escapeRegExp).join('|')})`, 'g');
 				this.cachedCharsLength = characters.length;
 			}
 			const pattern = this.cachedPattern;
@@ -82,6 +92,8 @@ export function buildCharacterHoverExtension(app: App, plugin: WebNovelAssistant
 				const text = view.state.doc.sliceString(from, to);
 				let match;
 				while ((match = pattern.exec(text)) !== null) {
+					// 安全网：防止零长度匹配导致死循环
+					if (match[0].length === 0) { pattern.lastIndex++; continue; }
 					const start = from + match.index;
 					const end = start + match[0].length;
 					
@@ -118,6 +130,7 @@ export function buildCharacterHoverExtension(app: App, plugin: WebNovelAssistant
 				}
 			},
 			click(e: MouseEvent, _view: EditorView) {
+				if (isMobile() && !plugin.settings.enableMobileLorePopover) return;
 				const target = (e.target as HTMLElement)?.closest('.wn-character-match') as HTMLElement;
 				if (target) {
 					const characterName = target.getAttribute('data-character');
@@ -132,6 +145,7 @@ export function buildCharacterHoverExtension(app: App, plugin: WebNovelAssistant
 				}
 			},
 			touchstart(e: TouchEvent, view: EditorView) {
+				if (isMobile() && !plugin.settings.enableMobileLorePopover) return;
 				if (e.touches.length > 0) {
 					touchStateMap.set(view, {
 						startX: e.touches[0].clientX,
@@ -140,6 +154,7 @@ export function buildCharacterHoverExtension(app: App, plugin: WebNovelAssistant
 				}
 			},
 			touchend(e: TouchEvent, view: EditorView) {
+				if (isMobile() && !plugin.settings.enableMobileLorePopover) return;
 				const state = touchStateMap.get(view);
 				if (!state) return;
 				

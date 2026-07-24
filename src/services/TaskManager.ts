@@ -16,6 +16,10 @@ export class TaskManager {
 		public currentFolder: string = ''
 	) {}
 
+	static create(app: App, plugin: WebNovelAssistantPlugin, folderPath: string = ''): TaskManager {
+		return new TaskManager(app, plugin, folderPath);
+	}
+
 	getTaskFilePath(): string {
 		const fileName = (this.plugin.settings.task?.fileName || getDefaultFileName('taskFileName')) + '.md';
 		return normalizePath(this.currentFolder ? `${this.currentFolder}/${fileName}` : fileName);

@@ -344,7 +344,7 @@ export class HomepageManager {
 		const containerEls = activeDocument.querySelectorAll('.webnovel-homepage-root');
 		if (containerEls.length > 0) {
 			// 动态引入 HomepageRenderer 避免循环依赖
-import('./HomepageRenderer.js').then(async ({ HomepageRenderer }) => {
+import('../ui/components/HomepageRenderer.js').then(async ({ HomepageRenderer }) => {
 					const renderer = new HomepageRenderer(this.app, this.plugin);
 					for (const el of Array.from(containerEls)) {
 						await renderer.renderHomepage(el as HTMLElement);
@@ -433,4 +433,11 @@ import('./HomepageRenderer.js').then(async ({ HomepageRenderer }) => {
 		}
 	}
 
+	public cleanup(): void {
+		if (this._homepageTimer !== null) {
+			window.clearTimeout(this._homepageTimer);
+			this._homepageTimer = null;
+		}
+		this._leafOriginalStates = new WeakMap();
+	}
 }

@@ -124,6 +124,23 @@ describe('ChapterSorter', () => {
 			ChapterSorter.setCustomRules([]);
 		});
 
+		it('支持多分支正则的多捕获组匹配（如 match[2]）', () => {
+			ChapterSorter.setCustomRules([
+				{ name: '中文数字多分支', pattern: '^(?:第([零一二三四五六七八九十]+)[章节]?|第?([零一二三四五六七八九十]+)[章节])', enabled: true }
+			]);
+			// 匹配分支1 (match[1] 有值)
+			const res1 = ChapterSorter.extractChapterNumber('第一章.md');
+			expect(res1).not.toBeNull();
+			expect(res1!.number).toBe(1);
+
+			// 匹配分支2 (match[1] 为 undefined, match[2] 有值)
+			const res2 = ChapterSorter.extractChapterNumber('二章.md');
+			expect(res2).not.toBeNull();
+			expect(res2!.number).toBe(2);
+
+			ChapterSorter.setCustomRules([]);
+		});
+
 		it('过长正则被过滤（回退到默认规则）', () => {
 			const longPattern = 'a'.repeat(201);
 			ChapterSorter.setCustomRules([

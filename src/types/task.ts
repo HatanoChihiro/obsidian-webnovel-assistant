@@ -3,7 +3,7 @@
  */
 
 /** 限时任务条目状态（内部 key 为英文，显示文本通过 i18n 获取） */
-export type TaskStatus = 'active' | 'completed' | 'incomplete' | 'notStarted';
+export type TaskStatus = 'active' | 'completed' | 'incomplete' | 'notStarted' | 'abandoned';
 
 /** 限时任务条目（解析后的结构化数据） */
 // 限时任务类型

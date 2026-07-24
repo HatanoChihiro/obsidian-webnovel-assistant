@@ -156,8 +156,7 @@ export class WordCounter {
 			if (!line) return 0;
 			
 			if (method === 'webnovel') {
-				const matches = line.match(/[^\s]/g);
-				return matches ? matches.length : 0;
+				return line.replace(/\s+/g, '').length;
 			}
 			
 			let count = 0;

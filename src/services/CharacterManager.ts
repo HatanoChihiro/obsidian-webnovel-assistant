@@ -68,7 +68,14 @@ export class CharacterManager {
 		const newCache = new Map<string, Map<string, LoreEntry>>();
 		const newLowerMap = new Map<string, Map<string, string>>();
 		
-		const files = this.app.vault.getMarkdownFiles();
+		const candidates = this.getLoreCandidates();
+		const files = this.app.vault.getMarkdownFiles().filter(file => {
+			const parentPath = file.parent?.path || '';
+			for (const candidate of candidates) {
+				if (parentPath.includes(candidate)) return true;
+			}
+			return false;
+		});
 		await Promise.all(files.map(file => this.addFileToCacheIfValidInto(file, newCache, newLowerMap)));
 		
 		this.characterCache = newCache;
@@ -97,10 +104,18 @@ export class CharacterManager {
 	/**
 	 * 检查路径是否在设定文件夹内（支持多语言文件夹名）
 	 */
-	public isLorePath(bookPath: string, parentPath: string): boolean {
+	public getLoreCandidates(): Set<string> {
 		const candidates = new Set<string>();
 		candidates.add(this.plugin.settings.loreFolderName || getDefaultFileName('loreFolderName'));
 		for (const name of getDefaultFileNameCandidates('loreFolderName')) candidates.add(name);
+		return candidates;
+	}
+
+	/**
+	 * 检查路径是否在设定文件夹内（支持多语言文件夹名）
+	 */
+	public isLorePath(bookPath: string, parentPath: string): boolean {
+		const candidates = this.getLoreCandidates();
 		
 		const pathSegments = parentPath.split('/');
 		for (const loreFolderName of candidates) {
@@ -336,10 +351,21 @@ export class CharacterManager {
 		targetCache: Map<string, Map<string, LoreEntry>>,
 		targetLowerMap: Map<string, Map<string, string>>
 	): Promise<void> {
+		const parentPath = file.parent?.path || '';
+
+		// Fast-Path 预判：若 parentPath 中不包含任何设定文件夹名候选词，立刻跳过后续递归路径计算
+		const candidates = this.getLoreCandidates();
+		let hasCandidate = false;
+		for (const candidate of candidates) {
+			if (parentPath.includes(candidate)) {
+				hasCandidate = true;
+				break;
+			}
+		}
+		if (!hasCandidate) return;
+
 		const bookPath = this.getBookPathForFile(file);
 		if (!bookPath) return;
-
-		const parentPath = file.parent?.path || '';
 
 		if (this.isLorePath(bookPath, parentPath)) {
 			if (!targetCache.has(bookPath)) {

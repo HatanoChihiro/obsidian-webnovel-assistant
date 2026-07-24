@@ -50,12 +50,13 @@ export class StatisticsManager {
 			const cache = this.plugin.app.metadataCache.getFileCache(view.file);
 			const fmGoal = parseGoal(cache?.frontmatter?.['word-goal']);
 			if (fmGoal > 0) targetGoal = fmGoal;
-			// [Cache Interception] 拦截高频全文正则读取，避免每秒触发大量的内存分配与垃圾回收
-			const cachedWords = this.plugin.cacheManager.getFileCache(view.file.path);
-			if (cachedWords !== null) {
-				chapterWords = cachedWords;
+			// 对于当前活动的 Markdown 编辑视图，优先使用 view.getViewData() 实时计算以保障即时响应
+			const viewData = view.getViewData();
+			if (typeof viewData === 'string') {
+				chapterWords = this.plugin.calculateAccurateWords(viewData);
 			} else {
-				chapterWords = this.plugin.calculateAccurateWords(view.getViewData());
+				const cachedWords = this.plugin.cacheManager.getFileCache(view.file.path);
+				chapterWords = cachedWords !== null ? cachedWords : 0;
 			}
 		}
 

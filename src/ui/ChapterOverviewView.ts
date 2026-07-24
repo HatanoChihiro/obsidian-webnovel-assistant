@@ -150,6 +150,7 @@ export class ChapterOverviewView extends ItemView {
         if (fFile) {
             const content = await this.app.vault.cachedRead(fFile);
             const entries = this.plugin.foreshadowingManager!.parseEntries(content);
+            const cleanFiles = files.map(file => ({ file, cleanBase: file.basename.toLowerCase().replace(/\s+/g, '') }));
             for (const entry of entries) {
                 const targets: string[] = [];
                 const sources = new Set<string>();
@@ -170,8 +171,7 @@ export class ChapterOverviewView extends ItemView {
                 for (const target of targets) {
                     if (!target) continue;
                     const cleanTarget = target.toLowerCase().replace(/\s+/g, '');
-                    for (const file of files) {
-                        const cleanBase = file.basename.toLowerCase().replace(/\s+/g, '');
+                    for (const { file, cleanBase } of cleanFiles) {
                         if (cleanBase.includes(cleanTarget) || cleanTarget.includes(cleanBase)) {
                             const list = foreshadowingMap.get(file.basename) || [];
                             if (!list.includes(entry)) {
@@ -188,7 +188,8 @@ export class ChapterOverviewView extends ItemView {
             ChapterCard.render(newGrid, file, this.app, this.plugin, foreshadowingMap.get(file.basename) || [], {
                 draggable: false,
                 onSaveStateChange: (isSaving) => { this.isSavingMetadata = isSaving; },
-                currentBookPath: this.currentBookPath || ''
+                currentBookPath: this.currentBookPath || '',
+                maxLoreLines: 2
             });
         }
         

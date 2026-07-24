@@ -5,11 +5,14 @@ import type { WebNovelAssistantPlugin } from '../../types/plugin';
 import { CORKBOARD_STATUS_MAP, getCorkboardStatusKeys, getCorkboardStatusText } from '../../i18n/data-keys';
 import type { ParsedForeshadowingEntry } from '../../types/foreshadowing';
 import { renderForeshadowingBadges, renderLoreBadges } from '../../utils/badge';
+import { openFileAndFocus } from '../../utils/leaf';
+
 
 export interface ChapterCardOptions {
 	draggable?: boolean;
 	onSaveStateChange?: (isSaving: boolean) => void;
 	currentBookPath?: string;
+	maxLoreLines?: number;
 }
 
 export class ChapterCard {
@@ -21,7 +24,7 @@ export class ChapterCard {
 		cardForeshadowings: ParsedForeshadowingEntry[] = [],
 		options: ChapterCardOptions = {}
 	): void {
-		const { draggable = false, onSaveStateChange, currentBookPath = '' } = options;
+		const { draggable = false, onSaveStateChange, currentBookPath = '', maxLoreLines = 2 } = options;
 
 		const cache = app.metadataCache.getFileCache(file);
 		const frontmatter = cache?.frontmatter;
@@ -61,11 +64,13 @@ export class ChapterCard {
 		setIcon(editIcon, 'pencil');
 
 		titleEl.onclick = () => {
-			// 点击标题打开文件，优先在已有的 markdown 视图打开，否则分屏打开
-			let targetLeaf = app.workspace.getLeavesOfType('markdown').find(l => (l.view as unknown as { file?: { path: string } }).file?.path === file.path);
-			if (!targetLeaf) targetLeaf = app.workspace.getLeavesOfType('markdown')[0];
-			if (!targetLeaf) targetLeaf = app.workspace.getLeaf('split', 'vertical');
-			void targetLeaf.openFile(file);
+			void (async () => {
+				// 点击标题打开文件，优先在已有的 markdown 视图打开，否则分屏打开
+				let targetLeaf = app.workspace.getLeavesOfType('markdown').find(l => (l.view as unknown as { file?: { path: string } }).file?.path === file.path);
+				if (!targetLeaf) targetLeaf = app.workspace.getLeavesOfType('markdown')[0];
+				if (!targetLeaf) targetLeaf = app.workspace.getLeaf('split', 'vertical');
+				await openFileAndFocus(app, targetLeaf, file);
+			})();
 		};
 
 		const startEdit = () => {
@@ -125,31 +130,57 @@ export class ChapterCard {
 		};
 
 		// 底部：字数等元数据及 Badges
-		const footerEl = card.createDiv('wn-corkboard-card-footer');
+		const footerEl = card.createDiv('wn-corkboard-card-footer wn-footer-1-line');
 
 		// Badges Container (Left side)
 		const badgesContainer = footerEl.createDiv('wn-corkboard-card-badges');
 
 		// 1. 伏笔 Badge (待回收/已回收)
-		renderForeshadowingBadges(badgesContainer, cardForeshadowings, file.basename);
+		renderForeshadowingBadges(badgesContainer, cardForeshadowings, file.basename, plugin);
 
 		// 2. 设定关联 Badge
 		const loreArray: unknown = frontmatter?.lore;
 		const bookPath = currentBookPath === '/' ? '' : currentBookPath;
-		renderLoreBadges(badgesContainer, loreArray, bookPath, plugin, true);
+		renderLoreBadges(badgesContainer, loreArray, bookPath, plugin, true, maxLoreLines);
+
+		// 3. 挂载后 RAF 动态根据 Badges 实际布局行数切换 1 行 / 2 行字数面板
+		window.requestAnimationFrame(() => {
+			if (!badgesContainer.isConnected) return;
+			const children = Array.from(badgesContainer.children) as HTMLElement[];
+			if (children.length > 0) {
+				const firstTop = children[0].offsetTop;
+				const hasSecondLine = children.some(c => c.offsetTop - firstTop > 10);
+				if (hasSecondLine && maxLoreLines > 1) {
+					footerEl.addClass('wn-footer-2-lines');
+					footerEl.removeClass('wn-footer-1-line');
+				} else {
+					footerEl.addClass('wn-footer-1-line');
+					footerEl.removeClass('wn-footer-2-lines');
+				}
+			} else {
+				footerEl.addClass('wn-footer-1-line');
+				footerEl.removeClass('wn-footer-2-lines');
+			}
+		});
 
 		// 字数 (Right side)
 		const wordCountEl = footerEl.createDiv('wn-corkboard-card-word-count');
+		const updateWordCountDisplay = (countVal: number | string) => {
+			wordCountEl.empty();
+			wordCountEl.createSpan({ cls: 'wn-word-count-num', text: String(countVal) });
+			wordCountEl.createSpan({ cls: 'wn-word-count-unit', text: t('common.word-char') });
+		};
+
 		// 获取精准字数统计
 		const cachedCount = plugin.cacheManager.getFileCache(file.path);
 		if (cachedCount !== null && cachedCount > 0) {
-			wordCountEl.setText(`${cachedCount}${t('common.word-char')}`);
+			updateWordCountDisplay(cachedCount);
 		} else {
 			wordCountEl.setText(`...`);
 			void app.vault.cachedRead(file).then(content => {
 				if (!wordCountEl.isConnected) return;
 				const count = plugin.calculateAccurateWords(content);
-				wordCountEl.setText(`${count}${t('common.word-char')}`);
+				updateWordCountDisplay(count);
 			}).catch(err => console.error("[ChapterCard] cachedRead failed:", err));
 		}
 	}

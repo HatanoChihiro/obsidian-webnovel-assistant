@@ -5,7 +5,6 @@ import { VIEW_TYPES } from '../constants';
 import { WritingStatusView, STATUS_VIEW_TYPE } from '../ui/StatusView';
 import { ForeshadowingView, FORESHADOWING_VIEW_TYPE } from '../ui/ForeshadowingView';
 import { TimelineView, TIMELINE_VIEW_TYPE } from '../ui/TimelineView';
-import { TaskView, TASK_VIEW_TYPE } from '../ui/TaskView';
 import { ImmersiveChapterListView } from '../ui/ImmersiveChapterListView';
 import { ImmersiveStickyNotesView } from '../ui/ImmersiveStickyNotesView';
 import { ChapterOverviewView, CORKBOARD_VIEW_TYPE } from '../ui/ChapterOverviewView';
@@ -23,7 +22,6 @@ export class ViewManager {
 		this.plugin.registerView(STATUS_VIEW_TYPE, (leaf) => new WritingStatusView(leaf, this.plugin));
 		this.plugin.registerView(FORESHADOWING_VIEW_TYPE, (leaf) => new ForeshadowingView(leaf, this.plugin));
 		this.plugin.registerView(TIMELINE_VIEW_TYPE, (leaf) => new TimelineView(leaf, this.plugin));
-		this.plugin.registerView(TASK_VIEW_TYPE, (leaf) => new TaskView(leaf, this.plugin));
 		this.plugin.registerView(WORKBENCH_VIEW_TYPE, (leaf) => new WorkbenchView(leaf, this.plugin));
 		this.plugin.registerView(CORKBOARD_VIEW_TYPE, (leaf) => new ChapterOverviewView(leaf, this.plugin));
 		this.plugin.registerView(RELATION_GRAPH_VIEW_TYPE, (leaf) => new RelationGraphView(leaf, this.plugin));
@@ -39,7 +37,6 @@ export class ViewManager {
 			STATUS_VIEW_TYPE,
 			FORESHADOWING_VIEW_TYPE,
 			TIMELINE_VIEW_TYPE,
-			TASK_VIEW_TYPE,
 			WORKBENCH_VIEW_TYPE,
 			CORKBOARD_VIEW_TYPE,
 			RELATION_GRAPH_VIEW_TYPE,
@@ -101,7 +98,7 @@ export class ViewManager {
 			
 			if (leaf) {
 				void workspace.revealLeaf(leaf);
-				if (isMobile()) {
+				if (isMobile() && leaf.getRoot() === workspace.rightSplit) {
 					workspace.rightSplit?.expand();
 				}
 			}

@@ -133,6 +133,13 @@ export interface ImmersiveModeSettings {
 	immersiveLayout: Record<string, number> | null;
 	/** 记忆参考文档的路径 */
 	lastReferenceFilePath?: string;
+
+	/** 是否启用沉浸模式打字机居中与淡化功能 */
+	typewriterEnabled: boolean;
+	/** 打字机模式中心垂直偏移量 (%) (-30 到 30) */
+	typewriterCenterOffset: number;
+	/** 打字机模式未聚焦行淡化不透明度 (0.1 到 1.0) */
+	typewriterUnfocusedOpacity: number;
 }
 
 /** OBS 数据输出设置 */
@@ -204,8 +211,10 @@ export interface AccurateCountSettings {
 	eyeCareColor: string;
 	/** 是否显示移动端浮动字数统计窗口 */
 	showMobileFloatingStats: boolean;
+	/** 是否在移动端启用专注计时（实验性） */
+	enableMobileFocusTimer: boolean;
 	/** 移动端浮动窗口状态 (x, y) */
-	mobileFloatingStatsState: { x: number, y: number } | null;
+	mobileFloatingStatsState: { x: number; y: number; isDocked?: boolean; dockEdge?: 'left' | 'right' } | null;
 
 	/** 严格章节模式：只在章节文档中计算字数、进度和提醒 */
 	enableStrictChapterMode: boolean;
@@ -255,6 +264,9 @@ export interface AccurateCountSettings {
 	/** 设定速查悬浮卡片中子标题是否默认折叠 */
 	lorePopoverCollapse: boolean;
 
+	/** 移动端是否启用设定悬浮/点击卡片 */
+	enableMobileLorePopover: boolean;
+
 	/** 设定图谱是否自动关联提及的设定 */
 	loreGraphAutoLinkMentions: boolean;
 
@@ -262,7 +274,7 @@ export interface AccurateCountSettings {
 	loreGraphEnableGlobal: boolean;
 
 	/** 章节一览面板的排序模式 */
-	corkboardSortMode?: 'default' | 'timeline' | 'lore';
+	corkboardSortMode?: 'default' | 'timeline' | 'lore' | 'task' | 'sticky';
 
 	/** 设定看板展示布局 */
 	loreBoardLayout?: 'table' | 'cards' | 'graph';
@@ -278,4 +290,7 @@ export interface AccurateCountSettings {
 
 	/** 是否开启调试模式（在控制台输出详细日志） */
 	debugMode: boolean;
+
+	/** 沉浸模式布局快照（JSON 字符串），用于异常退出后恢复 */
+	_savedImmersiveLayout?: string | null;
 }

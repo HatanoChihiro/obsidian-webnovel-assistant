@@ -1,5 +1,5 @@
 import type { App } from 'obsidian';
-import { PluginSettingTab, Setting, Notice, getLanguage } from 'obsidian';
+import { PluginSettingTab, Setting, Notice } from 'obsidian';
 import type { Plugin } from 'obsidian';
 import { isDesktop, getPlatformTier } from '../utils/platform';
 import { ObsOverlayServer } from '../services/ObsServer';
@@ -40,9 +40,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		const githubBox = containerEl.createDiv({
 			cls: 'wn-settings-banner'
 		});
-		const isZh = this.plugin.settings.language === 'zh-CN' || (this.plugin.settings.language === 'auto' && getLanguage().startsWith('zh'));
-		const prefixText = isZh ? '详情及用户指南见 Github：' : 'See details and user guide on Github: ';
-		githubBox.createSpan({ text: prefixText, cls: 'text-muted' });
+		githubBox.createSpan({ text: t('setting.github-guide-prefix'), cls: 'text-muted' });
 		githubBox.createEl('a', {
 			text: 'HatanoChihiro/obsidian-webnovel-assistant',
 			href: 'https://github.com/HatanoChihiro/obsidian-webnovel-assistant/releases',
@@ -119,6 +117,32 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 							this.plugin.mobileFloatingStats?.unload();
 						}
 					}));
+
+			new Setting(containerEl)
+				.setName(t('setting.enable-mobile-focus-timer'))
+				.setDesc(t('setting.enable-mobile-focus-timer-desc'))
+				.addToggle(toggle => toggle
+					.setValue(this.plugin.settings.enableMobileFocusTimer)
+					.onChange(async (value) => {
+						this.plugin.settings.enableMobileFocusTimer = value;
+						void this.plugin.saveSettings();
+						this.plugin.mobileFloatingStats?.update();
+						this.display();
+					}));
+
+			if (this.plugin.settings.enableMobileFocusTimer) {
+				new Setting(containerEl)
+					.setName(t('setting.idle-threshold'))
+					.setDesc(t('setting.idle-threshold-desc'))
+					.addSlider(slider => slider
+						.setLimits(30, 600, 30)
+						.setValue(this.plugin.settings.idleTimeoutThreshold / 1000)
+						.setDynamicTooltip()
+						.onChange(async (value) => {
+							this.plugin.settings.idleTimeoutThreshold = value * 1000;
+							await this.plugin.saveSettings();
+						}));
+			}
 		}
 
 		// 语言切换
@@ -467,18 +491,17 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					else this.plugin.refreshFolderCounts();
 				}));
 
-		if (isDesktop()) {
-			new Setting(containerEl)
-				.setName(t('setting.enable-selection-count'))
-				.setDesc(t('setting.enable-selection-count-desc'))
-				.addToggle(toggle => toggle
-					.setValue(this.plugin.settings.enableSelectionWordCount)
-					.onChange(async (value) => {
-						this.plugin.settings.enableSelectionWordCount = value;
-						await this.plugin.saveSettings();
-						// Reconfigure extensions if needed or it will check dynamically
-					}));
+		new Setting(containerEl)
+			.setName(t('setting.enable-selection-count'))
+			.setDesc(t('setting.enable-selection-count-desc'))
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.enableSelectionWordCount)
+				.onChange(async (value) => {
+					this.plugin.settings.enableSelectionWordCount = value;
+					await this.plugin.saveSettings();
+				}));
 
+		if (isDesktop()) {
 			new Setting(containerEl)
 				.setName(t('setting.word-count-gutter'))
 				.setDesc(t('setting.word-count-gutter-desc'))
@@ -736,7 +759,6 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			'foreshadowing-view': t('setting.layout-view-foreshadowing'),
 			'wn-timeline-view': t('setting.layout-view-timeline'),
 			'reference-view': t('setting.layout-view-reference'),
-			'webnovel-workbench': t('setting.layout-view-workbench'),
 			'outline': t('setting.layout-view-outline')
 		};
 	}
@@ -849,6 +871,55 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.immersive.immersiveNoteFontSize = value;
 					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl).setName(t('setting.immersive-typewriter-title')).setHeading();
+
+		new Setting(containerEl)
+			.setName(t('setting.immersive-typewriter-enable'))
+			.setDesc(t('setting.immersive-typewriter-enable-desc'))
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.immersive.typewriterEnabled)
+				.onChange(async (value) => {
+					this.plugin.settings.immersive.typewriterEnabled = value;
+					await this.plugin.saveSettings();
+
+					if (activeDocument.body.classList.contains('immersive-mode-active')) {
+						if (value) {
+							activeDocument.body.classList.add('wn-typewriter-active');
+							activeDocument.body.setCssProps({ '--wn-typewriter-opacity': String(this.plugin.settings.immersive.typewriterUnfocusedOpacity ?? 0.4) });
+						} else {
+							activeDocument.body.classList.remove('wn-typewriter-active');
+						}
+					}
+				}));
+
+		new Setting(containerEl)
+			.setName(t('setting.immersive-typewriter-offset'))
+			.setDesc(t('setting.immersive-typewriter-offset-desc'))
+			.addSlider(slider => slider
+				.setLimits(-30, 30, 1)
+				.setValue(this.plugin.settings.immersive.typewriterCenterOffset ?? 0)
+				.setDynamicTooltip()
+				.onChange(async (value) => {
+					this.plugin.settings.immersive.typewriterCenterOffset = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName(t('setting.immersive-typewriter-opacity'))
+			.setDesc(t('setting.immersive-typewriter-opacity-desc'))
+			.addSlider(slider => slider
+				.setLimits(0.1, 1.0, 0.05)
+				.setValue(this.plugin.settings.immersive.typewriterUnfocusedOpacity ?? 0.4)
+				.setDynamicTooltip()
+				.onChange(async (value) => {
+					this.plugin.settings.immersive.typewriterUnfocusedOpacity = value;
+					await this.plugin.saveSettings();
+
+					if (activeDocument.body.classList.contains('immersive-mode-active')) {
+						activeDocument.body.setCssProps({ '--wn-typewriter-opacity': String(value) });
+					}
 				}));
 
 		new Setting(containerEl).setName(t('setting.immersive-dashboard-toggles')).setHeading();
@@ -1004,18 +1075,27 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				text.inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); text.inputEl.blur(); } });
 			})
 
-		if (isDesktop()) {
-			// 悬浮卡片子标题折叠开关（仅桌面端悬浮卡片生效）
-			new Setting(containerEl)
-				.setName(t('setting.lore-popover-collapse'))
-				.setDesc(t('setting.lore-popover-collapse-desc'))
-				.addToggle(toggle => toggle
-					.setValue(this.plugin.settings.lorePopoverCollapse)
-					.onChange(async (value: boolean) => {
-						this.plugin.settings.lorePopoverCollapse = value;
-						await this.plugin.saveSettings();
-					}));
-		}
+		// 移动端开启设定悬浮/点击卡片开关
+		new Setting(containerEl)
+			.setName(t('setting.enable-mobile-lore-popover'))
+			.setDesc(t('setting.enable-mobile-lore-popover-desc'))
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.enableMobileLorePopover)
+				.onChange(async (value: boolean) => {
+					this.plugin.settings.enableMobileLorePopover = value;
+					await this.plugin.saveSettings();
+				}));
+
+		// 设定卡片子标题折叠开关（全平台生效）
+		new Setting(containerEl)
+			.setName(t('setting.lore-popover-collapse'))
+			.setDesc(t('setting.lore-popover-collapse-desc'))
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.lorePopoverCollapse)
+				.onChange(async (value: boolean) => {
+					this.plugin.settings.lorePopoverCollapse = value;
+					await this.plugin.saveSettings();
+				}));
 
 		// 设定图谱是否自动关联提及的设定
 		new Setting(containerEl)

@@ -128,12 +128,14 @@ const TASK_STATUS = {
 		completed: '已完成',
 		incomplete: '未完成',
 		notStarted: '未开始',
+		abandoned: '已放弃',
 	},
 	'en': {
 		active: 'Active',
 		completed: 'Completed',
 		incomplete: 'Incomplete',
 		notStarted: 'Not Started',
+		abandoned: 'Abandoned',
 	},
 } as const;
 
@@ -143,14 +145,17 @@ export const TASK_STATUS_MAP: Record<string, string> = {
 	'completed': 'completed',
 	'incomplete': 'incomplete',
 	'notStarted': 'notStarted',
+	'abandoned': 'abandoned',
 		'Active': 'active',
 		'Completed': 'completed',
 		'Incomplete': 'incomplete',
 		'Not Started': 'notStarted',
+		'Abandoned': 'abandoned',
 	'进行中': 'active',
 	'已完成': 'completed',
 	'未完成': 'incomplete',
 	'未开始': 'notStarted',
+	'已放弃': 'abandoned',
 };
 
 // ==========================================
@@ -307,9 +312,13 @@ export const CORKBOARD_STATUS_MAP: Record<string, string> = {
 const LORE_LABELS = {
 	'zh-CN': {
 		alias: '别名',
+		type: '类型',
+		relation: '关系',
 	},
 	'en': {
 		alias: 'Alias',
+		type: 'Type',
+		relation: 'Relation',
 	},
 } as const;
 
@@ -317,8 +326,14 @@ const LORE_LABELS = {
 export const LORE_LABEL_MAP: Record<string, string> = {
 	// 英文
 	'Alias': 'alias',
+	'Type': 'type',
+	'Relation': 'relation',
+	'Relations': 'relation',
+	'Relationships': 'relation',
 	// 中文
 	'别名': 'alias',
+	'类型': 'type',
+	'关系': 'relation',
 };
 
 /** 获取设定文档的字段标签 */

@@ -30,6 +30,7 @@ export class ChapterSorter {
 
 	// 自定义章节命名规则（由插件设置提供）
 	private static customRules: ChapterNamingRule[] = [];
+	private static _compiledRules: Array<{ rule: ChapterNamingRule; regex: RegExp; index: number }> = [];
 
 	/**
 	 * 统一获取指定文件夹下的所有章节文件，并按规则和自定义顺序排好序
@@ -74,6 +75,16 @@ export class ChapterSorter {
 				return false;
 			}
 		});
+
+		this._compiledRules = [];
+		for (let i = 0; i < this.customRules.length; i++) {
+			const rule = this.customRules[i];
+			if (rule.enabled) {
+				try {
+					this._compiledRules.push({ rule, regex: new RegExp(rule.pattern, 'i'), index: i });
+				} catch { /* ignore */ }
+			}
+		}
 	}
 
 	/**
@@ -132,42 +143,37 @@ export class ChapterSorter {
 
 		// 如果有自定义规则，优先使用
 		if (this.customRules && this.customRules.length > 0) {
-			for (let i = 0; i < this.customRules.length; i++) {
-				const rule = this.customRules[i];
-				if (!rule.enabled) continue;
-
+			for (const { rule, regex, index } of this._compiledRules) {
 				try {
-					const regex = new RegExp(rule.pattern, 'i');
 					const match = basename.match(regex);
 					if (match) {
-						// 如果有捕获组，尝试解析为数字
-						if (match[1]) {
-							const numStr = match[1];
-							
+						// 如果有捕获组，寻找第一个匹配到的有效数字文本（支持包含多分支的捕获组，如 match[1] 或 match[2]）
+						const numStr = match.slice(1).find(m => m !== undefined && m !== '');
+						if (numStr) {
 							// 检查是否是小数点格式
 							if (numStr.includes('.')) {
 								const num = parseFloat(numStr);
 								if (!isNaN(num)) {
-									return { number: num, ruleIndex: i, numStr, isDecimal: true, rulePattern: rule.pattern };
+									return { number: num, ruleIndex: index, numStr, isDecimal: true, rulePattern: rule.pattern };
 								}
 							}
 							
 							// 检查是否是阿拉伯数字
 							const arabicNum = parseInt(numStr, 10);
 							if (!isNaN(arabicNum)) {
-								return { number: arabicNum, ruleIndex: i, numStr, isDecimal: false, rulePattern: rule.pattern };
+								return { number: arabicNum, ruleIndex: index, numStr, isDecimal: false, rulePattern: rule.pattern };
 							}
 							
 							// 尝试解析中文数字
 							const chineseNum = this.parseChineseNumber(numStr);
 							if (chineseNum > 0) {
-								return { number: chineseNum, ruleIndex: i, numStr, isChinese: true, isDecimal: false, rulePattern: rule.pattern };
+								return { number: chineseNum, ruleIndex: index, numStr, isChinese: true, isDecimal: false, rulePattern: rule.pattern };
 							}
 						}
 						// [关键扩展] 规则匹配但没有捕获组，或捕获组不是数字
 						// 视为“具名章节”（如：大纲、番外、楔子），使用 -1 让其排在该规则分组的最前面
 						// 规则的先后顺序（ruleIndex）决定该分组在整个文件列表中的位置
-						return { number: -1, ruleIndex: i, rulePattern: rule.pattern };
+						return { number: -1, ruleIndex: index, rulePattern: rule.pattern };
 					}
 				} catch (error) {
 					Logger.error(`[ChapterSorter] 无效的正则表达式: ${rule.pattern}`, error);

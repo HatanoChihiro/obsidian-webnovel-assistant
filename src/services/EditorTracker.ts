@@ -59,6 +59,7 @@ export class EditorTracker {
 
 		this.updateWordCount();
 		this.plugin.refreshStatusViews();
+		this.plugin.mobileFloatingStats?.update();
 	}
 
 	/**

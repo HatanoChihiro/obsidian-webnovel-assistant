@@ -53,19 +53,19 @@ function computeMarkers(state: EditorState, plugin: WebNovelAssistantPlugin): Ra
 
 	const interval = plugin.settings.wordCountInterval || 2000;
 	const doc = state.doc;
-	const fullText = doc.toString();
-	const lineCounts = plugin.wordCounter.calculateWordsPerLine(fullText, plugin.settings.wordCountMethod);
+	const lineCount = doc.lines;
 
 	let currentTotal = 0;
 	let nextTarget = interval;
 
-	for (let i = 1; i <= doc.lines; i++) {
-		const lineCount = lineCounts[i - 1] || 0;
-		currentTotal += lineCount;
+	for (let i = 1; i <= lineCount; i++) {
+		const line = doc.line(i);
+		const lineWords = plugin.wordCounter.calculateAccurateWords(line.text, plugin.settings.wordCountMethod);
+		currentTotal += lineWords;
 
-		if (currentTotal >= nextTarget && lineCount > 0) {
+		if (currentTotal >= nextTarget && lineWords > 0) {
 			const reachedTarget = Math.floor(currentTotal / interval) * interval;
-			builder.add(doc.line(i).from, doc.line(i).from, new WordCountMarker(reachedTarget));
+			builder.add(line.from, line.from, new WordCountMarker(reachedTarget));
 			nextTarget = reachedTarget + interval;
 		}
 	}
@@ -85,7 +85,7 @@ export function createWordCountGutter(plugin: WebNovelAssistantPlugin): Extensio
 					forceUpdate = true;
 				}
 			}
-			if (!tr.docChanged && !forceUpdate) return value;
+			if (!forceUpdate) return value;
 			return computeMarkers(tr.state, plugin);
 		}
 	});
@@ -98,12 +98,35 @@ export function createWordCountGutter(plugin: WebNovelAssistantPlugin): Extensio
 	});
 
 	const wordCountWorkspacePlugin = ViewPlugin.fromClass(class {
+		private debounceTimer: number | null = null;
+
 		constructor(view: EditorView) {
 			this.updateClass(view);
 		}
+
 		update(update: ViewUpdate) {
 			this.updateClass(update.view);
+
+			if (update.docChanged) {
+				if (this.debounceTimer !== null) {
+					window.clearTimeout(this.debounceTimer);
+				}
+				this.debounceTimer = window.setTimeout(() => {
+					this.debounceTimer = null;
+					update.view.dispatch({
+						effects: forceWordCountGutterUpdate.of(null)
+					});
+				}, 150);
+			}
 		}
+
+		destroy() {
+			if (this.debounceTimer !== null) {
+				window.clearTimeout(this.debounceTimer);
+				this.debounceTimer = null;
+			}
+		}
+
 		updateClass(view: EditorView) {
 			const gutters = view.dom.querySelector('.cm-gutters');
 			const isHidden = !plugin.settings.enableWordCountGutter;

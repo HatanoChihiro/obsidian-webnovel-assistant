@@ -37,7 +37,6 @@ import { HomepageManager } from './src/services/HomepageManager';
 import { StatisticsManager } from './src/services/StatisticsManager';
 import { StickyNoteDataManager } from './src/services/StickyNoteDataManager';
 
-import { TASK_VIEW_TYPE } from './src/ui/TaskView';
 import { CommandManager } from './src/core/CommandManager';
 import { ViewManager } from './src/core/ViewManager';
 import { MenuManager } from './src/core/MenuManager';
@@ -47,11 +46,12 @@ import { createWordCountGutter, forceWordCountGutterUpdate } from './src/editor/
 import { WorkerManager } from './src/services/WorkerManager';
 import { MarkdownPostProcessor } from './src/services/MarkdownPostProcessor';
 import { FileEventManager } from './src/services/FileEventManager';
-import { HomepageRenderer } from './src/services/HomepageRenderer';
+import { HomepageRenderer } from './src/ui/components/HomepageRenderer';
 import { CharacterManager } from './src/services/CharacterManager';
 import { t, setLocale, detectLocale } from './src/i18n';
 
 import { buildCharacterHoverExtension } from './src/editor/CharacterHoverExtension';
+import { createTypewriterExtension } from './src/editor/TypewriterExtension';
 import { LoreSyncService } from './src/services/LoreSyncService';
 import { ServiceRegistry } from './src/core/ServiceRegistry';
 
@@ -73,6 +73,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	lastTaskFolder: string = '';
 
 	lastEditTime: number = Date.now();
+	suspendTime: number = 0;
 	private _unloading = false;
 	private _homepageTimer: number | null = null;
 	private _loreCandidatesCache: Set<string> | null = null;
@@ -196,6 +197,20 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 
 		this.app.workspace.onLayoutReady(() => {
 			this.isLayoutReady = true;
+
+			// 检查是否有异常崩溃留下的沉浸模式布局快照
+			if (this.settings._savedImmersiveLayout) {
+				try {
+					const layout = JSON.parse(this.settings._savedImmersiveLayout) as Record<string, unknown>;
+					void this.app.workspace.changeLayout(layout);
+					new Notice(t('immersive.recovered-from-crash'));
+				} catch (err) {
+					Logger.error('[Plugin] 恢复沉浸模式布局失败:', err);
+				} finally {
+					this.settings._savedImmersiveLayout = null;
+					void this.saveSettings();
+				}
+			}
 		});
 	}
 
@@ -219,11 +234,9 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			activeDocument.body.classList.add('webnovel-notes-hidden');
 		}
 
-		// 监听数据变化事件，保持各视图同步
+		// 监听数据变化事件，保持悬浮便签同步
 		this.registerEvent(this.app.workspace.on('webnovel:notes-changed', () => {
-			// eslint-disable-next-line @typescript-eslint/no-unsafe-call -- syncFloatingNotes may not be strictly typed
 			this.stickyNoteManager?.syncFloatingNotes();
-			this.stickyNoteManager?.refreshImmersiveNotes();
 		}));
 
 		this.registerEvent(this.app.workspace.on('layout-change', () => {
@@ -238,6 +251,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 
 		this.fileEventManager.setup();
 		this.statisticsManager.setup();
+		// 跨平台初始化 Worker（移动端现在也需要 worker 来在前端计时）
+		this.workerManager.setup();
 
 		if (this.settings.eyeCareEnabled) this.styleManager?.applyEyeCare();
 
@@ -280,13 +295,14 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.commandManager.registerAllCommands();
 		this.viewManager.registerAllViews();
 
-		// 注册编辑器扩展（设定速查悬浮，因移动端体验不佳，仅在桌面端可用）
-		if (isDesktop()) {
-			this.registerEditorExtension(buildCharacterHoverExtension(this.app, this));
-		}
+		// 注册编辑器扩展（全平台通用：设定速查高亮与浮窗）
+		this.registerEditorExtension(buildCharacterHoverExtension(this.app, this));
 
 		// 注册全平台通用的选区字数悬浮窗扩展
 		this.registerEditorExtension(selectionCountTooltipExtension(this));
+
+		// 注册沉浸模式打字机居中滚动扩展
+		this.registerEditorExtension(createTypewriterExtension(this));
 
 		// 初始化工作区样式和功能
 		this.menuManager.registerAllMenus();
@@ -461,8 +477,6 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 
 	private setupDesktopFeatures(): void {
 
-		this.workerManager.setup();
-
 		// 启动 OBS 叠加层 HTTP Server
 		if (this.settings.obs.enableObs) {
 			this.obsServer = new ObsOverlayServer(this, this.settings.obs.obsPort);
@@ -557,10 +571,14 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			component.onunload = () => {
 				const leafContent = el.closest('.workspace-leaf-content');
 				if (leafContent) leafContent.classList.remove('is-webnovel-homepage');
-				const anyContainer = el as unknown as { __homepageResizeObs?: ResizeObserver };
-				if (anyContainer.__homepageResizeObs) {
-					anyContainer.__homepageResizeObs.disconnect();
-					delete anyContainer.__homepageResizeObs;
+				const VIEW_OBS_KEY = '__webnovel_homepage_resize_obs__';
+				const viewDom = el.closest('.markdown-source-view') || el.closest('.markdown-preview-view');
+				if (viewDom) {
+					const anyView = viewDom as unknown as Record<string, ResizeObserver | undefined>;
+					if (anyView[VIEW_OBS_KEY]) {
+						anyView[VIEW_OBS_KEY].disconnect();
+						delete anyView[VIEW_OBS_KEY];
+					}
 				}
 			};
 
@@ -594,6 +612,13 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.registerEvent(this.app.workspace.on('active-leaf-change', () => {
 			this.mobileFloatingStats?.update();
 		}));
+		
+		// 监听专注计时刷新
+		this.registerInterval(window.setInterval(() => {
+			if (this.isTracking) {
+				this.mobileFloatingStats?.update();
+			}
+		}, 1000));
 	}
 
 	/**
@@ -601,7 +626,10 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	 * 启用面板功能，但不启用重度功能（Worker、OBS、缓存）
 	 */
 	private setupTabletMode(): void {
-		// 平板端不启用浮动字数统计窗口（平板有侧边栏面板，不需要浮窗）
+		if (this.settings.showMobileFloatingStats) {
+			this.setupFloatingStats();
+		}
+
 		// 注意：视图、命令和菜单已在 setupCoreFeatures() 中通过 Manager 统一注册，
 		// 此处只需注册平板端特有的 Ribbon 图标
 
@@ -727,9 +755,6 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.addRibbonIcon('laptop', t('command.toggle-workbench-view'), () => {
 			void this.toggleWorkbenchView();
 		});
-		this.addRibbonIcon('trophy', t('command.toggle-task-view'), () => {
-			void this.toggleTaskView();
-		});
 
 		if (isDesktop()) {
 			this.addRibbonIcon('expand', t('command.toggle-immersive-mode'), () => {
@@ -815,14 +840,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			this.cacheManager.saveCache()
 		]).catch(e => console.error('[WebNovel Assistant] 卸载时数据刷新失败:', e));
 
-		// 9. 清理所有的自定义视图，防止未卸载导致 Obsidian 设置面板崩溃
-		try {
-			if (this.viewManager) {
-				this.viewManager.detachAllViews();
-			}
-		} catch (e) {
-			console.error('[WebNovel Assistant] Error in detachAllViews:', e);
-		}
+		// 9. 清理自定义视图相关资源（不主动 detachLeavesOfType，以防插件更新时侧面板全部丢失）
+		// Note: 原来的 detachAllViews() 并不能真正解决设置面板崩溃的 BUG，反而会导致用户体验糟糕，故移除。
 
 		// 调用 ServiceRegistry 统一清理
 		if (this.services && typeof this.services.destroyAll === 'function') {
@@ -905,10 +924,6 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 
 	async toggleTimelineView() {
 		await this.viewManager.toggleView(TIMELINE_VIEW_TYPE);
-	}
-
-	async toggleTaskView() {
-		await this.viewManager.toggleView(TASK_VIEW_TYPE);
 	}
 
 	async toggleWorkbenchView() {
@@ -1055,21 +1070,14 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	}
 
 
-	refreshStatusViews() {
+	refreshStatusViews(includeChart = false) {
 		const leaves = this.app.workspace.getLeavesOfType(STATUS_VIEW_TYPE);
 		for (const leaf of leaves) {
 			if (leaf.view instanceof WritingStatusView) {
 				void leaf.view.updateData();
-				leaf.view.renderMiniChart(); // 刷新热力图显示
-			}
-		}
-
-		// 同步刷新限时任务面板，使其字数进度即时更新
-		const taskLeaves = this.app.workspace.getLeavesOfType(TASK_VIEW_TYPE);
-		for (const leaf of taskLeaves) {
-			const view = leaf.view as unknown as { refresh?: () => void };
-			if (typeof view.refresh === 'function') {
-				view.refresh();
+				if (includeChart) {
+					leaf.view.renderMiniChart(); // 刷新热力图显示
+				}
 			}
 		}
 	}

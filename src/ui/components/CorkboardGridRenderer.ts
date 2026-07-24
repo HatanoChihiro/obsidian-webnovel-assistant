@@ -13,11 +13,12 @@ export interface CorkboardGridOptions {
 	currentBookPath: string;
 	onSaveStateChange: (isSaving: boolean) => void;
 	hideVolumeHeaders?: boolean;
+	maxLoreLines?: number;
 }
 
 export class CorkboardGridRenderer {
 	static render(options: CorkboardGridOptions): void {
-		const { app, plugin, container, files, foreshadowingMap, draggable, currentBookPath, onSaveStateChange } = options;
+		const { app, plugin, container, files, foreshadowingMap, draggable, currentBookPath, onSaveStateChange, maxLoreLines } = options;
 		
 		let lastVolume: string | null = null;
 
@@ -48,7 +49,8 @@ export class CorkboardGridRenderer {
 			ChapterCard.render(container, file, app, plugin, foreshadowingMap.get(file.basename) || [], {
 				draggable,
 				onSaveStateChange,
-				currentBookPath
+				currentBookPath,
+				maxLoreLines
 			});
 		}
 	}

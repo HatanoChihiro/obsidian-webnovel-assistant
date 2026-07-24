@@ -1,6 +1,5 @@
 import type { WorkspaceLeaf } from 'obsidian';
 import { ItemView, TFile, TFolder } from 'obsidian';
-import type { MarkdownView } from 'obsidian';
 import { VIEW_TYPES } from '../constants';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { ParsedForeshadowingEntry } from '../types/foreshadowing';
@@ -34,9 +33,60 @@ export class ImmersiveChapterListView extends ItemView {
 	async onOpen() {
 		void this.refresh();
 		
-		// 监听工作区事件，当文件切换或布局改变时自动刷新列表
-		this.registerEvent(this.app.workspace.on('active-leaf-change', () => { void this.refresh(); }));
-		this.registerEvent(this.app.workspace.on('layout-change', () => { void this.refresh(); }));
+		// 仅轻量更新高亮类名，彻底消除全量清空 DOM 导致的严重卡顿
+		this.registerEvent(this.app.workspace.on('active-leaf-change', () => { this.updateActiveHighlight(); }));
+		this.registerEvent(this.app.vault.on('create', () => { void this.refresh(); }));
+		this.registerEvent(this.app.vault.on('delete', () => { void this.refresh(); }));
+		this.registerEvent(this.app.vault.on('rename', () => { void this.refresh(); }));
+	}
+
+	private getMainEditorLeaf(): WorkspaceLeaf | null {
+		const { workspace } = this.app;
+		let mainLeaf: WorkspaceLeaf | null = null;
+
+		// 1. 优先查带有 immersive-main-editor 标记的叶子
+		workspace.iterateAllLeaves(leaf => {
+			if (leaf.containerEl && leaf.containerEl.classList.contains('immersive-main-editor')) {
+				mainLeaf = leaf;
+			}
+		});
+		if (mainLeaf) return mainLeaf;
+
+		// 2. 查找类型为 markdown 且不属于参考视图的叶子
+		workspace.iterateAllLeaves(leaf => {
+			if (leaf.view.getViewType() === 'markdown' && (!leaf.containerEl || !leaf.containerEl.classList.contains('immersive-reference-view'))) {
+				mainLeaf = leaf;
+			}
+		});
+		if (mainLeaf) return mainLeaf;
+
+		return workspace.getLeavesOfType('markdown')[0] || null;
+	}
+
+	private getReferenceViewLeaf(): WorkspaceLeaf | null {
+		const { workspace } = this.app;
+		let refLeaf: WorkspaceLeaf | null = null;
+
+		// 全量遍历检索带 immersive-reference-view 标记的叶子
+		workspace.iterateAllLeaves(leaf => {
+			if (leaf.containerEl && leaf.containerEl.classList.contains('immersive-reference-view')) {
+				refLeaf = leaf;
+			}
+		});
+
+		return refLeaf;
+	}
+
+	private updateActiveHighlight(): void {
+		const activeFile = this.app.workspace.getActiveFile();
+		const items = this.containerEl.querySelectorAll<HTMLElement>('.immersive-chapter-item');
+		items.forEach(itemEl => {
+			if (activeFile && itemEl.dataset.path === activeFile.path) {
+				itemEl.addClass('is-active');
+			} else {
+				itemEl.removeClass('is-active');
+			}
+		});
 	}
 
 	public async refresh() {
@@ -121,6 +171,7 @@ export class ImmersiveChapterListView extends ItemView {
 			} else if (item instanceof TFile) {
 				const file = item;
 				const itemEl = container.createDiv({ cls: 'immersive-chapter-item' });
+				itemEl.dataset.path = file.path;
 				if (activeFile && file.path === activeFile.path) {
 					itemEl.addClass('is-active');
 					state.activeItemEl = itemEl;
@@ -132,7 +183,7 @@ export class ImmersiveChapterListView extends ItemView {
 				const badgesContainer = leftContainer.createSpan({ cls: 'immersive-chapter-badges' });
 				const cardForeshadowings = foreshadowingMap.get(file.basename) || [];
 				
-				renderForeshadowingBadges(badgesContainer, cardForeshadowings, file.basename);
+				renderForeshadowingBadges(badgesContainer, cardForeshadowings, file.basename, this.plugin);
 				
 				const cache = this.app.metadataCache.getFileCache(file);
 				const frontmatter = cache?.frontmatter;
@@ -147,70 +198,55 @@ export class ImmersiveChapterListView extends ItemView {
 					}
 				}
 
-				itemEl.addEventListener('click', () => {
-					const leaves = this.app.workspace.getLeavesOfType('markdown');
-					if (leaves.length > 0) {
-						void leaves[0].openFile(file);
+				itemEl.addEventListener('click', (e) => {
+					e.preventDefault();
+					const targetLeaf = this.getMainEditorLeaf();
+					if (targetLeaf) {
+						void targetLeaf.openFile(file, { active: true });
 					}
 				});
 
 				itemEl.addEventListener('contextmenu', (e) => {
-				e.preventDefault();
-				
-				const { workspace } = this.app;
-				let refLeaf: WorkspaceLeaf | null = null;
-				
-				workspace.iterateRootLeaves(leaf => {
-					if (leaf.containerEl && leaf.containerEl.classList.contains('immersive-reference-view')) {
-						refLeaf = leaf;
+					e.preventDefault();
+					
+					let refLeaf = this.getReferenceViewLeaf();
+
+					if (!refLeaf) {
+						const mainLeaf = this.getMainEditorLeaf();
+						const mdLeaves = this.app.workspace.getLeavesOfType('markdown');
+						refLeaf = mdLeaves.find(l => l !== mainLeaf) || null;
+					}
+
+					if (!refLeaf) {
+						const emptyLeaves = this.app.workspace.getLeavesOfType('empty');
+						if (emptyLeaves.length > 0) {
+							refLeaf = emptyLeaves[0];
+						}
+					}
+
+					if (!refLeaf) {
+						const mainLeaf = this.getMainEditorLeaf();
+						if (mainLeaf) {
+							refLeaf = this.app.workspace.createLeafBySplit(mainLeaf, 'vertical', false);
+							refLeaf.containerEl.classList.add('immersive-reference-view');
+							
+							if (!this.plugin.settings.immersive.immersiveRightSlots.includes('reference-view')) {
+								this.plugin.settings.immersive.immersiveRightSlots.push('reference-view');
+								void this.plugin.saveSettings();
+							}
+						}
+					}
+					
+					if (refLeaf) {
+						refLeaf.containerEl.classList.add('immersive-reference-view');
+						void refLeaf.openFile(file, { active: false, state: { mode: 'preview' } }).then(() => {
+							if (refLeaf) {
+								refLeaf.containerEl.classList.add('immersive-reference-view');
+							}
+						});
 					}
 				});
-
-				if (!refLeaf) {
-					const mdLeaves = workspace.getLeavesOfType('markdown');
-					if (mdLeaves.length > 1) {
-						refLeaf = mdLeaves[1];
-					}
-				}
-
-				if (!refLeaf) {
-					const emptyLeaves = workspace.getLeavesOfType('empty');
-					if (emptyLeaves.length > 0) {
-						refLeaf = emptyLeaves[0];
-					}
-				}
-
-				if (!refLeaf) {
-					const mainLeaf = workspace.getLeavesOfType('markdown')[0];
-					if (mainLeaf) {
-						refLeaf = workspace.createLeafBySplit(mainLeaf, 'vertical', false);
-						refLeaf.containerEl.classList.add('immersive-reference-view');
-						
-						if (!this.plugin.settings.immersive.immersiveRightSlots.includes('reference-view')) {
-							this.plugin.settings.immersive.immersiveRightSlots.push('reference-view');
-						}
-						void this.plugin.saveSettings();
-					}
-				}
-				
-				if (refLeaf) {
-					const mdView = refLeaf.view.getViewType() === 'markdown' ? refLeaf.view as MarkdownView : null;
-					const currentState = mdView && typeof mdView.getState === 'function'
-						? mdView.getState()
-						: {};
-					
-					currentState.file = file.path;
-					currentState.mode = 'preview';
-					currentState.source = false;
-
-					void refLeaf.setViewState({ 
-						type: 'markdown', 
-						state: currentState, 
-						active: false 
-					});
-				}
-			});
-		}
+			}
 		}
 	}
 

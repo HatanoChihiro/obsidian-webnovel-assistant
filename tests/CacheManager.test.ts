@@ -157,7 +157,7 @@ describe('CacheManager', () => {
             // Use a file guaranteed to be in workspace (path validation is separate from lore check)
             vi.spyOn(manager, 'isFileInWorkspace').mockReturnValue(true);
             vi.spyOn(manager, 'isPluginGeneratedFile').mockReturnValue(false);
-            const dummyFile = new TFile('test.md', 'Book 1/test.md');
+            const dummyFile = new (TFile as any)('test.md', 'Book 1/test.md');
             Object.assign(dummyFile, { basename: 'test' });
             manager.isEligibleForWordCount(dummyFile);
             

@@ -144,7 +144,7 @@ export class SettingsManager {
 			return this.settings;
 		} catch (error) {
 			Logger.error('[SettingsManager] 加载设置失败:', error);
-			new Notice('加载设置失败，已使用默认设置');
+			new Notice(t('notice.load-settings-failed'));
 			this.settings = this.mergeSettings({});
 			return this.settings;
 		}
@@ -173,7 +173,7 @@ export class SettingsManager {
 				await this.plugin.saveData(newData);
 			} catch (error) {
 				Logger.error('[SettingsManager] 保存设置失败:', error);
-				new Notice('保存设置失败，请检查磁盘空间和权限');
+				new Notice(t('notice.save-settings-failed'));
 				throw error;
 			}
 		});
@@ -345,13 +345,13 @@ export class SettingsManager {
 				}
 			}
 
-			// Migrate corkboard-view back to webnovel-corkboard for compatibility
+			// Migrate corkboard-view back to webnovel-corkboard for compatibility and remove deprecated webnovel-workbench from immersive slots
 			const slotsKeys = ['immersiveTopSlots', 'immersiveBottomSlots', 'immersiveLeftSlots', 'immersiveRightSlots'] as const;
 			for (const key of slotsKeys) {
 				if (Array.isArray(migrated.immersive[key])) {
-					migrated.immersive[key] = migrated.immersive[key].map(slot => 
-						slot === 'corkboard-view' ? 'webnovel-corkboard' : slot
-					);
+					migrated.immersive[key] = migrated.immersive[key]
+						.map(slot => slot === 'corkboard-view' ? 'webnovel-corkboard' : slot)
+						.filter(slot => slot !== 'webnovel-workbench');
 				}
 			}
 		}

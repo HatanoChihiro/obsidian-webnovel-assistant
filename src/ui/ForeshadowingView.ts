@@ -8,6 +8,8 @@ import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { getForeshadowingStatusText, getForeshadowingLabel, getDefaultFileName } from '../i18n/data-keys';
 import { t } from '../i18n';
 import { ChapterSorter } from '../services/ChapterSorter';
+import { openFileAndFocus } from '../utils/leaf';
+
 
 export const FORESHADOWING_VIEW_TYPE = 'foreshadowing-view';
 
@@ -357,8 +359,7 @@ export class ForeshadowingView extends CreativeView {
 						if (targetFile) {
 							let targetLeaf = this.app.workspace.getLeavesOfType('markdown').find(l => (l.view as unknown as { file?: { path: string } }).file?.path === targetFile?.path);
 							if (!targetLeaf) targetLeaf = this.app.workspace.getLeavesOfType('markdown')[0];
-							if (!targetLeaf) targetLeaf = this.app.workspace.getLeaf('split', 'vertical');
-							await targetLeaf.openFile(targetFile);
+							await openFileAndFocus(this.app, targetLeaf, targetFile);
 						}
 					};
 				});
@@ -381,8 +382,7 @@ export class ForeshadowingView extends CreativeView {
 					if (targetFile) {
 						let targetLeaf = this.app.workspace.getLeavesOfType('markdown').find(l => (l.view as unknown as { file?: { path: string } }).file?.path === targetFile?.path);
 						if (!targetLeaf) targetLeaf = this.app.workspace.getLeavesOfType('markdown')[0];
-						if (!targetLeaf) targetLeaf = this.app.workspace.getLeaf('split', 'vertical');
-						await targetLeaf.openFile(targetFile);
+						await openFileAndFocus(this.app, targetLeaf, targetFile);
 					}
 				};
 			}
@@ -410,7 +410,7 @@ export class ForeshadowingView extends CreativeView {
 		const leaf = this.app.workspace.getLeaf(false);
 		
 		if (!searchText) {
-			await leaf.openFile(file);
+			await openFileAndFocus(this.app, leaf, file);
 			return;
 		}
 
@@ -435,6 +435,6 @@ export class ForeshadowingView extends CreativeView {
 			}
 		}
 
-		await leaf.openFile(file, { eState: { line: targetLine } });
+		await openFileAndFocus(this.app, leaf, file, { eState: { line: targetLine } });
 	}
 }

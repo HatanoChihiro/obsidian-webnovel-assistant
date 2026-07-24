@@ -1,3 +1,78 @@
+## 🚀 v3.6.0 移动端新增专注计时支持
+
+### 移动端设定速查与专注计时（实验性）
+
+- **悬浮卡片**：移动端可单独选择是否启用，若不启用则只呈现虚线样式而不显示悬浮卡片
+- **浮动统计**：专注计时状态将合并在浮动字数面板中，开启时请启用悬浮字数统计
+- **数据互通**：移动端与电脑端的数据彼此互通，都能够实现数据面板的渲染
+- **实验性**：由于移动端设备系统众多，两个功能均可能存在记录偏差或各种bug，谨慎开启
+
+### 移动端UI全面重构和体验升级
+- **创作主页**：调整了主页的布局，更适配窄屏幕
+- **写作数据追踪面板**：修复了无法完整显示的BUG
+- **时间轴看板**：优化布局，增加底部未关联章节悬浮窗，未关联章节面板不再遮挡时间轴
+- **触摸优化**：减少了卡片移动时的阻塞感，让触摸移动拖拽更丝滑
+- **添加快捷命令**：移动端现在支持使用命令添加时间线、标注伏笔和添加新设定
+
+### 工作台优化升级
+
+- **任务看板**：工作台增加任务看板视图，支持在工作台新增任务，取消了原侧面板挂载功能
+- *新增*：任务现在支持自主放弃，毕竟完不成的事情大抵在一开始就已经知道了，继续下去不过苟延残喘自我欺骗罢了
+- **便签管理**：你现在可以在工作台中直接管理所有打开的便签，支持关闭、编辑或者新建，完全同步
+- **设定看板**：图谱动画效果和单独的设定图谱保持一致，增加双击跳转设定文档功能
+- **添加新设定**：添加新设定面板增加预设的类型和关系可选项，无需在描述框中费劲地手写MD格式了
+
+### 沉浸模式新增打字机滚动
+
+- 新增沉浸模式下的打字机滚动功能，开启后仅在主编辑器启动 
+- 在沉浸模式中移除了“写作工作台”组件，提升沉浸模式的纯净度
+- 优化了沉浸模式下主编辑器与参考文档的切换逻辑，减少卡顿和错误
+
+### 其他功能优化与修复
+
+- 写作状态实时面板的章节部分增加了状态徽章和章节摘要，状态徽章可以点击切换，所有子模块支持点击折叠展开
+- 尝试优化了启动和运行性能与速度，可能可以增加部分老旧设备的体验
+- 优化了创作主页、工作台、写作数据面板的UI样式
+- 修复了一些其他BUG
+
+### English Changelog
+
+#### Mobile Quick Lore & Focus Timer (Experimental)
+
+- **Floating Cards**: Can be toggled independently on mobile devices. If disabled, only dashed underline styling is shown without popover cards.
+- **Floating Stats**: Focus timer status is merged into the floating word count panel; please enable floating word count stats when using this feature.
+- **Data Interoperability**: Data is fully synchronized between mobile and desktop devices, rendering statistics panels on both platforms.
+- **Experimental**: Due to the wide variety of mobile OS devices, both features may have recording discrepancies or bugs. Please use with caution.
+
+#### Mobile UI Overhaul & Experience Upgrade
+
+- **Novel Homepage**: Adjusted homepage layout for better narrow screen compatibility.
+- **Writing Data Tracker**: Fixed a bug where the panel could not display completely.
+- **Timeline Board**: Optimized layout and added a floating window for unlinked chapters at the bottom, so unlinked chapters no longer obscure the timeline.
+- **Touch Optimization**: Reduced resistance during card movement for smoother touch dragging and dropping.
+- **Quick Commands**: Mobile now supports commands to add timeline events, mark foreshadowing, and add new lore.
+
+#### Workbench Optimization & Upgrade
+
+- **Task Board**: Added Task Board view to the workbench, supporting task creation directly in the workbench and removing the original sidebar tab mounting.
+- *New*: Tasks can now be voluntarily abandoned—after all, tasks destined to remain incomplete are often recognized early on, and persisting is merely lingering self-deception.
+- **Sticky Notes Management**: You can now manage all open sticky notes directly in the workbench, supporting closing, editing, or creating new ones with full synchronization.
+- **Lore Board**: Graph animations are aligned with the standalone Lore Graph, and double-clicking to jump to lore documents is now supported.
+- **Add New Lore**: Added preset type and relation options to the "Add New Lore" modal, eliminating the need to manually write MD format in description fields.
+
+#### Typewriter Scroll in Immersive Mode
+
+- Added typewriter scrolling feature to Immersive Mode, active only in the main editor when enabled.
+- Removed the "Writing Workbench" component from Immersive Mode to keep the mode clean and focused.
+- Optimized tab switching logic between the main editor and reference documents in Immersive Mode, reducing lag and errors.
+
+#### Other Optimizations & Fixes
+
+- Added status badges and chapter summaries to the chapter section of the real-time Writing Status panel. Status badges can be clicked to toggle, and all sub-modules support click-to-collapse/expand.
+- Attempted performance and speed optimizations for startup and runtime, potentially improving experience on older devices.
+- Optimized UI styling for Novel Homepage, Workbench, and Writing Data panel.
+- Fixed various other bugs.
+
 ## 🔧 v3.5.6
 
 - 修复了一些代码问题。

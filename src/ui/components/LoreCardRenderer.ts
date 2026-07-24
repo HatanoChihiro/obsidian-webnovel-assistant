@@ -2,6 +2,8 @@ import { MarkdownRenderer, type Component, setIcon } from 'obsidian';
 import { t } from '../../i18n';
 import type { WebNovelAssistantPlugin } from '../../types/plugin';
 import type { LoreEntry } from '../../services/CharacterManager';
+import { openFileAndFocus } from '../../utils/leaf';
+
 
 export class LoreCardRenderer {
 	static async buildCardDOM(
@@ -60,9 +62,8 @@ export class LoreCardRenderer {
 			}
 			
 			let targetLeaf = plugin.app.workspace.getLeavesOfType('markdown').find(l => (l.view as unknown as { file?: { path: string } }).file?.path === entry.file.path);
-			if (!targetLeaf) targetLeaf = plugin.app.workspace.getLeavesOfType('markdown')[0];
 			if (!targetLeaf) targetLeaf = plugin.app.workspace.getLeaf('split', 'vertical');
-			await targetLeaf.openFile(entry.file, { eState: { line } });
+			await openFileAndFocus(plugin.app, targetLeaf, entry.file, { eState: { line } });
 		};
 
 		if (!options.hideEditButton) {
@@ -225,37 +226,53 @@ export class LoreCardRenderer {
 				await MarkdownRenderer.render(plugin.app, chunkToRender, markdownContainer, entry.file.path, component);
 
 				if (plugin.settings.lorePopoverCollapse) {
-					const headingEls = Array.from(markdownContainer.querySelectorAll('h3, h4, h5, h6'));
-					for (const el of headingEls) {
-						const level = parseInt(el.tagName.substring(1));
-						const siblingsToHide: Element[] = [];
-						let next = el.nextElementSibling;
+					const headingEls = Array.from(markdownContainer.querySelectorAll<HTMLElement>('h3, h4, h5, h6'));
+					if (headingEls.length > 0) {
+						const updateVisibility = () => {
+							const children = Array.from(markdownContainer.children) as HTMLElement[];
+							let activeCollapsedLevel = 99;
 
-						while (next) {
-							if (next.tagName.match(/^H[1-6]$/)) {
-								const nextLevel = parseInt(next.tagName.substring(1));
-								if (nextLevel <= level) break;
+							for (const child of children) {
+								if (child.tagName.match(/^H[3-6]$/i)) {
+									const level = parseInt(child.tagName.substring(1), 10);
+									if (level <= activeCollapsedLevel) {
+										activeCollapsedLevel = 99;
+									}
+
+									if (activeCollapsedLevel < level) {
+										child.addClass('is-hidden');
+									} else {
+										child.removeClass('is-hidden');
+										if (child.hasClass('is-collapsed')) {
+											activeCollapsedLevel = level;
+										}
+									}
+								} else {
+									if (activeCollapsedLevel < 99) {
+										child.addClass('is-hidden');
+									} else {
+										child.removeClass('is-hidden');
+									}
+								}
 							}
-							siblingsToHide.push(next);
-							next = next.nextElementSibling;
-						}
+						};
 
-						if (siblingsToHide.length > 0) {
+						for (const el of headingEls) {
 							el.addClass('is-collapsible');
 							el.addClass('is-collapsed');
-							siblingsToHide.forEach(s => s.addClass('is-hidden'));
 
 							el.addEventListener('click', (e) => {
 								e.stopPropagation();
 								if (el.hasClass('is-collapsed')) {
 									el.removeClass('is-collapsed');
-									siblingsToHide.forEach(s => s.removeClass('is-hidden'));
 								} else {
 									el.addClass('is-collapsed');
-									siblingsToHide.forEach(s => s.addClass('is-hidden'));
 								}
+								updateVisibility();
 							});
 						}
+
+						updateVisibility();
 					}
 				}
 			} else {

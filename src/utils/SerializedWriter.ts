@@ -16,11 +16,12 @@ export class SerializedWriter {
 		const resultPromise = this.queue.then(async () => {
 			try {
 				const result = await operation();
-				this.dirty = false;
 				return result;
 			} catch (err) {
 				Logger.error('[SerializedWriter] Operation failed:', err);
 				throw err;
+			} finally {
+				this.dirty = false;
 			}
 		});
 		// [设计说明] 用 .then(() => {}) 将 queue 链与 resultPromise 的错误解耦。

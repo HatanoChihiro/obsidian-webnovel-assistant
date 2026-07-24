@@ -4,7 +4,7 @@ import type { DailyStat } from '../types/settings';
 import { formatCount } from '../utils/format';
 import { t } from '../i18n';
 
-// 热力图等级 → CSS 类名
+// 热力图等�?�?CSS 类名
 export const HEAT_LEVELS = [
 	{ min: 0, cls: 'heat-0' },
 	{ min: 1, cls: 'heat-1' },
@@ -114,6 +114,7 @@ export class HistoryStatsModal extends Modal {
 	chartContainer!: HTMLElement;
 	scrollWrapper!: HTMLElement;
 	heatContainer!: HTMLElement;
+	heatHeadingEl!: HTMLElement;
 	heatDateRowEl!: HTMLElement;
 	heatStartInput!: HTMLInputElement;
 	heatEndInput!: HTMLInputElement;
@@ -138,26 +139,29 @@ export class HistoryStatsModal extends Modal {
 		this.efficiencyContainer = contentEl.createDiv({ cls: 'stats-efficiency-row' });
 		this.renderEfficiency();
 
-		// === 热力图 ===
-		new Setting(contentEl).setName(t('modal.heatmap')).setHeading().settingEl.addClass('stats-subheading');
+		// === 热力�?===
+		const heatHeading = new Setting(contentEl).setName(t('modal.heatmap')).setHeading();
+		heatHeading.settingEl.addClass('stats-subheading');
+		this.heatHeadingEl = heatHeading.settingEl;
 
 		this.heatDateRowEl = contentEl.createDiv({ cls: 'stats-heat-date-row' });
-		this.heatDateRowEl.createDiv({ cls: 'stats-heat-date-label', text: t('modal.start-date-label') });
+		const inputsWrapper = this.heatDateRowEl.createDiv({ cls: 'stats-heat-inputs-wrapper' });
+		inputsWrapper.createDiv({ cls: 'stats-heat-date-label', text: t('modal.start-date-label') });
 		const defaultStart = window.moment().clone().startOf('year').format('YYYY-MM-DD');
 		const defaultEnd = window.moment().clone().endOf('year').format('YYYY-MM-DD');
-		this.heatStartInput = this.heatDateRowEl.createEl('input', {
+		this.heatStartInput = inputsWrapper.createEl('input', {
 			type: 'date',
 			cls: 'stats-heat-date-input'
 		});
 		this.heatStartInput.value = this.plugin.settings.heatmapStartDate || defaultStart;
-		this.heatDateRowEl.createDiv({ cls: 'stats-heat-date-label', text: t('modal.end-date-label') });
-		this.heatEndInput = this.heatDateRowEl.createEl('input', {
+		inputsWrapper.createDiv({ cls: 'stats-heat-date-label', text: t('modal.end-date-label') });
+		this.heatEndInput = inputsWrapper.createEl('input', {
 			type: 'date',
 			cls: 'stats-heat-date-input'
 		});
 		this.heatEndInput.value = this.plugin.settings.heatmapEndDate || defaultEnd;
 
-		const resetBtn = this.heatDateRowEl.createEl('button', { text: t('modal.this-year'), cls: 'stats-tab-btn' });
+		const resetBtn = inputsWrapper.createEl('button', { text: t('modal.this-year'), cls: 'stats-heat-today-btn' });
 		resetBtn.onclick = async () => {
 			this.plugin.settings.heatmapStartDate = '';
 			this.plugin.settings.heatmapEndDate = '';
@@ -301,10 +305,10 @@ this.scrollWrapper = contentEl.createDiv({ cls: 'stats-chart-scroll-wrapper' });
 
 		const totalWeeks = Math.ceil(alignedEnd.diff(alignedStart, 'days') / 7) + 1;
 
-		// 图例放右上角 — 先清除旧的
-		const existingLegend = this.heatDateRowEl.querySelector(".stats-heatmap-legend-inline");
+		// 图例放右上角 �?先清除旧�?
+		const existingLegend = this.heatHeadingEl.querySelector(".stats-heatmap-legend-inline");
 		if (existingLegend) existingLegend.remove();
-		const legendRow = this.heatDateRowEl.createDiv({ cls: 'stats-heatmap-legend-inline' });
+		const legendRow = this.heatHeadingEl.createDiv({ cls: 'stats-heatmap-legend-inline' });
 		// Negative words legend cell
 const negCell = legendRow.createDiv({ cls: "stats-heatmap-legend-cell heat-negative" });
 negCell.setAttribute("title", t('modal.legend-negative'));
@@ -321,7 +325,7 @@ HEAT_LEVELS.forEach(level => {
 			}
 		});
 
-		// 月份标注行
+		// 月份标注�?
 		const monthRow = this.heatContainer.createDiv({ cls: 'stats-heatmap-months' });
 		const totalMonths = rangeEnd.diff(rangeStart, 'months') + 1;
 		for (let m = 0; m < totalMonths; m++) {
@@ -485,7 +489,7 @@ points.push({ x, y: yShift, val });
 // Clamp: trend line must not go below bar baseline
 baseline = Math.round(baseline);
 points.forEach(p => { p.y = Math.min(p.y, baseline); });
-	// If all points clamped to baseline, trend line has no useful shape — skip overlay
+	// If all points clamped to baseline, trend line has no useful shape �?skip overlay
 	const allClamped = points.every(p => p.y >= baseline - 2);
 	if (allClamped) return;
 
@@ -493,44 +497,44 @@ points.forEach(p => { p.y = Math.min(p.y, baseline); });
 				const svgW = Math.max(totalW, container.offsetWidth);
 
 				const svgNS = 'http://www.w3.org/2000/svg';
-				const svgEl = activeDocument.createElementNS(svgNS, 'svg');
+				const svgEl = activeDocument['createElementNS'](svgNS, 'svg');
 				svgEl.setAttribute('class', 'stats-trend-overlay');
 				svgEl.setAttribute('viewBox', `0 0 ${svgW} ${containerH}`);
 				svgEl.setAttribute('preserveAspectRatio', 'none');
 				svgEl.setCssStyles({ width: `${svgW}px` });
 				svgEl.setCssStyles({ height: `${containerH}px` });
 
-				const defsEl = activeDocument.createElementNS(svgNS, 'defs');
+				const defsEl = activeDocument['createElementNS'](svgNS, 'defs');
 				
-				const linearGradient = activeDocument.createElementNS(svgNS, 'linearGradient');
+				const linearGradient = activeDocument['createElementNS'](svgNS, 'linearGradient');
 				linearGradient.setAttribute('id', 'trendGrad');
 				linearGradient.setAttribute('x1', '0');
 				linearGradient.setAttribute('y1', '0');
 				linearGradient.setAttribute('x2', '0');
 				linearGradient.setAttribute('y2', '1');
 				
-				const stop1 = activeDocument.createElementNS(svgNS, 'stop');
+				const stop1 = activeDocument['createElementNS'](svgNS, 'stop');
 				stop1.setAttribute('offset', '0%');
 				stop1.setAttribute('stop-color', 'var(--interactive-accent)');
 				stop1.setAttribute('stop-opacity', '0.25');
 				linearGradient.appendChild(stop1);
 				
-				const stop2 = activeDocument.createElementNS(svgNS, 'stop');
+				const stop2 = activeDocument['createElementNS'](svgNS, 'stop');
 				stop2.setAttribute('offset', '50%');
 				stop2.setAttribute('stop-color', 'var(--interactive-accent)');
 				stop2.setAttribute('stop-opacity', '0.08');
 				linearGradient.appendChild(stop2);
 				
-				const stop3 = activeDocument.createElementNS(svgNS, 'stop');
+				const stop3 = activeDocument['createElementNS'](svgNS, 'stop');
 				stop3.setAttribute('offset', '100%');
 				stop3.setAttribute('stop-color', 'var(--interactive-accent)');
 				stop3.setAttribute('stop-opacity', '0');
 				linearGradient.appendChild(stop3);
 				defsEl.appendChild(linearGradient);
 				
-				const clipPath = activeDocument.createElementNS(svgNS, 'clipPath');
+				const clipPath = activeDocument['createElementNS'](svgNS, 'clipPath');
 				clipPath.setAttribute('id', 'trendClip');
-				const rect = activeDocument.createElementNS(svgNS, 'rect');
+				const rect = activeDocument['createElementNS'](svgNS, 'rect');
 				rect.setAttribute('x', '0');
 				rect.setAttribute('y', '0');
 				rect.setAttribute('width', svgW.toString());
@@ -544,13 +548,13 @@ points.forEach(p => { p.y = Math.min(p.y, baseline); });
 				const bottomY = baseline;
 				const fillClose = ` L${points[points.length - 1].x.toFixed(1)},${bottomY} L${points[0].x.toFixed(1)},${bottomY} Z`;
 				
-				const path1 = activeDocument.createElementNS(svgNS, 'path');
+				const path1 = activeDocument['createElementNS'](svgNS, 'path');
 				path1.setAttribute('d', curvePath + fillClose);
 				path1.setAttribute('fill', 'url(#trendGrad)');
 				path1.setAttribute('clip-path', 'url(#trendClip)');
 				svgEl.appendChild(path1);
 				
-				const path2 = activeDocument.createElementNS(svgNS, 'path');
+				const path2 = activeDocument['createElementNS'](svgNS, 'path');
 				path2.setAttribute('d', curvePath);
 				path2.setAttribute('fill', 'none');
 				path2.setAttribute('stroke', 'var(--interactive-accent)');
@@ -614,7 +618,7 @@ const vTension = 0.2;
 	aggregateData() {
 		const result: Record<string, { words: number, focusMs: number, slackMs: number }> = {};
 
-		// 只聚合 history 中实际存在的数据，不填充空时间段
+		// 只聚�?history 中实际存在的数据，不填充空时间段
 		for (const [date, stat] of Object.entries(this.history)) {
 			const m = window.moment(date);
 			let key = date;
@@ -635,7 +639,7 @@ const vTension = 0.2;
 			result[key].slackMs += (stat.slackMs || 0);
 		}
 
-		// 仅对日级别标签页补充缺失日期（确保近7日/近30日完整）
+		// 仅对日级别标签页补充缺失日期（确保近7�?�?0日完整）
 		const now = window.moment();
 		if (this.currentTab === 'day') {
 			const start = now.clone().subtract(29, 'days');

@@ -10,6 +10,7 @@ import { TimelineAddModal } from '../ui/TimelineAddModal';
 import type { TimelineEntry } from '../services/TimelineManager';
 import { TimelineManager } from '../services/TimelineManager';
 import { AdvancedSearchModal } from '../ui/AdvancedSearchModal';
+import { AddLoreModal } from '../ui/AddLoreModal';
 import { t } from '../i18n';
 import { getDefaultFileName } from '../i18n/data-keys';
 
@@ -41,6 +42,21 @@ class ConfirmResetDailyStatsModal extends Modal {
 	}
 }
 
+function getSelectedOrCursorWord(editor: {
+	getSelection: () => string;
+	getCursor: () => { line: number; ch: number };
+	getRange: (from: { line: number; ch: number }, to: { line: number; ch: number }) => string;
+	getWordAt?: (pos: { line: number; ch: number }) => { from: { line: number; ch: number }; to: { line: number; ch: number } } | null;
+}): string {
+	const sel = editor.getSelection().trim();
+	if (sel) return sel;
+	const wordRange = editor.getWordAt?.(editor.getCursor());
+	if (wordRange) {
+		return editor.getRange(wordRange.from, wordRange.to).trim();
+	}
+	return '';
+}
+
 export class CommandManager {
 	private plugin: WebNovelAssistantPlugin;
 
@@ -53,9 +69,9 @@ export class CommandManager {
 		this.registerTrackingCommands();
 		this.registerStickyNoteCommands();
 		this.registerChapterCommands();
-		this.registerObsCommands();
 		this.registerForeshadowingCommands();
 		this.registerTimelineCommands();
+		this.registerLoreCommands();
 		this.registerMobileCommands();
 		this.registerHomepageCommands();
 		this.registerSearchCommands();
@@ -65,32 +81,29 @@ export class CommandManager {
 		this.plugin.addCommand({
 			id: 'toggle-writing-status-view',
 			name: t('command.toggle-status-view'),
-			callback: () => { void this.plugin.toggleStatusView(); }
+			icon: 'bar-chart-2',
+			editorCallback: () => { void this.plugin.toggleStatusView(); }
 		});
 
 		this.plugin.addCommand({
 			id: 'toggle-foreshadowing-view',
 			name: t('command.toggle-foreshadowing-view'),
-			callback: () => { void this.plugin.toggleForeshadowingView(); }
+			icon: 'bookmark',
+			editorCallback: () => { void this.plugin.toggleForeshadowingView(); }
 		});
 
 		this.plugin.addCommand({
 			id: 'toggle-timeline-view',
 			name: t('command.toggle-timeline-view'),
-			callback: () => { void this.plugin.toggleTimelineView(); }
-		});
-
-		this.plugin.addCommand({
-			id: 'toggle-task-view',
-			name: t('command.toggle-task-view'),
-			callback: () => { void this.plugin.toggleTaskView(); }
+			icon: 'git-commit',
+			editorCallback: () => { void this.plugin.toggleTimelineView(); }
 		});
 
 		this.plugin.addCommand({
 			id: 'toggle-workbench-view',
 			name: t('command.toggle-workbench-view'),
 			icon: 'laptop',
-			callback: () => {
+			editorCallback: () => {
 				void this.plugin.viewManager.toggleView('webnovel-workbench');
 			}
 		});
@@ -99,7 +112,7 @@ export class CommandManager {
 			id: 'toggle-corkboard-view',
 			name: t('command.open-corkboard'),
 			icon: 'library',
-			callback: () => {
+			editorCallback: () => {
 				void this.plugin.viewManager.toggleView('webnovel-corkboard');
 			}
 		});
@@ -108,12 +121,14 @@ export class CommandManager {
 			this.plugin.addCommand({
 				id: 'toggle-immersive-mode',
 				name: t('command.toggle-immersive-mode'),
+				icon: 'maximize-2',
 				callback: () => { void this.plugin.immersiveModeManager.toggleImmersiveMode(); }
 			});
 
 			this.plugin.addCommand({
 				id: 'reset-immersive-layout',
 				name: t('command.reset-immersive-layout'),
+				icon: 'rotate-ccw',
 				callback: async () => {
 					this.plugin.settings.immersive.immersiveLayout = null;
 					await this.plugin.saveSettings();
@@ -124,10 +139,11 @@ export class CommandManager {
 	}
 
 	private registerTrackingCommands() {
-		if (isDesktop()) { // Desktop
+		if (isDesktop()) {
 			this.plugin.addCommand({
 				id: 'toggle-tracking',
 				name: t('command.toggle-tracking'),
+				icon: 'timer',
 				callback: () => {
 					if (this.plugin.isTracking) this.plugin.stopTracking();
 					else this.plugin.startTracking();
@@ -137,6 +153,7 @@ export class CommandManager {
 			this.plugin.addCommand({
 				id: 'reset-stream-session',
 				name: t('command.reset-stream-session'),
+				icon: 'refresh-cw',
 				callback: () => {
 					this.plugin.focusMs = 0;
 					this.plugin.slackMs = 0;
@@ -153,6 +170,7 @@ export class CommandManager {
 		this.plugin.addCommand({
 			id: 'reset-daily-stats',
 			name: t('command.reset-daily-stats'),
+			icon: 'trash-2',
 			callback: () => {
 				new ConfirmResetDailyStatsModal(this.plugin.app, () => {
 					const today = window.moment().format('YYYY-MM-DD');
@@ -176,10 +194,11 @@ export class CommandManager {
 	}
 
 	private registerStickyNoteCommands() {
-		if (isDesktop()) { // Desktop
+		if (isDesktop()) {
 			this.plugin.addCommand({
 				id: 'create-blank-sticky-note',
 				name: t('command.create-blank-sticky-note'),
+				icon: 'sticky-note',
 				callback: () => {
 					this.plugin.stickyNoteManager.createStickyNote({ content: '', title: t('notice.new-note-title') }).catch(console.error);
 				}
@@ -188,6 +207,7 @@ export class CommandManager {
 			this.plugin.addCommand({
 				id: 'toggle-floating-notes',
 				name: t('command.toggle-floating-notes'),
+				icon: 'file-text',
 				callback: () => {
 					void this.plugin.toggleFloatingNotesVisibility();
 				}
@@ -199,6 +219,7 @@ export class CommandManager {
 		this.plugin.addCommand({
 			id: 'create-next-chapter',
 			name: t('command.create-next-chapter'),
+			icon: 'file-plus',
 			editorCallback: async (editor, view) => {
 				const currentFile = view.file;
 				if (!currentFile) return;
@@ -241,6 +262,10 @@ export class CommandManager {
 					const newFile = await this.plugin.app.vault.create(newFilePath, templateContent);
 					await this.plugin.app.workspace.getLeaf(false).openFile(newFile);
 					new Notice(t('notice.chapter-created', { name: newFileName }));
+					// 延迟触发文件树重排序，确保 DOM 挂载完成后自动恢复规则排序
+					window.setTimeout(() => {
+						this.plugin.fileExplorerPatcher?.refreshManually();
+					}, 100);
 				} catch (error) {
 					console.error(error);
 					new Notice(t('notice.chapter-create-failed', { error: String(error) }));
@@ -251,6 +276,7 @@ export class CommandManager {
 		this.plugin.addCommand({
 			id: 'rebuild-folder-cache',
 			name: t('command.rebuild-folder-cache'),
+			icon: 'database',
 			callback: async () => {
 				if (!this.plugin.settings.showExplorerCounts) {
 					new Notice(t('notice.enable-explorer-counts-first'));
@@ -279,6 +305,7 @@ export class CommandManager {
 		this.plugin.addCommand({
 			id: 'refresh-chapter-sort',
 			name: t('command.refresh-chapter-sort'),
+			icon: 'sort-asc',
 			callback: () => {
 				if (!this.plugin.settings.enableSmartChapterSort) {
 					new Notice(t('notice.enable-smart-sort-first'));
@@ -290,38 +317,24 @@ export class CommandManager {
 		});
 	}
 
-	private registerObsCommands() {
-		if (isDesktop()) { // Desktop
-			this.plugin.addCommand({
-				id: 'copy-obs-overlay-url',
-				name: t('command.copy-obs-overlay-url'),
-				callback: () => {
-					const url = `http://127.0.0.1:${this.plugin.settings.obs.obsPort}/`;
-					void navigator.clipboard.writeText(url);
-					new Notice(t('notice.obs-url-copied', { url }));
-				}
-			});
-		}
-	}
-
 	private registerForeshadowingCommands() {
 		this.plugin.addCommand({
 			id: 'mark-as-foreshadowing',
 			name: t('command.mark-as-foreshadowing'),
+			icon: 'flag',
 			editorCheckCallback: (checking, editor, view) => {
-				const selectedText = editor.getSelection();
-				if (!selectedText || !selectedText.trim()) return false;
-				if (checking) return true;
-
 				const file = view.file;
 				if (!file) return false;
+				if (checking) return true;
+
+				const initialText = getSelectedOrCursorWord(editor);
 
 				if (!this.plugin.foreshadowingManager) return false;
 				const fm = this.plugin.foreshadowingManager;
 				const submitCallback = (description: string, tags: string[]) => {
 					void (async () => {
 						try {
-							const { file: foreshadowFile, merged } = await fm.addForeshadowing(file, selectedText, description, tags);
+							const { file: foreshadowFile, merged } = await fm.addForeshadowing(file, initialText, description, tags);
 							if (merged) {
 								new Notice(t('notice.foreshadowing-merged', { name: foreshadowFile.name }), 5000);
 							} else {
@@ -346,7 +359,7 @@ export class CommandManager {
 					void (async () => {
 						try {
 							const extraTags = await fm.getExistingTags(file);
-							new ForeshadowingInputModal(this.plugin.app, this.plugin, file.basename, selectedText, submitCallback, extraTags).open();
+							new ForeshadowingInputModal(this.plugin.app, this.plugin, file.basename, initialText, submitCallback, extraTags).open();
 						} catch (err) {
 							console.error('[CommandManager] getExistingTags failed:', err);
 						}
@@ -358,7 +371,7 @@ export class CommandManager {
 						void (async () => {
 							try {
 								const extraTags = await fm.getExistingTags(file);
-								new ForeshadowingInputModal(this.plugin.app, this.plugin, file.basename, selectedText, submitCallback, extraTags).open();
+								new ForeshadowingInputModal(this.plugin.app, this.plugin, file.basename, initialText, submitCallback, extraTags).open();
 							} catch (err) {
 								console.error('[CommandManager] getExistingTags failed:', err);
 							}
@@ -372,6 +385,7 @@ export class CommandManager {
 		this.plugin.addCommand({
 			id: 'mark-foreshadowing-recovered',
 			name: t('command.mark-foreshadowing-recovered'),
+			icon: 'check-circle',
 			editorCheckCallback: (checking, editor, view) => {
 				const file = view.file;
 				if (!file) return false;
@@ -421,21 +435,19 @@ export class CommandManager {
 
 	/**
 	 * 注册“添加到时间线”命令面板命令
-	 * 解决移动端无右键菜单导致无法选中文本添加时间线的问题
-	 * 逻辑与 MenuManager.editor-menu 中的时间线菜单项一致
+	 * 全平台通用（解决移动端无右键菜单导致无法快捷添加时间线的问题）
 	 */
 	private registerTimelineCommands() {
 		this.plugin.addCommand({
 			id: 'add-to-timeline',
 			name: t('command.add-to-timeline'),
+			icon: 'clock',
 			editorCheckCallback: (checking, editor, view) => {
-				// 必须有选中文本才启用该命令
-				const selectedText = editor.getSelection();
-				if (!selectedText || !selectedText.trim()) return false;
-				if (checking) return true;
-
 				const file = view.file;
 				if (!file) return false;
+				if (checking) return true;
+
+				const initialText = getSelectedOrCursorWord(editor);
 
 				const chapterName = file.basename;
 				const folderPath = findBookRoot(this.plugin.app, this.plugin, file) || '';
@@ -457,7 +469,7 @@ export class CommandManager {
 						new TimelineAddModal(
 							this.plugin.app,
 							this.plugin,
-							selectedText.trim(),
+							initialText,
 							chapterName,
 							folderPath,
 							(result) => {
@@ -483,7 +495,7 @@ export class CommandManager {
 									}
 								}).catch(console.error);
 							},
-							false, localTypes, selectedText.trim()
+							false, localTypes, initialText
 						).open();
 					} catch (err) {
 						console.error('[CommandManager] add-to-timeline failed:', err);
@@ -494,11 +506,29 @@ export class CommandManager {
 		});
 	}
 
+	/**
+	 * 注册“添加新设定”全平台命令面板命令
+	 */
+	private registerLoreCommands() {
+		this.plugin.addCommand({
+			id: 'add-new-lore',
+			name: t('command.add-new-lore'),
+			icon: 'book-plus',
+			editorCallback: (editor, view) => {
+				const activeFile = view.file;
+				const folderPath = activeFile ? (findBookRoot(this.plugin.app, this.plugin, activeFile) || '') : '';
+				const initialName = getSelectedOrCursorWord(editor);
+				new AddLoreModal(this.plugin.app, this.plugin, initialName, folderPath).open();
+			}
+		});
+	}
+
 	private registerMobileCommands() {
 		// 复制本文档：桌面端和移动端均生效（移动端无右键菜单，该命令尤为实用）
 		this.plugin.addCommand({
 			id: 'copy-full-content-mobile',
 			name: t('command.copy-document'),
+			icon: 'copy',
 			editorCallback: (editor, view) => {
 				void copyDocumentContent(view.file?.basename ?? '', editor.getValue());
 			}
@@ -509,7 +539,8 @@ export class CommandManager {
 		this.plugin.addCommand({
 			id: 'open-creative-homepage',
 			name: t('command.open-creative-homepage'),
-			callback: () => {
+			icon: 'home',
+			editorCallback: () => {
 				const file = this.plugin.homepageManager?.getHomepageFile();
 				if (file) {
 					void this.plugin.app.workspace.getLeaf(false).openFile(file);
@@ -522,7 +553,8 @@ export class CommandManager {
 		this.plugin.addCommand({
 			id: 'refresh-creative-homepage',
 			name: t('command.refresh-creative-homepage'),
-			callback: async () => {
+			icon: 'refresh-cw',
+			editorCallback: async () => {
 				await this.plugin.homepageManager?.refreshHomepage();
 				this.plugin.homepageManager?.refreshHomepageViews();
 				new Notice(t('notice.homepage-refreshed'));
@@ -534,7 +566,8 @@ export class CommandManager {
 		this.plugin.addCommand({
 			id: 'advanced-webnovel-search',
 			name: t('command.advanced-search'),
-			callback: () => {
+			icon: 'search',
+			editorCallback: () => {
 				new AdvancedSearchModal(this.plugin.app, this.plugin).open();
 			}
 		});

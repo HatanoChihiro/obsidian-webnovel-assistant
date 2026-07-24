@@ -3,7 +3,6 @@ import { Logger } from '../utils/Logger';
 import { isDesktop } from '../utils';
 import { FloatingStickyNote } from '../ui/StickyNote';
 import { Notice, type TFile } from 'obsidian';
-import { VIEW_TYPES } from '../constants';
 import { t } from '../i18n';
 import type { StickyNoteState } from '../types/settings';
 import { SerializedWriter } from '../utils/SerializedWriter';
@@ -68,7 +67,7 @@ export class StickyNoteDataManager {
 			this._isWriting = true;
 			try {
 				const adapter = this.plugin.app.vault.adapter;
-				const content = JSON.stringify(notes, null, 2);
+				const content = JSON.stringify(notes);
 				await adapter.write(this.notesFilePath, content);
 				this.notesData = notes;
 				// 触发全局事件，通知其他组件同步数据
@@ -89,9 +88,11 @@ export class StickyNoteDataManager {
 	}
 
 	/**
-	 * 更新单个便签数据（自动触发持久化）
+	 * 更新单个便签数据（自动触发持久化与悬浮便签同步）
+	 * @param noteState 便签状态
+	 * @param debounceSave 是否防抖保存文件
 	 */
-	updateNote(noteState: StickyNoteState): void {
+	updateNote(noteState: StickyNoteState, debounceSave = false): void {
 		const index = this.notesData.findIndex(n => n.id === noteState.id);
 		if (index !== -1) {
 			this.notesData[index] = { ...noteState };
@@ -99,10 +100,19 @@ export class StickyNoteDataManager {
 			this.notesData.push({ ...noteState });
 		}
 		
-		// 自动触发持久化，不再显式设置 dirty=true，交给 saveNotes 处理
-		this.saveNotes(this.notesData).catch(err => {
-			Logger.error('[StickyNoteDataManager] updateNote 自动保存失败:', err);
-		});
+		// 实时同步所有桌面端悬浮便签 UI 状态
+		this.syncFloatingNotes();
+
+		if (debounceSave) {
+			const debounceKey = `save-note-data-manager`;
+			this.plugin.adaptiveDebounceManager.debounceFixed(debounceKey, () => {
+				void this.saveNotes(this.notesData);
+			}, 500);
+		} else {
+			this.saveNotes(this.notesData).catch(err => {
+				Logger.error('[StickyNoteDataManager] updateNote 自动保存失败:', err);
+			});
+		}
 	}
 
 	/**
@@ -114,10 +124,11 @@ export class StickyNoteDataManager {
 	}
 
 	/**
-	 * 移除便签（自动触发持久化）
+	 * 移除便签（自动触发持久化与悬浮便签同步）
 	 */
 	removeNote(id: string): void {
 		this.notesData = this.notesData.filter(n => n.id !== id);
+		this.syncFloatingNotes();
 		this.saveNotes(this.notesData).catch(err => {
 			Logger.error('[StickyNoteDataManager] removeNote 自动保存失败:', err);
 		});
@@ -213,30 +224,16 @@ export class StickyNoteDataManager {
 		const note = new FloatingStickyNote(this.plugin.app, this.plugin, options);
 		note.load();
 
-		// 如果处于沉浸模式，立即刷新便签列表视图
-		if (activeDocument.body.classList.contains('immersive-mode-active')) {
-			// 给一点额外时间让设置/文件持久化完成
-			const timer = window.setTimeout(() => {
-				this.refreshImmersiveNotes();
-			}, 200);
-			this.plugin.register(() => window.clearTimeout(timer));
-		}
+		// 给一点额外时间让设置/文件持久化完成，并触发所有便签视图刷新
+		const timer = window.setTimeout(() => {
+			this.refreshImmersiveNotes();
+		}, 200);
+		this.plugin.register(() => window.clearTimeout(timer));
 	}
 
 	public refreshImmersiveNotes() {
-		// 如果当前有文本框正处于编辑状态，暂时跳过全量刷新，防止打断 IME 输入
-		const activeEl = activeDocument.activeElement;
-		if (activeEl && activeEl.tagName.toLowerCase() === 'textarea' &&
-			(activeEl.closest('.immersive-sticky-card') || activeEl.closest('.my-sticky-note'))) {
-			return;
-		}
-
-		this.plugin.app.workspace.getLeavesOfType(VIEW_TYPES.IMMERSIVE_STICKY_NOTES).forEach(leaf => {
-			if (leaf.view.getViewType() === VIEW_TYPES.IMMERSIVE_STICKY_NOTES) {
-				const view = leaf.view as unknown as { renderNotes?: () => void };
-				view.renderNotes?.();
-			}
-		});
+		// 触发全局便签变更事件，通知所有便签视图（包括 ImmersiveStickyNotesView 和 WorkbenchView）
+		this.plugin.app.workspace.trigger('webnovel:notes-changed');
 	}
 
 }

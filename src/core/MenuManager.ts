@@ -352,6 +352,6 @@ export class MenuManager {
 			return '';
 		}
 		// 兜底：正则匹配 frontmatter
-		return content.replace(/^---\n.*?\n---\n?/, '');
+		return content.replace(/^---\n[\s\S]*?\n---\n?/, '');
 	}
 }

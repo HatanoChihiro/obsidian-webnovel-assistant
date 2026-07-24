@@ -1,54 +1,47 @@
-import { Component } from 'obsidian';
-import { isMobile } from '../utils/platform';
+import { Component, Platform } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
-import type { LoreEntry } from '../services/CharacterManager';
-import { t } from '../i18n';
-import { LoreCardRenderer } from './components/LoreCardRenderer';
+import type { ParsedForeshadowingEntry } from '../types/foreshadowing';
+import { getForeshadowingStatusText } from '../i18n/data-keys';
 
-export class LoreHoverPopover extends Component {
+export class ForeshadowingHoverPopover extends Component {
 	private plugin: WebNovelAssistantPlugin;
-	private entry: LoreEntry;
+	private title: string;
+	private entries: ParsedForeshadowingEntry[];
 	private targetEl: HTMLElement;
 	private popoverEl: HTMLElement | null = null;
 	private closeTimeout: number | null = null;
 	private showTimeout: number | null = null;
 	private immediate: boolean = false;
-	
+
 	constructor(
 		targetEl: HTMLElement,
-		entry: LoreEntry,
+		title: string,
+		entries: ParsedForeshadowingEntry[],
 		plugin: WebNovelAssistantPlugin,
 		immediate: boolean = false
 	) {
 		super();
 		this.plugin = plugin;
-		this.entry = entry;
+		this.title = title;
+		this.entries = entries;
 		this.targetEl = targetEl;
 		this.immediate = immediate;
 
-		// 移动端无 mouseover/hover，且需校验 enableMobileLorePopover 开关
-		if (isMobile()) {
-			if (!this.plugin.settings.enableMobileLorePopover) {
-				return;
-			}
+		if (Platform.isMobile) {
 			this.immediate = true;
 		}
 
 		if (this.immediate) {
 			void this.show();
 		} else {
-			// 桌面端延迟 1000ms 后显示，避免鼠标快速划过时误触
 			this.showTimeout = window.setTimeout(() => {
-				// 确保鼠标没有离开
 				if (!this.targetEl.matches(':hover')) return;
 				void this.show();
-			}, 1000);
+			}, 400);
 		}
 
-		// 监听鼠标离开目标元素
 		this.targetEl.addEventListener('mouseleave', this.onMouseLeaveTarget);
 
-		// 监听全局点击以支持点击外部关闭（服务于移动端与桌面端点击触发）
 		if (this.immediate) {
 			window.setTimeout(() => {
 				activeDocument.addEventListener('click', this.onGlobalClick);
@@ -63,7 +56,6 @@ export class LoreHoverPopover extends Component {
 		}
 	};
 
-	
 	override onunload() {
 		if (this.showTimeout !== null) {
 			window.clearTimeout(this.showTimeout);
@@ -113,23 +105,36 @@ export class LoreHoverPopover extends Component {
 		activeDocument.removeEventListener('click', this.onGlobalClick);
 	}
 
-	private async show() {
+	private show() {
 		if (this.popoverEl) return;
 
-		this.popoverEl = createDiv();
-		this.popoverEl.addClass('webnovel-lore-popover');
-		this.popoverEl.addClass('wn-lore-hover-popover');
+		this.popoverEl = createDiv({ cls: 'webnovel-lore-popover wn-foreshadowing-hover-popover' });
 		this.popoverEl.addEventListener('mouseenter', this.onMouseEnterPopover);
 		this.popoverEl.addEventListener('mouseleave', this.onMouseLeavePopover);
 
-		if (!this.entry || !this.entry.file) {
-			this.popoverEl.createDiv({ cls: 'wn-lore-card-empty', text: t('corkboard.lore-not-found') });
-		} else {
-			const cardContainer = this.popoverEl.createDiv();
-			await LoreCardRenderer.buildCardDOM(cardContainer, this.entry, this.plugin, this, {
-				hideEditButton: true,
-				onTitleClick: () => this.hide()
-			});
+		// Header
+		const header = this.popoverEl.createDiv({ cls: 'wn-foreshadowing-popover-header' });
+		header.createSpan({ cls: 'wn-foreshadowing-popover-title', text: this.title });
+
+		// Body List
+		const listContainer = this.popoverEl.createDiv({ cls: 'wn-foreshadowing-popover-list' });
+
+		for (const entry of this.entries) {
+			const item = listContainer.createDiv({ cls: 'wn-foreshadowing-popover-item' });
+			item.createDiv({ cls: 'wn-foreshadowing-popover-desc', text: entry.description || '伏笔细节' });
+
+			if (entry.tags && entry.tags.length > 0) {
+				const tagsEl = item.createDiv({ cls: 'wn-foreshadowing-popover-tags' });
+				entry.tags.forEach(t => tagsEl.createSpan({ cls: 'wn-foreshadowing-tag-badge', text: `#${t}` }));
+			}
+
+			const statusText = getForeshadowingStatusText(entry.status);
+			const metaEl = item.createDiv({ cls: 'wn-foreshadowing-popover-meta' });
+			metaEl.createSpan({ cls: `wn-foreshadowing-status-pill status-${entry.status}`, text: statusText });
+
+			if (entry.sourceFile) {
+				metaEl.createSpan({ cls: 'wn-foreshadowing-source-info', text: `起源: ${entry.sourceFile}` });
+			}
 		}
 
 		activeDocument.body.appendChild(this.popoverEl);
@@ -139,11 +144,10 @@ export class LoreHoverPopover extends Component {
 	private positionPopover() {
 		if (!this.popoverEl) return;
 
-		const mobile = isMobile();
-		const maxHeight = mobile ? '45vh' : '35vh';
-		const maxWidth = mobile ? 'calc(100vw - 24px)' : '340px';
+		const isMobile = Platform.isMobile;
+		const maxHeight = isMobile ? '45vh' : '35vh';
+		const maxWidth = isMobile ? 'calc(100vw - 24px)' : '320px';
 
-		// 1. 先限制最大宽高与纵向滚动，让 DOM 重新排版后再获取其真实尺寸，防止由于超出屏幕而被错误计算
 		this.popoverEl.setCssStyles({
 			maxHeight: maxHeight,
 			maxWidth: maxWidth,
@@ -154,24 +158,19 @@ export class LoreHoverPopover extends Component {
 
 		const rect = this.targetEl.getBoundingClientRect();
 		const popoverRect = this.popoverEl.getBoundingClientRect();
-		
-		// 2. 默认水平居中对齐到目标词汇
-		let left = rect.left + rect.width / 2 - popoverRect.width / 2;
-		let top = rect.bottom + 8; // 默认显示在词汇下方
 
-		// 3. 水平防溢出处理
+		let left = rect.left + rect.width / 2 - popoverRect.width / 2;
+		let top = rect.bottom + 8;
+
 		const padding = isMobile ? 12 : 10;
 		if (left < padding) left = padding;
 		if (left + popoverRect.width > window.innerWidth - padding) {
 			left = window.innerWidth - popoverRect.width - padding;
 		}
-		
-		// 4. 垂直防溢出处理：如果下方空间不足以放下整个卡片，则将其翻转到词汇上方
+
 		if (top + popoverRect.height > window.innerHeight - padding) {
 			top = rect.top - popoverRect.height - 8;
 		}
-		
-		// 极端情况防御：如果放到上方后连顶部也超出了，则贴着顶部显示
 		if (top < padding) {
 			top = padding;
 		}

@@ -450,7 +450,7 @@ export class TimelineManager {
 			let finalContent = '';
 			await this.app.vault.process(file, (existing) => {
 				const headerPattern = new RegExp(
-					`(## ${escapeRegex(entry.time)}\\n)([\\s\\S]*?)(\\n---\\n)`,
+					`(## ${escapeRegex(entry.time)}\\n)([\\s\\S]*?)(\\n---\\n|\\n*$)`,
 					'm'
 				);
 				const match = headerPattern.exec(existing);

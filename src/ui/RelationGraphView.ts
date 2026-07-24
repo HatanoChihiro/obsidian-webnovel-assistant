@@ -28,6 +28,8 @@ import { GraphRenderer, type GraphRenderState } from './components/GraphRenderer
 import type { GraphNode, GraphData, GraphEdge } from '../services/RelationGraphManager';
 import type { LayoutNode, LayoutEdge } from '../services/ForceLayoutEngine';
 import { t } from '../i18n';
+import { openFileAndFocus } from '../utils/leaf';
+
 
 export interface EdgeRenderTask {
 	edge: GraphEdge;
@@ -241,6 +243,12 @@ export class RelationGraphView extends ItemView {
 		if (this.filePath) {
 			await this.loadGraphForFile(this.filePath);
 		}
+
+		// 监听 CSS 主题切换以刷新主题颜色缓存
+		this.registerEvent(this.app.workspace.on('css-change', () => {
+			this.cachedColors = null;
+			this.requestRender();
+		}));
 
 		// 监听文档变更实现图谱实时静默刷新
 		this.registerEvent(this.app.metadataCache.on('changed', (file) => {
@@ -603,8 +611,8 @@ export class RelationGraphView extends ItemView {
 		const width = canvas.width / DPR;
 		const height = canvas.height / DPR;
 
-		// 读取 Obsidian 主题颜色
-		const colors = GraphRenderer.getThemeColors(activeDocument.body);
+		// 读取 Obsidian 主题颜色（使用缓存）
+		const colors = this.getThemeColors();
 
 		const state: GraphRenderState = {
 			scale: this.scale,
@@ -764,7 +772,7 @@ export class RelationGraphView extends ItemView {
 								const headingInfo = cache.headings.find(h => h.heading === entry.heading);
 								if (headingInfo) targetLine = headingInfo.position.start.line;
 							}
-							await targetLeaf.openFile(entry.file, { eState: { line: targetLine } });
+							await openFileAndFocus(this.app, targetLeaf, entry.file, { eState: { line: targetLine } });
 						})();
 					} else {
 						new Notice(t('relation.character-not-found', { id: node.id }) || `未找到角色 ${node.id} 的设定文件`);
@@ -942,7 +950,7 @@ export class RelationGraphView extends ItemView {
 								const headingInfo = cache.headings.find(h => h.heading === entry.heading);
 								if (headingInfo) targetLine = headingInfo.position.start.line;
 							}
-							await targetLeaf.openFile(entry.file, { eState: { line: targetLine } });
+							await openFileAndFocus(this.app, targetLeaf, entry.file, { eState: { line: targetLine } });
 						})();
 					} else {
 						new Notice(t('relation.character-not-found', { id: node.id }) || `未找到角色 ${node.id} 的设定文件`);
@@ -1236,103 +1244,20 @@ export class RelationGraphView extends ItemView {
 	 * 当两个节点之间存在多条边时（不论方向），将其展开绘制为多条弧线，避免重叠。
 	 */
 	private buildEdgeOffsets(): void {
-		this.edgeOffsetMap.clear();
-		this.edgeDrawModeMap.clear();
-		this.combinedLabelMap.clear();
-
-		const pairMap = new Map<string, GraphEdge[]>();
-		for (const edge of this.graphData.edges) {
-			const id1 = edge.source < edge.target ? edge.source : edge.target;
-			const id2 = edge.source < edge.target ? edge.target : edge.source;
-			const key = `${id1}↔${id2}`;
-			if (!pairMap.has(key)) pairMap.set(key, []);
-			pairMap.get(key)!.push(edge);
-		}
-
-		for (const edges of pairMap.values()) {
-			const CURVE_OFFSET = 20;
-			const visualLines: GraphEdge[] = [];
-
-			const forwards = edges.filter(e => e.source < e.target);
-			const backwards = edges.filter(e => e.source > e.target);
-
-			const forwardLabels = new Map<string, GraphEdge[]>();
-			for (const e of forwards) {
-				const k = `${e.label}|${e.type}`;
-				if (!forwardLabels.has(k)) forwardLabels.set(k, []);
-				forwardLabels.get(k)!.push(e);
-			}
-
-			const backwardLabels = new Map<string, GraphEdge[]>();
-			for (const e of backwards) {
-				const k = `${e.label}|${e.type}`;
-				if (!backwardLabels.has(k)) backwardLabels.set(k, []);
-				backwardLabels.get(k)!.push(e);
-			}
-
-			const bidirectionalKeys = new Set<string>();
-			for (const k of forwardLabels.keys()) {
-				if (backwardLabels.has(k)) {
-					bidirectionalKeys.add(k);
-				}
-			}
-
-			const bidiEdges: GraphEdge[] = [];
-			const fwdEdges: GraphEdge[] = [];
-			const bwdEdges: GraphEdge[] = [];
-
-			for (const e of forwards) {
-				const k = `${e.label}|${e.type}`;
-				if (bidirectionalKeys.has(k)) bidiEdges.push(e);
-				else fwdEdges.push(e);
-			}
-			for (const e of backwards) {
-				const k = `${e.label}|${e.type}`;
-				if (bidirectionalKeys.has(k)) bidiEdges.push(e);
-				else bwdEdges.push(e);
-			}
-
-			const addVisualLine = (group: GraphEdge[], mode: 'bidirectional' | 'normal') => {
-				if (group.length === 0) return;
-				
-				let primary = group.find(e => e.type !== 'mention');
-				if (!primary) primary = group[0];
-				
-				if (mode === 'bidirectional') {
-					this.edgeDrawModeMap.set(primary, 'bidirectional');
-				}
-				
-				const uniqueLabels = Array.from(new Set(group.map(e => e.label))).filter(Boolean);
-				if (uniqueLabels.length > 0) {
-					this.combinedLabelMap.set(primary, uniqueLabels.join('|'));
-				}
-				
-				for (const e of group) {
-					if (e !== primary) this.edgeDrawModeMap.set(e, 'hide');
-				}
-				
-				visualLines.push(primary);
-			};
-
-			addVisualLine(bidiEdges, 'bidirectional');
-			addVisualLine(fwdEdges, 'normal');
-			addVisualLine(bwdEdges, 'normal');
-
-			if (visualLines.length === 1) {
-				this.edgeOffsetMap.set(visualLines[0], 0);
-			} else {
-				const step = CURVE_OFFSET * 2;
-				const baseOffset = -((visualLines.length - 1) * step) / 2;
-				
-				visualLines.forEach((edge, index) => {
-					let offset = baseOffset + index * step;
-					if (edge.source > edge.target) {
-						offset = -offset;
-					}
-					this.edgeOffsetMap.set(edge, offset);
-				});
-			}
-		}
+		if (!this.graphData) return;
+		GraphRenderer.buildEdgeOffsets(this.graphData, {
+			edgeOffsetMap: this.edgeOffsetMap,
+			edgeDrawModeMap: this.edgeDrawModeMap,
+			combinedLabelMap: this.combinedLabelMap,
+			graphData: this.graphData,
+			panX: this.panX,
+			panY: this.panY,
+			scale: this.scale,
+			selectedNode: this.selectedNode,
+			hoveredNode: this.hoveredNode,
+			isLocalMode: this.isLocalMode,
+			localFocusNode: this.localFocusNode
+		});
 	}
 
 	/**

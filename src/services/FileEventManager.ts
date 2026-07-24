@@ -41,13 +41,15 @@ export class FileEventManager {
 			const notesFilePath = this.plugin.stickyNoteManager.getNotesFilePath();
 
 			// 便签文件外部变更同步（如多端同步工具修改了 notes-data.json）
-			if (file.path === notesFilePath && !this.plugin.stickyNoteManager.getIsWriting()) {
-				await this.plugin.stickyNoteManager.loadNotes();
-				this.plugin.stickyNoteManager.syncFloatingNotes();
+			if (file.path === notesFilePath) {
+				if (!this.plugin.stickyNoteManager.getIsWriting()) {
+					await this.plugin.stickyNoteManager.loadNotes();
+					this.plugin.stickyNoteManager.syncFloatingNotes();
+				}
 				return;
 			}
 
-			// 字数缓存更新逻辑
+			// 智能前置过滤：非目标网文文件立即早期返回，避免多余的 IO 与计算调度
 			if (!this.plugin.cacheManager.isEligibleForWordCount(file)) return;
 
 			const isActiveFile = file.path === this.plugin.app.workspace.getActiveFile()?.path;
@@ -80,9 +82,10 @@ export class FileEventManager {
 					this.plugin.refreshFolderCounts();
 				}, 500);
 			} else {
-				// 活跃文件：由 EditorTracker 追踪，这里只刷新文件浏览器显示
+				// 活跃文件：字数由 EditorTracker 在内存中实时追踪，
+				// 这里只负责刷新文件浏览器的字数标签显示
 				this.plugin.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
-					void this.plugin.updateFileCacheAndRefresh(file);
+					this.plugin.refreshFolderCounts();
 				}, 500);
 			}
 		}));

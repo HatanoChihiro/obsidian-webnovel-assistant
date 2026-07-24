@@ -11,7 +11,7 @@ export class TouchDragPolyfill {
 					-webkit-user-select: none;
 					user-select: none;
 					-webkit-touch-callout: none;
-					touch-action: none;
+					touch-action: pan-x pan-y;
 				}
 			`;
 			activeDocument.head.appendChild(styleSheet);
@@ -64,9 +64,10 @@ export class TouchDragPolyfill {
 			startY = e.touches[0].clientY;
 			
 			longPressTimer = window.setTimeout(() => {
+				longPressTimer = null;
 				dragSource = target;
-				dragSource.setCssStyles({ opacity: '0.5' });
-				if (navigator.vibrate) navigator.vibrate(50);
+				dragSource.setCssStyles({ opacity: '0.5', pointerEvents: 'none' });
+				if (navigator.vibrate) navigator.vibrate(40);
 
 				const rect = dragSource.getBoundingClientRect();
 				ghostOffsetX = startX - rect.left;
@@ -88,14 +89,14 @@ export class TouchDragPolyfill {
 				dummyDataTransfer = new SimpleDataTransfer();
 				const dragStartEvent = createDragEvent('dragstart', e.touches[0], dummyDataTransfer);
 				dragSource.dispatchEvent(dragStartEvent);
-			}, 300);
+			}, 220);
 		};
 
 		const onTouchMove = (e: TouchEvent) => {
 			if (longPressTimer) {
 				const dx = e.touches[0].clientX - startX;
 				const dy = e.touches[0].clientY - startY;
-				if (Math.abs(dx) > 30 || Math.abs(dy) > 30) {
+				if (Math.abs(dx) > 18 || Math.abs(dy) > 18) {
 					window.clearTimeout(longPressTimer);
 					longPressTimer = null;
 				}
@@ -114,11 +115,8 @@ export class TouchDragPolyfill {
 				});
 			}
 			
-			// 隐藏 dragSource 以便 elementFromPoint 获取下面的元素
-			const oldPointerEvents = dragSource.style.pointerEvents;
-			dragSource.setCssStyles({ pointerEvents: 'none' });
+			// dragSource 已在拖拽开始时设置 pointerEvents: 'none'，直接获取触点下方的元素
 			const elemBelow = activeDocument.elementFromPoint(touch.clientX, touch.clientY);
-			dragSource.setCssStyles({ pointerEvents: oldPointerEvents });
 			
 			if (!elemBelow) return;
 			
@@ -144,7 +142,7 @@ export class TouchDragPolyfill {
 			if (!dragSource || !dummyDataTransfer) return;
 			e.stopPropagation(); // 阻止全局监听器
 
-			dragSource.setCssStyles({ opacity: '' });
+			dragSource.setCssStyles({ opacity: '', pointerEvents: '' });
 			
 			const touch = e.changedTouches[0];
 			
@@ -167,7 +165,7 @@ export class TouchDragPolyfill {
 		const onTouchCancel = (e: TouchEvent) => {
 			if (longPressTimer) window.clearTimeout(longPressTimer);
 			if (dragSource && dummyDataTransfer) {
-				dragSource.setCssStyles({ opacity: '' });
+				dragSource.setCssStyles({ opacity: '', pointerEvents: '' });
 				dragSource.dispatchEvent(createDragEvent('dragend', e.changedTouches[0], dummyDataTransfer));
 			}
 			dragSource = null;

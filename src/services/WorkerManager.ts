@@ -2,6 +2,7 @@ import { Logger } from '../utils/Logger';
 import { Notice } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { t } from '../i18n';
+import { isMobile } from '../utils/platform';
 
 /**
  * Worker 管理器
@@ -15,6 +16,9 @@ export class WorkerManager {
 	private restartTimer: number | null = null;
 	private restartResetTimer: number | null = null;
 	private blobUrl: string | null = null;
+	private backgroundStartTime: number | null = null;
+
+	private visibilityHandler = () => this.handleVisibilityChange();
 
 	constructor(plugin: WebNovelAssistantPlugin) {
 		this.plugin = plugin;
@@ -28,6 +32,11 @@ export class WorkerManager {
 			new Notice(t('notice.worker-max-restarts'), 8000);
 			Logger.error('[WorkerManager] Worker 达到最大重启次数，已停止尝试');
 			return;
+		}
+
+		if (typeof activeDocument !== 'undefined') {
+			activeDocument.removeEventListener('visibilitychange', this.visibilityHandler);
+			activeDocument.addEventListener('visibilitychange', this.visibilityHandler);
 		}
 
 		const workerCode = `
@@ -74,6 +83,9 @@ export class WorkerManager {
 	 * 向 Worker 发送消息
 	 */
 	public postMessage(msg: string): void {
+		if (msg === 'start') {
+			this.backgroundStartTime = null;
+		}
 		this.worker?.postMessage(msg);
 	}
 
@@ -81,6 +93,9 @@ export class WorkerManager {
 	 * 终止 Worker
 	 */
 	public terminate(): void {
+		if (typeof activeDocument !== 'undefined') {
+			activeDocument.removeEventListener('visibilitychange', this.visibilityHandler);
+		}
 		if (this.restartTimer) {
 			window.clearTimeout(this.restartTimer);
 			this.restartTimer = null;
@@ -96,6 +111,43 @@ export class WorkerManager {
 		if (this.blobUrl) {
 			URL.revokeObjectURL(this.blobUrl);
 			this.blobUrl = null;
+		}
+		this.backgroundStartTime = null;
+	}
+
+	/**
+	 * 处理页面前后台可见性变更
+	 */
+	private handleVisibilityChange(): void {
+		if (!this.plugin.isTracking) return;
+
+		const isVisible = typeof activeDocument !== 'undefined' && activeDocument.visibilityState === 'visible';
+		const now = Date.now();
+
+		if (!isVisible) {
+			// 切出应用或手机锁屏，记录进入后台的时间戳
+			if (!this.backgroundStartTime) {
+				this.backgroundStartTime = now;
+			}
+		} else {
+			// 切回应用前台
+			if (this.backgroundStartTime) {
+				const elapsed = now - this.backgroundStartTime;
+				if (elapsed > 0) {
+					const today = window.moment().format('YYYY-MM-DD');
+					const hour = new Date().getHours();
+					this.plugin.slackMs += elapsed;
+					this.plugin.historyManager.addSlackTime(today, elapsed);
+					this.plugin.historyManager.addHourlySlackTime(today, hour, elapsed);
+				}
+			}
+			this.backgroundStartTime = null;
+			// 重置打字激活状态，防止未输入字符时误加专注时间
+			this.plugin.lastEditTime = 0;
+			// 更新 lastTickTime 为当前时间，防止后续 Worker 首次 tick 时重复计入 delta
+			this.plugin.lastTickTime = now;
+			this.plugin.mobileFloatingStats?.updateTimerUI();
+			this.plugin.refreshStatusViews(false);
 		}
 	}
 
@@ -130,13 +182,22 @@ export class WorkerManager {
 		if (!this.plugin.lastTickTime) this.plugin.lastTickTime = now;
 		const delta = now - this.plugin.lastTickTime;
 		this.plugin.lastTickTime = now;
-		
-		const isAppFocused = activeDocument.hasFocus();
+
+		const isAppVisible = typeof activeDocument !== 'undefined' && activeDocument.visibilityState === 'visible';
+		const isAppFocused = isMobile() ? isAppVisible : (isAppVisible && typeof activeDocument !== 'undefined' && activeDocument.hasFocus());
 		const isTypingActive = (now - this.plugin.lastEditTime) < this.plugin.settings.idleTimeoutThreshold;
 		const today = window.moment().format('YYYY-MM-DD');
-
 		const hour = new Date().getHours();
-		if (isAppFocused && isTypingActive) {
+
+		if (delta > 2000) {
+			// 线程挂起、休眠或长跨度补偿
+			// 由于 worker interval 是 1000ms，正常 delta 约在 1000-1100ms
+			// 如果 delta > 2000ms，说明必定发生了至少 1 次丢帧，通常是因为应用被切到后台导致系统暂停了 worker
+			// 此时尽管唤醒时 focus=true，但这部分挂起的时间绝对不能算作专注时间，全部算入摸鱼
+			this.plugin.slackMs += delta;
+			this.plugin.historyManager.addSlackTime(today, delta);
+			this.plugin.historyManager.addHourlySlackTime(today, hour, delta);
+		} else if (isAppFocused && isTypingActive) {
 			this.plugin.focusMs += delta;
 			this.plugin.historyManager.addFocusTime(today, delta);
 			this.plugin.historyManager.addHourlyFocusTime(today, hour, delta);
@@ -153,6 +214,7 @@ export class WorkerManager {
 			});
 		}, 60000);
 		
-		this.plugin.refreshStatusViews();
+		this.plugin.mobileFloatingStats?.updateTimerUI();
+		this.plugin.refreshStatusViews(false);
 	}
 }

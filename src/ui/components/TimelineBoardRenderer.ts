@@ -1,4 +1,4 @@
-import type { App } from 'obsidian';
+import type { App, Component } from 'obsidian';
 import { setIcon, TFile, Notice, Modal } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../../types/plugin';
 import type { ParsedForeshadowingEntry } from '../../types/foreshadowing';
@@ -6,6 +6,7 @@ import { TimelineManager } from '../../services/TimelineManager';
 import { CorkboardGridRenderer } from './CorkboardGridRenderer';
 import { TimelineAddModal } from '../TimelineAddModal';
 import { t } from '../../i18n';
+import { Logger } from '../../utils/Logger';
 
 class ConfirmDeleteEventModal extends Modal {
 	constructor(app: App, private title: string, private onConfirm: () => void) {
@@ -37,6 +38,7 @@ class ConfirmDeleteEventModal extends Modal {
 export interface TimelineBoardOptions {
 	app: App;
 	plugin: WebNovelAssistantPlugin;
+	ownerComponent?: Component;
 	container: HTMLElement;
 	files: TFile[];
 	foreshadowingMap: Map<string, ParsedForeshadowingEntry[]>;
@@ -352,8 +354,8 @@ export class TimelineBoardRenderer {
 						descEl = itemRow.createDiv({ text: '', cls: 'wn-timeline-item-desc' });
 					}
 
-					// Delete button
-					const deleteBtn = itemRow.createDiv({ cls: 'wn-timeline-item-delete-btn' });
+					// Delete button (内嵌在描述框内部，随描述框自适应宽度移动)
+					const deleteBtn = descEl.createDiv({ cls: 'wn-timeline-item-delete-btn' });
 					setIcon(deleteBtn, 'trash');
 					deleteBtn.onclick = (e) => {
 						e.stopPropagation();
@@ -384,17 +386,21 @@ export class TimelineBoardRenderer {
 
 								// Clean frontmatter
 								for (const file of filesToClean) {
-									await app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
-										if (fm['timeline']) {
-											if (Array.isArray(fm['timeline'])) {
-												const timelineArr = fm['timeline'] as string[];
-												fm['timeline'] = timelineArr.filter(t => t !== eventTimeToRemove);
-												if ((fm['timeline'] as string[]).length === 0) fm['timeline'] = null;
-											} else if (fm['timeline'] === eventTimeToRemove) {
-												fm['timeline'] = null;
+									try {
+										await app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
+											if (fm['timeline']) {
+												if (Array.isArray(fm['timeline'])) {
+													const timelineArr = fm['timeline'] as string[];
+													fm['timeline'] = timelineArr.filter(t => t !== eventTimeToRemove);
+													if ((fm['timeline'] as string[]).length === 0) fm['timeline'] = null;
+												} else if (fm['timeline'] === eventTimeToRemove) {
+													fm['timeline'] = null;
+												}
 											}
-										}
-									});
+										});
+									} catch (err) {
+										Logger.error(`[TimelineBoard] 清理 ${file.path} 的 frontmatter 失败:`, err);
+									}
 								}
 
 								const originalIndex = allEntries.indexOf(entry);
@@ -456,7 +462,7 @@ export class TimelineBoardRenderer {
 					const key = `${entry.time}|${itemIdx}`;
 					const filesInItem = fileGroups.get(key) || [];
 					CorkboardGridRenderer.render({
-						app, plugin, container: cardsContainer, files: filesInItem, foreshadowingMap, draggable: true, currentBookPath, onSaveStateChange, hideVolumeHeaders: true
+						app, plugin, container: cardsContainer, files: filesInItem, foreshadowingMap, draggable: true, currentBookPath, onSaveStateChange, hideVolumeHeaders: true, maxLoreLines: 1
 					});
 
 					// Setup dropzone for this itemRow
@@ -472,7 +478,7 @@ export class TimelineBoardRenderer {
 
 						const filesInSubGap = fileGroups.get(subGapKey) || [];
 						CorkboardGridRenderer.render({
-							app, plugin, container: subCardsContainer, files: filesInSubGap, foreshadowingMap, draggable: true, currentBookPath, onSaveStateChange, hideVolumeHeaders: true
+							app, plugin, container: subCardsContainer, files: filesInSubGap, foreshadowingMap, draggable: true, currentBookPath, onSaveStateChange, hideVolumeHeaders: true, maxLoreLines: 1
 						});
 					}
 				}
@@ -521,7 +527,7 @@ export class TimelineBoardRenderer {
 
 					const filesInGap = fileGroups.get(gapKey) || [];
 					CorkboardGridRenderer.render({
-						app, plugin, container: cardsContainer, files: filesInGap, foreshadowingMap, draggable: true, currentBookPath, onSaveStateChange, hideVolumeHeaders: true
+						app, plugin, container: cardsContainer, files: filesInGap, foreshadowingMap, draggable: true, currentBookPath, onSaveStateChange, hideVolumeHeaders: true, maxLoreLines: 1
 					});
 				}
 			}
@@ -538,7 +544,7 @@ export class TimelineBoardRenderer {
 		}
 
 		// --- SVG Link Layer (Background) ---
-		const bgSvgLayer = activeDocument.createElementNS('http://www.w3.org/2000/svg', 'svg');
+		const bgSvgLayer = activeDocument['createElementNS']('http://www.w3.org/2000/svg', 'svg');
 		bgSvgLayer.classList.add('wn-timeline-svg-layer');
 		waterfallLayout.appendChild(bgSvgLayer);
 		bgSvgLayer.setCssStyles({
@@ -547,7 +553,7 @@ export class TimelineBoardRenderer {
 		});
 
 		// --- SVG Link Layer (Foreground) ---
-		const fgSvgLayer = activeDocument.createElementNS('http://www.w3.org/2000/svg', 'svg');
+		const fgSvgLayer = activeDocument['createElementNS']('http://www.w3.org/2000/svg', 'svg');
 		fgSvgLayer.classList.add('wn-timeline-svg-layer-fg');
 		waterfallLayout.appendChild(fgSvgLayer);
 		fgSvgLayer.setCssStyles({
@@ -605,20 +611,20 @@ export class TimelineBoardRenderer {
 					const endY = targetRect.top + targetRect.height / 2 - layoutRect.top;
 
 					// Draw bezier curve from endX (event desc) to startX (chapter card)
-					const path = activeDocument.createElementNS('http://www.w3.org/2000/svg', 'path');
+					const path = activeDocument['createElementNS']('http://www.w3.org/2000/svg', 'path');
 					path.setAttribute('d', `M ${endX} ${endY} C ${endX + 50} ${endY}, ${startX - 50} ${startY}, ${startX} ${startY}`);
 					path.setAttribute('fill', 'none');
 					
 					path.setAttribute('class', isHovered ? 'wn-timeline-svg-path is-hovered' : 'wn-timeline-svg-path');
 
 					// Add arrowhead at startX (pointing right to chapter card)
-					const arrow = activeDocument.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+					const arrow = activeDocument['createElementNS']('http://www.w3.org/2000/svg', 'polygon');
 					arrow.setAttribute('points', '-6,-3 0,0 -6,3');
 					arrow.setAttribute('transform', `translate(${startX}, ${startY})`);
 					arrow.setAttribute('class', isHovered ? 'wn-timeline-svg-arrow is-hovered' : 'wn-timeline-svg-arrow');
 
 					// Add a dot at the event side (endX, endY)
-					const dot = activeDocument.createElementNS('http://www.w3.org/2000/svg', 'circle');
+					const dot = activeDocument['createElementNS']('http://www.w3.org/2000/svg', 'circle');
 					dot.setAttribute('cx', `${endX}`);
 					dot.setAttribute('cy', `${endY}`);
 					dot.setAttribute('r', '3');
@@ -631,23 +637,59 @@ export class TimelineBoardRenderer {
 			}
 		};
 
-		let rafId: number;
-		const redraw = () => {
-			drawLinks();
-			rafId = window.requestAnimationFrame(redraw);
+		let scheduled = false;
+		const scheduleDrawLinks = () => {
+			if (scheduled) return;
+			scheduled = true;
+			window.requestAnimationFrame(() => {
+				scheduled = false;
+				drawLinks();
+			});
 		};
-		rafId = window.requestAnimationFrame(redraw);
 
-		// Cleanup
-		const observer = new MutationObserver((mutations) => {
-			for (const m of mutations) {
-				if (Array.from(m.removedNodes).includes(container) || Array.from(m.removedNodes).includes(waterfallLayout)) {
-					cancelAnimationFrame(rafId);
+		// 初次挂载后异步计算一次位置
+		scheduleDrawLinks();
+
+		// 监听容器滚动与鼠标悬停状态以按需绘制 SVG 连线
+		mainCol.addEventListener('scroll', scheduleDrawLinks, { passive: true });
+		sideCol.addEventListener('scroll', scheduleDrawLinks, { passive: true });
+		mainCol.addEventListener('mouseover', scheduleDrawLinks, { passive: true });
+		mainCol.addEventListener('mouseout', scheduleDrawLinks, { passive: true });
+
+		let resizeObserver: ResizeObserver | null = typeof ResizeObserver !== 'undefined'
+			? new ResizeObserver(() => scheduleDrawLinks())
+			: null;
+		if (resizeObserver) {
+			resizeObserver.observe(waterfallLayout);
+			resizeObserver.observe(mainCol);
+		}
+
+		const cleanup = () => {
+			mainCol.removeEventListener('scroll', scheduleDrawLinks);
+			sideCol.removeEventListener('scroll', scheduleDrawLinks);
+			mainCol.removeEventListener('mouseover', scheduleDrawLinks);
+			mainCol.removeEventListener('mouseout', scheduleDrawLinks);
+			if (resizeObserver) {
+				resizeObserver.disconnect();
+				resizeObserver = null;
+			}
+		};
+
+		if (options.ownerComponent) {
+			options.ownerComponent.register(cleanup);
+		} else {
+			const observer = new MutationObserver(() => {
+				if (!waterfallLayout.isConnected) {
+					cleanup();
 					observer.disconnect();
 				}
-			}
-		});
-		observer.observe(activeDocument.body, { childList: true, subtree: true });
+			});
+			window.requestAnimationFrame(() => {
+				if (waterfallLayout.parentElement) {
+					observer.observe(waterfallLayout.parentElement, { childList: true });
+				}
+			});
+		}
 
 		// Add Timeline Node Button
 		const addNodeRow = mainCol.createDiv('wn-timeline-add-node-row');
@@ -695,10 +737,25 @@ export class TimelineBoardRenderer {
 			modal.open();
 		};
 
-		// Sidebar: Unscheduled
+		// Sidebar: Unscheduled (未关联章节侧边栏/底部悬浮抽屉窗)
 		const unscheduledHeader = sideCol.createDiv('wn-timeline-sidebar-header');
-		setIcon(unscheduledHeader.createSpan(), 'help-circle');
-		unscheduledHeader.createSpan({ text: t('corkboard.unscheduled-chapters') });
+		const titleGroup = unscheduledHeader.createDiv('wn-timeline-sidebar-title-group');
+		setIcon(titleGroup.createSpan(), 'help-circle');
+		titleGroup.createSpan({ text: t('corkboard.unscheduled-chapters') });
+		// 始终展示未关联章节的数量（包含 0），提升作者概览与归还槽感知
+		titleGroup.createSpan({ text: ` (${unscheduled.length})`, cls: 'wn-timeline-sidebar-count' });
+
+		const toggleBtn = unscheduledHeader.createSpan('wn-timeline-sidebar-toggle-icon');
+		setIcon(toggleBtn, 'chevron-down');
+
+		// 点击头部支持展开/折叠未关联章节悬浮窗
+		unscheduledHeader.onclick = (e) => {
+			e.stopPropagation();
+			const isCollapsed = sideCol.hasClass('is-collapsed');
+			sideCol.toggleClass('is-collapsed', !isCollapsed);
+			setIcon(toggleBtn, !isCollapsed ? 'chevron-up' : 'chevron-down');
+		};
+
 		setupDropzone(sideCol, []); // Drag back to sidebar to remove timeline
 		const sideGrid = sideCol.createDiv('wn-corkboard-grid');
 

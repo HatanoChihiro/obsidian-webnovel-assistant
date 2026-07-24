@@ -38,6 +38,7 @@ export class FileExplorerPatcher {
 
 	private enableRetries = 0;
 	private retryTimer: number | null = null;
+	private fileRefreshTimer: number | null = null;
 
 
 	enable(): boolean {
@@ -344,8 +345,13 @@ export class FileExplorerPatcher {
 					this.plugin.saveSettings().catch(() => {});
 				}
 			}
-			const timer = window.setTimeout(() => this.refreshAllExplorers(), 100);
-		this.plugin.register(() => window.clearTimeout(timer));
+			if (this.fileRefreshTimer !== null) {
+				window.clearTimeout(this.fileRefreshTimer);
+			}
+			this.fileRefreshTimer = window.setTimeout(() => {
+				this.fileRefreshTimer = null;
+				this.refreshAllExplorers();
+			}, 100);
 		}));
 		this.vaultEventRefs.push(this.app.vault.on('rename', (file, oldPath) => {
 			if (!this.enabled) return;
@@ -378,8 +384,13 @@ export class FileExplorerPatcher {
 					this.plugin.saveSettings().catch(() => {});
 				}
 			}
-			const timer = window.setTimeout(() => this.refreshAllExplorers(), 100);
-		this.plugin.register(() => window.clearTimeout(timer));
+			if (this.fileRefreshTimer !== null) {
+				window.clearTimeout(this.fileRefreshTimer);
+			}
+			this.fileRefreshTimer = window.setTimeout(() => {
+				this.fileRefreshTimer = null;
+				this.refreshAllExplorers();
+			}, 100);
 		}));
 		
 		// 监听布局变化，确保在文件浏览器重新加载时重置拖拽事件
@@ -401,6 +412,10 @@ export class FileExplorerPatcher {
 		if (this.retryTimer !== null) {
 			window.clearTimeout(this.retryTimer);
 			this.retryTimer = null;
+		}
+		if (this.fileRefreshTimer !== null) {
+			window.clearTimeout(this.fileRefreshTimer);
+			this.fileRefreshTimer = null;
 		}
 
 		this.enabled = false;
@@ -452,25 +467,9 @@ export class FileExplorerPatcher {
 				const item = fileExplorerItems[path];
 				if (!item.el) continue;
 
-				let isEligible = false;
-				if (item.file instanceof TFolder || (item.file instanceof TFile && item.file.extension === 'md')) {
-					let isInWorkspace = true;
-					if (item.file instanceof TFile) {
-						isInWorkspace = this.plugin.cacheManager.isEligibleForWordCount(item.file);
-					} else if (item.file instanceof TFolder) {
-						if (this.plugin.settings.workspaceFolders && this.plugin.settings.workspaceFolders.length > 0) {
-							const folderPath = item.file.path;
-							isInWorkspace = this.plugin.settings.workspaceFolders.some(workspace => {
-								const normalizedWorkspace = workspace.replace(/^\/+|\/+$/g, '');
-								return folderPath.startsWith(normalizedWorkspace) || normalizedWorkspace.startsWith(folderPath);
-							});
-						}
-					}
-					isEligible = isInWorkspace;
-				}
-
+				// 性能优化：直接查询 CacheManager 缓存，绕过昂贵的正则合格性检查
 				let count: number | null = null;
-				if (isEligible) {
+				if (item.file instanceof TFolder || (item.file instanceof TFile && item.file.extension === 'md')) {
 					count = this.plugin.cacheManager.getFolderWordCount(path);
 				}
 
