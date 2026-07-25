@@ -21,23 +21,19 @@ export function createTypewriterExtension(plugin: WebNovelAssistantPlugin): Exte
 			this.view = view;
 			this.decorations = this.buildDecorations(view);
 
-			// 监听鼠标事件，防止拖拽选择文本时自动滚动导致跳屏
-			this.onMouseDown = this.onMouseDown.bind(this);
-			this.onMouseUp = this.onMouseUp.bind(this);
-
 			if (view.scrollDOM) {
 				view.scrollDOM.addEventListener('mousedown', this.onMouseDown);
 			}
 			activeDocument.addEventListener('mouseup', this.onMouseUp);
 		}
 
-		private onMouseDown() {
+		private onMouseDown = (): void => {
 			this.isMouseDown = true;
-		}
+		};
 
-		private onMouseUp() {
+		private onMouseUp = (): void => {
 			this.isMouseDown = false;
-		}
+		};
 
 		destroy() {
 			if (this.scrollTimer !== null) {

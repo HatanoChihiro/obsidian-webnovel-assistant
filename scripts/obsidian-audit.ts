@@ -1,5 +1,6 @@
 import { Project, SyntaxKind, PropertyAccessExpression } from 'ts-morph';
 import * as path from 'path';
+import * as fs from 'fs';
 
 console.log('🔍 Running Obsidian API Compliance Audit...');
 
@@ -172,10 +173,39 @@ project.getSourceFiles().forEach(sourceFile => {
 			}
 		}
 	});
+
+	// 9. Check event listener callbacks for this-scoping warnings
+	const callExprs = sourceFile.getDescendantsOfKind(SyntaxKind.CallExpression);
+	callExprs.forEach(callExpr => {
+		const expr = callExpr.getExpression();
+		if (expr.getKind() === SyntaxKind.PropertyAccessExpression) {
+			const propAccess = expr as PropertyAccessExpression;
+			const name = propAccess.getName();
+			if (name === 'addEventListener' || name === 'removeEventListener') {
+				const args = callExpr.getArguments();
+				if (args.length >= 2) {
+					const cbArg = args[1];
+					if (cbArg.getKind() === SyntaxKind.PropertyAccessExpression) {
+						const cbPropAccess = cbArg as PropertyAccessExpression;
+						if (cbPropAccess.getExpression().getText() === 'this') {
+							const methodName = cbPropAccess.getName();
+							const classDecl = cbArg.getFirstAncestorByKind(SyntaxKind.ClassDeclaration);
+							if (classDecl) {
+								const method = classDecl.getMethod(methodName);
+								if (method) {
+									console.error(`❌ [Warning] Method '${methodName}' passed to ${name} is declared as a regular class method instead of an arrow function property in ${filePath}:${cbArg.getStartLineNumber()}`);
+									hasErrors = true;
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	});
 });
 
-// 9. CSS Checks
-import * as fs from 'fs';
+// 10. CSS Checks
 const cssPath = path.join(__dirname, '../styles.css');
 if (fs.existsSync(cssPath)) {
 	const cssText = fs.readFileSync(cssPath, 'utf8');
@@ -186,6 +216,11 @@ if (fs.existsSync(cssPath)) {
 	cssLines.forEach((line, index) => {
 		if (line.includes('!important')) {
 			console.error(`❌ [Warning] Avoid !important — override styles by increasing selector specificity or using CSS variables instead in styles.css:${index + 1}`);
+			hasErrors = true;
+		}
+
+		if (/\bdisplay:\s*contents\b/.test(line)) {
+			console.error(`❌ [Warning] Avoid 'display: contents' (partially supported in Obsidian 1.7.4 engines) in styles.css:${index + 1}`);
 			hasErrors = true;
 		}
 

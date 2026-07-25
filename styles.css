@@ -2442,19 +2442,11 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 body.is-phone .homepage-welcome-section {
 
-	display: grid;
+	display: flex;
 
-	grid-template-columns: 1fr auto;
+	flex-direction: column;
 
-	grid-template-areas:
-
-		"title title"
-
-		"total total"
-
-		"today addbtn";
-
-	row-gap: 8px;
+	gap: 8px;
 
 	margin-bottom: 16px;
 
@@ -2462,19 +2454,35 @@ body.is-phone .homepage-welcome-section {
 
 body.is-phone .homepage-welcome-header {
 
-	display: contents;
+	display: flex;
+
+	justify-content: space-between;
+
+	align-items: center;
+
+	flex-wrap: wrap;
+
+	gap: 8px;
 
 }
 
 body.is-phone .homepage-progress-row {
 
-	display: contents;
+	display: flex;
+
+	justify-content: space-between;
+
+	align-items: center;
+
+	flex-wrap: wrap;
+
+	gap: 8px;
 
 }
 
 body.is-phone .homepage-welcome-title {
 
-	grid-area: title;
+	width: 100%;
 
 	font-size: 20px;
 
@@ -2502,13 +2510,11 @@ body.is-phone .homepage-welcome-icon svg {
 
 body.is-phone .homepage-add-novel-btn {
 
-	grid-area: addbtn;
-
 	font-size: 12px;
 
 	padding: 4px 10px;
 
-	justify-self: end;
+	margin-left: auto;
 
 	align-self: center;
 
@@ -2522,7 +2528,7 @@ body.is-phone .homepage-progress-separator {
 
 body.is-phone .homepage-progress-item:nth-child(1) {
 
-	grid-area: total;
+	width: 100%;
 
 	display: flex;
 
@@ -2533,8 +2539,6 @@ body.is-phone .homepage-progress-item:nth-child(1) {
 }
 
 body.is-phone .homepage-progress-item:nth-child(3) {
-
-	grid-area: today;
 
 	display: flex;
 

@@ -102,8 +102,9 @@ Welcome to WebNovel Assistant! An Obsidian plugin designed specifically for web 
 #### Overview
 - **Full-Screen Focus**: Enter a full-screen writing environment that hides all distracting elements including Obsidian sidebars, status bar, title bar, and more.
 - **Dynamic Dashboard**: Top bar displays the novel title in real time, focus/slack duration, today's net word count, and goal progress.
-- **Slot-Based Layout**: Freely assign auxiliary panels to the top, bottom, left, and right areas around the main editing zone. Unassigned panel areas automatically collapse to the edges, maximizing the main editing area.
-- **Reference Documents**: Left-click a chapter to open the document in the main editing area; right-click to open it in the right reference area
+- **Typewriter Scroll & Line Dimming**: Supports Typewriter Scroll and Context Line Dimming, toggleable via the central status bar for focused line writing.
+- **Slot-Based Layout**: Freely assign auxiliary panels to top, bottom, left, and right areas around the main editing zone. Unassigned panel areas collapse to edges to maximize editing area.
+- **Reference Documents**: Left-click a chapter to open the document in the main editing area; right-click to open it in the right reference area.
 
 #### How to Use
 1. Open any novel chapter (Markdown file).
@@ -111,10 +112,12 @@ Welcome to WebNovel Assistant! An Obsidian plugin designed specifically for web 
 3. Or click the sidebar ribbon icon.
 
 #### Related Settings
-- **Slot Layout**: In the immersive mode tab on the settings page, use the visual layout editor to freely drag and assign panels (chapter list, foreshadowing, timeline, notes, reference documents, chapter overview) to the top, bottom, left, and right areas.
-- **Auto-Hide Properties Panel**: When enabled, the Markdown file's properties panel at the top is automatically hidden in immersive mode.
-- **Immersive Mode Note Size**: Customize the card edge length in the notes list (default 280px).
-- **Immersive Mode Note Font Size**: Adjust the font size for note previews.
+- **Typewriter Scroll**: Keeps the active cursor line vertically centered on screen.
+- **Context Line Dimming**: Dims non-focused lines when typewriter mode is active to boost concentration.
+- **Slot Layout**: In settings under Immersive Mode, use the visual layout editor to freely assign panels (chapter list, foreshadowing, timeline, notes, reference documents, chapter overview) to top, bottom, left, and right slots.
+- **Auto-Hide Properties Panel**: When enabled, the Markdown properties panel at the top is automatically hidden in immersive mode.
+- **Immersive Mode Note Size**: Customize card edge length in notes list (default 280px).
+- **Immersive Mode Note Font Size**: Adjust font size for note previews.
 
 ---
 
@@ -757,22 +760,24 @@ Supporting character, a loyal companion.
 ### Writing Workbench
 
 #### Overview
-The Writing Workbench is a comprehensive writing management center upgraded from the original "Chapter Overview". It is divided into three main tab panels:
+The Writing Workbench is a comprehensive writing management center upgraded from the original "Chapter Overview", integrating 5 main tab panels:
 
 1. **All Chapters Panel**:
-   - Quickly create chapters, modify chapter names, and summaries.
-   - Quickly switch the writing status of the current novel at the top (e.g., To Write, Outline, Serializing).
-   - The badges at the bottom of the card automatically display the **Lore** and **Foreshadowing** appearing in the current chapter. Click to quickly preview them.
-   - **Supports Chapter Templates**: You can enable "Enable Chapter Template" in the settings and specify a template path. Once enabled, creating a new chapter via the workbench or using the "Create Next Chapter" command will automatically use the template content.
+   - Quickly create chapters, modify chapter names and summaries.
+   - Supports **manual drag-and-drop reordering** (automatically renames subsequent numbered chapter files).
+   - Badges at the bottom display **Lore** and **Foreshadowing** appearing in the current chapter; click to preview.
+   - **Supports Chapter Templates**: Enable in settings to automatically apply template content to new chapters.
 2. **Timeline Panel**:
-   - Displays novel events in a vertical timeline flow.
-   - Supports directly **dragging** chapter cards from the All Chapters panel to a specific timeline node to automatically bind events to chapters.
-   - Supports synchronization with the global timeline panel for sorting and type filtering.
+   - Displays novel events in a vertical timeline flow; supports dragging chapters to timeline nodes and dragging event cards to reorder.
+   - Features a bottom floating window for unlinked chapters and highlighted association lines.
 3. **Lore Panel**:
-   - Browse all lore of the current novel in a grid format.
-   - Automatically counts and displays the **total appearance count** and **appearance chapter list** for each lore entry.
-   - Visually displays the **relationships** between a lore entry and others.
-   - Supports quickly adding new lore directly within the panel.
+   - Supports switching between **Table View**, **Card View**, and **Full Lore Graph View**.
+   - Automatically tracks appearance counts and chapters; supports double-clicking graph nodes to jump directly to the Markdown document.
+4. **Task Board Panel**:
+   - Consolidates timed writing tasks into a grid card view directly inside the workbench.
+   - Provides a voluntary **Abandon Task** button with a confirmation modal for incomplete tasks, setting status to `abandoned` while preserving word count records.
+5. **Notes Management Panel**:
+   - Centralizes management for all floating and immersive sticky notes. Create, edit, switch themes, or delete notes with real-time bi-directional sync.
 
 #### How to Use
 
@@ -902,21 +907,20 @@ The Writing Workbench is a comprehensive writing management center upgraded from
 
 ---
 
-### Floating Word Count
+### Floating Word Count & Focus Timer (Experimental)
 
 #### Overview
-- **Mobile Exclusive**: Displays a floating word count window on screen
-- **Real-Time Updates**: Word count updates automatically while editing
-- **Progress Display**: Includes current word count, chapter goal, and completion percentage
-- **Non-Obstructive**: Window position is adjustable
+- **Mobile Exclusive**: Displays floating word count and focus timer window on mobile devices.
+- **Real-Time Updates**: Automatically updates word count, target percentage, and focus timer while editing.
+- **Edge Docking & Auto-Collapse**: Dragging to left/right screen edges (≤35px) automatically collapses the widget into a subtle semi-transparent handle (opacity 0.35) without obstructing typing; click or hover expands it back.
+- **Settings Customization**: Adjust the **Focus Sensitivity Threshold** slider in mobile settings to control idle timeout detection.
 
 #### How to Use
-1. Open plugin settings
-2. Find **Show Mobile Floating Word Count**
-3. After enabling, the floating window automatically appears on screen
-4. Displays: current word count, goal word count, completion percentage
+1. Open plugin settings → Enable **Show Mobile Floating Word Count**.
+2. Floating widget displays current word count, chapter goal, completion percentage, and focus duration.
+3. Drag to left or right screen edge to trigger edge docking collapse.
 
-> **Tip**: After enabling the floating window, the status bar word count is automatically hidden to avoid duplicate display.
+> **Tip**: After enabling the floating window, status bar word count is automatically hidden to avoid duplicate display. Data is fully synchronized with desktop.
 
 ---
 
@@ -1150,6 +1154,43 @@ A:
 - Advanced features (Worker time tracking, OBS, notes) are only available on desktop
 - Tablet supports panel features (writing status, foreshadowing, timeline)
 - Mobile provides the "Copy This Document" command, solving the Obsidian mobile limitation where Select All only selects the visible area
+
+### Q: Gutter word count markers hidden or misaligned when using Minimal or third-party themes?
+A: The Minimal theme applies strict display and margin restrictions on editor gutters. You can use Obsidian's **Settings → Appearance → CSS Snippets** feature to add the following custom CSS snippet to remove visibility restrictions and adjust marker offsets & line margins:
+
+```css
+/* 1. Remove container restrictions and hidden states */
+.markdown-source-view.mod-cm6 .cm-gutters {
+  display: flex !important;
+  opacity: 1 !important;
+  background-color: transparent !important;
+}
+
+.markdown-source-view.mod-cm6 .cm-gutter.webnovel-word-count-gutter {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  overflow: visible !important;
+}
+
+/* 2. Reset marker container positioning and offset to the right using relative + left */
+.webnovel-word-count-marker-wrapper {
+  display: inline-flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  white-space: nowrap !important;
+  transform: none !important; /* Clear previous translateX effect */
+  
+  /* Position control: move pixels to the right via relative positioning */
+  position: relative !important;
+  left: 80px !important; /* Adjust this value! Larger value moves marker further right */
+}
+
+/* 3. Add sufficient left margin for main content area to prevent overlap */
+.markdown-source-view.mod-cm6 .cm-sizer {
+  margin-left: 60px !important; /* Increase this value if markers overlap text after shift */
+}
+```
 
 ### Q: Conflicts with other plugins?
 A:

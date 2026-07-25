@@ -34,12 +34,12 @@ Full bilingual UI (Chinese & English) — homepage, word count, goal tracking, f
 <img width="100%" alt="homepage" src="assets/homepage.gif" />
 
 ### 🗂️ Writing Workbench
-<sub>All Chapters Panel · Timeline Board · Lore Board</sub>
+<sub>All Chapters Panel · Timeline Board · Lore Board · Task Board · Notes Management</sub>
 
 <img width="100%" alt="workbench" src="assets/workbench.gif" />
 
 ### 🌑 Immersive Writing Mode
-<sub>Full-screen Focus · Dynamic Dashboard · Slot-based Layout</sub>
+<sub>Full-screen Focus · Typewriter Scroll & Line Dimming · Dynamic Dashboard · Slot-based Layout</sub>
 
 <img width="100%" alt="immersive-mode" src="assets/immersive-mode.png" />
 
@@ -62,9 +62,9 @@ Full bilingual UI (Chinese & English) — homepage, word count, goal tracking, f
 <td width="33%" align="center"><b>Chapter Corkboard</b><br /><sub>Card overview, status & synopsis editing</sub><br /><br /><img width="100%" alt="corkboard" src="assets/corkboard.gif" /></td>
 </tr>
 <tr>
-<td width="33%" align="center"><b>Lore Quick Lookup</b><br /><sub>Auto-highlight, right-click add, relation graph</sub><br /><br /><img width="100%" alt="lore-lookup" src="assets/lore-lookup.gif" /></td>
+<td width="33%" align="center"><b>Lore Quick Lookup</b><br /><sub>Auto-highlight, preset types & relations, relation graph</sub><br /><br /><img width="100%" alt="lore-lookup" src="assets/lore-lookup.gif" /></td>
 <td width="33%" align="center"><b>Sticky Notes</b><br /><sub>Floating, auto-save, sync, Markdown render</sub><br /><br /><img width="100%" alt="sticky-note" src="assets/sticky-note.gif" /></td>
-<td width="33%" align="center"><b>Task Tracker</b><br /><sub>Create periodic tasks, self-driven deadlines</sub><br /><br /><img width="100%" alt="task" src="assets/task.gif" /></td>
+<td width="33%" align="center"><b>Task Tracker</b><br /><sub>Create periodic tasks, self-driven deadlines & voluntary abandon</sub><br /><br /><img width="100%" alt="task" src="assets/task.gif" /></td>
 </tr>
 <tr>
 <td width="33%" align="center"><b>Advanced Search</b><br /><sub>Search by book, global or custom scope</sub><br /><br /><img width="100%" alt="search" src="assets/search.gif" /></td>
@@ -77,8 +77,8 @@ Full bilingual UI (Chinese & English) — homepage, word count, goal tracking, f
 
 | 🎥 OBS Overlay | 📱 Mobile |
 |:---|:---|
-| Real-time writing stats in OBS | Floating word count widget |
-| Custom style, opacity & content | Touch-optimized, anti-mistouch |
+| Real-time writing stats in OBS | Floating word count & focus timer widget |
+| Custom style, opacity & content | Edge docking & auto-collapse handle |
 | Zero latency, zero disk I/O | **Copy Document** — one-click with title prepended |
 
 <br />
@@ -214,12 +214,12 @@ If this plugin helps with your writing, consider buying the author a coffee ☕.
 <img width="100%" alt="homepage" src="assets/homepage.gif" />
 
 ### 🗂️ 写作工作台
-<sub>全章节面板 · 时间轴看板 · 设定看板</sub>
+<sub>全章节面板 · 时间轴看板 · 设定看板 · 任务看板 · 便签管理</sub>
 
 <img width="100%" alt="workbench" src="assets/workbench.gif" />
 
 ### 🌑 沉浸写作模式
-<sub>全屏专注 · 动态仪表盘 · 插槽化布局</sub>
+<sub>全屏专注 · 打字机居中滚动与行淡化 · 动态仪表盘 · 插槽化布局</sub>
 
 <img width="100%" alt="immersive-mode" src="assets/immersive-mode.png" />
 
@@ -242,9 +242,9 @@ If this plugin helps with your writing, consider buying the author a coffee ☕.
 <td width="33%" align="center"><b>章节一览</b><br /><sub>卡片式展示、状态标记、摘要编辑</sub><br /><br /><img width="100%" alt="corkboard" src="assets/corkboard.gif" /></td>
 </tr>
 <tr>
-<td width="33%" align="center"><b>设定速查与图谱</b><br /><sub>自动标注、边写边建、自动关系图谱</sub><br /><br /><img width="100%" alt="lore-lookup" src="assets/lore-lookup.gif" /></td>
+<td width="33%" align="center"><b>设定速查与图谱</b><br /><sub>自动标注、预设类型与关系可视化、关联图谱</sub><br /><br /><img width="100%" alt="lore-lookup" src="assets/lore-lookup.gif" /></td>
 <td width="33%" align="center"><b>悬浮便签</b><br /><sub>多端同步、自动保存、Markdown渲染</sub><br /><br /><img width="100%" alt="sticky-note" src="assets/sticky-note.gif" /></td>
-<td width="33%" align="center"><b>任务追踪</b><br /><sub>创建周期任务，自我驱动</sub><br /><br /><img width="100%" alt="task" src="assets/task.gif" /></td>
+<td width="33%" align="center"><b>任务追踪</b><br /><sub>创建周期任务、支持自主放弃</sub><br /><br /><img width="100%" alt="task" src="assets/task.gif" /></td>
 </tr>
 <tr>
 <td width="33%" align="center"><b>高级搜索</b><br /><sub>支持当前书籍、全局、自定义，快速跳转</sub><br /><br /><img width="100%" alt="search" src="assets/search.gif" /></td>
@@ -257,8 +257,8 @@ If this plugin helps with your writing, consider buying the author a coffee ☕.
 
 | 🎥 OBS叠加层 | 📱 移动端 |
 |:---|:---|
-| 实时显示写作数据 | 浮动字数统计窗口 |
-| 自定义样式、透明度、内容 | 触摸优化、防误触 |
+| 实时显示写作数据 | 浮动字数统计与专注计时小窗 |
+| 自定义样式、透明度、内容 | 贴边吸附与自动收起手柄模式 |
 | 零延迟、零磁盘消耗 | **复制本文档** — 一键带标题复制 |
 
 <br />

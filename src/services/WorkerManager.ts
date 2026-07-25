@@ -130,22 +130,14 @@ export class WorkerManager {
 				this.backgroundStartTime = now;
 			}
 		} else {
-			// 切回应用前台
-			if (this.backgroundStartTime) {
-				const elapsed = now - this.backgroundStartTime;
-				if (elapsed > 0) {
-					const today = window.moment().format('YYYY-MM-DD');
-					const hour = new Date().getHours();
-					this.plugin.slackMs += elapsed;
-					this.plugin.historyManager.addSlackTime(today, elapsed);
-					this.plugin.historyManager.addHourlySlackTime(today, hour, elapsed);
-				}
-			}
+			// 切回应用前台：仅重置状态，不计算时间
+			// 时间累加由 handleMessage 的 delta > 2000 分支统一处理，
+			// 避免与 Worker 线程的 tick 消息产生竞态双重计算
 			this.backgroundStartTime = null;
 			// 重置打字激活状态，防止未输入字符时误加专注时间
 			this.plugin.lastEditTime = 0;
-			// 更新 lastTickTime 为当前时间，防止后续 Worker 首次 tick 时重复计入 delta
-			this.plugin.lastTickTime = now;
+			// 注意：不要重置 lastTickTime！
+			// 让 handleMessage 通过 delta > 2000 分支正确地将后台时间一次性计入摸鱼
 			this.plugin.mobileFloatingStats?.updateTimerUI();
 			this.plugin.refreshStatusViews(false);
 		}
