@@ -246,6 +246,21 @@ if (fs.existsSync(cssPath)) {
 	});
 }
 
+// 11. Manifest Checks
+const manifestPath = path.join(__dirname, '../manifest.json');
+if (fs.existsSync(manifestPath)) {
+	try {
+		const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+		if (manifest.description && /\bobsidian\b/i.test(manifest.description)) {
+			console.error(`❌ [Error] Plugin description in manifest.json must not include the word "Obsidian" (redundant in plugin directory).`);
+			hasErrors = true;
+		}
+	} catch (e) {
+		console.error(`❌ [Error] Failed to parse manifest.json: ${e}`);
+		hasErrors = true;
+	}
+}
+
 if (hasErrors) {
 	console.error('💥 Audit failed! Please fix the errors above before releasing.');
 	process.exit(1);

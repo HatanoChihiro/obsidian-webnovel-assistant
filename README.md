@@ -41,7 +41,7 @@ Accurate word count & goal tracking · Story timeline · Foreshadowing manager �
 ### 🌑 Immersive Writing Mode
 <sub>Full-screen Focus · Typewriter Scroll & Line Dimming · Dynamic Dashboard · Slot-based Layout</sub>
 
-<img width="100%" alt="immersive-mode" src="assets/immersive-mode.png" />
+<img width="100%" alt="immersive-mode" src="assets/immersive-mode.gif" />
 
 ### 📊 Word Count & Goals
 <sub>3 Counting Modes · Multi-direction Goal Tracking · Strict Chapter Mode · Smart Chapter Sorting · Real-time Word Reminder · Folder Word Count Display</sub>
@@ -221,7 +221,7 @@ If this plugin helps with your writing, consider buying the author a coffee ☕.
 ### 🌑 沉浸写作模式
 <sub>全屏专注 · 打字机居中滚动与行淡化 · 动态仪表盘 · 插槽化布局</sub>
 
-<img width="100%" alt="immersive-mode" src="assets/immersive-mode.png" />
+<img width="100%" alt="immersive-mode" src="assets/immersive-mode.gif" />
 
 ### 📊 字数统计与目标追踪
 <sub>3种字数统计模式 · 多向目标追踪 · 严格章节模式 · 智能章节排序 · 实时字数提醒 · 文件夹字数显示</sub>
