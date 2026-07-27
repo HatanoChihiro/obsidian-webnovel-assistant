@@ -5,6 +5,8 @@
 /** 限时任务条目状态（内部 key 为英文，显示文本通过 i18n 获取） */
 export type TaskStatus = 'active' | 'completed' | 'incomplete' | 'notStarted' | 'abandoned';
 
+export type TaskType = 'wordCount' | 'event';
+
 /** 限时任务条目（解析后的结构化数据） */
 // 限时任务类型
 export interface TaskEntry {
@@ -14,6 +16,8 @@ export interface TaskEntry {
 	platform: string;
 	/** 任务详情 */
 	position: string;
+	/** 任务类型（'wordCount': 字数任务, 'event': 事件任务） */
+	taskType?: TaskType;
 	/** 字数要求 */
 	wordTarget: number;
 	/** 起始时间 (YYYY-MM-DD) */

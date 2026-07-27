@@ -1,6 +1,8 @@
-import type { App} from 'obsidian';
+import type { App } from 'obsidian';
 import { Modal, Setting } from 'obsidian';
 import type { DailyStat } from '../types/settings';
+import type { NovelFolderInfo } from '../types/homepage';
+import { TaskManager } from '../services/TaskManager';
 import { formatCount } from '../utils/format';
 import { t } from '../i18n';
 
@@ -93,6 +95,42 @@ export function calcDailyAverage(history: Record<string, DailyStat>, startDate: 
 		}
 	}
 	return daysWithData > 0 ? Math.round(totalWords / daysWithData) : 0;
+}
+
+export function calcWritingSpeed(history: Record<string, DailyStat>, startDate: string, endDate: string): number {
+	let totalWords = 0;
+	let totalMs = 0;
+	for (const [date, stat] of Object.entries(history)) {
+		if (date >= startDate && date <= endDate) {
+			totalWords += stat.addedWords || 0;
+			totalMs += (stat.focusMs || 0) + (stat.slackMs || 0);
+		}
+	}
+	const hours = totalMs / (1000 * 60 * 60);
+	return hours > 0 ? Math.round(totalWords / hours) : 0;
+}
+
+export async function calcTaskCompletion(app: App, plugin: WebNovelAssistantPlugin, novelFolders: NovelFolderInfo[]): Promise<{ completed: number; total: number }> {
+	let completed = 0;
+	let total = 0;
+	const folderPaths = new Set(novelFolders.map(n => n.folderPath));
+	folderPaths.add('');
+
+	for (const folderPath of folderPaths) {
+		const manager = TaskManager.create(app, plugin, folderPath);
+		const entries = await manager.loadEntries();
+		if (entries) {
+			total += entries.length;
+			completed += entries.filter(e => e.status === 'completed').length;
+		}
+	}
+	return { completed, total };
+}
+
+export function calcNovelCompletionRate(novelFolders: NovelFolderInfo[]): number {
+	if (novelFolders.length === 0) return 0;
+	const completed = novelFolders.filter(n => n.metadata?.status === 'completed').length;
+	return Math.round((completed / novelFolders.length) * 100);
 }
 
 function getCurrentKey(tab: string): string {
@@ -270,23 +308,51 @@ this.scrollWrapper = contentEl.createDiv({ cls: 'stats-chart-scroll-wrapper' });
 		const focusRate = calcFocusRate(this.history, rangeStart, rangeEnd);
 		const activeHours = calcActiveHours(this.history, rangeStart, rangeEnd);
 		const dailyAvg = calcDailyAverage(this.history, rangeStart, rangeEnd);
+		const speed = calcWritingSpeed(this.history, rangeStart, rangeEnd);
 
 		let totalWords = 0;
-			for (const stat of Object.values(this.history)) { totalWords += stat.addedWords || 0; }
+		for (const stat of Object.values(this.history)) { totalWords += stat.addedWords || 0; }
 
-			const metrics = [
-				{ label: t('common.consecutive-creation'), value: t('common.consecutive-days', { count: streak }) },
-				{ label: t('common.focus-efficiency'), value: t('common.focus-percent', { rate: focusRate }) },
-				{ label: t('common.active-period'), value: activeHours || '--' },
-				{ label: t('common.daily-word-average'), value: formatCount(dailyAvg) },
-				{ label: t('common.accumulated-words'), value: formatCount(totalWords) },
-			];
+		const metrics: { label: string; value: string }[] = [
+			{ label: t('common.consecutive-creation'), value: t('common.consecutive-days', { count: streak }) },
+			{ label: t('common.active-period'), value: activeHours || '--' },
+			{ label: t('common.focus-efficiency'), value: `${focusRate}%` },
+			{ label: t('common.writing-speed'), value: speed > 0 ? formatCount(speed) : '--' },
+			{ label: t('common.daily-word-average'), value: formatCount(dailyAvg) },
+			{ label: t('common.accumulated-words'), value: formatCount(totalWords) },
+			{ label: t('common.task-completion'), value: '--' },
+			{ label: t('common.novel-completion'), value: '--' },
+		];
 
 		metrics.forEach(m => {
 			const card = this.efficiencyContainer.createDiv({ cls: 'stats-efficiency-card' });
 			card.createDiv({ cls: 'stats-efficiency-label', text: m.label });
 			card.createDiv({ cls: 'stats-efficiency-value', text: m.value });
 		});
+
+		void (async () => {
+			if (!this.plugin.homepageManager) return;
+			const folders = this.plugin.homepageManager.getNovelFolders();
+			for (const novel of folders) {
+				if (!novel.metadata) {
+					novel.metadata = await this.plugin.homepageManager.getNovelMetadata(novel.folderPath);
+				}
+			}
+			const taskComp = await calcTaskCompletion(this.app, this.plugin, folders);
+			const novelRate = calcNovelCompletionRate(folders);
+
+			const taskVal = taskComp.total > 0 ? `${taskComp.completed}/${taskComp.total}` : '--';
+			const novelVal = folders.length > 0 ? `${novelRate}%` : '--';
+
+			const cards = this.efficiencyContainer.querySelectorAll('.stats-efficiency-card');
+			if (cards.length >= 8) {
+				const taskValEl = cards[6].querySelector('.stats-efficiency-value');
+				if (taskValEl) taskValEl.textContent = taskVal;
+
+				const novelValEl = cards[7].querySelector('.stats-efficiency-value');
+				if (novelValEl) novelValEl.textContent = novelVal;
+			}
+		})();
 	}
 
 	private renderHeatmap(): void {

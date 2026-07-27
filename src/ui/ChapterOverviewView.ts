@@ -3,7 +3,7 @@ import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ForeshadowingStatus, type ParsedForeshadowingEntry } from '../types/foreshadowing';
 import { ChapterSorter } from '../services/ChapterSorter';
 import { t } from '../i18n';
-import { getCurrentBookContext } from '../utils/path';
+import { getCurrentBookContext, findBookRoot } from '../utils/path';
 import { ChapterCard } from './components/ChapterCard';
 
 export const CORKBOARD_VIEW_TYPE = 'webnovel-corkboard';
@@ -37,18 +37,18 @@ export class ChapterOverviewView extends ItemView {
         
         this.registerEvent(this.app.workspace.on('active-leaf-change', (leaf) => {
             if (!leaf || leaf.view.getViewType() !== 'markdown') return;
-            const newBookPath = getCurrentBookContext(this.app, this.plugin);
-            if (newBookPath !== undefined && newBookPath !== this.currentBookPath) {
-                const hasValidBook = this.currentBookPath && this.currentBookPath !== '/' && this.currentBookPath !== '';
-                if (hasValidBook) {
-                    const workspaceFolders = this.plugin.settings.workspaceFolders || [];
-                    const isNonNovelPath = newBookPath === '/' || newBookPath === ''
-                        || newBookPath === null || workspaceFolders.includes(newBookPath ?? '');
-                    if (isNonNovelPath) {
-                        return;
-                    }
-                }
-                this.currentBookPath = newBookPath;
+            const file = this.app.workspace.getActiveFile();
+            if (!file) return;
+
+            const homepagePath = this.plugin.homepageManager?.getHomepageFilePath();
+            if (homepagePath && (file.path === homepagePath || file.name === '创作主页.md')) {
+                return;
+            }
+
+            const bookRoot = findBookRoot(this.app, this.plugin, file, true);
+            if (!bookRoot) return;
+            if (bookRoot !== this.currentBookPath) {
+                this.currentBookPath = bookRoot;
                 void this.reloadBoard();
             }
         }));

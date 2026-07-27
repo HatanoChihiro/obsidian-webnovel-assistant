@@ -117,10 +117,30 @@ export class LoreBoardRenderer {
         const boardLayout = container.createDiv('wn-lore-board-layout');
 
         for (const [path, group] of fileGroups) {
-            const header = boardLayout.createDiv('wn-corkboard-volume-header');
-            header.setText(`${group.fileBasename} ${t('lore.file-count', { count: group.entries.length.toString() }) || `(共 ${group.entries.length} 条)`}`);
+            const header = boardLayout.createDiv('wn-corkboard-volume-header wn-clickable');
+            const iconSpan = header.createSpan({ cls: 'wn-volume-header-icon' });
+            setIcon(iconSpan, 'chevron-down');
+            header.createSpan({
+                text: `${group.fileBasename} ${t('lore.file-count', { count: group.entries.length.toString() }) || `(共 ${group.entries.length} 条)`}`,
+                cls: 'wn-volume-header-title'
+            });
 
             const grid = boardLayout.createDiv('wn-lore-board-cards-grid');
+
+            header.onclick = () => {
+                const isCollapsed = grid.hasClass('is-collapsed');
+                if (isCollapsed) {
+                    grid.removeClass('is-collapsed');
+                    grid.setCssProps({ display: 'grid' });
+                    header.removeClass('is-collapsed');
+                    setIcon(iconSpan, 'chevron-down');
+                } else {
+                    grid.addClass('is-collapsed');
+                    grid.setCssProps({ display: 'none' });
+                    header.addClass('is-collapsed');
+                    setIcon(iconSpan, 'chevron-right');
+                }
+            };
 
             // Unique mime type to restrict cross-file dragging
             const mimeType = `application/wn-lore-${path.replace(/[^a-z0-9]/gi, '').toLowerCase()}`;

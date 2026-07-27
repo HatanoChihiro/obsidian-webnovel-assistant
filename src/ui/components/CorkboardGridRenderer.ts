@@ -1,4 +1,4 @@
-import type { App, TFile } from 'obsidian';
+import { setIcon, type App, type TFile } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../../types/plugin';
 import type { ParsedForeshadowingEntry } from '../../types/foreshadowing';
 import { ChapterCard } from './ChapterCard';
@@ -20,10 +20,10 @@ export class CorkboardGridRenderer {
 	static render(options: CorkboardGridOptions): void {
 		const { app, plugin, container, files, foreshadowingMap, draggable, currentBookPath, onSaveStateChange, maxLoreLines } = options;
 		
-		let lastVolume: string | null = null;
+		// 按分卷分组
+		const volumeGroups: Array<{ volume: string; files: TFile[] }> = [];
 
 		for (const file of files) {
-			// 计算该文件所属的分卷（相对于 currentBookPath）
 			let currentVolume = '';
 			if (currentBookPath && currentBookPath !== '/') {
 				if (file.parent && file.parent.path !== currentBookPath) {
@@ -34,24 +34,59 @@ export class CorkboardGridRenderer {
 					currentVolume = file.parent.path;
 				}
 			}
-			
-			// 如果分卷发生变化，插入一个分卷标题栏
-			if (currentVolume !== lastVolume) {
-				lastVolume = currentVolume;
-				
-				// 不显示根目录的“正文”标题，只有在存在分卷时才显示卷名，同时受 hideVolumeHeaders 控制
-				if (currentVolume !== '' && !options.hideVolumeHeaders) {
-					const header = container.createDiv('wn-corkboard-volume-header');
-					header.setText(currentVolume);
+
+			let group = volumeGroups.find(g => g.volume === currentVolume);
+			if (!group) {
+				group = { volume: currentVolume, files: [] };
+				volumeGroups.push(group);
+			}
+			group.files.push(file);
+		}
+
+		for (const group of volumeGroups) {
+			const cardContainers: HTMLElement[] = [];
+
+			if (group.volume !== '' && !options.hideVolumeHeaders) {
+				const header = container.createDiv('wn-corkboard-volume-header wn-clickable');
+				const iconSpan = header.createSpan({ cls: 'wn-volume-header-icon' });
+				setIcon(iconSpan, 'chevron-down');
+				header.createSpan({ text: `${group.volume} (${group.files.length})`, cls: 'wn-volume-header-title' });
+
+				for (const file of group.files) {
+					// 创建承载单个卡片的容器，便于整卷批量隐藏/恢复
+					const cardWrapper = container.createDiv('wn-corkboard-card-wrapper');
+					cardWrapper.setCssProps({ display: 'contents' });
+					ChapterCard.render(cardWrapper, file, app, plugin, foreshadowingMap.get(file.basename) || [], {
+						draggable,
+						onSaveStateChange,
+						currentBookPath,
+						maxLoreLines
+					});
+					cardContainers.push(cardWrapper);
+				}
+
+				header.onclick = () => {
+					const isCollapsed = header.hasClass('is-collapsed');
+					if (isCollapsed) {
+						header.removeClass('is-collapsed');
+						setIcon(iconSpan, 'chevron-down');
+						cardContainers.forEach(wrapper => wrapper.setCssProps({ display: 'contents' }));
+					} else {
+						header.addClass('is-collapsed');
+						setIcon(iconSpan, 'chevron-right');
+						cardContainers.forEach(wrapper => wrapper.setCssProps({ display: 'none' }));
+					}
+				};
+			} else {
+				for (const file of group.files) {
+					ChapterCard.render(container, file, app, plugin, foreshadowingMap.get(file.basename) || [], {
+						draggable,
+						onSaveStateChange,
+						currentBookPath,
+						maxLoreLines
+					});
 				}
 			}
-
-			ChapterCard.render(container, file, app, plugin, foreshadowingMap.get(file.basename) || [], {
-				draggable,
-				onSaveStateChange,
-				currentBookPath,
-				maxLoreLines
-			});
 		}
 	}
 }

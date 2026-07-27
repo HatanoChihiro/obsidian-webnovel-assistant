@@ -116,7 +116,8 @@
 
 .wn-chapter-status-row {
 	margin-bottom: 8px;
-	display: none; /* Hide since we moved it to the title */
+	display: none;
+	/* Hide since we moved it to the title */
 }
 
 .wn-chapter-title-badge {
@@ -595,23 +596,29 @@ body .markdown-source-view.mod-cm6 .cm-editor.webnovel-show-gutter .cm-scroller 
 /* Stats Efficiency Row */
 .stats-efficiency-row {
 	display: flex;
-	gap: 14px;
+	flex-wrap: wrap;
+	gap: 12px;
 	margin-bottom: 20px;
 }
 
 .stats-efficiency-card {
-	flex: 1;
+	flex: 1 1 calc(25% - 12px);
+	min-width: 90px;
 	background: color-mix(in srgb, var(--interactive-accent) 6%, var(--background-secondary));
 	border-radius: 8px;
-	padding: 16px 14px 14px;
+	padding: 14px 10px;
 	text-align: center;
 	border-top: 3px solid var(--interactive-accent);
+	box-sizing: border-box;
 }
 
 .stats-efficiency-label {
 	font-size: 12px;
 	color: var(--text-muted);
 	margin-bottom: 8px;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 .stats-efficiency-value {
@@ -619,6 +626,27 @@ body .markdown-source-view.mod-cm6 .cm-editor.webnovel-show-gutter .cm-scroller 
 	font-weight: bold;
 	color: var(--interactive-accent);
 	font-family: var(--font-monospace);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* Phone Portrait Layout (body.is-phone): Force exactly 2 cards per row */
+body.is-phone .stats-efficiency-row {
+	display: grid;
+	grid-template-columns: repeat(2, 1fr);
+	gap: 8px;
+}
+
+body.is-phone .stats-efficiency-card {
+	flex: none;
+	width: 100%;
+	min-width: 0;
+	padding: 10px 4px;
+}
+
+body.is-phone .stats-efficiency-value {
+	font-size: 15px;
 }
 
 /* Heatmap color scale - Accent color gradient */
@@ -1363,14 +1391,14 @@ body .history-stats-modal .stats-chart-scroll-wrapper:hover::-webkit-scrollbar-t
 	opacity: 0.6;
 }
 
-.wn-timeline-svg-arrow, 
+.wn-timeline-svg-arrow,
 .wn-timeline-svg-dot {
 	fill: var(--text-muted);
 	opacity: 0.35;
 	transition: all 0.2s ease;
 }
 
-.wn-timeline-svg-arrow.is-hovered, 
+.wn-timeline-svg-arrow.is-hovered,
 .wn-timeline-svg-dot.is-hovered {
 	fill: var(--interactive-accent);
 	opacity: 0.6;
@@ -2407,117 +2435,93 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 }
 
 .homepage-add-novel-btn {
-
 	display: inline-block;
-
 	font-size: 13px;
-
 	padding: 4px 12px;
-
 	border-radius: 4px;
-
 	background: var(--interactive-accent);
-
 	color: var(--text-on-accent);
-
 	cursor: pointer;
-
 	font-weight: 500;
-
 	transition: filter 0.2s;
+	margin-left: auto;
+}
 
+.homepage-add-novel-btn.desktop-add-btn {
+	display: inline-block;
+}
+
+.homepage-add-novel-btn.phone-add-btn {
+	display: none;
 }
 
 .homepage-progress-item {
-
 	display: flex;
-
 	align-items: center;
-
 	gap: 8px;
-
 }
 
 /* Mobile Phone (is-phone) Creation Homepage Layout Optimizations */
 
 body.is-phone .homepage-welcome-section {
-
 	display: flex;
-
 	flex-direction: column;
-
 	gap: 8px;
-
 	margin-bottom: 16px;
-
 }
 
 body.is-phone .homepage-welcome-header {
-
 	display: flex;
-
-	justify-content: space-between;
-
 	align-items: center;
-
-	flex-wrap: wrap;
-
-	gap: 8px;
-
-}
-
-body.is-phone .homepage-progress-row {
-
-	display: flex;
-
 	justify-content: space-between;
-
-	align-items: center;
-
-	flex-wrap: wrap;
-
-	gap: 8px;
-
+	margin-bottom: 0;
 }
 
 body.is-phone .homepage-welcome-title {
-
 	width: 100%;
-
 	font-size: 20px;
-
 	line-height: 1.4;
-
 	align-items: flex-start;
-
 }
 
 body.is-phone .homepage-welcome-icon {
-
 	margin-top: 2px;
-
 	margin-right: 8px;
-
 }
 
 body.is-phone .homepage-welcome-icon svg {
-
 	width: 20px;
-
 	height: 20px;
-
 }
 
-body.is-phone .homepage-add-novel-btn {
+body.is-phone .homepage-add-novel-btn.desktop-add-btn {
+	display: none;
+}
 
+body.is-phone .homepage-add-novel-btn.phone-add-btn {
+	display: inline-block;
 	font-size: 12px;
-
 	padding: 4px 10px;
-
 	margin-left: auto;
-
 	align-self: center;
+}
 
+body.is-phone .homepage-ongoing-name {
+	font-size: 15px;
+	font-weight: 600;
+}
+
+body.is-phone .homepage-completed-name {
+	font-size: 14px;
+	font-weight: 600;
+}
+
+body.is-phone .homepage-progress-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
 }
 
 body.is-phone .homepage-progress-separator {
@@ -2907,7 +2911,7 @@ body.is-phone .webnovel-homepage .stats-heatmap-grid::-webkit-scrollbar-thumb {
 
 .homepage-completed-grid:hover {
 
-	scrollbar-color: color-mix(in srgb, var(--interactive-accent) 70%, var(--text-success, var(--interactive-accent))) transparent;
+	scrollbar-color: color-mix(in srgb, var(--interactive-accent) 50%, transparent) transparent;
 
 }
 
@@ -2933,7 +2937,7 @@ body.is-phone .webnovel-homepage .stats-heatmap-grid::-webkit-scrollbar-thumb {
 
 .homepage-completed-grid:hover::-webkit-scrollbar-thumb {
 
-	background: color-mix(in srgb, var(--interactive-accent) 70%, var(--text-success, var(--interactive-accent)));
+	background: color-mix(in srgb, var(--interactive-accent) 50%, transparent);
 
 }
 
@@ -2945,7 +2949,7 @@ body.is-phone .webnovel-homepage .stats-heatmap-grid::-webkit-scrollbar-thumb {
 
 	max-width: 160px;
 
-	background: linear-gradient(145deg, color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 70%, var(--text-success, var(--interactive-accent))) 8%, color-mix(in srgb, var(--background-secondary) 50%, transparent)), color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 70%, var(--text-success, var(--interactive-accent))) 2%, color-mix(in srgb, var(--background-secondary) 50%, transparent)));
+	background: linear-gradient(145deg, color-mix(in srgb, var(--interactive-accent) 8%, color-mix(in srgb, var(--background-secondary) 50%, transparent)), color-mix(in srgb, var(--interactive-accent) 2%, color-mix(in srgb, var(--background-secondary) 50%, transparent)));
 
 	backdrop-filter: blur(12px);
 
@@ -2955,7 +2959,7 @@ body.is-phone .webnovel-homepage .stats-heatmap-grid::-webkit-scrollbar-thumb {
 
 	padding: 14px 18px;
 
-	border-top: 3px solid color-mix(in srgb, var(--interactive-accent) 70%, var(--text-success, var(--interactive-accent)));
+	border-top: 3px solid var(--interactive-accent);
 
 	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 2px 4px rgba(0, 0, 0, 0.02);
 
@@ -3773,6 +3777,7 @@ body .workspace-leaf-content[data-type="webnovel-workbench"][data-type="webnovel
 	position: relative;
 	min-height: 60px;
 	overflow-y: auto;
+	background-color: color-mix(in srgb, var(--background-secondary) 92%, var(--background-primary));
 }
 
 .wn-corkboard-card-text {
@@ -6016,14 +6021,15 @@ body .modal-content>.setting-item.setting-item-heading:first-of-type .setting-it
 	overflow-y: auto;
 	flex-shrink: 0;
 	padding: 8px 24px 8px 10px;
-	background: var(--background-secondary-alt);
-	border: 1px solid var(--background-modifier-border);
+	background: color-mix(in srgb, var(--interactive-accent) 10%, var(--background-secondary-alt));
+	border: 1px solid color-mix(in srgb, var(--interactive-accent) 25%, var(--background-modifier-border));
+	border-left: 3px solid var(--interactive-accent);
 	border-radius: 6px;
 	font-size: 0.9em;
-	color: var(--text-muted);
+	color: var(--text-normal);
 	white-space: pre-wrap;
 	cursor: text;
-	transition: border-color 0.2s, box-shadow 0.2s;
+	transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
 	position: relative;
 }
 
@@ -6145,13 +6151,31 @@ body.is-phone .wn-timeline-item-delete-btn svg {
 .wn-timeline-waterfall-sidebar {
 	width: 320px;
 	flex-shrink: 0;
-	background: var(--background-secondary-alt);
+	background: color-mix(in srgb, var(--background-primary) 70%, transparent);
+	backdrop-filter: blur(8px);
+	-webkit-backdrop-filter: blur(8px);
+	border: 1px dashed var(--background-modifier-border);
 	border-radius: 8px;
 	padding: 15px;
 	display: flex;
 	flex-direction: column;
 	overflow-y: auto;
+	opacity: 0.85;
 	transition: width 0.2s, opacity 0.2s, background 0.2s;
+}
+
+.wn-timeline-waterfall-sidebar:hover {
+	opacity: 1;
+	background: color-mix(in srgb, var(--background-primary) 85%, transparent);
+}
+
+.wn-timeline-waterfall-sidebar .wn-corkboard-card {
+	opacity: 0.85;
+	transition: opacity 0.2s, background 0.2s;
+}
+
+.wn-timeline-waterfall-sidebar .wn-corkboard-card:hover {
+	opacity: 1;
 }
 
 .wn-timeline-waterfall-sidebar.is-empty {
@@ -6259,28 +6283,46 @@ body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-empty * {
 	white-space: nowrap;
 }
 
+/* 待回收：主题强调色调和警示 (Accent-blended Warning/Pending) */
 .wn-badge-foreshadowing {
-	background-color: color-mix(in srgb, var(--text-error, var(--interactive-accent)) 20%, transparent);
-	color: var(--text-error);
-	border: 1px solid var(--text-error);
+	background-color: color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%) 15%, transparent);
+	color: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%);
+	border: 1px solid color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%);
 }
 
+/* 已回收 (在其他章节回收)：主题强调色调和成功 (Accent-blended Success/Recovered Origin) */
 .wn-badge-recovered {
-	background-color: color-mix(in srgb, var(--text-success, var(--interactive-accent)) 20%, transparent);
-	color: var(--text-success);
-	border: 1px solid var(--text-success);
+	background-color: color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%) 15%, transparent);
+	color: color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%);
+	border: 1px solid color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%);
 }
 
+/* 本章回收 (在本章实际发生回收)：主题强调色高亮 (Accent Highlight/Recovered Here) */
+.wn-badge-recovered-here {
+	background-color: color-mix(in srgb, var(--interactive-accent) 20%, transparent);
+	color: var(--interactive-accent);
+	border: 1px solid var(--interactive-accent);
+}
+
+/* 设定徽章：中性次要实体标签 (Muted Neutral Lore Badge) */
 .wn-badge-lore {
-	background-color: var(--color-blue-rgba-20);
-	color: var(--text-accent);
-	border: 1px solid var(--text-accent);
+	background-color: color-mix(in srgb, var(--text-muted) 14%, transparent);
+	color: var(--text-muted);
+	border: 1px solid color-mix(in srgb, var(--text-muted) 35%, transparent);
 }
 
+.wn-badge-lore.wn-hoverable:hover {
+	color: var(--text-normal);
+	background-color: color-mix(in srgb, var(--text-muted) 22%, transparent);
+	border-color: color-mix(in srgb, var(--interactive-accent) 50%, var(--text-muted));
+}
+
+/* +X 更多徽章 (More Badge) */
 .wn-badge-more {
-	opacity: 0.7;
-	background-color: transparent;
-	border: 1px dashed var(--text-accent);
+	opacity: 0.85;
+	background-color: color-mix(in srgb, var(--interactive-accent) 8%, transparent);
+	color: var(--text-muted);
+	border: 1px dashed color-mix(in srgb, var(--interactive-accent) 40%, transparent);
 }
 
 /* Lore Board Layout */
@@ -6622,10 +6664,11 @@ body.is-phone textarea.wn-corkboard-textarea {
 	color: var(--text-normal);
 }
 
+.task-card-header-right,
 .wn-task-card-header-right {
 	display: flex;
 	align-items: center;
-	gap: 6px;
+	gap: 3px;
 }
 
 .wn-task-card-status {
@@ -6661,23 +6704,42 @@ body.is-phone textarea.wn-corkboard-textarea {
 	border: 1px solid color-mix(in srgb, var(--text-muted) 30%, transparent);
 }
 
-body .wn-corkboard-grid .wn-task-card .wn-task-card-header-right button.wn-task-abandon-btn {
+body .wn-corkboard-grid .wn-task-card .wn-task-card-header-right button.wn-task-abandon-btn,
+body .wn-corkboard-grid .wn-task-card .wn-task-card-header-right button.wn-task-complete-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
 	font-size: 11px;
-	padding: 2px 8px;
-	height: auto;
-	line-height: 1.4;
+	font-weight: 500;
+	padding: 0 8px;
+	height: 22px;
+	line-height: 1;
 	border-radius: 4px;
-	border: 1px solid transparent;
-	background: color-mix(in srgb, var(--interactive-accent) 25%, var(--text-error, var(--interactive-accent)) 75%);
+	border: none;
 	color: var(--text-on-accent, #ffffff);
 	cursor: pointer;
+	margin-right: 0;
 	transition: filter 0.15s ease, opacity 0.15s ease;
 	user-select: none;
 	box-shadow: none;
 }
 
+body .wn-corkboard-grid .wn-task-card .wn-task-card-header-right button.wn-task-abandon-btn {
+	background: color-mix(in srgb, var(--interactive-accent) 25%, var(--text-error, var(--interactive-accent)) 75%);
+}
+
+body .wn-corkboard-grid .wn-task-card .wn-task-card-header-right button.wn-task-complete-btn {
+	background: color-mix(in srgb, var(--interactive-accent) 25%, var(--text-success, var(--color-green, #22c55e)) 75%);
+}
+
 body .wn-corkboard-grid .wn-task-card .wn-task-card-header-right button.wn-task-abandon-btn:hover {
 	background: color-mix(in srgb, var(--interactive-accent) 20%, var(--text-error, var(--interactive-accent)) 80%);
+	filter: brightness(1.12);
+	color: var(--text-on-accent, #ffffff);
+}
+
+body .wn-corkboard-grid .wn-task-card .wn-task-card-header-right button.wn-task-complete-btn:hover {
+	background: color-mix(in srgb, var(--interactive-accent) 15%, var(--text-success, var(--color-green, #22c55e)) 85%);
 	filter: brightness(1.12);
 	color: var(--text-on-accent, #ffffff);
 }
@@ -6898,9 +6960,19 @@ body .drag-over-right {
 }
 
 .wn-lore-hover-popover .wn-lore-card {
+	width: 300px;
+	max-width: 100%;
+	aspect-ratio: auto;
+	height: auto;
+	max-height: 350px;
 	min-height: 0;
 	margin: 0;
-	/* max-height 100% removed */
+}
+
+.wn-lore-hover-popover .wn-lore-card-body {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
 }
 
 .wn-lore-card-header {
@@ -6942,6 +7014,7 @@ body .drag-over-right {
 	outline: none;
 	font-size: 0.9em;
 	color: var(--text-muted);
+	background-color: var(--background-secondary);
 	line-height: 1.5;
 }
 
@@ -7141,16 +7214,23 @@ body.is-phone .wn-timeline-waterfall-sidebar {
 	width: calc(100% - 16px);
 	max-height: 220px;
 	z-index: 50;
-	background: color-mix(in srgb, var(--background-secondary-alt) 92%, var(--background-primary));
-	backdrop-filter: blur(10px);
-	-webkit-backdrop-filter: blur(10px);
-	border: 1px solid var(--background-modifier-border);
+	background: color-mix(in srgb, var(--background-primary) 75%, transparent);
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
+	border: 1px dashed color-mix(in srgb, var(--background-modifier-border) 60%, transparent);
 	border-radius: 14px;
-	box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
+	box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.12);
 	padding: 10px 14px 12px 14px;
 	box-sizing: border-box;
-	transition: max-height 0.25s cubic-bezier(0.4, 0, 0.2, 1), padding 0.25s ease;
+	opacity: 0.85;
+	transition: max-height 0.25s cubic-bezier(0.4, 0, 0.2, 1), padding 0.25s ease, opacity 0.2s ease, background 0.2s ease;
 	margin: 0;
+}
+
+body.is-phone .wn-timeline-waterfall-sidebar:hover,
+body.is-phone .wn-timeline-waterfall-sidebar:focus-within {
+	opacity: 1;
+	background: color-mix(in srgb, var(--background-primary) 90%, transparent);
 }
 
 /* 悬浮抽屉折叠态 */
@@ -7355,7 +7435,8 @@ body.is-phone .history-stats-modal {
 	flex: 1;
 }
 
-.stats-heat-inputs-wrapper, .stats-heat-actions-wrapper {
+.stats-heat-inputs-wrapper,
+.stats-heat-actions-wrapper {
 	display: flex;
 	align-items: center;
 	gap: 8px;
@@ -7457,13 +7538,13 @@ body.is-phone .history-stats-modal .stats-metric-tabs {
 
 body.is-phone .history-stats-modal .stats-time-tabs .stats-tab-btn,
 body.is-phone .history-stats-modal .stats-metric-tabs .stats-tab-btn {
-    font-size: 10px;
-    padding: 2px 5px;
-    height: 22px;
-    line-height: 1;
-    min-width: 0;
-    box-sizing: border-box;
-    border-radius: 4px;
+	font-size: 10px;
+	padding: 2px 5px;
+	height: 22px;
+	line-height: 1;
+	min-width: 0;
+	box-sizing: border-box;
+	border-radius: 4px;
 }
 
 /* ========== Mobile Lore & Foreshadowing Hover Popover Safe Bounds ========== */
@@ -7962,6 +8043,185 @@ body.immersive-mode-active.wn-typewriter-active .cm-editor .cm-line.wn-typewrite
 	height: 14px;
 }
 
+/* ==========================================
+ * Task Upgrade: Task Types & Action Buttons
+ * ========================================== */
 
+/* Complete & Abandon Buttons on Task Card */
+.wn-task-card .wn-task-complete-btn,
+.wn-task-card .wn-task-abandon-btn,
+.wn-task-complete-btn,
+.wn-task-abandon-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	height: 22px;
+	line-height: 1;
+	padding: 0 8px;
+	font-size: 11px;
+	font-weight: 500;
+	border: none;
+	border-radius: 4px;
+	box-shadow: none;
+	cursor: pointer;
+	margin-right: 0;
+	color: var(--text-on-accent, #ffffff);
+	transition: background 0.15s ease, opacity 0.15s ease;
+}
 
+.wn-task-card .wn-task-complete-btn,
+.wn-task-complete-btn {
+	background: color-mix(in srgb, var(--interactive-accent) 25%, var(--text-success, var(--color-green, #22c55e)) 75%);
+	margin-right: 0;
+}
 
+.wn-task-card .wn-task-complete-btn:hover,
+.wn-task-complete-btn:hover {
+	opacity: 0.9;
+	background: color-mix(in srgb, var(--interactive-accent) 15%, var(--text-success, var(--color-green, #22c55e)) 85%);
+}
+
+.wn-task-card .wn-task-abandon-btn,
+.wn-task-abandon-btn {
+	background: color-mix(in srgb, var(--interactive-accent) 25%, var(--text-error, var(--interactive-accent)) 75%);
+}
+
+.wn-task-card .wn-task-abandon-btn:hover,
+.wn-task-abandon-btn:hover {
+	opacity: 0.9;
+	background: color-mix(in srgb, var(--interactive-accent) 15%, var(--text-error, var(--interactive-accent)) 85%);
+}
+
+/* Modal Task Type Selector Badges */
+.wn-task-type-group {
+	display: flex;
+	gap: 8px;
+	margin-top: 6px;
+	margin-bottom: 12px;
+}
+
+.wn-task-type-badge {
+	flex: 1;
+	padding: 6px 12px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	color: var(--text-muted);
+	border-radius: 16px;
+	font-size: 13px;
+	font-weight: 500;
+	cursor: pointer;
+	text-align: center;
+	transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.wn-task-type-badge:hover {
+	border-color: var(--interactive-accent);
+	color: var(--text-normal);
+	background: color-mix(in srgb, var(--interactive-accent) 8%, var(--background-primary));
+}
+
+.wn-task-type-badge.is-active {
+	border-color: var(--interactive-accent);
+	background: var(--interactive-accent);
+	color: var(--text-on-accent, #ffffff);
+	font-weight: 600;
+	box-shadow: 0 2px 6px color-mix(in srgb, var(--interactive-accent) 30%, transparent);
+}
+
+.wn-task-card-footer-event {
+	justify-content: flex-end;
+}
+
+.wn-corkboard-volume-header {
+	grid-column: 1 / -1;
+	width: 100%;
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--interactive-accent);
+	padding: 6px 12px;
+	margin-top: 14px;
+	margin-bottom: 10px;
+	border-left: 3px solid var(--interactive-accent);
+	background: color-mix(in srgb, var(--interactive-accent) 6%, var(--background-secondary));
+	border-radius: 0 6px 6px 0;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	cursor: pointer;
+	user-select: none;
+	transition: background 0.15s ease, opacity 0.15s ease;
+	box-sizing: border-box;
+}
+
+.wn-corkboard-volume-header:hover {
+	background: color-mix(in srgb, var(--interactive-accent) 12%, var(--background-secondary));
+}
+
+.wn-volume-header-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--interactive-accent);
+	transition: transform 0.2s ease;
+}
+
+.wn-volume-header-icon svg {
+	width: 14px;
+	height: 14px;
+}
+
+.wn-corkboard-volume-header.is-collapsed {
+	opacity: 0.75;
+}
+
+.wn-corkboard-volume-header.is-collapsed .wn-volume-header-icon {
+	color: var(--text-muted);
+}
+
+/* Corkboard Chapter Cards: Equal height alignment per row in Corkboard View */
+.wn-corkboard-grid {
+	align-items: stretch;
+}
+
+.wn-corkboard-card:not(.wn-task-card):not(.task-card) {
+	height: 100%;
+	align-self: stretch;
+}
+
+/* Task Cards: Equal row height matching highest card in same row */
+.wn-task-board-layout .wn-corkboard-grid {
+	grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+	align-items: stretch;
+}
+
+div.task-card.wn-task-card,
+div.wn-task-card,
+.wn-task-board-layout .task-card,
+.wn-task-board-layout .wn-corkboard-card {
+	max-width: 260px;
+	width: 100%;
+	margin-left: auto;
+	margin-right: auto;
+	justify-self: center;
+	min-height: 0;
+	height: 100%;
+	align-self: stretch;
+	display: flex;
+	flex-direction: column;
+	justify-content: space-between;
+}
+
+.wn-task-card .task-card-cycle-row,
+.wn-task-card .wn-task-card-cycle-row,
+.task-card .task-card-cycle-row {
+	margin-bottom: 4px;
+}
+
+.wn-task-board-layout .task-card-footer-event,
+.wn-task-card .wn-task-card-footer-event,
+.task-card .wn-task-card-footer-event,
+.task-card .task-card-footer-event {
+	margin-top: auto;
+	display: flex;
+	justify-content: flex-end;
+}

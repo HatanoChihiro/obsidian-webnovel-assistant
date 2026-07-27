@@ -95,6 +95,7 @@ const TASK_LABELS = {
 	'zh-CN': {
 		platform: '名称',
 		position: '详情',
+		taskType: '任务类型',
 		wordTarget: '字数要求',
 		startDate: '起始时间',
 		endDate: '结束时间',
@@ -107,6 +108,7 @@ const TASK_LABELS = {
 	'en': {
 		platform: 'Name',
 		position: 'Details',
+		taskType: 'Task Type',
 		wordTarget: 'Word Target',
 		startDate: 'Start Date',
 		endDate: 'End Date',
@@ -117,6 +119,32 @@ const TASK_LABELS = {
 		periodSuffix: '',
 	},
 } as const;
+
+// ==========================================
+// 限时任务类型
+// ==========================================
+const TASK_TYPE = {
+	'zh-CN': {
+		wordCount: '字数任务',
+		event: '事件任务',
+	},
+	'en': {
+		wordCount: 'Word Count Task',
+		event: 'Event Task',
+	},
+} as const;
+
+/** 限时任务类型双向解析映射 */
+export const TASK_TYPE_MAP: Record<string, string> = {
+	'wordCount': 'wordCount',
+	'event': 'event',
+	'Word Count Task': 'wordCount',
+	'Event Task': 'event',
+	'Word Count': 'wordCount',
+	'Event': 'event',
+	'字数任务': 'wordCount',
+	'事件任务': 'event',
+};
 
 // ==========================================
 // 限时任务状态值
@@ -167,6 +195,8 @@ export const TASK_LABEL_MAP: Record<string, string> = {
 		'Platform': 'platform',
 	'Details': 'position',
 		'Position': 'position',
+	'Task Type': 'taskType',
+	'Type': 'taskType',
 	'Word Target': 'wordTarget',
 	'Start Date': 'startDate',
 	'End Date': 'endDate',
@@ -178,6 +208,8 @@ export const TASK_LABEL_MAP: Record<string, string> = {
 		'平台': 'platform',
 	'详情': 'position',
 		'位置': 'position',
+	'任务类型': 'taskType',
+	'类型': 'taskType',
 	'字数要求': 'wordTarget',
 	'起始时间': 'startDate',
 	'结束时间': 'endDate',
@@ -369,6 +401,12 @@ export function getTaskPeriodTitle(period: number): string {
 /** 获取限时任务状态显示文本 */
 export function getTaskStatusText(statusKey: string): string {
 	return TASK_STATUS[getLocale()][statusKey as keyof typeof TASK_STATUS['zh-CN']] ?? statusKey;
+}
+
+/** 获取限时任务类型显示文本 */
+export function getTaskTypeText(typeKey?: string): string {
+	const key = typeKey ?? 'wordCount';
+	return TASK_TYPE[getLocale()][key as keyof typeof TASK_TYPE['zh-CN']] ?? key;
 }
 
 /** 获取作品信息字段标签 */

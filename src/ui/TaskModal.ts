@@ -2,7 +2,7 @@
 import type { App} from 'obsidian';
 import { Modal, Setting } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
-import type { TaskEntry } from '../types/task';
+import type { TaskEntry, TaskType } from '../types/task';
 import type { TaskManager } from '../services/TaskManager';
 import { t } from '../i18n';
 
@@ -31,11 +31,13 @@ export class TaskAddModal extends Modal {
 		this.onSubmit = onSubmit;
 	}
 
-	onOpen() {
+	async onOpen() {
 		const { contentEl } = this;
 		contentEl.empty();
 		contentEl.addClass('task-add-modal');
 		new Setting(contentEl).setName(t('modal.new-task')).setHeading();
+
+		const existingEntries = (await this.manager.loadEntries()) || [];
 
 		// 任务名称
 		const platformContainer = contentEl.createDiv();
@@ -49,12 +51,18 @@ export class TaskAddModal extends Modal {
 		// 任务期数
 		const periodContainer = contentEl.createDiv();
 		periodContainer.createEl('label', { text: t('modal.task-period'), cls: 'wn-task-label' });
+		const initialPeriod = this.manager.getNextPeriod(existingEntries, 'wordCount');
 		const periodInput = periodContainer.createEl('input', {
 			type: 'number',
 			attr: { min: '1' },
 			cls: 'wn-task-input',
-			value: String(this.defaultPeriod),
+			value: String(initialPeriod),
 		});
+
+		const updatePeriodForType = (type: TaskType) => {
+			const nextP = this.manager.getNextPeriod(existingEntries, type);
+			periodInput.value = String(nextP);
+		};
 
 		// 起始时间
 		const today = window.moment().format('YYYY-MM-DD');
@@ -95,6 +103,21 @@ export class TaskAddModal extends Modal {
 			cls: 'wn-task-input',
 		});
 
+		// 任务类型（双徽章样式选择按钮）
+		let selectedType: TaskType = 'wordCount';
+		const typeContainer = contentEl.createDiv();
+		typeContainer.createEl('label', { text: t('modal.task-type'), cls: 'wn-task-label' });
+		const typeGroup = typeContainer.createDiv({ cls: 'wn-task-type-group' });
+
+		const wordCountBadge = typeGroup.createEl('button', {
+			text: t('modal.task-type-word-count'),
+			cls: 'wn-task-type-badge is-active',
+		});
+		const eventBadge = typeGroup.createEl('button', {
+			text: t('modal.task-type-event'),
+			cls: 'wn-task-type-badge',
+		});
+
 		// 字数要求
 		const targetContainer = contentEl.createDiv();
 		targetContainer.createEl('label', { text: t('modal.word-target'), cls: 'wn-task-label' });
@@ -116,6 +139,27 @@ export class TaskAddModal extends Modal {
 		});
 		snapshotContainer.createDiv({ text: t('modal.starting-word-count-hint'), cls: 'wn-task-hint' });
 
+		// 切换徽章事件
+		wordCountBadge.onclick = (e) => {
+			e.preventDefault();
+			selectedType = 'wordCount';
+			wordCountBadge.addClass('is-active');
+			eventBadge.removeClass('is-active');
+			targetContainer.setCssProps({ display: 'block' });
+			snapshotContainer.setCssProps({ display: 'block' });
+			updatePeriodForType('wordCount');
+		};
+
+		eventBadge.onclick = (e) => {
+			e.preventDefault();
+			selectedType = 'event';
+			eventBadge.addClass('is-active');
+			wordCountBadge.removeClass('is-active');
+			targetContainer.setCssProps({ display: 'none' });
+			snapshotContainer.setCssProps({ display: 'none' });
+			updatePeriodForType('event');
+		};
+
 		// 按钮
 		const btnContainer = contentEl.createDiv({ cls: 'wn-task-btn-container' });
 		const cancelBtn = btnContainer.createEl('button', { text: t('common.cancel') });
@@ -128,17 +172,27 @@ export class TaskAddModal extends Modal {
 			const startDate = startInput.value.trim();
 			const endDate = endInput.value.trim();
 			const position = positionInput.value.trim();
-			const wordTarget = parseInt(targetInput.value, 10);
-			const startSnapshot = parseInt(snapshotInput.value, 10) || 0;
-
-			if (!platform || period < 1 || !DATE_REGEX.test(startDate) || !DATE_REGEX.test(endDate) || endDate < startDate || !position || wordTarget < 1) {
+			
+			if (!platform || period < 1 || !DATE_REGEX.test(startDate) || !DATE_REGEX.test(endDate) || endDate < startDate || !position) {
 				return;
+			}
+
+			let wordTarget = 0;
+			let startSnapshot = 0;
+
+			if (selectedType === 'wordCount') {
+				wordTarget = parseInt(targetInput.value, 10);
+				startSnapshot = parseInt(snapshotInput.value, 10) || 0;
+				if (isNaN(wordTarget) || wordTarget < 1) {
+					return;
+				}
 			}
 
 			const entry: TaskEntry = {
 				period,
 				platform,
 				position,
+				taskType: selectedType,
 				wordTarget,
 				startDate,
 				endDate,

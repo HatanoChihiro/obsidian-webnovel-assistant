@@ -3,7 +3,7 @@ import type { App, ViewStateResult } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ForeshadowingStatus, type ParsedForeshadowingEntry } from '../types/foreshadowing';
 import { ChapterSorter } from '../services/ChapterSorter';
-import { getCurrentBookContext } from '../utils/path';
+import { getCurrentBookContext, findBookRoot } from '../utils/path';
 import { t } from '../i18n';
 import { getNovelStatusText, getNovelInfoLabel } from '../i18n/data-keys';
 import { CorkboardGridRenderer } from './components/CorkboardGridRenderer';
@@ -138,22 +138,26 @@ export class WorkbenchView extends ItemView {
         }));
         this.registerEvent(this.app.workspace.on('active-leaf-change', (leaf) => {
             if (!leaf || leaf.view.getViewType() !== 'markdown') return;
-            let newBookPath = getCurrentBookContext(this.app, this.plugin);
-            if (newBookPath === '') newBookPath = '/';
-            if (newBookPath !== null) {
-                if (newBookPath !== undefined && newBookPath !== this.currentBookPath) {
-                    const hasValidBook = this.currentBookPath && this.currentBookPath !== '/' && this.currentBookPath !== '';
-                    if (hasValidBook) {
-                        const workspaceFolders = this.plugin.settings.workspaceFolders || [];
-                        const isNonNovelPath = newBookPath === '/' || newBookPath === ''
-                            || workspaceFolders.includes(newBookPath);
-                        if (isNonNovelPath) {
-                            return;
-                        }
-                    }
-                    this.currentBookPath = newBookPath;
-                    void this.reloadBoard();
-                }
+            const file = this.app.workspace.getActiveFile();
+            if (!file) return;
+
+            // 1. 如果焦点切换到了创作主页 (Homepage)，直接 return 忽略！保持在上一本作品
+            const homepagePath = this.plugin.homepageManager?.getHomepageFilePath();
+            if (homepagePath && (file.path === homepagePath || file.name === '创作主页.md')) {
+                return;
+            }
+
+            // 2. 严格检索该文件是否属于某部小说作品根目录（非作品文件/独立笔记返回 ''）
+            const bookRoot = findBookRoot(this.app, this.plugin, file, true);
+
+            // 3. 如果该文件不属于任何小说作品（如点出了工作区、打开了独立笔记/草稿），
+            // 行为同切换到创作主页/其他侧边栏视图一致：直接 return，不改变 currentBookPath，保持在上一本作品
+            if (!bookRoot) return;
+
+            // 4. 只有当确定属于新作品目录时，才进行工作台跟随切换
+            if (bookRoot !== this.currentBookPath) {
+                this.currentBookPath = bookRoot;
+                void this.reloadBoard();
             }
         }));
         this.registerEvent(

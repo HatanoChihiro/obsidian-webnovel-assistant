@@ -5,7 +5,7 @@ import type { TaskEntry } from '../../types/task';
 import type { NovelFolderInfo } from '../../types/homepage';
 import { getTaskStatusText, getNovelStatusText, getNovelInfoLabel } from '../../i18n/data-keys';
 import { t } from '../../i18n';
-import { calcStreak, calcFocusRate, calcActiveHours, calcDailyAverage, getHeatClass } from '../HistoryModal';
+import { calcStreak, calcFocusRate, calcActiveHours, calcDailyAverage, calcWritingSpeed, calcTaskCompletion, calcNovelCompletionRate, getHeatClass } from '../HistoryModal';
 import { TaskManager } from '../../services/TaskManager';
 import { NewNovelModal } from '../NewNovelModal';
 import type { WorkbenchView } from '../WorkbenchView';
@@ -56,7 +56,7 @@ export class HomepageRenderer {
 		// 底部右列：数据区块
 		const rightCol = grid.createDiv({ cls: 'homepage-grid-right' });
 		const statsCell = rightCol.createDiv({ cls: 'homepage-grid-cell' });
-		this.renderStatsSummary(statsCell);
+		await this.renderStatsSummary(statsCell);
 		const heatmapCell = rightCol.createDiv({ cls: 'homepage-grid-cell' });
 		this.renderHeatmap(heatmapCell);
 		const chartCell = rightCol.createDiv({ cls: 'homepage-grid-cell' });
@@ -87,12 +87,41 @@ export class HomepageRenderer {
 	}
 
 	// 欢迎语 + 今日进度 + 新增作品按钮
+	private openNewNovelModal(): void {
+		new NewNovelModal(this.plugin.app, this.plugin, (result) => {
+			void (async () => {
+				try {
+					const { folderPath } = await this.plugin.homepageManager!.createNewNovel(result.name, result.meta);
+					new Notice(t('notice.novel-created', { name: result.name }));
+					this.plugin.homepageManager!.refreshHomepageViews();
+
+					// Open Workbench
+					const viewType = 'webnovel-workbench';
+					const { workspace } = this.plugin.app;
+					const leaves = workspace.getLeavesOfType(viewType);
+					let leaf = leaves.length > 0 ? leaves[0] : null;
+					if (!leaf) {
+						leaf = workspace.getLeaf(false);
+						await leaf.setViewState({ type: viewType, active: true });
+					}
+					if (leaf && leaf.view && leaf.view.getViewType() === viewType) {
+						(leaf.view as WorkbenchView).setBookPath(folderPath);
+					}
+					if (leaf) {
+						revealAndFocusLeaf(this.plugin.app, leaf);
+					}
+				} catch (e) { console.error(e); }
+			})();
+		}).open();
+	}
+
+	// 欢迎语 + 今日进度 + 新增作品按钮
 	async renderWelcome(container: HTMLElement): Promise<void> {
 		container.empty();
 
 		const section = container.createDiv({ cls: 'homepage-welcome-section' });
 
-		// 欢迎语 + 新增按钮同行
+		// 欢迎语 + 桌面/平板端新增按钮
 		const headerRow = section.createDiv({ cls: 'homepage-welcome-header' });
 		const title = headerRow.createDiv({ cls: 'homepage-welcome-title' });
 
@@ -114,37 +143,12 @@ export class HomepageRenderer {
 			setIcon(iconEl, iconName);
 			title.createSpan({ text: welcomeText });
 		}
-		const addBtn = headerRow.createDiv({ cls: 'homepage-add-novel-btn' });
-		addBtn.textContent = t('homepage.add-novel');
-		addBtn.onclick = () => {
-			new NewNovelModal(this.plugin.app, this.plugin, (result) => {
-				void (async () => {
-					try {
-						const { folderPath } = await this.plugin.homepageManager!.createNewNovel(result.name, result.meta);
-						new Notice(t('notice.novel-created', { name: result.name }));
-						this.plugin.homepageManager!.refreshHomepageViews();
 
-						// Open Workbench
-						const viewType = 'webnovel-workbench';
-						const { workspace } = this.plugin.app;
-						const leaves = workspace.getLeavesOfType(viewType);
-						let leaf = leaves.length > 0 ? leaves[0] : null;
-						if (!leaf) {
-							leaf = workspace.getLeaf(false);
-							await leaf.setViewState({ type: viewType, active: true });
-						}
-						if (leaf && leaf.view && leaf.view.getViewType() === viewType) {
-							(leaf.view as WorkbenchView).setBookPath(folderPath);
-						}
-						if (leaf) {
-							revealAndFocusLeaf(this.plugin.app, leaf);
-						}
-					} catch (e) { console.error(e); }
-				})();
-			}).open();
-		};
+		const desktopAddBtn = headerRow.createDiv({ cls: 'homepage-add-novel-btn desktop-add-btn' });
+		desktopAddBtn.textContent = t('homepage.add-novel');
+		desktopAddBtn.onclick = () => this.openNewNovelModal();
 
-		// 今日进度
+		// 今日进度与手机端新增按钮
 		const history = this.plugin.historyManager.getHistory();
 		const today = window.moment().format('YYYY-MM-DD');
 		const todayWords = history[today]?.addedWords || 0;
@@ -164,6 +168,10 @@ export class HomepageRenderer {
 		const todayGroup = progressRow.createDiv({ cls: 'homepage-progress-item' });
 		todayGroup.createDiv({ cls: 'homepage-progress-label', text: t('homepage.today-added') });
 		todayGroup.createDiv({ cls: 'homepage-progress-value', text: todayWords.toLocaleString() });
+
+		const phoneAddBtn = progressRow.createDiv({ cls: 'homepage-add-novel-btn phone-add-btn' });
+		phoneAddBtn.textContent = t('homepage.add-novel');
+		phoneAddBtn.onclick = () => this.openNewNovelModal();
 	}
 
 	// 连载中作品列表（含任务信息）
@@ -198,6 +206,7 @@ export class HomepageRenderer {
 			if (taskInfo) {
 				const rankContainer = item.createDiv({ cls: 'homepage-ongoing-task' });
 
+				const isEventTask = taskInfo.entry.taskType === 'event';
 				const progress = taskInfo.progress;
 				const target = taskInfo.wordTarget;
 				const statusText = taskInfo.statusText;
@@ -208,26 +217,33 @@ export class HomepageRenderer {
 				leftWrapper.createSpan({ cls: 'homepage-task-title-inline', text: t('homepage.current-task') });
 				const periodText = t('common.period-prefix', { period: taskInfo.period }) + ' ' + taskInfo.position;
 				leftWrapper.createSpan({ cls: 'homepage-task-period', text: periodText });
-				topRow.createSpan({ cls: 'homepage-task-progress', text: progress.toLocaleString() + ' / ' + target.toLocaleString() + ' ' + t('common.word-char') + ' (' + statusText + ')' });
+				
+				if (isEventTask) {
+					topRow.createSpan({ cls: 'homepage-task-progress', text: '(' + statusText + ')' });
+				} else {
+					topRow.createSpan({ cls: 'homepage-task-progress', text: progress.toLocaleString() + ' / ' + target.toLocaleString() + ' ' + t('common.word-char') + ' (' + statusText + ')' });
 
-				// 动态进度条作为分割线
-				const progressPercent = target > 0 ? Math.min(100, Math.max(0, (progress / target) * 100)) : 0;
-				const progressBg = rankContainer.createDiv({ cls: 'homepage-ongoing-progress-bar-bg' });
-				const progressFill = progressBg.createDiv({ cls: 'homepage-ongoing-progress-bar-fill' });
-				progressFill.style.setProperty('--wn-progress-width', `${progressPercent}%`);
-				progressFill.setCssProps({ width: 'var(--wn-progress-width)' });
-				// 进度条颜色区分状态
-				if (progressPercent >= 100) progressFill.addClass('is-done');
+					// 动态进度条作为分割线
+					const progressPercent = target > 0 ? Math.min(100, Math.max(0, (progress / target) * 100)) : 0;
+					const progressBg = rankContainer.createDiv({ cls: 'homepage-ongoing-progress-bar-bg' });
+					const progressFill = progressBg.createDiv({ cls: 'homepage-ongoing-progress-bar-fill' });
+					progressFill.style.setProperty('--wn-progress-width', `${progressPercent}%`);
+					progressFill.setCssProps({ width: 'var(--wn-progress-width)' });
+					// 进度条颜色区分状态
+					if (progressPercent >= 100) progressFill.addClass('is-done');
+				}
 
 				if (daysLeft > 0 && taskInfo.entry.status === 'active') {
 					const bottomRow = rankContainer.createDiv({ cls: 'homepage-task-row homepage-task-sub' });
 					bottomRow.createSpan({ cls: 'homepage-task-days', text: t('homepage.days-remaining', { days: daysLeft }) });
-					const remaining = target - progress;
-					if (remaining > 0) {
-						const dailyNeeded = Math.round(remaining / daysLeft);
-						bottomRow.createSpan({ cls: 'homepage-task-daily', text: t('homepage.daily-needed', { words: dailyNeeded.toLocaleString() }) });
-					} else {
-						bottomRow.createSpan({ cls: 'homepage-task-daily', text: t('homepage.goal-reached') });
+					if (!isEventTask) {
+						const remaining = target - progress;
+						if (remaining > 0) {
+							const dailyNeeded = Math.round(remaining / daysLeft);
+							bottomRow.createSpan({ cls: 'homepage-task-daily', text: t('homepage.daily-needed', { words: dailyNeeded.toLocaleString() }) });
+						} else {
+							bottomRow.createSpan({ cls: 'homepage-task-daily', text: t('homepage.goal-reached') });
+						}
 					}
 				}
 			}
@@ -329,27 +345,35 @@ export class HomepageRenderer {
 	}
 
 	// 效率总览 — 复用 HistoryModal 的 stats-efficiency-card
-	renderStatsSummary(container: HTMLElement): void {
+	async renderStatsSummary(container: HTMLElement): Promise<void> {
 		const history = this.plugin.historyManager.getHistory();
 		container.empty();
 		container.createDiv({ cls: 'homepage-section-label', text: t('homepage.efficiency-overview') });
 
-		const yearStart = window.moment().clone().startOf('year').format('YYYY-MM-DD');
-		const yearEnd = window.moment().format('YYYY-MM-DD');
+		const rangeStart = this.plugin.settings.heatmapStartDate || window.moment().clone().startOf('year').format('YYYY-MM-DD');
+		const rangeEnd = this.plugin.settings.heatmapEndDate || window.moment().format('YYYY-MM-DD');
 
 		const streak = calcStreak(history);
-		const focusRate = calcFocusRate(history, yearStart, yearEnd);
-		const activeHours = calcActiveHours(history, yearStart, yearEnd);
-		const dailyAvg = calcDailyAverage(history, yearStart, yearEnd);
+		const focusRate = calcFocusRate(history, rangeStart, rangeEnd);
+		const activeHours = calcActiveHours(history, rangeStart, rangeEnd);
+		const dailyAvg = calcDailyAverage(history, rangeStart, rangeEnd);
 		const totalWords = Object.values(history).reduce((sum, s) => sum + s.addedWords, 0);
+		const speed = calcWritingSpeed(history, rangeStart, rangeEnd);
+
+		const allNovels = await this.getAllNovelsWithMetadata();
+		const taskComp = await calcTaskCompletion(this.app, this.plugin, allNovels);
+		const novelRate = calcNovelCompletionRate(allNovels);
 
 		const row = container.createDiv({ cls: 'stats-efficiency-row' });
 		const metrics = [
 			{ label: t('common.consecutive-creation'), value: t('common.consecutive-days', { count: streak }) },
-			{ label: t('common.focus-efficiency'), value: `${focusRate}%` },
 			{ label: t('common.active-period'), value: activeHours || '--' },
+			{ label: t('common.focus-efficiency'), value: `${focusRate}%` },
+			{ label: t('common.writing-speed'), value: speed > 0 ? speed.toLocaleString() : '--' },
 			{ label: t('common.daily-word-average'), value: dailyAvg.toLocaleString() },
 			{ label: t('common.accumulated-words'), value: totalWords.toLocaleString() },
+			{ label: t('common.task-completion'), value: taskComp.total > 0 ? `${taskComp.completed}/${taskComp.total}` : '--' },
+			{ label: t('common.novel-completion'), value: allNovels.length > 0 ? `${novelRate}%` : '--' },
 		];
 
 		for (const m of metrics) {

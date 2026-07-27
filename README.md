@@ -9,8 +9,8 @@
 [![License](https://img.shields.io/github/license/HatanoChihiro/obsidian-webnovel-assistant?color=blue)](LICENSE)
 [![Obsidian Downloads](https://img.shields.io/badge/dynamic/json?logo=obsidian&color=8b5cf6&label=downloads&query=%24%5B%223.2.0%22%5D&url=https%3A%2F%2Fraw.githubusercontent.com%2FHatanoChihiro%2Fobsidian-webnovel-assistant%2Fmain%2Fversions.json)](https://obsidian.md/plugins?id=web-novel-assistant)
 
-A powerful Obsidian plugin built for web novel writers.  
-Full bilingual UI (Chinese & English) — homepage, word count, goal tracking, foreshadowing, timeline, timed tasks, OBS overlay & more.
+An all-in-one writing studio for novel and story writers in Obsidian.  
+Accurate word count & goal tracking · Story timeline · Foreshadowing manager · Chapter corkboard · Lore graphs & focus timers.
 
 <br />
 
@@ -63,13 +63,13 @@ Full bilingual UI (Chinese & English) — homepage, word count, goal tracking, f
 </tr>
 <tr>
 <td width="33%" align="center"><b>Lore Quick Lookup</b><br /><sub>Auto-highlight, preset types & relations, relation graph</sub><br /><br /><img width="100%" alt="lore-lookup" src="assets/lore-lookup.gif" /></td>
-<td width="33%" align="center"><b>Sticky Notes</b><br /><sub>Floating, auto-save, sync, Markdown render</sub><br /><br /><img width="100%" alt="sticky-note" src="assets/sticky-note.gif" /></td>
+<td width="33%" align="center"><b>Sticky Notes</b><br /><sub>Auto-save, Markdown render</sub><br /><br /><img width="100%" alt="sticky-note" src="assets/sticky-note.gif" /></td>
 <td width="33%" align="center"><b>Task Tracker</b><br /><sub>Create periodic tasks, self-driven deadlines & voluntary abandon</sub><br /><br /><img width="100%" alt="task" src="assets/task.gif" /></td>
 </tr>
 <tr>
 <td width="33%" align="center"><b>Advanced Search</b><br /><sub>Search by book, global or custom scope</sub><br /><br /><img width="100%" alt="search" src="assets/search.gif" /></td>
 <td width="33%" align="center"><b>Merge Chapters</b><br /><sub>Merge all chapters in a folder by sort order</sub><br /><br /><img width="100%" alt="merge" src="assets/merge.gif" /></td>
-<td width="33%" align="center"><b>Auto-Create Next Chapter</b><br /><sub>Auto-create numbered chapter documents</sub><br /><br /><img width="100%" alt="auto-create-next" src="assets/auto-create-next.gif" /></td>
+<td width="33%" align="center"><b>Auto-Create Next Chapter</b><br /><sub>Auto-create numbered documents, template support</sub><br /><br /><img width="100%" alt="auto-create-next" src="assets/auto-create-next.gif" /></td>
 </tr>
 </table>
 
@@ -189,8 +189,8 @@ If this plugin helps with your writing, consider buying the author a coffee ☕.
 [![License](https://img.shields.io/github/license/HatanoChihiro/obsidian-webnovel-assistant?color=blue)](LICENSE)
 [![Obsidian Downloads](https://img.shields.io/badge/dynamic/json?logo=obsidian&color=8b5cf6&label=downloads&query=%24%5B%223.2.0%22%5D&url=https%3A%2F%2Fraw.githubusercontent.com%2FHatanoChihiro%2Fobsidian-webnovel-assistant%2Fmain%2Fversions.json)](https://obsidian.md/plugins?id=web-novel-assistant)
 
-为网络小说作者打造的 Obsidian 插件。  
-中文 & 英文双语界面 — 创作主页、字数统计、目标追踪、伏笔管理、时间线、限时任务、OBS叠加层等。
+为网络小说与故事创作者打造的 Obsidian 一站式写作套件。  
+精准字数统计与目标追踪 · 故事时间线看板 · 伏笔回收管理 · 章节概览看板 · 设定图谱与专注打字模式。
 
 <br />
 
@@ -243,13 +243,13 @@ If this plugin helps with your writing, consider buying the author a coffee ☕.
 </tr>
 <tr>
 <td width="33%" align="center"><b>设定速查与图谱</b><br /><sub>自动标注、预设类型与关系可视化、关联图谱</sub><br /><br /><img width="100%" alt="lore-lookup" src="assets/lore-lookup.gif" /></td>
-<td width="33%" align="center"><b>悬浮便签</b><br /><sub>多端同步、自动保存、Markdown渲染</sub><br /><br /><img width="100%" alt="sticky-note" src="assets/sticky-note.gif" /></td>
+<td width="33%" align="center"><b>悬浮便签</b><br /><sub>自动保存、Markdown渲染</sub><br /><br /><img width="100%" alt="sticky-note" src="assets/sticky-note.gif" /></td>
 <td width="33%" align="center"><b>任务追踪</b><br /><sub>创建周期任务、支持自主放弃</sub><br /><br /><img width="100%" alt="task" src="assets/task.gif" /></td>
 </tr>
 <tr>
 <td width="33%" align="center"><b>高级搜索</b><br /><sub>支持当前书籍、全局、自定义，快速跳转</sub><br /><br /><img width="100%" alt="search" src="assets/search.gif" /></td>
 <td width="33%" align="center"><b>合并章节</b><br /><sub>按照排序合并目录内所有章节</sub><br /><br /><img width="100%" alt="merge" src="assets/merge.gif" /></td>
-<td width="33%" align="center"><b>自动创建下一章</b><br /><sub>自动创建带标号章节文档</sub><br /><br /><img width="100%" alt="auto-create-next" src="assets/auto-create-next.gif" /></td>
+<td width="33%" align="center"><b>自动创建下一章</b><br /><sub>自动创建带标号文档，支持模板</sub><br /><br /><img width="100%" alt="auto-create-next" src="assets/auto-create-next.gif" /></td>
 </tr>
 </table>
 

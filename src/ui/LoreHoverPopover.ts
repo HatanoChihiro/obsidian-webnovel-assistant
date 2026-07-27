@@ -160,7 +160,7 @@ export class LoreHoverPopover extends Component {
 		let top = rect.bottom + 8; // 默认显示在词汇下方
 
 		// 3. 水平防溢出处理
-		const padding = isMobile ? 12 : 10;
+		const padding = mobile ? 12 : 10;
 		if (left < padding) left = padding;
 		if (left + popoverRect.width > window.innerWidth - padding) {
 			left = window.innerWidth - popoverRect.width - padding;

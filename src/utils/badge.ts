@@ -88,7 +88,7 @@ export function renderForeshadowingBadges(
 	if (recoveredForeshadowings.length > 0) {
 		const labelText = `${t('corkboard.foreshadowing-recovered')}×${recoveredForeshadowings.length}`;
 		const badge = container.createSpan({
-			cls: 'wn-badge wn-badge-recovered',
+			cls: 'wn-badge wn-badge-recovered-here',
 			text: labelText
 		});
 		setTooltip(badge, recoveredForeshadowings.map(f => f.description).join('\n'), tooltipOptions);

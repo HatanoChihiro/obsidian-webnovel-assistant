@@ -1,3 +1,31 @@
+## ✨ v3.6.1 
+
+### 功能优化
+- **限时任务增加事件类型**：现在新增任务可以选择事件任务，无需设定字数目标与初始字数，需手动确认完成。
+- **效率指标补充**：新增码字时速、任务达成和完结比例三个指标卡片，会在创作主页与写作数据追踪面板中自动计算并添加。
+- **点击折叠**：全章节看板、设定看板、任务看板分栏标题全量支持点击平滑折叠/展开，并内置指示箭头。
+- **中文分隔符全量兼容**：在插件设置面板中配置「工作区文件夹」及「严格章节模式例外目录」时，全面兼容中文全角逗号 `，`、全角分号 `；`、半角分号 `;`、顿号 `、` 以及换行符等多种常见分隔符，契合中文输入习惯。
+- **UI优化**：优化了部分UI的显示效果。
+
+### BUG修复
+
+- 修复了写作实时状态面板中柱状图与指标不会实时更新的问题。
+- 修复了开启工作台时，另外打开非工作区内文件，工作台会自动跟随切换的问题。
+
+### English Changelog
+
+#### Feature Optimizations
+- **Event Tasks Support**: Added event task option when creating new tasks, requiring no word count targets or initial counts, with manual completion confirmation.
+- **Efficiency Indicators**: Added Writing Speed, Task Completion, and Completed Ratio metric cards, automatically calculated and displayed on the Creative Homepage and Writing Data Tracker.
+- **Click to Collapse**: Column headers on the All Chapters Board, Lore Board, and Task Board now support smooth click-to-collapse/expand with built-in indicator arrows.
+- **Full Chinese Delimiter Support**: Workspace Folders and Strict Chapter Mode Exceptions in settings now fully support Chinese full-width commas `，`, full-width semicolons `；`, half-width semicolons `;`, enumeration dots `、`, and newlines for natural Chinese input habits.
+- **UI Optimization**: Optimized display effects for various UI elements.
+
+#### Bug Fixes
+- Fixed an issue where bar charts and indicators in the real-time Writing Status Panel did not update in real-time.
+- Fixed a bug where opening a file outside the workspace while Workbench was active caused Workbench to automatically switch its context.
+
+
 ## 🚀 v3.6.0 移动端新增专注计时支持
 
 ### 移动端设定速查与专注计时（实验性）

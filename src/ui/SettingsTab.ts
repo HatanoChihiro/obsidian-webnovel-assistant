@@ -305,7 +305,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 						// 记录在改变 workspaceFolders 之前的旧主页路径
 						const currentPath = this.plugin.homepageManager?.getHomepageFilePath();
 
-						this.plugin.settings.workspaceFolders = value.trim() ? value.split(',').map(f => f.trim()).filter(Boolean) : [];
+						this.plugin.settings.workspaceFolders = value.trim() ? value.split(/[,，;\uFF1B\u3001\n\r]+/).map(f => f.trim()).filter(Boolean) : [];
 						const newFolders = this.plugin.settings.workspaceFolders;
 						const newFirst = newFolders.length > 0 ? newFolders[0].replace(/^\/+|\/+$/g, '') : '';
 
@@ -351,7 +351,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 						.setPlaceholder(t('setting.exception-directories-placeholder'))
 						.setValue((this.plugin.settings.strictChapterExceptions || []).join(', '))
 						.onChange(async (value) => {
-							this.plugin.settings.strictChapterExceptions = value.trim() ? value.split(',').map(f => f.trim()).filter(Boolean) : [];
+							this.plugin.settings.strictChapterExceptions = value.trim() ? value.split(/[,，;\uFF1B\u3001\n\r]+/).map(f => f.trim()).filter(Boolean) : [];
 							await this.plugin.saveSettings();
 							this.plugin.updateWordCount();
 							if (this.plugin.settings.showExplorerCounts) {

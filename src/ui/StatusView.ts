@@ -3,7 +3,7 @@ import { ItemView, TFile, MarkdownView, Notice, setIcon, Menu } from 'obsidian';
 import { formatTime, formatCount, isMobile } from '../utils';
 import { revealAndFocusLeaf, openFileAndFocus } from '../utils/leaf';
 
-import { HistoryStatsModal, calcStreak, calcFocusRate, calcActiveHours, calcDailyAverage } from './HistoryModal';
+import { HistoryStatsModal, calcStreak, calcFocusRate, calcDailyAverage, calcWritingSpeed } from './HistoryModal';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ForeshadowingStatus, type ParsedForeshadowingEntry } from '../types/foreshadowing';
 import { CORKBOARD_STATUS_MAP, getCorkboardStatusText, getCorkboardStatusKeys } from '../i18n/data-keys';
@@ -463,24 +463,36 @@ export class WritingStatusView extends ItemView {
 				const active = manager.getActiveTask(entries);
 				if (active) {
 					hasActiveTask = true;
-					const progress = manager.calcProgress(active);
-					const taskPercent = active.wordTarget > 0 ? Math.min(Math.round((progress / active.wordTarget) * 100), 100) : 0;
-					this.taskWordEl.innerText = progress.toLocaleString();
-					this.taskTargetEl.innerText = active.wordTarget.toLocaleString();
-					this.taskPercentEl.innerText = ` ${taskPercent}%`;
-					const taskDone = active.wordTarget > 0 && progress >= active.wordTarget;
-					const taskState = taskDone ? 'done' : 'normal';
-					const daysLeft = Math.max(0, window.moment(active.endDate).diff(window.moment().startOf('day'), 'days') + 1);
-					const endShort = active.endDate.substring(5);
-					this.taskTimeDescEl.setText(taskDone ? t('common.task-deadline-reached', { date: endShort }) : t('common.task-deadline-remaining', { date: endShort, days: String(daysLeft) }));
-					this.taskTimeDescEl.toggleClass('task-reached', taskDone);
-					this.setProgressState(this.taskProgressFillEl, this.taskWordEl, this.taskPercentEl, taskState, taskPercent);
+					if (active.taskType === 'event') {
+						this.taskWordEl.innerText = active.position || active.platform;
+						this.taskTargetEl.innerText = '';
+						this.taskPercentEl.innerText = '';
+						this.taskProgressFillEl.parentElement?.setCssProps({ display: 'none' });
+						const daysLeft = Math.max(0, window.moment(active.endDate).diff(window.moment().startOf('day'), 'days') + 1);
+						const endShort = active.endDate.substring(5);
+						this.taskTimeDescEl.setText(t('common.task-deadline-remaining', { date: endShort, days: String(daysLeft) }));
+						this.taskTimeDescEl.removeClass('task-reached');
+					} else {
+						this.taskProgressFillEl.parentElement?.setCssProps({ display: 'block' });
+						const progress = manager.calcProgress(active);
+						const taskPercent = active.wordTarget > 0 ? Math.min(Math.round((progress / active.wordTarget) * 100), 100) : 0;
+						this.taskWordEl.innerText = progress.toLocaleString();
+						this.taskTargetEl.innerText = active.wordTarget.toLocaleString();
+						this.taskPercentEl.innerText = ` ${taskPercent}%`;
+						const taskDone = active.wordTarget > 0 && progress >= active.wordTarget;
+						const taskState = taskDone ? 'done' : 'normal';
+						const daysLeft = Math.max(0, window.moment(active.endDate).diff(window.moment().startOf('day'), 'days') + 1);
+						const endShort = active.endDate.substring(5);
+						this.taskTimeDescEl.setText(taskDone ? t('common.task-deadline-reached', { date: endShort }) : t('common.task-deadline-remaining', { date: endShort, days: String(daysLeft) }));
+						this.taskTimeDescEl.toggleClass('task-reached', taskDone);
+						this.setProgressState(this.taskProgressFillEl, this.taskWordEl, this.taskPercentEl, taskState, taskPercent);
 
-					// 防抖持久化完成字数
-					if (this.taskSaveTimer) window.clearTimeout(this.taskSaveTimer);
-					this.taskSaveTimer = window.setTimeout(() => {
-						void manager.updateProgress(active.period, progress);
-					}, 5000);
+						// 防抖持久化完成字数
+						if (this.taskSaveTimer) window.clearTimeout(this.taskSaveTimer);
+						this.taskSaveTimer = window.setTimeout(() => {
+							void manager.updateProgress(active.period, progress);
+						}, 5000);
+					}
 				}
 			}
 		}
@@ -502,6 +514,7 @@ export class WritingStatusView extends ItemView {
 
 		void this.updateChapterStatus();
 		this.updateWordStats();
+		this.renderMiniChart();
 	}
 
 	private lastChapterMtime: number = -1;
@@ -756,12 +769,12 @@ export class WritingStatusView extends ItemView {
 
 	private lastHistorySnapshot: string = '';
 
-	renderMiniChart() {
+	renderMiniChart(force = false) {
 		const history = this.plugin.historyManager.getHistory();
 		const dates = Object.keys(history).sort().slice(-7);
 
 		const currentSnapshot = dates.map(d => `${d}:${history[d]?.addedWords ?? 0}`).join('|');
-		if (this.lastHistorySnapshot === currentSnapshot) return;
+		if (!force && this.lastHistorySnapshot === currentSnapshot) return;
 		this.lastHistorySnapshot = currentSnapshot;
 
 		this.miniChartEl.empty();
@@ -807,13 +820,13 @@ export class WritingStatusView extends ItemView {
 		const startDate = now.clone().subtract(7, 'days').format('YYYY-MM-DD');
 		const streak = calcStreak(history);
 		const focusRate = calcFocusRate(history, startDate, endDate);
-		const activeHours = calcActiveHours(history, startDate, endDate);
+		const speed = calcWritingSpeed(history, startDate, endDate);
 		const dailyAvg = calcDailyAverage(history, startDate, endDate);
 
 		const parts = [
 			t('common.consecutive-days', { count: streak }),
 			t('common.focus-percent', { rate: focusRate }),
-			activeHours ? t('common.active-hours', { hours: activeHours }) : '',
+			t('common.writing-speed-fmt', { speed: speed > 0 ? formatCount(speed) : '--' }),
 			t('common.daily-average', { count: formatCount(dailyAvg) }),
 		].filter(Boolean);
 

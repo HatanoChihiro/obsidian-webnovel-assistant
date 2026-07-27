@@ -3,8 +3,8 @@ import type { App} from 'obsidian';
 import { TFile, normalizePath } from 'obsidian';
 import { t } from '../i18n';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
-import type { TaskEntry, TaskStatus } from '../types/task';
-import { TASK_STATUS_MAP, TASK_LABEL_MAP, getTaskLabel, getTaskStatusText, getTaskPeriodTitle, getDefaultFileName, getDefaultFileNameCandidates } from '../i18n/data-keys';
+import type { TaskEntry, TaskStatus, TaskType } from '../types/task';
+import { TASK_STATUS_MAP, TASK_LABEL_MAP, TASK_TYPE_MAP, getTaskLabel, getTaskStatusText, getTaskTypeText, getTaskPeriodTitle, getDefaultFileName, getDefaultFileNameCandidates } from '../i18n/data-keys';
 import { SerializedWriter } from '../utils/SerializedWriter';
 
 export class TaskManager {
@@ -88,10 +88,13 @@ async createTaskFile(): Promise<TFile> {
 				meta[key] = m[2].trim();
 			}
 
+			const taskType: TaskType = (TASK_TYPE_MAP[meta['taskType']] as TaskType) || 'wordCount';
+
 			entries.push({
 				period,
 				platform: meta['platform'] || '',
 				position: meta['position'] || '',
+				taskType,
 				wordTarget: parseInt(meta['wordTarget'] || '0', 10),
 				startDate: meta['startDate'] || '',
 				endDate: meta['endDate'] || '',
@@ -111,11 +114,16 @@ async createTaskFile(): Promise<TFile> {
 		lines.push('');
 		lines.push(`**${getTaskLabel('platform')}**：${entry.platform}`);
 		lines.push(`**${getTaskLabel('position')}**：${entry.position}`);
-		lines.push(`**${getTaskLabel('wordTarget')}**：${entry.wordTarget}`);
+		lines.push(`**${getTaskLabel('taskType')}**：${getTaskTypeText(entry.taskType || 'wordCount')}`);
+		if (entry.taskType !== 'event') {
+			lines.push(`**${getTaskLabel('wordTarget')}**：${entry.wordTarget}`);
+		}
 		lines.push(`**${getTaskLabel('startDate')}**：${entry.startDate}`);
 		lines.push(`**${getTaskLabel('endDate')}**：${entry.endDate}`);
-		lines.push(`**${getTaskLabel('startSnapshot')}**：${entry.startSnapshot}`);
-		if (entry.completedWords !== undefined) {
+		if (entry.taskType !== 'event') {
+			lines.push(`**${getTaskLabel('startSnapshot')}**：${entry.startSnapshot}`);
+		}
+		if (entry.completedWords !== undefined && entry.taskType !== 'event') {
 			lines.push(`**${getTaskLabel('completedWords')}**：${entry.completedWords}`);
 		}
 		lines.push(`**${getTaskLabel('status')}**：${getTaskStatusText(entry.status)}`);
@@ -187,10 +195,12 @@ async createTaskFile(): Promise<TFile> {
 		return entries.find(e => e.status === 'active') || null;
 	}
 
-	/** 获取下一期期数 */
-	getNextPeriod(entries: TaskEntry[]): number {
-		if (entries.length === 0) return 1;
-		return Math.max(...entries.map(e => e.period)) + 1;
+	/** 获取下一期期数（根据任务类型独立计算递增） */
+	getNextPeriod(entries: TaskEntry[], taskType: TaskType = 'wordCount'): number {
+		if (!entries || entries.length === 0) return 1;
+		const typedEntries = entries.filter(e => (e.taskType || 'wordCount') === taskType);
+		if (typedEntries.length === 0) return 1;
+		return Math.max(...typedEntries.map(e => e.period)) + 1;
 	}
 
 	/** 计算当前增量字数 */
@@ -216,12 +226,17 @@ async createTaskFile(): Promise<TFile> {
 
 		for (const entry of entries) {
 			if (entry.status === 'active' && entry.endDate < today) {
-				const progress = this.calcProgress(entry);
-				// 如果缓存未就绪（progress=0 但 startSnapshot>0），跳过关闭以避免误判
-				if (progress === 0 && entry.startSnapshot > 0) continue;
-				const status: TaskStatus = progress >= entry.wordTarget ? 'completed' : 'incomplete';
-				await this.updateEntryStatus(entry.period, status, progress);
-				changed = true;
+				if (entry.taskType === 'event') {
+					await this.updateEntryStatus(entry.period, 'incomplete');
+					changed = true;
+				} else {
+					const progress = this.calcProgress(entry);
+					// 如果缓存未就绪（progress=0 但 startSnapshot>0），跳过关闭以避免误判
+					if (progress === 0 && entry.startSnapshot > 0) continue;
+					const status: TaskStatus = progress >= entry.wordTarget ? 'completed' : 'incomplete';
+					await this.updateEntryStatus(entry.period, status, progress);
+					changed = true;
+				}
 			}
 		}
 		return changed;

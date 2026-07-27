@@ -9,6 +9,7 @@ Welcome to WebNovel Assistant! An Obsidian plugin designed specifically for web 
   - [First Use](#first-use)
 - [Core Features](#core-features)
   - [Creative Homepage](#creative-homepage)
+  - [Writing Workbench](#writing-workbench)
   - [Immersive Writing Mode](#immersive-writing-mode)
   - [Workspace Settings](#workspace-settings)
   - [Word Count](#word-count)
@@ -22,7 +23,6 @@ Welcome to WebNovel Assistant! An Obsidian plugin designed specifically for web 
   - [Timeline Management](#timeline-management)
   - [Time-Limited Task Tracking](#time-limited-task-tracking)
   - [Lore Quick Reference](#lore-quick-reference)
-  - [Writing Workbench](#writing-workbench)
   - [Chapter Overview (Classic)](#chapter-overview-classic)
   - [Advanced Search](#advanced-search)
   - [Writing Status Panel](#writing-status-panel)
@@ -59,6 +59,8 @@ Welcome to WebNovel Assistant! An Obsidian plugin designed specifically for web 
 3. Place the downloaded files in that folder
 4. Restart Obsidian and enable the plugin in Settings → Community plugins
 
+> ⚠️ **Data Backup Notice**: If you need to completely uninstall or reinstall the plugin, please make sure to back up `history-data.json` (contains your daily word count & focus statistics) located in the `.obsidian/plugins/web-novel-assistant/` directory. Copy it back after reinstallation to restore your historical data.
+
 ### First Use
 
 1. Open any Markdown file
@@ -94,6 +96,42 @@ Welcome to WebNovel Assistant! An Obsidian plugin designed specifically for web 
 1. Open plugin settings
 2. Find **Homepage Greeting**
 3. Enter custom text; leave empty to use the time-based automatic greeting
+
+---
+
+### Writing Workbench
+
+#### Overview
+The Writing Workbench is a comprehensive writing management center upgraded from the original "Chapter Overview", integrating 5 main tab panels:
+
+1. **All Chapters Panel**:
+   - Quickly create chapters, modify chapter names and summaries.
+   - Supports **manual drag-and-drop reordering** (automatically renames subsequent numbered chapter files).
+   - Badges at the bottom display **Lore** and **Foreshadowing** appearing in the current chapter; click to preview.
+   - **Supports Chapter Templates**: Enable in settings to automatically apply template content to new chapters.
+2. **Timeline Panel**:
+   - Displays novel events in a vertical timeline flow; supports dragging chapters to timeline nodes and dragging event cards to reorder.
+   - Features a bottom floating window for unlinked chapters and highlighted association lines.
+3. **Lore Panel**:
+   - Supports switching between **Table View**, **Card View**, and **Full Lore Graph View**.
+   - Automatically tracks appearance counts and chapters; supports double-clicking graph nodes to jump directly to the Markdown document.
+4. **Task Board Panel**:
+   - Consolidates timed writing tasks into a grid card view directly inside the workbench.
+   - Provides a voluntary **Abandon Task** button with a confirmation modal for incomplete tasks, setting status to `abandoned` while preserving word count records.
+5. **Notes Management Panel**:
+   - Centralizes management for all floating and immersive sticky notes. Create, edit, switch themes, or delete notes with real-time bi-directional sync.
+
+#### How to Use
+
+##### Open Writing Workbench
+1. Open the command palette (Ctrl/Cmd + P) and type `Toggle Writing Workbench Panel`
+2. Or click the workbench icon in the left Ribbon menu
+3. After opening any chapter file, the workbench will automatically identify the current novel and display its content.
+
+##### Enable Chapter Template
+1. Open plugin settings → **Enable Chapter Template** and toggle it on.
+2. Fill in the relative path to your template document in the input box below (e.g., `Templates/ChapterTemplate.md`).
+3. New chapters will subsequently apply the template content automatically (including chapters created via command).
 
 ---
 
@@ -757,38 +795,6 @@ Supporting character, a loyal companion.
 
 ---
 
-### Writing Workbench
-
-#### Overview
-The Writing Workbench is a comprehensive writing management center upgraded from the original "Chapter Overview", integrating 5 main tab panels:
-
-1. **All Chapters Panel**:
-   - Quickly create chapters, modify chapter names and summaries.
-   - Supports **manual drag-and-drop reordering** (automatically renames subsequent numbered chapter files).
-   - Badges at the bottom display **Lore** and **Foreshadowing** appearing in the current chapter; click to preview.
-   - **Supports Chapter Templates**: Enable in settings to automatically apply template content to new chapters.
-2. **Timeline Panel**:
-   - Displays novel events in a vertical timeline flow; supports dragging chapters to timeline nodes and dragging event cards to reorder.
-   - Features a bottom floating window for unlinked chapters and highlighted association lines.
-3. **Lore Panel**:
-   - Supports switching between **Table View**, **Card View**, and **Full Lore Graph View**.
-   - Automatically tracks appearance counts and chapters; supports double-clicking graph nodes to jump directly to the Markdown document.
-4. **Task Board Panel**:
-   - Consolidates timed writing tasks into a grid card view directly inside the workbench.
-   - Provides a voluntary **Abandon Task** button with a confirmation modal for incomplete tasks, setting status to `abandoned` while preserving word count records.
-5. **Notes Management Panel**:
-   - Centralizes management for all floating and immersive sticky notes. Create, edit, switch themes, or delete notes with real-time bi-directional sync.
-
-#### How to Use
-
-##### Open Writing Workbench
-1. Open the command palette (Ctrl/Cmd + P) and type `Toggle Writing Workbench Panel`
-2. Or click the workbench icon in the left Ribbon menu
-3. After opening any chapter file, the workbench will automatically identify the current novel and display its content.
-
-##### Enable Chapter Template
-1. Open plugin settings → **Enable Chapter Template** and toggle it on.
-2. Fill in the relative path to your template document in the input box below (e.g., `Templates/ChapterTemplate.md`).
 3. New chapters will subsequently apply the template content automatically (including chapters created via command).
 
 ---
@@ -1074,7 +1080,7 @@ Here are some recommended shortcut configurations (for reference only):
 | Mark as Foreshadowing | `Ctrl/Cmd + Shift + F` | F = Foreshadowing |
 | Toggle Foreshadowing Panel | `Ctrl/Cmd + Shift + B` | B = Bookmark |
 | Toggle Timeline Panel | `Ctrl/Cmd + Shift + T` | T = Timeline |
-| Toggle Time-Limited Task Panel | `Ctrl/Cmd + Shift + R` | R = Record |
+| Toggle Writing Workbench Panel | `Ctrl/Cmd + Shift + W` | W = Workbench |
 | Toggle Writing Status Panel | `Ctrl/Cmd + Shift + S` | S = Status |
 | Create Blank Floating Note | `Ctrl/Cmd + Shift + N` | N = Note |
 | Advanced Search | `Ctrl/Cmd + Shift + H` | H = Hunt |
@@ -1090,21 +1096,18 @@ Here are some recommended shortcut configurations (for reference only):
 
 ## Multi-Platform Adaptation
 
-To ensure stability and user experience across different devices, the plugin provides tiered feature support:
+The plugin provides full feature integration across **Desktop** and **Mobile (Phone / Tablet)**. All core creative tools (Creative Homepage, Writing Workbench, Word Count & Focus Analytics, Foreshadowing Manager, Story Timeline, Lore Graphs, Task Tracker) are fully available on mobile devices, with UI layouts automatically adapted for different screen sizes:
 
 ### Desktop
-- **Full Features**: Supports all features including immersive mode, floating notes, OBS streaming overlay, and Worker-based background time tracking.
-- **High Performance Mode**: Enables full file explorer word count caching and real-time sync mechanisms.
+- **Full Feature Suite**: Supports all features including creative homepage, writing workbench, immersive mode, floating desktop notes, OBS streaming overlay, and Worker background time tracking.
+- **High Performance**: Enables full file explorer word count caching and high-performance graph rendering.
 
-### Tablet
-- **Productivity Tools**: Supports precise word counting, goal tracking, foreshadowing management panel, timeline panel, and writing status panel.
-- **UI Optimization**: Automatically adapts to tablet layouts; tapping icons automatically expands sidebar views.
-- **Excluded Features**: Immersive mode and floating notes are not supported (to avoid touch interaction conflicts).
-
-### Mobile (Lite)
-- **Basic Features**: Provides precise word counting, goal tracking, and one-click copy full text.
-- **Simplified Settings**: Only shows basic settings tabs to prevent misoperation; panel features can be used simply.
-- **Performance Priority**: Disables heavy background tasks to ensure smooth mobile operation.
+### Mobile (Phone & Tablet)
+- **Unified Functionality**: Phones and tablets share full mobile capabilities, including the full workbench suite, mobile floating stats widget (with focus timer and edge docking/collapse), quick lookup cards, and one-click full document copy command.
+- **Responsive Layout Adaptation**:
+  - **Phone (`body.is-phone`)**: Activates mobile-first compact layouts (stacked headers, compact heatmaps, touch-scrolling timeline cards, vertical button flows).
+  - **Tablet (`body.is-tablet`)**: Activates tablet widescreen layouts (inline header buttons, expanded multi-column grids, sidebar integration).
+- **Platform Limitations**: Immersive Writing Mode, OBS Streaming Overlay (requires local HTTP server), and multi-window desktop floating notes are desktop-exclusive.
 
 ---
 
@@ -1148,12 +1151,18 @@ A:
 2. Note state is saved in plugin settings
 3. It is recommended to save to a file promptly
 
-### Q: Limited mobile functionality?
+### Q: What is the difference between Mobile and Desktop features?
 A:
-- Mobile only provides basic features (word count, goal tracking, copy full text)
-- Advanced features (Worker time tracking, OBS, notes) are only available on desktop
-- Tablet supports panel features (writing status, foreshadowing, timeline)
-- Mobile provides the "Copy This Document" command, solving the Obsidian mobile limitation where Select All only selects the visible area
+- **Unified Core Features**: Mobile devices (both phones and tablets) support the Creative Homepage, Writing Workbench (Chapters, Timeline, Lore, Task boards), focus timing, and foreshadowing tracking.
+- **Mobile-Exclusive Features**: Includes the Mobile Floating Stats Widget (with edge docking/auto-collapse) and the "Copy This Document" command (solves the mobile Obsidian restriction where Select All only selects text in the visible viewport).
+- **Device-Specific UI**: Phone and tablet views automatically adapt layout and touch gestures to fit screen sizes.
+- **Desktop-Only Features**: Immersive Writing Mode (full-screen typewriter focus mode), OBS Streaming Overlay (HTTP server), and multi-window floating notes remain desktop-exclusive due to mobile touch interaction and OS sandbox restrictions.
+
+### Q: Will reinstalling or deleting the plugin lose my writing history data?
+A:
+- **Standard/Overwriting Updates**: Updating via Community Plugins or replacing `main.js` will not delete your data.
+- **Complete Reinstallation/Deletion**: If you delete the plugin directory `.obsidian/plugins/web-novel-assistant/`, the `history-data.json` file inside it will be removed.
+- **Backup Advice**: Before a fresh reinstallation, manually back up `history-data.json`. Restore it by copying the file back into the plugin folder after reinstalling.
 
 ### Q: Gutter word count markers hidden or misaligned when using Minimal or third-party themes?
 A: The Minimal theme applies strict display and margin restrictions on editor gutters. You can use Obsidian's **Settings → Appearance → CSS Snippets** feature to add the following custom CSS snippet to remove visibility restrictions and adjust marker offsets & line margins:

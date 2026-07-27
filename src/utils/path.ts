@@ -23,6 +23,18 @@ export function findBookRoot(app: App, plugin: WebNovelAssistantPlugin, file: TF
 
 	const workspaceFolders = plugin.settings.workspaceFolders || [];
 
+	// 如果设置了工作区文件夹，则首先校验文件是否位于任一工作区文件夹内部
+	if (workspaceFolders.length > 0) {
+		const isFileInWorkspace = workspaceFolders.some(ws => {
+			const normWs = ws.replace(/^\/+|\/+$/g, '');
+			return folder.path === normWs || folder.path.startsWith(normWs + '/');
+		});
+		// 工作区之外的文件一律不当作作品处理！
+		if (!isFileInWorkspace) {
+			return '';
+		}
+	}
+
 	// 缓存一下候选文件名，减少循环内重新计算
 	const loreCandidates = new Set<string>();
 	loreCandidates.add(plugin.settings.loreFolderName || getDefaultFileName('loreFolderName'));
@@ -42,21 +54,13 @@ export function findBookRoot(app: App, plugin: WebNovelAssistantPlugin, file: TF
 
 	let currentFolder: TFolder | null = folder;
 
-	while (currentFolder) {
-		// 1. 如果匹配了工作区，直接作为根目录
-		if (workspaceFolders.length > 0) {
-			const parent = currentFolder.parent;
-			if (parent && workspaceFolders.includes(parent.path)) return currentFolder.path;
-			if (workspaceFolders.includes(currentFolder.path)) return currentFolder.path;
-		}
-
-		// 2. 检查当前级目录下是否存在地标文件（设定文件夹、时间线、伏笔）
+	while (currentFolder && !currentFolder.isRoot()) {
 		const folderPath = currentFolder.path;
 		let foundMarker = false;
 
 		// 检查 lore
 		for (const loreName of loreCandidates) {
-			const path = folderPath === '/' ? loreName : folderPath + '/' + loreName;
+			const path = folderPath + '/' + loreName;
 			const absFile = app.vault.getAbstractFileByPath(path);
 			if (absFile instanceof TFolder) { foundMarker = true; break; }
 		}
@@ -64,7 +68,7 @@ export function findBookRoot(app: App, plugin: WebNovelAssistantPlugin, file: TF
 		// 检查 timeline
 		if (!foundMarker) {
 			for (const tlName of timelineCandidates) {
-				const path = folderPath === '/' ? tlName + '.md' : folderPath + '/' + tlName + '.md';
+				const path = folderPath + '/' + tlName + '.md';
 				const absFile = app.vault.getAbstractFileByPath(path);
 				if (absFile instanceof TFile) { foundMarker = true; break; }
 			}
@@ -73,7 +77,7 @@ export function findBookRoot(app: App, plugin: WebNovelAssistantPlugin, file: TF
 		// 检查 foreshadowing
 		if (!foundMarker) {
 			for (const fsName of foreshadowingCandidates) {
-				const path = folderPath === '/' ? fsName + '.md' : folderPath + '/' + fsName + '.md';
+				const path = folderPath + '/' + fsName + '.md';
 				const absFile = app.vault.getAbstractFileByPath(path);
 				if (absFile instanceof TFile) { foundMarker = true; break; }
 			}
@@ -82,7 +86,7 @@ export function findBookRoot(app: App, plugin: WebNovelAssistantPlugin, file: TF
 		// 检查 novelInfo
 		if (!foundMarker) {
 			for (const infoName of novelInfoCandidates) {
-				const path = folderPath === '/' ? infoName + '.md' : folderPath + '/' + infoName + '.md';
+				const path = folderPath + '/' + infoName + '.md';
 				const absFile = app.vault.getAbstractFileByPath(path);
 				if (absFile instanceof TFile) { foundMarker = true; break; }
 			}
@@ -91,6 +95,17 @@ export function findBookRoot(app: App, plugin: WebNovelAssistantPlugin, file: TF
 		// 如果找到了地标，这就是小说的根目录
 		if (foundMarker) {
 			return folderPath;
+		}
+
+		// 如果匹配了工作区目录，非严格模式下直接返回，严格模式下继续向上或要求地标
+		if (workspaceFolders.length > 0) {
+			const parent = currentFolder.parent;
+			if (parent && workspaceFolders.includes(parent.path)) {
+				if (!strict) return currentFolder.path;
+			}
+			if (workspaceFolders.includes(currentFolder.path)) {
+				if (!strict) return currentFolder.path;
+			}
 		}
 
 		// 继续往上冒泡
@@ -107,36 +122,44 @@ export function findBookRoot(app: App, plugin: WebNovelAssistantPlugin, file: TF
 
 /**
  * 智能获取当前全局作品上下文
- * 避免因点击侧边栏（activeLeaf 改变）导致状态被上一篇打开的文本文件覆盖
+ * 避免因点击侧边栏（activeLeaf 改变）或非作品文件导致作品上下文被覆盖
  */
 export function getCurrentBookContext(app: App, plugin: WebNovelAssistantPlugin): string | null {
 	const activeLeaf = app.workspace.getMostRecentLeaf();
 	
-	// 1. 优先检查当前活动 Leaf（放宽对 rootSplit 的限制，只要不是别的视图覆盖了上下文就行）
+	// 1. 优先检查当前活动 Leaf（如果是工作台，以工作台自身的 currentBookPath 为准）
 	if (activeLeaf) {
 		if (activeLeaf.view.getViewType() === 'webnovel-workbench') {
 			const bookPath = (activeLeaf.view as WorkbenchView).currentBookPath;
-			if (bookPath !== null && bookPath !== undefined) return bookPath;
+			if (bookPath && bookPath !== '/' && bookPath !== '') return bookPath;
 		}
 		if (activeLeaf.view.getViewType() === 'markdown') {
 			const file = app.workspace.getActiveFile();
 			if (file) {
-				return findBookRoot(app, plugin, file);
+				const bookPath = findBookRoot(app, plugin, file, true);
+				if (bookPath) return bookPath;
 			}
 		}
 	}
 
-	// 2. 如果当前活动的 Leaf 是侧边栏，那么寻找主区域是否有任何 webnovel-workbench 正在打开
+	// 2. 如果当前焦点不是作品 Markdown，寻找工作区是否有任何打开的有效作品工作台
 	const workbenches = app.workspace.getLeavesOfType('webnovel-workbench');
 	for (const leaf of workbenches) {
 		const bookPath = (leaf.view as WorkbenchView).currentBookPath;
-		if (bookPath !== undefined && bookPath !== null) return bookPath;
+		if (bookPath && bookPath !== '/' && bookPath !== '') return bookPath;
 	}
 
-	// 3. 兜底策略：使用最后活跃的 markdown 文件
+	// 3. 检查系统最后活跃的 markdown 文件是否在作品目录中
 	const file = app.workspace.getActiveFile();
 	if (file) {
-		return findBookRoot(app, plugin, file);
+		const bookPath = findBookRoot(app, plugin, file, true);
+		if (bookPath) return bookPath;
+	}
+
+	// 4. 兜底：取全库注册的第一个作品目录
+	const novels = plugin.homepageManager?.getNovelFolders() || [];
+	if (novels.length > 0) {
+		return novels[0].folderPath;
 	}
 
 	return null;
