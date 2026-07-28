@@ -18,6 +18,7 @@ export interface LoreBoardOptions {
     container: HTMLElement;
     files: TFile[];
     currentBookPath: string;
+    matchedLoreHeadings?: ReadonlySet<string>;
     reloadBoard?: () => void;
 }
 
@@ -34,7 +35,7 @@ export class LoreBoardRenderer {
     }
 
     static async render(options: LoreBoardOptions): Promise<void> {
-        const { app, plugin, container, files, currentBookPath, reloadBoard } = options;
+        const { app, plugin, container, files, currentBookPath, matchedLoreHeadings, reloadBoard } = options;
         const bookPath = currentBookPath === '/' ? '' : currentBookPath;
         const layoutMode = plugin.settings.loreBoardLayout || 'table';
 
@@ -67,18 +68,23 @@ export class LoreBoardRenderer {
         const normalizedBookPath = currentBookPath === '' ? '/' : currentBookPath;
         const allCharacters = plugin.characterManager.getCharactersForBook(normalizedBookPath) || [];
 
+        if (matchedLoreHeadings && matchedLoreHeadings.size === 0) {
+            contentArea.createDiv({ cls: 'wn-corkboard-empty-msg', text: t('corkboard.filter-no-results') });
+            return;
+        }
+
         if (layoutMode === 'graph') {
-            await this.renderGraph(contentArea, app, plugin, bookPath, options.ownerComponent);
+            await this.renderGraph(contentArea, app, plugin, bookPath, options.ownerComponent, matchedLoreHeadings);
             return;
         }
 
         if (layoutMode === 'cards') {
-            await this.renderCards(contentArea, app, plugin, normalizedBookPath, allCharacters, reloadBoard, options.ownerComponent);
+            await this.renderCards(contentArea, app, plugin, normalizedBookPath, allCharacters, matchedLoreHeadings, reloadBoard, options.ownerComponent);
             return;
         }
 
         // Table layout (Legacy/Default)
-        await this.renderTable(contentArea, app, plugin, files, normalizedBookPath, allCharacters, bookPath);
+        await this.renderTable(contentArea, app, plugin, files, normalizedBookPath, allCharacters, bookPath, matchedLoreHeadings);
     }
 
     private static async renderCards(
@@ -87,6 +93,7 @@ export class LoreBoardRenderer {
         plugin: WebNovelAssistantPlugin,
         currentBookPath: string,
         allCharacters: string[],
+        matchedLoreHeadings?: ReadonlySet<string>,
         reloadBoard?: () => void,
         ownerComponent?: Component
     ) {
@@ -95,7 +102,9 @@ export class LoreBoardRenderer {
             return;
         }
 
-        const allEntries = plugin.characterManager.getLoreEntriesInFileOrder(currentBookPath);
+        const allEntries = plugin.characterManager
+            .getLoreEntriesInFileOrder(currentBookPath)
+            .filter(entry => !matchedLoreHeadings || matchedLoreHeadings.has(entry.heading));
 
         // 卡片视图下强制遵循文件本身的物理顺序，忽略 customSortOrder，确保拖拽修改文件后所见即所得
         const sortedEntries = allEntries;
@@ -196,13 +205,15 @@ export class LoreBoardRenderer {
         files: TFile[],
         currentBookPath: string,
         allCharacters: string[],
-        bookPath: string
+        bookPath: string,
+        matchedLoreHeadings?: ReadonlySet<string>
     ) {
         const loreToChapters = new Map<string, { chapter: TFile, count: number }[]>();
 
         for (const key of allCharacters) {
             const entry = plugin.characterManager.getCharacterFile(currentBookPath, key);
             if (entry && entry.heading) {
+                if (matchedLoreHeadings && !matchedLoreHeadings.has(entry.heading)) continue;
                 if (!loreToChapters.has(entry.heading)) {
                     loreToChapters.set(entry.heading, []);
                 }
@@ -217,9 +228,11 @@ export class LoreBoardRenderer {
                     if (typeof item === 'string') {
                         const parts = item.split('×');
                         const name = parts[0].trim();
+                        const canonicalName = plugin.characterManager.getCharacterFile(currentBookPath, name)?.heading ?? name;
+                        if (matchedLoreHeadings && !matchedLoreHeadings.has(canonicalName)) continue;
                         const count = parts.length > 1 ? parseInt(parts[1], 10) : 1;
-                        if (!loreToChapters.has(name)) loreToChapters.set(name, []);
-                        loreToChapters.get(name)!.push({ chapter: file, count: isNaN(count) ? 1 : count });
+                        if (!loreToChapters.has(canonicalName)) loreToChapters.set(canonicalName, []);
+                        loreToChapters.get(canonicalName)!.push({ chapter: file, count: isNaN(count) ? 1 : count });
                     }
                 }
             }
@@ -319,7 +332,14 @@ export class LoreBoardRenderer {
         }
     }
 
-    private static async renderGraph(container: HTMLElement, app: App, plugin: WebNovelAssistantPlugin, bookPath: string, ownerComponent: Component) {
+    private static async renderGraph(
+        container: HTMLElement,
+        app: App,
+        plugin: WebNovelAssistantPlugin,
+        bookPath: string,
+        ownerComponent: Component,
+        matchedLoreHeadings?: ReadonlySet<string>
+    ) {
         container.empty();
         container.addClass('wn-lore-graph-container');
 
@@ -395,7 +415,8 @@ export class LoreBoardRenderer {
             localFocusNode: null,
             edgeDrawModeMap: new Map(),
             edgeOffsetMap: new Map(),
-            combinedLabelMap: new Map()
+            combinedLabelMap: new Map(),
+            filterMatchNodeIds: matchedLoreHeadings
         };
 
         GraphRenderer.buildEdgeOffsets(data, state);

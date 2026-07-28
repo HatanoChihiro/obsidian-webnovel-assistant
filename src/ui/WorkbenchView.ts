@@ -1,4 +1,4 @@
-import { TFile, type WorkspaceLeaf, ItemView, Notice, Menu, Modal, Setting } from 'obsidian';
+import { TFile, type WorkspaceLeaf, ItemView, Notice, Menu, Modal, Setting, setIcon } from 'obsidian';
 import type { App, ViewStateResult } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ForeshadowingStatus, type ParsedForeshadowingEntry } from '../types/foreshadowing';
@@ -18,6 +18,7 @@ import { TaskAddModal } from './TaskModal';
 import { TaskManager } from '../services/TaskManager';
 import type { StickyNoteState } from '../types/settings';
 import { isMobile } from '../utils';
+import { WorkbenchFilterIndex } from '../services/WorkbenchFilterIndex';
 
 class NewChapterModal extends Modal {
     constructor(
@@ -100,10 +101,16 @@ export class WorkbenchView extends ItemView {
     private currentRenderId: number = 0;
     private draggableListCleanup: (() => void) | null = null;
     private touchPolyfillCleanup: (() => void) | null = null;
+    private chapterFilterQuery: string = '';
+    private loreFilterQuery: string = '';
+    private filterDebounceTimer: number | null = null;
+    private pendingFilterFocus: { mode: 'default' | 'lore'; start: number; end: number } | null = null;
+    private readonly filterIndex: WorkbenchFilterIndex;
 
     constructor(leaf: WorkspaceLeaf, plugin: WebNovelAssistantPlugin) {
         super(leaf);
         this.plugin = plugin;
+        this.filterIndex = new WorkbenchFilterIndex(this.app);
 
         // 监听 timeline 筛选事件
         this.registerEvent(this.app.workspace.on('timeline-filter-changed', (filter: string) => {
@@ -112,18 +119,22 @@ export class WorkbenchView extends ItemView {
         }));
 
         // 监听文件或元数据变化以刷新视图
-        this.registerEvent(this.app.vault.on('rename', () => {
+        this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
             if (this.isSavingMetadata) return;
+            this.filterIndex.invalidate(oldPath);
+            this.filterIndex.invalidate(file.path);
             void this.reloadBoard();
         }));
-        this.registerEvent(this.app.vault.on('delete', () => {
+        this.registerEvent(this.app.vault.on('delete', (file) => {
             if (this.isSavingMetadata) return;
+            this.filterIndex.invalidate(file.path);
             void this.reloadBoard();
         }));
         this.registerEvent(this.app.vault.on('modify', (file) => {
             if (this.isSavingMetadata) return;
             if (this.sortMode === 'sticky') return;
             if (file instanceof TFile && !this.plugin.cacheManager.isFileInWorkspace(file)) return;
+            if (file instanceof TFile) this.filterIndex.invalidate(file.path);
             this.plugin.adaptiveDebounceManager.debounceFixed('corkboard-refresh', () => {
                 void this.reloadBoard();
             }, 1000);
@@ -132,6 +143,7 @@ export class WorkbenchView extends ItemView {
             if (this.isSavingMetadata) return;
             if (this.sortMode === 'sticky') return;
             if (file instanceof TFile && !this.plugin.cacheManager.isFileInWorkspace(file)) return;
+            if (file instanceof TFile) this.filterIndex.invalidate(file.path);
             this.plugin.adaptiveDebounceManager.debounceFixed('corkboard-refresh', () => {
                 void this.reloadBoard();
             }, 1000);
@@ -451,6 +463,11 @@ export class WorkbenchView extends ItemView {
     }
 
     async onClose(): Promise<void> {
+        if (this.filterDebounceTimer !== null) {
+            window.clearTimeout(this.filterDebounceTimer);
+            this.filterDebounceTimer = null;
+        }
+        this.filterIndex.clear();
         if (this.touchPolyfillCleanup) {
             this.touchPolyfillCleanup();
             this.touchPolyfillCleanup = null;
@@ -460,6 +477,243 @@ export class WorkbenchView extends ItemView {
             this.draggableListCleanup = null;
         }
         this.container.empty();
+    }
+
+    private renderFilterBar(
+        container: HTMLElement,
+        mode: 'default' | 'lore',
+        matchedCount: number,
+        totalCount: number
+    ): void {
+        const query = mode === 'default' ? this.chapterFilterQuery : this.loreFilterQuery;
+        const bar = container.createDiv('wn-workbench-filter-bar');
+        bar.setCssStyles({
+            display: 'grid',
+            gridTemplateColumns: 'max-content minmax(0, 1fr)',
+            alignItems: 'center',
+            columnGap: '12px',
+            width: '100%',
+            minWidth: '0',
+            marginBottom: '18px',
+            boxSizing: 'border-box'
+        });
+
+        const countEl = bar.createSpan({
+            cls: 'wn-workbench-filter-count',
+            text: t('corkboard.filter-result-count', {
+                matched: matchedCount.toString(),
+                total: totalCount.toString()
+            })
+        });
+        countEl.setCssStyles({
+            minWidth: '4.5em',
+            whiteSpace: 'nowrap',
+            color: 'var(--text-muted)',
+            fontSize: '12px',
+            fontVariantNumeric: 'tabular-nums',
+            textAlign: 'left'
+        });
+
+        const inputWrapper = bar.createDiv('wn-workbench-filter-input-wrapper');
+        inputWrapper.setCssStyles({
+            display: 'flex',
+            alignItems: 'center',
+            width: '100%',
+            minWidth: '0',
+            height: '36px',
+            padding: '0 2px 0 4px',
+            background: 'transparent',
+            border: '0',
+            borderBottom: '2px solid var(--text-faint)',
+            borderRadius: '0',
+            boxShadow: 'none',
+            boxSizing: 'border-box'
+        });
+        const searchIcon = inputWrapper.createSpan('wn-workbench-filter-icon');
+        setIcon(searchIcon, 'search');
+        searchIcon.setCssStyles({
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: 'var(--text-muted)',
+            flex: '0 0 16px'
+        });
+
+        const input = inputWrapper.createEl('input', {
+            type: 'search',
+            cls: 'wn-workbench-filter-input'
+        });
+        input.setCssStyles({
+            flex: '1 1 auto',
+            width: '100%',
+            minWidth: '0',
+            height: '34px',
+            padding: '0 8px',
+            margin: '0',
+            border: '0',
+            borderRadius: '0',
+            outline: '0',
+            boxShadow: 'none',
+            background: 'transparent',
+            color: 'var(--text-normal)',
+            fontFamily: 'inherit',
+            fontSize: '13px'
+        });
+        input.value = query;
+        input.placeholder = mode === 'default'
+            ? t('corkboard.filter-chapters-placeholder')
+            : t('corkboard.filter-lore-placeholder');
+        input.setAttr('aria-label', input.placeholder);
+        input.setAttr('autocomplete', 'off');
+        input.setAttr('data-filter-mode', mode);
+        input.spellcheck = false;
+
+        const clearButton = inputWrapper.createDiv('clickable-icon wn-workbench-filter-clear');
+        clearButton.setAttr('role', 'button');
+        clearButton.setAttr('tabindex', '0');
+        clearButton.setAttr('aria-label', t('corkboard.filter-clear'));
+        clearButton.title = t('corkboard.filter-clear');
+        setIcon(clearButton, 'x');
+        const clearIcon = clearButton.querySelector<SVGElement>('svg');
+        if (clearIcon) {
+            clearIcon.setCssStyles({
+                width: '18px',
+                height: '18px',
+                strokeWidth: '2.5'
+            });
+        }
+        clearButton.setCssStyles({
+            position: 'static',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '28px',
+            minWidth: '28px',
+            maxWidth: '28px',
+            height: '28px',
+            minHeight: '28px',
+            maxHeight: '28px',
+            padding: '0',
+            margin: '0',
+            border: '0',
+            borderRadius: '4px',
+            background: 'transparent',
+            boxShadow: 'none',
+            color: 'var(--text-normal)',
+            opacity: '0.9',
+            lineHeight: '1',
+            transform: 'none',
+            flex: '0 0 28px',
+            cursor: 'pointer'
+        });
+
+        const updateClearButton = () => {
+            const isVisible = input.value.length > 0;
+            clearButton.setCssStyles({ display: isVisible ? 'flex' : 'none' });
+            clearButton.setAttr('aria-hidden', isVisible ? 'false' : 'true');
+        };
+        updateClearButton();
+
+        let isComposing = false;
+        input.addEventListener('compositionstart', () => {
+            isComposing = true;
+            // Do not allow a previous query render to replace the input during IME composition.
+            this.currentRenderId++;
+            if (this.filterDebounceTimer !== null) {
+                window.clearTimeout(this.filterDebounceTimer);
+                this.filterDebounceTimer = null;
+            }
+        });
+        input.addEventListener('compositionend', () => {
+            isComposing = false;
+            updateClearButton();
+            this.scheduleFilterRefresh(mode, input);
+        });
+        input.addEventListener('input', (event) => {
+            updateClearButton();
+            if (isComposing || event.isComposing) return;
+            this.scheduleFilterRefresh(mode, input);
+        });
+        input.addEventListener('focus', () => {
+            inputWrapper.setCssStyles({ borderBottomColor: 'var(--color-orange, #d97706)' });
+        });
+        input.addEventListener('blur', () => {
+            inputWrapper.setCssStyles({ borderBottomColor: 'var(--text-faint)' });
+        });
+        input.addEventListener('keydown', (event) => {
+            if (isComposing || event.isComposing) return;
+            if (event.ctrlKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'z') {
+                event.preventDefault();
+                input.value = '';
+                updateClearButton();
+                this.scheduleFilterRefresh(mode, input, true);
+                return;
+            }
+            if (event.key !== 'Escape' || input.value.length === 0) return;
+            event.preventDefault();
+            input.value = '';
+            updateClearButton();
+            this.scheduleFilterRefresh(mode, input, true);
+        });
+        clearButton.onclick = () => {
+            input.value = '';
+            updateClearButton();
+            this.scheduleFilterRefresh(mode, input, true);
+        };
+        clearButton.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            clearButton.click();
+        });
+    }
+
+    private scheduleFilterRefresh(mode: 'default' | 'lore', input: HTMLInputElement, immediate: boolean = false): void {
+        if (mode === 'default') this.chapterFilterQuery = input.value;
+        else this.loreFilterQuery = input.value;
+
+        this.pendingFilterFocus = {
+            mode,
+            start: input.selectionStart ?? input.value.length,
+            end: input.selectionEnd ?? input.value.length
+        };
+
+        // Cancel any in-flight render so an older query can never replace newer input.
+        this.currentRenderId++;
+        if (this.filterDebounceTimer !== null) window.clearTimeout(this.filterDebounceTimer);
+        this.filterDebounceTimer = window.setTimeout(() => {
+            this.filterDebounceTimer = null;
+            void this.reloadBoard();
+        }, immediate ? 0 : 200);
+    }
+
+    private restorePendingFilterFocus(): void {
+        const pending = this.pendingFilterFocus;
+        if (!pending || this.sortMode !== pending.mode) return;
+
+        const input = this.container.querySelector<HTMLInputElement>(
+            `.wn-workbench-filter-input[data-filter-mode="${pending.mode}"]`
+        );
+        if (!input) return;
+
+        this.pendingFilterFocus = null;
+        window.requestAnimationFrame(() => {
+            if (!input.isConnected) return;
+            input.focus({ preventScroll: true });
+            const max = input.value.length;
+            input.setSelectionRange(Math.min(pending.start, max), Math.min(pending.end, max));
+        });
+    }
+
+    private getLoreAliases(bookPath: string): Map<string, string[]> {
+        const aliasesByHeading = new Map<string, string[]>();
+        for (const name of this.plugin.characterManager.getCharactersForBook(bookPath)) {
+            const entry = this.plugin.characterManager.getCharacterFile(bookPath, name);
+            if (!entry || name === entry.heading) continue;
+
+            const aliases = aliasesByHeading.get(entry.heading) ?? [];
+            if (!aliases.includes(name)) aliases.push(name);
+            aliasesByHeading.set(entry.heading, aliases);
+        }
+        return aliasesByHeading;
     }
 
     public async reloadBoard(): Promise<void> {
@@ -822,6 +1076,42 @@ export class WorkbenchView extends ItemView {
             };
         }
 
+        let filteredChapterFiles = files;
+        let matchedLoreHeadings: ReadonlySet<string> | undefined;
+
+        if (this.sortMode === 'default') {
+            filteredChapterFiles = await this.filterIndex.filterChapters(
+                files,
+                this.chapterFilterQuery,
+                (file) => {
+                    const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+                    return frontmatter?.synopsis ?? frontmatter?.Synopsis ?? frontmatter?.['摘要'] ?? '';
+                }
+            );
+            if (this.currentRenderId !== renderId) return;
+            this.renderFilterBar(buffer, 'default', filteredChapterFiles.length, files.length);
+        } else if (this.sortMode === 'lore') {
+            await this.plugin.characterManager.ensureInitialized();
+            const normalizedBookPath = this.currentBookPath === '' ? '/' : this.currentBookPath;
+            const loreEntries = this.plugin.characterManager.getLoreEntriesInFileOrder(normalizedBookPath);
+            const hasQuery = this.loreFilterQuery.trim().length > 0;
+
+            if (hasQuery) {
+                matchedLoreHeadings = await this.filterIndex.filterLoreEntries(
+                    loreEntries,
+                    this.getLoreAliases(normalizedBookPath),
+                    this.loreFilterQuery
+                );
+            }
+            if (this.currentRenderId !== renderId) return;
+            this.renderFilterBar(
+                buffer,
+                'lore',
+                matchedLoreHeadings?.size ?? loreEntries.length,
+                loreEntries.length
+            );
+        }
+
         if (this.sortMode === 'timeline') {
             await TimelineBoardRenderer.render({
                 app: this.app,
@@ -844,6 +1134,7 @@ export class WorkbenchView extends ItemView {
                 container: buffer,
                 files,
                 currentBookPath: this.currentBookPath || '',
+                matchedLoreHeadings,
                 reloadBoard: () => { void this.reloadBoard(); }
             });
         } else if (this.sortMode === 'task') {
@@ -862,7 +1153,11 @@ export class WorkbenchView extends ItemView {
                 reloadBoard: () => { void this.reloadBoard(); }
             });
         } else {
-            this.renderOrderedBoard(buffer, files, foreshadowingMap);
+            if (filteredChapterFiles.length === 0 && this.chapterFilterQuery.trim().length > 0) {
+                buffer.createDiv({ cls: 'wn-corkboard-empty-msg', text: t('corkboard.filter-no-results') });
+            } else {
+                this.renderOrderedBoard(buffer, filteredChapterFiles, foreshadowingMap);
+            }
         }
 
         if (this.currentRenderId !== renderId) return;
@@ -870,6 +1165,7 @@ export class WorkbenchView extends ItemView {
         while (buffer.firstChild) {
             this.container.appendChild(buffer.firstChild);
         }
+        this.restorePendingFilterFocus();
     }
 
     private renderOrderedBoard(container: HTMLElement, files: TFile[], foreshadowingMap: Map<string, ParsedForeshadowingEntry[]>): void {
