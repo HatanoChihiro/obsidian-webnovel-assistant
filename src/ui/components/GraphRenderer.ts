@@ -53,6 +53,7 @@ export interface GraphRenderState {
 	edgeOffsetMap: Map<GraphEdge, number>;
 	combinedLabelMap: Map<GraphEdge, string>;
 	graphData: GraphData;
+	filterMatchNodeIds?: ReadonlySet<string>;
 }
 
 export class GraphRenderer {
@@ -295,6 +296,9 @@ export class GraphRenderer {
 				isDimmed = !isHighlighted;
 			} else if (state.hoveredNode) {
 				isHighlighted = edge.source === state.hoveredNode.id || edge.target === state.hoveredNode.id;
+				isDimmed = !isHighlighted;
+			} else if (state.filterMatchNodeIds) {
+				isHighlighted = state.filterMatchNodeIds.has(edge.source) && state.filterMatchNodeIds.has(edge.target);
 				isDimmed = !isHighlighted;
 			}
 
@@ -545,6 +549,7 @@ export class GraphRenderer {
 		for (const node of state.graphData.nodes) {
 			const isSelected = state.selectedNode?.id === node.id;
 			const isHovered = state.hoveredNode?.id === node.id;
+			const isFilterMatch = state.filterMatchNodeIds?.has(node.id) ?? false;
 			const radius = isSelected || isHovered ? GraphRenderer.NODE_HIGHLIGHT_RADIUS : GraphRenderer.NODE_RADIUS;
 
 			// 当有选中节点时，非关联节点大幅度淡出，模仿官方高对比度渐隐
@@ -571,6 +576,9 @@ export class GraphRenderer {
 
 				nodeAlpha = isNeighbor ? (allEdgesOverlapped ? 0.35 : 1.0) : 0.3;
 				isDimmed = !isNeighbor || allEdgesOverlapped;
+			} else if (state.filterMatchNodeIds && !isFilterMatch) {
+				nodeAlpha = 0.15;
+				isDimmed = true;
 			}
 
 			ctx.save();
@@ -590,6 +598,9 @@ export class GraphRenderer {
 
 			if (isDimmed) {
 				baseColor = colors.textMuted;
+				overlayColor = null;
+			} else if (isFilterMatch) {
+				baseColor = colors.graphNodeFocused;
 				overlayColor = null;
 			} else if (!node.nodeType && (isSelected || isHovered)) {
 				baseColor = colors.graphNodeFocused;

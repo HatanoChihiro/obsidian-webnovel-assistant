@@ -86,7 +86,7 @@ export interface ViewContext {
 	toggleForeshadowingView(): Promise<void>;
 	toggleTimelineView(): Promise<void>;
 	toggleFloatingNotesVisibility(): Promise<void>;
-	refreshStatusViews(): void;
+	refreshStatusViews(includeChart?: boolean): void;
 }
 
 /** 样式管理相关 */
