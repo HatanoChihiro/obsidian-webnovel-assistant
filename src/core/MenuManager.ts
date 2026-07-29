@@ -1,4 +1,4 @@
-import { TFile, TFolder, Notice } from 'obsidian';
+import { TFile, TFolder, Notice, type Menu } from 'obsidian';
 import { t } from '../i18n';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { GoalModal } from '../ui/GoalModal';
@@ -26,115 +26,71 @@ export class MenuManager {
 	registerAllMenus() {
 		this.plugin.registerEvent(this.plugin.app.workspace.on('file-menu', (menu, file) => {
 			if (file instanceof TFile && file.extension === 'md') {
-				menu.addItem((item) => {
-					item.setTitle(t('menu.set-chapter-goal')).setIcon('target').onClick(() => {
-						new GoalModal(this.plugin.app, file).open();
-					});
-				});
+				this.addFileMenuItems(menu, file);
+			} else if (file instanceof TFolder) {
+				const customMenu = menu as unknown as { __webnovelAssistantAdded?: boolean };
+				if (customMenu.__webnovelAssistantAdded) return;
+				customMenu.__webnovelAssistantAdded = true;
 
-				// 复制本文档：全平台均显示，内容包含「标题 + 空行 + 正文」
-				menu.addItem((item) => {
-					item.setTitle(t('menu.copy-document')).setIcon("copy").onClick(() => {
-						void (async () => {
-							try {
-								const content = await this.plugin.app.vault.read(file);
-								await copyDocumentContent(file.basename, content);
-							} catch (e) {
-								console.error(e);
-							}
-						})();
-					});
-				});
-
-				// 抽出为便签：仅桌面端
 				if (isDesktop()) {
 					menu.addItem((item) => {
-						item.setTitle(t('menu.extract-sticky-note')).setIcon('popup-open').onClick(() => {
-							this.plugin.stickyNoteManager.createStickyNote({ file: file }).catch(console.error);
-						});
+						item.setTitle(t('menu.merge-chapters'))
+							.setIcon('documents')
+							.setSection('webnovel-assistant')
+							.onClick(() => { this.handleMergeChapters(file).catch(console.error); });
 					});
 				}
 
-				// 关系图谱：仅设定文件
-				const bookPath = this.plugin.characterManager.getBookPathForFile(file) || '';
-				const parentPath = file.parent?.path || '';
-				if (this.plugin.characterManager.isLorePath(bookPath, parentPath)) {
-					menu.addItem((item) => {
-						item.setTitle(t('menu.open-relation-graph')).setIcon('git-fork').onClick(() => {
-							void (async () => {
-								// 类似原生图谱，默认在右侧进行垂直分屏打开
-								const leaf = this.plugin.app.workspace.getLeaf('split', 'vertical');
-								await leaf.setViewState({
-									type: RELATION_GRAPH_VIEW_TYPE,
-									state: { filePath: file.path }
-								});
-							})();
-						});
-					});
-				}
-			}
-
-			if (file instanceof TFolder && isDesktop()) {
 				menu.addItem((item) => {
-					item.setTitle(t('menu.merge-chapters'))
-						.setIcon('documents')
-						.onClick(() => { this.handleMergeChapters(file).catch(console.error); });
-				});
-			}
-
-			// 限时任务：文件和文件夹右键菜单
-			if (file instanceof TFile || file instanceof TFolder) {
-				menu.addItem((item) => {
-					item.setTitle(t('menu.start-task-tracking')).setIcon('trophy').onClick(() => {
+					item.setTitle(t('menu.start-task-tracking')).setIcon('trophy').setSection('webnovel-assistant').onClick(() => {
 						this.openTaskModal(file);
 					});
 				});
-			}
 
-			// 新增作品
-			menu.addItem((item) => {
-				item.setTitle(t('menu.create-novel')).setIcon('book-open').onClick(() => {
-					new NewNovelModal(this.plugin.app, this.plugin, (result) => {
-						void (async () => {
-							try {
-								const { folderPath } = await this.plugin.homepageManager!.createNewNovel(result.name, result.meta);
-								new Notice(t('notice.novel-created', { name: result.name }));
-								if (this.plugin.homepageManager) {
-									const viewType = 'webnovel-workbench';
-									const { workspace } = this.plugin.app;
-									const leaves = workspace.getLeavesOfType(viewType);
-									let leaf = leaves.length > 0 ? leaves[0] : null;
-									if (!leaf) {
-										leaf = workspace.getLeaf(false);
-										await leaf.setViewState({ type: viewType, active: true });
+				menu.addItem((item) => {
+					item.setTitle(t('menu.create-novel')).setIcon('book-open').setSection('webnovel-assistant').onClick(() => {
+						new NewNovelModal(this.plugin.app, this.plugin, (result) => {
+							void (async () => {
+								try {
+									const { folderPath } = await this.plugin.homepageManager!.createNewNovel(result.name, result.meta);
+									new Notice(t('notice.novel-created', { name: result.name }));
+									if (this.plugin.homepageManager) {
+										const viewType = 'webnovel-workbench';
+										const { workspace } = this.plugin.app;
+										const leaves = workspace.getLeavesOfType(viewType);
+										let leaf = leaves.length > 0 ? leaves[0] : null;
+										if (!leaf) {
+											leaf = workspace.getLeaf(false);
+											await leaf.setViewState({ type: viewType, active: true });
+										}
+										if (leaf && leaf.view && leaf.view.getViewType() === viewType) {
+											(leaf.view as WorkbenchView).setBookPath(folderPath);
+										}
+										if (leaf) {
+											void workspace.revealLeaf(leaf);
+											void workspace.setActiveLeaf(leaf, { focus: true });
+										}
 									}
-									if (leaf && leaf.view && leaf.view.getViewType() === viewType) {
-										(leaf.view as WorkbenchView).setBookPath(folderPath);
-									}
-									if (leaf) {
-										void workspace.revealLeaf(leaf);
-										void workspace.setActiveLeaf(leaf, { focus: true });
-									}
+								} catch (e) {
+									console.error(e);
 								}
-							} catch (e) {
-								console.error(e);
-							}
-						})();
-					}).open();
+							})();
+						}).open();
+					});
 				});
-			});
+			}
 		}));
 
 		this.plugin.registerEvent(this.plugin.app.workspace.on('editor-menu', (menu, editor, view) => {
 			if (editor.somethingSelected()) {
 				menu.addItem((item) => {
-					item.setTitle(t('menu.mark-as-foreshadowing')).setIcon('bookmark').onClick(() => {
+					item.setTitle(t('menu.mark-as-foreshadowing')).setIcon('bookmark').setSection('webnovel-assistant').onClick(() => {
 						this.plugin.app.commands.executeCommandById('web-novel-assistant:mark-as-foreshadowing');
 					});
 				});
 
 				menu.addItem((item) => {
-					item.setTitle(t('menu.add-to-timeline')).setIcon('calendar-clock').onClick(() => {
+					item.setTitle(t('menu.add-to-timeline')).setIcon('calendar-clock').setSection('webnovel-assistant').onClick(() => {
 						(async () => {
 							const selectedText = editor.getSelection();
 							if (!selectedText.trim()) {
@@ -190,7 +146,7 @@ export class MenuManager {
 
 				if (isDesktop()) {
 					menu.addItem((item) => {
-						item.setTitle(t('menu.extract-sticky-note')).setIcon('quote').onClick(() => {
+						item.setTitle(t('menu.extract-sticky-note')).setIcon('quote').setSection('webnovel-assistant').onClick(() => {
 							this.plugin.stickyNoteManager.createStickyNote({ content: editor.getSelection(), title: t('notice.selected-segment') }).catch(console.error);
 						});
 					});
@@ -198,55 +154,116 @@ export class MenuManager {
 			}
 
 			if (view.file) {
+				this.addFileMenuItems(menu, view.file);
+			}
+		}));
+	}
+
+	/**
+	 * 为文档菜单添加文件级菜单项（桌面端平铺，移动端/平板端使用 Obsidian 原生 setSubmenu 折叠二级菜单）
+	 */
+	private addFileMenuItems(menu: Menu, file: TFile): void {
+		const customMenu = menu as unknown as { __webnovelAssistantAdded?: boolean };
+		if (customMenu.__webnovelAssistantAdded) return;
+		customMenu.__webnovelAssistantAdded = true;
+
+		if (isDesktop()) {
+			// 桌面端：平铺直达
+			menu.addItem((item) => {
+				item.setTitle(t('menu.set-chapter-goal')).setIcon('target').setSection('webnovel-assistant').onClick(() => {
+					new GoalModal(this.plugin.app, file).open();
+				});
+			});
+
+			menu.addItem((item) => {
+				item.setTitle(t('menu.copy-document')).setIcon('copy').setSection('webnovel-assistant').onClick(() => {
+					void (async () => {
+						try {
+							const content = await this.plugin.app.vault.read(file);
+							await copyDocumentContent(file.basename, content);
+						} catch (e) {
+							console.error(e);
+						}
+					})();
+				});
+			});
+
+			menu.addItem((item) => {
+				item.setTitle(t('menu.extract-sticky-note')).setIcon('popup-open').setSection('webnovel-assistant').onClick(() => {
+					this.plugin.stickyNoteManager.createStickyNote({ file: file }).catch(console.error);
+				});
+			});
+
+			const bookPath = this.plugin.characterManager.getBookPathForFile(file) || '';
+			const parentPath = file.parent?.path || '';
+			if (this.plugin.characterManager.isLorePath(bookPath, parentPath)) {
 				menu.addItem((item) => {
-					item.setTitle(t('menu.set-chapter-goal')).setIcon('target').onClick(() => {
-						new GoalModal(this.plugin.app, view.file!).open();
+					item.setTitle(t('menu.open-relation-graph')).setIcon('git-fork').setSection('webnovel-assistant').onClick(() => {
+						void (async () => {
+							const leaf = this.plugin.app.workspace.getLeaf('split', 'vertical');
+							await leaf.setViewState({
+								type: RELATION_GRAPH_VIEW_TYPE,
+								state: { filePath: file.path }
+							});
+						})();
+					});
+				});
+			}
+
+			menu.addItem((item) => {
+				item.setTitle(t('menu.start-task-tracking')).setIcon('trophy').setSection('webnovel-assistant').onClick(() => {
+					this.openTaskModal(file);
+				});
+			});
+		} else {
+			// 移动端/平板端：使用 Obsidian 原生 setSubmenu 折叠二级菜单
+			menu.addItem((item) => {
+				item.setTitle(t('menu.submenu-title')).setIcon('book-open').setSection('webnovel-assistant');
+				const subMenu = (item as unknown as { setSubmenu?: () => Menu }).setSubmenu?.();
+				const targetMenu = subMenu || menu;
+
+				targetMenu.addItem((subItem) => {
+					subItem.setTitle(t('menu.set-chapter-goal')).setIcon('target').onClick(() => {
+						new GoalModal(this.plugin.app, file).open();
 					});
 				});
 
-				// 复制本文档：全平台均显示，内容包含「标题 + 空行 + 正文」
-				menu.addItem((item) => {
-					item.setTitle(t('menu.copy-document')).setIcon("copy").onClick(() => {
-						(async () => {
-							await copyDocumentContent(view.file!.basename, await this.plugin.app.vault.read(view.file!));
-						})().catch(console.error);
+				targetMenu.addItem((subItem) => {
+					subItem.setTitle(t('menu.copy-document')).setIcon('copy').onClick(() => {
+						void (async () => {
+							try {
+								const content = await this.plugin.app.vault.read(file);
+								await copyDocumentContent(file.basename, content);
+							} catch (e) {
+								console.error(e);
+							}
+						})();
 					});
 				});
 
-				if (isDesktop()) {
-					menu.addItem((item) => {
-						item.setTitle(t('menu.current-file-extract-note')).setIcon('popup-open').onClick(() => {
-							this.plugin.stickyNoteManager.createStickyNote({ file: view.file! }).catch(console.error);
-						});
-					});
-				}
-
-				// 关系图谱：仅设定文件
-				const bookPath = this.plugin.characterManager.getBookPathForFile(view.file) || '';
-				const parentPath = view.file.parent?.path || '';
+				const bookPath = this.plugin.characterManager.getBookPathForFile(file) || '';
+				const parentPath = file.parent?.path || '';
 				if (this.plugin.characterManager.isLorePath(bookPath, parentPath)) {
-					menu.addItem((item) => {
-						item.setTitle(t('menu.open-relation-graph')).setIcon('git-fork').onClick(() => {
+					targetMenu.addItem((subItem) => {
+						subItem.setTitle(t('menu.open-relation-graph')).setIcon('git-fork').onClick(() => {
 							void (async () => {
-								// 和官方一样，默认向右侧垂直分屏打开
 								const leaf = this.plugin.app.workspace.getLeaf('split', 'vertical');
 								await leaf.setViewState({
 									type: RELATION_GRAPH_VIEW_TYPE,
-									state: { filePath: view.file!.path }
+									state: { filePath: file.path }
 								});
 							})();
 						});
 					});
 				}
 
-				// 限时任务追踪
-				menu.addItem((item) => {
-					item.setTitle(t('menu.start-task-tracking')).setIcon('trophy').onClick(() => {
-						this.openTaskModal(view.file!);
+				targetMenu.addItem((subItem) => {
+					subItem.setTitle(t('menu.start-task-tracking')).setIcon('trophy').onClick(() => {
+						this.openTaskModal(file);
 					});
 				});
-			}
-		}));
+			});
+		}
 	}
 
 	private openTaskModal(file: TFile | TFolder) {

@@ -1327,5 +1327,16 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					void navigator.clipboard.writeText(url);
 					new Notice(t('notice.obs-url-copied', { url }));
 				}));
+
+		// 调试模式
+		new Setting(containerEl)
+			.setName(t('setting.debug-mode'))
+			.setDesc(t('setting.debug-mode-desc'))
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.debugMode ?? false)
+				.onChange(async (value) => {
+					this.plugin.settings.debugMode = value;
+					await this.plugin.saveSettings();
+				}));
 	}
 }

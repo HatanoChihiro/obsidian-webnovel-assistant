@@ -200,57 +200,98 @@ export function renderLoreBadges(
 		renderedLoreEls.push(badgeEl);
 	}
 
-	// 挂载到 DOM 后通过 RAF 测量实际布局：若超行则依次末尾截断并动态展示 +X 徽章
+	// 如果条目数量不超过最大行数，绝对不会引发换行溢出，无需调度 RAF 触发 DOM 布局重测
+	if (validLores.length <= maxLines) return;
+
+	scheduleBadgeBatchCheck({
+		container,
+		maxLines,
+		renderedLoreEls
+	});
+}
+
+interface BadgeBatchTask {
+	container: HTMLElement;
+	maxLines: number;
+	renderedLoreEls: HTMLElement[];
+}
+
+let badgeBatchQueue: BadgeBatchTask[] = [];
+let badgeBatchScheduled = false;
+
+function scheduleBadgeBatchCheck(task: BadgeBatchTask): void {
+	badgeBatchQueue.push(task);
+	if (badgeBatchScheduled) return;
+	badgeBatchScheduled = true;
+
 	window.requestAnimationFrame(() => {
-		if (!container.isConnected) return;
-		const children = Array.from(container.children) as HTMLElement[];
-		if (children.length === 0) return;
+		const tasks = badgeBatchQueue;
+		badgeBatchQueue = [];
+		badgeBatchScheduled = false;
 
-		const firstTop = children[0].offsetTop;
+		// --- 1. 批量读取阶段 (Batch Read: 集中一次性获取所有 offsetTop，避免读写交替引发 30+ 次强制重排) ---
+		const measurements: Array<{
+			task: BadgeBatchTask;
+			baseTop: number;
+			keepCount: number;
+			hiddenCount: number;
+		}> = [];
 
-		const checkOverflow = (): boolean => {
-			const allEls = Array.from(container.children) as HTMLElement[];
-			for (const child of allEls) {
-				const diff = child.offsetTop - firstTop;
-				if (maxLines === 1 && diff > 10) return true;
-				if (maxLines === 2 && diff > 30) return true;
+		for (const t of tasks) {
+			if (!t.container.isConnected) continue;
+			const children = Array.from(t.container.children) as HTMLElement[];
+			if (children.length === 0) continue;
+
+			const firstTop = children[0].offsetTop;
+			const maxAllowedDiff = t.maxLines === 1 ? 10 : 30;
+
+			let isOverflow = false;
+			for (const child of children) {
+				if (child.offsetTop - firstTop > maxAllowedDiff) {
+					isOverflow = true;
+					break;
+				}
 			}
-			return false;
-		};
 
-		if (!checkOverflow()) {
-			// 未溢出 maxLines，全部完美展示，无需 +X
-			return;
+			if (!isOverflow) continue;
+
+			let keepCount = t.renderedLoreEls.length;
+			for (let i = t.renderedLoreEls.length - 1; i >= 0; i--) {
+				const diff = t.renderedLoreEls[i].offsetTop - firstTop;
+				if (diff <= maxAllowedDiff) {
+					keepCount = i + 1;
+					break;
+				}
+				if (i === 0) keepCount = 0;
+			}
+
+			// 如果产生溢出，为 +X 徽章留出同行空间（保留 keepCount - 1 个条目）
+			if (keepCount < t.renderedLoreEls.length && keepCount > 1) {
+				keepCount = Math.max(1, keepCount - 1);
+			}
+
+			const hiddenCount = t.renderedLoreEls.length - keepCount;
+			if (hiddenCount > 0) {
+				measurements.push({
+					task: t,
+					baseTop: firstTop,
+					keepCount,
+					hiddenCount
+				});
+			}
 		}
 
-		// 性能优化：一次性测量所有子元素的 offsetTop 快照，避免在循环中交替读写 DOM
-		const baseTop = container.children.length > 0 ? (container.children[0] as HTMLElement).offsetTop : 0;
-		const maxAllowedDiff = maxLines === 1 ? 10 : 30;
-
-		let keepCount = renderedLoreEls.length;
-		for (let i = renderedLoreEls.length - 1; i >= 0; i--) {
-			const diff = renderedLoreEls[i].offsetTop - baseTop;
-			if (diff <= maxAllowedDiff) {
-				keepCount = i + 1;
-				break;
+		// --- 2. 批量写入阶段 (Batch Write: 集中剪裁 DOM 节点与插入 +X 徽章，绝对无 DOM 读取操作) ---
+		for (const m of measurements) {
+			const { task, keepCount, hiddenCount } = m;
+			for (let i = task.renderedLoreEls.length - 1; i >= keepCount; i--) {
+				task.renderedLoreEls[i].remove();
 			}
-			if (i === 0) keepCount = 0;
-		}
-
-		const hiddenCount = renderedLoreEls.length - keepCount;
-		if (hiddenCount > 0) {
-			for (let i = renderedLoreEls.length - 1; i >= keepCount; i--) {
-				renderedLoreEls[i].remove();
-			}
-			renderedLoreEls.splice(keepCount);
-			const moreBadgeEl = container.createSpan({
+			task.renderedLoreEls.splice(keepCount);
+			task.container.createSpan({
 				cls: 'wn-badge wn-badge-lore wn-badge-more',
 				text: `+${hiddenCount}`
 			});
-			const moreDiff = moreBadgeEl.offsetTop - baseTop;
-			if (moreDiff > maxAllowedDiff) {
-				moreBadgeEl.remove();
-			}
 		}
 	});
 }

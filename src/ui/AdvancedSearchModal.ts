@@ -1,5 +1,5 @@
-import type { App, TAbstractFile} from 'obsidian';
-import { Modal, Setting, TFolder, TFile, MarkdownView, prepareSimpleSearch } from 'obsidian';
+import type { App, TAbstractFile } from 'obsidian';
+import { Modal, Setting, TFolder, TFile, Vault, MarkdownView, prepareSimpleSearch } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ChapterSorter } from '../services/ChapterSorter';
 import { t } from '../i18n';
@@ -289,8 +289,19 @@ export class AdvancedSearchModal extends Modal {
 			targetFiles = allMarkdownFiles;
 		} else if (this.searchScope === 'current') {
 			const bookPath = this.getCurrentBookPath();
-			if (bookPath) {
-				targetFiles = allMarkdownFiles.filter(f => f.path.startsWith(bookPath + '/'));
+			if (bookPath && bookPath !== '/') {
+				const bookFolder = this.app.vault.getAbstractFileByPath(bookPath);
+				if (bookFolder instanceof TFolder) {
+					const list: TFile[] = [];
+					Vault.recurseChildren(bookFolder, (child: TAbstractFile) => {
+						if (child instanceof TFile && child.extension === 'md') {
+							list.push(child);
+						}
+					});
+					targetFiles = list;
+				} else {
+					targetFiles = allMarkdownFiles.filter(f => f.path.startsWith(bookPath + '/'));
+				}
 			} else {
 				targetFiles = this.plugin.getTrackedMarkdownFiles(); // fallback
 			}

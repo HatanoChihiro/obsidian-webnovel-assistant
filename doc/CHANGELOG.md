@@ -1,3 +1,34 @@
+## ✨ v3.6.3
+
+### 🚀 性能重构与体验优化
+- **看板加载与切换极速提升**：重构了文件检索与页面渲染逻辑，解决了在含有大量笔记的仓库中切换时间轴看板时的卡顿问题。
+- **防止频繁切换卡顿**：优化了后台数据保存与事件响应，快速点击或频繁切换面板时更加平滑顺畅。
+- **工作台固定顶部导航**：工作台导航不会跟随页面滑动而消失，始终置顶，提供切换视图，搜索筛选等快捷功能。
+
+### 核心功能与 UI 细节
+- **工作台关键词搜索筛选与快捷键重构**：工作台新增搜索输入框，支持按标题、摘要或正文关键词实时过滤卡片。为了避免硬编码快捷键干扰输入框原生的撤销（Ctrl+Z）体验，本版本将清空动作注册为 Obsidian 原生命令「工作台：清空搜索筛选框」，您可在 Obsidian 设置▸快捷键中按需自定义快捷键，并保留按 `Esc` 键一键清空。（感谢社区贡献者 **@tyf2018** 提交的 [PR #13](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/pull/13)）
+- **实时字数提醒主题色适配**：去除了字数提醒标签混入的固定 warning 颜色，使其完全跟随 Obsidian 当前主题的强调色（`--interactive-accent`）。
+- **关系双链精准匹配**：在添加设定关系时改用 `[[设定文件#词条标题|显示名]]` 精准锚点链接，点击即可精确跳转至对应设定的标题位置，避免生成不必要的假文件。
+- **调试模式设置开关**：在【数据输出 (OBS/叠加层)】设置页底部新增【开启调试模式】开关（桌面端），方便开启性能日志。
+- **嵌套作品识别与去重防护**：主页看板支持自动搜寻多层嵌套目录下的作品，并修复了工作区目录配置重叠时重复显示卡片的问题。
+- **平板端原生触控错位 Bug 规避建议**：由于 Obsidian 移动端底层引擎的原生 Bug，在平板横屏状态下“更多选项”菜单过长（多插件叠加时）会导致点击错位。在官方修复此问题前，建议您将常用功能（如“设定本章目标字数”）通过 Obsidian 设置固定到**底部移动端快捷工具栏**使用，以避免触发该 Bug。
+- **UI 样式优化**：优化了任务卡片英文排版及按钮布局，适配调整了移动端与平板端时间轴卡片的展示比例。
+
+### English Changelog
+
+#### 🚀 Performance & UX Optimizations
+- **Faster Board Loading & Switching**: Rebuilt file indexing and page rendering logic, eliminating lag when switching to the Timeline Board in large vaults.
+- **Smoother Tab Switching**: Optimized background data saving and event triggers to prevent stutters during fast tab navigation.
+- **Workbench Top Navigation Fixed**: Workbench navigation no longer disappears when scrolling and stays fixed at the top, providing quick access to switching views and other features.
+
+#### Features & UI Polish
+- **Workbench Keyword Filter & Hotkey Refactor ([#13](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/pull/13))**: Added a search bar to the Workbench to filter chapter and lore cards by keywords in real-time. To avoid hardcoded shortcuts interfering with native input undo (Ctrl+Z), the clear action is now registered as an Obsidian command (`Workbench: Clear Search Filter`), allowing custom hotkeys via Obsidian Settings ▸ Hotkeys while supporting `Esc` clear. (Special thanks to community contributor **@tyf2018** for [PR #13](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/pull/13)!)
+- **Precise Heading Links for Lore Relations**: Updated relation links to use precise heading wikilinks (`[[File#Heading|Name]]`), navigating directly to heading sections without creating non-existent markdown files.
+- **Tablet Touch Offset Native Bug Workaround**: Due to a native Obsidian engine bug, overly long "More options" menus on tablets (landscape mode) can cause touch offset issues. Until this is officially fixed, we highly recommend pinning frequently used commands (like "Set Chapter Goal") to the bottom **Mobile Toolbar** via Obsidian settings to avoid this bug.
+- **Debug Mode Toggle**: Added **Enable Debug Mode** toggle under Data Output settings (Desktop) for performance logs.
+- **Nested Novel Discovery**: Auto-detect novels inside multi-level nested folders, and fix duplicate chapter cards when workspace folders overlap.
+- **UI Style Polish**: Compacted task card layouts and adjusted timeline chapter card dimensions on mobile and tablet.
+
 ## ✨ v3.6.2
 
 ### 官方审查合规修复 (Official Review Compliance)

@@ -20,6 +20,7 @@ describe('TimelineManager', () => {
                 getAbstractFileByPath: vi.fn(),
                 create: vi.fn(),
                 read: vi.fn(),
+                cachedRead: vi.fn((file: any) => mockApp.vault.read(file)),
                 modify: vi.fn(),
                 process: vi.fn()
             },

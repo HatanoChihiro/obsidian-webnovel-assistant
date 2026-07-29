@@ -20,7 +20,7 @@ Accurate word count & goal tracking · Story timeline · Foreshadowing manager �
 
 <br /><br />
 
-<img width="100%" alt="homepage" src="assets/homepage.png" />
+<img width="100%" alt="homepage" src="assets/homepage_en.png" />
 
 </div>
 
@@ -31,45 +31,45 @@ Accurate word count & goal tracking · Story timeline · Foreshadowing manager �
 ### 🏠 Creative Homepage
 <sub>Full-width Dashboard · Dynamic Welcome · Novel Overview · Stats Panel · One-Click New Novel</sub>
 
-<img width="100%" alt="homepage" src="assets/homepage.gif" />
+<img width="100%" alt="homepage" src="assets/homepage_en.gif" />
 
 ### 🗂️ Writing Workbench
 <sub>All Chapters Panel · Timeline Board · Lore Board · Task Board · Notes Management</sub>
 
-<img width="100%" alt="workbench" src="assets/workbench.gif" />
+<img width="100%" alt="workbench" src="assets/workbench_en.gif" />
 
 ### 🌑 Immersive Writing Mode
 <sub>Full-screen Focus · Typewriter Scroll & Line Dimming · Dynamic Dashboard · Slot-based Layout</sub>
 
-<img width="100%" alt="immersive-mode" src="assets/immersive-mode.gif" />
+<img width="100%" alt="immersive-mode" src="assets/immersive-mode_en.gif" />
 
 ### 📊 Word Count & Goals
 <sub>3 Counting Modes · Multi-direction Goal Tracking · Strict Chapter Mode · Smart Chapter Sorting · Real-time Word Reminder · Folder Word Count Display</sub>
 
-<img width="100%" alt="word-count-gutter" src="assets/word-count-gutter.gif" />
+<img width="100%" alt="word-count-gutter" src="assets/word-count-gutter_en.gif" />
 
 ### ⏱️ Focus Time Tracking
 <sub>Auto focus vs. slack detection · Web Worker · 365 Heatmap · Bar+line trend · Efficiency card</sub>
 
-<img width="100%" alt="history-chart" src="assets/history-chart.gif" />
+<img width="100%" alt="history-chart" src="assets/history-chart_en.gif" />
 
 ### 📝 Creative Assistants
 
 <table>
 <tr>
-<td width="33%" align="center"><b>Foreshadowing Manager</b><br /><sub>Mark → Track → Recover across chapters</sub><br /><br /><img width="100%" alt="foreshadowing" src="assets/foreshadowing.gif" /></td>
-<td width="33%" align="center"><b>Timeline System</b><br /><sub>Events, multi-chapter links, custom types</sub><br /><br /><img width="100%" alt="timeline" src="assets/timeline.gif" /></td>
-<td width="33%" align="center"><b>Chapter Corkboard</b><br /><sub>Card overview, status & synopsis editing</sub><br /><br /><img width="100%" alt="corkboard" src="assets/corkboard.gif" /></td>
+<td width="33%" align="center"><b>Foreshadowing Manager</b><br /><sub>Mark → Track → Recover across chapters</sub><br /><br /><img width="100%" alt="foreshadowing" src="assets/foreshadowing_en.gif" /></td>
+<td width="33%" align="center"><b>Timeline System</b><br /><sub>Events, multi-chapter links, custom types</sub><br /><br /><img width="100%" alt="timeline" src="assets/timeline_en.gif" /></td>
+<td width="33%" align="center"><b>Chapter Corkboard</b><br /><sub>Card overview, status & synopsis editing</sub><br /><br /><img width="100%" alt="corkboard" src="assets/corkboard_en.gif" /></td>
 </tr>
 <tr>
-<td width="33%" align="center"><b>Lore Quick Lookup</b><br /><sub>Auto-highlight, preset types & relations, relation graph</sub><br /><br /><img width="100%" alt="lore-lookup" src="assets/lore-lookup.gif" /></td>
-<td width="33%" align="center"><b>Sticky Notes</b><br /><sub>Auto-save, Markdown render</sub><br /><br /><img width="100%" alt="sticky-note" src="assets/sticky-note.gif" /></td>
-<td width="33%" align="center"><b>Task Tracker</b><br /><sub>Create periodic tasks, self-driven deadlines & voluntary abandon</sub><br /><br /><img width="100%" alt="task" src="assets/task.gif" /></td>
+<td width="33%" align="center"><b>Lore Quick Lookup</b><br /><sub>Auto-highlight, preset types & relations, relation graph</sub><br /><br /><img width="100%" alt="lore-lookup" src="assets/lore-lookup_en.gif" /></td>
+<td width="33%" align="center"><b>Sticky Notes</b><br /><sub>Auto-save, Markdown render</sub><br /><br /><img width="100%" alt="sticky-note" src="assets/sticky-note_en.gif" /></td>
+<td width="33%" align="center"><b>Task Tracker</b><br /><sub>Create periodic tasks, self-driven deadlines & voluntary abandon</sub><br /><br /><img width="100%" alt="task" src="assets/task_en.gif" /></td>
 </tr>
 <tr>
-<td width="33%" align="center"><b>Advanced Search</b><br /><sub>Search by book, global or custom scope</sub><br /><br /><img width="100%" alt="search" src="assets/search.gif" /></td>
-<td width="33%" align="center"><b>Merge Chapters</b><br /><sub>Merge all chapters in a folder by sort order</sub><br /><br /><img width="100%" alt="merge" src="assets/merge.gif" /></td>
-<td width="33%" align="center"><b>Auto-Create Next Chapter</b><br /><sub>Auto-create numbered documents, template support</sub><br /><br /><img width="100%" alt="auto-create-next" src="assets/auto-create-next.gif" /></td>
+<td width="33%" align="center"><b>Advanced Search</b><br /><sub>Search by book, global or custom scope</sub><br /><br /><img width="100%" alt="search" src="assets/search_en.gif" /></td>
+<td width="33%" align="center"><b>Merge Chapters</b><br /><sub>Merge all chapters in a folder by sort order</sub><br /><br /><img width="100%" alt="merge" src="assets/merge_en.gif" /></td>
+<td width="33%" align="center"><b>Auto-Create Next Chapter</b><br /><sub>Auto-create numbered documents, template support</sub><br /><br /><img width="100%" alt="auto-create-next" src="assets/auto-create-next_en.gif" /></td>
 </tr>
 </table>
 

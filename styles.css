@@ -489,8 +489,9 @@ body .markdown-source-view.mod-cm6 .cm-editor.webnovel-show-gutter .cm-scroller 
 
 	font-size: 0.75em;
 
+	/* 直接使用主题强调色，完全跟随用户选择的 Obsidian 主题，避免混入固定 warning 橙黄色 */
 	color: var(--text-on-accent);
-	background-color: color-mix(in srgb, var(--interactive-accent) 40%, var(--text-warning, var(--interactive-accent)) 60%);
+	background-color: var(--interactive-accent);
 	border-radius: 4px;
 
 	padding: 2px 6px;
@@ -501,7 +502,8 @@ body .markdown-source-view.mod-cm6 .cm-editor.webnovel-show-gutter .cm-scroller 
 
 	font-weight: bold;
 
-	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+	/* 使用半透明阴影，不硬编码具体颜色值 */
+	box-shadow: 0 1px 2px var(--background-modifier-box-shadow, rgba(0, 0, 0, 0.15));
 
 	white-space: nowrap;
 
@@ -3607,14 +3609,40 @@ body .workspace-leaf-content[data-type="webnovel-workbench"][data-type="webnovel
 
 }
 
+.wn-corkboard-container.is-timeline-mode {
+	overflow: hidden;
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+	padding-bottom: 20px;
+}
+
+.wn-corkboard-container.is-timeline-mode .wn-corkboard-header {
+	position: relative;
+	top: 0;
+	margin-top: 0;
+	padding-top: 0;
+	flex-shrink: 0;
+}
+
 .wn-corkboard-header {
 	margin-bottom: 20px;
-	position: relative;
+	position: sticky;
+	top: -40px;
+	z-index: 100;
+	background: color-mix(in srgb, var(--background-primary) 92%, transparent);
+	margin-top: -40px;
+	padding-top: 40px;
+	/* 包含搜索栏后底部追加内边距，与内容区拉开距离 */
+	padding-bottom: 16px;
+	border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border) 60%, transparent);
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
 }
 
 .wn-corkboard-header-buttons {
 	position: absolute;
-	top: 0;
+	top: 40px;
 	right: 0;
 	display: flex;
 	gap: 8px;
@@ -3889,7 +3917,8 @@ body textarea.wn-corkboard-textarea:focus {
 .wn-corkboard-toggle-group {
 	display: inline-flex;
 	gap: 4px;
-	margin-bottom: 20px;
+	margin-top: 14px;
+	margin-bottom: 0;
 	margin-left: 0;
 	padding: 4px;
 	background-color: var(--background-secondary-alt);
@@ -4457,7 +4486,8 @@ body .my-sticky-btn.is-active {
 
 body .my-sticky-close:hover {
 	color: var(--text-error, var(--interactive-accent));
-	background-color: rgba(231, 76, 60, 0.1);
+	/* 与文字色语义一致，跟随 --text-error 主题变量 */
+	background-color: color-mix(in srgb, var(--text-error, var(--interactive-accent)) 10%, transparent);
 	opacity: 1;
 }
 
@@ -6096,7 +6126,7 @@ body.is-phone .wn-timeline-item-delete-btn svg {
 	flex: 1;
 	min-width: 0;
 	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+	grid-template-columns: repeat(auto-fill, minmax(200px, 260px));
 	padding-bottom: 5px;
 	gap: 10px;
 	align-content: flex-start;
@@ -6106,7 +6136,7 @@ body.is-phone .wn-timeline-item-delete-btn svg {
 .wn-timeline-cards-container .wn-corkboard-card {
 	width: 100%;
 	min-width: 0;
-	max-width: 100%;
+	max-width: 260px;
 	box-sizing: border-box;
 }
 
@@ -6140,7 +6170,7 @@ body.is-phone .wn-timeline-item-delete-btn svg {
 
 .wn-timeline-gap .wn-timeline-cards-container {
 	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+	grid-template-columns: repeat(auto-fill, minmax(200px, 260px));
 	padding-bottom: 5px;
 	gap: 10px;
 	align-content: flex-start;
@@ -6151,6 +6181,7 @@ body.is-phone .wn-timeline-item-delete-btn svg {
 .wn-timeline-waterfall-sidebar {
 	width: 320px;
 	flex-shrink: 0;
+	height: 100%;
 	background: color-mix(in srgb, var(--background-primary) 70%, transparent);
 	backdrop-filter: blur(8px);
 	-webkit-backdrop-filter: blur(8px);
@@ -6161,7 +6192,11 @@ body.is-phone .wn-timeline-item-delete-btn svg {
 	flex-direction: column;
 	overflow-y: auto;
 	opacity: 0.85;
-	transition: width 0.2s, opacity 0.2s, background 0.2s;
+	transition: opacity 0.2s, background 0.2s, border-color 0.2s;
+	position: relative;
+	top: 0;
+	align-self: stretch;
+	max-height: 100%;
 }
 
 .wn-timeline-waterfall-sidebar:hover {
@@ -6178,6 +6213,16 @@ body.is-phone .wn-timeline-item-delete-btn svg {
 	opacity: 1;
 }
 
+/* 侧边栏拖拽高亮 */
+body .wn-timeline-waterfall-layout .wn-timeline-waterfall-sidebar.drag-over,
+body .wn-timeline-waterfall-layout .wn-timeline-waterfall-sidebar.drag-over-chapter {
+	background: color-mix(in srgb, var(--interactive-accent) 15%, var(--background-primary));
+	border-color: var(--interactive-accent);
+	border-style: dashed;
+	border-width: 2px;
+	opacity: 1;
+}
+
 .wn-timeline-waterfall-sidebar.is-empty {
 	position: absolute;
 	right: 0;
@@ -6189,6 +6234,9 @@ body.is-phone .wn-timeline-item-delete-btn svg {
 	border-left: 2px dashed transparent;
 	z-index: 100;
 	overflow: hidden;
+	height: auto;
+	align-self: auto;
+	max-height: none;
 }
 
 body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-empty * {
@@ -6209,6 +6257,32 @@ body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-empty * {
 	margin-bottom: 15px;
 	color: var(--text-muted);
 	line-height: 1;
+	position: sticky;
+	top: -15px;
+	z-index: 10;
+	background: color-mix(in srgb, var(--background-primary) 92%, transparent);
+	backdrop-filter: blur(8px);
+	-webkit-backdrop-filter: blur(8px);
+	padding-top: 15px;
+	padding-bottom: 8px;
+	margin-top: -15px;
+	border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border) 40%, transparent);
+}
+
+.wn-timeline-sidebar-title-group {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.wn-timeline-sidebar-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.wn-timeline-sidebar-icon svg {
+	display: block;
 }
 
 .drag-over *,
@@ -6662,22 +6736,26 @@ body.is-phone textarea.wn-corkboard-textarea {
 	font-weight: 700;
 	font-size: 1.1em;
 	color: var(--text-normal);
+	flex-shrink: 0;
+	margin-right: 6px;
 }
 
 .task-card-header-right,
 .wn-task-card-header-right {
 	display: flex;
 	align-items: center;
-	gap: 3px;
+	gap: 4px;
+	flex-shrink: 0;
 }
 
 .wn-task-card-status {
 	font-size: 11px;
-	padding: 2px 8px;
+	padding: 2px 6px;
 	border-radius: 12px;
 	font-weight: 600;
 	line-height: 1.3;
 	white-space: nowrap;
+	flex-shrink: 0;
 }
 
 .wn-task-status-active {
@@ -6711,14 +6789,16 @@ body .wn-corkboard-grid .wn-task-card .wn-task-card-header-right button.wn-task-
 	justify-content: center;
 	font-size: 11px;
 	font-weight: 500;
-	padding: 0 8px;
-	height: 22px;
+	padding: 0 6px;
+	height: 20px;
 	line-height: 1;
 	border-radius: 4px;
 	border: none;
 	color: var(--text-on-accent, #ffffff);
 	cursor: pointer;
 	margin-right: 0;
+	white-space: nowrap;
+	flex-shrink: 0;
 	transition: filter 0.15s ease, opacity 0.15s ease;
 	user-select: none;
 	box-shadow: none;
@@ -7124,6 +7204,10 @@ body.is-phone .wn-corkboard-header {
 	display: flex;
 	flex-direction: column;
 	align-items: flex-start;
+	top: -60px;
+	margin-top: -60px;
+	padding-top: 60px;
+	background: var(--background-primary);
 }
 
 body.is-phone .wn-corkboard-title {
@@ -7142,6 +7226,19 @@ body.is-phone .wn-corkboard-header-buttons {
 body.is-phone .wn-corkboard-hint {
 	order: 3;
 	margin-top: 0;
+}
+
+body.is-phone .wn-corkboard-toggle-group {
+	order: 4;
+	margin-top: 8px;
+	max-width: 100%;
+	overflow-x: auto;
+}
+
+body.is-phone .wn-workbench-filter-bar {
+	order: 5;
+	margin-top: 10px;
+	width: 100%;
 }
 
 /* ========== Mobile Timeline Board (Vertical Column Stack & Bottom Carousel) ========== */
@@ -7198,9 +7295,9 @@ body.is-phone .wn-timeline-cards-container {
 }
 
 body.is-phone .wn-timeline-cards-container .wn-corkboard-card {
-	width: 140px;
-	min-width: 130px;
-	max-width: 150px;
+	width: 200px;
+	min-width: 200px;
+	max-width: 240px;
 	flex: 0 0 auto;
 }
 
@@ -7288,9 +7385,9 @@ body.is-phone .wn-timeline-waterfall-sidebar .wn-corkboard-grid {
 }
 
 body.is-phone .wn-timeline-waterfall-sidebar .wn-corkboard-grid .wn-corkboard-card {
-	width: 140px;
-	min-width: 130px;
-	max-width: 150px;
+	width: 190px;
+	min-width: 170px;
+	max-width: 220px;
 	flex: 0 0 auto;
 	margin-left: 0;
 }
@@ -8224,4 +8321,141 @@ div.wn-task-card,
 	margin-top: auto;
 	display: flex;
 	justify-content: flex-end;
+}
+
+/* ========== Workbench Keyword Filter Bar ========== */
+.wn-workbench-filter-bar {
+	display: grid;
+	grid-template-columns: max-content minmax(0, 1fr);
+	align-items: center;
+	column-gap: 12px;
+	width: 100%;
+	min-width: 0;
+	/* 与上方 toggle-group 导航 Tab 拉开间距，不再需要 margin-bottom（header 的 padding-bottom 提供内容区间距） */
+	margin-top: 10px;
+	margin-bottom: 0;
+	box-sizing: border-box;
+}
+
+.wn-workbench-filter-count {
+	min-width: 4.5em;
+	white-space: nowrap;
+	color: var(--text-muted);
+	font-size: 12px;
+	font-variant-numeric: tabular-nums;
+	text-align: left;
+}
+
+.wn-workbench-filter-input-wrapper {
+	display: flex;
+	align-items: center;
+	width: 100%;
+	min-width: 0;
+	height: 36px;
+	padding: 0 2px 0 4px;
+	background: transparent;
+	border: 0;
+	border-bottom: 2px solid var(--text-faint);
+	border-radius: 0;
+	box-shadow: none;
+	box-sizing: border-box;
+	transition: border-color 0.2s ease;
+}
+
+.wn-workbench-filter-input-wrapper:focus-within,
+.wn-workbench-filter-input-wrapper.is-focused {
+	border-bottom-color: var(--interactive-accent);
+}
+
+.wn-workbench-filter-icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--text-muted);
+	flex: 0 0 16px;
+}
+
+body .wn-workbench-filter-bar input[type="search"].wn-workbench-filter-input,
+body .wn-workbench-filter-bar input.wn-workbench-filter-input,
+body input[type="search"].wn-workbench-filter-input,
+body input.wn-workbench-filter-input {
+	flex: 1 1 auto;
+	width: 100%;
+	min-width: 0;
+	height: 34px;
+	padding: 0 8px;
+	margin: 0;
+	border: none;
+	border-radius: 0;
+	outline: none;
+	box-shadow: none;
+	background: transparent;
+	background-color: transparent;
+	color: var(--text-normal);
+	font-family: inherit;
+	font-size: 13px;
+	-webkit-appearance: none;
+	appearance: none;
+}
+
+body .wn-workbench-filter-bar input[type="search"].wn-workbench-filter-input:focus,
+body .wn-workbench-filter-bar input.wn-workbench-filter-input:focus,
+body input[type="search"].wn-workbench-filter-input:focus,
+body input.wn-workbench-filter-input:focus {
+	border: none;
+	outline: none;
+	box-shadow: none;
+	background: transparent;
+	background-color: transparent;
+}
+
+input[type="search"].wn-workbench-filter-input::-webkit-search-decoration,
+input[type="search"].wn-workbench-filter-input::-webkit-search-cancel-button,
+input[type="search"].wn-workbench-filter-input::-webkit-search-results-button,
+input[type="search"].wn-workbench-filter-input::-webkit-search-results-decoration {
+	-webkit-appearance: none;
+	appearance: none;
+}
+
+.wn-workbench-filter-clear {
+	position: static;
+	display: none;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	min-width: 28px;
+	max-width: 28px;
+	height: 28px;
+	min-height: 28px;
+	max-height: 28px;
+	padding: 0;
+	margin: 0;
+	border: 0;
+	border-radius: 4px;
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-normal);
+	opacity: 0.9;
+	line-height: 1;
+	transform: none;
+	flex: 0 0 28px;
+	cursor: pointer;
+}
+
+.wn-workbench-filter-clear.is-visible {
+	display: flex;
+}
+
+.wn-workbench-filter-clear svg {
+	width: 18px;
+	height: 18px;
+	stroke-width: 2.5;
+}
+
+.wn-corkboard-empty-msg {
+	padding: 40px 20px;
+	text-align: center;
+	color: var(--text-muted);
+	font-size: 14px;
+	width: 100%;
 }

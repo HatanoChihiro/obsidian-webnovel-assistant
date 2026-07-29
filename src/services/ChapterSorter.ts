@@ -1,6 +1,6 @@
 import { Logger } from '../utils/Logger';
-import type { App, TAbstractFile, TFile} from 'obsidian';
-import { TFolder } from 'obsidian';
+import type { App, TAbstractFile } from 'obsidian';
+import { TFile, TFolder, Vault } from 'obsidian';
 import { CHINESE_NUMBERS } from '../constants';
 import type { ChapterNamingRule } from '../types/settings';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
@@ -36,10 +36,23 @@ export class ChapterSorter {
 	 * 统一获取指定文件夹下的所有章节文件，并按规则和自定义顺序排好序
 	 */
 	static getAllChapters(app: App, plugin: WebNovelAssistantPlugin, folderPath: string): TFile[] {
-		const allMarkdownFiles = app.vault.getMarkdownFiles();
-		let targetFiles = folderPath === '' 
-			? allMarkdownFiles 
-			: allMarkdownFiles.filter(f => f.path.startsWith(folderPath + '/'));
+		let targetFiles: TFile[];
+		if (folderPath && folderPath !== '/') {
+			const folder = app.vault.getAbstractFileByPath(folderPath);
+			if (folder instanceof TFolder) {
+				const list: TFile[] = [];
+				Vault.recurseChildren(folder, (file: TAbstractFile) => {
+					if (file instanceof TFile && file.extension === 'md') {
+						list.push(file);
+					}
+				});
+				targetFiles = list;
+			} else {
+				targetFiles = app.vault.getMarkdownFiles().filter(f => f.path.startsWith(folderPath + '/'));
+			}
+		} else {
+			targetFiles = plugin.getTrackedMarkdownFiles();
+		}
 
 		if (plugin.settings.enableStrictChapterMode) {
 			targetFiles = targetFiles.filter(f => this.isChapterFile(f.basename) || plugin.isFileInStrictChapterException(f));

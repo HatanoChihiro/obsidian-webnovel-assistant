@@ -164,5 +164,22 @@ Some lore content...
             const notFound = manager.getCharacterFile('Book1', 'Missing');
             expect(notFound).toBeNull();
         });
+
+        it('should properly rebuild cache when workspaceFolders is configured', async () => {
+            mockPlugin.settings.workspaceFolders = ['Book1'];
+            const mockFile = { path: 'Book1/Lore/Characters.md', parent: { path: 'Book1/Lore' } };
+            mockPlugin.getTrackedMarkdownFiles = vi.fn().mockImplementation((includeLore: boolean) => {
+                return includeLore ? [mockFile] : [];
+            });
+            const manager = new CharacterManager(mockApp, mockPlugin);
+            manager.getBookPathForFile = vi.fn().mockReturnValue('Book1');
+            manager.isLorePath = vi.fn().mockReturnValue(true);
+
+            await manager.rebuildCache();
+
+            expect(mockPlugin.getTrackedMarkdownFiles).toHaveBeenCalledWith(true);
+            const keys = manager.getCharactersForBook('Book1');
+            expect(keys).toContain('John Doe');
+        });
     });
 });

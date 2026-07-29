@@ -1,6 +1,6 @@
 import { Logger } from '../utils/Logger';
 import { MarkdownView, type App } from 'obsidian';
-import { TFile, normalizePath, TFolder } from 'obsidian';
+import { TFile, normalizePath, TFolder, Vault } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { NovelMetadata, NovelFolderInfo } from '../types/homepage';
 import { NOVEL_INFO_LABEL_MAP, NOVEL_STATUS_MAP, getNovelInfoLabel, getNovelStatusText, getDefaultFileName, getDefaultFileNameCandidates } from '../i18n/data-keys';
@@ -110,46 +110,47 @@ export class HomepageManager {
 
 	getNovelFolders(): NovelFolderInfo[] {
 		const folders: NovelFolderInfo[] = [];
+		const seenPaths = new Set<string>();
 		const workspaceFolders = this.plugin.settings.workspaceFolders;
+
+		const checkAndAddFolder = (folder: TFolder) => {
+			if (folder.isRoot()) return;
+			// 排除以 _ 或 . 开头的辅助文件夹
+			if (folder.name.startsWith('_') || folder.name.startsWith('.')) return;
+			if (seenPaths.has(folder.path)) return;
+
+			// 仅加载包含作品信息文件的目录（支持多语言文件名查找）
+			if (this.findNovelInfoFile(folder.path)) {
+				seenPaths.add(folder.path);
+				folders.push({
+					folderPath: folder.path,
+					folderName: folder.name,
+					metadata: null,
+					wordCount: this.plugin.cacheManager.getFolderWordCount(folder.path) || 0,
+				});
+			}
+		};
 
 		if (workspaceFolders && workspaceFolders.length > 0) {
 			for (const folderPath of workspaceFolders) {
 				const normalized = folderPath.replace(/^\/+|\/+$/g, '');
 				const abstractFile = this.app.vault.getAbstractFileByPath(normalized);
 				if (abstractFile instanceof TFolder) {
-					for (const child of abstractFile.children) {
-						if (!(child instanceof TFolder)) continue;
-						// 排除以 _ 或 . 开头的辅助文件夹
-						if (child.name.startsWith('_') || child.name.startsWith('.')) continue;
-
-						// 仅加载包含作品信息文件的目录（支持多语言文件名查找）
-						if (!this.findNovelInfoFile(child.path)) continue;
-
-						folders.push({
-							folderPath: child.path,
-							folderName: child.name,
-							metadata: null,
-							wordCount: this.plugin.cacheManager.getFolderWordCount(child.path) || 0,
-						});
-					}
+					checkAndAddFolder(abstractFile);
+					Vault.recurseChildren(abstractFile, (child) => {
+						if (child instanceof TFolder) {
+							checkAndAddFolder(child);
+						}
+					});
 				}
 			}
 		} else {
 			const root = this.app.vault.getRoot();
-			for (const child of root.children) {
-				if (!(child instanceof TFolder)) continue;
-				if (child.name.startsWith('_') || child.name.startsWith('.')) continue;
-
-				// 仅加载包含作品信息文件的目录（支持多语言文件名查找）
-				if (!this.findNovelInfoFile(child.path)) continue;
-
-				folders.push({
-					folderPath: child.path,
-					folderName: child.name,
-					metadata: null,
-					wordCount: this.plugin.cacheManager.getFolderWordCount(child.path) || 0,
-				});
-			}
+			Vault.recurseChildren(root, (child) => {
+				if (child instanceof TFolder) {
+					checkAndAddFolder(child);
+				}
+			});
 		}
 
 		return folders;

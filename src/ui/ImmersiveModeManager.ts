@@ -15,6 +15,7 @@ export class ImmersiveModeManager {
 	private isImmersiveActive: boolean = false;
 	private savedLayout: Record<string, unknown> | null = null;
 	private savedActiveFile: TFile | null = null;
+	private savedFolderCollapsedState: Record<string, boolean> = {};
 
 	private topBarEl: HTMLElement | null = null;
 	private updateInterval: number | null = null;
@@ -107,6 +108,21 @@ export class ImmersiveModeManager {
 				await this.plugin.saveSettings();
 			}
 
+			// 1.1 显式抓取文件列表中所有文件夹当前的 collapsed 状态，防止被第三方插件重置
+			this.savedFolderCollapsedState = {};
+			const fileExplorerLeaf = this.app.workspace.getLeavesOfType('file-explorer')[0];
+			if (fileExplorerLeaf && fileExplorerLeaf.view) {
+				const view = fileExplorerLeaf.view as unknown as { fileItems?: Record<string, { collapsed?: boolean; file?: { path: string } }> };
+				if (view.fileItems) {
+					for (const [path, item] of Object.entries(view.fileItems)) {
+						if (item && item.collapsed !== undefined) {
+							this.savedFolderCollapsedState[path] = item.collapsed;
+						}
+					}
+					Logger.info(`[ImmersiveModeManager] 已保存进入前的文件夹展开状态: ${Object.keys(this.savedFolderCollapsedState).length}`);
+				}
+			}
+
 			// 2. 注入全局 CSS 类和 Dashboard
 			activeDocument.body.classList.add('immersive-mode-active');
 			if (this.plugin.settings.immersive.immersiveHideProperties) {
@@ -178,6 +194,35 @@ export class ImmersiveModeManager {
 						});
 					});
 				}
+
+				// 恢复布局后，文件列表 Leaf DOM 会被重建。显式恢复进入沉浸模式前各个文件夹的 collapsed 状态
+				this.setTimeout(() => {
+					const leaves = this.app.workspace.getLeavesOfType('file-explorer');
+					leaves.forEach(leaf => {
+						const view = leaf.view as unknown as {
+							refresh?: () => void | Promise<void>;
+							fileItems?: Record<string, { setCollapsed?: (collapsed: boolean) => Promise<void>; collapsed?: boolean }>;
+						};
+						if (view.fileItems && Object.keys(this.savedFolderCollapsedState).length > 0) {
+							for (const [path, targetCollapsed] of Object.entries(this.savedFolderCollapsedState)) {
+								const item = view.fileItems[path];
+								if (item && item.setCollapsed && item.collapsed !== targetCollapsed) {
+									void item.setCollapsed(targetCollapsed);
+								}
+							}
+							Logger.info('[ImmersiveModeManager] 退出沉浸模式，已还原文件夹展开状态');
+						}
+
+						// 触发 Iconize 或原生文件树视图的刷新/渲染更新
+						if (view && typeof view.refresh === 'function') {
+							try { void view.refresh(); } catch { /* ignored */ }
+						}
+					});
+
+					if (this.plugin.fileExplorerPatcher) {
+						this.plugin.fileExplorerPatcher.refreshAllExplorers();
+					}
+				}, 150);
 			} else {
 				Logger.warn('[ImmersiveModeManager] 退出时未找到保存的布局，跳过布局还原');
 			}

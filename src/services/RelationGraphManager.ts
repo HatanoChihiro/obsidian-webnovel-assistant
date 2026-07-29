@@ -379,9 +379,16 @@ export class RelationGraphManager {
 			const relationLabel = match[1].trim();
 			const targetList = match[2].trim();
 
-			// 分隔多个目标角色
-			const targets = targetList.split(TARGET_SEPARATOR_REGEX);
-			for (let rawTarget of targets) {
+			// 分隔多个目标角色（优先解析 [[文件#标题|显示名]] 双链语法）
+			const rawTargets: string[] = [];
+			const linkMatches = targetList.match(/\[\[.*?\]\]/g);
+			if (linkMatches && linkMatches.length > 0) {
+				rawTargets.push(...linkMatches);
+			} else {
+				rawTargets.push(...targetList.split(TARGET_SEPARATOR_REGEX).map(t => t.trim()));
+			}
+
+			for (let rawTarget of rawTargets) {
 				rawTarget = rawTarget.trim();
 				if (!rawTarget) continue;
 

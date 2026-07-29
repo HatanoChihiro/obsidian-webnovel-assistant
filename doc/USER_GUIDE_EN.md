@@ -809,7 +809,7 @@ Supporting character, a loyal companion.
 #### How to Use
 
 ##### Open Chapter Overview
-1. Open the command palette (Ctrl/Cmd + P) and type `Toggle Chapter Overview Panel`
+1. Open the command palette (Ctrl/Cmd + P) and type `Open Chapter Overview`
 2. Or assign "Chapter Overview" to a slot on the right side in immersive mode
 
 ##### Editing Chapter Summaries
@@ -1042,7 +1042,7 @@ The plugin provides multiple commands that can be assigned custom keyboard short
 
 ##### Foreshadowing Management
 - **Mark as Foreshadowing**: Mark selected text as foreshadowing
-- **Mark Foreshadowing as Recovered**: Mark the foreshadowing at the current cursor position as recovered
+- **Mark Foreshadowing as Resolved**: Mark the foreshadowing at the current cursor position as resolved
 
 ##### Time Tracking
 - **Start/Pause Focus Time Tracking**: Start or pause time tracking
@@ -1055,7 +1055,7 @@ The plugin provides multiple commands that can be assigned custom keyboard short
 - **Advanced Search (Filter by Book/Global/Multi-Directory)**: Cross-scope content search
 
 ##### Chapter Overview
-- **Toggle Chapter Overview Panel**: Card-style chapter outline display
+- **Open Chapter Overview**: Card-style chapter outline display
 
 ##### Chapter Management
 - **Create Next Chapter (Smart Increment)**: Automatically create the next chapter file based on the current chapter number

@@ -343,6 +343,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 					menu.addItem((item) => {
 						item.setTitle(t('menu.add-as-new-lore'))
 							.setIcon('book-plus')
+							.setSection('webnovel-assistant')
 							.onClick(() => {
 								const bookPath = this.characterManager.getBookPathForFile(view.file);
 								if (bookPath) {
@@ -857,24 +858,35 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	 * R22: 替代全局 getMarkdownFiles() 的按需遍历方法
 	 * 优先在指定的 workspaceFolders 范围内递归获取 markdown 文件，以减少大型 vault 扫描消耗。
 	 * [BUGFIX] 统一使用 workspaceFolders（主字段），与 CacheManager.isFileInWorkspace 保持一致。
+	/**
+	 * 获取当前工作区跟踪的所有 Markdown 文件
+	 * @param includeLore 是否包含设定/Lore 文件夹内的文件（默认 false，供字数统计与章节列表使用；为 true 时供 CharacterManager 设定解析使用）
 	 */
-	getTrackedMarkdownFiles(): TFile[] {
+	getTrackedMarkdownFiles(includeLore: boolean = false): TFile[] {
 		const workspaceFolders = this.settings.workspaceFolders || [];
 		if (workspaceFolders.length === 0) {
-			return this.app.vault.getMarkdownFiles().filter(f => this.cacheManager.isEligibleForWordCount(f));
+			const allFiles = this.app.vault.getMarkdownFiles();
+			return includeLore ? allFiles : allFiles.filter(f => this.cacheManager.isEligibleForWordCount(f));
 		}
 
 		const workspaceFiles: TFile[] = [];
+		const seenPaths = new Set<string>();
 		for (const wp of workspaceFolders) {
 			const folder = this.app.vault.getAbstractFileByPath(wp);
 			if (folder instanceof TFolder) {
 				Vault.recurseChildren(folder, (file: TAbstractFile) => {
-					if (file instanceof TFile && file.extension === 'md' && this.cacheManager.isEligibleForWordCount(file)) {
-						workspaceFiles.push(file);
+					if (file instanceof TFile && file.extension === 'md' && !seenPaths.has(file.path)) {
+						if (includeLore || this.cacheManager.isEligibleForWordCount(file)) {
+							seenPaths.add(file.path);
+							workspaceFiles.push(file);
+						}
 					}
 				});
-			} else if (folder instanceof TFile && folder.extension === 'md' && this.cacheManager.isEligibleForWordCount(folder)) {
-				workspaceFiles.push(folder);
+			} else if (folder instanceof TFile && folder.extension === 'md' && !seenPaths.has(folder.path)) {
+				if (includeLore || this.cacheManager.isEligibleForWordCount(folder)) {
+					seenPaths.add(folder.path);
+					workspaceFiles.push(folder);
+				}
 			}
 		}
 		return workspaceFiles;

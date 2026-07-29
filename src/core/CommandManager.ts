@@ -10,9 +10,11 @@ import { TimelineAddModal } from '../ui/TimelineAddModal';
 import type { TimelineEntry } from '../services/TimelineManager';
 import { TimelineManager } from '../services/TimelineManager';
 import { AdvancedSearchModal } from '../ui/AdvancedSearchModal';
+import { WorkbenchView } from '../ui/WorkbenchView';
 import { AddLoreModal } from '../ui/AddLoreModal';
 import { t } from '../i18n';
 import { getDefaultFileName } from '../i18n/data-keys';
+import { GoalModal } from '../ui/GoalModal';
 
 class ConfirmResetDailyStatsModal extends Modal {
 	constructor(app: App, private onConfirm: () => void) {
@@ -216,6 +218,18 @@ export class CommandManager {
 	}
 
 	private registerChapterCommands() {
+		this.plugin.addCommand({
+			id: 'set-chapter-word-goal',
+			name: t('command.set-chapter-goal'),
+			icon: 'target',
+			editorCallback: (_editor, view) => {
+				const currentFile = view.file;
+				if (currentFile instanceof TFile) {
+					new GoalModal(this.plugin.app, currentFile).open();
+				}
+			}
+		});
+
 		this.plugin.addCommand({
 			id: 'create-next-chapter',
 			name: t('command.create-next-chapter'),
@@ -569,6 +583,29 @@ export class CommandManager {
 			icon: 'search',
 			editorCallback: () => {
 				new AdvancedSearchModal(this.plugin.app, this.plugin).open();
+			}
+		});
+
+		this.plugin.addCommand({
+			id: 'clear-workbench-filter',
+			name: t('command.clear-workbench-filter'),
+			icon: 'x-circle',
+			checkCallback: (checking) => {
+				const activeView = this.plugin.app.workspace.getActiveViewOfType(WorkbenchView);
+				let targetView = activeView;
+				if (!targetView) {
+					const leaf = this.plugin.app.workspace.getLeavesOfType(VIEW_TYPES.WORKBENCH).find(l => l.view instanceof WorkbenchView);
+					if (leaf && leaf.view instanceof WorkbenchView) {
+						targetView = leaf.view;
+					}
+				}
+				if (targetView) {
+					if (!checking) {
+						targetView.clearSearchInput();
+					}
+					return true;
+				}
+				return false;
 			}
 		});
 	}

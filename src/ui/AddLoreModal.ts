@@ -436,10 +436,18 @@ export class AddLoreModal extends Modal {
 		if (validRelations.length > 0) {
 			contentToAppend += `\n### ${getLoreLabel('relation')}\n`;
 			for (const rel of validRelations) {
-				let targetStr = rel.target.trim();
-				if (!targetStr.startsWith('[[')) {
-					targetStr = `[[${targetStr}]]`;
-				}
+				const targetStrRaw = rel.target.trim();
+				const rawTargets = targetStrRaw.split(/[,，、]/).map(t => t.trim()).filter(Boolean);
+				const formattedTargets = rawTargets.map(t => {
+					if (t.startsWith('[[')) return t;
+					const entry = this.plugin.characterManager?.getCharacterFile(this.bookPath, t);
+					if (entry) {
+						return `[[${entry.file.basename}#${entry.heading}|${t}]]`;
+					} else {
+						return `[[#${t}]]`;
+					}
+				});
+				const targetStr = formattedTargets.join('、');
 				contentToAppend += `**${rel.label.trim()}**：${targetStr}\n`;
 			}
 		}

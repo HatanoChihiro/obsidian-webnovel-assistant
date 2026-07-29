@@ -53,18 +53,21 @@ function computeMarkers(state: EditorState, plugin: WebNovelAssistantPlugin): Ra
 
 	const interval = plugin.settings.wordCountInterval || 2000;
 	const doc = state.doc;
-	const lineCount = doc.lines;
+	const docText = doc.toString();
+
+	// 使用全局精确逐行拆解算法（自动切除 Frontmatter 与代码块，消除跨行统计偏差）
+	const wordsPerLine = plugin.wordCounter.calculateWordsPerLine(docText, plugin.settings.wordCountMethod);
 
 	let currentTotal = 0;
 	let nextTarget = interval;
 
-	for (let i = 1; i <= lineCount; i++) {
-		const line = doc.line(i);
-		const lineWords = plugin.wordCounter.calculateAccurateWords(line.text, plugin.settings.wordCountMethod);
+	for (let i = 1; i <= doc.lines; i++) {
+		const lineWords = wordsPerLine[i - 1] || 0;
 		currentTotal += lineWords;
 
 		if (currentTotal >= nextTarget && lineWords > 0) {
 			const reachedTarget = Math.floor(currentTotal / interval) * interval;
+			const line = doc.line(i);
 			builder.add(line.from, line.from, new WordCountMarker(reachedTarget));
 			nextTarget = reachedTarget + interval;
 		}
