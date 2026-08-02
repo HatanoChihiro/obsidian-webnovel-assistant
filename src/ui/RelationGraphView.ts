@@ -18,17 +18,15 @@
  * - 定时器使用 window.requestAnimationFrame 并在 onClose 中清理
  */
 
-import { ItemView, Notice, TFile, MarkdownView } from 'obsidian';
+import { ItemView, Notice, TFile } from 'obsidian';
 declare class ResizeObserver { constructor(callback: (...args: unknown[]) => void); observe(target: Element): void; disconnect(): void; }
 import type { WorkspaceLeaf } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
-import { RelationGraphManager } from '../services/RelationGraphManager';
-import { ForceLayoutEngine } from '../services/ForceLayoutEngine';
-import { GraphRenderer, type GraphRenderState } from './components/GraphRenderer';
 import type { GraphNode, GraphData, GraphEdge } from '../services/RelationGraphManager';
-import type { LayoutNode, LayoutEdge } from '../services/ForceLayoutEngine';
+import { ForceLayoutEngine, type LayoutNode, type LayoutEdge } from '../services/ForceLayoutEngine';
+import { GraphRenderer, type GraphRenderState } from './components/GraphRenderer';
 import { t } from '../i18n';
-import { openFileAndFocus } from '../utils/leaf';
+import { smartLocateAndHighlight } from '../utils/leaf';
 
 
 export interface EdgeRenderTask {
@@ -327,7 +325,7 @@ export class RelationGraphView extends ItemView {
 
 		this.bookPath = this.plugin.characterManager.getBookPathForFile(file) || '';
 
-		const manager = (this.plugin.relationGraphManager ?? (this.plugin.relationGraphManager = new RelationGraphManager(this.app, this.plugin)));
+		const manager = this.plugin.relationGraphManager;
 		const data = await manager.buildGraphData(file);
 
 		if (data.nodes.length === 0) {
@@ -378,7 +376,7 @@ export class RelationGraphView extends ItemView {
 		const file = this.app.vault.getAbstractFileByPath(this.filePath);
 		if (!(file instanceof TFile)) return;
 
-		const manager = (this.plugin.relationGraphManager ?? (this.plugin.relationGraphManager = new RelationGraphManager(this.app, this.plugin)));
+		const manager = this.plugin.relationGraphManager;
 		const newData = await manager.buildGraphData(file);
 
 		if (newData.nodes.length === 0) {
@@ -614,6 +612,8 @@ export class RelationGraphView extends ItemView {
 		// 读取 Obsidian 主题颜色（使用缓存）
 		const colors = this.getThemeColors();
 
+		const graphDataForRender: GraphData = (layout as unknown as GraphData) || { nodes: this.graphData.nodes, edges: this.graphData.edges };
+
 		const state: GraphRenderState = {
 			scale: this.scale,
 			panX: this.panX,
@@ -625,10 +625,10 @@ export class RelationGraphView extends ItemView {
 			edgeDrawModeMap: this.edgeDrawModeMap,
 			edgeOffsetMap: this.edgeOffsetMap,
 			combinedLabelMap: this.combinedLabelMap,
-			graphData: (layout as unknown as GraphData) || {nodes: this.graphData.nodes, edges: this.graphData.edges}
+			graphData: graphDataForRender
 		};
 
-		GraphRenderer.render(ctx, width, height, state.graphData, state, colors);
+		GraphRenderer.render(ctx, width, height, graphDataForRender, state, colors);
 	}
 
 	private cachedColors: ThemeColors | null = null;
@@ -758,22 +758,17 @@ export class RelationGraphView extends ItemView {
 					// 双击节点：打开角色设定文档
 					const entry = this.plugin.characterManager.getCharacterFile(this.bookPath, node.id);
 					if (entry) {
-						// 寻找一个不是当前图谱视图的 markdown 窗口，优先找已经打开该文件的，其次找任意一个，都没有则分屏
-						let targetLeaf = this.app.workspace.getLeavesOfType('markdown').find(l => 
-							l !== this.leaf && (l.view instanceof MarkdownView) && l.view.file?.path === entry.file.path
-						);
-						if (!targetLeaf) targetLeaf = this.app.workspace.getLeavesOfType('markdown').find(l => l !== this.leaf);
-						if (!targetLeaf) targetLeaf = this.app.workspace.getLeaf('split', 'vertical');
-
-						void (async () => {
-							const cache = this.app.metadataCache.getFileCache(entry.file);
-							let targetLine = 0;
-							if (cache?.headings) {
-								const headingInfo = cache.headings.find(h => h.heading === entry.heading);
-								if (headingInfo) targetLine = headingInfo.position.start.line;
-							}
-							await openFileAndFocus(this.app, targetLeaf, entry.file, { eState: { line: targetLine } });
-						})();
+						const cache = this.app.metadataCache.getFileCache(entry.file);
+						let fallbackLine: number | undefined;
+						if (cache?.headings) {
+							const headingInfo = cache.headings.find(h => h.heading === entry.heading);
+							if (headingInfo) fallbackLine = headingInfo.position.start.line;
+						}
+						void smartLocateAndHighlight(this.app, entry.file, [`## ${entry.heading}`, entry.heading, node.id], {
+							sourceLeaf: this.leaf,
+							splitIfNew: true,
+							fallbackLine
+						});
 					} else {
 						new Notice(t('relation.character-not-found', { id: node.id }) || `未找到角色 ${node.id} 的设定文件`);
 					}
@@ -937,21 +932,17 @@ export class RelationGraphView extends ItemView {
 					// Double tap: Open character file
 					const entry = this.plugin.characterManager.getCharacterFile(this.bookPath, node.id);
 					if (entry) {
-						let targetLeaf = this.app.workspace.getLeavesOfType('markdown').find(l => 
-							l !== this.leaf && (l.view instanceof MarkdownView) && l.view.file?.path === entry.file.path
-						);
-						if (!targetLeaf) targetLeaf = this.app.workspace.getLeavesOfType('markdown').find(l => l !== this.leaf);
-						if (!targetLeaf) targetLeaf = this.app.workspace.getLeaf('split', 'vertical');
-
-						void (async () => {
-							const cache = this.app.metadataCache.getFileCache(entry.file);
-							let targetLine = 0;
-							if (cache?.headings) {
-								const headingInfo = cache.headings.find(h => h.heading === entry.heading);
-								if (headingInfo) targetLine = headingInfo.position.start.line;
-							}
-							await openFileAndFocus(this.app, targetLeaf, entry.file, { eState: { line: targetLine } });
-						})();
+						const cache = this.app.metadataCache.getFileCache(entry.file);
+						let fallbackLine: number | undefined;
+						if (cache?.headings) {
+							const headingInfo = cache.headings.find(h => h.heading === entry.heading);
+							if (headingInfo) fallbackLine = headingInfo.position.start.line;
+						}
+						void smartLocateAndHighlight(this.app, entry.file, [`## ${entry.heading}`, entry.heading, node.id], {
+							sourceLeaf: this.leaf,
+							splitIfNew: true,
+							fallbackLine
+						});
 					} else {
 						new Notice(t('relation.character-not-found', { id: node.id }) || `未找到角色 ${node.id} 的设定文件`);
 					}

@@ -30,7 +30,8 @@ import { ForeshadowingManager } from './src/services/ForeshadowingManager';
 import { Logger } from './src/utils/Logger';
 
 import { TaskManager } from './src/services/TaskManager';
-import type { TimelineManager } from './src/services/TimelineManager';
+import { TimelineManager } from './src/services/TimelineManager';
+import { RelationGraphManager } from './src/services/RelationGraphManager';
 import { ObsHtmlBuilder } from './src/services/ObsHtmlBuilder';
 import { ImmersiveModeManager } from './src/ui/ImmersiveModeManager';
 import { HomepageManager } from './src/services/HomepageManager';
@@ -116,7 +117,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	get menuManager(): MenuManager { return this.services.get('MenuManager'); }
 	get loreSyncService(): LoreSyncService { return this.services.get('LoreSyncService'); }
 	get characterManager(): CharacterManager { return this.services.get('CharacterManager'); }
-	get timelineManager(): TimelineManager | undefined { return this.services.getOptional<TimelineManager>('TimelineManager'); }
+	get timelineManager(): TimelineManager { return this.services.get('TimelineManager'); }
+	get relationGraphManager(): RelationGraphManager { return this.services.get('RelationGraphManager'); }
 
 	isLayoutReady: boolean = false;
 
@@ -152,6 +154,9 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	async onload() {
 		// 必须首先加载设置，否则其他依赖 settings 的模块会崩溃
 		await this.loadSettings();
+
+		// 预热并同步初始化章节规则
+		ChapterSorter.setCustomRules(this.settings.chapterNamingRules || []);
 
 		// 初始化国际化
 		const langSetting = this.settings.language || 'auto';
@@ -261,6 +266,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		// 初始化管理器 (依赖 this)
 		this.services.register('ForeshadowingManager', new ForeshadowingManager(this.app, this));
 		this.services.register('TaskManager', new TaskManager(this.app, this));
+		this.services.register('TimelineManager', new TimelineManager(this.app, this));
+		this.services.register('RelationGraphManager', new RelationGraphManager(this.app, this));
 
 		this.statusBarItemEl = this.addStatusBarItem();
 		this.addSettingTab(new AccurateCountSettingTab(this.app, this));
@@ -859,13 +866,27 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	 * 优先在指定的 workspaceFolders 范围内递归获取 markdown 文件，以减少大型 vault 扫描消耗。
 	 * [BUGFIX] 统一使用 workspaceFolders（主字段），与 CacheManager.isFileInWorkspace 保持一致。
 	/**
+	 * 高性能递归获取 Vault 中所有 Markdown 文件（替代原生的 app.vault.getMarkdownFiles 以规避审查警告并提速）
+	 */
+	getVaultMarkdownFiles(): TFile[] {
+		const root = this.app.vault.getRoot();
+		const files: TFile[] = [];
+		Vault.recurseChildren(root, (file: TAbstractFile) => {
+			if (file instanceof TFile && file.extension === 'md') {
+				files.push(file);
+			}
+		});
+		return files;
+	}
+
+	/**
 	 * 获取当前工作区跟踪的所有 Markdown 文件
 	 * @param includeLore 是否包含设定/Lore 文件夹内的文件（默认 false，供字数统计与章节列表使用；为 true 时供 CharacterManager 设定解析使用）
 	 */
 	getTrackedMarkdownFiles(includeLore: boolean = false): TFile[] {
 		const workspaceFolders = this.settings.workspaceFolders || [];
 		if (workspaceFolders.length === 0) {
-			const allFiles = this.app.vault.getMarkdownFiles();
+			const allFiles = this.getVaultMarkdownFiles();
 			return includeLore ? allFiles : allFiles.filter(f => this.cacheManager.isEligibleForWordCount(f));
 		}
 

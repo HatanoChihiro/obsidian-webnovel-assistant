@@ -2,7 +2,7 @@ import { MarkdownRenderer, type Component, setIcon } from 'obsidian';
 import { t } from '../../i18n';
 import type { WebNovelAssistantPlugin } from '../../types/plugin';
 import type { LoreEntry } from '../../services/CharacterManager';
-import { openFileAndFocus } from '../../utils/leaf';
+import { smartLocateAndHighlight } from '../../utils/leaf';
 
 
 export class LoreCardRenderer {
@@ -50,20 +50,21 @@ export class LoreCardRenderer {
 			
 			// 找到词条对应的行号，并分屏打开
 			const fileCache = plugin.app.metadataCache.getFileCache(entry.file);
-			let line = 0;
+			let fallbackLine: number | undefined;
 			if (fileCache && fileCache.headings) {
 				for (const h of fileCache.headings) {
 					const rawHeading = h.heading.replace(/\*\*|__/g, '').replace(/\*|_/g, '').replace(/`/g, '');
 					if (rawHeading === entry.heading && h.level === 2) {
-						line = h.position.start.line;
+						fallbackLine = h.position.start.line;
 						break;
 					}
 				}
 			}
 			
-			let targetLeaf = plugin.app.workspace.getLeavesOfType('markdown').find(l => (l.view as unknown as { file?: { path: string } }).file?.path === entry.file.path);
-			if (!targetLeaf) targetLeaf = plugin.app.workspace.getLeaf('split', 'vertical');
-			await openFileAndFocus(plugin.app, targetLeaf, entry.file, { eState: { line } });
+			await smartLocateAndHighlight(plugin.app, entry.file, [`## ${entry.heading}`, entry.heading], {
+				splitIfNew: true,
+				fallbackLine
+			});
 		};
 
 		if (!options.hideEditButton) {

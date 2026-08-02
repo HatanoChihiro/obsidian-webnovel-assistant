@@ -50,9 +50,9 @@ export function renderForeshadowingBadges(
 		}
 	};
 
-	// 待回收
+	// 待回收（包含未回收 Pending 与 阶段回收中 PartiallyRecovered）
 	const pendingForeshadowings = cardForeshadowings.filter(
-		f => f.status === ForeshadowingStatus.Pending
+		f => f.status === ForeshadowingStatus.Pending || f.status === ForeshadowingStatus.PartiallyRecovered
 	);
 	if (pendingForeshadowings.length > 0) {
 		const labelText = `${t('corkboard.foreshadowing-unresolved')}×${pendingForeshadowings.length}`;
@@ -80,9 +80,9 @@ export function renderForeshadowingBadges(
 		}
 	}
 
-	// 本章回收 (在本章实际发生回收的)
+	// 本章回收 (在本章实际发生彻底回收或阶段回收的)
 	const recoveredForeshadowings = currentBasename
-		? cardForeshadowings.filter(f => f.status === ForeshadowingStatus.Recovered && isRecoveredIn(f, currentBasename))
+		? cardForeshadowings.filter(f => (f.status === ForeshadowingStatus.Recovered || f.status === ForeshadowingStatus.PartiallyRecovered) && isRecoveredIn(f, currentBasename))
 		: cardForeshadowings.filter(f => f.status === ForeshadowingStatus.Recovered);
 
 	if (recoveredForeshadowings.length > 0) {
@@ -106,6 +106,7 @@ function isMatch(target: string | undefined, basename: string): boolean {
 
 function isRecoveredIn(f: ParsedForeshadowingEntry, basename: string): boolean {
     if (!basename) return false;
+    if (f.recoveryLogs && f.recoveryLogs.some(r => isMatch(r.file, basename))) return true;
     if (f.recoveryFiles && f.recoveryFiles.some(r => isMatch(r, basename))) return true;
     if (f.recoveryFile && isMatch(f.recoveryFile, basename)) return true;
     return false;

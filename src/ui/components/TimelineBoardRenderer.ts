@@ -2,7 +2,6 @@ import type { App, Component } from 'obsidian';
 import { setIcon, TFile, Notice, Modal } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../../types/plugin';
 import type { ParsedForeshadowingEntry } from '../../types/foreshadowing';
-import { TimelineManager } from '../../services/TimelineManager';
 import { CorkboardGridRenderer } from './CorkboardGridRenderer';
 import { TimelineAddModal } from '../TimelineAddModal';
 import { t } from '../../i18n';
@@ -54,7 +53,8 @@ export class TimelineBoardRenderer {
 		const { app, plugin, container, files, foreshadowingMap, currentBookPath, currentTimelineFilter, onSaveStateChange, reloadBoard, getChapterEvents } = options;
 
 		const tStart = performance.now();
-		const timelineManager = new TimelineManager(app, plugin, currentBookPath === '/' ? '' : (currentBookPath || ''));
+		const timelineManager = plugin.timelineManager;
+		timelineManager.currentFolder = currentBookPath === '/' ? '' : (currentBookPath || '');
 		let entries = await timelineManager.loadEntries();
 		const tEntries = performance.now();
 		Logger.info(`[Perf Phase] Timeline.loadEntries: ${(tEntries - tStart).toFixed(2)}ms`);

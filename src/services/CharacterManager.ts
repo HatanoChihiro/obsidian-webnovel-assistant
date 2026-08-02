@@ -71,7 +71,7 @@ export class CharacterManager {
 		const candidates = this.getLoreCandidates();
 		const allMarkdownFiles = (this.plugin.settings.workspaceFolders && this.plugin.settings.workspaceFolders.length > 0)
 			? this.plugin.getTrackedMarkdownFiles(true)
-			: this.app.vault.getMarkdownFiles();
+			: this.plugin.getVaultMarkdownFiles();
 		const files = allMarkdownFiles.filter(file => {
 			const parentPath = file.parent?.path || '';
 			for (const candidate of candidates) {

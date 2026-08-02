@@ -1,4 +1,6 @@
 import { Logger } from '../utils/Logger';
+import zhCNJson from './zh-CN.json';
+
 /**
  * 国际化 (i18n) 核心
  * 提供翻译函数 t() 和语言切换能力
@@ -14,7 +16,7 @@ function isLocale(value: string): value is Locale {
 }
 
 let currentLocale: Locale = 'zh-CN';
-let translations: Record<string, string> = {};
+let translations: Record<string, string> = zhCNJson;
 
 /**
  * 获取当前语言
@@ -48,7 +50,7 @@ export async function setLocale(locale: string): Promise<void> {
  * @param params 插值参数，如 { name: "test" } 替换 {name}
  */
 export function t(key: string, params?: Record<string, string | number>): string {
-	let text = translations[key] ?? key;
+	let text = translations[key] ?? (zhCNJson as Record<string, string>)[key] ?? key;
 	if (params) {
 		for (const [k, v] of Object.entries(params)) {
 			text = text.replace(new RegExp(`\\{${k}\\}`, 'g'), String(v));
@@ -102,19 +104,14 @@ function toSupportedLocale(lang: string | null | undefined): Locale | null {
  * 4. 默认 zh-CN
  */
 export function detectLocale(): Locale {
-	// 1. Obsidian localStorage — Obsidian 将语言设置存为 'language' 或 'obsidian-language'
-	const fromLS = toSupportedLocale(window.localStorage.getItem('language'))
-		?? toSupportedLocale(window.localStorage.getItem('obsidian-language'));
-	if (fromLS) return fromLS;
-
-	// 2. moment.locale — Obsidian 内部使用 moment.js，其 locale 与 Obsidian 设置同步
+	// 1. moment.locale — Obsidian 内部使用 moment.js，其 locale 与 Obsidian 设置精确同步
 	if (typeof window.moment === 'function' && window.moment.locale) {
 		const momentLocale = window.moment.locale();
 		const fromMoment = toSupportedLocale(momentLocale);
 		if (fromMoment) return fromMoment;
 	}
 
-	// 3. navigator.language / navigator.languages — 浏览器系统语言
+	// 2. navigator.language / navigator.languages — 浏览器系统语言
 	const fromNav = toSupportedLocale(navigator.language);
 	if (fromNav) return fromNav;
 

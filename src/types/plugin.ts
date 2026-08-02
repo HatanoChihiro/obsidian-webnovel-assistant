@@ -166,11 +166,10 @@ export interface WebNovelAssistantPlugin extends
 	fileEventManager: FileEventManager;
 	statisticsManager: StatisticsManager;
 
-	// 以下属性在 onload 中初始化，可能为 undefined
-	foreshadowingManager?: ForeshadowingManager;
-	taskManager?: TaskManager;
-	timelineManager?: TimelineManager;
-	relationGraphManager?: RelationGraphManager;
+	foreshadowingManager: ForeshadowingManager;
+	taskManager: TaskManager;
+	timelineManager: TimelineManager;
+	relationGraphManager: RelationGraphManager;
 	editorTracker?: EditorTracker;
 	styleManager?: StyleManager;
 	homepageManager?: HomepageManager;
@@ -195,6 +194,7 @@ export interface WebNovelAssistantPlugin extends
 	isEligibleForWordCount(file: TFile): boolean;
 	updateWordCount(): void;
 	getTrackedMarkdownFiles(includeLore?: boolean): TFile[];
+	getVaultMarkdownFiles(): TFile[];
 		/** 检查文件名是否为插件生成的元数据文件 */
 		isPluginGeneratedFile(basename: string): boolean;
 		/** 重命名工作区内所有功能性文档/文件夹（支持多语言候选名） */

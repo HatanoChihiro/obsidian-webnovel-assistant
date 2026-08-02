@@ -16,10 +16,6 @@ export class TaskManager {
 		public currentFolder: string = ''
 	) {}
 
-	static create(app: App, plugin: WebNovelAssistantPlugin, folderPath: string = ''): TaskManager {
-		return new TaskManager(app, plugin, folderPath);
-	}
-
 	getTaskFilePath(): string {
 		const fileName = (this.plugin.settings.task?.fileName || getDefaultFileName('taskFileName')) + '.md';
 		return normalizePath(this.currentFolder ? `${this.currentFolder}/${fileName}` : fileName);
@@ -145,14 +141,14 @@ async createTaskFile(): Promise<TFile> {
 		});
 	}
 
-	async updateEntryStatus(period: number, status: TaskStatus, completedWords?: number): Promise<void> {
+	async updateEntryStatus(period: number, status: TaskStatus, completedWords?: number, taskType?: TaskType): Promise<void> {
 		return this.writer.enqueue(async () => {
 			const file = this.getTaskFile();
 			if (!file) return;
 			await this.app.vault.process(file, (content) => {
 				const entries = this.parseEntries(content);
 
-				const entry = entries.find(e => e.period === period && (e.status === 'active' || e.status === 'notStarted'));
+				const entry = entries.find(e => e.period === period && (taskType === undefined || (e.taskType || 'wordCount') === taskType) && (e.status === 'active' || e.status === 'notStarted'));
 				if (!entry) return content;
 				
 				if (entry.status === status && (completedWords === undefined || entry.completedWords === completedWords)) return content;
@@ -227,14 +223,14 @@ async createTaskFile(): Promise<TFile> {
 		for (const entry of entries) {
 			if (entry.status === 'active' && entry.endDate < today) {
 				if (entry.taskType === 'event') {
-					await this.updateEntryStatus(entry.period, 'incomplete');
+					await this.updateEntryStatus(entry.period, 'incomplete', undefined, entry.taskType);
 					changed = true;
 				} else {
 					const progress = this.calcProgress(entry);
 					// 如果缓存未就绪（progress=0 但 startSnapshot>0），跳过关闭以避免误判
 					if (progress === 0 && entry.startSnapshot > 0) continue;
 					const status: TaskStatus = progress >= entry.wordTarget ? 'completed' : 'incomplete';
-					await this.updateEntryStatus(entry.period, status, progress);
+					await this.updateEntryStatus(entry.period, status, progress, entry.taskType);
 					changed = true;
 				}
 			}
@@ -252,7 +248,7 @@ async createTaskFile(): Promise<TFile> {
 
 		for (const entry of entries) {
 			if (entry.status === 'notStarted' && entry.startDate <= today) {
-				await this.updateEntryStatus(entry.period, 'active');
+				await this.updateEntryStatus(entry.period, 'active', undefined, entry.taskType);
 				changed = true;
 			}
 		}

@@ -1,14 +1,14 @@
-import { Notice, TFile, TFolder, setIcon, Component, type App, MarkdownView } from 'obsidian';
+import { Notice, TFile, TFolder, setIcon, Component, type App } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../../types/plugin';
 import { t } from '../../i18n';
-import { RelationGraphManager, type GraphEdge } from '../../services/RelationGraphManager';
+import type { GraphEdge } from '../../services/RelationGraphManager';
 import { ForceLayoutEngine } from '../../services/ForceLayoutEngine';
 import type { LoreEntry } from '../../services/CharacterManager';
 import { GraphRenderer, type GraphRenderState } from './GraphRenderer';
 import { GraphInteractionController } from './GraphInteractionController';
 import { LoreCardRenderer } from './LoreCardRenderer';
 import { DraggableListHelper } from '../../utils/DraggableListHelper';
-import { openFileAndFocus } from '../../utils/leaf';
+import { openFileAndFocus, smartLocateAndHighlight } from '../../utils/leaf';
 
 
 export interface LoreBoardOptions {
@@ -38,29 +38,6 @@ export class LoreBoardRenderer {
         const { app, plugin, container, files, currentBookPath, matchedLoreHeadings, reloadBoard } = options;
         const bookPath = currentBookPath === '/' ? '' : currentBookPath;
         const layoutMode = plugin.settings.loreBoardLayout || 'table';
-
-        // --- Render Toolbar ---
-        const toolbar = container.createDiv('wn-lore-board-toolbar');
-        const layoutSwitcher = toolbar.createDiv('wn-lore-board-layout-switcher');
-
-        const modes = [
-            { id: 'table', icon: 'list', label: t('lore.tab-table') },
-            { id: 'cards', icon: 'layout-grid', label: t('lore.tab-card') },
-            { id: 'graph', icon: 'network', label: t('lore.tab-graph') }
-        ] as const;
-
-        for (const mode of modes) {
-            const btn = layoutSwitcher.createDiv(`wn-lore-board-switcher-btn ${layoutMode === mode.id ? 'is-active' : ''}`);
-            setIcon(btn, mode.icon);
-            btn.title = mode.label;
-            btn.onclick = async () => {
-                if (plugin.settings.loreBoardLayout === mode.id) return;
-                plugin.settings.loreBoardLayout = mode.id;
-                await plugin.saveSettings();
-                if (reloadBoard) reloadBoard();
-            };
-        }
-
         const contentArea = container.createDiv('wn-lore-board-content');
 
         // --- Data Extraction ---
@@ -252,7 +229,7 @@ export class LoreBoardRenderer {
             if (loreFolder && loreFolder instanceof TFolder) {
                 const sampleFile = this.findFirst(loreFolder);
                 if (sampleFile) {
-                    const graphManager = plugin.relationGraphManager ?? (plugin.relationGraphManager = new RelationGraphManager(app, plugin));
+                    const graphManager = plugin.relationGraphManager;
                     const data = await graphManager.buildGraphData(sampleFile, { enableGlobal: true, autoLinkMentions: true });
                     explicitEdges = data.edges.filter(e => e.type === 'explicit');
                 }
@@ -279,18 +256,16 @@ export class LoreBoardRenderer {
                 if (currentBookPath !== null) {
                     const entry = plugin.characterManager.getCharacterFile(currentBookPath, loreName);
                     if (entry && entry.file) {
-                        let targetLeaf = app.workspace.getLeavesOfType('markdown').find(l => (l.view as unknown as { file?: { path: string } }).file?.path === entry.file.path);
-                        if (!targetLeaf) targetLeaf = app.workspace.getLeaf('split', 'vertical');
-
-                        void (async () => {
-                            const cache = app.metadataCache.getFileCache(entry.file);
-                            let targetLine = 0;
-                            if (cache?.headings) {
-                                const headingInfo = cache.headings.find(h => h.heading === entry.heading);
-                                if (headingInfo) targetLine = headingInfo.position.start.line;
-                            }
-                            await openFileAndFocus(app, targetLeaf, entry.file, { eState: { line: targetLine } });
-                        })();
+                        const cache = app.metadataCache.getFileCache(entry.file);
+                        let fallbackLine: number | undefined;
+                        if (cache?.headings) {
+                            const headingInfo = cache.headings.find(h => h.heading === entry.heading);
+                            if (headingInfo) fallbackLine = headingInfo.position.start.line;
+                        }
+                        void smartLocateAndHighlight(app, entry.file, [`## ${entry.heading}`, entry.heading, loreName], {
+                            splitIfNew: true,
+                            fallbackLine
+                        });
                     }
                 }
             };
@@ -358,7 +333,7 @@ export class LoreBoardRenderer {
             return;
         }
 
-        const graphManager = plugin.relationGraphManager ?? (plugin.relationGraphManager = new RelationGraphManager(app, plugin));
+        const graphManager = plugin.relationGraphManager;
         const data = await graphManager.buildGraphData(sampleFile, { enableGlobal: true, autoLinkMentions: true });
 
         if (data.nodes.length === 0) {
@@ -541,25 +516,21 @@ export class LoreBoardRenderer {
                 // 双击节点：打开对应设定文档并精准定位至标题行
                 const entry = plugin.characterManager.getCharacterFile(bookPath, node.id);
                 if (entry) {
-                    let targetLeaf = app.workspace.getLeavesOfType('markdown').find(l => 
-                        (l.view instanceof MarkdownView) && l.view.file?.path === entry.file.path
-                    );
-                    if (!targetLeaf) targetLeaf = app.workspace.getLeaf('split', 'vertical');
-
-                    void (async () => {
-                        const cache = app.metadataCache.getFileCache(entry.file);
-                        let targetLine = 0;
-                        if (cache?.headings) {
-                            for (const h of cache.headings) {
-                                const rawHeading = h.heading.replace(/\*\*|__/g, '').replace(/\*|_/g, '').replace(/`/g, '');
-                                if (rawHeading === entry.heading && h.level === 2) {
-                                    targetLine = h.position.start.line;
-                                    break;
-                                }
+                    const cache = app.metadataCache.getFileCache(entry.file);
+                    let fallbackLine: number | undefined;
+                    if (cache?.headings) {
+                        for (const h of cache.headings) {
+                            const rawHeading = h.heading.replace(/\*\*|__/g, '').replace(/\*|_/g, '').replace(/`/g, '');
+                            if (rawHeading === entry.heading && h.level === 2) {
+                                fallbackLine = h.position.start.line;
+                                break;
                             }
                         }
-                        await openFileAndFocus(app, targetLeaf, entry.file, { eState: { line: targetLine } });
-                    })();
+                    }
+                    void smartLocateAndHighlight(app, entry.file, [`## ${entry.heading}`, entry.heading, node.id], {
+                        splitIfNew: true,
+                        fallbackLine
+                    });
                 } else {
                     new Notice(t('relation.character-not-found', { id: node.id }) || `未找到设定 ${node.id} 的设定文件`);
                 }

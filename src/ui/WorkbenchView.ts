@@ -14,19 +14,19 @@ import { DraggableListHelper } from '../utils/DraggableListHelper';
 import { TouchDragPolyfill } from '../utils/TouchDragPolyfill';
 import { TaskBoardRenderer } from './components/TaskBoardRenderer';
 import { StickyNoteBoardRenderer } from './components/StickyNoteBoardRenderer';
+import { ForeshadowingBoardRenderer } from './components/ForeshadowingBoardRenderer';
 import { TaskAddModal } from './TaskModal';
-import { TaskManager } from '../services/TaskManager';
 import type { StickyNoteState } from '../types/settings';
 import { isMobile } from '../utils';
 import { Logger } from '../utils/Logger';
 import { WorkbenchFilterIndex } from '../services/WorkbenchFilterIndex';
+import { resolveChapterTemplate } from '../utils/template';
 
 class NewChapterModal extends Modal {
     constructor(
         app: App, 
+        private plugin: WebNovelAssistantPlugin,
         private defaultPrefix: string, 
-        private enableTemplate: boolean,
-        private templatePath: string,
         private onSubmit: (title: string, templateContent: string) => void
     ) {
         super(app);
@@ -39,21 +39,16 @@ class NewChapterModal extends Modal {
         inputEl.value = this.defaultPrefix;
 
         const btn = contentEl.createEl('button', { text: t('common.confirm') });
-        btn.onclick = async () => {
-            if (inputEl.value.trim()) {
-                let templateContent = '';
-                if (this.enableTemplate && this.templatePath) {
-                    try {
-                        const file = this.app.vault.getAbstractFileByPath(this.templatePath);
-                        if (file instanceof TFile) {
-                            templateContent = await this.app.vault.read(file);
-                        }
-                    } catch (e) {
-                        console.error(t('workbench.error-read-template', { error: String(e) }) || '无法读取模板文件:', e);
+        btn.onclick = () => {
+            const title = inputEl.value.trim();
+            if (title) {
+                resolveChapterTemplate(this.app, this.plugin.settings, (templateContent) => {
+                    if (templateContent === null) {
+                        return;
                     }
-                }
-                this.onSubmit(inputEl.value.trim(), templateContent);
-                this.close();
+                    this.onSubmit(title, templateContent);
+                    this.close();
+                });
             }
         };
         inputEl.addEventListener('keypress', (e) => {
@@ -95,7 +90,7 @@ export class WorkbenchView extends ItemView {
     private plugin: WebNovelAssistantPlugin;
     public currentBookPath: string | null = null;
     private isSavingMetadata: boolean = false;
-    private sortMode: 'default' | 'timeline' | 'lore' | 'task' | 'sticky' = 'default';
+    private sortMode: 'default' | 'timeline' | 'lore' | 'foreshadowing' | 'task' | 'sticky' = 'default';
     private collapsedGroups: Set<string> = new Set();
     private container!: HTMLElement;
     private currentTimelineFilter: string = 'all';
@@ -109,8 +104,9 @@ export class WorkbenchView extends ItemView {
     private cachedForeshadowingBookPath: string | null = null;
     private chapterFilterQuery: string = '';
     private loreFilterQuery: string = '';
+    private foreshadowingFilterQuery: string = '';
     private filterDebounceTimer: number | null = null;
-    private pendingFilterFocus: { mode: 'default' | 'lore'; start: number; end: number } | null = null;
+    private pendingFilterFocus: { mode: 'default' | 'lore' | 'foreshadowing'; start: number; end: number } | null = null;
     private readonly filterIndex: WorkbenchFilterIndex;
 
     constructor(leaf: WorkspaceLeaf, plugin: WebNovelAssistantPlugin) {
@@ -492,11 +488,11 @@ export class WorkbenchView extends ItemView {
 
     private renderFilterBar(
         container: HTMLElement,
-        mode: 'default' | 'lore',
+        mode: 'default' | 'lore' | 'foreshadowing',
         matchedCount: number,
         totalCount: number
     ): void {
-        const query = mode === 'default' ? this.chapterFilterQuery : this.loreFilterQuery;
+        const query = mode === 'default' ? this.chapterFilterQuery : (mode === 'lore' ? this.loreFilterQuery : this.foreshadowingFilterQuery);
         const bar = container.createDiv('wn-workbench-filter-bar');
 
         bar.createSpan({
@@ -518,7 +514,7 @@ export class WorkbenchView extends ItemView {
         input.value = query;
         input.placeholder = mode === 'default'
             ? t('corkboard.filter-chapters-placeholder')
-            : t('corkboard.filter-lore-placeholder');
+            : (mode === 'lore' ? t('corkboard.filter-lore-placeholder') : t('corkboard.filter-foreshadowing-placeholder'));
         input.setAttr('aria-label', input.placeholder);
         input.setAttr('autocomplete', 'off');
         input.setAttr('data-filter-mode', mode);
@@ -537,6 +533,28 @@ export class WorkbenchView extends ItemView {
             clearButton.setAttr('aria-hidden', isVisible ? 'false' : 'true');
         };
         updateClearButton();
+
+        if (mode === 'lore') {
+            const layoutSwitcher = bar.createDiv('wn-lore-board-layout-switcher');
+            const layoutMode = this.plugin.settings.loreBoardLayout || 'table';
+            const modes = [
+                { id: 'table', icon: 'list', label: t('lore.tab-table') },
+                { id: 'cards', icon: 'layout-grid', label: t('lore.tab-card') },
+                { id: 'graph', icon: 'network', label: t('lore.tab-graph') }
+            ] as const;
+
+            for (const m of modes) {
+                const btn = layoutSwitcher.createDiv(`wn-lore-board-switcher-btn ${layoutMode === m.id ? 'is-active' : ''}`);
+                setIcon(btn, m.icon);
+                btn.title = m.label;
+                btn.onclick = async () => {
+                    if (this.plugin.settings.loreBoardLayout === m.id) return;
+                    this.plugin.settings.loreBoardLayout = m.id;
+                    await this.plugin.saveSettings();
+                    void this.reloadBoard();
+                };
+            }
+        }
 
         let isComposing = false;
         input.addEventListener('compositionstart', () => {
@@ -584,9 +602,10 @@ export class WorkbenchView extends ItemView {
         });
     }
 
-    private scheduleFilterRefresh(mode: 'default' | 'lore', input: HTMLInputElement, immediate: boolean = false): void {
+    private scheduleFilterRefresh(mode: 'default' | 'lore' | 'foreshadowing', input: HTMLInputElement, immediate: boolean = false): void {
         if (mode === 'default') this.chapterFilterQuery = input.value;
-        else this.loreFilterQuery = input.value;
+        else if (mode === 'lore') this.loreFilterQuery = input.value;
+        else this.foreshadowingFilterQuery = input.value;
 
         this.pendingFilterFocus = {
             mode,
@@ -622,7 +641,7 @@ export class WorkbenchView extends ItemView {
     }
 
     public clearSearchInput(): void {
-        const mode = (this.sortMode === 'lore') ? 'lore' : 'default';
+        const mode = (this.sortMode === 'lore') ? 'lore' : (this.sortMode === 'foreshadowing' ? 'foreshadowing' : 'default');
         const input = this.container.querySelector<HTMLInputElement>(
             `.wn-workbench-filter-input[data-filter-mode="${mode}"]`
         );
@@ -636,7 +655,8 @@ export class WorkbenchView extends ItemView {
             this.scheduleFilterRefresh(mode, input, true);
         } else {
             if (mode === 'default') this.chapterFilterQuery = '';
-            else this.loreFilterQuery = '';
+            else if (mode === 'lore') this.loreFilterQuery = '';
+            else this.foreshadowingFilterQuery = '';
             void this.reloadBoard();
         }
     }
@@ -813,10 +833,14 @@ export class WorkbenchView extends ItemView {
 
                 if (entry.status === ForeshadowingStatus.Pending) {
                     targets.push(...sources);
-                } else if (entry.status === ForeshadowingStatus.Recovered) {
+                } else if (entry.status === ForeshadowingStatus.PartiallyRecovered || entry.status === ForeshadowingStatus.Recovered) {
                     targets.push(...sources);
-                    const recFiles = entry.recoveryFiles ? [...entry.recoveryFiles] : (entry.recoveryFile ? [entry.recoveryFile] : []);
-                    targets.push(...recFiles);
+                    if (entry.recoveryLogs && entry.recoveryLogs.length > 0) {
+                        targets.push(...entry.recoveryLogs.map(l => l.file));
+                    } else {
+                        const recFiles = entry.recoveryFiles ? [...entry.recoveryFiles] : (entry.recoveryFile ? [entry.recoveryFile] : []);
+                        targets.push(...recFiles);
+                    }
                 }
 
                 for (const target of targets) {
@@ -900,7 +924,7 @@ export class WorkbenchView extends ItemView {
             newTaskBtn.textContent = t('modal.new-task') || '添加任务';
             newTaskBtn.onclick = async () => {
                 const bookFolder = this.currentBookPath === '/' ? '' : (this.currentBookPath || '');
-                const manager = this.plugin.taskManager || new TaskManager(this.app, this.plugin, bookFolder);
+                const manager = this.plugin.taskManager;
                 manager.currentFolder = bookFolder;
 
                 const existingEntries = await manager.loadEntries();
@@ -963,7 +987,7 @@ export class WorkbenchView extends ItemView {
                     }
                 }
 
-                new NewChapterModal(this.app, defaultPrefix, this.plugin.settings.enableChapterTemplate, this.plugin.settings.chapterTemplatePath, (title, templateContent) => {
+                new NewChapterModal(this.app, this.plugin, defaultPrefix, (title, templateContent) => {
                     const folder = this.currentBookPath === '/' ? '' : (this.currentBookPath + '/');
                     const newPath = folder + title + '.md';
                     this.isSavingMetadata = true;
@@ -999,6 +1023,11 @@ export class WorkbenchView extends ItemView {
         const btnLore = toggleGroup.createSpan({
             text: t('corkboard.sort-lore'),
             cls: `wn-corkboard-toggle-btn ${this.sortMode === 'lore' ? 'active' : ''}`
+        });
+
+        const btnForeshadowing = toggleGroup.createSpan({
+            text: t('corkboard.sort-foreshadowing') || '伏笔看板',
+            cls: `wn-corkboard-toggle-btn ${this.sortMode === 'foreshadowing' ? 'active' : ''}`
         });
 
         const btnTask = toggleGroup.createSpan({
@@ -1052,6 +1081,15 @@ export class WorkbenchView extends ItemView {
             void this.reloadBoard();
         };
 
+        btnForeshadowing.onclick = () => {
+            if (this.sortMode === 'foreshadowing') return;
+            updateButtonActive(btnForeshadowing);
+            this.sortMode = 'foreshadowing';
+            this.plugin.settings.corkboardSortMode = 'foreshadowing';
+            saveSortMode();
+            void this.reloadBoard();
+        };
+
         btnTask.onclick = () => {
             if (this.sortMode === 'task') return;
             updateButtonActive(btnTask);
@@ -1081,6 +1119,8 @@ export class WorkbenchView extends ItemView {
 
         let filteredChapterFiles = files;
         let matchedLoreHeadings: ReadonlySet<string> | undefined;
+        let foreshadowingEntriesList: ParsedForeshadowingEntry[] = [];
+        let foreshadowingFileObj: TFile | null = null;
 
         if (this.sortMode === 'default') {
             filteredChapterFiles = await this.filterIndex.filterChapters(
@@ -1092,7 +1132,6 @@ export class WorkbenchView extends ItemView {
                 }
             );
             if (this.currentRenderId !== renderId) return;
-            // 将搜索栏插入 header（吸顶容器），使其固定在导航 Tab 下方，随 header 一起吸顶
             this.renderFilterBar(header, 'default', filteredChapterFiles.length, files.length);
         } else if (this.sortMode === 'lore') {
             await this.plugin.characterManager.ensureInitialized();
@@ -1108,12 +1147,40 @@ export class WorkbenchView extends ItemView {
                 );
             }
             if (this.currentRenderId !== renderId) return;
-            // 将搜索栏插入 header（吸顶容器），使其固定在导航 Tab 下方，随 header 一起吸顶
             this.renderFilterBar(
                 header,
                 'lore',
                 matchedLoreHeadings?.size ?? loreEntries.length,
                 loreEntries.length
+            );
+        } else if (this.sortMode === 'foreshadowing') {
+            if (this.currentBookPath && this.plugin.foreshadowingManager) {
+                const fmFolder = this.currentBookPath === '/' ? '' : this.currentBookPath;
+                foreshadowingFileObj = this.plugin.foreshadowingManager.findForeshadowingFile(fmFolder);
+                if (foreshadowingFileObj) {
+                    const content = await this.app.vault.cachedRead(foreshadowingFileObj);
+                    foreshadowingEntriesList = this.plugin.foreshadowingManager.parseEntries(content);
+                }
+            }
+            if (this.currentRenderId !== renderId) return;
+
+            const fQuery = this.foreshadowingFilterQuery.trim().toLowerCase();
+            let matchedForeshadowingCount = foreshadowingEntriesList.length;
+            if (fQuery) {
+                matchedForeshadowingCount = foreshadowingEntriesList.filter(entry => {
+                    if (entry.description.toLowerCase().includes(fQuery)) return true;
+                    if (entry.tags.some(t => t.toLowerCase().includes(fQuery))) return true;
+                    if (entry.contents.some(c => c.text.toLowerCase().includes(fQuery) || (c.source && c.source.toLowerCase().includes(fQuery)))) return true;
+                    if (entry.recoveryLogs && entry.recoveryLogs.some(l => (l.note && l.note.toLowerCase().includes(fQuery)) || (l.quote && l.quote.toLowerCase().includes(fQuery)) || l.file.toLowerCase().includes(fQuery))) return true;
+                    return false;
+                }).length;
+            }
+
+            this.renderFilterBar(
+                header,
+                'foreshadowing',
+                matchedForeshadowingCount,
+                foreshadowingEntriesList.length
             );
         }
 
@@ -1140,6 +1207,18 @@ export class WorkbenchView extends ItemView {
                 files,
                 currentBookPath: this.currentBookPath || '',
                 matchedLoreHeadings,
+                reloadBoard: () => { void this.reloadBoard(); }
+            });
+        } else if (this.sortMode === 'foreshadowing') {
+            await ForeshadowingBoardRenderer.render({
+                app: this.app,
+                plugin: this.plugin,
+                ownerComponent: this.currentBoardComponent,
+                container: buffer,
+                entries: foreshadowingEntriesList,
+                foreshadowingFile: foreshadowingFileObj,
+                query: this.foreshadowingFilterQuery,
+                currentBookPath: this.currentBookPath || '',
                 reloadBoard: () => { void this.reloadBoard(); }
             });
         } else if (this.sortMode === 'task') {

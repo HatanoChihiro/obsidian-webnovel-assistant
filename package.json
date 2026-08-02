@@ -1,7 +1,7 @@
 {
 	"name": "web-novel-assistant",
-	"version": "3.6.3",
-	"description": "Obsidian plugin for novel and story writing — accurate word count, goal tracking, story timeline, foreshadowing manager, chapter corkboard, and lore graphs",
+	"version": "3.7.0",
+	"description": "An all-in-one writing studio for novel and story writers — accurate word count, goal tracking, story timeline, foreshadowing manager, chapter corkboard, and lore graphs",
 	"main": "main.js",
 	"scripts": {
 		"dev": "esbuild main.ts --bundle --format=cjs --external:obsidian --external:@codemirror/* --outfile=main.js --watch",

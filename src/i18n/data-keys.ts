@@ -31,11 +31,13 @@ const FORESHADOWING_LABELS = {
 const FORESHADOWING_STATUS = {
 	'zh-CN': {
 		pending: '未回收',
+		partially_recovered: '阶段回收中',
 		recovered: '已回收',
 		deprecated: '已废弃',
 	},
 	'en': {
 		pending: 'Unresolved',
+		partially_recovered: 'Staged Progress',
 		recovered: 'Resolved',
 		deprecated: 'Abandoned',
 	},
@@ -45,10 +47,18 @@ const FORESHADOWING_STATUS = {
 export const FORESHADOWING_STATUS_MAP: Record<string, string> = {
 	// 英文 key（新版）
 	'pending': 'pending',
+	'partially_recovered': 'partially_recovered',
 	'recovered': 'recovered',
 	'deprecated': 'deprecated',
 	// 英文本地化值（首字母大写）
 	'Unresolved': 'pending',
+	'Staged Progress': 'partially_recovered',
+	'StagedProgress': 'partially_recovered',
+	'In Progress': 'partially_recovered',
+	'InProgress': 'partially_recovered',
+	'Partially Recovered': 'partially_recovered',
+	'PartiallyRecovered': 'partially_recovered',
+	'Partially recovered': 'partially_recovered',
 	'Resolved': 'recovered',
 	'Abandoned': 'deprecated',
 	'Pending': 'pending',
@@ -56,6 +66,8 @@ export const FORESHADOWING_STATUS_MAP: Record<string, string> = {
 	'Deprecated': 'deprecated',
 	// 中文值（旧版兼容）
 	'未回收': 'pending',
+	'阶段回收中': 'partially_recovered',
+	'阶段回收': 'partially_recovered',
 	'已回收': 'recovered',
 	'已废弃': 'deprecated',
 };

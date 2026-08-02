@@ -8,11 +8,10 @@ import { VIEW_TYPES } from '../constants';
 import { ChapterSorter } from '../services/ChapterSorter';
 import { TimelineAddModal } from '../ui/TimelineAddModal';
 import type { TimelineEntry } from '../services/TimelineManager';
-import { TimelineManager } from '../services/TimelineManager';
-import { TaskManager } from '../services/TaskManager';
 import { TaskAddModal } from '../ui/TaskModal';
 import { findBookRoot } from '../utils/path';
 import { NewNovelModal } from '../ui/NewNovelModal';
+import { ImportNovelModal } from '../ui/ImportNovelModal';
 import type { WorkbenchView } from '../ui/WorkbenchView';
 import { RELATION_GRAPH_VIEW_TYPE } from '../ui/RelationGraphView';
 
@@ -78,6 +77,12 @@ export class MenuManager {
 						}).open();
 					});
 				});
+
+				menu.addItem((item) => {
+					item.setTitle(t('import-novel.title')).setIcon('upload').setSection('webnovel-assistant').onClick(() => {
+						new ImportNovelModal(this.plugin.app, this.plugin).open();
+					});
+				});
 			}
 		}));
 
@@ -102,7 +107,8 @@ export class MenuManager {
 							const folderPath = findBookRoot(this.plugin.app, this.plugin, view.file) || '';
 
 							// 读取已有条目中的类型，传入 Modal 供选择
-							const tlManager = new TimelineManager(this.plugin.app, this.plugin, folderPath);
+							const tlManager = this.plugin.timelineManager;
+							tlManager.currentFolder = folderPath;
 							const tlFile = tlManager.getTimelineFile();
 							const localTypes: string[] = [];
 							if (tlFile) {
@@ -118,7 +124,7 @@ export class MenuManager {
 								chapterName,
 								folderPath,
 								(result) => {
-									new TimelineManager(this.plugin.app, this.plugin, folderPath).appendEntry({
+									tlManager.appendEntry({
 										time: result.time,
 										description: result.description,
 										chapter: result.chapter,
@@ -269,7 +275,8 @@ export class MenuManager {
 	private openTaskModal(file: TFile | TFolder) {
 		const folderPath = findBookRoot(this.plugin.app, this.plugin, file) || (file instanceof TFolder ? file.path : '');
 
-		const manager = new TaskManager(this.plugin.app, this.plugin, folderPath);
+		const manager = this.plugin.taskManager;
+		manager.currentFolder = folderPath;
 		const taskFile = manager.getTaskFile();
 
 		if (!taskFile) {

@@ -259,7 +259,24 @@ export class AdvancedSearchModal extends Modal {
 	}
 
 	private getCurrentBookPath(): string | null {
-		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+		let activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+		
+		if (!activeView) {
+			const mdLeaves = this.app.workspace.getLeavesOfType('markdown');
+			if (mdLeaves.length > 0) {
+				const activeFile = this.app.workspace.getActiveFile();
+				if (activeFile) {
+					activeView = mdLeaves.find(l => (l.view as MarkdownView).file?.path === activeFile.path)?.view as MarkdownView;
+				}
+				if (!activeView && this.plugin.lastFilePath) {
+					activeView = mdLeaves.find(l => (l.view as MarkdownView).file?.path === this.plugin.lastFilePath)?.view as MarkdownView;
+				}
+				if (!activeView) {
+					activeView = (mdLeaves.find(l => (l.view as MarkdownView).file) || mdLeaves[0]).view as MarkdownView;
+				}
+			}
+		}
+
 		if (!activeView || !activeView.file) return null;
 		
 		const root = findBookRoot(this.app, this.plugin, activeView.file);
@@ -282,7 +299,7 @@ export class AdvancedSearchModal extends Modal {
 		this.resultsContainer.createDiv({ text: t('modal.searching'), cls: 'advanced-search-loading' });
 
 		// 1. 获取目标文件列表
-		const allMarkdownFiles = this.app.vault.getMarkdownFiles();
+		const allMarkdownFiles = this.plugin.getVaultMarkdownFiles();
 		let targetFiles: TFile[] = [];
 
 		if (this.searchScope === 'global') {

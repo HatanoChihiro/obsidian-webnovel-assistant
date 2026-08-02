@@ -166,7 +166,7 @@ export class ChapterOverviewView extends ItemView {
         
         if (fFile) {
             const content = await this.app.vault.cachedRead(fFile);
-            const entries = this.plugin.foreshadowingManager!.parseEntries(content);
+            const entries = this.plugin.foreshadowingManager.parseEntries(content);
             const cleanFiles = files.map(file => ({ file, cleanBase: file.basename.toLowerCase().replace(/\s+/g, '') }));
             for (const entry of entries) {
                 const targets: string[] = [];
@@ -180,10 +180,14 @@ export class ChapterOverviewView extends ItemView {
 
                 if (entry.status === ForeshadowingStatus.Pending) {
                     targets.push(...sources);
-                } else if (entry.status === ForeshadowingStatus.Recovered) {
+                } else if (entry.status === ForeshadowingStatus.PartiallyRecovered || entry.status === ForeshadowingStatus.Recovered) {
                     targets.push(...sources);
-                    const recFiles = entry.recoveryFiles ? [...entry.recoveryFiles] : (entry.recoveryFile ? [entry.recoveryFile] : []);
-                    targets.push(...recFiles);
+                    if (entry.recoveryLogs && entry.recoveryLogs.length > 0) {
+                        targets.push(...entry.recoveryLogs.map(l => l.file));
+                    } else {
+                        const recFiles = entry.recoveryFiles ? [...entry.recoveryFiles] : (entry.recoveryFile ? [entry.recoveryFile] : []);
+                        targets.push(...recFiles);
+                    }
                 }
                 for (const target of targets) {
                     if (!target) continue;

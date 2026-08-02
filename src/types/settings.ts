@@ -274,7 +274,7 @@ export interface AccurateCountSettings {
 	loreGraphEnableGlobal: boolean;
 
 	/** 章节一览面板的排序模式 */
-	corkboardSortMode?: 'default' | 'timeline' | 'lore' | 'task' | 'sticky';
+	corkboardSortMode?: 'default' | 'timeline' | 'lore' | 'task' | 'sticky' | 'foreshadowing';
 
 	/** 设定看板展示布局 */
 	loreBoardLayout?: 'table' | 'cards' | 'graph';
@@ -285,8 +285,11 @@ export interface AccurateCountSettings {
 	/** 是否启用章节模板 */
 	enableChapterTemplate: boolean;
 
-	/** 默认章节模板路径 */
+	/** 默认章节模板路径（旧版兼容） */
 	chapterTemplatePath: string;
+
+	/** 章节模板路径列表 */
+	chapterTemplatePaths: string[];
 
 	/** 是否开启调试模式（在控制台输出详细日志） */
 	debugMode: boolean;
@@ -294,3 +297,5 @@ export interface AccurateCountSettings {
 	/** 沉浸模式布局快照（JSON 字符串），用于异常退出后恢复 */
 	_savedImmersiveLayout?: string | null;
 }
+
+export type WebNovelAssistantSettings = AccurateCountSettings;

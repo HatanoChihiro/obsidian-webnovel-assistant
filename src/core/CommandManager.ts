@@ -8,13 +8,13 @@ import { ForeshadowingInputModal, ConfirmCreateForeshadowingFileModal, Foreshado
 import { findBookRoot } from '../utils/path';
 import { TimelineAddModal } from '../ui/TimelineAddModal';
 import type { TimelineEntry } from '../services/TimelineManager';
-import { TimelineManager } from '../services/TimelineManager';
 import { AdvancedSearchModal } from '../ui/AdvancedSearchModal';
 import { WorkbenchView } from '../ui/WorkbenchView';
 import { AddLoreModal } from '../ui/AddLoreModal';
 import { t } from '../i18n';
 import { getDefaultFileName } from '../i18n/data-keys';
 import { GoalModal } from '../ui/GoalModal';
+import { resolveChapterTemplate } from '../utils/template';
 
 class ConfirmResetDailyStatsModal extends Modal {
 	constructor(app: App, private onConfirm: () => void) {
@@ -260,30 +260,26 @@ export class CommandManager {
 					return;
 
 				}
-				try {
-					let templateContent = '';
-					if (this.plugin.settings.enableChapterTemplate && this.plugin.settings.chapterTemplatePath) {
-						try {
-							const file = this.plugin.app.vault.getAbstractFileByPath(this.plugin.settings.chapterTemplatePath);
-							if (file instanceof TFile) {
-								templateContent = await this.plugin.app.vault.read(file);
-							}
-						} catch (e) {
-							console.error('无法读取模板文件:', e);
-						}
+				resolveChapterTemplate(this.plugin.app, this.plugin.settings, (templateContent) => {
+					if (templateContent === null) {
+						// 用户在多模板弹窗中取消了创建
+						return;
 					}
-
-					const newFile = await this.plugin.app.vault.create(newFilePath, templateContent);
-					await this.plugin.app.workspace.getLeaf(false).openFile(newFile);
-					new Notice(t('notice.chapter-created', { name: newFileName }));
-					// 延迟触发文件树重排序，确保 DOM 挂载完成后自动恢复规则排序
-					window.setTimeout(() => {
-						this.plugin.fileExplorerPatcher?.refreshManually();
-					}, 100);
-				} catch (error) {
-					console.error(error);
-					new Notice(t('notice.chapter-create-failed', { error: String(error) }));
-				}
+					void (async () => {
+						try {
+							const newFile = await this.plugin.app.vault.create(newFilePath, templateContent);
+							await this.plugin.app.workspace.getLeaf(false).openFile(newFile);
+							new Notice(t('notice.chapter-created', { name: newFileName }));
+							// 延迟触发文件树重排序，确保 DOM 挂载完成后自动恢复规则排序
+							window.setTimeout(() => {
+								this.plugin.fileExplorerPatcher?.refreshManually();
+							}, 100);
+						} catch (error) {
+							console.error(error);
+							new Notice(t('notice.chapter-create-failed', { error: String(error) }));
+						}
+					})();
+				});
 			}
 		});
 
@@ -469,7 +465,8 @@ export class CommandManager {
 				// 读取已有条目中的类型，传入 Modal 供下拉选择
 				void (async () => {
 					try {
-						const tlManager = new TimelineManager(this.plugin.app, this.plugin, folderPath);
+						const tlManager = this.plugin.timelineManager;
+						tlManager.currentFolder = folderPath;
 						const tlFile = tlManager.getTimelineFile();
 						const localTypes: string[] = [];
 						if (tlFile) {
@@ -487,7 +484,7 @@ export class CommandManager {
 							chapterName,
 							folderPath,
 							(result) => {
-								new TimelineManager(this.plugin.app, this.plugin, folderPath).appendEntry({
+								tlManager.appendEntry({
 									time: result.time,
 									description: result.description,
 									chapter: result.chapter,

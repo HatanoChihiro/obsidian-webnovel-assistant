@@ -8,8 +8,8 @@ const createMockApp = (files: Record<string, 'file' | 'folder'>) => {
 		vault: {
 			getAbstractFileByPath: (path: string) => {
 				const type = files[path];
-				if (type === 'file') return new TFile(path, path);
-				if (type === 'folder') return new TFolder(path, path);
+				if (type === 'file') return Object.assign(Object.create(TFile.prototype), { path, name: path }) as TFile;
+				if (type === 'folder') return Object.assign(Object.create(TFolder.prototype), { path, name: path }) as TFolder;
 				return null;
 			}
 		}

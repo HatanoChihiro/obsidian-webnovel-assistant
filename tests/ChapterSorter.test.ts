@@ -215,9 +215,28 @@ describe('ChapterSorter', () => {
 			expect(result).toBe('第十章.md');
 		});
 
-		it('小数点格式递增: 49.1 → 49.2', () => {
-			const result = ChapterSorter.getNextChapterName('49.1', []);
-			expect(result).toBe('49.2.md');
+		it('未设置集规则时按照默认分类处理: 第一集 → 第二', () => {
+			ChapterSorter.setCustomRules([]);
+			const result = ChapterSorter.getNextChapterName('第一集', []);
+			expect(result).toBe('第二.md');
+		});
+
+		it('设置集自定义规则后成功生成: 第一集 → 第二集', () => {
+			ChapterSorter.setCustomRules([
+				{ name: '集 格式', pattern: '^(?:第(\\d+)集|第?([零一二三四五六七八九十]+)集)', enabled: true }
+			]);
+			const result = ChapterSorter.getNextChapterName('第一集', []);
+			expect(result).toBe('第二集.md');
+			ChapterSorter.setCustomRules([]);
+		});
+
+		it('自定义规则生成下一章: 演（1） → 演（2）', () => {
+			ChapterSorter.setCustomRules([
+				{ name: '演（数字）格式', pattern: '^演（(\\d+)）', enabled: true }
+			]);
+			const result = ChapterSorter.getNextChapterName('演（1）', []);
+			expect(result).toBe('演（2）.md');
+			ChapterSorter.setCustomRules([]);
 		});
 
 		it('无法识别时返回 null', () => {

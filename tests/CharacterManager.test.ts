@@ -33,7 +33,8 @@ describe('CharacterManager', () => {
             settings: {
                 loreFolderName: 'Lore'
             },
-            registerEvent: vi.fn()
+            registerEvent: vi.fn(),
+            getVaultMarkdownFiles: vi.fn().mockImplementation(() => mockApp.vault.getMarkdownFiles())
         };
     });
 
