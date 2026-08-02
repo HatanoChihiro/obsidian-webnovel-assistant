@@ -100,10 +100,18 @@ export class LoreBoardRenderer {
             fileGroups.get(path)!.entries.push(entry);
         }
 
-        // 设定文件 tab 默认按当前语言字母序（中文按拼音）与数字自然升序排列
+        // 设定文件 tab 排序：拉丁字母开头的文件优先于汉字开头，组内按当前语言字母序（中文按拼音）与数字自然升序排列
         const locale = getLocale() === 'zh-CN' ? 'zh' : 'en';
         const collator = new Intl.Collator(locale, { numeric: true, sensitivity: 'base' });
-        const groups = Array.from(fileGroups.entries()).sort((a, b) => collator.compare(a[1].fileBasename, b[1].fileBasename));
+        const isLatinStart = (name: string): boolean => /^[A-Za-z]/.test(name);
+        const groups = Array.from(fileGroups.entries()).sort((a, b) => {
+            const nameA = a[1].fileBasename;
+            const nameB = b[1].fileBasename;
+            const latinA = isLatinStart(nameA) ? 1 : 0;
+            const latinB = isLatinStart(nameB) ? 1 : 0;
+            if (latinA !== latinB) return latinB - latinA;
+            return collator.compare(nameA, nameB);
+        });
 
         const boardLayout = container.createDiv('wn-lore-board-layout');
 
