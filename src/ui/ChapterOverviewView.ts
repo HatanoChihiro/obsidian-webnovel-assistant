@@ -1,4 +1,4 @@
-import { TFile, type WorkspaceLeaf, ItemView, TFolder } from 'obsidian';
+import { TFile, TFolder, Vault, type TAbstractFile, type WorkspaceLeaf, ItemView } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ForeshadowingStatus, type ParsedForeshadowingEntry } from '../types/foreshadowing';
 import { ChapterSorter } from '../services/ChapterSorter';
@@ -117,7 +117,25 @@ export class ChapterOverviewView extends ItemView {
             return;
         }
 
-        const files = this.plugin.getTrackedMarkdownFiles().filter(file => {
+        let bookFiles: TFile[];
+        if (this.currentBookPath && this.currentBookPath !== '/') {
+            const bookFolder = this.app.vault.getAbstractFileByPath(this.currentBookPath);
+            if (bookFolder instanceof TFolder) {
+                const list: TFile[] = [];
+                Vault.recurseChildren(bookFolder, (child: TAbstractFile) => {
+                    if (child instanceof TFile && child.extension === 'md' && this.plugin.cacheManager.isEligibleForWordCount(child)) {
+                        list.push(child);
+                    }
+                });
+                bookFiles = list;
+            } else {
+                bookFiles = this.plugin.getTrackedMarkdownFiles().filter(f => f.path.startsWith(this.currentBookPath + '/'));
+            }
+        } else {
+            bookFiles = this.plugin.getTrackedMarkdownFiles();
+        }
+
+        const files = bookFiles.filter(file => {
             // 只有在开启严格章节模式时，才强制要求必须是章节命名格式
             if (this.plugin.settings.enableStrictChapterMode 
                 && !ChapterSorter.isChapterFile(file.name)
@@ -129,8 +147,7 @@ export class ChapterOverviewView extends ItemView {
             if (file.path.includes(`/${lorePath}/`) || file.path.startsWith(`${lorePath}/`)) {
                 return false;
             }
-            if (this.currentBookPath === '/') return true;
-            return file.path.startsWith(this.currentBookPath + '/');
+            return true;
         });
         
         if (this.plugin.settings.enableSmartChapterSort) {
@@ -149,7 +166,7 @@ export class ChapterOverviewView extends ItemView {
         
         if (fFile) {
             const content = await this.app.vault.cachedRead(fFile);
-            const entries = this.plugin.foreshadowingManager!.parseEntries(content);
+            const entries = this.plugin.foreshadowingManager.parseEntries(content);
             const cleanFiles = files.map(file => ({ file, cleanBase: file.basename.toLowerCase().replace(/\s+/g, '') }));
             for (const entry of entries) {
                 const targets: string[] = [];
@@ -163,10 +180,14 @@ export class ChapterOverviewView extends ItemView {
 
                 if (entry.status === ForeshadowingStatus.Pending) {
                     targets.push(...sources);
-                } else if (entry.status === ForeshadowingStatus.Recovered) {
+                } else if (entry.status === ForeshadowingStatus.PartiallyRecovered || entry.status === ForeshadowingStatus.Recovered) {
                     targets.push(...sources);
-                    const recFiles = entry.recoveryFiles ? [...entry.recoveryFiles] : (entry.recoveryFile ? [entry.recoveryFile] : []);
-                    targets.push(...recFiles);
+                    if (entry.recoveryLogs && entry.recoveryLogs.length > 0) {
+                        targets.push(...entry.recoveryLogs.map(l => l.file));
+                    } else {
+                        const recFiles = entry.recoveryFiles ? [...entry.recoveryFiles] : (entry.recoveryFile ? [entry.recoveryFile] : []);
+                        targets.push(...recFiles);
+                    }
                 }
                 for (const target of targets) {
                     if (!target) continue;

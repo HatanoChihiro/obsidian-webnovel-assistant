@@ -69,7 +69,10 @@ export class CharacterManager {
 		const newLowerMap = new Map<string, Map<string, string>>();
 		
 		const candidates = this.getLoreCandidates();
-		const files = this.app.vault.getMarkdownFiles().filter(file => {
+		const allMarkdownFiles = (this.plugin.settings.workspaceFolders && this.plugin.settings.workspaceFolders.length > 0)
+			? this.plugin.getTrackedMarkdownFiles(true)
+			: this.plugin.getVaultMarkdownFiles();
+		const files = allMarkdownFiles.filter(file => {
 			const parentPath = file.parent?.path || '';
 			for (const candidate of candidates) {
 				if (parentPath.includes(candidate)) return true;

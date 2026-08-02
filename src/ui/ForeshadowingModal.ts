@@ -1,5 +1,5 @@
 import type { App } from 'obsidian';
-import { Modal, Notice, Setting } from 'obsidian';
+import { Modal, Notice, Setting, MarkdownView } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { t } from '../i18n';
 import { ChapterSorter } from '../services/ChapterSorter';
@@ -271,8 +271,14 @@ export class ForeshadowingRecoveryModal extends Modal {
 	private plugin: WebNovelAssistantPlugin;
 	private contentPreview: string;
 	private folderPath: string;
-	private onSubmit: (recoveryFileNames: string[]) => void;
+	private onSubmit: (recoveryFileNames: string[], isStage: boolean, note: string, quote?: string) => void;
+	private initialIsStage: boolean;
+	private initialQuote: string;
+	
+	private isStage: boolean;
 	private inputEl!: HTMLInputElement;
+	private noteEl!: HTMLInputElement;
+	private quoteEl!: HTMLTextAreaElement;
 	private chapters: string[] = [];
 
 	constructor(
@@ -280,13 +286,18 @@ export class ForeshadowingRecoveryModal extends Modal {
 		plugin: WebNovelAssistantPlugin,
 		contentPreview: string,
 		folderPath: string,
-		onSubmit: (recoveryFileNames: string[]) => void
+		onSubmit: (recoveryFileNames: string[], isStage: boolean, note: string, quote?: string) => void,
+		initialIsStage: boolean = false,
+		initialQuote: string = ''
 	) {
 		super(app);
 		this.plugin = plugin;
 		this.contentPreview = contentPreview;
 		this.folderPath = folderPath;
 		this.onSubmit = onSubmit;
+		this.initialIsStage = initialIsStage;
+		this.isStage = initialIsStage;
+		this.initialQuote = initialQuote;
 		
 		const targetFiles = ChapterSorter.getAllChapters(this.app, this.plugin, this.folderPath);
 		this.chapters = targetFiles.map(c => c.basename);
@@ -296,7 +307,8 @@ export class ForeshadowingRecoveryModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 
-		new Setting(contentEl).setName(t('modal.mark-recovered')).setHeading();
+		const titleText = this.initialIsStage ? t('common.mark-stage-recovered') : t('common.mark-final-recovered');
+		new Setting(contentEl).setName(titleText).setHeading();
 
 		// 内容预览
 		const preview = this.contentPreview.length > 60
@@ -306,6 +318,56 @@ export class ForeshadowingRecoveryModal extends Modal {
 			text: t('modal.foreshadowing-preview', { preview }),
 			cls: 'foreshadowing-preview'
 		});
+
+		// 回收模式选择 (阶段回收 vs 彻底回收)
+		const modeSetting = new Setting(contentEl)
+			.setName(t('common.recovery-mode'));
+		
+		const modeContainer = modeSetting.controlEl.createDiv({ cls: 'webnovel-radio-group' });
+		
+		const stageRadioLabel = modeContainer.createEl('label', { cls: 'webnovel-radio-label' });
+		const stageRadio = stageRadioLabel.createEl('input', { type: 'radio', value: 'stage' });
+		stageRadio.name = 'recovery-mode';
+		stageRadio.checked = this.isStage;
+		stageRadioLabel.createSpan({ text: t('common.recovery-mode-stage') });
+
+		const finalRadioLabel = modeContainer.createEl('label', { cls: 'webnovel-radio-label' });
+		const finalRadio = finalRadioLabel.createEl('input', { type: 'radio', value: 'final' });
+		finalRadio.name = 'recovery-mode';
+		finalRadio.checked = !this.isStage;
+		finalRadioLabel.createSpan({ text: t('common.recovery-mode-final') });
+
+		stageRadio.onchange = () => { if (stageRadio.checked) this.isStage = true; };
+		finalRadio.onchange = () => { if (finalRadio.checked) this.isStage = false; };
+
+		// 获取当前活动编辑器的章节文件与划选文本（若焦点在侧边栏，退回至主工作区 Markdown 叶子节点）
+		let activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+		if (!activeView) {
+			const mdLeaves = this.app.workspace.getLeavesOfType('markdown');
+			if (mdLeaves.length > 0) {
+				// 1. 优先匹配 Obsidian 当前的工作区 activeFile
+				const activeFile = this.app.workspace.getActiveFile();
+				if (activeFile) {
+					const activeFileLeaf = mdLeaves.find(l => (l.view as MarkdownView).file?.path === activeFile.path);
+					if (activeFileLeaf) {
+						activeView = activeFileLeaf.view as MarkdownView;
+					}
+				}
+				// 2. 备选：匹配插件记录的最后活动文件
+				if (!activeView && this.plugin.lastFilePath) {
+					const lastActiveLeaf = mdLeaves.find(l => (l.view as MarkdownView).file?.path === this.plugin.lastFilePath);
+					if (lastActiveLeaf) {
+						activeView = lastActiveLeaf.view as MarkdownView;
+					}
+				}
+				// 3. 兜底：返回最靠近的 / 第一个打开的 Markdown 视图
+				if (!activeView) {
+					activeView = (mdLeaves.find(l => (l.view as MarkdownView).file) || mdLeaves[0]).view as MarkdownView;
+				}
+			}
+		}
+		const activeFile = activeView?.file;
+		const activeSelection = activeView?.editor ? activeView.editor.getSelection().trim() : '';
 
 		// 文件选择
 		new Setting(contentEl)
@@ -317,14 +379,20 @@ export class ForeshadowingRecoveryModal extends Modal {
 			placeholder: t('modal.recovery-placeholder'),
 		});
 		this.inputEl.addClass('webnovel-modal-input');
+		if (activeFile) {
+			this.inputEl.value = activeFile.basename;
+		}
+
 		// 如果有章节文件，显示选择按钮
 		if (this.chapters.length > 0) {
 			const btnRow = contentEl.createDiv({ cls: 'webnovel-btn-row' });
 			const selectBtn = btnRow.createEl('button', { text: t('modal.select-from-list'), cls: 'webnovel-select-btn' });
 			selectBtn.onclick = () => {
-				this.close();
 				new ChapterMultiSelectModal(this.app, this.chapters, (selectedChapters) => {
-					this.onSubmit(selectedChapters);
+					if (selectedChapters.length > 0) {
+						this.inputEl.value = selectedChapters.join(', ');
+						this.noteEl?.focus();
+					}
 				}).open();
 			};
 			
@@ -335,13 +403,38 @@ export class ForeshadowingRecoveryModal extends Modal {
 			hint.addClass('wn-mb-12');
 		}
 
+		// 阶段推进说明 / 备注
+		new Setting(contentEl)
+			.setName(t('common.stage-note'))
+			.setDesc(t('common.stage-note-placeholder'));
+
+		this.noteEl = contentEl.createEl('input', {
+			type: 'text',
+			placeholder: t('common.stage-note-placeholder'),
+		});
+		this.noteEl.addClass('webnovel-modal-input');
+
+		// 关联原文（可选）
+		new Setting(contentEl)
+			.setName(t('modal.associated-quote'))
+			.setDesc(t('modal.associated-quote-placeholder'));
+
+		this.quoteEl = contentEl.createEl('textarea', {
+			placeholder: t('modal.associated-quote-placeholder'),
+			cls: 'foreshadowing-quote-input webnovel-modal-textarea'
+		});
+		const finalQuote = this.initialQuote || activeSelection;
+		if (finalQuote) {
+			this.quoteEl.value = finalQuote;
+		}
+
 		// 按钮区
 		const btnContainer = contentEl.createDiv();
 		btnContainer.addClass('wn-base-button-container');
 		const cancelBtn = btnContainer.createEl('button', { text: t('common.cancel') });
 		cancelBtn.onclick = () => this.close();
 
-		const confirmBtn = btnContainer.createEl('button', { text: t('modal.confirm-recovery'), cls: 'mod-cta' });
+		const confirmBtn = btnContainer.createEl('button', { text: t('common.confirm'), cls: 'mod-cta' });
 		confirmBtn.onclick = () => this.submit();
 
 		window.setTimeout(() => this.inputEl.focus(), 50);
@@ -364,7 +457,9 @@ export class ForeshadowingRecoveryModal extends Modal {
 		}
 		// 支持逗号或空格分隔多个章节
 		const chapters = value.split(/[,，\s]+/).filter(Boolean).map(ch => ch.trim());
-		this.onSubmit(chapters);
+		const note = this.noteEl.value.trim();
+		const quote = this.quoteEl.value.trim();
+		this.onSubmit(chapters, this.isStage, note, quote || undefined);
 		this.close();
 	}
 

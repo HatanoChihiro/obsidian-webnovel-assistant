@@ -1,4 +1,4 @@
-import { TFile, Notice, type Vault } from 'obsidian';
+import { TFile, Notice, Vault, type TAbstractFile } from 'obsidian';
 import { ChapterSorter } from './ChapterSorter';
 import { getDefaultFileName, getDefaultFileNameCandidates } from '../i18n/data-keys';
 import { PLATFORM_DELAYS } from '../constants';
@@ -149,16 +149,24 @@ export class CacheManager {
 		const startTime = Date.now();
 
 		try {
-			const allFiles = vault.getMarkdownFiles();
+			const allFiles: TFile[] = [];
+			Vault.recurseChildren(vault.getRoot(), (file: TAbstractFile) => {
+				if (file instanceof TFile && file.extension === 'md') {
+					allFiles.push(file);
+				}
+			});
+
 			// 如果提供了工作区检查函数，只处理工作区内的文件
 			const filesToProcess = isFileInWorkspace 
 				? allFiles.filter(f => isFileInWorkspace(f))
 				: allFiles;
 			
 			let failCount = 0;
+			const CHUNK_SIZE = 50;
 
-			// 批量读取所有文件并计算字数
-			for (const file of filesToProcess) {
+			// 批量读取所有文件并计算字数（分片让权，防止在大型库中阻塞主线程 UI）
+			for (let i = 0; i < filesToProcess.length; i++) {
+				const file = filesToProcess[i];
 				try {
 					const content = await vault.cachedRead(file);
 					const count = calculateWords(content);
@@ -170,6 +178,11 @@ export class CacheManager {
 					console.error(`[CacheManager] 读取文件失败: ${file.path}`, error);
 					failCount++;
 					// 继续处理其他文件，不中断整个缓存构建
+				}
+
+				// 每处理 CHUNK_SIZE 个文件主动出让事件循环，保持界面响应
+				if ((i + 1) % CHUNK_SIZE === 0) {
+					await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
 				}
 			}
 

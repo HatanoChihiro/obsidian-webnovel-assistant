@@ -1,5 +1,5 @@
-import type { WorkspaceLeaf } from 'obsidian';
-import { ItemView, TFile, TFolder } from 'obsidian';
+import type { WorkspaceLeaf, TAbstractFile } from 'obsidian';
+import { ItemView, TFile, TFolder, Vault } from 'obsidian';
 import { VIEW_TYPES } from '../constants';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { ParsedForeshadowingEntry } from '../types/foreshadowing';
@@ -113,7 +113,22 @@ export class ImmersiveChapterListView extends ItemView {
 
 		const fmFolder = bookPath === '/' ? '' : bookPath;
 		// 获取该作品下所有的 markdown 文件
-		const allMdFiles = this.plugin.getTrackedMarkdownFiles().filter(f => bookPath === '/' ? true : f.path.startsWith(bookPath + '/'));
+		let allMdFiles: TFile[];
+		if (bookPath && bookPath !== '/') {
+			if (currentFolder instanceof TFolder) {
+				const list: TFile[] = [];
+				Vault.recurseChildren(currentFolder, (child: TAbstractFile) => {
+					if (child instanceof TFile && child.extension === 'md') {
+						list.push(child);
+					}
+				});
+				allMdFiles = list;
+			} else {
+				allMdFiles = this.plugin.getTrackedMarkdownFiles().filter(f => f.path.startsWith(bookPath + '/'));
+			}
+		} else {
+			allMdFiles = this.plugin.getTrackedMarkdownFiles();
+		}
 
 		const foreshadowingMap = this.plugin.foreshadowingManager
 			? await this.plugin.foreshadowingManager.buildChapterForeshadowingMap(fmFolder, allMdFiles, this.app.vault)

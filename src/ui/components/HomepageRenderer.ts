@@ -3,13 +3,23 @@ import { Notice, setIcon } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../../types/plugin';
 import type { TaskEntry } from '../../types/task';
 import type { NovelFolderInfo } from '../../types/homepage';
+import type { DailyStat } from '../../types/settings';
 import { getTaskStatusText, getNovelStatusText, getNovelInfoLabel } from '../../i18n/data-keys';
 import { t } from '../../i18n';
-import { calcStreak, calcFocusRate, calcActiveHours, calcDailyAverage, calcWritingSpeed, calcTaskCompletion, calcNovelCompletionRate, getHeatClass } from '../HistoryModal';
-import { TaskManager } from '../../services/TaskManager';
 import { NewNovelModal } from '../NewNovelModal';
+import { ImportNovelModal } from '../ImportNovelModal';
 import type { WorkbenchView } from '../WorkbenchView';
 import { revealAndFocusLeaf } from '../../utils/leaf';
+import {
+	calcStreak,
+	calcFocusRate,
+	calcActiveHours,
+	calcDailyAverage,
+	calcWritingSpeed,
+	getHeatClass,
+	calcTaskCompletion,
+	calcNovelCompletionRate
+} from '../HistoryModal';
 
 
 export class HomepageRenderer {
@@ -40,27 +50,64 @@ export class HomepageRenderer {
 		// 顶部行：欢迎语 + 今日字数 + 新增作品 + 连载中
 		const topRow = grid.createDiv({ cls: 'homepage-grid-top' });
 		const welcomeCell = topRow.createDiv({ cls: 'homepage-grid-cell' });
-		await this.renderWelcome(welcomeCell);
+		try {
+			await this.renderWelcome(welcomeCell);
+		} catch (e) {
+			console.error('[WebNovel] Error rendering welcome cell:', e);
+		}
+
 		const ongoingCell = topRow.createDiv({ cls: 'homepage-grid-cell' });
-		await this.renderOngoing(ongoingCell);
+		try {
+			await this.renderOngoing(ongoingCell);
+		} catch (e) {
+			console.error('[WebNovel] Error rendering ongoing cell:', e);
+		}
 
 		// 底部左列：其他作品区块
 		const leftCol = grid.createDiv({ cls: 'homepage-grid-left' });
 		const draftingCell = leftCol.createDiv({ cls: 'homepage-grid-cell' });
-		await this.renderDrafting(draftingCell);
+		try {
+			await this.renderDrafting(draftingCell);
+		} catch (e) {
+			console.error('[WebNovel] Error rendering drafting cell:', e);
+		}
+
 		const pausedCell = leftCol.createDiv({ cls: 'homepage-grid-cell' });
-		await this.renderPaused(pausedCell);
+		try {
+			await this.renderPaused(pausedCell);
+		} catch (e) {
+			console.error('[WebNovel] Error rendering paused cell:', e);
+		}
+
 		const completedCell = leftCol.createDiv({ cls: 'homepage-grid-cell' });
-		await this.renderCompleted(completedCell);
+		try {
+			await this.renderCompleted(completedCell);
+		} catch (e) {
+			console.error('[WebNovel] Error rendering completed cell:', e);
+		}
 
 		// 底部右列：数据区块
 		const rightCol = grid.createDiv({ cls: 'homepage-grid-right' });
 		const statsCell = rightCol.createDiv({ cls: 'homepage-grid-cell' });
-		await this.renderStatsSummary(statsCell);
+		try {
+			await this.renderStatsSummary(statsCell);
+		} catch (e) {
+			console.error('[WebNovel] Error rendering stats summary:', e);
+		}
+
 		const heatmapCell = rightCol.createDiv({ cls: 'homepage-grid-cell' });
-		this.renderHeatmap(heatmapCell);
+		try {
+			this.renderHeatmap(heatmapCell);
+		} catch (e) {
+			console.error('[WebNovel] Error rendering heatmap:', e);
+		}
+
 		const chartCell = rightCol.createDiv({ cls: 'homepage-grid-cell' });
-		this.renderBarChart(chartCell);
+		try {
+			this.renderBarChart(chartCell);
+		} catch (e) {
+			console.error('[WebNovel] Error rendering bar chart:', e);
+		}
 
 		// ResizeObserver：根据编辑器面板宽度动态切换单列/双列布局
 		const updateLayout = () => {
@@ -144,9 +191,15 @@ export class HomepageRenderer {
 			title.createSpan({ text: welcomeText });
 		}
 
-		const desktopAddBtn = headerRow.createDiv({ cls: 'homepage-add-novel-btn desktop-add-btn' });
+		const desktopActionsGroup = headerRow.createDiv({ cls: 'homepage-desktop-actions' });
+
+		const desktopAddBtn = desktopActionsGroup.createDiv({ cls: 'homepage-add-novel-btn desktop-add-btn' });
 		desktopAddBtn.textContent = t('homepage.add-novel');
 		desktopAddBtn.onclick = () => this.openNewNovelModal();
+
+		const desktopImportBtn = desktopActionsGroup.createDiv({ cls: 'homepage-add-novel-btn desktop-add-btn' });
+		desktopImportBtn.textContent = t('import-novel.title');
+		desktopImportBtn.onclick = () => { new ImportNovelModal(this.plugin.app, this.plugin).open(); };
 
 		// 今日进度与手机端新增按钮
 		const history = this.plugin.historyManager.getHistory();
@@ -169,9 +222,15 @@ export class HomepageRenderer {
 		todayGroup.createDiv({ cls: 'homepage-progress-label', text: t('homepage.today-added') });
 		todayGroup.createDiv({ cls: 'homepage-progress-value', text: todayWords.toLocaleString() });
 
-		const phoneAddBtn = progressRow.createDiv({ cls: 'homepage-add-novel-btn phone-add-btn' });
+		const phoneActionsGroup = progressRow.createDiv({ cls: 'homepage-phone-actions' });
+
+		const phoneAddBtn = phoneActionsGroup.createDiv({ cls: 'homepage-add-novel-btn phone-add-btn' });
 		phoneAddBtn.textContent = t('homepage.add-novel');
 		phoneAddBtn.onclick = () => this.openNewNovelModal();
+
+		const phoneImportBtn = phoneActionsGroup.createDiv({ cls: 'homepage-add-novel-btn phone-add-btn' });
+		phoneImportBtn.textContent = t('import-novel.title');
+		phoneImportBtn.onclick = () => { new ImportNovelModal(this.plugin.app, this.plugin).open(); };
 	}
 
 	// 连载中作品列表（含任务信息）
@@ -346,28 +405,43 @@ export class HomepageRenderer {
 
 	// 效率总览 — 复用 HistoryModal 的 stats-efficiency-card
 	async renderStatsSummary(container: HTMLElement): Promise<void> {
-		const history = this.plugin.historyManager.getHistory();
+		const history: Record<string, DailyStat> = this.plugin.historyManager ? this.plugin.historyManager.getHistory() : {};
 		container.empty();
 		container.createDiv({ cls: 'homepage-section-label', text: t('homepage.efficiency-overview') });
 
 		const rangeStart = this.plugin.settings.heatmapStartDate || window.moment().clone().startOf('year').format('YYYY-MM-DD');
 		const rangeEnd = this.plugin.settings.heatmapEndDate || window.moment().format('YYYY-MM-DD');
 
-		const streak = calcStreak(history);
-		const focusRate = calcFocusRate(history, rangeStart, rangeEnd);
-		const activeHours = calcActiveHours(history, rangeStart, rangeEnd);
-		const dailyAvg = calcDailyAverage(history, rangeStart, rangeEnd);
-		const totalWords = Object.values(history).reduce((sum, s) => sum + s.addedWords, 0);
-		const speed = calcWritingSpeed(history, rangeStart, rangeEnd);
+		let streak = 0, focusRate = 0, activeHours = '--', dailyAvg = 0, totalWords = 0, speed = 0;
+		try {
+			streak = calcStreak(history);
+			focusRate = calcFocusRate(history, rangeStart, rangeEnd);
+			activeHours = calcActiveHours(history, rangeStart, rangeEnd) || '--';
+			dailyAvg = calcDailyAverage(history, rangeStart, rangeEnd);
+			totalWords = Object.values(history).reduce((sum, s) => sum + (s?.addedWords || 0), 0);
+			speed = calcWritingSpeed(history, rangeStart, rangeEnd);
+		} catch (e) {
+			console.error('[WebNovel] Error calculating stats metrics:', e);
+		}
 
-		const allNovels = await this.getAllNovelsWithMetadata();
-		const taskComp = await calcTaskCompletion(this.app, this.plugin, allNovels);
-		const novelRate = calcNovelCompletionRate(allNovels);
+		let allNovels: NovelFolderInfo[] = [];
+		let taskComp = { completed: 0, total: 0 };
+		let novelRate = 0;
+
+		try {
+			allNovels = await this.getAllNovelsWithMetadata();
+			if (this.plugin.taskManager) {
+				taskComp = await calcTaskCompletion(this.app, this.plugin, allNovels);
+			}
+			novelRate = calcNovelCompletionRate(allNovels);
+		} catch (e) {
+			console.error('[WebNovel] Error calculating novel completion rates:', e);
+		}
 
 		const row = container.createDiv({ cls: 'stats-efficiency-row' });
 		const metrics = [
 			{ label: t('common.consecutive-creation'), value: t('common.consecutive-days', { count: streak }) },
-			{ label: t('common.active-period'), value: activeHours || '--' },
+			{ label: t('common.active-period'), value: activeHours },
 			{ label: t('common.focus-efficiency'), value: `${focusRate}%` },
 			{ label: t('common.writing-speed'), value: speed > 0 ? speed.toLocaleString() : '--' },
 			{ label: t('common.daily-word-average'), value: dailyAvg.toLocaleString() },
@@ -385,7 +459,7 @@ export class HomepageRenderer {
 
 	// 热力图 — 与写作数据追踪面板时间同步
 	renderHeatmap(container: HTMLElement): void {
-		const history = this.plugin.historyManager.getHistory();
+		const history: Record<string, DailyStat> = this.plugin.historyManager ? this.plugin.historyManager.getHistory() : {};
 		container.empty();
 		container.createDiv({ cls: 'homepage-section-label', text: t('homepage.heatmap') });
 
@@ -431,7 +505,7 @@ export class HomepageRenderer {
 
 	// 30日柱状图（主页精简版：只显示柱状图，无日期/字数标签）
 	renderBarChart(container: HTMLElement): void {
-		const history = this.plugin.historyManager.getHistory();
+		const history: Record<string, DailyStat> = this.plugin.historyManager ? this.plugin.historyManager.getHistory() : {};
 		container.empty();
 		container.createDiv({ cls: 'homepage-section-label', text: t('homepage.trend-30days') });
 
@@ -455,10 +529,9 @@ export class HomepageRenderer {
 
 		for (const day of days) {
 			const val = day.words;
-			const heightPercent = Math.max(2, (Math.abs(val) / maxAbsValue) * 100);
+			const heightPercent = Math.max(4, (Math.abs(val) / maxAbsValue) * 100);
 			const bar = chartArea.createDiv({ cls: 'homepage-chart-bar' });
-			bar.style.setProperty('--wn-bar-height', `${heightPercent}%`);
-			bar.setCssProps({ height: 'var(--wn-bar-height)' });
+			bar.setCssProps({ height: `${heightPercent}%` });
 
 			if (val < 0) {
 				bar.addClass('bar-negative');
@@ -475,10 +548,11 @@ export class HomepageRenderer {
 
 	// 辅助方法：获取所有小说及其异步元数据
 	private async getAllNovelsWithMetadata(): Promise<NovelFolderInfo[]> {
-		const folders = this.plugin.homepageManager!.getNovelFolders();
+		if (!this.plugin.homepageManager) return [];
+		const folders = this.plugin.homepageManager.getNovelFolders() || [];
 		for (const novel of folders) {
 			if (!novel.metadata) {
-				novel.metadata = await this.plugin.homepageManager!.getNovelMetadata(novel.folderPath);
+				novel.metadata = await this.plugin.homepageManager.getNovelMetadata(novel.folderPath);
 			}
 		}
 		return folders;
@@ -490,7 +564,8 @@ export class HomepageRenderer {
 		progress: number; statusText: string; daysLeft: number;
 		entry: TaskEntry;
 	} | null> {
-		const manager = TaskManager.create(this.app, this.plugin, folderPath);
+		const manager = this.plugin.taskManager;
+		manager.currentFolder = folderPath;
 		const entries = await manager.loadEntries();
 		if (!entries || entries.length === 0) return null;
 

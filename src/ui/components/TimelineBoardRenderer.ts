@@ -2,7 +2,6 @@ import type { App, Component } from 'obsidian';
 import { setIcon, TFile, Notice, Modal } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../../types/plugin';
 import type { ParsedForeshadowingEntry } from '../../types/foreshadowing';
-import { TimelineManager } from '../../services/TimelineManager';
 import { CorkboardGridRenderer } from './CorkboardGridRenderer';
 import { TimelineAddModal } from '../TimelineAddModal';
 import { t } from '../../i18n';
@@ -53,13 +52,22 @@ export class TimelineBoardRenderer {
 	static async render(options: TimelineBoardOptions): Promise<void> {
 		const { app, plugin, container, files, foreshadowingMap, currentBookPath, currentTimelineFilter, onSaveStateChange, reloadBoard, getChapterEvents } = options;
 
-		const timelineManager = new TimelineManager(app, plugin, currentBookPath === '/' ? '' : (currentBookPath || ''));
+		const tStart = performance.now();
+		const timelineManager = plugin.timelineManager;
+		timelineManager.currentFolder = currentBookPath === '/' ? '' : (currentBookPath || '');
 		let entries = await timelineManager.loadEntries();
+		const tEntries = performance.now();
+		Logger.info(`[Perf Phase] Timeline.loadEntries: ${(tEntries - tStart).toFixed(2)}ms`);
+
 		const allEntries = entries ? [...entries] : [];
 
 		if (entries && currentTimelineFilter && currentTimelineFilter !== 'all') {
 			entries = entries.filter(e => e.type === currentTimelineFilter);
 		}
+
+		const timelineFile = timelineManager.getTimelineFile();
+
+		const linkKeyCache = new Map<string, string>();
 
 		// Helper to extract the basename of a link path or alias (e.g. "Folder/Chap|Alias" -> "Chap")
 		const getLinkBasename = (link: string): string => {
@@ -71,14 +79,20 @@ export class TimelineBoardRenderer {
 		// Helper to resolve link key (lowercased and trimmed basename of resolved file, or fallback to link basename)
 		const resolveLinkKey = (link: string): string => {
 			const linkpath = link.split('|')[0].trim();
-			const timelineFile = timelineManager.getTimelineFile();
+			if (linkKeyCache.has(linkpath)) return linkKeyCache.get(linkpath)!;
+
+			let resolvedKey = '';
 			if (timelineFile) {
 				const dest = app.metadataCache.getFirstLinkpathDest(linkpath, timelineFile.path);
 				if (dest) {
-					return dest.basename.toLowerCase().trim();
+					resolvedKey = dest.basename.toLowerCase().trim();
 				}
 			}
-			return getLinkBasename(link).toLowerCase().trim();
+			if (!resolvedKey) {
+				resolvedKey = getLinkBasename(link).toLowerCase().trim();
+			}
+			linkKeyCache.set(linkpath, resolvedKey);
+			return resolvedKey;
 		};
 
 		// Find chapters mapped to each event -> itemIndex. Keys are lowercased and trimmed basenames.
@@ -116,6 +130,9 @@ export class TimelineBoardRenderer {
 				}
 			}
 		}
+
+		const tLinkResolve = performance.now();
+		Logger.info(`[Perf Phase] Timeline.linkResolution: ${(tLinkResolve - tEntries).toFixed(2)}ms`);
 
 		// Waterfall Layout
 		const waterfallLayout = container.createDiv('wn-timeline-waterfall-layout');
@@ -543,152 +560,264 @@ export class TimelineBoardRenderer {
 			emptyMsg.setText(t('corkboard.no-timeline'));
 		}
 
-		// --- SVG Link Layer (Background) ---
-		const bgSvgLayer = activeDocument['createElementNS']('http://www.w3.org/2000/svg', 'svg');
-		bgSvgLayer.classList.add('wn-timeline-svg-layer');
-		waterfallLayout.appendChild(bgSvgLayer);
-		bgSvgLayer.setCssStyles({
-			position: 'absolute', top: '0', left: '0', width: '100%', height: '100%',
-			pointerEvents: 'none', zIndex: '0'
-		});
+		// Check if any multi-event links exist (chapter mapped to 2+ events)
+		let hasMultiEventLinks = false;
+		for (const events of chapterToEventMap.values()) {
+			if (events.length > 1) {
+				hasMultiEventLinks = true;
+				break;
+			}
+		}
 
-		// --- SVG Link Layer (Foreground) ---
-		const fgSvgLayer = activeDocument['createElementNS']('http://www.w3.org/2000/svg', 'svg');
-		fgSvgLayer.classList.add('wn-timeline-svg-layer-fg');
-		waterfallLayout.appendChild(fgSvgLayer);
-		fgSvgLayer.setCssStyles({
-			position: 'absolute', top: '0', left: '0', width: '100%', height: '100%',
-			pointerEvents: 'none', zIndex: '10'
-		});
+		if (hasMultiEventLinks) {
+			// --- SVG Link Layer (Background) ---
+			const bgSvgLayer = activeDocument['createElementNS']('http://www.w3.org/2000/svg', 'svg');
+			bgSvgLayer.classList.add('wn-timeline-svg-layer');
+			waterfallLayout.appendChild(bgSvgLayer);
+			bgSvgLayer.setCssStyles({
+				position: 'absolute', top: '0', left: '0', width: '100%', height: '100%',
+				pointerEvents: 'none', zIndex: '0'
+			});
 
-		const drawLinks = () => {
-			bgSvgLayer.empty();
-			fgSvgLayer.empty();
-			const layoutRect = waterfallLayout.getBoundingClientRect();
-			
-			for (const [basename, events] of chapterToEventMap.entries()) {
-				if (events.length <= 1) continue;
-				
-				// Find the card element anywhere in the column (basename key is already lowercased and trimmed)
-				const cardEl = Array.from(mainCol.querySelectorAll('.wn-corkboard-card')).find(el => {
+			// --- SVG Link Layer (Foreground) ---
+			const fgSvgLayer = activeDocument['createElementNS']('http://www.w3.org/2000/svg', 'svg');
+			fgSvgLayer.classList.add('wn-timeline-svg-layer-fg');
+			waterfallLayout.appendChild(fgSvgLayer);
+			fgSvgLayer.setCssStyles({
+				position: 'absolute', top: '0', left: '0', width: '100%', height: '100%',
+				pointerEvents: 'none', zIndex: '10'
+			});
+
+			let lastLinksHash = '';
+
+			const drawLinks = () => {
+				// 剪枝 1：若容器尚未插回 Live DOM 或宽度为 0，跳过昂贵的 reflow 计算
+				if (!waterfallLayout.isConnected || waterfallLayout.clientWidth === 0) return;
+
+				// ===== Phase 1: 纯读取阶段 =====
+				// 在任何 DOM 写入操作之前，批量收集所有布局数据（getBoundingClientRect）。
+				// 避免"写→读→写→读"交替模式触发的 forced layout reflow，
+				// 将多次昂贵的强制布局计算合并为一次自然的批量读取。
+
+				// 构建 O(1) 的卡片元素索引
+				const localCardElMap = new Map<string, HTMLElement>();
+				mainCol.querySelectorAll('.wn-corkboard-card').forEach(el => {
 					const db = el.getAttribute('data-basename');
-					return db && db.toLowerCase().trim() === basename;
-				}) as HTMLElement;
-				if (!cardEl) continue;
+					if (db) localCardElMap.set(db.toLowerCase().trim(), el as HTMLElement);
+				});
 
-				// If it's in a gap, it's bridging exactly 2 adjacent events naturally, no lines needed.
-				if (cardEl.closest('.wn-timeline-gap')) continue;
+				// 构建 O(1) 的事件行元素索引（key = "time|itemIndex"）
+				const rowElMap = new Map<string, HTMLElement>();
+				mainCol.querySelectorAll('[data-time][data-item-index]').forEach(el => {
+					const time = el.getAttribute('data-time');
+					const idx = el.getAttribute('data-item-index');
+					if (time !== null && idx !== null) {
+						rowElMap.set(`${time}|${idx}`, el as HTMLElement);
+					}
+				});
 
-				const cardRect = cardEl.getBoundingClientRect();
-				const startX = cardRect.left - layoutRect.left;
-				const startY = cardRect.top + cardRect.height / 2 - layoutRect.top;
+				// 一次性读取容器 rect（单次 reflow，所有后续计算基于此快照）
+				const layoutRect = waterfallLayout.getBoundingClientRect();
 
-				// Check hover state
-				let isHovered = cardEl.matches(':hover');
-				if (!isHovered) {
+				// 收集所有待绘制连线的数据（纯读，不写 DOM）
+				type LinkData = { startX: number; startY: number; endX: number; endY: number; isHovered: boolean; };
+				const links: LinkData[] = [];
+
+				for (const [basename, events] of chapterToEventMap.entries()) {
+					if (events.length <= 1) continue;
+
+					const cardEl = localCardElMap.get(basename);
+					if (!cardEl) continue;
+					// 处于间隔区的卡片自然桥接相邻事件，无需连线
+					if (cardEl.closest('.wn-timeline-gap')) continue;
+
+					const cardRect = cardEl.getBoundingClientRect();
+					const startX = cardRect.left - layoutRect.left;
+					const startY = cardRect.top + cardRect.height / 2 - layoutRect.top;
+
+					// 检查 hover 状态（仅读取 DOM 状态，不写入）
+					let isHovered = cardEl.matches(':hover');
+					if (!isHovered) {
+						for (let i = 1; i < events.length; i++) {
+							const targetEvt = events[i];
+							const rowKey = `${targetEvt.time}|${targetEvt.itemIndex ?? 0}`;
+							const targetRowEl = rowElMap.get(rowKey);
+							if (targetRowEl && targetRowEl.matches(':hover')) {
+								isHovered = true;
+								break;
+							}
+						}
+					}
+
 					for (let i = 1; i < events.length; i++) {
 						const targetEvt = events[i];
-						const targetRowEl = mainCol.querySelector(`[data-time="${targetEvt.time}"][data-item-index="${targetEvt.itemIndex}"]`);
-						if (targetRowEl && targetRowEl.matches(':hover')) {
-							isHovered = true;
-							break;
-						}
+						const rowKey = `${targetEvt.time}|${targetEvt.itemIndex ?? 0}`;
+						const targetRowEl = rowElMap.get(rowKey);
+						if (!targetRowEl) continue;
+
+						const targetDescEl = targetRowEl.querySelector('.wn-timeline-item-desc');
+						if (!targetDescEl) continue;
+
+						const targetRect = targetDescEl.getBoundingClientRect();
+						links.push({
+							startX: Math.round(startX),
+							startY: Math.round(startY),
+							endX: Math.round(targetRect.right - layoutRect.left + 5),
+							endY: Math.round(targetRect.top + targetRect.height / 2 - layoutRect.top),
+							isHovered
+						});
 					}
 				}
 
-				const targetLayer = isHovered ? fgSvgLayer : bgSvgLayer;
+				// 剪枝 2：若连线数据及坐标与上一帧完全相同，直接 return，避免无意义的 SVG DOM 清空与重建
+				const currentHash = JSON.stringify(links);
+				if (currentHash === lastLinksHash) return;
+				lastLinksHash = currentHash;
 
-				for (let i = 1; i < events.length; i++) {
-					const targetEvt = events[i];
-					const targetRowEl = mainCol.querySelector(`[data-time="${targetEvt.time}"][data-item-index="${targetEvt.itemIndex}"]`);
-					if (!targetRowEl) continue;
+				// ===== Phase 2: 纯写入阶段 =====
+				// 所有 rect 数据已收集完毕，现在统一清空旧 SVG 并批量写入新元素。
+				// 使用 DocumentFragment 将多次 appendChild 合并为单次 DOM 插入，
+				// 消除每次 appendChild 触发的中间 reflow。
+				bgSvgLayer.empty();
+				fgSvgLayer.empty();
 
-					const targetDescEl = targetRowEl.querySelector('.wn-timeline-item-desc');
-					if (!targetDescEl) continue;
+				const bgFrag = createFragment();
+				const fgFrag = createFragment();
 
-					const targetRect = targetDescEl.getBoundingClientRect();
-					const endX = targetRect.right - layoutRect.left + 5; // A bit right of the description
-					const endY = targetRect.top + targetRect.height / 2 - layoutRect.top;
+				for (const { startX, startY, endX, endY, isHovered } of links) {
+					const targetFrag = isHovered ? fgFrag : bgFrag;
 
-					// Draw bezier curve from endX (event desc) to startX (chapter card)
 					const path = activeDocument['createElementNS']('http://www.w3.org/2000/svg', 'path');
 					path.setAttribute('d', `M ${endX} ${endY} C ${endX + 50} ${endY}, ${startX - 50} ${startY}, ${startX} ${startY}`);
 					path.setAttribute('fill', 'none');
-					
 					path.setAttribute('class', isHovered ? 'wn-timeline-svg-path is-hovered' : 'wn-timeline-svg-path');
 
-					// Add arrowhead at startX (pointing right to chapter card)
 					const arrow = activeDocument['createElementNS']('http://www.w3.org/2000/svg', 'polygon');
 					arrow.setAttribute('points', '-6,-3 0,0 -6,3');
 					arrow.setAttribute('transform', `translate(${startX}, ${startY})`);
 					arrow.setAttribute('class', isHovered ? 'wn-timeline-svg-arrow is-hovered' : 'wn-timeline-svg-arrow');
 
-					// Add a dot at the event side (endX, endY)
 					const dot = activeDocument['createElementNS']('http://www.w3.org/2000/svg', 'circle');
 					dot.setAttribute('cx', `${endX}`);
 					dot.setAttribute('cy', `${endY}`);
 					dot.setAttribute('r', '3');
 					dot.setAttribute('class', isHovered ? 'wn-timeline-svg-dot is-hovered' : 'wn-timeline-svg-dot');
-					
-					targetLayer.appendChild(path);
-					targetLayer.appendChild(arrow);
-					targetLayer.appendChild(dot);
+
+					targetFrag.appendChild(path);
+					targetFrag.appendChild(arrow);
+					targetFrag.appendChild(dot);
 				}
-			}
-		};
 
-		let scheduled = false;
-		const scheduleDrawLinks = () => {
-			if (scheduled) return;
-			scheduled = true;
-			window.requestAnimationFrame(() => {
-				scheduled = false;
-				drawLinks();
-			});
-		};
+				bgSvgLayer.appendChild(bgFrag);
+				fgSvgLayer.appendChild(fgFrag);
+			};
 
-		// 初次挂载后异步计算一次位置
-		scheduleDrawLinks();
+			let scheduled = false;
+			const scheduleDrawLinks = () => {
+				if (scheduled) return;
+				scheduled = true;
+				window.requestAnimationFrame(() => {
+					scheduled = false;
+					const tDrawStart = performance.now();
+					drawLinks();
+					Logger.info(`[Perf Phase] Timeline.RAF.drawLinks: ${(performance.now() - tDrawStart).toFixed(2)}ms`);
+				});
+			};
 
-		// 监听容器滚动与鼠标悬停状态以按需绘制 SVG 连线
-		mainCol.addEventListener('scroll', scheduleDrawLinks, { passive: true });
-		sideCol.addEventListener('scroll', scheduleDrawLinks, { passive: true });
-		mainCol.addEventListener('mouseover', scheduleDrawLinks, { passive: true });
-		mainCol.addEventListener('mouseout', scheduleDrawLinks, { passive: true });
+			// 初次挂载后异步计算一次位置
+			scheduleDrawLinks();
 
-		let resizeObserver: ResizeObserver | null = typeof ResizeObserver !== 'undefined'
-			? new ResizeObserver(() => scheduleDrawLinks())
-			: null;
-		if (resizeObserver) {
-			resizeObserver.observe(waterfallLayout);
-			resizeObserver.observe(mainCol);
-		}
+			// 为存在跨事件关联的卡片和事件节点绑定精准的 mouseenter / mouseleave 监听 (恢复 hover 高亮与置顶，无全局 mouseover 性能开销)
+			const hoverCleanups: Array<() => void> = [];
+			const bindHoverListeners = () => {
+				// 清理上一次绑定的 hover 监听器
+				while (hoverCleanups.length > 0) {
+					const fn = hoverCleanups.pop();
+					if (fn) fn();
+				}
 
-		const cleanup = () => {
-			mainCol.removeEventListener('scroll', scheduleDrawLinks);
-			sideCol.removeEventListener('scroll', scheduleDrawLinks);
-			mainCol.removeEventListener('mouseover', scheduleDrawLinks);
-			mainCol.removeEventListener('mouseout', scheduleDrawLinks);
+				// 构建 O(1) 的卡片元素索引，避免 O(N²) 的全量扫描
+				const hoverCardElMap = new Map<string, HTMLElement>();
+				mainCol.querySelectorAll('.wn-corkboard-card').forEach(el => {
+					const db = el.getAttribute('data-basename');
+					if (db) hoverCardElMap.set(db.toLowerCase().trim(), el as HTMLElement);
+				});
+
+				for (const [basename, events] of chapterToEventMap.entries()) {
+					if (events.length <= 1) continue;
+					const cardEl = hoverCardElMap.get(basename);
+
+					const targetEls: HTMLElement[] = [];
+					if (cardEl) targetEls.push(cardEl);
+
+					for (let i = 1; i < events.length; i++) {
+						const targetEvt = events[i];
+						const targetRowEl = mainCol.querySelector(`[data-time="${targetEvt.time}"][data-item-index="${targetEvt.itemIndex ?? 0}"]`);
+						if (!targetRowEl) continue;
+						const targetDescEl = targetRowEl.querySelector('.wn-timeline-item-desc') as HTMLElement;
+						if (targetDescEl) targetEls.push(targetDescEl);
+					}
+
+					for (const el of targetEls) {
+						const onEnter = () => scheduleDrawLinks();
+						const onLeave = () => scheduleDrawLinks();
+						el.addEventListener('mouseenter', onEnter);
+						el.addEventListener('mouseleave', onLeave);
+						hoverCleanups.push(() => {
+							el.removeEventListener('mouseenter', onEnter);
+							el.removeEventListener('mouseleave', onLeave);
+						});
+					}
+				}
+			};
+
+			bindHoverListeners();
+
+			// 监听容器滚动以按需绘制 SVG 连线
+			mainCol.addEventListener('scroll', scheduleDrawLinks, { passive: true });
+			sideCol.addEventListener('scroll', scheduleDrawLinks, { passive: true });
+
+			let lastObservedWidth = 0;
+			let lastObservedHeight = 0;
+			let resizeObserver: ResizeObserver | null = typeof ResizeObserver !== 'undefined'
+				? new ResizeObserver((entries) => {
+					for (const entry of entries) {
+						const { width, height } = entry.contentRect;
+						if (Math.abs(width - lastObservedWidth) > 1 || Math.abs(height - lastObservedHeight) > 1) {
+							lastObservedWidth = width;
+							lastObservedHeight = height;
+							scheduleDrawLinks();
+						}
+					}
+				})
+				: null;
 			if (resizeObserver) {
-				resizeObserver.disconnect();
-				resizeObserver = null;
+				resizeObserver.observe(waterfallLayout);
 			}
-		};
 
-		if (options.ownerComponent) {
-			options.ownerComponent.register(cleanup);
-		} else {
-			const observer = new MutationObserver(() => {
-				if (!waterfallLayout.isConnected) {
-					cleanup();
-					observer.disconnect();
+			const cleanup = () => {
+				mainCol.removeEventListener('scroll', scheduleDrawLinks);
+				sideCol.removeEventListener('scroll', scheduleDrawLinks);
+				while (hoverCleanups.length > 0) {
+					const fn = hoverCleanups.pop();
+					if (fn) fn();
 				}
-			});
-			window.requestAnimationFrame(() => {
-				if (waterfallLayout.parentElement) {
-					observer.observe(waterfallLayout.parentElement, { childList: true });
+				if (resizeObserver) {
+					resizeObserver.disconnect();
+					resizeObserver = null;
 				}
-			});
+			};
+
+			if (options.ownerComponent) {
+				options.ownerComponent.register(cleanup);
+			} else {
+				const observer = new MutationObserver(() => {
+					if (!waterfallLayout.isConnected) {
+						cleanup();
+						observer.disconnect();
+					}
+				});
+			}
 		}
 
 		// Add Timeline Node Button
@@ -740,21 +869,11 @@ export class TimelineBoardRenderer {
 		// Sidebar: Unscheduled (未关联章节侧边栏/底部悬浮抽屉窗)
 		const unscheduledHeader = sideCol.createDiv('wn-timeline-sidebar-header');
 		const titleGroup = unscheduledHeader.createDiv('wn-timeline-sidebar-title-group');
-		setIcon(titleGroup.createSpan(), 'help-circle');
+		const iconSpan = titleGroup.createSpan({ cls: 'wn-timeline-sidebar-icon' });
+		setIcon(iconSpan, 'help-circle');
 		titleGroup.createSpan({ text: t('corkboard.unscheduled-chapters') });
 		// 始终展示未关联章节的数量（包含 0），提升作者概览与归还槽感知
 		titleGroup.createSpan({ text: ` (${unscheduled.length})`, cls: 'wn-timeline-sidebar-count' });
-
-		const toggleBtn = unscheduledHeader.createSpan('wn-timeline-sidebar-toggle-icon');
-		setIcon(toggleBtn, 'chevron-down');
-
-		// 点击头部支持展开/折叠未关联章节悬浮窗
-		unscheduledHeader.onclick = (e) => {
-			e.stopPropagation();
-			const isCollapsed = sideCol.hasClass('is-collapsed');
-			sideCol.toggleClass('is-collapsed', !isCollapsed);
-			setIcon(toggleBtn, !isCollapsed ? 'chevron-up' : 'chevron-down');
-		};
 
 		setupDropzone(sideCol, []); // Drag back to sidebar to remove timeline
 		const sideGrid = sideCol.createDiv('wn-corkboard-grid');
@@ -766,5 +885,7 @@ export class TimelineBoardRenderer {
 		CorkboardGridRenderer.render({
 			app, plugin, container: sideGrid, files: unscheduled, foreshadowingMap, draggable: true, currentBookPath, onSaveStateChange
 		});
+
+		Logger.info(`[Perf] TimelineBoardRenderer.render completed in ${(performance.now() - tStart).toFixed(2)}ms (${entries?.length || 0} entries, ${files.length} total files, ${unscheduled.length} unscheduled)`);
 	}
 }

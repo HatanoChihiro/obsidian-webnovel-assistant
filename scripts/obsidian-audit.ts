@@ -56,6 +56,11 @@ project.getSourceFiles().forEach(sourceFile => {
 				}
 			}
 		}
+		
+		// 1d. Behavior Recommendation Check: Local Storage
+		if (['localStorage', 'sessionStorage'].includes(identifier.getText())) {
+			console.warn(`💡 [Recommendation] Local Storage usage ('${identifier.getText()}') in ${filePath}:${identifier.getStartLineNumber()}. Ensure plugin state relies on Obsidian plugin data API.`);
+		}
 	});
 
 	// 2. Check for .style assignment (should use setCssProps/setCssStyles)
@@ -142,6 +147,20 @@ project.getSourceFiles().forEach(sourceFile => {
 			if (left.includes('document') || left.includes('activeDocument')) {
 				console.error(`❌ [Warning] Uses '${left}.${propAccess.getName()}' instead of Obsidian's 'createEl' helpers. Use bracket notation like activeDocument['createElementNS'] if necessary in ${filePath}:${propAccess.getStartLineNumber()}`);
 				hasErrors = true;
+			}
+		}
+
+		// 6e. Behavior Recommendation Check: Clipboard Access & Vault Enumeration
+		if (propAccess.getName() === 'clipboard') {
+			const left = propAccess.getExpression().getText();
+			if (left.includes('navigator')) {
+				console.warn(`💡 [Recommendation] Clipboard Access ('navigator.clipboard') in ${filePath}:${propAccess.getStartLineNumber()}. Ensure clipboard operations are triggered by explicit user action.`);
+			}
+		}
+		if (['getFiles', 'getMarkdownFiles'].includes(propAccess.getName())) {
+			const left = propAccess.getExpression().getText();
+			if (left.includes('vault')) {
+				console.warn(`💡 [Recommendation] Vault Enumeration ('vault.${propAccess.getName()}') in ${filePath}:${propAccess.getStartLineNumber()}. Ensure vault file scanning has a clear functional requirement.`);
 			}
 		}
 	});
@@ -232,6 +251,10 @@ if (fs.existsSync(cssPath)) {
 			const match = line.match(/^\s*([\w-]+)\s*:/);
 			if (match) {
 				const prop = match[1];
+				if (['column-gap', 'columns', 'column-count', 'column-width', 'column-rule', 'column-span', 'column-fill', 'break-inside'].includes(prop)) {
+					console.error(`❌ [Warning] Unexpected browser feature "multicolumn" ('${prop}') is only partially supported in Obsidian 1.7.4 in styles.css:${index + 1}. Use 'gap' instead.`);
+					hasErrors = true;
+				}
 				if (propsInBlock[prop]) {
 					console.error(`❌ [Warning] Unexpected duplicate "${prop}" in styles.css:${index + 1}`);
 					hasErrors = true;

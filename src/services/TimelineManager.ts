@@ -99,15 +99,10 @@ export class TimelineManager {
 
 
 	async loadEntries(): Promise<TimelineEntry[] | null> {
-
 		const file = this.getTimelineFile();
-
 		if (!file) return null;
-
-		const content = await this.app.vault.read(file);
-
+		const content = await this.app.vault.cachedRead(file);
 		return this.parseEntries(content);
-
 	}
 
 

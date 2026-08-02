@@ -1,7 +1,7 @@
 import type { WorkspaceLeaf} from 'obsidian';
-import { ItemView, TFile, MarkdownView, Notice, setIcon, Menu } from 'obsidian';
+import { ItemView, TFile, Notice, setIcon, Menu } from 'obsidian';
 import { formatTime, formatCount, isMobile } from '../utils';
-import { revealAndFocusLeaf, openFileAndFocus } from '../utils/leaf';
+import { smartLocateAndHighlight } from '../utils/leaf';
 
 import { HistoryStatsModal, calcStreak, calcFocusRate, calcDailyAverage, calcWritingSpeed } from './HistoryModal';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
@@ -9,7 +9,6 @@ import { ForeshadowingStatus, type ParsedForeshadowingEntry } from '../types/for
 import { CORKBOARD_STATUS_MAP, getCorkboardStatusText, getCorkboardStatusKeys } from '../i18n/data-keys';
 import { getCurrentBookContext } from '../utils/path';
 import { ChapterSorter } from '../services/ChapterSorter';
-import { TaskManager } from '../services/TaskManager';
 import { t } from '../i18n';
 
 export const STATUS_VIEW_TYPE = 'writing-status-view';
@@ -26,10 +25,13 @@ export class WritingStatusView extends ItemView {
 	todayWordEl!: HTMLElement;
 	percentEl!: HTMLElement;
 	progressFillEl!: HTMLElement;
+		taskRowEl!: HTMLElement;
 		taskWordEl!: HTMLElement;
+		taskSeparatorEl!: HTMLElement;
 		taskTargetEl!: HTMLElement;
 		taskPercentEl!: HTMLElement;
 		taskProgressFillEl!: HTMLElement;
+		taskEventCompleteBtn!: HTMLElement;
 		taskSectionEls!: HTMLElement[];
 		chapterSectionEls!: HTMLElement[];
 		taskTimeDescEl!: HTMLElement;
@@ -195,11 +197,31 @@ export class WritingStatusView extends ItemView {
 		taskLabelRow.createSpan({ cls: 'status-goal-label', text: t('common.task-goal') });
 		this.taskPercentEl = taskLabelRow.createSpan({ cls: 'goal-percent', text: '0%' });
 
-		const taskRow = contentContainer.createDiv({ cls: 'goal-display-row-right task-goal-section' });
-		taskRow.hide();
-		this.taskWordEl = taskRow.createSpan({ cls: 'goal-current', text: '0' });
-		taskRow.createSpan({ cls: 'goal-separator', text: ' / ' });
-		this.taskTargetEl = taskRow.createSpan({ cls: 'goal-target', text: '0' });
+		this.taskRowEl = contentContainer.createDiv({ cls: 'goal-display-row-right task-goal-section' });
+		this.taskRowEl.hide();
+		this.taskWordEl = this.taskRowEl.createSpan({ cls: 'goal-current', text: '0' });
+		this.taskSeparatorEl = this.taskRowEl.createSpan({ cls: 'goal-separator', text: ' / ' });
+		this.taskTargetEl = this.taskRowEl.createSpan({ cls: 'goal-target', text: '0' });
+
+		this.taskEventCompleteBtn = this.taskRowEl.createEl('button', { cls: 'status-task-complete-btn', text: t('common.complete-task') || '完成' });
+		this.taskEventCompleteBtn.setCssProps({ display: 'none' });
+		this.taskEventCompleteBtn.onclick = () => {
+			if (!this.plugin.taskManager) return;
+			const manager = this.plugin.taskManager;
+			const taskFile = manager.getTaskFile();
+			if (!taskFile) return;
+			void this.plugin.app.vault.cachedRead(taskFile).then(taskContent => {
+				const entries = manager.parseEntries(taskContent);
+				const active = manager.getActiveTask(entries);
+				if (active && active.taskType === 'event') {
+					void manager.updateEntryStatus(active.period, 'completed', undefined, active.taskType).then(() => {
+						new Notice(t('notice.task-completed') || '任务已完成');
+						this.plugin.refreshStatusViews(false);
+					});
+				}
+			});
+		};
+
 		const taskProgressBg = contentContainer.createDiv({ cls: 'progress-bar-bg task-goal-section' });
 		taskProgressBg.hide();
 		this.taskProgressFillEl = taskProgressBg.createDiv({ cls: 'progress-bar-fill' });
@@ -208,7 +230,7 @@ export class WritingStatusView extends ItemView {
 		taskTimeDesc.hide();
 		this.taskTimeDescEl = taskTimeDesc;
 
-		this.taskSectionEls = [taskLabelRow, taskRow, taskProgressBg, taskTimeDesc];
+		this.taskSectionEls = [taskLabelRow, this.taskRowEl, taskProgressBg, taskTimeDesc];
 	}
 
 	private createTimeCard(container: Element) {
@@ -455,25 +477,48 @@ export class WritingStatusView extends ItemView {
 
 		let hasActiveTask = false;
 		if (taskFolder && this.plugin.taskManager) {
-			const manager = new TaskManager(this.plugin.app, this.plugin, taskFolder);
+			const manager = this.plugin.taskManager;
+			manager.currentFolder = taskFolder;
 			const taskFile = manager.getTaskFile();
 			if (taskFile) {
 				const taskContent = await this.plugin.app.vault.cachedRead(taskFile);
 				const entries = manager.parseEntries(taskContent);
 				const active = manager.getActiveTask(entries);
+				hasActiveTask = !!active;
+
+				if (this.taskSectionEls) {
+					for (const el of this.taskSectionEls) {
+						if (hasActiveTask) { el.show(); } else { el.hide(); }
+					}
+				}
+
 				if (active) {
-					hasActiveTask = true;
 					if (active.taskType === 'event') {
-						this.taskWordEl.innerText = active.position || active.platform;
-						this.taskTargetEl.innerText = '';
-						this.taskPercentEl.innerText = '';
+						this.taskRowEl.addClass('is-event-task');
+						this.taskWordEl.empty();
+						const titleText = active.platform || t('common.task-event') || '事件任务';
+						if (active.position) {
+							this.taskWordEl.createDiv({ cls: 'event-task-title', text: titleText + ' -' });
+							this.taskWordEl.createDiv({ cls: 'event-task-detail', text: active.position });
+						} else {
+							this.taskWordEl.createDiv({ cls: 'event-task-title', text: titleText });
+						}
+						this.taskSeparatorEl.setCssProps({ display: 'none' });
+						this.taskTargetEl.setCssProps({ display: 'none' });
+						this.taskPercentEl.setCssProps({ display: 'none' });
 						this.taskProgressFillEl.parentElement?.setCssProps({ display: 'none' });
+						this.taskEventCompleteBtn.setCssProps({ display: 'block' });
 						const daysLeft = Math.max(0, window.moment(active.endDate).diff(window.moment().startOf('day'), 'days') + 1);
 						const endShort = active.endDate.substring(5);
 						this.taskTimeDescEl.setText(t('common.task-deadline-remaining', { date: endShort, days: String(daysLeft) }));
 						this.taskTimeDescEl.removeClass('task-reached');
 					} else {
+						this.taskRowEl.removeClass('is-event-task');
+						this.taskSeparatorEl.setCssProps({ display: 'inline' });
+						this.taskTargetEl.setCssProps({ display: 'inline' });
+						this.taskPercentEl.setCssProps({ display: 'inline' });
 						this.taskProgressFillEl.parentElement?.setCssProps({ display: 'block' });
+						this.taskEventCompleteBtn.setCssProps({ display: 'none' });
 						const progress = manager.calcProgress(active);
 						const taskPercent = active.wordTarget > 0 ? Math.min(Math.round((progress / active.wordTarget) * 100), 100) : 0;
 						this.taskWordEl.innerText = progress.toLocaleString();
@@ -494,11 +539,6 @@ export class WritingStatusView extends ItemView {
 						}, 5000);
 					}
 				}
-			}
-		}
-		if (this.taskSectionEls) {
-			for (const el of this.taskSectionEls) {
-				if (hasActiveTask) { el.show(); } else { el.hide(); }
 			}
 		}
 
@@ -618,17 +658,19 @@ export class WritingStatusView extends ItemView {
 
 		if (fFile) {
 			const content = await this.app.vault.cachedRead(fFile);
-			const entries = this.plugin.foreshadowingManager!.parseEntries(content);
+			const entries = this.plugin.foreshadowingManager.parseEntries(content);
 
 			for (const entry of entries) {
 				const matchSource = isMatch(entry.sourceFile) || (entry.contents || []).some(c => isMatch(c.source));
 
 				if (entry.status === ForeshadowingStatus.Pending) {
-					if (matchSource) {
-						pendingEntries.push(entry);
-					}
+					if (matchSource) pendingEntries.push(entry);
+				} else if (entry.status === ForeshadowingStatus.PartiallyRecovered) {
+					const matchRecovery = (entry.recoveryLogs || []).some(l => isMatch(l.file)) || (entry.recoveryFiles || []).some(f => isMatch(f)) || isMatch(entry.recoveryFile);
+					if (matchSource) pendingEntries.push(entry);
+					if (matchRecovery && !matchSource) recoveredHereEntries.push(entry);
 				} else if (entry.status === ForeshadowingStatus.Recovered) {
-					const matchRecovery = (entry.recoveryFiles || []).some(f => isMatch(f)) || isMatch(entry.recoveryFile);
+					const matchRecovery = (entry.recoveryLogs || []).some(l => isMatch(l.file)) || (entry.recoveryFiles || []).some(f => isMatch(f)) || isMatch(entry.recoveryFile);
 					if (matchSource) resolvedOriginEntries.push(entry);
 					if (matchRecovery && !matchSource) recoveredHereEntries.push(entry);
 				}
@@ -642,43 +684,12 @@ export class WritingStatusView extends ItemView {
 		}
 
 		// 点击伏笔条目，跳转到正文中对应文本位置
-		const setupJumpEvent = (el: HTMLElement, textToFind: string) => {
+		const setupJumpEvent = (el: HTMLElement, primarySearch: string, fallbackSearch?: string) => {
 			el.addClass('wn-clickable');
-			el.addEventListener('click', () => {
-				void (async () => {
-					const leaves = this.app.workspace.getLeavesOfType('markdown');
-					let targetLeaf = null;
-					for (const leaf of leaves) {
-						if (leaf.view instanceof MarkdownView && leaf.view.file?.path === file.path) {
-							targetLeaf = leaf;
-							break;
-						}
-					}
-					if (!targetLeaf) targetLeaf = this.app.workspace.getLeaf(false);
-
-					const content = await this.app.vault.cachedRead(file);
-					const cleanSearch = textToFind.trim();
-					if (cleanSearch) {
-						const escapedSearch = cleanSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-						const searchPattern = escapedSearch.replace(/\s+/g, '\\s+');
-						let match = content.match(new RegExp(searchPattern, 'i'));
-						if (!match && cleanSearch.length > 20) {
-							const shortSearch = cleanSearch.substring(0, 20).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
-							match = content.match(new RegExp(shortSearch, 'i'));
-						}
-						if (match && match.index !== undefined) {
-							const targetLine = content.substring(0, match.index).split('\n').length - 1;
-							if (targetLeaf.view instanceof MarkdownView && targetLeaf.view.file?.path === file.path) {
-								targetLeaf.setEphemeralState({ line: targetLine });
-								revealAndFocusLeaf(this.app, targetLeaf);
-							} else {
-								await openFileAndFocus(this.app, targetLeaf, file, { eState: { line: targetLine } });
-							}
-						} else {
-							new Notice(t('notice.text-not-found'));
-						}
-					}
-				})();
+			el.addEventListener('click', (e) => {
+				e.stopPropagation();
+				e.preventDefault();
+				void smartLocateAndHighlight(this.app, file, [primarySearch, fallbackSearch]);
 			});
 		};
 
@@ -723,8 +734,13 @@ export class WritingStatusView extends ItemView {
 			const recoveredDiv = this.chapterBadgesContainer.createDiv('wn-chapter-status-section');
 			recoveredDiv.createDiv({ text: t('corkboard.foreshadowing-recovered'), cls: 'wn-chapter-status-section-title' });
 			for (const entry of recoveredHereEntries) {
-				const textContent = entry.description || (entry.contents.length > 0 ? entry.contents[0].text : (t('common.unknown-foreshadowing')));
-				recoveredDiv.createDiv({ text: textContent, cls: 'wn-chapter-status-item is-recovered' });
+				const matchedLog = (entry.recoveryLogs || []).find(l => isMatch(l.file));
+				const matchedContent = (entry.contents || []).find(c => isMatch(c.source));
+				const textContent = entry.description || (matchedLog?.note || (matchedContent ? matchedContent.text : (entry.contents.length > 0 ? entry.contents[0].text : (t('common.unknown-foreshadowing')))));
+				const itemEl = recoveredDiv.createDiv({ text: textContent, cls: 'wn-chapter-status-item is-recovered' });
+
+				const primarySearch = matchedLog?.quote || matchedLog?.note || matchedContent?.text || (entry.contents.length > 0 ? entry.contents[0].text : '');
+				setupJumpEvent(itemEl, primarySearch, entry.description);
 			}
 		}
 

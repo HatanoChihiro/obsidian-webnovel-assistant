@@ -1,14 +1,13 @@
-import type { MenuItem, TFile, WorkspaceLeaf } from 'obsidian';
-import { Menu, Notice } from 'obsidian';
+import type { TFile, WorkspaceLeaf } from 'obsidian';
+import { Notice, setIcon } from 'obsidian';
 import type { ParsedForeshadowingEntry } from '../types/foreshadowing';
 import { ForeshadowingStatus } from '../types/foreshadowing';
 import { ForeshadowingRecoveryModal } from './ForeshadowingModal';
 import { CreativeView } from './CreativeView';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
-import { getForeshadowingStatusText, getForeshadowingLabel, getDefaultFileName } from '../i18n/data-keys';
+import { getForeshadowingStatusText, getDefaultFileName } from '../i18n/data-keys';
 import { t } from '../i18n';
-import { ChapterSorter } from '../services/ChapterSorter';
-import { openFileAndFocus } from '../utils/leaf';
+import { openFileAndFocus, smartLocateAndHighlight } from '../utils/leaf';
 
 
 export const FORESHADOWING_VIEW_TYPE = 'foreshadowing-view';
@@ -73,6 +72,7 @@ export class ForeshadowingView extends CreativeView {
 		const filters: { label: string; value: 'all' | ForeshadowingStatus }[] = [
 			{ label: t('common.all'), value: 'all' },
 			{ label: getForeshadowingStatusText('pending'), value: ForeshadowingStatus.Pending },
+			{ label: getForeshadowingStatusText('partially_recovered'), value: ForeshadowingStatus.PartiallyRecovered },
 			{ label: getForeshadowingStatusText('recovered'), value: ForeshadowingStatus.Recovered },
 			{ label: getForeshadowingStatusText('deprecated'), value: ForeshadowingStatus.Deprecated },
 		];
@@ -122,12 +122,33 @@ export class ForeshadowingView extends CreativeView {
 		// 按状态分组
 		const groups: { status: ForeshadowingStatus; label: string; items: ParsedForeshadowingEntry[] }[] = [
 			{ status: ForeshadowingStatus.Pending, label: getForeshadowingStatusText('pending'), items: [] },
+			{ status: ForeshadowingStatus.PartiallyRecovered, label: getForeshadowingStatusText('partially_recovered'), items: [] },
 			{ status: ForeshadowingStatus.Recovered, label: getForeshadowingStatusText('recovered'), items: [] },
 			{ status: ForeshadowingStatus.Deprecated, label: getForeshadowingStatusText('deprecated'), items: [] },
 		];
 		filtered.forEach(e => {
 			const g = groups.find(g => g.status === e.status);
 			if (g) g.items.push(e);
+		});
+
+		// 已回收与阶段回收列表中，按最新回收时间戳倒序排列（最新回收在最上方）
+		const getLatestRecoveryTime = (entry: ParsedForeshadowingEntry): string => {
+			if (entry.recoveryLogs && entry.recoveryLogs.length > 0) {
+				for (let i = entry.recoveryLogs.length - 1; i >= 0; i--) {
+					const t = entry.recoveryLogs[i].time;
+					if (t) return t;
+				}
+			}
+			if (entry.recoveredAts && entry.recoveredAts.length > 0) {
+				for (let i = entry.recoveredAts.length - 1; i >= 0; i--) {
+					if (entry.recoveredAts[i]) return entry.recoveredAts[i];
+				}
+			}
+			return entry.recoveredAt || entry.createdAt || '';
+		};
+
+		groups.forEach(g => {
+			g.items.sort((a, b) => getLatestRecoveryTime(b).localeCompare(getLatestRecoveryTime(a)));
 		});
 
 		const list = container.createDiv({ cls: 'foreshadowing-view-list' });
@@ -146,11 +167,21 @@ export class ForeshadowingView extends CreativeView {
 	}
 
 	private renderEntry(container: HTMLElement, entry: ParsedForeshadowingEntry) {
-		const card = container.createDiv({ cls: `foreshadowing-entry-card status-${entry.status === ForeshadowingStatus.Pending ? 'pending' : entry.status === ForeshadowingStatus.Recovered ? 'recovered' : 'deprecated'}` });
+		const statusCls = entry.status === ForeshadowingStatus.Pending
+			? 'pending'
+			: entry.status === ForeshadowingStatus.PartiallyRecovered
+			? 'partially-recovered'
+			: entry.status === ForeshadowingStatus.Recovered
+			? 'recovered'
+			: 'deprecated';
+		const card = container.createDiv({ cls: `foreshadowing-entry-card status-${statusCls}` });
 
 		// 说明（主标题）
 		const descRow = card.createDiv({ cls: 'foreshadowing-entry-desc' });
 		descRow.createSpan({ text: entry.description, cls: 'foreshadowing-entry-desc-text' });
+
+		// 动态多节点步进器组件（置于标题与标注内容之间）
+		this.renderStageStepper(card, entry);
 
 		// 引用内容（可能多条）
 		const quotesEl = card.createDiv({ cls: 'foreshadowing-entry-quotes' });
@@ -190,6 +221,48 @@ export class ForeshadowingView extends CreativeView {
 			};
 		});
 
+		// 回收轨迹与关联原文引用（样式与排版层级与上方“标注引用部分”保持完全一致）
+		if (entry.recoveryLogs && entry.recoveryLogs.length > 0) {
+			const recoveryLogsEl = card.createDiv({ cls: 'foreshadowing-entry-quotes mod-recovery-logs' });
+			entry.recoveryLogs.forEach(log => {
+				const logItemEl = recoveryLogsEl.createDiv({ cls: `foreshadowing-entry-quote mod-recovery mod-${log.stageType}` });
+
+				// 元数据行 (样式与 foreshadowing-entry-quote-meta 一致)
+				const metaEl = logItemEl.createDiv({ cls: 'foreshadowing-entry-quote-meta' });
+
+				const tag = log.stageType === 'stage' ? t('common.tag-stage-log') : t('common.tag-final-log');
+				metaEl.createSpan({ cls: `wn-log-tag-label mod-${log.stageType}`, text: tag });
+
+				const linkSpan = metaEl.createSpan({
+					cls: 'wn-card-chapter-link clickable-link',
+					text: ` [[${log.file.split('/').pop() || log.file}]]`
+				});
+
+				if (log.time) metaEl.createSpan({ cls: 'wn-log-time', text: ` · ${log.time}` });
+				if (log.note) metaEl.createSpan({ cls: 'wn-log-note', text: `：${log.note}` });
+
+				linkSpan.onclick = async () => {
+					const sourcePath = this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '';
+					const file = this.app.metadataCache.getFirstLinkpathDest(log.file, sourcePath);
+					if (file) await this.openFileWithSmartLocate(file, log.quote || log.note || '');
+				};
+
+				// 正文引用行 (样式与 foreshadowing-entry-quote-text 一致)
+				if (log.quote) {
+					const textEl = logItemEl.createDiv({
+						cls: `foreshadowing-entry-quote-text mod-recovery-quote mod-${log.stageType}`,
+						text: log.quote
+					});
+					textEl.title = t('common.jump-to-original');
+					textEl.onclick = async () => {
+						const sourcePath = this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '';
+						const file = this.app.metadataCache.getFirstLinkpathDest(log.file, sourcePath);
+						if (file) await this.openFileWithSmartLocate(file, log.quote || '');
+					};
+				}
+			});
+		}
+
 		// 底部信息行
 		const footer = card.createDiv({ cls: 'foreshadowing-entry-footer' });
 
@@ -204,85 +277,48 @@ export class ForeshadowingView extends CreativeView {
 		// 操作按钮
 		const actions = footer.createDiv({ cls: 'foreshadowing-entry-actions' });
 
-		// 跳转按钮：单条引用直接跳转，多条引用显示选择菜单
-		const jumpBtn = actions.createEl('button', { text: t('common.jump'), cls: 'foreshadowing-action-btn' });
-		jumpBtn.onclick = async (e) => {
-			if (entry.contents.length <= 1) {
-				// 单个来源，直接跳转
-				const target = entry.contents[0]?.source || entry.sourceFile;
-				const text = entry.contents[0]?.text || '';
-				const sourcePath = this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '';
-				const file = this.app.metadataCache.getFirstLinkpathDest(target, sourcePath);
-				if (file) {
-					await this.openFileWithSmartLocate(file, text);
-				} else {
-					new Notice(t('common.file-not-found', { name: target }));
-				}
-			} else {
-				// 多个来源，显示下拉菜单
-				const menu = new Menu();
-				for (const c of entry.contents) {
-					const target = c.source || entry.sourceFile;
-					// 截断部分文字作为菜单标题
-					const shortText = c.text.length > 10 ? c.text.substring(0, 10) + '...' : c.text;
-					menu.addItem((item: MenuItem) => {
-						item.setTitle(`${target} (${shortText})`).onClick(async () => {
-							const sourcePath = this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '';
-							const file = this.app.metadataCache.getFirstLinkpathDest(target, sourcePath);
-							if (file) {
-								await this.openFileWithSmartLocate(file, c.text);
-							} else {
-								new Notice(t('common.file-not-found', { name: target }));
-							}
-						});
-					});
-				}
-				menu.showAtMouseEvent(e);
-			}
-		};
-
-		// 回收按钮（仅未回收状态显示）
-		if (entry.status === ForeshadowingStatus.Pending) {
-			const recoverBtn = actions.createEl('button', { text: t('common.mark-recovered'), cls: 'foreshadowing-action-btn foreshadowing-recover-btn' });
+		// 回收按钮 (未回收 或 阶段回收中)
+		if (entry.status === ForeshadowingStatus.Pending || entry.status === ForeshadowingStatus.PartiallyRecovered) {
+			const recoverBtn = actions.createEl('button', { text: t('foreshadowing.action-recovery') || '回收', cls: 'foreshadowing-action-btn foreshadowing-recover-btn' });
 			recoverBtn.onclick = () => {
 				const foreshadowingFile = this.getForeshadowingFile();
 				if (!foreshadowingFile) return;
 				new ForeshadowingRecoveryModal(
 					this.app,
 					this.plugin,
-					entry.contents[0]?.text || '',
+					entry.description,
 					this.currentFolder,
-					(recoveryFileNames) => {
-						if (!this.plugin.foreshadowingManager) {
-							new Notice(t('common.foreshadowing-manager-not-ready'));
-							return;
-						}
+					(recoveryFileNames, isStage, note, quote) => {
+						if (!this.plugin.foreshadowingManager) return;
 						void (async () => {
 							try {
-								const success = await this.plugin.foreshadowingManager!.markAsRecovered(
-									foreshadowingFile, entry.description, recoveryFileNames
-								);
+								let success = false;
+								if (isStage) {
+									success = await this.plugin.foreshadowingManager.markAsPartiallyRecovered(
+										foreshadowingFile, entry.description, recoveryFileNames[0] || '', note, quote
+									);
+								} else {
+									success = await this.plugin.foreshadowingManager.markAsRecovered(
+										foreshadowingFile, entry.description, recoveryFileNames, note, quote
+									);
+								}
 								if (success) {
-									const fileList = recoveryFileNames.map(f => `[[${f}]]`).join('、');
-									new Notice(t('notice.foreshadowing-recovered', { links: fileList }));
-									// 文件修改会自动触发刷新，但在某些平台可能有延迟，添加备用刷新
+									new Notice(t('notice.foreshadowing-recovered', { links: recoveryFileNames.map(f => `[[${f}]]`).join('、') }));
 									if (this.pendingRefreshTimer) window.clearTimeout(this.pendingRefreshTimer);
 									this.pendingRefreshTimer = window.setTimeout(() => {
 										this.pendingRefreshTimer = null;
 										void this.refresh();
 									}, 100);
-								} else {
-									new Notice(t('common.mark-failed-check-file'));
 								}
 							} catch (err) {
-								console.error('[ForeshadowingView] markAsRecovered failed:', err);
+								console.error('[ForeshadowingView] recovery failed:', err);
 							}
 						})();
-					}
+					},
+					false // 默认彻底回收
 				).open();
 			};
 
-			// 废弃按钮（未回收状态显示）
 			const deprecateBtn = actions.createEl('button', { text: t('common.deprecate'), cls: 'foreshadowing-action-btn foreshadowing-deprecate-btn' });
 			deprecateBtn.onclick = () => {
 				const foreshadowingFile = this.getForeshadowingFile();
@@ -290,19 +326,16 @@ export class ForeshadowingView extends CreativeView {
 				if (!this.plugin.foreshadowingManager) return;
 				void (async () => {
 					try {
-						const success = await this.plugin.foreshadowingManager!.markAsDeprecated(
+						const success = await this.plugin.foreshadowingManager.markAsDeprecated(
 							foreshadowingFile, entry.description
 						);
 						if (success) {
 							new Notice(t('common.deprecated-marked'));
-							// 文件修改会自动触发刷新，但在某些平台可能有延迟，添加备用刷新
 							if (this.pendingRefreshTimer) window.clearTimeout(this.pendingRefreshTimer);
 							this.pendingRefreshTimer = window.setTimeout(() => {
 								this.pendingRefreshTimer = null;
 								void this.refresh();
 							}, 100);
-						} else {
-							new Notice(t('common.operation-failed'));
 						}
 					} catch (err) {
 						console.error('[ForeshadowingView] markAsDeprecated failed:', err);
@@ -323,69 +356,91 @@ export class ForeshadowingView extends CreativeView {
 				);
 				if (success) {
 					new Notice(t('common.restored-to-pending'));
-					// 文件修改会自动触发刷新，但在某些平台可能有延迟，添加备用刷新
 					if (this.pendingRefreshTimer) window.clearTimeout(this.pendingRefreshTimer);
 					this.pendingRefreshTimer = window.setTimeout(() => {
 						this.pendingRefreshTimer = null;
 						void this.refresh();
 					}, 100);
-				} else {
-					new Notice(t('common.operation-failed'));
 				}
 			};
 		}
+	}
 
-		// 已回收时显示回收章节（支持多章节）
-		if (entry.status === ForeshadowingStatus.Recovered) {
-			const recoveryEl = card.createDiv({ cls: 'foreshadowing-entry-recovery' });
-			recoveryEl.createSpan({ text: getForeshadowingLabel('recoveredAt') + '：', cls: 'foreshadowing-entry-recovery-label' });
-			
-			// 优先使用新格式（多章节）
-			if (entry.recoveryFiles && entry.recoveryFiles.length > 0) {
-				entry.recoveryFiles.forEach((file, index) => {
-					if (index > 0) recoveryEl.createSpan({ text: '、' });
-					const recoveryLink = recoveryEl.createEl('a', { text: file.split('/').pop() || file, cls: 'foreshadowing-entry-recovery-link' });
-					recoveryLink.onclick = async () => {
-						let targetFile: TFile | null = null;
-						if (this.currentFolder) {
-							const chapters = ChapterSorter.getAllChapters(this.app, this.plugin, this.currentFolder);
-							targetFile = chapters.find((c: TFile) => c.basename === file || c.name === file || c.path === file) || null;
-						}
-						if (!targetFile) {
-							const sourcePath = this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '';
-							targetFile = this.app.metadataCache.getFirstLinkpathDest(file, sourcePath);
-						}
-						
-						if (targetFile) {
-							let targetLeaf = this.app.workspace.getLeavesOfType('markdown').find(l => (l.view as unknown as { file?: { path: string } }).file?.path === targetFile?.path);
-							if (!targetLeaf) targetLeaf = this.app.workspace.getLeavesOfType('markdown')[0];
-							await openFileAndFocus(this.app, targetLeaf, targetFile);
-						}
-					};
-				});
-			}
-			// 向后兼容：如果只有旧格式（单章节）
-			else if (entry.recoveryFile) {
-				const recoveryFileStr = entry.recoveryFile;
-				const recoveryLink = recoveryEl.createEl('a', { text: recoveryFileStr.split('/').pop() || recoveryFileStr, cls: 'foreshadowing-entry-recovery-link' });
-				recoveryLink.onclick = async () => {
-					let targetFile: TFile | null = null;
-					if (this.currentFolder) {
-						const chapters = ChapterSorter.getAllChapters(this.app, this.plugin, this.currentFolder);
-						targetFile = chapters.find((c: TFile) => c.basename === recoveryFileStr || c.name === recoveryFileStr || c.path === recoveryFileStr) || null;
-					}
-					if (!targetFile) {
-						const sourcePath = this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '';
-						targetFile = this.app.metadataCache.getFirstLinkpathDest(recoveryFileStr, sourcePath);
-					}
-					
-					if (targetFile) {
-						let targetLeaf = this.app.workspace.getLeavesOfType('markdown').find(l => (l.view as unknown as { file?: { path: string } }).file?.path === targetFile?.path);
-						if (!targetLeaf) targetLeaf = this.app.workspace.getLeavesOfType('markdown')[0];
-						await openFileAndFocus(this.app, targetLeaf, targetFile);
-					}
+	/**
+	 * 渲染精简多节点推进器 (仅图标，悬浮 Tooltip 呈现完整详情)
+	 */
+	private renderStageStepper(container: HTMLElement, entry: ParsedForeshadowingEntry) {
+		const stepperEl = container.createDiv({ cls: 'foreshadowing-stepper' });
+		
+		// 节点 1: 埋下伏笔 (源章节)
+		const logs = entry.recoveryLogs || [];
+		const hasLogs = logs.length > 0;
+		const hasLegacyRecovered = entry.recoveryFiles && entry.recoveryFiles.length > 0;
+		const isRecovered = entry.status === ForeshadowingStatus.Recovered;
+
+		// 节点 1: 伏笔初始埋下节点 (首次标注)
+		const sourceNode = stepperEl.createDiv({
+			cls: `foreshadowing-step-item is-source${!isRecovered && !hasLogs && !hasLegacyRecovered ? ' is-current' : ''}`
+		});
+		const sourceDot = sourceNode.createDiv({ cls: 'foreshadowing-step-dot' });
+		setIcon(sourceDot, 'bookmark');
+
+		const firstContent = entry.contents[0];
+		const firstSource = firstContent?.source || entry.sourceFile;
+		const firstSourceName = firstSource.split('/').pop() || firstSource;
+		const firstTime = firstContent?.time || entry.createdAt || '';
+
+		sourceNode.title = `${t('modal.first-marked-at', { name: firstSourceName })}${firstTime ? ' · ' + firstTime : ''}`;
+		
+		sourceNode.onclick = async () => {
+			const sourcePath = this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '';
+			const file = this.app.metadataCache.getFirstLinkpathDest(firstSource, sourcePath);
+			if (file) await openFileAndFocus(this.app, this.app.workspace.getLeaf(false), file);
+		};
+
+		// 阶段/终结节点
+		if (hasLogs) {
+			logs.forEach((log, index) => {
+				stepperEl.createDiv({ cls: `foreshadowing-step-line ${log.stageType === 'final' ? 'is-final' : 'is-stage'}` });
+
+				const isCurrent = !isRecovered && index === logs.length - 1 && log.stageType !== 'final';
+				const node = stepperEl.createDiv({ cls: `foreshadowing-step-item ${log.stageType === 'final' ? 'is-final' : 'is-stage'}${isCurrent ? ' is-current' : ''}` });
+				const dot = node.createDiv({ cls: 'foreshadowing-step-dot' });
+				setIcon(dot, 'circle');
+
+				const fileName = log.file.split('/').pop() || log.file;
+				const tooltip = `${fileName}${log.time ? ' · ' + log.time : ''}${log.note ? '\n' + log.note : ''}`;
+				node.title = tooltip;
+				node.onclick = async () => {
+					const sourcePath = this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '';
+					const file = this.app.metadataCache.getFirstLinkpathDest(log.file, sourcePath);
+					if (file) await openFileAndFocus(this.app, this.app.workspace.getLeaf(false), file);
 				};
-			}
+			});
+		} else if (entry.recoveryFiles && entry.recoveryFiles.length > 0) {
+			entry.recoveryFiles.forEach((file, index) => {
+				stepperEl.createDiv({ cls: 'foreshadowing-step-line is-final' });
+				const node = stepperEl.createDiv({ cls: 'foreshadowing-step-item is-final' });
+				const dot = node.createDiv({ cls: 'foreshadowing-step-dot' });
+				setIcon(dot, 'circle');
+				const fileName = file.split('/').pop() || file;
+				const time = entry.recoveredAts && entry.recoveredAts[index] ? entry.recoveredAts[index] : '';
+				node.title = `${fileName}${time ? ' · ' + time : ''}`;
+				node.onclick = async () => {
+					const sourcePath = this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '';
+					const targetFile = this.app.metadataCache.getFirstLinkpathDest(file, sourcePath);
+					if (targetFile) await openFileAndFocus(this.app, this.app.workspace.getLeaf(false), targetFile);
+				};
+			});
+		}
+
+		// 末尾待完成节点（若未彻底回收）
+		if (entry.status !== ForeshadowingStatus.Recovered) {
+			stepperEl.createDiv({ cls: 'foreshadowing-step-line is-pending-tail' });
+			const tailNode = stepperEl.createDiv({ cls: 'foreshadowing-step-item is-pending-tail' });
+			const tailDot = tailNode.createDiv({ cls: 'foreshadowing-step-dot' });
+			setIcon(tailDot, 'circle');
+			tailNode.title = t('common.mark-final-recovered');
 		}
 	}
 
@@ -407,34 +462,6 @@ export class ForeshadowingView extends CreativeView {
 	 * 使用智能文本匹配进行精准跳转
 	 */
 	private async openFileWithSmartLocate(file: TFile, searchText: string) {
-		const leaf = this.app.workspace.getLeaf(false);
-		
-		if (!searchText) {
-			await openFileAndFocus(this.app, leaf, file);
-			return;
-		}
-
-		const content = await this.app.vault.cachedRead(file);
-		let targetLine = 0;
-		
-		const cleanSearch = searchText.trim();
-		if (cleanSearch) {
-			// 将搜索文本中的所有空白字符转换为匹配任意空白字符的正则，这样忽略了换行符
-			const escapedSearch = cleanSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-			const searchPattern = escapedSearch.replace(/\s+/g, '\\s+');
-			
-			let match = content.match(new RegExp(searchPattern));
-			if (!match && cleanSearch.length > 20) {
-				// 降级匹配
-				const shortSearch = cleanSearch.substring(0, 20).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
-				match = content.match(new RegExp(shortSearch));
-			}
-
-			if (match && match.index !== undefined) {
-				targetLine = content.substring(0, match.index).split('\n').length - 1;
-			}
-		}
-
-		await openFileAndFocus(this.app, leaf, file, { eState: { line: targetLine } });
+		await smartLocateAndHighlight(this.app, file, [searchText]);
 	}
 }

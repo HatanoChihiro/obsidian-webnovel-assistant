@@ -1,7 +1,7 @@
 import { Modal, Notice, Setting, setIcon, type App } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../../types/plugin';
 import type { TaskEntry } from '../../types/task';
-import { TaskManager } from '../../services/TaskManager';
+import type { TaskManager } from '../../services/TaskManager';
 import { getTaskStatusText, getTaskTypeText } from '../../i18n/data-keys';
 import { formatCount } from '../../utils';
 import { t } from '../../i18n';
@@ -92,7 +92,7 @@ export class TaskBoardRenderer {
     static async render(options: TaskBoardRendererOptions): Promise<void> {
         const { app, plugin, container, currentBookPath, reloadBoard } = options;
         
-        const manager = new TaskManager(app, plugin);
+        const manager = plugin.taskManager;
         manager.currentFolder = currentBookPath === '/' ? '' : currentBookPath;
         
         await manager.checkAndCloseExpired();
@@ -198,7 +198,7 @@ export class TaskBoardRenderer {
                         () => {
                             void (async () => {
                                 try {
-                                    await manager.updateEntryStatus(entry.period, 'completed', progress);
+                                    await manager.updateEntryStatus(entry.period, 'completed', progress, entry.taskType);
                                     new Notice(t('task.complete-success', { period: entry.period }));
                                     reloadBoard();
                                 } catch (err) {
@@ -225,7 +225,7 @@ export class TaskBoardRenderer {
                         () => {
                             void (async () => {
                                 try {
-                                    await manager.updateEntryStatus(entry.period, 'abandoned', progress);
+                                    await manager.updateEntryStatus(entry.period, 'abandoned', progress, entry.taskType);
                                     new Notice(t('task.abandon-success', { period: entry.period }));
                                     reloadBoard();
                                 } catch (err) {

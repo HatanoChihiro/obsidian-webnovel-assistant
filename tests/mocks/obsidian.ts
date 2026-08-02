@@ -40,3 +40,41 @@ export class Platform {
 }
 
 export class Component {}
+
+export class Modal {
+	app: any;
+	contentEl: any = {
+		empty: () => {},
+		addClass: () => {},
+		createDiv: () => ({
+			createDiv: () => ({
+				createDiv: () => {}
+			})
+		})
+	};
+	constructor(app: any) {
+		this.app = app;
+	}
+	open() {
+		if (typeof (this as any).onOpen === 'function') {
+			(this as any).onOpen();
+		}
+	}
+	close() {
+		if (typeof (this as any).onClose === 'function') {
+			(this as any).onClose();
+		}
+	}
+}
+
+export class Setting {
+	constructor(containerEl: any) {}
+	setHeading() { return this; }
+	setName(name: any) { return this; }
+	setDesc(desc: any) { return this; }
+	addToggle(cb: any) { return this; }
+	addButton(cb: any) { return this; }
+	addExtraButton(cb: any) { return this; }
+}
+
+export function setIcon(el: any, iconId: string) {}

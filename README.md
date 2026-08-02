@@ -20,7 +20,7 @@ Accurate word count & goal tracking · Story timeline · Foreshadowing manager �
 
 <br /><br />
 
-<img width="100%" alt="homepage" src="assets/homepage.png" />
+<img width="100%" alt="homepage" src="assets/homepage_en.png" />
 
 </div>
 
@@ -29,47 +29,47 @@ Accurate word count & goal tracking · Story timeline · Foreshadowing manager �
 ## ✨ Feature Highlights
 
 ### 🏠 Creative Homepage
-<sub>Full-width Dashboard · Dynamic Welcome · Novel Overview · Stats Panel · One-Click New Novel</sub>
+<sub>Full-width Dashboard · Dynamic Welcome · Novel Overview · Stats Panel · One-Click New Novel & Import Novel</sub>
 
-<img width="100%" alt="homepage" src="assets/homepage.gif" />
+<img width="100%" alt="homepage" src="assets/homepage_en.gif" />
 
 ### 🗂️ Writing Workbench
-<sub>All Chapters Panel · Timeline Board · Lore Board · Task Board · Notes Management</sub>
+<sub>All Chapters Panel · Timeline Board · Foreshadowing Board · Lore Board · Task Board · Notes Management</sub>
 
-<img width="100%" alt="workbench" src="assets/workbench.gif" />
+<img width="100%" alt="workbench" src="assets/workbench_en.gif" />
 
 ### 🌑 Immersive Writing Mode
 <sub>Full-screen Focus · Typewriter Scroll & Line Dimming · Dynamic Dashboard · Slot-based Layout</sub>
 
-<img width="100%" alt="immersive-mode" src="assets/immersive-mode.gif" />
+<img width="100%" alt="immersive-mode" src="assets/immersive-mode_en.gif" />
 
 ### 📊 Word Count & Goals
 <sub>3 Counting Modes · Multi-direction Goal Tracking · Strict Chapter Mode · Smart Chapter Sorting · Real-time Word Reminder · Folder Word Count Display</sub>
 
-<img width="100%" alt="word-count-gutter" src="assets/word-count-gutter.gif" />
+<img width="100%" alt="word-count-gutter" src="assets/word-count-gutter_en.gif" />
 
 ### ⏱️ Focus Time Tracking
 <sub>Auto focus vs. slack detection · Web Worker · 365 Heatmap · Bar+line trend · Efficiency card</sub>
 
-<img width="100%" alt="history-chart" src="assets/history-chart.gif" />
+<img width="100%" alt="history-chart" src="assets/history-chart_en.gif" />
 
 ### 📝 Creative Assistants
 
 <table>
 <tr>
-<td width="33%" align="center"><b>Foreshadowing Manager</b><br /><sub>Mark → Track → Recover across chapters</sub><br /><br /><img width="100%" alt="foreshadowing" src="assets/foreshadowing.gif" /></td>
-<td width="33%" align="center"><b>Timeline System</b><br /><sub>Events, multi-chapter links, custom types</sub><br /><br /><img width="100%" alt="timeline" src="assets/timeline.gif" /></td>
-<td width="33%" align="center"><b>Chapter Corkboard</b><br /><sub>Card overview, status & synopsis editing</sub><br /><br /><img width="100%" alt="corkboard" src="assets/corkboard.gif" /></td>
+<td width="33%" align="center"><b>Foreshadowing Manager</b><br /><sub>Mark → Multi-stage tracking → Final resolution</sub><br /><br /><img width="100%" alt="foreshadowing" src="assets/foreshadowing_en.gif" /></td>
+<td width="33%" align="center"><b>Timeline System</b><br /><sub>Events, multi-chapter links, custom types</sub><br /><br /><img width="100%" alt="timeline" src="assets/timeline_en.gif" /></td>
+<td width="33%" align="center"><b>Chapter Corkboard</b><br /><sub>Card overview, status & synopsis editing</sub><br /><br /><img width="100%" alt="corkboard" src="assets/corkboard_en.gif" /></td>
 </tr>
 <tr>
-<td width="33%" align="center"><b>Lore Quick Lookup</b><br /><sub>Auto-highlight, preset types & relations, relation graph</sub><br /><br /><img width="100%" alt="lore-lookup" src="assets/lore-lookup.gif" /></td>
-<td width="33%" align="center"><b>Sticky Notes</b><br /><sub>Auto-save, Markdown render</sub><br /><br /><img width="100%" alt="sticky-note" src="assets/sticky-note.gif" /></td>
-<td width="33%" align="center"><b>Task Tracker</b><br /><sub>Create periodic tasks, self-driven deadlines & voluntary abandon</sub><br /><br /><img width="100%" alt="task" src="assets/task.gif" /></td>
+<td width="33%" align="center"><b>Lore Quick Lookup</b><br /><sub>Auto-highlight, preset types & relations, relation graph</sub><br /><br /><img width="100%" alt="lore-lookup" src="assets/lore-lookup_en.gif" /></td>
+<td width="33%" align="center"><b>Sticky Notes</b><br /><sub>Auto-save, Markdown render</sub><br /><br /><img width="100%" alt="sticky-note" src="assets/sticky-note_en.gif" /></td>
+<td width="33%" align="center"><b>Task Tracker</b><br /><sub>Create periodic tasks, self-driven deadlines & voluntary abandon</sub><br /><br /><img width="100%" alt="task" src="assets/task_en.gif" /></td>
 </tr>
 <tr>
-<td width="33%" align="center"><b>Advanced Search</b><br /><sub>Search by book, global or custom scope</sub><br /><br /><img width="100%" alt="search" src="assets/search.gif" /></td>
-<td width="33%" align="center"><b>Merge Chapters</b><br /><sub>Merge all chapters in a folder by sort order</sub><br /><br /><img width="100%" alt="merge" src="assets/merge.gif" /></td>
-<td width="33%" align="center"><b>Auto-Create Next Chapter</b><br /><sub>Auto-create numbered documents, template support</sub><br /><br /><img width="100%" alt="auto-create-next" src="assets/auto-create-next.gif" /></td>
+<td width="33%" align="center"><b>Advanced Search</b><br /><sub>Search by book, global or custom scope</sub><br /><br /><img width="100%" alt="search" src="assets/search_en.gif" /></td>
+<td width="33%" align="center"><b>Merge Chapters</b><br /><sub>Merge all chapters in a folder by sort order</sub><br /><br /><img width="100%" alt="merge" src="assets/merge_en.gif" /></td>
+<td width="33%" align="center"><b>Auto-Create Next Chapter</b><br /><sub>Auto-create numbered documents, template support</sub><br /><br /><img width="100%" alt="auto-create-next" src="assets/auto-create-next_en.gif" /></td>
 </tr>
 </table>
 
@@ -209,12 +209,12 @@ If this plugin helps with your writing, consider buying the author a coffee ☕.
 ## ✨ 功能一览
 
 ### 🏠 创作主页
-<sub>全宽仪表盘 · 动态欢迎语 · 作品总览 · 数据面板 · 一键新建</sub>
+<sub>全宽仪表盘 · 动态欢迎语 · 作品总览 · 数据面板 · 一键新建与导入作品</sub>
 
 <img width="100%" alt="homepage" src="assets/homepage.gif" />
 
 ### 🗂️ 写作工作台
-<sub>全章节面板 · 时间轴看板 · 设定看板 · 任务看板 · 便签管理</sub>
+<sub>全章节面板 · 时间轴看板 · 伏笔看板 · 设定看板 · 任务看板 · 便签管理</sub>
 
 <img width="100%" alt="workbench" src="assets/workbench.gif" />
 
@@ -237,7 +237,7 @@ If this plugin helps with your writing, consider buying the author a coffee ☕.
 
 <table>
 <tr>
-<td width="33%" align="center"><b>伏笔管理</b><br /><sub>标注 → 追踪 → 多章节回收</sub><br /><br /><img width="100%" alt="foreshadowing" src="assets/foreshadowing.gif" /></td>
+<td width="33%" align="center"><b>伏笔管理</b><br /><sub>标注 → 阶段推进 → 彻底回收</sub><br /><br /><img width="100%" alt="foreshadowing" src="assets/foreshadowing.gif" /></td>
 <td width="33%" align="center"><b>时间线系统</b><br /><sub>事件记录、多章节关联、类型分类</sub><br /><br /><img width="100%" alt="timeline" src="assets/timeline.gif" /></td>
 <td width="33%" align="center"><b>章节一览</b><br /><sub>卡片式展示、状态标记、摘要编辑</sub><br /><br /><img width="100%" alt="corkboard" src="assets/corkboard.gif" /></td>
 </tr>
@@ -259,7 +259,7 @@ If this plugin helps with your writing, consider buying the author a coffee ☕.
 |:---|:---|
 | 实时显示写作数据 | 浮动字数统计与专注计时小窗 |
 | 自定义样式、透明度、内容 | 贴边吸附与自动收起手柄模式 |
-| 零延迟、零磁盘消耗 | **复制本文档** — 一键带标题复制 |
+| 零延迟、零磁盘消耗 | **复制本文档纯净文本** — 一键带标题提取纯净正文 |
 
 <br />
 

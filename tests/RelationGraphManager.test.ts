@@ -1,4 +1,4 @@
-﻿import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { RelationGraphManager } from '../src/services/RelationGraphManager';
 
 // Mock translation function for 'relation-graph.edge-mention'
@@ -40,6 +40,23 @@ describe('RelationGraphManager', () => {
 				label: '敌人',
 				type: 'explicit',
 			});
+		});
+
+		it('应正确解析精准标题双链格式 [[文件#标题|显示名]] 和 [[#标题]]', () => {
+			const validNodeIds = new Set(['张三', '李四', 'John Doe']);
+			const lines = [
+				'### 关系',
+				'- **喜欢**: [[角色.md#李四|李四]]',
+				'- **助手**: [[Characters#John Doe|JD]]',
+				'- **同门**: [[#张三]]',
+			];
+
+			const edges = manager.parseExplicitRelations('主角', lines, 1, 4, validNodeIds);
+			
+			expect(edges.length).toBe(3);
+			expect(edges[0]).toEqual({ source: '主角', target: '李四', label: '喜欢', type: 'explicit' });
+			expect(edges[1]).toEqual({ source: '主角', target: 'John Doe', label: '助手', type: 'explicit' });
+			expect(edges[2]).toEqual({ source: '主角', target: '张三', label: '同门', type: 'explicit' });
 		});
 
 		it('应支持多个目标的分割', () => {

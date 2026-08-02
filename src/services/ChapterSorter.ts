@@ -1,6 +1,6 @@
 import { Logger } from '../utils/Logger';
-import type { App, TAbstractFile, TFile} from 'obsidian';
-import { TFolder } from 'obsidian';
+import type { App, TAbstractFile } from 'obsidian';
+import { TFile, TFolder, Vault } from 'obsidian';
 import { CHINESE_NUMBERS } from '../constants';
 import type { ChapterNamingRule } from '../types/settings';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
@@ -36,10 +36,23 @@ export class ChapterSorter {
 	 * 统一获取指定文件夹下的所有章节文件，并按规则和自定义顺序排好序
 	 */
 	static getAllChapters(app: App, plugin: WebNovelAssistantPlugin, folderPath: string): TFile[] {
-		const allMarkdownFiles = app.vault.getMarkdownFiles();
-		let targetFiles = folderPath === '' 
-			? allMarkdownFiles 
-			: allMarkdownFiles.filter(f => f.path.startsWith(folderPath + '/'));
+		let targetFiles: TFile[];
+		if (folderPath && folderPath !== '/') {
+			const folder = app.vault.getAbstractFileByPath(folderPath);
+			if (folder instanceof TFolder) {
+				const list: TFile[] = [];
+				Vault.recurseChildren(folder, (file: TAbstractFile) => {
+					if (file instanceof TFile && file.extension === 'md') {
+						list.push(file);
+					}
+				});
+				targetFiles = list;
+			} else {
+				targetFiles = plugin.getVaultMarkdownFiles().filter(f => f.path.startsWith(folderPath + '/'));
+			}
+		} else {
+			targetFiles = plugin.getTrackedMarkdownFiles();
+		}
 
 		if (plugin.settings.enableStrictChapterMode) {
 			targetFiles = targetFiles.filter(f => this.isChapterFile(f.basename) || plugin.isFileInStrictChapterException(f));
@@ -146,7 +159,8 @@ export class ChapterSorter {
 			for (const { rule, regex, index } of this._compiledRules) {
 				try {
 					const match = basename.match(regex);
-					if (match) {
+					// 章节标题必须从文本行首开始匹配 (index === 0)，防止没有 ^ 锚定的正则在行中误判
+					if (match && match.index === 0) {
 						// 如果有捕获组，寻找第一个匹配到的有效数字文本（支持包含多分支的捕获组，如 match[1] 或 match[2]）
 						const numStr = match.slice(1).find(m => m !== undefined && m !== '');
 						if (numStr) {
@@ -338,11 +352,106 @@ export class ChapterSorter {
 	}
 
 	/**
+	 * 根据匹配结果与数字文本生成下一章文件名
+	 */
+	private static generateNextFromMatch(
+		basename: string,
+		match: RegExpMatchArray,
+		numStr: string,
+		siblingNames: string[]
+	): string | null {
+		const matchStart = match.index ?? 0;
+		const matchStr = match[0];
+		const numIndexInMatch = matchStr.indexOf(numStr);
+		const numStartInBasename = matchStart + (numIndexInMatch >= 0 ? numIndexInMatch : basename.indexOf(numStr));
+		
+		if (numStartInBasename < 0) return null;
+
+		const prefix = basename.slice(0, numStartInBasename);
+		const numEndInBasename = numStartInBasename + numStr.length;
+		const matchEndInBasename = matchStart + matchStr.length;
+
+		// 规则内匹配捕获到的单位部分（位于 match[0] 内部、数字之后的部分，如“章”、“集”、“）”等）
+		const unitFromRule = basename.slice(numEndInBasename, matchEndInBasename);
+
+		// match[0] 之后的文本（可能包含结构性标点与具体标题）
+		const textAfterMatch = basename.slice(matchEndInBasename);
+
+		// 从 match[0] 后面的文本中仅提取结构性符号（如空格、破折号、冒号、闭合括号等），丢弃具体的标题文字
+		const structuralMatch = textAfterMatch.match(/^([ \-_:：，、.)）\]】]*)/);
+		const structuralSuffix = structuralMatch ? structuralMatch[1] : '';
+
+		const unitAndStructural = unitFromRule + structuralSuffix;
+
+		// 1. 小数点数字格式 (如 1.1, 49.1)
+		if (numStr.includes('.')) {
+			const parts = numStr.split('.');
+			if (parts.length === 2) {
+				const mainNum = parseInt(parts[0], 10);
+				const subNum = parseInt(parts[1], 10);
+				if (!isNaN(mainNum) && !isNaN(subNum)) {
+					const nextNumStr = subNum >= 9 ? `${mainNum + 1}.0` : `${mainNum}.${subNum + 1}`;
+					return `${prefix}${nextNumStr}${unitAndStructural}.md`;
+				}
+			}
+		}
+
+		// 2. 阿拉伯数字格式 (如 1, 01, 001)
+		const arabicNum = parseInt(numStr, 10);
+		if (!isNaN(arabicNum) && /^\d+$/.test(numStr)) {
+			const nextNum = arabicNum + 1;
+			let paddingLength = numStr.length;
+			const maxChapter = siblingNames.reduce((max, name) => {
+				const m = name.match(/^([^0-9]*)(\d+)/);
+				if (m && m[1].toLowerCase() === prefix.toLowerCase()) {
+					return Math.max(max, parseInt(m[2], 10));
+				}
+				return max;
+			}, 0);
+			if (maxChapter >= 100 && paddingLength < 3) paddingLength = 3;
+			else if (maxChapter >= 10 && paddingLength < 2) paddingLength = 2;
+
+			const nextNumStr = nextNum.toString().padStart(paddingLength, '0');
+			return `${prefix}${nextNumStr}${unitAndStructural}.md`;
+		}
+
+		// 3. 中文数字格式 (如 一, 二, 十, 第一)
+		const chineseNum = this.parseChineseNumber(numStr);
+		if (chineseNum > 0) {
+			const useUppercase = /[壹贰叁肆伍陆柒捌玖拾佰仟萬]/.test(numStr);
+			const nextNumStr = this.toChineseNumber(chineseNum + 1, useUppercase);
+			return `${prefix}${nextNumStr}${unitAndStructural}.md`;
+		}
+
+		return null;
+	}
+
+	/**
 	 * 根据当前文件名生成下一章的文件名
-	 * 支持阿拉伯数字、小数点和中文数字格式
+	 * 支持用户自定义章节规则（优先）及默认格式（阿拉伯数字、中文数字、小数点）
 	 * @returns 新文件名（含 .md），或 null 表示无法识别
 	 */
 	static getNextChapterName(basename: string, siblingNames: string[]): string | null {
+		// 1. 如果配置了用户自定义章节命名规则，优先使用自定义规则匹配生成，确保设置中的规则真正生效
+		if (this._compiledRules && this._compiledRules.length > 0) {
+			for (const { rule, regex } of this._compiledRules) {
+				try {
+					const match = basename.match(regex);
+					if (match) {
+						// 寻找第一个非空捕获组作为章节数字
+						const numStr = match.slice(1).find(m => m !== undefined && m !== '');
+						if (numStr) {
+							const result = this.generateNextFromMatch(basename, match, numStr, siblingNames);
+							if (result) return result;
+						}
+					}
+				} catch (e) {
+					Logger.error(`[ChapterSorter] 自定义规则生成下一章失败: ${rule.pattern}`, e);
+				}
+			}
+		}
+
+		// 2. 没有匹配自定义规则时，使用默认正则表达式格式兜底
 		// 优先尝试小数点格式：1.1、49.1 等（只计算小数点后一位）
 		const decimalMatch = basename.match(/^([^0-9]*)(\d+)\.(\d+)(.*)$/);
 		if (decimalMatch) {

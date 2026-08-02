@@ -5,7 +5,7 @@ import { ForeshadowingStatus } from '../types/foreshadowing';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { escapeRegex } from '../utils/validation';
 import { SerializedWriter } from '../utils/SerializedWriter';
-import { getForeshadowingLabel, getForeshadowingStatusText, getDefaultFileName, getDefaultFileNameCandidates } from '../i18n/data-keys';
+import { getForeshadowingStatusText, getDefaultFileName, getDefaultFileNameCandidates } from '../i18n/data-keys';
 import { findBookRoot } from '../utils/path';
 import { ForeshadowingParser } from '../utils/ForeshadowingParser';
 
@@ -167,41 +167,9 @@ export class ForeshadowingManager {
 							text: content.trim()
 						});
 						
-						// 正确的做法：直接在这里构建格式化字符串替换
-						const lines: string[] = [];
-						lines.push(`## ${entry.description}`);
-						lines.push('');
-						entry.contents.forEach(c => {
-							lines.push(`> [[${c.source}]] - ${c.time}`);
-							c.text.split('\n').forEach(line => lines.push(`> ${line}`));
-							lines.push('');
-						});
-						if (entry.tags.length > 0) {
-							lines.push(`**${getForeshadowingLabel('tags')}**：${entry.tags.map(t => `#${t}`).join(', ')}`);
-							lines.push('');
-						}
-						lines.push(`**${getForeshadowingLabel('status')}**：${getForeshadowingStatusText(entry.status)}`);
-						
-						if (entry.status === ForeshadowingStatus.Recovered) {
-							if (entry.recoveryFiles && entry.recoveryFiles.length > 0) {
-								lines.push('');
-								lines.push(`**${getForeshadowingLabel('recoveredAt')}**：`);
-								entry.recoveryFiles.forEach((file, index) => {
-									const time = entry.recoveredAts && entry.recoveredAts[index] ? ` - ${entry.recoveredAts[index]}` : '';
-									lines.push(`- [[${file}]]${time}`);
-								});
-							} else if (entry.recoveryFile) {
-								const recoveryTimestamp = entry.recoveredAt ? ` - ${entry.recoveredAt}` : '';
-								lines.push('');
-								lines.push(`**${getForeshadowingLabel('recoveredAt')}**：[[${entry.recoveryFile}]]${recoveryTimestamp}`);
-							}
-						}
-						lines.push('');
-						lines.push('---');
-						lines.push('');
-
+						const formatted = ForeshadowingParser.formatParsedEntry(entry);
 						merged = true;
-						return existingContent.slice(0, startPos) + lines.join('\n') + existingContent.slice(endPos);
+						return existingContent.slice(0, startPos) + formatted + existingContent.slice(endPos);
 					}
 				}
 
@@ -327,10 +295,12 @@ export class ForeshadowingManager {
 		return ForeshadowingManager.entryPatternCache.get(key)!;
 	}
 
-	async markAsRecovered(
+	async markAsPartiallyRecovered(
 		targetFile: TFile,
 		description: string,
-		recoveryFiles: string[]
+		recoveryFile: string,
+		note?: string,
+		quote?: string
 	): Promise<boolean> {
 		return this.writer.enqueue(async () => {
 			let found = false;
@@ -341,18 +311,63 @@ export class ForeshadowingManager {
 				if (!isFound) return content;
 				found = true;
 
-				// 替换 matchedText 中的状态和回收信息
-				let newText = matchedText;
-				const statusPattern = /(\*\*(?:状态|Status)\*\*：)(未回收|已废弃|pending|deprecated|Pending|Deprecated|Unresolved|Abandoned)/;
-				if (statusPattern.test(newText)) {
-					const recoveryLines = recoveryFiles.map(file => `- [[${file}]] - ${now}`).join('\n');
-					newText = newText.replace(statusPattern, (match, p1) => {
-						return `${p1}${getForeshadowingStatusText(ForeshadowingStatus.Recovered)}\n\n**${getForeshadowingLabel('recoveredAt')}**：\n${recoveryLines}`;
+				const entries = this.parseEntries(matchedText);
+				if (entries.length === 0) return content;
+
+				const entry = entries[0];
+				entry.status = ForeshadowingStatus.PartiallyRecovered;
+				if (!entry.recoveryLogs) entry.recoveryLogs = [];
+				entry.recoveryLogs.push({
+					stageType: 'stage',
+					file: recoveryFile,
+					time: now,
+					note: note || undefined,
+					quote: quote || undefined
+				});
+
+				const newText = ForeshadowingParser.formatParsedEntry(entry);
+
+				return content.slice(0, startPos) + newText + content.slice(endPos);
+			});
+
+			return found;
+		});
+	}
+
+	async markAsRecovered(
+		targetFile: TFile,
+		description: string,
+		recoveryFiles: string[],
+		note?: string,
+		quote?: string
+	): Promise<boolean> {
+		return this.writer.enqueue(async () => {
+			let found = false;
+			const now = window.moment().format('YYYY-MM-DD HH:mm');
+
+			await this.app.vault.process(targetFile, (content) => {
+				const { found: isFound, startPos, endPos, matchedText } = this.findEntryByDescription(content, description);
+				if (!isFound) return content;
+				found = true;
+
+				const entries = this.parseEntries(matchedText);
+				if (entries.length === 0) return content;
+
+				const entry = entries[0];
+				entry.status = ForeshadowingStatus.Recovered;
+				if (!entry.recoveryLogs) entry.recoveryLogs = [];
+
+				recoveryFiles.forEach(file => {
+					entry.recoveryLogs!.push({
+						stageType: 'final',
+						file,
+						time: now,
+						note: note || undefined,
+						quote: quote || undefined
 					});
-				} else {
-					found = false;
-					return content;
-				}
+				});
+
+				const newText = ForeshadowingParser.formatParsedEntry(entry);
 
 				return content.slice(0, startPos) + newText + content.slice(endPos);
 			});
@@ -517,12 +532,16 @@ export class ForeshadowingManager {
 
 			if (entry.status === ForeshadowingStatus.Pending) {
 				targets.push(...sources);
-			} else if (entry.status === ForeshadowingStatus.Recovered) {
+			} else if (entry.status === ForeshadowingStatus.PartiallyRecovered || entry.status === ForeshadowingStatus.Recovered) {
 				targets.push(...sources);
-				const recFiles = entry.recoveryFiles
-					? [...entry.recoveryFiles]
-					: (entry.recoveryFile ? [entry.recoveryFile] : []);
-				targets.push(...recFiles);
+				if (entry.recoveryLogs && entry.recoveryLogs.length > 0) {
+					targets.push(...entry.recoveryLogs.map(l => l.file));
+				} else {
+					const recFiles = entry.recoveryFiles
+						? [...entry.recoveryFiles]
+						: (entry.recoveryFile ? [entry.recoveryFile] : []);
+					targets.push(...recFiles);
+				}
 			}
 
 			for (const target of targets) {

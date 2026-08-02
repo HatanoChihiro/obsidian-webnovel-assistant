@@ -143,25 +143,7 @@ export class ChapterCard {
 		const bookPath = currentBookPath === '/' ? '' : currentBookPath;
 		renderLoreBadges(badgesContainer, loreArray, bookPath, plugin, true, maxLoreLines);
 
-		// 3. 挂载后 RAF 动态根据 Badges 实际布局行数切换 1 行 / 2 行字数面板
-		window.requestAnimationFrame(() => {
-			if (!badgesContainer.isConnected) return;
-			const children = Array.from(badgesContainer.children) as HTMLElement[];
-			if (children.length > 0) {
-				const firstTop = children[0].offsetTop;
-				const hasSecondLine = children.some(c => c.offsetTop - firstTop > 10);
-				if (hasSecondLine && maxLoreLines > 1) {
-					footerEl.addClass('wn-footer-2-lines');
-					footerEl.removeClass('wn-footer-1-line');
-				} else {
-					footerEl.addClass('wn-footer-1-line');
-					footerEl.removeClass('wn-footer-2-lines');
-				}
-			} else {
-				footerEl.addClass('wn-footer-1-line');
-				footerEl.removeClass('wn-footer-2-lines');
-			}
-		});
+		// 3. 设定 Badge 已自动进入 badge.ts 中的单帧 Batch 批处理队列，无需在每个卡片单独派发 RAF
 
 		// 字数 (Right side)
 		const wordCountEl = footerEl.createDiv('wn-corkboard-card-word-count');

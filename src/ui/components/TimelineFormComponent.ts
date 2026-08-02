@@ -45,11 +45,11 @@ export class TimelineFormComponent {
 		const targetFiles = ChapterSorter.getAllChapters(app, plugin, folderPath);
 		const chapterFiles: string[] = targetFiles.map(c => c.basename);
 
-		const existingItems = initialEntry?.items && initialEntry.items.length > 0 
+		const existingItems: { description: string; chapter: string; origin?: string }[] = initialEntry?.items && initialEntry.items.length > 0 
 			? initialEntry.items 
-			: [{ description: initialEntry?.description || '', chapter: initialEntry?.chapter || '' }];
+			: [{ description: initialEntry?.description || '', chapter: initialEntry?.chapter || '', origin: initialEntry?.origin || '' }];
 
-		const createEventBlock = (item: { description: string; chapter: string } = { description: '', chapter: '' }) => {
+		const createEventBlock = (item: { description: string; chapter: string; origin?: string } = { description: '', chapter: '', origin: '' }) => {
 			const eventBlock = eventsContainer.createDiv({ cls: 'wn-timeline-event-block' });
 			eventBlock.addClass('webnovel-modal-event-block');
 			
@@ -99,6 +99,13 @@ export class TimelineFormComponent {
 				const { row } = createChapterRow();
 				chapterListContainer.insertBefore(row, addChapterBtn);
 			};
+
+			// 关联原文（可选）
+			eventBlock.createEl('label', { text: t('modal.associated-quote'), cls: 'wn-timeline-form-label' });
+			const quoteInput = eventBlock.createEl('textarea', { cls: 'wn-timeline-form-textarea wn-associated-quote-input' });
+			quoteInput.value = item.origin || '';
+			quoteInput.placeholder = t('modal.associated-quote-placeholder');
+			quoteInput.addClass('webnovel-tl-desc-input-edit');
 			
 			const deleteEventBtn = eventBlock.createEl('button', { text: t('modal.delete-this-event') });
 			deleteEventBtn.addClass('webnovel-tl-delete-event-btn');
@@ -109,7 +116,7 @@ export class TimelineFormComponent {
 				}
 			};
 			
-			return { eventBlock, descInput, chapterListContainer };
+			return { eventBlock, descInput, chapterListContainer, quoteInput };
 		};
 
 		existingItems.forEach(item => createEventBlock(item));
@@ -173,13 +180,16 @@ export class TimelineFormComponent {
 				return;
 			}
 			
-			const items: { description: string; chapter: string }[] = [];
+			const items: { description: string; chapter: string; origin?: string }[] = [];
 			const eventBlocks = eventsContainer.querySelectorAll('.webnovel-modal-event-block');
 			
 			eventBlocks.forEach((block) => {
 				const htmlBlock = block as HTMLElement;
-				const descInput = htmlBlock.querySelector('textarea') as HTMLTextAreaElement;
-				const description = descInput.value.trim();
+				const textareas = htmlBlock.querySelectorAll('textarea');
+				const descInput = textareas[0] as HTMLTextAreaElement | undefined;
+				const quoteInput = textareas[1] as HTMLTextAreaElement | undefined;
+				const description = descInput ? descInput.value.trim() : '';
+				const origin = quoteInput ? quoteInput.value.trim() : '';
 				
 				const chapters: string[] = [];
 				const selects = htmlBlock.querySelectorAll('select');
@@ -189,8 +199,8 @@ export class TimelineFormComponent {
 				});
 				const chapter = [...new Set(chapters)].join(', ');
 				
-				if (description || chapter) {
-					items.push({ description, chapter });
+				if (description || chapter || origin) {
+					items.push({ description, chapter, origin: origin || undefined });
 				}
 			});
 			

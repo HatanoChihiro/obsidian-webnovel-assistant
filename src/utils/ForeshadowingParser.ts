@@ -1,5 +1,5 @@
 import { t } from '../i18n';
-import type { ForeshadowingEntry, ParsedForeshadowingEntry } from '../types/foreshadowing';
+import type { ForeshadowingEntry, ParsedForeshadowingEntry, ForeshadowingRecoveryLog } from '../types/foreshadowing';
 import { ForeshadowingStatus } from '../types/foreshadowing';
 import { escapeRegex } from './validation';
 import { FORESHADOWING_STATUS_MAP, getForeshadowingLabel, getForeshadowingStatusText } from '../i18n/data-keys';
@@ -33,10 +33,27 @@ export class ForeshadowingParser {
 		// 状态
 		lines.push(`**${getForeshadowingLabel('status')}**：${getForeshadowingStatusText(entry.status)}`);
 
-		// 回收信息（已回收时显示，支持多章节）
-		if (entry.status === ForeshadowingStatus.Recovered) {
-			// 优先使用新格式（多章节）
-			if (entry.recoveryFiles && entry.recoveryFiles.length > 0) {
+		// 回收信息（已回收或阶段回收中时显示）
+		if (entry.status === ForeshadowingStatus.Recovered || entry.status === ForeshadowingStatus.PartiallyRecovered) {
+			// 优先使用新格式（阶段日志）
+			if (entry.recoveryLogs && entry.recoveryLogs.length > 0) {
+				lines.push('');
+				lines.push(`**${getForeshadowingLabel('recoveredAt')}**：`);
+				entry.recoveryLogs.forEach((log) => {
+					const tag = log.stageType === 'stage' ? t('common.tag-stage-log') : t('common.tag-final-log');
+					const timeStr = log.time ? ` - ${log.time}` : '';
+					const noteStr = log.note ? `：${log.note}` : '';
+					lines.push(`- ${tag} [[${log.file}]]${timeStr}${noteStr}`);
+					if (log.quote) {
+						const quoteLines = log.quote.split('\n');
+						for (const ql of quoteLines) {
+							lines.push(`  > ${ql}`);
+						}
+					}
+				});
+			}
+			// 其次使用旧版多章节列表格式
+			else if (entry.recoveryFiles && entry.recoveryFiles.length > 0) {
 				lines.push('');
 				lines.push(`**${getForeshadowingLabel('recoveredAt')}**：`);
 				entry.recoveryFiles.forEach((file, index) => {
@@ -46,6 +63,75 @@ export class ForeshadowingParser {
 			}
 			// 向后兼容：如果只有旧格式（单章节）
 			else if (entry.recoveryFile) {
+				const recoveryTimestamp = entry.recoveredAt ? ` - ${entry.recoveredAt}` : '';
+				lines.push('');
+				lines.push(`**${getForeshadowingLabel('recoveredAt')}**：[[${entry.recoveryFile}]]${recoveryTimestamp}`);
+			}
+		}
+
+		lines.push('');
+		lines.push('---');
+		lines.push('');
+
+		return lines.join('\n');
+	}
+
+	/**
+	 * 将已解析的多引用伏笔条目 (ParsedForeshadowingEntry) 格式化为 Markdown 字符串
+	 */
+	static formatParsedEntry(entry: ParsedForeshadowingEntry): string {
+		const lines: string[] = [];
+
+		// 标题行
+		lines.push(`## ${entry.description}`);
+		lines.push('');
+
+		// 多个引用块
+		entry.contents.forEach(c => {
+			const sourceFile = c.source || entry.sourceFile;
+			const timeStr = c.time ? ` - ${c.time}` : (entry.createdAt ? ` - ${entry.createdAt}` : '');
+			lines.push(`> [[${sourceFile}]]${timeStr}`);
+			const contentLines = c.text.split('\n');
+			for (const line of contentLines) {
+				lines.push(`> ${line}`);
+			}
+			lines.push('');
+		});
+
+		// 标签（有标签才显示）
+		if (entry.tags.length > 0) {
+			lines.push(`**${getForeshadowingLabel('tags')}**：${entry.tags.map(t => `#${t}`).join(', ')}`);
+			lines.push('');
+		}
+
+		// 状态
+		lines.push(`**${getForeshadowingLabel('status')}**：${getForeshadowingStatusText(entry.status)}`);
+
+		// 回收信息（已回收或阶段回收中时显示）
+		if (entry.status === ForeshadowingStatus.Recovered || entry.status === ForeshadowingStatus.PartiallyRecovered) {
+			if (entry.recoveryLogs && entry.recoveryLogs.length > 0) {
+				lines.push('');
+				lines.push(`**${getForeshadowingLabel('recoveredAt')}**：`);
+				entry.recoveryLogs.forEach((log) => {
+					const tag = log.stageType === 'stage' ? t('common.tag-stage-log') : t('common.tag-final-log');
+					const timeStr = log.time ? ` - ${log.time}` : '';
+					const noteStr = log.note ? `：${log.note}` : '';
+					lines.push(`- ${tag} [[${log.file}]]${timeStr}${noteStr}`);
+					if (log.quote) {
+						const quoteLines = log.quote.split('\n');
+						for (const ql of quoteLines) {
+							lines.push(`  > ${ql}`);
+						}
+					}
+				});
+			} else if (entry.recoveryFiles && entry.recoveryFiles.length > 0) {
+				lines.push('');
+				lines.push(`**${getForeshadowingLabel('recoveredAt')}**：`);
+				entry.recoveryFiles.forEach((file, index) => {
+					const time = entry.recoveredAts && entry.recoveredAts[index] ? ` - ${entry.recoveredAts[index]}` : '';
+					lines.push(`- [[${file}]]${time}`);
+				});
+			} else if (entry.recoveryFile) {
 				const recoveryTimestamp = entry.recoveredAt ? ` - ${entry.recoveredAt}` : '';
 				lines.push('');
 				lines.push(`**${getForeshadowingLabel('recoveredAt')}**：[[${entry.recoveryFile}]]${recoveryTimestamp}`);
@@ -230,40 +316,111 @@ export class ForeshadowingParser {
 			if (rawStatusText) {
 				const mapped = FORESHADOWING_STATUS_MAP[rawStatusText];
 				if (mapped === 'recovered') status = ForeshadowingStatus.Recovered;
+				else if (mapped === 'partially_recovered') status = ForeshadowingStatus.PartiallyRecovered;
 				else if (mapped === 'deprecated') status = ForeshadowingStatus.Deprecated;
 			}
 
-			// 解析回收信息（支持多章节）
-			// 新格式：**回收于**：\n- [[章节1]] - 时间\n- [[章节2]] - 时间
-			const recoveryListMatch = trimmed.match(new RegExp(`\\*\\*(?:回收于|Recovered at|Resolved in|${t('foreshadowing.recovered-at')})\\*\\*：\\n((?:- \\[\\[.+?\\]\\].*\\n?)+)`));
+			// 解析回收信息（支持阶段日志、多章节、单章节及关联原文 quote）
+			const recoveryListMatch = trimmed.match(new RegExp(`\\*\\*(?:回收于|回收记录|Recovered at|Resolved in|${t('foreshadowing.recovered-at')})\\*\\*：\\n([\\s\\S]*?)(?=\\n\\*\\*|\\n---|\\n## |$)`));
+			let recoveryLogs: ForeshadowingRecoveryLog[] | undefined;
 			let recoveryFiles: string[] | undefined;
 			let recoveredAts: string[] | undefined;
 			let recoveryFile: string | undefined;
 			let recoveredAt: string | undefined;
 
 			if (recoveryListMatch) {
-				// 多章节格式
-				const listLines = recoveryListMatch[1].trim().split('\n');
+				const textBlock = recoveryListMatch[1].trim();
+				recoveryLogs = [];
 				recoveryFiles = [];
 				recoveredAts = [];
-				listLines.forEach(line => {
-					const match = line.match(/^- \[\[(.+?)\]\](?:\s*-\s*(.+))?$/);
-					if (match) {
-						recoveryFiles!.push(match[1]);
-						recoveredAts!.push(match[2]?.trim() || '');
+
+				const rawLines = textBlock.split('\n');
+				let currentLog: ForeshadowingRecoveryLog | null = null;
+				const quoteBuffer: string[] = [];
+
+				const flushLog = () => {
+					if (currentLog) {
+						if (quoteBuffer.length > 0) {
+							currentLog.quote = quoteBuffer.join('\n').trim();
+						}
+						recoveryLogs!.push(currentLog);
+						recoveryFiles!.push(currentLog.file);
+						recoveredAts!.push(currentLog.time || '');
+						currentLog = null;
+						quoteBuffer.length = 0;
 					}
-				});
+				};
+
+				for (const rawLine of rawLines) {
+					const line = rawLine.trim();
+					if (!line) continue;
+
+					const stageMatch = line.match(/^- \[(阶段|终结|收束|回收|stage|final)\] \[\[(.+?)\]\](.*)$/i);
+					if (stageMatch) {
+						flushLog();
+						const rawType = stageMatch[1].toLowerCase();
+						const stageType = (rawType === 'stage' || rawType === '阶段') ? 'stage' : 'final';
+						const file = stageMatch[2];
+						let rest = stageMatch[3].trim();
+						let time = '';
+						let note = '';
+
+						if (rest.startsWith('-')) {
+							rest = rest.slice(1).trim();
+						}
+
+						if (rest) {
+							const timeMatch = rest.match(/^(\d{4}-\d{2}-\d{2}(?:\s+\d{2}:\d{2})?)/);
+							if (timeMatch) {
+								time = timeMatch[1];
+								const afterTime = rest.slice(time.length).trim();
+								if (afterTime.startsWith('：') || afterTime.startsWith(':')) {
+									note = afterTime.slice(1).trim();
+								} else {
+									note = afterTime;
+								}
+							} else {
+								const colonIdx = rest.search(/[：:]/);
+								if (colonIdx !== -1) {
+									time = rest.slice(0, colonIdx).trim();
+									note = rest.slice(colonIdx + 1).trim();
+								} else {
+									note = rest;
+								}
+							}
+						}
+
+						currentLog = { stageType, file, time, note: note || undefined };
+					} else if (line.startsWith('>')) {
+						if (currentLog) {
+							const qText = line.replace(/^>\s?/, '');
+							quoteBuffer.push(qText);
+						}
+					} else {
+						const oldMatch = line.match(/^- \[\[(.+?)\]\](?:\s*-\s*(.+))?$/);
+						if (oldMatch) {
+							flushLog();
+							const file = oldMatch[1];
+							const time = oldMatch[2]?.trim() || '';
+							currentLog = { stageType: 'final', file, time };
+						}
+					}
+				}
+				flushLog();
 			} else {
 				// 旧格式（单章节）：**回收于**：[[章节]] - 时间
 				const singleRecoveryMatch = trimmed.match(new RegExp(`\\*\\*(?:回收于|Recovered at|Resolved in|${t('foreshadowing.recovered-at')})\\*\\*：\\[\\[(.+?)\\]\\](?:\\s*-\\s*(.+))?`));
 				if (singleRecoveryMatch) {
 					recoveryFile = singleRecoveryMatch[1];
 					recoveredAt = singleRecoveryMatch[2]?.trim();
+					recoveryFiles = [recoveryFile];
+					recoveredAts = [recoveredAt || ''];
+					recoveryLogs = [{ stageType: 'final', file: recoveryFile, time: recoveredAt || '' }];
 				}
 			}
 
 			if (description) {
-				entries.push({ sourceFile, createdAt, contents, description, tags, status, recoveryFiles, recoveredAts, recoveryFile, recoveredAt });
+				entries.push({ sourceFile, createdAt, contents, description, tags, status, recoveryLogs, recoveryFiles, recoveredAts, recoveryFile, recoveredAt });
 			}
 		}
 

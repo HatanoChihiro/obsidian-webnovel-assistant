@@ -1,5 +1,5 @@
-import type { App } from 'obsidian';
-import { PluginSettingTab, Setting, Notice } from 'obsidian';
+import type { App, TextAreaComponent } from 'obsidian';
+import { PluginSettingTab, Setting, Notice, TFile } from 'obsidian';
 import type { Plugin } from 'obsidian';
 import { isDesktop, getPlatformTier } from '../utils/platform';
 import { ObsOverlayServer } from '../services/ObsServer';
@@ -11,6 +11,8 @@ import { VALIDATION_RULES } from '../constants';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { t, setLocale, detectLocale, type Locale } from '../i18n';
 import { getDefaultFileName } from '../i18n/data-keys';
+import { FolderSuggestModal } from './FolderSuggestModal';
+import { FileSuggestModal } from './FileSuggestModal';
 
 /**
  * 插件设置面板
@@ -33,6 +35,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 
 	display(): void {
 		const { containerEl } = this;
+		const scrollTop = containerEl.scrollTop;
 		containerEl.empty();
 
 
@@ -86,6 +89,11 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		} else if (this.activeTab === 'obs') {
 			this.displayDataSettings(containerEl);
 		}
+
+		// 恢复滚动位置，避免由于 DOM 重绘导致的画面回跳
+		window.setTimeout(() => {
+			containerEl.scrollTo(0, scrollTop);
+		}, 0);
 	}
 
 	// ── 通用设置 ──
@@ -292,39 +300,70 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					}));
 		}
 
+		let workspaceTextComponent: TextAreaComponent | null = null;
+		let workspaceTempValue = (this.plugin.settings.workspaceFolders || []).join(', ');
+
+		const saveWorkspaceAction = async () => {
+			const oldFolders = this.plugin.settings.workspaceFolders || [];
+			const oldFirst = oldFolders.length > 0 ? oldFolders[0].replace(/^\/+|\/+$/g, '') : '';
+
+			// 记录在改变 workspaceFolders 之前的旧主页路径
+			const currentPath = this.plugin.homepageManager?.getHomepageFilePath();
+
+			const parsedFolders = workspaceTempValue.trim() ? workspaceTempValue.split(/[,，]+/).map(f => f.trim()).filter(Boolean) : [];
+
+			if (JSON.stringify(oldFolders) === JSON.stringify(parsedFolders)) {
+				return;
+			}
+
+			this.plugin.settings.workspaceFolders = parsedFolders;
+			const newFolders = this.plugin.settings.workspaceFolders;
+			const newFirst = newFolders.length > 0 ? newFolders[0].replace(/^\/+|\/+$/g, '') : '';
+
+			if (oldFirst !== newFirst) {
+				if (currentPath) {
+					const basename = currentPath.split('/').pop() || `${t('common.default-homepage-name')}.md`;
+					const expectedOldPath = oldFirst ? `${oldFirst}/${basename}` : basename;
+
+					// 如果当前主页在原工作区根目录下，自动跟随移动到新工作区
+					if (currentPath === expectedOldPath) {
+						const newPath = newFirst ? `${newFirst}/${basename}` : basename;
+						this.plugin.settings.homepagePath = newPath;
+						this.plugin.homepageManager?.renameHomepageFile(currentPath, newPath).catch(console.error);
+					}
+				}
+			}
+
+			await this.plugin.saveSettings();
+		};
+
 		new Setting(containerEl)
 			.setName(t('setting.workspace-folders'))
 			.setDesc(t('setting.workspace-folders-desc'))
-			.addTextArea(text => {
-				text.setPlaceholder(t('setting.workspace-folders-placeholder'))
-					.setValue((this.plugin.settings.workspaceFolders || []).join(', '))
-					.onChange(async (value) => {
-						const oldFolders = this.plugin.settings.workspaceFolders || [];
-						const oldFirst = oldFolders.length > 0 ? oldFolders[0].replace(/^\/+|\/+$/g, '') : '';
-
-						// 记录在改变 workspaceFolders 之前的旧主页路径
-						const currentPath = this.plugin.homepageManager?.getHomepageFilePath();
-
-						this.plugin.settings.workspaceFolders = value.trim() ? value.split(/[,，;\uFF1B\u3001\n\r]+/).map(f => f.trim()).filter(Boolean) : [];
-						const newFolders = this.plugin.settings.workspaceFolders;
-						const newFirst = newFolders.length > 0 ? newFolders[0].replace(/^\/+|\/+$/g, '') : '';
-
-						if (oldFirst !== newFirst) {
-							if (currentPath) {
-								const basename = currentPath.split('/').pop() || `${t('common.default-homepage-name')}.md`;
-								const expectedOldPath = oldFirst ? `${oldFirst}/${basename}` : basename;
-
-								// 如果当前主页在原工作区根目录下，自动跟随移动到新工作区
-								if (currentPath === expectedOldPath) {
-									const newPath = newFirst ? `${newFirst}/${basename}` : basename;
-									this.plugin.settings.homepagePath = newPath;
-									this.plugin.homepageManager?.renameHomepageFile(currentPath, newPath).catch(console.error);
-								}
-							}
+			.addExtraButton(btn => btn
+				.setIcon('folder')
+				.setTooltip(t('setting.select-folder-tooltip'))
+				.onClick(() => {
+					new FolderSuggestModal(this.app, (folder) => {
+						const currentArr = workspaceTempValue.trim() ? workspaceTempValue.split(/[,，]+/).map(f => f.trim()).filter(Boolean) : [];
+						if (!currentArr.includes(folder.path)) {
+							currentArr.push(folder.path);
+							workspaceTempValue = currentArr.join(', ');
+							workspaceTextComponent?.setValue(workspaceTempValue);
+							saveWorkspaceAction().catch(console.error);
 						}
+					}).open();
+				}))
+			.addTextArea(text => {
+				workspaceTextComponent = text;
+				text.setPlaceholder(t('setting.workspace-folders-placeholder'))
+					.setValue(workspaceTempValue);
 
-						await this.plugin.saveSettings();
-					});
+				text.onChange((value) => {
+					workspaceTempValue = value;
+				});
+
+				text.inputEl.addEventListener('change', () => { saveWorkspaceAction().catch(console.error); });
 				text.inputEl.addClass('webnovel-settings-input-full');
 			});
 
@@ -343,25 +382,56 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					this.display();
 				}));
 		if (this.plugin.settings.enableStrictChapterMode) {
+			let exceptionTextComponent: TextAreaComponent | null = null;
+			let exceptionTempValue = (this.plugin.settings.strictChapterExceptions || []).join(', ');
+
+			const saveExceptionAction = async () => {
+				const oldExceptions = this.plugin.settings.strictChapterExceptions || [];
+				const parsedExceptions = exceptionTempValue.trim() ? exceptionTempValue.split(/[,，]+/).map(f => f.trim()).filter(Boolean) : [];
+
+				if (JSON.stringify(oldExceptions) === JSON.stringify(parsedExceptions)) {
+					return;
+				}
+
+				this.plugin.settings.strictChapterExceptions = parsedExceptions;
+				await this.plugin.saveSettings();
+				this.plugin.updateWordCount();
+				if (this.plugin.settings.showExplorerCounts) {
+					void this.plugin.buildFolderCache();
+				}
+			};
+
 			new Setting(containerEl)
 				.setName(t('setting.exception-directories'))
 				.setDesc(t('setting.exception-directories-desc'))
+				.addExtraButton(btn => btn
+					.setIcon('folder')
+					.setTooltip(t('setting.select-folder-tooltip'))
+					.onClick(() => {
+						new FolderSuggestModal(this.app, (folder) => {
+							const currentArr = exceptionTempValue.trim() ? exceptionTempValue.split(/[,，]+/).map(f => f.trim()).filter(Boolean) : [];
+							if (!currentArr.includes(folder.path)) {
+								currentArr.push(folder.path);
+								exceptionTempValue = currentArr.join(', ');
+								exceptionTextComponent?.setValue(exceptionTempValue);
+								saveExceptionAction().catch(console.error);
+							}
+						}).open();
+					}))
 				.addTextArea(text => {
+					exceptionTextComponent = text;
 					text
 						.setPlaceholder(t('setting.exception-directories-placeholder'))
-						.setValue((this.plugin.settings.strictChapterExceptions || []).join(', '))
-						.onChange(async (value) => {
-							this.plugin.settings.strictChapterExceptions = value.trim() ? value.split(/[,，;\uFF1B\u3001\n\r]+/).map(f => f.trim()).filter(Boolean) : [];
-							await this.plugin.saveSettings();
-							this.plugin.updateWordCount();
-							if (this.plugin.settings.showExplorerCounts) {
-								void this.plugin.buildFolderCache();
-							}
-						});
+						.setValue(exceptionTempValue);
+
+					text.onChange((value) => {
+						exceptionTempValue = value;
+					});
+
+					text.inputEl.addEventListener('change', () => { saveExceptionAction().catch(console.error); });
 					text.inputEl.addClass('webnovel-settings-input-full');
 				});
 		}
-
 
 		new Setting(containerEl)
 			.setName(t('setting.chapter-template'))
@@ -375,18 +445,53 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				}));
 
 		if (this.plugin.settings.enableChapterTemplate) {
+			if (!Array.isArray(this.plugin.settings.chapterTemplatePaths)) {
+				this.plugin.settings.chapterTemplatePaths = [];
+			}
+			if (this.plugin.settings.chapterTemplatePath && !this.plugin.settings.chapterTemplatePaths.includes(this.plugin.settings.chapterTemplatePath)) {
+				this.plugin.settings.chapterTemplatePaths.push(this.plugin.settings.chapterTemplatePath);
+			}
+
+			const templatePaths = this.plugin.settings.chapterTemplatePaths;
+
 			new Setting(containerEl)
-				.setName(t('setting.chapter-template-path'))
-				.setDesc(t('setting.chapter-template-path-desc'))
-				.addText(text => {
-					text.setPlaceholder('templates/chapter.md')
-						.setValue(this.plugin.settings.chapterTemplatePath || '')
-						.onChange(async (value) => {
-							this.plugin.settings.chapterTemplatePath = value.trim();
-							await this.plugin.saveSettings();
-						});
-					text.inputEl.addClass('webnovel-settings-input-full');
+				.setName(t('setting.chapter-template-list'))
+				.setDesc(t('setting.chapter-template-list-desc'))
+				.addButton(btn => btn
+					.setButtonText(t('setting.btn-add-template-file'))
+					.setCta()
+					.onClick(() => {
+						new FileSuggestModal(this.app, (file) => {
+							if (!this.plugin.settings.chapterTemplatePaths.includes(file.path)) {
+								this.plugin.settings.chapterTemplatePaths.push(file.path);
+								this.plugin.settings.chapterTemplatePath = this.plugin.settings.chapterTemplatePaths[0] || '';
+								void this.plugin.saveSettings();
+								this.display();
+							}
+						}).open();
+					}));
+
+			if (templatePaths.length === 0) {
+				new Setting(containerEl)
+					.setDesc(t('setting.chapter-template-list-empty'));
+			} else {
+				templatePaths.forEach((path, index) => {
+					const file = this.app.vault.getAbstractFileByPath(path);
+					const displayName: string = (file instanceof TFile) ? file.basename : path;
+					new Setting(containerEl)
+						.setName(`${index + 1}. ${displayName}`)
+						.setDesc(path)
+						.addExtraButton(btn => btn
+							.setIcon('trash')
+							.setTooltip(t('setting.remove-template-file-tooltip'))
+							.onClick(async () => {
+								this.plugin.settings.chapterTemplatePaths.splice(index, 1);
+								this.plugin.settings.chapterTemplatePath = this.plugin.settings.chapterTemplatePaths[0] || '';
+								await this.plugin.saveSettings();
+								this.display();
+							}));
 				});
+			}
 		}
 
 		new Setting(containerEl)
@@ -1326,6 +1431,17 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					const url = `http://127.0.0.1:${this.plugin.settings.obs.obsPort}/`;
 					void navigator.clipboard.writeText(url);
 					new Notice(t('notice.obs-url-copied', { url }));
+				}));
+
+		// 调试模式
+		new Setting(containerEl)
+			.setName(t('setting.debug-mode'))
+			.setDesc(t('setting.debug-mode-desc'))
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.debugMode ?? false)
+				.onChange(async (value) => {
+					this.plugin.settings.debugMode = value;
+					await this.plugin.saveSettings();
 				}));
 	}
 }

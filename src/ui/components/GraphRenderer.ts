@@ -53,6 +53,7 @@ export interface GraphRenderState {
 	edgeOffsetMap: Map<GraphEdge, number>;
 	combinedLabelMap: Map<GraphEdge, string>;
 	graphData: GraphData;
+	filterMatchNodeIds?: ReadonlySet<string>;
 }
 
 export class GraphRenderer {
@@ -295,6 +296,9 @@ export class GraphRenderer {
 				isDimmed = !isHighlighted;
 			} else if (state.hoveredNode) {
 				isHighlighted = edge.source === state.hoveredNode.id || edge.target === state.hoveredNode.id;
+				isDimmed = !isHighlighted;
+			} else if (state.filterMatchNodeIds) {
+				isHighlighted = state.filterMatchNodeIds.has(edge.source) && state.filterMatchNodeIds.has(edge.target);
 				isDimmed = !isHighlighted;
 			}
 
@@ -545,6 +549,7 @@ export class GraphRenderer {
 		for (const node of state.graphData.nodes) {
 			const isSelected = state.selectedNode?.id === node.id;
 			const isHovered = state.hoveredNode?.id === node.id;
+			const isFilterMatch = state.filterMatchNodeIds?.has(node.id) ?? false;
 			const radius = isSelected || isHovered ? GraphRenderer.NODE_HIGHLIGHT_RADIUS : GraphRenderer.NODE_RADIUS;
 
 			// 当有选中节点时，非关联节点大幅度淡出，模仿官方高对比度渐隐
@@ -571,6 +576,9 @@ export class GraphRenderer {
 
 				nodeAlpha = isNeighbor ? (allEdgesOverlapped ? 0.35 : 1.0) : 0.3;
 				isDimmed = !isNeighbor || allEdgesOverlapped;
+			} else if (state.filterMatchNodeIds && !isFilterMatch) {
+				nodeAlpha = 0.15;
+				isDimmed = true;
 			}
 
 			ctx.save();
@@ -590,14 +598,24 @@ export class GraphRenderer {
 
 			if (isDimmed) {
 				baseColor = colors.textMuted;
-				overlayColor = null;
+				overlayColor = null; // 淡化节点时清除类型叠加色，彻底降低视觉权重
+			} else if (isFilterMatch) {
+				// 搜索命中时：对有类型颜色的节点保留 overlayColor（不清空），
+				// 仅对无 nodeType 的普通节点才使用 graphNodeFocused 以强调命中状态。
+				// 这样搜索高亮不会覆盖图谱本身渲染的类型颜色。
+				if (!node.nodeType) {
+					baseColor = colors.graphNodeFocused;
+				}
+				// overlayColor 已在上方 node.nodeType 分支中设置，此处保留不变
 			} else if (!node.nodeType && (isSelected || isHovered)) {
 				baseColor = colors.graphNodeFocused;
 			}
 
-			// 悬停高亮时：降低主题底色的透明度，以便让叠加层透出来（提升类型颜色）
+			// 当有叠加类型颜色时，降低底色透明度以便类型颜色透出：
+			// - hover/selected 已有此逻辑；
+			// - isFilterMatch 也需要同等处理，避免底色遮挡类型叠加色
 			let currentBaseAlpha = nodeAlpha;
-			if (overlayColor && !isDimmed && (isSelected || isHovered)) {
+			if (overlayColor && !isDimmed && (isSelected || isHovered || isFilterMatch)) {
 				currentBaseAlpha = 0.3;
 			}
 
@@ -618,8 +636,8 @@ export class GraphRenderer {
 			
 			// 叠加动态类型颜色
 			if (overlayColor && !isDimmed) {
-				// 叠加层透明度：选中/悬停时为 0.8，否则为 0.5
-				ctx.globalAlpha = nodeAlpha * ((isSelected || isHovered) ? 0.8 : 0.5); 
+				// 叠加层透明度：选中/悬停/搜索命中时为 0.8（高亮），普通状态为 0.5（半透明）
+				ctx.globalAlpha = nodeAlpha * ((isSelected || isHovered || isFilterMatch) ? 0.8 : 0.5); 
 				ctx.fillStyle = overlayColor; 
 				ctx.shadowBlur = 0;
 				ctx.fill();

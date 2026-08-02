@@ -86,7 +86,7 @@ export interface ViewContext {
 	toggleForeshadowingView(): Promise<void>;
 	toggleTimelineView(): Promise<void>;
 	toggleFloatingNotesVisibility(): Promise<void>;
-	refreshStatusViews(): void;
+	refreshStatusViews(includeChart?: boolean): void;
 }
 
 /** 样式管理相关 */
@@ -166,11 +166,10 @@ export interface WebNovelAssistantPlugin extends
 	fileEventManager: FileEventManager;
 	statisticsManager: StatisticsManager;
 
-	// 以下属性在 onload 中初始化，可能为 undefined
-	foreshadowingManager?: ForeshadowingManager;
-	taskManager?: TaskManager;
-	timelineManager?: TimelineManager;
-	relationGraphManager?: RelationGraphManager;
+	foreshadowingManager: ForeshadowingManager;
+	taskManager: TaskManager;
+	timelineManager: TimelineManager;
+	relationGraphManager: RelationGraphManager;
 	editorTracker?: EditorTracker;
 	styleManager?: StyleManager;
 	homepageManager?: HomepageManager;
@@ -194,7 +193,8 @@ export interface WebNovelAssistantPlugin extends
 	/** 检查文件是否符合字数统计的条件（工作区 + 排除合并文件 + 严格章节模式） */
 	isEligibleForWordCount(file: TFile): boolean;
 	updateWordCount(): void;
-	getTrackedMarkdownFiles(): TFile[];
+	getTrackedMarkdownFiles(includeLore?: boolean): TFile[];
+	getVaultMarkdownFiles(): TFile[];
 		/** 检查文件名是否为插件生成的元数据文件 */
 		isPluginGeneratedFile(basename: string): boolean;
 		/** 重命名工作区内所有功能性文档/文件夹（支持多语言候选名） */

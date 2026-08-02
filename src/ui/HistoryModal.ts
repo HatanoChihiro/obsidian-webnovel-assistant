@@ -2,11 +2,10 @@ import type { App } from 'obsidian';
 import { Modal, Setting } from 'obsidian';
 import type { DailyStat } from '../types/settings';
 import type { NovelFolderInfo } from '../types/homepage';
-import { TaskManager } from '../services/TaskManager';
 import { formatCount } from '../utils/format';
 import { t } from '../i18n';
 
-// 热力图等�?�?CSS 类名
+// 热力图等级 CSS 类名
 export const HEAT_LEVELS = [
 	{ min: 0, cls: 'heat-0' },
 	{ min: 1, cls: 'heat-1' },
@@ -117,8 +116,8 @@ export async function calcTaskCompletion(app: App, plugin: WebNovelAssistantPlug
 	folderPaths.add('');
 
 	for (const folderPath of folderPaths) {
-		const manager = TaskManager.create(app, plugin, folderPath);
-		const entries = await manager.loadEntries();
+		plugin.taskManager.currentFolder = folderPath;
+		const entries = await plugin.taskManager.loadEntries();
 		if (entries) {
 			total += entries.length;
 			completed += entries.filter(e => e.status === 'completed').length;
@@ -177,7 +176,7 @@ export class HistoryStatsModal extends Modal {
 		this.efficiencyContainer = contentEl.createDiv({ cls: 'stats-efficiency-row' });
 		this.renderEfficiency();
 
-		// === 热力�?===
+		// === 热力图 ===
 		const heatHeading = new Setting(contentEl).setName(t('modal.heatmap')).setHeading();
 		heatHeading.settingEl.addClass('stats-subheading');
 		this.heatHeadingEl = heatHeading.settingEl;
@@ -371,7 +370,7 @@ this.scrollWrapper = contentEl.createDiv({ cls: 'stats-chart-scroll-wrapper' });
 
 		const totalWeeks = Math.ceil(alignedEnd.diff(alignedStart, 'days') / 7) + 1;
 
-		// 图例放右上角 �?先清除旧�?
+			// 图例放右上角，先清除旧的
 		const existingLegend = this.heatHeadingEl.querySelector(".stats-heatmap-legend-inline");
 		if (existingLegend) existingLegend.remove();
 		const legendRow = this.heatHeadingEl.createDiv({ cls: 'stats-heatmap-legend-inline' });
@@ -391,7 +390,7 @@ HEAT_LEVELS.forEach(level => {
 			}
 		});
 
-		// 月份标注�?
+			// 月份标注区
 		const monthRow = this.heatContainer.createDiv({ cls: 'stats-heatmap-months' });
 		const totalMonths = rangeEnd.diff(rangeStart, 'months') + 1;
 		for (let m = 0; m < totalMonths; m++) {
@@ -555,7 +554,7 @@ points.push({ x, y: yShift, val });
 // Clamp: trend line must not go below bar baseline
 baseline = Math.round(baseline);
 points.forEach(p => { p.y = Math.min(p.y, baseline); });
-	// If all points clamped to baseline, trend line has no useful shape �?skip overlay
+			// If all points clamped to baseline, trend line has no useful shape - skip overlay
 	const allClamped = points.every(p => p.y >= baseline - 2);
 	if (allClamped) return;
 
@@ -684,7 +683,7 @@ const vTension = 0.2;
 	aggregateData() {
 		const result: Record<string, { words: number, focusMs: number, slackMs: number }> = {};
 
-		// 只聚�?history 中实际存在的数据，不填充空时间段
+		// 只聚合 history 中实际存在的数据，不填充空时间段
 		for (const [date, stat] of Object.entries(this.history)) {
 			const m = window.moment(date);
 			let key = date;
@@ -705,7 +704,7 @@ const vTension = 0.2;
 			result[key].slackMs += (stat.slackMs || 0);
 		}
 
-		// 仅对日级别标签页补充缺失日期（确保近7�?�?0日完整）
+		// 仅对日级别标签页补充缺失日期（确保近 30 日完整）
 		const now = window.moment();
 		if (this.currentTab === 'day') {
 			const start = now.clone().subtract(29, 'days');

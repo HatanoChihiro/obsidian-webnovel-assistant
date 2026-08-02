@@ -1,5 +1,5 @@
-import type { App, TAbstractFile} from 'obsidian';
-import { Modal, Setting, TFolder, TFile, MarkdownView, prepareSimpleSearch } from 'obsidian';
+import type { App, TAbstractFile } from 'obsidian';
+import { Modal, Setting, TFolder, TFile, Vault, MarkdownView, prepareSimpleSearch } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ChapterSorter } from '../services/ChapterSorter';
 import { t } from '../i18n';
@@ -259,7 +259,24 @@ export class AdvancedSearchModal extends Modal {
 	}
 
 	private getCurrentBookPath(): string | null {
-		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+		let activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+		
+		if (!activeView) {
+			const mdLeaves = this.app.workspace.getLeavesOfType('markdown');
+			if (mdLeaves.length > 0) {
+				const activeFile = this.app.workspace.getActiveFile();
+				if (activeFile) {
+					activeView = mdLeaves.find(l => (l.view as MarkdownView).file?.path === activeFile.path)?.view as MarkdownView;
+				}
+				if (!activeView && this.plugin.lastFilePath) {
+					activeView = mdLeaves.find(l => (l.view as MarkdownView).file?.path === this.plugin.lastFilePath)?.view as MarkdownView;
+				}
+				if (!activeView) {
+					activeView = (mdLeaves.find(l => (l.view as MarkdownView).file) || mdLeaves[0]).view as MarkdownView;
+				}
+			}
+		}
+
 		if (!activeView || !activeView.file) return null;
 		
 		const root = findBookRoot(this.app, this.plugin, activeView.file);
@@ -282,15 +299,26 @@ export class AdvancedSearchModal extends Modal {
 		this.resultsContainer.createDiv({ text: t('modal.searching'), cls: 'advanced-search-loading' });
 
 		// 1. 获取目标文件列表
-		const allMarkdownFiles = this.app.vault.getMarkdownFiles();
+		const allMarkdownFiles = this.plugin.getVaultMarkdownFiles();
 		let targetFiles: TFile[] = [];
 
 		if (this.searchScope === 'global') {
 			targetFiles = allMarkdownFiles;
 		} else if (this.searchScope === 'current') {
 			const bookPath = this.getCurrentBookPath();
-			if (bookPath) {
-				targetFiles = allMarkdownFiles.filter(f => f.path.startsWith(bookPath + '/'));
+			if (bookPath && bookPath !== '/') {
+				const bookFolder = this.app.vault.getAbstractFileByPath(bookPath);
+				if (bookFolder instanceof TFolder) {
+					const list: TFile[] = [];
+					Vault.recurseChildren(bookFolder, (child: TAbstractFile) => {
+						if (child instanceof TFile && child.extension === 'md') {
+							list.push(child);
+						}
+					});
+					targetFiles = list;
+				} else {
+					targetFiles = allMarkdownFiles.filter(f => f.path.startsWith(bookPath + '/'));
+				}
 			} else {
 				targetFiles = this.plugin.getTrackedMarkdownFiles(); // fallback
 			}

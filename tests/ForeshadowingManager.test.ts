@@ -221,6 +221,26 @@ describe('ForeshadowingManager', () => {
             expect(formatted).toContain('## Found the sword');
             expect(formatted).toContain('**状态**：已回收');
         });
+
+        it('should format partially recovered entries with stage logs correctly', () => {
+            const manager = new ForeshadowingManager(mockApp, mockPlugin);
+            
+            const formatted = manager.formatEntry({
+                status: ForeshadowingStatus.PartiallyRecovered,
+                description: 'Jade pendant secret',
+                content: 'Found half jade pendant',
+                sourceFile: 'Chapter 1',
+                tags: ['Clue'],
+                createdAt: '2023-01-01 12:00',
+                recoveryLogs: [
+                    { stageType: 'stage', file: 'Chapter 15', time: '2023-01-02 14:00', note: 'Appraised at auction' }
+                ]
+            });
+            
+            expect(formatted).toContain('## Jade pendant secret');
+            expect(formatted).toContain('**状态**：阶段回收中');
+            expect(formatted).toContain('- [阶段] [[Chapter 15]] - 2023-01-02 14:00：Appraised at auction');
+        });
     });
 
     describe('findEntryByDescription', () => {
@@ -243,6 +263,77 @@ describe('ForeshadowingManager', () => {
             
             const match = manager['findEntryByDescription'](content, 'Missing entry');
             expect(match.found).toBe(false);
+        });
+    });
+
+    describe('Staged Recovery Parsing & Management', () => {
+        it('parseEntries should correctly parse staged recovery entries', () => {
+            const manager = new ForeshadowingManager(mockApp, mockPlugin);
+            const markdown = `
+## Secret Map
+> [[Chapter 1]] - 2023-01-01 10:00
+> Found map fragment
+
+**标签**：#Clue
+**状态**：阶段回收中
+
+**回收记录**：
+- [阶段] [[Chapter 10]] - 2023-01-02 14:00：Found second piece
+- [终结] [[Chapter 20]] - 2023-01-03 16:00：Combined whole map
+---
+`;
+            const entries = manager.parseEntries(markdown);
+            expect(entries).toHaveLength(1);
+            expect(entries[0].status).toBe(ForeshadowingStatus.PartiallyRecovered);
+            expect(entries[0].recoveryLogs).toBeDefined();
+            expect(entries[0].recoveryLogs).toHaveLength(2);
+            expect(entries[0].recoveryLogs![0]).toEqual({
+                stageType: 'stage',
+                file: 'Chapter 10',
+                time: '2023-01-02 14:00',
+                note: 'Found second piece'
+            });
+            expect(entries[0].recoveryLogs![1]).toEqual({
+                stageType: 'final',
+                file: 'Chapter 20',
+                time: '2023-01-03 16:00',
+                note: 'Combined whole map'
+            });
+        });
+
+        it('addForeshadowing should preserve PartiallyRecovered status and recoveryLogs when merging a new quote', async () => {
+            const manager = new ForeshadowingManager(mockApp, mockPlugin);
+            vi.mocked(pathUtils.findBookRoot).mockReturnValue('Book 1');
+
+            const existingContent = `
+## Secret Map
+> [[Chapter 1]] - 2023-01-01 10:00
+> Found map fragment
+
+**标签**：#Clue
+**状态**：阶段回收中
+
+**回收记录**：
+- [阶段] [[Chapter 10]] - 2023-01-02 14:00：Found second piece
+---
+`;
+
+            const targetFile = new TFile();
+            mockApp.vault.getAbstractFileByPath.mockReturnValue(targetFile);
+            mockApp.vault.process.mockImplementation((file: any, cb: (content: string) => string) => {
+                const updated = cb(existingContent);
+                expect(updated).toContain('**状态**：阶段回收中');
+                expect(updated).toContain('- [阶段] [[Chapter 10]] - 2023-01-02 14:00：Found second piece');
+                expect(updated).toContain('> [[Chapter 2]]');
+                expect(updated).toContain('> Found third piece');
+                return Promise.resolve(updated);
+            });
+
+            const sourceFile = new TFile();
+            sourceFile.basename = 'Chapter 2';
+
+            const result = await manager.addForeshadowing(sourceFile, 'Found third piece', 'Secret Map', ['Clue']);
+            expect(result.merged).toBe(true);
         });
     });
 });

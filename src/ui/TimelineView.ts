@@ -1,7 +1,6 @@
 import type { WorkspaceLeaf, TFile } from 'obsidian';
 import { Notice } from 'obsidian';
-import type { TimelineEntry } from '../services/TimelineManager';
-import { TimelineManager } from '../services/TimelineManager';
+import type { TimelineEntry, TimelineManager } from '../services/TimelineManager';
 import { CreativeView } from './CreativeView';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { rafThrottle } from '../utils/dom';
@@ -9,7 +8,7 @@ import { t } from '../i18n';
 import { getDefaultFileName } from '../i18n/data-keys';
 import { ChapterSorter } from '../services/ChapterSorter';
 import { TimelineAddModal } from './TimelineAddModal';
-import { openFileAndFocus } from '../utils/leaf';
+import { smartLocateAndHighlight } from '../utils/leaf';
 
 
 export const TIMELINE_VIEW_TYPE = 'wn-timeline-view';
@@ -27,7 +26,7 @@ export class TimelineView extends CreativeView {
 
 	constructor(leaf: WorkspaceLeaf, plugin: WebNovelAssistantPlugin) {
 		super(leaf, plugin);
-		this.manager = new TimelineManager(this.app, this.plugin);
+		this.manager = this.plugin.timelineManager;
 	}
 
 	getViewType() { return TIMELINE_VIEW_TYPE; }
@@ -67,35 +66,7 @@ export class TimelineView extends CreativeView {
 	 * 使用智能文本匹配进行精准跳转
 	 */
 	private async openFileWithSmartLocate(file: TFile, searchText: string) {
-		const leaf = this.app.workspace.getLeaf(false);
-
-		if (!searchText) {
-			await openFileAndFocus(this.app, leaf, file);
-			return;
-		}
-
-		const content = await this.app.vault.cachedRead(file);
-		let targetLine = 0;
-
-		const cleanSearch = searchText.trim();
-		if (cleanSearch) {
-			// 将搜索文本中的所有空白字符转换为匹配任意空白字符的正则，这样忽略了换行符
-			const escapedSearch = cleanSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-			const searchPattern = escapedSearch.replace(/\s+/g, '\\s+');
-
-			let match = content.match(new RegExp(searchPattern));
-			if (!match && cleanSearch.length > 20) {
-				// 降级匹配
-				const shortSearch = cleanSearch.substring(0, 20).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
-				match = content.match(new RegExp(shortSearch));
-			}
-
-			if (match && match.index !== undefined) {
-				targetLine = content.substring(0, match.index).split('\n').length - 1;
-			}
-		}
-
-		await openFileAndFocus(this.app, leaf, file, { eState: { line: targetLine } });
+		await smartLocateAndHighlight(this.app, file, [searchText]);
 	}
 
 	private getTypeFilterOptions(entries: TimelineEntry[]): string[] {

@@ -92,6 +92,12 @@ Welcome to WebNovel Assistant! An Obsidian plugin designed specifically for web 
 2. Fill in the work name, description, genre, and total word count goal in the dialog
 3. Click "Create" to automatically generate the work folder and work info file
 
+#### Importing an Existing Work
+1. Click the "Import Novel" button in the work section on the Creative Homepage, or right-click any novel folder in the file tree and select "Import Novel".
+2. Select a single long-form `.txt` or `.md` novel file from the file picker dialog.
+3. The plugin will automatically scan, split, and batch-generate chapter Markdown documents based on your configured **Custom Chapter Naming Rules**.
+4. > 💡 **Tip**: If your original manuscript is in Word format (`.docx` / `.doc`), we recommend converting it to `.md` using Pandoc or Word prior to importing to preserve rich formatting.
+
 #### Custom Homepage Greeting
 1. Open plugin settings
 2. Find **Homepage Greeting**
@@ -102,23 +108,28 @@ Welcome to WebNovel Assistant! An Obsidian plugin designed specifically for web 
 ### Writing Workbench
 
 #### Overview
-The Writing Workbench is a comprehensive writing management center upgraded from the original "Chapter Overview", integrating 5 main tab panels:
+The Writing Workbench is a comprehensive writing management center upgraded from the original "Chapter Overview", integrating 6 main tab panels:
 
 1. **All Chapters Panel**:
    - Quickly create chapters, modify chapter names and summaries.
    - Supports **manual drag-and-drop reordering** (automatically renames subsequent numbered chapter files).
    - Badges at the bottom display **Lore** and **Foreshadowing** appearing in the current chapter; click to preview.
-   - **Supports Chapter Templates**: Enable in settings to automatically apply template content to new chapters.
+   - **Supports Multi-Template Selection**: Configure multiple template files in settings to select on demand when creating chapters.
 2. **Timeline Panel**:
    - Displays novel events in a vertical timeline flow; supports dragging chapters to timeline nodes and dragging event cards to reorder.
    - Features a bottom floating window for unlinked chapters and highlighted association lines.
 3. **Lore Panel**:
    - Supports switching between **Table View**, **Card View**, and **Full Lore Graph View**.
    - Automatically tracks appearance counts and chapters; supports double-clicking graph nodes to jump directly to the Markdown document.
-4. **Task Board Panel**:
+4. **Foreshadowing Board Panel**:
+   - Dedicated management view for all plot threads and foreshadowing entries.
+   - Categorized into 3 collapsible sections: `Pending` (including Unresolved and Progressive Stage entries), `Resolved`, and `Deprecated`.
+   - Top search input bar for real-time filtering by title, description, or tags.
+   - Clicking a foreshadowing card triggers precise jump-and-highlight positioning in the target note.
+5. **Task Board Panel**:
    - Consolidates timed writing tasks into a grid card view directly inside the workbench.
    - Provides a voluntary **Abandon Task** button with a confirmation modal for incomplete tasks, setting status to `abandoned` while preserving word count records.
-5. **Notes Management Panel**:
+6. **Notes Management Panel**:
    - Centralizes management for all floating and immersive sticky notes. Create, edit, switch themes, or delete notes with real-time bi-directional sync.
 
 #### How to Use
@@ -569,10 +580,12 @@ This way `番外1` → number 1, `番外2` → number 2, and they are automatica
 ### Foreshadowing Management
 
 #### Overview
-- **Mark Foreshadowing**: Flag plot threads that need to be resolved
-- **Multi-Chapter Resolution**: A single foreshadowing can be resolved across multiple chapters
-- **Tag Categories**: Organize foreshadowing with tags
-- **Timestamps**: Records creation and resolution times
+- **Mark Foreshadowing**: Flag plot threads that need to be resolved.
+- **Multi-Stage Resolution**: Track foreshadowing through progressive stages (`[Stage]`) until final resolution (`[Resolved]`), matching the organic flow of long-form storytelling.
+- **Multi-Chapter Links**: Associate a single foreshadowing entry with multiple chapters during progressive stages or final resolution.
+- **Workbench Foreshadowing Board**: Dedicated board view inside Writing Workbench categorized into `Pending` (Unresolved & Stage), `Resolved`, and `Deprecated` sections with collapsible groups.
+- **Tag Categories**: Organize and filter foreshadowing with tags.
+- **Smart Jump & Highlight**: Click any foreshadowing card to automatically open the note and flash-highlight the target line.
 
 #### How to Use
 
@@ -583,24 +596,27 @@ This way `番外1` → number 1, `番外2` → number 2, and they are automatica
 4. Enter the foreshadowing description and tags
 5. Click save
 
-##### Viewing Foreshadowing
-1. Click the left Ribbon icon (bookmark icon)
-2. Or command palette → `Toggle Foreshadowing Panel`
-3. The panel displays all foreshadowing entries
-4. Filter by **status** (All/Unresolved/Resolved/Abandoned) and **tags**
+##### Viewing & Managing Foreshadowing
+- **Method 1: Workbench Foreshadowing Board (Recommended)**
+  1. Open Writing Workbench and switch to the **Foreshadowing Board** tab.
+  2. View entries grouped under `Pending` (Unresolved + Progressive Stage), `Resolved`, and `Deprecated`.
+  3. Filter entries in real-time using the top keyword search input.
+- **Method 2: Sidebar Foreshadowing Panel**
+  1. Click the left Ribbon icon (bookmark icon) or command palette → `Toggle Foreshadowing Panel`.
+  2. Filter by status and tags.
 
-##### Resolving Foreshadowing
-**Method 1: In the Foreshadowing Panel**
-1. Find the foreshadowing entry to resolve
-2. Click **Mark as Resolved**
-3. Select the resolution chapter(s) (multiple selection supported)
-4. Click confirm
-
-**Method 2: In the Foreshadowing File**
-1. Open the foreshadowing file (default name: `Foreshadowing.md`)
-2. Place the cursor on the foreshadowing entry
-3. Command palette → `Mark Foreshadowing as Resolved`
-4. Select the resolution chapter
+##### Resolving & Advancing Foreshadowing
+- **Progressive Stage Resolution**:
+  1. Click **Stage Resolution** on a foreshadowing card or panel entry.
+  2. Enter progressive notes and select associated chapters (e.g., "Chapter 15: Revealed part of hero's past"). The entry remains in `Pending` with appended stage logs.
+- **Final Resolution**:
+  1. Click **Final Resolution**.
+  2. Select the final resolution chapter(s) and submit. Status updates to `Resolved`.
+- **In the Foreshadowing File**:
+  1. Open the foreshadowing file (default: `Foreshadowing.md`).
+  2. Place the cursor on the entry.
+  3. Command palette → `Mark Foreshadowing as Resolved`.
+  4. Select the resolution chapter.
 
 #### Related Settings
 - **Foreshadowing File Name**: Default `Foreshadowing`, customizable
@@ -809,7 +825,7 @@ Supporting character, a loyal companion.
 #### How to Use
 
 ##### Open Chapter Overview
-1. Open the command palette (Ctrl/Cmd + P) and type `Toggle Chapter Overview Panel`
+1. Open the command palette (Ctrl/Cmd + P) and type `Open Chapter Overview`
 2. Or assign "Chapter Overview" to a slot on the right side in immersive mode
 
 ##### Editing Chapter Summaries
@@ -887,24 +903,24 @@ Supporting character, a loyal companion.
 
 ## Mobile Features
 
-### Copy This Document
+### Copy Document Pure Text
 
 #### Overview
-- **Cross-Platform Support**: One-click copy of all content in the current document.
-- **Auto Formatting**: When copying, `# Document Title` and a blank line are automatically added at the top, making it easy to paste directly to social media, blogs, or novel publishing platforms.
-- **Solves Mobile Limitations**: Obsidian mobile's Select All feature has a bug that only selects text within the visible viewport. This feature copies the entire long document.
+- **Extract Pure Text**: One-click extraction of all text content from the current document, automatically stripping out all Markdown formatting (headings, bold, italics, code blocks, links, images) and HTML tags.
+- **Auto Formatting**: When copying, the document title and a blank line are automatically added at the top, making it ready to paste directly to web novel platforms, blogs, or social media.
+- **Solves Mobile Limitations**: Overcomes Obsidian mobile's native selection bug where "Select All" fails on long documents beyond the visible viewport.
 - **Quick Access**: Available via the command palette, file explorer context menu, and editor context menu.
 
 #### How to Use
 
 ##### Method 1: Command Palette
 1. Open the command palette (Ctrl/Cmd + P)
-2. Type `Copy This Document`
+2. Type `Copy Document Pure Text`
 3. After execution, a notification appears: `Document content copied`
 
 ##### Method 2: Context Menu
-1. Right-click a file in the file explorer, or right-click inside the editor.
-2. Select **Copy This Document**.
+1. Right-click inside the editor or on a file in the file explorer.
+2. Select **Copy Document Pure Text**.
 
 ##### Use Cases
 - Need to quickly share an entire article to social media or a publishing platform.
@@ -1042,7 +1058,7 @@ The plugin provides multiple commands that can be assigned custom keyboard short
 
 ##### Foreshadowing Management
 - **Mark as Foreshadowing**: Mark selected text as foreshadowing
-- **Mark Foreshadowing as Recovered**: Mark the foreshadowing at the current cursor position as recovered
+- **Mark Foreshadowing as Resolved**: Mark the foreshadowing at the current cursor position as resolved
 
 ##### Time Tracking
 - **Start/Pause Focus Time Tracking**: Start or pause time tracking
@@ -1055,7 +1071,7 @@ The plugin provides multiple commands that can be assigned custom keyboard short
 - **Advanced Search (Filter by Book/Global/Multi-Directory)**: Cross-scope content search
 
 ##### Chapter Overview
-- **Toggle Chapter Overview Panel**: Card-style chapter outline display
+- **Open Chapter Overview**: Card-style chapter outline display
 
 ##### Chapter Management
 - **Create Next Chapter (Smart Increment)**: Automatically create the next chapter file based on the current chapter number

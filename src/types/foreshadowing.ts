@@ -4,9 +4,24 @@
 
 /** 伏笔状态枚举（内部 key 为英文，显示文本通过 i18n 获取） */
 export enum ForeshadowingStatus {
-	Pending    = "pending",
-	Recovered  = "recovered",
-	Deprecated = "deprecated"
+	Pending            = "pending",
+	PartiallyRecovered = "partially_recovered",
+	Recovered          = "recovered",
+	Deprecated         = "deprecated"
+}
+
+/** 伏笔回收/推进单条日志 */
+export interface ForeshadowingRecoveryLog {
+	/** 类型：stage (阶段回收) 或 final (彻底回收) */
+	stageType: 'stage' | 'final';
+	/** 回收/推进发生的章节文件名 */
+	file: string;
+	/** 发生时间，格式 YYYY-MM-DD HH:mm */
+	time: string;
+	/** 阶段推进或终结说明（可选） */
+	note?: string;
+	/** 关联回收原文摘录（可选） */
+	quote?: string;
 }
 
 /** 伏笔数据解析结构（供视图展示） */
@@ -30,9 +45,11 @@ export interface ParsedForeshadowingEntry {
 	tags: string[];
 	/** 状态 */
 	status: ForeshadowingStatus;
-	/** 回收章节文件名列表 */
+	/** 新版多阶段回收日志列表 */
+	recoveryLogs?: ForeshadowingRecoveryLog[];
+	/** 回收章节文件名列表（向后兼容） */
 	recoveryFiles?: string[];
-	/** 回收时间列表 */
+	/** 回收时间列表（向后兼容） */
 	recoveredAts?: string[];
 	/** 旧版单个回收章节（向后兼容） */
 	recoveryFile?: string;
@@ -56,9 +73,11 @@ export interface ForeshadowingEntry {
 	status: ForeshadowingStatus;
 	/** 创建时间，格式 YYYY-MM-DD HH:mm */
 	createdAt: string;
-	/** 回收章节文件名列表（多章节回收） */
+	/** 新版多阶段回收日志列表 */
+	recoveryLogs?: ForeshadowingRecoveryLog[];
+	/** 回收章节文件名列表（多章节回收，向后兼容） */
 	recoveryFiles?: string[];
-	/** 回收时间列表（与 recoveryFiles 对应） */
+	/** 回收时间列表（与 recoveryFiles 对应，向后兼容） */
 	recoveredAts?: string[];
 	/** 旧版单个回收章节（向后兼容） */
 	recoveryFile?: string;
