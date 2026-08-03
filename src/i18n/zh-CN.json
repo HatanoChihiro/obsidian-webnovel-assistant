@@ -758,6 +758,7 @@
 	"lore.tab-table": "表格",
 	"lore.tab-card": "卡片",
 	"lore.tab-graph": "图谱",
+	"lore.tab-all": "全部",
 	"lore.file-count": "(共 {count} 条)",
 	"character.cross-file-sort-not-supported": "跨文件排序设定暂不支持",
 	"relation.character-not-found": "未找到角色 {id} 的设定文件",
@@ -798,4 +799,3 @@
 	"import-novel.untitled-chapter": "未命名章节 {index}",
 	"import-novel.remove-chapter": "剔除此非章节"
 }
-

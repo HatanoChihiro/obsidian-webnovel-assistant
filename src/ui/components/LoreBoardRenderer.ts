@@ -1,6 +1,6 @@
 import { Notice, TFile, TFolder, setIcon, Component, type App } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../../types/plugin';
-import { t } from '../../i18n';
+import { t, getLocale } from '../../i18n';
 import type { GraphEdge } from '../../services/RelationGraphManager';
 import { ForceLayoutEngine } from '../../services/ForceLayoutEngine';
 import type { LoreEntry } from '../../services/CharacterManager';
@@ -100,10 +100,48 @@ export class LoreBoardRenderer {
             fileGroups.get(path)!.entries.push(entry);
         }
 
+        // 设定文件 tab 排序：拉丁字母开头的文件优先于汉字开头，组内按当前语言字母序（中文按拼音）与数字自然升序排列
+        const locale = getLocale() === 'zh-CN' ? 'zh' : 'en';
+        const collator = new Intl.Collator(locale, { numeric: true, sensitivity: 'base' });
+        const isLatinStart = (name: string): boolean => /^[A-Za-z]/.test(name);
+        const groups = Array.from(fileGroups.entries()).sort((a, b) => {
+            const nameA = a[1].fileBasename;
+            const nameB = b[1].fileBasename;
+            const latinA = isLatinStart(nameA) ? 1 : 0;
+            const latinB = isLatinStart(nameB) ? 1 : 0;
+            if (latinA !== latinB) return latinB - latinA;
+            return collator.compare(nameA, nameB);
+        });
+
         const boardLayout = container.createDiv('wn-lore-board-layout');
 
-        for (const [path, group] of fileGroups) {
-            const header = boardLayout.createDiv('wn-corkboard-volume-header wn-clickable');
+        // --- 文件选项卡栏（“全部” + 各设定文件，带条数徽标） ---
+        const tabBar = boardLayout.createDiv('wn-lore-file-tabs');
+        let activePath = plugin.settings.loreBoardActiveFile || '';
+        if (!groups.some(([path]) => path === activePath)) activePath = '';
+
+        const tabEls: { path: string; el: HTMLElement }[] = [];
+
+        const allTab = tabBar.createDiv(`wn-lore-file-tab ${activePath === '' ? 'is-active' : ''}`);
+        allTab.createSpan({ cls: 'wn-lore-file-tab-label', text: t('lore.tab-all') });
+        allTab.createSpan({ cls: 'wn-lore-file-tab-count', text: String(allEntries.length) });
+        allTab.title = t('lore.tab-all');
+        tabEls.push({ path: '', el: allTab });
+
+        for (const [path, group] of groups) {
+            const tab = tabBar.createDiv(`wn-lore-file-tab ${activePath === path ? 'is-active' : ''}`);
+            tab.createSpan({ cls: 'wn-lore-file-tab-label', text: group.fileBasename });
+            tab.createSpan({ cls: 'wn-lore-file-tab-count', text: String(group.entries.length) });
+            tab.title = `${group.fileBasename} (${group.entries.length})`;
+            tabEls.push({ path, el: tab });
+        }
+
+        // --- 各设定文件分组（DOM 常驻，仅切换显隐，保留卡片编辑与折叠状态） ---
+        const panels: { path: string; panel: HTMLElement; header: HTMLElement; grid: HTMLElement; iconSpan: HTMLElement }[] = [];
+
+        for (const [path, group] of groups) {
+            const panel = boardLayout.createDiv('wn-lore-file-panel');
+            const header = panel.createDiv('wn-corkboard-volume-header wn-clickable');
             const iconSpan = header.createSpan({ cls: 'wn-volume-header-icon' });
             setIcon(iconSpan, 'chevron-down');
             header.createSpan({
@@ -111,7 +149,7 @@ export class LoreBoardRenderer {
                 cls: 'wn-volume-header-title'
             });
 
-            const grid = boardLayout.createDiv('wn-lore-board-cards-grid');
+            const grid = panel.createDiv('wn-lore-board-cards-grid');
 
             header.onclick = () => {
                 const isCollapsed = grid.hasClass('is-collapsed');
@@ -170,9 +208,38 @@ export class LoreBoardRenderer {
                 },
             });
             
-            // Clean up component when layout is replaced or removed
-            
+            panels.push({ path, panel, header, grid, iconSpan });
         }
+
+        const applyView = () => {
+            for (const tab of tabEls) {
+                tab.el.toggleClass('is-active', tab.path === activePath);
+            }
+            for (const p of panels) {
+                const visible = activePath === '' || p.path === activePath;
+                p.panel.setCssProps({ display: visible ? '' : 'none' });
+                if (visible && activePath !== '') {
+                    // 单文件视图下强制展开该文件分组
+                    p.grid.removeClass('is-collapsed');
+                    p.grid.setCssProps({ display: 'grid' });
+                    p.header.removeClass('is-collapsed');
+                    setIcon(p.iconSpan, 'chevron-down');
+                }
+            }
+        };
+
+        // tab 点击切换（激活项持久化到插件设置）
+        for (const tab of tabEls) {
+            tab.el.onclick = () => {
+                if (tab.path === activePath) return;
+                activePath = tab.path;
+                plugin.settings.loreBoardActiveFile = tab.path || undefined;
+                void plugin.saveSettings();
+                applyView();
+            };
+        }
+
+        applyView();
     }
 
     private static async renderTable(
@@ -242,7 +309,7 @@ export class LoreBoardRenderer {
             return sumB - sumA;
         });
 
-        const boardLayout = container.createDiv('wn-lore-board-layout');
+        const boardLayout = container.createDiv('wn-lore-board-layout wn-lore-board-layout-table');
 
         for (const [loreName, chapterList] of sortedLores) {
             const groupDiv = boardLayout.createDiv('wn-lore-board-group');

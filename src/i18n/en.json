@@ -759,6 +759,7 @@
 	"lore.tab-table": "Table",
 	"lore.tab-card": "Cards",
 	"lore.tab-graph": "Graph",
+	"lore.tab-all": "All",
 	"character.cross-file-sort-not-supported": "Cross-file sorting of lores is not currently supported",
 	"relation.character-not-found": "Lore file for character {id} not found",
 	"corkboard.sort-foreshadowing": "Foreshadowing Board",

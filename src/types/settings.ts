@@ -279,6 +279,9 @@ export interface AccurateCountSettings {
 	/** 设定看板展示布局 */
 	loreBoardLayout?: 'table' | 'cards' | 'graph';
 
+	/** 设定看板卡片视图：当前激活的设定文件路径（空字符串 = 全部） */
+	loreBoardActiveFile?: string;
+
 	/** 高级搜索：自动记忆的上一次搜索词 */
 	advancedSearchQuery: string;
 
