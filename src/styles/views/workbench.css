@@ -1,0 +1,161 @@
+
+body .workspace-leaf-content.is-webnovel-workbench .webnovel-immersive-note-textarea,
+body .workspace-leaf-content .webnovel-immersive-note-textarea,
+body .webnovel-immersive-sticky-container .webnovel-immersive-note-textarea,
+body textarea.webnovel-immersive-note-textarea,
+body .webnovel-immersive-note-textarea,
+.webnovel-immersive-note-textarea {
+	flex: 1;
+	min-height: 200px;
+	resize: none;
+	padding: 8px;
+	border: none;
+	background: transparent;
+	color: inherit;
+	line-height: 1.5;
+	font-family: var(--font-text);
+	outline: none;
+	width: 100%;
+	box-sizing: border-box;
+}
+
+
+/* ========== Workbench Keyword Filter Bar ========== */
+.wn-workbench-filter-bar {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	width: 100%;
+	min-width: 0;
+	/* 与上方 toggle-group 导航 Tab 拉开间距，不再需要 margin-bottom（header 的 padding-bottom 提供内容区间距） */
+	margin-top: 10px;
+	margin-bottom: 0;
+	box-sizing: border-box;
+}
+
+
+.wn-workbench-filter-count {
+	flex: 0 0 auto;
+	min-width: 4.5em;
+	white-space: nowrap;
+	color: var(--text-muted);
+	font-size: 0.8em;
+	font-variant-numeric: tabular-nums;
+	text-align: left;
+}
+
+
+.wn-workbench-filter-input-wrapper {
+	flex: 1 1 auto;
+	display: flex;
+	align-items: center;
+	width: 100%;
+	min-width: 0;
+	height: 36px;
+	padding: 0 2px 0 4px;
+	background: transparent;
+	border: 0;
+	border-bottom: 2px solid var(--text-faint);
+	border-radius: 0;
+	box-shadow: none;
+	box-sizing: border-box;
+	transition: border-color 0.2s ease;
+}
+
+
+.wn-workbench-filter-input-wrapper:focus-within,
+.wn-workbench-filter-input-wrapper.is-focused {
+	border-bottom-color: var(--interactive-accent);
+}
+
+
+.wn-workbench-filter-icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--text-muted);
+	flex: 0 0 16px;
+}
+
+
+body .wn-workbench-filter-bar input[type="search"].wn-workbench-filter-input,
+body .wn-workbench-filter-bar input.wn-workbench-filter-input,
+body input[type="search"].wn-workbench-filter-input,
+body input.wn-workbench-filter-input {
+	flex: 1 1 auto;
+	width: 100%;
+	min-width: 0;
+	height: 34px;
+	padding: 0 8px;
+	margin: 0;
+	border: none;
+	border-radius: 0;
+	outline: none;
+	box-shadow: none;
+	background: transparent;
+	background-color: transparent;
+	color: var(--text-normal);
+	font-family: inherit;
+	font-size: 0.85em;
+	-webkit-appearance: none;
+	appearance: none;
+}
+
+
+body .wn-workbench-filter-bar input[type="search"].wn-workbench-filter-input:focus,
+body .wn-workbench-filter-bar input.wn-workbench-filter-input:focus,
+body input[type="search"].wn-workbench-filter-input:focus,
+body input.wn-workbench-filter-input:focus {
+	border: none;
+	outline: none;
+	box-shadow: none;
+	background: transparent;
+	background-color: transparent;
+}
+
+
+input[type="search"].wn-workbench-filter-input::-webkit-search-decoration,
+input[type="search"].wn-workbench-filter-input::-webkit-search-cancel-button,
+input[type="search"].wn-workbench-filter-input::-webkit-search-results-button,
+input[type="search"].wn-workbench-filter-input::-webkit-search-results-decoration {
+	-webkit-appearance: none;
+	appearance: none;
+}
+
+
+.wn-workbench-filter-clear {
+	position: static;
+	display: none;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	min-width: 28px;
+	max-width: 28px;
+	height: 28px;
+	min-height: 28px;
+	max-height: 28px;
+	padding: 0;
+	margin: 0;
+	border: 0;
+	border-radius: 4px;
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-normal);
+	opacity: 0.9;
+	line-height: 1;
+	transform: none;
+	flex: 0 0 28px;
+	cursor: pointer;
+}
+
+
+.wn-workbench-filter-clear.is-visible {
+	display: flex;
+}
+
+
+.wn-workbench-filter-clear svg {
+	width: 18px;
+	height: 18px;
+	stroke-width: 2.5;
+}

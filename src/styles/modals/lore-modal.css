@@ -1,0 +1,114 @@
+
+/* ========== Add Lore Modal: Type & Dynamic Relations Editor ========== */
+.wn-add-lore-modal .wn-lore-relations-container {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin-top: 4px;
+	margin-bottom: 12px;
+}
+
+
+.wn-add-lore-modal .wn-lore-relation-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	background: var(--background-secondary);
+	padding: 6px 10px;
+	border-radius: 6px;
+	border: 1px solid var(--background-modifier-border);
+}
+
+
+.wn-add-lore-modal .wn-lore-relation-label-input,
+.wn-add-lore-modal .wn-lore-relation-target-select,
+.wn-add-lore-modal .wn-lore-relation-target-input {
+	height: 30px;
+	box-sizing: border-box;
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	padding: 0 8px;
+	font-size: 0.85em;
+	color: var(--text-normal);
+}
+
+
+.wn-add-lore-modal .wn-lore-relation-label-input {
+	flex: 1;
+	min-width: 80px;
+}
+
+
+.wn-add-lore-modal .wn-lore-relation-target-wrapper {
+	flex: 1;
+	min-width: 100px;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+
+.wn-add-lore-modal .wn-lore-relation-target-select,
+.wn-add-lore-modal .wn-lore-relation-target-input {
+	width: 100%;
+}
+
+
+.wn-add-lore-modal .wn-lore-relation-label-input:focus,
+.wn-add-lore-modal .wn-lore-relation-target-select:focus,
+.wn-add-lore-modal .wn-lore-relation-target-input:focus {
+	border-color: var(--interactive-accent);
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--interactive-accent) 20%, transparent);
+	outline: none;
+}
+
+
+.wn-add-lore-modal .wn-lore-relation-colon {
+	color: var(--text-muted);
+	font-weight: bold;
+	user-select: none;
+	display: flex;
+	align-items: center;
+}
+
+
+.wn-add-lore-modal .wn-lore-relation-toggle-btn,
+.wn-add-lore-modal .wn-lore-relation-remove-btn {
+	height: 30px;
+	width: 30px;
+	min-width: 30px;
+	box-sizing: border-box;
+	padding: 0;
+	margin: 0;
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	color: var(--text-muted);
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+}
+
+
+.wn-add-lore-modal .wn-lore-relation-toggle-btn:hover,
+.wn-add-lore-modal .wn-lore-relation-remove-btn:hover {
+	background: var(--background-modifier-hover);
+	color: var(--interactive-accent);
+	border-color: var(--interactive-accent);
+}
+
+
+.wn-add-lore-modal .wn-lore-relation-remove-btn:hover {
+	color: var(--text-error, #ef4444);
+	border-color: var(--text-error, #ef4444);
+}
+
+
+.wn-add-lore-modal .wn-lore-relation-toggle-btn svg,
+.wn-add-lore-modal .wn-lore-relation-remove-btn svg {
+	width: 14px;
+	height: 14px;
+}

@@ -462,6 +462,8 @@ export class RelationGraphView extends ItemView {
 			vx: n.vx,
 			vy: n.vy,
 			pinned: n.pinned,
+			isProtagonist: n.isProtagonist,
+			nodeType: n.nodeType,
 		}));
 
 		this.engine = new ForceLayoutEngine(layoutNodes, this.graphData.edges, width, height);
@@ -770,7 +772,7 @@ export class RelationGraphView extends ItemView {
 							fallbackLine
 						});
 					} else {
-						new Notice(t('relation.character-not-found', { id: node.id }) || `未找到角色 ${node.id} 的设定文件`);
+						new Notice(t('relation.character-not-found', { id: node.id }));
 					}
 					this.lastClickTime = 0;
 					return;
@@ -944,7 +946,7 @@ export class RelationGraphView extends ItemView {
 							fallbackLine
 						});
 					} else {
-						new Notice(t('relation.character-not-found', { id: node.id }) || `未找到角色 ${node.id} 的设定文件`);
+						new Notice(t('relation.character-not-found', { id: node.id }));
 					}
 					this.lastClickTime = 0;
 					return;

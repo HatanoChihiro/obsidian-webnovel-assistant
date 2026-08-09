@@ -1,0 +1,124 @@
+
+/* ========== Advanced Search Modal ========== */
+
+/* Advanced Search Folder List */
+.advanced-search-folder-list {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+
+.advanced-search-results-container {
+	margin-top: 15px;
+	border-top: 1px solid var(--background-modifier-border);
+	padding-top: 10px;
+}
+
+
+.advanced-search-loading,
+
+.advanced-search-empty,
+
+.advanced-search-summary {
+	color: var(--text-normal);
+	font-size: 0.9em;
+	margin-bottom: 10px;
+	text-align: left;
+	font-weight: bold;
+}
+
+
+.advanced-search-results-list {
+	max-height: 400px;
+	overflow-y: auto;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+
+.advanced-search-file-item {
+	padding: 8px 12px;
+	border-radius: 6px;
+}
+
+
+.advanced-search-file-title {
+	font-weight: bold;
+	color: var(--text-accent);
+	margin-bottom: 4px;
+	font-size: 0.95em;
+}
+
+
+.advanced-search-match-item {
+	font-size: 0.85em;
+	color: var(--text-muted);
+	line-height: 1.4;
+	word-break: break-all;
+	padding: 4px;
+	border-radius: 4px;
+	cursor: pointer;
+	transition: background-color 0.2s ease;
+}
+
+
+.advanced-search-match-item:hover {
+	background-color: var(--background-modifier-hover);
+}
+
+
+.advanced-search-match-more {
+	color: var(--text-faint);
+	font-style: italic;
+	font-size: 0.85em;
+	padding: 4px;
+}
+
+
+.advanced-search-highlight {
+	background-color: var(--text-highlight-bg);
+	color: var(--text-normal);
+	font-weight: bold;
+	border-radius: 3px;
+	padding: 0 2px;
+}
+
+
+/* Tree structure */
+
+/* Advanced Search Tree Header */
+.advanced-search-tree-header {
+	display: flex;
+	align-items: center;
+	padding: 4px 0;
+}
+
+
+.advanced-search-tree-arrow {
+	cursor: pointer;
+	width: 18px;
+	display: inline-block;
+	user-select: none;
+}
+
+
+.advanced-search-tree-spacer {
+	width: 18px;
+	display: inline-block;
+}
+
+
+.advanced-search-tree-name {
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+
+.advanced-search-tree-children {
+	display: none;
+	margin-left: 18px;
+}

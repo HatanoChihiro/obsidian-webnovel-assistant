@@ -1,0 +1,1550 @@
+body.is-phone .wn-status-card,
+body.is-tablet .wn-status-card {
+	backdrop-filter: none;
+	-webkit-backdrop-filter: none;
+	background: var(--background-secondary-alt, var(--background-secondary));
+}
+
+
+/* Phone Portrait Layout (body.is-phone): Force exactly 2 cards per row */
+body.is-phone .stats-efficiency-row {
+	display: grid;
+	grid-template-columns: repeat(2, 1fr);
+	gap: 8px;
+}
+
+
+body.is-phone .stats-efficiency-card {
+	flex: none;
+	width: 100%;
+	min-width: 0;
+	padding: 10px 4px;
+}
+
+
+body.is-phone .stats-efficiency-value {
+	font-size: 0.95em;
+}
+
+
+/* Mobile Phone (is-phone) Creation Homepage Layout Optimizations */
+
+body.is-phone .homepage-welcome-section {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin-bottom: 16px;
+}
+
+
+body.is-phone .homepage-welcome-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 0;
+}
+
+
+body.is-phone .homepage-welcome-title {
+	width: 100%;
+	font-size: 1.2em;
+	line-height: 1.4;
+	align-items: flex-start;
+}
+
+
+body.is-phone .homepage-welcome-icon {
+	margin-top: 2px;
+	margin-right: 8px;
+}
+
+
+body.is-phone .homepage-welcome-icon svg {
+	width: 20px;
+	height: 20px;
+}
+
+
+body.is-phone .homepage-desktop-actions {
+	display: none;
+}
+
+
+body.is-phone .homepage-phone-actions {
+	display: flex;
+	gap: 6px;
+	margin-left: auto;
+}
+
+
+body.is-phone .homepage-add-novel-btn.phone-add-btn {
+	display: inline-flex;
+	font-size: 0.80em;
+	padding: 5px 12px;
+	align-self: center;
+}
+
+
+body.is-phone .homepage-ongoing-name {
+	font-size: 1em;
+	font-weight: 600;
+}
+
+
+body.is-phone .homepage-completed-name {
+	font-size: 0.95em;
+	font-weight: 600;
+}
+
+
+body.is-phone .homepage-progress-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+
+body.is-phone .homepage-progress-separator {
+	display: none;
+}
+
+
+body.is-phone .homepage-progress-item:nth-child(1) {
+	width: 100%;
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+}
+
+
+body.is-phone .homepage-progress-item:nth-child(3) {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+}
+
+
+body.is-phone .homepage-progress-label {
+	font-size: 0.88em;
+}
+
+
+body.is-phone .homepage-progress-value {
+	font-size: 1.2em;
+}
+
+
+body.is-phone .homepage-task-row:not(.homepage-task-sub) {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 4px;
+}
+
+
+body.is-phone .homepage-task-sub {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: space-between;
+}
+
+
+body.is-phone .homepage-grid-container,
+
+body.is-phone .homepage-grid-left,
+
+body.is-phone .homepage-grid-right {
+	gap: 16px;
+}
+
+
+
+/* Mobile Phone (is-phone) Creation Homepage Heatmap Optimizations */
+
+body.is-phone .webnovel-homepage .stats-heatmap-grid {
+	gap: 1.5px;
+	overflow-x: auto;
+	-webkit-overflow-scrolling: touch;
+	padding-bottom: 6px;
+	width: 100%;
+}
+
+
+body.is-phone .webnovel-homepage .stats-heatmap-row {
+	gap: 1.5px;
+	width: max-content;
+	min-width: 100%;
+}
+
+
+body.is-phone .webnovel-homepage .stats-heatmap-cell {
+	flex: 0 0 8.5px;
+	width: 8.5px;
+	height: 8.5px;
+	border-radius: 2px;
+}
+
+
+body.is-phone .webnovel-homepage .stats-heatmap-today {
+	outline: 1.5px solid var(--interactive-accent);
+	outline-offset: 0.5px;
+	border-radius: 2px;
+}
+
+
+body.is-phone .webnovel-homepage .stats-heatmap-grid::-webkit-scrollbar {
+	height: 3px;
+}
+
+
+body.is-phone .webnovel-homepage .stats-heatmap-grid::-webkit-scrollbar-thumb {
+	background: color-mix(in srgb, var(--interactive-accent) 30%, transparent);
+	border-radius: 2px;
+}
+
+
+/* ==========================================
+
+   Creative Homepage: Font and Width Lock (Defensive High-Specificity Overrides)
+
+   Use Class Chaining instead of important_override, ensure styles are not hijacked by 3rd-party themes (like Minimal)
+
+   ========================================== */
+
+/* ==========================================
+
+   All custom views: Font and Scaling Defense Lock (Defensive High-Specificity Overrides)
+
+   Protect all plugin custom views (Outline, Timeline, Stats, Sticky Notes) from global font scaling pollution by themes like Minimal
+
+   ========================================== */
+
+body:not(.is-phone) .workspace-leaf-content.is-webnovel-homepage .view-content,
+body:not(.is-phone) .workspace-leaf-content.is-webnovel-homepage .markdown-reading-view,
+body:not(.is-phone) .workspace-leaf-content.is-webnovel-homepage .markdown-preview-view,
+body:not(.is-phone) .workspace-leaf-content.is-webnovel-homepage .markdown-rendered,
+body:not(.is-phone) .workspace-leaf-content.is-webnovel-homepage .markdown-preview-sizer,
+body:not(.is-phone) .markdown-preview-view.webnovel-homepage,
+body:not(.is-phone) .markdown-source-view.webnovel-homepage,
+body:not(.is-phone) .webnovel-homepage-root {
+	font-size: 16px;
+}
+
+
+body.is-phone .workspace-leaf-content.is-webnovel-homepage .view-content,
+body.is-phone .workspace-leaf-content.is-webnovel-homepage .markdown-reading-view,
+body.is-phone .workspace-leaf-content.is-webnovel-homepage .markdown-preview-view,
+body.is-phone .workspace-leaf-content.is-webnovel-homepage .markdown-rendered,
+body.is-phone .workspace-leaf-content.is-webnovel-homepage .markdown-preview-sizer,
+body.is-phone .markdown-preview-view.webnovel-homepage,
+body.is-phone .markdown-source-view.webnovel-homepage,
+body.is-phone .webnovel-homepage-root {
+	font-size: 14px;
+}
+
+
+body:not(.is-phone) .workspace-leaf-content[data-type="webnovel-workbench"] .view-content,
+body:not(.is-phone) .workspace-leaf-content.is-webnovel-workbench .view-content,
+body:not(.is-phone) .workspace-leaf-content[data-type="webnovel-corkboard"] .view-content,
+body:not(.is-phone) .workspace-leaf-content[data-type="timeline"] .view-content,
+body:not(.is-phone) .workspace-leaf-content[data-type="webnovel-status"] .view-content,
+body:not(.is-phone) .workspace-leaf-content[data-type="immersive-sticky-notes"] .view-content {
+	font-size: 16px;
+}
+
+
+body.is-phone .workspace-leaf-content[data-type="webnovel-workbench"] .view-content,
+body.is-phone .workspace-leaf-content.is-webnovel-workbench .view-content,
+body.is-phone .workspace-leaf-content[data-type="webnovel-corkboard"] .view-content,
+body.is-phone .workspace-leaf-content[data-type="timeline"] .view-content,
+body.is-phone .workspace-leaf-content[data-type="webnovel-status"] .view-content,
+body.is-phone .workspace-leaf-content[data-type="immersive-sticky-notes"] .view-content {
+	font-size: 12px;
+}
+
+
+.is-phone .webnovel-settings-rule-item {
+	flex-wrap: wrap;
+	position: relative;
+	padding-right: 35px;
+}
+
+
+.is-phone .webnovel-settings-rule-item .wn-settings-order-btns {
+	position: absolute;
+	right: 10px;
+	top: 55px;
+}
+
+
+.is-phone .webnovel-settings-rule-item .setting-item-control {
+	width: 100%;
+	justify-content: flex-start;
+	margin-top: 5px;
+	flex-wrap: wrap;
+	gap: 10px;
+}
+
+
+.is-phone .webnovel-rule-name-input,
+.is-phone .webnovel-rule-pattern-input,
+.is-phone .webnovel-settings-rule-item .setting-item-control button {
+	width: 100%;
+	flex: 1 1 100%;
+}
+
+
+body.is-phone .wn-timeline-item-delete-btn {
+	opacity: 0.65;
+	right: 2px;
+	top: 2px;
+	padding: 2px;
+}
+
+
+body.is-phone .wn-timeline-item-delete-btn svg {
+	width: 13px;
+	height: 13px;
+}
+
+
+body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-empty * {
+	display: none;
+}
+
+
+/* ==========================================================================
+   手机端专属微调 (Tablet 平板端维持 Desktop 原生样式)
+   ========================================================================== */
+body.is-phone .wn-corkboard-card {
+	min-height: 80px;
+}
+
+
+body.is-phone .wn-corkboard-card-header {
+	padding: 6px 10px;
+}
+
+
+body.is-phone .wn-corkboard-card-title {
+	font-size: 0.95em;
+}
+
+
+body.is-phone .wn-corkboard-card-content {
+	padding: 8px 10px;
+	min-height: 50px;
+}
+
+
+body.is-phone .wn-corkboard-card-text {
+	font-size: 0.90em;
+	line-height: 1.4;
+}
+
+
+body.is-phone textarea.wn-corkboard-textarea {
+	font-size: 0.90em;
+	line-height: 1.4;
+	background: transparent;
+	border: none;
+	border-radius: 4px;
+	-webkit-border-radius: 4px;
+	-webkit-appearance: none;
+	appearance: none;
+	padding: 2px 4px;
+	box-shadow: none;
+	outline: none;
+}
+
+
+body.is-phone .wn-corkboard-card-footer {
+	padding: 6px 10px;
+	font-size: 0.75em;
+}
+
+
+
+/* ==========================================================================
+   手机端竖屏 (is-phone & orientation: portrait) 工作台显示深度优化
+   ========================================================================== */
+body.is-phone .wn-corkboard-title {
+	display: none;
+}
+
+
+
+/* ========== Mobile Timeline Board (Vertical Column Stack & Bottom Carousel) ========== */
+body.is-phone .wn-timeline-waterfall-layout {
+	flex-direction: column;
+	gap: 10px;
+	margin-left: 0;
+}
+
+
+body.is-phone .wn-timeline-waterfall-main {
+	width: 100%;
+	flex: 1;
+	min-height: 0;
+	padding-left: 12px;
+	padding-right: 6px;
+	padding-bottom: 250px;
+	background-position: 16px 0;
+	overflow-x: auto;
+	-webkit-overflow-scrolling: touch;
+}
+
+
+body.is-phone .wn-timeline-item-row {
+	gap: 8px;
+	padding-left: 0px;
+	margin-bottom: 4px;
+	min-height: 105px;
+	align-items: center;
+	position: relative;
+}
+
+
+body.is-phone .wn-timeline-item-desc {
+	left: 8px;
+	width: 85px;
+	min-width: 85px;
+	max-width: 85px;
+	height: 105px;
+	min-height: 105px;
+	max-height: 105px;
+	padding: 6px 16px 6px 6px;
+	font-size: 10.5px;
+	line-height: 1.3;
+	flex-shrink: 0;
+	box-sizing: border-box;
+	z-index: 3;
+}
+
+
+body.is-phone .wn-timeline-add-sub-event-row {
+	padding-left: 8px;
+	margin-top: 4px;
+	margin-bottom: 4px;
+	justify-content: flex-start;
+}
+
+
+body.is-phone .wn-timeline-add-sub-event-btn {
+	width: auto;
+	min-width: auto;
+	max-width: none;
+	height: auto;
+	padding: 2px 6px;
+	font-size: 10px;
+	border-radius: 4px;
+	box-sizing: border-box;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
+
+body.is-phone .wn-timeline-gap {
+	padding: 2px 0;
+	margin: 0;
+	min-height: 16px;
+	display: flex;
+	align-items: center;
+}
+
+
+body.is-phone .wn-timeline-sub-gap {
+	padding: 2px 0;
+	margin: 0;
+}
+
+
+body.is-phone .wn-timeline-add-node-row {
+	margin-top: 10px;
+	margin-bottom: 16px;
+	padding-left: 8px;
+}
+
+
+body.is-phone .wn-timeline-add-node-row::before {
+	width: 7px;
+	height: 7px;
+	border-width: 1.5px;
+	left: -1px;
+}
+
+
+body.is-phone .wn-timeline-gap .wn-timeline-cards-container {
+	margin-left: 100px;
+	min-height: 0;
+}
+
+
+body.is-phone .wn-timeline-cards-container {
+	margin-left: 100px;
+	display: flex;
+	flex-wrap: nowrap;
+	overflow-x: auto;
+	-webkit-overflow-scrolling: touch;
+	touch-action: pan-x pan-y;
+	padding-bottom: 2px;
+	gap: 8px;
+	flex: 1;
+	min-width: 0;
+	min-height: 0;
+	align-items: center;
+}
+
+
+body.is-phone .wn-timeline-cards-container .wn-corkboard-card {
+	width: 165px;
+	min-width: 165px;
+	max-width: 165px;
+	height: 105px;
+	min-height: 105px;
+	max-height: 105px;
+	flex: 0 0 165px;
+	box-sizing: border-box;
+}
+
+
+/* 手机端未关联章节：屏幕底部固定悬浮抽屉窗 (Fixed Floating Bottom Drawer) */
+body.is-phone .wn-timeline-waterfall-sidebar {
+	position: fixed;
+	bottom: calc(var(--mobile-navbar-height, 52px) + env(safe-area-inset-bottom, 0px));
+	top: auto;
+	left: 8px;
+	right: 8px;
+	width: calc(100% - 16px);
+	height: auto;
+	max-height: 175px;
+	z-index: 50;
+	background: color-mix(in srgb, var(--background-primary) 85%, transparent);
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
+	border: 1px dashed color-mix(in srgb, var(--background-modifier-border) 70%, transparent);
+	border-radius: 14px;
+	box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.12);
+	padding: 12px 12px 8px 12px;
+	box-sizing: border-box;
+	opacity: 0.95;
+	transition: max-height 0.25s cubic-bezier(0.4, 0, 0.2, 1), padding 0.25s ease, opacity 0.2s ease, background 0.2s ease;
+	margin: 0;
+}
+
+
+body.is-phone .wn-timeline-waterfall-sidebar:hover,
+body.is-phone .wn-timeline-waterfall-sidebar:focus-within {
+	opacity: 1;
+	background: color-mix(in srgb, var(--background-primary) 92%, transparent);
+}
+
+
+/* 悬浮抽屉折叠态 */
+body.is-phone .wn-timeline-waterfall-sidebar.is-collapsed {
+	height: auto;
+	max-height: 44px;
+	padding-top: 10px;
+	padding-bottom: 10px;
+	overflow: hidden;
+}
+
+
+body.is-phone .wn-timeline-waterfall-sidebar.is-collapsed .wn-corkboard-grid {
+	display: none;
+}
+
+
+/* 悬浮抽屉 Header 头部与手势标题栏 */
+body.is-phone .wn-timeline-sidebar-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-top: 0;
+	margin-bottom: 6px;
+	font-size: 11.5px;
+	cursor: pointer;
+	user-select: none;
+	-webkit-user-select: none;
+	padding: 0;
+}
+
+
+body.is-phone .wn-timeline-sidebar-title-group {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+
+body.is-phone .wn-timeline-sidebar-toggle-icon {
+	color: var(--text-muted);
+	display: flex;
+	align-items: center;
+	transition: transform 0.2s ease;
+}
+
+
+body.is-phone .wn-timeline-sidebar-count {
+	color: var(--text-muted);
+	font-size: 10.5px;
+	font-weight: normal;
+}
+
+
+body.is-phone .wn-timeline-waterfall-sidebar .wn-corkboard-grid {
+	display: flex;
+	flex-wrap: nowrap;
+	align-items: flex-start;
+	overflow-x: auto;
+	-webkit-overflow-scrolling: touch;
+	touch-action: pan-x pan-y;
+	gap: 8px;
+	padding-bottom: 4px;
+	padding-top: 0;
+	margin-top: 0;
+}
+
+
+body.is-phone .wn-timeline-waterfall-sidebar .wn-corkboard-grid .wn-corkboard-card {
+	width: 110px;
+	min-width: 95px;
+	max-width: 115px;
+	height: auto;
+	min-height: auto;
+	max-height: 110px;
+	flex: 0 0 auto;
+	margin-left: 0;
+	padding: 4px;
+	display: flex;
+	flex-direction: column;
+	font-size: 0.98em;
+	box-sizing: border-box;
+}
+
+
+body.is-phone .wn-timeline-waterfall-sidebar .wn-corkboard-grid .wn-corkboard-card-header {
+	padding: 3px 4px;
+	flex-shrink: 0;
+}
+
+
+body.is-phone .wn-timeline-waterfall-sidebar .wn-corkboard-grid .wn-corkboard-card-title {
+	font-size: 0.98em;
+	font-weight: 600;
+}
+
+
+body.is-phone .wn-timeline-waterfall-sidebar .wn-corkboard-grid .wn-corkboard-card-content {
+	padding: 2px 4px;
+	font-size: 0.98em;
+	font-weight: 400;
+	line-height: 1.35;
+	flex: 0 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+}
+
+
+body.is-phone .wn-timeline-waterfall-sidebar .wn-corkboard-grid .wn-corkboard-card-text,
+body.is-phone .wn-timeline-waterfall-sidebar .wn-corkboard-grid textarea.wn-corkboard-textarea {
+	font-size: 0.98em;
+	font-weight: 400;
+	line-height: 1.4;
+}
+
+
+/* 主时间轴增加底部留白，防止滚动到底部时被悬浮窗遮挡 */
+/* 手机端未关联章节为空时：保留极简狭窄吸底归还槽 (Compact Dropzone) */
+body.is-phone .wn-timeline-waterfall-sidebar.is-empty {
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	position: fixed;
+	bottom: calc(var(--mobile-navbar-height, 45px) + env(safe-area-inset-bottom, 0px));
+	top: auto;
+	left: 8px;
+	right: 8px;
+	width: calc(100% - 16px);
+	height: 42px;
+	min-height: 42px;
+	max-height: 42px;
+	padding: 0 14px;
+	margin: 0;
+	z-index: 50;
+	background: color-mix(in srgb, var(--background-secondary-alt) 95%, var(--background-primary));
+	backdrop-filter: blur(10px);
+	-webkit-backdrop-filter: blur(10px);
+	border: 2px dashed color-mix(in srgb, var(--interactive-accent) 50%, var(--background-modifier-border));
+	border-radius: 14px;
+	box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.12);
+	box-sizing: border-box;
+	overflow: hidden;
+}
+
+
+body.is-phone .wn-timeline-waterfall-sidebar.is-empty .wn-timeline-sidebar-header {
+	margin-bottom: 0;
+	height: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+}
+
+
+body.is-phone .wn-timeline-waterfall-sidebar.is-empty .wn-timeline-sidebar-title-group {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+
+body.is-phone .wn-timeline-waterfall-sidebar.is-empty .wn-timeline-sidebar-toggle-icon {
+	display: none;
+}
+
+
+body.is-phone .wn-timeline-waterfall-sidebar.is-empty .wn-corkboard-grid {
+	display: none;
+}
+
+
+body.is-phone .wn-timeline-waterfall-sidebar.is-empty.drag-over,
+body.is-phone .wn-timeline-waterfall-sidebar.is-empty.drag-over-chapter {
+	background: color-mix(in srgb, var(--interactive-accent) 20%, var(--background-secondary-alt));
+	border-top-color: var(--interactive-accent);
+}
+
+
+/* ========== Mobile History Stats Modal (Compact & Landscape Scrollable) ========== */
+body.is-phone .modal.history-stats-modal-wide {
+	width: 96vw;
+	max-width: 100%;
+	max-height: 90vh;
+	height: auto;
+	margin: auto;
+	padding: 10px;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+
+
+body.is-phone .history-stats-modal {
+	overflow-y: auto;
+	-webkit-overflow-scrolling: touch;
+	max-height: calc(90vh - 20px);
+	padding-right: 4px;
+}
+
+
+.is-phone .history-stats-modal .stats-efficiency-row {
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-bottom: 10px;
+}
+
+
+.is-phone .history-stats-modal .stats-efficiency-card {
+	flex: 1 1 calc(50% - 6px);
+	min-width: 120px;
+	padding: 6px 4px;
+}
+
+
+.is-phone .history-stats-modal .stats-efficiency-label {
+	font-size: 10px;
+	margin-bottom: 2px;
+}
+
+
+.is-phone .history-stats-modal .stats-efficiency-value {
+	font-size: 14px;
+}
+
+
+.is-phone .history-stats-modal .setting-item-heading {
+	margin-top: 10px;
+	margin-bottom: 6px;
+	padding-top: 0;
+}
+
+
+.is-phone .history-stats-modal .stats-heat-date-row {
+	flex-direction: column;
+	align-items: stretch;
+	gap: 6px;
+}
+
+
+.is-phone .history-stats-modal .stats-heat-inputs-wrapper {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex-wrap: nowrap;
+}
+
+
+.is-phone .history-stats-modal .stats-heat-date-input,
+.is-phone .history-stats-modal .stats-heat-today-btn {
+	font-size: 11px;
+	padding: 2px 6px;
+	height: 24px;
+	line-height: 18px;
+	display: inline-flex;
+	align-items: center;
+	box-sizing: border-box;
+	border-radius: 4px;
+}
+
+
+.is-phone .history-stats-modal .stats-heat-actions-wrapper {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	width: 100%;
+	flex: 1;
+}
+
+
+.is-phone .history-stats-modal .stats-heatmap-container {
+	margin-bottom: 10px;
+	overflow-x: auto;
+	-webkit-overflow-scrolling: touch;
+	touch-action: pan-x pan-y;
+}
+
+
+.is-phone .history-stats-modal .stats-heatmap-day-label {
+	width: 14px;
+	font-size: 8px;
+	text-align: left;
+	justify-content: flex-start;
+	padding-left: 0;
+}
+
+
+.is-phone .history-stats-modal .stats-heatmap-months {
+	margin-left: 14px;
+	height: 14px;
+	margin-bottom: 2px;
+}
+
+
+.is-phone .history-stats-modal .stats-heatmap-month-label {
+	font-size: 8px;
+}
+
+
+.is-phone .history-stats-modal .stats-subheading {
+	margin-top: 6px;
+	margin-bottom: 4px;
+}
+
+
+body.is-phone .history-stats-modal .stats-filter-row {
+	display: flex;
+	flex-direction: row;
+	flex-wrap: wrap;
+	justify-content: space-between;
+	gap: 4px;
+	margin-top: 2px;
+	margin-bottom: 2px;
+}
+
+
+body.is-phone .history-stats-modal .stats-time-tabs,
+body.is-phone .history-stats-modal .stats-metric-tabs {
+	display: flex;
+	gap: 2px;
+	width: auto;
+	flex-wrap: nowrap;
+}
+
+
+.is-phone .history-stats-modal .stats-tab-btn {
+	font-size: 10px;
+	padding: 2px 5px;
+	height: 22px;
+	line-height: 1;
+	box-sizing: border-box;
+	border-radius: 4px;
+}
+
+
+.is-phone .stats-large-chart-container {
+	height: 140px;
+	min-height: 140px;
+	margin-top: 2px;
+	padding: 4px 2px;
+	display: flex;
+}
+
+
+body.is-phone .history-stats-modal .stats-time-tabs .stats-tab-btn,
+body.is-phone .history-stats-modal .stats-metric-tabs .stats-tab-btn {
+	font-size: 10px;
+	padding: 2px 5px;
+	height: 22px;
+	line-height: 1;
+	min-width: 0;
+	box-sizing: border-box;
+	border-radius: 4px;
+}
+
+
+/* ========== Mobile Lore & Foreshadowing Hover Popover Safe Bounds ========== */
+body.is-phone .webnovel-lore-popover.webnovel-lore-popover,
+body.is-phone .wn-lore-hover-popover.wn-lore-hover-popover,
+body.is-phone .wn-character-hover-card.wn-character-hover-card,
+body.is-phone .wn-hover-card.wn-hover-card {
+	font-size: var(--font-ui-medium, 1em);
+	width: min(220px, calc(100vw - 24px));
+	max-width: min(220px, calc(100vw - 24px));
+	max-height: 240px;
+	box-shadow: 0 4px 18px rgba(0, 0, 0, 0.2);
+	border-radius: 8px;
+	border: 1px solid var(--background-modifier-border);
+	background-color: var(--background-primary);
+	z-index: 1000;
+	box-sizing: border-box;
+	padding: 4px;
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+}
+
+
+body.is-phone .wn-lore-hover-popover .wn-lore-card.wn-lore-card,
+body.is-phone .webnovel-lore-popover .wn-lore-card.wn-lore-card {
+	width: 100%;
+	max-width: 100%;
+	height: auto;
+	max-height: 230px;
+	aspect-ratio: auto;
+	padding: 0;
+	margin: 0;
+	box-shadow: none;
+	border: none;
+	background: transparent;
+	display: block;
+}
+
+
+body.is-phone .wn-lore-hover-popover .wn-lore-card-header.wn-lore-card-header,
+body.is-phone .webnovel-lore-popover .wn-lore-card-header.wn-lore-card-header {
+	padding: 4px 6px;
+}
+
+
+body.is-phone .wn-lore-hover-popover .wn-lore-card-title.wn-lore-card-title,
+body.is-phone .webnovel-lore-popover .wn-lore-card-title.wn-lore-card-title {
+	font-size: 0.65em;
+	font-weight: 600;
+}
+
+
+body.is-phone .wn-lore-hover-popover .wn-lore-card-body.wn-lore-card-body,
+body.is-phone .webnovel-lore-popover .wn-lore-card-body.wn-lore-card-body {
+	display: block;
+	height: auto;
+	min-height: auto;
+	max-height: 220px;
+	overflow-y: auto;
+	padding: 4px 6px;
+	font-size: 0.80em;
+	font-weight: 400;
+	line-height: 1.5;
+	background: transparent;
+	color: var(--text-muted);
+}
+
+
+body.is-phone .wn-lore-hover-popover .wn-lore-markdown,
+body.is-phone .webnovel-lore-popover .wn-lore-markdown {
+	padding: 0;
+	margin: 0;
+	font-size: 0.80em;
+	line-height: 1.4;
+	display: block;
+}
+
+
+body.is-phone .wn-lore-hover-popover .wn-lore-markdown p,
+body.is-phone .webnovel-lore-popover .wn-lore-markdown p,
+body.is-phone .wn-lore-hover-popover .wn-lore-markdown div,
+body.is-phone .webnovel-lore-popover .wn-lore-markdown div {
+	padding: 0;
+	margin: 0 0 3px 0;
+}
+
+
+body.is-phone .wn-lore-hover-popover .wn-lore-card-badge,
+body.is-phone .webnovel-lore-popover .wn-lore-card-badge {
+	font-size: 0.5em;
+	padding: 1px 4px;
+}
+
+
+body.is-phone .mobile-floating-stats {
+	font-size: 0.5em;
+	padding: 4px 10px;
+	min-height: 25px;
+	border-radius: 12px;
+}
+
+
+body.is-phone .mobile-floating-stats.is-docked-left {
+	transform: translateX(calc(-100% + 22px));
+}
+
+
+body.is-phone .mobile-floating-stats.is-docked-right {
+	transform: translateX(calc(100% - 22px));
+}
+
+
+body.is-phone div.task-card.wn-task-card,
+body.is-phone div.wn-task-card,
+body.is-phone .wn-task-board-layout .task-card,
+body.is-phone .wn-task-board-layout .wn-corkboard-card {
+	max-width: 100%;
+	width: 100%;
+	margin-left: 0;
+	margin-right: 0;
+	justify-self: stretch;
+}
+
+
+/* 手机端任务卡片具体内容与细节字号调大 */
+body.is-phone .wn-task-card .task-card-period,
+body.is-phone .wn-task-card .wn-task-card-period,
+body.is-phone .task-card .task-card-period {
+	font-size: 1.05em;
+}
+
+
+body.is-phone .wn-task-card .task-card-info-row,
+body.is-phone .wn-task-card .wn-task-card-info-row,
+body.is-phone .task-card .task-card-info-row {
+	font-size: 1em;
+}
+
+
+body.is-phone .wn-task-card .task-card-cycle-row,
+body.is-phone .wn-task-card .wn-task-card-cycle-row,
+body.is-phone .task-card .task-card-cycle-row {
+	font-size: 1em;
+}
+
+
+body.is-phone .wn-task-card .task-progress-label,
+body.is-phone .wn-task-card .wn-task-progress-label,
+body.is-phone .task-card .task-progress-label {
+	font-size: 1em;
+}
+
+
+body.is-phone .wn-task-card .task-card-footer,
+body.is-phone .wn-task-card .wn-task-card-footer,
+body.is-phone .task-card .task-card-footer {
+	font-size: 1em;
+}
+
+
+body.is-phone .wn-task-card .task-card-result,
+body.is-phone .wn-task-card .wn-task-card-result,
+body.is-phone .task-card .task-card-result {
+	font-size: 1em;
+}
+
+
+/* 手机端伏笔看板操作按钮与边距响应式微调 */
+body.is-phone .wn-foreshadowing-card-line2 {
+	margin-top: 2px;
+	margin-bottom: 0;
+	gap: 6px;
+	flex-wrap: wrap;
+	align-items: center;
+}
+
+
+body.is-phone .wn-card-actions-wrapper {
+	gap: 6px;
+	flex-wrap: nowrap;
+	align-items: center;
+	margin-top: 0;
+	margin-bottom: 0;
+}
+
+
+body.is-phone .wn-card-action-btn {
+	font-size: 0.75em;
+	padding: 0 10px;
+	height: 20px;
+	min-height: 20px;
+	max-height: 20px;
+	line-height: 20px;
+	border-radius: 4px;
+	margin: 0;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+}
+
+
+@media screen and (orientation: portrait) {
+	body.is-phone .workspace-leaf-content[data-type="webnovel-workbench"] .view-content {
+		padding-top: 0;
+	}
+
+	body.is-phone .wn-corkboard-container {
+		padding: 0px 8px 16px 8px;
+	}
+
+	body.is-phone .wn-corkboard-header {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		text-align: center;
+		top: 0;
+		margin-top: 0;
+		padding-top: 0px;
+		padding-bottom: 3px;
+		margin-bottom: 4px;
+		background: var(--background-primary);
+	}
+
+	/* 隐藏与文件标题重复的工作台标题 */
+	body.is-phone .wn-corkboard-title {
+		display: none;
+	}
+
+	/* 切换作品提示移至顶部居中，增加下边距 */
+	body.is-phone .wn-corkboard-hint {
+		order: 1;
+		margin-top: 0px;
+		margin-bottom: 6px;
+		font-size: 0.9em;
+		color: var(--text-muted);
+		text-align: center;
+		width: 100%;
+	}
+
+	/* 状态按钮与新增按钮居中，字号适当放大 */
+	body.is-phone .wn-corkboard-header-buttons {
+		order: 2;
+		position: static;
+		margin-bottom: 6px;
+		width: 100%;
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		gap: 8px;
+	}
+
+	body.is-phone .wn-corkboard-header-buttons button,
+	body.is-phone .wn-corkboard-header-buttons div[class*="-btn"],
+	body.is-phone .wn-timeline-add-node-btn {
+		font-size: 0.90em;
+		padding: 4px 10px;
+		border-radius: 4px;
+	}
+
+	/* 选项卡支持自适应换行，防止英文或长文案下文本溢出乱序 */
+	body.is-phone .wn-corkboard-toggle-group {
+		order: 3;
+		display: flex;
+		flex-direction: row;
+		flex-wrap: wrap;
+		justify-content: center;
+		align-items: center;
+		width: 100%;
+		max-width: 100%;
+		gap: 4px;
+		padding: 3px;
+		margin-top: 4px;
+		margin-bottom: 0;
+		box-sizing: border-box;
+	}
+
+	body.is-phone .wn-corkboard-toggle-btn {
+		flex: 1 1 auto;
+		min-width: 0;
+		max-width: 100%;
+		white-space: normal;
+		word-break: break-word;
+		text-align: center;
+		font-size: 0.88em;
+		font-weight: 500;
+		padding: 4px 6px;
+		border-radius: 4px;
+		line-height: 1.2;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	/* 搜索框说明文字与计数微缩 */
+	body.is-phone .wn-workbench-filter-bar {
+		order: 4;
+		margin-top: 6px;
+		width: 100%;
+		gap: 8px;
+	}
+
+	body.is-phone .wn-workbench-filter-count {
+		font-size: 0.7em;
+		min-width: 4em;
+	}
+
+	body.is-phone .wn-workbench-filter-input-wrapper {
+		height: 30px;
+	}
+
+	body.is-phone .wn-workbench-filter-icon svg {
+		width: 14px;
+		height: 14px;
+	}
+
+	body.is-phone body .wn-workbench-filter-bar input[type="search"].wn-workbench-filter-input,
+	body.is-phone body .wn-workbench-filter-bar input.wn-workbench-filter-input,
+	body.is-phone input.wn-workbench-filter-input {
+		font-size: 0.75em;
+		height: 28px;
+	}
+
+	body.is-phone input.wn-workbench-filter-input::placeholder,
+	body.is-phone input[type="search"].wn-workbench-filter-input::placeholder {
+		font-size: 0.7em;
+		opacity: 0.7;
+	}
+
+	/* 除了任务卡片外的所有卡片及文字大小优化 */
+	body.is-phone .wn-corkboard-grid {
+		gap: 10px;
+		padding-bottom: 20px;
+	}
+
+	body.is-phone .wn-corkboard-card {
+		min-height: 100px;
+		border-radius: 6px;
+	}
+
+	body.is-phone .wn-corkboard-card-header {
+		padding: 4px 8px;
+	}
+
+	body.is-phone .wn-corkboard-card-title {
+		font-size: 0.95em;
+		font-weight: 600;
+	}
+
+	body.is-phone .wn-corkboard-card-status {
+		font-size: 0.75em;
+		padding: 1px 4px;
+	}
+
+	body.is-phone .wn-corkboard-card-content {
+		padding: 6px 8px;
+		min-height: 40px;
+	}
+
+	body.is-phone .wn-corkboard-card-text,
+	body.is-phone body textarea.wn-corkboard-textarea {
+		font-size: 0.92em;
+		font-weight: 400;
+		line-height: 1.4;
+	}
+
+	body.is-phone .wn-corkboard-card-footer {
+		padding: 4px 8px;
+		font-size: 0.78em;
+		flex-shrink: 0;
+	}
+
+	/* 时间轴节点与卡片 */
+	body.is-phone .wn-timeline-node {
+		padding: 0;
+		margin-bottom: 4px;
+	}
+
+	body.is-phone .wn-timeline-node-title {
+		font-size: 0.9em;
+		font-weight: 600;
+		margin-bottom: 4px;
+		padding-left: 14px;
+	}
+
+	body.is-phone .wn-timeline-node-title::before,
+	body.is-phone .wn-timeline-add-node-row::before {
+		width: 7px;
+		height: 7px;
+		border-width: 1.5px;
+		left: -1px;
+	}
+
+	body.is-phone .wn-timeline-type-badge {
+		font-size: 0.75em;
+		padding: 1px 4px;
+		margin-right: 4px;
+	}
+
+	body.is-phone .wn-timeline-content,
+	body.is-phone .wn-timeline-card {
+		padding: 6px 8px;
+		font-size: 0.9em;
+	}
+
+	body.is-phone .wn-timeline-title,
+	body.is-phone .wn-timeline-event-title {
+		font-size: 0.9em;
+		font-weight: 600;
+	}
+
+	body.is-phone .wn-timeline-desc,
+	body.is-phone .wn-timeline-summary {
+		font-size: 0.9em;
+		font-weight: 400;
+		line-height: 1.4;
+	}
+
+	/* 设定看板卡片模式 - 文件 Tab 栏手机端精细微缩 */
+	body.is-phone .wn-lore-file-tabs {
+		padding: 0 8px 6px;
+		gap: 4px;
+	}
+
+	body.is-phone .wn-lore-file-tab {
+		font-size: 0.8em;
+		padding: 3px 8px;
+		border-radius: 5px;
+		gap: 4px;
+	}
+
+	body.is-phone .wn-lore-file-tab-count {
+		font-size: 0.7em;
+		padding: 1px 5px;
+		border-radius: 8px;
+	}
+
+	/* 设定看板卡片与表格 (正文与标题字号完全统一为 0.98em，正文不加粗) */
+	body.is-phone .wn-lore-card {
+		padding: 6px;
+		font-size: 0.95em;
+		aspect-ratio: 1 / 1;
+		min-height: auto;
+		display: flex;
+		flex-direction: column;
+	}
+
+	body.is-phone .wn-lore-card-header {
+		padding: 4px 6px;
+		flex-shrink: 0;
+	}
+
+	body.is-phone .wn-lore-card-title {
+		font-size: 0.95em;
+		font-weight: 600;
+	}
+
+	body.is-phone .wn-lore-card-body,
+	body.is-phone .wn-lore-card-content {
+		padding: 4px 6px;
+		font-size: 0.95em;
+		font-weight: 400;
+		line-height: 1.45;
+		flex: 1 1 0px;
+		min-height: 0;
+		overflow-y: auto;
+	}
+
+	body.is-phone .wn-lore-markdown {
+		padding: 0;
+		margin: 0;
+		font-size: 1em;
+		line-height: 1.45;
+	}
+
+	body.is-phone .wn-lore-markdown p,
+	body.is-phone .wn-lore-markdown span,
+	body.is-phone .wn-lore-markdown div,
+	body.is-phone .wn-lore-markdown li {
+		padding: 0;
+		margin: 0 0 4px 0;
+		font-size: 1em;
+		line-height: 1.45;
+	}
+
+	body.is-phone .wn-lore-markdown h1,
+	body.is-phone .wn-lore-markdown h2,
+	body.is-phone .wn-lore-markdown h3,
+	body.is-phone .wn-lore-markdown h4,
+	body.is-phone .wn-lore-markdown h5,
+	body.is-phone .wn-lore-markdown h6 {
+		font-size: 0.98em;
+		font-weight: 600;
+		margin-top: 6px;
+		margin-bottom: 3px;
+	}
+
+	/* 各个看板分类标题 (Volume & Category Headers) 手机端精细微缩 */
+	body.is-phone .wn-corkboard-volume-header {
+		font-size: 0.8em;
+		font-weight: 600;
+		padding: 3px 6px;
+		margin-top: 6px;
+		margin-bottom: 4px;
+		border-left-width: 2.5px;
+		border-radius: 0 4px 4px 0;
+		gap: 4px;
+	}
+
+	body.is-phone .wn-volume-header-icon svg {
+		width: 12px;
+		height: 12px;
+	}
+
+	/* 设定看板 - 表格模式 (Table Mode) 手机端精细微缩 */
+	body.is-phone .wn-lore-board-group {
+		padding: 6px 8px;
+		margin-bottom: 6px;
+		border-radius: 6px;
+	}
+
+	body.is-phone .wn-lore-board-group-header {
+		margin-top: 2px;
+		margin-bottom: 4px;
+		padding-bottom: 4px;
+	}
+
+	body.is-phone .wn-lore-board-group-title {
+		font-size: 0.8em;
+		font-weight: 600;
+	}
+
+	body.is-phone .wn-lore-board-group-count {
+		font-size: 0.7em;
+	}
+
+	body.is-phone .wn-lore-board-group-relations {
+		gap: 3px 8px;
+		margin-left: 6px;
+	}
+
+	body.is-phone .wn-lore-board-relation-item {
+		gap: 3px;
+		font-size: 0.7em;
+	}
+
+	body.is-phone .wn-lore-board-relation-badge {
+		font-size: 0.65em;
+		padding: 1px 3px;
+	}
+
+	body.is-phone .wn-lore-board-relation-targets {
+		font-size: 0.7em;
+	}
+
+	body.is-phone .wn-lore-board-cards {
+		gap: 4px;
+	}
+
+	body.is-phone .wn-lore-board-mini-card {
+		padding: 2px 6px;
+		font-size: 0.7em;
+		gap: 4px;
+		border-radius: 3px;
+	}
+
+	body.is-phone .wn-lore-board-mini-card-title {
+		font-size: 0.7em;
+	}
+
+	body.is-phone .wn-lore-board-mini-card-count {
+		font-size: 0.7em;
+	}
+
+	/* 伏笔侧面板卡片与回收/废弃按钮字体恢复侧栏标准字号 */
+	body.is-phone .foreshadowing-entry-card,
+	body.is-phone .wn-foreshadowing-card {
+		padding: 10px 12px;
+		margin-bottom: 10px;
+		font-size: 0.9em;
+	}
+
+	body.is-phone .foreshadowing-entry-desc {
+		margin-bottom: 4px;
+	}
+
+	body.is-phone .foreshadowing-entry-desc-text {
+		font-size: 0.95em;
+		font-weight: 600;
+		line-height: 1.4;
+	}
+
+	body.is-phone .foreshadowing-entry-quote,
+	body.is-phone .foreshadowing-entry-quote-text {
+		padding: 4px 6px;
+		font-size: 0.88em;
+		line-height: 1.45;
+	}
+
+	body.is-phone .foreshadowing-entry-tag,
+	body.is-phone .foreshadowing-status-pill,
+	body.is-phone .wn-badge-foreshadowing {
+		font-size: 0.78em;
+		padding: 2px 6px;
+	}
+
+	body.is-phone .foreshadowing-entry-footer {
+		margin-top: 6px;
+		gap: 8px;
+		align-items: center;
+	}
+
+	body.is-phone .foreshadowing-entry-actions {
+		gap: 8px;
+		align-items: center;
+		margin: 0;
+	}
+
+	body.is-phone .foreshadowing-action-btn,
+	body.is-phone .foreshadowing-recover-btn,
+	body.is-phone .foreshadowing-deprecate-btn {
+		font-size: 0.82em;
+		padding: 0 12px;
+		height: 24px;
+		min-height: 24px;
+		max-height: 24px;
+		border-radius: 4px;
+		line-height: 24px;
+		margin: 0;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		box-sizing: border-box;
+	}
+
+	/* 悬浮卡片 / Popover 浮窗整体调小，内边距与外框缩紧（字号保持不变） */
+	body.is-phone .webnovel-lore-popover,
+	body.is-phone .wn-lore-hover-popover,
+	body.is-phone .wn-character-hover-card,
+	body.is-phone .wn-hover-card {
+		padding: 5px 7px;
+		font-size: 0.8em;
+	}
+
+	body.is-phone .wn-lore-popover-header {
+		font-size: 0.85em;
+		padding-bottom: 4px;
+		margin-bottom: 6px;
+	}
+
+
+}

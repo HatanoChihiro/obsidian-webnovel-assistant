@@ -408,8 +408,10 @@ export class CacheManager {
 			{ setting: this.plugin.settings.task?.fileName, field: "taskFileName" },
 		];
 		for (const { setting, field } of checks) {
-			if (basename === setting) return true;
-			if (!setting && basename === getDefaultFileName(field as Parameters<typeof getDefaultFileName>[0])) return true;
+			if (setting && basename === setting) return true;
+			for (const cand of getDefaultFileNameCandidates(field as Parameters<typeof getDefaultFileName>[0])) {
+				if (basename === cand) return true;
+			}
 		}
 		return false;
 	}

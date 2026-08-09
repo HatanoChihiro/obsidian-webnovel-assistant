@@ -221,7 +221,7 @@ export class MobileFloatingStats {
 					this.timerTextEl.textContent = `${h}:${m}:${s}`;
 				} else {
 					// 初始或重置状态（未开始计时）：显示“专注计时”
-					const rawText = t('setting.mobile-focus-timer-start') || '专注计时';
+					const rawText = t('setting.mobile-focus-timer-start');
 					const labelText = rawText.replace(/^[▶⏸\s]+/, '');
 					this.timerTextEl.textContent = labelText;
 				}

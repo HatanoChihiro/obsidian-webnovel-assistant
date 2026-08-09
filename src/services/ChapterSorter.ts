@@ -5,6 +5,8 @@ import { CHINESE_NUMBERS } from '../constants';
 import type { ChapterNamingRule } from '../types/settings';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 
+import { getDefaultFileName, getDefaultFileNameCandidates } from '../i18n/data-keys';
+
 export interface ChapterNumberExtraction {
 	number: number;
 	ruleIndex: number;
@@ -33,6 +35,46 @@ export class ChapterSorter {
 	private static _compiledRules: Array<{ rule: ChapterNamingRule; regex: RegExp; index: number }> = [];
 
 	/**
+	 * 判定文件是否为功能性文档（如作品信息、伏笔记录、时间线、限时任务、创作主页、设定集、合并章节产物等）
+	 */
+	static isFunctionalDoc(file: TFile, plugin: WebNovelAssistantPlugin): boolean {
+		const basename = file.basename;
+		if (basename.includes('_合并章节')) return true;
+
+		if (plugin.isPluginGeneratedFile(basename)) return true;
+
+		const homepagePath = plugin.settings.homepagePath || '创作主页.md';
+		if (
+			file.path === homepagePath ||
+			file.name === '创作主页.md' ||
+			basename === '创作主页' ||
+			(plugin.homepageManager && file.path === plugin.homepageManager.getHomepageFilePath())
+		) {
+			return true;
+		}
+
+		// 检查是否在设定文件夹及其子文件夹中
+		const loreCandidates = new Set<string>();
+		if (plugin.settings.loreFolderName) {
+			loreCandidates.add(plugin.settings.loreFolderName);
+		}
+		loreCandidates.add(getDefaultFileName('loreFolderName'));
+		for (const cand of getDefaultFileNameCandidates('loreFolderName')) {
+			loreCandidates.add(cand);
+		}
+
+		let parent: TFolder | null = file.parent;
+		while (parent && !parent.isRoot()) {
+			if (loreCandidates.has(parent.name)) {
+				return true;
+			}
+			parent = parent.parent;
+		}
+
+		return false;
+	}
+
+	/**
 	 * 统一获取指定文件夹下的所有章节文件，并按规则和自定义顺序排好序
 	 */
 	static getAllChapters(app: App, plugin: WebNovelAssistantPlugin, folderPath: string): TFile[] {
@@ -54,9 +96,17 @@ export class ChapterSorter {
 			targetFiles = plugin.getTrackedMarkdownFiles();
 		}
 
-		if (plugin.settings.enableStrictChapterMode) {
-			targetFiles = targetFiles.filter(f => this.isChapterFile(f.basename) || plugin.isFileInStrictChapterException(f));
-		}
+		targetFiles = targetFiles.filter(f => {
+			const isChapter = this.isChapterFile(f.basename);
+			// 如果是未被显式识别/命名为章节的功能性文档，严禁参与章节合并
+			if (this.isFunctionalDoc(f, plugin) && !isChapter) {
+				return false;
+			}
+			if (plugin.settings.enableStrictChapterMode) {
+				return isChapter || plugin.isFileInStrictChapterException(f);
+			}
+			return true;
+		});
 
 		targetFiles.sort((a, b) => this.compareFilesWithCustomOrder(a, b, plugin.settings.customSortOrder || {}));
 		

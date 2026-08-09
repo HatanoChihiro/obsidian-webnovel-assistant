@@ -1,5 +1,5 @@
 import { Component } from 'obsidian';
-import { isMobile } from '../utils/platform';
+import { isMobile, getPlatformTier } from '../utils/platform';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { LoreEntry } from '../services/CharacterManager';
 import { t } from '../i18n';
@@ -125,7 +125,7 @@ export class LoreHoverPopover extends Component {
 		if (!this.entry || !this.entry.file) {
 			this.popoverEl.createDiv({ cls: 'wn-lore-card-empty', text: t('corkboard.lore-not-found') });
 		} else {
-			const cardContainer = this.popoverEl.createDiv();
+			const cardContainer = this.popoverEl.createDiv({ cls: 'wn-lore-card-wrapper' });
 			await LoreCardRenderer.buildCardDOM(cardContainer, this.entry, this.plugin, this, {
 				hideEditButton: true,
 				onTitleClick: () => this.hide()
@@ -139,43 +139,45 @@ export class LoreHoverPopover extends Component {
 	private positionPopover() {
 		if (!this.popoverEl) return;
 
-		const mobile = isMobile();
-		const maxHeight = mobile ? '45vh' : '35vh';
-		const maxWidth = mobile ? 'calc(100vw - 24px)' : '340px';
+		const tier = getPlatformTier();
+		const isPhone = tier === 'mobile';
+		const padding = isPhone ? 12 : 16;
+		const windowWidth = window.innerWidth;
+		const windowHeight = window.innerHeight;
 
-		// 1. 先限制最大宽高与纵向滚动，让 DOM 重新排版后再获取其真实尺寸，防止由于超出屏幕而被错误计算
-		this.popoverEl.setCssStyles({
-			maxHeight: maxHeight,
-			maxWidth: maxWidth,
-			display: 'flex',
-			flexDirection: 'column',
-			overflowY: 'auto'
-		});
+		// 各平台卡片最大高度上限（与设定卡片一致：桌面与平板 350px，手机 240px）
+		const defaultMaxHeight = isPhone ? 240 : 350;
 
 		const rect = this.targetEl.getBoundingClientRect();
 		const popoverRect = this.popoverEl.getBoundingClientRect();
-		
-		// 2. 默认水平居中对齐到目标词汇
-		let left = rect.left + rect.width / 2 - popoverRect.width / 2;
-		let top = rect.bottom + 8; // 默认显示在词汇下方
 
-		// 3. 水平防溢出处理
-		const padding = mobile ? 12 : 10;
+		// 1. 水平居中对齐到目标词汇
+		let left = rect.left + rect.width / 2 - popoverRect.width / 2;
 		if (left < padding) left = padding;
-		if (left + popoverRect.width > window.innerWidth - padding) {
-			left = window.innerWidth - popoverRect.width - padding;
+		if (left + popoverRect.width > windowWidth - padding) {
+			left = windowWidth - popoverRect.width - padding;
 		}
+
+		// 2. 垂直定位：默认显示在目标词汇下方
+		let top = rect.bottom + 8;
 		
-		// 4. 垂直防溢出处理：如果下方空间不足以放下整个卡片，则将其翻转到词汇上方
-		if (top + popoverRect.height > window.innerHeight - padding) {
+		// 如果下方空间不足以放下完整卡片，且上方空间比下方更大，翻转到上方
+		const spaceBelow = windowHeight - padding - top;
+		const spaceAbove = rect.top - 8 - padding;
+
+		if (popoverRect.height > spaceBelow && spaceAbove > spaceBelow) {
 			top = rect.top - popoverRect.height - 8;
 		}
-		
-		// 极端情况防御：如果放到上方后连顶部也超出了，则贴着顶部显示
+
+		// 边界防护：防止卡片顶部超出屏幕上边界
 		if (top < padding) {
 			top = padding;
 		}
 
-		this.popoverEl.setCssStyles({ top: `${top}px`, left: `${left}px` });
+		// 严格高度限制：视口剩余空间与平台默认上限的较小值，确保不超过 350px/240px，且不超出屏幕底部
+		const maxAvailHeight = Math.min(defaultMaxHeight, windowHeight - top - padding);
+		const finalMaxHeight = maxAvailHeight > 100 ? maxAvailHeight : defaultMaxHeight;
+
+		this.popoverEl.setCssStyles({ top: `${top}px`, left: `${left}px`, maxHeight: `${finalMaxHeight}px` });
 	}
 }

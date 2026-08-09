@@ -1,8 +1,7 @@
-import { Modal, Setting, TFile, TFolder, Notice, setTooltip, setIcon } from 'obsidian';
+import { Modal, Setting, TFile, TFolder, setTooltip, setIcon } from 'obsidian';
 import type { App, TextComponent } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { t } from '../i18n';
-import { getDefaultFileName, getDefaultFileNameCandidates, getLoreLabel } from '../i18n/data-keys';
 
 export interface LoreRelationItem {
 	label: string;
@@ -38,15 +37,7 @@ export class AddLoreModal extends Modal {
 	 * 查找设定文件夹（支持多语言文件夹名）
 	 */
 	findLoreFolder(): TFolder | null {
-		const candidates = new Set<string>();
-		candidates.add(this.plugin.settings.loreFolderName || getDefaultFileName('loreFolderName'));
-		for (const name of getDefaultFileNameCandidates('loreFolderName')) candidates.add(name);
-		for (const loreFolderName of candidates) {
-			const lorePath = this.bookPath === "/" ? loreFolderName : this.bookPath + "/" + loreFolderName;
-			const folder = this.app.vault.getAbstractFileByPath(lorePath);
-			if (folder instanceof TFolder) return folder;
-		}
-		return null;
+		return this.plugin.characterManager.findLoreFolder(this.bookPath);
 	}
 
 	/**
@@ -258,7 +249,7 @@ export class AddLoreModal extends Modal {
 				});
 
 				// 分隔冒号
-				rowEl.createSpan({ cls: 'wn-lore-relation-colon', text: '：' });
+				rowEl.createSpan({ cls: 'wn-lore-relation-colon', text: t('modal.lore-colon') });
 
 				// 目标设定选择容器（支持移动端原生下拉轮播菜单与自定义手动输入模式无缝切换）
 				const targetWrapperEl = rowEl.createDiv({ cls: 'wn-lore-relation-target-wrapper' });
@@ -273,7 +264,7 @@ export class AddLoreModal extends Modal {
 
 				const defaultOption = targetSelectEl.createEl('option', {
 					value: '',
-					text: existingLoreNames.length > 0 ? '(选择已有设定...)' : '(无已有设定)',
+					text: existingLoreNames.length > 0 ? t('modal.lore-select-existing') : t('modal.lore-no-existing'),
 				});
 				defaultOption.disabled = true;
 
@@ -282,7 +273,7 @@ export class AddLoreModal extends Modal {
 				}
 				targetSelectEl.createEl('option', {
 					value: '__CUSTOM__',
-					text: '+ 自定义新目标...',
+					text: t('modal.lore-custom-target'),
 				});
 
 				targetSelectEl.value = existingLoreNames.includes(rel.target) ? rel.target : '';
@@ -306,12 +297,12 @@ export class AddLoreModal extends Modal {
 						targetSelectEl.hide();
 						targetInputEl.show();
 						setIcon(modeToggleBtn, 'list');
-						setTooltip(modeToggleBtn, '切换为下拉选择已有设定');
+						setTooltip(modeToggleBtn, t('modal.lore-toggle-select-tooltip'));
 					} else {
 						targetInputEl.hide();
 						targetSelectEl.show();
 						setIcon(modeToggleBtn, 'pencil');
-						setTooltip(modeToggleBtn, '切换为手动输入新名称');
+						setTooltip(modeToggleBtn, t('modal.lore-toggle-input-tooltip'));
 					}
 				};
 
@@ -389,81 +380,15 @@ export class AddLoreModal extends Modal {
 		contentEl.empty();
 	}
 
-	async saveLore() {
-		// 查找已有的设定文件夹（支持多语言）
-		let loreFolder = this.findLoreFolder();
-		// 新建时优先使用用户设置，fallback 到当前语言的默认文件夹名
-		const currentLoreName = this.plugin.settings.loreFolderName || getDefaultFileName('loreFolderName');
-		const expectedLorePath = this.bookPath === '/' ? currentLoreName : this.bookPath + '/' + currentLoreName;
-		
-		// 如果没有设定文件夹，用当前语言名创建
-		if (!loreFolder) {
-			try {
-				await this.app.vault.createFolder(expectedLorePath);
-			} catch {
-				// 再次检查是否已被并发创建
-				const abstractFile = this.app.vault.getAbstractFileByPath(expectedLorePath);
-				loreFolder = abstractFile instanceof TFolder ? abstractFile : null;
-				if (!loreFolder) {
-					new Notice(t('modal.lore-cannot-create-folder'));
-					return false;
-				}
-			}
-		}
-
-		// 使用找到的文件夹路径（可能是任何语言版本）
-		const loreFolderPath = loreFolder instanceof Object && 'path' in loreFolder ? (loreFolder as { path: string }).path : expectedLorePath;
-		const filePath = loreFolderPath + '/' + this.loreCategory + '.md';
-		let targetFile = this.app.vault.getAbstractFileByPath(filePath);
-
-		if (!(targetFile instanceof TFile)) {
-			targetFile = null;
-		}
-
-		let contentToAppend = `\n\n## ${this.loreName.trim()}\n\n`;
-		if (this.loreAliases.trim()) {
-			contentToAppend += `**${getLoreLabel('alias')}**：${this.loreAliases.trim()}\n`;
-		}
-		if (this.loreType.trim()) {
-			contentToAppend += `**${getLoreLabel('type')}**：${this.loreType.trim()}\n`;
-		}
-		if (this.loreDescription.trim()) {
-			contentToAppend += `${this.loreDescription.trim()}\n`;
-		}
-
-		// 处理关系
-		const validRelations = this.loreRelations.filter(r => r.label.trim() && r.target.trim());
-		if (validRelations.length > 0) {
-			contentToAppend += `\n### ${getLoreLabel('relation')}\n`;
-			for (const rel of validRelations) {
-				const targetStrRaw = rel.target.trim();
-				const rawTargets = targetStrRaw.split(/[,，、]/).map(t => t.trim()).filter(Boolean);
-				const formattedTargets = rawTargets.map(t => {
-					if (t.startsWith('[[')) return t;
-					const entry = this.plugin.characterManager?.getCharacterFile(this.bookPath, t);
-					if (entry) {
-						return `[[${entry.file.basename}#${entry.heading}|${t}]]`;
-					} else {
-						return `[[#${t}]]`;
-					}
-				});
-				const targetStr = formattedTargets.join('、');
-				contentToAppend += `**${rel.label.trim()}**：${targetStr}\n`;
-			}
-		}
-
-		if (targetFile) {
-			// Append to existing
-			await this.app.vault.append(targetFile, contentToAppend);
-		} else {
-			// Create new
-			targetFile = await this.app.vault.create(filePath, contentToAppend.trimStart());
-		}
-
-		// 主动触发缓存重载，确保新数据立即可见
-		await this.plugin.characterManager.rebuildCache();
-
-		new Notice(t('modal.lore-saved'));
-		return true;
+	async saveLore(): Promise<boolean> {
+		return this.plugin.characterManager.createLoreEntry(
+			this.bookPath,
+			this.loreCategory,
+			this.loreName,
+			this.loreAliases,
+			this.loreType,
+			this.loreDescription,
+			this.loreRelations
+		);
 	}
 }

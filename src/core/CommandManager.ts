@@ -15,6 +15,7 @@ import { t } from '../i18n';
 import { getDefaultFileName } from '../i18n/data-keys';
 import { GoalModal } from '../ui/GoalModal';
 import { resolveChapterTemplate } from '../utils/template';
+import { TypographyQuickModal } from '../ui/TypographyQuickModal';
 
 class ConfirmResetDailyStatsModal extends Modal {
 	constructor(app: App, private onConfirm: () => void) {
@@ -77,6 +78,18 @@ export class CommandManager {
 		this.registerMobileCommands();
 		this.registerHomepageCommands();
 		this.registerSearchCommands();
+		this.registerTypographyCommands();
+	}
+
+	private registerTypographyCommands() {
+		this.plugin.addCommand({
+			id: 'quick-typography-adjustment',
+			name: t('command.quick-typography'),
+			icon: 'align-left',
+			callback: () => {
+				new TypographyQuickModal(this.plugin.app, this.plugin).open();
+			}
+		});
 	}
 
 	private registerViewCommands() {
@@ -225,7 +238,7 @@ export class CommandManager {
 			editorCallback: (_editor, view) => {
 				const currentFile = view.file;
 				if (currentFile instanceof TFile) {
-					new GoalModal(this.plugin.app, currentFile).open();
+					new GoalModal(this.plugin.app, this.plugin, currentFile).open();
 				}
 			}
 		});

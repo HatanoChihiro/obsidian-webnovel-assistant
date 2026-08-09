@@ -271,6 +271,25 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 	},
 	eyeCareEnabled: false,
 	eyeCareColor: '#E8F5E9',
+	typography: {
+		enabled: false,
+		applyToChapters: true,
+		applyToLore: true,
+		applyToNovelInfo: true,
+		applyToTimeline: false,
+		applyToForeshadowing: false,
+		applyToTask: false,
+		applyToOther: false,
+		headerAlignment: 'center',
+		enableIndent: true,
+		indentSize: '2em',
+		lineHeight: 1.8,
+		paragraphSpacing: '0.5em',
+		letterSpacing: '0.05em',
+		maxLineWidth: '700px',
+		justifyText: true,
+		enableReadingModeCompat: false,
+	},
 	showMobileFloatingStats: false, // 默认不显示移动端浮窗
 	enableMobileFocusTimer: false, // 默认不启用移动端计时器
 	mobileFloatingStatsState: null, // 默认无保存状态

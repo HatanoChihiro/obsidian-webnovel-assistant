@@ -116,6 +116,13 @@ export class WorkerManager {
 	}
 
 	/**
+	 * 实现 Destroyable 接口，销毁 Worker 资源
+	 */
+	public destroy(): void {
+		this.terminate();
+	}
+
+	/**
 	 * 处理页面前后台可见性变更
 	 */
 	private handleVisibilityChange(): void {

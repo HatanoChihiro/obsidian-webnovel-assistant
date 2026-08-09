@@ -5,14 +5,15 @@ import { Logger } from '../utils/Logger';
  */
 export class SerializedWriter {
 	private queue: Promise<void> = Promise.resolve();
-	private dirty: boolean = false;
+	private pendingCount: number = 0;
+	private explicitDirty: boolean = false;
 
 	/**
 	 * Enqueue an async operation to execute after all prior operations complete.
 	 * Supports generic return types: the returned promise resolves to the operation's result.
 	 */
 	enqueue<T = void>(operation: () => Promise<T>): Promise<T> {
-		this.dirty = true;
+		this.pendingCount++;
 		const resultPromise = this.queue.then(async () => {
 			try {
 				const result = await operation();
@@ -21,7 +22,8 @@ export class SerializedWriter {
 				Logger.error('[SerializedWriter] Operation failed:', err);
 				throw err;
 			} finally {
-				this.dirty = false;
+				this.pendingCount--;
+				this.explicitDirty = false;
 			}
 		});
 		// [设计说明] 用 .then(() => {}) 将 queue 链与 resultPromise 的错误解耦。
@@ -33,12 +35,12 @@ export class SerializedWriter {
 
 	/** Mark as needing write (without immediately enqueuing) */
 	markDirty(): void {
-		this.dirty = true;
+		this.explicitDirty = true;
 	}
 
 	/** Check if there are pending changes */
 	isDirty(): boolean {
-		return this.dirty;
+		return this.pendingCount > 0 || this.explicitDirty;
 	}
 
 	/** Wait for all queued operations to complete */

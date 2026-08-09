@@ -12,6 +12,8 @@ import { TaskAddModal } from '../ui/TaskModal';
 import { findBookRoot } from '../utils/path';
 import { NewNovelModal } from '../ui/NewNovelModal';
 import { ImportNovelModal } from '../ui/ImportNovelModal';
+import { ChapterMergeModal } from '../ui/ChapterMergeModal';
+import { MobileChapterMergeModal } from '../ui/MobileChapterMergeModal';
 import type { WorkbenchView } from '../ui/WorkbenchView';
 import { RELATION_GRAPH_VIEW_TYPE } from '../ui/RelationGraphView';
 
@@ -31,14 +33,12 @@ export class MenuManager {
 				if (customMenu.__webnovelAssistantAdded) return;
 				customMenu.__webnovelAssistantAdded = true;
 
-				if (isDesktop()) {
-					menu.addItem((item) => {
-						item.setTitle(t('menu.merge-chapters'))
-							.setIcon('documents')
-							.setSection('webnovel-assistant')
-							.onClick(() => { this.handleMergeChapters(file).catch(console.error); });
-					});
-				}
+				menu.addItem((item) => {
+					item.setTitle(t('menu.merge-chapters'))
+						.setIcon('documents')
+						.setSection('webnovel-assistant')
+						.onClick(() => { this.handleMergeChapters(file).catch(console.error); });
+				});
 
 				menu.addItem((item) => {
 					item.setTitle(t('menu.start-task-tracking')).setIcon('trophy').setSection('webnovel-assistant').onClick(() => {
@@ -177,7 +177,7 @@ export class MenuManager {
 			// 桌面端：平铺直达
 			menu.addItem((item) => {
 				item.setTitle(t('menu.set-chapter-goal')).setIcon('target').setSection('webnovel-assistant').onClick(() => {
-					new GoalModal(this.plugin.app, file).open();
+					new GoalModal(this.plugin.app, this.plugin, file).open();
 				});
 			});
 
@@ -230,7 +230,7 @@ export class MenuManager {
 
 				targetMenu.addItem((subItem) => {
 					subItem.setTitle(t('menu.set-chapter-goal')).setIcon('target').onClick(() => {
-						new GoalModal(this.plugin.app, file).open();
+						new GoalModal(this.plugin.app, this.plugin, file).open();
 					});
 				});
 
@@ -300,59 +300,43 @@ export class MenuManager {
 	}
 
 	private async handleMergeChapters(file: TFolder) {
-		const notice = new Notice(t('notice.merging-folder', { name: file.name }), 0);
 		const mdFiles = ChapterSorter.getAllChapters(this.plugin.app, this.plugin, file.path);
 		if (mdFiles.length === 0) {
-			notice.hide();
 			new Notice(t('notice.no-chapter-files-in-folder', { name: file.name }));
 			return;
 		}
 
-		let mergedContent = `# ${file.name}`;
-		let totalWords = 0;
-		let currentVolume = '';
-
-		for (const mdFile of mdFiles) {
-			const inVolume = mdFile.parent && mdFile.parent.path !== file.path;
-			const volumeName = inVolume ? mdFile.parent!.name : '';
-
-			if (inVolume && volumeName !== currentVolume) {
-				currentVolume = volumeName;
-				mergedContent += `\n\n## ${currentVolume}`;
-			} else if (!inVolume && currentVolume !== '') {
-				currentVolume = '';
-			}
-
-			const content = await this.plugin.app.vault.cachedRead(mdFile);
-			const stripped = this.stripFrontmatter(mdFile, content);
-
-			const chapterHeading = inVolume ? '###' : '##';
-			mergedContent += `\n\n${chapterHeading} ${mdFile.basename}\n\n`;
-			mergedContent += stripped;
-			totalWords += this.plugin.calculateAccurateWords(stripped);
+		if (isDesktop()) {
+			new ChapterMergeModal(this.plugin.app, this.plugin, file).open();
+		} else {
+			new MobileChapterMergeModal(this.plugin.app, this.plugin, file).open();
 		}
+	}
 
-		const exportPath = `${file.path}/${file.name}_${t('merge.filename-suffix')}.md`;
-
-		const existingFile = this.plugin.app.vault.getAbstractFileByPath(exportPath) as TFile | null;
-
+	/**
+	 * 移动端直接高效合并章节（无 3 栏 Preview & 批注 Modal）
+	 */
+	private async handleMobileDirectMergeChapters(file: TFolder): Promise<void> {
 		try {
-			let mergedFile: TFile;
-			if (existingFile) {
-				mergedFile = existingFile;
-				await this.plugin.app.vault.modify(existingFile, mergedContent.trim());
-			} else {
-				mergedFile = await this.plugin.app.vault.create(exportPath, mergedContent.trim());
+			new Notice(t('notice.merging-folder', { name: file.name }));
+			const items = await this.plugin.chapterMergeManager.loadFolderChapters(file);
+			if (items.length === 0) {
+				new Notice(t('notice.no-chapter-files-in-folder', { name: file.name }));
+				return;
 			}
-			notice.hide();
+
+			const { file: mergedFile, wordCount } = await this.plugin.chapterMergeManager.exportMergedDocument(file, items);
+			this.plugin.chapterMergeManager.clearDraft(file.path);
+
+			new Notice(t('notice.merge-success', {
+				count: String(items.length),
+				words: wordCount.toLocaleString(),
+				overwriteHint: ''
+			}));
+
 			await this.plugin.app.workspace.getLeaf(false).openFile(mergedFile);
-			const overwriteHint = existingFile ? t('notice.merge-overwrite-hint') : '';
-			new Notice(t('notice.merge-success', { count: String(mdFiles.length), words: totalWords.toLocaleString(), overwriteHint }), 8000);
-
-
-		} catch (error) {
-			console.error(error);
-			notice.hide();
+		} catch (err) {
+			console.error('Failed to direct merge chapters on mobile:', err);
 			new Notice(t('notice.merge-failed'));
 		}
 	}

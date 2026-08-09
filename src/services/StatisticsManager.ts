@@ -1,8 +1,11 @@
 import { MarkdownView, type TAbstractFile } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { CoreStatsPayload } from '../types/stats';
+import type { NovelFolderInfo } from '../types/homepage';
+import type { DailyStat } from '../types/settings';
 import { formatTime, parseGoal } from '../utils';
 import { Logger } from '../utils/Logger';
+import { t } from '../i18n';
 
 /**
  * 统计数据管理器 (StatisticsManager)
@@ -39,17 +42,19 @@ export class StatisticsManager {
 		const today = window.moment().format('YYYY-MM-DD');
 		const todayStat = this.plugin.historyManager.getDailyStat(today) || { focusMs: 0, slackMs: 0, addedWords: 0 };
 
-		let targetGoal = this.plugin.settings.defaultGoal;
+		let targetGoal = 0;
 		let currentFile = '';
 		let currentFolder = '';
 		let chapterWords = 0;
 		const view = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
-		if (view?.file) {
+		if (view?.file && this.plugin.cacheManager.isEligibleForWordCount(view.file)) {
 			currentFile = view.file.basename;
 			currentFolder = view.file.parent?.isRoot() ? '' : (view.file.parent?.name || '');
+			let fileGoal = this.plugin.settings.defaultGoal;
 			const cache = this.plugin.app.metadataCache.getFileCache(view.file);
 			const fmGoal = parseGoal(cache?.frontmatter?.['word-goal']);
-			if (fmGoal > 0) targetGoal = fmGoal;
+			if (fmGoal > 0) fileGoal = fmGoal;
+			targetGoal = fileGoal;
 			// 对于当前活动的 Markdown 编辑视图，优先使用 view.getViewData() 实时计算以保障即时响应
 			const viewData = view.getViewData();
 			if (typeof viewData === 'string') {
@@ -110,5 +115,165 @@ export class StatisticsManager {
 		} catch (error) {
 			Logger.error('[StatisticsManager] 更新统计失败:', error);
 		}
+	}
+
+	/**
+	 * 计算连续写作天数 (Streak)
+	 */
+	calcStreak(history: Record<string, DailyStat>): number {
+		let streak = 0;
+		const today = window.moment().format('YYYY-MM-DD');
+		let date = window.moment().subtract(1, 'day').format('YYYY-MM-DD');
+		while (true) {
+			const stat = history[date];
+			if (stat && stat.addedWords !== 0) {
+				streak++;
+				date = window.moment(date).subtract(1, 'day').format('YYYY-MM-DD');
+			} else break;
+		}
+		const todayStat = history[today];
+		if (todayStat && todayStat.addedWords !== 0) streak++;
+		return streak;
+	}
+
+	/**
+	 * 计算专注率
+	 */
+	calcFocusRate(history: Record<string, DailyStat>, startDate: string, endDate: string): number {
+		let totalFocus = 0, totalSlack = 0;
+		for (const [date, stat] of Object.entries(history)) {
+			if (date >= startDate && date <= endDate) {
+				totalFocus += stat.focusMs || 0;
+				totalSlack += stat.slackMs || 0;
+			}
+		}
+		return totalFocus + totalSlack > 0 ? Math.round((totalFocus / (totalFocus + totalSlack)) * 100) : 0;
+	}
+
+	/**
+	 * 计算最活跃时段
+	 */
+	calcActiveHours(history: Record<string, DailyStat>, startDate: string, endDate: string): string {
+		const hourlyTotals = new Array<number>(24).fill(0);
+		for (const [date, stat] of Object.entries(history)) {
+			if (date >= startDate && date <= endDate && stat.hourlyFocus) {
+				for (let h = 0; h < 24; h++) {
+					hourlyTotals[h] += stat.hourlyFocus[h] || 0;
+				}
+			}
+		}
+		const ranked = hourlyTotals.map((v, i) => ({ hour: i, total: v }))
+			.filter(x => x.total > 0)
+			.sort((a, b) => b.total - a.total);
+
+		if (ranked.length === 0) return '';
+
+		let lo = ranked[0].hour;
+		let hi = ranked[0].hour;
+		for (let i = 1; i < ranked.length; i++) {
+			if (ranked[i].hour === lo - 1) lo = ranked[i].hour;
+			else if (ranked[i].hour === hi + 1) hi = ranked[i].hour;
+			else break;
+		}
+		return t('common.active-hours-range', { start: lo, end: hi + 1 });
+	}
+
+	/**
+	 * 计算日均字数
+	 */
+	calcDailyAverage(history: Record<string, DailyStat>, startDate: string, endDate: string): number {
+		let totalWords = 0, daysWithData = 0;
+		for (const [date, stat] of Object.entries(history)) {
+			if (date >= startDate && date <= endDate) {
+				totalWords += stat.addedWords || 0;
+				daysWithData++;
+			}
+		}
+		return daysWithData > 0 ? Math.round(totalWords / daysWithData) : 0;
+	}
+
+	/**
+	 * 计算写作速度 (字/小时)
+	 */
+	calcWritingSpeed(history: Record<string, DailyStat>, startDate: string, endDate: string): number {
+		let totalWords = 0;
+		let totalMs = 0;
+		for (const [date, stat] of Object.entries(history)) {
+			if (date >= startDate && date <= endDate) {
+				totalWords += stat.addedWords || 0;
+				totalMs += (stat.focusMs || 0) + (stat.slackMs || 0);
+			}
+		}
+		const hours = totalMs / (1000 * 60 * 60);
+		return hours > 0 ? Math.round(totalWords / hours) : 0;
+	}
+
+	/**
+	 * 计算任务完成度
+	 */
+	async calcTaskCompletion(novelFolders: NovelFolderInfo[]): Promise<{ completed: number; total: number }> {
+		let completed = 0;
+		let total = 0;
+		const folderPaths = new Set(novelFolders.map(n => n.folderPath));
+		folderPaths.add('');
+
+		for (const folderPath of folderPaths) {
+			this.plugin.taskManager.currentFolder = folderPath;
+			const entries = await this.plugin.taskManager.loadEntries();
+			if (entries) {
+				total += entries.length;
+				completed += entries.filter(e => e.status === 'completed').length;
+			}
+		}
+		return { completed, total };
+	}
+
+	/**
+	 * 计算完本率
+	 */
+	calcNovelCompletionRate(novelFolders: NovelFolderInfo[]): number {
+		if (novelFolders.length === 0) return 0;
+		const completed = novelFolders.filter(n => n.metadata?.status === 'completed').length;
+		return Math.round((completed / novelFolders.length) * 100);
+	}
+
+	/**
+	 * 历史数据聚合（按日、周、月、年归并）
+	 */
+	aggregateHistoryData(history: Record<string, DailyStat>, currentTab: string): Record<string, { words: number; focusMs: number; slackMs: number }> {
+		const result: Record<string, { words: number; focusMs: number; slackMs: number }> = {};
+
+		for (const [date, stat] of Object.entries(history)) {
+			const m = window.moment(date);
+			let key = date;
+
+			if (currentTab === 'day') {
+				key = date;
+			} else if (currentTab === 'week') {
+				key = `${m.isoWeekYear()}-W${String(m.isoWeek()).padStart(2, '0')}`;
+			} else if (currentTab === 'month') {
+				key = m.format('YYYY-MM');
+			} else if (currentTab === 'year') {
+				key = m.format('YYYY');
+			}
+
+			if (!result[key]) result[key] = { words: 0, focusMs: 0, slackMs: 0 };
+			result[key].words += (stat.addedWords || 0);
+			result[key].focusMs += (stat.focusMs || 0);
+			result[key].slackMs += (stat.slackMs || 0);
+		}
+
+		const now = window.moment();
+		if (currentTab === 'day') {
+			const start = now.clone().subtract(29, 'days');
+			const d = start.clone();
+			while (d.isSameOrBefore(now, 'day')) {
+				const key = d.format('YYYY-MM-DD');
+				if (!result[key]) result[key] = { words: 0, focusMs: 0, slackMs: 0 };
+				d.add(1, 'day');
+			}
+		}
+
+		return result;
 	}
 }

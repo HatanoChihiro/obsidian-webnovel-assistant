@@ -16,10 +16,19 @@ export class FolderSuggestModal extends FuzzySuggestModal<TFolder> {
 	}
 
 	getItems(): TFolder[] {
-		const files = this.app.vault.getAllLoadedFiles();
-		return files
-			.filter((f): f is TFolder => f instanceof TFolder && !f.isRoot())
-			.sort((a, b) => a.path.localeCompare(b.path));
+		const folders: TFolder[] = [];
+		const stack: TFolder[] = [this.app.vault.getRoot()];
+		while (stack.length > 0) {
+			const current = stack.pop();
+			if (!current) continue;
+			for (const child of current.children) {
+				if (child instanceof TFolder) {
+					folders.push(child);
+					stack.push(child);
+				}
+			}
+		}
+		return folders.sort((a, b) => a.path.localeCompare(b.path));
 	}
 
 	getItemText(folder: TFolder): string {

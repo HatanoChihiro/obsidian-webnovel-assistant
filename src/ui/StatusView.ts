@@ -1,9 +1,9 @@
 import type { WorkspaceLeaf} from 'obsidian';
-import { ItemView, TFile, Notice, setIcon, Menu } from 'obsidian';
+import { ItemView, TFile, Notice, setIcon, Menu, MarkdownView } from 'obsidian';
 import { formatTime, formatCount, isMobile } from '../utils';
 import { smartLocateAndHighlight } from '../utils/leaf';
 
-import { HistoryStatsModal, calcStreak, calcFocusRate, calcDailyAverage, calcWritingSpeed } from './HistoryModal';
+import { HistoryStatsModal } from './HistoryModal';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ForeshadowingStatus, type ParsedForeshadowingEntry } from '../types/foreshadowing';
 import { CORKBOARD_STATUS_MAP, getCorkboardStatusText, getCorkboardStatusKeys } from '../i18n/data-keys';
@@ -91,7 +91,7 @@ export class WritingStatusView extends ItemView {
 		this.createTimeCard(container);
 		this.createHistoryCard(container);
 
-		void this.updateData();
+		void this.updateData(true);
 		this.renderMiniChart();
 	}
 
@@ -203,7 +203,7 @@ export class WritingStatusView extends ItemView {
 		this.taskSeparatorEl = this.taskRowEl.createSpan({ cls: 'goal-separator', text: ' / ' });
 		this.taskTargetEl = this.taskRowEl.createSpan({ cls: 'goal-target', text: '0' });
 
-		this.taskEventCompleteBtn = this.taskRowEl.createEl('button', { cls: 'status-task-complete-btn', text: t('common.complete-task') || '完成' });
+		this.taskEventCompleteBtn = this.taskRowEl.createEl('button', { cls: 'status-task-complete-btn', text: t('common.complete-task') });
 		this.taskEventCompleteBtn.setCssProps({ display: 'none' });
 		this.taskEventCompleteBtn.onclick = () => {
 			if (!this.plugin.taskManager) return;
@@ -215,7 +215,7 @@ export class WritingStatusView extends ItemView {
 				const active = manager.getActiveTask(entries);
 				if (active && active.taskType === 'event') {
 					void manager.updateEntryStatus(active.period, 'completed', undefined, active.taskType).then(() => {
-						new Notice(t('notice.task-completed') || '任务已完成');
+						new Notice(t('notice.task-completed'));
 						this.plugin.refreshStatusViews(false);
 					});
 				}
@@ -392,7 +392,29 @@ export class WritingStatusView extends ItemView {
 		};
 	}
 
-	async updateData() {
+	private updateTimer: number | null = null;
+
+	async updateData(immediate = false) {
+		if (immediate) {
+			if (this.updateTimer) {
+				window.clearTimeout(this.updateTimer);
+				this.updateTimer = null;
+			}
+			await this.performUpdateData();
+			return;
+		}
+
+		if (this.updateTimer) {
+			window.clearTimeout(this.updateTimer);
+		}
+
+		this.updateTimer = window.setTimeout(() => {
+			this.updateTimer = null;
+			void this.performUpdateData();
+		}, 100);
+	}
+
+	private async performUpdateData() {
 		// 更新作品信息
 		const contextPath = getCurrentBookContext(this.app, this.plugin);
 		if (contextPath) {
@@ -463,6 +485,15 @@ export class WritingStatusView extends ItemView {
 		const dailyState = coreStats.rawDailyWords < 0 ? 'negative' : dailyDone ? 'done' : 'normal';
 		this.setProgressState(this.dailyProgressFillEl, this.dailyWordEl, this.dailyPercentEl, dailyState, Math.max(0, dailyPercent));
 
+		const activeMarkdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
+		const isEligibleChapter = !!(activeMarkdownView?.file && this.plugin.cacheManager.isEligibleForWordCount(activeMarkdownView.file));
+
+		if (this.chapterSectionEls) {
+			for (const el of this.chapterSectionEls) {
+				if (isEligibleChapter) { el.show(); } else { el.hide(); }
+			}
+		}
+
 		this.todayWordEl.innerText = coreStats.todayWords.toLocaleString();
 		this.goalWordEl.innerText = coreStats.goal.toLocaleString();
 
@@ -496,7 +527,7 @@ export class WritingStatusView extends ItemView {
 					if (active.taskType === 'event') {
 						this.taskRowEl.addClass('is-event-task');
 						this.taskWordEl.empty();
-						const titleText = active.platform || t('common.task-event') || '事件任务';
+						const titleText = active.platform || t('common.task-event');
 						if (active.position) {
 							this.taskWordEl.createDiv({ cls: 'event-task-title', text: titleText + ' -' });
 							this.taskWordEl.createDiv({ cls: 'event-task-detail', text: active.position });
@@ -834,10 +865,10 @@ export class WritingStatusView extends ItemView {
 		const now = window.moment();
 		const endDate = now.format('YYYY-MM-DD');
 		const startDate = now.clone().subtract(7, 'days').format('YYYY-MM-DD');
-		const streak = calcStreak(history);
-		const focusRate = calcFocusRate(history, startDate, endDate);
-		const speed = calcWritingSpeed(history, startDate, endDate);
-		const dailyAvg = calcDailyAverage(history, startDate, endDate);
+		const streak = this.plugin.statisticsManager.calcStreak(history);
+		const focusRate = this.plugin.statisticsManager.calcFocusRate(history, startDate, endDate);
+		const speed = this.plugin.statisticsManager.calcWritingSpeed(history, startDate, endDate);
+		const dailyAvg = this.plugin.statisticsManager.calcDailyAverage(history, startDate, endDate);
 
 		const parts = [
 			t('common.consecutive-days', { count: streak }),

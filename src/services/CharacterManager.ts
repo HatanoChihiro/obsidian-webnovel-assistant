@@ -1,7 +1,7 @@
 import type { App, TAbstractFile} from 'obsidian';
 import { TFile, TFolder, type MarkdownView, Notice } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
-import { getDefaultFileName, getDefaultFileNameCandidates } from '../i18n/data-keys';
+import { getDefaultFileName, getDefaultFileNameCandidates, getLoreLabel } from '../i18n/data-keys';
 import { findBookRoot } from '../utils/path';
 import { t } from '../i18n';
 
@@ -445,5 +445,99 @@ export class CharacterManager {
 				}
 			}
 		}
+	}
+
+	/**
+	 * 查找并返回书籍路径下的设定文件夹（支持多语言候选文件夹名）
+	 */
+	public findLoreFolder(bookPath: string): TFolder | null {
+		const candidates = new Set<string>();
+		candidates.add(this.plugin.settings.loreFolderName || getDefaultFileName('loreFolderName'));
+		for (const name of getDefaultFileNameCandidates('loreFolderName')) candidates.add(name);
+		for (const loreFolderName of candidates) {
+			const lorePath = bookPath === '/' ? loreFolderName : bookPath + '/' + loreFolderName;
+			const folder = this.app.vault.getAbstractFileByPath(lorePath);
+			if (folder instanceof TFolder) return folder;
+		}
+		return null;
+	}
+
+	/**
+	 * 创建或向已有的设定分类文件中追加新的设定条目，并构建跨设定关联
+	 */
+	public async createLoreEntry(
+		bookPath: string,
+		loreCategory: string,
+		loreName: string,
+		loreAliases: string,
+		loreType: string,
+		loreDescription: string,
+		loreRelations: Array<{ label: string; target: string }>
+	): Promise<boolean> {
+		let loreFolder = this.findLoreFolder(bookPath);
+		const currentLoreName = this.plugin.settings.loreFolderName || getDefaultFileName('loreFolderName');
+		const expectedLorePath = bookPath === '/' ? currentLoreName : bookPath + '/' + currentLoreName;
+
+		if (!loreFolder) {
+			try {
+				await this.app.vault.createFolder(expectedLorePath);
+			} catch {
+				const abstractFile = this.app.vault.getAbstractFileByPath(expectedLorePath);
+				loreFolder = abstractFile instanceof TFolder ? abstractFile : null;
+				if (!loreFolder) {
+					new Notice(t('modal.lore-cannot-create-folder'));
+					return false;
+				}
+			}
+		}
+
+		const loreFolderPath = loreFolder instanceof Object && 'path' in loreFolder ? (loreFolder as { path: string }).path : expectedLorePath;
+		const filePath = loreFolderPath + '/' + loreCategory + '.md';
+		let targetFile = this.app.vault.getAbstractFileByPath(filePath);
+
+		if (!(targetFile instanceof TFile)) {
+			targetFile = null;
+		}
+
+		let contentToAppend = `\n\n## ${loreName.trim()}\n\n`;
+		if (loreAliases.trim()) {
+			contentToAppend += `**${getLoreLabel('alias')}**：${loreAliases.trim()}\n`;
+		}
+		if (loreType.trim()) {
+			contentToAppend += `**${getLoreLabel('type')}**：${loreType.trim()}\n`;
+		}
+		if (loreDescription.trim()) {
+			contentToAppend += `${loreDescription.trim()}\n`;
+		}
+
+		const validRelations = loreRelations.filter(r => r.label.trim() && r.target.trim());
+		if (validRelations.length > 0) {
+			contentToAppend += `\n### ${getLoreLabel('relation')}\n`;
+			for (const rel of validRelations) {
+				const targetStrRaw = rel.target.trim();
+				const rawTargets = targetStrRaw.split(/[,，、]/).map(t => t.trim()).filter(Boolean);
+				const formattedTargets = rawTargets.map(t => {
+					if (t.startsWith('[[')) return t;
+					const entry = this.getCharacterFile(bookPath, t);
+					if (entry) {
+						return `[[${entry.file.basename}#${entry.heading}|${t}]]`;
+					} else {
+						return `[[#${t}]]`;
+					}
+				});
+				const targetStr = formattedTargets.join('、');
+				contentToAppend += `**${rel.label.trim()}**：${targetStr}\n`;
+			}
+		}
+
+		if (targetFile) {
+			await this.app.vault.append(targetFile, contentToAppend);
+		} else {
+			await this.app.vault.create(filePath, contentToAppend.trimStart());
+		}
+
+		await this.rebuildCache();
+		new Notice(t('modal.lore-saved'));
+		return true;
 	}
 }

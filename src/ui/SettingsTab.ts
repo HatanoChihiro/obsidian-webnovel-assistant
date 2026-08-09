@@ -1,7 +1,7 @@
 import type { App, TextAreaComponent } from 'obsidian';
 import { PluginSettingTab, Setting, Notice, TFile } from 'obsidian';
 import type { Plugin } from 'obsidian';
-import { isDesktop, getPlatformTier } from '../utils/platform';
+import { isDesktop, isMobile, getPlatformTier } from '../utils/platform';
 import { ObsOverlayServer } from '../services/ObsServer';
 import { ChapterSorter } from '../services/ChapterSorter';
 import { MobileFloatingStats } from './MobileFloatingStats';
@@ -55,6 +55,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		const tier = getPlatformTier();
 		const allTabs = [
 			{ id: 'general', name: t('setting.tab-general') },
+			{ id: 'typography', name: t('setting.tab-typography'), icon: 'align-left' },
 			{ id: 'wordcount', name: t('setting.tab-wordcount') },
 			{ id: 'creative', name: t('setting.tab-creative'), icon: 'pen-tool' },
 			{ id: 'immersive', name: t('setting.tab-immersive'), icon: 'maximize', desktopOnly: true },
@@ -80,6 +81,8 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		// 渲染对应选项卡内容
 		if (this.activeTab === 'general') {
 			this.displayGeneralSettings(containerEl);
+		} else if (this.activeTab === 'typography') {
+			this.displayTypographySettings(containerEl);
 		} else if (this.activeTab === 'wordcount') {
 			this.displayWordCountSettings(containerEl);
 		} else if (this.activeTab === 'creative') {
@@ -335,6 +338,13 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			}
 
 			await this.plugin.saveSettings();
+			this.plugin.cacheManager?.resetLoreCache();
+			this.plugin.cacheManager?.clearCache();
+			this.plugin.updateWordCount();
+			if (this.plugin.settings.showExplorerCounts) {
+				void this.plugin.buildFolderCache();
+			}
+			this.plugin.homepageManager?.refreshHomepageViews();
 		};
 
 		new Setting(containerEl)
@@ -375,10 +385,13 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.enableStrictChapterMode = value;
 					await this.plugin.saveSettings();
+					this.plugin.cacheManager?.resetLoreCache();
+					this.plugin.cacheManager?.clearCache();
 					this.plugin.updateWordCount();
 					if (this.plugin.settings.showExplorerCounts) {
 						void this.plugin.buildFolderCache();
 					}
+					this.plugin.homepageManager?.refreshHomepageViews();
 					this.display();
 				}));
 		if (this.plugin.settings.enableStrictChapterMode) {
@@ -395,10 +408,13 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 
 				this.plugin.settings.strictChapterExceptions = parsedExceptions;
 				await this.plugin.saveSettings();
+				this.plugin.cacheManager?.resetLoreCache();
+				this.plugin.cacheManager?.clearCache();
 				this.plugin.updateWordCount();
 				if (this.plugin.settings.showExplorerCounts) {
 					void this.plugin.buildFolderCache();
 				}
+				this.plugin.homepageManager?.refreshHomepageViews();
 			};
 
 			new Setting(containerEl)
@@ -510,47 +526,6 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		if (this.plugin.settings.enableSmartChapterSort) {
 			this.displaySortingRules(containerEl);
 		}
-
-		new Setting(containerEl).setName(t('setting.eyecare-mode')).setHeading();
-
-		new Setting(containerEl)
-			.setName(t('setting.enable-eyecare'))
-			.setDesc(t('setting.enable-eyecare-desc'))
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.eyeCareEnabled ?? false)
-				.onChange(async (value) => {
-					this.plugin.settings.eyeCareEnabled = value;
-					await this.plugin.saveSettings();
-					if (value) {
-						this.plugin.applyEyeCare();
-					} else {
-						this.plugin.removeEyeCare();
-					}
-				}));
-
-		new Setting(containerEl)
-			.setName(t('setting.eyecare-bg-color'))
-			.setDesc(t('setting.eyecare-bg-color-desc'))
-			.addColorPicker(picker => picker
-				.setValue(this.plugin.settings.eyeCareColor || '#E8F5E9')
-				.onChange(async (value) => {
-					this.plugin.settings.eyeCareColor = value;
-					await this.plugin.saveSettings();
-					if (this.plugin.settings.eyeCareEnabled) {
-						this.plugin.applyEyeCare();
-					}
-				}))
-			.addExtraButton(btn => btn
-				.setIcon('reset')
-				.setTooltip(t('setting.eyecare-reset-tooltip'))
-				.onClick(async () => {
-					this.plugin.settings.eyeCareColor = '#E8F5E9';
-					await this.plugin.saveSettings();
-					if (this.plugin.settings.eyeCareEnabled) {
-						this.plugin.applyEyeCare();
-					}
-					this.display();
-				}));
 	}
 
 	// ── 字数统计设置 ──
@@ -1180,16 +1155,18 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				text.inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); text.inputEl.blur(); } });
 			})
 
-		// 移动端开启设定悬浮/点击卡片开关
-		new Setting(containerEl)
-			.setName(t('setting.enable-mobile-lore-popover'))
-			.setDesc(t('setting.enable-mobile-lore-popover-desc'))
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.enableMobileLorePopover)
-				.onChange(async (value: boolean) => {
-					this.plugin.settings.enableMobileLorePopover = value;
-					await this.plugin.saveSettings();
-				}));
+		// 移动端开启设定悬浮/点击卡片开关（仅在移动端显示，电脑端屏蔽）
+		if (isMobile()) {
+			new Setting(containerEl)
+				.setName(t('setting.enable-mobile-lore-popover'))
+				.setDesc(t('setting.enable-mobile-lore-popover-desc'))
+				.addToggle(toggle => toggle
+					.setValue(this.plugin.settings.enableMobileLorePopover)
+					.onChange(async (value: boolean) => {
+						this.plugin.settings.enableMobileLorePopover = value;
+						await this.plugin.saveSettings();
+					}));
+		}
 
 		// 设定卡片子标题折叠开关（全平台生效）
 		new Setting(containerEl)
@@ -1442,6 +1419,259 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.debugMode = value;
 					await this.plugin.saveSettings();
+				}));
+	}
+
+	// ── 排版设置 ──
+	private displayTypographySettings(containerEl: HTMLElement): void {
+		// 1. 护眼模式
+		new Setting(containerEl).setName(t('setting.eyecare-mode')).setHeading();
+
+		new Setting(containerEl)
+			.setName(t('setting.enable-eyecare'))
+			.setDesc(t('setting.enable-eyecare-desc'))
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.eyeCareEnabled ?? false)
+				.onChange(async (value) => {
+					this.plugin.settings.eyeCareEnabled = value;
+					await this.plugin.saveSettings();
+					if (value) {
+						this.plugin.applyEyeCare();
+					} else {
+						this.plugin.removeEyeCare();
+					}
+				}));
+
+		new Setting(containerEl)
+			.setName(t('setting.eyecare-bg-color'))
+			.setDesc(t('setting.eyecare-bg-color-desc'))
+			.addColorPicker(picker => picker
+				.setValue(this.plugin.settings.eyeCareColor || '#E8F5E9')
+				.onChange(async (value) => {
+					this.plugin.settings.eyeCareColor = value;
+					await this.plugin.saveSettings();
+					if (this.plugin.settings.eyeCareEnabled) {
+						this.plugin.applyEyeCare();
+					}
+				}))
+			.addExtraButton(btn => btn
+				.setIcon('reset')
+				.setTooltip(t('setting.eyecare-reset-tooltip'))
+				.onClick(async () => {
+					this.plugin.settings.eyeCareColor = '#E8F5E9';
+					await this.plugin.saveSettings();
+					if (this.plugin.settings.eyeCareEnabled) {
+						this.plugin.applyEyeCare();
+					}
+					this.display();
+				}));
+
+		// 2. 排版系统开关与作用域
+		new Setting(containerEl).setName(t('setting.tab-typography')).setHeading();
+
+		const typo = this.plugin.settings.typography;
+
+		new Setting(containerEl)
+			.setName(t('setting.typography-master-toggle'))
+			.setDesc(t('setting.typography-master-toggle-desc'))
+			.addToggle(toggle => toggle
+				.setValue(typo.enabled)
+				.onChange(async (value) => {
+					typo.enabled = value;
+					await this.plugin.saveSettings();
+					this.plugin.typographyManager.updateTypography();
+					this.display();
+				}));
+
+		if (!typo.enabled) return;
+
+		new Setting(containerEl).setName(t('setting.typography-scope-heading')).setHeading();
+
+		new Setting(containerEl)
+			.setName(t('setting.typography-apply-chapters'))
+			.setDesc(t('setting.typography-apply-chapters-desc'))
+			.addToggle(toggle => toggle
+				.setValue(typo.applyToChapters)
+				.onChange(async (value) => {
+					typo.applyToChapters = value;
+					await this.plugin.saveSettings();
+					this.plugin.typographyManager.updateTypography();
+				}));
+
+		new Setting(containerEl)
+			.setName(t('setting.typography-apply-other'))
+			.setDesc(t('setting.typography-apply-other-desc'))
+			.addToggle(toggle => toggle
+				.setValue(typo.applyToOther ?? false)
+				.onChange(async (value) => {
+					typo.applyToOther = value;
+					await this.plugin.saveSettings();
+					this.plugin.typographyManager.updateTypography();
+				}));
+
+		new Setting(containerEl)
+			.setName(t('setting.typography-scope-functional'))
+			.setDesc(t('setting.typography-scope-functional-desc'));
+
+		new Setting(containerEl)
+			.setName(t('setting.typography-apply-lore'))
+			.addToggle(toggle => toggle
+				.setValue(typo.applyToLore)
+				.onChange(async (value) => {
+					typo.applyToLore = value;
+					await this.plugin.saveSettings();
+					this.plugin.typographyManager.updateTypography();
+				}));
+
+		new Setting(containerEl)
+			.setName(t('setting.typography-apply-novel-info'))
+			.addToggle(toggle => toggle
+				.setValue(typo.applyToNovelInfo)
+				.onChange(async (value) => {
+					typo.applyToNovelInfo = value;
+					await this.plugin.saveSettings();
+					this.plugin.typographyManager.updateTypography();
+				}));
+
+		new Setting(containerEl)
+			.setName(t('setting.typography-apply-timeline'))
+			.addToggle(toggle => toggle
+				.setValue(typo.applyToTimeline)
+				.onChange(async (value) => {
+					typo.applyToTimeline = value;
+					await this.plugin.saveSettings();
+					this.plugin.typographyManager.updateTypography();
+				}));
+
+		new Setting(containerEl)
+			.setName(t('setting.typography-apply-foreshadowing'))
+			.addToggle(toggle => toggle
+				.setValue(typo.applyToForeshadowing)
+				.onChange(async (value) => {
+					typo.applyToForeshadowing = value;
+					await this.plugin.saveSettings();
+					this.plugin.typographyManager.updateTypography();
+				}));
+
+		new Setting(containerEl)
+			.setName(t('setting.typography-apply-task'))
+			.addToggle(toggle => toggle
+				.setValue(typo.applyToTask)
+				.onChange(async (value) => {
+					typo.applyToTask = value;
+					await this.plugin.saveSettings();
+					this.plugin.typographyManager.updateTypography();
+				}));
+
+		// 3. 详细排版参数
+		new Setting(containerEl).setName(t('setting.typography-details-heading')).setHeading();
+
+		new Setting(containerEl)
+			.setName(t('setting.typography-header-align'))
+			.addDropdown(dropdown => dropdown
+				.addOption('left', t('setting.typography-align-left'))
+				.addOption('center', t('setting.typography-align-center'))
+				.addOption('right', t('setting.typography-align-right'))
+				.setValue(typo.headerAlignment || 'center')
+				.onChange(async (value) => {
+					typo.headerAlignment = value as 'left' | 'center' | 'right';
+					await this.plugin.saveSettings();
+					this.plugin.typographyManager.updateTypography();
+				}));
+
+		new Setting(containerEl)
+			.setName(t('setting.typography-enable-indent'))
+			.addToggle(toggle => toggle
+				.setValue(typo.enableIndent)
+				.onChange(async (value) => {
+					typo.enableIndent = value;
+					await this.plugin.saveSettings();
+					this.plugin.typographyManager.updateTypography();
+				}));
+
+		new Setting(containerEl)
+			.setName(t('setting.typography-indent-size'))
+			.setDesc(t('setting.typography-indent-size-desc'))
+			.addText(text => text
+				.setValue(typo.indentSize || '2em')
+				.setPlaceholder('2em')
+				.onChange(async (value) => {
+					typo.indentSize = value.trim() || '2em';
+					await this.plugin.saveSettings();
+					this.plugin.typographyManager.updateTypography();
+				}));
+
+		new Setting(containerEl)
+			.setName(t('setting.typography-line-height'))
+			.setDesc(t('setting.typography-line-height-desc'))
+			.addText(text => text
+				.setValue(String(typo.lineHeight || 1.8))
+				.setPlaceholder('1.8')
+				.onChange(async (value) => {
+					const num = parseFloat(value);
+					if (!isNaN(num) && num > 0) {
+						typo.lineHeight = num;
+						await this.plugin.saveSettings();
+						this.plugin.typographyManager.updateTypography();
+					}
+				}));
+
+		new Setting(containerEl)
+			.setName(t('setting.typography-para-spacing'))
+			.setDesc(t('setting.typography-para-spacing-desc'))
+			.addText(text => text
+				.setValue(typo.paragraphSpacing || '0.5em')
+				.setPlaceholder('0.5em')
+				.onChange(async (value) => {
+					typo.paragraphSpacing = value.trim() || '0.5em';
+					await this.plugin.saveSettings();
+					this.plugin.typographyManager.updateTypography();
+				}));
+
+		new Setting(containerEl)
+			.setName(t('setting.typography-letter-spacing'))
+			.setDesc(t('setting.typography-letter-spacing-desc'))
+			.addText(text => text
+				.setValue(typo.letterSpacing || '0.05em')
+				.setPlaceholder('0.05em')
+				.onChange(async (value) => {
+					typo.letterSpacing = value.trim() || '0.05em';
+					await this.plugin.saveSettings();
+					this.plugin.typographyManager.updateTypography();
+				}));
+
+		new Setting(containerEl)
+			.setName(t('setting.typography-max-line-width'))
+			.setDesc(t('setting.typography-max-line-width-desc'))
+			.addText(text => text
+				.setValue(typo.maxLineWidth || '700px')
+				.setPlaceholder('700px')
+				.onChange(async (value) => {
+					typo.maxLineWidth = value.trim() || '700px';
+					await this.plugin.saveSettings();
+					this.plugin.typographyManager.updateTypography();
+				}));
+
+		new Setting(containerEl)
+			.setName(t('setting.typography-justify-text'))
+			.setDesc(t('setting.typography-justify-text-desc'))
+			.addToggle(toggle => toggle
+				.setValue(typo.justifyText)
+				.onChange(async (value) => {
+					typo.justifyText = value;
+					await this.plugin.saveSettings();
+					this.plugin.typographyManager.updateTypography();
+				}));
+
+		new Setting(containerEl)
+			.setName(t('setting.typography-reading-compat'))
+			.setDesc(t('setting.typography-reading-compat-desc'))
+			.addToggle(toggle => toggle
+				.setValue(typo.enableReadingModeCompat)
+				.onChange(async (value) => {
+					typo.enableReadingModeCompat = value;
+					await this.plugin.saveSettings();
+					this.plugin.typographyManager.updateTypography();
 				}));
 	}
 }

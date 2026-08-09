@@ -9,7 +9,6 @@ import { ForeshadowingStatus, type ParsedForeshadowingEntry } from '../types/for
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { isMobile } from './platform';
 import { LoreHoverPopover } from '../ui/LoreHoverPopover';
-import { ForeshadowingHoverPopover } from '../ui/ForeshadowingHoverPopover';
 import { t } from '../i18n';
 import type { TooltipOptions } from 'obsidian';
 import { setTooltip } from 'obsidian';
@@ -27,28 +26,9 @@ export function renderForeshadowingBadges(
 	container: HTMLElement,
 	cardForeshadowings: ParsedForeshadowingEntry[],
 	currentBasename?: string,
-	plugin?: WebNovelAssistantPlugin
+	_plugin?: WebNovelAssistantPlugin
 ): void {
 	const tooltipOptions: TooltipOptions = { classes: ['wn-tooltip-left'] };
-
-	const bindForeshadowingHover = (badgeEl: HTMLElement, title: string, entries: ParsedForeshadowingEntry[]) => {
-		badgeEl.addClass('wn-hoverable');
-		if (plugin) {
-			let hoverTimeout: number | null = null;
-			badgeEl.addEventListener('mouseenter', () => {
-				hoverTimeout = window.setTimeout(() => {
-					new ForeshadowingHoverPopover(badgeEl, title, entries, plugin, true);
-				}, 400);
-			});
-			badgeEl.addEventListener('mouseleave', () => {
-				if (hoverTimeout) window.clearTimeout(hoverTimeout);
-			});
-			badgeEl.addEventListener('click', (e) => {
-				e.stopPropagation();
-				new ForeshadowingHoverPopover(badgeEl, title, entries, plugin, true);
-			});
-		}
-	};
 
 	// 待回收（包含未回收 Pending 与 阶段回收中 PartiallyRecovered）
 	const pendingForeshadowings = cardForeshadowings.filter(
@@ -61,7 +41,6 @@ export function renderForeshadowingBadges(
 			text: labelText
 		});
 		setTooltip(badge, pendingForeshadowings.map(f => f.description).join('\n'), tooltipOptions);
-		bindForeshadowingHover(badge, labelText, pendingForeshadowings);
 	}
 
 	// 已回收 (在其他章节回收的，本章只是提出或提及)
@@ -76,7 +55,6 @@ export function renderForeshadowingBadges(
 				text: labelText
 			});
 			setTooltip(badge, resolvedOriginForeshadowings.map(f => f.description).join('\n'), tooltipOptions);
-			bindForeshadowingHover(badge, labelText, resolvedOriginForeshadowings);
 		}
 	}
 
@@ -92,7 +70,6 @@ export function renderForeshadowingBadges(
 			text: labelText
 		});
 		setTooltip(badge, recoveredForeshadowings.map(f => f.description).join('\n'), tooltipOptions);
-		bindForeshadowingHover(badge, labelText, recoveredForeshadowings);
 	}
 }
 

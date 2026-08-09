@@ -37,6 +37,7 @@ export class ForeshadowingView extends CreativeView {
 
 	protected async onFolderChange() {
 		this.filterTag = 'all';
+		this.app.workspace.trigger('foreshadowing-filter-changed', 'all');
 		await super.onFolderChange();
 	}
 
@@ -101,11 +102,19 @@ export class ForeshadowingView extends CreativeView {
 			const tagRow = header.createDiv({ cls: 'foreshadowing-view-filter-row foreshadowing-view-tag-filter-row' });
 			const allTagBtn = tagRow.createEl('button', { text: t('common.all-tags'), cls: 'foreshadowing-filter-btn' });
 			if (this.filterTag === 'all') allTagBtn.addClass('is-active');
-			allTagBtn.onclick = () => { this.filterTag = 'all'; void this.refresh(); };
+			allTagBtn.onclick = () => {
+				this.filterTag = 'all';
+				this.app.workspace.trigger('foreshadowing-filter-changed', 'all');
+				void this.refresh();
+			};
 			tagOptions.forEach(tag => {
 				const btn = tagRow.createEl('button', { text: `#${tag}`, cls: 'foreshadowing-filter-btn' });
 				if (this.filterTag === tag) btn.addClass('is-active');
-				btn.onclick = () => { this.filterTag = tag; void this.refresh(); };
+				btn.onclick = () => {
+					this.filterTag = tag;
+					this.app.workspace.trigger('foreshadowing-filter-changed', tag);
+					void this.refresh();
+				};
 			});
 		}
 
@@ -279,7 +288,7 @@ export class ForeshadowingView extends CreativeView {
 
 		// 回收按钮 (未回收 或 阶段回收中)
 		if (entry.status === ForeshadowingStatus.Pending || entry.status === ForeshadowingStatus.PartiallyRecovered) {
-			const recoverBtn = actions.createEl('button', { text: t('foreshadowing.action-recovery') || '回收', cls: 'foreshadowing-action-btn foreshadowing-recover-btn' });
+			const recoverBtn = actions.createEl('button', { text: t('foreshadowing.action-recovery'), cls: 'foreshadowing-action-btn foreshadowing-recover-btn' });
 			recoverBtn.onclick = () => {
 				const foreshadowingFile = this.getForeshadowingFile();
 				if (!foreshadowingFile) return;

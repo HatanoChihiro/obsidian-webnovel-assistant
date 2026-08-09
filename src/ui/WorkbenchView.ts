@@ -94,6 +94,7 @@ export class WorkbenchView extends ItemView {
     private collapsedGroups: Set<string> = new Set();
     private container!: HTMLElement;
     private currentTimelineFilter: string = 'all';
+    private currentForeshadowingTagFilter: string = 'all';
     private currentRenderId: number = 0;
     private draggableListCleanup: (() => void) | null = null;
     private touchPolyfillCleanup: (() => void) | null = null;
@@ -117,6 +118,12 @@ export class WorkbenchView extends ItemView {
         // 监听 timeline 筛选事件
         this.registerEvent(this.app.workspace.on('timeline-filter-changed', (filter: string) => {
             this.currentTimelineFilter = filter;
+            void this.reloadBoard();
+        }));
+
+        // 监听 foreshadowing 筛选事件
+        this.registerEvent(this.app.workspace.on('foreshadowing-filter-changed', (tag: string) => {
+            this.currentForeshadowingTagFilter = tag;
             void this.reloadBoard();
         }));
 
@@ -416,7 +423,7 @@ export class WorkbenchView extends ItemView {
     }
 
     getDisplayText(): string {
-        return t('view.corkboard');
+        return t('view.workbench');
     }
 
     getIcon(): string {
@@ -700,7 +707,7 @@ export class WorkbenchView extends ItemView {
             } else {
                 this.container.empty();
                 const header = this.container.createDiv('wn-corkboard-header');
-                header.createDiv({ text: t('view.corkboard'), cls: 'wn-corkboard-title' });
+                header.createDiv({ text: t('view.workbench'), cls: 'wn-corkboard-title' });
                 header.createEl('p', {
                     text: t('corkboard.please-open-file'),
                     cls: 'wn-corkboard-hint'
@@ -732,7 +739,7 @@ export class WorkbenchView extends ItemView {
         const buffer = createDiv();
 
         const header = buffer.createDiv('wn-corkboard-header');
-        header.createDiv({ text: t('view.corkboard'), cls: 'wn-corkboard-title' });
+        header.createDiv({ text: t('view.workbench'), cls: 'wn-corkboard-title' });
 
         if (!this.currentBookPath) {
             header.createEl('p', {
@@ -1165,9 +1172,12 @@ export class WorkbenchView extends ItemView {
             if (this.currentRenderId !== renderId) return;
 
             const fQuery = this.foreshadowingFilterQuery.trim().toLowerCase();
+            const tagFilter = this.currentForeshadowingTagFilter;
             let matchedForeshadowingCount = foreshadowingEntriesList.length;
-            if (fQuery) {
+            if (fQuery || (tagFilter && tagFilter !== 'all')) {
                 matchedForeshadowingCount = foreshadowingEntriesList.filter(entry => {
+                    if (tagFilter && tagFilter !== 'all' && !entry.tags.includes(tagFilter)) return false;
+                    if (!fQuery) return true;
                     if (entry.description.toLowerCase().includes(fQuery)) return true;
                     if (entry.tags.some(t => t.toLowerCase().includes(fQuery))) return true;
                     if (entry.contents.some(c => c.text.toLowerCase().includes(fQuery) || (c.source && c.source.toLowerCase().includes(fQuery)))) return true;
@@ -1218,6 +1228,7 @@ export class WorkbenchView extends ItemView {
                 entries: foreshadowingEntriesList,
                 foreshadowingFile: foreshadowingFileObj,
                 query: this.foreshadowingFilterQuery,
+                currentForeshadowingTagFilter: this.currentForeshadowingTagFilter,
                 currentBookPath: this.currentBookPath || '',
                 reloadBoard: () => { void this.reloadBoard(); }
             });

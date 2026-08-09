@@ -1,0 +1,266 @@
+/* Panel-like containers always maintain normal top margin */
+
+.immersive-mode-active .foreshadowing-view-container,
+
+.immersive-mode-active .wn-timeline-view-container,
+
+.immersive-mode-active .markdown-reading-view .markdown-preview-view {
+	padding-top: 30px;
+}
+
+
+/* ==========================================
+
+   Homepage: Hide document properties and inline title
+
+   Real DOM structure (debug confirmed):
+
+     .markdown-reading-view
+
+       ?-- .markdown-preview-view.webnovel-homepage.show-properties
+
+           ?-- .markdown-preview-sizer
+
+               |-- .mod-header.mod-ui          <- contains inline-title + metadata-container
+
+               |-- .el-pre.mod-frontmatter     <- YAML frontmatter raw block
+
+               |-- .el-pre                     <- Homepage code block
+
+               ?-- .mod-footer.mod-ui
+
+   cssclasses is automatically applied by Obsidian to .markdown-preview-view.
+
+   ========================================== */
+
+/* Hide the entire header block (including inline-title and metadata-container) */
+
+.markdown-preview-view.webnovel-homepage .mod-header {
+	display: none;
+}
+
+
+/* Hide YAML frontmatter raw block */
+
+.markdown-preview-view.webnovel-homepage .el-pre.mod-frontmatter {
+	display: none;
+}
+
+
+/* Homepage full width display - Reading View */
+
+.workspace-leaf-content.is-webnovel-homepage .markdown-preview-view {
+	max-width: none;
+	width: 100%;
+	margin-inline: 0;
+	font-size: var(--font-ui-normal, 16px);
+}
+
+
+.workspace-leaf-content.is-webnovel-homepage .markdown-preview-sizer {
+	max-width: none;
+	width: 100%;
+	margin: 0;
+	margin-inline: 0;
+	padding: 20px 30px;
+	font-size: var(--font-ui-normal, 16px);
+}
+
+
+body.webnovel-eye-care-enabled .workspace-leaf-content[data-type="markdown"]:not(.is-webnovel-homepage) .view-content,
+
+body.webnovel-eye-care-enabled .workspace-leaf-content[data-type="markdown"]:not(.is-webnovel-homepage) .markdown-source-view .cm-editor .cm-scroller,
+
+body.webnovel-eye-care-enabled .workspace-leaf-content[data-type="markdown"]:not(.is-webnovel-homepage) .markdown-reading-view .markdown-preview-view {
+	background-color: var(--webnovel-eye-care-color, #E8F5E9);
+}
+
+
+/* ========== 沉浸模式打字机：标题垂直留白居中与焦点淡化 ========== */
+body.immersive-mode-active.wn-typewriter-active .cm-editor .cm-sizer {
+	padding-top: 30vh;
+}
+
+
+body.immersive-mode-active.wn-typewriter-active .cm-editor .cm-content {
+	padding-top: 0;
+	padding-bottom: 50vh;
+}
+
+
+body.immersive-mode-active.wn-typewriter-active .cm-editor .cm-line {
+	opacity: var(--wn-typewriter-opacity, 0.4);
+	transition: opacity 0.15s ease;
+}
+
+
+body.immersive-mode-active.wn-typewriter-active .cm-editor .cm-line.wn-typewriter-current-line,
+body.immersive-mode-active.wn-typewriter-active .cm-editor .cm-line.cm-activeLine,
+body.immersive-mode-active.wn-typewriter-active .cm-editor .cm-line.wn-typewriter-current-line * {
+	opacity: 1;
+}
+
+
+/* ==========================================================================
+   Typography System
+   ========================================================================== */
+
+.workspace-leaf.wn-typography-active {
+	--p-spacing: calc(var(--wn-type-line-height, 1.8) * 1em + var(--wn-type-para-spacing, 0.5em));
+	--paragraph-spacing: calc(var(--wn-type-line-height, 1.8) * 1em + var(--wn-type-para-spacing, 0.5em));
+}
+
+/* Header alignment */
+.workspace-leaf.wn-typography-active .cm-line.HyperMD-header,
+.workspace-leaf.wn-typography-active .markdown-preview-view h1,
+.workspace-leaf.wn-typography-active .markdown-preview-view h2,
+.workspace-leaf.wn-typography-active .markdown-preview-view h3,
+.workspace-leaf.wn-typography-active .markdown-preview-view h4,
+.workspace-leaf.wn-typography-active .markdown-preview-view h5,
+.workspace-leaf.wn-typography-active .markdown-preview-view h6 {
+	text-align: var(--wn-type-header-align, center);
+	text-indent: 0;
+}
+
+
+/* Source mode and Live preview main lines */
+.workspace-leaf.wn-typography-active .cm-line:not(.HyperMD-header):not(.HyperMD-quote):not(.HyperMD-listblock):not(.cm-embed-block) {
+	text-indent: 0;
+	line-height: var(--wn-type-line-height, 1.8);
+	padding-bottom: var(--wn-type-para-spacing, 0.5em);
+	letter-spacing: var(--wn-type-letter-spacing, 0.05em);
+	text-align: var(--wn-type-text-align, justify);
+}
+
+
+/* Use ::before inline-block spacer for CodeMirror 6 to fix CJK IME composition cursor jumping */
+.workspace-leaf.wn-typography-active .cm-line:not(.HyperMD-header):not(.HyperMD-quote):not(.HyperMD-listblock):not(.cm-embed-block)::before {
+	content: "";
+	display: inline-block;
+	width: var(--wn-type-indent, 2em);
+}
+
+
+/* Cursor and selection layer reset */
+.workspace-leaf.wn-typography-active .cm-cursorLayer,
+.workspace-leaf.wn-typography-active .cm-selectionLayer {
+	text-indent: 0;
+}
+
+
+/* Line width & Paragraph Spacing override for both Editing Mode (CodeMirror 6) and Reading Mode */
+.workspace-leaf.wn-typography-active .cm-sizer,
+.workspace-leaf.wn-typography-active .markdown-source-view.mod-cm6 .cm-sizer,
+.workspace-leaf.wn-typography-active .markdown-preview-sizer {
+	max-width: var(--wn-type-max-width, var(--file-line-width));
+	width: 100%;
+}
+
+.workspace-leaf.wn-typography-active .cm-content,
+.workspace-leaf.wn-typography-active .markdown-source-view.mod-cm6 .cm-content {
+	width: 100%;
+	max-width: 100%;
+}
+
+
+/* Reading mode paragraphs */
+body .workspace-leaf.wn-typography-active .markdown-preview-view p,
+body .workspace-leaf.wn-typography-active .markdown-rendered p {
+	text-indent: var(--wn-type-indent, 2em);
+	line-height: var(--wn-type-line-height, 1.8);
+	margin-top: 0;
+	margin-block-start: 0;
+	margin-bottom: calc(var(--wn-type-line-height, 1.8) * 1em + var(--wn-type-para-spacing, 0.5em));
+	margin-block-end: calc(var(--wn-type-line-height, 1.8) * 1em + var(--wn-type-para-spacing, 0.5em));
+	letter-spacing: var(--wn-type-letter-spacing, 0.05em);
+	text-align: var(--wn-type-text-align, justify);
+}
+
+
+/* Ensure empty paragraphs or paragraphs with only br in Reading Mode retain full line height */
+.workspace-leaf.wn-typography-active .markdown-preview-view p:empty,
+.workspace-leaf.wn-typography-active .markdown-rendered p:empty,
+.workspace-leaf.wn-typography-active .markdown-preview-view p:has(> br:only-child),
+.workspace-leaf.wn-typography-active .markdown-rendered p:has(> br:only-child) {
+	min-height: calc(var(--wn-type-line-height, 1.8) * 1em);
+}
+
+
+/* Reading mode soft break (<br>) compatibility pseudo element */
+.workspace-leaf.wn-typography-active.wn-type-reading-compat .markdown-preview-view p .wn-soft-break-spacer,
+.workspace-leaf.wn-typography-active.wn-type-reading-compat .markdown-rendered p .wn-soft-break-spacer,
+.markdown-rendered p .wn-soft-break-spacer {
+	display: block;
+	height: var(--wn-type-para-spacing, 0.5em);
+}
+
+
+.workspace-leaf.wn-typography-active.wn-type-reading-compat .markdown-preview-view p .wn-soft-break-indent,
+.workspace-leaf.wn-typography-active.wn-type-reading-compat .markdown-rendered p .wn-soft-break-indent,
+.markdown-rendered p .wn-soft-break-indent {
+	display: inline-block;
+	width: var(--wn-type-indent, 2em);
+}
+
+
+/* 参照阅读模式段落 CSS：所有 p 标签均自动享有 var(--wn-type-indent, 2em) 首行缩进与流畅文本拖选 */
+.wn-merge-modal-window .wn-merge-card-render-view {
+	margin-bottom: 8px;
+	user-select: text;
+	-webkit-user-select: text;
+	cursor: text;
+}
+
+
+.wn-merge-modal-window.wn-typography-active .wn-merge-para,
+.wn-merge-modal-window .wn-merge-para {
+	font-family: var(--font-text);
+	text-indent: var(--wn-type-indent, 2em);
+	line-height: var(--wn-type-line-height, 1.8);
+	letter-spacing: var(--wn-type-letter-spacing, 0.05em);
+	text-align: var(--wn-type-text-align, justify);
+	margin-top: 0;
+	margin-bottom: var(--wn-type-para-spacing, 0.5em);
+	color: var(--text-normal);
+	word-break: break-word;
+	user-select: text;
+	-webkit-user-select: text;
+	cursor: text;
+}
+
+
+.wn-merge-para-empty {
+	height: var(--wn-type-para-spacing, 0.5em);
+}
+
+
+.wn-merge-card-textarea {
+	width: 100%;
+	min-height: 120px;
+	padding: 12px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	background: var(--background-primary);
+	font-family: var(--font-text);
+	font-size: 0.95em;
+	line-height: var(--wn-type-line-height, 1.8);
+	letter-spacing: var(--wn-type-letter-spacing, 0.05em);
+	text-align: var(--wn-type-text-align, justify);
+	color: var(--text-normal);
+	resize: none;
+	overflow: hidden;
+	outline: none;
+	transition: border-color 0.2s;
+}
+
+
+/* 章节合并预览正文段落排版 (Typography Binding for Merge Preview Paragraphs) */
+.wn-merge-para {
+	text-indent: var(--wn-type-indent, 2em);
+	line-height: var(--wn-type-line-height, 1.8);
+	margin-top: 0;
+	margin-bottom: var(--wn-type-para-spacing, 0.5em);
+	letter-spacing: var(--wn-type-letter-spacing, normal);
+	text-align: var(--wn-type-text-align, left);
+	font-family: var(--font-text);
+}

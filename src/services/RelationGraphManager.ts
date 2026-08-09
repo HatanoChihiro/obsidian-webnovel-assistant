@@ -7,7 +7,7 @@
  * 数据来源：
  * 1. 节点 — 设定文件中的 ## 二级标题（与 CharacterManager 一致）
  * 2. 显式关系 — 每个角色下 `### 关系` 三级标题块中的 `**关系类型**：目标角色` 格式
- * 3. 隐式引用 — 角色正文中提到的其他已知角色名（自动生成 "提及" 类型的边）
+ * 3. 隐式引用 — 角色正文中提到的其他已知角色名或别名（自动生成 "提及" 类型的边）
  *
  * 所有关系均为有向：声明者为 source（箭头起点），被指向者为 target（箭头终点）。
  * 同一对角色可拥有两条方向不同的边（如 A→喜欢→B 和 B→厌恶→A）。
@@ -45,6 +45,8 @@ export interface GraphNode {
 	isProtagonist?: boolean;
 	/** 节点角色类型（例如 "主角", "配角", "反派"） */
 	nodeType?: string;
+	/** 节点的别名列表（用于在正文扫描提及关联） */
+	aliases?: string[];
 }
 
 /**
@@ -152,7 +154,7 @@ export class RelationGraphManager {
 		const nodeIds = new Set<string>();
 		const fileDataCache = new Map<TFile, { fileCache: CachedMetadata; lines: string[] }>();
 
-		// 第一步：提取所有节点
+		// 第一步：提取所有节点（包含正文本名与别名）
 		for (const f of filesToParse) {
 			const fileCache = this.app.metadataCache.getFileCache(f);
 			if (!fileCache?.headings) continue;
@@ -174,7 +176,29 @@ export class RelationGraphManager {
 			return { nodes: [], edges: [] };
 		}
 
-		// 第二步：解析关系
+		// 构建名称与别名至标准节点 ID 的索引映射
+		const nameOrAliasToNodeId = new Map<string, string>();
+		for (const node of allNodes) {
+			nameOrAliasToNodeId.set(node.id, node.id);
+		}
+		for (const node of allNodes) {
+			if (node.aliases) {
+				for (const alias of node.aliases) {
+					if (!nameOrAliasToNodeId.has(alias)) {
+						nameOrAliasToNodeId.set(alias, node.id);
+					}
+				}
+			}
+		}
+
+		// 预先构建所有搜索词条列表（包含全称与别名，并按字符串长度降序排列，确保长词优先匹配）
+		const allSearchTerms: { term: string; targetId: string }[] = [];
+		for (const [term, targetId] of nameOrAliasToNodeId.entries()) {
+			allSearchTerms.push({ term, targetId });
+		}
+		allSearchTerms.sort((a, b) => b.term.length - a.term.length);
+
+		// 第二步：解析关系（显式关系 + 提及关联）
 		const allEdges: GraphEdge[] = [];
 		const directedPairs = new Set<string>();
 		const uniqueExplicitEdges = new Set<string>();
@@ -200,7 +224,7 @@ export class RelationGraphManager {
 
 				if (relationSection) {
 					const explicitEdges = this.parseExplicitRelations(
-						characterName, lines, relationSection.startLine, relationSection.endLine, nodeIds
+						characterName, lines, relationSection.startLine, relationSection.endLine, nodeIds, nameOrAliasToNodeId
 					);
 					for (const edge of explicitEdges) {
 						const pairKey = `${edge.source}→${edge.target}`;
@@ -215,7 +239,7 @@ export class RelationGraphManager {
 
 				if (autoLinkMentions) {
 					const mentionEdges = this.scanMentions(
-						characterName, lines, sectionStart, sectionEnd, relationSection, nodeIds
+						characterName, lines, sectionStart, sectionEnd, relationSection, allSearchTerms
 					);
 					for (const edge of mentionEdges) {
 						const pairKey = `${edge.source}→${edge.target}`;
@@ -232,7 +256,7 @@ export class RelationGraphManager {
 	}
 
 	/**
-	 * 从文件缓存中提取所有 ## 二级标题作为图谱节点
+	 * 从文件缓存中提取所有 ## 二级标题作为图谱节点，并提取节点的类型与别名
 	 *
 	 * 仅识别二级标题，与 CharacterManager 的策略一致。
 	 * 清理 Markdown 加粗/斜体/代码等格式标记后作为节点 id。
@@ -252,23 +276,40 @@ export class RelationGraphManager {
 
 			seenIds.add(headingText);
 
-			// 解析“类型”
+			// 解析“类型”与“别名”
 			let isProtagonist = false;
 			let nodeType: string | undefined = undefined;
+			const aliases: string[] = [];
+
 			const sectionStart = heading.position.end.line + 1;
 			const sectionEnd = this.findNextHeadingLine(fileCache.headings, i, 2, lines.length);
 
 			for (let lineIdx = sectionStart; lineIdx < sectionEnd; lineIdx++) {
 				const chunk = lines[lineIdx];
+				if (!chunk) continue;
+
 				// 查找 类型：主角、**类型**：主角 等
-				const typeMatch = chunk.match(/(?:\*\*|__)?(?:类型|Type)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/i);
-				if (typeMatch) {
-					const typeStr = typeMatch[1].trim();
-					nodeType = typeStr;
-					if (typeStr.includes('主角')) {
-						isProtagonist = true;
+				if (!nodeType) {
+					const typeMatch = chunk.match(/(?:\*\*|__)?(?:类型|Type)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/i);
+					if (typeMatch) {
+						const typeStr = typeMatch[1].trim();
+						nodeType = typeStr;
+						if (typeStr.includes('主角')) {
+							isProtagonist = true;
+						}
 					}
-					break;
+				}
+
+				// 查找 别名：三哥、**别名**：三哥 等
+				const aliasMatch = chunk.match(/(?:\*\*|__)?(?:别名|Alias)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/i);
+				if (aliasMatch && aliasMatch[1]) {
+					const rawAliases = aliasMatch[1].split(TARGET_SEPARATOR_REGEX);
+					for (let a of rawAliases) {
+						a = a.trim();
+						if (a && a !== headingText && !aliases.includes(a)) {
+							aliases.push(a);
+						}
+					}
 				}
 			}
 
@@ -283,6 +324,7 @@ export class RelationGraphManager {
 				pinned: false,
 				isProtagonist,
 				nodeType,
+				aliases: aliases.length > 0 ? aliases : undefined,
 			});
 		}
 
@@ -359,13 +401,15 @@ export class RelationGraphManager {
 	 *
 	 * 格式：`**关系标签**：目标角色[、目标角色2…]`
 	 * 每个目标角色生成一条有向边：当前角色 →关系标签→ 目标角色
+	 * 支持通过名称或别名自动映射至真实目标节点 ID
 	 */
 	private parseExplicitRelations(
 		sourceName: string,
 		lines: string[],
 		startLine: number,
 		endLine: number,
-		validNodeIds: Set<string>
+		validNodeIds: Set<string>,
+		nameOrAliasToNodeId?: Map<string, string>
 	): GraphEdge[] {
 		const edges: GraphEdge[] = [];
 
@@ -405,11 +449,14 @@ export class RelationGraphManager {
 					target = inner.trim();
 				}
 
+				// 将目标（可能是设定全称或别名）解析为标准节点 ID
+				const resolvedTarget = nameOrAliasToNodeId ? (nameOrAliasToNodeId.get(target) || target) : target;
+
 				// 只添加指向已知角色节点的边
-				if (target && validNodeIds.has(target) && target !== sourceName) {
+				if (resolvedTarget && validNodeIds.has(resolvedTarget) && resolvedTarget !== sourceName) {
 					edges.push({
 						source: sourceName,
-						target,
+						target: resolvedTarget,
 						label: relationLabel,
 						type: 'explicit',
 					});
@@ -421,7 +468,7 @@ export class RelationGraphManager {
 	}
 
 	/**
-	 * 在角色正文区段中扫描其他已知角色名的出现
+	 * 在角色正文区段中扫描其他已知角色全称或别名的出现
 	 *
 	 * 排除 ### 关系 块的行，避免与显式关系重复。
 	 * 每个被提及的角色生成一条 type: 'mention' 的有向边。
@@ -432,10 +479,19 @@ export class RelationGraphManager {
 		sectionStart: number,
 		sectionEnd: number,
 		relationSection: { startLine: number; endLine: number } | null,
-		validNodeIds: Set<string>
+		validNodeIdsOrSearchTerms: Set<string> | { term: string; targetId: string }[]
 	): GraphEdge[] {
 		const mentioned = new Set<string>();
 		const edges: GraphEdge[] = [];
+
+		let searchTerms: { term: string; targetId: string }[];
+		if (Array.isArray(validNodeIdsOrSearchTerms)) {
+			searchTerms = validNodeIdsOrSearchTerms;
+		} else {
+			searchTerms = Array.from(validNodeIdsOrSearchTerms)
+				.map(id => ({ term: id, targetId: id }))
+				.sort((a, b) => b.term.length - a.term.length);
+		}
 
 		for (let i = sectionStart; i < sectionEnd; i++) {
 			// 跳过关系声明块，避免将显式声明的目标角色重复计入
@@ -444,15 +500,15 @@ export class RelationGraphManager {
 			}
 
 			const line = lines[i] || '';
-			for (const nodeId of validNodeIds) {
-				if (nodeId === sourceName) continue;
-				if (mentioned.has(nodeId)) continue;
+			for (const { term, targetId } of searchTerms) {
+				if (targetId === sourceName) continue;
+				if (mentioned.has(targetId)) continue;
 
-				if (line.includes(nodeId)) {
-					mentioned.add(nodeId);
+				if (line.includes(term)) {
+					mentioned.add(targetId);
 					edges.push({
 						source: sourceName,
-						target: nodeId,
+						target: targetId,
 						label: t('relation-graph.edge-mention'),
 						type: 'mention',
 					});
@@ -499,3 +555,4 @@ export class RelationGraphManager {
 			.replace(/`/g, '');
 	}
 }
+

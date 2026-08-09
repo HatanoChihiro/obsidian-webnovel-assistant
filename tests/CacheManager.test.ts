@@ -177,5 +177,19 @@ describe('CacheManager', () => {
             const newCache = manager['_loreCandidatesCache'];
             expect(newCache?.has('SomethingUniqueXYZ')).toBe(true);
         });
+
+        it('resetLoreCache should clear cached workspaceFolders when workspace setting changes', () => {
+            expect(manager.isFileInWorkspace({ path: 'Book 1/Chapter 1.md' } as TFile)).toBe(true);
+            expect(manager.isFileInWorkspace({ path: 'Book 2/Chapter 1.md' } as TFile)).toBe(false);
+
+            // Change workspace settings without reset
+            mockPlugin.settings.workspaceFolders = ['Book 2'];
+            expect(manager.isFileInWorkspace({ path: 'Book 2/Chapter 1.md' } as TFile)).toBe(false);
+
+            // After reset, it updates normalized workspace folders
+            manager.resetLoreCache();
+            expect(manager.isFileInWorkspace({ path: 'Book 2/Chapter 1.md' } as TFile)).toBe(true);
+            expect(manager.isFileInWorkspace({ path: 'Book 1/Chapter 1.md' } as TFile)).toBe(false);
+        });
     });
 });

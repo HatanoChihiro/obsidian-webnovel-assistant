@@ -72,31 +72,39 @@ export class EditorTracker {
 		// 严格模式：必须符合字数统计条件
 		if (view?.file && !this.plugin.cacheManager.isEligibleForWordCount(view.file)) {
 			this.plugin.lastFileWords = 0;
+			this.plugin.lastFilePath = view.file.path;
 			this.updateWordCount();
+			this.plugin.refreshStatusViews();
+			return;
+		}
+
+		if (!view?.file) {
+			this.plugin.lastFileWords = 0;
+			this.plugin.lastFilePath = '';
+			this.updateWordCount();
+			this.plugin.refreshStatusViews();
 			return;
 		}
 		
 		let currentWords = 0;
 		
-		if (view?.file) {
-			const existingCache = this.plugin.cacheManager.getFileCache(view.file.path);
-			
-			if (existingCache !== null) {
-				currentWords = existingCache;
-			} else {
-				// 只有在缓存缺失时才去安全地读取实际文件内容（避免 active-leaf-change 瞬间 view.getViewData 数据陈旧）
-				try {
-					const content = await this.app.vault.cachedRead(view.file);
-					currentWords = this.plugin.calculateAccurateWords(content);
-					this.plugin.cacheManager.updateFileCache(view.file, currentWords, this.app.vault);
-				} catch (e) {
-					Logger.error('[EditorTracker] failed to read file on change', e);
-				}
+		const existingCache = this.plugin.cacheManager.getFileCache(view.file.path);
+		
+		if (existingCache !== null) {
+			currentWords = existingCache;
+		} else {
+			// 只有在缓存缺失时才去安全地读取实际文件内容（避免 active-leaf-change 瞬间 view.getViewData 数据陈旧）
+			try {
+				const content = await this.app.vault.cachedRead(view.file);
+				currentWords = this.plugin.calculateAccurateWords(content);
+				this.plugin.cacheManager.updateFileCache(view.file, currentWords, this.app.vault);
+			} catch (e) {
+				Logger.error('[EditorTracker] failed to read file on change', e);
 			}
 		}
 
 		this.plugin.lastFileWords = currentWords;
-		this.plugin.lastFilePath = view?.file?.path || '';
+		this.plugin.lastFilePath = view.file.path;
 		
 		this.updateWordCount();
 		this.plugin.refreshStatusViews();

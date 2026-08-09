@@ -1,0 +1,25 @@
+/* ==========================================================================
+   WebNovel Assistant - 全局 CSS 变量与主题演化协议 (Global CSS Variables)
+   ========================================================================== */
+
+:root {
+	/* 1. 排版系统 (Typography Subsystem) 默认回退变量 */
+	--wn-type-indent: 2em;
+	--wn-type-line-height: 1.8;
+	--wn-type-para-spacing: 0.5em;
+	--wn-type-letter-spacing: 0.05em;
+	--wn-type-text-align: justify;
+	--wn-type-max-width: 750px;
+
+	/* 2. 界面与文本字体默认映射 (由主选项卡动态覆盖) */
+	--font-interface: var(--font-interface-override, inherit);
+	--font-text: var(--font-text-override, inherit);
+
+	/* 3. 语义化色盘演化简写 (Theme Accent Overlay Protocols) */
+	--wn-accent-light: color-mix(in srgb, var(--interactive-accent) 15%, transparent);
+	--wn-status-done: color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%);
+	--wn-status-done-light: color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%) 15%, transparent);
+	--wn-status-failed: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%);
+	--wn-status-failed-light: color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%) 15%, transparent);
+	--wn-status-pending-light: color-mix(in srgb, var(--text-muted) 15%, transparent);
+}

@@ -271,4 +271,69 @@ describe('ChapterSorter', () => {
 			expect(ChapterSorter.toChineseNumber(1000)).toBe('一千');
 		});
 	});
+
+	describe('isFunctionalDoc 与 getAllChapters 过滤', () => {
+		const mockPlugin: any = {
+			settings: {
+				enableStrictChapterMode: true,
+				strictChapterExceptions: ['例外目录'],
+				homepagePath: '创作主页.md',
+				loreFolderName: '设定'
+			},
+			isPluginGeneratedFile: (name: string) => ['作品信息', '伏笔记录', '时间线', '限时任务'].includes(name),
+			isFileInStrictChapterException: (file: any) => file.path.startsWith('例外目录/'),
+			getTrackedMarkdownFiles: () => []
+		};
+
+		it('识别各种功能性文档', () => {
+			const infoFile = new (TFile as any)('作品信息.md', '例外目录/作品信息.md');
+			infoFile.basename = '作品信息';
+			expect(ChapterSorter.isFunctionalDoc(infoFile, mockPlugin)).toBe(true);
+
+			const mergedFile = new (TFile as any)('卷一_合并章节.md', '例外目录/卷一_合并章节.md');
+			mergedFile.basename = '卷一_合并章节';
+			expect(ChapterSorter.isFunctionalDoc(mergedFile, mockPlugin)).toBe(true);
+
+			const normalChapter = new (TFile as any)('第一章.md', '例外目录/第一章.md');
+			normalChapter.basename = '第一章';
+			expect(ChapterSorter.isFunctionalDoc(normalChapter, mockPlugin)).toBe(false);
+		});
+
+		it('严格章节例外目录合并时排除未命名为章节的功能性文档', () => {
+			const ch1 = new (TFile as any)('第一章.md', '例外目录/第一章.md');
+			ch1.basename = '第一章';
+			ch1.extension = 'md';
+
+			const info = new (TFile as any)('作品信息.md', '例外目录/作品信息.md');
+			info.basename = '作品信息';
+			info.extension = 'md';
+
+			const timeline = new (TFile as any)('时间线.md', '例外目录/时间线.md');
+			timeline.basename = '时间线';
+			timeline.extension = 'md';
+
+			const chapterInfo = new (TFile as any)('第0章 作品信息.md', '例外目录/第0章 作品信息.md');
+			chapterInfo.basename = '第0章 作品信息';
+			chapterInfo.extension = 'md';
+
+			const mockFolder = new (TFolder as any)('例外目录', '例外目录');
+			mockFolder.children = [ch1, info, timeline, chapterInfo];
+
+			const mockApp: any = {
+				vault: {
+					getAbstractFileByPath: (p: string) => (p === '例外目录' ? mockFolder : null)
+				}
+			};
+
+			const result = ChapterSorter.getAllChapters(mockApp, mockPlugin, '例外目录');
+			const basenames = result.map(f => f.basename);
+
+			// 作品信息.md 与 时间线.md 应该被过滤掉
+			expect(basenames).not.toContain('作品信息');
+			expect(basenames).not.toContain('时间线');
+			// 第一章.md 与 第0章 作品信息.md (已被设为章节) 应当被保留
+			expect(basenames).toContain('第一章');
+			expect(basenames).toContain('第0章 作品信息');
+		});
+	});
 });

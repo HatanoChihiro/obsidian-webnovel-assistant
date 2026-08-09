@@ -73,8 +73,7 @@ export class ObsOverlayServer {
 
 				if (url.pathname === '/api/stats') {
 					res.writeHead(200, {
-						'Content-Type': 'application/json',
-						'Access-Control-Allow-Origin': '*'
+						'Content-Type': 'application/json'
 					});
 					try {
 						const stats = plugin.statisticsManager.getCoreStats();
@@ -88,8 +87,7 @@ export class ObsOverlayServer {
 					}
 				} else {
 					res.writeHead(200, {
-						'Content-Type': 'text/html; charset=utf-8',
-						'Access-Control-Allow-Origin': '*'
+						'Content-Type': 'text/html; charset=utf-8'
 					});
 					res.end(plugin.buildObsOverlayHtml());
 				}

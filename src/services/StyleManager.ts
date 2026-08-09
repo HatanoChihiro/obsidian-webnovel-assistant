@@ -32,4 +32,11 @@ export class StyleManager {
 	updateSettings(settings: AccurateCountSettings): void {
 		this.settings = settings;
 	}
+
+	/**
+	 * 实现 Destroyable 接口，清理动态样式
+	 */
+	destroy(): void {
+		this.removeEyeCare();
+	}
 }

@@ -636,8 +636,9 @@ export class GraphRenderer {
 			
 			// 叠加动态类型颜色
 			if (overlayColor && !isDimmed) {
-				// 叠加层透明度：选中/悬停/搜索命中时为 0.8（高亮），普通状态为 0.5（半透明）
-				ctx.globalAlpha = nodeAlpha * ((isSelected || isHovered || isFilterMatch) ? 0.8 : 0.5); 
+				const isProtagonistNode = node.isProtagonist || Boolean(node.nodeType && (node.nodeType.includes('主角') || node.nodeType.toLowerCase().includes('protagonist')));
+				const overlayAlphaMultiplier = isProtagonistNode ? 0.85 : ((isSelected || isHovered || isFilterMatch) ? 0.8 : 0.5);
+				ctx.globalAlpha = nodeAlpha * overlayAlphaMultiplier; 
 				ctx.fillStyle = overlayColor; 
 				ctx.shadowBlur = 0;
 				ctx.fill();
@@ -838,12 +839,46 @@ export class GraphRenderer {
 		ctx.restore();
 	}
 
+	static mixColors(color1: string, color2: string, weight2 = 0.5): string {
+		const parseColor = (str: string): [number, number, number] => {
+			if (!str) return [127, 109, 242];
+			let s = str.trim().toLowerCase();
+			if (s.startsWith('var(')) return [127, 109, 242];
+			if (s.startsWith('#')) {
+				s = s.slice(1);
+				if (s.length === 3) s = s.split('').map(c => c + c).join('');
+				const num = parseInt(s, 16);
+				if (!isNaN(num)) return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
+			}
+			const rgbMatch = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(s);
+			if (rgbMatch) return [parseInt(rgbMatch[1], 10), parseInt(rgbMatch[2], 10), parseInt(rgbMatch[3], 10)];
+			return [127, 109, 242];
+		};
+
+		const c1 = parseColor(color1);
+		const c2 = parseColor(color2);
+		const w2 = Math.max(0, Math.min(1, weight2));
+		const w1 = 1 - w2;
+		const r = Math.round(c1[0] * w1 + c2[0] * w2);
+		const g = Math.round(c1[1] * w1 + c2[1] * w2);
+		const b = Math.round(c1[2] * w1 + c2[2] * w2);
+		return `rgb(${r}, ${g}, ${b})`;
+	}
+
 	static getNodeTypeColor(typeStr: string, colors: ThemeColors): string {
+		if (typeStr.includes('主角') || typeStr.toLowerCase().includes('protagonist')) {
+			const redColor = colors.typePalette[0] || '#ef4444';
+			// 主角类型默认分配红色混色，且红色占比设为 0.8，使其色彩显著且突出
+			return GraphRenderer.mixColors(colors.accent, redColor, 0.8);
+		}
+
 		let hash = 0;
 		for (let i = 0; i < typeStr.length; i++) {
 			hash = typeStr.charCodeAt(i) + ((hash << 5) - hash);
 		}
 		const index = Math.abs(hash) % colors.typePalette.length;
-		return colors.typePalette[index];
+		const rawCategoryColor = colors.typePalette[index];
+		// 结合主题强调色与类别彩盘混色，使用户在更改主题强调色时，图谱节点呈现显著且和谐的色彩联动
+		return GraphRenderer.mixColors(colors.accent, rawCategoryColor, 0.55);
 	}
 }

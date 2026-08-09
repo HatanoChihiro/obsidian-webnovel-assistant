@@ -156,12 +156,14 @@ export class ForeshadowingParser {
 		matchedText: string; // 匹配到的旧格式条目的原始内容，供解析后合并
 	} {
 		// 先尝试匹配新格式的标题行: ## 说明
+		// 正则意图：精确匹配开头的二级标题行，提取伏笔描述文本，如 "## 宝库钥匙下落"
 		const newTitlePattern = new RegExp(`^## \\s*${escapeRegex(description)}\\s*$`, 'm');
 		let match = newTitlePattern.exec(content);
 		
 		let isNewFormat = true;
 		
 		// 如果没找到，退化到旧格式：寻找 **说明**：说明
+		// 正则意图：多语言兼容匹配旧版说明加粗字段，如 "**说明**：宝库钥匙下落"
 		if (!match) {
 			const oldDescPattern = new RegExp(`\\*\\*(?:说明|Description|${t('foreshadowing.description')})\\*\\*：${escapeRegex(description)}`, 'm');
 			match = oldDescPattern.exec(content);
@@ -175,6 +177,7 @@ export class ForeshadowingParser {
 			startPos = match.index; // 新格式匹配的就是标题行
 		} else {
 			// 旧格式匹配的是说明行，需要向上找标题行 ## [[...]]
+			// 正则意图：向上查找匹配旧格式带有 Obsidian 内部链接的标题行，如 "## [[第1章]]"
 			const beforeMatch = content.slice(0, match.index);
 			const titleMatch = [...beforeMatch.matchAll(/^## \[\[.+?\]\]/gm)].pop();
 			if (titleMatch && titleMatch.index !== undefined) {
@@ -228,7 +231,9 @@ export class ForeshadowingParser {
 			let parsedTitleDescription = '';
 			
 			if (titleText.startsWith('[[')) {
-				// 旧格式
+				// 旧格式匹配
+				// Group 1: 来源文件路径 (如 "第1章 初入江湖")
+				// Group 2: 可选的创建时间戳 (如 "2026-08-08 12:00")
 				const oldMatch = titleText.match(/^\[\[(.+?)\]\](?:\s*-\s*(.+))?$/);
 				if (oldMatch) {
 					sourceFile = oldMatch[1];

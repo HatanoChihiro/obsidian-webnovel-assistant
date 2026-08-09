@@ -571,7 +571,7 @@ export class FloatingStickyNote extends Component {
 						}
 
 						// 创建文件
-						const file = await this.app.vault.create(fullPath, this.state.content || "");
+						const file = await this.plugin.stickyNoteManager.createNoteFile(fullPath, this.state.content || "");
 						this.state.filePath = file.path;
 						this.state.title = file.basename;
 						this.lastSavedContent = this.state.content || ""; // 更新最后保存的内容
@@ -636,7 +636,7 @@ export class FloatingStickyNote extends Component {
 												new Notice(t('modal.file-already-exists', { path: fullPath }));
 												return;
 											}
-											await this.app.vault.create(fullPath, this.state.content || "");
+											await this.plugin.stickyNoteManager.createNoteFile(fullPath, this.state.content || "");
 											new Notice(t('modal.saved-as', { path: fullPath }));
 											this.close();
 										} catch (error) {

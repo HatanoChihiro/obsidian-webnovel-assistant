@@ -5,6 +5,17 @@ export default defineConfig({
 	test: {
 		// 只测试 tests/ 目录下的文件
 		include: ['tests/**/*.test.ts'],
+		coverage: {
+			provider: 'v8',
+			reporter: ['text', 'json-summary', 'html'],
+			include: ['src/services/**', 'src/utils/**', 'src/core/**'],
+			thresholds: {
+				lines: 20,
+				functions: 50,
+				branches: 50,
+				statements: 20
+			}
+		}
 	},
 	resolve: {
 		alias: {

@@ -7,6 +7,44 @@ import type { ForeshadowingSettings } from './foreshadowing';
 import type { TaskSettings } from './task';
 import type { NovelInfoSettings } from './homepage';
 
+/** 排版功能相关设置 */
+export interface TypographySettings {
+	/** 排版功能总开关 */
+	enabled: boolean;
+	/** 是否对章节文档生效 */
+	applyToChapters: boolean;
+	/** 是否对设定文档生效 */
+	applyToLore: boolean;
+	/** 是否对作品信息文档生效 */
+	applyToNovelInfo: boolean;
+	/** 是否对时间线文档生效 */
+	applyToTimeline: boolean;
+	/** 是否对伏笔记录文档生效 */
+	applyToForeshadowing: boolean;
+	/** 是否对限时任务文档生效 */
+	applyToTask: boolean;
+	/** 是否对其他文档（工作区内非章节和非功能性的文档）生效 */
+	applyToOther: boolean;
+	/** 标题对齐方式 */
+	headerAlignment: 'left' | 'center' | 'right';
+	/** 是否开启首行缩进 */
+	enableIndent: boolean;
+	/** 首行缩进值 (如 "2em") */
+	indentSize: string;
+	/** 行高 (如 1.8) */
+	lineHeight: number;
+	/** 段间距 (如 "0.5em") */
+	paragraphSpacing: string;
+	/** 字间距 (如 "0.05em") */
+	letterSpacing: string;
+	/** 最大行宽限制 (如 "700px" 或 "40em"，为空表示不限制) */
+	maxLineWidth: string;
+	/** 是否开启两端对齐 */
+	justifyText: boolean;
+	/** 是否开启阅读模式兼容 */
+	enableReadingModeCompat: boolean;
+}
+
 /** 时间线功能相关设置 */
 export interface TimelineSettings {
 	/** 时间线文件名（不含 .md 后缀，默认：时间线） */
@@ -209,6 +247,8 @@ export interface AccurateCountSettings {
 	eyeCareEnabled: boolean;
 	/** 护眼模式背景色（十六进制） */
 	eyeCareColor: string;
+	/** 排版功能设置 */
+	typography: TypographySettings;
 	/** 是否显示移动端浮动字数统计窗口 */
 	showMobileFloatingStats: boolean;
 	/** 是否在移动端启用专注计时（实验性） */

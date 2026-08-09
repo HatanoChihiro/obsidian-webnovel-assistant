@@ -30,6 +30,32 @@ export interface LayoutEdge extends d3.SimulationLinkDatum<LayoutNode> {
 	target: LayoutNode | string;
 }
 
+/** 力导向物理引擎配置参数 */
+export const PHYSICS_CONFIG = {
+	/** 连线拉扯固定短距离 */
+	LINK_DISTANCE: 80,
+	/** 连线拉扯刚度 */
+	LINK_STRENGTH: 0.5,
+	/** 节点互斥力强度 */
+	CHARGE_STRENGTH: -400,
+	/** 最大排斥距离 */
+	CHARGE_DISTANCE_MAX: 400,
+	/** 主角节点向心力强度 */
+	PROTAGONIST_GRAVITY: 0.5,
+	/** 孤立节点向心力强度 */
+	ISOLATED_NODE_GRAVITY: 0.08,
+	/** 普通节点微弱向心力强度 */
+	OTHER_NODE_GRAVITY: 0.02,
+	/** 整体中心引力强度 */
+	CENTER_STRENGTH: 0.05,
+	/** 碰撞检测半径 */
+	COLLIDE_RADIUS: 40,
+	/** 碰撞检测受力强度 */
+	COLLIDE_STRENGTH: 0.8,
+	/** 最小收敛 alpha 步长 */
+	ALPHA_MIN: 0.001,
+} as const;
+
 /**
  * 力导向布局引擎 (包装 d3-force)
  * 
@@ -41,15 +67,61 @@ export class ForceLayoutEngine {
 	public readonly edges: LayoutEdge[];
 	private simulation: d3.Simulation<LayoutNode, LayoutEdge>;
 
-	private static readonly ISOLATED_NODE_GRAVITY = 0.08;
-
-	constructor(nodes: LayoutNode[], edges: LayoutEdge[], width: number, height: number) {
+	constructor(nodes: LayoutNode[], edges: LayoutEdge[], public width: number, public height: number) {
 		this.nodes = nodes;
 		// 复制 edges 因为 d3 会直接把 string source/target 修改为对象引用
 		this.edges = edges.map(e => ({ ...e }));
 
-		// 同步初始状态
-		this.nodes.forEach(n => {
+		// 同步初始状态与主角中心锁定
+		this.updateProtagonistPositions();
+
+		const degreeMap = this.calculateDegreeMap(this.edges);
+
+		// 构建 D3 物理引擎
+		this.simulation = d3.forceSimulation<LayoutNode>(this.nodes)
+			// 弹簧力：连线拉扯（保持极短的距离，使图谱紧凑）
+			.force('link', d3.forceLink<LayoutNode, LayoutEdge>(this.edges)
+				.id(d => d.id)
+				.distance(PHYSICS_CONFIG.LINK_DISTANCE)
+				.strength(PHYSICS_CONFIG.LINK_STRENGTH)
+			)
+			// 万有斥力：节点互相排斥
+			.force('charge', d3.forceManyBody()
+				.strength(PHYSICS_CONFIG.CHARGE_STRENGTH)
+				.distanceMax(PHYSICS_CONFIG.CHARGE_DISTANCE_MAX)
+			)
+			// 聚拢引力：防止孤立节点散落太远，同时维持主角的中心地位
+			.force('gravityX', d3.forceX<LayoutNode>(width / 2).strength((d: LayoutNode) => {
+				const isProtagonist = d.isProtagonist || Boolean(d.nodeType && (d.nodeType.includes('主角') || d.nodeType.toLowerCase().includes('protagonist')));
+				if (isProtagonist) return PHYSICS_CONFIG.PROTAGONIST_GRAVITY;
+				if ((degreeMap.get(d.id) || 0) === 0) return PHYSICS_CONFIG.ISOLATED_NODE_GRAVITY; // 孤立节点施加向心力
+				return PHYSICS_CONFIG.OTHER_NODE_GRAVITY; // 其他节点微弱向心力
+			}))
+			.force('gravityY', d3.forceY<LayoutNode>(height / 2).strength((d: LayoutNode) => {
+				const isProtagonist = d.isProtagonist || Boolean(d.nodeType && (d.nodeType.includes('主角') || d.nodeType.toLowerCase().includes('protagonist')));
+				if (isProtagonist) return PHYSICS_CONFIG.PROTAGONIST_GRAVITY;
+				if ((degreeMap.get(d.id) || 0) === 0) return PHYSICS_CONFIG.ISOLATED_NODE_GRAVITY;
+				return PHYSICS_CONFIG.OTHER_NODE_GRAVITY;
+			}))
+			// 中心引力：防止整体飘走
+			.force('center', d3.forceCenter(width / 2, height / 2).strength(PHYSICS_CONFIG.CENTER_STRENGTH))
+			// 碰撞检测：保证孤立节点聚拢时也不会重叠
+			.force('collide', d3.forceCollide().radius(PHYSICS_CONFIG.COLLIDE_RADIUS).strength(PHYSICS_CONFIG.COLLIDE_STRENGTH))
+			// 速度衰减（阻尼）
+			.alphaMin(PHYSICS_CONFIG.ALPHA_MIN);
+	}
+
+	/**
+	 * 保持主角节点锁定在画布中心位置（如用户手动固定 pinned 则尊重固定坐标）
+	 */
+	private updateProtagonistPositions(): void {
+		const protagonists = this.nodes.filter(n =>
+			n.isProtagonist || Boolean(n.nodeType && (n.nodeType.includes('主角') || n.nodeType.toLowerCase().includes('protagonist')))
+		);
+
+		const nonProtagonists = this.nodes.filter(n => !protagonists.includes(n));
+
+		nonProtagonists.forEach(n => {
 			if (n.pinned) {
 				n.fx = n.x;
 				n.fy = n.y;
@@ -59,38 +131,28 @@ export class ForceLayoutEngine {
 			}
 		});
 
-		const degreeMap = this.calculateDegreeMap(this.edges);
-
-		// 构建 D3 物理引擎
-		this.simulation = d3.forceSimulation<LayoutNode>(this.nodes)
-			// 弹簧力：连线拉扯（保持极短的距离，使图谱紧凑）
-			.force('link', d3.forceLink<LayoutNode, LayoutEdge>(this.edges)
-				.id(d => d.id)
-				.distance(80) // 固定短距离，防止线条过长
-				.strength(0.5) // 拉扯刚度
-			)
-			// 万有斥力：节点互相排斥
-			.force('charge', d3.forceManyBody()
-				.strength(-400) // 适中的斥力
-				.distanceMax(400) // 最大排斥距离
-			)
-			// 聚拢引力：防止孤立节点散落太远，同时维持主角的中心地位
-			.force('gravityX', d3.forceX<LayoutNode>(width / 2).strength((d: LayoutNode) => {
-				if (d.isProtagonist) return 0.2;
-				if ((degreeMap.get(d.id) || 0) === 0) return ForceLayoutEngine.ISOLATED_NODE_GRAVITY; // 孤立节点施加向心力
-				return 0.02; // 其他节点微弱向心力
-			}))
-			.force('gravityY', d3.forceY<LayoutNode>(height / 2).strength((d: LayoutNode) => {
-				if (d.isProtagonist) return 0.2;
-				if ((degreeMap.get(d.id) || 0) === 0) return ForceLayoutEngine.ISOLATED_NODE_GRAVITY;
-				return 0.02;
-			}))
-			// 中心引力：防止整体飘走
-			.force('center', d3.forceCenter(width / 2, height / 2).strength(0.05))
-			// 碰撞检测：增加到 40，保证孤立节点聚拢时也不会重叠
-			.force('collide', d3.forceCollide().radius(40).strength(0.8))
-			// 速度衰减（阻尼）：0.6 接近原生 Obsidian 图谱的“Q弹”感
-			.alphaMin(0.001);
+		if (protagonists.length === 1) {
+			const p = protagonists[0];
+			if (p.pinned) {
+				p.fx = p.x;
+				p.fy = p.y;
+			} else {
+				p.fx = this.width / 2;
+				p.fy = this.height / 2;
+			}
+		} else if (protagonists.length > 1) {
+			protagonists.forEach((p, idx) => {
+				if (p.pinned) {
+					p.fx = p.x;
+					p.fy = p.y;
+				} else {
+					const angle = (idx / protagonists.length) * Math.PI * 2;
+					const radius = 50;
+					p.fx = this.width / 2 + Math.cos(angle) * radius;
+					p.fy = this.height / 2 + Math.sin(angle) * radius;
+				}
+			});
+		}
 	}
 
 	/**
@@ -114,16 +176,8 @@ export class ForceLayoutEngine {
 	public tick(): boolean {
 		if (this.isConverged) return false;
 
-		// 每次 tick 前同步 pinned 状态
-		this.nodes.forEach(n => {
-			if (n.pinned) {
-				n.fx = n.x;
-				n.fy = n.y;
-			} else {
-				n.fx = null;
-				n.fy = null;
-			}
-		});
+		// 每次 tick 前同步 pinned 状态及主角中心锁定
+		this.updateProtagonistPositions();
 
 		this.simulation.tick();
 		return true;
@@ -153,19 +207,17 @@ export class ForceLayoutEngine {
 	}
 
 	/**
-	 * 容器改变大小时，调整中心力坐标
+	 * 容器改变大小时，调整中心力坐标及主角中心定位
 	 */
 	public resize(width: number, height: number): void {
+		this.width = width;
+		this.height = height;
 		const centerForce = this.simulation.force('center') as d3.ForceCenter<LayoutNode>;
 		if (centerForce) {
 			centerForce.x(width / 2).y(height / 2);
 		}
 		
-		const progX = this.simulation.force('protagonistX') as d3.ForceX<LayoutNode>;
-		if (progX) progX.x(width / 2);
-		
-		const progY = this.simulation.force('protagonistY') as d3.ForceY<LayoutNode>;
-		if (progY) progY.y(height / 2);
+		this.updateProtagonistPositions();
 	}
 
 	/**

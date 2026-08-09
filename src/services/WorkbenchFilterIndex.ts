@@ -12,9 +12,9 @@ interface CachedLoreSections {
 }
 
 export function normalizeWorkbenchSearchText(value: unknown): string {
-	return String(value ?? '')
-		.normalize('NFKC')
-		.toLocaleLowerCase('zh-CN');
+	if (value === null || value === undefined) return '';
+	const str = typeof value === 'string' ? value : (typeof value === 'number' || typeof value === 'boolean' ? String(value) : JSON.stringify(value));
+	return str.normalize('NFKC').toLocaleLowerCase('zh-CN');
 }
 
 export function tokenizeWorkbenchFilter(query: string): string[] {

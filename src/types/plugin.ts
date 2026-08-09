@@ -38,6 +38,8 @@ import type { FileEventManager } from '../services/FileEventManager';
 import type { HomepageManager } from '../services/HomepageManager';
 import type { StatisticsManager } from '../services/StatisticsManager';
 import type { RelationGraphManager } from '../services/RelationGraphManager';
+import type { TypographyManager } from '../services/TypographyManager';
+import type { ChapterMergeManager } from '../services/ChapterMergeManager';
 
 // ==========================================
 // 辅助类型
@@ -170,6 +172,9 @@ export interface WebNovelAssistantPlugin extends
 	taskManager: TaskManager;
 	timelineManager: TimelineManager;
 	relationGraphManager: RelationGraphManager;
+	typographyManager: TypographyManager;
+	chapterMergeManager: ChapterMergeManager;
+	stickyNoteManager: StickyNoteDataManager;
 	editorTracker?: EditorTracker;
 	styleManager?: StyleManager;
 	homepageManager?: HomepageManager;

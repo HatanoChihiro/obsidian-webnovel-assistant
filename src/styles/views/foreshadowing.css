@@ -1,0 +1,653 @@
+.foreshadowing-view-container {
+	padding: 18px;
+	overflow-y: auto;
+}
+
+
+.foreshadowing-view-header {
+	margin-bottom: 12px;
+}
+
+
+.foreshadowing-view-title-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 4px;
+}
+
+
+.foreshadowing-view-title {
+	font-size: 1.1em;
+	font-weight: bold;
+	color: var(--interactive-accent);
+	margin-top: 8px;
+}
+
+
+.foreshadowing-view-folder {
+	font-size: 0.85em;
+	color: var(--text-muted);
+	margin-bottom: 8px;
+}
+
+
+.foreshadowing-view-filter-row {
+	display: flex;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+
+
+.foreshadowing-filter-btn {
+	padding: 4px 10px;
+	border-radius: 4px;
+	border: 1px solid var(--background-modifier-border);
+	background: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+	font-size: 0.85em;
+}
+
+
+.foreshadowing-filter-btn:hover {
+	border-color: var(--interactive-accent);
+	color: var(--interactive-accent);
+}
+
+
+.foreshadowing-filter-btn.is-active {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border-color: var(--interactive-accent);
+}
+
+
+.foreshadowing-view-empty {
+	color: var(--text-muted);
+	font-size: 0.9em;
+	padding: 24px 0;
+	text-align: center;
+}
+
+
+.foreshadowing-view-hint {
+	font-size: 0.85em;
+}
+
+
+.foreshadowing-view-tag-filter-row {
+	margin-top: 4px;
+}
+
+
+.foreshadowing-group-header {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin: 12px 0 6px;
+	padding-left: 10px;
+	border-left: 3px solid var(--interactive-accent);
+}
+
+
+.foreshadowing-group-label {
+	font-size: 0.85em;
+	font-weight: 600;
+	color: var(--interactive-accent);
+}
+
+
+.foreshadowing-group-count {
+	font-size: 0.8em;
+	background: var(--background-modifier-border);
+	color: var(--text-muted);
+	padding: 1px 6px;
+	border-radius: 8px;
+}
+
+
+.foreshadowing-entry-card {
+	background: color-mix(in srgb, var(--interactive-accent) 4%, var(--background-secondary));
+	border-radius: 8px;
+	padding: 14px 18px;
+	margin-bottom: 12px;
+	border-left: 3px solid var(--background-modifier-border);
+}
+
+
+.foreshadowing-entry-card.status-pending {
+	border-left-color: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%);
+}
+
+
+.foreshadowing-entry-card.status-recovered {
+	border-left-color: color-mix(in srgb, var(--interactive-accent) 60%, var(--text-success, var(--interactive-accent)));
+	opacity: 0.75;
+}
+
+
+.foreshadowing-entry-card.status-deprecated {
+	border-left-color: var(--text-muted);
+	opacity: 0.5;
+}
+
+
+.foreshadowing-entry-desc {
+	margin-bottom: 6px;
+}
+
+
+.foreshadowing-entry-desc-text {
+	font-weight: 600;
+	font-size: 1.0em;
+	color: var(--text-normal);
+}
+
+
+.foreshadowing-entry-quotes {
+	margin-bottom: 6px;
+}
+
+
+.foreshadowing-entry-quotes.mod-recovery-logs {
+	margin-top: 8px;
+	margin-bottom: 6px;
+	padding-top: 6px;
+	border-top: 1px dashed var(--background-modifier-border);
+}
+
+
+.foreshadowing-entry-quote {
+	margin-bottom: 4px;
+}
+
+
+.foreshadowing-entry-quote-meta {
+	font-size: 0.8em;
+	color: var(--text-muted);
+	margin-bottom: 2px;
+}
+
+
+.foreshadowing-entry-quote-text {
+	font-size: 0.85em;
+	color: var(--text-muted);
+	padding-left: 8px;
+	border-left: 2px solid var(--background-modifier-border);
+	line-height: 1.5;
+	white-space: pre-wrap;
+}
+
+
+.foreshadowing-entry-quote-text.mod-recovery-quote {
+	margin-top: 4px;
+	width: 100%;
+	cursor: pointer;
+	font-size: 0.85em;
+}
+
+
+.foreshadowing-entry-quote-text.mod-recovery-quote.mod-stage {
+	border-left-color: color-mix(in srgb, var(--interactive-accent) 65%, var(--text-error, var(--interactive-accent)) 35%);
+	color: color-mix(in srgb, var(--interactive-accent) 65%, var(--text-error, var(--interactive-accent)) 35%);
+}
+
+
+.foreshadowing-entry-quote-text.mod-recovery-quote.mod-final {
+	border-left-color: color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%);
+	color: color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%);
+}
+
+
+.foreshadowing-entry-footer {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-top: 6px;
+	flex-wrap: wrap;
+}
+
+
+.foreshadowing-entry-tags {
+	display: flex;
+	gap: 4px;
+	flex-wrap: wrap;
+	flex: 1;
+}
+
+
+.foreshadowing-entry-tag {
+	font-size: 0.8em;
+	color: var(--interactive-accent);
+	background: var(--background-primary);
+	padding: 1px 6px;
+	border-radius: 8px;
+	border: 1px solid var(--interactive-accent);
+	opacity: 0.8;
+}
+
+
+.foreshadowing-entry-actions {
+	display: flex;
+	gap: 4px;
+	flex-shrink: 0;
+	margin-left: auto;
+}
+
+
+.foreshadowing-action-btn {
+	padding: 4px 10px;
+	border-radius: 4px;
+	border: 1px solid var(--background-modifier-border);
+	background: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+	font-size: 0.85em;
+}
+
+
+.foreshadowing-action-btn:hover {
+	border-color: var(--interactive-accent);
+	color: var(--interactive-accent);
+}
+
+
+.foreshadowing-recover-btn {
+	border-color: color-mix(in srgb, var(--interactive-accent) 70%, var(--text-warning, var(--interactive-accent)));
+	color: color-mix(in srgb, var(--interactive-accent) 70%, var(--text-warning, var(--interactive-accent)));
+}
+
+
+.foreshadowing-recover-btn:hover {
+	background: color-mix(in srgb, var(--interactive-accent) 70%, var(--text-warning, var(--interactive-accent)));
+	color: var(--text-on-accent);
+}
+
+
+.foreshadowing-deprecate-btn {
+	border-color: var(--text-muted);
+	color: var(--text-muted);
+}
+
+
+.foreshadowing-deprecate-btn:hover {
+	background: var(--text-muted);
+	color: white;
+}
+
+
+/* Foreshadowing/Timeline Modal popup spacing tightened */
+
+/* Foreshadowing View */
+.foreshadowing-input-modal h2 {
+	font-size: 1.1em;
+	color: var(--interactive-accent);
+	margin: 0 0 8px 0;
+	padding: 0;
+}
+
+
+.foreshadowing-input-modal .setting-item {
+	padding: 4px 0;
+}
+
+
+.foreshadowing-input-modal .setting-item-name {
+	font-size: 0.85em;
+}
+
+
+.foreshadowing-input-modal .setting-item-description {
+	font-size: 0.8em;
+}
+
+
+/* -- MarkdownPostProcessor (foreshadowing checkbox) -- */
+
+.webnovel-foreshadowing-checkbox {
+	margin-left: 8px;
+	cursor: pointer;
+	vertical-align: middle;
+	width: 15px;
+	height: 15px;
+	accent-color: var(--interactive-accent);
+}
+
+
+/* 待回收：主题强调色调和警示 (Accent-blended Warning/Pending) */
+.wn-badge-foreshadowing {
+	background-color: color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%) 15%, transparent);
+	color: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%);
+	border: 1px solid color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%);
+}
+
+
+
+
+
+.wn-foreshadowing-status-pill {
+	padding: 1px 5px;
+	border-radius: 4px;
+	font-weight: 500;
+}
+
+
+.wn-foreshadowing-status-pill.status-pending {
+	background: color-mix(in srgb, var(--text-accent) 15%, transparent);
+	color: var(--text-accent);
+}
+
+
+.wn-foreshadowing-status-pill.status-recovered {
+	background: color-mix(in srgb, var(--text-success) 15%, transparent);
+	color: var(--text-success);
+}
+
+
+.wn-corkboard-volume-header:first-child,
+.wn-foreshadowing-group-section:first-child .wn-corkboard-volume-header {
+	margin-top: 2px;
+}
+
+
+/* ==========================================================================
+   Foreshadowing View & Stage Stepper
+   ========================================================================== */
+
+.foreshadowing-entry-card.status-partially-recovered {
+	border-left: 3px solid color-mix(in srgb, var(--interactive-accent) 65%, var(--text-error, var(--interactive-accent)) 35%);
+}
+
+
+.foreshadowing-action-btn.foreshadowing-stage-recover-btn {
+	background-color: color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 65%, var(--text-error, var(--interactive-accent)) 35%) 15%, transparent);
+	color: var(--text-normal);
+}
+
+
+.foreshadowing-action-btn.foreshadowing-stage-recover-btn:hover {
+	background-color: color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 65%, var(--text-error, var(--interactive-accent)) 35%) 30%, transparent);
+}
+
+
+.foreshadowing-stepper {
+	display: flex;
+	align-items: center;
+	flex: 1 1 auto;
+	min-width: 0;
+	gap: 6px;
+	margin: 3px 0 2px 0;
+	padding: 3px 6px 3px 2px;
+	background: transparent;
+	overflow-x: auto;
+	overflow-y: visible;
+	scrollbar-width: none;
+	-ms-overflow-style: none;
+}
+
+
+.foreshadowing-stepper::-webkit-scrollbar {
+	display: none;
+}
+
+
+.foreshadowing-step-item {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--text-muted);
+	cursor: pointer;
+	padding: 2px;
+	border-radius: 50%;
+	transition: background-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+	flex-shrink: 0;
+	overflow: visible;
+}
+
+
+.foreshadowing-stepper>.foreshadowing-step-item:first-child {
+	margin-left: 0;
+}
+
+
+.foreshadowing-stepper>.foreshadowing-step-item:last-child {
+	margin-right: 4px;
+}
+
+
+.foreshadowing-step-item:hover {
+	background-color: var(--background-modifier-hover);
+	transform: scale(1.15);
+}
+
+
+.foreshadowing-step-item.is-current svg {
+	filter: drop-shadow(0 0 2px currentColor);
+}
+
+
+.foreshadowing-step-item.is-source {
+	color: var(--interactive-accent);
+}
+
+
+.foreshadowing-step-item.is-stage {
+	color: color-mix(in srgb, var(--interactive-accent) 65%, var(--text-error, var(--interactive-accent)) 35%);
+}
+
+
+.foreshadowing-step-item.is-final {
+	color: color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%);
+}
+
+
+.foreshadowing-step-item.is-pending-tail {
+	color: var(--text-muted);
+	opacity: 0.6;
+}
+
+
+.foreshadowing-step-dot {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 13px;
+	height: 13px;
+	min-width: 13px;
+	min-height: 13px;
+	flex-shrink: 0;
+	overflow: visible;
+}
+
+
+.foreshadowing-step-dot svg {
+	width: 12px;
+	height: 12px;
+	stroke-width: 2px;
+	overflow: visible;
+}
+
+
+.foreshadowing-step-line {
+	flex: 0 0 14px;
+	flex-shrink: 0;
+	height: 0;
+	margin: 0;
+	border: none;
+	border-top: 1px solid var(--text-muted);
+	background: transparent;
+	opacity: 0.3;
+}
+
+
+.foreshadowing-step-line.is-stage {
+	border-top-color: color-mix(in srgb, var(--interactive-accent) 65%, var(--text-error, var(--interactive-accent)) 35%);
+	opacity: 0.75;
+}
+
+
+.foreshadowing-step-line.is-final {
+	border-top-color: color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%);
+	opacity: 0.85;
+}
+
+
+.foreshadowing-step-line.is-pending-tail {
+	border-top-style: dashed;
+	border-top-color: var(--text-muted);
+	opacity: 0.35;
+}
+
+
+/* ==========================================================================
+   写作工作台 - 伏笔看板 (Workbench Foreshadowing Board) 样式规范
+   ========================================================================== */
+
+.wn-foreshadowing-board-container {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 4px 0 20px 0;
+	width: 100%;
+	box-sizing: border-box;
+}
+
+
+.wn-foreshadowing-group-section {
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+	margin-bottom: 4px;
+}
+
+
+.wn-foreshadowing-group-section .wn-corkboard-volume-header {
+	border-radius: 0;
+	margin-top: 10px;
+	margin-bottom: 6px;
+	width: 100%;
+	box-sizing: border-box;
+}
+
+
+.wn-foreshadowing-group-section.is-collapsed .wn-foreshadowing-card-list {
+	display: none;
+}
+
+
+.wn-foreshadowing-card-list {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	width: 100%;
+	padding: 2px 0 6px 0;
+	box-sizing: border-box;
+}
+
+
+.wn-foreshadowing-board-card {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	padding: 12px 16px;
+	transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+
+.wn-foreshadowing-board-card:hover {
+	border-color: color-mix(in srgb, var(--interactive-accent) 30%, var(--background-modifier-border));
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+
+.wn-foreshadowing-board-card.wn-card-status-pending {
+	border-left: 4px solid color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%);
+}
+
+
+.wn-foreshadowing-board-card.wn-card-status-partially_recovered {
+	border-left: 4px solid color-mix(in srgb, var(--interactive-accent) 65%, var(--text-error, var(--interactive-accent)) 35%);
+}
+
+
+.wn-foreshadowing-board-card.wn-card-status-recovered {
+	border-left: 4px solid color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%);
+}
+
+
+.wn-foreshadowing-board-card.wn-card-status-deprecated {
+	border-left: 4px solid var(--text-muted);
+	opacity: 0.85;
+}
+
+
+.wn-foreshadowing-card-line1 {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 12px;
+}
+
+
+.wn-foreshadowing-status-badge {
+	font-size: 0.75em;
+	font-weight: 600;
+	padding: 2px 8px;
+	border-radius: 12px;
+	display: inline-flex;
+	align-items: center;
+	white-space: nowrap;
+	line-height: 1.4;
+}
+
+
+.wn-foreshadowing-status-badge.status-pending {
+	background: color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%) 15%, transparent);
+	color: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%);
+	border: 1px solid color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%) 30%, transparent);
+}
+
+
+.wn-foreshadowing-status-badge.status-partially_recovered {
+	background: color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 65%, var(--text-error, var(--interactive-accent)) 35%) 15%, transparent);
+	color: color-mix(in srgb, var(--interactive-accent) 65%, var(--text-error, var(--interactive-accent)) 35%);
+	border: 1px solid color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 65%, var(--text-error, var(--interactive-accent)) 35%) 30%, transparent);
+}
+
+
+.wn-foreshadowing-status-badge.status-recovered {
+	background: color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%) 15%, transparent);
+	color: color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%);
+	border: 1px solid color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%) 30%, transparent);
+}
+
+
+.wn-foreshadowing-status-badge.status-deprecated {
+	background: color-mix(in srgb, var(--text-muted) 15%, transparent);
+	color: var(--text-muted);
+	border: 1px solid color-mix(in srgb, var(--text-muted) 30%, transparent);
+}
+
+
+.wn-foreshadowing-card-line2 {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 12px;
+	margin-top: 2px;
+	margin-bottom: 2px;
+}
+
+
+.wn-foreshadowing-card-line3,
+.wn-foreshadowing-card-line4 {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	font-size: 0.85em;
+	color: var(--text-normal);
+}

@@ -10,16 +10,7 @@ import { NewNovelModal } from '../NewNovelModal';
 import { ImportNovelModal } from '../ImportNovelModal';
 import type { WorkbenchView } from '../WorkbenchView';
 import { revealAndFocusLeaf } from '../../utils/leaf';
-import {
-	calcStreak,
-	calcFocusRate,
-	calcActiveHours,
-	calcDailyAverage,
-	calcWritingSpeed,
-	getHeatClass,
-	calcTaskCompletion,
-	calcNovelCompletionRate
-} from '../HistoryModal';
+import { getHeatClass } from '../HistoryModal';
 
 
 export class HomepageRenderer {
@@ -207,10 +198,22 @@ export class HomepageRenderer {
 		const todayWords = history[today]?.addedWords || 0;
 
 		const progressRow = section.createDiv({ cls: 'homepage-progress-row' });
-		// 总字数：从缓存中统计工作区所有文件的实际字数
+
+		// 总字数：从缓存中仅统计当前工作区跟踪的有效 Markdown 文件实际字数
 		let totalWords = 0;
-		for (const [, entry] of this.plugin.cacheManager.getEntries()) {
-			if (!entry.isFolder) totalWords += entry.wordCount;
+		const trackedFiles = this.plugin.getTrackedMarkdownFiles();
+		for (const file of trackedFiles) {
+			let cached = this.plugin.cacheManager.getFileCache(file.path);
+			if (cached === null) {
+				try {
+					const content = await this.app.vault.cachedRead(file);
+					cached = this.plugin.calculateAccurateWords(content);
+					this.plugin.cacheManager.updateFileCache(file, cached, this.app.vault);
+				} catch {
+					cached = 0;
+				}
+			}
+			totalWords += cached;
 		}
 		const totalGroup = progressRow.createDiv({ cls: 'homepage-progress-item' });
 		totalGroup.createDiv({ cls: 'homepage-progress-label', text: t('homepage.total-words') });
@@ -414,12 +417,12 @@ export class HomepageRenderer {
 
 		let streak = 0, focusRate = 0, activeHours = '--', dailyAvg = 0, totalWords = 0, speed = 0;
 		try {
-			streak = calcStreak(history);
-			focusRate = calcFocusRate(history, rangeStart, rangeEnd);
-			activeHours = calcActiveHours(history, rangeStart, rangeEnd) || '--';
-			dailyAvg = calcDailyAverage(history, rangeStart, rangeEnd);
+			streak = this.plugin.statisticsManager.calcStreak(history);
+			focusRate = this.plugin.statisticsManager.calcFocusRate(history, rangeStart, rangeEnd);
+			activeHours = this.plugin.statisticsManager.calcActiveHours(history, rangeStart, rangeEnd) || '--';
+			dailyAvg = this.plugin.statisticsManager.calcDailyAverage(history, rangeStart, rangeEnd);
 			totalWords = Object.values(history).reduce((sum, s) => sum + (s?.addedWords || 0), 0);
-			speed = calcWritingSpeed(history, rangeStart, rangeEnd);
+			speed = this.plugin.statisticsManager.calcWritingSpeed(history, rangeStart, rangeEnd);
 		} catch (e) {
 			console.error('[WebNovel] Error calculating stats metrics:', e);
 		}
@@ -431,9 +434,9 @@ export class HomepageRenderer {
 		try {
 			allNovels = await this.getAllNovelsWithMetadata();
 			if (this.plugin.taskManager) {
-				taskComp = await calcTaskCompletion(this.app, this.plugin, allNovels);
+				taskComp = await this.plugin.statisticsManager.calcTaskCompletion(allNovels);
 			}
-			novelRate = calcNovelCompletionRate(allNovels);
+			novelRate = this.plugin.statisticsManager.calcNovelCompletionRate(allNovels);
 		} catch (e) {
 			console.error('[WebNovel] Error calculating novel completion rates:', e);
 		}

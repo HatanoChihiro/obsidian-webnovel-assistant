@@ -1,0 +1,191 @@
+
+/* ========== Mobile Floating Stats Widget ========== */
+.mobile-floating-stats {
+	position: fixed;
+	z-index: 1000;
+	display: flex;
+	align-items: center;
+	padding: 4px 10px;
+	min-height: 26px;
+	line-height: 1;
+	background-color: var(--background-primary-alt);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 13px;
+	box-shadow: 0 3px 10px rgba(0, 0, 0, 0.12);
+	font-size: 0.68em;
+	user-select: none;
+	touch-action: none;
+	cursor: move;
+	opacity: 0.92;
+	transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.3s ease, background-color 0.15s ease, box-shadow 0.3s ease;
+}
+
+
+/* Mobile Floating Stats - Edge Docking & Collapse (贴边自动缩短变淡) */
+.mobile-floating-stats.is-docked-left {
+	opacity: 0.35;
+	transform: translateX(calc(-100% + 24px));
+	border-top-left-radius: 0;
+	border-bottom-left-radius: 0;
+	border-left: none;
+}
+
+
+.mobile-floating-stats.is-docked-right {
+	opacity: 0.35;
+	transform: translateX(calc(100% - 24px));
+	border-top-right-radius: 0;
+	border-bottom-right-radius: 0;
+	border-right: none;
+}
+
+
+/* 贴边半隐状态下的拉手指引小线条 */
+.mobile-floating-stats.is-docked-left::after {
+	content: '';
+	position: absolute;
+	right: 4px;
+	top: 50%;
+	transform: translateY(-50%);
+	width: 3px;
+	height: 12px;
+	border-radius: 2px;
+	background-color: var(--interactive-accent);
+	opacity: 0.8;
+	transition: opacity 0.2s ease;
+}
+
+
+.mobile-floating-stats.is-docked-right::before {
+	content: '';
+	position: absolute;
+	left: 4px;
+	top: 50%;
+	transform: translateY(-50%);
+	width: 3px;
+	height: 12px;
+	border-radius: 2px;
+	background-color: var(--interactive-accent);
+	opacity: 0.8;
+	transition: opacity 0.2s ease;
+}
+
+
+/* 触摸/悬停/点击展开状态 */
+.mobile-floating-stats.is-docked-left:hover,
+.mobile-floating-stats.is-docked-left.is-expanded,
+.mobile-floating-stats.is-docked-right:hover,
+.mobile-floating-stats.is-docked-right.is-expanded {
+	opacity: 0.96;
+	transform: translateX(0);
+	box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+}
+
+
+.mobile-floating-stats.is-docked-left:hover::after,
+.mobile-floating-stats.is-docked-left.is-expanded::after,
+.mobile-floating-stats.is-docked-right:hover::before,
+.mobile-floating-stats.is-docked-right.is-expanded::before {
+	opacity: 0;
+}
+
+
+.mobile-floating-stats.is-dragging,
+.mobile-floating-stats.is-docked-left.is-dragging,
+.mobile-floating-stats.is-docked-right.is-dragging {
+	opacity: 0.95;
+	transform: none;
+	transition: none;
+	box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+}
+
+
+.mobile-floating-word-count,
+.mobile-floating-progress {
+	font-weight: 500;
+	white-space: nowrap;
+	display: inline-flex;
+	align-items: center;
+	line-height: 1;
+}
+
+
+.mobile-floating-word-count {
+	color: var(--text-normal);
+}
+
+
+.mobile-floating-progress.wn-text-orange {
+	color: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-warning, var(--interactive-accent)) 70%);
+}
+
+
+.mobile-floating-progress.wn-text-green {
+	color: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-success, var(--interactive-accent)) 70%);
+}
+
+
+.mobile-floating-divider {
+	margin: 0 6px;
+	color: var(--text-faint);
+	opacity: 0.4;
+	display: inline-flex;
+	align-items: center;
+	line-height: 1;
+}
+
+
+.mobile-floating-timer {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	line-height: 1;
+}
+
+
+.mobile-floating-timer-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 2px 3px;
+	border-radius: 4px;
+	cursor: pointer;
+	user-select: none;
+	touch-action: manipulation;
+	line-height: 1;
+	color: var(--text-muted);
+}
+
+
+.mobile-floating-timer-btn .svg-icon,
+.mobile-floating-timer-btn svg {
+	width: 12px;
+	height: 12px;
+	display: block;
+	margin: 0;
+	padding: 0;
+	color: var(--text-muted);
+}
+
+
+.mobile-floating-timer-btn:hover {
+	background-color: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+
+.mobile-floating-timer-btn:hover .svg-icon,
+.mobile-floating-timer-btn:hover svg {
+	color: var(--text-normal);
+}
+
+
+.mobile-floating-timer-text {
+	display: inline-flex;
+	align-items: center;
+	margin-left: 3px;
+	line-height: 1;
+	user-select: none;
+	white-space: nowrap;
+	color: var(--text-accent);
+}

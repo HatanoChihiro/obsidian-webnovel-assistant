@@ -1,0 +1,499 @@
+
+/* ========== Writing Data Panel: Unified Accent Color ========== */
+
+/* Override Obsidian default modal width */
+
+/* History and Stats */
+.modal.history-stats-modal-wide {
+	width: 960px;
+	max-width: 95vw;
+}
+
+
+.history-stats-modal .setting-item.setting-item-heading {
+	padding: 4px 0 6px 0;
+	margin: 4px 0 10px 0;
+	border: none;
+	min-height: unset;
+	background: transparent;
+}
+
+
+.history-stats-modal .setting-item.setting-item-heading.stats-subheading {
+	margin-top: 24px;
+}
+
+
+.history-stats-modal .setting-item.setting-item-heading .setting-item-info {
+	margin-left: 0;
+}
+
+
+.history-stats-modal .setting-item.setting-item-heading .setting-item-name {
+	color: var(--interactive-accent);
+	font-size: 1.25em;
+	font-weight: 700;
+}
+
+
+.history-stats-modal .setting-item.setting-item-heading.stats-subheading .setting-item-name {
+	font-size: 1.0em;
+	font-weight: 600;
+	color: var(--interactive-accent);
+	opacity: 0.85;
+}
+
+
+/* Stats Tab Group */
+
+.stats-tab-btn {
+	background: transparent;
+	border: none;
+	box-shadow: none;
+	color: var(--text-muted);
+	cursor: pointer;
+	padding: 4px 8px;
+	border-radius: 4px;
+	transition: all 0.2s;
+	font-size: 0.85em;
+}
+
+
+/* Stats Tab Btn */
+.stats-tab-btn:hover {
+	background: color-mix(in srgb, var(--interactive-accent) 15%, transparent);
+	color: var(--interactive-accent);
+}
+
+
+.stats-tab-btn.is-active {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	font-weight: bold;
+}
+
+
+/* Efficiency Overview - Accent color top border + tinted background */
+
+/* Stats Efficiency Row */
+.stats-efficiency-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px;
+	margin-bottom: 20px;
+}
+
+
+.stats-efficiency-card {
+	flex: 1 1 calc(25% - 12px);
+	min-width: 90px;
+	background: color-mix(in srgb, var(--interactive-accent) 6%, var(--background-secondary));
+	border-radius: 8px;
+	padding: 14px 10px;
+	text-align: center;
+	border-top: 3px solid var(--interactive-accent);
+	box-sizing: border-box;
+}
+
+
+.stats-efficiency-label {
+	font-size: 0.85em;
+	color: var(--text-muted);
+	margin-bottom: 8px;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+
+.stats-efficiency-value {
+	font-size: 1.15em;
+	font-weight: bold;
+	color: var(--interactive-accent);
+	font-family: var(--font-monospace);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+
+/* Section Title - Accent color decoration */
+
+/* Stats Section Title */
+
+/* Chart type toggle */
+
+/* Stats Filter Row */
+.stats-filter-row {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 12px;
+}
+
+
+.stats-time-tabs,
+.stats-metric-tabs {
+	display: flex;
+	gap: 4px;
+}
+
+
+/* Chart scroll container */
+
+/* Stats Chart Scroll Wrapper */
+.stats-chart-scroll-wrapper {
+	min-height: 100px;
+	width: 100%;
+	overflow-x: scroll;
+	overflow-y: hidden;
+	padding-bottom: 8px;
+}
+
+
+
+body .history-stats-modal .stats-chart-scroll-wrapper::-webkit-scrollbar {
+	height: 4px;
+}
+
+
+body .history-stats-modal .stats-chart-scroll-wrapper::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+
+body .history-stats-modal .stats-chart-scroll-wrapper::-webkit-scrollbar-thumb {
+	background: transparent;
+	border-radius: 2px;
+}
+
+
+body .history-stats-modal .stats-chart-scroll-wrapper:hover::-webkit-scrollbar-thumb {
+	background: color-mix(in srgb, var(--interactive-accent) 70%, var(--text-muted));
+}
+
+
+/* Bar chart container */
+
+/* Stats Large Chart Container */
+.stats-large-chart-container {
+	position: relative;
+	height: 160px;
+	padding: 8px 4px;
+	margin-top: 8px;
+}
+
+
+.stats-large-chart-container.stats-bar-mode {
+	display: flex;
+	align-items: stretch;
+	gap: 6px;
+	min-width: max-content;
+}
+
+
+.stats-large-col {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: flex-end;
+	height: 100%;
+	min-width: 36px;
+	max-width: 60px;
+	flex: 1;
+	z-index: 1;
+}
+
+
+.stats-large-bar {
+	width: 65%;
+	min-width: 14px;
+	max-width: 32px;
+	border-radius: 4px 4px 0 0;
+	opacity: 0.9;
+	transition: height 0.4s ease;
+	cursor: pointer;
+}
+
+
+.stats-large-bar:hover {
+	opacity: 1;
+	filter: brightness(1.2);
+}
+
+
+.stats-large-label {
+	font-size: 0.65em;
+	margin-top: 6px;
+	color: var(--text-muted);
+	white-space: nowrap;
+}
+
+
+.stats-large-value {
+	font-size: 0.7em;
+	margin-top: 2px;
+	font-weight: bold;
+	font-family: var(--font-monospace);
+	white-space: nowrap;
+}
+
+
+/* Trend overlay layer */
+
+/* Stats Trend Overlay Wrapper */
+.stats-trend-overlay-wrapper {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	pointer-events: none;
+	z-index: 0;
+}
+
+
+.stats-trend-overlay {
+	width: 100%;
+	height: 100%;
+}
+
+
+/* Heatmap layout */
+
+/* Stats Heat Range Row */
+
+.stats-heat-date-row {
+	display: flex;
+	gap: 8px;
+	margin-bottom: 10px;
+	align-items: center;
+}
+
+
+.stats-heat-date-label {
+	font-size: 0.85em;
+	color: var(--text-muted);
+	white-space: nowrap;
+}
+
+
+.stats-heat-date-input {
+	padding: 5px 10px;
+	border-radius: 6px;
+	border: 1px solid color-mix(in srgb, var(--interactive-accent) 30%, var(--background-modifier-border));
+	background: color-mix(in srgb, var(--interactive-accent) 4%, var(--background-primary));
+	color: var(--text-normal);
+	font-size: 0.85em;
+	font-family: var(--font-monospace);
+	transition: border-color 0.2s;
+}
+
+
+.stats-heat-date-input:focus {
+	outline: none;
+	border-color: var(--interactive-accent);
+}
+
+
+.stats-heat-date-input::-webkit-calendar-picker-indicator {
+	filter: opacity(0.5);
+	cursor: pointer;
+}
+
+
+.stats-heatmap-container {
+	margin-bottom: 16px;
+}
+
+
+.stats-heatmap-legend-inline {
+	display: flex;
+	gap: 2px;
+	align-items: center;
+	justify-content: flex-end;
+	margin-left: auto;
+}
+
+
+.stats-heatmap-months {
+	position: relative;
+	height: 20px;
+	margin-bottom: 4px;
+	margin-left: 28px;
+}
+
+
+.stats-heatmap-month-label {
+	position: absolute;
+	font-size: 0.7em;
+	color: var(--text-muted);
+}
+
+
+.stats-heatmap-grid {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	width: 100%;
+}
+
+
+.stats-heatmap-row {
+	display: flex;
+	gap: 2px;
+	width: 100%;
+}
+
+
+.stats-heatmap-day-label {
+	width: 28px;
+	font-size: 0.65em;
+	color: var(--text-muted);
+	text-align: right;
+	flex-shrink: 0;
+	line-height: 1;
+	padding-right: 2px;
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+}
+
+
+.stats-heatmap-cell {
+	flex: 1;
+	aspect-ratio: 1 / 1;
+	border-radius: 2px;
+	min-width: 0;
+	min-height: 0;
+}
+
+
+.stats-heatmap-today {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 1px;
+	border-radius: 4px;
+}
+
+
+.stats-heatmap-future {
+	border: 1px dashed var(--background-modifier-border);
+	background: transparent;
+}
+
+
+.stats-heatmap-legend-cell {
+	width: 14px;
+	height: 14px;
+	border-radius: 2px;
+}
+
+
+.stats-empty-msg {
+	color: var(--text-muted);
+	padding: 30px 0;
+	text-align: center;
+	border: 1px dashed var(--background-modifier-border);
+	border-radius: 8px;
+	background: color-mix(in srgb, var(--background-primary) 50%, transparent);
+	font-size: 0.85em;
+	margin-bottom: 12px;
+}
+
+
+.homepage-grid-cell .stats-heatmap-container {
+	margin-bottom: 0;
+}
+
+
+
+/* Left column cards: scroll layout, grid column override no longer needed */
+
+/* Right column efficiency metrics: adaptive in narrow space */
+
+.homepage-grid-right .stats-efficiency-row {
+	flex-wrap: wrap;
+}
+
+
+.homepage-grid-right .stats-efficiency-card {
+	min-width: 80px;
+}
+
+
+.homepage-grid-cell .stats-heatmap-grid {
+	overflow-x: auto;
+	padding-bottom: 4px;
+	scrollbar-width: none;
+}
+
+
+.homepage-grid-cell .stats-heatmap-grid::-webkit-scrollbar {
+	display: none;
+}
+
+
+.homepage-grid-cell .stats-heatmap-cell {
+	min-width: 10px;
+	min-height: 10px;
+}
+
+
+.webnovel-settings-container .setting-item.setting-item-heading .setting-item-info,
+.webnovel-settings-container .setting-item.setting-item-heading .setting-item-name,
+.history-stats-modal .setting-item.setting-item-heading .setting-item-info,
+.history-stats-modal .setting-item.setting-item-heading .setting-item-name {
+	padding-left: 0;
+	margin-left: 0;
+}
+
+
+/* Unified Modal Main Title Size */
+.webnovel-settings-container>.setting-item.setting-item-heading:first-child .setting-item-name,
+.webnovel-settings-container>.setting-item.setting-item-heading:first-of-type .setting-item-name,
+.history-stats-modal .setting-item-heading:first-child .setting-item-name {
+	font-size: 1.15em;
+	font-weight: 700;
+	color: var(--interactive-accent);
+}
+
+
+.stats-heat-inputs-wrapper,
+.stats-heat-actions-wrapper {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+
+.stats-subheading {
+	display: flex;
+	align-items: center;
+	font-size: 12px;
+	margin-top: 12px;
+	margin-bottom: 8px;
+}
+
+
+.stats-subheading .stats-heatmap-legend-inline {
+	margin-left: auto;
+	display: flex;
+	gap: 3px;
+}
+
+
+.stats-heat-today-btn {
+	padding: 5px 10px;
+	border-radius: 6px;
+	border: 1px solid color-mix(in srgb, var(--interactive-accent) 30%, var(--background-modifier-border));
+	background: color-mix(in srgb, var(--interactive-accent) 4%, var(--background-primary));
+	color: var(--text-normal);
+	font-size: 13px;
+	cursor: pointer;
+	transition: background 0.2s;
+}
+
+
+.stats-heat-today-btn:hover {
+	background: color-mix(in srgb, var(--interactive-accent) 15%, var(--background-primary));
+}

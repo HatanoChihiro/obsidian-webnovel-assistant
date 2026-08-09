@@ -16,27 +16,32 @@ export interface ForeshadowingBoardOptions {
 	entries: ParsedForeshadowingEntry[];
 	foreshadowingFile: TFile | null;
 	query: string;
+	currentForeshadowingTagFilter?: string;
 	currentBookPath: string;
 	reloadBoard: () => void;
 }
 
 export class ForeshadowingBoardRenderer {
 	static async render(options: ForeshadowingBoardOptions): Promise<void> {
-		const { app, plugin, container, entries, foreshadowingFile, query, currentBookPath, reloadBoard } = options;
+		const { app, plugin, container, entries, foreshadowingFile, query, currentForeshadowingTagFilter, currentBookPath, reloadBoard } = options;
 
 		const boardContainer = container.createDiv('wn-foreshadowing-board-container');
 
+		const tagFilter = currentForeshadowingTagFilter;
 		if (!foreshadowingFile || entries.length === 0) {
 			boardContainer.createDiv({
 				cls: 'wn-corkboard-empty-msg',
-				text: query ? t('corkboard.filter-no-results') : t('corkboard.no-foreshadowing')
+				text: (query || (tagFilter && tagFilter !== 'all')) ? t('corkboard.filter-no-results') : t('corkboard.no-foreshadowing')
 			});
 			return;
 		}
 
-		// 按搜索关键词过滤
+		// 按搜索关键词和侧面板选中的标签过滤
 		const filterQuery = query.trim().toLowerCase();
 		const filteredEntries = entries.filter((entry) => {
+			if (tagFilter && tagFilter !== 'all' && !entry.tags.includes(tagFilter)) {
+				return false;
+			}
 			if (!filterQuery) return true;
 
 			// 匹配标题/说明

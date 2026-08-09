@@ -3,6 +3,7 @@ data.json
 history-data.json
 cache-data.json
 notes-data.json
+merge-drafts.json
 
 # Node.js
 node_modules/
@@ -12,6 +13,7 @@ yarn-error.log*
 
 # 编译输出
 main.js
+styles.css
 *.js.map
 
 # 操作系统

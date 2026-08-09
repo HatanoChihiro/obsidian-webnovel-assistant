@@ -1,5 +1,6 @@
 import type { App, TFile } from 'obsidian';
 import { Modal, Setting } from 'obsidian';
+import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { t } from '../i18n';
 
 /**
@@ -8,10 +9,12 @@ import { t } from '../i18n';
  */
 export class GoalModal extends Modal {
 	file: TFile;
+	plugin: WebNovelAssistantPlugin;
 	goalInput: string = "";
 
-	constructor(app: App, file: TFile) {
+	constructor(app: App, plugin: WebNovelAssistantPlugin, file: TFile) {
 		super(app);
+		this.plugin = plugin;
 		this.file = file;
 	}
 
@@ -26,7 +29,8 @@ export class GoalModal extends Modal {
 				const cache = this.app.metadataCache.getFileCache(this.file);
 				const fmGoal = cache?.frontmatter?.['word-goal'] as unknown;
 				if (fmGoal !== undefined && fmGoal !== null) {
-					text.setValue(String(fmGoal));
+					const strGoal = typeof fmGoal === 'string' ? fmGoal : (typeof fmGoal === 'number' || typeof fmGoal === 'boolean' ? String(fmGoal) : JSON.stringify(fmGoal));
+					text.setValue(strGoal);
 				}
 				text.inputEl.focus();
 				text.onChange(value => { this.goalInput = value; });
@@ -45,14 +49,9 @@ export class GoalModal extends Modal {
 
 	async saveGoal() {
 		const goalNum = parseInt(this.goalInput, 10);
-		await this.app.fileManager.processFrontMatter(this.file, (frontmatter) => {
-			const fm = frontmatter as Record<string, unknown>;
-			if (isNaN(goalNum) || goalNum <= 0) {
-				delete fm['word-goal'];
-			} else {
-				fm['word-goal'] = goalNum;
-			}
-		});
+		if (this.plugin.homepageManager) {
+			await this.plugin.homepageManager.setChapterWordGoal(this.file, goalNum);
+		}
 		this.close();
 	}
 

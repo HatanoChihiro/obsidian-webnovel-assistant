@@ -4,7 +4,7 @@ import type { WorkspaceLeaf } from 'obsidian';
 import { CreativeView } from './CreativeView';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { TaskEntry } from '../types/task';
-import { TaskManager } from '../services/TaskManager';
+import type { TaskManager } from '../services/TaskManager';
 import { TaskAddModal } from './TaskModal';
 import { getTaskStatusText } from '../i18n/data-keys';
 import { formatCount } from '../utils';
@@ -13,11 +13,12 @@ import { t } from '../i18n';
 export const TASK_VIEW_TYPE = 'task-view';
 
 export class TaskView extends CreativeView {
-	private manager!: TaskManager;
+	private get manager(): TaskManager {
+		return this.plugin.taskManager;
+	}
 
 	constructor(leaf: WorkspaceLeaf, plugin: WebNovelAssistantPlugin) {
 		super(leaf, plugin);
-		this.manager = new TaskManager(this.app, this.plugin);
 	}
 
 	getViewType() { return TASK_VIEW_TYPE; }

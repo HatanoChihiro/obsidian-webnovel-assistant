@@ -1,3 +1,4 @@
+import type { EventRef, TFile, TFolder, TAbstractFile } from 'obsidian';
 import 'obsidian';
 import type { EditorView } from '@codemirror/view';
 
@@ -30,6 +31,7 @@ declare module 'obsidian' {
         on(name: 'webnovel-workbench-lore-updated', callback: () => void): EventRef;
         on(name: 'webnovel-lore-hover-rebuild', callback: () => void): EventRef;
         on(name: 'timeline-filter-changed', callback: (filter: string) => void): EventRef;
+        on(name: 'foreshadowing-filter-changed', callback: (filterTag: string) => void): EventRef;
         
         trigger(name: 'webnovel:notes-changed'): void;
         trigger(name: 'webnovel:word-count-gutter-settings-changed'): void;
@@ -38,6 +40,7 @@ declare module 'obsidian' {
         trigger(name: 'webnovel-workbench-lore-updated'): void;
         trigger(name: 'webnovel-lore-hover-rebuild'): void;
         trigger(name: 'timeline-filter-changed', filter: string): void;
+        trigger(name: 'foreshadowing-filter-changed', filterTag: string): void;
     }
 
     interface WorkspaceSplit {

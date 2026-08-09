@@ -94,6 +94,28 @@ describe('RelationGraphManager', () => {
 			const edges = manager.parseExplicitRelations('A', lines, 0, 1, validNodeIds);
 			expect(edges.length).toBe(0);
 		});
+
+		it('应支持将别名解析映射至主设定节点 ID', () => {
+			const validNodeIds = new Set(['张三', '李四']);
+			const nameOrAliasMap = new Map<string, string>([
+				['张三', '张三'],
+				['三哥', '张三'],
+				['李四', '李四'],
+				['四弟', '李四'],
+			]);
+			const lines = [
+				'- **同门**: 三哥',
+			];
+
+			const edges = manager.parseExplicitRelations('李四', lines, 0, 1, validNodeIds, nameOrAliasMap);
+			expect(edges.length).toBe(1);
+			expect(edges[0]).toEqual({
+				source: '李四',
+				target: '张三',
+				label: '同门',
+				type: 'explicit',
+			});
+		});
 	});
 
 	describe('scanMentions', () => {
@@ -115,6 +137,28 @@ describe('RelationGraphManager', () => {
 			expect(edges[1].target).toBe('反派');
 		});
 
+		it('应支持提取正文中通过别名提及的角色关联', () => {
+			const searchTerms = [
+				{ term: '张三丰', targetId: '张三丰' },
+				{ term: '三哥', targetId: '张三' },
+				{ term: '张三', targetId: '张三' },
+			];
+			const lines = [
+				'李四在山脚遇到了三哥，与三哥相谈甚欢。',
+				'后来张三离开了。'
+			];
+
+			const edges = manager.scanMentions('李四', lines, 0, 2, null, searchTerms);
+
+			expect(edges.length).toBe(1);
+			expect(edges[0]).toEqual({
+				source: '李四',
+				target: '张三',
+				label: '提及',
+				type: 'mention',
+			});
+		});
+
 		it('应跳过在 ### 关系 块中的提及', () => {
 			const validNodeIds = new Set(['A', 'B', 'C']);
 			const lines = [
@@ -133,4 +177,33 @@ describe('RelationGraphManager', () => {
 			expect(edges[0].target).toBe('B');
 		});
 	});
+
+	describe('extractNodes', () => {
+		it('应能正确解析 ## 标题及其下方声明的别名', () => {
+			const file = { path: 'test.md' } as any;
+			const fileCache = {
+				headings: [
+					{ level: 2, heading: '张三', position: { start: { line: 0 }, end: { line: 0 } } },
+					{ level: 2, heading: '李四', position: { start: { line: 4 }, end: { line: 4 } } },
+				]
+			} as any;
+			const lines = [
+				'## 张三',
+				'**类型**：主角',
+				'**别名**：三哥、小张',
+				'',
+				'## 李四',
+				'**别名**：四弟',
+			];
+
+			const nodes = manager.extractNodes(file, fileCache, lines);
+			expect(nodes.length).toBe(2);
+			expect(nodes[0].id).toBe('张三');
+			expect(nodes[0].isProtagonist).toBe(true);
+			expect(nodes[0].aliases).toEqual(['三哥', '小张']);
+			expect(nodes[1].id).toBe('李四');
+			expect(nodes[1].aliases).toEqual(['四弟']);
+		});
+	});
 });
+

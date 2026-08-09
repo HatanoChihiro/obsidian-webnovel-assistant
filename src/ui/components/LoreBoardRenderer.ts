@@ -116,24 +116,28 @@ export class LoreBoardRenderer {
         const boardLayout = container.createDiv('wn-lore-board-layout');
 
         // --- 文件选项卡栏（“全部” + 各设定文件，带条数徽标） ---
-        const tabBar = boardLayout.createDiv('wn-lore-file-tabs');
+        // 设计考量：仅在存在 2 个及以上设定文件时渲染文件 Tab 栏，当当前仅有一个设定文件时无分类筛选必要，隐藏 Tab 栏以保持界面简洁干净
         let activePath = plugin.settings.loreBoardActiveFile || '';
         if (!groups.some(([path]) => path === activePath)) activePath = '';
 
         const tabEls: { path: string; el: HTMLElement }[] = [];
 
-        const allTab = tabBar.createDiv(`wn-lore-file-tab ${activePath === '' ? 'is-active' : ''}`);
-        allTab.createSpan({ cls: 'wn-lore-file-tab-label', text: t('lore.tab-all') });
-        allTab.createSpan({ cls: 'wn-lore-file-tab-count', text: String(allEntries.length) });
-        allTab.title = t('lore.tab-all');
-        tabEls.push({ path: '', el: allTab });
+        if (groups.length > 1) {
+            const tabBar = boardLayout.createDiv('wn-lore-file-tabs');
 
-        for (const [path, group] of groups) {
-            const tab = tabBar.createDiv(`wn-lore-file-tab ${activePath === path ? 'is-active' : ''}`);
-            tab.createSpan({ cls: 'wn-lore-file-tab-label', text: group.fileBasename });
-            tab.createSpan({ cls: 'wn-lore-file-tab-count', text: String(group.entries.length) });
-            tab.title = `${group.fileBasename} (${group.entries.length})`;
-            tabEls.push({ path, el: tab });
+            const allTab = tabBar.createDiv(`wn-lore-file-tab ${activePath === '' ? 'is-active' : ''}`);
+            allTab.createSpan({ cls: 'wn-lore-file-tab-label', text: t('lore.tab-all') });
+            allTab.createSpan({ cls: 'wn-lore-file-tab-count', text: String(allEntries.length) });
+            allTab.title = t('lore.tab-all');
+            tabEls.push({ path: '', el: allTab });
+
+            for (const [path, group] of groups) {
+                const tab = tabBar.createDiv(`wn-lore-file-tab ${activePath === path ? 'is-active' : ''}`);
+                tab.createSpan({ cls: 'wn-lore-file-tab-label', text: group.fileBasename });
+                tab.createSpan({ cls: 'wn-lore-file-tab-count', text: String(group.entries.length) });
+                tab.title = `${group.fileBasename} (${group.entries.length})`;
+                tabEls.push({ path, el: tab });
+            }
         }
 
         // --- 各设定文件分组（DOM 常驻，仅切换显隐，保留卡片编辑与折叠状态） ---
@@ -656,7 +660,7 @@ export class LoreBoardRenderer {
 
         ownerComponent.register(() => {
             if (animationFrameId) {
-                cancelAnimationFrame(animationFrameId);
+                window.cancelAnimationFrame(animationFrameId);
                 animationFrameId = 0;
             }
             controller.unbindEvents();

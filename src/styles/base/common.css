@@ -1,0 +1,3722 @@
+/* ========== Writing Status Panel: Unified Accent Color ========== */
+
+/* Word count indicators */
+.wn-folder-word-count {
+	font-variant-numeric: tabular-nums;
+	pointer-events: none;
+}
+
+
+.wn-work-info-card {
+	border-top: none;
+	padding: 12px 18px;
+	margin-bottom: 8px;
+}
+
+
+.wn-work-info-row {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+
+.wn-work-info-name {
+	font-size: 0.95em;
+	font-weight: 600;
+	color: var(--text-normal);
+}
+
+
+.wn-work-info-count {
+	font-size: 0.85em;
+	color: var(--text-muted);
+	font-variant-numeric: tabular-nums;
+}
+
+
+.wn-status-view-container {
+	padding: 15px;
+	overflow-y: auto;
+	-webkit-overflow-scrolling: touch;
+}
+
+
+/* Status View / Goal Progress */
+.wn-status-card {
+	background: linear-gradient(145deg, color-mix(in srgb, var(--interactive-accent) 6%, color-mix(in srgb, var(--background-secondary) 50%, transparent)), color-mix(in srgb, var(--background-secondary) 50%, transparent));
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
+	border-radius: 10px;
+	padding: 16px;
+	margin-bottom: 16px;
+	border-top: 3px solid var(--interactive-accent);
+	border-left: 1px solid var(--background-modifier-border);
+	border-right: 1px solid var(--background-modifier-border);
+	border-bottom: 1px solid var(--background-modifier-border);
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+
+.wn-status-card.is-collapsed {
+	padding-top: 10px;
+	padding-bottom: 10px;
+}
+
+
+.wn-status-card.is-collapsed .wn-status-title-badge,
+.wn-status-card.is-collapsed .wn-chapter-title-badge {
+	display: none;
+}
+
+
+.wn-status-card-content.is-collapsed {
+	display: none;
+}
+
+
+.wn-collapsible-title {
+	user-select: none;
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+}
+
+
+.wn-status-title-left {
+	display: block;
+	line-height: 1.5;
+	padding-right: 8px;
+}
+
+
+.wn-collapsible-icon {
+	color: var(--text-muted);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+
+.wn-title-collapsed-hint {
+	font-size: 0.85em;
+	color: var(--text-muted);
+	font-weight: normal;
+}
+
+
+.wn-chapter-sub-info {
+	margin-top: 10px;
+	margin-bottom: 10px;
+	padding-bottom: 10px;
+	border-bottom: 1px dashed var(--background-modifier-border);
+}
+
+
+.wn-chapter-sub-info:empty {
+	display: none;
+}
+
+
+
+.wn-chapter-title-badge {
+	padding: 2px 6px;
+	border-radius: 4px;
+	font-size: 0.75em;
+	font-weight: 500;
+	background-color: var(--background-modifier-border);
+	color: var(--text-normal);
+	display: inline-block;
+	margin-left: 6px;
+	vertical-align: middle;
+	transform: translateY(-1px);
+}
+
+
+.wn-chapter-title-badge.wn-clickable {
+	cursor: pointer;
+	transition: opacity 0.15s ease, filter 0.15s ease;
+}
+
+
+.wn-chapter-title-badge.wn-clickable:hover {
+	opacity: 0.85;
+	filter: brightness(1.1);
+}
+
+
+.wn-chapter-synopsis-text {
+	font-size: 0.85em;
+	color: var(--text-muted);
+	font-style: italic;
+	white-space: pre-wrap;
+	word-break: break-all;
+	max-height: 100px;
+	overflow-y: auto;
+}
+
+
+.wn-chapter-synopsis-text.is-empty {
+	opacity: 0.5;
+}
+
+
+/* WebNovel Assistant Drag Indicators */
+
+.webnovel-drag-over-top>.nav-file-title,
+
+.webnovel-drag-over-top>.nav-folder-title {
+	border-top: 1px dashed color-mix(in srgb, var(--interactive-accent) 70%, transparent);
+}
+
+
+.webnovel-drag-over-bottom>.nav-file-title,
+
+.webnovel-drag-over-bottom>.nav-folder-title {
+	border-bottom: 1px dashed color-mix(in srgb, var(--interactive-accent) 70%, transparent);
+}
+
+
+.webnovel-dragging {
+	opacity: 0.5;
+}
+
+
+body.webnovel-custom-dragging .nav-file-title-content,
+
+body.webnovel-custom-dragging .nav-folder-title-content {
+	user-select: none;
+}
+
+
+.webnovel-native-drop {
+	outline: 1px dashed color-mix(in srgb, var(--interactive-accent) 50%, transparent);
+	outline-offset: -1px;
+	background: color-mix(in srgb, var(--interactive-accent) 5%, transparent);
+}
+
+
+.wn-status-title {
+	font-weight: bold;
+	margin-bottom: 10px;
+	margin-top: 10px;
+	font-size: 1.05em;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: space-between;
+	color: var(--interactive-accent);
+}
+
+
+.wn-status-title-badge {
+	font-size: 0.7em;
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	padding: 2px 6px;
+	border-radius: 4px;
+	font-weight: normal;
+	display: inline-block;
+	margin-left: 6px;
+	vertical-align: middle;
+	transform: translateY(-1px);
+}
+
+
+.status-goal-label {
+	font-size: 0.8em;
+	color: var(--text-muted);
+	margin-bottom: 2px;
+	font-weight: 500;
+}
+
+
+.status-goal-row {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	margin-top: 16px;
+}
+
+
+.goal-display-row-right {
+	display: flex;
+	align-items: baseline;
+	justify-content: flex-end;
+	gap: 6px;
+	margin-top: 6px;
+	margin-bottom: 12px;
+	font-family: var(--font-monospace);
+	flex-wrap: wrap;
+}
+
+
+.goal-current {
+	font-size: 1.35em;
+	font-weight: bold;
+	color: var(--text-normal);
+}
+
+
+.goal-separator {
+	font-size: 0.9em;
+	color: var(--text-muted);
+	opacity: 0.5;
+}
+
+
+.goal-target {
+	font-size: 1.35em;
+	color: var(--text-muted);
+	opacity: 0.8;
+}
+
+
+.goal-percent {
+	font-size: 0.85em;
+	color: var(--interactive-accent);
+	font-weight: 600;
+}
+
+
+.progress-bar-bg {
+	width: 100%;
+	height: 8px;
+	background: color-mix(in srgb, var(--background-modifier-border) 50%, transparent);
+	border-radius: 4px;
+	overflow: hidden;
+	margin-bottom: 4px;
+	box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+
+.progress-bar-fill {
+	height: 100%;
+	background: linear-gradient(90deg, color-mix(in srgb, var(--interactive-accent) 70%, transparent), var(--interactive-accent));
+	border-radius: 4px;
+	transition: width 0.3s ease;
+	box-shadow: 0 0 4px color-mix(in srgb, var(--interactive-accent) 50%, transparent);
+}
+
+
+.progress-bar-fill.is-negative {
+	background: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%);
+}
+
+
+.progress-bar-fill.is-done {
+	background: var(--interactive-accent);
+}
+
+
+.goal-current.is-negative,
+.goal-percent.is-negative {
+	color: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%);
+}
+
+
+.goal-current.is-done,
+.goal-percent.is-done {
+	color: var(--interactive-accent);
+}
+
+
+.time-box-total {
+	background: linear-gradient(145deg, color-mix(in srgb, var(--interactive-accent) 12%, color-mix(in srgb, var(--background-primary) 55%, transparent)), color-mix(in srgb, var(--interactive-accent) 4%, color-mix(in srgb, var(--background-primary) 55%, transparent)));
+	backdrop-filter: blur(10px);
+	-webkit-backdrop-filter: blur(10px);
+	padding: 12px;
+	border-radius: 8px;
+	text-align: center;
+	border: 1px solid color-mix(in srgb, var(--interactive-accent) 30%, var(--background-modifier-border));
+	margin-bottom: 10px;
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 2px 4px rgba(0, 0, 0, 0.02);
+}
+
+
+.time-grid {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 10px;
+}
+
+
+.time-box {
+	background: color-mix(in srgb, var(--background-primary) 55%, transparent);
+	backdrop-filter: blur(10px);
+	-webkit-backdrop-filter: blur(10px);
+	padding: 8px;
+	border-radius: 8px;
+	text-align: center;
+	border: 1px solid var(--background-modifier-border);
+	min-width: 0;
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+}
+
+
+.time-box-title {
+	font-size: 0.75em;
+	color: var(--text-muted);
+	margin-bottom: 4px;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+
+.time-box-value {
+	font-family: var(--font-monospace);
+	font-size: 1.15em;
+	font-weight: bold;
+	color: var(--interactive-accent);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+
+.history-chart {
+	margin-top: 20px;
+}
+
+
+.history-chart-title {
+	font-size: 0.85em;
+	font-weight: 600;
+	color: var(--interactive-accent-hover);
+	margin-bottom: 4px;
+}
+
+
+.history-chart-subtitle {
+	font-size: 0.75em;
+	color: var(--text-muted);
+	margin-bottom: 8px;
+	cursor: pointer;
+}
+
+
+.history-chart-subtitle:hover {
+	color: var(--interactive-accent);
+	text-decoration: underline;
+}
+
+
+.mini-efficiency-summary {
+	font-size: 0.75em;
+	color: var(--text-muted);
+	margin-top: 16px;
+	text-align: center;
+}
+
+
+.history-chart-title-row {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	margin-bottom: 4px;
+}
+
+
+/* Real-time word count reminder (Line number word count) style - zero width, never occupy/push body layout */
+
+body .markdown-source-view.mod-cm6 .cm-editor .cm-scroller .cm-gutters .webnovel-word-count-gutter {
+	width: 0px;
+	min-width: 0px;
+	border: none;
+	padding: 0;
+	margin: 0;
+	overflow: visible;
+}
+
+
+/* When this plugin's Gutter is the only Gutter (e.g. no line numbers), clear all padding Obsidian adds by default to eliminate indentation placeholder */
+
+body .markdown-source-view.mod-cm6 .cm-editor .cm-scroller .cm-gutters.is-only-word-count-gutter {
+	margin-right: 0;
+	padding-right: 0;
+	border-right: none;
+	background: transparent;
+}
+
+
+/* Hide entire container when not in workspace/chapter (if only our gutter exists) */
+
+.cm-editor:not(.webnovel-show-gutter) body .markdown-source-view.mod-cm6 .cm-editor .cm-scroller .cm-gutters.is-only-word-count-gutter {
+	display: none;
+}
+
+
+/* Hide our gutter when not in workspace/chapter */
+
+body .markdown-source-view.mod-cm6 .cm-editor:not(.webnovel-show-gutter) .cm-scroller .cm-gutters .webnovel-word-count-gutter {
+	display: none;
+}
+
+
+/* Hide label by default */
+
+body .markdown-source-view.mod-cm6 .cm-editor .cm-scroller .cm-gutters .webnovel-word-count-marker-wrapper {
+	display: none;
+}
+
+
+/* Show on hover when active, use wrapper to perfectly eliminate width/height impact */
+
+body .markdown-source-view.mod-cm6 .cm-editor.webnovel-show-gutter .cm-scroller .cm-gutters .webnovel-word-count-marker-wrapper {
+	display: flex;
+	align-items: center;
+	/* Rely on internal zero-width character for perfect text baseline vertical centering */
+	justify-content: flex-end;
+	width: 0px;
+	/* Remove all hardcoded heights, rely on content to expand, absolutely match current editor line height */
+	overflow: visible;
+}
+
+
+body .markdown-source-view.mod-cm6 .cm-editor.webnovel-show-gutter .cm-scroller .cm-gutters .webnovel-word-count-marker {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 0.75em;
+	/* 直接使用主题强调色，完全跟随用户选择的 Obsidian 主题，避免混入固定 warning 橙黄色 */
+	color: var(--text-on-accent);
+	background-color: var(--interactive-accent);
+	border-radius: 4px;
+	padding: 2px 6px;
+	line-height: 1.2;
+	font-family: var(--font-monospace);
+	font-weight: bold;
+	/* 使用半透明阴影，不硬编码具体颜色值 */
+	box-shadow: 0 1px 2px var(--background-modifier-box-shadow, rgba(0, 0, 0, 0.15));
+	white-space: nowrap;
+	z-index: 99;
+	pointer-events: none;
+	/* Avoid blocking mouse clicks in the left area */
+	/* Push left relative to wrapper, fine-tune to align with text line */
+	margin-right: 12px;
+	/* Remove margin-top, hand over completely to flex-center for auto scheduling */
+}
+
+
+/* Heatmap color scale - Accent color gradient */
+
+/* Heat Negative */
+.heat-negative {
+	background: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%);
+}
+
+
+.heat-0 {
+	background: var(--background-modifier-border);
+}
+
+
+.heat-1 {
+	background: color-mix(in srgb, var(--interactive-accent) 28%, var(--background-primary));
+}
+
+
+.heat-2 {
+	background: color-mix(in srgb, var(--interactive-accent) 50%, var(--background-primary));
+}
+
+
+.heat-3 {
+	background: color-mix(in srgb, var(--interactive-accent) 78%, var(--background-primary));
+}
+
+
+/* Bar chart color scale - Accent color gradient */
+
+/* Bar Negative */
+.bar-negative {
+	background: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%);
+}
+
+
+.bar-minimal {
+	background: color-mix(in srgb, var(--interactive-accent) 15%, var(--background-modifier-border));
+}
+
+
+.bar-low {
+	background: color-mix(in srgb, var(--interactive-accent) 40%, var(--background-primary));
+}
+
+
+.bar-medium {
+	background: color-mix(in srgb, var(--interactive-accent) 60%, var(--background-primary));
+}
+
+
+.bar-high {
+	background: var(--interactive-accent);
+}
+
+
+.bar-negative-text {
+	color: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%);
+}
+
+
+/* Sidebar mini bar chart */
+
+/* Mini Chart Container */
+.mini-chart-container {
+	display: flex;
+	align-items: baseline;
+	gap: 6px;
+	cursor: pointer;
+	height: 80px;
+	margin-top: 8px;
+}
+
+
+.mini-chart-col {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: flex-end;
+	height: 100%;
+	min-width: 28px;
+	flex: 1;
+	max-width: 48px;
+}
+
+
+.mini-chart-bar {
+	width: 60%;
+	min-width: 10px;
+	max-width: 28px;
+	border-radius: 3px 3px 0 0;
+	opacity: 0.85;
+	transition: height 0.4s ease, opacity 0.2s;
+	cursor: crosshair;
+}
+
+
+.mini-chart-bar:hover {
+	opacity: 1;
+}
+
+
+.mini-chart-label {
+	font-size: 0.7em;
+	margin-top: 4px;
+	color: var(--text-muted);
+	white-space: nowrap;
+}
+
+
+.mini-chart-value {
+	font-size: 0.65em;
+	margin-top: 2px;
+	font-weight: bold;
+	font-family: var(--font-monospace);
+	white-space: nowrap;
+	color: var(--text-muted);
+}
+
+
+.mini-chart-empty {
+	color: var(--text-muted);
+	font-size: 0.75em;
+	padding: 10px 0;
+	text-align: center;
+}
+
+
+/* Mobile touch optimization (Requirement 8.5) */
+
+/* General styling */
+@media (hover: none) and (pointer: coarse) {
+
+	/* Disable hover effects */
+	.stats-tab-btn:hover {
+		background: transparent;
+		color: var(--text-muted);
+	}
+}
+
+
+
+/* Task View Container */
+.task-view-container {
+	padding: 18px;
+	overflow-y: auto;
+}
+
+
+.task-view-header {
+	margin-bottom: 12px;
+}
+
+
+.task-view-title-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 4px;
+}
+
+
+.task-view-title {
+	font-size: 0.9em;
+	font-weight: bold;
+	color: var(--interactive-accent);
+	margin-top: 8px;
+}
+
+
+.task-add-btn {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border: none;
+	border-radius: 50%;
+	width: 28px;
+	height: 28px;
+	font-size: 1.3em;
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	line-height: 1;
+	padding: 0;
+}
+
+
+.task-add-btn:hover {
+	filter: brightness(1.1);
+}
+
+
+.task-view-folder {
+	font-size: 0.85em;
+	color: var(--text-muted);
+}
+
+
+.task-view-empty {
+	color: var(--text-muted);
+	font-size: 0.95em;
+	padding: 24px 0;
+	text-align: center;
+}
+
+
+.task-view-hint {
+	font-size: 0.85em;
+}
+
+
+.task-create-btn {
+	margin-top: 10px;
+}
+
+
+.task-progress-label {
+	display: flex;
+	justify-content: space-between;
+	font-size: 0.85em;
+	margin-bottom: 4px;
+}
+
+
+.task-progress-percent {
+	font-weight: 600;
+	color: var(--interactive-accent);
+}
+
+
+.task-remaining {
+	color: var(--text-muted);
+}
+
+
+.task-reached {
+	color: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-success, var(--interactive-accent)) 70%);
+	font-weight: 600;
+}
+
+
+.task-days-left {
+	color: var(--text-muted);
+}
+
+
+.task-add-modal h2 {
+	color: var(--interactive-accent);
+}
+
+
+/* StatusView Leaderboard target area */
+
+/* Task Goal Section */
+
+.task-time-desc {
+	font-size: 0.8em;
+	color: var(--text-muted);
+	text-align: right;
+	margin-top: 2px;
+}
+
+
+.task-time-desc.task-reached {
+	color: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-success, var(--interactive-accent)) 70%);
+	font-weight: 600;
+}
+
+
+/* ==========================================
+
+ * Immersive Mode CSS
+
+ * ========================================== */
+
+/* Immersive Mode overrides */
+body.immersive-mode-active .workspace-ribbon,
+
+body.immersive-mode-active .workspace-tab-header-container,
+
+body.immersive-mode-active .titlebar,
+
+body.immersive-mode-active .status-bar,
+
+body.immersive-mode-active .workspace-split.mod-left-split,
+
+body.immersive-mode-active .workspace-split.mod-right-split,
+
+body.immersive-mode-active .floating-sticky-note,
+
+body.immersive-mode-active .my-floating-sticky-note,
+
+body.immersive-mode-active .view-header {
+	display: none;
+}
+
+
+/* One-click hide sticky notes function */
+
+/* Sticky Notes */
+body.webnovel-notes-hidden .floating-sticky-note,
+
+body.webnovel-notes-hidden .my-floating-sticky-note {
+	display: none;
+}
+
+
+/* Use Class Chaining to increase specificity, eliminate residual offsets from 3rd-party themes and native toolbars, avoid using important_override */
+/* Immersive Mode: Editor layout adaptation */
+/* Default non-adapted state */
+.immersive-mode-active .view-content {
+	padding-top: 30px;
+}
+
+
+.immersive-mode-active .workspace-split {
+	background-color: color-mix(in srgb, var(--interactive-accent) 3%, var(--background-secondary));
+}
+
+
+/* Prevent nested workspace-split from creating double padding causing inconsistent indentation */
+
+.immersive-mode-active .workspace-split .workspace-split {
+	background-color: transparent;
+}
+
+
+/* Immersive Mode: Card-style panel layout and boundary enhancement */
+
+/* Immersive Mode: Card-style panel layout and boundary enhancement 
+
+   Override theme styles by increasing selector specificity (body.immersive-mode-active ...), avoid using important_override 
+
+*/
+
+body.immersive-mode-active .workspace-leaf.workspace-leaf {
+	background-color: transparent;
+	padding: 8px;
+	border: none;
+	box-sizing: border-box;
+}
+
+
+body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-content {
+	position: relative;
+	background-color: var(--background-primary);
+	border: 1px solid color-mix(in srgb, var(--interactive-accent) 20%, var(--background-modifier-border));
+	border-radius: 12px;
+	box-sizing: border-box;
+	box-shadow: 0 4px 15px color-mix(in srgb, var(--interactive-accent) 8%, rgba(0, 0, 0, 0.05));
+	overflow: hidden;
+}
+
+
+body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-content:hover {
+	box-shadow: 0 6px 20px color-mix(in srgb, var(--interactive-accent) 12%, rgba(0, 0, 0, 0.1));
+}
+
+
+/* Settings tab style */
+
+.theme-dark
+/* Immersive Mode: Smart scrollbar (show only on mouse hover) */
+
+.immersive-mode-active *::-webkit-scrollbar {
+	width: 4px;
+	height: 4px;
+}
+
+
+.immersive-mode-active *::-webkit-scrollbar-thumb {
+	background-color: transparent;
+	border-radius: 4px;
+}
+
+
+.immersive-mode-active *:hover::-webkit-scrollbar-thumb {
+	background-color: var(--scrollbar-thumb-bg, rgba(128, 128, 128, 0.3));
+}
+
+
+.immersive-top-bar {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	height: 40px;
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	z-index: 100;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0 16px;
+	font-family: var(--font-interface);
+	box-shadow: 0 2px 8px color-mix(in srgb, var(--interactive-accent) 30%, rgba(0, 0, 0, 0.15));
+}
+
+
+.immersive-top-bar-left {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	font-weight: bold;
+	font-size: 0.9em;
+}
+
+
+.immersive-top-bar-center {
+	display: flex;
+	align-items: center;
+	gap: 20px;
+	font-size: 0.85em;
+}
+
+
+.immersive-top-bar-center .stat-item {
+	background: color-mix(in srgb, var(--text-on-accent) 15%, var(--interactive-accent));
+	padding: 4px 10px;
+	border-radius: 12px;
+}
+
+
+.immersive-top-bar-center .stat-item.focus {
+	background: color-mix(in srgb, var(--text-success, var(--interactive-accent)) 25%, var(--interactive-accent));
+}
+
+
+.immersive-top-bar-center .stat-item.slack {
+	background: color-mix(in srgb, var(--text-warning, var(--interactive-accent)) 25%, var(--interactive-accent));
+}
+
+
+.immersive-exit-btn {
+	background: color-mix(in srgb, var(--text-on-accent) 10%, transparent);
+	color: var(--text-on-accent);
+	border: 1px solid color-mix(in srgb, var(--text-on-accent) 30%, transparent);
+	padding: 4px 12px;
+	border-radius: 6px;
+	cursor: pointer;
+	font-size: 0.85em;
+	opacity: 0;
+	transition: all 0.3s ease;
+}
+
+
+.immersive-exit-btn:hover {
+	opacity: 1;
+	background: color-mix(in srgb, var(--text-on-accent) 25%, transparent);
+}
+
+
+/* Automatically show tooltip when mouse approaches right area */
+
+/* Immersive Top Bar Right */
+.immersive-top-bar-right:hover .immersive-exit-btn {
+	opacity: 0.7;
+}
+
+
+
+/* Chapter list */
+
+/* Immersive Chapter List */
+.immersive-chapter-list {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	overflow-y: auto;
+}
+
+
+.immersive-chapter-item {
+	display: flex;
+	justify-content: space-between;
+	padding: 6px 10px;
+	border-radius: 4px;
+	cursor: pointer;
+	transition: background 0.2s;
+	font-size: 0.85em;
+}
+
+
+.immersive-chapter-item:hover {
+	background: color-mix(in srgb, var(--interactive-accent) 10%, var(--background-modifier-hover));
+}
+
+
+.immersive-chapter-item.is-active {
+	background: color-mix(in srgb, var(--interactive-accent) 20%, transparent);
+	color: var(--text-accent);
+	font-weight: bold;
+}
+
+
+.immersive-chapter-count {
+	font-size: 0.8em;
+	color: var(--interactive-accent);
+	font-family: var(--font-monospace);
+}
+
+
+/* Sticky Notes list */
+
+.immersive-sticky-dock {
+	flex: 1;
+	display: flex;
+	flex-direction: row;
+	flex-wrap: nowrap;
+	gap: 10px;
+	padding: 10px 8px 8px 8px;
+	align-items: center;
+	overflow-x: auto;
+	overflow-y: hidden;
+	height: 100%;
+}
+
+
+.immersive-sticky-card {
+	flex: 0 0 200px;
+	/* Fixed width, no flex shrink/grow */
+	width: 200px;
+	height: 200px;
+	/* Square */
+	border-radius: 8px;
+	padding: 12px;
+	box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+	display: flex;
+	flex-direction: column;
+	transition: transform 0.2s;
+}
+
+
+.immersive-sticky-card:hover {
+	transform: translateY(-5px);
+}
+
+
+.immersive-mode-active .immersive-sticky-title span:first-child,
+.immersive-sticky-title,
+.webnovel-immersive-note-title {
+	font-weight: bold;
+	font-size: 0.75em;
+}
+
+
+.immersive-sticky-card textarea {
+	flex: 1;
+	width: 100%;
+	border: none;
+	background: transparent;
+	resize: none;
+	font-family: inherit;
+	color: inherit;
+}
+
+
+.immersive-sticky-card textarea:focus {
+	outline: none;
+	box-shadow: none;
+}
+
+
+/* ==========================================
+
+   Creative Homepage - Welcome/Serializing/Completed specific, data area reuses HistoryModal class names
+
+   ========================================== */
+
+/* Welcome Area */
+
+/* Homepage layout */
+.homepage-welcome-section {
+	margin-bottom: 16px;
+}
+
+
+.homepage-welcome-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 12px;
+}
+
+
+.homepage-welcome-title {
+	font-size: 1.35em;
+	font-weight: 700;
+	color: var(--interactive-accent);
+	display: flex;
+	align-items: center;
+}
+
+
+.homepage-welcome-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	margin-right: 10px;
+	color: var(--interactive-accent);
+	opacity: 0.8;
+}
+
+
+.homepage-welcome-icon svg {
+	width: 22px;
+	height: 22px;
+}
+
+
+.homepage-progress-row {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-bottom: 12px;
+}
+
+
+.homepage-progress-label {
+	font-size: 0.85em;
+	color: var(--text-muted);
+}
+
+
+.homepage-progress-value {
+	font-size: 1.35em;
+	font-weight: 700;
+	color: var(--interactive-accent);
+	font-family: var(--font-monospace);
+	font-variant-numeric: tabular-nums;
+}
+
+
+.homepage-progress-separator {
+	width: 1px;
+	height: 30px;
+	background: var(--background-modifier-border);
+	margin: 0 8px;
+}
+
+
+.homepage-desktop-actions,
+.homepage-phone-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-left: auto;
+}
+
+
+.homepage-add-novel-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 0.85em;
+	padding: 4px 12px;
+	border-radius: 4px;
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	cursor: pointer;
+	font-weight: 500;
+	transition: filter 0.2s;
+}
+
+
+.homepage-add-novel-btn:hover {
+	filter: brightness(1.1);
+}
+
+
+.homepage-add-novel-btn.desktop-add-btn {
+	display: inline-flex;
+}
+
+
+.homepage-add-novel-btn.phone-add-btn {
+	display: none;
+}
+
+
+.homepage-progress-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+
+
+/* Serializing list */
+
+
+.homepage-ongoing-item {
+	background: linear-gradient(135deg, color-mix(in srgb, var(--interactive-accent) 8%, color-mix(in srgb, var(--background-secondary) 50%, transparent)), color-mix(in srgb, var(--background-secondary) 50%, transparent));
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
+	border-radius: 12px;
+	padding: 18px 22px;
+	border: 1px solid var(--background-modifier-border);
+	border-left: 4px solid var(--interactive-accent);
+	margin-bottom: 16px;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+	transition: transform 0.2s, box-shadow 0.2s;
+}
+
+
+.homepage-ongoing-item:hover {
+	transform: translateY(-2px);
+	box-shadow: 0 8px 16px rgba(0, 0, 0, 0.08);
+}
+
+
+.homepage-ongoing-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+}
+
+
+.homepage-ongoing-progress-bar-bg {
+	width: 100%;
+	height: 4px;
+	background: color-mix(in srgb, var(--background-modifier-border) 60%, transparent);
+	border-radius: 2px;
+	overflow: hidden;
+	margin: 2px 0;
+	box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+
+.homepage-ongoing-progress-bar-fill {
+	height: 100%;
+	background: linear-gradient(90deg, color-mix(in srgb, var(--interactive-accent) 70%, transparent), var(--interactive-accent));
+	border-radius: 2px;
+	transition: width 0.3s ease;
+	box-shadow: 0 0 4px color-mix(in srgb, var(--interactive-accent) 50%, transparent);
+}
+
+
+.homepage-ongoing-name {
+	font-size: 1.15em;
+	font-weight: 700;
+	cursor: pointer;
+	color: var(--text-normal);
+	transition: color 0.2s;
+}
+
+
+.homepage-ongoing-name:hover {
+	color: var(--interactive-accent);
+}
+
+
+.homepage-ongoing-count {
+	font-size: 0.9em;
+	font-weight: 600;
+	font-family: var(--font-monospace);
+	font-variant-numeric: tabular-nums;
+	color: var(--interactive-accent);
+	background: color-mix(in srgb, var(--interactive-accent) 15%, transparent);
+	padding: 4px 10px;
+	border-radius: 20px;
+}
+
+
+.homepage-ongoing-task {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin-top: 18px;
+}
+
+
+.homepage-task-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	font-size: 0.85em;
+}
+
+
+.homepage-task-left-wrapper {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+
+.homepage-task-title-inline {
+	color: var(--text-muted);
+	font-weight: 600;
+}
+
+
+.homepage-task-period {
+	color: var(--text-normal);
+	font-weight: 600;
+	background: var(--background-modifier-hover);
+	padding: 2px 8px;
+	border-radius: 4px;
+}
+
+
+.homepage-task-progress {
+	color: var(--text-muted);
+	font-family: var(--font-monospace);
+	font-variant-numeric: tabular-nums;
+}
+
+
+.homepage-task-sub {
+	font-size: 0.8em;
+	color: var(--text-faint);
+}
+
+
+.homepage-task-days {
+	color: color-mix(in srgb, var(--interactive-accent) 40%, var(--text-warning, var(--interactive-accent)) 60%);
+}
+
+
+.homepage-task-daily {
+	color: color-mix(in srgb, var(--interactive-accent) 40%, var(--text-error, var(--interactive-accent)) 60%);
+}
+
+
+/* Drafting/Paused cards */
+
+.homepage-drafting-card {
+	border-top-color: color-mix(in srgb, var(--interactive-accent) 70%, var(--text-accent, var(--interactive-accent)));
+	background: linear-gradient(145deg, color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 70%, var(--text-accent, var(--interactive-accent))) 10%, color-mix(in srgb, var(--background-secondary) 50%, transparent)), color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 70%, var(--text-accent, var(--interactive-accent))) 2%, color-mix(in srgb, var(--background-secondary) 50%, transparent)));
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
+}
+
+
+.homepage-paused-card {
+	border-top-color: var(--text-muted);
+	background: linear-gradient(145deg, color-mix(in srgb, var(--text-muted) 6%, color-mix(in srgb, var(--background-secondary) 50%, transparent)), color-mix(in srgb, var(--text-muted) 1%, color-mix(in srgb, var(--background-secondary) 50%, transparent)));
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
+}
+
+
+/* Completed cards grid */
+
+.homepage-completed-grid {
+	display: flex;
+	gap: 16px;
+	overflow-x: overlay;
+	scrollbar-width: thin;
+	scrollbar-color: transparent transparent;
+	margin-bottom: -6px;
+	transition: scrollbar-color 0.3s;
+}
+
+
+.homepage-completed-grid:hover {
+	scrollbar-color: color-mix(in srgb, var(--interactive-accent) 50%, transparent) transparent;
+}
+
+
+.homepage-completed-grid::-webkit-scrollbar {
+	height: 6px;
+}
+
+
+.homepage-completed-grid::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+
+.homepage-completed-grid::-webkit-scrollbar-thumb {
+	background: transparent;
+	border-radius: 3px;
+}
+
+
+.homepage-completed-grid:hover::-webkit-scrollbar-thumb {
+	background: color-mix(in srgb, var(--interactive-accent) 50%, transparent);
+}
+
+
+.homepage-completed-card {
+	min-width: 160px;
+	flex: 0 0 160px;
+	max-width: 160px;
+	background: linear-gradient(145deg, color-mix(in srgb, var(--interactive-accent) 8%, color-mix(in srgb, var(--background-secondary) 50%, transparent)), color-mix(in srgb, var(--interactive-accent) 2%, color-mix(in srgb, var(--background-secondary) 50%, transparent)));
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
+	border-radius: 8px;
+	padding: 14px 18px;
+	border-top: 3px solid var(--interactive-accent);
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 2px 4px rgba(0, 0, 0, 0.02);
+	transition: transform 0.2s, box-shadow 0.2s;
+}
+
+
+.homepage-completed-card:hover {
+	transform: translateY(-2px);
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 6px 12px rgba(0, 0, 0, 0.05);
+}
+
+
+.homepage-completed-name {
+	font-size: 1.0em;
+	font-weight: 600;
+	cursor: pointer;
+	color: var(--text-normal);
+	margin-bottom: 10px;
+	transition: color 0.2s;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+
+.homepage-completed-name:hover {
+	color: var(--interactive-accent);
+}
+
+
+.homepage-completed-field {
+	display: flex;
+	justify-content: space-between;
+	margin-bottom: 4px;
+}
+
+
+.homepage-field-label {
+	font-size: 0.8em;
+	color: var(--text-muted);
+}
+
+
+.homepage-field-value {
+	font-size: 0.85em;
+	color: var(--text-normal);
+	font-family: var(--font-text);
+	font-variant-numeric: tabular-nums;
+}
+
+
+.homepage-completed-synopsis {
+	font-size: 0.85em;
+	color: var(--text-muted);
+	line-height: 1.5;
+	max-height: 3em;
+	overflow: hidden;
+	margin-top: 6px;
+}
+
+
+/* Hide properties panel in Live Preview mode as well */
+
+.markdown-source-view.webnovel-homepage .metadata-container,
+
+.markdown-source-view.webnovel-homepage .metadata-properties,
+
+.markdown-source-view.webnovel-homepage .inline-title {
+	display: none;
+}
+
+
+/* Hide Homepage Tab Title Bar */
+
+.workspace-leaf-content.is-webnovel-homepage .view-header {
+	display: none;
+}
+
+
+/* Homepage block label */
+
+.homepage-section-label {
+	font-size: 0.8em;
+	font-weight: 600;
+	color: var(--text-muted);
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	margin-bottom: 10px;
+	padding-bottom: 6px;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+
+.homepage-section-label::before {
+	content: '';
+	display: block;
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background-color: var(--interactive-accent);
+}
+
+
+.workspace-leaf-content.is-webnovel-homepage .markdown-reading-view {
+	max-width: none;
+	width: 100%;
+	margin-inline: 0;
+}
+
+
+/* Eye Care Mode: Homepage not affected */
+
+.workspace-leaf-content.is-webnovel-homepage .view-content {
+	background-color: var(--background-primary);
+}
+
+
+/* Homepage <pre> reset */
+
+.workspace-leaf-content.is-webnovel-homepage pre {
+	font-family: var(--font-interface);
+	font-size: inherit;
+	line-height: inherit;
+	white-space: normal;
+	margin: 0;
+	padding: 0;
+	background: transparent;
+	border: none;
+	overflow: hidden;
+	display: block;
+	min-width: 0;
+	width: 100%;
+}
+
+
+/* Homepage grid layout */
+
+.homepage-grid-container {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 24px;
+	min-width: 0;
+	align-items: stretch;
+}
+
+
+.homepage-grid-top {
+	grid-column: 1 / -1;
+	min-width: 0;
+}
+
+
+.homepage-grid-left,
+
+.homepage-grid-right {
+	display: flex;
+	flex-direction: column;
+	gap: 24px;
+	min-width: 0;
+}
+
+
+.homepage-grid-cell {
+	min-width: 0;
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+}
+
+
+/* Left column last block stretches to bottom, aligned with right column */
+
+.homepage-grid-left .homepage-grid-cell:last-child {
+	flex-grow: 1;
+}
+
+
+.homepage-grid-right .homepage-grid-cell:last-child {
+	flex-grow: 1;
+	margin-top: 0;
+}
+
+
+/* Homepage simplified bar chart: thin bars, close together, no labels, no scrollbar */
+
+.homepage-grid-cell:last-child .homepage-section-label {
+	flex-shrink: 0;
+}
+
+
+.homepage-chart-container {
+	display: flex;
+	align-items: flex-end;
+	gap: 3px;
+	flex: 1;
+	height: 85px;
+	min-height: 85px;
+	padding: 0;
+	margin-bottom: 6px;
+}
+
+
+.homepage-chart-bar {
+	flex: 1;
+	min-width: 0;
+	border-radius: 2px 2px 0 0;
+	opacity: 0.85;
+	transition: opacity 0.2s;
+	cursor: crosshair;
+}
+
+
+.homepage-chart-bar:hover {
+	opacity: 1;
+}
+
+
+/* JS dynamic toggle: fallback to single column when panel width < 1200px */
+
+.homepage-single-column {
+	grid-template-columns: 1fr;
+}
+
+
+.homepage-single-column .homepage-grid-top {
+	grid-column: 1;
+}
+
+
+.homepage-single-column .homepage-completed-card {
+	flex: 0 0 calc(25% - 12px);
+	max-width: calc(25% - 12px);
+}
+
+
+/* Character card text match hover tooltip */
+
+/* Wn Character Match */
+.wn-character-match {
+	border-bottom: 1px dashed var(--interactive-accent);
+	cursor: pointer;
+}
+
+
+.wn-character-match:hover {
+	background-color: color-mix(in srgb, var(--interactive-accent) 20%, transparent);
+}
+
+
+.wn-footer-2-lines .wn-word-count-num {
+	white-space: nowrap;
+	font-weight: 500;
+	text-align: right;
+	line-height: 1.1;
+}
+
+
+.wn-footer-2-lines .wn-word-count-unit {
+	white-space: nowrap;
+	text-align: right;
+	margin-left: 0;
+	font-size: 0.85em;
+	color: var(--text-muted);
+	line-height: 1.1;
+}
+
+
+.wn-footer-1-line .wn-word-count-num {
+	white-space: nowrap;
+	font-weight: 500;
+}
+
+
+.wn-footer-1-line .wn-word-count-unit {
+	white-space: nowrap;
+	margin-left: 2px;
+}
+
+
+.wn-layout-grid {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+
+.wn-layout-top,
+.wn-layout-bottom {
+	background-color: var(--background-primary);
+	border-radius: 6px;
+	padding: 8px;
+	border: 1px dashed var(--text-muted);
+}
+
+
+.wn-layout-middle {
+	display: flex;
+	gap: 10px;
+	min-height: 150px;
+}
+
+
+.wn-layout-left,
+.wn-layout-right {
+	flex: 1;
+	background-color: var(--background-primary);
+	border-radius: 6px;
+	padding: 8px;
+	border: 1px dashed var(--text-muted);
+}
+
+
+.wn-layout-center {
+	flex: 2;
+	background-color: var(--background-primary-alt);
+	border-radius: 6px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border: 1px solid var(--background-modifier-border);
+}
+
+
+.wn-layout-center-text {
+	color: var(--text-muted);
+	font-weight: bold;
+	font-size: 1.2em;
+}
+
+
+.wn-slot-title {
+	display: block;
+	margin-bottom: 8px;
+	color: var(--text-normal);
+}
+
+
+.wn-slot-list {
+	display: flex;
+	flex-direction: column;
+	gap: 5px;
+	margin-bottom: 8px;
+}
+
+
+.wn-slot-item {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	background-color: var(--interactive-normal);
+	padding: 4px 8px;
+	border-radius: 4px;
+	font-size: 0.9em;
+}
+
+
+.wn-slot-del {
+	background: none;
+	box-shadow: none;
+	border: none;
+	color: var(--text-error);
+	cursor: pointer;
+	padding: 0 5px;
+}
+
+
+.wn-slot-del:hover {
+	color: var(--text-error-hover);
+}
+
+
+.wn-slot-empty {
+	color: var(--text-faint);
+	font-size: 0.85em;
+	font-style: italic;
+}
+
+
+/* ==========================================================================
+
+   Immersive Mode properties panel hidden
+
+   ========================================================================== */
+
+/* Responsible for main edit area: use extremely high priority to override source mode and live preview mode */
+
+/* Immersive Hide Properties */
+body.immersive-hide-properties div.workspace-leaf-content[data-type="markdown"] div.markdown-source-view div.metadata-container,
+
+body.immersive-hide-properties div.workspace-leaf-content[data-type="markdown"] div.metadata-container {
+	display: none;
+}
+
+
+body.immersive-hide-properties .markdown-reading-view .metadata-container {
+	display: none;
+}
+
+
+body.immersive-hide-properties .markdown-reading-view .frontmatter-container {
+	display: none;
+}
+
+
+body.immersive-hide-properties .markdown-reading-view .frontmatter {
+	display: none;
+}
+
+
+/* ==========================================================================
+
+   Generic Modal Form Components
+
+   ========================================================================== */
+
+/* Wn Base Input */
+.wn-base-input {
+	width: 100%;
+	margin-bottom: 8px;
+	padding: 6px 8px;
+	border-radius: 4px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	color: var(--text-normal);
+	box-sizing: border-box;
+}
+
+
+.wn-base-textarea {
+	height: 80px;
+	resize: vertical;
+	font-family: var(--font-text);
+}
+
+
+.wn-base-button-container {
+	display: flex;
+	justify-content: flex-end;
+	gap: 10px;
+	margin-top: 16px;
+}
+
+
+.wn-base-tag-button {
+	padding: 2px 10px;
+	border-radius: 12px;
+	border: 1px solid var(--interactive-accent);
+	color: var(--interactive-accent);
+	background: transparent;
+	cursor: pointer;
+	font-size: 0.85em;
+}
+
+
+.wn-base-tag-button-container {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-bottom: 16px;
+}
+
+
+/* ==========================================================================
+
+   Eye Care Mode
+
+   ========================================================================== */
+
+body.webnovel-eye-care-enabled .workspace-leaf-content[data-type="markdown"]:not(.is-webnovel-homepage) {
+	--background-primary: var(--webnovel-eye-care-color, #E8F5E9);
+	--background-primary-alt: var(--webnovel-eye-care-color, #E8F5E9);
+}
+
+
+/* ==========================================================================
+
+   Sticky Notes
+
+   ========================================================================== */
+
+body .my-floating-sticky-note {
+	position: fixed;
+	min-width: 200px;
+	min-height: 200px;
+	border: 1px solid rgba(0, 0, 0, 0.1);
+	box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+	border-radius: 8px;
+	z-index: var(--layer-popover, 40);
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	transition: background-color 0.2s ease, box-shadow 0.3s ease;
+	background-color: var(--note-bg-color-alpha, transparent);
+}
+
+
+body .my-floating-sticky-note:hover {
+	box-shadow: 0 12px 35px rgba(0, 0, 0, 0.22);
+	background-color: var(--note-bg-color);
+}
+
+
+body .my-sticky-header {
+	padding: 8px 12px;
+	background-color: transparent;
+	border-bottom: 1px solid transparent;
+	cursor: grab;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: space-between;
+	user-select: none;
+	flex-shrink: 0;
+	min-width: 0;
+	transition: background-color 0.2s ease, border-color 0.2s ease;
+	gap: 10px;
+}
+
+
+body .my-floating-sticky-note:hover .my-sticky-header {
+	background-color: rgba(0, 0, 0, 0.04);
+	border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+
+body .my-sticky-header:active {
+	cursor: grabbing;
+}
+
+
+body .my-sticky-title-wrapper {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	overflow: hidden;
+	flex-grow: 1;
+	flex-shrink: 1;
+	min-width: 0;
+}
+
+
+body .my-sticky-title-icon {
+	display: flex;
+	align-items: center;
+	color: var(--note-text-color);
+	opacity: 0.6;
+	flex-shrink: 0;
+}
+
+
+body .my-sticky-title-icon svg {
+	width: 14px;
+	height: 14px;
+}
+
+
+body .my-sticky-title {
+	font-weight: bold;
+	font-size: 12px;
+	color: var(--note-text-color);
+	pointer-events: none;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	flex-shrink: 1;
+	min-width: 0;
+}
+
+
+body .my-sticky-controls {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex-shrink: 0;
+	position: relative;
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 0.2s ease;
+}
+
+
+body .my-floating-sticky-note:hover .my-sticky-controls {
+	opacity: 1;
+	pointer-events: auto;
+}
+
+
+body .my-sticky-btn,
+body .my-sticky-close {
+	background: transparent;
+	border: none;
+	box-shadow: none;
+	cursor: pointer;
+	padding: 4px;
+	border-radius: 4px;
+	color: var(--note-text-color);
+	opacity: 0.5;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	transition: all 0.2s;
+}
+
+
+body .my-sticky-btn svg,
+body .my-sticky-close svg {
+	width: 16px;
+	height: 16px;
+	stroke-width: 2px;
+}
+
+
+body .my-sticky-btn:hover {
+	background-color: rgba(0, 0, 0, 0.08);
+	opacity: 1;
+}
+
+
+body .my-sticky-btn.is-active {
+	color: var(--interactive-accent);
+	background-color: rgba(0, 0, 0, 0.06);
+	opacity: 1;
+}
+
+
+body .my-sticky-close:hover {
+	color: var(--text-error, var(--interactive-accent));
+	/* 与文字色语义一致，跟随 --text-error 主题变量 */
+	background-color: color-mix(in srgb, var(--text-error, var(--interactive-accent)) 10%, transparent);
+	opacity: 1;
+}
+
+
+body .my-sticky-palette-popup {
+	display: none;
+	position: absolute;
+	top: 32px;
+	right: 25px;
+	background-color: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	padding: 8px;
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+	z-index: var(--layer-menu, 50);
+	grid-template-columns: repeat(3, 1fr);
+	gap: 8px;
+}
+
+
+body .my-sticky-palette-popup.is-active {
+	display: grid;
+	animation: popupFadeIn 0.15s ease-out;
+}
+
+
+body .my-sticky-swatch {
+	width: 26px;
+	height: 26px;
+	border-radius: 50%;
+	border: 1px solid rgba(0, 0, 0, 0.15);
+	cursor: pointer;
+	transition: transform 0.1s, border-color 0.1s;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-weight: bold;
+	font-family: serif;
+	font-size: 13px;
+}
+
+
+body .my-sticky-swatch:hover {
+	transform: scale(1.15);
+	border-color: rgba(0, 0, 0, 0.5);
+}
+
+
+body .my-sticky-content {
+	padding: 15px;
+	overflow-y: auto;
+	font-size: calc(0.9em * var(--sticky-zoom, 1));
+	flex-grow: 1;
+	color: var(--note-text-color);
+	padding-bottom: 25px;
+	background-color: transparent;
+}
+
+
+body .my-sticky-content * {
+	color: inherit;
+}
+
+
+body .my-sticky-textarea {
+	flex-grow: 1;
+	width: 100%;
+	height: calc(100% - 10px);
+	resize: none;
+	border: none;
+	background: transparent;
+	color: var(--note-text-color);
+	font-family: var(--font-text);
+	font-size: calc(0.9em * var(--sticky-zoom, 1));
+	padding: 15px;
+	outline: none;
+	box-shadow: none;
+	display: none;
+	line-height: 1.5;
+}
+
+
+body .my-sticky-textarea:focus {
+	box-shadow: none;
+	background-color: transparent;
+}
+
+
+body .my-sticky-content h1.inline-title {
+	display: none;
+}
+
+
+/* Removed duplicate .immersive-sticky-dock */
+
+.immersive-sticky-dock.immersive-vertical-layout.immersive-vertical-layout {
+	flex-direction: column;
+	overflow-x: hidden;
+	overflow-y: auto;
+}
+
+
+
+/* ==========================================================================
+
+   webnovel-* CSS classes: replacing inline setCssStyles/setCssProps calls
+
+   All styles previously set via JS are now defined here as CSS classes.
+
+   ========================================================================== */
+
+/* -- AdvancedSearchModal -- */
+
+.webnovel-search-folder-list {
+	max-height: 250px;
+	overflow-y: auto;
+	border: 1px solid var(--background-modifier-border);
+	padding: 8px;
+	border-radius: 5px;
+	margin-top: 10px;
+}
+
+
+.webnovel-search-folder-name {
+	font-weight: bold;
+}
+
+
+.webnovel-search-checkbox {
+	margin-left: 10px;
+}
+
+
+.webnovel-search-file-name {
+	color: var(--text-muted);
+}
+
+
+/* -- ForeshadowingModal -- */
+
+.webnovel-modal-textarea {
+	width: 100%;
+	height: 80px;
+	resize: vertical;
+	margin-bottom: 12px;
+	padding: 8px;
+	border-radius: 4px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	color: var(--text-normal);
+	font-family: var(--font-text);
+	box-sizing: border-box;
+}
+
+
+.webnovel-modal-input {
+	width: 100%;
+	margin-bottom: 8px;
+	padding: 6px 8px;
+	border-radius: 4px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	color: var(--text-normal);
+	box-sizing: border-box;
+}
+
+
+.webnovel-modal-list {
+	max-height: 300px;
+	overflow-y: auto;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	margin-bottom: 12px;
+}
+
+
+.webnovel-modal-selected {
+	margin-bottom: 12px;
+	padding: 8px;
+	background: var(--background-secondary);
+	border-radius: 4px;
+	min-height: 30px;
+}
+
+
+.webnovel-modal-selected-tag {
+	display: inline-block;
+	margin: 4px 4px 0 0;
+	padding: 2px 8px;
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border-radius: 12px;
+	font-size: 0.9em;
+}
+
+
+.webnovel-modal-chapter-item {
+	padding: 8px 12px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+
+.webnovel-modal-event-block {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	padding: 12px;
+	margin-bottom: 12px;
+	background: var(--background-secondary);
+}
+
+
+.webnovel-modal-empty {
+	padding: 12px;
+}
+
+
+/* -- FileExplorerPatcher -- */
+
+.webnovel-wn-folder-word-count-detail {
+	font-size: 0.8em;
+	opacity: 0.5;
+	margin-left: 5px;
+}
+
+
+/* -- SettingsTab -- */
+
+.webnovel-settings-input-full {
+	width: 100%;
+}
+
+
+.webnovel-settings-rules-container {
+	width: 100%;
+}
+
+
+.webnovel-settings-rule-item {
+	background: var(--background-secondary);
+	border-radius: 8px;
+	margin-bottom: 10px;
+	padding: 10px 15px;
+	border-top: none;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+
+.webnovel-settings-btn-full {
+	width: 100%;
+}
+
+
+/* -- StatusView -- */
+
+.webnovel-work-goal {
+	font-size: 0.8em;
+	color: var(--text-muted);
+	margin-top: 4px;
+}
+
+
+/* -- ImmersiveStickyNotesView -- */
+
+.webnovel-immersive-sticky-container {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	overflow: hidden;
+}
+
+
+.webnovel-immersive-hover-trigger {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	height: 15px;
+	z-index: 9;
+}
+
+
+.webnovel-immersive-toolbar {
+	display: flex;
+	gap: 8px;
+	padding: 8px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	background-color: var(--background-secondary);
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	z-index: 10;
+}
+
+
+.webnovel-immersive-dock {
+	flex: 1;
+	display: flex;
+	flex-wrap: nowrap;
+	gap: 10px;
+	padding: 8px;
+	padding-top: 10px;
+	align-items: center;
+}
+
+
+.webnovel-immersive-note-card {
+	flex: 0 0 auto;
+	display: flex;
+	flex-direction: column;
+	border-radius: 8px;
+	box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+	overflow: hidden;
+	box-sizing: border-box;
+}
+
+
+.webnovel-immersive-note-title {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 4px 8px;
+	border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+	background-color: rgba(0, 0, 0, 0.05);
+}
+
+
+.webnovel-immersive-note-close {
+	font-size: 1.2em;
+	line-height: 1;
+	cursor: pointer;
+	padding: 0 4px;
+}
+
+
+/* -- Utility -- */
+
+.webnovel-ellipsis {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+
+/* ==========================================================================
+
+   webnovel-* CSS classes: replacing remaining Object.assign(el.style, {...}) calls
+
+   ========================================================================== */
+
+/* -- ForeshadowingModal -- */
+
+.webnovel-chapter-label {
+	flex: 1;
+	cursor: pointer;
+}
+
+
+.webnovel-btn-row {
+	display: flex;
+	gap: 8px;
+	margin-bottom: 12px;
+}
+
+
+.webnovel-select-btn {
+	flex: 1;
+	padding: 6px 12px;
+	border-radius: 4px;
+	border: 1px solid var(--interactive-accent);
+	color: var(--interactive-accent);
+	background: transparent;
+	cursor: pointer;
+}
+
+
+.webnovel-btn-container-end {
+	display: flex;
+	justify-content: flex-end;
+	gap: 10px;
+	margin-top: 20px;
+}
+
+
+/* -- TimelineView / TimelineAddModal -- */
+
+
+.webnovel-tl-chapter-row {
+	display: flex;
+	gap: 8px;
+	margin-bottom: 8px;
+	align-items: center;
+}
+
+
+.webnovel-tl-chapter-row-sm {
+	display: flex;
+	gap: 8px;
+	margin-bottom: 4px;
+	align-items: center;
+}
+
+
+
+.webnovel-tl-remove-btn {
+	width: 32px;
+	height: 32px;
+	padding: 0;
+	border-radius: 4px;
+	background: var(--background-modifier-error);
+	color: var(--text-on-accent);
+	border: none;
+	cursor: pointer;
+	font-size: 20px;
+	line-height: 1;
+}
+
+
+.webnovel-tl-remove-btn-sm {
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	border-radius: 4px;
+	background: var(--background-modifier-error);
+	color: var(--text-on-accent);
+	border: none;
+	cursor: pointer;
+	font-size: 16px;
+}
+
+
+.webnovel-tl-add-btn {
+	width: 100%;
+	padding: 8px;
+	border-radius: 4px;
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border: none;
+	cursor: pointer;
+	margin-top: 4px;
+}
+
+
+.webnovel-tl-add-btn-sm {
+	width: 100%;
+	padding: 4px;
+	border-radius: 4px;
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border: none;
+	cursor: pointer;
+	font-size: 12px;
+	margin-top: 4px;
+}
+
+
+.webnovel-tl-custom-hidden {
+	margin-top: 4px;
+	display: none;
+}
+
+
+.webnovel-tl-desc-input-edit {
+	margin-bottom: 8px;
+	height: 60px;
+}
+
+
+.webnovel-tl-delete-event-btn {
+	width: 100%;
+	padding: 8px;
+	border-radius: 4px;
+	background: var(--background-modifier-error);
+	color: var(--text-on-accent);
+	border: none;
+	cursor: pointer;
+	margin-top: 8px;
+}
+
+
+.webnovel-tl-add-event-btn {
+	width: 100%;
+	padding: 8px;
+	border-radius: 4px;
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border: none;
+	cursor: pointer;
+	margin-top: 8px;
+}
+
+
+/* -- StatusView -- */
+
+.webnovel-pct-bold-mono {
+	font-weight: 600;
+	font-family: var(--font-monospace);
+}
+
+
+/* -- SettingsTab -- */
+
+.webnovel-rule-name-input {
+	flex: 1 1 0px;
+	min-width: 0;
+}
+
+
+.webnovel-rule-pattern-input {
+	flex: 3 1 0px;
+	min-width: 0;
+	font-family: monospace;
+}
+
+
+.webnovel-add-btn-row {
+	border-top: none;
+	padding: 0;
+}
+
+
+.webnovel-obs-css-input {
+	width: 100%;
+	height: 100px;
+	font-family: monospace;
+}
+
+
+
+
+
+/* Selection word count tooltip */
+
+.cm-tooltip-selection-count {
+	padding: 4px 8px;
+	background-color: var(--background-secondary);
+	color: var(--text-normal);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	font-size: var(--font-ui-smaller);
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+	z-index: 100;
+	pointer-events: none;
+	opacity: 0.85;
+	backdrop-filter: blur(8px);
+	-webkit-backdrop-filter: blur(8px);
+	animation: webnovel-tooltip-fadein 0.2s cubic-bezier(0.2, 0, 0, 1) forwards;
+}
+
+
+@keyframes webnovel-tooltip-fadein {
+	0% {
+		opacity: 0;
+		transform: translateY(4px) scale(0.95);
+	}
+
+	100% {
+		opacity: 0.85;
+		transform: translateY(0) scale(1);
+	}
+}
+
+
+/* Immersive Mode: Hide split handle, show only on hover */
+
+body.immersive-mode-active.immersive-mode-active .workspace-leaf-resize-handle {
+	opacity: 0;
+	transition: opacity 0.2s ease;
+}
+
+
+body.immersive-mode-active.immersive-mode-active .workspace-leaf-resize-handle:hover,
+
+body.immersive-mode-active.immersive-mode-active .workspace-leaf-resize-handle.is-active {
+	opacity: 1;
+	background-color: var(--interactive-accent);
+}
+
+
+/* Deep Theme Defense: Reset global container margins potentially added by mainstream 3rd-party themes (like Border) */
+
+body.immersive-mode-active.immersive-mode-active .app-container.app-container {
+	padding: 0;
+	margin: 0;
+	height: 100%;
+	width: 100%;
+}
+
+
+body.immersive-mode-active.immersive-mode-active .app-container.app-container .workspace.workspace {
+	margin: 0;
+	margin-top: 40px;
+	padding: 0;
+	height: calc(100% - 40px);
+	top: 0;
+	bottom: 0;
+	left: 0;
+	right: 0;
+	width: 100%;
+}
+
+
+body.immersive-mode-active.immersive-mode-active .horizontal-main-container.horizontal-main-container {
+	padding: 0;
+	margin: 0;
+	height: 100%;
+	bottom: 0;
+}
+
+
+body.immersive-mode-active.immersive-mode-active .app-container.app-container .workspace.workspace .workspace-split.workspace-split,
+
+body.immersive-mode-active.immersive-mode-active .app-container.app-container .workspace.workspace .workspace-split.mod-root {
+	padding: 0;
+	margin: 0;
+}
+
+
+body.immersive-mode-active.immersive-mode-active .app-container.app-container .workspace.workspace .workspace-leaf.workspace-leaf {
+	margin: 0;
+}
+
+
+/* Deep Theme Defense: Clear hover borders potentially created by themes using pseudo-elements on body */
+
+body.immersive-mode-active.immersive-mode-active.immersive-mode-active::before,
+
+body.immersive-mode-active.immersive-mode-active.immersive-mode-active::after {
+	display: none;
+}
+
+
+/* Light highlight for currently active (selected) card */
+
+body.immersive-mode-active .workspace-leaf.mod-active.workspace-leaf .workspace-leaf-content {
+	border: 1px solid color-mix(in srgb, var(--interactive-accent) 80%, var(--background-modifier-border));
+	box-shadow: 0 0 0 1px color-mix(in srgb, var(--interactive-accent) 30%, transparent), 0 4px 15px color-mix(in srgb, var(--interactive-accent) 8%, rgba(0, 0, 0, 0.05));
+}
+
+
+
+/* ========== Settings Tab ========== */
+.wn-settings-banner {
+	background: var(--background-secondary);
+	padding: 12px 16px;
+	border-radius: 8px;
+	margin-bottom: 20px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 0.9em;
+	border: 1px solid var(--background-modifier-border);
+}
+
+
+.wn-settings-warning {
+	background: var(--background-secondary);
+	padding: 12px;
+	border-radius: 6px;
+	margin-bottom: 20px;
+	border-left: 3px solid var(--interactive-accent);
+}
+
+
+.wn-settings-order-btns {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	flex-shrink: 0;
+}
+
+
+.wn-settings-order-btn {
+	font-size: 0.7em;
+	padding: 1px 5px;
+	cursor: pointer;
+	line-height: 1.2;
+}
+
+
+.wn-settings-color-grid {
+	display: grid;
+	grid-template-columns: repeat(2, 1fr);
+	gap: 8px;
+}
+
+
+.wn-settings-color-item {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	background: var(--background-modifier-form-field);
+	padding: 4px;
+	border-radius: 4px;
+}
+
+
+/* Added utility classes for dynamic styling */
+.wn-clickable {
+	cursor: pointer;
+}
+
+
+
+.wn-border-error {
+	border-color: var(--background-modifier-error);
+}
+
+
+.wn-mb-12 {
+	margin-bottom: 12px;
+}
+
+
+.webnovel-homepage-root .wn-bg-muted,
+.wn-settings-banner .wn-bg-muted {
+	background: var(--text-muted);
+	color: unset;
+}
+
+
+/* Utility Classes */
+body .wn-hidden,
+.wn-hidden {
+	display: none;
+}
+
+
+body .wn-show-block,
+.wn-show-block {
+	display: block;
+}
+
+
+/* Status Badge Muted */
+.wn-status-title-badge.wn-bg-muted {
+	background: var(--text-muted);
+	color: var(--background-primary);
+	border: none;
+}
+
+
+.drag-over *,
+.drag-over-chapter *,
+.drag-over-event *,
+.drag-over-event-top *,
+.drag-over-event-bottom * {
+	pointer-events: none;
+}
+
+
+.drag-over,
+.drag-over-chapter,
+.drag-over-event,
+.drag-over-event-top,
+.drag-over-event-bottom {
+	background: var(--background-modifier-hover);
+}
+
+
+.is-dragging {
+	opacity: 0.5;
+}
+
+
+.wn-badge {
+	padding: 2px 6px;
+	border-radius: 4px;
+	font-size: 0.75em;
+	font-weight: 500;
+	white-space: nowrap;
+}
+
+
+/* 已回收 (在其他章节回收)：主题强调色调和成功 (Accent-blended Success/Recovered Origin) */
+.wn-badge-recovered {
+	background-color: color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%) 15%, transparent);
+	color: color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%);
+	border: 1px solid color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%);
+}
+
+
+/* 本章回收 (在本章实际发生回收)：主题强调色高亮 (Accent Highlight/Recovered Here) */
+.wn-badge-recovered-here {
+	background-color: color-mix(in srgb, var(--interactive-accent) 20%, transparent);
+	color: var(--interactive-accent);
+	border: 1px solid var(--interactive-accent);
+}
+
+
+/* 设定徽章：中性次要实体标签 (Muted Neutral Lore Badge) */
+.wn-badge-lore {
+	background-color: color-mix(in srgb, var(--text-muted) 14%, transparent);
+	color: var(--text-muted);
+	border: 1px solid color-mix(in srgb, var(--text-muted) 35%, transparent);
+}
+
+
+.wn-badge-lore.wn-hoverable:hover {
+	color: var(--text-normal);
+	background-color: color-mix(in srgb, var(--text-muted) 22%, transparent);
+	border-color: color-mix(in srgb, var(--interactive-accent) 50%, var(--text-muted));
+}
+
+
+/* +X 更多徽章 (More Badge) */
+.wn-badge-more {
+	opacity: 0.85;
+	background-color: color-mix(in srgb, var(--interactive-accent) 8%, transparent);
+	color: var(--text-muted);
+	border: 1px dashed color-mix(in srgb, var(--interactive-accent) 40%, transparent);
+}
+
+
+/* Lore Board: File Tabs */
+.wn-lore-file-tabs {
+	display: flex;
+	flex-wrap: nowrap;
+	align-items: center;
+	gap: 6px;
+	padding: 0 16px 12px;
+	overflow-x: auto;
+	scrollbar-width: thin;
+}
+
+
+.wn-lore-file-tab {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	flex: 0 0 auto;
+	padding: 5px 12px;
+	border-radius: 8px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+	color: var(--text-muted);
+	font-size: 0.85em;
+	cursor: pointer;
+	user-select: none;
+	white-space: nowrap;
+	transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+
+.wn-lore-file-tab:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+
+.wn-lore-file-tab.is-active {
+	background: var(--background-primary);
+	color: var(--text-normal);
+}
+
+
+.wn-lore-file-tab-count {
+	font-size: 0.75em;
+	line-height: 1;
+	padding: 2px 7px;
+	border-radius: 10px;
+	background: color-mix(in srgb, var(--interactive-accent) 15%, transparent);
+	color: var(--text-muted);
+}
+
+
+.wn-lore-file-tab.is-active .wn-lore-file-tab-count {
+	background: color-mix(in srgb, var(--interactive-accent) 22%, transparent);
+	color: var(--text-normal);
+}
+
+
+/* Chapter Status UI */
+
+
+.wn-chapter-status-section {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	width: 100%;
+}
+
+
+.wn-chapter-status-section-title {
+	font-size: 0.85em;
+	font-weight: 600;
+	color: var(--interactive-accent-hover);
+	margin-bottom: 4px;
+}
+
+
+.wn-chapter-status-item {
+	font-size: 0.9em;
+	color: var(--text-normal);
+	line-height: 1.4;
+}
+
+
+.wn-chapter-status-item:hover {
+	color: var(--color-accent);
+}
+
+
+
+.immersive-chapter-left {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	align-items: flex-start;
+}
+
+
+.immersive-chapter-title {
+	word-break: break-all;
+}
+
+
+.immersive-chapter-badges {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+}
+
+
+/* ==========================================================================
+   章节状态面板（StatusView）内联样式提取
+   ========================================================================== */
+
+/* badges 容器：垂直排列 */
+.wn-chapter-badges-container {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	align-items: stretch;
+}
+
+
+/* "待回收" 标题：红色警告色 */
+.wn-chapter-status-section-title.is-pending {
+	color: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%);
+}
+
+
+/* 已回收伏笔条目：略微淡化 */
+.wn-chapter-status-item.is-recovered {
+	opacity: 0.8;
+}
+
+
+/* 设定分区：与伏笔区之间的微小间距 */
+.wn-chapter-status-section.is-lore {
+	margin-top: 2px;
+}
+
+
+/* 设定与伏笔之间的分割线 */
+.wn-chapter-status-divider {
+	height: 1px;
+	background-color: var(--background-modifier-border);
+	margin: 4px 0 8px 0;
+	width: 100%;
+	opacity: 0.6;
+}
+
+
+/* 设定 badge 行：横向排列 */
+.wn-chapter-lore-row {
+	display: flex;
+	gap: 4px;
+	align-items: center;
+	flex-wrap: wrap;
+}
+
+
+/* Immersive Folder View */
+.immersive-folder-details {
+	margin: 2px 0;
+}
+
+
+.immersive-folder-summary {
+	cursor: pointer;
+	padding: 4px;
+	color: var(--text-muted);
+	font-weight: 600;
+	user-select: none;
+	display: flex;
+	align-items: center;
+}
+
+
+.immersive-folder-summary::-webkit-details-marker {
+	display: none;
+}
+
+
+.immersive-folder-children {
+	border-left: 1px solid var(--background-modifier-border);
+	margin-left: 6px;
+}
+
+
+/* Drag Over Indicators */
+body .drag-over-left {
+	border-left: 2px dashed var(--interactive-accent);
+}
+
+
+body .drag-over-right {
+	border-right: 2px dashed var(--interactive-accent);
+}
+
+.wn-status-badges-container {
+	margin-top: 16px;
+}
+
+
+body .tooltip.wn-tooltip-left {
+	text-align: left;
+}
+
+
+.wn-text-accent {
+	color: var(--text-accent);
+}
+
+
+.wn-text-muted {
+	color: var(--text-muted);
+}
+
+
+
+
+
+body.immersive-mode-active.wn-typewriter-active .cm-editor .inline-title {
+	opacity: var(--wn-typewriter-opacity, 0.4);
+	transition: opacity 0.15s ease;
+}
+
+
+body.immersive-mode-active.wn-typewriter-active .cm-editor .inline-title:focus,
+body.immersive-mode-active.wn-typewriter-active .cm-editor .inline-title:focus-within {
+	opacity: 1;
+}
+
+
+/* ========== 沉浸模式顶栏打字机 Toggle 开关 ========== */
+.immersive-top-bar-center .stat-item.typewriter-toggle-container {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 2px 8px;
+	border-radius: 12px;
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	color: var(--text-muted);
+	font-size: 0.85em;
+	user-select: none;
+}
+
+
+.immersive-top-bar-center .typewriter-toggle-label {
+	font-size: 0.85em;
+	color: var(--text-muted);
+	white-space: nowrap;
+}
+
+
+.immersive-top-bar-center .checkbox-container {
+	margin: 0;
+	transform: scale(0.8);
+	cursor: pointer;
+}
+
+
+.wn-volume-header-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--interactive-accent);
+	transition: transform 0.2s ease;
+}
+
+
+.wn-volume-header-icon svg {
+	width: 14px;
+	height: 14px;
+}
+
+
+.webnovel-radio-group {
+	display: flex;
+	align-items: center;
+	gap: 24px;
+}
+
+
+.webnovel-radio-label {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 0.85em;
+	color: var(--text-muted);
+	cursor: pointer;
+	user-select: none;
+	transition: color 0.15s ease;
+}
+
+
+.webnovel-radio-label:hover {
+	color: var(--text-normal);
+}
+
+
+.webnovel-radio-label input[type="radio"] {
+	margin: 0;
+	cursor: pointer;
+}
+
+
+.wn-card-title-wrapper {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex: 1;
+	min-width: 0;
+}
+
+
+.wn-card-description-title {
+	font-weight: 600;
+	font-size: 0.9em;
+	color: var(--text-normal);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+
+.wn-card-tags-wrapper {
+	display: flex;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+
+
+.wn-card-tag-badge {
+	font-size: 0.75em;
+	padding: 2px 6px;
+	border-radius: 4px;
+	color: var(--text-muted);
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+}
+
+
+.wn-card-actions-wrapper {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	flex-shrink: 0;
+}
+
+
+.wn-card-action-btn {
+	font-size: 0.8em;
+	padding: 3px 10px;
+	border-radius: 4px;
+	cursor: pointer;
+	transition: all 0.15s ease;
+	user-select: none;
+}
+
+
+.wn-card-action-btn.mod-stage {
+	background: color-mix(in srgb, var(--interactive-accent) 15%, transparent);
+	color: var(--interactive-accent);
+	border: 1px solid color-mix(in srgb, var(--interactive-accent) 30%, transparent);
+}
+
+
+.wn-card-action-btn.mod-stage:hover {
+	background: color-mix(in srgb, var(--interactive-accent) 25%, transparent);
+}
+
+
+.wn-card-action-btn.mod-final {
+	background: color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%) 15%, transparent);
+	color: color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%);
+	border: 1px solid color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%) 35%, transparent);
+}
+
+
+.wn-card-action-btn.mod-final:hover {
+	background: color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%) 30%, transparent);
+}
+
+
+.wn-card-action-btn.mod-abandon {
+	background: transparent;
+	color: var(--text-muted);
+	border: 1px solid var(--background-modifier-border);
+}
+
+
+.wn-card-action-btn.mod-abandon:hover {
+	background: var(--background-secondary);
+	color: var(--text-normal);
+}
+
+
+.wn-card-action-btn.mod-restore {
+	background: color-mix(in srgb, var(--interactive-accent) 15%, transparent);
+	color: var(--interactive-accent);
+	border: 1px solid color-mix(in srgb, var(--interactive-accent) 30%, transparent);
+}
+
+
+.wn-card-action-btn.mod-restore:hover {
+	background: color-mix(in srgb, var(--interactive-accent) 25%, transparent);
+}
+
+
+/* 写作实时状态面板 - 事件任务详情字号与布局规范 */
+.goal-display-row-right.is-event-task {
+	justify-content: space-between;
+	align-items: center;
+	margin-top: 10px;
+	margin-bottom: 8px;
+}
+
+
+.goal-display-row-right.is-event-task .goal-current {
+	font-size: 0.8em;
+	font-weight: 500;
+	color: var(--text-normal);
+	font-family: inherit;
+	text-align: left;
+	word-break: break-word;
+	white-space: normal;
+	flex: 1;
+	margin-right: 8px;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+}
+
+
+.event-task-title {
+	font-size: 0.85em;
+	font-weight: 500;
+	color: var(--text-normal);
+}
+
+
+.event-task-detail {
+	font-size: 0.75em;
+	font-weight: normal;
+	color: var(--text-muted);
+	margin-top: 2px;
+}
+
+
+button.status-task-complete-btn {
+	font-size: 0.8em;
+	padding: 3px 10px;
+	border-radius: 4px;
+	background: color-mix(in srgb, var(--interactive-accent) 15%, transparent);
+	color: var(--interactive-accent);
+	border: 1px solid color-mix(in srgb, var(--interactive-accent) 30%, transparent);
+	box-shadow: none;
+	cursor: pointer;
+	flex-shrink: 0;
+	transition: all 0.15s ease;
+}
+
+
+button.status-task-complete-btn:hover {
+	background: color-mix(in srgb, var(--interactive-accent) 25%, transparent);
+}
+
+
+.wn-card-source-quote-item {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+
+.wn-card-source-header {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 1em;
+	color: var(--text-muted);
+}
+
+
+.wn-card-source-tag {
+	font-weight: 600;
+	color: var(--interactive-accent);
+}
+
+
+.wn-card-chapter-link {
+	color: var(--link-color, var(--interactive-accent));
+	cursor: pointer;
+	text-decoration: underline;
+}
+
+
+.wn-card-chapter-link:hover {
+	color: var(--link-color-hover, var(--interactive-accent));
+}
+
+
+.wn-card-quote-box {
+	width: 100%;
+	box-sizing: border-box;
+	margin-top: 4px;
+	padding: 6px 12px;
+	border-left: 3px solid var(--interactive-accent);
+	background: color-mix(in srgb, var(--interactive-accent) 6%, transparent);
+	border-radius: 0 4px 4px 0;
+	font-size: 1em;
+	color: var(--text-muted);
+	line-height: 1.5;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+
+.wn-card-quote-box.mod-recovery-quote {
+	border-left-color: color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%);
+	background: color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%) 6%, transparent);
+	font-size: 1em;
+	/* 统一字号：放置于 0.85em 容器内时继承基础字号，避免 em 二次拉小 */
+}
+
+
+.wn-card-recovery-logs-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 0.9em;
+	font-weight: 700;
+	color: var(--text-muted);
+	margin-top: 8px;
+	margin-bottom: 4px;
+}
+
+
+.wn-card-recovery-logs-divider {
+	flex: 1;
+	height: 1px;
+	background-color: var(--background-modifier-border);
+	opacity: 0.6;
+}
+
+
+.wn-card-recovery-logs-list {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	margin-left: 0;
+}
+
+
+.wn-card-recovery-log-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+	font-size: 1em;
+}
+
+
+.wn-log-tag-label.mod-stage {
+	color: color-mix(in srgb, var(--interactive-accent) 65%, var(--text-error, var(--interactive-accent)) 35%);
+	font-weight: 600;
+}
+
+
+.wn-log-tag-label.mod-final {
+	color: color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%);
+	font-weight: 600;
+}
+
+
+.wn-associated-quote-input {
+	min-height: 50px;
+	font-family: var(--font-text);
+	font-size: 0.85em;
+	line-height: 1.4;
+}
+
+
+/* 跳转行闪烁高亮动画 */
+@keyframes wnFlashHighlight {
+	0% {
+		background-color: color-mix(in srgb, var(--interactive-accent) 35%, transparent);
+	}
+
+	50% {
+		background-color: color-mix(in srgb, var(--interactive-accent) 20%, transparent);
+	}
+
+	100% {
+		background-color: transparent;
+	}
+}
+
+
+.wn-flash-highlight {
+	animation: wnFlashHighlight 2s ease-in-out forwards;
+}
+
+
+/* ==========================================================================
+   Chapter Template Choice Modal
+   ========================================================================== */
+
+.wn-template-choice-modal {
+	padding: 16px;
+}
+
+
+.wn-template-choice-list {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin-top: 16px;
+	max-height: 320px;
+	overflow-y: auto;
+}
+
+
+.wn-template-choice-item {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 10px 14px;
+	border-radius: 6px;
+	border: 1px solid var(--background-modifier-border);
+	background-color: var(--background-secondary);
+	cursor: pointer;
+	transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+
+.wn-template-choice-item:hover {
+	background-color: color-mix(in srgb, var(--interactive-accent) 10%, var(--background-secondary));
+	border-color: var(--interactive-accent);
+}
+
+
+.wn-template-choice-icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--interactive-accent);
+	flex-shrink: 0;
+}
+
+
+.wn-template-choice-info {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	overflow: hidden;
+}
+
+
+.wn-template-choice-name {
+	font-size: 0.9em;
+	font-weight: 600;
+	color: var(--text-normal);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+
+.wn-template-choice-path {
+	font-size: 12px;
+	color: var(--text-muted);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+
+
+
+
+/* Settings Tab Navigation Bar */
+.webnovel-settings-tabs {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-bottom: 16px;
+	overflow: hidden;
+	border-bottom: 1px solid var(--background-modifier-border);
+	padding-bottom: 8px;
+}
+
+
+.webnovel-tab-item {
+	padding: 4px 12px;
+	border-radius: 6px;
+	cursor: pointer;
+	user-select: none;
+	background-color: var(--background-secondary);
+	color: var(--text-muted);
+	font-size: 0.9em;
+	transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+
+.webnovel-tab-item:hover {
+	background-color: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+
+.webnovel-tab-item.is-active {
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent, #ffffff);
+}
+
+
+/* 目标 Span 精准定位 Flash 脉冲高亮动效 */
+@keyframes wn-target-flash {
+	0% {
+		background: var(--interactive-accent);
+		color: var(--text-on-accent);
+		box-shadow: 0 0 12px var(--interactive-accent);
+		transform: scale(1.08);
+	}
+
+	50% {
+		background: color-mix(in srgb, var(--interactive-accent) 60%, transparent);
+		box-shadow: 0 0 8px var(--interactive-accent);
+	}
+
+	100% {
+		background: color-mix(in srgb, var(--interactive-accent) 18%, transparent);
+		box-shadow: none;
+		transform: scale(1);
+	}
+}
+
+
+/* 移动端章节合并 waterfall Modal 容器与布局 */
+body .modal.wn-mobile-merge-modal-window {
+	width: 92vw;
+	max-width: 600px;
+	height: 85vh;
+	max-height: 800px;
+	padding: 0;
+	margin: auto;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	border-radius: 12px;
+	position: relative;
+}
+
+
+body .modal-content.wn-mobile-merge-modal-content {
+	flex: 1 1 0px;
+	min-height: 0;
+	height: 100%;
+	max-height: 100%;
+	width: 100%;
+	padding: 0;
+	margin: 0;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	box-sizing: border-box;
+}
+
+
+.wn-mobile-merge-header {
+	flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 10px 14px;
+}
+
+
+.wn-mobile-merge-body {
+	flex: 1 1 0px;
+	min-height: 0;
+	overflow-y: auto;
+	padding: 12px 16px;
+	background: var(--background-primary);
+}
+
+
+.wn-mobile-merge-preview-container {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+
+.wn-mobile-merge-card {
+	margin-bottom: 0;
+}
+
+
+.wn-mobile-merge-footer {
+	flex: 0 0 auto;
+	padding: 8px 14px;
+	height: auto;
+	min-height: 48px;
+}
+
+
+.wn-mobile-merge-footer .wn-btn-export {
+	font-size: 0.8em;
+	padding: 5px 12px;
+	height: 32px;
+	line-height: 1;
+}
+
+
+/* ==========================================================================
+   Unified Plugin Modal Headings & Title Styling Protocol
+   ========================================================================== */
+
+/* 1. Modal Headings Reset (new Setting(contentEl).setName(...).setHeading()) */
+body .modal .setting-item.setting-item-heading,
+body .modal-content .setting-item.setting-item-heading,
+body .modal-container .setting-item.setting-item-heading,
+.webnovel-settings-container .setting-item.setting-item-heading {
+	padding-left: 0;
+	margin-left: 0;
+	padding-top: 0;
+	margin-top: 0;
+	margin-bottom: 12px;
+	border-top: none;
+	border-bottom: none;
+	background: transparent;
+	min-height: unset;
+}
+
+body .modal .setting-item.setting-item-heading .setting-item-info,
+body .modal .setting-item.setting-item-heading .setting-item-name,
+body .modal-content .setting-item.setting-item-heading .setting-item-info,
+body .modal-content .setting-item.setting-item-heading .setting-item-name,
+.webnovel-settings-container .setting-item.setting-item-heading .setting-item-info,
+.webnovel-settings-container .setting-item.setting-item-heading .setting-item-name {
+	padding-left: 0;
+	margin-left: 0;
+}
+
+/* 2. Unified Modal Main Title Size & Color */
+body .modal .setting-item.setting-item-heading:first-child .setting-item-name,
+body .modal .setting-item.setting-item-heading:first-of-type .setting-item-name,
+body .modal-content .setting-item.setting-item-heading:first-child .setting-item-name,
+body .modal-content .setting-item.setting-item-heading:first-of-type .setting-item-name,
+body .modal .modal-title,
+body .modal-content h2,
+body .modal h2,
+.history-stats-modal .setting-item-heading:first-child .setting-item-name,
+.foreshadowing-input-modal h2,
+.wn-timeline-add-modal h2,
+.task-add-modal h2 {
+	font-family: var(--font-interface);
+	font-size: 1.15em;
+	font-weight: 700;
+	color: var(--interactive-accent);
+	line-height: 1.3;
+}
+
+/* 3. Secondary Sub-headings inside Modal */
+body .modal .setting-item.setting-item-heading:not(:first-of-type) .setting-item-name,
+body .modal-content .setting-item.setting-item-heading:not(:first-of-type) .setting-item-name {
+	font-family: var(--font-interface);
+	font-size: 0.95em;
+	font-weight: 600;
+	color: var(--text-normal);
+	margin-top: 10px;
+}

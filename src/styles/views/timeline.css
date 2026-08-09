@@ -1,0 +1,983 @@
+
+
+.wn-timeline-view-container {
+	padding: 18px;
+	overflow-y: auto;
+}
+
+
+.wn-timeline-view-header {
+	margin-bottom: 12px;
+}
+
+
+.wn-timeline-view-title-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 4px;
+}
+
+
+.wn-timeline-view-title {
+	font-size: 1.1em;
+	font-weight: bold;
+	color: var(--interactive-accent);
+	margin-top: 8px;
+}
+
+
+.wn-timeline-add-btn {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border: none;
+	border-radius: 50%;
+	width: 28px;
+	height: 28px;
+	font-size: 1.3em;
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	line-height: 1;
+	padding: 0;
+}
+
+
+.wn-timeline-add-btn:hover {
+	filter: brightness(1.1);
+}
+
+
+.wn-timeline-view-folder {
+	font-size: 0.85em;
+	color: var(--text-muted);
+}
+
+
+.wn-timeline-view-empty {
+	color: var(--text-muted);
+	font-size: 0.95em;
+	padding: 24px 0;
+	text-align: center;
+}
+
+
+.wn-timeline-view-hint {
+	font-size: 0.85em;
+}
+
+
+
+.wn-timeline-list {
+	padding-top: 8px;
+}
+
+
+.wn-timeline-item {
+	display: flex;
+	position: relative;
+	gap: 10px;
+	margin-bottom: 4px;
+	cursor: grab;
+}
+
+
+.wn-timeline-item:active {
+	cursor: grabbing;
+}
+
+
+.wn-timeline-dragging {
+	opacity: 0.4;
+}
+
+
+.wn-timeline-drag-over-top .wn-timeline-content {
+	border-top: 2px solid var(--interactive-accent);
+}
+
+
+.wn-timeline-drag-over-bottom .wn-timeline-content {
+	border-bottom: 2px solid var(--interactive-accent);
+}
+
+
+.wn-timeline-line {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	flex-shrink: 0;
+	width: 16px;
+	padding-top: 4px;
+}
+
+
+.wn-timeline-dot {
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	background: var(--interactive-accent);
+	flex-shrink: 0;
+}
+
+
+.wn-timeline-connector {
+	width: 2px;
+	flex: 1;
+	background: var(--background-modifier-border);
+	min-height: 20px;
+	margin-top: 4px;
+}
+
+
+/* SVG Timeline Connection Lines */
+.wn-timeline-svg-path {
+	stroke: var(--text-muted);
+	stroke-width: 1.5;
+	stroke-dasharray: 4, 4;
+	opacity: 0.35;
+	transition: all 0.2s ease;
+}
+
+
+.wn-timeline-svg-path.is-hovered {
+	stroke: var(--interactive-accent);
+	stroke-width: 2;
+	stroke-dasharray: 4, 4;
+	opacity: 0.6;
+}
+
+
+.wn-timeline-svg-arrow,
+.wn-timeline-svg-dot {
+	fill: var(--text-muted);
+	opacity: 0.35;
+	transition: all 0.2s ease;
+}
+
+
+.wn-timeline-svg-arrow.is-hovered,
+.wn-timeline-svg-dot.is-hovered {
+	fill: var(--interactive-accent);
+	opacity: 0.6;
+}
+
+
+.wn-timeline-content {
+	flex: 1;
+	background: color-mix(in srgb, var(--interactive-accent) 4%, var(--background-secondary));
+	border-radius: 8px;
+	padding: 14px 18px 14px 28px;
+	margin-bottom: 12px;
+	min-width: 0;
+	position: relative;
+	border-top: 3px solid var(--interactive-accent);
+}
+
+
+.wn-timeline-content:hover .wn-timeline-actions {
+	opacity: 1;
+	pointer-events: auto;
+}
+
+
+.wn-timeline-drag-handle {
+	position: absolute;
+	top: 8px;
+	left: 6px;
+	color: var(--text-muted);
+	opacity: 0;
+	font-size: 1em;
+	cursor: grab;
+	line-height: 1;
+	transition: opacity 0.15s;
+	user-select: none;
+}
+
+
+.wn-timeline-content:hover .wn-timeline-drag-handle {
+	opacity: 0.4;
+}
+
+
+.wn-timeline-drag-handle:hover {
+	opacity: 1;
+	cursor: grab;
+}
+
+
+.wn-timeline-time {
+	font-weight: 600;
+	font-size: 1.05em;
+	color: var(--interactive-accent);
+	margin-bottom: 4px;
+	font-family: var(--font-monospace);
+}
+
+
+.wn-timeline-list-item {
+	display: flex;
+	flex-direction: column;
+	margin-bottom: 6px;
+	padding-left: 8px;
+	border-left: 2px solid var(--background-modifier-border);
+}
+
+
+.wn-timeline-desc {
+	font-size: 0.85em;
+	color: var(--text-muted);
+	line-height: 1.5;
+	white-space: pre-wrap;
+}
+
+
+.wn-timeline-desc::before {
+	content: "- ";
+	color: var(--text-muted);
+}
+
+
+.wn-timeline-footer {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+
+
+.wn-timeline-chapter-link {
+	font-size: 0.85em;
+	color: var(--interactive-accent);
+	cursor: pointer;
+	text-decoration: underline;
+}
+
+
+.wn-timeline-chapter-link:hover {
+	color: var(--interactive-accent);
+}
+
+
+.wn-timeline-type-tag {
+	font-size: 0.8em;
+	color: var(--text-muted);
+	background: var(--background-primary);
+	padding: 1px 6px;
+	border-radius: 8px;
+	border: 1px solid var(--background-modifier-border);
+}
+
+
+.wn-timeline-view-filter-row {
+	display: flex;
+	gap: 6px;
+	flex-wrap: wrap;
+	margin-top: 4px;
+}
+
+
+.wn-timeline-filter-btn {
+	padding: 4px 10px;
+	border-radius: 4px;
+	border: 1px solid var(--background-modifier-border);
+	background: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+	font-size: 0.85em;
+}
+
+
+.wn-timeline-filter-btn:hover {
+	border-color: var(--interactive-accent);
+	color: var(--interactive-accent);
+}
+
+
+.wn-timeline-filter-btn.is-active {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border-color: var(--interactive-accent);
+}
+
+
+.wn-timeline-actions {
+	position: absolute;
+	top: 6px;
+	right: 6px;
+	display: flex;
+	gap: 3px;
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 0.15s;
+}
+
+
+.wn-timeline-action-btn {
+	padding: 4px 10px;
+	border-radius: 4px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	color: var(--text-muted);
+	cursor: pointer;
+	font-size: 0.85em;
+}
+
+
+.wn-timeline-action-btn:hover {
+	border-color: var(--interactive-accent);
+	color: var(--interactive-accent);
+}
+
+
+
+.wn-timeline-edit-form {
+	background: var(--background-secondary);
+	border-radius: 6px;
+	padding: 10px 12px;
+	margin-bottom: 12px;
+	border: 1px solid var(--interactive-accent);
+}
+
+
+.wn-timeline-form-title {
+	font-weight: 600;
+	font-size: 1.0em;
+	margin-bottom: 8px;
+	color: var(--text-normal);
+}
+
+
+.wn-timeline-form-label {
+	display: block;
+	font-size: 0.85em;
+	color: var(--text-muted);
+	margin-bottom: 3px;
+	margin-top: 8px;
+}
+
+
+.wn-timeline-form-input {
+	width: 100%;
+	padding: 5px 8px;
+	border-radius: 4px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	color: var(--text-normal);
+	font-size: 0.85em;
+	box-sizing: border-box;
+}
+
+
+.wn-timeline-form-textarea {
+	width: 100%;
+	height: 60px;
+	padding: 5px 8px;
+	border-radius: 4px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	color: var(--text-normal);
+	font-size: 0.85em;
+	resize: vertical;
+	box-sizing: border-box;
+	font-family: var(--font-text);
+}
+
+
+.wn-timeline-form-btns {
+	display: flex;
+	justify-content: flex-end;
+	gap: 6px;
+	margin-top: 10px;
+}
+
+
+.wn-timeline-form-hint {
+	font-size: 0.85em;
+	color: var(--text-muted);
+	margin-bottom: 8px;
+}
+
+
+.wn-timeline-add-modal h2 {
+	font-size: 1.1em;
+	color: var(--interactive-accent);
+	margin: 0 0 8px 0;
+	padding: 0;
+}
+
+
+.wn-timeline-add-modal .setting-item {
+	padding: 6px 0;
+}
+
+
+.wn-timeline-add-modal .setting-item-name {
+	font-size: 0.85em;
+}
+
+
+.wn-timeline-add-modal .setting-item-description {
+	font-size: 0.8em;
+}
+
+
+/* Auxiliary panel content fine-tuning */
+
+.immersive-mode-active .foreshadowing-view-container,
+
+.immersive-mode-active .wn-timeline-view-container {
+	background-color: transparent;
+}
+
+
+.wn-corkboard-container.is-timeline-mode {
+	overflow: hidden;
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+	padding-bottom: 20px;
+}
+
+
+.wn-corkboard-container.is-timeline-mode .wn-corkboard-header {
+	position: relative;
+	top: 0;
+	margin-top: 0;
+	padding-top: 0;
+	flex-shrink: 0;
+}
+
+
+.wn-corkboard-container.is-timeline-mode .wn-corkboard-header-buttons {
+	top: 0;
+}
+
+
+/* 工作台通用操作按钮（与创作主页「+ 新增作品」风格统一） */
+.wn-corkboard-new-chapter-btn,
+.wn-corkboard-new-lore-btn,
+.wn-corkboard-new-task-btn,
+.wn-corkboard-new-sticky-btn,
+.wn-corkboard-novel-status-btn,
+.wn-timeline-add-node-btn {
+	display: inline-block;
+	font-size: 0.85em;
+	padding: 4px 12px;
+	border-radius: 4px;
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border: none;
+	cursor: pointer;
+	font-weight: 500;
+	transition: filter 0.2s;
+}
+
+
+.wn-corkboard-new-chapter-btn:hover,
+.wn-corkboard-new-lore-btn:hover,
+.wn-corkboard-new-task-btn:hover,
+.wn-corkboard-new-sticky-btn:hover,
+.wn-corkboard-novel-status-btn:hover,
+.wn-timeline-add-node-btn:hover {
+	filter: brightness(1.1);
+}
+
+
+/* Fix plugin modal headings indentation */
+.webnovel-settings-container .setting-item.setting-item-heading,
+.history-stats-modal .setting-item.setting-item-heading,
+.foreshadowing-input-modal .setting-item.setting-item-heading,
+.wn-timeline-add-modal .setting-item.setting-item-heading {
+	padding-left: 0;
+	margin-left: 0;
+	border-top: none;
+	margin-top: 0;
+}
+
+
+/* Timeline Waterfall Layout */
+.wn-timeline-waterfall-layout {
+	display: flex;
+	gap: 20px;
+	height: 100%;
+	overflow: hidden;
+	position: relative;
+	margin-left: -18px;
+}
+
+
+.wn-timeline-waterfall-main {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	overflow-y: auto;
+	padding-right: 10px;
+	position: relative;
+	padding-left: 20px;
+	/* Space for the vertical line */
+	background-image: linear-gradient(var(--background-modifier-border), var(--background-modifier-border));
+	background-size: 2px 100%;
+	background-repeat: no-repeat;
+	background-position: 24px 0;
+	background-attachment: local;
+}
+
+
+.wn-timeline-waterfall-main.is-empty {
+	background-image: none;
+}
+
+
+.wn-timeline-node {
+	position: relative;
+	margin-bottom: 10px;
+	z-index: 1;
+	flex-shrink: 0;
+}
+
+
+/* The dot on the axis */
+.wn-timeline-node-title {
+	font-weight: 600;
+	margin-bottom: 10px;
+	font-size: 0.95em;
+	color: var(--text-normal);
+	position: relative;
+	display: flex;
+	align-items: center;
+	padding-left: 16px;
+	/* Prevent text overlap with dot */
+}
+
+
+.wn-timeline-node-title::before {
+	content: '';
+	position: absolute;
+	left: -2px;
+	/* Align perfectly with the vertical line */
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	background: var(--interactive-accent);
+	border: 2px solid var(--background-primary);
+}
+
+
+.wn-timeline-item-row {
+	z-index: 2;
+	display: flex;
+	align-items: stretch;
+	gap: 15px;
+	margin-bottom: 10px;
+	padding-left: 16px;
+	border-radius: 6px;
+	transition: background 0.2s;
+	position: relative;
+	min-height: 160px;
+}
+
+
+.wn-timeline-item-desc {
+	position: absolute;
+	left: 16px;
+	top: 0;
+	bottom: 0;
+	width: 200px;
+	box-sizing: border-box;
+	margin-bottom: 0;
+	overflow-y: auto;
+	flex-shrink: 0;
+	padding: 8px 24px 8px 10px;
+	background: color-mix(in srgb, var(--interactive-accent) 10%, var(--background-secondary-alt));
+	border: 1px solid color-mix(in srgb, var(--interactive-accent) 25%, var(--background-modifier-border));
+	border-left: 3px solid var(--interactive-accent);
+	border-radius: 6px;
+	font-size: 0.9em;
+	color: var(--text-normal);
+	white-space: pre-wrap;
+	cursor: text;
+	transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+	z-index: 1;
+}
+
+
+.wn-timeline-item-desc:hover {
+	border-color: var(--interactive-accent);
+	box-shadow: 0 0 0 1px var(--interactive-accent);
+}
+
+
+.wn-timeline-item-delete-btn {
+	position: absolute;
+	right: 3px;
+	top: 3px;
+	color: var(--text-muted);
+	opacity: 0;
+	cursor: pointer;
+	padding: 2px;
+	border-radius: 4px;
+	transition: opacity 0.2s, background-color 0.2s;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 2;
+}
+
+
+.wn-timeline-item-delete-btn svg {
+	width: 14px;
+	height: 14px;
+}
+
+
+.wn-timeline-item-row:hover .wn-timeline-item-delete-btn {
+	opacity: 0.6;
+}
+
+
+.wn-timeline-item-row:hover .wn-timeline-item-delete-btn:hover {
+	opacity: 1;
+	background-color: var(--background-modifier-hover);
+	color: var(--text-error);
+}
+
+
+.wn-timeline-type-badge {
+	font-size: 0.8em;
+	padding: 2px 6px;
+	border-radius: 4px;
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+	margin-right: 8px;
+	vertical-align: middle;
+}
+
+
+.wn-timeline-cards-container {
+	min-height: 160px;
+	flex: 1;
+	margin-left: 215px;
+	min-width: 0;
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(200px, 260px));
+	padding-bottom: 0;
+	gap: 10px;
+	align-content: flex-start;
+	/* Ensure dropzone area even when empty */
+}
+
+
+.wn-timeline-cards-container .wn-corkboard-card {
+	width: 100%;
+	min-width: 0;
+	max-width: 260px;
+	box-sizing: border-box;
+}
+
+
+.wn-timeline-gap {
+	position: relative;
+	padding: 10px 0 10px 231px;
+	margin: 0;
+	min-height: 10px;
+	display: flex;
+	align-items: center;
+	transition: background 0.2s;
+	z-index: 1;
+	flex-shrink: 0;
+}
+
+
+.wn-timeline-sub-gap {
+	padding: 5px 0 5px 231px;
+	margin: 0;
+}
+
+
+.wn-timeline-gap::after {
+	content: '';
+	position: absolute;
+	left: 4px;
+	right: 10px;
+	top: 50%;
+	transform: translateY(-50%);
+	border-top: 2px dashed var(--background-modifier-border);
+	z-index: -1;
+}
+
+
+.wn-timeline-gap .wn-timeline-cards-container {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(200px, 260px));
+	padding-bottom: 5px;
+	gap: 10px;
+	align-content: flex-start;
+	width: 100%;
+	min-height: 0;
+	margin-left: 0;
+}
+
+
+.wn-timeline-waterfall-sidebar {
+	width: 320px;
+	flex-shrink: 0;
+	height: 100%;
+	background: color-mix(in srgb, var(--background-primary) 70%, transparent);
+	backdrop-filter: blur(8px);
+	-webkit-backdrop-filter: blur(8px);
+	border: 1px dashed var(--background-modifier-border);
+	border-radius: 8px;
+	padding: 15px;
+	display: flex;
+	flex-direction: column;
+	overflow-y: auto;
+	opacity: 0.85;
+	transition: opacity 0.2s, background 0.2s, border-color 0.2s;
+	position: relative;
+	top: 0;
+	align-self: stretch;
+	max-height: 100%;
+}
+
+
+.wn-timeline-waterfall-sidebar:hover {
+	opacity: 1;
+	background: color-mix(in srgb, var(--background-primary) 85%, transparent);
+}
+
+
+.wn-timeline-waterfall-sidebar .wn-corkboard-card {
+	opacity: 0.85;
+	transition: opacity 0.2s, background 0.2s;
+}
+
+
+.wn-timeline-waterfall-sidebar .wn-corkboard-card:hover {
+	opacity: 1;
+}
+
+
+/* 侧边栏拖拽高亮 */
+body .wn-timeline-waterfall-layout .wn-timeline-waterfall-sidebar.drag-over,
+body .wn-timeline-waterfall-layout .wn-timeline-waterfall-sidebar.drag-over-chapter {
+	background: color-mix(in srgb, var(--interactive-accent) 15%, var(--background-primary));
+	border-color: var(--interactive-accent);
+	border-style: dashed;
+	border-width: 2px;
+	opacity: 1;
+}
+
+
+.wn-timeline-waterfall-sidebar.is-empty {
+	position: absolute;
+	right: 0;
+	top: 0;
+	bottom: 0;
+	width: 40px;
+	padding: 0;
+	background: transparent;
+	border-left: 2px dashed transparent;
+	z-index: 100;
+	overflow: hidden;
+	height: auto;
+	align-self: auto;
+	max-height: none;
+}
+
+
+.wn-timeline-waterfall-sidebar.is-empty.drag-over,
+.wn-timeline-waterfall-sidebar.is-empty.drag-over-chapter {
+	background: var(--background-modifier-hover);
+	border-left-color: var(--interactive-accent);
+}
+
+
+.wn-timeline-sidebar-header {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-weight: 600;
+	font-size: 0.85em;
+	margin-bottom: 8px;
+	color: var(--text-muted);
+	line-height: 1;
+	position: sticky;
+	top: -15px;
+	z-index: 10;
+	background: color-mix(in srgb, var(--background-primary) 92%, transparent);
+	backdrop-filter: blur(8px);
+	-webkit-backdrop-filter: blur(8px);
+	padding-top: 10px;
+	padding-bottom: 6px;
+	margin-top: -15px;
+	border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border) 40%, transparent);
+}
+
+
+.wn-timeline-sidebar-title-group {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+
+.wn-timeline-sidebar-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
+
+.wn-timeline-sidebar-icon svg {
+	display: block;
+}
+
+
+/* 拖动章节卡片：高亮背景 */
+.wn-timeline-item-row.drag-over-chapter,
+.wn-timeline-gap.drag-over-chapter {
+	background: var(--background-modifier-hover);
+}
+
+
+/* 拖动事件卡片：位置指示线 */
+.wn-timeline-item-row.drag-over-event-top .wn-timeline-item-desc {
+	border-top: 2px dashed var(--interactive-accent);
+}
+
+
+.wn-timeline-item-row.drag-over-event-bottom .wn-timeline-item-desc {
+	border-bottom: 2px dashed var(--interactive-accent);
+}
+
+
+.wn-timeline-gap.drag-over-event {
+	border-top: 2px dashed var(--interactive-accent);
+	background: transparent;
+}
+
+
+.wn-timeline-cards-container .wn-corkboard-card-badges {
+	max-height: 22px;
+	overflow: hidden;
+}
+
+
+/* Timeline Add Buttons */
+.wn-timeline-add-sub-event-row {
+	display: flex;
+	justify-content: flex-start;
+	margin-bottom: 10px;
+	padding-left: 16px;
+}
+
+
+.wn-timeline-add-sub-event-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	background: transparent;
+	border: 1px dashed var(--interactive-accent);
+	padding: 4px 12px;
+	border-radius: 4px;
+	color: var(--interactive-accent);
+	font-size: 0.8em;
+	cursor: pointer;
+	transition: all 0.2s;
+	box-shadow: none;
+}
+
+
+.wn-timeline-add-sub-event-btn:hover {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+
+.wn-timeline-add-node-row {
+	margin-top: 20px;
+	display: flex;
+	justify-content: flex-start;
+	align-items: center;
+	position: relative;
+	padding-left: 16px;
+}
+
+
+.wn-timeline-add-node-row::before {
+	content: '';
+	width: 10px;
+	height: 10px;
+	background-color: var(--interactive-accent);
+	border: 2px solid var(--background-primary);
+	border-radius: 50%;
+	position: absolute;
+	left: -2px;
+	top: 50%;
+	transform: translateY(-50%);
+}
+
+
+/* wn-timeline-add-node-btn 样式已统一到上方 .wn-corkboard-new-chapter-btn 组 */
+
+/* Sidebar Unscheduled Header */
+/* Removed duplicate .wn-timeline-sidebar-header */
+
+.wn-timeline-sidebar-header>span {
+	display: flex;
+	align-items: center;
+}
+
+
+.wn-timeline-empty-msg {
+	color: var(--text-muted);
+	text-align: center;
+	padding: 2rem;
+	font-style: italic;
+}
+
+
+.wn-timeline-svg-layer {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	pointer-events: none;
+}
+
+
+/* ========== Timeline Side Panel Drag-and-Drop Dashed Line Indicators ========== */
+
+
+.wn-timeline-item.wn-timeline-dragging {
+	opacity: 0.45;
+}
+
+
+.wn-timeline-item.wn-timeline-drag-over-top::before {
+	content: "";
+	position: absolute;
+	top: -2px;
+	left: 0;
+	right: 0;
+	height: 0;
+	border-top: 2px dashed var(--interactive-accent);
+	z-index: 10;
+	pointer-events: none;
+}
+
+
+.wn-timeline-item.wn-timeline-drag-over-bottom::after {
+	content: "";
+	position: absolute;
+	bottom: -2px;
+	left: 0;
+	right: 0;
+	height: 0;
+	border-bottom: 2px dashed var(--interactive-accent);
+	z-index: 10;
+	pointer-events: none;
+}

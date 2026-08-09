@@ -224,8 +224,14 @@ export class SettingsManager {
 			const value = this.getNestedValue(fixed, rule.path);
 			if (value !== undefined && !rule.validate(value)) {
 				const defaultValue = this.getNestedValue(this.defaultSettings, rule.path);
-				this.setNestedValue(fixed, rule.path, defaultValue);
-				Logger.warn(`[SettingsManager] 修复无效设置: ${rule.path} = ${value} -> ${defaultValue}`);
+				const formatVal = (v: unknown): string => {
+					if (typeof v === 'string') return v;
+					if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+					return JSON.stringify(v);
+				};
+				const strVal = formatVal(value);
+				const strDefault = formatVal(defaultValue);
+				Logger.warn(`[SettingsManager] 修复无效设置: ${rule.path} = ${strVal} -> ${strDefault}`);
 			}
 		}
 		return fixed;
@@ -314,6 +320,13 @@ export class SettingsManager {
 		// 清理旧版 homepagePath 默认值，让 getHomepageFilePath() 动态推导到工作区下
 		if (migrated.homepagePath === '创作主页.md') {
 			migrated.homepagePath = '';
+		}
+
+		// 保证排版最大行宽默认非空，默认 700px
+		if (migrated.typography) {
+			if (!migrated.typography.maxLineWidth || migrated.typography.maxLineWidth.trim() === '') {
+				migrated.typography.maxLineWidth = '700px';
+			}
 		}
 
 		// 迁移：将旧的 timeline-view 组件 ID 替换为 wn-timeline-view

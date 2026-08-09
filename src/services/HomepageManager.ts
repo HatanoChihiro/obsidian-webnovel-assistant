@@ -441,4 +441,18 @@ import('../ui/components/HomepageRenderer.js').then(async ({ HomepageRenderer })
 		}
 		this._leafOriginalStates = new WeakMap();
 	}
+
+	/**
+	 * 更新指定章节文件的目标字数 FrontMatter (`word-goal`)
+	 */
+	async setChapterWordGoal(file: TFile, goal: number): Promise<void> {
+		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+			const fm = frontmatter as Record<string, unknown>;
+			if (isNaN(goal) || goal <= 0) {
+				delete fm['word-goal'];
+			} else {
+				fm['word-goal'] = goal;
+			}
+		});
+	}
 }

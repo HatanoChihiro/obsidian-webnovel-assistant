@@ -1,7 +1,5 @@
 import type { App } from 'obsidian';
 import { Modal, Setting } from 'obsidian';
-import type { DailyStat } from '../types/settings';
-import type { NovelFolderInfo } from '../types/homepage';
 import { formatCount } from '../utils/format';
 import { t } from '../i18n';
 
@@ -31,111 +29,12 @@ function formatDuration(ms: number): string {
 	return `${m}m`;
 }
 
-export function calcStreak(history: Record<string, DailyStat>): number {
-let streak = 0;
-const today = window.moment().format("YYYY-MM-DD");
-// Start from yesterday; add today if already written
-let date = window.moment().subtract(1, "day").format("YYYY-MM-DD");
-while (true) {
-const stat = history[date];
-if (stat && stat.addedWords !== 0) {
-streak++;
-date = window.moment(date).subtract(1, "day").format("YYYY-MM-DD");
-} else break;
-}
-const todayStat = history[today];
-if (todayStat && todayStat.addedWords !== 0) streak++;
-return streak;
-}
 
-export function calcFocusRate(history: Record<string, DailyStat>, startDate: string, endDate: string): number {
-	let totalFocus = 0, totalSlack = 0;
-	for (const [date, stat] of Object.entries(history)) {
-		if (date >= startDate && date <= endDate) {
-			totalFocus += stat.focusMs || 0;
-			totalSlack += stat.slackMs || 0;
-		}
-	}
-	return totalFocus + totalSlack > 0 ? Math.round(totalFocus / (totalFocus + totalSlack) * 100) : 0;
-}
-
-export function calcActiveHours(history: Record<string, DailyStat>, startDate: string, endDate: string): string {
-		const hourlyTotals = new Array<number>(24).fill(0);
-		for (const [date, stat] of Object.entries(history)) {
-			if (date >= startDate && date <= endDate && stat.hourlyFocus) {
-				for (let h = 0; h < 24; h++) {
-					hourlyTotals[h] += stat.hourlyFocus[h] || 0;
-				}
-			}
-		}
-		const ranked = hourlyTotals.map((v, i) => ({ hour: i, total: v }))
-			.filter(x => x.total > 0)
-			.sort((a, b) => b.total - a.total);
-
-		if (ranked.length === 0) return '';
-
-		// Expand from peak hour to adjacent active hours
-		let lo = ranked[0].hour;
-		let hi = ranked[0].hour;
-		for (let i = 1; i < ranked.length; i++) {
-			if (ranked[i].hour === lo - 1) lo = ranked[i].hour;
-			else if (ranked[i].hour === hi + 1) hi = ranked[i].hour;
-			else break;
-		}
-		return t('common.active-hours-range', { start: lo, end: hi + 1 });
-	}
-
-export function calcDailyAverage(history: Record<string, DailyStat>, startDate: string, endDate: string): number {
-	let totalWords = 0, daysWithData = 0;
-	for (const [date, stat] of Object.entries(history)) {
-		if (date >= startDate && date <= endDate) {
-			totalWords += stat.addedWords || 0;
-			daysWithData++;
-		}
-	}
-	return daysWithData > 0 ? Math.round(totalWords / daysWithData) : 0;
-}
-
-export function calcWritingSpeed(history: Record<string, DailyStat>, startDate: string, endDate: string): number {
-	let totalWords = 0;
-	let totalMs = 0;
-	for (const [date, stat] of Object.entries(history)) {
-		if (date >= startDate && date <= endDate) {
-			totalWords += stat.addedWords || 0;
-			totalMs += (stat.focusMs || 0) + (stat.slackMs || 0);
-		}
-	}
-	const hours = totalMs / (1000 * 60 * 60);
-	return hours > 0 ? Math.round(totalWords / hours) : 0;
-}
-
-export async function calcTaskCompletion(app: App, plugin: WebNovelAssistantPlugin, novelFolders: NovelFolderInfo[]): Promise<{ completed: number; total: number }> {
-	let completed = 0;
-	let total = 0;
-	const folderPaths = new Set(novelFolders.map(n => n.folderPath));
-	folderPaths.add('');
-
-	for (const folderPath of folderPaths) {
-		plugin.taskManager.currentFolder = folderPath;
-		const entries = await plugin.taskManager.loadEntries();
-		if (entries) {
-			total += entries.length;
-			completed += entries.filter(e => e.status === 'completed').length;
-		}
-	}
-	return { completed, total };
-}
-
-export function calcNovelCompletionRate(novelFolders: NovelFolderInfo[]): number {
-	if (novelFolders.length === 0) return 0;
-	const completed = novelFolders.filter(n => n.metadata?.status === 'completed').length;
-	return Math.round((completed / novelFolders.length) * 100);
-}
 
 function getCurrentKey(tab: string): string {
 	const now = window.moment();
 	if (tab === 'day') return now.format('YYYY-MM-DD');
-	if (tab === 'week') return `${now.isoWeekYear()}年W${String(now.isoWeek()).padStart(2, '0')}`;
+	if (tab === 'week') return `${now.isoWeekYear()}-W${String(now.isoWeek()).padStart(2, '0')}`;
 	if (tab === 'month') return now.format('YYYY-MM');
 	if (tab === 'year') return now.format('YYYY');
 	return '';
@@ -303,11 +202,11 @@ this.scrollWrapper = contentEl.createDiv({ cls: 'stats-chart-scroll-wrapper' });
 		const rangeStart = this.plugin.settings.heatmapStartDate || window.moment().clone().startOf('year').format('YYYY-MM-DD');
 		const rangeEnd = this.plugin.settings.heatmapEndDate || window.moment().format('YYYY-MM-DD');
 
-		const streak = calcStreak(this.history);
-		const focusRate = calcFocusRate(this.history, rangeStart, rangeEnd);
-		const activeHours = calcActiveHours(this.history, rangeStart, rangeEnd);
-		const dailyAvg = calcDailyAverage(this.history, rangeStart, rangeEnd);
-		const speed = calcWritingSpeed(this.history, rangeStart, rangeEnd);
+		const streak = this.plugin.statisticsManager.calcStreak(this.history);
+		const focusRate = this.plugin.statisticsManager.calcFocusRate(this.history, rangeStart, rangeEnd);
+		const activeHours = this.plugin.statisticsManager.calcActiveHours(this.history, rangeStart, rangeEnd);
+		const dailyAvg = this.plugin.statisticsManager.calcDailyAverage(this.history, rangeStart, rangeEnd);
+		const speed = this.plugin.statisticsManager.calcWritingSpeed(this.history, rangeStart, rangeEnd);
 
 		let totalWords = 0;
 		for (const stat of Object.values(this.history)) { totalWords += stat.addedWords || 0; }
@@ -337,8 +236,8 @@ this.scrollWrapper = contentEl.createDiv({ cls: 'stats-chart-scroll-wrapper' });
 					novel.metadata = await this.plugin.homepageManager.getNovelMetadata(novel.folderPath);
 				}
 			}
-			const taskComp = await calcTaskCompletion(this.app, this.plugin, folders);
-			const novelRate = calcNovelCompletionRate(folders);
+			const taskComp = await this.plugin.statisticsManager.calcTaskCompletion(folders);
+			const novelRate = this.plugin.statisticsManager.calcNovelCompletionRate(folders);
 
 			const taskVal = taskComp.total > 0 ? `${taskComp.completed}/${taskComp.total}` : '--';
 			const novelVal = folders.length > 0 ? `${novelRate}%` : '--';
@@ -681,42 +580,7 @@ const vTension = 0.2;
 		}
 
 	aggregateData() {
-		const result: Record<string, { words: number, focusMs: number, slackMs: number }> = {};
-
-		// 只聚合 history 中实际存在的数据，不填充空时间段
-		for (const [date, stat] of Object.entries(this.history)) {
-			const m = window.moment(date);
-			let key = date;
-
-			if (this.currentTab === 'day') {
-				key = date;
-			} else if (this.currentTab === 'week') {
-				key = `${m.isoWeekYear()}年W${String(m.isoWeek()).padStart(2, '0')}`;
-			} else if (this.currentTab === 'month') {
-				key = m.format('YYYY-MM');
-			} else if (this.currentTab === 'year') {
-				key = m.format('YYYY');
-			}
-
-			if (!result[key]) result[key] = { words: 0, focusMs: 0, slackMs: 0 };
-			result[key].words += (stat.addedWords || 0);
-			result[key].focusMs += (stat.focusMs || 0);
-			result[key].slackMs += (stat.slackMs || 0);
-		}
-
-		// 仅对日级别标签页补充缺失日期（确保近 30 日完整）
-		const now = window.moment();
-		if (this.currentTab === 'day') {
-			const start = now.clone().subtract(29, 'days');
-			const d = start.clone();
-			while (d.isSameOrBefore(now, 'day')) {
-				const key = d.format('YYYY-MM-DD');
-				if (!result[key]) result[key] = { words: 0, focusMs: 0, slackMs: 0 };
-				d.add(1, 'day');
-			}
-		}
-
-		return result;
+		return this.plugin.statisticsManager.aggregateHistoryData(this.history, this.currentTab);
 	}
 
 	formatLabel(key: string, isCurrent: boolean): string {
@@ -729,7 +593,7 @@ const vTension = 0.2;
 		if (this.currentTab === 'day') return key.substring(5);
 		if (this.currentTab === 'month') return key.substring(2);
 		if (this.currentTab === 'week') {
-			const match = key.match(/(\d{4})年W(\d+)/);
+			const match = key.match(/(\d{4})-W(\d+)/);
 			return match ? `${match[1].substring(2)}W${match[2]}` : key;
 		}
 		return key;

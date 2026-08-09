@@ -46,7 +46,7 @@ project.getSourceFiles().forEach(sourceFile => {
 			}
 		}
 		// 1c. Check for global timers without window.
-		if (['setTimeout', 'setInterval', 'requestAnimationFrame'].includes(identifier.getText())) {
+		if (['setTimeout', 'setInterval', 'requestAnimationFrame', 'clearTimeout', 'clearInterval', 'cancelAnimationFrame'].includes(identifier.getText())) {
 			const parent = identifier.getParent();
 			if (parent && parent.getKind() === SyntaxKind.CallExpression) {
 				const callExpr = parent as any;
@@ -157,7 +157,7 @@ project.getSourceFiles().forEach(sourceFile => {
 				console.warn(`💡 [Recommendation] Clipboard Access ('navigator.clipboard') in ${filePath}:${propAccess.getStartLineNumber()}. Ensure clipboard operations are triggered by explicit user action.`);
 			}
 		}
-		if (['getFiles', 'getMarkdownFiles'].includes(propAccess.getName())) {
+		if (['getFiles', 'getMarkdownFiles', 'getAllLoadedFiles'].includes(propAccess.getName())) {
 			const left = propAccess.getExpression().getText();
 			if (left.includes('vault')) {
 				console.warn(`💡 [Recommendation] Vault Enumeration ('vault.${propAccess.getName()}') in ${filePath}:${propAccess.getStartLineNumber()}. Ensure vault file scanning has a clear functional requirement.`);
@@ -227,12 +227,12 @@ project.getSourceFiles().forEach(sourceFile => {
 // 10. CSS Checks
 const cssPath = path.join(__dirname, '../styles.css');
 if (fs.existsSync(cssPath)) {
-	const cssText = fs.readFileSync(cssPath, 'utf8');
+	const cssText = fs.readFileSync(cssPath, 'utf8') as string;
 	const cssLines = cssText.split('\n');
 	let inBlock = false;
 	let propsInBlock: { [key: string]: number } = {};
 
-	cssLines.forEach((line, index) => {
+	cssLines.forEach((line: string, index: number) => {
 		if (line.includes('!important')) {
 			console.error(`❌ [Warning] Avoid !important — override styles by increasing selector specificity or using CSS variables instead in styles.css:${index + 1}`);
 			hasErrors = true;
@@ -273,7 +273,7 @@ if (fs.existsSync(cssPath)) {
 const manifestPath = path.join(__dirname, '../manifest.json');
 if (fs.existsSync(manifestPath)) {
 	try {
-		const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+		const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8') as string);
 		if (manifest.description && /\bobsidian\b/i.test(manifest.description)) {
 			console.error(`❌ [Error] Plugin description in manifest.json must not include the word "Obsidian" (redundant in plugin directory).`);
 			hasErrors = true;

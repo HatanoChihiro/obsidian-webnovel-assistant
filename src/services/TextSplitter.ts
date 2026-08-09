@@ -1,8 +1,8 @@
-import type { App } from 'obsidian';
+import { normalizePath, type App } from 'obsidian';
 import { ChapterSorter } from './ChapterSorter';
 import { t } from '../i18n';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
-import { getDefaultFileName } from '../i18n/data-keys';
+import { getDefaultFileName, getNovelInfoLabel, getNovelStatusText } from '../i18n/data-keys';
 
 export interface ParsedChapter {
 	title: string;
@@ -124,12 +124,26 @@ export class TextSplitter {
 			}
 		}
 
-		// 2. 创建作品信息文件 (基建兜底)
-		const novelInfoName = plugin.settings.novelInfo?.fileName || getDefaultFileName('novelInfoFileName');
-		const novelInfoPath = `${targetFolderPath}/${novelInfoName}.md`;
-		if (!app.vault.getAbstractFileByPath(novelInfoPath)) {
-			const infoContent = `---\ntype: novel-info\ntitle: ${safeNovelName}\n---\n\n# ${safeNovelName}\n\n`;
-			await app.vault.create(novelInfoPath, infoContent);
+		// 2. 创建作品信息文件 (与创作主页作品信息格式保持一致)
+		if (plugin?.homepageManager) {
+			await plugin.homepageManager.createNovelInfoFile(targetFolderPath, { name: safeNovelName });
+		} else {
+			const novelInfoName = plugin?.settings?.novelInfo?.fileName || getDefaultFileName('novelInfoFileName');
+			const novelInfoPath = normalizePath(`${targetFolderPath}/${novelInfoName}.md`);
+			if (!app.vault.getAbstractFileByPath(novelInfoPath)) {
+				const today = new Date().toISOString().slice(0, 10);
+				const lines = [
+					`**${getNovelInfoLabel('status')}**：${getNovelStatusText('ongoing')}`,
+					`**${getNovelInfoLabel('synopsis')}**：`,
+					`**${getNovelInfoLabel('protagonist')}**：`,
+					`**${getNovelInfoLabel('genre')}**：`,
+					`**${getNovelInfoLabel('wordGoal')}**：`,
+					`**${getNovelInfoLabel('startDate')}**：${today}`,
+					`**${getNovelInfoLabel('endDate')}**：`,
+					'',
+				];
+				await app.vault.create(novelInfoPath, lines.join('\n'));
+			}
 		}
 
 		// 3. 异步循环写入章节

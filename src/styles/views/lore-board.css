@@ -1,0 +1,310 @@
+/* ========== Lore Board & Lore Card Module ========== */
+
+/* Hover Popover Containers */
+.wn-lore-hover-popover,
+.webnovel-lore-popover {
+	position: fixed;
+	z-index: 1000;
+	box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+	width: 300px;
+	max-width: 340px;
+	max-height: 350px;
+	display: flex;
+	flex-direction: column;
+	font-size: var(--font-ui-medium, 1em);
+}
+
+.wn-lore-card-wrapper {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 auto;
+	min-height: 0;
+	width: 100%;
+	height: 100%;
+}
+
+.wn-lore-card-wrapper.is-dragging {
+	opacity: 0.5;
+}
+
+.wn-lore-hover-popover>div {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 auto;
+	min-height: 0;
+	width: 100%;
+	height: 100%;
+}
+
+.wn-lore-hover-popover .wn-lore-card,
+.webnovel-lore-popover .wn-lore-card {
+	width: 100%;
+	max-width: 100%;
+	aspect-ratio: auto;
+	height: 100%;
+	max-height: 350px;
+	min-height: 0;
+	margin: 0;
+	box-shadow: none;
+	border: none;
+	background: var(--background-primary);
+}
+
+.wn-lore-hover-popover .wn-lore-card-body,
+.webnovel-lore-popover .wn-lore-card-body {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+}
+
+/* Lore Card Base Structure (Shared 1:1 by Board Cards and Hover Popover Cards) */
+.wn-lore-card {
+	background-color: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+	display: flex;
+	flex-direction: column;
+	transition: transform 0.2s ease, box-shadow 0.2s ease;
+	overflow: hidden;
+	width: 100%;
+	min-width: 190px;
+	max-width: 300px;
+	margin: 0 auto;
+	aspect-ratio: 6 / 7;
+	height: auto;
+}
+
+.wn-lore-card:hover {
+	transform: translateY(-2px);
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+	border-color: var(--interactive-accent);
+}
+
+/* Header & Title - Unified Typography */
+.wn-lore-card-header {
+	padding: 8px 12px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	background-color: var(--background-secondary-alt);
+	min-width: 0;
+}
+
+.wn-lore-card-title-container {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+	flex: 1;
+}
+
+.wn-lore-card-title {
+	font-weight: 600;
+	font-size: 0.9em;
+	line-height: 1.3;
+	color: var(--text-normal);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	transition: color 0.15s ease;
+}
+
+.wn-lore-card-title:hover {
+	color: var(--interactive-accent);
+}
+
+.wn-lore-card-edit-btn {
+	opacity: 0;
+	transition: opacity 0.2s ease;
+	display: flex;
+	align-items: center;
+	color: var(--text-muted);
+}
+
+.wn-lore-card-edit-btn svg {
+	width: 14px;
+	height: 14px;
+}
+
+.wn-lore-card:hover .wn-lore-card-edit-btn {
+	opacity: 1;
+}
+
+.wn-lore-card-edit-btn:hover {
+	color: var(--interactive-accent);
+}
+
+.wn-lore-card-badges {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: 6px;
+	margin-bottom: -0.5px;
+}
+
+.wn-lore-card-badge {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border-radius: 4px;
+	padding: 2px 6px;
+	font-size: 0.8em;
+	line-height: 1.2;
+}
+
+/* Card Body - Unified Typography */
+.wn-lore-card-body {
+	flex: 1;
+	padding: 12px;
+	overflow: hidden;
+	outline: none;
+	font-size: 0.9em;
+	color: var(--text-muted);
+	background-color: var(--background-secondary);
+	line-height: 1.5;
+}
+
+.wn-lore-card-body:hover,
+.wn-lore-card-body:focus,
+.wn-lore-card-body:focus-within {
+	overflow-y: auto;
+}
+
+.wn-lore-card-body::-webkit-scrollbar {
+	width: 4px;
+}
+
+.wn-lore-card-body::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.wn-lore-card-body::-webkit-scrollbar-thumb {
+	background: transparent;
+	border-radius: 2px;
+}
+
+.wn-lore-card-body:hover::-webkit-scrollbar-thumb {
+	background: color-mix(in srgb, var(--interactive-accent) 50%, var(--text-muted));
+}
+
+.wn-lore-card.is-dragging {
+	opacity: 0.5;
+	border-color: var(--interactive-accent);
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.wn-lore-card-editor {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.wn-lore-card-textarea {
+	height: auto;
+	min-height: 100px;
+	width: 100%;
+	resize: none;
+	overflow: hidden;
+}
+
+.wn-lore-card-loading,
+.wn-lore-card-empty {
+	font-style: italic;
+	color: var(--text-muted);
+}
+
+/* Lore Markdown Body Rendering - Unified Typography */
+.wn-lore-markdown {
+	font-size: 1em;
+	line-height: 1.5;
+}
+
+.wn-lore-markdown p,
+.wn-lore-markdown div,
+.wn-lore-markdown span,
+.wn-lore-markdown li {
+	font-size: 1em;
+	line-height: 1.5;
+}
+
+.wn-lore-markdown p:first-child {
+	margin-top: 0;
+}
+
+.wn-lore-markdown p:last-child {
+	margin-bottom: 0;
+}
+
+.wn-lore-markdown h1,
+.wn-lore-markdown h2,
+.wn-lore-markdown h3,
+.wn-lore-markdown h4,
+.wn-lore-markdown h5,
+.wn-lore-markdown h6 {
+	font-size: 1em;
+	font-weight: 600;
+	margin-top: 0.8em;
+	margin-bottom: 0.4em;
+}
+
+.wn-lore-markdown summary {
+	list-style: none;
+}
+
+.wn-lore-markdown summary::-webkit-details-marker {
+	display: none;
+}
+
+.wn-lore-markdown summary::marker {
+	display: none;
+	content: "";
+}
+
+.wn-lore-markdown summary .collapse-indicator {
+	transition: transform 100ms ease-in-out;
+	opacity: 0.6;
+}
+
+.wn-lore-markdown summary:hover .collapse-indicator {
+	opacity: 1;
+}
+
+.wn-lore-markdown details[open]>summary .collapse-indicator {
+	transform: rotate(90deg);
+}
+
+/* Lore Subheading Collapsing */
+.wn-lore-markdown .is-collapsible {
+	cursor: pointer;
+	user-select: none;
+	position: relative;
+	padding-left: 1.2em;
+	transition: color 0.15s ease;
+}
+
+.wn-lore-markdown .is-collapsible:hover {
+	color: var(--text-accent);
+}
+
+.wn-lore-markdown .is-collapsible::before {
+	content: "";
+	position: absolute;
+	left: 0.2em;
+	top: 50%;
+	width: 0;
+	height: 0;
+	border-style: solid;
+	border-width: 4px 0 4px 6px;
+	border-color: transparent transparent transparent var(--text-muted);
+	transform: translateY(-50%) rotate(90deg);
+	transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.wn-lore-markdown .is-collapsible.is-collapsed::before {
+	transform: translateY(-50%) rotate(0deg);
+}
+
+.wn-lore-markdown .is-hidden {
+	display: none;
+}

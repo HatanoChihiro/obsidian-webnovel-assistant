@@ -1,0 +1,111 @@
+
+/* ========== Lore Board Graph Container ========== */
+.wn-lore-graph-container {
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+	height: 100%;
+	flex: 1;
+	min-height: 0;
+	position: relative;
+}
+
+
+.wn-lore-graph-wrapper {
+	flex: 1;
+	position: relative;
+	min-height: 0;
+	overflow: hidden;
+}
+
+
+.wn-lore-graph-canvas {
+	display: block;
+	width: 100%;
+	height: 100%;
+}
+
+
+/* ===== Relation Graph View ===== */
+
+/* Graph container: fills the entire view area */
+/* Merged into .wna-relation-graph-container below */
+
+/* Canvas adaptive container */
+.wna-relation-graph-container canvas {
+	width: 100%;
+	height: 100%;
+	display: block;
+	touch-action: none;
+}
+
+
+/* Breadcrumb navigation (shown in local mode) */
+.wna-relation-graph-breadcrumb {
+	position: absolute;
+	top: 8px;
+	left: 12px;
+	z-index: 10;
+	font-size: 0.85em;
+	color: var(--text-muted);
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+
+/* Breadcrumb clickable link */
+.wna-relation-graph-breadcrumb-link {
+	cursor: pointer;
+	color: var(--interactive-accent);
+	text-decoration: underline;
+}
+
+
+/* Operation hint text (bottom right) */
+.wna-relation-graph-hint {
+	position: absolute;
+	bottom: 12px;
+	right: 12px;
+	z-index: 10;
+	font-size: 0.75em;
+	color: var(--text-faint);
+	pointer-events: none;
+}
+
+
+/* Empty state hint when no data */
+.wna-relation-graph-empty {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 100%;
+	height: 100%;
+	color: var(--text-muted);
+	font-size: 0.9em;
+}
+
+
+/* ========== Lore Graph Styles ========== */
+/* 
+   Extracted hardcoded colors, allowing users to customize via CSS Snippets without recompiling the plugin
+   If not set, defaults from TS code will be used
+*/
+.wna-relation-graph-container {
+	width: 100%;
+	height: 100%;
+	position: relative;
+	overflow: hidden;
+	/* Protagonist overlay red (default) */
+	--wna-rg-protagonist-overlay: rgba(224, 108, 117, 0.5);
+	/* Protagonist overlay red (hover highlight) */
+	--wna-rg-protagonist-overlay-hover: rgba(224, 108, 117, 0.8);
+	/* Protagonist glow shadow color */
+	--wna-rg-protagonist-shadow: rgba(224, 108, 117, 0.8);
+	/* Mention Edge Style Variables */
+	--wna-rg-mention-line-color: var(--text-faint);
+	--wna-rg-mention-text-color: var(--text-faint);
+	--wna-rg-mention-border-color: var(--text-faint);
+	--wna-rg-mention-line-dash: 4, 4;
+	--wna-rg-mention-label-dash: 2, 2;
+}

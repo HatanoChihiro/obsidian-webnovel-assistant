@@ -21,16 +21,55 @@ export class MarkdownPostProcessor {
 	 */
 	public getProcessor() {
 		return (el: HTMLElement, ctx: MarkdownPostProcessorContext) => {
+			// 1. 处理阅读模式软回车 (<br>) 后的首行缩进
+			this.processSoftBreakIndent(el, ctx);
+
+			// 2. 伏笔回收互动逻辑
 			const file = this.plugin.app.vault.getAbstractFileByPath(ctx.sourcePath);
 			if (!(file instanceof TFile)) return;
 
-			// 只在伏笔文件中生效
 			const foreshadowingFileName = (this.plugin.settings.foreshadowing?.fileName || getDefaultFileName('foreshadowingFileName')) + '.md';
-			if (file.name !== foreshadowingFileName) return;
-
-			// 查找并注入复选框
-			this.processForeshadowingElements(el, ctx, file);
+			if (file.name === foreshadowingFileName) {
+				this.processForeshadowingElements(el, ctx, file);
+			}
 		};
+	}
+
+	/**
+	 * 在阅读模式下为 <br> 软回车标签后插入专用的缩进占位 span 元素
+	 */
+	private processSoftBreakIndent(el: HTMLElement, ctx: MarkdownPostProcessorContext): void {
+		const typo = this.plugin.settings.typography;
+		if (!typo || !typo.enabled || !typo.enableReadingModeCompat) return;
+
+		const file = this.plugin.app.vault.getAbstractFileByPath(ctx.sourcePath);
+		if (!(file instanceof TFile)) return;
+
+		if (!this.plugin.typographyManager.shouldApplyTypography(file)) return;
+
+		const paragraphs = el.querySelectorAll('p');
+		paragraphs.forEach((p) => {
+			const brs = p.querySelectorAll('br');
+			brs.forEach((br) => {
+				const next = br.nextSibling;
+				if (next && next.instanceOf(Element) && (next.classList.contains('wn-soft-break-spacer') || next.classList.contains('wn-soft-break-indent'))) {
+					return;
+				}
+
+				const spacer = createSpan({ cls: 'wn-soft-break-spacer' });
+				const indent = createSpan({ cls: 'wn-soft-break-indent' });
+
+				if (br.parentNode) {
+					br.parentNode.insertBefore(indent, br.nextSibling);
+					br.parentNode.insertBefore(spacer, indent);
+				}
+
+				const nextNode = indent.nextSibling;
+				if (nextNode && nextNode.nodeType === Node.TEXT_NODE && nextNode.nodeValue) {
+					nextNode.nodeValue = nextNode.nodeValue.replace(/^[\r\n\s]+/, '');
+				}
+			});
+		});
 	}
 
 	private processForeshadowingElements(el: HTMLElement, ctx: MarkdownPostProcessorContext, file: TFile): void {

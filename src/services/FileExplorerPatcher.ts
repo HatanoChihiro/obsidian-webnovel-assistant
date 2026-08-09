@@ -5,6 +5,7 @@ import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ChapterSorter } from './ChapterSorter';
 import { rafThrottle } from '../utils/dom';
 import type { FileExplorerItem, FileExplorerView } from 'obsidian';
+import { getFileExplorerInternals } from './ObsidianInternals';
 // @ts-expect-error: monkey-around is ESM but esbuild bundles it fine
 import { around } from 'monkey-around';
 
@@ -932,12 +933,21 @@ export class FileExplorerPatcher {
 			const file = this.app.vault.getAbstractFileByPath(dataPath);
 			if (file && (file instanceof TFile || file instanceof TFolder)) return file.name;
 		}
-		if (view && view.fileItems) {
-			for (const path in view.fileItems) {
-				const item = view.fileItems[path];
+		const internals = getFileExplorerInternals(view);
+		if (internals?.fileItems) {
+			for (const path in internals.fileItems) {
+				const item = internals.fileItems[path];
 				if (item?.el === el && item.file) return item.file.name;
 			}
 		}
 		return null;
+	}
+
+	/**
+	 * 实现 Destroyable 接口
+	 */
+	destroy(): void {
+		this.disable();
+		this.unpatch();
 	}
 }

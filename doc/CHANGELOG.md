@@ -1,3 +1,60 @@
+## ✨ v3.8.0
+
+### 新增独立排版系统
+- **独立开关与设置选项卡**：在设置中新增“排版”选项卡，支持首行缩进、行宽、行高、段间距、字间距、两端对齐等样式自定义，统一管理开关并支持作用于哪些文档（章节、非章节、功能细分）。
+- **排版一致性**：设置好的排版同时作用于实时预览（编辑）视图、阅读视图及章节合并导出预览视图，保持视觉统一。
+- **快捷调节悬浮窗口**：支持在命令面板随时唤醒 `WebNovel Assistant: 快速调节排版`，通过滑块悬浮窗毫秒级实时微调预览排版效果。
+
+### 章节合并功能升级
+- **合并预览及修订**：在进行章节合并时，支持预览及选词修订功能，提供三栏式视图，修订内容支持应用到原文件。
+- **合并时可选标题**：导出时可选择是否添加章节文档标题，支持无标题纯净正文合并。
+- **移动端瀑布流预览**：移动端提供单栏极简单行正文瀑布流预览视图。
+
+### 功能优化
+- **设定看板卡片模式tab栏**：当存在多个设定文件时，在设定看板卡片模式下增加tab栏，支持快速切换浏览不同设定（感谢社区贡献者 **@tyf2018** 提交的 [PR #16](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/pull/16)）
+- **伏笔标签同步筛选**：在侧面板中选择伏笔标签进行筛选，工作台的伏笔看板会实时同步联动展示对应的伏笔卡片。
+- **作品导入模版补全**：导入作品时生成的作品信息文档自动补全作品状态、简介、角色、题材、字数目标与立项日期等基础信息。
+- **设定图谱**：类型为主角的设定节点在图谱中将默认以鲜艳的红色彩度呈现，并锁定为视觉中心。
+- **UI展示优化**：优化了非常多UI的显示效果，尤其是手机端，具体我也忘记了，反正很多。
+
+### bug修复
+- 修复了退出沉浸模式后迅速关闭Obsidian/反复重新进入沉浸模式 ，沉浸模式布局有概率侵入普通模式的BUG。
+- 修复了写作工作台英文模式下标题异常的BUG。
+- 修复了切换到非工作区或非章节文档时偶尔会显示章节字数目标的BUG。
+- 修复了如果在开启工作区和严格章节模式之前先开启创作主页，主页总字数会包含所有文档的BUG。
+- 修复了沉浸模式下按下esc会触发原生退出DOM全屏，导致UI显示出现问题的BUG。
+- 修复了沉浸模式下每次重新进入时布局会产生轻微偏移的BUG。
+- 修复了设定图谱内容“自动提及”功能无法关联到设定别名的BUG。
+
+### English Changelog
+
+#### New Typography System
+- **Master Toggle & Dedicated Tab**: Added a "Typography" tab in settings supporting custom styles for first-line indent, line width, line height, paragraph spacing, letter spacing, and text justification, with granular document scope controls (chapters, non-chapters, functional documents).
+- **Typography Consistency**: Applied typography settings consistently across Live Preview (Editing) Mode, Reading Mode, and Chapter Merge Export Preview for a unified visual experience.
+- **Quick Adjustment Floating Modal**: Trigger `WebNovel Assistant: Quick Typography Adjustment` via the Command Palette to fine-tune typography settings in real-time using smooth sliders.
+
+#### Chapter Merge Upgrade
+- **Merge Preview & Revision**: Supports continuous manuscript preview and text selection revision in a 3-pane view, with options to apply revisions back to source files.
+- **Optional Document Titles**: Choose whether to include chapter titles during export, supporting clean title-free manuscript concatenation.
+- **Mobile Stream Preview**: Provides a streamlined single-pane continuous stream preview for mobile devices (phones and tablets).
+
+#### Improvements
+- **Lore Board Card View Tabs**: Added a tab bar when multiple lore files exist in card view for quick switching (Thanks to community contributor **@tyf2018** for [PR #16](https://github.com/HatanoChihiro/webnovel-assistant/pull/16)).
+- **Foreshadowing Tag Filter Sync**: Filtering foreshadowing tags in the side panel now instantly syncs and displays matching cards on the Workbench Foreshadowing Board.
+- **Novel Import Template Completion**: When importing a novel, the generated Novel Info file now auto-populates status, blurb, characters, genre, word count targets, and creation date.
+- **Lore Graph Protagonist Highlight**: Protagonist lore nodes now default to a vibrant red hue and anchor to the visual center of relation graphs.
+- **UI Display Optimizations**: Enhanced various UI display effects and layout alignments.
+
+#### Bug Fixes
+- Fixed an issue where rapidly closing Obsidian after exiting Immersive Mode could cause the immersive layout to intrude into Normal Mode upon restart.
+- Fixed abnormal title displays in English mode on the Writing Workbench.
+- Fixed an issue where the chapter word count target was occasionally displayed when switching to non-workspace or non-chapter documents.
+- Fixed a bug where opening the Creative Homepage before enabling Workspace and Strict Chapter Mode caused the total word count to include all vault documents.
+- Fixed a bug where pressing Esc in Immersive Mode triggered native DOM fullscreen exit, causing UI display issues.
+- Fixed a bug where the layout shifted slightly upon re-entering Immersive Mode.
+- Fixed a bug where the Lore Graph "Auto-Link Mentions" feature failed to associate lore aliases.
+
+
 ## ✨ v3.7.0
 
 ### 写作工作台【伏笔看板】与阶段回收

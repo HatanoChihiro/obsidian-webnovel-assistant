@@ -87,7 +87,7 @@ export async function smartLocateAndHighlight(
 		}
 	}
 
-	// 2. 读取文本内容并进行智能多级正则匹配
+	// 4. 读取文本内容并进行智能多级正则匹配
 	const content = await app.vault.cachedRead(file);
 	let targetLine = -1;
 
@@ -123,7 +123,7 @@ export async function smartLocateAndHighlight(
 		targetLine = 0;
 	}
 
-	// 3. 执行打开、定位光标与原生闪烁高亮
+	// 5. 执行打开、定位光标与原生闪烁高亮
 	if (targetLeaf.view instanceof MarkdownView && targetLeaf.view.file?.path === file.path) {
 		targetLeaf.view.editor.setCursor({ line: targetLine, ch: 0 });
 		targetLeaf.setEphemeralState({ line: targetLine });

@@ -1,0 +1,84 @@
+/* ========== Import Novel Modal ========== */
+.setting-item.wn-import-file-setting {
+	align-items: center;
+}
+
+.setting-item.wn-import-file-setting .setting-item-control {
+	display: flex;
+	align-items: center;
+}
+
+.wn-import-file-input {
+	margin: 0;
+	padding: 0;
+	display: inline-flex;
+	align-items: center;
+}
+
+.wn-import-preview-desc {
+	margin-bottom: 10px;
+}
+
+.wn-import-preview {
+	max-height: 200px;
+	overflow-y: auto;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	padding: 8px;
+	margin-bottom: 20px;
+	background-color: var(--background-secondary);
+}
+
+.wn-import-btn-container {
+	display: flex;
+	justify-content: flex-end;
+	gap: 10px;
+}
+
+.wn-import-count {
+	font-weight: bold;
+	margin-bottom: 8px;
+	color: var(--text-accent);
+}
+
+.wn-import-item {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 4px 6px;
+	border-bottom: 1px solid var(--background-modifier-border-hover);
+	gap: 8px;
+}
+
+.wn-import-item-info {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	flex: 1;
+	min-width: 0;
+}
+
+.wn-import-item-title {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	margin-right: 10px;
+}
+
+.wn-import-item-count {
+	color: var(--text-muted);
+	font-size: 0.9em;
+	flex-shrink: 0;
+}
+
+.wn-import-item-delete {
+	background: transparent;
+	border: none;
+	box-shadow: none;
+	padding: 2px 4px;
+	cursor: pointer;
+	color: var(--text-muted);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}

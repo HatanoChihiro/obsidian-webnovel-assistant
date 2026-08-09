@@ -236,4 +236,10 @@ export class StickyNoteDataManager {
 		this.plugin.app.workspace.trigger('webnovel:notes-changed');
 	}
 
+	/**
+	 * 创建便签关联的 Vault Markdown 文件
+	 */
+	public async createNoteFile(fullPath: string, content: string): Promise<TFile> {
+		return await this.plugin.app.vault.create(fullPath, content);
+	}
 }

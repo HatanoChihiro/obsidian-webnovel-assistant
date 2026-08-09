@@ -256,4 +256,11 @@ export class AdaptiveDebounceManager {
 		this.speedStats.clear();
 		this.throttleStats.clear();
 	}
+
+	/**
+	 * 实现 Destroyable 接口
+	 */
+	destroy(): void {
+		this.cancelAll();
+	}
 }

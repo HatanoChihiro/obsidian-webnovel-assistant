@@ -1,0 +1,482 @@
+
+.task-card {
+	background: color-mix(in srgb, var(--interactive-accent) 4%, var(--background-secondary));
+	border-radius: 8px;
+	padding: 14px 18px;
+	margin-bottom: 12px;
+	border-top: 3px solid var(--interactive-accent);
+}
+
+
+.task-card-active {
+	border-top-color: var(--interactive-accent);
+}
+
+
+.task-card-done {
+	border-top-color: color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%);
+}
+
+
+.task-card-failed {
+	border-top-color: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%);
+}
+
+
+.task-card-pending {
+	border-top-color: var(--text-muted);
+}
+
+
+.task-card-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 8px;
+}
+
+
+.task-card-period {
+	font-weight: 600;
+	font-size: 0.9em;
+	color: var(--interactive-accent);
+}
+
+
+.task-card-status {
+	font-size: 0.75em;
+	padding: 2px 8px;
+	border-radius: 4px;
+	font-weight: normal;
+}
+
+
+.task-status-active {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+
+.task-status-done {
+	background: color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%);
+	color: var(--text-on-accent);
+}
+
+
+.task-status-failed {
+	background: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%);
+	color: var(--text-on-accent);
+}
+
+
+.task-status-pending {
+	background: var(--text-muted);
+	color: var(--text-on-accent);
+}
+
+
+.task-card-info-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 0.85em;
+	color: var(--text-normal);
+	font-weight: 500;
+	flex-wrap: nowrap;
+	overflow: hidden;
+	margin-bottom: 4px;
+}
+
+
+
+.task-card-position::before {
+	content: '\00b7';
+	margin-right: 6px;
+}
+
+
+.task-card-cycle-row {
+	font-size: 0.8em;
+	color: var(--text-muted);
+	margin-bottom: 10px;
+}
+
+
+.task-card-cycle-below {
+	text-align: right;
+	margin-top: 4px;
+}
+
+
+.task-card-progress {
+	margin-bottom: 6px;
+}
+
+
+.task-card-footer {
+	display: flex;
+	justify-content: space-between;
+	font-size: 0.8em;
+	color: var(--text-muted);
+}
+
+
+.task-card-result {
+	font-size: 0.85em;
+	color: var(--text-muted);
+	margin-top: 4px;
+}
+
+
+
+/* ========== Task Modal ========== */
+.wn-task-input {
+	width: 100%;
+	margin-bottom: 8px;
+	padding: 6px 8px;
+	border-radius: 4px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	color: var(--text-normal);
+	box-sizing: border-box;
+}
+
+
+.wn-task-label {
+	display: block;
+	margin-bottom: 4px;
+	font-weight: bold;
+}
+
+
+.wn-task-hint {
+	font-size: 0.8em;
+	color: var(--text-muted);
+	margin-bottom: 8px;
+}
+
+
+.wn-task-btn-container {
+	display: flex;
+	justify-content: flex-end;
+	gap: 10px;
+	margin-top: 16px;
+}
+
+
+/* ==========================================================================
+   Task Board Card Styles (wn-task-card)
+   ========================================================================== */
+
+.wn-task-card {
+	display: flex;
+	flex-direction: column;
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	padding: 12px 14px;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+	transition: all 0.2s ease;
+	position: relative;
+}
+
+
+.wn-task-card:hover {
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+	border-color: color-mix(in srgb, var(--interactive-accent) 50%, var(--background-modifier-border));
+}
+
+
+.wn-task-card-active {
+	border-top: 3px solid var(--interactive-accent);
+}
+
+
+.wn-task-card-done {
+	border-top: 3px solid color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%);
+}
+
+
+.wn-task-card-failed {
+	border-top: 3px solid color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%);
+}
+
+
+.wn-task-card-pending {
+	border-top: 3px solid var(--text-muted);
+	opacity: 0.85;
+}
+
+
+.wn-task-card-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 8px;
+}
+
+
+.wn-task-card-period {
+	font-weight: 700;
+	font-size: 0.9em;
+	color: var(--text-normal);
+	flex-shrink: 0;
+	margin-right: 6px;
+}
+
+
+.task-card-header-right,
+.wn-task-card-header-right {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex-shrink: 0;
+}
+
+
+.wn-task-card-status {
+	font-size: 0.75em;
+	padding: 2px 6px;
+	border-radius: 12px;
+	font-weight: 600;
+	line-height: 1.3;
+	white-space: nowrap;
+	flex-shrink: 0;
+}
+
+
+.wn-task-status-active {
+	background: color-mix(in srgb, var(--interactive-accent) 15%, transparent);
+	color: var(--interactive-accent);
+	border: 1px solid color-mix(in srgb, var(--interactive-accent) 40%, transparent);
+}
+
+
+.wn-task-status-done {
+	background: color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%) 15%, transparent);
+	color: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-success, var(--interactive-accent)) 70%);
+	border: 1px solid color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%) 40%, transparent);
+}
+
+
+.wn-task-status-failed {
+	background: color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%) 15%, transparent);
+	color: color-mix(in srgb, var(--interactive-accent) 20%, var(--text-error, var(--interactive-accent)) 80%);
+	border: 1px solid color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%) 40%, transparent);
+}
+
+
+.wn-task-status-pending {
+	background: color-mix(in srgb, var(--text-muted) 15%, transparent);
+	color: var(--text-muted);
+	border: 1px solid color-mix(in srgb, var(--text-muted) 30%, transparent);
+}
+
+
+.wn-task-card-info-row {
+	display: flex;
+	gap: 8px;
+	font-size: 0.8em;
+	color: var(--text-muted);
+	margin-bottom: 4px;
+}
+
+
+.wn-task-card-platform {
+	font-weight: 500;
+	color: var(--text-normal);
+}
+
+
+.wn-task-card-position {
+	color: var(--text-muted);
+}
+
+
+.wn-task-card-cycle-row {
+	font-size: 0.75em;
+	color: var(--text-faint);
+	margin-bottom: 10px;
+}
+
+
+.wn-task-card-progress {
+	margin-top: 6px;
+}
+
+
+.wn-task-progress-label {
+	display: flex;
+	justify-content: space-between;
+	font-size: 0.8em;
+	color: var(--text-muted);
+	margin-bottom: 4px;
+}
+
+
+.wn-task-progress-percent {
+	font-weight: 600;
+	font-family: var(--font-monospace);
+	color: var(--interactive-accent);
+}
+
+
+.wn-task-card-footer {
+	display: flex;
+	justify-content: space-between;
+	font-size: 0.75em;
+	margin-top: 6px;
+}
+
+
+.wn-task-remaining {
+	color: var(--text-muted);
+}
+
+
+.wn-task-remaining.wn-task-reached {
+	color: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-success, var(--interactive-accent)) 70%);
+	font-weight: 600;
+}
+
+
+.wn-task-days-left {
+	color: var(--text-muted);
+}
+
+
+.wn-task-card-result {
+	margin-top: 8px;
+	padding-top: 8px;
+	border-top: 1px dashed var(--background-modifier-border);
+	font-size: 0.8em;
+	color: var(--text-muted);
+}
+
+
+.wn-task-view-hint {
+	font-size: 0.8em;
+	color: var(--text-muted);
+	margin-top: 4px;
+}
+
+
+.wn-task-create-btn {
+	margin-top: 12px;
+}
+
+
+/* ==========================================
+ * Task Upgrade: Task Types & Action Buttons
+ * ========================================== */
+
+/* Complete & Abandon Buttons on Task Card */
+.wn-task-card .wn-task-complete-btn,
+.wn-task-card .wn-task-abandon-btn,
+.wn-task-complete-btn,
+.wn-task-abandon-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	height: 22px;
+	line-height: 1;
+	padding: 0 8px;
+	font-size: 0.75em;
+	font-weight: 500;
+	border: none;
+	border-radius: 4px;
+	box-shadow: none;
+	cursor: pointer;
+	margin-right: 0;
+	color: var(--text-on-accent, #ffffff);
+	transition: background 0.15s ease, opacity 0.15s ease;
+}
+
+
+.wn-task-card .wn-task-complete-btn,
+.wn-task-complete-btn {
+	background: color-mix(in srgb, var(--interactive-accent) 25%, var(--text-success, var(--color-green, #22c55e)) 75%);
+	margin-right: 0;
+}
+
+
+.wn-task-card .wn-task-complete-btn:hover,
+.wn-task-complete-btn:hover {
+	opacity: 0.9;
+	background: color-mix(in srgb, var(--interactive-accent) 15%, var(--text-success, var(--color-green, #22c55e)) 85%);
+}
+
+
+.wn-task-card .wn-task-abandon-btn,
+.wn-task-abandon-btn {
+	background: color-mix(in srgb, var(--interactive-accent) 25%, var(--text-error, var(--interactive-accent)) 75%);
+}
+
+
+.wn-task-card .wn-task-abandon-btn:hover,
+.wn-task-abandon-btn:hover {
+	opacity: 0.9;
+	background: color-mix(in srgb, var(--interactive-accent) 15%, var(--text-error, var(--interactive-accent)) 85%);
+}
+
+
+/* Modal Task Type Selector Badges */
+.wn-task-type-group {
+	display: flex;
+	gap: 8px;
+	margin-top: 6px;
+	margin-bottom: 12px;
+}
+
+
+.wn-task-type-badge {
+	flex: 1;
+	padding: 6px 12px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	color: var(--text-muted);
+	border-radius: 16px;
+	font-size: 0.85em;
+	font-weight: 500;
+	cursor: pointer;
+	text-align: center;
+	transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+
+.wn-task-type-badge:hover {
+	border-color: var(--interactive-accent);
+	color: var(--text-normal);
+	background: color-mix(in srgb, var(--interactive-accent) 8%, var(--background-primary));
+}
+
+
+.wn-task-type-badge.is-active {
+	border-color: var(--interactive-accent);
+	background: var(--interactive-accent);
+	color: var(--text-on-accent, #ffffff);
+	font-weight: 600;
+	box-shadow: 0 2px 6px color-mix(in srgb, var(--interactive-accent) 30%, transparent);
+}
+
+
+.wn-task-card-footer-event {
+	justify-content: flex-end;
+}
+
+
+.wn-task-card .task-card-cycle-row,
+.wn-task-card .wn-task-card-cycle-row,
+.task-card .task-card-cycle-row {
+	margin-bottom: 4px;
+}
+
+
+.wn-task-board-layout .task-card-footer-event,
+.wn-task-card .wn-task-card-footer-event,
+.task-card .wn-task-card-footer-event,
+.task-card .task-card-footer-event {
+	margin-top: auto;
+	display: flex;
+	justify-content: flex-end;
+}

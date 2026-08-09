@@ -1,0 +1,817 @@
+
+/* ==========================================================================
+   Chapter Merge & Manuscript Preview Modal (.wn-merge-modal-*)
+   ========================================================================== */
+
+.wn-merge-modal-window {
+	width: 95vw;
+	max-width: 1440px;
+	height: 88vh;
+	max-height: 960px;
+	border-radius: 12px;
+	padding: 0;
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+}
+
+
+.wn-merge-modal-content {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	padding: 0;
+	gap: 0;
+}
+
+
+.wn-merge-modal-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 14px 20px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary-alt);
+}
+
+
+.wn-merge-modal-title {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 1.1em;
+	font-weight: 700;
+	margin: 0;
+	color: var(--text-normal);
+}
+
+
+.wn-merge-title-icon {
+	display: inline-flex;
+	color: var(--interactive-accent);
+}
+
+
+.wn-merge-stats-badge {
+	font-size: 0.85em;
+	font-weight: 600;
+	padding: 4px 12px;
+	border-radius: 20px;
+	background: color-mix(in srgb, var(--interactive-accent) 15%, transparent);
+	color: var(--interactive-accent);
+	font-family: var(--font-monospace);
+}
+
+
+
+/* 三栏布局容器 */
+.wn-merge-modal-body {
+	display: flex;
+	flex: 1;
+	min-height: 0;
+	overflow: hidden;
+}
+
+
+/* 1. 左栏：大纲目录 */
+.wn-merge-toc-pane {
+	width: 220px;
+	flex-shrink: 0;
+	border-right: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+	display: flex;
+	flex-direction: column;
+	padding: 12px;
+	gap: 10px;
+}
+
+
+.wn-merge-search-wrapper {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 10px;
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+}
+
+
+.wn-merge-search-icon {
+	display: inline-flex;
+	color: var(--text-muted);
+}
+
+
+.wn-merge-modal-window input.wn-merge-search-input,
+.wn-merge-search-input {
+	border: none;
+	background: transparent;
+	width: 100%;
+	font-size: 0.85em;
+	outline: none;
+	box-shadow: none;
+	padding: 0;
+}
+
+
+.wn-merge-toc-list {
+	flex: 1;
+	overflow-y: auto;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding-right: 4px;
+}
+
+
+.wn-merge-toc-volume {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 0.8em;
+	font-weight: 700;
+	color: var(--text-muted);
+	text-transform: uppercase;
+	margin-top: 10px;
+	padding: 4px 8px;
+}
+
+
+.wn-merge-vol-icon {
+	display: inline-flex;
+}
+
+
+.wn-merge-toc-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 10px;
+	border-radius: 6px;
+	cursor: pointer;
+	font-size: 0.85em;
+	color: var(--text-normal);
+	transition: background 0.15s;
+}
+
+
+.wn-merge-toc-item:hover {
+	background: var(--background-modifier-hover);
+}
+
+
+.wn-merge-toc-item.is-active {
+	background: color-mix(in srgb, var(--interactive-accent) 15%, transparent);
+	color: var(--interactive-accent);
+	font-weight: 600;
+}
+
+
+.wn-merge-status-dot {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: var(--text-muted);
+	opacity: 0.4;
+	flex-shrink: 0;
+}
+
+
+.wn-merge-status-dot.active {
+	background: var(--interactive-accent);
+	opacity: 1;
+	box-shadow: 0 0 6px color-mix(in srgb, var(--interactive-accent) 60%, transparent);
+}
+
+
+.wn-merge-toc-title {
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+
+.wn-merge-toc-mod-tag {
+	font-size: 0.75em;
+	padding: 1px 5px;
+	border-radius: 4px;
+	background: color-mix(in srgb, var(--interactive-accent) 20%, transparent);
+	color: var(--interactive-accent);
+	margin-left: auto;
+}
+
+
+/* 2. 中栏：无缝正文流 */
+.wn-merge-preview-pane {
+	flex: 1;
+	min-width: 0;
+	overflow-y: auto;
+	padding: 24px;
+	display: flex;
+	flex-direction: column;
+	gap: 24px;
+	background: var(--background-primary);
+}
+
+
+.wn-merge-preview-vol-divider {
+	border-bottom: 2px solid color-mix(in srgb, var(--interactive-accent) 30%, transparent);
+	padding-bottom: 6px;
+	margin-top: 10px;
+}
+
+
+.wn-merge-vol-divider-title {
+	margin: 0;
+	font-size: 1.1em;
+	font-weight: 700;
+	color: var(--interactive-accent);
+}
+
+
+.wn-merge-chapter-card {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	background: var(--background-secondary-alt);
+	padding: 18px;
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+
+.wn-merge-chapter-card:focus-within {
+	border-color: color-mix(in srgb, var(--interactive-accent) 50%, var(--background-modifier-border));
+	box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+}
+
+
+.wn-merge-card-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+}
+
+
+.wn-merge-card-title-group {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+
+.wn-merge-card-icon {
+	display: inline-flex;
+	color: var(--interactive-accent);
+}
+
+
+.wn-merge-card-title {
+	font-size: 0.95em;
+	font-weight: 700;
+	color: var(--text-normal);
+}
+
+
+.wn-merge-card-badge {
+	font-size: 0.75em;
+	padding: 2px 6px;
+	border-radius: 4px;
+	background: var(--background-modifier-hover);
+	color: var(--text-muted);
+	font-family: var(--font-monospace);
+}
+
+
+.wn-merge-card-mod-tag {
+	font-size: 0.75em;
+	padding: 2px 6px;
+	border-radius: 4px;
+	background: color-mix(in srgb, var(--interactive-accent) 20%, transparent);
+	color: var(--interactive-accent);
+	font-weight: 600;
+}
+
+
+.wn-merge-card-actions {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+
+.wn-merge-card-btn-edit,
+.wn-merge-card-btn-reset {
+	padding: 4px 8px;
+	border-radius: 4px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+	color: var(--text-muted);
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	transition: all 0.15s;
+}
+
+
+.wn-merge-card-btn-edit:hover,
+.wn-merge-card-btn-reset:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--interactive-accent) 15%, transparent);
+	color: var(--interactive-accent);
+	border-color: var(--interactive-accent);
+}
+
+
+.wn-merge-card-btn-reset:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
+
+/* 正文修改高亮 Target Span */
+.wn-manuscript-inline-revision-target {
+	background: color-mix(in srgb, var(--interactive-accent) 18%, transparent);
+	border-bottom: 2px solid var(--interactive-accent);
+	border-radius: 3px;
+	padding: 1px 4px;
+	transition: all 0.2s;
+	cursor: pointer;
+}
+
+
+.wn-manuscript-inline-revision-target:hover,
+.wn-manuscript-inline-revision-target.is-hovered {
+	background: color-mix(in srgb, var(--interactive-accent) 35%, transparent);
+	box-shadow: 0 0 6px color-mix(in srgb, var(--interactive-accent) 40%, transparent);
+}
+
+
+
+/* 选中文本右键标注修改 Modal 弹窗样式 */
+.wn-merge-selection-modal {
+	padding: 16px 20px;
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+
+.wn-merge-selection-body {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	margin-top: 8px;
+}
+
+
+.wn-merge-selection-body .wn-setting-label {
+	display: block;
+	font-weight: 600;
+	font-size: 0.85em;
+	color: var(--text-muted);
+	margin-top: 6px;
+	margin-bottom: 2px;
+}
+
+
+.wn-merge-selection-body .wn-merge-rev-orig-text {
+	padding: 8px 12px;
+	background: var(--background-secondary);
+	border-radius: 6px;
+	border-left: 3px solid var(--interactive-accent);
+	font-size: 0.9em;
+	color: var(--text-normal);
+	word-break: break-word;
+}
+
+
+.wn-merge-selection-body .wn-merge-revision-input,
+.wn-merge-selection-body .wn-merge-revision-note-textarea {
+	width: 100%;
+	min-height: 65px;
+	border-radius: 6px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	color: var(--text-normal);
+	padding: 8px 12px;
+	font-family: inherit;
+	font-size: 0.9em;
+	line-height: 1.5;
+	resize: vertical;
+	box-sizing: border-box;
+}
+
+
+.wn-merge-revision-diff-box {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	margin-top: 8px;
+}
+
+
+.wn-merge-rev-orig-box {
+	padding: 5px 8px;
+	border-radius: 4px;
+	background: color-mix(in srgb, var(--text-error) 10%, transparent);
+	border-left: 3px solid var(--text-error);
+	font-size: 0.85em;
+	color: var(--text-muted);
+}
+
+
+.wn-merge-rev-tag-orig {
+	font-weight: bold;
+	color: var(--text-error);
+	margin-right: 4px;
+}
+
+
+.wn-merge-rev-orig-text {
+	text-decoration: line-through;
+	color: var(--text-muted);
+}
+
+
+.wn-merge-rev-curr-box {
+	padding: 5px 8px;
+	border-radius: 4px;
+	background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
+	border-left: 3px solid var(--interactive-accent);
+	font-size: 0.85em;
+	color: var(--text-normal);
+}
+
+
+.wn-merge-rev-tag-curr {
+	font-weight: bold;
+	color: var(--interactive-accent);
+	margin-right: 4px;
+}
+
+
+.wn-merge-rev-curr-text {
+	font-weight: 600;
+	color: var(--text-normal);
+}
+
+
+.wn-merge-rev-note-box {
+	margin-top: 6px;
+	padding: 5px 8px;
+	background: var(--background-primary);
+	border-radius: 4px;
+	border: 1px dashed var(--background-modifier-border);
+	font-size: 0.8em;
+	color: var(--text-muted);
+}
+
+
+.wn-manuscript-inline-revision-target.is-flashing {
+	animation: wn-target-flash 1.5s ease-in-out;
+}
+
+
+.wn-merge-card-textarea:focus {
+	border-color: var(--interactive-accent);
+}
+
+
+/* 3. 右栏：Word 风格修订与批注侧栏 */
+.wn-merge-annotation-pane {
+	width: 320px;
+	flex-shrink: 0;
+	border-left: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+	display: flex;
+	flex-direction: column;
+	padding: 12px;
+	gap: 10px;
+}
+
+
+.wn-merge-anno-pane-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 0.9em;
+	font-weight: 700;
+	color: var(--text-normal);
+	padding-bottom: 8px;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+
+.wn-merge-anno-pane-icon {
+	display: inline-flex;
+	color: var(--interactive-accent);
+}
+
+
+.wn-merge-anno-card-list {
+	flex: 1;
+	overflow-y: auto;
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	padding-right: 4px;
+}
+
+
+/* 空状态卡片 */
+.wn-merge-revision-empty {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	height: 100%;
+	gap: 10px;
+	color: var(--text-muted);
+	text-align: center;
+	padding: 20px;
+}
+
+
+.wn-merge-empty-icon {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	width: 40px;
+	height: 40px;
+	border-radius: 50%;
+	background: color-mix(in srgb, var(--interactive-accent) 10%, transparent);
+	color: var(--interactive-accent);
+}
+
+
+.wn-merge-empty-text {
+	font-size: 0.85em;
+	line-height: 1.5;
+	color: var(--text-muted);
+}
+
+
+/* Word 风格修订卡片 */
+.wn-merge-revision-card {
+	border: 1px solid color-mix(in srgb, var(--interactive-accent) 30%, var(--background-modifier-border));
+	border-radius: 8px;
+	background: color-mix(in srgb, var(--interactive-accent) 3%, var(--background-secondary-alt));
+	padding: 12px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	transition: all 0.2s;
+}
+
+
+.wn-merge-revision-card:hover {
+	border-color: color-mix(in srgb, var(--interactive-accent) 60%, transparent);
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+
+.wn-merge-revision-card-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 6px;
+	font-size: 0.85em;
+	padding-bottom: 6px;
+	border-bottom: 1px dashed var(--background-modifier-border);
+}
+
+
+.wn-merge-rev-card-actions {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+
+.wn-merge-rev-btn-locate {
+	padding: 3px 6px;
+	border-radius: 4px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+	color: var(--text-muted);
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	transition: all 0.15s;
+}
+
+
+.wn-merge-rev-btn-locate:hover {
+	background: color-mix(in srgb, var(--interactive-accent) 15%, transparent);
+	color: var(--interactive-accent);
+	border-color: var(--interactive-accent);
+}
+
+
+
+.wn-merge-anno-card-textarea {
+	width: 100%;
+	min-height: 64px;
+	padding: 8px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	background: var(--background-primary);
+	font-size: 0.85em;
+	line-height: 1.5;
+	color: var(--text-normal);
+	resize: vertical;
+	outline: none;
+	transition: border-color 0.2s;
+}
+
+
+.wn-merge-anno-card-textarea:focus {
+	border-color: var(--interactive-accent);
+}
+
+
+/* 底部操作栏 */
+
+.wn-merge-footer-left,
+.wn-merge-footer-right {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+
+/* ==========================================================================
+   章节合并与原稿预览 Modal 窗口强制 flex 钉底布局 (Pinned Footer Layout)
+   ========================================================================== */
+body .modal.wn-merge-modal-window {
+	width: 94vw;
+	max-width: 1400px;
+	height: 88vh;
+	max-height: 900px;
+	padding: 0;
+	margin: auto;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	border-radius: 8px;
+	position: relative;
+}
+
+
+body .modal-content.wn-merge-modal-content {
+	flex: 1 1 0px;
+	min-height: 0;
+	height: 100%;
+	max-height: 100%;
+	width: 100%;
+	padding: 0;
+	margin: 0;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	box-sizing: border-box;
+}
+
+
+body .wn-merge-modal-header {
+	flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 12px 20px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+}
+
+
+body .wn-merge-modal-body {
+	flex: 1 1 0px;
+	min-height: 0;
+	max-height: 100%;
+	display: flex;
+	overflow: hidden;
+	position: relative;
+}
+
+
+body .wn-merge-modal-footer {
+	flex: 0 0 auto;
+	height: 54px;
+	min-height: 54px;
+	padding: 10px 20px;
+	border-top: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary-alt);
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	z-index: 100;
+	box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.12);
+}
+
+
+/* 左侧 TOC 目录项高亮样式 */
+body .wn-merge-toc-item {
+	display: flex;
+	align-items: center;
+	padding: 6px 10px;
+	margin-bottom: 2px;
+	border-radius: 4px;
+	font-size: 0.85em;
+	color: var(--text-muted);
+	cursor: pointer;
+	transition: background-color 0.15s, color 0.15s;
+	border-left: 3px solid transparent;
+}
+
+
+body .wn-merge-toc-item:hover {
+	background: color-mix(in srgb, var(--interactive-accent) 10%, transparent);
+	color: var(--text-normal);
+}
+
+
+body .wn-merge-toc-item.is-active {
+	background: color-mix(in srgb, var(--interactive-accent) 18%, transparent);
+	color: var(--interactive-accent);
+	font-weight: 600;
+	border-left-color: var(--interactive-accent);
+}
+
+
+/* 合并文档标题勾选框样式 */
+.wn-merge-checkbox-label {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	margin-right: 8px;
+	font-size: 0.85em;
+	color: var(--text-muted);
+	cursor: pointer;
+	user-select: none;
+	transition: color 0.15s ease;
+}
+
+
+.wn-merge-checkbox-label:hover {
+	color: var(--text-normal);
+}
+
+
+.wn-merge-checkbox-input {
+	cursor: pointer;
+	accent-color: var(--interactive-accent);
+}
+
+
+.wn-merge-checkbox-text {
+	font-family: var(--font-interface);
+}
+
+
+.wn-mobile-merge-header .wn-merge-header-title-group {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex: 1;
+	min-width: 0;
+}
+
+
+.wn-mobile-merge-header .wn-merge-header-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	line-height: 1;
+	flex-shrink: 0;
+}
+
+
+.wn-mobile-merge-header .wn-merge-header-icon svg {
+	display: block;
+}
+
+
+.wn-mobile-merge-header .wn-merge-modal-title {
+	font-size: 0.95em;
+	font-weight: 600;
+	line-height: 1.3;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+
+.wn-mobile-merge-footer .wn-merge-checkbox-text {
+	font-size: 0.8em;
+}
+
+
+body .wn-merge-para.wn-merge-para-empty {
+	text-indent: 0;
+}

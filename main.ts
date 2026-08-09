@@ -37,6 +37,8 @@ import { ImmersiveModeManager } from './src/ui/ImmersiveModeManager';
 import { HomepageManager } from './src/services/HomepageManager';
 import { StatisticsManager } from './src/services/StatisticsManager';
 import { StickyNoteDataManager } from './src/services/StickyNoteDataManager';
+import { TypographyManager } from './src/services/TypographyManager';
+import { ChapterMergeManager } from './src/services/ChapterMergeManager';
 
 import { CommandManager } from './src/core/CommandManager';
 import { ViewManager } from './src/core/ViewManager';
@@ -119,6 +121,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	get characterManager(): CharacterManager { return this.services.get('CharacterManager'); }
 	get timelineManager(): TimelineManager { return this.services.get('TimelineManager'); }
 	get relationGraphManager(): RelationGraphManager { return this.services.get('RelationGraphManager'); }
+	get typographyManager(): TypographyManager { return this.services.get('TypographyManager'); }
+	get chapterMergeManager(): ChapterMergeManager { return this.services.get('ChapterMergeManager'); }
 
 	isLayoutReady: boolean = false;
 
@@ -136,6 +140,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.services.register('LoreSyncService', new LoreSyncService(this));
 		this.services.register('HistoryDataManager', new HistoryDataManager(this));
 		this.services.register('StickyNoteDataManager', new StickyNoteDataManager(this));
+		this.services.register('ChapterMergeManager', new ChapterMergeManager(this));
 
 		this.services.register('FileExplorerPatcher', new FileExplorerPatcher(this.app, this));
 		this.obsHtmlBuilder = new ObsHtmlBuilder(this);
@@ -203,19 +208,40 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.app.workspace.onLayoutReady(() => {
 			this.isLayoutReady = true;
 
-			// 检查是否有异常崩溃留下的沉浸模式布局快照
-			if (this.settings._savedImmersiveLayout) {
-				try {
-					const layout = JSON.parse(this.settings._savedImmersiveLayout) as Record<string, unknown>;
-					void this.app.workspace.changeLayout(layout);
-					new Notice(t('immersive.recovered-from-crash'));
-				} catch (err) {
-					Logger.error('[Plugin] 恢复沉浸模式布局失败:', err);
-				} finally {
-					this.settings._savedImmersiveLayout = null;
-					void this.saveSettings();
+			const restoreLayout = async () => {
+				// 检查是否有异常崩溃留下的沉浸模式布局快照
+				if (this.settings._savedImmersiveLayout) {
+					try {
+						const layout = JSON.parse(this.settings._savedImmersiveLayout) as Record<string, unknown>;
+						const ws = this.app.workspace as unknown as {
+							changeLayout?: (layout: Record<string, unknown>) => Promise<void>;
+							setLayout?: (layout: Record<string, unknown>) => Promise<void>;
+						};
+						if (typeof ws.changeLayout === 'function') {
+							await ws.changeLayout(layout);
+						} else if (typeof ws.setLayout === 'function') {
+							await ws.setLayout(layout);
+						}
+						new Notice(t('immersive.recovered-from-crash'));
+					} catch (err) {
+						Logger.error('[Plugin] 恢复沉浸模式布局失败:', err);
+					} finally {
+						this.settings._savedImmersiveLayout = null;
+						await this.saveSettings();
+						await this.settingsManager.flush();
+						const wsReq = this.app.workspace as unknown as { requestSaveLayout?: { run?: () => void } | (() => void) };
+						if (typeof wsReq.requestSaveLayout === 'object' && wsReq.requestSaveLayout && typeof wsReq.requestSaveLayout.run === 'function') {
+							wsReq.requestSaveLayout.run();
+						} else if (typeof wsReq.requestSaveLayout === 'function') {
+							wsReq.requestSaveLayout();
+						}
+					}
 				}
-			}
+				// 隐式兜底：普通模式启动时清理任何残存的沉浸模式特有视图
+				this.immersiveModeManager?.sanitizeNormalWorkspace();
+			};
+
+			void restoreLayout();
 		});
 	}
 
@@ -259,15 +285,28 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		// 跨平台初始化 Worker（移动端现在也需要 worker 来在前端计时）
 		this.workerManager.setup();
 
+		// 注册 Markdown 后处理器（用于阅读模式软回车缩进注入及伏笔功能）
+		this.registerMarkdownPostProcessor(this.markdownPostProcessor.getProcessor());
+
 		if (this.settings.eyeCareEnabled) this.styleManager?.applyEyeCare();
 
 
 
-		// 初始化管理器 (依赖 this)
 		this.services.register('ForeshadowingManager', new ForeshadowingManager(this.app, this));
 		this.services.register('TaskManager', new TaskManager(this.app, this));
 		this.services.register('TimelineManager', new TimelineManager(this.app, this));
 		this.services.register('RelationGraphManager', new RelationGraphManager(this.app, this));
+		this.services.register('TypographyManager', new TypographyManager(this.app, this));
+
+		this.registerEvent(this.app.workspace.on('active-leaf-change', () => {
+			this.typographyManager.updateTypography();
+		}));
+
+		this.registerEvent(this.app.workspace.on('layout-change', () => {
+			this.typographyManager.updateTypography();
+		}));
+
+		this.typographyManager.updateTypography();
 
 		this.statusBarItemEl = this.addStatusBarItem();
 		this.addSettingTab(new AccurateCountSettingTab(this.app, this));
@@ -772,7 +811,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	}
 	onunload() {
 		this._unloading = true;
-		// 立即移除所有便签 DOM（最先执行，确保视觉上立刻消失）
+		// 1. 立即移除所有便签与沉浸模式 DOM（最先执行，确保视觉上立刻消失）
 		activeDocument.body.classList.remove(
 			'webnovel-notes-hidden',
 			'webnovel-custom-dragging',
@@ -782,24 +821,19 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		);
 		activeDocument.body.querySelectorAll('.my-floating-sticky-note').forEach(el => el.remove());
 
-		// 0. 确保退出沉浸模式（fire-and-forget，无法等待）
-		if (this.immersiveModeManager) {
-			this.immersiveModeManager.cleanup();
-		}
-
-		// 1. 停止 OBS 服务器
+		// 2. 停止 OBS 服务器
 		if (this.obsServer) {
 			this.obsServer.stop().catch(() => { });
 			this.obsServer = null;
 		}
 
-		// 2. 卸载移动端浮窗
+		// 3. 卸载移动端浮窗
 		if (this.mobileFloatingStats) {
 			this.mobileFloatingStats.unload();
 			this.mobileFloatingStats = null;
 		}
 
-		// 3. 卸载所有活跃便签并同步最新内容到内存
+		// 4. 卸载所有活跃便签并同步最新内容到内存
 		if (this.activeNotes) {
 			[...this.activeNotes].forEach(note => {
 				const currentContent = note.state.isEditing ? note.textareaEl?.value : note.state.content;
@@ -810,50 +844,29 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			this.activeNotes = [];
 		}
 
-		// 4. 停止 Worker
-		this.workerManager.terminate();
-
-		// 5. 清理定时器和防抖
-		this.adaptiveDebounceManager.cancelAll();
 		if (this._homepageTimer) {
 			window.clearTimeout(this._homepageTimer);
 			this._homepageTimer = null;
 		}
 
-		// 6. 移除动态样式
-		if (this.styleManager) {
-			this.styleManager.removeEyeCare();
-		}
-
-
-		// 7. 卸载文件浏览器补丁
-		if (this.fileExplorerPatcher) {
-			this.fileExplorerPatcher.disable();
-			this.fileExplorerPatcher.unpatch();
-		}
-
-		// 8. 强制刷新所有管理器队列
+		// 5. 强制刷新持久化数据落盘
 		try {
-			// [BUGFIX] 历史数据同步：调用异步 flush，它已被重构为立即无视防抖延迟写盘
 			this.historyManager.flush().catch(e => {
-				console.error('[WebNovel Assistant] 历史数据落盘失败:', e);
+				Logger.error('[WebNovel Assistant] 历史数据落盘失败:', e);
 			});
 		} catch (e) {
-			console.error('[WebNovel Assistant] 历史数据同步调用失败:', e);
+			Logger.error('[WebNovel Assistant] 历史数据同步调用失败:', e);
 		}
 
 		Promise.all([
 			this.settingsManager.flush(),
 			this.stickyNoteManager.saveNotes(this.stickyNoteManager.getNotes()),
 			this.cacheManager.saveCache()
-		]).catch(e => console.error('[WebNovel Assistant] 卸载时数据刷新失败:', e));
+		]).catch(e => Logger.error('[WebNovel Assistant] 卸载时数据刷新失败:', e));
 
-		// 9. 清理自定义视图相关资源（不主动 detachLeavesOfType，以防插件更新时侧面板全部丢失）
-		// Note: 原来的 detachAllViews() 并不能真正解决设置面板崩溃的 BUG，反而会导致用户体验糟糕，故移除。
-
-		// 调用 ServiceRegistry 统一清理
+		// 6. 调用 ServiceRegistry 统一异步逆序清理所有 Manager
 		if (this.services && typeof this.services.destroyAll === 'function') {
-			this.services.destroyAll();
+			void this.services.destroyAll();
 		}
 	}
 
