@@ -1,0 +1,57 @@
+/* ==========================================================================
+   Unified Plugin Modal Headings & Title Styling Protocol
+   ========================================================================== */
+
+/* 1. Modal Headings Reset (new Setting(contentEl).setName(...).setHeading()) */
+body .modal .setting-item.setting-item-heading,
+body .modal-content .setting-item.setting-item-heading,
+body .modal-container .setting-item.setting-item-heading,
+.webnovel-settings-container .setting-item.setting-item-heading {
+	padding-left: 0;
+	margin-left: 0;
+	padding-top: 0;
+	margin-top: 0;
+	margin-bottom: 12px;
+	border-top: none;
+	border-bottom: none;
+	background: transparent;
+	min-height: unset;
+}
+
+body .modal .setting-item.setting-item-heading .setting-item-info,
+body .modal .setting-item.setting-item-heading .setting-item-name,
+body .modal-content .setting-item.setting-item-heading .setting-item-info,
+body .modal-content .setting-item.setting-item-heading .setting-item-name,
+.webnovel-settings-container .setting-item.setting-item-heading .setting-item-info,
+.webnovel-settings-container .setting-item.setting-item-heading .setting-item-name {
+	padding-left: 0;
+	margin-left: 0;
+}
+
+/* 2. Unified Modal Main Title Size & Color */
+body .modal .setting-item.setting-item-heading:first-child .setting-item-name,
+body .modal .setting-item.setting-item-heading:first-of-type .setting-item-name,
+body .modal-content .setting-item.setting-item-heading:first-child .setting-item-name,
+body .modal-content .setting-item.setting-item-heading:first-of-type .setting-item-name,
+body .modal .modal-title,
+body .modal-content h2,
+body .modal h2,
+.history-stats-modal .setting-item-heading:first-child .setting-item-name,
+.foreshadowing-input-modal h2,
+.wn-timeline-add-modal h2 {
+	font-family: var(--font-interface);
+	font-size: 1.15em;
+	font-weight: 700;
+	color: var(--interactive-accent);
+	line-height: 1.3;
+}
+
+/* 3. Secondary Sub-headings inside Modal */
+body .modal .setting-item.setting-item-heading:not(:first-of-type) .setting-item-name,
+body .modal-content .setting-item.setting-item-heading:not(:first-of-type) .setting-item-name {
+	font-family: var(--font-interface);
+	font-size: 0.95em;
+	font-weight: 600;
+	color: var(--text-normal);
+	margin-top: 10px;
+}

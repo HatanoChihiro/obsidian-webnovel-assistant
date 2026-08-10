@@ -630,10 +630,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 
 	// ── 创作辅助设置 ──
 	private displayCreativeSettings(containerEl: HTMLElement): void {
-		const tier = getPlatformTier();
-		if (tier === 'desktop') {
-			this.displayStickyNoteSettings(containerEl);
-		}
+		this.displayStickyNoteSettings(containerEl);
 		this.displayForeshadowingSettings(containerEl);
 		this.displayTimelineSettings(containerEl);
 		this.displayTaskSettings(containerEl);
@@ -788,16 +785,16 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 
 	// ── 悬浮便签设置 ──
 	private displayStickyNoteSettings(containerEl: HTMLElement): void {
-		if (!isDesktop()) return;
-
 		new Setting(containerEl).setName(t('setting.sticky-notes')).setHeading();
 
-		new Setting(containerEl)
-			.setName(t('setting.idle-opacity'))
-			.addSlider(slider => slider.setLimits(0.1, 1, 0.05).setValue(this.plugin.settings.noteOpacity).onChange(async (v) => {
-				this.plugin.settings.noteOpacity = v; await this.plugin.saveSettings();
-				this.plugin.activeNotes.forEach((n: FloatingStickyNote) => n.updateVisuals());
-			}));
+		if (isDesktop()) {
+			new Setting(containerEl)
+				.setName(t('setting.idle-opacity'))
+				.addSlider(slider => slider.setLimits(0.1, 1, 0.05).setValue(this.plugin.settings.noteOpacity).onChange(async (v) => {
+					this.plugin.settings.noteOpacity = v; await this.plugin.saveSettings();
+					this.plugin.activeNotes.forEach((n: FloatingStickyNote) => n.updateVisuals());
+				}));
+		}
 
 		new Setting(containerEl)
 			.setName(t('setting.sticky-note-autosave'))
@@ -807,6 +804,19 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.stickyNoteAutoSave = value;
 					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName(t('setting.sticky-note-list-font-size'))
+			.setDesc(t('setting.sticky-note-list-font-size-desc'))
+			.addSlider(slider => slider
+				.setLimits(10, 30, 1)
+				.setValue(this.plugin.settings.immersive.immersiveNoteFontSize || 14)
+				.setDynamicTooltip()
+				.onChange(async (value) => {
+					this.plugin.settings.immersive.immersiveNoteFontSize = value;
+					await this.plugin.saveSettings();
+					this.plugin.stickyNoteManager.refreshImmersiveNotes();
 				}));
 
 		const colorSetting = new Setting(containerEl).setName(t('setting.theme-colors')).setDesc(t('setting.theme-colors-desc'));
@@ -925,32 +935,6 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 						if (value) activeDocument.body.classList.add('immersive-hide-properties');
 						else activeDocument.body.classList.remove('immersive-hide-properties');
 					}
-				}));
-
-		new Setting(containerEl).setName(t('setting.immersive-note-settings')).setHeading();
-
-		new Setting(containerEl)
-			.setName(t('setting.immersive-note-size'))
-			.setDesc(t('setting.immersive-note-size-desc'))
-			.addSlider(slider => slider
-				.setLimits(150, 600, 10)
-				.setValue(this.plugin.settings.immersive.immersiveNoteSize || 280)
-				.setDynamicTooltip()
-				.onChange(async (value) => {
-					this.plugin.settings.immersive.immersiveNoteSize = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName(t('setting.immersive-note-font-size'))
-			.setDesc(t('setting.immersive-note-font-size-desc'))
-			.addSlider(slider => slider
-				.setLimits(10, 30, 1)
-				.setValue(this.plugin.settings.immersive.immersiveNoteFontSize || 14)
-				.setDynamicTooltip()
-				.onChange(async (value) => {
-					this.plugin.settings.immersive.immersiveNoteFontSize = value;
-					await this.plugin.saveSettings();
 				}));
 
 		new Setting(containerEl).setName(t('setting.immersive-typewriter-title')).setHeading();

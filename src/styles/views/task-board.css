@@ -1,4 +1,10 @@
 
+
+.wn-task-board-layout .wn-corkboard-grid.is-collapsed {
+	display: none;
+}
+
+
 .task-card {
 	background: color-mix(in srgb, var(--interactive-accent) 4%, var(--background-secondary));
 	border-radius: 8px;
@@ -127,41 +133,6 @@
 	margin-top: 4px;
 }
 
-
-
-/* ========== Task Modal ========== */
-.wn-task-input {
-	width: 100%;
-	margin-bottom: 8px;
-	padding: 6px 8px;
-	border-radius: 4px;
-	border: 1px solid var(--background-modifier-border);
-	background: var(--background-primary);
-	color: var(--text-normal);
-	box-sizing: border-box;
-}
-
-
-.wn-task-label {
-	display: block;
-	margin-bottom: 4px;
-	font-weight: bold;
-}
-
-
-.wn-task-hint {
-	font-size: 0.8em;
-	color: var(--text-muted);
-	margin-bottom: 8px;
-}
-
-
-.wn-task-btn-container {
-	display: flex;
-	justify-content: flex-end;
-	gap: 10px;
-	margin-top: 16px;
-}
 
 
 /* ==========================================================================
@@ -395,7 +366,7 @@
 
 .wn-task-card .wn-task-complete-btn,
 .wn-task-complete-btn {
-	background: color-mix(in srgb, var(--interactive-accent) 25%, var(--text-success, var(--color-green, #22c55e)) 75%);
+	background: color-mix(in srgb, var(--interactive-accent) 25%, var(--wn-status-done) 75%);
 	margin-right: 0;
 }
 
@@ -403,7 +374,7 @@
 .wn-task-card .wn-task-complete-btn:hover,
 .wn-task-complete-btn:hover {
 	opacity: 0.9;
-	background: color-mix(in srgb, var(--interactive-accent) 15%, var(--text-success, var(--color-green, #22c55e)) 85%);
+	background: color-mix(in srgb, var(--interactive-accent) 15%, var(--wn-status-done) 85%);
 }
 
 
@@ -417,46 +388,6 @@
 .wn-task-abandon-btn:hover {
 	opacity: 0.9;
 	background: color-mix(in srgb, var(--interactive-accent) 15%, var(--text-error, var(--interactive-accent)) 85%);
-}
-
-
-/* Modal Task Type Selector Badges */
-.wn-task-type-group {
-	display: flex;
-	gap: 8px;
-	margin-top: 6px;
-	margin-bottom: 12px;
-}
-
-
-.wn-task-type-badge {
-	flex: 1;
-	padding: 6px 12px;
-	border: 1px solid var(--background-modifier-border);
-	background: var(--background-primary);
-	color: var(--text-muted);
-	border-radius: 16px;
-	font-size: 0.85em;
-	font-weight: 500;
-	cursor: pointer;
-	text-align: center;
-	transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-
-.wn-task-type-badge:hover {
-	border-color: var(--interactive-accent);
-	color: var(--text-normal);
-	background: color-mix(in srgb, var(--interactive-accent) 8%, var(--background-primary));
-}
-
-
-.wn-task-type-badge.is-active {
-	border-color: var(--interactive-accent);
-	background: var(--interactive-accent);
-	color: var(--text-on-accent, #ffffff);
-	font-weight: 600;
-	box-shadow: 0 2px 6px color-mix(in srgb, var(--interactive-accent) 30%, transparent);
 }
 
 

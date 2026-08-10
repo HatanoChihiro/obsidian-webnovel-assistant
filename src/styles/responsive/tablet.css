@@ -1,8 +1,8 @@
 /* ========== Tablet Lore & Foreshadowing Hover Popover Rules (Match Desktop 1:1) ========== */
-body.is-tablet .webnovel-lore-popover.webnovel-lore-popover,
-body.is-tablet .wn-lore-hover-popover.wn-lore-hover-popover,
-body.is-tablet .wn-character-hover-card.wn-character-hover-card,
-body.is-tablet .wn-hover-card.wn-hover-card {
+body.is-tablet .webnovel-lore-popover,
+body.is-tablet .wn-lore-hover-popover,
+body.is-tablet .wn-character-hover-card,
+body.is-tablet .wn-hover-card {
 	font-size: var(--font-ui-medium, 1em);
 	width: 300px;
 	max-width: min(320px, calc(100vw - 32px));
@@ -30,8 +30,8 @@ body.is-tablet .wn-lore-card-wrapper {
 	height: 100%;
 }
 
-body.is-tablet .wn-lore-hover-popover .wn-lore-card.wn-lore-card,
-body.is-tablet .webnovel-lore-popover .wn-lore-card.wn-lore-card {
+body.is-tablet .wn-lore-hover-popover .wn-lore-card,
+body.is-tablet .webnovel-lore-popover .wn-lore-card {
 	width: 100%;
 	max-width: 100%;
 	height: 100%;

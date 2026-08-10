@@ -1,10 +1,10 @@
-import type { WorkspaceLeaf, TAbstractFile } from 'obsidian';
+import type { WorkspaceLeaf, TAbstractFile, MarkdownView } from 'obsidian';
 import { ItemView, TFile, TFolder, Vault } from 'obsidian';
 import { VIEW_TYPES } from '../constants';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { ParsedForeshadowingEntry } from '../types/foreshadowing';
 import { ChapterSorter } from '../services/ChapterSorter';
-import { getCurrentBookContext } from '../utils/path';
+import { findBookRoot } from '../utils/path';
 import { renderForeshadowingBadges, renderLoreBadges } from '../utils/badge';
 import { t } from '../i18n';
 
@@ -63,6 +63,22 @@ export class ImmersiveChapterListView extends ItemView {
 		return workspace.getLeavesOfType('markdown')[0] || null;
 	}
 
+	private resolveListContext(): { folder: TFolder; folderPath: string } | null {
+		const mainLeaf = this.getMainEditorLeaf();
+		if (!mainLeaf || mainLeaf.view.getViewType() !== 'markdown') return null;
+
+		const file = (mainLeaf.view as MarkdownView).file;
+		if (!file) return null;
+
+		const bookPath = findBookRoot(this.app, this.plugin, file, true);
+		const folder = bookPath
+			? this.app.vault.getAbstractFileByPath(bookPath)
+			: file.parent ?? this.app.vault.getRoot();
+
+		if (!(folder instanceof TFolder)) return null;
+		return { folder, folderPath: folder.isRoot() ? '/' : folder.path };
+	}
+
 	private getReferenceViewLeaf(): WorkspaceLeaf | null {
 		const { workspace } = this.app;
 		let refLeaf: WorkspaceLeaf | null = null;
@@ -99,8 +115,8 @@ export class ImmersiveChapterListView extends ItemView {
 			this.lastScrollTop = listContainer.scrollTop;
 		}, { passive: true });
 		
-		const bookPath = getCurrentBookContext(this.app, this.plugin);
-		if (bookPath === null) {
+		const context = this.resolveListContext();
+		if (!context) {
 			listContainer.createEl('p', { text: t('immersive.loading-folder'), cls: 'immersive-empty-text' });
 			window.setTimeout(() => {
 				if (this.app.workspace.getActiveFile()) void this.refresh();
@@ -108,27 +124,14 @@ export class ImmersiveChapterListView extends ItemView {
 			return;
 		}
 
-		const abstractFolder = this.app.vault.getAbstractFileByPath(bookPath === '/' ? '/' : bookPath);
-		const currentFolder = abstractFolder instanceof TFolder ? abstractFolder : this.app.vault.getRoot();
-
+		const { folder: currentFolder, folderPath: bookPath } = context;
 		const fmFolder = bookPath === '/' ? '' : bookPath;
-		// 获取该作品下所有的 markdown 文件
-		let allMdFiles: TFile[];
-		if (bookPath && bookPath !== '/') {
-			if (currentFolder instanceof TFolder) {
-				const list: TFile[] = [];
-				Vault.recurseChildren(currentFolder, (child: TAbstractFile) => {
-					if (child instanceof TFile && child.extension === 'md') {
-						list.push(child);
-					}
-				});
-				allMdFiles = list;
-			} else {
-				allMdFiles = this.plugin.getTrackedMarkdownFiles().filter(f => f.path.startsWith(bookPath + '/'));
+		const allMdFiles: TFile[] = [];
+		Vault.recurseChildren(currentFolder, (child: TAbstractFile) => {
+			if (child instanceof TFile && child.extension === 'md') {
+				allMdFiles.push(child);
 			}
-		} else {
-			allMdFiles = this.plugin.getTrackedMarkdownFiles();
-		}
+		});
 
 		const foreshadowingMap = this.plugin.foreshadowingManager
 			? await this.plugin.foreshadowingManager.buildChapterForeshadowingMap(fmFolder, allMdFiles, this.app.vault)
@@ -137,7 +140,7 @@ export class ImmersiveChapterListView extends ItemView {
 		const activeFile = this.app.workspace.getActiveFile();
 		const state = { activeItemEl: null as HTMLElement | null };
 
-		this.renderFolderRecursively(currentFolder, listContainer, foreshadowingMap, activeFile, state);
+		this.renderFolderRecursively(currentFolder, listContainer, foreshadowingMap, activeFile, state, bookPath);
 
 		window.requestAnimationFrame(() => {
 			if (listContainer) {
@@ -156,7 +159,8 @@ export class ImmersiveChapterListView extends ItemView {
 		container: HTMLElement,
 		foreshadowingMap: Map<string, ParsedForeshadowingEntry[]>,
 		activeFile: TFile | null,
-		state: { activeItemEl: HTMLElement | null }
+		state: { activeItemEl: HTMLElement | null },
+		bookPath: string
 	) {
 		const children = folder.children.filter(f => f instanceof TFolder || (f instanceof TFile && f.extension === 'md'));
 
@@ -182,7 +186,7 @@ export class ImmersiveChapterListView extends ItemView {
 				summary.createSpan({ text: item.name, cls: 'immersive-folder-name' });
 				
 				const childrenContainer = details.createDiv({ cls: 'immersive-folder-children' });
-				this.renderFolderRecursively(item, childrenContainer, foreshadowingMap, activeFile, state);
+				this.renderFolderRecursively(item, childrenContainer, foreshadowingMap, activeFile, state, bookPath);
 			} else if (item instanceof TFile) {
 				const file = item;
 				const itemEl = container.createDiv({ cls: 'immersive-chapter-item' });
@@ -203,7 +207,6 @@ export class ImmersiveChapterListView extends ItemView {
 				const cache = this.app.metadataCache.getFileCache(file);
 				const frontmatter = cache?.frontmatter;
 				const loreArray = frontmatter?.lore as unknown;
-				const bookPath = getCurrentBookContext(this.app, this.plugin) || '';
 				renderLoreBadges(badgesContainer, loreArray, bookPath, this.plugin, false, 3);
 				
 				const wordCount = this.plugin.cacheManager.getFileCache(file.path) || 0;

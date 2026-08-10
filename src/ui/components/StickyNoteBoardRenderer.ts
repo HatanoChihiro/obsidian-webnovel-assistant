@@ -48,9 +48,8 @@ export class StickyNoteBoardRenderer {
             closeBtn.title = t('immersive.close-note-tooltip');
 
             const performRemove = async () => {
-                plugin.stickyNoteManager.removeNote(noteData.id);
+                await plugin.stickyNoteManager.removeNoteAndWait(noteData.id);
                 lastSavedContents.delete(noteData.id);
-                await plugin.stickyNoteManager.saveNotes(plugin.stickyNoteManager.getNotes());
                 reloadBoard();
             };
 
@@ -65,34 +64,32 @@ export class StickyNoteBoardRenderer {
                 const shouldPrompt = (!latestNote.filePath && hasContent) || (latestNote.filePath && hasUnsavedChanges);
 
                 if (shouldPrompt) {
-                    const modal = new ConfirmCloseModal(app, (shouldSave: boolean) => {
+                    const modal = new ConfirmCloseModal(app, async (shouldSave: boolean) => {
                         if (shouldSave) {
                             if (latestNote.filePath) {
                                 const file = app.vault.getAbstractFileByPath(latestNote.filePath);
                                 if (file instanceof TFile) {
-                                    void app.vault.process(file, () => currentContent);
+									await app.vault.process(file, () => currentContent);
                                     new Notice(t('modal.note-saved'));
+									await performRemove();
+								} else {
+									throw new Error(`Linked note file not found: ${latestNote.filePath}`);
                                 }
-                                void performRemove();
                             } else {
-                                const saveModal = new SaveStickyNoteModal(app, plugin, (fileName: string, folderPath: string) => {
-                                    try {
+                                const saveModal = new SaveStickyNoteModal(app, plugin, async (fileName: string, folderPath: string) => {
                                         const fullPath = (folderPath ? `${folderPath}/` : '') + (fileName.endsWith('.md') ? fileName : `${fileName}.md`);
                                         if (app.vault.getAbstractFileByPath(fullPath)) {
                                             new Notice(t('modal.file-already-exists', { path: fullPath }));
                                             return;
                                         }
-                                        void app.vault.create(fullPath, currentContent);
+										await app.vault.create(fullPath, currentContent);
                                         new Notice(t('modal.saved-as', { path: fullPath }));
-                                        void performRemove();
-                                    } catch (error) {
-                                        new Notice(t('modal.save-failed', { error: String(error) }));
-                                    }
+										await performRemove();
                                 });
                                 saveModal.open();
                             }
                         } else {
-                            void performRemove();
+							await performRemove();
                         }
                     });
                     modal.open();

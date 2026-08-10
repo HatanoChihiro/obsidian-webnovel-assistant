@@ -96,14 +96,18 @@
 .wn-add-lore-modal .wn-lore-relation-toggle-btn:hover,
 .wn-add-lore-modal .wn-lore-relation-remove-btn:hover {
 	background: var(--background-modifier-hover);
+}
+
+
+.wn-add-lore-modal .wn-lore-relation-toggle-btn:hover {
 	color: var(--interactive-accent);
 	border-color: var(--interactive-accent);
 }
 
 
 .wn-add-lore-modal .wn-lore-relation-remove-btn:hover {
-	color: var(--text-error, #ef4444);
-	border-color: var(--text-error, #ef4444);
+	color: var(--wn-status-failed);
+	border-color: var(--wn-status-failed);
 }
 
 

@@ -139,6 +139,7 @@ export class SettingsManager {
 			if (!validation.valid) {
 				Logger.warn('[SettingsManager] 设置验证失败:', validation.errors);
 				this.settings = this.fixInvalidSettings(this.settings);
+				await this.saveSettings();
 			}
 
 			return this.settings;
@@ -219,11 +220,16 @@ export class SettingsManager {
 	}
 
 	private fixInvalidSettings(settings: AccurateCountSettings): AccurateCountSettings {
-		const fixed = { ...settings };
+		const fixed = JSON.parse(JSON.stringify(settings)) as AccurateCountSettings;
 		for (const rule of this.validationRules) {
 			const value = this.getNestedValue(fixed, rule.path);
 			if (value !== undefined && !rule.validate(value)) {
 				const defaultValue = this.getNestedValue(this.defaultSettings, rule.path);
+				this.setNestedValue(
+					fixed as unknown as Record<string, unknown>,
+					rule.path,
+					defaultValue
+				);
 				const formatVal = (v: unknown): string => {
 					if (typeof v === 'string') return v;
 					if (typeof v === 'number' || typeof v === 'boolean') return String(v);
@@ -426,17 +432,25 @@ export class SettingsManager {
 	}
 
 	async updateSettings(partial: Partial<AccurateCountSettings>): Promise<void> {
-		const validation = this.validateSettings(partial);
+		const plugin = this.plugin as unknown as WebNovelAssistantPlugin;
+		const current = plugin.settings || this.settings;
+		const updated = this.deepMerge(
+			current as unknown as Record<string, unknown>,
+			partial
+		) as unknown as AccurateCountSettings;
+		const validation = this.validateSettings(updated);
 		if (!validation.valid) {
 			throw new Error(`设置验证失败: ${validation.errors.join(', ')}`);
 		}
 
-		this.settings = this.mergeSettings(partial);
+		this.settings = updated;
+		plugin.settings = updated;
 		await this.saveSettings();
 	}
 
 	async resetToDefaults(): Promise<void> {
-		this.settings = { ...this.defaultSettings };
+		this.settings = JSON.parse(JSON.stringify(this.defaultSettings)) as AccurateCountSettings;
+		(this.plugin as unknown as WebNovelAssistantPlugin).settings = this.settings;
 		await this.saveSettings();
 	}
 }

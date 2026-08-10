@@ -1,0 +1,130 @@
+/* ========== Sticky Note Lists ========== */
+
+.webnovel-immersive-sticky-container .webnovel-immersive-toolbar {
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 0.2s ease;
+}
+
+.webnovel-immersive-sticky-container.is-toolbar-visible .webnovel-immersive-toolbar {
+	opacity: 1;
+	pointer-events: auto;
+}
+
+.wn-sticky-note-list-view,
+.wn-sticky-note-list-container {
+	height: 100%;
+}
+
+.wn-sticky-note-list-side-panel {
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	overflow: hidden;
+}
+
+.wn-sticky-note-list-toolbar {
+	display: flex;
+	justify-content: flex-end;
+	flex-wrap: wrap;
+	gap: 8px;
+	padding: 8px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	background-color: var(--background-secondary);
+}
+
+.webnovel-immersive-sticky-container .webnovel-immersive-toolbar {
+	justify-content: flex-end;
+}
+
+.webnovel-immersive-sticky-container .immersive-sticky-dock {
+	flex: 1 1 auto;
+	min-height: 0;
+	width: 100%;
+	height: auto;
+	box-sizing: border-box;
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 300px));
+	grid-auto-rows: minmax(240px, 300px);
+	align-content: start;
+	align-items: start;
+	justify-content: start;
+	gap: 10px;
+	padding: 10px;
+	overflow-x: hidden;
+	overflow-y: auto;
+}
+
+.webnovel-immersive-slot-horizontal .webnovel-immersive-sticky-container .immersive-sticky-dock {
+	display: grid;
+	grid-template-columns: none;
+	grid-template-rows: repeat(var(--wn-immersive-note-grid-lines, 1), var(--wn-immersive-note-grid-size, 300px));
+	grid-auto-columns: var(--wn-immersive-note-grid-size, 300px);
+	grid-auto-rows: var(--wn-immersive-note-grid-size, 300px);
+	grid-auto-flow: column;
+	overflow-x: auto;
+	overflow-y: auto;
+}
+
+.webnovel-immersive-slot-vertical .webnovel-immersive-sticky-container .immersive-sticky-dock {
+	display: grid;
+	grid-template-columns: repeat(var(--wn-immersive-note-grid-lines, 1), var(--wn-immersive-note-grid-size, 300px));
+	grid-auto-rows: var(--wn-immersive-note-grid-size, 300px);
+	grid-auto-flow: row;
+	overflow-x: auto;
+	overflow-y: auto;
+}
+
+.webnovel-immersive-sticky-container .webnovel-immersive-note-card {
+	width: 100%;
+	min-width: 0;
+	max-width: 300px;
+	height: 100%;
+	min-height: 0;
+	max-height: 300px;
+	aspect-ratio: 1 / 1;
+	justify-self: center;
+}
+
+.webnovel-immersive-sticky-container .webnovel-immersive-note-title {
+	font-size: var(--font-ui-medium, 1rem);
+}
+
+.wn-sticky-note-list-grid {
+	flex: 1 1 auto;
+	min-height: 0;
+	display: grid;
+	grid-template-columns: repeat(var(--wn-side-note-grid-columns, 1), var(--wn-side-note-grid-size, 100%));
+	grid-auto-rows: var(--wn-side-note-grid-size, auto);
+	align-content: start;
+	justify-content: start;
+	gap: 10px;
+	padding: 10px;
+	overflow-x: hidden;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+}
+
+.wn-sticky-note-list-side-panel .wn-sticky-note-list-card {
+	width: var(--wn-side-note-grid-size, 100%);
+	height: var(--wn-side-note-grid-size, auto);
+	aspect-ratio: 1 / 1;
+	min-width: 0;
+	min-height: 0;
+}
+
+.wn-sticky-note-list-side-panel .wn-sticky-note-list-card textarea {
+	min-height: 0;
+	font-size: inherit;
+}
+
+body.is-phone .wn-sticky-note-list-card textarea,
+body.is-tablet .wn-sticky-note-list-card textarea {
+	overscroll-behavior: none;
+}
+
+.wn-sticky-note-list-empty {
+	padding: 24px 12px;
+	color: var(--text-muted);
+	text-align: center;
+}

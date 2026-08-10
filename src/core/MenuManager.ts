@@ -195,7 +195,7 @@ export class MenuManager {
 			});
 
 			menu.addItem((item) => {
-				item.setTitle(t('menu.extract-sticky-note')).setIcon('popup-open').setSection('webnovel-assistant').onClick(() => {
+				item.setTitle(t('menu.current-file-extract-note')).setIcon('popup-open').setSection('webnovel-assistant').onClick(() => {
 					this.plugin.stickyNoteManager.createStickyNote({ file: file }).catch(console.error);
 				});
 			});

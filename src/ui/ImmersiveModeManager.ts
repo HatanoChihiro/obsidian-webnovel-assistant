@@ -533,6 +533,9 @@ export class ImmersiveModeManager {
 				}
 			}
 
+			const slotOrientationClass = direction === 'horizontal'
+				? 'webnovel-immersive-slot-horizontal'
+				: 'webnovel-immersive-slot-vertical';
 			let currentLeaf = firstLeaf;
 			this.createdImmersiveLeaves.add(firstLeaf);
 
@@ -544,6 +547,7 @@ export class ImmersiveModeManager {
 					currentLeaf = workspace.createLeafBySplit(currentLeaf, internalDir, false);
 					this.createdImmersiveLeaves.add(currentLeaf);
 				}
+				currentLeaf.containerEl.classList.add(slotOrientationClass);
 				if (viewType === 'reference-view') {
 					const state: Record<string, string> = { mode: 'preview' };
 					if (immersive.lastReferenceFilePath) {

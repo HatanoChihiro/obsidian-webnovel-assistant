@@ -209,6 +209,15 @@ export class CommandManager {
 	}
 
 	private registerStickyNoteCommands() {
+		this.plugin.addCommand({
+			id: 'open-sticky-note-list',
+			name: t('command.open-sticky-note-list'),
+			icon: 'sticky-note',
+			callback: () => {
+				void this.plugin.viewManager.toggleView(VIEW_TYPES.STICKY_NOTE_LIST);
+			}
+		});
+
 		if (isDesktop()) {
 			this.plugin.addCommand({
 				id: 'create-blank-sticky-note',

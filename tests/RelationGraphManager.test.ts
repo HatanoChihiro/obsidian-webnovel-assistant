@@ -24,9 +24,9 @@ describe('RelationGraphManager', () => {
 			];
 
 			const edges = manager.parseExplicitRelations('张三', lines, 1, 4, validNodeIds);
-			
+
 			expect(edges.length).toBe(2);
-			
+
 			expect(edges[0]).toEqual({
 				source: '张三',
 				target: '李四',
@@ -52,7 +52,7 @@ describe('RelationGraphManager', () => {
 			];
 
 			const edges = manager.parseExplicitRelations('主角', lines, 1, 4, validNodeIds);
-			
+
 			expect(edges.length).toBe(3);
 			expect(edges[0]).toEqual({ source: '主角', target: '李四', label: '喜欢', type: 'explicit' });
 			expect(edges[1]).toEqual({ source: '主角', target: 'John Doe', label: '助手', type: 'explicit' });
@@ -62,11 +62,11 @@ describe('RelationGraphManager', () => {
 		it('应支持多个目标的分割', () => {
 			const validNodeIds = new Set(['主角', '配角A', '配角B', '反派']);
 			const lines = [
-				'- **队友**: 配角A,配角B、反派', 
+				'- **队友**: 配角A,配角B、反派',
 			];
 
 			const edges = manager.parseExplicitRelations('主角', lines, 0, 1, validNodeIds);
-			
+
 			expect(edges.length).toBe(3);
 			expect(edges.map((e: any) => e.target)).toEqual(['配角A', '配角B', '反派']);
 			expect(edges.every((e: any) => e.label === '队友')).toBe(true);
@@ -88,7 +88,7 @@ describe('RelationGraphManager', () => {
 		it('不应将自己作为目标', () => {
 			const validNodeIds = new Set(['A', 'B']);
 			const lines = [
-				'- **克隆**: A', 
+				'- **克隆**: A',
 			];
 
 			const edges = manager.parseExplicitRelations('A', lines, 0, 1, validNodeIds);
@@ -168,9 +168,9 @@ describe('RelationGraphManager', () => {
 				'正文提到了 B 再次',
 			];
 			const relationSection = { startLine: 1, endLine: 3 };
-			
+
 			const edges = manager.scanMentions('A', lines, 0, 4, relationSection, validNodeIds);
-			
+
 			// C 只出现在关系块中，不应被计入 mention
 			// B 出现在关系块外，应被计入
 			expect(edges.length).toBe(1);
@@ -206,4 +206,3 @@ describe('RelationGraphManager', () => {
 		});
 	});
 });
-

@@ -3,12 +3,14 @@
 /* Base & Foundation */
 @import "./base/variables.css";
 @import "./base/common.css";
+@import "./base/modals.css";
 @import "./base/typography-scopes.css";
 
 /* Features & Systems */
 @import "./features/typography.css";
 @import "./features/relation-graph.css";
 @import "./features/floating-stats.css";
+@import "./features/sticky-notes.css";
 
 /* Core Studio Views */
 @import "./views/workbench.css";
@@ -22,6 +24,7 @@
 /* Modals & Dialogs */
 @import "./modals/chapter-merge.css";
 @import "./modals/advanced-search.css";
+@import "./modals/task-modal.css";
 @import "./modals/lore-modal.css";
 @import "./modals/import-modal.css";
 

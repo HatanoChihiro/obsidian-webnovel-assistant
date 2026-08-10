@@ -148,12 +148,10 @@ export class TaskBoardRenderer {
                 const isCollapsed = grid.hasClass('is-collapsed');
                 if (isCollapsed) {
                     grid.removeClass('is-collapsed');
-                    grid.setCssProps({ display: 'grid' });
                     header.removeClass('is-collapsed');
                     setIcon(iconSpan, 'chevron-down');
                 } else {
                     grid.addClass('is-collapsed');
-                    grid.setCssProps({ display: 'none' });
                     header.addClass('is-collapsed');
                     setIcon(iconSpan, 'chevron-right');
                 }

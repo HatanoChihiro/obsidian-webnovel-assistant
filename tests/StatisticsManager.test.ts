@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { StatisticsManager } from '../src/services/StatisticsManager';
+import { TFile } from './mocks/obsidian';
 
 describe('StatisticsManager', () => {
     let mockPlugin: any;
@@ -20,19 +21,37 @@ describe('StatisticsManager', () => {
             on: vi.fn((eventName: string, handler: Function) => {
                 eventHandlers[eventName] = handler;
                 return {}; // return a fake EventRef
-            })
+            }),
+            getActiveViewOfType: vi.fn().mockReturnValue(null)
         };
 
         mockPlugin = {
             app: {
-                workspace: mockWorkspace
+                workspace: mockWorkspace,
+                vault: {
+                    getAbstractFileByPath: vi.fn()
+                },
+                metadataCache: {
+                    getFileCache: vi.fn().mockReturnValue(null)
+                }
             },
             registerEvent: vi.fn(),
             isTracking: false,
             sessionAddedWords: 0,
+            lastFilePath: '',
+            lastFileWords: 0,
+            settings: {
+                defaultGoal: 3000,
+                dailyGoal: 500
+            },
+            cacheManager: {
+                isEligibleForWordCount: vi.fn().mockReturnValue(true),
+                getFileCache: vi.fn().mockReturnValue(null)
+            },
             isLayoutReady: true,
             historyManager: {
-                addWords: vi.fn()
+                addWords: vi.fn(),
+                getDailyStat: vi.fn().mockReturnValue(null)
             },
             adaptiveDebounceManager: {
                 debounceFixed: vi.fn((key: string, fn: Function) => fn()) // 立刻执行以方便测试
@@ -90,5 +109,22 @@ describe('StatisticsManager', () => {
         handler({ path: 'test.md' }, 50);
 
         expect(mockPlugin.sessionAddedWords).toBe(150);
+    });
+
+    it('should keep the last chapter goal while a side panel is active', () => {
+        const file = new TFile('第1章.md', 'Novel/第1章.md');
+        file.basename = '第1章';
+        mockPlugin.lastFilePath = file.path;
+        mockPlugin.lastFileWords = 42;
+        mockPlugin.app.vault.getAbstractFileByPath.mockReturnValue(file);
+        mockPlugin.app.metadataCache.getFileCache.mockReturnValue({ frontmatter: { 'word-goal': 120 } });
+        mockPlugin.cacheManager.getFileCache.mockReturnValue(42);
+
+        const manager = new StatisticsManager(mockPlugin);
+        const stats = manager.getCoreStats();
+
+        expect(stats.currentFile).toBe('第1章');
+        expect(stats.todayWords).toBe(42);
+        expect(stats.goal).toBe(120);
     });
 });

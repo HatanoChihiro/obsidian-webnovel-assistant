@@ -62,18 +62,21 @@ export class StickyNoteDataManager {
 	 * 保存便签数据
 	 */
 	async saveNotes(notes: StickyNoteState[]): Promise<void> {
+		const snapshot = notes.map(note => ({ ...note }));
+		const content = JSON.stringify(snapshot);
+		// 内存状态在排队时更新；旧写入完成后不得用旧快照覆盖更新的状态。
+		this.notesData = snapshot;
 		// 使用串行写入器确保顺序写入，防止文件损坏
 		return this.writer.enqueue(async () => {
 			this._isWriting = true;
 			try {
 				const adapter = this.plugin.app.vault.adapter;
-				const content = JSON.stringify(notes);
 				await adapter.write(this.notesFilePath, content);
-				this.notesData = notes;
 				// 触发全局事件，通知其他组件同步数据
 				this.plugin.app.workspace.trigger('webnovel:notes-changed');
 			} catch (error) {
 				Logger.error("[StickyNoteDataManager] 保存便签数据失败:", error);
+				throw error;
 			} finally {
 				this._isWriting = false;
 			}
@@ -132,6 +135,12 @@ export class StickyNoteDataManager {
 		this.saveNotes(this.notesData).catch(err => {
 			Logger.error('[StickyNoteDataManager] removeNote 自动保存失败:', err);
 		});
+	}
+
+	async removeNoteAndWait(id: string): Promise<void> {
+		this.notesData = this.notesData.filter(n => n.id !== id);
+		this.syncFloatingNotes();
+		await this.saveNotes(this.notesData);
 	}
 
 	/**

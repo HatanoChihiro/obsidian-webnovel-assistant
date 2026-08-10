@@ -186,7 +186,6 @@ export class ForeshadowingBoardRenderer {
 		let isCollapsed = collapsedGroups.has(groupId);
 		if (isCollapsed) {
 			section.addClass('is-collapsed');
-			listContainer.setCssProps({ display: 'none' });
 			setIcon(iconSpan, 'chevron-right');
 		}
 
@@ -195,12 +194,10 @@ export class ForeshadowingBoardRenderer {
 			if (isCollapsed) {
 				collapsedGroups.add(groupId);
 				section.addClass('is-collapsed');
-				listContainer.setCssProps({ display: 'none' });
 				setIcon(iconSpan, 'chevron-right');
 			} else {
 				collapsedGroups.delete(groupId);
 				section.removeClass('is-collapsed');
-				listContainer.setCssProps({ display: 'flex' });
 				setIcon(iconSpan, 'chevron-down');
 			}
 		};

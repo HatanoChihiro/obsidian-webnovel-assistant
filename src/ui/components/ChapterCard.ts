@@ -23,7 +23,7 @@ export class ChapterCard {
 		plugin: WebNovelAssistantPlugin,
 		cardForeshadowings: ParsedForeshadowingEntry[] = [],
 		options: ChapterCardOptions = {}
-	): void {
+	): HTMLElement {
 		const { draggable = false, onSaveStateChange, currentBookPath = '', maxLoreLines = 2 } = options;
 
 		const cache = app.metadataCache.getFileCache(file);
@@ -165,6 +165,8 @@ export class ChapterCard {
 				updateWordCountDisplay(count);
 			}).catch(err => console.error("[ChapterCard] cachedRead failed:", err));
 		}
+
+		return card;
 	}
 
 	private static enableInlineEdit(container: HTMLElement, textEl: HTMLElement, file: TFile, app: App, onSaveStateChange?: (isSaving: boolean) => void): void {

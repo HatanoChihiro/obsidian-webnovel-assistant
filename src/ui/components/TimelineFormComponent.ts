@@ -144,22 +144,22 @@ export class TimelineFormComponent {
 		
 		const customInput = form.createEl('input', { type: 'text', cls: 'wn-timeline-form-input' });
 		customInput.placeholder = t('modal.custom-type-placeholder');
-		customInput.addClass('webnovel-tl-custom-hidden');
+		customInput.addClass('wn-timeline-custom-type-input');
 		
 		if (initialEntry?.type && !allTypes.includes(initialEntry.type)) {
 			typeSelect.value = '__custom__';
 			customInput.value = initialEntry.type;
-			customInput.setCssProps({ display: 'block' });
+			customInput.hidden = false;
 		} else {
-			customInput.setCssProps({ display: 'none' });
+			customInput.hidden = true;
 		}
 
 		typeSelect.addEventListener('change', () => {
 			if (typeSelect.value === '__custom__') {
-				customInput.setCssProps({ display: 'block' });
+				customInput.hidden = false;
 				customInput.focus();
 			} else {
-				customInput.setCssProps({ display: 'none' });
+				customInput.hidden = true;
 			}
 		});
 

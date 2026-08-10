@@ -41,6 +41,14 @@ export class FileExplorerPatcher {
 	private retryTimer: number | null = null;
 	private fileRefreshTimer: number | null = null;
 
+	private scheduleSortOrderSave(): void {
+		this.plugin.adaptiveDebounceManager.debounceFixed('file-explorer-sort-order-save', () => {
+			void this.plugin.saveSettings().catch(error => {
+				Logger.error('[FileExplorerPatcher] 保存文件浏览器排序设置失败:', error);
+			});
+		}, 100);
+	}
+
 
 	enable(): boolean {
 		if (this.enabled) return true;
@@ -343,7 +351,7 @@ export class FileExplorerPatcher {
 				}
 
 				if (changed) {
-					this.plugin.saveSettings().catch(() => {});
+					this.scheduleSortOrderSave();
 				}
 			}
 			if (this.fileRefreshTimer !== null) {
@@ -382,7 +390,7 @@ export class FileExplorerPatcher {
 				}
 
 				if (changed) {
-					this.plugin.saveSettings().catch(() => {});
+					this.scheduleSortOrderSave();
 				}
 			}
 			if (this.fileRefreshTimer !== null) {

@@ -55,6 +55,7 @@ export class CacheManager {
 
 		try {
 			let cacheData: CacheData | undefined;
+			let shouldPersistMigration = false;
 			const adapter = this.plugin.app.vault.adapter;
 
 			// 首选：从独立缓存文件加载
@@ -71,8 +72,7 @@ export class CacheManager {
 				const data = await this.plugin.loadData();
 				if (data && (data as Record<string, unknown>).cacheData) {
 					cacheData = (data as Record<string, unknown>).cacheData as CacheData;
-					// 触发持久化至新独立文件。原 data.json 中的数据会在下次保存设置时由于没有保留逻辑而被自发剥离清理掉
-					this.saveCache().catch(e => console.warn('缓存初始迁移保存失败:', e));
+					shouldPersistMigration = true;
 				}
 			}
 
@@ -95,6 +95,9 @@ export class CacheManager {
 
 			// 加载缓存
 			this.cache = new Map(cacheData.entries);
+			if (shouldPersistMigration) {
+				await this.saveCache();
+			}
 			return true;
 		} catch (error) {
 			console.error('[CacheManager] 加载缓存失败:', error);
@@ -456,35 +459,6 @@ export class CacheManager {
 		try {
 			const loaded = this.getCacheStats().size > 0 ? true : await this.loadCache();
 			const workspaceFiles = this.plugin.getTrackedMarkdownFiles();
-			const cacheStats = this.getCacheStats();
-
-			let shouldRebuild = !loaded || cacheStats.size < workspaceFiles.length;
-			if (loaded && !shouldRebuild && this.plugin.settings.enableStrictChapterMode) {
-				for (const [path, entry] of this.getEntries()) {
-					if (!entry.isFolder) {
-						const file = this.plugin.app.vault.getAbstractFileByPath(path);
-						if (file instanceof TFile && !this.isEligibleForWordCount(file)) {
-							shouldRebuild = true;
-							break;
-						}
-					}
-				}
-			}
-
-			if (loaded && !shouldRebuild) {
-				if (isMobile()) {
-					const timer = window.setTimeout(() => {
-						this.plugin.fileExplorerPatcher?.refreshFolderCounts();
-						if (this.plugin.settings.enableHomepage) this.plugin.homepageManager?.refreshHomepageViews();
-					}, PLATFORM_DELAYS.MOBILE_CACHE_REFRESH_DELAY);
-					this.plugin.register(() => window.clearTimeout(timer));
-				} else {
-					this.plugin.fileExplorerPatcher?.refreshFolderCounts();
-					if (this.plugin.settings.enableHomepage) this.plugin.homepageManager?.refreshHomepageViews();
-				}
-				return;
-			}
-
 			if (!loaded) {
 				const notice = new Notice(t("notice.building-explorer-cache"), 0);
 				await this.buildInitialCache(
@@ -494,10 +468,24 @@ export class CacheManager {
 				);
 				notice.hide();
 			} else {
-				const cachedPaths = new Set(Array.from(this.getEntries(), ([k]) => k));
-				const missingFiles = workspaceFiles.filter(f => !cachedPaths.has(f.path));
-				for (const file of missingFiles) {
+				const currentPaths = new Set(workspaceFiles.map(file => file.path));
+				for (const [path, entry] of Array.from(this.getEntries())) {
+					if (!entry.isFolder && !currentPaths.has(path)) {
+						this.invalidateCache(path, this.plugin.app.vault);
+					}
+				}
+
+				const filesToRefresh = workspaceFiles.filter(file => {
+					const entry = this.cache.get(file.path);
+					return !entry || entry.isFolder === true || entry.lastModified !== file.stat.mtime;
+				});
+
+				for (const file of filesToRefresh) {
 					try {
+						// 先移除旧条目，避免“文件被恢复为更早 mtime”时触发时间戳守卫而跳过更新。
+						if (this.cache.has(file.path)) {
+							this.invalidateCache(file.path, this.plugin.app.vault);
+						}
 						const content = await this.plugin.app.vault.cachedRead(file);
 						const count = this.plugin.calculateAccurateWords(content);
 						this.updateFileCache(file, count, this.plugin.app.vault);
@@ -505,6 +493,7 @@ export class CacheManager {
 						console.warn("[CacheManager] Failed to read file during cache build", err);
 					}
 				}
+				this.rebuildFolderEntries();
 				await this.saveCache();
 			}
 
@@ -528,6 +517,31 @@ export class CacheManager {
 				t("notice.explorer-cache-failed", { error: error instanceof Error ? error.message : String(error) }),
 				10000
 			);
+		}
+	}
+
+	private rebuildFolderEntries(): void {
+		const fileEntries = Array.from(this.cache.values()).filter(entry => !entry.isFolder);
+		for (const [path, entry] of Array.from(this.cache.entries())) {
+			if (entry.isFolder) this.cache.delete(path);
+		}
+
+		const folderTotals = new Map<string, number>();
+		for (const entry of fileEntries) {
+			folderTotals.set('/', (folderTotals.get('/') || 0) + entry.wordCount);
+			const parts = entry.path.split('/');
+			parts.pop();
+			for (let i = 1; i <= parts.length; i++) {
+				const folderPath = parts.slice(0, i).join('/');
+				if (folderPath) {
+					folderTotals.set(folderPath, (folderTotals.get(folderPath) || 0) + entry.wordCount);
+				}
+			}
+		}
+
+		const now = Date.now();
+		for (const [path, wordCount] of folderTotals) {
+			this.cache.set(path, { path, wordCount, lastModified: now, isFolder: true });
 		}
 	}
 

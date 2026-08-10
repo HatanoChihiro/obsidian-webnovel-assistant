@@ -478,19 +478,20 @@ export class TimelineView extends CreativeView {
 
 		const customInput = form.createEl('input', { type: 'text', cls: 'wn-timeline-form-input' });
 		customInput.placeholder = t('modal.custom-type-placeholder');
-		customInput.addClass('webnovel-tl-custom-hidden');
+		customInput.addClass('wn-timeline-custom-type-input');
+		customInput.hidden = true;
 		if (entry.type && !editTypeOptions.includes(entry.type)) {
 			typeSelect.value = '__custom__';
 			customInput.value = entry.type;
-			customInput.setCssProps({ display: 'block' });
+			customInput.hidden = false;
 		}
 
 		typeSelect.addEventListener('change', () => {
 			if (typeSelect.value === '__custom__') {
-				customInput.setCssProps({ display: 'block' });
+				customInput.hidden = false;
 				customInput.focus();
 			} else {
-				customInput.setCssProps({ display: 'none' });
+				customInput.hidden = true;
 			}
 		});
 

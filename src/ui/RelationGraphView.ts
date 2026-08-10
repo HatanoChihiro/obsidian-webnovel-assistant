@@ -208,7 +208,7 @@ export class RelationGraphView extends ItemView {
 
 		// 创建面包屑（初始隐藏）
 		this.breadcrumbEl = this.container.createDiv({ cls: 'wna-relation-graph-breadcrumb' });
-		this.breadcrumbEl.setCssStyles({ display: 'none' });
+		this.breadcrumbEl.hidden = true;
 
 		// 创建操作提示
 		this.hintEl = this.container.createDiv({ cls: 'wna-relation-graph-hint' });
@@ -429,7 +429,7 @@ export class RelationGraphView extends ItemView {
 	private showEmptyState(): void {
 		if (!this.container) return;
 		if (this.canvas) {
-			this.canvas.setCssStyles({ display: 'none' });
+			this.canvas.hidden = true;
 		}
 		// 检查是否已有空状态 div，避免重复创建
 		const existing = this.container.querySelector('.wna-relation-graph-empty');
@@ -1188,7 +1188,7 @@ export class RelationGraphView extends ItemView {
 		}
 
 		if (this.isLocalMode && this.localFocusNode) {
-			this.breadcrumbEl.setCssStyles({ display: 'flex' });
+			this.breadcrumbEl.hidden = false;
 
 			// "全量图谱" 链接
 			const allLink = this.breadcrumbEl.createSpan({
@@ -1205,7 +1205,7 @@ export class RelationGraphView extends ItemView {
 				text: t('relation-graph.breadcrumb-local', { name: this.localFocusNode.id }),
 			});
 		} else {
-			this.breadcrumbEl.setCssStyles({ display: 'none' });
+			this.breadcrumbEl.hidden = true;
 		}
 	}
 

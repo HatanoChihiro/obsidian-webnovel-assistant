@@ -1,20 +1,21 @@
 {
 	"name": "web-novel-assistant",
-	"version": "3.8.0",
+	"version": "3.8.1",
 	"description": "An all-in-one writing studio for novel and story writers — accurate word count, goal tracking, story timeline, foreshadowing manager, chapter corkboard, and lore graphs",
 	"main": "main.js",
 	"scripts": {
 		"build:css": "esbuild src/styles/index.css --bundle --outfile=styles.css",
+		"check:css": "npm run build:css && tsx scripts/css-audit.ts",
 		"dev:js": "esbuild main.ts --bundle --format=cjs --external:obsidian --external:@codemirror/* --outfile=main.js --watch",
 		"dev:css": "esbuild src/styles/index.css --bundle --outfile=styles.css --watch",
-		"dev": "npx concurrently \"npm:dev:js\" \"npm:dev:css\"",
+		"dev": "concurrently \"npm:dev:js\" \"npm:dev:css\"",
 		"type-check": "tsc --noEmit",
-		"prebuild": "npm run type-check && npm run build:css && npm run lint",
+		"prebuild": "npm run type-check && npm run lint",
 		"build": "esbuild main.ts --bundle --format=cjs --external:obsidian --external:@codemirror/* --minify --outfile=main.js",
 		"test": "vitest run",
 		"test:coverage": "vitest run --coverage",
 		"test:watch": "vitest",
-		"lint": "eslint --max-warnings=0 src/ main.ts && npx tsx scripts/obsidian-audit.ts && npx tsx scripts/css-audit.ts && npx tsx scripts/i18n-audit.ts"
+		"lint": "npm run check:css && eslint --max-warnings=0 src/ main.ts && tsx scripts/obsidian-audit.ts && tsx scripts/i18n-audit.ts"
 	},
 	"keywords": [
 		"obsidian",
@@ -43,13 +44,17 @@
 		"@typescript-eslint/eslint-plugin": "^8.0.0",
 		"@typescript-eslint/parser": "^8.0.0",
 		"@vitest/coverage-v8": "^3.2.7",
+		"concurrently": "^10.0.4",
 		"cross-env": "^7.0.3",
 		"esbuild": "^0.28.0",
 		"eslint": "^9.0.0",
 		"eslint-plugin-obsidianmd": "^0.4.1",
 		"obsidian": "^1.12.3",
+		"postcss": "^8.5.26",
+		"postcss-selector-parser": "^7.1.5",
 		"ts-morph": "^28.0.0",
 		"tslib": "^2.8.1",
+		"tsx": "^4.23.12",
 		"typescript": "^5.8.0",
 		"vitest": "^3.0.0"
 	},

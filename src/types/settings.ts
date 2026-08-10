@@ -163,8 +163,6 @@ export interface ImmersiveModeSettings {
 	/** 是否隐藏笔记属性面板 */
 	immersiveHideProperties: boolean;
 
-	/** 便签显示尺寸 (px) */
-	immersiveNoteSize: number;
 	/** 便签字体大小 (px) */
 	immersiveNoteFontSize: number;
 	/** 布局持久化数据 (null 表示使用默认值) */

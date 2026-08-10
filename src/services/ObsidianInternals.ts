@@ -104,5 +104,3 @@ export function unlockKeyboardEscape(): void {
 		/* ignored */
 	}
 }
-
-

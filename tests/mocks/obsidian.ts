@@ -7,7 +7,7 @@ export class TFile {
 	name: string;
 	path: string;
 	extension: string = 'md';
-	
+
 	constructor(name: string, path: string) {
 		this.name = name;
 		this.path = path;
@@ -18,7 +18,7 @@ export class TFolder {
 	name: string;
 	path: string;
 	children: (TFile | TFolder)[] = [];
-	
+
 	constructor(name: string, path: string) {
 		this.name = name;
 		this.path = path;
@@ -28,7 +28,7 @@ export class TFolder {
 export class TAbstractFile {
 	name: string;
 	path: string;
-	
+
 	constructor(name: string, path: string) {
 		this.name = name;
 		this.path = path;
@@ -52,6 +52,11 @@ export class Platform {
 }
 
 export class Component {}
+
+export class Notice {
+	constructor(_message: string, _timeout?: number) {}
+	hide(): void {}
+}
 
 if (typeof Element !== 'undefined') {
 	const proto = Element.prototype as any;
@@ -146,4 +151,4 @@ export class Setting {
 	addExtraButton(cb: any) { return this; }
 }
 
-export function setIcon(el: any, iconId: string) {}
+export function setIcon(el: any, iconId: string) {}

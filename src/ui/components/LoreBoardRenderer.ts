@@ -159,12 +159,10 @@ export class LoreBoardRenderer {
                 const isCollapsed = grid.hasClass('is-collapsed');
                 if (isCollapsed) {
                     grid.removeClass('is-collapsed');
-                    grid.setCssProps({ display: 'grid' });
                     header.removeClass('is-collapsed');
                     setIcon(iconSpan, 'chevron-down');
                 } else {
                     grid.addClass('is-collapsed');
-                    grid.setCssProps({ display: 'none' });
                     header.addClass('is-collapsed');
                     setIcon(iconSpan, 'chevron-right');
                 }
@@ -221,11 +219,10 @@ export class LoreBoardRenderer {
             }
             for (const p of panels) {
                 const visible = activePath === '' || p.path === activePath;
-                p.panel.setCssProps({ display: visible ? '' : 'none' });
+                p.panel.hidden = !visible;
                 if (visible && activePath !== '') {
                     // 单文件视图下强制展开该文件分组
                     p.grid.removeClass('is-collapsed');
-                    p.grid.setCssProps({ display: 'grid' });
                     p.header.removeClass('is-collapsed');
                     setIcon(p.iconSpan, 'chevron-down');
                 }

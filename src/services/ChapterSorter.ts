@@ -421,8 +421,11 @@ export class ChapterSorter {
 		const numEndInBasename = numStartInBasename + numStr.length;
 		const matchEndInBasename = matchStart + matchStr.length;
 
-		// 规则内匹配捕获到的单位部分（位于 match[0] 内部、数字之后的部分，如“章”、“集”、“）”等）
-		const unitFromRule = basename.slice(numEndInBasename, matchEndInBasename);
+		// 规则内匹配捕获到的结构部分（如“章”、“集”、“）”等）。
+		// 如果自定义规则使用 (.*) 一并匹配了标题，只保留结构字符，避免将具体标题带入下一章。
+		const ruleSuffix = basename.slice(numEndInBasename, matchEndInBasename);
+		const unitMatch = ruleSuffix.match(/^([章节回卷部册篇集幕节\s\-_:：，、.()（）\u005b\u005d【】]*)/);
+		const unitFromRule = unitMatch ? unitMatch[1] : '';
 
 		// match[0] 之后的文本（可能包含结构性标点与具体标题）
 		const textAfterMatch = basename.slice(matchEndInBasename);

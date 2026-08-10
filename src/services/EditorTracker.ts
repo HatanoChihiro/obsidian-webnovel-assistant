@@ -23,15 +23,15 @@ export class EditorTracker {
 	handleEditorChange(): void {
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (!view) return;
-		
+
 		// 非工作区文件：仍显示基本字数，但不追踪增量/历史
 		if (view.file && !this.plugin.cacheManager.isEligibleForWordCount(view.file)) {
 			this.updateWordCount();
 			return;
 		}
 
-		this.plugin.lastEditTime = Date.now(); 
-        
+		this.plugin.lastEditTime = Date.now();
+
 		// [BUGFIX] 如果当前文件与上次记录的文件不符，说明 active-leaf-change 还没来得及更新 lastFileWords
 		// 此时不应计算 delta，而是应该先同步文件状态
 		if (!view.file || view.file.path !== this.plugin.lastFilePath) {
@@ -41,16 +41,16 @@ export class EditorTracker {
 
 		const currentCount = this.plugin.calculateAccurateWords(view.getViewData());
 		const delta = currentCount - this.plugin.lastFileWords;
-		
+
 		// 更新历史统计
 		// 注意：不检查 lastFileWords > 0，因为这会导致第一个字不被记录
 		// 只要 delta !== 0 就记录
 		if (delta !== 0) {
 			this.plugin.app.workspace.trigger('webnovel:file-word-count-updated', view.file, delta);
 		}
-		
+
 		this.plugin.lastFileWords = currentCount;
-		
+
 		// [BUGFIX] 同步更新文件浏览器缓存
 		// 极其重要：这确保了后续 modify 事件（由自动保存触发）计算出的 delta 为 0，防止重复统计。
 		if (view.file) {
@@ -68,7 +68,7 @@ export class EditorTracker {
 	 */
 	async handleFileChange(): Promise<void> {
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-		
+
 		// 严格模式：必须符合字数统计条件
 		if (view?.file && !this.plugin.cacheManager.isEligibleForWordCount(view.file)) {
 			this.plugin.lastFileWords = 0;
@@ -79,17 +79,16 @@ export class EditorTracker {
 		}
 
 		if (!view?.file) {
-			this.plugin.lastFileWords = 0;
-			this.plugin.lastFilePath = '';
+			// 侧面板或 Modal 获得焦点时没有活动 Markdown Leaf，保留最后章节供状态面板继续显示。
 			this.updateWordCount();
 			this.plugin.refreshStatusViews();
 			return;
 		}
-		
+
 		let currentWords = 0;
-		
+
 		const existingCache = this.plugin.cacheManager.getFileCache(view.file.path);
-		
+
 		if (existingCache !== null) {
 			currentWords = existingCache;
 		} else {
@@ -105,7 +104,7 @@ export class EditorTracker {
 
 		this.plugin.lastFileWords = currentWords;
 		this.plugin.lastFilePath = view.file.path;
-		
+
 		this.updateWordCount();
 		this.plugin.refreshStatusViews();
 	}
@@ -115,9 +114,9 @@ export class EditorTracker {
 	 */
 	updateWordCount(): void {
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-		if (!view) { 
-			this.plugin.statusBarItemEl.setText(''); 
-			return; 
+		if (!view) {
+			this.plugin.statusBarItemEl.setText('');
+			return;
 		}
 
 		// 非工作区/非章节文件：只显示基本字数，不显示追踪和进度
@@ -136,7 +135,7 @@ export class EditorTracker {
 
 		const totalCount = this.plugin.calculateAccurateWords(view.getViewData());
 		const displaySessionWords = Math.max(0, this.plugin.sessionAddedWords);
-		
+
 		const stateStr = this.plugin.isTracking ? t('status.tracking-active') : t('status.tracking-paused');
 
 		if (this.plugin.settings.showGoal && view.file) {

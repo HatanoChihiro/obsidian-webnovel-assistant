@@ -12,11 +12,11 @@ import { t } from '../i18n';
  */
 export class SaveStickyNoteModal extends Modal {
 	plugin: WebNovelAssistantPlugin;
-	onSubmit: (fileName: string, folderPath: string) => void;
+	onSubmit: (fileName: string, folderPath: string) => void | Promise<void>;
 	fileNameInput!: HTMLInputElement;
 	folderPathInput!: HTMLInputElement;
 
-	constructor(app: App, plugin: WebNovelAssistantPlugin, onSubmit: (fileName: string, folderPath: string) => void) {
+	constructor(app: App, plugin: WebNovelAssistantPlugin, onSubmit: (fileName: string, folderPath: string) => void | Promise<void>) {
 		super(app);
 		this.plugin = plugin;
 		this.onSubmit = onSubmit;
@@ -90,7 +90,7 @@ export class SaveStickyNoteModal extends Modal {
 			text: t('common.save'),
 			cls: 'mod-cta'
 		});
-		saveBtn.onclick = () => {
+		saveBtn.onclick = async () => {
 			const fileName = this.fileNameInput.value.trim();
 			const folderPath = this.folderPathInput.value.trim();
 			
@@ -100,8 +100,15 @@ export class SaveStickyNoteModal extends Modal {
 				return;
 			}
 			
-			this.onSubmit(fileName, folderPath);
-			this.close();
+			saveBtn.disabled = true;
+			try {
+				await this.onSubmit(fileName, folderPath);
+				this.close();
+			} catch (error) {
+				Logger.error('保存便签失败:', error);
+				new Notice(t('modal.save-failed', { error: String(error) }));
+				saveBtn.disabled = false;
+			}
 		};
 		
 		// 回车键保存
@@ -123,9 +130,9 @@ export class SaveStickyNoteModal extends Modal {
  * 确认关闭便签对话框
  */
 export class ConfirmCloseModal extends Modal {
-	onSubmit: (shouldSave: boolean) => void;
+	onSubmit: (shouldSave: boolean) => void | Promise<void>;
 
-	constructor(app: App, onSubmit: (shouldSave: boolean) => void) {
+	constructor(app: App, onSubmit: (shouldSave: boolean) => void | Promise<void>) {
 		super(app);
 		this.onSubmit = onSubmit;
 	}
@@ -145,9 +152,14 @@ export class ConfirmCloseModal extends Modal {
 		buttonContainer.addClass('webnovel-btn-container-end');
 		
 		const dontSaveBtn = buttonContainer.createEl('button', { text: t('modal.do-not-save') });
-		dontSaveBtn.onclick = () => {
-			this.onSubmit(false);
-			this.close();
+		dontSaveBtn.onclick = async () => {
+			try {
+				await this.onSubmit(false);
+				this.close();
+			} catch (error) {
+				Logger.error('关闭便签失败:', error);
+				new Notice(t('modal.save-failed', { error: String(error) }));
+			}
 		};
 		
 		const cancelBtn = buttonContainer.createEl('button', { text: t('common.cancel') });
@@ -157,9 +169,16 @@ export class ConfirmCloseModal extends Modal {
 			text: t('common.save'),
 			cls: 'mod-cta'
 		});
-		saveBtn.onclick = () => {
-			this.onSubmit(true);
-			this.close();
+		saveBtn.onclick = async () => {
+			saveBtn.disabled = true;
+			try {
+				await this.onSubmit(true);
+				this.close();
+			} catch (error) {
+				Logger.error('保存并关闭便签失败:', error);
+				new Notice(t('modal.save-failed', { error: String(error) }));
+				saveBtn.disabled = false;
+			}
 		};
 		
 		// ESC 键取消
@@ -545,7 +564,7 @@ export class FloatingStickyNote extends Component {
 			if (this.state.filePath) { 
 				const file = this.app.vault.getAbstractFileByPath(this.state.filePath);
 				if (file instanceof TFile) {
-					void this.app.vault.process(file, () => this.state.content || '' || "");
+					await this.app.vault.process(file, () => this.state.content || '');
 					this.lastSavedContent = this.state.content || ""; // 更新最后保存的内容
 					new Notice(t('modal.note-synced-to-doc'));
 				}

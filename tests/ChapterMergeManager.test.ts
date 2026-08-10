@@ -91,4 +91,47 @@ describe('ChapterMergeManager', () => {
 		expect(createdContent).not.toContain('### 第一章');
 		expect(createdContent).toBe('这是第一章的正文内容。');
 	});
+
+	it('does not let delayed startup loading overwrite a newly saved draft', async () => {
+		let resolveRead!: (value: string) => void;
+		const delayedRead = new Promise<string>(resolve => { resolveRead = resolve; });
+		const write = vi.fn().mockResolvedValue(undefined);
+		mockPlugin.app.vault.adapter.exists = vi.fn().mockResolvedValue(true);
+		mockPlugin.app.vault.adapter.read = vi.fn().mockReturnValue(delayedRead);
+		mockPlugin.app.vault.adapter.write = write;
+		manager = new ChapterMergeManager(mockPlugin);
+		const item = {
+			file: { path: 'Novel/Ch1.md', basename: 'Ch1' } as TFile,
+			volumeName: '', title: 'Ch1', frontmatter: '', originalBody: 'old',
+			currentBody: 'new', annotation: '', originalAnnotation: '', isModified: true
+		};
+
+		manager.saveDraft('Novel', [item]);
+		resolveRead(JSON.stringify({ Other: { folderPath: 'Other', timestamp: 1, items: {} } }));
+		await manager.flush();
+
+		const persisted = JSON.parse(write.mock.calls.at(-1)?.[1] as string);
+		expect(persisted.Novel.items['Novel/Ch1.md'].currentBody).toBe('new');
+		expect(persisted.Other).toBeDefined();
+	});
+
+	it('orders save then clear operations deterministically', async () => {
+		const adapter = mockPlugin.app.vault.adapter;
+		adapter.exists = vi.fn().mockResolvedValueOnce(false).mockResolvedValue(true);
+		adapter.remove = vi.fn().mockResolvedValue(undefined);
+		manager = new ChapterMergeManager(mockPlugin);
+		const item = {
+			file: { path: 'Novel/Ch1.md', basename: 'Ch1' } as TFile,
+			volumeName: '', title: 'Ch1', frontmatter: '', originalBody: 'old',
+			currentBody: 'new', annotation: '', originalAnnotation: '', isModified: true
+		};
+
+		manager.saveDraft('Novel', [item]);
+		manager.clearDraft('Novel');
+		await manager.flush();
+
+		expect(await manager.loadDraft('Novel')).toBeNull();
+		expect(adapter.write).toHaveBeenCalledTimes(1);
+		expect(adapter.remove).toHaveBeenCalledTimes(1);
+	});
 });

@@ -370,6 +370,11 @@
 }
 
 
+.wn-timeline-custom-type-input {
+	margin-top: 4px;
+}
+
+
 .wn-timeline-form-textarea {
 	width: 100%;
 	height: 60px;
@@ -401,7 +406,6 @@
 
 
 .wn-timeline-add-modal h2 {
-	font-size: 1.1em;
 	color: var(--interactive-accent);
 	margin: 0 0 8px 0;
 	padding: 0;

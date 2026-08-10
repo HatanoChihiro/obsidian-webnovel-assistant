@@ -2,6 +2,7 @@ import { Logger } from '../utils/Logger';
 import type { Plugin } from 'obsidian';
 import type { DailyStat } from '../types/settings';
 import { getPluginDir } from '../utils/platform';
+import { SerializedWriter } from '../utils/SerializedWriter';
 
 /**
  * 历史数据管理器
@@ -18,6 +19,9 @@ export class HistoryDataManager {
 	private historyData: Record<string, DailyStat> = {};
 	private dirty: boolean = false; // 脏标记：只保存有变更的数据
 	private historyFilePath: string;
+	private writer = new SerializedWriter();
+	private mutationVersion = 0;
+	private persistedVersion = 0;
 
 	constructor(plugin: Plugin) {
 		this.plugin = plugin;
@@ -54,7 +58,7 @@ export class HistoryDataManager {
 			// 从 data.json 的 historyData key 迁移
 			if (data && data.historyData && typeof data.historyData === 'object' && !Array.isArray(data.historyData)) {
 				this.historyData = data.historyData as Record<string, DailyStat>;
-				this.dirty = true;
+				this.markDirty();
 				await this.saveHistory();
 				return this.historyData;
 			}
@@ -62,7 +66,7 @@ export class HistoryDataManager {
 			// 从旧版 dailyHistory key 迁移
 			if (data && data.dailyHistory && typeof data.dailyHistory === 'object' && !Array.isArray(data.dailyHistory)) {
 				this.historyData = data.dailyHistory as Record<string, DailyStat>;
-				this.dirty = true;
+				this.markDirty();
 				await this.saveHistory();
 				// 注意：不删除旧 dailyHistory key，保证降级安全
 				return this.historyData;
@@ -79,60 +83,27 @@ export class HistoryDataManager {
 
 	/**
 	 * 保存历史数据到独立文件
-	 * [M-P4] 优化：使用 busy/pending 模式替代简单的 promise 链，防止大规模并发调用导致内存泄漏
+	 * 使用版本化不可变快照和串行写入，避免旧写入覆盖保存期间产生的新更新。
 	 */
-	private isSaving = false;
-	private pendingSaveTimer: number | null = null;
-	private pendingSaveResolve: (() => void) | null = null;
-	private pendingSavePromise: Promise<void> | null = null;
-
-	async saveHistory(forceImmediate = false): Promise<void> {
+	async saveHistory(_forceImmediate = false): Promise<void> {
 		if (!this.dirty) return;
-		
-		if (this.isSaving && !forceImmediate) {
-			if (!this.pendingSavePromise) {
-				this.pendingSavePromise = new Promise((resolve) => {
-					this.pendingSaveResolve = resolve;
-					this.pendingSaveTimer = window.setTimeout(() => {
-						this.clearPendingTimer();
-						void this.saveHistory().then(() => {
-							resolve();
-						});
-					}, 500);
-				});
+
+		// 在排队时捕获不可变快照。写入完成后仅确认该快照对应的版本，
+		// 写入期间产生的新变更会保持 dirty，等待下一次保存或 flush。
+		const version = this.mutationVersion;
+		const content = JSON.stringify(this.historyData);
+		return this.writer.enqueue(async () => {
+			if (version <= this.persistedVersion) return;
+			try {
+				await this.plugin.app.vault.adapter.write(this.historyFilePath, content);
+				this.persistedVersion = version;
+				this.dirty = this.mutationVersion > this.persistedVersion;
+			} catch (error) {
+				this.dirty = true;
+				Logger.error('[HistoryDataManager] 保存历史数据失败:', error);
+				throw error;
 			}
-			return this.pendingSavePromise;
-		}
-
-		if (forceImmediate) {
-			this.clearPendingTimer();
-			// 如果已经是强制写入，无视 isSaving 锁（风险极低，因为只在退出或明确要求时调用）
-			this.isSaving = false; 
-		}
-
-		this.isSaving = true;
-		try {
-			const adapter = this.plugin.app.vault.adapter;
-			const content = JSON.stringify(this.historyData);
-			await adapter.write(this.historyFilePath, content);
-			this.dirty = false;
-		} catch (error) {
-			Logger.error('[HistoryDataManager] 保存历史数据失败:', error);
-		} finally {
-			this.isSaving = false;
-		}
-	}
-
-	private clearPendingTimer() {
-		if (this.pendingSaveTimer !== null) {
-			window.clearTimeout(this.pendingSaveTimer);
-			this.pendingSaveTimer = null;
-		}
-		if (this.pendingSaveResolve) {
-			this.pendingSaveResolve();
-			this.pendingSaveResolve = null;
-		}
-		this.pendingSavePromise = null;
+		});
 	}
 
 	/**
@@ -140,9 +111,16 @@ export class HistoryDataManager {
 	 * 主要用于 onunload 生命周期
 	 */
 	async flush(): Promise<void> {
-		// 卸载时强制写入，不依赖 dirty 标志防止数据丢失
+		// 只要 flush 期间又出现更新，就继续保存最新版本，直到队列稳定。
+		do {
+			await this.saveHistory(true);
+			await this.writer.flush();
+		} while (this.dirty);
+	}
+
+	private markDirty(): void {
+		this.mutationVersion++;
 		this.dirty = true;
-		await this.saveHistory(true);
 	}
 
 	/**
@@ -157,7 +135,7 @@ export class HistoryDataManager {
 	 */
 	updateDailyStat(date: string, stat: DailyStat): void {
 		this.historyData[date] = stat;
-		this.dirty = true;
+		this.markDirty();
 	}
 
 	/**
@@ -180,7 +158,7 @@ export class HistoryDataManager {
 				hourlyFocus: new Array(24).fill(0),
 				hourlySlack: new Array(24).fill(0)
 			};
-			this.dirty = true;
+			this.markDirty();
 		}
 		return this.historyData[date];
 	}
@@ -194,7 +172,7 @@ export class HistoryDataManager {
 	addWords(date: string, words: number): void {
 		const stat = this.getOrCreateDailyStat(date);
 		stat.addedWords += words;
-		this.dirty = true;
+		this.markDirty();
 	}
 
 	/**
@@ -209,7 +187,7 @@ export class HistoryDataManager {
 				hourlyFocus: new Array(24).fill(0),
 				hourlySlack: new Array(24).fill(0)
 			};
-			this.dirty = true;
+			this.markDirty();
 		}
 	}
 
@@ -220,7 +198,7 @@ export class HistoryDataManager {
 	addFocusTime(date: string, ms: number): void {
 		const stat = this.getOrCreateDailyStat(date);
 		stat.focusMs += ms;
-		this.dirty = true;
+		this.markDirty();
 	}
 
 	/**
@@ -230,7 +208,7 @@ export class HistoryDataManager {
 	addSlackTime(date: string, ms: number): void {
 		const stat = this.getOrCreateDailyStat(date);
 		stat.slackMs += ms;
-		this.dirty = true;
+		this.markDirty();
 	}
 
 	/**
@@ -244,7 +222,7 @@ export class HistoryDataManager {
 			stat.hourlyFocus = new Array(24).fill(0).map((_, i) => old[i] || 0);
 		}
 		stat.hourlyFocus[hour] += ms;
-		this.dirty = true;
+		this.markDirty();
 	}
 
 	/**
@@ -258,7 +236,7 @@ export class HistoryDataManager {
 			stat.hourlySlack = new Array(24).fill(0).map((_, i) => old[i] || 0);
 		}
 		stat.hourlySlack[hour] += ms;
-		this.dirty = true;
+		this.markDirty();
 	}
 
 	/**

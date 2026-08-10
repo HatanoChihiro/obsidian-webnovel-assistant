@@ -133,23 +133,23 @@ export class GraphRenderer {
 
 			const addVisualLine = (group: GraphEdge[], mode: 'bidirectional' | 'normal') => {
 				if (group.length === 0) return;
-				
+
 				let primary = group.find(e => e.type !== 'mention');
 				if (!primary) primary = group[0];
-				
+
 				if (mode === 'bidirectional') {
 					state.edgeDrawModeMap.set(primary, 'bidirectional');
 				}
-				
+
 				const uniqueLabels = Array.from(new Set(group.map(e => e.label))).filter(Boolean);
 				if (uniqueLabels.length > 0) {
 					state.combinedLabelMap.set(primary, uniqueLabels.join('|'));
 				}
-				
+
 				for (const e of group) {
 					if (e !== primary) state.edgeDrawModeMap.set(e, 'hide');
 				}
-				
+
 				visualLines.push(primary);
 			};
 
@@ -162,7 +162,7 @@ export class GraphRenderer {
 			} else {
 				const step = CURVE_OFFSET * 2;
 				const baseOffset = -((visualLines.length - 1) * step) / 2;
-				
+
 				visualLines.forEach((edge, index) => {
 					let offset = baseOffset + index * step;
 					if (edge.source > edge.target) {
@@ -189,7 +189,7 @@ export class GraphRenderer {
 		colors: ThemeColors
 	): void {
 		ctx.clearRect(0, 0, width * GraphRenderer.DPR, height * GraphRenderer.DPR);
-		
+
 		ctx.save();
 		ctx.scale(GraphRenderer.DPR, GraphRenderer.DPR);
 		ctx.translate(width / 2 + state.panX, height / 2 + state.panY);
@@ -210,7 +210,7 @@ export class GraphRenderer {
 	}
 
 	static getThemeColors(el: HTMLElement): ThemeColors {
-		
+
 
 		const rootStyle = getComputedStyle(el);
 		const colors = {
@@ -224,7 +224,7 @@ export class GraphRenderer {
 			graphLine: rootStyle.getPropertyValue('--graph-line').trim() || rootStyle.getPropertyValue('--background-modifier-border').trim() || '#444',
 			graphText: rootStyle.getPropertyValue('--graph-text').trim() || rootStyle.getPropertyValue('--text-normal').trim() || '#dcddde',
 			graphNodeFocused: rootStyle.getPropertyValue('--graph-node-focused').trim() || rootStyle.getPropertyValue('--interactive-accent').trim() || '#7f6df2',
-			
+
 			// 设定图谱专属
 			protagonistOverlay: rootStyle.getPropertyValue('--wna-rg-protagonist-overlay').trim() || 'rgba(224, 108, 117, 0.5)',
 			protagonistOverlayHover: rootStyle.getPropertyValue('--wna-rg-protagonist-overlay-hover').trim() || 'rgba(224, 108, 117, 0.8)',
@@ -276,7 +276,7 @@ export class GraphRenderer {
 		}
 
 		ctx.save();
-		ctx.font = '6px sans-serif'; 
+		ctx.font = '6px sans-serif';
 
 		// 第一遍：收集所有边的信息，计算标签的包围盒，并确定优先级
 		for (const edge of state.graphData.edges) {
@@ -288,7 +288,7 @@ export class GraphRenderer {
 			if (drawMode === 'hide') continue;
 
 			const offset = state.edgeOffsetMap.get(edge) || 0;
-			
+
 			let isHighlighted = false;
 			let isDimmed = false;
 			if (state.selectedNode) {
@@ -338,7 +338,7 @@ export class GraphRenderer {
 			if (!isMention) priority += 100;
 			// 用长度作微调，短边优先显示标签
 			const dist = Math.sqrt(Math.pow(tgt.x - src.x, 2) + Math.pow(tgt.y - src.y, 2));
-			priority -= dist / 1000; 
+			priority -= dist / 1000;
 
 			edgeTasks.push({
 				edge, src, tgt, drawMode: drawMode || 'default', offset,
@@ -351,18 +351,18 @@ export class GraphRenderer {
 
 		// 第二遍：按优先级从高到低进行碰撞检测
 		edgeTasks.sort((a, b) => b.priority - a.priority);
-		
+
 		const drawnBoxes: {x: number, y: number, w: number, h: number, srcId: string, tgtId: string}[] = [];
 		const drawnLines: {x1: number, y1: number, x2: number, y2: number, srcId: string, tgtId: string}[] = [];
 
 		for (const task of edgeTasks) {
 			if (!task.showLabel || !task.edge.label) continue;
-			
+
 			// 1. 碰撞检测：与其他优先级更高的标签
 			const isCollidingWithLabel = drawnBoxes.some(b => {
 				// 如果是同一对节点之间的不同标签，允许它们在视觉上稍微靠得近一些甚至轻微重叠
 				// 因为它们已经被物理引擎和弧线逻辑分开，如果依然判定重叠而导致一方透明，会损失重要信息
-				if ((b.srcId === task.src.id && b.tgtId === task.tgt.id) || 
+				if ((b.srcId === task.src.id && b.tgtId === task.tgt.id) ||
 					(b.srcId === task.tgt.id && b.tgtId === task.src.id)) {
 					return false;
 				}
@@ -374,7 +374,7 @@ export class GraphRenderer {
 			const isCollidingWithLine = drawnLines.some(line => {
 				// 如果是同一对节点之间的连线（双向关系或者多重边），由于会绘制为弧线，
 				// 它们的标签偏离了中心直线，但不应被视为压住了对方的“直线路径”，否则会导致双方互相透明
-				if ((line.srcId === task.src.id && line.tgtId === task.tgt.id) || 
+				if ((line.srcId === task.src.id && line.tgtId === task.tgt.id) ||
 					(line.srcId === task.tgt.id && line.tgtId === task.src.id)) {
 					return false;
 				}
@@ -385,7 +385,7 @@ export class GraphRenderer {
 			// 3. 碰撞检测：与活跃节点（排除起止节点）
 			// 明确关系极为重要，不让步于节点；提及关系则主动让步于节点
 			const shouldYieldToNode = !task.isHighlighted || task.isMention;
-			const isCollidingWithNode = shouldYieldToNode && state.graphData.nodes.some(n => 
+			const isCollidingWithNode = shouldYieldToNode && state.graphData.nodes.some(n =>
 				n.id !== task.src.id && n.id !== task.tgt.id && activeNodeIds.has(n.id) && (
 					(Math.abs(task.labelX - n.x) < task.bgWidth / 2 + 12 &&
 					 Math.abs(task.labelY - n.y) < task.bgHeight / 2 + 12) ||
@@ -427,7 +427,7 @@ export class GraphRenderer {
 			}
 
 			ctx.save();
-			
+
 			// 核心优化：挖空标签区域，防止半透明时连线穿过自己的文字
 			const displayLabel = state.combinedLabelMap.get(task.edge) || task.edge.label;
 			if (task.showLabel && displayLabel) {
@@ -438,7 +438,7 @@ export class GraphRenderer {
 				ctx.lineTo(100000, 100000);
 				ctx.lineTo(-100000, 100000);
 				ctx.closePath();
-				
+
 				const dx = task.tgt.x - task.src.x;
 				const dy = task.tgt.y - task.src.y;
 				const dist = Math.sqrt(dx * dx + dy * dy);
@@ -460,28 +460,28 @@ export class GraphRenderer {
 					const w = widths[i];
 					const cx = task.labelX + unitX * (currentOffset + w / 2);
 					const cy = task.labelY + unitY * (currentOffset + w / 2);
-					
+
 					const lx = cx - w / 2 - padding;
 					const ly = cy - bgHeight / 2 - padding;
 					const lw = w + padding * 2;
 					const lh = bgHeight + padding * 2;
-					
+
 					// 逆时针绘制内圈孔洞
 					ctx.moveTo(lx, ly);
 					ctx.lineTo(lx, ly + lh);
 					ctx.lineTo(lx + lw, ly + lh);
 					ctx.lineTo(lx + lw, ly);
 					ctx.closePath();
-					
+
 					currentOffset += w + gap;
 				}
-				
+
 				ctx.clip();
 			}
 
 			ctx.globalAlpha = alpha;
 			ctx.lineWidth = lineWidth;
-			
+
 			if (isHighlighted) {
 				ctx.strokeStyle = colors.accent;
 			} else {
@@ -520,12 +520,12 @@ export class GraphRenderer {
 
 			// 如果被重叠，适度淡化，但保持足够的区分度
 			if (isOverlapped) {
-				labelAlpha *= 0.35; 
+				labelAlpha *= 0.35;
 			}
 
 			GraphRenderer.drawEdgeLabel(ctx, src, tgt, displayLabel, offset, isMention, colors, labelAlpha, isHighlighted);
 		}
-		
+
 		return edgeTasks;
 	}
 
@@ -587,7 +587,7 @@ export class GraphRenderer {
 			// 绘制节点小圆点
 			ctx.beginPath();
 			ctx.arc(node.x, node.y, radius, 0, Math.PI * 2);
-			
+
 			let baseColor = colors.graphNode;
 			let overlayColor: string | null = null;
 
@@ -621,7 +621,7 @@ export class GraphRenderer {
 
 			ctx.globalAlpha = currentBaseAlpha;
 			ctx.fillStyle = baseColor;
-			
+
 			if (isSelected) {
 				ctx.shadowColor = overlayColor || baseColor;
 				ctx.shadowBlur = 15;
@@ -633,13 +633,13 @@ export class GraphRenderer {
 			}
 
 			ctx.fill();
-			
+
 			// 叠加动态类型颜色
 			if (overlayColor && !isDimmed) {
 				const isProtagonistNode = node.isProtagonist || Boolean(node.nodeType && (node.nodeType.includes('主角') || node.nodeType.toLowerCase().includes('protagonist')));
 				const overlayAlphaMultiplier = isProtagonistNode ? 0.85 : ((isSelected || isHovered || isFilterMatch) ? 0.8 : 0.5);
-				ctx.globalAlpha = nodeAlpha * overlayAlphaMultiplier; 
-				ctx.fillStyle = overlayColor; 
+				ctx.globalAlpha = nodeAlpha * overlayAlphaMultiplier;
+				ctx.fillStyle = overlayColor;
 				ctx.shadowBlur = 0;
 				ctx.fill();
 			}
@@ -723,7 +723,7 @@ export class GraphRenderer {
 
 		// 起止点缩进到节点边缘，并留出呼吸感间距
 		const gap = GraphRenderer.NODE_RADIUS + 4;
-		
+
 		// 根据曲率偏移量，稍微沿法线分开起止点，避免多条不同关系线的端点和箭头完全交叠
 		const spread = Math.sign(offset) * Math.min(Math.abs(offset * 0.15), 5);
 
@@ -736,7 +736,7 @@ export class GraphRenderer {
 		const endAngle = Math.atan2(endY - midY, endX - midX);
 		const endDirX = Math.cos(endAngle);
 		const endDirY = Math.sin(endAngle);
-		
+
 		// 曲线终点退回 1.0 像素，避免与半透明圆点叠加变黑
 		const curveEndX = endX - endDirX * 1.0;
 		const curveEndY = endY - endDirY * 1.0;
@@ -781,7 +781,7 @@ export class GraphRenderer {
 		const dx = tgt.x - src.x;
 		const dy = tgt.y - src.y;
 		const dist = Math.sqrt(dx * dx + dy * dy);
-		
+
 		const unitX = dist > 0 ? dx / dist : 0;
 		const unitY = dist > 0 ? dy / dist : 0;
 		const normalX = -unitY;
@@ -792,7 +792,7 @@ export class GraphRenderer {
 		const labelY = (src.y + tgt.y) / 2 + normalY * curveOffset * 0.5;
 
 		ctx.save();
-		ctx.font = '6px sans-serif'; 
+		ctx.font = '6px sans-serif';
 		ctx.textAlign = 'center';
 		ctx.textBaseline = 'middle';
 
@@ -832,7 +832,7 @@ export class GraphRenderer {
 			// 绘制文字：高亮时使用主要文本色，普通情况使用淡色，提及类型且未高亮时使用更淡的 textFaint
 			ctx.fillStyle = isHighlighted ? colors.textNormal : (isMention ? colors.mentionTextColor : colors.textMuted);
 			ctx.fillText(labels[i], cx, cy);
-			
+
 			currentOffset += w + gap;
 		}
 

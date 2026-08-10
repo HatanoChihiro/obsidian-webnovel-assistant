@@ -3,7 +3,7 @@ import type { App, ViewStateResult } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ForeshadowingStatus, type ParsedForeshadowingEntry } from '../types/foreshadowing';
 import { ChapterSorter } from '../services/ChapterSorter';
-import { getCurrentBookContext, findBookRoot } from '../utils/path';
+import { getCurrentBookContext, findBookRoot, getLatestChapterFolderPath } from '../utils/path';
 import { t } from '../i18n';
 import { getNovelStatusText, getNovelInfoLabel } from '../i18n/data-keys';
 import { CorkboardGridRenderer } from './components/CorkboardGridRenderer';
@@ -982,11 +982,14 @@ export class WorkbenchView extends ItemView {
             const newChapterBtn = buttonsContainer.createDiv({ cls: 'wn-corkboard-new-chapter-btn' });
             newChapterBtn.textContent = t('corkboard.new-chapter');
             newChapterBtn.onclick = () => {
+                const chapterFolder = getLatestChapterFolderPath(this.currentBookPath || '/', files);
+                const siblingFiles = files.filter((file: TFile) => file.parent?.path === chapterFolder);
+                const namingFiles = siblingFiles.length > 0 ? siblingFiles : files;
                 let defaultPrefix = '01 ';
-                if (files.length > 0) {
-                    const siblingNames = files.map((f: TFile) => f.basename);
-                    for (let i = files.length - 1; i >= 0; i--) {
-                        const nextName = ChapterSorter.getNextChapterName(files[i].basename, siblingNames);
+                if (namingFiles.length > 0) {
+                    const siblingNames = namingFiles.map((f: TFile) => f.basename);
+                    for (let i = namingFiles.length - 1; i >= 0; i--) {
+                        const nextName = ChapterSorter.getNextChapterName(namingFiles[i].basename, siblingNames);
                         if (nextName) {
                             defaultPrefix = nextName.replace(/\.md$/, '').trimEnd() + ' ';
                             break;
@@ -995,7 +998,7 @@ export class WorkbenchView extends ItemView {
                 }
 
                 new NewChapterModal(this.app, this.plugin, defaultPrefix, (title, templateContent) => {
-                    const folder = this.currentBookPath === '/' ? '' : (this.currentBookPath + '/');
+                    const folder = chapterFolder === '/' ? '' : (chapterFolder + '/');
                     const newPath = folder + title + '.md';
                     this.isSavingMetadata = true;
                     this.app.vault.create(newPath, templateContent).then(_file => {

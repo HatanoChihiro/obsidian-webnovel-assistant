@@ -747,11 +747,6 @@ body .markdown-source-view.mod-cm6 .cm-editor.webnovel-show-gutter .cm-scroller 
 }
 
 
-.task-add-modal h2 {
-	color: var(--interactive-accent);
-}
-
-
 /* StatusView Leaderboard target area */
 
 /* Task Goal Section */
@@ -830,9 +825,9 @@ body.webnovel-notes-hidden .my-floating-sticky-note {
 
 /* Immersive Mode: Card-style panel layout and boundary enhancement */
 
-/* Immersive Mode: Card-style panel layout and boundary enhancement 
+/* Immersive Mode: Card-style panel layout and boundary enhancement
 
-   Override theme styles by increasing selector specificity (body.immersive-mode-active ...), avoid using important_override 
+   Override theme styles by increasing selector specificity (body.immersive-mode-active ...), avoid using important_override
 
 */
 
@@ -1533,7 +1528,7 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 .homepage-grid-container {
 	display: grid;
-	grid-template-columns: 1fr 1fr;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
 	gap: 24px;
 	min-width: 0;
 	align-items: stretch;
@@ -1553,8 +1548,12 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 	flex-direction: column;
 	gap: 24px;
 	min-width: 0;
+	height: 100%;
 }
 
+.homepage-grid-left {
+	justify-content: space-between;
+}
 
 .homepage-grid-cell {
 	min-width: 0;
@@ -1564,15 +1563,9 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 }
 
 
-/* Left column last block stretches to bottom, aligned with right column */
-
-.homepage-grid-left .homepage-grid-cell:last-child {
-	flex-grow: 1;
-}
-
-
+/* Right column chart area stretches to the shared bottom edge. */
 .homepage-grid-right .homepage-grid-cell:last-child {
-	flex-grow: 1;
+	flex: 1 1 auto;
 	margin-top: 0;
 }
 
@@ -2116,16 +2109,6 @@ body .my-sticky-content h1.inline-title {
 }
 
 
-/* Removed duplicate .immersive-sticky-dock */
-
-.immersive-sticky-dock.immersive-vertical-layout.immersive-vertical-layout {
-	flex-direction: column;
-	overflow-x: hidden;
-	overflow-y: auto;
-}
-
-
-
 /* ==========================================================================
 
    webnovel-* CSS classes: replacing inline setCssStyles/setCssProps calls
@@ -2133,33 +2116,6 @@ body .my-sticky-content h1.inline-title {
    All styles previously set via JS are now defined here as CSS classes.
 
    ========================================================================== */
-
-/* -- AdvancedSearchModal -- */
-
-.webnovel-search-folder-list {
-	max-height: 250px;
-	overflow-y: auto;
-	border: 1px solid var(--background-modifier-border);
-	padding: 8px;
-	border-radius: 5px;
-	margin-top: 10px;
-}
-
-
-.webnovel-search-folder-name {
-	font-weight: bold;
-}
-
-
-.webnovel-search-checkbox {
-	margin-left: 10px;
-}
-
-
-.webnovel-search-file-name {
-	color: var(--text-muted);
-}
-
 
 /* -- ForeshadowingModal -- */
 
@@ -2483,12 +2439,6 @@ body .my-sticky-content h1.inline-title {
 	cursor: pointer;
 	font-size: 12px;
 	margin-top: 4px;
-}
-
-
-.webnovel-tl-custom-hidden {
-	margin-top: 4px;
-	display: none;
 }
 
 
@@ -3581,142 +3531,4 @@ button.status-task-complete-btn:hover {
 		box-shadow: none;
 		transform: scale(1);
 	}
-}
-
-
-/* 移动端章节合并 waterfall Modal 容器与布局 */
-body .modal.wn-mobile-merge-modal-window {
-	width: 92vw;
-	max-width: 600px;
-	height: 85vh;
-	max-height: 800px;
-	padding: 0;
-	margin: auto;
-	display: flex;
-	flex-direction: column;
-	overflow: hidden;
-	border-radius: 12px;
-	position: relative;
-}
-
-
-body .modal-content.wn-mobile-merge-modal-content {
-	flex: 1 1 0px;
-	min-height: 0;
-	height: 100%;
-	max-height: 100%;
-	width: 100%;
-	padding: 0;
-	margin: 0;
-	display: flex;
-	flex-direction: column;
-	overflow: hidden;
-	box-sizing: border-box;
-}
-
-
-.wn-mobile-merge-header {
-	flex: 0 0 auto;
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 8px;
-	padding: 10px 14px;
-}
-
-
-.wn-mobile-merge-body {
-	flex: 1 1 0px;
-	min-height: 0;
-	overflow-y: auto;
-	padding: 12px 16px;
-	background: var(--background-primary);
-}
-
-
-.wn-mobile-merge-preview-container {
-	display: flex;
-	flex-direction: column;
-	gap: 16px;
-}
-
-
-.wn-mobile-merge-card {
-	margin-bottom: 0;
-}
-
-
-.wn-mobile-merge-footer {
-	flex: 0 0 auto;
-	padding: 8px 14px;
-	height: auto;
-	min-height: 48px;
-}
-
-
-.wn-mobile-merge-footer .wn-btn-export {
-	font-size: 0.8em;
-	padding: 5px 12px;
-	height: 32px;
-	line-height: 1;
-}
-
-
-/* ==========================================================================
-   Unified Plugin Modal Headings & Title Styling Protocol
-   ========================================================================== */
-
-/* 1. Modal Headings Reset (new Setting(contentEl).setName(...).setHeading()) */
-body .modal .setting-item.setting-item-heading,
-body .modal-content .setting-item.setting-item-heading,
-body .modal-container .setting-item.setting-item-heading,
-.webnovel-settings-container .setting-item.setting-item-heading {
-	padding-left: 0;
-	margin-left: 0;
-	padding-top: 0;
-	margin-top: 0;
-	margin-bottom: 12px;
-	border-top: none;
-	border-bottom: none;
-	background: transparent;
-	min-height: unset;
-}
-
-body .modal .setting-item.setting-item-heading .setting-item-info,
-body .modal .setting-item.setting-item-heading .setting-item-name,
-body .modal-content .setting-item.setting-item-heading .setting-item-info,
-body .modal-content .setting-item.setting-item-heading .setting-item-name,
-.webnovel-settings-container .setting-item.setting-item-heading .setting-item-info,
-.webnovel-settings-container .setting-item.setting-item-heading .setting-item-name {
-	padding-left: 0;
-	margin-left: 0;
-}
-
-/* 2. Unified Modal Main Title Size & Color */
-body .modal .setting-item.setting-item-heading:first-child .setting-item-name,
-body .modal .setting-item.setting-item-heading:first-of-type .setting-item-name,
-body .modal-content .setting-item.setting-item-heading:first-child .setting-item-name,
-body .modal-content .setting-item.setting-item-heading:first-of-type .setting-item-name,
-body .modal .modal-title,
-body .modal-content h2,
-body .modal h2,
-.history-stats-modal .setting-item-heading:first-child .setting-item-name,
-.foreshadowing-input-modal h2,
-.wn-timeline-add-modal h2,
-.task-add-modal h2 {
-	font-family: var(--font-interface);
-	font-size: 1.15em;
-	font-weight: 700;
-	color: var(--interactive-accent);
-	line-height: 1.3;
-}
-
-/* 3. Secondary Sub-headings inside Modal */
-body .modal .setting-item.setting-item-heading:not(:first-of-type) .setting-item-name,
-body .modal-content .setting-item.setting-item-heading:not(:first-of-type) .setting-item-name {
-	font-family: var(--font-interface);
-	font-size: 0.95em;
-	font-weight: 600;
-	color: var(--text-normal);
-	margin-top: 10px;
 }

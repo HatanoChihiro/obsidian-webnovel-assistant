@@ -898,10 +898,10 @@ body.is-phone .history-stats-modal .stats-metric-tabs .stats-tab-btn {
 
 
 /* ========== Mobile Lore & Foreshadowing Hover Popover Safe Bounds ========== */
-body.is-phone .webnovel-lore-popover.webnovel-lore-popover,
-body.is-phone .wn-lore-hover-popover.wn-lore-hover-popover,
-body.is-phone .wn-character-hover-card.wn-character-hover-card,
-body.is-phone .wn-hover-card.wn-hover-card {
+body.is-phone .webnovel-lore-popover,
+body.is-phone .wn-lore-hover-popover,
+body.is-phone .wn-character-hover-card,
+body.is-phone .wn-hover-card {
 	font-size: var(--font-ui-medium, 1em);
 	width: min(220px, calc(100vw - 24px));
 	max-width: min(220px, calc(100vw - 24px));
@@ -919,8 +919,8 @@ body.is-phone .wn-hover-card.wn-hover-card {
 }
 
 
-body.is-phone .wn-lore-hover-popover .wn-lore-card.wn-lore-card,
-body.is-phone .webnovel-lore-popover .wn-lore-card.wn-lore-card {
+body.is-phone .wn-lore-hover-popover .wn-lore-card,
+body.is-phone .webnovel-lore-popover .wn-lore-card {
 	width: 100%;
 	max-width: 100%;
 	height: auto;
@@ -935,21 +935,21 @@ body.is-phone .webnovel-lore-popover .wn-lore-card.wn-lore-card {
 }
 
 
-body.is-phone .wn-lore-hover-popover .wn-lore-card-header.wn-lore-card-header,
-body.is-phone .webnovel-lore-popover .wn-lore-card-header.wn-lore-card-header {
+body.is-phone .wn-lore-hover-popover .wn-lore-card-header,
+body.is-phone .webnovel-lore-popover .wn-lore-card-header {
 	padding: 4px 6px;
 }
 
 
-body.is-phone .wn-lore-hover-popover .wn-lore-card-title.wn-lore-card-title,
-body.is-phone .webnovel-lore-popover .wn-lore-card-title.wn-lore-card-title {
+body.is-phone .wn-lore-hover-popover .wn-lore-card-title,
+body.is-phone .webnovel-lore-popover .wn-lore-card-title {
 	font-size: 0.65em;
 	font-weight: 600;
 }
 
 
-body.is-phone .wn-lore-hover-popover .wn-lore-card-body.wn-lore-card-body,
-body.is-phone .webnovel-lore-popover .wn-lore-card-body.wn-lore-card-body {
+body.is-phone .wn-lore-hover-popover .wn-lore-card-body,
+body.is-phone .webnovel-lore-popover .wn-lore-card-body {
 	display: block;
 	height: auto;
 	min-height: auto;

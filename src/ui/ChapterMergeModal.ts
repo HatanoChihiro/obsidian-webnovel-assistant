@@ -206,7 +206,7 @@ export class ChapterMergeModal extends Modal {
 	 */
 	private renderHeader(container: HTMLElement): void {
 		const headerEl = container.createDiv({ cls: 'wn-merge-modal-header' });
-		
+
 		const titleEl = headerEl.createDiv({
 			text: t('merge.modal-title', { name: this.folder.name }),
 			cls: 'wn-merge-modal-title'
@@ -250,7 +250,7 @@ export class ChapterMergeModal extends Modal {
 		if (!this.searchQuery) {
 			this.filteredItems = [...this.items];
 		} else {
-			this.filteredItems = this.items.filter(item => 
+			this.filteredItems = this.items.filter(item =>
 				item.title.toLowerCase().includes(this.searchQuery) ||
 				item.volumeName.toLowerCase().includes(this.searchQuery)
 			);
@@ -501,11 +501,11 @@ export class ChapterMergeModal extends Modal {
 
 			// 1. 卡片头部栏
 			const cardHeader = cardEl.createDiv({ cls: 'wn-merge-card-header' });
-			
+
 			const titleInfo = cardHeader.createDiv({ cls: 'wn-merge-card-title-group' });
 			const fileIcon = titleInfo.createSpan({ cls: 'wn-merge-card-icon' });
 			setIcon(fileIcon, 'file-text');
-			
+
 			if (this.includeTitles) {
 				titleInfo.createSpan({ text: item.title, cls: 'wn-merge-card-title' });
 			}
@@ -595,12 +595,12 @@ export class ChapterMergeModal extends Modal {
 
 			// 1. 修订头：章节名 + 定位与单项还原按钮
 			const cardHeader = card.createDiv({ cls: 'wn-merge-revision-card-header' });
-			
+
 			const titleGroup = cardHeader.createDiv({ cls: 'wn-merge-rev-title-group' });
 			titleGroup.createSpan({ text: rev.item.title, cls: 'wn-merge-rev-chap-title' });
 
 			const btnActions = cardHeader.createDiv({ cls: 'wn-merge-rev-card-actions' });
-			
+
 			// 【定位到此处】按钮
 			const locateBtn = btnActions.createEl('button', { cls: 'wn-merge-rev-btn-locate' });
 			setIcon(locateBtn, 'crosshair');
@@ -683,7 +683,7 @@ export class ChapterMergeModal extends Modal {
 	 */
 	private revertSingleRevision(rev: ExplicitRevisionRecord): void {
 		rev.item.currentBody = rev.item.currentBody.replace(rev.currentText, rev.originalText);
-		
+
 		let revs = this.explicitRevisionsMap.get(rev.item.file.path) || [];
 		revs = revs.filter(r => r.id !== rev.id);
 		this.explicitRevisionsMap.set(rev.item.file.path, revs);
@@ -756,7 +756,7 @@ export class ChapterMergeModal extends Modal {
 		const footerEl = container.createDiv({ cls: 'wn-merge-modal-footer' });
 
 		const leftGroup = footerEl.createDiv({ cls: 'wn-merge-footer-left' });
-		
+
 		// 是否合并文档标题复选框 (默认开启)
 		const titleLabel = leftGroup.createEl('label', { cls: 'wn-merge-checkbox-label' });
 		const titleCheckbox = titleLabel.createEl('input', { type: 'checkbox', cls: 'wn-merge-checkbox-input' });
@@ -804,7 +804,7 @@ export class ChapterMergeModal extends Modal {
 		this.isSubmitting = true;
 		const { file: mergedFile, wordCount } = await this.plugin.chapterMergeManager.exportMergedDocument(this.folder, this.items, this.includeTitles);
 		this.plugin.chapterMergeManager.clearDraft(this.folder.path);
-		
+
 		new Notice(t('notice.merge-success', {
 			count: String(this.items.length),
 			words: wordCount.toLocaleString(),

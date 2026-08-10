@@ -87,7 +87,7 @@
 
 
 /* ========== Lore Graph Styles ========== */
-/* 
+/*
    Extracted hardcoded colors, allowing users to customize via CSS Snippets without recompiling the plugin
    If not set, defaults from TS code will be used
 */
@@ -97,11 +97,11 @@
 	position: relative;
 	overflow: hidden;
 	/* Protagonist overlay red (default) */
-	--wna-rg-protagonist-overlay: rgba(224, 108, 117, 0.5);
+	--wna-rg-protagonist-overlay: color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 45%, var(--text-error, var(--interactive-accent)) 55%) 50%, transparent);
 	/* Protagonist overlay red (hover highlight) */
-	--wna-rg-protagonist-overlay-hover: rgba(224, 108, 117, 0.8);
+	--wna-rg-protagonist-overlay-hover: color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 45%, var(--text-error, var(--interactive-accent)) 55%) 80%, transparent);
 	/* Protagonist glow shadow color */
-	--wna-rg-protagonist-shadow: rgba(224, 108, 117, 0.8);
+	--wna-rg-protagonist-shadow: color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 45%, var(--text-error, var(--interactive-accent)) 55%) 80%, transparent);
 	/* Mention Edge Style Variables */
 	--wna-rg-mention-line-color: var(--text-faint);
 	--wna-rg-mention-text-color: var(--text-faint);

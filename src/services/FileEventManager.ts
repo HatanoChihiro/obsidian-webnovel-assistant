@@ -154,9 +154,22 @@ export class FileEventManager {
 					return;
 				}
 
+				if (abstractFile instanceof TFile && !this.plugin.cacheManager.isEligibleForWordCount(abstractFile)) {
+					this.plugin.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
+						this.plugin.refreshFolderCounts();
+					}, 500);
+					return;
+				}
+
 				// 只有当新文件是 md 且旧缓存存在时，才将旧缓存继承给新路径
 				if (isMdFile && oldCache !== null && abstractFile instanceof TFile) {
 					this.plugin.cacheManager.updateFileCache(abstractFile, oldCache, this.plugin.app.vault);
+					// 重命名不会改变正文，继承旧缓存即可。避免批量移动时为每个文件重复读取正文，
+					// 也避免异步读取与后续连续重命名交错。
+					this.plugin.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
+						this.plugin.refreshFolderCounts();
+					}, 500);
+					return;
 				}
 
 				// 只有新文件是 md 时，才进行新一轮的读取和计算

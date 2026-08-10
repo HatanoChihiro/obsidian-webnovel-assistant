@@ -58,6 +58,88 @@ describe('TextSplitter Engine', () => {
 		expect(chapters[1].title).toBe('第二章 冲突');
 	});
 
+	it('默认章节规则可通过 Markdown 标题层级识别卷', () => {
+		const text = `## 第一卷 初入
+
+### 第一章 开始
+故事开始
+### 第二章 发展
+故事发展
+## 第二卷 终局
+
+### 第三章 决战
+故事决战`;
+
+		const chapters = TextSplitter.splitIntoChapters(text);
+
+		expect(chapters.map(chapter => chapter.title)).toEqual([
+			'第一章 开始',
+			'第二章 发展',
+			'第三章 决战'
+		]);
+		expect(chapters.map(chapter => chapter.volume)).toEqual([
+			'第一卷 初入',
+			'第一卷 初入',
+			'第二卷 终局'
+		]);
+	});
+
+	it('无 Markdown 标题时默认章节规则可通过相邻卷章标记识别卷', () => {
+		const text = `第一卷 初入
+第一章 开始
+故事开始
+第二章 发展
+故事发展
+第二卷 终局
+第三章 决战
+故事决战`;
+
+		const chapters = TextSplitter.splitIntoChapters(text);
+
+		expect(chapters.map(chapter => chapter.title)).toEqual([
+			'第一章 开始',
+			'第二章 发展',
+			'第三章 决战'
+		]);
+		expect(chapters.map(chapter => chapter.volume)).toEqual([
+			'第一卷 初入',
+			'第一卷 初入',
+			'第二卷 终局'
+		]);
+	});
+
+	it('支持识别超过20字符的 Markdown 卷章标题', () => {
+		ChapterSorter.setCustomRules([
+			{ name: 'Volume', pattern: '^Volume\\s+(\\d+)', enabled: true },
+			{ name: 'Chapter', pattern: '^Chapter\\s+(\\d+)', enabled: true }
+		]);
+		const text = `# Chronicles of the Void
+## Volume 1 - The Awakening
+
+### Chapter 01 - The Starlight Anomaly
+第一章内容
+### Chapter 02 - The Shattered Realm
+第二章内容
+## Volume 2 - The Final Horizon
+
+### Chapter 03 - The Last Stand
+第三章内容`;
+
+		const chapters = TextSplitter.splitIntoChapters(text);
+
+		expect(chapters.map(chapter => chapter.title)).toEqual([
+			'非章节内容',
+			'Chapter 01 - The Starlight Anomaly',
+			'Chapter 02 - The Shattered Realm',
+			'Chapter 03 - The Last Stand'
+		]);
+		expect(chapters.slice(1).map(chapter => chapter.volume)).toEqual([
+			'Volume 1 - The Awakening',
+			'Volume 1 - The Awakening',
+			'Volume 2 - The Final Horizon'
+		]);
+	});
+
 	it('支持自定义规则匹配非标准单位（如【第一集】）', () => {
 		// 用户自定义正则规则
 		ChapterSorter.setCustomRules([
@@ -102,5 +184,90 @@ describe('TextSplitter Engine', () => {
 		expect(chapters[0].title).toBe('第一章 序幕');
 		expect(chapters[0].content).toContain('第一次来到这个陌生而又美丽的城市，看到了高耸入云的漫天大楼，心里产生了万分感慨。');
 		expect(chapters[1].title).toBe('第二章 冲突');
+	});
+
+	it('识别卷标题并将章节关联到对应卷', () => {
+		ChapterSorter.setCustomRules([
+			{ name: '卷规则', pattern: '^第(\\d+)卷', enabled: true },
+			{ name: '章规则', pattern: '^第(\\d+)章', enabled: true }
+		]);
+		const text = `作品名
+第1卷 初入
+第1章 开始
+卷中的内容
+第2卷 终局
+第2章 决战
+决战内容`;
+
+		const chapters = TextSplitter.splitIntoChapters(text);
+
+		expect(chapters.map(chapter => chapter.title)).toEqual(['非章节内容', '第1章 开始', '第2章 决战']);
+		expect(chapters[0].volume).toBeUndefined();
+		expect(chapters[1].volume).toBe('第1卷 初入');
+		expect(chapters[2].volume).toBe('第2卷 终局');
+	});
+
+	it('导入时按卷创建子目录并写入章节', async () => {
+		ChapterSorter.setCustomRules([
+			{ name: '卷规则', pattern: '^第(\\d+)卷', enabled: true },
+			{ name: '章规则', pattern: '^第(\\d+)章', enabled: true }
+		]);
+		const createdFolders: string[] = [];
+		const createdFiles: string[] = [];
+		const existingPaths = new Set<string>();
+		const vault = {
+			getAbstractFileByPath: (path: string) => existingPaths.has(path) ? { path } : null,
+			createFolder: async (path: string) => {
+				createdFolders.push(path);
+				existingPaths.add(path);
+				return { path };
+			},
+			create: async (path: string, _content: string) => {
+				createdFiles.push(path);
+				existingPaths.add(path);
+				return { path };
+			}
+		};
+		const app = { vault } as unknown;
+		const plugin = {
+			settings: { workspaceFolders: ['作品'], novelInfo: { fileName: '作品信息' } },
+			homepageManager: { createNovelInfoFile: async () => undefined }
+		} as unknown;
+		const chapters = TextSplitter.splitIntoChapters(`第1卷 初入
+第1章 开始
+正文
+第2卷 终局
+第2章 决战
+正文`);
+
+		await TextSplitter.executeImport(app as never, plugin as never, '测试作品', chapters, () => undefined);
+
+		expect(createdFolders).toEqual([
+			'作品/测试作品',
+			'作品/测试作品/第1卷 初入',
+			'作品/测试作品/第2卷 终局'
+		]);
+		expect(createdFiles).toContain('作品/测试作品/第1卷 初入/第1章 开始.md');
+		expect(createdFiles).toContain('作品/测试作品/第2卷 终局/第2章 决战.md');
+	});
+
+	it('仅在连续规则对出现时将前一个规则识别为卷', () => {
+		ChapterSorter.setCustomRules([
+			{ name: 'Part', pattern: '^Part\\s+(\\d+)', enabled: true },
+			{ name: 'Section', pattern: '^Section\\s+(\\d+)', enabled: true }
+		]);
+		const text = `Part 1 Prelude
+Section 1 Opening
+First section content
+Section 2 Conflict
+Second section content
+Part 2 Finale
+Section 1 Resolution
+Final section content`;
+
+		const chapters = TextSplitter.splitIntoChapters(text);
+
+		expect(chapters.map(chapter => chapter.title)).toEqual(['Section 1 Opening', 'Section 2 Conflict', 'Section 1 Resolution']);
+		expect(chapters.map(chapter => chapter.volume)).toEqual(['Part 1 Prelude', 'Part 1 Prelude', 'Part 2 Finale']);
 	});
 });

@@ -95,10 +95,11 @@ describe('WordCounter', () => {
 
 		it('忽略图片语法', () => {
 			const text = '正文![图片描述](image.png)结尾';
-			const result = counter.calculateAccurateWords(text);
-			// 图片语法清理行为取决于正则匹配
-			expect(result).toBeGreaterThanOrEqual(4);
-			expect(result).toBeLessThanOrEqual(10);
+			expect(counter.calculateAccurateWords(text)).toBe(4);
+		});
+
+		it('忽略 Obsidian 嵌入资源语法', () => {
+			expect(counter.calculateAccurateWords('正文![[image.png|300]]结尾')).toBe(4);
 		});
 
 		it('忽略 HTML 标签', () => {

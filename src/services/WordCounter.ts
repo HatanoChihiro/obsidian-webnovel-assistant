@@ -15,6 +15,7 @@ export class WordCounter {
 	private readonly reStrikethrough = REGEX_PATTERNS.STRIKETHROUGH();
 	private readonly reBold = REGEX_PATTERNS.BOLD();
 	private readonly reItalic = REGEX_PATTERNS.ITALIC();
+	private readonly reEmbeddedInternalLink = REGEX_PATTERNS.EMBEDDED_INTERNAL_LINK();
 	private readonly reInternalLink = REGEX_PATTERNS.INTERNAL_LINK();
 	private readonly reLink = REGEX_PATTERNS.LINK();
 	private readonly reImage = REGEX_PATTERNS.IMAGE();
@@ -36,6 +37,7 @@ export class WordCounter {
 		this.reStrikethrough.lastIndex = 0;
 		this.reBold.lastIndex = 0;
 		this.reItalic.lastIndex = 0;
+		this.reEmbeddedInternalLink.lastIndex = 0;
 		this.reInternalLink.lastIndex = 0;
 		this.reLink.lastIndex = 0;
 		this.reImage.lastIndex = 0;
@@ -80,12 +82,13 @@ export class WordCounter {
 			// 移除粗体/斜体符号 ** * __ _
 			.replace(this.reBold, '$2')
 			.replace(this.reItalic, '$2')
+			// 图片/嵌入资源必须在普通链接之前移除，避免 alt 或资源名被误计为正文
+			.replace(this.reImage, '')
+			.replace(this.reEmbeddedInternalLink, '')
 			// 移除 Obsidian 内部链接语法 [[文件名]] → 文件名
 			.replace(this.reInternalLink, (_: string, name: string, alias: string) => alias || name)
 			// 移除普通链接 [文本](url) → 文本
 			.replace(this.reLink, '$1')
-			// 移除图片 ![alt](url)
-			.replace(this.reImage, '')
 			// 移除脚注引用标记 [^note]
 			.replace(this.reFootnoteRef, '')
 			// 移除 HTML 标签（保留换行符）

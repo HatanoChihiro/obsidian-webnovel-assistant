@@ -41,6 +41,12 @@
 	color: var(--text-accent);
 }
 
+.wn-import-volume {
+	font-weight: bold;
+	margin: 10px 0 4px;
+	color: var(--text-accent);
+}
+
 .wn-import-item {
 	display: flex;
 	align-items: center;

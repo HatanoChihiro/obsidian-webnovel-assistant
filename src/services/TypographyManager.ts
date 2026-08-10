@@ -190,7 +190,7 @@ export class TypographyManager {
 		el.style.setProperty('--wn-type-para-spacing', typo.paragraphSpacing || '0.5em');
 		el.style.setProperty('--wn-type-letter-spacing', typo.letterSpacing || '0.05em');
 		el.style.setProperty('--wn-type-text-align', typo.justifyText ? 'justify' : 'left');
-		
+
 		if (typo.maxLineWidth && typo.maxLineWidth.trim() !== '') {
 			const maxW = typo.maxLineWidth.trim();
 			el.style.setProperty('--wn-type-max-width', maxW);

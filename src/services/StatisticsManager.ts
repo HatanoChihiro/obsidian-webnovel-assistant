@@ -1,4 +1,4 @@
-import { MarkdownView, type TAbstractFile } from 'obsidian';
+import { MarkdownView, TFile, type TAbstractFile } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { CoreStatsPayload } from '../types/stats';
 import type { NovelFolderInfo } from '../types/homepage';
@@ -47,21 +47,29 @@ export class StatisticsManager {
 		let currentFolder = '';
 		let chapterWords = 0;
 		const view = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
-		if (view?.file && this.plugin.cacheManager.isEligibleForWordCount(view.file)) {
-			currentFile = view.file.basename;
-			currentFolder = view.file.parent?.isRoot() ? '' : (view.file.parent?.name || '');
+		let file = view?.file ?? null;
+		if (!file && this.plugin.lastFilePath) {
+			const lastFile = this.plugin.app.vault.getAbstractFileByPath(this.plugin.lastFilePath);
+			if (lastFile instanceof TFile) file = lastFile;
+		}
+
+		if (file && this.plugin.cacheManager.isEligibleForWordCount(file)) {
+			currentFile = file.basename;
+			currentFolder = file.parent?.isRoot() ? '' : (file.parent?.name || '');
 			let fileGoal = this.plugin.settings.defaultGoal;
-			const cache = this.plugin.app.metadataCache.getFileCache(view.file);
+			const cache = this.plugin.app.metadataCache.getFileCache(file);
 			const fmGoal = parseGoal(cache?.frontmatter?.['word-goal']);
 			if (fmGoal > 0) fileGoal = fmGoal;
 			targetGoal = fileGoal;
-			// 对于当前活动的 Markdown 编辑视图，优先使用 view.getViewData() 实时计算以保障即时响应
-			const viewData = view.getViewData();
+			// 当前活动的 Markdown 编辑视图优先使用实时内容；侧面板获得焦点后复用最后一次追踪结果。
+			const viewData = view?.file?.path === file.path ? view.getViewData() : null;
 			if (typeof viewData === 'string') {
 				chapterWords = this.plugin.calculateAccurateWords(viewData);
 			} else {
-				const cachedWords = this.plugin.cacheManager.getFileCache(view.file.path);
-				chapterWords = cachedWords !== null ? cachedWords : 0;
+				const cachedWords = this.plugin.cacheManager.getFileCache(file.path);
+				chapterWords = this.plugin.lastFilePath === file.path
+					? this.plugin.lastFileWords
+					: (cachedWords !== null ? cachedWords : 0);
 			}
 		}
 

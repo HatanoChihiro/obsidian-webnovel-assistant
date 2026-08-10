@@ -95,7 +95,7 @@ export class AdvancedSearchModal extends Modal {
 		}
 
 		// 为每个目录创建一个树形选择器
-		const listContainer = container.createDiv({ cls: 'advanced-search-folder-list webnovel-search-folder-list' });
+		const listContainer = container.createDiv({ cls: 'advanced-search-folder-list' });
 
 		for (const item of items) {
 			if (item instanceof TFolder) {
@@ -122,17 +122,16 @@ export class AdvancedSearchModal extends Modal {
 			const arrow = headerEl.createSpan({ text: '▶ ', cls: 'advanced-search-tree-arrow' });
 			
 			childrenContainer = itemContainer.createDiv({ cls: 'advanced-search-tree-children' });
+			childrenContainer.hidden = true;
 
 			arrow.addEventListener('click', () => {
 				if (!childrenContainer) return;
-				const isHidden = childrenContainer.hasClass('is-hidden') || childrenContainer.getCssPropertyValue('display') === 'none';
+				const isHidden = childrenContainer.hidden;
 				if (isHidden) {
-					childrenContainer.removeClass('is-hidden');
-					childrenContainer.setCssProps({ display: 'block' });
+					childrenContainer.hidden = false;
 					arrow.innerText = '▼ ';
 				} else {
-					childrenContainer.addClass('is-hidden');
-					childrenContainer.setCssProps({ display: 'none' });
+					childrenContainer.hidden = true;
 					arrow.innerText = '▶ ';
 				}
 			});
@@ -144,13 +143,13 @@ export class AdvancedSearchModal extends Modal {
 		const displayName = folder.isRoot() ? '/' : folder.name;
 		const label = headerEl.createSpan({ text: displayName, cls: 'advanced-search-tree-name' });
 		if (folder instanceof TFolder) {
-			label.addClass('webnovel-search-folder-name');
+			label.addClass('advanced-search-folder-name');
 		}
 		
 		const checkbox = headerEl.createEl('input');
 		checkbox.type = 'checkbox';
 		checkbox.dataset.path = folder.path;
-		checkbox.addClass('webnovel-search-checkbox');
+		checkbox.addClass('advanced-search-checkbox');
 		
 		checkbox.addEventListener('change', () => {
 			this.toggleSelection(folder, checkbox.checked);
@@ -175,12 +174,12 @@ export class AdvancedSearchModal extends Modal {
 		fileHeader.createSpan({ cls: 'advanced-search-tree-spacer' });
 		
 		const fileLabel = fileHeader.createSpan({ text: file.name, cls: 'advanced-search-tree-name' });
-		fileLabel.addClass('webnovel-search-file-name');
+		fileLabel.addClass('advanced-search-file-name');
 		
 		const fileCheckbox = fileHeader.createEl('input');
 		fileCheckbox.type = 'checkbox';
 		fileCheckbox.dataset.path = file.path;
-		fileCheckbox.addClass('webnovel-search-checkbox');
+		fileCheckbox.addClass('advanced-search-checkbox');
 		
 		fileCheckbox.addEventListener('change', () => {
 			this.toggleSelection(file, fileCheckbox.checked);

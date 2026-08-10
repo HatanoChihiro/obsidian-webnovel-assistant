@@ -239,6 +239,15 @@ describe('ChapterSorter', () => {
 			ChapterSorter.setCustomRules([]);
 		});
 
+		it('自定义规则匹配标题时不继承具体标题', () => {
+			ChapterSorter.setCustomRules([
+				{ name: '数字加标题格式', pattern: '^(\\d+)(.*)$', enabled: true }
+			]);
+			const result = ChapterSorter.getNextChapterName('01 xxxxx', ['01 xxxxx']);
+			expect(result).toBe('02 .md');
+			ChapterSorter.setCustomRules([]);
+		});
+
 		it('无法识别时返回 null', () => {
 			const result = ChapterSorter.getNextChapterName('角色设定', []);
 			expect(result).toBeNull();

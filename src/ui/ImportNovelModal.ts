@@ -211,8 +211,16 @@ export class ImportNovelModal extends Modal {
 
 		// 列表展示前 200 章预览
 		const displayCount = Math.min(200, this.parsedChapters.length);
+		let lastVolume: string | undefined;
 		for (let i = 0; i < displayCount; i++) {
 			const chap = this.parsedChapters[i];
+			if (chap.volume && chap.volume !== lastVolume) {
+				this.previewContainer.createDiv({
+					text: t('import-novel.volume-label', { name: chap.volume }),
+					cls: 'wn-import-volume'
+				});
+			}
+			lastVolume = chap.volume;
 			const item = this.previewContainer.createDiv({ cls: 'wn-import-item' });
 			
 			const infoDiv = item.createDiv({ cls: 'wn-import-item-info' });

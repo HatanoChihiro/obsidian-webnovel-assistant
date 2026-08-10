@@ -377,6 +377,11 @@ body textarea.wn-corkboard-textarea:focus {
 }
 
 
+.wn-lore-board-cards-grid.is-collapsed {
+	display: none;
+}
+
+
 
 /* Badges for Corkboard Cards */
 .wn-corkboard-card-badges {
@@ -566,7 +571,7 @@ body .wn-corkboard-grid .wn-task-card .wn-task-card-header-right button.wn-task-
 
 
 body .wn-corkboard-grid .wn-task-card .wn-task-card-header-right button.wn-task-complete-btn {
-	background: color-mix(in srgb, var(--interactive-accent) 25%, var(--text-success, var(--color-green, #22c55e)) 75%);
+	background: color-mix(in srgb, var(--interactive-accent) 25%, var(--wn-status-done) 75%);
 }
 
 
@@ -578,7 +583,7 @@ body .wn-corkboard-grid .wn-task-card .wn-task-card-header-right button.wn-task-
 
 
 body .wn-corkboard-grid .wn-task-card .wn-task-card-header-right button.wn-task-complete-btn:hover {
-	background: color-mix(in srgb, var(--interactive-accent) 15%, var(--text-success, var(--color-green, #22c55e)) 85%);
+	background: color-mix(in srgb, var(--interactive-accent) 15%, var(--wn-status-done) 85%);
 	filter: brightness(1.12);
 	color: var(--text-on-accent, #ffffff);
 }

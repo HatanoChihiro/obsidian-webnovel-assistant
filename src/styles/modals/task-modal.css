@@ -1,0 +1,74 @@
+/* ========== Task Modal ========== */
+
+.wn-task-modal-window,
+.wn-task-modal-content {
+	font-family: var(--font-interface);
+	font-size: var(--font-ui-medium);
+	font-weight: var(--font-normal);
+}
+
+.wn-task-modal-input {
+	width: 100%;
+	margin-bottom: 8px;
+	padding: 6px 8px;
+	border-radius: 4px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	color: var(--text-normal);
+	box-sizing: border-box;
+}
+
+.wn-task-modal-label {
+	display: block;
+	margin-bottom: 4px;
+	font-size: var(--font-ui-small);
+	font-weight: 600;
+}
+
+.wn-task-modal-hint {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	margin-bottom: 8px;
+}
+
+.wn-task-modal-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 10px;
+	margin-top: 16px;
+}
+
+.wn-task-modal-type-group {
+	display: flex;
+	gap: 8px;
+	margin-top: 6px;
+	margin-bottom: 12px;
+}
+
+.wn-task-modal-type-option {
+	flex: 1;
+	padding: 6px 12px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	color: var(--text-muted);
+	border-radius: 16px;
+	font-size: var(--font-ui-small);
+	font-weight: 500;
+	cursor: pointer;
+	text-align: center;
+	transition: border-color 0.18s cubic-bezier(0.4, 0, 0.2, 1), background 0.18s cubic-bezier(0.4, 0, 0.2, 1), color 0.18s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.wn-task-modal-type-option:hover {
+	border-color: var(--interactive-accent);
+	color: var(--text-normal);
+	background: color-mix(in srgb, var(--interactive-accent) 8%, var(--background-primary));
+}
+
+.wn-task-modal-type-option.is-active {
+	border-color: var(--interactive-accent);
+	background: var(--interactive-accent);
+	color: var(--text-on-accent, #ffffff);
+	font-weight: 600;
+	box-shadow: 0 2px 6px color-mix(in srgb, var(--interactive-accent) 30%, transparent);
+}

@@ -555,4 +555,3 @@ export class RelationGraphManager {
 			.replace(/`/g, '');
 	}
 }
-

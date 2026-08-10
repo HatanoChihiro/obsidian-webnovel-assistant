@@ -1,7 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { CacheManager } from '../src/services/CacheManager';
 import type { WebNovelAssistantPlugin } from '../src/types/plugin';
-import { TFile } from 'obsidian';
+import { TFile, TFolder } from 'obsidian';
+
+type TestTFileConstructor = new (name: string, path: string) => TFile;
+type TestTFolderConstructor = new (name: string, path: string) => TFolder;
+
+const createTestFile = (name: string, path: string): TFile =>
+    new (TFile as unknown as TestTFileConstructor)(name, path);
+
+const createTestFolder = (name: string, path: string): TFolder =>
+    new (TFolder as unknown as TestTFolderConstructor)(name, path);
 
 describe('CacheManager', () => {
     let mockPlugin: WebNovelAssistantPlugin;
@@ -105,6 +114,32 @@ describe('CacheManager', () => {
     });
 
     describe('Cache Update Logic', () => {
+		it('refreshes entries whose mtime changed and removes stale paths even when counts match', async () => {
+			const book = createTestFolder('Book 1', 'Book 1');
+			const file = createTestFile('Chapter 1.md', 'Book 1/Chapter 1.md');
+			Object.assign(file, { stat: { mtime: 2000 }, parent: book, basename: 'Chapter 1' });
+			manager['cache'].set(file.path, { path: file.path, wordCount: 100, lastModified: 1000, isFolder: false });
+			manager['cache'].set('Book 1/Deleted.md', { path: 'Book 1/Deleted.md', wordCount: 50, lastModified: 1000, isFolder: false });
+			manager['cache'].set('Book 1', { path: 'Book 1', wordCount: 150, lastModified: 1000, isFolder: true });
+			Object.assign(mockPlugin.app.vault, {
+				cachedRead: vi.fn().mockResolvedValue('新的正文'),
+				getAbstractFileByPath: vi.fn()
+			});
+			Object.assign(mockPlugin, {
+				getTrackedMarkdownFiles: vi.fn().mockReturnValue([file]),
+				calculateAccurateWords: vi.fn().mockReturnValue(4),
+				register: vi.fn(),
+				fileExplorerPatcher: { refreshFolderCounts: vi.fn() }
+			});
+
+			await manager.buildFolderCache();
+
+			expect(mockPlugin.app.vault.cachedRead).toHaveBeenCalledWith(file);
+			expect(manager.getFileCache(file.path)).toBe(4);
+			expect(manager.getFileCache('Book 1/Deleted.md')).toBeNull();
+			expect(manager.getFolderWordCount('Book 1')).toBe(4);
+		});
+
         it('updateFileCache should increment root and folder counts properly', () => {
             const bookFolder = { path: 'Book 1', parent: null };
             const file = { path: 'Book 1/Chapter 1.md', name: 'Chapter 1.md', basename: 'Chapter 1', stat: { mtime: 1234 }, parent: bookFolder } as any as TFile;

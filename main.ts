@@ -709,16 +709,18 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	}
 
 	/**
-	 * 从独立文件加载并显示浮动便签
+	 * 从独立文件加载便签数据，并在桌面端显示浮动便签
 	 */
 	public async loadFloatingNotes() {
-		// 仅在桌面端加载浮动便签，移动端/平板端由于交互限制不启用
+		// 所有平台都需要先加载便签数据，移动端/平板端由侧面板使用这些数据。
+		const notes = await this.stickyNoteManager.loadNotes();
+
+		// 仅在桌面端创建浮动便签，移动端/平板端不渲染悬浮便签。
 		if (!isDesktop()) return;
 
 		// 清除可能残留的便签 DOM（如插件上次未正常卸载）
 		activeDocument.body.querySelectorAll('.my-floating-sticky-note').forEach(el => el.remove());
 		this.activeNotes = [];
-		const notes = await this.stickyNoteManager.loadNotes();
 
 		for (const noteState of notes) {
 			// 避免重复加载
@@ -861,7 +863,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		Promise.all([
 			this.settingsManager.flush(),
 			this.stickyNoteManager.saveNotes(this.stickyNoteManager.getNotes()),
-			this.cacheManager.saveCache()
+			this.cacheManager.saveCache(),
+			this.chapterMergeManager.flush()
 		]).catch(e => Logger.error('[WebNovel Assistant] 卸载时数据刷新失败:', e));
 
 		// 6. 调用 ServiceRegistry 统一异步逆序清理所有 Manager

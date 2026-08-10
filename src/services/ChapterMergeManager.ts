@@ -65,13 +65,16 @@ export class ChapterMergeManager {
 	private app: App;
 	/** 内存中存储的草稿缓存 (folderPath -> Draft) */
 	private draftMap: Map<string, ChapterMergeDraft> = new Map();
+	private readonly loadPromise: Promise<void>;
+	private operationQueue: Promise<void> = Promise.resolve();
+	private lastPersistenceError: unknown = null;
 	/** 专属于当前 Vault 插件配置目录下的持久化草稿文件名 */
 	private readonly DRAFT_FILE_NAME = 'merge-drafts.json';
 
 	constructor(plugin: WebNovelAssistantPlugin) {
 		this.plugin = plugin;
 		this.app = plugin.app;
-		void this.loadDraftsFromStorage();
+		this.loadPromise = this.loadDraftsFromStorage();
 	}
 
 	private getDraftFilePath(): string {
@@ -119,7 +122,20 @@ export class ChapterMergeManager {
 			await this.app.vault.adapter.write(path, JSON.stringify(obj, null, 2));
 		} catch (err) {
 			window.console.error('Failed to save merge drafts to vault adapter:', err);
+			throw err;
 		}
+	}
+
+	private enqueueDraftOperation(operation: () => Promise<void>): void {
+		const queued = this.operationQueue.then(async () => {
+			await this.loadPromise;
+			await operation();
+			this.lastPersistenceError = null;
+		});
+		this.operationQueue = queued.catch((error) => {
+			this.lastPersistenceError = error;
+			window.console.error('Failed to persist merge drafts:', error);
+		});
 	}
 
 	/**
@@ -169,7 +185,7 @@ export class ChapterMergeManager {
 			finalContent += item.currentBody.trim();
 
 			await this.app.vault.modify(item.file, finalContent);
-			
+
 			// 重置状态
 			item.originalBody = item.currentBody;
 			item.originalAnnotation = item.annotation;
@@ -231,7 +247,7 @@ export class ChapterMergeManager {
 	}
 
 	/**
-	 * 暂存未应用的修改草稿（含正文修改与精准词句级修订批注卡片，自动写入 LocalStorage 持久化）
+	 * 暂存未应用的修改草稿（含正文修改与精准词句级修订批注卡片，自动写入插件数据文件）
 	 */
 	public saveDraft(
 		folderPath: string,
@@ -279,17 +295,18 @@ export class ChapterMergeManager {
 			revisions: serializedRevisions
 		};
 
-		this.draftMap.set(folderPath, draft);
-		void this.saveDraftsToStorage();
+		this.enqueueDraftOperation(async () => {
+			this.draftMap.set(folderPath, draft);
+			await this.saveDraftsToStorage();
+		});
 	}
 
 	/**
 	 * 加载未应用的草稿（优先取内存，支持从 Vault Adapter 持久化还原）
 	 */
 	public async loadDraft(folderPath: string): Promise<ChapterMergeDraft | null> {
-		if (this.draftMap.size === 0) {
-			await this.loadDraftsFromStorage();
-		}
+		await this.loadPromise;
+		await this.operationQueue;
 		return this.draftMap.get(folderPath) || null;
 	}
 
@@ -297,8 +314,28 @@ export class ChapterMergeManager {
 	 * 清除指定文件夹的草稿缓存（同时同步清理 Vault Adapter 存储文件）
 	 */
 	public clearDraft(folderPath: string): void {
-		this.draftMap.delete(folderPath);
-		void this.saveDraftsToStorage();
+		this.enqueueDraftOperation(async () => {
+			this.draftMap.delete(folderPath);
+			await this.saveDraftsToStorage();
+		});
+	}
+
+	public async flush(): Promise<void> {
+		await this.loadPromise;
+		await this.operationQueue;
+		const persistenceError = this.lastPersistenceError;
+		if (persistenceError) {
+			if (persistenceError instanceof Error) throw persistenceError;
+			throw new Error(
+				typeof persistenceError === 'string'
+					? persistenceError
+					: 'Unknown merge draft persistence error'
+			);
+		}
+	}
+
+	public async destroy(): Promise<void> {
+		await this.flush();
 	}
 
 	/**

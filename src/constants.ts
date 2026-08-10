@@ -97,6 +97,7 @@ export const VIEW_TYPES = {
 	WORKBENCH: 'webnovel-workbench',
 	IMMERSIVE_CHAPTER_LIST: 'immersive-chapter-list-view',
 	IMMERSIVE_STICKY_NOTES: 'immersive-sticky-notes-view',
+	STICKY_NOTE_LIST: 'sticky-note-list-view',
 	RELATION_GRAPH: 'webnovel-relation-graph',
 } as const;
 
@@ -142,6 +143,8 @@ export const REGEX_PATTERNS = {
 	ITALIC: () => /(\*|_)(.*?)\1/g,
 	/** Obsidian 内部链接（工厂函数，避免 g 标志状态残留） */
 	INTERNAL_LINK: () => /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g,
+	/** Obsidian 嵌入资源（图片、音频、PDF 等），字数统计时整体忽略 */
+	EMBEDDED_INTERNAL_LINK: () => /!\[\[[^\]]+\]\]/g,
 	/** 普通链接（工厂函数，避免 g 标志状态残留） */
 	LINK: () => /\[([^\]]*)\]\([^)]*\)/g,
 	/** 图片（工厂函数，避免 g 标志状态残留） */
@@ -222,7 +225,7 @@ export const FLAT_IMMERSIVE_KEYS = [
 	'immersiveShowDailyProgress', 'immersiveShowSessionWords', 'immersiveShowTaskProgress',
 	'immersiveHideProperties',
 	'immersiveTopInternalSizes', 'immersiveBottomInternalSizes', 'immersiveLeftInternalSizes', 'immersiveRightInternalSizes',
-	'immersiveNoteSize', 'immersiveNoteFontSize', 'immersiveLayout'
+	'immersiveNoteFontSize', 'immersiveLayout'
 ];
 
 
@@ -327,7 +330,6 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 
 		immersiveHideProperties: true,
 
-		immersiveNoteSize: 280,
 		immersiveNoteFontSize: 14,
 		immersiveLayout: null,
 

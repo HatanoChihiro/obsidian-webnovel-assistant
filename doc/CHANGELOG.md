@@ -1,3 +1,34 @@
+## 🔧 v3.8.1
+
+### Bug修复
+- 修复了使用第三方插件或CSS代码片段修改行宽后会影响创作主页布局的BUG。
+- 修复了点击写作实时状态面板中的伏笔跳转、专注计时、章节状态和数据入口时，侧面板抢焦点导致首次点击失效以及章节目标字数短暂变化的问题。
+- 修复了工作台新增章节或自动创建下一章时会错误继承上一章标题的问题，现在使用“01 标题”格式时会正确生成不带旧标题的下一章编号。
+
+### 功能优化
+
+- 使用沉浸模式打开非作品文档（不存在锚点文件比如“作品信息.md”的目录）时，现在也支持渲染文件列表，方便更宽泛地使用沉浸模式。
+- 工作台新增章节时，如果作品存在包含章节的卷目录，默认创建到最新卷目录中，并按该卷的章节计算下一章名称。
+- 导入作品现在可以根据默认或自定义章节命名规则识别 Markdown 与纯文本中的卷章结构，并将章节正确整理到对应的卷目录中。
+- 新增“打开便签列表”命令，可在侧面板加载现有便签列表并支持移动端。
+- 便签列表文本大小设置现在位于创作辅助的悬浮便签设置中并支持移动端；沉浸模式下的便签列表会根据区域大小智能排布正方形卡片，空间不足时沿对应方向滚动。
+
+### English Changelog
+
+#### Bug Fixes
+- Fixed a bug where modifying line width via third-party plugins or CSS snippets could affect the Writing Homepage layout.
+- Fixed an issue where clicking foreshadowing jumps, focus timing, chapter status, or data actions in the live writing status panel could lose the first click and temporarily change the chapter goal after the side panel took focus.
+- Fixed an issue where adding a chapter from the Workbench or using Create Next Chapter could incorrectly carry over the previous title; formats such as “01 Title” now generate the next chapter without the old title.
+
+#### Improvements
+- Immersive Mode now also renders a Markdown file list when opened on a non-novel document directory without marker files such as “作品信息.md”, making it useful in more locations.
+- New chapters created from the Workbench now default to the latest volume folder when the novel contains volume folders with chapters, using that volume to determine the next chapter name.
+- Novel imports now recognize volume and chapter structures in Markdown and plain-text files using the default or custom chapter naming rules, and organize chapters into the correct volume folders.
+- Added an “Open Sticky Note List” command to load the existing sticky note list in a side panel, with mobile support.
+- The sticky note list text-size setting is now available under Floating Notes on mobile as well; immersive note lists intelligently arrange square cards and scroll in the appropriate direction when space is limited.
+
+---
+
 ## ✨ v3.8.0
 
 ### 新增独立排版系统
@@ -54,6 +85,7 @@
 - Fixed a bug where the layout shifted slightly upon re-entering Immersive Mode.
 - Fixed a bug where the Lore Graph "Auto-Link Mentions" feature failed to associate lore aliases.
 
+---
 
 ## ✨ v3.7.0
 
@@ -135,6 +167,8 @@
 - **Nested Novel Discovery**: Auto-detect novels inside multi-level nested folders, and fix duplicate chapter cards when workspace folders overlap.
 - **UI Style Polish**: Compacted task card layouts and adjusted timeline chapter card dimensions on mobile and tablet.
 
+---
+
 ## ✨ v3.6.2
 
 ### 官方审查合规修复 (Official Review Compliance)
@@ -145,6 +179,7 @@
 #### Official Review Compliance
 - Removed redundant "in Obsidian" phrasing from `manifest.json` description to comply with official Obsidian review guidelines.
 
+---
 
 ## ✨ v3.6.1 
 
@@ -173,6 +208,7 @@
 - Fixed an issue where bar charts and indicators in the real-time Writing Status Panel did not update in real-time.
 - Fixed a bug where opening a file outside the workspace while Workbench was active caused Workbench to automatically switch its context.
 
+---
 
 ## 🚀 v3.6.0 移动端新增专注计时支持
 
@@ -249,10 +285,14 @@
 - Optimized UI styling for Novel Homepage, Workbench, and Writing Data panel.
 - Fixed various other bugs.
 
+---
+
 ## 🔧 v3.5.6
 
 - 修复了一些代码问题。
 - Fixed some code issues.
+
+---
 
 ## 🔧 v3.5.5
 
@@ -263,6 +303,8 @@
 
 - Fixed a bug where non-chapter documents would also automatically count the number of "Lore" appearances.
 - Fixed a bug where some code triggered official review interception.
+
+---
 
 ## ✨ v3.5.4
 
@@ -311,6 +353,8 @@
 - Fixed a bug where trailing spaces in chapter names prevented unlinking events via the timeline board.
 - Fixed a bug where clicking "Unresolved" foreshadowing in the writing status panel occasionally failed to trigger the jump.
 - Fixed a bug where card dragging in the mobile workbench was unresponsive (some devices might still experience issues, please submit an Issue report).
+
+---
 
 ## 🔧 v3.5.3
 

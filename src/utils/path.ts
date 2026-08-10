@@ -119,6 +119,24 @@ export function findBookRoot(app: App, plugin: WebNovelAssistantPlugin, file: TF
 	return folder.path === '/' ? '' : folder.path;
 }
 
+/**
+ * 从已按工作台顺序排列的章节列表中获取最后一个直系卷目录。
+ * 没有卷层级时返回作品根目录。
+ */
+export function getLatestChapterFolderPath(bookPath: string, files: TFile[]): string {
+	const normalizedBookPath = bookPath === '/' ? '/' : bookPath.replace(/\/+$/, '');
+	let latestFolderPath = normalizedBookPath;
+
+	for (const file of files) {
+		const parent = file.parent;
+		if (!parent || parent.path === normalizedBookPath || parent.path === '/') continue;
+		if (parent.parent?.path !== normalizedBookPath) continue;
+		latestFolderPath = parent.path;
+	}
+
+	return latestFolderPath;
+}
+
 
 /**
  * 智能获取当前全局作品上下文

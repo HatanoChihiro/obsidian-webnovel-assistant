@@ -80,6 +80,12 @@ export class WritingStatusView extends ItemView {
 		return "bar-chart-2";
 	}
 
+	private preventWorkspaceFocus(el: HTMLElement): void {
+		el.addEventListener('mousedown', (event: MouseEvent) => {
+			if (event.button === 0) event.preventDefault();
+		});
+	}
+
 	async onOpen() {
 		const container = this.containerEl.children[1];
 		container.empty();
@@ -97,6 +103,7 @@ export class WritingStatusView extends ItemView {
 
 	private setupCollapsibleCard(titleRow: HTMLElement, titleSpan: HTMLElement, contentContainer: HTMLElement, getOriginalTitle: () => string) {
 		titleRow.addClass('wn-collapsible-title', 'wn-clickable');
+		this.preventWorkspaceFocus(titleRow);
 		let isCollapsed = false;
 		
 		const iconSpan = titleRow.createSpan({ cls: 'wn-collapsible-icon' });
@@ -204,7 +211,8 @@ export class WritingStatusView extends ItemView {
 		this.taskTargetEl = this.taskRowEl.createSpan({ cls: 'goal-target', text: '0' });
 
 		this.taskEventCompleteBtn = this.taskRowEl.createEl('button', { cls: 'status-task-complete-btn', text: t('common.complete-task') });
-		this.taskEventCompleteBtn.setCssProps({ display: 'none' });
+		this.preventWorkspaceFocus(this.taskEventCompleteBtn);
+		this.taskEventCompleteBtn.hidden = true;
 		this.taskEventCompleteBtn.onclick = () => {
 			if (!this.plugin.taskManager) return;
 			const manager = this.plugin.taskManager;
@@ -290,11 +298,13 @@ export class WritingStatusView extends ItemView {
 		const chartTitleRow = chartSection.createDiv({ cls: 'history-chart-title-row' });
 		chartTitleRow.createSpan({ text: t('common.recent-7days-writing'), cls: 'history-chart-title' });
 		const chartLink = chartTitleRow.createSpan({ text: t('common.details'), cls: 'history-chart-subtitle' });
+		this.preventWorkspaceFocus(chartLink);
 		chartLink.onclick = () => {
 			new HistoryStatsModal(this.plugin.app, this.plugin).open();
 		};
 
 		this.miniChartEl = chartSection.createDiv({ cls: 'mini-chart-container' });
+		this.preventWorkspaceFocus(this.miniChartEl);
 		this.miniChartEl.onclick = () => {
 			new HistoryStatsModal(this.plugin.app, this.plugin).open();
 		};
@@ -485,8 +495,8 @@ export class WritingStatusView extends ItemView {
 		const dailyState = coreStats.rawDailyWords < 0 ? 'negative' : dailyDone ? 'done' : 'normal';
 		this.setProgressState(this.dailyProgressFillEl, this.dailyWordEl, this.dailyPercentEl, dailyState, Math.max(0, dailyPercent));
 
-		const activeMarkdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
-		const isEligibleChapter = !!(activeMarkdownView?.file && this.plugin.cacheManager.isEligibleForWordCount(activeMarkdownView.file));
+		const activeMarkdownFile = this.app.workspace.getActiveViewOfType(MarkdownView)?.file ?? this.currentChapterFile;
+		const isEligibleChapter = !!(activeMarkdownFile && this.plugin.cacheManager.isEligibleForWordCount(activeMarkdownFile));
 
 		if (this.chapterSectionEls) {
 			for (const el of this.chapterSectionEls) {
@@ -534,22 +544,22 @@ export class WritingStatusView extends ItemView {
 						} else {
 							this.taskWordEl.createDiv({ cls: 'event-task-title', text: titleText });
 						}
-						this.taskSeparatorEl.setCssProps({ display: 'none' });
-						this.taskTargetEl.setCssProps({ display: 'none' });
-						this.taskPercentEl.setCssProps({ display: 'none' });
-						this.taskProgressFillEl.parentElement?.setCssProps({ display: 'none' });
-						this.taskEventCompleteBtn.setCssProps({ display: 'block' });
+						this.taskSeparatorEl.hidden = true;
+						this.taskTargetEl.hidden = true;
+						this.taskPercentEl.hidden = true;
+						if (this.taskProgressFillEl.parentElement) this.taskProgressFillEl.parentElement.hidden = true;
+						this.taskEventCompleteBtn.hidden = false;
 						const daysLeft = Math.max(0, window.moment(active.endDate).diff(window.moment().startOf('day'), 'days') + 1);
 						const endShort = active.endDate.substring(5);
 						this.taskTimeDescEl.setText(t('common.task-deadline-remaining', { date: endShort, days: String(daysLeft) }));
 						this.taskTimeDescEl.removeClass('task-reached');
 					} else {
 						this.taskRowEl.removeClass('is-event-task');
-						this.taskSeparatorEl.setCssProps({ display: 'inline' });
-						this.taskTargetEl.setCssProps({ display: 'inline' });
-						this.taskPercentEl.setCssProps({ display: 'inline' });
-						this.taskProgressFillEl.parentElement?.setCssProps({ display: 'block' });
-						this.taskEventCompleteBtn.setCssProps({ display: 'none' });
+						this.taskSeparatorEl.hidden = false;
+						this.taskTargetEl.hidden = false;
+						this.taskPercentEl.hidden = false;
+						if (this.taskProgressFillEl.parentElement) this.taskProgressFillEl.parentElement.hidden = false;
+						this.taskEventCompleteBtn.hidden = true;
 						const progress = manager.calcProgress(active);
 						const taskPercent = active.wordTarget > 0 ? Math.min(Math.round((progress / active.wordTarget) * 100), 100) : 0;
 						this.taskWordEl.innerText = progress.toLocaleString();
@@ -596,7 +606,7 @@ export class WritingStatusView extends ItemView {
 	private async updateChapterStatus() {
 		if (!this.chapterStatusCardEl || !this.chapterBadgesContainer) return;
 
-		const file = this.app.workspace.getActiveFile();
+		const file = this.app.workspace.getActiveViewOfType(MarkdownView)?.file ?? this.currentChapterFile;
 		if (!file || file.extension !== 'md') {
 			this.currentChapterFile = null;
 			this.lastChapterMtime = -1;
@@ -717,6 +727,7 @@ export class WritingStatusView extends ItemView {
 		// 点击伏笔条目，跳转到正文中对应文本位置
 		const setupJumpEvent = (el: HTMLElement, primarySearch: string, fallbackSearch?: string) => {
 			el.addClass('wn-clickable');
+			this.preventWorkspaceFocus(el);
 			el.addEventListener('click', (e) => {
 				e.stopPropagation();
 				e.preventDefault();

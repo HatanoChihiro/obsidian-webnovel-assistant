@@ -243,6 +243,20 @@ if (fs.existsSync(cssPath)) {
 			hasErrors = true;
 		}
 
+		// 官方审查 Warning: css-text-indent 在 Obsidian 1.7.4 部分支持
+		// 修复方案：阅读模式段落首行缩进用 padding-inline-start，CM6 编辑器行用 ::before 伪元素，重置用 padding-inline-start: 0
+		if (/\btext-indent\s*:/.test(line)) {
+			console.error(`❌ [Warning] Unexpected browser feature "css-text-indent" is only partially supported by Obsidian 1.7.4 in styles.css:${index + 1}. Use 'padding-inline-start' for block elements or '::before { display: inline-block; width: ... }' for CM6 lines instead.`);
+			hasErrors = true;
+		}
+
+		// 官方审查 Warning: :has 伪类可能导致严重性能问题（selector invalidation 大范围失效）
+		// 修复方案：改用 JS 动态注入类名（如 .wn-empty-p、.wn-soft-break-spacer）替代 CSS 端的 :has 被动兜底
+		if (/:has\s*\(/.test(line) && !line.trim().startsWith('/*')) {
+			console.error(`❌ [Warning] Avoid :has — it can cause significant performance issues due to broad selector invalidation in styles.css:${index + 1}. Use JS-injected class names instead.`);
+			hasErrors = true;
+		}
+
 		if (line.includes('{')) {
 			inBlock = true;
 			propsInBlock = {};

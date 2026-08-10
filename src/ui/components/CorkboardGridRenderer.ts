@@ -44,7 +44,7 @@ export class CorkboardGridRenderer {
 		}
 
 		for (const group of volumeGroups) {
-			const cardContainers: HTMLElement[] = [];
+			const cards: HTMLElement[] = [];
 
 			if (group.volume !== '' && !options.hideVolumeHeaders) {
 				const header = container.createDiv('wn-corkboard-volume-header wn-clickable');
@@ -53,16 +53,13 @@ export class CorkboardGridRenderer {
 				header.createSpan({ text: `${group.volume} (${group.files.length})`, cls: 'wn-volume-header-title' });
 
 				for (const file of group.files) {
-					// 创建承载单个卡片的容器，便于整卷批量隐藏/恢复
-					const cardWrapper = container.createDiv('wn-corkboard-card-wrapper');
-					cardWrapper.setCssProps({ display: 'contents' });
-					ChapterCard.render(cardWrapper, file, app, plugin, foreshadowingMap.get(file.basename) || [], {
+					const card = ChapterCard.render(container, file, app, plugin, foreshadowingMap.get(file.basename) || [], {
 						draggable,
 						onSaveStateChange,
 						currentBookPath,
 						maxLoreLines
 					});
-					cardContainers.push(cardWrapper);
+					cards.push(card);
 				}
 
 				header.onclick = () => {
@@ -70,11 +67,11 @@ export class CorkboardGridRenderer {
 					if (isCollapsed) {
 						header.removeClass('is-collapsed');
 						setIcon(iconSpan, 'chevron-down');
-						cardContainers.forEach(wrapper => wrapper.setCssProps({ display: 'contents' }));
+						cards.forEach(card => { card.hidden = false; });
 					} else {
 						header.addClass('is-collapsed');
 						setIcon(iconSpan, 'chevron-right');
-						cardContainers.forEach(wrapper => wrapper.setCssProps({ display: 'none' }));
+						cards.forEach(card => { card.hidden = true; });
 					}
 				};
 			} else {

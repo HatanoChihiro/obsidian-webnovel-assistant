@@ -83,7 +83,7 @@ export class LoreCardRenderer {
 			const scrollRatio = currentScrollTop / scrollHeightBefore;
 
 			const oldContentEls = Array.from(body.children);
-			oldContentEls.forEach((el) => (el as HTMLElement).setCssStyles({ display: 'none' }));
+			oldContentEls.forEach((el) => { (el as HTMLElement).hidden = true; });
 
 			const editorContainer = body.createDiv({ cls: 'wn-lore-card-editor' });
 			const textarea = editorContainer.createEl('textarea', { cls: 'wn-lore-card-textarea' });
@@ -118,7 +118,7 @@ export class LoreCardRenderer {
 
 			const exitEdit = () => {
 				editorContainer.remove();
-				oldContentEls.forEach((el) => (el as HTMLElement).setCssStyles({ display: '' }));
+				oldContentEls.forEach((el) => { (el as HTMLElement).hidden = false; });
 				isEditing = false;
 				if (options.draggable) card.setAttribute('draggable', 'true');
 			};

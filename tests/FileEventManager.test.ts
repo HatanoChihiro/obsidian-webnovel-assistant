@@ -118,5 +118,19 @@ describe('FileEventManager', () => {
 
 		expect(mockPlugin.cacheManager.invalidateCache).toHaveBeenCalledWith('Novel/old.md', mockPlugin.app.vault);
 		expect(mockPlugin.cacheManager.updateFileCache).toHaveBeenCalledWith(testFile, 50, mockPlugin.app.vault);
+		expect(mockPlugin.updateFileCacheAndRefresh).not.toHaveBeenCalled();
+	});
+
+	it('should refresh a renamed markdown file when no previous cache exists', () => {
+		mockPlugin.cacheManager.getFileCache.mockReturnValue(null);
+		const manager = new FileEventManager(mockPlugin);
+		manager.setup();
+
+		const renameHandler = vaultEvents['rename'];
+		const testFile = new TFile('new.md', 'Novel/new.md');
+
+		renameHandler(testFile, 'Novel/old.md');
+
+		expect(mockPlugin.updateFileCacheAndRefresh).toHaveBeenCalledWith(testFile);
 	});
 });

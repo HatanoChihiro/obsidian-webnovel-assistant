@@ -106,4 +106,15 @@ describe('EditorTracker', () => {
 
 		expect(mockPlugin.statusBarItemEl.setText).toHaveBeenCalledWith('');
 	});
+
+	it('should preserve the tracked chapter when a side panel has focus', async () => {
+		mockApp.workspace.getActiveViewOfType.mockReturnValue(null);
+		const tracker = new EditorTracker(mockApp, mockPlugin);
+
+		await tracker.handleFileChange();
+
+		expect(mockPlugin.lastFilePath).toBe('Novel/chapter1.md');
+		expect(mockPlugin.lastFileWords).toBe(10);
+		expect(mockPlugin.refreshStatusViews).toHaveBeenCalled();
+	});
 });
