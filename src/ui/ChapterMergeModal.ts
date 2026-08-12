@@ -120,6 +120,7 @@ export class ChapterMergeModal extends Modal {
 
 	/** 是否正在执行提交保存操作，防止重复关闭拦截 */
 	private isSubmitting: boolean = false;
+	private typographyPreviewElement: HTMLElement | null = null;
 
 	constructor(app: typeof plugin.app, plugin: WebNovelAssistantPlugin, folder: TFolder) {
 		super(app);
@@ -131,10 +132,11 @@ export class ChapterMergeModal extends Modal {
 		const { contentEl, modalEl } = this;
 		contentEl.empty();
 
-		// 为 Modal 根容器添加三栏宽屏 CSS 类名与排版变量
+		// 为 Modal 根容器添加三栏宽屏 CSS 类名，并接入排版设置实时刷新
 		modalEl.addClass('wn-merge-modal-window');
 		contentEl.addClass('wn-merge-modal-content');
-		this.applyTypographyToModal(modalEl);
+		this.typographyPreviewElement = modalEl;
+		this.plugin.typographyManager.registerPreviewElement(modalEl);
 
 		// 加载章节数据
 		this.items = await this.plugin.chapterMergeManager.loadFolderChapters(this.folder);
@@ -833,6 +835,11 @@ export class ChapterMergeModal extends Modal {
 	 * 关闭时的二次确认防护逻辑
 	 */
 	onClose(): void {
+		if (this.typographyPreviewElement) {
+			this.plugin.typographyManager.unregisterPreviewElement(this.typographyPreviewElement);
+			this.typographyPreviewElement = null;
+		}
+
 		// 如果正在提交保存，直接清理
 		if (this.isSubmitting) {
 			this.contentEl.empty();
@@ -848,20 +855,4 @@ export class ChapterMergeModal extends Modal {
 		this.contentEl.empty();
 	}
 
-	/**
-	 * 将排版设置应用的 CSS 变量和 Class 注入预览 Modal
-	 */
-	private applyTypographyToModal(containerEl: HTMLElement): void {
-		const typo = this.plugin.settings.typography;
-		if (!typo) return;
-
-		containerEl.addClass('wn-typography-active');
-
-		containerEl.style.setProperty('--wn-type-header-align', typo.headerAlignment || 'center');
-		containerEl.style.setProperty('--wn-type-indent', typo.enableIndent ? (typo.indentSize || '2em') : '0');
-		containerEl.style.setProperty('--wn-type-line-height', String(typo.lineHeight || 1.8));
-		containerEl.style.setProperty('--wn-type-para-spacing', typo.paragraphSpacing || '0.5em');
-		containerEl.style.setProperty('--wn-type-letter-spacing', typo.letterSpacing || '0.05em');
-		containerEl.style.setProperty('--wn-type-text-align', typo.justifyText ? 'justify' : 'left');
-	}
 }

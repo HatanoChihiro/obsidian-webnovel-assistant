@@ -308,3 +308,57 @@
 .wn-lore-markdown .is-hidden {
 	display: none;
 }
+/* ========== Lore board utility styles (extracted from common.css) ========== */
+
+/* Lore Board: File Tabs */
+
+.wn-lore-file-tabs {
+	display: flex;
+	flex-wrap: nowrap;
+	align-items: center;
+	gap: 6px;
+	padding: 0 16px 12px;
+	overflow-x: auto;
+	scrollbar-width: thin;
+}
+
+.wn-lore-file-tab {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	flex: 0 0 auto;
+	padding: 5px 12px;
+	border-radius: 8px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+	color: var(--text-muted);
+	font-size: 0.85em;
+	cursor: pointer;
+	user-select: none;
+	white-space: nowrap;
+	transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.wn-lore-file-tab:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.wn-lore-file-tab.is-active {
+	background: var(--background-primary);
+	color: var(--text-normal);
+}
+
+.wn-lore-file-tab-count {
+	font-size: 0.75em;
+	line-height: 1;
+	padding: 2px 7px;
+	border-radius: 10px;
+	background: color-mix(in srgb, var(--interactive-accent) 15%, transparent);
+	color: var(--text-muted);
+}
+
+.wn-lore-file-tab.is-active .wn-lore-file-tab-count {
+	background: color-mix(in srgb, var(--interactive-accent) 22%, transparent);
+	color: var(--text-normal);
+}

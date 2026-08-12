@@ -341,14 +341,6 @@
 }
 
 
-.wn-timeline-form-title {
-	font-weight: 600;
-	font-size: 1.0em;
-	margin-bottom: 8px;
-	color: var(--text-normal);
-}
-
-
 .wn-timeline-form-label {
 	display: block;
 	font-size: 0.85em;
@@ -464,6 +456,7 @@
 .wn-corkboard-new-lore-btn,
 .wn-corkboard-new-task-btn,
 .wn-corkboard-new-sticky-btn,
+.wn-corkboard-merge-chapters-btn,
 .wn-corkboard-novel-status-btn,
 .wn-timeline-add-node-btn {
 	display: inline-block;
@@ -483,6 +476,7 @@
 .wn-corkboard-new-lore-btn:hover,
 .wn-corkboard-new-task-btn:hover,
 .wn-corkboard-new-sticky-btn:hover,
+.wn-corkboard-merge-chapters-btn:hover,
 .wn-corkboard-novel-status-btn:hover,
 .wn-timeline-add-node-btn:hover {
 	filter: brightness(1.1);
@@ -604,6 +598,16 @@
 	cursor: text;
 	transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
 	z-index: 1;
+}
+
+
+.wn-timeline-item-desc.is-editing {
+	overflow-y: auto;
+}
+
+
+.wn-timeline-item-desc.is-editing .wn-corkboard-textarea {
+	overflow: hidden;
 }
 
 
@@ -984,4 +988,96 @@ body .wn-timeline-waterfall-layout .wn-timeline-waterfall-sidebar.drag-over-chap
 	border-bottom: 2px dashed var(--interactive-accent);
 	z-index: 10;
 	pointer-events: none;
+}
+/* ========== Timeline form and utility styles (extracted from common.css) ========== */
+
+/* -- TimelineView / TimelineAddModal -- */
+
+.webnovel-tl-chapter-row {
+	display: flex;
+	gap: 8px;
+	margin-bottom: 8px;
+	align-items: center;
+}
+
+.webnovel-tl-chapter-row-sm {
+	display: flex;
+	gap: 8px;
+	margin-bottom: 4px;
+	align-items: center;
+}
+
+.webnovel-tl-remove-btn {
+	width: 32px;
+	height: 32px;
+	padding: 0;
+	border-radius: 4px;
+	background: var(--background-modifier-error);
+	color: var(--text-on-accent);
+	border: none;
+	cursor: pointer;
+	font-size: 20px;
+	line-height: 1;
+}
+
+.webnovel-tl-remove-btn-sm {
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	border-radius: 4px;
+	background: var(--background-modifier-error);
+	color: var(--text-on-accent);
+	border: none;
+	cursor: pointer;
+	font-size: 16px;
+}
+
+.webnovel-tl-add-btn {
+	width: 100%;
+	padding: 8px;
+	border-radius: 4px;
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border: none;
+	cursor: pointer;
+	margin-top: 4px;
+}
+
+.webnovel-tl-add-btn-sm {
+	width: 100%;
+	padding: 4px;
+	border-radius: 4px;
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border: none;
+	cursor: pointer;
+	font-size: 12px;
+	margin-top: 4px;
+}
+
+.webnovel-tl-desc-input-edit {
+	margin-bottom: 8px;
+	height: 60px;
+}
+
+.webnovel-tl-delete-event-btn {
+	width: 100%;
+	padding: 8px;
+	border-radius: 4px;
+	background: var(--background-modifier-error);
+	color: var(--text-on-accent);
+	border: none;
+	cursor: pointer;
+	margin-top: 8px;
+}
+
+.webnovel-tl-add-event-btn {
+	width: 100%;
+	padding: 8px;
+	border-radius: 4px;
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border: none;
+	cursor: pointer;
+	margin-top: 8px;
 }

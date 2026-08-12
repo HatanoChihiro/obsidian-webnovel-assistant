@@ -500,13 +500,7 @@ export class ForeshadowingBoardRenderer {
 	): Promise<void> {
 		if (!chapterName) return;
 
-		const targetFiles = ChapterSorter.getAllChapters(app, plugin, currentBookPath);
-		const cleanTarget = chapterName.toLowerCase().replace(/\.md$/, '').trim();
-
-		const file = targetFiles.find((f: TFile) => {
-			const cleanBase = f.basename.toLowerCase().trim();
-			return cleanBase === cleanTarget || cleanBase.includes(cleanTarget) || cleanTarget.includes(cleanBase);
-		});
+		const file = ChapterSorter.findChapterByName(app, plugin, currentBookPath, chapterName);
 
 		if (!file) {
 			new Notice(t('corkboard.lore-not-found') || `未找到章节「${chapterName}」`);

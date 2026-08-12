@@ -31,6 +31,7 @@ describe('FileEventManager', () => {
 			registerEvent: vi.fn(),
 			cacheManager: {
 				isEligibleForWordCount: vi.fn().mockReturnValue(true),
+				isEligibleForTotalWordCount: vi.fn().mockReturnValue(true),
 				isFileInWorkspace: vi.fn().mockReturnValue(true),
 				updateFileCache: vi.fn().mockReturnValue(100),
 				getFileCache: vi.fn().mockReturnValue(50),
@@ -64,7 +65,7 @@ describe('FileEventManager', () => {
 	});
 
 	it('should early-return on modify for non-eligible files', async () => {
-		mockPlugin.cacheManager.isEligibleForWordCount.mockReturnValue(false);
+		mockPlugin.cacheManager.isEligibleForTotalWordCount.mockReturnValue(false);
 		const manager = new FileEventManager(mockPlugin);
 		manager.setup();
 
@@ -88,9 +89,24 @@ describe('FileEventManager', () => {
 		expect(mockPlugin.app.vault.read).toHaveBeenCalledWith(testFile);
 		expect(mockPlugin.cacheManager.updateFileCache).toHaveBeenCalled();
 		expect(mockPlugin.refreshFolderCounts).toHaveBeenCalled();
+		expect(mockPlugin.app.workspace.trigger).not.toHaveBeenCalled();
 	});
 
-	it('should handle file deletion and invalidate cache', () => {
+	it('should update cache without recording writing data for an external file modification', async () => {
+		const manager = new FileEventManager(mockPlugin);
+		manager.setup();
+
+		const modifyHandler = vaultEvents['modify'];
+		const testFile = new TFile('第1章.md', 'Novel/第1章.md');
+
+		await modifyHandler(testFile);
+
+		expect(mockPlugin.cacheManager.updateFileCache).toHaveBeenCalledWith(testFile, 100, mockPlugin.app.vault);
+		expect(mockPlugin.refreshFolderCounts).toHaveBeenCalled();
+		expect(mockPlugin.app.workspace.trigger).not.toHaveBeenCalled();
+	});
+
+	it('should invalidate cache without recording negative writing data for file deletion', () => {
 		const manager = new FileEventManager(mockPlugin);
 		manager.setup();
 
@@ -100,11 +116,8 @@ describe('FileEventManager', () => {
 		deleteHandler(testFile);
 
 		expect(mockPlugin.cacheManager.invalidateCache).toHaveBeenCalledWith('Novel/chapter1.md', mockPlugin.app.vault);
-		expect(mockPlugin.app.workspace.trigger).toHaveBeenCalledWith(
-			'webnovel:file-word-count-updated',
-			testFile,
-			-50
-		);
+		expect(mockPlugin.refreshFolderCounts).toHaveBeenCalled();
+		expect(mockPlugin.app.workspace.trigger).not.toHaveBeenCalled();
 	});
 
 	it('should handle file renaming and update cache', () => {

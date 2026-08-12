@@ -1,4 +1,4 @@
-import type { App, TAbstractFile } from 'obsidian';
+import type { App, TAbstractFile, WorkspaceLeaf } from 'obsidian';
 import { Modal, Setting, TFolder, TFile, Vault, MarkdownView, prepareSimpleSearch } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ChapterSorter } from '../services/ChapterSorter';
@@ -13,7 +13,7 @@ export class AdvancedSearchModal extends Modal {
 	resultsContainer!: HTMLElement;
 	customScopeContainer!: HTMLElement;
 	
-	constructor(app: App, plugin: WebNovelAssistantPlugin) {
+	constructor(app: App, plugin: WebNovelAssistantPlugin, private sourceLeaf: WorkspaceLeaf | null = null) {
 		super(app);
 		this.plugin = plugin;
 		this.query = this.plugin.settings.advancedSearchQuery || '';
@@ -257,8 +257,18 @@ export class AdvancedSearchModal extends Modal {
 		return rootItems;
 	}
 
+	private getSourceMarkdownView(): MarkdownView | null {
+		const view = this.sourceLeaf?.view as (MarkdownView & { getViewType?: () => string }) | undefined;
+		if (!view) return null;
+		if (typeof view.getViewType === 'function' && view.getViewType() !== 'markdown') return null;
+		return view.file ? view : null;
+	}
+
 	private getCurrentBookPath(): string | null {
-		let activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+		let activeView = this.getSourceMarkdownView();
+		if (!activeView) {
+			activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+		}
 		
 		if (!activeView) {
 			const mdLeaves = this.app.workspace.getLeavesOfType('markdown');
@@ -280,6 +290,18 @@ export class AdvancedSearchModal extends Modal {
 		
 		const root = findBookRoot(this.app, this.plugin, activeView.file);
 		return root || null;
+	}
+
+	private getSearchLeaf(): WorkspaceLeaf | null {
+		if (this.sourceLeaf && this.getSourceMarkdownView()) return this.sourceLeaf;
+		const markdownLeaves = this.app.workspace.getLeavesOfType('markdown');
+		return markdownLeaves.find(leaf => leaf.active) || markdownLeaves[0] || this.app.workspace.getLeaf(false);
+	}
+
+	private openSearchResult(file: TFile, line: number): void {
+		const leaf = this.getSearchLeaf();
+		if (!leaf) return;
+		void leaf.openFile(file, { eState: { line } });
 	}
 
 	private async executeSearch() {
@@ -401,8 +423,7 @@ export class AdvancedSearchModal extends Modal {
 
 				// 点击跳转
 				matchEl.addEventListener('click', () => {
-					const leaf = this.app.workspace.getLeaf(false); // 在当前活动叶子节点打开
-					void leaf.openFile(result.file, { eState: { line: snippet.linesBefore } });
+					this.openSearchResult(result.file, snippet.linesBefore);
 					// 用户要求点击后不默认关闭面板
 					// this.close();
 				});

@@ -19,7 +19,9 @@ describe('TypographyManager', () => {
 					applyToNovelInfo: true,
 					applyToTimeline: true,
 					applyToForeshadowing: true,
-					applyToTask: true
+					applyToTask: true,
+					enableBodyFontSize: true,
+					bodyFontSize: 20
 				}
 			},
 			cacheManager: {
@@ -30,6 +32,40 @@ describe('TypographyManager', () => {
 		} as unknown as WebNovelAssistantPlugin;
 
 		manager = new TypographyManager({ workspace: { getLeavesOfType: () => [] } } as any, mockPlugin);
+	});
+
+	it('applies body font size only through the typography variable on registered previews', () => {
+		const setProperty = vi.fn();
+		const removeProperty = vi.fn();
+		const preview = {
+			addClass: vi.fn(),
+			removeClass: vi.fn(),
+			style: { setProperty, removeProperty }
+		} as unknown as HTMLElement;
+
+		manager.registerPreviewElement(preview);
+		expect(setProperty).toHaveBeenCalledWith('--wn-type-font-size', '20px');
+
+		mockPlugin.settings.typography.bodyFontSize = 24;
+		manager.updateTypography();
+		expect(setProperty).toHaveBeenCalledWith('--wn-type-font-size', '24px');
+
+		manager.unregisterPreviewElement(preview);
+		expect(removeProperty).toHaveBeenCalledWith('--wn-type-font-size');
+	});
+
+	it('removes the custom font-size variable when body size control is disabled', () => {
+		const removeProperty = vi.fn();
+		const preview = {
+			addClass: vi.fn(),
+			removeClass: vi.fn(),
+			style: { setProperty: vi.fn(), removeProperty }
+		} as unknown as HTMLElement;
+
+		mockPlugin.settings.typography.enableBodyFontSize = false;
+		manager.registerPreviewElement(preview);
+
+		expect(removeProperty).toHaveBeenCalledWith('--wn-type-font-size');
 	});
 
 	it('should apply typography to chapter files INSIDE workspace', () => {

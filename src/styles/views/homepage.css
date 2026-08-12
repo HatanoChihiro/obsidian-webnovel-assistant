@@ -1,0 +1,504 @@
+/* ========== Homepage view styles ========== */
+
+/* ==========================================
+
+   Creative Homepage - Welcome/Serializing/Completed specific, data area reuses HistoryModal class names
+
+   ========================================== */
+
+/* Welcome Area */
+
+/* Homepage layout */
+
+.homepage-welcome-section {
+	margin-bottom: 16px;
+}
+
+.homepage-welcome-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 12px;
+}
+
+.homepage-welcome-title {
+	font-size: 1.35em;
+	font-weight: 700;
+	color: var(--interactive-accent);
+	display: flex;
+	align-items: center;
+}
+
+.homepage-welcome-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	margin-right: 10px;
+	color: var(--interactive-accent);
+	opacity: 0.8;
+}
+
+.homepage-welcome-icon svg {
+	width: 22px;
+	height: 22px;
+}
+
+.homepage-progress-row {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-bottom: 12px;
+}
+
+.homepage-progress-label {
+	font-size: 0.85em;
+	color: var(--text-muted);
+}
+
+.homepage-progress-value {
+	font-size: 1.35em;
+	font-weight: 700;
+	color: var(--interactive-accent);
+	font-family: var(--font-monospace);
+	font-variant-numeric: tabular-nums;
+}
+
+.homepage-progress-separator {
+	width: 1px;
+	height: 30px;
+	background: var(--background-modifier-border);
+	margin: 0 8px;
+}
+
+.homepage-desktop-actions,
+.homepage-phone-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-left: auto;
+}
+
+.homepage-add-novel-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 0.85em;
+	padding: 4px 12px;
+	border-radius: 4px;
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	cursor: pointer;
+	font-weight: 500;
+	transition: filter 0.2s;
+}
+
+.homepage-add-novel-btn:hover {
+	filter: brightness(1.1);
+}
+
+.homepage-add-novel-btn.desktop-add-btn {
+	display: inline-flex;
+}
+
+.homepage-add-novel-btn.phone-add-btn {
+	display: none;
+}
+
+.homepage-progress-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+/* Serializing list */
+
+.homepage-ongoing-item {
+	background: linear-gradient(135deg, color-mix(in srgb, var(--interactive-accent) 8%, color-mix(in srgb, var(--background-secondary) 50%, transparent)), color-mix(in srgb, var(--background-secondary) 50%, transparent));
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
+	border-radius: 12px;
+	padding: 18px 22px;
+	border: 1px solid var(--background-modifier-border);
+	border-left: 4px solid var(--interactive-accent);
+	margin-bottom: 16px;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+	transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.homepage-ongoing-item:hover {
+	transform: translateY(-2px);
+	box-shadow: 0 8px 16px rgba(0, 0, 0, 0.08);
+}
+
+.homepage-ongoing-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+}
+
+.homepage-ongoing-progress-bar-bg {
+	width: 100%;
+	height: 4px;
+	background: color-mix(in srgb, var(--background-modifier-border) 60%, transparent);
+	border-radius: 2px;
+	overflow: hidden;
+	margin: 2px 0;
+	box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.homepage-ongoing-progress-bar-fill {
+	height: 100%;
+	background: linear-gradient(90deg, color-mix(in srgb, var(--interactive-accent) 70%, transparent), var(--interactive-accent));
+	border-radius: 2px;
+	transition: width 0.3s ease;
+	box-shadow: 0 0 4px color-mix(in srgb, var(--interactive-accent) 50%, transparent);
+}
+
+.homepage-ongoing-name {
+	font-size: 1.15em;
+	font-weight: 700;
+	cursor: pointer;
+	color: var(--text-normal);
+	transition: color 0.2s;
+}
+
+.homepage-ongoing-name:hover {
+	color: var(--interactive-accent);
+}
+
+.homepage-ongoing-count {
+	font-size: 0.9em;
+	font-weight: 600;
+	font-family: var(--font-monospace);
+	font-variant-numeric: tabular-nums;
+	color: var(--interactive-accent);
+	background: color-mix(in srgb, var(--interactive-accent) 15%, transparent);
+	padding: 4px 10px;
+	border-radius: 20px;
+}
+
+.homepage-ongoing-task {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin-top: 18px;
+}
+
+.homepage-task-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	font-size: 0.85em;
+}
+
+.homepage-task-left-wrapper {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.homepage-task-title-inline {
+	color: var(--text-muted);
+	font-weight: 600;
+}
+
+.homepage-task-period {
+	color: var(--text-normal);
+	font-weight: 600;
+	background: var(--background-modifier-hover);
+	padding: 2px 8px;
+	border-radius: 4px;
+}
+
+.homepage-task-progress {
+	color: var(--text-muted);
+	font-family: var(--font-monospace);
+	font-variant-numeric: tabular-nums;
+}
+
+.homepage-task-sub {
+	font-size: 0.8em;
+	color: var(--text-faint);
+}
+
+.homepage-task-days {
+	color: color-mix(in srgb, var(--interactive-accent) 40%, var(--text-warning, var(--interactive-accent)) 60%);
+}
+
+.homepage-task-daily {
+	color: color-mix(in srgb, var(--interactive-accent) 40%, var(--text-error, var(--interactive-accent)) 60%);
+}
+
+/* Drafting/Paused cards */
+
+.homepage-drafting-card {
+	border-top-color: color-mix(in srgb, var(--interactive-accent) 70%, var(--text-accent, var(--interactive-accent)));
+	background: linear-gradient(145deg, color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 70%, var(--text-accent, var(--interactive-accent))) 10%, color-mix(in srgb, var(--background-secondary) 50%, transparent)), color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 70%, var(--text-accent, var(--interactive-accent))) 2%, color-mix(in srgb, var(--background-secondary) 50%, transparent)));
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
+}
+
+.homepage-paused-card {
+	border-top-color: var(--text-muted);
+	background: linear-gradient(145deg, color-mix(in srgb, var(--text-muted) 6%, color-mix(in srgb, var(--background-secondary) 50%, transparent)), color-mix(in srgb, var(--text-muted) 1%, color-mix(in srgb, var(--background-secondary) 50%, transparent)));
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
+}
+
+/* Completed cards grid */
+
+.homepage-completed-grid {
+	display: flex;
+	gap: 16px;
+	overflow-x: overlay;
+	scrollbar-width: thin;
+	scrollbar-color: transparent transparent;
+	margin-bottom: -6px;
+	transition: scrollbar-color 0.3s;
+}
+
+.homepage-completed-grid:hover {
+	scrollbar-color: color-mix(in srgb, var(--interactive-accent) 50%, transparent) transparent;
+}
+
+.homepage-completed-grid::-webkit-scrollbar {
+	height: 6px;
+}
+
+.homepage-completed-grid::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.homepage-completed-grid::-webkit-scrollbar-thumb {
+	background: transparent;
+	border-radius: 3px;
+}
+
+.homepage-completed-grid:hover::-webkit-scrollbar-thumb {
+	background: color-mix(in srgb, var(--interactive-accent) 50%, transparent);
+}
+
+.homepage-completed-card {
+	min-width: 160px;
+	flex: 0 0 160px;
+	max-width: 160px;
+	background: linear-gradient(145deg, color-mix(in srgb, var(--interactive-accent) 8%, color-mix(in srgb, var(--background-secondary) 50%, transparent)), color-mix(in srgb, var(--interactive-accent) 2%, color-mix(in srgb, var(--background-secondary) 50%, transparent)));
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
+	border-radius: 8px;
+	padding: 14px 18px;
+	border-top: 3px solid var(--interactive-accent);
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 2px 4px rgba(0, 0, 0, 0.02);
+	transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.homepage-completed-card:hover {
+	transform: translateY(-2px);
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 6px 12px rgba(0, 0, 0, 0.05);
+}
+
+.homepage-completed-name {
+	font-size: 1.0em;
+	font-weight: 600;
+	cursor: pointer;
+	color: var(--text-normal);
+	margin-bottom: 10px;
+	transition: color 0.2s;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.homepage-completed-name:hover {
+	color: var(--interactive-accent);
+}
+
+.homepage-completed-field {
+	display: flex;
+	justify-content: space-between;
+	margin-bottom: 4px;
+}
+
+.homepage-field-label {
+	font-size: 0.8em;
+	color: var(--text-muted);
+}
+
+.homepage-field-value {
+	font-size: 0.85em;
+	color: var(--text-normal);
+	font-family: var(--font-text);
+	font-variant-numeric: tabular-nums;
+}
+
+.homepage-completed-synopsis {
+	font-size: 0.85em;
+	color: var(--text-muted);
+	line-height: 1.5;
+	max-height: 3em;
+	overflow: hidden;
+	margin-top: 6px;
+}
+
+/* Hide properties panel in Live Preview mode as well */
+
+.markdown-source-view.webnovel-homepage .metadata-container,
+
+.markdown-source-view.webnovel-homepage .metadata-properties,
+
+.markdown-source-view.webnovel-homepage .inline-title {
+	display: none;
+}
+
+/* Hide Homepage Tab Title Bar */
+
+.workspace-leaf-content.is-webnovel-homepage .view-header {
+	display: none;
+}
+
+/* Homepage block label */
+
+.homepage-section-label {
+	font-size: 0.8em;
+	font-weight: 600;
+	color: var(--text-muted);
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	margin-bottom: 10px;
+	padding-bottom: 6px;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.homepage-section-label::before {
+	content: '';
+	display: block;
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background-color: var(--interactive-accent);
+}
+
+.workspace-leaf-content.is-webnovel-homepage .markdown-reading-view {
+	max-width: none;
+	width: 100%;
+	margin-inline: 0;
+}
+
+/* Eye Care Mode: Homepage not affected */
+
+.workspace-leaf-content.is-webnovel-homepage .view-content {
+	background-color: var(--background-primary);
+}
+
+/* Homepage <pre> reset */
+
+.workspace-leaf-content.is-webnovel-homepage pre {
+	font-family: var(--font-interface);
+	font-size: inherit;
+	line-height: inherit;
+	white-space: normal;
+	margin: 0;
+	padding: 0;
+	background: transparent;
+	border: none;
+	overflow: hidden;
+	display: block;
+	min-width: 0;
+	width: 100%;
+}
+
+/* Homepage grid layout */
+
+.homepage-grid-container {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 24px;
+	min-width: 0;
+	align-items: stretch;
+}
+
+.homepage-grid-top {
+	grid-column: 1 / -1;
+	min-width: 0;
+}
+
+.homepage-grid-left,
+
+.homepage-grid-right {
+	display: flex;
+	flex-direction: column;
+	gap: 24px;
+	min-width: 0;
+	height: 100%;
+}
+
+.homepage-grid-left {
+	justify-content: space-between;
+}
+
+.homepage-grid-cell {
+	min-width: 0;
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+}
+
+/* Right column chart area stretches to the shared bottom edge. */
+
+.homepage-grid-right .homepage-grid-cell:last-child {
+	flex: 1 1 auto;
+	margin-top: 0;
+}
+
+/* Homepage simplified bar chart: thin bars, close together, no labels, no scrollbar */
+
+.homepage-grid-cell:last-child .homepage-section-label {
+	flex-shrink: 0;
+}
+
+.homepage-chart-container {
+	display: flex;
+	align-items: flex-end;
+	gap: 3px;
+	flex: 1;
+	height: 85px;
+	min-height: 85px;
+	padding: 0;
+	margin-bottom: 6px;
+}
+
+.homepage-chart-bar {
+	flex: 1;
+	min-width: 0;
+	border-radius: 2px 2px 0 0;
+	opacity: 0.85;
+	transition: opacity 0.2s;
+	cursor: crosshair;
+}
+
+.homepage-chart-bar:hover {
+	opacity: 1;
+}
+
+/* JS dynamic toggle: fallback to single column when panel width < 1200px */
+
+.homepage-single-column {
+	grid-template-columns: 1fr;
+}
+
+.homepage-single-column .homepage-grid-top {
+	grid-column: 1;
+}
+
+.homepage-single-column .homepage-completed-card {
+	flex: 0 0 calc(25% - 12px);
+	max-width: calc(25% - 12px);
+}
+
+.webnovel-homepage-root .wn-bg-muted,
+.wn-settings-banner .wn-bg-muted {
+	background: var(--text-muted);
+	color: unset;
+}

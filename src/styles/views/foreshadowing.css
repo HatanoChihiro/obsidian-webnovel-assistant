@@ -650,3 +650,194 @@
 	font-size: 0.85em;
 	color: var(--text-normal);
 }
+/* ========== Foreshadowing board card styles (extracted from common.css) ========== */
+
+.wn-card-title-wrapper {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex: 1;
+	min-width: 0;
+}
+
+.wn-card-description-title {
+	font-weight: 600;
+	font-size: 0.9em;
+	color: var(--text-normal);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.wn-card-tags-wrapper {
+	display: flex;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+
+.wn-card-tag-badge {
+	font-size: 0.75em;
+	padding: 2px 6px;
+	border-radius: 4px;
+	color: var(--text-muted);
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+}
+
+.wn-card-actions-wrapper {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	flex-shrink: 0;
+}
+
+.wn-card-action-btn {
+	font-size: 0.8em;
+	padding: 3px 10px;
+	border-radius: 4px;
+	cursor: pointer;
+	transition: all 0.15s ease;
+	user-select: none;
+}
+
+.wn-card-action-btn.mod-stage {
+	background: color-mix(in srgb, var(--interactive-accent) 15%, transparent);
+	color: var(--interactive-accent);
+	border: 1px solid color-mix(in srgb, var(--interactive-accent) 30%, transparent);
+}
+
+.wn-card-action-btn.mod-stage:hover {
+	background: color-mix(in srgb, var(--interactive-accent) 25%, transparent);
+}
+
+.wn-card-action-btn.mod-final {
+	background: color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%) 15%, transparent);
+	color: color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%);
+	border: 1px solid color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%) 35%, transparent);
+}
+
+.wn-card-action-btn.mod-final:hover {
+	background: color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%) 30%, transparent);
+}
+
+.wn-card-action-btn.mod-abandon {
+	background: transparent;
+	color: var(--text-muted);
+	border: 1px solid var(--background-modifier-border);
+}
+
+.wn-card-action-btn.mod-abandon:hover {
+	background: var(--background-secondary);
+	color: var(--text-normal);
+}
+
+.wn-card-action-btn.mod-restore {
+	background: color-mix(in srgb, var(--interactive-accent) 15%, transparent);
+	color: var(--interactive-accent);
+	border: 1px solid color-mix(in srgb, var(--interactive-accent) 30%, transparent);
+}
+
+.wn-card-action-btn.mod-restore:hover {
+	background: color-mix(in srgb, var(--interactive-accent) 25%, transparent);
+}
+
+.wn-card-source-quote-item {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.wn-card-source-header {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 1em;
+	color: var(--text-muted);
+}
+
+.wn-card-source-tag {
+	font-weight: 600;
+	color: var(--interactive-accent);
+}
+
+.wn-card-chapter-link {
+	color: var(--link-color, var(--interactive-accent));
+	cursor: pointer;
+	text-decoration: underline;
+}
+
+.wn-card-chapter-link:hover {
+	color: var(--link-color-hover, var(--interactive-accent));
+}
+
+.wn-card-quote-box {
+	width: 100%;
+	box-sizing: border-box;
+	margin-top: 4px;
+	padding: 6px 12px;
+	border-left: 3px solid var(--interactive-accent);
+	background: color-mix(in srgb, var(--interactive-accent) 6%, transparent);
+	border-radius: 0 4px 4px 0;
+	font-size: 1em;
+	color: var(--text-muted);
+	line-height: 1.5;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+.wn-card-quote-box.mod-recovery-quote {
+	border-left-color: color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%);
+	background: color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%) 6%, transparent);
+	font-size: 1em;
+	/* 统一字号：放置于 0.85em 容器内时继承基础字号，避免 em 二次拉小 */
+}
+
+.wn-card-recovery-logs-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 0.9em;
+	font-weight: 700;
+	color: var(--text-muted);
+	margin-top: 8px;
+	margin-bottom: 4px;
+}
+
+.wn-card-recovery-logs-divider {
+	flex: 1;
+	height: 1px;
+	background-color: var(--background-modifier-border);
+	opacity: 0.6;
+}
+
+.wn-card-recovery-logs-list {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	margin-left: 0;
+}
+
+.wn-card-recovery-log-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+	font-size: 1em;
+}
+
+.wn-log-tag-label.mod-stage {
+	color: color-mix(in srgb, var(--interactive-accent) 65%, var(--text-error, var(--interactive-accent)) 35%);
+	font-weight: 600;
+}
+
+.wn-log-tag-label.mod-final {
+	color: color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%);
+	font-weight: 600;
+}
+
+.wn-associated-quote-input {
+	min-height: 50px;
+	font-family: var(--font-text);
+	font-size: 0.85em;
+	line-height: 1.4;
+}

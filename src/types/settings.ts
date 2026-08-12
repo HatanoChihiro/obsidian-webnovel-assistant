@@ -27,6 +27,10 @@ export interface TypographySettings {
 	applyToOther: boolean;
 	/** 标题对齐方式 */
 	headerAlignment: 'left' | 'center' | 'right';
+	/** 是否由插件接管正文文字大小 */
+	enableBodyFontSize: boolean;
+	/** 正文文字大小 (px) */
+	bodyFontSize: number;
 	/** 是否开启首行缩进 */
 	enableIndent: boolean;
 	/** 首行缩进值 (如 "2em") */

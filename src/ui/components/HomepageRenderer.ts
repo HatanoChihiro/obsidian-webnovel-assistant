@@ -201,7 +201,8 @@ export class HomepageRenderer {
 
 		// 总字数：从缓存中仅统计当前工作区跟踪的有效 Markdown 文件实际字数
 		let totalWords = 0;
-		const trackedFiles = this.plugin.getTrackedMarkdownFiles();
+		const trackedFiles = this.plugin.getTrackedMarkdownFiles()
+			.filter(file => this.plugin.cacheManager.isEligibleForTotalWordCount(file));
 		for (const file of trackedFiles) {
 			let cached = this.plugin.cacheManager.getFileCache(file.path);
 			if (cached === null) {
@@ -568,14 +569,13 @@ export class HomepageRenderer {
 		entry: TaskEntry;
 	} | null> {
 		const manager = this.plugin.taskManager;
-		manager.currentFolder = folderPath;
-		const entries = await manager.loadEntries();
+		const entries = await manager.loadEntries(folderPath);
 		if (!entries || entries.length === 0) return null;
 
 		// 优先显示进行中的任务，如果没有则显示最新添加的
 		const entry = entries.find(e => e.status === 'active') || entries[entries.length - 1];
 
-		const progress = manager.calcProgress(entry) || entry.completedWords || 0;
+		const progress = manager.calcProgress(entry, folderPath) || entry.completedWords || 0;
 		const now = window.moment();
 		const daysLeft = Math.max(0, window.moment(entry.endDate).diff(now.clone().startOf('day'), 'days') + 1);
 

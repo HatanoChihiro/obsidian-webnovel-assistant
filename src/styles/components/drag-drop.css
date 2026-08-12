@@ -1,0 +1,61 @@
+/* ========== Drag-and-drop interaction styles ========== */
+
+/* WebNovel Assistant Drag Indicators */
+
+.webnovel-drag-over-top>.nav-file-title,
+
+.webnovel-drag-over-top>.nav-folder-title {
+	border-top: 1px dashed color-mix(in srgb, var(--interactive-accent) 70%, transparent);
+}
+
+.webnovel-drag-over-bottom>.nav-file-title,
+
+.webnovel-drag-over-bottom>.nav-folder-title {
+	border-bottom: 1px dashed color-mix(in srgb, var(--interactive-accent) 70%, transparent);
+}
+
+.webnovel-dragging {
+	opacity: 0.5;
+}
+
+body.webnovel-custom-dragging .nav-file-title-content,
+
+body.webnovel-custom-dragging .nav-folder-title-content {
+	user-select: none;
+}
+
+.webnovel-native-drop {
+	outline: 1px dashed color-mix(in srgb, var(--interactive-accent) 50%, transparent);
+	outline-offset: -1px;
+	background: color-mix(in srgb, var(--interactive-accent) 5%, transparent);
+}
+
+.drag-over *,
+.drag-over-chapter *,
+.drag-over-event *,
+.drag-over-event-top *,
+.drag-over-event-bottom * {
+	pointer-events: none;
+}
+
+.drag-over,
+.drag-over-chapter,
+.drag-over-event,
+.drag-over-event-top,
+.drag-over-event-bottom {
+	background: var(--background-modifier-hover);
+}
+
+.is-dragging {
+	opacity: 0.5;
+}
+
+/* Drag Over Indicators */
+
+body .drag-over-left {
+	border-left: 2px dashed var(--interactive-accent);
+}
+
+body .drag-over-right {
+	border-right: 2px dashed var(--interactive-accent);
+}

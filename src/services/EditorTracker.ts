@@ -5,6 +5,7 @@ import { MarkdownView } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { isMobile, parseGoal } from '../utils';
 import { REGEX_PATTERNS } from '../constants';
+import { ChapterSorter } from './ChapterSorter';
 
 /**
  * 编辑器追踪服务
@@ -42,20 +43,22 @@ export class EditorTracker {
 		const currentCount = this.plugin.calculateAccurateWords(view.getViewData());
 		const delta = currentCount - this.plugin.lastFileWords;
 
-		// 更新历史统计
+		// 只有 Obsidian 编辑器中的章节正文变化才更新写作历史。
+		// 普通非章节文档即使允许显示实时字数，也不进入总字数缓存或写作数据。
 		// 注意：不检查 lastFileWords > 0，因为这会导致第一个字不被记录
-		// 只要 delta !== 0 就记录
-		if (delta !== 0) {
-			this.plugin.app.workspace.trigger('webnovel:file-word-count-updated', view.file, delta);
+		const isChapter = ChapterSorter.isChapterFile(view.file.name)
+			|| this.plugin.cacheManager.isFileInStrictChapterException(view.file);
+		if (delta !== 0 && isChapter) {
+			this.plugin.app.workspace.trigger('webnovel:editor-word-count-updated', view.file, delta);
 		}
 
 		this.plugin.lastFileWords = currentCount;
 
 		// [BUGFIX] 同步更新文件浏览器缓存
 		// 极其重要：这确保了后续 modify 事件（由自动保存触发）计算出的 delta 为 0，防止重复统计。
-		if (view.file) {
-		this.plugin.cacheManager.updateFileCache(view.file, currentCount, this.app.vault);
-	}
+		if (view.file && this.plugin.cacheManager.isEligibleForTotalWordCount(view.file)) {
+			this.plugin.cacheManager.updateFileCache(view.file, currentCount, this.app.vault);
+		}
 
 		this.updateWordCount();
 		this.plugin.refreshStatusViews();
@@ -96,7 +99,9 @@ export class EditorTracker {
 			try {
 				const content = await this.app.vault.cachedRead(view.file);
 				currentWords = this.plugin.calculateAccurateWords(content);
-				this.plugin.cacheManager.updateFileCache(view.file, currentWords, this.app.vault);
+				if (this.plugin.cacheManager.isEligibleForTotalWordCount(view.file)) {
+					this.plugin.cacheManager.updateFileCache(view.file, currentWords, this.app.vault);
+				}
 			} catch (e) {
 				Logger.error('[EditorTracker] failed to read file on change', e);
 			}

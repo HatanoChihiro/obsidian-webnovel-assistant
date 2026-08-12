@@ -26,7 +26,25 @@ export class TypographyQuickModal extends Modal {
 		const typo = this.plugin.settings.typography;
 		if (!typo) return;
 
-		// 1. 首行缩进 (0 ~ 4em)
+		// 1. 正文大小 (12 ~ 32px)，仅在用户明确启用插件字号控制后显示
+		if (typo.enableBodyFontSize) {
+			const bodyFontSizeSetting = new Setting(contentEl)
+				.setName(t('setting.typography-body-font-size'))
+				.setDesc(`${typo.bodyFontSize || 16}px`)
+				.addSlider(slider => {
+					slider
+						.setLimits(12, 32, 1)
+						.setValue(typo.bodyFontSize || 16)
+						.setDynamicTooltip()
+						.onChange(val => {
+							typo.bodyFontSize = val;
+							bodyFontSizeSetting.setDesc(`${val}px`);
+							this.applyRealtime();
+						});
+				});
+		}
+
+		// 2. 首行缩进 (0 ~ 4em)
 		const currentIndentNum = parseFloat(typo.indentSize) || 2;
 		const indentSetting = new Setting(contentEl)
 			.setName(t('setting.typography-indent-size'))
@@ -43,7 +61,7 @@ export class TypographyQuickModal extends Modal {
 					});
 			});
 
-		// 2. 行高 (1.0 ~ 3.0)
+		// 3. 行高 (1.0 ~ 3.0)
 		const lineHeightSetting = new Setting(contentEl)
 			.setName(t('setting.typography-line-height'))
 			.setDesc(`${typo.lineHeight || 1.8}`)
@@ -58,7 +76,7 @@ export class TypographyQuickModal extends Modal {
 					});
 			});
 
-		// 3. 段间距 (0 ~ 2.0em)
+		// 4. 段间距 (0 ~ 2.0em)
 		const currentParaNum = parseFloat(typo.paragraphSpacing) || 0.5;
 		const paraSetting = new Setting(contentEl)
 			.setName(t('setting.typography-para-spacing'))
@@ -75,7 +93,7 @@ export class TypographyQuickModal extends Modal {
 					});
 			});
 
-		// 4. 字间距 (0 ~ 0.20em)
+		// 5. 字间距 (0 ~ 0.20em)
 		const currentLetterNum = parseFloat(typo.letterSpacing) || 0.05;
 		const letterSetting = new Setting(contentEl)
 			.setName(t('setting.typography-letter-spacing'))
@@ -92,7 +110,7 @@ export class TypographyQuickModal extends Modal {
 					});
 			});
 
-		// 5. 最大行宽 (350 ~ 1200px)
+		// 6. 最大行宽 (350 ~ 1200px)
 		const currentWidthNum = parseInt(typo.maxLineWidth, 10) || 700;
 		const widthSetting = new Setting(contentEl)
 			.setName(t('setting.typography-max-line-width'))
@@ -108,7 +126,7 @@ export class TypographyQuickModal extends Modal {
 					});
 			});
 
-		// 6. 两端对齐 Toggle
+		// 7. 两端对齐 Toggle
 		new Setting(contentEl)
 			.setName(t('setting.typography-justify-text'))
 			.addToggle(toggle => {
@@ -120,7 +138,7 @@ export class TypographyQuickModal extends Modal {
 					});
 			});
 
-		// 7. 阅读模式兼容 Toggle
+		// 8. 阅读模式兼容 Toggle
 		new Setting(contentEl)
 			.setName(t('setting.typography-reading-compat'))
 			.addToggle(toggle => {

@@ -10,6 +10,7 @@ import { CORKBOARD_STATUS_MAP, getCorkboardStatusText, getCorkboardStatusKeys } 
 import { getCurrentBookContext } from '../utils/path';
 import { ChapterSorter } from '../services/ChapterSorter';
 import { t } from '../i18n';
+import type { TaskType } from '../types/task';
 
 export const STATUS_VIEW_TYPE = 'writing-status-view';
 
@@ -62,6 +63,8 @@ export class WritingStatusView extends ItemView {
 	private lastActiveFolderPath: string | null = null;
 	private taskSaveTimer: number | null = null;
 	private currentChapterFile: TFile | null = null;
+	private updateGeneration = 0;
+	private activeTaskContext: { folderPath: string; period: number; taskType: TaskType } | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: WebNovelAssistantPlugin) {
 		super(leaf);
@@ -212,21 +215,20 @@ export class WritingStatusView extends ItemView {
 
 		this.taskEventCompleteBtn = this.taskRowEl.createEl('button', { cls: 'status-task-complete-btn', text: t('common.complete-task') });
 		this.preventWorkspaceFocus(this.taskEventCompleteBtn);
-		this.taskEventCompleteBtn.hidden = true;
+		this.taskEventCompleteBtn.hide();
 		this.taskEventCompleteBtn.onclick = () => {
-			if (!this.plugin.taskManager) return;
+			const taskContext = this.activeTaskContext;
+			if (!this.plugin.taskManager || !taskContext || taskContext.taskType !== 'event') return;
 			const manager = this.plugin.taskManager;
-			const taskFile = manager.getTaskFile();
-			if (!taskFile) return;
-			void this.plugin.app.vault.cachedRead(taskFile).then(taskContent => {
-				const entries = manager.parseEntries(taskContent);
-				const active = manager.getActiveTask(entries);
-				if (active && active.taskType === 'event') {
-					void manager.updateEntryStatus(active.period, 'completed', undefined, active.taskType).then(() => {
-						new Notice(t('notice.task-completed'));
-						this.plugin.refreshStatusViews(false);
-					});
-				}
+			void manager.updateEntryStatus(
+				taskContext.period,
+				'completed',
+				undefined,
+				taskContext.taskType,
+				taskContext.folderPath
+			).then(() => {
+				new Notice(t('notice.task-completed'));
+				this.plugin.refreshStatusViews(false);
 			});
 		};
 
@@ -405,12 +407,13 @@ export class WritingStatusView extends ItemView {
 	private updateTimer: number | null = null;
 
 	async updateData(immediate = false) {
+		const generation = ++this.updateGeneration;
 		if (immediate) {
 			if (this.updateTimer) {
 				window.clearTimeout(this.updateTimer);
 				this.updateTimer = null;
 			}
-			await this.performUpdateData();
+			await this.performUpdateData(generation);
 			return;
 		}
 
@@ -420,11 +423,27 @@ export class WritingStatusView extends ItemView {
 
 		this.updateTimer = window.setTimeout(() => {
 			this.updateTimer = null;
-			void this.performUpdateData();
+			void this.performUpdateData(generation);
 		}, 100);
 	}
 
-	private async performUpdateData() {
+	private setTaskSectionVisible(visible: boolean): void {
+		if (!this.taskSectionEls) return;
+		for (const el of this.taskSectionEls) {
+			if (visible) { el.show(); } else { el.hide(); }
+		}
+		if (!visible) {
+			if (this.taskSaveTimer) {
+				window.clearTimeout(this.taskSaveTimer);
+				this.taskSaveTimer = null;
+			}
+			this.taskEventCompleteBtn.hide();
+			this.activeTaskContext = null;
+		}
+	}
+
+	private async performUpdateData(generation: number) {
+		if (generation !== this.updateGeneration) return;
 		// 更新作品信息
 		const contextPath = getCurrentBookContext(this.app, this.plugin);
 		if (contextPath) {
@@ -433,6 +452,9 @@ export class WritingStatusView extends ItemView {
 		
 		const folderPath = contextPath || this.lastActiveFolderPath || '';
 		let folderName = '--';
+		if (this.activeTaskContext && this.activeTaskContext.folderPath !== folderPath) {
+			this.setTaskSectionVisible(false);
+		}
 
 		if (folderPath) {
 			const folder = this.app.vault.getAbstractFileByPath(folderPath);
@@ -447,6 +469,7 @@ export class WritingStatusView extends ItemView {
 			let wordGoal = 0;
 			if (infoFile instanceof TFile) {
 				const content = await this.app.vault.cachedRead(infoFile);
+				if (generation !== this.updateGeneration) return;
 				const match = content.match(/(?:目标字数|Word Goal)[^\d\n\r]*?(\d+)/);
 				if (match) {
 					wordGoal = parseInt(match[1], 10);
@@ -516,25 +539,24 @@ export class WritingStatusView extends ItemView {
 		// 任务目标进度：基于目录判断，无活跃 MarkdownView 时使用上次文件夹
 		const taskFolder = folderPath;
 
-		let hasActiveTask = false;
 		if (taskFolder && this.plugin.taskManager) {
 			const manager = this.plugin.taskManager;
-			manager.currentFolder = taskFolder;
-			const taskFile = manager.getTaskFile();
+			const taskFile = manager.getTaskFile(taskFolder);
 			if (taskFile) {
 				const taskContent = await this.plugin.app.vault.cachedRead(taskFile);
+				if (generation !== this.updateGeneration) return;
 				const entries = manager.parseEntries(taskContent);
 				const active = manager.getActiveTask(entries);
-				hasActiveTask = !!active;
-
-				if (this.taskSectionEls) {
-					for (const el of this.taskSectionEls) {
-						if (hasActiveTask) { el.show(); } else { el.hide(); }
-					}
-				}
 
 				if (active) {
-					if (active.taskType === 'event') {
+					const taskType = active.taskType || 'wordCount';
+					this.activeTaskContext = {
+						folderPath: taskFolder,
+						period: active.period,
+						taskType
+					};
+					this.setTaskSectionVisible(true);
+					if (taskType === 'event') {
 						this.taskRowEl.addClass('is-event-task');
 						this.taskWordEl.empty();
 						const titleText = active.platform || t('common.task-event');
@@ -548,7 +570,7 @@ export class WritingStatusView extends ItemView {
 						this.taskTargetEl.hidden = true;
 						this.taskPercentEl.hidden = true;
 						if (this.taskProgressFillEl.parentElement) this.taskProgressFillEl.parentElement.hidden = true;
-						this.taskEventCompleteBtn.hidden = false;
+						this.taskEventCompleteBtn.show();
 						const daysLeft = Math.max(0, window.moment(active.endDate).diff(window.moment().startOf('day'), 'days') + 1);
 						const endShort = active.endDate.substring(5);
 						this.taskTimeDescEl.setText(t('common.task-deadline-remaining', { date: endShort, days: String(daysLeft) }));
@@ -559,8 +581,8 @@ export class WritingStatusView extends ItemView {
 						this.taskTargetEl.hidden = false;
 						this.taskPercentEl.hidden = false;
 						if (this.taskProgressFillEl.parentElement) this.taskProgressFillEl.parentElement.hidden = false;
-						this.taskEventCompleteBtn.hidden = true;
-						const progress = manager.calcProgress(active);
+						this.taskEventCompleteBtn.hide();
+						const progress = manager.calcProgress(active, taskFolder);
 						const taskPercent = active.wordTarget > 0 ? Math.min(Math.round((progress / active.wordTarget) * 100), 100) : 0;
 						this.taskWordEl.innerText = progress.toLocaleString();
 						this.taskTargetEl.innerText = active.wordTarget.toLocaleString();
@@ -576,11 +598,17 @@ export class WritingStatusView extends ItemView {
 						// 防抖持久化完成字数
 						if (this.taskSaveTimer) window.clearTimeout(this.taskSaveTimer);
 						this.taskSaveTimer = window.setTimeout(() => {
-							void manager.updateProgress(active.period, progress);
+							void manager.updateProgress(active.period, progress, taskFolder);
 						}, 5000);
 					}
+				} else {
+					this.setTaskSectionVisible(false);
 				}
+			} else {
+				this.setTaskSectionVisible(false);
 			}
+		} else {
+			this.setTaskSectionVisible(false);
 		}
 
 		if (!isMobile()) {

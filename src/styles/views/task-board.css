@@ -411,3 +411,110 @@
 	display: flex;
 	justify-content: flex-end;
 }
+/* ========== Task board view styles (extracted from common.css) ========== */
+
+/* Task View Container */
+
+.task-view-container {
+	padding: 18px;
+	overflow-y: auto;
+}
+
+.task-view-header {
+	margin-bottom: 12px;
+}
+
+.task-view-title-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 4px;
+}
+
+.task-view-title {
+	font-size: 0.9em;
+	font-weight: bold;
+	color: var(--interactive-accent);
+	margin-top: 8px;
+}
+
+.task-add-btn {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border: none;
+	border-radius: 50%;
+	width: 28px;
+	height: 28px;
+	font-size: 1.3em;
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	line-height: 1;
+	padding: 0;
+}
+
+.task-add-btn:hover {
+	filter: brightness(1.1);
+}
+
+.task-view-folder {
+	font-size: 0.85em;
+	color: var(--text-muted);
+}
+
+.task-view-empty {
+	color: var(--text-muted);
+	font-size: 0.95em;
+	padding: 24px 0;
+	text-align: center;
+}
+
+.task-view-hint {
+	font-size: 0.85em;
+}
+
+.task-create-btn {
+	margin-top: 10px;
+}
+
+.task-progress-label {
+	display: flex;
+	justify-content: space-between;
+	font-size: 0.85em;
+	margin-bottom: 4px;
+}
+
+.task-progress-percent {
+	font-weight: 600;
+	color: var(--interactive-accent);
+}
+
+.task-remaining {
+	color: var(--text-muted);
+}
+
+.task-reached {
+	color: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-success, var(--interactive-accent)) 70%);
+	font-weight: 600;
+}
+
+.task-days-left {
+	color: var(--text-muted);
+}
+
+/* StatusView Leaderboard target area */
+
+/* Task Goal Section */
+
+.task-time-desc {
+	font-size: 0.8em;
+	color: var(--text-muted);
+	text-align: right;
+	margin-top: 2px;
+}
+
+.task-time-desc.task-reached {
+	color: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-success, var(--interactive-accent)) 70%);
+	font-weight: 600;
+}

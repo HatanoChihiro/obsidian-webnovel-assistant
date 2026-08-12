@@ -1,5 +1,5 @@
 import type { App } from 'obsidian';
-import { Notice } from 'obsidian';
+import { Notice, Setting } from 'obsidian';
 import type { TimelineEntry } from '../../services/TimelineManager';
 import type { WebNovelAssistantPlugin } from '../../types/plugin';
 import { ChapterSorter } from '../../services/ChapterSorter';
@@ -26,7 +26,7 @@ export class TimelineFormComponent {
 		const form = container.createDiv({ cls: 'wn-timeline-edit-form timeline-add-form' });
 
 		if (title) {
-			form.createDiv({ text: title, cls: 'wn-timeline-form-title' });
+			new Setting(form).setName(title).setHeading();
 		}
 
 		// 时间点

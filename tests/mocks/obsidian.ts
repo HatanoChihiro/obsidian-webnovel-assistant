@@ -58,6 +58,10 @@ export class Notice {
 	hide(): void {}
 }
 
+export function normalizePath(path: string): string {
+	return path.replace(/\\/g, '/').replace(/\/+/g, '/').replace(/^\.\//, '');
+}
+
 if (typeof Element !== 'undefined') {
 	const proto = Element.prototype as any;
 	if (!proto.addClass) {

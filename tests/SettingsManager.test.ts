@@ -46,4 +46,28 @@ describe('SettingsManager', () => {
 		expect((plugin as unknown as { settings: typeof settings }).settings.obs.obsShowFocusTime).toBe(false);
 		expect((plugin as unknown as { settings: typeof settings }).settings.workspaceFolders).toEqual(['Novel']);
 	});
+
+	it('fills and clamps the persisted typography body font size', async () => {
+		const missing = cloneDefaults();
+		delete (missing.typography as unknown as { enableBodyFontSize?: boolean }).enableBodyFontSize;
+		delete (missing.typography as unknown as { bodyFontSize?: number }).bodyFontSize;
+		const missingPlugin = {
+			loadData: vi.fn().mockResolvedValue(missing),
+			saveData: vi.fn().mockResolvedValue(undefined)
+		} as never;
+		const missingManager = new SettingsManager(missingPlugin, cloneDefaults());
+		const loadedMissing = await missingManager.loadSettings();
+		expect(loadedMissing.typography.enableBodyFontSize).toBe(false);
+		expect(loadedMissing.typography.bodyFontSize).toBe(16);
+
+		const oversized = cloneDefaults();
+		oversized.typography.bodyFontSize = 48;
+		const oversizedPlugin = {
+			loadData: vi.fn().mockResolvedValue(oversized),
+			saveData: vi.fn().mockResolvedValue(undefined)
+		} as never;
+		const oversizedManager = new SettingsManager(oversizedPlugin, cloneDefaults());
+		const loadedOversized = await oversizedManager.loadSettings();
+		expect(loadedOversized.typography.bodyFontSize).toBe(32);
+	});
 });

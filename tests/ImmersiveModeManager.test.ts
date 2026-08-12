@@ -175,4 +175,23 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
         expect(manager['createdImmersiveLeaves'].size).toBe(0);
         expect(changeLayoutSpy).not.toHaveBeenCalled();
     });
+
+    it('tracks the most recently focused immersive Markdown leaf for advanced search', () => {
+        manager['isImmersiveActive'] = true;
+        const handlers: Record<string, Function> = {};
+        const leaf = {
+            view: { file: { path: 'Novel/参考.md' } },
+            containerEl: {
+                addEventListener: vi.fn((event: string, handler: Function) => {
+                    handlers[event] = handler;
+                }),
+                removeEventListener: vi.fn()
+            }
+        } as any;
+
+        manager['trackSearchSourceLeaf'](leaf);
+        handlers.pointerdown();
+
+        expect(manager.getSearchSourceLeaf()).toBe(leaf);
+    });
 });

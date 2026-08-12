@@ -31,6 +31,8 @@ export class ImmersiveModeManager {
 	private layoutChangeRef: EventRef | null = null;
 	private pendingTimers: Set<number> = new Set();
 	private createdImmersiveLeaves: Set<WorkspaceLeaf> = new Set();
+	private searchFocusCleanups: Array<() => void> = [];
+	private searchSourceLeaf: WorkspaceLeaf | null = null;
 
 	private isTransitioning: boolean = false;
 	private isExiting: boolean = false;
@@ -43,6 +45,40 @@ export class ImmersiveModeManager {
 	constructor(app: App, plugin: WebNovelAssistantPlugin) {
 		this.app = app;
 		this.plugin = plugin;
+	}
+
+	/**
+	 * 获取高级搜索应当使用的来源叶子。
+	 * 沉浸模式下参考文档不会抢走主编辑器的活动状态，因此由叶子容器的
+	 * pointer/focus 事件记录最近一次被用户聚焦的主编辑器或参考文档。
+	 */
+	public getSearchSourceLeaf(): WorkspaceLeaf | null {
+		if (!this.isImmersiveActive && !activeDocument.body.classList.contains('immersive-mode-active')) {
+			return this.app.workspace.getMostRecentLeaf();
+		}
+
+		return this.searchSourceLeaf || this.app.workspace.getMostRecentLeaf();
+	}
+
+	private trackSearchSourceLeaf(leaf: WorkspaceLeaf): void {
+		const containerEl = leaf.containerEl;
+		if (!containerEl || typeof containerEl.addEventListener !== 'function') return;
+
+		const markAsSource = () => {
+			this.searchSourceLeaf = leaf;
+		};
+		containerEl.addEventListener('pointerdown', markAsSource, true);
+		containerEl.addEventListener('focusin', markAsSource, true);
+		this.searchFocusCleanups.push(() => {
+			containerEl.removeEventListener('pointerdown', markAsSource, true);
+			containerEl.removeEventListener('focusin', markAsSource, true);
+		});
+	}
+
+	private clearSearchSourceTracking(): void {
+		for (const cleanup of this.searchFocusCleanups) cleanup();
+		this.searchFocusCleanups = [];
+		this.searchSourceLeaf = null;
 	}
 
 	private setTimeout(fn: () => void, ms: number): number {
@@ -424,6 +460,8 @@ export class ImmersiveModeManager {
 	}
 
 	public cleanup(): void {
+		this.clearSearchSourceTracking();
+
 		if (this.fullscreenChangeHandler) {
 			activeDocument.removeEventListener('fullscreenchange', this.fullscreenChangeHandler);
 			this.fullscreenChangeHandler = null;
@@ -499,6 +537,8 @@ export class ImmersiveModeManager {
 			active: true
 		});
 		mainLeaf.containerEl.classList.add('immersive-main-editor');
+		this.searchSourceLeaf = mainLeaf;
+		this.trackSearchSourceLeaf(mainLeaf);
 
 		const pendingSizes: Array<{ split: WorkspaceSplit; sizes: number[] }> = [];
 
@@ -558,6 +598,7 @@ export class ImmersiveModeManager {
 						state
 					});
 					currentLeaf.containerEl.classList.add('immersive-reference-view');
+					this.trackSearchSourceLeaf(currentLeaf);
 				} else {
 					await currentLeaf.setViewState({ type: viewType });
 				}
@@ -591,6 +632,7 @@ export class ImmersiveModeManager {
 
 		// 确保主编辑器聚焦
 		workspace.setActiveLeaf(mainLeaf, { focus: true });
+		this.searchSourceLeaf = mainLeaf;
 
 		this.setTimeout(() => this.app.workspace.updateOptions(), 300);
 		
@@ -738,14 +780,13 @@ export class ImmersiveModeManager {
 					taskFolder = this.plugin.lastTaskFolder;
 				}
 				if (taskFolder && this.plugin.taskManager) {
-					this.plugin.taskManager.currentFolder = taskFolder;
-					const taskFile = this.plugin.taskManager.getTaskFile();
+					const taskFile = this.plugin.taskManager.getTaskFile(taskFolder);
 					if (taskFile) {
 						const taskContent = await this.plugin.app.vault.cachedRead(taskFile);
 						const entries = this.plugin.taskManager.parseEntries(taskContent);
 						const active = this.plugin.taskManager.getActiveTask(entries);
 						if (active) {
-							taskWords = this.plugin.taskManager.calcProgress(active);
+							taskWords = this.plugin.taskManager.calcProgress(active, taskFolder);
 							taskGoal = active.wordTarget;
 						}
 					}

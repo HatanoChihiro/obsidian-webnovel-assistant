@@ -93,12 +93,12 @@ export class TaskBoardRenderer {
         const { app, plugin, container, currentBookPath, reloadBoard } = options;
         
         const manager = plugin.taskManager;
-        manager.currentFolder = currentBookPath === '/' ? '' : currentBookPath;
-        
-        await manager.checkAndCloseExpired();
-        await manager.activatePendingTasks();
-        
-        const file = manager.getTaskFile();
+        const taskFolder = currentBookPath === '/' ? '' : currentBookPath;
+
+        await manager.checkAndCloseExpired(taskFolder);
+        await manager.activatePendingTasks(taskFolder);
+
+        const file = manager.getTaskFile(taskFolder);
         const content = file ? await app.vault.read(file) : null;
 
         if (content === null) {
@@ -108,7 +108,7 @@ export class TaskBoardRenderer {
             empty.createDiv({ text: `（${fileName}.md）`, cls: 'wn-task-view-hint' });
             const createBtn = empty.createEl('button', { text: t('common.create-task-file'), cls: 'mod-cta wn-task-create-btn' });
             createBtn.onclick = async () => {
-                await manager.createTaskFile();
+                await manager.createTaskFile(taskFolder);
                 reloadBoard();
             };
             return;
@@ -166,7 +166,8 @@ export class TaskBoardRenderer {
     }
 
     private static renderEntry(manager: TaskManager, container: HTMLElement, entry: TaskEntry, options: TaskBoardRendererOptions) {
-        const { app, reloadBoard } = options;
+        const { app, reloadBoard, currentBookPath } = options;
+        const taskFolder = currentBookPath === '/' ? '' : currentBookPath;
         const statusCls: Record<string, string> = { active: 'active', completed: 'done', incomplete: 'failed', abandoned: 'failed', notStarted: 'pending' };
         const cls = statusCls[entry.status] || 'pending';
         const card = container.createDiv({ cls: `wn-corkboard-card task-card task-card-${cls} wn-task-card wn-task-card-${cls}` });
@@ -178,7 +179,7 @@ export class TaskBoardRenderer {
         const headerRight = headerRow.createDiv({ cls: 'task-card-header-right wn-task-card-header-right' });
 
         if (entry.status === 'active') {
-            const progress = manager.calcProgress(entry);
+            const progress = manager.calcProgress(entry, taskFolder);
             const isGoalReached = entry.wordTarget > 0 && progress >= entry.wordTarget;
 
             // 事件任务：在“放弃”左侧提供手动完成按钮
@@ -196,7 +197,7 @@ export class TaskBoardRenderer {
                         () => {
                             void (async () => {
                                 try {
-                                    await manager.updateEntryStatus(entry.period, 'completed', progress, entry.taskType);
+                                    await manager.updateEntryStatus(entry.period, 'completed', progress, entry.taskType, taskFolder);
                                     new Notice(t('task.complete-success', { period: entry.period }));
                                     reloadBoard();
                                 } catch (err) {
@@ -223,7 +224,7 @@ export class TaskBoardRenderer {
                         () => {
                             void (async () => {
                                 try {
-                                    await manager.updateEntryStatus(entry.period, 'abandoned', progress, entry.taskType);
+                                    await manager.updateEntryStatus(entry.period, 'abandoned', progress, entry.taskType, taskFolder);
                                     new Notice(t('task.abandon-success', { period: entry.period }));
                                     reloadBoard();
                                 } catch (err) {
@@ -256,10 +257,10 @@ export class TaskBoardRenderer {
                 footer.createSpan({ text: t('common.days-remaining', { days: daysLeft }), cls: 'task-days-left wn-task-days-left' });
             } else {
                 // 字数任务：正常展示字数进度条
-                const progress = manager.calcProgress(entry);
+                const progress = manager.calcProgress(entry, taskFolder);
                 // Async update progress file to avoid blocking UI render
                 window.setTimeout(() => {
-                    void manager.updateProgress(entry.period, progress);
+                    void manager.updateProgress(entry.period, progress, taskFolder);
                 }, 100);
                 const percent = entry.wordTarget > 0 ? Math.min(Math.round((progress / entry.wordTarget) * 100), 100) : 0;
                 const remaining = entry.wordTarget - progress;

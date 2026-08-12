@@ -268,6 +268,7 @@ this.scrollWrapper = contentEl.createDiv({ cls: 'stats-chart-scroll-wrapper' });
 		const alignedEnd = rangeEnd.clone().isoWeekday(7);
 
 		const totalWeeks = Math.ceil(alignedEnd.diff(alignedStart, 'days') / 7) + 1;
+		const labelOffset = this.contentEl.ownerDocument.body.classList.contains('is-phone') ? 0 : 28;
 
 			// 图例放右上角，先清除旧的
 		const existingLegend = this.heatHeadingEl.querySelector(".stats-heatmap-legend-inline");
@@ -299,7 +300,7 @@ HEAT_LEVELS.forEach(level => {
 			if (w >= 0 && w < totalWeeks) {
 				const spacer = monthRow.createDiv({ cls: 'stats-heatmap-month-label' });
 				spacer.setText(monthStart.format('MMM'));
-				spacer.setCssProps({ left: `calc(28px + ${w} * (100% - 28px) / ${totalWeeks})` });
+				spacer.setCssProps({ left: `calc(${labelOffset}px + ${w} * (100% - ${labelOffset}px) / ${totalWeeks})` });
 			}
 		}
 

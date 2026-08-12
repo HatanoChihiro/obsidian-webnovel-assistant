@@ -6,14 +6,25 @@
 @import "./base/modals.css";
 @import "./base/typography-scopes.css";
 
+/* Shared Components */
+@import "./components/animations.css";
+@import "./components/badges.css";
+@import "./components/drag-drop.css";
+
 /* Features & Systems */
 @import "./features/typography.css";
 @import "./features/relation-graph.css";
 @import "./features/floating-stats.css";
+@import "./features/word-count.css";
+@import "./features/immersive.css";
+@import "./features/character-match.css";
 @import "./features/sticky-notes.css";
 
 /* Core Studio Views */
 @import "./views/workbench.css";
+@import "./views/homepage.css";
+@import "./views/status.css";
+@import "./views/settings.css";
 @import "./views/timeline.css";
 @import "./views/corkboard.css";
 @import "./views/lore-board.css";
@@ -27,6 +38,7 @@
 @import "./modals/task-modal.css";
 @import "./modals/lore-modal.css";
 @import "./modals/import-modal.css";
+@import "./modals/template-choice.css";
 
 /* Responsive Device Overrides */
 @import "./responsive/phone.css";

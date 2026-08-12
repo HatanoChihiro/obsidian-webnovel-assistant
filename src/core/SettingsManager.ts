@@ -333,6 +333,11 @@ export class SettingsManager {
 			if (!migrated.typography.maxLineWidth || migrated.typography.maxLineWidth.trim() === '') {
 				migrated.typography.maxLineWidth = '700px';
 			}
+			if (!Number.isFinite(migrated.typography.bodyFontSize)) {
+				migrated.typography.bodyFontSize = 16;
+			} else {
+				migrated.typography.bodyFontSize = Math.min(32, Math.max(12, migrated.typography.bodyFontSize));
+			}
 		}
 
 		// 迁移：将旧的 timeline-view 组件 ID 替换为 wn-timeline-view

@@ -1,0 +1,551 @@
+/* ========== Writing status view styles ========== */
+
+.wn-work-info-card {
+	border-top: none;
+	padding: 12px 18px;
+	margin-bottom: 8px;
+}
+
+.wn-work-info-row {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.wn-work-info-name {
+	font-size: 0.95em;
+	font-weight: 600;
+	color: var(--text-normal);
+}
+
+.wn-work-info-count {
+	font-size: 0.85em;
+	color: var(--text-muted);
+	font-variant-numeric: tabular-nums;
+}
+
+.wn-status-view-container {
+	padding: 15px;
+	overflow-y: auto;
+	-webkit-overflow-scrolling: touch;
+}
+
+/* Status View / Goal Progress */
+
+.wn-status-card {
+	background: linear-gradient(145deg, color-mix(in srgb, var(--interactive-accent) 6%, color-mix(in srgb, var(--background-secondary) 50%, transparent)), color-mix(in srgb, var(--background-secondary) 50%, transparent));
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
+	border-radius: 10px;
+	padding: 16px;
+	margin-bottom: 16px;
+	border-top: 3px solid var(--interactive-accent);
+	border-left: 1px solid var(--background-modifier-border);
+	border-right: 1px solid var(--background-modifier-border);
+	border-bottom: 1px solid var(--background-modifier-border);
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.wn-status-card.is-collapsed {
+	padding-top: 10px;
+	padding-bottom: 10px;
+}
+
+.wn-status-card.is-collapsed .wn-status-title-badge,
+.wn-status-card.is-collapsed .wn-chapter-title-badge {
+	display: none;
+}
+
+.wn-status-card-content.is-collapsed {
+	display: none;
+}
+
+.wn-collapsible-title {
+	user-select: none;
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+}
+
+.wn-status-title-left {
+	display: block;
+	line-height: 1.5;
+	padding-right: 8px;
+}
+
+.wn-collapsible-icon {
+	color: var(--text-muted);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.wn-title-collapsed-hint {
+	font-size: 0.85em;
+	color: var(--text-muted);
+	font-weight: normal;
+}
+
+.wn-chapter-sub-info {
+	margin-top: 10px;
+	margin-bottom: 10px;
+	padding-bottom: 10px;
+	border-bottom: 1px dashed var(--background-modifier-border);
+}
+
+.wn-chapter-sub-info:empty {
+	display: none;
+}
+
+.wn-chapter-title-badge {
+	padding: 2px 6px;
+	border-radius: 4px;
+	font-size: 0.75em;
+	font-weight: 500;
+	background-color: var(--background-modifier-border);
+	color: var(--text-normal);
+	display: inline-block;
+	margin-left: 6px;
+	vertical-align: middle;
+	transform: translateY(-1px);
+}
+
+.wn-chapter-title-badge.wn-clickable {
+	cursor: pointer;
+	transition: opacity 0.15s ease, filter 0.15s ease;
+}
+
+.wn-chapter-title-badge.wn-clickable:hover {
+	opacity: 0.85;
+	filter: brightness(1.1);
+}
+
+.wn-chapter-synopsis-text {
+	font-size: 0.85em;
+	color: var(--text-muted);
+	font-style: italic;
+	white-space: pre-wrap;
+	word-break: break-all;
+	max-height: 100px;
+	overflow-y: auto;
+}
+
+.wn-chapter-synopsis-text.is-empty {
+	opacity: 0.5;
+}
+
+.wn-status-title {
+	font-weight: bold;
+	margin-bottom: 10px;
+	margin-top: 10px;
+	font-size: 1.05em;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: space-between;
+	color: var(--interactive-accent);
+}
+
+.wn-status-title-badge {
+	font-size: 0.7em;
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	padding: 2px 6px;
+	border-radius: 4px;
+	font-weight: normal;
+	display: inline-block;
+	margin-left: 6px;
+	vertical-align: middle;
+	transform: translateY(-1px);
+}
+
+.status-goal-label {
+	font-size: 0.8em;
+	color: var(--text-muted);
+	margin-bottom: 2px;
+	font-weight: 500;
+}
+
+.status-goal-row {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	margin-top: 16px;
+}
+
+.goal-display-row-right {
+	display: flex;
+	align-items: baseline;
+	justify-content: flex-end;
+	gap: 6px;
+	margin-top: 6px;
+	margin-bottom: 12px;
+	font-family: var(--font-monospace);
+	flex-wrap: wrap;
+}
+
+.goal-current {
+	font-size: 1.35em;
+	font-weight: bold;
+	color: var(--text-normal);
+}
+
+.goal-separator {
+	font-size: 0.9em;
+	color: var(--text-muted);
+	opacity: 0.5;
+}
+
+.goal-target {
+	font-size: 1.35em;
+	color: var(--text-muted);
+	opacity: 0.8;
+}
+
+.goal-percent {
+	font-size: 0.85em;
+	color: var(--interactive-accent);
+	font-weight: 600;
+}
+
+.progress-bar-bg {
+	width: 100%;
+	height: 8px;
+	background: color-mix(in srgb, var(--background-modifier-border) 50%, transparent);
+	border-radius: 4px;
+	overflow: hidden;
+	margin-bottom: 4px;
+	box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.progress-bar-fill {
+	height: 100%;
+	background: linear-gradient(90deg, color-mix(in srgb, var(--interactive-accent) 70%, transparent), var(--interactive-accent));
+	border-radius: 4px;
+	transition: width 0.3s ease;
+	box-shadow: 0 0 4px color-mix(in srgb, var(--interactive-accent) 50%, transparent);
+}
+
+.progress-bar-fill.is-negative {
+	background: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%);
+}
+
+.progress-bar-fill.is-done {
+	background: var(--interactive-accent);
+}
+
+.goal-current.is-negative,
+.goal-percent.is-negative {
+	color: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%);
+}
+
+.goal-current.is-done,
+.goal-percent.is-done {
+	color: var(--interactive-accent);
+}
+
+.time-box-total {
+	background: linear-gradient(145deg, color-mix(in srgb, var(--interactive-accent) 12%, color-mix(in srgb, var(--background-primary) 55%, transparent)), color-mix(in srgb, var(--interactive-accent) 4%, color-mix(in srgb, var(--background-primary) 55%, transparent)));
+	backdrop-filter: blur(10px);
+	-webkit-backdrop-filter: blur(10px);
+	padding: 12px;
+	border-radius: 8px;
+	text-align: center;
+	border: 1px solid color-mix(in srgb, var(--interactive-accent) 30%, var(--background-modifier-border));
+	margin-bottom: 10px;
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 2px 4px rgba(0, 0, 0, 0.02);
+}
+
+.time-grid {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 10px;
+}
+
+.time-box {
+	background: color-mix(in srgb, var(--background-primary) 55%, transparent);
+	backdrop-filter: blur(10px);
+	-webkit-backdrop-filter: blur(10px);
+	padding: 8px;
+	border-radius: 8px;
+	text-align: center;
+	border: 1px solid var(--background-modifier-border);
+	min-width: 0;
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+}
+
+.time-box-title {
+	font-size: 0.75em;
+	color: var(--text-muted);
+	margin-bottom: 4px;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.time-box-value {
+	font-family: var(--font-monospace);
+	font-size: 1.15em;
+	font-weight: bold;
+	color: var(--interactive-accent);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.history-chart {
+	margin-top: 20px;
+}
+
+.history-chart-title {
+	font-size: 0.85em;
+	font-weight: 600;
+	color: var(--interactive-accent-hover);
+	margin-bottom: 4px;
+}
+
+.history-chart-subtitle {
+	font-size: 0.75em;
+	color: var(--text-muted);
+	margin-bottom: 8px;
+	cursor: pointer;
+}
+
+.history-chart-subtitle:hover {
+	color: var(--interactive-accent);
+	text-decoration: underline;
+}
+
+.mini-efficiency-summary {
+	font-size: 0.75em;
+	color: var(--text-muted);
+	margin-top: 16px;
+	text-align: center;
+}
+
+.history-chart-title-row {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	margin-bottom: 4px;
+}
+
+/* Sidebar mini bar chart */
+
+/* Mini Chart Container */
+
+.mini-chart-container {
+	display: flex;
+	align-items: baseline;
+	gap: 6px;
+	cursor: pointer;
+	height: 80px;
+	margin-top: 8px;
+}
+
+.mini-chart-col {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: flex-end;
+	height: 100%;
+	min-width: 28px;
+	flex: 1;
+	max-width: 48px;
+}
+
+.mini-chart-bar {
+	width: 60%;
+	min-width: 10px;
+	max-width: 28px;
+	border-radius: 3px 3px 0 0;
+	opacity: 0.85;
+	transition: height 0.4s ease, opacity 0.2s;
+	cursor: crosshair;
+}
+
+.mini-chart-bar:hover {
+	opacity: 1;
+}
+
+.mini-chart-label {
+	font-size: 0.7em;
+	margin-top: 4px;
+	color: var(--text-muted);
+	white-space: nowrap;
+}
+
+.mini-chart-value {
+	font-size: 0.65em;
+	margin-top: 2px;
+	font-weight: bold;
+	font-family: var(--font-monospace);
+	white-space: nowrap;
+	color: var(--text-muted);
+}
+
+.mini-chart-empty {
+	color: var(--text-muted);
+	font-size: 0.75em;
+	padding: 10px 0;
+	text-align: center;
+}
+
+/* -- StatusView -- */
+
+.webnovel-work-goal {
+	font-size: 0.8em;
+	color: var(--text-muted);
+	margin-top: 4px;
+}
+
+/* -- StatusView -- */
+
+.webnovel-pct-bold-mono {
+	font-weight: 600;
+	font-family: var(--font-monospace);
+}
+
+/* Status Badge Muted */
+
+.wn-status-title-badge.wn-bg-muted {
+	background: var(--text-muted);
+	color: var(--background-primary);
+	border: none;
+}
+
+/* Chapter Status UI */
+
+.wn-chapter-status-section {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	width: 100%;
+}
+
+.wn-chapter-status-section-title {
+	font-size: 0.85em;
+	font-weight: 600;
+	color: var(--interactive-accent-hover);
+	margin-bottom: 4px;
+}
+
+.wn-chapter-status-item {
+	font-size: 0.9em;
+	color: var(--text-normal);
+	line-height: 1.4;
+}
+
+.wn-chapter-status-item:hover {
+	color: var(--color-accent);
+}
+
+/* ==========================================================================
+   章节状态面板（StatusView）内联样式提取
+   ========================================================================== */
+
+/* badges 容器：垂直排列 */
+
+.wn-chapter-badges-container {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	align-items: stretch;
+}
+
+/* "待回收" 标题：红色警告色 */
+
+.wn-chapter-status-section-title.is-pending {
+	color: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%);
+}
+
+/* 已回收伏笔条目：略微淡化 */
+
+.wn-chapter-status-item.is-recovered {
+	opacity: 0.8;
+}
+
+/* 设定分区：与伏笔区之间的微小间距 */
+
+.wn-chapter-status-section.is-lore {
+	margin-top: 2px;
+}
+
+/* 设定与伏笔之间的分割线 */
+
+.wn-chapter-status-divider {
+	height: 1px;
+	background-color: var(--background-modifier-border);
+	margin: 4px 0 8px 0;
+	width: 100%;
+	opacity: 0.6;
+}
+
+/* 设定 badge 行：横向排列 */
+
+.wn-chapter-lore-row {
+	display: flex;
+	gap: 4px;
+	align-items: center;
+	flex-wrap: wrap;
+}
+
+.wn-status-badges-container {
+	margin-top: 16px;
+}
+
+/* 写作实时状态面板 - 事件任务详情字号与布局规范 */
+
+.goal-display-row-right.is-event-task {
+	justify-content: space-between;
+	align-items: center;
+	margin-top: 10px;
+	margin-bottom: 8px;
+}
+
+.goal-display-row-right.is-event-task .goal-current {
+	font-size: 0.8em;
+	font-weight: 500;
+	color: var(--text-normal);
+	font-family: inherit;
+	text-align: left;
+	word-break: break-word;
+	white-space: normal;
+	flex: 1;
+	margin-right: 8px;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+}
+
+.event-task-title {
+	font-size: 0.85em;
+	font-weight: 500;
+	color: var(--text-normal);
+}
+
+.event-task-detail {
+	font-size: 0.75em;
+	font-weight: normal;
+	color: var(--text-muted);
+	margin-top: 2px;
+}
+
+button.status-task-complete-btn {
+	font-size: 0.8em;
+	padding: 3px 10px;
+	border-radius: 4px;
+	background: color-mix(in srgb, var(--interactive-accent) 15%, transparent);
+	color: var(--interactive-accent);
+	border: 1px solid color-mix(in srgb, var(--interactive-accent) 30%, transparent);
+	box-shadow: none;
+	cursor: pointer;
+	flex-shrink: 0;
+	transition: all 0.15s ease;
+}
+
+button.status-task-complete-btn:hover {
+	background: color-mix(in srgb, var(--interactive-accent) 25%, transparent);
+}

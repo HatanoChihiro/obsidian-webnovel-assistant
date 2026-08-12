@@ -16,6 +16,11 @@
 	height: 100%;
 }
 
+.workspace-leaf-content .view-content.webnovel-immersive-sticky-container,
+.workspace-leaf-content .view-content.wn-sticky-note-list-view {
+	padding: 0;
+}
+
 .wn-sticky-note-list-side-panel {
 	display: flex;
 	flex-direction: column;
@@ -33,12 +38,51 @@
 	background-color: var(--background-secondary);
 }
 
+.wn-sticky-note-list-container .wn-sticky-note-toolbar-button.clickable-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	min-width: 24px;
+	min-height: 24px;
+	padding: 0;
+	border: 0;
+	border-radius: var(--radius-s);
+	color: var(--icon-color, var(--text-muted));
+	background-color: transparent;
+	box-shadow: none;
+}
+
+.wn-sticky-note-list-container .wn-sticky-note-toolbar-button.clickable-icon:hover,
+.wn-sticky-note-list-container .wn-sticky-note-toolbar-button.clickable-icon:active,
+.wn-sticky-note-list-container .wn-sticky-note-toolbar-button.clickable-icon:focus-visible {
+	color: var(--icon-color-hover, var(--interactive-accent));
+	background-color: transparent;
+	box-shadow: none;
+}
+
+.wn-sticky-note-list-container .wn-sticky-note-toolbar-button.clickable-icon:focus-visible {
+	outline: 1px solid var(--background-modifier-border-focus);
+	outline-offset: 1px;
+}
+
+.wn-sticky-note-list-container .wn-sticky-note-toolbar-button.clickable-icon .svg-icon {
+	width: 15px;
+	height: 15px;
+	color: inherit;
+	opacity: 1;
+	stroke: currentColor;
+	stroke-width: 1.75;
+}
+
 .webnovel-immersive-sticky-container .webnovel-immersive-toolbar {
 	justify-content: flex-end;
 }
 
 .webnovel-immersive-sticky-container .immersive-sticky-dock {
-	flex: 1 1 auto;
+	flex: 1 1 0;
+	min-width: 0;
 	min-height: 0;
 	width: 100%;
 	height: auto;
@@ -63,7 +107,7 @@
 	grid-auto-rows: var(--wn-immersive-note-grid-size, 300px);
 	grid-auto-flow: column;
 	overflow-x: auto;
-	overflow-y: auto;
+	overflow-y: hidden;
 }
 
 .webnovel-immersive-slot-vertical .webnovel-immersive-sticky-container .immersive-sticky-dock {
@@ -71,7 +115,7 @@
 	grid-template-columns: repeat(var(--wn-immersive-note-grid-lines, 1), var(--wn-immersive-note-grid-size, 300px));
 	grid-auto-rows: var(--wn-immersive-note-grid-size, 300px);
 	grid-auto-flow: row;
-	overflow-x: auto;
+	overflow-x: hidden;
 	overflow-y: auto;
 }
 
@@ -91,8 +135,11 @@
 }
 
 .wn-sticky-note-list-grid {
-	flex: 1 1 auto;
+	flex: 1 1 0;
+	min-width: 0;
 	min-height: 0;
+	width: 100%;
+	box-sizing: border-box;
 	display: grid;
 	grid-template-columns: repeat(var(--wn-side-note-grid-columns, 1), var(--wn-side-note-grid-size, 100%));
 	grid-auto-rows: var(--wn-side-note-grid-size, auto);
@@ -127,4 +174,246 @@ body.is-tablet .wn-sticky-note-list-card textarea {
 	padding: 24px 12px;
 	color: var(--text-muted);
 	text-align: center;
+}
+/* ========== Sticky-note feature styles (extracted from common.css) ========== */
+
+/* One-click hide sticky notes function */
+
+/* Sticky Notes */
+
+body.webnovel-notes-hidden .floating-sticky-note,
+
+body.webnovel-notes-hidden .my-floating-sticky-note {
+	display: none;
+}
+
+/* ==========================================================================
+
+   Sticky Notes
+
+   ========================================================================== */
+
+body .my-floating-sticky-note {
+	position: fixed;
+	min-width: 200px;
+	min-height: 200px;
+	border: 1px solid rgba(0, 0, 0, 0.1);
+	box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+	border-radius: 8px;
+	z-index: var(--layer-popover, 40);
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	transition: background-color 0.2s ease, box-shadow 0.3s ease;
+	background-color: var(--note-bg-color-alpha, transparent);
+}
+
+body .my-floating-sticky-note:hover {
+	box-shadow: 0 12px 35px rgba(0, 0, 0, 0.22);
+	background-color: var(--note-bg-color);
+}
+
+body .my-sticky-header {
+	padding: 8px 12px;
+	background-color: transparent;
+	border-bottom: 1px solid transparent;
+	cursor: grab;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: space-between;
+	user-select: none;
+	flex-shrink: 0;
+	min-width: 0;
+	transition: background-color 0.2s ease, border-color 0.2s ease;
+	gap: 10px;
+}
+
+body .my-floating-sticky-note:hover .my-sticky-header {
+	background-color: rgba(0, 0, 0, 0.04);
+	border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+body .my-sticky-header:active {
+	cursor: grabbing;
+}
+
+body .my-sticky-title-wrapper {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	overflow: hidden;
+	flex-grow: 1;
+	flex-shrink: 1;
+	min-width: 0;
+}
+
+body .my-sticky-title-icon {
+	display: flex;
+	align-items: center;
+	color: var(--note-text-color);
+	opacity: 0.6;
+	flex-shrink: 0;
+}
+
+body .my-sticky-title-icon svg {
+	width: 14px;
+	height: 14px;
+}
+
+body .my-sticky-title {
+	font-weight: bold;
+	font-size: 12px;
+	color: var(--note-text-color);
+	pointer-events: none;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	flex-shrink: 1;
+	min-width: 0;
+}
+
+body .my-sticky-controls {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex-shrink: 0;
+	position: relative;
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 0.2s ease;
+}
+
+body .my-floating-sticky-note:hover .my-sticky-controls {
+	opacity: 1;
+	pointer-events: auto;
+}
+
+body .my-sticky-btn,
+body .my-sticky-close {
+	background: transparent;
+	border: none;
+	box-shadow: none;
+	cursor: pointer;
+	padding: 4px;
+	border-radius: 4px;
+	color: var(--note-text-color);
+	opacity: 0.5;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	transition: all 0.2s;
+}
+
+body .my-sticky-btn svg,
+body .my-sticky-close svg {
+	width: 16px;
+	height: 16px;
+	stroke-width: 2px;
+}
+
+body .my-sticky-btn:hover {
+	background-color: rgba(0, 0, 0, 0.08);
+	opacity: 1;
+}
+
+body .my-sticky-btn.is-active {
+	color: var(--interactive-accent);
+	background-color: rgba(0, 0, 0, 0.06);
+	opacity: 1;
+}
+
+body .my-sticky-close:hover {
+	color: var(--text-error, var(--interactive-accent));
+	/* 与文字色语义一致，跟随 --text-error 主题变量 */
+	background-color: color-mix(in srgb, var(--text-error, var(--interactive-accent)) 10%, transparent);
+	opacity: 1;
+}
+
+body .my-sticky-palette-popup {
+	display: none;
+	position: absolute;
+	top: 32px;
+	right: 25px;
+	background-color: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	padding: 8px;
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+	z-index: var(--layer-menu, 50);
+	grid-template-columns: repeat(3, 1fr);
+	gap: 8px;
+}
+
+body .my-sticky-palette-popup.is-active {
+	display: grid;
+	animation: popupFadeIn 0.15s ease-out;
+}
+
+body .my-sticky-swatch {
+	width: 26px;
+	height: 26px;
+	border-radius: 50%;
+	border: 1px solid rgba(0, 0, 0, 0.15);
+	cursor: pointer;
+	transition: transform 0.1s, border-color 0.1s;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-weight: bold;
+	font-family: serif;
+	font-size: 13px;
+}
+
+body .my-sticky-swatch:hover {
+	transform: scale(1.15);
+	border-color: rgba(0, 0, 0, 0.5);
+}
+
+body .my-sticky-content {
+	padding: 15px;
+	overflow-y: auto;
+	font-size: calc(0.9em * var(--sticky-zoom, 1));
+	flex-grow: 1;
+	color: var(--note-text-color);
+	padding-bottom: 25px;
+	background-color: transparent;
+}
+
+body .my-sticky-content * {
+	color: inherit;
+}
+
+body .my-sticky-textarea {
+	flex-grow: 1;
+	width: 100%;
+	height: calc(100% - 10px);
+	resize: none;
+	border: none;
+	background: transparent;
+	color: var(--note-text-color);
+	font-family: var(--font-text);
+	font-size: calc(0.9em * var(--sticky-zoom, 1));
+	padding: 15px;
+	outline: none;
+	box-shadow: none;
+	display: none;
+	line-height: 1.5;
+}
+
+body .my-sticky-textarea:focus {
+	box-shadow: none;
+	background-color: transparent;
+}
+
+body .my-sticky-content h1.inline-title {
+	display: none;
+}
+
+/* -- Utility -- */
+
+.webnovel-ellipsis {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }

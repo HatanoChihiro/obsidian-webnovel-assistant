@@ -108,7 +108,7 @@ export class StickyNoteListRenderer {
 		if (typeof ResizeObserver === 'undefined') return;
 
 		this.resizeObserver = new ResizeObserver(() => this.updateImmersiveGrid(dockContainer));
-		this.resizeObserver.observe(dockContainer);
+		this.resizeObserver.observe(dockContainer, { box: 'border-box' });
 		this.updateImmersiveGrid(dockContainer);
 	}
 
@@ -116,7 +116,7 @@ export class StickyNoteListRenderer {
 		if (typeof ResizeObserver === 'undefined') return;
 
 		this.resizeObserver = new ResizeObserver(() => this.updateSidePanelGrid(dockContainer));
-		this.resizeObserver.observe(dockContainer);
+		this.resizeObserver.observe(dockContainer, { box: 'border-box' });
 		this.updateSidePanelGrid(dockContainer);
 	}
 
@@ -124,7 +124,7 @@ export class StickyNoteListRenderer {
 		const gap = 10;
 		const padding = 20;
 		const minimumNoteSize = 150;
-		const availableWidth = Math.max(1, dockContainer.clientWidth - padding);
+		const availableWidth = Math.max(1, dockContainer.getBoundingClientRect().width - padding);
 		const columnCount = Math.max(1, Math.floor((availableWidth + gap) / (minimumNoteSize + gap)));
 		const noteSize = Math.max(
 			1,
@@ -143,9 +143,10 @@ export class StickyNoteListRenderer {
 		const padding = 20;
 		const minimumNoteSize = 240;
 		const maximumNoteSize = 300;
+		const containerRect = dockContainer.getBoundingClientRect();
 		const availablePrimarySize = Math.max(
 			1,
-			(isHorizontal ? dockContainer.clientHeight : dockContainer.clientWidth) - padding
+			(isHorizontal ? containerRect.height : containerRect.width) - padding
 		);
 		const lineCount = Math.max(1, Math.floor((availablePrimarySize + gap) / (minimumNoteSize + gap)));
 		const noteSize = Math.max(
@@ -239,15 +240,17 @@ export class StickyNoteListRenderer {
 	}
 
 	private addToolbarButtons(toolbar: HTMLElement): void {
-		const newBlankButton = toolbar.createEl('button', { cls: 'wn-sticky-note-toolbar-button' });
-		setIcon(newBlankButton, 'file-plus');
-		newBlankButton.title = t('immersive.new-blank-note');
+		const newBlankButton = toolbar.createEl('button', {
+			cls: 'clickable-icon wn-sticky-note-toolbar-button'
+		});
+		setIcon(newBlankButton, 'plus');
 		newBlankButton.setAttribute('aria-label', t('immersive.new-blank-note'));
 		newBlankButton.onclick = () => this.createNewNote();
 
-		const openFileButton = toolbar.createEl('button', { cls: 'wn-sticky-note-toolbar-button' });
-		setIcon(openFileButton, 'file-text');
-		openFileButton.title = t('immersive.open-file-as-note');
+		const openFileButton = toolbar.createEl('button', {
+			cls: 'clickable-icon wn-sticky-note-toolbar-button'
+		});
+		setIcon(openFileButton, 'folder-open');
 		openFileButton.setAttribute('aria-label', t('immersive.open-file-as-note'));
 		openFileButton.onclick = () => {
 			new FileSuggestModal(this.app, this.plugin, file => {

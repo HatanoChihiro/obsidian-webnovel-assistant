@@ -144,6 +144,7 @@ body.immersive-mode-active.wn-typewriter-active .cm-editor .cm-line.wn-typewrite
    改用 padding-inline-start: 0 重置（仅重置，首行缩进由 ::before 伪元素实现）。 */
 .workspace-leaf.wn-typography-active .cm-line:not(.HyperMD-header):not(.HyperMD-quote):not(.HyperMD-listblock):not(.cm-embed-block) {
 	padding-inline-start: 0;
+	font-size: var(--wn-type-font-size, inherit);
 	line-height: var(--wn-type-line-height, 1.8);
 	padding-bottom: var(--wn-type-para-spacing, 0.5em);
 	letter-spacing: var(--wn-type-letter-spacing, 0.05em);
@@ -193,6 +194,7 @@ body.immersive-mode-active.wn-typewriter-active .cm-editor .cm-line.wn-typewrite
      - ::before inline-block: 等效 text-indent 的视觉效果，且不触发 css-text-indent 审查警告 ✓ */
 body .workspace-leaf.wn-typography-active .markdown-preview-view p,
 body .workspace-leaf.wn-typography-active .markdown-rendered p {
+	font-size: var(--wn-type-font-size, inherit);
 	line-height: var(--wn-type-line-height, 1.8);
 	margin-top: 0;
 	margin-block-start: 0;
@@ -261,6 +263,7 @@ body .workspace-leaf.wn-typography-active .markdown-rendered p::before {
 .wn-merge-modal-window.wn-typography-active .wn-merge-para,
 .wn-merge-modal-window .wn-merge-para {
 	font-family: var(--font-text);
+	font-size: var(--wn-type-font-size, inherit);
 	line-height: var(--wn-type-line-height, 1.8);
 	letter-spacing: var(--wn-type-letter-spacing, 0.05em);
 	text-align: var(--wn-type-text-align, justify);
@@ -295,7 +298,7 @@ body .workspace-leaf.wn-typography-active .markdown-rendered p::before {
 	border-radius: 6px;
 	background: var(--background-primary);
 	font-family: var(--font-text);
-	font-size: 0.95em;
+	font-size: var(--wn-type-font-size, inherit);
 	line-height: var(--wn-type-line-height, 1.8);
 	letter-spacing: var(--wn-type-letter-spacing, 0.05em);
 	text-align: var(--wn-type-text-align, justify);
@@ -310,6 +313,7 @@ body .workspace-leaf.wn-typography-active .markdown-rendered p::before {
 /* 章节合并预览正文段落排版 (Typography Binding for Merge Preview Paragraphs)
    规避 css-text-indent 官方审查警告：首行缩进用 ::before inline-block 伪元素实现 */
 .wn-merge-para {
+	font-size: var(--wn-type-font-size, inherit);
 	line-height: var(--wn-type-line-height, 1.8);
 	margin-top: 0;
 	margin-bottom: var(--wn-type-para-spacing, 0.5em);
@@ -323,4 +327,16 @@ body .workspace-leaf.wn-typography-active .markdown-rendered p::before {
 	content: "";
 	display: inline-block;
 	width: var(--wn-type-indent, 2em);
+}
+/* ========== Eye-care typography scope (extracted from common.css) ========== */
+
+/* ==========================================================================
+
+   Eye Care Mode
+
+   ========================================================================== */
+
+body.webnovel-eye-care-enabled .workspace-leaf-content[data-type="markdown"]:not(.is-webnovel-homepage) {
+	--background-primary: var(--webnovel-eye-care-color, #E8F5E9);
+	--background-primary-alt: var(--webnovel-eye-care-color, #E8F5E9);
 }

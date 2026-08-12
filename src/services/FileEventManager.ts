@@ -19,7 +19,7 @@ export class FileEventManager {
 	private registerCreateHandler(): void {
 		this.plugin.registerEvent(this.plugin.app.vault.on('create', async (file) => {
 			if (!(file instanceof TFile) || file.extension !== 'md') return;
-			if (!this.plugin.cacheManager.isEligibleForWordCount(file)) return;
+			if (!this.plugin.cacheManager.isEligibleForTotalWordCount(file)) return;
 
 			try {
 				const content = await this.plugin.app.vault.read(file);
@@ -50,7 +50,7 @@ export class FileEventManager {
 			}
 
 			// 智能前置过滤：非目标网文文件立即早期返回，避免多余的 IO 与计算调度
-			if (!this.plugin.cacheManager.isEligibleForWordCount(file)) return;
+			if (!this.plugin.cacheManager.isEligibleForTotalWordCount(file)) return;
 
 			const isActiveFile = file.path === this.plugin.app.workspace.getActiveFile()?.path;
 
@@ -68,14 +68,9 @@ export class FileEventManager {
 						return;
 					}
 
-					const delta = this.plugin.cacheManager.updateFileCache(file, newWordCount, this.plugin.app.vault);
-					if (delta !== 0) {
-						if (this.plugin.isLayoutReady) {
-							this.plugin.app.workspace.trigger('webnovel:file-word-count-updated', file, delta);
-						}
-					}
+					this.plugin.cacheManager.updateFileCache(file, newWordCount, this.plugin.app.vault);
 				} catch (error) {
-					Logger.error('[Plugin] 更新每日历史统计失败:', error);
+					Logger.error('[Plugin] 更新文件字数缓存失败:', error);
 				}
 				// 非活跃文件：缓存已更新，只刷新显示
 				this.plugin.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
@@ -98,10 +93,6 @@ export class FileEventManager {
 				
 				if (oldWordCount !== null) {
 					this.plugin.cacheManager.invalidateCache(abstractFile.path, this.plugin.app.vault);
-					
-					if (this.plugin.isLayoutReady) {
-						this.plugin.app.workspace.trigger('webnovel:file-word-count-updated', abstractFile, -oldWordCount);
-					}
 
 					this.plugin.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
 						this.plugin.refreshFolderCounts();
@@ -110,18 +101,15 @@ export class FileEventManager {
 			} else if (abstractFile instanceof TFolder) {
 				// 处理文件夹删除
 				const prefix = abstractFile.path + '/';
-				let totalDelta = 0;
+				let hasChanges = false;
 				const entries = Array.from(this.plugin.cacheManager.getEntries());
 				for (const [path, entry] of entries) {
 					if (!entry.isFolder && path.startsWith(prefix)) {
-						totalDelta -= entry.wordCount;
+						hasChanges = true;
 						this.plugin.cacheManager.invalidateCache(path, this.plugin.app.vault);
 					}
 				}
-				if (totalDelta !== 0) {
-					if (this.plugin.isLayoutReady) {
-						this.plugin.app.workspace.trigger('webnovel:file-word-count-updated', abstractFile, totalDelta);
-					}
+				if (hasChanges) {
 					this.plugin.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
 						this.plugin.refreshFolderCounts();
 					}, 500);
@@ -145,16 +133,13 @@ export class FileEventManager {
 				
 				if (abstractFile instanceof TFile && !this.plugin.cacheManager.isFileInWorkspace(abstractFile)) {
 					// 移出了工作区，等同于删除
-					if (oldCache !== null && this.plugin.isLayoutReady) {
-						this.plugin.app.workspace.trigger('webnovel:file-word-count-updated', abstractFile, -oldCache);
-					}
 					this.plugin.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
 						this.plugin.refreshFolderCounts();
 					}, 500);
 					return;
 				}
 
-				if (abstractFile instanceof TFile && !this.plugin.cacheManager.isEligibleForWordCount(abstractFile)) {
+				if (abstractFile instanceof TFile && !this.plugin.cacheManager.isEligibleForTotalWordCount(abstractFile)) {
 					this.plugin.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
 						this.plugin.refreshFolderCounts();
 					}, 500);
@@ -193,7 +178,7 @@ export class FileEventManager {
 						
 						const newFilePath = newPrefix + path.substring(oldPrefix.length);
 						const newFile = this.plugin.app.vault.getAbstractFileByPath(newFilePath);
-						if (newFile instanceof TFile && this.plugin.cacheManager.isEligibleForWordCount(newFile)) {
+						if (newFile instanceof TFile && this.plugin.cacheManager.isEligibleForTotalWordCount(newFile)) {
 							this.plugin.cacheManager.updateFileCache(newFile, oldWordCount, this.plugin.app.vault);
 						}
 					}

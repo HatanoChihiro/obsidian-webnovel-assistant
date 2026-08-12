@@ -8,6 +8,8 @@ import { SerializedWriter } from '../utils/SerializedWriter';
 import { getPluginDir, isMobile } from '../utils/platform';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 
+const CACHE_VERSION = 3;
+
 /**
  * 缓存条目接口
  */
@@ -81,8 +83,8 @@ export class CacheManager {
 			}
 			
 			// 检查版本
-			if (cacheData.version !== 2) {
-				console.warn(`[CacheManager] 缓存版本不匹配 (${cacheData.version} != 2)，忽略并重建`);
+			if (cacheData.version !== CACHE_VERSION) {
+				console.warn(`[CacheManager] 缓存版本不匹配 (${cacheData.version} != ${CACHE_VERSION})，忽略并重建`);
 				return false;
 			}
 
@@ -122,7 +124,7 @@ export class CacheManager {
 		return this.writer.enqueue(async () => {
 			try {
 				const cacheData: CacheData = {
-					version: 2, // 升级版本以支持 isFolder 属性
+					version: CACHE_VERSION, // v3 起总字数缓存仅包含章节文件
 					timestamp: Date.now(),
 					entries: Array.from(this.cache.entries())
 				};
@@ -220,6 +222,13 @@ export class CacheManager {
 	 * @param vault Vault 实例
 	 */
 	updateFileCache(file: TFile, newWordCount: number, _vault: Vault): number {
+		if (!this.isEligibleForTotalWordCount(file)) {
+			if (this.cache.has(file.path)) {
+				this.invalidateCache(file.path, _vault);
+			}
+			return 0;
+		}
+
 		const oldEntry = this.cache.get(file.path);
 		
 		// [BUGFIX] 时间戳校验：防止旧的异步读取结果覆盖新的缓存。
@@ -453,18 +462,29 @@ export class CacheManager {
 		return true;
 	}
 
+	/**
+	 * 主页、写作面板和文件树总字数只汇总章节文件。
+	 * 严格章节例外目录视为用户明确指定的章节范围。
+	 */
+	isEligibleForTotalWordCount(file: TFile): boolean {
+		if (!this.isFileInWorkspace(file)) return false;
+		if (file.basename.includes("_合并章节")) return false;
+		return ChapterSorter.isChapterFile(file.name) || this.isFileInStrictChapterException(file);
+	}
+
 	async buildFolderCache(): Promise<void> {
 		if (!this.plugin.settings.showExplorerCounts) return;
 
 		try {
 			const loaded = this.getCacheStats().size > 0 ? true : await this.loadCache();
-			const workspaceFiles = this.plugin.getTrackedMarkdownFiles();
+			const workspaceFiles = this.plugin.getTrackedMarkdownFiles()
+				.filter(file => this.isEligibleForTotalWordCount(file));
 			if (!loaded) {
 				const notice = new Notice(t("notice.building-explorer-cache"), 0);
 				await this.buildInitialCache(
 					this.plugin.app.vault,
 					this.plugin.calculateAccurateWords.bind(this.plugin),
-					this.isEligibleForWordCount.bind(this)
+					this.isEligibleForTotalWordCount.bind(this)
 				);
 				notice.hide();
 			} else {

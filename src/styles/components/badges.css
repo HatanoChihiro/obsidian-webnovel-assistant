@@ -1,0 +1,62 @@
+/* ========== Shared badge and utility styles ========== */
+
+/* Added utility classes for dynamic styling */
+
+.wn-clickable {
+	cursor: pointer;
+}
+
+.wn-badge {
+	padding: 2px 6px;
+	border-radius: 4px;
+	font-size: 0.75em;
+	font-weight: 500;
+	white-space: nowrap;
+}
+
+/* 已回收 (在其他章节回收)：主题强调色调和成功 (Accent-blended Success/Recovered Origin) */
+
+.wn-badge-recovered {
+	background-color: color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%) 15%, transparent);
+	color: color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%);
+	border: 1px solid color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%);
+}
+
+/* 本章回收 (在本章实际发生回收)：主题强调色高亮 (Accent Highlight/Recovered Here) */
+
+.wn-badge-recovered-here {
+	background-color: color-mix(in srgb, var(--interactive-accent) 20%, transparent);
+	color: var(--interactive-accent);
+	border: 1px solid var(--interactive-accent);
+}
+
+/* 设定徽章：中性次要实体标签 (Muted Neutral Lore Badge) */
+
+.wn-badge-lore {
+	background-color: color-mix(in srgb, var(--text-muted) 14%, transparent);
+	color: var(--text-muted);
+	border: 1px solid color-mix(in srgb, var(--text-muted) 35%, transparent);
+}
+
+.wn-badge-lore.wn-hoverable:hover {
+	color: var(--text-normal);
+	background-color: color-mix(in srgb, var(--text-muted) 22%, transparent);
+	border-color: color-mix(in srgb, var(--interactive-accent) 50%, var(--text-muted));
+}
+
+/* +X 更多徽章 (More Badge) */
+
+.wn-badge-more {
+	opacity: 0.85;
+	background-color: color-mix(in srgb, var(--interactive-accent) 8%, transparent);
+	color: var(--text-muted);
+	border: 1px dashed color-mix(in srgb, var(--interactive-accent) 40%, transparent);
+}
+
+.wn-text-accent {
+	color: var(--text-accent);
+}
+
+.wn-text-muted {
+	color: var(--text-muted);
+}

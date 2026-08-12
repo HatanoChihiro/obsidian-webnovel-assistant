@@ -1,0 +1,188 @@
+/* ========== Word count and writing-gutter styles ========== */
+
+/* ========== Writing Status Panel: Unified Accent Color ========== */
+
+/* Word count indicators */
+
+.wn-folder-word-count {
+	font-variant-numeric: tabular-nums;
+	pointer-events: none;
+}
+
+/* Real-time word count reminder (Line number word count) style - zero width, never occupy/push body layout */
+
+body .markdown-source-view.mod-cm6 .cm-editor .cm-scroller .cm-gutters .webnovel-word-count-gutter {
+	width: 0px;
+	min-width: 0px;
+	border: none;
+	padding: 0;
+	margin: 0;
+	overflow: visible;
+}
+
+/* When this plugin's Gutter is the only Gutter (e.g. no line numbers), clear all padding Obsidian adds by default to eliminate indentation placeholder */
+
+body .markdown-source-view.mod-cm6 .cm-editor .cm-scroller .cm-gutters.is-only-word-count-gutter {
+	margin-right: 0;
+	padding-right: 0;
+	border-right: none;
+	background: transparent;
+}
+
+/* Hide entire container when not in workspace/chapter (if only our gutter exists) */
+
+.cm-editor:not(.webnovel-show-gutter) body .markdown-source-view.mod-cm6 .cm-editor .cm-scroller .cm-gutters.is-only-word-count-gutter {
+	display: none;
+}
+
+/* Hide our gutter when not in workspace/chapter */
+
+body .markdown-source-view.mod-cm6 .cm-editor:not(.webnovel-show-gutter) .cm-scroller .cm-gutters .webnovel-word-count-gutter {
+	display: none;
+}
+
+/* Hide label by default */
+
+body .markdown-source-view.mod-cm6 .cm-editor .cm-scroller .cm-gutters .webnovel-word-count-marker-wrapper {
+	display: none;
+}
+
+/* Show on hover when active, use wrapper to perfectly eliminate width/height impact */
+
+body .markdown-source-view.mod-cm6 .cm-editor.webnovel-show-gutter .cm-scroller .cm-gutters .webnovel-word-count-marker-wrapper {
+	display: flex;
+	align-items: center;
+	/* Rely on internal zero-width character for perfect text baseline vertical centering */
+	justify-content: flex-end;
+	width: 0px;
+	/* Remove all hardcoded heights, rely on content to expand, absolutely match current editor line height */
+	overflow: visible;
+}
+
+body .markdown-source-view.mod-cm6 .cm-editor.webnovel-show-gutter .cm-scroller .cm-gutters .webnovel-word-count-marker {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 0.75em;
+	/* 直接使用主题强调色，完全跟随用户选择的 Obsidian 主题，避免混入固定 warning 橙黄色 */
+	color: var(--text-on-accent);
+	background-color: var(--interactive-accent);
+	border-radius: 4px;
+	padding: 2px 6px;
+	line-height: 1.2;
+	font-family: var(--font-monospace);
+	font-weight: bold;
+	/* 使用半透明阴影，不硬编码具体颜色值 */
+	box-shadow: 0 1px 2px var(--background-modifier-box-shadow, rgba(0, 0, 0, 0.15));
+	white-space: nowrap;
+	z-index: 99;
+	pointer-events: none;
+	/* Avoid blocking mouse clicks in the left area */
+	/* Push left relative to wrapper, fine-tune to align with text line */
+	margin-right: 12px;
+	/* Remove margin-top, hand over completely to flex-center for auto scheduling */
+}
+
+/* Heatmap color scale - Accent color gradient */
+
+/* Heat Negative */
+
+.heat-negative {
+	background: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%);
+}
+
+.heat-0 {
+	background: var(--background-modifier-border);
+}
+
+.heat-1 {
+	background: color-mix(in srgb, var(--interactive-accent) 28%, var(--background-primary));
+}
+
+.heat-2 {
+	background: color-mix(in srgb, var(--interactive-accent) 50%, var(--background-primary));
+}
+
+.heat-3 {
+	background: color-mix(in srgb, var(--interactive-accent) 78%, var(--background-primary));
+}
+
+/* Bar chart color scale - Accent color gradient */
+
+/* Bar Negative */
+
+.bar-negative {
+	background: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%);
+}
+
+.bar-minimal {
+	background: color-mix(in srgb, var(--interactive-accent) 15%, var(--background-modifier-border));
+}
+
+.bar-low {
+	background: color-mix(in srgb, var(--interactive-accent) 40%, var(--background-primary));
+}
+
+.bar-medium {
+	background: color-mix(in srgb, var(--interactive-accent) 60%, var(--background-primary));
+}
+
+.bar-high {
+	background: var(--interactive-accent);
+}
+
+.bar-negative-text {
+	color: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%);
+}
+
+.wn-footer-2-lines .wn-word-count-num {
+	white-space: nowrap;
+	font-weight: 500;
+	text-align: right;
+	line-height: 1.1;
+}
+
+.wn-footer-2-lines .wn-word-count-unit {
+	white-space: nowrap;
+	text-align: right;
+	margin-left: 0;
+	font-size: 0.85em;
+	color: var(--text-muted);
+	line-height: 1.1;
+}
+
+.wn-footer-1-line .wn-word-count-num {
+	white-space: nowrap;
+	font-weight: 500;
+}
+
+.wn-footer-1-line .wn-word-count-unit {
+	white-space: nowrap;
+	margin-left: 2px;
+}
+
+/* -- FileExplorerPatcher -- */
+
+.webnovel-wn-folder-word-count-detail {
+	font-size: 0.8em;
+	opacity: 0.5;
+	margin-left: 5px;
+}
+
+/* Selection word count tooltip */
+
+.cm-tooltip-selection-count {
+	padding: 4px 8px;
+	background-color: var(--background-secondary);
+	color: var(--text-normal);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	font-size: var(--font-ui-smaller);
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+	z-index: 100;
+	pointer-events: none;
+	opacity: 0.85;
+	backdrop-filter: blur(8px);
+	-webkit-backdrop-filter: blur(8px);
+	animation: webnovel-tooltip-fadein 0.2s cubic-bezier(0.2, 0, 0, 1) forwards;
+}

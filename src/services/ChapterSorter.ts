@@ -114,6 +114,25 @@ export class ChapterSorter {
 	}
 
 	/**
+	 * 在指定作品的章节集合中查找记录所引用的章节文件。
+	 * 回收记录只保存章节 basename，因此不能依赖 metadataCache 的相对链接解析。
+	 */
+	static findChapterByName(
+		app: App,
+		plugin: WebNovelAssistantPlugin,
+		folderPath: string,
+		chapterName: string
+	): TFile | null {
+		if (!chapterName) return null;
+
+		const cleanTarget = chapterName.toLowerCase().replace(/\.md$/, '').trim();
+		return this.getAllChapters(app, plugin, folderPath).find(file => {
+			const cleanBase = file.basename.toLowerCase().trim();
+			return cleanBase === cleanTarget || cleanBase.includes(cleanTarget) || cleanTarget.includes(cleanBase);
+		}) ?? null;
+	}
+
+	/**
 	 * 设置自定义章节命名规则
 	 * 会对用户输入的正则表达式进行预编译验证，过滤掉无效规则，
 	 * 并限制模式长度，降低灾难性回溯（ReDoS）导致 UI 冻结的风险。

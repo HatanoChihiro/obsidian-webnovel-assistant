@@ -9,6 +9,8 @@ import { getDefaultFileName, getDefaultFileNameCandidates } from '../i18n/data-k
  * 负责根据作用域判定与配置，在 Markdown 视图上精准注入/移除 CSS 样式类及变量
  */
 export class TypographyManager {
+	private previewElements = new Set<HTMLElement>();
+
 	constructor(
 		private app: App,
 		private plugin: WebNovelAssistantPlugin
@@ -22,6 +24,24 @@ export class TypographyManager {
 		for (const leaf of leaves) {
 			this.applyToLeaf(leaf);
 		}
+		for (const element of this.previewElements) {
+			this.applyTypographyToEl(element);
+		}
+	}
+
+	/**
+	 * 注册不属于 Markdown leaf 的正文预览容器（例如章节合并弹窗）。
+	 * 排版设置变化时由 updateTypography() 统一刷新，关闭时必须注销。
+	 */
+	registerPreviewElement(element: HTMLElement): void {
+		this.previewElements.add(element);
+		this.applyTypographyToEl(element);
+	}
+
+	/** 注销正文预览容器并清理已注入的排版变量。 */
+	unregisterPreviewElement(element: HTMLElement): void {
+		this.previewElements.delete(element);
+		this.removeTypographyFromEl(element);
 	}
 
 	/**
@@ -185,6 +205,12 @@ export class TypographyManager {
 
 		// 设置 CSS 自定义变量 (遵从 Obsidian 审查指南，用 style.setProperty 设置变量)
 		el.style.setProperty('--wn-type-header-align', typo.headerAlignment || 'center');
+		if (typo.enableBodyFontSize) {
+			const bodyFontSize = Number.isFinite(typo.bodyFontSize) && typo.bodyFontSize > 0 ? typo.bodyFontSize : 16;
+			el.style.setProperty('--wn-type-font-size', `${bodyFontSize}px`);
+		} else {
+			el.style.removeProperty('--wn-type-font-size');
+		}
 		el.style.setProperty('--wn-type-indent', typo.enableIndent ? (typo.indentSize || '2em') : '0');
 		el.style.setProperty('--wn-type-line-height', String(typo.lineHeight || 1.8));
 		el.style.setProperty('--wn-type-para-spacing', typo.paragraphSpacing || '0.5em');
@@ -211,6 +237,7 @@ export class TypographyManager {
 		el.removeClass('wn-type-reading-compat');
 
 		el.style.removeProperty('--wn-type-header-align');
+		el.style.removeProperty('--wn-type-font-size');
 		el.style.removeProperty('--wn-type-indent');
 		el.style.removeProperty('--wn-type-line-height');
 		el.style.removeProperty('--wn-type-para-spacing');

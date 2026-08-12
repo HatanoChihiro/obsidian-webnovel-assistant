@@ -9,7 +9,7 @@ describe('EditorTracker', () => {
 	let testFile: any;
 
 	beforeEach(() => {
-		testFile = new TFile('chapter1.md', 'Novel/chapter1.md');
+		testFile = new TFile('第1章.md', 'Novel/第1章.md');
 
 		mockView = {
 			file: testFile,
@@ -36,7 +36,7 @@ describe('EditorTracker', () => {
 		mockPlugin = {
 			app: mockApp,
 			lastEditTime: 0,
-			lastFilePath: 'Novel/chapter1.md',
+			lastFilePath: 'Novel/第1章.md',
 			lastFileWords: 10,
 			sessionAddedWords: 5,
 			isTracking: true,
@@ -49,6 +49,8 @@ describe('EditorTracker', () => {
 			},
 			cacheManager: {
 				isEligibleForWordCount: vi.fn().mockReturnValue(true),
+				isEligibleForTotalWordCount: vi.fn().mockReturnValue(true),
+				isFileInStrictChapterException: vi.fn().mockReturnValue(false),
 				getFileCache: vi.fn().mockReturnValue(15),
 				updateFileCache: vi.fn()
 			},
@@ -67,7 +69,7 @@ describe('EditorTracker', () => {
 		expect(mockPlugin.lastEditTime).toBeGreaterThan(0);
 		expect(mockPlugin.calculateAccurateWords).toHaveBeenCalledWith('这是测试网络小说第1章内容。');
 		expect(mockApp.workspace.trigger).toHaveBeenCalledWith(
-			'webnovel:file-word-count-updated',
+			'webnovel:editor-word-count-updated',
 			testFile,
 			5 // 15 - 10
 		);
@@ -80,8 +82,37 @@ describe('EditorTracker', () => {
 		await tracker.handleFileChange();
 
 		expect(mockPlugin.lastFileWords).toBe(15);
-		expect(mockPlugin.lastFilePath).toBe('Novel/chapter1.md');
+		expect(mockPlugin.lastFilePath).toBe('Novel/第1章.md');
 		expect(mockPlugin.refreshStatusViews).toHaveBeenCalled();
+	});
+
+	it('should exclude a non-chapter document from both total words and writing data', () => {
+		testFile = new TFile('随笔.md', 'Novel/随笔.md');
+		mockView.file = testFile;
+		mockPlugin.lastFilePath = testFile.path;
+		mockPlugin.cacheManager.isEligibleForTotalWordCount.mockReturnValue(false);
+		const tracker = new EditorTracker(mockApp, mockPlugin);
+
+		tracker.handleEditorChange();
+
+		expect(mockPlugin.cacheManager.updateFileCache).not.toHaveBeenCalled();
+		expect(mockApp.workspace.trigger).not.toHaveBeenCalled();
+	});
+
+	it('should record editor changes for files in strict chapter exception folders', () => {
+		testFile = new TFile('序章.md', 'Novel/例外章节/序章.md');
+		mockView.file = testFile;
+		mockPlugin.lastFilePath = testFile.path;
+		mockPlugin.cacheManager.isFileInStrictChapterException.mockReturnValue(true);
+		const tracker = new EditorTracker(mockApp, mockPlugin);
+
+		tracker.handleEditorChange();
+
+		expect(mockApp.workspace.trigger).toHaveBeenCalledWith(
+			'webnovel:editor-word-count-updated',
+			testFile,
+			5
+		);
 	});
 
 	it('should reset lastFileWords to 0 when file is not eligible for word count', async () => {
@@ -113,7 +144,7 @@ describe('EditorTracker', () => {
 
 		await tracker.handleFileChange();
 
-		expect(mockPlugin.lastFilePath).toBe('Novel/chapter1.md');
+		expect(mockPlugin.lastFilePath).toBe('Novel/第1章.md');
 		expect(mockPlugin.lastFileWords).toBe(10);
 		expect(mockPlugin.refreshStatusViews).toHaveBeenCalled();
 	});

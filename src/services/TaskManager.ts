@@ -16,48 +16,48 @@ export class TaskManager {
 		public currentFolder: string = ''
 	) {}
 
-	getTaskFilePath(): string {
+	getTaskFilePath(folderPath: string = this.currentFolder): string {
 		const fileName = (this.plugin.settings.task?.fileName || getDefaultFileName('taskFileName')) + '.md';
-		return normalizePath(this.currentFolder ? `${this.currentFolder}/${fileName}` : fileName);
+		return normalizePath(folderPath ? `${folderPath}/${fileName}` : fileName);
 	}
 
-findTaskFile(): TFile | null {
+	findTaskFile(folderPath: string = this.currentFolder): TFile | null {
 		const candidates = new Set<string>();
 		candidates.add(this.plugin.settings.task?.fileName || getDefaultFileName('taskFileName'));
 		for (const name of getDefaultFileNameCandidates('taskFileName')) candidates.add(name);
 		for (const fileName of candidates) {
-			const path = normalizePath(this.currentFolder ? this.currentFolder + "/" + fileName + ".md" : fileName + ".md");
+			const path = normalizePath(folderPath ? folderPath + "/" + fileName + ".md" : fileName + ".md");
 			const file = this.app.vault.getAbstractFileByPath(path);
 			if (file instanceof TFile) return file;
 		}
 		return null;
 	}
 
-	getTaskFile(): TFile | null {
-		return this.findTaskFile();
+	getTaskFile(folderPath: string = this.currentFolder): TFile | null {
+		return this.findTaskFile(folderPath);
 	}
 
-async createTaskFile(): Promise<TFile> {
+	async createTaskFile(folderPath: string = this.currentFolder): Promise<TFile> {
 		// 检查是否已有限时任务文件（多语言查找）
-		const existing = this.findTaskFile();
+		const existing = this.findTaskFile(folderPath);
 		if (existing) {
 			// 如果找到的文件名与当前设置不一致，自动重命名
 			const expectedName = this.plugin.settings.task?.fileName || getDefaultFileName('taskFileName');
 			if (existing.name !== expectedName + '.md') {
-				const newPath = normalizePath(this.currentFolder ? this.currentFolder + '/' + expectedName + '.md' : expectedName + '.md');
+				const newPath = normalizePath(folderPath ? folderPath + '/' + expectedName + '.md' : expectedName + '.md');
 				try { await this.app.fileManager.renameFile(existing, newPath); } catch (e) { console.warn('[TaskManager] 重命名任务目标文件失败:', e); }
 			}
-			const foundPath = normalizePath(this.currentFolder ? this.currentFolder + '/' + expectedName + '.md' : expectedName + '.md');
+			const foundPath = normalizePath(folderPath ? folderPath + '/' + expectedName + '.md' : expectedName + '.md');
 			const found = this.app.vault.getAbstractFileByPath(foundPath);
 				return found instanceof TFile ? found : existing;
 		}
 
-		const path = this.getTaskFilePath();
+		const path = this.getTaskFilePath(folderPath);
 		return await this.app.vault.create(path, '');
 	}
 
-	async loadEntries(): Promise<TaskEntry[] | null> {
-		const file = this.getTaskFile();
+	async loadEntries(folderPath: string = this.currentFolder): Promise<TaskEntry[] | null> {
+		const file = this.getTaskFile(folderPath);
 		if (!file) return null;
 		const content = await this.app.vault.read(file);
 		return this.parseEntries(content);
@@ -129,10 +129,10 @@ async createTaskFile(): Promise<TFile> {
 		return lines.join('\n');
 	}
 
-	async addEntry(entry: TaskEntry): Promise<void> {
+	async addEntry(entry: TaskEntry, folderPath: string = this.currentFolder): Promise<void> {
 		return this.writer.enqueue(async () => {
-			let file = this.getTaskFile();
-			if (!file) file = await this.createTaskFile();
+			let file = this.getTaskFile(folderPath);
+			if (!file) file = await this.createTaskFile(folderPath);
 
 			await this.app.vault.process(file, (existing) => {
 				const sep = existing.trim() ? '\n' : '';
@@ -141,9 +141,9 @@ async createTaskFile(): Promise<TFile> {
 		});
 	}
 
-	async updateEntryStatus(period: number, status: TaskStatus, completedWords?: number, taskType?: TaskType): Promise<void> {
+	async updateEntryStatus(period: number, status: TaskStatus, completedWords?: number, taskType?: TaskType, folderPath: string = this.currentFolder): Promise<void> {
 		return this.writer.enqueue(async () => {
-			const file = this.getTaskFile();
+			const file = this.getTaskFile(folderPath);
 			if (!file) return;
 			await this.app.vault.process(file, (content) => {
 				const entries = this.parseEntries(content);
@@ -167,9 +167,9 @@ async createTaskFile(): Promise<TFile> {
 	}
 
 	/** 更新进行中任务的完成字数（实时持久化） */
-	async updateProgress(period: number, completedWords: number): Promise<void> {
+	async updateProgress(period: number, completedWords: number, folderPath: string = this.currentFolder): Promise<void> {
 		return this.writer.enqueue(async () => {
-			const file = this.getTaskFile();
+			const file = this.getTaskFile(folderPath);
 			if (!file) return;
 			await this.app.vault.process(file, (content) => {
 				const entries = this.parseEntries(content);
@@ -200,21 +200,21 @@ async createTaskFile(): Promise<TFile> {
 	}
 
 	/** 计算当前增量字数 */
-	calcProgress(entry: TaskEntry): number {
-		const currentWords = this.getChapterWordCount();
+	calcProgress(entry: TaskEntry, folderPath: string = this.currentFolder): number {
+		const currentWords = this.getChapterWordCount(folderPath);
 		return Math.max(0, currentWords - entry.startSnapshot);
 	}
 
 	/** 获取当前文件夹中章节文件的总字数 */
-	getChapterWordCount(): number {
-		const folderPath = this.currentFolder === '/' ? '' : this.currentFolder;
+	getChapterWordCount(folderPath: string = this.currentFolder): number {
+		const normalizedFolderPath = folderPath === '/' ? '' : folderPath;
 		// 文件树的字数统计本身就基于缓存，且会包含所有分卷字数
-		const count = this.plugin.cacheManager.getFolderWordCount(folderPath);
+		const count = this.plugin.cacheManager.getFolderWordCount(normalizedFolderPath);
 		return count || 0;
 	}
 	/** 检查并关闭已过期的进行中任务 */
-	async checkAndCloseExpired(): Promise<boolean> {
-		const entries = await this.loadEntries();
+	async checkAndCloseExpired(folderPath: string = this.currentFolder): Promise<boolean> {
+		const entries = await this.loadEntries(folderPath);
 		if (!entries) return false;
 
 		const today = window.moment().format('YYYY-MM-DD');
@@ -223,14 +223,14 @@ async createTaskFile(): Promise<TFile> {
 		for (const entry of entries) {
 			if (entry.status === 'active' && entry.endDate < today) {
 				if (entry.taskType === 'event') {
-					await this.updateEntryStatus(entry.period, 'incomplete', undefined, entry.taskType);
+					await this.updateEntryStatus(entry.period, 'incomplete', undefined, entry.taskType, folderPath);
 					changed = true;
 				} else {
-					const progress = this.calcProgress(entry);
+					const progress = this.calcProgress(entry, folderPath);
 					// 如果缓存未就绪（progress=0 但 startSnapshot>0），跳过关闭以避免误判
 					if (progress === 0 && entry.startSnapshot > 0) continue;
 					const status: TaskStatus = progress >= entry.wordTarget ? 'completed' : 'incomplete';
-					await this.updateEntryStatus(entry.period, status, progress, entry.taskType);
+					await this.updateEntryStatus(entry.period, status, progress, entry.taskType, folderPath);
 					changed = true;
 				}
 			}
@@ -239,8 +239,8 @@ async createTaskFile(): Promise<TFile> {
 	}
 
 	/** 检查进行中但尚未到开始时间的任务，标记为进行中 */
-	async activatePendingTasks(): Promise<boolean> {
-		const entries = await this.loadEntries();
+	async activatePendingTasks(folderPath: string = this.currentFolder): Promise<boolean> {
+		const entries = await this.loadEntries(folderPath);
 		if (!entries) return false;
 
 		const today = window.moment().format('YYYY-MM-DD');
@@ -248,7 +248,7 @@ async createTaskFile(): Promise<TFile> {
 
 		for (const entry of entries) {
 			if (entry.status === 'notStarted' && entry.startDate <= today) {
-				await this.updateEntryStatus(entry.period, 'active', undefined, entry.taskType);
+				await this.updateEntryStatus(entry.period, 'active', undefined, entry.taskType, folderPath);
 				changed = true;
 			}
 		}

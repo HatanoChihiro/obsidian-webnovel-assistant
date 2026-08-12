@@ -1564,6 +1564,33 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				}));
 
 		new Setting(containerEl)
+			.setName(t('setting.typography-enable-body-font-size'))
+			.setDesc(t('setting.typography-enable-body-font-size-desc'))
+			.addToggle(toggle => toggle
+				.setValue(typo.enableBodyFontSize ?? false)
+				.onChange(async (value) => {
+					typo.enableBodyFontSize = value;
+					await this.plugin.saveSettings();
+					this.plugin.typographyManager.updateTypography();
+					this.display();
+				}));
+
+		if (typo.enableBodyFontSize) {
+			new Setting(containerEl)
+				.setName(t('setting.typography-body-font-size'))
+				.setDesc(t('setting.typography-body-font-size-desc'))
+				.addSlider(slider => slider
+					.setLimits(12, 32, 1)
+					.setValue(typo.bodyFontSize || 16)
+					.setDynamicTooltip()
+					.onChange(async (value) => {
+						typo.bodyFontSize = value;
+						await this.plugin.saveSettings();
+						this.plugin.typographyManager.updateTypography();
+					}));
+		}
+
+		new Setting(containerEl)
 			.setName(t('setting.typography-enable-indent'))
 			.addToggle(toggle => toggle
 				.setValue(typo.enableIndent)

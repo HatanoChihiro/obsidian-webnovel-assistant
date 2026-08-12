@@ -1,0 +1,216 @@
+/* ========== Settings view styles ========== */
+
+.wn-layout-grid {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.wn-layout-top,
+.wn-layout-bottom {
+	background-color: var(--background-primary);
+	border-radius: 6px;
+	padding: 8px;
+	border: 1px dashed var(--text-muted);
+}
+
+.wn-layout-middle {
+	display: flex;
+	gap: 10px;
+	min-height: 150px;
+}
+
+.wn-layout-left,
+.wn-layout-right {
+	flex: 1;
+	background-color: var(--background-primary);
+	border-radius: 6px;
+	padding: 8px;
+	border: 1px dashed var(--text-muted);
+}
+
+.wn-layout-center {
+	flex: 2;
+	background-color: var(--background-primary-alt);
+	border-radius: 6px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border: 1px solid var(--background-modifier-border);
+}
+
+.wn-layout-center-text {
+	color: var(--text-muted);
+	font-weight: bold;
+	font-size: 1.2em;
+}
+
+.wn-slot-title {
+	display: block;
+	margin-bottom: 8px;
+	color: var(--text-normal);
+}
+
+.wn-slot-list {
+	display: flex;
+	flex-direction: column;
+	gap: 5px;
+	margin-bottom: 8px;
+}
+
+.wn-slot-item {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	background-color: var(--interactive-normal);
+	padding: 4px 8px;
+	border-radius: 4px;
+	font-size: 0.9em;
+}
+
+.wn-slot-del {
+	background: none;
+	box-shadow: none;
+	border: none;
+	color: var(--text-error);
+	cursor: pointer;
+	padding: 0 5px;
+}
+
+.wn-slot-del:hover {
+	color: var(--text-error-hover);
+}
+
+.wn-slot-empty {
+	color: var(--text-faint);
+	font-size: 0.85em;
+	font-style: italic;
+}
+
+/* -- SettingsTab -- */
+
+.webnovel-settings-input-full {
+	width: 100%;
+}
+
+.webnovel-settings-rules-container {
+	width: 100%;
+}
+
+.webnovel-settings-rule-item {
+	background: var(--background-secondary);
+	border-radius: 8px;
+	margin-bottom: 10px;
+	padding: 10px 15px;
+	border-top: none;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.webnovel-settings-btn-full {
+	width: 100%;
+}
+
+/* -- SettingsTab -- */
+
+.webnovel-rule-name-input {
+	flex: 1 1 0px;
+	min-width: 0;
+}
+
+.webnovel-rule-pattern-input {
+	flex: 3 1 0px;
+	min-width: 0;
+	font-family: monospace;
+}
+
+.webnovel-obs-css-input {
+	width: 100%;
+	height: 100px;
+	font-family: monospace;
+}
+
+/* ========== Settings Tab ========== */
+
+.wn-settings-banner {
+	background: var(--background-secondary);
+	padding: 12px 16px;
+	border-radius: 8px;
+	margin-bottom: 20px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 0.9em;
+	border: 1px solid var(--background-modifier-border);
+}
+
+.wn-settings-warning {
+	background: var(--background-secondary);
+	padding: 12px;
+	border-radius: 6px;
+	margin-bottom: 20px;
+	border-left: 3px solid var(--interactive-accent);
+}
+
+.wn-settings-order-btns {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	flex-shrink: 0;
+}
+
+.wn-settings-order-btn {
+	font-size: 0.7em;
+	padding: 1px 5px;
+	cursor: pointer;
+	line-height: 1.2;
+}
+
+.wn-settings-color-grid {
+	display: grid;
+	grid-template-columns: repeat(2, 1fr);
+	gap: 8px;
+}
+
+.wn-settings-color-item {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	background: var(--background-modifier-form-field);
+	padding: 4px;
+	border-radius: 4px;
+}
+
+/* Settings Tab Navigation Bar */
+
+.webnovel-settings-tabs {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-bottom: 16px;
+	overflow: hidden;
+	border-bottom: 1px solid var(--background-modifier-border);
+	padding-bottom: 8px;
+}
+
+.webnovel-tab-item {
+	padding: 4px 12px;
+	border-radius: 6px;
+	cursor: pointer;
+	user-select: none;
+	background-color: var(--background-secondary);
+	color: var(--text-muted);
+	font-size: 0.9em;
+	transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.webnovel-tab-item:hover {
+	background-color: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.webnovel-tab-item.is-active {
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent, #ffffff);
+}

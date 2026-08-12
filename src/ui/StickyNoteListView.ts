@@ -28,8 +28,8 @@ export class StickyNoteListView extends ItemView {
 	}
 
 	async onOpen(): Promise<void> {
-		this.containerEl.addClass('wn-sticky-note-list-view');
-		this.listRenderer = new StickyNoteListRenderer(this.app, this.plugin, this.containerEl, { mode: 'side-panel' });
+		this.contentEl.addClass('wn-sticky-note-list-view');
+		this.listRenderer = new StickyNoteListRenderer(this.app, this.plugin, this.contentEl, { mode: 'side-panel' });
 		this.listRenderer.render();
 		this.registerEvent(this.app.workspace.on('webnovel:notes-changed', () => this.listRenderer?.syncNotesFromManager()));
 	}

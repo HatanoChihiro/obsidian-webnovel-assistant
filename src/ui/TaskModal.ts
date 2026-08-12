@@ -14,6 +14,7 @@ export class TaskAddModal extends Modal {
 	private defaultPeriod: number;
 	private defaultPlatform: string;
 	private onSubmit: (entry: TaskEntry) => Promise<void>;
+	private folderPath: string;
 
 	constructor(
 		app: App,
@@ -21,7 +22,8 @@ export class TaskAddModal extends Modal {
 		manager: TaskManager,
 		defaultPeriod: number,
 		defaultPlatform: string,
-		onSubmit: (entry: TaskEntry) => Promise<void>
+		onSubmit: (entry: TaskEntry) => Promise<void>,
+		folderPath: string
 	) {
 		super(app);
 		this.plugin = plugin;
@@ -29,6 +31,7 @@ export class TaskAddModal extends Modal {
 		this.defaultPeriod = defaultPeriod;
 		this.defaultPlatform = defaultPlatform;
 		this.onSubmit = onSubmit;
+		this.folderPath = folderPath;
 	}
 
 	async onOpen() {
@@ -38,7 +41,7 @@ export class TaskAddModal extends Modal {
 		contentEl.addClass('wn-task-modal-content');
 		new Setting(contentEl).setName(t('modal.new-task')).setHeading();
 
-		const existingEntries = (await this.manager.loadEntries()) || [];
+		const existingEntries = (await this.manager.loadEntries(this.folderPath)) || [];
 
 		// 任务名称
 		const platformContainer = contentEl.createDiv();
@@ -131,7 +134,7 @@ export class TaskAddModal extends Modal {
 		// 起始字数（显示当前值，允许修改）
 		const snapshotContainer = contentEl.createDiv();
 		snapshotContainer.createEl('label', { text: t('modal.starting-word-count'), cls: 'wn-task-modal-label' });
-		const currentWords = this.manager.getChapterWordCount();
+		const currentWords = this.manager.getChapterWordCount(this.folderPath);
 		const snapshotInput = snapshotContainer.createEl('input', {
 			type: 'number',
 			attr: { min: '0' },

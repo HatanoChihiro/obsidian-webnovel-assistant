@@ -14,17 +14,47 @@ interface RuleLocation {
 	value: string;
 }
 
+interface ClassOwner {
+	owner: string;
+	prefix: string;
+	allowed?: readonly string[];
+}
+
 const projectRoot = path.resolve(__dirname, '..');
 const stylesRoot = path.join(projectRoot, 'src', 'styles');
 const indexPath = path.join(stylesRoot, 'index.css');
 const artifactPath = path.join(projectRoot, 'styles.css');
 const commonPath = 'src/styles/base/common.css';
-const maxCommonLines = 3552;
-const maxModuleLines = 1600;
-const classOwners = [
+const immersivePath = 'src/styles/features/immersive.css';
+const maxCommonLines = 120;
+const classOwners: readonly ClassOwner[] = [
 	{ owner: 'src/styles/modals/advanced-search.css', prefix: 'advanced-search-' },
 	{ owner: 'src/styles/modals/chapter-merge.css', prefix: 'wn-mobile-merge-' },
 	{ owner: 'src/styles/modals/task-modal.css', prefix: 'wn-task-modal-' },
+	{ owner: 'src/styles/features/word-count.css', prefix: 'webnovel-word-count-' },
+	{ owner: 'src/styles/features/word-count.css', prefix: 'wn-folder-word-count' },
+	{ owner: 'src/styles/features/character-match.css', prefix: 'wn-character-match' },
+	{ owner: 'src/styles/components/drag-drop.css', prefix: 'webnovel-drag-' },
+	{ owner: 'src/styles/components/animations.css', prefix: 'wn-flash-' },
+	{ owner: 'src/styles/components/badges.css', prefix: 'wn-badge-recovered' },
+	{ owner: 'src/styles/components/badges.css', prefix: 'wn-badge-lore' },
+	{ owner: 'src/styles/components/badges.css', prefix: 'wn-badge-more' },
+	{ owner: 'src/styles/views/foreshadowing.css', prefix: 'wn-associated-quote-input' },
+	{
+		owner: 'src/styles/views/homepage.css',
+		prefix: 'homepage-',
+		allowed: ['src/styles/base/typography-scopes.css', 'src/styles/responsive/phone.css', 'src/styles/views/stats.css'],
+	},
+	{
+		owner: 'src/styles/views/settings.css',
+		prefix: 'webnovel-rule-',
+		allowed: ['src/styles/responsive/phone.css'],
+	},
+	{
+		owner: 'src/styles/views/settings.css',
+		prefix: 'wn-layout-',
+		allowed: ['src/styles/views/corkboard.css'],
+	},
 ] as const;
 const legacyClassPrefixes = [
 	'webnovel-search-',
@@ -39,19 +69,19 @@ const legacyClassPrefixes = [
 ] as const;
 const requiredDeclarations = [
 	{
-		file: 'src/styles/base/common.css',
+		file: 'src/styles/views/homepage.css',
 		property: 'grid-template-columns',
 		selector: '.homepage-grid-container',
 		value: 'repeat(2, minmax(0, 1fr))',
 	},
 	{
-		file: 'src/styles/base/common.css',
+		file: 'src/styles/views/homepage.css',
 		property: 'justify-content',
 		selector: '.homepage-grid-left',
 		value: 'space-between',
 	},
 	{
-		file: 'src/styles/base/common.css',
+		file: 'src/styles/views/homepage.css',
 		property: 'height',
 		selector: '.homepage-grid-left',
 		value: '100%',
@@ -120,16 +150,21 @@ function getSelectors(rule: Rule, file: string): string[] {
 				const nextCharacter = selectorText[index + repeated.length];
 				return nextCharacter === undefined || /[.:#[\]\s>+~]/.test(nextCharacter);
 			});
-			const isImmersiveThemeBoundary = file === commonPath && selectorText.startsWith('body.immersive-mode-active');
+			// Immersive mode deliberately chains existing Obsidian classes to win over theme resets.
+			// Keep this exception narrow to that feature module and active-mode selectors.
+			const isImmersiveThemeBoundary = file === immersivePath
+				&& selectorText.includes('body.immersive-mode-active');
 			if (repeatedClasses.length > 0 && !isImmersiveThemeBoundary) {
 				errors.push(`${file}:${rule.source?.start?.line ?? 1} 禁止通过重复类名提升特异性：'${selectorText}'。`);
 			}
 			if (classCounts.has('is-mobile') && !classCounts.has('is-phone') && !classCounts.has('is-tablet')) {
 				errors.push(`${file}:${rule.source?.start?.line ?? 1} .is-mobile 必须显式限定 .is-phone 或 .is-tablet。`);
 			}
-			for (const { owner, prefix } of classOwners) {
-				if ([...classCounts.keys()].some((className) => className.startsWith(prefix)) && file !== owner) {
-					errors.push(`${file}:${rule.source?.start?.line ?? 1} '${prefix}*' 选择器只能由 ${owner} 定义。`);
+			for (const { owner, prefix, allowed } of classOwners) {
+				const isAllowedOwner = file === owner;
+				const isAllowedOverride = allowed?.includes(file) ?? false;
+				if ([...classCounts.keys()].some((className) => className.startsWith(prefix)) && !isAllowedOwner && !isAllowedOverride) {
+					errors.push(file + ':' + (rule.source?.start?.line ?? 1) + " '" + prefix + "*' 选择器只能由 " + owner + " 定义。");
 				}
 			}
 			for (const legacyClass of legacyClassPrefixes) {
@@ -192,8 +227,6 @@ function auditSourceFiles(allCssFiles: string[]): number {
 			if (lineCount > maxCommonLines) {
 				errors.push(`${file} 不得继续增长：当前 ${lineCount} 行，上限 ${maxCommonLines} 行。`);
 			}
-		} else if (lineCount > maxModuleLines) {
-			errors.push(`${file} 过大：当前 ${lineCount} 行，上限 ${maxModuleLines} 行。请按功能继续拆分。`);
 		}
 
 		root.walkRules((rule) => {

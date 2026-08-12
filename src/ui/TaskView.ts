@@ -30,15 +30,16 @@ export class TaskView extends CreativeView {
 	}
 
 	protected async onFolderChange() {
-		this.manager.currentFolder = this.currentFolder;
 		await this.refresh();
 	}
 
 	async refresh() {
-		await this.manager.checkAndCloseExpired();
-		await this.manager.activatePendingTasks();
-		const file = this.manager.getTaskFile();
+		const folderPath = this.currentFolder;
+		await this.manager.checkAndCloseExpired(folderPath);
+		await this.manager.activatePendingTasks(folderPath);
+		const file = this.manager.getTaskFile(folderPath);
 		const content = file ? await this.app.vault.read(file) : null;
+		if (folderPath !== this.currentFolder) return;
 		await this.renderFromContent(content);
 	}
 
@@ -65,7 +66,7 @@ export class TaskView extends CreativeView {
 			empty.createEl('p', { text: `（${fileName}.md）`, cls: 'task-view-hint' });
 			const createBtn = empty.createEl('button', { text: t('common.create-task-file'), cls: 'mod-cta task-create-btn' });
 			createBtn.onclick = async () => {
-				await this.manager.createTaskFile();
+				await this.manager.createTaskFile(this.currentFolder);
 				await this.refresh();
 			};
 			return;
@@ -109,10 +110,11 @@ export class TaskView extends CreativeView {
 
 		// 进度（进行中时显示）
 		if (entry.status === 'active') {
-			const progress = this.manager.calcProgress(entry);
+			const folderPath = this.currentFolder;
+			const progress = this.manager.calcProgress(entry, folderPath);
 			// 异步更新进度文件，避免在 UI 渲染主路径中同步读写文件
 			window.setTimeout(() => {
-				void this.manager.updateProgress(entry.period, progress);
+				void this.manager.updateProgress(entry.period, progress, folderPath);
 			}, 100);
 			const percent = entry.wordTarget > 0 ? Math.min(Math.round((progress / entry.wordTarget) * 100), 100) : 0;
 			const remaining = entry.wordTarget - progress;
@@ -149,7 +151,8 @@ export class TaskView extends CreativeView {
 	private showAddModal() {
 		void (async () => {
 			try {
-				const existingEntries = await this.manager.loadEntries();
+				const folderPath = this.currentFolder;
+				const existingEntries = await this.manager.loadEntries(folderPath);
 				const nextPeriod = this.manager.getNextPeriod(existingEntries || []);
 				const lastPlatform = existingEntries && existingEntries.length > 0
 					? existingEntries[existingEntries.length - 1].platform
@@ -162,10 +165,11 @@ export class TaskView extends CreativeView {
 					nextPeriod,
 					lastPlatform,
 					async (entry) => {
-						await this.manager.addEntry(entry);
+						await this.manager.addEntry(entry, folderPath);
 						new Notice(t('notice.task-added'));
 						await this.refresh();
-					}
+					},
+					folderPath
 				).open();
 			} catch (err) {
 				Logger.error('[TaskView] showAddModal failed:', err);

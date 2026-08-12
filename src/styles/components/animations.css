@@ -1,0 +1,55 @@
+/* ========== Shared animation styles ========== */
+
+@keyframes webnovel-tooltip-fadein {
+	0% {
+		opacity: 0;
+		transform: translateY(4px) scale(0.95);
+	}
+
+	100% {
+		opacity: 0.85;
+		transform: translateY(0) scale(1);
+	}
+}
+
+/* 跳转行闪烁高亮动画 */
+
+@keyframes wnFlashHighlight {
+	0% {
+		background-color: color-mix(in srgb, var(--interactive-accent) 35%, transparent);
+	}
+
+	50% {
+		background-color: color-mix(in srgb, var(--interactive-accent) 20%, transparent);
+	}
+
+	100% {
+		background-color: transparent;
+	}
+}
+
+.wn-flash-highlight {
+	animation: wnFlashHighlight 2s ease-in-out forwards;
+}
+
+/* 目标 Span 精准定位 Flash 脉冲高亮动效 */
+
+@keyframes wn-target-flash {
+	0% {
+		background: var(--interactive-accent);
+		color: var(--text-on-accent);
+		box-shadow: 0 0 12px var(--interactive-accent);
+		transform: scale(1.08);
+	}
+
+	50% {
+		background: color-mix(in srgb, var(--interactive-accent) 60%, transparent);
+		box-shadow: 0 0 8px var(--interactive-accent);
+	}
+
+	100% {
+		background: color-mix(in srgb, var(--interactive-accent) 18%, transparent);
+		box-shadow: none;
+		transform: scale(1);
+	}
+}

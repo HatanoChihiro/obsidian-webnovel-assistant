@@ -883,6 +883,18 @@ export class WorkbenchView extends ItemView {
         // 头部按钮容器（样式由 .wn-corkboard-header-buttons 管理）
         const buttonsContainer = header.createDiv('wn-corkboard-header-buttons');
 
+        if (this.sortMode === 'default') {
+            const bookFolderPath = this.currentBookPath === '/' ? '/' : (this.currentBookPath || '');
+            const bookFolder = this.app.vault.getAbstractFileByPath(bookFolderPath || '/');
+            if (bookFolder instanceof TFolder) {
+                const mergeChaptersBtn = buttonsContainer.createDiv({ cls: 'wn-corkboard-merge-chapters-btn' });
+                mergeChaptersBtn.textContent = t('menu.merge-chapters');
+                mergeChaptersBtn.onclick = () => {
+                    void this.plugin.menuManager.openChapterMerge(bookFolder).catch(console.error);
+                };
+            }
+        }
+
         const infoFile = this.plugin.homepageManager?.findNovelInfoFile(this.currentBookPath || '');
         if (infoFile) {
             const meta = await this.plugin.homepageManager?.getNovelMetadata(this.currentBookPath || '');
@@ -932,9 +944,8 @@ export class WorkbenchView extends ItemView {
             newTaskBtn.onclick = async () => {
                 const bookFolder = this.currentBookPath === '/' ? '' : (this.currentBookPath || '');
                 const manager = this.plugin.taskManager;
-                manager.currentFolder = bookFolder;
 
-                const existingEntries = await manager.loadEntries();
+                const existingEntries = await manager.loadEntries(bookFolder);
                 const nextPeriod = manager.getNextPeriod(existingEntries || []);
                 const lastPlatform = existingEntries && existingEntries.length > 0
                     ? existingEntries[existingEntries.length - 1].platform
@@ -947,10 +958,11 @@ export class WorkbenchView extends ItemView {
                     nextPeriod,
                     lastPlatform,
                     async (entry) => {
-                        await manager.addEntry(entry);
+                        await manager.addEntry(entry, bookFolder);
                         new Notice(t('notice.task-added') || '任务已添加');
                         void this.reloadBoard();
-                    }
+                    },
+                    bookFolder
                 ).open();
             };
         } else if (this.sortMode === 'sticky') {

@@ -59,7 +59,7 @@ describe('CacheManager', () => {
         it('loadCache should load data from valid cache file', async () => {
             mockAdapter.exists.mockResolvedValue(true);
             const validData = {
-                version: 2,
+				version: 3,
                 timestamp: Date.now(),
                 entries: [['Book 1/Chapter 1.md', { path: 'Book 1/Chapter 1.md', wordCount: 1000, lastModified: 1000, isFolder: false }]]
             };
@@ -70,10 +70,22 @@ describe('CacheManager', () => {
             expect(manager.getFileCache('Book 1/Chapter 1.md')).toBe(1000);
         });
 
+		it('loadCache should reject the old cache scope so totals are rebuilt from chapters only', async () => {
+			mockAdapter.exists.mockResolvedValue(true);
+			mockAdapter.read.mockResolvedValue(JSON.stringify({
+				version: 2,
+				timestamp: Date.now(),
+				entries: [['Book 1/Notes.md', { path: 'Book 1/Notes.md', wordCount: 500, lastModified: 1000, isFolder: false }]]
+			}));
+
+			expect(await manager.loadCache()).toBe(false);
+			expect(manager.getFileCache('Book 1/Notes.md')).toBeNull();
+		});
+
         it('loadCache should reject expired cache', async () => {
             mockAdapter.exists.mockResolvedValue(true);
             const expiredData = {
-                version: 2,
+				version: 3,
                 timestamp: Date.now() - (8 * 24 * 60 * 60 * 1000), // 8 days ago
                 entries: [['file.md', { path: 'file.md', wordCount: 1000, lastModified: 1000, isFolder: false }]]
             };
@@ -86,12 +98,13 @@ describe('CacheManager', () => {
         it('saveCache should serialize and write to adapter', async () => {
             // Need to mock the queue behavior of SerializedWriter
             // Since it's an async queue, we just await it
-            manager.updateFileCache({ path: 'Book 1/Chapter 1.md', stat: { mtime: 1000 } } as TFile, 1500, {} as any);
+			manager.updateFileCache({ path: 'Book 1/Chapter 1.md', name: 'Chapter 1.md', basename: 'Chapter 1', stat: { mtime: 1000 } } as TFile, 1500, {} as any);
             
             await manager.saveCache();
             
             expect(mockAdapter.write).toHaveBeenCalled();
             const writtenContent = mockAdapter.write.mock.calls[0][1];
+			expect(JSON.parse(writtenContent).version).toBe(3);
             expect(writtenContent).toContain('Book 1/Chapter 1.md');
             expect(writtenContent).toContain('1500');
         });
@@ -111,6 +124,28 @@ describe('CacheManager', () => {
             expect(manager.isFileInStrictChapterException({ path: 'Book 1/Settings/Lore.md' } as TFile)).toBe(true);
             expect(manager.isFileInStrictChapterException({ path: 'Book 1/Chapter 1.md' } as TFile)).toBe(false);
         });
+
+		it('isEligibleForTotalWordCount should only include chapters and explicit exception files', () => {
+			const chapter = { path: 'Book 1/Chapter 1.md', name: 'Chapter 1.md', basename: 'Chapter 1' } as TFile;
+			const regularDoc = { path: 'Book 1/Notes.md', name: 'Notes.md', basename: 'Notes' } as TFile;
+			const exceptionDoc = { path: 'Book 1/Settings/Appendix.md', name: 'Appendix.md', basename: 'Appendix' } as TFile;
+
+			expect(manager.isEligibleForTotalWordCount(chapter)).toBe(true);
+			expect(manager.isEligibleForTotalWordCount(regularDoc)).toBe(false);
+			expect(manager.isEligibleForTotalWordCount(exceptionDoc)).toBe(true);
+		});
+
+		it('updateFileCache should refuse non-chapter files even if a caller skips eligibility filtering', () => {
+			const regularDoc = {
+				path: 'Book 1/Notes.md',
+				name: 'Notes.md',
+				basename: 'Notes',
+				stat: { mtime: 1000 }
+			} as TFile;
+
+			expect(manager.updateFileCache(regularDoc, 500, {} as never)).toBe(0);
+			expect(manager.getFileCache(regularDoc.path)).toBeNull();
+		});
     });
 
     describe('Cache Update Logic', () => {

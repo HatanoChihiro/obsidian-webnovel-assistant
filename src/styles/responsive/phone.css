@@ -1,3 +1,32 @@
+/*
+ * Phone responsive source of truth
+ *
+ * Sections are ordered from shared status surfaces to feature-specific mobile
+ * layouts, then portrait-only refinements and touch-pointer overrides.
+ * Keep phone/tablet rules here so responsive behavior remains discoverable in
+ * one module while feature styles stay in their desktop/view owners.
+ */
+
+body.is-phone {
+	/* Obsidian mobile text size is the only base; the semantic scale follows it. */
+	--wn-phone-ui-font-size: var(--font-text-size, var(--font-ui-medium));
+	--wn-phone-font-display: 1.2em;
+	--wn-phone-font-title: 0.95em;
+	--wn-phone-font-body: 0.875em;
+	--wn-phone-font-control: 0.8em;
+	--wn-phone-font-meta: 0.75em;
+	--wn-phone-font-caption: 0.625em;
+	--wn-phone-font-kpi: 1.1em;
+	--wn-phone-card-radius: 0.5em;
+	--wn-phone-card-gap: 0.625em;
+	--wn-phone-card-padding: 0.625em;
+	--wn-phone-card-header-padding: 0.375em 0.5em;
+	--wn-phone-card-body-padding: 0.5em;
+	--wn-phone-card-footer-padding: 0.375em 0.5em;
+	--wn-phone-card-min-height: 6.25em;
+}
+
+/* ========== Status and statistics surfaces ========== */
 body.is-phone .wn-status-card,
 body.is-tablet .wn-status-card {
 	backdrop-filter: none;
@@ -10,7 +39,7 @@ body.is-tablet .wn-status-card {
 body.is-phone .stats-efficiency-row {
 	display: grid;
 	grid-template-columns: repeat(2, 1fr);
-	gap: 8px;
+	gap: var(--wn-phone-card-gap);
 }
 
 
@@ -18,22 +47,40 @@ body.is-phone .stats-efficiency-card {
 	flex: none;
 	width: 100%;
 	min-width: 0;
-	padding: 10px 4px;
+	min-height: 4.5em;
+	padding: 0.625em 0.25em;
+	border-radius: var(--wn-phone-card-radius);
 }
 
 
 body.is-phone .stats-efficiency-value {
-	font-size: 0.95em;
+	font-size: var(--wn-phone-font-kpi);
 }
 
 
+body.is-phone .stats-efficiency-label,
+body.is-phone .homepage-section-label,
+body.is-phone .homepage-field-label,
+body.is-phone .homepage-task-sub {
+	font-size: var(--wn-phone-font-meta);
+}
+
+
+body.is-phone .homepage-field-value,
+body.is-phone .homepage-completed-synopsis,
+body.is-phone .homepage-task-row:not(.homepage-task-sub) {
+	font-size: var(--wn-phone-font-body);
+}
+
+
+/* ========== Homepage mobile layout ========== */
 /* Mobile Phone (is-phone) Creation Homepage Layout Optimizations */
 
 body.is-phone .homepage-welcome-section {
 	display: flex;
 	flex-direction: column;
-	gap: 8px;
-	margin-bottom: 16px;
+	gap: 0.5em;
+	margin-bottom: 1em;
 }
 
 
@@ -47,7 +94,7 @@ body.is-phone .homepage-welcome-header {
 
 body.is-phone .homepage-welcome-title {
 	width: 100%;
-	font-size: 1.2em;
+	font-size: var(--wn-phone-font-display);
 	line-height: 1.4;
 	align-items: flex-start;
 }
@@ -72,37 +119,66 @@ body.is-phone .homepage-desktop-actions {
 
 body.is-phone .homepage-phone-actions {
 	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	justify-content: center;
 	gap: 6px;
-	margin-left: auto;
+	margin-left: 0;
+	grid-column: 2;
+	grid-row: 1 / span 2;
+	justify-self: end;
 }
 
 
 body.is-phone .homepage-add-novel-btn.phone-add-btn {
 	display: inline-flex;
-	font-size: 0.80em;
-	padding: 5px 12px;
-	align-self: center;
+	font-size: var(--wn-phone-font-control);
+	padding: 0.35em 0.75em;
+	align-self: flex-end;
+	white-space: nowrap;
 }
 
 
-body.is-phone .homepage-ongoing-name {
-	font-size: 1em;
-	font-weight: 600;
-}
-
-
+body.is-phone .homepage-ongoing-name,
 body.is-phone .homepage-completed-name {
-	font-size: 0.95em;
+	font-size: var(--wn-phone-font-title);
 	font-weight: 600;
+}
+
+
+body.is-phone .homepage-ongoing-item,
+body.is-phone .homepage-completed-card {
+	border-radius: var(--wn-phone-card-radius);
+	padding: var(--wn-phone-card-padding);
+}
+
+
+body.is-phone .homepage-completed-card,
+body.is-phone .homepage-single-column .homepage-completed-card {
+	flex: 0 0 12em;
+	width: 12em;
+	min-width: 12em;
+	max-width: 12em;
+}
+
+
+body.is-phone .homepage-ongoing-count {
+	font-size: var(--wn-phone-font-body);
+}
+
+
+body.is-phone .homepage-chart-container {
+	height: 5.5em;
+	min-height: 5.5em;
 }
 
 
 body.is-phone .homepage-progress-row {
-	display: flex;
-	flex-wrap: wrap;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	grid-template-rows: repeat(2, auto);
 	align-items: center;
-	justify-content: space-between;
-	gap: 8px;
+	gap: 6px 12px;
 }
 
 
@@ -112,27 +188,34 @@ body.is-phone .homepage-progress-separator {
 
 
 body.is-phone .homepage-progress-item:nth-child(1) {
-	width: 100%;
+	grid-column: 1;
+	grid-row: 1;
+	width: auto;
+	min-width: 0;
 	display: flex;
-	align-items: baseline;
+	align-items: center;
 	gap: 8px;
 }
 
 
 body.is-phone .homepage-progress-item:nth-child(3) {
+	grid-column: 1;
+	grid-row: 2;
+	width: auto;
+	min-width: 0;
 	display: flex;
-	align-items: baseline;
+	align-items: center;
 	gap: 8px;
 }
 
 
 body.is-phone .homepage-progress-label {
-	font-size: 0.88em;
+	font-size: var(--wn-phone-font-body);
 }
 
 
 body.is-phone .homepage-progress-value {
-	font-size: 1.2em;
+	font-size: var(--wn-phone-font-kpi);
 }
 
 
@@ -157,55 +240,57 @@ body.is-phone .homepage-grid-container,
 body.is-phone .homepage-grid-left,
 
 body.is-phone .homepage-grid-right {
-	gap: 16px;
+	gap: 1em;
 }
 
 
 
 /* Mobile Phone (is-phone) Creation Homepage Heatmap Optimizations */
 
-body.is-phone .webnovel-homepage .stats-heatmap-grid {
-	gap: 1.5px;
+body.is-phone .webnovel-homepage .stats-heatmap-grid,
+body.is-phone .history-stats-modal .stats-heatmap-grid {
+	gap: 0.1em;
 	overflow-x: auto;
 	-webkit-overflow-scrolling: touch;
-	padding-bottom: 6px;
+	touch-action: pan-x pan-y;
+	padding-bottom: var(--wn-mobile-heatmap-padding-bottom, 6px);
 	width: 100%;
+	scrollbar-width: none;
 }
 
 
-body.is-phone .webnovel-homepage .stats-heatmap-row {
-	gap: 1.5px;
+body.is-phone .webnovel-homepage .stats-heatmap-grid::-webkit-scrollbar,
+body.is-phone .history-stats-modal .stats-heatmap-grid::-webkit-scrollbar {
+	display: none;
+}
+
+
+body.is-phone .webnovel-homepage .stats-heatmap-row,
+body.is-phone .history-stats-modal .stats-heatmap-row {
+	gap: 0.1em;
 	width: max-content;
 	min-width: 100%;
 }
 
 
-body.is-phone .webnovel-homepage .stats-heatmap-cell {
-	flex: 0 0 8.5px;
-	width: 8.5px;
-	height: 8.5px;
+body.is-phone .webnovel-homepage .stats-heatmap-cell,
+body.is-phone .history-stats-modal .stats-heatmap-cell {
+	flex: 0 0 0.55em;
+	width: 0.55em;
+	height: 0.55em;
 	border-radius: 2px;
 }
 
 
-body.is-phone .webnovel-homepage .stats-heatmap-today {
+body.is-phone .webnovel-homepage .stats-heatmap-today,
+body.is-phone .history-stats-modal .stats-heatmap-today {
 	outline: 1.5px solid var(--interactive-accent);
 	outline-offset: 0.5px;
 	border-radius: 2px;
 }
 
 
-body.is-phone .webnovel-homepage .stats-heatmap-grid::-webkit-scrollbar {
-	height: 3px;
-}
-
-
-body.is-phone .webnovel-homepage .stats-heatmap-grid::-webkit-scrollbar-thumb {
-	background: color-mix(in srgb, var(--interactive-accent) 30%, transparent);
-	border-radius: 2px;
-}
-
-
+/* ========== Cross-view typography normalization ========== */
 /* ==========================================
 
    Creative Homepage: Font and Width Lock (Defensive High-Specificity Overrides)
@@ -234,6 +319,11 @@ body:not(.is-phone) .webnovel-homepage-root {
 }
 
 
+body.is-phone .workspace-leaf-content.is-webnovel-homepage {
+	font-size: var(--wn-phone-ui-font-size);
+}
+
+
 body.is-phone .workspace-leaf-content.is-webnovel-homepage .view-content,
 body.is-phone .workspace-leaf-content.is-webnovel-homepage .markdown-reading-view,
 body.is-phone .workspace-leaf-content.is-webnovel-homepage .markdown-preview-view,
@@ -242,7 +332,7 @@ body.is-phone .workspace-leaf-content.is-webnovel-homepage .markdown-preview-siz
 body.is-phone .markdown-preview-view.webnovel-homepage,
 body.is-phone .markdown-source-view.webnovel-homepage,
 body.is-phone .webnovel-homepage-root {
-	font-size: 14px;
+	font-size: inherit;
 }
 
 
@@ -256,16 +346,27 @@ body:not(.is-phone) .workspace-leaf-content[data-type="immersive-sticky-notes"] 
 }
 
 
+body.is-phone .workspace-leaf-content[data-type="webnovel-workbench"],
+body.is-phone .workspace-leaf-content.is-webnovel-workbench,
+body.is-phone .workspace-leaf-content[data-type="webnovel-corkboard"],
+body.is-phone .workspace-leaf-content[data-type="timeline"],
+body.is-phone .workspace-leaf-content[data-type="webnovel-status"],
+body.is-phone .workspace-leaf-content[data-type="immersive-sticky-notes"] {
+	font-size: var(--wn-phone-ui-font-size);
+}
+
+
 body.is-phone .workspace-leaf-content[data-type="webnovel-workbench"] .view-content,
 body.is-phone .workspace-leaf-content.is-webnovel-workbench .view-content,
 body.is-phone .workspace-leaf-content[data-type="webnovel-corkboard"] .view-content,
 body.is-phone .workspace-leaf-content[data-type="timeline"] .view-content,
 body.is-phone .workspace-leaf-content[data-type="webnovel-status"] .view-content,
 body.is-phone .workspace-leaf-content[data-type="immersive-sticky-notes"] .view-content {
-	font-size: 12px;
+	font-size: inherit;
 }
 
 
+/* ========== Settings controls and timeline actions ========== */
 .is-phone .webnovel-settings-rule-item {
 	flex-wrap: wrap;
 	position: relative;
@@ -316,38 +417,41 @@ body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-empty * {
 }
 
 
+/* ========== Corkboard and workbench cards ========== */
 /* ==========================================================================
    手机端专属微调 (Tablet 平板端维持 Desktop 原生样式)
    ========================================================================== */
 body.is-phone .wn-corkboard-card {
-	min-height: 80px;
+	min-height: var(--wn-phone-card-min-height);
+	font-size: 1em;
+	border-radius: var(--wn-phone-card-radius);
 }
 
 
 body.is-phone .wn-corkboard-card-header {
-	padding: 6px 10px;
+	padding: var(--wn-phone-card-header-padding);
 }
 
 
 body.is-phone .wn-corkboard-card-title {
-	font-size: 0.95em;
+	font-size: var(--wn-phone-font-title);
 }
 
 
 body.is-phone .wn-corkboard-card-content {
-	padding: 8px 10px;
-	min-height: 50px;
+	padding: var(--wn-phone-card-body-padding);
+	min-height: 3em;
 }
 
 
 body.is-phone .wn-corkboard-card-text {
-	font-size: 0.90em;
+	font-size: var(--wn-phone-font-body);
 	line-height: 1.4;
 }
 
 
 body.is-phone textarea.wn-corkboard-textarea {
-	font-size: 0.90em;
+	font-size: var(--wn-phone-font-body);
 	line-height: 1.4;
 	background: transparent;
 	border: none;
@@ -362,8 +466,8 @@ body.is-phone textarea.wn-corkboard-textarea {
 
 
 body.is-phone .wn-corkboard-card-footer {
-	padding: 6px 10px;
-	font-size: 0.75em;
+	padding: var(--wn-phone-card-footer-padding);
+	font-size: var(--wn-phone-font-meta);
 }
 
 
@@ -402,7 +506,8 @@ body.is-phone .wn-timeline-item-row {
 	gap: 8px;
 	padding-left: 0px;
 	margin-bottom: 4px;
-	min-height: 105px;
+	height: 7.5em;
+	min-height: 7.5em;
 	align-items: center;
 	position: relative;
 }
@@ -410,14 +515,14 @@ body.is-phone .wn-timeline-item-row {
 
 body.is-phone .wn-timeline-item-desc {
 	left: 8px;
-	width: 85px;
-	min-width: 85px;
-	max-width: 85px;
-	height: 105px;
-	min-height: 105px;
-	max-height: 105px;
-	padding: 6px 16px 6px 6px;
-	font-size: 10.5px;
+	width: 6.25em;
+	min-width: 6.25em;
+	max-width: 6.25em;
+	height: 100%;
+	min-height: 100%;
+	max-height: 100%;
+	padding: 0.375em 0.75em 0.375em 0.375em;
+	font-size: var(--wn-phone-font-body);
 	line-height: 1.3;
 	flex-shrink: 0;
 	box-sizing: border-box;
@@ -438,8 +543,8 @@ body.is-phone .wn-timeline-add-sub-event-btn {
 	min-width: auto;
 	max-width: none;
 	height: auto;
-	padding: 2px 6px;
-	font-size: 10px;
+	padding: 0.2em 0.5em;
+	font-size: var(--wn-phone-font-control);
 	border-radius: 4px;
 	box-sizing: border-box;
 	display: inline-flex;
@@ -479,13 +584,13 @@ body.is-phone .wn-timeline-add-node-row::before {
 
 
 body.is-phone .wn-timeline-gap .wn-timeline-cards-container {
-	margin-left: 100px;
+	margin-left: 6.25em;
 	min-height: 0;
 }
 
 
 body.is-phone .wn-timeline-cards-container {
-	margin-left: 100px;
+	margin-left: 6.25em;
 	display: flex;
 	flex-wrap: nowrap;
 	overflow-x: auto;
@@ -501,13 +606,13 @@ body.is-phone .wn-timeline-cards-container {
 
 
 body.is-phone .wn-timeline-cards-container .wn-corkboard-card {
-	width: 165px;
-	min-width: 165px;
-	max-width: 165px;
-	height: 105px;
-	min-height: 105px;
-	max-height: 105px;
-	flex: 0 0 165px;
+	width: 10em;
+	min-width: 10em;
+	max-width: 10em;
+	height: 7.5em;
+	min-height: 7.5em;
+	max-height: 7.5em;
+	flex: 0 0 10em;
 	box-sizing: border-box;
 }
 
@@ -517,19 +622,19 @@ body.is-phone .wn-timeline-waterfall-sidebar {
 	position: fixed;
 	bottom: calc(var(--mobile-navbar-height, 52px) + env(safe-area-inset-bottom, 0px));
 	top: auto;
-	left: 8px;
-	right: 8px;
-	width: calc(100% - 16px);
+	left: 0.5em;
+	right: 0.5em;
+	width: calc(100% - 1em);
 	height: auto;
-	max-height: 175px;
+	max-height: 11em;
 	z-index: 50;
 	background: color-mix(in srgb, var(--background-primary) 85%, transparent);
 	backdrop-filter: blur(12px);
 	-webkit-backdrop-filter: blur(12px);
 	border: 1px dashed color-mix(in srgb, var(--background-modifier-border) 70%, transparent);
-	border-radius: 14px;
+	border-radius: 0.875em;
 	box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.12);
-	padding: 12px 12px 8px 12px;
+	padding: 0.75em 0.75em 0.5em;
 	box-sizing: border-box;
 	opacity: 0.95;
 	transition: max-height 0.25s cubic-bezier(0.4, 0, 0.2, 1), padding 0.25s ease, opacity 0.2s ease, background 0.2s ease;
@@ -547,9 +652,9 @@ body.is-phone .wn-timeline-waterfall-sidebar:focus-within {
 /* 悬浮抽屉折叠态 */
 body.is-phone .wn-timeline-waterfall-sidebar.is-collapsed {
 	height: auto;
-	max-height: 44px;
-	padding-top: 10px;
-	padding-bottom: 10px;
+	max-height: 2.75em;
+	padding-top: 0.625em;
+	padding-bottom: 0.625em;
 	overflow: hidden;
 }
 
@@ -565,8 +670,8 @@ body.is-phone .wn-timeline-sidebar-header {
 	align-items: center;
 	justify-content: space-between;
 	margin-top: 0;
-	margin-bottom: 6px;
-	font-size: 11.5px;
+	margin-bottom: 0.375em;
+	font-size: var(--wn-phone-font-control);
 	cursor: pointer;
 	user-select: none;
 	-webkit-user-select: none;
@@ -577,7 +682,7 @@ body.is-phone .wn-timeline-sidebar-header {
 body.is-phone .wn-timeline-sidebar-title-group {
 	display: flex;
 	align-items: center;
-	gap: 6px;
+	gap: 0.375em;
 }
 
 
@@ -591,7 +696,7 @@ body.is-phone .wn-timeline-sidebar-toggle-icon {
 
 body.is-phone .wn-timeline-sidebar-count {
 	color: var(--text-muted);
-	font-size: 10.5px;
+	font-size: var(--wn-phone-font-meta);
 	font-weight: normal;
 }
 
@@ -603,45 +708,92 @@ body.is-phone .wn-timeline-waterfall-sidebar .wn-corkboard-grid {
 	overflow-x: auto;
 	-webkit-overflow-scrolling: touch;
 	touch-action: pan-x pan-y;
-	gap: 8px;
-	padding-bottom: 4px;
+	gap: var(--wn-phone-card-gap);
+	padding-bottom: 0.25em;
 	padding-top: 0;
 	margin-top: 0;
 }
 
+body.is-phone .wn-timeline-waterfall-sidebar .wn-corkboard-grid .wn-corkboard-volume-group {
+	display: flex;
+	flex-direction: row;
+	align-items: stretch;
+	flex: 0 0 auto;
+	gap: var(--wn-phone-card-gap);
+}
+
+
+body.is-phone .wn-timeline-waterfall-sidebar .wn-corkboard-grid .wn-corkboard-volume-cards {
+	display: flex;
+	flex-wrap: nowrap;
+	align-items: flex-start;
+	gap: var(--wn-phone-card-gap);
+}
+
+
+body.is-phone .wn-timeline-waterfall-sidebar .wn-corkboard-grid .wn-corkboard-volume-cards.is-collapsed {
+	display: none;
+}
+
+
+body.is-phone .wn-timeline-waterfall-sidebar .wn-corkboard-grid .wn-corkboard-volume-header {
+	flex: 0 0 2em;
+	width: 2em;
+	min-width: 2em;
+	max-width: 2em;
+	height: 7em;
+	min-height: 7em;
+	max-height: 7em;
+	flex-direction: column;
+	justify-content: center;
+	margin: 0;
+	padding: 5px 3px;
+	border: 1px solid color-mix(in srgb, var(--interactive-accent) 35%, var(--background-modifier-border));
+	border-radius: 6px;
+	line-height: 1.2;
+	box-sizing: border-box;
+}
+
+
+body.is-phone .wn-timeline-waterfall-sidebar .wn-corkboard-grid .wn-corkboard-volume-header .wn-volume-header-title {
+	writing-mode: vertical-rl;
+	text-orientation: mixed;
+	white-space: nowrap;
+}
+
 
 body.is-phone .wn-timeline-waterfall-sidebar .wn-corkboard-grid .wn-corkboard-card {
-	width: 110px;
-	min-width: 95px;
-	max-width: 115px;
+	width: 7em;
+	min-width: 7em;
+	max-width: 7em;
 	height: auto;
 	min-height: auto;
-	max-height: 110px;
+	max-height: 7em;
 	flex: 0 0 auto;
 	margin-left: 0;
-	padding: 4px;
+	padding: 0;
 	display: flex;
 	flex-direction: column;
-	font-size: 0.98em;
+	font-size: 1em;
 	box-sizing: border-box;
 }
 
 
 body.is-phone .wn-timeline-waterfall-sidebar .wn-corkboard-grid .wn-corkboard-card-header {
-	padding: 3px 4px;
+	padding: var(--wn-phone-card-header-padding);
 	flex-shrink: 0;
 }
 
 
 body.is-phone .wn-timeline-waterfall-sidebar .wn-corkboard-grid .wn-corkboard-card-title {
-	font-size: 0.98em;
+	font-size: var(--wn-phone-font-title);
 	font-weight: 600;
 }
 
 
 body.is-phone .wn-timeline-waterfall-sidebar .wn-corkboard-grid .wn-corkboard-card-content {
-	padding: 2px 4px;
-	font-size: 0.98em;
+	padding: var(--wn-phone-card-body-padding);
+	font-size: 1em;
 	font-weight: 400;
 	line-height: 1.35;
 	flex: 0 1 auto;
@@ -652,7 +804,7 @@ body.is-phone .wn-timeline-waterfall-sidebar .wn-corkboard-grid .wn-corkboard-ca
 
 body.is-phone .wn-timeline-waterfall-sidebar .wn-corkboard-grid .wn-corkboard-card-text,
 body.is-phone .wn-timeline-waterfall-sidebar .wn-corkboard-grid textarea.wn-corkboard-textarea {
-	font-size: 0.98em;
+	font-size: var(--wn-phone-font-body);
 	font-weight: 400;
 	line-height: 1.4;
 }
@@ -667,20 +819,20 @@ body.is-phone .wn-timeline-waterfall-sidebar.is-empty {
 	position: fixed;
 	bottom: calc(var(--mobile-navbar-height, 45px) + env(safe-area-inset-bottom, 0px));
 	top: auto;
-	left: 8px;
-	right: 8px;
-	width: calc(100% - 16px);
-	height: 42px;
-	min-height: 42px;
-	max-height: 42px;
-	padding: 0 14px;
+	left: 0.5em;
+	right: 0.5em;
+	width: calc(100% - 1em);
+	height: 2.625em;
+	min-height: 2.625em;
+	max-height: 2.625em;
+	padding: 0 0.875em;
 	margin: 0;
 	z-index: 50;
 	background: color-mix(in srgb, var(--background-secondary-alt) 95%, var(--background-primary));
 	backdrop-filter: blur(10px);
 	-webkit-backdrop-filter: blur(10px);
 	border: 2px dashed color-mix(in srgb, var(--interactive-accent) 50%, var(--background-modifier-border));
-	border-radius: 14px;
+	border-radius: 0.875em;
 	box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.12);
 	box-sizing: border-box;
 	overflow: hidden;
@@ -727,7 +879,8 @@ body.is-phone .modal.history-stats-modal-wide {
 	max-height: 90vh;
 	height: auto;
 	margin: auto;
-	padding: 10px;
+	padding: 0.625em;
+	font-size: var(--wn-phone-ui-font-size);
 	display: flex;
 	flex-direction: column;
 	overflow: hidden;
@@ -735,6 +888,7 @@ body.is-phone .modal.history-stats-modal-wide {
 
 
 body.is-phone .history-stats-modal {
+	--wn-mobile-heatmap-padding-bottom: 2px;
 	overflow-y: auto;
 	-webkit-overflow-scrolling: touch;
 	max-height: calc(90vh - 20px);
@@ -743,27 +897,33 @@ body.is-phone .history-stats-modal {
 
 
 .is-phone .history-stats-modal .stats-efficiency-row {
-	flex-wrap: wrap;
-	gap: 6px;
-	margin-bottom: 10px;
+	margin-bottom: 2px;
 }
 
 
-.is-phone .history-stats-modal .stats-efficiency-card {
-	flex: 1 1 calc(50% - 6px);
-	min-width: 120px;
-	padding: 6px 4px;
+body.is-phone .history-stats-modal .setting-item.setting-item-heading .setting-item-name {
+	font-size: var(--wn-phone-font-title);
+}
+
+
+body.is-phone .history-stats-modal .setting-item-heading:first-child .setting-item-name {
+	font-size: var(--wn-phone-font-display);
+}
+
+
+body.is-phone .history-stats-modal .setting-item.setting-item-heading.stats-subheading .setting-item-name {
+	font-size: var(--wn-phone-font-title);
 }
 
 
 .is-phone .history-stats-modal .stats-efficiency-label {
-	font-size: 10px;
+	font-size: var(--wn-phone-font-meta);
 	margin-bottom: 2px;
 }
 
 
 .is-phone .history-stats-modal .stats-efficiency-value {
-	font-size: 14px;
+	font-size: var(--wn-phone-font-kpi);
 }
 
 
@@ -777,7 +937,8 @@ body.is-phone .history-stats-modal {
 .is-phone .history-stats-modal .stats-heat-date-row {
 	flex-direction: column;
 	align-items: stretch;
-	gap: 6px;
+	gap: 4px;
+	margin-bottom: 4px;
 }
 
 
@@ -791,10 +952,10 @@ body.is-phone .history-stats-modal {
 
 .is-phone .history-stats-modal .stats-heat-date-input,
 .is-phone .history-stats-modal .stats-heat-today-btn {
-	font-size: 11px;
-	padding: 2px 6px;
-	height: 24px;
-	line-height: 18px;
+	font-size: var(--wn-phone-font-control);
+	padding: 0.2em 0.5em;
+	height: 2em;
+	line-height: 1.2;
 	display: inline-flex;
 	align-items: center;
 	box-sizing: border-box;
@@ -812,37 +973,32 @@ body.is-phone .history-stats-modal {
 
 
 .is-phone .history-stats-modal .stats-heatmap-container {
-	margin-bottom: 10px;
-	overflow-x: auto;
-	-webkit-overflow-scrolling: touch;
-	touch-action: pan-x pan-y;
+	margin-bottom: 2px;
+	overflow-x: visible;
 }
 
 
 .is-phone .history-stats-modal .stats-heatmap-day-label {
-	width: 14px;
-	font-size: 8px;
-	text-align: left;
-	justify-content: flex-start;
-	padding-left: 0;
+	display: none;
 }
 
 
 .is-phone .history-stats-modal .stats-heatmap-months {
-	margin-left: 14px;
-	height: 14px;
+	margin-left: 0;
+	height: 1em;
 	margin-bottom: 2px;
 }
 
 
 .is-phone .history-stats-modal .stats-heatmap-month-label {
-	font-size: 8px;
+	font-size: var(--wn-phone-font-caption);
 }
 
 
-.is-phone .history-stats-modal .stats-subheading {
-	margin-top: 6px;
-	margin-bottom: 4px;
+body.is-phone .history-stats-modal .setting-item.setting-item-heading.stats-subheading {
+	margin-top: 4px;
+	margin-bottom: 2px;
+	padding: 0 0 2px;
 }
 
 
@@ -867,9 +1023,9 @@ body.is-phone .history-stats-modal .stats-metric-tabs {
 
 
 .is-phone .history-stats-modal .stats-tab-btn {
-	font-size: 10px;
-	padding: 2px 5px;
-	height: 22px;
+	font-size: var(--wn-phone-font-control);
+	padding: 0.2em 0.45em;
+	height: 2em;
 	line-height: 1;
 	box-sizing: border-box;
 	border-radius: 4px;
@@ -877,19 +1033,30 @@ body.is-phone .history-stats-modal .stats-metric-tabs {
 
 
 .is-phone .stats-large-chart-container {
-	height: 140px;
-	min-height: 140px;
+	height: 11.25em;
+	min-height: 11.25em;
 	margin-top: 2px;
-	padding: 4px 2px;
+	padding: 0.25em 0.125em 1.75em;
+	box-sizing: border-box;
 	display: flex;
+}
+
+
+body.is-phone .history-stats-modal .stats-large-label {
+	font-size: var(--wn-phone-font-caption);
+}
+
+
+body.is-phone .history-stats-modal .stats-large-value {
+	font-size: var(--wn-phone-font-meta);
 }
 
 
 body.is-phone .history-stats-modal .stats-time-tabs .stats-tab-btn,
 body.is-phone .history-stats-modal .stats-metric-tabs .stats-tab-btn {
-	font-size: 10px;
-	padding: 2px 5px;
-	height: 22px;
+	font-size: var(--wn-phone-font-control);
+	padding: 0.2em 0.45em;
+	height: 2em;
 	line-height: 1;
 	min-width: 0;
 	box-sizing: border-box;
@@ -897,22 +1064,23 @@ body.is-phone .history-stats-modal .stats-metric-tabs .stats-tab-btn {
 }
 
 
+/* ========== Lore, foreshadowing, and task cards ========== */
 /* ========== Mobile Lore & Foreshadowing Hover Popover Safe Bounds ========== */
 body.is-phone .webnovel-lore-popover,
 body.is-phone .wn-lore-hover-popover,
 body.is-phone .wn-character-hover-card,
 body.is-phone .wn-hover-card {
-	font-size: var(--font-ui-medium, 1em);
-	width: min(220px, calc(100vw - 24px));
-	max-width: min(220px, calc(100vw - 24px));
-	max-height: 240px;
+	font-size: var(--wn-phone-ui-font-size);
+	width: min(14em, calc(100vw - 1.5em));
+	max-width: min(14em, calc(100vw - 1.5em));
+	max-height: 18em;
 	box-shadow: 0 4px 18px rgba(0, 0, 0, 0.2);
 	border-radius: 8px;
 	border: 1px solid var(--background-modifier-border);
 	background-color: var(--background-primary);
 	z-index: 1000;
 	box-sizing: border-box;
-	padding: 4px;
+	padding: 0.25em;
 	overflow: hidden;
 	display: flex;
 	flex-direction: column;
@@ -924,7 +1092,7 @@ body.is-phone .webnovel-lore-popover .wn-lore-card {
 	width: 100%;
 	max-width: 100%;
 	height: auto;
-	max-height: 230px;
+	max-height: 17.5em;
 	aspect-ratio: auto;
 	padding: 0;
 	margin: 0;
@@ -932,18 +1100,19 @@ body.is-phone .webnovel-lore-popover .wn-lore-card {
 	border: none;
 	background: transparent;
 	display: block;
+	font-size: 1em;
 }
 
 
 body.is-phone .wn-lore-hover-popover .wn-lore-card-header,
 body.is-phone .webnovel-lore-popover .wn-lore-card-header {
-	padding: 4px 6px;
+	padding: var(--wn-phone-card-header-padding);
 }
 
 
 body.is-phone .wn-lore-hover-popover .wn-lore-card-title,
 body.is-phone .webnovel-lore-popover .wn-lore-card-title {
-	font-size: 0.65em;
+	font-size: var(--wn-phone-font-title);
 	font-weight: 600;
 }
 
@@ -953,10 +1122,10 @@ body.is-phone .webnovel-lore-popover .wn-lore-card-body {
 	display: block;
 	height: auto;
 	min-height: auto;
-	max-height: 220px;
+	max-height: 15em;
 	overflow-y: auto;
-	padding: 4px 6px;
-	font-size: 0.80em;
+	padding: var(--wn-phone-card-body-padding);
+	font-size: var(--wn-phone-font-body);
 	font-weight: 400;
 	line-height: 1.5;
 	background: transparent;
@@ -968,7 +1137,7 @@ body.is-phone .wn-lore-hover-popover .wn-lore-markdown,
 body.is-phone .webnovel-lore-popover .wn-lore-markdown {
 	padding: 0;
 	margin: 0;
-	font-size: 0.80em;
+	font-size: 1em;
 	line-height: 1.4;
 	display: block;
 }
@@ -985,16 +1154,41 @@ body.is-phone .webnovel-lore-popover .wn-lore-markdown div {
 
 body.is-phone .wn-lore-hover-popover .wn-lore-card-badge,
 body.is-phone .webnovel-lore-popover .wn-lore-card-badge {
-	font-size: 0.5em;
+	font-size: var(--wn-phone-font-meta);
 	padding: 1px 4px;
 }
 
 
 body.is-phone .mobile-floating-stats {
-	font-size: 0.5em;
+	font-size: 0.75em;
 	padding: 4px 10px;
 	min-height: 25px;
 	border-radius: 12px;
+}
+
+
+body.is-phone .wn-foreshadowing-board-card {
+	gap: var(--wn-phone-card-gap);
+	padding: var(--wn-phone-card-padding);
+	border-radius: var(--wn-phone-card-radius);
+	font-size: 1em;
+}
+
+
+body.is-phone .wn-card-description-title {
+	font-size: var(--wn-phone-font-title);
+}
+
+
+body.is-phone .wn-foreshadowing-card-line3,
+body.is-phone .wn-foreshadowing-card-line4 {
+	font-size: var(--wn-phone-font-body);
+}
+
+
+body.is-phone .wn-foreshadowing-status-badge,
+body.is-phone .wn-card-tag-badge {
+	font-size: var(--wn-phone-font-meta);
 }
 
 
@@ -1017,6 +1211,9 @@ body.is-phone .wn-task-board-layout .wn-corkboard-card {
 	margin-left: 0;
 	margin-right: 0;
 	justify-self: stretch;
+	font-size: 1em;
+	padding: var(--wn-phone-card-padding);
+	border-radius: var(--wn-phone-card-radius);
 }
 
 
@@ -1024,42 +1221,49 @@ body.is-phone .wn-task-board-layout .wn-corkboard-card {
 body.is-phone .wn-task-card .task-card-period,
 body.is-phone .wn-task-card .wn-task-card-period,
 body.is-phone .task-card .task-card-period {
-	font-size: 1.05em;
+	font-size: var(--wn-phone-font-title);
 }
 
 
 body.is-phone .wn-task-card .task-card-info-row,
 body.is-phone .wn-task-card .wn-task-card-info-row,
 body.is-phone .task-card .task-card-info-row {
-	font-size: 1em;
+	font-size: var(--wn-phone-font-body);
 }
 
 
 body.is-phone .wn-task-card .task-card-cycle-row,
 body.is-phone .wn-task-card .wn-task-card-cycle-row,
 body.is-phone .task-card .task-card-cycle-row {
-	font-size: 1em;
+	font-size: var(--wn-phone-font-meta);
 }
 
 
 body.is-phone .wn-task-card .task-progress-label,
 body.is-phone .wn-task-card .wn-task-progress-label,
 body.is-phone .task-card .task-progress-label {
-	font-size: 1em;
+	font-size: var(--wn-phone-font-body);
 }
 
 
 body.is-phone .wn-task-card .task-card-footer,
 body.is-phone .wn-task-card .wn-task-card-footer,
 body.is-phone .task-card .task-card-footer {
-	font-size: 1em;
+	font-size: var(--wn-phone-font-meta);
 }
 
 
 body.is-phone .wn-task-card .task-card-result,
 body.is-phone .wn-task-card .wn-task-card-result,
 body.is-phone .task-card .task-card-result {
-	font-size: 1em;
+	font-size: var(--wn-phone-font-body);
+}
+
+
+body.is-phone .wn-task-card .wn-task-card-status,
+body.is-phone .wn-task-card .wn-task-complete-btn,
+body.is-phone .wn-task-card .wn-task-abandon-btn {
+	font-size: var(--wn-phone-font-meta);
 }
 
 
@@ -1083,12 +1287,12 @@ body.is-phone .wn-card-actions-wrapper {
 
 
 body.is-phone .wn-card-action-btn {
-	font-size: 0.75em;
-	padding: 0 10px;
-	height: 20px;
-	min-height: 20px;
-	max-height: 20px;
-	line-height: 20px;
+	font-size: var(--wn-phone-font-control);
+	padding: 0 0.625em;
+	height: 2em;
+	min-height: 2em;
+	max-height: 2em;
+	line-height: 2em;
 	border-radius: 4px;
 	margin: 0;
 	display: inline-flex;
@@ -1098,6 +1302,7 @@ body.is-phone .wn-card-action-btn {
 }
 
 
+/* ========== Portrait-only refinements ========== */
 @media screen and (orientation: portrait) {
 	body.is-phone .workspace-leaf-content[data-type="webnovel-workbench"] .view-content {
 		padding-top: 0;
@@ -1130,7 +1335,7 @@ body.is-phone .wn-card-action-btn {
 		order: 1;
 		margin-top: 0px;
 		margin-bottom: 6px;
-		font-size: 0.9em;
+		font-size: var(--wn-phone-font-meta);
 		color: var(--text-muted);
 		text-align: center;
 		width: 100%;
@@ -1151,12 +1356,12 @@ body.is-phone .wn-card-action-btn {
 	body.is-phone .wn-corkboard-header-buttons button,
 	body.is-phone .wn-corkboard-header-buttons div[class*="-btn"],
 	body.is-phone .wn-timeline-add-node-btn {
-		font-size: 0.90em;
-		padding: 4px 10px;
+		font-size: var(--wn-phone-font-control);
+		padding: 0.3em 0.625em;
 		border-radius: 4px;
 	}
 
-	/* 选项卡支持自适应换行，防止英文或长文案下文本溢出乱序 */
+	/* 视图导航保持紧凑并支持长文案换行 */
 	body.is-phone .wn-corkboard-toggle-group {
 		order: 3;
 		display: flex;
@@ -1166,7 +1371,7 @@ body.is-phone .wn-card-action-btn {
 		align-items: center;
 		width: 100%;
 		max-width: 100%;
-		gap: 4px;
+		gap: 0;
 		padding: 3px;
 		margin-top: 4px;
 		margin-bottom: 0;
@@ -1180,9 +1385,9 @@ body.is-phone .wn-card-action-btn {
 		white-space: normal;
 		word-break: break-word;
 		text-align: center;
-		font-size: 0.88em;
+		font-size: var(--wn-phone-font-control);
 		font-weight: 500;
-		padding: 4px 6px;
+		padding: 0.3em 0.25em;
 		border-radius: 4px;
 		line-height: 1.2;
 		display: inline-flex;
@@ -1199,7 +1404,7 @@ body.is-phone .wn-card-action-btn {
 	}
 
 	body.is-phone .wn-workbench-filter-count {
-		font-size: 0.7em;
+		font-size: var(--wn-phone-font-meta);
 		min-width: 4em;
 	}
 
@@ -1215,56 +1420,57 @@ body.is-phone .wn-card-action-btn {
 	body.is-phone body .wn-workbench-filter-bar input[type="search"].wn-workbench-filter-input,
 	body.is-phone body .wn-workbench-filter-bar input.wn-workbench-filter-input,
 	body.is-phone input.wn-workbench-filter-input {
-		font-size: 0.75em;
-		height: 28px;
+		font-size: var(--wn-phone-font-control);
+		height: 2em;
 	}
 
 	body.is-phone input.wn-workbench-filter-input::placeholder,
 	body.is-phone input[type="search"].wn-workbench-filter-input::placeholder {
-		font-size: 0.7em;
+		font-size: var(--wn-phone-font-meta);
 		opacity: 0.7;
 	}
 
 	/* 除了任务卡片外的所有卡片及文字大小优化 */
 	body.is-phone .wn-corkboard-grid {
-		gap: 10px;
+		gap: var(--wn-phone-card-gap);
 		padding-bottom: 20px;
 	}
 
 	body.is-phone .wn-corkboard-card {
-		min-height: 100px;
-		border-radius: 6px;
+		min-height: var(--wn-phone-card-min-height);
+		border-radius: var(--wn-phone-card-radius);
+		font-size: 1em;
 	}
 
 	body.is-phone .wn-corkboard-card-header {
-		padding: 4px 8px;
+		padding: var(--wn-phone-card-header-padding);
 	}
 
 	body.is-phone .wn-corkboard-card-title {
-		font-size: 0.95em;
+		font-size: var(--wn-phone-font-title);
 		font-weight: 600;
 	}
 
 	body.is-phone .wn-corkboard-card-status {
-		font-size: 0.75em;
+		font-size: var(--wn-phone-font-meta);
 		padding: 1px 4px;
 	}
 
 	body.is-phone .wn-corkboard-card-content {
-		padding: 6px 8px;
-		min-height: 40px;
+		padding: var(--wn-phone-card-body-padding);
+		min-height: 3em;
 	}
 
 	body.is-phone .wn-corkboard-card-text,
 	body.is-phone body textarea.wn-corkboard-textarea {
-		font-size: 0.92em;
+		font-size: var(--wn-phone-font-body);
 		font-weight: 400;
 		line-height: 1.4;
 	}
 
 	body.is-phone .wn-corkboard-card-footer {
-		padding: 4px 8px;
-		font-size: 0.78em;
+		padding: var(--wn-phone-card-footer-padding);
+		font-size: var(--wn-phone-font-meta);
 		flex-shrink: 0;
 	}
 
@@ -1275,7 +1481,7 @@ body.is-phone .wn-card-action-btn {
 	}
 
 	body.is-phone .wn-timeline-node-title {
-		font-size: 0.9em;
+		font-size: var(--wn-phone-font-title);
 		font-weight: 600;
 		margin-bottom: 4px;
 		padding-left: 14px;
@@ -1290,26 +1496,26 @@ body.is-phone .wn-card-action-btn {
 	}
 
 	body.is-phone .wn-timeline-type-badge {
-		font-size: 0.75em;
+		font-size: var(--wn-phone-font-meta);
 		padding: 1px 4px;
 		margin-right: 4px;
 	}
 
 	body.is-phone .wn-timeline-content,
 	body.is-phone .wn-timeline-card {
-		padding: 6px 8px;
-		font-size: 0.9em;
+		padding: var(--wn-phone-card-body-padding);
+		font-size: 1em;
 	}
 
 	body.is-phone .wn-timeline-title,
 	body.is-phone .wn-timeline-event-title {
-		font-size: 0.9em;
+		font-size: var(--wn-phone-font-title);
 		font-weight: 600;
 	}
 
 	body.is-phone .wn-timeline-desc,
 	body.is-phone .wn-timeline-summary {
-		font-size: 0.9em;
+		font-size: var(--wn-phone-font-body);
 		font-weight: 400;
 		line-height: 1.4;
 	}
@@ -1321,42 +1527,43 @@ body.is-phone .wn-card-action-btn {
 	}
 
 	body.is-phone .wn-lore-file-tab {
-		font-size: 0.8em;
+		font-size: var(--wn-phone-font-control);
 		padding: 3px 8px;
 		border-radius: 5px;
 		gap: 4px;
 	}
 
 	body.is-phone .wn-lore-file-tab-count {
-		font-size: 0.7em;
+		font-size: var(--wn-phone-font-meta);
 		padding: 1px 5px;
 		border-radius: 8px;
 	}
 
-	/* 设定看板卡片与表格 (正文与标题字号完全统一为 0.98em，正文不加粗) */
+	/* 设定卡片与其他工作台卡片共享标题、正文和间距层级 */
 	body.is-phone .wn-lore-card {
-		padding: 6px;
-		font-size: 0.95em;
+		padding: 0;
+		font-size: 1em;
 		aspect-ratio: 1 / 1;
 		min-height: auto;
+		border-radius: var(--wn-phone-card-radius);
 		display: flex;
 		flex-direction: column;
 	}
 
 	body.is-phone .wn-lore-card-header {
-		padding: 4px 6px;
+		padding: var(--wn-phone-card-header-padding);
 		flex-shrink: 0;
 	}
 
 	body.is-phone .wn-lore-card-title {
-		font-size: 0.95em;
+		font-size: var(--wn-phone-font-title);
 		font-weight: 600;
 	}
 
 	body.is-phone .wn-lore-card-body,
 	body.is-phone .wn-lore-card-content {
-		padding: 4px 6px;
-		font-size: 0.95em;
+		padding: var(--wn-phone-card-body-padding);
+		font-size: var(--wn-phone-font-body);
 		font-weight: 400;
 		line-height: 1.45;
 		flex: 1 1 0px;
@@ -1387,7 +1594,7 @@ body.is-phone .wn-card-action-btn {
 	body.is-phone .wn-lore-markdown h4,
 	body.is-phone .wn-lore-markdown h5,
 	body.is-phone .wn-lore-markdown h6 {
-		font-size: 0.98em;
+		font-size: 1em;
 		font-weight: 600;
 		margin-top: 6px;
 		margin-bottom: 3px;
@@ -1395,7 +1602,7 @@ body.is-phone .wn-card-action-btn {
 
 	/* 各个看板分类标题 (Volume & Category Headers) 手机端精细微缩 */
 	body.is-phone .wn-corkboard-volume-header {
-		font-size: 0.8em;
+		font-size: var(--wn-phone-font-control);
 		font-weight: 600;
 		padding: 3px 6px;
 		margin-top: 6px;
@@ -1412,7 +1619,7 @@ body.is-phone .wn-card-action-btn {
 
 	/* 设定看板 - 表格模式 (Table Mode) 手机端精细微缩 */
 	body.is-phone .wn-lore-board-group {
-		padding: 6px 8px;
+		padding: var(--wn-phone-card-body-padding);
 		margin-bottom: 6px;
 		border-radius: 6px;
 	}
@@ -1424,12 +1631,12 @@ body.is-phone .wn-card-action-btn {
 	}
 
 	body.is-phone .wn-lore-board-group-title {
-		font-size: 0.8em;
+		font-size: var(--wn-phone-font-title);
 		font-weight: 600;
 	}
 
 	body.is-phone .wn-lore-board-group-count {
-		font-size: 0.7em;
+		font-size: var(--wn-phone-font-meta);
 	}
 
 	body.is-phone .wn-lore-board-group-relations {
@@ -1439,16 +1646,16 @@ body.is-phone .wn-card-action-btn {
 
 	body.is-phone .wn-lore-board-relation-item {
 		gap: 3px;
-		font-size: 0.7em;
+		font-size: var(--wn-phone-font-body);
 	}
 
 	body.is-phone .wn-lore-board-relation-badge {
-		font-size: 0.65em;
+		font-size: var(--wn-phone-font-meta);
 		padding: 1px 3px;
 	}
 
 	body.is-phone .wn-lore-board-relation-targets {
-		font-size: 0.7em;
+		font-size: var(--wn-phone-font-body);
 	}
 
 	body.is-phone .wn-lore-board-cards {
@@ -1456,26 +1663,27 @@ body.is-phone .wn-card-action-btn {
 	}
 
 	body.is-phone .wn-lore-board-mini-card {
-		padding: 2px 6px;
-		font-size: 0.7em;
+		padding: 0.2em 0.5em;
+		font-size: 1em;
 		gap: 4px;
 		border-radius: 3px;
 	}
 
 	body.is-phone .wn-lore-board-mini-card-title {
-		font-size: 0.7em;
+		font-size: var(--wn-phone-font-title);
 	}
 
 	body.is-phone .wn-lore-board-mini-card-count {
-		font-size: 0.7em;
+		font-size: var(--wn-phone-font-meta);
 	}
 
 	/* 伏笔侧面板卡片与回收/废弃按钮字体恢复侧栏标准字号 */
 	body.is-phone .foreshadowing-entry-card,
 	body.is-phone .wn-foreshadowing-card {
-		padding: 10px 12px;
+		padding: var(--wn-phone-card-padding);
 		margin-bottom: 10px;
-		font-size: 0.9em;
+		font-size: 1em;
+		border-radius: var(--wn-phone-card-radius);
 	}
 
 	body.is-phone .foreshadowing-entry-desc {
@@ -1483,22 +1691,22 @@ body.is-phone .wn-card-action-btn {
 	}
 
 	body.is-phone .foreshadowing-entry-desc-text {
-		font-size: 0.95em;
+		font-size: var(--wn-phone-font-title);
 		font-weight: 600;
 		line-height: 1.4;
 	}
 
 	body.is-phone .foreshadowing-entry-quote,
 	body.is-phone .foreshadowing-entry-quote-text {
-		padding: 4px 6px;
-		font-size: 0.88em;
+		padding: 0.25em 0.375em;
+		font-size: var(--wn-phone-font-body);
 		line-height: 1.45;
 	}
 
 	body.is-phone .foreshadowing-entry-tag,
 	body.is-phone .foreshadowing-status-pill,
 	body.is-phone .wn-badge-foreshadowing {
-		font-size: 0.78em;
+		font-size: var(--wn-phone-font-meta);
 		padding: 2px 6px;
 	}
 
@@ -1517,13 +1725,13 @@ body.is-phone .wn-card-action-btn {
 	body.is-phone .foreshadowing-action-btn,
 	body.is-phone .foreshadowing-recover-btn,
 	body.is-phone .foreshadowing-deprecate-btn {
-		font-size: 0.82em;
-		padding: 0 12px;
-		height: 24px;
-		min-height: 24px;
-		max-height: 24px;
+		font-size: var(--wn-phone-font-control);
+		padding: 0 0.75em;
+		height: 2em;
+		min-height: 2em;
+		max-height: 2em;
 		border-radius: 4px;
-		line-height: 24px;
+		line-height: 2em;
 		margin: 0;
 		display: inline-flex;
 		align-items: center;
@@ -1531,20 +1739,33 @@ body.is-phone .wn-card-action-btn {
 		box-sizing: border-box;
 	}
 
-	/* 悬浮卡片 / Popover 浮窗整体调小，内边距与外框缩紧（字号保持不变） */
+	/* 悬浮卡片 / Popover 浮窗保持紧凑，标题与内容字号由上方规则单独控制 */
 	body.is-phone .webnovel-lore-popover,
 	body.is-phone .wn-lore-hover-popover,
 	body.is-phone .wn-character-hover-card,
 	body.is-phone .wn-hover-card {
-		padding: 5px 7px;
-		font-size: 0.8em;
+		padding: 0.3em 0.45em;
 	}
 
 	body.is-phone .wn-lore-popover-header {
-		font-size: 0.85em;
+		font-size: var(--wn-phone-font-title);
 		padding-bottom: 4px;
 		margin-bottom: 6px;
 	}
 
 
+}
+/* ========== Touch-device responsive overrides (extracted from common.css) ========== */
+
+/* Mobile touch optimization (Requirement 8.5) */
+
+/* General styling */
+
+@media (hover: none) and (pointer: coarse) {
+
+	/* Disable hover effects */
+	.stats-tab-btn:hover {
+		background: transparent;
+		color: var(--text-muted);
+	}
 }

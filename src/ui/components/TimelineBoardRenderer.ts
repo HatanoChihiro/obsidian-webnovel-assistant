@@ -442,6 +442,7 @@ export class TimelineBoardRenderer {
 						if (descEl.querySelector('textarea')) return;
 						const currentDesc = items[itemIdx].description || '';
 						descEl.empty();
+						descEl.addClass('is-editing');
 						const textarea = descEl.createEl('textarea', { cls: 'wn-corkboard-textarea' });
 						textarea.value = currentDesc;
 						textarea.focus();
@@ -507,10 +508,17 @@ export class TimelineBoardRenderer {
 					addSubEventRow.hide();
 					const itemRow = nodeDiv.insertBefore(createDiv('wn-timeline-item-row'), addSubEventRow);
 					const descEl = itemRow.createDiv({ text: '', cls: 'wn-timeline-item-desc' });
+					descEl.addClass('is-editing');
 					itemRow.createDiv('wn-timeline-cards-container');
 
 					const textarea = descEl.createEl('textarea', { cls: 'wn-corkboard-textarea' });
 					textarea.focus();
+					textarea.setCssProps({ height: 'auto' });
+					textarea.setCssProps({ height: textarea.scrollHeight + 'px' });
+					textarea.oninput = () => {
+						textarea.setCssProps({ height: 'auto' });
+						textarea.setCssProps({ height: textarea.scrollHeight + 'px' });
+					};
 					textarea.onblur = async () => {
 						const newVal = textarea.value.trim();
 						if (newVal) {
@@ -883,7 +891,8 @@ export class TimelineBoardRenderer {
 		}
 
 		CorkboardGridRenderer.render({
-			app, plugin, container: sideGrid, files: unscheduled, foreshadowingMap, draggable: true, currentBookPath, onSaveStateChange
+			app, plugin, container: sideGrid, files: unscheduled, foreshadowingMap, draggable: true, currentBookPath, onSaveStateChange,
+			groupVolumeCards: container.ownerDocument.body.classList.contains('is-phone')
 		});
 
 		Logger.info(`[Perf] TimelineBoardRenderer.render completed in ${(performance.now() - tStart).toFixed(2)}ms (${entries?.length || 0} entries, ${files.length} total files, ${unscheduled.length} unscheduled)`);

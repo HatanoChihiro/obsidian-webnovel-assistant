@@ -11,7 +11,7 @@ import { t } from '../i18n';
  * 统计数据管理器 (StatisticsManager)
  * 
  * 职责：
- * 1. 订阅全局字数变更事件（`webnovel:file-word-count-updated`）。
+ * 1. 订阅编辑器章节字数变更事件（`webnovel:editor-word-count-updated`）。
  * 2. 独立处理「每日总字数大盘」和「本场净增字数」的计算。
  * 3. 隔离底层的文件变动（FileEventManager/EditorTracker）与顶层的数据状态，避免回归缺陷。
  */
@@ -23,9 +23,9 @@ export class StatisticsManager {
 	}
 
 	setup(): void {
-		// 监听全局的字数变更事件
+		// 只监听由 EditorTracker 发出的章节编辑增量，文件系统变化不会进入写作数据。
 		this.plugin.registerEvent(
-			this.plugin.app.workspace.on('webnovel:file-word-count-updated', (file: TAbstractFile, delta: number) => {
+			this.plugin.app.workspace.on('webnovel:editor-word-count-updated', (file: TAbstractFile, delta: number) => {
 				this.handleWordCountUpdated(file, delta);
 			})
 		);
@@ -94,14 +94,14 @@ export class StatisticsManager {
 		};
 	}
 
-	private handleWordCountUpdated(file: TAbstractFile, delta: number): void {
+	private handleWordCountUpdated(_file: TAbstractFile, delta: number): void {
 		if (delta === 0) return;
 
 		// 只有在布局准备好后才记录统计，避免在启动时读取缓存导致异常的“净增”
 		if (!this.plugin.isLayoutReady) return;
 
 		try {
-			// 1. 无脑更新今日总字数历史记录
+			// 1. 更新今日章节编辑净增字数
 			const today = window.moment().format('YYYY-MM-DD');
 			this.plugin.historyManager.addWords(today, delta);
 
@@ -226,8 +226,7 @@ export class StatisticsManager {
 		folderPaths.add('');
 
 		for (const folderPath of folderPaths) {
-			this.plugin.taskManager.currentFolder = folderPath;
-			const entries = await this.plugin.taskManager.loadEntries();
+			const entries = await this.plugin.taskManager.loadEntries(folderPath);
 			if (entries) {
 				total += entries.length;
 				completed += entries.filter(e => e.status === 'completed').length;

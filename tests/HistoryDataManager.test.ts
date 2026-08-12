@@ -8,6 +8,43 @@ function deferred() {
 }
 
 describe('HistoryDataManager persistence', () => {
+	it('clears only daily words while preserving focus timing data', () => {
+		const plugin = {
+			manifest: { dir: 'plugins/test', id: 'test' },
+			app: { vault: { adapter: {} } }
+		} as never;
+		const manager = new HistoryDataManager(plugin);
+		manager.updateDailyStat('2026-08-12', {
+			addedWords: 1200,
+			focusMs: 60000,
+			slackMs: 30000,
+			hourlyFocus: [60000],
+			hourlySlack: [30000]
+		});
+
+		manager.setDailyWords('2026-08-12', 0);
+
+		expect(manager.getDailyStat('2026-08-12')).toEqual({
+			addedWords: 0,
+			focusMs: 60000,
+			slackMs: 30000,
+			hourlyFocus: [60000],
+			hourlySlack: [30000]
+		});
+	});
+
+	it('supports correcting daily words to a signed integer', () => {
+		const plugin = {
+			manifest: { dir: 'plugins/test', id: 'test' },
+			app: { vault: { adapter: {} } }
+		} as never;
+		const manager = new HistoryDataManager(plugin);
+
+		manager.setDailyWords('2026-08-12', -80);
+
+		expect(manager.getDailyStat('2026-08-12')?.addedWords).toBe(-80);
+	});
+
 	it('serializes snapshots without losing updates made during a write', async () => {
 		const firstWrite = deferred();
 		const writes: string[] = [];

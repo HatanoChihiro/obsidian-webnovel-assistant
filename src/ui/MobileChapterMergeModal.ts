@@ -15,6 +15,7 @@ export class MobileChapterMergeModal extends Modal {
 
 	private statsEl!: HTMLElement;
 	private previewContainerEl!: HTMLElement;
+	private typographyPreviewElement: HTMLElement | null = null;
 
 	constructor(app: typeof plugin.app, plugin: WebNovelAssistantPlugin, folder: TFolder) {
 		super(app);
@@ -28,30 +29,14 @@ export class MobileChapterMergeModal extends Modal {
 
 		modalEl.addClass('wn-mobile-merge-modal-window');
 		contentEl.addClass('wn-mobile-merge-modal-content');
-		this.applyTypographyToModal(modalEl);
+		this.typographyPreviewElement = modalEl;
+		this.plugin.typographyManager.registerPreviewElement(modalEl);
 
 		this.items = await this.plugin.chapterMergeManager.loadFolderChapters(this.folder);
 
 		this.renderHeader(contentEl);
 		this.renderWaterfallBody(contentEl);
 		this.renderFooter(modalEl);
-	}
-
-	/**
-	 * 继承全局排版控制系统的 CSS 变量与 Class
-	 */
-	private applyTypographyToModal(containerEl: HTMLElement): void {
-		const typo = this.plugin.settings.typography;
-		if (!typo) return;
-
-		containerEl.addClass('wn-typography-active');
-
-		containerEl.style.setProperty('--wn-type-header-align', typo.headerAlignment || 'center');
-		containerEl.style.setProperty('--wn-type-indent', typo.enableIndent ? (typo.indentSize || '2em') : '0');
-		containerEl.style.setProperty('--wn-type-line-height', String(typo.lineHeight || 1.8));
-		containerEl.style.setProperty('--wn-type-para-spacing', typo.paragraphSpacing || '0.5em');
-		containerEl.style.setProperty('--wn-type-letter-spacing', typo.letterSpacing || '0.05em');
-		containerEl.style.setProperty('--wn-type-text-align', typo.justifyText ? 'justify' : 'left');
 	}
 
 	/**
@@ -164,6 +149,11 @@ export class MobileChapterMergeModal extends Modal {
 	}
 
 	onClose(): void {
+		if (this.typographyPreviewElement) {
+			this.plugin.typographyManager.unregisterPreviewElement(this.typographyPreviewElement);
+			this.typographyPreviewElement = null;
+		}
+
 		const { contentEl } = this;
 		contentEl.empty();
 	}

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { findBookRoot } from '../src/utils/path';
+import { findBookRoot, getCurrentBookContext } from '../src/utils/path';
 import { TFile, TFolder, App } from 'obsidian';
 
 // Mock getAbstractFileByPath
@@ -113,5 +113,26 @@ describe('path utils - findBookRoot', () => {
 		// 由于 workspaceFolders 包含 '某工作区'，并且 currentFolder 的 parent 是 '某工作区'
 		// 它应该返回 novelFolder 的 path
 		expect(findBookRoot(app, plugin, file)).toBe('某工作区/某小说');
+	});
+});
+
+describe('path utils - getCurrentBookContext', () => {
+	it('侧面板聚焦时优先使用最后活跃章节，而不是其他已打开的作品工作台', () => {
+		const rootFolder = new MockFolder('作品B', '作品B');
+		const activeFile = new MockFile('作品B/第1章.md', '第1章.md');
+		activeFile.parent = rootFolder;
+		const app = createMockApp({ '作品B/作品信息.md': 'file' });
+		Object.assign(app, {
+			workspace: {
+				getMostRecentLeaf: () => ({ view: { getViewType: () => 'writing-status-view' } }),
+				getActiveFile: () => activeFile,
+				getLeavesOfType: () => [{
+					view: { getViewType: () => 'webnovel-workbench', currentBookPath: '作品A' }
+				}]
+			}
+		});
+		const plugin = createMockPlugin();
+
+		expect(getCurrentBookContext(app, plugin)).toBe('作品B');
 	});
 });

@@ -1,4 +1,4 @@
-import { Notice, TFile, type App, Modal } from 'obsidian';
+import { Notice, TFile } from 'obsidian';
 import { isDesktop } from '../utils/platform';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { copyDocumentContent } from '../utils/ui';
@@ -16,34 +16,8 @@ import { getDefaultFileName } from '../i18n/data-keys';
 import { GoalModal } from '../ui/GoalModal';
 import { resolveChapterTemplate } from '../utils/template';
 import { TypographyQuickModal } from '../ui/TypographyQuickModal';
-
-class ConfirmResetDailyStatsModal extends Modal {
-	constructor(app: App, private onConfirm: () => void) {
-		super(app);
-	}
-
-	onOpen() {
-		const { contentEl } = this;
-		contentEl.empty();
-		contentEl.createDiv({ text: t('command.reset-daily-stats-title'), cls: 'modal-title' });
-		const p = contentEl.createEl('p', { text: t('command.reset-daily-stats-warning') });
-		p.setCssStyles({ color: 'var(--text-error)' });
-
-		const btnContainer = contentEl.createDiv({ cls: 'wn-base-button-container' });
-		const cancelBtn = btnContainer.createEl('button', { text: t('common.cancel') });
-		cancelBtn.onclick = () => this.close();
-
-		const confirmBtn = btnContainer.createEl('button', { text: t('common.confirm'), cls: 'mod-warning' });
-		confirmBtn.onclick = () => {
-			this.onConfirm();
-			this.close();
-		};
-	}
-
-	onClose() {
-		this.contentEl.empty();
-	}
-}
+import { Logger } from '../utils/Logger';
+import { DailyStatsActionModal, type DailyStatsAction } from '../ui/DailyStatsActionModal';
 
 function getSelectedOrCursorWord(editor: {
 	getSelection: () => string;
@@ -90,6 +64,38 @@ export class CommandManager {
 				new TypographyQuickModal(this.plugin.app, this.plugin).open();
 			}
 		});
+
+		this.plugin.addCommand({
+			id: 'increase-body-font-size',
+			name: t('command.increase-body-font-size'),
+			icon: 'zoom-in',
+			callback: () => {
+				this.adjustBodyFontSize(1);
+			}
+		});
+
+		this.plugin.addCommand({
+			id: 'decrease-body-font-size',
+			name: t('command.decrease-body-font-size'),
+			icon: 'zoom-out',
+			callback: () => {
+				this.adjustBodyFontSize(-1);
+			}
+		});
+	}
+
+	private adjustBodyFontSize(delta: number): void {
+		const typography = this.plugin.settings.typography;
+		if (!typography.enableBodyFontSize) {
+			new Notice(t('notice.body-font-size-disabled'));
+			return;
+		}
+		const current = Number.isFinite(typography.bodyFontSize) && typography.bodyFontSize > 0
+			? typography.bodyFontSize
+			: 16;
+		typography.bodyFontSize = Math.min(32, Math.max(12, current + delta));
+		this.plugin.typographyManager.updateTypography();
+		void this.plugin.saveSettings();
 	}
 
 	private registerViewCommands() {
@@ -187,25 +193,48 @@ export class CommandManager {
 			name: t('command.reset-daily-stats'),
 			icon: 'trash-2',
 			callback: () => {
-				new ConfirmResetDailyStatsModal(this.plugin.app, () => {
-					const today = window.moment().format('YYYY-MM-DD');
-					this.plugin.historyManager.resetDailyStat(today);
-					void this.plugin.historyManager.saveHistory(true);
-					this.plugin.refreshStatusViews();
-
-					// 如果开启了直播状态视图（悬浮窗），也要重置内存变量
-					this.plugin.focusMs = 0;
-					this.plugin.slackMs = 0;
-					this.plugin.sessionAddedWords = 0;
-					if (this.plugin.isTracking) {
-						this.plugin.stopTracking();
-					}
-					void this.plugin.editorTracker?.handleFileChange();
-
-					new Notice(t('notice.daily-stats-reset'));
-				}).open();
+				const today = window.moment().format('YYYY-MM-DD');
+				const currentWords = this.plugin.historyManager.getDailyStat(today)?.addedWords ?? 0;
+				new DailyStatsActionModal(
+					this.plugin.app,
+					currentWords,
+					action => { void this.applyDailyStatsAction(action); }
+				).open();
 			}
 		});
+	}
+
+	private async applyDailyStatsAction(action: DailyStatsAction): Promise<void> {
+		const today = window.moment().format('YYYY-MM-DD');
+		let successNotice: string;
+
+		try {
+			if (action.type === 'reset-all') {
+				if (this.plugin.isTracking) {
+					this.plugin.stopTracking();
+				}
+				this.plugin.historyManager.resetDailyStat(today);
+				this.plugin.focusMs = 0;
+				this.plugin.slackMs = 0;
+				this.plugin.sessionAddedWords = 0;
+				await this.plugin.editorTracker?.handleFileChange();
+				successNotice = t('notice.daily-stats-reset');
+			} else if (action.type === 'reset-words') {
+				this.plugin.historyManager.setDailyWords(today, 0);
+				this.plugin.sessionAddedWords = 0;
+				successNotice = t('notice.daily-stats-words-cleared');
+			} else {
+				this.plugin.historyManager.setDailyWords(today, action.words);
+				successNotice = t('notice.daily-stats-words-corrected', { count: String(action.words) });
+			}
+
+			await this.plugin.historyManager.saveHistory(true);
+			this.plugin.refreshStatusViews();
+			new Notice(successNotice);
+		} catch (error) {
+			Logger.error('[CommandManager] 更新今日写作统计失败:', error);
+			new Notice(t('notice.daily-stats-update-failed'));
+		}
 	}
 
 	private registerStickyNoteCommands() {
@@ -600,8 +629,9 @@ export class CommandManager {
 			id: 'advanced-webnovel-search',
 			name: t('command.advanced-search'),
 			icon: 'search',
-			editorCallback: () => {
-				new AdvancedSearchModal(this.plugin.app, this.plugin).open();
+			callback: () => {
+				const sourceLeaf = this.plugin.immersiveModeManager.getSearchSourceLeaf();
+				new AdvancedSearchModal(this.plugin.app, this.plugin, sourceLeaf).open();
 			}
 		});
 

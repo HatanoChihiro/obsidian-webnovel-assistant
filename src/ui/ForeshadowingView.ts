@@ -8,6 +8,7 @@ import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { getForeshadowingStatusText, getDefaultFileName } from '../i18n/data-keys';
 import { t } from '../i18n';
 import { openFileAndFocus, smartLocateAndHighlight } from '../utils/leaf';
+import { ChapterSorter } from '../services/ChapterSorter';
 
 
 export const FORESHADOWING_VIEW_TYPE = 'foreshadowing-view';
@@ -251,9 +252,7 @@ export class ForeshadowingView extends CreativeView {
 				if (log.note) metaEl.createSpan({ cls: 'wn-log-note', text: `：${log.note}` });
 
 				linkSpan.onclick = async () => {
-					const sourcePath = this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '';
-					const file = this.app.metadataCache.getFirstLinkpathDest(log.file, sourcePath);
-					if (file) await this.openFileWithSmartLocate(file, log.quote || log.note || '');
+					await this.openRecoveryLocation(log.file, [log.quote, log.note, entry.description]);
 				};
 
 				// 正文引用行 (样式与 foreshadowing-entry-quote-text 一致)
@@ -264,9 +263,7 @@ export class ForeshadowingView extends CreativeView {
 					});
 					textEl.title = t('common.jump-to-original');
 					textEl.onclick = async () => {
-						const sourcePath = this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '';
-						const file = this.app.metadataCache.getFirstLinkpathDest(log.file, sourcePath);
-						if (file) await this.openFileWithSmartLocate(file, log.quote || '');
+						await this.openRecoveryLocation(log.file, [log.quote, log.note, entry.description]);
 					};
 				}
 			});
@@ -472,5 +469,15 @@ export class ForeshadowingView extends CreativeView {
 	 */
 	private async openFileWithSmartLocate(file: TFile, searchText: string) {
 		await smartLocateAndHighlight(this.app, file, [searchText]);
+	}
+
+	private async openRecoveryLocation(chapterName: string, searchTexts: (string | undefined)[]) {
+		const file = ChapterSorter.findChapterByName(this.app, this.plugin, this.currentFolder, chapterName);
+		if (!file) {
+			new Notice(t('common.file-not-found', { name: chapterName }));
+			return;
+		}
+
+		await smartLocateAndHighlight(this.app, file, searchTexts);
 	}
 }

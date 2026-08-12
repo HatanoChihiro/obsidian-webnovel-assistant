@@ -935,7 +935,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	async updateFileCacheAndRefresh(file: TFile): Promise<void> {
 		try {
 			// [BUGFIX] 重命名或后台刷新时需再次校验资格，防止将重命名后已不再符合要求的文档（如_合并章节）加入缓存
-			if (!this.cacheManager.isEligibleForWordCount(file)) {
+			if (!this.cacheManager.isEligibleForTotalWordCount(file)) {
 				this.cacheManager.invalidateCache(file.path, this.app.vault);
 				this.refreshFolderCounts();
 				return;

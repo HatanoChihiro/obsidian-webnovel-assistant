@@ -176,6 +176,15 @@ export class HistoryDataManager {
 	}
 
 	/**
+	 * 修正指定日期的写作字数，不改变专注和摸鱼计时数据
+	 */
+	setDailyWords(date: string, words: number): void {
+		const stat = this.getOrCreateDailyStat(date);
+		stat.addedWords = words;
+		this.markDirty();
+	}
+
+	/**
 	 * 重置指定日期的写作统计数据（字数、专注时间等归零）
 	 */
 	resetDailyStat(date: string): void {

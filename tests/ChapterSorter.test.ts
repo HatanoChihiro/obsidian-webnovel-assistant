@@ -344,5 +344,25 @@ describe('ChapterSorter', () => {
 			expect(basenames).toContain('第一章');
 			expect(basenames).toContain('第0章 作品信息');
 		});
+
+		it('按阶段回收记录中的章节 basename 定位嵌套目录文件', () => {
+			const chapter = new (TFile as any)('第12章 真相.md', '例外目录/卷二/第12章 真相.md');
+			chapter.basename = '第12章 真相';
+			chapter.extension = 'md';
+
+			const volumeFolder = new (TFolder as any)('卷二', '例外目录/卷二');
+			volumeFolder.children = [chapter];
+
+			const bookFolder = new (TFolder as any)('例外目录', '例外目录');
+			bookFolder.children = [volumeFolder];
+
+			const mockApp: any = {
+				vault: {
+					getAbstractFileByPath: (path: string) => path === '例外目录' ? bookFolder : null
+				}
+			};
+
+			expect(ChapterSorter.findChapterByName(mockApp, mockPlugin, '例外目录', '第12章 真相')).toBe(chapter);
+		});
 	});
 });

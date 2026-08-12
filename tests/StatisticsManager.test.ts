@@ -65,7 +65,7 @@ describe('StatisticsManager', () => {
         manager.setup();
 
         expect(mockPlugin.app.workspace.on).toHaveBeenCalledWith(
-            'webnovel:file-word-count-updated',
+            'webnovel:editor-word-count-updated',
             expect.any(Function)
         );
         expect(mockPlugin.registerEvent).toHaveBeenCalled();
@@ -75,7 +75,7 @@ describe('StatisticsManager', () => {
         const manager = new StatisticsManager(mockPlugin);
         manager.setup();
 
-        const handler = eventHandlers['webnovel:file-word-count-updated'];
+        const handler = eventHandlers['webnovel:editor-word-count-updated'];
         expect(handler).toBeDefined();
 
         // 触发 100 个字的净增
@@ -93,7 +93,7 @@ describe('StatisticsManager', () => {
         mockPlugin.sessionAddedWords = 0;
         manager.setup();
 
-        const handler = eventHandlers['webnovel:file-word-count-updated'];
+        const handler = eventHandlers['webnovel:editor-word-count-updated'];
         handler({ path: 'test.md' }, 50);
 
         expect(mockPlugin.sessionAddedWords).toBe(0);
@@ -105,7 +105,7 @@ describe('StatisticsManager', () => {
         mockPlugin.sessionAddedWords = 100;
         manager.setup();
 
-        const handler = eventHandlers['webnovel:file-word-count-updated'];
+        const handler = eventHandlers['webnovel:editor-word-count-updated'];
         handler({ path: 'test.md' }, 50);
 
         expect(mockPlugin.sessionAddedWords).toBe(150);

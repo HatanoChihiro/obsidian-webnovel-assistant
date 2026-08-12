@@ -27,7 +27,7 @@ export class ImmersiveStickyNotesView extends ItemView {
 	}
 
 	async onOpen(): Promise<void> {
-		this.listRenderer = new StickyNoteListRenderer(this.app, this.plugin, this.containerEl, { mode: 'immersive' });
+		this.listRenderer = new StickyNoteListRenderer(this.app, this.plugin, this.contentEl, { mode: 'immersive' });
 		this.listRenderer.render();
 		this.registerEvent(this.app.workspace.on('webnovel:notes-changed', () => this.listRenderer?.syncNotesFromManager()));
 	}

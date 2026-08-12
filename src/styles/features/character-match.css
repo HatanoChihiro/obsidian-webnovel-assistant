@@ -1,0 +1,14 @@
+/* ========== Character match styles ========== */
+
+/* Character card text match hover tooltip */
+
+/* Wn Character Match */
+
+.wn-character-match {
+	border-bottom: 1px dashed var(--interactive-accent);
+	cursor: pointer;
+}
+
+.wn-character-match:hover {
+	background-color: color-mix(in srgb, var(--interactive-accent) 20%, transparent);
+}

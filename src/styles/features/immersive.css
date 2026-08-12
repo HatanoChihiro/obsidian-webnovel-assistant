@@ -1,0 +1,516 @@
+/* ========== Immersive writing mode styles ========== */
+
+/* ==========================================
+
+ * Immersive Mode CSS
+
+ * ========================================== */
+
+/* Immersive Mode overrides */
+
+body.immersive-mode-active .workspace-ribbon,
+
+body.immersive-mode-active .workspace-tab-header-container,
+
+body.immersive-mode-active .titlebar,
+
+body.immersive-mode-active .status-bar,
+
+body.immersive-mode-active .workspace-split.mod-left-split,
+
+body.immersive-mode-active .workspace-split.mod-right-split,
+
+body.immersive-mode-active .floating-sticky-note,
+
+body.immersive-mode-active .my-floating-sticky-note,
+
+body.immersive-mode-active .view-header {
+	display: none;
+}
+
+/* Use Class Chaining to increase specificity, eliminate residual offsets from 3rd-party themes and native toolbars, avoid using important_override */
+
+/* Immersive Mode: Editor layout adaptation */
+
+/* Default non-adapted state */
+
+.immersive-mode-active .view-content {
+	padding-top: 30px;
+}
+
+.immersive-mode-active .workspace-split {
+	background-color: color-mix(in srgb, var(--interactive-accent) 3%, var(--background-secondary));
+}
+
+/* Prevent nested workspace-split from creating double padding causing inconsistent indentation */
+
+.immersive-mode-active .workspace-split .workspace-split {
+	background-color: transparent;
+}
+
+/* Immersive Mode: Card-style panel layout and boundary enhancement */
+
+/* Immersive Mode: Card-style panel layout and boundary enhancement
+
+   Override theme styles by increasing selector specificity (body.immersive-mode-active ...), avoid using important_override
+
+*/
+
+body.immersive-mode-active .workspace-leaf.workspace-leaf {
+	background-color: transparent;
+	padding: 8px;
+	border: none;
+	box-sizing: border-box;
+}
+
+body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-content {
+	position: relative;
+	background-color: var(--background-primary);
+	border: 1px solid color-mix(in srgb, var(--interactive-accent) 20%, var(--background-modifier-border));
+	border-radius: 12px;
+	box-sizing: border-box;
+	box-shadow: 0 4px 15px color-mix(in srgb, var(--interactive-accent) 8%, rgba(0, 0, 0, 0.05));
+	overflow: hidden;
+}
+
+body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-content:hover {
+	box-shadow: 0 6px 20px color-mix(in srgb, var(--interactive-accent) 12%, rgba(0, 0, 0, 0.1));
+}
+
+/* Settings tab style */
+
+.theme-dark
+/* Immersive Mode: Smart scrollbar (show only on mouse hover) */
+
+.immersive-mode-active *::-webkit-scrollbar {
+	width: 4px;
+	height: 4px;
+}
+
+.immersive-mode-active *::-webkit-scrollbar-thumb {
+	background-color: transparent;
+	border-radius: 4px;
+}
+
+.immersive-mode-active *:hover::-webkit-scrollbar-thumb {
+	background-color: var(--scrollbar-thumb-bg, rgba(128, 128, 128, 0.3));
+}
+
+.immersive-top-bar {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	height: 40px;
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	z-index: 100;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0 16px;
+	font-family: var(--font-interface);
+	box-shadow: 0 2px 8px color-mix(in srgb, var(--interactive-accent) 30%, rgba(0, 0, 0, 0.15));
+}
+
+.immersive-top-bar-left {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	font-weight: bold;
+	font-size: 0.9em;
+}
+
+.immersive-top-bar-center {
+	display: flex;
+	align-items: center;
+	gap: 20px;
+	font-size: 0.85em;
+}
+
+.immersive-top-bar-center .stat-item {
+	background: color-mix(in srgb, var(--text-on-accent) 15%, var(--interactive-accent));
+	padding: 4px 10px;
+	border-radius: 12px;
+}
+
+.immersive-top-bar-center .stat-item.focus {
+	background: color-mix(in srgb, var(--text-success, var(--interactive-accent)) 25%, var(--interactive-accent));
+}
+
+.immersive-top-bar-center .stat-item.slack {
+	background: color-mix(in srgb, var(--text-warning, var(--interactive-accent)) 25%, var(--interactive-accent));
+}
+
+.immersive-exit-btn {
+	background: color-mix(in srgb, var(--text-on-accent) 10%, transparent);
+	color: var(--text-on-accent);
+	border: 1px solid color-mix(in srgb, var(--text-on-accent) 30%, transparent);
+	padding: 4px 12px;
+	border-radius: 6px;
+	cursor: pointer;
+	font-size: 0.85em;
+	opacity: 0;
+	transition: all 0.3s ease;
+}
+
+.immersive-exit-btn:hover {
+	opacity: 1;
+	background: color-mix(in srgb, var(--text-on-accent) 25%, transparent);
+}
+
+/* Automatically show tooltip when mouse approaches right area */
+
+/* Immersive Top Bar Right */
+
+.immersive-top-bar-right:hover .immersive-exit-btn {
+	opacity: 0.7;
+}
+
+/* Chapter list */
+
+/* Immersive Chapter List */
+
+.immersive-chapter-list {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	overflow-y: auto;
+}
+
+.immersive-chapter-item {
+	display: flex;
+	justify-content: space-between;
+	padding: 6px 10px;
+	border-radius: 4px;
+	cursor: pointer;
+	transition: background 0.2s;
+	font-size: 0.85em;
+}
+
+.immersive-chapter-item:hover {
+	background: color-mix(in srgb, var(--interactive-accent) 10%, var(--background-modifier-hover));
+}
+
+.immersive-chapter-item.is-active {
+	background: color-mix(in srgb, var(--interactive-accent) 20%, transparent);
+	color: var(--text-accent);
+	font-weight: bold;
+}
+
+.immersive-chapter-count {
+	font-size: 0.8em;
+	color: var(--interactive-accent);
+	font-family: var(--font-monospace);
+}
+
+/* Sticky Notes list */
+
+.immersive-sticky-dock {
+	flex: 1;
+	display: flex;
+	flex-direction: row;
+	flex-wrap: nowrap;
+	gap: 10px;
+	padding: 10px 8px 8px 8px;
+	align-items: center;
+	overflow-x: auto;
+	overflow-y: hidden;
+	height: 100%;
+}
+
+.immersive-sticky-card {
+	flex: 0 0 200px;
+	/* Fixed width, no flex shrink/grow */
+	width: 200px;
+	height: 200px;
+	/* Square */
+	border-radius: 8px;
+	padding: 12px;
+	box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+	display: flex;
+	flex-direction: column;
+	transition: transform 0.2s;
+}
+
+.immersive-sticky-card:hover {
+	transform: translateY(-5px);
+}
+
+.immersive-mode-active .immersive-sticky-title span:first-child,
+.immersive-sticky-title,
+.webnovel-immersive-note-title {
+	font-weight: bold;
+	font-size: 0.75em;
+}
+
+.immersive-sticky-card textarea {
+	flex: 1;
+	width: 100%;
+	border: none;
+	background: transparent;
+	resize: none;
+	font-family: inherit;
+	color: inherit;
+}
+
+.immersive-sticky-card textarea:focus {
+	outline: none;
+	box-shadow: none;
+}
+
+/* ==========================================================================
+
+   Immersive Mode properties panel hidden
+
+   ========================================================================== */
+
+/* Responsible for main edit area: use extremely high priority to override source mode and live preview mode */
+
+/* Immersive Hide Properties */
+
+body.immersive-hide-properties div.workspace-leaf-content[data-type="markdown"] div.markdown-source-view div.metadata-container,
+
+body.immersive-hide-properties div.workspace-leaf-content[data-type="markdown"] div.metadata-container {
+	display: none;
+}
+
+body.immersive-hide-properties .markdown-reading-view .metadata-container {
+	display: none;
+}
+
+body.immersive-hide-properties .markdown-reading-view .frontmatter-container {
+	display: none;
+}
+
+body.immersive-hide-properties .markdown-reading-view .frontmatter {
+	display: none;
+}
+
+/* -- ImmersiveStickyNotesView -- */
+
+.webnovel-immersive-sticky-container {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	overflow: hidden;
+}
+
+.webnovel-immersive-hover-trigger {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	height: 15px;
+	z-index: 9;
+}
+
+.webnovel-immersive-toolbar {
+	display: flex;
+	gap: 8px;
+	padding: 8px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	background-color: var(--background-secondary);
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	z-index: 10;
+}
+
+.webnovel-immersive-dock {
+	flex: 1;
+	display: flex;
+	flex-wrap: nowrap;
+	gap: 10px;
+	padding: 8px;
+	padding-top: 10px;
+	align-items: center;
+}
+
+.webnovel-immersive-note-card {
+	flex: 0 0 auto;
+	display: flex;
+	flex-direction: column;
+	border-radius: 8px;
+	box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+	overflow: hidden;
+	box-sizing: border-box;
+}
+
+.webnovel-immersive-note-title {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 4px 8px;
+	border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+	background-color: rgba(0, 0, 0, 0.05);
+}
+
+.webnovel-immersive-note-close {
+	font-size: 1.2em;
+	line-height: 1;
+	cursor: pointer;
+	padding: 0 4px;
+}
+
+/* Immersive Mode: Hide split handle, show only on hover */
+
+body.immersive-mode-active.immersive-mode-active .workspace-leaf-resize-handle {
+	opacity: 0;
+	transition: opacity 0.2s ease;
+}
+
+body.immersive-mode-active.immersive-mode-active .workspace-leaf-resize-handle:hover,
+
+body.immersive-mode-active.immersive-mode-active .workspace-leaf-resize-handle.is-active {
+	opacity: 1;
+	background-color: var(--interactive-accent);
+}
+
+/* Deep Theme Defense: Reset global container margins potentially added by mainstream 3rd-party themes (like Border) */
+
+body.immersive-mode-active.immersive-mode-active .app-container.app-container {
+	padding: 0;
+	margin: 0;
+	height: 100%;
+	width: 100%;
+}
+
+body.immersive-mode-active.immersive-mode-active .app-container.app-container .workspace.workspace {
+	margin: 0;
+	margin-top: 40px;
+	padding: 0;
+	height: calc(100% - 40px);
+	top: 0;
+	bottom: 0;
+	left: 0;
+	right: 0;
+	width: 100%;
+}
+
+body.immersive-mode-active.immersive-mode-active .horizontal-main-container.horizontal-main-container {
+	padding: 0;
+	margin: 0;
+	height: 100%;
+	bottom: 0;
+}
+
+body.immersive-mode-active.immersive-mode-active .app-container.app-container .workspace.workspace .workspace-split.workspace-split,
+
+body.immersive-mode-active.immersive-mode-active .app-container.app-container .workspace.workspace .workspace-split.mod-root {
+	padding: 0;
+	margin: 0;
+}
+
+body.immersive-mode-active.immersive-mode-active .app-container.app-container .workspace.workspace .workspace-leaf.workspace-leaf {
+	margin: 0;
+}
+
+/* Deep Theme Defense: Clear hover borders potentially created by themes using pseudo-elements on body */
+
+body.immersive-mode-active.immersive-mode-active.immersive-mode-active::before,
+
+body.immersive-mode-active.immersive-mode-active.immersive-mode-active::after {
+	display: none;
+}
+
+/* Light highlight for currently active (selected) card */
+
+body.immersive-mode-active .workspace-leaf.mod-active.workspace-leaf .workspace-leaf-content {
+	border: 1px solid color-mix(in srgb, var(--interactive-accent) 80%, var(--background-modifier-border));
+	box-shadow: 0 0 0 1px color-mix(in srgb, var(--interactive-accent) 30%, transparent), 0 4px 15px color-mix(in srgb, var(--interactive-accent) 8%, rgba(0, 0, 0, 0.05));
+}
+
+.immersive-chapter-left {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	align-items: flex-start;
+}
+
+.immersive-chapter-title {
+	word-break: break-all;
+}
+
+.immersive-chapter-badges {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+}
+
+/* Immersive Folder View */
+
+.immersive-folder-details {
+	margin: 2px 0;
+}
+
+.immersive-folder-summary {
+	cursor: pointer;
+	padding: 4px;
+	color: var(--text-muted);
+	font-weight: 600;
+	user-select: none;
+	display: flex;
+	align-items: center;
+}
+
+.immersive-folder-summary::-webkit-details-marker {
+	display: none;
+}
+
+.immersive-folder-children {
+	border-left: 1px solid var(--background-modifier-border);
+	margin-left: 6px;
+}
+
+body.immersive-mode-active.wn-typewriter-active .cm-editor .inline-title {
+	opacity: var(--wn-typewriter-opacity, 0.4);
+	transition: opacity 0.15s ease;
+}
+
+body.immersive-mode-active.wn-typewriter-active .cm-editor .inline-title:focus,
+body.immersive-mode-active.wn-typewriter-active .cm-editor .inline-title:focus-within {
+	opacity: 1;
+}
+
+/* ========== 沉浸模式顶栏打字机 Toggle 开关 ========== */
+
+.immersive-top-bar-center .stat-item.typewriter-toggle-container {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 2px 8px;
+	border-radius: 12px;
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	color: var(--text-muted);
+	font-size: 0.85em;
+	user-select: none;
+}
+
+.immersive-top-bar-center .typewriter-toggle-label {
+	font-size: 0.85em;
+	color: var(--text-muted);
+	white-space: nowrap;
+}
+
+.immersive-top-bar-center .checkbox-container {
+	margin: 0;
+	transform: scale(0.8);
+	cursor: pointer;
+}
+
+.wn-volume-header-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--interactive-accent);
+	transition: transform 0.2s ease;
+}
+
+.wn-volume-header-icon svg {
+	width: 14px;
+	height: 14px;
+}

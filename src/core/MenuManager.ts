@@ -37,7 +37,7 @@ export class MenuManager {
 					item.setTitle(t('menu.merge-chapters'))
 						.setIcon('documents')
 						.setSection('webnovel-assistant')
-						.onClick(() => { this.handleMergeChapters(file).catch(console.error); });
+						.onClick(() => { this.openChapterMerge(file).catch(console.error); });
 				});
 
 				menu.addItem((item) => {
@@ -276,30 +276,29 @@ export class MenuManager {
 		const folderPath = findBookRoot(this.plugin.app, this.plugin, file) || (file instanceof TFolder ? file.path : '');
 
 		const manager = this.plugin.taskManager;
-		manager.currentFolder = folderPath;
-		const taskFile = manager.getTaskFile();
+		const taskFile = manager.getTaskFile(folderPath);
 
 		if (!taskFile) {
 			// 首次新建
 			new TaskAddModal(this.plugin.app, this.plugin, manager, 1, '', async (entry) => {
-				await manager.addEntry(entry);
+				await manager.addEntry(entry, folderPath);
 				new Notice(t('notice.task-created'));
-			}).open();
+			}, folderPath).open();
 		} else {
 			// 已有任务记录，新增任务
-			manager.loadEntries().then(entries => {
+			manager.loadEntries(folderPath).then(entries => {
 				const nextPeriod = manager.getNextPeriod(entries || []);
 				const lastPlatform = entries && entries.length > 0
 					? entries[entries.length - 1].platform : '';
 				new TaskAddModal(this.plugin.app, this.plugin, manager, nextPeriod, lastPlatform, async (entry) => {
-					await manager.addEntry(entry);
+					await manager.addEntry(entry, folderPath);
 					new Notice(t('notice.task-added'));
-				}).open();
+				}, folderPath).open();
 			}).catch(console.error);
 		}
 	}
 
-	private async handleMergeChapters(file: TFolder) {
+	public async openChapterMerge(file: TFolder): Promise<void> {
 		const mdFiles = ChapterSorter.getAllChapters(this.plugin.app, this.plugin, file.path);
 		if (mdFiles.length === 0) {
 			new Notice(t('notice.no-chapter-files-in-folder', { name: file.name }));

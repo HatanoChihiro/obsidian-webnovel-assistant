@@ -13,12 +13,14 @@ export interface CorkboardGridOptions {
 	currentBookPath: string;
 	onSaveStateChange: (isSaving: boolean) => void;
 	hideVolumeHeaders?: boolean;
+	groupVolumeCards?: boolean;
 	maxLoreLines?: number;
 }
 
 export class CorkboardGridRenderer {
 	static render(options: CorkboardGridOptions): void {
 		const { app, plugin, container, files, foreshadowingMap, draggable, currentBookPath, onSaveStateChange, maxLoreLines } = options;
+		const volumeCollapsedCardClass = 'is-volume-collapsed';
 		
 		// 按分卷分组
 		const volumeGroups: Array<{ volume: string; files: TFile[] }> = [];
@@ -44,45 +46,56 @@ export class CorkboardGridRenderer {
 		}
 
 		for (const group of volumeGroups) {
-			const cards: HTMLElement[] = [];
+			const hasVolumeHeader = group.volume !== '' && !options.hideVolumeHeaders;
+			const volumeGroup = options.groupVolumeCards
+				? container.createDiv('wn-corkboard-volume-group')
+				: container;
+			let header: HTMLElement | null = null;
+			let iconSpan: HTMLElement | null = null;
 
-			if (group.volume !== '' && !options.hideVolumeHeaders) {
-				const header = container.createDiv('wn-corkboard-volume-header wn-clickable');
-				const iconSpan = header.createSpan({ cls: 'wn-volume-header-icon' });
+			if (hasVolumeHeader) {
+				header = volumeGroup.createDiv('wn-corkboard-volume-header wn-clickable');
+				iconSpan = header.createSpan({ cls: 'wn-volume-header-icon' });
 				setIcon(iconSpan, 'chevron-down');
 				header.createSpan({ text: `${group.volume} (${group.files.length})`, cls: 'wn-volume-header-title' });
+			}
 
-				for (const file of group.files) {
-					const card = ChapterCard.render(container, file, app, plugin, foreshadowingMap.get(file.basename) || [], {
-						draggable,
-						onSaveStateChange,
-						currentBookPath,
-						maxLoreLines
-					});
-					cards.push(card);
-				}
+			const cardsContainer = options.groupVolumeCards
+				? volumeGroup.createDiv('wn-corkboard-volume-cards')
+				: container;
+			const cards: HTMLElement[] = [];
 
+			for (const file of group.files) {
+				const card = ChapterCard.render(cardsContainer, file, app, plugin, foreshadowingMap.get(file.basename) || [], {
+					draggable,
+					onSaveStateChange,
+					currentBookPath,
+					maxLoreLines
+				});
+				cards.push(card);
+			}
+
+			if (header && iconSpan) {
 				header.onclick = () => {
 					const isCollapsed = header.hasClass('is-collapsed');
 					if (isCollapsed) {
 						header.removeClass('is-collapsed');
 						setIcon(iconSpan, 'chevron-down');
-						cards.forEach(card => { card.hidden = false; });
+						if (options.groupVolumeCards) {
+							cardsContainer.removeClass('is-collapsed');
+						} else {
+							cards.forEach(card => card.removeClass(volumeCollapsedCardClass));
+						}
 					} else {
 						header.addClass('is-collapsed');
 						setIcon(iconSpan, 'chevron-right');
-						cards.forEach(card => { card.hidden = true; });
+						if (options.groupVolumeCards) {
+							cardsContainer.addClass('is-collapsed');
+						} else {
+							cards.forEach(card => card.addClass(volumeCollapsedCardClass));
+						}
 					}
 				};
-			} else {
-				for (const file of group.files) {
-					ChapterCard.render(container, file, app, plugin, foreshadowingMap.get(file.basename) || [], {
-						draggable,
-						onSaveStateChange,
-						currentBookPath,
-						maxLoreLines
-					});
-				}
 			}
 		}
 	}

@@ -1,3 +1,43 @@
+## 🔧 v3.8.2
+
+### Bug修复
+- 修复了伏笔侧面板中的阶段回收记录无法从回收原文跳转到嵌套目录章节的问题；侧面板现在与伏笔看板使用相同的章节定位规则。
+- 修复了写作实时状态面板可能跨作品残留或更新任务的问题；任务读取、进度和完成操作现在始终绑定对应作品，切换到无任务作品时会立即隐藏上一部作品的任务。
+- 修复了外部导入、系统文件管理器增删文件或整理章节时会误改每日写作字数的问题；现在文件增删只刷新章节总字数，写作数据仅记录在 Obsidian 编辑器中对章节正文产生的字数增减。
+- 修复了沉浸模式和侧面板中的便签列表在临界尺寸下可能反复缩放并跳屏的问题。
+- 修复了移动端写作实时状态面板会在字数任务中误显示“完成”按钮的问题，现在该按钮仅在事件任务中显示。
+- 修复了全章节视图和时间轴看板未关联章节中的卷分类无法隐藏章节卡片的问题，现在点击卷标题可以正常折叠和展开。
+- 修复了时间轴看板事件描述编辑时滚动条样式与查看态不一致的问题，现在查看和编辑统一使用事件描述容器的滚动条；同时统一了“添加到时间线”面板标题与其他模态面板的样式。
+
+### 功能优化
+- 优化了部分 UI 效果，界面更直观。
+- “重置今日写作统计数据”命令升级为操作面板，可选择清空全部数据、仅清空字数并保留专注计时，或将今日字数修正为指定整数。
+- 工作台全章节视图新增“合并章节”按钮，位于作品状态按钮左侧，可直接合并当前作品目录内的全部章节。
+- 沉浸模式下使用高级搜索时，搜索结果会回到最近聚焦的区域；聚焦参考文档后可直接在参考文档中跳转。
+- 排版设置新增可选的“自定义正文大小”；开启后实时预览、阅读视图和章节合并预览会同步调整，且不改变界面字体，关闭时则继续支持 Obsidian 原生 Ctrl + 滚轮缩放；命令面板新增增大/减小正文字体的快捷命令，方便绑定快捷键。
+- 重整样式模块归属并集中维护手机端响应式覆盖，降低样式膨胀和跨面板覆盖对后续维护的影响。
+
+### English Changelog
+
+#### Bug Fixes
+- Fixed stage-recovery records in the foreshadowing side panel failing to jump from the recovered quote to chapters inside nested folders. The side panel now uses the same chapter resolution rule as the foreshadowing board.
+- Fixed tasks from another work remaining or being updated in the live writing status panel. Task loading, progress, and completion are now scoped to their work, and switching to a work without an active task hides the previous task.
+- Fixed external imports, file-manager changes, and chapter reorganization incorrectly changing daily writing words. File creation and deletion now refresh only chapter totals, while writing data records chapter text changes made in the Obsidian editor.
+- Fixed an issue where sticky note lists in Immersive Mode and side panels could repeatedly resize and jump at certain boundary dimensions.
+- Fixed the mobile live writing status panel showing a Complete button for word-count tasks; the button now appears only for event tasks.
+- Fixed volume groups in the all-chapters view and the timeline board's unscheduled-chapters area so their chapter cards now collapse and expand when the volume header is clicked.
+- Fixed the timeline event description editor using a different scrollbar from view mode; viewing and editing now share the event description container's scrollbar, and the Add to Timeline panel title matches the other modal headings.
+
+#### Improvements
+- Improved several UI details for a clearer, more intuitive interface.
+- Upgraded the Reset Today Writing Stats command to offer three actions: clear all data, clear only words while preserving focus timing, or correct today's words to a specified integer.
+- Added a “Merge Chapters” button to the Workbench all-chapters view, placed to the left of the novel status button, to merge all chapters in the current novel folder directly.
+- Advanced Search in Immersive Mode now returns results to the most recently focused area, so results can jump inside the reference document when it has focus.
+- Added optional Custom Body Text Size shared by Live Preview, Reading Mode, and Chapter Merge Preview without changing interface fonts; when disabled, Obsidian's native Ctrl + mouse-wheel zoom remains available. The Command Palette also provides increase/decrease body-font commands for keyboard shortcuts.
+- Reorganized CSS ownership by feature and kept mobile responsive overrides in one maintained entry point, reducing cross-panel style drift and maintenance overhead.
+
+---
+
 ## 🔧 v3.8.1
 
 ### Bug修复

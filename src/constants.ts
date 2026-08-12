@@ -290,6 +290,8 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 		paragraphSpacing: '0.5em',
 		letterSpacing: '0.05em',
 		maxLineWidth: '700px',
+		enableBodyFontSize: false,
+		bodyFontSize: 16,
 		justifyText: true,
 		enableReadingModeCompat: false,
 	},

@@ -160,18 +160,19 @@ export function getCurrentBookContext(app: App, plugin: WebNovelAssistantPlugin)
 		}
 	}
 
-	// 2. 如果当前焦点不是作品 Markdown，寻找工作区是否有任何打开的有效作品工作台
-	const workbenches = app.workspace.getLeavesOfType('webnovel-workbench');
-	for (const leaf of workbenches) {
-		const bookPath = (leaf.view as WorkbenchView).currentBookPath;
-		if (bookPath && bookPath !== '/' && bookPath !== '') return bookPath;
-	}
-
-	// 3. 检查系统最后活跃的 markdown 文件是否在作品目录中
+	// 2. 侧面板获得焦点时，优先沿用系统最后活跃的作品 Markdown。
+	// 避免任意一个已打开但未聚焦的工作台覆盖当前作品上下文。
 	const file = app.workspace.getActiveFile();
 	if (file) {
 		const bookPath = findBookRoot(app, plugin, file, true);
 		if (bookPath) return bookPath;
+	}
+
+	// 3. 没有可用 Markdown 上下文时，再寻找打开的有效作品工作台
+	const workbenches = app.workspace.getLeavesOfType('webnovel-workbench');
+	for (const leaf of workbenches) {
+		const bookPath = (leaf.view as WorkbenchView).currentBookPath;
+		if (bookPath && bookPath !== '/' && bookPath !== '') return bookPath;
 	}
 
 	// 4. 兜底：取全库注册的第一个作品目录
