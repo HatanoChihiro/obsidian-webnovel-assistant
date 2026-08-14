@@ -1,5 +1,5 @@
 import type { App, TFile } from 'obsidian';
-import type { LoreEntry } from './CharacterManager';
+import { cleanLoreHeading, type LoreEntry } from './CharacterManager';
 
 interface CachedText {
 	mtime: number;
@@ -42,14 +42,7 @@ export function stripMarkdownFrontmatter(content: string): string {
 	return content;
 }
 
-function cleanLoreHeading(heading: string): string {
-	return heading
-		.trim()
-		.replace(/\*\*|__/g, '')
-		.replace(/\*|_/g, '')
-		.replace(/`/g, '')
-		.trim();
-}
+export { cleanLoreHeading };
 
 /** Extract the same level-two lore sections used by CharacterManager. */
 export function extractLoreSections(content: string): Map<string, string> {

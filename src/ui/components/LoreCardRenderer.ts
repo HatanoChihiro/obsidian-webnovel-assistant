@@ -1,7 +1,7 @@
 import { MarkdownRenderer, type Component, setIcon } from 'obsidian';
 import { t } from '../../i18n';
 import type { WebNovelAssistantPlugin } from '../../types/plugin';
-import type { LoreEntry } from '../../services/CharacterManager';
+import { cleanLoreHeading, type LoreEntry } from '../../services/CharacterManager';
 import { smartLocateAndHighlight } from '../../utils/leaf';
 
 
@@ -53,7 +53,7 @@ export class LoreCardRenderer {
 			let fallbackLine: number | undefined;
 			if (fileCache && fileCache.headings) {
 				for (const h of fileCache.headings) {
-					const rawHeading = h.heading.replace(/\*\*|__/g, '').replace(/\*|_/g, '').replace(/`/g, '');
+					const rawHeading = cleanLoreHeading(h.heading);
 					if (rawHeading === entry.heading && h.level === 2) {
 						fallbackLine = h.position.start.line;
 						break;
@@ -180,7 +180,7 @@ export class LoreCardRenderer {
 
 				for (let i = 0; i < headings.length; i++) {
 					const h = headings[i];
-					const rawHeading = h.heading.replace(/\*\*|__/g, '').replace(/\*|_/g, '').replace(/`/g, '');
+					const rawHeading = cleanLoreHeading(h.heading);
 					if (rawHeading === entry.heading && h.level === 2) {
 						startIndex = h.position.end.line + 1;
 						let nextLevelH = null;

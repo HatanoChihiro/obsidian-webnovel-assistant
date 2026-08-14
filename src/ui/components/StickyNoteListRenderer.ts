@@ -3,6 +3,7 @@ import type { WebNovelAssistantPlugin } from '../../types/plugin';
 import type { StickyNoteState } from '../../types/settings';
 import { t } from '../../i18n';
 import { ConfirmCloseModal, SaveStickyNoteModal } from '../StickyNote';
+import { isMobile } from '../../utils/platform';
 
 export type StickyNoteListMode = 'immersive' | 'side-panel';
 
@@ -121,9 +122,17 @@ export class StickyNoteListRenderer {
 	}
 
 	private updateSidePanelGrid(dockContainer: HTMLElement): void {
+		if (isMobile()) {
+			dockContainer.setCssProps({
+				'--wn-side-note-grid-columns': '1',
+				'--wn-side-note-grid-size': 'auto'
+			});
+			return;
+		}
+
 		const gap = 10;
 		const padding = 20;
-		const minimumNoteSize = 150;
+		const minimumNoteSize = 200;
 		const availableWidth = Math.max(1, dockContainer.getBoundingClientRect().width - padding);
 		const columnCount = Math.max(1, Math.floor((availableWidth + gap) / (minimumNoteSize + gap)));
 		const noteSize = Math.max(

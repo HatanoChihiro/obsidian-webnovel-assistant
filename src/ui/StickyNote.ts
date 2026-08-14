@@ -315,7 +315,23 @@ export class FloatingStickyNote extends Component {
 		}
 		this.plugin.activeNotes.push(this);
 		
-		this.containerEl = activeDocument.body.createDiv({ cls: 'my-floating-sticky-note' });
+		// 确保便签永远挂载在 Obsidian 主工作区窗口 (Main Workspace Window)，绝不挂载到设置/Popout 弹窗中
+		const mainDoc = this.app.workspace.containerEl?.ownerDocument || activeDocument;
+		const modalEl = mainDoc.body.querySelector('.modal-container, .modal.mod-settings, .vertical-tabs-container, .modal-bg');
+		this.containerEl = mainDoc.body.createDiv({ cls: 'my-floating-sticky-note' });
+
+		if (modalEl) {
+			mainDoc.body.insertBefore(this.containerEl, modalEl);
+		} else {
+			mainDoc.body.prepend(this.containerEl);
+		}
+
+		Logger.info('[WebNovel-Debug] 悬浮便签已载入 DOM:', {
+			id: this.state.id,
+			title: this.state.title,
+			zIndex: getComputedStyle(this.containerEl).zIndex,
+			parent: this.containerEl.parentElement?.tagName
+		});
 		
 		void (async () => {
 			if (this.state.filePath && !this.state.content) {

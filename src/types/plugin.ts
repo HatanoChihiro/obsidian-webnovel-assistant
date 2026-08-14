@@ -178,7 +178,7 @@ export interface WebNovelAssistantPlugin extends
 	editorTracker?: EditorTracker;
 	styleManager?: StyleManager;
 	homepageManager?: HomepageManager;
-	loreSyncService?: LoreSyncService; // To avoid circular imports if any, but we can import it
+	loreSyncService: LoreSyncService;
 
 
 	// UI 组件

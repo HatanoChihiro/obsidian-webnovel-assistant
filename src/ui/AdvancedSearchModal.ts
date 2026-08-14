@@ -1,9 +1,11 @@
 import type { App, TAbstractFile, WorkspaceLeaf } from 'obsidian';
-import { Modal, Setting, TFolder, TFile, Vault, MarkdownView, prepareSimpleSearch } from 'obsidian';
+import { Modal, Setting, TFolder, TFile, Vault, MarkdownView } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ChapterSorter } from '../services/ChapterSorter';
 import { t } from '../i18n';
 import { findBookRoot } from '../utils/path';
+import { getMarkdownBodyRange, smartLocateAndHighlight } from '../utils/leaf';
+import { Logger } from '../utils/Logger';
 
 export class AdvancedSearchModal extends Modal {
 	plugin: WebNovelAssistantPlugin;
@@ -20,6 +22,10 @@ export class AdvancedSearchModal extends Modal {
 	}
 
 	onOpen() {
+		this.containerEl.addClass('wn-corner-modal-container');
+		this.modalEl.addClass('wn-corner-modal');
+		this.modalEl.addClass('wn-advanced-search-modal');
+		Logger.info('[WebNovel-Debug] 高级搜索模态窗已开启, 当前搜索词:', this.query);
 		const { contentEl } = this;
 		contentEl.empty();
 
@@ -281,7 +287,7 @@ export class AdvancedSearchModal extends Modal {
 					activeView = mdLeaves.find(l => (l.view as MarkdownView).file?.path === this.plugin.lastFilePath)?.view as MarkdownView;
 				}
 				if (!activeView) {
-					activeView = (mdLeaves.find(l => (l.view as MarkdownView).file) || mdLeaves[0]).view as MarkdownView;
+					activeView = (mdLeaves.find(l => (l.view as MarkdownView).file) || mdLeaves[0])?.view as MarkdownView;
 				}
 			}
 		}
@@ -298,10 +304,50 @@ export class AdvancedSearchModal extends Modal {
 		return markdownLeaves.find(leaf => leaf.active) || markdownLeaves[0] || this.app.workspace.getLeaf(false);
 	}
 
-	private openSearchResult(file: TFile, line: number): void {
+	private openSearchResult(file: TFile, snippet: {
+		linesBefore: number;
+		highlight: string;
+		matchStart: number;
+		matchEnd: number;
+		startLoc: { line: number; ch: number };
+		endLoc: { line: number; ch: number };
+		prefix?: string;
+		suffix?: string;
+		contextPrefix?: string;
+		contextSuffix?: string;
+		occurrenceIndex?: number;
+	}): void {
+		Logger.info('[WebNovel-Debug] 点击搜索结果项:', {
+			file: file.path,
+			highlight: snippet.highlight,
+			linesBefore: snippet.linesBefore,
+			matchStart: snippet.matchStart,
+			matchEnd: snippet.matchEnd,
+			startLoc: snippet.startLoc,
+			endLoc: snippet.endLoc,
+			prefix: snippet.prefix,
+			suffix: snippet.suffix,
+			occurrenceIndex: snippet.occurrenceIndex,
+			contextPrefix: snippet.contextPrefix,
+			contextSuffix: snippet.contextSuffix
+		});
 		const leaf = this.getSearchLeaf();
-		if (!leaf) return;
-		void leaf.openFile(file, { eState: { line } });
+		void smartLocateAndHighlight(this.app, file, [snippet.highlight], {
+			preferredLeaf: leaf || undefined,
+			fallbackLine: snippet.linesBefore,
+			matchStartGlobal: snippet.matchStart,
+			exactMatchState: {
+				targetLine: snippet.linesBefore,
+				matchStartGlobal: snippet.matchStart,
+				matchEndGlobal: snippet.matchEnd,
+				matchStartLoc: snippet.startLoc,
+				matchEndLoc: snippet.endLoc,
+				matchText: snippet.highlight,
+				contextPrefix: snippet.contextPrefix,
+				contextSuffix: snippet.contextSuffix,
+				occurrenceIndex: snippet.occurrenceIndex
+			}
+		});
 	}
 
 	private async executeSearch() {
@@ -359,35 +405,97 @@ export class AdvancedSearchModal extends Modal {
 		// 2. 对目标文件进行排序（按章节或自定义顺序），保证搜索结果是有序的
 		targetFiles.sort((a, b) => this.compareFiles(a, b));
 
-		// 3. 执行本地搜索
-		const searchFn = prepareSimpleSearch(this.query.trim());
-		const results: { file: TFile, snippets: {linesBefore: number, prefix: string, highlight: string, suffix: string}[], totalMatches: number }[] = [];
+		// 3. 执行全量文本搜索（仅限正文，自动排除 YAML Frontmatter）
+		const cleanQuery = this.query.trim();
+		const escapedQuery = cleanQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+		const searchPattern = escapedQuery.replace(/\s+/g, '\\s+');
+		const searchRegex = new RegExp(searchPattern, 'gi');
+
+		const results: {
+			file: TFile;
+			snippets: {
+				linesBefore: number;
+				prefix: string;
+				highlight: string;
+				suffix: string;
+				matchStart: number;
+				matchEnd: number;
+				startLoc: { line: number; ch: number };
+				endLoc: { line: number; ch: number };
+				contextPrefix: string;
+				contextSuffix: string;
+				occurrenceIndex: number;
+			}[];
+			totalMatches: number;
+		}[] = [];
 
 		for (let i = 0; i < targetFiles.length; i++) {
 			const file = targetFiles[i];
-			const content = await this.app.vault.cachedRead(file);
-			const match = searchFn(content);
+			const rawContent = await this.app.vault.cachedRead(file);
+			const content = rawContent.replace(/\r\n/g, '\n');
+			const bodyRange = getMarkdownBodyRange(content);
+			searchRegex.lastIndex = 0;
 
-			if (match && match.matches.length > 0) {
-				const snippets = match.matches.slice(0, 10).map(m => {
-					const start = Math.max(0, m[0] - 20);
-					const end = Math.min(content.length, m[1] + 20);
+			const matchRanges: { start: number; end: number; text: string }[] = [];
+			let execMatch: RegExpExecArray | null = null;
 
-					const prefix = content.substring(start, m[0]).replace(/\n/g, ' ');
-					const highlight = content.substring(m[0], m[1]).replace(/\n/g, ' ');
-					const suffix = content.substring(m[1], end).replace(/\n/g, ' ');
-					
-					const linesBefore = content.substring(0, m[0]).split('\n').length - 1;
+			while ((execMatch = searchRegex.exec(content)) !== null) {
+				const start = execMatch.index;
+				const text = execMatch[0];
+				if (start >= bodyRange.startOffset) {
+					matchRanges.push({ start, end: start + text.length, text });
+				}
+				if (text.length === 0) {
+					searchRegex.lastIndex++;
+				}
+			}
 
-					return { linesBefore, prefix, highlight, suffix };
+			if (matchRanges.length > 0) {
+				const snippets = matchRanges.map((m, occurrenceIdx) => {
+					const snippetStart = Math.max(bodyRange.startOffset, m.start - 20);
+					const snippetEnd = Math.min(content.length, m.end + 20);
+
+					const prefix = content.substring(snippetStart, m.start).replace(/\n/g, ' ');
+					const highlight = m.text.replace(/\n/g, ' ');
+					const suffix = content.substring(m.end, snippetEnd).replace(/\n/g, ' ');
+
+					const textBefore = content.substring(0, m.start);
+					const linesBeforeList = textBefore.split(/\n/);
+					const targetLine = linesBeforeList.length - 1;
+					const startCh = linesBeforeList[linesBeforeList.length - 1].length;
+
+					const matchLines = m.text.split(/\n/);
+					const endLine = targetLine + matchLines.length - 1;
+					const endCh = matchLines.length === 1 ? startCh + m.text.length : matchLines[matchLines.length - 1].length;
+
+					const contextPrefixStart = Math.max(bodyRange.startOffset, m.start - 30);
+					const contextPrefix = content.substring(contextPrefixStart, m.start).replace(/\n/g, ' ');
+					const contextSuffix = content.substring(m.end, Math.min(content.length, m.end + 30)).replace(/\n/g, ' ');
+
+					return {
+						linesBefore: targetLine,
+						prefix,
+						highlight,
+						suffix,
+						matchStart: m.start,
+						matchEnd: m.end,
+						startLoc: { line: targetLine, ch: startCh },
+						endLoc: { line: endLine, ch: endCh },
+						contextPrefix,
+						contextSuffix,
+						occurrenceIndex: occurrenceIdx
+					};
 				});
 
-				results.push({ file, snippets, totalMatches: match.matches.length });
+				results.push({ file, snippets, totalMatches: matchRanges.length });
 			}
 
 			// 防卡死：每处理 50 个文件让出一次主线程
 			if (i % 50 === 0) {
-				await new Promise(resolve => window.setTimeout(resolve, 0));
+				const win = this.contentEl?.ownerDocument?.defaultView || (typeof window !== 'undefined' ? window : null);
+				if (win) {
+					await new Promise(resolve => win.setTimeout(resolve, 0));
+				}
 			}
 		}
 
@@ -395,7 +503,7 @@ export class AdvancedSearchModal extends Modal {
 		this.renderSearchResults(results);
 	}
 
-	private renderSearchResults(results: { file: TFile, snippets: {linesBefore: number, prefix: string, highlight: string, suffix: string}[], totalMatches: number }[]) {
+	private renderSearchResults(results: { file: TFile, snippets: {linesBefore: number, prefix: string, highlight: string, suffix: string, matchStart: number, matchEnd: number, startLoc: { line: number; ch: number }, endLoc: { line: number; ch: number }}[], totalMatches: number }[]) {
 		this.resultsContainer.empty();
 
 		if (results.length === 0) {
@@ -422,10 +530,11 @@ export class AdvancedSearchModal extends Modal {
 				matchEl.createSpan({ text: snippet.suffix + '...' });
 
 				// 点击跳转
-				matchEl.addEventListener('click', () => {
-					this.openSearchResult(result.file, snippet.linesBefore);
-					// 用户要求点击后不默认关闭面板
-					// this.close();
+				matchEl.addEventListener('click', (e) => {
+					e.stopPropagation();
+					this.resultsContainer.querySelectorAll('.advanced-search-match-item.is-selected').forEach(el => el.classList.remove('is-selected'));
+					matchEl.classList.add('is-selected');
+					this.openSearchResult(result.file, snippet);
 				});
 			}
 
@@ -434,7 +543,7 @@ export class AdvancedSearchModal extends Modal {
 			}
 		}
 	}
-	
+
 	onClose() {
 		const { contentEl } = this;
 		contentEl.empty();

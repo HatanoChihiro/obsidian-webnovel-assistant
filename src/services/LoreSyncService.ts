@@ -2,10 +2,17 @@ import type { TFile, MarkdownView } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ChapterSorter } from './ChapterSorter';
 
+export interface LoreSyncStats {
+	total: number;
+	success: number;
+	failed: number;
+}
+
 export class LoreSyncService {
 	private plugin: WebNovelAssistantPlugin;
 	private isSyncing = false;
 	private regexCache = new Map<string, { version: number, regex: RegExp }>();
+	private _bulkPromise: Promise<LoreSyncStats> | null = null;
 
 	constructor(plugin: WebNovelAssistantPlugin) {
 		this.plugin = plugin;
@@ -14,8 +21,8 @@ export class LoreSyncService {
 	public initialize(): void {
 		// 监听编辑器内容变化
 		this.plugin.registerEvent(
-			this.plugin.app.workspace.on('editor-change', (editor, info) => {
-				if (this.isSyncing) return;
+			this.plugin.app.workspace.on('editor-change', (_editor, info) => {
+				if (this.isSyncing || this._bulkPromise) return;
 				const file = info.file;
 				if (!file || file.extension !== 'md') return;
 				
@@ -30,7 +37,9 @@ export class LoreSyncService {
 				if (!ChapterSorter.isChapterFile(file.name) && !this.plugin.isFileInStrictChapterException(file)) return;
 
 				this.plugin.adaptiveDebounceManager.debounceFixed(`lore-sync-${file.path}`, () => {
-					void this.syncLoreForFile(file);
+					void this.syncLoreForFile(file).catch(err => {
+						console.error(`[LoreSyncService] 自动同步设定失败: ${file.path}`, err);
+					});
 				}, 2000);
 			})
 		);
@@ -38,7 +47,7 @@ export class LoreSyncService {
 		// 监听文件打开，补全可能遗漏的同步
 		this.plugin.registerEvent(
 			this.plugin.app.workspace.on('active-leaf-change', (leaf) => {
-				if (this.isSyncing || !leaf) return;
+				if (this.isSyncing || this._bulkPromise || !leaf) return;
 				const view = leaf.view as MarkdownView;
 				if (view.getViewType() !== 'markdown' || !view.file) return;
 				
@@ -54,13 +63,71 @@ export class LoreSyncService {
 				if (!ChapterSorter.isChapterFile(file.name) && !this.plugin.isFileInStrictChapterException(file)) return;
 
 				this.plugin.adaptiveDebounceManager.debounceFixed(`lore-sync-${file.path}`, () => {
-					void this.syncLoreForFile(file);
+					void this.syncLoreForFile(file).catch(err => {
+						console.error(`[LoreSyncService] 自动同步设定失败: ${file.path}`, err);
+					});
 				}, 1000);
 			})
 		);
 	}
 
-	private async syncLoreForFile(file: TFile): Promise<void> {
+	/**
+	 * 获取所有符合设定同步条件的章节文件
+	 */
+	public getEligibleChapterFiles(): TFile[] {
+		const allMarkdownFiles = this.plugin.getTrackedMarkdownFiles();
+
+		return allMarkdownFiles.filter(file => {
+			if (!file || file.extension !== 'md') return false;
+			const bookPath = this.plugin.characterManager.getBookPathForFile(file);
+			if (!bookPath) return false;
+			const parentPath = file.parent?.path || '';
+			if (this.plugin.characterManager.isLorePath(bookPath, parentPath)) return false;
+			return ChapterSorter.isChapterFile(file.name) || this.plugin.isFileInStrictChapterException(file);
+		});
+	}
+
+	/**
+	 * 批量刷新章节文件的设定引用（分片让权，隔离单文件失败）
+	 */
+	public bulkRefresh(files?: TFile[]): Promise<LoreSyncStats> {
+		if (this._bulkPromise) {
+			return this._bulkPromise;
+		}
+
+		this._bulkPromise = (async () => {
+			try {
+				const targetFiles = files ?? this.getEligibleChapterFiles();
+				let success = 0;
+				let failed = 0;
+				const CHUNK_SIZE = 25;
+
+				for (let i = 0; i < targetFiles.length; i++) {
+					const file = targetFiles[i];
+					try {
+						await this.syncLoreForFile(file);
+						success++;
+					} catch (err) {
+						console.error(`[LoreSyncService] 批量同步设定失败: ${file.path}`, err);
+						failed++;
+					}
+
+					// 每处理 CHUNK_SIZE 个文件主动出让事件循环，保持界面响应
+					if ((i + 1) % CHUNK_SIZE === 0) {
+						await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+					}
+				}
+
+				return { total: targetFiles.length, success, failed };
+			} finally {
+				this._bulkPromise = null;
+			}
+		})();
+
+		return this._bulkPromise;
+	}
+
+	public async syncLoreForFile(file: TFile): Promise<void> {
 		const bookPath = this.plugin.characterManager.getBookPathForFile(file);
 		if (!bookPath) return;
 
@@ -87,7 +154,6 @@ export class LoreSyncService {
 				cached = { version: currentVersion, regex: megaRegex };
 				this.regexCache.set(bookPath, cached);
 			} else {
-				// Shouldn't happen, but just in case
 				await this.updateFrontmatterLore(file, []);
 				return;
 			}
@@ -141,7 +207,6 @@ export class LoreSyncService {
 				}
 
 				if (isSame) return; // 无变化，不触发写入
-
 				if (newLore.length === 0) {
 					delete fm['lore'];
 				} else {
@@ -150,6 +215,7 @@ export class LoreSyncService {
 			});
 		} catch (err) {
 			console.error(`[LoreSyncService] Failed to update lore for ${file.path}`, err);
+			throw err;
 		} finally {
 			// 稍微延迟解除，防止连续触发
 			window.setTimeout(() => {

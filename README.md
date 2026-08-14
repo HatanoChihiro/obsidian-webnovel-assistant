@@ -107,16 +107,19 @@ Accurate word count & goal tracking · Story timeline · Foreshadowing manager �
 | Toggle Writing Status Panel | Detailed stats & history charts |
 | Toggle Foreshadowing Panel | Manage foreshadowing & recovery |
 | Toggle Timeline Panel | Manage story timeline |
-| Toggle Timed Task Panel | Timed writing task tracking |
-| Toggle Chapter Corkboard | Card-style chapter overview |
-| Start/Pause Slack Time Tracking | Toggle focus/slack tracking |
+| Toggle Writing Workbench View | Chapters, timeline, lore, task and notes boards |
+| Open Chapter Overview | Card-style chapter overview |
+| Start/Pause Focus Time Tracking | Toggle focus/slack tracking |
 | Mark as Foreshadowing | Mark selected text as foreshadowing |
 | Create Blank Sticky Note | New floating sticky note |
 | Advanced Search | Search by book/global/custom scope |
-| Auto-Create Next Chapter | Smart chapter numbering |
-| Reset Streaming Stats | Clear current session data |
+| Create Next Chapter (Smart Increment) | Smart chapter numbering |
+| Rebuild Lore Cache | Rebuild lore entries and chapter reference statistics |
+| Reset Stream Statistics | Clear current session data |
 
 > All commands can get custom shortcuts in **Settings → Hotkeys**
+
+> Need setup details or troubleshooting? See the full [User Guide](doc/USER_GUIDE_EN.md) / [使用指南](doc/USER_GUIDE.md).
 
 </details>
 
@@ -159,7 +162,7 @@ See [OBS Overlay CSS Guide](doc/OBS_OVERLAY_CSS_GUIDE_EN.md) for full customizat
 
 [MIT License](LICENSE)
 
-⭐ Star · 🐛 [Issues](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/issues) · 💡 [Discussions](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/discussions)
+⭐ Star · 🐛 [Issues](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/issues) · 💡 [Feature Requests](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/issues)
 
 <br />
 
@@ -287,16 +290,19 @@ If this plugin helps with your writing, consider buying the author a coffee ☕.
 | 打开/关闭写作实时状态面板 | 详细统计和历史图表 |
 | 打开/关闭伏笔面板 | 管理伏笔标注和回收 |
 | 打开/关闭时间线面板 | 管理故事时间线 |
-| 打开/关闭限时任务面板 | 管理限时任务追踪 |
-| 打开/关闭章节一览面板 | 卡片式展示章节纲要 |
-| 开始/暂停 摸鱼时间统计 | 切换时间追踪 |
+| 打开写作工作台面板 | 管理章节、时间线、设定、任务和便签看板 |
+| 打开章节一览 | 卡片式展示章节纲要 |
+| 开始/暂停 专注时间统计 | 切换专注/摸鱼计时 |
 | 标注为伏笔 | 将选中文字标注为伏笔 |
 | 新建空白悬浮便签 | 创建浮动便签 |
 | 高级搜索 | 搜索书籍/全局/自定义范围 |
-| 自动创建下一章 | 智能递增章节编号 |
-| 重置直播统计数据 | 清空当前会话数据 |
+| 自动创建下一章 (智能递增) | 智能递增章节编号 |
+| 重建设定缓存 | 重建设定条目和章节设定引用统计 |
+| 重置直播统计数据 (清空时长和净增字数) | 清空当前会话数据 |
 
 > 所有命令可在 **设置 → 快捷键** 中自定义
+
+> 详细设置与故障排查请参阅完整[使用指南](doc/USER_GUIDE.md) / [User Guide](doc/USER_GUIDE_EN.md)。
 
 </details>
 
@@ -339,7 +345,7 @@ If this plugin helps with your writing, consider buying the author a coffee ☕.
 
 [MIT License](LICENSE)
 
-⭐ Star · 🐛 [提交问题](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/issues) · 💡 [功能建议](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/discussions)
+⭐ Star · 🐛 [提交问题](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/issues) · 💡 [功能建议](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/issues)
 
 <br />
 

@@ -12,11 +12,11 @@ body .workspace-leaf-content[data-type="webnovel-workbench"][data-type="webnovel
 .wn-corkboard-header {
 	margin-bottom: 20px;
 	position: sticky;
-	top: -20px;
+	top: -30px;
 	z-index: 100;
 	background: color-mix(in srgb, var(--background-primary) 92%, transparent);
-	margin-top: -20px;
-	padding-top: 20px;
+	margin-top: -30px;
+	padding-top: 30px;
 	/* 包含搜索栏后底部追加内边距，与内容区拉开距离 */
 	padding-bottom: 16px;
 	border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border) 60%, transparent);

@@ -583,6 +583,30 @@ export class CommandManager {
 				new AddLoreModal(this.plugin.app, this.plugin, initialName, folderPath).open();
 			}
 		});
+
+		this.plugin.addCommand({
+			id: 'refresh-lore-cache',
+			name: t('command.refresh-lore-cache'),
+			icon: 'refresh-cw',
+			callback: async () => {
+				const notice = new Notice(t('notice.rebuilding-lore-cache'), 0);
+				try {
+					await this.plugin.characterManager.rebuildCache();
+					const stats = await this.plugin.loreSyncService.bulkRefresh();
+					notice.hide();
+					this.plugin.app.workspace.trigger('webnovel-workbench-lore-updated');
+					new Notice(t('notice.lore-cache-refreshed', {
+						total: String(stats.total),
+						success: String(stats.success),
+						failed: String(stats.failed)
+					}));
+				} catch (error) {
+					notice.hide();
+					console.error('[CommandManager] 重建设定缓存失败:', error);
+					new Notice(t('notice.lore-cache-refresh-failed', { error: String(error) }));
+				}
+			}
+		});
 	}
 
 	private registerMobileCommands() {

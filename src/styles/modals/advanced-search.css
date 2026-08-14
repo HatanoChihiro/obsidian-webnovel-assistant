@@ -89,6 +89,11 @@
 	background-color: var(--background-modifier-hover);
 }
 
+.advanced-search-match-item.is-selected {
+	background-color: var(--background-modifier-hover);
+	box-shadow: inset 2px 0 0 var(--interactive-accent);
+}
+
 
 .advanced-search-match-more {
 	color: var(--text-faint);

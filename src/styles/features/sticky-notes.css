@@ -165,9 +165,18 @@
 	font-size: inherit;
 }
 
-body.is-phone .wn-sticky-note-list-card textarea,
-body.is-tablet .wn-sticky-note-list-card textarea {
-	overscroll-behavior: none;
+body.is-phone .wn-sticky-note-list-grid,
+body.is-tablet .wn-sticky-note-list-grid {
+	grid-template-columns: 1fr;
+	grid-auto-rows: auto;
+}
+
+body.is-phone .wn-sticky-note-list-side-panel .wn-sticky-note-list-card,
+body.is-tablet .wn-sticky-note-list-side-panel .wn-sticky-note-list-card {
+	width: 100%;
+	height: auto;
+	min-height: 180px;
+	aspect-ratio: auto;
 }
 
 .wn-sticky-note-list-empty {
@@ -182,8 +191,8 @@ body.is-tablet .wn-sticky-note-list-card textarea {
 /* Sticky Notes */
 
 body.webnovel-notes-hidden .floating-sticky-note,
-
-body.webnovel-notes-hidden .my-floating-sticky-note {
+body.webnovel-notes-hidden .my-floating-sticky-note,
+body.webnovel-modal-active .my-floating-sticky-note {
 	display: none;
 }
 
@@ -200,7 +209,7 @@ body .my-floating-sticky-note {
 	border: 1px solid rgba(0, 0, 0, 0.1);
 	box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
 	border-radius: 8px;
-	z-index: var(--layer-popover, 40);
+	z-index: 1000;
 	display: flex;
 	flex-direction: column;
 	overflow: hidden;
@@ -399,6 +408,10 @@ body .my-sticky-textarea {
 	box-shadow: none;
 	display: none;
 	line-height: 1.5;
+}
+
+body .my-sticky-textarea.wn-show-block {
+	display: block;
 }
 
 body .my-sticky-textarea:focus {

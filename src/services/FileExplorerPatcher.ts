@@ -21,7 +21,8 @@ export class FileExplorerPatcher {
 	private app: App;
 	private plugin: WebNovelAssistantPlugin;
 	private enabled: boolean = false;
-	private unpatchFunc: (() => void) | null = null;
+	private unpatchFuncs: (() => void)[] = [];
+	private patchedPrototypes = new WeakSet<object>();
 	private vaultEventRefs: EventRef[] = [];
 	private workspaceEventRefs: EventRef[] = [];
 	private wordCountElCache = new WeakMap<HTMLElement, HTMLElement>();
@@ -56,7 +57,7 @@ export class FileExplorerPatcher {
 		ChapterSorter.setCustomRules(this.plugin.settings.chapterNamingRules || []);
 
 		try {
-			const success = this.patchFileExplorerPrototype();
+			const success = this.patchFileExplorerPrototypes();
 			if (success) {
 				this.enabled = true;
 				this.enableRetries = 0;
@@ -77,120 +78,125 @@ export class FileExplorerPatcher {
 		}
 	}
 
-	private patchFileExplorerPrototype(): boolean {
+	private patchFileExplorerPrototypes(): boolean {
 		try {
-			const fileExplorerLeaf = this.app.workspace.getLeavesOfType('file-explorer')[0];
-			if (!fileExplorerLeaf) return false;
+			const leaves = this.app.workspace.getLeavesOfType('file-explorer');
+			if (leaves.length === 0) return this.unpatchFuncs.length > 0;
 
-			const view = fileExplorerLeaf.view as FileExplorerView;
-			if (!view) return false;
+			for (const leaf of leaves) {
+				const view = leaf.view as FileExplorerView;
+				if (!view) continue;
 
-			const proto = Object.getPrototypeOf(view) as FileExplorerView;
-			if (!proto || !proto.getSortedFolderItems) return false;
+				const proto = Object.getPrototypeOf(view) as FileExplorerView;
+				if (!proto || !proto.getSortedFolderItems) continue;
 
-			if (this.unpatchFunc) return true; // Already patched
+				if (this.patchedPrototypes.has(proto)) continue;
 
-			const isPatcherEnabled = () => this.enabled;
-			const getPlugin = () => this.plugin;
-			const applyPin = (items: FileExplorerItem[]) => this.applyHomepagePin(items);
-			const doSort = (entities: SortEntity[]) => this.sortEntities(entities);
+				const isPatcherEnabled = () => this.enabled;
+				const getPlugin = () => this.plugin;
+				const applyPin = (items: FileExplorerItem[]) => this.applyHomepagePin(items);
+				const doSort = (entities: SortEntity[]) => this.sortEntities(entities);
 
-			// [BUGFIX] 使用 monkey-around 库替代暴力的 prototype 覆写，保障与第三方插件（如智能文件夹类插件）的兼容性
-			this.unpatchFunc = around(proto, {
-				getSortedFolderItems: (next: (folder: TFolder, bypass?: boolean) => FileExplorerItem[]) => {
-					return function (this: FileExplorerView, folder: TFolder, bypass?: boolean) {
-						try {
-							const sortedItems: FileExplorerItem[] = next.call(this, folder, bypass);
+				// [BUGFIX] 使用 monkey-around 库替代暴力的 prototype 覆写，保障与第三方插件（如智能文件夹类插件）的兼容性
+				const unpatchFunc = around(proto, {
+					getSortedFolderItems: (next: (folder: TFolder, bypass?: boolean) => FileExplorerItem[]) => {
+						return function (this: FileExplorerView, folder: TFolder, bypass?: boolean) {
+							try {
+								const sortedItems: FileExplorerItem[] = next.call(this, folder, bypass);
 
-							if (!isPatcherEnabled() || bypass || !Array.isArray(sortedItems) || sortedItems.length === 0) {
-								return sortedItems;
-							}
+								if (!isPatcherEnabled() || bypass || !Array.isArray(sortedItems) || sortedItems.length === 0) {
+									return sortedItems;
+								}
 
-							const plugin = getPlugin();
+								const plugin = getPlugin();
 
-							if (!plugin.settings.enableSmartChapterSort) {
-								return applyPin(sortedItems);
-							}
+								if (!plugin.settings.enableSmartChapterSort) {
+									return applyPin(sortedItems);
+								}
 
-							const chapterItems: { item: FileExplorerItem; chapterInfo: { number: number; ruleIndex: number }; isFolder: boolean }[] = [];
-							const entities: SortEntity[] = [];
+								const chapterItems: { item: FileExplorerItem; chapterInfo: { number: number; ruleIndex: number }; isFolder: boolean }[] = [];
+								const entities: SortEntity[] = [];
 
-							for (let i = 0; i < sortedItems.length; i++) {
-								const item = sortedItems[i];
-								if (item && item.file) {
-									const isInWorkspace = item.file instanceof TFile
-										? plugin.cacheManager.isFileInWorkspace(item.file)
-										: true;
-									if (isInWorkspace) {
-										const chapterInfo = ChapterSorter.extractChapterNumber(item.file.name);
-										if (chapterInfo !== null || (item.file instanceof TFile && plugin.cacheManager.isEligibleForWordCount(item.file))) {
-											const cInfo = chapterInfo || { number: -1, ruleIndex: 999, numStr: '', isChinese: false, isDecimal: false, rulePattern: '' };
-											chapterItems.push({ item, chapterInfo: cInfo, isFolder: item.file instanceof TFolder });
+								for (let i = 0; i < sortedItems.length; i++) {
+									const item = sortedItems[i];
+									if (item && item.file) {
+										const isInWorkspace = item.file instanceof TFile
+											? plugin.cacheManager.isFileInWorkspace(item.file)
+											: true;
+										if (isInWorkspace) {
+											const chapterInfo = ChapterSorter.extractChapterNumber(item.file.name);
+											if (chapterInfo !== null || (item.file instanceof TFile && plugin.cacheManager.isEligibleForWordCount(item.file))) {
+												const cInfo = chapterInfo || { number: -1, ruleIndex: 999, numStr: '', isChinese: false, isDecimal: false, rulePattern: '' };
+												chapterItems.push({ item, chapterInfo: cInfo, isFolder: item.file instanceof TFolder });
+											} else {
+												entities.push({ isBlock: false, path: item.file.path, item: item, isFolder: item.file instanceof TFolder });
+											}
 										} else {
 											entities.push({ isBlock: false, path: item.file.path, item: item, isFolder: item.file instanceof TFolder });
 										}
-									} else {
-										entities.push({ isBlock: false, path: item.file.path, item: item, isFolder: item.file instanceof TFolder });
 									}
 								}
-							}
 
-							if (chapterItems.length > 0) {
-								chapterItems.sort((a, b) => {
-									if (a.chapterInfo.ruleIndex !== b.chapterInfo.ruleIndex) {
-										return a.chapterInfo.ruleIndex - b.chapterInfo.ruleIndex;
-									}
-									
-									// 如果是严格模式下的例外文件（ruleIndex === 999），允许使用 customSortOrder 进行排序
-									if (a.chapterInfo.ruleIndex === 999 && b.chapterInfo.ruleIndex === 999) {
-										const customOrder = plugin.settings.customSortOrder || {};
-										const orderA = customOrder[a.item.file.path];
-										const orderB = customOrder[b.item.file.path];
-										if (orderA !== undefined && orderB !== undefined) return orderA - orderB;
-										if (orderA !== undefined) return -1;
-										if (orderB !== undefined) return 1;
-									}
+								if (chapterItems.length > 0) {
+									chapterItems.sort((a, b) => {
+										if (a.chapterInfo.ruleIndex !== b.chapterInfo.ruleIndex) {
+											return a.chapterInfo.ruleIndex - b.chapterInfo.ruleIndex;
+										}
 
-									if (a.isFolder !== b.isFolder) return a.isFolder ? -1 : 1;
-									if (a.chapterInfo.number !== b.chapterInfo.number) {
-										return a.chapterInfo.number - b.chapterInfo.number;
-									}
-									return 0;
-								});
-								
-								const blockKey = folder.path === '/' ? '/__CHAPTER_BLOCK__' : `${folder.path}/__CHAPTER_BLOCK__`;
-								entities.push({ isBlock: true, path: blockKey, items: chapterItems.map(c => c.item) });
-							}
+										// 如果是严格模式下的例外文件（ruleIndex === 999），允许使用 customSortOrder 进行排序
+										if (a.chapterInfo.ruleIndex === 999 && b.chapterInfo.ruleIndex === 999) {
+											const customOrder = plugin.settings.customSortOrder || {};
+											const orderA = customOrder[a.item.file.path];
+											const orderB = customOrder[b.item.file.path];
+											if (orderA !== undefined && orderB !== undefined) return orderA - orderB;
+											if (orderA !== undefined) return -1;
+											if (orderB !== undefined) return 1;
+										}
 
-							const sortedEntities = doSort(entities);
+										if (a.isFolder !== b.isFolder) return a.isFolder ? -1 : 1;
+										if (a.chapterInfo.number !== b.chapterInfo.number) {
+											return a.chapterInfo.number - b.chapterInfo.number;
+										}
+										return 0;
+									});
 
-							const finalResult: FileExplorerItem[] = [];
-							for (const entity of sortedEntities) {
-								if (entity.isBlock && entity.items) {
-									finalResult.push(...entity.items);
-								} else if (entity.item) {
-									finalResult.push(entity.item);
+									const blockKey = folder.path === '/' ? '/__CHAPTER_BLOCK__' : `${folder.path}/__CHAPTER_BLOCK__`;
+									entities.push({ isBlock: true, path: blockKey, items: chapterItems.map(c => c.item) });
 								}
+
+								const sortedEntities = doSort(entities);
+
+								const finalResult: FileExplorerItem[] = [];
+								for (const entity of sortedEntities) {
+									if (entity.isBlock && entity.items) {
+										finalResult.push(...entity.items);
+									} else if (entity.item) {
+										finalResult.push(entity.item);
+									}
+								}
+
+								// [BUGFIX] 必须原地修改 sortedItems 并返回原数组引用！
+								// Obsidian 的底层 DOM Diff 算法极其依赖数组引用判定。如果返回一个全新的数组实例，
+								// 会导致整个文件夹的 DOM 树被完全销毁重建，从而摧毁新建文件夹时正在等待输入的原生 <input> 元素。
+								sortedItems.length = 0;
+								sortedItems.push(...finalResult);
+
+								return applyPin(sortedItems);
+							} catch (e) {
+								Logger.error('[WebNovel Assistant] getSortedFolderItems error:', e);
+								return next.call(this, folder, bypass);
 							}
+						};
+					}
+				});
 
-							// [BUGFIX] 必须原地修改 sortedItems 并返回原数组引用！
-							// Obsidian 的底层 DOM Diff 算法极其依赖数组引用判定。如果返回一个全新的数组实例，
-							// 会导致整个文件夹的 DOM 树被完全销毁重建，从而摧毁新建文件夹时正在等待输入的原生 <input> 元素。
-							sortedItems.length = 0;
-							sortedItems.push(...finalResult);
+				this.unpatchFuncs.push(unpatchFunc);
+				this.patchedPrototypes.add(proto);
+			}
 
-							return applyPin(sortedItems);
-						} catch (e) {
-							Logger.error('[WebNovel Assistant] getSortedFolderItems error:', e);
-							return next.call(this, folder, bypass);
-						}
-					};
-				}
-			});
-
-			return true;
+			return this.unpatchFuncs.length > 0;
 		} catch (error) {
-			Logger.error('[WebNovel Assistant] Error patching prototype:', error);
+			Logger.error('[WebNovel Assistant] Error patching prototypes:', error);
 			return false;
 		}
 	}
@@ -208,7 +214,7 @@ export class FileExplorerPatcher {
 
 			const defaultA = a.isBlock ? 0 : (a.isFolder ? -1 : 1);
 			const defaultB = b.isBlock ? 0 : (b.isFolder ? -1 : 1);
-			
+
 			if (defaultA !== defaultB) return defaultA - defaultB;
 
 			if (!a.isBlock && !b.isBlock && a.item && b.item) {
@@ -294,12 +300,12 @@ export class FileExplorerPatcher {
 					if (view.getSortedFolderItems) {
 						logicItems = view.getSortedFolderItems(folderFile);
 					}
-					
+
 					if (logicItems.length > 0) {
 						const currentChildren = Array.from(contentEl.children) as HTMLElement[];
 						let needReorder = false;
 						const targetOrderEls: HTMLElement[] = [];
-						
+
 						for (const item of logicItems) {
 							if (item && item.el && item.el.parentElement === contentEl) {
 								targetOrderEls.push(item.el);
@@ -334,12 +340,12 @@ export class FileExplorerPatcher {
 			if (file && file.path && this.plugin.settings.customSortOrder) {
 				let changed = false;
 				const deletedPath = file.path;
-				
+
 				if (this.plugin.settings.customSortOrder[deletedPath] !== undefined) {
 					delete this.plugin.settings.customSortOrder[deletedPath];
 					changed = true;
 				}
-				
+
 				if (file instanceof TFolder) {
 					const oldPrefix = `${deletedPath}/`;
 					for (const key in this.plugin.settings.customSortOrder) {
@@ -366,14 +372,14 @@ export class FileExplorerPatcher {
 			if (!this.enabled) return;
 			if (this.plugin.settings.customSortOrder && oldPath) {
 				let changed = false;
-				
+
 				const orderValue = this.plugin.settings.customSortOrder[oldPath];
 				if (orderValue !== undefined) {
 					delete this.plugin.settings.customSortOrder[oldPath];
 					this.plugin.settings.customSortOrder[file.path] = orderValue;
 					changed = true;
 				}
-				
+
 				if (file instanceof TFolder) {
 					const oldPrefix = `${oldPath}/`;
 					const newPrefix = `${file.path}/`;
@@ -401,17 +407,22 @@ export class FileExplorerPatcher {
 				this.refreshAllExplorers();
 			}, 100);
 		}));
-		
-		// 监听布局变化，确保在文件浏览器重新加载时重置拖拽事件
+
+		// 监听布局变化，确保在文件浏览器重新加载时重置拖拽事件和修补可能的新原型
 		this.workspaceEventRefs.push(this.app.workspace.on('layout-change', () => {
 			if (!this.enabled) return;
+
+			// 修补可能新出现的不同原型（例如移动端重新创建的视图，或新的多窗口）
+			this.patchFileExplorerPrototypes();
+
 			const leaf = this.app.workspace.getLeavesOfType('file-explorer')[0];
 			if (leaf) {
 				const containerEl = (leaf.view as FileExplorerView)?.containerEl as HTMLElement | undefined;
-				// 如果容器发生了变化（例如重建了面板），则重新初始化事件
+				// 如果容器发生了变化（例如重建了面板），则重新初始化事件并刷新排序
 				if (containerEl && containerEl !== this._dragContainerEl) {
 					this.teardownDragSort();
 					this.initDragSort();
+					this.refreshAllExplorers();
 				}
 			}
 		}));
@@ -439,10 +450,11 @@ export class FileExplorerPatcher {
 
 	unpatch(): void {
 		this.teardownDragSort();
-		if (this.unpatchFunc) {
-			this.unpatchFunc();
-			this.unpatchFunc = null;
+		for (const unpatch of this.unpatchFuncs) {
+			unpatch();
 		}
+		this.unpatchFuncs = [];
+		this.patchedPrototypes = new WeakSet<object>();
 		activeDocument.querySelectorAll('.wn-folder-word-count').forEach(el => el.remove());
 	}
 
@@ -603,7 +615,7 @@ export class FileExplorerPatcher {
 		if (isChapter) {
 			const folderPath = this._getFolderPathFromItemEl(itemEl);
 			this._dragSourcePath = folderPath === '/' ? '/__CHAPTER_BLOCK__' : `${folderPath}/__CHAPTER_BLOCK__`;
-			
+
 			if (itemEl.parentElement) {
 				const children = Array.from(itemEl.parentElement.children) as HTMLElement[];
 				for (const child of children) {
@@ -693,7 +705,7 @@ export class FileExplorerPatcher {
 
 		let targetFolderPath = '';
 		const targetIsFolder = targetItem.classList.contains('nav-folder');
-		
+
 		if (isChapterTarget) {
 			targetFolderPath = this._getFolderPathFromItemEl(targetItem);
 		} else {
@@ -748,7 +760,7 @@ export class FileExplorerPatcher {
 		} else {
 			const rect = targetItem.getBoundingClientRect();
 			const y = pointerY - rect.top;
-			
+
 			if (targetIsFolder) {
 				if (y < rect.height * 0.25) {
 					insertBefore = true;
@@ -859,7 +871,7 @@ export class FileExplorerPatcher {
 		while (prevSibling && (prevSibling.classList.contains('webnovel-dragging') || (!prevSibling.classList.contains('nav-file') && !prevSibling.classList.contains('nav-folder')))) {
 			prevSibling = prevSibling.previousElementSibling as HTMLElement;
 		}
-		
+
 		while (nextSibling && (nextSibling.classList.contains('webnovel-dragging') || (!nextSibling.classList.contains('nav-file') && !nextSibling.classList.contains('nav-folder')))) {
 			nextSibling = nextSibling.nextElementSibling as HTMLElement;
 		}
@@ -886,7 +898,7 @@ export class FileExplorerPatcher {
 		if (hasChapters) entities.push(blockKey);
 
 		const customOrder = this.plugin.settings.customSortOrder || {};
-		
+
 		entities.sort((a, b) => {
 			const orderA = customOrder[a];
 			const orderB = customOrder[b];

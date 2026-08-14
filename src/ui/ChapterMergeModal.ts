@@ -3,6 +3,7 @@ import { Modal, Notice, setIcon } from 'obsidian';
 import { t } from '../i18n';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { ChapterMergeItem } from '../services/ChapterMergeManager';
+import { highlightPersistentTarget, cancelHighlightTracker } from '../utils/preciseTextHighlight';
 
 /**
  * 选中文本右键修改弹窗 (SelectionRevisionModal)
@@ -486,6 +487,9 @@ export class ChapterMergeModal extends Modal {
 	 * 渲染中间正文卡片列表（单章节唯一 DOM 节点）
 	 */
 	private renderPreviewCards(): void {
+		if (this.previewContainerEl) {
+			cancelHighlightTracker(this.previewContainerEl);
+		}
 		this.previewContainerEl.empty();
 		let lastVolume = '';
 
@@ -653,7 +657,7 @@ export class ChapterMergeModal extends Modal {
 	}
 
 	/**
-	 * 高亮并精准定位选中正文中修改的具体词句（直接将 targetSpan 居中显示并触发 Flash 脉冲）
+	 * 精准定位选中正文中修改的具体词句，并在预览区进行持久高亮选中，直到定位下一个修订项
 	 */
 	private locateAndHighlightSentence(rev: ExplicitRevisionRecord): void {
 		const targetSpan = this.previewContainerEl.querySelector<HTMLElement>(
@@ -661,19 +665,11 @@ export class ChapterMergeModal extends Modal {
 		);
 
 		if (targetSpan) {
-			targetSpan.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
-			targetSpan.addClass('is-flashing');
-			window.setTimeout(() => targetSpan.removeClass('is-flashing'), 2000);
-
-			const cardEl = this.annotationContainerEl.querySelector<HTMLElement>(
-				`.wn-merge-revision-card[data-rev-id="${rev.id}"]`
-			);
-			if (cardEl) {
-				cardEl.addClass('is-hovered');
-				window.setTimeout(() => cardEl.removeClass('is-hovered'), 2000);
-			}
+			highlightPersistentTarget(this.previewContainerEl, targetSpan);
 		} else {
-			const cardEl = this.previewContainerEl.querySelector(`[data-filepath="${encodeURIComponent(rev.item.file.path)}"]`);
+			const cardEl = this.previewContainerEl.querySelector<HTMLElement>(
+				`[data-filepath="${encodeURIComponent(rev.item.file.path)}"]`
+			);
 			if (cardEl) {
 				cardEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
 			}
@@ -835,6 +831,10 @@ export class ChapterMergeModal extends Modal {
 	 * 关闭时的二次确认防护逻辑
 	 */
 	onClose(): void {
+		if (this.previewContainerEl) {
+			cancelHighlightTracker(this.previewContainerEl);
+		}
+
 		if (this.typographyPreviewElement) {
 			this.plugin.typographyManager.unregisterPreviewElement(this.typographyPreviewElement);
 			this.typographyPreviewElement = null;

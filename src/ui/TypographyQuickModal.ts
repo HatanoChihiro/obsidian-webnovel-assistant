@@ -16,6 +16,9 @@ export class TypographyQuickModal extends Modal {
 	}
 
 	onOpen(): void {
+		this.containerEl.addClass('wn-corner-modal-container');
+		this.modalEl.addClass('wn-corner-modal');
+		this.modalEl.addClass('wn-typography-modal');
 		const { contentEl } = this;
 		contentEl.empty();
 

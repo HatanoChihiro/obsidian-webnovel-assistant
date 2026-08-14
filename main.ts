@@ -265,6 +265,9 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			activeDocument.body.classList.add('webnovel-notes-hidden');
 		}
 
+		// 监听 Modal / 设置弹窗状态，动态切换 webnovel-modal-active 隐藏悬浮组件
+		this.setupModalObserver();
+
 		// 监听数据变化事件，保持悬浮便签同步
 		this.registerEvent(this.app.workspace.on('webnovel:notes-changed', () => {
 			this.stickyNoteManager?.syncFloatingNotes();
@@ -720,6 +723,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 
 		// 清除可能残留的便签 DOM（如插件上次未正常卸载）
 		activeDocument.body.querySelectorAll('.my-floating-sticky-note').forEach(el => el.remove());
+		this.app.workspace.containerEl?.querySelectorAll('.my-floating-sticky-note').forEach(el => el.remove());
 		this.activeNotes = [];
 
 		for (const noteState of notes) {
@@ -769,6 +773,37 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		}
 	}
 	
+
+	/**
+	 * 监听全局 Modal / 设置面板弹窗
+	 * 当存在 modal-container 时动态挂载 webnovel-modal-active 样式类，隐藏悬浮组件
+	 */
+	private setupModalObserver(): void {
+		const mainDoc = this.app.workspace.containerEl?.ownerDocument || activeDocument;
+		const updateModalState = () => {
+			const hasModal = !!(
+				mainDoc.body.querySelector('.modal-container, .modal.mod-settings, .vertical-tabs-container, .modal-bg') ||
+				mainDoc.body.classList.contains('is-popout-modal')
+			);
+			if (hasModal) {
+				mainDoc.body.classList.add('webnovel-modal-active');
+			} else {
+				mainDoc.body.classList.remove('webnovel-modal-active');
+			}
+		};
+
+		updateModalState();
+
+		const observer = new MutationObserver(() => {
+			updateModalState();
+		});
+
+		observer.observe(mainDoc.body, { childList: true, subtree: true });
+		this.register(() => {
+			observer.disconnect();
+			mainDoc.body.classList.remove('webnovel-modal-active');
+		});
+	}
 
 	/**
 	 * 切换所有悬浮便签的显示/隐藏状态

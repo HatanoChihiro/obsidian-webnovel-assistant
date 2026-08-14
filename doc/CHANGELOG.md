@@ -1,8 +1,36 @@
+## 🔧 v3.8.3
+
+### Bug修复
+- 修复了在移动端等场景下文件浏览器重新加载时，智能章节排序可能偶尔失效的问题。
+- 修复了电脑端悬浮便签切换到编辑模式后，内容一片空白且无法编辑的问题。
+- 修复了桌面端工作台固定栏与视图顶边之间留有缝隙、滚动时会露出部分卡片的问题。
+
+### 功能优化
+- 优化了设定文件的读取方式，新增“重建设定缓存”快捷命令，支持手动触发全量重建设定条目与章节设定引用统计，并实时刷新编辑器高亮、工作台与关系图谱视图。
+- 优化了便签列表中便签卡片的显示宽度，并在移动端强制单列显示。
+- 解除了高级搜索面板的单文件超10条匹配自动隐藏的限制，会显示所有搜索结果。
+- 优化了全局精准跳转引擎的表现：现在会精准定位并高亮指定内容，不再高亮整行或整段。
+- 优化了高级搜索和排版调节面板的显示位置，不再遮挡正文。
+- 完善了用户指南和常见问题。
+
+### English Changelog
+
+#### Bug Fixes
+- Fixed an intermittent issue where smart chapter sorting could be lost when the file explorer view is destroyed and recreated, particularly on mobile devices.
+- Fixed an issue where desktop floating sticky notes became blank and uneditable after switching to edit mode.
+- Fixed an issue where a small gap between the desktop workbench sticky bar and the top edge revealed scrolled cards.
+
+#### Enhancements
+- Optimized lore note parsing and added "Rebuild Lore Cache" command to manually rebuild lore entries and chapter lore reference stats, refreshing editor highlights, workbench, and relation graph views in real time.
+- Improved sticky note list card layout width, enforcing single-column display on mobile devices.
+- Removed the 10-match limit per file in Advanced Search modal to display all search results.
+- Optimized the unified precise jump engine: now accurately locates and highlights specific target content rather than highlighting entire lines or paragraphs.
+- Optimized the display position and size of Advanced Search and Quick Typography adjustment modals to avoid blocking note content.
+- Improved the User Guide and FAQ.
+
 ## 🔧 v3.8.2
 
 ### Bug修复
-- 修复了伏笔侧面板中的阶段回收记录无法从回收原文跳转到嵌套目录章节的问题；侧面板现在与伏笔看板使用相同的章节定位规则。
-- 修复了写作实时状态面板可能跨作品残留或更新任务的问题；任务读取、进度和完成操作现在始终绑定对应作品，切换到无任务作品时会立即隐藏上一部作品的任务。
 - 修复了外部导入、系统文件管理器增删文件或整理章节时会误改每日写作字数的问题；现在文件增删只刷新章节总字数，写作数据仅记录在 Obsidian 编辑器中对章节正文产生的字数增减。
 - 修复了沉浸模式和侧面板中的便签列表在临界尺寸下可能反复缩放并跳屏的问题。
 - 修复了移动端写作实时状态面板会在字数任务中误显示“完成”按钮的问题，现在该按钮仅在事件任务中显示。

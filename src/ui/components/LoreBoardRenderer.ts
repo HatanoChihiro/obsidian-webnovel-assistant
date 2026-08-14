@@ -3,7 +3,7 @@ import type { WebNovelAssistantPlugin } from '../../types/plugin';
 import { t, getLocale } from '../../i18n';
 import type { GraphEdge } from '../../services/RelationGraphManager';
 import { ForceLayoutEngine } from '../../services/ForceLayoutEngine';
-import type { LoreEntry } from '../../services/CharacterManager';
+import { cleanLoreHeading, type LoreEntry } from '../../services/CharacterManager';
 import { GraphRenderer, type GraphRenderState } from './GraphRenderer';
 import { GraphInteractionController } from './GraphInteractionController';
 import { LoreCardRenderer } from './LoreCardRenderer';
@@ -588,7 +588,7 @@ export class LoreBoardRenderer {
                     let fallbackLine: number | undefined;
                     if (cache?.headings) {
                         for (const h of cache.headings) {
-                            const rawHeading = h.heading.replace(/\*\*|__/g, '').replace(/\*|_/g, '').replace(/`/g, '');
+                            const rawHeading = cleanLoreHeading(h.heading);
                             if (rawHeading === entry.heading && h.level === 2) {
                                 fallbackLine = h.position.start.line;
                                 break;

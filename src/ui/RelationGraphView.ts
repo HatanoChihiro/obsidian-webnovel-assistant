@@ -257,6 +257,15 @@ export class RelationGraphView extends ItemView {
 				}, 500);
 			}
 		}));
+
+		// 监听设定缓存刷新事件以实时静默刷新图谱
+		this.registerEvent(this.app.workspace.on('webnovel-workbench-lore-updated', () => {
+			if (this.filePath) {
+				void this.softReloadGraph()
+					.then(() => this.requestRender())
+					.catch(error => console.error('[RelationGraphView] Failed to refresh lore graph:', error));
+			}
+		}));
 	}
 
 	async onClose(): Promise<void> {

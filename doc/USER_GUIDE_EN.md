@@ -31,6 +31,7 @@ Welcome to WebNovel Assistant! An Obsidian plugin designed specifically for web 
   - [OBS Overlay](#obs-overlay)
 - [Other Settings](#other-settings)
   - [Language Settings](#language-settings)
+  - [Typography Settings](#typography-settings)
   - [Eye Comfort Mode](#eye-comfort-mode)
   - [Keyboard Shortcuts](#keyboard-shortcuts)
 - [FAQ](#faq)
@@ -59,7 +60,7 @@ Welcome to WebNovel Assistant! An Obsidian plugin designed specifically for web 
 3. Place the downloaded files in that folder
 4. Restart Obsidian and enable the plugin in Settings → Community plugins
 
-> ⚠️ **Data Backup Notice**: If you need to completely uninstall or reinstall the plugin, please make sure to back up `history-data.json` (contains your daily word count & focus statistics) located in the `.obsidian/plugins/web-novel-assistant/` directory. Copy it back after reinstallation to restore your historical data.
+> ⚠️ **Data Backup Notice**: If you need to completely uninstall or reinstall the plugin, we recommend closing Obsidian normally first and backing up both `history-data.json` (daily word count & focus statistics) and `notes-data.json` (sticky-note cache & state data) located in the `.obsidian/plugins/web-novel-assistant/` directory. Sticky notes that have not been separately saved as Markdown files are stored only in `notes-data.json`, and failing to back it up may result in losing unsaved sticky notes (ordinary Markdown files in your vault are not affected). Copy both files back to the plugin directory after reinstallation to restore all historical stats and sticky notes.
 
 ### First Use
 
@@ -95,7 +96,7 @@ Welcome to WebNovel Assistant! An Obsidian plugin designed specifically for web 
 #### Importing an Existing Work
 1. Click the "Import Novel" button in the work section on the Creative Homepage, or right-click any novel folder in the file tree and select "Import Novel".
 2. Select a single long-form `.txt` or `.md` novel file from the file picker dialog.
-3. The plugin will automatically scan, split, and batch-generate chapter Markdown documents based on your configured **Custom Chapter Naming Rules**.
+3. Using the default or your configured **Custom Chapter Naming Rules**, the plugin recognizes volume and chapter structure in `.txt` or `.md` files, splits the content into chapter Markdown documents, and organizes them into the corresponding volume folders.
 4. > 💡 **Tip**: If your original manuscript is in Word format (`.docx` / `.doc`), we recommend converting it to `.md` using Pandoc or Word prior to importing to preserve rich formatting.
 
 #### Custom Homepage Greeting
@@ -135,14 +136,18 @@ The Writing Workbench is a comprehensive writing management center upgraded from
 #### How to Use
 
 ##### Open Writing Workbench
-1. Open the command palette (Ctrl/Cmd + P) and type `Toggle Writing Workbench Panel`
+1. Open the command palette (Ctrl/Cmd + P) and type `Toggle Writing Workbench View`
 2. Or click the workbench icon in the left Ribbon menu
 3. After opening any chapter file, the workbench will automatically identify the current novel and display its content.
 
 ##### Enable Chapter Template
 1. Open plugin settings → **Enable Chapter Template** and toggle it on.
-2. Fill in the relative path to your template document in the input box below (e.g., `Templates/ChapterTemplate.md`).
-3. New chapters will subsequently apply the template content automatically (including chapters created via command).
+2. In **Template File List**, use the add button to select one or more Markdown template files from the vault.
+3. With no template, new chapters are blank; with one template, it is applied automatically; with multiple templates, creating a chapter opens a selector, where you can also choose no template to create a blank chapter.
+
+##### Merge Chapters
+1. In the Workbench All Chapters panel, select **Merge Chapters** to the left of the work-status button.
+2. In Merge & Manuscript Preview, choose whether to include document titles; you can revise content and apply it to the source chapters, or export a merged file.
 
 ---
 
@@ -173,24 +178,27 @@ The Writing Workbench is a comprehensive writing management center upgraded from
 ### Workspace Settings
 
 #### Overview
-- **Custom Plugin Workspace**: Specify the folder scope where the plugin operates
+- **Scanning and Work Recognition Boundary**: A workspace is the upper boundary for plugin scanning and work recognition, not an individual work folder. For normal use, set a top-level category containing multiple works, such as `Novels`; the plugin recursively recognizes categories, works, and volume folders below it.
+- **Default Location**: The first workspace determines the Creative Homepage location and the default parent folder for new/imported works. For example, with `Novels` as the workspace, a new work is created as `Novels/Work Name`. Do not set an individual work or volume folder: the homepage and new works would be placed inside that work, and homepage initialization can treat its direct child folders as works when creating missing work info.
 - **Scope of Effect**:
-  - Word count (status bar, file explorer)
-  - Writing status panel history
-  - File modification monitoring and cache building
-  - Not affected: foreshadowing, timeline, notes, and other features
+  - Work root recognition and work context in the Workbench, Chapter Overview, and Immersive Mode (including foreshadowing and timeline features that rely on that context)
+  - Creative Homepage work lists and total word counts, plus locations for new/imported works
+  - Chapter word counts, goals, writing increments and history, plus File Explorer word-count caching
+  - Lore cache, editor highlights, and relation graph
+  - Chapter sorting, file-event handling, and typography scope
+- **Outside the Scope and Empty Setting**: Files outside workspaces still show a basic word count, but do not participate in writing increments, history, or goals. Leaving this empty makes the scope vault-wide and scans more files.
 
 #### How to Use
 1. Open plugin settings
-2. Find **Workspace Folder**
-3. Enter the folder path (e.g., `Novels/Book One`)
-4. Separate multiple folders with commas (e.g., `Novels/Book One, Novels/Book Two`)
-5. Leave empty for global scope (all files are counted)
+2. Find **Workspace Folders**
+3. Enter a top-level category (e.g., `Novels`), not an individual work or volume folder
+4. Separate top-level categories with commas (e.g., `Novels, Short Stories`); the first is the default location for the homepage and new/imported works
+5. Leave empty for vault-wide scope
 
 #### Use Cases
-- Multiple projects in the same vault, but you only want to count words for a specific project
+- Multiple projects in the same vault, but you only want the novel categories scanned and recognized as works
 - Avoid counting non-novel content like notes and diaries in statistics
-- Improve performance (only monitor and cache specified folders)
+- Reduce the scanning, monitoring, and caching scope
 
 ---
 
@@ -330,11 +338,12 @@ The plugin provides three word count algorithms for different writing scenarios:
 ##### Reset Statistics
 - Command palette → `Reset Stream Statistics (Clear Duration and Net Word Count)`
 - Clears the current session's time and word count statistics
+- Command palette → `Reset today writing stats` opens an action panel: clear all of today's data; clear only today's words while keeping focus time, slack time, and the current timer state; or correct today's words to a specified integer.
 
 #### Related Settings
 - **Idle Timeout Threshold**: How many milliseconds of inactivity counts as slack time (default: 60000 = 60 seconds)
 
-> **Note**: Time tracking is not supported on mobile (requires Worker support)
+> **Mobile**: Phones and tablets can use the experimental focus timer after enabling **Show Floating Word Stats** and **Enable Focus Timer on Mobile**. Control it with the play/pause button in the floating widget; screen-off and background time are filtered out, and data syncs with desktop.
 
 ---
 
@@ -549,6 +558,9 @@ This way `番外1` → number 1, `番外2` → number 2, and they are automatica
 **Method 3: From Selected Text**
 - Select text → Right-click → `Extract as Sticky Note`
 
+##### Open Sticky Note List
+- Command palette → `Open Sticky Note List` opens existing notes in a side panel; it is also available on mobile.
+
 ##### Editing a Note
 - **Edit Mode**: Click the pencil icon
 - **Preview Mode**: Click the eye icon
@@ -722,10 +734,10 @@ This way `番外1` → number 1, `番外2` → number 2, and they are automatica
 
 #### Overview
 - **Dictionary-Style Lore Database**: Create categorized documents under a lore folder (e.g., `Characters.md`, `Items.md`), and the plugin automatically scans and recognizes them
-- **Auto Annotation**: Create lore entries using level-2 headings (`##`) in categorized documents, and add `**Aliases**: xxx` in the body. When you type these names in your novel text, the system automatically adds a dashed underline
-- **Hover Quick Reference**: Hover over annotated text to pop up a small window precisely positioned to that entry — no need to leave the editing page
+- **Auto Annotation**: Create lore entries using level-2 headings (`##`) in categorized documents, and add `**Alias**: xxx` in the body. When you type canonical names or aliases in your novel text, the system automatically adds a dashed underline
+- **Hover/Tap Quick Reference**: Hover over annotated text on desktop or tap it on mobile to open a small window precisely positioned to that entry — no need to leave the editing page
 - **Right-Click "Write & Build"**: Select a new item or character name in the editor, right-click "Add as New Lore Entry," and quickly enter it in a dialog
-- **Alias Support**: Supports both the YAML `aliases` field and the `**Aliases**: xxx` format in the document body
+- **Alias Support**: In each entry body, use `Alias: xxx` or `别名：xxx`; the label may be bold, and either English or Chinese colons work. Separate multiple aliases with commas, enumeration commas, semicolons, slashes, or vertical bars; each alias maps to that entry
 
 #### How to Use
 
@@ -743,11 +755,11 @@ Create categorized documents under the lore folder, using `## Level-2 Headings` 
 
 ## Zhang San
 The protagonist, a young swordsman.
-**Aliases**: Brother San, Xiao Zhang
+**Alias**: Brother San, Xiao Zhang
 
 ## Li Si
 The villain, cunning and treacherous.
-**Aliases**: Master Si
+**Alias**: Master Si
 
 ## Wang Wu
 Supporting character, a loyal companion.
@@ -756,13 +768,15 @@ Supporting character, a loyal companion.
 > **Tips**:
 > - Each level-2 heading (`##`) is a separate entry; the heading text is the canonical name
 > - The plugin only recognizes level-2 headings; level-1 (`#`) and level-3 (`###`) headings are not treated as entries
-> - Aliases use the `**Aliases**: xxx` format within the entry body; multiple aliases are separated by commas
-> - Aliases also support the YAML aliases field (compatible with older format)
+> - Aliases must be in the body of their level-2 entry. Use `Alias: xxx` or `别名：xxx` (bolding is optional); separate multiple aliases with commas, enumeration commas, semicolons, slashes, or vertical bars
 
 ##### Using Lore Quick Reference
 1. Type a character name or alias in your text (e.g., "Zhang San" or "Brother San")
 2. The text will automatically display a dashed underline
 3. Hover to preview the lore card content, precisely positioned to the corresponding entry
+
+##### Rebuild Lore Cache
+When lore files or chapters already exist but lore highlighting, Workbench statistics, or the relation graph have not updated correctly, run **Command Palette (Ctrl/Cmd + P) → `Rebuild Lore Cache`**. It rescans lore entries, refreshes chapter lore-reference statistics in bulk, and refreshes editor highlights, the Workbench, and the relation graph.
 
 ##### Right-Click to Add New Lore
 1. Select a new name in the editor (e.g., "Xuan Tie Sword")
@@ -770,7 +784,7 @@ Supporting character, a loyal companion.
 3. Fill in the lore name, select a categorized document, add aliases and description in the dialog
 4. Click save; the lore entry is automatically written to the corresponding categorized document
 
-> **Note**: The Lore Quick Reference feature is only available on desktop (mobile does not support editor extensions).
+> **Mobile**: Lore names and aliases are still recognized and shown with dashed underlines. Enable **Lore Hover Popover on Mobile** to tap and view a card; disabling it only disables the cards to prevent accidental taps while scrolling.
 
 #### Related Settings
 - **Lore Folder Name**: Default `Lore`, customizable
@@ -797,7 +811,7 @@ Supporting character, a loyal companion.
 3. Fill it out in the following format (bold text represents the **Relation Name**, followed by a colon and target characters separated by commas):
 ```markdown
 ## John Doe
-**Aliases**: Johnny
+**Alias**: Johnny
 **Description**: The Protagonist
 
 ### Relations
@@ -897,7 +911,7 @@ Supporting character, a loyal companion.
 2. A detailed historical data window opens
 3. You can view statistics for any date
 
-> **Note**: Time tracking is not displayed on mobile (requires Worker support)
+> **Mobile**: The Writing Status Panel does not show the time-tracking card on mobile; use the Mobile Floating Word Count & Focus Timer widget instead. Its experimental timer filters out screen-off and background time, and data syncs with desktop.
 
 ---
 
@@ -938,11 +952,11 @@ Supporting character, a loyal companion.
 - **Settings Customization**: Adjust the **Focus Sensitivity Threshold** slider in mobile settings to control idle timeout detection.
 
 #### How to Use
-1. Open plugin settings → Enable **Show Mobile Floating Word Count**.
-2. Floating widget displays current word count, chapter goal, completion percentage, and focus duration.
+1. Open plugin settings → Enable **Show Floating Word Stats**; for timing, also enable **Enable Focus Timer on Mobile (Experimental)**.
+2. The widget displays current word count, chapter goal, and completion percentage; when timing is enabled, use the play/pause button to control focus duration.
 3. Drag to left or right screen edge to trigger edge docking collapse.
 
-> **Tip**: After enabling the floating window, status bar word count is automatically hidden to avoid duplicate display. Data is fully synchronized with desktop.
+> **Tip**: After enabling the floating window, status bar word count is automatically hidden to avoid duplicate display. The experimental focus timer filters out screen-off and background time, and data syncs with desktop.
 
 ---
 
@@ -1031,6 +1045,12 @@ For detailed CSS customization guide, see: [OBS Overlay CSS Guide](OBS_OVERLAY_C
 
 ---
 
+### Typography Settings
+
+In the plugin settings **Typography** tab, enable **Enable Typography Control** to apply first-line indent, line height, paragraph spacing, letter spacing, maximum line width, alignment, and body text size to chapters, other documents, or selected functional document types. Body text size is shared by editing, reading, and chapter-merge previews; when custom body text size is disabled, Obsidian's native `Ctrl + mouse wheel` adjustment remains available. The Command Palette also provides **Quick Typography Adjustment** and increase/decrease body-font commands.
+
+---
+
 ### Keyboard Shortcuts
 
 #### Overview
@@ -1049,7 +1069,7 @@ The plugin provides multiple commands that can be assigned custom keyboard short
 ##### Panel Toggles
 - **Toggle Foreshadowing Panel**: Quickly open or close the foreshadowing management panel
 - **Toggle Timeline Panel**: Quickly open or close the timeline panel
-- **Toggle Time-Limited Task Panel**: Quickly open or close the time-limited task panel
+- **Toggle Writing Workbench View**: Open the integrated workbench for chapters, timeline, lore, tasks, and notes
 - **Toggle Writing Status Panel**: Quickly open or close the writing status panel
 
 ##### Immersive Mode
@@ -1063,9 +1083,11 @@ The plugin provides multiple commands that can be assigned custom keyboard short
 ##### Time Tracking
 - **Start/Pause Focus Time Tracking**: Start or pause time tracking
 - **Reset Stream Statistics (Clear Duration and Net Word Count)**: Clear the current session's duration and net word count
+- **Reset today writing stats**: Choose to clear all data, clear only words, or correct today's word count
 
 ##### Sticky Notes
 - **Create Blank Floating Note**: Quickly create a blank note
+- **Open Sticky Note List**: Open existing notes in a side panel; available on mobile
 
 ##### Search
 - **Advanced Search (Filter by Book/Global/Multi-Directory)**: Cross-scope content search
@@ -1079,6 +1101,7 @@ The plugin provides multiple commands that can be assigned custom keyboard short
 
 ##### Cache Management
 - **Rebuild Folder Word Count Cache**: Rebuild the file explorer's word count cache
+- **Rebuild Lore Cache**: Rescan lore entries and refresh chapter lore-reference statistics
 
 ##### Streaming
 - **Copy OBS Overlay URL to Clipboard**: Quickly copy the OBS overlay access URL
@@ -1096,7 +1119,7 @@ Here are some recommended shortcut configurations (for reference only):
 | Mark as Foreshadowing | `Ctrl/Cmd + Shift + F` | F = Foreshadowing |
 | Toggle Foreshadowing Panel | `Ctrl/Cmd + Shift + B` | B = Bookmark |
 | Toggle Timeline Panel | `Ctrl/Cmd + Shift + T` | T = Timeline |
-| Toggle Writing Workbench Panel | `Ctrl/Cmd + Shift + W` | W = Workbench |
+| Toggle Writing Workbench View | `Ctrl/Cmd + Shift + W` | W = Workbench |
 | Toggle Writing Status Panel | `Ctrl/Cmd + Shift + S` | S = Status |
 | Create Blank Floating Note | `Ctrl/Cmd + Shift + N` | N = Note |
 | Advanced Search | `Ctrl/Cmd + Shift + H` | H = Hunt |
@@ -1136,6 +1159,20 @@ A:
 3. Try **Reload/Restart Obsidian**
 4. Confirm file encoding is UTF-8
 
+### Q: Installation failed or the plugin cannot be enabled?
+A:
+1. Confirm that Obsidian is version 1.8.7 or later, then turn off Restricted Mode in **Settings → Community plugins** before enabling the plugin.
+2. If Community Plugins installation fails, check your network, proxy, or firewall, then restart Obsidian and try again.
+3. For manual installation, make sure `main.js`, `manifest.json`, and `styles.css` are in the same `.obsidian/plugins/web-novel-assistant/` folder, without an extra nested extraction folder.
+4. On mobile devices (especially Android), installation or loading failures may be caused by an outdated system WebView engine. Try updating Android System WebView and/or your system browser/Chrome from the app store, restart Obsidian or the device, and try again (this applies only to mobile environments, not desktop).
+5. If an old-file overwrite still fails to load and requires reinstallation, close Obsidian normally first and back up both `history-data.json` and `notes-data.json` to preserve historical statistics and any sticky-note contents and states not separately saved as Markdown files.
+
+### Q: When should I use “Rebuild Lore Cache”?
+A: Run **Command Palette (Ctrl/Cmd + P) → `Rebuild Lore Cache`**. It rebuilds lore entries and chapter lore-reference statistics, then refreshes editor highlights, the Workbench, and the relation graph. It is especially useful:
+1. After importing a novel, to populate lore-reference statistics for the imported chapters.
+2. When Lore Lookup underlines, hover cards, Workbench statistics, or the relation graph display incorrectly.
+3. When installing the plugin for the first time in an existing library that already contains lore files and chapters.
+
 ### Q: Chapter sorting not working?
 A:
 1. Check if **Smart Chapter Sorting** is enabled
@@ -1174,11 +1211,11 @@ A:
 - **Device-Specific UI**: Phone and tablet views automatically adapt layout and touch gestures to fit screen sizes.
 - **Desktop-Only Features**: Immersive Writing Mode (full-screen typewriter focus mode), OBS Streaming Overlay (HTTP server), and multi-window floating notes remain desktop-exclusive due to mobile touch interaction and OS sandbox restrictions.
 
-### Q: Will reinstalling or deleting the plugin lose my writing history data?
+### Q: Will reinstalling or deleting the plugin lose my writing history and sticky note data?
 A:
 - **Standard/Overwriting Updates**: Updating via Community Plugins or replacing `main.js` will not delete your data.
-- **Complete Reinstallation/Deletion**: If you delete the plugin directory `.obsidian/plugins/web-novel-assistant/`, the `history-data.json` file inside it will be removed.
-- **Backup Advice**: Before a fresh reinstallation, manually back up `history-data.json`. Restore it by copying the file back into the plugin folder after reinstalling.
+- **Complete Reinstallation/Deletion**: If you delete the plugin directory `.obsidian/plugins/web-novel-assistant/`, the historical statistics file `history-data.json` (daily word count and focus heatmap data) and the sticky note cache file `notes-data.json` (content, positions, and theme states for floating and immersive notes) will be deleted! Any sticky notes not separately saved as Markdown files will be lost (ordinary Markdown files in your vault are not affected).
+- **Backup Advice**: We recommend closing Obsidian normally first (to ensure data is flushed to disk), then manually backing up both `history-data.json` and `notes-data.json` from the plugin directory. After reinstalling, copy both files back into the plugin directory to restore all historical statistics, sticky note contents, and states.
 
 ### Q: Gutter word count markers hidden or misaligned when using Minimal or third-party themes?
 A: The Minimal theme applies strict display and margin restrictions on editor gutters. You can use Obsidian's **Settings → Appearance → CSS Snippets** feature to add the following custom CSS snippet to remove visibility restrictions and adjust marker offsets & line margins:
@@ -1229,7 +1266,7 @@ A:
 - GitHub Issues: [Submit an Issue](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/issues)
 
 ### Feature Requests
-- GitHub Discussions: [Discuss Features](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/discussions)
+- GitHub Issues: [Submit a Feature Request](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/issues)
 
 ### Changelog
 - [CHANGELOG.md](CHANGELOG.md)
@@ -1239,7 +1276,7 @@ A:
 ## Related Documentation
 
 - [OBS Overlay CSS Guide](OBS_OVERLAY_CSS_GUIDE.md)
-- [README](README.md)
+- [README](../README.md)
 
 ---
 

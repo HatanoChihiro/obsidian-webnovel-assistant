@@ -350,6 +350,15 @@
 	box-shadow: 0 0 6px color-mix(in srgb, var(--interactive-accent) 40%, transparent);
 }
 
+.wn-manuscript-inline-revision-target.is-flashing {
+	background-color: var(--text-highlight-bg);
+	color: var(--text-normal);
+	border-bottom-color: transparent;
+	border-radius: var(--radius-s, 4px);
+	box-shadow: none;
+	mix-blend-mode: var(--highlight-mix-blend-mode);
+}
+
 
 
 /* 选中文本右键标注修改 Modal 弹窗样式 */
@@ -469,11 +478,6 @@
 	border: 1px dashed var(--background-modifier-border);
 	font-size: 0.8em;
 	color: var(--text-muted);
-}
-
-
-.wn-manuscript-inline-revision-target.is-flashing {
-	animation: wn-target-flash 1.5s ease-in-out;
 }
 
 

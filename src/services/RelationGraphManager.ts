@@ -18,6 +18,7 @@ import { TFile, TFolder } from 'obsidian';
 import { findBookRoot } from '../utils/path';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { t } from '../i18n';
+import { cleanLoreHeading } from './CharacterManager';
 
 // ==========================================
 // 类型定义
@@ -543,15 +544,11 @@ export class RelationGraphManager {
 	}
 
 	/**
-	 * 清理 Markdown 标题中的格式标记（加粗、斜体、行内代码）
+	 * 清理 Markdown 标题中的格式标记（加粗、斜体、行内代码、双向链接、Hashtag）
 	 *
-	 * 与 CharacterManager.addFileToCacheIfValidInto 中的清理逻辑保持一致
+	 * 与 CharacterManager.cleanLoreHeading 保持一致
 	 */
 	private cleanHeadingText(raw: string): string {
-		return raw
-			.trim()
-			.replace(/\*\*|__/g, '')
-			.replace(/\*|_/g, '')
-			.replace(/`/g, '');
+		return cleanLoreHeading(raw);
 	}
 }

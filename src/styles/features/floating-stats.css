@@ -20,6 +20,10 @@
 	transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.3s ease, background-color 0.15s ease, box-shadow 0.3s ease;
 }
 
+body.webnovel-modal-active .mobile-floating-stats {
+	display: none;
+}
+
 
 /* Mobile Floating Stats - Edge Docking & Collapse (贴边自动缩短变淡) */
 .mobile-floating-stats.is-docked-left {

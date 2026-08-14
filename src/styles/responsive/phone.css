@@ -1769,3 +1769,21 @@ body.is-phone .wn-card-action-btn {
 		color: var(--text-muted);
 	}
 }
+
+/* Corner modal mobile fallback */
+body.is-phone .modal-container.wn-corner-modal-container {
+	justify-content: center;
+	align-items: center;
+	padding: 0;
+}
+
+body.is-phone .modal-container.wn-corner-modal-container .modal-bg {
+	background-color: var(--background-modifier-cover);
+	opacity: 1;
+}
+
+body.is-phone .modal-container.wn-corner-modal-container .modal.wn-corner-modal {
+	width: 92vw;
+	max-width: 92vw;
+	max-height: 85vh;
+}

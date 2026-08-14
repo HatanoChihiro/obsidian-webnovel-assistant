@@ -32,24 +32,12 @@
 	animation: wnFlashHighlight 2s ease-in-out forwards;
 }
 
-/* 目标 Span 精准定位 Flash 脉冲高亮动效 */
+/* 阅读视图与正文精准高亮 */
 
-@keyframes wn-target-flash {
-	0% {
-		background: var(--interactive-accent);
-		color: var(--text-on-accent);
-		box-shadow: 0 0 12px var(--interactive-accent);
-		transform: scale(1.08);
-	}
-
-	50% {
-		background: color-mix(in srgb, var(--interactive-accent) 60%, transparent);
-		box-shadow: 0 0 8px var(--interactive-accent);
-	}
-
-	100% {
-		background: color-mix(in srgb, var(--interactive-accent) 18%, transparent);
-		box-shadow: none;
-		transform: scale(1);
-	}
+.wn-exact-highlight {
+	background-color: var(--text-highlight-bg);
+	border-radius: var(--radius-s);
+	padding: 0 2px;
+	mix-blend-mode: var(--highlight-mix-blend-mode);
+	transition: background-color var(--anim-duration-moderate) ease;
 }

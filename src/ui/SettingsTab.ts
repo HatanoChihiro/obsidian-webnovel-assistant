@@ -13,6 +13,7 @@ import { t, setLocale, detectLocale, type Locale } from '../i18n';
 import { getDefaultFileName } from '../i18n/data-keys';
 import { FolderSuggestModal } from './FolderSuggestModal';
 import { FileSuggestModal } from './FileSuggestModal';
+import { Logger } from '../utils/Logger';
 
 /**
  * 插件设置面板
@@ -1401,7 +1402,13 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.debugMode ?? false)
 				.onChange(async (value) => {
+					if (!value) {
+						Logger.info('[WebNovel Assistant] Debug mode disabled');
+					}
 					this.plugin.settings.debugMode = value;
+					if (value) {
+						Logger.info('[WebNovel Assistant] Debug mode enabled');
+					}
 					await this.plugin.saveSettings();
 				}));
 	}

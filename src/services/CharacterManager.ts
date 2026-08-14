@@ -11,6 +11,23 @@ export interface LoreEntry {
 }
 
 /**
+ * 清理设定标题文本，去除 Obsidian 双向链接、Markdown 格式标记、Hashtag 及多余空格
+ */
+export function cleanLoreHeading(rawHeading: string): string {
+	if (!rawHeading) return '';
+
+	return rawHeading
+		.trim()
+		.replace(/^#{1,6}\s+/, '')
+		.replace(/\[\[(?:[^|\]]*\|)?([^\]]+)\]\]/g, '$1')
+		.replace(/(^|\s)#[^\s#]+/g, '')
+		.replace(/\*\*|__/g, '')
+		.replace(/\*|_/g, '')
+		.replace(/`/g, '')
+		.trim();
+}
+
+/**
  * 设定管理器 (前身为角色管理器)
  * 负责解析和缓存各作品目录下 `loreFolderName` (例如 "设定") 文件夹中的设定文件。
  * 支持单文件模式以及字典大纲模式（按标题切分词条）。
@@ -26,39 +43,53 @@ export class CharacterManager {
 	
 	public cacheVersion: number = 0;
 	private _initialized: boolean = false;
+	private _eventsRegistered: boolean = false;
+	private _initPromise: Promise<void> | null = null;
 
 	constructor(app: App, plugin: WebNovelAssistantPlugin) {
 		this.app = app;
 		this.plugin = plugin;
 	}
 
-	public async ensureInitialized(): Promise<void> {
-		if (this._initialized) return;
-		this._initialized = true;
-		await this.initialize();
+	public ensureInitialized(): Promise<void> {
+		if (this._initialized) return Promise.resolve();
+		return this.initialize();
 	}
 
-	public async initialize(): Promise<void> {
-		this._initialized = true;
-		await this.rebuildCache();
+	public initialize(): Promise<void> {
+		if (this._initialized) return Promise.resolve();
+		if (this._initPromise) return this._initPromise;
 
-		// 监听文件变化
-		this.plugin.registerEvent(
-			this.app.vault.on('create', (file) => this.handleFileChange(file, 'create'))
-		);
-		this.plugin.registerEvent(
-			this.app.vault.on('delete', (file) => this.handleFileChange(file, 'delete'))
-		);
-		this.plugin.registerEvent(
-			this.app.vault.on('rename', (file, _oldPath) => {
-				this.handleFileChange(file, 'rename');
-			})
-		);
-		this.plugin.registerEvent(
-			this.app.metadataCache.on('changed', (file) => {
-				this.handleFileChange(file, 'modify');
-			})
-		);
+		if (!this._eventsRegistered) {
+			this._eventsRegistered = true;
+			// 监听文件变化
+			this.plugin.registerEvent(
+				this.app.vault.on('create', (file) => this.handleFileChange(file, 'create'))
+			);
+			this.plugin.registerEvent(
+				this.app.vault.on('delete', (file) => this.handleFileChange(file, 'delete'))
+			);
+			this.plugin.registerEvent(
+				this.app.vault.on('rename', (file, _oldPath) => {
+					this.handleFileChange(file, 'rename');
+				})
+			);
+			this.plugin.registerEvent(
+				this.app.metadataCache.on('changed', (file) => {
+					this.handleFileChange(file, 'modify');
+				})
+			);
+		}
+
+		this._initPromise = (async () => {
+			try {
+				await this.rebuildCache();
+				this._initialized = true;
+			} finally {
+				this._initPromise = null;
+			}
+		})();
+		return this._initPromise;
 	}
 
 	/**
@@ -69,17 +100,29 @@ export class CharacterManager {
 		const newLowerMap = new Map<string, Map<string, string>>();
 		
 		const candidates = this.getLoreCandidates();
-		const allMarkdownFiles = (this.plugin.settings.workspaceFolders && this.plugin.settings.workspaceFolders.length > 0)
+		const allMarkdownFiles: TFile[] = (this.plugin.settings.workspaceFolders && this.plugin.settings.workspaceFolders.length > 0)
 			? this.plugin.getTrackedMarkdownFiles(true)
 			: this.plugin.getVaultMarkdownFiles();
+
 		const files = allMarkdownFiles.filter(file => {
-			const parentPath = file.parent?.path || '';
-			for (const candidate of candidates) {
-				if (parentPath.includes(candidate)) return true;
+			try {
+				const parentPath = file.parent?.path || '';
+				for (const candidate of candidates) {
+					if (parentPath.includes(candidate)) return true;
+				}
+			} catch {
+				return false;
 			}
 			return false;
 		});
-		await Promise.all(files.map(file => this.addFileToCacheIfValidInto(file, newCache, newLowerMap)));
+
+		await Promise.all(files.map(async (file) => {
+			try {
+				await this.addFileToCacheIfValidInto(file, newCache, newLowerMap);
+			} catch (err) {
+				console.error(`[CharacterManager] 解析设定文件 ${file.path} 失败:`, err);
+			}
+		}));
 		
 		this.characterCache = newCache;
 		this.lowercaseKeyMap = newLowerMap;
@@ -90,18 +133,26 @@ export class CharacterManager {
 		// 共同实现了“文件保存后，哪怕没有打字或滚动也能立即刷新高亮”的效果。
 		// 没有 dispatch，CM 的 update 事件就不会触发；没有 cacheVersion 比较，
 		// 即使触发了 update，由于 docChanged 为 false 也不会重建装饰器。
-		this.app.workspace.iterateAllLeaves((leaf) => {
-			const view = leaf.view;
-			if (view.getViewType() === 'markdown') {
-				const editor = (view as MarkdownView).editor;
-				const editorView = (editor as unknown as { cm?: { dispatch: (tr: object) => void } })?.cm;
-				if (editorView) {
-					editorView.dispatch({});
+		try {
+			this.app.workspace.iterateAllLeaves((leaf) => {
+				const view = leaf.view;
+				if (view && view.getViewType() === 'markdown') {
+					const editor = (view as MarkdownView).editor;
+					const editorView = (editor as unknown as { cm?: { dispatch: (tr: object) => void } })?.cm;
+					if (editorView) {
+						editorView.dispatch({});
+					}
 				}
-			}
-		});
+			});
+		} catch (err) {
+			console.error('[CharacterManager] dispatch CM update 失败:', err);
+		}
 
-		this.app.workspace.trigger('webnovel-workbench-lore-updated');
+		try {
+			this.app.workspace.trigger('webnovel-workbench-lore-updated');
+		} catch (err) {
+			console.error('[CharacterManager] trigger lore-updated 失败:', err);
+		}
 	}
 
 	/**
@@ -229,7 +280,7 @@ export class CharacterManager {
 		const getBlock = (headingText: string) => {
 			for (let i = 0; i < fileCache.headings!.length; i++) {
 				const h = fileCache.headings![i];
-				if (h.level === 2 && h.heading.trim().replace(/\*\*|__/g, '').replace(/\*|_/g, '').replace(/`/g, '') === headingText) {
+				if (h.level === 2 && cleanLoreHeading(h.heading) === cleanLoreHeading(headingText)) {
 					const startLine = h.position.start.line;
 					
 					let nextLevelH = null;
@@ -284,7 +335,7 @@ export class CharacterManager {
 		
 		for (let i = 0; i < fileCache.headings.length; i++) {
 			const h = fileCache.headings[i];
-			if (h.level === 2 && h.heading.trim().replace(/\*\*|__/g, '').replace(/\*|_/g, '').replace(/`/g, '') === entry.heading) {
+			if (h.level === 2 && cleanLoreHeading(h.heading) === cleanLoreHeading(entry.heading)) {
 				const startLine = h.position.start.line;
 				let nextLevelH = null;
 				for (let j = i + 1; j < fileCache.headings.length; j++) {
@@ -312,7 +363,7 @@ export class CharacterManager {
 			const lines = data.split('\n');
 			for (let i = 0; i < fileCache.headings!.length; i++) {
 				const h = fileCache.headings![i];
-				if (h.level === 2 && h.heading.trim().replace(/\*\*|__/g, '').replace(/\*|_/g, '').replace(/`/g, '') === entry.heading) {
+				if (h.level === 2 && cleanLoreHeading(h.heading) === cleanLoreHeading(entry.heading)) {
 					const startLine = h.position.start.line;
 					let nextLevelH = null;
 					for (let j = i + 1; j < fileCache.headings!.length; j++) {
@@ -413,11 +464,11 @@ export class CharacterManager {
 					const heading = headings[i];
 					if (heading.level !== 2) continue; // 强制仅识别二级标题作为词条正名
 
-					const rawHeading = heading.heading.trim();
+					const rawHeading = heading.heading;
 					if (!rawHeading) continue;
 					
-					// 清理 Markdown 格式标记
-					const headingText = rawHeading.replace(/\*\*|__/g, '').replace(/\*|_/g, '').replace(/`/g, '');
+					// 清理 Markdown 格式标记与双向链接
+					const headingText = cleanLoreHeading(rawHeading);
 					if (!headingText) continue;
 
 					// 提取标题正名
@@ -433,10 +484,10 @@ export class CharacterManager {
 					// 查找 `别名：`、`**别名**：` 等格式
 					const aliasMatch = chunk.match(/(?:\*\*|__)?(?:别名|Alias)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/);
 					if (aliasMatch && aliasMatch[1]) {
-						// 支持用逗号、顿号分隔多个别名
-						const rawAliases = aliasMatch[1].split(/[,，、/|]/);
+						// 支持用逗号、顿号、分号分隔多个别名
+						const rawAliases = aliasMatch[1].split(/[,，、/|;；]/);
 						for (let a of rawAliases) {
-							a = a.trim();
+							a = cleanLoreHeading(a);
 							if (a) {
 								addEntry(a, { file, heading: headingText });
 							}
