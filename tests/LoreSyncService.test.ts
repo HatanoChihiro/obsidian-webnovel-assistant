@@ -2,6 +2,10 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { LoreSyncService } from '../src/services/LoreSyncService';
 import { TFile } from 'obsidian';
 
+type TestTFileConstructor = new (name: string, path: string) => TFile;
+const createTestFile = (name: string, path: string): TFile =>
+	new (TFile as unknown as TestTFileConstructor)(name, path);
+
 describe('LoreSyncService', () => {
     let mockApp: any;
     let mockPlugin: any;
@@ -60,7 +64,10 @@ describe('LoreSyncService', () => {
             registerEvent: vi.fn(),
             getVaultMarkdownFiles: vi.fn().mockReturnValue([]),
             getTrackedMarkdownFiles: vi.fn().mockReturnValue([]),
-            isFileInStrictChapterException: vi.fn().mockReturnValue(false)
+            isFileInStrictChapterException: vi.fn().mockReturnValue(false),
+            cacheManager: {
+                isEligibleForWordCount: vi.fn().mockReturnValue(true)
+            }
         };
 
         service = new LoreSyncService(mockPlugin);
@@ -72,7 +79,7 @@ describe('LoreSyncService', () => {
 
     describe('syncLoreForFile', () => {
         it('should count character mentions and update frontmatter lore array', async () => {
-            const mockFile = new TFile('第1章 启程.md', 'Book1/第1章 启程.md');
+            const mockFile = createTestFile('第1章 启程.md', 'Book1/第1章 启程.md');
             mockApp.vault.cachedRead.mockResolvedValue(`---
 lore: ["旧数据×1"]
 ---
@@ -92,7 +99,7 @@ lore: ["旧数据×1"]
         });
 
         it('should strip frontmatter before scanning lore to prevent self-matching', async () => {
-            const mockFile = new TFile('第1章 启程.md', 'Book1/第1章 启程.md');
+            const mockFile = createTestFile('第1章 启程.md', 'Book1/第1章 启程.md');
             // Frontmatter contains "张三×10", but body has no lore
             mockApp.vault.cachedRead.mockResolvedValue(`---
 lore: ["张三×10"]
@@ -111,7 +118,7 @@ lore: ["张三×10"]
         });
 
         it('should preserve existing lore metadata when the book index has no entries', async () => {
-            const mockFile = new TFile('第1章.md', 'Book1/第1章.md');
+            const mockFile = createTestFile('第1章.md', 'Book1/第1章.md');
             mockCharacterManager.getCharactersForBook.mockReturnValue([]);
 
             await service.syncLoreForFile(mockFile as any);
@@ -122,27 +129,41 @@ lore: ["张三×10"]
     });
 
     describe('getEligibleChapterFiles', () => {
-        it('should filter eligible chapter files and exclude lore notes', () => {
-            const chapter1 = new TFile('第1章.md', 'Book1/第1章.md');
-            const chapter2 = new TFile('第2章.md', 'Book1/第2章.md');
-            const loreNote = new TFile('角色志.md', 'Book1/设定/角色志.md');
-            const randomDoc = new TFile('笔记.md', 'Book1/笔记.md');
+        it('should filter eligible chapter files and exclude lore notes in non-strict mode', () => {
+            const chapter1 = Object.assign(createTestFile('第1章.md', 'Book1/第1章.md'), { parent: { path: 'Book1' } });
+            const chapter2 = Object.assign(createTestFile('第2章.md', 'Book1/第2章.md'), { parent: { path: 'Book1' } });
+            const loreNote = Object.assign(createTestFile('角色志.md', 'Book1/设定/角色志.md'), { parent: { path: 'Book1/设定' } });
+            const randomDoc = Object.assign(createTestFile('笔记.md', 'Book1/笔记.md'), { parent: { path: 'Book1' } });
 
             mockPlugin.getTrackedMarkdownFiles.mockReturnValue([chapter1, chapter2, loreNote, randomDoc]);
             mockCharacterManager.isLorePath.mockImplementation((_book: string, parent: string) => parent.includes('设定'));
+            mockPlugin.cacheManager.isEligibleForWordCount.mockImplementation((f: any) => !f.path.includes('设定'));
 
             const eligible = service.getEligibleChapterFiles();
             expect(eligible).toContain(chapter1);
             expect(eligible).toContain(chapter2);
+            expect(eligible).toContain(randomDoc);
             expect(eligible).not.toContain(loreNote);
+        });
+
+        it('should exclude non-chapter docs when isEligibleForWordCount marks them ineligible', () => {
+            const chapter1 = Object.assign(createTestFile('第1章.md', 'Book1/第1章.md'), { parent: { path: 'Book1' } });
+            const randomDoc = Object.assign(createTestFile('笔记.md', 'Book1/笔记.md'), { parent: { path: 'Book1' } });
+
+            mockPlugin.getTrackedMarkdownFiles.mockReturnValue([chapter1, randomDoc]);
+            mockCharacterManager.isLorePath.mockReturnValue(false);
+            mockPlugin.cacheManager.isEligibleForWordCount.mockImplementation((f: any) => f.name.startsWith('第'));
+
+            const eligible = service.getEligibleChapterFiles();
+            expect(eligible).toContain(chapter1);
             expect(eligible).not.toContain(randomDoc);
         });
     });
 
     describe('bulkRefresh', () => {
         it('should prevent overlapping bulk runs and return the in-flight promise', async () => {
-            const file1 = new TFile('第1章.md', 'Book1/第1章.md');
-            const file2 = new TFile('第2章.md', 'Book1/第2章.md');
+            const file1 = createTestFile('第1章.md', 'Book1/第1章.md');
+            const file2 = createTestFile('第2章.md', 'Book1/第2章.md');
             mockApp.vault.cachedRead.mockResolvedValue('张三 李四');
 
             const p1 = service.bulkRefresh([file1, file2]);
@@ -166,9 +187,9 @@ lore: ["张三×10"]
         });
 
         it('should process files with yielding and isolate per-file failures', async () => {
-            const file1 = new TFile('第1章.md', 'Book1/第1章.md');
-            const file2 = new TFile('第2章.md', 'Book1/第2章.md');
-            const file3 = new TFile('第3章.md', 'Book1/第3章.md');
+            const file1 = createTestFile('第1章.md', 'Book1/第1章.md');
+            const file2 = createTestFile('第2章.md', 'Book1/第2章.md');
+            const file3 = createTestFile('第3章.md', 'Book1/第3章.md');
 
             mockApp.vault.cachedRead.mockImplementation(async (f: any) => {
                 if (f.name === '第2章.md') {
@@ -190,7 +211,7 @@ lore: ["张三×10"]
         });
 
         it('should default to getEligibleChapterFiles when no files are passed', async () => {
-            const file1 = new TFile('第1章.md', 'Book1/第1章.md');
+            const file1 = createTestFile('第1章.md', 'Book1/第1章.md');
             mockPlugin.getTrackedMarkdownFiles.mockReturnValue([file1]);
 
             const statsPromise = service.bulkRefresh();

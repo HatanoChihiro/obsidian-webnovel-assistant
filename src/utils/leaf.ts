@@ -248,7 +248,8 @@ function applyEditorExactMatch(
 	targetFile: TFile,
 	matchState: MatchState
 ): void {
-	const win = targetLeaf.view?.containerEl?.ownerDocument?.defaultView || window;
+	const win = targetLeaf.view?.containerEl?.ownerDocument?.defaultView || (typeof window !== 'undefined' ? window : null);
+	if (!win) return;
 
 	const existing = leafTimers.get(targetLeaf);
 	if (existing) {
@@ -456,29 +457,31 @@ export async function smartLocateAndHighlight(
 	searchTexts: (string | undefined)[],
 	options?: SmartLocateOptions
 ): Promise<boolean> {
-	// 1. 优先寻找已经打开了目标文件的 Markdown 编辑器 Leaf
+	// 1. 若显式指定了优先目标 Leaf（如沉浸模式下用户最近聚焦的编辑/参考 Leaf），强优先在 preferredLeaf 中跳转展示
 	const markdownLeaves = app.workspace.getLeavesOfType('markdown');
 	let targetLeaf: WorkspaceLeaf | null = null;
-	for (const leaf of markdownLeaves) {
-		if (leaf.view instanceof MarkdownView && leaf.view.file?.path === file.path) {
-			targetLeaf = leaf;
-			break;
+
+	if (options?.preferredLeaf) {
+		targetLeaf = options.preferredLeaf;
+	} else {
+		// 2. 否则，优先寻找已经打开了目标文件的 Markdown 编辑器 Leaf
+		for (const leaf of markdownLeaves) {
+			if (leaf.view instanceof MarkdownView && leaf.view.file?.path === file.path) {
+				targetLeaf = leaf;
+				break;
+			}
 		}
 	}
 
-	// 2. 若目标文件未在任何窗口打开，优先寻找并复用已有 Markdown 独立窗口/分屏（排除发起操作的源 Leaf）
+	// 3. 若仍未匹配到目标 Leaf，寻找并复用已有 Markdown 窗口/分屏（排除发起操作的源 Leaf）
 	if (!targetLeaf) {
-		if (options?.preferredLeaf) {
-			targetLeaf = options.preferredLeaf;
-		} else {
-			const sourceLeaf = options?.sourceLeaf ?? (app.workspace.getMostRecentLeaf() || undefined);
-			const reusableLeaf = markdownLeaves.find(l => {
-				if (sourceLeaf && l === sourceLeaf) return false;
-				return l.view instanceof MarkdownView;
-			});
-			if (reusableLeaf) {
-				targetLeaf = reusableLeaf;
-			}
+		const sourceLeaf = options?.sourceLeaf ?? (app.workspace.getMostRecentLeaf() || undefined);
+		const reusableLeaf = markdownLeaves.find(l => {
+			if (sourceLeaf && l === sourceLeaf) return false;
+			return l.view instanceof MarkdownView;
+		});
+		if (reusableLeaf) {
+			targetLeaf = reusableLeaf;
 		}
 	}
 
@@ -499,7 +502,8 @@ export async function smartLocateAndHighlight(
 	}
 
 	// 5. 执行打开与焦点激活，并通过 Leaf 级轮询确保无论跨文件或同文件均精准定位
-	const isSameFile = targetLeaf.view instanceof MarkdownView && targetLeaf.view.file?.path === file.path;
+	const targetView = targetLeaf.view as (MarkdownView & { getMode?: () => string }) | undefined;
+	const isSameFile = targetView?.file?.path === file.path;
 
 	if (!isSameFile) {
 		await targetLeaf.openFile(file, { active: true });
@@ -507,12 +511,12 @@ export async function smartLocateAndHighlight(
 
 	revealAndFocusLeaf(app, targetLeaf);
 
-	const isPreview = targetLeaf.view instanceof MarkdownView && targetLeaf.view.getMode() === 'preview';
+	const isPreview = targetView?.getMode?.() === 'preview';
 	Logger.info('[WebNovel-Debug] [leaf] smartLocateAndHighlight 触发跳转定位:', {
 		file: file.path,
 		isSameFile,
 		isPreview,
-		leafMode: targetLeaf.view instanceof MarkdownView ? targetLeaf.view.getMode() : 'not-markdown',
+		leafMode: targetView?.getMode?.() ?? 'not-markdown',
 		matchState
 	});
 

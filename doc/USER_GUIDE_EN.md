@@ -1173,6 +1173,17 @@ A: Run **Command Palette (Ctrl/Cmd + P) → `Rebuild Lore Cache`**. It rebuilds 
 2. When Lore Lookup underlines, hover cards, Workbench statistics, or the relation graph display incorrectly.
 3. When installing the plugin for the first time in an existing library that already contains lore files and chapters.
 
+### Q: Lore highlights / hover popovers do not appear, or Workbench shows "No lore entries"?
+A:
+1. **Check Workspace Folders Setting (Common Misconfiguration)**:
+   - **Single Book / Vault-wide Novel Project**: If your entire vault is dedicated to writing, **leave the "Workspace Folders" setting empty**.
+   - **Multiple Books Under a Library Directory**: The Workspace Folder setting is designed as a "parent container for multiple books" (e.g., `Novels/`), and the plugin automatically treats each direct subfolder as an independent book. **Do NOT add an individual book folder (e.g., `Novels/Book1/`) directly as a workspace folder**, as this causes volume subfolders (e.g., `Volume 1`) to be misidentified as separate books and lose link to the peer `Lore/` directory.
+2. **Verify Lore Folder & Entry Format**:
+   - Lore markdown files must be placed inside the `Lore/` (or `设定/`) directory under the book root.
+   - Lore entries must use `## Level 2 Headings` as the canonical entry names (aliases can be added using `**Alias**: Alias1, Alias2` in the content).
+3. **Rebuild Lore Cache**:
+   - Press `Ctrl/Cmd + P` to open the Command Palette and run **`WebNovel Assistant: Rebuild Lore Cache`**.
+
 ### Q: Chapter sorting not working?
 A:
 1. Check if **Smart Chapter Sorting** is enabled

@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { findMatchState, buildEphemeralState, getMarkdownBodyRange } from '../src/utils/leaf';
+import { describe, it, expect, vi } from 'vitest';
+import type { App, TFile, WorkspaceLeaf } from 'obsidian';
+import { findMatchState, buildEphemeralState, getMarkdownBodyRange, smartLocateAndHighlight } from '../src/utils/leaf';
 import {
 	findNormalizedTextRanges,
 	findNearestBlockLine,
@@ -488,5 +489,56 @@ describe('highlightReadingViewPhrase (Direct Target Block & Container Fallback W
 		const success = highlightReadingViewPhrase(container, 5, ['fallback phrase']);
 		expect(success).toBe(true);
 		expect(scrollCalls).toBe(1);
+	});
+
+	it('smartLocateAndHighlight should prioritize preferredLeaf over an existing leaf open with the same file', async () => {
+		const targetFile = { path: 'Chapter1.md' } as unknown as TFile;
+
+		const mainLeafView = {
+			file: targetFile,
+			getMode: () => 'source',
+			editor: {
+				getLine: () => 'target content',
+				setSelection: vi.fn(),
+				scrollIntoView: vi.fn(),
+			}
+		};
+		const mainLeaf = {
+			view: mainLeafView,
+			openFile: vi.fn().mockResolvedValue(undefined),
+		} as unknown as WorkspaceLeaf;
+
+		const referenceLeafView = {
+			file: { path: 'Lore.md' },
+			getMode: () => 'source',
+			editor: {
+				getLine: () => 'target content',
+				setSelection: vi.fn(),
+				scrollIntoView: vi.fn(),
+			}
+		};
+		const referenceLeaf = {
+			view: referenceLeafView,
+			openFile: vi.fn().mockResolvedValue(undefined),
+		} as unknown as WorkspaceLeaf;
+
+		const mockApp = {
+			workspace: {
+				getLeavesOfType: () => [mainLeaf, referenceLeaf],
+				getMostRecentLeaf: () => mainLeaf,
+				setActiveLeaf: vi.fn(),
+			},
+			vault: {
+				cachedRead: vi.fn().mockResolvedValue('target content'),
+			}
+		} as unknown as App;
+
+		const success = await smartLocateAndHighlight(mockApp, targetFile, ['target content'], {
+			preferredLeaf: referenceLeaf,
+		});
+
+		expect(success).toBe(true);
+		expect(referenceLeaf.openFile).toHaveBeenCalledWith(targetFile, { active: true });
+		expect(mainLeaf.openFile).not.toHaveBeenCalled();
 	});
 });

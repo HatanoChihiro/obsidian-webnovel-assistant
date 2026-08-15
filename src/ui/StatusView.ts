@@ -8,7 +8,6 @@ import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ForeshadowingStatus, type ParsedForeshadowingEntry } from '../types/foreshadowing';
 import { CORKBOARD_STATUS_MAP, getCorkboardStatusText, getCorkboardStatusKeys } from '../i18n/data-keys';
 import { getCurrentBookContext } from '../utils/path';
-import { ChapterSorter } from '../services/ChapterSorter';
 import { t } from '../i18n';
 import type { TaskType } from '../types/task';
 
@@ -650,7 +649,7 @@ export class WritingStatusView extends ItemView {
 			return;
 		}
 
-		if (!ChapterSorter.isChapterFile(file.name) && !this.plugin.isFileInStrictChapterException(file)) {
+		if (!this.plugin.cacheManager.isEligibleForWordCount(file)) {
 			this.currentChapterFile = null;
 			this.lastChapterMtime = -1;
 			this.chapterStatusCardEl.hide();

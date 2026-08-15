@@ -86,10 +86,11 @@ describe('EditorTracker', () => {
 		expect(mockPlugin.refreshStatusViews).toHaveBeenCalled();
 	});
 
-	it('should exclude a non-chapter document from both total words and writing data', () => {
+	it('should exclude an ineligible document from both total words and writing data', () => {
 		testFile = new TFile('随笔.md', 'Novel/随笔.md');
 		mockView.file = testFile;
 		mockPlugin.lastFilePath = testFile.path;
+		mockPlugin.cacheManager.isEligibleForWordCount.mockReturnValue(false);
 		mockPlugin.cacheManager.isEligibleForTotalWordCount.mockReturnValue(false);
 		const tracker = new EditorTracker(mockApp, mockPlugin);
 
@@ -99,11 +100,12 @@ describe('EditorTracker', () => {
 		expect(mockApp.workspace.trigger).not.toHaveBeenCalled();
 	});
 
-	it('should record editor changes for files in strict chapter exception folders', () => {
-		testFile = new TFile('序章.md', 'Novel/例外章节/序章.md');
+	it('should record editor changes for any eligible file', () => {
+		testFile = new TFile('序章.md', 'Novel/序章.md');
 		mockView.file = testFile;
 		mockPlugin.lastFilePath = testFile.path;
-		mockPlugin.cacheManager.isFileInStrictChapterException.mockReturnValue(true);
+		mockPlugin.cacheManager.isEligibleForWordCount.mockReturnValue(true);
+		mockPlugin.cacheManager.isEligibleForTotalWordCount.mockReturnValue(true);
 		const tracker = new EditorTracker(mockApp, mockPlugin);
 
 		tracker.handleEditorChange();
@@ -113,6 +115,7 @@ describe('EditorTracker', () => {
 			testFile,
 			5
 		);
+		expect(mockPlugin.cacheManager.updateFileCache).toHaveBeenCalledWith(testFile, 15, mockApp.vault);
 	});
 
 	it('should reset lastFileWords to 0 when file is not eligible for word count', async () => {

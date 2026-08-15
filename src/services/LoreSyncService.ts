@@ -1,6 +1,5 @@
 import type { TFile, MarkdownView } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
-import { ChapterSorter } from './ChapterSorter';
 
 export interface LoreSyncStats {
 	total: number;
@@ -34,7 +33,7 @@ export class LoreSyncService {
 				const parentPath = file.parent?.path || '';
 				if (this.plugin.characterManager.isLorePath(bookPath, parentPath)) return;
 				
-				if (!ChapterSorter.isChapterFile(file.name) && !this.plugin.isFileInStrictChapterException(file)) return;
+				if (!this.plugin.cacheManager.isEligibleForWordCount(file)) return;
 
 				this.plugin.adaptiveDebounceManager.debounceFixed(`lore-sync-${file.path}`, () => {
 					void this.syncLoreForFile(file).catch(err => {
@@ -60,7 +59,7 @@ export class LoreSyncService {
 				const parentPath = file.parent?.path || '';
 				if (this.plugin.characterManager.isLorePath(bookPath, parentPath)) return;
 
-				if (!ChapterSorter.isChapterFile(file.name) && !this.plugin.isFileInStrictChapterException(file)) return;
+				if (!this.plugin.cacheManager.isEligibleForWordCount(file)) return;
 
 				this.plugin.adaptiveDebounceManager.debounceFixed(`lore-sync-${file.path}`, () => {
 					void this.syncLoreForFile(file).catch(err => {
@@ -83,7 +82,7 @@ export class LoreSyncService {
 			if (!bookPath) return false;
 			const parentPath = file.parent?.path || '';
 			if (this.plugin.characterManager.isLorePath(bookPath, parentPath)) return false;
-			return ChapterSorter.isChapterFile(file.name) || this.plugin.isFileInStrictChapterException(file);
+			return this.plugin.cacheManager.isEligibleForWordCount(file);
 		});
 	}
 

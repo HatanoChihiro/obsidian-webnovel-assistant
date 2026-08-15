@@ -432,9 +432,6 @@ export class CacheManager {
 		if (!this.isFileInWorkspace(file)) return false;
 		if (file.basename.includes("_合并章节")) return false;
 
-		const isExplicitChapter = ChapterSorter.isChapterFile(file.name);
-		if (isExplicitChapter) return true;
-
 		const basename = file.basename;
 		if (
 			this.isPluginGeneratedFile(basename) ||
@@ -455,21 +452,19 @@ export class CacheManager {
 			}
 		}
 
-		if (this.plugin.settings.enableStrictChapterMode && !this.isFileInStrictChapterException(file)) {
-			return false;
+		if (this.plugin.settings.enableStrictChapterMode) {
+			return ChapterSorter.isChapterFile(file.name) || this.isFileInStrictChapterException(file);
 		}
 
 		return true;
 	}
 
 	/**
-	 * 主页、写作面板和文件树总字数只汇总章节文件。
-	 * 严格章节例外目录视为用户明确指定的章节范围。
+	 * 主页、写作面板和文件树总字数汇总有效正文文档。
+	 * 在严格章节模式下仅汇总章节及例外目录文件；在常规模式下汇总除功能性文件外的所有正文。
 	 */
 	isEligibleForTotalWordCount(file: TFile): boolean {
-		if (!this.isFileInWorkspace(file)) return false;
-		if (file.basename.includes("_合并章节")) return false;
-		return ChapterSorter.isChapterFile(file.name) || this.isFileInStrictChapterException(file);
+		return this.isEligibleForWordCount(file);
 	}
 
 	async buildFolderCache(): Promise<void> {

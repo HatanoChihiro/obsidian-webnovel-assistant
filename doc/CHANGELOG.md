@@ -1,3 +1,21 @@
+## 🔧 v3.8.4
+
+### Bug修复
+- 修复了沉浸模式下聚焦参考文档并使用高级搜索时，点击搜索结果可能强行跳回主编辑器界面而无法在参考文档面板内打开的问题。
+- 修复了在未开启严格章节模式时，非显式“第X章”命名的正文文档无法计入今日目标、文件夹字数及创作主页总字数统计的问题。
+
+### 功能优化
+- 完善了用户指南中关于工作区设置与设定速查/写作台联动关系的常见问题解答。
+
+### English Changelog
+
+#### Bug Fixes
+- Fixed an issue where searching from a focused reference document in Immersive Mode could incorrectly switch back to the main editor panel instead of opening the result within the reference document.
+- Fixed an issue where regular manuscript documents without strict chapter numbering failed to be counted in Daily Goal, folder word counts, and Homepage statistics when Strict Chapter Mode was disabled.
+
+#### Enhancements
+- Improved User Guide FAQ with clear instructions on Workspace Folder configuration and Lore Lookup detection.
+
 ## 🔧 v3.8.3
 
 ### Bug修复

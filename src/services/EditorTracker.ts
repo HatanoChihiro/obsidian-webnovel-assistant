@@ -5,7 +5,6 @@ import { MarkdownView } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { isMobile, parseGoal } from '../utils';
 import { REGEX_PATTERNS } from '../constants';
-import { ChapterSorter } from './ChapterSorter';
 
 /**
  * 编辑器追踪服务
@@ -43,12 +42,10 @@ export class EditorTracker {
 		const currentCount = this.plugin.calculateAccurateWords(view.getViewData());
 		const delta = currentCount - this.plugin.lastFileWords;
 
-		// 只有 Obsidian 编辑器中的章节正文变化才更新写作历史。
-		// 普通非章节文档即使允许显示实时字数，也不进入总字数缓存或写作数据。
+		// 只有符合字数统计资格的有效正文文档变化才更新写作历史。
 		// 注意：不检查 lastFileWords > 0，因为这会导致第一个字不被记录
-		const isChapter = ChapterSorter.isChapterFile(view.file.name)
-			|| this.plugin.cacheManager.isFileInStrictChapterException(view.file);
-		if (delta !== 0 && isChapter) {
+		const isEligible = this.plugin.cacheManager.isEligibleForWordCount(view.file);
+		if (delta !== 0 && isEligible) {
 			this.plugin.app.workspace.trigger('webnovel:editor-word-count-updated', view.file, delta);
 		}
 

@@ -57,19 +57,19 @@ Accurate word count & goal tracking · Story timeline · Foreshadowing manager �
 
 <table>
 <tr>
-<td width="33%" align="center"><b>Foreshadowing Manager</b><br /><sub>Mark → Multi-stage tracking → Final resolution</sub><br /><br /><img width="100%" alt="foreshadowing" src="assets/foreshadowing_en.gif" /></td>
-<td width="33%" align="center"><b>Timeline System</b><br /><sub>Events, multi-chapter links, custom types</sub><br /><br /><img width="100%" alt="timeline" src="assets/timeline_en.gif" /></td>
-<td width="33%" align="center"><b>Chapter Corkboard</b><br /><sub>Card overview, status & synopsis editing</sub><br /><br /><img width="100%" alt="corkboard" src="assets/corkboard_en.gif" /></td>
+<td width="33%" align="center" valign="top"><img width="100%" alt="foreshadowing" src="assets/foreshadowing_en.gif" /><br /><b>Foreshadowing Manager</b><br /><sub>Mark → Multi-stage tracking → Final resolution</sub></td>
+<td width="33%" align="center" valign="top"><img width="100%" alt="timeline" src="assets/timeline_en.gif" /><br /><b>Timeline System</b><br /><sub>Events, multi-chapter links, custom types</sub></td>
+<td width="33%" align="center" valign="top"><img width="100%" alt="corkboard" src="assets/corkboard_en.gif" /><br /><b>Chapter Corkboard</b><br /><sub>Card overview, status & synopsis editing</sub></td>
 </tr>
 <tr>
-<td width="33%" align="center"><b>Lore Quick Lookup</b><br /><sub>Auto-highlight, preset types & relations, relation graph</sub><br /><br /><img width="100%" alt="lore-lookup" src="assets/lore-lookup_en.gif" /></td>
-<td width="33%" align="center"><b>Sticky Notes</b><br /><sub>Auto-save, Markdown render</sub><br /><br /><img width="100%" alt="sticky-note" src="assets/sticky-note_en.gif" /></td>
-<td width="33%" align="center"><b>Task Tracker</b><br /><sub>Create periodic tasks, self-driven deadlines & voluntary abandon</sub><br /><br /><img width="100%" alt="task" src="assets/task_en.gif" /></td>
+<td width="33%" align="center" valign="top"><img width="100%" alt="lore-lookup" src="assets/lore-lookup_en.gif" /><br /><b>Lore Quick Lookup</b><br /><sub>Auto-highlight, preset types & relations, relation graph</sub></td>
+<td width="33%" align="center" valign="top"><img width="100%" alt="sticky-note" src="assets/sticky-note_en.gif" /><br /><b>Sticky Notes</b><br /><sub>Auto-save, Markdown render</sub></td>
+<td width="33%" align="center" valign="top"><img width="100%" alt="task" src="assets/task_en.gif" /><br /><b>Task Tracker</b><br /><sub>Create periodic tasks, self-driven deadlines & voluntary abandon</sub></td>
 </tr>
 <tr>
-<td width="33%" align="center"><b>Advanced Search</b><br /><sub>Search by book, global or custom scope</sub><br /><br /><img width="100%" alt="search" src="assets/search_en.gif" /></td>
-<td width="33%" align="center"><b>Merge Chapters</b><br /><sub>Merge all chapters in a folder by sort order</sub><br /><br /><img width="100%" alt="merge" src="assets/merge_en.gif" /></td>
-<td width="33%" align="center"><b>Auto-Create Next Chapter</b><br /><sub>Auto-create numbered documents, template support</sub><br /><br /><img width="100%" alt="auto-create-next" src="assets/auto-create-next_en.gif" /></td>
+<td width="33%" align="center" valign="top"><img width="100%" alt="search" src="assets/search_en.gif" /><br /><b>Advanced Search</b><br /><sub>Search by book, global or custom scope</sub></td>
+<td width="33%" align="center" valign="top"><img width="100%" alt="merge" src="assets/merge_en.gif" /><br /><b>Merge Chapters</b><br /><sub>Merge all chapters in a folder by sort order</sub></td>
+<td width="33%" align="center" valign="top"><img width="100%" alt="auto-create-next" src="assets/auto-create-next_en.gif" /><br /><b>Auto-Create Next Chapter</b><br /><sub>Auto-create numbered documents, template support</sub></td>
 </tr>
 </table>
 
@@ -240,19 +240,19 @@ If this plugin helps with your writing, consider buying the author a coffee ☕.
 
 <table>
 <tr>
-<td width="33%" align="center"><b>伏笔管理</b><br /><sub>标注 → 阶段推进 → 彻底回收</sub><br /><br /><img width="100%" alt="foreshadowing" src="assets/foreshadowing.gif" /></td>
-<td width="33%" align="center"><b>时间线系统</b><br /><sub>事件记录、多章节关联、类型分类</sub><br /><br /><img width="100%" alt="timeline" src="assets/timeline.gif" /></td>
-<td width="33%" align="center"><b>章节一览</b><br /><sub>卡片式展示、状态标记、摘要编辑</sub><br /><br /><img width="100%" alt="corkboard" src="assets/corkboard.gif" /></td>
+<td width="33%" align="center" valign="top"><img width="100%" alt="foreshadowing" src="assets/foreshadowing.gif" /><br /><b>伏笔管理</b><br /><sub>标注 → 阶段推进 → 彻底回收</sub></td>
+<td width="33%" align="center" valign="top"><img width="100%" alt="timeline" src="assets/timeline.gif" /><br /><b>时间线系统</b><br /><sub>事件记录、多章节关联、类型分类</sub></td>
+<td width="33%" align="center" valign="top"><img width="100%" alt="corkboard" src="assets/corkboard.gif" /><br /><b>章节一览</b><br /><sub>卡片式展示、状态标记、摘要编辑</sub></td>
 </tr>
 <tr>
-<td width="33%" align="center"><b>设定速查与图谱</b><br /><sub>自动标注、预设类型与关系可视化、关联图谱</sub><br /><br /><img width="100%" alt="lore-lookup" src="assets/lore-lookup.gif" /></td>
-<td width="33%" align="center"><b>悬浮便签</b><br /><sub>自动保存、Markdown渲染</sub><br /><br /><img width="100%" alt="sticky-note" src="assets/sticky-note.gif" /></td>
-<td width="33%" align="center"><b>任务追踪</b><br /><sub>创建周期任务、支持自主放弃</sub><br /><br /><img width="100%" alt="task" src="assets/task.gif" /></td>
+<td width="33%" align="center" valign="top"><img width="100%" alt="lore-lookup" src="assets/lore-lookup.gif" /><br /><b>设定速查与图谱</b><br /><sub>自动标注、预设类型与关系可视化、关联图谱</sub></td>
+<td width="33%" align="center" valign="top"><img width="100%" alt="sticky-note" src="assets/sticky-note.gif" /><br /><b>悬浮便签</b><br /><sub>自动保存、Markdown渲染</sub></td>
+<td width="33%" align="center" valign="top"><img width="100%" alt="task" src="assets/task.gif" /><br /><b>任务追踪</b><br /><sub>创建周期任务、支持自主放弃</sub></td>
 </tr>
 <tr>
-<td width="33%" align="center"><b>高级搜索</b><br /><sub>支持当前书籍、全局、自定义，快速跳转</sub><br /><br /><img width="100%" alt="search" src="assets/search.gif" /></td>
-<td width="33%" align="center"><b>合并章节</b><br /><sub>按照排序合并目录内所有章节</sub><br /><br /><img width="100%" alt="merge" src="assets/merge.gif" /></td>
-<td width="33%" align="center"><b>自动创建下一章</b><br /><sub>自动创建带标号文档，支持模板</sub><br /><br /><img width="100%" alt="auto-create-next" src="assets/auto-create-next.gif" /></td>
+<td width="33%" align="center" valign="top"><img width="100%" alt="search" src="assets/search.gif" /><br /><b>高级搜索</b><br /><sub>支持当前书籍、全局、自定义，快速跳转</sub></td>
+<td width="33%" align="center" valign="top"><img width="100%" alt="merge" src="assets/merge.gif" /><br /><b>合并章节</b><br /><sub>按照排序合并目录内所有章节</sub></td>
+<td width="33%" align="center" valign="top"><img width="100%" alt="auto-create-next" src="assets/auto-create-next.gif" /><br /><b>自动创建下一章</b><br /><sub>自动创建带标号文档，支持模板</sub></td>
 </tr>
 </table>
 

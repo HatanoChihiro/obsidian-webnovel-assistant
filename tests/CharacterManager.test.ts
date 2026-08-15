@@ -212,6 +212,7 @@ Some lore content...
             const targetLowerMap = new Map();
 
             await manager['addFileToCacheIfValidInto'](mockFile as any, targetCache, targetLowerMap);
+
             const bookCache = targetCache.get('Book1');
             expect(bookCache).toBeDefined();
             expect(bookCache.get('张三')).toBeDefined();

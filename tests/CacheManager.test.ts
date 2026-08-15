@@ -125,17 +125,45 @@ describe('CacheManager', () => {
             expect(manager.isFileInStrictChapterException({ path: 'Book 1/Chapter 1.md' } as TFile)).toBe(false);
         });
 
-		it('isEligibleForTotalWordCount should only include chapters and explicit exception files', () => {
+		it('isEligibleForWordCount and isEligibleForTotalWordCount in non-strict mode should include all valid markdown files except functional files', () => {
+			mockPlugin.settings.enableStrictChapterMode = false;
+			const chapter = { path: 'Book 1/Chapter 1.md', name: 'Chapter 1.md', basename: 'Chapter 1' } as TFile;
+			const regularDoc = { path: 'Book 1/Notes.md', name: 'Notes.md', basename: 'Notes' } as TFile;
+			const exceptionDoc = { path: 'Book 1/Settings/Appendix.md', name: 'Appendix.md', basename: 'Appendix' } as TFile;
+			const loreDoc = { path: 'Book 1/Lore/Character.md', name: 'Character.md', basename: 'Character' } as TFile;
+			const mergeDoc = { path: 'Book 1/_合并章节.md', name: '_合并章节.md', basename: '_合并章节' } as TFile;
+			const outsideDoc = { path: 'Book 2/Notes.md', name: 'Notes.md', basename: 'Notes' } as TFile;
+
+			expect(manager.isEligibleForWordCount(chapter)).toBe(true);
+			expect(manager.isEligibleForTotalWordCount(chapter)).toBe(true);
+			expect(manager.isEligibleForWordCount(regularDoc)).toBe(true);
+			expect(manager.isEligibleForTotalWordCount(regularDoc)).toBe(true);
+			expect(manager.isEligibleForWordCount(exceptionDoc)).toBe(true);
+			expect(manager.isEligibleForTotalWordCount(exceptionDoc)).toBe(true);
+			expect(manager.isEligibleForWordCount(loreDoc)).toBe(false);
+			expect(manager.isEligibleForTotalWordCount(loreDoc)).toBe(false);
+			expect(manager.isEligibleForWordCount(mergeDoc)).toBe(false);
+			expect(manager.isEligibleForTotalWordCount(mergeDoc)).toBe(false);
+			expect(manager.isEligibleForWordCount(outsideDoc)).toBe(false);
+			expect(manager.isEligibleForTotalWordCount(outsideDoc)).toBe(false);
+		});
+
+		it('isEligibleForWordCount and isEligibleForTotalWordCount in strict chapter mode should only include chapters and exception files', () => {
+			mockPlugin.settings.enableStrictChapterMode = true;
 			const chapter = { path: 'Book 1/Chapter 1.md', name: 'Chapter 1.md', basename: 'Chapter 1' } as TFile;
 			const regularDoc = { path: 'Book 1/Notes.md', name: 'Notes.md', basename: 'Notes' } as TFile;
 			const exceptionDoc = { path: 'Book 1/Settings/Appendix.md', name: 'Appendix.md', basename: 'Appendix' } as TFile;
 
+			expect(manager.isEligibleForWordCount(chapter)).toBe(true);
 			expect(manager.isEligibleForTotalWordCount(chapter)).toBe(true);
+			expect(manager.isEligibleForWordCount(regularDoc)).toBe(false);
 			expect(manager.isEligibleForTotalWordCount(regularDoc)).toBe(false);
+			expect(manager.isEligibleForWordCount(exceptionDoc)).toBe(true);
 			expect(manager.isEligibleForTotalWordCount(exceptionDoc)).toBe(true);
 		});
 
-		it('updateFileCache should refuse non-chapter files even if a caller skips eligibility filtering', () => {
+		it('updateFileCache should accept regular files in non-strict mode and reject in strict mode', () => {
+			mockPlugin.settings.enableStrictChapterMode = false;
 			const regularDoc = {
 				path: 'Book 1/Notes.md',
 				name: 'Notes.md',
@@ -143,8 +171,18 @@ describe('CacheManager', () => {
 				stat: { mtime: 1000 }
 			} as TFile;
 
-			expect(manager.updateFileCache(regularDoc, 500, {} as never)).toBe(0);
-			expect(manager.getFileCache(regularDoc.path)).toBeNull();
+			expect(manager.updateFileCache(regularDoc, 500, {} as never)).toBe(500);
+			expect(manager.getFileCache(regularDoc.path)).toBe(500);
+
+			mockPlugin.settings.enableStrictChapterMode = true;
+			const strictRegularDoc = {
+				path: 'Book 1/Unrelated.md',
+				name: 'Unrelated.md',
+				basename: 'Unrelated',
+				stat: { mtime: 1000 }
+			} as TFile;
+			expect(manager.updateFileCache(strictRegularDoc, 300, {} as never)).toBe(0);
+			expect(manager.getFileCache(strictRegularDoc.path)).toBeNull();
 		});
     });
 
