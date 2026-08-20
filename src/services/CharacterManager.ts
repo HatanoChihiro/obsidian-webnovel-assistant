@@ -99,7 +99,6 @@ export class CharacterManager {
 		const newCache = new Map<string, Map<string, LoreEntry>>();
 		const newLowerMap = new Map<string, Map<string, string>>();
 		
-		const candidates = this.getLoreCandidates();
 		const allMarkdownFiles: TFile[] = (this.plugin.settings.workspaceFolders && this.plugin.settings.workspaceFolders.length > 0)
 			? this.plugin.getTrackedMarkdownFiles(true)
 			: this.plugin.getVaultMarkdownFiles();
@@ -107,13 +106,12 @@ export class CharacterManager {
 		const files = allMarkdownFiles.filter(file => {
 			try {
 				const parentPath = file.parent?.path || '';
-				for (const candidate of candidates) {
-					if (parentPath.includes(candidate)) return true;
-				}
+				const bookPath = this.getBookPathForFile(file);
+				if (!bookPath) return false;
+				return this.isLorePath(bookPath, parentPath);
 			} catch {
 				return false;
 			}
-			return false;
 		});
 
 		await Promise.all(files.map(async (file) => {
@@ -166,22 +164,22 @@ export class CharacterManager {
 	}
 
 	/**
-	 * 检查路径是否在设定文件夹内（支持多语言文件夹名）
+	 * 检查路径是否在设定文件夹或其任意嵌套子文件夹内（支持多语言文件夹名）
 	 */
 	public isLorePath(bookPath: string, parentPath: string): boolean {
 		const candidates = this.getLoreCandidates();
-		
-		const pathSegments = parentPath.split('/');
+		const normBook = (bookPath === '/' || bookPath === '') ? '' : bookPath.replace(/^\/+|\/+$/g, '');
+		const normParent = parentPath.replace(/^\/+|\/+$/g, '');
+
 		for (const loreFolderName of candidates) {
-			if (bookPath !== "/" && bookPath !== "" && parentPath !== bookPath && !parentPath.startsWith(bookPath + "/")) {
-				continue;
-			}
-			if (pathSegments.includes(loreFolderName)) {
+			const expectedLoreRoot = normBook ? `${normBook}/${loreFolderName}` : loreFolderName;
+			if (normParent === expectedLoreRoot || normParent.startsWith(`${expectedLoreRoot}/`)) {
 				return true;
 			}
 		}
 		return false;
 	}
+
 	private handleFileChange(file: TAbstractFile, eventType: 'create' | 'modify' | 'delete' | 'rename' = 'modify'): void {
 		if (file instanceof TFile && file.extension === 'md') {
 			const bookPath = this.getBookPathForFile(file);
@@ -328,62 +326,102 @@ export class CharacterManager {
 
 	public async getLoreContent(entry: LoreEntry): Promise<string> {
 		const fileCache = this.app.metadataCache.getFileCache(entry.file);
-		if (!fileCache || !fileCache.headings) return '';
-		
 		const content = await this.app.vault.cachedRead(entry.file);
 		const lines = content.split('\n');
 		
-		for (let i = 0; i < fileCache.headings.length; i++) {
-			const h = fileCache.headings[i];
-			if (h.level === 2 && cleanLoreHeading(h.heading) === cleanLoreHeading(entry.heading)) {
-				const startLine = h.position.start.line;
-				let nextLevelH = null;
-				for (let j = i + 1; j < fileCache.headings.length; j++) {
-					if (fileCache.headings[j].level <= h.level) {
-						nextLevelH = fileCache.headings[j];
-						break;
+		if (fileCache && fileCache.headings) {
+			for (let i = 0; i < fileCache.headings.length; i++) {
+				const h = fileCache.headings[i];
+				if (h.level === 2 && cleanLoreHeading(h.heading) === cleanLoreHeading(entry.heading)) {
+					const startLine = h.position.start.line;
+					let nextLevelH = null;
+					for (let j = i + 1; j < fileCache.headings.length; j++) {
+						if (fileCache.headings[j].level <= h.level) {
+							nextLevelH = fileCache.headings[j];
+							break;
+						}
 					}
+					const endLine = nextLevelH ? nextLevelH.position.start.line - 1 : lines.length - 1;
+
+					// Exclude the heading line itself, return the body
+					const bodyLines = lines.slice(startLine + 1, endLine + 1);
+					return bodyLines.join('\n').trim();
 				}
-				const endLine = nextLevelH ? nextLevelH.position.start.line - 1 : lines.length - 1;
-				
-				// Exclude the heading line itself, return the body
-				const bodyLines = lines.slice(startLine + 1, endLine + 1);
-				return bodyLines.join('\n').trim();
 			}
 		}
+
+		// 单文件词条模式回退（词条名为文件名 basename 且无匹配 H2）
+		if (cleanLoreHeading(entry.heading) === cleanLoreHeading(entry.file.basename)) {
+			let body = content;
+			// 移除 Frontmatter
+			if (body.startsWith('---\n') || body.startsWith('---\r\n')) {
+				const endMatch = body.match(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/);
+				if (endMatch) {
+					body = body.slice(endMatch[0].length);
+				}
+			}
+			// 移除顶部的 # 一级标题（如果存在）
+			body = body.replace(/^\s*#\s+[^\n]*\r?\n/, '');
+			return body.trim();
+		}
+
 		return '';
 	}
 
 	public async updateLoreContent(entry: LoreEntry, newContent: string): Promise<boolean> {
 		const file = entry.file;
 		const fileCache = this.app.metadataCache.getFileCache(file);
-		if (!fileCache || !fileCache.headings) return false;
 
+		let updated = false;
 		await this.app.vault.process(file, (data) => {
 			const lines = data.split('\n');
-			for (let i = 0; i < fileCache.headings!.length; i++) {
-				const h = fileCache.headings![i];
-				if (h.level === 2 && cleanLoreHeading(h.heading) === cleanLoreHeading(entry.heading)) {
-					const startLine = h.position.start.line;
-					let nextLevelH = null;
-					for (let j = i + 1; j < fileCache.headings!.length; j++) {
-						if (fileCache.headings![j].level <= h.level) {
-							nextLevelH = fileCache.headings![j];
-							break;
+			if (fileCache && fileCache.headings) {
+				for (let i = 0; i < fileCache.headings.length; i++) {
+					const h = fileCache.headings[i];
+					if (h.level === 2 && cleanLoreHeading(h.heading) === cleanLoreHeading(entry.heading)) {
+						const startLine = h.position.start.line;
+						let nextLevelH = null;
+						for (let j = i + 1; j < fileCache.headings.length; j++) {
+							if (fileCache.headings[j].level <= h.level) {
+								nextLevelH = fileCache.headings[j];
+								break;
+							}
 						}
-					}
-					const endLine = nextLevelH ? nextLevelH.position.start.line - 1 : lines.length - 1;
+						const endLine = nextLevelH ? nextLevelH.position.start.line - 1 : lines.length - 1;
 
-					const newLines = newContent.split('\n');
-					// Replace the lines after the heading up to endLine
-					// Ensure there is at least one blank line before next section if needed, though split/join handles it.
-					lines.splice(startLine + 1, endLine - startLine, ...newLines);
-					return lines.join('\n');
+						const newLines = newContent.split('\n');
+						// Replace the lines after the heading up to endLine
+						lines.splice(startLine + 1, endLine - startLine, ...newLines);
+						updated = true;
+						return lines.join('\n');
+					}
 				}
 			}
+
+			// 单文件词条模式回退
+			if (cleanLoreHeading(entry.heading) === cleanLoreHeading(file.basename)) {
+				let prefix = '';
+				let rest = data;
+				// 保留 Frontmatter
+				if (rest.startsWith('---\n') || rest.startsWith('---\r\n')) {
+					const endMatch = rest.match(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/);
+					if (endMatch) {
+						prefix += endMatch[0];
+						rest = rest.slice(endMatch[0].length);
+					}
+				}
+				// 保留顶部的 # 一级标题（如果存在）
+				const h1Match = rest.match(/^\s*#\s+[^\n]*\r?\n/);
+				if (h1Match) {
+					prefix += h1Match[0];
+				}
+				updated = true;
+				return (prefix ? prefix + '\n' : '') + newContent.trim() + '\n';
+			}
+
 			return data;
 		});
-		return true;
+		return updated;
 	}
 
 	/**
@@ -398,7 +436,7 @@ export class CharacterManager {
 	}
 
 	/**
-	 * 检查一个文件是否是设定文件，并加入缓存
+	 * 检查一个文件是否是设定文件，并加入缓存（支持多词条大纲模式与单文件词条模式）
 	 */
 	private async addFileToCacheIfValidInto(
 		file: TFile, 
@@ -431,8 +469,11 @@ export class CharacterManager {
 			const lowerMap = targetLowerMap.get(bookPath)!;
 			
 			const addEntry = (key: string, entry: LoreEntry) => {
-				bookCache.set(key, entry);
-				lowerMap.set(key.toLowerCase(), key);
+				const cleanedKey = cleanLoreHeading(key);
+				if (cleanedKey) {
+					bookCache.set(cleanedKey, entry);
+					lowerMap.set(cleanedKey.toLowerCase(), cleanedKey);
+				}
 			};
 			const fileCache = this.app.metadataCache.getFileCache(file);
 
@@ -458,8 +499,10 @@ export class CharacterManager {
 				}
 			}
 
-			// 字典模式：解析各级标题作为正名，并在下方的正文里提取别名
-			if (headings.length > 0) {
+			const level2Headings = headings.filter(h => h.level === 2);
+
+			if (level2Headings.length > 0) {
+				// 字典大纲模式：解析各 ## 二级标题作为正名，并在下方的正文块里提取别名
 				for (let i = 0; i < headings.length; i++) {
 					const heading = headings[i];
 					if (heading.level !== 2) continue; // 强制仅识别二级标题作为词条正名
@@ -486,16 +529,69 @@ export class CharacterManager {
 					if (aliasMatch && aliasMatch[1]) {
 						// 支持用逗号、顿号、分号分隔多个别名
 						const rawAliases = aliasMatch[1].split(/[,，、/|;；]/);
-						for (let a of rawAliases) {
-							a = cleanLoreHeading(a);
-							if (a) {
-								addEntry(a, { file, heading: headingText });
+						for (const a of rawAliases) {
+							addEntry(a, { file, heading: headingText });
+						}
+					}
+				}
+			} else {
+				// 单文件词条模式：文件没有 ## 二级标题（如 设定/角色/主角.md），以文件名 basename 为正名
+				const fileEntryName = cleanLoreHeading(file.basename);
+				if (fileEntryName) {
+					addEntry(fileEntryName, { file, heading: fileEntryName });
+
+					// 1. 从 Frontmatter 中解析别名（aliases / alias / 别名）
+					const fm = fileCache?.frontmatter;
+					if (fm) {
+						const rawAliases = (fm['aliases'] ?? fm['alias'] ?? fm['别名']) as unknown;
+						if (Array.isArray(rawAliases)) {
+							for (const a of rawAliases) {
+								if (typeof a === 'string' || typeof a === 'number') {
+									addEntry(String(a), { file, heading: fileEntryName });
+								}
+							}
+						} else if (typeof rawAliases === 'string' && rawAliases.trim()) {
+							const splitAliases = rawAliases.split(/[,，、/|;；]/);
+							for (const a of splitAliases) {
+								addEntry(a, { file, heading: fileEntryName });
+							}
+						}
+					}
+
+					// 2. 从正文中解析别名
+					const aliasMatches = content.matchAll(/(?:\*\*|__)?(?:别名|Alias)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/gi);
+					for (const match of aliasMatches) {
+						if (match[1]) {
+							const rawAliases = match[1].split(/[,，、/|;；]/);
+							for (const a of rawAliases) {
+								addEntry(a, { file, heading: fileEntryName });
 							}
 						}
 					}
 				}
 			}
 		}
+	}
+
+	/**
+	 * 递归获取书籍设定文件夹下的所有 Markdown 设定文件
+	 */
+	public getLoreFiles(bookPath: string): TFile[] {
+		const loreFolder = this.findLoreFolder(bookPath);
+		if (!loreFolder) return [];
+
+		const results: TFile[] = [];
+		const collect = (folder: TFolder) => {
+			for (const child of folder.children) {
+				if (child instanceof TFile && child.extension === 'md') {
+					results.push(child);
+				} else if (child instanceof TFolder) {
+					collect(child);
+				}
+			}
+		};
+		collect(loreFolder);
+		return results;
 	}
 
 	/**
@@ -514,7 +610,29 @@ export class CharacterManager {
 	}
 
 	/**
-	 * 创建或向已有的设定分类文件中追加新的设定条目，并构建跨设定关联
+	 * 递归确保文件夹及其各层父文件夹均已创建
+	 */
+	private async ensureFolderRecursive(folderPath: string): Promise<void> {
+		const normalized = folderPath.replace(/^\/+|\/+$/g, '');
+		if (!normalized) return;
+
+		const parts = normalized.split('/');
+		let current = '';
+		for (const part of parts) {
+			current = current ? `${current}/${part}` : part;
+			const existing = this.app.vault.getAbstractFileByPath(current);
+			if (!existing) {
+				try {
+					await this.app.vault.createFolder(current);
+				} catch {
+					// 文件夹可能已并发创建，忽略
+				}
+			}
+		}
+	}
+
+	/**
+	 * 创建或向已有的设定分类文件中追加新的设定条目，并构建跨设定关联（支持多层子文件夹路径）
 	 */
 	public async createLoreEntry(
 		bookPath: string,
@@ -531,21 +649,30 @@ export class CharacterManager {
 
 		if (!loreFolder) {
 			try {
-				await this.app.vault.createFolder(expectedLorePath);
+				await this.ensureFolderRecursive(expectedLorePath);
+				const abstractFile = this.app.vault.getAbstractFileByPath(expectedLorePath);
+				loreFolder = abstractFile instanceof TFolder ? abstractFile : null;
 			} catch {
 				const abstractFile = this.app.vault.getAbstractFileByPath(expectedLorePath);
 				loreFolder = abstractFile instanceof TFolder ? abstractFile : null;
-				if (!loreFolder) {
-					new Notice(t('modal.lore-cannot-create-folder'));
-					return false;
-				}
+			}
+			if (!loreFolder) {
+				new Notice(t('modal.lore-cannot-create-folder'));
+				return false;
 			}
 		}
 
 		const loreFolderPath = loreFolder instanceof Object && 'path' in loreFolder ? (loreFolder as { path: string }).path : expectedLorePath;
-		const filePath = loreFolderPath + '/' + loreCategory + '.md';
-		let targetFile = this.app.vault.getAbstractFileByPath(filePath);
+		const normalizedCategory = loreCategory.replace(/\.md$/i, '').trim();
+		const filePath = `${loreFolderPath}/${normalizedCategory}.md`;
 
+		const lastSlash = filePath.lastIndexOf('/');
+		if (lastSlash !== -1) {
+			const parentDirPath = filePath.substring(0, lastSlash);
+			await this.ensureFolderRecursive(parentDirPath);
+		}
+
+		let targetFile = this.app.vault.getAbstractFileByPath(filePath);
 		if (!(targetFile instanceof TFile)) {
 			targetFile = null;
 		}
@@ -571,7 +698,28 @@ export class CharacterManager {
 					if (t.startsWith('[[')) return t;
 					const entry = this.getCharacterFile(bookPath, t);
 					if (entry) {
-						return `[[${entry.file.basename}#${entry.heading}|${t}]]`;
+						// 检查目标设定是否与当前新建设定处于同一个文件
+						const normEntryPath = entry.file.path.replace(/\\/g, '/').replace(/^\/+/, '');
+						const normCurrentPath = filePath.replace(/\\/g, '/').replace(/^\/+/, '');
+						const isSameFile = (targetFile && entry.file === targetFile) || normEntryPath === normCurrentPath;
+
+						if (isSameFile) {
+							// 同文件词条：直接使用同文档标题跳转 [[#标题]] 或 [[#标题|别名]]，无需冗余的文件名前缀
+							return t === entry.heading ? `[[#${entry.heading}]]` : `[[#${entry.heading}|${t}]]`;
+						}
+
+						// 跨文件词条：通过 Obsidian metadataCache.fileToLinktext 生成精准路径（支持嵌套文件夹防重名）
+						const linkPath = (this.app?.metadataCache?.fileToLinktext
+							? this.app.metadataCache.fileToLinktext(entry.file, filePath, true)
+							: entry.file.basename) || entry.file.basename;
+
+						// 跨文件单文件词条模式（无 H2 标题的大纲单文档设定）
+						if (entry.file.basename === entry.heading) {
+							return t === entry.heading ? `[[${linkPath}]]` : `[[${linkPath}|${t}]]`;
+						}
+
+						// 跨文件多词条大纲模式：[[文件路径#标题|显示名]]
+						return `[[${linkPath}#${entry.heading}|${t}]]`;
 					} else {
 						return `[[#${t}]]`;
 					}

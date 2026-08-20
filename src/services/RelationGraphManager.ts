@@ -127,26 +127,22 @@ export class RelationGraphManager {
 
 		if (enableGlobal) {
 			const bookRoot = findBookRoot(this.app, this.plugin, file);
-			const loreFolderName = this.plugin.settings.loreFolderName || '设定';
-			const lorePath = bookRoot ? (bookRoot === '/' ? loreFolderName : `${bookRoot}/${loreFolderName}`) : '';
-			if (lorePath) {
-				const loreFolder = this.app.vault.getAbstractFileByPath(lorePath);
-				if (loreFolder && loreFolder instanceof TFolder) {
-					const getAllMdFiles = (folder: TFolder): TFile[] => {
-						let results: TFile[] = [];
-						for (const child of folder.children) {
-							if (child instanceof TFile && child.extension === 'md') {
-								results.push(child);
-							} else if (child instanceof TFolder) {
-								results = results.concat(getAllMdFiles(child));
-							}
+			const loreFolder = this.plugin.characterManager?.findLoreFolder(bookRoot || '');
+			if (loreFolder && loreFolder instanceof TFolder) {
+				const getAllMdFiles = (folder: TFolder): TFile[] => {
+					let results: TFile[] = [];
+					for (const child of folder.children) {
+						if (child instanceof TFile && child.extension === 'md') {
+							results.push(child);
+						} else if (child instanceof TFolder) {
+							results = results.concat(getAllMdFiles(child));
 						}
-						return results;
-					};
-					const folderFiles = getAllMdFiles(loreFolder);
-					if (folderFiles.length > 0) {
-						filesToParse = folderFiles;
 					}
+					return results;
+				};
+				const folderFiles = getAllMdFiles(loreFolder);
+				if (folderFiles.length > 0) {
+					filesToParse = folderFiles;
 				}
 			}
 		}
@@ -157,9 +153,7 @@ export class RelationGraphManager {
 
 		// 第一步：提取所有节点（包含正文本名与别名）
 		for (const f of filesToParse) {
-			const fileCache = this.app.metadataCache.getFileCache(f);
-			if (!fileCache?.headings) continue;
-
+			const fileCache = this.app.metadataCache.getFileCache(f) ?? {};
 			const content = await this.app.vault.cachedRead(f);
 			const lines = content.split('\n');
 			fileDataCache.set(f, { fileCache, lines });
@@ -208,45 +202,117 @@ export class RelationGraphManager {
 			const data = fileDataCache.get(f);
 			if (!data) continue;
 			const { fileCache, lines } = data;
-			const headings = fileCache.headings;
-			if (!headings) continue;
+			const headings = fileCache.headings || [];
+			const level2Headings = headings.filter(h => h.level === 2);
 
-			for (let i = 0; i < headings.length; i++) {
-				const heading = headings[i];
-				if (heading.level !== 2) continue;
+			if (level2Headings.length > 0) {
+				for (let i = 0; i < headings.length; i++) {
+					const heading = headings[i];
+					if (heading.level !== 2) continue;
 
-				const characterName = this.cleanHeadingText(heading.heading);
-				if (!characterName || !nodeIds.has(characterName)) continue;
+					const characterName = this.cleanHeadingText(heading.heading);
+					if (!characterName || !nodeIds.has(characterName)) continue;
 
-				const sectionStart = heading.position.end.line + 1;
-				const sectionEnd = this.findNextHeadingLine(headings, i, 2, lines.length);
+					const sectionStart = heading.position.end.line + 1;
+					const sectionEnd = this.findNextHeadingLine(headings, i, 2, lines.length);
 
-				const relationSection = this.findRelationSection(headings, i, sectionStart, sectionEnd, lines);
+					const relationSection = this.findRelationSection(headings, i, sectionStart, sectionEnd, lines);
 
-				if (relationSection) {
-					const explicitEdges = this.parseExplicitRelations(
-						characterName, lines, relationSection.startLine, relationSection.endLine, nodeIds, nameOrAliasToNodeId
-					);
-					for (const edge of explicitEdges) {
-						const pairKey = `${edge.source}→${edge.target}`;
-						const uniqueKey = `${pairKey}|${edge.label}`;
-						if (!uniqueExplicitEdges.has(uniqueKey)) {
-							uniqueExplicitEdges.add(uniqueKey);
-							directedPairs.add(pairKey);
-							allEdges.push(edge);
+					if (relationSection) {
+						const explicitEdges = this.parseExplicitRelations(
+							characterName, lines, relationSection.startLine, relationSection.endLine, nodeIds, nameOrAliasToNodeId
+						);
+						for (const edge of explicitEdges) {
+							const pairKey = `${edge.source}→${edge.target}`;
+							const uniqueKey = `${pairKey}|${edge.label}`;
+							if (!uniqueExplicitEdges.has(uniqueKey)) {
+								uniqueExplicitEdges.add(uniqueKey);
+								directedPairs.add(pairKey);
+								allEdges.push(edge);
+							}
+						}
+					}
+
+					if (autoLinkMentions) {
+						const mentionEdges = this.scanMentions(
+							characterName, lines, sectionStart, sectionEnd, relationSection, allSearchTerms
+						);
+						for (const edge of mentionEdges) {
+							const pairKey = `${edge.source}→${edge.target}`;
+							if (!directedPairs.has(pairKey)) {
+								directedPairs.add(pairKey);
+								allEdges.push(edge);
+							}
 						}
 					}
 				}
+			} else {
+				// 单文件词条模式
+				const characterName = this.cleanHeadingText(f.basename);
+				if (characterName && nodeIds.has(characterName)) {
+					const sectionStart = 0;
+					const sectionEnd = lines.length;
+					const relationSection = this.findRelationSection(headings, -1, sectionStart, sectionEnd, lines);
 
-				if (autoLinkMentions) {
-					const mentionEdges = this.scanMentions(
-						characterName, lines, sectionStart, sectionEnd, relationSection, allSearchTerms
-					);
-					for (const edge of mentionEdges) {
-						const pairKey = `${edge.source}→${edge.target}`;
-						if (!directedPairs.has(pairKey)) {
-							directedPairs.add(pairKey);
-							allEdges.push(edge);
+					if (relationSection) {
+						const explicitEdges = this.parseExplicitRelations(
+							characterName, lines, relationSection.startLine, relationSection.endLine, nodeIds, nameOrAliasToNodeId
+						);
+						for (const edge of explicitEdges) {
+							const pairKey = `${edge.source}→${edge.target}`;
+							const uniqueKey = `${pairKey}|${edge.label}`;
+							if (!uniqueExplicitEdges.has(uniqueKey)) {
+								uniqueExplicitEdges.add(uniqueKey);
+								directedPairs.add(pairKey);
+								allEdges.push(edge);
+							}
+						}
+					}
+
+					// 额外支持从 Frontmatter 解析关系
+					const fm = fileCache.frontmatter;
+					if (fm) {
+						const rawRelations = (fm['relations'] ?? fm['关系']) as unknown;
+						if (Array.isArray(rawRelations)) {
+							for (const item of rawRelations) {
+								if (item && typeof item === 'object') {
+									const record = item as Record<string, unknown>;
+									const rawLabel = record['label'] ?? record['关系'] ?? record['type'];
+									const rawTarget = record['target'] ?? record['目标'] ?? record['name'];
+									const label = typeof rawLabel === 'string' || typeof rawLabel === 'number' ? String(rawLabel).trim() : '';
+									const targetRaw = typeof rawTarget === 'string' || typeof rawTarget === 'number' ? String(rawTarget).trim() : '';
+									if (label && targetRaw) {
+										const targetId = nameOrAliasToNodeId.get(targetRaw) || targetRaw;
+										if (nodeIds.has(targetId) && targetId !== characterName) {
+											const pairKey = `${characterName}→${targetId}`;
+											const uniqueKey = `${pairKey}|${label}`;
+											if (!uniqueExplicitEdges.has(uniqueKey)) {
+												uniqueExplicitEdges.add(uniqueKey);
+												directedPairs.add(pairKey);
+												allEdges.push({
+													source: characterName,
+													target: targetId,
+													label,
+													type: 'explicit'
+												});
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+
+					if (autoLinkMentions) {
+						const mentionEdges = this.scanMentions(
+							characterName, lines, sectionStart, sectionEnd, relationSection, allSearchTerms
+						);
+						for (const edge of mentionEdges) {
+							const pairKey = `${edge.source}→${edge.target}`;
+							if (!directedPairs.has(pairKey)) {
+								directedPairs.add(pairKey);
+								allEdges.push(edge);
+							}
 						}
 					}
 				}
@@ -257,76 +323,151 @@ export class RelationGraphManager {
 	}
 
 	/**
-	 * 从文件缓存中提取所有 ## 二级标题作为图谱节点，并提取节点的类型与别名
-	 *
-	 * 仅识别二级标题，与 CharacterManager 的策略一致。
-	 * 清理 Markdown 加粗/斜体/代码等格式标记后作为节点 id。
+	 * 从文件缓存中提取所有词条作为图谱节点，并提取节点的类型与别名（支持大纲二级标题与单文件模式）
 	 */
 	private extractNodes(file: TFile, fileCache: CachedMetadata, lines: string[]): GraphNode[] {
 		const nodes: GraphNode[] = [];
 		const seenIds = new Set<string>();
 
-		if (!fileCache.headings) return nodes;
+		const headings = fileCache.headings || [];
+		const level2Headings = headings.filter(h => h.level === 2);
 
-		for (let i = 0; i < fileCache.headings.length; i++) {
-			const heading = fileCache.headings[i];
-			if (heading.level !== 2) continue;
+		if (level2Headings.length > 0) {
+			for (let i = 0; i < headings.length; i++) {
+				const heading = headings[i];
+				if (heading.level !== 2) continue;
 
-			const headingText = this.cleanHeadingText(heading.heading);
-			if (!headingText || seenIds.has(headingText)) continue;
+				const headingText = this.cleanHeadingText(heading.heading);
+				if (!headingText || seenIds.has(headingText)) continue;
 
-			seenIds.add(headingText);
+				seenIds.add(headingText);
 
-			// 解析“类型”与“别名”
-			let isProtagonist = false;
-			let nodeType: string | undefined = undefined;
-			const aliases: string[] = [];
+				// 解析“类型”与“别名”
+				let isProtagonist = false;
+				let nodeType: string | undefined = undefined;
+				const aliases: string[] = [];
 
-			const sectionStart = heading.position.end.line + 1;
-			const sectionEnd = this.findNextHeadingLine(fileCache.headings, i, 2, lines.length);
+				const sectionStart = heading.position.end.line + 1;
+				const sectionEnd = this.findNextHeadingLine(headings, i, 2, lines.length);
 
-			for (let lineIdx = sectionStart; lineIdx < sectionEnd; lineIdx++) {
-				const chunk = lines[lineIdx];
-				if (!chunk) continue;
+				for (let lineIdx = sectionStart; lineIdx < sectionEnd; lineIdx++) {
+					const chunk = lines[lineIdx];
+					if (!chunk) continue;
 
-				// 查找 类型：主角、**类型**：主角 等
-				if (!nodeType) {
-					const typeMatch = chunk.match(/(?:\*\*|__)?(?:类型|Type)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/i);
-					if (typeMatch) {
-						const typeStr = typeMatch[1].trim();
-						nodeType = typeStr;
-						if (typeStr.includes('主角')) {
-							isProtagonist = true;
+					// 查找 类型：主角、**类型**：主角 等
+					if (!nodeType) {
+						const typeMatch = chunk.match(/(?:\*\*|__)?(?:类型|Type)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/i);
+						if (typeMatch) {
+							const typeStr = typeMatch[1].trim();
+							nodeType = typeStr;
+							if (typeStr.includes('主角')) {
+								isProtagonist = true;
+							}
+						}
+					}
+
+					// 查找 别名：三哥、**别名**：三哥 等
+					const aliasMatch = chunk.match(/(?:\*\*|__)?(?:别名|Alias)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/i);
+					if (aliasMatch && aliasMatch[1]) {
+						const rawAliases = aliasMatch[1].split(TARGET_SEPARATOR_REGEX);
+						for (let a of rawAliases) {
+							a = a.trim();
+							if (a && a !== headingText && !aliases.includes(a)) {
+								aliases.push(a);
+							}
 						}
 					}
 				}
 
-				// 查找 别名：三哥、**别名**：三哥 等
-				const aliasMatch = chunk.match(/(?:\*\*|__)?(?:别名|Alias)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/i);
-				if (aliasMatch && aliasMatch[1]) {
-					const rawAliases = aliasMatch[1].split(TARGET_SEPARATOR_REGEX);
-					for (let a of rawAliases) {
-						a = a.trim();
-						if (a && a !== headingText && !aliases.includes(a)) {
-							aliases.push(a);
-						}
-					}
-				}
+				nodes.push({
+					id: headingText,
+					file,
+					heading: headingText,
+					x: 0,
+					y: 0,
+					vx: 0,
+					vy: 0,
+					pinned: false,
+					isProtagonist,
+					nodeType,
+					aliases: aliases.length > 0 ? aliases : undefined,
+				});
 			}
+		} else {
+			// 单文件词条模式：以文件名 basename 为正名
+			const headingText = this.cleanHeadingText(file.basename);
+			if (headingText && !seenIds.has(headingText)) {
+				seenIds.add(headingText);
 
-			nodes.push({
-				id: headingText,
-				file,
-				heading: headingText,
-				x: 0,
-				y: 0,
-				vx: 0,
-				vy: 0,
-				pinned: false,
-				isProtagonist,
-				nodeType,
-				aliases: aliases.length > 0 ? aliases : undefined,
-			});
+				let isProtagonist = false;
+				let nodeType: string | undefined = undefined;
+				const aliases: string[] = [];
+
+				// 1. 从 Frontmatter 解析
+				const fm = fileCache.frontmatter;
+				if (fm) {
+					const rawType = (fm['type'] ?? fm['类型']) as unknown;
+					if (typeof rawType === 'string' || typeof rawType === 'number') {
+						nodeType = String(rawType).trim();
+						if (nodeType.includes('主角')) isProtagonist = true;
+					}
+					const rawFmAliases = (fm['aliases'] ?? fm['alias'] ?? fm['别名']) as unknown;
+					if (Array.isArray(rawFmAliases)) {
+						for (const a of rawFmAliases) {
+							const cleanA = String(a).trim();
+							if (cleanA && cleanA !== headingText && !aliases.includes(cleanA)) {
+								aliases.push(cleanA);
+							}
+						}
+					} else if (typeof rawFmAliases === 'string' && rawFmAliases.trim()) {
+						for (const a of rawFmAliases.split(TARGET_SEPARATOR_REGEX)) {
+							const cleanA = a.trim();
+							if (cleanA && cleanA !== headingText && !aliases.includes(cleanA)) {
+								aliases.push(cleanA);
+							}
+						}
+					}
+				}
+
+				// 2. 从正文中解析
+				for (const chunk of lines) {
+					if (!chunk) continue;
+					if (!nodeType) {
+						const typeMatch = chunk.match(/(?:\*\*|__)?(?:类型|Type)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/i);
+						if (typeMatch) {
+							const typeStr = typeMatch[1].trim();
+							nodeType = typeStr;
+							if (typeStr.includes('主角')) {
+								isProtagonist = true;
+							}
+						}
+					}
+					const aliasMatch = chunk.match(/(?:\*\*|__)?(?:别名|Alias)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/i);
+					if (aliasMatch && aliasMatch[1]) {
+						const rawAliases = aliasMatch[1].split(TARGET_SEPARATOR_REGEX);
+						for (let a of rawAliases) {
+							const cleanA = a.trim();
+							if (cleanA && cleanA !== headingText && !aliases.includes(cleanA)) {
+								aliases.push(cleanA);
+							}
+						}
+					}
+				}
+
+				nodes.push({
+					id: headingText,
+					file,
+					heading: headingText,
+					x: 0,
+					y: 0,
+					vx: 0,
+					vy: 0,
+					pinned: false,
+					isProtagonist,
+					nodeType,
+					aliases: aliases.length > 0 ? aliases : undefined,
+				});
+			}
 		}
 
 		return nodes;
@@ -344,14 +485,15 @@ export class RelationGraphManager {
 		sectionEnd: number,
 		lines: string[]
 	): { startLine: number; endLine: number } | null {
-		// 在当前 ## 的子标题中查找 ### 关系
-		for (let h = currentH2Index + 1; h < headings.length; h++) {
-			const sub = headings[h];
-			// 遇到下一个 ## 或更高级标题时停止搜索
-			if (sub.level <= 2) break;
+		// 在当前 ## 的子标题中查找 ### 关系（单文件模式下在整个文档中查找关系标题）
+		const searchHeadings = currentH2Index >= 0 ? headings.slice(currentH2Index + 1) : headings;
+		for (let h = 0; h < searchHeadings.length; h++) {
+			const sub = searchHeadings[h];
+			// 大纲模式：遇到下一个 ## 或更高级标题时停止搜索
+			if (currentH2Index >= 0 && sub.level <= 2) break;
 
-			// 只关注 ### 三级标题
-			if (sub.level !== 3) continue;
+			// 大纲模式下只关注 ### 三级标题；单文件模式下可为 ## 或 ### 或 ####
+			if (currentH2Index >= 0 && sub.level !== 3) continue;
 
 			// 检查标题文本是否匹配关系关键词
 			const subText = this.cleanHeadingText(sub.heading).toLowerCase();
@@ -361,11 +503,11 @@ export class RelationGraphManager {
 			const relStart = sub.position.end.line + 1;
 			if (relStart >= sectionEnd) return null;
 
-			// 关系块结束于：下一个同级或更高级标题、或当前 ## 区段结束
+			// 关系块结束于：下一个同级或更高级标题、或当前区段结束
 			let relEnd = sectionEnd;
-			for (let n = h + 1; n < headings.length; n++) {
-				if (headings[n].level <= 3) {
-					relEnd = Math.min(headings[n].position.start.line, sectionEnd);
+			for (let n = h + 1; n < searchHeadings.length; n++) {
+				if (searchHeadings[n].level <= sub.level) {
+					relEnd = Math.min(searchHeadings[n].position.start.line, sectionEnd);
 					break;
 				}
 			}
@@ -373,24 +515,37 @@ export class RelationGraphManager {
 			return { startLine: relStart, endLine: relEnd };
 		}
 
-		// 兜底：如果没有用 ### 标题声明，尝试搜索纯文本行 "关系："
-		// 这是为了向后兼容可能的自由格式写法
+		// 兜底：如果没有用 Markdown 标题声明，尝试搜索纯文本行 "#/##/### 关系" 或 "**关系**：" / "**人物关系**："
 		for (let lineIdx = sectionStart; lineIdx < sectionEnd; lineIdx++) {
 			const trimmed = lines[lineIdx]?.trim() || '';
-			if (trimmed.startsWith('### ')) {
-				const headingText = trimmed.slice(4).trim().toLowerCase();
+			const headingMatch = trimmed.match(/^#{1,4}\s+(.+)$/);
+			if (headingMatch) {
+				const headingText = this.cleanHeadingText(headingMatch[1]).toLowerCase();
 				if (RELATION_HEADING_KEYWORDS.has(headingText)) {
 					const relStart = lineIdx + 1;
-					// 查找块结束
 					let relEnd = sectionEnd;
 					for (let k = relStart; k < sectionEnd; k++) {
-						if (lines[k]?.trim().startsWith('### ') || lines[k]?.trim().startsWith('## ')) {
+						if (/^#{1,4}\s+/.test(lines[k]?.trim() || '')) {
 							relEnd = k;
 							break;
 						}
 					}
 					return { startLine: relStart, endLine: relEnd };
 				}
+			}
+
+			const labelMatch = trimmed.match(/^(?:\*\*|__)?(?:关系|人物关系|Relations?)(?:\*\*|__)?\s*[:：]?\s*$/i);
+			if (labelMatch) {
+				const relStart = lineIdx + 1;
+				let relEnd = sectionEnd;
+				for (let k = relStart; k < sectionEnd; k++) {
+					const nextTrim = lines[k]?.trim() || '';
+					if (/^#{1,4}\s+/.test(nextTrim) || /^(?:\*\*|__)?(?:[^\n*]+)(?:\*\*|__)?\s*[:：]/.test(nextTrim) && !nextTrim.includes('：') && !nextTrim.includes(':')) {
+						relEnd = k;
+						break;
+					}
+				}
+				return { startLine: relStart, endLine: relEnd };
 			}
 		}
 
@@ -437,7 +592,7 @@ export class RelationGraphManager {
 				rawTarget = rawTarget.trim();
 				if (!rawTarget) continue;
 
-				// 提取真正的角色名：支持裸文本或 Obsidian 链接格式如 [[#张三]]、[[文件#张三|别名]]、[[张三]]
+				// 提取真正的角色名：支持裸文本或 Obsidian 链接格式如 [[#张三]]、[[文件#张三|别名]]、[[目录/文件#张三]]、[[目录/单文件词条]]、[[张三]]
 				let target = rawTarget;
 				const linkMatch = target.match(/\[\[(.*?)\]\]/);
 				if (linkMatch) {
@@ -446,6 +601,9 @@ export class RelationGraphManager {
 					if (inner.includes('#')) {
 						const parts = inner.split('#');
 						inner = parts[parts.length - 1]; // 取 # 后面的真实标题
+					} else if (inner.includes('/')) {
+						const parts = inner.split('/');
+						inner = parts[parts.length - 1].replace(/\.md$/i, ''); // 嵌套路径下的单文件词条名
 					}
 					target = inner.trim();
 				}

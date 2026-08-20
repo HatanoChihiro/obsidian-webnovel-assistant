@@ -5,7 +5,8 @@ import type { WebNovelAssistantPlugin } from '../../types/plugin';
 import { CORKBOARD_STATUS_MAP, getCorkboardStatusKeys, getCorkboardStatusText } from '../../i18n/data-keys';
 import type { ParsedForeshadowingEntry } from '../../types/foreshadowing';
 import { renderForeshadowingBadges, renderLoreBadges } from '../../utils/badge';
-import { openFileAndFocus } from '../../utils/leaf';
+import { openFileAndFocus, getLeafForFileNavigation } from '../../utils/leaf';
+import { isExcludedFromWordCount } from '../../utils/validation';
 
 
 export interface ChapterCardOptions {
@@ -65,10 +66,7 @@ export class ChapterCard {
 
 		titleEl.onclick = () => {
 			void (async () => {
-				// 点击标题打开文件，优先在已有的 markdown 视图打开，否则分屏打开
-				let targetLeaf = app.workspace.getLeavesOfType('markdown').find(l => (l.view as unknown as { file?: { path: string } }).file?.path === file.path);
-				if (!targetLeaf) targetLeaf = app.workspace.getLeavesOfType('markdown')[0];
-				if (!targetLeaf) targetLeaf = app.workspace.getLeaf('split', 'vertical');
+				const targetLeaf = getLeafForFileNavigation(app, file);
 				await openFileAndFocus(app, targetLeaf, file);
 			})();
 		};
@@ -145,25 +143,58 @@ export class ChapterCard {
 
 		// 3. 设定 Badge 已自动进入 badge.ts 中的单帧 Batch 批处理队列，无需在每个卡片单独派发 RAF
 
+		// 右键卡片菜单
+		card.addEventListener('contextmenu', (e: MouseEvent) => {
+			e.preventDefault();
+			e.stopPropagation();
+
+			const menu = new Menu();
+			const latestCache = app.metadataCache.getFileCache(file);
+			const currentExcluded = isExcludedFromWordCount(latestCache?.frontmatter);
+
+			menu.addItem((item) => {
+				item.setTitle(currentExcluded ? t('menu.include-in-wordcount') : t('menu.exclude-from-wordcount'))
+					.setIcon(currentExcluded ? 'calculator' : 'eye-off')
+					.onClick(async () => {
+						try {
+							if (onSaveStateChange) onSaveStateChange(true);
+							await plugin.menuManager.toggleExcludeFromWordCount(file);
+						} finally {
+							if (onSaveStateChange) onSaveStateChange(false);
+						}
+					});
+			});
+
+			app.workspace.trigger('file-menu', menu, file);
+			menu.showAtMouseEvent(e);
+		});
+
 		// 字数 (Right side)
 		const wordCountEl = footerEl.createDiv('wn-corkboard-card-word-count');
-		const updateWordCountDisplay = (countVal: number | string) => {
-			wordCountEl.empty();
-			wordCountEl.createSpan({ cls: 'wn-word-count-num', text: String(countVal) });
-			wordCountEl.createSpan({ cls: 'wn-word-count-unit', text: t('common.word-char') });
-		};
-
-		// 获取精准字数统计
-		const cachedCount = plugin.cacheManager.getFileCache(file.path);
-		if (cachedCount !== null && cachedCount > 0) {
-			updateWordCountDisplay(cachedCount);
+		const isExcluded = isExcludedFromWordCount(frontmatter);
+		if (isExcluded) {
+			wordCountEl.addClass('is-excluded');
+			wordCountEl.createSpan({ cls: 'wn-word-count-num', text: t('corkboard.wordcount-excluded') });
+			wordCountEl.title = t('corkboard.wordcount-excluded-tooltip');
 		} else {
-			wordCountEl.setText(`...`);
-			void app.vault.cachedRead(file).then(content => {
-				if (!wordCountEl.isConnected) return;
-				const count = plugin.calculateAccurateWords(content);
-				updateWordCountDisplay(count);
-			}).catch(err => console.error("[ChapterCard] cachedRead failed:", err));
+			const updateWordCountDisplay = (countVal: number | string) => {
+				wordCountEl.empty();
+				wordCountEl.createSpan({ cls: 'wn-word-count-num', text: String(countVal) });
+				wordCountEl.createSpan({ cls: 'wn-word-count-unit', text: t('common.word-char') });
+			};
+
+			// 获取精准字数统计
+			const cachedCount = plugin.cacheManager.getFileCache(file.path);
+			if (cachedCount !== null && cachedCount > 0) {
+				updateWordCountDisplay(cachedCount);
+			} else {
+				wordCountEl.setText(`...`);
+				void app.vault.cachedRead(file).then(content => {
+					if (!wordCountEl.isConnected) return;
+					const count = plugin.calculateAccurateWords(content);
+					updateWordCountDisplay(count);
+				}).catch(err => console.error("[ChapterCard] cachedRead failed:", err));
+			}
 		}
 
 		return card;

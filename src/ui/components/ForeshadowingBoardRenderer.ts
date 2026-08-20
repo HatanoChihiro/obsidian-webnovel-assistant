@@ -241,10 +241,34 @@ export class ForeshadowingBoardRenderer {
 			text: getForeshadowingStatusText(entry.status)
 		});
 		
-		titleWrapper.createSpan({
+		const titleSpan = titleWrapper.createSpan({
 			cls: 'wn-card-description-title',
 			text: entry.description
 		});
+		titleSpan.title = t('common.jump-to-entry');
+		titleSpan.onclick = async (e) => {
+			e.stopPropagation();
+			if (!foreshadowingFile) {
+				new Notice(t('common.file-not-found', { name: t('common.default-foreshadowing-filename') }));
+				return;
+			}
+			const fileCache = app.metadataCache.getFileCache(foreshadowingFile);
+			let fallbackLine: number | undefined;
+			if (fileCache?.headings) {
+				for (const h of fileCache.headings) {
+					if (h.heading.trim() === entry.description.trim()) {
+						fallbackLine = h.position.start.line;
+						break;
+					}
+				}
+			}
+			await smartLocateAndHighlight(
+				app,
+				foreshadowingFile,
+				[`## ${entry.description}`, `# ${entry.description}`, entry.description, `**说明**：${entry.description}`],
+				{ splitIfNew: true, fallbackLine }
+			);
+		};
 
 		if (entry.tags && entry.tags.length > 0) {
 			const tagsWrapper = line1.createDiv('wn-card-tags-wrapper');

@@ -122,3 +122,14 @@ export function parseGoal(value: unknown): number {
 	}
 	return 0;
 }
+
+/**
+ * 检查 Frontmatter 是否标记排除字数统计
+ * @param frontmatter - 文件的 frontmatter 对象
+ * @returns 是否排除字数统计
+ */
+export function isExcludedFromWordCount(frontmatter?: Record<string, unknown> | null): boolean {
+	if (!frontmatter) return false;
+	const val = frontmatter['exclude-word-count'];
+	return val === true || val === 'true';
+}

@@ -195,7 +195,9 @@ export interface WebNovelAssistantPlugin extends
 	isFileInWorkspace(file: TFile): boolean;
 	/** 检查文件是否在严格章节模式例外目录内 */
 	isFileInStrictChapterException(file: TFile): boolean;
-	/** 检查文件是否符合字数统计的条件（工作区 + 排除合并文件 + 严格章节模式） */
+	/** 检查文件是否为工作台/章节列表展示的有效章节文件 */
+	isEligibleForChapterList(file: TFile): boolean;
+	/** 检查文件是否符合字数统计的条件（有效章节 + 未排除统计） */
 	isEligibleForWordCount(file: TFile): boolean;
 	updateWordCount(): void;
 	getTrackedMarkdownFiles(includeLore?: boolean): TFile[];

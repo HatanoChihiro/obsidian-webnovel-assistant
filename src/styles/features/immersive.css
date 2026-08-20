@@ -204,6 +204,12 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 	font-family: var(--font-monospace);
 }
 
+.immersive-chapter-count.is-excluded {
+	color: var(--text-muted);
+	font-style: italic;
+	opacity: 0.85;
+}
+
 /* Sticky Notes list */
 
 .immersive-sticky-dock {

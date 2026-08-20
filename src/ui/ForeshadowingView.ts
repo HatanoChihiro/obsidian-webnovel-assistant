@@ -7,7 +7,7 @@ import { CreativeView } from './CreativeView';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { getForeshadowingStatusText, getDefaultFileName } from '../i18n/data-keys';
 import { t } from '../i18n';
-import { openFileAndFocus, smartLocateAndHighlight } from '../utils/leaf';
+import { openFileAndFocus, smartLocateAndHighlight, getLeafForFileNavigation } from '../utils/leaf';
 import { ChapterSorter } from '../services/ChapterSorter';
 
 
@@ -186,9 +186,34 @@ export class ForeshadowingView extends CreativeView {
 			: 'deprecated';
 		const card = container.createDiv({ cls: `foreshadowing-entry-card status-${statusCls}` });
 
-		// 说明（主标题）
+		// 说明（主标题 - 点击跳转到伏笔文件对应条目）
 		const descRow = card.createDiv({ cls: 'foreshadowing-entry-desc' });
-		descRow.createSpan({ text: entry.description, cls: 'foreshadowing-entry-desc-text' });
+		const descText = descRow.createSpan({ text: entry.description, cls: 'foreshadowing-entry-desc-text' });
+		descText.title = t('common.jump-to-entry');
+		descText.onclick = async (e) => {
+			e.stopPropagation();
+			const foreshadowingFile = this.getForeshadowingFile();
+			if (!foreshadowingFile) {
+				new Notice(t('common.file-not-found', { name: this.getWatchFileName() }));
+				return;
+			}
+			const fileCache = this.app.metadataCache.getFileCache(foreshadowingFile);
+			let fallbackLine: number | undefined;
+			if (fileCache?.headings) {
+				for (const h of fileCache.headings) {
+					if (h.heading.trim() === entry.description.trim()) {
+						fallbackLine = h.position.start.line;
+						break;
+					}
+				}
+			}
+			await smartLocateAndHighlight(
+				this.app,
+				foreshadowingFile,
+				[`## ${entry.description}`, `# ${entry.description}`, entry.description, `**说明**：${entry.description}`],
+				{ sourceLeaf: this.leaf, splitIfNew: true, fallbackLine }
+			);
+		};
 
 		// 动态多节点步进器组件（置于标题与标注内容之间）
 		this.renderStageStepper(card, entry);
@@ -200,13 +225,37 @@ export class ForeshadowingView extends CreativeView {
 			const target = c.source || entry.sourceFile;
 			
 			if (c.source || c.time) {
-				const metaEl = quoteEl.createDiv({
-					text: `${c.source ? `[[${c.source.split('/').pop() || c.source}]]` : ''}${c.time ? ` · ${c.time}` : ''}`,
-					cls: 'foreshadowing-entry-quote-meta'
-				});
-				metaEl.setCssProps({ cursor: 'pointer' });
-				metaEl.title = t('common.jump-to-reference');
-				metaEl.onclick = async () => {
+				const metaEl = quoteEl.createDiv({ cls: 'foreshadowing-entry-quote-meta' });
+				metaEl.createSpan({ cls: 'wn-card-source-tag', text: t('common.tag-source') });
+
+				if (c.source) {
+					const chapterLink = metaEl.createSpan({
+						cls: 'wn-card-chapter-link clickable-link',
+						text: ` [[${c.source.split('/').pop() || c.source}]]`
+					});
+					chapterLink.title = t('common.jump-to-reference');
+					chapterLink.onclick = async (e) => {
+						e.stopPropagation();
+						const sourcePath = this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '';
+						const file = this.app.metadataCache.getFirstLinkpathDest(target, sourcePath);
+						if (file) {
+							await this.openFileWithSmartLocate(file, c.text);
+						} else {
+							new Notice(t('common.file-not-found', { name: target }));
+						}
+					};
+				}
+
+				if (c.time) {
+					metaEl.createSpan({ cls: 'wn-card-source-time', text: ` - ${c.time}` });
+				}
+			}
+
+			if (c.text) {
+				const textEl = quoteEl.createDiv({ cls: 'foreshadowing-entry-quote-text', text: c.text });
+				textEl.setCssProps({ cursor: 'pointer' });
+				textEl.title = t('common.jump-to-original');
+				textEl.onclick = async () => {
 					const sourcePath = this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '';
 					const file = this.app.metadataCache.getFirstLinkpathDest(target, sourcePath);
 					if (file) {
@@ -216,19 +265,6 @@ export class ForeshadowingView extends CreativeView {
 					}
 				};
 			}
-			
-			const textEl = quoteEl.createDiv({ text: c.text, cls: 'foreshadowing-entry-quote-text' });
-			textEl.setCssProps({ cursor: 'pointer' });
-			textEl.title = t('common.jump-to-original');
-			textEl.onclick = async () => {
-				const sourcePath = this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '';
-				const file = this.app.metadataCache.getFirstLinkpathDest(target, sourcePath);
-				if (file) {
-					await this.openFileWithSmartLocate(file, c.text);
-				} else {
-					new Notice(t('common.file-not-found', { name: target }));
-				}
-			};
 		});
 
 		// 回收轨迹与关联原文引用（样式与排版层级与上方“标注引用部分”保持完全一致）
@@ -401,7 +437,7 @@ export class ForeshadowingView extends CreativeView {
 		sourceNode.onclick = async () => {
 			const sourcePath = this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '';
 			const file = this.app.metadataCache.getFirstLinkpathDest(firstSource, sourcePath);
-			if (file) await openFileAndFocus(this.app, this.app.workspace.getLeaf(false), file);
+			if (file) await openFileAndFocus(this.app, getLeafForFileNavigation(this.app, file, { sourceLeaf: this.leaf }), file);
 		};
 
 		// 阶段/终结节点
@@ -420,7 +456,7 @@ export class ForeshadowingView extends CreativeView {
 				node.onclick = async () => {
 					const sourcePath = this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '';
 					const file = this.app.metadataCache.getFirstLinkpathDest(log.file, sourcePath);
-					if (file) await openFileAndFocus(this.app, this.app.workspace.getLeaf(false), file);
+					if (file) await openFileAndFocus(this.app, getLeafForFileNavigation(this.app, file, { sourceLeaf: this.leaf }), file);
 				};
 			});
 		} else if (entry.recoveryFiles && entry.recoveryFiles.length > 0) {
@@ -435,7 +471,7 @@ export class ForeshadowingView extends CreativeView {
 				node.onclick = async () => {
 					const sourcePath = this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '';
 					const targetFile = this.app.metadataCache.getFirstLinkpathDest(file, sourcePath);
-					if (targetFile) await openFileAndFocus(this.app, this.app.workspace.getLeaf(false), targetFile);
+					if (targetFile) await openFileAndFocus(this.app, getLeafForFileNavigation(this.app, targetFile, { sourceLeaf: this.leaf }), targetFile);
 				};
 			});
 		}
@@ -468,7 +504,7 @@ export class ForeshadowingView extends CreativeView {
 	 * 使用智能文本匹配进行精准跳转
 	 */
 	private async openFileWithSmartLocate(file: TFile, searchText: string) {
-		await smartLocateAndHighlight(this.app, file, [searchText]);
+		await smartLocateAndHighlight(this.app, file, [searchText], { sourceLeaf: this.leaf });
 	}
 
 	private async openRecoveryLocation(chapterName: string, searchTexts: (string | undefined)[]) {
@@ -478,6 +514,6 @@ export class ForeshadowingView extends CreativeView {
 			return;
 		}
 
-		await smartLocateAndHighlight(this.app, file, searchTexts);
+		await smartLocateAndHighlight(this.app, file, searchTexts, { sourceLeaf: this.leaf });
 	}
 }

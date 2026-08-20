@@ -1,3 +1,38 @@
+## 🔧 v3.8.5
+
+### 功能优化
+
+- **新增设定一览侧面板**：支持以侧面板形式查看设定卡片，支持分类折叠、就地编辑与精准跳转，可在沉浸模式槽位中配置使用。
+- **章节一览支持分卷分组**：侧边栏章节一览面板接入分卷分类，支持分卷折叠与章节统计。
+- **支持章节排除字数统计**：章节右键支持一键标记“不计字数”，方便排除大纲与草稿，同时支持在写作台显示。
+- **优化设定关系双链生成**：右键或命令新建设定并关联已有设定时，若关联目标处于同一设定分类文件下，自动生成精简的同文档标题双链（`[[#标题]]`），避免附带冗余的文件名前缀。
+- **设定文件夹支持多级目录与单文件词条**：自动识别设定子文件夹，当不存在“## 二级标题”时会读取文件名作为设定词条。
+- **伏笔与时间线卡片标题直达条目**：伏笔侧面板、伏笔看板、时间线侧面板及时间线看板支持点击卡片标题直接跳转至对应伏笔或时间线文件的具体条目位置并高亮定位。
+- **优化文件打开与分屏跳转体验**：在工作台打开章节/设定/时间线/伏笔等文档时，优先开启分屏新窗口并会自动跳过锁定文件；如果当前存在未锁定的分屏窗口，则自动复用；在侧面板打开章节时，自动复用已有章节文件，开启功能性文件则会自动创建新窗口，方便对照修改。
+- **优化部分UI样式**：统一伏笔看板与侧面板中出处标签、章节链接与引用框的视觉样式；优化设定图谱关系连线和端点样式，用渐变色和流光显示关系指向，视觉更加直观。
+
+### Bug修复
+- 修复多分屏状态下进入沉浸模式的排版异常问题。
+- 修复限时任务到期且进度为 0 时未能自动结算为“未完成”的问题。
+- 修复创作主页未自动刷新过期任务状态的问题。
+
+### English Changelog
+
+#### Enhancements
+- **New Lore Overview Side Panel**: Added a dedicated side panel for lore cards supporting category folding, in-place editing, and precise jump navigation, configurable in Immersive Mode slot positions.
+- **Volume Grouping in Chapter Overview**: Chapter Overview side panel now supports volume categorization with collapsible volume headers and chapter counts.
+- **Exclude Chapters from Word Count**: Support right-clicking chapters to mark them as "Exclude from Word Count" to omit outlines and drafts from statistics, with indicator badges displayed on Workbench cards.
+- **Optimized Lore Relation Wikilink Generation**: When creating new lore entries with relations pointing to entries in the same lore file via context menu or command, automatically formats concise internal heading links (`[[#Heading]]`) without redundant file prefixes.
+- **Nested Subdirectories & Single-File Lore Notes**: Automatically detects nested lore subfolders; when no "## Heading 2" exists in a file, uses the filename as the lore entry.
+- **Click-to-Locate Title Navigation for Foreshadowing & Timeline**: Clicking card/node titles in Foreshadowing side panel, Foreshadowing board, Timeline side panel, or Timeline board now directly opens and highlights the exact entry location in the corresponding markdown file.
+- **Optimized File Opening & Split Pane Navigation**: Opening chapters, lore, timeline, or foreshadowing files from the Workbench now prefers opening in a split pane while automatically skipping locked (pinned) tabs, or reusing existing unpinned split editors. When opening chapters from side panels, stably reuses existing chapter editors; opening metadata/outline files automatically opens in a new split pane for side-by-side reference and editing.
+- **UI Styling Refinements**: Unified the visual styling of source tags, chapter links, and quote boxes between the Foreshadowing board and side panel; refined relation graph lines and endpoint styles with flow-direction gradients and animated light beams for clearer visual hierarchy.
+
+#### Bug Fixes
+- Fixed layout glitch when entering Immersive Mode with multiple active split panes.
+- Fixed an issue where expired timed tasks with zero word progress failed to automatically resolve as "Incomplete".
+- Fixed an issue where the Homepage did not automatically refresh expired task statuses.
+
 ## 🔧 v3.8.4
 
 ### Bug修复

@@ -94,6 +94,7 @@ export const VIEW_TYPES = {
 	TASK: 'task-view',
 	CREATIVE: 'creative-view',
 	CORKBOARD: 'webnovel-corkboard',
+	LORE_OVERVIEW: 'webnovel-lore-overview',
 	WORKBENCH: 'webnovel-workbench',
 	IMMERSIVE_CHAPTER_LIST: 'immersive-chapter-list-view',
 	IMMERSIVE_STICKY_NOTES: 'immersive-sticky-notes-view',

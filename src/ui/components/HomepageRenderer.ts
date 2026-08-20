@@ -569,6 +569,8 @@ export class HomepageRenderer {
 		entry: TaskEntry;
 	} | null> {
 		const manager = this.plugin.taskManager;
+		await manager.checkAndCloseExpired(folderPath);
+		await manager.activatePendingTasks(folderPath);
 		const entries = await manager.loadEntries(folderPath);
 		if (!entries || entries.length === 0) return null;
 

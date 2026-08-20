@@ -54,14 +54,14 @@ export class LoreCardRenderer {
 			if (fileCache && fileCache.headings) {
 				for (const h of fileCache.headings) {
 					const rawHeading = cleanLoreHeading(h.heading);
-					if (rawHeading === entry.heading && h.level === 2) {
+					if (rawHeading === cleanLoreHeading(entry.heading)) {
 						fallbackLine = h.position.start.line;
 						break;
 					}
 				}
 			}
 			
-			await smartLocateAndHighlight(plugin.app, entry.file, [`## ${entry.heading}`, entry.heading], {
+			await smartLocateAndHighlight(plugin.app, entry.file, [`## ${entry.heading}`, `# ${entry.heading}`, entry.heading], {
 				splitIfNew: true,
 				fallbackLine
 			});
@@ -173,6 +173,7 @@ export class LoreCardRenderer {
 			let chunkToRender = '';
 			let aliases: string[] = [];
 
+			let hasMatchedH2 = false;
 			if (fileCache && fileCache.headings) {
 				const headings = fileCache.headings;
 				let startIndex = -1;
@@ -181,7 +182,8 @@ export class LoreCardRenderer {
 				for (let i = 0; i < headings.length; i++) {
 					const h = headings[i];
 					const rawHeading = cleanLoreHeading(h.heading);
-					if (rawHeading === entry.heading && h.level === 2) {
+					if (rawHeading === cleanLoreHeading(entry.heading) && h.level === 2) {
+						hasMatchedH2 = true;
 						startIndex = h.position.end.line + 1;
 						let nextLevelH = null;
 						for (let j = i + 1; j < headings.length; j++) {
@@ -202,12 +204,61 @@ export class LoreCardRenderer {
 
 					const aliasMatch = rawChunk.match(/^(?:\*\*|__)?(?:别名|Alias)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/im);
 					if (aliasMatch && aliasMatch[1]) {
-						aliases = aliasMatch[1].split(/[,，、/|]/).map(s => s.trim()).filter(Boolean);
+						aliases = aliasMatch[1].split(/[,，、/|;；]/).map(s => s.trim()).filter(Boolean);
 						chunkToRender = rawChunk.replace(aliasMatch[0], '').trim();
 					} else {
 						chunkToRender = rawChunk.trim();
 					}
 				}
+			}
+
+			// 单文件词条模式回退（若无匹配的二级标题且词条名为文件名 basename）
+			if (!hasMatchedH2 && cleanLoreHeading(entry.heading) === cleanLoreHeading(entry.file.basename)) {
+				// 1. 从 Frontmatter 中解析别名
+				const fm = fileCache?.frontmatter;
+				if (fm) {
+					const rawFmAliases = (fm['aliases'] ?? fm['alias'] ?? fm['别名']) as unknown;
+					if (Array.isArray(rawFmAliases)) {
+						for (const a of rawFmAliases) {
+							if (typeof a === 'string' || typeof a === 'number') {
+								const cleanA = String(a).trim();
+								if (cleanA && !aliases.includes(cleanA)) aliases.push(cleanA);
+							}
+						}
+					} else if (typeof rawFmAliases === 'string' && rawFmAliases.trim()) {
+						for (const a of rawFmAliases.split(/[,，、/|;；]/)) {
+							const cleanA = a.trim();
+							if (cleanA && !aliases.includes(cleanA)) aliases.push(cleanA);
+						}
+					}
+				}
+
+				// 2. 移除 Frontmatter
+				let bodyText = fileContent;
+				if (bodyText.startsWith('---\n') || bodyText.startsWith('---\r\n')) {
+					const endMatch = bodyText.match(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/);
+					if (endMatch) {
+						bodyText = bodyText.slice(endMatch[0].length);
+					}
+				}
+				// 移除顶部的 # 一级标题（如果存在）
+				bodyText = bodyText.replace(/^\s*#\s+[^\n]*\r?\n/, '');
+
+				// 3. 从正文中解析别名声明行并提取
+				const aliasMatches = bodyText.matchAll(/(?:\*\*|__)?(?:别名|Alias)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/gi);
+				for (const match of aliasMatches) {
+					if (match[1]) {
+						const rawAliases = match[1].split(/[,，、/|;；]/);
+						for (const a of rawAliases) {
+							const cleanA = a.trim();
+							if (cleanA && !aliases.includes(cleanA)) {
+								aliases.push(cleanA);
+							}
+						}
+					}
+				}
+				// 从渲染内容中移除别名声明行，避免与顶部 badges 重复
+				chunkToRender = bodyText.replace(/^(?:\*\*|__)?(?:别名|Alias)(?:\*\*|__)?\s*[:：]\s*[^\n]+\r?\n?/gim, '').trim();
 			}
 
 			loadingEl.remove();

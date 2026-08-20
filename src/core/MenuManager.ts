@@ -16,6 +16,7 @@ import { ChapterMergeModal } from '../ui/ChapterMergeModal';
 import { MobileChapterMergeModal } from '../ui/MobileChapterMergeModal';
 import type { WorkbenchView } from '../ui/WorkbenchView';
 import { RELATION_GRAPH_VIEW_TYPE } from '../ui/RelationGraphView';
+import { isExcludedFromWordCount } from '../utils/validation';
 
 export class MenuManager {
 	private plugin: WebNovelAssistantPlugin;
@@ -175,6 +176,18 @@ export class MenuManager {
 
 		if (isDesktop()) {
 			// 桌面端：平铺直达
+			if (this.plugin.cacheManager.isEligibleForChapterList(file)) {
+				const isExcluded = isExcludedFromWordCount(this.plugin.app.metadataCache.getFileCache(file)?.frontmatter);
+				menu.addItem((item) => {
+					item.setTitle(isExcluded ? t('menu.include-in-wordcount') : t('menu.exclude-from-wordcount'))
+						.setIcon(isExcluded ? 'calculator' : 'eye-off')
+						.setSection('webnovel-assistant')
+						.onClick(() => {
+							void this.toggleExcludeFromWordCount(file);
+						});
+				});
+			}
+
 			menu.addItem((item) => {
 				item.setTitle(t('menu.set-chapter-goal')).setIcon('target').setSection('webnovel-assistant').onClick(() => {
 					new GoalModal(this.plugin.app, this.plugin, file).open();
@@ -228,6 +241,17 @@ export class MenuManager {
 				const subMenu = (item as unknown as { setSubmenu?: () => Menu }).setSubmenu?.();
 				const targetMenu = subMenu || menu;
 
+				if (this.plugin.cacheManager.isEligibleForChapterList(file)) {
+					const isExcluded = isExcludedFromWordCount(this.plugin.app.metadataCache.getFileCache(file)?.frontmatter);
+					targetMenu.addItem((subItem) => {
+						subItem.setTitle(isExcluded ? t('menu.include-in-wordcount') : t('menu.exclude-from-wordcount'))
+							.setIcon(isExcluded ? 'calculator' : 'eye-off')
+							.onClick(() => {
+								void this.toggleExcludeFromWordCount(file);
+							});
+					});
+				}
+
 				targetMenu.addItem((subItem) => {
 					subItem.setTitle(t('menu.set-chapter-goal')).setIcon('target').onClick(() => {
 						new GoalModal(this.plugin.app, this.plugin, file).open();
@@ -269,6 +293,45 @@ export class MenuManager {
 					});
 				});
 			});
+		}
+	}
+
+	/**
+	 * 切换文件的“不统计字数”排除状态
+	 */
+	public async toggleExcludeFromWordCount(file: TFile): Promise<void> {
+		const cache = this.plugin.app.metadataCache.getFileCache(file);
+		const isExcluded = isExcludedFromWordCount(cache?.frontmatter);
+
+		try {
+			await this.plugin.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
+				if (isExcluded) {
+					delete fm['exclude-word-count'];
+				} else {
+					fm['exclude-word-count'] = true;
+				}
+			});
+
+			if (isExcluded) {
+				// 恢复统计：重新计算字数并加入缓存
+				const content = await this.plugin.app.vault.read(file);
+				const count = this.plugin.calculateAccurateWords(content);
+				this.plugin.cacheManager.updateFileCache(file, count, this.plugin.app.vault);
+				new Notice(t('notice.wordcount-included', { name: file.basename }));
+			} else {
+				// 排除统计：从缓存中失效该文件，并从父文件夹中扣除
+				this.plugin.cacheManager.invalidateCache(file.path, this.plugin.app.vault);
+				new Notice(t('notice.wordcount-excluded', { name: file.basename }));
+			}
+
+			this.plugin.refreshFolderCounts();
+			this.plugin.refreshStatusViews();
+			if (this.plugin.settings.enableHomepage) {
+				this.plugin.homepageManager?.refreshHomepageViews();
+			}
+		} catch (error) {
+			console.error('[MenuManager] 切换字数统计排除标记失败:', error);
+			new Notice(t('notice.wordcount-toggle-failed'));
 		}
 	}
 

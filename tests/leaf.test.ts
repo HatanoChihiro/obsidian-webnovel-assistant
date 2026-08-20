@@ -1,6 +1,16 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { App, TFile, WorkspaceLeaf } from 'obsidian';
-import { findMatchState, buildEphemeralState, getMarkdownBodyRange, smartLocateAndHighlight } from '../src/utils/leaf';
+import {
+	findMatchState,
+	buildEphemeralState,
+	getMarkdownBodyRange,
+	smartLocateAndHighlight,
+	isLeafPinned,
+	isCustomPluginLeaf,
+	getLeafForFileNavigation,
+	openFileAndFocus
+} from '../src/utils/leaf';
+import { MarkdownView } from './mocks/obsidian';
 import {
 	findNormalizedTextRanges,
 	findNearestBlockLine,
@@ -540,5 +550,442 @@ describe('highlightReadingViewPhrase (Direct Target Block & Container Fallback W
 		expect(success).toBe(true);
 		expect(referenceLeaf.openFile).toHaveBeenCalledWith(targetFile, { active: true });
 		expect(mainLeaf.openFile).not.toHaveBeenCalled();
+	});
+});
+
+describe('isLeafPinned (Tab Lock Detection)', () => {
+	it('should return true when leaf.getViewState().pinned is true', () => {
+		const leaf = {
+			getViewState: () => ({ pinned: true })
+		} as unknown as WorkspaceLeaf;
+		expect(isLeafPinned(leaf)).toBe(true);
+	});
+
+	it('should return true when leaf.pinned is true', () => {
+		const leaf = {
+			pinned: true
+		} as unknown as WorkspaceLeaf;
+		expect(isLeafPinned(leaf)).toBe(true);
+	});
+
+	it('should return true when leaf.isPinned() returns true', () => {
+		const leaf = {
+			isPinned: () => true
+		} as unknown as WorkspaceLeaf;
+		expect(isLeafPinned(leaf)).toBe(true);
+	});
+
+	it('should return false when leaf is not pinned or undefined', () => {
+		expect(isLeafPinned(undefined)).toBe(false);
+		expect(isLeafPinned(null)).toBe(false);
+		const leaf = {
+			getViewState: () => ({ pinned: false }),
+			pinned: false
+		} as unknown as WorkspaceLeaf;
+		expect(isLeafPinned(leaf)).toBe(false);
+	});
+});
+
+describe('isCustomPluginLeaf (Plugin Custom View Protection)', () => {
+	it('should return true for custom plugin views (workbench, homepage, foreshadowing, etc.)', () => {
+		const workbenchLeaf = {
+			view: { getViewType: () => 'webnovel-workbench' }
+		} as unknown as WorkspaceLeaf;
+		expect(isCustomPluginLeaf(workbenchLeaf)).toBe(true);
+
+		const homepageLeaf = {
+			view: { getViewType: () => 'webnovel-homepage' }
+		} as unknown as WorkspaceLeaf;
+		expect(isCustomPluginLeaf(homepageLeaf)).toBe(true);
+	});
+
+	it('should return false for MarkdownView or empty views', () => {
+		const mdLeaf = {
+			view: Object.assign(new MarkdownView(), { getViewType: () => 'markdown' })
+		} as unknown as WorkspaceLeaf;
+		expect(isCustomPluginLeaf(mdLeaf)).toBe(false);
+
+		const emptyLeaf = {
+			view: { getViewType: () => 'empty' }
+		} as unknown as WorkspaceLeaf;
+		expect(isCustomPluginLeaf(emptyLeaf)).toBe(false);
+	});
+});
+
+describe('getLeafForFileNavigation (Smart Split & Pin Safety)', () => {
+	it('should directly reuse existing leaf if target file is already open anywhere (even if pinned)', () => {
+		const file = { path: 'Chapter1.md' } as unknown as TFile;
+		const openLeafView = Object.assign(new MarkdownView(), { file });
+		const openLeaf = {
+			view: openLeafView,
+			pinned: true,
+			getViewState: () => ({ pinned: true })
+		} as unknown as WorkspaceLeaf;
+
+		const mockApp = {
+			workspace: {
+				getLeavesOfType: (type: string) => (type === 'markdown' ? [openLeaf] : []),
+				iterateRootLeaves: (cb: (l: WorkspaceLeaf) => void) => {
+					cb(openLeaf);
+				},
+				getMostRecentLeaf: () => openLeaf
+			}
+		} as unknown as App;
+
+		const result = getLeafForFileNavigation(mockApp, file);
+		expect(result).toBe(openLeaf);
+	});
+
+	it('should automatically create a vertical split when in single pane (e.g. Workbench/Homepage)', () => {
+		const file = { path: 'Chapter2.md' } as unknown as TFile;
+		const workbenchContainer = { id: 'container-left' };
+		const workbenchLeaf = {
+			view: { getViewType: () => 'webnovel-workbench' },
+			parent: workbenchContainer
+		} as unknown as WorkspaceLeaf;
+
+		const newSplitLeaf = {
+			view: new MarkdownView(),
+			openFile: vi.fn()
+		} as unknown as WorkspaceLeaf;
+
+		const mockApp = {
+			workspace: {
+				getLeavesOfType: () => [],
+				iterateRootLeaves: (cb: (l: WorkspaceLeaf) => void) => {
+					cb(workbenchLeaf);
+				},
+				getMostRecentLeaf: () => workbenchLeaf,
+				getLeaf: vi.fn((mode: string, dir?: string) => {
+					if (mode === 'split' && dir === 'vertical') return newSplitLeaf;
+					return workbenchLeaf;
+				})
+			}
+		} as unknown as App;
+
+		const result = getLeafForFileNavigation(mockApp, file, { sourceLeaf: workbenchLeaf });
+		expect(result).toBe(newSplitLeaf);
+		expect(mockApp.workspace.getLeaf).toHaveBeenCalledWith('split', 'vertical');
+	});
+
+	it('should reuse unpinned markdown leaf in split pane when another split pane exists', () => {
+		const file = { path: 'LoreB.md' } as unknown as TFile;
+		const leftContainer = { id: 'container-left' };
+		const rightContainer = { id: 'container-right' };
+
+		const workbenchLeaf = {
+			view: { getViewType: () => 'webnovel-workbench' },
+			parent: leftContainer
+		} as unknown as WorkspaceLeaf;
+
+		const chapterAView = Object.assign(new MarkdownView(), { file: { path: 'ChapterA.md' }, getViewType: () => 'markdown' });
+		const chapterALeaf = {
+			view: chapterAView,
+			parent: rightContainer,
+			pinned: false,
+			getViewState: () => ({ pinned: false }),
+			openFile: vi.fn()
+		} as unknown as WorkspaceLeaf;
+
+		const mockApp = {
+			workspace: {
+				getLeavesOfType: () => [chapterALeaf],
+				iterateRootLeaves: (cb: (l: WorkspaceLeaf) => void) => {
+					cb(workbenchLeaf);
+					cb(chapterALeaf);
+				},
+				getMostRecentLeaf: () => workbenchLeaf,
+				getLeaf: vi.fn()
+			}
+		} as unknown as App;
+
+		const result = getLeafForFileNavigation(mockApp, file, { sourceLeaf: workbenchLeaf });
+		// Should reuse chapterALeaf in the right split pane without touching left workbench
+		expect(result).toBe(chapterALeaf);
+		expect(mockApp.workspace.getLeaf).not.toHaveBeenCalled();
+	});
+
+	it('should NOT overwrite pinned leaf in split pane, but create a new split leaf', () => {
+		const file = { path: 'Chapter2.md' } as unknown as TFile;
+		const leftContainer = { id: 'container-left' };
+		const rightContainer = { id: 'container-right' };
+
+		const workbenchLeaf = {
+			view: { getViewType: () => 'webnovel-workbench' },
+			parent: leftContainer
+		} as unknown as WorkspaceLeaf;
+
+		// Pinned chapter 1 in right pane
+		const chapter1View = Object.assign(new MarkdownView(), { file: { path: 'Chapter1.md' }, getViewType: () => 'markdown' });
+		const chapter1PinnedLeaf = {
+			view: chapter1View,
+			parent: rightContainer,
+			pinned: true,
+			getViewState: () => ({ pinned: true }),
+			openFile: vi.fn()
+		} as unknown as WorkspaceLeaf;
+
+		const newSplitLeaf = {
+			view: new MarkdownView(),
+			openFile: vi.fn()
+		} as unknown as WorkspaceLeaf;
+
+		const mockApp = {
+			workspace: {
+				getLeavesOfType: () => [chapter1PinnedLeaf],
+				iterateRootLeaves: (cb: (l: WorkspaceLeaf) => void) => {
+					cb(workbenchLeaf);
+					cb(chapter1PinnedLeaf);
+				},
+				getMostRecentLeaf: () => workbenchLeaf,
+				getLeaf: vi.fn((mode: string, dir?: string) => {
+					if (mode === 'split' && dir === 'vertical') return newSplitLeaf;
+					return workbenchLeaf;
+				})
+			}
+		} as unknown as App;
+
+		const result = getLeafForFileNavigation(mockApp, file, { sourceLeaf: workbenchLeaf });
+		// Must not return chapter1PinnedLeaf
+		expect(result).toBe(newSplitLeaf);
+		expect(result).not.toBe(chapter1PinnedLeaf);
+		expect(mockApp.workspace.getLeaf).toHaveBeenCalledWith('split', 'vertical');
+	});
+
+	it('openFileAndFocus should intercept pinned leaf and reroute safely', async () => {
+		const file = { path: 'Chapter3.md' } as unknown as TFile;
+		const pinnedLeaf = {
+			view: Object.assign(new MarkdownView(), { file: { path: 'PinnedDoc.md' } }),
+			pinned: true,
+			getViewState: () => ({ pinned: true }),
+			openFile: vi.fn()
+		} as unknown as WorkspaceLeaf;
+
+		const safeSplitLeaf = {
+			view: new MarkdownView(),
+			openFile: vi.fn().mockResolvedValue(undefined)
+		} as unknown as WorkspaceLeaf;
+
+		const mockApp = {
+			workspace: {
+				getLeavesOfType: () => [pinnedLeaf],
+				iterateRootLeaves: (cb: (l: WorkspaceLeaf) => void) => {
+					cb(pinnedLeaf);
+				},
+				getMostRecentLeaf: () => pinnedLeaf,
+				getLeaf: vi.fn(() => safeSplitLeaf),
+				revealLeaf: vi.fn(),
+				setActiveLeaf: vi.fn()
+			}
+		} as unknown as App;
+
+		await openFileAndFocus(mockApp, pinnedLeaf, file);
+
+		// Pinned leaf should NOT have openFile called
+		expect(pinnedLeaf.openFile).not.toHaveBeenCalled();
+		// Safe leaf should have openFile called
+		expect(safeSplitLeaf.openFile).toHaveBeenCalledWith(file, { active: true });
+	});
+
+	it('should stably reuse the active unpinned chapter window when navigating from sidebar with multiple splits (no ping-pong)', () => {
+		const targetFile = { path: 'Chapter3.md' } as unknown as TFile;
+		const sidebarLeaf = {
+			view: { getViewType: () => 'foreshadowing-view' }
+		} as unknown as WorkspaceLeaf;
+
+		const leftChapterLeaf = {
+			view: Object.assign(new MarkdownView(), { file: { path: 'Chapter1.md' }, getViewType: () => 'markdown' }),
+			pinned: false,
+			getViewState: () => ({ pinned: false })
+		} as unknown as WorkspaceLeaf;
+
+		const rightChapterLeaf = {
+			view: Object.assign(new MarkdownView(), { file: { path: 'Chapter2.md' }, getViewType: () => 'markdown' }),
+			pinned: false,
+			getViewState: () => ({ pinned: false })
+		} as unknown as WorkspaceLeaf;
+
+		const mockApp = {
+			workspace: {
+				getLeavesOfType: () => [leftChapterLeaf, rightChapterLeaf],
+				iterateRootLeaves: (cb: (l: WorkspaceLeaf) => void) => {
+					cb(leftChapterLeaf);
+					cb(rightChapterLeaf);
+				},
+				// Right chapter was the most recent active editor
+				getMostRecentLeaf: () => rightChapterLeaf,
+				getLeaf: vi.fn()
+			}
+		} as unknown as App;
+
+		// 1. Click from sidebar should reuse rightChapterLeaf without creating split or jumping left
+		const result1 = getLeafForFileNavigation(mockApp, targetFile, { sourceLeaf: sidebarLeaf });
+		expect(result1).toBe(rightChapterLeaf);
+		expect(mockApp.workspace.getLeaf).not.toHaveBeenCalled();
+
+		// 2. Next click from sidebar with another chapter should STILL reuse rightChapterLeaf (no ping-pong)
+		const targetFile2 = { path: 'Chapter4.md' } as unknown as TFile;
+		const result2 = getLeafForFileNavigation(mockApp, targetFile2, { sourceLeaf: sidebarLeaf });
+		expect(result2).toBe(rightChapterLeaf);
+		expect(mockApp.workspace.getLeaf).not.toHaveBeenCalled();
+	});
+
+	it('should split vertical when navigating from sidebar if splitIfNew is true (e.g. clicking title to open foreshadowing or timeline file)', () => {
+		const foreshadowingFile = { path: 'foreshadowing.md' } as unknown as TFile;
+		const sidebarLeaf = {
+			view: { getViewType: () => 'foreshadowing-view' }
+		} as unknown as WorkspaceLeaf;
+
+		const chapterLeaf = {
+			view: Object.assign(new MarkdownView(), { file: { path: 'Chapter1.md' }, getViewType: () => 'markdown' }),
+			pinned: false,
+			getViewState: () => ({ pinned: false })
+		} as unknown as WorkspaceLeaf;
+
+		const newSplitLeaf = {
+			view: new MarkdownView(),
+			openFile: vi.fn()
+		} as unknown as WorkspaceLeaf;
+
+		const mockApp = {
+			workspace: {
+				getLeavesOfType: () => [chapterLeaf],
+				iterateRootLeaves: (cb: (l: WorkspaceLeaf) => void) => {
+					cb(chapterLeaf);
+				},
+				getMostRecentLeaf: () => chapterLeaf,
+				getLeaf: vi.fn((mode: string, dir?: string) => {
+					if (mode === 'split' && dir === 'vertical') return newSplitLeaf;
+					return chapterLeaf;
+				})
+			}
+		} as unknown as App;
+
+		// Title click with splitIfNew: true should open in new vertical split to protect chapter
+		const result = getLeafForFileNavigation(mockApp, foreshadowingFile, {
+			sourceLeaf: sidebarLeaf,
+			splitIfNew: true
+		});
+		expect(result).toBe(newSplitLeaf);
+		expect(mockApp.workspace.getLeaf).toHaveBeenCalledWith('split', 'vertical');
+	});
+
+	it('should split vertical when navigating from sidebar if the only root leaf is a custom plugin view (Workbench)', () => {
+		const chapterFile = { path: 'Chapter1.md' } as unknown as TFile;
+		const sidebarLeaf = {
+			view: { getViewType: () => 'foreshadowing-view' }
+		} as unknown as WorkspaceLeaf;
+
+		const workbenchLeaf = {
+			view: { getViewType: () => 'webnovel-workbench' }
+		} as unknown as WorkspaceLeaf;
+
+		const newSplitLeaf = {
+			view: new MarkdownView(),
+			openFile: vi.fn()
+		} as unknown as WorkspaceLeaf;
+
+		const mockApp = {
+			workspace: {
+				getLeavesOfType: () => [],
+				iterateRootLeaves: (cb: (l: WorkspaceLeaf) => void) => {
+					cb(workbenchLeaf);
+				},
+				getMostRecentLeaf: () => workbenchLeaf,
+				getLeaf: vi.fn((mode: string, dir?: string) => {
+					if (mode === 'split' && dir === 'vertical') return newSplitLeaf;
+					return workbenchLeaf;
+				})
+			}
+		} as unknown as App;
+
+		// Clicking chapter from sidebar when only Workbench is in root should split vertical
+		const result = getLeafForFileNavigation(mockApp, chapterFile, { sourceLeaf: sidebarLeaf });
+		expect(result).toBe(newSplitLeaf);
+		expect(mockApp.workspace.getLeaf).toHaveBeenCalledWith('split', 'vertical');
+	});
+
+	it('should reuse chapter window instead of overwriting foreshadowing file when both are open in splits and user jumps to chapter', () => {
+		const targetChapter = { path: 'Chapter2.md', name: 'Chapter2.md', basename: 'Chapter2' } as unknown as TFile;
+		const sidebarLeaf = {
+			view: { getViewType: () => 'foreshadowing-view' }
+		} as unknown as WorkspaceLeaf;
+
+		const chapterLeaf = {
+			view: Object.assign(new MarkdownView(), {
+				file: { path: 'Chapter1.md', name: 'Chapter1.md', basename: 'Chapter1' },
+				getViewType: () => 'markdown'
+			}),
+			pinned: false,
+			getViewState: () => ({ pinned: false })
+		} as unknown as WorkspaceLeaf;
+
+		const foreshadowingLeaf = {
+			view: Object.assign(new MarkdownView(), {
+				file: { path: 'Book/foreshadowing.md', name: 'foreshadowing.md', basename: 'foreshadowing' },
+				getViewType: () => 'markdown'
+			}),
+			pinned: false,
+			getViewState: () => ({ pinned: false })
+		} as unknown as WorkspaceLeaf;
+
+		const mockApp = {
+			workspace: {
+				getLeavesOfType: () => [chapterLeaf, foreshadowingLeaf],
+				iterateRootLeaves: (cb: (l: WorkspaceLeaf) => void) => {
+					cb(chapterLeaf);
+					cb(foreshadowingLeaf);
+				},
+				// User had recently focused the foreshadowing file split
+				getMostRecentLeaf: () => foreshadowingLeaf,
+				getLeaf: vi.fn()
+			}
+		} as unknown as App;
+
+		// Jumping to chapter must target chapterLeaf and NOT overwrite foreshadowingLeaf
+		const result = getLeafForFileNavigation(mockApp, targetChapter, { sourceLeaf: sidebarLeaf });
+		expect(result).toBe(chapterLeaf);
+		expect(result).not.toBe(foreshadowingLeaf);
+		expect(mockApp.workspace.getLeaf).not.toHaveBeenCalled();
+	});
+
+	it('should split vertical to open chapter when only foreshadowing file is open in root', () => {
+		const targetChapter = { path: 'Chapter1.md', name: 'Chapter1.md', basename: 'Chapter1' } as unknown as TFile;
+		const sidebarLeaf = {
+			view: { getViewType: () => 'foreshadowing-view' }
+		} as unknown as WorkspaceLeaf;
+
+		const foreshadowingLeaf = {
+			view: Object.assign(new MarkdownView(), {
+				file: { path: 'Book/foreshadowing.md', name: 'foreshadowing.md', basename: 'foreshadowing' },
+				getViewType: () => 'markdown'
+			}),
+			pinned: false,
+			getViewState: () => ({ pinned: false })
+		} as unknown as WorkspaceLeaf;
+
+		const newSplitLeaf = {
+			view: new MarkdownView(),
+			openFile: vi.fn()
+		} as unknown as WorkspaceLeaf;
+
+		const mockApp = {
+			workspace: {
+				getLeavesOfType: () => [foreshadowingLeaf],
+				iterateRootLeaves: (cb: (l: WorkspaceLeaf) => void) => {
+					cb(foreshadowingLeaf);
+				},
+				getMostRecentLeaf: () => foreshadowingLeaf,
+				getLeaf: vi.fn((mode: string, dir?: string) => {
+					if (mode === 'split' && dir === 'vertical') return newSplitLeaf;
+					return foreshadowingLeaf;
+				})
+			}
+		} as unknown as App;
+
+		// Jumping to chapter when only foreshadowing is open should split vertical to display both
+		const result = getLeafForFileNavigation(mockApp, targetChapter, { sourceLeaf: sidebarLeaf });
+		expect(result).toBe(newSplitLeaf);
+		expect(mockApp.workspace.getLeaf).toHaveBeenCalledWith('split', 'vertical');
 	});
 });

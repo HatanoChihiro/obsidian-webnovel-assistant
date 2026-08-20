@@ -213,6 +213,13 @@
 	color: var(--interactive-accent);
 	margin-bottom: 4px;
 	font-family: var(--font-monospace);
+	cursor: pointer;
+	transition: opacity 0.15s ease, color 0.15s ease;
+}
+
+.wn-timeline-time:hover {
+	text-decoration: underline;
+	opacity: 0.85;
 }
 
 
@@ -560,6 +567,16 @@
 	border-radius: 50%;
 	background: var(--interactive-accent);
 	border: 2px solid var(--background-primary);
+}
+
+.wn-timeline-node-time-text {
+	cursor: pointer;
+	transition: color 0.15s ease;
+}
+
+.wn-timeline-node-time-text:hover {
+	color: var(--interactive-accent);
+	text-decoration: underline;
 }
 
 
@@ -940,20 +957,29 @@ body .wn-timeline-waterfall-layout .wn-timeline-waterfall-sidebar.drag-over-chap
 
 
 .wn-timeline-empty-msg {
-	color: var(--text-muted);
+	color: var(--text-faint);
 	text-align: center;
-	padding: 2rem;
+	padding: 40px 20px;
 	font-style: italic;
 }
 
 
-.wn-timeline-svg-layer {
+.wn-timeline-svg-layer,
+.wn-timeline-svg-layer-fg {
 	position: absolute;
 	top: 0;
 	left: 0;
 	width: 100%;
 	height: 100%;
 	pointer-events: none;
+}
+
+.wn-timeline-svg-layer {
+	z-index: 0;
+}
+
+.wn-timeline-svg-layer-fg {
+	z-index: 10;
 }
 
 

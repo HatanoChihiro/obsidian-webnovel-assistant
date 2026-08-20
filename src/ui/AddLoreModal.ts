@@ -97,14 +97,21 @@ export class AddLoreModal extends Modal {
 		// 查找设定文件夹（支持多语言）
 		const loreFolder = this.findLoreFolder();
 
-		// 收集现有的分类文档
+		// 收集现有的分类文档（支持多层嵌套子文件夹）
 		const categoryFiles: string[] = [];
 		if (loreFolder instanceof TFolder) {
-			for (const child of loreFolder.children) {
-				if (child instanceof TFile && child.extension === 'md') {
-					categoryFiles.push(child.basename);
+			const collectCategories = (folder: TFolder, prefix: string = '') => {
+				for (const child of folder.children) {
+					if (child instanceof TFile && child.extension === 'md') {
+						const relName = prefix ? `${prefix}/${child.basename}` : child.basename;
+						categoryFiles.push(relName);
+					} else if (child instanceof TFolder) {
+						const nextPrefix = prefix ? `${prefix}/${child.name}` : child.name;
+						collectCategories(child, nextPrefix);
+					}
 				}
-			}
+			};
+			collectCategories(loreFolder);
 		}
 
 		if (categoryFiles.length > 0) {

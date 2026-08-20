@@ -156,3 +156,23 @@ export class Setting {
 }
 
 export function setIcon(el: any, iconId: string) {}
+
+export class MarkdownView {
+	file?: any;
+	editor?: any;
+	containerEl?: any;
+	getMode?(): string {
+		return 'source';
+	}
+}
+
+export class WorkspaceLeaf {
+	view?: any;
+	parent?: any;
+	openFile(file: any, options?: any): Promise<void> {
+		return Promise.resolve();
+	}
+	getViewState(): any {
+		return {};
+	}
+}

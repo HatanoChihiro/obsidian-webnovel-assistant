@@ -52,6 +52,13 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
         };
 
         (global as any).activeDocument = mockActiveDocument;
+        (global as any).window = {
+            requestAnimationFrame: vi.fn((fn: Function) => setTimeout(fn, 0)),
+            setTimeout,
+            clearTimeout,
+            setInterval,
+            clearInterval
+        };
 
         mockPlugin = {
             app: {
@@ -59,6 +66,8 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
                     getActiveViewOfType: vi.fn().mockReturnValue(null),
                     getLeavesOfType: vi.fn().mockReturnValue([]),
                     iterateRootLeaves: vi.fn(),
+                    on: vi.fn().mockReturnValue({ id: 'ref' }),
+                    offref: vi.fn(),
                     getLeaf: vi.fn().mockReturnValue({
                         setViewState: vi.fn().mockResolvedValue(undefined),
                         containerEl: { classList: { add: vi.fn() } }
@@ -76,8 +85,23 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
                 },
                 commands: { executeCommandById: vi.fn() }
             },
+            adaptiveDebounceManager: {
+                debounceFixed: vi.fn()
+            },
             settings: {
                 immersive: {
+                    immersiveTopSlots: [],
+                    immersiveBottomSlots: [],
+                    immersiveLeftSlots: [],
+                    immersiveRightSlots: [],
+                    immersiveTopSize: 20,
+                    immersiveBottomSize: 20,
+                    immersiveLeftSize: 20,
+                    immersiveRightSize: 20,
+                    immersiveTopInternalSizes: [],
+                    immersiveBottomInternalSizes: [],
+                    immersiveLeftInternalSizes: [],
+                    immersiveRightInternalSizes: [],
                     immersiveHideProperties: false,
                     typewriterEnabled: false
                 }
@@ -155,25 +179,65 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
         expect(exitSpy).not.toHaveBeenCalled();
     });
 
-    it('isImmersiveLayout detects immersive specific view types', () => {
+    it('isImmersiveLayout detects immersive specific view types and markers', () => {
         expect(manager['isImmersiveLayout']({ type: 'immersive-chapter-list' })).toBe(true);
+        expect(manager['isImmersiveLayout']({ type: 'immersive-chapter-list-view' })).toBe(true);
         expect(manager['isImmersiveLayout']({ type: 'immersive-sticky-notes' })).toBe(true);
+        expect(manager['isImmersiveLayout']({ type: 'immersive-sticky-notes-view' })).toBe(true);
+        expect(manager['isImmersiveLayout']({ cls: 'immersive-reference-view' })).toBe(true);
+        expect(manager['isImmersiveLayout']({ cls: 'immersive-main-editor' })).toBe(true);
         expect(manager['isImmersiveLayout']({ type: 'markdown' })).toBe(false);
     });
 
-    it('exitImmersiveMode detaches created leaves without calling changeLayout when createdImmersiveLeaves is populated', async () => {
-        const mockLeaf = { detach: vi.fn() } as any;
-        manager['createdImmersiveLeaves'].add(mockLeaf);
-        manager['isImmersiveActive'] = true;
+    it('buildImmersiveLayout isolates root leaves by detaching non-main root leaves', async () => {
+        const targetFile = { path: 'Book/Chapter1.md' } as any;
+        const mainLeaf = {
+            view: { file: targetFile },
+            getViewState: vi.fn().mockReturnValue({ state: { file: targetFile.path } }),
+            setViewState: vi.fn().mockResolvedValue(undefined),
+            containerEl: {
+                classList: { add: vi.fn() },
+                addEventListener: vi.fn(),
+                removeEventListener: vi.fn()
+            }
+        } as any;
 
-        const changeLayoutSpy = vi.fn();
+        const otherLeaf = {
+            detach: vi.fn(),
+            view: { file: { path: 'Book/Lore.md' } },
+            containerEl: { classList: { add: vi.fn() } }
+        } as any;
+
+        (mockPlugin.app.workspace.getLeavesOfType as any).mockReturnValue([mainLeaf]);
+        (mockPlugin.app.workspace.iterateRootLeaves as any).mockImplementation((cb: (leaf: any) => void) => {
+            cb(mainLeaf);
+            cb(otherLeaf);
+        });
+
+        await manager['buildImmersiveLayout'](targetFile);
+
+        expect(otherLeaf.detach).toHaveBeenCalled();
+        expect(mainLeaf.setViewState).toHaveBeenCalled();
+        expect(mainLeaf.containerEl.classList.add).toHaveBeenCalledWith('immersive-main-editor');
+    });
+
+    it('exitImmersiveMode detaches created leaves and restores savedLayout via changeLayout', async () => {
+        const mockCreatedLeaf = { detach: vi.fn() } as any;
+        manager['createdImmersiveLeaves'].add(mockCreatedLeaf);
+        manager['isImmersiveActive'] = true;
+        const normalLayout = { main: { type: 'split', children: [] } };
+        manager['savedLayout'] = normalLayout;
+
+        const changeLayoutSpy = vi.fn().mockResolvedValue(undefined);
         (mockPlugin.app.workspace as any).changeLayout = changeLayoutSpy;
 
         await manager.exitImmersiveMode();
 
-        expect(mockLeaf.detach).toHaveBeenCalled();
+        expect(mockCreatedLeaf.detach).toHaveBeenCalled();
         expect(manager['createdImmersiveLeaves'].size).toBe(0);
-        expect(changeLayoutSpy).not.toHaveBeenCalled();
+        expect(changeLayoutSpy).toHaveBeenCalledWith(normalLayout);
+        expect(manager['isImmersiveActive']).toBe(false);
+        expect(manager['savedLayout']).toBeNull();
     });
 
     it('tracks the most recently focused immersive Markdown leaf for advanced search', () => {

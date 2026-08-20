@@ -29,6 +29,9 @@ describe('CacheManager', () => {
             app: {
                 vault: {
                     adapter: mockAdapter
+                },
+                metadataCache: {
+                    getFileCache: vi.fn().mockReturnValue(null)
                 }
             },
             settings: {
@@ -160,6 +163,24 @@ describe('CacheManager', () => {
 			expect(manager.isEligibleForTotalWordCount(regularDoc)).toBe(false);
 			expect(manager.isEligibleForWordCount(exceptionDoc)).toBe(true);
 			expect(manager.isEligibleForTotalWordCount(exceptionDoc)).toBe(true);
+		});
+
+		it('isEligibleForChapterList should include chapters even when exclude-word-count is true, while isEligibleForWordCount excludes them', () => {
+			const excludedChapter = { path: 'Book 1/Chapter 1.md', name: 'Chapter 1.md', basename: 'Chapter 1' } as TFile;
+			(mockPlugin.app.metadataCache.getFileCache as any).mockReturnValue({
+				frontmatter: { 'exclude-word-count': true }
+			});
+
+			expect(manager.isEligibleForChapterList(excludedChapter)).toBe(true);
+			expect(manager.isEligibleForWordCount(excludedChapter)).toBe(false);
+			expect(manager.isEligibleForTotalWordCount(excludedChapter)).toBe(false);
+
+			// When exclude-word-count is false or not set
+			(mockPlugin.app.metadataCache.getFileCache as any).mockReturnValue({
+				frontmatter: { 'exclude-word-count': false }
+			});
+			expect(manager.isEligibleForChapterList(excludedChapter)).toBe(true);
+			expect(manager.isEligibleForWordCount(excludedChapter)).toBe(true);
 		});
 
 		it('updateFileCache should accept regular files in non-strict mode and reject in strict mode', () => {

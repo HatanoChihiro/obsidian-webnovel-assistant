@@ -99,11 +99,13 @@ export class GraphInteractionController {
 	private findNodeAt(gx: number, gy: number): GraphNode | null {
 		if (!this.layout) return null;
 		
+		const hitRadius = Math.max(6, GraphRenderer.NODE_HIGHLIGHT_RADIUS);
+		const hitRadiusSq = hitRadius * hitRadius;
 		for (let i = this.layout.nodes.length - 1; i >= 0; i--) {
 			const n = this.layout.nodes[i];
 			const dx = n.x - gx;
 			const dy = n.y - gy;
-			if (dx * dx + dy * dy <= GraphRenderer.NODE_HIGHLIGHT_RADIUS * GraphRenderer.NODE_HIGHLIGHT_RADIUS) {
+			if (dx * dx + dy * dy <= hitRadiusSq) {
 				return n;
 			}
 		}

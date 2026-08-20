@@ -8,7 +8,7 @@ import { GraphRenderer, type GraphRenderState } from './GraphRenderer';
 import { GraphInteractionController } from './GraphInteractionController';
 import { LoreCardRenderer } from './LoreCardRenderer';
 import { DraggableListHelper } from '../../utils/DraggableListHelper';
-import { openFileAndFocus, smartLocateAndHighlight } from '../../utils/leaf';
+import { openFileAndFocus, smartLocateAndHighlight, getLeafForFileNavigation } from '../../utils/leaf';
 
 
 export interface LoreBoardOptions {
@@ -64,7 +64,7 @@ export class LoreBoardRenderer {
         await this.renderTable(contentArea, app, plugin, files, normalizedBookPath, allCharacters, bookPath, matchedLoreHeadings);
     }
 
-    private static async renderCards(
+    public static async renderCards(
         container: HTMLElement,
         app: App,
         plugin: WebNovelAssistantPlugin,
@@ -72,7 +72,10 @@ export class LoreBoardRenderer {
         allCharacters: string[],
         matchedLoreHeadings?: ReadonlySet<string>,
         reloadBoard?: () => void,
-        ownerComponent?: Component
+        ownerComponent?: Component,
+        options?: {
+            hideTabs?: boolean;
+        }
     ) {
         if (allCharacters.length === 0) {
             container.createDiv({ cls: 'wn-corkboard-empty-msg', text: t('corkboard.no-lore') });
@@ -87,17 +90,46 @@ export class LoreBoardRenderer {
         const sortedEntries = allEntries;
 
         const renderedHeadings = new Set<string>();
-        const fileGroups = new Map<string, { fileBasename: string, entries: LoreEntry[] }>();
+        const fileGroups = new Map<string, { groupKey: string, displayName: string, entries: LoreEntry[] }>();
+        const loreFolder = plugin.characterManager.findLoreFolder(currentBookPath);
+        const loreFolderPath = loreFolder ? loreFolder.path : '';
 
         for (const entry of sortedEntries) {
             if (renderedHeadings.has(entry.heading)) continue;
             renderedHeadings.add(entry.heading);
 
-            const path = entry.file.path;
-            if (!fileGroups.has(path)) {
-                fileGroups.set(path, { fileBasename: entry.file.basename, entries: [] });
+            const fileCache = app.metadataCache.getFileCache(entry.file);
+            const hasH2 = fileCache?.headings?.some(h => h.level === 2) ?? false;
+
+            let groupKey = entry.file.path;
+            let displayName = entry.file.basename;
+
+            if (hasH2) {
+                // 大纲多词条文件模式：以文件相对路径作为分类
+                if (loreFolderPath && entry.file.path.startsWith(`${loreFolderPath}/`)) {
+                    const rel = entry.file.path.slice(loreFolderPath.length + 1).replace(/\.md$/i, '');
+                    if (rel) displayName = rel;
+                }
+            } else {
+                // 单文件独立词条模式：以该文件所在的文件夹作为分类
+                const parentFolder = entry.file.parent;
+                if (parentFolder) {
+                    groupKey = parentFolder.path;
+                    if (loreFolderPath && parentFolder.path.startsWith(`${loreFolderPath}/`)) {
+                        const rel = parentFolder.path.slice(loreFolderPath.length + 1);
+                        displayName = rel || loreFolder?.name || parentFolder.name;
+                    } else {
+                        displayName = parentFolder.isRoot() ? (loreFolder?.name || parentFolder.name) : parentFolder.name;
+                    }
+                } else {
+                    displayName = loreFolder ? loreFolder.name : entry.file.basename;
+                }
             }
-            fileGroups.get(path)!.entries.push(entry);
+
+            if (!fileGroups.has(groupKey)) {
+                fileGroups.set(groupKey, { groupKey, displayName, entries: [] });
+            }
+            fileGroups.get(groupKey)!.entries.push(entry);
         }
 
         // 设定文件 tab 排序：拉丁字母开头的文件优先于汉字开头，组内按当前语言字母序（中文按拼音）与数字自然升序排列
@@ -105,8 +137,8 @@ export class LoreBoardRenderer {
         const collator = new Intl.Collator(locale, { numeric: true, sensitivity: 'base' });
         const isLatinStart = (name: string): boolean => /^[A-Za-z]/.test(name);
         const groups = Array.from(fileGroups.entries()).sort((a, b) => {
-            const nameA = a[1].fileBasename;
-            const nameB = b[1].fileBasename;
+            const nameA = a[1].displayName;
+            const nameB = b[1].displayName;
             const latinA = isLatinStart(nameA) ? 1 : 0;
             const latinB = isLatinStart(nameB) ? 1 : 0;
             if (latinA !== latinB) return latinB - latinA;
@@ -116,13 +148,13 @@ export class LoreBoardRenderer {
         const boardLayout = container.createDiv('wn-lore-board-layout');
 
         // --- 文件选项卡栏（“全部” + 各设定文件，带条数徽标） ---
-        // 设计考量：仅在存在 2 个及以上设定文件时渲染文件 Tab 栏，当当前仅有一个设定文件时无分类筛选必要，隐藏 Tab 栏以保持界面简洁干净
+        // 设计考量：仅在存在 2 个及以上设定文件且未显式隐藏 Tab 栏时渲染文件 Tab 栏
         let activePath = plugin.settings.loreBoardActiveFile || '';
         if (!groups.some(([path]) => path === activePath)) activePath = '';
 
         const tabEls: { path: string; el: HTMLElement }[] = [];
 
-        if (groups.length > 1) {
+        if (!options?.hideTabs && groups.length > 1) {
             const tabBar = boardLayout.createDiv('wn-lore-file-tabs');
 
             const allTab = tabBar.createDiv(`wn-lore-file-tab ${activePath === '' ? 'is-active' : ''}`);
@@ -133,9 +165,9 @@ export class LoreBoardRenderer {
 
             for (const [path, group] of groups) {
                 const tab = tabBar.createDiv(`wn-lore-file-tab ${activePath === path ? 'is-active' : ''}`);
-                tab.createSpan({ cls: 'wn-lore-file-tab-label', text: group.fileBasename });
+                tab.createSpan({ cls: 'wn-lore-file-tab-label', text: group.displayName });
                 tab.createSpan({ cls: 'wn-lore-file-tab-count', text: String(group.entries.length) });
-                tab.title = `${group.fileBasename} (${group.entries.length})`;
+                tab.title = `${group.displayName} (${group.entries.length})`;
                 tabEls.push({ path, el: tab });
             }
         }
@@ -149,7 +181,7 @@ export class LoreBoardRenderer {
             const iconSpan = header.createSpan({ cls: 'wn-volume-header-icon' });
             setIcon(iconSpan, 'chevron-down');
             header.createSpan({
-                text: `${group.fileBasename} ${t('lore.file-count', { count: group.entries.length.toString() }) || `(共 ${group.entries.length} 条)`}`,
+                text: `${group.displayName} ${t('lore.file-count', { count: group.entries.length.toString() }) || `(共 ${group.entries.length} 条)`}`,
                 cls: 'wn-volume-header-title'
             });
 
@@ -214,6 +246,12 @@ export class LoreBoardRenderer {
         }
 
         const applyView = () => {
+            if (options?.hideTabs) {
+                for (const p of panels) {
+                    p.panel.hidden = false;
+                }
+                return;
+            }
             for (const tab of tabEls) {
                 tab.el.toggleClass('is-active', tab.path === activePath);
             }
@@ -229,15 +267,17 @@ export class LoreBoardRenderer {
             }
         };
 
-        // tab 点击切换（激活项持久化到插件设置）
-        for (const tab of tabEls) {
-            tab.el.onclick = () => {
-                if (tab.path === activePath) return;
-                activePath = tab.path;
-                plugin.settings.loreBoardActiveFile = tab.path || undefined;
-                void plugin.saveSettings();
-                applyView();
-            };
+        if (!options?.hideTabs) {
+            // tab 点击切换（激活项持久化到插件设置）
+            for (const tab of tabEls) {
+                tab.el.onclick = () => {
+                    if (tab.path === activePath) return;
+                    activePath = tab.path;
+                    plugin.settings.loreBoardActiveFile = tab.path || undefined;
+                    void plugin.saveSettings();
+                    applyView();
+                };
+            }
         }
 
         applyView();
@@ -291,9 +331,7 @@ export class LoreBoardRenderer {
 
         let explicitEdges: GraphEdge[] = [];
         try {
-            const loreFolderName = plugin.settings.loreFolderName || t('common.default-lore-folder-name');
-            const lorePath = bookPath ? `${bookPath}/${loreFolderName}` : loreFolderName;
-            const loreFolder = app.vault.getAbstractFileByPath(lorePath);
+            const loreFolder = plugin.characterManager.findLoreFolder(bookPath);
             if (loreFolder && loreFolder instanceof TFolder) {
                 const sampleFile = this.findFirst(loreFolder);
                 if (sampleFile) {
@@ -327,10 +365,10 @@ export class LoreBoardRenderer {
                         const cache = app.metadataCache.getFileCache(entry.file);
                         let fallbackLine: number | undefined;
                         if (cache?.headings) {
-                            const headingInfo = cache.headings.find(h => h.heading === entry.heading);
+                            const headingInfo = cache.headings.find(h => cleanLoreHeading(h.heading) === cleanLoreHeading(entry.heading));
                             if (headingInfo) fallbackLine = headingInfo.position.start.line;
                         }
-                        void smartLocateAndHighlight(app, entry.file, [`## ${entry.heading}`, entry.heading, loreName], {
+                        void smartLocateAndHighlight(app, entry.file, [`## ${entry.heading}`, `# ${entry.heading}`, entry.heading, loreName], {
                             splitIfNew: true,
                             fallbackLine
                         });
@@ -363,9 +401,7 @@ export class LoreBoardRenderer {
                 const miniCard = cardsContainer.createDiv('wn-lore-board-mini-card');
                 miniCard.onclick = () => {
                     void (async () => {
-                        let targetLeaf = app.workspace.getLeavesOfType('markdown').find(l => (l.view as unknown as { file?: { path: string } }).file?.path === item.chapter.path);
-                        if (!targetLeaf) targetLeaf = app.workspace.getLeavesOfType('markdown')[0];
-                        if (!targetLeaf) targetLeaf = app.workspace.getLeaf('split', 'vertical');
+                        const targetLeaf = getLeafForFileNavigation(app, item.chapter);
                         await openFileAndFocus(app, targetLeaf, item.chapter);
                     })();
                 };
@@ -386,9 +422,7 @@ export class LoreBoardRenderer {
         container.empty();
         container.addClass('wn-lore-graph-container');
 
-        const loreFolderName = plugin.settings.loreFolderName || t('common.default-lore-folder-name');
-        const lorePath = bookPath ? `${bookPath}/${loreFolderName}` : loreFolderName;
-        const loreFolder = app.vault.getAbstractFileByPath(lorePath);
+        const loreFolder = plugin.characterManager.findLoreFolder(bookPath);
 
         if (!loreFolder || !(loreFolder instanceof TFolder)) {
             container.createDiv({ cls: 'wn-corkboard-empty-msg', text: t('corkboard.no-lore') });
@@ -467,7 +501,8 @@ export class LoreBoardRenderer {
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
 
-        const colors = GraphRenderer.getThemeColors(activeDocument.body);
+        let cachedThemeMode = activeDocument.body.classList.contains('theme-dark');
+        let currentColors = GraphRenderer.getThemeColors(canvas.parentElement || activeDocument.body);
 
         let animationFrameId = 0;
         let currentAnimationToken = 0;
@@ -519,14 +554,21 @@ export class LoreBoardRenderer {
                     data.nodes[i].y = engine.nodes[i].y;
                 }
 
-                if (physicsRunning || needsRender) {
+                const hasActiveFocus = Boolean(state.hoveredNode || state.selectedNode);
+                if (physicsRunning || needsRender || hasActiveFocus) {
+                    const isDark = activeDocument.body.classList.contains('theme-dark');
+                    if (cachedThemeMode !== isDark) {
+                        cachedThemeMode = isDark;
+                        currentColors = GraphRenderer.getThemeColors(canvas.parentElement || activeDocument.body);
+                    }
                     const w = canvas.width / GraphRenderer.DPR;
                     const h = canvas.height / GraphRenderer.DPR;
-                    GraphRenderer.render(ctx, w, h, data, state, colors);
+                    state.animTime = performance.now();
+                    GraphRenderer.render(ctx, w, h, data, state, currentColors);
                     needsRender = false;
                 }
 
-                if (physicsRunning) {
+                if (physicsRunning || hasActiveFocus) {
                     animationFrameId = window.requestAnimationFrame(loop);
                 } else {
                     animationFrameId = 0;
@@ -589,13 +631,13 @@ export class LoreBoardRenderer {
                     if (cache?.headings) {
                         for (const h of cache.headings) {
                             const rawHeading = cleanLoreHeading(h.heading);
-                            if (rawHeading === entry.heading && h.level === 2) {
+                            if (rawHeading === cleanLoreHeading(entry.heading)) {
                                 fallbackLine = h.position.start.line;
                                 break;
                             }
                         }
                     }
-                    void smartLocateAndHighlight(app, entry.file, [`## ${entry.heading}`, entry.heading, node.id], {
+                    void smartLocateAndHighlight(app, entry.file, [`## ${entry.heading}`, `# ${entry.heading}`, entry.heading, node.id], {
                         splitIfNew: true,
                         fallbackLine
                     });

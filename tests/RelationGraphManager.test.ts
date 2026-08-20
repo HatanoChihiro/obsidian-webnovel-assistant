@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { RelationGraphManager } from '../src/services/RelationGraphManager';
+import { GraphRenderer, GRAPH_STYLE_DEFAULTS } from '../src/ui/components/GraphRenderer';
 
 // Mock translation function for 'relation-graph.edge-mention'
 vi.mock('../src/i18n', () => ({
@@ -43,20 +44,24 @@ describe('RelationGraphManager', () => {
 		});
 
 		it('应正确解析精准标题双链格式 [[文件#标题|显示名]] 和 [[#标题]]', () => {
-			const validNodeIds = new Set(['张三', '李四', 'John Doe']);
+			const validNodeIds = new Set(['张三', '李四', 'John Doe', '林雷', '风清扬']);
 			const lines = [
 				'### 关系',
 				'- **喜欢**: [[角色.md#李四|李四]]',
 				'- **助手**: [[Characters#John Doe|JD]]',
 				'- **同门**: [[#张三]]',
+				'- **宿敌**: [[角色/主角/林雷]]',
+				'- **宗师**: [[宗门/华山/剑宗#风清扬|风老前辈]]',
 			];
 
-			const edges = manager.parseExplicitRelations('主角', lines, 1, 4, validNodeIds);
+			const edges = manager.parseExplicitRelations('主角', lines, 1, 6, validNodeIds);
 
-			expect(edges.length).toBe(3);
+			expect(edges.length).toBe(5);
 			expect(edges[0]).toEqual({ source: '主角', target: '李四', label: '喜欢', type: 'explicit' });
 			expect(edges[1]).toEqual({ source: '主角', target: 'John Doe', label: '助手', type: 'explicit' });
 			expect(edges[2]).toEqual({ source: '主角', target: '张三', label: '同门', type: 'explicit' });
+			expect(edges[3]).toEqual({ source: '主角', target: '林雷', label: '宿敌', type: 'explicit' });
+			expect(edges[4]).toEqual({ source: '主角', target: '风清扬', label: '宗师', type: 'explicit' });
 		});
 
 		it('应支持多个目标的分割', () => {
@@ -203,6 +208,108 @@ describe('RelationGraphManager', () => {
 			expect(nodes[0].aliases).toEqual(['三哥', '小张']);
 			expect(nodes[1].id).toBe('李四');
 			expect(nodes[1].aliases).toEqual(['四弟']);
+		});
+
+		it('应能正确解析单文件词条（无二级标题，以文件名作为节点）', () => {
+			const file = { basename: '主角', path: '设定/角色/主角.md' } as any;
+			const fileCache = {
+				headings: [
+					{ level: 1, heading: '主角', position: { start: { line: 0 }, end: { line: 0 } } }
+				],
+				frontmatter: {
+					type: '主角',
+					aliases: ['小主', '大侠']
+				}
+			} as any;
+			const lines = [
+				'---',
+				'type: 主角',
+				'aliases: [小主, 大侠]',
+				'---',
+				'# 主角',
+				'**别名**：天选之子',
+				'这里是主角的详细背景...'
+			];
+
+			const nodes = manager.extractNodes(file, fileCache, lines);
+			expect(nodes.length).toBe(1);
+			expect(nodes[0].id).toBe('主角');
+			expect(nodes[0].isProtagonist).toBe(true);
+			expect(nodes[0].aliases).toContain('小主');
+			expect(nodes[0].aliases).toContain('大侠');
+			expect(nodes[0].aliases).toContain('天选之子');
+		});
+
+		it('应能正确解析完全无 Markdown 标题的单文件设定', () => {
+			const file = { basename: '女配', path: '设定/角色/女配.md' } as any;
+			const fileCache = {
+				frontmatter: {
+					type: '主要角色'
+				}
+			} as any;
+			const lines = [
+				'---',
+				'type: 主要角色',
+				'---',
+				'**别名**：小师妹',
+				'女配是主角的师妹。'
+			];
+
+			const nodes = manager.extractNodes(file, fileCache, lines);
+			expect(nodes.length).toBe(1);
+			expect(nodes[0].id).toBe('女配');
+			expect(nodes[0].nodeType).toBe('主要角色');
+			expect(nodes[0].aliases).toContain('小师妹');
+		});
+	});
+
+	describe('findRelationSection for single-file lore', () => {
+		it('应在单文件模式下正确识别 ## 关系 标题', () => {
+			const headings = [
+				{ level: 1, heading: '女主角', position: { start: { line: 0 }, end: { line: 0 } } },
+				{ level: 2, heading: '关系', position: { start: { line: 5 }, end: { line: 5 } } },
+				{ level: 2, heading: '背景', position: { start: { line: 9 }, end: { line: 9 } } }
+			] as any;
+			const lines = [
+				'# 女主角',
+				'正文介绍...',
+				'',
+				'',
+				'',
+				'## 关系',
+				'- **师兄**: 男主角',
+				'',
+				'',
+				'## 背景',
+				'背景介绍...'
+			];
+
+			const relSection = manager.findRelationSection(headings, -1, 0, lines.length, lines);
+			expect(relSection).not.toBeNull();
+			expect(relSection?.startLine).toBe(6);
+			expect(relSection?.endLine).toBe(9);
+		});
+	});
+
+	describe('GraphRenderer Style Defaults', () => {
+		it('应采用适度精致的节点小圆点半径与高亮放大半径', () => {
+			expect(GRAPH_STYLE_DEFAULTS.NODE_RADIUS).toBe(3.5);
+			expect(GRAPH_STYLE_DEFAULTS.NODE_HIGHLIGHT_RADIUS).toBe(5.5);
+			expect(GraphRenderer.NODE_RADIUS).toBe(3.5);
+			expect(GraphRenderer.NODE_HIGHLIGHT_RADIUS).toBe(5.5);
+		});
+
+		it('应定义完整的样式默认值供 CSS 变量解耦与自定义覆盖', () => {
+			expect(GRAPH_STYLE_DEFAULTS.LABEL_FONT_SIZE).toBe(6);
+			expect(GRAPH_STYLE_DEFAULTS.NODE_FONT_SIZE).toBe(10);
+			expect(GRAPH_STYLE_DEFAULTS.LABEL_PADDING_X).toBe(4);
+			expect(GRAPH_STYLE_DEFAULTS.LABEL_PADDING_Y).toBe(3);
+			expect(GRAPH_STYLE_DEFAULTS.LABEL_GAP).toBe(4);
+			expect(GRAPH_STYLE_DEFAULTS.NODE_SHADOW_BLUR_SELECTED).toBe(15);
+			expect(GRAPH_STYLE_DEFAULTS.NODE_SHADOW_BLUR_HOVER).toBe(10);
+			expect(GRAPH_STYLE_DEFAULTS.CURVE_OFFSET).toBe(20);
+			expect(GRAPH_STYLE_DEFAULTS.LINE_WIDTH).toBe(0.5);
+			expect(GRAPH_STYLE_DEFAULTS.PULSE_GLOW_RATIO).toBe(2.2);
 		});
 	});
 });

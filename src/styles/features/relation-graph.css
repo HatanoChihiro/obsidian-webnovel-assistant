@@ -86,26 +86,70 @@
 }
 
 
-/* ========== Lore Graph Styles ========== */
+/* ========== Lore Graph Theme Variables ========== */
 /*
-   Extracted hardcoded colors, allowing users to customize via CSS Snippets without recompiling the plugin
+   Extracted style variables, allowing users to customize via CSS Snippets without recompiling the plugin
    If not set, defaults from TS code will be used
 */
-.wna-relation-graph-container {
+.wna-relation-graph-container,
+.wn-lore-graph-container {
 	width: 100%;
 	height: 100%;
 	position: relative;
 	overflow: hidden;
-	/* Protagonist overlay red (default) */
+
+	/* 字体族 */
+	--wna-rg-font-family: var(--font-interface, sans-serif);
+
+	/* 节点几何尺寸与文字排版 */
+	--wna-rg-node-radius: 3.5;
+	--wna-rg-node-highlight-radius: 5.5;
+	--wna-rg-node-font-size: 10;
+	--wna-rg-node-shadow-blur-selected: 15;
+	--wna-rg-node-shadow-blur-hover: 10;
+
+	/* 主角强调覆盖色 */
 	--wna-rg-protagonist-overlay: color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 45%, var(--text-error, var(--interactive-accent)) 55%) 50%, transparent);
-	/* Protagonist overlay red (hover highlight) */
 	--wna-rg-protagonist-overlay-hover: color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 45%, var(--text-error, var(--interactive-accent)) 55%) 80%, transparent);
-	/* Protagonist glow shadow color */
 	--wna-rg-protagonist-shadow: color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 45%, var(--text-error, var(--interactive-accent)) 55%) 80%, transparent);
-	/* Mention Edge Style Variables */
+
+	/* 连线与渐变样式 */
+	--wna-rg-line-color: var(--graph-line, var(--background-modifier-border));
+	--wna-rg-line-width: 0.5;
+	--wna-rg-line-gradient-start-alpha: 0.25;
+	--wna-rg-line-gradient-end-alpha: 0.95;
+	--wna-rg-line-bidi-mid-alpha: 0.45;
+	--wna-rg-node-gap: 3.5;
+	--wna-rg-curve-offset: 20;
+
+	/* 端点几何样式（起始空心微环，末端实心微点，统一 1.0px 半径） */
+	--wna-rg-start-dot-radius: 1.0;
+	--wna-rg-end-ring-radius: 1.0;
+
+	/* 关系标签排版样式 */
+	--wna-rg-label-font-size: 6;
+	--wna-rg-label-padding-x: 4;
+	--wna-rg-label-padding-y: 3;
+	--wna-rg-label-gap: 4;
+
+	/* 聚焦流光光束配置（彗星式渐变拖尾） */
+	--wna-rg-pulse-color: var(--text-normal);
+	--wna-rg-pulse-period-ms: 2200;
+	--wna-rg-pulse-trail-ratio: 0.35;
+	--wna-rg-pulse-glow-alpha: 0.35;
+	--wna-rg-pulse-core-alpha: 0.95;
+	--wna-rg-pulse-glow-ratio: 2.2;
+
+	/* 提及类型连线变量 */
 	--wna-rg-mention-line-color: var(--text-faint);
 	--wna-rg-mention-text-color: var(--text-faint);
 	--wna-rg-mention-border-color: var(--text-faint);
 	--wna-rg-mention-line-dash: 4, 4;
 	--wna-rg-mention-label-dash: 2, 2;
+}
+
+.wn-graph-color-probe {
+	display: none;
+	position: absolute;
+	pointer-events: none;
 }

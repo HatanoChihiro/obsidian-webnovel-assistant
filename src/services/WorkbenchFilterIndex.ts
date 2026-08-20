@@ -44,8 +44,8 @@ export function stripMarkdownFrontmatter(content: string): string {
 
 export { cleanLoreHeading };
 
-/** Extract the same level-two lore sections used by CharacterManager. */
-export function extractLoreSections(content: string): Map<string, string> {
+/** Extract the same level-two lore sections used by CharacterManager, or fallback to file-level body text for single-file lore. */
+export function extractLoreSections(content: string, fallbackHeading?: string): Map<string, string> {
 	const lines = content.split(/\r?\n/);
 	const headings: Array<{ line: number; level: number; text: string }> = [];
 
@@ -72,6 +72,17 @@ export function extractLoreSections(content: string): Map<string, string> {
 			heading.text,
 			normalizeWorkbenchSearchText(lines.slice(heading.line + 1, endLine).join('\n'))
 		);
+	}
+
+	// 单文件词条模式回退：若无任何二级标题且提供了 fallbackHeading
+	if (sections.size === 0 && fallbackHeading) {
+		const cleanedFallback = cleanLoreHeading(fallbackHeading);
+		if (cleanedFallback) {
+			sections.set(
+				cleanedFallback,
+				normalizeWorkbenchSearchText(stripMarkdownFrontmatter(content))
+			);
+		}
 	}
 
 	return sections;
@@ -178,7 +189,7 @@ export class WorkbenchFilterIndex {
 
 		try {
 			const content = await this.app.vault.cachedRead(file);
-			const sections = extractLoreSections(content);
+			const sections = extractLoreSections(content, file.basename);
 			this.loreSectionCache.set(file.path, { mtime, sections });
 			return sections;
 		} catch (error) {

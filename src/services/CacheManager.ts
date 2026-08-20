@@ -6,6 +6,7 @@ import { t } from '../i18n';
 import { CACHE_CONFIG } from '../constants';
 import { SerializedWriter } from '../utils/SerializedWriter';
 import { getPluginDir, isMobile } from '../utils/platform';
+import { isExcludedFromWordCount } from '../utils/validation';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 
 const CACHE_VERSION = 3;
@@ -428,7 +429,7 @@ export class CacheManager {
 		return false;
 	}
 
-	isEligibleForWordCount(file: TFile): boolean {
+	isEligibleForChapterList(file: TFile): boolean {
 		if (!this.isFileInWorkspace(file)) return false;
 		if (file.basename.includes("_合并章节")) return false;
 
@@ -454,6 +455,17 @@ export class CacheManager {
 
 		if (this.plugin.settings.enableStrictChapterMode) {
 			return ChapterSorter.isChapterFile(file.name) || this.isFileInStrictChapterException(file);
+		}
+
+		return true;
+	}
+
+	isEligibleForWordCount(file: TFile): boolean {
+		if (!this.isEligibleForChapterList(file)) return false;
+
+		const cache = this.plugin.app.metadataCache.getFileCache(file);
+		if (isExcludedFromWordCount(cache?.frontmatter)) {
+			return false;
 		}
 
 		return true;

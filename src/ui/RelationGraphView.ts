@@ -24,7 +24,8 @@ import type { WorkspaceLeaf } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { GraphNode, GraphData, GraphEdge } from '../services/RelationGraphManager';
 import { ForceLayoutEngine, type LayoutNode, type LayoutEdge } from '../services/ForceLayoutEngine';
-import { GraphRenderer, type GraphRenderState } from './components/GraphRenderer';
+import { GraphRenderer, type GraphRenderState, type ThemeColors } from './components/GraphRenderer';
+import { cleanLoreHeading } from '../services/CharacterManager';
 import { t } from '../i18n';
 import { smartLocateAndHighlight } from '../utils/leaf';
 
@@ -52,12 +53,6 @@ export interface EdgeRenderTask {
 // ==========================================
 
 export const RELATION_GRAPH_VIEW_TYPE = 'webnovel-relation-graph';
-
-/** 节点渲染半径（像素） */
-
-
-/** 节点选中/高亮时的放大半径 */
-const NODE_HIGHLIGHT_RADIUS = 7;
 
 /** 缩放限制 */
 const MIN_SCALE = 0.2;
@@ -578,13 +573,14 @@ export class RelationGraphView extends ItemView {
 			this.syncNodePositions();
 
 			// 渲染
-			if (physicsRunning || this.needsRender) {
+			const hasActiveFocus = Boolean(this.hoveredNode || this.selectedNode);
+			if (physicsRunning || this.needsRender || hasActiveFocus) {
 				this.render();
 				this.needsRender = false;
 			}
 
-			// 只要物理还在运动，就继续下一帧；如果没有运动了，就挂起等待事件唤醒
-			if (physicsRunning) {
+			// 只要物理还在运动，或者存在聚焦高亮（有悬停/选中节点产生流光脉动），就继续下一帧；如果没有运动了，就挂起等待事件唤醒
+			if (physicsRunning || hasActiveFocus) {
 				this.animationFrameId = window.requestAnimationFrame(loop);
 			} else {
 				this.animationFrameId = 0;
@@ -636,54 +632,31 @@ export class RelationGraphView extends ItemView {
 			edgeDrawModeMap: this.edgeDrawModeMap,
 			edgeOffsetMap: this.edgeOffsetMap,
 			combinedLabelMap: this.combinedLabelMap,
-			graphData: graphDataForRender
+			graphData: graphDataForRender,
+			animTime: performance.now()
 		};
 
 		GraphRenderer.render(ctx, width, height, graphDataForRender, state, colors);
 	}
 
 	private cachedColors: ThemeColors | null = null;
+	private cachedThemeMode: boolean | null = null;
 
 	/**
 	 * 从 Obsidian 的 CSS 变量中读取主题颜色
-	 * 添加缓存避免每帧调用 getComputedStyle 导致严重的性能卡顿
+	 * 添加缓存避免每帧调用 getComputedStyle 导致严重的性能卡顿，并在明暗模式切换时自动更新
 	 */
 	private getThemeColors(): ThemeColors {
-		if (this.cachedColors) return this.cachedColors;
+		const doc = activeDocument || (typeof document !== 'undefined' ? document : null);
+		const isDark = doc?.body ? doc.body.classList.contains('theme-dark') : true;
 
-		const rootStyle = getComputedStyle(activeDocument.body);
-		this.cachedColors = {
-			accent: rootStyle.getPropertyValue('--interactive-accent').trim() || '#7f6df2',
-			textNormal: rootStyle.getPropertyValue('--text-normal').trim() || '#dcddde',
-			textMuted: rootStyle.getPropertyValue('--text-muted').trim() || '#999',
-			textFaint: rootStyle.getPropertyValue('--text-faint').trim() || '#666',
-			bgPrimary: rootStyle.getPropertyValue('--background-primary').trim() || '#1e1e1e',
-			// Graph specific variables (fallback to sensible defaults if not defined by theme)
-			graphNode: rootStyle.getPropertyValue('--graph-node').trim() || rootStyle.getPropertyValue('--text-muted').trim() || '#999',
-			graphLine: rootStyle.getPropertyValue('--graph-line').trim() || rootStyle.getPropertyValue('--background-modifier-border').trim() || '#444',
-			graphText: rootStyle.getPropertyValue('--graph-text').trim() || rootStyle.getPropertyValue('--text-normal').trim() || '#dcddde',
-			graphNodeFocused: rootStyle.getPropertyValue('--graph-node-focused').trim() || rootStyle.getPropertyValue('--interactive-accent').trim() || '#7f6df2',
-			
-			// 设定图谱专属
-			protagonistOverlay: rootStyle.getPropertyValue('--wna-rg-protagonist-overlay').trim() || 'rgba(224, 108, 117, 0.5)',
-			protagonistOverlayHover: rootStyle.getPropertyValue('--wna-rg-protagonist-overlay-hover').trim() || 'rgba(224, 108, 117, 0.8)',
-						protagonistShadow: rootStyle.getPropertyValue('--wna-rg-protagonist-shadow').trim() || 'rgba(224, 108, 117, 0.8)',
-			mentionLineColor: rootStyle.getPropertyValue('--wna-rg-mention-line-color').trim() || rootStyle.getPropertyValue('--text-faint').trim() || '#666',
-			mentionTextColor: rootStyle.getPropertyValue('--wna-rg-mention-text-color').trim() || rootStyle.getPropertyValue('--text-faint').trim() || '#666',
-			mentionBorderColor: rootStyle.getPropertyValue('--wna-rg-mention-border-color').trim() || rootStyle.getPropertyValue('--text-faint').trim() || '#666',
-			mentionLineDash: (rootStyle.getPropertyValue('--wna-rg-mention-line-dash').trim() || '4, 4').split(',').map(n => parseFloat(n.trim())),
-			mentionLabelDash: (rootStyle.getPropertyValue('--wna-rg-mention-label-dash').trim() || '2, 2').split(',').map(n => parseFloat(n.trim())),
-			typePalette: [
-				rootStyle.getPropertyValue('--color-red').trim() || '#ef4444',
-				rootStyle.getPropertyValue('--color-orange').trim() || '#f97316',
-				rootStyle.getPropertyValue('--color-yellow').trim() || '#eab308',
-				rootStyle.getPropertyValue('--color-green').trim() || '#22c55e',
-				rootStyle.getPropertyValue('--color-cyan').trim() || '#06b6d4',
-				rootStyle.getPropertyValue('--color-blue').trim() || '#3b82f6',
-				rootStyle.getPropertyValue('--color-purple').trim() || '#a855f7',
-				rootStyle.getPropertyValue('--color-pink').trim() || '#ec4899',
-			],
-		};
+		if (this.cachedColors && this.cachedThemeMode === isDark) {
+			return this.cachedColors;
+		}
+
+		this.cachedThemeMode = isDark;
+		const targetEl = this.container || this.containerEl || doc?.body || null;
+		this.cachedColors = GraphRenderer.getThemeColors(targetEl);
 		return this.cachedColors;
 	}
 
@@ -772,10 +745,10 @@ export class RelationGraphView extends ItemView {
 						const cache = this.app.metadataCache.getFileCache(entry.file);
 						let fallbackLine: number | undefined;
 						if (cache?.headings) {
-							const headingInfo = cache.headings.find(h => h.heading === entry.heading);
+							const headingInfo = cache.headings.find(h => cleanLoreHeading(h.heading) === cleanLoreHeading(entry.heading));
 							if (headingInfo) fallbackLine = headingInfo.position.start.line;
 						}
-						void smartLocateAndHighlight(this.app, entry.file, [`## ${entry.heading}`, entry.heading, node.id], {
+						void smartLocateAndHighlight(this.app, entry.file, [`## ${entry.heading}`, `# ${entry.heading}`, entry.heading, node.id], {
 							sourceLeaf: this.leaf,
 							splitIfNew: true,
 							fallbackLine
@@ -946,10 +919,10 @@ export class RelationGraphView extends ItemView {
 						const cache = this.app.metadataCache.getFileCache(entry.file);
 						let fallbackLine: number | undefined;
 						if (cache?.headings) {
-							const headingInfo = cache.headings.find(h => h.heading === entry.heading);
+							const headingInfo = cache.headings.find(h => cleanLoreHeading(h.heading) === cleanLoreHeading(entry.heading));
 							if (headingInfo) fallbackLine = headingInfo.position.start.line;
 						}
-						void smartLocateAndHighlight(this.app, entry.file, [`## ${entry.heading}`, entry.heading, node.id], {
+						void smartLocateAndHighlight(this.app, entry.file, [`## ${entry.heading}`, `# ${entry.heading}`, entry.heading, node.id], {
 							sourceLeaf: this.leaf,
 							splitIfNew: true,
 							fallbackLine
@@ -1075,11 +1048,13 @@ export class RelationGraphView extends ItemView {
 	 */
 	private findNodeAt(gx: number, gy: number): GraphNode | null {
 		// 倒序遍历，优先匹配上层（后绘制的）节点
+		const hitRadius = Math.max(6, GraphRenderer.NODE_HIGHLIGHT_RADIUS);
+		const hitRadiusSq = hitRadius * hitRadius;
 		for (let i = this.graphData.nodes.length - 1; i >= 0; i--) {
 			const node = this.graphData.nodes[i];
 			const dx = gx - node.x;
 			const dy = gy - node.y;
-			if (dx * dx + dy * dy <= NODE_HIGHLIGHT_RADIUS * NODE_HIGHLIGHT_RADIUS) {
+			if (dx * dx + dy * dy <= hitRadiusSq) {
 				return node;
 			}
 		}
@@ -1278,41 +1253,4 @@ export class RelationGraphView extends ItemView {
 		// 如果不是 hex，原样返回
 		return color;
 	}
-}
-
-// ==========================================
-// 辅助类型
-// ==========================================
-
-/** Obsidian 主题颜色集合 */
-interface ThemeColors {
-	/** 强调色（节点填充） */
-	accent: string;
-	textNormal: string;
-	textMuted: string;
-	textFaint: string;
-	bgPrimary: string;
-	/** 官方图谱节点色 */
-	graphNode: string;
-	/** 官方图谱连线色 */
-	graphLine: string;
-	/** 官方图谱文字色 */
-	graphText: string;
-	/** 官方图谱焦点节点色 */
-	graphNodeFocused: string;
-
-	// --- 设定图谱专属 CSS 变量 ---
-	/** 主角叠加颜色 (默认) */
-	protagonistOverlay: string;
-	/** 主角叠加颜色 (悬浮/高亮) */
-	protagonistOverlayHover: string;
-	/** 主角高亮阴影色 */
-	protagonistShadow: string;
-	mentionLineDash: number[];
-	mentionLabelDash: number[];
-	mentionLineColor: string;
-	mentionTextColor: string;
-	mentionBorderColor: string;
-	/** 节点类型动态配色池 */
-	typePalette: string[];
 }

@@ -34,8 +34,7 @@ class NewChapterModal extends Modal {
     onOpen() {
         const { contentEl } = this;
         new Setting(contentEl).setHeading().setName(t('corkboard.new-chapter'));
-        const inputEl = contentEl.createEl('input', { type: 'text' });
-        inputEl.setCssStyles({ width: '100%', marginBottom: '1em' });
+        const inputEl = contentEl.createEl('input', { type: 'text', cls: 'wn-new-chapter-input' });
         inputEl.value = this.defaultPrefix;
 
         const btn = contentEl.createEl('button', { text: t('common.confirm') });
@@ -762,8 +761,7 @@ export class WorkbenchView extends ItemView {
 
         const hintEl = header.createEl('p', { cls: 'wn-corkboard-hint' });
         hintEl.appendText(t('corkboard.current-novel', { name: displayBookName }) + ' ');
-        const switchSpan = hintEl.createSpan({ text: t('corkboard.click-to-switch') });
-        switchSpan.setCssStyles({ cursor: 'pointer', color: 'var(--text-muted)' });
+        const switchSpan = hintEl.createSpan({ text: t('corkboard.click-to-switch'), cls: 'wn-corkboard-switch-novel' });
 
         switchSpan.onclick = (e) => {
             const menu = new Menu();
@@ -1309,7 +1307,7 @@ export class WorkbenchView extends ItemView {
             if (bookFolder instanceof TFolder) {
                 const list: TFile[] = [];
                 Vault.recurseChildren(bookFolder, (child: TAbstractFile) => {
-                    if (child instanceof TFile && child.extension === 'md' && this.plugin.cacheManager.isEligibleForWordCount(child)) {
+                    if (child instanceof TFile && child.extension === 'md' && this.plugin.cacheManager.isEligibleForChapterList(child)) {
                         list.push(child);
                     }
                 });

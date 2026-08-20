@@ -4,7 +4,7 @@ import { ForeshadowingStatus, type ParsedForeshadowingEntry } from '../types/for
 import { ChapterSorter } from '../services/ChapterSorter';
 import { t } from '../i18n';
 import { getCurrentBookContext, findBookRoot } from '../utils/path';
-import { ChapterCard } from './components/ChapterCard';
+import { CorkboardGridRenderer } from './components/CorkboardGridRenderer';
 
 export const CORKBOARD_VIEW_TYPE = 'webnovel-corkboard';
 
@@ -123,7 +123,7 @@ export class ChapterOverviewView extends ItemView {
             if (bookFolder instanceof TFolder) {
                 const list: TFile[] = [];
                 Vault.recurseChildren(bookFolder, (child: TAbstractFile) => {
-                    if (child instanceof TFile && child.extension === 'md' && this.plugin.cacheManager.isEligibleForWordCount(child)) {
+                    if (child instanceof TFile && child.extension === 'md' && this.plugin.cacheManager.isEligibleForChapterList(child)) {
                         list.push(child);
                     }
                 });
@@ -205,14 +205,17 @@ export class ChapterOverviewView extends ItemView {
             }
         }
 
-        for(const file of files) {
-            ChapterCard.render(newGrid, file, this.app, this.plugin, foreshadowingMap.get(file.basename) || [], {
-                draggable: false,
-                onSaveStateChange: (isSaving) => { this.isSavingMetadata = isSaving; },
-                currentBookPath: this.currentBookPath || '',
-                maxLoreLines: 2
-            });
-        }
+        CorkboardGridRenderer.render({
+            app: this.app,
+            plugin: this.plugin,
+            container: newGrid,
+            files,
+            foreshadowingMap,
+            draggable: false,
+            currentBookPath: this.currentBookPath || '',
+            onSaveStateChange: (isSaving) => { this.isSavingMetadata = isSaving; },
+            maxLoreLines: 2
+        });
         
         window.requestAnimationFrame(() => {
             if (newGrid && scrollTop > 0) newGrid.scrollTop = scrollTop;

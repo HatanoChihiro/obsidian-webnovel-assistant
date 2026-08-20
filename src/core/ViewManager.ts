@@ -9,6 +9,7 @@ import { ImmersiveChapterListView } from '../ui/ImmersiveChapterListView';
 import { ImmersiveStickyNotesView } from '../ui/ImmersiveStickyNotesView';
 import { StickyNoteListView } from '../ui/StickyNoteListView';
 import { ChapterOverviewView, CORKBOARD_VIEW_TYPE } from '../ui/ChapterOverviewView';
+import { LoreOverviewView, LORE_OVERVIEW_VIEW_TYPE } from '../ui/LoreOverviewView';
 import { WorkbenchView, WORKBENCH_VIEW_TYPE } from '../ui/WorkbenchView';
 import { RelationGraphView, RELATION_GRAPH_VIEW_TYPE } from '../ui/RelationGraphView';
 
@@ -25,6 +26,7 @@ export class ViewManager {
 		this.plugin.registerView(TIMELINE_VIEW_TYPE, (leaf) => new TimelineView(leaf, this.plugin));
 		this.plugin.registerView(WORKBENCH_VIEW_TYPE, (leaf) => new WorkbenchView(leaf, this.plugin));
 		this.plugin.registerView(CORKBOARD_VIEW_TYPE, (leaf) => new ChapterOverviewView(leaf, this.plugin));
+		this.plugin.registerView(LORE_OVERVIEW_VIEW_TYPE, (leaf) => new LoreOverviewView(leaf, this.plugin));
 		this.plugin.registerView(RELATION_GRAPH_VIEW_TYPE, (leaf) => new RelationGraphView(leaf, this.plugin));
 		this.plugin.registerView(VIEW_TYPES.STICKY_NOTE_LIST, (leaf) => new StickyNoteListView(leaf, this.plugin));
 		
@@ -41,6 +43,7 @@ export class ViewManager {
 			TIMELINE_VIEW_TYPE,
 			WORKBENCH_VIEW_TYPE,
 			CORKBOARD_VIEW_TYPE,
+			LORE_OVERVIEW_VIEW_TYPE,
 			RELATION_GRAPH_VIEW_TYPE,
 			VIEW_TYPES.IMMERSIVE_CHAPTER_LIST,
 			VIEW_TYPES.IMMERSIVE_STICKY_NOTES,

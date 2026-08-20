@@ -66,7 +66,7 @@ export class TimelineView extends CreativeView {
 	 * 使用智能文本匹配进行精准跳转
 	 */
 	private async openFileWithSmartLocate(file: TFile, searchText: string) {
-		await smartLocateAndHighlight(this.app, file, [searchText]);
+		await smartLocateAndHighlight(this.app, file, [searchText], { sourceLeaf: this.leaf });
 	}
 
 	private getTypeFilterOptions(entries: TimelineEntry[]): string[] {
@@ -278,8 +278,33 @@ export class TimelineView extends CreativeView {
 		// 拖拽手柄
 		content.createDiv({ cls: 'wn-timeline-drag-handle', text: '⠿' });
 
-		// 时间点
-		content.createDiv({ cls: 'wn-timeline-time', text: entry.time });
+		// 时间点（标题 - 点击直接跳转到时间线文件对应条目）
+		const timeEl = content.createDiv({ cls: 'wn-timeline-time', text: entry.time });
+		timeEl.title = t('common.jump-to-entry');
+		timeEl.onclick = async (e) => {
+			e.stopPropagation();
+			const timelineFile = this.manager.getTimelineFile();
+			if (!timelineFile) {
+				new Notice(t('common.file-not-found', { name: this.getWatchFileName() }));
+				return;
+			}
+			const fileCache = this.app.metadataCache.getFileCache(timelineFile);
+			let fallbackLine: number | undefined;
+			if (fileCache?.headings) {
+				for (const h of fileCache.headings) {
+					if (h.heading.trim() === entry.time.trim()) {
+						fallbackLine = h.position.start.line;
+						break;
+					}
+				}
+			}
+			await smartLocateAndHighlight(
+				this.app,
+				timelineFile,
+				[`## ${entry.time}`, `# ${entry.time}`, entry.time],
+				{ sourceLeaf: this.leaf, splitIfNew: true, fallbackLine }
+			);
+		};
 
 		// 列表项（描述 + 章节链接）
 		const itemsToRender = entry.items && entry.items.length > 0

@@ -938,7 +938,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		const workspaceFolders = this.settings.workspaceFolders || [];
 		if (workspaceFolders.length === 0) {
 			const allFiles = this.getVaultMarkdownFiles();
-			return includeLore ? allFiles : allFiles.filter(f => this.cacheManager.isEligibleForWordCount(f));
+			return includeLore ? allFiles : allFiles.filter(f => this.cacheManager.isEligibleForChapterList(f));
 		}
 
 		const workspaceFiles: TFile[] = [];
@@ -948,14 +948,14 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			if (folder instanceof TFolder) {
 				Vault.recurseChildren(folder, (file: TAbstractFile) => {
 					if (file instanceof TFile && file.extension === 'md' && !seenPaths.has(file.path)) {
-						if (includeLore || this.cacheManager.isEligibleForWordCount(file)) {
+						if (includeLore || this.cacheManager.isEligibleForChapterList(file)) {
 							seenPaths.add(file.path);
 							workspaceFiles.push(file);
 						}
 					}
 				});
 			} else if (folder instanceof TFile && folder.extension === 'md' && !seenPaths.has(folder.path)) {
-				if (includeLore || this.cacheManager.isEligibleForWordCount(folder)) {
+				if (includeLore || this.cacheManager.isEligibleForChapterList(folder)) {
 					seenPaths.add(folder.path);
 					workspaceFiles.push(folder);
 				}
@@ -1184,6 +1184,10 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 
 	public isFileInStrictChapterException(file: TFile): boolean {
 		return this.cacheManager.isFileInStrictChapterException(file);
+	}
+
+	public isEligibleForChapterList(file: TFile): boolean {
+		return this.cacheManager.isEligibleForChapterList(file);
 	}
 
 	public isEligibleForWordCount(file: TFile): boolean {

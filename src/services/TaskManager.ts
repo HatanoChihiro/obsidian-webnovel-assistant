@@ -227,8 +227,6 @@ export class TaskManager {
 					changed = true;
 				} else {
 					const progress = this.calcProgress(entry, folderPath);
-					// 如果缓存未就绪（progress=0 但 startSnapshot>0），跳过关闭以避免误判
-					if (progress === 0 && entry.startSnapshot > 0) continue;
 					const status: TaskStatus = progress >= entry.wordTarget ? 'completed' : 'incomplete';
 					await this.updateEntryStatus(entry.period, status, progress, entry.taskType, folderPath);
 					changed = true;

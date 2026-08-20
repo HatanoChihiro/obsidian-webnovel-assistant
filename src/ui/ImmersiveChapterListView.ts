@@ -213,6 +213,8 @@ export class ImmersiveChapterListView extends ItemView {
 				if (this.plugin.settings.showExplorerCounts) {
 					if (this.plugin.cacheManager.isEligibleForWordCount(file)) {
 						itemEl.createSpan({ text: `${wordCount}${t('common.word-char')}`, cls: 'immersive-chapter-count' });
+					} else {
+						itemEl.createSpan({ text: t('corkboard.wordcount-excluded'), cls: 'immersive-chapter-count is-excluded' });
 					}
 				}
 

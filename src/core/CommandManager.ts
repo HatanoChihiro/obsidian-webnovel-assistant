@@ -138,6 +138,15 @@ export class CommandManager {
 			}
 		});
 
+		this.plugin.addCommand({
+			id: 'toggle-lore-overview-view',
+			name: t('command.open-lore-overview'),
+			icon: 'book-marked',
+			editorCallback: () => {
+				void this.plugin.viewManager.toggleView('webnovel-lore-overview');
+			}
+		});
+
 		if (isDesktop()) { // Desktop
 			this.plugin.addCommand({
 				id: 'toggle-immersive-mode',

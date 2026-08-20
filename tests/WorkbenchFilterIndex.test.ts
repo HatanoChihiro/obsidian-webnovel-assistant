@@ -88,4 +88,31 @@ describe('WorkbenchFilterIndex helpers', () => {
 		expect(await index.filterLoreEntries(entries, aliases, '林默 记者')).toEqual(new Set());
 		expect(cachedRead).toHaveBeenCalledTimes(1);
 	});
+
+	it('supports single-file lore without H2 headings via fallbackHeading', async () => {
+		const sections = extractLoreSections([
+			'---',
+			'aliases: [主角, 剑圣]',
+			'---',
+			'# 林雷',
+			'林雷是本作的男主角，手持重剑。'
+		].join('\n'), '林雷');
+
+		expect(sections.get('林雷')).toContain('手持重剑');
+
+		const file = { path: '小说/设定/角色/林雷.md', basename: '林雷', stat: { mtime: 1 } };
+		const cachedRead = vi.fn(async () => [
+			'---',
+			'aliases: [主角, 剑圣]',
+			'---',
+			'林雷是本作的男主角，手持重剑。'
+		].join('\n'));
+		const index = new WorkbenchFilterIndex({ vault: { cachedRead } } as never);
+		const entries = [
+			{ file, heading: '林雷' }
+		] as never;
+		const aliases = new Map<string, string[]>([['林雷', ['主角', '剑圣']]]);
+
+		expect(await index.filterLoreEntries(entries, aliases, '剑圣 重剑')).toEqual(new Set(['林雷']));
+	});
 });

@@ -23,6 +23,7 @@ Welcome to WebNovel Assistant! An Obsidian plugin designed specifically for web 
   - [Timeline Management](#timeline-management)
   - [Time-Limited Task Tracking](#time-limited-task-tracking)
   - [Lore Quick Reference](#lore-quick-reference)
+  - [Lore Overview](#lore-overview)
   - [Chapter Overview (Classic)](#chapter-overview-classic)
   - [Advanced Search](#advanced-search)
   - [Writing Status Panel](#writing-status-panel)
@@ -154,24 +155,23 @@ The Writing Workbench is a comprehensive writing management center upgraded from
 ### Immersive Writing Mode
 
 #### Overview
-- **Full-Screen Focus**: Enter a full-screen writing environment that hides all distracting elements including Obsidian sidebars, status bar, title bar, and more.
+- **Full-Screen Focus**: Enter a full-screen writing environment that hides all distracting elements including Obsidian sidebars, status bar, title bar, ribbon menu, and more.
+- **Top-Right Semi-Hidden Exit Button**: An exit button is deliberately designed in the top-right corner; it automatically hides upon entering immersive mode and becomes visible when hovering your mouse over the top-right corner for a quick exit (you can also exit via the command palette), designed specifically to minimize visual distractions and enhance immersion.
 - **Dynamic Dashboard**: Top bar displays the novel title in real time, focus/slack duration, today's net word count, and goal progress.
 - **Typewriter Scroll & Line Dimming**: Supports Typewriter Scroll and Context Line Dimming, toggleable via the central status bar for focused line writing.
 - **Slot-Based Layout**: Freely assign auxiliary panels to top, bottom, left, and right areas around the main editing zone. Unassigned panel areas collapse to edges to maximize editing area.
 - **Reference Documents**: Left-click a chapter to open the document in the main editing area; right-click to open it in the right reference area.
 
 #### How to Use
-1. Open any novel chapter (Markdown file).
-2. Open the command palette (Ctrl/Cmd + P) and type `Toggle Full-Screen Immersive Writing Mode`.
-3. Or click the sidebar ribbon icon.
+- **Entering Immersive Mode**: Open any novel chapter (Markdown file), and type `Toggle Full-Screen Immersive Writing Mode` in the command palette (Ctrl/Cmd + P), or click the left Ribbon icon in normal mode.
+- **Exiting Immersive Mode**: Move your mouse to the top-right corner of the screen and click the revealed exit button, or open the command palette (Ctrl/Cmd + P) and type `Toggle Full-Screen Immersive Writing Mode`.
 
 #### Related Settings
 - **Typewriter Scroll**: Keeps the active cursor line vertically centered on screen.
 - **Context Line Dimming**: Dims non-focused lines when typewriter mode is active to boost concentration.
-- **Slot Layout**: In settings under Immersive Mode, use the visual layout editor to freely assign panels (chapter list, foreshadowing, timeline, notes, reference documents, chapter overview) to top, bottom, left, and right slots.
+- **Slot Layout**: In settings under Immersive Mode, use the visual layout editor to freely assign panels (chapter list, foreshadowing, timeline, notes, reference documents, chapter overview, lore overview) to top, bottom, left, and right slots.
 - **Auto-Hide Properties Panel**: When enabled, the Markdown properties panel at the top is automatically hidden in immersive mode.
-- **Immersive Mode Note Size**: Customize card edge length in notes list (default 280px).
-- **Immersive Mode Note Font Size**: Adjust font size for note previews.
+- **Note Typography & Style**: Note font sizes and display styles are now centrally managed under **Creative Assistance** settings.
 
 ---
 
@@ -833,6 +833,7 @@ When lore files or chapters already exist but lore highlighting, Workbench stati
 
 #### Overview
 - **Sidebar Mounting**: The original Chapter Overview panel is still available, mainly used to be mounted in Obsidian's left or right sidebars as an auxiliary view, or as a dedicated component in **Immersive Mode**.
+- **Volume Grouping Support**: Recognizes volume subdirectories within the novel folder. When volumes exist, it automatically displays collapsible volume headers with chapter counts, perfectly matching the Workbench corkboard.
 - **Status Labels**: Supports marking chapter status (To Write, Outline, Draft, Revising, Final) and directly editing chapter summaries (saved to the frontmatter `synopsis` field).
 - **Word Count**: Each card displays the chapter word count at the bottom.
 
@@ -840,7 +841,7 @@ When lore files or chapters already exist but lore highlighting, Workbench stati
 
 ##### Open Chapter Overview
 1. Open the command palette (Ctrl/Cmd + P) and type `Open Chapter Overview`
-2. Or assign "Chapter Overview" to a slot on the right side in immersive mode
+2. Or assign "Chapter Overview" to any slot in immersive mode
 
 ##### Editing Chapter Summaries
 1. Click the card content area
@@ -852,6 +853,21 @@ When lore files or chapters already exist but lore highlighting, Workbench stati
 2. Select a new status from the popup menu
 
 > **Tip**: Status and summary information is saved in each chapter file's YAML frontmatter (`status` and `synopsis` fields).
+
+---
+
+### Lore Overview
+
+#### Overview
+- **Direct Card Extraction**: Extracts all setting cards from the Lore Board into a dedicated side panel for intuitive reference across categories.
+- **Collapsible Category Groups**: Groups cards under collapsible headers showing the category name and item count, matching the Chapter Overview volume grid experience.
+- **In-Place Editing & Saving**: Click the edit pencil icon on any card to open an adaptive textarea for direct editing; auto-saves on blur or Esc and updates the source note.
+- **Click-to-Locate Navigation**: Click any lore card title to open the source setting note in a split pane and jump directly to highlighted keyword position.
+- **Immersive Mode Component**: Can be slotted into any Immersive Mode layout slot for real-time reference and note-taking during full-screen writing.
+
+#### How to Use
+1. Open the command palette (Ctrl/Cmd + P) and type `Open Lore Overview`.
+2. Or assign "Lore Overview" to any slot in the Immersive Mode visual layout designer in plugin settings.
 
 ---
 

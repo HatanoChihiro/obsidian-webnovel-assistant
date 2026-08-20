@@ -846,6 +846,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		return {
 			'immersive-chapter-list-view': t('setting.layout-view-chapter-list'),
 			'webnovel-corkboard': t('setting.layout-view-corkboard'),
+			'webnovel-lore-overview': t('setting.layout-view-lore-overview'),
 			'immersive-sticky-notes-view': t('setting.layout-view-sticky-notes'),
 			'foreshadowing-view': t('setting.layout-view-foreshadowing'),
 			'wn-timeline-view': t('setting.layout-view-timeline'),

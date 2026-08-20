@@ -37,7 +37,5 @@ export { findBookRoot } from './path';
 
 // Badge 渲染工具
 export { renderForeshadowingBadges, renderLoreBadges } from './badge';
-
 // Leaf 焦点与跳转工具
-export { revealAndFocusLeaf, openFileAndFocus } from './leaf';
-
+export { revealAndFocusLeaf, openFileAndFocus, isLeafPinned, isCustomPluginLeaf, getLeafForFileNavigation } from './leaf';

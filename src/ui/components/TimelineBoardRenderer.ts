@@ -6,6 +6,7 @@ import { CorkboardGridRenderer } from './CorkboardGridRenderer';
 import { TimelineAddModal } from '../TimelineAddModal';
 import { t } from '../../i18n';
 import { Logger } from '../../utils/Logger';
+import { smartLocateAndHighlight } from '../../utils/leaf';
 
 class ConfirmDeleteEventModal extends Modal {
 	constructor(app: App, private title: string, private onConfirm: () => void) {
@@ -342,7 +343,31 @@ export class TimelineBoardRenderer {
 				if (entry.type) {
 					titleDiv.createSpan({ text: entry.type, cls: 'wn-timeline-type-badge' });
 				}
-				titleDiv.createSpan({ text: entry.time });
+				const timeSpan = titleDiv.createSpan({ cls: 'wn-timeline-node-time-text', text: entry.time });
+				timeSpan.title = t('common.jump-to-entry');
+				timeSpan.onclick = async (e) => {
+					e.stopPropagation();
+					if (!timelineFile) {
+						new Notice(t('common.file-not-found', { name: t('common.default-timeline-filename') }));
+						return;
+					}
+					const fileCache = app.metadataCache.getFileCache(timelineFile);
+					let fallbackLine: number | undefined;
+					if (fileCache?.headings) {
+						for (const h of fileCache.headings) {
+							if (h.heading.trim() === entry.time.trim()) {
+								fallbackLine = h.position.start.line;
+								break;
+							}
+						}
+					}
+					await smartLocateAndHighlight(
+						app,
+						timelineFile,
+						[`## ${entry.time}`, `# ${entry.time}`, entry.time],
+						{ splitIfNew: true, fallbackLine }
+					);
+				};
 
 				// 2. Render each item row (sub-lane)
 				const items = entry.items && entry.items.length > 0 ? entry.items : [{ description: entry.description, chapter: entry.chapter }];
@@ -559,12 +584,6 @@ export class TimelineBoardRenderer {
 		} else {
 			mainCol.addClass('is-empty');
 			const emptyMsg = mainCol.createDiv('wn-timeline-empty-msg');
-			emptyMsg.setCssStyles({
-				color: 'var(--text-faint)',
-				textAlign: 'center',
-				padding: '40px 20px',
-				fontStyle: 'italic'
-			});
 			emptyMsg.setText(t('corkboard.no-timeline'));
 		}
 
@@ -582,19 +601,11 @@ export class TimelineBoardRenderer {
 			const bgSvgLayer = activeDocument['createElementNS']('http://www.w3.org/2000/svg', 'svg');
 			bgSvgLayer.classList.add('wn-timeline-svg-layer');
 			waterfallLayout.appendChild(bgSvgLayer);
-			bgSvgLayer.setCssStyles({
-				position: 'absolute', top: '0', left: '0', width: '100%', height: '100%',
-				pointerEvents: 'none', zIndex: '0'
-			});
 
 			// --- SVG Link Layer (Foreground) ---
 			const fgSvgLayer = activeDocument['createElementNS']('http://www.w3.org/2000/svg', 'svg');
 			fgSvgLayer.classList.add('wn-timeline-svg-layer-fg');
 			waterfallLayout.appendChild(fgSvgLayer);
-			fgSvgLayer.setCssStyles({
-				position: 'absolute', top: '0', left: '0', width: '100%', height: '100%',
-				pointerEvents: 'none', zIndex: '10'
-			});
 
 			let lastLinksHash = '';
 

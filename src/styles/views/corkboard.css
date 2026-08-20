@@ -50,6 +50,21 @@ body .workspace-leaf-content[data-type="webnovel-workbench"][data-type="webnovel
 	padding-left: 0;
 }
 
+.wn-corkboard-switch-novel {
+	cursor: pointer;
+	color: var(--text-muted);
+	transition: color 0.15s ease;
+}
+
+.wn-corkboard-switch-novel:hover {
+	color: var(--interactive-accent);
+}
+
+.wn-new-chapter-input {
+	width: 100%;
+	margin-bottom: 1em;
+}
+
 
 .wn-corkboard-grid {
 	display: grid;
@@ -245,6 +260,12 @@ body textarea.wn-corkboard-textarea:focus {
 	margin-left: auto;
 	flex-shrink: 0;
 	line-height: 1.2;
+}
+
+.wn-corkboard-card-word-count.is-excluded {
+	color: var(--text-muted);
+	font-style: italic;
+	opacity: 0.85;
 }
 
 

@@ -25,7 +25,252 @@ export function revealAndFocusLeaf(app: App, leaf: WorkspaceLeaf): void {
 }
 
 /**
+ * 判断 WorkspaceLeaf 是否处于锁定（Pinned）状态
+ */
+export function isLeafPinned(leaf: WorkspaceLeaf | null | undefined): boolean {
+	if (!leaf) return false;
+	const viewState = leaf.getViewState?.();
+	if (viewState?.pinned) return true;
+	const leafObj = leaf as unknown as { pinned?: boolean; isPinned?: () => boolean };
+	if (typeof leafObj.isPinned === 'function') {
+		return Boolean(leafObj.isPinned());
+	}
+	return Boolean(leafObj.pinned);
+}
+
+/**
+ * 判断某个 Leaf 是否是插件专属的自定义面板（非纯 Markdown 编辑器/空白页），避免跳转时被当作常规编辑器误覆盖
+ */
+export function isCustomPluginLeaf(leaf: WorkspaceLeaf | null | undefined): boolean {
+	if (!leaf || !leaf.view) return false;
+	if (leaf.view instanceof MarkdownView) return false;
+	const viewType = leaf.view.getViewType?.();
+	if (!viewType || viewType === 'empty' || viewType === 'markdown') return false;
+	return true;
+}
+
+export interface NavigationLeafOptions {
+	preferredLeaf?: WorkspaceLeaf;
+	sourceLeaf?: WorkspaceLeaf;
+	splitIfNew?: boolean;
+}
+
+/**
+ * 智能解析用于打开指定文件的目标 WorkspaceLeaf：
+ * 1. 优先复用 preferredLeaf（若未锁定且非自定义插件面板，或已经打开了目标文件）；
+ * 2. 检查全局是否已在任意 Markdown Leaf 中打开了该文件（即使锁定亦可直接复用聚焦）；
+ * 3. 若未打开：
+ *    - 若源 Leaf 位于主编辑区（Root Area）：
+ *      - 检查是否存在其它分屏容器（leaf.parent !== sourceLeaf.parent）；
+ *      - 若存在分屏容器，寻找其中未锁定、非插件界面的 Markdown/Empty Leaf 进行覆盖复用；
+ *      - 若分屏容器中全为锁定标签页（或不存在其它分屏容器），自动创建垂直分屏打开（保留当前主页/工作台/文档）；
+ *    - 若源 Leaf 位于侧边栏/Modal：
+ *      - 在主编辑区中寻找未锁定、非插件界面的 Markdown/Empty Leaf；
+ *      - 若主编辑区仅有工作台/主页或全为锁定标签页，自动创建垂直分屏打开。
+ */
+/**
+ * 判断一个 Markdown 文件是否为小说元数据/大纲设定辅助文件（如伏笔、时间线、创作主页、便签或设定文件）
+ */
+export function isNovelMetadataFile(file: TFile | null | undefined): boolean {
+	if (!file) return false;
+	const path = (file.path || '').toLowerCase().replace(/\\/g, '/');
+	const filename = path.split('/').pop() || '';
+	const name = (file.name || filename).toLowerCase();
+	const basename = (file.basename || filename.replace(/\.[^/.]+$/, '')).toLowerCase();
+
+	// 伏笔文件
+	if (name === 'foreshadowing.md' || basename === '伏笔' || basename === 'foreshadowing') return true;
+	// 时间线文件
+	if (name === 'timeline.md' || basename === '时间线' || basename === 'timeline') return true;
+	// 创作主页
+	if (name === 'homepage.md' || basename === '创作主页' || basename === 'homepage') return true;
+	// 便签
+	if (name === 'sticky_notes.md' || basename === '便签' || basename === 'sticky_notes') return true;
+
+	// 设定文件与目录（/设定/ 或 /lore/ 或 设定.md）
+	if (path.includes('/lore/') || path.includes('/设定/') || path.startsWith('lore/') || path.startsWith('设定/')) return true;
+	if (basename === '设定' || basename === 'lore' || basename === '角色' || basename === 'characters') return true;
+
+	return false;
+}
+
+/**
+ * 判断一个 Leaf 是否为普通未锁定的正文章节 Leaf（且当前未展示元数据辅助文件）
+ */
+export function isUnpinnedChapterLeaf(leaf: WorkspaceLeaf): boolean {
+	if (isLeafPinned(leaf) || isCustomPluginLeaf(leaf)) return false;
+	if (leaf.view?.getViewType?.() === 'empty') return true;
+	if (leaf.view instanceof MarkdownView) {
+		const currentFile = leaf.view.file;
+		return !currentFile || !isNovelMetadataFile(currentFile);
+	}
+	return false;
+}
+
+/**
+ * 判断一个 Leaf 是否为元数据文件/插件面板 Leaf（当前打开了伏笔、时间线、主页等辅助文件或插件视图）
+ */
+export function isMetadataLeaf(leaf: WorkspaceLeaf): boolean {
+	if (isCustomPluginLeaf(leaf)) return true;
+	if (leaf.view instanceof MarkdownView) {
+		const currentFile = leaf.view.file;
+		return Boolean(currentFile && isNovelMetadataFile(currentFile));
+	}
+	return false;
+}
+
+/**
+ * 智能解析用于打开指定文件的目标 WorkspaceLeaf：
+ * 1. 优先复用 preferredLeaf（若未锁定且非自定义插件面板，或已经打开了目标文件）；
+ * 2. 检查全局是否已在任意 Markdown Leaf 中打开了该文件（即使锁定亦可直接复用聚焦）；
+ * 3. 若未打开：
+ *    - 区分正文章节文件与小说元数据文件（伏笔、时间线、设定、主页等）；
+ *    - 点击正文章节时，永远优先复用未锁定的正文章节窗口，绝对不覆盖正在展示伏笔/时间线/设定的窗口；
+ *    - 若主屏仅有伏笔/时间线文件或工作台，自动创建新垂直分屏并列展示，互不干扰。
+ */
+export function getLeafForFileNavigation(
+	app: App,
+	file: TFile,
+	options?: NavigationLeafOptions
+): WorkspaceLeaf {
+	const markdownLeaves = app.workspace.getLeavesOfType('markdown');
+
+	// 1. 若显式指定了 preferredLeaf，且该 Leaf 已经显示目标文件或处于未锁定且可复用状态
+	if (options?.preferredLeaf) {
+		const pref = options.preferredLeaf;
+		const isSameFile = pref.view instanceof MarkdownView && pref.view.file?.path === file.path;
+		if (isSameFile || (!isLeafPinned(pref) && !isCustomPluginLeaf(pref))) {
+			return pref;
+		}
+	}
+
+	// 2. 检查全局是否已有 Markdown Leaf 打开了该目标文件（已打开时直接聚焦该 Leaf）
+	for (const leaf of markdownLeaves) {
+		if (leaf.view instanceof MarkdownView && leaf.view.file?.path === file.path) {
+			return leaf;
+		}
+	}
+
+	// 3. 收集主编辑区全部 Root Leaves
+	const rootLeaves: WorkspaceLeaf[] = [];
+	if (typeof app.workspace.iterateRootLeaves === 'function') {
+		app.workspace.iterateRootLeaves((leaf) => {
+			rootLeaves.push(leaf);
+		});
+	}
+
+	const isTargetMetadata = isNovelMetadataFile(file);
+	const sourceLeaf = options?.sourceLeaf ?? (app.workspace.getMostRecentLeaf() || undefined);
+	const isSourceInRoot = Boolean(sourceLeaf && rootLeaves.includes(sourceLeaf));
+
+	// 若源 Leaf 位于主编辑区（Root Area）：
+	if (isSourceInRoot && sourceLeaf) {
+		// 如果源 Leaf 是自定义插件界面（工作台/主页/图谱等）或处于锁定（Pinned）状态，避让保护
+		if (isCustomPluginLeaf(sourceLeaf) || isLeafPinned(sourceLeaf)) {
+			const sourceParent = (sourceLeaf as unknown as { parent?: unknown }).parent;
+			// 寻找属于其它分屏容器的 Leaves
+			const otherSplitLeaves = rootLeaves.filter(
+				(l) => (l as unknown as { parent?: unknown }).parent !== sourceParent
+			);
+
+			if (otherSplitLeaves.length > 0) {
+				// 若目标是章节：在其它分屏中优先寻找未锁定的章节 Leaf 进行覆盖复用
+				if (!isTargetMetadata) {
+					const reusableChapterLeaf = otherSplitLeaves.find((l) => isUnpinnedChapterLeaf(l));
+					if (reusableChapterLeaf) {
+						return reusableChapterLeaf;
+					}
+				} else {
+					const reusableSplitLeaf = otherSplitLeaves.find(
+						(l) => !isLeafPinned(l) && !isCustomPluginLeaf(l) && (l.view instanceof MarkdownView || l.view?.getViewType?.() === 'empty')
+					);
+					if (reusableSplitLeaf) {
+						return reusableSplitLeaf;
+					}
+				}
+				// 若其它分屏存在但不可复用，创建新垂直分屏
+				return app.workspace.getLeaf('split', 'vertical');
+			}
+
+			// 单屏状态（不存在其它分屏）：自动创建垂直分屏，保护当前工作台/主页
+			return app.workspace.getLeaf('split', 'vertical');
+		}
+
+		// 若源 Leaf 当前正在展示伏笔/时间线等元数据辅助文件，而目标是正文章节：
+		// 绝对不覆盖当前元数据窗口，寻找其它分屏中的正文窗口或开新分屏并列展示
+		if (isMetadataLeaf(sourceLeaf) && !isTargetMetadata) {
+			const sourceParent = (sourceLeaf as unknown as { parent?: unknown }).parent;
+			const otherSplitLeaves = rootLeaves.filter(
+				(l) => (l as unknown as { parent?: unknown }).parent !== sourceParent
+			);
+			const reusableChapterLeaf = otherSplitLeaves.find((l) => isUnpinnedChapterLeaf(l));
+			if (reusableChapterLeaf) {
+				return reusableChapterLeaf;
+			}
+			return app.workspace.getLeaf('split', 'vertical');
+		}
+
+		// 源 Leaf 是普通未锁定的 Markdown 编辑器
+		if (options?.splitIfNew) {
+			const sourceParent = (sourceLeaf as unknown as { parent?: unknown }).parent;
+			const otherSplitLeaves = rootLeaves.filter(
+				(l) => (l as unknown as { parent?: unknown }).parent !== sourceParent
+			);
+			const reusableSplitLeaf = otherSplitLeaves.find(
+				(l) => !isLeafPinned(l) && !isCustomPluginLeaf(l) && (l.view instanceof MarkdownView || l.view?.getViewType?.() === 'empty')
+			);
+			if (reusableSplitLeaf) {
+				return reusableSplitLeaf;
+			}
+			return app.workspace.getLeaf('split', 'vertical');
+		}
+
+		return sourceLeaf;
+	}
+
+	// 源 Leaf 不在主编辑区（来自侧边栏、Modal 或外部）：
+	// 4. 侧边栏/外部调用时的决策：
+	if (options?.splitIfNew || isTargetMetadata) {
+		// 点击标题跳转伏笔/时间线文件，或显式要求 splitIfNew
+		const emptyRootLeaf = rootLeaves.find(
+			(l) => !isLeafPinned(l) && l.view?.getViewType?.() === 'empty'
+		);
+		if (emptyRootLeaf) {
+			return emptyRootLeaf;
+		}
+		if (rootLeaves.length > 0) {
+			return app.workspace.getLeaf('split', 'vertical');
+		}
+	} else {
+		// 点击普通正文章节（非元数据文件）：
+		// 优先复用当前活跃 / 最近使用的可用【章节窗口】（如果活跃窗口是伏笔/时间线等元数据文件，绝不覆盖它！）
+		const mostRecent = app.workspace.getMostRecentLeaf();
+		if (
+			mostRecent &&
+			rootLeaves.includes(mostRecent) &&
+			isUnpinnedChapterLeaf(mostRecent)
+		) {
+			return mostRecent;
+		}
+
+		// 若当前活跃窗口不是章节窗口（如活跃窗口是伏笔/时间线文件或工作台），在主编辑区寻找其它未锁定的【章节窗口】进行复用
+		const unpinnedChapterLeaf = rootLeaves.find((l) => isUnpinnedChapterLeaf(l));
+		if (unpinnedChapterLeaf) {
+			return unpinnedChapterLeaf;
+		}
+
+		// 若主编辑区全为工作台/元数据文件/锁定标签页（无可用普通正文章节编辑器），开启新垂直分屏打开章节
+		if (rootLeaves.length > 0) {
+			return app.workspace.getLeaf('split', 'vertical');
+		}
+	}
+
+	return app.workspace.getLeaf(false);
+}
+
+/**
  * 在目标 WorkspaceLeaf 中打开文件，并确保焦点平滑且可靠地切换至该 Leaf
+ * 自动拦截锁定（Pinned）Leaf 或自定义插件面板，避免破坏用户锁定布局与插件界面
  */
 export async function openFileAndFocus(
 	app: App,
@@ -33,8 +278,13 @@ export async function openFileAndFocus(
 	file: TFile,
 	options?: OpenViewState
 ): Promise<void> {
-	await leaf.openFile(file, { active: true, ...options });
-	revealAndFocusLeaf(app, leaf);
+	let targetLeaf = leaf;
+	const isSameFile = targetLeaf.view instanceof MarkdownView && targetLeaf.view.file?.path === file.path;
+	if (!isSameFile && (isLeafPinned(targetLeaf) || isCustomPluginLeaf(targetLeaf))) {
+		targetLeaf = getLeafForFileNavigation(app, file, { sourceLeaf: leaf });
+	}
+	await targetLeaf.openFile(file, { active: true, ...options });
+	revealAndFocusLeaf(app, targetLeaf);
 }
 
 export interface RangeLoc {
@@ -457,44 +707,9 @@ export async function smartLocateAndHighlight(
 	searchTexts: (string | undefined)[],
 	options?: SmartLocateOptions
 ): Promise<boolean> {
-	// 1. 若显式指定了优先目标 Leaf（如沉浸模式下用户最近聚焦的编辑/参考 Leaf），强优先在 preferredLeaf 中跳转展示
-	const markdownLeaves = app.workspace.getLeavesOfType('markdown');
-	let targetLeaf: WorkspaceLeaf | null = null;
+	const targetLeaf = getLeafForFileNavigation(app, file, options);
 
-	if (options?.preferredLeaf) {
-		targetLeaf = options.preferredLeaf;
-	} else {
-		// 2. 否则，优先寻找已经打开了目标文件的 Markdown 编辑器 Leaf
-		for (const leaf of markdownLeaves) {
-			if (leaf.view instanceof MarkdownView && leaf.view.file?.path === file.path) {
-				targetLeaf = leaf;
-				break;
-			}
-		}
-	}
-
-	// 3. 若仍未匹配到目标 Leaf，寻找并复用已有 Markdown 窗口/分屏（排除发起操作的源 Leaf）
-	if (!targetLeaf) {
-		const sourceLeaf = options?.sourceLeaf ?? (app.workspace.getMostRecentLeaf() || undefined);
-		const reusableLeaf = markdownLeaves.find(l => {
-			if (sourceLeaf && l === sourceLeaf) return false;
-			return l.view instanceof MarkdownView;
-		});
-		if (reusableLeaf) {
-			targetLeaf = reusableLeaf;
-		}
-	}
-
-	// 3. 若当前不存在任何可复用的 Markdown 窗口，且设定了 splitIfNew 时自动开启单个分屏，否则在当前窗口打开
-	if (!targetLeaf) {
-		if (options?.splitIfNew) {
-			targetLeaf = app.workspace.getLeaf('split', 'vertical');
-		} else {
-			targetLeaf = app.workspace.getLeaf(false);
-		}
-	}
-
-	// 4. 读取文本内容并计算 matchState（优先使用已计算的高精度 exactMatchState）
+	// 读取文本内容并计算 matchState（优先使用已计算的高精度 exactMatchState）
 	let matchState: MatchState | null = options?.exactMatchState ?? null;
 	if (!matchState) {
 		const content = await app.vault.cachedRead(file);

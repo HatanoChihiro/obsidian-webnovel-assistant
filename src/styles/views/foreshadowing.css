@@ -142,6 +142,13 @@
 	font-weight: 600;
 	font-size: 1.0em;
 	color: var(--text-normal);
+	cursor: pointer;
+	transition: color 0.15s ease;
+}
+
+.foreshadowing-entry-desc-text:hover {
+	color: var(--interactive-accent);
+	text-decoration: underline;
 }
 
 
@@ -167,16 +174,23 @@
 	font-size: 0.8em;
 	color: var(--text-muted);
 	margin-bottom: 2px;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex-wrap: wrap;
 }
 
 
 .foreshadowing-entry-quote-text {
 	font-size: 0.85em;
-	color: var(--text-muted);
-	padding-left: 8px;
-	border-left: 2px solid var(--background-modifier-border);
+	color: var(--interactive-accent);
+	padding: 0 0 0 8px;
+	border-left: 2px solid var(--interactive-accent);
+	background: transparent;
+	border-radius: 0;
 	line-height: 1.5;
 	white-space: pre-wrap;
+	word-break: break-word;
 }
 
 
@@ -185,6 +199,9 @@
 	width: 100%;
 	cursor: pointer;
 	font-size: 0.85em;
+	background: transparent;
+	border-radius: 0;
+	padding: 0 0 0 8px;
 }
 
 
@@ -667,6 +684,13 @@
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
+	cursor: pointer;
+	transition: color 0.15s ease;
+}
+
+.wn-card-description-title:hover {
+	color: var(--interactive-accent);
+	text-decoration: underline;
 }
 
 .wn-card-tags-wrapper {
