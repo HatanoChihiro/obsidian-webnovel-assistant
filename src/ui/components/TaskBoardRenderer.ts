@@ -1,14 +1,34 @@
 import { Modal, Notice, Setting, setIcon, type App } from 'obsidian';
-import type { WebNovelAssistantPlugin } from '../../types/plugin';
-import type { TaskEntry } from '../../types/task';
+import type { TaskEntry, TaskSettings } from '../../types/task';
 import type { TaskManager } from '../../services/TaskManager';
 import { getTaskStatusText, getTaskTypeText } from '../../i18n/data-keys';
 import { formatCount } from '../../utils';
 import { t } from '../../i18n';
 
+export type TaskBoardManager = Pick<
+    TaskManager,
+    | 'checkAndCloseExpired'
+    | 'activatePendingTasks'
+    | 'getTaskFile'
+    | 'createTaskFile'
+    | 'parseEntries'
+    | 'calcProgress'
+    | 'updateProgress'
+    | 'updateEntryStatus'
+>;
+
+export interface TaskBoardSettings {
+    task?: Pick<TaskSettings, 'fileName'>;
+}
+
+export interface TaskBoardPlugin {
+    taskManager: TaskBoardManager;
+    settings: TaskBoardSettings;
+}
+
 export interface TaskBoardRendererOptions {
     app: App;
-    plugin: WebNovelAssistantPlugin;
+    plugin: TaskBoardPlugin;
     container: HTMLElement;
     currentBookPath: string;
     reloadBoard: () => void;
@@ -165,7 +185,7 @@ export class TaskBoardRenderer {
         buildCollapsibleSection(getTaskTypeText('event'), eventEntries);
     }
 
-    private static renderEntry(manager: TaskManager, container: HTMLElement, entry: TaskEntry, options: TaskBoardRendererOptions) {
+    private static renderEntry(manager: TaskBoardManager, container: HTMLElement, entry: TaskEntry, options: TaskBoardRendererOptions) {
         const { app, reloadBoard, currentBookPath } = options;
         const taskFolder = currentBookPath === '/' ? '' : currentBookPath;
         const statusCls: Record<string, string> = { active: 'active', completed: 'done', incomplete: 'failed', abandoned: 'failed', notStarted: 'pending' };

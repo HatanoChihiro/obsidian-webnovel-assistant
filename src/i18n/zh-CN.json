@@ -135,7 +135,7 @@
 	"setting.typography-letter-spacing": "字间距",
 	"setting.typography-letter-spacing-desc": "设置文字之间的字间距（如 0.05em）。",
 	"setting.typography-max-line-width": "最大行宽",
-	"setting.typography-max-line-width-desc": "设置编辑器与阅读视图的最大行宽（如 700px 或 40em，留空表示不限制）。\n💡 提示：请确保已在 Obsidian 的“设置 -> 编辑器”中开启“限制行宽 (Readable line length)”功能以完全生效。",
+	"setting.typography-max-line-width-desc": "设置编辑器与阅读视图的最大行宽（如 700px 或 40em，留空表示不限制）。\n提示：请确保已在 Obsidian 的“设置 -> 编辑器”中开启“限制行宽 (Readable line length)”功能以完全生效。",
 	"setting.typography-justify-text": "两端对齐",
 	"setting.typography-justify-text-desc": "调整正文段落文字左右两端对齐。",
 	"setting.typography-reading-compat": "阅读模式兼容",

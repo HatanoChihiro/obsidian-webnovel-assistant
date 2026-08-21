@@ -1,15 +1,21 @@
-import { MarkdownRenderer, type Component, setIcon } from 'obsidian';
+import { MarkdownRenderer, type Component, setIcon, type App } from 'obsidian';
 import { t } from '../../i18n';
-import type { WebNovelAssistantPlugin } from '../../types/plugin';
-import { cleanLoreHeading, type LoreEntry } from '../../services/CharacterManager';
+import type { AccurateCountSettings } from '../../types/settings';
+import type { CharacterManager, LoreEntry } from '../../services/CharacterManager';
+import { cleanLoreHeading } from '../../services/CharacterManager';
 import { smartLocateAndHighlight } from '../../utils/leaf';
 
+export interface LoreCardRendererPlugin {
+	app: App;
+	settings: Pick<AccurateCountSettings, 'lorePopoverCollapse'>;
+	characterManager: Pick<CharacterManager, 'getLoreContent' | 'updateLoreContent'>;
+}
 
 export class LoreCardRenderer {
 	static async buildCardDOM(
 		container: HTMLElement,
 		entry: LoreEntry,
-		plugin: WebNovelAssistantPlugin,
+		plugin: LoreCardRendererPlugin,
 		component: Component,
 		options: {
 			draggable?: boolean;
@@ -162,7 +168,7 @@ export class LoreCardRenderer {
 		body: HTMLElement,
 		header: HTMLElement,
 		entry: LoreEntry,
-		plugin: WebNovelAssistantPlugin,
+		plugin: LoreCardRendererPlugin,
 		component: Component
 	): Promise<void> {
 		const loadingEl = body.createDiv({ cls: 'wn-lore-card-loading', text: t('common.loading') });

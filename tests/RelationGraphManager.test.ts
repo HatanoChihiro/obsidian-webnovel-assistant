@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { RelationGraphManager } from '../src/services/RelationGraphManager';
-import { GraphRenderer, GRAPH_STYLE_DEFAULTS } from '../src/ui/components/GraphRenderer';
+import { RelationGraphManager, type GraphData, type GraphNode } from '../src/services/RelationGraphManager';
+import { GraphRenderer, GRAPH_STYLE_DEFAULTS, type GraphRenderState } from '../src/ui/components/GraphRenderer';
 
 // Mock translation function for 'relation-graph.edge-mention'
 vi.mock('../src/i18n', () => ({
@@ -292,6 +292,20 @@ describe('RelationGraphManager', () => {
 	});
 
 	describe('GraphRenderer Style Defaults', () => {
+		const createRenderState = (graphData: GraphData): GraphRenderState => ({
+			graphData,
+			scale: 1,
+			panX: 0,
+			panY: 0,
+			selectedNode: null,
+			hoveredNode: null,
+			isLocalMode: false,
+			localFocusNode: null,
+			edgeDrawModeMap: new Map(),
+			edgeOffsetMap: new Map(),
+			combinedLabelMap: new Map()
+		});
+
 		it('应采用适度精致的节点小圆点半径与高亮放大半径', () => {
 			expect(GRAPH_STYLE_DEFAULTS.NODE_RADIUS).toBe(3.5);
 			expect(GRAPH_STYLE_DEFAULTS.NODE_HIGHLIGHT_RADIUS).toBe(5.5);
@@ -310,6 +324,204 @@ describe('RelationGraphManager', () => {
 			expect(GRAPH_STYLE_DEFAULTS.CURVE_OFFSET).toBe(20);
 			expect(GRAPH_STYLE_DEFAULTS.LINE_WIDTH).toBe(0.5);
 			expect(GRAPH_STYLE_DEFAULTS.PULSE_GLOW_RATIO).toBe(2.2);
+			expect(GRAPH_STYLE_DEFAULTS.SOURCE_MARKER).toBe('ring');
+			expect(GRAPH_STYLE_DEFAULTS.TARGET_MARKER).toBe('dot');
+			expect(GRAPH_STYLE_DEFAULTS.ARROW_LENGTH).toBe(2.6);
+			expect(GRAPH_STYLE_DEFAULTS.ARROW_ANGLE_DEG).toBe(26);
+		});
+
+		it('应只接受受支持的端点标记并对无效值使用回退', () => {
+			expect(GraphRenderer.parseMarkerStyle('ring', 'dot')).toBe('ring');
+			expect(GraphRenderer.parseMarkerStyle('dot', 'ring')).toBe('dot');
+			expect(GraphRenderer.parseMarkerStyle('arrow', 'ring')).toBe('arrow');
+			expect(GraphRenderer.parseMarkerStyle('none', 'dot')).toBe('none');
+			expect(GraphRenderer.parseMarkerStyle('triangle', 'ring')).toBe('ring');
+			expect(GraphRenderer.parseMarkerStyle('', 'dot')).toBe('dot');
+		});
+
+		it('应将 arrow 标记绘制为朝端点外侧的开放箭头', () => {
+			const pathPoints: Array<[number, number]> = [];
+			const mockCtx = {
+				globalAlpha: 1,
+				strokeStyle: '' as string | CanvasGradient | CanvasPattern,
+				lineWidth: 1,
+				save() {},
+				restore() {},
+				setLineDash() {},
+				beginPath() {},
+				moveTo(x: number, y: number) { pathPoints.push([x, y]); },
+				lineTo(x: number, y: number) { pathPoints.push([x, y]); },
+				stroke() {}
+			} as unknown as CanvasRenderingContext2D;
+			const colors = GraphRenderer.getThemeColors();
+
+			GraphRenderer.drawMarker(mockCtx, 'arrow', 10, 20, 1, 0, '#ffffff', 1, 1, colors, 1);
+			expect(pathPoints).toHaveLength(3);
+			expect(pathPoints[0][0]).toBeLessThan(10);
+			expect(pathPoints[1]).toEqual([10, 20]);
+			expect(pathPoints[2][0]).toBeLessThan(10);
+		});
+
+		it('应为直线、曲线及双向关系分派正确的端点标记', () => {
+			const gradient = { addColorStop: () => {} } as unknown as CanvasGradient;
+			const mockCtx = {
+				strokeStyle: '' as string | CanvasGradient | CanvasPattern,
+				lineWidth: 1,
+				save() {},
+				restore() {},
+				beginPath() {},
+				moveTo() {},
+				lineTo() {},
+				quadraticCurveTo() {},
+				stroke() {},
+				setLineDash() {},
+				createLinearGradient() { return gradient; }
+			} as unknown as CanvasRenderingContext2D;
+			const source = { x: 0, y: 0 } as GraphNode;
+			const target = { x: 100, y: 0 } as GraphNode;
+			const colors = {
+				...GraphRenderer.getThemeColors(),
+				sourceMarker: 'none' as const,
+				targetMarker: 'arrow' as const,
+				pulseCoreAlpha: 0,
+				pulseGlowAlpha: 0
+			};
+			const markerSpy = vi.spyOn(GraphRenderer, 'drawMarker').mockImplementation(() => {});
+
+			GraphRenderer.drawStraightArrow(mockCtx, source, target, colors);
+			expect(markerSpy.mock.calls.map(call => call[1])).toEqual(['none', 'arrow']);
+			expect(markerSpy.mock.calls[0][4]).toBeLessThan(0);
+			expect(markerSpy.mock.calls[1][4]).toBeGreaterThan(0);
+
+			markerSpy.mockClear();
+			GraphRenderer.drawStraightArrow(mockCtx, source, target, colors, true);
+			expect(markerSpy.mock.calls.map(call => call[1])).toEqual(['arrow', 'arrow']);
+
+			markerSpy.mockClear();
+			GraphRenderer.drawCurvedArrow(mockCtx, source, target, 20, colors);
+			expect(markerSpy.mock.calls.map(call => call[1])).toEqual(['none', 'arrow']);
+			expect(markerSpy.mock.calls[1][4]).toBeGreaterThan(0);
+
+			markerSpy.mockRestore();
+		});
+
+		it('应按 CSS curveOffset 重建同一图数据的多重关系偏移缓存', () => {
+			const graphData: GraphData = {
+				nodes: [],
+				edges: [
+					{ source: 'A', target: 'B', label: '朋友', type: 'explicit' },
+					{ source: 'B', target: 'A', label: '对手', type: 'explicit' }
+				]
+			};
+			const compactState = createRenderState(graphData);
+			GraphRenderer.buildEdgeOffsets(graphData, compactState, 10);
+			expect(compactState.edgeOffsetMap.size).toBe(2);
+			expect([...compactState.edgeOffsetMap.values()]).toEqual([-10, -10]);
+
+			const wideState = createRenderState(graphData);
+			GraphRenderer.buildEdgeOffsets(graphData, wideState, 30);
+			expect(wideState.edgeOffsetMap.size).toBe(2);
+			expect([...wideState.edgeOffsetMap.values()]).toEqual([-30, -30]);
+		});
+
+		it('应使用主角专属覆盖色、聚焦覆盖色与阴影色', () => {
+			const node: GraphNode = {
+				id: '主角',
+				file: null as unknown as GraphNode['file'],
+				heading: '主角',
+				x: 10,
+				y: 10,
+				vx: 0,
+				vy: 0,
+				pinned: false,
+				isProtagonist: true,
+				nodeType: '主角'
+			};
+			const graphData: GraphData = { nodes: [node], edges: [] };
+			const fills: Array<{ fillStyle: string | CanvasGradient | CanvasPattern; shadowColor: string }> = [];
+			const mockCtx = {
+				fillStyle: '' as string | CanvasGradient | CanvasPattern,
+				shadowColor: '',
+				shadowBlur: 0,
+				globalAlpha: 1,
+				font: '',
+				textAlign: 'start' as CanvasTextAlign,
+				textBaseline: 'alphabetic' as CanvasTextBaseline,
+				save() {},
+				restore() {},
+				beginPath() {},
+				arc() {},
+				fill() { fills.push({ fillStyle: this.fillStyle, shadowColor: this.shadowColor }); },
+				fillText() {}
+			};
+			const colors = {
+				...GraphRenderer.getThemeColors(),
+				protagonistOverlay: 'rgba(1, 2, 3, 0.5)',
+				protagonistOverlayHover: 'rgba(4, 5, 6, 0.8)',
+				protagonistShadow: 'rgba(7, 8, 9, 0.9)'
+			};
+
+			GraphRenderer.drawNodes(mockCtx as unknown as CanvasRenderingContext2D, graphData, colors, [], createRenderState(graphData));
+			expect(fills.some(fill => fill.fillStyle === colors.protagonistOverlay)).toBe(true);
+
+			fills.length = 0;
+			const focusedState = createRenderState(graphData);
+			focusedState.selectedNode = node;
+			GraphRenderer.drawNodes(mockCtx as unknown as CanvasRenderingContext2D, graphData, colors, [], focusedState);
+			expect(fills.some(fill => fill.fillStyle === colors.protagonistOverlayHover)).toBe(true);
+			expect(fills.some(fill => fill.shadowColor === colors.protagonistShadow)).toBe(true);
+		});
+
+		it('应使用 pulseColor 绘制聚焦流光渐变', () => {
+			const colorStops: string[] = [];
+			const mockCtx = {
+				globalAlpha: 1,
+				lineWidth: 1,
+				lineCap: 'butt' as CanvasLineCap,
+				strokeStyle: '' as string | CanvasGradient | CanvasPattern,
+				save() {},
+				restore() {},
+				beginPath() {},
+				moveTo() {},
+				lineTo() {},
+				stroke() {},
+				setLineDash() {},
+				createLinearGradient() {
+					return { addColorStop: (_offset: number, color: string) => colorStops.push(color) };
+				}
+			} as unknown as CanvasRenderingContext2D;
+			const colors = {
+				...GraphRenderer.getThemeColors(),
+				pulseColor: '#00ff00'
+			};
+
+			GraphRenderer.drawFlowPulseStraight(mockCtx, 0, 0, 100, 100, colors, '#ff0000', false, 1, 1, 1000);
+			expect(colorStops.some(color => color.startsWith('rgba(0, 255, 0,'))).toBe(true);
+		});
+
+		it('应支持通过 pulseCoreAlpha / pulseGlowAlpha 设为 0 关闭流光效果', () => {
+			const mockCtx = {
+				save: () => {},
+				restore: () => {},
+				beginPath: () => {},
+				moveTo: () => {},
+				lineTo: () => {},
+				stroke: () => {},
+				createLinearGradient: () => ({ addColorStop: () => {} }),
+				setLineDash: () => {},
+			} as unknown as CanvasRenderingContext2D;
+
+			const themeColors = {
+				...GraphRenderer.getThemeColors(),
+				pulseCoreAlpha: 0,
+				pulseGlowAlpha: 0,
+			};
+
+			// 不应抛出异常且提前返回
+			expect(() => {
+				GraphRenderer.drawFlowPulseStraight(mockCtx, 0, 0, 100, 100, themeColors, '#ff0000');
+				GraphRenderer.drawFlowPulseCurved(mockCtx, 0, 0, 50, 50, 100, 100, themeColors, '#ff0000');
+			}).not.toThrow();
 		});
 	});
 });

@@ -3,15 +3,97 @@ import { ItemView, TFile, Notice, setIcon, Menu, MarkdownView } from 'obsidian';
 import { formatTime, formatCount, isMobile } from '../utils';
 import { smartLocateAndHighlight } from '../utils/leaf';
 
-import { HistoryStatsModal } from './HistoryModal';
-import type { WebNovelAssistantPlugin } from '../types/plugin';
+import { HistoryStatsModal, type HistoryStatsModalPlugin } from './HistoryModal';
 import { ForeshadowingStatus, type ParsedForeshadowingEntry } from '../types/foreshadowing';
 import { CORKBOARD_STATUS_MAP, getCorkboardStatusText, getCorkboardStatusKeys } from '../i18n/data-keys';
-import { getCurrentBookContext } from '../utils/path';
+import { getCurrentBookContext, type CurrentBookContextPlugin } from '../utils/path';
 import { t } from '../i18n';
 import type { TaskType } from '../types/task';
+import type { AccurateCountSettings } from '../types/settings';
+import type { CacheManager } from '../services/CacheManager';
+import type { TaskManager } from '../services/TaskManager';
+import type { HomepageManager } from '../services/HomepageManager';
+import type { CharacterManager } from '../services/CharacterManager';
+import type { ForeshadowingManager } from '../services/ForeshadowingManager';
+import type { StatisticsManager } from '../services/StatisticsManager';
 
 export const STATUS_VIEW_TYPE = 'writing-status-view';
+
+export type StatusViewTaskManager = Pick<
+	TaskManager,
+	| 'updateEntryStatus'
+	| 'getTaskFile'
+	| 'parseEntries'
+	| 'getActiveTask'
+	| 'calcProgress'
+	| 'updateProgress'
+>;
+
+export type StatusViewCacheManager = Pick<
+	CacheManager,
+	'getFolderWordCount' | 'isEligibleForWordCount'
+>;
+
+export type StatusViewHomepageManager = Pick<
+	HomepageManager,
+	| 'findNovelInfoFile'
+	| 'getHomepageFilePath'
+	| 'getNovelFolders'
+	| 'getNovelMetadata'
+	| 'refreshHomepageViews'
+>;
+
+export type StatusViewCharacterManager = Pick<
+	CharacterManager,
+	'getBookPathForFile' | 'isLorePath'
+>;
+
+export type StatusViewForeshadowingManager = Pick<
+	ForeshadowingManager,
+	'findForeshadowingFile' | 'parseEntries'
+>;
+
+export type StatusViewStatisticsManager = Pick<
+	StatisticsManager,
+	| 'getCoreStats'
+	| 'calcStreak'
+	| 'calcFocusRate'
+	| 'calcActiveHours'
+	| 'calcDailyAverage'
+	| 'calcWritingSpeed'
+	| 'calcTaskCompletion'
+	| 'calcNovelCompletionRate'
+	| 'aggregateHistoryData'
+>;
+
+export type WritingStatusViewSettings = Pick<
+	AccurateCountSettings,
+	| 'heatmapStartDate'
+	| 'heatmapEndDate'
+	| 'workspaceFolders'
+	| 'loreFolderName'
+	| 'timeline'
+	| 'foreshadowing'
+	| 'novelInfo'
+>;
+
+export interface WritingStatusViewPlugin
+	extends Omit<HistoryStatsModalPlugin, 'settings' | 'homepageManager' | 'statisticsManager'>,
+		Omit<CurrentBookContextPlugin, 'settings' | 'homepageManager'> {
+	settings: WritingStatusViewSettings;
+	isTracking: boolean;
+	focusMs: number;
+	slackMs: number;
+	startTracking(): void;
+	stopTracking(): void;
+	refreshStatusViews(force?: boolean): void;
+	cacheManager: StatusViewCacheManager;
+	characterManager: StatusViewCharacterManager;
+	statisticsManager: StatusViewStatisticsManager;
+	homepageManager?: StatusViewHomepageManager;
+	foreshadowingManager?: StatusViewForeshadowingManager;
+	taskManager?: StatusViewTaskManager;
+}
 
 interface CollapsibleTitleElement extends HTMLElement {
 	refreshTitle?: () => void;
@@ -19,7 +101,7 @@ interface CollapsibleTitleElement extends HTMLElement {
 }
 
 export class WritingStatusView extends ItemView {
-	plugin: WebNovelAssistantPlugin;
+	plugin: WritingStatusViewPlugin;
 
 	goalWordEl!: HTMLElement;
 	todayWordEl!: HTMLElement;
@@ -65,7 +147,7 @@ export class WritingStatusView extends ItemView {
 	private updateGeneration = 0;
 	private activeTaskContext: { folderPath: string; period: number; taskType: TaskType } | null = null;
 
-	constructor(leaf: WorkspaceLeaf, plugin: WebNovelAssistantPlugin) {
+	constructor(leaf: WorkspaceLeaf, plugin: WritingStatusViewPlugin) {
 		super(leaf);
 		this.plugin = plugin;
 	}
@@ -301,13 +383,13 @@ export class WritingStatusView extends ItemView {
 		const chartLink = chartTitleRow.createSpan({ text: t('common.details'), cls: 'history-chart-subtitle' });
 		this.preventWorkspaceFocus(chartLink);
 		chartLink.onclick = () => {
-			new HistoryStatsModal(this.plugin.app, this.plugin).open();
+			new HistoryStatsModal(this.app, this.plugin).open();
 		};
 
 		this.miniChartEl = chartSection.createDiv({ cls: 'mini-chart-container' });
 		this.preventWorkspaceFocus(this.miniChartEl);
 		this.miniChartEl.onclick = () => {
-			new HistoryStatsModal(this.plugin.app, this.plugin).open();
+			new HistoryStatsModal(this.app, this.plugin).open();
 		};
 
 		this.efficiencySummaryEl = chartSection.createDiv({ cls: 'mini-efficiency-summary', text: '--' });
@@ -542,7 +624,7 @@ export class WritingStatusView extends ItemView {
 			const manager = this.plugin.taskManager;
 			const taskFile = manager.getTaskFile(taskFolder);
 			if (taskFile) {
-				const taskContent = await this.plugin.app.vault.cachedRead(taskFile);
+				const taskContent = await this.app.vault.cachedRead(taskFile);
 				if (generation !== this.updateGeneration) return;
 				const entries = manager.parseEntries(taskContent);
 				const active = manager.getActiveTask(entries);
@@ -724,7 +806,7 @@ export class WritingStatusView extends ItemView {
 			return cleanBase.includes(cleanTarget) || cleanTarget.includes(cleanBase);
 		};
 
-		if (fFile) {
+		if (fFile && this.plugin.foreshadowingManager) {
 			const content = await this.app.vault.cachedRead(fFile);
 			const entries = this.plugin.foreshadowingManager.parseEntries(content);
 

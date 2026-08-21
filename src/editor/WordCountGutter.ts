@@ -2,10 +2,18 @@ import type { Extension, RangeSet, EditorState } from '@codemirror/state';
 import { StateField, RangeSetBuilder, StateEffect } from '@codemirror/state';
 import type { EditorView, ViewUpdate } from '@codemirror/view';
 import { GutterMarker, gutter, ViewPlugin } from '@codemirror/view';
-import type { TFile} from 'obsidian';
+import type { TFile } from 'obsidian';
 import { editorInfoField } from 'obsidian';
-import type { WebNovelAssistantPlugin } from '../types/plugin';
+import type { AccurateCountSettings } from '../types/settings';
+import type { CacheManager } from '../services/CacheManager';
+import type { WordCounter } from '../services/WordCounter';
 import { t } from '../i18n';
+
+export interface WordCountGutterPlugin {
+	settings: Pick<AccurateCountSettings, 'enableWordCountGutter' | 'wordCountInterval' | 'wordCountMethod'>;
+	cacheManager: Pick<CacheManager, 'isEligibleForWordCount'>;
+	wordCounter: Pick<WordCounter, 'calculateWordsPerLine'>;
+}
 
 class WordCountMarker extends GutterMarker {
 	count: number;
@@ -43,7 +51,7 @@ function getFileFromState(state: EditorState): TFile | null {
 
 export const forceWordCountGutterUpdate = StateEffect.define<null>();
 
-function computeMarkers(state: EditorState, plugin: WebNovelAssistantPlugin): RangeSet<WordCountMarker> {
+function computeMarkers(state: EditorState, plugin: WordCountGutterPlugin): RangeSet<WordCountMarker> {
 	const builder = new RangeSetBuilder<WordCountMarker>();
 
 	if (!plugin.settings.enableWordCountGutter) return builder.finish();
@@ -76,7 +84,7 @@ function computeMarkers(state: EditorState, plugin: WebNovelAssistantPlugin): Ra
 	return builder.finish();
 }
 
-export function createWordCountGutter(plugin: WebNovelAssistantPlugin): Extension {
+export function createWordCountGutter(plugin: WordCountGutterPlugin): Extension {
 	const wordCountStateField = StateField.define<RangeSet<WordCountMarker>>({
 		create(state) {
 			return computeMarkers(state, plugin);

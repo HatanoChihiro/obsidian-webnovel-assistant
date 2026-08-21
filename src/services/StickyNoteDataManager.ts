@@ -5,9 +5,9 @@ import { FloatingStickyNote } from '../ui/StickyNote';
 import { Notice, type TFile } from 'obsidian';
 import { t } from '../i18n';
 import type { StickyNoteState } from '../types/settings';
-import { SerializedWriter } from '../utils/SerializedWriter';
 import { getPluginDir } from '../utils/platform';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
+import { JsonSnapshotStore } from '../utils/JsonSnapshotStore';
 
 /**
  * 便签数据管理器
@@ -17,12 +17,25 @@ export class StickyNoteDataManager {
 	private notesData: StickyNoteState[] = [];
 	private plugin: WebNovelAssistantPlugin;
 	private notesFilePath: string;
-	private writer = new SerializedWriter();
-	private _isWriting = false;
+	private store: JsonSnapshotStore<StickyNoteState[]>;
 
 	constructor(plugin: WebNovelAssistantPlugin) {
 		this.plugin = plugin;
 		this.notesFilePath = `${getPluginDir(plugin)}/notes-data.json`;
+		this.store = new JsonSnapshotStore<StickyNoteState[]>({
+			write: async (content) => {
+				const adapter = this.plugin.app.vault.adapter;
+				await adapter.write(this.notesFilePath, content);
+			},
+			getSnapshot: () => this.notesData,
+			onSuccess: () => {
+				// 触发全局事件，通知其他组件同步数据
+				this.plugin.app.workspace.trigger('webnovel:notes-changed');
+			},
+			onError: (error) => {
+				Logger.error("[StickyNoteDataManager] 保存便签数据失败:", error);
+			}
+		});
 	}
 
 	/**
@@ -47,13 +60,15 @@ export class StickyNoteDataManager {
 					Logger.warn(`[StickyNoteDataManager] 过滤掉 ${rawNotes.length - this.notesData.length} 个无效便签条目`);
 				}
 				
+				this.store.markClean(this.notesData);
 				return this.notesData;
 			}
 
-
+			this.store.markClean([]);
 			return [];
 		} catch (error) {
 			Logger.error("[StickyNoteDataManager] 加载便签数据失败:", error);
+			this.store.markClean([]);
 			return [];
 		}
 	}
@@ -63,24 +78,9 @@ export class StickyNoteDataManager {
 	 */
 	async saveNotes(notes: StickyNoteState[]): Promise<void> {
 		const snapshot = notes.map(note => ({ ...note }));
-		const content = JSON.stringify(snapshot);
 		// 内存状态在排队时更新；旧写入完成后不得用旧快照覆盖更新的状态。
 		this.notesData = snapshot;
-		// 使用串行写入器确保顺序写入，防止文件损坏
-		return this.writer.enqueue(async () => {
-			this._isWriting = true;
-			try {
-				const adapter = this.plugin.app.vault.adapter;
-				await adapter.write(this.notesFilePath, content);
-				// 触发全局事件，通知其他组件同步数据
-				this.plugin.app.workspace.trigger('webnovel:notes-changed');
-			} catch (error) {
-				Logger.error("[StickyNoteDataManager] 保存便签数据失败:", error);
-				throw error;
-			} finally {
-				this._isWriting = false;
-			}
-		});
+		return this.store.save(snapshot);
 	}
 
 	/**
@@ -123,7 +123,7 @@ export class StickyNoteDataManager {
 	 * 主要用于 onunload 生命周期
 	 */
 	async flush(): Promise<void> {
-		await this.writer.flush();
+		await this.store.flush();
 	}
 
 	/**
@@ -147,11 +147,11 @@ export class StickyNoteDataManager {
 	 * 检查是否有未保存的更改
 	 */
 	isDirty(): boolean {
-		return this.writer.isDirty();
+		return this.store.isDirty();
 	}
 
 	getIsWriting(): boolean {
-		return this._isWriting;
+		return this.store.isWriting;
 	}
 	/**
 	 * 获取便签数据文件的 Vault 相对路径
@@ -187,8 +187,7 @@ export class StickyNoteDataManager {
 	 */
 	public syncFloatingNotes(): void {
 		// 仅在桌面端同步浮动便签
-		// (this.plugin as unknown as { _unloading?: boolean })._unloading 也可以不用强求，或者用 this.plugin 检查
-		if (!isDesktop() || (this.plugin as unknown as { _unloading?: boolean })._unloading) return;
+		if (!isDesktop() || this.plugin.isUnloading) return;
 
 		const notes = this.getNotes();
 

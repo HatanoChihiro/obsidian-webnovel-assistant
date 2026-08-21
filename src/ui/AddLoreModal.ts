@@ -1,6 +1,6 @@
 import { Modal, Setting, TFile, TFolder, setTooltip, setIcon } from 'obsidian';
 import type { App, TextComponent } from 'obsidian';
-import type { WebNovelAssistantPlugin } from '../types/plugin';
+import type { CharacterManager } from '../services/CharacterManager';
 import { t } from '../i18n';
 
 export interface LoreRelationItem {
@@ -8,8 +8,12 @@ export interface LoreRelationItem {
 	target: string;
 }
 
+export interface AddLorePlugin {
+	characterManager: Pick<CharacterManager, 'findLoreFolder' | 'getLoreEntriesInFileOrder' | 'createLoreEntry'>;
+}
+
 export class AddLoreModal extends Modal {
-	private plugin: WebNovelAssistantPlugin;
+	private plugin: AddLorePlugin;
 	private initialName: string;
 	private loreName: string;
 	private loreCategory: string;
@@ -20,7 +24,7 @@ export class AddLoreModal extends Modal {
 	private bookPath: string;
 	private isCreatingNew: boolean = false;
 
-	constructor(app: App, plugin: WebNovelAssistantPlugin, initialName: string, bookPath: string) {
+	constructor(app: App, plugin: AddLorePlugin, initialName: string, bookPath: string) {
 		super(app);
 		this.plugin = plugin;
 		this.initialName = initialName;

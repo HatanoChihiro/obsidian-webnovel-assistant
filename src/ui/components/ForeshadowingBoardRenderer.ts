@@ -1,16 +1,26 @@
 import { Notice, setIcon } from 'obsidian';
 import type { App, Component, TFile } from 'obsidian';
-import type { WebNovelAssistantPlugin } from '../../types/plugin';
 import { ForeshadowingStatus, type ParsedForeshadowingEntry } from '../../types/foreshadowing';
-import { ForeshadowingRecoveryModal } from '../ForeshadowingModal';
+import { ForeshadowingRecoveryModal, type ForeshadowingRecoveryModalPlugin } from '../ForeshadowingModal';
 import { t } from '../../i18n';
 import { getForeshadowingStatusText } from '../../i18n/data-keys';
+import type { ChapterSorterContext } from '../../services/ChapterSorter';
 import { ChapterSorter } from '../../services/ChapterSorter';
 import { smartLocateAndHighlight } from '../../utils/leaf';
+import type { ForeshadowingViewManager } from '../ForeshadowingView';
+
+export type ForeshadowingBoardStatusManager = Pick<
+	ForeshadowingViewManager,
+	'markAsPartiallyRecovered' | 'markAsRecovered' | 'markAsDeprecated' | 'markAsPending'
+>;
+
+export interface ForeshadowingBoardPlugin extends ForeshadowingRecoveryModalPlugin {
+	foreshadowingManager: ForeshadowingBoardStatusManager;
+}
 
 export interface ForeshadowingBoardOptions {
 	app: App;
-	plugin: WebNovelAssistantPlugin;
+	plugin: ForeshadowingBoardPlugin;
 	ownerComponent: Component;
 	container: HTMLElement;
 	entries: ParsedForeshadowingEntry[];
@@ -154,7 +164,7 @@ export class ForeshadowingBoardRenderer {
 
 	private static renderGroupSection(opts: {
 		app: App;
-		plugin: WebNovelAssistantPlugin;
+		plugin: ForeshadowingBoardPlugin;
 		container: HTMLElement;
 		groupId: string;
 		title: string;
@@ -218,7 +228,7 @@ export class ForeshadowingBoardRenderer {
 
 	private static renderCardItem(opts: {
 		app: App;
-		plugin: WebNovelAssistantPlugin;
+		plugin: ForeshadowingBoardPlugin;
 		container: HTMLElement;
 		entry: ParsedForeshadowingEntry;
 		foreshadowingFile: TFile;
@@ -515,7 +525,7 @@ export class ForeshadowingBoardRenderer {
 	 */
 	public static async jumpToChapterLocation(
 		app: App,
-		plugin: WebNovelAssistantPlugin,
+		plugin: ChapterSorterContext,
 		currentBookPath: string,
 		chapterName: string,
 		quoteText?: string,

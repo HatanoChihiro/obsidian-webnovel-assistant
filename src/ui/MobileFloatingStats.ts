@@ -1,8 +1,36 @@
 import { Logger } from '../utils/Logger';
-import type { App} from 'obsidian';
+import type { App } from 'obsidian';
 import { MarkdownView, setIcon } from 'obsidian';
-import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { t } from '../i18n';
+import type { AccurateCountSettings } from '../types/settings';
+import type { StatisticsManager } from '../services/StatisticsManager';
+
+export interface MobileFloatingStatsState {
+	x: number;
+	y: number;
+	isDocked?: boolean;
+	dockEdge?: 'left' | 'right';
+}
+
+export type MobileFloatingStatsSettings = Pick<
+	AccurateCountSettings,
+	'enableMobileFocusTimer' | 'mobileFloatingStatsState'
+>;
+
+export type MobileFloatingStatsStatisticsManager = Pick<
+	StatisticsManager,
+	'getCoreStats'
+>;
+
+export interface MobileFloatingStatsPlugin {
+	isTracking: boolean;
+	focusMs: number;
+	settings: MobileFloatingStatsSettings;
+	statisticsManager: MobileFloatingStatsStatisticsManager;
+	startTracking(): void;
+	stopTracking(): void;
+	saveSettings(): Promise<void>;
+}
 
 /**
  * 移动端浮动统计窗口
@@ -16,7 +44,7 @@ import { t } from '../i18n';
  */
 export class MobileFloatingStats {
 	private app: App;
-	private plugin: WebNovelAssistantPlugin;
+	private plugin: MobileFloatingStatsPlugin;
 	private containerEl: HTMLElement | null = null;
 	private position: { x: number; y: number } = { x: 20, y: 100 };
 	private isDragging: boolean = false;
@@ -32,7 +60,7 @@ export class MobileFloatingStats {
 	private timerBtnEl: HTMLElement | null = null;
 	private timerTextEl: HTMLElement | null = null;
 
-	constructor(app: App, plugin: WebNovelAssistantPlugin) {
+	constructor(app: App, plugin: MobileFloatingStatsPlugin) {
 		this.app = app;
 		this.plugin = plugin;
 		this.loadPosition();

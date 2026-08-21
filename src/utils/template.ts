@@ -1,13 +1,18 @@
 import type { App } from 'obsidian';
 import { TFile } from 'obsidian';
-import type { WebNovelAssistantSettings } from '../types/settings';
+import type { AccurateCountSettings } from '../types/settings';
 import { TemplateChoiceModal } from '../ui/TemplateChoiceModal';
 import { Logger } from './Logger';
+
+export type ChapterTemplateSettings = Pick<
+	AccurateCountSettings,
+	'enableChapterTemplate' | 'chapterTemplatePaths' | 'chapterTemplatePath'
+>;
 
 /**
  * 获取设置中所有有效（在 Vault 中真实存在）的章节模板文件列表
  */
-export function getValidTemplateFiles(app: App, settings: WebNovelAssistantSettings): TFile[] {
+export function getValidTemplateFiles(app: App, settings: ChapterTemplateSettings): TFile[] {
 	if (!settings.enableChapterTemplate) {
 		return [];
 	}
@@ -43,7 +48,7 @@ export function getValidTemplateFiles(app: App, settings: WebNovelAssistantSetti
  */
 export function resolveChapterTemplate(
 	app: App,
-	settings: WebNovelAssistantSettings,
+	settings: ChapterTemplateSettings,
 	callback: (templateContent: string | null) => void
 ): void {
 	const validFiles = getValidTemplateFiles(app, settings);

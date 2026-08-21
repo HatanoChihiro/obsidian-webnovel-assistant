@@ -1,8 +1,19 @@
 import type { App } from 'obsidian';
 import { Modal, Notice, Setting, MarkdownView } from 'obsidian';
-import type { WebNovelAssistantPlugin } from '../types/plugin';
+import type { ForeshadowingSettings } from '../types/foreshadowing';
+import type { ChapterSorterContext } from '../services/ChapterSorter';
 import { t } from '../i18n';
 import { ChapterSorter } from '../services/ChapterSorter';
+
+export interface ForeshadowingInputModalPlugin {
+	settings: {
+		foreshadowing?: Pick<ForeshadowingSettings, 'defaultTags'>;
+	};
+}
+
+export interface ForeshadowingRecoveryModalPlugin extends ChapterSorterContext {
+	lastFilePath?: string;
+}
 
 // ─────────────────────────────────────────────
 // 1. 标注伏笔输入对话框
@@ -13,7 +24,7 @@ import { ChapterSorter } from '../services/ChapterSorter';
  * 用户填写补充说明和标签
  */
 export class ForeshadowingInputModal extends Modal {
-	private plugin: WebNovelAssistantPlugin;
+	private plugin: ForeshadowingInputModalPlugin;
 	private sourceFileName: string;
 	private selectedContent: string;
 	private onSubmit: (description: string, tags: string[]) => void;
@@ -24,7 +35,7 @@ export class ForeshadowingInputModal extends Modal {
 
 	constructor(
 		app: App,
-		plugin: WebNovelAssistantPlugin,
+		plugin: ForeshadowingInputModalPlugin,
 		sourceFileName: string,
 		selectedContent: string,
 		onSubmit: (description: string, tags: string[]) => void,
@@ -268,7 +279,7 @@ class ChapterMultiSelectModal extends Modal {
  * 用户选择或输入回收章节文件名（支持多章节）
  */
 export class ForeshadowingRecoveryModal extends Modal {
-	private plugin: WebNovelAssistantPlugin;
+	private plugin: ForeshadowingRecoveryModalPlugin;
 	private contentPreview: string;
 	private folderPath: string;
 	private onSubmit: (recoveryFileNames: string[], isStage: boolean, note: string, quote?: string) => void;
@@ -283,7 +294,7 @@ export class ForeshadowingRecoveryModal extends Modal {
 
 	constructor(
 		app: App,
-		plugin: WebNovelAssistantPlugin,
+		plugin: ForeshadowingRecoveryModalPlugin,
 		contentPreview: string,
 		folderPath: string,
 		onSubmit: (recoveryFileNames: string[], isStage: boolean, note: string, quote?: string) => void,

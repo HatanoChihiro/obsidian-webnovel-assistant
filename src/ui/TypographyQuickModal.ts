@@ -1,7 +1,16 @@
 import type { App } from 'obsidian';
 import { Modal, Setting } from 'obsidian';
-import type { WebNovelAssistantPlugin } from '../types/plugin';
+import type { TypographySettings } from '../types/settings';
+import type { TypographyManager } from '../services/TypographyManager';
 import { t } from '../i18n';
+
+export interface TypographyQuickPlugin {
+	settings: {
+		typography: TypographySettings;
+	};
+	typographyManager: Pick<TypographyManager, 'updateTypography'>;
+	saveSettings(): Promise<void>;
+}
 
 /**
  * 排版细节快捷微调 Modal
@@ -10,7 +19,7 @@ import { t } from '../i18n';
 export class TypographyQuickModal extends Modal {
 	constructor(
 		app: App,
-		private plugin: WebNovelAssistantPlugin
+		private plugin: TypographyQuickPlugin
 	) {
 		super(app);
 	}

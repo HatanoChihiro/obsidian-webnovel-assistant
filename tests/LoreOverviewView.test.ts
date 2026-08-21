@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { LoreOverviewView, LORE_OVERVIEW_VIEW_TYPE } from '../src/ui/LoreOverviewView';
+import { LoreOverviewView, LORE_OVERVIEW_VIEW_TYPE, type LoreOverviewViewPlugin } from '../src/ui/LoreOverviewView';
 import { VIEW_TYPES } from '../src/constants';
-import type { WebNovelAssistantPlugin } from '../src/types/plugin';
 import { LoreBoardRenderer } from '../src/ui/components/LoreBoardRenderer';
 
 const { getCurrentBookContextMock, findBookRootMock } = vi.hoisted(() => ({
@@ -100,7 +99,7 @@ vi.mock('../src/i18n', () => ({
 }));
 
 describe('LoreOverviewView', () => {
-	let plugin: WebNovelAssistantPlugin;
+	let plugin: LoreOverviewViewPlugin;
 	let mockApp: any;
 	let mockLeaf: any;
 
@@ -133,7 +132,7 @@ describe('LoreOverviewView', () => {
 			homepageManager: {
 				getHomepageFilePath: vi.fn().mockReturnValue(null)
 			}
-		} as unknown as WebNovelAssistantPlugin;
+		} as unknown as LoreOverviewViewPlugin;
 	});
 
 	it('should return correct view type, display text, and icon', () => {

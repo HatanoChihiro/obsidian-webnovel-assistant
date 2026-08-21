@@ -4,6 +4,7 @@ import {
 	findMatchState,
 	buildEphemeralState,
 	getMarkdownBodyRange,
+	computeMatchLocation,
 	smartLocateAndHighlight,
 	isLeafPinned,
 	isCustomPluginLeaf,
@@ -14,6 +15,11 @@ import { MarkdownView } from './mocks/obsidian';
 import {
 	findNormalizedTextRanges,
 	findNearestBlockLine,
+	prepareNormalizedHaystack,
+	mapHaystackRangeToSourceNodes,
+	getCandidateRenderedBlocks,
+	getTargetRenderedBlock,
+	wrapTextNodes,
 	highlightPersistentTarget,
 	cancelHighlightTracker,
 	highlightReadingViewPhrase
@@ -42,6 +48,16 @@ describe('getMarkdownBodyRange (YAML Frontmatter Scoping)', () => {
 	it('should return zero offsets when frontmatter is not closed', () => {
 		const content = '---\ntitle: Test\nauthor: Writer\nNo closing delimiter';
 		expect(getMarkdownBodyRange(content)).toEqual({ startOffset: 0, startLine: 0 });
+	});
+
+	it('should accurately detect body range with CRLF line breaks, BOM, and spaces around delimiters', () => {
+		const bodyText = 'Body text line 1\r\nBody text line 2';
+		const content = '\uFEFF  ---\r\ntitle: Novel\r\nauthor: Author\r\n  ---  \r\n' + bodyText;
+		const range = getMarkdownBodyRange(content);
+
+		expect(range.startLine).toBe(4);
+		expect(range.startOffset).toBe(content.indexOf(bodyText));
+		expect(content.substring(range.startOffset)).toBe(bodyText);
 	});
 });
 
@@ -149,6 +165,41 @@ describe('findMatchState (Source Match Coordinates & Offsets)', () => {
 		expect(findMatchState(content, ['not found'])).toBeNull();
 		expect(findMatchState(content, [undefined, '   ', ''])).toBeNull();
 	});
+
+	it('should calculate accurate line and column via computeMatchLocation across LF and CRLF', () => {
+		const contentLF = 'Line 0\nLine 1 target\nLine 2';
+		const offsetLF = contentLF.indexOf('target');
+		const locLF = computeMatchLocation(contentLF, offsetLF, 'target');
+		expect(locLF.targetLine).toBe(1);
+		expect(locLF.matchStartLoc).toEqual({ line: 1, ch: 7 });
+		expect(locLF.matchEndLoc).toEqual({ line: 1, ch: 13 });
+
+		const contentCRLF = 'Line 0\r\nLine 1 target\r\nLine 2';
+		const offsetCRLF = contentCRLF.indexOf('target');
+		const locCRLF = computeMatchLocation(contentCRLF, offsetCRLF, 'target');
+		expect(locCRLF.targetLine).toBe(1);
+		expect(locCRLF.matchStartLoc).toEqual({ line: 1, ch: 7 });
+		expect(locCRLF.matchEndLoc).toEqual({ line: 1, ch: 13 });
+
+		const locMultiCRLF = computeMatchLocation(contentCRLF, offsetCRLF, 'target\r\nLine 2');
+		expect(locMultiCRLF.targetLine).toBe(1);
+		expect(locMultiCRLF.matchStartLoc).toEqual({ line: 1, ch: 7 });
+		expect(locMultiCRLF.matchEndLoc).toEqual({ line: 2, ch: 6 });
+	});
+
+	it('should deduplicate case- and whitespace-equivalent search candidates while preserving first candidate priority', () => {
+		const content = '---\ntitle: doc\n---\nFirst body line\nTarget phrase here';
+		const state = findMatchState(content, [
+			'Target   phrase',
+			'TARGET PHRASE',
+			'target phrase',
+			'   ',
+			undefined
+		]);
+		expect(state).not.toBeNull();
+		expect(state?.targetLine).toBe(4);
+		expect(state?.matchText).toBe('Target phrase');
+	});
 });
 
 describe('findNormalizedTextRanges (Whitespace & Multi-Node Text Matching)', () => {
@@ -228,6 +279,87 @@ describe('findNormalizedTextRanges (Whitespace & Multi-Node Text Matching)', () 
 			preferredCharOffset: 9999 // Shifted raw offset should NOT mislead context matching
 		});
 		expect(matchByContext).toEqual([{ nodeIndex: 2, startOffset: 4, endOffset: 7 }]);
+	});
+
+	it('should preserve exact mapping on large synthetic multi-node text while result objects scale with matched nodes', () => {
+		// 100 text nodes, each with 500 characters (~50,000 chars total)
+		const nodes: string[] = [];
+		for (let i = 0; i < 100; i++) {
+			if (i === 42) {
+				nodes.push('A'.repeat(200) + 'TARGET_PHRASE' + 'B'.repeat(287));
+			} else if (i === 70) {
+				nodes.push('C'.repeat(495) + 'CROSS_');
+			} else if (i === 71) {
+				nodes.push('NODE_PHRASE' + 'D'.repeat(489));
+			} else {
+				nodes.push('X'.repeat(500));
+			}
+		}
+
+		// Single-node match: returns exactly 1 TextNodeRange object
+		const singleMatch = findNormalizedTextRanges(nodes, 'TARGET_PHRASE');
+		expect(singleMatch).toEqual([
+			{ nodeIndex: 42, startOffset: 200, endOffset: 213 }
+		]);
+		expect(singleMatch.length).toBe(1);
+
+		// Cross-node match: returns exactly 2 TextNodeRange objects
+		const crossMatch = findNormalizedTextRanges(nodes, 'CROSS_NODE_PHRASE');
+		expect(crossMatch).toEqual([
+			{ nodeIndex: 70, startOffset: 495, endOffset: 501 },
+			{ nodeIndex: 71, startOffset: 0, endOffset: 11 }
+		]);
+		expect(crossMatch.length).toBe(2);
+	});
+
+	it('should support prepareNormalizedHaystack for multi-candidate search without rebuilding normalized text', () => {
+		const texts = ['First paragraph text with keyword ', 'and second paragraph continuation.'];
+		const prepared = prepareNormalizedHaystack(texts);
+
+		expect(prepared.haystack).toBe('First paragraph text with keyword and second paragraph continuation.');
+
+		const nonMatch = prepared.findRanges('non existent text');
+		expect(nonMatch).toEqual([]);
+
+		const match1 = prepared.findRanges('keyword and second');
+		expect(match1).toEqual([
+			{ nodeIndex: 0, startOffset: 26, endOffset: 34 },
+			{ nodeIndex: 1, startOffset: 0, endOffset: 10 }
+		]);
+
+		const match2 = prepared.findRanges('continuation');
+		expect(match2).toEqual([
+			{ nodeIndex: 1, startOffset: 21, endOffset: 33 }
+		]);
+	});
+});
+
+describe('getCandidateRenderedBlocks (Deterministic Neighborhood Block Ranking)', () => {
+	it('should order candidate blocks with primary target block first, followed by immediate neighborhood', () => {
+		function createBlock(line: number) {
+			return {
+				getAttribute: (attr: string) => (attr === 'data-line' ? String(line) : null),
+				dataset: { line: String(line) }
+			} as unknown as HTMLElement;
+		}
+
+		const b0 = createBlock(0);
+		const b10 = createBlock(10);
+		const b20 = createBlock(20);
+		const b30 = createBlock(30);
+		const b40 = createBlock(40);
+
+		const container = {
+			querySelectorAll: () => [b0, b10, b20, b30, b40]
+		} as unknown as Element;
+
+		// targetLine 22 -> primary is b20 (index 2), neighborhood: +1 (b30), -1 (b10), +2 (b40), -2 (b0)
+		const candidates = getCandidateRenderedBlocks(container, 22);
+		expect(candidates).toEqual([b20, b30, b10, b40, b0]);
+
+		// targetLine 0 -> primary is b0 (index 0), neighborhood: +1 (b10), +2 (b20)
+		const candidatesStart = getCandidateRenderedBlocks(container, 0);
+		expect(candidatesStart).toEqual([b0, b10, b20]);
 	});
 });
 
@@ -499,6 +631,211 @@ describe('highlightReadingViewPhrase (Direct Target Block & Container Fallback W
 		const success = highlightReadingViewPhrase(container, 5, ['fallback phrase']);
 		expect(success).toBe(true);
 		expect(scrollCalls).toBe(1);
+	});
+
+	it('should not perform full-container TreeWalker traversal on common target-block success', () => {
+		const walkerRoots: unknown[] = [];
+		let exactSpan: unknown = null;
+
+		const textNode = {
+			nodeType: 3,
+			data: 'target word in block',
+			parentNode: null as unknown,
+			parentElement: null as unknown,
+			splitText: function(offset: number) { return this; },
+			length: 20
+		};
+
+		const blockEl = {
+			nodeType: 1,
+			getAttribute: (attr: string) => (attr === 'data-line' ? '0' : null),
+			dataset: { line: '0' },
+			querySelector: () => exactSpan,
+			createSpan: () => {
+				exactSpan = {
+					classList: { contains: () => true },
+					scrollIntoView: vi.fn(),
+					appendChild: () => {}
+				};
+				return exactSpan;
+			},
+			insertBefore: () => {},
+			removeChild: () => {}
+		};
+		textNode.parentNode = blockEl;
+		textNode.parentElement = blockEl;
+
+		const doc = {
+			defaultView: {
+				NodeFilter: { SHOW_TEXT: 4 },
+			} as unknown as Window,
+			createTreeWalker: (root: unknown) => {
+				walkerRoots.push(root);
+				let yielded = false;
+				return {
+					nextNode: () => {
+						if (!yielded && root === blockEl) {
+							yielded = true;
+							return textNode as unknown as Text;
+						}
+						return null;
+					}
+				};
+			}
+		} as unknown as Document;
+
+		const container = {
+			ownerDocument: doc,
+			querySelectorAll: (sel: string) => (sel === '[data-line]' ? [blockEl] : []) as unknown as NodeListOf<Element>,
+			querySelector: (sel: string) => (sel.includes('.wn-exact-highlight') ? exactSpan : null) as unknown as Element,
+		} as unknown as Element;
+
+		const success = highlightReadingViewPhrase(container, 0, ['target word']);
+
+		expect(success).toBe(true);
+		// TreeWalker should ONLY walk blockEl, never container
+		expect(walkerRoots).toEqual([blockEl]);
+		expect(walkerRoots).not.toContain(container);
+	});
+
+	it('should recover stale target line by checking nearby blocks before container fallback', () => {
+		const walkerRoots: unknown[] = [];
+		let exactSpan: unknown = null;
+
+		const textNodeInBlock1 = {
+			nodeType: 3,
+			data: 'stale target word in neighbor block',
+			parentNode: null as unknown,
+			parentElement: null as unknown,
+			splitText: function(offset: number) { return this; },
+			length: 35
+		};
+
+		const block0 = {
+			nodeType: 1,
+			getAttribute: (attr: string) => (attr === 'data-line' ? '0' : null),
+			dataset: { line: '0' },
+			querySelector: () => null,
+			createSpan: () => ({}),
+			insertBefore: () => {},
+			removeChild: () => {}
+		};
+
+		const block1 = {
+			nodeType: 1,
+			getAttribute: (attr: string) => (attr === 'data-line' ? '5' : null),
+			dataset: { line: '5' },
+			querySelector: () => exactSpan,
+			createSpan: () => {
+				exactSpan = {
+					classList: { contains: () => true },
+					scrollIntoView: vi.fn(),
+					appendChild: () => {}
+				};
+				return exactSpan;
+			},
+			insertBefore: () => {},
+			removeChild: () => {}
+		};
+		textNodeInBlock1.parentNode = block1;
+		textNodeInBlock1.parentElement = block1;
+
+		const doc = {
+			defaultView: {
+				NodeFilter: { SHOW_TEXT: 4 },
+			} as unknown as Window,
+			createTreeWalker: (root: unknown) => {
+				walkerRoots.push(root);
+				let yielded = false;
+				return {
+					nextNode: () => {
+						if (!yielded && root === block1) {
+							yielded = true;
+							return textNodeInBlock1 as unknown as Text;
+						}
+						return null;
+					}
+				};
+			}
+		} as unknown as Document;
+
+		const container = {
+			ownerDocument: doc,
+			querySelectorAll: (sel: string) => (sel === '[data-line]' ? [block0, block1] : []) as unknown as NodeListOf<Element>,
+			querySelector: (sel: string) => (sel.includes('.wn-exact-highlight') ? exactSpan : null) as unknown as Element,
+		} as unknown as Element;
+
+		// targetLine 0 -> block0 fails, but neighbor block1 succeeds
+		const success = highlightReadingViewPhrase(container, 0, ['stale target word']);
+
+		expect(success).toBe(true);
+		expect(walkerRoots).toEqual([block0, block1]);
+		expect(walkerRoots).not.toContain(container);
+	});
+
+	it('should only traverse DOM text nodes once when wrapTextNodes receives multiple search candidates', () => {
+		let treeWalkerCallCount = 0;
+		let exactSpan: unknown = null;
+
+		const textNode = {
+			nodeType: 3,
+			data: 'third candidate matches here',
+			parentNode: null as unknown,
+			parentElement: null as unknown,
+			splitText: function(offset: number) { return this; },
+			length: 28
+		};
+
+		const containerEl = {
+			nodeType: 1,
+			querySelector: () => exactSpan,
+			createSpan: () => {
+				exactSpan = {
+					classList: { contains: () => true },
+					scrollIntoView: vi.fn(),
+					appendChild: () => {}
+				};
+				return exactSpan;
+			},
+			insertBefore: () => {},
+			removeChild: () => {}
+		};
+		textNode.parentNode = containerEl;
+		textNode.parentElement = containerEl;
+
+		const doc = {
+			defaultView: {
+				NodeFilter: { SHOW_TEXT: 4 },
+			} as unknown as Window,
+			createTreeWalker: () => {
+				treeWalkerCallCount++;
+				let yielded = false;
+				return {
+					nextNode: () => {
+						if (!yielded) {
+							yielded = true;
+							return textNode as unknown as Text;
+						}
+						return null;
+					}
+				};
+			}
+		} as unknown as Document;
+
+		const container = {
+			ownerDocument: doc,
+			querySelector: (sel: string) => (sel.includes('.wn-exact-highlight') ? exactSpan : null) as unknown as Element,
+		} as unknown as Element;
+
+		const success = wrapTextNodes(doc, container, [
+			'non-existent candidate 1',
+			'non-existent candidate 2',
+			'third candidate matches'
+		]);
+
+		expect(success).toBe(true);
+		// TreeWalker should have been created exactly once
+		expect(treeWalkerCallCount).toBe(1);
 	});
 
 	it('smartLocateAndHighlight should prioritize preferredLeaf over an existing leaf open with the same file', async () => {

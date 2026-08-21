@@ -646,6 +646,10 @@ body .wn-corkboard-grid .wn-task-card .wn-task-card-header-right button.wn-task-
 	color: var(--text-muted);
 }
 
+.wn-corkboard-grid .wn-corkboard-volume-header {
+	margin-bottom: -14px;
+}
+
 .wn-corkboard-card.is-volume-collapsed {
 	display: none;
 }

@@ -1,16 +1,18 @@
 import type { WorkspaceLeaf } from 'obsidian';
 import { ItemView } from 'obsidian';
 import { VIEW_TYPES } from '../constants';
-import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { t } from '../i18n';
+import type { StickyNoteListRendererPlugin } from './components/StickyNoteListRenderer';
 import { StickyNoteListRenderer } from './components/StickyNoteListRenderer';
+
+export type StickyNoteListViewPlugin = StickyNoteListRendererPlugin;
 
 /** 可在桌面端和移动端侧面板打开的便签列表视图。 */
 export class StickyNoteListView extends ItemView {
-	private readonly plugin: WebNovelAssistantPlugin;
+	private readonly plugin: StickyNoteListViewPlugin;
 	private listRenderer: StickyNoteListRenderer | null = null;
 
-	constructor(leaf: WorkspaceLeaf, plugin: WebNovelAssistantPlugin) {
+	constructor(leaf: WorkspaceLeaf, plugin: StickyNoteListViewPlugin) {
 		super(leaf);
 		this.plugin = plugin;
 	}

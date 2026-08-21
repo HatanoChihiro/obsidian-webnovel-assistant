@@ -1,20 +1,70 @@
 import { TFile, TFolder, Vault, type TAbstractFile, type WorkspaceLeaf, ItemView } from 'obsidian';
-import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ForeshadowingStatus, type ParsedForeshadowingEntry } from '../types/foreshadowing';
 import { ChapterSorter } from '../services/ChapterSorter';
 import { t } from '../i18n';
-import { getCurrentBookContext, findBookRoot } from '../utils/path';
-import { CorkboardGridRenderer } from './components/CorkboardGridRenderer';
+import { getCurrentBookContext, findBookRoot, type CurrentBookContextPlugin } from '../utils/path';
+import { CorkboardGridRenderer, type CorkboardGridPlugin } from './components/CorkboardGridRenderer';
+import type { AccurateCountSettings } from '../types/settings';
+import type { CacheManager } from '../services/CacheManager';
+import type { AdaptiveDebounceManager } from '../services/AdaptiveDebounceManager';
+import type { HomepageManager } from '../services/HomepageManager';
+import type { ForeshadowingManager } from '../services/ForeshadowingManager';
 
 export const CORKBOARD_VIEW_TYPE = 'webnovel-corkboard';
 
+export type ChapterOverviewSettings = Pick<
+	AccurateCountSettings,
+	| 'enableStrictChapterMode'
+	| 'loreFolderName'
+	| 'enableSmartChapterSort'
+	| 'customSortOrder'
+	| 'lorePopoverCollapse'
+	| 'enableMobileLorePopover'
+	| 'workspaceFolders'
+	| 'timeline'
+	| 'foreshadowing'
+	| 'novelInfo'
+>;
+
+export type ChapterOverviewCacheManager = Pick<
+	CacheManager,
+	'isFileInWorkspace' | 'isEligibleForChapterList' | 'getFileCache'
+>;
+
+export type ChapterOverviewDebounceManager = Pick<
+	AdaptiveDebounceManager,
+	'debounceFixed'
+>;
+
+export type ChapterOverviewHomepageManager = Pick<
+	HomepageManager,
+	'getHomepageFilePath' | 'getNovelFolders'
+>;
+
+export type ChapterOverviewForeshadowingManager = Pick<
+	ForeshadowingManager,
+	'findForeshadowingFile' | 'parseEntries'
+>;
+
+export interface ChapterOverviewViewPlugin
+	extends Omit<CorkboardGridPlugin, 'settings'>,
+		Omit<CurrentBookContextPlugin, 'settings' | 'homepageManager'> {
+	settings: ChapterOverviewSettings;
+	cacheManager: ChapterOverviewCacheManager;
+	adaptiveDebounceManager: ChapterOverviewDebounceManager;
+	homepageManager?: ChapterOverviewHomepageManager;
+	foreshadowingManager?: ChapterOverviewForeshadowingManager;
+	getTrackedMarkdownFiles(): TFile[];
+	isFileInStrictChapterException(file: TFile): boolean;
+}
+
 export class ChapterOverviewView extends ItemView {
-    private plugin: WebNovelAssistantPlugin;
+    private plugin: ChapterOverviewViewPlugin;
     private currentBookPath: string | null = null;
     private isSavingMetadata: boolean = false;
     private container!: HTMLElement;
 
-    constructor(leaf: WorkspaceLeaf, plugin: WebNovelAssistantPlugin) {
+    constructor(leaf: WorkspaceLeaf, plugin: ChapterOverviewViewPlugin) {
         super(leaf);
         this.plugin = plugin;
         
@@ -164,7 +214,7 @@ export class ChapterOverviewView extends ItemView {
         const fFile = this.plugin.foreshadowingManager?.findForeshadowingFile(fmFolder);
         const foreshadowingMap = new Map<string, ParsedForeshadowingEntry[]>();
         
-        if (fFile) {
+        if (fFile && this.plugin.foreshadowingManager) {
             const content = await this.app.vault.cachedRead(fFile);
             const entries = this.plugin.foreshadowingManager.parseEntries(content);
             const cleanFiles = files.map(file => ({ file, cleanBase: file.basename.toLowerCase().replace(/\s+/g, '') }));

@@ -2,7 +2,7 @@ import { Logger } from '../utils/Logger';
 import type { Plugin } from 'obsidian';
 import type { DailyStat } from '../types/settings';
 import { getPluginDir } from '../utils/platform';
-import { SerializedWriter } from '../utils/SerializedWriter';
+import { JsonSnapshotStore } from '../utils/JsonSnapshotStore';
 
 /**
  * 历史数据管理器
@@ -12,21 +12,27 @@ import { SerializedWriter } from '../utils/SerializedWriter';
  * - 历史数据保存到独立文件 history-data.json
  * - saveSettings() 不再序列化历史数据，提升性能
  * - 历史数据独立保存周期，避免频繁写入
- * - 使用脏标记避免无变更时的无效写入
+ * - 使用脏标记与版本化快照避免无变更时的无效写入
  */
 export class HistoryDataManager {
 	private plugin: Plugin;
 	private historyData: Record<string, DailyStat> = {};
-	private dirty: boolean = false; // 脏标记：只保存有变更的数据
 	private historyFilePath: string;
-	private writer = new SerializedWriter();
-	private mutationVersion = 0;
-	private persistedVersion = 0;
+	private store: JsonSnapshotStore<Record<string, DailyStat>>;
 
 	constructor(plugin: Plugin) {
 		this.plugin = plugin;
 		// 历史数据文件路径：.obsidian/plugins/WebNovel Assistant/history-data.json
 		this.historyFilePath = `${getPluginDir(plugin)}/history-data.json`;
+		this.store = new JsonSnapshotStore<Record<string, DailyStat>>({
+			write: async (content) => {
+				await this.plugin.app.vault.adapter.write(this.historyFilePath, content);
+			},
+			getSnapshot: () => this.historyData,
+			onError: (error) => {
+				Logger.error('[HistoryDataManager] 保存历史数据失败:', error);
+			}
+		});
 	}
 
 	/**
@@ -49,6 +55,7 @@ export class HistoryDataManager {
 					this.historyData = {};
 				}
 				
+				this.store.markClean(this.historyData);
 				return this.historyData;
 			}
 
@@ -73,10 +80,12 @@ export class HistoryDataManager {
 			}
 
 			// 无历史数据
+			this.store.markClean({});
 			return {};
 		} catch (error) {
 			Logger.error('[HistoryDataManager] 加载历史数据失败:', error);
 			this.historyData = {};
+			this.store.markClean({});
 			return {};
 		}
 	}
@@ -86,24 +95,7 @@ export class HistoryDataManager {
 	 * 使用版本化不可变快照和串行写入，避免旧写入覆盖保存期间产生的新更新。
 	 */
 	async saveHistory(_forceImmediate = false): Promise<void> {
-		if (!this.dirty) return;
-
-		// 在排队时捕获不可变快照。写入完成后仅确认该快照对应的版本，
-		// 写入期间产生的新变更会保持 dirty，等待下一次保存或 flush。
-		const version = this.mutationVersion;
-		const content = JSON.stringify(this.historyData);
-		return this.writer.enqueue(async () => {
-			if (version <= this.persistedVersion) return;
-			try {
-				await this.plugin.app.vault.adapter.write(this.historyFilePath, content);
-				this.persistedVersion = version;
-				this.dirty = this.mutationVersion > this.persistedVersion;
-			} catch (error) {
-				this.dirty = true;
-				Logger.error('[HistoryDataManager] 保存历史数据失败:', error);
-				throw error;
-			}
-		});
+		return this.store.save(this.historyData);
 	}
 
 	/**
@@ -111,16 +103,11 @@ export class HistoryDataManager {
 	 * 主要用于 onunload 生命周期
 	 */
 	async flush(): Promise<void> {
-		// 只要 flush 期间又出现更新，就继续保存最新版本，直到队列稳定。
-		do {
-			await this.saveHistory(true);
-			await this.writer.flush();
-		} while (this.dirty);
+		await this.store.flush();
 	}
 
 	private markDirty(): void {
-		this.mutationVersion++;
-		this.dirty = true;
+		this.store.markDirty();
 	}
 
 	/**
@@ -162,8 +149,6 @@ export class HistoryDataManager {
 		}
 		return this.historyData[date];
 	}
-
-
 
 	/**
 	 * 增加指定日期的字数统计
@@ -259,6 +244,6 @@ export class HistoryDataManager {
 	 * 检查是否有未保存的变更
 	 */
 	isDirty(): boolean {
-		return this.dirty;
+		return this.store.isDirty();
 	}
 }

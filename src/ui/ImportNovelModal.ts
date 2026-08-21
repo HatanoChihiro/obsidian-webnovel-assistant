@@ -1,12 +1,22 @@
 import type { App } from 'obsidian';
 import { Modal, Setting, Notice, setIcon } from 'obsidian';
 import { t } from '../i18n';
-import type { WebNovelAssistantPlugin } from '../types/plugin';
-import { TextSplitter, type ParsedChapter } from '../services/TextSplitter';
+import type { AccurateCountSettings } from '../types/settings';
+import type { HomepageManager } from '../services/HomepageManager';
+import { TextSplitter, type ParsedChapter, type TextSplitterPlugin } from '../services/TextSplitter';
 import { ChapterSorter } from '../services/ChapterSorter';
 
+export interface ImportNovelModalPlugin extends TextSplitterPlugin {
+	settings: {
+		chapterNamingRules?: AccurateCountSettings['chapterNamingRules'];
+		workspaceFolders?: string[];
+		novelInfo?: AccurateCountSettings['novelInfo'];
+	};
+	homepageManager?: Pick<HomepageManager, 'createNovelInfoFile'> | null;
+}
+
 export class ImportNovelModal extends Modal {
-	plugin: WebNovelAssistantPlugin;
+	plugin: ImportNovelModalPlugin;
 	
 	private fileInput!: HTMLInputElement;
 	private encodingDropdown!: HTMLSelectElement;
@@ -17,7 +27,7 @@ export class ImportNovelModal extends Modal {
 	private parsedChapters: ParsedChapter[] = [];
 	private isImporting: boolean = false;
 
-	constructor(app: App, plugin: WebNovelAssistantPlugin) {
+	constructor(app: App, plugin: ImportNovelModalPlugin) {
 		super(app);
 		this.plugin = plugin;
 	}

@@ -317,24 +317,123 @@ export interface SmartLocateOptions {
  * 获取 Markdown 内容的正文起始偏移与起始行号（排除开头的 YAML Frontmatter）
  */
 export function getMarkdownBodyRange(content: string): { startOffset: number; startLine: number } {
-	const lines = content.split(/\r?\n/);
-	if ((lines[0] ?? '').replace(/^\uFEFF/, '').trim() !== '---') {
+	const len = content.length;
+	if (len === 0) {
 		return { startOffset: 0, startLine: 0 };
 	}
 
-	let offset = lines[0].length + 1; // +1 for the newline
-	for (let i = 1; i < lines.length; i++) {
-		const line = lines[i];
-		if (line.trim() === '---' || line.trim() === '...') {
-			return {
-				startOffset: offset + line.length + 1,
-				startLine: i + 1
-			};
+	let idx = content.charCodeAt(0) === 0xfeff ? 1 : 0;
+	if (idx >= len) {
+		return { startOffset: 0, startLine: 0 };
+	}
+
+	// 第一行必须以 --- 开头（允许前导空格，但整行去除首尾空格后必须为 ---）
+	let firstLineStart = idx;
+	while (firstLineStart < len && (content.charCodeAt(firstLineStart) === 32 || content.charCodeAt(firstLineStart) === 9)) {
+		firstLineStart++;
+	}
+	if (firstLineStart + 3 > len || content.substring(firstLineStart, firstLineStart + 3) !== '---') {
+		return { startOffset: 0, startLine: 0 };
+	}
+	idx = firstLineStart + 3;
+	while (idx < len && content.charCodeAt(idx) !== 10 && content.charCodeAt(idx) !== 13) {
+		const code = content.charCodeAt(idx);
+		if (code !== 32 && code !== 9) {
+			return { startOffset: 0, startLine: 0 };
 		}
-		offset += line.length + 1;
+		idx++;
+	}
+	if (idx >= len) {
+		return { startOffset: 0, startLine: 0 };
+	}
+	if (content.charCodeAt(idx) === 13) idx++;
+	if (idx < len && content.charCodeAt(idx) === 10) idx++;
+
+	let lineCount = 1;
+	while (idx < len) {
+		const lineStart = idx;
+		while (idx < len && content.charCodeAt(idx) !== 10 && content.charCodeAt(idx) !== 13) {
+			idx++;
+		}
+		const lineEnd = idx;
+		if (idx < len && content.charCodeAt(idx) === 13) idx++;
+		if (idx < len && content.charCodeAt(idx) === 10) idx++;
+
+		let trimmedStart = lineStart;
+		while (trimmedStart < lineEnd && (content.charCodeAt(trimmedStart) === 32 || content.charCodeAt(trimmedStart) === 9)) {
+			trimmedStart++;
+		}
+		let trimmedEnd = lineEnd;
+		while (trimmedEnd > trimmedStart && (content.charCodeAt(trimmedEnd - 1) === 32 || content.charCodeAt(trimmedEnd - 1) === 9)) {
+			trimmedEnd--;
+		}
+
+		if (trimmedEnd - trimmedStart === 3) {
+			const delim = content.substring(trimmedStart, trimmedEnd);
+			if (delim === '---' || delim === '...') {
+				return {
+					startOffset: idx,
+					startLine: lineCount + 1
+				};
+			}
+		}
+		lineCount++;
 	}
 
 	return { startOffset: 0, startLine: 0 };
+}
+
+/**
+ * 高效计算匹配起止位置的行号与列号（0-based），避免对整个源文档或前置文本执行 split
+ */
+export function computeMatchLocation(
+	content: string,
+	matchStartGlobal: number,
+	matchText: string
+): {
+	targetLine: number;
+	matchStartLoc: RangeLoc;
+	matchEndLoc: RangeLoc;
+} {
+	let targetLine = 0;
+	let lastLineStart = 0;
+
+	for (let i = 0; i < matchStartGlobal; i++) {
+		if (content.charCodeAt(i) === 10) { // '\n'
+			targetLine++;
+			lastLineStart = i + 1;
+		}
+	}
+
+	const matchStartLoc: RangeLoc = {
+		line: targetLine,
+		ch: matchStartGlobal - lastLineStart
+	};
+
+	let matchLineCount = 0;
+	let lastMatchLineStart = 0;
+	for (let i = 0; i < matchText.length; i++) {
+		if (matchText.charCodeAt(i) === 10) { // '\n'
+			matchLineCount++;
+			lastMatchLineStart = i + 1;
+		}
+	}
+
+	let matchEndLoc: RangeLoc;
+	if (matchLineCount === 0) {
+		matchEndLoc = {
+			line: targetLine,
+			ch: matchStartLoc.ch + matchText.length
+		};
+	} else {
+		const lastLineLength = matchText.length - lastMatchLineStart;
+		matchEndLoc = {
+			line: targetLine + matchLineCount,
+			ch: lastLineLength
+		};
+	}
+
+	return { targetLine, matchStartLoc, matchEndLoc };
 }
 
 /**
@@ -348,11 +447,15 @@ export function findMatchState(
 	preferredOffset?: number
 ): MatchState | null {
 	const bodyRange = getMarkdownBodyRange(content);
+	const seenSearches = new Set<string>();
 
 	for (const text of searchTexts) {
 		if (!text) continue;
 		const cleanSearch = text.trim();
 		if (!cleanSearch) continue;
+		const searchKey = cleanSearch.replace(/\s+/g, ' ').toLowerCase();
+		if (seenSearches.has(searchKey)) continue;
+		seenSearches.add(searchKey);
 
 		const escapedSearch = cleanSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 		const searchPattern = escapedSearch.replace(/\s+/g, '\\s+');
@@ -421,22 +524,11 @@ export function findMatchState(
 			const matchStartGlobal = bestMatch.index;
 			const matchEndGlobal = matchStartGlobal + matchText.length;
 
-			const textBefore = content.substring(0, matchStartGlobal);
-			const linesBefore = textBefore.split(/\r?\n/);
-			const targetLine = linesBefore.length - 1;
-
-			const matchStartLoc: RangeLoc = {
-				line: targetLine,
-				ch: linesBefore[linesBefore.length - 1].length
-			};
-
-			const matchLines = matchText.split(/\r?\n/);
-			const matchEndLoc: RangeLoc = {
-				line: targetLine + matchLines.length - 1,
-				ch: matchLines.length === 1
-					? matchStartLoc.ch + matchText.length
-					: matchLines[matchLines.length - 1].length
-			};
+			const { targetLine, matchStartLoc, matchEndLoc } = computeMatchLocation(
+				content,
+				matchStartGlobal,
+				matchText
+			);
 
 			const prefixStart = Math.max(bodyRange.startOffset, matchStartGlobal - 30);
 			const contextPrefix = content.substring(prefixStart, matchStartGlobal).replace(/\r?\n/g, ' ');

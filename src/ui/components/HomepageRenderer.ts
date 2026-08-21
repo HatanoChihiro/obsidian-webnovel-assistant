@@ -1,23 +1,74 @@
-import type { App } from 'obsidian';
+import type { App, TFile } from 'obsidian';
 import { Notice, setIcon } from 'obsidian';
-import type { WebNovelAssistantPlugin } from '../../types/plugin';
 import type { TaskEntry } from '../../types/task';
 import type { NovelFolderInfo } from '../../types/homepage';
-import type { DailyStat } from '../../types/settings';
+import type { AccurateCountSettings, DailyStat } from '../../types/settings';
+import type { HistoryDataManager } from '../../services/HistoryDataManager';
+import type { StatisticsManager } from '../../services/StatisticsManager';
+import type { TaskManager } from '../../services/TaskManager';
+import type { CacheManager } from '../../services/CacheManager';
+import type { HomepageManager } from '../../services/HomepageManager';
 import { getTaskStatusText, getNovelStatusText, getNovelInfoLabel } from '../../i18n/data-keys';
 import { t } from '../../i18n';
 import { NewNovelModal } from '../NewNovelModal';
-import { ImportNovelModal } from '../ImportNovelModal';
+import { ImportNovelModal, type ImportNovelModalPlugin } from '../ImportNovelModal';
 import type { WorkbenchView } from '../WorkbenchView';
 import { revealAndFocusLeaf } from '../../utils/leaf';
 import { getHeatClass } from '../HistoryModal';
 
+export type HomepageRendererSettings = Pick<
+	AccurateCountSettings,
+	'homepageWelcome' | 'heatmapStartDate' | 'heatmapEndDate' | 'chapterNamingRules' | 'workspaceFolders' | 'novelInfo'
+>;
+
+export type HomepageRendererHomepageManager = Pick<
+	HomepageManager,
+	'createNewNovel' | 'refreshHomepageViews' | 'getNovelFolders' | 'getNovelMetadata' | 'createNovelInfoFile'
+>;
+
+export type HomepageRendererHistoryManager = Pick<
+	HistoryDataManager,
+	'getHistory'
+>;
+
+export type HomepageRendererStatisticsManager = Pick<
+	StatisticsManager,
+	| 'calcStreak'
+	| 'calcFocusRate'
+	| 'calcActiveHours'
+	| 'calcDailyAverage'
+	| 'calcWritingSpeed'
+	| 'calcTaskCompletion'
+	| 'calcNovelCompletionRate'
+>;
+
+export type HomepageRendererTaskManager = Pick<
+	TaskManager,
+	'checkAndCloseExpired' | 'activatePendingTasks' | 'loadEntries' | 'calcProgress'
+>;
+
+export type HomepageRendererCacheManager = Pick<
+	CacheManager,
+	'isEligibleForTotalWordCount' | 'getFileCache' | 'updateFileCache'
+>;
+
+export interface HomepageRendererPlugin
+	extends Omit<ImportNovelModalPlugin, 'settings' | 'homepageManager'> {
+	settings: HomepageRendererSettings;
+	homepageManager?: HomepageRendererHomepageManager | null;
+	historyManager: HomepageRendererHistoryManager;
+	statisticsManager: HomepageRendererStatisticsManager;
+	taskManager: HomepageRendererTaskManager;
+	cacheManager: HomepageRendererCacheManager;
+	calculateAccurateWords(content: string): number;
+	getTrackedMarkdownFiles(): TFile[];
+}
 
 export class HomepageRenderer {
 	private app: App;
-	private plugin: WebNovelAssistantPlugin;
+	private plugin: HomepageRendererPlugin;
 
-	constructor(app: App, plugin: WebNovelAssistantPlugin) {
+	constructor(app: App, plugin: HomepageRendererPlugin) {
 		this.app = app;
 		this.plugin = plugin;
 	}
@@ -47,9 +98,10 @@ export class HomepageRenderer {
 			console.error('[WebNovel] Error rendering welcome cell:', e);
 		}
 
+		const novelsPromise = this.getAllNovelsWithMetadata();
 		const ongoingCell = topRow.createDiv({ cls: 'homepage-grid-cell' });
 		try {
-			await this.renderOngoing(ongoingCell);
+			await this.renderOngoing(ongoingCell, novelsPromise);
 		} catch (e) {
 			console.error('[WebNovel] Error rendering ongoing cell:', e);
 		}
@@ -58,21 +110,21 @@ export class HomepageRenderer {
 		const leftCol = grid.createDiv({ cls: 'homepage-grid-left' });
 		const draftingCell = leftCol.createDiv({ cls: 'homepage-grid-cell' });
 		try {
-			await this.renderDrafting(draftingCell);
+			await this.renderDrafting(draftingCell, novelsPromise);
 		} catch (e) {
 			console.error('[WebNovel] Error rendering drafting cell:', e);
 		}
 
 		const pausedCell = leftCol.createDiv({ cls: 'homepage-grid-cell' });
 		try {
-			await this.renderPaused(pausedCell);
+			await this.renderPaused(pausedCell, novelsPromise);
 		} catch (e) {
 			console.error('[WebNovel] Error rendering paused cell:', e);
 		}
 
 		const completedCell = leftCol.createDiv({ cls: 'homepage-grid-cell' });
 		try {
-			await this.renderCompleted(completedCell);
+			await this.renderCompleted(completedCell, novelsPromise);
 		} catch (e) {
 			console.error('[WebNovel] Error rendering completed cell:', e);
 		}
@@ -81,7 +133,7 @@ export class HomepageRenderer {
 		const rightCol = grid.createDiv({ cls: 'homepage-grid-right' });
 		const statsCell = rightCol.createDiv({ cls: 'homepage-grid-cell' });
 		try {
-			await this.renderStatsSummary(statsCell);
+			await this.renderStatsSummary(statsCell, novelsPromise);
 		} catch (e) {
 			console.error('[WebNovel] Error rendering stats summary:', e);
 		}
@@ -126,7 +178,7 @@ export class HomepageRenderer {
 
 	// 欢迎语 + 今日进度 + 新增作品按钮
 	private openNewNovelModal(): void {
-		new NewNovelModal(this.plugin.app, this.plugin, (result) => {
+		new NewNovelModal(this.app, (result) => {
 			void (async () => {
 				try {
 					const { folderPath } = await this.plugin.homepageManager!.createNewNovel(result.name, result.meta);
@@ -135,7 +187,7 @@ export class HomepageRenderer {
 
 					// Open Workbench
 					const viewType = 'webnovel-workbench';
-					const { workspace } = this.plugin.app;
+					const { workspace } = this.app;
 					const leaves = workspace.getLeavesOfType(viewType);
 					let leaf = leaves.length > 0 ? leaves[0] : null;
 					if (!leaf) {
@@ -146,7 +198,7 @@ export class HomepageRenderer {
 						(leaf.view as WorkbenchView).setBookPath(folderPath);
 					}
 					if (leaf) {
-						revealAndFocusLeaf(this.plugin.app, leaf);
+						revealAndFocusLeaf(this.app, leaf);
 					}
 				} catch (e) { console.error(e); }
 			})();
@@ -190,7 +242,7 @@ export class HomepageRenderer {
 
 		const desktopImportBtn = desktopActionsGroup.createDiv({ cls: 'homepage-add-novel-btn desktop-add-btn' });
 		desktopImportBtn.textContent = t('import-novel.title');
-		desktopImportBtn.onclick = () => { new ImportNovelModal(this.plugin.app, this.plugin).open(); };
+		desktopImportBtn.onclick = () => { new ImportNovelModal(this.app, this.plugin).open(); };
 
 		// 今日进度与手机端新增按钮
 		const history = this.plugin.historyManager.getHistory();
@@ -234,12 +286,12 @@ export class HomepageRenderer {
 
 		const phoneImportBtn = phoneActionsGroup.createDiv({ cls: 'homepage-add-novel-btn phone-add-btn' });
 		phoneImportBtn.textContent = t('import-novel.title');
-		phoneImportBtn.onclick = () => { new ImportNovelModal(this.plugin.app, this.plugin).open(); };
+		phoneImportBtn.onclick = () => { new ImportNovelModal(this.app, this.plugin).open(); };
 	}
 
 	// 连载中作品列表（含任务信息）
-	async renderOngoing(container: HTMLElement): Promise<void> {
-		const allNovels = await this.getAllNovelsWithMetadata();
+	async renderOngoing(container: HTMLElement, novelsPromise?: Promise<NovelFolderInfo[]>): Promise<void> {
+		const allNovels = await (novelsPromise ?? this.getAllNovelsWithMetadata());
 		const ongoing = allNovels.filter(n => n.metadata?.status === 'ongoing');
 		container.empty();
 		container.createDiv({ cls: 'homepage-section-label', text: getNovelStatusText('ongoing') });
@@ -314,8 +366,8 @@ export class HomepageRenderer {
 	}
 
 	// 已完结作品卡片
-	async renderCompleted(container: HTMLElement): Promise<void> {
-		const allNovels = await this.getAllNovelsWithMetadata();
+	async renderCompleted(container: HTMLElement, novelsPromise?: Promise<NovelFolderInfo[]>): Promise<void> {
+		const allNovels = await (novelsPromise ?? this.getAllNovelsWithMetadata());
 		const completed = allNovels.filter(n => n.metadata?.status === 'completed');
 		container.empty();
 		container.createDiv({ cls: 'homepage-section-label', text: getNovelStatusText('completed') });
@@ -346,8 +398,8 @@ export class HomepageRenderer {
 	}
 
 	// 存稿中作品卡片
-	async renderDrafting(container: HTMLElement): Promise<void> {
-		const allNovels = await this.getAllNovelsWithMetadata();
+	async renderDrafting(container: HTMLElement, novelsPromise?: Promise<NovelFolderInfo[]>): Promise<void> {
+		const allNovels = await (novelsPromise ?? this.getAllNovelsWithMetadata());
 		const drafting = allNovels.filter(n => n.metadata?.status === 'stockpiling');
 		container.empty();
 		container.createDiv({ cls: 'homepage-section-label', text: getNovelStatusText('stockpiling') });
@@ -377,8 +429,8 @@ export class HomepageRenderer {
 	}
 
 	// 已暂停作品卡片
-	async renderPaused(container: HTMLElement): Promise<void> {
-		const allNovels = await this.getAllNovelsWithMetadata();
+	async renderPaused(container: HTMLElement, novelsPromise?: Promise<NovelFolderInfo[]>): Promise<void> {
+		const allNovels = await (novelsPromise ?? this.getAllNovelsWithMetadata());
 		const paused = allNovels.filter(n => n.metadata?.status === 'paused');
 		container.empty();
 		container.createDiv({ cls: 'homepage-section-label', text: getNovelStatusText('paused') });
@@ -408,7 +460,7 @@ export class HomepageRenderer {
 	}
 
 	// 效率总览 — 复用 HistoryModal 的 stats-efficiency-card
-	async renderStatsSummary(container: HTMLElement): Promise<void> {
+	async renderStatsSummary(container: HTMLElement, novelsPromise?: Promise<NovelFolderInfo[]>): Promise<void> {
 		const history: Record<string, DailyStat> = this.plugin.historyManager ? this.plugin.historyManager.getHistory() : {};
 		container.empty();
 		container.createDiv({ cls: 'homepage-section-label', text: t('homepage.efficiency-overview') });
@@ -433,7 +485,7 @@ export class HomepageRenderer {
 		let novelRate = 0;
 
 		try {
-			allNovels = await this.getAllNovelsWithMetadata();
+			allNovels = await (novelsPromise ?? this.getAllNovelsWithMetadata());
 			if (this.plugin.taskManager) {
 				taskComp = await this.plugin.statisticsManager.calcTaskCompletion(allNovels);
 			}

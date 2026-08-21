@@ -544,4 +544,524 @@ LinLei is a dragon warrior.`;
             expect(createdContent).toContain('**手动**：[[CustomLink]]');
         });
     });
+
+    describe('Incremental Lore Cache Updates', () => {
+        let manager: CharacterManager;
+        let file1: any;
+        let file2: any;
+
+        beforeEach(async () => {
+            manager = new CharacterManager(mockApp, mockPlugin);
+            manager.getBookPathForFile = vi.fn().mockImplementation((f: any) => {
+                if (!f || !f.path) return null;
+                if (f.path.startsWith('Book1/')) return 'Book1';
+                return null;
+            });
+            manager.isLorePath = vi.fn().mockImplementation((bookPath: string, parentPath: string) => {
+                return bookPath === 'Book1' && (parentPath === 'Book1/Lore' || parentPath.startsWith('Book1/Lore/'));
+            });
+
+            file1 = Object.assign(Object.create(TFile.prototype), {
+                path: 'Book1/Lore/Alice.md',
+                basename: 'Alice',
+                extension: 'md',
+                parent: { path: 'Book1/Lore' }
+            });
+
+            file2 = Object.assign(Object.create(TFile.prototype), {
+                path: 'Book1/Lore/Bob.md',
+                basename: 'Bob',
+                extension: 'md',
+                parent: { path: 'Book1/Lore' }
+            });
+
+            mockApp.metadataCache.getFileCache = vi.fn().mockImplementation((f: any) => {
+                if (f.path === 'Book1/Lore/Alice.md') {
+                    return {
+                        headings: [{ heading: 'Alice', level: 2, position: { start: { line: 0 }, end: { line: 0 } } }]
+                    };
+                }
+                if (f.path === 'Book1/Lore/Bob.md') {
+                    return {
+                        headings: [{ heading: 'Bob', level: 2, position: { start: { line: 0 }, end: { line: 0 } } }]
+                    };
+                }
+                return {};
+            });
+
+            mockApp.vault.cachedRead = vi.fn().mockImplementation((f: any) => {
+                if (f.path === 'Book1/Lore/Alice.md') {
+                    return Promise.resolve('## Alice\n**Alias**: Ally');
+                }
+                if (f.path === 'Book1/Lore/Bob.md') {
+                    return Promise.resolve('## Bob\n**Alias**: Bobby');
+                }
+                return Promise.resolve('');
+            });
+
+            mockApp.vault.getMarkdownFiles.mockReturnValue([file1, file2]);
+            await manager.initialize();
+        });
+
+        it('should incrementally update cache on single-file modify with deterministic operation counts', async () => {
+            expect(manager.getCharacterFile('Book1', 'Alice')?.heading).toBe('Alice');
+            expect(manager.getCharacterFile('Book1', 'Ally')?.heading).toBe('Alice');
+            expect(manager.getCharacterFile('Book1', 'Bob')?.heading).toBe('Bob');
+
+            // Reset mock call counts
+            mockApp.vault.cachedRead.mockClear();
+            mockApp.vault.read.mockClear();
+            mockPlugin.getVaultMarkdownFiles.mockClear();
+            mockPlugin.getTrackedMarkdownFiles.mockClear();
+            mockApp.vault.getMarkdownFiles.mockClear();
+            mockApp.workspace.trigger.mockClear();
+            const prevVersion = manager.cacheVersion;
+
+            // Modify Alice to add new alias "Superstar" and change heading
+            mockApp.metadataCache.getFileCache = vi.fn().mockImplementation((f: any) => {
+                if (f.path === 'Book1/Lore/Alice.md') {
+                    return {
+                        headings: [{ heading: 'Alice', level: 2, position: { start: { line: 0 }, end: { line: 0 } } }]
+                    };
+                }
+                return {};
+            });
+            mockApp.vault.cachedRead = vi.fn().mockImplementation((f: any) => {
+                if (f.path === 'Book1/Lore/Alice.md') {
+                    return Promise.resolve('## Alice\n**Alias**: Ally, Superstar\nUpdated bio...');
+                }
+                return Promise.resolve('');
+            });
+
+            const updated = await manager.updateFileCache(file1);
+            expect(updated).toBe(true);
+
+            // Operation count assertions: exactly 1 file read, 0 vault enumerations
+            expect(mockApp.vault.cachedRead).toHaveBeenCalledTimes(1);
+            expect(mockApp.vault.cachedRead).toHaveBeenCalledWith(file1);
+            expect(mockApp.vault.read).toHaveBeenCalledTimes(0);
+            expect(mockPlugin.getVaultMarkdownFiles).toHaveBeenCalledTimes(0);
+            expect(mockPlugin.getTrackedMarkdownFiles).toHaveBeenCalledTimes(0);
+            expect(mockApp.vault.getMarkdownFiles).toHaveBeenCalledTimes(0);
+
+            // Verify cache contents
+            expect(manager.getCharacterFile('Book1', 'Superstar')?.heading).toBe('Alice');
+            expect(manager.getCharacterFile('Book1', 'superstar')?.heading).toBe('Alice'); // Case-insensitive
+            expect(manager.getCharacterFile('Book1', 'Ally')?.heading).toBe('Alice');
+            expect(manager.getCharacterFile('Book1', 'Bob')?.heading).toBe('Bob'); // Unrelated file untouched
+
+            // Version and notification assertions
+            expect(manager.cacheVersion).toBe(prevVersion + 1);
+            expect(mockApp.workspace.trigger).toHaveBeenCalledWith('webnovel-workbench-lore-updated');
+        });
+
+        it('should incrementally remove deleted file contributions with zero file reads and zero vault enumerations', () => {
+            expect(manager.getCharacterFile('Book1', 'Bob')?.heading).toBe('Bob');
+
+            mockApp.vault.cachedRead.mockClear();
+            mockApp.vault.read.mockClear();
+            mockPlugin.getVaultMarkdownFiles.mockClear();
+            mockPlugin.getTrackedMarkdownFiles.mockClear();
+            mockApp.vault.getMarkdownFiles.mockClear();
+            mockApp.workspace.trigger.mockClear();
+            const prevVersion = manager.cacheVersion;
+
+            const removed = manager.removeFileFromCache(file2.path);
+            expect(removed).toBe(true);
+
+            // Deterministic operation-count assertions: 0 reads, 0 vault enumerations
+            expect(mockApp.vault.cachedRead).toHaveBeenCalledTimes(0);
+            expect(mockApp.vault.read).toHaveBeenCalledTimes(0);
+            expect(mockPlugin.getVaultMarkdownFiles).toHaveBeenCalledTimes(0);
+            expect(mockPlugin.getTrackedMarkdownFiles).toHaveBeenCalledTimes(0);
+            expect(mockApp.vault.getMarkdownFiles).toHaveBeenCalledTimes(0);
+
+            // Bob entries removed, Alice entries preserved
+            expect(manager.getCharacterFile('Book1', 'Bob')).toBeNull();
+            expect(manager.getCharacterFile('Book1', 'Bobby')).toBeNull();
+            expect(manager.getCharacterFile('Book1', 'Alice')?.heading).toBe('Alice');
+            expect(manager.getCharacterFile('Book1', 'Ally')?.heading).toBe('Alice');
+
+            expect(manager.cacheVersion).toBe(prevVersion + 1);
+            expect(mockApp.workspace.trigger).toHaveBeenCalledWith('webnovel-workbench-lore-updated');
+        });
+
+        it('should handle file rename within lore folder by updating path and preserving cache integrity', async () => {
+            const renamedFile = Object.assign(Object.create(TFile.prototype), {
+                path: 'Book1/Lore/Hero.md',
+                basename: 'Hero',
+                extension: 'md',
+                parent: { path: 'Book1/Lore' }
+            });
+
+            mockApp.metadataCache.getFileCache = vi.fn().mockImplementation((f: any) => {
+                if (f.path === 'Book1/Lore/Hero.md') {
+                    return {
+                        headings: [{ heading: 'Hero', level: 2, position: { start: { line: 0 }, end: { line: 0 } } }]
+                    };
+                }
+                return {};
+            });
+            mockApp.vault.cachedRead = vi.fn().mockImplementation((f: any) => {
+                if (f.path === 'Book1/Lore/Hero.md') {
+                    return Promise.resolve('## Hero\n**Alias**: Champion');
+                }
+                return Promise.resolve('');
+            });
+
+            mockApp.vault.cachedRead.mockClear();
+            mockPlugin.getVaultMarkdownFiles.mockClear();
+            mockPlugin.getTrackedMarkdownFiles.mockClear();
+            const prevVersion = manager.cacheVersion;
+
+            const renamed = await manager.handleFileRename(renamedFile, file1.path);
+            expect(renamed).toBe(true);
+
+            expect(mockApp.vault.cachedRead).toHaveBeenCalledTimes(1);
+            expect(mockPlugin.getVaultMarkdownFiles).toHaveBeenCalledTimes(0);
+
+            // Old Alice entries removed
+            expect(manager.getCharacterFile('Book1', 'Alice')).toBeNull();
+            expect(manager.getCharacterFile('Book1', 'Ally')).toBeNull();
+
+            // New Hero entries present
+            expect(manager.getCharacterFile('Book1', 'Hero')?.heading).toBe('Hero');
+            expect(manager.getCharacterFile('Book1', 'Hero')?.file.path).toBe('Book1/Lore/Hero.md');
+            expect(manager.getCharacterFile('Book1', 'Champion')?.heading).toBe('Hero');
+
+            expect(manager.cacheVersion).toBe(prevVersion + 1);
+        });
+
+        it('should cleanly remove lore entries when a file is moved out of lore folder without leaving stale entries', async () => {
+            const movedOutFile = Object.assign(Object.create(TFile.prototype), {
+                path: 'Book1/Drafts/Alice.md',
+                basename: 'Alice',
+                extension: 'md',
+                parent: { path: 'Book1/Drafts' }
+            });
+
+            mockApp.vault.cachedRead.mockClear();
+            mockPlugin.getVaultMarkdownFiles.mockClear();
+            mockPlugin.getTrackedMarkdownFiles.mockClear();
+            const prevVersion = manager.cacheVersion;
+
+            const moved = await manager.handleFileRename(movedOutFile, file1.path);
+            expect(moved).toBe(true);
+
+            // Zero reads for moved-out file, 0 vault enumerations
+            expect(mockApp.vault.cachedRead).toHaveBeenCalledTimes(0);
+            expect(mockPlugin.getVaultMarkdownFiles).toHaveBeenCalledTimes(0);
+
+            // Alice entries are completely purged
+            expect(manager.getCharacterFile('Book1', 'Alice')).toBeNull();
+            expect(manager.getCharacterFile('Book1', 'Ally')).toBeNull();
+            expect(manager.getCharactersForBook('Book1')).not.toContain('Alice');
+            expect(manager.getCharactersForBook('Book1')).not.toContain('Ally');
+
+            // Bob entries remain intact
+            expect(manager.getCharacterFile('Book1', 'Bob')?.heading).toBe('Bob');
+            expect(manager.cacheVersion).toBe(prevVersion + 1);
+        });
+
+        it('should preserve duplicate contributions deterministically across multiple files', async () => {
+            const sharedA = Object.assign(Object.create(TFile.prototype), {
+                path: 'Book1/Lore/TeamA.md',
+                basename: 'TeamA',
+                extension: 'md',
+                parent: { path: 'Book1/Lore' }
+            });
+            const sharedB = Object.assign(Object.create(TFile.prototype), {
+                path: 'Book1/Lore/TeamB.md',
+                basename: 'TeamB',
+                extension: 'md',
+                parent: { path: 'Book1/Lore' }
+            });
+
+            mockApp.metadataCache.getFileCache = vi.fn().mockImplementation((f: any) => {
+                if (f.path === 'Book1/Lore/TeamA.md') {
+                    return {
+                        headings: [{ heading: 'LeaderA', level: 2, position: { start: { line: 0 }, end: { line: 0 } } }]
+                    };
+                }
+                if (f.path === 'Book1/Lore/TeamB.md') {
+                    return {
+                        headings: [{ heading: 'LeaderB', level: 2, position: { start: { line: 0 }, end: { line: 0 } } }]
+                    };
+                }
+                return {};
+            });
+
+            mockApp.vault.cachedRead = vi.fn().mockImplementation((f: any) => {
+                if (f.path === 'Book1/Lore/TeamA.md') {
+                    return Promise.resolve('## LeaderA\n**Alias**: Boss');
+                }
+                if (f.path === 'Book1/Lore/TeamB.md') {
+                    return Promise.resolve('## LeaderB\n**Alias**: Boss');
+                }
+                return Promise.resolve('');
+            });
+
+            await manager.updateFileCache(sharedA);
+            await manager.updateFileCache(sharedB);
+
+            // Both contribute alias 'Boss'
+            expect(manager.getCharacterFile('Book1', 'Boss')).toBeDefined();
+
+            // Update TeamA to change its alias to 'Chief' (removing 'Boss' from TeamA)
+            mockApp.vault.cachedRead = vi.fn().mockImplementation((f: any) => {
+                if (f.path === 'Book1/Lore/TeamA.md') {
+                    return Promise.resolve('## LeaderA\n**Alias**: Chief');
+                }
+                if (f.path === 'Book1/Lore/TeamB.md') {
+                    return Promise.resolve('## LeaderB\n**Alias**: Boss');
+                }
+                return Promise.resolve('');
+            });
+
+            await manager.updateFileCache(sharedA);
+
+            // 'Boss' must STILL be in cache because TeamB still contributes 'Boss'
+            expect(manager.getCharacterFile('Book1', 'Boss')?.heading).toBe('LeaderB');
+            expect(manager.getCharacterFile('Book1', 'Chief')?.heading).toBe('LeaderA');
+
+            // Remove TeamB: now 'Boss' should be removed, while 'Chief' and 'LeaderA' remain
+            manager.removeFileFromCache(sharedB.path);
+            expect(manager.getCharacterFile('Book1', 'Boss')).toBeNull();
+            expect(manager.getCharacterFile('Book1', 'Chief')?.heading).toBe('LeaderA');
+        });
+
+        it('should preserve file order in getLoreEntriesInFileOrder across in-place incremental updates', async () => {
+            const orderA = Object.assign(Object.create(TFile.prototype), {
+                path: 'Book1/Lore/01_Alpha.md',
+                basename: '01_Alpha',
+                extension: 'md',
+                parent: { path: 'Book1/Lore' }
+            });
+            const orderB = Object.assign(Object.create(TFile.prototype), {
+                path: 'Book1/Lore/02_Beta.md',
+                basename: '02_Beta',
+                extension: 'md',
+                parent: { path: 'Book1/Lore' }
+            });
+            const orderC = Object.assign(Object.create(TFile.prototype), {
+                path: 'Book1/Lore/03_Gamma.md',
+                basename: '03_Gamma',
+                extension: 'md',
+                parent: { path: 'Book1/Lore' }
+            });
+
+            mockApp.metadataCache.getFileCache = vi.fn().mockImplementation((f: any) => {
+                if (f.path === 'Book1/Lore/01_Alpha.md') return { headings: [{ heading: 'Alpha', level: 2, position: { start: { line: 0 }, end: { line: 0 } } }] };
+                if (f.path === 'Book1/Lore/02_Beta.md') return { headings: [{ heading: 'Beta', level: 2, position: { start: { line: 0 }, end: { line: 0 } } }] };
+                if (f.path === 'Book1/Lore/03_Gamma.md') return { headings: [{ heading: 'Gamma', level: 2, position: { start: { line: 0 }, end: { line: 0 } } }] };
+                return {};
+            });
+
+            mockApp.vault.cachedRead = vi.fn().mockImplementation((f: any) => {
+                if (f.path === 'Book1/Lore/01_Alpha.md') return Promise.resolve('## Alpha');
+                if (f.path === 'Book1/Lore/02_Beta.md') return Promise.resolve('## Beta');
+                if (f.path === 'Book1/Lore/03_Gamma.md') return Promise.resolve('## Gamma');
+                return Promise.resolve('');
+            });
+
+            manager = new CharacterManager(mockApp, mockPlugin);
+            manager.getBookPathForFile = vi.fn().mockReturnValue('Book1');
+            manager.isLorePath = vi.fn().mockReturnValue(true);
+            mockApp.vault.getMarkdownFiles.mockReturnValue([orderA, orderB, orderC]);
+            await manager.initialize();
+
+            expect(manager.getLoreEntriesInFileOrder('Book1').map(e => e.heading)).toEqual(['Alpha', 'Beta', 'Gamma']);
+
+            // Update Beta in-place
+            mockApp.vault.cachedRead = vi.fn().mockImplementation((f: any) => {
+                if (f.path === 'Book1/Lore/02_Beta.md') return Promise.resolve('## Beta\n**Alias**: B2');
+                return Promise.resolve('');
+            });
+
+            await manager.updateFileCache(orderB);
+
+            // Insertion order must remain Alpha, Beta, Gamma
+            expect(manager.getLoreEntriesInFileOrder('Book1').map(e => e.heading)).toEqual(['Alpha', 'Beta', 'Gamma']);
+            expect(manager.getCharacterFile('Book1', 'B2')?.heading).toBe('Beta');
+        });
+
+        it('should preserve deterministic original file enumeration order during rebuildCache even when cachedRead resolves out of order', async () => {
+            const firstFile = Object.assign(Object.create(TFile.prototype), {
+                path: 'Book1/Lore/01_First.md',
+                basename: '01_First',
+                extension: 'md',
+                parent: { path: 'Book1/Lore' }
+            });
+            const secondFile = Object.assign(Object.create(TFile.prototype), {
+                path: 'Book1/Lore/02_Second.md',
+                basename: '02_Second',
+                extension: 'md',
+                parent: { path: 'Book1/Lore' }
+            });
+
+            mockApp.metadataCache.getFileCache = vi.fn().mockImplementation((f: any) => {
+                if (f.path === 'Book1/Lore/01_First.md') return { headings: [{ heading: 'First', level: 2, position: { start: { line: 0 }, end: { line: 0 } } }] };
+                if (f.path === 'Book1/Lore/02_Second.md') return { headings: [{ heading: 'Second', level: 2, position: { start: { line: 0 }, end: { line: 0 } } }] };
+                return {};
+            });
+
+            let resolveFirst: (val: string) => void = () => {};
+            const firstPromise = new Promise<string>((resolve) => {
+                resolveFirst = resolve;
+            });
+
+            mockApp.vault.cachedRead = vi.fn().mockImplementation((f: any) => {
+                if (f.path === 'Book1/Lore/01_First.md') return firstPromise;
+                if (f.path === 'Book1/Lore/02_Second.md') return Promise.resolve('## Second');
+                return Promise.resolve('');
+            });
+
+            manager = new CharacterManager(mockApp, mockPlugin);
+            manager.getBookPathForFile = vi.fn().mockReturnValue('Book1');
+            manager.isLorePath = vi.fn().mockReturnValue(true);
+            mockApp.vault.getMarkdownFiles.mockReturnValue([firstFile, secondFile]);
+
+            const rebuildPromise = manager.rebuildCache();
+            // Let the event loop process secondFile first
+            await new Promise(r => setTimeout(r, 10));
+            // Now resolve firstFile
+            resolveFirst('## First');
+            await rebuildPromise;
+
+            // In-order entries must still have 'First' before 'Second'
+            const entries = manager.getLoreEntriesInFileOrder('Book1');
+            expect(entries.map(e => e.heading)).toEqual(['First', 'Second']);
+        });
+
+        it('should keep old contributions removed and notify observers once if parseLoreFile fails during rename', async () => {
+            const corruptedFile = Object.assign(Object.create(TFile.prototype), {
+                path: 'Book1/Lore/Corrupted.md',
+                basename: 'Corrupted',
+                extension: 'md',
+                parent: { path: 'Book1/Lore' }
+            });
+
+            mockApp.metadataCache.getFileCache = vi.fn().mockImplementation((f: any) => {
+                if (f.path === 'Book1/Lore/Corrupted.md') {
+                    return { headings: [{ heading: 'Corrupted', level: 2, position: { start: { line: 0 }, end: { line: 0 } } }] };
+                }
+                return {};
+            });
+
+            mockApp.vault.cachedRead = vi.fn().mockImplementation((f: any) => {
+                if (f.path === 'Book1/Lore/Corrupted.md') {
+                    return Promise.reject(new Error('Corrupted disk read'));
+                }
+                return Promise.resolve('');
+            });
+
+            mockApp.workspace.trigger.mockClear();
+            const prevVersion = manager.cacheVersion;
+
+            await expect(manager.handleFileRename(corruptedFile, file1.path)).rejects.toThrow('Corrupted disk read');
+
+            // Old Alice entries must remain removed
+            expect(manager.getCharacterFile('Book1', 'Alice')).toBeNull();
+            expect(manager.getCharacterFile('Book1', 'Ally')).toBeNull();
+            // Still preserves uncorrupted Bob
+            expect(manager.getCharacterFile('Book1', 'Bob')?.heading).toBe('Bob');
+
+            // Observers notified exactly once and version incremented
+            expect(manager.cacheVersion).toBe(prevVersion + 1);
+            expect(mockApp.workspace.trigger).toHaveBeenCalledTimes(1);
+            expect(mockApp.workspace.trigger).toHaveBeenCalledWith('webnovel-workbench-lore-updated');
+        });
+
+        it('should clean up empty per-book contribution maps and caches when last file is removed or moved', () => {
+            expect(manager.getCharacterFile('Book1', 'Alice')).toBeDefined();
+            expect(manager.getCharacterFile('Book1', 'Bob')).toBeDefined();
+
+            manager.removeFileFromCache(file1.path);
+            expect(manager['fileContributions'].has('Book1')).toBe(true);
+
+            manager.removeFileFromCache(file2.path);
+            // All files removed for Book1
+            expect(manager['fileContributions'].has('Book1')).toBe(false);
+            expect(manager['characterCache'].has('Book1')).toBe(false);
+            expect(manager['lowercaseKeyMap'].has('Book1')).toBe(false);
+            expect(manager.getCharactersForBook('Book1')).toEqual([]);
+        });
+
+        it('should notify once total and increment cacheVersion once when renaming across books', async () => {
+            const crossBookFile = Object.assign(Object.create(TFile.prototype), {
+                path: 'Book2/Lore/AliceMoved.md',
+                basename: 'AliceMoved',
+                extension: 'md',
+                parent: { path: 'Book2/Lore' }
+            });
+
+            manager.getBookPathForFile = vi.fn().mockImplementation((f: any) => {
+                if (!f || !f.path) return null;
+                if (f.path.startsWith('Book1/')) return 'Book1';
+                if (f.path.startsWith('Book2/')) return 'Book2';
+                return null;
+            });
+            manager.isLorePath = vi.fn().mockImplementation((bookPath: string, parentPath: string) => {
+                if (bookPath === 'Book1') return parentPath === 'Book1/Lore' || parentPath.startsWith('Book1/Lore/');
+                if (bookPath === 'Book2') return parentPath === 'Book2/Lore' || parentPath.startsWith('Book2/Lore/');
+                return false;
+            });
+
+            mockApp.metadataCache.getFileCache = vi.fn().mockImplementation((f: any) => {
+                if (f.path === 'Book2/Lore/AliceMoved.md') {
+                    return {
+                        headings: [{ heading: 'AliceMoved', level: 2, position: { start: { line: 0 }, end: { line: 0 } } }]
+                    };
+                }
+                return {};
+            });
+            mockApp.vault.cachedRead = vi.fn().mockImplementation((f: any) => {
+                if (f.path === 'Book2/Lore/AliceMoved.md') {
+                    return Promise.resolve('## AliceMoved\n**Alias**: Traveler');
+                }
+                return Promise.resolve('');
+            });
+
+            mockApp.workspace.trigger.mockClear();
+            const prevVersion = manager.cacheVersion;
+
+            const renamed = await manager.handleFileRename(crossBookFile, file1.path);
+            expect(renamed).toBe(true);
+
+            // Removed from Book1, added to Book2
+            expect(manager.getCharacterFile('Book1', 'Alice')).toBeNull();
+            expect(manager.getCharacterFile('Book2', 'AliceMoved')?.heading).toBe('AliceMoved');
+            expect(manager.getCharacterFile('Book2', 'Traveler')?.heading).toBe('AliceMoved');
+
+            // Notified once total, version incremented once
+            expect(manager.cacheVersion).toBe(prevVersion + 1);
+            expect(mockApp.workspace.trigger).toHaveBeenCalledTimes(1);
+            expect(mockApp.workspace.trigger).toHaveBeenCalledWith('webnovel-workbench-lore-updated');
+        });
+
+        it('should ignore folder create events and fall back to debounced rebuild for folder delete/rename', () => {
+            const mockFolder = Object.assign(Object.create(TFolder.prototype), {
+                path: 'Book1/Lore/SubFolder',
+                name: 'SubFolder'
+            });
+
+            const rebuildSpy = vi.spyOn(manager, 'rebuildCache').mockResolvedValue(undefined);
+            const debounceMock = vi.fn();
+            mockPlugin.adaptiveDebounceManager = { debounceFixed: debounceMock };
+
+            // Folder create should do nothing (no rebuild, no debounce)
+            manager.handleFileChange(mockFolder, 'create');
+            expect(rebuildSpy).not.toHaveBeenCalled();
+            expect(debounceMock).not.toHaveBeenCalled();
+
+            // Folder delete should trigger debounced rebuild
+            manager.handleFileChange(mockFolder, 'delete');
+            expect(debounceMock).toHaveBeenCalledWith('rebuild-character-cache', expect.any(Function), 500);
+
+            // Folder rename should trigger debounced rebuild
+            debounceMock.mockClear();
+            manager.handleFileChange(mockFolder, 'rename', 'Book1/Lore/OldSubFolder');
+            expect(debounceMock).toHaveBeenCalledWith('rebuild-character-cache', expect.any(Function), 500);
+        });
+    });
 });

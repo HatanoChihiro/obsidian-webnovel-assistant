@@ -21,6 +21,7 @@ export class FileExplorerPatcher {
 	private app: App;
 	private plugin: WebNovelAssistantPlugin;
 	private enabled: boolean = false;
+	private destroyed: boolean = false;
 	private unpatchFuncs: (() => void)[] = [];
 	private patchedPrototypes = new WeakSet<object>();
 	private vaultEventRefs: EventRef[] = [];
@@ -52,6 +53,7 @@ export class FileExplorerPatcher {
 
 
 	enable(): boolean {
+		if (this.destroyed) return false;
 		if (this.enabled) return true;
 
 		ChapterSorter.setCustomRules(this.plugin.settings.chapterNamingRules || []);
@@ -243,6 +245,7 @@ export class FileExplorerPatcher {
 	}
 
 	public refreshAllExplorers(): void {
+		if (this.destroyed) return;
 		// [BUGFIX] 如果文件浏览器中有正在重命名的输入框，绝对不要强行触发 sort()，否则会瞬间摧毁原生的新建重命名输入框！
 		const isInputFocused = activeDocument.activeElement && activeDocument.activeElement.tagName.toLowerCase() === 'input';
 		if (isInputFocused) {
@@ -428,6 +431,20 @@ export class FileExplorerPatcher {
 		}));
 	}
 
+	private removeWordCountElements(): void {
+		const leaves = this.app.workspace.getLeavesOfType('file-explorer');
+		for (const leaf of leaves) {
+			const containerEl = (leaf.view as FileExplorerView)?.containerEl;
+			if (containerEl) {
+				Array.from(containerEl.getElementsByClassName('wn-folder-word-count')).forEach(el => el.remove());
+			}
+		}
+		if (typeof activeDocument !== 'undefined' && activeDocument.getElementsByClassName) {
+			Array.from(activeDocument.getElementsByClassName('wn-folder-word-count')).forEach(el => el.remove());
+		}
+		this.wordCountElCache = new WeakMap<HTMLElement, HTMLElement>();
+	}
+
 	disable(): void {
 		if (this.retryTimer !== null) {
 			window.clearTimeout(this.retryTimer);
@@ -445,7 +462,7 @@ export class FileExplorerPatcher {
 		this.workspaceEventRefs = [];
 		this.teardownDragSort();
 		this.refreshAllExplorers();
-		activeDocument.querySelectorAll('.wn-folder-word-count').forEach(el => el.remove());
+		this.removeWordCountElements();
 	}
 
 	unpatch(): void {
@@ -455,7 +472,7 @@ export class FileExplorerPatcher {
 		}
 		this.unpatchFuncs = [];
 		this.patchedPrototypes = new WeakSet<object>();
-		activeDocument.querySelectorAll('.wn-folder-word-count').forEach(el => el.remove());
+		this.removeWordCountElements();
 	}
 
 	isEnabled(): boolean {
@@ -464,6 +481,11 @@ export class FileExplorerPatcher {
 
 	refreshFolderCounts() {
 		try {
+			if (this.destroyed || this.plugin.isUnloading) {
+				this.removeWordCountElements();
+				return;
+			}
+
 			const fileExplorer = this.app.workspace.getLeavesOfType("file-explorer")[0];
 			if (!fileExplorer || !fileExplorer.view) return;
 
@@ -967,6 +989,8 @@ export class FileExplorerPatcher {
 	 * 实现 Destroyable 接口
 	 */
 	destroy(): void {
+		if (this.destroyed) return;
+		this.destroyed = true;
 		this.disable();
 		this.unpatch();
 	}

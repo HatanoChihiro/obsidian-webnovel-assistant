@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AdvancedSearchModal } from '../src/ui/AdvancedSearchModal';
-import type { WebNovelAssistantPlugin } from '../src/types/plugin';
+import { AdvancedSearchModal, type AdvancedSearchModalPlugin } from '../src/ui/AdvancedSearchModal';
 import { TFile } from 'obsidian';
 import { smartLocateAndHighlight } from '../src/utils/leaf';
 
@@ -28,7 +27,7 @@ describe('AdvancedSearchModal source leaf routing', () => {
 		};
 		const plugin = {
 			settings: { advancedSearchQuery: '', customSortOrder: {} }
-		} as unknown as WebNovelAssistantPlugin;
+		} as unknown as AdvancedSearchModalPlugin;
 		const modal = new AdvancedSearchModal(app as never, plugin, sourceLeaf as never);
 
 		(modal as unknown as { openSearchResult: (file: TFile, snippet: unknown) => void })
@@ -78,7 +77,7 @@ describe('AdvancedSearchModal source leaf routing', () => {
 		};
 		const plugin = {
 			settings: { advancedSearchQuery: '', customSortOrder: {} }
-		} as unknown as WebNovelAssistantPlugin;
+		} as unknown as AdvancedSearchModalPlugin;
 		const modal = new AdvancedSearchModal(app as never, plugin, {
 			view: { file: null },
 			openFile: vi.fn()
@@ -149,7 +148,7 @@ describe('AdvancedSearchModal source leaf routing', () => {
 			saveSettings: vi.fn(),
 			getVaultMarkdownFiles: vi.fn().mockReturnValue([targetFile]),
 			getTrackedMarkdownFiles: vi.fn().mockReturnValue([targetFile])
-		} as unknown as WebNovelAssistantPlugin;
+		} as unknown as AdvancedSearchModalPlugin;
 
 		const modal = new AdvancedSearchModal(app as never, plugin);
 		(modal as unknown as { searchScope: string }).searchScope = 'global';
@@ -196,7 +195,7 @@ describe('AdvancedSearchModal source leaf routing', () => {
 			saveSettings: vi.fn(),
 			getVaultMarkdownFiles: vi.fn().mockReturnValue([targetFile]),
 			getTrackedMarkdownFiles: vi.fn().mockReturnValue([targetFile])
-		} as unknown as WebNovelAssistantPlugin;
+		} as unknown as AdvancedSearchModalPlugin;
 
 		const modal = new AdvancedSearchModal(app as never, plugin);
 		(modal as unknown as { searchScope: string }).searchScope = 'global';

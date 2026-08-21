@@ -23,6 +23,7 @@ Welcome to WebNovel Assistant! An Obsidian plugin designed specifically for web 
   - [Timeline Management](#timeline-management)
   - [Time-Limited Task Tracking](#time-limited-task-tracking)
   - [Lore Quick Reference](#lore-quick-reference)
+  - [Lore Graph](#lore-graph)
   - [Lore Overview](#lore-overview)
   - [Chapter Overview (Classic)](#chapter-overview-classic)
   - [Advanced Search](#advanced-search)
@@ -797,6 +798,7 @@ When lore files or chapters already exist but lore highlighting, Workbench stati
 - **Auto Relationship Parsing**: Generate a relationship graph of characters with a single click, based on the mutual mentions parsed by "Lore Quick Reference" (dashed lines).
 - **Explicit Relationship Definition**: In the character lore Markdown files, use `### Relations` or `### 关系` to establish explicit relationships (solid lines). It supports unordered lists, such as `- [Target Character]: Relationship Description`.
 - **Customizable Styles**: Highly customizable appearance (colors, lines, dashes, etc.), which can be deeply modified via CSS Snippets.
+- **Complete Example**: Copy and customize the [complete Lore Graph CSS snippet example](LORE_GRAPH_CSS_EXAMPLE.css), which applies to both the standalone graph and Workbench Full Lore Graph.
 - **Dynamic Interaction**: Double-click to jump to the character document, scroll wheel to zoom, and right-click to pan the canvas. Hover to highlight related nodes and edges.
 
 #### How to Use

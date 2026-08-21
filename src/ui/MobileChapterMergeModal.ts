@@ -1,13 +1,20 @@
-import { Modal, setIcon, Notice, type TFolder } from 'obsidian';
-import type { WebNovelAssistantPlugin } from '../types/plugin';
-import type { ChapterMergeItem } from '../services/ChapterMergeManager';
+import type { App, TFolder } from 'obsidian';
+import { Modal, setIcon, Notice } from 'obsidian';
+import type { ChapterMergeItem, ChapterMergeManager } from '../services/ChapterMergeManager';
+import type { TypographyManager } from '../services/TypographyManager';
 import { t } from '../i18n';
+
+export interface MobileChapterMergeModalPlugin {
+	typographyManager: Pick<TypographyManager, 'registerPreviewElement' | 'unregisterPreviewElement'>;
+	chapterMergeManager: Pick<ChapterMergeManager, 'loadFolderChapters' | 'exportMergedDocument' | 'clearDraft'>;
+	calculateAccurateWords(text: string): number;
+}
 
 /**
  * 移动端（手机与平板）章节合并与原稿瀑布流预览 Modal
  */
 export class MobileChapterMergeModal extends Modal {
-	private plugin: WebNovelAssistantPlugin;
+	private plugin: MobileChapterMergeModalPlugin;
 	private folder: TFolder;
 	private items: ChapterMergeItem[] = [];
 	private includeTitles: boolean = true;
@@ -17,7 +24,7 @@ export class MobileChapterMergeModal extends Modal {
 	private previewContainerEl!: HTMLElement;
 	private typographyPreviewElement: HTMLElement | null = null;
 
-	constructor(app: typeof plugin.app, plugin: WebNovelAssistantPlugin, folder: TFolder) {
+	constructor(app: App, plugin: MobileChapterMergeModalPlugin, folder: TFolder) {
 		super(app);
 		this.plugin = plugin;
 		this.folder = folder;

@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ImmersiveModeManager } from '../src/ui/ImmersiveModeManager';
-import type { WebNovelAssistantPlugin } from '../src/types/plugin';
+import { ImmersiveModeManager, type ImmersiveModeManagerPlugin } from '../src/ui/ImmersiveModeManager';
 
 vi.mock('obsidian', () => ({
     Notice: vi.fn(),
@@ -15,7 +14,7 @@ vi.mock('obsidian', () => ({
 }));
 
 describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
-    let mockPlugin: WebNovelAssistantPlugin;
+    let mockPlugin: ImmersiveModeManagerPlugin;
     let manager: ImmersiveModeManager;
     let registeredEvents: Record<string, Function[]> = {};
     let mockActiveDocument: any;
@@ -116,7 +115,7 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
             stopTracking: vi.fn(),
             saveSettings: vi.fn().mockResolvedValue(undefined),
             settingsManager: { flush: vi.fn().mockResolvedValue(undefined) }
-        } as unknown as WebNovelAssistantPlugin;
+        } as unknown as ImmersiveModeManagerPlugin;
 
         manager = new ImmersiveModeManager(mockPlugin.app, mockPlugin);
     });

@@ -1,7 +1,6 @@
 import type { WorkspaceLeaf } from 'obsidian';
 import { ItemView, TFile } from 'obsidian';
-import type { WebNovelAssistantPlugin } from '../types/plugin';
-
+import type { CurrentBookContextPlugin } from '../utils/path';
 import { getCurrentBookContext } from '../utils/path';
 import { TouchDragPolyfill } from '../utils/TouchDragPolyfill';
 
@@ -10,12 +9,12 @@ import { TouchDragPolyfill } from '../utils/TouchDragPolyfill';
  * 提供文件夹跟踪和文件监听的公共逻辑
  * ForeshadowingView 和 TimelineView 都继承此类
  */
-export abstract class CreativeView extends ItemView {
-	plugin: WebNovelAssistantPlugin;
+export abstract class CreativeView<TPlugin extends CurrentBookContextPlugin> extends ItemView {
+	plugin: TPlugin;
 	currentFolder: string = '';
 	private touchPolyfillCleanup: (() => void) | null = null;
 
-	constructor(leaf: WorkspaceLeaf, plugin: WebNovelAssistantPlugin) {
+	constructor(leaf: WorkspaceLeaf, plugin: TPlugin) {
 		super(leaf);
 		this.plugin = plugin;
 	}

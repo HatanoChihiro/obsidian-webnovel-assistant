@@ -17,6 +17,7 @@ export class GraphInteractionController {
 	private layout: GraphData | null = null;
 	private canvas: HTMLCanvasElement;
 	private callbacks: GraphInteractionCallbacks;
+	private ownerWindow: Window;
 	
 	private isPanning: boolean = false;
 	private panStartX: number = 0;
@@ -45,12 +46,13 @@ export class GraphInteractionController {
 		this.canvas = canvas;
 		this.state = initialState;
 		this.callbacks = callbacks;
+		this.ownerWindow = canvas.ownerDocument.defaultView ?? window;
 	}
 
 	public bindEvents() {
 		this.canvas.addEventListener('mousedown', this.boundHandleMouseDown);
 		this.canvas.addEventListener('mousemove', this.boundHandleMouseMove);
-		window.addEventListener('mouseup', this.boundHandleMouseUp);
+		this.ownerWindow.addEventListener('mouseup', this.boundHandleMouseUp);
 		this.canvas.addEventListener('wheel', this.boundHandleWheel, { passive: false });
 		this.canvas.addEventListener('contextmenu', this.boundHandleContextMenu);
 		
@@ -63,7 +65,7 @@ export class GraphInteractionController {
 	public unbindEvents() {
 		this.canvas.removeEventListener('mousedown', this.boundHandleMouseDown);
 		this.canvas.removeEventListener('mousemove', this.boundHandleMouseMove);
-		window.removeEventListener('mouseup', this.boundHandleMouseUp);
+		this.ownerWindow.removeEventListener('mouseup', this.boundHandleMouseUp);
 		this.canvas.removeEventListener('wheel', this.boundHandleWheel);
 		this.canvas.removeEventListener('contextmenu', this.boundHandleContextMenu);
 		

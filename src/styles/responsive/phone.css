@@ -1612,6 +1612,10 @@ body.is-phone .wn-card-action-btn {
 		gap: 4px;
 	}
 
+	body.is-phone .wn-corkboard-grid .wn-corkboard-volume-header {
+		margin-bottom: -6px;
+	}
+
 	body.is-phone .wn-volume-header-icon svg {
 		width: 12px;
 		height: 12px;

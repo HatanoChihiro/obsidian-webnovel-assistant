@@ -99,8 +99,6 @@ describe('CacheManager', () => {
         });
 
         it('saveCache should serialize and write to adapter', async () => {
-            // Need to mock the queue behavior of SerializedWriter
-            // Since it's an async queue, we just await it
 			manager.updateFileCache({ path: 'Book 1/Chapter 1.md', name: 'Chapter 1.md', basename: 'Chapter 1', stat: { mtime: 1000 } } as TFile, 1500, {} as any);
             
             await manager.saveCache();
@@ -111,6 +109,80 @@ describe('CacheManager', () => {
             expect(writtenContent).toContain('Book 1/Chapter 1.md');
             expect(writtenContent).toContain('1500');
         });
+
+		it('suppresses redundant writes when cache has not changed', async () => {
+			mockAdapter.exists.mockResolvedValue(true);
+			const validData = {
+				version: 3,
+				timestamp: Date.now(),
+				entries: [['Book 1/Chapter 1.md', { path: 'Book 1/Chapter 1.md', wordCount: 1000, lastModified: 1000, isFolder: false }]]
+			};
+			mockAdapter.read.mockResolvedValue(JSON.stringify(validData));
+
+			await manager.loadCache();
+
+			// Periodic save without mutation -> 0 writes
+			await manager.saveCache();
+			expect(mockAdapter.write).not.toHaveBeenCalled();
+
+			// Mutate -> 1 write
+			manager.updateFileCache({ path: 'Book 1/Chapter 1.md', name: 'Chapter 1.md', basename: 'Chapter 1', stat: { mtime: 2000 } } as TFile, 1200, {} as any);
+			await manager.saveCache();
+			expect(mockAdapter.write).toHaveBeenCalledTimes(1);
+
+			// Periodic save again -> no additional write
+			await manager.saveCache();
+			expect(mockAdapter.write).toHaveBeenCalledTimes(1);
+		});
+
+		it('suppresses periodic saveCache writes when advancing mocked time without cache mutation', async () => {
+			mockAdapter.exists.mockResolvedValue(true);
+			const validData = {
+				version: 3,
+				timestamp: Date.now(),
+				entries: [['Book 1/Chapter 1.md', { path: 'Book 1/Chapter 1.md', wordCount: 1000, lastModified: 1000, isFolder: false }]]
+			};
+			mockAdapter.read.mockResolvedValue(JSON.stringify(validData));
+
+			await manager.loadCache();
+
+			// Advance mocked timer by 5 minutes (simulating periodic background save ticks)
+			vi.advanceTimersByTime(5 * 60 * 1000);
+
+			// Periodic save must still perform zero writes
+			await manager.saveCache();
+			expect(mockAdapter.write).not.toHaveBeenCalled();
+			expect(manager.isDirty()).toBe(false);
+		});
+
+		it('coalesces burst saveCache requests into a single write', async () => {
+			manager.updateFileCache({ path: 'Book 1/Chapter 1.md', name: 'Chapter 1.md', basename: 'Chapter 1', stat: { mtime: 1000 } } as TFile, 500, {} as any);
+
+			const p1 = manager.saveCache();
+			const p2 = manager.saveCache();
+			const p3 = manager.saveCache();
+
+			await Promise.all([p1, p2, p3]);
+
+			expect(mockAdapter.write).toHaveBeenCalledTimes(1);
+			expect(manager.isDirty()).toBe(false);
+		});
+
+		it('keeps cache dirty on write failure and allows retry', async () => {
+			mockAdapter.write
+				.mockRejectedValueOnce(new Error('Write failed'))
+				.mockResolvedValueOnce(undefined);
+
+			manager.updateFileCache({ path: 'Book 1/Chapter 1.md', name: 'Chapter 1.md', basename: 'Chapter 1', stat: { mtime: 1000 } } as TFile, 500, {} as any);
+
+			await expect(manager.saveCache()).rejects.toThrow('Write failed');
+			expect(manager.isDirty()).toBe(true);
+
+			await manager.flush();
+
+			expect(mockAdapter.write).toHaveBeenCalledTimes(2);
+			expect(manager.isDirty()).toBe(false);
+		});
     });
 
     describe('File Path Validation', () => {

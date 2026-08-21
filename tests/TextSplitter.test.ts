@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { TextSplitter } from '../src/services/TextSplitter';
+import { TextSplitter, type TextSplitterPlugin } from '../src/services/TextSplitter';
 import { ChapterSorter } from '../src/services/ChapterSorter';
 
 describe('TextSplitter Engine', () => {
@@ -229,10 +229,10 @@ describe('TextSplitter Engine', () => {
 			}
 		};
 		const app = { vault } as unknown;
-		const plugin = {
+		const plugin: TextSplitterPlugin = {
 			settings: { workspaceFolders: ['作品'], novelInfo: { fileName: '作品信息' } },
 			homepageManager: { createNovelInfoFile: async () => undefined }
-		} as unknown;
+		};
 		const chapters = TextSplitter.splitIntoChapters(`第1卷 初入
 第1章 开始
 正文
@@ -240,7 +240,7 @@ describe('TextSplitter Engine', () => {
 第2章 决战
 正文`);
 
-		await TextSplitter.executeImport(app as never, plugin as never, '测试作品', chapters, () => undefined);
+		await TextSplitter.executeImport(app as never, plugin, '测试作品', chapters, () => undefined);
 
 		expect(createdFolders).toEqual([
 			'作品/测试作品',

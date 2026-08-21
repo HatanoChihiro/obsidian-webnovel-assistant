@@ -1,6 +1,12 @@
 import { ViewPlugin, type ViewUpdate, Decoration, type DecorationSet, type EditorView } from '@codemirror/view';
 import { RangeSetBuilder, type Extension } from '@codemirror/state';
-import type { WebNovelAssistantPlugin } from '../types/plugin';
+import type { ImmersiveModeSettings } from '../types/settings';
+
+export interface TypewriterExtensionPlugin {
+	settings: {
+		immersive: Pick<ImmersiveModeSettings, 'typewriterEnabled' | 'typewriterCenterOffset'>;
+	};
+}
 
 /**
  * 沉浸模式打字机 CodeMirror 6 扩展
@@ -8,7 +14,7 @@ import type { WebNovelAssistantPlugin } from '../types/plugin';
  * 1. 光标行精准居中滚动（算入 .cm-sizer 的 50vh 上留白与标题高度，保持 0% 偏移处于主编辑区正中心）
  * 2. 焦点行高亮与非焦点行平滑淡化
  */
-export function createTypewriterExtension(plugin: WebNovelAssistantPlugin): Extension {
+export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Extension {
 	class TypewriterPlugin {
 		decorations: DecorationSet;
 		private isScrolling = false;
@@ -16,15 +22,19 @@ export function createTypewriterExtension(plugin: WebNovelAssistantPlugin): Exte
 		private hasInitialCentered = false;
 		private scrollTimer: number | null = null;
 		private view: EditorView;
+		private ownerDocument: Document;
+		private ownerWindow: Window;
 
 		constructor(view: EditorView) {
 			this.view = view;
+			this.ownerDocument = view.scrollDOM.ownerDocument;
+			this.ownerWindow = this.ownerDocument.defaultView ?? window;
 			this.decorations = this.buildDecorations(view);
 
 			if (view.scrollDOM) {
 				view.scrollDOM.addEventListener('mousedown', this.onMouseDown);
 			}
-			activeDocument.addEventListener('mouseup', this.onMouseUp);
+			this.ownerDocument.addEventListener('mouseup', this.onMouseUp);
 		}
 
 		private onMouseDown = (): void => {
@@ -37,20 +47,20 @@ export function createTypewriterExtension(plugin: WebNovelAssistantPlugin): Exte
 
 		destroy() {
 			if (this.scrollTimer !== null) {
-				window.clearTimeout(this.scrollTimer);
+				this.ownerWindow.clearTimeout(this.scrollTimer);
 				this.scrollTimer = null;
 			}
 			if (this.view.scrollDOM) {
 				this.view.scrollDOM.removeEventListener('mousedown', this.onMouseDown);
 			}
-			activeDocument.removeEventListener('mouseup', this.onMouseUp);
+			this.ownerDocument.removeEventListener('mouseup', this.onMouseUp);
 		}
 
 		update(update: ViewUpdate) {
 			this.decorations = this.buildDecorations(update.view);
 
 			// 仅在沉浸模式且打字机功能开启时生效
-			if (!activeDocument.body.classList.contains('immersive-mode-active') || !plugin.settings.immersive.typewriterEnabled) {
+			if (!this.ownerDocument.body.classList.contains('immersive-mode-active') || !plugin.settings.immersive.typewriterEnabled) {
 				this.hasInitialCentered = false;
 				return;
 			}
@@ -63,7 +73,7 @@ export function createTypewriterExtension(plugin: WebNovelAssistantPlugin): Exte
 			// 刚进入沉浸模式时的初始化定位，或光标移动/输入文本时触发居中滚动
 			if (!this.hasInitialCentered || update.selectionSet || update.docChanged) {
 				this.hasInitialCentered = true;
-				window.requestAnimationFrame(() => {
+				this.ownerWindow.requestAnimationFrame(() => {
 					this.centerCursorLine(update.view);
 				});
 			}
@@ -101,8 +111,8 @@ export function createTypewriterExtension(plugin: WebNovelAssistantPlugin): Exte
 					top: Math.max(0, desiredScrollTop),
 					behavior: 'smooth'
 				});
-				if (this.scrollTimer !== null) window.clearTimeout(this.scrollTimer);
-				this.scrollTimer = window.setTimeout(() => {
+				if (this.scrollTimer !== null) this.ownerWindow.clearTimeout(this.scrollTimer);
+				this.scrollTimer = this.ownerWindow.setTimeout(() => {
 					this.isScrolling = false;
 					this.scrollTimer = null;
 				}, 120);
@@ -110,7 +120,7 @@ export function createTypewriterExtension(plugin: WebNovelAssistantPlugin): Exte
 		}
 
 		private buildDecorations(view: EditorView): DecorationSet {
-			if (!activeDocument.body.classList.contains('immersive-mode-active') || !plugin.settings.immersive.typewriterEnabled) {
+			if (!this.ownerDocument.body.classList.contains('immersive-mode-active') || !plugin.settings.immersive.typewriterEnabled) {
 				return Decoration.none;
 			}
 

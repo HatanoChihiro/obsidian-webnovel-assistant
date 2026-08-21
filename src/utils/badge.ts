@@ -6,13 +6,19 @@
  */
 
 import { ForeshadowingStatus, type ParsedForeshadowingEntry } from '../types/foreshadowing';
-import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { isMobile } from './platform';
-import { LoreHoverPopover } from '../ui/LoreHoverPopover';
+import { LoreHoverPopover, type LoreHoverPopoverPlugin } from '../ui/LoreHoverPopover';
+import type { CharacterManager } from '../services/CharacterManager';
 import { t } from '../i18n';
 import type { TooltipOptions } from 'obsidian';
 import { setTooltip } from 'obsidian';
 
+export interface LoreBadgePlugin extends LoreHoverPopoverPlugin {
+	characterManager: Pick<
+		CharacterManager,
+		'getCharacterFile' | 'findLoreFolder' | 'createLoreEntry' | 'getLoreContent' | 'updateLoreContent'
+	>;
+}
 
 /**
  * 渲染伏笔相关 Badge（待回收 / 本章回收）
@@ -20,13 +26,13 @@ import { setTooltip } from 'obsidian';
  * @param container          要挂载 Badge 的父容器
  * @param cardForeshadowings 与该卡片关联的伏笔条目列表
  * @param currentBasename    当前章节文件名
- * @param plugin             插件实例，用于提供 Popup 操作
+ * @param _plugin            插件实例（保留参数位置向后兼容）
  */
 export function renderForeshadowingBadges(
 	container: HTMLElement,
 	cardForeshadowings: ParsedForeshadowingEntry[],
 	currentBasename?: string,
-	_plugin?: WebNovelAssistantPlugin
+	_plugin?: unknown
 ): void {
 	const tooltipOptions: TooltipOptions = { classes: ['wn-tooltip-left'] };
 
@@ -103,7 +109,7 @@ export function renderLoreBadges(
 	container: HTMLElement,
 	loreArray: unknown,
 	bookPath: string,
-	plugin: WebNovelAssistantPlugin,
+	plugin: LoreBadgePlugin,
 	enableHover: boolean,
 	maxLinesOrDisplay?: number
 ): void {
@@ -120,6 +126,7 @@ export function renderLoreBadges(
 		let hoverTimeout: number | null = null;
 		badgeEl.addEventListener('mouseenter', () => {
 			hoverTimeout = window.setTimeout(() => {
+				if (!badgeEl.isConnected || !badgeEl.matches(':hover')) return;
 				const entry = plugin.characterManager.getCharacterFile(bookPath, realLoreName);
 				if (entry) new LoreHoverPopover(badgeEl, entry, plugin, true);
 			}, 500);

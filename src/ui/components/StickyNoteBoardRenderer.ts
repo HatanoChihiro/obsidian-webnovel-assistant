@@ -1,11 +1,32 @@
 import { type App, TFile, Notice } from 'obsidian';
-import type { WebNovelAssistantPlugin } from '../../types/plugin';
+import type { StickyNoteState } from '../../types/settings';
 import { SaveStickyNoteModal, ConfirmCloseModal } from '../StickyNote';
 import { t } from '../../i18n';
 
+export interface StickyNoteBoardSettings {
+    stickyNoteAutoSave?: boolean;
+}
+
+export interface StickyNoteBoardManager {
+    getNotes(): StickyNoteState[];
+    updateNote(note: StickyNoteState, debounceSave?: boolean): void;
+    saveNotes(notes: StickyNoteState[]): Promise<void>;
+    removeNoteAndWait(id: string): Promise<void>;
+}
+
+export interface StickyNoteBoardDebounceManager {
+    debounceFixed(key: string, fn: () => void, delay: number): void;
+}
+
+export interface StickyNoteBoardPlugin {
+    settings: StickyNoteBoardSettings;
+    stickyNoteManager: StickyNoteBoardManager;
+    adaptiveDebounceManager: StickyNoteBoardDebounceManager;
+}
+
 export interface StickyNoteBoardRendererOptions {
     app: App;
-    plugin: WebNovelAssistantPlugin;
+    plugin: StickyNoteBoardPlugin;
     container: HTMLElement;
     reloadBoard: () => void;
 }
@@ -76,7 +97,7 @@ export class StickyNoteBoardRenderer {
 									throw new Error(`Linked note file not found: ${latestNote.filePath}`);
                                 }
                             } else {
-                                const saveModal = new SaveStickyNoteModal(app, plugin, async (fileName: string, folderPath: string) => {
+                                const saveModal = new SaveStickyNoteModal(app, async (fileName: string, folderPath: string) => {
                                         const fullPath = (folderPath ? `${folderPath}/` : '') + (fileName.endsWith('.md') ? fileName : `${fileName}.md`);
                                         if (app.vault.getAbstractFileByPath(fullPath)) {
                                             new Notice(t('modal.file-already-exists', { path: fullPath }));

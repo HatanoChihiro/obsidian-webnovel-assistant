@@ -122,9 +122,15 @@
 	--wna-rg-node-gap: 3.5;
 	--wna-rg-curve-offset: 20;
 
-	/* 端点几何样式（起始空心微环，末端实心微点，统一 1.0px 半径） */
+	/* 端点样式：ring | dot | arrow | none；默认起点空心环、终点实心点 */
+	--wna-rg-source-marker: ring;
+	--wna-rg-target-marker: dot;
 	--wna-rg-start-dot-radius: 1.0;
 	--wna-rg-end-ring-radius: 1.0;
+	--wna-rg-source-marker-radius: var(--wna-rg-end-ring-radius);
+	--wna-rg-target-marker-radius: var(--wna-rg-start-dot-radius);
+	--wna-rg-arrow-length: 2.6;
+	--wna-rg-arrow-angle-deg: 26;
 
 	/* 关系标签排版样式 */
 	--wna-rg-label-font-size: 6;

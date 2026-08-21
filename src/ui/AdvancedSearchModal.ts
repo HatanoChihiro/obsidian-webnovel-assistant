@@ -1,21 +1,34 @@
 import type { App, TAbstractFile, WorkspaceLeaf } from 'obsidian';
 import { Modal, Setting, TFolder, TFile, Vault, MarkdownView } from 'obsidian';
-import type { WebNovelAssistantPlugin } from '../types/plugin';
+import type { AccurateCountSettings } from '../types/settings';
 import { ChapterSorter } from '../services/ChapterSorter';
 import { t } from '../i18n';
-import { findBookRoot } from '../utils/path';
+import { findBookRoot, type FindBookRootPlugin } from '../utils/path';
 import { getMarkdownBodyRange, smartLocateAndHighlight } from '../utils/leaf';
 import { Logger } from '../utils/Logger';
 
+export type AdvancedSearchSettings = Pick<
+	AccurateCountSettings,
+	'advancedSearchQuery' | 'customSortOrder' | 'workspaceFolders' | 'loreFolderName' | 'timeline' | 'foreshadowing' | 'novelInfo'
+>;
+
+export interface AdvancedSearchModalPlugin extends FindBookRootPlugin {
+	settings: AdvancedSearchSettings;
+	lastFilePath?: string;
+	saveSettings(): Promise<void>;
+	getVaultMarkdownFiles(): TFile[];
+	getTrackedMarkdownFiles(includeLore?: boolean): TFile[];
+}
+
 export class AdvancedSearchModal extends Modal {
-	plugin: WebNovelAssistantPlugin;
+	plugin: AdvancedSearchModalPlugin;
 	query: string = '';
 	searchScope: 'global' | 'current' | 'custom' = 'current';
 	selectedFolders: Set<string> = new Set();
 	resultsContainer!: HTMLElement;
 	customScopeContainer!: HTMLElement;
 	
-	constructor(app: App, plugin: WebNovelAssistantPlugin, private sourceLeaf: WorkspaceLeaf | null = null) {
+	constructor(app: App, plugin: AdvancedSearchModalPlugin, private sourceLeaf: WorkspaceLeaf | null = null) {
 		super(app);
 		this.plugin = plugin;
 		this.query = this.plugin.settings.advancedSearchQuery || '';

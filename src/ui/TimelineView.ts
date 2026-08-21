@@ -2,29 +2,57 @@ import type { WorkspaceLeaf, TFile } from 'obsidian';
 import { Notice } from 'obsidian';
 import type { TimelineEntry, TimelineManager } from '../services/TimelineManager';
 import { CreativeView } from './CreativeView';
-import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { rafThrottle } from '../utils/dom';
 import { t } from '../i18n';
 import { getDefaultFileName } from '../i18n/data-keys';
 import { ChapterSorter } from '../services/ChapterSorter';
 import { TimelineAddModal } from './TimelineAddModal';
 import { smartLocateAndHighlight } from '../utils/leaf';
+import type { CurrentBookContextPlugin } from '../utils/path';
+import type { TimelineFormContext, TimelineFormSettings } from './components/TimelineFormComponent';
 
+import type { AccurateCountSettings } from '../types/settings';
+import type { HomepageManager } from '../services/HomepageManager';
 
 export const TIMELINE_VIEW_TYPE = 'wn-timeline-view';
 
+export type TimelineViewManager = Pick<
+	TimelineManager,
+	| 'currentFolder'
+	| 'getTimelineFile'
+	| 'createTimelineFile'
+	| 'parseEntries'
+	| 'appendEntry'
+	| 'updateEntry'
+	| 'deleteEntry'
+	| 'moveEntry'
+>;
 
+export type TimelineViewSettings = TimelineFormSettings &
+	Pick<AccurateCountSettings, 'workspaceFolders' | 'loreFolderName' | 'foreshadowing' | 'novelInfo'>;
+
+export type TimelineViewHomepageManager = Pick<HomepageManager, 'getNovelFolders'> & {
+	getHomepageFilePath(): string;
+};
+
+export interface TimelineViewPlugin
+	extends Omit<CurrentBookContextPlugin, 'settings' | 'homepageManager'>,
+		Omit<TimelineFormContext, 'settings' | 'homepageManager'> {
+	settings: TimelineViewSettings;
+	homepageManager?: TimelineViewHomepageManager;
+	timelineManager: TimelineViewManager;
+}
 
 /**
  * 时间线视图
  * 在侧边栏显示当前文件夹的时间线，支持内联编辑和从正文添加
  */
-export class TimelineView extends CreativeView {
-	private manager!: TimelineManager;
+export class TimelineView extends CreativeView<TimelineViewPlugin> {
+	private manager!: TimelineViewManager;
 	private editingIndex: number = -1;
 	private filterType: string = 'all';
 
-	constructor(leaf: WorkspaceLeaf, plugin: WebNovelAssistantPlugin) {
+	constructor(leaf: WorkspaceLeaf, plugin: TimelineViewPlugin) {
 		super(leaf, plugin);
 		this.manager = this.plugin.timelineManager;
 	}

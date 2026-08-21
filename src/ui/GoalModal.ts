@@ -1,7 +1,11 @@
 import type { App, TFile } from 'obsidian';
 import { Modal, Setting } from 'obsidian';
-import type { WebNovelAssistantPlugin } from '../types/plugin';
+import type { HomepageManager } from '../services/HomepageManager';
 import { t } from '../i18n';
+
+export interface GoalModalPlugin {
+	homepageManager?: Pick<HomepageManager, 'setChapterWordGoal'> | null;
+}
 
 /**
  * 目标字数设定弹窗
@@ -9,10 +13,10 @@ import { t } from '../i18n';
  */
 export class GoalModal extends Modal {
 	file: TFile;
-	plugin: WebNovelAssistantPlugin;
+	plugin: GoalModalPlugin;
 	goalInput: string = "";
 
-	constructor(app: App, plugin: WebNovelAssistantPlugin, file: TFile) {
+	constructor(app: App, plugin: GoalModalPlugin, file: TFile) {
 		super(app);
 		this.plugin = plugin;
 		this.file = file;

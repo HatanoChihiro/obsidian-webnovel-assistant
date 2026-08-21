@@ -1,3 +1,19 @@
+## 🔧 v3.8.6
+
+### 功能优化
+- **性能与稳定性**：减少大型仓库、频繁保存和长章节跳转时的等待，并提升主页、设定预览、多窗口交互和插件启动的稳定性。
+- **界面细节优化**：统一工作台全章节视图与设定、任务等看板的卡片间距。
+- **设定图谱样式**：独立设定图谱和工作台全量图谱支持应用 CSS 代码片段并及时刷新，可自定义节点、连线、流光和曲线间距，以及切换关系端点的空心环、实心点、箭头或隐藏样式。
+
+### English Changelog
+
+#### Enhancements
+- **Performance and Stability**: Reduced delays in large vaults, during frequent saves, and when navigating long chapters, while improving reliability across the Homepage, lore previews, multi-window interactions, and plugin startup.
+- **UI Refinements**: Unified card spacing between Workbench Full Chapter View and lore, task, and other boards.
+- **Lore Graph Styles**: Added CSS snippet support with timely refreshes to both standalone and Workbench Full Lore Graphs, including controls for nodes, lines, pulses, curve spacing, and ring, dot, arrow, or hidden endpoint markers.
+
+---
+
 ## 🔧 v3.8.5
 
 ### 功能优化

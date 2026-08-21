@@ -13,8 +13,7 @@ vi.mock('obsidian', async () => {
 });
 
 import { TFile } from 'obsidian';
-import { getStickyNoteFileCandidates } from '../src/ui/components/StickyNoteListRenderer';
-import type { WebNovelAssistantPlugin } from '../src/types/plugin';
+import { getStickyNoteFileCandidates, type StickyNoteListRendererPlugin } from '../src/ui/components/StickyNoteListRenderer';
 
 describe('StickyNoteListRenderer file candidates', () => {
 	it('includes non-chapter Markdown files', () => {
@@ -22,7 +21,7 @@ describe('StickyNoteListRenderer file candidates', () => {
 		const novelInfo = new TFile('作品信息.md', '作品/作品信息.md');
 		const plugin = {
 			getVaultMarkdownFiles: () => [chapter, novelInfo]
-		} as Pick<WebNovelAssistantPlugin, 'getVaultMarkdownFiles'>;
+		} as Pick<StickyNoteListRendererPlugin, 'getVaultMarkdownFiles'>;
 
 		expect(getStickyNoteFileCandidates(plugin)).toEqual([chapter, novelInfo]);
 	});

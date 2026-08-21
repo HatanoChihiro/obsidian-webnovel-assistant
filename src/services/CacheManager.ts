@@ -4,10 +4,10 @@ import { getDefaultFileName, getDefaultFileNameCandidates } from '../i18n/data-k
 import { PLATFORM_DELAYS } from '../constants';
 import { t } from '../i18n';
 import { CACHE_CONFIG } from '../constants';
-import { SerializedWriter } from '../utils/SerializedWriter';
 import { getPluginDir, isMobile } from '../utils/platform';
 import { isExcludedFromWordCount } from '../utils/validation';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
+import { JsonSnapshotStore } from '../utils/JsonSnapshotStore';
 
 const CACHE_VERSION = 3;
 
@@ -40,14 +40,37 @@ export class CacheManager {
 	private maxCacheSize: number = CACHE_CONFIG.MAX_SIZE;
 	private plugin: WebNovelAssistantPlugin; // 插件实例，用于持久化
 	private cacheFilePath: string; // 独立缓存文件路径
+	private lastCacheTimestamp: number = Date.now(); // 稳定的快照时间戳，仅在修改或加载时更新
 	
-	// 串行写入器：确保数据保存的原子性
-	private writer = new SerializedWriter();
+	// 快照持久化存储：确保数据保存的原子性、突发合并与冗余写入抑制
+	private store: JsonSnapshotStore<CacheData>;
 
 	constructor(plugin: WebNovelAssistantPlugin) {
 		this.cache = new Map();
 		this.plugin = plugin;
 		this.cacheFilePath = `${getPluginDir(plugin)}/cache-data.json`;
+		this.store = new JsonSnapshotStore<CacheData>({
+			write: async (content) => {
+				const adapter = this.plugin.app.vault.adapter;
+				await adapter.write(this.cacheFilePath, content);
+			},
+			getSnapshot: () => ({
+				version: CACHE_VERSION,
+				timestamp: this.lastCacheTimestamp,
+				entries: Array.from(this.cache.entries())
+			}),
+			onError: (error) => {
+				console.error('[CacheManager] 保存缓存失败:', error);
+			}
+		});
+	}
+
+	/**
+	 * 统一标记缓存修改与时间戳更新
+	 */
+	private markCacheDirty(): void {
+		this.lastCacheTimestamp = Date.now();
+		this.store.markDirty();
 	}
 
 	/**
@@ -96,9 +119,13 @@ export class CacheManager {
 				return false;
 			}
 
-			// 加载缓存
+			// 加载缓存并标记为未修改干净状态（保持加载时的稳定时间戳）
+			this.lastCacheTimestamp = cacheData.timestamp;
 			this.cache = new Map(cacheData.entries);
+			this.store.markClean(cacheData);
+
 			if (shouldPersistMigration) {
+				this.markCacheDirty();
 				await this.saveCache();
 			}
 			return true;
@@ -120,25 +147,21 @@ export class CacheManager {
 	 */
 	async saveCache(): Promise<void> {
 		if (!this.plugin) return;
+		return this.store.save();
+	}
 
-		// 将保存操作加入队列，确保串行执行
-		return this.writer.enqueue(async () => {
-			try {
-				const cacheData: CacheData = {
-					version: CACHE_VERSION, // v3 起总字数缓存仅包含章节文件
-					timestamp: Date.now(),
-					entries: Array.from(this.cache.entries())
-				};
+	/**
+	 * 强制等待所有待处理的保存操作完成
+	 */
+	async flush(): Promise<void> {
+		await this.store.flush();
+	}
 
-				// 直接序列化并写入到独立的 cache-data.json 文件
-				const adapter = this.plugin.app.vault.adapter;
-				const content = JSON.stringify(cacheData);
-				await adapter.write(this.cacheFilePath, content);
-				
-			} catch (error) {
-				console.error('[CacheManager] 保存缓存失败:', error);
-			}
-		});
+	/**
+	 * 检查是否有未保存的变更
+	 */
+	isDirty(): boolean {
+		return this.store.isDirty();
 	}
 
 	/**
@@ -267,6 +290,8 @@ export class CacheManager {
 			parent = parent.parent;
 		}
 
+		this.markCacheDirty();
+
 		// 清理缓存大小
 		if (this.cache.size > this.maxCacheSize) {
 			this.clearOldEntries();
@@ -304,13 +329,18 @@ export class CacheManager {
 			rootEntry.wordCount = Math.max(0, rootEntry.wordCount - wordCount);
 			rootEntry.lastModified = Date.now();
 		}
+
+		this.markCacheDirty();
 	}
 
 	/**
 	 * 清空所有缓存
 	 */
 	clearCache(): void {
-		this.cache.clear();
+		if (this.cache.size > 0) {
+			this.cache.clear();
+			this.markCacheDirty();
+		}
 	}
 
 	/**
@@ -369,6 +399,8 @@ export class CacheManager {
 				rootEntry.wordCount = Math.max(0, rootEntry.wordCount - wordCount);
 			}
 		}
+
+		this.markCacheDirty();
 	}
 
 	private _loreCandidatesCache: Set<string> | null = null;
@@ -570,6 +602,8 @@ export class CacheManager {
 		for (const [path, wordCount] of folderTotals) {
 			this.cache.set(path, { path, wordCount, lastModified: now, isFolder: true });
 		}
+
+		this.markCacheDirty();
 	}
 
 }

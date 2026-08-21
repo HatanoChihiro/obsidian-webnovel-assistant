@@ -1,31 +1,139 @@
 import { TFile, TFolder, Vault, Component, type TAbstractFile, type WorkspaceLeaf, ItemView, Notice, Menu, Modal, Setting, setIcon } from 'obsidian';
 import type { App, ViewStateResult } from 'obsidian';
-import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ForeshadowingStatus, type ParsedForeshadowingEntry } from '../types/foreshadowing';
+import type { AccurateCountSettings, StickyNoteState } from '../types/settings';
+import type { TaskSettings } from '../types/task';
 import { ChapterSorter } from '../services/ChapterSorter';
-import { getCurrentBookContext, findBookRoot, getLatestChapterFolderPath } from '../utils/path';
+import { getCurrentBookContext, findBookRoot, getLatestChapterFolderPath, type CurrentBookContextPlugin } from '../utils/path';
 import { t } from '../i18n';
 import { getNovelStatusText, getNovelInfoLabel } from '../i18n/data-keys';
-import { CorkboardGridRenderer } from './components/CorkboardGridRenderer';
-import { TimelineBoardRenderer } from './components/TimelineBoardRenderer';
-import { LoreBoardRenderer } from './components/LoreBoardRenderer';
-import { AddLoreModal } from './AddLoreModal';
+import { CorkboardGridRenderer, type CorkboardGridPlugin } from './components/CorkboardGridRenderer';
+import { TimelineBoardRenderer, type TimelineBoardPlugin, type TimelineBoardTimelineManager } from './components/TimelineBoardRenderer';
+import { LoreBoardRenderer, type LoreBoardPlugin, type LoreBoardRelationGraphManager, type LoreBoardCharacterManager } from './components/LoreBoardRenderer';
+import { AddLoreModal, type AddLorePlugin } from './AddLoreModal';
 import { DraggableListHelper } from '../utils/DraggableListHelper';
 import { TouchDragPolyfill } from '../utils/TouchDragPolyfill';
-import { TaskBoardRenderer } from './components/TaskBoardRenderer';
-import { StickyNoteBoardRenderer } from './components/StickyNoteBoardRenderer';
-import { ForeshadowingBoardRenderer } from './components/ForeshadowingBoardRenderer';
+import { TaskBoardRenderer, type TaskBoardPlugin, type TaskBoardManager } from './components/TaskBoardRenderer';
+import { StickyNoteBoardRenderer, type StickyNoteBoardPlugin, type StickyNoteBoardManager } from './components/StickyNoteBoardRenderer';
+import { ForeshadowingBoardRenderer, type ForeshadowingBoardPlugin, type ForeshadowingBoardStatusManager } from './components/ForeshadowingBoardRenderer';
 import { TaskAddModal } from './TaskModal';
-import type { StickyNoteState } from '../types/settings';
 import { isMobile } from '../utils';
 import { Logger } from '../utils/Logger';
 import { WorkbenchFilterIndex } from '../services/WorkbenchFilterIndex';
-import { resolveChapterTemplate } from '../utils/template';
+import { resolveChapterTemplate, type ChapterTemplateSettings } from '../utils/template';
+import type { CacheManager } from '../services/CacheManager';
+import type { AdaptiveDebounceManager } from '../services/AdaptiveDebounceManager';
+import type { HomepageManager } from '../services/HomepageManager';
+import type { CharacterManager } from '../services/CharacterManager';
+import type { ForeshadowingManager } from '../services/ForeshadowingManager';
+import type { TaskManager } from '../services/TaskManager';
+import type { MenuManager } from '../core/MenuManager';
+import type { FileExplorerPatcher } from '../services/FileExplorerPatcher';
+
+export type WorkbenchViewSettings = Pick<
+	AccurateCountSettings,
+	| 'enableStrictChapterMode'
+	| 'loreFolderName'
+	| 'customSortOrder'
+	| 'corkboardSortMode'
+	| 'loreBoardLayout'
+	| 'enableSmartChapterSort'
+	| 'nextNoteThemeIndex'
+	| 'noteThemes'
+	| 'enableChapterTemplate'
+	| 'chapterTemplatePath'
+	| 'chapterTemplatePaths'
+	| 'workspaceFolders'
+	| 'timeline'
+	| 'foreshadowing'
+	| 'novelInfo'
+	| 'enableMobileLorePopover'
+	| 'lorePopoverCollapse'
+	| 'loreBoardActiveFile'
+	| 'stickyNoteAutoSave'
+	| 'homepagePath'
+> & {
+	task?: Pick<TaskSettings, 'fileName'>;
+};
+
+export type WorkbenchCacheManager = Pick<
+	CacheManager,
+	'isFileInWorkspace' | 'isEligibleForChapterList' | 'getFileCache'
+>;
+
+export type WorkbenchDebounceManager = Pick<
+	AdaptiveDebounceManager,
+	'debounceFixed'
+>;
+
+export type WorkbenchHomepageManager = Pick<
+	HomepageManager,
+	'getHomepageFilePath' | 'getNovelFolders' | 'findNovelInfoFile' | 'getNovelMetadata'
+>;
+
+export type WorkbenchCharacterManager = LoreBoardCharacterManager &
+	Pick<CharacterManager, 'createLoreEntry'>;
+
+export type WorkbenchForeshadowingManager = ForeshadowingBoardStatusManager &
+	Pick<ForeshadowingManager, 'findForeshadowingFile' | 'parseEntries'>;
+
+export type WorkbenchTimelineManager = TimelineBoardTimelineManager;
+
+export type WorkbenchTaskManager = TaskBoardManager &
+	Pick<TaskManager, 'loadEntries' | 'getNextPeriod' | 'addEntry' | 'getChapterWordCount'>;
+
+export type WorkbenchStickyNoteManager = StickyNoteBoardManager;
+
+export type WorkbenchMenuManager = Pick<
+	MenuManager,
+	'openChapterMerge' | 'toggleExcludeFromWordCount'
+>;
+
+export type WorkbenchFileExplorerPatcher = Pick<
+	FileExplorerPatcher,
+	'refreshAllExplorers'
+>;
+
+export type NewChapterModalSettings = ChapterTemplateSettings;
+
+export interface NewChapterModalPlugin {
+	settings: NewChapterModalSettings;
+}
+
+export interface WorkbenchViewPlugin
+	extends Omit<CorkboardGridPlugin, 'settings'>,
+		Omit<TimelineBoardPlugin, 'settings' | 'timelineManager' | 'characterManager' | 'cacheManager' | 'menuManager'>,
+		Omit<LoreBoardPlugin, 'settings' | 'characterManager' | 'relationGraphManager' | 'saveSettings'>,
+		Omit<TaskBoardPlugin, 'settings' | 'taskManager'>,
+		Omit<StickyNoteBoardPlugin, 'settings' | 'stickyNoteManager' | 'adaptiveDebounceManager'>,
+		Omit<ForeshadowingBoardPlugin, 'settings' | 'foreshadowingManager' | 'homepageManager'>,
+		Omit<AddLorePlugin, 'characterManager'>,
+		Omit<CurrentBookContextPlugin, 'settings' | 'homepageManager'>,
+		Omit<NewChapterModalPlugin, 'settings'> {
+	settings: WorkbenchViewSettings;
+	cacheManager: WorkbenchCacheManager;
+	adaptiveDebounceManager: WorkbenchDebounceManager;
+	homepageManager?: WorkbenchHomepageManager;
+	characterManager: WorkbenchCharacterManager;
+	foreshadowingManager: WorkbenchForeshadowingManager;
+	timelineManager: WorkbenchTimelineManager;
+	taskManager: WorkbenchTaskManager;
+	stickyNoteManager: WorkbenchStickyNoteManager;
+	menuManager: WorkbenchMenuManager;
+	relationGraphManager: LoreBoardRelationGraphManager;
+	fileExplorerPatcher: WorkbenchFileExplorerPatcher;
+	saveSettings(): Promise<void>;
+	getTrackedMarkdownFiles(includeLore?: boolean): TFile[];
+	getVaultMarkdownFiles(): TFile[];
+	isFileInStrictChapterException(file: TFile): boolean;
+	isPluginGeneratedFile(basename: string): boolean;
+	calculateAccurateWords(content: string): number;
+}
 
 class NewChapterModal extends Modal {
     constructor(
         app: App, 
-        private plugin: WebNovelAssistantPlugin,
+        private plugin: NewChapterModalPlugin,
         private defaultPrefix: string, 
         private onSubmit: (title: string, templateContent: string) => void
     ) {
@@ -86,7 +194,7 @@ class ConfirmModal extends Modal {
 export const WORKBENCH_VIEW_TYPE = 'webnovel-workbench';
 
 export class WorkbenchView extends ItemView {
-    private plugin: WebNovelAssistantPlugin;
+    private plugin: WorkbenchViewPlugin;
     public currentBookPath: string | null = null;
     private isSavingMetadata: boolean = false;
     private sortMode: 'default' | 'timeline' | 'lore' | 'foreshadowing' | 'task' | 'sticky' = 'default';
@@ -109,7 +217,7 @@ export class WorkbenchView extends ItemView {
     private pendingFilterFocus: { mode: 'default' | 'lore' | 'foreshadowing'; start: number; end: number } | null = null;
     private readonly filterIndex: WorkbenchFilterIndex;
 
-    constructor(leaf: WorkspaceLeaf, plugin: WebNovelAssistantPlugin) {
+    constructor(leaf: WorkspaceLeaf, plugin: WorkbenchViewPlugin) {
         super(leaf);
         this.plugin = plugin;
         this.filterIndex = new WorkbenchFilterIndex(this.app);
@@ -951,7 +1059,6 @@ export class WorkbenchView extends ItemView {
 
                 new TaskAddModal(
                     this.app,
-                    this.plugin,
                     manager,
                     nextPeriod,
                     lastPlatform,

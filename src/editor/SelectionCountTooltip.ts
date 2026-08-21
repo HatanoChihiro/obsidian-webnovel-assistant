@@ -1,9 +1,14 @@
 import { StateField, type Extension, type EditorState } from '@codemirror/state';
 import { showTooltip, type Tooltip } from '@codemirror/view';
-import type { WebNovelAssistantPlugin } from '../types/plugin';
+import type { AccurateCountSettings } from '../types/settings';
 import { t } from '../i18n';
 
-export const selectionCountTooltipExtension = (plugin: WebNovelAssistantPlugin): Extension => {
+export interface SelectionCountTooltipPlugin {
+	settings: Pick<AccurateCountSettings, 'enableSelectionWordCount'>;
+	calculateAccurateWords(text: string): number;
+}
+
+export const selectionCountTooltipExtension = (plugin: SelectionCountTooltipPlugin): Extension => {
 	const cursorTooltipField = StateField.define<readonly Tooltip[]>({
 		create: getTooltip,
 

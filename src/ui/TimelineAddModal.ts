@@ -1,9 +1,8 @@
 import type { App } from 'obsidian';
 import { Modal } from 'obsidian';
 import type { TimelineEntry } from '../services/TimelineManager';
-import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { t } from '../i18n';
-import { TimelineFormComponent } from './components/TimelineFormComponent';
+import { TimelineFormComponent, type TimelineFormContext } from './components/TimelineFormComponent';
 
 /**
  * 统一的时间线条目添加对话框
@@ -17,13 +16,13 @@ export class TimelineAddModal extends Modal {
 	private folderPath: string;
 	private onSubmit: (entry: TimelineEntry) => void;
 	private returnFullEntry: boolean; // true 时返回完整 TimelineEntry，false 时返回简化对象
-	private plugin: WebNovelAssistantPlugin;
+	private context: TimelineFormContext;
 	private typeOptions: string[];
 	private origin?: string;
 
 	constructor(
 		app: App,
-		plugin: WebNovelAssistantPlugin,
+		context: TimelineFormContext,
 		description: string,
 		sourceFile: string,
 		folderPath: string,
@@ -34,7 +33,7 @@ export class TimelineAddModal extends Modal {
 		title?: string
 	) {
 		super(app);
-		this.plugin = plugin;
+		this.context = context;
 		this.description = description;
 		this.sourceFile = sourceFile;
 		this.folderPath = folderPath;
@@ -55,7 +54,7 @@ export class TimelineAddModal extends Modal {
 		const component = new TimelineFormComponent({
 			container: contentEl,
 			app: this.app,
-			plugin: this.plugin,
+			context: this.context,
 			folderPath: this.folderPath,
 			initialEntry: {
 				description: this.description,

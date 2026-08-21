@@ -1,19 +1,55 @@
 import type { WorkspaceLeaf, TAbstractFile, MarkdownView } from 'obsidian';
 import { ItemView, TFile, TFolder, Vault } from 'obsidian';
 import { VIEW_TYPES } from '../constants';
-import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { ParsedForeshadowingEntry } from '../types/foreshadowing';
 import { ChapterSorter } from '../services/ChapterSorter';
-import { findBookRoot } from '../utils/path';
-import { renderForeshadowingBadges, renderLoreBadges } from '../utils/badge';
+import { findBookRoot, type FindBookRootPlugin } from '../utils/path';
+import { renderForeshadowingBadges, renderLoreBadges, type LoreBadgePlugin } from '../utils/badge';
 import { t } from '../i18n';
+import type { AccurateCountSettings } from '../types/settings';
+import type { CacheManager } from '../services/CacheManager';
+import type { ForeshadowingManager } from '../services/ForeshadowingManager';
+
+export type ImmersiveChapterListSettings = Pick<
+	AccurateCountSettings,
+	| 'enableSmartChapterSort'
+	| 'customSortOrder'
+	| 'showExplorerCounts'
+	| 'lorePopoverCollapse'
+	| 'enableMobileLorePopover'
+	| 'workspaceFolders'
+	| 'loreFolderName'
+	| 'timeline'
+	| 'foreshadowing'
+	| 'novelInfo'
+	| 'immersive'
+>;
+
+export type ImmersiveChapterListCacheManager = Pick<
+	CacheManager,
+	'getFileCache' | 'isEligibleForWordCount'
+>;
+
+export type ImmersiveChapterListForeshadowingManager = Pick<
+	ForeshadowingManager,
+	'buildChapterForeshadowingMap'
+>;
+
+export interface ImmersiveChapterListViewPlugin
+	extends Omit<LoreBadgePlugin, 'settings'>,
+		Omit<FindBookRootPlugin, 'settings'> {
+	settings: ImmersiveChapterListSettings;
+	cacheManager: ImmersiveChapterListCacheManager;
+	foreshadowingManager?: ImmersiveChapterListForeshadowingManager;
+	saveSettings(): Promise<void>;
+}
 
 export class ImmersiveChapterListView extends ItemView {
-	plugin: WebNovelAssistantPlugin;
+	plugin: ImmersiveChapterListViewPlugin;
 	private lastScrollTop: number = 0;
 	private isInitialLoad: boolean = true;
 
-	constructor(leaf: WorkspaceLeaf, plugin: WebNovelAssistantPlugin) {
+	constructor(leaf: WorkspaceLeaf, plugin: ImmersiveChapterListViewPlugin) {
 		super(leaf);
 		this.plugin = plugin;
 	}

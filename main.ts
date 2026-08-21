@@ -2,61 +2,56 @@ import type { App, PluginManifest } from 'obsidian';
 import { Plugin, TFile, TFolder, Notice, MarkdownView, MarkdownRenderChild, type MarkdownPostProcessorContext, Vault, type TAbstractFile } from 'obsidian';
 import type { AccurateCountSettings } from './src/types/settings';
 import type { WebNovelAssistantPlugin } from './src/types/plugin';
-import {
-	isDesktop,
-	isMobile,
-	getPlatformTier,
-} from './src/utils';
-import { DEFAULT_SETTINGS, PLATFORM_DELAYS } from './src/constants';
+import { isDesktop } from './src/utils';
 import { getDefaultFileNameCandidates, type DefaultFileNameKey } from './src/i18n/data-keys';
-import { CacheManager } from './src/services/CacheManager';
-import { AdaptiveDebounceManager } from './src/services/AdaptiveDebounceManager';
-import { SettingsManager } from './src/core/SettingsManager';
-import { HistoryDataManager } from './src/services/HistoryDataManager';
-import { FileExplorerPatcher } from './src/services/FileExplorerPatcher';
-import { ChapterSorter } from './src/services/ChapterSorter';
-import { WordCounter } from './src/services/WordCounter';
-import { EditorTracker } from './src/services/EditorTracker';
-import { StyleManager } from './src/services/StyleManager';
+import type { CacheManager } from './src/services/CacheManager';
+import type { AdaptiveDebounceManager } from './src/services/AdaptiveDebounceManager';
+import type { SettingsManager } from './src/core/SettingsManager';
+import type { HistoryDataManager } from './src/services/HistoryDataManager';
+import type { FileExplorerPatcher } from './src/services/FileExplorerPatcher';
+import type { WordCounter } from './src/services/WordCounter';
+import type { EditorTracker } from './src/services/EditorTracker';
+import type { StyleManager } from './src/services/StyleManager';
 import { AccurateCountSettingTab } from './src/ui/SettingsTab';
 import { FloatingStickyNote } from './src/ui/StickyNote';
 import { WritingStatusView, STATUS_VIEW_TYPE } from './src/ui/StatusView';
 import { FORESHADOWING_VIEW_TYPE } from './src/ui/ForeshadowingView';
 import { TIMELINE_VIEW_TYPE } from './src/ui/TimelineView';
-import { MobileFloatingStats } from './src/ui/MobileFloatingStats';
+import type { MobileFloatingStats } from './src/ui/MobileFloatingStats';
 import { AddLoreModal } from './src/ui/AddLoreModal';
-import { ObsOverlayServer } from './src/services/ObsServer';
-import { ForeshadowingManager } from './src/services/ForeshadowingManager';
+import type { ObsOverlayServer } from './src/services/ObsServer';
+import type { ForeshadowingManager } from './src/services/ForeshadowingManager';
 import { Logger } from './src/utils/Logger';
 
-import { TaskManager } from './src/services/TaskManager';
-import { TimelineManager } from './src/services/TimelineManager';
-import { RelationGraphManager } from './src/services/RelationGraphManager';
+import type { TaskManager } from './src/services/TaskManager';
+import type { TimelineManager } from './src/services/TimelineManager';
+import type { RelationGraphManager } from './src/services/RelationGraphManager';
 import { ObsHtmlBuilder } from './src/services/ObsHtmlBuilder';
-import { ImmersiveModeManager } from './src/ui/ImmersiveModeManager';
-import { HomepageManager } from './src/services/HomepageManager';
-import { StatisticsManager } from './src/services/StatisticsManager';
-import { StickyNoteDataManager } from './src/services/StickyNoteDataManager';
-import { TypographyManager } from './src/services/TypographyManager';
-import { ChapterMergeManager } from './src/services/ChapterMergeManager';
+import type { ImmersiveModeManager } from './src/ui/ImmersiveModeManager';
+import type { HomepageManager } from './src/services/HomepageManager';
+import type { StatisticsManager } from './src/services/StatisticsManager';
+import type { StickyNoteDataManager } from './src/services/StickyNoteDataManager';
+import type { TypographyManager } from './src/services/TypographyManager';
+import type { ChapterMergeManager } from './src/services/ChapterMergeManager';
 
-import { CommandManager } from './src/core/CommandManager';
-import { ViewManager } from './src/core/ViewManager';
-import { MenuManager } from './src/core/MenuManager';
+import type { CommandManager } from './src/core/CommandManager';
+import type { ViewManager } from './src/core/ViewManager';
+import type { MenuManager } from './src/core/MenuManager';
 import { selectionCountTooltipExtension } from './src/editor/SelectionCountTooltip';
 import type { Extension } from '@codemirror/state';
 import { createWordCountGutter, forceWordCountGutterUpdate } from './src/editor/WordCountGutter';
-import { WorkerManager } from './src/services/WorkerManager';
-import { MarkdownPostProcessor } from './src/services/MarkdownPostProcessor';
-import { FileEventManager } from './src/services/FileEventManager';
+import type { WorkerManager } from './src/services/WorkerManager';
+import type { MarkdownPostProcessor } from './src/services/MarkdownPostProcessor';
+import type { FileEventManager } from './src/services/FileEventManager';
 import { HomepageRenderer } from './src/ui/components/HomepageRenderer';
-import { CharacterManager } from './src/services/CharacterManager';
-import { t, setLocale, detectLocale } from './src/i18n';
+import type { CharacterManager } from './src/services/CharacterManager';
+import { t } from './src/i18n';
 
 import { buildCharacterHoverExtension } from './src/editor/CharacterHoverExtension';
 import { createTypewriterExtension } from './src/editor/TypewriterExtension';
-import { LoreSyncService } from './src/services/LoreSyncService';
+import type { LoreSyncService } from './src/services/LoreSyncService';
 import { ServiceRegistry } from './src/core/ServiceRegistry';
+import { PluginBootstrapper } from './src/core/PluginBootstrapper';
 
 export default class AccurateChineseCountPlugin extends Plugin implements WebNovelAssistantPlugin {
 	public wordCountExtensionHolder: Extension[] = [];
@@ -77,8 +72,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 
 	lastEditTime: number = Date.now();
 	suspendTime: number = 0;
-	private _unloading = false;
-	private _homepageTimer: number | null = null;
+	isUnloading: boolean = false;
 	private _loreCandidatesCache: Set<string> | null = null;
 
 	
@@ -92,6 +86,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	obsServer: ObsOverlayServer | null = null;
 	mobileFloatingStats: MobileFloatingStats | null = null;
 	obsHtmlBuilder: ObsHtmlBuilder;
+
+	private bootstrapper: PluginBootstrapper;
 
 	// 服务注册中心
 	public services: ServiceRegistry;
@@ -132,368 +128,15 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		Logger.initialize(this);
 		
 		this.services = new ServiceRegistry();
+		this.bootstrapper = new PluginBootstrapper(this, this.services);
+		this.bootstrapper.registerConstructorServices();
 
-		this.services.register('CacheManager', new CacheManager(this));
-		this.services.register('AdaptiveDebounceManager', new AdaptiveDebounceManager());
-		this.services.register('SettingsManager', new SettingsManager(this, DEFAULT_SETTINGS));
-		this.services.register('CharacterManager', new CharacterManager(this.app, this));
-		this.services.register('LoreSyncService', new LoreSyncService(this));
-		this.services.register('HistoryDataManager', new HistoryDataManager(this));
-		this.services.register('StickyNoteDataManager', new StickyNoteDataManager(this));
-		this.services.register('ChapterMergeManager', new ChapterMergeManager(this));
-
-		this.services.register('FileExplorerPatcher', new FileExplorerPatcher(this.app, this));
 		this.obsHtmlBuilder = new ObsHtmlBuilder(this);
-		this.services.register('WordCounter', new WordCounter());
-		this.services.register('ImmersiveModeManager', new ImmersiveModeManager(this.app, this));
-		this.services.register('CommandManager', new CommandManager(this));
-		this.services.register('ViewManager', new ViewManager(this));
-		this.services.register('MenuManager', new MenuManager(this));
-		this.services.register('StatisticsManager', new StatisticsManager(this));
-		this.services.register('WorkerManager', new WorkerManager(this));
-		this.services.register('MarkdownPostProcessor', new MarkdownPostProcessor(this));
-		this.services.register('HomepageManager', new HomepageManager(this.app, this));
 		// editorTracker 和 styleManager 需要在 onload 后初始化（依赖 this）
 	}
 
 	async onload() {
-		// 必须首先加载设置，否则其他依赖 settings 的模块会崩溃
-		await this.loadSettings();
-
-		// 预热并同步初始化章节规则
-		ChapterSorter.setCustomRules(this.settings.chapterNamingRules || []);
-
-		// 初始化国际化
-		const langSetting = this.settings.language || 'auto';
-		const locale = langSetting === 'auto' ? detectLocale() : langSetting;
-		await setLocale(locale);
-
-
-		// 旧版本 locale 迁移修复已废弃——现在 findXxxFile() 支持多语言 fallback 查找，无需强制回退
-
-		// 迁移旧默认欢迎语为空，使动态问候生效
-		if (this.settings.homepageWelcome === '欢迎回到创作中心' || this.settings.homepageWelcome === 'Welcome back to your creative space') {
-			this.settings.homepageWelcome = '';
-			void this.saveSettings();
-		}
-		// 初始化角色缓存 (现已全平台开放)，将其移至 onLayoutReady 以避免阻塞启动
-		this.app.workspace.onLayoutReady(() => {
-			this.characterManager.initialize().catch(err => {
-				console.error('[Plugin] characterManager 初始化失败:', err);
-			});
-		});
-		this.loreSyncService.initialize();
-
-		// 加载核心功能（桌面端、平板端和移动端功能）
-		await this.setupCoreFeatures();
-
-
-		// 定期保存设置和缓存
-		this.registerInterval(window.setInterval(() => {
-			if (this.isTracking) {
-				this.saveSettings().catch(err => {
-					console.error('[Plugin] 定期保存设置失败:', err);
-				});
-			}
-			// 定期保存缓存（每分钟）
-			this.cacheManager.saveCache().catch(err => {
-				console.error('[Plugin] 定期保存缓存失败:', err);
-			});
-			// 定期保存历史数据（每分钟，作为备份）
-			this.historyManager.saveHistory().catch(err => {
-				console.error('[Plugin] 定期保存历史数据失败:', err);
-			});
-		}, 60 * 1000));
-
-		this.app.workspace.onLayoutReady(() => {
-			this.isLayoutReady = true;
-
-			const restoreLayout = async () => {
-				// 检查是否有异常崩溃留下的沉浸模式布局快照
-				if (this.settings._savedImmersiveLayout) {
-					try {
-						const layout = JSON.parse(this.settings._savedImmersiveLayout) as Record<string, unknown>;
-						const ws = this.app.workspace as unknown as {
-							changeLayout?: (layout: Record<string, unknown>) => Promise<void>;
-							setLayout?: (layout: Record<string, unknown>) => Promise<void>;
-						};
-						if (typeof ws.changeLayout === 'function') {
-							await ws.changeLayout(layout);
-						} else if (typeof ws.setLayout === 'function') {
-							await ws.setLayout(layout);
-						}
-						new Notice(t('immersive.recovered-from-crash'));
-					} catch (err) {
-						Logger.error('[Plugin] 恢复沉浸模式布局失败:', err);
-					} finally {
-						this.settings._savedImmersiveLayout = null;
-						await this.saveSettings();
-						await this.settingsManager.flush();
-						const wsReq = this.app.workspace as unknown as { requestSaveLayout?: { run?: () => void } | (() => void) };
-						if (typeof wsReq.requestSaveLayout === 'object' && wsReq.requestSaveLayout && typeof wsReq.requestSaveLayout.run === 'function') {
-							wsReq.requestSaveLayout.run();
-						} else if (typeof wsReq.requestSaveLayout === 'function') {
-							wsReq.requestSaveLayout();
-						}
-					}
-				}
-				// 隐式兜底：普通模式启动时清理任何残存的沉浸模式特有视图
-				this.immersiveModeManager?.sanitizeNormalWorkspace();
-			};
-
-			void restoreLayout();
-		});
-	}
-
-	/**
-	 * 设置核心功能（跨越平台）
-	 * - 字数统计
-	 * - 目标追踪
-	 * - 状态栏显示
-	 * - 设置页面
-	 */
-	private async setupCoreFeatures(): Promise<void> {
-		// 并行加载历史数据、缓存数据、浮动便签
-		await Promise.all([
-			this.historyManager.loadHistory(),
-			this.cacheManager.loadCache(),
-			this.loadFloatingNotes()
-		]);
-
-		// 应用便签显示状态
-		if (this.settings.showFloatingNotes === false) {
-			activeDocument.body.classList.add('webnovel-notes-hidden');
-		}
-
-		// 监听 Modal / 设置弹窗状态，动态切换 webnovel-modal-active 隐藏悬浮组件
-		this.setupModalObserver();
-
-		// 监听数据变化事件，保持悬浮便签同步
-		this.registerEvent(this.app.workspace.on('webnovel:notes-changed', () => {
-			this.stickyNoteManager?.syncFloatingNotes();
-		}));
-
-		this.registerEvent(this.app.workspace.on('layout-change', () => {
-			this.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
-				this.refreshFolderCounts();
-			}, 500);
-		}));
-
-		this.services.register('EditorTracker', new EditorTracker(this.app, this));
-		this.services.register('StyleManager', new StyleManager(this.settings));
-		this.services.register('FileEventManager', new FileEventManager(this));
-
-		this.fileEventManager.setup();
-		this.statisticsManager.setup();
-		// 跨平台初始化 Worker（移动端现在也需要 worker 来在前端计时）
-		this.workerManager.setup();
-
-		// 注册 Markdown 后处理器（用于阅读模式软回车缩进注入及伏笔功能）
-		this.registerMarkdownPostProcessor(this.markdownPostProcessor.getProcessor());
-
-		if (this.settings.eyeCareEnabled) this.styleManager?.applyEyeCare();
-
-
-
-		this.services.register('ForeshadowingManager', new ForeshadowingManager(this.app, this));
-		this.services.register('TaskManager', new TaskManager(this.app, this));
-		this.services.register('TimelineManager', new TimelineManager(this.app, this));
-		this.services.register('RelationGraphManager', new RelationGraphManager(this.app, this));
-		this.services.register('TypographyManager', new TypographyManager(this.app, this));
-
-		this.registerEvent(this.app.workspace.on('active-leaf-change', () => {
-			this.typographyManager.updateTypography();
-		}));
-
-		this.registerEvent(this.app.workspace.on('layout-change', () => {
-			this.typographyManager.updateTypography();
-		}));
-
-		this.typographyManager.updateTypography();
-
-		this.statusBarItemEl = this.addStatusBarItem();
-		this.addSettingTab(new AccurateCountSettingTab(this.app, this));
-
-		// 注册分章提醒编辑器扩展（仅桌面端）
-		if (isDesktop() && this.settings.enableWordCountGutter) {
-			this.wordCountExtensionHolder.push(createWordCountGutter(this));
-		}
-		this.registerEditorExtension(this.wordCountExtensionHolder);
-
-		// 监听设置变更以动态热更新扩展（仅桌面端）
-		this.registerEvent(this.app.workspace.on('webnovel:word-count-gutter-settings-changed', () => {
-			this.wordCountExtensionHolder.length = 0;
-			if (isDesktop() && this.settings.enableWordCountGutter) {
-				this.wordCountExtensionHolder.push(createWordCountGutter(this));
-			}
-			// 通知 Obsidian 全局刷新所有编辑器的 Extension
-			this.app.workspace.updateOptions();
-
-			// 派发空 dispatch 强刷状态
-			this.app.workspace.iterateAllLeaves(leaf => {
-				if (leaf.view.getViewType() === 'markdown') {
-					const view = leaf.view as MarkdownView;
-					const editor = view.editor;
-					if (editor && editor.cm) {
-						editor.cm.dispatch({ effects: forceWordCountGutterUpdate.of(null) });
-					}
-				}
-			});
-		}));
-
-		this.commandManager.registerAllCommands();
-		this.viewManager.registerAllViews();
-
-		// 注册编辑器扩展（全平台通用：设定速查高亮与浮窗）
-		this.registerEditorExtension(buildCharacterHoverExtension(this.app, this));
-
-		// 注册全平台通用的选区字数悬浮窗扩展
-		this.registerEditorExtension(selectionCountTooltipExtension(this));
-
-		// 注册沉浸模式打字机居中滚动扩展
-		this.registerEditorExtension(createTypewriterExtension(this));
-
-		// 初始化工作区样式和功能
-		this.menuManager.registerAllMenus();
-		this.registerCommonRibbonIcons();
-
-
-		this.registerEvent(this.app.workspace.on('editor-change', () => {
-			// 使用自适应防抖：根据输入速度自动调整延迟
-			this.adaptiveDebounceManager.debounce('editor-update', () => {
-				this.editorTracker.handleEditorChange();
-			});
-		}));
-		this.registerEvent(this.app.workspace.on('webnovel-workbench-book-changed', () => {
-			this.refreshStatusViews();
-			void this.editorTracker.handleFileChange();
-		}));
-		this.registerEvent(this.app.workspace.on('active-leaf-change', () => {
-			void this.editorTracker.handleFileChange();
-			this.homepageManager?.handleViewMode();
-		}));
-		this.registerEvent(this.app.metadataCache.on('changed', (file) => {
-			if (file instanceof TFile && !this.cacheManager.isFileInWorkspace(file)) return;
-			// 使用防抖避免高频更新
-			this.adaptiveDebounceManager.debounceFixed('word-count-update', () => {
-				this.editorTracker.updateWordCount();
-			}, 100);
-		}));
-
-		// 初始化当前文件的字数
-		void this.editorTracker.handleFileChange();
-		this.editorTracker.updateWordCount(); // 初始化状态栏显示
-
-		// 注册右键菜单添加设定（设定功能目前仅桌面端可用）
-		if (isDesktop()) {
-			this.registerEvent(this.app.workspace.on('editor-menu', (menu, editor, view) => {
-				const selection = editor.getSelection();
-				if (selection && selection.length > 0 && selection.length < 50) {
-					menu.addItem((item) => {
-						item.setTitle(t('menu.add-as-new-lore'))
-							.setIcon('book-plus')
-							.setSection('webnovel-assistant')
-							.onClick(() => {
-								const bookPath = this.characterManager.getBookPathForFile(view.file);
-								if (bookPath) {
-									new AddLoreModal(this.app, this, selection.trim(), bookPath).open();
-								} else {
-									new Notice(t('notice.add-to-lore-failed'));
-								}
-							});
-					});
-				}
-			}));
-		}
-
-		// ==========================================
-		// 创作主页（跨平台支持）
-		// ==========================================
-		this.setupHomepage();
-
-		// ==========================================
-		// 2. 平台检测和功能分级 (需求 8.1, 8.3)
-		// ==========================================
-
-		// 优先检测平板端（平板也是移动设备，但屏幕更大）
-		const platformTier = getPlatformTier();
-		if (platformTier === 'tablet') {
-			this.setupTabletMode();
-			return; // 🛑 平板端执行到这里直接终止
-		}
-
-		// 移动端 Lite 模式
-		if (isMobile()) {
-			// 移动端：根据设置决定是否启用浮动字数统计窗口
-			this.setupFloatingStats();
-
-			// 移动端：如果启用了智能章节排序或主页置顶，启用文件浏览器补丁
-			if (this.settings.enableSmartChapterSort || this.settings.homepagePinPosition !== 'none') {
-				ChapterSorter.setCustomRules(this.settings.chapterNamingRules || []);
-				this.app.workspace.onLayoutReady(() => {
-					this.fileExplorerPatcher.enable();
-				});
-			}
-			// 移动端：如果启用了文件浏览器字数统计，构建缓存
-			if (this.settings.showExplorerCounts) {
-				this.app.workspace.onLayoutReady(() => {
-					// 移动端需要更长的延迟，确保文件浏览器完全加载
-					const timer = window.setTimeout(() => {
-						void this.cacheManager.buildFolderCache();
-					}, PLATFORM_DELAYS.MOBILE_EXPLORER_DELAY);
-					this.register(() => window.clearTimeout(timer));
-				});
-			}
-			// 监听布局变化，确保文件浏览器就绪后刷新字数
-			this.registerEvent(this.app.workspace.on('layout-change', () => {
-				if (this.settings.showExplorerCounts) {
-					this.adaptiveDebounceManager.debounceFixed('mobile-folder-refresh', () => {
-						this.refreshFolderCounts();
-					}, 300);
-				}
-			}));
-			return; // 🛑 关键：手机端执行到这里直接终止，不加载下方的高级重度功能
-		}
-
-		// ==========================================
-		// 3. 桌面端全功能完全体 (需求 8.4)
-		// ==========================================
-		// 桌面端提供完整功能集:
-		// 
-		// 核心功能 (跨越所有平台):
-		// - ✓ 字数统计
-		// - ✓ 目标追踪
-		// - ✓ 状态栏显示
-		// - ✓ 设置页面
-		// 
-		// 扩展功能 (桌面级加载):
-		// - ✓ 实时状态面板视图 (面板类)
-		// - ✓ 悬浮便签系统 (拖拽、透明度、主题)
-		// - ✓ OBS 直播叠加层 (HTTP 服务器)
-		// - ✓ Worker 时间追踪 (专注/摸鱼时间)
-		// - ✓ 文件浏览器缓存 (性能优化)
-		// - ✓ 文件夹合并功能
-		// - ✓ 历史统计图表
-		// ==========================================
-
-		// 功能已由 Manager 注册
-
-		this.app.workspace.onLayoutReady(() => {
-			// 延迟构建缓存，避免阻塞启动
-			// 500ms 是一个平衡点：既不会阻塞启动，又能快速显示字数
-			const timer = window.setTimeout(() => {
-				void this.cacheManager.buildFolderCache();
-			}, PLATFORM_DELAYS.DESKTOP_EXPLORER_DELAY);
-			this.register(() => window.clearTimeout(timer));
-		});
-		// 桌面端文件事件监听（由 FileEventManager 管理）
-		// 已经在公用区域注册过，无需重复注册
-
-		this.addRibbonIcon('sticky-note', t('command.create-blank-sticky-note'), () => {
-			this.createStickyNote({ content: '', title: t('notice.new-note-title') }).catch(console.error);
-		});
-
-		this.setupDesktopFeatures();
+		await this.bootstrapper.bootstrap();
 	}
 
 	// 专注计时逻辑
@@ -525,39 +168,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		new Notice(t('notice.tracking-stopped'));
 	}
 
-	private setupDesktopFeatures(): void {
 
-		// 启动 OBS 叠加层 HTTP Server
-		if (this.settings.obs.enableObs) {
-			this.obsServer = new ObsOverlayServer(this, this.settings.obs.obsPort);
-			this.obsServer.start();
-		}
-
-		// 启用文件浏览器补丁（智能章节排序 或 创作主页置顶）
-		if (this.settings.enableSmartChapterSort || this.settings.homepagePinPosition !== 'none') {
-			// 初始化自定义章节命名规则
-			ChapterSorter.setCustomRules(this.settings.chapterNamingRules || []);
-
-			// 延迟设置，确保文件浏览器已加载
-			this.app.workspace.onLayoutReady(() => {
-				this.fileExplorerPatcher.enable();
-			});
-		}
-
-		// 注意：copy-obs-overlay-url / refresh-chapter-sort / rebuild-folder-cache
-		// 这三条命令已由 CommandManager.registerAllCommands() 统一注册，此处不再重复。
-
-		// ==========================================
-		// 桌面端专属：伏笔标注功能 - Markdown 渲染后处理
-		// ==========================================
-
-		// Markdown 渲染后处理：在预览模式下为"未回收"状态注入复选框
-		this.registerMarkdownPostProcessor(this.markdownPostProcessor.getProcessor());
-
-		// 创作主页相关代码已被移动到 setupHomepage() 中，并在所有平台运行
-	}
-
-	private setupHomepage(): void {
+	public setupHomepage(): void {
 		// 创作主页动态渲染：6 个 Obsidian 专用代码块处理器
 		const renderer = new HomepageRenderer(this.app, this);
 
@@ -639,79 +251,6 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 
 
 	/**
-	 * 统一的浮动统计窗口设置
-	 * 用于移动端和平板端
-	 */
-	private setupFloatingStats(): void {
-		if (!this.settings.showMobileFloatingStats) return;
-
-		this.mobileFloatingStats = new MobileFloatingStats(this.app, this);
-		this.app.workspace.onLayoutReady(() => {
-			this.mobileFloatingStats?.load();
-		});
-
-		this.registerEvent(this.app.workspace.on('editor-change', () => {
-			this.adaptiveDebounceManager.debounce('mobile-stats-update', () => {
-				this.mobileFloatingStats?.update();
-			});
-		}));
-		this.registerEvent(this.app.workspace.on('webnovel-workbench-book-changed', () => {
-			this.refreshStatusViews();
-			void this.editorTracker.handleFileChange();
-		}));
-		this.registerEvent(this.app.workspace.on('active-leaf-change', () => {
-			this.mobileFloatingStats?.update();
-		}));
-		
-		// 监听专注计时刷新
-		this.registerInterval(window.setInterval(() => {
-			if (this.isTracking) {
-				this.mobileFloatingStats?.update();
-			}
-		}, 1000));
-	}
-
-	/**
-	 * 设置平板端中间模式
-	 * 启用面板功能，但不启用重度功能（Worker、OBS、缓存）
-	 */
-	private setupTabletMode(): void {
-		if (this.settings.showMobileFloatingStats) {
-			this.setupFloatingStats();
-		}
-
-		// 注意：视图、命令和菜单已在 setupCoreFeatures() 中通过 Manager 统一注册，
-		// 此处只需注册平板端特有的 Ribbon 图标
-
-		// 平板端：如果启用了智能章节排序或主页置顶，启用文件浏览器补丁
-		if (this.settings.enableSmartChapterSort || this.settings.homepagePinPosition !== 'none') {
-			ChapterSorter.setCustomRules(this.settings.chapterNamingRules || []);
-			this.app.workspace.onLayoutReady(() => {
-				this.fileExplorerPatcher.enable();
-			});
-		}
-
-		// 平板端：如果启用了文件浏览器字数统计，构建缓存
-		if (this.settings.showExplorerCounts) {
-			this.app.workspace.onLayoutReady(() => {
-				// 平板端需要延迟，确保文件浏览器完全加载
-				const timer = window.setTimeout(() => {
-					void this.cacheManager.buildFolderCache();
-				}, PLATFORM_DELAYS.TABLET_EXPLORER_DELAY);
-				this.register(() => window.clearTimeout(timer));
-			});
-			// 监听布局变化，确保文件浏览器就绪后刷新字数
-			this.registerEvent(this.app.workspace.on('layout-change', () => {
-				if (this.settings.showExplorerCounts) {
-					this.adaptiveDebounceManager.debounceFixed('tablet-folder-refresh', () => {
-						this.refreshFolderCounts();
-					}, 300);
-				}
-			}));
-		}
-	}
-
-	/**
 	 * 从独立文件加载便签数据，并在桌面端显示浮动便签
 	 */
 	public async loadFloatingNotes() {
@@ -778,7 +317,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	 * 监听全局 Modal / 设置面板弹窗
 	 * 当存在 modal-container 时动态挂载 webnovel-modal-active 样式类，隐藏悬浮组件
 	 */
-	private setupModalObserver(): void {
+	public setupModalObserver(): void {
 		const mainDoc = this.app.workspace.containerEl?.ownerDocument || activeDocument;
 		const updateModalState = () => {
 			const hasModal = !!(
@@ -826,7 +365,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	
 
 
-	private registerCommonRibbonIcons(): void {
+	public registerCommonRibbonIcons(): void {
 		this.addRibbonIcon('bar-chart-2', t('command.toggle-status-view'), () => {
 			void this.toggleStatusView();
 		});
@@ -846,66 +385,67 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 			});
 		}
 	}
-	onunload() {
-		this._unloading = true;
-		// 1. 立即移除所有便签与沉浸模式 DOM（最先执行，确保视觉上立刻消失）
-		activeDocument.body.classList.remove(
-			'webnovel-notes-hidden',
-			'webnovel-custom-dragging',
-			'webnovel-eye-care-enabled',
-			'immersive-mode-active',
-			'immersive-hide-properties'
-		);
-		activeDocument.body.querySelectorAll('.my-floating-sticky-note').forEach(el => el.remove());
 
-		// 2. 停止 OBS 服务器
-		if (this.obsServer) {
-			this.obsServer.stop().catch(() => { });
-			this.obsServer = null;
+	public registerSettingsTab(): void {
+		this.addSettingTab(new AccurateCountSettingTab(this.app, this));
+	}
+
+	public registerWordCountGutter(): void {
+		if (isDesktop() && this.settings.enableWordCountGutter) {
+			this.wordCountExtensionHolder.push(createWordCountGutter(this));
 		}
+		this.registerEditorExtension(this.wordCountExtensionHolder);
 
-		// 3. 卸载移动端浮窗
-		if (this.mobileFloatingStats) {
-			this.mobileFloatingStats.unload();
-			this.mobileFloatingStats = null;
-		}
+		this.registerEvent(this.app.workspace.on('webnovel:word-count-gutter-settings-changed', () => {
+			this.wordCountExtensionHolder.length = 0;
+			if (isDesktop() && this.settings.enableWordCountGutter) {
+				this.wordCountExtensionHolder.push(createWordCountGutter(this));
+			}
+			this.app.workspace.updateOptions();
 
-		// 4. 卸载所有活跃便签并同步最新内容到内存
-		if (this.activeNotes) {
-			[...this.activeNotes].forEach(note => {
-				const currentContent = note.state.isEditing ? note.textareaEl?.value : note.state.content;
-				if (currentContent !== undefined) note.state.content = currentContent;
-				this.stickyNoteManager.updateNote(note.state);
-				note.destroy();
+			this.app.workspace.iterateAllLeaves(leaf => {
+				if (leaf.view.getViewType() === 'markdown') {
+					const view = leaf.view as MarkdownView;
+					const editor = view.editor;
+					if (editor && editor.cm) {
+						editor.cm.dispatch({ effects: forceWordCountGutterUpdate.of(null) });
+					}
+				}
 			});
-			this.activeNotes = [];
-		}
+		}));
+	}
 
-		if (this._homepageTimer) {
-			window.clearTimeout(this._homepageTimer);
-			this._homepageTimer = null;
-		}
+	public registerEditorExtensions(): void {
+		this.registerEditorExtension(buildCharacterHoverExtension(this.app, this));
+		this.registerEditorExtension(selectionCountTooltipExtension(this));
+		this.registerEditorExtension(createTypewriterExtension(this));
+	}
 
-		// 5. 强制刷新持久化数据落盘
-		try {
-			this.historyManager.flush().catch(e => {
-				Logger.error('[WebNovel Assistant] 历史数据落盘失败:', e);
-			});
-		} catch (e) {
-			Logger.error('[WebNovel Assistant] 历史数据同步调用失败:', e);
+	public registerEditorContextMenu(): void {
+		if (isDesktop()) {
+			this.registerEvent(this.app.workspace.on('editor-menu', (menu, editor, view) => {
+				const selection = editor.getSelection();
+				if (selection && selection.length > 0 && selection.length < 50) {
+					menu.addItem((item) => {
+						item.setTitle(t('menu.add-as-new-lore'))
+							.setIcon('book-plus')
+							.setSection('webnovel-assistant')
+							.onClick(() => {
+								const bookPath = this.characterManager.getBookPathForFile(view.file);
+								if (bookPath) {
+									new AddLoreModal(this.app, this, selection.trim(), bookPath).open();
+								} else {
+									new Notice(t('notice.add-to-lore-failed'));
+								}
+							});
+					});
+				}
+			}));
 		}
+	}
 
-		Promise.all([
-			this.settingsManager.flush(),
-			this.stickyNoteManager.saveNotes(this.stickyNoteManager.getNotes()),
-			this.cacheManager.saveCache(),
-			this.chapterMergeManager.flush()
-		]).catch(e => Logger.error('[WebNovel Assistant] 卸载时数据刷新失败:', e));
-
-		// 6. 调用 ServiceRegistry 统一异步逆序清理所有 Manager
-		if (this.services && typeof this.services.destroyAll === 'function') {
-			void this.services.destroyAll();
-		}
+	onunload(): void {
+		void this.bootstrapper.shutdown();
 	}
 
 	/**

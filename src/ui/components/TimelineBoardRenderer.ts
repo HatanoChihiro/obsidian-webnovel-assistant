@@ -1,12 +1,15 @@
 import type { App, Component } from 'obsidian';
 import { setIcon, TFile, Notice, Modal } from 'obsidian';
-import type { WebNovelAssistantPlugin } from '../../types/plugin';
 import type { ParsedForeshadowingEntry } from '../../types/foreshadowing';
+import type { TimelineManager } from '../../services/TimelineManager';
 import { CorkboardGridRenderer } from './CorkboardGridRenderer';
 import { TimelineAddModal } from '../TimelineAddModal';
 import { t } from '../../i18n';
 import { Logger } from '../../utils/Logger';
 import { smartLocateAndHighlight } from '../../utils/leaf';
+import type { TimelineFormContext, TimelineFormSettings } from './TimelineFormComponent';
+import type { ChapterCardPlugin } from './ChapterCard';
+import type { AccurateCountSettings } from '../../types/settings';
 
 class ConfirmDeleteEventModal extends Modal {
 	constructor(app: App, private title: string, private onConfirm: () => void) {
@@ -35,9 +38,32 @@ class ConfirmDeleteEventModal extends Modal {
 	}
 }
 
+export type TimelineBoardTimelineManager = Pick<
+	TimelineManager,
+	| 'currentFolder'
+	| 'loadEntries'
+	| 'getTimelineFile'
+	| 'syncChapterToEventItem'
+	| 'moveEventItem'
+	| 'deleteEntry'
+	| 'updateEntry'
+	| 'getTimelineFilePath'
+	| 'appendEntry'
+>;
+
+export type TimelineBoardSettings = TimelineFormSettings &
+	Pick<AccurateCountSettings, 'enableMobileLorePopover' | 'lorePopoverCollapse'>;
+
+export interface TimelineBoardPlugin
+	extends Omit<TimelineFormContext, 'settings'>,
+		Omit<ChapterCardPlugin, 'settings'> {
+	settings: TimelineBoardSettings;
+	timelineManager: TimelineBoardTimelineManager;
+}
+
 export interface TimelineBoardOptions {
 	app: App;
-	plugin: WebNovelAssistantPlugin;
+	plugin: TimelineBoardPlugin;
 	ownerComponent?: Component;
 	container: HTMLElement;
 	files: TFile[];
@@ -836,6 +862,7 @@ export class TimelineBoardRenderer {
 						observer.disconnect();
 					}
 				});
+				observer.observe(waterfallLayout.ownerDocument.body, { childList: true, subtree: true });
 			}
 		}
 

@@ -1,23 +1,34 @@
 import { Component } from 'obsidian';
 import { isMobile, getPlatformTier } from '../utils/platform';
-import type { WebNovelAssistantPlugin } from '../types/plugin';
+import type { AccurateCountSettings } from '../types/settings';
 import type { LoreEntry } from '../services/CharacterManager';
 import { t } from '../i18n';
-import { LoreCardRenderer } from './components/LoreCardRenderer';
+import { LoreCardRenderer, type LoreCardRendererPlugin } from './components/LoreCardRenderer';
+
+export interface LoreHoverPopoverPlugin extends LoreCardRendererPlugin {
+	settings: Pick<AccurateCountSettings, 'enableMobileLorePopover' | 'lorePopoverCollapse'>;
+}
 
 export class LoreHoverPopover extends Component {
-	private plugin: WebNovelAssistantPlugin;
+	private plugin: LoreHoverPopoverPlugin;
 	private entry: LoreEntry;
 	private targetEl: HTMLElement;
 	private popoverEl: HTMLElement | null = null;
 	private closeTimeout: number | null = null;
 	private showTimeout: number | null = null;
+	private globalClickTimeout: number | null = null;
+	private disconnectObserver: MutationObserver | null = null;
+	private isShowing = false;
+	private disposeAfterShow = false;
+	private isDisposed = false;
 	private immediate: boolean = false;
+	private readonly ownerDocument: Document;
+	private readonly ownerWindow: Window;
 	
 	constructor(
 		targetEl: HTMLElement,
 		entry: LoreEntry,
-		plugin: WebNovelAssistantPlugin,
+		plugin: LoreHoverPopoverPlugin,
 		immediate: boolean = false
 	) {
 		super();
@@ -25,6 +36,8 @@ export class LoreHoverPopover extends Component {
 		this.entry = entry;
 		this.targetEl = targetEl;
 		this.immediate = immediate;
+		this.ownerDocument = targetEl.ownerDocument;
+		this.ownerWindow = this.ownerDocument.defaultView ?? window;
 
 		// 移动端无 mouseover/hover，且需校验 enableMobileLorePopover 开关
 		if (isMobile()) {
@@ -33,14 +46,15 @@ export class LoreHoverPopover extends Component {
 			}
 			this.immediate = true;
 		}
+		this.load();
 
 		if (this.immediate) {
 			void this.show();
 		} else {
 			// 桌面端延迟 1000ms 后显示，避免鼠标快速划过时误触
-			this.showTimeout = window.setTimeout(() => {
+			this.showTimeout = this.ownerWindow.setTimeout(() => {
 				// 确保鼠标没有离开
-				if (!this.targetEl.matches(':hover')) return;
+				if (!this.targetEl.isConnected || !this.targetEl.matches(':hover')) return;
 				void this.show();
 			}, 1000);
 		}
@@ -50,10 +64,17 @@ export class LoreHoverPopover extends Component {
 
 		// 监听全局点击以支持点击外部关闭（服务于移动端与桌面端点击触发）
 		if (this.immediate) {
-			window.setTimeout(() => {
-				activeDocument.addEventListener('click', this.onGlobalClick);
+			this.globalClickTimeout = this.ownerWindow.setTimeout(() => {
+				this.globalClickTimeout = null;
+				if (this.isDisposed || this.disposeAfterShow) return;
+				this.ownerDocument.addEventListener('click', this.onGlobalClick);
 			}, 0);
 		}
+
+		this.disconnectObserver = new MutationObserver(() => {
+			if (!this.targetEl.isConnected) this.hide();
+		});
+		this.disconnectObserver.observe(this.ownerDocument.body, { childList: true, subtree: true });
 	}
 
 	private onGlobalClick = (e: MouseEvent) => {
@@ -65,21 +86,29 @@ export class LoreHoverPopover extends Component {
 
 	
 	override onunload() {
+		this.isDisposed = true;
+		this.disposeAfterShow = true;
 		if (this.showTimeout !== null) {
-			window.clearTimeout(this.showTimeout);
+			this.ownerWindow.clearTimeout(this.showTimeout);
 			this.showTimeout = null;
 		}
 		if (this.closeTimeout !== null) {
-			window.clearTimeout(this.closeTimeout);
+			this.ownerWindow.clearTimeout(this.closeTimeout);
 			this.closeTimeout = null;
 		}
-		this.hide();
+		if (this.globalClickTimeout !== null) {
+			this.ownerWindow.clearTimeout(this.globalClickTimeout);
+			this.globalClickTimeout = null;
+		}
+		this.disconnectObserver?.disconnect();
+		this.disconnectObserver = null;
+		this.removeDomAndListeners();
 		super.onunload();
 	}
 
 	private onMouseLeaveTarget = () => {
 		if (this.showTimeout !== null) {
-			window.clearTimeout(this.showTimeout);
+			this.ownerWindow.clearTimeout(this.showTimeout);
 			this.showTimeout = null;
 		}
 		this.scheduleClose();
@@ -87,7 +116,7 @@ export class LoreHoverPopover extends Component {
 
 	private onMouseEnterPopover = () => {
 		if (this.closeTimeout !== null) {
-			window.clearTimeout(this.closeTimeout);
+			this.ownerWindow.clearTimeout(this.closeTimeout);
 			this.closeTimeout = null;
 		}
 	};
@@ -97,12 +126,25 @@ export class LoreHoverPopover extends Component {
 	};
 
 	private scheduleClose() {
-		this.closeTimeout = window.setTimeout(() => {
+		this.closeTimeout = this.ownerWindow.setTimeout(() => {
 			this.hide();
 		}, 200);
 	}
 
 	private hide() {
+		if (this.isDisposed || this.disposeAfterShow) return;
+		this.disposeAfterShow = true;
+		this.removeDomAndListeners();
+		if (!this.isShowing) this.finishDispose();
+	}
+
+	private finishDispose() {
+		if (this.isDisposed) return;
+		this.isDisposed = true;
+		this.unload();
+	}
+
+	private removeDomAndListeners() {
 		if (this.popoverEl) {
 			this.popoverEl.removeEventListener('mouseenter', this.onMouseEnterPopover);
 			this.popoverEl.removeEventListener('mouseleave', this.onMouseLeavePopover);
@@ -110,29 +152,47 @@ export class LoreHoverPopover extends Component {
 			this.popoverEl = null;
 		}
 		this.targetEl.removeEventListener('mouseleave', this.onMouseLeaveTarget);
-		activeDocument.removeEventListener('click', this.onGlobalClick);
+		this.ownerDocument.removeEventListener('click', this.onGlobalClick);
 	}
 
 	private async show() {
-		if (this.popoverEl) return;
+		if (this.popoverEl || this.isDisposed || this.disposeAfterShow) return;
 
-		this.popoverEl = createDiv();
-		this.popoverEl.addClass('webnovel-lore-popover');
-		this.popoverEl.addClass('wn-lore-hover-popover');
-		this.popoverEl.addEventListener('mouseenter', this.onMouseEnterPopover);
-		this.popoverEl.addEventListener('mouseleave', this.onMouseLeavePopover);
+		this.isShowing = true;
+		const popoverEl = this.ownerDocument.body.createDiv();
+		popoverEl.remove();
+		this.popoverEl = popoverEl;
+		popoverEl.addClass('webnovel-lore-popover');
+		popoverEl.addClass('wn-lore-hover-popover');
+		popoverEl.addEventListener('mouseenter', this.onMouseEnterPopover);
+		popoverEl.addEventListener('mouseleave', this.onMouseLeavePopover);
 
-		if (!this.entry || !this.entry.file) {
-			this.popoverEl.createDiv({ cls: 'wn-lore-card-empty', text: t('corkboard.lore-not-found') });
-		} else {
-			const cardContainer = this.popoverEl.createDiv({ cls: 'wn-lore-card-wrapper' });
-			await LoreCardRenderer.buildCardDOM(cardContainer, this.entry, this.plugin, this, {
-				hideEditButton: true,
-				onTitleClick: () => this.hide()
-			});
+		try {
+			if (!this.entry || !this.entry.file) {
+				popoverEl.createDiv({ cls: 'wn-lore-card-empty', text: t('corkboard.lore-not-found') });
+			} else {
+				const cardContainer = popoverEl.createDiv({ cls: 'wn-lore-card-wrapper' });
+				await LoreCardRenderer.buildCardDOM(cardContainer, this.entry, this.plugin, this, {
+					hideEditButton: true,
+					onTitleClick: () => this.hide()
+				});
+			}
+		} catch (error) {
+			this.isShowing = false;
+			this.removeDomAndListeners();
+			this.finishDispose();
+			throw error;
+		} finally {
+			this.isShowing = false;
 		}
 
-		activeDocument.body.appendChild(this.popoverEl);
+		if (this.disposeAfterShow || this.isDisposed || !this.targetEl.isConnected) {
+			this.removeDomAndListeners();
+			this.finishDispose();
+			return;
+		}
+
+		this.ownerDocument.body.appendChild(popoverEl);
 		this.positionPopover();
 	}
 
@@ -142,8 +202,8 @@ export class LoreHoverPopover extends Component {
 		const tier = getPlatformTier();
 		const isPhone = tier === 'mobile';
 		const padding = isPhone ? 12 : 16;
-		const windowWidth = window.innerWidth;
-		const windowHeight = window.innerHeight;
+		const windowWidth = this.ownerWindow.innerWidth;
+		const windowHeight = this.ownerWindow.innerHeight;
 
 		// 各平台卡片最大高度上限（与设定卡片一致：桌面与平板 350px，手机 240px）
 		const defaultMaxHeight = isPhone ? 240 : 350;

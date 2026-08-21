@@ -1,8 +1,8 @@
 import type { App, TFolder } from 'obsidian';
 import { Modal, Notice, setIcon } from 'obsidian';
 import { t } from '../i18n';
-import type { WebNovelAssistantPlugin } from '../types/plugin';
-import type { ChapterMergeItem } from '../services/ChapterMergeManager';
+import type { ChapterMergeItem, ChapterMergeManager } from '../services/ChapterMergeManager';
+import type { TypographyManager } from '../services/TypographyManager';
 import { highlightPersistentTarget, cancelHighlightTracker } from '../utils/preciseTextHighlight';
 
 /**
@@ -86,6 +86,15 @@ export interface ExplicitRevisionRecord {
 	timestamp: number;
 }
 
+export interface ChapterMergeModalPlugin {
+	typographyManager: Pick<TypographyManager, 'registerPreviewElement' | 'unregisterPreviewElement'>;
+	chapterMergeManager: Pick<
+		ChapterMergeManager,
+		'loadFolderChapters' | 'loadDraft' | 'saveDraft' | 'saveToOriginalFiles' | 'clearDraft' | 'exportMergedDocument'
+	>;
+	calculateAccurateWords(text: string): number;
+}
+
 /**
  * 章节合并与原稿无缝预览 Modal (ChapterMergeModal)
  *
@@ -98,7 +107,7 @@ export interface ExplicitRevisionRecord {
  * 4. 底部 Footer: 钉底固定在 modalEl 根节点，保证【应用覆盖原文】【导出合并文档】100% 显眼固定。
  */
 export class ChapterMergeModal extends Modal {
-	private plugin: WebNovelAssistantPlugin;
+	private plugin: ChapterMergeModalPlugin;
 	private folder: TFolder;
 	private items: ChapterMergeItem[] = [];
 	private filteredItems: ChapterMergeItem[] = [];
@@ -123,7 +132,7 @@ export class ChapterMergeModal extends Modal {
 	private isSubmitting: boolean = false;
 	private typographyPreviewElement: HTMLElement | null = null;
 
-	constructor(app: typeof plugin.app, plugin: WebNovelAssistantPlugin, folder: TFolder) {
+	constructor(app: App, plugin: ChapterMergeModalPlugin, folder: TFolder) {
 		super(app);
 		this.plugin = plugin;
 		this.folder = folder;

@@ -49,7 +49,7 @@ export class MenuManager {
 
 				menu.addItem((item) => {
 					item.setTitle(t('menu.create-novel')).setIcon('book-open').setSection('webnovel-assistant').onClick(() => {
-						new NewNovelModal(this.plugin.app, this.plugin, (result) => {
+						new NewNovelModal(this.plugin.app, (result) => {
 							void (async () => {
 								try {
 									const { folderPath } = await this.plugin.homepageManager!.createNewNovel(result.name, result.meta);
@@ -343,7 +343,7 @@ export class MenuManager {
 
 		if (!taskFile) {
 			// 首次新建
-			new TaskAddModal(this.plugin.app, this.plugin, manager, 1, '', async (entry) => {
+			new TaskAddModal(this.plugin.app, manager, 1, '', async (entry) => {
 				await manager.addEntry(entry, folderPath);
 				new Notice(t('notice.task-created'));
 			}, folderPath).open();
@@ -353,7 +353,7 @@ export class MenuManager {
 				const nextPeriod = manager.getNextPeriod(entries || []);
 				const lastPlatform = entries && entries.length > 0
 					? entries[entries.length - 1].platform : '';
-				new TaskAddModal(this.plugin.app, this.plugin, manager, nextPeriod, lastPlatform, async (entry) => {
+				new TaskAddModal(this.plugin.app, manager, nextPeriod, lastPlatform, async (entry) => {
 					await manager.addEntry(entry, folderPath);
 					new Notice(t('notice.task-added'));
 				}, folderPath).open();

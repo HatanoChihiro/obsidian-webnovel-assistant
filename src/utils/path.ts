@@ -1,8 +1,51 @@
 import type { App } from 'obsidian';
 import { TFile, TFolder } from 'obsidian';
-import type { WebNovelAssistantPlugin } from '../types/plugin';
+import type { AccurateCountSettings } from '../types/settings';
+import type { HomepageManager } from '../services/HomepageManager';
 import type { WorkbenchView } from '../ui/WorkbenchView';
-import { getDefaultFileName, getDefaultFileNameCandidates } from '../i18n/data-keys';
+import { getDefaultFileName, getDefaultFileNameCandidates, type DefaultFileNameKey } from '../i18n/data-keys';
+
+export interface FindBookRootPlugin {
+	settings: Pick<AccurateCountSettings, 'workspaceFolders' | 'loreFolderName' | 'timeline' | 'foreshadowing' | 'novelInfo'>;
+}
+
+export interface CurrentBookContextPlugin extends FindBookRootPlugin {
+	homepageManager?: Pick<HomepageManager, 'getNovelFolders'>;
+}
+
+/**
+ * 获取指定文件/文件夹类型的所有候选名称集合（包含用户配置名称与多语言默认/历史名称）
+ */
+export function getCandidateNames(configuredName: string | undefined, defaultKey: DefaultFileNameKey): Set<string> {
+	const candidates = new Set<string>();
+	const configured = configuredName?.trim();
+	if (configured) {
+		candidates.add(configured);
+	} else {
+		candidates.add(getDefaultFileName(defaultKey));
+	}
+	for (const name of getDefaultFileNameCandidates(defaultKey)) {
+		if (name) candidates.add(name);
+	}
+	return candidates;
+}
+
+/**
+ * 检查目标路径是否位于指定作品目录下的任一候选文件夹（或其嵌套子文件夹）内
+ */
+export function isCandidateSubpath(bookPath: string, targetPath: string, candidates: Iterable<string>): boolean {
+	const normBook = (bookPath === '/' || bookPath === '') ? '' : bookPath.replace(/^\/+|\/+$/g, '');
+	const normTarget = targetPath.replace(/^\/+|\/+$/g, '');
+
+	for (const candidate of candidates) {
+		if (!candidate) continue;
+		const expectedRoot = normBook ? `${normBook}/${candidate}` : candidate;
+		if (normTarget === expectedRoot || normTarget.startsWith(`${expectedRoot}/`)) {
+			return true;
+		}
+	}
+	return false;
+}
 
 /**
  * 智能解析当前文件所在的“小说根目录”（支持跨卷递归冒泡查找）
@@ -15,7 +58,7 @@ import { getDefaultFileName, getDefaultFileNameCandidates } from '../i18n/data-k
  * @param plugin 插件实例（用于读取设置）
  * @param file 触发查找的源文件，如果是 null 则返回空
  */
-export function findBookRoot(app: App, plugin: WebNovelAssistantPlugin, file: TFile | TFolder | null, strict: boolean = false): string {
+export function findBookRoot(app: App, plugin: FindBookRootPlugin, file: TFile | TFolder | null, strict: boolean = false): string {
 	if (!file) return '';
 
 	const folder = file instanceof TFolder ? file : file.parent;
@@ -36,21 +79,10 @@ export function findBookRoot(app: App, plugin: WebNovelAssistantPlugin, file: TF
 	}
 
 	// 缓存一下候选文件名，减少循环内重新计算
-	const loreCandidates = new Set<string>();
-	loreCandidates.add(plugin.settings.loreFolderName || getDefaultFileName('loreFolderName'));
-	for (const name of getDefaultFileNameCandidates('loreFolderName')) loreCandidates.add(name);
-
-	const timelineCandidates = new Set<string>();
-	timelineCandidates.add(plugin.settings.timeline?.fileName || getDefaultFileName('timelineFileName'));
-	for (const name of getDefaultFileNameCandidates('timelineFileName')) timelineCandidates.add(name);
-
-	const foreshadowingCandidates = new Set<string>();
-	foreshadowingCandidates.add(plugin.settings.foreshadowing?.fileName || getDefaultFileName('foreshadowingFileName'));
-	for (const name of getDefaultFileNameCandidates('foreshadowingFileName')) foreshadowingCandidates.add(name);
-
-	const novelInfoCandidates = new Set<string>();
-	novelInfoCandidates.add(plugin.settings.novelInfo?.fileName || getDefaultFileName('novelInfoFileName'));
-	for (const name of getDefaultFileNameCandidates('novelInfoFileName')) novelInfoCandidates.add(name);
+	const loreCandidates = getCandidateNames(plugin.settings.loreFolderName, 'loreFolderName');
+	const timelineCandidates = getCandidateNames(plugin.settings.timeline?.fileName, 'timelineFileName');
+	const foreshadowingCandidates = getCandidateNames(plugin.settings.foreshadowing?.fileName, 'foreshadowingFileName');
+	const novelInfoCandidates = getCandidateNames(plugin.settings.novelInfo?.fileName, 'novelInfoFileName');
 
 	let currentFolder: TFolder | null = folder;
 
@@ -142,7 +174,7 @@ export function getLatestChapterFolderPath(bookPath: string, files: TFile[]): st
  * 智能获取当前全局作品上下文
  * 避免因点击侧边栏（activeLeaf 改变）或非作品文件导致作品上下文被覆盖
  */
-export function getCurrentBookContext(app: App, plugin: WebNovelAssistantPlugin): string | null {
+export function getCurrentBookContext(app: App, plugin: CurrentBookContextPlugin): string | null {
 	const activeLeaf = app.workspace.getMostRecentLeaf();
 	
 	// 1. 优先检查当前活动 Leaf（如果是工作台，以工作台自身的 currentBookPath 为准）

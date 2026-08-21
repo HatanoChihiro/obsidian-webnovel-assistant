@@ -133,7 +133,7 @@
 	"setting.typography-letter-spacing": "Letter Spacing",
 	"setting.typography-letter-spacing-desc": "Set spacing between characters (e.g., 0.05em).",
 	"setting.typography-max-line-width": "Max Line Width",
-	"setting.typography-max-line-width-desc": "Set maximum line width (e.g., 700px or 40em, leave blank for unlimited).\n💡 Note: Make sure 'Readable line length' is enabled in Obsidian Settings -> Editor for this to take full effect.",
+	"setting.typography-max-line-width-desc": "Set maximum line width (e.g., 700px or 40em, leave blank for unlimited).\nNote: Make sure 'Readable line length' is enabled in Obsidian Settings -> Editor for this to take full effect.",
 	"setting.typography-justify-text": "Justify Text",
 	"setting.typography-justify-text-desc": "Align paragraph text on both left and right edges.",
 	"setting.typography-reading-compat": "Reading Mode Compatibility",

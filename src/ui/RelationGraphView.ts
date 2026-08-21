@@ -21,8 +21,9 @@
 import { ItemView, Notice, TFile } from 'obsidian';
 declare class ResizeObserver { constructor(callback: (...args: unknown[]) => void); observe(target: Element): void; disconnect(): void; }
 import type { WorkspaceLeaf } from 'obsidian';
-import type { WebNovelAssistantPlugin } from '../types/plugin';
-import type { GraphNode, GraphData, GraphEdge } from '../services/RelationGraphManager';
+import type { AdaptiveDebounceManager } from '../services/AdaptiveDebounceManager';
+import type { CharacterManager } from '../services/CharacterManager';
+import type { RelationGraphManager, GraphNode, GraphData, GraphEdge } from '../services/RelationGraphManager';
 import { ForceLayoutEngine, type LayoutNode, type LayoutEdge } from '../services/ForceLayoutEngine';
 import { GraphRenderer, type GraphRenderState, type ThemeColors } from './components/GraphRenderer';
 import { cleanLoreHeading } from '../services/CharacterManager';
@@ -82,12 +83,33 @@ export interface LayoutData {
 	edges: LayoutEdge[];
 }
 
+export type RelationGraphCharacterManager = Pick<
+	CharacterManager,
+	'ensureInitialized' | 'getBookPathForFile' | 'getCharacterFile'
+>;
+
+export type RelationGraphAdaptiveDebounceManager = Pick<
+	AdaptiveDebounceManager,
+	'debounceFixed'
+>;
+
+export type RelationGraphManagerCapability = Pick<
+	RelationGraphManager,
+	'buildGraphData'
+>;
+
+export interface RelationGraphViewPlugin {
+	characterManager: RelationGraphCharacterManager;
+	adaptiveDebounceManager: RelationGraphAdaptiveDebounceManager;
+	relationGraphManager: RelationGraphManagerCapability;
+}
+
 // ==========================================
 // 视图实现
 // ==========================================
 
 export class RelationGraphView extends ItemView {
-	private plugin: WebNovelAssistantPlugin;
+	private plugin: RelationGraphViewPlugin;
 
 	// --- Canvas 相关 ---
 	private canvas: HTMLCanvasElement | null = null;
@@ -169,7 +191,7 @@ export class RelationGraphView extends ItemView {
 		}
 	}
 
-	constructor(leaf: WorkspaceLeaf, plugin: WebNovelAssistantPlugin) {
+	constructor(leaf: WorkspaceLeaf, plugin: RelationGraphViewPlugin) {
 		super(leaf);
 		this.plugin = plugin;
 	}
@@ -240,6 +262,8 @@ export class RelationGraphView extends ItemView {
 		// 监听 CSS 主题切换以刷新主题颜色缓存
 		this.registerEvent(this.app.workspace.on('css-change', () => {
 			this.cachedColors = null;
+			this.cachedThemeMode = null;
+			this.buildEdgeOffsets(true);
 			this.requestRender();
 		}));
 
@@ -1220,8 +1244,9 @@ export class RelationGraphView extends ItemView {
 	 * 
 	 * 当两个节点之间存在多条边时（不论方向），将其展开绘制为多条弧线，避免重叠。
 	 */
-	private buildEdgeOffsets(): void {
+	private buildEdgeOffsets(force: boolean = false): void {
 		if (!this.graphData) return;
+		const colors = this.getThemeColors();
 		GraphRenderer.buildEdgeOffsets(this.graphData, {
 			edgeOffsetMap: this.edgeOffsetMap,
 			edgeDrawModeMap: this.edgeDrawModeMap,
@@ -1234,7 +1259,7 @@ export class RelationGraphView extends ItemView {
 			hoveredNode: this.hoveredNode,
 			isLocalMode: this.isLocalMode,
 			localFocusNode: this.localFocusNode
-		});
+		}, colors.curveOffset, force);
 	}
 
 	/**

@@ -1,13 +1,19 @@
 import type { App, TFile } from 'obsidian';
 import { Menu, Notice, setIcon } from 'obsidian';
 import { t } from '../../i18n';
-import type { WebNovelAssistantPlugin } from '../../types/plugin';
 import { CORKBOARD_STATUS_MAP, getCorkboardStatusKeys, getCorkboardStatusText } from '../../i18n/data-keys';
 import type { ParsedForeshadowingEntry } from '../../types/foreshadowing';
-import { renderForeshadowingBadges, renderLoreBadges } from '../../utils/badge';
+import { renderForeshadowingBadges, renderLoreBadges, type LoreBadgePlugin } from '../../utils/badge';
 import { openFileAndFocus, getLeafForFileNavigation } from '../../utils/leaf';
 import { isExcludedFromWordCount } from '../../utils/validation';
+import type { MenuManager } from '../../core/MenuManager';
+import type { CacheManager } from '../../services/CacheManager';
 
+export interface ChapterCardPlugin extends LoreBadgePlugin {
+	menuManager: Pick<MenuManager, 'toggleExcludeFromWordCount'>;
+	cacheManager: Pick<CacheManager, 'getFileCache'>;
+	calculateAccurateWords(content: string): number;
+}
 
 export interface ChapterCardOptions {
 	draggable?: boolean;
@@ -21,7 +27,7 @@ export class ChapterCard {
 		grid: HTMLElement,
 		file: TFile,
 		app: App,
-		plugin: WebNovelAssistantPlugin,
+		plugin: ChapterCardPlugin,
 		cardForeshadowings: ParsedForeshadowingEntry[] = [],
 		options: ChapterCardOptions = {}
 	): HTMLElement {

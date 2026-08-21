@@ -1,15 +1,17 @@
 import type { WorkspaceLeaf } from 'obsidian';
 import { ItemView } from 'obsidian';
 import { VIEW_TYPES } from '../constants';
-import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { t } from '../i18n';
+import type { StickyNoteListRendererPlugin } from './components/StickyNoteListRenderer';
 import { StickyNoteListRenderer } from './components/StickyNoteListRenderer';
 
+export type ImmersiveStickyNotesViewPlugin = StickyNoteListRendererPlugin;
+
 export class ImmersiveStickyNotesView extends ItemView {
-	private readonly plugin: WebNovelAssistantPlugin;
+	private readonly plugin: ImmersiveStickyNotesViewPlugin;
 	private listRenderer: StickyNoteListRenderer | null = null;
 
-	constructor(leaf: WorkspaceLeaf, plugin: WebNovelAssistantPlugin) {
+	constructor(leaf: WorkspaceLeaf, plugin: ImmersiveStickyNotesViewPlugin) {
 		super(leaf);
 		this.plugin = plugin;
 	}

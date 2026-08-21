@@ -40,10 +40,48 @@ function getCurrentKey(tab: string): string {
 	return '';
 }
 
-import type { WebNovelAssistantPlugin } from '../types/plugin';
+import type { AccurateCountSettings } from '../types/settings';
+import type { HistoryDataManager } from '../services/HistoryDataManager';
+import type { StatisticsManager } from '../services/StatisticsManager';
+import type { HomepageManager } from '../services/HomepageManager';
+
+export type HistoryStatsSettings = Pick<
+	AccurateCountSettings,
+	'heatmapStartDate' | 'heatmapEndDate'
+>;
+
+export type HistoryStatsHistoryManager = Pick<
+	HistoryDataManager,
+	'getHistory'
+>;
+
+export type HistoryStatsStatisticsManager = Pick<
+	StatisticsManager,
+	| 'calcStreak'
+	| 'calcFocusRate'
+	| 'calcActiveHours'
+	| 'calcDailyAverage'
+	| 'calcWritingSpeed'
+	| 'calcTaskCompletion'
+	| 'calcNovelCompletionRate'
+	| 'aggregateHistoryData'
+>;
+
+export type HistoryStatsHomepageManager = Pick<
+	HomepageManager,
+	'refreshHomepageViews' | 'getNovelFolders' | 'getNovelMetadata'
+>;
+
+export interface HistoryStatsModalPlugin {
+	settings: HistoryStatsSettings;
+	historyManager: HistoryStatsHistoryManager;
+	statisticsManager: HistoryStatsStatisticsManager;
+	homepageManager?: HistoryStatsHomepageManager;
+	saveSettings(): Promise<void>;
+}
 
 export class HistoryStatsModal extends Modal {
-	plugin: WebNovelAssistantPlugin;
+	plugin: HistoryStatsModalPlugin;
 	get history() { return this.plugin.historyManager.getHistory(); }
 	currentTab: 'day' | 'week' | 'month' | 'year' = 'day';
 	currentMetric: 'words' | 'totalTime' | 'focusTime' | 'slackTime' = 'words';
@@ -58,7 +96,7 @@ export class HistoryStatsModal extends Modal {
 	tabGroupEl!: HTMLElement;
 	metricGroupEl!: HTMLElement;
 
-	constructor(app: App, plugin: WebNovelAssistantPlugin) {
+	constructor(app: App, plugin: HistoryStatsModalPlugin) {
 		super(app);
 		this.plugin = plugin;
 	}

@@ -1,5 +1,6 @@
 import type { GraphNode, GraphEdge, GraphData } from '../../services/RelationGraphManager';
 
+export type GraphMarkerStyle = 'ring' | 'dot' | 'arrow' | 'none';
 
 
 export interface ThemeColors {
@@ -27,10 +28,12 @@ export interface ThemeColors {
 	lineGradientEndAlpha: number;
 	lineBidiMidAlpha: number;
 	nodeGap: number;
-	startDotRadius: number;
-	endRingRadius: number;
-	arrowLength?: number;
-	arrowHalfAngle?: number;
+	sourceMarker: GraphMarkerStyle;
+	targetMarker: GraphMarkerStyle;
+	sourceMarkerRadius: number;
+	targetMarkerRadius: number;
+	arrowLength: number;
+	arrowAngleDeg: number;
 	curveOffset: number;
 	lineWidth: number;
 
@@ -61,10 +64,12 @@ export const GRAPH_STYLE_DEFAULTS = {
 	NODE_RADIUS: 3.5,
 	NODE_HIGHLIGHT_RADIUS: 5.5,
 	NODE_GAP: 3.5,
-	ARROW_LENGTH: 2.6,
-	ARROW_ANGLE_DEG: 26,
 	START_DOT_RADIUS: 1.0,
 	END_RING_RADIUS: 1.0,
+	SOURCE_MARKER: 'ring' as GraphMarkerStyle,
+	TARGET_MARKER: 'dot' as GraphMarkerStyle,
+	ARROW_LENGTH: 2.6,
+	ARROW_ANGLE_DEG: 26,
 	LINE_GRADIENT_START_ALPHA: 0.25,
 	LINE_GRADIENT_END_ALPHA: 0.95,
 	LINE_BIDI_MID_ALPHA: 0.45,
@@ -123,14 +128,14 @@ export class GraphRenderer {
 	static readonly NODE_HIGHLIGHT_RADIUS = 5.5;
 	static readonly DPR = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
 
-	private static edgeCacheMap = new WeakMap<GraphData, { offsetMap: Map<GraphEdge, number>; drawModeMap: Map<GraphEdge, 'hide' | 'bidirectional'>; labelMap: Map<GraphEdge, string> }>();
+	private static edgeCacheMap = new WeakMap<GraphData, { offsetMap: Map<GraphEdge, number>; drawModeMap: Map<GraphEdge, 'hide' | 'bidirectional'>; labelMap: Map<GraphEdge, string>; curveOffsetStep: number }>();
 
-	static buildEdgeOffsets(graphData: GraphData, state: GraphRenderState, force: boolean = false): void {
+	static buildEdgeOffsets(graphData: GraphData, state: GraphRenderState, curveOffsetStep: number = GRAPH_STYLE_DEFAULTS.CURVE_OFFSET, force: boolean = false): void {
 		if (!graphData || !graphData.edges) return;
 
 		// 拓扑结构缓存控制：当 graphData 缓存有效且不要求强制重建时，重用已知计算结果
-		if (!force && this.edgeCacheMap.has(graphData)) {
-			const cached = this.edgeCacheMap.get(graphData)!;
+		const cached = this.edgeCacheMap.get(graphData);
+		if (!force && cached && cached.curveOffsetStep === curveOffsetStep) {
 			state.edgeOffsetMap = cached.offsetMap;
 			state.edgeDrawModeMap = cached.drawModeMap;
 			state.combinedLabelMap = cached.labelMap;
@@ -151,7 +156,6 @@ export class GraphRenderer {
 		}
 
 		for (const edges of pairMap.values()) {
-			const curveOffsetStep = GRAPH_STYLE_DEFAULTS.CURVE_OFFSET;
 			const visualLines: GraphEdge[] = [];
 
 			const forwards = edges.filter(e => e.source < e.target);
@@ -238,7 +242,8 @@ export class GraphRenderer {
 		this.edgeCacheMap.set(graphData, {
 			offsetMap: state.edgeOffsetMap,
 			drawModeMap: state.edgeDrawModeMap,
-			labelMap: state.combinedLabelMap
+			labelMap: state.combinedLabelMap,
+			curveOffsetStep
 		});
 	}
 
@@ -328,9 +333,11 @@ export class GraphRenderer {
 			const val = parseFloat(raw);
 			return isNaN(val) ? fallback : val;
 		};
+		const parseMarker = (prop: string, fallback: GraphMarkerStyle): GraphMarkerStyle => {
+			const raw = rootStyle?.getPropertyValue(prop).trim() || '';
+			return GraphRenderer.parseMarkerStyle(raw, fallback);
+		};
 
-		const arrowAngleDeg = parseNumber('--wna-rg-arrow-angle-deg', GRAPH_STYLE_DEFAULTS.ARROW_ANGLE_DEG);
-		const arrowHalfAngle = (arrowAngleDeg * Math.PI) / 180;
 		const fontFamily = rootStyle?.getPropertyValue('--wna-rg-font-family').trim() || 'sans-serif';
 
 		const getColor = (prop: string, fallback: string): string => {
@@ -347,6 +354,8 @@ export class GraphRenderer {
 		const fallbackGraphLine = isDark ? '#444444' : '#d0d7de';
 		const fallbackGraphText = isDark ? '#dcddde' : '#2e3338';
 		const fallbackAccent = '#7f6df2';
+
+		const rawPulseColor = rootStyle?.getPropertyValue('--wna-rg-pulse-color').trim();
 
 		const colors: ThemeColors = {
 			accent: getColor('--interactive-accent', fallbackAccent),
@@ -384,10 +393,12 @@ export class GraphRenderer {
 			lineGradientEndAlpha: parseNumber('--wna-rg-line-gradient-end-alpha', GRAPH_STYLE_DEFAULTS.LINE_GRADIENT_END_ALPHA),
 			lineBidiMidAlpha: parseNumber('--wna-rg-line-bidi-mid-alpha', GRAPH_STYLE_DEFAULTS.LINE_BIDI_MID_ALPHA),
 			nodeGap: parseNumber('--wna-rg-node-gap', GRAPH_STYLE_DEFAULTS.NODE_GAP),
+			sourceMarker: parseMarker('--wna-rg-source-marker', GRAPH_STYLE_DEFAULTS.SOURCE_MARKER),
+			targetMarker: parseMarker('--wna-rg-target-marker', GRAPH_STYLE_DEFAULTS.TARGET_MARKER),
+			sourceMarkerRadius: parseNumber('--wna-rg-source-marker-radius', parseNumber('--wna-rg-end-ring-radius', GRAPH_STYLE_DEFAULTS.END_RING_RADIUS)),
+			targetMarkerRadius: parseNumber('--wna-rg-target-marker-radius', parseNumber('--wna-rg-start-dot-radius', GRAPH_STYLE_DEFAULTS.START_DOT_RADIUS)),
 			arrowLength: parseNumber('--wna-rg-arrow-length', GRAPH_STYLE_DEFAULTS.ARROW_LENGTH),
-			arrowHalfAngle,
-			startDotRadius: parseNumber('--wna-rg-start-dot-radius', GRAPH_STYLE_DEFAULTS.START_DOT_RADIUS),
-			endRingRadius: parseNumber('--wna-rg-end-ring-radius', GRAPH_STYLE_DEFAULTS.END_RING_RADIUS),
+			arrowAngleDeg: parseNumber('--wna-rg-arrow-angle-deg', GRAPH_STYLE_DEFAULTS.ARROW_ANGLE_DEG),
 			curveOffset: parseNumber('--wna-rg-curve-offset', GRAPH_STYLE_DEFAULTS.CURVE_OFFSET),
 			lineWidth: parseNumber('--wna-rg-line-width', GRAPH_STYLE_DEFAULTS.LINE_WIDTH),
 
@@ -406,7 +417,7 @@ export class GraphRenderer {
 			fontFamily,
 
 			// 聚焦流光光束样式
-			pulseColor: getColor('--wna-rg-pulse-color', isDark ? '#ffffff' : '#374151'),
+			pulseColor: rawPulseColor ? GraphRenderer.resolveCssColor(rawPulseColor, targetEl, '') : '',
 			pulsePeriodMs: parseNumber('--wna-rg-pulse-period-ms', GRAPH_STYLE_DEFAULTS.PULSE_PERIOD_MS),
 			pulseTrailRatio: parseNumber('--wna-rg-pulse-trail-ratio', GRAPH_STYLE_DEFAULTS.PULSE_TRAIL_RATIO),
 			pulseGlowAlpha: parseNumber('--wna-rg-pulse-glow-alpha', GRAPH_STYLE_DEFAULTS.PULSE_GLOW_ALPHA),
@@ -414,6 +425,10 @@ export class GraphRenderer {
 			pulseGlowRatio: parseNumber('--wna-rg-pulse-glow-ratio', GRAPH_STYLE_DEFAULTS.PULSE_GLOW_RATIO),
 		};
 		return colors;
+	}
+
+	static parseMarkerStyle(raw: string, fallback: GraphMarkerStyle): GraphMarkerStyle {
+		return raw === 'ring' || raw === 'dot' || raw === 'arrow' || raw === 'none' ? raw : fallback;
 	}
 
 	static truncateNodeName(name: string): string {
@@ -715,6 +730,8 @@ export class GraphRenderer {
 			const isSelected = state.selectedNode?.id === node.id;
 			const isHovered = state.hoveredNode?.id === node.id;
 			const isFilterMatch = state.filterMatchNodeIds?.has(node.id) ?? false;
+			const isProtagonistNode = node.isProtagonist || Boolean(node.nodeType && (node.nodeType.includes('主角') || node.nodeType.toLowerCase().includes('protagonist')));
+			const isEmphasized = isSelected || isHovered || isFilterMatch;
 			const defaultRadius = colors?.nodeRadius ?? GraphRenderer.NODE_RADIUS;
 			const highlightRadius = colors?.nodeHighlightRadius ?? GraphRenderer.NODE_HIGHLIGHT_RADIUS;
 			const radius = isSelected || isHovered ? highlightRadius : defaultRadius;
@@ -758,9 +775,11 @@ export class GraphRenderer {
 			let baseColor = colors.graphNode;
 			let overlayColor: string | null = null;
 
-			if (node.nodeType) {
+			if (node.nodeType || isProtagonistNode) {
 				baseColor = colors.accent; // 主题强调色打底
-				overlayColor = GraphRenderer.getNodeTypeColor(node.nodeType, colors); // 原生变量池叠色
+				overlayColor = isProtagonistNode
+					? (isEmphasized ? colors.protagonistOverlayHover : colors.protagonistOverlay)
+					: GraphRenderer.getNodeTypeColor(node.nodeType!, colors); // 原生变量池叠色
 			}
 
 			if (isDimmed) {
@@ -788,12 +807,13 @@ export class GraphRenderer {
 
 			ctx.globalAlpha = currentBaseAlpha;
 			ctx.fillStyle = baseColor;
+			const shadowColor = isProtagonistNode ? colors.protagonistShadow : (overlayColor || baseColor);
 
 			if (isSelected) {
-				ctx.shadowColor = overlayColor || baseColor;
+				ctx.shadowColor = shadowColor;
 				ctx.shadowBlur = colors?.nodeShadowBlurSelected ?? GRAPH_STYLE_DEFAULTS.NODE_SHADOW_BLUR_SELECTED;
 			} else if (isHovered) {
-				ctx.shadowColor = overlayColor || baseColor;
+				ctx.shadowColor = shadowColor;
 				ctx.shadowBlur = colors?.nodeShadowBlurHover ?? GRAPH_STYLE_DEFAULTS.NODE_SHADOW_BLUR_HOVER;
 			} else {
 				ctx.shadowBlur = 0;
@@ -803,8 +823,7 @@ export class GraphRenderer {
 
 			// 叠加动态类型颜色
 			if (overlayColor && !isDimmed) {
-				const isProtagonistNode = node.isProtagonist || Boolean(node.nodeType && (node.nodeType.includes('主角') || node.nodeType.toLowerCase().includes('protagonist')));
-				const overlayAlphaMultiplier = isProtagonistNode ? 0.85 : ((isSelected || isHovered || isFilterMatch) ? 0.8 : 0.5);
+				const overlayAlphaMultiplier = isProtagonistNode ? 1 : (isEmphasized ? 0.8 : 0.5);
 				ctx.globalAlpha = nodeAlpha * overlayAlphaMultiplier;
 				ctx.fillStyle = overlayColor;
 				ctx.shadowBlur = 0;
@@ -889,48 +908,72 @@ export class GraphRenderer {
 
 	static drawChevron(
 		ctx: CanvasRenderingContext2D,
-		tipX: number,
-		tipY: number,
-		dirX: number,
-		dirY: number,
+		x: number,
+		y: number,
+		directionX: number,
+		directionY: number,
 		color: string,
 		alpha: number = 1.0,
-		lineWidth: number = 0.6,
-		colors?: ThemeColors
+		length: number = GRAPH_STYLE_DEFAULTS.ARROW_LENGTH,
+		angleDeg: number = GRAPH_STYLE_DEFAULTS.ARROW_ANGLE_DEG,
+		lineWidth: number = GRAPH_STYLE_DEFAULTS.LINE_WIDTH
 	): void {
-		const armLength = colors?.arrowLength ?? GRAPH_STYLE_DEFAULTS.ARROW_LENGTH;
-		const halfAngle = colors?.arrowHalfAngle ?? ((GRAPH_STYLE_DEFAULTS.ARROW_ANGLE_DEG * Math.PI) / 180);
+		if (alpha <= 0.01 || length <= 0) return;
+		if (Math.hypot(directionX, directionY) === 0) return;
 
-		const cosA = Math.cos(halfAngle);
-		const sinA = Math.sin(halfAngle);
-
-		// 法向量 (normX, normY)
-		const normX = -dirY;
-		const normY = dirX;
-
-		// 两个翼端点坐标：从 tip 沿 -dir 回退 cosA*L，并沿 +-norm 展开 sinA*L
-		const arm1X = tipX - (dirX * cosA - normX * sinA) * armLength;
-		const arm1Y = tipY - (dirY * cosA - normY * sinA) * armLength;
-
-		const arm2X = tipX - (dirX * cosA + normX * sinA) * armLength;
-		const arm2Y = tipY - (dirY * cosA + normY * sinA) * armLength;
+		const directionAngle = Math.atan2(directionY, directionX);
+		const wingAngle = Math.max(0, Math.min(89, angleDeg)) * Math.PI / 180;
+		const backAngle = directionAngle + Math.PI;
+		const firstWingX = x + Math.cos(backAngle - wingAngle) * length;
+		const firstWingY = y + Math.sin(backAngle - wingAngle) * length;
+		const secondWingX = x + Math.cos(backAngle + wingAngle) * length;
+		const secondWingY = y + Math.sin(backAngle + wingAngle) * length;
 
 		ctx.save();
 		ctx.setLineDash([]);
 		ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
 		ctx.strokeStyle = color;
-		ctx.lineWidth = Math.max(0.5, lineWidth);
-		ctx.lineCap = 'round';
-		ctx.lineJoin = 'round';
-
+		ctx.lineWidth = Math.max(0.35, lineWidth);
 		ctx.beginPath();
-		ctx.moveTo(arm1X, arm1Y);
-		ctx.lineTo(tipX, tipY);
-		ctx.lineTo(arm2X, arm2Y);
+		ctx.moveTo(firstWingX, firstWingY);
+		ctx.lineTo(x, y);
+		ctx.lineTo(secondWingX, secondWingY);
 		ctx.stroke();
-
 		ctx.restore();
 	}
+
+	static drawMarker(
+		ctx: CanvasRenderingContext2D,
+		style: GraphMarkerStyle,
+		x: number,
+		y: number,
+		directionX: number,
+		directionY: number,
+		color: string,
+		alpha: number,
+		radius: number,
+		colors: ThemeColors,
+		lineWidth: number
+	): void {
+		switch (style) {
+			case 'ring':
+				GraphRenderer.drawHollowRing(ctx, x, y, color, alpha, radius, lineWidth);
+				break;
+			case 'dot':
+				GraphRenderer.drawStartDot(ctx, x, y, color, alpha, radius);
+				break;
+			case 'arrow':
+				GraphRenderer.drawChevron(ctx, x, y, directionX, directionY, color, alpha, colors.arrowLength, colors.arrowAngleDeg, lineWidth);
+				break;
+			case 'none':
+				break;
+		}
+	}
+
+	static getMarkerLineInset(style: GraphMarkerStyle, radius: number): number {
+		return style === 'ring' ? Math.max(0, radius) : 0;
+	}
+
 
 	static drawFlowPulseStraight(
 		ctx: CanvasRenderingContext2D,
@@ -946,21 +989,25 @@ export class GraphRenderer {
 		animTime: number = performance.now()
 	): void {
 		if (alpha <= 0.01) return;
-		const period = colors.pulsePeriodMs;
+		if ((colors.pulseCoreAlpha ?? GRAPH_STYLE_DEFAULTS.PULSE_CORE_ALPHA) <= 0.001 && (colors.pulseGlowAlpha ?? GRAPH_STYLE_DEFAULTS.PULSE_GLOW_ALPHA) <= 0.001) return;
+
+		const period = colors.pulsePeriodMs || GRAPH_STYLE_DEFAULTS.PULSE_PERIOD_MS;
+		if (period <= 0) return;
 		const trailRatio = colors.pulseTrailRatio ?? GRAPH_STYLE_DEFAULTS.PULSE_TRAIL_RATIO;
 		const t = (animTime % period) / period;
 
 		const doc = (typeof activeDocument !== 'undefined' ? activeDocument : (typeof document !== 'undefined' ? document : null));
 		const isDark = doc?.body ? doc.body.classList.contains('theme-dark') : true;
 
-		// 深色模式下混合白色产生柔和发光，浅色模式下保持饱和鲜明色与高透明度以确保白底清晰可见，且严格联动外部 alpha
-		const headColor = isDark ? GraphRenderer.mixColors(baseColor, '#ffffff', 0.45) : baseColor;
-		const coreAlpha = (isDark ? colors.pulseCoreAlpha * 0.75 : 0.95) * alpha;
-		const glowAlpha = (isDark ? colors.pulseGlowAlpha * 0.55 : 0.50) * alpha;
-		const midAlpha = (isDark ? colors.pulseGlowAlpha * 0.45 : 0.60) * alpha;
+		// 深色模式下混合白色产生柔和发光，浅色模式下保持饱和鲜明色与高透明度以确保白底清晰可见，且严格联动外部 alpha 与自定义变量
+		const pulseBaseColor = colors.pulseColor || baseColor;
+		const headColor = isDark ? GraphRenderer.mixColors(pulseBaseColor, '#ffffff', 0.45) : pulseBaseColor;
+		const coreAlpha = colors.pulseCoreAlpha * (isDark ? 0.75 : 1.0) * alpha;
+		const glowAlpha = colors.pulseGlowAlpha * (isDark ? 0.55 : 0.60) * alpha;
+		const midAlpha = colors.pulseGlowAlpha * (isDark ? 0.45 : 0.60) * alpha;
 		const coreLineWidth = isDark ? Math.max(0.6, lineWidth * 1.05) : Math.max(0.75, lineWidth * 1.25);
 
-		if (coreAlpha <= 0.01) return;
+		if (coreAlpha <= 0.01 && glowAlpha <= 0.01) return;
 
 		const drawBeam = (progress: number, reverse: boolean) => {
 			const head = progress * (1 + trailRatio);
@@ -983,8 +1030,8 @@ export class GraphRenderer {
 			const headY = p0y + (p1y - p0y) * uEnd;
 
 			const grad = ctx.createLinearGradient(tailX, tailY, headX, headY);
-			grad.addColorStop(0, GraphRenderer.toRgba(baseColor, 0));
-			grad.addColorStop(0.5, GraphRenderer.toRgba(baseColor, midAlpha));
+			grad.addColorStop(0, GraphRenderer.toRgba(pulseBaseColor, 0));
+			grad.addColorStop(0.5, GraphRenderer.toRgba(pulseBaseColor, midAlpha));
 			grad.addColorStop(1, GraphRenderer.toRgba(headColor, coreAlpha));
 
 			ctx.save();
@@ -1034,21 +1081,25 @@ export class GraphRenderer {
 		animTime: number = performance.now()
 	): void {
 		if (alpha <= 0.01) return;
-		const period = colors.pulsePeriodMs;
+		if ((colors.pulseCoreAlpha ?? GRAPH_STYLE_DEFAULTS.PULSE_CORE_ALPHA) <= 0.001 && (colors.pulseGlowAlpha ?? GRAPH_STYLE_DEFAULTS.PULSE_GLOW_ALPHA) <= 0.001) return;
+
+		const period = colors.pulsePeriodMs || GRAPH_STYLE_DEFAULTS.PULSE_PERIOD_MS;
+		if (period <= 0) return;
 		const trailRatio = colors.pulseTrailRatio ?? GRAPH_STYLE_DEFAULTS.PULSE_TRAIL_RATIO;
 		const t = (animTime % period) / period;
 
 		const doc = (typeof activeDocument !== 'undefined' ? activeDocument : (typeof document !== 'undefined' ? document : null));
 		const isDark = doc?.body ? doc.body.classList.contains('theme-dark') : true;
 
-		// 深色模式下混合白色产生柔和发光，浅色模式下保持饱和鲜明色与高透明度以确保白底清晰可见，且严格联动外部 alpha
-		const headColor = isDark ? GraphRenderer.mixColors(baseColor, '#ffffff', 0.45) : baseColor;
-		const coreAlpha = (isDark ? colors.pulseCoreAlpha * 0.75 : 0.95) * alpha;
-		const glowAlpha = (isDark ? colors.pulseGlowAlpha * 0.55 : 0.50) * alpha;
-		const midAlpha = (isDark ? colors.pulseGlowAlpha * 0.45 : 0.60) * alpha;
+		// 深色模式下混合白色产生柔和发光，浅色模式下保持饱和鲜明色与高透明度以确保白底清晰可见，且严格联动外部 alpha 与自定义变量
+		const pulseBaseColor = colors.pulseColor || baseColor;
+		const headColor = isDark ? GraphRenderer.mixColors(pulseBaseColor, '#ffffff', 0.45) : pulseBaseColor;
+		const coreAlpha = colors.pulseCoreAlpha * (isDark ? 0.75 : 1.0) * alpha;
+		const glowAlpha = colors.pulseGlowAlpha * (isDark ? 0.55 : 0.60) * alpha;
+		const midAlpha = colors.pulseGlowAlpha * (isDark ? 0.45 : 0.60) * alpha;
 		const coreLineWidth = isDark ? Math.max(0.6, lineWidth * 1.05) : Math.max(0.75, lineWidth * 1.25);
 
-		if (coreAlpha <= 0.01) return;
+		if (coreAlpha <= 0.01 && glowAlpha <= 0.01) return;
 
 		const drawBeam = (progress: number, reverse: boolean) => {
 			const head = progress * (1 + trailRatio);
@@ -1081,8 +1132,8 @@ export class GraphRenderer {
 			const subMidY = inv0 * inv1 * p0y + (uStart + uEnd - 2 * uStart * uEnd) * p1y + uStart * uEnd * p2y;
 
 			const grad = ctx.createLinearGradient(tailX, tailY, headX, headY);
-			grad.addColorStop(0, GraphRenderer.toRgba(baseColor, 0));
-			grad.addColorStop(0.5, GraphRenderer.toRgba(baseColor, midAlpha));
+			grad.addColorStop(0, GraphRenderer.toRgba(pulseBaseColor, 0));
+			grad.addColorStop(0.5, GraphRenderer.toRgba(pulseBaseColor, midAlpha));
 			grad.addColorStop(1, GraphRenderer.toRgba(headColor, coreAlpha));
 
 			ctx.save();
@@ -1156,15 +1207,21 @@ export class GraphRenderer {
 		const endAlpha = alpha * colors.lineGradientEndAlpha;
 		const midAlpha = alpha * colors.lineBidiMidAlpha;
 
-		const dotRadius = Math.max(colors.startDotRadius * 0.8, lineWidth * (colors.startDotRadius / 0.8));
-		const ringRadius = Math.max(colors.endRingRadius * 0.8, lineWidth * (colors.endRingRadius / 0.8));
+		const sourceMarkerRadius = Math.max(0, colors.sourceMarkerRadius * 0.8, lineWidth * (colors.sourceMarkerRadius / 0.8));
+		const targetMarkerRadius = Math.max(0, colors.targetMarkerRadius * 0.8, lineWidth * (colors.targetMarkerRadius / 0.8));
 
-		// 单向关系：起始为空心圆，连线从空心圆周出发；末端为实心圆
-		const lineStartX = isBidirectional ? startX : (startX + unitX * ringRadius);
-		const lineStartY = isBidirectional ? startY : (startY + unitY * ringRadius);
+		// 空心环从圆周连接，其他标记允许连线延伸到端点，由标记自身覆盖。
+		const sourceStyle = isBidirectional ? colors.targetMarker : colors.sourceMarker;
+		const sourceRadius = isBidirectional ? targetMarkerRadius : sourceMarkerRadius;
+		const sourceInset = GraphRenderer.getMarkerLineInset(sourceStyle, sourceRadius);
+		const targetInset = GraphRenderer.getMarkerLineInset(colors.targetMarker, targetMarkerRadius);
+		const lineStartX = startX + unitX * sourceInset;
+		const lineStartY = startY + unitY * sourceInset;
+		const lineEndX = arrowTipX - unitX * targetInset;
+		const lineEndY = arrowTipY - unitY * targetInset;
 
 		// 创建流向色彩渐变
-		const grad = ctx.createLinearGradient(lineStartX, lineStartY, arrowTipX, arrowTipY);
+		const grad = ctx.createLinearGradient(lineStartX, lineStartY, lineEndX, lineEndY);
 		if (isBidirectional) {
 			grad.addColorStop(0, GraphRenderer.toRgba(baseColor, startAlpha));
 			grad.addColorStop(0.5, GraphRenderer.toRgba(baseColor, midAlpha));
@@ -1183,22 +1240,16 @@ export class GraphRenderer {
 
 		ctx.beginPath();
 		ctx.moveTo(lineStartX, lineStartY);
-		ctx.lineTo(arrowTipX, arrowTipY);
+		ctx.lineTo(lineEndX, lineEndY);
 		ctx.stroke();
 		ctx.restore();
 
-		// 绘制端点修饰：起始空心微环（○），末端实心微点（●），双向两端实心微点（●────●）
-		if (isBidirectional) {
-			GraphRenderer.drawStartDot(ctx, startX, startY, baseColor, startAlpha, dotRadius);
-			GraphRenderer.drawStartDot(ctx, arrowTipX, arrowTipY, baseColor, endAlpha, dotRadius);
-		} else {
-			GraphRenderer.drawHollowRing(ctx, startX, startY, baseColor, startAlpha, ringRadius, lineWidth);
-			GraphRenderer.drawStartDot(ctx, arrowTipX, arrowTipY, baseColor, endAlpha, dotRadius);
-		}
+		GraphRenderer.drawMarker(ctx, sourceStyle, startX, startY, -unitX, -unitY, baseColor, startAlpha, sourceRadius, colors, lineWidth);
+		GraphRenderer.drawMarker(ctx, colors.targetMarker, arrowTipX, arrowTipY, unitX, unitY, baseColor, endAlpha, targetMarkerRadius, colors, lineWidth);
 
 		// 聚焦高亮时的流光脉冲（严格联动线段实际透明度 alpha）
-		if (isHighlighted) {
-			GraphRenderer.drawFlowPulseStraight(ctx, lineStartX, lineStartY, arrowTipX, arrowTipY, colors, baseColor, isBidirectional, alpha, lineWidth, animTime);
+		if (isHighlighted && ((colors.pulseCoreAlpha ?? GRAPH_STYLE_DEFAULTS.PULSE_CORE_ALPHA) > 0.001 || (colors.pulseGlowAlpha ?? GRAPH_STYLE_DEFAULTS.PULSE_GLOW_ALPHA) > 0.001) && (colors.pulsePeriodMs || GRAPH_STYLE_DEFAULTS.PULSE_PERIOD_MS) > 0) {
+			GraphRenderer.drawFlowPulseStraight(ctx, lineStartX, lineStartY, lineEndX, lineEndY, colors, baseColor, isBidirectional, alpha, lineWidth, animTime);
 		}
 	}
 
@@ -1247,21 +1298,30 @@ export class GraphRenderer {
 		const startAngle = Math.atan2(midY - startY, midX - startX);
 		const startDirX = Math.cos(startAngle);
 		const startDirY = Math.sin(startAngle);
+		const endAngle = Math.atan2(endY - midY, endX - midX);
+		const endDirX = Math.cos(endAngle);
+		const endDirY = Math.sin(endAngle);
 
 		const baseColor = isHighlighted ? colors.accent : (isMention ? colors.mentionLineColor : colors.graphLine);
 		const startAlpha = isBidirectional ? alpha * colors.lineGradientEndAlpha : alpha * colors.lineGradientStartAlpha;
 		const endAlpha = alpha * colors.lineGradientEndAlpha;
 		const midAlpha = alpha * colors.lineBidiMidAlpha;
 
-		const dotRadius = Math.max(colors.startDotRadius * 0.8, lineWidth * (colors.startDotRadius / 0.8));
-		const ringRadius = Math.max(colors.endRingRadius * 0.8, lineWidth * (colors.endRingRadius / 0.8));
+		const sourceMarkerRadius = Math.max(0, colors.sourceMarkerRadius * 0.8, lineWidth * (colors.sourceMarkerRadius / 0.8));
+		const targetMarkerRadius = Math.max(0, colors.targetMarkerRadius * 0.8, lineWidth * (colors.targetMarkerRadius / 0.8));
 
-		// 单向关系：起始为空心圆，连线从空心圆周出发
-		const lineStartX = isBidirectional ? startX : (startX + startDirX * ringRadius);
-		const lineStartY = isBidirectional ? startY : (startY + startDirY * ringRadius);
+		// 空心环从圆周连接，其他标记允许连线延伸到端点，由标记自身覆盖。
+		const sourceStyle = isBidirectional ? colors.targetMarker : colors.sourceMarker;
+		const sourceRadius = isBidirectional ? targetMarkerRadius : sourceMarkerRadius;
+		const sourceInset = GraphRenderer.getMarkerLineInset(sourceStyle, sourceRadius);
+		const targetInset = GraphRenderer.getMarkerLineInset(colors.targetMarker, targetMarkerRadius);
+		const lineStartX = startX + startDirX * sourceInset;
+		const lineStartY = startY + startDirY * sourceInset;
+		const lineEndX = endX - endDirX * targetInset;
+		const lineEndY = endY - endDirY * targetInset;
 
 		// 创建弧线流向色彩渐变
-		const grad = ctx.createLinearGradient(lineStartX, lineStartY, endX, endY);
+		const grad = ctx.createLinearGradient(lineStartX, lineStartY, lineEndX, lineEndY);
 		if (isBidirectional) {
 			grad.addColorStop(0, GraphRenderer.toRgba(baseColor, startAlpha));
 			grad.addColorStop(0.5, GraphRenderer.toRgba(baseColor, midAlpha));
@@ -1280,22 +1340,16 @@ export class GraphRenderer {
 
 		ctx.beginPath();
 		ctx.moveTo(lineStartX, lineStartY);
-		ctx.quadraticCurveTo(midX, midY, endX, endY);
+		ctx.quadraticCurveTo(midX, midY, lineEndX, lineEndY);
 		ctx.stroke();
 		ctx.restore();
 
-		// 绘制端点修饰：起始空心微环（○），末端实心微点（●），双向两端实心微点（●────●）
-		if (isBidirectional) {
-			GraphRenderer.drawStartDot(ctx, startX, startY, baseColor, startAlpha, dotRadius);
-			GraphRenderer.drawStartDot(ctx, endX, endY, baseColor, endAlpha, dotRadius);
-		} else {
-			GraphRenderer.drawHollowRing(ctx, startX, startY, baseColor, startAlpha, ringRadius, lineWidth);
-			GraphRenderer.drawStartDot(ctx, endX, endY, baseColor, endAlpha, dotRadius);
-		}
+		GraphRenderer.drawMarker(ctx, sourceStyle, startX, startY, -startDirX, -startDirY, baseColor, startAlpha, sourceRadius, colors, lineWidth);
+		GraphRenderer.drawMarker(ctx, colors.targetMarker, endX, endY, endDirX, endDirY, baseColor, endAlpha, targetMarkerRadius, colors, lineWidth);
 
 		// 聚焦高亮时的流光脉冲（严格联动线段实际透明度 alpha）
-		if (isHighlighted) {
-			GraphRenderer.drawFlowPulseCurved(ctx, lineStartX, lineStartY, midX, midY, endX, endY, colors, baseColor, isBidirectional, alpha, lineWidth, animTime);
+		if (isHighlighted && ((colors.pulseCoreAlpha ?? GRAPH_STYLE_DEFAULTS.PULSE_CORE_ALPHA) > 0.001 || (colors.pulseGlowAlpha ?? GRAPH_STYLE_DEFAULTS.PULSE_GLOW_ALPHA) > 0.001) && (colors.pulsePeriodMs || GRAPH_STYLE_DEFAULTS.PULSE_PERIOD_MS) > 0) {
+			GraphRenderer.drawFlowPulseCurved(ctx, lineStartX, lineStartY, midX, midY, lineEndX, lineEndY, colors, baseColor, isBidirectional, alpha, lineWidth, animTime);
 		}
 	}
 

@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TFile, TFolder } from 'obsidian';
-import { ImmersiveChapterListView } from '../src/ui/ImmersiveChapterListView';
-import type { WebNovelAssistantPlugin } from '../src/types/plugin';
+import { ImmersiveChapterListView, type ImmersiveChapterListViewPlugin } from '../src/ui/ImmersiveChapterListView';
 
 const { findBookRootMock } = vi.hoisted(() => ({
 	findBookRootMock: vi.fn()
@@ -107,7 +106,7 @@ describe('ImmersiveChapterListView context', () => {
 	let currentFile: TFile;
 	let mainLeaf: MockLeaf;
 	let app: MockApp;
-	let plugin: WebNovelAssistantPlugin;
+	let plugin: ImmersiveChapterListViewPlugin;
 	let view: ImmersiveChapterListView;
 
 	beforeEach(() => {
@@ -147,7 +146,7 @@ describe('ImmersiveChapterListView context', () => {
 			containerEl: { classList: { contains: () => false } },
 			view: { getViewType: () => 'empty', file: null }
 		};
-		plugin = { app } as unknown as WebNovelAssistantPlugin;
+		plugin = { app } as unknown as ImmersiveChapterListViewPlugin;
 		view = new ImmersiveChapterListView(
 			viewLeaf as unknown as ConstructorParameters<typeof ImmersiveChapterListView>[0],
 			plugin

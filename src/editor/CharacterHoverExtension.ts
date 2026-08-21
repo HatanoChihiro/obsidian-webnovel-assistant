@@ -3,11 +3,17 @@ import { MarkdownView } from 'obsidian';
 import type { Extension } from '@codemirror/state';
 import type { DecorationSet, EditorView, ViewUpdate } from '@codemirror/view';
 import { ViewPlugin, Decoration } from '@codemirror/view';
-import type { WebNovelAssistantPlugin } from '../types/plugin';
+import type { AccurateCountSettings } from '../types/settings';
+import type { CharacterManager } from '../services/CharacterManager';
 import { isMobile } from '../utils/platform';
-import { LoreHoverPopover } from '../ui/LoreHoverPopover';
+import { LoreHoverPopover, type LoreHoverPopoverPlugin } from '../ui/LoreHoverPopover';
 
 import { editorInfoField } from 'obsidian';
+
+export interface CharacterHoverPlugin extends LoreHoverPopoverPlugin {
+	characterManager: Pick<CharacterManager, 'cacheVersion' | 'getBookPathForFile' | 'getCharactersForBook' | 'getCharacterFile' | 'getLoreContent' | 'updateLoreContent'>;
+	settings: Pick<AccurateCountSettings, 'enableMobileLorePopover' | 'lorePopoverCollapse'>;
+}
 
 const touchStateMap = new WeakMap<EditorView, {startX: number, startY: number}>();
 
@@ -15,7 +21,7 @@ const touchStateMap = new WeakMap<EditorView, {startX: number, startY: number}>(
 /**
  * 构造角色名悬停的 CodeMirror 扩展
  */
-export function buildCharacterHoverExtension(app: App, plugin: WebNovelAssistantPlugin): Extension {
+export function buildCharacterHoverExtension(app: App, plugin: CharacterHoverPlugin): Extension {
 	
 	// 构建 ViewPlugin
 	const hoverPlugin = ViewPlugin.fromClass(class {

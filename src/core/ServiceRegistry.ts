@@ -72,16 +72,14 @@ export interface ServiceMap {
  * 用于解耦 `main.ts` 中的各类管理器依赖
  */
 export class ServiceRegistry {
-	private services = new Map<string, unknown>();
+	private services = new Map<keyof ServiceMap, unknown>();
 
 	/**
 	 * 注册一个服务实例
 	 * @param key 服务的唯一标识符
 	 * @param service 服务实例
 	 */
-	register<K extends keyof ServiceMap>(key: K, service: ServiceMap[K]): void;
-	register<T>(key: string, service: T): void;
-	register(key: string, service: unknown): void {
+	register<K extends keyof ServiceMap>(key: K, service: ServiceMap[K]): void {
 		this.services.set(key, service);
 	}
 
@@ -91,14 +89,12 @@ export class ServiceRegistry {
 	 * @returns 服务实例
 	 * @throws 如果服务未找到，抛出异常
 	 */
-	get<K extends keyof ServiceMap>(key: K): ServiceMap[K];
-	get<T>(key: string): T;
-	get(key: string): unknown {
+	get<K extends keyof ServiceMap>(key: K): ServiceMap[K] {
 		const service = this.services.get(key);
 		if (!service) {
 			throw new Error(`Service '${key}' not found in registry`);
 		}
-		return service;
+		return service as ServiceMap[K];
 	}
 
 	/**
@@ -106,17 +102,15 @@ export class ServiceRegistry {
 	 * @param key 服务的唯一标识符
 	 * @returns 服务实例，如果未找到则返回 undefined
 	 */
-	getOptional<K extends keyof ServiceMap>(key: K): ServiceMap[K] | undefined;
-	getOptional<T>(key: string): T | undefined;
-	getOptional(key: string): unknown {
-		return this.services.get(key);
+	getOptional<K extends keyof ServiceMap>(key: K): ServiceMap[K] | undefined {
+		return this.services.get(key) as ServiceMap[K] | undefined;
 	}
 
 	/**
 	 * 检查是否已注册指定服务
 	 * @param key 服务的唯一标识符
 	 */
-	has(key: string): boolean {
+	has(key: keyof ServiceMap): boolean {
 		return this.services.has(key);
 	}
 

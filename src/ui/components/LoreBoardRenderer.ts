@@ -1,20 +1,59 @@
 import { Notice, TFile, TFolder, setIcon, Component, type App } from 'obsidian';
-import type { WebNovelAssistantPlugin } from '../../types/plugin';
 import { t, getLocale } from '../../i18n';
-import type { GraphEdge } from '../../services/RelationGraphManager';
+import type { GraphEdge, RelationGraphManager } from '../../services/RelationGraphManager';
 import { ForceLayoutEngine } from '../../services/ForceLayoutEngine';
-import { cleanLoreHeading, type LoreEntry } from '../../services/CharacterManager';
-import { GraphRenderer, type GraphRenderState } from './GraphRenderer';
+import type { CharacterManager, LoreEntry } from '../../services/CharacterManager';
+import { cleanLoreHeading } from '../../services/CharacterManager';
+import type { AccurateCountSettings } from '../../types/settings';
+import { GraphRenderer, type GraphRenderState, type ThemeColors } from './GraphRenderer';
 import { GraphInteractionController } from './GraphInteractionController';
 import { LoreCardRenderer } from './LoreCardRenderer';
 import { DraggableListHelper } from '../../utils/DraggableListHelper';
 import { openFileAndFocus, smartLocateAndHighlight, getLeafForFileNavigation } from '../../utils/leaf';
 
+export type LoreBoardCardsCharacterManager = Pick<
+    CharacterManager,
+    | 'getLoreEntriesInFileOrder'
+    | 'findLoreFolder'
+    | 'getCharacterFile'
+    | 'moveLoreItem'
+    | 'rebuildCache'
+    | 'getLoreContent'
+    | 'updateLoreContent'
+>;
+
+export type LoreBoardCardsSettings = Pick<
+    AccurateCountSettings,
+    'loreBoardActiveFile' | 'lorePopoverCollapse'
+>;
+
+export interface LoreBoardCardsPlugin {
+    characterManager: LoreBoardCardsCharacterManager;
+    settings: LoreBoardCardsSettings;
+    saveSettings?: () => Promise<void>;
+}
+
+export type LoreBoardCharacterManager = LoreBoardCardsCharacterManager &
+    Pick<CharacterManager, 'ensureInitialized' | 'getCharactersForBook'>;
+
+export type LoreBoardRelationGraphManager = Pick<
+    RelationGraphManager,
+    'buildGraphData'
+>;
+
+export type LoreBoardSettings = LoreBoardCardsSettings &
+    Pick<AccurateCountSettings, 'loreBoardLayout'>;
+
+export interface LoreBoardPlugin extends LoreBoardCardsPlugin {
+    characterManager: LoreBoardCharacterManager;
+    relationGraphManager: LoreBoardRelationGraphManager;
+    settings: LoreBoardSettings;
+}
 
 export interface LoreBoardOptions {
     ownerComponent: Component;
     app: App;
-    plugin: WebNovelAssistantPlugin;
+    plugin: LoreBoardPlugin;
     container: HTMLElement;
     files: TFile[];
     currentBookPath: string;
@@ -67,7 +106,7 @@ export class LoreBoardRenderer {
     public static async renderCards(
         container: HTMLElement,
         app: App,
-        plugin: WebNovelAssistantPlugin,
+        plugin: LoreBoardCardsPlugin,
         currentBookPath: string,
         allCharacters: string[],
         matchedLoreHeadings?: ReadonlySet<string>,
@@ -208,7 +247,7 @@ export class LoreBoardRenderer {
 
             for (const entry of group.entries) {
                 const cardContainer = grid.createDiv('wn-lore-card-wrapper');
-                await LoreCardRenderer.buildCardDOM(cardContainer, entry, plugin, boardComponent, {
+                await LoreCardRenderer.buildCardDOM(cardContainer, entry, { app, settings: plugin.settings, characterManager: plugin.characterManager }, boardComponent, {
                     draggable: true,
                     dragDataMimeType: mimeType
                 });
@@ -274,7 +313,9 @@ export class LoreBoardRenderer {
                     if (tab.path === activePath) return;
                     activePath = tab.path;
                     plugin.settings.loreBoardActiveFile = tab.path || undefined;
-                    void plugin.saveSettings();
+                    if (plugin.saveSettings) {
+                        void plugin.saveSettings();
+                    }
                     applyView();
                 };
             }
@@ -286,7 +327,7 @@ export class LoreBoardRenderer {
     private static async renderTable(
         container: HTMLElement,
         app: App,
-        plugin: WebNovelAssistantPlugin,
+        plugin: LoreBoardPlugin,
         files: TFile[],
         currentBookPath: string,
         allCharacters: string[],
@@ -414,7 +455,7 @@ export class LoreBoardRenderer {
     private static async renderGraph(
         container: HTMLElement,
         app: App,
-        plugin: WebNovelAssistantPlugin,
+        plugin: LoreBoardPlugin,
         bookPath: string,
         ownerComponent: Component,
         matchedLoreHeadings?: ReadonlySet<string>
@@ -496,13 +537,11 @@ export class LoreBoardRenderer {
             filterMatchNodeIds: matchedLoreHeadings
         };
 
-        GraphRenderer.buildEdgeOffsets(data, state);
-
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
 
-        let cachedThemeMode = activeDocument.body.classList.contains('theme-dark');
-        let currentColors = GraphRenderer.getThemeColors(canvas.parentElement || activeDocument.body);
+        let cachedThemeMode: boolean | null = null;
+        let currentColors: ThemeColors | null = null;
 
         let animationFrameId = 0;
         let currentAnimationToken = 0;
@@ -556,10 +595,11 @@ export class LoreBoardRenderer {
 
                 const hasActiveFocus = Boolean(state.hoveredNode || state.selectedNode);
                 if (physicsRunning || needsRender || hasActiveFocus) {
-                    const isDark = activeDocument.body.classList.contains('theme-dark');
-                    if (cachedThemeMode !== isDark) {
+                    const isDark = canvas.ownerDocument.body.classList.contains('theme-dark');
+                    if (!currentColors || cachedThemeMode !== isDark) {
                         cachedThemeMode = isDark;
-                        currentColors = GraphRenderer.getThemeColors(canvas.parentElement || activeDocument.body);
+                        currentColors = GraphRenderer.getThemeColors(canvas.parentElement || canvas.ownerDocument.body);
+                        GraphRenderer.buildEdgeOffsets(data, state, currentColors.curveOffset, true);
                     }
                     const w = canvas.width / GraphRenderer.DPR;
                     const h = canvas.height / GraphRenderer.DPR;
@@ -577,6 +617,12 @@ export class LoreBoardRenderer {
 
             animationFrameId = window.requestAnimationFrame(loop);
         };
+
+        ownerComponent.registerEvent(app.workspace.on('css-change', () => {
+            cachedThemeMode = null;
+            currentColors = null;
+            requestRender();
+        }));
 
         let isFirstValidResize = true;
 

@@ -1,8 +1,17 @@
 import { normalizePath, type App } from 'obsidian';
 import { ChapterSorter, type ChapterNumberExtraction } from './ChapterSorter';
 import { t } from '../i18n';
-import type { WebNovelAssistantPlugin } from '../types/plugin';
+import type { AccurateCountSettings } from '../types/settings';
+import type { HomepageManager } from './HomepageManager';
 import { getDefaultFileName, getNovelInfoLabel, getNovelStatusText } from '../i18n/data-keys';
+
+export interface TextSplitterPlugin {
+	settings?: {
+		workspaceFolders?: string[];
+		novelInfo?: AccurateCountSettings['novelInfo'];
+	};
+	homepageManager?: Pick<HomepageManager, 'createNovelInfoFile'> | null;
+}
 
 export interface ParsedChapter {
 	title: string;
@@ -276,12 +285,12 @@ export class TextSplitter {
 	 */
 	static async executeImport(
 		app: App, 
-		plugin: WebNovelAssistantPlugin,
+		plugin: TextSplitterPlugin,
 		novelName: string, 
 		chapters: ParsedChapter[], 
 		onProgress: (current: number, total: number) => void
 	): Promise<number> {
-		const workspaceFolders = plugin.settings.workspaceFolders || [];
+		const workspaceFolders = plugin?.settings?.workspaceFolders || [];
 		const baseFolder = workspaceFolders.length > 0 ? workspaceFolders[0].replace(/^\/+|\/+$/g, '') : '';
 		
 		const safeNovelName = this.sanitizeFilename(novelName) || t('import-novel.untitled-novel');

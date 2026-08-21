@@ -1,23 +1,56 @@
+import type { WorkspaceLeaf } from 'obsidian';
 import { Notice } from 'obsidian';
 import { Logger } from '../utils/Logger';
-import type { WorkspaceLeaf } from 'obsidian';
 import { CreativeView } from './CreativeView';
-import type { WebNovelAssistantPlugin } from '../types/plugin';
-import type { TaskEntry } from '../types/task';
+import type { TaskEntry, TaskSettings } from '../types/task';
 import type { TaskManager } from '../services/TaskManager';
 import { TaskAddModal } from './TaskModal';
 import { getTaskStatusText } from '../i18n/data-keys';
 import { formatCount } from '../utils';
 import { t } from '../i18n';
+import type { CurrentBookContextPlugin } from '../utils/path';
+import type { AccurateCountSettings } from '../types/settings';
+import type { HomepageManager } from '../services/HomepageManager';
 
 export const TASK_VIEW_TYPE = 'task-view';
 
-export class TaskView extends CreativeView {
-	private get manager(): TaskManager {
+export type TaskViewManager = Pick<
+	TaskManager,
+	| 'checkAndCloseExpired'
+	| 'activatePendingTasks'
+	| 'getTaskFile'
+	| 'createTaskFile'
+	| 'parseEntries'
+	| 'calcProgress'
+	| 'updateProgress'
+	| 'loadEntries'
+	| 'getNextPeriod'
+	| 'addEntry'
+	| 'getChapterWordCount'
+>;
+
+export type TaskViewSettings = Pick<
+	AccurateCountSettings,
+	'workspaceFolders' | 'loreFolderName' | 'timeline' | 'foreshadowing' | 'novelInfo'
+> & {
+	task?: Pick<TaskSettings, 'fileName'>;
+};
+
+export type TaskViewHomepageManager = Pick<HomepageManager, 'getNovelFolders'>;
+
+export interface TaskViewPlugin
+	extends Omit<CurrentBookContextPlugin, 'settings' | 'homepageManager'> {
+	settings: TaskViewSettings;
+	homepageManager?: TaskViewHomepageManager;
+	taskManager: TaskViewManager;
+}
+
+export class TaskView extends CreativeView<TaskViewPlugin> {
+	private get manager(): TaskViewManager {
 		return this.plugin.taskManager;
 	}
 
-	constructor(leaf: WorkspaceLeaf, plugin: WebNovelAssistantPlugin) {
+	constructor(leaf: WorkspaceLeaf, plugin: TaskViewPlugin) {
 		super(leaf, plugin);
 	}
 
@@ -160,7 +193,6 @@ export class TaskView extends CreativeView {
 
 				new TaskAddModal(
 					this.app,
-					this.plugin,
 					this.manager,
 					nextPeriod,
 					lastPlatform,

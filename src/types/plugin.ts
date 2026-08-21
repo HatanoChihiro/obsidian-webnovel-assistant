@@ -144,6 +144,7 @@ export interface WebNovelAssistantPlugin extends
 
 	// 启动状态
 	isLayoutReady: boolean;
+	isUnloading: boolean;
 
 	// 设置
 	settings: AccurateCountSettings;

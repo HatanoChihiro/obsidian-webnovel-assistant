@@ -1,10 +1,72 @@
 import { Logger } from '../utils/Logger';
 import type { App, EventRef, WorkspaceLeaf, TFile, WorkspaceSplit, WorkspaceItem } from 'obsidian';
 import { MarkdownView, Notice, ToggleComponent } from 'obsidian';
-import { findBookRoot } from '../utils/path';
-import type { WebNovelAssistantPlugin } from '../types/plugin';
+import { findBookRoot, type FindBookRootPlugin } from '../utils/path';
 import { t } from '../i18n';
 import { lockKeyboardEscape, unlockKeyboardEscape } from '../services/ObsidianInternals';
+import type { AccurateCountSettings } from '../types/settings';
+import type { StickyNoteDataManager } from '../services/StickyNoteDataManager';
+import type { SettingsManager } from '../core/SettingsManager';
+import type { FileExplorerPatcher } from '../services/FileExplorerPatcher';
+import type { AdaptiveDebounceManager } from '../services/AdaptiveDebounceManager';
+import type { StatisticsManager } from '../services/StatisticsManager';
+import type { TaskManager } from '../services/TaskManager';
+
+export type ImmersiveModeManagerStickyNoteManager = Pick<
+	StickyNoteDataManager,
+	'syncActiveNotesToManager' | 'getNotes' | 'saveNotes' | 'syncFloatingNotes'
+>;
+
+export type ImmersiveModeManagerSettingsManager = Pick<
+	SettingsManager,
+	'flush'
+>;
+
+export type ImmersiveModeManagerFileExplorerPatcher = Pick<
+	FileExplorerPatcher,
+	'refreshAllExplorers'
+>;
+
+export type ImmersiveModeManagerDebounceManager = Pick<
+	AdaptiveDebounceManager,
+	'debounceFixed'
+>;
+
+export type ImmersiveModeManagerStatisticsManager = Pick<
+	StatisticsManager,
+	'getCoreStats'
+>;
+
+export type ImmersiveModeManagerTaskManager = Pick<
+	TaskManager,
+	'getTaskFile' | 'parseEntries' | 'getActiveTask' | 'calcProgress'
+>;
+
+export type ImmersiveModeManagerSettings = Pick<
+	AccurateCountSettings,
+	| '_savedImmersiveLayout'
+	| 'immersive'
+	| 'workspaceFolders'
+	| 'loreFolderName'
+	| 'timeline'
+	| 'foreshadowing'
+	| 'novelInfo'
+>;
+
+export interface ImmersiveModeManagerPlugin extends Omit<FindBookRootPlugin, 'settings'> {
+	app: App;
+	settings: ImmersiveModeManagerSettings;
+	stickyNoteManager: ImmersiveModeManagerStickyNoteManager;
+	settingsManager: ImmersiveModeManagerSettingsManager;
+	adaptiveDebounceManager: ImmersiveModeManagerDebounceManager;
+	statisticsManager: ImmersiveModeManagerStatisticsManager;
+	fileExplorerPatcher?: ImmersiveModeManagerFileExplorerPatcher;
+	taskManager?: ImmersiveModeManagerTaskManager;
+	lastTaskFolder?: string;
+	startTracking(): void;
+	stopTracking(): void;
+	saveSettings(): Promise<void>;
+}
 
 /**
  * 沉浸模式管理器
@@ -12,7 +74,7 @@ import { lockKeyboardEscape, unlockKeyboardEscape } from '../services/ObsidianIn
  */
 export class ImmersiveModeManager {
 	private app: App;
-	private plugin: WebNovelAssistantPlugin;
+	private plugin: ImmersiveModeManagerPlugin;
 	private isImmersiveActive: boolean = false;
 	private savedLayout: Record<string, unknown> | null = null;
 	private savedActiveFile: TFile | null = null;
@@ -37,12 +99,13 @@ export class ImmersiveModeManager {
 	private isTransitioning: boolean = false;
 	private isExiting: boolean = false;
 	private fullscreenChangeHandler: ((evt: Event) => void) | null = null;
+	private fullscreenDocument: Document | null = null;
 	// 沉浸模式屏蔽 Esc：不使用 keydownHandler，fullscreenchange 处理全屏恢复
 
 	// 顶部栏元素缓存
 	private topBarStatsEls: Record<string, HTMLElement> = {};
 
-	constructor(app: App, plugin: WebNovelAssistantPlugin) {
+	constructor(app: App, plugin: ImmersiveModeManagerPlugin) {
 		this.app = app;
 		this.plugin = plugin;
 	}
@@ -98,24 +161,26 @@ export class ImmersiveModeManager {
 	 * 检查 is-fullscreen 类名状态，若已丢失则重新进入。
 	 */
 	private registerImmersiveEventListeners(): void {
-		if (this.fullscreenChangeHandler) {
-			activeDocument.removeEventListener('fullscreenchange', this.fullscreenChangeHandler);
+		if (this.fullscreenChangeHandler && this.fullscreenDocument) {
+			this.fullscreenDocument.removeEventListener('fullscreenchange', this.fullscreenChangeHandler);
 		}
+		const fullscreenDocument = activeDocument;
+		this.fullscreenDocument = fullscreenDocument;
 
 		this.fullscreenChangeHandler = () => {
 			// 兜底守卫：若全屏被外部手势/系统的其他行为意外退出，重新全屏并锁定键盘
-			if (this.isImmersiveActive && !this.isExiting && !activeDocument.fullscreenElement) {
-				activeDocument.documentElement.requestFullscreen().then(async () => {
+			if (this.isImmersiveActive && !this.isExiting && !fullscreenDocument.fullscreenElement) {
+				fullscreenDocument.documentElement.requestFullscreen().then(async () => {
 					await lockKeyboardEscape();
 				}).catch(() => {
-					if (!activeDocument.body.classList.contains('is-fullscreen')) {
+					if (!fullscreenDocument.body.classList.contains('is-fullscreen')) {
 						this.app.commands.executeCommandById('app:toggle-full-screen');
 					}
 				});
 			}
 		};
 
-		activeDocument.addEventListener('fullscreenchange', this.fullscreenChangeHandler);
+		fullscreenDocument.addEventListener('fullscreenchange', this.fullscreenChangeHandler);
 	}
 
 	/**
@@ -484,10 +549,11 @@ export class ImmersiveModeManager {
 	public cleanup(): void {
 		this.clearSearchSourceTracking();
 
-		if (this.fullscreenChangeHandler) {
-			activeDocument.removeEventListener('fullscreenchange', this.fullscreenChangeHandler);
+		if (this.fullscreenChangeHandler && this.fullscreenDocument) {
+			this.fullscreenDocument.removeEventListener('fullscreenchange', this.fullscreenChangeHandler);
 			this.fullscreenChangeHandler = null;
 		}
+		this.fullscreenDocument = null;
 
 		if (this.updateInterval) {
 			window.clearInterval(this.updateInterval);

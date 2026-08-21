@@ -47,6 +47,211 @@ function computeCommonPrefix(a: string, b: string): number {
 	return len;
 }
 
+export interface PreparedNormalizedHaystack {
+	texts: string[];
+	haystack: string;
+	findRanges(
+		searchText: string,
+		optionsOrOffset?: number | TextMatchOptions
+	): TextNodeRange[];
+}
+
+/**
+ * 将连续两阶段映射中的命中区间精确映射回原始 DOM 文本节点偏移
+ */
+export function mapHaystackRangeToSourceNodes(
+	texts: string[],
+	targetStart: number,
+	targetLength: number
+): TextNodeRange[] {
+	if (targetLength <= 0) return [];
+	const targetEnd = targetStart + targetLength;
+
+	const rangesByNode = new Map<number, TextNodeRange>();
+	let hIndex = 0;
+	let inWhitespace = false;
+
+	for (let nodeIndex = 0; nodeIndex < texts.length; nodeIndex++) {
+		const text = texts[nodeIndex];
+		for (let offset = 0; offset < text.length; offset++) {
+			const char = text[offset];
+			if (/\s/.test(char)) {
+				if (!inWhitespace) {
+					inWhitespace = true;
+					const wsHIndex = hIndex++;
+					if (wsHIndex >= targetStart && wsHIndex < targetEnd) {
+						let wsEnd = offset + 1;
+						while (wsEnd < text.length && /\s/.test(text[wsEnd])) {
+							wsEnd++;
+						}
+						const current = rangesByNode.get(nodeIndex);
+						if (current) {
+							current.startOffset = Math.min(current.startOffset, offset);
+							current.endOffset = Math.max(current.endOffset, wsEnd);
+						} else {
+							rangesByNode.set(nodeIndex, {
+								nodeIndex,
+								startOffset: offset,
+								endOffset: wsEnd
+							});
+						}
+					}
+				}
+			} else {
+				inWhitespace = false;
+				const charHIndex = hIndex++;
+				if (charHIndex >= targetStart && charHIndex < targetEnd) {
+					const current = rangesByNode.get(nodeIndex);
+					if (current) {
+						current.startOffset = Math.min(current.startOffset, offset);
+						current.endOffset = Math.max(current.endOffset, offset + 1);
+					} else {
+						rangesByNode.set(nodeIndex, {
+							nodeIndex,
+							startOffset: offset,
+							endOffset: offset + 1
+						});
+					}
+				}
+			}
+
+			if (hIndex >= targetEnd && !inWhitespace) {
+				return Array.from(rangesByNode.values());
+			}
+		}
+	}
+
+	return Array.from(rangesByNode.values());
+}
+
+/**
+ * 将多节点文本数组归一化为连续字符串并支持跨候选复用与两阶段低开销映射
+ */
+export function prepareNormalizedHaystack(texts: string[]): PreparedNormalizedHaystack {
+	const chunks: string[] = [];
+	let inWhitespace = false;
+
+	for (let i = 0; i < texts.length; i++) {
+		const text = texts[i];
+		let chunkStart = 0;
+		for (let j = 0; j < text.length; j++) {
+			if (/\s/.test(text[j])) {
+				if (chunkStart < j) {
+					chunks.push(text.slice(chunkStart, j));
+				}
+				if (!inWhitespace) {
+					inWhitespace = true;
+					chunks.push(' ');
+				}
+				chunkStart = j + 1;
+			} else {
+				if (inWhitespace) {
+					inWhitespace = false;
+					chunkStart = j;
+				}
+			}
+		}
+		if (!inWhitespace && chunkStart < text.length) {
+			chunks.push(text.slice(chunkStart));
+		}
+	}
+
+	const haystack = chunks.join('');
+	let haystackLower: string | null = null;
+
+	return {
+		texts,
+		haystack,
+		findRanges(searchText: string, optionsOrOffset?: number | TextMatchOptions): TextNodeRange[] {
+			const options: TextMatchOptions = typeof optionsOrOffset === 'number'
+				? { preferredCharOffset: optionsOrOffset }
+				: (optionsOrOffset ?? {});
+
+			const normalizedSearch = searchText.replace(/\s+/g, ' ').trim().toLowerCase();
+			if (!normalizedSearch || !haystack) return [];
+
+			if (haystackLower === null) {
+				haystackLower = haystack.toLowerCase();
+			}
+
+			const allMatches: number[] = [];
+			let idx = haystackLower.indexOf(normalizedSearch);
+			while (idx >= 0) {
+				allMatches.push(idx);
+				idx = haystackLower.indexOf(normalizedSearch, idx + 1);
+			}
+
+			if (allMatches.length === 0) {
+				return [];
+			}
+
+			let bestIndex = allMatches[0];
+			if (allMatches.length > 1) {
+				let maxScore = Number.NEGATIVE_INFINITY;
+				const normTargetPrefix = options.contextPrefix ? normalizeSnippet(options.contextPrefix) : '';
+				const normTargetSuffix = options.contextSuffix ? normalizeSnippet(options.contextSuffix) : '';
+
+				for (let i = 0; i < allMatches.length; i++) {
+					const candPos = allMatches[i];
+					let score = 0;
+
+					// 1. 上下文重合度评分 (最高权重)
+					if (normTargetPrefix || normTargetSuffix) {
+						const candPrefix = haystack.substring(Math.max(0, candPos - 40), candPos);
+						const candSuffix = haystack.substring(candPos + normalizedSearch.length, Math.min(haystack.length, candPos + normalizedSearch.length + 40));
+						const normCandPrefix = normalizeSnippet(candPrefix);
+						const normCandSuffix = normalizeSnippet(candSuffix);
+
+						const prefixMatchLen = normTargetPrefix ? computeCommonSuffix(normCandPrefix, normTargetPrefix) : 0;
+						const suffixMatchLen = normTargetSuffix ? computeCommonPrefix(normCandSuffix, normTargetSuffix) : 0;
+
+						score += (prefixMatchLen + suffixMatchLen) * 10;
+					}
+
+					// 2. 同名词句次序号评分 (高权重)
+					if (options.occurrenceIndex !== undefined) {
+						const indexDiff = Math.abs(i - options.occurrenceIndex);
+						if (indexDiff === 0) {
+							score += 50;
+						} else {
+							score -= indexDiff * 10;
+						}
+					}
+
+					// 3. 正文进度比率评分
+					if (options.relativeProgress !== undefined && haystack.length > 0) {
+						const domProgress = candPos / haystack.length;
+						const progressDiff = Math.abs(domProgress - options.relativeProgress);
+						score += Math.max(0, (1 - progressDiff) * 20);
+					}
+
+					// 4. 原始偏移量保底（仅在无其他特征时作为辅助）
+					if (options.preferredCharOffset !== undefined && options.occurrenceIndex === undefined && !normTargetPrefix && !normTargetSuffix) {
+						const distance = Math.abs(candPos - options.preferredCharOffset);
+						score -= distance * 0.01;
+					}
+
+					if (score > maxScore) {
+						maxScore = score;
+						bestIndex = candPos;
+					}
+				}
+			}
+
+			Logger.info('[WebNovel-Debug] [preciseTextHighlight] findNormalizedTextRanges 匹配详情:', {
+				searchText,
+				normalizedSearch,
+				options,
+				haystackLength: haystack.length,
+				allMatches,
+				bestIndex
+			});
+
+			return mapHaystackRangeToSourceNodes(texts, bestIndex, normalizedSearch.length);
+		}
+	};
+}
+
 /**
  * 在多个连续文本节点中，跨软换行与空白折叠精确定位搜索词的节点字符偏移区间
  * 支持结合上下文片段、命中次序号及相对进度进行多维度精确仲裁
@@ -56,130 +261,7 @@ export function findNormalizedTextRanges(
 	searchText: string,
 	optionsOrOffset?: number | TextMatchOptions
 ): TextNodeRange[] {
-	const options: TextMatchOptions = typeof optionsOrOffset === 'number'
-		? { preferredCharOffset: optionsOrOffset }
-		: (optionsOrOffset ?? {});
-
-	const normalizedChars: string[] = [];
-	const sourceRanges: TextNodeRange[] = [];
-	let inWhitespace = false;
-	let currentWsRange: TextNodeRange | null = null;
-
-	texts.forEach((text, nodeIndex) => {
-		for (let offset = 0; offset < text.length; offset++) {
-			if (/\s/.test(text[offset])) {
-				if (!inWhitespace) {
-					inWhitespace = true;
-					currentWsRange = { nodeIndex, startOffset: offset, endOffset: offset + 1 };
-					normalizedChars.push(' ');
-					sourceRanges.push(currentWsRange);
-				} else if (currentWsRange && currentWsRange.nodeIndex === nodeIndex) {
-					currentWsRange.endOffset = offset + 1;
-				}
-				continue;
-			}
-
-			inWhitespace = false;
-			currentWsRange = null;
-			normalizedChars.push(text[offset]);
-			sourceRanges.push({ nodeIndex, startOffset: offset, endOffset: offset + 1 });
-		}
-	});
-
-	const normalizedSearch = searchText.replace(/\s+/g, ' ').trim().toLowerCase();
-	if (!normalizedSearch) return [];
-
-	const haystack = normalizedChars.join('').toLowerCase();
-	const allMatches: number[] = [];
-	let idx = haystack.indexOf(normalizedSearch);
-	while (idx >= 0) {
-		allMatches.push(idx);
-		idx = haystack.indexOf(normalizedSearch, idx + 1);
-	}
-
-	if (allMatches.length === 0) {
-		return [];
-	}
-
-	let bestIndex = allMatches[0];
-	if (allMatches.length > 1) {
-		let maxScore = Number.NEGATIVE_INFINITY;
-		const normTargetPrefix = options.contextPrefix ? normalizeSnippet(options.contextPrefix) : '';
-		const normTargetSuffix = options.contextSuffix ? normalizeSnippet(options.contextSuffix) : '';
-
-		for (let i = 0; i < allMatches.length; i++) {
-			const candPos = allMatches[i];
-			let score = 0;
-
-			// 1. 上下文重合度评分 (最高权重)
-			if (normTargetPrefix || normTargetSuffix) {
-				const candPrefix = haystack.substring(Math.max(0, candPos - 40), candPos);
-				const candSuffix = haystack.substring(candPos + normalizedSearch.length, Math.min(haystack.length, candPos + normalizedSearch.length + 40));
-				const normCandPrefix = normalizeSnippet(candPrefix);
-				const normCandSuffix = normalizeSnippet(candSuffix);
-
-				const prefixMatchLen = normTargetPrefix ? computeCommonSuffix(normCandPrefix, normTargetPrefix) : 0;
-				const suffixMatchLen = normTargetSuffix ? computeCommonPrefix(normCandSuffix, normTargetSuffix) : 0;
-
-				score += (prefixMatchLen + suffixMatchLen) * 10;
-			}
-
-			// 2. 同名词句次序号评分 (高权重)
-			if (options.occurrenceIndex !== undefined) {
-				const indexDiff = Math.abs(i - options.occurrenceIndex);
-				if (indexDiff === 0) {
-					score += 50;
-				} else {
-					score -= indexDiff * 10;
-				}
-			}
-
-			// 3. 正文进度比率评分
-			if (options.relativeProgress !== undefined && haystack.length > 0) {
-				const domProgress = candPos / haystack.length;
-				const progressDiff = Math.abs(domProgress - options.relativeProgress);
-				score += Math.max(0, (1 - progressDiff) * 20);
-			}
-
-			// 4. 原始偏移量保底（仅在无其他特征时作为辅助）
-			if (options.preferredCharOffset !== undefined && options.occurrenceIndex === undefined && !normTargetPrefix && !normTargetSuffix) {
-				const distance = Math.abs(candPos - options.preferredCharOffset);
-				score -= distance * 0.01;
-			}
-
-			if (score > maxScore) {
-				maxScore = score;
-				bestIndex = candPos;
-			}
-		}
-	}
-
-	Logger.info('[WebNovel-Debug] [preciseTextHighlight] findNormalizedTextRanges 匹配详情:', {
-		searchText,
-		normalizedSearch,
-		options,
-		haystackLength: haystack.length,
-		allMatches,
-		bestIndex
-	});
-
-	const matchedRanges = sourceRanges.slice(bestIndex, bestIndex + normalizedSearch.length);
-	const rangesByNode = new Map<number, TextNodeRange>();
-	for (const range of matchedRanges) {
-		const current = rangesByNode.get(range.nodeIndex);
-		if (current) {
-			current.startOffset = Math.min(current.startOffset, range.startOffset);
-			current.endOffset = Math.max(current.endOffset, range.endOffset);
-		} else {
-			rangesByNode.set(range.nodeIndex, {
-				nodeIndex: range.nodeIndex,
-				startOffset: range.startOffset,
-				endOffset: range.endOffset
-			});
-		}
-	}
-
-	return Array.from(rangesByNode.values());
+	return prepareNormalizedHaystack(texts).findRanges(searchText, optionsOrOffset);
 }
 
 /**
@@ -193,6 +275,53 @@ export function findNearestBlockLine(lineNumbers: number[], targetLine: number):
 		}
 	}
 	return closest;
+}
+
+/**
+ * 在阅读视图容器中寻找对应源码行号的渲染块候选列表（按最接近 targetLine 的优先级排序，含就近邻域）
+ */
+export function getCandidateRenderedBlocks(container: Element, targetLine: number): Element[] {
+	const elements = Array.from(container.querySelectorAll<HTMLElement>('[data-line]'));
+	if (elements.length === 0) return [];
+
+	const blockLines: { element: HTMLElement; line: number; index: number }[] = [];
+	for (let i = 0; i < elements.length; i++) {
+		const el = elements[i];
+		const attr = el.getAttribute('data-line') ?? el.dataset.line;
+		if (!attr) continue;
+		const line = Number.parseInt(attr, 10);
+		if (!Number.isNaN(line)) {
+			blockLines.push({ element: el, line, index: i });
+		}
+	}
+
+	if (blockLines.length === 0) return [];
+
+	// 寻找 data-line <= targetLine 的最大起始行元素作为主要目标
+	let primaryIdx = -1;
+	let maxLine = -1;
+	for (let i = 0; i < blockLines.length; i++) {
+		const item = blockLines[i];
+		if (item.line <= targetLine && item.line > maxLine) {
+			maxLine = item.line;
+			primaryIdx = i;
+		}
+	}
+
+	if (primaryIdx === -1) {
+		primaryIdx = 0;
+	}
+
+	const candidateIndices: number[] = [primaryIdx];
+	const offsets = [1, -1, 2, -2];
+	for (const offset of offsets) {
+		const neighborIdx = primaryIdx + offset;
+		if (neighborIdx >= 0 && neighborIdx < blockLines.length && !candidateIndices.includes(neighborIdx)) {
+			candidateIndices.push(neighborIdx);
+		}
+	}
+
+	return candidateIndices.map(idx => blockLines[idx].element);
 }
 
 /**
@@ -276,14 +405,15 @@ export function wrapTextNodes(
 		node = walker.nextNode();
 	}
 
+	if (textNodes.length === 0) return false;
+
+	const texts = textNodes.map(tn => tn.data);
+	const prepared = prepareNormalizedHaystack(texts);
+
 	let ranges: TextNodeRange[] = [];
 	for (const searchText of searchTexts) {
 		if (!searchText) continue;
-		ranges = findNormalizedTextRanges(
-			textNodes.map(tn => tn.data),
-			searchText,
-			optionsOrOffset
-		);
+		ranges = prepared.findRanges(searchText, optionsOrOffset);
 		if (ranges.length > 0) break;
 	}
 	if (ranges.length === 0) return false;
@@ -347,10 +477,19 @@ export function highlightReadingViewPhrase(
 	cancelHighlightTracker(container);
 
 	let success = false;
-	const targetBlock = getTargetRenderedBlock(container, targetLine);
-	if (targetBlock) {
-		success = wrapTextNodes(doc, targetBlock, searchTexts, preferredLineOffset);
+
+	// 1. 尝试 Block 级剪枝候选（目标块及确定性邻域）
+	const candidateBlocks = getCandidateRenderedBlocks(container, targetLine);
+	const blockOptions: TextMatchOptions | number | undefined = typeof optionsOrOffset === 'object' && optionsOrOffset !== null
+		? { ...optionsOrOffset, preferredCharOffset: preferredLineOffset ?? optionsOrOffset.preferredCharOffset }
+		: (preferredLineOffset ?? optionsOrOffset);
+
+	for (const block of candidateBlocks) {
+		success = wrapTextNodes(doc, block, searchTexts, blockOptions);
+		if (success) break;
 	}
+
+	// 2. 若渲染块均未命中（或缺失 data-line 元数据），回退全容器扫描保底
 	if (!success) {
 		success = wrapTextNodes(doc, container, searchTexts, optionsOrOffset);
 	}

@@ -1,14 +1,21 @@
 import type { App } from 'obsidian';
 import { Notice, Setting } from 'obsidian';
 import type { TimelineEntry } from '../../services/TimelineManager';
-import type { WebNovelAssistantPlugin } from '../../types/plugin';
+import type { AccurateCountSettings } from '../../types/settings';
+import type { ChapterSorterContext, ChapterSorterSettings } from '../../services/ChapterSorter';
 import { ChapterSorter } from '../../services/ChapterSorter';
 import { t } from '../../i18n';
+
+export type TimelineFormSettings = ChapterSorterSettings & Pick<AccurateCountSettings, 'timeline'>;
+
+export interface TimelineFormContext extends ChapterSorterContext {
+	settings: TimelineFormSettings;
+}
 
 export interface TimelineFormOptions {
 	container: HTMLElement;
 	app: App;
-	plugin: WebNovelAssistantPlugin;
+	context: TimelineFormContext;
 	folderPath: string;
 	initialEntry?: Partial<TimelineEntry>;
 	typeOptions: string[];
@@ -22,7 +29,7 @@ export class TimelineFormComponent {
 	constructor(private options: TimelineFormOptions) {}
 
 	render(): HTMLElement {
-		const { container, app, plugin, folderPath, initialEntry, typeOptions, onCancel, onSubmit, submitText, title } = this.options;
+		const { container, app, context, folderPath, initialEntry, typeOptions, onCancel, onSubmit, submitText, title } = this.options;
 		const form = container.createDiv({ cls: 'wn-timeline-edit-form timeline-add-form' });
 
 		if (title) {
@@ -42,7 +49,7 @@ export class TimelineFormComponent {
 		// 事件列表容器
 		const eventsContainer = form.createDiv();
 		eventsContainer.setCssProps({ marginBottom: '12px' });
-		const targetFiles = ChapterSorter.getAllChapters(app, plugin, folderPath);
+		const targetFiles = ChapterSorter.getAllChapters(app, context, folderPath);
 		const chapterFiles: string[] = targetFiles.map(c => c.basename);
 
 		const existingItems: { description: string; chapter: string; origin?: string }[] = initialEntry?.items && initialEntry.items.length > 0 
@@ -133,7 +140,7 @@ export class TimelineFormComponent {
 		const typeSelect = form.createEl('select', { cls: 'wn-timeline-form-input' });
 		typeSelect.createEl('option', { value: '', text: t('modal.select-type') });
 		
-		const globalTypes = plugin.settings.timeline?.defaultTypes || ['主线', '支线', '伏笔', '世界观', '人物'];
+		const globalTypes = context.settings.timeline?.defaultTypes || ['主线', '支线', '伏笔', '世界观', '人物'];
 		const allTypes = [...new Set([...globalTypes, ...typeOptions])];
 		allTypes.forEach((type: string) => {
 			const option = typeSelect.createEl('option', { value: type, text: type });

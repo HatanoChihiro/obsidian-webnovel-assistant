@@ -1,11 +1,9 @@
-import type { App} from 'obsidian';
+import type { App } from 'obsidian';
 import { Modal, Setting } from 'obsidian';
-import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { NovelMetadata } from '../types/homepage';
 import { t } from '../i18n';
 
 export class NewNovelModal extends Modal {
-	private plugin: WebNovelAssistantPlugin;
 	private onSubmit: (result: { name: string; meta: Partial<NovelMetadata> }) => void;
 
 	private novelName: string = '';
@@ -14,9 +12,8 @@ export class NewNovelModal extends Modal {
 	private genre: string = '';
 	private wordGoal: string = '';
 
-	constructor(app: App, plugin: WebNovelAssistantPlugin, onSubmit: (result: { name: string; meta: Partial<NovelMetadata> }) => void) {
+	constructor(app: App, onSubmit: (result: { name: string; meta: Partial<NovelMetadata> }) => void) {
 		super(app);
-		this.plugin = plugin;
 		this.onSubmit = onSubmit;
 	}
 

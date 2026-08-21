@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { findBookRoot, getCurrentBookContext } from '../src/utils/path';
+import { findBookRoot, getCurrentBookContext, getCandidateNames, isCandidateSubpath } from '../src/utils/path';
 import { TFile, TFolder, App } from 'obsidian';
 
 // Mock getAbstractFileByPath
@@ -134,5 +134,46 @@ describe('path utils - getCurrentBookContext', () => {
 		const plugin = createMockPlugin();
 
 		expect(getCurrentBookContext(app, plugin)).toBe('作品B');
+	});
+});
+
+describe('path utils - getCandidateNames', () => {
+	it('should include configured name, localized default, and all multilingual candidates', () => {
+		const candidates = getCandidateNames('CustomLore', 'loreFolderName');
+		expect(candidates.has('CustomLore')).toBe(true);
+		expect(candidates.has('设定')).toBe(true);
+		expect(candidates.has('Lore')).toBe(true);
+	});
+
+	it('should fall back to localized default and all multilingual candidates when configured is undefined or blank', () => {
+		const candidates = getCandidateNames(undefined, 'loreFolderName');
+		expect(candidates.has('设定')).toBe(true);
+		expect(candidates.has('Lore')).toBe(true);
+
+		const blankCandidates = getCandidateNames('   ', 'timelineFileName');
+		expect(blankCandidates.has('时间线')).toBe(true);
+		expect(blankCandidates.has('Timeline')).toBe(true);
+	});
+});
+
+describe('path utils - isCandidateSubpath', () => {
+	const candidates = new Set(['Lore', '设定']);
+
+	it('should match direct candidate folder and nested subdirectories', () => {
+		expect(isCandidateSubpath('Book1', 'Book1/Lore', candidates)).toBe(true);
+		expect(isCandidateSubpath('Book1', 'Book1/Lore/Characters', candidates)).toBe(true);
+		expect(isCandidateSubpath('Book1', 'Book1/设定/角色/主角', candidates)).toBe(true);
+	});
+
+	it('should support root-level books', () => {
+		expect(isCandidateSubpath('/', 'Lore/Characters', candidates)).toBe(true);
+		expect(isCandidateSubpath('', '设定/角色', candidates)).toBe(true);
+		expect(isCandidateSubpath('/', 'Drafts/Characters', candidates)).toBe(false);
+	});
+
+	it('should reject non-matching folders and prefix collisions', () => {
+		expect(isCandidateSubpath('Book1', 'Book1/Drafts', candidates)).toBe(false);
+		expect(isCandidateSubpath('Book1', 'Book1/LoreCollections', candidates)).toBe(false);
+		expect(isCandidateSubpath('Book1', 'Book2/Lore', candidates)).toBe(false);
 	});
 });

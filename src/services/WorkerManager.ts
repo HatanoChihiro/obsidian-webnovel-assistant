@@ -17,6 +17,7 @@ export class WorkerManager {
 	private restartResetTimer: number | null = null;
 	private blobUrl: string | null = null;
 	private backgroundStartTime: number | null = null;
+	private visibilityDocument: Document | null = null;
 
 	private visibilityHandler = () => this.handleVisibilityChange();
 
@@ -35,8 +36,9 @@ export class WorkerManager {
 		}
 
 		if (typeof activeDocument !== 'undefined') {
-			activeDocument.removeEventListener('visibilitychange', this.visibilityHandler);
-			activeDocument.addEventListener('visibilitychange', this.visibilityHandler);
+			this.visibilityDocument?.removeEventListener('visibilitychange', this.visibilityHandler);
+			this.visibilityDocument = this.plugin.app?.workspace?.containerEl?.ownerDocument ?? activeDocument;
+			this.visibilityDocument.addEventListener('visibilitychange', this.visibilityHandler);
 		}
 
 		const workerCode = `
@@ -93,9 +95,8 @@ export class WorkerManager {
 	 * 终止 Worker
 	 */
 	public terminate(): void {
-		if (typeof activeDocument !== 'undefined') {
-			activeDocument.removeEventListener('visibilitychange', this.visibilityHandler);
-		}
+		this.visibilityDocument?.removeEventListener('visibilitychange', this.visibilityHandler);
+		this.visibilityDocument = null;
 		if (this.restartTimer) {
 			window.clearTimeout(this.restartTimer);
 			this.restartTimer = null;
@@ -128,7 +129,8 @@ export class WorkerManager {
 	private handleVisibilityChange(): void {
 		if (!this.plugin.isTracking) return;
 
-		const isVisible = typeof activeDocument !== 'undefined' && activeDocument.visibilityState === 'visible';
+		const visibilityDocument = this.visibilityDocument;
+		const isVisible = visibilityDocument?.visibilityState === 'visible';
 		const now = Date.now();
 
 		if (!isVisible) {
@@ -182,8 +184,9 @@ export class WorkerManager {
 		const delta = now - this.plugin.lastTickTime;
 		this.plugin.lastTickTime = now;
 
-		const isAppVisible = typeof activeDocument !== 'undefined' && activeDocument.visibilityState === 'visible';
-		const isAppFocused = isMobile() ? isAppVisible : (isAppVisible && typeof activeDocument !== 'undefined' && activeDocument.hasFocus());
+		const visibilityDocument = this.visibilityDocument;
+		const isAppVisible = visibilityDocument?.visibilityState === 'visible';
+		const isAppFocused = isMobile() ? isAppVisible : Boolean(isAppVisible && visibilityDocument?.hasFocus());
 		const isTypingActive = (now - this.plugin.lastEditTime) < this.plugin.settings.idleTimeoutThreshold;
 		const today = window.moment().format('YYYY-MM-DD');
 		const hour = new Date().getHours();

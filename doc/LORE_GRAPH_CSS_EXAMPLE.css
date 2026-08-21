@@ -1,0 +1,168 @@
+/* ========================================================================== */
+/* WebNovel Assistant — 设定图谱 CSS 代码片段完整示例                         */
+/*                                                                            */
+/* 使用方法：                                                                 */
+/* 1. 将本文件复制到仓库的 .obsidian/snippets/ 目录。                         */
+/* 2. 在 Obsidian「设置 → 外观 → CSS 代码片段」中启用。                       */
+/* 3. 本示例同时作用于独立设定图谱和工作台的全量设定图谱。                   */
+/* 4. 修改并保存后，Obsidian 会触发图谱重绘；如未刷新，可关闭后重新打开图谱。 */
+/*                                                                            */
+/* 数值约定：                                                                 */
+/* - Canvas 尺寸变量使用无单位数字，由插件按画布坐标或 px 解析。              */
+/* - alpha 取值通常为 0～1；虚线格式为「线段长度, 间隔长度」。                */
+/* ========================================================================== */
+
+/* 独立设定图谱：.wna-relation-graph-container
+   工作台全量图谱：.wn-lore-graph-container */
+.wna-relation-graph-container,
+.wn-lore-graph-container {
+	/* ---------- 图谱画布背景 ---------- */
+	background: var(--background-primary);
+
+	/* ---------- 图谱基础颜色 ---------- */
+	/* 普通节点、连线、节点文字和聚焦节点颜色。 */
+	--graph-node: color-mix(in srgb, var(--text-muted) 82%, var(--interactive-accent));
+	--graph-line: color-mix(in srgb, var(--background-modifier-border) 72%, var(--interactive-accent));
+	--graph-text: var(--text-normal);
+	--graph-node-focused: var(--interactive-accent);
+
+	/* 节点类型色板。主角使用第一项 red，其余类型按名称稳定映射。 */
+	--color-red: #ef6a6a;
+	--color-orange: #f59e62;
+	--color-yellow: #d8ad45;
+	--color-green: #61b87a;
+	--color-cyan: #45b8b0;
+	--color-blue: #5d8fe8;
+	--color-purple: #9a78dc;
+	--color-pink: #d875a4;
+
+	/* 主角强调覆盖色 */
+	--wna-rg-protagonist-overlay: rgba(239, 106, 106, 0.5);
+	--wna-rg-protagonist-overlay-hover: rgba(239, 106, 106, 0.8);
+	--wna-rg-protagonist-shadow: rgba(239, 106, 106, 0.8);
+
+	/* ---------- 字体与节点 ---------- */
+	--wna-rg-font-family: var(--font-interface);
+	--wna-rg-node-radius: 4;
+	--wna-rg-node-highlight-radius: 6;
+	--wna-rg-node-font-size: 10;
+	--wna-rg-node-shadow-blur-selected: 18;
+	--wna-rg-node-shadow-blur-hover: 10;
+
+	/* ---------- 关系连线 ---------- */
+	--wna-rg-line-color: var(--graph-line);
+	--wna-rg-line-width: 0.8;
+	--wna-rg-line-gradient-start-alpha: 0.18;
+	--wna-rg-line-gradient-end-alpha: 0.95;
+	--wna-rg-line-bidi-mid-alpha: 0.45;
+	--wna-rg-node-gap: 4;
+	--wna-rg-curve-offset: 20;
+
+	/* 可选值：ring（空心环）| dot（实心点）| arrow（开放箭头）| none（隐藏）。
+	   单向关系分别使用起点/终点标记；双向关系两端均使用终点标记。 */
+	--wna-rg-source-marker: ring;
+	--wna-rg-target-marker: dot;
+	--wna-rg-start-dot-radius: 1.2;
+	--wna-rg-end-ring-radius: 1.2;
+	--wna-rg-source-marker-radius: var(--wna-rg-end-ring-radius);
+	--wna-rg-target-marker-radius: var(--wna-rg-start-dot-radius);
+	--wna-rg-arrow-length: 2.6;
+	--wna-rg-arrow-angle-deg: 26;
+
+	/* ---------- 关系标签 ---------- */
+	--wna-rg-label-font-size: 6;
+	--wna-rg-label-padding-x: 5;
+	--wna-rg-label-padding-y: 3;
+	--wna-rg-label-gap: 4;
+
+	/* ---------- 聚焦连线流光 ---------- */
+	/* 周期越小速度越快；trail-ratio 控制拖尾占整段路径的比例。 */
+	--wna-rg-pulse-color: var(--text-normal);
+	--wna-rg-pulse-period-ms: 1800;
+	--wna-rg-pulse-trail-ratio: 0.3;
+	--wna-rg-pulse-glow-alpha: 0.3;
+	--wna-rg-pulse-core-alpha: 0.9;
+	--wna-rg-pulse-glow-ratio: 2;
+
+	/* ---------- 自动提及关系 ---------- */
+	--wna-rg-mention-line-color: var(--text-faint);
+	--wna-rg-mention-text-color: var(--text-muted);
+	--wna-rg-mention-border-color: var(--text-faint);
+	--wna-rg-mention-line-dash: 4, 4;
+	--wna-rg-mention-label-dash: 2, 2;
+}
+
+/* ---------- 可选：将关系方向改为箭头 ---------- */
+/* 取消下面整段注释即可让单向关系以箭头指向终点，双向关系两端显示箭头。 */
+/*
+.wna-relation-graph-container,
+.wn-lore-graph-container {
+	--wna-rg-source-marker: none;
+	--wna-rg-target-marker: arrow;
+	--wna-rg-arrow-length: 3.2;
+	--wna-rg-arrow-angle-deg: 28;
+}
+*/
+
+/* ---------- 可选：关闭聚焦连线流光 ---------- */
+/* 取消下面整段注释即可关闭；不要与上方流光透明度配置同时保留。 */
+/*
+.wna-relation-graph-container,
+.wn-lore-graph-container {
+	--wna-rg-pulse-glow-alpha: 0;
+	--wna-rg-pulse-core-alpha: 0;
+}
+*/
+
+/* ---------- 可选：分别调整明暗主题 ---------- */
+body.theme-dark :is(.wna-relation-graph-container, .wn-lore-graph-container) {
+	--graph-line: color-mix(in srgb, var(--background-modifier-border) 65%, #8ba8e8);
+	--wna-rg-line-gradient-start-alpha: 0.22;
+	--wna-rg-pulse-glow-alpha: 0.34;
+}
+
+body.theme-light :is(.wna-relation-graph-container, .wn-lore-graph-container) {
+	--graph-line: color-mix(in srgb, var(--background-modifier-border) 78%, #5678ba);
+	--wna-rg-line-gradient-start-alpha: 0.14;
+	--wna-rg-pulse-glow-alpha: 0.22;
+}
+
+/* ---------- 独立设定图谱的 DOM 界面 ---------- */
+/* 工作台全量图谱只有 Canvas，不显示面包屑和右下角操作提示。 */
+.wna-relation-graph-breadcrumb {
+	padding: 4px 10px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	background: color-mix(in srgb, var(--background-secondary) 88%, transparent);
+	box-shadow: var(--shadow-s);
+	backdrop-filter: blur(4px);
+}
+
+.wna-relation-graph-breadcrumb-link {
+	color: var(--interactive-accent);
+	font-weight: 600;
+	text-underline-offset: 2px;
+}
+
+.wna-relation-graph-hint {
+	padding: 3px 7px;
+	border-radius: 4px;
+	background: color-mix(in srgb, var(--background-primary) 82%, transparent);
+	opacity: 0.72;
+	font-style: italic;
+}
+
+.wna-relation-graph-empty {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+.wna-relation-graph-container canvas,
+.wn-lore-graph-canvas {
+	cursor: grab;
+}
+
+.wna-relation-graph-container canvas:active,
+.wn-lore-graph-canvas:active {
+	cursor: grabbing;
+}

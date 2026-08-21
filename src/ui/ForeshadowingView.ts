@@ -1,30 +1,59 @@
 import type { TFile, WorkspaceLeaf } from 'obsidian';
 import { Notice, setIcon } from 'obsidian';
-import type { ParsedForeshadowingEntry } from '../types/foreshadowing';
+import type { ForeshadowingSettings, ParsedForeshadowingEntry } from '../types/foreshadowing';
 import { ForeshadowingStatus } from '../types/foreshadowing';
-import { ForeshadowingRecoveryModal } from './ForeshadowingModal';
+import { ForeshadowingRecoveryModal, type ForeshadowingRecoveryModalPlugin } from './ForeshadowingModal';
 import { CreativeView } from './CreativeView';
-import type { WebNovelAssistantPlugin } from '../types/plugin';
+import type { ForeshadowingManager } from '../services/ForeshadowingManager';
 import { getForeshadowingStatusText, getDefaultFileName } from '../i18n/data-keys';
 import { t } from '../i18n';
 import { openFileAndFocus, smartLocateAndHighlight, getLeafForFileNavigation } from '../utils/leaf';
+import type { ChapterSorterSettings } from '../services/ChapterSorter';
 import { ChapterSorter } from '../services/ChapterSorter';
+import type { CurrentBookContextPlugin } from '../utils/path';
 
+import type { AccurateCountSettings } from '../types/settings';
+import type { HomepageManager } from '../services/HomepageManager';
 
 export const FORESHADOWING_VIEW_TYPE = 'foreshadowing-view';
 
+export type ForeshadowingViewManager = Pick<
+	ForeshadowingManager,
+	| 'getForeshadowingFileByFolder'
+	| 'parseEntries'
+	| 'markAsPartiallyRecovered'
+	| 'markAsRecovered'
+	| 'markAsDeprecated'
+	| 'markAsPending'
+>;
 
+export type ForeshadowingViewSettings = ChapterSorterSettings &
+	Pick<AccurateCountSettings, 'workspaceFolders' | 'loreFolderName' | 'timeline' | 'novelInfo'> & {
+		foreshadowing: ForeshadowingSettings;
+	};
+
+export type ForeshadowingViewHomepageManager = Pick<HomepageManager, 'getNovelFolders'> & {
+	getHomepageFilePath(): string;
+};
+
+export interface ForeshadowingViewPlugin
+	extends Omit<CurrentBookContextPlugin, 'settings' | 'homepageManager'>,
+		Omit<ForeshadowingRecoveryModalPlugin, 'settings' | 'homepageManager'> {
+	settings: ForeshadowingViewSettings;
+	homepageManager?: ForeshadowingViewHomepageManager;
+	foreshadowingManager: ForeshadowingViewManager;
+}
 
 /**
  * 伏笔面板视图
  * 在侧边栏显示当前文件夹的伏笔列表，支持按状态筛选和直接回收操作
  */
-export class ForeshadowingView extends CreativeView {
+export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 	private filterStatus: 'all' | ForeshadowingStatus = 'all';
 	private filterTag: string = 'all';
 	private pendingRefreshTimer: number | null = null;
 
-	constructor(leaf: WorkspaceLeaf, plugin: WebNovelAssistantPlugin) {
+	constructor(leaf: WorkspaceLeaf, plugin: ForeshadowingViewPlugin) {
 		super(leaf, plugin);
 	}
 

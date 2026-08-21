@@ -1,11 +1,12 @@
 import { setIcon, type App, type TFile } from 'obsidian';
-import type { WebNovelAssistantPlugin } from '../../types/plugin';
 import type { ParsedForeshadowingEntry } from '../../types/foreshadowing';
-import { ChapterCard } from './ChapterCard';
+import { ChapterCard, type ChapterCardPlugin } from './ChapterCard';
+
+export type CorkboardGridPlugin = ChapterCardPlugin;
 
 export interface CorkboardGridOptions {
 	app: App;
-	plugin: WebNovelAssistantPlugin;
+	plugin: ChapterCardPlugin;
 	container: HTMLElement;
 	files: TFile[];
 	foreshadowingMap: Map<string, ParsedForeshadowingEntry[]>;

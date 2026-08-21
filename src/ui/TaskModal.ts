@@ -1,16 +1,16 @@
 // 限时任务新增对话框（内部仍用 Task 命名，待后续重构改为 Task）
 import type { App} from 'obsidian';
 import { Modal, Setting } from 'obsidian';
-import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { TaskEntry, TaskType } from '../types/task';
 import type { TaskManager } from '../services/TaskManager';
 import { t } from '../i18n';
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
+export type TaskAddModalManager = Pick<TaskManager, 'loadEntries' | 'getNextPeriod' | 'getChapterWordCount'>;
+
 export class TaskAddModal extends Modal {
-	private plugin: WebNovelAssistantPlugin;
-	private manager: TaskManager;
+	private manager: TaskAddModalManager;
 	private defaultPeriod: number;
 	private defaultPlatform: string;
 	private onSubmit: (entry: TaskEntry) => Promise<void>;
@@ -18,15 +18,13 @@ export class TaskAddModal extends Modal {
 
 	constructor(
 		app: App,
-		plugin: WebNovelAssistantPlugin,
-		manager: TaskManager,
+		manager: TaskAddModalManager,
 		defaultPeriod: number,
 		defaultPlatform: string,
 		onSubmit: (entry: TaskEntry) => Promise<void>,
 		folderPath: string
 	) {
 		super(app);
-		this.plugin = plugin;
 		this.manager = manager;
 		this.defaultPeriod = defaultPeriod;
 		this.defaultPlatform = defaultPlatform;

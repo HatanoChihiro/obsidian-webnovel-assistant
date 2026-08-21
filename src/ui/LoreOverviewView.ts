@@ -1,22 +1,64 @@
 import { ItemView, TFile, type WorkspaceLeaf } from 'obsidian';
-import type { WebNovelAssistantPlugin } from '../types/plugin';
+import type { AdaptiveDebounceManager } from '../services/AdaptiveDebounceManager';
+import type { CharacterManager } from '../services/CharacterManager';
+import type { HomepageManager } from '../services/HomepageManager';
+import type { AccurateCountSettings } from '../types/settings';
 import { VIEW_TYPES } from '../constants';
 import { t } from '../i18n';
+import type { CurrentBookContextPlugin } from '../utils/path';
 import { getCurrentBookContext, findBookRoot } from '../utils/path';
-import { LoreBoardRenderer } from './components/LoreBoardRenderer';
+import { LoreBoardRenderer, type LoreBoardCardsPlugin } from './components/LoreBoardRenderer';
 
 export const LORE_OVERVIEW_VIEW_TYPE = VIEW_TYPES.LORE_OVERVIEW;
+
+export type LoreOverviewCharacterManager = Pick<
+	CharacterManager,
+	| 'ensureInitialized'
+	| 'getCharactersForBook'
+	| 'getLoreEntriesInFileOrder'
+	| 'findLoreFolder'
+	| 'getCharacterFile'
+	| 'moveLoreItem'
+	| 'rebuildCache'
+	| 'getLoreContent'
+	| 'updateLoreContent'
+>;
+
+export type LoreOverviewAdaptiveDebounceManager = Pick<AdaptiveDebounceManager, 'debounceFixed'>;
+
+export type LoreOverviewSettings = Pick<
+	AccurateCountSettings,
+	| 'workspaceFolders'
+	| 'loreFolderName'
+	| 'timeline'
+	| 'foreshadowing'
+	| 'novelInfo'
+	| 'loreBoardActiveFile'
+	| 'lorePopoverCollapse'
+>;
+
+export type LoreOverviewHomepageManager = Pick<HomepageManager, 'getNovelFolders' | 'getHomepageFilePath'>;
+
+export interface LoreOverviewViewPlugin
+	extends Omit<CurrentBookContextPlugin, 'settings' | 'homepageManager'>,
+		LoreBoardCardsPlugin {
+	characterManager: LoreOverviewCharacterManager;
+	adaptiveDebounceManager: LoreOverviewAdaptiveDebounceManager;
+	settings: LoreOverviewSettings;
+	homepageManager?: LoreOverviewHomepageManager;
+	saveSettings?: () => Promise<void>;
+}
 
 /**
  * 设定一览侧面板视图
  * 将设定看板中的设定卡片原样抽出到侧边栏展示，支持分类 Tab/分组、卡片就地编辑与点击跳转定位
  */
 export class LoreOverviewView extends ItemView {
-	private plugin: WebNovelAssistantPlugin;
+	private plugin: LoreOverviewViewPlugin;
 	private currentBookPath: string | null = null;
 	private container!: HTMLElement;
 
-	constructor(leaf: WorkspaceLeaf, plugin: WebNovelAssistantPlugin) {
+	constructor(leaf: WorkspaceLeaf, plugin: LoreOverviewViewPlugin) {
 		super(leaf);
 		this.plugin = plugin;
 

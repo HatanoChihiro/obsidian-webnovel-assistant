@@ -2,10 +2,23 @@ import { Logger } from '../utils/Logger';
 import type { App, TAbstractFile } from 'obsidian';
 import { TFile, TFolder, Vault } from 'obsidian';
 import { CHINESE_NUMBERS } from '../constants';
-import type { ChapterNamingRule } from '../types/settings';
-import type { WebNovelAssistantPlugin } from '../types/plugin';
+import type { AccurateCountSettings, ChapterNamingRule } from '../types/settings';
 
 import { getDefaultFileName, getDefaultFileNameCandidates } from '../i18n/data-keys';
+
+export type ChapterSorterSettings = Pick<
+	AccurateCountSettings,
+	'homepagePath' | 'loreFolderName' | 'enableStrictChapterMode' | 'customSortOrder'
+>;
+
+export interface ChapterSorterContext {
+	settings: ChapterSorterSettings;
+	getVaultMarkdownFiles(): TFile[];
+	getTrackedMarkdownFiles(includeLore?: boolean): TFile[];
+	isFileInStrictChapterException(file: TFile): boolean;
+	isPluginGeneratedFile(basename: string): boolean;
+	homepageManager?: { getHomepageFilePath(): string } | null;
+}
 
 export interface ChapterNumberExtraction {
 	number: number;
@@ -37,7 +50,7 @@ export class ChapterSorter {
 	/**
 	 * 判定文件是否为功能性文档（如作品信息、伏笔记录、时间线、限时任务、创作主页、设定集、合并章节产物等）
 	 */
-	static isFunctionalDoc(file: TFile, plugin: WebNovelAssistantPlugin): boolean {
+	static isFunctionalDoc(file: TFile, plugin: ChapterSorterContext): boolean {
 		const basename = file.basename;
 		if (basename.includes('_合并章节')) return true;
 
@@ -77,7 +90,7 @@ export class ChapterSorter {
 	/**
 	 * 统一获取指定文件夹下的所有章节文件，并按规则和自定义顺序排好序
 	 */
-	static getAllChapters(app: App, plugin: WebNovelAssistantPlugin, folderPath: string): TFile[] {
+	static getAllChapters(app: App, plugin: ChapterSorterContext, folderPath: string): TFile[] {
 		let targetFiles: TFile[];
 		if (folderPath && folderPath !== '/') {
 			const folder = app.vault.getAbstractFileByPath(folderPath);
@@ -119,7 +132,7 @@ export class ChapterSorter {
 	 */
 	static findChapterByName(
 		app: App,
-		plugin: WebNovelAssistantPlugin,
+		plugin: ChapterSorterContext,
 		folderPath: string,
 		chapterName: string
 	): TFile | null {

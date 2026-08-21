@@ -1,6 +1,5 @@
 import { FuzzySuggestModal, Notice, TFile, setIcon, type App } from 'obsidian';
-import type { WebNovelAssistantPlugin } from '../../types/plugin';
-import type { StickyNoteState } from '../../types/settings';
+import type { StickyNoteState, ThemeScheme } from '../../types/settings';
 import { t } from '../../i18n';
 import { ConfirmCloseModal, SaveStickyNoteModal } from '../StickyNote';
 import { isMobile } from '../../utils/platform';
@@ -11,8 +10,36 @@ interface StickyNoteListRendererOptions {
 	mode: StickyNoteListMode;
 }
 
+export interface StickyNoteListSettings {
+	nextNoteThemeIndex?: number;
+	noteThemes?: ThemeScheme[];
+	immersive: {
+		immersiveNoteFontSize?: number;
+	};
+	stickyNoteAutoSave?: boolean;
+}
+
+export interface StickyNoteListManager {
+	getNotes(): StickyNoteState[];
+	updateNote(note: StickyNoteState, debounceSave?: boolean): void;
+	saveNotes(notes: StickyNoteState[]): Promise<void>;
+	removeNoteAndWait(id: string): Promise<void>;
+}
+
+export interface StickyNoteListDebounceManager {
+	debounceFixed(key: string, fn: () => void, delay: number): void;
+}
+
+export interface StickyNoteListRendererPlugin {
+	settings: StickyNoteListSettings;
+	stickyNoteManager: StickyNoteListManager;
+	adaptiveDebounceManager: StickyNoteListDebounceManager;
+	getVaultMarkdownFiles(): TFile[];
+	saveSettings(): Promise<void>;
+}
+
 export function getStickyNoteFileCandidates(
-	plugin: Pick<WebNovelAssistantPlugin, 'getVaultMarkdownFiles'>
+	plugin: Pick<StickyNoteListRendererPlugin, 'getVaultMarkdownFiles'>
 ): TFile[] {
 	return plugin.getVaultMarkdownFiles();
 }
@@ -20,7 +47,7 @@ export function getStickyNoteFileCandidates(
 class FileSuggestModal extends FuzzySuggestModal<TFile> {
 	constructor(
 		app: App,
-		private readonly plugin: WebNovelAssistantPlugin,
+		private readonly plugin: Pick<StickyNoteListRendererPlugin, 'getVaultMarkdownFiles'>,
 		private readonly onChoose: (file: TFile) => void
 	) {
 		super(app);
@@ -53,7 +80,7 @@ export class StickyNoteListRenderer {
 
 	constructor(
 		private readonly app: App,
-		private readonly plugin: WebNovelAssistantPlugin,
+		private readonly plugin: StickyNoteListRendererPlugin,
 		private readonly container: HTMLElement,
 		options: StickyNoteListRendererOptions
 	) {
@@ -375,7 +402,7 @@ export class StickyNoteListRenderer {
 				return;
 			}
 
-			new SaveStickyNoteModal(this.app, this.plugin, async (fileName: string, folderPath: string) => {
+			new SaveStickyNoteModal(this.app, async (fileName: string, folderPath: string) => {
 				const fullPath = `${folderPath ? `${folderPath}/` : ''}${fileName.endsWith('.md') ? fileName : `${fileName}.md`}`;
 				if (this.app.vault.getAbstractFileByPath(fullPath)) {
 					new Notice(t('modal.file-already-exists', { path: fullPath }));

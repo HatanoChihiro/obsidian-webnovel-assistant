@@ -1,24 +1,48 @@
 import { Logger } from '../utils/Logger';
-import type { App} from 'obsidian';
+import type { App } from 'obsidian';
 import { Component, MarkdownRenderer, Notice, TFile, setIcon, Modal, Setting } from 'obsidian';
 import type { StickyNoteState, ThemeScheme } from '../types/settings';
 import { hexToRgba } from '../utils/format';
 import { isDesktop } from '../utils/platform';
-import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { t } from '../i18n';
+
+export interface FloatingStickyNoteSettings {
+	noteThemes: ThemeScheme[];
+	nextNoteThemeIndex: number;
+	noteOpacity: number;
+	stickyNoteAutoSave: boolean;
+}
+
+export interface FloatingStickyNoteManager {
+	getNotes(): StickyNoteState[];
+	saveNotes(notes: StickyNoteState[]): Promise<void>;
+	updateNote(state: StickyNoteState, debounceSave?: boolean): void;
+	createNoteFile(fullPath: string, content: string): Promise<TFile>;
+	removeNote(id: string): void;
+}
+
+export interface FloatingStickyNoteDebounceManager {
+	debounceFixed(key: string, fn: () => void, delay: number): void;
+}
+
+export interface FloatingStickyNotePlugin {
+	settings: FloatingStickyNoteSettings;
+	saveSettings(): Promise<void>;
+	activeNotes: FloatingStickyNote[];
+	stickyNoteManager: FloatingStickyNoteManager;
+	adaptiveDebounceManager: FloatingStickyNoteDebounceManager;
+}
 
 /**
  * 保存便签对话框
  */
 export class SaveStickyNoteModal extends Modal {
-	plugin: WebNovelAssistantPlugin;
 	onSubmit: (fileName: string, folderPath: string) => void | Promise<void>;
 	fileNameInput!: HTMLInputElement;
 	folderPathInput!: HTMLInputElement;
 
-	constructor(app: App, plugin: WebNovelAssistantPlugin, onSubmit: (fileName: string, folderPath: string) => void | Promise<void>) {
+	constructor(app: App, onSubmit: (fileName: string, folderPath: string) => void | Promise<void>) {
 		super(app);
-		this.plugin = plugin;
 		this.onSubmit = onSubmit;
 	}
 
@@ -202,7 +226,7 @@ export class ConfirmCloseModal extends Modal {
  */
 export class FloatingStickyNote extends Component {
 	app: App;
-	plugin: WebNovelAssistantPlugin;
+	plugin: FloatingStickyNotePlugin;
 	state: StickyNoteState;
 	containerEl!: HTMLElement;
 	contentContainer!: HTMLDivElement;
@@ -213,7 +237,7 @@ export class FloatingStickyNote extends Component {
 	private resizeTimer: number | null = null;           // ResizeObserver 防抖计时器
 	private _isUnloaded: boolean = false;
 
-	constructor(app: App, plugin: WebNovelAssistantPlugin, options: { file?: TFile, content?: string, title?: string, state?: StickyNoteState }) {
+	constructor(app: App, plugin: FloatingStickyNotePlugin, options: { file?: TFile, content?: string, title?: string, state?: StickyNoteState }) {
 		super();
 		this.app = app;
 		this.plugin = plugin;
@@ -588,7 +612,7 @@ export class FloatingStickyNote extends Component {
 			}
 			
 			// 新便签：弹出对话框让用户自定义文件名和保存位置
-			const modal = new SaveStickyNoteModal(this.app, this.plugin, (fileName: string, folderPath: string) => {
+			const modal = new SaveStickyNoteModal(this.app, (fileName: string, folderPath: string) => {
 				void (async () => {
 					try {
 						// 确保文件名以 .md 结尾
@@ -660,7 +684,7 @@ export class FloatingStickyNote extends Component {
 								this.close();
 							} else {
 								// 新便签，弹出保存对话框
-								const saveModal = new SaveStickyNoteModal(this.app, this.plugin, (fileName: string, folderPath: string) => {
+								const saveModal = new SaveStickyNoteModal(this.app, (fileName: string, folderPath: string) => {
 									void (async () => {
 										try {
 											if (!fileName.endsWith('.md')) {
@@ -755,16 +779,19 @@ export class FloatingStickyNote extends Component {
 
 	private currentMouseMove: ((e: MouseEvent) => void) | null = null;
 	private currentMouseUp: (() => void) | null = null;
+	private dragDocument: Document | null = null;
 
 	private cleanupDragging() {
+		const dragDocument = this.dragDocument;
 		if (this.currentMouseMove) {
-			activeDocument.removeEventListener('mousemove', this.currentMouseMove);
+			dragDocument?.removeEventListener('mousemove', this.currentMouseMove);
 			this.currentMouseMove = null;
 		}
 		if (this.currentMouseUp) {
-			activeDocument.removeEventListener('mouseup', this.currentMouseUp);
+			dragDocument?.removeEventListener('mouseup', this.currentMouseUp);
 			this.currentMouseUp = null;
 		}
+		this.dragDocument = null;
 	}
 
 	setupDragging(handle: HTMLElement) {
@@ -797,9 +824,10 @@ export class FloatingStickyNote extends Component {
 			this.cleanupDragging(); // 先清理旧的（如果有）
 			this.currentMouseMove = onMouseMove;
 			this.currentMouseUp = onMouseUp;
+			this.dragDocument = handle.ownerDocument;
 
-			activeDocument.addEventListener('mousemove', onMouseMove);
-			activeDocument.addEventListener('mouseup', onMouseUp);
+			this.dragDocument.addEventListener('mousemove', onMouseMove);
+			this.dragDocument.addEventListener('mouseup', onMouseUp);
 		});
 	}
 
