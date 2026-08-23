@@ -1,0 +1,41 @@
+name: Validate DeDiDe Contributions
+
+on:
+  pull_request:
+    branches:
+      - dictionary
+    paths:
+      - 'dict/contributions/dedide/**'
+      - 'dict/dedide-lexicon.json'
+      - 'scripts/validate-dedide-contributions.mjs'
+      - '.github/workflows/validate-dedide-contributions.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate DeDiDe Contributions
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Validate DeDiDe contributions
+        run: node scripts/validate-dedide-contributions.mjs
+
+      - name: Upload candidate lexicon artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: candidate-dedide-lexicon
+          path: dict/candidate-dedide-lexicon.json
+          if-no-files-found: ignore

@@ -1,0 +1,50 @@
+name: Publish Accepted DeDiDe Contributions
+
+on:
+  push:
+    branches:
+      - dictionary
+    paths:
+      - 'dict/contributions/dedide/*.md'
+
+concurrency:
+  group: publish-dedide-contributions
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Publish DeDiDe Contributions
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: dictionary
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Publish accepted DeDiDe contributions
+        run: node scripts/validate-dedide-contributions.mjs --publish
+
+      - name: Commit and push publication changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add dict/dedide-lexicon.json
+          git add -u dict/contributions/dedide
+          if git diff --staged --quiet; then
+            echo "No lexicon changes to commit."
+          else
+            git commit -m "chore(dict): publish accepted DeDiDe contributions [skip ci]"
+            git push origin dictionary
+          fi

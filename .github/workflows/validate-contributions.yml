@@ -5,7 +5,7 @@ on:
     branches:
       - dictionary
     paths:
-      - 'dict/contributions/**'
+      - 'dict/contributions/*.md'
       - 'dict/basic-wrong-words.json'
       - 'scripts/validate-contributions.mjs'
       - '.github/workflows/validate-contributions.yml'
