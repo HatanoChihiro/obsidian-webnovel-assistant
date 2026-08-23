@@ -6,15 +6,13 @@
 
 ### 分支说明
 
-`dictionary` 是独立的词典数据分支，拥有自己的首次提交和提交历史，不继承 `main` 或 `dev` 的历史，也不包含插件源代码。
+`dictionary` 分支用于发布 WebNovel Assistant 的公开校对词典，并接收社区错词贡献。
 
 本分支只用于：
 
 - 发布 [`dict/basic-wrong-words.json`](dict/basic-wrong-words.json) 基础高置信错词库；
 - 发布 [`dict/dedide-lexicon.json`](dict/dedide-lexicon.json)“的 / 地 / 得”检查词表；
 - 接收和校验社区错词贡献。
-
-请勿在 `dictionary` 与 `main` / `dev` 之间执行合并、变基或 Cherry-pick，也不要向 `main` / `dev` 提交词典贡献 PR。
 
 ### 贡献指南
 
@@ -36,15 +34,13 @@ node scripts/validate-contributions.mjs
 
 ### About this branch
 
-`dictionary` is an independent data branch with its own initial commit and history. It does not inherit history from `main` or `dev`, and it contains no plugin source code.
+The `dictionary` branch publishes the public proofreading dictionaries for WebNovel Assistant and accepts community typo contributions.
 
 This branch is used only to:
 
 - publish the high-confidence typo dictionary at [`dict/basic-wrong-words.json`](dict/basic-wrong-words.json);
 - publish the "的 / 地 / 得" proofreading lexicon at [`dict/dedide-lexicon.json`](dict/dedide-lexicon.json);
 - receive and validate community typo contributions.
-
-Do not merge, rebase, or cherry-pick between `dictionary` and `main` / `dev`. Do not target `main` or `dev` with dictionary contribution pull requests.
 
 ### Contribution guide
 
