@@ -1,0 +1,50 @@
+name: Publish Accepted Typo Contributions
+
+on:
+  push:
+    branches:
+      - dictionary
+    paths:
+      - 'dict/contributions/*.md'
+
+concurrency:
+  group: publish-dictionary-contributions
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Publish Typo Contributions
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: dictionary
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Publish accepted contributions
+        run: node scripts/validate-contributions.mjs --publish
+
+      - name: Commit and push publication changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add dict/basic-wrong-words.json
+          git add -u dict/contributions
+          if git diff --staged --quiet; then
+            echo "No dictionary changes to commit."
+          else
+            git commit -m "chore(dict): publish accepted typo contributions [skip ci]"
+            git push origin dictionary
+          fi
