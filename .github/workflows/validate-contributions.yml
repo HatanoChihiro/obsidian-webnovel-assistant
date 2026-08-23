@@ -1,0 +1,41 @@
+name: Validate Typo Contributions
+
+on:
+  pull_request:
+    branches:
+      - dictionary
+    paths:
+      - 'dict/contributions/**'
+      - 'dict/basic-wrong-words.json'
+      - 'scripts/validate-contributions.mjs'
+      - '.github/workflows/validate-contributions.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate Markdown Contributions
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Validate typo contributions
+        run: node scripts/validate-contributions.mjs
+
+      - name: Upload candidate dictionary artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: candidate-basic-wrong-words
+          path: dict/candidate-basic-wrong-words.json
+          if-no-files-found: ignore
