@@ -18,6 +18,8 @@ import { resolveChapterTemplate } from '../utils/template';
 import { TypographyQuickModal } from '../ui/TypographyQuickModal';
 import { Logger } from '../utils/Logger';
 import { DailyStatsActionModal, type DailyStatsAction } from '../ui/DailyStatsActionModal';
+import { AnnotateDictModal } from '../ui/AnnotateDictModal';
+import { isSelectionEligibleForAnnotate } from '../utils/proofreadingHelpers';
 
 function getSelectedOrCursorWord(editor: {
 	getSelection: () => string;
@@ -53,6 +55,7 @@ export class CommandManager {
 		this.registerHomepageCommands();
 		this.registerSearchCommands();
 		this.registerTypographyCommands();
+		this.registerProofreadingCommands();
 	}
 
 	private registerTypographyCommands() {
@@ -154,17 +157,6 @@ export class CommandManager {
 				icon: 'maximize-2',
 				callback: () => { void this.plugin.immersiveModeManager.toggleImmersiveMode(); }
 			});
-
-			this.plugin.addCommand({
-				id: 'reset-immersive-layout',
-				name: t('command.reset-immersive-layout'),
-				icon: 'rotate-ccw',
-				callback: async () => {
-					this.plugin.settings.immersive.immersiveLayout = null;
-					await this.plugin.saveSettings();
-					new Notice(t('notice.immersive-layout-reset'));
-				}
-			});
 		}
 	}
 
@@ -177,22 +169,6 @@ export class CommandManager {
 				callback: () => {
 					if (this.plugin.isTracking) this.plugin.stopTracking();
 					else this.plugin.startTracking();
-				}
-			});
-
-			this.plugin.addCommand({
-				id: 'reset-stream-session',
-				name: t('command.reset-stream-session'),
-				icon: 'refresh-cw',
-				callback: () => {
-					this.plugin.focusMs = 0;
-					this.plugin.slackMs = 0;
-					this.plugin.sessionAddedWords = 0;
-					this.plugin.isTracking = false;
-					this.plugin.workerManager?.postMessage('stop');
-					void this.plugin.editorTracker?.handleFileChange();
-					this.plugin.refreshStatusViews();
-					new Notice(t('notice.stream-data-reset'));
 				}
 			});
 		}
@@ -644,17 +620,6 @@ export class CommandManager {
 				}
 			}
 		});
-
-		this.plugin.addCommand({
-			id: 'refresh-creative-homepage',
-			name: t('command.refresh-creative-homepage'),
-			icon: 'refresh-cw',
-			editorCallback: async () => {
-				await this.plugin.homepageManager?.refreshHomepage();
-				this.plugin.homepageManager?.refreshHomepageViews();
-				new Notice(t('notice.homepage-refreshed'));
-			}
-		});
 	}
 
 	private registerSearchCommands() {
@@ -688,6 +653,43 @@ export class CommandManager {
 					return true;
 				}
 				return false;
+			}
+		});
+	}
+
+	private registerProofreadingCommands() {
+		this.plugin.addCommand({
+			id: 'annotate-to-dictionary',
+			name: t('command.annotate-to-dictionary'),
+			icon: 'spell-check',
+			editorCheckCallback: (checking, editor, view) => {
+				const file = view.file;
+				const selection = editor.getSelection();
+				const isEligible = isSelectionEligibleForAnnotate(
+					selection,
+					file,
+					(p) => this.plugin.proofreadingManager?.isFileInsideDictionary(p) ?? false
+				);
+
+				if (!isEligible) {
+					return false;
+				}
+
+				if (checking) {
+					return true;
+				}
+
+				void (async () => {
+					if (!this.plugin.proofreadingManager) return;
+					try {
+						await this.plugin.proofreadingManager.prepareDictionaryForEditing();
+						new AnnotateDictModal(this.plugin.app, this.plugin, selection.trim()).open();
+					} catch {
+						new Notice(t('notice.proofreading-prepare-failed'));
+					}
+				})();
+
+				return true;
 			}
 		});
 	}

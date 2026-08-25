@@ -24,6 +24,7 @@ import type { TimelineManager } from '../services/TimelineManager';
 import type { RelationGraphManager } from '../services/RelationGraphManager';
 import type { TypographyManager } from '../services/TypographyManager';
 import type { ChapterMergeManager } from '../services/ChapterMergeManager';
+import type { ProofreadingManager } from '../services/ProofreadingManager';
 
 import { Logger } from '../utils/Logger';
 
@@ -65,6 +66,7 @@ export interface ServiceMap {
 	RelationGraphManager: RelationGraphManager;
 	TypographyManager: TypographyManager;
 	ChapterMergeManager: ChapterMergeManager;
+	ProofreadingManager: ProofreadingManager;
 }
 
 /**

@@ -38,6 +38,19 @@ body.immersive-mode-active .view-header {
 	padding-top: 30px;
 }
 
+/* Keep standard auxiliary panels compact; sticky notes manage their own symmetric inset */
+body.immersive-mode-active .webnovel-immersive-slot-horizontal .view-content:not(.webnovel-immersive-sticky-container),
+body.immersive-mode-active .webnovel-immersive-slot-vertical .view-content:not(.webnovel-immersive-sticky-container) {
+	padding-top: 8px;
+}
+
+body.immersive-mode-active .webnovel-immersive-slot-horizontal .wn-corkboard-header,
+body.immersive-mode-active .webnovel-immersive-slot-vertical .wn-corkboard-header {
+	top: -8px;
+	margin-top: -8px;
+	padding-top: 8px;
+}
+
 .immersive-mode-active .workspace-split {
 	background-color: color-mix(in srgb, var(--interactive-accent) 3%, var(--background-secondary));
 }

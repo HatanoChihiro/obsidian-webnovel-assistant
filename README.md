@@ -1,185 +1,3 @@
-<a id="english"></a>
-<div align="center">
-
-# ✍️ WebNovel Assistant
-
-**English** | **[中文](#中文)**
-
-[![GitHub release](https://img.shields.io/github/v/release/HatanoChihiro/obsidian-webnovel-assistant?label=release&color=brightgreen)](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/releases)
-[![License](https://img.shields.io/github/license/HatanoChihiro/obsidian-webnovel-assistant?color=blue)](LICENSE)
-[![Obsidian Downloads](https://img.shields.io/badge/dynamic/json?logo=obsidian&color=8b5cf6&label=downloads&query=%24%5B%223.2.0%22%5D&url=https%3A%2F%2Fraw.githubusercontent.com%2FHatanoChihiro%2Fobsidian-webnovel-assistant%2Fmain%2Fversions.json)](https://obsidian.md/plugins?id=web-novel-assistant)
-
-An all-in-one writing studio for novel and story writers in Obsidian.  
-Accurate word count & goal tracking · Story timeline · Foreshadowing manager · Chapter corkboard · Lore graphs & focus timers.
-
-<br />
-
-<a href="doc/USER_GUIDE_EN.md"><kbd>📖 User Guide</kbd></a>
-<a href="doc/OBS_OVERLAY_CSS_GUIDE_EN.md"><kbd>🎥 OBS CSS Guide</kbd></a>
-<a href="doc/CHANGELOG.md"><kbd>📋 Changelog</kbd></a>
-
-<br /><br />
-
-<img width="100%" alt="homepage" src="assets/homepage_en.png" />
-
-</div>
-
-<br />
-
-## ✨ Feature Highlights
-
-### 🏠 Creative Homepage
-<sub>Full-width Dashboard · Dynamic Welcome · Novel Overview · Stats Panel · One-Click New Novel & Import Novel</sub>
-
-<img width="100%" alt="homepage" src="assets/homepage_en.gif" />
-
-### 🗂️ Writing Workbench
-<sub>All Chapters Panel · Timeline Board · Foreshadowing Board · Lore Board · Task Board · Notes Management</sub>
-
-<img width="100%" alt="workbench" src="assets/workbench_en.gif" />
-
-### 🌑 Immersive Writing Mode
-<sub>Full-screen Focus · Typewriter Scroll & Line Dimming · Dynamic Dashboard · Slot-based Layout</sub>
-
-<img width="100%" alt="immersive-mode" src="assets/immersive-mode_en.gif" />
-
-### 📊 Word Count & Goals
-<sub>3 Counting Modes · Multi-direction Goal Tracking · Strict Chapter Mode · Smart Chapter Sorting · Real-time Word Reminder · Folder Word Count Display</sub>
-
-<img width="100%" alt="word-count-gutter" src="assets/word-count-gutter_en.gif" />
-
-### ⏱️ Focus Time Tracking
-<sub>Auto focus vs. slack detection · Web Worker · 365 Heatmap · Bar+line trend · Efficiency card</sub>
-
-<img width="100%" alt="history-chart" src="assets/history-chart_en.gif" />
-
-### 📝 Creative Assistants
-
-<table>
-<tr>
-<td width="33%" align="center" valign="top"><img width="100%" alt="foreshadowing" src="assets/foreshadowing_en.gif" /><br /><b>Foreshadowing Manager</b><br /><sub>Mark → Multi-stage tracking → Final resolution</sub></td>
-<td width="33%" align="center" valign="top"><img width="100%" alt="timeline" src="assets/timeline_en.gif" /><br /><b>Timeline System</b><br /><sub>Events, multi-chapter links, custom types</sub></td>
-<td width="33%" align="center" valign="top"><img width="100%" alt="corkboard" src="assets/corkboard_en.gif" /><br /><b>Chapter Corkboard</b><br /><sub>Card overview, status & synopsis editing</sub></td>
-</tr>
-<tr>
-<td width="33%" align="center" valign="top"><img width="100%" alt="lore-lookup" src="assets/lore-lookup_en.gif" /><br /><b>Lore Quick Lookup</b><br /><sub>Auto-highlight, preset types & relations, relation graph</sub></td>
-<td width="33%" align="center" valign="top"><img width="100%" alt="sticky-note" src="assets/sticky-note_en.gif" /><br /><b>Sticky Notes</b><br /><sub>Auto-save, Markdown render</sub></td>
-<td width="33%" align="center" valign="top"><img width="100%" alt="task" src="assets/task_en.gif" /><br /><b>Task Tracker</b><br /><sub>Create periodic tasks, self-driven deadlines & voluntary abandon</sub></td>
-</tr>
-<tr>
-<td width="33%" align="center" valign="top"><img width="100%" alt="search" src="assets/search_en.gif" /><br /><b>Advanced Search</b><br /><sub>Search by book, global or custom scope</sub></td>
-<td width="33%" align="center" valign="top"><img width="100%" alt="merge" src="assets/merge_en.gif" /><br /><b>Merge Chapters</b><br /><sub>Merge all chapters in a folder by sort order</sub></td>
-<td width="33%" align="center" valign="top"><img width="100%" alt="auto-create-next" src="assets/auto-create-next_en.gif" /><br /><b>Auto-Create Next Chapter</b><br /><sub>Auto-create numbered documents, template support</sub></td>
-</tr>
-</table>
-
-### 🎥 OBS Streaming Overlay & 📱 Mobile
-
-| 🎥 OBS Overlay | 📱 Mobile |
-|:---|:---|
-| Real-time writing stats in OBS | Floating word count & focus timer widget |
-| Custom style, opacity & content | Edge docking & auto-collapse handle |
-| Zero latency, zero disk I/O | **Copy Document** — one-click with title prepended |
-
-<br />
-
-## 📥 Installation
-
-| Method | Steps |
-|:-------|:------|
-| **Community Plugins** *(Recommended)* | Settings → Community Plugins → Browse → Search **"WebNovel Assistant"** → Install → Enable |
-| **BRAT** | Install [BRAT](https://github.com/TfTHacker/obsidian42-brat) → Add repo `HatanoChihiro/obsidian-webnovel-assistant` → Enable |
-| **Manual** | [Download](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/releases) → Extract to `.obsidian/plugins/web-novel-assistant/` → Restart & Enable |
-
-## 🚀 Quick Start
-
-1. **Install** → open any Markdown file
-2. **Status bar** shows live word count → click to set a goal
-3. **Command Palette** `Ctrl/Cmd+P` → search "WebNovel"
-4. **Settings** → customize each feature
-
-<details>
-<summary><kbd>🎯 Key Commands</kbd></summary>
-
-| Command | Description |
-|---------|-------------|
-| Toggle Immersive Writing Mode | Full-screen distraction-free writing |
-| Toggle Writing Status Panel | Detailed stats & history charts |
-| Toggle Foreshadowing Panel | Manage foreshadowing & recovery |
-| Toggle Timeline Panel | Manage story timeline |
-| Toggle Writing Workbench View | Chapters, timeline, lore, task and notes boards |
-| Open Chapter Overview | Card-style chapter overview |
-| Start/Pause Focus Time Tracking | Toggle focus/slack tracking |
-| Mark as Foreshadowing | Mark selected text as foreshadowing |
-| Create Blank Sticky Note | New floating sticky note |
-| Advanced Search | Search by book/global/custom scope |
-| Create Next Chapter (Smart Increment) | Smart chapter numbering |
-| Rebuild Lore Cache | Rebuild lore entries and chapter reference statistics |
-| Reset Stream Statistics | Clear current session data |
-
-> All commands can get custom shortcuts in **Settings → Hotkeys**
-
-> Need setup details or troubleshooting? See the full [User Guide](doc/USER_GUIDE_EN.md) / [使用指南](doc/USER_GUIDE.md).
-
-</details>
-
-<details>
-<summary><kbd>⚙️ Key Settings</kbd></summary>
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| Language | Auto | UI language — auto-detects Obsidian locale |
-| Default Chapter Goal | 3000 | Chapter word goal for new files |
-| Daily Goal | 5000 | Daily writing target |
-| File Explorer Word Count | Off | Folder word counts in sidebar |
-| Smart Chapter Sorting | Off | Auto-sort by chapter numbers |
-| Eye Care Mode | Off | Warm background color |
-| Immersive Note Size | 280px | Sticky note card size in immersive mode |
-| Foreshadowing Filename | `Foreshadowing` | Customizable per workspace |
-| Timeline Filename | `Timeline` | Customizable per workspace |
-| Timed Task Filename | `Timed Task` | Customizable per workspace |
-| Lore Folder Name | `Lore` | Supports dictionary outline mode |
-| Word Count Mode | Webnovel | Webnovel / Standard / Native algorithm |
-
-</details>
-
-<details>
-<summary><kbd>🎨 OBS Overlay Setup</kbd></summary>
-
-1. Plugin settings → Enable **OBS Overlay**
-2. OBS → Add **Browser Source** → URL `http://127.0.0.1:24816/`
-3. Recommended: **300×500px**
-
-See [OBS Overlay CSS Guide](doc/OBS_OVERLAY_CSS_GUIDE_EN.md) for full customization.
-
-</details>
-
-<br />
-
-<div align="center">
-
-## 📄 License & 💖 Support
-
-[MIT License](LICENSE)
-
-⭐ Star · 🐛 [Issues](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/issues) · 💡 [Feature Requests](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/issues)
-
-<br />
-
-If this plugin helps with your writing, consider buying the author a coffee ☕. Your support is the greatest motivation for continuous updates!
-
-<br />
-
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/hatanochihiro)
-
-<br />
-
-**Happy writing!** ✍️
-
-</div>
-
----
-
 <a id="中文"></a>
 
 <div align="center">
@@ -192,7 +10,7 @@ If this plugin helps with your writing, consider buying the author a coffee ☕.
 [![License](https://img.shields.io/github/license/HatanoChihiro/obsidian-webnovel-assistant?color=blue)](LICENSE)
 [![Obsidian Downloads](https://img.shields.io/badge/dynamic/json?logo=obsidian&color=8b5cf6&label=downloads&query=%24%5B%223.2.0%22%5D&url=https%3A%2F%2Fraw.githubusercontent.com%2FHatanoChihiro%2Fobsidian-webnovel-assistant%2Fmain%2Fversions.json)](https://obsidian.md/plugins?id=web-novel-assistant)
 
-为网络小说与故事创作者打造的 Obsidian 一站式写作套件。  
+为网络小说与故事创作者打造的 Obsidian 一站式写作套件。<br />
 精准字数统计与目标追踪 · 故事时间线看板 · 伏笔回收管理 · 章节概览看板 · 设定图谱与专注打字模式。
 
 <br />
@@ -201,7 +19,20 @@ If this plugin helps with your writing, consider buying the author a coffee ☕.
 <a href="doc/OBS_OVERLAY_CSS_GUIDE.md"><kbd>🎥 OBS CSS 指南</kbd></a>
 <a href="doc/CHANGELOG.md"><kbd>📋 更新日志</kbd></a>
 
-<br /><br />
+<br />
+
+<details>
+<summary><kbd>💖 支持项目 · 请作者喝杯咖啡</kbd></summary>
+
+<br />
+
+如果这个插件对你的码字事业有所帮助，欢迎支持作者，你的支持是我持续更新的最大动力！
+
+<img width="500" alt="赞赏码" src="assets/donate.png" />
+
+</details>
+
+<br />
 
 <img width="100%" alt="homepage" src="assets/homepage.png" />
 
@@ -227,7 +58,7 @@ If this plugin helps with your writing, consider buying the author a coffee ☕.
 <img width="100%" alt="immersive-mode" src="assets/immersive-mode.gif" />
 
 ### 📊 字数统计与目标追踪
-<sub>3种字数统计模式 · 多向目标追踪 · 严格章节模式 · 智能章节排序 · 实时字数提醒 · 文件夹字数显示</sub>
+<sub>3种字数统计模式 · 多向目标追踪 · 严格章节模式 · 选区字数提示 · 章节排除统计 · 文件夹字数显示</sub>
 
 <img width="100%" alt="word-count-gutter" src="assets/word-count-gutter.gif" />
 
@@ -235,6 +66,11 @@ If this plugin helps with your writing, consider buying the author a coffee ☕.
 <sub>自动区分专注与摸鱼 · Worker线程 · 365热力图 · 柱状+趋势 · 效率卡片</sub>
 
 <img width="100%" alt="history-chart" src="assets/history-chart.gif" />
+
+### 🔍 校对
+<sub>完全本地的编辑器内联检查 · 错词与敏感词 · 近义词一致性 · 中英文语境标点 · 可选“的/地/得”规则 · 建议卡片与确认后单处替换</sub>
+
+<img width="100%" alt="proofreading" src="assets/proofreading.gif" />
 
 ### 📝 创作辅助工具
 
@@ -245,13 +81,13 @@ If this plugin helps with your writing, consider buying the author a coffee ☕.
 <td width="33%" align="center" valign="top"><img width="100%" alt="corkboard" src="assets/corkboard.gif" /><br /><b>章节一览</b><br /><sub>卡片式展示、状态标记、摘要编辑</sub></td>
 </tr>
 <tr>
-<td width="33%" align="center" valign="top"><img width="100%" alt="lore-lookup" src="assets/lore-lookup.gif" /><br /><b>设定速查与图谱</b><br /><sub>自动标注、预设类型与关系可视化、关联图谱</sub></td>
+<td width="33%" align="center" valign="top"><img width="100%" alt="lore-lookup" src="assets/lore-lookup.gif" /><br /><b>设定速查与图谱</b><br /><sub>嵌套目录、单文件词条、自动标注与关系图谱</sub></td>
 <td width="33%" align="center" valign="top"><img width="100%" alt="sticky-note" src="assets/sticky-note.gif" /><br /><b>悬浮便签</b><br /><sub>自动保存、Markdown渲染</sub></td>
 <td width="33%" align="center" valign="top"><img width="100%" alt="task" src="assets/task.gif" /><br /><b>任务追踪</b><br /><sub>创建周期任务、支持自主放弃</sub></td>
 </tr>
 <tr>
 <td width="33%" align="center" valign="top"><img width="100%" alt="search" src="assets/search.gif" /><br /><b>高级搜索</b><br /><sub>支持当前书籍、全局、自定义，快速跳转</sub></td>
-<td width="33%" align="center" valign="top"><img width="100%" alt="merge" src="assets/merge.gif" /><br /><b>合并章节</b><br /><sub>按照排序合并目录内所有章节</sub></td>
+<td width="33%" align="center" valign="top"><img width="100%" alt="merge" src="assets/merge.gif" /><br /><b>合并章节</b><br /><sub>桌面预览修订 · 移动端预览导出</sub></td>
 <td width="33%" align="center" valign="top"><img width="100%" alt="auto-create-next" src="assets/auto-create-next.gif" /><br /><b>自动创建下一章</b><br /><sub>自动创建带标号文档，支持模板</sub></td>
 </tr>
 </table>
@@ -298,7 +134,7 @@ If this plugin helps with your writing, consider buying the author a coffee ☕.
 | 高级搜索 | 搜索书籍/全局/自定义范围 |
 | 自动创建下一章 (智能递增) | 智能递增章节编号 |
 | 重建设定缓存 | 重建设定条目和章节设定引用统计 |
-| 重置直播统计数据 (清空时长和净增字数) | 清空当前会话数据 |
+| 标注为词库 | 将任意 Markdown 文档中的选中文字录入自定义词典 |
 
 > 所有命令可在 **设置 → 快捷键** 中自定义
 
@@ -312,9 +148,9 @@ If this plugin helps with your writing, consider buying the author a coffee ☕.
 | 设置 | 默认值 | 说明 |
 |------|--------|------|
 | 语言 | 跟随系统 | 界面语言，首次安装自动检测 |
-| 默认目标字数 | 3000 | 新文件的默认章节目标 |
+| 默认章节目标 | 3000 | 新文件的默认章节目标 |
 | 今日目标字数 | 5000 | 今日写作目标 |
-| 文件浏览器字数统计 | 关闭 | 大型项目建议关闭 |
+| 显示文件列表字数 | 关闭 | 大型项目建议关闭 |
 | 智能章节排序 | 关闭 | 自动按章节编号排序 |
 | 护眼模式 | 关闭 | 编辑器背景护眼色 |
 | 沉浸便签尺寸 | 280px | 沉浸模式下便签卡片边长 |
@@ -322,7 +158,7 @@ If this plugin helps with your writing, consider buying the author a coffee ☕.
 | 时间线文件名 | `时间线` | 可按工作区自定义 |
 | 限时任务文件名 | `限时任务` | 可按工作区自定义 |
 | 设定文件夹名称 | `设定` | 支持字典大纲模式 |
-| 字数统计模式 | 网文模式 | 网文/标准/原生 统计算法 |
+| 字数统计模式 | 标准模式 | 标准/网文/原生 统计算法 |
 
 </details>
 
@@ -339,9 +175,15 @@ If this plugin helps with your writing, consider buying the author a coffee ☕.
 
 <br />
 
+## 🌐 联网行为说明
+
+校对扫描及全部笔记分析均在本地完成，插件无自动联网请求。基础错词库与“的/地/得”规则词典未内置打包，首次使用需在设置中手动下载。只有用户主动点击 **更新基本错词库** 或 **更新规则词典** 时，才会通过 Obsidian 的 `requestUrl` API 从 `raw.githubusercontent.com/HatanoChihiro/obsidian-webnovel-assistant` 下载公开 JSON 词典；绝不上传正文、仓库路径、设备标识、账户数据或遥测信息。下载内容只会按纯词典数据严格校验并缓存，不允许包含远程正则或脚本，不会作为代码执行，也不会用于更新插件本身或依赖。
+
+<br />
+
 <div align="center">
 
-## 📄 许可证 & 💖 支持项目
+## 📄 许可证 & 💬 反馈
 
 [MIT License](LICENSE)
 
@@ -353,12 +195,205 @@ If this plugin helps with your writing, consider buying the author a coffee ☕.
 
 <br />
 
-如果这个插件对你的码字事业有所帮助，欢迎请作者喝杯咖啡 ☕，你的支持是我持续更新的最大动力！
+**祝你写作愉快！** ✍️
 
-<img width="500" alt="赞赏码" src="assets/donate.png" />
+</div>
+
+---
+
+<a id="english"></a>
+
+<div align="center">
+
+# ✍️ WebNovel Assistant
+
+**English** | **[中文](#中文)**
+
+[![GitHub release](https://img.shields.io/github/v/release/HatanoChihiro/obsidian-webnovel-assistant?label=release&color=brightgreen)](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/releases)
+[![License](https://img.shields.io/github/license/HatanoChihiro/obsidian-webnovel-assistant?color=blue)](LICENSE)
+[![Obsidian Downloads](https://img.shields.io/badge/dynamic/json?logo=obsidian&color=8b5cf6&label=downloads&query=%24%5B%223.2.0%22%5D&url=https%3A%2F%2Fraw.githubusercontent.com%2FHatanoChihiro%2Fobsidian-webnovel-assistant%2Fmain%2Fversions.json)](https://obsidian.md/plugins?id=web-novel-assistant)
+
+An all-in-one writing studio for novel and story writers in Obsidian.<br />
+Accurate word count & goal tracking · Story timeline · Foreshadowing manager · Chapter corkboard · Lore graphs & focus timers.
 
 <br />
 
-**祝你写作愉快！** ✍️
+<a href="doc/USER_GUIDE_EN.md"><kbd>📖 User Guide</kbd></a>
+<a href="doc/OBS_OVERLAY_CSS_GUIDE_EN.md"><kbd>🎥 OBS CSS Guide</kbd></a>
+<a href="doc/CHANGELOG.md"><kbd>📋 Changelog</kbd></a>
+
+<br />
+
+<details>
+<summary><kbd>💖 Support the Project · Buy the Author a Coffee</kbd></summary>
+
+<br />
+
+If this plugin helps with your writing, consider supporting the author. Your support is the greatest motivation for continuous updates!
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/hatanochihiro)
+
+</details>
+
+<br />
+
+<img width="100%" alt="homepage" src="assets/homepage_en.png" />
+
+</div>
+
+<br />
+
+## ✨ Feature Highlights
+
+### 🏠 Creative Homepage
+<sub>Full-width Dashboard · Dynamic Welcome · Novel Overview · Stats Panel · One-Click New Novel & Import Novel</sub>
+
+<img width="100%" alt="homepage" src="assets/homepage_en.gif" />
+
+### 🗂️ Writing Workbench
+<sub>All Chapters Panel · Timeline Board · Foreshadowing Board · Lore Board · Task Board · Notes Management</sub>
+
+<img width="100%" alt="workbench" src="assets/workbench_en.gif" />
+
+### 🌑 Immersive Writing Mode
+<sub>Full-screen Focus · Typewriter Scroll & Line Dimming · Dynamic Dashboard · Slot-based Layout</sub>
+
+<img width="100%" alt="immersive-mode" src="assets/immersive-mode_en.gif" />
+
+### 📊 Word Count & Goals
+<sub>3 Counting Modes · Multi-direction Goal Tracking · Strict Chapter Mode · Selection Count Tooltip · Chapter Exclusion · Folder Word Counts</sub>
+
+<img width="100%" alt="word-count-gutter" src="assets/word-count-gutter_en.gif" />
+
+### ⏱️ Focus Time Tracking
+<sub>Auto focus vs. slack detection · Web Worker · 365 Heatmap · Bar+line trend · Efficiency card</sub>
+
+<img width="100%" alt="history-chart" src="assets/history-chart_en.gif" />
+
+### 🔍 Proofreading
+<sub>Fully local inline diagnostics · Typos & sensitive words · Synonym consistency · Text-aware Chinese/English punctuation · Optional De/Di/De rules · Review cards & confirmed one-at-a-time replacement</sub>
+
+<img width="100%" alt="proofreading" src="assets/proofreading_en.gif" />
+
+### 📝 Creative Assistants
+
+<table>
+<tr>
+<td width="33%" align="center" valign="top"><img width="100%" alt="foreshadowing" src="assets/foreshadowing_en.gif" /><br /><b>Foreshadowing Manager</b><br /><sub>Mark → Multi-stage tracking → Final resolution</sub></td>
+<td width="33%" align="center" valign="top"><img width="100%" alt="timeline" src="assets/timeline_en.gif" /><br /><b>Timeline System</b><br /><sub>Events, multi-chapter links, custom types</sub></td>
+<td width="33%" align="center" valign="top"><img width="100%" alt="corkboard" src="assets/corkboard_en.gif" /><br /><b>Chapter Corkboard</b><br /><sub>Card overview, status & synopsis editing</sub></td>
+</tr>
+<tr>
+<td width="33%" align="center" valign="top"><img width="100%" alt="lore-lookup" src="assets/lore-lookup_en.gif" /><br /><b>Lore Quick Lookup</b><br /><sub>Nested folders, file entries, auto-highlights & relation graph</sub></td>
+<td width="33%" align="center" valign="top"><img width="100%" alt="sticky-note" src="assets/sticky-note_en.gif" /><br /><b>Sticky Notes</b><br /><sub>Auto-save, Markdown render</sub></td>
+<td width="33%" align="center" valign="top"><img width="100%" alt="task" src="assets/task_en.gif" /><br /><b>Task Tracker</b><br /><sub>Create periodic tasks, self-driven deadlines & voluntary abandon</sub></td>
+</tr>
+<tr>
+<td width="33%" align="center" valign="top"><img width="100%" alt="search" src="assets/search_en.gif" /><br /><b>Advanced Search</b><br /><sub>Search by book, global or custom scope</sub></td>
+<td width="33%" align="center" valign="top"><img width="100%" alt="merge" src="assets/merge_en.gif" /><br /><b>Merge Chapters</b><br /><sub>Desktop preview & revision · Mobile preview & export</sub></td>
+<td width="33%" align="center" valign="top"><img width="100%" alt="auto-create-next" src="assets/auto-create-next_en.gif" /><br /><b>Auto-Create Next Chapter</b><br /><sub>Auto-create numbered documents, template support</sub></td>
+</tr>
+</table>
+
+### 🎥 OBS Streaming Overlay & 📱 Mobile
+
+| 🎥 OBS Overlay | 📱 Mobile |
+|:---|:---|
+| Real-time writing stats in OBS | Floating word count & focus timer widget |
+| Custom style, opacity & content | Edge docking & auto-collapse handle |
+| Zero latency, zero disk I/O | **Copy Document** — one-click with title prepended |
+
+<br />
+
+## 📥 Installation
+
+| Method | Steps |
+|:-------|:------|
+| **Community Plugins** *(Recommended)* | Settings → Community Plugins → Browse → Search **"WebNovel Assistant"** → Install → Enable |
+| **BRAT** | Install [BRAT](https://github.com/TfTHacker/obsidian42-brat) → Add repo `HatanoChihiro/obsidian-webnovel-assistant` → Enable |
+| **Manual** | [Download](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/releases) → Extract to `.obsidian/plugins/web-novel-assistant/` → Restart & Enable |
+
+## 🚀 Quick Start
+
+1. **Install** → open any Markdown file
+2. **Status bar** shows live word count → click to set a goal
+3. **Command Palette** `Ctrl/Cmd+P` → search "WebNovel"
+4. **Settings** → customize each feature
+
+<details>
+<summary><kbd>🎯 Key Commands</kbd></summary>
+
+| Command | Description |
+|---------|-------------|
+| Toggle Immersive Writing Mode | Full-screen distraction-free writing |
+| Toggle Writing Status Panel | Detailed stats & history charts |
+| Toggle Foreshadowing Panel | Manage foreshadowing & recovery |
+| Toggle Timeline Panel | Manage story timeline |
+| Toggle Writing Workbench View | Chapters, timeline, lore, task and notes boards |
+| Open Chapter Overview | Card-style chapter overview |
+| Start/Pause Focus Time Tracking | Toggle focus/slack tracking |
+| Mark as Foreshadowing | Mark selected text as foreshadowing |
+| Create Blank Sticky Note | New floating sticky note |
+| Advanced Search | Search by book/global/custom scope |
+| Create Next Chapter (Smart Increment) | Smart chapter numbering |
+| Rebuild Lore Cache | Rebuild lore entries and chapter reference statistics |
+| Annotate to Dictionary | Add selected text from any Markdown document to a custom dictionary |
+
+> All commands can get custom shortcuts in **Settings → Hotkeys**
+
+> Need setup details or troubleshooting? See the full [User Guide](doc/USER_GUIDE_EN.md) / [使用指南](doc/USER_GUIDE.md).
+
+</details>
+
+<details>
+<summary><kbd>⚙️ Key Settings</kbd></summary>
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Language | Auto | UI language — auto-detects Obsidian locale |
+| Default Chapter Goal | 3000 | Chapter word goal for new files |
+| Daily Goal | 5000 | Daily writing target |
+| Show Word Counts in File Explorer | Off | Folder word counts in sidebar |
+| Smart Chapter Sorting | Off | Auto-sort by chapter numbers |
+| Eye Care Mode | Off | Warm background color |
+| Immersive Note Size | 280px | Sticky note card size in immersive mode |
+| Foreshadowing Filename | `Foreshadowing` | Customizable per workspace |
+| Timeline Filename | `Timeline` | Customizable per workspace |
+| Timed Task Filename | `Timed Task` | Customizable per workspace |
+| Lore Folder Name | `Lore` | Supports dictionary outline mode |
+| Word Count Mode | Standard | Standard / Web Novel / Native algorithm |
+
+</details>
+
+<details>
+<summary><kbd>🎨 OBS Overlay Setup</kbd></summary>
+
+1. Plugin settings → Enable **OBS Overlay**
+2. OBS → Add **Browser Source** → URL `http://127.0.0.1:24816/`
+3. Recommended: **300×500px**
+
+See [OBS Overlay CSS Guide](doc/OBS_OVERLAY_CSS_GUIDE_EN.md) for full customization.
+
+</details>
+
+<br />
+
+## 🌐 Network Use Disclosure
+
+Proofreading and all note analysis run entirely locally. The plugin makes no automatic network requests. The basic typo dictionary and De/Di/De grammar dictionary are not bundled and require manual download in Settings on first use. Only when you explicitly click **Update Basic Dictionary** or **Update Grammar Dictionary** does it use Obsidian's `requestUrl` API to download public JSON dictionaries from `raw.githubusercontent.com/HatanoChihiro/obsidian-webnovel-assistant`. No note content, vault path, device identifier, account data, or telemetry is uploaded. Responses are strictly validated as dictionary data, cached as JSON, and never executed as code or used to update the plugin or its dependencies.
+
+<br />
+
+<div align="center">
+
+## 📄 License & 💬 Feedback
+
+[MIT License](LICENSE)
+
+⭐ Star · 🐛 [Issues](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/issues) · 💡 [Feature Requests](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/issues)
+
+<br />
+
+**Happy writing!** ✍️
 
 </div>

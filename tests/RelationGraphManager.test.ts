@@ -472,7 +472,7 @@ describe('RelationGraphManager', () => {
 			expect(fills.some(fill => fill.shadowColor === colors.protagonistShadow)).toBe(true);
 		});
 
-		it('应使用 pulseColor 绘制聚焦流光渐变', () => {
+		it('流光应默认跟随关系线颜色并允许 pulseColor 显式覆盖', () => {
 			const colorStops: string[] = [];
 			const mockCtx = {
 				globalAlpha: 1,
@@ -490,12 +490,21 @@ describe('RelationGraphManager', () => {
 					return { addColorStop: (_offset: number, color: string) => colorStops.push(color) };
 				}
 			} as unknown as CanvasRenderingContext2D;
-			const colors = {
+			const defaultColors = {
+				...GraphRenderer.getThemeColors(),
+				pulseColor: ''
+			};
+
+			GraphRenderer.drawFlowPulseStraight(mockCtx, 0, 0, 100, 100, defaultColors, '#ff0000', false, 1, 1, 1000);
+			expect(colorStops.some(color => color.startsWith('rgba(255, 0, 0,'))).toBe(true);
+
+			colorStops.length = 0;
+			const customColors = {
 				...GraphRenderer.getThemeColors(),
 				pulseColor: '#00ff00'
 			};
 
-			GraphRenderer.drawFlowPulseStraight(mockCtx, 0, 0, 100, 100, colors, '#ff0000', false, 1, 1, 1000);
+			GraphRenderer.drawFlowPulseStraight(mockCtx, 0, 0, 100, 100, customColors, '#ff0000', false, 1, 1, 1000);
 			expect(colorStops.some(color => color.startsWith('rgba(0, 255, 0,'))).toBe(true);
 		});
 
@@ -522,6 +531,170 @@ describe('RelationGraphManager', () => {
 				GraphRenderer.drawFlowPulseStraight(mockCtx, 0, 0, 100, 100, themeColors, '#ff0000');
 				GraphRenderer.drawFlowPulseCurved(mockCtx, 0, 0, 50, 50, 100, 100, themeColors, '#ff0000');
 			}).not.toThrow();
+		});
+
+		it('分屏容器尺寸缩窄时应自适应缩小 scale 并保持主角在画布视口中心', () => {
+			const protagonist: GraphNode = {
+				id: '主角',
+				file: null as unknown as GraphNode['file'],
+				heading: '主角',
+				x: 300,
+				y: 400,
+				vx: 0,
+				vy: 0,
+				pinned: false,
+				isProtagonist: true,
+				nodeType: '主角'
+			};
+			const otherNodes: GraphNode[] = [
+				{ id: '配角A', file: null as unknown as GraphNode['file'], heading: '配角A', x: 100, y: 400, vx: 0, vy: 0, pinned: false },
+				{ id: '配角B', file: null as unknown as GraphNode['file'], heading: '配角B', x: 500, y: 400, vx: 0, vy: 0, pinned: false },
+				{ id: '配角C', file: null as unknown as GraphNode['file'], heading: '配角C', x: 300, y: 200, vx: 0, vy: 0, pinned: false },
+				{ id: '配角D', file: null as unknown as GraphNode['file'], heading: '配角D', x: 300, y: 600, vx: 0, vy: 0, pinned: false },
+			];
+			const allNodes = [protagonist, ...otherNodes];
+
+			const width = 600;
+			const height = 800;
+			const padding = 40;
+			const viewport = GraphRenderer.calculateProtagonistViewport(width, height, allNodes, { padding });
+
+			// 5 个节点基础倍率为 2.2，但由于容器宽度缩小（半宽 300 - 40 = 260，最大水平距离 200），应自适应降至 260/200 = 1.3
+			expect(viewport.scale).toBeCloseTo(1.3, 2);
+			expect(viewport.panX).toBe(0);
+			expect(viewport.panY).toBe(0);
+
+			// 主角屏幕坐标应精确位于画布中心 (width / 2, height / 2)
+			const protagScreenX = width / 2 + viewport.panX + viewport.scale * (protagonist.x - width / 2);
+			const protagScreenY = height / 2 + viewport.panY + viewport.scale * (protagonist.y - height / 2);
+			expect(protagScreenX).toBeCloseTo(300, 2);
+			expect(protagScreenY).toBeCloseTo(400, 2);
+
+			// 所有边缘节点均应落在安全内边距以内
+			for (const node of allNodes) {
+				const sx = width / 2 + viewport.panX + viewport.scale * (node.x - width / 2);
+				const sy = height / 2 + viewport.panY + viewport.scale * (node.y - height / 2);
+				expect(sx).toBeGreaterThanOrEqual(padding - 1e-4);
+				expect(sx).toBeLessThanOrEqual(width - padding + 1e-4);
+				expect(sy).toBeGreaterThanOrEqual(padding - 1e-4);
+				expect(sy).toBeLessThanOrEqual(height - padding + 1e-4);
+			}
+		});
+
+		it('主角处于偏心位置时应计算正确的平移量使主角保持在视口中心', () => {
+			const protagonist: GraphNode = {
+				id: '主角',
+				file: null as unknown as GraphNode['file'],
+				heading: '主角',
+				x: 150,
+				y: 250,
+				vx: 0,
+				vy: 0,
+				pinned: true,
+				isProtagonist: true
+			};
+			const companion: GraphNode = {
+				id: '配角',
+				file: null as unknown as GraphNode['file'],
+				heading: '配角',
+				x: 200,
+				y: 250,
+				vx: 0,
+				vy: 0,
+				pinned: false
+			};
+			const nodes = [protagonist, companion];
+			const width = 600;
+			const height = 400;
+
+			const viewport = GraphRenderer.calculateProtagonistViewport(width, height, nodes);
+
+			// 验证主角变换后的屏幕坐标依然位于画布中心 (300, 200)
+			const protagScreenX = width / 2 + viewport.panX + viewport.scale * (protagonist.x - width / 2);
+			const protagScreenY = height / 2 + viewport.panY + viewport.scale * (protagonist.y - height / 2);
+			expect(protagScreenX).toBeCloseTo(300, 2);
+			expect(protagScreenY).toBeCloseTo(200, 2);
+		});
+
+		it('无主角节点时应以包围盒几何中心进行视口居中适配', () => {
+			const nodes: GraphNode[] = [
+				{ id: '设定A', file: null as unknown as GraphNode['file'], heading: '设定A', x: 100, y: 100, vx: 0, vy: 0, pinned: false },
+				{ id: '设定B', file: null as unknown as GraphNode['file'], heading: '设定B', x: 500, y: 300, vx: 0, vy: 0, pinned: false },
+			];
+			const width = 600;
+			const height = 400;
+
+			const viewport = GraphRenderer.calculateProtagonistViewport(width, height, nodes);
+			// 几何中心为 (300, 200)，与画布中心一致，pan 应为 0
+			expect(viewport.panX).toBe(0);
+			expect(viewport.panY).toBe(0);
+		});
+
+		it('单轴水平或垂直退化排布时应对溢出轴独立约束缩放', () => {
+			const padding = 40;
+			const width = 600;
+			const height = 400;
+
+			// 水平单轴退化布局（Y 轴距离为 0 <= 10，X 轴跨度 200）
+			const horizProtagonist: GraphNode = {
+				id: '主角',
+				file: null as unknown as GraphNode['file'],
+				heading: '主角',
+				x: 300,
+				y: 200,
+				vx: 0,
+				vy: 0,
+				pinned: false,
+				isProtagonist: true
+			};
+			const horizCompanion: GraphNode = {
+				id: '配角',
+				file: null as unknown as GraphNode['file'],
+				heading: '配角',
+				x: 500,
+				y: 200,
+				vx: 0,
+				vy: 0,
+				pinned: false
+			};
+			const horizViewport = GraphRenderer.calculateProtagonistViewport(width, height, [horizProtagonist, horizCompanion], { padding });
+			// 2 节点基础倍率 2.2，可用半宽 300 - 40 = 260，最大水平距离 200，自适应降为 260 / 200 = 1.3
+			expect(horizViewport.scale).toBeCloseTo(1.3, 2);
+			const horizCompanionScreenX = width / 2 + horizViewport.panX + horizViewport.scale * (horizCompanion.x - width / 2);
+			expect(horizCompanionScreenX).toBeCloseTo(width - padding, 2);
+
+			// 垂直单轴退化布局（X 轴距离为 0 <= 10，Y 轴跨度 200）
+			const vertProtagonist: GraphNode = {
+				id: '主角',
+				file: null as unknown as GraphNode['file'],
+				heading: '主角',
+				x: 300,
+				y: 200,
+				vx: 0,
+				vy: 0,
+				pinned: false,
+				isProtagonist: true
+			};
+			const vertCompanion: GraphNode = {
+				id: '配角',
+				file: null as unknown as GraphNode['file'],
+				heading: '配角',
+				x: 300,
+				y: 400,
+				vx: 0,
+				vy: 0,
+				pinned: false
+			};
+			const vertViewport = GraphRenderer.calculateProtagonistViewport(width, height, [vertProtagonist, vertCompanion], { padding });
+			// 可用半高 200 - 40 = 160，最大垂直距离 200，自适应降为 160 / 200 = 0.8
+			expect(vertViewport.scale).toBeCloseTo(0.8, 2);
+			const vertCompanionScreenY = height / 2 + vertViewport.panY + vertViewport.scale * (vertCompanion.y - height / 2);
+			expect(vertCompanionScreenY).toBeCloseTo(height - padding, 2);
+		});
+
+		it('空节点或非法尺寸时应回退到安全默认视口', () => {
+			expect(GraphRenderer.calculateProtagonistViewport(600, 400, [])).toEqual({ scale: 1.0, panX: 0, panY: 0 });
+			expect(GraphRenderer.calculateProtagonistViewport(0, 0, [])).toEqual({ scale: 1.0, panX: 0, panY: 0 });
 		});
 	});
 });

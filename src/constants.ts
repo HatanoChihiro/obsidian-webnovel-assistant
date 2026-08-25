@@ -210,6 +210,7 @@ export const VALIDATION_RULES = {
 } as const;
 
 import type { AccurateCountSettings } from './types/settings';
+import type { ProofreadingSettings } from './types/proofreading';
 // 已迁移到嵌套结构的扁平化字段名（用于设置迁移和清理）
 export const FLAT_OBS_KEYS = [
 	'enableObs', 'obsPort',
@@ -229,7 +230,20 @@ export const FLAT_IMMERSIVE_KEYS = [
 	'immersiveNoteFontSize', 'immersiveLayout'
 ];
 
-
+/**
+ * 默认校对设置
+ */
+export const DEFAULT_PROOFREADING_SETTINGS: ProofreadingSettings = {
+	enabled: false,
+	dictionaryPath: '',
+	enableBuiltin: true,
+	enableUserDict: true,
+	enableSensitive: true,
+	enableSynonyms: true,
+	enableDeDiDe: false,
+	enablePunctuation: false,
+	enableGlobal: false,
+};
 
 export const DEFAULT_SETTINGS: AccurateCountSettings = {
 	language: 'auto',
@@ -277,6 +291,7 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 	eyeCareColor: '#E8F5E9',
 	typography: {
 		enabled: false,
+		enableGlobal: false,
 		applyToChapters: true,
 		applyToLore: true,
 		applyToNovelInfo: true,
@@ -284,6 +299,7 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 		applyToForeshadowing: false,
 		applyToTask: false,
 		applyToOther: false,
+		applyToCards: false,
 		headerAlignment: 'center',
 		enableIndent: true,
 		indentSize: '2em',
@@ -373,5 +389,45 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 	loreGraphEnableGlobal: false,
 	advancedSearchQuery: '',
 	debugMode: false,
+	proofreading: {
+		...DEFAULT_PROOFREADING_SETTINGS
+	}
 };
 
+// ==========================================
+// 基础错词库远程配置与警告阈值
+// ==========================================
+export const BASIC_DICT_CONFIG = {
+	/** 固定远程下载 URL（发布在独立 dictionary 分支） */
+	REMOTE_URL: 'https://raw.githubusercontent.com/HatanoChihiro/obsidian-webnovel-assistant/dictionary/dict/basic-wrong-words.json',
+	/** 插件目录下的缓存文件名 */
+	CACHE_FILENAME: 'basic-wrong-words.json',
+	/** 建议性大词库字节阈值（>1MB 产生性能提示，非阻断性硬限制） */
+	ADVISORY_BYTE_THRESHOLD: 1_000_000,
+	/** 建议性大词库词条数阈值（>5000 条产生性能提示，非阻断性硬限制） */
+	ADVISORY_COUNT_THRESHOLD: 5_000,
+	/** 词条最大字数限制 */
+	MAX_WORD_LENGTH: 32,
+	/** 词条说明最大字数限制 */
+	MAX_DESCRIPTION_LENGTH: 200,
+	/** 支持的 schemaVersion */
+	SUPPORTED_SCHEMA_VERSION: 1,
+} as const;
+
+// ==========================================
+// 的/地/得词库远程配置与警告阈值
+// ==========================================
+export const DEDIDE_DICT_CONFIG = {
+	/** 固定远程下载 URL（发布在独立 dictionary 分支） */
+	REMOTE_URL: 'https://raw.githubusercontent.com/HatanoChihiro/obsidian-webnovel-assistant/dictionary/dict/dedide-lexicon.json',
+	/** 插件目录下的缓存文件名 */
+	CACHE_FILENAME: 'dedide-lexicon.json',
+	/** 建议性大词库字节阈值 */
+	ADVISORY_BYTE_THRESHOLD: 1_000_000,
+	/** 建议性大词库词条数阈值（单类别） */
+	ADVISORY_COUNT_THRESHOLD: 5_000,
+	/** 单个词语的最大字符数，防止异常正则分支 */
+	MAX_TERM_LENGTH: 32,
+	/** 支持的 schemaVersion */
+	SUPPORTED_SCHEMA_VERSION: 1,
+} as const;

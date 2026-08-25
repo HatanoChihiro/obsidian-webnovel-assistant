@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { CacheManager } from '../src/services/CacheManager';
+import { ChapterSorter } from '../src/services/ChapterSorter';
 import type { WebNovelAssistantPlugin } from '../src/types/plugin';
 import { TFile, TFolder } from 'obsidian';
 
@@ -19,6 +20,7 @@ describe('CacheManager', () => {
     
     beforeEach(() => {
         vi.useFakeTimers();
+        ChapterSorter.setCustomRules([]);
         mockAdapter = {
             exists: vi.fn(),
             read: vi.fn(),
@@ -391,6 +393,69 @@ describe('CacheManager', () => {
             manager.resetLoreCache();
             expect(manager.isFileInWorkspace({ path: 'Book 2/Chapter 1.md' } as TFile)).toBe(true);
             expect(manager.isFileInWorkspace({ path: 'Book 1/Chapter 1.md' } as TFile)).toBe(false);
+        });
+
+        it('should lazily initialize and reuse _dictPathsCache, and rebuild after resetLoreCache', () => {
+            expect(manager['_dictPathsCache']).toBeNull();
+
+            const chapterFile = { path: 'Book 1/Chapter 1.md', name: 'Chapter 1.md', basename: 'Chapter 1' } as TFile;
+            const defaultZhDictFile = { path: 'Book 1/校对词典/错词.md', name: '错词.md', basename: '错词' } as TFile;
+            const defaultEnDictFile = { path: 'Book 1/Proofreading Dictionaries/Typos.md', name: 'Typos.md', basename: 'Typos' } as TFile;
+
+            vi.spyOn(manager, 'isFileInWorkspace').mockReturnValue(true);
+            vi.spyOn(manager, 'isPluginGeneratedFile').mockReturnValue(false);
+
+            // First call initializes cache
+            expect(manager.isEligibleForChapterList(chapterFile)).toBe(true);
+            expect(manager['_dictPathsCache']).not.toBeNull();
+            expect(manager['_dictPathsCache']?.has('校对词典')).toBe(true);
+            expect(manager['_dictPathsCache']?.has('Proofreading Dictionaries')).toBe(true);
+
+            // Verify default dictionary paths are excluded
+            expect(manager.isEligibleForChapterList(defaultZhDictFile)).toBe(false);
+            expect(manager.isEligibleForChapterList(defaultEnDictFile)).toBe(false);
+
+            // A user rule can explicitly opt a dictionary document into chapter handling.
+            ChapterSorter.setCustomRules([{ name: 'Dictionary override', pattern: '^(错词)$', enabled: true }]);
+            expect(manager.isEligibleForChapterList(defaultZhDictFile)).toBe(true);
+            ChapterSorter.setCustomRules([]);
+
+            // Second call reuses the same Set reference
+            const initialSet = manager['_dictPathsCache'];
+            manager.isEligibleForChapterList(chapterFile);
+            expect(manager['_dictPathsCache']).toBe(initialSet);
+
+            // Reset clears _dictPathsCache
+            manager.resetLoreCache();
+            expect(manager['_dictPathsCache']).toBeNull();
+
+            // Set custom dictionary path
+            mockPlugin.settings.proofreading = {
+                enabled: true,
+                dictionaryPath: 'CustomDictFolder',
+                enableBuiltin: true,
+                enableUserDict: true,
+                enableSensitive: true,
+                enableSynonyms: true,
+                enableDeDiDe: false
+            };
+
+            const customDictFile = { path: 'CustomDictFolder/错词.md', name: '错词.md', basename: '错词' } as TFile;
+            expect(manager.isEligibleForChapterList(customDictFile)).toBe(false);
+            expect(manager['_dictPathsCache']?.has('CustomDictFolder')).toBe(true);
+            expect(manager['_dictPathsCache']?.has('校对词典')).toBe(true);
+            expect(manager['_dictPathsCache']?.has('Proofreading Dictionaries')).toBe(true);
+
+            // Change custom dictionary path, reset, and check again
+            mockPlugin.settings.proofreading.dictionaryPath = 'NewDictFolder';
+            manager.resetLoreCache();
+            expect(manager['_dictPathsCache']).toBeNull();
+
+            const newDictFile = { path: 'NewDictFolder/错词.md', name: '错词.md', basename: '错词' } as TFile;
+            expect(manager.isEligibleForChapterList(newDictFile)).toBe(false);
+            expect(manager.isEligibleForChapterList(customDictFile)).toBe(true);
+            expect(manager['_dictPathsCache']?.has('NewDictFolder')).toBe(true);
+            expect(manager['_dictPathsCache']?.has('CustomDictFolder')).toBe(false);
         });
     });
 });

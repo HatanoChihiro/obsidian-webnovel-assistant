@@ -328,6 +328,113 @@ body .workspace-leaf.wn-typography-active .markdown-rendered p::before {
 	display: inline-block;
 	width: var(--wn-type-indent, 2em);
 }
+
+/* ==========================================================================
+   Card Typography: Indent-Only Scope
+   Only active when Typography master, Apply to Cards, and First-Line Indent are enabled.
+   Never applies font size, line height, spacing, alignment, or any other body typography.
+   ========================================================================== */
+
+/* 1. Floating Sticky Notes */
+body.wn-card-indent-active .my-floating-sticky-note .my-sticky-content.markdown-rendered p:not(:empty)::before,
+body.wn-card-indent-active .my-sticky-content.markdown-rendered p:not(:empty)::before {
+	content: "";
+	display: inline-block;
+	width: var(--wn-card-indent, 2em);
+}
+
+body.wn-card-indent-active .my-floating-sticky-note .my-sticky-content.markdown-rendered p:empty::before,
+body.wn-card-indent-active .my-sticky-content.markdown-rendered p:empty::before {
+	display: none;
+}
+
+.my-sticky-content.markdown-rendered p .wn-soft-break-spacer,
+.my-sticky-content.markdown-rendered p .wn-soft-break-indent {
+	display: none;
+}
+
+body.wn-card-indent-active.wn-card-reading-compat-active .my-floating-sticky-note .my-sticky-content.markdown-rendered p .wn-soft-break-indent,
+body.wn-card-indent-active.wn-card-reading-compat-active .my-sticky-content.markdown-rendered p .wn-soft-break-indent {
+	display: inline-block;
+	width: var(--wn-card-indent, 2em);
+}
+
+body.wn-card-indent-active .my-floating-sticky-note .wn-sticky-note-editor-line:not(.is-empty)::before,
+body.wn-card-indent-active .webnovel-immersive-note-card .wn-sticky-note-editor-line:not(.is-empty)::before {
+	content: "";
+	display: inline-block;
+	width: var(--wn-card-indent, 2em);
+}
+
+/* 2. Lore Cards (Board, Overview & Hover Popover) */
+body.wn-card-indent-active .wn-lore-card .wn-lore-card-body p:not(:empty)::before,
+body.wn-card-indent-active .wn-lore-card .wn-lore-markdown p:not(:empty)::before,
+body.wn-card-indent-active .webnovel-lore-popover .wn-lore-card-body p:not(:empty)::before,
+body.wn-card-indent-active .webnovel-lore-popover .wn-lore-markdown p:not(:empty)::before {
+	content: "";
+	display: inline-block;
+	width: var(--wn-card-indent, 2em);
+}
+
+body.wn-card-indent-active .wn-lore-card .wn-lore-card-body p:empty::before,
+body.wn-card-indent-active .wn-lore-card .wn-lore-markdown p:empty::before,
+body.wn-card-indent-active .webnovel-lore-popover .wn-lore-card-body p:empty::before,
+body.wn-card-indent-active .webnovel-lore-popover .wn-lore-markdown p:empty::before {
+	display: none;
+}
+
+.wn-lore-card .wn-lore-card-body p .wn-soft-break-spacer,
+.wn-lore-card .wn-lore-card-body p .wn-soft-break-indent,
+.wn-lore-card .wn-lore-markdown p .wn-soft-break-spacer,
+.wn-lore-card .wn-lore-markdown p .wn-soft-break-indent,
+.webnovel-lore-popover .wn-lore-card-body p .wn-soft-break-spacer,
+.webnovel-lore-popover .wn-lore-card-body p .wn-soft-break-indent,
+.webnovel-lore-popover .wn-lore-markdown p .wn-soft-break-spacer,
+.webnovel-lore-popover .wn-lore-markdown p .wn-soft-break-indent {
+	display: none;
+}
+
+body.wn-card-indent-active.wn-card-reading-compat-active .wn-lore-card .wn-lore-card-body p .wn-soft-break-indent,
+body.wn-card-indent-active.wn-card-reading-compat-active .wn-lore-card .wn-lore-markdown p .wn-soft-break-indent,
+body.wn-card-indent-active.wn-card-reading-compat-active .webnovel-lore-popover .wn-lore-card-body p .wn-soft-break-indent,
+body.wn-card-indent-active.wn-card-reading-compat-active .webnovel-lore-popover .wn-lore-markdown p .wn-soft-break-indent {
+	display: inline-block;
+	width: var(--wn-card-indent, 2em);
+}
+
+body.wn-card-indent-active .wn-lore-card textarea.wn-lore-card-textarea {
+	padding-inline-start: calc(var(--size-4-2, 8px) + var(--wn-card-indent, 2em));
+}
+
+/* 3. Chapter Cards (Corkboard & Overview) */
+body.wn-card-indent-active .wn-corkboard-card-content .wn-corkboard-card-text:not(.is-empty):not(:empty)::before,
+body.wn-card-indent-active .wn-chapter-card-synopsis:not(.is-empty):not(:empty)::before {
+	content: "";
+	display: inline-block;
+	width: var(--wn-card-indent, 2em);
+}
+
+body.wn-card-indent-active .wn-corkboard-card-content textarea.wn-corkboard-textarea {
+	padding-inline-start: calc(4px + var(--wn-card-indent, 2em));
+}
+
+/* 4. Timeline Event Cards (Side-panel & Board) */
+body.wn-card-indent-active .wn-timeline-desc-text:not(:empty)::before {
+	content: "";
+	display: inline-block;
+	width: var(--wn-card-indent, 2em);
+}
+
+body.wn-card-indent-active .wn-timeline-item-desc:not(.is-editing):not(.is-empty):not(:empty)::before {
+	content: "";
+	display: inline-block;
+	width: var(--wn-card-indent, 2em);
+}
+
+body.wn-card-indent-active .wn-timeline-item-desc.is-editing textarea.wn-corkboard-textarea {
+	padding-inline-start: calc(4px + var(--wn-card-indent, 2em));
+}
+
 /* ========== Eye-care typography scope (extracted from common.css) ========== */
 
 /* ==========================================================================

@@ -33,6 +33,7 @@ import { TypographyManager } from '../services/TypographyManager';
 import { ChapterSorter } from '../services/ChapterSorter';
 import { ObsOverlayServer } from '../services/ObsServer';
 import { MobileFloatingStats } from '../ui/MobileFloatingStats';
+import { ProofreadingManager } from '../services/ProofreadingManager';
 import { Logger } from '../utils/Logger';
 
 /**
@@ -82,11 +83,6 @@ export class PluginBootstrapper {
 				void this.plugin.saveSettings();
 			}
 
-			this.plugin.app.workspace.onLayoutReady(() => {
-				this.plugin.characterManager.initialize().catch(err => {
-					console.error('[Plugin] characterManager 初始化失败:', err);
-				});
-			});
 			this.plugin.loreSyncService.initialize();
 
 			await Promise.all([
@@ -122,6 +118,15 @@ export class PluginBootstrapper {
 			if (this.plugin.settings.eyeCareEnabled) this.plugin.styleManager?.applyEyeCare();
 
 			this.registerFeatureServices();
+
+			this.plugin.app.workspace.onLayoutReady(() => {
+				this.plugin.characterManager.initialize().catch(err => {
+					console.error('[Plugin] characterManager 初始化失败:', err);
+				});
+				this.plugin.proofreadingManager.initialize().catch(err => {
+					console.error('[Plugin] proofreadingManager 初始化失败:', err);
+				});
+			});
 
 			this.plugin.registerEvent(this.plugin.app.workspace.on('active-leaf-change', () => {
 				this.plugin.typographyManager.updateTypography();
@@ -291,6 +296,7 @@ export class PluginBootstrapper {
 		this.services.register('TimelineManager', new TimelineManager(this.plugin.app, this.plugin));
 		this.services.register('RelationGraphManager', new RelationGraphManager(this.plugin.app, this.plugin));
 		this.services.register('TypographyManager', new TypographyManager(this.plugin.app, this.plugin));
+		this.services.register('ProofreadingManager', new ProofreadingManager(this.plugin.app, this.plugin));
 	}
 
 	/**
@@ -451,6 +457,7 @@ export class PluginBootstrapper {
 
 		// 1. 同步设置卸载状态并立即执行所有视觉与 DOM 清理（确保在首个 await 之前执行完毕，界面立刻响应）
 		this.plugin.isUnloading = true;
+		this.services.getOptional('TypographyManager')?.destroy();
 
 		// 1.1 立即移除全局样式类
 		if (typeof activeDocument !== 'undefined' && activeDocument.body?.classList) {

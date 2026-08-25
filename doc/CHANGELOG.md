@@ -1,3 +1,58 @@
+## ✨ v3.9.0
+
+### 新增校对系统
+- **独立设置入口**：在“排版”右侧提供单独的“校对”设置导航，集中管理校对功能与词典。
+- **全局作用域**：启用校对后默认应用于工作区内所有 Markdown 文档；开启“启用全局生效”后扩展至当前笔记库内所有 Markdown 文档。校对词典始终排除。
+- **本地内联校对**：在编辑器可视区域检测错词、敏感词和近义词，以不同下划线样式展示，可自行决定是否选择建议替换当前一处文本。
+- **按需下载校对词库**：基础错词库与“的/地/得”规则词典支持在设置中按需手动下载与更新，正文内容不上传，无自动联网。首次未下载时保持未下载状态，下载后可手动开启检查。
+- **自定义词典**：选中文字后可通过右键菜单（桌面端）或“标注为词库”编辑器命令（支持配置到移动端工具栏）标注为错词、近义词或敏感词，直接写入工作区词典，也可自行编辑文件添加。
+- **实验性“的/地/得”语法提示**：涵盖“的→地、得→地、的→得、地→得、地→的、得→的”六向语法误用检查，优化动作结构与单字名词的局部上下文和复合词边界判定，固定补语与“地+程度补语”高置信提示，“的+普通程度词/形容词”严格静默以消除歧义误报；实验性功能存在误报，默认关闭。
+- **文本语言标点建议**：根据标点附近的正文语言提示中文全角或英文半角写法，同时检查成对符号是否正确出现，默认关闭。
+- **社区词库贡献**：基础错词与“的/地/得”分类词项均提供独立 Markdown 贡献模板、自动校验和候选 JSON，正文不会被自动收集或上传。
+
+### 功能优化
+- **便签列表阅读卡片与单卡片编辑**：侧边栏、工作台与沉浸模式中的便签默认以阅读卡片展示，可单独切换当前卡片的编辑与阅读状态；关联文档的便签可从源文件手动同步最新内容，新建便签则直接进入编辑模式。
+- **自定义章节规则与下一章创建**：多个规则同时匹配时优先采用编号结构更完整的规则，即使专用规则位于默认规则下方也能正确识别；创建下一章时会按规则保留任意单位及原标题前的分隔占位。
+- **设定卡片标题显示**：设定卡片空间不足时优先完整显示正名；存在多个别名时仅展示能够完整容纳的徽章，并以 `+n` 汇总其余别名，只有一个超长别名时则在徽章内省略显示。
+- **卡片正文首行缩进与软回车阅读兼容**：在“排版 → 作用域设置”中新增“应用至卡片正文”选项，开启后为便签、设定卡片（含悬浮预览）、章节卡片与时间线事件卡片的显示和编辑内容应用缩进；在开启“阅读模式兼容”时，卡片内 Markdown 软换行（`<br>`）后续行同步支持首行缩进，且不影响字号与其他排版参数。
+- **排版作用域加强**：排版开启“全局应用”后可作用于当前库内所有普通文档，功能文档与卡片正文仍保持独立控制。
+- **统一便签管理与字号**：工作台便签管理与便签列表复用同一套卡片布局、动态尺寸、自动换列、段落编辑和刷新逻辑；悬浮便签与各便签列表的正文及标题统一由“创作辅助”中的便签字号设置集中控制。
+- **章节与设定一览搜索与章节排序**：侧边栏章节一览与设定一览面板顶部新增关键词搜索过滤功能；工作台全章节视图与侧边栏章节一览新增章节正序/倒序显示切换，并确保分卷作品反复切换排序后仍保持正确卷序。
+- **沉浸模式面板间距**：缩小沉浸模式辅助面板顶部留白，同时保留正文编辑区原有的舒展间距。
+- **历史数据备份**：桌面端可在“数据输出”中单独导出和恢复每日字数、专注与摸鱼统计，方便重装时只保留写作历史；恢复前会明确提示覆盖当前历史数据。
+- **官方兼容性提升**：为符合 Obsidian 官方数据存储要求并支持 Obsidian Sync，历史写作统计、专注数据与便签现随插件设置统一保存在 `data.json`；升级时会自动迁移旧独立数据文件，并将原文件保留为备份。本地缓存与校对词典仍保持独立。
+- **设定图谱视觉**：聚焦关系线的流光默认跟随实际关系线颜色，并恢复主角节点原有的鲜明主题红色效果；两者仍支持通过 CSS 代码片段覆盖。
+- **工作台设定图谱**：双击词条分屏打开设定文件后，嵌入图谱会自动适配收缩后的容器尺寸并保持以主角为视觉中心。
+
+### English Changelog
+
+#### New Features
+- **Proofreading**:
+  - **Dedicated Settings Entry**: Adds a separate Proofreading settings tab to the right of Typography to centrally manage proofreading features and dictionaries.
+  - **Global Scope**: Once enabled, proofreading applies to every Markdown file in configured workspaces. Turning on “Enable Vault-wide Proofreading” extends it to every Markdown file in the current vault. Dictionary folders are always excluded.
+  - **Local Inline Proofreading**: Detects typos, sensitive words, and synonyms in the editor's visible area with distinct underline styles, letting users decide whether to replace the current occurrence with a suggestion.
+  - **On-Demand Proofreading Dictionaries**: Basic typo and "De/Di/De" rule dictionaries can be manually downloaded and updated on demand in Settings, with no document upload and no automatic networking. Dictionaries remain in a not-downloaded state initially, and checking can be enabled manually after downloading.
+  - **Custom Dictionaries**: Selected text can be marked as a typo, synonym, or sensitive word via the context menu (desktop) or the "Annotate to Dictionary" editor command (configurable in the mobile toolbar) and written directly to workspace dictionaries, or added by editing the files manually.
+  - **Experimental "De/Di/De" Grammar Hints**: Covers 6-direction grammar misuse checks across 的→地, 得→地, 的→得, 地→得, 地→的, and 得→的, with enhanced local context and compound-word boundary handling for action verbs and single-character nouns; offers high-confidence suggestions for fixed complements and "地 + degree complements" while keeping "的 + general degree words/adjectives" strictly silent to eliminate false positives; experimental feature with potential false positives, disabled by default.
+  - **Text-Language Punctuation Suggestions**: Suggests Chinese full-width or English half-width punctuation based on nearby text language and checks whether paired symbols appear correctly; disabled by default.
+  - **Community Dictionary Contributions**: Basic typos and categorized De/Di/De terms now have dedicated Markdown templates, automated validation, and candidate JSON artifacts, without automatic manuscript collection or upload.
+
+#### Enhancements
+- **Sticky Note List Reading Cards & Per-Card Edit Toggle**: Existing notes across side-panel, workbench, and immersive lists now render as reading cards by default and can switch individually between reading and editing; file-backed notes can manually sync the latest source content, while newly created notes start in edit mode.
+- **Custom Chapter Rules & Next-Chapter Creation**: When multiple rules match, the rule covering the most complete numbering structure now takes precedence, so specialized rules still work below default rules. Creating the next chapter preserves any rule-defined unit and the separator placeholder before the original title.
+- **Lore Card Title Display**: Lore cards now prioritize the full canonical name. Multiple aliases use only complete badges and summarize the rest with `+n`, while a single overlong alias is truncated within its badge.
+- **Card Typography Indent & Soft-Break Compatibility**: Added “Apply to Cards” under Typography → Scope Settings to apply indentation to displayed and edited content across sticky notes, lore cards (including hover previews), chapter cards, and timeline event cards; when Reading compatibility is enabled, soft line breaks (`<br>`) in cards also receive first-line indentation without affecting other typography styles.
+- **Expanded Typography Scope**: Turning on “Apply Across Vault” applies typography to all ordinary documents in the current vault, while functional documents and card content remain independently controlled.
+- **Unified Sticky Note Management & Font Size**: Workbench sticky-note management now reuses the same card layout, responsive sizing, automatic column reflow, paragraph editor, and refresh path as sticky-note lists. Body text and headings across floating notes and all note lists share the font-size setting under Creative Assistance.
+- **Chapter & Lore Overview Search and Chapter Ordering**: Added keyword search filtering to the top of Chapter Overview and Lore Overview side panels, added an ascending/descending chapter display-order toggle to Workbench All Chapters and Chapter Overview, and kept volume ordering stable after repeated direction changes.
+- **Immersive Panel Spacing**: Reduced excess top spacing in Immersive Mode auxiliary panels while retaining the roomier spacing of the main editor.
+- **History Data Backup**: Desktop users can export and restore daily word counts, focus time, and slack time separately from Data Output, making it possible to preserve writing history without restoring plugin settings. A confirmation is shown before current history is replaced.
+- **Improved Official Compatibility**: To follow Obsidian's official data-storage requirements and support Obsidian Sync, writing history, focus statistics, and sticky notes are now stored with plugin settings in `data.json`. Existing standalone data files are migrated automatically during upgrade and retained as backups, while local caches and proofreading dictionaries remain separate.
+- **Lore Graph Visuals**: Focused-edge pulses now follow the actual relationship line color, and protagonist nodes regain their original vivid theme red; both remain customizable through CSS snippets.
+- **Workbench Lore Graph**: Opening lore files in a split pane via double-click now automatically adapts the embedded graph to the reduced container size while staying visually centered on the protagonist.
+
+---
+
 ## 🔧 v3.8.6
 
 ### 功能优化

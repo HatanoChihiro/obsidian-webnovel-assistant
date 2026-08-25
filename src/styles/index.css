@@ -19,6 +19,7 @@
 @import "./features/immersive.css";
 @import "./features/character-match.css";
 @import "./features/sticky-notes.css";
+@import "./features/proofreading.css";
 
 /* Core Studio Views */
 @import "./views/workbench.css";

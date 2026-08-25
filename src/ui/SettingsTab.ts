@@ -1,5 +1,5 @@
 import type { App, TextAreaComponent } from 'obsidian';
-import { PluginSettingTab, Setting, Notice, TFile } from 'obsidian';
+import { Modal, PluginSettingTab, Setting, Notice, TFile } from 'obsidian';
 import type { Plugin } from 'obsidian';
 import { isDesktop, isMobile, getPlatformTier } from '../utils/platform';
 import { ObsOverlayServer } from '../services/ObsServer';
@@ -7,13 +7,49 @@ import { ChapterSorter } from '../services/ChapterSorter';
 import { MobileFloatingStats } from './MobileFloatingStats';
 import type { FloatingStickyNote } from './StickyNote';
 import type { ThemeScheme } from '../types/settings';
-import { VALIDATION_RULES } from '../constants';
+import { VALIDATION_RULES, DEFAULT_PROOFREADING_SETTINGS } from '../constants';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { t, setLocale, detectLocale, type Locale } from '../i18n';
 import { getDefaultFileName } from '../i18n/data-keys';
 import { FolderSuggestModal } from './FolderSuggestModal';
 import { FileSuggestModal } from './FileSuggestModal';
 import { Logger } from '../utils/Logger';
+
+class HistoryRestoreConfirmModal extends Modal {
+	constructor(app: App, private onConfirm: () => Promise<void>) {
+		super(app);
+	}
+
+	onOpen(): void {
+		new Setting(this.contentEl)
+			.setName(t('setting.history-restore-confirm-title'))
+			.setDesc(t('setting.history-restore-confirm-desc'))
+			.setHeading();
+
+		new Setting(this.contentEl)
+			.addButton(button => button
+				.setButtonText(t('common.cancel'))
+				.onClick(() => this.close()))
+			.addButton(button => button
+				.setButtonText(t('setting.history-restore-button'))
+				.setWarning()
+				.onClick(async () => {
+					button.setDisabled(true);
+					try {
+						await this.onConfirm();
+						this.close();
+					} catch (error) {
+						Logger.error('[SettingsTab] 恢复历史数据失败:', error);
+						new Notice(t('notice.history-restore-failed'));
+						button.setDisabled(false);
+					}
+				}));
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+}
 
 /**
  * 插件设置面板
@@ -57,6 +93,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		const allTabs = [
 			{ id: 'general', name: t('setting.tab-general') },
 			{ id: 'typography', name: t('setting.tab-typography'), icon: 'align-left' },
+			{ id: 'proofreading', name: t('setting.proofreading-title'), icon: 'spell-check' },
 			{ id: 'wordcount', name: t('setting.tab-wordcount') },
 			{ id: 'creative', name: t('setting.tab-creative'), icon: 'pen-tool' },
 			{ id: 'immersive', name: t('setting.tab-immersive'), icon: 'maximize', desktopOnly: true },
@@ -84,6 +121,8 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			this.displayGeneralSettings(containerEl);
 		} else if (this.activeTab === 'typography') {
 			this.displayTypographySettings(containerEl);
+		} else if (this.activeTab === 'proofreading') {
+			this.displayProofreadingSettings(containerEl);
 		} else if (this.activeTab === 'wordcount') {
 			this.displayWordCountSettings(containerEl);
 		} else if (this.activeTab === 'creative') {
@@ -335,6 +374,10 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 						this.plugin.settings.homepagePath = newPath;
 						this.plugin.homepageManager?.renameHomepageFile(currentPath, newPath).catch(console.error);
 					}
+				}
+
+				if (this.plugin.proofreadingManager) {
+					await this.plugin.proofreadingManager.relocateDefaultDictionary(oldFirst, newFirst);
 				}
 			}
 
@@ -635,8 +678,311 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		this.displayForeshadowingSettings(containerEl);
 		this.displayTimelineSettings(containerEl);
 		this.displayTaskSettings(containerEl);
-
 		this.displayLoreSettings(containerEl);
+	}
+
+	// ── 校对设置 ──
+	private displayProofreadingSettings(containerEl: HTMLElement): void {
+		new Setting(containerEl).setName(t('setting.proofreading-title')).setHeading();
+
+		// 启用校对总开关
+		new Setting(containerEl)
+			.setName(t('setting.proofreading-enable'))
+			.setDesc(t('setting.proofreading-enable-desc'))
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.proofreading?.enabled ?? false)
+				.onChange(async (value: boolean) => {
+					if (!this.plugin.proofreadingManager) return;
+
+					try {
+						if (value) {
+							const success = await this.plugin.proofreadingManager.enable();
+							if (!success) {
+								new Notice(t('notice.proofreading-enable-failed'));
+							}
+						} else {
+							await this.plugin.proofreadingManager.disable();
+						}
+					} catch {
+						new Notice(t('notice.proofreading-enable-failed'));
+					} finally {
+						this.display();
+					}
+				}));
+
+		// 全库生效开关
+		new Setting(containerEl)
+			.setName(t('setting.proofreading-enable-global'))
+			.setDesc(t('setting.proofreading-enable-global-desc'))
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.proofreading?.enableGlobal ?? false)
+				.onChange(async (value: boolean) => {
+					if (!this.plugin.settings.proofreading) {
+						this.plugin.settings.proofreading = {
+							...DEFAULT_PROOFREADING_SETTINGS
+						};
+					}
+					this.plugin.settings.proofreading.enableGlobal = value;
+					await this.plugin.saveSettings();
+					this.plugin.proofreadingManager?.notifyRefresh();
+				}));
+
+		const currentDictPath = this.plugin.settings.proofreading?.dictionaryPath || '';
+
+		// 词典目录路径设置
+		const folderDesc = createFragment((frag) => {
+			frag.append(t('setting.proofreading-dict-folder-desc'));
+			frag.createEl('br');
+			frag.createSpan({
+				text: `${t('setting.proofreading-current-path-prefix')}: ${currentDictPath || t('common.none')}`,
+				cls: 'text-muted'
+			});
+		});
+
+		new Setting(containerEl)
+			.setName(t('setting.proofreading-dict-folder'))
+			.setDesc(folderDesc)
+			.addText(text => {
+				const defaultName = t('setting.proofreading-dict-folder-placeholder');
+				const currentBasename = currentDictPath ? currentDictPath.split('/').pop() || '' : defaultName;
+				text.setPlaceholder(defaultName)
+					.setValue(currentBasename);
+
+				let tempName = currentBasename;
+				text.onChange((val: string) => {
+					tempName = val.trim();
+				});
+
+				const renameAction = async () => {
+					if (!tempName || tempName === currentBasename) return;
+					if (!this.plugin.proofreadingManager) return;
+
+					const success = await this.plugin.proofreadingManager.renameDictionaryFolder(tempName);
+					if (success) {
+						new Notice(t('notice.proofreading-rename-success'));
+						this.display();
+					} else {
+						new Notice(t('notice.proofreading-rename-failed'));
+						text.setValue(currentBasename);
+					}
+				};
+
+				text.inputEl.addEventListener('change', () => { void renameAction(); });
+				text.inputEl.addEventListener('keydown', (e) => {
+					if (e.key === 'Enter') {
+						e.preventDefault();
+						text.inputEl.blur();
+					}
+				});
+			});
+
+		// 补全缺失模板按钮
+		new Setting(containerEl)
+			.setName(t('setting.proofreading-regenerate-templates'))
+			.setDesc(t('setting.proofreading-regenerate-templates-desc'))
+			.addButton(btn => btn
+				.setButtonText(t('setting.btn-regenerate-templates'))
+				.onClick(async () => {
+					if (!this.plugin.proofreadingManager) return;
+					try {
+						await this.plugin.proofreadingManager.regenerateMissingTemplates();
+						new Notice(t('notice.proofreading-templates-regenerated'));
+					} catch {
+						new Notice(t('notice.proofreading-regenerate-failed'));
+					}
+				}));
+
+		// 标点符号检查开关
+		new Setting(containerEl)
+			.setName(t('setting.proofreading-enable-punctuation'))
+			.setDesc(t('setting.proofreading-enable-punctuation-desc'))
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.proofreading?.enablePunctuation === true)
+				.onChange(async (value: boolean) => {
+					if (!this.plugin.settings.proofreading) {
+						this.plugin.settings.proofreading = {
+							...DEFAULT_PROOFREADING_SETTINGS
+						};
+					}
+					this.plugin.settings.proofreading.enablePunctuation = value;
+					await this.plugin.saveSettings();
+				}));
+
+		// 的/地/得检查实验开关
+		const dedideDictInfo = this.plugin.proofreadingManager?.getDeDiDeDictInfo();
+		const isDeDiDeDownloaded = dedideDictInfo?.source === 'online_cache' && (dedideDictInfo?.count ?? 0) > 0;
+
+		new Setting(containerEl)
+			.setName(t('setting.proofreading-enable-dedide'))
+			.setDesc(t('setting.proofreading-enable-dedide-desc'))
+			.addToggle(toggle => toggle
+				.setValue(isDeDiDeDownloaded ? (this.plugin.settings.proofreading?.enableDeDiDe ?? false) : false)
+				.setDisabled(!isDeDiDeDownloaded)
+				.onChange(async (value: boolean) => {
+					if (value && !isDeDiDeDownloaded) {
+						toggle.setValue(false);
+						new Notice(t('notice.proofreading-dedide-not-downloaded'));
+						return;
+					}
+					if (!this.plugin.settings.proofreading) {
+						this.plugin.settings.proofreading = {
+							...DEFAULT_PROOFREADING_SETTINGS
+						};
+					}
+					this.plugin.settings.proofreading.enableDeDiDe = value;
+					await this.plugin.saveSettings();
+					if (this.plugin.proofreadingManager) {
+						await this.plugin.proofreadingManager.loadDictionaries();
+					}
+				}));
+
+		// 基本错词库与手动更新
+		const basicDictInfo = this.plugin.proofreadingManager?.getBasicDictInfo();
+		const isBasicDownloaded = basicDictInfo?.source === 'online_cache';
+		const sourceLabel = isBasicDownloaded
+			? t('setting.proofreading-basic-dict-source-online')
+			: t('setting.proofreading-basic-dict-source-not-downloaded');
+		const versionLabel = isBasicDownloaded && basicDictInfo?.version
+			? basicDictInfo.version
+			: '-';
+		const countLabel = String(basicDictInfo?.count ?? 0);
+
+		const basicDictDesc = createFragment((frag) => {
+			frag.append(t('setting.proofreading-basic-dict-desc'));
+			frag.createEl('br');
+			frag.createSpan({
+				text: t('setting.proofreading-basic-dict-status', {
+					source: sourceLabel,
+					version: versionLabel,
+					count: countLabel
+				}),
+				cls: 'text-muted'
+			});
+			if (basicDictInfo?.isLarge) {
+				frag.createEl('br');
+				frag.createSpan({
+					text: t('setting.proofreading-basic-dict-large-advisory'),
+					cls: 'wn-settings-warning'
+				});
+			}
+		});
+
+		new Setting(containerEl)
+			.setName(t('setting.proofreading-basic-dict'))
+			.setDesc(basicDictDesc)
+			.addButton(btn => btn
+				.setButtonText(t('setting.btn-update-basic-dict'))
+				.onClick(async () => {
+					if (!this.plugin.proofreadingManager) return;
+					btn.setDisabled(true);
+					btn.setButtonText(t('setting.btn-updating-basic-dict'));
+
+					try {
+						const res = await this.plugin.proofreadingManager.updateBasicDictionary();
+						if (res.status === 'updated') {
+							new Notice(t('notice.proofreading-dict-updated', {
+								version: res.version || '',
+								count: String(res.count ?? 0)
+							}));
+							if (res.isLarge) {
+								new Notice(t('notice.proofreading-dict-large-warn', {
+									count: String(res.count ?? 0)
+								}));
+							}
+						} else if (res.status === 'already-current') {
+							new Notice(t('notice.proofreading-dict-already-latest', {
+								version: res.version || ''
+							}));
+						} else {
+							if (res.failureReason === 'network_error') {
+								new Notice(t('notice.proofreading-dict-network-error', { error: res.errorMessage || '' }));
+							} else if (res.failureReason === 'validation_error' || res.failureReason === 'corrupt_data') {
+								new Notice(t('notice.proofreading-dict-validation-error', { error: res.errorMessage || '' }));
+							} else if (res.failureReason === 'disk_error') {
+								new Notice(t('notice.proofreading-dict-persist-error', { error: res.errorMessage || '' }));
+							} else {
+								new Notice(t('notice.proofreading-dict-network-error', { error: res.errorMessage || '' }));
+							}
+						}
+					} catch (e) {
+						new Notice(t('notice.proofreading-dict-network-error', { error: e instanceof Error ? e.message : String(e) }));
+					} finally {
+						this.display();
+					}
+				}));
+
+		// DeDiDe 规则词典与手动更新
+		const dedideSourceLabel = isDeDiDeDownloaded
+			? t('setting.proofreading-basic-dict-source-online')
+			: t('setting.proofreading-basic-dict-source-not-downloaded');
+		const dedideVersionLabel = isDeDiDeDownloaded && dedideDictInfo?.version
+			? dedideDictInfo.version
+			: '-';
+		const dedideCountLabel = String(dedideDictInfo?.count ?? 0);
+
+		const dedideDictDesc = createFragment((frag) => {
+			frag.append(t('setting.proofreading-dedide-dict-desc'));
+			frag.createEl('br');
+			frag.createSpan({
+				text: t('setting.proofreading-basic-dict-status', {
+					source: dedideSourceLabel,
+					version: dedideVersionLabel,
+					count: dedideCountLabel
+				}),
+				cls: 'text-muted'
+			});
+			if (dedideDictInfo?.isLarge) {
+				frag.createEl('br');
+				frag.createSpan({
+					text: t('setting.proofreading-basic-dict-large-advisory'),
+					cls: 'wn-settings-warning'
+				});
+			}
+		});
+
+		new Setting(containerEl)
+			.setName(t('setting.proofreading-dedide-dict'))
+			.setDesc(dedideDictDesc)
+			.addButton(btn => btn
+				.setButtonText(t('setting.btn-update-dedide-dict'))
+				.onClick(async () => {
+					if (!this.plugin.proofreadingManager) return;
+					btn.setDisabled(true);
+					btn.setButtonText(t('setting.btn-updating-basic-dict'));
+
+					try {
+						const res = await this.plugin.proofreadingManager.updateDeDiDeLexicon();
+						if (res.status === 'updated') {
+							new Notice(t('notice.proofreading-dict-updated', {
+								version: res.version || '',
+								count: String(res.count ?? 0)
+							}));
+							if (res.isLarge) {
+								new Notice(t('notice.proofreading-dict-large-warn', {
+									count: String(res.count ?? 0)
+								}));
+							}
+						} else if (res.status === 'already-current') {
+							new Notice(t('notice.proofreading-dict-already-latest', {
+								version: res.version || ''
+							}));
+						} else {
+							if (res.failureReason === 'network_error') {
+								new Notice(t('notice.proofreading-dict-network-error', { error: res.errorMessage || '' }));
+							} else if (res.failureReason === 'validation_error' || res.failureReason === 'corrupt_data') {
+								new Notice(t('notice.proofreading-dict-validation-error', { error: res.errorMessage || '' }));
+							} else if (res.failureReason === 'disk_error') {
+								new Notice(t('notice.proofreading-dict-persist-error', { error: res.errorMessage || '' }));
+							} else {
+								new Notice(t('notice.proofreading-dict-network-error', { error: res.errorMessage || '' }));
+							}
+						}
+					} catch (e) {
+						new Notice(t('notice.proofreading-dict-network-error', { error: e instanceof Error ? e.message : String(e) }));
+					} finally {
+						this.display();
+					}
+				}));
 	}
 
 	// ── 伏笔设置 ──
@@ -1053,6 +1399,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 	}
+
 	// ── 伏笔标注设置 ──
 	private displayForeshadowingSettings(containerEl: HTMLElement): void {
 		new Setting(containerEl).setName(t('setting.foreshadowing')).setHeading();
@@ -1239,6 +1586,18 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 
 	// ── 数据输出设置 ──
 	private displayDataSettings(containerEl: HTMLElement): void {
+		new Setting(containerEl).setName(t('setting.history-backup')).setHeading();
+
+		new Setting(containerEl)
+			.setName(t('setting.history-backup-actions'))
+			.setDesc(t('setting.history-backup-actions-desc'))
+			.addButton(button => button
+				.setButtonText(t('setting.history-export-button'))
+				.onClick(() => this.exportHistoryData(containerEl.ownerDocument)))
+			.addButton(button => button
+				.setButtonText(t('setting.history-restore-button'))
+				.onClick(() => this.openHistoryRestorePicker(containerEl.ownerDocument)));
+
 		new Setting(containerEl).setName(t('setting.focus-judgment')).setHeading();
 
 		new Setting(containerEl)
@@ -1254,6 +1613,48 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				}));
 
 		this.displayObsSettings(containerEl);
+	}
+
+	private exportHistoryData(ownerDocument: Document): void {
+		try {
+			const content = this.plugin.historyManager.createHistoryBackup();
+			const blob = new Blob([content], { type: 'application/json' });
+			const objectUrl = URL.createObjectURL(blob);
+			const anchor = ownerDocument.body.createEl('a');
+			anchor.href = objectUrl;
+			anchor.download = `webnovel-assistant-history-${new Date().toISOString().slice(0, 10)}.json`;
+			anchor.click();
+			anchor.remove();
+			ownerDocument.win.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+			new Notice(t('notice.history-export-success'));
+		} catch (error) {
+			Logger.error('[SettingsTab] 导出历史数据失败:', error);
+			new Notice(t('notice.history-export-failed'));
+		}
+	}
+
+	private openHistoryRestorePicker(ownerDocument: Document): void {
+		const input = ownerDocument.body.createEl('input');
+		input.type = 'file';
+		input.accept = '.json,application/json';
+		input.hidden = true;
+		input.addEventListener('change', () => {
+			const file = input.files?.[0];
+			input.remove();
+			if (!file) return;
+			void file.text().then(content => {
+				new HistoryRestoreConfirmModal(this.app, async () => {
+					const count = await this.plugin.historyManager.restoreHistoryBackup(content);
+					this.plugin.refreshStatusViews(true);
+					new Notice(t('notice.history-restore-success', { count: String(count) }));
+				}).open();
+			}).catch(error => {
+				Logger.error('[SettingsTab] 读取历史数据备份失败:', error);
+				new Notice(t('notice.history-restore-failed'));
+			});
+		}, { once: true });
+		input.addEventListener('cancel', () => input.remove(), { once: true });
+		input.click();
 	}
 
 	private displayObsSettings(containerEl: HTMLElement): void {
@@ -1480,10 +1881,23 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName(t('setting.typography-scope-heading')).setHeading();
 
 		new Setting(containerEl)
+			.setName(t('setting.typography-enable-global'))
+			.setDesc(t('setting.typography-enable-global-desc'))
+			.addToggle(toggle => toggle
+				.setValue(typo.enableGlobal ?? false)
+				.onChange(async (value) => {
+					typo.enableGlobal = value;
+					await this.plugin.saveSettings();
+					this.plugin.typographyManager.updateTypography();
+					this.display();
+				}));
+
+		new Setting(containerEl)
 			.setName(t('setting.typography-apply-chapters'))
 			.setDesc(t('setting.typography-apply-chapters-desc'))
 			.addToggle(toggle => toggle
 				.setValue(typo.applyToChapters)
+				.setDisabled(typo.enableGlobal ?? false)
 				.onChange(async (value) => {
 					typo.applyToChapters = value;
 					await this.plugin.saveSettings();
@@ -1495,8 +1909,20 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			.setDesc(t('setting.typography-apply-other-desc'))
 			.addToggle(toggle => toggle
 				.setValue(typo.applyToOther ?? false)
+				.setDisabled(typo.enableGlobal ?? false)
 				.onChange(async (value) => {
 					typo.applyToOther = value;
+					await this.plugin.saveSettings();
+					this.plugin.typographyManager.updateTypography();
+				}));
+
+		new Setting(containerEl)
+			.setName(t('setting.typography-apply-cards'))
+			.setDesc(t('setting.typography-apply-cards-desc'))
+			.addToggle(toggle => toggle
+				.setValue(typo.applyToCards ?? false)
+				.onChange(async (value) => {
+					typo.applyToCards = value;
 					await this.plugin.saveSettings();
 					this.plugin.typographyManager.updateTypography();
 				}));

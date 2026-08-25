@@ -1153,7 +1153,9 @@ body.is-phone .webnovel-lore-popover .wn-lore-markdown div {
 
 
 body.is-phone .wn-lore-hover-popover .wn-lore-card-badge,
-body.is-phone .webnovel-lore-popover .wn-lore-card-badge {
+body.is-phone .webnovel-lore-popover .wn-lore-card-badge,
+body.is-phone .wn-lore-hover-popover .wn-lore-card-overflow-badge,
+body.is-phone .webnovel-lore-popover .wn-lore-card-overflow-badge {
 	font-size: var(--wn-phone-font-meta);
 	padding: 1px 4px;
 }
@@ -1428,6 +1430,21 @@ body.is-phone .wn-card-action-btn {
 	body.is-phone input[type="search"].wn-workbench-filter-input::placeholder {
 		font-size: var(--wn-phone-font-meta);
 		opacity: 0.7;
+	}
+
+	body.is-phone .wn-workbench-sort-toggle {
+		width: 24px;
+		min-width: 24px;
+		max-width: 24px;
+		height: 24px;
+		min-height: 24px;
+		max-height: 24px;
+		flex: 0 0 24px;
+	}
+
+	body.is-phone .wn-workbench-sort-toggle svg {
+		width: 14px;
+		height: 14px;
 	}
 
 	/* 除了任务卡片外的所有卡片及文字大小优化 */

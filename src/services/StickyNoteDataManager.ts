@@ -11,7 +11,7 @@ import { JsonSnapshotStore } from '../utils/JsonSnapshotStore';
 
 /**
  * 便签数据管理器
- * 负责将便签内容持久化到独立的 notes-data.json 文件中，避免 data.json 过大
+ * 负责管理便签状态并提供持久化
  */
 export class StickyNoteDataManager {
 	private notesData: StickyNoteState[] = [];
@@ -22,18 +22,25 @@ export class StickyNoteDataManager {
 	constructor(plugin: WebNovelAssistantPlugin) {
 		this.plugin = plugin;
 		this.notesFilePath = `${getPluginDir(plugin)}/notes-data.json`;
+
 		this.store = new JsonSnapshotStore<StickyNoteState[]>({
 			write: async (content) => {
-				const adapter = this.plugin.app.vault.adapter;
-				await adapter.write(this.notesFilePath, content);
+				const parsed = JSON.parse(content) as StickyNoteState[];
+				if (this.plugin.settings) {
+					this.plugin.settings.notesData = parsed;
+				}
+				if (this.plugin.settingsManager) {
+					await this.plugin.settingsManager.saveSettings();
+				}
 			},
 			getSnapshot: () => this.notesData,
-			onSuccess: () => {
-				// 触发全局事件，通知其他组件同步数据
-				this.plugin.app.workspace.trigger('webnovel:notes-changed');
-			},
 			onError: (error) => {
-				Logger.error("[StickyNoteDataManager] 保存便签数据失败:", error);
+				Logger.error('[StickyNoteDataManager] 保存便签数据失败:', error);
+			},
+			onSuccess: () => {
+				// [BUGFIX] 当文件成功改变时，触发全局事件更新视图（由于目前保存合并到 data.json，该事件可能会在某些情况下有帮助）
+				// 原有：仅当新旧版本不同时更新
+				this.plugin.app.workspace.trigger('webnovel:notes-changed');
 			}
 		});
 	}
@@ -43,33 +50,47 @@ export class StickyNoteDataManager {
 	 */
 	async loadNotes(): Promise<StickyNoteState[]> {
 		try {
-			const adapter = this.plugin.app.vault.adapter;
-			
-			// 1. 尝试从独立文件读取
-			if (await adapter.exists(this.notesFilePath)) {
-				const content = await adapter.read(this.notesFilePath);
-				// [BUGFIX] 对解析结果进行类型守卫：若文件内容损坏（如 {} 或非数组），
-				// 直接使用会导致 forEach/map 等调用崩溃，安全降级为空数组。
-				const parsed = JSON.parse(content) as StickyNoteState[];
-				const rawNotes = Array.isArray(parsed) ? parsed : [];
-				
-				// [BUGFIX] 验证每个条目的结构，确保至少有 id
-				this.notesData = rawNotes.filter(n => n && typeof n === 'object' && typeof n.id === 'string');
-				
-				if (this.notesData.length !== rawNotes.length) {
-					Logger.warn(`[StickyNoteDataManager] 过滤掉 ${rawNotes.length - this.notesData.length} 个无效便签条目`);
-				}
-				
+			const canonical = this.plugin.settings?.notesData;
+
+			// 1. 首选：从 canonical plugin.settings 加载（最新标准）
+			if (canonical !== undefined) {
+				this.notesData = this.validateNotes(canonical);
+				this.plugin.settings.notesData = this.notesData;
 				this.store.markClean(this.notesData);
 				return this.notesData;
 			}
 
-			this.store.markClean([]);
+			// 2. 迁移：如果标准字段不存在，尝试从独立文件读取
+			const adapter = this.plugin.app.vault.adapter;
+			if (await adapter.exists(this.notesFilePath)) {
+				const content = await adapter.read(this.notesFilePath);
+				// [BUGFIX] 对解析结果进行类型守卫：若文件内容损坏（如 {} 或非数组），
+				// 直接使用会导致 forEach/map 等调用崩溃，安全降级为空数组。
+				const parsed = JSON.parse(content) as unknown;
+				const rawNotes = Array.isArray(parsed) ? parsed : [];
+
+				// [BUGFIX] 验证每个条目的结构，确保至少有 id
+				this.notesData = this.validateNotes(rawNotes);
+
+				if (this.notesData.length !== rawNotes.length) {
+					Logger.warn(`[StickyNoteDataManager] 过滤掉 ${rawNotes.length - this.notesData.length} 个无效便签条目`);
+				}
+
+				if (this.notesData.length > 0) {
+					Logger.info('[StickyNoteDataManager] 从 notes-data.json 成功迁移数据');
+					this.store.markDirty();
+					await this.saveNotes(this.notesData);
+				} else {
+					Logger.warn('[StickyNoteDataManager] notes-data.json 数据为空或无效，放弃迁移');
+				}
+
+				return this.notesData;
+			}
+
 			return [];
 		} catch (error) {
 			Logger.error("[StickyNoteDataManager] 加载便签数据失败:", error);
-			this.store.markClean([]);
-			return [];
+			return this.notesData;
 		}
 	}
 
@@ -78,9 +99,8 @@ export class StickyNoteDataManager {
 	 */
 	async saveNotes(notes: StickyNoteState[]): Promise<void> {
 		const snapshot = notes.map(note => ({ ...note }));
-		// 内存状态在排队时更新；旧写入完成后不得用旧快照覆盖更新的状态。
 		this.notesData = snapshot;
-		return this.store.save(snapshot);
+		await this.store.save(snapshot);
 	}
 
 	/**
@@ -102,7 +122,7 @@ export class StickyNoteDataManager {
 		} else {
 			this.notesData.push({ ...noteState });
 		}
-		
+
 		// 实时同步所有桌面端悬浮便签 UI 状态
 		this.syncFloatingNotes();
 
@@ -153,11 +173,13 @@ export class StickyNoteDataManager {
 	getIsWriting(): boolean {
 		return this.store.isWriting;
 	}
-	/**
-	 * 获取便签数据文件的 Vault 相对路径
-	 */
-	getNotesFilePath(): string {
-		return this.notesFilePath;
+
+	private validateNotes(value: unknown): StickyNoteState[] {
+		if (!Array.isArray(value)) return [];
+		return value.filter((note): note is StickyNoteState => {
+			if (!note || typeof note !== 'object' || Array.isArray(note)) return false;
+			return typeof (note as Record<string, unknown>).id === 'string';
+		});
 	}
 
 
@@ -240,6 +262,7 @@ export class StickyNoteDataManager {
 	}
 
 	public refreshImmersiveNotes() {
+		this.plugin.activeNotes?.forEach(note => note.updateVisuals());
 		// 触发全局便签变更事件，通知所有便签视图（包括 ImmersiveStickyNotesView 和 WorkbenchView）
 		this.plugin.app.workspace.trigger('webnovel:notes-changed');
 	}

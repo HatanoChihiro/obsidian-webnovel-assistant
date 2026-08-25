@@ -29,6 +29,14 @@ export interface ChapterNumberExtraction {
 	rulePattern?: string;
 }
 
+interface CustomRuleMatch {
+	rule: ChapterNamingRule;
+	index: number;
+	match: RegExpMatchArray;
+	numStr?: string;
+	structureLength: number;
+}
+
 /**
  * 章节排序服务
  * 
@@ -226,6 +234,62 @@ export class ChapterSorter {
 		return result;
 	}
 
+	private static getTitleSeparatorPrefix(value: string): string {
+		return value.match(/^[\s\-–—_:：,，、.。·/\\|;；!！?？(（\u005B【「『《〈]+/)?.[0] ?? '';
+	}
+
+	/**
+	 * 提取规则匹配中属于编号格式的后缀，并保留紧随其后的标题分隔符。
+	 * 单位由用户规则本身定义。
+	 */
+	private static getRuleStructure(match: RegExpMatchArray, numStr: string): { suffix: string; length: number } {
+		const matchStr = match[0];
+		const numIndex = matchStr.indexOf(numStr);
+		if (numIndex < 0) return { suffix: '', length: 0 };
+
+		const numEnd = numIndex + numStr.length;
+		const matchedSuffix = matchStr.slice(numEnd);
+		const titleSeparatorIndex = matchedSuffix.search(/[\s\-–—_:：,，、.。·/\\|;；!！?？(（\u005B【「『《〈]/);
+		const structureSuffix = titleSeparatorIndex >= 0
+			? matchedSuffix.slice(0, titleSeparatorIndex)
+			: matchedSuffix;
+		const titleSeparator = titleSeparatorIndex >= 0
+			? this.getTitleSeparatorPrefix(matchedSuffix.slice(titleSeparatorIndex))
+			: '';
+
+		return {
+			suffix: structureSuffix + titleSeparator,
+			length: numEnd + structureSuffix.length
+		};
+	}
+
+	/**
+	 * 返回所有从文件名开头命中的自定义规则。
+	 * 匹配到更完整编号结构的规则优先；完整度相同时保持设置中的原有顺序。
+	 */
+	private static getCustomRuleMatches(basename: string): CustomRuleMatch[] {
+		const matches: CustomRuleMatch[] = [];
+
+		for (const { rule, regex, index } of this._compiledRules) {
+			try {
+				const match = basename.match(regex);
+				if (!match || match.index !== 0) continue;
+
+				const numStr = match.slice(1).find(value => value !== undefined && value !== '');
+				const structureLength = numStr
+					? this.getRuleStructure(match, numStr).length
+					: match[0].length;
+				matches.push({ rule, index, match, numStr, structureLength });
+			} catch (error) {
+				Logger.error(`[ChapterSorter] 自定义规则匹配失败: ${rule.pattern}`, error);
+			}
+		}
+
+		return matches.sort((a, b) =>
+			b.structureLength - a.structureLength || a.index - b.index
+		);
+	}
+
 
 	/**
 	 * 从文件名中提取章节编号（使用自定义规则）
@@ -238,42 +302,33 @@ export class ChapterSorter {
 
 		// 如果有自定义规则，优先使用
 		if (this.customRules && this.customRules.length > 0) {
-			for (const { rule, regex, index } of this._compiledRules) {
-				try {
-					const match = basename.match(regex);
-					// 章节标题必须从文本行首开始匹配 (index === 0)，防止没有 ^ 锚定的正则在行中误判
-					if (match && match.index === 0) {
-						// 如果有捕获组，寻找第一个匹配到的有效数字文本（支持包含多分支的捕获组，如 match[1] 或 match[2]）
-						const numStr = match.slice(1).find(m => m !== undefined && m !== '');
-						if (numStr) {
-							// 检查是否是小数点格式
-							if (numStr.includes('.')) {
-								const num = parseFloat(numStr);
-								if (!isNaN(num)) {
-									return { number: num, ruleIndex: index, numStr, isDecimal: true, rulePattern: rule.pattern };
-								}
-							}
-							
-							// 检查是否是阿拉伯数字
-							const arabicNum = parseInt(numStr, 10);
-							if (!isNaN(arabicNum)) {
-								return { number: arabicNum, ruleIndex: index, numStr, isDecimal: false, rulePattern: rule.pattern };
-							}
-							
-							// 尝试解析中文数字
-							const chineseNum = this.parseChineseNumber(numStr);
-							if (chineseNum > 0) {
-								return { number: chineseNum, ruleIndex: index, numStr, isChinese: true, isDecimal: false, rulePattern: rule.pattern };
-							}
+			const bestMatch = this.getCustomRuleMatches(basename)[0];
+			if (bestMatch) {
+				const { rule, index, numStr } = bestMatch;
+				if (numStr) {
+					// 检查是否是小数点格式
+					if (numStr.includes('.')) {
+						const num = parseFloat(numStr);
+						if (!isNaN(num)) {
+							return { number: num, ruleIndex: index, numStr, isDecimal: true, rulePattern: rule.pattern };
 						}
-						// [关键扩展] 规则匹配但没有捕获组，或捕获组不是数字
-						// 视为“具名章节”（如：大纲、番外、楔子），使用 -1 让其排在该规则分组的最前面
-						// 规则的先后顺序（ruleIndex）决定该分组在整个文件列表中的位置
-						return { number: -1, ruleIndex: index, rulePattern: rule.pattern };
 					}
-				} catch (error) {
-					Logger.error(`[ChapterSorter] 无效的正则表达式: ${rule.pattern}`, error);
+
+					// 检查是否是阿拉伯数字
+					const arabicNum = parseInt(numStr, 10);
+					if (!isNaN(arabicNum)) {
+						return { number: arabicNum, ruleIndex: index, numStr, isDecimal: false, rulePattern: rule.pattern };
+					}
+
+					// 尝试解析中文数字
+					const chineseNum = this.parseChineseNumber(numStr);
+					if (chineseNum > 0) {
+						return { number: chineseNum, ruleIndex: index, numStr, isChinese: true, isDecimal: false, rulePattern: rule.pattern };
+					}
 				}
+
+				// 规则匹配但没有捕获组，或捕获组不是数字时，视为具名章节。
+				return { number: -1, ruleIndex: index, rulePattern: rule.pattern };
 			}
 			// 如果启用了自定义规则但都不匹配，返回 null（不参与排序）
 			return null;
@@ -450,23 +505,10 @@ export class ChapterSorter {
 		if (numStartInBasename < 0) return null;
 
 		const prefix = basename.slice(0, numStartInBasename);
-		const numEndInBasename = numStartInBasename + numStr.length;
 		const matchEndInBasename = matchStart + matchStr.length;
-
-		// 规则内匹配捕获到的结构部分（如“章”、“集”、“）”等）。
-		// 如果自定义规则使用 (.*) 一并匹配了标题，只保留结构字符，避免将具体标题带入下一章。
-		const ruleSuffix = basename.slice(numEndInBasename, matchEndInBasename);
-		const unitMatch = ruleSuffix.match(/^([章节回卷部册篇集幕节\s\-_:：，、.()（）\u005b\u005d【】]*)/);
-		const unitFromRule = unitMatch ? unitMatch[1] : '';
-
-		// match[0] 之后的文本（可能包含结构性标点与具体标题）
-		const textAfterMatch = basename.slice(matchEndInBasename);
-
-		// 从 match[0] 后面的文本中仅提取结构性符号（如空格、破折号、冒号、闭合括号等），丢弃具体的标题文字
-		const structuralMatch = textAfterMatch.match(/^([ \-_:：，、.)）\]】]*)/);
-		const structuralSuffix = structuralMatch ? structuralMatch[1] : '';
-
-		const unitAndStructural = unitFromRule + structuralSuffix;
+		const ruleStructure = this.getRuleStructure(match, numStr).suffix;
+		const titleSeparatorAfterMatch = this.getTitleSeparatorPrefix(basename.slice(matchEndInBasename));
+		const unitAndStructural = ruleStructure + titleSeparatorAfterMatch;
 
 		// 1. 小数点数字格式 (如 1.1, 49.1)
 		if (numStr.includes('.')) {
@@ -519,16 +561,11 @@ export class ChapterSorter {
 	static getNextChapterName(basename: string, siblingNames: string[]): string | null {
 		// 1. 如果配置了用户自定义章节命名规则，优先使用自定义规则匹配生成，确保设置中的规则真正生效
 		if (this._compiledRules && this._compiledRules.length > 0) {
-			for (const { rule, regex } of this._compiledRules) {
+			for (const { rule, match, numStr } of this.getCustomRuleMatches(basename)) {
 				try {
-					const match = basename.match(regex);
-					if (match) {
-						// 寻找第一个非空捕获组作为章节数字
-						const numStr = match.slice(1).find(m => m !== undefined && m !== '');
-						if (numStr) {
-							const result = this.generateNextFromMatch(basename, match, numStr, siblingNames);
-							if (result) return result;
-						}
+					if (numStr) {
+						const result = this.generateNextFromMatch(basename, match, numStr, siblingNames);
+						if (result) return result;
 					}
 				} catch (e) {
 					Logger.error(`[ChapterSorter] 自定义规则生成下一章失败: ${rule.pattern}`, e);

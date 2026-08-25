@@ -152,7 +152,8 @@
 	overscroll-behavior: contain;
 }
 
-.wn-sticky-note-list-side-panel .wn-sticky-note-list-card {
+.wn-sticky-note-list-side-panel .wn-sticky-note-list-card,
+.wn-sticky-note-list-workbench .wn-sticky-note-list-card {
 	width: var(--wn-side-note-grid-size, 100%);
 	height: var(--wn-side-note-grid-size, auto);
 	aspect-ratio: 1 / 1;
@@ -160,9 +161,36 @@
 	min-height: 0;
 }
 
-.wn-sticky-note-list-side-panel .wn-sticky-note-list-card textarea {
+.wn-sticky-note-list-side-panel .wn-sticky-note-list-card textarea,
+.wn-sticky-note-list-side-panel .wn-sticky-note-list-card .wn-sticky-note-paragraph-editor,
+.wn-sticky-note-list-workbench .wn-sticky-note-list-card textarea,
+.wn-sticky-note-list-workbench .wn-sticky-note-list-card .wn-sticky-note-paragraph-editor {
 	min-height: 0;
 	font-size: inherit;
+}
+
+.wn-workbench-sticky-list-root,
+.wn-sticky-note-list-workbench {
+	display: flex;
+	flex: 1 1 0;
+	width: 100%;
+	min-width: 0;
+	min-height: 0;
+}
+
+.wn-sticky-note-paragraph-editor {
+	overflow-y: auto;
+	white-space: pre-wrap;
+	word-break: break-word;
+	cursor: text;
+}
+
+.wn-sticky-note-paragraph-editor:focus {
+	box-shadow: none;
+}
+
+.wn-sticky-note-editor-line {
+	min-height: 1.5em;
 }
 
 body.is-phone .wn-sticky-note-list-grid,
@@ -183,6 +211,71 @@ body.is-tablet .wn-sticky-note-list-side-panel .wn-sticky-note-list-card {
 	padding: 24px 12px;
 	color: var(--text-muted);
 	text-align: center;
+}
+
+.wn-sticky-note-card-actions {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	flex-shrink: 0;
+}
+
+.wn-sticky-note-card-action-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 20px;
+	height: 20px;
+	min-width: 20px;
+	min-height: 20px;
+	padding: 0;
+	border: 0;
+	border-radius: var(--radius-s);
+	color: inherit;
+	opacity: 0.65;
+	background-color: transparent;
+	box-shadow: none;
+	cursor: pointer;
+	transition: opacity 0.2s ease, background-color 0.2s ease;
+}
+
+.wn-sticky-note-card-action-btn:hover {
+	opacity: 1;
+	background-color: var(--background-modifier-hover);
+}
+
+.wn-sticky-note-card-action-btn:focus-visible {
+	outline: 1px solid var(--background-modifier-border-focus);
+	outline-offset: 1px;
+}
+
+.wn-sticky-note-card-action-btn .svg-icon {
+	width: 13px;
+	height: 13px;
+	color: inherit;
+	stroke: currentColor;
+	stroke-width: 1.75;
+}
+
+.wn-sticky-note-list-card .my-sticky-content,
+.wn-sticky-note-list-card .wn-sticky-note-reading-content {
+	flex: 1 1 0;
+	min-height: 0;
+	padding: 8px 10px;
+	overflow-y: auto;
+	font-size: var(--wn-sticky-note-font-size, 14px);
+	color: inherit;
+	background-color: transparent;
+	word-break: break-word;
+}
+
+.wn-sticky-note-list-card .markdown-rendered p {
+	margin-block-start: 0;
+	margin-block-end: 0.5em;
+}
+
+.wn-sticky-note-list-card .markdown-rendered p:last-child {
+	margin-block-end: 0;
 }
 /* ========== Sticky-note feature styles (extracted from common.css) ========== */
 
@@ -382,7 +475,7 @@ body .my-sticky-swatch:hover {
 body .my-sticky-content {
 	padding: 15px;
 	overflow-y: auto;
-	font-size: calc(0.9em * var(--sticky-zoom, 1));
+	font-size: var(--wn-sticky-note-font-size, 14px);
 	flex-grow: 1;
 	color: var(--note-text-color);
 	padding-bottom: 25px;
@@ -391,6 +484,10 @@ body .my-sticky-content {
 
 body .my-sticky-content * {
 	color: inherit;
+}
+
+body .my-sticky-content.markdown-rendered :is(h1, h2, h3, h4, h5, h6) {
+	font-size: inherit;
 }
 
 body .my-sticky-textarea {
@@ -402,7 +499,7 @@ body .my-sticky-textarea {
 	background: transparent;
 	color: var(--note-text-color);
 	font-family: var(--font-text);
-	font-size: calc(0.9em * var(--sticky-zoom, 1));
+	font-size: var(--wn-sticky-note-font-size, 14px);
 	padding: 15px;
 	outline: none;
 	box-shadow: none;

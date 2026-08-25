@@ -109,9 +109,9 @@
 	--wna-rg-node-shadow-blur-hover: 10;
 
 	/* 主角强调覆盖色 */
-	--wna-rg-protagonist-overlay: color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 45%, var(--text-error, var(--interactive-accent)) 55%) 50%, transparent);
-	--wna-rg-protagonist-overlay-hover: color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 45%, var(--text-error, var(--interactive-accent)) 55%) 80%, transparent);
-	--wna-rg-protagonist-shadow: color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 45%, var(--text-error, var(--interactive-accent)) 55%) 80%, transparent);
+	--wna-rg-protagonist-overlay: color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 20%, var(--color-red, var(--text-error, var(--interactive-accent))) 80%) 85%, transparent);
+	--wna-rg-protagonist-overlay-hover: color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 20%, var(--color-red, var(--text-error, var(--interactive-accent))) 80%) 85%, transparent);
+	--wna-rg-protagonist-shadow: color-mix(in srgb, var(--interactive-accent) 20%, var(--color-red, var(--text-error, var(--interactive-accent))) 80%);
 
 	/* 连线与渐变样式 */
 	--wna-rg-line-color: var(--graph-line, var(--background-modifier-border));
@@ -139,7 +139,7 @@
 	--wna-rg-label-gap: 4;
 
 	/* 聚焦流光光束配置（彗星式渐变拖尾） */
-	--wna-rg-pulse-color: var(--text-normal);
+	/* 未设置 --wna-rg-pulse-color 时，流光跟随当前关系线颜色 */
 	--wna-rg-pulse-period-ms: 2200;
 	--wna-rg-pulse-trail-ratio: 0.35;
 	--wna-rg-pulse-glow-alpha: 0.35;

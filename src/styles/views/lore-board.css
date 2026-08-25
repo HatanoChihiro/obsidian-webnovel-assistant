@@ -97,7 +97,8 @@
 	align-items: center;
 	gap: 6px;
 	min-width: 0;
-	flex: 1;
+	max-width: 100%;
+	flex: 0 0 auto;
 }
 
 .wn-lore-card-title {
@@ -138,19 +139,51 @@
 
 .wn-lore-card-badges {
 	display: flex;
-	flex-wrap: wrap;
+	flex: 1 1 0;
+	min-width: 0;
+	overflow: hidden;
+	flex-wrap: nowrap;
 	justify-content: flex-end;
 	gap: 6px;
+	padding-left: 6px;
 	margin-bottom: -0.5px;
+}
+
+.wn-lore-card-badges.is-measuring {
+	visibility: hidden;
+}
+
+.wn-lore-card-badges[hidden],
+.wn-lore-card-badge[hidden],
+.wn-lore-card-overflow-badge[hidden] {
+	display: none;
+}
+
+.wn-lore-card-badge,
+.wn-lore-card-overflow-badge {
+	flex: 0 0 auto;
+	white-space: nowrap;
+	border-radius: 4px;
+	padding: 2px 6px;
+	font-size: 0.8em;
+	line-height: 1.2;
 }
 
 .wn-lore-card-badge {
 	background: var(--interactive-accent);
 	color: var(--text-on-accent);
-	border-radius: 4px;
-	padding: 2px 6px;
-	font-size: 0.8em;
-	line-height: 1.2;
+}
+
+.wn-lore-card-badge.is-truncated {
+	min-width: 0;
+	max-width: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.wn-lore-card-overflow-badge {
+	background: var(--background-modifier-hover);
+	color: var(--text-muted);
 }
 
 /* Card Body - Unified Typography */

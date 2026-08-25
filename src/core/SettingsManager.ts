@@ -1,15 +1,14 @@
 import { Logger } from '../utils/Logger';
-import type { Plugin} from 'obsidian';
 import { t } from '../i18n';
 import { detectLocale } from '../i18n';
+import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { getLocalizedDefaults } from '../i18n/data-keys';
 import { Notice } from 'obsidian';
 import type { AccurateCountSettings, ImmersiveModeSettings, ObsSettings } from '../types/settings';
 import type { TaskSettings } from '../types/task';
 import { VALIDATION_RULES, FLAT_OBS_KEYS, FLAT_IMMERSIVE_KEYS } from '../constants';
 import type { ValidationResult } from '../utils/validation';
-import { SerializedWriter } from '../utils/SerializedWriter';
-import type { WebNovelAssistantPlugin } from '../types/plugin';
+import { JsonSnapshotStore } from '../utils/JsonSnapshotStore';
 
 /**
  * 验证规则接口（支持嵌套路径）
@@ -24,7 +23,7 @@ interface ValidationRule {
  * 需要保留的旧数据键（不属于 AccurateCountSettings 但需要保留用于兼容）
  */
 const STALE_KEYS = new Set([
-	'cacheData', 'historyData', 'dailyHistory', 'openNotes',
+	'cacheData', 'dailyHistory', 'openNotes',
 	...FLAT_OBS_KEYS, ...FLAT_IMMERSIVE_KEYS
 ]);
 
@@ -33,11 +32,11 @@ const STALE_KEYS = new Set([
  * 负责设置的加载、保存、验证和迁移
  */
 export class SettingsManager {
-	private plugin: Plugin;
+	private plugin: WebNovelAssistantPlugin;
 	private settings: AccurateCountSettings;
 	private defaultSettings: AccurateCountSettings;
 
-	private writer = new SerializedWriter();
+	private store: JsonSnapshotStore<Record<string, unknown>>;
 
 	private validationRules: ValidationRule[] = [
 		{
@@ -84,10 +83,28 @@ export class SettingsManager {
 		}
 	];
 
-	constructor(plugin: Plugin, defaultSettings: AccurateCountSettings) {
+	constructor(plugin: WebNovelAssistantPlugin, defaultSettings: AccurateCountSettings) {
 		this.plugin = plugin;
 		this.defaultSettings = this.adjustDefaultsForLocale(defaultSettings);
 		this.settings = { ...this.defaultSettings };
+
+		this.store = new JsonSnapshotStore<Record<string, unknown>>({
+			write: async (content) => {
+				const snapshot = JSON.parse(content) as Record<string, unknown>;
+				await this.plugin.saveData(snapshot);
+			},
+			getSnapshot: () => {
+				if (this.plugin.settings) {
+					this.settings = this.plugin.settings;
+				}
+				this.stripStaleKeys(this.settings as unknown as Record<string, unknown>);
+				return { ...this.settings };
+			},
+			onError: (error) => {
+				Logger.error('[SettingsManager] 保存数据失败:', error);
+				new Notice(t('notice.save-settings-failed'));
+			}
+		});
 	}
 
 	/**
@@ -134,6 +151,7 @@ export class SettingsManager {
 
 			// 从内存对象中剥离扁平键（deepMerge 会把旧数据的扁平键合并为顶层属性）
 			this.stripStaleKeys(this.settings as unknown as Record<string, unknown>);
+			this.store.markClean(this.settings as unknown as Record<string, unknown>);
 
 			const validation = this.validateSettings(this.settings);
 			if (!validation.valid) {
@@ -152,36 +170,15 @@ export class SettingsManager {
 	}
 
 	async saveSettings(): Promise<void> {
-		return this.writer.enqueue(async () => {
-			try {
-				const pluginSettings = (this.plugin as unknown as WebNovelAssistantPlugin).settings;
-				if (pluginSettings) {
-					this.settings = pluginSettings;
-				}
-				// 剥离可能残留的扁平键（用户直接修改 settings 对象不会自动清理）
-				this.stripStaleKeys(this.settings as unknown as Record<string, unknown>);
+		return this.store.save();
+	}
 
-				// 读取旧数据，只保留不属于 STALE_KEYS 的字段
-				const data = (await this.plugin.loadData() || {}) as Record<string, unknown>;
-				const cleanedData: Record<string, unknown> = {};
-				for (const key of Object.keys(data)) {
-					if (!STALE_KEYS.has(key)) {
-						cleanedData[key] = data[key];
-					}
-				}
-
-				const newData = { ...cleanedData, ...this.settings };
-				await this.plugin.saveData(newData);
-			} catch (error) {
-				Logger.error('[SettingsManager] 保存设置失败:', error);
-				new Notice(t('notice.save-settings-failed'));
-				throw error;
-			}
-		});
+	getIsWriting(): boolean {
+		return this.store.isWriting;
 	}
 
 	async flush(): Promise<void> {
-		await this.writer.flush();
+		await this.store.flush();
 	}
 
 	private getNestedValue(obj: unknown, path: string): unknown {
@@ -437,7 +434,7 @@ export class SettingsManager {
 	}
 
 	async updateSettings(partial: Partial<AccurateCountSettings>): Promise<void> {
-		const plugin = this.plugin as unknown as WebNovelAssistantPlugin;
+		const plugin = this.plugin;
 		const current = plugin.settings || this.settings;
 		const updated = this.deepMerge(
 			current as unknown as Record<string, unknown>,
@@ -455,7 +452,7 @@ export class SettingsManager {
 
 	async resetToDefaults(): Promise<void> {
 		this.settings = JSON.parse(JSON.stringify(this.defaultSettings)) as AccurateCountSettings;
-		(this.plugin as unknown as WebNovelAssistantPlugin).settings = this.settings;
+		this.plugin.settings = this.settings;
 		await this.saveSettings();
 	}
 }

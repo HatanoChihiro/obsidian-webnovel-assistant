@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { StickyNoteDataManager } from '../src/services/StickyNoteDataManager';
 
 function deferred() {
@@ -14,141 +14,129 @@ const note = {
 };
 
 describe('StickyNoteDataManager persistence', () => {
-	it('loads persisted notes for the side-panel list after startup', async () => {
-		const read = vi.fn().mockResolvedValue(JSON.stringify([note]));
-		const plugin = {
-			manifest: { dir: 'plugins/test', id: 'test' },
+	let plugin: {
+		settings: { notesData?: typeof note[] };
+		settingsManager: { saveSettings: ReturnType<typeof vi.fn> };
+		app: {
+			workspace: { trigger: ReturnType<typeof vi.fn> };
+			vault: { adapter: {
+				exists: ReturnType<typeof vi.fn>;
+				read: ReturnType<typeof vi.fn>;
+				write: ReturnType<typeof vi.fn>;
+				remove: ReturnType<typeof vi.fn>;
+			} };
+		};
+		manifest: { dir: string; id: string };
+		adaptiveDebounceManager: { debounceFixed: ReturnType<typeof vi.fn> };
+	};
+
+	beforeEach(() => {
+		plugin = {
+			settings: {},
+			settingsManager: { saveSettings: vi.fn().mockResolvedValue(undefined) },
 			app: {
+				workspace: { trigger: vi.fn() },
 				vault: { adapter: {
-					exists: vi.fn().mockResolvedValue(true),
-					read
-				} },
-				workspace: { trigger: vi.fn() }
-			}
-		} as never;
-		const manager = new StickyNoteDataManager(plugin);
-
-		await manager.loadNotes();
-
-		expect(read).toHaveBeenCalledWith('plugins/test/notes-data.json');
-		expect(manager.getNotes()).toEqual([note]);
+					exists: vi.fn().mockResolvedValue(false),
+					read: vi.fn().mockResolvedValue('[]'),
+					write: vi.fn(),
+					remove: vi.fn()
+				} }
+			},
+			manifest: { dir: 'plugins/test', id: 'test' },
+			adaptiveDebounceManager: { debounceFixed: vi.fn() }
+		};
 	});
 
-	it('propagates write failures to callers', async () => {
-		const plugin = {
-			manifest: { dir: 'plugins/test', id: 'test' },
-			app: {
-				vault: { adapter: { write: vi.fn().mockRejectedValue(new Error('write failed')) } },
-				workspace: { trigger: vi.fn() }
-			}
-		} as never;
-		const manager = new StickyNoteDataManager(plugin);
+	it('loads canonical notes, including an empty array, without reading the sidecar', async () => {
+		plugin.settings.notesData = [];
+		plugin.app.vault.adapter.exists.mockResolvedValue(true);
+		const manager = new StickyNoteDataManager(plugin as never);
+		expect(await manager.loadNotes()).toEqual([]);
+		expect(plugin.app.vault.adapter.exists).not.toHaveBeenCalled();
+		expect(plugin.settingsManager.saveSettings).not.toHaveBeenCalled();
+		expect(manager.isDirty()).toBe(false);
+	});
 
+	it('refreshes open floating notes and notifies every note-list view', () => {
+		const updateVisuals = vi.fn();
+		Object.assign(plugin, { activeNotes: [{ updateVisuals }] });
+		const manager = new StickyNoteDataManager(plugin as never);
+
+		manager.refreshImmersiveNotes();
+
+		expect(updateVisuals).toHaveBeenCalledOnce();
+		expect(plugin.app.workspace.trigger).toHaveBeenCalledWith('webnovel:notes-changed');
+	});
+
+	it('migrates a non-empty sidecar once and retains the source file as a backup', async () => {
+		plugin.app.vault.adapter.exists.mockResolvedValue(true);
+		plugin.app.vault.adapter.read.mockResolvedValue(JSON.stringify([note]));
+		const manager = new StickyNoteDataManager(plugin as never);
+		expect(await manager.loadNotes()).toEqual([note]);
+		expect(plugin.settings.notesData).toEqual([note]);
+		expect(plugin.settingsManager.saveSettings).toHaveBeenCalledTimes(1);
+		expect(plugin.app.vault.adapter.write).not.toHaveBeenCalled();
+		expect(plugin.app.vault.adapter.remove).not.toHaveBeenCalled();
+		expect(manager.isDirty()).toBe(false);
+	});
+
+	it('does not persist an empty sidecar as canonical data', async () => {
+		plugin.app.vault.adapter.exists.mockResolvedValue(true);
+		const manager = new StickyNoteDataManager(plugin as never);
+		expect(await manager.loadNotes()).toEqual([]);
+		expect(plugin.settings.notesData).toBeUndefined();
+		expect(plugin.settingsManager.saveSettings).not.toHaveBeenCalled();
+	});
+
+	it('propagates write failures and supports an explicit retry', async () => {
+		plugin.settingsManager.saveSettings
+			.mockRejectedValueOnce(new Error('write failed'))
+			.mockResolvedValueOnce(undefined);
+		const manager = new StickyNoteDataManager(plugin as never);
 		await expect(manager.saveNotes([note])).rejects.toThrow('write failed');
+		expect(manager.isDirty()).toBe(true);
+		await manager.flush();
+		expect(plugin.settingsManager.saveSettings).toHaveBeenCalledTimes(2);
+		expect(manager.isDirty()).toBe(false);
 	});
 
-	it('waits for notes-data persistence when removing a note transactionally', async () => {
-		const write = vi.fn().mockResolvedValue(undefined);
-		const plugin = {
-			manifest: { dir: 'plugins/test', id: 'test' },
-			app: {
-				vault: { adapter: { write } },
-				workspace: { trigger: vi.fn() }
-			}
-		} as never;
-		const manager = new StickyNoteDataManager(plugin);
+	it('waits for persistence when removing a note transactionally', async () => {
+		const manager = new StickyNoteDataManager(plugin as never);
 		await manager.saveNotes([note]);
-
 		await manager.removeNoteAndWait(note.id);
-
 		expect(manager.getNotes()).toEqual([]);
-		expect(JSON.parse(write.mock.calls.at(-1)?.[1] as string)).toEqual([]);
+		expect(plugin.settings.notesData).toEqual([]);
 	});
 
-	it('triggers notes-changed once per successful persist and skips notification for duplicates', async () => {
-		const write = vi.fn().mockResolvedValue(undefined);
-		const trigger = vi.fn();
-		const plugin = {
-			manifest: { dir: 'plugins/test', id: 'test' },
-			app: {
-				vault: { adapter: { write } },
-				workspace: { trigger }
-			}
-		} as never;
-
-		const manager = new StickyNoteDataManager(plugin);
-
-		// First save
+	it('triggers notes-changed once per distinct successful persist', async () => {
+		const manager = new StickyNoteDataManager(plugin as never);
 		await manager.saveNotes([note]);
-		expect(write).toHaveBeenCalledTimes(1);
-		expect(trigger).toHaveBeenCalledWith('webnovel:notes-changed');
-		expect(trigger).toHaveBeenCalledTimes(1);
-
-		// Duplicate save with identical data -> skipped, no event, 0 extra writes
 		await manager.saveNotes([note]);
-		expect(write).toHaveBeenCalledTimes(1);
-		expect(trigger).toHaveBeenCalledTimes(1);
-
-		// Mutated save -> persisted, event triggered
-		const updatedNote = { ...note, content: 'updated content' };
-		await manager.saveNotes([updatedNote]);
-		expect(write).toHaveBeenCalledTimes(2);
-		expect(trigger).toHaveBeenCalledTimes(2);
+		await manager.saveNotes([{ ...note, content: 'updated' }]);
+		expect(plugin.settingsManager.saveSettings).toHaveBeenCalledTimes(2);
+		expect(plugin.app.workspace.trigger).toHaveBeenCalledTimes(2);
+		expect(plugin.app.workspace.trigger).toHaveBeenCalledWith('webnovel:notes-changed');
 	});
 
-	it('preserves immutable snapshots when caller mutates note objects after save request', async () => {
-		const writeGate = deferred();
-		const writes: string[] = [];
-		const write = vi.fn(async (_path: string, content: string) => {
-			writes.push(content);
-			await writeGate.promise;
+	it('preserves immutable snapshots when caller data changes during a write', async () => {
+		const firstWrite = deferred();
+		const snapshots: string[] = [];
+		plugin.settingsManager.saveSettings.mockImplementation(async () => {
+			snapshots.push(JSON.stringify(plugin.settings.notesData));
+			if (snapshots.length === 1) await firstWrite.promise;
 		});
-		const plugin = {
-			manifest: { dir: 'plugins/test', id: 'test' },
-			app: {
-				vault: { adapter: { write } },
-				workspace: { trigger: vi.fn() }
-			}
-		} as never;
-
-		const manager = new StickyNoteDataManager(plugin);
-		const mutableNote = { ...note, title: 'Original Title' };
-
-		const savePromise = manager.saveNotes([mutableNote]);
-
-		// Mutate caller object immediately
-		mutableNote.title = 'Mutated Title';
-
-		writeGate.resolve();
-		await savePromise;
-
-		expect(JSON.parse(writes[0])[0].title).toBe('Original Title');
-	});
-
-	it('tracks getIsWriting accurately during in-flight write', async () => {
-		const writeGate = deferred();
-		const write = vi.fn(async () => {
-			await writeGate.promise;
-		});
-		const plugin = {
-			manifest: { dir: 'plugins/test', id: 'test' },
-			app: {
-				vault: { adapter: { write } },
-				workspace: { trigger: vi.fn() }
-			}
-		} as never;
-
-		const manager = new StickyNoteDataManager(plugin);
-		expect(manager.getIsWriting()).toBe(false);
-
-		const savePromise = manager.saveNotes([note]);
-		await new Promise(r => queueMicrotask(r));
-
+		const manager = new StickyNoteDataManager(plugin as never);
+		const mutableNote = { ...note, title: 'Original' };
+		const firstSave = manager.saveNotes([mutableNote]);
+		await new Promise<void>(resolve => queueMicrotask(resolve));
 		expect(manager.getIsWriting()).toBe(true);
-
-		writeGate.resolve();
-		await savePromise;
-
+		mutableNote.title = 'Caller mutation';
+		const secondSave = manager.saveNotes([{ ...mutableNote, title: 'Second' }]);
+		firstWrite.resolve();
+		await Promise.all([firstSave, secondSave]);
+		expect(JSON.parse(snapshots[0])[0].title).toBe('Original');
+		expect(JSON.parse(snapshots[1])[0].title).toBe('Second');
 		expect(manager.getIsWriting()).toBe(false);
 	});
 });

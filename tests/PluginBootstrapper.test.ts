@@ -151,7 +151,8 @@ describe('PluginBootstrapper', () => {
 		'TaskManager',
 		'TimelineManager',
 		'RelationGraphManager',
-		'TypographyManager'
+		'TypographyManager',
+		'ProofreadingManager'
 	];
 
 	beforeEach(() => {
@@ -323,7 +324,7 @@ describe('PluginBootstrapper', () => {
 			expect(registry.has(key)).toBe(true);
 		}
 
-		// Verify all 26 services are now registered
+		// Verify all services are now registered
 		for (const key of EXPECTED_CONSTRUCTOR_SERVICES) {
 			expect(registry.has(key)).toBe(true);
 		}
@@ -333,6 +334,19 @@ describe('PluginBootstrapper', () => {
 		for (const key of EXPECTED_FEATURE_SERVICES) {
 			expect(registry.has(key)).toBe(true);
 		}
+	});
+
+	it('should register ProofreadingManager and keep it accessible from ServiceRegistry', () => {
+		const bootstrapper = new PluginBootstrapper(mockPlugin, registry);
+		bootstrapper.registerConstructorServices();
+		bootstrapper.registerCoreRuntimeServices();
+		bootstrapper.registerFeatureServices();
+
+		const proofreadingManager = registry.get('ProofreadingManager');
+		expect(proofreadingManager).toBeDefined();
+		expect(typeof proofreadingManager.scan).toBe('function');
+		expect(typeof proofreadingManager.enable).toBe('function');
+		expect(typeof proofreadingManager.disable).toBe('function');
 	});
 
 	describe('Platform Features Assembly', () => {
@@ -1087,6 +1101,71 @@ describe('PluginBootstrapper', () => {
 
 			expect(caughtError).toBe(startupError);
 			expect(cleanup).toHaveBeenCalledTimes(1);
+		});
+	});
+
+	describe('Immediate Layout Ready', () => {
+		it('should not fail if onLayoutReady executes synchronously (ProofreadingManager is ready)', async () => {
+			let proofreadingInitializeSpy: unknown;
+			let characterInitializeSpy: unknown;
+
+			let callCount = 0;
+			mockPlugin.app.workspace.onLayoutReady = vi.fn((cb: () => void) => {
+				callCount++;
+				if (callCount === 1) {
+					if (registry.has('ProofreadingManager')) {
+						const pm = registry.get('ProofreadingManager') as { initialize: (...args: unknown[]) => unknown };
+						proofreadingInitializeSpy = vi.spyOn(pm, 'initialize').mockResolvedValue(undefined);
+					}
+					if (registry.has('CharacterManager')) {
+						const cm = registry.get('CharacterManager') as { initialize: (...args: unknown[]) => unknown };
+						characterInitializeSpy = vi.spyOn(cm, 'initialize').mockResolvedValue(undefined);
+					}
+					cb();
+				} else {
+					layoutReadyCallbacks.push(cb);
+				}
+			});
+
+			Object.defineProperty(mockPlugin, 'proofreadingManager', {
+				get: () => registry.get('ProofreadingManager'),
+				configurable: true
+			});
+			Object.defineProperty(mockPlugin, 'characterManager', {
+				get: () => registry.get('CharacterManager'),
+				configurable: true
+			});
+
+			mockPlugin.historyManager = { loadHistory: vi.fn().mockResolvedValue(undefined) } as unknown as HistoryDataManager;
+			mockPlugin.cacheManager.loadCache = vi.fn().mockResolvedValue(undefined);
+
+			mockPlugin.loreSyncService = { initialize: vi.fn() } as unknown as LoreSyncService;
+			mockPlugin.fileEventManager = { setup: vi.fn() } as unknown as FileEventManager;
+			mockPlugin.statisticsManager = { setup: vi.fn() } as unknown as StatisticsManager;
+			mockPlugin.workerManager = { setup: vi.fn() } as unknown as WorkerManager;
+			mockPlugin.markdownPostProcessor = { getProcessor: vi.fn() } as unknown as MarkdownPostProcessor;
+			mockPlugin.typographyManager = { updateTypography: vi.fn() } as unknown as TypographyManager;
+			mockPlugin.commandManager = { registerAllCommands: vi.fn() } as unknown as CommandManager;
+			mockPlugin.viewManager = { registerAllViews: vi.fn() } as unknown as ViewManager;
+			mockPlugin.menuManager = { registerAllMenus: vi.fn() } as unknown as MenuManager;
+			mockPlugin.registerMarkdownPostProcessor = vi.fn();
+			mockPlugin.addStatusBarItem = vi.fn().mockReturnValue({});
+			Object.assign(mockPlugin.app, {
+				metadataCache: { on: vi.fn(() => ({})) }
+			});
+
+			const bootstrapper = new PluginBootstrapper(mockPlugin, registry);
+			bootstrapper.registerConstructorServices();
+
+			await expect(bootstrapper.bootstrap()).resolves.toBeUndefined();
+
+			expect(proofreadingInitializeSpy).toBeDefined();
+			expect(proofreadingInitializeSpy).toHaveBeenCalledTimes(1);
+
+			expect(characterInitializeSpy).toBeDefined();
+			expect(characterInitializeSpy).toHaveBeenCalledTimes(1);
+
+			expect(registry.has('ProofreadingManager')).toBe(true);
 		});
 	});
 });

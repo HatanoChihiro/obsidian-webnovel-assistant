@@ -4,6 +4,7 @@ import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ForeshadowingRecoveryModal } from '../ui/ForeshadowingModal';
 import { getDefaultFileName } from '../i18n/data-keys';
 import { t } from '../i18n';
+import { injectSoftBreakIndentPlaceholders } from '../utils/softBreakIndent';
 
 /**
  * Markdown 后处理器
@@ -47,29 +48,7 @@ export class MarkdownPostProcessor {
 
 		if (!this.plugin.typographyManager.shouldApplyTypography(file)) return;
 
-		const paragraphs = el.querySelectorAll('p');
-		paragraphs.forEach((p) => {
-			const brs = p.querySelectorAll('br');
-			brs.forEach((br) => {
-				const next = br.nextSibling;
-				if (next && next.instanceOf(Element) && (next.classList.contains('wn-soft-break-spacer') || next.classList.contains('wn-soft-break-indent'))) {
-					return;
-				}
-
-				const spacer = createSpan({ cls: 'wn-soft-break-spacer' });
-				const indent = createSpan({ cls: 'wn-soft-break-indent' });
-
-				if (br.parentNode) {
-					br.parentNode.insertBefore(indent, br.nextSibling);
-					br.parentNode.insertBefore(spacer, indent);
-				}
-
-				const nextNode = indent.nextSibling;
-				if (nextNode && nextNode.nodeType === Node.TEXT_NODE && nextNode.nodeValue) {
-					nextNode.nodeValue = nextNode.nodeValue.replace(/^[\r\n\s]+/, '');
-				}
-			});
-		});
+		injectSoftBreakIndentPlaceholders(el);
 	}
 
 	private processForeshadowingElements(el: HTMLElement, ctx: MarkdownPostProcessorContext, file: TFile): void {

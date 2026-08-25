@@ -40,6 +40,7 @@ import type { StatisticsManager } from '../services/StatisticsManager';
 import type { RelationGraphManager } from '../services/RelationGraphManager';
 import type { TypographyManager } from '../services/TypographyManager';
 import type { ChapterMergeManager } from '../services/ChapterMergeManager';
+import type { ProofreadingManager } from '../services/ProofreadingManager';
 
 // ==========================================
 // 辅助类型
@@ -140,6 +141,7 @@ export interface WebNovelAssistantPlugin extends
 	registerInterval(id: number): number;
 	register(callback: () => unknown): void;
 	loadData(): Promise<unknown>;
+	saveData(data: unknown): Promise<void>;
 	addCommand(command: Command): Command;
 
 	// 启动状态
@@ -175,6 +177,7 @@ export interface WebNovelAssistantPlugin extends
 	relationGraphManager: RelationGraphManager;
 	typographyManager: TypographyManager;
 	chapterMergeManager: ChapterMergeManager;
+	proofreadingManager: ProofreadingManager;
 	stickyNoteManager: StickyNoteDataManager;
 	editorTracker?: EditorTracker;
 	styleManager?: StyleManager;

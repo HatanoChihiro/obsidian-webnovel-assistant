@@ -159,3 +159,38 @@ input[type="search"].wn-workbench-filter-input::-webkit-search-results-decoratio
 	height: 18px;
 	stroke-width: 2.5;
 }
+
+
+.wn-workbench-sort-toggle {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	min-width: 28px;
+	max-width: 28px;
+	height: 28px;
+	min-height: 28px;
+	max-height: 28px;
+	padding: 0;
+	margin: 0;
+	border: 0;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--text-muted);
+	line-height: 1;
+	flex: 0 0 28px;
+	cursor: pointer;
+	transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+
+.wn-workbench-sort-toggle:hover {
+	color: var(--text-normal);
+	background-color: var(--background-modifier-hover);
+}
+
+
+.wn-workbench-sort-toggle svg {
+	width: 18px;
+	height: 18px;
+}

@@ -33,6 +33,7 @@ import type { StatisticsManager } from './src/services/StatisticsManager';
 import type { StickyNoteDataManager } from './src/services/StickyNoteDataManager';
 import type { TypographyManager } from './src/services/TypographyManager';
 import type { ChapterMergeManager } from './src/services/ChapterMergeManager';
+import type { ProofreadingManager } from './src/services/ProofreadingManager';
 
 import type { CommandManager } from './src/core/CommandManager';
 import type { ViewManager } from './src/core/ViewManager';
@@ -49,6 +50,9 @@ import { t } from './src/i18n';
 
 import { buildCharacterHoverExtension } from './src/editor/CharacterHoverExtension';
 import { createTypewriterExtension } from './src/editor/TypewriterExtension';
+import { buildProofreadingExtension } from './src/editor/ProofreadingExtension';
+import { AnnotateDictModal } from './src/ui/AnnotateDictModal';
+import { isSelectionEligibleForAnnotate } from './src/utils/proofreadingHelpers';
 import type { LoreSyncService } from './src/services/LoreSyncService';
 import { ServiceRegistry } from './src/core/ServiceRegistry';
 import { PluginBootstrapper } from './src/core/PluginBootstrapper';
@@ -119,6 +123,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	get relationGraphManager(): RelationGraphManager { return this.services.get('RelationGraphManager'); }
 	get typographyManager(): TypographyManager { return this.services.get('TypographyManager'); }
 	get chapterMergeManager(): ChapterMergeManager { return this.services.get('ChapterMergeManager'); }
+	get proofreadingManager(): ProofreadingManager { return this.services.get('ProofreadingManager'); }
 
 	isLayoutReady: boolean = false;
 
@@ -419,6 +424,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.registerEditorExtension(buildCharacterHoverExtension(this.app, this));
 		this.registerEditorExtension(selectionCountTooltipExtension(this));
 		this.registerEditorExtension(createTypewriterExtension(this));
+		this.registerEditorExtension(buildProofreadingExtension(this.app, this));
 	}
 
 	public registerEditorContextMenu(): void {
@@ -436,6 +442,30 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 									new AddLoreModal(this.app, this, selection.trim(), bookPath).open();
 								} else {
 									new Notice(t('notice.add-to-lore-failed'));
+								}
+							});
+					});
+				}
+
+				if (
+					view.file &&
+					isSelectionEligibleForAnnotate(
+						selection,
+						view.file,
+						(p) => this.proofreadingManager?.isFileInsideDictionary(p) ?? false
+					)
+				) {
+					menu.addItem((item) => {
+						item.setTitle(t('menu.mark-as-dict'))
+							.setIcon('spell-check')
+							.setSection('webnovel-assistant')
+							.onClick(async () => {
+								if (!this.proofreadingManager) return;
+								try {
+									await this.proofreadingManager.prepareDictionaryForEditing();
+									new AnnotateDictModal(this.app, this, selection.trim()).open();
+								} catch {
+									new Notice(t('notice.proofreading-prepare-failed'));
 								}
 							});
 					});

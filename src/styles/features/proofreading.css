@@ -1,0 +1,173 @@
+/* ========== Proofreading Feature Styles ========== */
+
+/* Match marks with 4 distinct underline styles (not relying solely on color) */
+.wn-proofreading-match {
+	cursor: pointer;
+	transition: background-color 0.15s ease;
+}
+
+/* 1. 错词 (Wavy) */
+.wn-proofreading-wrong {
+	text-decoration: underline wavy var(--text-error);
+	text-decoration-thickness: 1.5px;
+	text-underline-offset: 3px;
+}
+
+.wn-proofreading-wrong:hover {
+	background-color: color-mix(in srgb, var(--text-error) 15%, transparent);
+}
+
+/* 2. 敏感词 (Thick Dotted) */
+.wn-proofreading-sensitive {
+	border-bottom: 2px dotted var(--text-warning);
+	padding-bottom: 1px;
+}
+
+.wn-proofreading-sensitive:hover {
+	background-color: color-mix(in srgb, var(--text-warning) 15%, transparent);
+}
+
+/* 3. 近义词 (Solid underline) */
+.wn-proofreading-synonym {
+	text-decoration: underline solid var(--interactive-accent);
+	text-decoration-thickness: 2px;
+	text-underline-offset: 3px;
+}
+
+.wn-proofreading-synonym:hover {
+	background-color: color-mix(in srgb, var(--interactive-accent) 18%, transparent);
+}
+
+/* 4. 的地得语法 (Double Solid) */
+.wn-proofreading-grammar {
+	border-bottom: 2px double var(--text-muted);
+	padding-bottom: 1px;
+}
+
+.wn-proofreading-grammar:hover {
+	background-color: color-mix(in srgb, var(--text-muted) 15%, transparent);
+}
+
+/* 5. 标点符号 (Dashed) */
+.wn-proofreading-punctuation {
+	border-bottom: 2px dashed var(--interactive-accent);
+	padding-bottom: 1px;
+}
+
+.wn-proofreading-punctuation:hover {
+	background-color: color-mix(in srgb, var(--interactive-accent) 15%, transparent);
+}
+
+/* ========== Proofreading Popover ========== */
+.wn-proofreading-popover {
+	position: fixed;
+	z-index: var(--layer-popover, 1000);
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+	padding: 10px 14px;
+	max-width: 320px;
+	min-width: 200px;
+	font-size: var(--font-ui-small, 12px);
+	line-height: 1.5;
+	color: var(--text-normal);
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	animation: wn-fade-in 0.15s ease;
+}
+
+.wn-proofreading-popover-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.wn-proofreading-badge {
+	font-size: 10px;
+	padding: 2px 6px;
+	border-radius: 4px;
+	font-weight: 600;
+	letter-spacing: 0.5px;
+}
+
+.wn-proofreading-badge-wrong_word {
+	background: color-mix(in srgb, var(--text-error) 20%, transparent);
+	color: var(--text-error);
+}
+
+.wn-proofreading-badge-sensitive {
+	background: color-mix(in srgb, var(--text-warning) 20%, transparent);
+	color: var(--text-warning);
+}
+
+.wn-proofreading-badge-synonym {
+	background: color-mix(in srgb, var(--interactive-accent) 20%, transparent);
+	color: var(--interactive-accent);
+}
+
+.wn-proofreading-badge-grammar {
+	background: color-mix(in srgb, var(--text-muted) 20%, transparent);
+	color: var(--text-muted);
+}
+
+.wn-proofreading-badge-punctuation {
+	background: color-mix(in srgb, var(--interactive-accent) 20%, transparent);
+	color: var(--interactive-accent);
+}
+
+.wn-proofreading-popover-orig {
+	font-weight: bold;
+	color: var(--text-normal);
+}
+
+.wn-proofreading-popover-msg {
+	color: var(--text-muted);
+	font-size: 0.9em;
+}
+
+.wn-proofreading-popover-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-top: 2px;
+}
+
+.wn-proofreading-action-btn {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border: none;
+	border-radius: 4px;
+	padding: 4px 8px;
+	font-size: 0.9em;
+	cursor: pointer;
+	transition: opacity 0.15s ease;
+}
+
+.wn-proofreading-action-btn:hover {
+	opacity: 0.88;
+}
+
+.wn-proofreading-dismiss-btn {
+	background: var(--background-secondary);
+	color: var(--text-muted);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	padding: 4px 8px;
+	font-size: 0.9em;
+	cursor: pointer;
+	transition: background-color 0.15s ease;
+}
+
+.wn-proofreading-dismiss-btn:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+/* ========== Annotate Dict Modal ========== */
+.wn-annotate-dict-modal .wn-modal-button-container {
+	margin-top: 16px;
+	display: flex;
+	justify-content: flex-end;
+}

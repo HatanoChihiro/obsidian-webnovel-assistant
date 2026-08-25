@@ -5,12 +5,20 @@ import type { StickyNoteState, ThemeScheme } from '../types/settings';
 import { hexToRgba } from '../utils/format';
 import { isDesktop } from '../utils/platform';
 import { t } from '../i18n';
+import {
+	createStickyNoteParagraphEditor,
+	type StickyNoteParagraphEditor
+} from './components/StickyNoteParagraphEditor';
+import { injectSoftBreakIndentPlaceholders } from '../utils/softBreakIndent';
 
 export interface FloatingStickyNoteSettings {
 	noteThemes: ThemeScheme[];
 	nextNoteThemeIndex: number;
 	noteOpacity: number;
 	stickyNoteAutoSave: boolean;
+	immersive: {
+		immersiveNoteFontSize: number;
+	};
 }
 
 export interface FloatingStickyNoteManager {
@@ -230,7 +238,7 @@ export class FloatingStickyNote extends Component {
 	state: StickyNoteState;
 	containerEl!: HTMLElement;
 	contentContainer!: HTMLDivElement;
-	textareaEl!: HTMLTextAreaElement;
+	textareaEl!: StickyNoteParagraphEditor;
 	initialContent: string; // 用于检测未保存的更改
 	lastSavedContent: string = ""; // 最后一次保存的内容
 	private resizeObserver: ResizeObserver | null = null; // ResizeObserver 实例
@@ -371,22 +379,6 @@ export class FloatingStickyNote extends Component {
 
 			this.updateVisuals();
 
-			// Ctrl+滚轮缩放
-			this.containerEl.addEventListener('wheel', (e) => {
-				if (e.ctrlKey || e.metaKey) {
-					e.preventDefault();
-					e.stopPropagation();
-					
-					const currentZoom = this.state.zoomLevel || 1;
-					const zoomStep = 0.1;
-					const delta = e.deltaY < 0 ? zoomStep : -zoomStep;
-					
-					this.state.zoomLevel = Math.max(0.5, Math.min(4, currentZoom + delta));
-					this.updateVisuals();
-					this.saveState();
-				}
-			}, { passive: false });
-
 			this.createHeader();
 			await this.renderContent();
 			
@@ -426,7 +418,11 @@ export class FloatingStickyNote extends Component {
 		this.contentContainer = this.containerEl.createDiv({ cls: 'my-sticky-content markdown-rendered' });
 		// 防止 contentContainer 接收焦点
 		this.contentContainer.tabIndex = -1;
-		this.textareaEl = this.containerEl.createEl('textarea', { cls: 'my-sticky-textarea' });
+		this.textareaEl = createStickyNoteParagraphEditor(
+			this.containerEl,
+			this.state.content || '',
+			'my-sticky-textarea'
+		);
 
 		// 1. 只需要在 textarea 级别阻止普通的事件冒泡即可
 		const stopPropagation = (e: Event) => e.stopPropagation();
@@ -724,14 +720,18 @@ export class FloatingStickyNote extends Component {
 		this.containerEl.setCssProps({ top: this.state.top, left: this.state.left, width: this.state.width, height: this.state.height, resize: this.state.isPinned ? 'none' : 'both' });
 
 		const bgWithAlpha = hexToRgba(this.state.color, this.plugin.settings.noteOpacity);
+		const configuredFontSize = this.plugin.settings.immersive.immersiveNoteFontSize;
+		const fontSize = Number.isFinite(configuredFontSize) && configuredFontSize > 0
+			? configuredFontSize
+			: 14;
 
-			// CSS 自定义属性通过 setCssProps 设置
-			this.containerEl.setCssProps({
-				"--sticky-zoom": (this.state.zoomLevel || 1).toString(),
-				"--note-bg-color": this.state.color,
-				"--note-bg-color-alpha": bgWithAlpha,
-				"--note-text-color": this.state.textColor || "#2C3E50",
-			});
+		// CSS 自定义属性通过 setCssProps 设置
+		this.containerEl.setCssProps({
+			"--wn-sticky-note-font-size": `${fontSize}px`,
+			"--note-bg-color": this.state.color,
+			"--note-bg-color-alpha": bgWithAlpha,
+			"--note-text-color": this.state.textColor || "#2C3E50",
+		});
 		this.containerEl.classList.toggle('is-pinned', this.state.isPinned);
 	}
 
@@ -758,6 +758,7 @@ export class FloatingStickyNote extends Component {
 				if (file instanceof TFile) text = await this.app.vault.read(file);
 			}
 			await MarkdownRenderer.render(this.app, text, this.contentContainer, this.state.filePath || '', this);
+			injectSoftBreakIndentPlaceholders(this.contentContainer, false);
 		}
 	}
 

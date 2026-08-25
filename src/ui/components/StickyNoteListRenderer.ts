@@ -1,13 +1,23 @@
-import { FuzzySuggestModal, Notice, TFile, setIcon, type App } from 'obsidian';
+import { Component, FuzzySuggestModal, MarkdownRenderer, Notice, TFile, setIcon, type App } from 'obsidian';
 import type { StickyNoteState, ThemeScheme } from '../../types/settings';
 import { t } from '../../i18n';
 import { ConfirmCloseModal, SaveStickyNoteModal } from '../StickyNote';
 import { isMobile } from '../../utils/platform';
+import { Logger } from '../../utils/Logger';
+import { injectSoftBreakIndentPlaceholders } from '../../utils/softBreakIndent';
+import {
+	createStickyNoteParagraphEditor,
+	getStickyNoteEditorContent,
+	setStickyNoteEditorContent
+} from './StickyNoteParagraphEditor';
 
-export type StickyNoteListMode = 'immersive' | 'side-panel';
+export { getStickyNoteEditorContent } from './StickyNoteParagraphEditor';
+
+export type StickyNoteListMode = 'immersive' | 'side-panel' | 'workbench';
 
 interface StickyNoteListRendererOptions {
 	mode: StickyNoteListMode;
+	showToolbar?: boolean;
 }
 
 export interface StickyNoteListSettings {
@@ -69,11 +79,14 @@ class FileSuggestModal extends FuzzySuggestModal<TFile> {
 
 /**
  * 便签列表的共享渲染器。
- * 沉浸模式与侧面板共用编辑、保存和关闭逻辑，移动端侧面板不会显示悬浮便签。
+ * 沉浸模式、侧面板与工作台共用阅读、编辑、保存和关闭逻辑，移动端侧面板不会显示悬浮便签。
  */
 export class StickyNoteListRenderer {
 	private readonly mode: StickyNoteListMode;
+	private readonly showToolbar: boolean;
 	private readonly lastSavedContents = new Map<string, string>();
+	private readonly editingNoteIds = new Set<string>();
+	private readonly cardComponents = new Map<string, Component>();
 	private isSelfEditing = false;
 	private isDestroyed = false;
 	private resizeObserver: ResizeObserver | null = null;
@@ -85,6 +98,7 @@ export class StickyNoteListRenderer {
 		options: StickyNoteListRendererOptions
 	) {
 		this.mode = options.mode;
+		this.showToolbar = options.showToolbar ?? true;
 	}
 
 	render(): void {
@@ -92,15 +106,24 @@ export class StickyNoteListRenderer {
 
 		this.resizeObserver?.disconnect();
 		this.resizeObserver = null;
+		for (const comp of this.cardComponents.values()) {
+			comp.unload();
+		}
+		this.cardComponents.clear();
+
 		this.container.empty();
 		this.container.addClass('wn-sticky-note-list-container');
 		if (this.mode === 'immersive') {
 			this.container.addClass('webnovel-immersive-sticky-container');
-		} else {
+		} else if (this.mode === 'side-panel') {
 			this.container.addClass('wn-sticky-note-list-side-panel');
+		} else {
+			this.container.addClass('wn-sticky-note-list-workbench');
 		}
 
-		this.createToolbar();
+		if (this.showToolbar) {
+			this.createToolbar();
+		}
 		const dockContainer = this.container.createDiv({
 			cls: this.mode === 'immersive'
 				? 'immersive-sticky-dock webnovel-immersive-dock'
@@ -122,7 +145,7 @@ export class StickyNoteListRenderer {
 		}
 
 		for (const noteData of notes) {
-			this.renderNote(dockContainer, noteData);
+			this.renderNoteCard(dockContainer, noteData);
 		}
 	}
 
@@ -130,6 +153,10 @@ export class StickyNoteListRenderer {
 		this.isDestroyed = true;
 		this.resizeObserver?.disconnect();
 		this.resizeObserver = null;
+		for (const comp of this.cardComponents.values()) {
+			comp.unload();
+		}
+		this.cardComponents.clear();
 	}
 
 	private observeImmersiveGrid(dockContainer: HTMLElement): void {
@@ -218,8 +245,8 @@ export class StickyNoteListRenderer {
 			&& cardNoteIds.every((id, index) => id === currentNoteIds[index]);
 
 		if (!idsMatch) {
-			const activeEl = activeDocument.activeElement;
-			if (activeEl && activeEl.tagName.toLowerCase() === 'textarea' && this.container.contains(activeEl)) {
+			const activeEl = this.container.ownerDocument.activeElement;
+			if (activeEl?.classList.contains('wn-sticky-note-paragraph-editor') && this.container.contains(activeEl)) {
 				this.plugin.adaptiveDebounceManager.debounceFixed(
 					`sticky-note-list-sync-${this.mode}`,
 					() => this.render(),
@@ -240,17 +267,42 @@ export class StickyNoteListRenderer {
 			card.setCssStyles({ backgroundColor: note.color || '#FDF3B8' });
 			if (note.textColor) card.setCssProps({ color: note.textColor });
 
+			const fontSize = `${this.plugin.settings.immersive?.immersiveNoteFontSize || 14}px`;
+			card.setCssProps({ '--wn-sticky-note-font-size': fontSize });
+
 			const titleSpan = card.querySelector('.webnovel-immersive-note-title span');
 			const title = note.title || t('immersive.note-default-title');
 			if (titleSpan && titleSpan.textContent !== title) titleSpan.textContent = title;
 
-			const textarea = card.querySelector<HTMLTextAreaElement>('textarea');
-			if (textarea) {
-				textarea.setCssStyles({ fontSize: `${this.plugin.settings.immersive.immersiveNoteFontSize || 14}px` });
+			const isCardEditing = this.editingNoteIds.has(noteId);
+			const hasEditorInDOM = card.querySelector('.wn-sticky-note-paragraph-editor') !== null;
+
+			if (isCardEditing !== hasEditorInDOM) {
+				this.renderNoteCard(dockContainer as HTMLElement, note, card);
+				return;
 			}
-			if (textarea && activeDocument.activeElement !== textarea) {
-				const displayContent = this.getDisplayContent(note.content || '');
-				if (textarea.value !== displayContent) textarea.value = displayContent;
+
+			if (isCardEditing) {
+				const editor = card.querySelector<HTMLElement>('.wn-sticky-note-paragraph-editor');
+				if (editor) {
+					editor.setCssStyles({ fontSize });
+					if (this.container.ownerDocument.activeElement !== editor) {
+						const displayContent = this.getDisplayContent(note.content || '');
+						if (getStickyNoteEditorContent(editor) !== displayContent) {
+							setStickyNoteEditorContent(editor, displayContent);
+						}
+					}
+				}
+			} else {
+				const readingEl = card.querySelector<HTMLElement>('.wn-sticky-note-reading-content');
+				if (readingEl) {
+					readingEl.setCssStyles({ fontSize });
+				}
+				const lastSaved = this.lastSavedContents.get(noteId);
+				if (lastSaved !== (note.content || '')) {
+					this.lastSavedContents.set(noteId, note.content || '');
+					this.renderNoteCard(dockContainer as HTMLElement, note, card);
+				}
 			}
 		});
 	}
@@ -292,12 +344,15 @@ export class StickyNoteListRenderer {
 			new FileSuggestModal(this.app, this.plugin, file => {
 				void this.app.vault.read(file)
 					.then(content => this.createNewNote(file.path, content, file.basename))
-					.catch(error => console.error('[StickyNoteListRenderer] 读取便签文件失败:', error));
+					.catch(error => {
+						Logger.error('[StickyNoteListRenderer] 读取便签文件失败:', error);
+						new Notice(t('modal.save-failed', { error: String(error) }));
+					});
 			}).open();
 		};
 	}
 
-	private createNewNote(filePath?: string, content?: string, title?: string): void {
+	public createNewNote(filePath?: string, content?: string, title?: string): void {
 		const themeIndex = this.plugin.settings.nextNoteThemeIndex || 0;
 		const themes = this.plugin.settings.noteThemes || [];
 		const theme = themes[themeIndex] || { bg: '#FDF3B8', text: '#2C3E50' };
@@ -314,69 +369,292 @@ export class StickyNoteListRenderer {
 			height: '300px',
 			color: theme.bg,
 			textColor: theme.text,
-			isEditing: true
+			isEditing: false
 		};
 
+		this.editingNoteIds.add(note.id);
 		this.plugin.stickyNoteManager.updateNote(note);
 		this.lastSavedContents.set(note.id, note.content || '');
 		void this.plugin.stickyNoteManager.saveNotes(this.plugin.stickyNoteManager.getNotes())
-			.then(() => this.render())
-			.catch(error => console.error('[StickyNoteListRenderer] 保存便签失败:', error));
+			.then(() => {
+				this.render();
+				const dock = this.container.querySelector('.immersive-sticky-dock, .wn-sticky-note-list-grid');
+				const editor = dock?.querySelector<HTMLElement>(`[data-note-id="${note.id}"] .wn-sticky-note-paragraph-editor`);
+				if (editor) {
+					window.requestAnimationFrame(() => {
+						editor.focus();
+					});
+				}
+			})
+			.catch(error => {
+				Logger.error('[StickyNoteListRenderer] 保存便签失败:', error);
+				new Notice(t('modal.save-failed', { error: String(error) }));
+			});
 		void this.plugin.saveSettings();
 	}
 
-	private renderNote(dockContainer: HTMLElement, noteData: StickyNoteState): void {
+	private renderNoteCard(
+		dockContainer: HTMLElement,
+		noteData: StickyNoteState,
+		existingCard?: HTMLElement
+	): HTMLElement {
 		if (!this.lastSavedContents.has(noteData.id)) {
 			this.lastSavedContents.set(noteData.id, noteData.content || '');
 		}
 
-		const noteCard = dockContainer.createDiv({ cls: 'immersive-sticky-card webnovel-immersive-note-card wn-sticky-note-list-card' });
+		const existingComponent = this.cardComponents.get(noteData.id);
+		if (existingComponent) {
+			existingComponent.unload();
+			this.cardComponents.delete(noteData.id);
+		}
+
+		const noteCard = existingCard ?? dockContainer.createDiv();
+		noteCard.empty();
+
+		noteCard.className = 'immersive-sticky-card webnovel-immersive-note-card wn-sticky-note-list-card';
 		noteCard.dataset.noteId = noteData.id;
 		noteCard.setCssStyles({ backgroundColor: noteData.color || '#FDF3B8' });
 		if (noteData.textColor) noteCard.setCssProps({ color: noteData.textColor });
 
+		const fontSize = `${this.plugin.settings.immersive?.immersiveNoteFontSize || 14}px`;
+		noteCard.setCssProps({ '--wn-sticky-note-font-size': fontSize });
+
 		const titleEl = noteCard.createDiv({ cls: 'immersive-sticky-title webnovel-immersive-note-title' });
-		const titleSpan = titleEl.createSpan({ text: noteData.title || t('immersive.note-default-title') });
-		titleSpan.addClass('webnovel-ellipsis');
-		const closeButton = titleEl.createSpan({ cls: 'clickable-icon webnovel-immersive-note-close', text: '×' });
-		closeButton.title = t('immersive.close-note-tooltip');
-		closeButton.onclick = () => this.closeNote(noteData);
+		titleEl.createSpan({ text: noteData.title || t('immersive.note-default-title'), cls: 'webnovel-ellipsis' });
 
-		const textarea = noteCard.createEl('textarea', { cls: 'webnovel-immersive-note-textarea' });
-		textarea.value = this.getDisplayContent(noteData.content || '');
-		textarea.setCssStyles({ fontSize: `${this.plugin.settings.immersive.immersiveNoteFontSize || 14}px` });
-		const frontmatter = this.getFrontmatter(noteData.content || '');
-		textarea.addEventListener('input', () => {
-			this.isSelfEditing = true;
-			try {
-				const latestNote = this.plugin.stickyNoteManager.getNotes().find(note => note.id === noteData.id) || noteData;
-				latestNote.content = frontmatter + textarea.value;
-				this.plugin.stickyNoteManager.updateNote(latestNote, true);
+		const actionsEl = titleEl.createDiv({ cls: 'wn-sticky-note-card-actions' });
 
-				if (this.plugin.settings.stickyNoteAutoSave) {
-					this.plugin.adaptiveDebounceManager.debounceFixed(`sticky-note-list-save-${latestNote.id}`, () => {
-						void this.plugin.stickyNoteManager.saveNotes(this.plugin.stickyNoteManager.getNotes());
-						this.lastSavedContents.set(latestNote.id, latestNote.content || '');
-						if (latestNote.filePath) {
-							const file = this.app.vault.getAbstractFileByPath(latestNote.filePath);
-							if (file instanceof TFile) void this.app.vault.process(file, () => latestNote.content || '');
-						}
-					}, 500);
-				}
-			} finally {
-				queueMicrotask(() => { this.isSelfEditing = false; });
-			}
+		const isEditing = this.editingNoteIds.has(noteData.id);
+		if (noteData.filePath) {
+			const syncBtn = actionsEl.createEl('button', {
+				cls: 'clickable-icon wn-sticky-note-card-action-btn wn-sticky-note-sync'
+			});
+			setIcon(syncBtn, 'refresh-cw');
+			syncBtn.setAttribute('aria-label', t('common.note-sync-from-doc'));
+			syncBtn.onclick = (e: MouseEvent) => {
+				e.stopPropagation();
+				void this.syncNoteFromFile(noteData.id);
+			};
+		}
+
+		const toggleBtn = actionsEl.createEl('button', {
+			cls: 'clickable-icon wn-sticky-note-card-action-btn wn-sticky-note-edit-toggle'
 		});
+		const toggleLabel = isEditing ? t('immersive.done-editing-tooltip') : t('immersive.edit-note-tooltip');
+		setIcon(toggleBtn, isEditing ? 'eye' : 'pencil');
+		toggleBtn.setAttribute('aria-label', toggleLabel);
+
+		const closeBtn = actionsEl.createEl('button', {
+			cls: 'clickable-icon wn-sticky-note-card-action-btn webnovel-immersive-note-close'
+		});
+		setIcon(closeBtn, 'x');
+		const closeLabel = t('immersive.close-note-tooltip');
+		closeBtn.setAttribute('aria-label', closeLabel);
+		closeBtn.onclick = (e: MouseEvent) => {
+			e.stopPropagation();
+			this.closeNote(noteData);
+		};
+
+		if (isEditing) {
+			const displayContent = this.getDisplayContent(noteData.content || '');
+			const editor = createStickyNoteParagraphEditor(
+				noteCard,
+				displayContent,
+				'webnovel-immersive-note-textarea'
+			);
+			editor.setCssStyles({ fontSize });
+
+			const stopPropagation = (e: Event) => e.stopPropagation();
+			editor.addEventListener('keydown', stopPropagation);
+			editor.addEventListener('keyup', stopPropagation);
+			editor.addEventListener('keypress', stopPropagation);
+
+			editor.addEventListener('input', () => {
+				this.isSelfEditing = true;
+				try {
+					const latestNote = this.plugin.stickyNoteManager.getNotes().find(note => note.id === noteData.id) || noteData;
+					const frontmatter = this.getFrontmatter(latestNote.content || '');
+					latestNote.content = frontmatter + getStickyNoteEditorContent(editor);
+					this.plugin.stickyNoteManager.updateNote(latestNote, true);
+
+					if (this.plugin.settings.stickyNoteAutoSave) {
+						this.plugin.adaptiveDebounceManager.debounceFixed(`sticky-note-list-save-${latestNote.id}`, () => {
+							void this.plugin.stickyNoteManager.saveNotes(this.plugin.stickyNoteManager.getNotes());
+							this.lastSavedContents.set(latestNote.id, latestNote.content || '');
+							if (latestNote.filePath) {
+								const file = this.app.vault.getAbstractFileByPath(latestNote.filePath);
+								if (file instanceof TFile) void this.app.vault.process(file, () => latestNote.content || '');
+							}
+						}, 500);
+					}
+				} finally {
+					queueMicrotask(() => { this.isSelfEditing = false; });
+				}
+			});
+
+			toggleBtn.onclick = (e: MouseEvent) => {
+				e.stopPropagation();
+				void this.finishEditingNote(noteData.id, editor);
+			};
+		} else {
+			const contentEl = noteCard.createDiv({
+				cls: 'my-sticky-content markdown-rendered wn-sticky-note-reading-content'
+			});
+			contentEl.tabIndex = -1;
+			contentEl.setCssStyles({ fontSize });
+
+			const cardComponent = new Component();
+			this.cardComponents.set(noteData.id, cardComponent);
+			cardComponent.load();
+
+			const displayContent = this.getDisplayContent(noteData.content || '');
+			void MarkdownRenderer.render(
+				this.app,
+				displayContent,
+				contentEl,
+				noteData.filePath || '',
+				cardComponent
+			).then(() => {
+				if (!this.isDestroyed && contentEl.isConnected) {
+					injectSoftBreakIndentPlaceholders(contentEl, false);
+				}
+			}).catch(error => {
+				Logger.error('[StickyNoteListRenderer] 渲染 Markdown 失败:', error);
+			});
+
+			toggleBtn.onclick = (e: MouseEvent) => {
+				e.stopPropagation();
+				this.startEditingNote(noteData.id);
+			};
+		}
+
+		return noteCard;
+	}
+
+	private async syncNoteFromFile(noteId: string): Promise<void> {
+		try {
+			const note = this.plugin.stickyNoteManager.getNotes().find(item => item.id === noteId);
+			if (!note?.filePath) return;
+
+			const file = this.app.vault.getAbstractFileByPath(note.filePath);
+			if (!(file instanceof TFile)) return;
+
+			const content = await this.app.vault.read(file);
+			const latestNote = this.plugin.stickyNoteManager.getNotes().find(item => item.id === noteId);
+			if (!latestNote || latestNote.filePath !== file.path) return;
+
+			latestNote.content = content;
+			this.plugin.stickyNoteManager.updateNote(latestNote);
+			await this.plugin.stickyNoteManager.saveNotes(this.plugin.stickyNoteManager.getNotes());
+			this.lastSavedContents.set(noteId, content);
+
+			const dock = this.container.querySelector('.immersive-sticky-dock, .wn-sticky-note-list-grid');
+			const existingCard = dock?.querySelector<HTMLElement>(`[data-note-id="${noteId}"]`);
+			if (dock && existingCard) {
+				this.renderNoteCard(dock as HTMLElement, latestNote, existingCard);
+			} else {
+				this.render();
+			}
+
+			new Notice(t('modal.note-synced'));
+		} catch (error) {
+			Logger.error('[StickyNoteListRenderer] 从关联文档同步便签失败:', error);
+			new Notice(t('modal.save-failed', { error: String(error) }));
+		}
+	}
+
+	private startEditingNote(noteId: string): void {
+		const note = this.plugin.stickyNoteManager.getNotes().find(n => n.id === noteId);
+		if (!note) return;
+
+		this.editingNoteIds.add(noteId);
+
+		const dock = this.container.querySelector('.immersive-sticky-dock, .wn-sticky-note-list-grid');
+		if (!dock) {
+			this.render();
+			return;
+		}
+
+		const existingCard = dock.querySelector<HTMLElement>(`[data-note-id="${noteId}"]`);
+		if (existingCard) {
+			const newCard = this.renderNoteCard(dock as HTMLElement, note, existingCard);
+			const editor = newCard.querySelector<HTMLElement>('.wn-sticky-note-paragraph-editor');
+			if (editor) {
+				window.requestAnimationFrame(() => {
+					editor.focus();
+				});
+			}
+		} else {
+			this.render();
+		}
+	}
+
+	private async finishEditingNote(noteId: string, editor: HTMLElement): Promise<void> {
+		try {
+			const latestNote = this.plugin.stickyNoteManager.getNotes().find(n => n.id === noteId);
+			if (!latestNote) {
+				this.editingNoteIds.delete(noteId);
+				this.render();
+				return;
+			}
+
+			const frontmatter = this.getFrontmatter(latestNote.content || '');
+			const editorContent = getStickyNoteEditorContent(editor);
+			const fullContent = frontmatter + editorContent;
+
+			latestNote.content = fullContent;
+			this.plugin.stickyNoteManager.updateNote(latestNote);
+			await this.plugin.stickyNoteManager.saveNotes(this.plugin.stickyNoteManager.getNotes());
+			this.lastSavedContents.set(latestNote.id, fullContent);
+
+			if (latestNote.filePath) {
+				const file = this.app.vault.getAbstractFileByPath(latestNote.filePath);
+				if (file instanceof TFile) {
+					await this.app.vault.process(file, () => fullContent);
+				}
+			}
+
+			this.editingNoteIds.delete(noteId);
+
+			const dock = this.container.querySelector('.immersive-sticky-dock, .wn-sticky-note-list-grid');
+			if (!dock) {
+				this.render();
+				return;
+			}
+
+			const existingCard = dock.querySelector<HTMLElement>(`[data-note-id="${noteId}"]`);
+			if (existingCard) {
+				this.renderNoteCard(dock as HTMLElement, latestNote, existingCard);
+			} else {
+				this.render();
+			}
+		} catch (error) {
+			Logger.error('[StickyNoteListRenderer] 完成便签编辑保存失败:', error);
+			new Notice(t('modal.save-failed', { error: String(error) }));
+		}
 	}
 
 	private closeNote(noteData: StickyNoteState): void {
 		const latestNote = this.plugin.stickyNoteManager.getNotes().find(note => note.id === noteData.id) || noteData;
-		const currentContent = latestNote.content || '';
+		const isEditing = this.editingNoteIds.has(latestNote.id);
+		const dock = this.container.querySelector('.immersive-sticky-dock, .wn-sticky-note-list-grid');
+		const editor = dock?.querySelector<HTMLElement>(`[data-note-id="${latestNote.id}"] .wn-sticky-note-paragraph-editor`);
+
+		let currentContent = latestNote.content || '';
+		if (isEditing && editor) {
+			const frontmatter = this.getFrontmatter(latestNote.content || '');
+			currentContent = frontmatter + getStickyNoteEditorContent(editor);
+			latestNote.content = currentContent;
+		}
+
 		const lastSaved = this.lastSavedContents.get(latestNote.id) || '';
 		const shouldPrompt = (!latestNote.filePath && currentContent.trim().length > 0)
 			|| (!!latestNote.filePath && currentContent !== lastSaved);
 
 		const performRemove = async () => {
+			this.cardComponents.get(latestNote.id)?.unload();
+			this.cardComponents.delete(latestNote.id);
+			this.editingNoteIds.delete(latestNote.id);
 			await this.plugin.stickyNoteManager.removeNoteAndWait(latestNote.id);
 			this.lastSavedContents.delete(latestNote.id);
 			this.render();

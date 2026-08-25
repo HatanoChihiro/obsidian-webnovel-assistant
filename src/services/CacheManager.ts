@@ -8,6 +8,7 @@ import { getPluginDir, isMobile } from '../utils/platform';
 import { isExcludedFromWordCount } from '../utils/validation';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { JsonSnapshotStore } from '../utils/JsonSnapshotStore';
+import { Logger } from '../utils/Logger';
 
 const CACHE_VERSION = 3;
 
@@ -221,7 +222,7 @@ export class CacheManager {
 
 			// 保存缓存到持久化存储
 			await this.saveCache();
-			console.debug(`[CacheManager] 初始缓存构建完成，用时 ${Date.now() - startTime}ms`);
+			Logger.info(`[CacheManager] 初始缓存构建完成，用时 ${Date.now() - startTime}ms`);
 		} catch (error) {
 			console.error('[CacheManager] 缓存构建失败:', error);
 			throw error;
@@ -404,11 +405,13 @@ export class CacheManager {
 	}
 
 	private _loreCandidatesCache: Set<string> | null = null;
+	private _dictPathsCache: Set<string> | null = null;
 	private _normalizedWorkspaceFolders: string[] | null = null;
 	private _normalizedStrictExceptions: string[] | null = null;
 
 	resetLoreCache(): void {
 		this._loreCandidatesCache = null;
+		this._dictPathsCache = null;
 		this._normalizedWorkspaceFolders = null;
 		this._normalizedStrictExceptions = null;
 	}
@@ -485,11 +488,44 @@ export class CacheManager {
 			}
 		}
 
+		if (
+			this.isFileInProofreadingDictionary(file) &&
+			!ChapterSorter.isChapterFile(file.name)
+		) {
+			return false;
+		}
+
 		if (this.plugin.settings.enableStrictChapterMode) {
 			return ChapterSorter.isChapterFile(file.name) || this.isFileInStrictChapterException(file);
 		}
 
 		return true;
+	}
+
+	private isFileInProofreadingDictionary(file: TFile): boolean {
+		if (!this._dictPathsCache) {
+			this._dictPathsCache = new Set<string>(['校对词典', 'Proofreading Dictionaries']);
+			const rawDictPath = this.plugin.settings.proofreading?.dictionaryPath?.replace(/^\/+|\/+$/g, '');
+			if (rawDictPath) this._dictPathsCache.add(rawDictPath);
+		}
+
+		const lastSlash = file.path.lastIndexOf('/');
+		if (lastSlash === -1) return false;
+		const parentPath = file.path.slice(0, lastSlash);
+		const parentSegments = parentPath.split('/');
+
+		for (const dictionaryPath of this._dictPathsCache) {
+			if (!dictionaryPath) continue;
+			if (dictionaryPath.includes('/')) {
+				if (parentPath === dictionaryPath || parentPath.startsWith(`${dictionaryPath}/`)) {
+					return true;
+				}
+			} else if (parentSegments.includes(dictionaryPath)) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	isEligibleForWordCount(file: TFile): boolean {

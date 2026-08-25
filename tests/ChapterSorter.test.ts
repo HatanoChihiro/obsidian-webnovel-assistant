@@ -141,6 +141,29 @@ describe('ChapterSorter', () => {
 			ChapterSorter.setCustomRules([]);
 		});
 
+		it('专用规则位于默认规则下方时，优先采用匹配更完整的编号结构', () => {
+			const defaultPattern = '^(?:第([零一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]+)[章节回卷部册篇]?|第?([零一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]+)[章节回卷部册篇])';
+			const customPattern = '^(?:第([零一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]+)[集幕折]?|第?([零一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]+)[集幕折])';
+			ChapterSorter.setCustomRules([
+				{ name: '默认中文数字', pattern: defaultPattern, enabled: true },
+				{ name: '集幕折格式', pattern: customPattern, enabled: true }
+			]);
+
+			const result = ChapterSorter.extractChapterNumber('第一折 引子.md');
+			expect(result).toMatchObject({
+				number: 1,
+				ruleIndex: 1,
+				rulePattern: customPattern
+			});
+			expect(ChapterSorter.extractChapterNumber('第一章 正文.md')).toMatchObject({
+				number: 1,
+				ruleIndex: 0,
+				rulePattern: defaultPattern
+			});
+
+			ChapterSorter.setCustomRules([]);
+		});
+
 		it('过长正则被过滤（回退到默认规则）', () => {
 			const longPattern = 'a'.repeat(201);
 			ChapterSorter.setCustomRules([
@@ -227,6 +250,29 @@ describe('ChapterSorter', () => {
 			]);
 			const result = ChapterSorter.getNextChapterName('第一集', []);
 			expect(result).toBe('第二集.md');
+			ChapterSorter.setCustomRules([]);
+		});
+
+		it('专用规则位于默认规则下方时仍保留其任意单位和标题分隔空格', () => {
+			ChapterSorter.setCustomRules([
+				{ name: '默认中文数字', pattern: '^(?:第([零一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]+)[章节回卷部册篇]?|第?([零一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]+)[章节回卷部册篇])', enabled: true },
+				{ name: '集幕折格式', pattern: '^(?:第([零一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]+)[集幕折]?|第?([零一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]+)[集幕折])', enabled: true }
+			]);
+
+			const result = ChapterSorter.getNextChapterName('第一折 引子', []);
+			expect(result).toBe('第二折 .md');
+
+			ChapterSorter.setCustomRules([]);
+		});
+
+		it('自定义规则完整匹配标题时保留分隔符但不继承标题', () => {
+			ChapterSorter.setCustomRules([
+				{ name: '折加标题格式', pattern: '^第([零一二三四五六七八九十]+)折(?:：.*)?$', enabled: true }
+			]);
+
+			const result = ChapterSorter.getNextChapterName('第一折：引子', []);
+			expect(result).toBe('第二折：.md');
+
 			ChapterSorter.setCustomRules([]);
 		});
 

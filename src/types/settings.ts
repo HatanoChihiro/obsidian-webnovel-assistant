@@ -6,11 +6,14 @@
 import type { ForeshadowingSettings } from './foreshadowing';
 import type { TaskSettings } from './task';
 import type { NovelInfoSettings } from './homepage';
+import type { ProofreadingSettings } from './proofreading';
 
 /** 排版功能相关设置 */
 export interface TypographySettings {
 	/** 排版功能总开关 */
 	enabled: boolean;
+	/** 是否全库生效（对所有普通文档生效，不受工作区限制；功能文档与卡片保持独立控制） */
+	enableGlobal?: boolean;
 	/** 是否对章节文档生效 */
 	applyToChapters: boolean;
 	/** 是否对设定文档生效 */
@@ -25,6 +28,8 @@ export interface TypographySettings {
 	applyToTask: boolean;
 	/** 是否对其他文档（工作区内非章节和非功能性的文档）生效 */
 	applyToOther: boolean;
+	/** 是否对卡片正文（便签、设定卡片、章节卡片、时间线事件卡片）应用首行缩进 */
+	applyToCards: boolean;
 	/** 标题对齐方式 */
 	headerAlignment: 'left' | 'center' | 'right';
 	/** 是否由插件接管正文文字大小 */
@@ -276,6 +281,12 @@ export interface AccurateCountSettings {
 	/** 下一个新建便签的主题索引（用于颜色轮换） */
 	nextNoteThemeIndex: number;
 
+	/** 历史数据 (仅持久化时存在，不包含在默认设置中) */
+	historyData?: Record<string, DailyStat>;
+
+	/** 便签数据 (仅持久化时存在，不包含在默认设置中) */
+	notesData?: StickyNoteState[];
+
 	// === 嵌套子设置 ===
 	/** 沉浸模式设置 */
 	immersive: ImmersiveModeSettings;
@@ -341,6 +352,8 @@ export interface AccurateCountSettings {
 
 	/** 沉浸模式布局快照（JSON 字符串），用于异常退出后恢复 */
 	_savedImmersiveLayout?: string | null;
+	/** 校对功能设置 */
+	proofreading: ProofreadingSettings;
 }
 
 export type WebNovelAssistantSettings = AccurateCountSettings;

@@ -1,5 +1,6 @@
 import { setIcon, type App, type TFile } from 'obsidian';
 import type { ParsedForeshadowingEntry } from '../../types/foreshadowing';
+import { getFileVolumePath } from '../../utils/chapterDisplayOrder';
 import { ChapterCard, type ChapterCardPlugin } from './ChapterCard';
 
 export type CorkboardGridPlugin = ChapterCardPlugin;
@@ -27,16 +28,7 @@ export class CorkboardGridRenderer {
 		const volumeGroups: Array<{ volume: string; files: TFile[] }> = [];
 
 		for (const file of files) {
-			let currentVolume = '';
-			if (currentBookPath && currentBookPath !== '/') {
-				if (file.parent && file.parent.path !== currentBookPath) {
-					currentVolume = file.parent.path.substring(currentBookPath.length + 1);
-				}
-			} else {
-				if (file.parent && file.parent.path !== '/') {
-					currentVolume = file.parent.path;
-				}
-			}
+			const currentVolume = getFileVolumePath(file, currentBookPath);
 
 			let group = volumeGroups.find(g => g.volume === currentVolume);
 			if (!group) {

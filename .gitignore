@@ -26,6 +26,9 @@ desktop.ini
 *.bak
 *.tmp
 
+# 运行时按需下载词典（公开源位于 dictionary 分支）
+/dict/
+
 # 临时文件
 *.jpg
 *.png

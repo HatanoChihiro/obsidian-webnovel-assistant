@@ -625,10 +625,14 @@ export class LoreBoardRenderer {
         }));
 
         let isFirstValidResize = true;
+        let lastWidth = initialWidth;
+        let lastHeight = initialHeight;
 
         const resizeCanvas = () => {
             const rect = graphWrapper.getBoundingClientRect();
             if (rect.width === 0 || rect.height === 0) return;
+            if (!isFirstValidResize && rect.width === lastWidth && rect.height === lastHeight) return;
+
             const DPR = window.devicePixelRatio || 1;
             canvas.width = rect.width * DPR;
             canvas.height = rect.height * DPR;
@@ -644,9 +648,37 @@ export class LoreBoardRenderer {
                         node.y += dy;
                     });
                 }
+                lastWidth = rect.width;
+                lastHeight = rect.height;
+                engine.resize(rect.width, rect.height);
+                if (engine.isConverged) {
+                    engine.reset();
+                    startAnimationLoop(false);
+                }
+                requestRender();
+                return;
+            }
+
+            // 容器尺寸发生实质变化（例如双击词条分屏打开文档后工作台宽度减半）
+            const dx = (rect.width - lastWidth) / 2;
+            const dy = (rect.height - lastHeight) / 2;
+            lastWidth = rect.width;
+            lastHeight = rect.height;
+
+            if (dx !== 0 || dy !== 0) {
+                data.nodes.forEach(node => {
+                    node.x += dx;
+                    node.y += dy;
+                });
             }
 
             engine.resize(rect.width, rect.height);
+
+            const viewport = GraphRenderer.calculateProtagonistViewport(rect.width, rect.height, data.nodes);
+            state.scale = viewport.scale;
+            state.panX = viewport.panX;
+            state.panY = viewport.panY;
+
             if (engine.isConverged) {
                 engine.reset();
                 startAnimationLoop(false);

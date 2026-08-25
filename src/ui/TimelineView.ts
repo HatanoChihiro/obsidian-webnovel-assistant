@@ -344,12 +344,13 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 			const itemEl = content.createDiv({ cls: 'wn-timeline-list-item' });
 			if (it.description) {
 				const descEl = itemEl.createDiv({ cls: 'wn-timeline-desc' });
+				const descTextEl = descEl.createSpan({ cls: 'wn-timeline-desc-text' });
 				// 支持多行描述：将换行符转换为 <br> 标签
 				const lines = it.description.split('\n');
 				lines.forEach((line, index) => {
-					descEl.appendText(line);
+					descTextEl.appendText(line);
 					if (index < lines.length - 1) {
-						descEl.createEl('br');
+						descTextEl.createEl('br');
 					}
 				});
 			}

@@ -3,33 +3,43 @@
  * 仅提供测试所需的类型桩，避免测试依赖完整的 Obsidian 运行环境
  */
 
-export class TFile {
-	name: string;
-	path: string;
-	extension: string = 'md';
+const mockWindow = {
+	setTimeout: (handler: () => void, timeout?: number) => setTimeout(handler, timeout),
+	clearTimeout: (id: ReturnType<typeof setTimeout>) => clearTimeout(id)
+};
 
-	constructor(name: string, path: string) {
+Object.assign(globalThis, { window: mockWindow });
+
+export class TFile {
+	name: string = '';
+	path: string = '';
+	extension: string = 'md';
+	basename: string = '';
+
+	constructor(name: string = '', path: string = '') {
 		this.name = name;
 		this.path = path;
+		this.basename = name ? name.replace(/\.[^/.]+$/, '') : '';
+		this.extension = name && name.includes('.') ? name.split('.').pop() || 'md' : 'md';
 	}
 }
 
 export class TFolder {
-	name: string;
-	path: string;
+	name: string = '';
+	path: string = '';
 	children: (TFile | TFolder)[] = [];
 
-	constructor(name: string, path: string) {
+	constructor(name: string = '', path: string = '') {
 		this.name = name;
 		this.path = path;
 	}
 }
 
 export class TAbstractFile {
-	name: string;
-	path: string;
+	name: string = '';
+	path: string = '';
 
-	constructor(name: string, path: string) {
+	constructor(name: string = '', path: string = '') {
 		this.name = name;
 		this.path = path;
 	}
@@ -175,4 +185,14 @@ export class WorkspaceLeaf {
 	getViewState(): any {
 		return {};
 	}
+}
+
+export async function requestUrl(_params: unknown): Promise<{
+	status: number;
+	headers: Record<string, string>;
+	arrayBuffer: ArrayBuffer;
+	text: string;
+	json: unknown;
+}> {
+	return { status: 200, headers: {}, arrayBuffer: new ArrayBuffer(0), text: '', json: {} };
 }

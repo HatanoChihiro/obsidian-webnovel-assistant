@@ -416,10 +416,14 @@ export class TimelineBoardRenderer {
 
 					// Description box
 					let descEl: HTMLElement;
+					const hasDesc = Boolean(items[itemIdx].description && items[itemIdx].description.trim().length > 0);
 					if (itemIdx === 0 || items[itemIdx].description) {
-						descEl = itemRow.createDiv({ text: items[itemIdx].description || t('modal.describe-event-placeholder'), cls: 'wn-timeline-item-desc' });
+						descEl = itemRow.createDiv({
+							text: items[itemIdx].description || t('modal.describe-event-placeholder'),
+							cls: hasDesc ? 'wn-timeline-item-desc' : 'wn-timeline-item-desc is-empty'
+						});
 					} else {
-						descEl = itemRow.createDiv({ text: '', cls: 'wn-timeline-item-desc' });
+						descEl = itemRow.createDiv({ text: '', cls: 'wn-timeline-item-desc is-empty' });
 					}
 
 					// Delete button (内嵌在描述框内部，随描述框自适应宽度移动)

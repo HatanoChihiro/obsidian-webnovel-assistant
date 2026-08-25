@@ -27,6 +27,7 @@ export class TypographyManager {
 		for (const element of this.previewElements) {
 			this.applyTypographyToEl(element);
 		}
+		this.updateCardTypography();
 	}
 
 	/**
@@ -89,8 +90,9 @@ export class TypographyManager {
 			return false;
 		}
 
-		// 2. 工作区校验：非工作区文档，绝对不应用排版控制
-		if (this.plugin.cacheManager && !this.plugin.cacheManager.isFileInWorkspace(file)) {
+		// 2. 全库开关未开启时，非工作区文档绝对不应用排版控制
+		const isGlobal = Boolean(typo.enableGlobal);
+		if (!isGlobal && this.plugin.cacheManager && !this.plugin.cacheManager.isFileInWorkspace(file)) {
 			return false;
 		}
 
@@ -98,12 +100,6 @@ export class TypographyManager {
 		const homepagePath = settings.homepagePath || '创作主页.md';
 		if (file.path === homepagePath || file.name === '创作主页.md') {
 			return false;
-		}
-
-		// 3. 判定是否为章节文档
-		const isChapter = ChapterSorter.isChapterFile(file.name);
-		if (isChapter) {
-			return typo.applyToChapters;
 		}
 
 		// 4. 判定功能性文档：设定（递归向上冒泡检查父级文件夹）
@@ -161,7 +157,18 @@ export class TypographyManager {
 			}
 		}
 
-		// 9. 判定其他文档（工作区内非章节和非功能性的文档，比如合并章节、大纲等未被计入章节规则的文件）
+		// 9. 若开启了全库生效 (enableGlobal)，所有普通文档（无论是否在工作区）均应用排版
+		if (isGlobal) {
+			return true;
+		}
+
+		// 10. 非全库生效且在工作区内：判定是否为章节文档
+		const isChapter = ChapterSorter.isChapterFile(file.name);
+		if (isChapter) {
+			return typo.applyToChapters;
+		}
+
+		// 11. 非全库生效且在工作区内：判定其他文档（工作区内非章节和非功能性的文档，比如合并章节、大纲等未被计入章节规则的文件）
 		return typo.applyToOther ?? false;
 	}
 
@@ -246,5 +253,72 @@ export class TypographyManager {
 		el.style.removeProperty('--wn-type-max-width');
 		el.style.removeProperty('--file-line-width');
 		el.style.removeProperty('--line-width');
+	}
+
+	/**
+	 * 获取所有当前打开的工作区窗口的 Document 实例（适配多窗口）
+	 */
+	private getAllDocuments(): Set<Document> {
+		const docs = new Set<Document>();
+		const mainDoc = this.app?.workspace?.containerEl?.ownerDocument || (typeof activeDocument !== 'undefined' ? activeDocument : null);
+		if (mainDoc) docs.add(mainDoc);
+		if (this.app?.workspace?.iterateAllLeaves) {
+			this.app.workspace.iterateAllLeaves(leaf => {
+				const doc = leaf.containerEl?.ownerDocument;
+				if (doc) docs.add(doc);
+			});
+		}
+		if (typeof activeDocument !== 'undefined' && activeDocument) {
+			docs.add(activeDocument);
+		}
+		for (const element of this.previewElements) {
+			const ownerDocument = element.ownerDocument;
+			if (ownerDocument) docs.add(ownerDocument);
+		}
+		return docs;
+	}
+
+	/**
+	 * 刷新所有活动窗口文档的卡片首行缩进排版样式
+	 */
+	updateCardTypography(): void {
+		const typo = this.plugin.settings?.typography;
+		const isCardIndentActive = Boolean(typo && typo.enabled && typo.applyToCards && typo.enableIndent);
+		const isCardReadingCompatActive = Boolean(isCardIndentActive && typo?.enableReadingModeCompat);
+		const indentSize = (typo && typo.indentSize) ? typo.indentSize : '2em';
+
+		const docs = this.getAllDocuments();
+		for (const doc of docs) {
+			if (!doc.body) continue;
+			if (isCardIndentActive) {
+				doc.body.addClass('wn-card-indent-active');
+				doc.body.style.setProperty('--wn-card-indent', indentSize);
+			} else {
+				doc.body.removeClass('wn-card-indent-active');
+				doc.body.style.removeProperty('--wn-card-indent');
+			}
+			if (isCardReadingCompatActive) {
+				doc.body.addClass('wn-card-reading-compat-active');
+			} else {
+				doc.body.removeClass('wn-card-reading-compat-active');
+			}
+		}
+	}
+
+	/**
+	 * 销毁并清理所有注入的全局类与变量
+	 */
+	destroy(): void {
+		const docs = this.getAllDocuments();
+		for (const doc of docs) {
+			if (!doc.body) continue;
+			doc.body.removeClass('wn-card-indent-active');
+			doc.body.removeClass('wn-card-reading-compat-active');
+			doc.body.style.removeProperty('--wn-card-indent');
+		}
+		for (const element of this.previewElements) {
+			this.removeTypographyFromEl(element);
+		}
+		this.previewElements.clear();
 	}
 }

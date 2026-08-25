@@ -1,6 +1,55 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { LoreCardRenderer } from '../src/ui/components/LoreCardRenderer';
 import { MarkdownRenderer, Component } from 'obsidian';
+import { injectSoftBreakIndentPlaceholders } from '../src/utils/softBreakIndent';
+
+let animationFrameCallbacks: FrameRequestCallback[] = [];
+let resizeObservers: MockResizeObserver[] = [];
+
+class MockResizeObserver {
+	private readonly callback: ResizeObserverCallback;
+	disconnect = vi.fn();
+
+	constructor(callback: ResizeObserverCallback) {
+		this.callback = callback;
+		resizeObservers.push(this);
+	}
+
+	observe = vi.fn();
+
+	trigger(): void {
+		this.callback([], this as unknown as ResizeObserver);
+	}
+}
+
+const mockOwnerWindow = {
+	requestAnimationFrame: vi.fn((callback: FrameRequestCallback) => {
+		animationFrameCallbacks.push(callback);
+		return animationFrameCallbacks.length;
+	}),
+	cancelAnimationFrame: vi.fn(),
+	getComputedStyle: vi.fn(() => ({
+		paddingLeft: '0',
+		paddingRight: '0',
+		columnGap: '6px',
+		gap: '6px'
+	})),
+	ResizeObserver: MockResizeObserver
+};
+
+function flushAnimationFrames(): void {
+	const callbacks = animationFrameCallbacks;
+	animationFrameCallbacks = [];
+	for (const callback of callbacks) callback(0);
+}
+
+function createMockComponent(): Component {
+	return { register: vi.fn() } as unknown as Component;
+}
+
+vi.mock('../src/utils/softBreakIndent', () => ({
+	injectSoftBreakIndentPlaceholders: vi.fn()
+}));
 
 vi.mock('obsidian', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('obsidian')>();
@@ -25,8 +74,15 @@ function createMockEl(tag = 'div', cls = ''): any {
 		textContent: '',
 		attributes: new Map<string, string>(),
 		style: {},
+		hidden: false,
+		title: '',
+		clientWidth: 0,
+		mockWidth: undefined as number | undefined,
+		isConnected: true,
+		ownerDocument: { defaultView: mockOwnerWindow },
 		scrollTop: 0,
 		scrollHeight: 100,
+		getBoundingClientRect: () => ({ width: el.mockWidth ?? el.textContent.length * 10 + 12 }),
 		createDiv: (opts?: any) => {
 			const child = createMockEl('div', typeof opts === 'string' ? opts : opts?.cls || '');
 			if (opts?.text) child.textContent = opts.text;
@@ -97,7 +153,7 @@ function createMockEl(tag = 'div', cls = ''): any {
 		addEventListener: vi.fn(),
 		removeEventListener: vi.fn(),
 		setCssStyles: vi.fn(),
-		remove: () => {},
+		remove: () => { el.isConnected = false; },
 		empty: () => { el.children = []; }
 	};
 	return el;
@@ -109,6 +165,9 @@ describe('LoreCardRenderer', () => {
 	let container: any;
 
 	beforeEach(() => {
+		animationFrameCallbacks = [];
+		resizeObservers = [];
+		vi.clearAllMocks();
 		container = createMockEl('div', 'test-container');
 		mockApp = {
 			vault: {
@@ -132,6 +191,61 @@ describe('LoreCardRenderer', () => {
 		};
 	});
 
+	it('should replace only fully hidden aliases with a +n badge and restore them after resize', async () => {
+		const mockFile = { basename: '人物', path: '设定/人物.md' };
+		const entry = { file: mockFile as any, heading: '女主角' };
+		mockApp.vault.cachedRead.mockResolvedValue('## 女主角\n**别名**：小美、月儿、阿雪');
+		mockApp.metadataCache.getFileCache.mockReturnValue({
+			headings: [{ heading: '女主角', level: 2, position: { start: { line: 0 }, end: { line: 0 } } }]
+		});
+
+		await LoreCardRenderer.buildCardDOM(container, entry, mockPlugin, createMockComponent());
+		const badgesContainer = container.querySelector('.wn-lore-card-badges');
+		const aliasBadges = Array.from(badgesContainer.querySelectorAll('.wn-lore-card-badge')) as any[];
+		const overflowBadge = badgesContainer.querySelector('.wn-lore-card-overflow-badge');
+		aliasBadges.forEach(badge => { badge.mockWidth = 30; });
+		badgesContainer.clientWidth = 70;
+		resizeObservers[0].trigger();
+		flushAnimationFrames();
+
+		expect(aliasBadges.map(badge => badge.hidden)).toEqual([false, true, true]);
+		expect(overflowBadge.hidden).toBe(false);
+		expect(overflowBadge.textContent).toBe('+2');
+
+		badgesContainer.clientWidth = 104;
+		resizeObservers[0].trigger();
+		flushAnimationFrames();
+		expect(aliasBadges.map(badge => badge.hidden)).toEqual([false, false, false]);
+		expect(overflowBadge.hidden).toBe(true);
+	});
+
+	it('should truncate a single overlong alias instead of replacing it with +1', async () => {
+		const mockFile = { basename: '人物', path: '设定/人物.md' };
+		const entry = { file: mockFile as any, heading: '女主角' };
+		mockApp.vault.cachedRead.mockResolvedValue('## 女主角\n**别名**：非常非常长的别名');
+		mockApp.metadataCache.getFileCache.mockReturnValue({
+			headings: [{ heading: '女主角', level: 2, position: { start: { line: 0 }, end: { line: 0 } } }]
+		});
+
+		await LoreCardRenderer.buildCardDOM(container, entry, mockPlugin, createMockComponent());
+		const badgesContainer = container.querySelector('.wn-lore-card-badges');
+		const aliasBadge = badgesContainer.querySelector('.wn-lore-card-badge');
+		const overflowBadge = badgesContainer.querySelector('.wn-lore-card-overflow-badge');
+		aliasBadge.mockWidth = 160;
+		badgesContainer.clientWidth = 0;
+		resizeObservers[0].trigger();
+		flushAnimationFrames();
+		expect(badgesContainer.hidden).toBe(true);
+
+		badgesContainer.clientWidth = 32;
+		resizeObservers[0].trigger();
+		flushAnimationFrames();
+		expect(badgesContainer.hidden).toBe(false);
+		expect(aliasBadge.hidden).toBe(false);
+		expect(aliasBadge.hasClass('is-truncated')).toBe(true);
+		expect(overflowBadge.hidden).toBe(true);
+	});
+
 	it('should render outline lore entry correctly (with H2 headings)', async () => {
 		const mockFile = { basename: '人物', path: '设定/人物.md' };
 		const entry = { file: mockFile as any, heading: '女主角' };
@@ -153,7 +267,7 @@ describe('LoreCardRenderer', () => {
 			]
 		});
 
-		await LoreCardRenderer.buildCardDOM(container, entry, mockPlugin, new Component());
+		await LoreCardRenderer.buildCardDOM(container, entry, mockPlugin, createMockComponent());
 
 		const card = container.querySelector('.wn-lore-card');
 		expect(card).not.toBeNull();
@@ -200,7 +314,7 @@ type: 主要角色
 			}
 		});
 
-		await LoreCardRenderer.buildCardDOM(container, entry, mockPlugin, new Component());
+		await LoreCardRenderer.buildCardDOM(container, entry, mockPlugin, createMockComponent());
 
 		const card = container.querySelector('.wn-lore-card');
 		expect(card).not.toBeNull();
@@ -229,5 +343,20 @@ type: 主要角色
 			'设定/角色/女主角.md',
 			expect.anything()
 		);
+	});
+
+	it('should call injectSoftBreakIndentPlaceholders on the markdown container with false after rendering', async () => {
+		const mockFile = { basename: '人物', path: '设定/人物.md' };
+		const entry = { file: mockFile as unknown as import('obsidian').TFile, heading: '女主角' };
+		mockApp.vault.cachedRead.mockResolvedValue('## 女主角\n第一行描述\n第二行描述');
+		mockApp.metadataCache.getFileCache.mockReturnValue({
+			headings: [{ heading: '女主角', level: 2, position: { start: { line: 0 }, end: { line: 0 } } }]
+		});
+
+		await LoreCardRenderer.buildCardDOM(container, entry, mockPlugin, createMockComponent());
+
+		const markdownContainer = container.querySelector('.wn-lore-markdown');
+		expect(markdownContainer).not.toBeNull();
+		expect(injectSoftBreakIndentPlaceholders).toHaveBeenCalledWith(markdownContainer, false);
 	});
 });

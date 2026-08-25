@@ -4,6 +4,7 @@ import type { AccurateCountSettings } from '../../types/settings';
 import type { CharacterManager, LoreEntry } from '../../services/CharacterManager';
 import { cleanLoreHeading } from '../../services/CharacterManager';
 import { smartLocateAndHighlight } from '../../utils/leaf';
+import { injectSoftBreakIndentPlaceholders } from '../../utils/softBreakIndent';
 
 export interface LoreCardRendererPlugin {
 	app: App;
@@ -12,6 +13,113 @@ export interface LoreCardRendererPlugin {
 }
 
 export class LoreCardRenderer {
+	private static readonly aliasBadgeCleanups = new WeakMap<HTMLElement, () => void>();
+
+	private static renderAliasBadges(header: HTMLElement, aliases: string[], component: Component): void {
+		LoreCardRenderer.aliasBadgeCleanups.get(header)?.();
+		header.querySelector('.wn-lore-card-badges')?.remove();
+
+		if (aliases.length === 0) return;
+
+		const badgesContainer = header.createDiv({ cls: 'wn-lore-card-badges is-measuring' });
+		const aliasBadges = aliases.map(alias =>
+			badgesContainer.createSpan({ cls: 'wn-lore-card-badge', text: alias })
+		);
+		const overflowBadge = badgesContainer.createSpan({ cls: 'wn-lore-card-overflow-badge' });
+		const ownerWindow = header.ownerDocument?.defaultView ?? null;
+		let animationFrameId: number | null = null;
+		let resizeObserver: ResizeObserver | null = null;
+		let isCleanedUp = false;
+
+		const layoutBadges = () => {
+			animationFrameId = null;
+			if (!badgesContainer.isConnected) return;
+
+			badgesContainer.hidden = false;
+			badgesContainer.addClass('is-measuring');
+			for (const badge of aliasBadges) {
+				badge.hidden = false;
+				badge.removeClass('is-truncated');
+			}
+			overflowBadge.hidden = false;
+
+			const style = ownerWindow?.getComputedStyle(badgesContainer);
+			const paddingLeft = Math.ceil(Number.parseFloat(style?.paddingLeft ?? '0'));
+			const paddingRight = Math.ceil(Number.parseFloat(style?.paddingRight ?? '0'));
+			const gap = Math.ceil(Number.parseFloat(style?.columnGap || style?.gap || '0'));
+			const availableWidth = Math.max(0, Math.floor(badgesContainer.clientWidth) - paddingLeft - paddingRight);
+			const badgeWidths = aliasBadges.map(badge => Math.ceil(badge.getBoundingClientRect().width));
+			const prefixWidths = [0];
+			for (const width of badgeWidths) {
+				prefixWidths.push(prefixWidths[prefixWidths.length - 1] + width);
+			}
+
+			const allAliasesWidth = prefixWidths[aliases.length] + gap * Math.max(0, aliases.length - 1);
+			let visibleCount = -1;
+			if (allAliasesWidth <= availableWidth) {
+				visibleCount = aliases.length;
+				overflowBadge.hidden = true;
+			} else if (aliases.length === 1 && availableWidth > 0) {
+				visibleCount = 1;
+				aliasBadges[0].addClass('is-truncated');
+				overflowBadge.hidden = true;
+			} else {
+				for (let count = aliases.length - 1; count >= 0; count--) {
+					const hiddenCount = aliases.length - count;
+					overflowBadge.setText(`+${hiddenCount}`);
+					const overflowWidth = Math.ceil(overflowBadge.getBoundingClientRect().width);
+					const aliasesWidth = prefixWidths[count] + gap * Math.max(0, count - 1);
+					const totalWidth = aliasesWidth + (count > 0 ? gap : 0) + overflowWidth;
+					if (totalWidth <= availableWidth) {
+						visibleCount = count;
+						overflowBadge.title = aliases.slice(count).join('、');
+						break;
+					}
+				}
+			}
+
+			for (let index = 0; index < aliasBadges.length; index++) {
+				aliasBadges[index].hidden = index >= Math.max(0, visibleCount);
+			}
+			if (visibleCount < 0) {
+				overflowBadge.hidden = true;
+				badgesContainer.hidden = true;
+			}
+			badgesContainer.removeClass('is-measuring');
+		};
+
+		const scheduleLayout = () => {
+			if (isCleanedUp || animationFrameId !== null) return;
+			if (ownerWindow) {
+				animationFrameId = ownerWindow.requestAnimationFrame(layoutBadges);
+			} else {
+				layoutBadges();
+			}
+		};
+
+		if (ownerWindow?.ResizeObserver) {
+			resizeObserver = new ownerWindow.ResizeObserver(scheduleLayout);
+			resizeObserver.observe(header);
+		}
+		scheduleLayout();
+
+		const cleanup = () => {
+			if (isCleanedUp) return;
+			isCleanedUp = true;
+			if (animationFrameId !== null && ownerWindow) {
+				ownerWindow.cancelAnimationFrame(animationFrameId);
+				animationFrameId = null;
+			}
+			resizeObserver?.disconnect();
+			resizeObserver = null;
+			if (LoreCardRenderer.aliasBadgeCleanups.get(header) === cleanup) {
+				LoreCardRenderer.aliasBadgeCleanups.delete(header);
+			}
+		};
+		LoreCardRenderer.aliasBadgeCleanups.set(header, cleanup);
+		component.register(cleanup);
+	}
+
 	static async buildCardDOM(
 		container: HTMLElement,
 		entry: LoreEntry,
@@ -269,19 +377,12 @@ export class LoreCardRenderer {
 
 			loadingEl.remove();
 
-			if (aliases.length > 0) {
-				const existingBadges = header.querySelector('.wn-lore-card-badges');
-				if (existingBadges) existingBadges.remove();
-				
-				const badgesContainer = header.createDiv({ cls: 'wn-lore-card-badges' });
-				for (const alias of aliases) {
-					badgesContainer.createSpan({ cls: 'wn-lore-card-badge', text: alias });
-				}
-			}
+			LoreCardRenderer.renderAliasBadges(header, aliases, component);
 
 			if (chunkToRender) {
 				const markdownContainer = body.createDiv({ cls: 'wn-lore-markdown' });
 				await MarkdownRenderer.render(plugin.app, chunkToRender, markdownContainer, entry.file.path, component);
+				injectSoftBreakIndentPlaceholders(markdownContainer, false);
 
 				if (plugin.settings.lorePopoverCollapse) {
 					const headingEls = Array.from(markdownContainer.querySelectorAll<HTMLElement>('h3, h4, h5, h6'));

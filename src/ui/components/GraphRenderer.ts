@@ -271,6 +271,88 @@ export class GraphRenderer {
 		ctx.restore();
 	}
 
+	/**
+	 * 计算适配容器尺寸并以主角（或图谱中心）为视觉中心的视口变换 (scale, panX, panY)
+	 */
+	static calculateProtagonistViewport(
+		width: number,
+		height: number,
+		nodes: ReadonlyArray<GraphNode>,
+		options?: { padding?: number }
+	): { scale: number; panX: number; panY: number } {
+		const nodeCount = nodes.length;
+		if (nodeCount === 0 || width <= 0 || height <= 0) {
+			return { scale: 1.0, panX: 0, panY: 0 };
+		}
+
+		let baseScale = 1.0;
+		if (nodeCount <= 6) {
+			baseScale = 2.2;
+		} else if (nodeCount <= 12) {
+			baseScale = 1.6;
+		} else if (nodeCount <= 25) {
+			baseScale = 1.2;
+		}
+
+		const protagonist = nodes.find(n =>
+			n.isProtagonist || Boolean(n.nodeType && (n.nodeType.includes('主角') || n.nodeType.toLowerCase().includes('protagonist')))
+		);
+
+		let targetCenterX = width / 2;
+		let targetCenterY = height / 2;
+
+		if (protagonist) {
+			targetCenterX = protagonist.x;
+			targetCenterY = protagonist.y;
+		} else {
+			let minX = Infinity;
+			let minY = Infinity;
+			let maxX = -Infinity;
+			let maxY = -Infinity;
+			for (const node of nodes) {
+				if (node.x < minX) minX = node.x;
+				if (node.y < minY) minY = node.y;
+				if (node.x > maxX) maxX = node.x;
+				if (node.y > maxY) maxY = node.y;
+			}
+			if (minX !== Infinity && maxX !== -Infinity) {
+				targetCenterX = (minX + maxX) / 2;
+				targetCenterY = (minY + maxY) / 2;
+			}
+		}
+
+		let maxDistX = 0;
+		let maxDistY = 0;
+		for (const node of nodes) {
+			const dx = Math.abs(node.x - targetCenterX);
+			const dy = Math.abs(node.y - targetCenterY);
+			if (dx > maxDistX) maxDistX = dx;
+			if (dy > maxDistY) maxDistY = dy;
+		}
+
+		const padding = options?.padding ?? 40;
+		const availHalfW = Math.max(width / 2 - padding, 20);
+		const availHalfH = Math.max(height / 2 - padding, 20);
+
+		let fitScale = baseScale;
+		if (maxDistX > 10) {
+			fitScale = Math.min(fitScale, availHalfW / maxDistX);
+		}
+		if (maxDistY > 10) {
+			fitScale = Math.min(fitScale, availHalfH / maxDistY);
+		}
+		const targetScale = Math.max(0.3, Math.min(baseScale, fitScale));
+
+		const panX = targetScale * (width / 2 - targetCenterX);
+		const panY = targetScale * (height / 2 - targetCenterY);
+
+		return {
+			scale: targetScale,
+			panX,
+			panY
+		};
+	}
+
 	private static probeEl: HTMLElement | null = null;
 
 	/**

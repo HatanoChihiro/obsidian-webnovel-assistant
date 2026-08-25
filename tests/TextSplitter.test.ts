@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import type { TFile } from 'obsidian';
 import { TextSplitter, type TextSplitterPlugin } from '../src/services/TextSplitter';
 import { ChapterSorter } from '../src/services/ChapterSorter';
 
@@ -231,7 +232,7 @@ describe('TextSplitter Engine', () => {
 		const app = { vault } as unknown;
 		const plugin: TextSplitterPlugin = {
 			settings: { workspaceFolders: ['作品'], novelInfo: { fileName: '作品信息' } },
-			homepageManager: { createNovelInfoFile: async () => undefined }
+			homepageManager: { createNovelInfoFile: async () => ({} as TFile) }
 		};
 		const chapters = TextSplitter.splitIntoChapters(`第1卷 初入
 第1章 开始

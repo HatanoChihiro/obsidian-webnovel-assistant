@@ -38,17 +38,6 @@ export class FileEventManager {
 		this.plugin.registerEvent(this.plugin.app.vault.on('modify', async (file) => {
 			if (!(file instanceof TFile) || file.extension !== 'md') return;
 
-			const notesFilePath = this.plugin.stickyNoteManager.getNotesFilePath();
-
-			// 便签文件外部变更同步（如多端同步工具修改了 notes-data.json）
-			if (file.path === notesFilePath) {
-				if (!this.plugin.stickyNoteManager.getIsWriting()) {
-					await this.plugin.stickyNoteManager.loadNotes();
-					this.plugin.stickyNoteManager.syncFloatingNotes();
-				}
-				return;
-			}
-
 			// 智能前置过滤：非目标网文文件立即早期返回，避免多余的 IO 与计算调度
 			if (!this.plugin.cacheManager.isEligibleForTotalWordCount(file)) return;
 
