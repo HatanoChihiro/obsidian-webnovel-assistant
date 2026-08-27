@@ -1,3 +1,25 @@
+## 🔧 v3.9.1
+
+### Bug修复
+- **同名章节伏笔与时间线隔离**：修复同一作品不同分卷存在同名章节时，伏笔徽标串章、跳转错位以及时间线看板关联混用的问题，确保各卷同名章节的伏笔记录与时间线事件精准对应。
+- **章节智能排序与主页置顶自愈**：修复移动端与平板端在侧边栏异步加载、折叠展开或界面布局变化时章节智能排序可能偶发失效的问题，支持在文件列表就绪后自动恢复排序与置顶。
+- **时间轴看板滚动稳定性**：修复编辑长事件描述时输入与聚焦导致内部滚动跳顶的问题，并保证在视图刷新与并发重载时时间轴看板与未关联侧边栏的滚动位置稳定保留。
+- **校对标记兼容性**：修复错词与近义词下划线在部分 Obsidian 版本中的 CSS 兼容性警告，并将官方 CSS 兼容性检查加入本地验证。
+- **时间线与章节同步**：在侧面板、时间轴看板或时间线 Markdown 修改节点名称和关联章节后，章节 timeline 属性会自动同步，多作品同时编辑不会互相影响。
+- **文件列表字数清理**：修复插件卸载或关闭字数显示后，重新展开折叠目录时残留字数标签再次出现的问题。
+
+### English Changelog
+
+#### Bug Fixes
+- **Duplicate Chapter Isolation for Foreshadowing & Timeline**: Fixed an issue where duplicate chapter names across different volumes in the same work caused foreshadowing badges, jumps, and timeline board events to cross-link incorrectly, ensuring entries and interactions are strictly isolated to the exact chapter file.
+- **Smart Chapter Sorting & Homepage Pin Recovery**: Fixed an intermittent issue on mobile and tablet devices where smart chapter sorting could be lost when the sidebar loads asynchronously or layout changes occur, ensuring sorting and pinning automatically self-heal once the file explorer is ready.
+- **Timeline Board Scroll Stability**: Fixed an issue where focusing or typing in long event descriptions caused the description container to jump to the top, and ensured timeline waterfall and sidebar scroll positions are reliably preserved during board reloads.
+- **Proofreading Marker Compatibility**: Fixed CSS compatibility warnings for typo and synonym underlines in some Obsidian versions and added the official CSS compatibility check to local validation.
+- **Timeline & Chapter Synchronization**: When modifying event node names or linked chapters in the side panel, timeline board, or timeline Markdown file, chapter timeline attributes now synchronize automatically, and editing multiple works simultaneously will not affect each other.
+- **File Explorer Word Count**: Fixed an issue where lingering word count badges could reappear when expanding previously collapsed folders after the plugin was unloaded or word count display was disabled.
+
+---
+
 ## ✨ v3.9.0
 
 ### 新增校对系统

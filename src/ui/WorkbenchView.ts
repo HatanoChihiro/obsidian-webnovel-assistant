@@ -1,6 +1,6 @@
 import { TFile, TFolder, Vault, Component, type TAbstractFile, type WorkspaceLeaf, ItemView, Notice, Menu, Modal, Setting, setIcon } from 'obsidian';
 import type { App, ViewStateResult } from 'obsidian';
-import { ForeshadowingStatus, type ParsedForeshadowingEntry } from '../types/foreshadowing';
+import type { ParsedForeshadowingEntry } from '../types/foreshadowing';
 import type { AccurateCountSettings } from '../types/settings';
 import type { TaskSettings } from '../types/task';
 import { ChapterSorter } from '../services/ChapterSorter';
@@ -77,7 +77,7 @@ export type WorkbenchCharacterManager = LoreBoardCharacterManager &
 	Pick<CharacterManager, 'createLoreEntry'>;
 
 export type WorkbenchForeshadowingManager = ForeshadowingBoardStatusManager &
-	Pick<ForeshadowingManager, 'findForeshadowingFile' | 'parseEntries'>;
+	Pick<ForeshadowingManager, 'findForeshadowingFile' | 'parseEntries' | 'buildChapterForeshadowingMap'>;
 
 export type WorkbenchTimelineManager = TimelineBoardTimelineManager;
 
@@ -849,11 +849,19 @@ export class WorkbenchView extends ItemView {
             }
 
             if (this.sortMode === 'timeline') {
-                window.requestAnimationFrame(() => {
-                    const mainCol = this.container.querySelector('.wn-timeline-waterfall-main') as HTMLElement;
-                    if (mainCol) mainCol.scrollTop = timelineScrollTop;
-                    const sideCol = this.container.querySelector('.wn-timeline-waterfall-sidebar') as HTMLElement;
-                    if (sideCol) sideCol.scrollTop = sidebarScrollTop;
+                await new Promise<void>((resolve) => {
+                    window.requestAnimationFrame(() => {
+                        try {
+                            if (this.container && this.sortMode === 'timeline') {
+                                const mainCol = this.container.querySelector('.wn-timeline-waterfall-main') as HTMLElement;
+                                if (mainCol) mainCol.scrollTop = timelineScrollTop;
+                                const sideCol = this.container.querySelector('.wn-timeline-waterfall-sidebar') as HTMLElement;
+                                if (sideCol) sideCol.scrollTop = sidebarScrollTop;
+                            }
+                        } finally {
+                            resolve();
+                        }
+                    });
                 });
             } else {
                 this.container.scrollTop = defaultScrollTop;
@@ -946,67 +954,10 @@ export class WorkbenchView extends ItemView {
         if (this.cachedForeshadowingMap && this.cachedForeshadowingBookPath === this.currentBookPath) {
             foreshadowingMap = this.cachedForeshadowingMap;
         } else {
-            let foreshadowings: ParsedForeshadowingEntry[] = [];
-            if (this.currentBookPath && this.plugin.foreshadowingManager) {
-                const fmFolder = this.currentBookPath === '/' ? '' : this.currentBookPath;
-                const fFile = this.plugin.foreshadowingManager.findForeshadowingFile(fmFolder);
-                if (fFile) {
-                    const content = await this.app.vault.cachedRead(fFile);
-                    foreshadowings = this.plugin.foreshadowingManager.parseEntries(content);
-                }
-            }
-
-            const cleanBaseMap = new Map<TFile, string>();
-            for (const file of files) {
-                cleanBaseMap.set(file, file.basename.toLowerCase().replace(/\s+/g, ''));
-            }
-
-            foreshadowingMap = new Map<string, ParsedForeshadowingEntry[]>();
-            for (const entry of foreshadowings) {
-                const targets: string[] = [];
-                const sources = new Set<string>();
-                if (entry.sourceFile) sources.add(entry.sourceFile);
-                if (entry.contents) {
-                    entry.contents.forEach(c => {
-                        if (c.source) sources.add(c.source);
-                    });
-                }
-
-                if (entry.status === ForeshadowingStatus.Pending) {
-                    targets.push(...sources);
-                } else if (entry.status === ForeshadowingStatus.PartiallyRecovered || entry.status === ForeshadowingStatus.Recovered) {
-                    targets.push(...sources);
-                    if (entry.recoveryLogs && entry.recoveryLogs.length > 0) {
-                        targets.push(...entry.recoveryLogs.map(l => l.file));
-                    } else {
-                        const recFiles = entry.recoveryFiles ? [...entry.recoveryFiles] : (entry.recoveryFile ? [entry.recoveryFile] : []);
-                        targets.push(...recFiles);
-                    }
-                }
-
-                for (const target of targets) {
-                    if (!target) continue;
-                    const cleanTarget = target.toLowerCase().replace(/\s+/g, '');
-                    if (!cleanTarget) continue;
-
-                    for (const file of files) {
-                        const cleanBase = cleanBaseMap.get(file) || '';
-                        if (!cleanBase) continue;
-                        // 单字符要求精确匹配，多字符允许双向包含匹配，防止 "1" 或 "章" 等通用单字符在大型笔记库中引发失控重匹配
-                        const isMatched = cleanTarget.length >= 2
-                            ? (cleanBase.includes(cleanTarget) || cleanTarget.includes(cleanBase))
-                            : cleanBase === cleanTarget;
-
-                        if (isMatched) {
-                            const list = foreshadowingMap.get(file.basename) || [];
-                            if (!list.includes(entry)) {
-                                list.push(entry);
-                                foreshadowingMap.set(file.basename, list);
-                            }
-                        }
-                    }
-                }
-            }
+            const fmFolder = this.currentBookPath === '/' ? '' : (this.currentBookPath || '');
+            foreshadowingMap = this.plugin.foreshadowingManager
+                ? await this.plugin.foreshadowingManager.buildChapterForeshadowingMap(fmFolder, files, this.app.vault)
+                : new Map<string, ParsedForeshadowingEntry[]>();
             this.cachedForeshadowingMap = foreshadowingMap;
             this.cachedForeshadowingBookPath = this.currentBookPath;
         }
@@ -1454,6 +1405,6 @@ export class WorkbenchView extends ItemView {
             if (Array.isArray(fm.timeline)) return fm.timeline.map(String);
             if (typeof fm.timeline === 'string') return [String(fm.timeline)];
         }
-        return fallbackMap.get(file.basename) || [];
+		return fallbackMap.get(file.path) || [];
     }
 }

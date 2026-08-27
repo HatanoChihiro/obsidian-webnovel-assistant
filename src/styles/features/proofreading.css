@@ -6,11 +6,12 @@
 	transition: background-color 0.15s ease;
 }
 
-/* 1. 错词 (Wavy) */
+/* 1. 错词 (Zigzag) */
 .wn-proofreading-wrong {
-	text-decoration: underline wavy var(--text-error);
-	text-decoration-thickness: 1.5px;
-	text-underline-offset: 3px;
+	background-image: linear-gradient(135deg, transparent 45%, var(--text-error) 45%, var(--text-error) 55%, transparent 55%);
+	background-position: left bottom;
+	background-repeat: repeat-x;
+	background-size: 6px 3px;
 }
 
 .wn-proofreading-wrong:hover {
@@ -29,9 +30,8 @@
 
 /* 3. 近义词 (Solid underline) */
 .wn-proofreading-synonym {
-	text-decoration: underline solid var(--interactive-accent);
-	text-decoration-thickness: 2px;
-	text-underline-offset: 3px;
+	border-bottom: 2px solid var(--interactive-accent);
+	padding-bottom: 1px;
 }
 
 .wn-proofreading-synonym:hover {

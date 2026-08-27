@@ -59,7 +59,7 @@ export class CorkboardGridRenderer {
 			const cards: HTMLElement[] = [];
 
 			for (const file of group.files) {
-				const card = ChapterCard.render(cardsContainer, file, app, plugin, foreshadowingMap.get(file.basename) || [], {
+				const card = ChapterCard.render(cardsContainer, file, app, plugin, foreshadowingMap.get(file.path) || [], {
 					draggable,
 					onSaveStateChange,
 					currentBookPath,

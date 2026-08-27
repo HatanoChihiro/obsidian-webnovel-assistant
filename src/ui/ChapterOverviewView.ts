@@ -1,5 +1,5 @@
 import { TFile, TFolder, Vault, type TAbstractFile, type WorkspaceLeaf, ItemView, setIcon } from 'obsidian';
-import { ForeshadowingStatus, type ParsedForeshadowingEntry } from '../types/foreshadowing';
+import type { ParsedForeshadowingEntry } from '../types/foreshadowing';
 import { ChapterSorter } from '../services/ChapterSorter';
 import { t } from '../i18n';
 import { getCurrentBookContext, findBookRoot, type CurrentBookContextPlugin } from '../utils/path';
@@ -45,7 +45,7 @@ export type ChapterOverviewHomepageManager = Pick<
 
 export type ChapterOverviewForeshadowingManager = Pick<
 	ForeshadowingManager,
-	'findForeshadowingFile' | 'parseEntries'
+	'buildChapterForeshadowingMap'
 >;
 
 export interface ChapterOverviewViewPlugin
@@ -259,50 +259,10 @@ export class ChapterOverviewView extends ItemView {
 
             // 解析伏笔
             const fmFolder = this.currentBookPath === '/' ? '' : (this.currentBookPath || '');
-            const fFile = this.plugin.foreshadowingManager?.findForeshadowingFile(fmFolder);
-            const foreshadowingMap = new Map<string, ParsedForeshadowingEntry[]>();
-
-            if (fFile && this.plugin.foreshadowingManager) {
-                const content = await this.app.vault.cachedRead(fFile);
-                if (this.currentRenderId !== renderId) return;
-                const entries = this.plugin.foreshadowingManager.parseEntries(content);
-                const cleanFiles = filteredFiles.map(file => ({ file, cleanBase: file.basename.toLowerCase().replace(/\s+/g, '') }));
-                for (const entry of entries) {
-                    const targets: string[] = [];
-                    const sources = new Set<string>();
-                    if (entry.sourceFile) sources.add(entry.sourceFile);
-                    if (entry.contents) {
-                        entry.contents.forEach(c => {
-                            if (c.source) sources.add(c.source);
-                        });
-                    }
-
-                    if (entry.status === ForeshadowingStatus.Pending) {
-                        targets.push(...sources);
-                    } else if (entry.status === ForeshadowingStatus.PartiallyRecovered || entry.status === ForeshadowingStatus.Recovered) {
-                        targets.push(...sources);
-                        if (entry.recoveryLogs && entry.recoveryLogs.length > 0) {
-                            targets.push(...entry.recoveryLogs.map(l => l.file));
-                        } else {
-                            const recFiles = entry.recoveryFiles ? [...entry.recoveryFiles] : (entry.recoveryFile ? [entry.recoveryFile] : []);
-                            targets.push(...recFiles);
-                        }
-                    }
-                    for (const target of targets) {
-                        if (!target) continue;
-                        const cleanTarget = target.toLowerCase().replace(/\s+/g, '');
-                        for (const { file, cleanBase } of cleanFiles) {
-                            if (cleanBase.includes(cleanTarget) || cleanTarget.includes(cleanBase)) {
-                                const list = foreshadowingMap.get(file.basename) || [];
-                                if (!list.includes(entry)) {
-                                    list.push(entry);
-                                    foreshadowingMap.set(file.basename, list);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            const foreshadowingMap = this.plugin.foreshadowingManager
+                ? await this.plugin.foreshadowingManager.buildChapterForeshadowingMap(fmFolder, filteredFiles, this.app.vault)
+                : new Map<string, ParsedForeshadowingEntry[]>();
+            if (this.currentRenderId !== renderId) return;
 
             CorkboardGridRenderer.render({
                 app: this.app,

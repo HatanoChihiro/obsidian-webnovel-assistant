@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeAll } from 'vitest';
-import { ChapterSorter } from '../src/services/ChapterSorter';
+import { describe, it, expect, beforeAll, vi } from 'vitest';
+import { ChapterSorter, type ChapterSorterContext } from '../src/services/ChapterSorter';
+import type { App } from 'obsidian';
 import { TFile, TFolder } from 'obsidian';
 
 describe('ChapterSorter', () => {
@@ -409,6 +410,106 @@ describe('ChapterSorter', () => {
 			};
 
 			expect(ChapterSorter.findChapterByName(mockApp, mockPlugin, '例外目录', '第12章 真相')).toBe(chapter);
+		});
+	});
+
+	describe('Chapter Reference Resolution & Linktext Generation', () => {
+		const createFile = (path: string, basename: string): TFile => Object.assign(new TFile(), {
+			path,
+			name: `${basename}.md`,
+			basename,
+			extension: 'md'
+		});
+		const createFolder = (path: string, name: string, children: Array<TFile | TFolder>): TFolder => Object.assign(new TFolder(), {
+			path,
+			name,
+			children
+		});
+
+		const vol1Ch1 = createFile('作品/第一卷/第1章.md', '第1章');
+		const vol2Ch1 = createFile('作品/第二卷/第1章.md', '第1章');
+		const uniqueCh = createFile('作品/第一卷/第2章.md', '第2章');
+		const mockVol1 = createFolder('作品/第一卷', '第一卷', [vol1Ch1, uniqueCh]);
+		const mockVol2 = createFolder('作品/第二卷', '第二卷', [vol2Ch1]);
+		const mockBookFolder = createFolder('作品', '作品', [mockVol1, mockVol2]);
+		const getFirstLinkpathDest = vi.fn();
+
+		const mockApp = {
+			vault: {
+				getAbstractFileByPath: (p: string) => {
+					if (p === '作品') return mockBookFolder;
+					if (p === '作品/第一卷') return mockVol1;
+					if (p === '作品/第二卷') return mockVol2;
+					if (p === '作品/第一卷/第1章.md' || p === '作品/第一卷/第1章') return vol1Ch1;
+					if (p === '作品/第二卷/第1章.md' || p === '作品/第二卷/第1章') return vol2Ch1;
+					if (p === '作品/第一卷/第2章.md' || p === '作品/第一卷/第2章') return uniqueCh;
+					return null;
+				}
+			},
+			metadataCache: {
+				getFirstLinkpathDest,
+				fileToLinktext: vi.fn()
+			}
+		} as unknown as App;
+
+		const mockPlugin: ChapterSorterContext = {
+			settings: {
+				enableStrictChapterMode: false,
+				customSortOrder: {},
+				loreFolderName: '',
+				homepagePath: ''
+			},
+			getVaultMarkdownFiles: () => [vol1Ch1, vol2Ch1, uniqueCh],
+			getTrackedMarkdownFiles: () => [vol1Ch1, vol2Ch1, uniqueCh],
+			isFileInStrictChapterException: () => false,
+			isPluginGeneratedFile: () => false
+		};
+
+		it('stripWikilink and extractWikilinkDisplay', () => {
+			expect(ChapterSorter.stripWikilink('[[第一卷/第1章|第1章]]')).toBe('第一卷/第1章');
+			expect(ChapterSorter.stripWikilink('[[第1章.md]]')).toBe('第1章');
+			expect(ChapterSorter.extractWikilinkDisplay('[[第一卷/第1章|第一章别名]]')).toBe('第一章别名');
+			expect(ChapterSorter.extractWikilinkDisplay('第一卷/第1章')).toBe('第1章');
+		});
+
+		it('resolveChapterFile should return null for ambiguous bare basename across volumes', () => {
+			const resolved = ChapterSorter.resolveChapterFile(mockApp, mockPlugin, '作品', '第1章');
+			expect(resolved).toBeNull();
+		});
+
+		it('resolveChapterFile should resolve unique basename across volumes', () => {
+			const resolved = ChapterSorter.resolveChapterFile(mockApp, mockPlugin, '作品', '第2章');
+			expect(resolved).toBe(uniqueCh);
+		});
+
+		it('resolveChapterFile should resolve relative volume path', () => {
+			const resolvedVol1 = ChapterSorter.resolveChapterFile(mockApp, mockPlugin, '作品', '第一卷/第1章');
+			expect(resolvedVol1).toBe(vol1Ch1);
+
+			const resolvedVol2 = ChapterSorter.resolveChapterFile(mockApp, mockPlugin, '作品', '[[第二卷/第1章|第1章]]');
+			expect(resolvedVol2).toBe(vol2Ch1);
+		});
+
+		it('resolveChapterFile rejects a path suffix that matches multiple chapters', () => {
+			const duplicatePath = createFile('作品/附录/第一卷/第1章.md', '第1章');
+			getFirstLinkpathDest.mockClear();
+
+			const resolved = ChapterSorter.resolveChapterFile(
+				mockApp,
+				mockPlugin,
+				'作品',
+				'第一卷/第1章',
+				{ eligibleChapters: [vol1Ch1, duplicatePath], sourcePath: '作品/时间线.md' }
+			);
+
+			expect(resolved).toBeNull();
+			expect(getFirstLinkpathDest).not.toHaveBeenCalled();
+		});
+
+		it('generateChapterLinktext uses basename if unique, relative path/alias if duplicate exists', () => {
+			expect(ChapterSorter.generateChapterLinktext(mockApp, mockPlugin, uniqueCh, '作品')).toBe('第2章');
+			expect(ChapterSorter.generateChapterLinktext(mockApp, mockPlugin, vol1Ch1, '作品', { useAlias: false })).toBe('第一卷/第1章');
+			expect(ChapterSorter.generateChapterLinktext(mockApp, mockPlugin, vol2Ch1, '作品', { useAlias: true })).toBe('第二卷/第1章|第1章');
 		});
 	});
 });

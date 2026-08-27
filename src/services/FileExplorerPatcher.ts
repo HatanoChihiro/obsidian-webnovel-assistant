@@ -17,6 +17,13 @@ interface SortEntity {
 	isFolder?: boolean;
 }
 
+interface PatchScanResult {
+	newlyPatchedCount: number;
+	hasUnreadyViews: boolean;
+	hasPatchedViews: boolean;
+	leafCount: number;
+}
+
 export class FileExplorerPatcher {
 	private app: App;
 	private plugin: WebNovelAssistantPlugin;
@@ -39,8 +46,7 @@ export class FileExplorerPatcher {
 		this.plugin = plugin;
 	}
 
-	private enableRetries = 0;
-	private retryTimer: number | null = null;
+	private recoveryTimerIds: number[] = [];
 	private fileRefreshTimer: number | null = null;
 
 	private scheduleSortOrderSave(): void {
@@ -51,50 +57,124 @@ export class FileExplorerPatcher {
 		}, 100);
 	}
 
-
 	enable(): boolean {
 		if (this.destroyed) return false;
-		if (this.enabled) return true;
-
-		ChapterSorter.setCustomRules(this.plugin.settings.chapterNamingRules || []);
 
 		try {
-			const success = this.patchFileExplorerPrototypes();
-			if (success) {
-				this.enabled = true;
-				this.enableRetries = 0;
-				this.refreshAllExplorers();
-				this.setupFileSystemListeners();
-				this.initDragSort();
-				return true;
-			}
+			this.enabled = true;
+			ChapterSorter.setCustomRules(this.plugin.settings.chapterNamingRules || []);
 
-			if (this.enableRetries < 10) {
-				this.enableRetries++;
-				this.retryTimer = window.setTimeout(() => this.enable(), 500 * this.enableRetries);
-			}
-			return false;
+			this.setupListeners();
+			this.scheduleRecovery();
+
+			return true;
 		} catch (error) {
-			Logger.error('[WebNovel Assistant] Failed to enable smart sorting:', error);
+			Logger.error('[WebNovel Assistant] Error enabling FileExplorerPatcher:', error);
+			this.disable();
 			return false;
 		}
 	}
 
-	private patchFileExplorerPrototypes(): boolean {
+	private clearRecoveryTimers(): void {
+		for (const id of this.recoveryTimerIds) {
+			window.clearTimeout(id);
+		}
+		this.recoveryTimerIds = [];
+	}
+
+	private scheduleRecovery(): void {
+		if (!this.enabled || this.destroyed) return;
+
+		const scanResult = this.performScanAndRecovery();
+		if (!this.enabled || this.destroyed) return;
+
+		// If all current views are ready and patched, no delayed retry is needed
+		if (scanResult.hasPatchedViews && !scanResult.hasUnreadyViews) {
+			this.clearRecoveryTimers();
+			return;
+		}
+
+		// Otherwise schedule a small bounded delayed retry sequence for async view readiness
+		this.clearRecoveryTimers();
+		const delays = [100, 300];
+		for (const delay of delays) {
+			const timerId = window.setTimeout(() => {
+				this.recoveryTimerIds = this.recoveryTimerIds.filter(id => id !== timerId);
+				if (!this.enabled || this.destroyed) return;
+
+				const retryResult = this.performScanAndRecovery();
+				if (retryResult.hasPatchedViews && !retryResult.hasUnreadyViews) {
+					this.clearRecoveryTimers();
+				}
+			}, delay);
+			this.recoveryTimerIds.push(timerId);
+		}
+	}
+
+	private performScanAndRecovery(): PatchScanResult {
+		if (!this.enabled || this.destroyed) {
+			return {
+				newlyPatchedCount: 0,
+				hasUnreadyViews: false,
+				hasPatchedViews: false,
+				leafCount: 0
+			};
+		}
+
+		const scanResult = this.patchFileExplorerPrototypes();
+
+		const leaves = this.app.workspace.getLeavesOfType('file-explorer');
+		const firstLeaf = leaves[0];
+		const containerEl = (firstLeaf?.view as FileExplorerView | undefined)?.containerEl;
+		let containerChanged = false;
+
+		if (containerEl && containerEl !== this._dragContainerEl) {
+			this.teardownDragSort();
+			this.initDragSort();
+			containerChanged = true;
+		} else if (!this._dragContainerEl && containerEl) {
+			this.initDragSort();
+		}
+
+		if (scanResult.newlyPatchedCount > 0 || containerChanged) {
+			this.refreshAllExplorers();
+		}
+
+		return scanResult;
+	}
+
+	private patchFileExplorerPrototypes(): PatchScanResult {
+		const scanResult: PatchScanResult = {
+			newlyPatchedCount: 0,
+			hasUnreadyViews: false,
+			hasPatchedViews: false,
+			leafCount: 0
+		};
+
 		try {
 			const leaves = this.app.workspace.getLeavesOfType('file-explorer');
-			if (leaves.length === 0) return this.unpatchFuncs.length > 0;
+			scanResult.leafCount = leaves.length;
+			if (leaves.length === 0) return scanResult;
 
 			for (const leaf of leaves) {
-				const view = leaf.view as FileExplorerView;
-				if (!view) continue;
+				const view = leaf.view as FileExplorerView | undefined;
+				if (!view) {
+					scanResult.hasUnreadyViews = true;
+					continue;
+				}
 
-				const proto = Object.getPrototypeOf(view) as FileExplorerView;
-				if (!proto || !proto.getSortedFolderItems) continue;
+				const proto = Object.getPrototypeOf(view) as (FileExplorerView & { getSortedFolderItems?: unknown }) | null | undefined;
+				if (!proto || typeof proto.getSortedFolderItems !== 'function') {
+					scanResult.hasUnreadyViews = true;
+					continue;
+				}
 
-				if (this.patchedPrototypes.has(proto)) continue;
+				if (this.patchedPrototypes.has(proto)) {
+					scanResult.hasPatchedViews = true;
+					continue;
+				}
 
-				const isPatcherEnabled = () => this.enabled;
+				const isPatcherEnabled = () => this.enabled && !this.destroyed;
 				const getPlugin = () => this.plugin;
 				const applyPin = (items: FileExplorerItem[]) => this.applyHomepagePin(items);
 				const doSort = (entities: SortEntity[]) => this.sortEntities(entities);
@@ -194,12 +274,14 @@ export class FileExplorerPatcher {
 
 				this.unpatchFuncs.push(unpatchFunc);
 				this.patchedPrototypes.add(proto);
+				scanResult.newlyPatchedCount++;
+				scanResult.hasPatchedViews = true;
 			}
 
-			return this.unpatchFuncs.length > 0;
+			return scanResult;
 		} catch (error) {
 			Logger.error('[WebNovel Assistant] Error patching prototypes:', error);
-			return false;
+			return scanResult;
 		}
 	}
 
@@ -335,11 +417,18 @@ export class FileExplorerPatcher {
 		}
 	}
 
+	private setupListeners(): void {
+		this.setupFileSystemListeners();
+		this.setupWorkspaceListeners();
+	}
+
 	private setupFileSystemListeners(): void {
+		if (this.vaultEventRefs.length > 0) return;
+
 		// [BUGFIX] 绝对不要在 create 事件中调用 refreshAllExplorers()，否则会打断原生的新建文件夹重命名流程！
 		// 因此去掉了 create 事件和 metadataCache changed 事件的无用监听。
 		this.vaultEventRefs.push(this.app.vault.on('delete', (file) => {
-			if (!this.enabled) return;
+			if (!this.enabled || this.destroyed) return;
 			if (file && file.path && this.plugin.settings.customSortOrder) {
 				let changed = false;
 				const deletedPath = file.path;
@@ -368,11 +457,12 @@ export class FileExplorerPatcher {
 			}
 			this.fileRefreshTimer = window.setTimeout(() => {
 				this.fileRefreshTimer = null;
+				if (!this.enabled || this.destroyed) return;
 				this.refreshAllExplorers();
 			}, 100);
 		}));
 		this.vaultEventRefs.push(this.app.vault.on('rename', (file, oldPath) => {
-			if (!this.enabled) return;
+			if (!this.enabled || this.destroyed) return;
 			if (this.plugin.settings.customSortOrder && oldPath) {
 				let changed = false;
 
@@ -407,36 +497,43 @@ export class FileExplorerPatcher {
 			}
 			this.fileRefreshTimer = window.setTimeout(() => {
 				this.fileRefreshTimer = null;
+				if (!this.enabled || this.destroyed) return;
 				this.refreshAllExplorers();
 			}, 100);
 		}));
+	}
 
-		// 监听布局变化，确保在文件浏览器重新加载时重置拖拽事件和修补可能的新原型
+	private setupWorkspaceListeners(): void {
+		if (this.workspaceEventRefs.length > 0) return;
+
 		this.workspaceEventRefs.push(this.app.workspace.on('layout-change', () => {
-			if (!this.enabled) return;
+			if (!this.enabled || this.destroyed) return;
+			this.scheduleRecovery();
+		}));
 
-			// 修补可能新出现的不同原型（例如移动端重新创建的视图，或新的多窗口）
-			this.patchFileExplorerPrototypes();
-
-			const leaf = this.app.workspace.getLeavesOfType('file-explorer')[0];
-			if (leaf) {
-				const containerEl = (leaf.view as FileExplorerView)?.containerEl as HTMLElement | undefined;
-				// 如果容器发生了变化（例如重建了面板），则重新初始化事件并刷新排序
-				if (containerEl && containerEl !== this._dragContainerEl) {
-					this.teardownDragSort();
-					this.initDragSort();
-					this.refreshAllExplorers();
-				}
-			}
+		this.workspaceEventRefs.push(this.app.workspace.on('active-leaf-change', () => {
+			if (!this.enabled || this.destroyed) return;
+			this.scheduleRecovery();
 		}));
 	}
 
 	private removeWordCountElements(): void {
 		const leaves = this.app.workspace.getLeavesOfType('file-explorer');
 		for (const leaf of leaves) {
-			const containerEl = (leaf.view as FileExplorerView)?.containerEl;
-			if (containerEl) {
-				Array.from(containerEl.getElementsByClassName('wn-folder-word-count')).forEach(el => el.remove());
+			const view = leaf.view as FileExplorerView | undefined;
+			if (view) {
+				if (view.fileItems && typeof view.fileItems === 'object') {
+					for (const path in view.fileItems) {
+						const item = view.fileItems[path];
+						if (item?.el?.getElementsByClassName) {
+							Array.from(item.el.getElementsByClassName('wn-folder-word-count')).forEach(el => el.remove());
+						}
+					}
+				}
+				const containerEl = view.containerEl;
+				if (containerEl?.getElementsByClassName) {
+					Array.from(containerEl.getElementsByClassName('wn-folder-word-count')).forEach(el => el.remove());
+				}
 			}
 		}
 		if (typeof activeDocument !== 'undefined' && activeDocument.getElementsByClassName) {
@@ -446,10 +543,7 @@ export class FileExplorerPatcher {
 	}
 
 	disable(): void {
-		if (this.retryTimer !== null) {
-			window.clearTimeout(this.retryTimer);
-			this.retryTimer = null;
-		}
+		this.clearRecoveryTimers();
 		if (this.fileRefreshTimer !== null) {
 			window.clearTimeout(this.fileRefreshTimer);
 			this.fileRefreshTimer = null;
@@ -476,12 +570,17 @@ export class FileExplorerPatcher {
 	}
 
 	isEnabled(): boolean {
-		return this.enabled;
+		return this.enabled && !this.destroyed;
 	}
 
 	refreshFolderCounts() {
 		try {
 			if (this.destroyed || this.plugin.isUnloading) {
+				this.removeWordCountElements();
+				return;
+			}
+
+			if (!this.plugin.settings.showExplorerCounts) {
 				this.removeWordCountElements();
 				return;
 			}
@@ -492,20 +591,6 @@ export class FileExplorerPatcher {
 			const view = fileExplorer.view;
 			if (!view.fileItems || typeof view.fileItems !== "object") return;
 			const fileExplorerItems = view.fileItems;
-
-			if (!this.plugin.settings.showExplorerCounts) {
-				for (const path in fileExplorerItems) {
-					const item = fileExplorerItems[path];
-					if (item.el) {
-						const countEl = this.wordCountElCache.get(item.el) || item.el.querySelector('.wn-folder-word-count');
-						if (countEl) {
-							countEl.remove();
-							this.wordCountElCache.delete(item.el);
-						}
-					}
-				}
-				return;
-			}
 			for (const path in fileExplorerItems) {
 				const item = fileExplorerItems[path];
 				if (!item.el) continue;
@@ -559,12 +644,17 @@ export class FileExplorerPatcher {
 	private _dragEndHandler = this._onDragEnd.bind(this);
 
 	private initDragSort(): void {
-		if (!this.plugin.settings.enableSmartChapterSort) return;
+		if (!this.enabled || this.destroyed || !this.plugin.settings.enableSmartChapterSort) return;
 
 		const leaf = this.app.workspace.getLeavesOfType('file-explorer')[0];
 		if (!leaf) return;
 		const containerEl = (leaf.view as FileExplorerView)?.containerEl as HTMLElement | undefined;
 		if (!containerEl) return;
+
+		if (this._dragContainerEl === containerEl) return;
+		if (this._dragContainerEl) {
+			this.teardownDragSort();
+		}
 
 		this._dragContainerEl = containerEl;
 

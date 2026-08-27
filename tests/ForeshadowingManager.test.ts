@@ -6,7 +6,11 @@ import * as pathUtils from '../src/utils/path';
 
 vi.mock('obsidian', () => ({
     normalizePath: (path: string) => path.replace(/\\/g, '/'),
-    TFile: class {}
+    TFile: class {},
+    TFolder: class {},
+    Vault: {
+        recurseChildren: vi.fn()
+    }
 }));
 
 // Mock path utilities
@@ -45,10 +49,16 @@ describe('ForeshadowingManager', () => {
 
         mockPlugin = {
             settings: {
+                enableStrictChapterMode: false,
+                customSortOrder: {},
                 foreshadowing: {
                     fileName: 'Foreshadowing'
                 }
-            }
+            },
+            getVaultMarkdownFiles: vi.fn().mockReturnValue([]),
+            getTrackedMarkdownFiles: vi.fn().mockReturnValue([]),
+            isFileInStrictChapterException: vi.fn().mockReturnValue(false),
+            isPluginGeneratedFile: vi.fn().mockReturnValue(false)
         };
     });
 
@@ -334,6 +344,73 @@ describe('ForeshadowingManager', () => {
 
             const result = await manager.addForeshadowing(sourceFile, 'Found third piece', 'Secret Map', ['Clue']);
             expect(result.merged).toBe(true);
+        });
+
+        it('buildChapterForeshadowingMap correctly isolates entries by file.path across volumes with duplicate chapter names', async () => {
+            const manager = new ForeshadowingManager(mockApp, mockPlugin);
+
+            const vol1Ch1 = Object.assign(new TFile(), { name: '第1章.md', path: 'Book 1/Vol 1/第1章.md', basename: '第1章', extension: 'md' });
+            const vol2Ch1 = Object.assign(new TFile(), { name: '第1章.md', path: 'Book 1/Vol 2/第1章.md', basename: '第1章', extension: 'md' });
+            const fFile = Object.assign(new TFile(), { name: 'Foreshadowing.md', path: 'Book 1/Foreshadowing.md', basename: 'Foreshadowing', extension: 'md' });
+
+            mockApp.vault.getAbstractFileByPath.mockImplementation((p: string) => {
+                if (p === 'Book 1/Foreshadowing.md' || p === 'Book 1/Foreshadowing') return fFile;
+                if (p === 'Book 1/Vol 1/第1章.md' || p === 'Book 1/Vol 1/第1章') return vol1Ch1;
+                if (p === 'Book 1/Vol 2/第1章.md' || p === 'Book 1/Vol 2/第1章') return vol2Ch1;
+                return null;
+            });
+
+            const markdown = `
+## Vol 1 Foreshadowing
+> [[Vol 1/第1章|第1章]] - 2023-01-01 10:00
+> Quote for vol 1
+
+**标签**：#Vol1
+**状态**：未回收
+---
+## Vol 2 Foreshadowing
+> [[Vol 2/第1章|第1章]] - 2023-01-02 10:00
+> Quote for vol 2
+
+**标签**：#Vol2
+**状态**：已回收
+**回收记录**：
+- [终结] [[Vol 2/第1章|第1章]] - 2023-01-03 10:00：Recovered in vol 2
+---
+`;
+            const fakeVault = {
+                cachedRead: vi.fn().mockResolvedValue(markdown)
+            };
+
+			const map = await manager.buildChapterForeshadowingMap('Book 1', [vol1Ch1, vol2Ch1], fakeVault);
+
+            expect(map.has(vol1Ch1.path)).toBe(true);
+            expect(map.has(vol2Ch1.path)).toBe(true);
+
+            const vol1Entries = map.get(vol1Ch1.path)!;
+            expect(vol1Entries).toHaveLength(1);
+			expect(vol1Entries[0].description).toBe('Vol 1 Foreshadowing');
+
+            const vol2Entries = map.get(vol2Ch1.path)!;
+            expect(vol2Entries).toHaveLength(1);
+            expect(vol2Entries[0].description).toBe('Vol 2 Foreshadowing');
+        });
+
+        it('does not resolve an ambiguous legacy basename after the visible chapter list is filtered', async () => {
+            const manager = new ForeshadowingManager(mockApp, mockPlugin);
+            const vol1Ch1 = Object.assign(new TFile(), { name: '第1章.md', path: 'Book 1/Vol 1/第1章.md', basename: '第1章', extension: 'md' });
+            const vol2Ch1 = Object.assign(new TFile(), { name: '第1章.md', path: 'Book 1/Vol 2/第1章.md', basename: '第1章', extension: 'md' });
+            const fFile = Object.assign(new TFile(), { name: 'Foreshadowing.md', path: 'Book 1/Foreshadowing.md', basename: 'Foreshadowing', extension: 'md' });
+
+            mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) => path === 'Book 1/Foreshadowing.md' ? fFile : null);
+            mockPlugin.getVaultMarkdownFiles.mockReturnValue([vol1Ch1, vol2Ch1]);
+            const vault = {
+                cachedRead: vi.fn().mockResolvedValue(`## Legacy\n> [[第1章]]\n> Quote\n\n**状态**：未回收\n---\n`)
+            };
+
+			const map = await manager.buildChapterForeshadowingMap('Book 1', [vol1Ch1], vault);
+
+            expect(map.size).toBe(0);
         });
     });
 });

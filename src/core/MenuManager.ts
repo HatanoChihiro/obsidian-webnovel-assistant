@@ -104,13 +104,14 @@ export class MenuManager {
 								return;
 							}
 
-							const chapterName = view.file?.basename || '';
 							const folderPath = findBookRoot(this.plugin.app, this.plugin, view.file) || '';
+							const tlManager = this.plugin.timelineManager;
+							const tlFile = tlManager.getTimelineFile(folderPath);
+							const chapterRef = view.file
+								? ChapterSorter.generateChapterLinktext(this.plugin.app, this.plugin, view.file, folderPath, { sourcePath: tlFile?.path, useAlias: false })
+								: '';
 
 							// 读取已有条目中的类型，传入 Modal 供选择
-							const tlManager = this.plugin.timelineManager;
-							tlManager.currentFolder = folderPath;
-							const tlFile = tlManager.getTimelineFile();
 							const localTypes: string[] = [];
 							if (tlFile) {
 								const tlContent = await this.plugin.app.vault.read(tlFile);
@@ -122,7 +123,7 @@ export class MenuManager {
 								this.plugin.app,
 								this.plugin,
 								selectedText.trim(),
-								chapterName,
+								chapterRef,
 								folderPath,
 								(result) => {
 									tlManager.appendEntry({
@@ -132,7 +133,7 @@ export class MenuManager {
 										type: result.type,
 										rawBlock: '',
 										origin: result.origin
-									}).then(async () => {
+									}, folderPath).then(async () => {
 										new Notice(t('notice.timeline-added'));
 
 										// 刷新已打开的时间线视图

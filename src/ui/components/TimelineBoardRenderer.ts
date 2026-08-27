@@ -7,6 +7,7 @@ import { TimelineAddModal } from '../TimelineAddModal';
 import { t } from '../../i18n';
 import { Logger } from '../../utils/Logger';
 import { smartLocateAndHighlight } from '../../utils/leaf';
+import { ChapterSorter } from '../../services/ChapterSorter';
 import type { TimelineFormContext, TimelineFormSettings } from './TimelineFormComponent';
 import type { ChapterCardPlugin } from './ChapterCard';
 import type { AccurateCountSettings } from '../../types/settings';
@@ -40,9 +41,9 @@ class ConfirmDeleteEventModal extends Modal {
 
 export type TimelineBoardTimelineManager = Pick<
 	TimelineManager,
-	| 'currentFolder'
 	| 'loadEntries'
 	| 'getTimelineFile'
+	| 'createTimelineFile'
 	| 'syncChapterToEventItem'
 	| 'moveEventItem'
 	| 'deleteEntry'
@@ -81,8 +82,8 @@ export class TimelineBoardRenderer {
 
 		const tStart = performance.now();
 		const timelineManager = plugin.timelineManager;
-		timelineManager.currentFolder = currentBookPath === '/' ? '' : (currentBookPath || '');
-		let entries = await timelineManager.loadEntries();
+		const bookFolder = currentBookPath === '/' ? '' : (currentBookPath || '');
+		let entries = await timelineManager.loadEntries(bookFolder);
 		const tEntries = performance.now();
 		Logger.info(`[Perf Phase] Timeline.loadEntries: ${(tEntries - tStart).toFixed(2)}ms`);
 
@@ -92,37 +93,19 @@ export class TimelineBoardRenderer {
 			entries = entries.filter(e => e.type === currentTimelineFilter);
 		}
 
-		const timelineFile = timelineManager.getTimelineFile();
+		const timelineFile = timelineManager.getTimelineFile(bookFolder);
 
-		const linkKeyCache = new Map<string, string>();
-
-		// Helper to extract the basename of a link path or alias (e.g. "Folder/Chap|Alias" -> "Chap")
-		const getLinkBasename = (link: string): string => {
-			const pathPart = link.split('|')[0].trim();
-			const lastSlash = pathPart.lastIndexOf('/');
-			return lastSlash !== -1 ? pathPart.substring(lastSlash + 1) : pathPart;
+		const resolveLinkToFile = (link: string): TFile | null => {
+			return ChapterSorter.resolveChapterFile(
+				app,
+				plugin,
+				bookFolder,
+				link,
+				{ eligibleChapters: files, sourcePath: timelineFile?.path }
+			);
 		};
 
-		// Helper to resolve link key (lowercased and trimmed basename of resolved file, or fallback to link basename)
-		const resolveLinkKey = (link: string): string => {
-			const linkpath = link.split('|')[0].trim();
-			if (linkKeyCache.has(linkpath)) return linkKeyCache.get(linkpath)!;
-
-			let resolvedKey = '';
-			if (timelineFile) {
-				const dest = app.metadataCache.getFirstLinkpathDest(linkpath, timelineFile.path);
-				if (dest) {
-					resolvedKey = dest.basename.toLowerCase().trim();
-				}
-			}
-			if (!resolvedKey) {
-				resolvedKey = getLinkBasename(link).toLowerCase().trim();
-			}
-			linkKeyCache.set(linkpath, resolvedKey);
-			return resolvedKey;
-		};
-
-		// Find chapters mapped to each event -> itemIndex. Keys are lowercased and trimmed basenames.
+		// Find chapters mapped to each event -> itemIndex. Keys are file.path.
 		const chapterToEventMap = new Map<string, { time: string, itemIndex: number }[]>();
 
 		if (entries) {
@@ -130,26 +113,28 @@ export class TimelineBoardRenderer {
 				if (entry.items && entry.items.length > 0) {
 					for (let i = 0; i < entry.items.length; i++) {
 						const item = entry.items[i];
-						const chaps = item.chapter.split(',').map(c => c.trim()).filter(Boolean);
+						const chaps = item.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean);
 						for (const c of chaps) {
-							const baseKey = resolveLinkKey(c);
-							if (!chapterToEventMap.has(baseKey)) {
-								chapterToEventMap.set(baseKey, []);
+							const matchedFile = resolveLinkToFile(c);
+							const mapKey = matchedFile ? matchedFile.path : c;
+							if (!chapterToEventMap.has(mapKey)) {
+								chapterToEventMap.set(mapKey, []);
 							}
-							const list = chapterToEventMap.get(baseKey)!;
+							const list = chapterToEventMap.get(mapKey)!;
 							if (!list.find(m => m.time === entry.time && m.itemIndex === i)) {
 								list.push({ time: entry.time, itemIndex: i });
 							}
 						}
 					}
 				} else if (entry.chapter) {
-					const chaps = entry.chapter.split(',').map(c => c.trim()).filter(Boolean);
+					const chaps = entry.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean);
 					for (const c of chaps) {
-						const baseKey = resolveLinkKey(c);
-						if (!chapterToEventMap.has(baseKey)) {
-							chapterToEventMap.set(baseKey, []);
+						const matchedFile = resolveLinkToFile(c);
+						const mapKey = matchedFile ? matchedFile.path : c;
+						if (!chapterToEventMap.has(mapKey)) {
+							chapterToEventMap.set(mapKey, []);
 						}
-						const list = chapterToEventMap.get(baseKey)!;
+						const list = chapterToEventMap.get(mapKey)!;
 						if (!list.find(m => m.time === entry.time && m.itemIndex === 0)) {
 							list.push({ time: entry.time, itemIndex: 0 });
 						}
@@ -174,24 +159,15 @@ export class TimelineBoardRenderer {
 			if (!path) return;
 			const targetFile = app.vault.getAbstractFileByPath(path);
 			if (targetFile instanceof TFile) {
-				const fileKey = targetFile.basename.toLowerCase().trim();
-				// 1. Update frontmatter
-				const eventNames = targetEvents.map(te => te.time);
 				onSaveStateChange(true);
-				await app.fileManager.processFrontMatter(targetFile, (fm: Record<string, unknown>) => {
-					fm['timeline'] = eventNames.length > 0 ? eventNames : null;
-				});
-
-				// 2. Call TimelineManager.syncChapterToEventItem
-				if (targetEvents.length > 0 || chapterToEventMap.has(fileKey)) {
-					await timelineManager.syncChapterToEventItem(targetFile.basename, targetEvents);
-				}
-
-				// Delay to allow Obsidian to process frontmatter before reloading
-				window.setTimeout(() => {
+				try {
+					await timelineManager.syncChapterToEventItem(targetFile, targetEvents, bookFolder);
+				} catch (err) {
+					Logger.error('[TimelineBoard] syncChapterToEventItem 失败:', err);
+				} finally {
 					onSaveStateChange(false);
 					reloadBoard();
-				}, 500);
+				}
 			}
 		};
 
@@ -281,10 +257,15 @@ export class TimelineBoardRenderer {
 						}
 
 						void (async () => {
-							if (onSaveStateChange) onSaveStateChange(true);
-							await timelineManager.moveEventItem(sourceTime, sourceIdx, targetEvents[0].time, targetIdx);
-							if (onSaveStateChange) onSaveStateChange(false);
-							reloadBoard();
+							onSaveStateChange(true);
+							try {
+								await timelineManager.moveEventItem(sourceTime, sourceIdx, targetEvents[0].time, targetIdx, bookFolder);
+							} catch (err) {
+								Logger.error('[TimelineBoard] moveEventItem 失败:', err);
+							} finally {
+								onSaveStateChange(false);
+								reloadBoard();
+							}
 						})();
 					}
 					return;
@@ -299,9 +280,9 @@ export class TimelineBoardRenderer {
 		const fileGroups = new Map<string, TFile[]>(); // Key is "time|itemIndex" or "GAP|time1|time2"
 
 		for (const file of files) {
-			let eventsFromMD = chapterToEventMap.get(file.basename.toLowerCase().trim()) || [];
+			let eventsFromMD = chapterToEventMap.get(file.path) || [];
 
-			if (eventsFromMD.length === 0) {
+			if (!timelineFile && eventsFromMD.length === 0) {
 				const fmEvents = getChapterEvents(file, new Map()); // pass empty map to only get FM
 				eventsFromMD = fmEvents.map(time => ({ time, itemIndex: 0 }));
 			}
@@ -433,60 +414,22 @@ export class TimelineBoardRenderer {
 						e.stopPropagation();
 						new ConfirmDeleteEventModal(app, t('modal.confirm-delete-event'), () => {
 							void (async () => {
-								if (onSaveStateChange) onSaveStateChange(true);
-
-								// Determine which files to clean frontmatter for
-								const eventTimeToRemove = entry.time;
-								const filesToClean: TFile[] = [];
-								if (items.length <= 1) {
-									// Whole entry deleted
-									for (const file of files) {
-										const evts = chapterToEventMap.get(file.basename.toLowerCase().trim());
-										if (evts && evts.some(e => e.time === eventTimeToRemove)) {
-											filesToClean.push(file);
-										}
+								onSaveStateChange(true);
+								try {
+									const originalIndex = allEntries.indexOf(entry);
+									if (items.length <= 1) {
+										await timelineManager.deleteEntry(originalIndex, bookFolder);
+									} else {
+										items.splice(itemIdx, 1);
+										entry.items = items;
+										await timelineManager.updateEntry(originalIndex, entry, bookFolder);
 									}
-								} else {
-									// Only itemIdx deleted
-									for (const file of files) {
-										const evts = chapterToEventMap.get(file.basename.toLowerCase().trim());
-										if (evts && evts.some(e => e.time === eventTimeToRemove && e.itemIndex === itemIdx)) {
-											filesToClean.push(file);
-										}
-									}
-								}
-
-								// Clean frontmatter
-								for (const file of filesToClean) {
-									try {
-										await app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
-											if (fm['timeline']) {
-												if (Array.isArray(fm['timeline'])) {
-													const timelineArr = fm['timeline'] as string[];
-													fm['timeline'] = timelineArr.filter(t => t !== eventTimeToRemove);
-													if ((fm['timeline'] as string[]).length === 0) fm['timeline'] = null;
-												} else if (fm['timeline'] === eventTimeToRemove) {
-													fm['timeline'] = null;
-												}
-											}
-										});
-									} catch (err) {
-										Logger.error(`[TimelineBoard] 清理 ${file.path} 的 frontmatter 失败:`, err);
-									}
-								}
-
-								const originalIndex = allEntries.indexOf(entry);
-								if (items.length <= 1) {
-									await timelineManager.deleteEntry(originalIndex);
-								} else {
-									items.splice(itemIdx, 1);
-									entry.items = items;
-									await timelineManager.updateEntry(originalIndex, entry);
-								}
-								if (onSaveStateChange) onSaveStateChange(false);
-								window.setTimeout(() => {
+								} catch (err) {
+									Logger.error('[TimelineBoard] 删除事件失败:', err);
+								} finally {
+									onSaveStateChange(false);
 									reloadBoard();
-								}, 200);
+								}
 							})();
 						}).open();
 					};
@@ -496,32 +439,45 @@ export class TimelineBoardRenderer {
 						e.stopPropagation();
 						if (descEl.querySelector('textarea')) return;
 						const currentDesc = items[itemIdx].description || '';
+						const prevScrollTop = descEl.scrollTop;
 						descEl.empty();
 						descEl.addClass('is-editing');
 						const textarea = descEl.createEl('textarea', { cls: 'wn-corkboard-textarea' });
 						textarea.value = currentDesc;
-						textarea.focus();
+						textarea.focus({ preventScroll: true });
 						textarea.setSelectionRange(currentDesc.length, currentDesc.length);
 
-						textarea.setCssProps({ height: 'auto' });
-						textarea.setCssProps({ height: textarea.scrollHeight + 'px' });
-						textarea.oninput = () => {
+						const resizeTextarea = () => {
+							const st = descEl.scrollTop;
 							textarea.setCssProps({ height: 'auto' });
 							textarea.setCssProps({ height: textarea.scrollHeight + 'px' });
+							descEl.scrollTop = st;
+						};
+
+						resizeTextarea();
+						descEl.scrollTop = prevScrollTop;
+
+						textarea.oninput = () => {
+							resizeTextarea();
 						};
 
 						const saveDesc = async () => {
 							const newVal = textarea.value.trim();
 							if (newVal !== currentDesc) {
-								if (onSaveStateChange) onSaveStateChange(true);
-								items[itemIdx].description = newVal;
-								// Update the entry in manager
-								if (!entry.items) {
-									entry.description = newVal;
+								onSaveStateChange(true);
+								try {
+									items[itemIdx].description = newVal;
+									// Update the entry in manager
+									if (!entry.items) {
+										entry.description = newVal;
+									}
+									const originalIndex = allEntries.indexOf(entry);
+									await timelineManager.updateEntry(originalIndex, entry, bookFolder);
+								} catch (err) {
+									Logger.error('[TimelineBoard] 更新描述失败:', err);
+								} finally {
+									onSaveStateChange(false);
 								}
-								const originalIndex = allEntries.indexOf(entry);
-								await timelineManager.updateEntry(originalIndex, entry);
-								if (onSaveStateChange) onSaveStateChange(false);
 							}
 							reloadBoard();
 						};
@@ -567,12 +523,16 @@ export class TimelineBoardRenderer {
 					itemRow.createDiv('wn-timeline-cards-container');
 
 					const textarea = descEl.createEl('textarea', { cls: 'wn-corkboard-textarea' });
-					textarea.focus();
-					textarea.setCssProps({ height: 'auto' });
-					textarea.setCssProps({ height: textarea.scrollHeight + 'px' });
-					textarea.oninput = () => {
+					textarea.focus({ preventScroll: true });
+					const resizeTextarea = () => {
+						const st = descEl.scrollTop;
 						textarea.setCssProps({ height: 'auto' });
 						textarea.setCssProps({ height: textarea.scrollHeight + 'px' });
+						descEl.scrollTop = st;
+					};
+					resizeTextarea();
+					textarea.oninput = () => {
+						resizeTextarea();
 					};
 					textarea.onblur = async () => {
 						const newVal = textarea.value.trim();
@@ -582,9 +542,14 @@ export class TimelineBoardRenderer {
 							}
 							entry.items.push({ description: newVal, chapter: '' });
 							const originalIndex = allEntries.indexOf(entry);
-							if (onSaveStateChange) onSaveStateChange(true);
-							await timelineManager.updateEntry(originalIndex, entry);
-							if (onSaveStateChange) onSaveStateChange(false);
+							onSaveStateChange(true);
+							try {
+								await timelineManager.updateEntry(originalIndex, entry, bookFolder);
+							} catch (err) {
+								Logger.error('[TimelineBoard] 添加子事件失败:', err);
+							} finally {
+								onSaveStateChange(false);
+							}
 						}
 						reloadBoard();
 					};
@@ -648,11 +613,11 @@ export class TimelineBoardRenderer {
 				// 避免"写→读→写→读"交替模式触发的 forced layout reflow，
 				// 将多次昂贵的强制布局计算合并为一次自然的批量读取。
 
-				// 构建 O(1) 的卡片元素索引
+				// 构建 O(1) 的卡片元素索引（key = file.path）
 				const localCardElMap = new Map<string, HTMLElement>();
 				mainCol.querySelectorAll('.wn-corkboard-card').forEach(el => {
-					const db = el.getAttribute('data-basename');
-					if (db) localCardElMap.set(db.toLowerCase().trim(), el as HTMLElement);
+					const dp = el.getAttribute('data-path');
+					if (dp) localCardElMap.set(dp, el as HTMLElement);
 				});
 
 				// 构建 O(1) 的事件行元素索引（key = "time|itemIndex"）
@@ -672,10 +637,10 @@ export class TimelineBoardRenderer {
 				type LinkData = { startX: number; startY: number; endX: number; endY: number; isHovered: boolean; };
 				const links: LinkData[] = [];
 
-				for (const [basename, events] of chapterToEventMap.entries()) {
+				for (const [key, events] of chapterToEventMap.entries()) {
 					if (events.length <= 1) continue;
 
-					const cardEl = localCardElMap.get(basename);
+					const cardEl = localCardElMap.get(key);
 					if (!cardEl) continue;
 					// 处于间隔区的卡片自然桥接相邻事件，无需连线
 					if (cardEl.closest('.wn-timeline-gap')) continue;
@@ -785,16 +750,16 @@ export class TimelineBoardRenderer {
 					if (fn) fn();
 				}
 
-				// 构建 O(1) 的卡片元素索引，避免 O(N²) 的全量扫描
+				// 构建 O(1) 的卡片元素索引（key = file.path），避免 O(N²) 的全量扫描
 				const hoverCardElMap = new Map<string, HTMLElement>();
 				mainCol.querySelectorAll('.wn-corkboard-card').forEach(el => {
-					const db = el.getAttribute('data-basename');
-					if (db) hoverCardElMap.set(db.toLowerCase().trim(), el as HTMLElement);
+					const dp = el.getAttribute('data-path');
+					if (dp) hoverCardElMap.set(dp, el as HTMLElement);
 				});
 
-				for (const [basename, events] of chapterToEventMap.entries()) {
+				for (const [key, events] of chapterToEventMap.entries()) {
 					if (events.length <= 1) continue;
-					const cardEl = hoverCardElMap.get(basename);
+					const cardEl = hoverCardElMap.get(key);
 
 					const targetEls: HTMLElement[] = [];
 					if (cardEl) targetEls.push(cardEl);
@@ -875,14 +840,15 @@ export class TimelineBoardRenderer {
 		const addNodeBtn = addNodeRow.createDiv({ cls: 'wn-timeline-add-node-btn' });
 		addNodeBtn.textContent = t('corkboard.new-timeline-node');
 		addNodeBtn.onclick = async () => {
-			let timelineFile = timelineManager.getTimelineFile();
-			if (!timelineFile) {
+			let tlFile = timelineManager.getTimelineFile(bookFolder);
+			if (!tlFile) {
 				// 自动创建时间线.md
-				const newFilePath = timelineManager.getTimelineFilePath();
 				try {
-					timelineFile = await app.vault.create(newFilePath, '');
-					const msg = t('notice.timeline-file-created');
-					new Notice(msg.replace('{name}', newFilePath));
+					tlFile = await timelineManager.createTimelineFile(bookFolder);
+					if (tlFile) {
+						const msg = t('notice.timeline-file-created');
+						new Notice(msg.replace('{name}', tlFile.path));
+					}
 				} catch (e) {
 					console.error('[TimelineBoardRenderer] 创建时间线文件失败:', e);
 					new Notice(t('notice.timeline-file-create-failed'));
@@ -896,15 +862,18 @@ export class TimelineBoardRenderer {
 				plugin,
 				'',
 				'',
-				currentBookPath === '/' ? '' : (currentBookPath || ''),
+				bookFolder,
 				(entry) => {
 					void (async () => {
+						onSaveStateChange(true);
 						try {
-							await timelineManager.appendEntry(entry);
+							await timelineManager.appendEntry(entry, bookFolder);
 							new Notice(t('notice.timeline-added'));
-							reloadBoard();
 						} catch (e) {
 							console.error('[TimelineBoardRenderer] 写入记录失败:', e);
+						} finally {
+							onSaveStateChange(false);
+							reloadBoard();
 						}
 					})();
 				},

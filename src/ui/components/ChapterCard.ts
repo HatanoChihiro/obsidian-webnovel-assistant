@@ -140,7 +140,7 @@ export class ChapterCard {
 		const badgesContainer = footerEl.createDiv('wn-corkboard-card-badges');
 
 		// 1. 伏笔 Badge (待回收/已回收)
-		renderForeshadowingBadges(badgesContainer, cardForeshadowings, file.basename, plugin);
+		renderForeshadowingBadges(badgesContainer, cardForeshadowings, file.path, plugin);
 
 		// 2. 设定关联 Badge
 		const loreArray: unknown = frontmatter?.lore;

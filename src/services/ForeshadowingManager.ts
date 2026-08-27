@@ -8,6 +8,7 @@ import { SerializedWriter } from '../utils/SerializedWriter';
 import { getForeshadowingStatusText, getDefaultFileName, getDefaultFileNameCandidates } from '../i18n/data-keys';
 import { findBookRoot } from '../utils/path';
 import { ForeshadowingParser } from '../utils/ForeshadowingParser';
+import { ChapterSorter } from './ChapterSorter';
 
 /**
  * 伏笔管理服务
@@ -149,6 +150,13 @@ export class ForeshadowingManager {
 			}
 
 			const now = window.moment().format('YYYY-MM-DD HH:mm');
+			const sourceLink = ChapterSorter.generateChapterLinktext(
+				this.app,
+				this.plugin,
+				sourceFile,
+				folder,
+				{ sourcePath: targetFile.path, useAlias: true }
+			);
 
 			// 检查是否已存在相同说明的条目
 			let merged = false;
@@ -162,7 +170,7 @@ export class ForeshadowingManager {
 						const entry = entries[0];
 						// 追加新引用内容
 						entry.contents.push({
-							source: sourceFile.basename,
+							source: sourceLink,
 							time: now,
 							text: content.trim()
 						});
@@ -175,7 +183,7 @@ export class ForeshadowingManager {
 
 				// 新建条目
 				const entry: ForeshadowingEntry = {
-					sourceFile: sourceFile.basename,
+					sourceFile: sourceLink,
 					content: content.trim(),
 					description,
 					tags,
@@ -498,9 +506,9 @@ export class ForeshadowingManager {
 	}
 
 	/**
-	 * 构建「章节文件名 → 关联伏笔条目列表」映射表
+	 * 构建「章节路径 → 关联伏笔条目列表」映射表
 	 *
-	 * 将读取伏笔文件、解析条目、模糊匹配文件名的三步逻辑统一封装，
+	 * 将读取伏笔文件、解析条目、按章节路径安全匹配的三步逻辑统一封装，
 	 * 避免在 WorkbenchView / ChapterOverviewView / ImmersiveChapterListView 中重复实现。
 	 *
 	 * @param folderPath 书籍根目录路径（根目录传 ''）
@@ -518,6 +526,8 @@ export class ForeshadowingManager {
 
 		const content = await vault.cachedRead(fFile);
 		const entries = this.parseEntries(content);
+		const allChapters = ChapterSorter.getAllChapters(this.app, this.plugin, folderPath);
+		const eligibleChapters = allChapters.length > 0 ? allChapters : files;
 
 		for (const entry of entries) {
 			// 提取所有来源（可能跨多个章节）
@@ -546,16 +556,18 @@ export class ForeshadowingManager {
 
 			for (const target of targets) {
 				if (!target) continue;
-				const cleanTarget = target.toLowerCase().replace(/\s+/g, '');
-				for (const file of files) {
-					// 模糊匹配：互相包含即视为关联（处理前缀/后缀差异）
-					const cleanBase = file.basename.toLowerCase().replace(/\s+/g, '');
-					if (cleanBase.includes(cleanTarget) || cleanTarget.includes(cleanBase)) {
-						const list = map.get(file.basename) || [];
-						if (!list.includes(entry)) {
-							list.push(entry);
-							map.set(file.basename, list);
-						}
+				const resolvedFile = ChapterSorter.resolveChapterFile(
+					this.app,
+					this.plugin,
+					folderPath,
+					target,
+					{ eligibleChapters, sourcePath: fFile.path }
+				);
+				if (resolvedFile) {
+					const list = map.get(resolvedFile.path) || [];
+					if (!list.includes(entry)) {
+						list.push(entry);
+						map.set(resolvedFile.path, list);
 					}
 				}
 			}

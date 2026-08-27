@@ -1,9 +1,10 @@
-import type { App } from 'obsidian';
+import type { App, TFile } from 'obsidian';
 import { Modal, Notice, Setting, MarkdownView } from 'obsidian';
 import type { ForeshadowingSettings } from '../types/foreshadowing';
 import type { ChapterSorterContext } from '../services/ChapterSorter';
 import { t } from '../i18n';
 import { ChapterSorter } from '../services/ChapterSorter';
+import { getFileVolumePath } from '../utils/chapterDisplayOrder';
 
 export interface ForeshadowingInputModalPlugin {
 	settings: {
@@ -155,17 +156,26 @@ export class ForeshadowingInputModal extends Modal {
 // ─────────────────────────────────────────────
 
 /**
+ * 章节候选对象定义
+ */
+interface ChapterCandidateOption {
+	file: TFile;
+	value: string;
+	label: string;
+}
+
+/**
  * 章节多选建议模态框
  */
 class ChapterMultiSelectModal extends Modal {
-	private chapters: string[];
-	private selectedChapters: Set<string> = new Set();
+	private candidates: ChapterCandidateOption[];
+	private selectedValues: Set<string> = new Set();
 	private onSubmit: (chapters: string[]) => void;
 	private listEl!: HTMLElement;
 
-	constructor(app: App, chapters: string[], onSubmit: (chapters: string[]) => void) {
+	constructor(app: App, candidates: ChapterCandidateOption[], onSubmit: (chapters: string[]) => void) {
 		super(app);
-		this.chapters = chapters;
+		this.candidates = candidates;
 		this.onSubmit = onSubmit;
 	}
 
@@ -188,12 +198,12 @@ class ChapterMultiSelectModal extends Modal {
 		// 章节列表
 		this.listEl = contentEl.createDiv({ cls: 'chapter-multi-select-list' });
 		this.listEl.addClass('webnovel-modal-list');
-		this.renderChapterList(this.chapters);
+		this.renderChapterList(this.candidates);
 
 		// 搜索功能
 		searchInput.addEventListener('input', () => {
 			const query = searchInput.value.toLowerCase();
-			const filtered = this.chapters.filter(ch => ch.toLowerCase().includes(query));
+			const filtered = this.candidates.filter(ch => ch.label.toLowerCase().includes(query) || ch.value.toLowerCase().includes(query));
 			this.renderChapterList(filtered);
 		});
 
@@ -202,13 +212,15 @@ class ChapterMultiSelectModal extends Modal {
 		selectedEl.addClass('webnovel-modal-selected');
 		const updateSelected = () => {
 			selectedEl.empty();
-			if (this.selectedChapters.size === 0) {
+			if (this.selectedValues.size === 0) {
 				selectedEl.createSpan({ text: t('modal.no-chapter-selected'), cls: 'setting-item-description' });
 			} else {
-				selectedEl.createSpan({ text: t('modal.chapters-selected-count', { count: this.selectedChapters.size }), cls: 'setting-item-description' });
+				selectedEl.createSpan({ text: t('modal.chapters-selected-count', { count: this.selectedValues.size }), cls: 'setting-item-description' });
 				selectedEl.createEl('br');
-				Array.from(this.selectedChapters).forEach(ch => {
-					const tag = selectedEl.createSpan({ text: ch, cls: 'tag' });
+				Array.from(this.selectedValues).forEach(val => {
+					const cand = this.candidates.find(c => c.value === val);
+					const tagText = cand ? cand.label : val;
+					const tag = selectedEl.createSpan({ text: tagText, cls: 'tag' });
 					tag.addClass('webnovel-modal-selected-tag');
 				});
 			}
@@ -222,11 +234,11 @@ class ChapterMultiSelectModal extends Modal {
 
 		const confirmBtn = btnContainer.createEl('button', { text: t('common.confirm'), cls: 'mod-cta' });
 		confirmBtn.onclick = () => {
-			if (this.selectedChapters.size === 0) {
+			if (this.selectedValues.size === 0) {
 				new Notice(t('modal.please-select-chapter'));
 				return;
 			}
-			this.onSubmit(Array.from(this.selectedChapters));
+			this.onSubmit(Array.from(this.selectedValues));
 			this.close();
 		};
 
@@ -237,21 +249,21 @@ class ChapterMultiSelectModal extends Modal {
 		this.listEl.addEventListener('change', () => updateSelected());
 	}
 
-	private renderChapterList(chapters: string[]) {
+	private renderChapterList(candidates: ChapterCandidateOption[]) {
 		this.listEl.empty();
-		chapters.forEach(chapter => {
+		candidates.forEach(cand => {
 			const item = this.listEl.createDiv({ cls: 'chapter-item' });
 			item.addClass('webnovel-modal-chapter-item');
 			const checkbox = item.createEl('input', { type: 'checkbox' });
-			checkbox.checked = this.selectedChapters.has(chapter);
+			checkbox.checked = this.selectedValues.has(cand.value);
 			checkbox.addClass('wn-clickable');
-			const label = item.createSpan({ text: chapter, cls: 'webnovel-chapter-label' });
+			const label = item.createSpan({ text: cand.label, cls: 'webnovel-chapter-label' });
 			const toggle = () => {
-				if (this.selectedChapters.has(chapter)) {
-					this.selectedChapters.delete(chapter);
+				if (this.selectedValues.has(cand.value)) {
+					this.selectedValues.delete(cand.value);
 					checkbox.checked = false;
 				} else {
-					this.selectedChapters.add(chapter);
+					this.selectedValues.add(cand.value);
 					checkbox.checked = true;
 				}
 				this.listEl.dispatchEvent(new Event('change'));
@@ -264,7 +276,7 @@ class ChapterMultiSelectModal extends Modal {
 			});
 		});
 
-		if (chapters.length === 0) {
+		if (candidates.length === 0) {
 			this.listEl.createDiv({ text: t('modal.no-matching-chapters'), cls: 'setting-item-description webnovel-modal-empty' });
 		}
 	}
@@ -290,7 +302,7 @@ export class ForeshadowingRecoveryModal extends Modal {
 	private inputEl!: HTMLInputElement;
 	private noteEl!: HTMLInputElement;
 	private quoteEl!: HTMLTextAreaElement;
-	private chapters: string[] = [];
+	private candidateChapters: ChapterCandidateOption[] = [];
 
 	constructor(
 		app: App,
@@ -311,7 +323,12 @@ export class ForeshadowingRecoveryModal extends Modal {
 		this.initialQuote = initialQuote;
 		
 		const targetFiles = ChapterSorter.getAllChapters(this.app, this.plugin, this.folderPath);
-		this.chapters = targetFiles.map(c => c.basename);
+		this.candidateChapters = targetFiles.map(file => {
+			const value = ChapterSorter.generateChapterLinktext(this.app, this.plugin, file, this.folderPath, { eligibleChapters: targetFiles, useAlias: true });
+			const volume = getFileVolumePath(file, this.folderPath);
+			const label = volume ? `${file.basename} (${volume})` : file.basename;
+			return { file, value, label };
+		});
 	}
 
 	onOpen() {
@@ -391,15 +408,15 @@ export class ForeshadowingRecoveryModal extends Modal {
 		});
 		this.inputEl.addClass('webnovel-modal-input');
 		if (activeFile) {
-			this.inputEl.value = activeFile.basename;
+			this.inputEl.value = ChapterSorter.generateChapterLinktext(this.app, this.plugin, activeFile, this.folderPath, { useAlias: true });
 		}
 
 		// 如果有章节文件，显示选择按钮
-		if (this.chapters.length > 0) {
+		if (this.candidateChapters.length > 0) {
 			const btnRow = contentEl.createDiv({ cls: 'webnovel-btn-row' });
 			const selectBtn = btnRow.createEl('button', { text: t('modal.select-from-list'), cls: 'webnovel-select-btn' });
 			selectBtn.onclick = () => {
-				new ChapterMultiSelectModal(this.app, this.chapters, (selectedChapters) => {
+				new ChapterMultiSelectModal(this.app, this.candidateChapters, (selectedChapters) => {
 					if (selectedChapters.length > 0) {
 						this.inputEl.value = selectedChapters.join(', ');
 						this.noteEl?.focus();
@@ -408,7 +425,7 @@ export class ForeshadowingRecoveryModal extends Modal {
 			};
 			
 			const hint = contentEl.createEl('p', {
-				text: t('modal.chapter-count-hint', { count: this.chapters.length }),
+				text: t('modal.chapter-count-hint', { count: this.candidateChapters.length }),
 				cls: 'setting-item-description'
 			});
 			hint.addClass('wn-mb-12');
@@ -466,8 +483,8 @@ export class ForeshadowingRecoveryModal extends Modal {
 			this.inputEl.focus();
 			return;
 		}
-		// 支持逗号或空格分隔多个章节
-		const chapters = value.split(/[,，\s]+/).filter(Boolean).map(ch => ch.trim());
+		// 仅支持逗号或换行分隔多个章节，禁止按空格 split 破坏带空格的章节路径
+		const chapters = value.split(/[,，\n]+/).filter(Boolean).map(ch => ch.trim());
 		const note = this.noteEl.value.trim();
 		const quote = this.quoteEl.value.trim();
 		this.onSubmit(chapters, this.isStage, note, quote || undefined);

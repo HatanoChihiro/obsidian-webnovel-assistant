@@ -236,9 +236,9 @@ export class ImmersiveChapterListView extends ItemView {
 				leftContainer.createSpan({ text: file.basename, cls: 'immersive-chapter-title' });
 				
 				const badgesContainer = leftContainer.createSpan({ cls: 'immersive-chapter-badges' });
-				const cardForeshadowings = foreshadowingMap.get(file.basename) || [];
+				const cardForeshadowings = foreshadowingMap.get(file.path) || [];
 				
-				renderForeshadowingBadges(badgesContainer, cardForeshadowings, file.basename, this.plugin);
+				renderForeshadowingBadges(badgesContainer, cardForeshadowings, file.path, this.plugin);
 				
 				const cache = this.app.metadataCache.getFileCache(file);
 				const frontmatter = cache?.frontmatter;

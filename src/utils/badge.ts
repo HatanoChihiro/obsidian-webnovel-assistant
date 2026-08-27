@@ -25,13 +25,13 @@ export interface LoreBadgePlugin extends LoreHoverPopoverPlugin {
  *
  * @param container          要挂载 Badge 的父容器
  * @param cardForeshadowings 与该卡片关联的伏笔条目列表
- * @param currentBasename    当前章节文件名
+ * @param currentFileOrPath  当前章节文件路径或文件名
  * @param _plugin            插件实例（保留参数位置向后兼容）
  */
 export function renderForeshadowingBadges(
 	container: HTMLElement,
 	cardForeshadowings: ParsedForeshadowingEntry[],
-	currentBasename?: string,
+	currentFileOrPath?: string,
 	_plugin?: unknown
 ): void {
 	const tooltipOptions: TooltipOptions = { classes: ['wn-tooltip-left'] };
@@ -50,9 +50,9 @@ export function renderForeshadowingBadges(
 	}
 
 	// 已回收 (在其他章节回收的，本章只是提出或提及)
-	if (currentBasename) {
+	if (currentFileOrPath) {
 		const resolvedOriginForeshadowings = cardForeshadowings.filter(
-			f => f.status === ForeshadowingStatus.Recovered && !isRecoveredIn(f, currentBasename)
+			f => f.status === ForeshadowingStatus.Recovered && !isRecoveredIn(f, currentFileOrPath)
 		);
 		if (resolvedOriginForeshadowings.length > 0) {
 			const labelText = `${t('corkboard.foreshadowing-recovered-origin')}×${resolvedOriginForeshadowings.length}`;
@@ -65,8 +65,8 @@ export function renderForeshadowingBadges(
 	}
 
 	// 本章回收 (在本章实际发生彻底回收或阶段回收的)
-	const recoveredForeshadowings = currentBasename
-		? cardForeshadowings.filter(f => (f.status === ForeshadowingStatus.Recovered || f.status === ForeshadowingStatus.PartiallyRecovered) && isRecoveredIn(f, currentBasename))
+	const recoveredForeshadowings = currentFileOrPath
+		? cardForeshadowings.filter(f => (f.status === ForeshadowingStatus.Recovered || f.status === ForeshadowingStatus.PartiallyRecovered) && isRecoveredIn(f, currentFileOrPath))
 		: cardForeshadowings.filter(f => f.status === ForeshadowingStatus.Recovered);
 
 	if (recoveredForeshadowings.length > 0) {
@@ -79,20 +79,32 @@ export function renderForeshadowingBadges(
 	}
 }
 
-function isMatch(target: string | undefined, basename: string): boolean {
-    if (!target) return false;
-    const targetBase = target.split('|')[0].trim();
-    const lastSlash = targetBase.lastIndexOf('/');
-    const cleanTarget = lastSlash !== -1 ? targetBase.substring(lastSlash + 1) : targetBase;
-    return cleanTarget.toLowerCase() === basename.toLowerCase();
+function isMatch(target: string | undefined, currentFileOrPath: string): boolean {
+	if (!target || !currentFileOrPath) return false;
+	const cleanTarget = target.split('|')[0].trim().replace(/\.md$/i, '').toLowerCase();
+	const cleanCurrent = currentFileOrPath.replace(/\.md$/i, '').toLowerCase();
+
+	// 1. 如果 target 或 currentFileOrPath 包含路径分隔符，进行路径精准或后缀匹配
+	if (cleanTarget.includes('/') || cleanTarget.includes('\\') || cleanCurrent.includes('/') || cleanCurrent.includes('\\')) {
+		const normTarget = cleanTarget.replace(/\\/g, '/');
+		const normCurrent = cleanCurrent.replace(/\\/g, '/');
+		return normCurrent === normTarget || normCurrent.endsWith('/' + normTarget);
+	}
+
+	// 2. 否则进行裸 basename 对比
+	const lastSlashTarget = Math.max(cleanTarget.lastIndexOf('/'), cleanTarget.lastIndexOf('\\'));
+	const baseTarget = lastSlashTarget !== -1 ? cleanTarget.substring(lastSlashTarget + 1) : cleanTarget;
+	const lastSlashCurrent = Math.max(cleanCurrent.lastIndexOf('/'), cleanCurrent.lastIndexOf('\\'));
+	const baseCurrent = lastSlashCurrent !== -1 ? cleanCurrent.substring(lastSlashCurrent + 1) : cleanCurrent;
+	return baseTarget === baseCurrent;
 }
 
-function isRecoveredIn(f: ParsedForeshadowingEntry, basename: string): boolean {
-    if (!basename) return false;
-    if (f.recoveryLogs && f.recoveryLogs.some(r => isMatch(r.file, basename))) return true;
-    if (f.recoveryFiles && f.recoveryFiles.some(r => isMatch(r, basename))) return true;
-    if (f.recoveryFile && isMatch(f.recoveryFile, basename)) return true;
-    return false;
+function isRecoveredIn(f: ParsedForeshadowingEntry, currentFileOrPath: string): boolean {
+	if (!currentFileOrPath) return false;
+	if (f.recoveryLogs && f.recoveryLogs.some(r => isMatch(r.file, currentFileOrPath))) return true;
+	if (f.recoveryFiles && f.recoveryFiles.some(r => isMatch(r, currentFileOrPath))) return true;
+	if (f.recoveryFile && isMatch(f.recoveryFile, currentFileOrPath)) return true;
+	return false;
 }
 
 /**

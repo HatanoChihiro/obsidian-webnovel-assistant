@@ -386,7 +386,7 @@ export class ForeshadowingBoardRenderer {
 			if (sourceChapterName) {
 				const chapterLink = sourceHeader.createSpan({
 					cls: 'wn-card-chapter-link clickable-link',
-					text: `[[${sourceChapterName.split('/').pop() || sourceChapterName}]]`
+					text: `[[${ChapterSorter.extractWikilinkDisplay(sourceChapterName)}]]`
 				});
 
 				chapterLink.onclick = (e) => {
@@ -430,7 +430,7 @@ export class ForeshadowingBoardRenderer {
 
 				const logChapterLink = logRow.createSpan({
 					cls: 'wn-card-chapter-link clickable-link',
-					text: `[[${log.file}]]`
+					text: `[[${ChapterSorter.extractWikilinkDisplay(log.file)}]]`
 				});
 
 				if (log.time) {
@@ -479,7 +479,7 @@ export class ForeshadowingBoardRenderer {
 
 		const firstContent = entry.contents && entry.contents.length > 0 ? entry.contents[0] : null;
 		const firstSource = firstContent?.source || entry.sourceFile || '';
-		const firstSourceName = firstSource.split('/').pop() || firstSource;
+		const firstSourceName = ChapterSorter.extractWikilinkDisplay(firstSource);
 		const firstTime = firstContent?.time || entry.createdAt || '';
 
 		sourceNode.title = `${t('modal.first-marked-at', { name: firstSourceName }) || `首次标注于 ${firstSourceName}`}${firstTime ? ' · ' + firstTime : ''}`;
@@ -494,7 +494,7 @@ export class ForeshadowingBoardRenderer {
 				const dot = node.createDiv({ cls: 'foreshadowing-step-dot' });
 				setIcon(dot, 'circle');
 
-				const fileName = log.file.split('/').pop() || log.file;
+				const fileName = ChapterSorter.extractWikilinkDisplay(log.file);
 				const tooltip = `${fileName}${log.time ? ' · ' + log.time : ''}${log.note ? '\n' + log.note : ''}`;
 				node.title = tooltip;
 			});
@@ -504,7 +504,7 @@ export class ForeshadowingBoardRenderer {
 				const node = container.createDiv({ cls: 'foreshadowing-step-item is-final' });
 				const dot = node.createDiv({ cls: 'foreshadowing-step-dot' });
 				setIcon(dot, 'circle');
-				const fileName = file.split('/').pop() || file;
+				const fileName = ChapterSorter.extractWikilinkDisplay(file);
 				const time = entry.recoveredAts && entry.recoveredAts[index] ? entry.recoveredAts[index] : '';
 				node.title = `${fileName}${time ? ' · ' + time : ''}`;
 			});
@@ -534,10 +534,10 @@ export class ForeshadowingBoardRenderer {
 	): Promise<void> {
 		if (!chapterName) return;
 
-		const file = ChapterSorter.findChapterByName(app, plugin, currentBookPath, chapterName);
+		const file = ChapterSorter.resolveChapterFile(app, plugin, currentBookPath, chapterName);
 
 		if (!file) {
-			new Notice(t('corkboard.lore-not-found') || `未找到章节「${chapterName}」`);
+			new Notice(t('corkboard.lore-not-found') || `未找到章节「${ChapterSorter.extractWikilinkDisplay(chapterName)}」`);
 			return;
 		}
 

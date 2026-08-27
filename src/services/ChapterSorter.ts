@@ -1,6 +1,6 @@
 import { Logger } from '../utils/Logger';
 import type { App, TAbstractFile } from 'obsidian';
-import { TFile, TFolder, Vault } from 'obsidian';
+import { normalizePath, TFile, TFolder, Vault } from 'obsidian';
 import { CHINESE_NUMBERS } from '../constants';
 import type { AccurateCountSettings, ChapterNamingRule } from '../types/settings';
 
@@ -134,6 +134,100 @@ export class ChapterSorter {
 		return targetFiles;
 	}
 
+	static stripWikilink(link: string): string {
+		let clean = link.trim();
+		if (clean.startsWith('[[') && clean.endsWith(']]')) {
+			clean = clean.slice(2, -2).trim();
+		}
+		const pipeIndex = clean.indexOf('|');
+		if (pipeIndex !== -1) clean = clean.slice(0, pipeIndex).trim();
+		return clean.replace(/\.md$/i, '').trim();
+	}
+
+	static extractWikilinkDisplay(link: string): string {
+		let clean = link.trim();
+		if (clean.startsWith('[[') && clean.endsWith(']]')) {
+			clean = clean.slice(2, -2).trim();
+		}
+		const pipeIndex = clean.indexOf('|');
+		if (pipeIndex !== -1) return clean.slice(pipeIndex + 1).trim();
+
+		clean = clean.replace(/\.md$/i, '').trim();
+		const lastSlash = Math.max(clean.lastIndexOf('/'), clean.lastIndexOf('\\'));
+		return lastSlash === -1 ? clean : clean.slice(lastSlash + 1);
+	}
+
+	static resolveChapterFile(
+		app: App,
+		plugin: ChapterSorterContext,
+		folderPath: string,
+		rawLink: string,
+		options?: { eligibleChapters?: TFile[]; sourcePath?: string }
+	): TFile | null {
+		const linkpath = this.stripWikilink(rawLink);
+		if (!linkpath) return null;
+
+		const chapters = options?.eligibleChapters ?? this.getAllChapters(app, plugin, folderPath);
+		const normalizedLink = normalizePath(linkpath).toLowerCase();
+		const normalizedFolder = folderPath && folderPath !== '/'
+			? normalizePath(folderPath).replace(/^\/+|\/+$/g, '').toLowerCase()
+			: '';
+		const hasPath = linkpath.includes('/') || linkpath.includes('\\');
+
+		if (hasPath) {
+			const pathMatches = chapters.filter(file => {
+				const normalizedPath = normalizePath(file.path).replace(/\.md$/i, '').toLowerCase();
+				return normalizedPath === normalizedLink
+					|| normalizedPath === `${normalizedFolder}/${normalizedLink}`
+					|| normalizedPath.endsWith(`/${normalizedLink}`);
+			});
+			if (pathMatches.length === 1) return pathMatches[0];
+			if (pathMatches.length > 1) return null;
+
+			if (options?.sourcePath) {
+				const dest = app.metadataCache.getFirstLinkpathDest(linkpath, options.sourcePath);
+				if (dest instanceof TFile) {
+					return chapters.find(file => file.path === dest.path) ?? null;
+				}
+			}
+			return null;
+		}
+
+		const basenameMatches = chapters.filter(
+			file => file.basename.toLowerCase().trim() === normalizedLink.trim()
+		);
+		return basenameMatches.length === 1 ? basenameMatches[0] : null;
+	}
+
+	static generateChapterLinktext(
+		app: App,
+		plugin: ChapterSorterContext,
+		file: TFile,
+		folderPath: string,
+		options?: { sourcePath?: string; eligibleChapters?: TFile[]; useAlias?: boolean }
+	): string {
+		const chapters = options?.eligibleChapters ?? this.getAllChapters(app, plugin, folderPath);
+		const sameNameCount = chapters.filter(
+			chapter => chapter.basename.toLowerCase().trim() === file.basename.toLowerCase().trim()
+		).length;
+		if (sameNameCount <= 1) return file.basename;
+
+		let linktext = options?.sourcePath
+			? app.metadataCache.fileToLinktext(file, options.sourcePath, false)
+			: '';
+		linktext = this.stripWikilink(linktext);
+		if (!linktext || linktext === file.basename) {
+			const normalizedFolder = folderPath && folderPath !== '/'
+				? normalizePath(folderPath).replace(/^\/+|\/+$/g, '')
+				: '';
+			linktext = normalizedFolder && file.path.startsWith(`${normalizedFolder}/`)
+				? file.path.slice(normalizedFolder.length + 1).replace(/\.md$/i, '')
+				: file.path.replace(/\.md$/i, '');
+		}
+
+		return options?.useAlias ? `${linktext}|${file.basename}` : linktext;
+	}
+
 	/**
 	 * 在指定作品的章节集合中查找记录所引用的章节文件。
 	 * 回收记录只保存章节 basename，因此不能依赖 metadataCache 的相对链接解析。
@@ -144,13 +238,7 @@ export class ChapterSorter {
 		folderPath: string,
 		chapterName: string
 	): TFile | null {
-		if (!chapterName) return null;
-
-		const cleanTarget = chapterName.toLowerCase().replace(/\.md$/, '').trim();
-		return this.getAllChapters(app, plugin, folderPath).find(file => {
-			const cleanBase = file.basename.toLowerCase().trim();
-			return cleanBase === cleanTarget || cleanBase.includes(cleanTarget) || cleanTarget.includes(cleanBase);
-		}) ?? null;
+		return this.resolveChapterFile(app, plugin, folderPath, chapterName);
 	}
 
 	/**

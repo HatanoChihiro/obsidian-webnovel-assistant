@@ -1,11 +1,11 @@
 {
 	"name": "web-novel-assistant",
-	"version": "3.9.0",
+	"version": "3.9.1",
 	"description": "An all-in-one writing studio for novel and story writers — accurate word count, goal tracking, story timeline, foreshadowing manager, chapter corkboard, and lore graphs",
 	"main": "main.js",
 	"scripts": {
 		"build:css": "esbuild src/styles/index.css --bundle --outfile=styles.css",
-		"check:css": "npm run build:css && tsx scripts/css-audit.ts",
+		"check:css": "npm run build:css && stylelint \"src/styles/**/*.css\" --max-warnings 0 && tsx scripts/css-audit.ts",
 		"dev:js": "esbuild main.ts --bundle --format=cjs --external:obsidian --external:@codemirror/* --outfile=main.js --watch",
 		"dev:css": "esbuild src/styles/index.css --bundle --outfile=styles.css --watch",
 		"dev": "concurrently \"npm:dev:js\" \"npm:dev:css\"",
@@ -52,6 +52,8 @@
 		"obsidian": "^1.12.3",
 		"postcss": "^8.5.26",
 		"postcss-selector-parser": "^7.1.5",
+		"stylelint": "^17.14.1",
+		"stylelint-no-unsupported-browser-features": "^8.1.1",
 		"ts-morph": "^28.0.0",
 		"tslib": "^2.8.1",
 		"tsx": "^4.23.12",

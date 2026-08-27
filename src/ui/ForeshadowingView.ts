@@ -260,17 +260,18 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 				if (c.source) {
 					const chapterLink = metaEl.createSpan({
 						cls: 'wn-card-chapter-link clickable-link',
-						text: ` [[${c.source.split('/').pop() || c.source}]]`
+						text: ` [[${ChapterSorter.extractWikilinkDisplay(c.source)}]]`
 					});
 					chapterLink.title = t('common.jump-to-reference');
 					chapterLink.onclick = async (e) => {
 						e.stopPropagation();
-						const sourcePath = this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '';
-						const file = this.app.metadataCache.getFirstLinkpathDest(target, sourcePath);
+						const foreshadowingFile = this.getForeshadowingFile();
+						const sourcePath = foreshadowingFile?.path || (this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '');
+						const file = ChapterSorter.resolveChapterFile(this.app, this.plugin, this.currentFolder, target, { sourcePath });
 						if (file) {
 							await this.openFileWithSmartLocate(file, c.text);
 						} else {
-							new Notice(t('common.file-not-found', { name: target }));
+							new Notice(t('common.file-not-found', { name: ChapterSorter.extractWikilinkDisplay(target) }));
 						}
 					};
 				}
@@ -285,12 +286,13 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 				textEl.setCssProps({ cursor: 'pointer' });
 				textEl.title = t('common.jump-to-original');
 				textEl.onclick = async () => {
-					const sourcePath = this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '';
-					const file = this.app.metadataCache.getFirstLinkpathDest(target, sourcePath);
+					const foreshadowingFile = this.getForeshadowingFile();
+					const sourcePath = foreshadowingFile?.path || (this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '');
+					const file = ChapterSorter.resolveChapterFile(this.app, this.plugin, this.currentFolder, target, { sourcePath });
 					if (file) {
 						await this.openFileWithSmartLocate(file, c.text);
 					} else {
-						new Notice(t('common.file-not-found', { name: target }));
+						new Notice(t('common.file-not-found', { name: ChapterSorter.extractWikilinkDisplay(target) }));
 					}
 				};
 			}
@@ -310,7 +312,7 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 
 				const linkSpan = metaEl.createSpan({
 					cls: 'wn-card-chapter-link clickable-link',
-					text: ` [[${log.file.split('/').pop() || log.file}]]`
+					text: ` [[${ChapterSorter.extractWikilinkDisplay(log.file)}]]`
 				});
 
 				if (log.time) metaEl.createSpan({ cls: 'wn-log-time', text: ` · ${log.time}` });
@@ -458,14 +460,15 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 
 		const firstContent = entry.contents[0];
 		const firstSource = firstContent?.source || entry.sourceFile;
-		const firstSourceName = firstSource.split('/').pop() || firstSource;
+		const firstSourceName = ChapterSorter.extractWikilinkDisplay(firstSource);
 		const firstTime = firstContent?.time || entry.createdAt || '';
 
 		sourceNode.title = `${t('modal.first-marked-at', { name: firstSourceName })}${firstTime ? ' · ' + firstTime : ''}`;
 		
 		sourceNode.onclick = async () => {
-			const sourcePath = this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '';
-			const file = this.app.metadataCache.getFirstLinkpathDest(firstSource, sourcePath);
+			const foreshadowingFile = this.getForeshadowingFile();
+			const sourcePath = foreshadowingFile?.path || (this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '');
+			const file = ChapterSorter.resolveChapterFile(this.app, this.plugin, this.currentFolder, firstSource, { sourcePath });
 			if (file) await openFileAndFocus(this.app, getLeafForFileNavigation(this.app, file, { sourceLeaf: this.leaf }), file);
 		};
 
@@ -479,12 +482,13 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 				const dot = node.createDiv({ cls: 'foreshadowing-step-dot' });
 				setIcon(dot, 'circle');
 
-				const fileName = log.file.split('/').pop() || log.file;
+				const fileName = ChapterSorter.extractWikilinkDisplay(log.file);
 				const tooltip = `${fileName}${log.time ? ' · ' + log.time : ''}${log.note ? '\n' + log.note : ''}`;
 				node.title = tooltip;
 				node.onclick = async () => {
-					const sourcePath = this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '';
-					const file = this.app.metadataCache.getFirstLinkpathDest(log.file, sourcePath);
+					const foreshadowingFile = this.getForeshadowingFile();
+					const sourcePath = foreshadowingFile?.path || (this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '');
+					const file = ChapterSorter.resolveChapterFile(this.app, this.plugin, this.currentFolder, log.file, { sourcePath });
 					if (file) await openFileAndFocus(this.app, getLeafForFileNavigation(this.app, file, { sourceLeaf: this.leaf }), file);
 				};
 			});
@@ -494,12 +498,13 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 				const node = stepperEl.createDiv({ cls: 'foreshadowing-step-item is-final' });
 				const dot = node.createDiv({ cls: 'foreshadowing-step-dot' });
 				setIcon(dot, 'circle');
-				const fileName = file.split('/').pop() || file;
+				const fileName = ChapterSorter.extractWikilinkDisplay(file);
 				const time = entry.recoveredAts && entry.recoveredAts[index] ? entry.recoveredAts[index] : '';
 				node.title = `${fileName}${time ? ' · ' + time : ''}`;
 				node.onclick = async () => {
-					const sourcePath = this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '';
-					const targetFile = this.app.metadataCache.getFirstLinkpathDest(file, sourcePath);
+					const foreshadowingFile = this.getForeshadowingFile();
+					const sourcePath = foreshadowingFile?.path || (this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '');
+					const targetFile = ChapterSorter.resolveChapterFile(this.app, this.plugin, this.currentFolder, file, { sourcePath });
 					if (targetFile) await openFileAndFocus(this.app, getLeafForFileNavigation(this.app, targetFile, { sourceLeaf: this.leaf }), targetFile);
 				};
 			});
@@ -537,9 +542,11 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 	}
 
 	private async openRecoveryLocation(chapterName: string, searchTexts: (string | undefined)[]) {
-		const file = ChapterSorter.findChapterByName(this.app, this.plugin, this.currentFolder, chapterName);
+		const foreshadowingFile = this.getForeshadowingFile();
+		const sourcePath = foreshadowingFile?.path || (this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '');
+		const file = ChapterSorter.resolveChapterFile(this.app, this.plugin, this.currentFolder, chapterName, { sourcePath });
 		if (!file) {
-			new Notice(t('common.file-not-found', { name: chapterName }));
+			new Notice(t('common.file-not-found', { name: ChapterSorter.extractWikilinkDisplay(chapterName) }));
 			return;
 		}
 

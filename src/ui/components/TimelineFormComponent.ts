@@ -4,6 +4,7 @@ import type { TimelineEntry } from '../../services/TimelineManager';
 import type { AccurateCountSettings } from '../../types/settings';
 import type { ChapterSorterContext, ChapterSorterSettings } from '../../services/ChapterSorter';
 import { ChapterSorter } from '../../services/ChapterSorter';
+import { getFileVolumePath } from '../../utils/chapterDisplayOrder';
 import { t } from '../../i18n';
 
 export type TimelineFormSettings = ChapterSorterSettings & Pick<AccurateCountSettings, 'timeline'>;
@@ -50,7 +51,12 @@ export class TimelineFormComponent {
 		const eventsContainer = form.createDiv();
 		eventsContainer.setCssProps({ marginBottom: '12px' });
 		const targetFiles = ChapterSorter.getAllChapters(app, context, folderPath);
-		const chapterFiles: string[] = targetFiles.map(c => c.basename);
+		const chapterOptions = targetFiles.map(file => {
+			const value = ChapterSorter.generateChapterLinktext(app, context, file, folderPath, { eligibleChapters: targetFiles, useAlias: false });
+			const volume = getFileVolumePath(file, folderPath);
+			const label = volume ? `${file.basename} (${volume})` : file.basename;
+			return { file, value, label };
+		});
 
 		const existingItems: { description: string; chapter: string; origin?: string }[] = initialEntry?.items && initialEntry.items.length > 0 
 			? initialEntry.items 
@@ -80,9 +86,12 @@ export class TimelineFormComponent {
 				const select = row.createEl('select', { cls: 'wn-timeline-form-input' });
 				select.setCssProps({ flex: '1' });
 				select.createEl('option', { value: '', text: t('modal.select-chapter') });
-				chapterFiles.forEach(file => {
-					const option = select.createEl('option', { value: file, text: file });
-					if (file === initialValue) option.selected = true;
+				const initialFile = initialValue
+					? ChapterSorter.resolveChapterFile(app, context, folderPath, initialValue, { eligibleChapters: targetFiles })
+					: null;
+				chapterOptions.forEach(opt => {
+					const option = select.createEl('option', { value: opt.value, text: opt.label });
+					if (opt.value === initialValue || initialFile?.path === opt.file.path) option.selected = true;
 				});
 				
 				const removeBtn = row.createEl('button', { text: '−' });

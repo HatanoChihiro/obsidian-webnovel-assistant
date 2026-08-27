@@ -8,6 +8,7 @@ import { getDefaultFileName } from '../i18n/data-keys';
 import { ChapterSorter } from '../services/ChapterSorter';
 import { TimelineAddModal } from './TimelineAddModal';
 import { smartLocateAndHighlight } from '../utils/leaf';
+import { getFileVolumePath } from '../utils/chapterDisplayOrder';
 import type { CurrentBookContextPlugin } from '../utils/path';
 import type { TimelineFormContext, TimelineFormSettings } from './components/TimelineFormComponent';
 
@@ -18,7 +19,6 @@ export const TIMELINE_VIEW_TYPE = 'wn-timeline-view';
 
 export type TimelineViewManager = Pick<
 	TimelineManager,
-	| 'currentFolder'
 	| 'getTimelineFile'
 	| 'createTimelineFile'
 	| 'parseEntries'
@@ -66,7 +66,6 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 	}
 
 	protected async onFolderChange() {
-		this.manager.currentFolder = this.currentFolder;
 		this.editingIndex = -1;
 		this.filterType = 'all';
 		this.app.workspace.trigger('timeline-filter-changed', 'all');
@@ -104,7 +103,7 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 	}
 
 	async refresh() {
-		const file = this.manager.getTimelineFile();
+		const file = this.manager.getTimelineFile(this.currentFolder);
 		const content = file ? await this.app.vault.read(file) : null;
 		await this.renderFromContent(content);
 	}
@@ -131,7 +130,7 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 				(entry) => {
 					void (async () => {
 						try {
-							const newContent = await this.manager.appendEntry(entry);
+							const newContent = await this.manager.appendEntry(entry, this.currentFolder);
 							await this.renderFromContent(newContent);
 						} catch (e) { console.error(e); }
 					})();
@@ -156,7 +155,7 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 			createBtn.onclick = () => {
 				void (async () => {
 					try {
-						await this.manager.createTimelineFile();
+						await this.manager.createTimelineFile(this.currentFolder);
 						await this.refresh();
 					} catch (e) { console.error(e); }
 				})();
@@ -284,7 +283,7 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 			if (fromIndex !== -1 && fromIndex !== toIndex) {
 				void (async () => {
 					try {
-						const newContent = await this.manager.moveEntry(fromIndex, toIndex);
+						const newContent = await this.manager.moveEntry(fromIndex, toIndex, this.currentFolder);
 						await this.renderFromContent(newContent || null);
 					} catch (e) {
 						console.error('[TimelineView] 移动记录失败:', e);
@@ -311,7 +310,7 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 		timeEl.title = t('common.jump-to-entry');
 		timeEl.onclick = async (e) => {
 			e.stopPropagation();
-			const timelineFile = this.manager.getTimelineFile();
+			const timelineFile = this.manager.getTimelineFile(this.currentFolder);
 			if (!timelineFile) {
 				new Notice(t('common.file-not-found', { name: this.getWatchFileName() }));
 				return;
@@ -362,20 +361,27 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 
 				chapters.forEach((chapterName, index) => {
 					const link = linksContainer.createEl('a', {
-						text: chapterName.split('/').pop() || chapterName,
+						text: ChapterSorter.extractWikilinkDisplay(chapterName),
 						cls: 'wn-timeline-chapter-link'
 					});
 					link.onclick = () => {
 						void (async () => {
 							try {
-								const sourcePath = this.currentFolder ? this.currentFolder + '/timeline.md' : '';
-								const file = this.app.metadataCache.getFirstLinkpathDest(chapterName, sourcePath);
+								const timelineFile = this.manager.getTimelineFile(this.currentFolder);
+								const sourcePath = timelineFile?.path || '';
+								const file = ChapterSorter.resolveChapterFile(
+									this.app,
+									this.plugin,
+									this.currentFolder,
+									chapterName,
+									{ sourcePath }
+								);
 								if (file) {
 									// 优先使用 origin 提供精确高亮，否则降级使用 description
 									const searchText = it.origin || it.description || '';
 									await this.openFileWithSmartLocate(file, searchText);
 								}
-								else new Notice(t('common.file-not-found', { name: chapterName }));
+								else new Notice(t('common.file-not-found', { name: ChapterSorter.extractWikilinkDisplay(chapterName) }));
 							} catch (e) { console.error(e); }
 						})();
 					};
@@ -407,8 +413,7 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 		deleteBtn.onclick = () => {
 			void (async () => {
 				try {
-					await this.syncFrontmatterForEntryUpdate(entry, null);
-					const newContent = await this.manager.deleteEntry(index);
+					const newContent = await this.manager.deleteEntry(index, this.currentFolder);
 					await this.renderFromContent(newContent || null);
 				} catch (e) { console.error(e); }
 			})();
@@ -433,7 +438,17 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 		const eventsContainer = form.createDiv();
 		eventsContainer.setCssProps({ marginBottom: '12px' });
 		const targetFiles = ChapterSorter.getAllChapters(this.app, this.plugin, this.currentFolder);
-		const chapterFiles: string[] = targetFiles.map(c => c.basename);
+		const chapterOptions = targetFiles.map(file => {
+			const value = ChapterSorter.generateChapterLinktext(
+				this.app,
+				this.plugin,
+				file,
+				this.currentFolder,
+				{ eligibleChapters: targetFiles }
+			);
+			const volume = getFileVolumePath(file, this.currentFolder);
+			return { file, value, label: volume ? `${file.basename} (${volume})` : file.basename };
+		});
 
 		// 获取已有的事件列表
 		const existingItems = entry.items && entry.items.length > 0 ? entry.items : [{ description: entry.description, chapter: entry.chapter }];
@@ -462,9 +477,12 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 				const select = row.createEl('select', { cls: 'wn-timeline-form-input' });
 				select.setCssProps({ flex: '1' });
 				select.createEl('option', { value: '', text: t('modal.select-chapter') });
-				chapterFiles.forEach(file => {
-					const option = select.createEl('option', { value: file, text: file });
-					if (file === initialValue) option.selected = true;
+				const initialFile = initialValue
+					? ChapterSorter.resolveChapterFile(this.app, this.plugin, this.currentFolder, initialValue, { eligibleChapters: targetFiles })
+					: null;
+				chapterOptions.forEach(chapter => {
+					const option = select.createEl('option', { value: chapter.value, text: chapter.label });
+					if (chapter.value === initialValue || initialFile?.path === chapter.file.path) option.selected = true;
 				});
 
 				const removeBtn = row.createEl('button', { text: '−' });
@@ -609,8 +627,7 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 						return;
 					}
 
-					await this.syncFrontmatterForEntryUpdate(entry, updated);
-					const newContent = await this.manager.updateEntry(index, updated);
+					const newContent = await this.manager.updateEntry(index, updated, this.currentFolder);
 					this.editingIndex = -1;
 					await this.renderFromContent(newContent);
 				} catch (e) { console.error(e); }
@@ -620,70 +637,9 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 		window.setTimeout(() => timeInput.focus(), 50);
 	}
 
-
-	private async syncFrontmatterForEntryUpdate(oldEntry: TimelineEntry, newEntry: TimelineEntry | null) {
-		const targetFiles = ChapterSorter.getAllChapters(this.app, this.plugin, this.currentFolder);
-		const oldTime = oldEntry.time;
-		const newTime = newEntry?.time;
-		
-		// 收集新条目中所有涉及的章节
-		const newChapters: string[] = [];
-		if (newEntry?.items) {
-			newEntry.items.forEach(it => {
-				if (it.chapter) {
-					it.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean).forEach(c => newChapters.push(c));
-				}
-			});
-		} else if (newEntry?.chapter) {
-			newEntry.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean).forEach(c => newChapters.push(c));
-		}
-
-		for (const file of targetFiles) {
-			const isNewChapter = newChapters.some(c => c.toLowerCase().trim() === file.basename.toLowerCase().trim());
-			
-			// 如果这个文件不属于旧时间且不属于新时间，就跳过
-			// 但如何知道它是否属于旧时间？我们必须读取它的 frontmatter 才知道
-			// 所以先读取 frontmatter
-			await this.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
-				let currentTimeline: string[] = [];
-				if (fm['timeline']) {
-					currentTimeline = Array.isArray(fm['timeline']) ? (fm['timeline'] as string[]) : [fm['timeline'] as string];
-				}
-
-				let modified = false;
-
-				// Remove old time if present
-				if (oldTime && currentTimeline.includes(oldTime)) {
-					// 只有当它不再被 newChapters 包含，或者 newTime 和 oldTime 不一致时才需要调整
-					// 为了简单，直接先移除旧的，下面再按需加新的
-					currentTimeline = currentTimeline.filter(t => t !== oldTime);
-					modified = true;
-				}
-
-				// Add new time if this file is in newChapters
-				if (newTime && isNewChapter && !currentTimeline.includes(newTime)) {
-					currentTimeline.push(newTime);
-					modified = true;
-				}
-
-				if (modified) {
-					if (currentTimeline.length === 0) {
-						fm['timeline'] = null;
-					} else if (currentTimeline.length === 1) {
-						fm['timeline'] = currentTimeline[0];
-					} else {
-						fm['timeline'] = currentTimeline;
-					}
-				}
-			});
-		}
-	}
-
 	// ─── 文件操作 ───────────────────────────────────────
 
 	async appendEntry(entry: TimelineEntry): Promise<string> {
-		this.manager.currentFolder = this.currentFolder;
-		return await this.manager.appendEntry(entry);
+		return await this.manager.appendEntry(entry, this.currentFolder);
 	}
-
 }

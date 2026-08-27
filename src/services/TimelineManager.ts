@@ -8,6 +8,7 @@ import { escapeRegex } from '../utils/validation';
 import { getDefaultFileName, getDefaultFileNameCandidates, getTimelineLabel } from '../i18n/data-keys';
 
 import { SerializedWriter } from '../utils/SerializedWriter';
+import { ChapterSorter } from './ChapterSorter';
 
 
 
@@ -45,61 +46,126 @@ export class TimelineManager {
 
 		public currentFolder: string = ''
 
-	) {}
+	) {
+		this.registerEvents();
+	}
 
+	private registerEvents(): void {
+		if (typeof this.app?.vault?.on === 'function' && typeof this.plugin?.registerEvent === 'function') {
+			this.plugin.registerEvent(
+				this.app.vault.on('modify', (file) => {
+					if (!(file instanceof TFile) || file.extension !== 'md') return;
+					this.handleVaultModify(file);
+				})
+			);
+		}
+	}
 
+	private handleVaultModify(file: TFile): void {
+		const folderPath = file.parent?.isRoot() ? '' : (file.parent?.path || '');
+		const expectedFile = this.findTimelineFile(folderPath);
+		if (!expectedFile || expectedFile.path !== file.path) return;
 
-	getTimelineFilePath(): string {
+		// 检查 workspaceFolders 边界
+		const workspaceFolders = this.plugin.settings.workspaceFolders || [];
+		if (workspaceFolders.length > 0) {
+			const inWorkspace = folderPath.length > 0 && workspaceFolders.some(ws => {
+				const norm = ws.replace(/^\/+|\/+$/g, '');
+				return folderPath === norm || folderPath.startsWith(norm + '/');
+			});
+			if (!inWorkspace) return;
+		}
 
+		// 防抖并触发幂等全量对账
+		if (this.plugin.adaptiveDebounceManager) {
+			this.plugin.adaptiveDebounceManager.debounceFixed(
+				`timeline-reconcile-${file.path}`,
+				() => {
+					void (async () => {
+						try {
+							const content = await this.app.vault.cachedRead(file);
+							const entries = this.parseEntries(content);
+							await this.reconcileFrontmatter(folderPath, entries, file);
+						} catch (err) {
+							console.error(`[TimelineManager] 自动对账失败 ${file.path}:`, err);
+						}
+					})();
+				},
+				500
+			);
+		} else {
+			void (async () => {
+				try {
+					const content = await this.app.vault.cachedRead(file);
+					const entries = this.parseEntries(content);
+					await this.reconcileFrontmatter(folderPath, entries, file);
+				} catch (err) {
+					console.error(`[TimelineManager] 自动对账失败 ${file.path}:`, err);
+				}
+			})();
+		}
+	}
+
+	normalizeFolderPath(folderPath?: string): string {
+		const raw = folderPath !== undefined ? folderPath : this.currentFolder;
+		if (!raw || raw === '/') return '';
+		return normalizePath(raw).replace(/^\/+|\/+$/g, '');
+	}
+
+	getTimelineFilePath(folderPath?: string): string {
+		const folder = this.normalizeFolderPath(folderPath);
 		const fileName = (this.plugin.settings.timeline?.fileName || getDefaultFileName('timelineFileName')) + '.md';
 
-		return normalizePath(this.currentFolder ? `${this.currentFolder}/${fileName}` : fileName);
+		return normalizePath(folder ? `${folder}/${fileName}` : fileName);
 
 	}
 
 
 
 
-	findTimelineFile(): TFile | null {
+	findTimelineFile(folderPath?: string): TFile | null {
+		const folder = this.normalizeFolderPath(folderPath);
 		const candidates = new Set<string>();
 		candidates.add(this.plugin.settings.timeline?.fileName || t('common.default-timeline-filename'));
 		for (const name of getDefaultFileNameCandidates('timelineFileName')) candidates.add(name);
 		for (const fileName of candidates) {
-			const path = normalizePath(this.currentFolder ? `${this.currentFolder}/${fileName}.md` : `${fileName}.md`);
+			const path = normalizePath(folder ? `${folder}/${fileName}.md` : `${fileName}.md`);
 			const file = this.app.vault.getAbstractFileByPath(path);
 			if (file instanceof TFile) return file;
 		}
 		return null;
 	}
 
-	getTimelineFile(): TFile | null {
-		return this.findTimelineFile();
+	getTimelineFile(folderPath?: string): TFile | null {
+		return this.findTimelineFile(folderPath);
 	}
 
 
-	async createTimelineFile(): Promise<TFile> {
+	async createTimelineFile(folderPath?: string): Promise<TFile> {
+		const folder = this.normalizeFolderPath(folderPath);
 		// 检查是否已有时间线文件（多语言查找）
-		const existing = this.findTimelineFile();
+		const existing = this.findTimelineFile(folder);
 		if (existing) {
 			// 如果找到的文件名与当前设置不一致，自动重命名
 			const expectedName = this.plugin.settings.timeline?.fileName || getDefaultFileName('timelineFileName');
 			if (existing.name !== expectedName + '.md') {
-				const newPath = normalizePath(this.currentFolder ? this.currentFolder + '/' + expectedName + '.md' : expectedName + '.md');
+				const newPath = normalizePath(folder ? folder + '/' + expectedName + '.md' : expectedName + '.md');
 				try { await this.app.fileManager.renameFile(existing, newPath); } catch (e) { console.warn('[TimelineManager] 重命名时间线文件失败:', e); }
 			}
-			const foundPath = normalizePath(this.currentFolder ? this.currentFolder + '/' + expectedName + '.md' : expectedName + '.md');
+			const foundPath = normalizePath(folder ? folder + '/' + expectedName + '.md' : expectedName + '.md');
 			const found = this.app.vault.getAbstractFileByPath(foundPath);
 				return found instanceof TFile ? found : existing;
 		}
 
-		const path = this.getTimelineFilePath();
+		const path = this.getTimelineFilePath(folder);
 		return await this.app.vault.create(path, '');
 	}
 
 
 
-	async loadEntries(): Promise<TimelineEntry[] | null> {
-		const file = this.getTimelineFile();
+	async loadEntries(folderPath?: string): Promise<TimelineEntry[] | null> {
+		const folder = this.normalizeFolderPath(folderPath);
+		const file = this.getTimelineFile(folder);
 		if (!file) return null;
 		const content = await this.app.vault.cachedRead(file);
 		return this.parseEntries(content);
@@ -435,12 +501,126 @@ export class TimelineManager {
 
 	}
 
+	private resolveChapterFile(
+		rawLink: string,
+		folderPath: string,
+		timelineFilePath: string,
+		eligibleChapters: TFile[]
+	): TFile | null {
+		return ChapterSorter.resolveChapterFile(this.app, this.plugin, folderPath, rawLink, {
+			eligibleChapters,
+			sourcePath: timelineFilePath
+		});
+	}
 
+	buildChapterToNodesMap(
+		entries: TimelineEntry[],
+		folderPath?: string,
+		timelineFile?: TFile
+	): { eligibleChapters: TFile[]; chapterPathToNodes: Map<string, string[]> } {
+		const folder = this.normalizeFolderPath(folderPath);
+		const tlFile = timelineFile || this.getTimelineFile(folder);
+		const tlPath = tlFile ? tlFile.path : this.getTimelineFilePath(folder);
 
-	async appendEntry(entry: TimelineEntry): Promise<string> {
+		const eligibleChapters = ChapterSorter.getAllChapters(this.app, this.plugin, folder);
+		const chapterPathToNodes = new Map<string, string[]>();
+
+		for (const entry of entries) {
+			const nodeTime = entry.time?.trim();
+			if (!nodeTime) continue;
+
+			const rawLinks: string[] = [];
+			if (entry.items && entry.items.length > 0) {
+				for (const item of entry.items) {
+					if (item.chapter) {
+						const links = item.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean);
+						rawLinks.push(...links);
+					}
+				}
+			} else if (entry.chapter) {
+				const links = entry.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean);
+				rawLinks.push(...links);
+			}
+
+			for (const rawLink of rawLinks) {
+				const targetFile = this.resolveChapterFile(rawLink, folder, tlPath, eligibleChapters);
+				if (targetFile) {
+					const list = chapterPathToNodes.get(targetFile.path) || [];
+					if (!list.includes(nodeTime)) {
+						list.push(nodeTime);
+					}
+					chapterPathToNodes.set(targetFile.path, list);
+				}
+			}
+		}
+
+		return { eligibleChapters, chapterPathToNodes };
+	}
+
+	isFrontMatterInSync(current: unknown, target: string[]): boolean {
+		if (target.length === 0) {
+			return current === undefined;
+		}
+		if (target.length === 1) {
+			return typeof current === 'string' && current.trim() === target[0];
+		}
+		if (Array.isArray(current)) {
+			if (current.length !== target.length) return false;
+			return current.every((item, idx) => String(item).trim() === target[idx]);
+		}
+		return false;
+	}
+
+	async reconcileFrontmatter(
+		folderPath?: string,
+		entries?: TimelineEntry[] | null,
+		timelineFile?: TFile
+	): Promise<void> {
+		const folder = this.normalizeFolderPath(folderPath);
+		let currentEntries = entries;
+		if (currentEntries === undefined) {
+			currentEntries = await this.loadEntries(folder);
+		}
+		if (currentEntries === null) return;
+
+		const { eligibleChapters, chapterPathToNodes } = this.buildChapterToNodesMap(
+			currentEntries,
+			folder,
+			timelineFile
+		);
+
+		for (const file of eligibleChapters) {
+			const targetNodes = chapterPathToNodes.get(file.path) || [];
+
+			const cache = this.app.metadataCache?.getFileCache(file);
+			const cachedTimeline: unknown = cache?.frontmatter ? (cache.frontmatter as Record<string, unknown>)['timeline'] : undefined;
+
+			if (cache !== undefined && cache !== null && this.isFrontMatterInSync(cachedTimeline, targetNodes)) {
+				continue;
+			}
+
+			await this.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
+				const currentTimeline = fm['timeline'];
+				if (this.isFrontMatterInSync(currentTimeline, targetNodes)) {
+					return;
+				}
+
+				if (targetNodes.length === 0) {
+					delete fm['timeline'];
+				} else if (targetNodes.length === 1) {
+					fm['timeline'] = targetNodes[0];
+				} else {
+					fm['timeline'] = targetNodes;
+				}
+			});
+		}
+	}
+
+	async appendEntry(entry: TimelineEntry, folderPath?: string): Promise<string> {
+			const folder = this.normalizeFolderPath(folderPath);
 			return this.writer.enqueue(async () => {
-			let file = this.getTimelineFile();
-			if (!file) file = await this.createTimelineFile();
+			let file = this.getTimelineFile(folder);
+			if (!file) file = await this.createTimelineFile(folder);
 
 			let finalContent = '';
 			await this.app.vault.process(file, (existing) => {
@@ -506,54 +686,61 @@ export class TimelineManager {
 				finalContent = newContent;
 				return newContent;
 			});
+			const entries = this.parseEntries(finalContent);
+			await this.reconcileFrontmatter(folder, entries, file);
 			return finalContent;
 			});
 		}
 
 
-	async updateEntry(index: number, updated: TimelineEntry): Promise<string> {
+	async updateEntry(index: number, updated: TimelineEntry, folderPath?: string): Promise<string> {
+			const folder = this.normalizeFolderPath(folderPath);
 			return this.writer.enqueue(async () => {
-			const file = this.getTimelineFile();
+			const file = this.getTimelineFile(folder);
 
 			if (!file) return '';
 
-			const entries = await this.loadEntries();
+			const entries = await this.loadEntries(folder);
 
 			if (!entries) return '';
 
 			entries[index] = updated;
 
-			return await this.writeAllEntries(file, entries);
-
+			const finalContent = await this.writeAllEntries(file, entries);
+			await this.reconcileFrontmatter(folder, entries, file);
+			return finalContent;
 			});
 		}
 
 
-	async deleteEntry(index: number): Promise<string> {
+	async deleteEntry(index: number, folderPath?: string): Promise<string> {
+			const folder = this.normalizeFolderPath(folderPath);
 			return this.writer.enqueue(async () => {
-			const file = this.getTimelineFile();
+			const file = this.getTimelineFile(folder);
 
 			if (!file) return '';
 
-			const entries = await this.loadEntries();
+			const entries = await this.loadEntries(folder);
 
 			if (!entries) return '';
 
 			entries.splice(index, 1);
 
-			return await this.writeAllEntries(file, entries);
-
+			const finalContent = await this.writeAllEntries(file, entries);
+			await this.reconcileFrontmatter(folder, entries, file);
+			return finalContent;
 			});
 		}
 
 
-	async moveEntry(fromIndex: number, toIndex: number): Promise<string> {
+	async moveEntry(fromIndex: number, toIndex: number, folderPath?: string): Promise<string> {
+			const folder = this.normalizeFolderPath(folderPath);
 			return this.writer.enqueue(async () => {
-			const file = this.getTimelineFile();
+			const file = this.getTimelineFile(folder);
 
 			if (!file) return '';
 
-			const entries = await this.loadEntries();
+			const entries = await this.loadEntries(folder);
 
 			if (!entries) return '';
 
@@ -561,17 +748,19 @@ export class TimelineManager {
 
 			entries.splice(toIndex, 0, moved);
 
-			return await this.writeAllEntries(file, entries);
-
+			const finalContent = await this.writeAllEntries(file, entries);
+			await this.reconcileFrontmatter(folder, entries, file);
+			return finalContent;
 			});
 		}
 
-	async moveEventItem(sourceTime: string, sourceItemIndex: number, targetTime: string, targetItemIndex?: number): Promise<string> {
+	async moveEventItem(sourceTime: string, sourceItemIndex: number, targetTime: string, targetItemIndex?: number, folderPath?: string): Promise<string> {
+		const folder = this.normalizeFolderPath(folderPath);
 		return this.writer.enqueue(async () => {
-			const file = this.getTimelineFile();
+			const file = this.getTimelineFile(folder);
 			if (!file) return '';
 
-			const entries = await this.loadEntries();
+			const entries = await this.loadEntries(folder);
 			if (!entries) return '';
 
 			const sourceEntry = entries.find(e => e.time === sourceTime);
@@ -594,36 +783,51 @@ export class TimelineManager {
 			targetEntry.items.splice(insertIndex, 0, movedItem);
 			targetEntry.chapter = targetEntry.items.map(it => it.chapter).filter(Boolean).join(', ');
 
-			return await this.writeAllEntries(file, entries);
+			const finalContent = await this.writeAllEntries(file, entries);
+			await this.reconcileFrontmatter(folder, entries, file);
+			return finalContent;
 		});
 	}
 
-	async syncChapterToEventItem(chapterBasename: string, targetEvents: { time: string, itemIndex?: number }[]): Promise<string> {
+	async syncChapterToEventItem(
+		chapterTarget: string | TFile,
+		targetEvents: { time: string, itemIndex?: number }[],
+		folderPath?: string
+	): Promise<string> {
+		const folder = this.normalizeFolderPath(folderPath);
 		return this.writer.enqueue(async () => {
-			const file = this.getTimelineFile();
+			const file = this.getTimelineFile(folder);
 			if (!file) return '';
 
-			const entries = await this.loadEntries();
+			const entries = await this.loadEntries(folder);
 			if (!entries) return '';
 
-			// Helper to extract the basename of a link path or alias (e.g. "Folder/Chap|Alias" -> "Chap")
-			const getLinkBasename = (link: string): string => {
-				const pathPart = link.split('|')[0].trim();
-				const lastSlash = pathPart.lastIndexOf('/');
-				return lastSlash !== -1 ? pathPart.substring(lastSlash + 1) : pathPart;
-			};
+			const eligibleChapters = ChapterSorter.getAllChapters(this.app, this.plugin, folder);
+			let targetFile: TFile | null = null;
 
-			// Helper to check if a link points to the target chapter file (case-insensitive and trimmed)
+			if (chapterTarget instanceof TFile) {
+				targetFile = chapterTarget;
+			} else if (typeof chapterTarget === 'string') {
+				targetFile = this.resolveChapterFile(chapterTarget, folder, file.path, eligibleChapters);
+			}
+
+			if (!targetFile) {
+				// 无法唯一确定目标章节文件时，不得修改任何已有关联
+				return await this.app.vault.cachedRead(file);
+			}
+
+			// 计算插入链接时使用的文本：有重名时使用相对路径，无重名使用 basename
+			const linkTextToAdd = ChapterSorter.generateChapterLinktext(
+				this.app,
+				this.plugin,
+				targetFile,
+				folder,
+				{ sourcePath: file.path, eligibleChapters }
+			);
+
 			const isLinkMatching = (link: string): boolean => {
-				const linkpath = link.split('|')[0].trim();
-				// 1. Try to resolve using Obsidian's metadataCache
-				const dest = this.app.metadataCache.getFirstLinkpathDest(linkpath, file.path);
-				if (dest) {
-					return dest.basename.toLowerCase().trim() === chapterBasename.toLowerCase().trim();
-				}
-				// 2. Fallback to simple basename matching
-				const base = getLinkBasename(link);
-				return base.toLowerCase().trim() === chapterBasename.toLowerCase().trim();
+				const resolved = this.resolveChapterFile(link, folder, file.path, eligibleChapters);
+				return resolved !== null && resolved.path === targetFile.path;
 			};
 
 			// 1. Remove from all entries
@@ -662,7 +866,7 @@ export class TimelineManager {
 					// Compare using isLinkMatching to avoid adding duplicate links
 					const exists = chapters.some(c => isLinkMatching(c));
 					if (!exists) {
-						chapters.push(chapterBasename);
+						chapters.push(linkTextToAdd);
 					}
 					item.chapter = chapters.join(', ');
 					
@@ -670,7 +874,9 @@ export class TimelineManager {
 				}
 			}
 
-			return await this.writeAllEntries(file, entries);
+			const finalContent = await this.writeAllEntries(file, entries);
+			await this.reconcileFrontmatter(folder, entries, file);
+			return finalContent;
 		});
 	}
 
@@ -687,4 +893,3 @@ export class TimelineManager {
 		return finalContent;
 	}
 }
-

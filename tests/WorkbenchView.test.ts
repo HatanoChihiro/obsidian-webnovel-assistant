@@ -363,4 +363,84 @@ describe('WorkbenchView', () => {
 		await view.onClose();
 		expect(cancelSpy).toHaveBeenCalledWith('workbench-refresh');
 	});
+
+	it('should await requestAnimationFrame restoration in reloadBoard and properly flush pending reload', async () => {
+		const rafQueue: Array<(time: number) => void> = [];
+		const rafSpy = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb: (time: number) => void) => {
+			rafQueue.push(cb);
+			return rafQueue.length;
+		});
+
+		const flushRaf = () => {
+			const callbacks = [...rafQueue];
+			rafQueue.length = 0;
+			callbacks.forEach(cb => cb(Date.now()));
+		};
+
+		const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+		view.currentBookPath = 'NovelA';
+
+		let currentMain = { scrollTop: 320 };
+		let currentSide = { scrollTop: 140 };
+		let renderCount = 0;
+
+		const fakeContainer = {
+			querySelector: (selector: string) => {
+				if (selector === '.wn-timeline-waterfall-main') return currentMain;
+				if (selector === '.wn-timeline-waterfall-sidebar') return currentSide;
+				return null;
+			}
+		};
+
+		type WorkbenchViewInternal = {
+			container: unknown;
+			sortMode: string;
+			renderBoard: () => Promise<void>;
+			isReloadingBoard: boolean;
+			hasPendingReload: boolean;
+		};
+
+		const viewInternal = view as unknown as WorkbenchViewInternal;
+		viewInternal.container = fakeContainer;
+		viewInternal.sortMode = 'timeline';
+		viewInternal.renderBoard = async () => {
+			renderCount++;
+			currentMain = { scrollTop: 0 };
+			currentSide = { scrollTop: 0 };
+		};
+
+		// Invoke reloadBoard twice rapidly: first awaits RAF restoration, second becomes pending
+		const reload1Promise = view.reloadBoard();
+		void view.reloadBoard();
+
+		expect(viewInternal.isReloadingBoard).toBe(true);
+		expect(viewInternal.hasPendingReload).toBe(true);
+		expect(renderCount).toBe(1);
+
+		// Let renderBoard finish and queue RAF restoration for the first reload
+		await Promise.resolve();
+		expect(rafQueue).toHaveLength(1);
+
+		// Flush first reload's RAF -> restores scroll positions and triggers pending reload in finally block
+		flushRaf();
+		await reload1Promise;
+
+		// Let pending reload advance past its renderBoard and queue its own RAF
+		await Promise.resolve();
+		expect(renderCount).toBe(2);
+		expect(rafQueue).toHaveLength(1);
+		expect(currentMain.scrollTop).toBe(0);
+		expect(currentSide.scrollTop).toBe(0);
+
+		// Flush pending reload's RAF -> restores scroll positions to 320/140
+		flushRaf();
+		await Promise.resolve();
+
+		expect(currentMain.scrollTop).toBe(320);
+		expect(currentSide.scrollTop).toBe(140);
+		expect(viewInternal.isReloadingBoard).toBe(false);
+		expect(viewInternal.hasPendingReload).toBe(false);
+
+		rafSpy.mockRestore();
+	});
 });

@@ -15,6 +15,8 @@ interface MockEl {
 	createSpan: (options?: { cls?: string; text?: string }) => MockEl;
 	appendChild: (child: MockEl) => MockEl;
 	addClass: (cls: string) => MockEl;
+	addEventListener: (event: string, handler: unknown, capture?: boolean) => void;
+	removeEventListener: (event: string, handler: unknown, capture?: boolean) => void;
 }
 
 function createMockEl(cls = ''): MockEl {
@@ -70,6 +72,8 @@ function createMockEl(cls = ''): MockEl {
 			classSet.add(c);
 			return el;
 		},
+		addEventListener: vi.fn(),
+		removeEventListener: vi.fn(),
 		_children: children
 	} as MockEl & { _children: MockEl[] };
 	return el;
@@ -151,14 +155,35 @@ describe('FileExplorerPatcher', () => {
 		expect(saveSettings).toHaveBeenCalledTimes(1);
 	});
 
-	it('should return false and retry enable when leaves exist but getSortedFolderItems is not available yet', () => {
-		const setTimeoutSpy = vi.fn(() => 1);
-		vi.stubGlobal('window', {
-			setTimeout: setTimeoutSpy,
-			clearTimeout: vi.fn()
-		});
+function mockWindowTimers(scheduledTimeouts: { fn: () => void; ms?: number; id: number }[]) {
+	let timerIdCounter = 1;
+	vi.stubGlobal('window', {
+		setTimeout: vi.fn((fn: () => void, ms?: number) => {
+			const id = timerIdCounter++;
+			scheduledTimeouts.push({ fn, ms, id });
+			return id;
+		}),
+		clearTimeout: vi.fn((id: number) => {
+			const idx = scheduledTimeouts.findIndex(t => t.id === id);
+			if (idx !== -1) scheduledTimeouts.splice(idx, 1);
+		}),
+		setInterval: vi.fn(),
+		clearInterval: vi.fn(),
+		requestAnimationFrame: vi.fn((cb: (time: number) => void) => setTimeout(() => cb(Date.now()), 0)),
+		cancelAnimationFrame: vi.fn()
+	});
+}
 
-		const unreadyView = {};
+	it('should remain active and schedule bounded retries when leaves are unready, then self-heal', () => {
+		const scheduledTimeouts: { fn: () => void; ms?: number; id: number }[] = [];
+		mockWindowTimers(scheduledTimeouts);
+
+		class UnreadyProto {
+			getSortedFolderItems?: () => unknown[];
+		}
+		const proto = new UnreadyProto();
+		const unreadyView = Object.create(proto);
+
 		const mockApp = {
 			vault: { on: vi.fn(), offref: vi.fn() },
 			workspace: {
@@ -177,9 +202,336 @@ describe('FileExplorerPatcher', () => {
 		const patcher = new FileExplorerPatcher(mockApp, mockPlugin);
 		const result = patcher.enable();
 
+		expect(result).toBe(true);
+		expect(patcher.isEnabled()).toBe(true);
+		expect(scheduledTimeouts.map(t => t.ms)).toEqual([100, 300]);
+
+		// Now simulate the view method becoming ready before the first timer executes
+		const originalMethod = () => [];
+		proto.getSortedFolderItems = originalMethod;
+
+		// Execute 100ms timer
+		const t100 = scheduledTimeouts.find(t => t.ms === 100);
+		expect(t100).toBeDefined();
+		t100?.fn();
+
+		// Prototype is now patched and the 300ms timer was cleared
+		expect(proto.getSortedFolderItems).not.toBe(originalMethod);
+		expect(scheduledTimeouts.find(t => t.ms === 300)).toBeUndefined();
+	});
+
+	it('should self-heal from lifecycle event even after startup with no explorer leaves and expired timers', () => {
+		const scheduledTimeouts: { fn: () => void; ms?: number; id: number }[] = [];
+		mockWindowTimers(scheduledTimeouts);
+
+		class DummyProto { getSortedFolderItems() { return []; } }
+		const proto = new DummyProto();
+		const originalMethod = proto.getSortedFolderItems;
+		const sortSpy = vi.fn();
+		const view = Object.create(proto);
+		view.sort = sortSpy;
+
+		let currentLeaves: { view: unknown }[] = [];
+		const workspaceEvents: Record<string, () => void> = {};
+
+		const mockApp = {
+			vault: { on: vi.fn(), offref: vi.fn() },
+			workspace: {
+				getLeavesOfType: vi.fn(() => currentLeaves),
+				on: vi.fn((eventName: string, handler: () => void) => {
+					workspaceEvents[eventName] = handler;
+					return {};
+				}),
+				offref: vi.fn()
+			}
+		} as unknown as App;
+
+		const mockPlugin = {
+			settings: { enableSmartChapterSort: true, chapterNamingRules: [] },
+			cacheManager: {},
+			adaptiveDebounceManager: { debounceFixed: vi.fn() }
+		} as unknown as WebNovelAssistantPlugin;
+
+		const patcher = new FileExplorerPatcher(mockApp, mockPlugin);
+		patcher.enable();
+		expect(patcher.isEnabled()).toBe(true);
+
+		// Timers fire when no leaves exist, all startup recovery timers expire
+		while (scheduledTimeouts.length > 0) {
+			const next = scheduledTimeouts.shift();
+			next?.fn();
+		}
+		expect(scheduledTimeouts.length).toBe(0);
+		expect(proto.getSortedFolderItems).toBe(originalMethod);
+
+		// Much later (e.g. user opens sidebar), file explorer leaf appears
+		currentLeaves = [{ view }];
+		expect(workspaceEvents['layout-change']).toBeDefined();
+		workspaceEvents['layout-change']();
+
+		// Self-healing succeeded: prototype patched and sort triggered!
+		expect(proto.getSortedFolderItems).not.toBe(originalMethod);
+		expect(sortSpy).toHaveBeenCalled();
+	});
+
+	it('should recover via bounded delayed retry when layout-change occurs before view is ready', () => {
+		const scheduledTimeouts: { fn: () => void; ms?: number; id: number }[] = [];
+		mockWindowTimers(scheduledTimeouts);
+
+		class NewProto {
+			getSortedFolderItems?: () => unknown[];
+		}
+		const newProto = new NewProto();
+		const sortSpy = vi.fn();
+		const newView = Object.create(newProto);
+		newView.sort = sortSpy;
+
+		let currentLeaves: { view: unknown }[] = [];
+		const workspaceEvents: Record<string, () => void> = {};
+
+		const mockApp = {
+			vault: { on: vi.fn(), offref: vi.fn() },
+			workspace: {
+				getLeavesOfType: vi.fn(() => currentLeaves),
+				on: vi.fn((eventName: string, handler: () => void) => {
+					workspaceEvents[eventName] = handler;
+					return {};
+				}),
+				offref: vi.fn()
+			}
+		} as unknown as App;
+
+		const mockPlugin = {
+			settings: { enableSmartChapterSort: true },
+			cacheManager: {},
+			adaptiveDebounceManager: { debounceFixed: vi.fn() }
+		} as unknown as WebNovelAssistantPlugin;
+
+		const patcher = new FileExplorerPatcher(mockApp, mockPlugin);
+		patcher.enable();
+		scheduledTimeouts.length = 0;
+
+		// Recreated view appears on layout-change but without getSortedFolderItems attached yet
+		currentLeaves = [{ view: newView }];
+		workspaceEvents['layout-change']();
+
+		// At t=0, not yet patched, but bounded retries scheduled
+		expect(newProto.getSortedFolderItems).toBeUndefined();
+		expect(scheduledTimeouts.map(t => t.ms)).toEqual([100, 300]);
+
+		// At t=50ms, Obsidian attaches getSortedFolderItems
+		const originalMethod = () => [];
+		newProto.getSortedFolderItems = originalMethod;
+
+		// Execute the 100ms retry timer
+		const t100 = scheduledTimeouts.find(t => t.ms === 100);
+		expect(t100).toBeDefined();
+		t100?.fn();
+
+		expect(newProto.getSortedFolderItems).not.toBe(originalMethod);
+		expect(sortSpy).toHaveBeenCalled();
+		// 300ms timer cleared
+		expect(scheduledTimeouts.find(t => t.ms === 300)).toBeUndefined();
+	});
+
+	it('should force refresh when a new prototype is patched even if first container element is reused', () => {
+		const sharedContainer = createMockEl('nav-files-container');
+
+		class ProtoA { getSortedFolderItems() { return []; } }
+		class ProtoB { getSortedFolderItems() { return []; } }
+
+		const protoA = new ProtoA();
+		const protoB = new ProtoB();
+
+		const viewA = Object.create(protoA);
+		viewA.containerEl = sharedContainer as unknown as HTMLElement;
+		const sortSpyA = vi.fn();
+		viewA.sort = sortSpyA;
+
+		const viewB = Object.create(protoB);
+		viewB.containerEl = sharedContainer as unknown as HTMLElement;
+		const sortSpyB = vi.fn();
+		viewB.sort = sortSpyB;
+
+		let currentLeaves = [{ view: viewA }];
+		const workspaceEvents: Record<string, () => void> = {};
+
+		const mockApp = {
+			vault: { on: vi.fn(), offref: vi.fn() },
+			workspace: {
+				getLeavesOfType: vi.fn(() => currentLeaves),
+				on: vi.fn((eventName: string, handler: () => void) => {
+					workspaceEvents[eventName] = handler;
+					return {};
+				}),
+				offref: vi.fn()
+			}
+		} as unknown as App;
+
+		const mockPlugin = {
+			settings: { enableSmartChapterSort: true },
+			cacheManager: {},
+			adaptiveDebounceManager: { debounceFixed: vi.fn() }
+		} as unknown as WebNovelAssistantPlugin;
+
+		const patcher = new FileExplorerPatcher(mockApp, mockPlugin);
+		patcher.enable();
+		expect(sortSpyA).toHaveBeenCalledTimes(1);
+
+		// Switch leaf view to viewB (which uses ProtoB) while keeping the exact same containerEl instance
+		currentLeaves = [{ view: viewB }];
+		workspaceEvents['layout-change']();
+
+		// Even though containerEl did not change, newly patched ProtoB must trigger sort refresh on viewB
+		expect(sortSpyB).toHaveBeenCalledTimes(1);
+	});
+
+	it('should not double-wrap prototypes or duplicate listeners on repeated enable and lifecycle events', () => {
+		class TestProto { getSortedFolderItems() { return ['item']; } }
+		const proto = new TestProto();
+		const originalMethod = proto.getSortedFolderItems;
+		const view = Object.create(proto);
+
+		const vaultOnSpy = vi.fn(() => ({}));
+		const workspaceOnSpy = vi.fn(() => ({}));
+
+		const mockApp = {
+			vault: { on: vaultOnSpy, offref: vi.fn() },
+			workspace: {
+				getLeavesOfType: vi.fn(() => [{ view }]),
+				on: workspaceOnSpy,
+				offref: vi.fn()
+			}
+		} as unknown as App;
+
+		const mockPlugin = {
+			settings: { enableSmartChapterSort: true },
+			cacheManager: {},
+			adaptiveDebounceManager: { debounceFixed: vi.fn() }
+		} as unknown as WebNovelAssistantPlugin;
+
+		const patcher = new FileExplorerPatcher(mockApp, mockPlugin);
+
+		// First enable
+		patcher.enable();
+		const firstPatchedMethod = proto.getSortedFolderItems;
+		expect(firstPatchedMethod).not.toBe(originalMethod);
+
+		// Repeated enable calls
+		patcher.enable();
+		patcher.enable();
+
+		// Verify vault/workspace listeners were registered only once
+		expect(vaultOnSpy).toHaveBeenCalledTimes(2); // 'delete', 'rename'
+		expect(workspaceOnSpy).toHaveBeenCalledTimes(2); // 'layout-change', 'active-leaf-change'
+
+		// Prototype wrapper should not be double wrapped
+		expect(proto.getSortedFolderItems).toBe(firstPatchedMethod);
+
+		// Triggering unpatch should restore the exact original function
+		patcher.unpatch();
+		expect(proto.getSortedFolderItems).toBe(originalMethod);
+	});
+
+	it('should cancel pending recovery timers on disable/destroy and prevent late reactivation', () => {
+		const scheduledTimeouts: { fn: () => void; ms?: number; id: number }[] = [];
+		mockWindowTimers(scheduledTimeouts);
+
+		class UnreadyProto {
+			getSortedFolderItems?: () => unknown[];
+		}
+		const proto = new UnreadyProto();
+		const sortSpy = vi.fn();
+		const view = Object.create(proto);
+		view.sort = sortSpy;
+
+		const mockApp = {
+			vault: { on: vi.fn(), offref: vi.fn() },
+			workspace: {
+				getLeavesOfType: vi.fn(() => [{ view }]),
+				on: vi.fn(() => ({})),
+				offref: vi.fn()
+			}
+		} as unknown as App;
+
+		const mockPlugin = {
+			settings: { enableSmartChapterSort: true },
+			cacheManager: {},
+			adaptiveDebounceManager: { debounceFixed: vi.fn() }
+		} as unknown as WebNovelAssistantPlugin;
+
+		const patcher = new FileExplorerPatcher(mockApp, mockPlugin);
+		patcher.enable();
+
+		// Two recovery timers scheduled; capture their callbacks before disable
+		expect(scheduledTimeouts.length).toBe(2);
+		const staleCallbacks = scheduledTimeouts.map(t => t.fn);
+
+		// Disable patcher
+		patcher.disable();
+		expect(patcher.isEnabled()).toBe(false);
+		expect(scheduledTimeouts.length).toBe(0); // Timers cleared via clearTimeout
+		sortSpy.mockClear();
+
+		// View becomes ready late
+		const originalMethod = () => [];
+		proto.getSortedFolderItems = originalMethod;
+
+		// Even if an orphaned callback executes after disable, it must not patch, refresh, or reactivate
+		staleCallbacks.forEach(cb => cb());
+		expect(proto.getSortedFolderItems).toBe(originalMethod);
+		expect(sortSpy).not.toHaveBeenCalled();
+		expect(patcher.isEnabled()).toBe(false);
+		expect(scheduledTimeouts.length).toBe(0);
+
+		// Destroy patcher
+		patcher.destroy();
+		expect(patcher.enable()).toBe(false);
+
+		// Executing stale callbacks after destroy also has no effect
+		staleCallbacks.forEach(cb => cb());
+		expect(proto.getSortedFolderItems).toBe(originalMethod);
+		expect(sortSpy).not.toHaveBeenCalled();
+		expect(patcher.isEnabled()).toBe(false);
+	});
+
+	it('should handle errors during enable cleanly without leaving enabled=true or dangling listeners/timers', () => {
+		const scheduledTimeouts: { fn: () => void; ms?: number; id: number }[] = [];
+		mockWindowTimers(scheduledTimeouts);
+
+		const vaultOffSpy = vi.fn();
+		const workspaceOffSpy = vi.fn();
+		const vaultOnSpy = vi.fn(() => ({}));
+		// Simulate workspace listener setup failure during enable
+		const workspaceOnSpy = vi.fn(() => {
+			throw new Error('Simulated workspace listener error');
+		});
+
+		const mockApp = {
+			vault: { on: vaultOnSpy, offref: vaultOffSpy },
+			workspace: {
+				getLeavesOfType: vi.fn(() => []),
+				on: workspaceOnSpy,
+				offref: workspaceOffSpy
+			}
+		} as unknown as App;
+
+		const mockPlugin = {
+			settings: { chapterNamingRules: [] },
+			cacheManager: {},
+			adaptiveDebounceManager: { debounceFixed: vi.fn() }
+		} as unknown as WebNovelAssistantPlugin;
+
+		const patcher = new FileExplorerPatcher(mockApp, mockPlugin);
+		const result = patcher.enable();
+
 		expect(result).toBe(false);
 		expect(patcher.isEnabled()).toBe(false);
-		expect(setTimeoutSpy).toHaveBeenCalledTimes(1);
+		// Vault listeners registered before workspace failure must be cleaned up via offref
+		expect(vaultOnSpy).toHaveBeenCalled();
+		expect(vaultOffSpy).toHaveBeenCalled();
+		// No timers left pending
+		expect(scheduledTimeouts.length).toBe(0);
 	});
 
 	it('should patch newly recreated file explorer views with different prototypes on layout-change', () => {
@@ -390,5 +742,101 @@ describe('FileExplorerPatcher', () => {
 
 		expect(container1.querySelectorAll('.wn-folder-word-count').length).toBe(0);
 		expect(container2.querySelectorAll('.wn-folder-word-count').length).toBe(0);
+	});
+
+	it('should remove word count badges from detached cached fileItems across all explorer views upon destroy and prevent reappearance on refresh', () => {
+		// Mounted parent folder element
+		const parentTitleParent = createMockEl();
+		const parentTitleContent = createMockEl('nav-folder-title-content');
+		parentTitleParent.appendChild(parentTitleContent);
+		const parentFolderEl = createMockEl('nav-folder');
+		parentFolderEl.appendChild(parentTitleParent);
+
+		const container1 = createMockEl('nav-files-container');
+		container1.appendChild(parentFolderEl);
+
+		// Detached collapsed child item (cached in fileItems but not attached to container1 or document)
+		const childTitleParent = createMockEl();
+		const childTitleContent = createMockEl('nav-folder-title-content');
+		childTitleParent.appendChild(childTitleContent);
+		const childBadge = createMockEl('wn-folder-word-count');
+		childBadge.textContent = ' (3,000)';
+		childTitleParent.appendChild(childBadge);
+		const childFolderEl = createMockEl('nav-folder');
+		childFolderEl.appendChild(childTitleParent);
+
+		// Second leaf with its own detached file item
+		const container2 = createMockEl('nav-files-container');
+		const leaf2ChildTitleParent = createMockEl();
+		const leaf2ChildBadge = createMockEl('wn-folder-word-count');
+		leaf2ChildBadge.textContent = ' (4,000)';
+		leaf2ChildTitleParent.appendChild(leaf2ChildBadge);
+		const leaf2ChildFolderEl = createMockEl('nav-folder');
+		leaf2ChildFolderEl.appendChild(leaf2ChildTitleParent);
+
+		const mockView1 = {
+			containerEl: container1 as unknown as HTMLElement,
+			fileItems: {
+				'Novel': {
+					el: parentFolderEl as unknown as HTMLElement,
+					file: new TFolder('Novel', 'Novel')
+				},
+				'Novel/Volume 1': {
+					el: childFolderEl as unknown as HTMLElement,
+					file: new TFolder('Volume 1', 'Novel/Volume 1')
+				}
+			}
+		};
+
+		const mockView2 = {
+			containerEl: container2 as unknown as HTMLElement,
+			fileItems: {
+				'Novel/Volume 2': {
+					el: leaf2ChildFolderEl as unknown as HTMLElement,
+					file: new TFolder('Volume 2', 'Novel/Volume 2')
+				}
+			}
+		};
+
+		const mockApp = {
+			vault: { on: vi.fn(), offref: vi.fn() },
+			workspace: {
+				getLeavesOfType: vi.fn(() => [
+					{ view: mockView1 },
+					{ view: mockView2 }
+				]),
+				on: vi.fn(() => ({})),
+				offref: vi.fn()
+			}
+		} as unknown as App;
+
+		const mockPlugin = {
+			settings: { showExplorerCounts: true, chapterNamingRules: [] },
+			cacheManager: {
+				getFolderWordCount: vi.fn().mockReturnValue(3000)
+			},
+			adaptiveDebounceManager: { debounceFixed: vi.fn() },
+			isUnloading: false
+		} as unknown as WebNovelAssistantPlugin;
+
+		const patcher = new FileExplorerPatcher(mockApp, mockPlugin);
+
+		// Ensure detached elements currently retain badges before unload
+		expect(childFolderEl.querySelector('.wn-folder-word-count')).not.toBeNull();
+		expect(leaf2ChildFolderEl.querySelector('.wn-folder-word-count')).not.toBeNull();
+
+		// Destroy / unload
+		patcher.destroy();
+
+		// Badges must be removed from detached cached fileItems across all leaves
+		expect(childFolderEl.querySelector('.wn-folder-word-count')).toBeNull();
+		expect(leaf2ChildFolderEl.querySelector('.wn-folder-word-count')).toBeNull();
+
+		// Simulating subsequent refresh (e.g. delayed timer or folder expansion event after unload)
+		patcher.refreshFolderCounts();
+
+		// Badges must not reappear
+		expect(childFolderEl.querySelector('.wn-folder-word-count')).toBeNull();
+		expect(leaf2ChildFolderEl.querySelector('.wn-folder-word-count')).toBeNull();
 	});
 });
