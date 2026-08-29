@@ -1325,6 +1325,9 @@ A: 校对完全在本地运行，不使用 AI 或在线语义分析。当前官�
 ### Q: 为什么使用 Obsidian 官方同步后，历史数据或便签没有同步？现在修复了吗？
 A: 旧版插件曾将历史统计、便签和缓存分别保存在额外的 JSON 文件中，而 Obsidian 官方同步对第三方插件数据主要识别 `data.json`，因此可能出现设置已同步、历史或便签未同步的问题。最新版已将设置、历史统计和便签统一保存到 `data.json`，并会在对应数据尚未迁移时读取旧文件完成一次性迁移；`cache-data.json` 和按需下载的官方词库仍保留为设备本地数据，可重新生成或下载。建议所有设备更新到最新版，等待 Obsidian Sync 完成后重载插件；卸载、重装或移动端操作前仍建议备份完整 `data.json`。
 
+### Q: 为什么开启 Fast Note Sync 的“配置项同步”后，WebNovel Assistant 会不断重载？
+A: Fast Note Sync 可能会将 WebNovel Assistant 自动更新的本地缓存文件视为插件配置变更，并在每次同步后重载插件，从而形成循环。请在 Fast Note Sync 的 **同步排除** 中加入 `.obsidian/plugins/web-novel-assistant/cache-data.json`，并建议在所有设备上使用相同的排除规则。`cache-data.json` 仅保存可重建的设备本地缓存；WebNovel Assistant 的设置、历史统计和便签仍保存在 `data.json` 中，因此这条排除规则不会阻止这些配置和数据继续同步。
+
 ### Q: 字数统计不准确？
 A: 
 1. 检查是否启用了 **显示文件列表字数**

@@ -18,9 +18,13 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 	class TypewriterPlugin {
 		decorations: DecorationSet;
 		private isScrolling = false;
-		private isMouseDown = false;
+		private isPointerDown = false;
+		private isManualScrolling = false;
+		private gestureScrolled = false;
+		private pendingClickSelection = false;
 		private hasInitialCentered = false;
 		private scrollTimer: number | null = null;
+		private rafId: number | null = null;
 		private view: EditorView;
 		private ownerDocument: Document;
 		private ownerWindow: Window;
@@ -32,54 +36,175 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 			this.decorations = this.buildDecorations(view);
 
 			if (view.scrollDOM) {
-				view.scrollDOM.addEventListener('mousedown', this.onMouseDown);
+				view.scrollDOM.addEventListener('pointerdown', this.onPointerDown);
+				view.scrollDOM.addEventListener('mousedown', this.onPointerDown);
+				view.scrollDOM.addEventListener('wheel', this.onWheel, { passive: true });
+				view.scrollDOM.addEventListener('touchstart', this.onTouchStart, { passive: true });
+				view.scrollDOM.addEventListener('touchmove', this.onTouchMove, { passive: true });
+				view.scrollDOM.addEventListener('scroll', this.onScroll, { passive: true });
 			}
-			this.ownerDocument.addEventListener('mouseup', this.onMouseUp);
+			this.ownerDocument.addEventListener('pointerup', this.onPointerUp);
+			this.ownerDocument.addEventListener('mouseup', this.onPointerUp);
+			this.ownerDocument.addEventListener('touchend', this.onPointerUp);
+			this.ownerDocument.addEventListener('pointercancel', this.onPointerUp);
+			this.ownerDocument.addEventListener('touchcancel', this.onPointerUp);
 		}
 
-		private onMouseDown = (): void => {
-			this.isMouseDown = true;
+		private isImmersiveTypewriterActive(): boolean {
+			return this.ownerDocument.body.classList.contains('immersive-mode-active') && !!plugin.settings.immersive.typewriterEnabled;
+		}
+
+		private onWheel = (): void => {
+			this.isManualScrolling = true;
+			this.gestureScrolled = true;
+			this.cancelPendingCenter();
+			this.cancelSmoothScroll();
 		};
 
-		private onMouseUp = (): void => {
-			this.isMouseDown = false;
+		private onTouchStart = (): void => {
+			this.isPointerDown = true;
+			this.gestureScrolled = false;
+			this.pendingClickSelection = false;
+			this.cancelPendingCenter();
+			this.cancelSmoothScroll();
 		};
 
-		destroy() {
+		private onTouchMove = (): void => {
+			this.isManualScrolling = true;
+			this.gestureScrolled = true;
+			this.cancelPendingCenter();
+			this.cancelSmoothScroll();
+		};
+
+		private onPointerDown = (): void => {
+			this.isPointerDown = true;
+			this.gestureScrolled = false;
+			this.pendingClickSelection = false;
+			this.cancelPendingCenter();
+			this.cancelSmoothScroll();
+		};
+
+		private onScroll = (): void => {
+			if (this.isPointerDown && !this.isScrolling) {
+				this.isManualScrolling = true;
+				this.gestureScrolled = true;
+				this.cancelPendingCenter();
+			}
+		};
+
+		private onPointerUp = (): void => {
+			const wasPointerDown = this.isPointerDown;
+			this.isPointerDown = false;
+
+			if (!wasPointerDown) return;
+
+			if (this.gestureScrolled) {
+				this.pendingClickSelection = false;
+				return;
+			}
+
+			if (this.pendingClickSelection && this.view.state.selection.main.empty && this.isImmersiveTypewriterActive()) {
+				this.pendingClickSelection = false;
+				this.isManualScrolling = false;
+				this.cancelSmoothScroll();
+				this.scheduleCenter(this.view);
+			}
+		};
+
+		private cancelPendingCenter(): void {
+			if (this.rafId !== null) {
+				this.ownerWindow.cancelAnimationFrame(this.rafId);
+				this.rafId = null;
+			}
+		}
+
+		private cancelSmoothScroll(): void {
 			if (this.scrollTimer !== null) {
 				this.ownerWindow.clearTimeout(this.scrollTimer);
 				this.scrollTimer = null;
 			}
-			if (this.view.scrollDOM) {
-				this.view.scrollDOM.removeEventListener('mousedown', this.onMouseDown);
+			if (this.isScrolling && this.view.scrollDOM) {
+				const currentTop = this.view.scrollDOM.scrollTop;
+				this.view.scrollDOM.scrollTo({
+					top: currentTop,
+					behavior: 'auto'
+				});
 			}
-			this.ownerDocument.removeEventListener('mouseup', this.onMouseUp);
+			this.isScrolling = false;
+		}
+
+		private scheduleCenter(view: EditorView): void {
+			this.cancelPendingCenter();
+			this.rafId = this.ownerWindow.requestAnimationFrame(() => {
+				this.rafId = null;
+				this.centerCursorLine(view);
+			});
+		}
+
+		destroy() {
+			this.cancelSmoothScroll();
+			this.cancelPendingCenter();
+			if (this.view.scrollDOM) {
+				this.view.scrollDOM.removeEventListener('pointerdown', this.onPointerDown);
+				this.view.scrollDOM.removeEventListener('mousedown', this.onPointerDown);
+				this.view.scrollDOM.removeEventListener('wheel', this.onWheel);
+				this.view.scrollDOM.removeEventListener('touchstart', this.onTouchStart);
+				this.view.scrollDOM.removeEventListener('touchmove', this.onTouchMove);
+				this.view.scrollDOM.removeEventListener('scroll', this.onScroll);
+			}
+			this.ownerDocument.removeEventListener('pointerup', this.onPointerUp);
+			this.ownerDocument.removeEventListener('mouseup', this.onPointerUp);
+			this.ownerDocument.removeEventListener('touchend', this.onPointerUp);
+			this.ownerDocument.removeEventListener('pointercancel', this.onPointerUp);
+			this.ownerDocument.removeEventListener('touchcancel', this.onPointerUp);
 		}
 
 		update(update: ViewUpdate) {
 			this.decorations = this.buildDecorations(update.view);
 
 			// 仅在沉浸模式且打字机功能开启时生效
-			if (!this.ownerDocument.body.classList.contains('immersive-mode-active') || !plugin.settings.immersive.typewriterEnabled) {
+			if (!this.isImmersiveTypewriterActive()) {
 				this.hasInitialCentered = false;
+				this.cancelPendingCenter();
 				return;
 			}
 
-			// 如果鼠标正按下拖拽，或处于文本选中状态（非单点光标），跳过自动居中以保障选中精准度
-			if (this.isMouseDown || !update.state.selection.main.empty) {
+			// 如果当前指针/触摸手势仍处于按住状态，发生的选区变动不能视为结束手动浏览的有意移动
+			if (this.isPointerDown) {
+				if (update.selectionSet && update.state.selection.main.empty) {
+					this.pendingClickSelection = true;
+				} else if (update.selectionSet && !update.state.selection.main.empty) {
+					this.pendingClickSelection = false;
+				}
+				return;
+			}
+
+			// 指针未按住时的明确用户编辑或键盘移动光标操作，恢复打字机跟随
+			if (update.docChanged || update.selectionSet) {
+				this.isManualScrolling = false;
+				this.cancelSmoothScroll();
+			}
+
+			// 如果用户正在手动滚动浏览，跳过自动居中
+			if (this.isManualScrolling) {
+				return;
+			}
+
+			// 如果处于文本选中状态（非单点光标），跳过自动居中以保障选中精准度
+			if (!update.state.selection.main.empty) {
 				return;
 			}
 
 			// 刚进入沉浸模式时的初始化定位，或光标移动/输入文本时触发居中滚动
 			if (!this.hasInitialCentered || update.selectionSet || update.docChanged) {
 				this.hasInitialCentered = true;
-				this.ownerWindow.requestAnimationFrame(() => {
-					this.centerCursorLine(update.view);
-				});
+				this.scheduleCenter(update.view);
 			}
 		}
 
 		private centerCursorLine(view: EditorView) {
+			if (!this.isImmersiveTypewriterActive()) return;
+			if (this.isManualScrolling || this.isPointerDown || !view.state.selection.main.empty) return;
 			if (this.isScrolling) return;
 
 			const head = view.state.selection.main.head;
@@ -120,7 +245,7 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 		}
 
 		private buildDecorations(view: EditorView): DecorationSet {
-			if (!this.ownerDocument.body.classList.contains('immersive-mode-active') || !plugin.settings.immersive.typewriterEnabled) {
+			if (!this.isImmersiveTypewriterActive()) {
 				return Decoration.none;
 			}
 

@@ -5,7 +5,7 @@ import type { AccurateCountSettings } from '../types/settings';
 import type { TaskSettings } from '../types/task';
 import { ChapterSorter } from '../services/ChapterSorter';
 import { getCurrentBookContext, findBookRoot, getLatestChapterFolderPath, type CurrentBookContextPlugin } from '../utils/path';
-import { getDeterministicChapterDisplayOrder } from '../utils/chapterDisplayOrder';
+import { getDeterministicChapterDisplayOrder, sortNovelFoldersForSwitchMenu } from '../utils/chapterDisplayOrder';
 import { t } from '../i18n';
 import { getNovelStatusText, getNovelInfoLabel } from '../i18n/data-keys';
 import { CorkboardGridRenderer, type CorkboardGridPlugin } from './components/CorkboardGridRenderer';
@@ -220,6 +220,7 @@ export class WorkbenchView extends ItemView {
     private pendingFilterFocus: { mode: 'default' | 'lore' | 'foreshadowing'; start: number; end: number } | null = null;
     private readonly filterIndex: WorkbenchFilterIndex;
     private isDescending: boolean = false;
+    private isTimelineUnscheduledDescending: boolean = false;
 
     constructor(leaf: WorkspaceLeaf, plugin: WorkbenchViewPlugin) {
         super(leaf);
@@ -908,7 +909,11 @@ export class WorkbenchView extends ItemView {
 
         switchSpan.onclick = (e) => {
             const menu = new Menu();
-            const novels = this.plugin.homepageManager!.getNovelFolders();
+            const rawNovels = this.plugin.homepageManager!.getNovelFolders();
+            const novels = sortNovelFoldersForSwitchMenu(rawNovels, {
+                enableSmartChapterSort: this.plugin.settings.enableSmartChapterSort,
+                customSortOrder: this.plugin.settings.customSortOrder
+            });
             for (const novel of novels) {
                 menu.addItem((item) => {
                     item.setTitle(novel.metadata?.name || novel.folderName)
@@ -1295,7 +1300,13 @@ export class WorkbenchView extends ItemView {
                 currentTimelineFilter: this.currentTimelineFilter,
                 onSaveStateChange: (isSaving) => { this.isSavingMetadata = isSaving; },
                 reloadBoard: () => { void this.reloadBoard(); },
-                getChapterEvents: (file, fallbackMap) => this.getChapterEvents(file, fallbackMap)
+                getChapterEvents: (file, fallbackMap) => this.getChapterEvents(file, fallbackMap),
+                isUnscheduledDescending: this.isTimelineUnscheduledDescending,
+                onToggleUnscheduledSort: () => {
+                    this.isTimelineUnscheduledDescending = !this.isTimelineUnscheduledDescending;
+                    this.currentRenderId++;
+                    void this.reloadBoard();
+                }
             });
         } else if (this.sortMode === 'lore') {
             await LoreBoardRenderer.render({

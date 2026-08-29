@@ -1,3 +1,29 @@
+## 🔧 v3.9.2
+
+### 功能优化
+- **时间轴未关联章节排序**：时间轴看板的未关联章节面板新增正序/倒序切换，并与工作台全章节和章节一览保持一致的分卷显示顺序。
+- **工作台作品切换顺序**：工作台的“切换作品”菜单现在与文件列表中的作品顺序保持一致。
+
+### Bug修复
+- **分卷排序与文件列表一致**：修复不同笔记库的历史拖拽顺序可能导致工作台分卷乱序的问题；符合智能规则的卷名始终按卷号排列，普通卷名继续遵循文件列表的手动拖拽顺序。
+- **章节卡片摘要缩进**：修复“排版 → 应用至卡片正文”开启后，章节摘要编辑态的自动换行被整体缩进，以及首次输入时文字跳动的问题；显示、编辑与空摘要提示现在预留一致的段落首行缩进。
+- **卡片编辑滚动与光标跟随体验**：修复设定卡片和时间轴事件卡片在行数超出容器时末行按回车新行不可见，以及编辑时滚动条向上跳动或难以滚动至末行的问题；视口位于底部时自动跟随新行，处于中间时稳定保持当前滚动位置。
+- **沉浸模式手动回看稳定性**：修复启用打字机滚动后，使用滚轮、触控板、滚动条或触摸滑动回看前文时，视口偶尔自动跳回光标的问题；手动浏览期间保持当前位置，并在下一次输入或移动光标时恢复跟随。
+
+### English Changelog
+
+#### Enhancements
+- **Timeline Unassociated Chapter Ordering**: Added an ascending/descending toggle to the Timeline Board's Unassociated Chapters panel, keeping its volume order consistent with Workbench All Chapters and Chapter Overview.
+- **Workbench Novel Switcher Ordering**: The Workbench novel switcher now follows the order of novels shown in File Explorer.
+
+#### Bug Fixes
+- **Volume Ordering Consistency**: Fixed historical drag-order data causing volume folders to appear out of order across vaults. Smart-recognized volume names now always follow their volume numbers, while ordinary volume names continue to respect File Explorer drag order.
+- **Chapter Card Synopsis Indentation**: Fixed wrapped lines being block-indented and text shifting on first input when Typography → Apply to Cards is enabled. Display, editing, and the empty-synopsis hint now reserve the same per-paragraph first-line indent.
+- **Card Editing Scroll & Caret Follow Stability**: Fixed an issue in lore cards and timeline event cards where pressing Enter at the final line hid the new line when content exceeded the container, and scrollbars jumped upward or could not smoothly follow to the end during editing; the viewport now follows the new line when at the bottom and stably preserves scroll position when editing in the middle.
+- **Immersive Manual Review Stability**: Fixed the viewport occasionally jumping back to the caret while reviewing earlier text with the mouse wheel, trackpad, scrollbar, or touch gestures when Typewriter Scrolling is enabled. Manual review now preserves its position until the next edit or caret move resumes following.
+
+---
+
 ## 🔧 v3.9.1
 
 ### Bug修复

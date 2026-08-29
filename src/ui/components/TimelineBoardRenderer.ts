@@ -8,9 +8,11 @@ import { t } from '../../i18n';
 import { Logger } from '../../utils/Logger';
 import { smartLocateAndHighlight } from '../../utils/leaf';
 import { ChapterSorter } from '../../services/ChapterSorter';
+import { getDeterministicChapterDisplayOrder } from '../../utils/chapterDisplayOrder';
 import type { TimelineFormContext, TimelineFormSettings } from './TimelineFormComponent';
 import type { ChapterCardPlugin } from './ChapterCard';
 import type { AccurateCountSettings } from '../../types/settings';
+import { autoResizeNestedTextarea } from '../../utils/dom';
 
 class ConfirmDeleteEventModal extends Modal {
 	constructor(app: App, private title: string, private onConfirm: () => void) {
@@ -53,7 +55,7 @@ export type TimelineBoardTimelineManager = Pick<
 >;
 
 export type TimelineBoardSettings = TimelineFormSettings &
-	Pick<AccurateCountSettings, 'enableMobileLorePopover' | 'lorePopoverCollapse'>;
+	Pick<AccurateCountSettings, 'enableMobileLorePopover' | 'lorePopoverCollapse' | 'enableSmartChapterSort' | 'customSortOrder'>;
 
 export interface TimelineBoardPlugin
 	extends Omit<TimelineFormContext, 'settings'>,
@@ -74,11 +76,26 @@ export interface TimelineBoardOptions {
 	onSaveStateChange: (isSaving: boolean) => void;
 	reloadBoard: () => void;
 	getChapterEvents: (file: TFile, fallbackMap: Map<string, string[]>) => string[];
+	isUnscheduledDescending?: boolean;
+	onToggleUnscheduledSort?: () => void;
 }
 
 export class TimelineBoardRenderer {
 	static async render(options: TimelineBoardOptions): Promise<void> {
-		const { app, plugin, container, files, foreshadowingMap, currentBookPath, currentTimelineFilter, onSaveStateChange, reloadBoard, getChapterEvents } = options;
+		const {
+			app,
+			plugin,
+			container,
+			files,
+			foreshadowingMap,
+			currentBookPath,
+			currentTimelineFilter,
+			onSaveStateChange,
+			reloadBoard,
+			getChapterEvents,
+			isUnscheduledDescending,
+			onToggleUnscheduledSort
+		} = options;
 
 		const tStart = performance.now();
 		const timelineManager = plugin.timelineManager;
@@ -439,23 +456,43 @@ export class TimelineBoardRenderer {
 						e.stopPropagation();
 						if (descEl.querySelector('textarea')) return;
 						const currentDesc = items[itemIdx].description || '';
-						const prevScrollTop = descEl.scrollTop;
+						const prevScrollTop = descEl.scrollTop ?? 0;
+						const prevScrollHeight = descEl.scrollHeight ?? 0;
+						const clientHeight = descEl.clientHeight ?? 0;
+						const maxScrollBefore = Math.max(0, prevScrollHeight - clientHeight);
+						const wasNearBottom = maxScrollBefore <= 0 || prevScrollTop >= maxScrollBefore - 8;
+
 						descEl.empty();
 						descEl.addClass('is-editing');
 						const textarea = descEl.createEl('textarea', { cls: 'wn-corkboard-textarea' });
 						textarea.value = currentDesc;
-						textarea.focus({ preventScroll: true });
-						textarea.setSelectionRange(currentDesc.length, currentDesc.length);
 
 						const resizeTextarea = () => {
-							const st = descEl.scrollTop;
-							textarea.setCssProps({ height: 'auto' });
-							textarea.setCssProps({ height: textarea.scrollHeight + 'px' });
-							descEl.scrollTop = st;
+							autoResizeNestedTextarea(descEl, textarea);
 						};
 
 						resizeTextarea();
-						descEl.scrollTop = prevScrollTop;
+						textarea.focus({ preventScroll: true });
+						textarea.setSelectionRange(currentDesc.length, currentDesc.length);
+
+						const applyScroll = () => {
+							const newMaxScroll = Math.max(0, (descEl.scrollHeight ?? 0) - (descEl.clientHeight ?? 0));
+							if (wasNearBottom) {
+								descEl.scrollTop = newMaxScroll;
+							} else {
+								descEl.scrollTop = Math.min(prevScrollTop, newMaxScroll);
+							}
+						};
+
+						applyScroll();
+
+						const ownerWindow = descEl.ownerDocument?.defaultView;
+						if (ownerWindow?.requestAnimationFrame) {
+							ownerWindow.requestAnimationFrame(() => {
+								if (descEl.isConnected === false) return;
+								applyScroll();
+							});
+						}
 
 						textarea.oninput = () => {
 							resizeTextarea();
@@ -525,10 +562,7 @@ export class TimelineBoardRenderer {
 					const textarea = descEl.createEl('textarea', { cls: 'wn-corkboard-textarea' });
 					textarea.focus({ preventScroll: true });
 					const resizeTextarea = () => {
-						const st = descEl.scrollTop;
-						textarea.setCssProps({ height: 'auto' });
-						textarea.setCssProps({ height: textarea.scrollHeight + 'px' });
-						descEl.scrollTop = st;
+						autoResizeNestedTextarea(descEl, textarea);
 					};
 					resizeTextarea();
 					textarea.oninput = () => {
@@ -894,6 +928,31 @@ export class TimelineBoardRenderer {
 		// 始终展示未关联章节的数量（包含 0），提升作者概览与归还槽感知
 		titleGroup.createSpan({ text: ` (${unscheduled.length})`, cls: 'wn-timeline-sidebar-count' });
 
+		const sortToggle = unscheduledHeader.createDiv('clickable-icon wn-workbench-sort-toggle');
+		sortToggle.setAttr('role', 'button');
+		sortToggle.setAttr('tabindex', '0');
+		const label = isUnscheduledDescending ? t('corkboard.sort-descending') : t('corkboard.sort-ascending');
+		sortToggle.setAttr('aria-label', label);
+		sortToggle.setAttr('aria-pressed', isUnscheduledDescending ? 'true' : 'false');
+		setIcon(sortToggle, isUnscheduledDescending ? 'arrow-down-narrow-wide' : 'arrow-up-wide-narrow');
+
+		const toggleSort = (event?: Event) => {
+			if (event) {
+				event.stopPropagation();
+			}
+			if (onToggleUnscheduledSort) {
+				onToggleUnscheduledSort();
+			}
+		};
+		sortToggle.onclick = (e) => toggleSort(e);
+		sortToggle.addEventListener('keydown', (event) => {
+			if (event.key === 'Enter' || event.key === ' ') {
+				event.preventDefault();
+				event.stopPropagation();
+				toggleSort(event);
+			}
+		});
+
 		setupDropzone(sideCol, []); // Drag back to sidebar to remove timeline
 		const sideGrid = sideCol.createDiv('wn-corkboard-grid');
 
@@ -901,8 +960,15 @@ export class TimelineBoardRenderer {
 			sideCol.addClass('is-empty');
 		}
 
+		const displayUnscheduled = getDeterministicChapterDisplayOrder(unscheduled, {
+			currentBookPath,
+			isDescending: !!isUnscheduledDescending,
+			enableSmartChapterSort: plugin.settings.enableSmartChapterSort,
+			customSortOrder: plugin.settings.customSortOrder
+		});
+
 		CorkboardGridRenderer.render({
-			app, plugin, container: sideGrid, files: unscheduled, foreshadowingMap, draggable: true, currentBookPath, onSaveStateChange,
+			app, plugin, container: sideGrid, files: displayUnscheduled, foreshadowingMap, draggable: true, currentBookPath, onSaveStateChange,
 			groupVolumeCards: container.ownerDocument.body.classList.contains('is-phone')
 		});
 

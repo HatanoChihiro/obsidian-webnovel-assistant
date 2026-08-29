@@ -1314,6 +1314,9 @@ A: Proofreading runs entirely locally and does not use AI or online semantic ana
 ### Q: Why did history or sticky notes fail to sync through Obsidian Sync, and has this been fixed?
 A: Older plugin versions stored history, sticky notes, and caches in additional JSON files, while Obsidian Sync primarily recognizes a third-party plugin's `data.json`. This could sync settings without syncing history or notes. The latest plugin now stores settings, writing history, and sticky notes together in `data.json`, and performs a one-time migration from old files when the corresponding data has not yet been migrated. `cache-data.json` and downloaded official dictionaries remain device-local because they can be rebuilt or downloaded again. Update every device to the latest version, wait for Obsidian Sync to finish, and then reload the plugin. Before uninstalling, reinstalling, or working on mobile, backing up the complete `data.json` is still recommended.
 
+### Q: Why does WebNovel Assistant keep reloading after I enable "Configuration Sync" in Fast Note Sync?
+A: Fast Note Sync may treat WebNovel Assistant's automatically updated local cache as a plugin configuration change and reload the plugin after every sync, creating a loop. Add `.obsidian/plugins/web-novel-assistant/cache-data.json` to **Sync Exclusion** in Fast Note Sync, and use the same exclusion on every device. `cache-data.json` contains only rebuildable, device-local cache data. WebNovel Assistant settings, writing history, and sticky notes remain in `data.json`, so this exclusion does not prevent them from continuing to sync.
+
 ### Q: Word count seems inaccurate?
 A:
 1. Check if **Show Word Counts in File Explorer** is enabled

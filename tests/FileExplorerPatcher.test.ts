@@ -15,12 +15,20 @@ interface MockEl {
 	createSpan: (options?: { cls?: string; text?: string }) => MockEl;
 	appendChild: (child: MockEl) => MockEl;
 	addClass: (cls: string) => MockEl;
+	closest: (selector: string) => MockEl | null;
+	getAttribute: (name: string) => string | null;
+	setAttribute: (name: string, value: string) => void;
+	readonly previousElementSibling: MockEl | null;
+	readonly nextElementSibling: MockEl | null;
+	readonly children: MockEl[];
+	getBoundingClientRect: () => { top: number; bottom: number; left: number; right: number; width: number; height: number };
 	addEventListener: (event: string, handler: unknown, capture?: boolean) => void;
 	removeEventListener: (event: string, handler: unknown, capture?: boolean) => void;
 }
 
 function createMockEl(cls = ''): MockEl {
 	const classSet = new Set(cls ? cls.split(' ').filter(Boolean) : []);
+	const attributes = new Map<string, string>();
 	const children: MockEl[] = [];
 	const el: MockEl = {
 		parentElement: null,
@@ -39,17 +47,31 @@ function createMockEl(cls = ''): MockEl {
 			}
 		},
 		querySelector: (sel: string): MockEl | null => {
+			const matchClass = (node: MockEl, selector: string) => {
+				const parts = selector.split(',').map(s => s.trim());
+				for (const part of parts) {
+					if (part.startsWith('.') && node.classList.contains(part.slice(1))) return true;
+				}
+				return false;
+			};
 			for (const child of children) {
-				if (sel.startsWith('.') && child.classList.contains(sel.slice(1))) return child;
+				if (matchClass(child, sel)) return child;
 				const found = child.querySelector(sel);
 				if (found) return found;
 			}
 			return null;
 		},
 		querySelectorAll: (sel: string): MockEl[] => {
+			const matchClass = (node: MockEl, selector: string) => {
+				const parts = selector.split(',').map(s => s.trim());
+				for (const part of parts) {
+					if (part.startsWith('.') && node.classList.contains(part.slice(1))) return true;
+				}
+				return false;
+			};
 			const results: MockEl[] = [];
 			for (const child of children) {
-				if (sel.startsWith('.') && child.classList.contains(sel.slice(1))) results.push(child);
+				if (matchClass(child, sel)) results.push(child);
 				results.push(...child.querySelectorAll(sel));
 			}
 			return results;
@@ -72,6 +94,43 @@ function createMockEl(cls = ''): MockEl {
 			classSet.add(c);
 			return el;
 		},
+		closest: (sel: string): MockEl | null => {
+			const matchClass = (node: MockEl, selector: string) => {
+				const parts = selector.split(',').map(s => s.trim());
+				for (const part of parts) {
+					if (part.startsWith('.') && node.classList.contains(part.slice(1))) return true;
+				}
+				return false;
+			};
+			let cur: MockEl | null = el;
+			while (cur) {
+				if (matchClass(cur, sel)) return cur;
+				cur = cur.parentElement;
+			}
+			return null;
+		},
+		getAttribute: (name: string): string | null => {
+			return attributes.get(name) ?? null;
+		},
+		setAttribute: (name: string, value: string): void => {
+			attributes.set(name, value);
+		},
+		get previousElementSibling(): MockEl | null {
+			if (!el.parentElement) return null;
+			const siblings = (el.parentElement as unknown as { _children: MockEl[] })._children;
+			const idx = siblings.indexOf(el);
+			return idx > 0 ? siblings[idx - 1] : null;
+		},
+		get nextElementSibling(): MockEl | null {
+			if (!el.parentElement) return null;
+			const siblings = (el.parentElement as unknown as { _children: MockEl[] })._children;
+			const idx = siblings.indexOf(el);
+			return (idx !== -1 && idx < siblings.length - 1) ? siblings[idx + 1] : null;
+		},
+		get children(): MockEl[] {
+			return children;
+		},
+		getBoundingClientRect: () => ({ top: 100, bottom: 200, left: 0, right: 100, width: 100, height: 100 }),
 		addEventListener: vi.fn(),
 		removeEventListener: vi.fn(),
 		_children: children
@@ -92,7 +151,9 @@ describe('FileExplorerPatcher', () => {
 		vi.stubGlobal('activeDocument', {
 			body: {
 				classList: {
-					remove: vi.fn()
+					add: vi.fn(),
+					remove: vi.fn(),
+					contains: vi.fn()
 				}
 			},
 			getElementsByClassName: vi.fn(() => [])
@@ -838,5 +899,237 @@ function mockWindowTimers(scheduledTimeouts: { fn: () => void; ms?: number; id: 
 		// Badges must not reappear
 		expect(childFolderEl.querySelector('.wn-folder-word-count')).toBeNull();
 		expect(leaf2ChildFolderEl.querySelector('.wn-folder-word-count')).toBeNull();
+	});
+
+	it('should collapse smart-recognized volume folders into chapter block and not write conflicting individual weights on drag', () => {
+		const vol1Folder = new TFolder('第一卷 启程', 'NovelA/第一卷 启程');
+		const vol2Folder = new TFolder('第二卷 探索', 'NovelA/第二卷 探索');
+		const extraFolder = new TFolder('番外设定', 'NovelA/番外设定');
+		const parentFolder = new TFolder('NovelA', 'NovelA');
+		parentFolder.children = [vol1Folder, vol2Folder, extraFolder];
+
+		const parentChildrenEl = createMockEl('nav-folder-children');
+		const parentEl = createMockEl('nav-folder');
+		const parentTitleEl = createMockEl('nav-folder-title');
+		(parentTitleEl as unknown as { setAttribute: (k: string, v: string) => void; getAttribute: (k: string) => string }).setAttribute = vi.fn();
+		(parentTitleEl as unknown as { getAttribute: (k: string) => string | null }).getAttribute = (k: string) => k === 'data-path' ? 'NovelA' : null;
+		parentEl.appendChild(parentTitleEl);
+		parentEl.appendChild(parentChildrenEl);
+
+		const vol1El = createMockEl('nav-folder');
+		(vol1El as unknown as { getAttribute: (k: string) => string | null }).getAttribute = (k: string) => k === 'data-path' ? 'NovelA/第一卷 启程' : null;
+		const vol1TitleEl = createMockEl('nav-folder-title');
+		(vol1TitleEl as unknown as { getAttribute: (k: string) => string | null }).getAttribute = (k: string) => k === 'data-path' ? 'NovelA/第一卷 启程' : null;
+		vol1El.appendChild(vol1TitleEl);
+		parentChildrenEl.appendChild(vol1El);
+
+		const vol2El = createMockEl('nav-folder');
+		(vol2El as unknown as { getAttribute: (k: string) => string | null }).getAttribute = (k: string) => k === 'data-path' ? 'NovelA/第二卷 探索' : null;
+		const vol2TitleEl = createMockEl('nav-folder-title');
+		(vol2TitleEl as unknown as { getAttribute: (k: string) => string | null }).getAttribute = (k: string) => k === 'data-path' ? 'NovelA/第二卷 探索' : null;
+		vol2El.appendChild(vol2TitleEl);
+		parentChildrenEl.appendChild(vol2El);
+
+		const extraEl = createMockEl('nav-folder');
+		(extraEl as unknown as { getAttribute: (k: string) => string | null }).getAttribute = (k: string) => k === 'data-path' ? 'NovelA/番外设定' : null;
+		const extraTitleEl = createMockEl('nav-folder-title');
+		(extraTitleEl as unknown as { getAttribute: (k: string) => string | null }).getAttribute = (k: string) => k === 'data-path' ? 'NovelA/番外设定' : null;
+		extraEl.appendChild(extraTitleEl);
+		parentChildrenEl.appendChild(extraEl);
+
+		const mockApp = {
+			vault: {
+				on: vi.fn(),
+				offref: vi.fn(),
+				getAbstractFileByPath: vi.fn((path: string) => {
+					if (path === 'NovelA') return parentFolder;
+					if (path === 'NovelA/第一卷 启程') return vol1Folder;
+					if (path === 'NovelA/第二卷 探索') return vol2Folder;
+					if (path === 'NovelA/番外设定') return extraFolder;
+					return null;
+				}),
+				getRoot: vi.fn(() => parentFolder)
+			},
+			workspace: {
+				getLeavesOfType: vi.fn(() => []),
+				on: vi.fn(() => ({})),
+				offref: vi.fn()
+			}
+		} as unknown as App;
+
+		const mockPlugin = {
+			settings: {
+				enableSmartChapterSort: true,
+				chapterNamingRules: [],
+				customSortOrder: {}
+			},
+			cacheManager: {
+				isFileInWorkspace: vi.fn().mockReturnValue(true)
+			},
+			saveSettings: vi.fn().mockResolvedValue(undefined)
+		} as unknown as WebNovelAssistantPlugin;
+
+		const patcher = new FileExplorerPatcher(mockApp, mockPlugin);
+		(patcher as unknown as { enabled: boolean }).enabled = true;
+
+		// 1. Drag start on smart recognized volume folder
+		const dragEvent = {
+			target: vol1TitleEl
+		} as unknown as DragEvent;
+		(patcher as unknown as { _onDragStart: (e: DragEvent) => void })._onDragStart(dragEvent);
+
+		// Source path must be the folder's chapter block, not the individual folder path
+		expect((patcher as unknown as { _dragSourcePath: string })._dragSourcePath).toBe('NovelA/__CHAPTER_BLOCK__');
+		// Both smart recognized volume folder items in parent receive dragging class
+		expect(vol1El.classList.contains('webnovel-dragging')).toBe(true);
+		expect(vol2El.classList.contains('webnovel-dragging')).toBe(true);
+		// Unrecognized ordinary folder does not receive dragging class
+		expect(extraEl.classList.contains('webnovel-dragging')).toBe(false);
+
+		// 2. Drop before extraEl (ordinary folder)
+		(patcher as unknown as { _currentDropTarget: HTMLElement; _currentDropPosition: string })._currentDropTarget = extraEl as unknown as HTMLElement;
+		(patcher as unknown as { _currentDropPosition: string })._currentDropPosition = 'top';
+
+		(patcher as unknown as { _handleDrop: () => void })._handleDrop();
+
+		// Check written customSortOrder: must contain NovelA/__CHAPTER_BLOCK__ and NovelA/番外设定, NOT individual NovelA/第一卷 启程
+		const savedOrder = mockPlugin.settings.customSortOrder!;
+		expect(savedOrder['NovelA/__CHAPTER_BLOCK__']).toBeDefined();
+		expect(savedOrder['NovelA/番外设定']).toBeDefined();
+		expect(savedOrder['NovelA/第一卷 启程']).toBeUndefined();
+		expect(savedOrder['NovelA/第二卷 探索']).toBeUndefined();
+		expect(savedOrder['NovelA/__CHAPTER_BLOCK__']).toBeLessThan(savedOrder['NovelA/番外设定']);
+	});
+
+	it('should preserve native drop in center zone when dragging over a smart-recognized TFolder target', () => {
+		const vol1Folder = new TFolder('第一卷 启程', 'NovelA/第一卷 启程');
+		const extraFile = new TFile('extra.md', 'NovelA/extra.md');
+		const parentFolder = new TFolder('NovelA', 'NovelA');
+		vol1Folder.parent = parentFolder;
+		extraFile.parent = parentFolder;
+		parentFolder.children = [vol1Folder, extraFile];
+
+		const parentChildrenEl = createMockEl('nav-folder-children');
+		const parentEl = createMockEl('nav-folder');
+		const parentTitleEl = createMockEl('nav-folder-title');
+		(parentTitleEl as unknown as { getAttribute: (k: string) => string | null }).getAttribute = (k: string) => k === 'data-path' ? 'NovelA' : null;
+		parentEl.appendChild(parentTitleEl);
+		parentEl.appendChild(parentChildrenEl);
+
+		const vol1El = createMockEl('nav-folder');
+		(vol1El as unknown as { getAttribute: (k: string) => string | null }).getAttribute = (k: string) => k === 'data-path' ? 'NovelA/第一卷 启程' : null;
+		vol1El.getBoundingClientRect = () => ({ top: 100, bottom: 200, left: 0, right: 100, width: 100, height: 100 });
+		const vol1TitleEl = createMockEl('nav-folder-title');
+		(vol1TitleEl as unknown as { getAttribute: (k: string) => string | null }).getAttribute = (k: string) => k === 'data-path' ? 'NovelA/第一卷 启程' : null;
+		vol1El.appendChild(vol1TitleEl);
+		parentChildrenEl.appendChild(vol1El);
+
+		const extraEl = createMockEl('nav-file');
+		(extraEl as unknown as { getAttribute: (k: string) => string | null }).getAttribute = (k: string) => k === 'data-path' ? 'NovelA/extra.md' : null;
+		const extraTitleEl = createMockEl('nav-file-title');
+		(extraTitleEl as unknown as { getAttribute: (k: string) => string | null }).getAttribute = (k: string) => k === 'data-path' ? 'NovelA/extra.md' : null;
+		extraEl.appendChild(extraTitleEl);
+		parentChildrenEl.appendChild(extraEl);
+
+		const mockApp = {
+			vault: {
+				on: vi.fn(),
+				offref: vi.fn(),
+				getAbstractFileByPath: vi.fn((path: string) => {
+					if (path === 'NovelA') return parentFolder;
+					if (path === 'NovelA/第一卷 启程') return vol1Folder;
+					if (path === 'NovelA/extra.md') return extraFile;
+					return null;
+				}),
+				getRoot: vi.fn(() => parentFolder)
+			},
+			workspace: {
+				getLeavesOfType: vi.fn(() => []),
+				on: vi.fn(() => ({})),
+				offref: vi.fn()
+			}
+		} as unknown as App;
+
+		const mockPlugin = {
+			settings: {
+				enableSmartChapterSort: true,
+				chapterNamingRules: [],
+				customSortOrder: {}
+			},
+			cacheManager: {
+				isFileInWorkspace: vi.fn().mockReturnValue(true)
+			},
+			saveSettings: vi.fn().mockResolvedValue(undefined)
+		} as unknown as WebNovelAssistantPlugin;
+
+		const patcher = new FileExplorerPatcher(mockApp, mockPlugin);
+		(patcher as unknown as { enabled: boolean }).enabled = true;
+		(patcher as unknown as { _dragContainerEl: HTMLElement })._dragContainerEl = parentChildrenEl as unknown as HTMLElement;
+		(patcher as unknown as { _dragSourcePath: string })._dragSourcePath = 'NovelA/extra.md';
+
+		// Stub elementFromPoint to return vol1TitleEl (which is inside vol1El nav-folder)
+		vi.stubGlobal('activeDocument', {
+			elementFromPoint: () => vol1TitleEl,
+			body: {
+				classList: {
+					add: vi.fn(),
+					remove: vi.fn(),
+					contains: vi.fn()
+				}
+			},
+			getElementsByClassName: vi.fn(() => [])
+		});
+
+		// 1. Center zone drag (clientY = 150 -> y = 50, within 25% - 75% height)
+		const preventDefaultCenterSpy = vi.fn();
+		const dragCenterEvent = {
+			clientX: 50,
+			clientY: 150,
+			preventDefault: preventDefaultCenterSpy
+		} as unknown as DragEvent;
+
+		(patcher as unknown as { _onDrag: (e: DragEvent) => void })._onDrag(dragCenterEvent);
+
+		// Must call preventDefault to allow native drop
+		expect(preventDefaultCenterSpy).toHaveBeenCalled();
+		// Must add native drop highlight to vol1El
+		expect(vol1El.classList.contains('webnovel-native-drop')).toBe(true);
+		// Must NOT show custom drag-over indicators
+		expect(vol1El.classList.contains('webnovel-drag-over-top')).toBe(false);
+		expect(vol1El.classList.contains('webnovel-drag-over-bottom')).toBe(false);
+		// Custom drop target must be null so custom drop handler is NOT invoked
+		expect((patcher as unknown as { _currentDropTarget: HTMLElement | null })._currentDropTarget).toBeNull();
+
+		// 2. Top zone drag (clientY = 110 -> y = 10, < 25% height)
+		const preventDefaultTopSpy = vi.fn();
+		const dragTopEvent = {
+			clientX: 50,
+			clientY: 110,
+			preventDefault: preventDefaultTopSpy
+		} as unknown as DragEvent;
+
+		(patcher as unknown as { _onDrag: (e: DragEvent) => void })._onDrag(dragTopEvent);
+
+		expect(preventDefaultTopSpy).toHaveBeenCalled();
+		// Native drop highlight removed, custom top indicator shown
+		expect(vol1El.classList.contains('webnovel-native-drop')).toBe(false);
+		expect(vol1El.classList.contains('webnovel-drag-over-top')).toBe(true);
+		expect((patcher as unknown as { _currentDropTarget: HTMLElement | null })._currentDropTarget).toBe(vol1El);
+
+		// 3. Bottom zone drag (clientY = 190 -> y = 90, > 75% height)
+		const preventDefaultBottomSpy = vi.fn();
+		const dragBottomEvent = {
+			clientX: 50,
+			clientY: 190,
+			preventDefault: preventDefaultBottomSpy
+		} as unknown as DragEvent;
+
+		(patcher as unknown as { _onDrag: (e: DragEvent) => void })._onDrag(dragBottomEvent);
+
+		expect(preventDefaultBottomSpy).toHaveBeenCalled();
+		// Native drop highlight removed, custom bottom indicator shown
+		expect(vol1El.classList.contains('webnovel-native-drop')).toBe(false);
+		expect(vol1El.classList.contains('webnovel-drag-over-bottom')).toBe(true);
+		expect((patcher as unknown as { _currentDropTarget: HTMLElement | null })._currentDropTarget).toBe(vol1El);
 	});
 });

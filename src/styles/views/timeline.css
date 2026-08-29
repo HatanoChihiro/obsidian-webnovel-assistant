@@ -625,6 +625,7 @@
 
 .wn-timeline-item-desc.is-editing .wn-corkboard-textarea {
 	overflow: hidden;
+	padding-bottom: calc(1.5em + 2px);
 }
 
 
@@ -822,6 +823,7 @@ body .wn-timeline-waterfall-layout .wn-timeline-waterfall-sidebar.drag-over-chap
 .wn-timeline-sidebar-header {
 	display: flex;
 	align-items: center;
+	justify-content: space-between;
 	gap: 6px;
 	font-weight: 600;
 	font-size: 0.85em;

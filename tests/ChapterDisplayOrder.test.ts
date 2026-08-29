@@ -3,8 +3,10 @@ import type { TFile } from 'obsidian';
 import {
 	getDeterministicChapterDisplayOrder,
 	getFileVolumePath,
-	compareVolumePaths
+	compareVolumePaths,
+	sortNovelFoldersForSwitchMenu
 } from '../src/utils/chapterDisplayOrder';
+import type { NovelFolderInfo } from '../src/types/homepage';
 
 class MockFile {
 	extension = 'md';
@@ -58,13 +60,56 @@ describe('ChapterDisplayOrder', () => {
 			expect(compareVolumePaths('第2卷', '第10卷', 'NovelA')).toBeLessThan(0);
 		});
 
-		it('should respect customSortOrder when present', () => {
+		it('should ignore individual customSortOrder on smart-recognized volume folders and let smart rule win', () => {
+			// Malformed or manual contrary customSortOrder on recognized volumes must be ignored
 			const customOrder = {
 				'NovelA/第二卷': 0,
 				'NovelA/第一卷': 1
 			};
-			expect(compareVolumePaths('第二卷', '第一卷', 'NovelA', true, customOrder)).toBeLessThan(0);
-			expect(compareVolumePaths('第一卷', '第二卷', 'NovelA', true, customOrder)).toBeGreaterThan(0);
+			expect(compareVolumePaths('第一卷', '第二卷', 'NovelA', true, customOrder)).toBeLessThan(0);
+			expect(compareVolumePaths('第二卷', '第一卷', 'NovelA', true, customOrder)).toBeGreaterThan(0);
+		});
+
+		it('should respect customSortOrder for ordinary folders and the smart block (__CHAPTER_BLOCK__)', () => {
+			// Ordinary folder dragged before smart block
+			const orderOrdinaryFirst = {
+				'NovelA/设定集': 0,
+				'NovelA/__CHAPTER_BLOCK__': 1
+			};
+			expect(compareVolumePaths('设定集', '第一卷', 'NovelA', true, orderOrdinaryFirst)).toBeLessThan(0);
+			expect(compareVolumePaths('第一卷', '设定集', 'NovelA', true, orderOrdinaryFirst)).toBeGreaterThan(0);
+
+			// Smart block dragged before ordinary folder
+			const orderSmartBlockFirst = {
+				'NovelA/__CHAPTER_BLOCK__': 0,
+				'NovelA/设定集': 1
+			};
+			expect(compareVolumePaths('第一卷', '设定集', 'NovelA', true, orderSmartBlockFirst)).toBeLessThan(0);
+			expect(compareVolumePaths('设定集', '第一卷', 'NovelA', true, orderSmartBlockFirst)).toBeGreaterThan(0);
+		});
+
+		it('should place ordinary folders before smart chapter block by default when no custom order exists', () => {
+			// File Explorer default semantics: ordinary folders (-1) come before smart block (0)
+			expect(compareVolumePaths('设定集', '第一卷', 'NovelA', true)).toBeLessThan(0);
+			expect(compareVolumePaths('第一卷', '设定集', 'NovelA', true)).toBeGreaterThan(0);
+		});
+
+		it('should respect customSortOrder between multiple ordinary unrecognized folders', () => {
+			const customOrder = {
+				'NovelA/资料集': 100,
+				'NovelA/设定集': 200
+			};
+			expect(compareVolumePaths('资料集', '设定集', 'NovelA', true, customOrder)).toBeLessThan(0);
+			expect(compareVolumePaths('设定集', '资料集', 'NovelA', true, customOrder)).toBeGreaterThan(0);
+		});
+
+		it('should respect individual folder customSortOrder when enableSmartSort is false', () => {
+			const customOrder = {
+				'NovelA/第二卷': 0,
+				'NovelA/第一卷': 1
+			};
+			expect(compareVolumePaths('第二卷', '第一卷', 'NovelA', false, customOrder)).toBeLessThan(0);
+			expect(compareVolumePaths('第一卷', '第二卷', 'NovelA', false, customOrder)).toBeGreaterThan(0);
 		});
 	});
 
@@ -219,31 +264,98 @@ describe('ChapterDisplayOrder', () => {
 			]);
 		});
 
-		it('should support customSortOrder on volume folders and chapters', () => {
+		it('should ignore malformed individual customSortOrder entries for smart-recognized volume folders', () => {
 			const v1c1 = createMockFile('第1章.md', 'NovelA/第一卷/第1章.md', 'NovelA/第一卷');
+			const v1c2 = createMockFile('第2章.md', 'NovelA/第一卷/第2章.md', 'NovelA/第一卷');
 			const v2c1 = createMockFile('第1章.md', 'NovelA/第二卷/第1章.md', 'NovelA/第二卷');
+			const v2c2 = createMockFile('第2章.md', 'NovelA/第二卷/第2章.md', 'NovelA/第二卷');
 
-			const customOrder = {
+			// Malformed/contrary individual entries: trying to put 第二卷 before 第一卷
+			const malformedCustomOrder = {
 				'NovelA/第二卷': 0,
-				'NovelA/第一卷': 1
+				'NovelA/第一卷': 1,
+				'NovelA/第一卷/第2章.md': 0,
+				'NovelA/第一卷/第1章.md': 1
 			};
 
-			const asc = getDeterministicChapterDisplayOrder([v1c1, v2c1], {
+			const asc = getDeterministicChapterDisplayOrder([v2c2, v1c2, v2c1, v1c1], {
 				currentBookPath: 'NovelA',
 				isDescending: false,
-				customSortOrder: customOrder
+				customSortOrder: malformedCustomOrder
 			});
+
+			// Smart volume order wins: 第一卷 before 第二卷. Inside each volume, smart chapter order wins: 1 before 2.
 			expect(asc.map(f => f.path)).toEqual([
+				'NovelA/第一卷/第1章.md',
+				'NovelA/第一卷/第2章.md',
+				'NovelA/第二卷/第1章.md',
+				'NovelA/第二卷/第2章.md'
+			]);
+
+			const desc = getDeterministicChapterDisplayOrder([v2c2, v1c2, v2c1, v1c1], {
+				currentBookPath: 'NovelA',
+				isDescending: true,
+				customSortOrder: malformedCustomOrder
+			});
+
+			expect(desc.map(f => f.path)).toEqual([
+				'NovelA/第二卷/第2章.md',
+				'NovelA/第二卷/第1章.md',
+				'NovelA/第一卷/第2章.md',
+				'NovelA/第一卷/第1章.md'
+			]);
+		});
+
+		it('should support mixed recognized and unrecognized volume folders matching File Explorer semantics', () => {
+			const v1c1 = createMockFile('第1章.md', 'NovelA/第一卷/第1章.md', 'NovelA/第一卷');
+			const extra1 = createMockFile('番外1.md', 'NovelA/番外设定/番外1.md', 'NovelA/番外设定');
+			const extra2 = createMockFile('番外2.md', 'NovelA/番外设定/番外2.md', 'NovelA/番外设定');
+			const v2c1 = createMockFile('第1章.md', 'NovelA/第二卷/第1章.md', 'NovelA/第二卷');
+
+			// 1. When customSortOrder places __CHAPTER_BLOCK__ before ordinary folder
+			const customOrderSmartFirst = {
+				'NovelA/__CHAPTER_BLOCK__': 100,
+				'NovelA/番外设定': 200
+			};
+
+			const ascSmartFirst = getDeterministicChapterDisplayOrder([extra2, v2c1, extra1, v1c1], {
+				currentBookPath: 'NovelA',
+				isDescending: false,
+				customSortOrder: customOrderSmartFirst
+			});
+			expect(ascSmartFirst.map(f => f.path)).toEqual([
+				'NovelA/第一卷/第1章.md',
+				'NovelA/第二卷/第1章.md',
+				'NovelA/番外设定/番外1.md',
+				'NovelA/番外设定/番外2.md'
+			]);
+
+			const descSmartFirst = getDeterministicChapterDisplayOrder([extra2, v2c1, extra1, v1c1], {
+				currentBookPath: 'NovelA',
+				isDescending: true,
+				customSortOrder: customOrderSmartFirst
+			});
+			expect(descSmartFirst.map(f => f.path)).toEqual([
+				'NovelA/番外设定/番外2.md',
+				'NovelA/番外设定/番外1.md',
 				'NovelA/第二卷/第1章.md',
 				'NovelA/第一卷/第1章.md'
 			]);
 
-			const desc = getDeterministicChapterDisplayOrder([v1c1, v2c1], {
+			// 2. When customSortOrder places ordinary folder before __CHAPTER_BLOCK__
+			const customOrderOrdinaryFirst = {
+				'NovelA/番外设定': 100,
+				'NovelA/__CHAPTER_BLOCK__': 200
+			};
+
+			const ascOrdinaryFirst = getDeterministicChapterDisplayOrder([extra2, v2c1, extra1, v1c1], {
 				currentBookPath: 'NovelA',
-				isDescending: true,
-				customSortOrder: customOrder
+				isDescending: false,
+				customSortOrder: customOrderOrdinaryFirst
 			});
-			expect(desc.map(f => f.path)).toEqual([
+			expect(ascOrdinaryFirst.map(f => f.path)).toEqual([
+				'NovelA/番外设定/番外1.md',
+				'NovelA/番外设定/番外2.md',
 				'NovelA/第一卷/第1章.md',
 				'NovelA/第二卷/第1章.md'
 			]);
@@ -279,6 +391,168 @@ describe('ChapterDisplayOrder', () => {
 
 		it('should handle empty input gracefully', () => {
 			expect(getDeterministicChapterDisplayOrder([])).toEqual([]);
+		});
+	});
+
+	describe('sortNovelFoldersForSwitchMenu', () => {
+		const makeNovel = (folderPath: string, folderName?: string, name?: string): NovelFolderInfo => {
+			const parts = folderPath.replace(/^\/+|\/+$/g, '').split('/');
+			const defaultName = folderName || parts[parts.length - 1] || '';
+			return {
+				folderPath,
+				folderName: defaultName,
+				metadata: name ? {
+					name,
+					status: 'ongoing',
+					synopsis: '',
+					protagonist: '',
+					wordGoal: 0,
+					genre: '',
+					startDate: '',
+					endDate: ''
+				} : null,
+				wordCount: 1000
+			};
+		};
+
+		it('should sort nested and ancestor works in top-to-bottom file tree order', () => {
+			const seriesA = makeNovel('Novels/SeriesA');
+			const arc1 = makeNovel('Novels/SeriesA/Arc1');
+			const arc2 = makeNovel('Novels/SeriesA/Arc2');
+			const seriesB = makeNovel('Novels/SeriesB');
+			const rootWork = makeNovel('RootWork');
+
+			// Input scrambled
+			const input = [arc2, seriesB, rootWork, arc1, seriesA];
+			const originalInput = [...input];
+
+			const sorted = sortNovelFoldersForSwitchMenu(input, { enableSmartChapterSort: true });
+
+			expect(sorted.map(n => n.folderPath)).toEqual([
+				'Novels/SeriesA',
+				'Novels/SeriesA/Arc1',
+				'Novels/SeriesA/Arc2',
+				'Novels/SeriesB',
+				'RootWork'
+			]);
+			// Verify input was not mutated
+			expect(input).toEqual(originalInput);
+		});
+
+		it('should sort multiple workspace roots in actual file-tree order regardless of input/discovery order', () => {
+			const workZ = makeNovel('WorkspaceZ/Work1');
+			const workA1 = makeNovel('WorkspaceA/Work1');
+			const workA2 = makeNovel('WorkspaceA/Work2');
+
+			const input = [workZ, workA2, workA1];
+			const sorted = sortNovelFoldersForSwitchMenu(input, { enableSmartChapterSort: true });
+
+			expect(sorted.map(n => n.folderPath)).toEqual([
+				'WorkspaceA/Work1',
+				'WorkspaceA/Work2',
+				'WorkspaceZ/Work1'
+			]);
+		});
+
+		it('should respect customSortOrder for ordinary sibling works', () => {
+			const work1 = makeNovel('Novels/WorkAlpha');
+			const work2 = makeNovel('Novels/WorkBeta');
+			const customSortOrder = {
+				'Novels/WorkBeta': 10,
+				'Novels/WorkAlpha': 20
+			};
+
+			const sorted = sortNovelFoldersForSwitchMenu([work1, work2], {
+				enableSmartChapterSort: true,
+				customSortOrder
+			});
+
+			expect(sorted.map(n => n.folderPath)).toEqual([
+				'Novels/WorkBeta',
+				'Novels/WorkAlpha'
+			]);
+		});
+
+		it('should ignore stale individual custom weights on smart-recognized folders and sort by smart chapter rules', () => {
+			const part1 = makeNovel('Novels/第一部');
+			const part2 = makeNovel('Novels/第二部');
+			const part10 = makeNovel('Novels/第十部');
+
+			// Stale individual weights trying to put 第二部 before 第一部
+			const customSortOrder = {
+				'Novels/第二部': 0,
+				'Novels/第一部': 100
+			};
+
+			const sorted = sortNovelFoldersForSwitchMenu([part10, part2, part1], {
+				enableSmartChapterSort: true,
+				customSortOrder
+			});
+
+			expect(sorted.map(n => n.folderPath)).toEqual([
+				'Novels/第一部',
+				'Novels/第二部',
+				'Novels/第十部'
+			]);
+		});
+
+		it('should position ordinary folders relative to smart chapter block using __CHAPTER_BLOCK__ key', () => {
+			const lore = makeNovel('Novels/设定集');
+			const part1 = makeNovel('Novels/第一部');
+
+			// 1. Default: ordinary folder before smart block
+			const defaultSorted = sortNovelFoldersForSwitchMenu([part1, lore], {
+				enableSmartChapterSort: true
+			});
+			expect(defaultSorted.map(n => n.folderPath)).toEqual([
+				'Novels/设定集',
+				'Novels/第一部'
+			]);
+
+			// 2. Custom order dragging smart block first
+			const orderSmartFirst = {
+				'Novels/__CHAPTER_BLOCK__': 0,
+				'Novels/设定集': 10
+			};
+			const smartFirstSorted = sortNovelFoldersForSwitchMenu([lore, part1], {
+				enableSmartChapterSort: true,
+				customSortOrder: orderSmartFirst
+			});
+			expect(smartFirstSorted.map(n => n.folderPath)).toEqual([
+				'Novels/第一部',
+				'Novels/设定集'
+			]);
+		});
+
+		it('should ignore customSortOrder and use natural numeric locale ordering when enableSmartChapterSort is false', () => {
+			const part1 = makeNovel('Novels/第1部');
+			const part2 = makeNovel('Novels/第2部');
+			const part10 = makeNovel('Novels/第10部');
+			const customSortOrder = {
+				'Novels/第2部': 0,
+				'Novels/第10部': 5,
+				'Novels/第1部': 10
+			};
+
+			const sorted = sortNovelFoldersForSwitchMenu([part10, part2, part1], {
+				enableSmartChapterSort: false,
+				customSortOrder
+			});
+
+			expect(sorted.map(n => n.folderPath)).toEqual([
+				'Novels/第1部',
+				'Novels/第2部',
+				'Novels/第10部'
+			]);
+		});
+
+		it('should handle empty or single-element input without error', () => {
+			expect(sortNovelFoldersForSwitchMenu([])).toEqual([]);
+
+			const single = makeNovel('NovelA');
+			const result = sortNovelFoldersForSwitchMenu([single]);
+			expect(result).toEqual([single]);
+			expect(result).not.toBe([single]); // returns new array copy
 		});
 	});
 });

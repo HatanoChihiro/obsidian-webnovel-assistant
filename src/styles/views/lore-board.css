@@ -221,6 +221,17 @@
 	background: color-mix(in srgb, var(--interactive-accent) 50%, var(--text-muted));
 }
 
+.wn-lore-card-body.is-editing,
+.wn-lore-card-body.is-editing:hover,
+.wn-lore-card-body.is-editing:focus,
+.wn-lore-card-body.is-editing:focus-within,
+.wn-lore-hover-popover .wn-lore-card-body.is-editing,
+.webnovel-lore-popover .wn-lore-card-body.is-editing {
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+}
+
 .wn-lore-card.is-dragging {
 	opacity: 0.5;
 	border-color: var(--interactive-accent);
@@ -230,15 +241,19 @@
 .wn-lore-card-editor {
 	display: flex;
 	flex-direction: column;
-	gap: 8px;
+	flex: 1 1 auto;
+	min-height: 0;
+	height: 100%;
 }
 
 .wn-lore-card-textarea {
-	height: auto;
-	min-height: 100px;
+	flex: 1 1 auto;
+	min-height: 0;
+	height: 100%;
 	width: 100%;
+	box-sizing: border-box;
 	resize: none;
-	overflow: hidden;
+	overflow-y: auto;
 }
 
 .wn-lore-card-loading,

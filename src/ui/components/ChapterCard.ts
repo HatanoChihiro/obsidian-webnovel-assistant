@@ -8,6 +8,7 @@ import { openFileAndFocus, getLeafForFileNavigation } from '../../utils/leaf';
 import { isExcludedFromWordCount } from '../../utils/validation';
 import type { MenuManager } from '../../core/MenuManager';
 import type { CacheManager } from '../../services/CacheManager';
+import { createStickyNoteParagraphEditor } from './StickyNoteParagraphEditor';
 
 export interface ChapterCardPlugin extends LoreBadgePlugin {
 	menuManager: Pick<MenuManager, 'toggleExcludeFromWordCount'>;
@@ -121,14 +122,9 @@ export class ChapterCard {
 		const contentEl = card.createDiv('wn-corkboard-card-content');
 		const textEl = contentEl.createDiv('wn-corkboard-card-text');
 
-		if (synopsis.trim() === '') {
-			textEl.setText(t('common.click-add-synopsis'));
-			textEl.addClass('is-empty');
-		} else {
-			textEl.setText(synopsis);
-		}
+		this.renderSynopsis(textEl, synopsis);
 
-		// 悬停或者点击时变成 textarea
+		// 悬停或者点击时变成段落编辑器
 		contentEl.onclick = () => {
 			this.enableInlineEdit(contentEl, textEl, file, app, onSaveStateChange);
 		};
@@ -206,38 +202,71 @@ export class ChapterCard {
 		return card;
 	}
 
+	private static renderSynopsis(textEl: HTMLElement, synopsis: string): void {
+		textEl.empty();
+		const trimmed = (synopsis || '').trim();
+		if (trimmed === '') {
+			textEl.setText(t('common.click-add-synopsis'));
+			textEl.addClass('is-empty');
+			return;
+		}
+		textEl.removeClass('is-empty');
+		const normalized = (synopsis || '').replace(/\r\n/g, '\n');
+		for (const line of normalized.split('\n')) {
+			const lineEl = textEl.createEl('p', { cls: 'wn-corkboard-card-p' });
+			if (line.length > 0) {
+				lineEl.appendText(line);
+			} else {
+				lineEl.addClass('is-empty');
+				lineEl.createEl('br');
+			}
+		}
+	}
+
+	private static getSynopsis(textEl: HTMLElement): string {
+		if (textEl.hasClass('is-empty')) return '';
+		const children = Array.from(textEl.children);
+		if (children.length === 0) return textEl.textContent ?? '';
+		return children.map(child => child.textContent ?? '').join('\n');
+	}
+
 	private static enableInlineEdit(container: HTMLElement, textEl: HTMLElement, file: TFile, app: App, onSaveStateChange?: (isSaving: boolean) => void): void {
 		// 如果已经在编辑中，避免重复创建
-		if (container.querySelector('textarea')) return;
+		if (container.querySelector('.wn-corkboard-textarea, .wn-sticky-note-paragraph-editor, textarea')) return;
 
 		textEl.hide();
 
-		const textarea = container.createEl('textarea', {
-			cls: 'wn-corkboard-textarea'
-		});
-		const currentSynopsis = textEl.hasClass('is-empty') ? '' : textEl.innerText;
-		textarea.value = currentSynopsis;
+		const currentSynopsis = this.getSynopsis(textEl);
+		const editor = createStickyNoteParagraphEditor(container, currentSynopsis, 'wn-corkboard-textarea');
 
 		// 自动聚焦并选中末尾
-		textarea.focus();
-		textarea.setSelectionRange(currentSynopsis.length, currentSynopsis.length);
+		editor.focus();
+		try {
+			const ownerDoc = editor.ownerDocument || activeDocument;
+			const ownerWin = ownerDoc.defaultView || (typeof activeWindow !== 'undefined' ? activeWindow : window);
+			const sel = ownerWin?.getSelection?.();
+			if (sel && ownerDoc.createRange) {
+				const range = ownerDoc.createRange();
+				range.selectNodeContents(editor);
+				range.collapse(false);
+				sel.removeAllRanges();
+				sel.addRange(range);
+			}
+		} catch {
+			// 环境兼容性兜底
+		}
 
-		// 自适应高度
-		textarea.setCssProps({ height: 'auto' });
-		textarea.setCssProps({ height: textarea.scrollHeight + 'px' });
-		textarea.oninput = () => {
-			textarea.setCssProps({ height: 'auto' });
-			textarea.setCssProps({ height: textarea.scrollHeight + 'px' });
-		};
+		editor.addEventListener('click', (e) => {
+			e.stopPropagation();
+		});
 
 		let isSaving = false;
 		const saveChanges = async () => {
 			if (isSaving) return;
 			isSaving = true;
-			const newValue = textarea.value.trim();
+			const newValue = editor.value.trim();
 			if (newValue !== currentSynopsis) {
-				textEl.setText(newValue || t('common.click-add-synopsis'));
-				textEl.toggleClass('is-empty', newValue === '');
+				this.renderSynopsis(textEl, newValue);
 
 				// 保存到 Markdown 属性中
 				try {
@@ -257,25 +286,25 @@ export class ChapterCard {
 				}
 			}
 
-			textarea.remove();
+			editor.remove();
 			textEl.show();
 		};
 
 		// 失去焦点时保存
-		textarea.onblur = () => {
+		editor.onblur = () => {
 			void saveChanges();
 		};
 
 		// 按 Ctrl+Enter 或者直接在空旷处点击也可以保存
-		textarea.onkeydown = (e) => {
+		editor.onkeydown = (e) => {
 			if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
 				e.preventDefault();
-				textarea.blur(); // 触发 onblur 保存
+				editor.blur(); // 触发 onblur 保存
 			}
 			if (e.key === 'Escape') {
 				// 取消修改
-				textarea.value = currentSynopsis;
-				textarea.blur();
+				editor.value = currentSynopsis;
+				editor.blur();
 			}
 		};
 	}

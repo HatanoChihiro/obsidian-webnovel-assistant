@@ -188,82 +188,82 @@ export class LoreCardRenderer {
 		
 			let isEditing = false;
 			editBtn.onclick = async () => {
-			if (isEditing) return;
-			isEditing = true;
-			if (options.draggable) card.setAttribute('draggable', 'false');
+				if (isEditing) return;
+				isEditing = true;
+				if (options.draggable) card.setAttribute('draggable', 'false');
 
-			const currentScrollTop = body.scrollTop;
-			const scrollHeightBefore = body.scrollHeight || 1;
-			const scrollRatio = currentScrollTop / scrollHeightBefore;
+				const maxBodyScroll = Math.max(1, body.scrollHeight - body.clientHeight);
+				const scrollRatio = Math.max(0, Math.min(1, body.scrollTop / maxBodyScroll));
 
-			const oldContentEls = Array.from(body.children);
-			oldContentEls.forEach((el) => { (el as HTMLElement).hidden = true; });
+				const oldContentEls = Array.from(body.children);
+				oldContentEls.forEach((el) => { (el as HTMLElement).hidden = true; });
 
-			const editorContainer = body.createDiv({ cls: 'wn-lore-card-editor' });
-			const textarea = editorContainer.createEl('textarea', { cls: 'wn-lore-card-textarea' });
-			
-			const rawContent = await plugin.characterManager.getLoreContent(entry);
-			textarea.value = rawContent;
-			window.setTimeout(() => {
-				textarea.setCssStyles({ height: textarea.scrollHeight + 'px' });
+				body.addClass('is-editing');
+				const editorContainer = body.createDiv({ cls: 'wn-lore-card-editor' });
+				const textarea = editorContainer.createEl('textarea', { cls: 'wn-lore-card-textarea' });
 				
-				const roughCharIndex = Math.floor(rawContent.length * scrollRatio);
-				textarea.focus({ preventScroll: true });
-				textarea.setSelectionRange(roughCharIndex, roughCharIndex);
-				
-				body.scrollTop = currentScrollTop;
-			}, 0);
-			textarea.oninput = () => {
-				const currentScroll = body.scrollTop;
-				const currentScrollHeight = body.scrollHeight;
+				const rawContent = await plugin.characterManager.getLoreContent(entry);
+				textarea.value = rawContent;
 
-				// 暂时固定容器高度，防止 textarea 缩小时容器也跟着缩小导致 scrollTop 被浏览器强制归零
-				body.setCssStyles({ minHeight: currentScrollHeight + 'px' });
+				const ownerWindow = textarea.ownerDocument?.defaultView ?? null;
+				const scheduleLayout = (cb: () => void) => {
+					if (ownerWindow?.requestAnimationFrame) {
+						ownerWindow.requestAnimationFrame(cb);
+					} else if (ownerWindow?.setTimeout) {
+						ownerWindow.setTimeout(cb, 0);
+					} else {
+						cb();
+					}
+				};
 
-				textarea.setCssStyles({ height: 'auto' });
-				textarea.setCssStyles({ height: textarea.scrollHeight + 'px' });
+				scheduleLayout(() => {
+					if (!textarea.isConnected) return;
+					const roughCharIndex = Math.floor(rawContent.length * scrollRatio);
+					textarea.focus({ preventScroll: true });
+					textarea.setSelectionRange(roughCharIndex, roughCharIndex);
+					const maxTextareaScroll = Math.max(0, textarea.scrollHeight - textarea.clientHeight);
+					textarea.scrollTop = Math.round(scrollRatio * maxTextareaScroll);
+				});
 
-				body.setCssStyles({ minHeight: '' });
-				body.scrollTop = currentScroll;
-			};
+				let isSaving = false;
+				let isCancelled = false;
 
-			let isSaving = false;
-			let isCancelled = false;
-
-			const exitEdit = () => {
-				editorContainer.remove();
-				oldContentEls.forEach((el) => { (el as HTMLElement).hidden = false; });
-				isEditing = false;
-				if (options.draggable) card.setAttribute('draggable', 'true');
-			};
-
-			const performSave = async () => {
-				if (isSaving || isCancelled) return;
-				const newVal = textarea.value;
-				if (newVal !== rawContent) {
-					isSaving = true;
-					await plugin.characterManager.updateLoreContent(entry, newVal);
-					body.empty();
+				const exitEdit = () => {
+					body.removeClass('is-editing');
+					editorContainer.remove();
+					oldContentEls.forEach((el) => { (el as HTMLElement).hidden = false; });
 					isEditing = false;
 					if (options.draggable) card.setAttribute('draggable', 'true');
-					await LoreCardRenderer.renderBodyContent(body, header, entry, plugin, component);
-				} else {
-					exitEdit();
-				}
+				};
+
+				const performSave = async () => {
+					if (isSaving || isCancelled) return;
+					const newVal = textarea.value;
+					if (newVal !== rawContent) {
+						isSaving = true;
+						await plugin.characterManager.updateLoreContent(entry, newVal);
+						body.removeClass('is-editing');
+						body.empty();
+						isEditing = false;
+						if (options.draggable) card.setAttribute('draggable', 'true');
+						await LoreCardRenderer.renderBodyContent(body, header, entry, plugin, component);
+					} else {
+						exitEdit();
+					}
+				};
+
+				textarea.addEventListener('blur', () => {
+					void performSave();
+				});
+
+				textarea.addEventListener('keydown', (e) => {
+					if (e.key === 'Escape') {
+						e.preventDefault();
+						isCancelled = true;
+						exitEdit();
+					}
+				});
 			};
-
-			textarea.addEventListener('blur', () => {
-				void performSave();
-			});
-
-			textarea.addEventListener('keydown', (e) => {
-				if (e.key === 'Escape') {
-					e.preventDefault();
-					isCancelled = true;
-					exitEdit();
-				}
-			});
-		};
 		}
 
 		// Body area

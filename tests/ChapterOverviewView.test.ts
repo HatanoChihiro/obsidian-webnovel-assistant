@@ -546,6 +546,36 @@ describe('ChapterOverviewView', () => {
 		);
 	});
 
+	it('should ignore contrary customSortOrder on recognized volume folders in ChapterOverviewView', async () => {
+		getCurrentBookContextMock.mockReturnValue('NovelA');
+
+		const vol1 = new MockTFolder('第一卷', 'NovelA/第一卷');
+		const vol2 = new MockTFolder('第二卷', 'NovelA/第二卷');
+		const v1c1 = new MockTFile('第1章.md', 'NovelA/第一卷/第1章.md');
+		const v2c1 = new MockTFile('第1章.md', 'NovelA/第二卷/第1章.md');
+
+		vol1.children = [v1c1];
+		vol2.children = [v2c1];
+		bookFolder.children = [vol2, vol1];
+
+		plugin.settings.customSortOrder = {
+			'NovelA/第二卷': 0,
+			'NovelA/第一卷': 1
+		};
+
+		const view = new ChapterOverviewView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+		await view.onOpen();
+
+		// Smart order wins: Vol 1 before Vol 2 despite contrary customSortOrder
+		expect(CorkboardGridRenderer.render).toHaveBeenCalledWith(
+			expect.objectContaining({
+				files: [v1c1, v2c1],
+				draggable: false,
+				currentBookPath: 'NovelA'
+			})
+		);
+	});
+
 	it('should debounce vault rename and delete events and cancel debounce on close', async () => {
 		const vaultHandlers: Record<string, ((...args: unknown[]) => void)> = {};
 		const metadataHandlers: Record<string, ((...args: unknown[]) => void)> = {};

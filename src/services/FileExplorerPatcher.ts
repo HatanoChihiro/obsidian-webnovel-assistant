@@ -719,7 +719,9 @@ export class FileExplorerPatcher {
 		let isChapter = false;
 		if (fileName) {
 			const file = this.app.vault.getAbstractFileByPath(filePath);
-			if (file instanceof TFile && this.plugin.cacheManager.isFileInWorkspace(file) && ChapterSorter.extractChapterNumber(fileName) !== null) {
+			if (file instanceof TFolder && ChapterSorter.extractChapterNumber(fileName) !== null) {
+				isChapter = true;
+			} else if (file instanceof TFile && this.plugin.cacheManager.isFileInWorkspace(file) && ChapterSorter.extractChapterNumber(fileName) !== null) {
 				isChapter = true;
 			}
 		}

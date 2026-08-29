@@ -407,15 +407,18 @@ body.wn-card-indent-active .wn-lore-card textarea.wn-lore-card-textarea {
 }
 
 /* 3. Chapter Cards (Corkboard & Overview) */
-body.wn-card-indent-active .wn-corkboard-card-content .wn-corkboard-card-text:not(.is-empty):not(:empty)::before,
-body.wn-card-indent-active .wn-chapter-card-synopsis:not(.is-empty):not(:empty)::before {
+body.wn-card-indent-active .wn-corkboard-card-content .wn-corkboard-card-text.is-empty::before,
+body.wn-card-indent-active .wn-corkboard-card-content .wn-corkboard-card-text .wn-corkboard-card-p::before,
+body.wn-card-indent-active .wn-chapter-card-synopsis:not(:empty)::before {
 	content: "";
 	display: inline-block;
 	width: var(--wn-card-indent, 2em);
 }
 
-body.wn-card-indent-active .wn-corkboard-card-content textarea.wn-corkboard-textarea {
-	padding-inline-start: calc(4px + var(--wn-card-indent, 2em));
+body.wn-card-indent-active .wn-corkboard-card-content .wn-sticky-note-editor-line::before {
+	content: "";
+	display: inline-block;
+	width: var(--wn-card-indent, 2em);
 }
 
 /* 4. Timeline Event Cards (Side-panel & Board) */

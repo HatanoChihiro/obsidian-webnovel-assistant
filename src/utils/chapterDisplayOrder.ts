@@ -1,9 +1,15 @@
 import type { TFile } from 'obsidian';
 import { ChapterSorter } from '../services/ChapterSorter';
+import type { NovelFolderInfo } from '../types/homepage';
 
 export interface ChapterDisplayOrderOptions {
 	currentBookPath?: string;
 	isDescending?: boolean;
+	enableSmartChapterSort?: boolean;
+	customSortOrder?: Record<string, number>;
+}
+
+export interface NovelFolderOrderOptions {
 	enableSmartChapterSort?: boolean;
 	customSortOrder?: Record<string, number>;
 }
@@ -48,7 +54,11 @@ export function getFileVolumePath(file: TFile, bookPath?: string): string {
 /**
  * Compares two volume relative paths in canonical ascending order.
  * - Ungrouped / top-level block ('') comes first before any volume folders.
- * - Volume folders are compared segment-by-segment respecting customSortOrder and ChapterSorter rules.
+ * - Volume folders are compared segment-by-segment following the patched File Explorer model:
+ *   - Volume folders recognized by ChapterSorter form the smart chapter block.
+ *   - Inside the smart block, smart rule/number order wins and individual manual customSortOrder entries do not override the order.
+ *   - Unrecognized volume folders remain ordinary sibling entities and respect customSortOrder.
+ *   - The relative placement of ordinary volume folders versus the smart block respects customSortOrder (__CHAPTER_BLOCK__) or defaults.
  */
 export function compareVolumePaths(
 	volA: string,
@@ -72,14 +82,35 @@ export function compareVolumePaths(
 
 		if (segA === segB) continue;
 
-		if (customOrder) {
-			const relA = segsA.slice(0, i + 1).join('/');
-			const relB = segsB.slice(0, i + 1).join('/');
-			const fullA = normalizedBookPath ? `${normalizedBookPath}/${relA}` : relA;
-			const fullB = normalizedBookPath ? `${normalizedBookPath}/${relB}` : relB;
+		const parentRel = segsA.slice(0, i).join('/');
+		const parentFullPath = normalizedBookPath
+			? (parentRel ? `${normalizedBookPath}/${parentRel}` : normalizedBookPath)
+			: parentRel;
 
-			const orderA = customOrder[fullA];
-			const orderB = customOrder[fullB];
+		const numA = enableSmartSort ? ChapterSorter.extractChapterNumber(segA) : null;
+		const numB = enableSmartSort ? ChapterSorter.extractChapterNumber(segB) : null;
+
+		// 1. If both are recognized by smart rules, they belong to the smart chapter block:
+		// Smart rule/number order wins, ignoring individual customSortOrder entries.
+		if (numA !== null && numB !== null) {
+			if (numA.ruleIndex !== numB.ruleIndex) {
+				return numA.ruleIndex - numB.ruleIndex;
+			}
+			if (numA.number !== numB.number) {
+				return numA.number - numB.number;
+			}
+			return segA.localeCompare(segB, 'zh-CN', { numeric: true });
+		}
+
+		// 2. If at least one is unrecognized (or smart sort is disabled):
+		// Use customSortOrder if present, aligning recognized folders with the __CHAPTER_BLOCK__ key.
+		if (customOrder) {
+			const blockKey = parentFullPath ? `${parentFullPath}/__CHAPTER_BLOCK__` : '/__CHAPTER_BLOCK__';
+			const keyA = numA !== null ? blockKey : (parentFullPath ? `${parentFullPath}/${segA}` : segA);
+			const keyB = numB !== null ? blockKey : (parentFullPath ? `${parentFullPath}/${segB}` : segB);
+
+			const orderA = customOrder[keyA];
+			const orderB = customOrder[keyB];
 
 			if (orderA !== undefined && orderB !== undefined) {
 				if (orderA !== orderB) return orderA - orderB;
@@ -90,27 +121,15 @@ export function compareVolumePaths(
 			}
 		}
 
-		if (enableSmartSort) {
-			const numA = ChapterSorter.extractChapterNumber(segA);
-			const numB = ChapterSorter.extractChapterNumber(segB);
-
-			if (numA !== null && numB !== null) {
-				if (numA.ruleIndex !== numB.ruleIndex) {
-					return numA.ruleIndex - numB.ruleIndex;
-				}
-				if (numA.number !== numB.number) {
-					return numA.number - numB.number;
-				}
-				return segA.localeCompare(segB, 'zh-CN', { numeric: true });
-			}
-
-			if (numA !== null) return -1;
-			if (numB !== null) return 1;
-
-			return segA.localeCompare(segB, 'zh-CN', { numeric: true });
-		} else {
-			return segA.localeCompare(segB, undefined, { numeric: true });
+		// 3. Fallback when neither has custom sort order:
+		// File Explorer semantics: ordinary folders (-1) vs smart chapter block (0).
+		const defaultA = numA !== null ? 0 : -1;
+		const defaultB = numB !== null ? 0 : -1;
+		if (defaultA !== defaultB) {
+			return defaultA - defaultB;
 		}
+
+		return segA.localeCompare(segB, enableSmartSort ? 'zh-CN' : undefined, { numeric: true });
 	}
 
 	return segsA.length - segsB.length;
@@ -184,4 +203,36 @@ export function getDeterministicChapterDisplayOrder(
 	}
 
 	return result;
+}
+
+/**
+ * Sorts novel/work folders in the exact hierarchical top-to-bottom order of the patched Obsidian File Explorer.
+ *
+ * Sibling order matches FileExplorerPatcher:
+ * - When enableSmartChapterSort is enabled:
+ *   - Folders recognized by ChapterSorter form the smart chapter block and sort internally by smart rules/numbers.
+ *   - Stale individual customSortOrder on recognized folders is ignored.
+ *   - Unrecognized folders remain ordinary entities and respect customSortOrder.
+ *   - Relative placement between ordinary folders and the smart block uses the parent `__CHAPTER_BLOCK__` key (or defaults: ordinary -1 vs smart 0).
+ * - When enableSmartChapterSort is disabled:
+ *   - Custom drag sorting is disabled in File Explorer, so customSortOrder is ignored and sibling folders follow native natural numeric name sorting.
+ * - Hierarchy / nesting:
+ *   - Paths are compared segment-by-segment from vault root.
+ *   - When one path is an ancestor of another, the ancestor appears first, immediately followed by its subtree.
+ *
+ * Does not mutate the input array.
+ */
+export function sortNovelFoldersForSwitchMenu(
+	novels: readonly NovelFolderInfo[],
+	options: NovelFolderOrderOptions = {}
+): NovelFolderInfo[] {
+	if (!novels || novels.length === 0) return [];
+	const { enableSmartChapterSort = true, customSortOrder } = options;
+	const activeCustomOrder = enableSmartChapterSort ? customSortOrder : undefined;
+
+	return [...novels].sort((a, b) => {
+		const pathA = (a.folderPath || '').replace(/^\/+|\/+$/g, '');
+		const pathB = (b.folderPath || '').replace(/^\/+|\/+$/g, '');
+		return compareVolumePaths(pathA, pathB, '', enableSmartChapterSort, activeCustomOrder);
+	});
 }

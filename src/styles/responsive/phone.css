@@ -450,7 +450,8 @@ body.is-phone .wn-corkboard-card-text {
 }
 
 
-body.is-phone textarea.wn-corkboard-textarea {
+body.is-phone textarea.wn-corkboard-textarea,
+body.is-phone .wn-corkboard-card-content .wn-corkboard-textarea {
 	font-size: var(--wn-phone-font-body);
 	line-height: 1.4;
 	background: transparent;
@@ -803,7 +804,8 @@ body.is-phone .wn-timeline-waterfall-sidebar .wn-corkboard-grid .wn-corkboard-ca
 
 
 body.is-phone .wn-timeline-waterfall-sidebar .wn-corkboard-grid .wn-corkboard-card-text,
-body.is-phone .wn-timeline-waterfall-sidebar .wn-corkboard-grid textarea.wn-corkboard-textarea {
+body.is-phone .wn-timeline-waterfall-sidebar .wn-corkboard-grid textarea.wn-corkboard-textarea,
+body.is-phone .wn-timeline-waterfall-sidebar .wn-corkboard-grid .wn-corkboard-card-content .wn-corkboard-textarea {
 	font-size: var(--wn-phone-font-body);
 	font-weight: 400;
 	line-height: 1.4;
@@ -1479,7 +1481,8 @@ body.is-phone .wn-card-action-btn {
 	}
 
 	body.is-phone .wn-corkboard-card-text,
-	body.is-phone body textarea.wn-corkboard-textarea {
+	body.is-phone body textarea.wn-corkboard-textarea,
+	body.is-phone .wn-corkboard-card-content .wn-corkboard-textarea {
 		font-size: var(--wn-phone-font-body);
 		font-weight: 400;
 		line-height: 1.4;
