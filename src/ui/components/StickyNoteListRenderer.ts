@@ -85,7 +85,6 @@ export class StickyNoteListRenderer {
 	private readonly mode: StickyNoteListMode;
 	private readonly showToolbar: boolean;
 	private readonly lastSavedContents = new Map<string, string>();
-	private readonly editingNoteIds = new Set<string>();
 	private readonly cardComponents = new Map<string, Component>();
 	private isSelfEditing = false;
 	private isDestroyed = false;
@@ -274,15 +273,15 @@ export class StickyNoteListRenderer {
 			const title = note.title || t('immersive.note-default-title');
 			if (titleSpan && titleSpan.textContent !== title) titleSpan.textContent = title;
 
-			const isCardEditing = this.editingNoteIds.has(noteId);
+			const isNoteEditing = !!note.isEditing;
 			const hasEditorInDOM = card.querySelector('.wn-sticky-note-paragraph-editor') !== null;
 
-			if (isCardEditing !== hasEditorInDOM) {
+			if (isNoteEditing !== hasEditorInDOM) {
 				this.renderNoteCard(dockContainer as HTMLElement, note, card);
 				return;
 			}
 
-			if (isCardEditing) {
+			if (isNoteEditing) {
 				const editor = card.querySelector<HTMLElement>('.wn-sticky-note-paragraph-editor');
 				if (editor) {
 					editor.setCssStyles({ fontSize });
@@ -369,10 +368,9 @@ export class StickyNoteListRenderer {
 			height: '300px',
 			color: theme.bg,
 			textColor: theme.text,
-			isEditing: false
+			isEditing: true
 		};
 
-		this.editingNoteIds.add(note.id);
 		this.plugin.stickyNoteManager.updateNote(note);
 		this.lastSavedContents.set(note.id, note.content || '');
 		void this.plugin.stickyNoteManager.saveNotes(this.plugin.stickyNoteManager.getNotes())
@@ -424,7 +422,7 @@ export class StickyNoteListRenderer {
 
 		const actionsEl = titleEl.createDiv({ cls: 'wn-sticky-note-card-actions' });
 
-		const isEditing = this.editingNoteIds.has(noteData.id);
+		const isEditing = !!noteData.isEditing;
 		if (noteData.filePath) {
 			const syncBtn = actionsEl.createEl('button', {
 				cls: 'clickable-icon wn-sticky-note-card-action-btn wn-sticky-note-sync'
@@ -472,18 +470,21 @@ export class StickyNoteListRenderer {
 			editor.addEventListener('input', () => {
 				this.isSelfEditing = true;
 				try {
-					const latestNote = this.plugin.stickyNoteManager.getNotes().find(note => note.id === noteData.id) || noteData;
-					const frontmatter = this.getFrontmatter(latestNote.content || '');
-					latestNote.content = frontmatter + getStickyNoteEditorContent(editor);
-					this.plugin.stickyNoteManager.updateNote(latestNote, true);
+					const currentNote = this.plugin.stickyNoteManager.getNotes().find(note => note.id === noteData.id) || noteData;
+					const frontmatter = this.getFrontmatter(currentNote.content || '');
+					const updatedNote: StickyNoteState = {
+						...currentNote,
+						content: frontmatter + getStickyNoteEditorContent(editor)
+					};
+					this.plugin.stickyNoteManager.updateNote(updatedNote, true);
 
 					if (this.plugin.settings.stickyNoteAutoSave) {
-						this.plugin.adaptiveDebounceManager.debounceFixed(`sticky-note-list-save-${latestNote.id}`, () => {
+						this.plugin.adaptiveDebounceManager.debounceFixed(`sticky-note-list-save-${updatedNote.id}`, () => {
 							void this.plugin.stickyNoteManager.saveNotes(this.plugin.stickyNoteManager.getNotes());
-							this.lastSavedContents.set(latestNote.id, latestNote.content || '');
-							if (latestNote.filePath) {
-								const file = this.app.vault.getAbstractFileByPath(latestNote.filePath);
-								if (file instanceof TFile) void this.app.vault.process(file, () => latestNote.content || '');
+							this.lastSavedContents.set(updatedNote.id, updatedNote.content || '');
+							if (updatedNote.filePath) {
+								const file = this.app.vault.getAbstractFileByPath(updatedNote.filePath);
+								if (file instanceof TFile) void this.app.vault.process(file, () => updatedNote.content || '');
 							}
 						}, 500);
 					}
@@ -543,15 +544,18 @@ export class StickyNoteListRenderer {
 			const latestNote = this.plugin.stickyNoteManager.getNotes().find(item => item.id === noteId);
 			if (!latestNote || latestNote.filePath !== file.path) return;
 
-			latestNote.content = content;
-			this.plugin.stickyNoteManager.updateNote(latestNote);
+			const updatedNote: StickyNoteState = {
+				...latestNote,
+				content
+			};
+			this.plugin.stickyNoteManager.updateNote(updatedNote);
 			await this.plugin.stickyNoteManager.saveNotes(this.plugin.stickyNoteManager.getNotes());
 			this.lastSavedContents.set(noteId, content);
 
 			const dock = this.container.querySelector('.immersive-sticky-dock, .wn-sticky-note-list-grid');
 			const existingCard = dock?.querySelector<HTMLElement>(`[data-note-id="${noteId}"]`);
 			if (dock && existingCard) {
-				this.renderNoteCard(dock as HTMLElement, latestNote, existingCard);
+				this.renderNoteCard(dock as HTMLElement, updatedNote, existingCard);
 			} else {
 				this.render();
 			}
@@ -564,10 +568,14 @@ export class StickyNoteListRenderer {
 	}
 
 	private startEditingNote(noteId: string): void {
-		const note = this.plugin.stickyNoteManager.getNotes().find(n => n.id === noteId);
-		if (!note) return;
+		const currentNote = this.plugin.stickyNoteManager.getNotes().find(n => n.id === noteId);
+		if (!currentNote) return;
 
-		this.editingNoteIds.add(noteId);
+		const updatedNote: StickyNoteState = {
+			...currentNote,
+			isEditing: true
+		};
+		this.plugin.stickyNoteManager.updateNote(updatedNote);
 
 		const dock = this.container.querySelector('.immersive-sticky-dock, .wn-sticky-note-list-grid');
 		if (!dock) {
@@ -577,7 +585,7 @@ export class StickyNoteListRenderer {
 
 		const existingCard = dock.querySelector<HTMLElement>(`[data-note-id="${noteId}"]`);
 		if (existingCard) {
-			const newCard = this.renderNoteCard(dock as HTMLElement, note, existingCard);
+			const newCard = this.renderNoteCard(dock as HTMLElement, updatedNote, existingCard);
 			const editor = newCard.querySelector<HTMLElement>('.wn-sticky-note-paragraph-editor');
 			if (editor) {
 				window.requestAnimationFrame(() => {
@@ -591,30 +599,31 @@ export class StickyNoteListRenderer {
 
 	private async finishEditingNote(noteId: string, editor: HTMLElement): Promise<void> {
 		try {
-			const latestNote = this.plugin.stickyNoteManager.getNotes().find(n => n.id === noteId);
-			if (!latestNote) {
-				this.editingNoteIds.delete(noteId);
+			const currentNote = this.plugin.stickyNoteManager.getNotes().find(n => n.id === noteId);
+			if (!currentNote) {
 				this.render();
 				return;
 			}
 
-			const frontmatter = this.getFrontmatter(latestNote.content || '');
+			const frontmatter = this.getFrontmatter(currentNote.content || '');
 			const editorContent = getStickyNoteEditorContent(editor);
 			const fullContent = frontmatter + editorContent;
 
-			latestNote.content = fullContent;
-			this.plugin.stickyNoteManager.updateNote(latestNote);
+			const updatedNote: StickyNoteState = {
+				...currentNote,
+				content: fullContent,
+				isEditing: false
+			};
+			this.plugin.stickyNoteManager.updateNote(updatedNote);
 			await this.plugin.stickyNoteManager.saveNotes(this.plugin.stickyNoteManager.getNotes());
-			this.lastSavedContents.set(latestNote.id, fullContent);
+			this.lastSavedContents.set(updatedNote.id, fullContent);
 
-			if (latestNote.filePath) {
-				const file = this.app.vault.getAbstractFileByPath(latestNote.filePath);
+			if (updatedNote.filePath) {
+				const file = this.app.vault.getAbstractFileByPath(updatedNote.filePath);
 				if (file instanceof TFile) {
 					await this.app.vault.process(file, () => fullContent);
 				}
 			}
-
-			this.editingNoteIds.delete(noteId);
 
 			const dock = this.container.querySelector('.immersive-sticky-dock, .wn-sticky-note-list-grid');
 			if (!dock) {
@@ -624,7 +633,7 @@ export class StickyNoteListRenderer {
 
 			const existingCard = dock.querySelector<HTMLElement>(`[data-note-id="${noteId}"]`);
 			if (existingCard) {
-				this.renderNoteCard(dock as HTMLElement, latestNote, existingCard);
+				this.renderNoteCard(dock as HTMLElement, updatedNote, existingCard);
 			} else {
 				this.render();
 			}
@@ -636,7 +645,7 @@ export class StickyNoteListRenderer {
 
 	private closeNote(noteData: StickyNoteState): void {
 		const latestNote = this.plugin.stickyNoteManager.getNotes().find(note => note.id === noteData.id) || noteData;
-		const isEditing = this.editingNoteIds.has(latestNote.id);
+		const isEditing = !!latestNote.isEditing;
 		const dock = this.container.querySelector('.immersive-sticky-dock, .wn-sticky-note-list-grid');
 		const editor = dock?.querySelector<HTMLElement>(`[data-note-id="${latestNote.id}"] .wn-sticky-note-paragraph-editor`);
 
@@ -644,7 +653,6 @@ export class StickyNoteListRenderer {
 		if (isEditing && editor) {
 			const frontmatter = this.getFrontmatter(latestNote.content || '');
 			currentContent = frontmatter + getStickyNoteEditorContent(editor);
-			latestNote.content = currentContent;
 		}
 
 		const lastSaved = this.lastSavedContents.get(latestNote.id) || '';
@@ -654,7 +662,6 @@ export class StickyNoteListRenderer {
 		const performRemove = async () => {
 			this.cardComponents.get(latestNote.id)?.unload();
 			this.cardComponents.delete(latestNote.id);
-			this.editingNoteIds.delete(latestNote.id);
 			await this.plugin.stickyNoteManager.removeNoteAndWait(latestNote.id);
 			this.lastSavedContents.delete(latestNote.id);
 			this.render();

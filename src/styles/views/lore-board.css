@@ -254,6 +254,8 @@
 	box-sizing: border-box;
 	resize: none;
 	overflow-y: auto;
+	padding-bottom: calc(var(--size-4-2, 8px) + 1.5em);
+	scroll-padding-bottom: calc(var(--size-4-2, 8px) + 1.5em);
 }
 
 .wn-lore-card-loading,

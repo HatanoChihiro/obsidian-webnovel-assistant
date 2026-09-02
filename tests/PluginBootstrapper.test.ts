@@ -82,6 +82,7 @@ describe('PluginBootstrapper', () => {
 	let mockCacheManager: {
 		buildFolderCache: ReturnType<typeof vi.fn>;
 		saveCache?: ReturnType<typeof vi.fn>;
+		loadCache?: ReturnType<typeof vi.fn>;
 	};
 	let mockFileExplorerPatcher: {
 		enable: ReturnType<typeof vi.fn>;
@@ -94,6 +95,7 @@ describe('PluginBootstrapper', () => {
 		debounceFixed: ReturnType<typeof vi.fn>;
 	};
 	let mockEditorTracker: {
+		handleEditorChange: ReturnType<typeof vi.fn>;
 		handleFileChange: ReturnType<typeof vi.fn>;
 		updateWordCount: ReturnType<typeof vi.fn>;
 	};
@@ -188,6 +190,7 @@ describe('PluginBootstrapper', () => {
 			debounceFixed: vi.fn((_key: string, callback: () => void, _delay: number) => callback())
 		};
 		mockEditorTracker = {
+			handleEditorChange: vi.fn(),
 			handleFileChange: vi.fn().mockResolvedValue(undefined),
 			updateWordCount: vi.fn()
 		};
@@ -253,7 +256,8 @@ describe('PluginBootstrapper', () => {
 			activeNotes: [],
 			isUnloading: false,
 			isTracking: false,
-			isLayoutReady: false
+			isLayoutReady: false,
+			lastEditTime: 0
 		} as unknown as BootstrapperHost;
 
 		mockObsStart.mockClear();
@@ -646,13 +650,13 @@ describe('PluginBootstrapper', () => {
 
 				// When tracking is active, interval callback updates stats
 				mockFloatingStatsUpdate.mockClear();
-				intervalCallback?.();
+				(intervalCallback as (() => void) | null)?.();
 				expect(mockFloatingStatsUpdate).toHaveBeenCalled();
 
 				// When tracking is inactive, interval callback does not update stats
 				mockPlugin.isTracking = false;
 				mockFloatingStatsUpdate.mockClear();
-				intervalCallback?.();
+				(intervalCallback as (() => void) | null)?.();
 				expect(mockFloatingStatsUpdate).not.toHaveBeenCalled();
 			});
 
@@ -1166,6 +1170,59 @@ describe('PluginBootstrapper', () => {
 			expect(characterInitializeSpy).toHaveBeenCalledTimes(1);
 
 			expect(registry.has('ProofreadingManager')).toBe(true);
+		});
+	});
+
+	describe('editor-change activity tracking', () => {
+		it('should synchronously refresh lastEditTime on editor-change even before debounced callback runs', async () => {
+			let debouncedCallback: (() => void) | null = null;
+			mockAdaptiveDebounceManager.debounce = vi.fn((key: string, callback: () => void) => {
+				if (key === 'editor-update') {
+					debouncedCallback = callback;
+				}
+			});
+
+			mockPlugin.lastEditTime = 1000;
+			const bootstrapper = new PluginBootstrapper(mockPlugin, registry);
+			bootstrapper.registerConstructorServices();
+
+			mockPlugin.historyManager = { loadHistory: vi.fn().mockResolvedValue(undefined) } as unknown as HistoryDataManager;
+			mockPlugin.cacheManager.loadCache = vi.fn().mockResolvedValue(undefined);
+			mockPlugin.loreSyncService = { initialize: vi.fn() } as unknown as LoreSyncService;
+			mockPlugin.fileEventManager = { setup: vi.fn() } as unknown as FileEventManager;
+			mockPlugin.statisticsManager = { setup: vi.fn() } as unknown as StatisticsManager;
+			mockPlugin.workerManager = { setup: vi.fn() } as unknown as WorkerManager;
+			mockPlugin.markdownPostProcessor = { getProcessor: vi.fn() } as unknown as MarkdownPostProcessor;
+			mockPlugin.typographyManager = { updateTypography: vi.fn() } as unknown as TypographyManager;
+			mockPlugin.commandManager = { registerAllCommands: vi.fn() } as unknown as CommandManager;
+			mockPlugin.viewManager = { registerAllViews: vi.fn() } as unknown as ViewManager;
+			mockPlugin.menuManager = { registerAllMenus: vi.fn() } as unknown as MenuManager;
+			mockPlugin.registerMarkdownPostProcessor = vi.fn();
+			mockPlugin.addStatusBarItem = vi.fn().mockReturnValue({});
+			Object.assign(mockPlugin.app, {
+				metadataCache: { on: vi.fn(() => ({})) }
+			});
+
+			await bootstrapper.bootstrap();
+
+			const editorChangeHandlers = workspaceEventHandlers['editor-change'];
+			expect(editorChangeHandlers).toBeDefined();
+			expect(editorChangeHandlers.length).toBeGreaterThan(0);
+
+			const beforeTime = Date.now();
+			// Trigger editor-change synchronously
+			editorChangeHandlers[0]();
+
+			// 1. lastEditTime must be refreshed synchronously immediately
+			expect(mockPlugin.lastEditTime).toBeGreaterThanOrEqual(beforeTime);
+
+			// 2. EditorTracker.handleEditorChange has NOT run because debounce callback was captured and not yet invoked
+			expect(mockEditorTracker.handleEditorChange).not.toHaveBeenCalled();
+
+			// 3. When debounce callback eventually runs, EditorTracker.handleEditorChange is executed
+			expect(debouncedCallback).not.toBeNull();
+			debouncedCallback!();
+			expect(mockEditorTracker.handleEditorChange).toHaveBeenCalledTimes(1);
 		});
 	});
 });

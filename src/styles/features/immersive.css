@@ -44,6 +44,17 @@ body.immersive-mode-active .webnovel-immersive-slot-vertical .view-content:not(.
 	padding-top: 8px;
 }
 
+body.immersive-mode-active .webnovel-immersive-slot-horizontal,
+body.immersive-mode-active .webnovel-immersive-slot-vertical {
+	min-width: 0;
+	min-height: 0;
+}
+
+body.immersive-mode-active .webnovel-immersive-slot-horizontal.is-immersive-slot-pending .empty-state,
+body.immersive-mode-active .webnovel-immersive-slot-vertical.is-immersive-slot-pending .empty-state {
+	display: none;
+}
+
 body.immersive-mode-active .webnovel-immersive-slot-horizontal .wn-corkboard-header,
 body.immersive-mode-active .webnovel-immersive-slot-vertical .wn-corkboard-header {
 	top: -8px;
@@ -482,16 +493,6 @@ body.immersive-mode-active .workspace-leaf.mod-active.workspace-leaf .workspace-
 .immersive-folder-children {
 	border-left: 1px solid var(--background-modifier-border);
 	margin-left: 6px;
-}
-
-body.immersive-mode-active.wn-typewriter-active .cm-editor .inline-title {
-	opacity: var(--wn-typewriter-opacity, 0.4);
-	transition: opacity 0.15s ease;
-}
-
-body.immersive-mode-active.wn-typewriter-active .cm-editor .inline-title:focus,
-body.immersive-mode-active.wn-typewriter-active .cm-editor .inline-title:focus-within {
-	opacity: 1;
 }
 
 /* ========== 沉浸模式顶栏打字机 Toggle 开关 ========== */

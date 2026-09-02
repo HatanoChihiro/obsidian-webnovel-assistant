@@ -441,7 +441,7 @@ describe('StickyNoteListRenderer Reading & Editing Interactions', () => {
 		expect(toggleBtn.getAttribute('aria-label')).toBe('编辑便签');
 	});
 
-	it('switches only the clicked card between reading and editing mode without writing StickyNoteState.isEditing', async () => {
+	it('switches the clicked card between reading and editing mode and updates StickyNoteState.isEditing', async () => {
 		const note1: StickyNoteState = {
 			id: 'note-1',
 			title: '便签1',
@@ -499,9 +499,12 @@ describe('StickyNoteListRenderer Reading & Editing Interactions', () => {
 		expect(card2.querySelector('.wn-sticky-note-reading-content')).not.toBeNull();
 		expect(card2.querySelector('.wn-sticky-note-paragraph-editor')).toBeNull();
 
-		// StickyNoteState.isEditing must NOT be mutated
-		expect(notes.find(n => n.id === 'note-1')?.isEditing).toBe(false);
+		// StickyNoteState.isEditing is updated to true for card 1 and passed to updateNote, unchanged for card 2
+		expect(notes.find(n => n.id === 'note-1')?.isEditing).toBe(true);
 		expect(notes.find(n => n.id === 'note-2')?.isEditing).toBe(false);
+		expect(plugin.stickyNoteManager.updateNote).toHaveBeenCalledWith(
+			expect.objectContaining({ id: 'note-1', isEditing: true })
+		);
 	});
 
 	it('on leaving edit mode, captures content, preserves frontmatter, saves note data, and updates linked TFile', async () => {
@@ -605,7 +608,7 @@ describe('StickyNoteListRenderer Reading & Editing Interactions', () => {
 		);
 	});
 
-	it('newly created blank or file-backed notes start in editing mode in the current renderer instance', async () => {
+	it('newly created blank or file-backed notes start in editing mode and persist isEditing=true', async () => {
 		const { plugin, notes, vaultFiles } = createMockPlugin([]);
 		const app = createMockApp(vaultFiles);
 		const container = new MockElement();
@@ -629,8 +632,10 @@ describe('StickyNoteListRenderer Reading & Editing Interactions', () => {
 		expect(card.querySelector('.wn-sticky-note-paragraph-editor')).not.toBeNull();
 		expect(card.querySelector('.wn-sticky-note-reading-content')).toBeNull();
 
-		// StickyNoteState.isEditing remains false
-		expect(newNote.isEditing).toBe(false);
+		// StickyNoteState.isEditing is true
+		expect(newNote.isEditing).toBe(true);
+		expect(plugin.stickyNoteManager.updateNote).toHaveBeenCalled();
+		expect(plugin.stickyNoteManager.saveNotes).toHaveBeenCalled();
 	});
 
 	it('preserves local per-card state during syncNotesFromManager without disrupting focused editor', async () => {
@@ -700,5 +705,206 @@ describe('StickyNoteListRenderer Reading & Editing Interactions', () => {
 		renderer.destroy();
 		expect(component!.unload).toHaveBeenCalled();
 		expect(renderer['cardComponents'].size).toBe(0);
+	});
+
+	it('restores editing and reading mode from StickyNoteState.isEditing on initial render and renderer reconstruction', () => {
+		const note1: StickyNoteState = {
+			id: 'note-1',
+			title: '便签1',
+			content: '编辑中内容',
+			top: '100px',
+			left: '100px',
+			width: '300px',
+			height: '300px',
+			color: '#FDF3B8',
+			isEditing: true
+		};
+		const note2: StickyNoteState = {
+			id: 'note-2',
+			title: '便签2',
+			content: '阅读中内容',
+			top: '100px',
+			left: '100px',
+			width: '300px',
+			height: '300px',
+			color: '#D1E7DD',
+			isEditing: false
+		};
+
+		const { plugin, vaultFiles } = createMockPlugin([note1, note2]);
+		const app = createMockApp(vaultFiles);
+		const container1 = new MockElement();
+
+		// Initial renderer (e.g. side-panel)
+		const renderer1 = new StickyNoteListRenderer(app, plugin, asHTMLElement(container1), { mode: 'side-panel' });
+		renderer1.render();
+
+		const card1 = container1.querySelector('[data-note-id="note-1"]') as MockElement;
+		expect(card1.querySelector('.wn-sticky-note-paragraph-editor')).not.toBeNull();
+		expect(card1.querySelector('.wn-sticky-note-reading-content')).toBeNull();
+
+		const card2 = container1.querySelector('[data-note-id="note-2"]') as MockElement;
+		expect(card2.querySelector('.wn-sticky-note-reading-content')).not.toBeNull();
+		expect(card2.querySelector('.wn-sticky-note-paragraph-editor')).toBeNull();
+
+		// Destroy renderer1 and create renderer2 (e.g. entering immersive mode or reconstructing renderer)
+		renderer1.destroy();
+		const container2 = new MockElement();
+		const renderer2 = new StickyNoteListRenderer(app, plugin, asHTMLElement(container2), { mode: 'immersive' });
+		renderer2.render();
+
+		const newCard1 = container2.querySelector('[data-note-id="note-1"]') as MockElement;
+		expect(newCard1.querySelector('.wn-sticky-note-paragraph-editor')).not.toBeNull();
+		expect(newCard1.querySelector('.wn-sticky-note-reading-content')).toBeNull();
+
+		const newCard2 = container2.querySelector('[data-note-id="note-2"]') as MockElement;
+		expect(newCard2.querySelector('.wn-sticky-note-reading-content')).not.toBeNull();
+		expect(newCard2.querySelector('.wn-sticky-note-paragraph-editor')).toBeNull();
+
+		renderer2.destroy();
+	});
+
+	it('synchronizes edit/preview mode across multiple list renderers when manager state changes', async () => {
+		const note: StickyNoteState = {
+			id: 'note-1',
+			title: '便签1',
+			content: '共享便签',
+			top: '100px',
+			left: '100px',
+			width: '300px',
+			height: '300px',
+			color: '#FDF3B8',
+			isEditing: false
+		};
+
+		const { plugin, notes, vaultFiles } = createMockPlugin([note]);
+		const app = createMockApp(vaultFiles);
+		const container1 = new MockElement();
+		const container2 = new MockElement();
+
+		const renderer1 = new StickyNoteListRenderer(app, plugin, asHTMLElement(container1), { mode: 'side-panel' });
+		const renderer2 = new StickyNoteListRenderer(app, plugin, asHTMLElement(container2), { mode: 'workbench' });
+		renderer1.render();
+		renderer2.render();
+
+		// Both start in reading mode
+		expect(container1.querySelector('[data-note-id="note-1"] .wn-sticky-note-reading-content')).not.toBeNull();
+		expect(container2.querySelector('[data-note-id="note-1"] .wn-sticky-note-reading-content')).not.toBeNull();
+
+		// User starts editing in renderer1
+		const toggleBtn1 = container1.querySelector('[data-note-id="note-1"] .wn-sticky-note-edit-toggle') as MockElement;
+		toggleBtn1.onclick?.(fakeEvent);
+
+		expect(notes[0].isEditing).toBe(true);
+
+		// Renderer2 syncs from manager (simulating webnovel:notes-changed event)
+		renderer2.syncNotesFromManager();
+
+		// Renderer2 should now display editor
+		expect(container2.querySelector('[data-note-id="note-1"] .wn-sticky-note-paragraph-editor')).not.toBeNull();
+		expect(container2.querySelector('[data-note-id="note-1"] .wn-sticky-note-reading-content')).toBeNull();
+
+		// User finishes editing in renderer2
+		const editCard2 = container2.querySelector('[data-note-id="note-1"]') as MockElement;
+		const editor2 = editCard2.querySelector('.wn-sticky-note-paragraph-editor') as MockElement;
+		const toggleBtn2 = editCard2.querySelector('.wn-sticky-note-edit-toggle') as MockElement;
+		toggleBtn2.onclick?.(fakeEvent);
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(notes[0].isEditing).toBe(false);
+
+		// Renderer1 syncs from manager
+		renderer1.syncNotesFromManager();
+
+		// Renderer1 should now be back in reading mode
+		expect(container1.querySelector('[data-note-id="note-1"] .wn-sticky-note-reading-content')).not.toBeNull();
+		expect(container1.querySelector('[data-note-id="note-1"] .wn-sticky-note-paragraph-editor')).toBeNull();
+
+		renderer1.destroy();
+		renderer2.destroy();
+	});
+
+	it('does not mutate canonical note object in-place during edit toggling, allowing floating note to observe isEditing change', async () => {
+		const sharedNoteState: StickyNoteState = {
+			id: 'note-shared',
+			title: '共享便签',
+			content: '初始内容',
+			top: '100px',
+			left: '100px',
+			width: '300px',
+			height: '300px',
+			color: '#FDF3B8',
+			isEditing: false
+		};
+
+		// Simulate sharing the exact object reference between manager and floating note harness
+		const managerNotes = [sharedNoteState];
+		const floatingNoteState = sharedNoteState; // Shared reference
+
+		let observedIsEditingInFloatingBeforeUpdate = false;
+		let floatingSawChange = false;
+
+		const plugin: StickyNoteListRendererPlugin = {
+			settings: {
+				nextNoteThemeIndex: 0,
+				noteThemes: [{ bg: '#FDF3B8', text: '#2C3E50' }],
+				immersive: { immersiveNoteFontSize: 14 },
+				stickyNoteAutoSave: true
+			},
+			stickyNoteManager: {
+				getNotes: vi.fn(() => managerNotes),
+				updateNote: vi.fn((incomingNote: StickyNoteState) => {
+					// Verify that before updateNote took effect, the floatingNoteState object was NOT mutated in place
+					observedIsEditingInFloatingBeforeUpdate = floatingNoteState.isEditing;
+					// Simulate floatingNote.updateFromState(incomingNote)
+					const isEditingChanged = floatingNoteState.isEditing !== incomingNote.isEditing;
+					if (isEditingChanged) {
+						floatingSawChange = true;
+					}
+					// FloatingStickyNote updates its state in updateFromState
+					Object.assign(floatingNoteState, incomingNote);
+					// Manager updates its storage
+					managerNotes[0] = { ...incomingNote };
+				}),
+				saveNotes: vi.fn(async () => {}),
+				removeNoteAndWait: vi.fn(async () => {})
+			},
+			adaptiveDebounceManager: {
+				debounceFixed: vi.fn((_key, fn) => fn())
+			},
+			getVaultMarkdownFiles: vi.fn(() => []),
+			saveSettings: vi.fn(async () => {})
+		};
+
+		const app = createMockApp(new Map());
+		const container = new MockElement();
+		const renderer = new StickyNoteListRenderer(app, plugin, asHTMLElement(container), { mode: 'workbench' });
+		renderer.render();
+
+		// Click to start editing
+		const card = container.querySelector('[data-note-id="note-shared"]') as MockElement;
+		const toggleBtn = card.querySelector('.wn-sticky-note-edit-toggle') as MockElement;
+		toggleBtn.onclick?.(fakeEvent);
+
+		// Verified: floating note was still false when updateNote was called, and observed the change to true!
+		expect(observedIsEditingInFloatingBeforeUpdate).toBe(false);
+		expect(floatingSawChange).toBe(true);
+		expect(managerNotes[0].isEditing).toBe(true);
+
+		// Now finish editing
+		const editCard = container.querySelector('[data-note-id="note-shared"]') as MockElement;
+		const editor = editCard.querySelector('.wn-sticky-note-paragraph-editor') as MockElement;
+		const doneBtn = editCard.querySelector('.wn-sticky-note-edit-toggle') as MockElement;
+
+		floatingSawChange = false;
+		doneBtn.onclick?.(fakeEvent);
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(floatingSawChange).toBe(true);
+		expect(managerNotes[0].isEditing).toBe(false);
+
+		renderer.destroy();
 	});
 });

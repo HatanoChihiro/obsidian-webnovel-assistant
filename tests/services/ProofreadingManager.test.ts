@@ -2170,7 +2170,7 @@ describe('Punctuation Scanner & ProofreadingManager Punctuation Integration', ()
 describe('ProofreadingManager - getMaxPatternLength & Caching Lifecycle', () => {
 		it('should have initial max pattern length of 50 and update O(1) on load, hot update, delete, and destroy', async () => {
 			const mockFiles = new Map<string, string>();
-			const mockVaultFiles = new Map<string, TFile>();
+			const mockVaultFiles = new Map<string, TFile | TFolder>();
 
 			const adapter = {
 				exists: vi.fn().mockImplementation(async (path: string) => mockFiles.has(path)),

@@ -88,6 +88,23 @@ describe('SettingsManager', () => {
 		expect(loaded.typography.enableGlobal).toBe(false);
 	});
 
+	it('provides disabled default values for missing editorTypewriter settings on upgrade', async () => {
+		const legacy = cloneDefaults();
+		delete (legacy as unknown as { editorTypewriter?: unknown }).editorTypewriter;
+		const plugin = {
+			loadData: vi.fn().mockResolvedValue(legacy),
+			saveData: vi.fn().mockResolvedValue(undefined)
+		} as never;
+		const manager = new SettingsManager(plugin, cloneDefaults());
+		const loaded = await manager.loadSettings();
+
+		expect(loaded.editorTypewriter).toEqual({
+			enabled: false,
+			centerOffset: 0,
+			unfocusedOpacity: 0.4
+		});
+	});
+
 	it('keeps canonical history and notes while removing obsolete persistence keys', async () => {
 		const persisted = {
 			...cloneDefaults(),

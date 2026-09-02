@@ -90,7 +90,7 @@ describe('JsonSnapshotStore', () => {
 
 		const p1 = store.save({ val: 10 });
 		// Wait for microtask drain to start write 1
-		await new Promise(r => queueMicrotask(r));
+		await new Promise<void>(r => queueMicrotask(() => r()));
 
 		expect(store.isWriting).toBe(true);
 		expect(writes.length).toBe(1);
@@ -136,7 +136,7 @@ describe('JsonSnapshotStore', () => {
 
 		const savePromise = store.save(state);
 		// Wait for microtask drain to start write 1
-		await new Promise(r => queueMicrotask(r));
+		await new Promise<void>(r => queueMicrotask(() => r()));
 
 		expect(store.isWriting).toBe(true);
 		expect(writes.length).toBe(1);
@@ -176,7 +176,7 @@ describe('JsonSnapshotStore', () => {
 		});
 
 		const savePromise = store.save(state);
-		await new Promise(r => queueMicrotask(r));
+		await new Promise<void>(r => queueMicrotask(() => r()));
 
 		expect(store.isWriting).toBe(true);
 		expect(writes.length).toBe(1);
@@ -248,7 +248,7 @@ describe('JsonSnapshotStore', () => {
 		});
 
 		const p1 = store.save({ val: 10 });
-		await new Promise(r => queueMicrotask(r));
+		await new Promise<void>(r => queueMicrotask(() => r()));
 
 		expect(store.isWriting).toBe(true);
 		expect(writes.length).toBe(1);

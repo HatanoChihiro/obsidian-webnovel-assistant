@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TimelineBoardRenderer, type TimelineBoardOptions, type TimelineBoardPlugin } from '../src/ui/components/TimelineBoardRenderer';
 import { CorkboardGridRenderer } from '../src/ui/components/CorkboardGridRenderer';
+import { ChapterSorter } from '../src/services/ChapterSorter';
 import type { App, TFile } from 'obsidian';
 
 const { MockFile } = vi.hoisted(() => {
@@ -28,7 +29,11 @@ const mockOwnerWindow = {
 		return animationFrameCallbacks.length;
 	}),
 	cancelAnimationFrame: vi.fn(),
-	getComputedStyle: () => ({ boxSizing: 'content-box' })
+	getComputedStyle: () => ({ boxSizing: 'content-box' }),
+	getSelection: vi.fn(() => ({
+		removeAllRanges: vi.fn(),
+		addRange: vi.fn()
+	}))
 };
 
 class MockElement {
@@ -45,14 +50,6 @@ class MockElement {
 	isConnected = true;
 	private _scrollHeight = 0;
 	get scrollHeight(): number {
-		const textarea = this.querySelector('.wn-corkboard-textarea');
-		if (textarea && textarea.style?.height) {
-			const h = parseFloat(textarea.style.height);
-			if (!isNaN(h) && h > 0) return h + 20;
-		}
-		if (this.className.includes('wn-corkboard-textarea') && this._scrollHeight === 0 && this.value) {
-			return 220;
-		}
 		return this._scrollHeight;
 	}
 	set scrollHeight(val: number) {
@@ -64,6 +61,9 @@ class MockElement {
 	onblur?: () => void;
 	onkeydown?: (e?: unknown) => void;
 	focus = vi.fn();
+	blur = vi.fn(() => {
+		this.onblur?.();
+	});
 	setSelectionRange = vi.fn();
 	hide = vi.fn();
 
@@ -182,28 +182,48 @@ class MockElement {
 		for (const fn of arr) fn(e);
 	}
 
-	querySelector(sel: string): MockElement | null {
+	matches(_sel: string): boolean {
+		return false;
+	}
+
+	querySelectorAll(sel: string): MockElement[] {
+		const results: MockElement[] = [];
 		const match = (node: MockElement): boolean => {
 			if (sel.startsWith('.')) {
 				const classes = sel.slice(1).split('.');
 				return classes.every(c => node.hasClass(c));
 			}
+			if (sel.startsWith('[')) {
+				const attrMatches = [...sel.matchAll(/\[([^\]=]+)(?:="([^"]*)")?\]/g)];
+				return attrMatches.every(([, attr, val]) => {
+					if (val !== undefined) return node.getAttr(attr) === val;
+					return node.attributes.has(attr);
+				});
+			}
 			return false;
 		};
-		const find = (node: MockElement): MockElement | null => {
+		const collect = (node: MockElement) => {
 			for (const c of node.children) {
-				if (match(c)) return c;
-				const nested = find(c);
-				if (nested) return nested;
+				if (match(c)) results.push(c);
+				collect(c);
 			}
-			return null;
 		};
-		return find(this);
+		collect(this);
+		return results;
+	}
+
+	querySelector(sel: string): MockElement | null {
+		const all = this.querySelectorAll(sel);
+		return all[0] ?? null;
 	}
 
 	get ownerDocument() {
 		return {
 			defaultView: mockOwnerWindow,
+			createRange: () => ({
+				selectNodeContents: vi.fn(),
+				collapse: vi.fn()
+			}),
 			body: {
 				classList: {
 					contains: () => false
@@ -222,7 +242,8 @@ vi.mock('obsidian', () => ({
 		close() {}
 	},
 	TFile: MockFile,
-	TFolder: class {}
+	TFolder: class {},
+	normalizePath: (path: string) => path ? path.replace(/\\/g, '/').replace(/\/+/g, '/').replace(/^\.\//, '') : ''
 }));
 
 vi.mock('../src/i18n', () => ({
@@ -283,6 +304,23 @@ describe('TimelineBoardRenderer', () => {
 			}
 			return el;
 		};
+		(globalThis as unknown as { createFragment: () => MockElement }).createFragment = () => {
+			return new MockElement('document-fragment');
+		};
+		vi.stubGlobal('window', mockOwnerWindow);
+		vi.stubGlobal('activeDocument', {
+			createElementNS: (_ns: string, tag: string) => new MockElement(tag),
+			body: {
+				classList: {
+					contains: () => false
+				}
+			}
+		});
+		class MockMutationObserver {
+			observe = vi.fn();
+			disconnect = vi.fn();
+		}
+		vi.stubGlobal('MutationObserver', MockMutationObserver);
 	});
 
 	it('should render unscheduled sort toggle button with correct attributes and sort chapters deterministically in ascending mode', async () => {
@@ -390,7 +428,7 @@ describe('TimelineBoardRenderer', () => {
 		);
 	});
 
-	it('should follow bottom when growing at bottom and preserve scroll position when editing in middle during event inline edit', async () => {
+	it('should maintain same-node description element as sole scroll owner without creating nested textarea during event inline edit', async () => {
 		const options: TimelineBoardOptions = {
 			app: mockApp,
 			plugin: {
@@ -423,26 +461,23 @@ describe('TimelineBoardRenderer', () => {
 		// Trigger inline edit
 		descEl.onclick?.({ stopPropagation: vi.fn() });
 
-		const textarea = descEl.querySelector('.wn-corkboard-textarea') as unknown as MockElement;
-		expect(textarea).not.toBeNull();
+		// Verify descEl itself became contenteditable and no nested textarea exists
+		expect(descEl.hasClass('is-editing')).toBe(true);
+		expect(descEl.getAttribute('contenteditable')).toBe('plaintext-only');
+		expect(descEl.getAttribute('role')).toBe('textbox');
+		expect(descEl.getAttribute('aria-multiline')).toBe('true');
+		expect(descEl.querySelector('textarea')).toBeNull();
+		expect(descEl.querySelector('.wn-corkboard-textarea')).toBeNull();
 
-		// Simulate typing and growing at bottom
-		textarea.scrollHeight = 250;
-		textarea.oninput?.();
-
-		// Should follow to new bottom (270 - 100 = 170)
-		expect(descEl.scrollTop).toBe(170);
-
-		// Simulate user scrolling up to middle
-		descEl.scrollTop = 40; // 40 < 270 - 100 - 8
-		textarea.scrollHeight = 300;
-		textarea.oninput?.();
-
-		// Should preserve middle position at 40
-		expect(descEl.scrollTop).toBe(40);
+		// Should preserve bottom position at 100
+		expect(descEl.scrollTop).toBe(100);
+		expect(descEl.style.minHeight ?? '').toBe('');
 	});
 
-	it('should follow bottom when adding multiple lines in new sub-event editing', async () => {
+	it('should create same-node contenteditable editor for new sub-event with Enter-save, Shift+Enter newline, and IME composition safety', async () => {
+		const updateEntrySpy = vi.fn().mockResolvedValue(undefined);
+		const reloadBoardSpy = vi.fn();
+
 		const options: TimelineBoardOptions = {
 			app: mockApp,
 			plugin: {
@@ -451,7 +486,8 @@ describe('TimelineBoardRenderer', () => {
 					...mockPlugin.timelineManager,
 					loadEntries: vi.fn().mockResolvedValue([
 						{ time: '第一年', description: '初始事件描述', items: [{ description: '初始事件描述', chapter: '' }] }
-					])
+					]),
+					updateEntry: updateEntrySpy
 				}
 			},
 			container: container as unknown as HTMLElement,
@@ -460,7 +496,7 @@ describe('TimelineBoardRenderer', () => {
 			currentBookPath: 'NovelA',
 			currentTimelineFilter: 'all',
 			onSaveStateChange: vi.fn(),
-			reloadBoard: vi.fn(),
+			reloadBoard: reloadBoardSpy,
 			getChapterEvents: vi.fn().mockReturnValue([])
 		};
 
@@ -474,22 +510,63 @@ describe('TimelineBoardRenderer', () => {
 
 		const editingDesc = container.querySelector('.wn-timeline-item-desc.is-editing') as unknown as MockElement;
 		expect(editingDesc).not.toBeNull();
-		const textarea = editingDesc.querySelector('.wn-corkboard-textarea') as unknown as MockElement;
-		expect(textarea).not.toBeNull();
+		expect(editingDesc.getAttribute('contenteditable')).toBe('plaintext-only');
+		expect(editingDesc.getAttribute('role')).toBe('textbox');
+		expect(editingDesc.getAttribute('aria-multiline')).toBe('true');
+		expect(editingDesc.querySelector('textarea')).toBeNull();
+		expect(editingDesc.querySelector('.wn-corkboard-textarea')).toBeNull();
 
-		editingDesc.clientHeight = 100;
-		editingDesc.scrollHeight = 100;
-		editingDesc.scrollTop = 0;
+		// Test Chinese IME composition safety: Enter during IME should not trigger blur or save
+		editingDesc.dispatchEvent('compositionstart');
+		const imePreventDefaultSpy = vi.fn();
+		editingDesc.onkeydown?.({
+			key: 'Enter',
+			shiftKey: false,
+			isComposing: true,
+			preventDefault: imePreventDefaultSpy
+		} as unknown as KeyboardEvent);
+		expect(imePreventDefaultSpy).not.toHaveBeenCalled();
+		expect(updateEntrySpy).not.toHaveBeenCalled();
 
-		// As content grows beyond viewport height
-		textarea.scrollHeight = 180;
-		textarea.oninput?.();
+		editingDesc.dispatchEvent('compositionend');
 
-		// Should follow new bottom (200 - 100 = 100)
-		expect(editingDesc.scrollTop).toBe(100);
+		// Shift+Enter should permit newline without blurring/saving
+		const shiftEnterPreventDefaultSpy = vi.fn();
+		editingDesc.onkeydown?.({
+			key: 'Enter',
+			shiftKey: true,
+			isComposing: false,
+			preventDefault: shiftEnterPreventDefaultSpy
+		} as unknown as KeyboardEvent);
+		expect(shiftEnterPreventDefaultSpy).not.toHaveBeenCalled();
+		expect(updateEntrySpy).not.toHaveBeenCalled();
+
+		// Enter without Shift triggers blur/save
+		editingDesc.textContent = '新添加的子事件描述';
+		const enterPreventDefaultSpy = vi.fn();
+		editingDesc.onkeydown?.({
+			key: 'Enter',
+			shiftKey: false,
+			isComposing: false,
+			preventDefault: enterPreventDefaultSpy
+		} as unknown as KeyboardEvent);
+		expect(enterPreventDefaultSpy).toHaveBeenCalled();
+
+		await editingDesc.onblur?.();
+		expect(updateEntrySpy).toHaveBeenCalledWith(
+			0,
+			expect.objectContaining({
+				items: [
+					{ description: '初始事件描述', chapter: '' },
+					{ description: '新添加的子事件描述', chapter: '' }
+				]
+			}),
+			'NovelA'
+		);
+		expect(reloadBoardSpy).toHaveBeenCalled();
 	});
 
-	it('should synchronously release temporary minHeight during resize and leave no persistent minHeight style', async () => {
+	it('should preserve fixed-size overflow-y container without temporary minHeight or nested scroll owner', async () => {
 		const options: TimelineBoardOptions = {
 			app: mockApp,
 			plugin: {
@@ -521,14 +598,10 @@ describe('TimelineBoardRenderer', () => {
 		// Trigger inline edit
 		descEl.onclick?.({ stopPropagation: vi.fn() });
 
-		const textarea = descEl.querySelector('.wn-corkboard-textarea') as unknown as MockElement;
-		expect(textarea).not.toBeNull();
-
-		textarea.scrollHeight = 250;
-		textarea.oninput?.();
-
-		// minHeight must not persist on descEl after synchronous execution of autoResizeNestedTextarea
-		expect(descEl.style.minHeight).toBe('');
+		// Verify container remains fixed without temporary minHeight and without nested textarea
+		expect(descEl.style.minHeight ?? '').toBe('');
+		expect(descEl.querySelector('textarea')).toBeNull();
+		expect(descEl.hasClass('is-editing')).toBe(true);
 	});
 
 	it('should render multi-line event item in display mode with intact text and trigger reload upon blur save', async () => {
@@ -569,13 +642,12 @@ describe('TimelineBoardRenderer', () => {
 
 		// Click into edit mode
 		descEl.onclick?.({ stopPropagation: vi.fn() });
-		const textarea = descEl.querySelector('.wn-corkboard-textarea') as unknown as MockElement;
-		expect(textarea).not.toBeNull();
-		expect(textarea.value).toBe(multiLineDesc);
+		expect(descEl.querySelector('textarea')).toBeNull();
+		expect(descEl.textContent).toBe(multiLineDesc);
 
 		// Modify content and blur
-		textarea.value = multiLineDesc + '\n第四行新发展';
-		await textarea.onblur?.();
+		descEl.textContent = multiLineDesc + '\n第四行新发展';
+		await descEl.onblur?.();
 
 		expect(updateEntrySpy).toHaveBeenCalledWith(
 			0,
@@ -587,7 +659,7 @@ describe('TimelineBoardRenderer', () => {
 		expect(reloadBoardSpy).toHaveBeenCalled();
 	});
 
-	it('should map scroll to new maximum bottom when entering inline edit mode from display bottom', async () => {
+	it('should map scroll to maximum bottom when entering inline edit mode from display bottom', async () => {
 		const options: TimelineBoardOptions = {
 			app: mockApp,
 			plugin: {
@@ -620,15 +692,15 @@ describe('TimelineBoardRenderer', () => {
 		// Trigger inline edit
 		descEl.onclick?.({ stopPropagation: vi.fn() });
 
-		// In edit mode, scrollHeight is 240 (textarea 220 + padding 20), clientHeight is 100 -> new max is 140
-		expect(descEl.scrollTop).toBe(140);
+		// In edit mode, scrollHeight is 200, clientHeight is 100 -> max scroll is 100
+		expect(descEl.scrollTop).toBe(100);
 		expect(mockOwnerWindow.requestAnimationFrame).toHaveBeenCalled();
 
-		// Execute next animation frame callback and verify bottom position remains at 140
+		// Execute next animation frame callback and verify bottom position remains at 100
 		const callbacks = [...animationFrameCallbacks];
 		animationFrameCallbacks = [];
 		for (const cb of callbacks) cb(0);
-		expect(descEl.scrollTop).toBe(140);
+		expect(descEl.scrollTop).toBe(100);
 	});
 
 	it('should preserve and clamp previous scrollTop when entering inline edit mode from middle scroll position', async () => {
@@ -673,5 +745,57 @@ describe('TimelineBoardRenderer', () => {
 		animationFrameCallbacks = [];
 		for (const cb of callbacks) cb(0);
 		expect(descEl.scrollTop).toBe(50);
+	});
+
+	it('should construct chapter reference index exactly once for multiple references during render', async () => {
+		const createIndexSpy = vi.spyOn(ChapterSorter, 'createReferenceIndex');
+
+		const v1c1 = createMockFile('第1章.md', 'NovelA/第一卷/第1章.md');
+		const v1c2 = createMockFile('第2章.md', 'NovelA/第一卷/第2章.md');
+		const v2c1 = createMockFile('第1章.md', 'NovelA/第二卷/第1章.md');
+
+		const options: TimelineBoardOptions = {
+			app: mockApp,
+			plugin: {
+				...mockPlugin,
+				timelineManager: {
+					...mockPlugin.timelineManager,
+					loadEntries: vi.fn().mockResolvedValue([
+						{
+							time: '事件1',
+							description: '描述1',
+							items: [
+								{ description: '子事件1', chapter: '第一卷/第1章, 第一卷/第2章' },
+								{ description: '子事件2', chapter: '第二卷/第1章' }
+							]
+						},
+						{
+							time: '事件2',
+							description: '描述2',
+							chapter: '第一卷/第1章, 第二卷/第1章'
+						}
+					])
+				}
+			},
+			container: container as unknown as HTMLElement,
+			files: [v1c1, v1c2, v2c1],
+			foreshadowingMap: new Map(),
+			currentBookPath: 'NovelA',
+			currentTimelineFilter: 'all',
+			onSaveStateChange: vi.fn(),
+			reloadBoard: vi.fn(),
+			getChapterEvents: vi.fn().mockReturnValue([])
+		};
+
+		await TimelineBoardRenderer.render(options);
+
+		// Verified that createReferenceIndex was invoked exactly once across all 5 chapter references
+		expect(createIndexSpy).toHaveBeenCalledTimes(1);
+		expect(createIndexSpy).toHaveBeenCalledWith(
+			mockApp,
+			expect.anything(),
+			'NovelA',
+			expect.objectContaining({ eligibleChapters: [v1c1, v1c2, v2c1] })
+		);
 	});
 });

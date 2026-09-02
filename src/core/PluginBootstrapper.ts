@@ -128,15 +128,17 @@ export class PluginBootstrapper {
 				});
 			});
 
-			this.plugin.registerEvent(this.plugin.app.workspace.on('active-leaf-change', () => {
-				this.plugin.typographyManager.updateTypography();
+			this.plugin.registerEvent(this.plugin.app.workspace.on('active-leaf-change', (leaf) => {
+				if (leaf) {
+					this.plugin.typographyManager.applyToLeaf(leaf, false);
+				}
 			}));
 
 			this.plugin.registerEvent(this.plugin.app.workspace.on('layout-change', () => {
-				this.plugin.typographyManager.updateTypography();
+				this.plugin.typographyManager.updateTypography(false);
 			}));
 
-			this.plugin.typographyManager.updateTypography();
+			this.plugin.typographyManager.updateTypography(false);
 
 			this.plugin.statusBarItemEl = this.plugin.addStatusBarItem();
 			this.plugin.registerSettingsTab();
@@ -152,6 +154,7 @@ export class PluginBootstrapper {
 			this.plugin.registerCommonRibbonIcons();
 
 			this.plugin.registerEvent(this.plugin.app.workspace.on('editor-change', () => {
+				this.plugin.lastEditTime = Date.now();
 				this.plugin.adaptiveDebounceManager.debounce('editor-update', () => {
 					this.plugin.editorTracker.handleEditorChange();
 				});

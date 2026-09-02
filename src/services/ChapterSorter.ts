@@ -157,46 +157,23 @@ export class ChapterSorter {
 		return lastSlash === -1 ? clean : clean.slice(lastSlash + 1);
 	}
 
+	static createReferenceIndex(
+		app: App,
+		plugin: ChapterSorterContext,
+		folderPath: string,
+		options?: ChapterReferenceIndexOptions
+	): ChapterReferenceIndex {
+		return new ChapterReferenceIndex(app, plugin, folderPath, options);
+	}
+
 	static resolveChapterFile(
 		app: App,
 		plugin: ChapterSorterContext,
 		folderPath: string,
 		rawLink: string,
-		options?: { eligibleChapters?: TFile[]; sourcePath?: string }
+		options?: ChapterReferenceIndexOptions
 	): TFile | null {
-		const linkpath = this.stripWikilink(rawLink);
-		if (!linkpath) return null;
-
-		const chapters = options?.eligibleChapters ?? this.getAllChapters(app, plugin, folderPath);
-		const normalizedLink = normalizePath(linkpath).toLowerCase();
-		const normalizedFolder = folderPath && folderPath !== '/'
-			? normalizePath(folderPath).replace(/^\/+|\/+$/g, '').toLowerCase()
-			: '';
-		const hasPath = linkpath.includes('/') || linkpath.includes('\\');
-
-		if (hasPath) {
-			const pathMatches = chapters.filter(file => {
-				const normalizedPath = normalizePath(file.path).replace(/\.md$/i, '').toLowerCase();
-				return normalizedPath === normalizedLink
-					|| normalizedPath === `${normalizedFolder}/${normalizedLink}`
-					|| normalizedPath.endsWith(`/${normalizedLink}`);
-			});
-			if (pathMatches.length === 1) return pathMatches[0];
-			if (pathMatches.length > 1) return null;
-
-			if (options?.sourcePath) {
-				const dest = app.metadataCache.getFirstLinkpathDest(linkpath, options.sourcePath);
-				if (dest instanceof TFile) {
-					return chapters.find(file => file.path === dest.path) ?? null;
-				}
-			}
-			return null;
-		}
-
-		const basenameMatches = chapters.filter(
-			file => file.basename.toLowerCase().trim() === normalizedLink.trim()
-		);
-		return basenameMatches.length === 1 ? basenameMatches[0] : null;
+		return this.createReferenceIndex(app, plugin, folderPath, options).resolve(rawLink);
 	}
 
 	static generateChapterLinktext(
@@ -737,5 +714,99 @@ export class ChapterSorter {
 	 */
 	static isChapterFile(filename: string): boolean {
 		return this.extractChapterNumber(filename) !== null;
+	}
+}
+
+export interface ChapterReferenceIndexOptions {
+	eligibleChapters?: TFile[];
+	sourcePath?: string;
+}
+
+export interface ChapterReferenceResolver {
+	resolve(rawLink: string): TFile | null;
+}
+
+export class ChapterReferenceIndex implements ChapterReferenceResolver {
+	private readonly basenameMap = new Map<string, TFile[]>();
+	private readonly pathMap = new Map<string, TFile[]>();
+	private readonly filePathMap = new Map<string, TFile>();
+	private readonly app: App;
+	private readonly sourcePath?: string;
+
+	constructor(
+		app: App,
+		plugin: ChapterSorterContext,
+		folderPath: string,
+		options?: ChapterReferenceIndexOptions
+	) {
+		this.app = app;
+		this.sourcePath = options?.sourcePath;
+		const chapters = options?.eligibleChapters ?? ChapterSorter.getAllChapters(app, plugin, folderPath);
+		const normalizedFolder = folderPath && folderPath !== '/'
+			? normalizePath(folderPath).replace(/^\/+|\/+$/g, '').toLowerCase()
+			: '';
+
+		for (const file of chapters) {
+			this.filePathMap.set(file.path, file);
+
+			const baseKey = file.basename.toLowerCase().trim();
+			let baseList = this.basenameMap.get(baseKey);
+			if (!baseList) {
+				baseList = [];
+				this.basenameMap.set(baseKey, baseList);
+			}
+			baseList.push(file);
+
+			const normalizedPath = normalizePath(file.path).replace(/\.md$/i, '').toLowerCase();
+			const pathKeys = new Set<string>();
+			pathKeys.add(normalizedPath);
+
+			if (normalizedFolder && normalizedPath.startsWith(normalizedFolder + '/')) {
+				pathKeys.add(normalizedPath.slice(normalizedFolder.length + 1));
+			}
+
+			const segments = normalizedPath.split('/');
+			for (let i = 1; i < segments.length; i++) {
+				pathKeys.add(segments.slice(i).join('/'));
+			}
+
+			for (const key of pathKeys) {
+				let pathList = this.pathMap.get(key);
+				if (!pathList) {
+					pathList = [];
+					this.pathMap.set(key, pathList);
+				}
+				pathList.push(file);
+			}
+		}
+	}
+
+	resolve(rawLink: string): TFile | null {
+		const linkpath = ChapterSorter.stripWikilink(rawLink);
+		if (!linkpath) return null;
+
+		const normalizedLink = normalizePath(linkpath).toLowerCase();
+		const hasPath = linkpath.includes('/') || linkpath.includes('\\');
+
+		if (hasPath) {
+			const pathMatches = this.pathMap.get(normalizedLink);
+			if (pathMatches && pathMatches.length === 1) {
+				return pathMatches[0];
+			}
+			if (pathMatches && pathMatches.length > 1) {
+				return null;
+			}
+
+			if (this.sourcePath) {
+				const dest = this.app.metadataCache.getFirstLinkpathDest(linkpath, this.sourcePath);
+				if (dest instanceof TFile) {
+					return this.filePathMap.get(dest.path) ?? null;
+				}
+			}
+			return null;
+		}
+
+		const basenameMatches = this.basenameMap.get(normalizedLink.trim());
+		return basenameMatches && basenameMatches.length === 1 ? basenameMatches[0] : null;
 	}
 }

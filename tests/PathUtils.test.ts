@@ -1,14 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { TFile, TFolder } from './mocks/obsidian';
+import { TFile, TFolder } from 'obsidian';
 import { getLatestChapterFolderPath } from '../src/utils/path';
 
 function createFolder(name: string, path: string, parent: TFolder | null): TFolder {
-	return Object.assign(new TFolder(name, path), { parent });
+	const folder = Object.create(TFolder.prototype) as TFolder;
+	return Object.assign(folder, { name, path, parent, children: [] });
 }
 
 function createFile(name: string, path: string, parent: TFolder): TFile {
-	return Object.assign(new TFile(name, path), {
+	const file = Object.create(TFile.prototype) as TFile;
+	return Object.assign(file, {
+		name,
+		path,
 		basename: name.replace(/\.md$/i, ''),
+		extension: 'md',
 		parent
 	});
 }

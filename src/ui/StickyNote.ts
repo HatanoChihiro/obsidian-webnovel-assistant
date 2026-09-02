@@ -244,6 +244,9 @@ export class FloatingStickyNote extends Component {
 	private resizeObserver: ResizeObserver | null = null; // ResizeObserver 实例
 	private resizeTimer: number | null = null;           // ResizeObserver 防抖计时器
 	private _isUnloaded: boolean = false;
+	private readingComponent: Component | null = null;
+	private contentRenderId: number = 0;
+	private toggleEditBtn: HTMLButtonElement | null = null;
 
 	constructor(app: App, plugin: FloatingStickyNotePlugin, options: { file?: TFile, content?: string, title?: string, state?: StickyNoteState }) {
 		super();
@@ -251,7 +254,7 @@ export class FloatingStickyNote extends Component {
 		this.plugin = plugin;
 		
 		if (options.state) {
-			this.state = options.state;
+			this.state = { ...options.state };
 			if (!this.state.zoomLevel) this.state.zoomLevel = 1;
 			if (!this.state.textColor) this.state.textColor = '#2C3E50'; 
 		} else {
@@ -299,22 +302,41 @@ export class FloatingStickyNote extends Component {
 	 * 从另一个状态对象更新当前便签的显示（通常由同步逻辑调用）
 	 */
 	updateFromState(newState: StickyNoteState) {
+		const isEditingChanged = this.state.isEditing !== newState.isEditing;
+		const contentChanged = (this.state.content || '') !== (newState.content || '');
+		const titleChanged = this.state.title !== newState.title;
+
 		this.state = { ...this.state, ...newState };
 		this.lastSavedContent = this.state.content || "";
-		if (this.textareaEl && activeDocument.activeElement !== this.textareaEl && this.state.content !== this.textareaEl.value) {
-			this.textareaEl.value = this.state.content || "";
-		}
-		
+
 		const titleEl = this.containerEl?.querySelector('.my-sticky-title') as HTMLElement;
-		if (titleEl && this.state.title) {
+		if (titleEl && titleChanged && this.state.title) {
 			titleEl.innerText = this.state.title;
 		}
-		
+
 		this.updateVisuals();
+
+		if (isEditingChanged) {
+			this.updateToggleEditButton();
+			void this.renderContent();
+		} else if (this.state.isEditing) {
+			const doc = this.containerEl?.ownerDocument || activeDocument;
+			if (this.textareaEl && doc.activeElement !== this.textareaEl && this.state.content !== this.textareaEl.value) {
+				this.textareaEl.value = this.state.content || "";
+			}
+		} else if (contentChanged) {
+			void this.renderContent();
+		}
 	}
 
 	onunload() {
 		this._isUnloaded = true;
+		this.contentRenderId++;
+		this.toggleEditBtn = null;
+		if (this.readingComponent) {
+			this.readingComponent.unload();
+			this.readingComponent = null;
+		}
 		// [L-P7] 确保在组件卸载时移除所有可能的全局拖拽监听器
 		this.cleanupDragging();
 		// 清理 ResizeObserver
@@ -410,6 +432,7 @@ export class FloatingStickyNote extends Component {
 		const syncBtn = this.state.filePath ? this.createButton(controlsEl, 'refresh-cw') : null;
 		if (syncBtn) syncBtn.title = t('common.note-sync-from-doc');
 		const toggleEditBtn = this.createButton(controlsEl, this.state.isEditing ? 'eye' : 'pencil');
+		this.toggleEditBtn = toggleEditBtn;
 		const paletteBtn = this.createButton(controlsEl, 'palette', false, 'palette-btn-target');
 		const closeBtn = controlsEl.createEl('button', { cls: 'my-sticky-close' });
 		setIcon(closeBtn, 'x');
@@ -483,6 +506,12 @@ export class FloatingStickyNote extends Component {
 		this.bindHeaderEvents(pinBtn, saveBtn, syncBtn, toggleEditBtn, paletteBtn, closeBtn, popupEl, titleWrapper);
 		this.setupDragging(headerEl);
 		this.setupResizing();
+	}
+
+	private updateToggleEditButton() {
+		if (this.toggleEditBtn) {
+			setIcon(this.toggleEditBtn, this.state.isEditing ? 'eye' : 'pencil');
+		}
 	}
 
 	private createButton(parent: HTMLElement, icon: string, isActive = false, extraClass = ''): HTMLButtonElement {
@@ -566,7 +595,7 @@ export class FloatingStickyNote extends Component {
 					if (file instanceof TFile) await this.app.vault.process(file, () => this.state.content || '');
 				}
 				this.state.isEditing = false;
-				setIcon(toggleEditBtn, 'pencil');
+				this.updateToggleEditButton();
 			} else {
 				if (this.state.filePath) {
 					const file = this.app.vault.getAbstractFileByPath(this.state.filePath);
@@ -576,7 +605,7 @@ export class FloatingStickyNote extends Component {
 					}
 				}
 				this.state.isEditing = true;
-				setIcon(toggleEditBtn, 'eye');
+				this.updateToggleEditButton();
 			}
 			await this.renderContent();
 			this.saveState();
@@ -736,29 +765,62 @@ export class FloatingStickyNote extends Component {
 	}
 
 	async renderContent() {
+		const renderId = ++this.contentRenderId;
+
 		if (this.state.isEditing) {
-				this.contentContainer.addClass('wn-hidden'); this.contentContainer.removeClass('wn-show-block'); this.textareaEl.removeClass('wn-hidden'); this.textareaEl.addClass('wn-show-block');
+			if (this.readingComponent) {
+				this.readingComponent.unload();
+				this.readingComponent = null;
+			}
+			this.contentContainer.addClass('wn-hidden');
+			this.contentContainer.removeClass('wn-show-block');
+			this.textareaEl.removeClass('wn-hidden');
+			this.textareaEl.addClass('wn-show-block');
 			
 			// 核心修复：如果当前文本框正处于聚焦状态（用户正在输入），不要强行覆盖它的值
 			// 否则会打断中文输入法 (IME) 的组合过程
-			if (activeDocument.activeElement !== this.textareaEl) {
+			const doc = this.containerEl?.ownerDocument || activeDocument;
+			if (doc.activeElement !== this.textareaEl) {
 				const newContent = this.state.content || "";
 				if (this.textareaEl.value !== newContent) {
 					this.textareaEl.value = newContent;
 				}
-				// 仅在非聚焦时尝试恢复焦点，避免干扰正常输入循环
-				// window.setTimeout(() => { this.textareaEl.focus(); }, 50);
 			}
 		} else {
-			this.textareaEl.addClass('wn-hidden'); this.textareaEl.removeClass('wn-show-block'); this.contentContainer.removeClass('wn-hidden'); this.contentContainer.addClass('wn-show-block');
-			this.contentContainer.empty();
+			this.textareaEl.addClass('wn-hidden');
+			this.textareaEl.removeClass('wn-show-block');
+			this.contentContainer.removeClass('wn-hidden');
+			this.contentContainer.addClass('wn-show-block');
+
 			let text = this.state.content || "";
 			if (this.state.filePath) {
 				const file = this.app.vault.getAbstractFileByPath(this.state.filePath);
 				if (file instanceof TFile) text = await this.app.vault.read(file);
 			}
-			await MarkdownRenderer.render(this.app, text, this.contentContainer, this.state.filePath || '', this);
-			injectSoftBreakIndentPlaceholders(this.contentContainer, false);
+			if (this._isUnloaded || this.contentRenderId !== renderId) return;
+
+			const renderComponent = new Component();
+			renderComponent.load();
+			try {
+				const buffer = createDiv();
+				await MarkdownRenderer.render(this.app, text, buffer, this.state.filePath || '', renderComponent);
+				if (this._isUnloaded || this.contentRenderId !== renderId) {
+					renderComponent.unload();
+					return;
+				}
+				injectSoftBreakIndentPlaceholders(buffer, false);
+
+				this.contentContainer.empty();
+				while (buffer.firstChild) {
+					this.contentContainer.appendChild(buffer.firstChild);
+				}
+				const prevComponent = this.readingComponent;
+				this.readingComponent = renderComponent;
+				prevComponent?.unload();
+			} catch (err) {
+				renderComponent.unload();
+				throw err;
+			}
 		}
 	}
 

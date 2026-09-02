@@ -1,4 +1,4 @@
-import { ItemView, TFile, type WorkspaceLeaf, setIcon } from 'obsidian';
+import { ItemView, TFile, Component, type WorkspaceLeaf, setIcon } from 'obsidian';
 import type { AdaptiveDebounceManager } from '../services/AdaptiveDebounceManager';
 import type { CharacterManager } from '../services/CharacterManager';
 import type { HomepageManager } from '../services/HomepageManager';
@@ -63,6 +63,8 @@ export class LoreOverviewView extends ItemView {
 	private filterDebounceTimer: number | null = null;
 	private pendingFilterFocus: { start: number; end: number } | null = null;
 	private currentRenderId: number = 0;
+	private displayedComponent: Component | null = null;
+	private isClosed: boolean = false;
 
 	constructor(leaf: WorkspaceLeaf, plugin: LoreOverviewViewPlugin) {
 		super(leaf);
@@ -152,6 +154,7 @@ export class LoreOverviewView extends ItemView {
 	}
 
 	async onOpen() {
+		this.isClosed = false;
 		this.container = this.contentEl;
 		this.container.empty();
 		this.container.addClass('wn-lore-overview-container');
@@ -161,6 +164,7 @@ export class LoreOverviewView extends ItemView {
 	}
 
 	async onClose() {
+		this.isClosed = true;
 		this.currentRenderId++;
 		this.plugin.adaptiveDebounceManager.cancel('lore-overview-refresh');
 		if (this.filterDebounceTimer !== null) {
@@ -169,11 +173,15 @@ export class LoreOverviewView extends ItemView {
 		}
 		this.pendingFilterFocus = null;
 		this.filterIndex.clear();
+		if (this.displayedComponent) {
+			this.displayedComponent.unload();
+			this.displayedComponent = null;
+		}
 		this.contentEl.empty();
 	}
 
 	public async reloadBoard(): Promise<void> {
-		if (!this.container) return;
+		if (!this.container || this.isClosed) return;
 
 		const renderId = ++this.currentRenderId;
 		const buffer = createDiv();
@@ -189,21 +197,27 @@ export class LoreOverviewView extends ItemView {
 		if (!this.currentBookPath) {
 			const emptyEl = buffer.createDiv('wn-corkboard-empty');
 			emptyEl.setText(t('corkboard.no-book-open'));
-			if (this.currentRenderId !== renderId) return;
+			if (this.currentRenderId !== renderId || this.isClosed) return;
+			const prevComponent = this.displayedComponent;
 			this.swapBuffer(buffer);
+			this.displayedComponent = null;
+			prevComponent?.unload();
 			return;
 		}
 
 		const normalizedBookPath = this.currentBookPath === '' ? '/' : this.currentBookPath;
 		await this.plugin.characterManager.ensureInitialized();
-		if (this.currentRenderId !== renderId) return;
+		if (this.currentRenderId !== renderId || this.isClosed) return;
 		const allCharacters = this.plugin.characterManager.getCharactersForBook(normalizedBookPath) || [];
 
 		if (allCharacters.length === 0) {
 			const emptyEl = buffer.createDiv('wn-corkboard-empty');
 			emptyEl.setText(t('corkboard.no-lore'));
-			if (this.currentRenderId !== renderId) return;
+			if (this.currentRenderId !== renderId || this.isClosed) return;
+			const prevComponent = this.displayedComponent;
 			this.swapBuffer(buffer);
+			this.displayedComponent = null;
+			prevComponent?.unload();
 			return;
 		}
 
@@ -216,7 +230,7 @@ export class LoreOverviewView extends ItemView {
 				this.getLoreAliases(normalizedBookPath),
 				this.loreFilterQuery
 			);
-			if (this.currentRenderId !== renderId) return;
+			if (this.currentRenderId !== renderId || this.isClosed) return;
 		}
 
 		this.renderFilterBar(
@@ -225,21 +239,34 @@ export class LoreOverviewView extends ItemView {
 			loreEntries.length
 		);
 
-		await LoreBoardRenderer.renderCards(
-			buffer,
-			this.app,
-			this.plugin,
-			normalizedBookPath,
-			allCharacters,
-			matchedLoreHeadings,
-			() => { void this.reloadBoard(); },
-			this,
-			{ hideTabs: true }
-		);
+		const renderComponent = new Component();
+		renderComponent.load();
+		try {
+			await LoreBoardRenderer.renderCards(
+				buffer,
+				this.app,
+				this.plugin,
+				normalizedBookPath,
+				allCharacters,
+				matchedLoreHeadings,
+				() => { void this.reloadBoard(); },
+				renderComponent,
+				{ hideTabs: true }
+			);
 
-		if (this.currentRenderId !== renderId) return;
-		this.swapBuffer(buffer);
-		this.restorePendingFilterFocus();
+			if (this.currentRenderId !== renderId || this.isClosed) {
+				renderComponent.unload();
+				return;
+			}
+			const prevComponent = this.displayedComponent;
+			this.swapBuffer(buffer);
+			this.displayedComponent = renderComponent;
+			prevComponent?.unload();
+			this.restorePendingFilterFocus();
+		} catch (error) {
+			renderComponent.unload();
+			throw error;
+		}
 
 		if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
 			window.requestAnimationFrame(() => {

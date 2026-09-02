@@ -158,7 +158,7 @@ export class TypographyQuickModal extends Modal {
 					.setValue(typo.enableReadingModeCompat ?? false)
 					.onChange(val => {
 						typo.enableReadingModeCompat = val;
-						this.applyRealtime();
+						this.applyRealtime(true);
 					});
 			});
 	}
@@ -166,8 +166,8 @@ export class TypographyQuickModal extends Modal {
 	/**
 	 * 拖动滑块时毫秒级实时刷新 DOM 样式并持久化设置
 	 */
-	private applyRealtime(): void {
-		this.plugin.typographyManager.updateTypography();
+	private applyRealtime(forceRerender: boolean = false): void {
+		this.plugin.typographyManager.updateTypography(forceRerender);
 		void this.plugin.saveSettings();
 	}
 

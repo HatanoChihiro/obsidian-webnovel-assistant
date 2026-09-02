@@ -1445,8 +1445,8 @@ A:
 ### Bug Reports
 - GitHub Issues: [Submit an Issue](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/issues)
 
-### Feature Requests
-- GitHub Issues: [Submit a Feature Request](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/issues)
+### Feature Requests & Discussions
+- GitHub Discussions: [Join Discussions & Propose Ideas](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/discussions)
 
 ### Changelog
 - [CHANGELOG.md](CHANGELOG.md)

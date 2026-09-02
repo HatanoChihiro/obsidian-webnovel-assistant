@@ -1457,7 +1457,7 @@ A:
 - GitHub Issues: [提交问题](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/issues)
 
 ### 功能建议
-- GitHub Issues: [提交功能建议](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/issues)
+- GitHub Discussions: [提交功能建议与讨论](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/discussions)
 
 ### 更新日志
 - [CHANGELOG.md](CHANGELOG.md)

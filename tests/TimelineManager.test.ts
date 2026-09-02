@@ -737,7 +737,7 @@ It has multiple lines.
         });
 
         it('19. Root timeline modify is ignored when workspaces are explicitly configured', async () => {
-            let modifyHandler: ((file: TFile) => void) | null = null;
+            let modifyHandler: ((file: TFile) => void) | undefined;
             mockApp.vault.on.mockImplementation((evt: string, handler: (file: TFile) => void) => {
                 if (evt === 'modify') modifyHandler = handler;
             });

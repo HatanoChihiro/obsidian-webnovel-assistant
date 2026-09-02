@@ -150,9 +150,9 @@ describe('CommandManager - annotate-to-dictionary', () => {
         addCommand: ReturnType<typeof vi.fn>;
     };
     let registeredCommands: Map<string, MockCommand>;
-    const chapterFile = new TFile('Chapter1.md', 'NovelBook/Chapter1.md');
-    const nonChapterFile = new TFile('Note.md', 'Other/Note.md');
-    const dictFile = new TFile('错词.md', 'NovelBook/校对词典/错词.md');
+    const chapterFile = { name: 'Chapter1.md', path: 'NovelBook/Chapter1.md', basename: 'Chapter1', extension: 'md' } as unknown as TFile;
+    const nonChapterFile = { name: 'Note.md', path: 'Other/Note.md', basename: 'Note', extension: 'md' } as unknown as TFile;
+    const dictFile = { name: '错词.md', path: 'NovelBook/校对词典/错词.md', basename: '错词', extension: 'md' } as unknown as TFile;
 
     beforeEach(() => {
         vi.clearAllMocks();

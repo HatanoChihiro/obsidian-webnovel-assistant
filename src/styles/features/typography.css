@@ -91,27 +91,34 @@ body.webnovel-eye-care-enabled .workspace-leaf-content[data-type="markdown"]:not
 }
 
 
-/* ========== 沉浸模式打字机：标题垂直留白居中与焦点淡化 ========== */
-body.immersive-mode-active.wn-typewriter-active .cm-editor .cm-sizer {
+/* ========== 打字机模式：垂直留白居中与焦点淡化 ========== */
+.cm-editor.wn-typewriter-active .cm-sizer {
 	padding-top: 30vh;
 }
 
-
-body.immersive-mode-active.wn-typewriter-active .cm-editor .cm-content {
+.cm-editor.wn-typewriter-active .cm-content {
 	padding-top: 0;
 	padding-bottom: 50vh;
 }
 
-
-body.immersive-mode-active.wn-typewriter-active .cm-editor .cm-line {
+.cm-editor.wn-typewriter-active .cm-line {
 	opacity: var(--wn-typewriter-opacity, 0.4);
 	transition: opacity 0.15s ease;
 }
 
+.cm-editor.wn-typewriter-active .cm-line.wn-typewriter-current-line,
+.cm-editor.wn-typewriter-active .cm-line.cm-activeLine,
+.cm-editor.wn-typewriter-active .cm-line.wn-typewriter-current-line * {
+	opacity: 1;
+}
 
-body.immersive-mode-active.wn-typewriter-active .cm-editor .cm-line.wn-typewriter-current-line,
-body.immersive-mode-active.wn-typewriter-active .cm-editor .cm-line.cm-activeLine,
-body.immersive-mode-active.wn-typewriter-active .cm-editor .cm-line.wn-typewriter-current-line * {
+.cm-editor.wn-typewriter-active .inline-title {
+	opacity: var(--wn-typewriter-opacity, 0.4);
+	transition: opacity 0.15s ease;
+}
+
+.cm-editor.wn-typewriter-active .inline-title:focus,
+.cm-editor.wn-typewriter-active .inline-title:focus-within {
 	opacity: 1;
 }
 
@@ -434,8 +441,8 @@ body.wn-card-indent-active .wn-timeline-item-desc:not(.is-editing):not(.is-empty
 	width: var(--wn-card-indent, 2em);
 }
 
-body.wn-card-indent-active .wn-timeline-item-desc.is-editing textarea.wn-corkboard-textarea {
-	padding-inline-start: calc(4px + var(--wn-card-indent, 2em));
+body.wn-card-indent-active .wn-timeline-item-desc.is-editing {
+	padding-inline-start: calc(10px + var(--wn-card-indent, 2em));
 }
 
 /* ========== Eye-care typography scope (extracted from common.css) ========== */

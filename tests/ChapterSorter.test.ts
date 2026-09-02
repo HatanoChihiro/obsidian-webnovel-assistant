@@ -506,6 +506,76 @@ describe('ChapterSorter', () => {
 			expect(getFirstLinkpathDest).not.toHaveBeenCalled();
 		});
 
+		it('ChapterReferenceIndex accurately resolves duplicate, unique, explicit, relative and suffix paths', () => {
+			const index = ChapterSorter.createReferenceIndex(
+				mockApp,
+				mockPlugin,
+				'作品',
+				{ eligibleChapters: [vol1Ch1, vol2Ch1, uniqueCh], sourcePath: '作品/时间线.md' }
+			);
+
+			// Indexed duplicate basename -> null
+			expect(index.resolve('第1章')).toBeNull();
+			expect(index.resolve('[[第1章]]')).toBeNull();
+
+			// Unique basename -> resolves
+			expect(index.resolve('第2章')).toBe(uniqueCh);
+			expect(index.resolve('[[第2章.md]]')).toBe(uniqueCh);
+
+			// Exact full path -> resolves
+			expect(index.resolve('作品/第一卷/第1章')).toBe(vol1Ch1);
+			expect(index.resolve('[[作品/第二卷/第1章.md]]')).toBe(vol2Ch1);
+
+			// Folder-relative path -> resolves
+			expect(index.resolve('第一卷/第1章')).toBe(vol1Ch1);
+			expect(index.resolve('[[第二卷/第1章|第一章别名]]')).toBe(vol2Ch1);
+
+			// Arbitrary suffix path -> resolves
+			expect(index.resolve('第一卷/第2章')).toBe(uniqueCh);
+		});
+
+		it('ChapterReferenceIndex handles path ambiguity without invoking metadata fallback', () => {
+			const duplicateSuffix = createFile('作品/附录/第一卷/第1章.md', '第1章');
+			getFirstLinkpathDest.mockClear();
+
+			const index = ChapterSorter.createReferenceIndex(
+				mockApp,
+				mockPlugin,
+				'作品',
+				{ eligibleChapters: [vol1Ch1, duplicateSuffix], sourcePath: '作品/时间线.md' }
+			);
+
+			// Suffix '第一卷/第1章' matches both vol1Ch1 and duplicateSuffix -> ambiguous null
+			expect(index.resolve('第一卷/第1章')).toBeNull();
+			// Explicit path match found multiple entries -> metadataCache must not be queried
+			expect(getFirstLinkpathDest).not.toHaveBeenCalled();
+		});
+
+		it('ChapterReferenceIndex falls back to metadataCache only when explicit path found nothing', () => {
+			getFirstLinkpathDest.mockClear();
+
+			const externalFile = createFile('外置目录/未收录.md', '未收录');
+			const index = ChapterSorter.createReferenceIndex(
+				mockApp,
+				mockPlugin,
+				'作品',
+				{ eligibleChapters: [vol1Ch1, vol2Ch1], sourcePath: '作品/时间线.md' }
+			);
+
+			// 1. Fallback returns a file within eligibleChapters
+			getFirstLinkpathDest.mockReturnValueOnce(vol1Ch1);
+			expect(index.resolve('自定义相对路径/第1章')).toBe(vol1Ch1);
+			expect(getFirstLinkpathDest).toHaveBeenCalledWith('自定义相对路径/第1章', '作品/时间线.md');
+
+			// 2. Fallback returns a file outside eligibleChapters -> null
+			getFirstLinkpathDest.mockReturnValueOnce(externalFile);
+			expect(index.resolve('非收录路径/外置')).toBeNull();
+
+			// 3. Fallback returns null -> null
+			getFirstLinkpathDest.mockReturnValueOnce(null);
+			expect(index.resolve('不存在的路径/无此文件')).toBeNull();
+		});
+
 		it('generateChapterLinktext uses basename if unique, relative path/alias if duplicate exists', () => {
 			expect(ChapterSorter.generateChapterLinktext(mockApp, mockPlugin, uniqueCh, '作品')).toBe('第2章');
 			expect(ChapterSorter.generateChapterLinktext(mockApp, mockPlugin, vol1Ch1, '作品', { useAlias: false })).toBe('第一卷/第1章');

@@ -487,6 +487,167 @@ describe('WorkbenchView', () => {
 		expect(cancelSpy).toHaveBeenCalledWith('workbench-refresh');
 	});
 
+	it('should reload board when debounced refresh or lore-updated triggers in non-sticky modes with proper delays', async () => {
+		const vaultHandlers: Record<string, ((...args: unknown[]) => void)> = {};
+		const metadataHandlers: Record<string, ((...args: unknown[]) => void)> = {};
+		const workspaceHandlers: Record<string, ((...args: unknown[]) => void)> = {};
+
+		mockApp.vault.on.mockImplementation((event: string, handler: (...args: unknown[]) => void) => {
+			vaultHandlers[event] = handler;
+		});
+		mockApp.metadataCache.on.mockImplementation((event: string, handler: (...args: unknown[]) => void) => {
+			metadataHandlers[event] = handler;
+		});
+		mockApp.workspace.on.mockImplementation((event: string, handler: (...args: unknown[]) => void) => {
+			workspaceHandlers[event] = handler;
+		});
+
+		let queuedCallback: (() => void) | null = null;
+		const debounceSpy = vi.fn((_key: string, fn: () => void) => {
+			queuedCallback = fn;
+		});
+		plugin.adaptiveDebounceManager = {
+			debounceFixed: debounceSpy,
+			cancel: vi.fn()
+		};
+
+		const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+		(view as unknown as { container: unknown }).container = view.contentEl;
+		const reloadSpy = vi.spyOn(view, 'reloadBoard').mockImplementation(async () => {});
+
+		// In default mode, rename schedules debounce with 500ms delay and running it reloads board
+		vaultHandlers['rename'](file1, 'NovelA/old.md');
+		expect(debounceSpy).toHaveBeenLastCalledWith('workbench-refresh', expect.any(Function), 500);
+		expect(reloadSpy).not.toHaveBeenCalled();
+		expect(queuedCallback).toBeDefined();
+		(queuedCallback as unknown as () => void)();
+		expect(reloadSpy).toHaveBeenCalledTimes(1);
+
+		// In default mode, modify schedules debounce with 1000ms delay and running it reloads board
+		reloadSpy.mockClear();
+		vaultHandlers['modify'](file1);
+		expect(debounceSpy).toHaveBeenLastCalledWith('workbench-refresh', expect.any(Function), 1000);
+		expect(queuedCallback).toBeDefined();
+		(queuedCallback as unknown as () => void)();
+		expect(reloadSpy).toHaveBeenCalledTimes(1);
+
+		// In default mode, lore-updated triggers reload immediately
+		reloadSpy.mockClear();
+		workspaceHandlers['webnovel-workbench-lore-updated']();
+		expect(reloadSpy).toHaveBeenCalledTimes(1);
+	});
+
+	it('should not schedule workbench-refresh or reload board on file/metadata events or lore-updated while in sticky mode', async () => {
+		const vaultHandlers: Record<string, ((...args: unknown[]) => void)> = {};
+		const metadataHandlers: Record<string, ((...args: unknown[]) => void)> = {};
+		const workspaceHandlers: Record<string, ((...args: unknown[]) => void)> = {};
+
+		mockApp.vault.on.mockImplementation((event: string, handler: (...args: unknown[]) => void) => {
+			vaultHandlers[event] = handler;
+		});
+		mockApp.metadataCache.on.mockImplementation((event: string, handler: (...args: unknown[]) => void) => {
+			metadataHandlers[event] = handler;
+		});
+		mockApp.workspace.on.mockImplementation((event: string, handler: (...args: unknown[]) => void) => {
+			workspaceHandlers[event] = handler;
+		});
+
+		const debounceSpy = vi.fn();
+		plugin.adaptiveDebounceManager = {
+			debounceFixed: debounceSpy,
+			cancel: vi.fn()
+		};
+
+		const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+		(view as unknown as { container: unknown }).container = view.contentEl;
+		(view as unknown as { sortMode: string }).sortMode = 'sticky';
+		const reloadSpy = vi.spyOn(view, 'reloadBoard').mockImplementation(async () => {});
+
+		// Trigger rename while in sticky mode
+		vaultHandlers['rename'](file1, 'NovelA/old.md');
+		expect(debounceSpy).not.toHaveBeenCalled();
+		expect(reloadSpy).not.toHaveBeenCalled();
+
+		// Trigger delete while in sticky mode
+		vaultHandlers['delete'](file1);
+		expect(debounceSpy).not.toHaveBeenCalled();
+		expect(reloadSpy).not.toHaveBeenCalled();
+
+		// Trigger modify while in sticky mode
+		vaultHandlers['modify'](file1);
+		expect(debounceSpy).not.toHaveBeenCalled();
+		expect(reloadSpy).not.toHaveBeenCalled();
+
+		// Trigger metadataCache changed while in sticky mode
+		metadataHandlers['changed'](file1);
+		expect(debounceSpy).not.toHaveBeenCalled();
+		expect(reloadSpy).not.toHaveBeenCalled();
+
+		// Trigger lore-updated while in sticky mode
+		workspaceHandlers['webnovel-workbench-lore-updated']();
+		expect(reloadSpy).not.toHaveBeenCalled();
+	});
+
+	it('should not reload board if a debounced refresh callback runs after switching to sticky mode', async () => {
+		const vaultHandlers: Record<string, ((...args: unknown[]) => void)> = {};
+		mockApp.vault.on.mockImplementation((event: string, handler: (...args: unknown[]) => void) => {
+			vaultHandlers[event] = handler;
+		});
+
+		let queuedCallback: (() => void) | null = null;
+		const debounceSpy = vi.fn((_key: string, fn: () => void) => {
+			queuedCallback = fn;
+		});
+		plugin.adaptiveDebounceManager = {
+			debounceFixed: debounceSpy,
+			cancel: vi.fn()
+		};
+
+		const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+		(view as unknown as { container: unknown }).container = view.contentEl;
+		(view as unknown as { sortMode: string }).sortMode = 'default';
+
+		// Trigger modify while in default mode -> callback is queued
+		vaultHandlers['modify'](file1);
+		expect(debounceSpy).toHaveBeenCalledWith('workbench-refresh', expect.any(Function), 1000);
+		expect(queuedCallback).not.toBeNull();
+
+		const reloadSpy = vi.spyOn(view, 'reloadBoard').mockImplementation(async () => {});
+
+		// User enters sticky mode before debounce callback fires
+		(view as unknown as { sortMode: string }).sortMode = 'sticky';
+
+		// Now the debounced callback executes
+		queuedCallback!();
+
+		// It must re-check sortMode and NOT call reloadBoard
+		expect(reloadSpy).not.toHaveBeenCalled();
+	});
+
+	it('should forward webnovel:notes-changed to StickyNoteListRenderer.syncNotesFromManager without board reload', async () => {
+		const workspaceHandlers: Record<string, ((...args: unknown[]) => void)> = {};
+		mockApp.workspace.on.mockImplementation((event: string, handler: (...args: unknown[]) => void) => {
+			workspaceHandlers[event] = handler;
+		});
+
+		const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+		(view as unknown as { container: unknown }).container = view.contentEl;
+		(view as unknown as { sortMode: string }).sortMode = 'sticky';
+
+		const syncNotesMock = vi.fn();
+		(view as unknown as { stickyNoteListRenderer: unknown }).stickyNoteListRenderer = {
+			syncNotesFromManager: syncNotesMock
+		};
+
+		const reloadSpy = vi.spyOn(view, 'reloadBoard').mockImplementation(async () => {});
+
+		// Trigger webnovel:notes-changed
+		workspaceHandlers['webnovel:notes-changed']();
+
+		expect(syncNotesMock).toHaveBeenCalledTimes(1);
+		expect(reloadSpy).not.toHaveBeenCalled();
+	});
+
 	it('should await requestAnimationFrame restoration in reloadBoard and properly flush pending reload', async () => {
 		const rafQueue: Array<(time: number) => void> = [];
 		const rafSpy = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb: (time: number) => void) => {

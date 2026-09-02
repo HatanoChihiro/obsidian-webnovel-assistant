@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { TypographyManager } from '../src/services/TypographyManager';
 import type { App } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../src/types/plugin';
-import { TFile } from 'obsidian';
+import { TFile, MarkdownView } from 'obsidian';
 
 describe('TypographyManager', () => {
 	let mockPlugin: WebNovelAssistantPlugin;
@@ -274,5 +274,82 @@ describe('TypographyManager', () => {
 		expect(manager.shouldApplyTypography(outsideLoreFile)).toBe(false);
 		expect(manager.shouldApplyTypography(outsideTimelineFile)).toBe(false);
 		expect(manager.shouldApplyTypography(outsideNovelInfoFile)).toBe(false);
+	});
+
+	it('does not force preview rerender during routine lifecycle applyToLeaf unless forceRerender is true', () => {
+		const rerenderMock = vi.fn();
+		const setPropertyMock = vi.fn();
+		const removePropertyMock = vi.fn();
+		const addClassMock = vi.fn();
+		const removeClassMock = vi.fn();
+
+		const file = new TFile();
+		file.path = 'Work Novel/第01章 测试.md';
+		file.name = '第01章 测试.md';
+
+		const mockView = Object.assign(Object.create(MarkdownView.prototype), {
+			file,
+			previewMode: {
+				rerender: rerenderMock
+			}
+		});
+
+		// Mock leaf
+		const leaf = {
+			view: mockView,
+			containerEl: {
+				addClass: addClassMock,
+				removeClass: removeClassMock,
+				style: {
+					setProperty: setPropertyMock,
+					removeProperty: removePropertyMock
+				}
+			}
+		};
+
+		// 1. Routine lifecycle applyToLeaf (forceRerender = false / default)
+		manager.applyToLeaf(leaf as never, false);
+		expect(addClassMock).toHaveBeenCalledWith('wn-typography-active');
+		expect(rerenderMock).not.toHaveBeenCalled();
+
+		// 2. Settings-driven call (forceRerender = true)
+		manager.applyToLeaf(leaf as never, true);
+		expect(rerenderMock).toHaveBeenCalledWith(true);
+	});
+
+	it('cleans up typography classes and inline variables on all open markdown leaves in destroy()', () => {
+		const removeClass1 = vi.fn();
+		const removeProperty1 = vi.fn();
+		const leaf1 = {
+			containerEl: {
+				removeClass: removeClass1,
+				style: { removeProperty: removeProperty1 }
+			}
+		};
+
+		const removeClass2 = vi.fn();
+		const removeProperty2 = vi.fn();
+		const leaf2 = {
+			containerEl: {
+				removeClass: removeClass2,
+				style: { removeProperty: removeProperty2 }
+			}
+		};
+
+		const app = {
+			workspace: {
+				getLeavesOfType: vi.fn((type: string) => (type === 'markdown' ? [leaf1, leaf2] : [])),
+				containerEl: null,
+				iterateAllLeaves: vi.fn()
+			}
+		} as unknown as App;
+
+		const leafManager = new TypographyManager(app, mockPlugin);
+		leafManager.destroy();
+
+		expect(removeClass1).toHaveBeenCalledWith('wn-typography-active');
+		expect(removeProperty1).toHaveBeenCalledWith('--wn-type-font-size');
+		expect(removeClass2).toHaveBeenCalledWith('wn-typography-active');
+		expect(removeProperty2).toHaveBeenCalledWith('--wn-type-font-size');
 	});
 });

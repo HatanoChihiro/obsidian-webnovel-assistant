@@ -604,12 +604,14 @@
 	margin-bottom: 0;
 	overflow-y: auto;
 	flex-shrink: 0;
-	padding: 8px 24px 8px 10px;
+	padding: 8px 24px calc(8px + 1.5em) 10px;
+	scroll-padding-bottom: calc(8px + 1.5em);
 	background: color-mix(in srgb, var(--interactive-accent) 10%, var(--background-secondary-alt));
 	border: 1px solid color-mix(in srgb, var(--interactive-accent) 25%, var(--background-modifier-border));
 	border-left: 3px solid var(--interactive-accent);
 	border-radius: 6px;
 	font-size: 0.9em;
+	line-height: 1.5;
 	color: var(--text-normal);
 	white-space: pre-wrap;
 	cursor: text;
@@ -620,16 +622,14 @@
 
 .wn-timeline-item-desc.is-editing {
 	overflow-y: auto;
+	outline: none;
+	border-color: var(--interactive-accent);
+	box-shadow: 0 0 0 1px var(--interactive-accent);
 }
 
 
-.wn-timeline-item-desc.is-editing .wn-corkboard-textarea {
-	overflow: hidden;
-	padding-bottom: calc(1.5em + 2px);
-}
-
-
-.wn-timeline-item-desc:hover {
+.wn-timeline-item-desc:hover,
+.wn-timeline-item-desc:focus {
 	border-color: var(--interactive-accent);
 	box-shadow: 0 0 0 1px var(--interactive-accent);
 }

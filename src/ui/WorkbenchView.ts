@@ -244,14 +244,18 @@ export class WorkbenchView extends ItemView {
             if (this.isSavingMetadata) return;
             this.filterIndex.invalidate(oldPath);
             this.filterIndex.invalidate(file.path);
+            if (this.sortMode === 'sticky') return;
             this.plugin.adaptiveDebounceManager.debounceFixed('workbench-refresh', () => {
+                if (this.sortMode === 'sticky') return;
                 void this.reloadBoard();
             }, 500);
         }));
         this.registerEvent(this.app.vault.on('delete', (file) => {
             if (this.isSavingMetadata) return;
             this.filterIndex.invalidate(file.path);
+            if (this.sortMode === 'sticky') return;
             this.plugin.adaptiveDebounceManager.debounceFixed('workbench-refresh', () => {
+                if (this.sortMode === 'sticky') return;
                 void this.reloadBoard();
             }, 500);
         }));
@@ -260,7 +264,9 @@ export class WorkbenchView extends ItemView {
             if (!(file instanceof TFile) || file.extension !== 'md') return;
             if (!this.plugin.cacheManager.isFileInWorkspace(file)) return;
             this.filterIndex.invalidate(file.path);
+            if (this.sortMode === 'sticky') return;
             this.plugin.adaptiveDebounceManager.debounceFixed('workbench-refresh', () => {
+                if (this.sortMode === 'sticky') return;
                 void this.reloadBoard();
             }, 1000);
         }));
@@ -269,7 +275,9 @@ export class WorkbenchView extends ItemView {
             if (!(file instanceof TFile) || file.extension !== 'md') return;
             if (!this.plugin.cacheManager.isFileInWorkspace(file)) return;
             this.filterIndex.invalidate(file.path);
+            if (this.sortMode === 'sticky') return;
             this.plugin.adaptiveDebounceManager.debounceFixed('workbench-refresh', () => {
+                if (this.sortMode === 'sticky') return;
                 void this.reloadBoard();
             }, 1000);
         }));
@@ -299,6 +307,7 @@ export class WorkbenchView extends ItemView {
         }));
         this.registerEvent(
             this.app.workspace.on('webnovel-workbench-lore-updated', () => {
+                if (this.sortMode === 'sticky') return;
                 void this.reloadBoard();
             })
         );

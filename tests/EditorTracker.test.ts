@@ -66,7 +66,6 @@ describe('EditorTracker', () => {
 		const tracker = new EditorTracker(mockApp, mockPlugin);
 		tracker.handleEditorChange();
 
-		expect(mockPlugin.lastEditTime).toBeGreaterThan(0);
 		expect(mockPlugin.calculateAccurateWords).toHaveBeenCalledWith('这是测试网络小说第1章内容。');
 		expect(mockApp.workspace.trigger).toHaveBeenCalledWith(
 			'webnovel:editor-word-count-updated',
@@ -98,6 +97,9 @@ describe('EditorTracker', () => {
 
 		expect(mockPlugin.cacheManager.updateFileCache).not.toHaveBeenCalled();
 		expect(mockApp.workspace.trigger).not.toHaveBeenCalled();
+		expect(mockPlugin.lastFileWords).toBe(10);
+		expect(mockPlugin.refreshStatusViews).not.toHaveBeenCalled();
+		expect(mockPlugin.statusBarItemEl.setText).toHaveBeenCalled();
 	});
 
 	it('should record editor changes for any eligible file', () => {

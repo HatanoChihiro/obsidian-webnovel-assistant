@@ -1,5 +1,5 @@
 import type { App, TextAreaComponent } from 'obsidian';
-import { Modal, PluginSettingTab, Setting, Notice, TFile } from 'obsidian';
+import { Modal, PluginSettingTab, Setting, Notice, TFile, MarkdownView } from 'obsidian';
 import type { Plugin } from 'obsidian';
 import { isDesktop, isMobile, getPlatformTier } from '../utils/platform';
 import { ObsOverlayServer } from '../services/ObsServer';
@@ -674,6 +674,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 
 	// ── 创作辅助设置 ──
 	private displayCreativeSettings(containerEl: HTMLElement): void {
+		this.displayEditorTypewriterSettings(containerEl);
 		this.displayStickyNoteSettings(containerEl);
 		this.displayForeshadowingSettings(containerEl);
 		this.displayTimelineSettings(containerEl);
@@ -1130,6 +1131,83 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		renderRules();
 	}
 
+	private refreshOpenEditors(): void {
+		this.app.workspace.updateOptions();
+		const leaves = this.app.workspace.getLeavesOfType('markdown');
+		for (const leaf of leaves) {
+			const view = leaf.view;
+			if (view instanceof MarkdownView && view.editor) {
+				const cm = (view.editor as unknown as { cm?: { dispatch: (tr: Record<string, unknown>) => void } }).cm;
+				if (cm && typeof cm.dispatch === 'function') {
+					cm.dispatch({});
+				}
+			}
+		}
+	}
+
+	// ── 普通编辑打字机设置 ──
+	private displayEditorTypewriterSettings(containerEl: HTMLElement): void {
+		new Setting(containerEl).setName(t('setting.editor-typewriter-title')).setHeading();
+
+		new Setting(containerEl)
+			.setName(t('setting.editor-typewriter-enable'))
+			.setDesc(t('setting.editor-typewriter-enable-desc'))
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.editorTypewriter?.enabled ?? false)
+				.onChange(async (value) => {
+					if (!this.plugin.settings.editorTypewriter) {
+						this.plugin.settings.editorTypewriter = {
+							enabled: false,
+							centerOffset: 0,
+							unfocusedOpacity: 0.4
+						};
+					}
+					this.plugin.settings.editorTypewriter.enabled = value;
+					await this.plugin.saveSettings();
+					this.refreshOpenEditors();
+				}));
+
+		new Setting(containerEl)
+			.setName(t('setting.editor-typewriter-offset'))
+			.setDesc(t('setting.editor-typewriter-offset-desc'))
+			.addSlider(slider => slider
+				.setLimits(-30, 30, 1)
+				.setValue(this.plugin.settings.editorTypewriter?.centerOffset ?? 0)
+				.setDynamicTooltip()
+				.onChange(async (value) => {
+					if (!this.plugin.settings.editorTypewriter) {
+						this.plugin.settings.editorTypewriter = {
+							enabled: false,
+							centerOffset: 0,
+							unfocusedOpacity: 0.4
+						};
+					}
+					this.plugin.settings.editorTypewriter.centerOffset = value;
+					await this.plugin.saveSettings();
+					this.refreshOpenEditors();
+				}));
+
+		new Setting(containerEl)
+			.setName(t('setting.editor-typewriter-opacity'))
+			.setDesc(t('setting.editor-typewriter-opacity-desc'))
+			.addSlider(slider => slider
+				.setLimits(0.1, 1.0, 0.05)
+				.setValue(this.plugin.settings.editorTypewriter?.unfocusedOpacity ?? 0.4)
+				.setDynamicTooltip()
+				.onChange(async (value) => {
+					if (!this.plugin.settings.editorTypewriter) {
+						this.plugin.settings.editorTypewriter = {
+							enabled: false,
+							centerOffset: 0,
+							unfocusedOpacity: 0.4
+						};
+					}
+					this.plugin.settings.editorTypewriter.unfocusedOpacity = value;
+					await this.plugin.saveSettings();
+					this.refreshOpenEditors();
+				}));
+	}
+
 	// ── 悬浮便签设置 ──
 	private displayStickyNoteSettings(containerEl: HTMLElement): void {
 		new Setting(containerEl).setName(t('setting.sticky-notes')).setHeading();
@@ -1304,6 +1382,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 							activeDocument.body.classList.remove('wn-typewriter-active');
 						}
 					}
+					this.refreshOpenEditors();
 				}));
 
 		new Setting(containerEl)
@@ -1316,6 +1395,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.immersive.typewriterCenterOffset = value;
 					await this.plugin.saveSettings();
+					this.refreshOpenEditors();
 				}));
 
 		new Setting(containerEl)
@@ -1332,6 +1412,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					if (activeDocument.body.classList.contains('immersive-mode-active')) {
 						activeDocument.body.setCssProps({ '--wn-typewriter-opacity': String(value) });
 					}
+					this.refreshOpenEditors();
 				}));
 
 		new Setting(containerEl).setName(t('setting.immersive-dashboard-toggles')).setHeading();
@@ -1872,7 +1953,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					typo.enabled = value;
 					await this.plugin.saveSettings();
-					this.plugin.typographyManager.updateTypography();
+					this.plugin.typographyManager.updateTypography(true);
 					this.display();
 				}));
 
@@ -1888,7 +1969,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					typo.enableGlobal = value;
 					await this.plugin.saveSettings();
-					this.plugin.typographyManager.updateTypography();
+					this.plugin.typographyManager.updateTypography(true);
 					this.display();
 				}));
 
@@ -1901,7 +1982,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					typo.applyToChapters = value;
 					await this.plugin.saveSettings();
-					this.plugin.typographyManager.updateTypography();
+					this.plugin.typographyManager.updateTypography(true);
 				}));
 
 		new Setting(containerEl)
@@ -1913,7 +1994,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					typo.applyToOther = value;
 					await this.plugin.saveSettings();
-					this.plugin.typographyManager.updateTypography();
+					this.plugin.typographyManager.updateTypography(true);
 				}));
 
 		new Setting(containerEl)
@@ -1938,7 +2019,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					typo.applyToLore = value;
 					await this.plugin.saveSettings();
-					this.plugin.typographyManager.updateTypography();
+					this.plugin.typographyManager.updateTypography(true);
 				}));
 
 		new Setting(containerEl)
@@ -1948,7 +2029,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					typo.applyToNovelInfo = value;
 					await this.plugin.saveSettings();
-					this.plugin.typographyManager.updateTypography();
+					this.plugin.typographyManager.updateTypography(true);
 				}));
 
 		new Setting(containerEl)
@@ -1958,7 +2039,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					typo.applyToTimeline = value;
 					await this.plugin.saveSettings();
-					this.plugin.typographyManager.updateTypography();
+					this.plugin.typographyManager.updateTypography(true);
 				}));
 
 		new Setting(containerEl)
@@ -1968,7 +2049,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					typo.applyToForeshadowing = value;
 					await this.plugin.saveSettings();
-					this.plugin.typographyManager.updateTypography();
+					this.plugin.typographyManager.updateTypography(true);
 				}));
 
 		new Setting(containerEl)
@@ -1978,7 +2059,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					typo.applyToTask = value;
 					await this.plugin.saveSettings();
-					this.plugin.typographyManager.updateTypography();
+					this.plugin.typographyManager.updateTypography(true);
 				}));
 
 		// 3. 详细排版参数
@@ -2116,7 +2197,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					typo.enableReadingModeCompat = value;
 					await this.plugin.saveSettings();
-					this.plugin.typographyManager.updateTypography();
+					this.plugin.typographyManager.updateTypography(true);
 				}));
 	}
 }

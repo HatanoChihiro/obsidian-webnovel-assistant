@@ -10,38 +10,39 @@ const mockWindow = {
 
 Object.assign(globalThis, { window: mockWindow });
 
-export class TFile {
+export class TAbstractFile {
 	name: string = '';
 	path: string = '';
-	extension: string = 'md';
-	basename: string = '';
+	vault: any = {};
+	parent: TFolder | null = null;
 
 	constructor(name: string = '', path: string = '') {
 		this.name = name;
 		this.path = path;
+	}
+}
+
+export class TFile extends TAbstractFile {
+	extension: string = 'md';
+	basename: string = '';
+	stat: any = {};
+
+	constructor(name: string = '', path: string = '') {
+		super(name, path);
 		this.basename = name ? name.replace(/\.[^/.]+$/, '') : '';
 		this.extension = name && name.includes('.') ? name.split('.').pop() || 'md' : 'md';
 	}
 }
 
-export class TFolder {
-	name: string = '';
-	path: string = '';
+export class TFolder extends TAbstractFile {
 	children: (TFile | TFolder)[] = [];
 
 	constructor(name: string = '', path: string = '') {
-		this.name = name;
-		this.path = path;
+		super(name, path);
 	}
-}
 
-export class TAbstractFile {
-	name: string = '';
-	path: string = '';
-
-	constructor(name: string = '', path: string = '') {
-		this.name = name;
-		this.path = path;
+	isRoot(): boolean {
+		return this.path === '/' || this.path === '';
 	}
 }
 

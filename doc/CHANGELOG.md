@@ -1,3 +1,51 @@
+## 🔧 v3.9.3
+
+### 新增功能
+
+- **普通编辑打字机滚动**：在“创作辅助”中新增默认关闭的普通编辑打字机设置，可独立控制居中偏移与未聚焦行透明度；进入沉浸模式后仅使用沉浸模式设置，两套配置互不影响。
+
+### 功能优化
+
+- **设定一览与悬浮便签渲染资源管理**：优化设定一览面板与悬浮便签在反复切换、编辑和刷新时的资源管理，减少重复渲染产生的资源累积，提升长时间写作与频繁交互下的界面流畅度。
+- **时间轴与阅读视图性能优化**：优化时间轴看板章节关联解析，避免冗余匹配计算；精细化排版参数变更的响应机制，纯样式调整不再触发不必要的阅读视图重渲染，提升大文档与多章节切换时的响应速度。
+- **沉浸模式进入性能**：进入沉浸模式时先一次完成面板布局，再逐步加载辅助视图；已打开的章节编辑器不再重复载入，减少面板反复缩放与集中加载造成的等待和卡顿。
+- **专注活动识别**：编辑大纲、设定、参考文档或不计入字数的章节时，键盘输入现在也会立即恢复专注状态；字数、净增与写作历史仍只统计符合条件的章节。
+
+### Bug 修复
+
+- **沉浸模式长段落打字机定位**：修复长段落自动换行后，段尾编辑行可能被挤出编辑器底部、无法保持居中的问题；打字机滚动现在会跟随光标所在的实际视觉行。
+- **打字机手动回看控制**：修复自动居中的平滑动画超过内部计时后，向上滚轮仍可能被残留动画拉回光标，以及光标未实际移动的选区更新提前恢复跟随的问题；手动滚动现在会立即取得并保持视口控制权。
+- **沉浸模式辅助面板尺寸稳定性**：修复反复进入和退出沉浸模式时分屏节点残留固定像素尺寸与伸缩限制，导致顶部等辅助区域逐次变高的问题；采用原生百分比语义并彻底清理残留固定样式，且仅在实际拖动分隔条后保存尺寸。
+- **时间轴事件卡片编辑滚动稳定性**：修复编辑超长事件描述时切换编辑态导致滚动容器重建、光标跟随跳动及内部出现双滚动条的问题；现在查看与编辑模式统一复用事件描述框自身作为唯一滚动容器，并在底部保留一行缓冲，改善末行自动换行时的可见性，同时保持卡片布局与滚动条位置稳定。
+- **设定一览与便签编辑底部缓冲**：设定一览卡片、便签列表卡片与桌面悬浮便签在原生编辑区域底部补充约一行缓冲与滚动内边距，改善超长内容末行自动换行时的即时可见性，同时保持固定尺寸与独立滚动行为稳定。
+- **工作台便签编辑稳定性**：修复在创作工作台的便签管理中编辑便签时，关联笔记自动保存或文件元数据刷新导致整个工作台重建并退出编辑态的问题；便签管理模式下忽略通用文件与元数据变动引发的看板重载，保持卡片编辑状态稳定。
+- **便签编辑状态同步**：同一便签的编辑或预览状态现在会在工作台、便签列表、沉浸模式与桌面悬浮便签之间自动同步并持久化；退出后重新进入相应视图时仍会恢复上次状态。
+
+### English Changelog
+
+#### New Features
+
+- **Typewriter Scrolling in Regular Editing**: Added a disabled-by-default typewriter option under Creative Assistance with independent center-offset and unfocused-line opacity controls; Immersive Mode continues to use only its own separate settings.
+
+#### Enhancements
+
+- **Lore Overview & Floating Note Resource Management**: Improved resource management across repeated switching, editing, and refreshing in Lore Overview and Floating Sticky Notes, reducing resource accumulation and keeping the interface smooth during long writing sessions.
+- **Timeline & Reading View Performance**: Streamlined chapter-reference resolution on the Timeline Board to eliminate redundant processing; refined typography setting responses so pure style updates no longer trigger unnecessary reading-view re-renders, improving responsiveness when working with large documents and navigating chapters.
+- **Immersive Mode Entry Performance**: Immersive Mode now establishes its panel layout before progressively loading auxiliary views, while keeping the already-open chapter editor instead of reloading it, reducing repeated panel resizing and delays caused by loading every view at once.
+- **Focus Activity Detection**: Keyboard input now immediately restores focus activity while editing outlines, lore, references, or chapters excluded from word counts; word totals, session gains, and writing history remain limited to eligible chapters.
+
+#### Bug Fixes
+
+- **Typewriter Positioning in Long Paragraphs**: Fixed the active editing row near the end of a long wrapped paragraph being pushed below the editor viewport; typewriter scrolling now follows the caret's actual visual row.
+- **Manual Review Control in Typewriter Mode**: Fixed upward wheel scrolling being pulled back toward the caret when a native smooth-centering animation outlived its internal timer, and prevented unchanged selection updates from prematurely resuming follow mode; manual scrolling now immediately takes and retains viewport control.
+- **Stable Auxiliary Panel Sizes in Immersive Mode**: Fixed an issue where repeated entry into Immersive Mode left lingering fixed-pixel dimensions and flex constraints on split panes, causing auxiliary areas such as the top panel to progressively grow; panel sizing now uses native percentage dimensions with cleanup of fixed inline styles and persists only after an actual divider drag.
+- **Timeline Event Card Editing Scroll Stability**: Fixed an issue where editing overlong event descriptions rebuilt the scroll container, caused caret jumpiness, or produced nested scrollbars when switching to edit mode; viewing and editing now share the description box itself as the sole scroll container, with one line of bottom breathing room to improve visibility as the final line wraps while preserving the card layout and scrollbar position.
+- **Lore Card & Sticky Note Editing Bottom Buffer**: Added approximately one line of bottom buffer and scroll padding directly to the native editors in Lore Overview cards, sticky-note list cards, and desktop floating sticky notes, improving immediate visibility as an overlong final line wraps while keeping fixed dimensions and native scrolling stable.
+- **Workbench Sticky Note Editing Stability**: Fixed an issue where editing a sticky note card in Writing Workbench Sticky Note Management prematurely exited edit mode to reading mode when linked note autosave or file metadata refreshed; generic file and metadata refresh events now bypass board reloads while in sticky mode to keep card editing uninterrupted.
+- **Sticky Note Edit-State Sync**: A sticky note's edit or preview state now stays synchronized and persisted across Workbench, Sticky Note List, Immersive Mode, and desktop floating notes, and is restored when those views are reopened.
+
+---
+
 ## 🔧 v3.9.2
 
 ### 功能优化

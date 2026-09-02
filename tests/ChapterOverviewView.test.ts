@@ -451,7 +451,7 @@ describe('ChapterOverviewView', () => {
 		expect(CorkboardGridRenderer.render).not.toHaveBeenCalled();
 		expect(view.contentEl.querySelector('.wn-corkboard-empty-msg')).not.toBeNull();
 
-		const renderedInput = view.contentEl.querySelector('.wn-workbench-filter-input');
+		const renderedInput = view.contentEl.querySelector<HTMLInputElement>('.wn-workbench-filter-input');
 		expect(renderedInput).not.toBeNull();
 		expect(renderedInput?.value).toBe('不存在的章节关键词');
 		expect(renderedInput?.focus).toHaveBeenCalled();

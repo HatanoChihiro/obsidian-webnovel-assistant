@@ -9,6 +9,8 @@ body .webnovel-immersive-note-textarea,
 	min-height: 200px;
 	resize: none;
 	padding: 8px;
+	padding-bottom: calc(8px + 1.5em);
+	scroll-padding-bottom: calc(8px + 1.5em);
 	border: none;
 	background: transparent;
 	color: inherit;

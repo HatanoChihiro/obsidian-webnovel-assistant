@@ -13,8 +13,8 @@ let hasErrors = false;
 project.getSourceFiles().forEach(sourceFile => {
 	const filePath = sourceFile.getFilePath();
 	
-	// Skip node_modules and scripts
-	if (filePath.includes('node_modules') || filePath.includes('scripts')) return;
+	// Skip node_modules, scripts, and tests
+	if (filePath.includes('node_modules') || filePath.includes('scripts') || filePath.includes('tests')) return;
 
 	// 1. Check for 'document' usage (should use 'activeDocument')
 	const identifiers = sourceFile.getDescendantsOfKind(SyntaxKind.Identifier);

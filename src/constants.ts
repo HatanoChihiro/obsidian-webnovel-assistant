@@ -323,6 +323,13 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 	nextNoteThemeIndex: 0,
 	stickyNoteAutoSave: true,
 
+	// 普通编辑器打字机默认设置
+	editorTypewriter: {
+		enabled: false,
+		centerOffset: 0,
+		unfocusedOpacity: 0.4,
+	},
+
 	// 沉浸模式默认设置
 	immersive: {
 		immersiveTopSlots: ['immersive-sticky-notes-view', 'foreshadowing-view', 'wn-timeline-view'],

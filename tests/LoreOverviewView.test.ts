@@ -187,6 +187,20 @@ vi.stubGlobal('window', {
 	clearTimeout: globalThis.clearTimeout
 });
 
+const { mockComponentInstances, MockComponent } = vi.hoisted(() => {
+	const instances: HoistedMockComponent[] = [];
+	class HoistedMockComponent {
+		load = vi.fn();
+		unload = vi.fn();
+		register = vi.fn();
+		registerEvent = vi.fn();
+		constructor() {
+			instances.push(this);
+		}
+	}
+	return { mockComponentInstances: instances, MockComponent: HoistedMockComponent };
+});
+
 vi.mock('obsidian', () => {
 	class MockItemView {
 		app: unknown;
@@ -214,6 +228,7 @@ vi.mock('obsidian', () => {
 	}
 
 	return {
+		Component: MockComponent,
 		ItemView: MockItemView,
 		TFile: MockTFile,
 		setIcon: vi.fn()
@@ -266,7 +281,8 @@ describe('LoreOverviewView', () => {
 		plugin = {
 			app: mockApp,
 			adaptiveDebounceManager: {
-				debounceFixed: vi.fn((key: string, fn: () => void) => { fn(); })
+				debounceFixed: vi.fn((key: string, fn: () => void) => { fn(); }),
+				cancel: vi.fn()
 			},
 			characterManager: {
 				ensureInitialized: vi.fn().mockResolvedValue(undefined),
@@ -317,7 +333,7 @@ describe('LoreOverviewView', () => {
 			['林默', '阿默', '苏晴'],
 			undefined,
 			expect.any(Function),
-			view,
+			expect.any(MockComponent),
 			{ hideTabs: true }
 		);
 	});
@@ -341,7 +357,7 @@ describe('LoreOverviewView', () => {
 			['林默', '阿默', '苏晴'],
 			new Set(['林默']),
 			expect.any(Function),
-			view,
+			expect.any(MockComponent),
 			{ hideTabs: true }
 		);
 	});
@@ -425,5 +441,110 @@ describe('LoreOverviewView', () => {
 		const view = new LoreOverviewView(mockLeaf, plugin);
 		await view.onClose();
 		expect(cancelSpy).toHaveBeenCalledWith('lore-overview-refresh');
+	});
+
+	it('unloads prior render component on new successful render generation', async () => {
+		getCurrentBookContextMock.mockReturnValue('NovelA');
+		const view = new LoreOverviewView(mockLeaf, plugin);
+
+		mockComponentInstances.length = 0;
+		await view.onOpen();
+
+		expect(mockComponentInstances.length).toBe(1);
+		const firstComponent = mockComponentInstances[0];
+		expect(firstComponent.load).toHaveBeenCalled();
+		expect(firstComponent.unload).not.toHaveBeenCalled();
+
+		await view.reloadBoard();
+
+		expect(mockComponentInstances.length).toBe(2);
+		const secondComponent = mockComponentInstances[1];
+		expect(secondComponent.load).toHaveBeenCalled();
+		expect(firstComponent.unload).toHaveBeenCalledTimes(1);
+		expect(secondComponent.unload).not.toHaveBeenCalled();
+	});
+
+	it('unloads stale render component immediately and keeps displayed generation alive', async () => {
+		getCurrentBookContextMock.mockReturnValue('NovelA');
+		const view = new LoreOverviewView(mockLeaf, plugin);
+		await view.onOpen();
+
+		mockComponentInstances.length = 0;
+
+		let finishFirstRender: () => void = () => {};
+		let markFirstRenderStarted: () => void = () => {};
+		const firstRenderStarted = new Promise<void>(resolve => { markFirstRenderStarted = resolve; });
+		const renderGate = new Promise<void>(resolve => { finishFirstRender = resolve; });
+
+		(LoreBoardRenderer.renderCards as ReturnType<typeof vi.fn>).mockImplementationOnce(async () => {
+			markFirstRenderStarted();
+			await renderGate;
+		});
+
+		const slowRenderPromise = view.reloadBoard();
+		await firstRenderStarted;
+
+		const slowComponent = mockComponentInstances[0];
+		expect(slowComponent).toBeDefined();
+
+		// Start and finish a fast render that bumps renderId
+		(LoreBoardRenderer.renderCards as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
+		await view.reloadBoard();
+		const fastComponent = mockComponentInstances[1];
+		expect(fastComponent.load).toHaveBeenCalled();
+		expect(fastComponent.unload).not.toHaveBeenCalled();
+
+		// Resolve slow render -> should detect stale and unload slowComponent
+		finishFirstRender();
+		await slowRenderPromise;
+
+		expect(slowComponent.unload).toHaveBeenCalledTimes(1);
+		// fastComponent must still be alive as displayed
+		expect(fastComponent.unload).not.toHaveBeenCalled();
+	});
+
+	it('unloads displayed component and in-flight component on close', async () => {
+		getCurrentBookContextMock.mockReturnValue('NovelA');
+		const view = new LoreOverviewView(mockLeaf, plugin);
+		await view.onOpen();
+
+		const displayedComponent = mockComponentInstances[mockComponentInstances.length - 1];
+
+		let finishInFlight: () => void = () => {};
+		let markInFlightStarted: () => void = () => {};
+		const inFlightStarted = new Promise<void>(resolve => { markInFlightStarted = resolve; });
+		const inFlightGate = new Promise<void>(resolve => { finishInFlight = resolve; });
+		(LoreBoardRenderer.renderCards as ReturnType<typeof vi.fn>).mockImplementationOnce(async () => {
+			markInFlightStarted();
+			await inFlightGate;
+		});
+
+		const inFlightPromise = view.reloadBoard();
+		await inFlightStarted;
+		const inFlightComponent = mockComponentInstances[mockComponentInstances.length - 1];
+
+		// Close while render is in flight
+		await view.onClose();
+		expect(displayedComponent.unload).toHaveBeenCalled();
+
+		finishInFlight();
+		await inFlightPromise;
+
+		expect(inFlightComponent.unload).toHaveBeenCalled();
+	});
+
+	it('unloads render component on render failure and rethrows', async () => {
+		getCurrentBookContextMock.mockReturnValue('NovelA');
+		const view = new LoreOverviewView(mockLeaf, plugin);
+		mockComponentInstances.length = 0;
+
+		(LoreBoardRenderer.renderCards as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('Render error'));
+
+		await expect(view.onOpen()).rejects.toThrow('Render error');
+
+		expect(mockComponentInstances.length).toBe(1);
+		const failedComponent = mockComponentInstances[0];
+		expect(failedComponent.load).toHaveBeenCalled();
+		expect(failedComponent.unload).toHaveBeenCalled();
 	});
 });

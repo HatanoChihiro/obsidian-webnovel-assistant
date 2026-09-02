@@ -30,8 +30,6 @@ export class EditorTracker {
 			return;
 		}
 
-		this.plugin.lastEditTime = Date.now();
-
 		// [BUGFIX] 如果当前文件与上次记录的文件不符，说明 active-leaf-change 还没来得及更新 lastFileWords
 		// 此时不应计算 delta，而是应该先同步文件状态
 		if (!view.file || view.file.path !== this.plugin.lastFilePath) {

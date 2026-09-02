@@ -1,15 +1,16 @@
 import { ViewPlugin, type ViewUpdate, Decoration, type DecorationSet, type EditorView } from '@codemirror/view';
 import { RangeSetBuilder, type Extension } from '@codemirror/state';
-import type { ImmersiveModeSettings } from '../types/settings';
+import type { ImmersiveModeSettings, EditorTypewriterSettings } from '../types/settings';
 
 export interface TypewriterExtensionPlugin {
 	settings: {
-		immersive: Pick<ImmersiveModeSettings, 'typewriterEnabled' | 'typewriterCenterOffset'>;
+		immersive: Pick<ImmersiveModeSettings, 'typewriterEnabled' | 'typewriterCenterOffset' | 'typewriterUnfocusedOpacity'>;
+		editorTypewriter?: Pick<EditorTypewriterSettings, 'enabled' | 'centerOffset' | 'unfocusedOpacity'>;
 	};
 }
 
 /**
- * 沉浸模式打字机 CodeMirror 6 扩展
+ * 打字机 CodeMirror 6 扩展（支持沉浸模式与普通编辑模式）
  * 功能：
  * 1. 光标行精准居中滚动（算入 .cm-sizer 的 50vh 上留白与标题高度，保持 0% 偏移处于主编辑区正中心）
  * 2. 焦点行高亮与非焦点行平滑淡化
@@ -33,6 +34,7 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 			this.view = view;
 			this.ownerDocument = view.scrollDOM.ownerDocument;
 			this.ownerWindow = this.ownerDocument.defaultView ?? window;
+			this.syncDomState();
 			this.decorations = this.buildDecorations(view);
 
 			if (view.scrollDOM) {
@@ -50,15 +52,51 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 			this.ownerDocument.addEventListener('touchcancel', this.onPointerUp);
 		}
 
-		private isImmersiveTypewriterActive(): boolean {
-			return this.ownerDocument.body.classList.contains('immersive-mode-active') && !!plugin.settings.immersive.typewriterEnabled;
+		private getActiveConfig(): { isActive: boolean; centerOffset: number; unfocusedOpacity: number } {
+			const isImmersive = this.ownerDocument.body.classList.contains('immersive-mode-active');
+			if (isImmersive) {
+				return {
+					isActive: Boolean(plugin.settings.immersive?.typewriterEnabled),
+					centerOffset: plugin.settings.immersive?.typewriterCenterOffset ?? 0,
+					unfocusedOpacity: plugin.settings.immersive?.typewriterUnfocusedOpacity ?? 0.4
+				};
+			}
+			return {
+				isActive: Boolean(plugin.settings.editorTypewriter?.enabled),
+				centerOffset: plugin.settings.editorTypewriter?.centerOffset ?? 0,
+				unfocusedOpacity: plugin.settings.editorTypewriter?.unfocusedOpacity ?? 0.4
+			};
+		}
+
+		private isTypewriterActive(): boolean {
+			return this.getActiveConfig().isActive;
+		}
+
+		private syncDomState(): void {
+			if (!this.view.dom) return;
+			const config = this.getActiveConfig();
+			if (config.isActive) {
+				if (!this.view.dom.classList.contains('wn-typewriter-active')) {
+					this.view.dom.classList.add('wn-typewriter-active');
+				}
+				const currentOpacity = this.view.dom.style.getPropertyValue('--wn-typewriter-opacity');
+				const targetOpacity = String(config.unfocusedOpacity);
+				if (currentOpacity !== targetOpacity) {
+					this.view.dom.style.setProperty('--wn-typewriter-opacity', targetOpacity);
+				}
+			} else {
+				if (this.view.dom.classList.contains('wn-typewriter-active')) {
+					this.view.dom.classList.remove('wn-typewriter-active');
+				}
+				this.view.dom.style.removeProperty('--wn-typewriter-opacity');
+			}
 		}
 
 		private onWheel = (): void => {
 			this.isManualScrolling = true;
 			this.gestureScrolled = true;
 			this.cancelPendingCenter();
-			this.cancelSmoothScroll();
+			this.cancelSmoothScroll(true);
 		};
 
 		private onTouchStart = (): void => {
@@ -66,14 +104,14 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 			this.gestureScrolled = false;
 			this.pendingClickSelection = false;
 			this.cancelPendingCenter();
-			this.cancelSmoothScroll();
+			this.cancelSmoothScroll(true);
 		};
 
 		private onTouchMove = (): void => {
 			this.isManualScrolling = true;
 			this.gestureScrolled = true;
 			this.cancelPendingCenter();
-			this.cancelSmoothScroll();
+			this.cancelSmoothScroll(true);
 		};
 
 		private onPointerDown = (): void => {
@@ -81,7 +119,7 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 			this.gestureScrolled = false;
 			this.pendingClickSelection = false;
 			this.cancelPendingCenter();
-			this.cancelSmoothScroll();
+			this.cancelSmoothScroll(true);
 		};
 
 		private onScroll = (): void => {
@@ -103,7 +141,7 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 				return;
 			}
 
-			if (this.pendingClickSelection && this.view.state.selection.main.empty && this.isImmersiveTypewriterActive()) {
+			if (this.pendingClickSelection && this.view.state.selection.main.empty && this.isTypewriterActive()) {
 				this.pendingClickSelection = false;
 				this.isManualScrolling = false;
 				this.cancelSmoothScroll();
@@ -118,12 +156,12 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 			}
 		}
 
-		private cancelSmoothScroll(): void {
+		private cancelSmoothScroll(force = false): void {
 			if (this.scrollTimer !== null) {
 				this.ownerWindow.clearTimeout(this.scrollTimer);
 				this.scrollTimer = null;
 			}
-			if (this.isScrolling && this.view.scrollDOM) {
+			if ((force || this.isScrolling) && this.view.scrollDOM) {
 				const currentTop = this.view.scrollDOM.scrollTop;
 				this.view.scrollDOM.scrollTo({
 					top: currentTop,
@@ -144,6 +182,10 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 		destroy() {
 			this.cancelSmoothScroll();
 			this.cancelPendingCenter();
+			if (this.view.dom) {
+				this.view.dom.classList.remove('wn-typewriter-active');
+				this.view.dom.style.removeProperty('--wn-typewriter-opacity');
+			}
 			if (this.view.scrollDOM) {
 				this.view.scrollDOM.removeEventListener('pointerdown', this.onPointerDown);
 				this.view.scrollDOM.removeEventListener('mousedown', this.onPointerDown);
@@ -160,10 +202,11 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 		}
 
 		update(update: ViewUpdate) {
+			this.syncDomState();
 			this.decorations = this.buildDecorations(update.view);
 
-			// 仅在沉浸模式且打字机功能开启时生效
-			if (!this.isImmersiveTypewriterActive()) {
+			// 仅在当前模式下打字机功能开启时生效
+			if (!this.isTypewriterActive()) {
 				this.hasInitialCentered = false;
 				this.cancelPendingCenter();
 				return;
@@ -179,8 +222,12 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 				return;
 			}
 
+			const isSelectionChanged = Boolean(
+				update.selectionSet && !update.startState.selection.eq(update.state.selection)
+			);
+
 			// 指针未按住时的明确用户编辑或键盘移动光标操作，恢复打字机跟随
-			if (update.docChanged || update.selectionSet) {
+			if (update.docChanged || isSelectionChanged) {
 				this.isManualScrolling = false;
 				this.cancelSmoothScroll();
 			}
@@ -195,15 +242,16 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 				return;
 			}
 
-			// 刚进入沉浸模式时的初始化定位，或光标移动/输入文本时触发居中滚动
-			if (!this.hasInitialCentered || update.selectionSet || update.docChanged) {
+			// 刚进入打字机模式时的初始化定位，或光标移动/输入文本时触发居中滚动
+			if (!this.hasInitialCentered || isSelectionChanged || update.docChanged) {
 				this.hasInitialCentered = true;
 				this.scheduleCenter(update.view);
 			}
 		}
 
 		private centerCursorLine(view: EditorView) {
-			if (!this.isImmersiveTypewriterActive()) return;
+			const config = this.getActiveConfig();
+			if (!config.isActive) return;
 			if (this.isManualScrolling || this.isPointerDown || !view.state.selection.main.empty) return;
 			if (this.isScrolling) return;
 
@@ -211,23 +259,30 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 			const scroller = view.scrollDOM;
 			if (!scroller || scroller.clientHeight === 0) return;
 
-			const lineBlock = view.lineBlockAt(head);
 			const scrollerRect = scroller.getBoundingClientRect();
-			const contentRect = view.contentDOM.getBoundingClientRect();
-
-			// 偏移量：.cm-content 相对 .cm-scroller 的真实 DOM 上边距（包含 .cm-sizer 的 50vh 上留白与标题高度）
-			const contentTopInScroller = (contentRect.top - scrollerRect.top) + scroller.scrollTop;
-
-			// 光标在 .cm-scroller 整体文档中的真实物理纵坐标中心
-			const lineCenterInScroller = contentTopInScroller + lineBlock.top + (lineBlock.height / 2);
-
 			const viewportHeight = scroller.clientHeight;
-			const centerOffset = plugin.settings.immersive.typewriterCenterOffset || 0;
+			const centerOffset = config.centerOffset;
 			// 0% 即为主编辑区正中心 (50% 视口高度)
 			const targetCenterRatio = 0.5 + (centerOffset / 100);
 			const targetCenterPx = viewportHeight * targetCenterRatio;
 
-			const desiredScrollTop = lineCenterInScroller - targetCenterPx;
+			const coords = view.coordsAtPos ? view.coordsAtPos(head) : null;
+			let caretCenterInScroller: number;
+
+			if (coords) {
+				// 光标在 .cm-scroller 视口内的相对纵坐标中心
+				const caretCenterInViewport = ((coords.top + coords.bottom) / 2) - scrollerRect.top;
+				// 转换为 .cm-scroller 整体滚动内容中的绝对纵坐标
+				caretCenterInScroller = caretCenterInViewport + scroller.scrollTop;
+			} else {
+				// 降级路径：当无法获取光标视觉坐标时（如未完成渲染测量），回退至逻辑行块中点
+				const contentRect = view.contentDOM.getBoundingClientRect();
+				const lineBlock = view.lineBlockAt(head);
+				const contentTopInScroller = (contentRect.top - scrollerRect.top) + scroller.scrollTop;
+				caretCenterInScroller = contentTopInScroller + lineBlock.top + (lineBlock.height / 2);
+			}
+
+			const desiredScrollTop = caretCenterInScroller - targetCenterPx;
 
 			// 如果偏差超过 2 像素，平滑滚动至目标位置
 			if (Math.abs(scroller.scrollTop - desiredScrollTop) > 2) {
@@ -245,7 +300,7 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 		}
 
 		private buildDecorations(view: EditorView): DecorationSet {
-			if (!this.isImmersiveTypewriterActive()) {
+			if (!this.isTypewriterActive()) {
 				return Decoration.none;
 			}
 

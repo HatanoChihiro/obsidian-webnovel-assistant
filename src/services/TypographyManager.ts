@@ -19,10 +19,10 @@ export class TypographyManager {
 	/**
 	 * 刷新所有打开的 Markdown 视图的排版样式
 	 */
-	updateTypography(): void {
+	updateTypography(forceRerender: boolean = false): void {
 		const leaves = this.app.workspace.getLeavesOfType('markdown');
 		for (const leaf of leaves) {
-			this.applyToLeaf(leaf);
+			this.applyToLeaf(leaf, forceRerender);
 		}
 		for (const element of this.previewElements) {
 			this.applyTypographyToEl(element);
@@ -48,7 +48,7 @@ export class TypographyManager {
 	/**
 	 * 作用于单一 WorkspaceLeaf
 	 */
-	applyToLeaf(leaf: WorkspaceLeaf): void {
+	applyToLeaf(leaf: WorkspaceLeaf, forceRerender: boolean = false): void {
 		const containerEl = leaf.containerEl;
 		if (!containerEl) return;
 
@@ -70,7 +70,7 @@ export class TypographyManager {
 		}
 
 		// 强制触发阅读模式 (MarkdownPreviewView) 重渲染，使阅读模式兼容 (enableReadingModeCompat) 和排版设置即时生效，无需重载 Obsidian
-		if (leaf.view instanceof MarkdownView && leaf.view.previewMode) {
+		if (forceRerender && leaf.view instanceof MarkdownView && leaf.view.previewMode) {
 			const previewMode = leaf.view.previewMode as { rerender?: (full?: boolean) => void };
 			if (typeof previewMode.rerender === 'function') {
 				previewMode.rerender(true);
@@ -309,6 +309,12 @@ export class TypographyManager {
 	 * 销毁并清理所有注入的全局类与变量
 	 */
 	destroy(): void {
+		const leaves = this.app.workspace.getLeavesOfType('markdown');
+		for (const leaf of leaves) {
+			if (leaf.containerEl) {
+				this.removeTypographyFromEl(leaf.containerEl);
+			}
+		}
 		const docs = this.getAllDocuments();
 		for (const doc of docs) {
 			if (!doc.body) continue;

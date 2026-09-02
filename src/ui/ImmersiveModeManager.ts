@@ -1,5 +1,5 @@
 import { Logger } from '../utils/Logger';
-import type { App, EventRef, WorkspaceLeaf, TFile, WorkspaceSplit, WorkspaceItem } from 'obsidian';
+import type { App, WorkspaceLeaf, TFile, WorkspaceSplit, WorkspaceItem } from 'obsidian';
 import { MarkdownView, Notice, ToggleComponent } from 'obsidian';
 import { findBookRoot, type FindBookRootPlugin } from '../utils/path';
 import { t } from '../i18n';
@@ -90,7 +90,6 @@ export class ImmersiveModeManager {
 	private activeRightLeaf: WorkspaceLeaf | null = null;
 	private activeBottomLeaf: WorkspaceLeaf | null = null;
 	
-	private layoutChangeRef: EventRef | null = null;
 	private pendingTimers: Set<number> = new Set();
 	private createdImmersiveLeaves: Set<WorkspaceLeaf> = new Set();
 	private searchFocusCleanups: Array<() => void> = [];
@@ -98,8 +97,12 @@ export class ImmersiveModeManager {
 
 	private isTransitioning: boolean = false;
 	private isExiting: boolean = false;
+	private layoutGeneration: number = 0;
 	private fullscreenChangeHandler: ((evt: Event) => void) | null = null;
 	private fullscreenDocument: Document | null = null;
+	private resizePointerDownHandler: ((evt: Event) => void) | null = null;
+	private resizePointerUpHandler: ((evt: Event) => void) | null = null;
+	private isResizingSplit: boolean = false;
 	// 沉浸模式屏蔽 Esc：不使用 keydownHandler，fullscreenchange 处理全屏恢复
 
 	// 顶部栏元素缓存
@@ -159,11 +162,11 @@ export class ImmersiveModeManager {
 	 * 唯一退出途径：用户点击顶栏退出按钮 → exitImmersiveMode()。
 	 * fullscreenchange 仅作兜底守卫：若用户通过系统手势/macOS 绿点退出了全屏，
 	 * 检查 is-fullscreen 类名状态，若已丢失则重新进入。
+	 * 同时监听用户显式拖拽 .workspace-leaf-resize-handle 手势，以在拖拽结束后持久化比例。
 	 */
 	private registerImmersiveEventListeners(): void {
-		if (this.fullscreenChangeHandler && this.fullscreenDocument) {
-			this.fullscreenDocument.removeEventListener('fullscreenchange', this.fullscreenChangeHandler);
-		}
+		this.unregisterImmersiveEventListeners();
+
 		const fullscreenDocument = activeDocument;
 		this.fullscreenDocument = fullscreenDocument;
 
@@ -180,7 +183,48 @@ export class ImmersiveModeManager {
 			}
 		};
 
+		this.resizePointerDownHandler = (evt: Event) => {
+			const target = evt.target as Element | null;
+			const handle = target?.closest?.('.workspace-leaf-resize-handle');
+			if (handle && this.isImmersiveActive && !this.isExiting) {
+				this.isResizingSplit = true;
+			}
+		};
+
+		this.resizePointerUpHandler = () => {
+			if (this.isResizingSplit) {
+				this.isResizingSplit = false;
+				if (this.isImmersiveActive && !this.isExiting) {
+					this.saveCurrentPanelSizes();
+					this.plugin.saveSettings().catch(() => {});
+				}
+			}
+		};
+
 		fullscreenDocument.addEventListener('fullscreenchange', this.fullscreenChangeHandler);
+		fullscreenDocument.addEventListener('pointerdown', this.resizePointerDownHandler, true);
+		fullscreenDocument.addEventListener('pointerup', this.resizePointerUpHandler, true);
+		fullscreenDocument.addEventListener('pointercancel', this.resizePointerUpHandler, true);
+	}
+
+	private unregisterImmersiveEventListeners(): void {
+		if (this.fullscreenDocument) {
+			if (this.fullscreenChangeHandler) {
+				this.fullscreenDocument.removeEventListener('fullscreenchange', this.fullscreenChangeHandler);
+				this.fullscreenChangeHandler = null;
+			}
+			if (this.resizePointerDownHandler) {
+				this.fullscreenDocument.removeEventListener('pointerdown', this.resizePointerDownHandler, true);
+				this.resizePointerDownHandler = null;
+			}
+			if (this.resizePointerUpHandler) {
+				this.fullscreenDocument.removeEventListener('pointerup', this.resizePointerUpHandler, true);
+				this.fullscreenDocument.removeEventListener('pointercancel', this.resizePointerUpHandler, true);
+				this.resizePointerUpHandler = null;
+			}
+			this.fullscreenDocument = null;
+		}
+		this.isResizingSplit = false;
 	}
 
 	/**
@@ -363,6 +407,13 @@ export class ImmersiveModeManager {
 			}
 			this.cleanup();
 			this.sanitizeNormalWorkspace();
+			window.requestAnimationFrame(() => {
+				this.app.workspace.updateOptions();
+				const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+				if (activeView?.editor?.cm) {
+					activeView.editor.cm.dispatch({});
+				}
+			});
 			new Notice(t('immersive.enter-failed'));
 		} finally {
 			this.isTransitioning = false;
@@ -392,6 +443,7 @@ export class ImmersiveModeManager {
 		if (activeDocument.body && typeof activeDocument.body.getElementsByClassName === 'function') {
 			Array.from(activeDocument.body.getElementsByClassName('immersive-main-editor')).forEach(el => el.classList.remove('immersive-main-editor'));
 			Array.from(activeDocument.body.getElementsByClassName('immersive-reference-view')).forEach(el => el.classList.remove('immersive-reference-view'));
+			Array.from(activeDocument.body.getElementsByClassName('is-immersive-slot-pending')).forEach(el => el.classList.remove('is-immersive-slot-pending'));
 		}
 
 		if (detachedAny) {
@@ -412,10 +464,11 @@ export class ImmersiveModeManager {
 		if (this.isTransitioning || (!this.isImmersiveActive && !activeDocument.body.classList.contains('immersive-mode-active'))) return;
 		this.isTransitioning = true;
 		this.isExiting = true;
+		this.layoutGeneration++;
 
 		try {
-			// 1. 保存当前的辅助面板比例
-			this.saveCurrentPanelSizes();
+			// 1. 记录参考文档区状态（普通退出不测量或覆盖面板尺寸，避免累积漂移）
+			this.updateLastReferenceFilePath();
 			await this.plugin.saveSettings();
 
 			// 1.5 记录退出前那一刻主编辑区正在编辑的文件
@@ -542,18 +595,22 @@ export class ImmersiveModeManager {
 			this.sanitizeNormalWorkspace();
 			this.isTransitioning = false;
 			this.isExiting = false;
+			window.requestAnimationFrame(() => {
+				this.app.workspace.updateOptions();
+				const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+				if (activeView?.editor?.cm) {
+					activeView.editor.cm.dispatch({});
+				}
+			});
 			new Notice(t('immersive.exited'));
 		}
 	}
 
 	public cleanup(): void {
+		this.layoutGeneration++;
 		this.clearSearchSourceTracking();
 
-		if (this.fullscreenChangeHandler && this.fullscreenDocument) {
-			this.fullscreenDocument.removeEventListener('fullscreenchange', this.fullscreenChangeHandler);
-			this.fullscreenChangeHandler = null;
-		}
-		this.fullscreenDocument = null;
+		this.unregisterImmersiveEventListeners();
 
 		if (this.updateInterval) {
 			window.clearInterval(this.updateInterval);
@@ -563,11 +620,6 @@ export class ImmersiveModeManager {
 			window.clearTimeout(timer);
 		}
 		this.pendingTimers.clear();
-
-		if (this.layoutChangeRef) {
-			this.app.workspace.offref(this.layoutChangeRef);
-			this.layoutChangeRef = null;
-		}
 
 		// 强制解绑并卸载沉浸专属 Leaf 节点
 		for (const leaf of this.createdImmersiveLeaves) {
@@ -585,6 +637,7 @@ export class ImmersiveModeManager {
 		if (activeDocument.body && typeof activeDocument.body.getElementsByClassName === 'function') {
 			Array.from(activeDocument.body.getElementsByClassName('immersive-main-editor')).forEach(el => el.classList.remove('immersive-main-editor'));
 			Array.from(activeDocument.body.getElementsByClassName('immersive-reference-view')).forEach(el => el.classList.remove('immersive-reference-view'));
+			Array.from(activeDocument.body.getElementsByClassName('is-immersive-slot-pending')).forEach(el => el.classList.remove('is-immersive-slot-pending'));
 		}
 
 		this.removeTopBar();
@@ -608,6 +661,7 @@ export class ImmersiveModeManager {
 	private async buildImmersiveLayout(activeFile: TFile): Promise<void> {
 		const { workspace } = this.app;
 		const immersive = this.plugin.settings.immersive;
+		const currentGeneration = this.layoutGeneration;
 
 		// 1. 寻找当前主编辑器
 		let mainLeaf: WorkspaceLeaf | null = null;
@@ -637,26 +691,41 @@ export class ImmersiveModeManager {
 			}
 		}
 
-		// 获取当前状态以保留 source (Live Preview) 等设置
-		const currentState = mainLeaf.getViewState();
-		await mainLeaf.setViewState({
-			type: "markdown",
-			state: { ...currentState.state, file: activeFile.path, mode: 'source' },
-			active: true
-		});
-		mainLeaf.containerEl.classList.add('immersive-main-editor');
+		// 1.2 检查主编辑器状态，若已是目标文件的源码 Markdown 视图则避免重复 setViewState
+		const currentState = typeof mainLeaf.getViewState === 'function' ? mainLeaf.getViewState() : null;
+		const isAlreadyActiveSourceMarkdown =
+			currentState?.type === 'markdown' &&
+			currentState.state?.file === activeFile.path &&
+			currentState.state?.mode === 'source';
+
+		if (!isAlreadyActiveSourceMarkdown) {
+			await mainLeaf.setViewState({
+				type: "markdown",
+				state: { ...(currentState?.state || {}), file: activeFile.path, mode: 'source' },
+				active: true
+			});
+		}
+		mainLeaf.containerEl?.classList.add('immersive-main-editor');
 		this.searchSourceLeaf = mainLeaf;
 		this.trackSearchSourceLeaf(mainLeaf);
 
+		const pendingMounts: Array<{ leaf: WorkspaceLeaf; viewType: string }> = [];
 		const pendingSizes: Array<{ split: WorkspaceSplit; sizes: number[] }> = [];
 
-		const createSlotLeaves = async (slots: string[], direction: 'vertical' | 'horizontal', before: boolean, size: number, internalSizes: number[]) => {
+		const createSlotSkeleton = (
+			slots: string[],
+			direction: 'vertical' | 'horizontal',
+			before: boolean,
+			size: number,
+			internalSizes: number[]
+		): WorkspaceLeaf | null => {
 			if (!slots || slots.length === 0) return null;
 			const firstLeaf = workspace.createLeafBySplit(mainLeaf, direction, before);
-			
+			this.createdImmersiveLeaves.add(firstLeaf);
+
 			const parentSplit = this.getParentSplit(mainLeaf);
 			if (parentSplit && parentSplit.children) {
-				// 获取同级 children 的数量并立即预设置 child.size，避免后续 Layout 二次二次重排卡顿
+				// 获取同级 children 的数量并立即预设置 child.size，避免后续 Layout 二次重排卡顿
 				const childCount = parentSplit.children.length;
 				if (childCount === 2) {
 					const size0 = before ? size : 100 - size;
@@ -685,7 +754,6 @@ export class ImmersiveModeManager {
 				? 'webnovel-immersive-slot-horizontal'
 				: 'webnovel-immersive-slot-vertical';
 			let currentLeaf = firstLeaf;
-			this.createdImmersiveLeaves.add(firstLeaf);
 
 			for (let i = 0; i < slots.length; i++) {
 				const viewType = slots[i];
@@ -695,21 +763,14 @@ export class ImmersiveModeManager {
 					currentLeaf = workspace.createLeafBySplit(currentLeaf, internalDir, false);
 					this.createdImmersiveLeaves.add(currentLeaf);
 				}
-				currentLeaf.containerEl.classList.add(slotOrientationClass);
+				currentLeaf.containerEl?.classList.add(slotOrientationClass);
+				currentLeaf.containerEl?.classList.add('is-immersive-slot-pending');
 				if (viewType === 'reference-view') {
-					const state: Record<string, string> = { mode: 'preview' };
-					if (immersive.lastReferenceFilePath) {
-						state.file = immersive.lastReferenceFilePath;
-					}
-					await currentLeaf.setViewState({ 
-						type: 'markdown',
-						state
-					});
-					currentLeaf.containerEl.classList.add('immersive-reference-view');
+					currentLeaf.containerEl?.classList.add('immersive-reference-view');
 					this.trackSearchSourceLeaf(currentLeaf);
-				} else {
-					await currentLeaf.setViewState({ type: viewType });
 				}
+
+				pendingMounts.push({ leaf: currentLeaf, viewType });
 			}
 
 			if (slots.length > 1) {
@@ -721,6 +782,9 @@ export class ImmersiveModeManager {
 						const avg = 100 / slots.length;
 						finalInternalSizes = new Array<number>(slots.length).fill(avg);
 					}
+					for (let idx = 0; idx < internalSplit.children.length && idx < finalInternalSizes.length; idx++) {
+						internalSplit.children[idx].size = finalInternalSizes[idx];
+					}
 					pendingSizes.push({ split: internalSplit, sizes: finalInternalSizes });
 				}
 			}
@@ -728,76 +792,120 @@ export class ImmersiveModeManager {
 			return firstLeaf;
 		};
 
-		// 动态构建：空槽不创建，主编辑区自动贴边
-		// 我们先切上下，再切左右
-		this.activeTopLeaf = await createSlotLeaves(immersive.immersiveTopSlots, 'horizontal', true, immersive.immersiveTopSize, immersive.immersiveTopInternalSizes);
-		this.activeBottomLeaf = await createSlotLeaves(immersive.immersiveBottomSlots, 'horizontal', false, immersive.immersiveBottomSize, immersive.immersiveBottomInternalSizes);
-		this.activeLeftLeaf = await createSlotLeaves(immersive.immersiveLeftSlots, 'vertical', true, immersive.immersiveLeftSize, immersive.immersiveLeftInternalSizes);
-		this.activeRightLeaf = await createSlotLeaves(immersive.immersiveRightSlots, 'vertical', false, immersive.immersiveRightSize, immersive.immersiveRightInternalSizes);
+		// 动态构建分屏骨架：空槽不创建，主编辑区自动贴边
+		// 先切上下，再切左右
+		this.activeTopLeaf = createSlotSkeleton(immersive.immersiveTopSlots, 'horizontal', true, immersive.immersiveTopSize, immersive.immersiveTopInternalSizes);
+		this.activeBottomLeaf = createSlotSkeleton(immersive.immersiveBottomSlots, 'horizontal', false, immersive.immersiveBottomSize, immersive.immersiveBottomInternalSizes);
+		this.activeLeftLeaf = createSlotSkeleton(immersive.immersiveLeftSlots, 'vertical', true, immersive.immersiveLeftSize, immersive.immersiveLeftInternalSizes);
+		this.activeRightLeaf = createSlotSkeleton(immersive.immersiveRightSlots, 'vertical', false, immersive.immersiveRightSize, immersive.immersiveRightInternalSizes);
 
-		// 延迟应用所有比例
-		this.applyPendingSizes(pendingSizes);
+		// 2. 确定性应用并等待分屏尺寸固化（在视图挂载前完成外层几何稳定）
+		await this.applySplitSizes(pendingSizes);
 
-		// 确保主编辑器聚焦
+		// 3. 确保主编辑器聚焦
 		workspace.setActiveLeaf(mainLeaf, { focus: true });
 		this.searchSourceLeaf = mainLeaf;
 
-		this.setTimeout(() => this.app.workspace.updateOptions(), 300);
-		
-		// 监听布局变化，实时保存比例 (确保旧引用已清理)
-		if (this.layoutChangeRef && typeof this.app.workspace.offref === 'function') {
-			this.app.workspace.offref(this.layoutChangeRef);
-			this.layoutChangeRef = null;
-		}
-		if (typeof this.app.workspace.on === 'function') {
-			this.layoutChangeRef = this.app.workspace.on('layout-change', () => {
-				if (!this.isImmersiveActive) return;
-				this.plugin.adaptiveDebounceManager.debounceFixed('immersive-save-sizes', () => {
-					if (!this.isImmersiveActive) return;
-					this.saveCurrentPanelSizes();
-					this.plugin.saveSettings().catch(() => {});
-				}, 1000);
-			});
-		}
+		// 4. 在主编辑器就绪后，按代次异步分批挂载各辅助面板内容
+		this.scheduleAuxiliaryMounts(pendingMounts, currentGeneration);
 	}
 
 	/**
-	 * 延迟应用面板比例（递归重试，确保 DOM 渲染完成后生效）
+	 * 确定性应用并固化分屏与面板比例（清除固定像素与 flex 残留，采用 Obsidian 原生 setDimension 百分比语义）
 	 */
-	private applyPendingSizes(pendingSizes: Array<{ split: WorkspaceSplit; sizes: number[] }>): void {
-		const apply = (attempt = 0) => {
-			let hasFailure = false;
-			for (const { split, sizes } of pendingSizes) {
-				if (!split || !split.children || !split.containerEl) continue;
+	private async applySplitSizes(pendingSizes: Array<{ split: WorkspaceSplit; sizes: number[] }>): Promise<void> {
+		if (!pendingSizes.length) return;
 
-				const isHorizontal = split.direction === 'horizontal';
-				const totalSize = isHorizontal
-					? split.containerEl.offsetHeight
-					: split.containerEl.offsetWidth;
+		for (const { split, sizes } of pendingSizes) {
+			if (!split || !split.children) continue;
+			const childCount = Math.min(split.children.length, sizes.length);
+			for (let i = 0; i < childCount; i++) {
+				const child = split.children[i];
+				if (!child) continue;
 
-				if (totalSize === 0) {
-					hasFailure = true;
-					continue;
-				}
-
-				const childCount = Math.min(split.children.length, sizes.length);
-				for (let i = 0; i < childCount; i++) {
-					split.children[i].size = sizes[i];
-
-					if (typeof split.setElSize === 'function' && split.children[i].containerEl) {
-						const pixelSize = Math.round((sizes[i] / 100) * totalSize);
-						split.setElSize(split.children[i].containerEl!, pixelSize);
+				const childEl = child.containerEl;
+				if (childEl) {
+					if (typeof split.unsetElSize === 'function') {
+						split.unsetElSize(childEl);
+					}
+					if (typeof childEl.setCssProps === 'function') {
+						childEl.setCssProps({ width: '', height: '', flex: '' });
 					}
 				}
-			}
 
-			if (hasFailure && attempt < 5 && this.isImmersiveActive) {
-				this.setTimeout(() => apply(attempt + 1), 100 * (attempt + 1));
+				child.size = sizes[i];
+				if (typeof child.setDimension === 'function') {
+					child.setDimension(sizes[i]);
+				}
+			}
+		}
+	}
+
+	private yieldToMain(): Promise<void> {
+		return new Promise<void>((resolve) => {
+			if (typeof window !== 'undefined' && typeof window.setTimeout === 'function') {
+				window.setTimeout(resolve, 0);
+			} else {
+				resolve();
+			}
+		});
+	}
+
+	/**
+	 * 在主编辑区和分屏骨架就绪后，按代次以至多 2 个并发分批调度辅助视图挂载
+	 */
+	private scheduleAuxiliaryMounts(pendingMounts: Array<{ leaf: WorkspaceLeaf; viewType: string }>, generation: number): void {
+		if (!pendingMounts.length) return;
+
+		const mountAll = async () => {
+			const immersive = this.plugin.settings.immersive;
+			const BATCH_SIZE = 2;
+
+			const mountLeaf = async ({ leaf, viewType }: { leaf: WorkspaceLeaf; viewType: string }): Promise<void> => {
+				if (generation !== this.layoutGeneration || this.isExiting || !this.createdImmersiveLeaves.has(leaf)) {
+					return;
+				}
+
+				try {
+					if (viewType === 'reference-view') {
+						const state: Record<string, string> = { mode: 'preview' };
+						if (immersive.lastReferenceFilePath) {
+							state.file = immersive.lastReferenceFilePath;
+						}
+						await leaf.setViewState({
+							type: 'markdown',
+							state
+						});
+					} else {
+						await leaf.setViewState({ type: viewType });
+					}
+				} catch (mountErr) {
+					Logger.error(`[ImmersiveModeManager] 挂载沉浸辅助视图 ${viewType} 失败:`, mountErr);
+				} finally {
+					if (generation === this.layoutGeneration && !this.isExiting && this.createdImmersiveLeaves.has(leaf)) {
+						leaf.containerEl?.classList.remove('is-immersive-slot-pending');
+					}
+				}
+			};
+
+			for (let i = 0; i < pendingMounts.length; i += BATCH_SIZE) {
+				// 批次间出让执行栈，确保主编辑器与用户交互获得响应窗口
+				await this.yieldToMain();
+
+				if (generation !== this.layoutGeneration || this.isExiting) {
+					return;
+				}
+
+				const batch = pendingMounts.slice(i, i + BATCH_SIZE);
+				await Promise.all(batch.map(item => mountLeaf(item)));
+
+				if (generation !== this.layoutGeneration || this.isExiting) {
+					return;
+				}
 			}
 		};
 
-		window.requestAnimationFrame(() => apply(0));
-		this.setTimeout(() => apply(0), 300);
+		void mountAll();
 	}
 
 	/**
@@ -927,6 +1035,24 @@ export class ImmersiveModeManager {
 	}
 
 	/**
+	 * 记录当前参考文档区打开的文件
+	 */
+	private updateLastReferenceFilePath(): void {
+		const immersive = this.plugin.settings.immersive;
+		if (typeof this.app.workspace.iterateRootLeaves === 'function') {
+			this.app.workspace.iterateRootLeaves(leaf => {
+				if (leaf?.containerEl && leaf.containerEl.classList?.contains('immersive-reference-view')) {
+					const viewType = typeof leaf.view?.getViewType === 'function' ? leaf.view.getViewType() : '';
+					const mdView = viewType === 'markdown' ? leaf.view as MarkdownView : null;
+					if (mdView && mdView.file) {
+						immersive.lastReferenceFilePath = mdView.file.path;
+					}
+				}
+			});
+		}
+	}
+
+	/**
 	 * 保存当前面板比例
 	 */
 	private saveCurrentPanelSizes(): void {
@@ -967,18 +1093,7 @@ export class ImmersiveModeManager {
 			}
 		};
 
-		// 记录当前参考文档区打开的文件
-		if (typeof this.app.workspace.iterateRootLeaves === 'function') {
-			this.app.workspace.iterateRootLeaves(leaf => {
-				if (leaf?.containerEl && leaf.containerEl.classList?.contains('immersive-reference-view')) {
-					const viewType = typeof leaf.view?.getViewType === 'function' ? leaf.view.getViewType() : '';
-					const mdView = viewType === 'markdown' ? leaf.view as MarkdownView : null;
-					if (mdView && mdView.file) {
-						immersive.lastReferenceFilePath = mdView.file.path;
-					}
-				}
-			});
-		}
+		this.updateLastReferenceFilePath();
 
 		saveSize(this.activeTopLeaf, 'horizontal', s => immersive.immersiveTopSize = s, s => immersive.immersiveTopInternalSizes = s, (immersive.immersiveTopSlots || []).length);
 		saveSize(this.activeBottomLeaf, 'horizontal', s => immersive.immersiveBottomSize = s, s => immersive.immersiveBottomInternalSizes = s, (immersive.immersiveBottomSlots || []).length);

@@ -53,12 +53,14 @@ declare module 'obsidian' {
         containerEl?: HTMLElement;
         parent?: WorkspaceSplit;
         setElSize?(el: HTMLElement, size: number): void;
+        unsetElSize?(el: HTMLElement): void;
     }
     
     interface WorkspaceItem {
         type: string;
         size?: number;
         containerEl?: HTMLElement;
+        setDimension?(size: number): void;
     }
 
     interface WorkspaceLeaf {

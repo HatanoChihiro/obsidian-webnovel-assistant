@@ -187,7 +187,7 @@
 
 [MIT License](LICENSE)
 
-⭐ Star · 🐛 [提交问题](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/issues) · 💡 [功能建议](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/issues)
+⭐ Star · 🐛 [提交问题](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/issues) · 💡 [功能建议与讨论](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/discussions)
 
 <br />
 
@@ -390,7 +390,7 @@ Proofreading and all note analysis run entirely locally. The plugin makes no aut
 
 [MIT License](LICENSE)
 
-⭐ Star · 🐛 [Issues](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/issues) · 💡 [Feature Requests](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/issues)
+⭐ Star · 🐛 [Issues](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/issues) · 💡 [Discussions & Feature Requests](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/discussions)
 
 <br />
 

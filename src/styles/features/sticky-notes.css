@@ -491,6 +491,7 @@ body .my-sticky-content.markdown-rendered :is(h1, h2, h3, h4, h5, h6) {
 }
 
 body .my-sticky-textarea {
+	box-sizing: border-box;
 	flex-grow: 1;
 	width: 100%;
 	height: calc(100% - 10px);
@@ -501,6 +502,8 @@ body .my-sticky-textarea {
 	font-family: var(--font-text);
 	font-size: var(--wn-sticky-note-font-size, 14px);
 	padding: 15px;
+	padding-bottom: calc(15px + 1.5em);
+	scroll-padding-bottom: calc(15px + 1.5em);
 	outline: none;
 	box-shadow: none;
 	display: none;

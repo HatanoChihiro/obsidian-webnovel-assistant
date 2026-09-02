@@ -187,6 +187,16 @@ export interface ImmersiveModeSettings {
 	typewriterUnfocusedOpacity: number;
 }
 
+/** 普通编辑器打字机设置 */
+export interface EditorTypewriterSettings {
+	/** 是否启用普通编辑打字机居中与淡化功能 */
+	enabled: boolean;
+	/** 普通打字机模式中心垂直偏移量 (%) (-30 到 30) */
+	centerOffset: number;
+	/** 普通打字机模式未聚焦行淡化不透明度 (0.1 到 1.0) */
+	unfocusedOpacity: number;
+}
+
 /** OBS 数据输出设置 */
 export interface ObsSettings {
 	/** 是否启用 OBS HTTP 服务器叠加层 */
@@ -288,6 +298,8 @@ export interface AccurateCountSettings {
 	notesData?: StickyNoteState[];
 
 	// === 嵌套子设置 ===
+	/** 普通编辑器打字机设置 */
+	editorTypewriter: EditorTypewriterSettings;
 	/** 沉浸模式设置 */
 	immersive: ImmersiveModeSettings;
 	/** OBS 数据输出设置 */

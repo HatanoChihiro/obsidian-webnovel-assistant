@@ -12,7 +12,6 @@ import { getDeterministicChapterDisplayOrder } from '../../utils/chapterDisplayO
 import type { TimelineFormContext, TimelineFormSettings } from './TimelineFormComponent';
 import type { ChapterCardPlugin } from './ChapterCard';
 import type { AccurateCountSettings } from '../../types/settings';
-import { autoResizeNestedTextarea } from '../../utils/dom';
 
 class ConfirmDeleteEventModal extends Modal {
 	constructor(app: App, private title: string, private onConfirm: () => void) {
@@ -39,6 +38,11 @@ class ConfirmDeleteEventModal extends Modal {
 	onClose() {
 		this.contentEl.empty();
 	}
+}
+
+function getPlaintextContent(el: HTMLElement): string {
+	const raw = (el.innerText !== undefined && el.innerText !== null) ? el.innerText : (el.textContent ?? '');
+	return raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 }
 
 export type TimelineBoardTimelineManager = Pick<
@@ -111,15 +115,15 @@ export class TimelineBoardRenderer {
 		}
 
 		const timelineFile = timelineManager.getTimelineFile(bookFolder);
+		const chapterIndex = ChapterSorter.createReferenceIndex(
+			app,
+			plugin,
+			bookFolder,
+			{ eligibleChapters: files, sourcePath: timelineFile?.path }
+		);
 
 		const resolveLinkToFile = (link: string): TFile | null => {
-			return ChapterSorter.resolveChapterFile(
-				app,
-				plugin,
-				bookFolder,
-				link,
-				{ eligibleChapters: files, sourcePath: timelineFile?.path }
-			);
+			return chapterIndex.resolve(link);
 		};
 
 		// Find chapters mapped to each event -> itemIndex. Keys are file.path.
@@ -454,7 +458,7 @@ export class TimelineBoardRenderer {
 					// Inline edit logic
 					descEl.onclick = (e: MouseEvent) => {
 						e.stopPropagation();
-						if (descEl.querySelector('textarea')) return;
+						if (descEl.hasClass('is-editing') || descEl.getAttribute('contenteditable') === 'plaintext-only') return;
 						const currentDesc = items[itemIdx].description || '';
 						const prevScrollTop = descEl.scrollTop ?? 0;
 						const prevScrollHeight = descEl.scrollHeight ?? 0;
@@ -463,17 +467,24 @@ export class TimelineBoardRenderer {
 						const wasNearBottom = maxScrollBefore <= 0 || prevScrollTop >= maxScrollBefore - 8;
 
 						descEl.empty();
+						descEl.removeClass('is-empty');
 						descEl.addClass('is-editing');
-						const textarea = descEl.createEl('textarea', { cls: 'wn-corkboard-textarea' });
-						textarea.value = currentDesc;
+						descEl.setAttr('contenteditable', 'plaintext-only');
+						descEl.setAttr('role', 'textbox');
+						descEl.setAttr('aria-multiline', 'true');
+						descEl.setAttr('spellcheck', 'true');
+						descEl.textContent = currentDesc;
 
-						const resizeTextarea = () => {
-							autoResizeNestedTextarea(descEl, textarea);
-						};
-
-						resizeTextarea();
-						textarea.focus({ preventScroll: true });
-						textarea.setSelectionRange(currentDesc.length, currentDesc.length);
+						descEl.focus({ preventScroll: true });
+						const ownerDocument = descEl.ownerDocument;
+						const selection = ownerDocument.defaultView?.getSelection();
+						if (selection) {
+							const range = ownerDocument.createRange();
+							range.selectNodeContents(descEl);
+							range.collapse(false);
+							selection.removeAllRanges();
+							selection.addRange(range);
+						}
 
 						const applyScroll = () => {
 							const newMaxScroll = Math.max(0, (descEl.scrollHeight ?? 0) - (descEl.clientHeight ?? 0));
@@ -494,12 +505,11 @@ export class TimelineBoardRenderer {
 							});
 						}
 
-						textarea.oninput = () => {
-							resizeTextarea();
-						};
-
+						let isSaving = false;
 						const saveDesc = async () => {
-							const newVal = textarea.value.trim();
+							if (isSaving) return;
+							isSaving = true;
+							const newVal = getPlaintextContent(descEl).trim();
 							if (newVal !== currentDesc) {
 								onSaveStateChange(true);
 								try {
@@ -519,7 +529,7 @@ export class TimelineBoardRenderer {
 							reloadBoard();
 						};
 
-						textarea.onblur = saveDesc;
+						descEl.onblur = saveDesc;
 					};
 
 					// Cards container
@@ -555,21 +565,28 @@ export class TimelineBoardRenderer {
 				addSubEventBtn.onclick = () => {
 					addSubEventRow.hide();
 					const itemRow = nodeDiv.insertBefore(createDiv('wn-timeline-item-row'), addSubEventRow);
-					const descEl = itemRow.createDiv({ text: '', cls: 'wn-timeline-item-desc' });
-					descEl.addClass('is-editing');
+					const descEl = itemRow.createDiv({ text: '', cls: 'wn-timeline-item-desc is-editing' });
+					descEl.setAttr('contenteditable', 'plaintext-only');
+					descEl.setAttr('role', 'textbox');
+					descEl.setAttr('aria-multiline', 'true');
+					descEl.setAttr('spellcheck', 'true');
 					itemRow.createDiv('wn-timeline-cards-container');
 
-					const textarea = descEl.createEl('textarea', { cls: 'wn-corkboard-textarea' });
-					textarea.focus({ preventScroll: true });
-					const resizeTextarea = () => {
-						autoResizeNestedTextarea(descEl, textarea);
-					};
-					resizeTextarea();
-					textarea.oninput = () => {
-						resizeTextarea();
-					};
-					textarea.onblur = async () => {
-						const newVal = textarea.value.trim();
+					descEl.focus({ preventScroll: true });
+
+					let isComposing = false;
+					descEl.addEventListener('compositionstart', () => {
+						isComposing = true;
+					});
+					descEl.addEventListener('compositionend', () => {
+						isComposing = false;
+					});
+
+					let isSaving = false;
+					const saveSubEvent = async () => {
+						if (isSaving) return;
+						isSaving = true;
+						const newVal = getPlaintextContent(descEl).trim();
 						if (newVal) {
 							if (!entry.items) {
 								entry.items = [{ description: entry.description || '', chapter: entry.chapter || '' }];
@@ -587,10 +604,15 @@ export class TimelineBoardRenderer {
 						}
 						reloadBoard();
 					};
-					textarea.onkeydown = (e) => {
+
+					descEl.onblur = saveSubEvent;
+					descEl.onkeydown = (e: KeyboardEvent) => {
 						if (e.key === 'Enter' && !e.shiftKey) {
+							if (isComposing || e.isComposing || (e as { keyCode?: number }).keyCode === 229) {
+								return;
+							}
 							e.preventDefault();
-							textarea.blur();
+							descEl.blur();
 						}
 					};
 				};
