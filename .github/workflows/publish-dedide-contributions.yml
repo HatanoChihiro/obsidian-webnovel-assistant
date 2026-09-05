@@ -8,7 +8,7 @@ on:
       - 'dict/contributions/dedide/*.md'
 
 concurrency:
-  group: publish-dedide-contributions
+  group: publish-dictionary-assets
   cancel-in-progress: false
 
 permissions:
@@ -46,5 +46,6 @@ jobs:
             echo "No lexicon changes to commit."
           else
             git commit -m "chore(dict): publish accepted DeDiDe contributions [skip ci]"
+            git pull --rebase origin dictionary
             git push origin dictionary
           fi

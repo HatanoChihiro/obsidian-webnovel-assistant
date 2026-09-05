@@ -8,7 +8,7 @@ on:
       - 'dict/contributions/*.md'
 
 concurrency:
-  group: publish-dictionary-contributions
+  group: publish-dictionary-assets
   cancel-in-progress: false
 
 permissions:
@@ -46,5 +46,6 @@ jobs:
             echo "No dictionary changes to commit."
           else
             git commit -m "chore(dict): publish accepted typo contributions [skip ci]"
+            git pull --rebase origin dictionary
             git push origin dictionary
           fi
