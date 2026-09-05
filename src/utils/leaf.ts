@@ -6,21 +6,18 @@ import { Logger } from './Logger';
 /**
  * 延迟一帧/Tick 揭示并激活 WorkspaceLeaf，确保在 DOM 点击事件或异步渲染完成后正确获取 focus 焦点
  */
-export function revealAndFocusLeaf(app: App, leaf: WorkspaceLeaf): void {
+export async function revealAndFocusLeaf(app: App, leaf: WorkspaceLeaf): Promise<void> {
 	const win = leaf.view?.containerEl?.ownerDocument?.defaultView;
-	const doFocus = () => {
-		try {
-			void app.workspace.revealLeaf(leaf);
-			void app.workspace.setActiveLeaf(leaf, { focus: true });
-		} catch (e) {
-			console.warn('[WebNovel Assistant] 激活 Leaf 失败:', e);
-		}
-	};
-
 	if (win) {
-		win.setTimeout(doFocus, 0);
-	} else {
-		doFocus();
+		await new Promise<void>((resolve) => {
+			win.setTimeout(resolve, 0);
+		});
+	}
+	try {
+		await app.workspace.revealLeaf(leaf);
+		app.workspace.setActiveLeaf(leaf, { focus: true });
+	} catch (e) {
+		console.warn('[WebNovel Assistant] 激活 Leaf 失败:', e);
 	}
 }
 
@@ -284,7 +281,7 @@ export async function openFileAndFocus(
 		targetLeaf = getLeafForFileNavigation(app, file, { sourceLeaf: leaf });
 	}
 	await targetLeaf.openFile(file, { active: true, ...options });
-	revealAndFocusLeaf(app, targetLeaf);
+	await revealAndFocusLeaf(app, targetLeaf);
 }
 
 export interface RangeLoc {
@@ -816,7 +813,7 @@ export async function smartLocateAndHighlight(
 		await targetLeaf.openFile(file, { active: true });
 	}
 
-	revealAndFocusLeaf(app, targetLeaf);
+	void revealAndFocusLeaf(app, targetLeaf);
 
 	const isPreview = targetView?.getMode?.() === 'preview';
 	Logger.info('[WebNovel-Debug] [leaf] smartLocateAndHighlight 触发跳转定位:', {

@@ -24,6 +24,7 @@ import { ACMatcher, resolveOverlaps } from '../../src/services/proofreading/AhoC
 import { DeDiDeScanner } from '../../src/services/proofreading/DeDiDeRule';
 import { PunctuationScanner } from '../../src/services/proofreading/PunctuationRule';
 import type { ProofreadingDiagnostic, DeDiDeLexicon } from '../../src/types/proofreading';
+import { computeDiagnosticContextFingerprint } from '../../src/utils/proofreadingHelpers';
 import { setLocale } from '../../src/i18n';
 
 const TEST_DEDIDE_LEXICON: DeDiDeLexicon = {
@@ -2571,6 +2572,132 @@ describe('ProofreadingManager - getMaxPatternLength & Caching Lifecycle', () => 
 				const failedMoved = await mgr.relocateDefaultDictionary('OldWorkspace', 'NewWorkspace');
 				expect(failedMoved).toBe(false);
 				expect(plugin.settings.proofreading.dictionaryPath).toBe('OldWorkspace/校对词典');
+			});
+		});
+
+		describe('Ignored Words and Instances Management', () => {
+			it('should add, list, unignore, and clear ignored words and instances', async () => {
+				const plugin = {
+					manifest: { id: 'obsidian-webnovel-assistant', dir: 'plugins/test' },
+					settings: {
+						proofreading: {
+							enabled: true,
+							ignoredWords: [],
+							ignoredContexts: {}
+						}
+					},
+					saveSettings: vi.fn().mockResolvedValue(undefined)
+				} as unknown as WebNovelAssistantPlugin;
+
+				const app = {
+					vault: { on: vi.fn(() => ({})), offref: vi.fn() },
+					workspace: { trigger: vi.fn() }
+				} as unknown as App;
+
+				const mgr = new ProofreadingManager(app, plugin);
+				await mgr.initialize();
+
+				expect(mgr.getIgnoredWordsCount()).toBe(0);
+				expect(mgr.getIgnoredContextsCount()).toBe(0);
+
+				// 1. ignoreWord
+				await mgr.ignoreWord('萧炎');
+				expect(mgr.getIgnoredWordsCount()).toBe(1);
+				expect(mgr.getIgnoredWords()).toEqual(['萧炎']);
+				expect(plugin.saveSettings).toHaveBeenCalled();
+
+				// 重复添加不重复计数
+				await mgr.ignoreWord('萧炎');
+				expect(mgr.getIgnoredWordsCount()).toBe(1);
+
+				// 2. unignoreWord
+				await mgr.unignoreWord('萧炎');
+				expect(mgr.getIgnoredWordsCount()).toBe(0);
+
+				// 3. ignoreInstance & getIgnoredInstances
+				await mgr.ignoreInstance('rule1::前缀[的地得]后缀', '的地得', '前缀[的地得]后缀');
+				expect(mgr.getIgnoredContextsCount()).toBe(1);
+				const instances = mgr.getIgnoredInstances();
+				expect(instances).toHaveLength(1);
+				expect(instances[0].original).toBe('的地得');
+				expect(instances[0].context).toBe('前缀[的地得]后缀');
+
+				// 3.1 unignoreInstance
+				await mgr.unignoreInstance('rule1::前缀[的地得]后缀');
+				expect(mgr.getIgnoredContextsCount()).toBe(0);
+				expect(mgr.getIgnoredInstances()).toHaveLength(0);
+
+				await mgr.ignoreInstance('rule1::前缀[的地得]后缀', '的地得', '前缀[的地得]后缀');
+				expect(mgr.getIgnoredContextsCount()).toBe(1);
+
+				// 4. clearIgnored
+				await mgr.ignoreWord('斗气');
+				expect(mgr.getIgnoredWordsCount()).toBe(1);
+				expect(mgr.getIgnoredContextsCount()).toBe(1);
+
+				await mgr.clearIgnored('words');
+				expect(mgr.getIgnoredWordsCount()).toBe(0);
+				expect(mgr.getIgnoredContextsCount()).toBe(1);
+
+				await mgr.clearIgnored('contexts');
+				expect(mgr.getIgnoredContextsCount()).toBe(0);
+			});
+
+			it('scan should suppress matches for ignored words and ignored instances', async () => {
+				const plugin = {
+					manifest: { id: 'obsidian-webnovel-assistant', dir: 'plugins/test' },
+					settings: {
+						proofreading: {
+							enabled: true,
+							enableUserDict: true,
+							ignoredWords: ['测试错词'],
+							ignoredContexts: {}
+						},
+						workspaceFolders: []
+					},
+					saveSettings: vi.fn().mockResolvedValue(undefined),
+					isFileInWorkspace: vi.fn().mockReturnValue(true)
+				} as unknown as WebNovelAssistantPlugin;
+
+				const app = {
+					vault: {
+						on: vi.fn(() => ({})),
+						offref: vi.fn(),
+						getAbstractFileByPath: vi.fn().mockReturnValue(null),
+						adapter: { exists: vi.fn().mockResolvedValue(false) }
+					},
+					workspace: { trigger: vi.fn() }
+				} as unknown as App;
+
+				const mgr = new ProofreadingManager(app, plugin);
+				await mgr.initialize();
+
+				// 模拟词典中有 '测试错词' 和 '正常错词'
+				(mgr as unknown as { dictData: { userWrongWords: Map<string, unknown> } }).dictData.userWrongWords.set(
+					'测试错词',
+					{ word: '测试错词', suggestion: '正确1', description: '' }
+				);
+				(mgr as unknown as { dictData: { userWrongWords: Map<string, unknown> } }).dictData.userWrongWords.set(
+					'正常错词',
+					{ word: '正常错词', suggestion: '正确2', description: '' }
+				);
+				(mgr as unknown as { buildAhoCorasick: () => void }).buildAhoCorasick();
+
+				const text = '这里有测试错词和正常错词两处内容。';
+				const diags = mgr.scan(text);
+
+				// '测试错词' 已被加入 ignoredWords，因此只应保留 '正常错词'
+				expect(diags.length).toBe(1);
+				expect(diags[0].original).toBe('正常错词');
+
+				// 现在为 '正常错词' 记录上下文忽略实例
+				const normalDiag = diags[0];
+				const fp = computeDiagnosticContextFingerprint(text, normalDiag.from, normalDiag.to, normalDiag.ruleId, normalDiag.original);
+				await mgr.ignoreInstance(fp, normalDiag.original, text);
+
+				// 再次扫描，两处都应被过滤抑制
+				const diagsAfterInstanceIgnore = mgr.scan(text);
+				expect(diagsAfterInstanceIgnore.length).toBe(0);
 			});
 		});
 });

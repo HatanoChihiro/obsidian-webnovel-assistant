@@ -27,6 +27,7 @@ import type { RelationGraphManager, GraphNode, GraphData, GraphEdge } from '../s
 import { ForceLayoutEngine, type LayoutNode, type LayoutEdge } from '../services/ForceLayoutEngine';
 import { GraphRenderer, type GraphRenderState, type ThemeColors } from './components/GraphRenderer';
 import { cleanLoreHeading } from '../services/CharacterManager';
+import { GraphInteractionController } from './components/GraphInteractionController';
 import { t } from '../i18n';
 import { smartLocateAndHighlight } from '../utils/leaf';
 
@@ -55,15 +56,8 @@ export interface EdgeRenderTask {
 
 export const RELATION_GRAPH_VIEW_TYPE = 'webnovel-relation-graph';
 
-/** 缩放限制 */
-const MIN_SCALE = 0.2;
-const MAX_SCALE = 5.0;
-
 /** 缩放步进系数 */
 const ZOOM_FACTOR = 0.001;
-
-/** 双击间隔阈值（毫秒） */
-const DOUBLE_CLICK_THRESHOLD = 300;
 
 /** Canvas 设备像素比（用于高分辨率屏幕清晰渲染） */
 const DPR = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
@@ -124,33 +118,23 @@ export class RelationGraphView extends ItemView {
 	private filePath: string = '';
 	private bookPath: string = '';
 
-	// --- 视图变换（缩放 + 平移） ---
-	private scale: number = 1.0;
-	private panX: number = 0;
-	private panY: number = 0;
+	// --- 交互控制器与渲染状态 ---
+	private controller: GraphInteractionController | null = null;
+	private renderState: GraphRenderState = {
+		scale: 1.0,
+		panX: 0,
+		panY: 0,
+		selectedNode: null,
+		hoveredNode: null,
+		isLocalMode: false,
+		localFocusNode: null,
+		edgeOffsetMap: new Map(),
+		edgeDrawModeMap: new Map(),
+		combinedLabelMap: new Map(),
+		graphData: { nodes: [], edges: [] },
+		animTime: 0
+	};
 
-	// --- 交互状态 ---
-	/** 当前正在拖拽的节点（null 表示没有拖拽节点） */
-	private draggedNode: GraphNode | null = null;
-	/** 当前是否在拖拽画布（右键/中键拖拽） */
-	private isPanning: boolean = false;
-	/** 平移操作的起始鼠标位置 */
-	private panStartX: number = 0;
-	private panStartY: number = 0;
-	/** 当前选中（高亮）的节点 */
-	private selectedNode: GraphNode | null = null;
-	/** 当前鼠标悬停的节点（用于 tooltip） */
-	private hoveredNode: GraphNode | null = null;
-	/** 上次点击的时间戳（用于双击检测） */
-	private lastClickTime: number = 0;
-	/** 上次点击的节点（用于双击检测） */
-	private lastClickedNode: GraphNode | null = null;
-
-	// --- 局部模式 ---
-	/** 是否处于局部模式 */
-	private isLocalMode: boolean = false;
-	/** 局部模式的焦点节点 */
-	private localFocusNode: GraphNode | null = null;
 	/** 全量图谱数据的备份（进入局部模式时保存） */
 	private fullGraphData: GraphData | null = null;
 
@@ -161,32 +145,22 @@ export class RelationGraphView extends ItemView {
 	// --- 动画控制 ---
 	private animationFrameId: number = 0;
 	private currentAnimationToken: number = 0;
-
-	// --- 边偏移量集合（用于处理两节点间存在多条边的情况） ---
-	private edgeOffsetMap: Map<GraphEdge, number> = new Map();
-	private edgeDrawModeMap: Map<GraphEdge, 'hide' | 'bidirectional'> = new Map();
-	private combinedLabelMap: Map<GraphEdge, string> = new Map();
-
-	// --- 事件绑定引用（用于 onClose 清理） ---
-	private boundHandleMouseDown: ((e: MouseEvent) => void) | null = null;
-	private boundHandleMouseMove: ((e: MouseEvent) => void) | null = null;
-	private boundHandleMouseUp: ((e: MouseEvent) => void) | null = null;
-	private boundHandleWheel: ((e: WheelEvent) => void) | null = null;
-	private boundHandleContextMenu: ((e: MouseEvent) => void) | null = null;
-
-	// Touch events for pinch-to-zoom
-	private boundHandleTouchStart: ((e: TouchEvent) => void) | null = null;
-	private boundHandleTouchMove: ((e: TouchEvent) => void) | null = null;
-	private boundHandleTouchEnd: ((e: TouchEvent) => void) | null = null;
-	private initialPinchDistance: number = 0;
-	private initialPinchScale: number = 1;
-	private initialPinchCenter: { x: number, y: number } | null = null;
 	private resizeObserver: ResizeObserver | null = null;
+	private isClosed: boolean = false;
+	private boundVisibilityChange: (() => void) | null = null;
+
+	private isGraphHidden(): boolean {
+		if (this.isClosed || !this.container || !this.container.isConnected) return true;
+		const doc = this.container.ownerDocument;
+		if (doc && doc.visibilityState === 'hidden') return true;
+		const rect = this.container.getBoundingClientRect();
+		return rect.width === 0 || rect.height === 0;
+	}
 	
 	private needsRender: boolean = true;
 	private requestRender() {
 		this.needsRender = true;
-		if (!this.animationFrameId && this.engine) {
+		if (!this.animationFrameId && this.engine && !this.isGraphHidden()) {
 			this.startAnimationLoop(false);
 		}
 	}
@@ -213,6 +187,7 @@ export class RelationGraphView extends ItemView {
 	// ==========================================
 
 	async onOpen(): Promise<void> {
+		this.isClosed = false;
 		const { contentEl } = this;
 		contentEl.empty();
 
@@ -231,8 +206,69 @@ export class RelationGraphView extends ItemView {
 		this.hintEl = this.container.createDiv({ cls: 'wna-relation-graph-hint' });
 		this.hintEl.textContent = t('relation-graph.hint-double-click-node');
 
-		// 绑定事件
-		this.bindEvents();
+		// 绑定交互控制器
+		this.controller = new GraphInteractionController(
+			this.canvas,
+			this.renderState,
+			{
+				requestRender: () => this.requestRender(),
+				onNodeDoubleClick: (node) => {
+					const entry = this.plugin.characterManager.getCharacterFile(this.bookPath, node.id);
+					if (entry) {
+						const cache = this.app.metadataCache.getFileCache(entry.file);
+						let fallbackLine: number | undefined;
+						if (cache?.headings) {
+							const headingInfo = cache.headings.find(h => cleanLoreHeading(h.heading) === cleanLoreHeading(entry.heading));
+							if (headingInfo) fallbackLine = headingInfo.position.start.line;
+						}
+						void smartLocateAndHighlight(this.app, entry.file, [`## ${entry.heading}`, `# ${entry.heading}`, entry.heading, node.id], {
+							sourceLeaf: this.leaf,
+							splitIfNew: true,
+							fallbackLine
+						});
+					} else {
+						new Notice(t('relation.character-not-found', { id: node.id }));
+					}
+				},
+				onBackgroundDoubleClick: () => {
+					if (this.renderState.isLocalMode) {
+						this.exitLocalMode();
+					}
+				},
+				onNodeHover: () => {},
+				onNodeDragStart: (node) => {
+					if (this.engine) {
+						const layoutNode = this.engine.nodes.find(n => n.id === node.id);
+						if (layoutNode) layoutNode.pinned = true;
+					}
+					node.pinned = true;
+					this.renderState.selectedNode = node;
+				},
+				onNodeDrag: (node, x, y) => {
+					const layoutNode = this.engine?.nodes.find(n => n.id === node.id);
+					if (layoutNode) {
+						layoutNode.fx = x;
+						layoutNode.fy = y;
+						layoutNode.x = x;
+						layoutNode.y = y;
+						if (this.engine) {
+							this.engine.reheat();
+						}
+					}
+					node.x = x;
+					node.y = y;
+					this.requestRender();
+				},
+				onNodeDragEnd: () => {
+					// 拖拽结束：保留节点的 pinned 状态和 fx/fy，使其永久固定在用户拖拽的位置
+				}
+			},
+			{
+				zoomSensitivity: ZOOM_FACTOR
+			}
+		);
+		this.controller.updateLayout(this.graphData);
+		this.controller.bindEvents();
 
 		// 初始化画布尺寸
 		this.updateCanvasSize();
@@ -247,9 +283,30 @@ export class RelationGraphView extends ItemView {
 					this.startAnimationLoop();
 				}
 			}
+			this.controller?.updateLayout(this.graphData);
 			this.requestRender();
 		});
 		this.resizeObserver.observe(this.container);
+
+		// 监听容器所属文档的可见性变化（窗口最小化或后台时暂停动画）
+		const onVisibilityChange = () => {
+			if (this.isGraphHidden()) {
+				if (this.animationFrameId) {
+					const win = this.container?.ownerDocument?.defaultView ?? window;
+					win.cancelAnimationFrame(this.animationFrameId);
+					this.animationFrameId = 0;
+				}
+			} else if (this.engine && !this.animationFrameId) {
+				this.requestRender();
+			}
+		};
+		const doc = this.container.ownerDocument;
+		this.boundVisibilityChange = onVisibilityChange;
+		doc?.addEventListener('visibilitychange', this.boundVisibilityChange);
+
+		// 监听 Obsidian 布局与活动 Leaf 切换，标签页恢复时唤醒
+		this.registerEvent(this.app.workspace.on('layout-change', onVisibilityChange));
+		this.registerEvent(this.app.workspace.on('active-leaf-change', onVisibilityChange));
 
 		// 每次打开视图时清空颜色缓存，以便响应主题切换
 		this.cachedColors = null;
@@ -258,6 +315,7 @@ export class RelationGraphView extends ItemView {
 		if (this.filePath) {
 			await this.loadGraphForFile(this.filePath);
 		}
+		if (this.isClosed) return;
 
 		// 监听 CSS 主题切换以刷新主题颜色缓存
 		this.registerEvent(this.app.workspace.on('css-change', () => {
@@ -288,10 +346,19 @@ export class RelationGraphView extends ItemView {
 	}
 
 	async onClose(): Promise<void> {
+		this.isClosed = true;
+
 		// 停止动画循环
 		if (this.animationFrameId) {
-			window.cancelAnimationFrame(this.animationFrameId);
+			const win = this.container?.ownerDocument?.defaultView ?? window;
+			win.cancelAnimationFrame(this.animationFrameId);
 			this.animationFrameId = 0;
+		}
+
+		// 清理文档可见性监听
+		if (this.boundVisibilityChange && this.container?.ownerDocument) {
+			this.container.ownerDocument.removeEventListener('visibilitychange', this.boundVisibilityChange);
+			this.boundVisibilityChange = null;
 		}
 
 		// 清理 ResizeObserver
@@ -300,8 +367,17 @@ export class RelationGraphView extends ItemView {
 			this.resizeObserver = null;
 		}
 
-		// 清理事件绑定
-		this.unbindEvents();
+		// 销毁并清理物理引擎
+		if (this.engine) {
+			this.engine.destroy();
+			this.engine = null;
+		}
+
+		// 清理交互控制器
+		if (this.controller) {
+			this.controller.unbindEvents();
+			this.controller = null;
+		}
 
 		this.canvas = null;
 		this.ctx = null;
@@ -344,6 +420,7 @@ export class RelationGraphView extends ItemView {
 
 		// 确保在手机/平板端，打开图谱时能惰性加载角色管理器缓存，避免双击跳转失效
 		await this.plugin.characterManager.ensureInitialized();
+		if (this.isClosed || !this.canvas || !this.container) return;
 
 		const file = this.app.vault.getAbstractFileByPath(filePath);
 		if (!(file instanceof TFile)) {
@@ -355,6 +432,7 @@ export class RelationGraphView extends ItemView {
 
 		const manager = this.plugin.relationGraphManager;
 		const data = await manager.buildGraphData(file);
+		if (this.isClosed || !this.canvas || !this.container) return;
 
 		if (data.nodes.length === 0) {
 			this.showEmptyState();
@@ -363,9 +441,10 @@ export class RelationGraphView extends ItemView {
 
 		this.graphData = data;
 		this.fullGraphData = null;
-		this.isLocalMode = false;
-		this.selectedNode = null;
-		this.localFocusNode = null;
+		this.renderState.isLocalMode = false;
+		this.renderState.selectedNode = null;
+		this.renderState.localFocusNode = null;
+		this.controller?.updateLayout(this.graphData);
 
 		// 在初始化物理引擎前，将所有节点在一个大圆上均匀排布
 		// 这种初始状态能给 D3 最大的拓扑解开空间，极大减少全量图谱的最终连线交叉
@@ -400,12 +479,13 @@ export class RelationGraphView extends ItemView {
 	 * 静默刷新图谱数据（保留现有节点的物理状态），用于文档编辑时的实时反馈
 	 */
 	private async softReloadGraph(): Promise<void> {
-		if (!this.filePath) return;
+		if (this.isClosed || !this.filePath) return;
 		const file = this.app.vault.getAbstractFileByPath(this.filePath);
 		if (!(file instanceof TFile)) return;
 
 		const manager = this.plugin.relationGraphManager;
 		const newData = await manager.buildGraphData(file);
+		if (this.isClosed || !this.canvas || !this.container) return;
 
 		if (newData.nodes.length === 0) {
 			this.showEmptyState();
@@ -439,6 +519,7 @@ export class RelationGraphView extends ItemView {
 		});
 
 		this.graphData = newData;
+		this.controller?.updateLayout(this.graphData);
 		this.buildEdgeOffsets();
 
 		if (this.engine) {
@@ -477,6 +558,11 @@ export class RelationGraphView extends ItemView {
 	 * 初始化力导向引擎
 	 */
 	private initEngine(): void {
+		if (this.engine) {
+			this.engine.destroy();
+			this.engine = null;
+		}
+
 		if (!this.canvas) return;
 
 		const width = this.canvas.width / DPR;
@@ -516,9 +602,9 @@ export class RelationGraphView extends ItemView {
 		}
 
 		if (minX === Infinity || maxX - minX < 10) {
-			this.panX = 0;
-			this.panY = 0;
-			this.scale = 1;
+			this.renderState.panX = 0;
+			this.renderState.panY = 0;
+			this.renderState.scale = 1;
 			return;
 		}
 
@@ -536,13 +622,13 @@ export class RelationGraphView extends ItemView {
 		let targetScale = Math.min(scaleX, scaleY) * 1.6;
 		targetScale = Math.max(0.6, Math.min(targetScale, 2.8));
 
-		this.scale = targetScale;
+		this.renderState.scale = targetScale;
 
 		const centerX = (minX + maxX) / 2;
 		const centerY = (minY + maxY) / 2;
 
-		this.panX = (canvasWidth / 2 - centerX) * this.scale;
-		this.panY = (canvasHeight / 2 - centerY) * this.scale;
+		this.renderState.panX = (canvasWidth / 2 - centerX) * this.renderState.scale;
+		this.renderState.panY = (canvasHeight / 2 - centerY) * this.renderState.scale;
 	}
 
 	/**
@@ -550,10 +636,16 @@ export class RelationGraphView extends ItemView {
 	 * @param isFirstLoad 是否为初次加载（进入局部/全量图谱时），是则静默计算完全收敛并居中
 	 */
 	private startAnimationLoop(isFirstLoad: boolean = false): void {
+		const win = this.container?.ownerDocument?.defaultView ?? window;
+
 		// 先取消已有的循环
 		if (this.animationFrameId) {
-			window.cancelAnimationFrame(this.animationFrameId);
+			win.cancelAnimationFrame(this.animationFrameId);
 			this.animationFrameId = 0;
+		}
+
+		if (this.isGraphHidden()) {
+			return;
 		}
 
 		// 生成唯一 token，保证同一时间只有一个循环执行渲染
@@ -562,28 +654,28 @@ export class RelationGraphView extends ItemView {
 		// 初次加载时：恢复 D3 绝美的物理展开动画！不再强行静默计算。
 		// 只需要确保初始镜头是对准画布中心的即可。
 		if (isFirstLoad) {
-			this.panX = 0;
-			this.panY = 0;
+			this.renderState.panX = 0;
+			this.renderState.panY = 0;
 			
 			// 根据节点数量智能判断初始缩放倍率，防止小图谱在默认 1.0 缩放时显得极小
 			const nodeCount = this.graphData.nodes.length;
 			if (nodeCount <= 6) {
-				this.scale = 2.2;
+				this.renderState.scale = 2.2;
 			} else if (nodeCount <= 12) {
-				this.scale = 1.6;
+				this.renderState.scale = 1.6;
 			} else if (nodeCount <= 25) {
-				this.scale = 1.2;
+				this.renderState.scale = 1.2;
 			} else {
-				this.scale = 1.0;
+				this.renderState.scale = 1.0;
 			}
 		}
 
 		const loop = () => {
 			if (this.currentAnimationToken !== token) return;
-			if (!this.engine || !this.canvas) return;
-
-			// 在计算前同步一次，确保用户拖拽的最新位置立即传递给引擎
-			this.syncNodePositions();
+			if (this.isGraphHidden() || !this.engine || !this.canvas) {
+				this.animationFrameId = 0;
+				return;
+			}
 
 			// 每渲染一帧，推进多次物理计算
 			const ticksPerFrame = 3;
@@ -597,7 +689,7 @@ export class RelationGraphView extends ItemView {
 			this.syncNodePositions();
 
 			// 渲染
-			const hasActiveFocus = Boolean(this.hoveredNode || this.selectedNode);
+			const hasActiveFocus = Boolean(this.renderState.hoveredNode || this.renderState.selectedNode);
 			if (physicsRunning || this.needsRender || hasActiveFocus) {
 				this.render();
 				this.needsRender = false;
@@ -605,13 +697,13 @@ export class RelationGraphView extends ItemView {
 
 			// 只要物理还在运动，或者存在聚焦高亮（有悬停/选中节点产生流光脉动），就继续下一帧；如果没有运动了，就挂起等待事件唤醒
 			if (physicsRunning || hasActiveFocus) {
-				this.animationFrameId = window.requestAnimationFrame(loop);
+				this.animationFrameId = win.requestAnimationFrame(loop);
 			} else {
 				this.animationFrameId = 0;
 			}
 		};
 
-		this.animationFrameId = window.requestAnimationFrame(loop);
+		this.animationFrameId = win.requestAnimationFrame(loop);
 	}
 
 	/**
@@ -643,24 +735,12 @@ export class RelationGraphView extends ItemView {
 		// 读取 Obsidian 主题颜色（使用缓存）
 		const colors = this.getThemeColors();
 
-		const graphDataForRender: GraphData = (layout as unknown as GraphData) || { nodes: this.graphData.nodes, edges: this.graphData.edges };
+		const graphDataForRender: GraphData = (layout as unknown as GraphData) || this.graphData;
 
-		const state: GraphRenderState = {
-			scale: this.scale,
-			panX: this.panX,
-			panY: this.panY,
-			selectedNode: this.selectedNode,
-			hoveredNode: this.hoveredNode,
-			isLocalMode: this.isLocalMode,
-			localFocusNode: this.localFocusNode,
-			edgeDrawModeMap: this.edgeDrawModeMap,
-			edgeOffsetMap: this.edgeOffsetMap,
-			combinedLabelMap: this.combinedLabelMap,
-			graphData: graphDataForRender,
-			animTime: performance.now()
-		};
+		this.renderState.graphData = graphDataForRender;
+		this.renderState.animTime = performance.now();
 
-		GraphRenderer.render(ctx, width, height, graphDataForRender, state, colors);
+		GraphRenderer.render(ctx, width, height, graphDataForRender, this.renderState, colors);
 	}
 
 	private cachedColors: ThemeColors | null = null;
@@ -671,7 +751,7 @@ export class RelationGraphView extends ItemView {
 	 * 添加缓存避免每帧调用 getComputedStyle 导致严重的性能卡顿，并在明暗模式切换时自动更新
 	 */
 	private getThemeColors(): ThemeColors {
-		const doc = activeDocument || (typeof document !== 'undefined' ? document : null);
+		const doc = this.containerEl.ownerDocument;
 		const isDark = doc?.body ? doc.body.classList.contains('theme-dark') : true;
 
 		if (this.cachedColors && this.cachedThemeMode === isDark) {
@@ -684,406 +764,6 @@ export class RelationGraphView extends ItemView {
 		return this.cachedColors;
 	}
 
-	/**
-	 * 计算点到线段的距离（用于线与标签的碰撞检测）
-	 */
-	private distToSegment(px: number, py: number, x1: number, y1: number, x2: number, y2: number): number {
-		const l2 = (x2 - x1) ** 2 + (y2 - y1) ** 2;
-		if (l2 === 0) return Math.sqrt((px - x1) ** 2 + (py - y1) ** 2);
-		let t = ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / l2;
-		t = Math.max(0, Math.min(1, t));
-		return Math.sqrt((px - (x1 + t * (x2 - x1))) ** 2 + (py - (y1 + t * (y2 - y1))) ** 2);
-	}
-
-	// ==========================================
-
-	private bindEvents(): void {
-		if (!this.canvas) return;
-
-		this.boundHandleMouseDown = (e: MouseEvent) => this.handleMouseDown(e);
-		this.boundHandleMouseMove = (e: MouseEvent) => this.handleMouseMove(e);
-		this.boundHandleMouseUp = (e: MouseEvent) => this.handleMouseUp(e);
-		this.boundHandleWheel = (e: WheelEvent) => this.handleWheel(e);
-		this.boundHandleContextMenu = (e: MouseEvent) => e.preventDefault();
-		
-		this.boundHandleTouchStart = (e: TouchEvent) => this.handleTouchStart(e);
-		this.boundHandleTouchMove = (e: TouchEvent) => this.handleTouchMove(e);
-		this.boundHandleTouchEnd = (e: TouchEvent) => this.handleTouchEnd(e);
-
-		this.canvas.addEventListener('mousedown', this.boundHandleMouseDown);
-		this.canvas.addEventListener('mousemove', this.boundHandleMouseMove);
-		this.canvas.addEventListener('mouseup', this.boundHandleMouseUp);
-		this.canvas.addEventListener('wheel', this.boundHandleWheel, { passive: false });
-		this.canvas.addEventListener('contextmenu', this.boundHandleContextMenu);
-		
-		this.canvas.addEventListener('touchstart', this.boundHandleTouchStart, { passive: false });
-		this.canvas.addEventListener('touchmove', this.boundHandleTouchMove, { passive: false });
-		this.canvas.addEventListener('touchend', this.boundHandleTouchEnd);
-		this.canvas.addEventListener('touchcancel', this.boundHandleTouchEnd);
-	}
-
-	/**
-	 * 解绑 Canvas 事件（onClose 中调用）
-	 */
-	private unbindEvents(): void {
-		if (!this.canvas) return;
-		if (this.boundHandleMouseDown) this.canvas.removeEventListener('mousedown', this.boundHandleMouseDown);
-		if (this.boundHandleMouseMove) this.canvas.removeEventListener('mousemove', this.boundHandleMouseMove);
-		if (this.boundHandleMouseUp) this.canvas.removeEventListener('mouseup', this.boundHandleMouseUp);
-		if (this.boundHandleWheel) this.canvas.removeEventListener('wheel', this.boundHandleWheel);
-		if (this.boundHandleContextMenu) this.canvas.removeEventListener('contextmenu', this.boundHandleContextMenu);
-		
-		if (this.boundHandleTouchStart) this.canvas.removeEventListener('touchstart', this.boundHandleTouchStart);
-		if (this.boundHandleTouchMove) this.canvas.removeEventListener('touchmove', this.boundHandleTouchMove);
-		if (this.boundHandleTouchEnd) {
-			this.canvas.removeEventListener('touchend', this.boundHandleTouchEnd);
-			this.canvas.removeEventListener('touchcancel', this.boundHandleTouchEnd);
-		}
-	}
-
-	/**
-	 * 鼠标按下事件
-	 */
-	private handleMouseDown(e: MouseEvent): void {
-		const pos = this.screenToGraph(e.offsetX, e.offsetY);
-		const node = this.findNodeAt(pos.x, pos.y);
-
-		if (e.button === 2 || e.button === 1) {
-			// 右键或中键：开始平移画布
-			this.isPanning = true;
-			this.panStartX = e.offsetX - this.panX;
-			this.panStartY = e.offsetY - this.panY;
-			return;
-		}
-
-		if (e.button === 0) {
-			// 左键
-			const now = Date.now();
-			const isDoubleClick = (now - this.lastClickTime) < DOUBLE_CLICK_THRESHOLD;
-
-			if (node) {
-				if (isDoubleClick && this.lastClickedNode?.id === node.id) {
-					// 双击节点：打开角色设定文档
-					const entry = this.plugin.characterManager.getCharacterFile(this.bookPath, node.id);
-					if (entry) {
-						const cache = this.app.metadataCache.getFileCache(entry.file);
-						let fallbackLine: number | undefined;
-						if (cache?.headings) {
-							const headingInfo = cache.headings.find(h => cleanLoreHeading(h.heading) === cleanLoreHeading(entry.heading));
-							if (headingInfo) fallbackLine = headingInfo.position.start.line;
-						}
-						void smartLocateAndHighlight(this.app, entry.file, [`## ${entry.heading}`, `# ${entry.heading}`, entry.heading, node.id], {
-							sourceLeaf: this.leaf,
-							splitIfNew: true,
-							fallbackLine
-						});
-					} else {
-						new Notice(t('relation.character-not-found', { id: node.id }));
-					}
-					this.lastClickTime = 0;
-					return;
-				}
-
-				// 单击节点：开始拖拽
-				this.draggedNode = node;
-				
-				// 同步更新力导向引擎中的 pinned 状态
-				if (this.engine) {
-					const layoutNode = this.engine.nodes.find(n => n.id === node.id);
-					if (layoutNode) layoutNode.pinned = true;
-				}
-				node.pinned = true;
-				this.selectedNode = node;
-				// 注意：这里不再调用 reset()，防止整个图谱炸开
-			} else {
-				// 单击空白区域：取消选中
-				this.selectedNode = null;
-				// 同时也开始平移
-				this.isPanning = true;
-				this.panStartX = e.offsetX - this.panX;
-				this.panStartY = e.offsetY - this.panY;
-			}
-
-			this.lastClickTime = now;
-			this.lastClickedNode = node;
-			this.requestRender();
-		}
-	}
-
-	/**
-	 * 鼠标移动事件
-	 */
-	private handleMouseMove(e: MouseEvent): void {
-		if (this.isPanning) {
-			this.panX = e.offsetX - this.panStartX;
-			this.panY = e.offsetY - this.panStartY;
-			this.requestRender();
-			return;
-		}
-
-		if (this.draggedNode) {
-			// 查找该节点在引擎中的对应实例，直接更新其绝对坐标
-			const layoutNode = this.engine?.nodes.find(n => n.id === this.draggedNode!.id);
-			const pos = this.screenToGraph(e.offsetX, e.offsetY);
-			
-			if (layoutNode) {
-				layoutNode.fx = pos.x;
-				layoutNode.fy = pos.y;
-				layoutNode.x = pos.x;
-				layoutNode.y = pos.y;
-				
-				// 轻微加热系统，使得被拖拽节点的邻居能够柔和地跟进
-				if (this.engine) {
-					if (this.engine.isConverged) {
-						this.engine.reheat();
-						this.startAnimationLoop();
-					} else {
-						this.engine.reheat(); // 保持一定的温度让系统有足够的力响应拖拽
-					}
-				}
-			}
-			
-			// 立即同步回视图数据
-			this.draggedNode.x = pos.x;
-			this.draggedNode.y = pos.y;
-
-			this.requestRender();
-			return;
-		}
-
-		// 悬停检测
-		const pos = this.screenToGraph(e.offsetX, e.offsetY);
-		const node = this.findNodeAt(pos.x, pos.y);
-		const prevHovered = this.hoveredNode;
-		this.hoveredNode = node;
-
-		// 更新鼠标样式
-		if (this.canvas) {
-			this.canvas.setCssStyles({ cursor: node ? 'pointer' : 'default' });
-		}
-
-		if (prevHovered !== this.hoveredNode) {
-			this.requestRender();
-		}
-	}
-
-	/**
-	 * 鼠标抬起事件
-	 */
-	private handleMouseUp(_e: MouseEvent): void {
-		this.isPanning = false;
-
-		if (this.draggedNode) {
-			// 拖拽结束：保留节点的 pinned 状态和 fx/fy，使其永久固定在用户拖拽的位置
-			// 这样下次 tick 依然会维持 fx 和 fy
-			this.draggedNode = null;
-		}
-	}
-
-	/**
-	 * 滚轮事件：缩放画布
-	 */
-	private handleWheel(e: WheelEvent): void {
-		e.preventDefault();
-		const delta = -e.deltaY * ZOOM_FACTOR;
-		const oldScale = this.scale;
-		const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, this.scale + delta * this.scale));
-		
-		if (this.canvas) {
-			const rect = this.canvas.getBoundingClientRect();
-			const mouseX = e.clientX - rect.left;
-			const mouseY = e.clientY - rect.top;
-			const width = rect.width;
-			const height = rect.height;
-
-			const dx = mouseX - width / 2;
-			const dy = mouseY - height / 2;
-
-			this.panX = dx - (dx - this.panX) * (newScale / oldScale);
-			this.panY = dy - (dy - this.panY) * (newScale / oldScale);
-		}
-
-		this.scale = newScale;
-		this.requestRender();
-	}
-
-	private handleTouchStart(e: TouchEvent): void {
-		if (e.touches.length === 2) {
-			e.preventDefault();
-			this.isPanning = false;
-			this.draggedNode = null;
-			const touch1 = e.touches[0];
-			const touch2 = e.touches[1];
-			this.initialPinchDistance = Math.hypot(touch2.clientX - touch1.clientX, touch2.clientY - touch1.clientY);
-			this.initialPinchScale = this.scale;
-			
-			const rect = this.canvas!.getBoundingClientRect();
-			this.initialPinchCenter = {
-				x: ((touch1.clientX + touch2.clientX) / 2) - rect.left,
-				y: ((touch1.clientY + touch2.clientY) / 2) - rect.top
-			};
-		} else if (e.touches.length === 1) {
-			e.preventDefault();
-			const touch = e.touches[0];
-			const rect = this.canvas!.getBoundingClientRect();
-			const offsetX = touch.clientX - rect.left;
-			const offsetY = touch.clientY - rect.top;
-
-			const pos = this.screenToGraph(offsetX, offsetY);
-			const node = this.findNodeAt(pos.x, pos.y);
-
-			const now = Date.now();
-			const isDoubleClick = (now - this.lastClickTime) < DOUBLE_CLICK_THRESHOLD;
-
-			if (node) {
-				if (isDoubleClick && this.lastClickedNode?.id === node.id) {
-					// Double tap: Open character file
-					const entry = this.plugin.characterManager.getCharacterFile(this.bookPath, node.id);
-					if (entry) {
-						const cache = this.app.metadataCache.getFileCache(entry.file);
-						let fallbackLine: number | undefined;
-						if (cache?.headings) {
-							const headingInfo = cache.headings.find(h => cleanLoreHeading(h.heading) === cleanLoreHeading(entry.heading));
-							if (headingInfo) fallbackLine = headingInfo.position.start.line;
-						}
-						void smartLocateAndHighlight(this.app, entry.file, [`## ${entry.heading}`, `# ${entry.heading}`, entry.heading, node.id], {
-							sourceLeaf: this.leaf,
-							splitIfNew: true,
-							fallbackLine
-						});
-					} else {
-						new Notice(t('relation.character-not-found', { id: node.id }));
-					}
-					this.lastClickTime = 0;
-					return;
-				}
-
-				// Single tap: start drag
-				this.draggedNode = node;
-				if (this.engine) {
-					const layoutNode = this.engine.nodes.find(n => n.id === node.id);
-					if (layoutNode) layoutNode.pinned = true;
-				}
-				node.pinned = true;
-				this.selectedNode = node;
-				
-				this.lastClickTime = now;
-				this.lastClickedNode = node;
-			} else {
-				// Single tap on empty space: start pan
-				this.selectedNode = null;
-				this.isPanning = true;
-				this.panStartX = offsetX - this.panX;
-				this.panStartY = offsetY - this.panY;
-				
-				this.lastClickTime = 0;
-			}
-		}
-	}
-
-	private handleTouchMove(e: TouchEvent): void {
-		if (e.touches.length === 2) {
-			e.preventDefault();
-			const touch1 = e.touches[0];
-			const touch2 = e.touches[1];
-			const currentDistance = Math.hypot(touch2.clientX - touch1.clientX, touch2.clientY - touch1.clientY);
-			
-			if (this.initialPinchDistance > 0 && this.initialPinchCenter) {
-				const zoomFactor = currentDistance / this.initialPinchDistance;
-				const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, this.initialPinchScale * zoomFactor));
-				
-				const center = this.initialPinchCenter;
-				const graphX = (center.x - this.panX) / this.scale;
-				const graphY = (center.y - this.panY) / this.scale;
-
-				this.scale = newScale;
-				this.panX = center.x - graphX * this.scale;
-				this.panY = center.y - graphY * this.scale;
-				this.requestRender();
-			}
-		} else if (e.touches.length === 1) {
-			e.preventDefault();
-			const touch = e.touches[0];
-			const rect = this.canvas!.getBoundingClientRect();
-			const offsetX = touch.clientX - rect.left;
-			const offsetY = touch.clientY - rect.top;
-
-			if (this.isPanning) {
-				this.panX = offsetX - this.panStartX;
-				this.panY = offsetY - this.panStartY;
-				this.requestRender();
-				return;
-			}
-
-			if (this.draggedNode) {
-				const pos = this.screenToGraph(offsetX, offsetY);
-				this.draggedNode.x = pos.x;
-				this.draggedNode.y = pos.y;
-				if (this.engine) {
-					const layoutNode = this.engine.nodes.find(n => n.id === this.draggedNode!.id);
-					if (layoutNode) {
-						layoutNode.x = pos.x;
-						layoutNode.y = pos.y;
-					}
-					this.engine.reheat(); // Reheat engine
-				}
-				this.requestRender();
-				return;
-			}
-		}
-	}
-
-	private handleTouchEnd(e: TouchEvent): void {
-		if (e.touches.length < 2) {
-			this.initialPinchDistance = 0;
-			this.initialPinchCenter = null;
-		}
-		if (e.touches.length === 0) {
-			this.isPanning = false;
-			if (this.draggedNode) {
-				if (this.engine) {
-					const layoutNode = this.engine.nodes.find(n => n.id === this.draggedNode!.id);
-					if (layoutNode) layoutNode.pinned = false;
-				}
-				this.draggedNode.pinned = false;
-				this.draggedNode = null;
-			}
-		}
-	}
-
-	// ==========================================
-	// 坐标变换
-	// ==========================================
-
-	/**
-	 * 将屏幕坐标（鼠标位置）转换为图谱坐标
-	 */
-	private screenToGraph(screenX: number, screenY: number): { x: number; y: number } {
-		if (!this.canvas) return { x: 0, y: 0 };
-		const width = this.canvas.width / DPR;
-		const height = this.canvas.height / DPR;
-		const x = (screenX - width / 2 - this.panX) / this.scale + width / 2;
-		const y = (screenY - height / 2 - this.panY) / this.scale + height / 2;
-		return { x, y };
-	}
-
-	/**
-	 * 在指定图谱坐标处查找节点
-	 */
-	private findNodeAt(gx: number, gy: number): GraphNode | null {
-		// 倒序遍历，优先匹配上层（后绘制的）节点
-		const hitRadius = Math.max(6, GraphRenderer.NODE_HIGHLIGHT_RADIUS);
-		const hitRadiusSq = hitRadius * hitRadius;
-		for (let i = this.graphData.nodes.length - 1; i >= 0; i--) {
-			const node = this.graphData.nodes[i];
-			const dx = gx - node.x;
-			const dy = gy - node.y;
-			if (dx * dx + dy * dy <= hitRadiusSq) {
-				return node;
-			}
-		}
-		return null;
-	}
 
 	// ==========================================
 	// 局部模式
@@ -1101,8 +781,8 @@ export class RelationGraphView extends ItemView {
 			};
 		}
 
-		this.isLocalMode = true;
-		this.localFocusNode = focusNode;
+		this.renderState.isLocalMode = true;
+		this.renderState.localFocusNode = focusNode;
 
 		// 筛选 1 跳邻居
 		const neighborIds = new Set<string>();
@@ -1139,7 +819,8 @@ export class RelationGraphView extends ItemView {
 			node.vy = 0;
 		}
 
-		this.selectedNode = focusNode;
+		this.renderState.selectedNode = focusNode;
+		this.controller?.updateLayout(this.graphData);
 		this.buildEdgeOffsets();
 		this.initEngine();
 		this.updateBreadcrumb();
@@ -1153,11 +834,12 @@ export class RelationGraphView extends ItemView {
 	private exitLocalMode(): void {
 		if (!this.fullGraphData) return;
 
-		this.isLocalMode = false;
-		this.localFocusNode = null;
+		this.renderState.isLocalMode = false;
+		this.renderState.localFocusNode = null;
 		this.graphData = this.fullGraphData;
 		this.fullGraphData = null;
-		this.selectedNode = null;
+		this.renderState.selectedNode = null;
+		this.controller?.updateLayout(this.graphData);
 
 		const cx = this.canvas ? this.canvas.width / DPR / 2 : 150;
 		const cy = this.canvas ? this.canvas.height / DPR / 2 : 150;
@@ -1195,7 +877,7 @@ export class RelationGraphView extends ItemView {
 			this.breadcrumbEl.removeChild(this.breadcrumbEl.firstChild);
 		}
 
-		if (this.isLocalMode && this.localFocusNode) {
+		if (this.renderState.isLocalMode && this.renderState.localFocusNode) {
 			this.breadcrumbEl.hidden = false;
 
 			// "全量图谱" 链接
@@ -1210,7 +892,7 @@ export class RelationGraphView extends ItemView {
 
 			// 当前焦点
 			this.breadcrumbEl.createSpan({
-				text: t('relation-graph.breadcrumb-local', { name: this.localFocusNode.id }),
+				text: t('relation-graph.breadcrumb-local', { name: this.renderState.localFocusNode.id }),
 			});
 		} else {
 			this.breadcrumbEl.hidden = true;
@@ -1247,19 +929,7 @@ export class RelationGraphView extends ItemView {
 	private buildEdgeOffsets(force: boolean = false): void {
 		if (!this.graphData) return;
 		const colors = this.getThemeColors();
-		GraphRenderer.buildEdgeOffsets(this.graphData, {
-			edgeOffsetMap: this.edgeOffsetMap,
-			edgeDrawModeMap: this.edgeDrawModeMap,
-			combinedLabelMap: this.combinedLabelMap,
-			graphData: this.graphData,
-			panX: this.panX,
-			panY: this.panY,
-			scale: this.scale,
-			selectedNode: this.selectedNode,
-			hoveredNode: this.hoveredNode,
-			isLocalMode: this.isLocalMode,
-			localFocusNode: this.localFocusNode
-		}, colors.curveOffset, force);
+		GraphRenderer.buildEdgeOffsets(this.graphData, this.renderState, colors.curveOffset, force);
 	}
 
 	/**

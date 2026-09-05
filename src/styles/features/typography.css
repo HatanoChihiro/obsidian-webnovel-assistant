@@ -92,29 +92,25 @@ body.webnovel-eye-care-enabled .workspace-leaf-content[data-type="markdown"]:not
 
 
 /* ========== 打字机模式：垂直留白居中与焦点淡化 ========== */
+.workspace-leaf .markdown-source-view.mod-cm6 .cm-editor.wn-typewriter-active .cm-sizer,
 .cm-editor.wn-typewriter-active .cm-sizer {
-	padding-top: 30vh;
+	padding-top: var(--wn-typewriter-padding-top, 0px);
+	padding-bottom: var(--wn-typewriter-padding-bottom, 0px);
 }
 
-.cm-editor.wn-typewriter-active .cm-content {
-	padding-top: 0;
-	padding-bottom: 50vh;
-}
-
-.cm-editor.wn-typewriter-active .cm-line {
+/* 仅在编辑器获得焦点时，对非当前行进行平滑淡化；失焦时统一保持全不透明度，彻底杜绝闪烁 */
+.cm-editor.wn-typewriter-active.cm-focused .cm-line.wn-typewriter-dimmed-line {
 	opacity: var(--wn-typewriter-opacity, 0.4);
-	transition: opacity 0.15s ease;
 }
 
-.cm-editor.wn-typewriter-active .cm-line.wn-typewriter-current-line,
-.cm-editor.wn-typewriter-active .cm-line.cm-activeLine,
-.cm-editor.wn-typewriter-active .cm-line.wn-typewriter-current-line * {
+.cm-editor.wn-typewriter-active.cm-focused .cm-line.wn-typewriter-current-line,
+.cm-editor.wn-typewriter-active.cm-focused .cm-line.cm-activeLine,
+.cm-editor.wn-typewriter-active.cm-focused .cm-line.wn-typewriter-current-line * {
 	opacity: 1;
 }
 
-.cm-editor.wn-typewriter-active .inline-title {
+.cm-editor.wn-typewriter-active.cm-focused .inline-title {
 	opacity: var(--wn-typewriter-opacity, 0.4);
-	transition: opacity 0.15s ease;
 }
 
 .cm-editor.wn-typewriter-active .inline-title:focus,

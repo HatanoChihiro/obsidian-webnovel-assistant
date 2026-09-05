@@ -15,6 +15,7 @@ export type TaskBoardManager = Pick<
     | 'calcProgress'
     | 'updateProgress'
     | 'updateEntryStatus'
+    | 'reconcileTasks'
 >;
 
 export interface TaskBoardSettings {
@@ -115,8 +116,7 @@ export class TaskBoardRenderer {
         const manager = plugin.taskManager;
         const taskFolder = currentBookPath === '/' ? '' : currentBookPath;
 
-        await manager.checkAndCloseExpired(taskFolder);
-        await manager.activatePendingTasks(taskFolder);
+        await manager.reconcileTasks(taskFolder);
 
         const file = manager.getTaskFile(taskFolder);
         const content = file ? await app.vault.read(file) : null;

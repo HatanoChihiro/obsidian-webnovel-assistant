@@ -12,11 +12,16 @@ export interface GraphInteractionCallbacks {
 	onNodeDragEnd: (node: GraphNode) => void;
 }
 
+export interface GraphInteractionOptions {
+	zoomSensitivity?: number;
+}
+
 export class GraphInteractionController {
 	private state: GraphRenderState;
 	private layout: GraphData | null = null;
 	private canvas: HTMLCanvasElement;
 	private callbacks: GraphInteractionCallbacks;
+	private options?: GraphInteractionOptions;
 	private ownerWindow: Window;
 	
 	private isPanning: boolean = false;
@@ -42,10 +47,16 @@ export class GraphInteractionController {
 	private boundHandleTouchMove = this.handleTouchMove.bind(this);
 	private boundHandleTouchEnd = this.handleTouchEnd.bind(this);
 
-	constructor(canvas: HTMLCanvasElement, initialState: GraphRenderState, callbacks: GraphInteractionCallbacks) {
+	constructor(
+		canvas: HTMLCanvasElement,
+		initialState: GraphRenderState,
+		callbacks: GraphInteractionCallbacks,
+		options?: GraphInteractionOptions
+	) {
 		this.canvas = canvas;
 		this.state = initialState;
 		this.callbacks = callbacks;
+		this.options = options;
 		this.ownerWindow = canvas.ownerDocument.defaultView ?? window;
 	}
 
@@ -131,6 +142,8 @@ export class GraphInteractionController {
 				} else {
 					this.callbacks.onBackgroundDoubleClick();
 				}
+				this.lastClickTime = 0;
+				this.lastClickedNode = null;
 				return;
 			}
 
@@ -186,12 +199,20 @@ export class GraphInteractionController {
 
 	private handleWheel(e: WheelEvent): void {
 		e.preventDefault();
-		const zoomDelta = e.deltaY > 0 ? -1 : 1;
-		const zoomFactor = 1 + zoomDelta * 0.1;
-		
+		const minScale = 0.2;
+		const maxScale = 5.0;
+
 		const oldScale = this.state.scale;
-		let newScale = oldScale * zoomFactor;
-		newScale = Math.max(0.2, Math.min(newScale, 5.0));
+		let newScale: number;
+
+		if (this.options?.zoomSensitivity !== undefined) {
+			const delta = -e.deltaY * this.options.zoomSensitivity;
+			newScale = Math.max(minScale, Math.min(maxScale, oldScale + delta * oldScale));
+		} else {
+			const zoomDelta = e.deltaY > 0 ? -1 : 1;
+			const zoomFactor = 1 + zoomDelta * 0.1;
+			newScale = Math.max(minScale, Math.min(maxScale, oldScale * zoomFactor));
+		}
 
 		const rect = this.canvas.getBoundingClientRect();
 		const mouseX = e.clientX - rect.left;
@@ -209,7 +230,6 @@ export class GraphInteractionController {
 		this.callbacks.requestRender();
 	}
 
-	// === Touch handlers omitted for brevity unless needed, but I should copy them ===
 	private handleTouchStart(e: TouchEvent): void {
 		if (e.touches.length === 1) {
 			const touch = e.touches[0];
@@ -229,6 +249,8 @@ export class GraphInteractionController {
 				} else {
 					this.callbacks.onBackgroundDoubleClick();
 				}
+				this.lastClickTime = 0;
+				this.lastClickedNode = null;
 				return;
 			}
 
@@ -283,6 +305,8 @@ export class GraphInteractionController {
 			}
 		} else if (e.touches.length === 2 && this.initialPinchCenter) {
 			e.preventDefault();
+			const minScale = 0.2;
+			const maxScale = 5.0;
 			const t1 = e.touches[0];
 			const t2 = e.touches[1];
 			const dx = t1.clientX - t2.clientX;
@@ -291,7 +315,7 @@ export class GraphInteractionController {
 			
 			const scaleRatio = currentDist / this.initialPinchDistance;
 			let newScale = this.initialPinchScale * scaleRatio;
-			newScale = Math.max(0.2, Math.min(newScale, 5.0));
+			newScale = Math.max(minScale, Math.min(newScale, maxScale));
 			
 			const oldScale = this.state.scale;
 			this.state.panX = this.initialPinchCenter.x - (this.initialPinchCenter.x - this.state.panX) * (newScale / oldScale);

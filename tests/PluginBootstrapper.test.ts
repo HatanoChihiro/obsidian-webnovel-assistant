@@ -1225,4 +1225,43 @@ describe('PluginBootstrapper', () => {
 			expect(mockEditorTracker.handleEditorChange).toHaveBeenCalledTimes(1);
 		});
 	});
+
+	describe('webnovel:tasks-changed event wiring', () => {
+		it('should trigger immediate status refresh and homepage refresh when tasks change', async () => {
+			const mockHomepageManager = { refreshHomepageViews: vi.fn() };
+			mockPlugin.homepageManager = mockHomepageManager as unknown as HomepageManager;
+			mockPlugin.settings.enableHomepage = true;
+
+			const bootstrapper = new PluginBootstrapper(mockPlugin, registry);
+			bootstrapper.registerConstructorServices();
+
+			mockPlugin.historyManager = { loadHistory: vi.fn().mockResolvedValue(undefined) } as unknown as HistoryDataManager;
+			mockPlugin.cacheManager.loadCache = vi.fn().mockResolvedValue(undefined);
+			mockPlugin.loreSyncService = { initialize: vi.fn() } as unknown as LoreSyncService;
+			mockPlugin.fileEventManager = { setup: vi.fn() } as unknown as FileEventManager;
+			mockPlugin.statisticsManager = { setup: vi.fn() } as unknown as StatisticsManager;
+			mockPlugin.workerManager = { setup: vi.fn() } as unknown as WorkerManager;
+			mockPlugin.markdownPostProcessor = { getProcessor: vi.fn() } as unknown as MarkdownPostProcessor;
+			mockPlugin.typographyManager = { updateTypography: vi.fn() } as unknown as TypographyManager;
+			mockPlugin.commandManager = { registerAllCommands: vi.fn() } as unknown as CommandManager;
+			mockPlugin.viewManager = { registerAllViews: vi.fn() } as unknown as ViewManager;
+			mockPlugin.menuManager = { registerAllMenus: vi.fn() } as unknown as MenuManager;
+			mockPlugin.registerMarkdownPostProcessor = vi.fn();
+			mockPlugin.addStatusBarItem = vi.fn().mockReturnValue({});
+			Object.assign(mockPlugin.app, {
+				metadataCache: { on: vi.fn(() => ({})) }
+			});
+
+			await bootstrapper.bootstrap();
+
+			const taskChangedHandlers = workspaceEventHandlers['webnovel:tasks-changed'];
+			expect(taskChangedHandlers).toBeDefined();
+			expect(taskChangedHandlers.length).toBeGreaterThan(0);
+
+			taskChangedHandlers[0]();
+
+			expect(mockPlugin.refreshStatusViews).toHaveBeenCalledWith(false, true);
+			expect(mockHomepageManager.refreshHomepageViews).toHaveBeenCalledTimes(1);
+		});
+	});
 });

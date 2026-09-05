@@ -27,7 +27,7 @@ body .workspace-leaf-content[data-type="webnovel-workbench"][data-type="webnovel
 
 .wn-corkboard-header-buttons {
 	position: absolute;
-	top: 20px;
+	top: 30px;
 	right: 0;
 	display: flex;
 	gap: 8px;

@@ -1,3 +1,4 @@
+import { MockElement } from './mocks/MockElement';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkbenchView, WORKBENCH_VIEW_TYPE, type WorkbenchViewPlugin } from '../src/ui/WorkbenchView';
 import { CorkboardGridRenderer } from '../src/ui/components/CorkboardGridRenderer';
@@ -68,166 +69,7 @@ const { getCurrentBookContextMock, findBookRootMock, MockTFile, MockTFolder, moc
 	};
 });
 
-class MockElement {
-	parentElement: MockElement | null = null;
-	children: MockElement[] = [];
-	className = '';
-	textContent = '';
-	value = '';
-	type = '';
-	selectionStart = 0;
-	selectionEnd = 0;
-	private classes = new Set<string>();
-	private attributes = new Map<string, string>();
-	private listeners = new Map<string, Array<(e?: unknown) => void>>();
-	focus = vi.fn();
-	setSelectionRange = vi.fn();
 
-	constructor(cls = '') {
-		this.className = cls;
-		if (cls) {
-			cls.split(/\s+/).filter(Boolean).forEach(c => this.classes.add(c));
-		}
-	}
-
-	get isConnected(): boolean {
-		return true;
-	}
-
-	get classList() {
-		return {
-			add: (...tokens: string[]) => {
-				tokens.forEach(t => this.classes.add(t));
-				this.className = Array.from(this.classes).join(' ');
-			},
-			remove: (...tokens: string[]) => {
-				tokens.forEach(t => this.classes.delete(t));
-				this.className = Array.from(this.classes).join(' ');
-			},
-			contains: (token: string) => this.classes.has(token),
-			toggle: (token: string, force?: boolean) => {
-				const has = force !== undefined ? force : !this.classes.has(token);
-				if (has) this.classes.add(token); else this.classes.delete(token);
-				this.className = Array.from(this.classes).join(' ');
-				return has;
-			}
-		};
-	}
-
-	addClass(...tokens: string[]) { this.classList.add(...tokens); return this; }
-	removeClass(...tokens: string[]) { this.classList.remove(...tokens); return this; }
-	toggleClass(token: string, force?: boolean) { return this.classList.toggle(token, force); }
-	hasClass(token: string) { return this.classes.has(token); }
-
-	get firstChild(): MockElement | null {
-		return this.children[0] ?? null;
-	}
-
-	empty() {
-		this.children = [];
-		this.textContent = '';
-	}
-
-	appendChild(child: MockElement) {
-		if (child.parentElement) {
-			const idx = child.parentElement.children.indexOf(child);
-			if (idx !== -1) {
-				child.parentElement.children.splice(idx, 1);
-			}
-		}
-		child.parentElement = this;
-		this.children.push(child);
-		return child;
-	}
-
-	createDiv(opts?: string | { cls?: string; text?: string }) {
-		const cls = typeof opts === 'string' ? opts : opts?.cls || '';
-		const child = new MockElement(cls);
-		if (typeof opts === 'object' && opts?.text) child.textContent = opts.text;
-		this.appendChild(child);
-		return child;
-	}
-
-	createSpan(opts?: string | { cls?: string; text?: string }) {
-		const cls = typeof opts === 'string' ? opts : opts?.cls || '';
-		const child = new MockElement(cls);
-		if (typeof opts === 'object' && opts?.text) child.textContent = opts.text;
-		this.appendChild(child);
-		return child;
-	}
-
-	createEl(tag: string, opts?: { cls?: string; text?: string; type?: string }) {
-		const cls = opts?.cls || '';
-		const child = new MockElement(cls);
-		if (opts?.text) child.textContent = opts.text;
-		if (opts?.type) child.type = opts.type;
-		this.appendChild(child);
-		return child;
-	}
-
-	setAttr(key: string, val: string) { this.attributes.set(key, val); }
-	setAttribute(key: string, val: string) { this.attributes.set(key, val); }
-	getAttribute(key: string) { return this.attributes.get(key) ?? null; }
-
-	addEventListener(event: string, fn: (e?: unknown) => void) {
-		const arr = this.listeners.get(event) ?? [];
-		arr.push(fn);
-		this.listeners.set(event, arr);
-	}
-
-	dispatchEvent(event: string, e?: unknown) {
-		const arr = this.listeners.get(event) ?? [];
-		for (const fn of arr) fn(e);
-	}
-
-	setText(text: string) {
-		this.empty();
-		this.textContent = text;
-		return this;
-	}
-
-	appendText(text: string) {
-		this.textContent += text;
-		return this;
-	}
-
-	querySelector(sel: string): MockElement | null {
-		const match = (node: MockElement): boolean => {
-			if (sel.startsWith('.')) {
-				return node.hasClass(sel.slice(1));
-			}
-			if (sel === 'input' || sel.startsWith('input[')) {
-				return node.type !== '';
-			}
-			return false;
-		};
-		const find = (node: MockElement): MockElement | null => {
-			for (const c of node.children) {
-				if (match(c)) return c;
-				const nested = find(c);
-				if (nested) return nested;
-			}
-			return null;
-		};
-		return find(this);
-	}
-
-	querySelectorAll(sel: string): MockElement[] {
-		const match = (node: MockElement): boolean => {
-			if (sel.startsWith('.')) return node.hasClass(sel.slice(1));
-			return false;
-		};
-		const results: MockElement[] = [];
-		const search = (node: MockElement) => {
-			for (const c of node.children) {
-				if (match(c)) results.push(c);
-				search(c);
-			}
-		};
-		search(this);
-		return results;
-	}
-}
 
 (globalThis as unknown as { createDiv: (opts?: unknown) => MockElement }).createDiv = function(opts?: unknown) {
 	const cls = typeof opts === 'string' ? opts : (opts as { cls?: string })?.cls || '';
@@ -995,6 +837,148 @@ describe('WorkbenchView', () => {
 			const setBookPathSpy = vi.spyOn(view, 'setBookPath');
 			menu.items[0].clickHandler?.();
 			expect(setBookPathSpy).toHaveBeenCalledWith('Novels/第1部');
+		});
+	});
+
+	describe('Lifecycle & Generation Safety', () => {
+		it('should cancel hasPendingReload on close, gate closed reloads, and prevent restarting after close', async () => {
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			view.currentBookPath = 'NovelA';
+			(view as unknown as { container: unknown }).container = view.contentEl;
+
+			let renderCount = 0;
+			const renderDeferred: { resolve?: () => void } = {};
+			const viewInternal = view as unknown as {
+				isClosed: boolean;
+				isReloadingBoard: boolean;
+				hasPendingReload: boolean;
+				renderBoard: () => Promise<void>;
+			};
+
+			viewInternal.renderBoard = vi.fn().mockImplementation(() => {
+				renderCount++;
+				return new Promise<void>((resolve) => {
+					renderDeferred.resolve = resolve;
+				});
+			});
+
+			// Start first reload
+			const reload1 = view.reloadBoard();
+			expect(viewInternal.isReloadingBoard).toBe(true);
+
+			// Queue a pending reload
+			void view.reloadBoard();
+			expect(viewInternal.hasPendingReload).toBe(true);
+			expect(renderCount).toBe(1);
+
+			// Now close the view while reload is in-flight
+			await view.onClose();
+
+			expect(viewInternal.isClosed).toBe(true);
+			expect(viewInternal.hasPendingReload).toBe(false);
+
+			// Finish the in-flight render
+			renderDeferred.resolve?.();
+			await reload1;
+
+			// Reload should NOT have restarted after close
+			expect(renderCount).toBe(1);
+			expect(viewInternal.isReloadingBoard).toBe(false);
+			expect(viewInternal.hasPendingReload).toBe(false);
+
+			// Any further reloadBoard call on closed view is gated and returns immediately
+			await view.reloadBoard();
+			expect(renderCount).toBe(1);
+		});
+
+		it('should own local component per render, unload stale component on supersede, and swap only current generation', async () => {
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			view.currentBookPath = 'NovelA';
+			(view as unknown as { container: unknown }).container = view.contentEl;
+			(view as unknown as { sortMode: string }).sortMode = 'timeline';
+
+			const capturedComponents: Array<import('obsidian').Component> = [];
+			const render1Deferred: { resolve?: () => void } = {};
+
+			(TimelineBoardRenderer.render as ReturnType<typeof vi.fn>).mockImplementation((opts: { ownerComponent?: import('obsidian').Component }) => {
+				if (opts.ownerComponent) {
+					capturedComponents.push(opts.ownerComponent);
+				}
+				if (capturedComponents.length === 1) {
+					return new Promise<void>((resolve) => {
+						render1Deferred.resolve = resolve;
+					});
+				}
+				return Promise.resolve();
+			});
+
+			const viewInternal = view as unknown as {
+				renderBoard: () => Promise<void>;
+				currentRenderId: number;
+				currentBoardComponent: import('obsidian').Component | null;
+			};
+
+			// Start render 1 (in-flight)
+			const render1Promise = viewInternal.renderBoard();
+			await Promise.resolve();
+			expect(capturedComponents).toHaveLength(1);
+			const comp1 = capturedComponents[0];
+			expect(comp1).toBeDefined();
+			expect(comp1.load).toHaveBeenCalled();
+			expect(comp1.unload).not.toHaveBeenCalled();
+
+			// Start render 2 before render 1 finishes -> render 1 becomes stale
+			const render2Promise = viewInternal.renderBoard();
+			await Promise.resolve();
+			expect(capturedComponents).toHaveLength(2);
+			const comp2 = capturedComponents[1];
+			expect(comp2).not.toBe(comp1);
+
+			// Finish render 1 (now stale)
+			render1Deferred.resolve?.();
+			await render1Promise;
+
+			// Stale comp1 must be unloaded and not become the active component
+			expect(comp1.unload).toHaveBeenCalled();
+			expect(viewInternal.currentBoardComponent).not.toBe(comp1);
+
+			// Let render 2 finish
+			await render2Promise;
+
+			// Successful comp2 becomes the displayed board component
+			expect(viewInternal.currentBoardComponent).toBe(comp2);
+			expect(comp2.unload).not.toHaveBeenCalled();
+
+			// Start render 3 while comp2 is displayed
+			const render3Deferred: { resolve?: () => void } = {};
+			(TimelineBoardRenderer.render as ReturnType<typeof vi.fn>).mockImplementationOnce((opts: { ownerComponent?: import('obsidian').Component }) => {
+				if (opts.ownerComponent) {
+					capturedComponents.push(opts.ownerComponent);
+				}
+				return new Promise<void>((resolve) => {
+					render3Deferred.resolve = resolve;
+				});
+			});
+
+			const render3Promise = viewInternal.renderBoard();
+			await Promise.resolve();
+			expect(capturedComponents).toHaveLength(3);
+			const comp3 = capturedComponents[2];
+
+			// Crucial: Old comp2 must NOT be unloaded while render 3 is still pending
+			expect(comp2.unload).not.toHaveBeenCalled();
+			expect(viewInternal.currentBoardComponent).toBe(comp2);
+
+			// Close view while render 3 is in-flight: unloads displayed comp2
+			await view.onClose();
+			expect(comp2.unload).toHaveBeenCalled();
+			expect(viewInternal.currentBoardComponent).toBeNull();
+
+			// Late finishing in-flight render 3 must be disposed immediately without swapping
+			render3Deferred.resolve?.();
+			await render3Promise;
+			expect(comp3.unload).toHaveBeenCalled();
+			expect(viewInternal.currentBoardComponent).toBeNull();
 		});
 	});
 });

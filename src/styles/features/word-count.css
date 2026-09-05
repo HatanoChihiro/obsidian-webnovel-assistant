@@ -171,7 +171,7 @@ body .markdown-source-view.mod-cm6 .cm-editor.webnovel-show-gutter .cm-scroller 
 
 /* Selection word count tooltip */
 
-.cm-tooltip-selection-count {
+body .cm-tooltip.cm-tooltip-selection-count {
 	padding: 4px 8px;
 	background-color: var(--background-secondary);
 	color: var(--text-normal);

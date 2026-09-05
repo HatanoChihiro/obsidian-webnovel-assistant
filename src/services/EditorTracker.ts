@@ -24,9 +24,10 @@ export class EditorTracker {
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (!view) return;
 
-		// 非工作区文件：仍显示基本字数，但不追踪增量/历史
+		// 非工作区文件只更新显示，保留已有的增量追踪边界。
 		if (view.file && !this.plugin.cacheManager.isEligibleForWordCount(view.file)) {
-			this.updateWordCount();
+			const content = view.getViewData();
+			this.displayWordCount(view, content, this.plugin.calculateAccurateWords(content));
 			return;
 		}
 
@@ -37,13 +38,14 @@ export class EditorTracker {
 			return;
 		}
 
-		const currentCount = this.plugin.calculateAccurateWords(view.getViewData());
+		const content = view.getViewData();
+		const currentCount = this.plugin.calculateAccurateWords(content);
+
 		const delta = currentCount - this.plugin.lastFileWords;
 
 		// 只有符合字数统计资格的有效正文文档变化才更新写作历史。
 		// 注意：不检查 lastFileWords > 0，因为这会导致第一个字不被记录
-		const isEligible = this.plugin.cacheManager.isEligibleForWordCount(view.file);
-		if (delta !== 0 && isEligible) {
+		if (delta !== 0) {
 			this.plugin.app.workspace.trigger('webnovel:editor-word-count-updated', view.file, delta);
 		}
 
@@ -51,11 +53,11 @@ export class EditorTracker {
 
 		// [BUGFIX] 同步更新文件浏览器缓存
 		// 极其重要：这确保了后续 modify 事件（由自动保存触发）计算出的 delta 为 0，防止重复统计。
-		if (view.file && this.plugin.cacheManager.isEligibleForTotalWordCount(view.file)) {
+		if (this.plugin.cacheManager.isEligibleForTotalWordCount(view.file)) {
 			this.plugin.cacheManager.updateFileCache(view.file, currentCount, this.app.vault);
 		}
 
-		this.updateWordCount();
+		this.displayWordCount(view, content, currentCount);
 		this.plugin.refreshStatusViews();
 		this.plugin.mobileFloatingStats?.update();
 	}
@@ -119,10 +121,21 @@ export class EditorTracker {
 			return;
 		}
 
+		if (isMobile() && this.plugin.settings.showMobileFloatingStats
+			&& (!view.file || this.plugin.cacheManager.isEligibleForWordCount(view.file))) {
+			this.plugin.statusBarItemEl.setText('');
+			return;
+		}
+
+		const content = view.getViewData();
+		const totalCount = this.plugin.calculateAccurateWords(content);
+		this.displayWordCount(view, content, totalCount);
+	}
+
+	private displayWordCount(view: MarkdownView, content: string, totalCount: number): void {
 		// 非工作区/非章节文件：只显示基本字数，不显示追踪和进度
 		if (view.file && !this.plugin.cacheManager.isEligibleForWordCount(view.file)) {
-			const totalCount = this.plugin.calculateAccurateWords(view.getViewData());
-			const cnChars = (view.getViewData().match(REGEX_PATTERNS.CHINESE()) || []).length;
+			const cnChars = (content.match(REGEX_PATTERNS.CHINESE()) || []).length;
 			this.plugin.statusBarItemEl.setText(t('common.word-count-status', { count: String(totalCount), cnCount: String(cnChars) }));
 			return;
 		}
@@ -133,9 +146,7 @@ export class EditorTracker {
 			return;
 		}
 
-		const totalCount = this.plugin.calculateAccurateWords(view.getViewData());
 		const displaySessionWords = Math.max(0, this.plugin.sessionAddedWords);
-
 		const stateStr = this.plugin.isTracking ? t('status.tracking-active') : t('status.tracking-paused');
 
 		if (this.plugin.settings.showGoal && view.file) {
@@ -152,7 +163,7 @@ export class EditorTracker {
 			}
 		}
 
-		const cnChars = (view.getViewData().match(REGEX_PATTERNS.CHINESE()) || []).length;
+		const cnChars = (content.match(REGEX_PATTERNS.CHINESE()) || []).length;
 		this.plugin.statusBarItemEl.setText(t('common.status-bar-format', { state: stateStr, status: `${t('common.word-count-status', { count: String(totalCount), cnCount: String(cnChars) })} | ${t('common.net-increase', { count: String(displaySessionWords) })}` }));
 	}
 }

@@ -4,9 +4,17 @@ import { ViewPlugin, Decoration, type DecorationSet, type EditorView, type ViewU
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { ProofreadingDiagnostic } from '../types/proofreading';
 import { ProofreadingPopover } from '../ui/ProofreadingPopover';
-import { expandAndMergeRanges } from '../utils/proofreadingHelpers';
+import { expandAndMergeRanges, computeDiagnosticContextFingerprint } from '../utils/proofreadingHelpers';
+
+export interface DismissProofreadingInstancePayload {
+	from: number;
+	to: number;
+	ruleId: string;
+	original: string;
+}
 
 export const forceProofreadingUpdate = StateEffect.define<null>();
+export const dismissProofreadingInstance = StateEffect.define<DismissProofreadingInstancePayload>();
 
 const touchStateMap = new WeakMap<EditorView, { startX: number; startY: number }>();
 
@@ -19,6 +27,12 @@ export function buildProofreadingExtension(app: App, plugin: WebNovelAssistantPl
 		private activeDiagnostics = new Map<string, ProofreadingDiagnostic>();
 		private activePopover: ProofreadingPopover | null = null;
 		private unsubscribeRefresh: (() => void) | null = null;
+		private dismissedRanges: Array<{
+			from: number;
+			to: number;
+			ruleId: string;
+			original: string;
+		}> = [];
 
 		constructor(view: EditorView) {
 			this.decorations = this.buildDecorations(view);
@@ -31,12 +45,47 @@ export function buildProofreadingExtension(app: App, plugin: WebNovelAssistantPl
 			}
 		}
 
+		public dismissRange(from: number, to: number, ruleId: string, original: string): void {
+			if (!this.dismissedRanges.some(r => r.from === from && r.to === to && r.ruleId === ruleId)) {
+				this.dismissedRanges.push({ from, to, ruleId, original });
+			}
+		}
+
 		update(update: ViewUpdate) {
+			let hasDismissEffect = false;
+			for (const tr of update.transactions) {
+				for (const effect of tr.effects) {
+					if (effect.is(dismissProofreadingInstance)) {
+						this.dismissRange(effect.value.from, effect.value.to, effect.value.ruleId, effect.value.original);
+						hasDismissEffect = true;
+					}
+				}
+			}
+
+			if (update.docChanged) {
+				for (let i = this.dismissedRanges.length - 1; i >= 0; i--) {
+					const r = this.dismissedRanges[i];
+					const newFrom = update.changes.mapPos(r.from, 1);
+					const newTo = update.changes.mapPos(r.to, -1);
+					if (newFrom >= newTo || newTo > update.view.state.doc.length) {
+						this.dismissedRanges.splice(i, 1);
+						continue;
+					}
+					const currentText = update.view.state.doc.sliceString(newFrom, newTo);
+					if (currentText !== r.original) {
+						this.dismissedRanges.splice(i, 1);
+						continue;
+					}
+					r.from = newFrom;
+					r.to = newTo;
+				}
+			}
+
 			const hasForceEffect = update.transactions.some(tr =>
 				tr.effects.some(e => e.is(forceProofreadingUpdate))
 			);
 
-			if (update.docChanged || update.viewportChanged || hasForceEffect) {
+			if (update.docChanged || update.viewportChanged || hasForceEffect || hasDismissEffect) {
 				this.decorations = this.buildDecorations(update.view);
 			}
 		}
@@ -51,6 +100,7 @@ export function buildProofreadingExtension(app: App, plugin: WebNovelAssistantPl
 				this.unsubscribeRefresh = null;
 			}
 			this.activeDiagnostics.clear();
+			this.dismissedRanges = [];
 		}
 
 		private getFile(view: EditorView): TFile | null {
@@ -121,6 +171,30 @@ export function buildProofreadingExtension(app: App, plugin: WebNovelAssistantPl
 					// 确保落在实际视口范围内
 					const isInVisible = view.visibleRanges.some(vr => docFrom < vr.to && docTo > vr.from);
 					if (!isInVisible) continue;
+
+					// 1. 优先检查当前会话中的局部映射忽略区间（实时打字/移动抗漂移）
+					const isLocallyDismissed = this.dismissedRanges.some(
+						r => r.from === docFrom && r.to === docTo && r.ruleId === diag.ruleId && r.original === diag.original
+					);
+					if (isLocallyDismissed) {
+						continue;
+					}
+
+					// 2. 检查全局忽略词汇与上下文指纹
+					const safeFrom = Math.max(0, Math.min(docFrom, docLen));
+					const safeTo = Math.max(safeFrom, Math.min(docTo, docLen));
+					const prefix = view.state.doc.sliceString(Math.max(0, safeFrom - 12), safeFrom);
+					const suffix = view.state.doc.sliceString(safeTo, Math.min(docLen, safeTo + 12));
+					const fingerprint = computeDiagnosticContextFingerprint(view.state.doc, docFrom, docTo, diag.ruleId, diag.original);
+
+					if (plugin.proofreadingManager.isIgnored(diag, fingerprint, {
+						ruleId: diag.ruleId,
+						prefix,
+						suffix
+					})) {
+						this.dismissRange(docFrom, docTo, diag.ruleId, diag.original);
+						continue;
+					}
 
 					const diagId = `${docFrom}:${docTo}:${diag.ruleId}`;
 					if (seenKeys.has(diagId)) continue;

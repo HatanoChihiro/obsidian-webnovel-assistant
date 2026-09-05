@@ -43,7 +43,7 @@ export class MenuManager {
 
 				menu.addItem((item) => {
 					item.setTitle(t('menu.start-task-tracking')).setIcon('trophy').setSection('webnovel-assistant').onClick(() => {
-						this.openTaskModal(file);
+						void this.openTaskModal(file);
 					});
 				});
 
@@ -232,7 +232,7 @@ export class MenuManager {
 
 			menu.addItem((item) => {
 				item.setTitle(t('menu.start-task-tracking')).setIcon('trophy').setSection('webnovel-assistant').onClick(() => {
-					this.openTaskModal(file);
+					void this.openTaskModal(file);
 				});
 			});
 		} else {
@@ -290,7 +290,7 @@ export class MenuManager {
 
 				targetMenu.addItem((subItem) => {
 					subItem.setTitle(t('menu.start-task-tracking')).setIcon('trophy').onClick(() => {
-						this.openTaskModal(file);
+						void this.openTaskModal(file);
 					});
 				});
 			});
@@ -336,10 +336,11 @@ export class MenuManager {
 		}
 	}
 
-	private openTaskModal(file: TFile | TFolder) {
+	private async openTaskModal(file: TFile | TFolder): Promise<void> {
 		const folderPath = findBookRoot(this.plugin.app, this.plugin, file) || (file instanceof TFolder ? file.path : '');
 
 		const manager = this.plugin.taskManager;
+		await manager.reconcileTasks(folderPath);
 		const taskFile = manager.getTaskFile(folderPath);
 
 		if (!taskFile) {
@@ -350,7 +351,8 @@ export class MenuManager {
 			}, folderPath).open();
 		} else {
 			// 已有任务记录，新增任务
-			manager.loadEntries(folderPath).then(entries => {
+			try {
+				const entries = await manager.loadEntries(folderPath);
 				const nextPeriod = manager.getNextPeriod(entries || []);
 				const lastPlatform = entries && entries.length > 0
 					? entries[entries.length - 1].platform : '';
@@ -358,7 +360,9 @@ export class MenuManager {
 					await manager.addEntry(entry, folderPath);
 					new Notice(t('notice.task-added'));
 				}, folderPath).open();
-			}).catch(console.error);
+			} catch (err) {
+				console.error(err);
+			}
 		}
 	}
 

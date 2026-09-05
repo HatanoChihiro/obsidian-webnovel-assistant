@@ -152,6 +152,7 @@ export class PunctuationScanner {
 			const lineLenWithNewline = line.length + 1; // 含 \n
 
 			if (line.length > 0) {
+				const lineHasHan = HAN_REGEX.test(line);
 				const protectedRanges = getLineProtectedRanges(line);
 
 				// Markdown 有序列表前缀保护 (例如 "1. 章节标题")
@@ -255,7 +256,7 @@ export class PunctuationScanner {
 						if (!suggested) continue;
 
 						diagnostics.push({
-							ruleId: `punctuation_cn_${absoluteOffset}`,
+							ruleId: `punctuation_cn_${char}`,
 							type: 'punctuation',
 							from: absoluteOffset,
 							to: absoluteOffset + 1,
@@ -267,11 +268,17 @@ export class PunctuationScanner {
 							source: 'punctuation'
 						});
 					} else if (targetScript === 'latin' && isEnCandidate) {
+						// 中英混排保护：若所在行包含汉字，说明处于中文句子/语境中，
+						// 即使句末以英文缩写/单词结尾（如“技能等级Lv1。”、“我认为xx。”），全角标点亦属合法规范排版，不予误报为西文半角
+						if (lineHasHan) {
+							continue;
+						}
+
 						const suggested = EN_PUNCTUATION_MAP[char];
 						if (!suggested) continue;
 
 						diagnostics.push({
-							ruleId: `punctuation_en_${absoluteOffset}`,
+							ruleId: `punctuation_en_${char}`,
 							type: 'punctuation',
 							from: absoluteOffset,
 							to: absoluteOffset + 1,
@@ -293,7 +300,7 @@ export class PunctuationScanner {
 		const addPairDiag = (token: { char: string; offset: number }, msgKey: string) => {
 			if (!diagnosedOffsets.has(token.offset)) {
 				diagnostics.push({
-					ruleId: `punctuation_pair_${token.offset}`,
+					ruleId: `punctuation_pair_${token.char}`,
 					type: 'punctuation',
 					from: token.offset,
 					to: token.offset + 1,

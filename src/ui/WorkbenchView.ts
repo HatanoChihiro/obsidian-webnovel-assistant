@@ -21,6 +21,7 @@ import { TaskAddModal } from './TaskModal';
 import { isMobile } from '../utils';
 import { Logger } from '../utils/Logger';
 import { WorkbenchFilterIndex } from '../services/WorkbenchFilterIndex';
+import { bindFilterInputEvents } from './components/FilterInputBinding';
 import { resolveChapterTemplate, type ChapterTemplateSettings } from '../utils/template';
 import type { CacheManager } from '../services/CacheManager';
 import type { AdaptiveDebounceManager } from '../services/AdaptiveDebounceManager';
@@ -82,7 +83,7 @@ export type WorkbenchForeshadowingManager = ForeshadowingBoardStatusManager &
 export type WorkbenchTimelineManager = TimelineBoardTimelineManager;
 
 export type WorkbenchTaskManager = TaskBoardManager &
-	Pick<TaskManager, 'loadEntries' | 'getNextPeriod' | 'addEntry' | 'getChapterWordCount'>;
+	Pick<TaskManager, 'loadEntries' | 'getNextPeriod' | 'addEntry' | 'getChapterWordCount' | 'reconcileTasks'>;
 
 export type WorkbenchStickyNoteManager = StickyNoteListManager;
 
@@ -208,6 +209,7 @@ export class WorkbenchView extends ItemView {
     private draggableListCleanup: (() => void) | null = null;
     private touchPolyfillCleanup: (() => void) | null = null;
     private isReloadingBoard: boolean = false;
+    private isClosed: boolean = false;
     private hasPendingReload: boolean = false;
     private currentBoardComponent: Component | null = null;
     private stickyNoteListRenderer: StickyNoteListRenderer | null = null;
@@ -319,6 +321,18 @@ export class WorkbenchView extends ItemView {
 					} else {
 						void this.reloadBoard();
 					}
+                }
+            })
+        );
+        this.registerEvent(
+            this.app.workspace.on('webnovel:tasks-changed', (folderPath?: string) => {
+                if (this.sortMode === 'task') {
+                    if (folderPath !== undefined) {
+                        const target = !folderPath || folderPath === '/' ? '' : folderPath.replace(/^\/+|\/+$/g, '');
+                        const current = !this.currentBookPath || this.currentBookPath === '/' ? '' : this.currentBookPath.replace(/^\/+|\/+$/g, '');
+                        if (target !== current) return;
+                    }
+                    void this.reloadBoard();
                 }
             })
         );
@@ -550,6 +564,7 @@ export class WorkbenchView extends ItemView {
     }
 
     async onOpen(): Promise<void> {
+        this.isClosed = false;
         this.sortMode = this.plugin.settings.corkboardSortMode || 'default';
         if (isMobile() && this.sortMode === 'sticky') {
             this.sortMode = 'default';
@@ -591,15 +606,17 @@ export class WorkbenchView extends ItemView {
     }
 
     async onClose(): Promise<void> {
+        this.isClosed = true;
+        this.hasPendingReload = false;
         this.currentRenderId++;
         this.plugin.adaptiveDebounceManager.cancel('workbench-refresh');
         if (this.currentBoardComponent) {
-            this.removeChild(this.currentBoardComponent);
             this.currentBoardComponent.unload();
             this.currentBoardComponent = null;
         }
         if (this.filterDebounceTimer !== null) {
-            window.clearTimeout(this.filterDebounceTimer);
+            const win = this.container?.ownerDocument?.defaultView ?? window;
+            win.clearTimeout(this.filterDebounceTimer);
             this.filterDebounceTimer = null;
         }
         this.filterIndex.clear();
@@ -613,6 +630,7 @@ export class WorkbenchView extends ItemView {
         }
         this.container.empty();
     }
+
 
     private renderFilterBar(
         container: HTMLElement,
@@ -655,12 +673,6 @@ export class WorkbenchView extends ItemView {
         clearButton.title = t('corkboard.filter-clear');
         setIcon(clearButton, 'x');
 
-        const updateClearButton = () => {
-            const isVisible = input.value.length > 0;
-            clearButton.toggleClass('is-visible', isVisible);
-            clearButton.setAttr('aria-hidden', isVisible ? 'false' : 'true');
-        };
-        updateClearButton();
 
         if (mode === 'default') {
             const sortToggle = bar.createDiv('clickable-icon wn-workbench-sort-toggle');
@@ -707,49 +719,22 @@ export class WorkbenchView extends ItemView {
             }
         }
 
-        let isComposing = false;
-        input.addEventListener('compositionstart', () => {
-            isComposing = true;
-            // Do not allow a previous query render to replace the input during IME composition.
-            this.currentRenderId++;
-            if (this.filterDebounceTimer !== null) {
-                window.clearTimeout(this.filterDebounceTimer);
-                this.filterDebounceTimer = null;
+        bindFilterInputEvents({
+            input,
+            inputWrapper,
+            clearButton,
+            onCompositionStart: () => {
+                // Do not allow a previous query render to replace the input during IME composition.
+                this.currentRenderId++;
+                if (this.filterDebounceTimer !== null) {
+                    const win = input.ownerDocument?.defaultView ?? window;
+                    win.clearTimeout(this.filterDebounceTimer);
+                    this.filterDebounceTimer = null;
+                }
+            },
+            onRefresh: (immediate) => {
+                this.scheduleFilterRefresh(mode, input, immediate);
             }
-        });
-        input.addEventListener('compositionend', () => {
-            isComposing = false;
-            updateClearButton();
-            this.scheduleFilterRefresh(mode, input);
-        });
-        input.addEventListener('input', (event) => {
-            updateClearButton();
-            if (isComposing || (event as unknown as { isComposing?: boolean }).isComposing) return;
-            this.scheduleFilterRefresh(mode, input);
-        });
-        input.addEventListener('focus', () => {
-            inputWrapper.addClass('is-focused');
-        });
-        input.addEventListener('blur', () => {
-            inputWrapper.removeClass('is-focused');
-        });
-        input.addEventListener('keydown', (event) => {
-            if (isComposing || event.isComposing) return;
-            if (event.key !== 'Escape' || input.value.length === 0) return;
-            event.preventDefault();
-            input.value = '';
-            updateClearButton();
-            this.scheduleFilterRefresh(mode, input, true);
-        });
-        clearButton.onclick = () => {
-            input.value = '';
-            updateClearButton();
-            this.scheduleFilterRefresh(mode, input, true);
-        };
-        clearButton.addEventListener('keydown', (event) => {
-            if (event.key !== 'Enter' && event.key !== ' ') return;
-            event.preventDefault();
-            clearButton.click();
         });
     }
 
@@ -764,10 +749,11 @@ export class WorkbenchView extends ItemView {
             end: input.selectionEnd ?? input.value.length
         };
 
+        const win = input.ownerDocument?.defaultView ?? window;
         // Cancel any in-flight render so an older query can never replace newer input.
         this.currentRenderId++;
-        if (this.filterDebounceTimer !== null) window.clearTimeout(this.filterDebounceTimer);
-        this.filterDebounceTimer = window.setTimeout(() => {
+        if (this.filterDebounceTimer !== null) win.clearTimeout(this.filterDebounceTimer);
+        this.filterDebounceTimer = win.setTimeout(() => {
             this.filterDebounceTimer = null;
             void this.reloadBoard();
         }, immediate ? 0 : 200);
@@ -826,7 +812,7 @@ export class WorkbenchView extends ItemView {
     }
 
     public async reloadBoard(): Promise<void> {
-        if (!this.container) return;
+        if (!this.container || this.isClosed) return;
         if (this.isReloadingBoard) {
             this.hasPendingReload = true;
             return;
@@ -848,7 +834,9 @@ export class WorkbenchView extends ItemView {
 
             if (this.currentBookPath) {
                 await this.renderBoard();
+                if (this.isClosed) return;
             } else {
+                const prevComponent = this.currentBoardComponent;
                 this.container.empty();
                 const header = this.container.createDiv('wn-corkboard-header');
                 header.createDiv({ text: t('view.workbench'), cls: 'wn-corkboard-title' });
@@ -856,6 +844,8 @@ export class WorkbenchView extends ItemView {
                     text: t('corkboard.please-open-file'),
                     cls: 'wn-corkboard-hint'
                 });
+                this.currentBoardComponent = null;
+                prevComponent?.unload();
             }
 
             if (this.sortMode === 'timeline') {
@@ -878,7 +868,7 @@ export class WorkbenchView extends ItemView {
             }
         } finally {
             this.isReloadingBoard = false;
-            if (this.hasPendingReload) {
+            if (this.hasPendingReload && !this.isClosed) {
                 this.hasPendingReload = false;
                 void this.reloadBoard();
             }
@@ -898,11 +888,14 @@ export class WorkbenchView extends ItemView {
                 text: t('corkboard.please-open-file'),
                 cls: 'wn-corkboard-hint'
             });
-            if (this.currentRenderId !== renderId) return;
+            if (this.currentRenderId !== renderId || this.isClosed) return;
+            const prevComponent = this.currentBoardComponent;
             const fragment = (window as unknown as { createFragment: () => DocumentFragment }).createFragment();
             while (buffer.firstChild) fragment.appendChild(buffer.firstChild);
             this.container.empty();
             this.container.appendChild(fragment);
+            this.currentBoardComponent = null;
+            prevComponent?.unload();
             return;
         }
 
@@ -1044,6 +1037,7 @@ export class WorkbenchView extends ItemView {
                 const bookFolder = this.currentBookPath === '/' ? '' : (this.currentBookPath || '');
                 const manager = this.plugin.taskManager;
 
+                await manager.reconcileTasks(bookFolder);
                 const existingEntries = await manager.loadEntries(bookFolder);
                 const nextPeriod = manager.getNextPeriod(existingEntries || []);
                 const lastPlatform = existingEntries && existingEntries.length > 0
@@ -1058,7 +1052,6 @@ export class WorkbenchView extends ItemView {
                     async (entry) => {
                         await manager.addEntry(entry, bookFolder);
                         new Notice(t('notice.task-added') || '任务已添加');
-                        void this.reloadBoard();
                     },
                     bookFolder
                 ).open();
@@ -1214,13 +1207,6 @@ export class WorkbenchView extends ItemView {
             };
         }
 
-        if (this.currentBoardComponent) {
-            this.removeChild(this.currentBoardComponent);
-            this.currentBoardComponent.unload();
-            this.currentBoardComponent = null;
-        }
-        this.currentBoardComponent = this.addChild(new Component());
-
         let filteredChapterFiles = files;
         let matchedLoreHeadings: ReadonlySet<string> | undefined;
         let foreshadowingEntriesList: ParsedForeshadowingEntry[] = [];
@@ -1272,7 +1258,7 @@ export class WorkbenchView extends ItemView {
                     foreshadowingEntriesList = this.plugin.foreshadowingManager.parseEntries(content);
                 }
             }
-            if (this.currentRenderId !== renderId) return;
+            if (this.currentRenderId !== renderId || this.isClosed) return;
 
             const fQuery = this.foreshadowingFilterQuery.trim().toLowerCase();
             const tagFilter = this.currentForeshadowingTagFilter;
@@ -1297,92 +1283,106 @@ export class WorkbenchView extends ItemView {
             );
         }
 
-        if (this.sortMode === 'timeline') {
-            await TimelineBoardRenderer.render({
-                app: this.app,
-                plugin: this.plugin,
-                ownerComponent: this.currentBoardComponent,
-                container: buffer,
-                files,
-                foreshadowingMap,
-                currentBookPath: this.currentBookPath || '',
-                currentTimelineFilter: this.currentTimelineFilter,
-                onSaveStateChange: (isSaving) => { this.isSavingMetadata = isSaving; },
-                reloadBoard: () => { void this.reloadBoard(); },
-                getChapterEvents: (file, fallbackMap) => this.getChapterEvents(file, fallbackMap),
-                isUnscheduledDescending: this.isTimelineUnscheduledDescending,
-                onToggleUnscheduledSort: () => {
-                    this.isTimelineUnscheduledDescending = !this.isTimelineUnscheduledDescending;
-                    this.currentRenderId++;
-                    void this.reloadBoard();
-                }
-            });
-        } else if (this.sortMode === 'lore') {
-            await LoreBoardRenderer.render({
-                ownerComponent: this.currentBoardComponent,
-                app: this.app,
-                plugin: this.plugin,
-                container: buffer,
-                files,
-                currentBookPath: this.currentBookPath || '',
-                matchedLoreHeadings,
-                reloadBoard: () => { void this.reloadBoard(); }
-            });
-        } else if (this.sortMode === 'foreshadowing') {
-            await ForeshadowingBoardRenderer.render({
-                app: this.app,
-                plugin: this.plugin,
-                ownerComponent: this.currentBoardComponent,
-                container: buffer,
-                entries: foreshadowingEntriesList,
-                foreshadowingFile: foreshadowingFileObj,
-                query: this.foreshadowingFilterQuery,
-                currentForeshadowingTagFilter: this.currentForeshadowingTagFilter,
-                currentBookPath: this.currentBookPath || '',
-                reloadBoard: () => { void this.reloadBoard(); }
-            });
-        } else if (this.sortMode === 'task') {
-            await TaskBoardRenderer.render({
-                app: this.app,
-                plugin: this.plugin,
-                container: buffer,
-                currentBookPath: this.currentBookPath || '',
-                reloadBoard: () => { void this.reloadBoard(); }
-            });
-        } else if (this.sortMode === 'sticky') {
-			const stickyRoot = buffer.createDiv({ cls: 'wn-workbench-sticky-list-root' });
-			const renderer = new StickyNoteListRenderer(this.app, this.plugin, stickyRoot, {
-				mode: 'workbench',
-				showToolbar: false
-			});
-			this.stickyNoteListRenderer = renderer;
-			this.currentBoardComponent.register(() => {
-				renderer.destroy();
-				if (this.stickyNoteListRenderer === renderer) this.stickyNoteListRenderer = null;
-			});
-			renderer.render();
-        } else {
-            if (filteredChapterFiles.length === 0 && this.chapterFilterQuery.trim().length > 0) {
-                buffer.createDiv({ cls: 'wn-corkboard-empty-msg', text: t('corkboard.filter-no-results') });
+        const renderComponent = new Component();
+        renderComponent.load();
+        try {
+            if (this.sortMode === 'timeline') {
+                await TimelineBoardRenderer.render({
+                    app: this.app,
+                    plugin: this.plugin,
+                    ownerComponent: renderComponent,
+                    container: buffer,
+                    files,
+                    foreshadowingMap,
+                    currentBookPath: this.currentBookPath || '',
+                    currentTimelineFilter: this.currentTimelineFilter,
+                    onSaveStateChange: (isSaving) => { this.isSavingMetadata = isSaving; },
+                    reloadBoard: () => { void this.reloadBoard(); },
+                    getChapterEvents: (file, fallbackMap) => this.getChapterEvents(file, fallbackMap),
+                    isUnscheduledDescending: this.isTimelineUnscheduledDescending,
+                    onToggleUnscheduledSort: () => {
+                        this.isTimelineUnscheduledDescending = !this.isTimelineUnscheduledDescending;
+                        this.currentRenderId++;
+                        void this.reloadBoard();
+                    }
+                });
+            } else if (this.sortMode === 'lore') {
+                await LoreBoardRenderer.render({
+                    ownerComponent: renderComponent,
+                    app: this.app,
+                    plugin: this.plugin,
+                    container: buffer,
+                    files,
+                    currentBookPath: this.currentBookPath || '',
+                    matchedLoreHeadings,
+                    reloadBoard: () => { void this.reloadBoard(); }
+                });
+            } else if (this.sortMode === 'foreshadowing') {
+                await ForeshadowingBoardRenderer.render({
+                    app: this.app,
+                    plugin: this.plugin,
+                    ownerComponent: renderComponent,
+                    container: buffer,
+                    entries: foreshadowingEntriesList,
+                    foreshadowingFile: foreshadowingFileObj,
+                    query: this.foreshadowingFilterQuery,
+                    currentForeshadowingTagFilter: this.currentForeshadowingTagFilter,
+                    currentBookPath: this.currentBookPath || '',
+                    reloadBoard: () => { void this.reloadBoard(); }
+                });
+            } else if (this.sortMode === 'task') {
+                await TaskBoardRenderer.render({
+                    app: this.app,
+                    plugin: this.plugin,
+                    container: buffer,
+                    currentBookPath: this.currentBookPath || '',
+                    reloadBoard: () => { void this.reloadBoard(); }
+                });
+            } else if (this.sortMode === 'sticky') {
+                const stickyRoot = buffer.createDiv({ cls: 'wn-workbench-sticky-list-root' });
+                const renderer = new StickyNoteListRenderer(this.app, this.plugin, stickyRoot, {
+                    mode: 'workbench',
+                    showToolbar: false
+                });
+                this.stickyNoteListRenderer = renderer;
+                renderComponent.register(() => {
+                    renderer.destroy();
+                    if (this.stickyNoteListRenderer === renderer) this.stickyNoteListRenderer = null;
+                });
+                renderer.render();
             } else {
-                this.renderOrderedBoard(buffer, filteredChapterFiles, foreshadowingMap);
+                if (filteredChapterFiles.length === 0 && this.chapterFilterQuery.trim().length > 0) {
+                    buffer.createDiv({ cls: 'wn-corkboard-empty-msg', text: t('corkboard.filter-no-results') });
+                } else {
+                    this.renderOrderedBoard(buffer, filteredChapterFiles, foreshadowingMap);
+                }
             }
-        }
 
-        if (this.currentRenderId !== renderId) return;
-        const tSwapStart = performance.now();
-        const fragment = (window as unknown as { createFragment: () => DocumentFragment }).createFragment();
-        while (buffer.firstChild) {
-            fragment.appendChild(buffer.firstChild);
+            if (this.currentRenderId !== renderId || this.isClosed) {
+                renderComponent.unload();
+                return;
+            }
+            const prevComponent = this.currentBoardComponent;
+            const tSwapStart = performance.now();
+            const fragment = (window as unknown as { createFragment: () => DocumentFragment }).createFragment();
+            while (buffer.firstChild) {
+                fragment.appendChild(buffer.firstChild);
+            }
+            this.container.empty();
+            this.container.toggleClass('is-timeline-mode', this.sortMode === 'timeline');
+            this.container.appendChild(fragment);
+            this.currentBoardComponent = renderComponent;
+            prevComponent?.unload();
+            this.restorePendingFilterFocus();
+            const tSwap = performance.now();
+            Logger.info(`[Perf Phase] Workbench.bufferSwap: ${(tSwap - tSwapStart).toFixed(2)}ms`);
+            Logger.info(`[Perf] Workbench renderBoard completed in ${(tSwap - tStart).toFixed(2)}ms (mode=${this.sortMode}, files=${files.length})`);
+        } catch (error) {
+            renderComponent.unload();
+            throw error;
         }
-        this.container.empty();
-        this.container.toggleClass('is-timeline-mode', this.sortMode === 'timeline');
-        this.container.appendChild(fragment);
-        this.restorePendingFilterFocus();
-        const tSwap = performance.now();
-        Logger.info(`[Perf Phase] Workbench.bufferSwap: ${(tSwap - tSwapStart).toFixed(2)}ms`);
-        Logger.info(`[Perf] Workbench renderBoard completed in ${(tSwap - tStart).toFixed(2)}ms (mode=${this.sortMode}, files=${files.length})`);
     }
+
 
     private renderOrderedBoard(container: HTMLElement, files: TFile[], foreshadowingMap: Map<string, ParsedForeshadowingEntry[]>): void {
         const grid = container.createDiv('wn-corkboard-grid');

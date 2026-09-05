@@ -130,7 +130,7 @@ export class TaskManager {
 	}
 
 	async addEntry(entry: TaskEntry, folderPath: string = this.currentFolder): Promise<void> {
-		return this.writer.enqueue(async () => {
+		await this.writer.enqueue(async () => {
 			let file = this.getTaskFile(folderPath);
 			if (!file) file = await this.createTaskFile(folderPath);
 
@@ -139,10 +139,12 @@ export class TaskManager {
 				return existing.trimEnd() + sep + this.formatEntry(entry);
 			});
 		});
+		await this.reconcileTasks(folderPath, false);
+		this.notifyTasksChanged(folderPath);
 	}
 
-	async updateEntryStatus(period: number, status: TaskStatus, completedWords?: number, taskType?: TaskType, folderPath: string = this.currentFolder): Promise<void> {
-		return this.writer.enqueue(async () => {
+	async updateEntryStatus(period: number, status: TaskStatus, completedWords?: number, taskType?: TaskType, folderPath: string = this.currentFolder, notify: boolean = true): Promise<void> {
+		await this.writer.enqueue(async () => {
 			const file = this.getTaskFile(folderPath);
 			if (!file) return;
 			await this.app.vault.process(file, (content) => {
@@ -164,6 +166,9 @@ export class TaskManager {
 				return newContent;
 			});
 		});
+		if (notify) {
+			this.notifyTasksChanged(folderPath);
+		}
 	}
 
 	/** 更新进行中任务的完成字数（实时持久化） */
@@ -212,8 +217,28 @@ export class TaskManager {
 		const count = this.plugin.cacheManager.getFolderWordCount(normalizedFolderPath);
 		return count || 0;
 	}
+
+	notifyTasksChanged(folderPath?: string): void {
+		this.app.workspace?.trigger('webnovel:tasks-changed', folderPath);
+	}
+
+	/**
+	 * 调和指定书目的限时任务状态：
+	 * 1. 检查并关闭已过期的进行中任务
+	 * 2. 激活已到达开始日期的未开始任务
+	 */
+	async reconcileTasks(folderPath: string = this.currentFolder, notify: boolean = true): Promise<boolean> {
+		const expiredChanged = await this.checkAndCloseExpired(folderPath, false);
+		const pendingChanged = await this.activatePendingTasks(folderPath, false);
+		const changed = expiredChanged || pendingChanged;
+		if (changed && notify) {
+			this.notifyTasksChanged(folderPath);
+		}
+		return changed;
+	}
+
 	/** 检查并关闭已过期的进行中任务 */
-	async checkAndCloseExpired(folderPath: string = this.currentFolder): Promise<boolean> {
+	async checkAndCloseExpired(folderPath: string = this.currentFolder, notify: boolean = false): Promise<boolean> {
 		const entries = await this.loadEntries(folderPath);
 		if (!entries) return false;
 
@@ -223,21 +248,24 @@ export class TaskManager {
 		for (const entry of entries) {
 			if (entry.status === 'active' && entry.endDate < today) {
 				if (entry.taskType === 'event') {
-					await this.updateEntryStatus(entry.period, 'incomplete', undefined, entry.taskType, folderPath);
+					await this.updateEntryStatus(entry.period, 'incomplete', undefined, entry.taskType, folderPath, false);
 					changed = true;
 				} else {
 					const progress = this.calcProgress(entry, folderPath);
 					const status: TaskStatus = progress >= entry.wordTarget ? 'completed' : 'incomplete';
-					await this.updateEntryStatus(entry.period, status, progress, entry.taskType, folderPath);
+					await this.updateEntryStatus(entry.period, status, progress, entry.taskType, folderPath, false);
 					changed = true;
 				}
 			}
+		}
+		if (changed && notify) {
+			this.notifyTasksChanged(folderPath);
 		}
 		return changed;
 	}
 
 	/** 检查进行中但尚未到开始时间的任务，标记为进行中 */
-	async activatePendingTasks(folderPath: string = this.currentFolder): Promise<boolean> {
+	async activatePendingTasks(folderPath: string = this.currentFolder, notify: boolean = false): Promise<boolean> {
 		const entries = await this.loadEntries(folderPath);
 		if (!entries) return false;
 
@@ -246,9 +274,12 @@ export class TaskManager {
 
 		for (const entry of entries) {
 			if (entry.status === 'notStarted' && entry.startDate <= today) {
-				await this.updateEntryStatus(entry.period, 'active', undefined, entry.taskType, folderPath);
+				await this.updateEntryStatus(entry.period, 'active', undefined, entry.taskType, folderPath, false);
 				changed = true;
 			}
+		}
+		if (changed && notify) {
+			this.notifyTasksChanged(folderPath);
 		}
 		return changed;
 	}

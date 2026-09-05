@@ -27,6 +27,7 @@ export type TaskViewManager = Pick<
 	| 'getNextPeriod'
 	| 'addEntry'
 	| 'getChapterWordCount'
+	| 'reconcileTasks'
 >;
 
 export type TaskViewSettings = Pick<
@@ -46,6 +47,9 @@ export interface TaskViewPlugin
 }
 
 export class TaskView extends CreativeView<TaskViewPlugin> {
+	private isRefreshing = false;
+	private hasPendingRefresh = false;
+
 	private get manager(): TaskViewManager {
 		return this.plugin.taskManager;
 	}
@@ -58,6 +62,20 @@ export class TaskView extends CreativeView<TaskViewPlugin> {
 	getDisplayText() { return t('view.task'); }
 	getIcon() { return 'trophy'; }
 
+	async onOpen() {
+		await super.onOpen();
+		this.registerEvent(
+			this.app.workspace.on('webnovel:tasks-changed', (folderPath?: string) => {
+				if (folderPath !== undefined) {
+					const target = !folderPath || folderPath === '/' ? '' : folderPath.replace(/^\/+|\/+$/g, '');
+					const current = !this.currentFolder || this.currentFolder === '/' ? '' : this.currentFolder.replace(/^\/+|\/+$/g, '');
+					if (target !== current) return;
+				}
+				void this.refresh();
+			})
+		);
+	}
+
 	protected getWatchFileName(): string {
 		return this.plugin.settings.task?.fileName || t('common.default-task-filename');
 	}
@@ -67,13 +85,25 @@ export class TaskView extends CreativeView<TaskViewPlugin> {
 	}
 
 	async refresh() {
-		const folderPath = this.currentFolder;
-		await this.manager.checkAndCloseExpired(folderPath);
-		await this.manager.activatePendingTasks(folderPath);
-		const file = this.manager.getTaskFile(folderPath);
-		const content = file ? await this.app.vault.read(file) : null;
-		if (folderPath !== this.currentFolder) return;
-		await this.renderFromContent(content);
+		if (this.isRefreshing) {
+			this.hasPendingRefresh = true;
+			return;
+		}
+		this.isRefreshing = true;
+		try {
+			const folderPath = this.currentFolder;
+			await this.manager.reconcileTasks(folderPath);
+			const file = this.manager.getTaskFile(folderPath);
+			const content = file ? await this.app.vault.read(file) : null;
+			if (folderPath !== this.currentFolder) return;
+			await this.renderFromContent(content);
+		} finally {
+			this.isRefreshing = false;
+			if (this.hasPendingRefresh) {
+				this.hasPendingRefresh = false;
+				void this.refresh();
+			}
+		}
 	}
 
 	async renderFromContent(content: string | null) {
@@ -185,6 +215,7 @@ export class TaskView extends CreativeView<TaskViewPlugin> {
 		void (async () => {
 			try {
 				const folderPath = this.currentFolder;
+				await this.manager.reconcileTasks(folderPath);
 				const existingEntries = await this.manager.loadEntries(folderPath);
 				const nextPeriod = this.manager.getNextPeriod(existingEntries || []);
 				const lastPlatform = existingEntries && existingEntries.length > 0
@@ -199,7 +230,6 @@ export class TaskView extends CreativeView<TaskViewPlugin> {
 					async (entry) => {
 						await this.manager.addEntry(entry, folderPath);
 						new Notice(t('notice.task-added'));
-						await this.refresh();
 					},
 					folderPath
 				).open();

@@ -163,6 +163,12 @@ export class PluginBootstrapper {
 				this.plugin.refreshStatusViews();
 				void this.plugin.editorTracker.handleFileChange();
 			}));
+			this.plugin.registerEvent(this.plugin.app.workspace.on('webnovel:tasks-changed', () => {
+				this.plugin.refreshStatusViews(false, true);
+				if (this.plugin.settings.enableHomepage) {
+					this.plugin.homepageManager?.refreshHomepageViews();
+				}
+			}));
 			this.plugin.registerEvent(this.plugin.app.workspace.on('active-leaf-change', () => {
 				void this.plugin.editorTracker.handleFileChange();
 				this.plugin.homepageManager?.handleViewMode();
@@ -285,7 +291,7 @@ export class PluginBootstrapper {
 	 */
 	registerCoreRuntimeServices(): void {
 		this.services.register('EditorTracker', new EditorTracker(this.plugin.app, this.plugin));
-		this.services.register('StyleManager', new StyleManager(this.plugin.settings));
+		this.services.register('StyleManager', new StyleManager(this.plugin.app, this.plugin.settings));
 		this.services.register('FileEventManager', new FileEventManager(this.plugin));
 	}
 

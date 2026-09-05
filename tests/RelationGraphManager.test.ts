@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { RelationGraphManager, type GraphData, type GraphNode } from '../src/services/RelationGraphManager';
 import { GraphRenderer, GRAPH_STYLE_DEFAULTS, type GraphRenderState } from '../src/ui/components/GraphRenderer';
+import { ForceLayoutEngine } from '../src/services/ForceLayoutEngine';
+import { GraphInteractionController, type GraphInteractionCallbacks } from '../src/ui/components/GraphInteractionController';
 
 // Mock translation function for 'relation-graph.edge-mention'
 vi.mock('../src/i18n', () => ({
@@ -695,6 +697,282 @@ describe('RelationGraphManager', () => {
 		it('空节点或非法尺寸时应回退到安全默认视口', () => {
 			expect(GraphRenderer.calculateProtagonistViewport(600, 400, [])).toEqual({ scale: 1.0, panX: 0, panY: 0 });
 			expect(GraphRenderer.calculateProtagonistViewport(0, 0, [])).toEqual({ scale: 1.0, panX: 0, panY: 0 });
+		});
+	});
+
+	describe('ForceLayoutEngine simulation lifecycle', () => {
+		it('keeps simulation timer stopped through construction, reset, and reheat so alpha does not advance without manual tick', async () => {
+			const nodes = [{ id: 'A', x: 0, y: 0, vx: 0, vy: 0, pinned: false }];
+			const edges: Array<{ source: string; target: string }> = [];
+
+			const engine = new ForceLayoutEngine(nodes, edges, 400, 400);
+
+			// Internal timer is stopped on construction; alpha should not advance/decay on its own
+			const initialAlpha = engine.alpha;
+			await new Promise((resolve) => setTimeout(resolve, 30));
+			expect(engine.alpha).toBe(initialAlpha);
+
+			// reset() sets alpha to 1 without restarting internal timer; alpha does not decay on its own
+			engine.reset();
+			expect(engine.alpha).toBe(1);
+			await new Promise((resolve) => setTimeout(resolve, 30));
+			expect(engine.alpha).toBe(1);
+
+			// reheat() sets alpha to 0.3 without restarting internal timer; alpha does not decay on its own
+			engine.reheat();
+			expect(engine.alpha).toBe(0.3);
+			await new Promise((resolve) => setTimeout(resolve, 30));
+			expect(engine.alpha).toBe(0.3);
+
+			// Only manual tick() advances simulation and decays alpha
+			engine.tick();
+			expect(engine.alpha).toBeLessThan(0.3);
+
+			// destroy() stops simulation cleanly
+			engine.destroy();
+		});
+	});
+
+	describe('GraphInteractionController', () => {
+        function createCallbacks(): GraphInteractionCallbacks {
+            return {
+                requestRender: vi.fn(), onNodeDoubleClick: vi.fn(), onBackgroundDoubleClick: vi.fn(),
+                onNodeHover: vi.fn(), onNodeDragStart: vi.fn(), onNodeDrag: vi.fn(), onNodeDragEnd: vi.fn()
+            };
+        }
+
+		function createTestState(): GraphRenderState {
+			return {
+				scale: 1.0,
+				panX: 0,
+				panY: 0,
+				selectedNode: null,
+				hoveredNode: null,
+				isLocalMode: false,
+				localFocusNode: null,
+				edgeOffsetMap: new Map(),
+				edgeDrawModeMap: new Map(),
+				combinedLabelMap: new Map(),
+				graphData: { nodes: [], edges: [] }
+			};
+		}
+
+		function createMockCanvas(width: number = 400, height: number = 400) {
+			const listeners = new Map<string, Set<(e: unknown) => void>>();
+			const windowListeners = new Map<string, Set<(e: unknown) => void>>();
+
+			const mockWindow = {
+				addEventListener: vi.fn((type: string, fn: (e: unknown) => void) => {
+					if (!windowListeners.has(type)) windowListeners.set(type, new Set());
+					windowListeners.get(type)!.add(fn);
+				}),
+				removeEventListener: vi.fn((type: string, fn: (e: unknown) => void) => {
+					windowListeners.get(type)?.delete(fn);
+				}),
+			};
+
+			return {
+				ownerDocument: {
+					defaultView: mockWindow as unknown as Window
+				},
+				getBoundingClientRect: () => ({
+					left: 0,
+					top: 0,
+					right: width,
+					bottom: height,
+					width,
+					height,
+					x: 0,
+					y: 0,
+					toJSON: () => {}
+				}),
+				addEventListener: vi.fn((type: string, fn: (e: unknown) => void) => {
+					if (!listeners.has(type)) listeners.set(type, new Set());
+					listeners.get(type)!.add(fn);
+				}),
+				removeEventListener: vi.fn((type: string, fn: (e: unknown) => void) => {
+					listeners.get(type)?.delete(fn);
+				}),
+				setCssStyles: vi.fn(),
+				dispatch: (type: string, event: unknown) => {
+					listeners.get(type)?.forEach(fn => fn(event));
+				},
+				dispatchWindow: (type: string, event: unknown) => {
+					windowListeners.get(type)?.forEach(fn => fn(event));
+				},
+				hasListener: (type: string) => (listeners.get(type)?.size ?? 0) > 0,
+				hasWindowListener: (type: string) => (windowListeners.get(type)?.size ?? 0) > 0
+			};
+		}
+
+		it('binds and unbinds events on canvas and owner window', () => {
+			const canvas = createMockCanvas();
+			const state = createTestState();
+			const callbacks = createCallbacks();
+
+			const controller = new GraphInteractionController(canvas as unknown as HTMLCanvasElement, state, callbacks);
+			controller.bindEvents();
+
+			expect(canvas.hasListener('mousedown')).toBe(true);
+			expect(canvas.hasListener('mousemove')).toBe(true);
+			expect(canvas.hasListener('wheel')).toBe(true);
+			expect(canvas.hasListener('contextmenu')).toBe(true);
+			expect(canvas.hasWindowListener('mouseup')).toBe(true);
+
+			controller.unbindEvents();
+
+			expect(canvas.hasListener('mousedown')).toBe(false);
+			expect(canvas.hasListener('mousemove')).toBe(false);
+			expect(canvas.hasListener('wheel')).toBe(false);
+			expect(canvas.hasListener('contextmenu')).toBe(false);
+			expect(canvas.hasWindowListener('mouseup')).toBe(false);
+		});
+
+		it('supports default step zoom and custom sensitivity zoom with scale bounds clamping', () => {
+			const canvas = createMockCanvas();
+			const state1 = createTestState();
+			const callbacks = createCallbacks();
+
+			// Step zoom (default LoreBoardRenderer behavior)
+			const stepController = new GraphInteractionController(canvas as unknown as HTMLCanvasElement, state1, callbacks);
+			stepController.bindEvents();
+			canvas.dispatch('wheel', { deltaY: -100, clientX: 200, clientY: 200, preventDefault: vi.fn() });
+			expect(state1.scale).toBeCloseTo(1.1, 2);
+			expect(callbacks.requestRender).toHaveBeenCalledTimes(1);
+			stepController.unbindEvents();
+
+			// Continuous zoom with sensitivity & bounds clamping (RelationGraphView behavior)
+			const state2 = createTestState();
+			const continuousController = new GraphInteractionController(canvas as unknown as HTMLCanvasElement, state2, callbacks, {
+				zoomSensitivity: 0.001
+			});
+			continuousController.bindEvents();
+
+			// Zoom in: deltaY = -200 -> delta = 0.2 -> newScale = 1.2
+			canvas.dispatch('wheel', { deltaY: -200, clientX: 200, clientY: 200, preventDefault: vi.fn() });
+			expect(state2.scale).toBeCloseTo(1.2, 2);
+
+			// Exceed maxScale -> clamp to 5
+			canvas.dispatch('wheel', { deltaY: -10000, clientX: 200, clientY: 200, preventDefault: vi.fn() });
+			expect(state2.scale).toBe(5);
+
+			// Exceed minScale -> clamp to 0.2
+			canvas.dispatch('wheel', { deltaY: 2000, clientX: 200, clientY: 200, preventDefault: vi.fn() });
+			expect(state2.scale).toBe(0.2);
+
+			continuousController.unbindEvents();
+		});
+
+		it('distinguishes double-click on a node from double-click on empty background', () => {
+			const canvas = createMockCanvas();
+			const state = createTestState();
+			const callbacks = createCallbacks();
+
+			const testNode: GraphNode = {
+				id: 'Hero',
+				heading: 'Hero',
+				x: 200,
+				y: 200,
+				vx: 0,
+				vy: 0,
+				pinned: false
+			} as GraphNode;
+
+			const controller = new GraphInteractionController(canvas as unknown as HTMLCanvasElement, state, callbacks);
+			controller.updateLayout({ nodes: [testNode], edges: [] });
+			controller.bindEvents();
+
+			// First click on node
+			canvas.dispatch('mousedown', { button: 0, clientX: 200, clientY: 200, preventDefault: vi.fn() });
+			expect(callbacks.onNodeDoubleClick).not.toHaveBeenCalled();
+
+			// Second click on node within 300ms -> triggers double click on node
+			canvas.dispatch('mousedown', { button: 0, clientX: 200, clientY: 200, preventDefault: vi.fn() });
+			expect(callbacks.onNodeDoubleClick).toHaveBeenCalledWith(testNode);
+			expect(state.selectedNode).toBe(testNode);
+
+			// First click on background (far from node)
+			canvas.dispatch('mousedown', { button: 0, clientX: 50, clientY: 50, preventDefault: vi.fn() });
+			expect(callbacks.onBackgroundDoubleClick).not.toHaveBeenCalled();
+
+			// Second click on background within 300ms -> triggers double click on background
+			canvas.dispatch('mousedown', { button: 0, clientX: 50, clientY: 50, preventDefault: vi.fn() });
+			expect(callbacks.onBackgroundDoubleClick).toHaveBeenCalledTimes(1);
+
+			controller.unbindEvents();
+		});
+
+		it('handles node dragging and canvas panning appropriately', () => {
+			const canvas = createMockCanvas();
+			const state = createTestState();
+			const callbacks = createCallbacks();
+
+			const testNode: GraphNode = {
+				id: 'Hero',
+				heading: 'Hero',
+				x: 200,
+				y: 200,
+				vx: 0,
+				vy: 0,
+				pinned: false
+			} as GraphNode;
+
+			const controller = new GraphInteractionController(canvas as unknown as HTMLCanvasElement, state, callbacks);
+			controller.updateLayout({ nodes: [testNode], edges: [] });
+			controller.bindEvents();
+
+			// Drag node: mousedown -> mousemove -> mouseup (on window)
+			canvas.dispatch('mousedown', { button: 0, clientX: 200, clientY: 200, preventDefault: vi.fn() });
+			expect(callbacks.onNodeDragStart).toHaveBeenCalledWith(testNode);
+
+			canvas.dispatch('mousemove', { clientX: 250, clientY: 230, preventDefault: vi.fn() });
+			expect(callbacks.onNodeDrag).toHaveBeenCalledWith(testNode, 250, 230);
+
+			canvas.dispatchWindow('mouseup', { preventDefault: vi.fn() });
+			expect(callbacks.onNodeDragEnd).toHaveBeenCalledWith(testNode);
+
+			// Pan canvas: mousedown on background -> mousemove -> mouseup
+			canvas.dispatch('mousedown', { button: 0, clientX: 20, clientY: 20, preventDefault: vi.fn() });
+			canvas.dispatch('mousemove', { clientX: 40, clientY: 35, preventDefault: vi.fn() });
+			expect(state.panX).toBe(20);
+			expect(state.panY).toBe(15);
+
+			canvas.dispatchWindow('mouseup', { preventDefault: vi.fn() });
+			controller.unbindEvents();
+		});
+
+		it('updates hovered node and canvas cursor on mouse move', () => {
+			const canvas = createMockCanvas();
+			const state = createTestState();
+			const callbacks = createCallbacks();
+
+			const testNode: GraphNode = {
+				id: 'Hero',
+				heading: 'Hero',
+				x: 200,
+				y: 200,
+				vx: 0,
+				vy: 0,
+				pinned: false
+			} as GraphNode;
+
+			const controller = new GraphInteractionController(canvas as unknown as HTMLCanvasElement, state, callbacks);
+			controller.updateLayout({ nodes: [testNode], edges: [] });
+			controller.bindEvents();
+
+			// Hover over node
+			canvas.dispatch('mousemove', { clientX: 200, clientY: 200, preventDefault: vi.fn() });
+			expect(state.hoveredNode).toBe(testNode);
+			expect(canvas.setCssStyles).toHaveBeenCalledWith({ cursor: 'pointer' });
+			expect(callbacks.onNodeHover).toHaveBeenCalledWith(testNode, expect.anything());
+
+			// Move away from node
+			canvas.dispatch('mousemove', { clientX: 50, clientY: 50, preventDefault: vi.fn() });
+			expect(state.hoveredNode).toBeNull();
+			expect(canvas.setCssStyles).toHaveBeenCalledWith({ cursor: 'default' });
+			expect(callbacks.onNodeHover).toHaveBeenCalledWith(null, expect.anything());
+
+			controller.unbindEvents();
 		});
 	});
 });

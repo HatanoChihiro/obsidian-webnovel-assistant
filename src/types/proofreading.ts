@@ -24,6 +24,17 @@ export interface ProofreadingSettings {
 	enablePunctuation?: boolean;
 	/** 是否全库生效（对所有 Markdown 文档开启校对，不再限制于工作区或章节） */
 	enableGlobal?: boolean;
+	/** 已全局忽略的词汇（白名单，不再作为错词/敏感词/近义词提示） */
+	ignoredWords?: string[];
+	/** 已忽略的特定语境实例（以规则ID与前后文本指纹哈希为键，不再在该句提示） */
+	ignoredContexts?: Record<string, {
+		original: string;
+		context: string;
+		timestamp: number;
+		ruleId?: string;
+		prefix?: string;
+		suffix?: string;
+	}>;
 }
 
 /** 诊断类型 */

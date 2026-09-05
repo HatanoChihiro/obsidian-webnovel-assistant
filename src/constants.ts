@@ -243,6 +243,8 @@ export const DEFAULT_PROOFREADING_SETTINGS: ProofreadingSettings = {
 	enableDeDiDe: false,
 	enablePunctuation: false,
 	enableGlobal: false,
+	ignoredWords: [],
+	ignoredContexts: {},
 };
 
 export const DEFAULT_SETTINGS: AccurateCountSettings = {

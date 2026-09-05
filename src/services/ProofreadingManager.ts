@@ -29,7 +29,8 @@ import {
 } from './proofreading/tableParser';
 import { Logger } from '../utils/Logger';
 import { getPluginDir } from '../utils/platform';
-import { BASIC_DICT_CONFIG, DEDIDE_DICT_CONFIG } from '../constants';
+import { BASIC_DICT_CONFIG, DEDIDE_DICT_CONFIG, DEFAULT_PROOFREADING_SETTINGS } from '../constants';
+import { computeDiagnosticContextFingerprint, isDiagnosticIgnored, type IgnoredContextDetails } from '../utils/proofreadingHelpers';
 import { getLocale } from '../i18n';
 
 export const DICT_FOLDER_NAME = '校对词典';
@@ -400,6 +401,15 @@ export class ProofreadingManager {
 	};
 	private cachedMaxPatternLength = 50;
 
+	private ignoredWordsSet = new Set<string>();
+	private ignoredContextsSet = new Set<string>();
+	private ignoredContextEntriesByOriginal = new Map<string, Array<{
+		original: string;
+		ruleId?: string;
+		prefix?: string;
+		suffix?: string;
+	}>>();
+
 	constructor(app: App, plugin: WebNovelAssistantPlugin) {
 		this.app = app;
 		this.plugin = plugin;
@@ -469,11 +479,206 @@ export class ProofreadingManager {
 	}
 
 	/**
+	 * 同步设置中的已忽略词汇与上下文指纹至运行时内存 Set
+	 */
+	public syncIgnoredSets(): void {
+		this.ignoredWordsSet.clear();
+		for (const w of this.plugin.settings.proofreading?.ignoredWords ?? []) {
+			if (w) this.ignoredWordsSet.add(w);
+		}
+
+		this.ignoredContextsSet.clear();
+		this.ignoredContextEntriesByOriginal.clear();
+		const contexts = this.plugin.settings.proofreading?.ignoredContexts;
+		if (contexts) {
+			for (const [key, entry] of Object.entries(contexts)) {
+				if (key) this.ignoredContextsSet.add(key);
+				if (entry && entry.original) {
+					let list = this.ignoredContextEntriesByOriginal.get(entry.original);
+					if (!list) {
+						list = [];
+						this.ignoredContextEntriesByOriginal.set(entry.original, list);
+					}
+					list.push({
+						original: entry.original,
+						ruleId: entry.ruleId,
+						prefix: entry.prefix,
+						suffix: entry.suffix
+					});
+				}
+			}
+		}
+	}
+
+	/**
+	 * 获取当前已忽略的词汇列表（副本）
+	 */
+	public getIgnoredWords(): string[] {
+		return Array.from(this.ignoredWordsSet);
+	}
+
+	/**
+	 * 获取已忽略词汇数量
+	 */
+	public getIgnoredWordsCount(): number {
+		return this.ignoredWordsSet.size;
+	}
+
+	/**
+	 * 获取已忽略上下文语境数量
+	 */
+	public getIgnoredContextsCount(): number {
+		return this.ignoredContextsSet.size;
+	}
+
+	/**
+	 * 判断某项诊断是否已被忽略
+	 */
+	public isIgnored(
+		diag: ProofreadingDiagnostic,
+		contextFingerprint?: string,
+		contextDetails?: IgnoredContextDetails
+	): boolean {
+		const entries = this.ignoredContextEntriesByOriginal.get(diag.original);
+		return isDiagnosticIgnored(
+			diag.original,
+			contextFingerprint,
+			this.ignoredWordsSet,
+			this.ignoredContextsSet,
+			contextDetails,
+			entries
+		);
+	}
+
+	/**
+	 * 将指定词汇加入全局忽略白名单（全书/全库永久生效）
+	 */
+	public async ignoreWord(word: string): Promise<void> {
+		if (!word || word.trim() === '') return;
+		const cleanWord = word.trim();
+		if (!this.plugin.settings.proofreading) {
+			this.plugin.settings.proofreading = { ...DEFAULT_PROOFREADING_SETTINGS };
+		}
+		if (!this.plugin.settings.proofreading.ignoredWords) {
+			this.plugin.settings.proofreading.ignoredWords = [];
+		}
+		if (!this.plugin.settings.proofreading.ignoredWords.includes(cleanWord)) {
+			this.plugin.settings.proofreading.ignoredWords.push(cleanWord);
+			this.syncIgnoredSets();
+			await this.plugin.saveSettings();
+			this.notifyRefresh();
+		}
+	}
+
+	/**
+	 * 从全局忽略白名单中移除词汇
+	 */
+	public async unignoreWord(word: string): Promise<void> {
+		if (!this.plugin.settings.proofreading?.ignoredWords) return;
+		const idx = this.plugin.settings.proofreading.ignoredWords.indexOf(word);
+		if (idx !== -1) {
+			this.plugin.settings.proofreading.ignoredWords.splice(idx, 1);
+			this.syncIgnoredSets();
+			await this.plugin.saveSettings();
+			this.notifyRefresh();
+		}
+	}
+
+	/**
+	 * 记录特定语境下的忽略实例（以指纹哈希为键，仅在该语境下生效）
+	 */
+	public async ignoreInstance(
+		fingerprint: string,
+		original: string,
+		contextSnippet: string,
+		details?: { ruleId?: string; prefix?: string; suffix?: string }
+	): Promise<void> {
+		if (!fingerprint) return;
+		if (!this.plugin.settings.proofreading) {
+			this.plugin.settings.proofreading = { ...DEFAULT_PROOFREADING_SETTINGS };
+		}
+		if (!this.plugin.settings.proofreading.ignoredContexts) {
+			this.plugin.settings.proofreading.ignoredContexts = {};
+		}
+
+		const contexts = this.plugin.settings.proofreading.ignoredContexts;
+		const keys = Object.keys(contexts);
+		if (keys.length >= 2000) {
+			const oldestKey = keys.sort((a, b) => (contexts[a]?.timestamp ?? 0) - (contexts[b]?.timestamp ?? 0))[0];
+			if (oldestKey) delete contexts[oldestKey];
+		}
+
+		contexts[fingerprint] = {
+			original,
+			context: contextSnippet,
+			timestamp: Date.now(),
+			ruleId: details?.ruleId,
+			prefix: details?.prefix,
+			suffix: details?.suffix
+		};
+
+		this.syncIgnoredSets();
+		await this.plugin.saveSettings();
+		this.notifyRefresh();
+	}
+
+	/**
+	 * 获取当前已忽略的特定上下文实例列表（按时间倒序）
+	 */
+	public getIgnoredInstances(): Array<{
+		fingerprint: string;
+		original: string;
+		context: string;
+		timestamp: number;
+		ruleId?: string;
+	}> {
+		if (!this.plugin.settings.proofreading?.ignoredContexts) return [];
+		const contexts = this.plugin.settings.proofreading.ignoredContexts;
+		return Object.entries(contexts).map(([fingerprint, entry]) => ({
+			fingerprint,
+			original: entry.original,
+			context: entry.context,
+			timestamp: entry.timestamp,
+			ruleId: entry.ruleId
+		})).sort((a, b) => b.timestamp - a.timestamp);
+	}
+
+	/**
+	 * 移除单条特定上下文忽略记录（恢复该处的校对检测）
+	 */
+	public async unignoreInstance(fingerprint: string): Promise<void> {
+		if (!this.plugin.settings.proofreading?.ignoredContexts) return;
+		if (this.plugin.settings.proofreading.ignoredContexts[fingerprint]) {
+			delete this.plugin.settings.proofreading.ignoredContexts[fingerprint];
+			this.syncIgnoredSets();
+			await this.plugin.saveSettings();
+			this.notifyRefresh();
+		}
+	}
+
+	/**
+	 * 清空已忽略的内容
+	 */
+	public async clearIgnored(scope: 'all' | 'words' | 'contexts' = 'all'): Promise<void> {
+		if (!this.plugin.settings.proofreading) return;
+		if (scope === 'all' || scope === 'words') {
+			this.plugin.settings.proofreading.ignoredWords = [];
+		}
+		if (scope === 'all' || scope === 'contexts') {
+			this.plugin.settings.proofreading.ignoredContexts = {};
+		}
+		this.syncIgnoredSets();
+		await this.plugin.saveSettings();
+		this.notifyRefresh();
+	}
+
+	/**
 	 * 服务初始化：只读加载，启动绝不创建任何文件或文件夹
 	 */
 	public async initialize(): Promise<void> {
 		if (this.initialized) return;
 
+		this.syncIgnoredSets();
 		this.registerEvents();
 
 		if (this.plugin.settings.proofreading?.enabled) {
@@ -527,6 +732,8 @@ export class ProofreadingManager {
 			isLarge: false
 		};
 		this.cachedMaxPatternLength = 50;
+		this.ignoredWordsSet.clear();
+		this.ignoredContextsSet.clear();
 	}
 
 	/**
@@ -1021,6 +1228,7 @@ export class ProofreadingManager {
 	 * 加载并解析所有词典文件（容错机制：格式错误或读取抛错时保留 last-known-good，文件确实缺失时视为空）
 	 */
 	public async loadDictionaries(): Promise<void> {
+		this.syncIgnoredSets();
 		const settings = this.plugin.settings.proofreading;
 		const dictPath = settings?.dictionaryPath;
 		const dictFilePaths = dictPath ? this.getResolvedDictFilePaths(dictPath) : null;
@@ -1245,7 +1453,22 @@ export class ProofreadingManager {
 		}
 
 		// 4. 重叠冲突决议与优先级排序
-		return resolveOverlaps(rawMatches);
+		const resolved = resolveOverlaps(rawMatches);
+		if (this.ignoredWordsSet.size === 0 && this.ignoredContextsSet.size === 0) {
+			return resolved;
+		}
+
+		return resolved.filter(diag => {
+			let fingerprint: string | undefined;
+			let details: IgnoredContextDetails | undefined;
+			if (text && this.ignoredContextsSet.size > 0) {
+				fingerprint = computeDiagnosticContextFingerprint(text, diag.from, diag.to, diag.ruleId, diag.original);
+				const prefix = text.slice(Math.max(0, diag.from - 12), diag.from);
+				const suffix = text.slice(diag.to, Math.min(text.length, diag.to + 12));
+				details = { ruleId: diag.ruleId, prefix, suffix };
+			}
+			return !this.isIgnored(diag, fingerprint, details);
+		});
 	}
 
 	/**

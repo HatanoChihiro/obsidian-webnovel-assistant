@@ -27,7 +27,8 @@ vi.mock('../src/ui/AnnotateDictModal', () => ({
     }
 }));
 
-import { TFile } from 'obsidian';
+import { MarkdownView, TFile } from 'obsidian';
+import { mockNoticeMessages, resetNoticeMessages } from './mocks/obsidian';
 import { CommandManager } from '../src/core/CommandManager';
 import type { WebNovelAssistantPlugin } from '../src/types/plugin';
 
@@ -283,5 +284,141 @@ describe('CommandManager - annotate-to-dictionary', () => {
 
         expect(mockPlugin.proofreadingManager.prepareDictionaryForEditing).toHaveBeenCalledTimes(1);
         expect(mockAnnotateModalOpen).not.toHaveBeenCalled();
+    });
+});
+
+describe('CommandManager - toggle-editor-typewriter', () => {
+    let mockDispatch: ReturnType<typeof vi.fn>;
+    let mockApp: {
+        workspace: {
+            trigger: ReturnType<typeof vi.fn>;
+            updateOptions: ReturnType<typeof vi.fn>;
+            getLeavesOfType: ReturnType<typeof vi.fn>;
+        };
+        vault: {
+            getAbstractFileByPath: ReturnType<typeof vi.fn>;
+        };
+    };
+    let mockPlugin: {
+        app: unknown;
+        settings: {
+            editorTypewriter?: {
+                enabled: boolean;
+                centerOffset: number;
+                unfocusedOpacity: number;
+            };
+            immersive?: {
+                typewriterEnabled?: boolean;
+            };
+        };
+        saveSettings: ReturnType<typeof vi.fn>;
+        addCommand: ReturnType<typeof vi.fn>;
+    };
+    let registeredCommands: Map<string, { id: string; name: string; callback?: () => unknown }>;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        resetNoticeMessages();
+        registeredCommands = new Map();
+
+        mockDispatch = vi.fn();
+        const mockView = Object.create(MarkdownView.prototype) as MarkdownView;
+        (mockView as unknown as { editor: { cm: { dispatch: typeof mockDispatch } } }).editor = {
+            cm: { dispatch: mockDispatch }
+        };
+
+        mockApp = {
+            workspace: {
+                trigger: vi.fn(),
+                updateOptions: vi.fn(),
+                getLeavesOfType: vi.fn().mockReturnValue([{ view: mockView }])
+            },
+            vault: {
+                getAbstractFileByPath: vi.fn()
+            }
+        };
+
+        mockPlugin = {
+            app: mockApp,
+            settings: {},
+            saveSettings: vi.fn().mockResolvedValue(undefined),
+            addCommand: vi.fn().mockImplementation((cmd: { id: string; name: string; callback?: () => unknown }) => {
+                registeredCommands.set(cmd.id, cmd);
+            })
+        };
+    });
+
+    it('should register toggle-editor-typewriter with stable id and localized name', () => {
+        const commandManager = new CommandManager(mockPlugin as unknown as WebNovelAssistantPlugin);
+        commandManager.registerAllCommands();
+
+        const cmd = registeredCommands.get('toggle-editor-typewriter');
+        expect(cmd).toBeDefined();
+        expect(cmd?.id).toBe('toggle-editor-typewriter');
+        expect(cmd?.name).toBe('启用/禁用普通编辑打字机滚动');
+    });
+
+    it('should initialize missing settings, toggle off to on, persist, refresh editors, and leave immersive isolated', async () => {
+        mockPlugin.settings = {
+            immersive: { typewriterEnabled: true }
+        };
+
+        const commandManager = new CommandManager(mockPlugin as unknown as WebNovelAssistantPlugin);
+        commandManager.registerAllCommands();
+
+        const cmd = registeredCommands.get('toggle-editor-typewriter');
+        await cmd?.callback?.();
+
+        expect(mockPlugin.settings.editorTypewriter).toEqual({
+            enabled: true,
+            centerOffset: 0,
+            unfocusedOpacity: 0.4
+        });
+        expect(mockPlugin.settings.immersive?.typewriterEnabled).toBe(true);
+        expect(mockPlugin.saveSettings).toHaveBeenCalledTimes(1);
+		expect(mockApp.workspace.updateOptions).not.toHaveBeenCalled();
+        expect(mockDispatch).toHaveBeenCalledWith({});
+        expect(mockNoticeMessages).toContain('[开启] 普通编辑打字机滚动已开启');
+    });
+
+    it('should toggle on to off, persist, refresh editors, and show disabled notice', async () => {
+        mockPlugin.settings.editorTypewriter = {
+            enabled: true,
+            centerOffset: 5,
+            unfocusedOpacity: 0.5
+        };
+
+        const commandManager = new CommandManager(mockPlugin as unknown as WebNovelAssistantPlugin);
+        commandManager.registerAllCommands();
+
+        const cmd = registeredCommands.get('toggle-editor-typewriter');
+        await cmd?.callback?.();
+
+        expect(mockPlugin.settings.editorTypewriter?.enabled).toBe(false);
+        expect(mockPlugin.settings.editorTypewriter?.centerOffset).toBe(5);
+        expect(mockPlugin.saveSettings).toHaveBeenCalledTimes(1);
+		expect(mockApp.workspace.updateOptions).not.toHaveBeenCalled();
+        expect(mockDispatch).toHaveBeenCalledWith({});
+        expect(mockNoticeMessages).toContain('[关闭] 普通编辑打字机滚动已关闭');
+    });
+
+    it('should rollback state, skip refresh, and show failure notice on save error', async () => {
+        mockPlugin.settings.editorTypewriter = {
+            enabled: false,
+            centerOffset: 0,
+            unfocusedOpacity: 0.4
+        };
+        mockPlugin.saveSettings.mockRejectedValue(new Error('Disk write error'));
+
+        const commandManager = new CommandManager(mockPlugin as unknown as WebNovelAssistantPlugin);
+        commandManager.registerAllCommands();
+
+        const cmd = registeredCommands.get('toggle-editor-typewriter');
+        await expect(Promise.resolve(cmd?.callback?.())).resolves.toBeUndefined();
+
+        expect(mockPlugin.settings.editorTypewriter.enabled).toBe(false);
+        expect(mockApp.workspace.updateOptions).not.toHaveBeenCalled();
+        expect(mockDispatch).not.toHaveBeenCalled();
+        expect(mockNoticeMessages).toContain('保存设置失败，请检查磁盘空间和权限');
     });
 });

@@ -1,3 +1,43 @@
+## 🔧 v3.9.4
+
+### 功能优化
+
+- **校对忽略管理**：支持忽略单处建议或将词语加入白名单，并可在设置中查看、恢复或清空忽略记录。
+- **编辑与关系图性能**：减少重复字数计算，并在关系图隐藏或关闭后暂停、释放相关资源。
+- **普通编辑打字机快捷切换**：新增可绑定快捷键的打字机滚动开关，并立即应用到已打开的编辑器。
+- **打字机滚动稳定性**：提升打字机滚动模式的稳定性。
+
+### Bug 修复
+
+- **护眼模式**：修复 Obsidian 新版本中护眼模式未生效的问题。
+- **创作主页跳转**：修复已有工作台打开时，点击作品名未切换到工作台的问题。
+- **工作台刷新**：关闭后取消待执行刷新，并在新内容就绪前保留当前看板。
+- **选区字数提示**：修复深色模式下的对比度问题。
+- **便签管理空状态**：修复提示挤在左侧卡片列的问题。
+- **工作台按钮对齐**：统一各看板右上角操作按钮的位置。
+- **限时任务刷新**：补全跨日自动结算，并让新增任务即时更新相关视图。
+
+### English Changelog
+
+#### Enhancements
+
+- **Proofreading Ignore Management**: Ignore individual suggestions or whitelist words, with options to review, restore, or clear ignored records.
+- **Editing and Graph Performance**: Reduced duplicate word counting and paused or released hidden relationship-graph resources.
+- **Ordinary Editor Typewriter Shortcut**: Added a hotkey-compatible typewriter scrolling toggle that applies immediately to open editors.
+- **Typewriter Scrolling Stability**: Improved typewriter scrolling stability.
+
+#### Bug Fixes
+
+- **Eye Care Mode**: Fixed eye-care mode not taking effect in newer Obsidian versions.
+- **Homepage Navigation**: Fixed novel links failing to switch to an already-open Workbench.
+- **Workbench Refresh**: Cancels queued refreshes after closing and keeps the current board visible until new content is ready.
+- **Selection Word Count**: Fixed tooltip contrast in dark mode.
+- **Sticky Note Empty State**: Fixed the hint being constrained to the left card column.
+- **Workbench Button Alignment**: Aligned top-right actions consistently across boards.
+- **Timed Task Refresh**: Added cross-day settlement and immediate updates after creating tasks.
+
+---
+
 ## 🔧 v3.9.3
 
 ### 新增功能

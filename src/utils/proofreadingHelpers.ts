@@ -1,5 +1,5 @@
 import type { TFile } from 'obsidian';
-import type { SynonymGroup } from '../types/proofreading';
+import type { SynonymGroup, ProofreadingType } from '../types/proofreading';
 
 export type SynonymValidationErrorCode = 'EMPTY_INPUT' | 'LESS_THAN_TWO' | 'CROSS_GROUP_COLLISION';
 
@@ -123,4 +123,131 @@ export function isReplacementStale(
 	if (from < 0 || to > docText.length || from >= to) return true;
 	const current = docText.slice(from, to);
 	return current !== expectedOriginal;
+}
+
+/**
+ * 计算诊断项的上下文指纹字符串
+ * 提取匹配项前后各 12 字符的语境，构造形如 `${ruleId}::${prefix}[${target}]${suffix}` 的指纹
+ */
+export function computeDiagnosticContextFingerprint(
+	docText: string | { sliceString: (from: number, to: number) => string; length: number },
+	from: number,
+	to: number,
+	ruleId: string,
+	original?: string
+): string {
+	if (!docText) return `${ruleId}::[${original || ''}]`;
+	const docLength = docText.length;
+	const safeFrom = Math.max(0, Math.min(from, docLength));
+	const safeTo = Math.max(safeFrom, Math.min(to, docLength));
+	const prefix = typeof docText === 'string'
+		? docText.slice(Math.max(0, safeFrom - 12), safeFrom)
+		: docText.sliceString(Math.max(0, safeFrom - 12), safeFrom);
+	const target = original ?? (typeof docText === 'string'
+		? docText.slice(safeFrom, safeTo)
+		: docText.sliceString(safeFrom, safeTo));
+	const suffix = typeof docText === 'string'
+		? docText.slice(safeTo, Math.min(docLength, safeTo + 12))
+		: docText.sliceString(safeTo, Math.min(docLength, safeTo + 12));
+	return `${ruleId}::${prefix}[${target}]${suffix}`;
+}
+
+export interface IgnoredContextDetails {
+	ruleId?: string;
+	prefix?: string;
+	suffix?: string;
+}
+
+export interface IgnoredContextEntryPattern {
+	original: string;
+	ruleId?: string;
+	prefix?: string;
+	suffix?: string;
+}
+
+/**
+ * 判断诊断项是否被用户已配置的忽略词库或上下文指纹忽略
+ */
+export function isDiagnosticIgnored(
+	original: string,
+	fingerprint: string | undefined,
+	ignoredWordsSet: ReadonlySet<string>,
+	ignoredContextsSet: ReadonlySet<string>,
+	contextDetails?: IgnoredContextDetails,
+	ignoredContextEntries?: readonly IgnoredContextEntryPattern[]
+): boolean {
+	if (ignoredWordsSet.has(original)) {
+		return true;
+	}
+	if (fingerprint && ignoredContextsSet.has(fingerprint)) {
+		return true;
+	}
+	if (contextDetails && ignoredContextEntries && ignoredContextEntries.length > 0) {
+		for (const entry of ignoredContextEntries) {
+			if (entry.original !== original) continue;
+			if (entry.ruleId && contextDetails.ruleId && entry.ruleId !== contextDetails.ruleId) continue;
+
+			const entryPrefix = entry.prefix ?? '';
+			const currPrefix = contextDetails.prefix ?? '';
+			const entrySuffix = entry.suffix ?? '';
+			const currSuffix = contextDetails.suffix ?? '';
+
+			// 检查前缀匹配：前缀必须保持后置连续（结尾对齐或任一方包含另一方）
+			const prefixMatch = entryPrefix === '' || currPrefix.endsWith(entryPrefix) || entryPrefix.endsWith(currPrefix);
+			// 检查后缀匹配：若录入时是在打字末尾（entrySuffix 为空），只要前缀匹配即属于该处打字忽略；若非空则要求前置头部对齐
+			const suffixMatch = entrySuffix === '' || currSuffix.startsWith(entrySuffix) || entrySuffix.startsWith(currSuffix);
+
+			if (prefixMatch && suffixMatch) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+export interface FormattedIgnoredContext {
+	prefix: string;
+	target: string;
+	suffix: string;
+	type: ProofreadingType | 'other';
+}
+
+/**
+ * 将存储的上下文片段与规则信息平整化解析为可在 UI 中安全展示的结构
+ */
+export function formatIgnoredContextSnippet(
+	context: string,
+	original: string,
+	ruleId?: string
+): FormattedIgnoredContext {
+	let type: ProofreadingType | 'other' = 'wrong_word';
+	if (ruleId) {
+		if (ruleId.startsWith('punctuation')) type = 'punctuation';
+		else if (ruleId.startsWith('sensitive')) type = 'sensitive';
+		else if (ruleId.startsWith('synonym')) type = 'synonym';
+		else if (ruleId.startsWith('dedide')) type = 'grammar';
+		else if (ruleId.startsWith('builtin_wrong') || ruleId.startsWith('user_wrong')) type = 'wrong_word';
+		else type = 'other';
+	}
+
+	const match = /^([\s\S]*)\[([\s\S]*?)\]([\s\S]*)$/.exec(context || '');
+	if (match) {
+		const rawPrefix = match[1] ?? '';
+		const rawTarget = match[2] ?? original;
+		const rawSuffix = match[3] ?? '';
+
+		return {
+			prefix: rawPrefix.replace(/\s+/g, ' ').trim(),
+			target: rawTarget.replace(/\s+/g, ' ').trim(),
+			suffix: rawSuffix.replace(/\s+/g, ' ').trim(),
+			type
+		};
+	}
+
+	return {
+		prefix: '',
+		target: (context || original).replace(/\s+/g, ' '),
+		suffix: '',
+		type
+	};
 }

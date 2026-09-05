@@ -14,6 +14,7 @@ import { getDefaultFileName } from '../i18n/data-keys';
 import { FolderSuggestModal } from './FolderSuggestModal';
 import { FileSuggestModal } from './FileSuggestModal';
 import { Logger } from '../utils/Logger';
+import { formatIgnoredContextSnippet } from '../utils/proofreadingHelpers';
 
 class HistoryRestoreConfirmModal extends Modal {
 	constructor(app: App, private onConfirm: () => Promise<void>) {
@@ -984,6 +985,176 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 						this.display();
 					}
 				}));
+
+		// 已忽略内容管理
+		new Setting(containerEl).setName(t('setting.proofreading-ignored-heading')).setHeading();
+
+		const wordsCount = this.plugin.proofreadingManager?.getIgnoredWordsCount() ?? 0;
+		const contextsCount = this.plugin.proofreadingManager?.getIgnoredContextsCount() ?? 0;
+
+		new Setting(containerEl)
+			.setName(t('setting.proofreading-ignored-status'))
+			.setDesc(t('setting.proofreading-ignored-status-desc', {
+				words: String(wordsCount),
+				contexts: String(contextsCount)
+			}))
+			.addButton(btn => btn
+				.setButtonText(t('setting.btn-clear-ignored'))
+				.setWarning()
+				.setDisabled(wordsCount === 0 && contextsCount === 0)
+				.onClick(async () => {
+					if (!this.plugin.proofreadingManager) return;
+					await this.plugin.proofreadingManager.clearIgnored('all');
+					new Notice(t('notice.proofreading-ignored-cleared'));
+					this.display();
+				}));
+
+		// 1. 已忽略词汇列表 (全局白名单)
+		const wordsSetting = new Setting(containerEl)
+			.setName(t('setting.proofreading-ignored-words-list'))
+			.setDesc(t('setting.proofreading-ignored-words-list-desc'));
+
+		if (wordsCount > 0) {
+			wordsSetting.addButton(btn => btn
+				.setButtonText(t('setting.btn-clear-ignored-words'))
+				.onClick(async () => {
+					if (!this.plugin.proofreadingManager) return;
+					await this.plugin.proofreadingManager.clearIgnored('words');
+					new Notice(t('notice.proofreading-ignored-words-cleared'));
+					this.display();
+				}));
+		}
+
+		const ignoredWords = this.plugin.proofreadingManager?.getIgnoredWords() ?? [];
+		if (ignoredWords.length > 0) {
+			const listContainer = containerEl.createDiv({ cls: 'wn-proofreading-ignored-list' });
+			for (const word of ignoredWords) {
+				const tag = listContainer.createSpan({ cls: 'wn-proofreading-ignored-tag' });
+				tag.createSpan({ text: word, cls: 'wn-proofreading-ignored-word-text' });
+				const removeBtn = tag.createSpan({ text: '×', cls: 'wn-proofreading-ignored-remove-btn' });
+				removeBtn.setAttribute('title', t('setting.proofreading-unignore-word-title', { word }));
+				removeBtn.setAttribute('aria-label', t('setting.proofreading-unignore-word-title', { word }));
+				removeBtn.setAttribute('role', 'button');
+				removeBtn.addEventListener('click', () => {
+					void (async () => {
+						if (!this.plugin.proofreadingManager) return;
+						await this.plugin.proofreadingManager.unignoreWord(word);
+						new Notice(t('notice.proofreading-word-unignored', { word }));
+						this.display();
+					})();
+				});
+			}
+		} else {
+			containerEl.createDiv({
+				cls: 'wn-proofreading-ignored-empty',
+				text: t('setting.proofreading-ignored-words-empty')
+			});
+		}
+
+		// 2. 已忽略特定语境列表 (具体语境实例)
+		const contextsSetting = new Setting(containerEl)
+			.setName(t('setting.proofreading-ignored-contexts-list'))
+			.setDesc(t('setting.proofreading-ignored-contexts-list-desc'));
+
+		if (contextsCount > 0) {
+			contextsSetting.addButton(btn => btn
+				.setButtonText(t('setting.btn-clear-ignored-contexts'))
+				.onClick(async () => {
+					if (!this.plugin.proofreadingManager) return;
+					await this.plugin.proofreadingManager.clearIgnored('contexts');
+					new Notice(t('notice.proofreading-ignored-contexts-cleared'));
+					this.display();
+				}));
+		}
+
+		const ignoredInstances = this.plugin.proofreadingManager?.getIgnoredInstances() ?? [];
+		if (ignoredInstances.length > 0) {
+			const filterContainer = containerEl.createDiv({ cls: 'wn-proofreading-ignored-filter-container' });
+			const contextListContainer = containerEl.createDiv({ cls: 'wn-proofreading-ignored-context-list' });
+
+			const renderContextItems = (filter: string) => {
+				contextListContainer.empty();
+				const normalizedFilter = filter.trim().toLowerCase();
+				const filtered = ignoredInstances.filter(item => {
+					if (!normalizedFilter) return true;
+					return item.original.toLowerCase().includes(normalizedFilter) ||
+						item.context.toLowerCase().includes(normalizedFilter);
+				});
+
+				if (filtered.length === 0) {
+					contextListContainer.createDiv({
+						cls: 'wn-proofreading-ignored-empty',
+						text: t('setting.proofreading-ignored-contexts-empty')
+					});
+					return;
+				}
+
+				for (const item of filtered) {
+					const itemEl = contextListContainer.createDiv({ cls: 'wn-proofreading-ignored-context-item' });
+					const mainEl = itemEl.createDiv({ cls: 'wn-proofreading-ignored-context-main' });
+
+					const parsed = formatIgnoredContextSnippet(item.context, item.original, item.ruleId);
+
+					mainEl.createSpan({
+						cls: `wn-proofreading-ignored-context-badge wn-proofreading-badge-${parsed.type}`,
+						text: this.getProofreadingTypeLabel(parsed.type)
+					});
+
+					const snippetEl = mainEl.createDiv({ cls: 'wn-proofreading-ignored-context-snippet' });
+					if (parsed.prefix) snippetEl.createSpan({ text: parsed.prefix + ' ' });
+					snippetEl.createSpan({ text: parsed.target, cls: 'wn-proofreading-ignored-context-highlight' });
+					if (parsed.suffix) snippetEl.createSpan({ text: ' ' + parsed.suffix });
+
+					const removeBtn = itemEl.createSpan({ text: '×', cls: 'wn-proofreading-ignored-remove-btn' });
+					removeBtn.setAttribute('title', t('setting.proofreading-unignore-context-title'));
+					removeBtn.setAttribute('aria-label', t('setting.proofreading-unignore-context-title'));
+					removeBtn.setAttribute('role', 'button');
+					removeBtn.addEventListener('click', () => {
+						void (async () => {
+							if (!this.plugin.proofreadingManager) return;
+							await this.plugin.proofreadingManager.unignoreInstance(item.fingerprint);
+							new Notice(t('notice.proofreading-context-unignored'));
+							this.display();
+						})();
+					});
+				}
+			};
+
+			if (ignoredInstances.length > 5) {
+				const filterInput = filterContainer.createEl('input', {
+					type: 'search',
+					placeholder: t('setting.proofreading-ignored-search-placeholder'),
+					cls: 'wn-proofreading-ignored-filter-input'
+				});
+				filterInput.addEventListener('input', () => {
+					renderContextItems(filterInput.value);
+				});
+			}
+
+			renderContextItems('');
+		} else {
+			containerEl.createDiv({
+				cls: 'wn-proofreading-ignored-empty',
+				text: t('setting.proofreading-ignored-contexts-empty')
+			});
+		}
+	}
+
+	private getProofreadingTypeLabel(type: string): string {
+		switch (type) {
+			case 'wrong_word':
+				return t('proofreading.type-wrong');
+			case 'sensitive':
+				return t('proofreading.type-sensitive');
+			case 'synonym':
+				return t('proofreading.type-synonym');
+			case 'grammar':
+				return t('proofreading.type-grammar');
+			case 'punctuation':
+				return t('proofreading.type-punctuation');
+			default:
+				return t('proofreading.type-wrong');
+		}
 	}
 
 	// ── 伏笔设置 ──
@@ -1132,7 +1303,6 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 	}
 
 	private refreshOpenEditors(): void {
-		this.app.workspace.updateOptions();
 		const leaves = this.app.workspace.getLeavesOfType('markdown');
 		for (const leaf of leaves) {
 			const view = leaf.view;

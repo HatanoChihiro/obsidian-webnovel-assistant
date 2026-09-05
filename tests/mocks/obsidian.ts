@@ -5,7 +5,8 @@
 
 const mockWindow = {
 	setTimeout: (handler: () => void, timeout?: number) => setTimeout(handler, timeout),
-	clearTimeout: (id: ReturnType<typeof setTimeout>) => clearTimeout(id)
+	clearTimeout: (id: ReturnType<typeof setTimeout>) => clearTimeout(id),
+	console: globalThis.console
 };
 
 Object.assign(globalThis, { window: mockWindow });
@@ -64,8 +65,24 @@ export class Platform {
 
 export class Component {}
 
+export const mockNoticeMessages: string[] = [];
+
+export function resetNoticeMessages(): void {
+	mockNoticeMessages.length = 0;
+}
+
 export class Notice {
-	constructor(_message: string, _timeout?: number) {}
+	message: string | DocumentFragment;
+	timeout?: number;
+
+	constructor(message: string | DocumentFragment = '', timeout?: number) {
+		this.message = message;
+		this.timeout = timeout;
+		if (typeof message === 'string') {
+			mockNoticeMessages.push(message);
+		}
+	}
+
 	hide(): void {}
 }
 
@@ -186,6 +203,80 @@ export class WorkspaceLeaf {
 	getViewState(): any {
 		return {};
 	}
+}
+
+export class ItemView {
+	leaf: WorkspaceLeaf;
+	containerEl: unknown;
+	app: unknown;
+	constructor(leaf: WorkspaceLeaf) {
+		this.leaf = leaf;
+		this.app = (leaf as unknown as { app?: unknown }).app ?? {};
+		type MockElement = {
+			empty: () => void;
+			addClass: () => MockElement;
+			removeClass: () => MockElement;
+			setAttribute: () => void;
+			style: { setProperty: () => void };
+			setText: () => void;
+			createDiv: () => MockElement;
+			createSpan: () => MockElement;
+			createEl: () => MockElement;
+			appendChild: () => void;
+			children: MockElement[];
+		};
+		const createMockEl = (withChildren = false): MockElement => {
+			const el: MockElement = {
+				empty: () => {},
+				addClass: () => el,
+				removeClass: () => el,
+				setAttribute: () => {},
+				style: { setProperty: () => {} },
+				setText: () => {},
+				createDiv: () => createMockEl(false),
+				createSpan: () => createMockEl(false),
+				createEl: () => createMockEl(false),
+				appendChild: () => {},
+				children: []
+			};
+			if (withChildren) {
+				el.children = [createMockEl(false), createMockEl(false)];
+			}
+			return el;
+		};
+		if (typeof document !== 'undefined') {
+			const containerEl = document.createElement('div');
+			containerEl.createDiv({ cls: 'view-header' });
+			containerEl.createDiv({ cls: 'view-content' });
+			this.containerEl = containerEl;
+		} else {
+			this.containerEl = createMockEl(true);
+		}
+	}
+	getViewType(): string { return ''; }
+	getDisplayText(): string { return ''; }
+	getIcon(): string { return ''; }
+	onOpen(): Promise<void> { return Promise.resolve(); }
+	onClose(): Promise<void> { return Promise.resolve(); }
+}
+
+export class Menu {
+	addItem(cb: (item: {
+		setTitle: () => unknown;
+		setIcon: () => unknown;
+		setChecked: () => unknown;
+		onClick: () => unknown;
+	}) => void) {
+		const item = {
+			setTitle: () => item,
+			setIcon: () => item,
+			setChecked: () => item,
+			onClick: () => item,
+		};
+		cb(item);
+		return this;
+	}
+	showAtMouseEvent(_evt: unknown) {}
 }
 
 export async function requestUrl(_params: unknown): Promise<{

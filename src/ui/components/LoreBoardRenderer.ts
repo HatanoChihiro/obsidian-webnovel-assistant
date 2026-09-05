@@ -460,6 +460,11 @@ export class LoreBoardRenderer {
         ownerComponent: Component,
         matchedLoreHeadings?: ReadonlySet<string>
     ) {
+        let isDisposed = false;
+        ownerComponent.register(() => {
+            isDisposed = true;
+        });
+
         container.empty();
         container.addClass('wn-lore-graph-container');
 
@@ -478,6 +483,7 @@ export class LoreBoardRenderer {
 
         const graphManager = plugin.relationGraphManager;
         const data = await graphManager.buildGraphData(sampleFile, { enableGlobal: true, autoLinkMentions: true });
+        if (isDisposed) return;
 
         if (data.nodes.length === 0) {
             container.createDiv({ cls: 'wn-corkboard-empty-msg', text: t('corkboard.no-lore') });
@@ -547,18 +553,30 @@ export class LoreBoardRenderer {
         let currentAnimationToken = 0;
         let needsRender = true;
 
+        const isHidden = () => {
+            if (isDisposed || !canvas.isConnected) return true;
+            const doc = canvas.ownerDocument;
+            if (doc && doc.visibilityState === 'hidden') return true;
+            const rect = graphWrapper.getBoundingClientRect();
+            return rect.width === 0 || rect.height === 0;
+        };
+
         const requestRender = () => {
             needsRender = true;
-            if (!animationFrameId && engine) {
+            if (!animationFrameId && !isHidden()) {
                 startAnimationLoop(false);
             }
         };
 
+        const ownerWin = canvas.ownerDocument.defaultView ?? window;
+
         const startAnimationLoop = (isFirstLoad: boolean = false) => {
             if (animationFrameId) {
-                window.cancelAnimationFrame(animationFrameId);
+                ownerWin.cancelAnimationFrame(animationFrameId);
                 animationFrameId = 0;
             }
+
+            if (isHidden()) return;
 
             const token = ++currentAnimationToken;
 
@@ -578,7 +596,10 @@ export class LoreBoardRenderer {
 
             const loop = () => {
                 if (currentAnimationToken !== token) return;
-                if (!engine || !canvas) return;
+                if (isHidden()) {
+                    animationFrameId = 0;
+                    return;
+                }
 
                 const ticksPerFrame = 3;
                 let physicsRunning = false;
@@ -609,14 +630,28 @@ export class LoreBoardRenderer {
                 }
 
                 if (physicsRunning || hasActiveFocus) {
-                    animationFrameId = window.requestAnimationFrame(loop);
+                    animationFrameId = ownerWin.requestAnimationFrame(loop);
                 } else {
                     animationFrameId = 0;
                 }
             };
 
-            animationFrameId = window.requestAnimationFrame(loop);
+            animationFrameId = ownerWin.requestAnimationFrame(loop);
         };
+
+        const doc = canvas.ownerDocument;
+        const onVisibilityChange = () => {
+            if (isHidden()) {
+                if (animationFrameId) ownerWin.cancelAnimationFrame(animationFrameId);
+                animationFrameId = 0;
+            } else if (!animationFrameId) {
+                requestRender();
+            }
+        };
+        doc.addEventListener('visibilitychange', onVisibilityChange);
+
+        ownerComponent.registerEvent(app.workspace.on('layout-change', onVisibilityChange));
+        ownerComponent.registerEvent(app.workspace.on('active-leaf-change', onVisibilityChange));
 
         ownerComponent.registerEvent(app.workspace.on('css-change', () => {
             cachedThemeMode = null;
@@ -776,10 +811,13 @@ export class LoreBoardRenderer {
         controller.bindEvents();
 
         ownerComponent.register(() => {
+            isDisposed = true;
             if (animationFrameId) {
-                window.cancelAnimationFrame(animationFrameId);
+                ownerWin.cancelAnimationFrame(animationFrameId);
                 animationFrameId = 0;
             }
+            doc.removeEventListener('visibilitychange', onVisibilityChange);
+            engine.destroy();
             controller.unbindEvents();
             ro.disconnect();
         });

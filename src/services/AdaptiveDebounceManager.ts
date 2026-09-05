@@ -24,7 +24,6 @@ interface InputSpeedStats {
 export class AdaptiveDebounceManager {
 	private timers: Map<string, number>;
 	private speedStats: Map<string, InputSpeedStats>;
-	private throttleStats: Map<string, number>;
 	
 	// 防抖延迟配置（毫秒）
 	private readonly FAST_TYPING_DELAY = 500;    // 快速输入
@@ -41,7 +40,6 @@ export class AdaptiveDebounceManager {
 	constructor() {
 		this.timers = new Map();
 		this.speedStats = new Map();
-		this.throttleStats = new Map();
 	}
 
 	/**
@@ -94,30 +92,6 @@ export class AdaptiveDebounceManager {
 		}, delay);
 
 		this.timers.set(key, timer);
-	}
-
-	/**
-	 * 限流函数 - 限制执行频率
-	 * 在指定时间间隔内，最多执行一次
-	 * 
-	 * @param key 唯一标识符
-	 * @param callback 要执行的回调函数
-	 * @param interval 时间间隔（毫秒）
-	 */
-	throttle(key: string, callback: DebounceCallback, interval: number): void {
-		const now = Date.now();
-		const lastTime = this.throttleStats.get(key) || 0;
-
-		if (now - lastTime >= interval) {
-			callback();
-			this.throttleStats.set(key, now);
-			
-			// 清理过期的 throttle 记录以防内存泄漏
-			if (this.throttleStats.size > 500) {
-				const keysToDelete = Array.from(this.throttleStats.keys()).slice(0, 250);
-				keysToDelete.forEach(k => this.throttleStats.delete(k));
-			}
-		}
 	}
 
 	/**
@@ -186,19 +160,6 @@ export class AdaptiveDebounceManager {
 	}
 
 	/**
-	 * 获取当前输入速度统计（用于调试）
-	 */
-	getSpeedStats(key: string): { averageInterval: number; delay: number } | null {
-		const stats = this.speedStats.get(key);
-		if (!stats) return null;
-		
-		return {
-			averageInterval: Math.round(stats.averageInterval),
-			delay: this.calculateDelay(key)
-		};
-	}
-
-	/**
 	 * 取消待处理的防抖操作
 	 * 
 	 * @param key 唯一标识符
@@ -220,41 +181,6 @@ export class AdaptiveDebounceManager {
 		});
 		this.timers.clear();
 		this.speedStats.clear();
-		this.throttleStats.clear();
-	}
-
-	/**
-	 * 立即执行并取消防抖
-	 * 
-	 * @param key 唯一标识符
-	 * @param callback 要执行的回调函数
-	 */
-	flush(key: string, callback: DebounceCallback): void {
-		this.cancel(key);
-		callback();
-	}
-
-	/**
-	 * 获取当前待处理的防抖操作数量
-	 */
-	getPendingCount(): number {
-		return this.timers.size;
-	}
-
-	/**
-	 * 清除指定 key 的统计数据
-	 */
-	clearStats(key: string): void {
-		this.speedStats.delete(key);
-		this.throttleStats.delete(key);
-	}
-
-	/**
-	 * 清除所有统计数据
-	 */
-	clearAllStats(): void {
-		this.speedStats.clear();
-		this.throttleStats.clear();
 	}
 
 	/**

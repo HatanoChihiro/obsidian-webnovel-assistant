@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EditorTracker } from '../src/services/EditorTracker';
 import { TFile } from './mocks/obsidian';
+import { t } from '../src/i18n';
 
 describe('EditorTracker', () => {
 	let mockApp: any;
@@ -67,6 +68,7 @@ describe('EditorTracker', () => {
 		tracker.handleEditorChange();
 
 		expect(mockPlugin.calculateAccurateWords).toHaveBeenCalledWith('这是测试网络小说第1章内容。');
+		expect(mockPlugin.calculateAccurateWords).toHaveBeenCalledTimes(1);
 		expect(mockApp.workspace.trigger).toHaveBeenCalledWith(
 			'webnovel:editor-word-count-updated',
 			testFile,
@@ -74,6 +76,12 @@ describe('EditorTracker', () => {
 		);
 		expect(mockPlugin.cacheManager.updateFileCache).toHaveBeenCalledWith(testFile, 15, mockApp.vault);
 		expect(mockPlugin.refreshStatusViews).toHaveBeenCalled();
+		expect(mockPlugin.statusBarItemEl.setText).toHaveBeenCalledWith(
+			t('common.status-bar-format', {
+				state: t('status.tracking-active'),
+				status: `${t('common.word-count-status', { count: '15', cnCount: '12' })} | ${t('common.net-increase', { count: '5' })}`
+			})
+		);
 	});
 
 	it('should handle file change and sync words from cache', async () => {

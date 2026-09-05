@@ -27,6 +27,7 @@ export type StatusViewTaskManager = Pick<
 	| 'getActiveTask'
 	| 'calcProgress'
 	| 'updateProgress'
+	| 'reconcileTasks'
 >;
 
 export type StatusViewCacheManager = Pick<
@@ -146,6 +147,56 @@ export class WritingStatusView extends ItemView {
 	private currentChapterFile: TFile | null = null;
 	private updateGeneration = 0;
 	private activeTaskContext: { folderPath: string; period: number; taskType: TaskType } | null = null;
+	private lastReconciledDateByFolder = new Map<string, string>();
+	private inFlightReconcile = new Map<string, Promise<boolean>>();
+
+	/**
+	 * 针对指定书目文件夹执行每日至多一次的任务调和
+	 * 防止按键高频刷新触发冗余状态写入，同时确保跨日/切书即时生效
+	 */
+	private async reconcileTaskLifecycleForFolder(
+		taskFolder: string,
+		generation: number = this.updateGeneration,
+		currentDate?: string
+	): Promise<boolean> {
+		if (!this.plugin.taskManager) return false;
+		const manager = this.plugin.taskManager;
+		const taskFile = manager.getTaskFile(taskFolder);
+		if (!taskFile) return false;
+
+		const normalizedFolder = !taskFolder || taskFolder === '/' ? '' : taskFolder.replace(/^\/+|\/+$/g, '');
+		const today = currentDate ?? window.moment().format('YYYY-MM-DD');
+
+		const inFlight = this.inFlightReconcile.get(normalizedFolder);
+		if (inFlight) {
+			await inFlight;
+			if (generation !== this.updateGeneration) return false;
+			return false;
+		}
+
+		if (this.lastReconciledDateByFolder.get(normalizedFolder) === today) {
+			return false;
+		}
+
+		const reconcilePromise = (async () => {
+			try {
+				const res = await manager.reconcileTasks(taskFolder, true);
+				this.lastReconciledDateByFolder.set(normalizedFolder, today);
+				return res;
+			} catch (err) {
+				this.lastReconciledDateByFolder.delete(normalizedFolder);
+				(window.console || console).error('[WritingStatusView] Failed to reconcile tasks:', err);
+				return false;
+			} finally {
+				this.inFlightReconcile.delete(normalizedFolder);
+			}
+		})();
+
+		this.inFlightReconcile.set(normalizedFolder, reconcilePromise);
+		const result = await reconcilePromise;
+		if (generation !== this.updateGeneration) return false;
+		return result;
+	}
 
 	constructor(leaf: WorkspaceLeaf, plugin: WritingStatusViewPlugin) {
 		super(leaf);
@@ -309,7 +360,6 @@ export class WritingStatusView extends ItemView {
 				taskContext.folderPath
 			).then(() => {
 				new Notice(t('notice.task-completed'));
-				this.plugin.refreshStatusViews(false);
 			});
 		};
 
@@ -620,11 +670,14 @@ export class WritingStatusView extends ItemView {
 		// 任务目标进度：基于目录判断，无活跃 MarkdownView 时使用上次文件夹
 		const taskFolder = folderPath;
 
-		if (taskFolder && this.plugin.taskManager) {
+		if ((taskFolder || taskFolder === '') && this.plugin.taskManager) {
 			const manager = this.plugin.taskManager;
 			const taskFile = manager.getTaskFile(taskFolder);
 			if (taskFile) {
-				const taskContent = await this.app.vault.cachedRead(taskFile);
+				await this.reconcileTaskLifecycleForFolder(taskFolder, generation);
+				if (generation !== this.updateGeneration) return;
+
+				const taskContent = await this.app.vault.read(taskFile);
 				if (generation !== this.updateGeneration) return;
 				const entries = manager.parseEntries(taskContent);
 				const active = manager.getActiveTask(entries);
@@ -1001,10 +1054,15 @@ export class WritingStatusView extends ItemView {
 	}
 
 	async onClose() {
+		if (this.updateTimer !== null) {
+			window.clearTimeout(this.updateTimer);
+			this.updateTimer = null;
+		}
 		if (this.taskSaveTimer !== null) {
 			window.clearTimeout(this.taskSaveTimer);
 			this.taskSaveTimer = null;
 		}
+		this.inFlightReconcile.clear();
 		await super.onClose();
 	}
 }

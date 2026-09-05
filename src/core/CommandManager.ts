@@ -1,4 +1,4 @@
-import { Notice, TFile } from 'obsidian';
+import { MarkdownView, Notice, TFile } from 'obsidian';
 import { isDesktop } from '../utils/platform';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { copyDocumentContent } from '../utils/ui';
@@ -56,6 +56,7 @@ export class CommandManager {
 		this.registerSearchCommands();
 		this.registerTypographyCommands();
 		this.registerProofreadingCommands();
+		this.registerEditorTypewriterCommands();
 	}
 
 	private registerTypographyCommands() {
@@ -697,5 +698,63 @@ export class CommandManager {
 				return true;
 			}
 		});
+	}
+
+	private registerEditorTypewriterCommands(): void {
+		this.plugin.addCommand({
+			id: 'toggle-editor-typewriter',
+			name: t('command.toggle-editor-typewriter'),
+			icon: 'align-center',
+			callback: async () => {
+				await this.toggleEditorTypewriter();
+			}
+		});
+	}
+
+	private async toggleEditorTypewriter(): Promise<void> {
+		if (!this.plugin.settings.editorTypewriter) {
+			this.plugin.settings.editorTypewriter = {
+				enabled: false,
+				centerOffset: 0,
+				unfocusedOpacity: 0.4
+			};
+		}
+
+		const previousState = this.plugin.settings.editorTypewriter.enabled;
+		const nextState = !previousState;
+		this.plugin.settings.editorTypewriter.enabled = nextState;
+
+		try {
+			await this.plugin.saveSettings();
+		} catch (error) {
+			this.plugin.settings.editorTypewriter.enabled = previousState;
+			Logger.error('[CommandManager] 切换普通编辑打字机滚动失败:', error);
+			new Notice(t('notice.save-settings-failed'));
+			return;
+		}
+
+		try {
+			this.refreshOpenEditors();
+		} catch (error) {
+			Logger.error('[CommandManager] 刷新普通编辑打字机状态失败:', error);
+		}
+		new Notice(
+			nextState
+				? t('notice.editor-typewriter-enabled')
+				: t('notice.editor-typewriter-disabled')
+		);
+	}
+
+	private refreshOpenEditors(): void {
+		const leaves = this.plugin.app.workspace.getLeavesOfType('markdown');
+		for (const leaf of leaves) {
+			const view = leaf.view;
+			if (view instanceof MarkdownView && view.editor) {
+				const cm = (view.editor as unknown as { cm?: { dispatch: (tr: Record<string, unknown>) => void } }).cm;
+				if (cm && typeof cm.dispatch === 'function') {
+					cm.dispatch({});
+				}
+			}
+		}
 	}
 }

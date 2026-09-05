@@ -724,11 +724,11 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	}
 
 
-	refreshStatusViews(includeChart = false) {
+	refreshStatusViews(includeChart = false, immediate = false) {
 		const leaves = this.app.workspace.getLeavesOfType(STATUS_VIEW_TYPE);
 		for (const leaf of leaves) {
 			if (leaf.view instanceof WritingStatusView) {
-				void leaf.view.updateData();
+				void leaf.view.updateData(immediate);
 				if (includeChart) {
 					leaf.view.renderMiniChart(true);
 				}

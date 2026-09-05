@@ -109,6 +109,9 @@ export class ForceLayoutEngine {
 			.force('collide', d3.forceCollide().radius(PHYSICS_CONFIG.COLLIDE_RADIUS).strength(PHYSICS_CONFIG.COLLIDE_STRENGTH))
 			// 速度衰减（阻尼）
 			.alphaMin(PHYSICS_CONFIG.ALPHA_MIN);
+
+		// 停止 D3 默认自启的内部定时器，由外部 requestAnimationFrame 统一驱动 tick
+		this.simulation.stop();
 	}
 
 	/**
@@ -194,7 +197,7 @@ export class ForceLayoutEngine {
 	 * 重置模拟状态，赋予高能量（全局爆炸效果）
 	 */
 	public reset(): void {
-		this.simulation.alpha(1).restart();
+		this.simulation.alpha(1);
 	}
 
 	/**
@@ -203,7 +206,7 @@ export class ForceLayoutEngine {
 	 */
 	public reheat(): void {
 		// alpha(0.3) 相当于赋予了 30% 的热量，可以产生跟随位移，又不会导致全屏乱飞
-		this.simulation.alpha(0.3).restart();
+		this.simulation.alpha(0.3);
 	}
 
 	/**
@@ -241,5 +244,12 @@ export class ForceLayoutEngine {
 	/** 获取当前系统的能量（alpha） */
 	public get alpha(): number {
 		return this.simulation.alpha();
+	}
+
+	/**
+	 * 销毁物理模拟引擎
+	 */
+	public destroy(): void {
+		this.simulation.stop();
 	}
 }

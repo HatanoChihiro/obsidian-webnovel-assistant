@@ -27,6 +27,7 @@ declare module 'obsidian' {
         on(name: 'webnovel:notes-changed', callback: () => void): EventRef;
         on(name: 'webnovel:word-count-gutter-settings-changed', callback: () => void): EventRef;
 		on(name: 'webnovel:editor-word-count-updated', callback: (file: TAbstractFile, delta: number) => void): EventRef;
+        on(name: 'webnovel:tasks-changed', callback: (folderPath?: string) => void): EventRef;
         on(name: 'webnovel-workbench-book-changed', callback: (bookPath: string) => void): EventRef;
         on(name: 'webnovel-workbench-lore-updated', callback: () => void): EventRef;
         on(name: 'webnovel-lore-hover-rebuild', callback: () => void): EventRef;
@@ -37,6 +38,7 @@ declare module 'obsidian' {
         trigger(name: 'webnovel:notes-changed'): void;
         trigger(name: 'webnovel:word-count-gutter-settings-changed'): void;
 		trigger(name: 'webnovel:editor-word-count-updated', file: TAbstractFile, delta: number): void;
+        trigger(name: 'webnovel:tasks-changed', folderPath?: string): void;
         trigger(name: 'webnovel-workbench-book-changed', bookPath: string): void;
         trigger(name: 'webnovel-workbench-lore-updated'): void;
         trigger(name: 'webnovel-lore-hover-rebuild'): void;

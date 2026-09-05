@@ -5,7 +5,7 @@ import { REGEX_PATTERNS } from '../constants';
  * 负责准确计算 Markdown 文本的字数（清理所有 Markdown 语法后）
  * 
  * [优化] 使用预缓存的正则实例，避免每次调用工厂函数创建新对象。
- * 带 /g 标志的正则在每次使用前重置 lastIndex = 0。
+ * 通过全局 replace / match 执行完整匹配，不依赖外部 lastIndex 状态。
  */
 export class WordCounter {
 	// 预缓存带 /g 标志的正则实例（避免每次调用工厂函数创建新对象）
@@ -27,29 +27,6 @@ export class WordCounter {
 	private readonly reFullwidthPunct = REGEX_PATTERNS.FULLWIDTH_PUNCT();
 
 	/**
-	 * 重置所有带 /g 标志的正则实例的 lastIndex
-	 * 必须在每次 replace 调用前执行，否则 /g 标志会导致匹配位置残留
-	 */
-	private resetAllRegex(): void {
-		this.reCodeBlock.lastIndex = 0;
-		this.reInlineCode.lastIndex = 0;
-		this.reHeading.lastIndex = 0;
-		this.reStrikethrough.lastIndex = 0;
-		this.reBold.lastIndex = 0;
-		this.reItalic.lastIndex = 0;
-		this.reEmbeddedInternalLink.lastIndex = 0;
-		this.reInternalLink.lastIndex = 0;
-		this.reLink.lastIndex = 0;
-		this.reImage.lastIndex = 0;
-		this.reFootnoteRef.lastIndex = 0;
-		this.reHtmlTag.lastIndex = 0;
-		this.reWhitespace.lastIndex = 0;
-		this.reCjkChar.lastIndex = 0;
-		this.reWordToken.lastIndex = 0;
-		this.reFullwidthPunct.lastIndex = 0;
-	}
-
-	/**
 	 * 计算准确字数
 	 * 清理所有 Markdown 语法标记，只保留纯文本内容
 	 * 
@@ -62,9 +39,6 @@ export class WordCounter {
 	 * @returns 纯文本字符数
 	 */
 	private getCleanedText(text: string): string {
-		// 重置所有正则的 lastIndex 状态
-		this.resetAllRegex();
-
 		// 用于替换多行块时保留对应的换行符，确保清理后的文本行号与原文本1:1对应
 		const preserveNewlines = (match: string) => '\n'.repeat((match.match(/\n/g) || []).length);
 
@@ -131,7 +105,6 @@ export class WordCounter {
 
 		// 统计英文单词和数字组合
 		const nonCjk = cleaned.replace(this.reCjkChar, ' ');
-		this.reCjkChar.lastIndex = 0; // replace 后重置
 		const wordMatches = nonCjk.match(this.reWordToken);
 		if (wordMatches) count += wordMatches.length;
 
@@ -164,10 +137,6 @@ export class WordCounter {
 			
 			let count = 0;
 			// 统计中日韩字符
-			// 这里不重置 global regex，因为我们使用 match，或者我们在 match 内部处理？
-			// 注意：避免使用全局状态导致 bug，所以每次手动新建局部正则或不带 g。
-			// Wait, reCjkChar uses /g, which has state if used with exec.
-			// string.match(/.../g) ignores lastIndex and returns all matches.
 			const cjkMatches = line.match(this.reCjkChar);
 			if (cjkMatches) count += cjkMatches.length;
 			

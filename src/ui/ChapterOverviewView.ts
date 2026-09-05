@@ -11,6 +11,7 @@ import type { AdaptiveDebounceManager } from '../services/AdaptiveDebounceManage
 import type { HomepageManager } from '../services/HomepageManager';
 import type { ForeshadowingManager } from '../services/ForeshadowingManager';
 import { WorkbenchFilterIndex } from '../services/WorkbenchFilterIndex';
+import { bindFilterInputEvents } from './components/FilterInputBinding';
 
 export const CORKBOARD_VIEW_TYPE = 'webnovel-corkboard';
 
@@ -163,7 +164,8 @@ export class ChapterOverviewView extends ItemView {
         this.currentRenderId++;
         this.plugin.adaptiveDebounceManager.cancel('chapter-overview-refresh');
         if (this.filterDebounceTimer !== null) {
-            window.clearTimeout(this.filterDebounceTimer);
+            const win = this.container?.ownerDocument?.defaultView ?? window;
+            win.clearTimeout(this.filterDebounceTimer);
             this.filterDebounceTimer = null;
         }
         this.pendingFilterFocus = null;
@@ -363,12 +365,6 @@ export class ChapterOverviewView extends ItemView {
         clearButton.setAttr('aria-label', t('corkboard.filter-clear'));
         setIcon(clearButton, 'x');
 
-        const updateClearButton = () => {
-            const isVisible = input.value.length > 0;
-            clearButton.toggleClass('is-visible', isVisible);
-            clearButton.setAttr('aria-hidden', isVisible ? 'false' : 'true');
-        };
-        updateClearButton();
 
         const sortToggle = bar.createDiv('clickable-icon wn-workbench-sort-toggle');
         sortToggle.setAttr('role', 'button');
@@ -391,48 +387,21 @@ export class ChapterOverviewView extends ItemView {
             }
         });
 
-        let isComposing = false;
-        input.addEventListener('compositionstart', () => {
-            isComposing = true;
-            this.currentRenderId++;
-            if (this.filterDebounceTimer !== null) {
-                window.clearTimeout(this.filterDebounceTimer);
-                this.filterDebounceTimer = null;
+        bindFilterInputEvents({
+            input,
+            inputWrapper,
+            clearButton,
+            onCompositionStart: () => {
+                this.currentRenderId++;
+                if (this.filterDebounceTimer !== null) {
+                    const win = input.ownerDocument?.defaultView ?? window;
+                    win.clearTimeout(this.filterDebounceTimer);
+                    this.filterDebounceTimer = null;
+                }
+            },
+            onRefresh: (immediate) => {
+                this.scheduleFilterRefresh(input, immediate);
             }
-        });
-        input.addEventListener('compositionend', () => {
-            isComposing = false;
-            updateClearButton();
-            this.scheduleFilterRefresh(input);
-        });
-        input.addEventListener('input', (event) => {
-            updateClearButton();
-            if (isComposing || (event as unknown as { isComposing?: boolean }).isComposing) return;
-            this.scheduleFilterRefresh(input);
-        });
-        input.addEventListener('focus', () => {
-            inputWrapper.addClass('is-focused');
-        });
-        input.addEventListener('blur', () => {
-            inputWrapper.removeClass('is-focused');
-        });
-        input.addEventListener('keydown', (event) => {
-            if (isComposing || event.isComposing) return;
-            if (event.key !== 'Escape' || input.value.length === 0) return;
-            event.preventDefault();
-            input.value = '';
-            updateClearButton();
-            this.scheduleFilterRefresh(input, true);
-        });
-        clearButton.onclick = () => {
-            input.value = '';
-            updateClearButton();
-            this.scheduleFilterRefresh(input, true);
-        };
-        clearButton.addEventListener('keydown', (event) => {
-            if (event.key !== 'Enter' && event.key !== ' ') return;
-            event.preventDefault();
-            clearButton.click();
         });
     }
 
@@ -443,9 +412,10 @@ export class ChapterOverviewView extends ItemView {
             end: input.selectionEnd ?? input.value.length
         };
 
+        const win = input.ownerDocument?.defaultView ?? window;
         this.currentRenderId++;
-        if (this.filterDebounceTimer !== null) window.clearTimeout(this.filterDebounceTimer);
-        this.filterDebounceTimer = window.setTimeout(() => {
+        if (this.filterDebounceTimer !== null) win.clearTimeout(this.filterDebounceTimer);
+        this.filterDebounceTimer = win.setTimeout(() => {
             this.filterDebounceTimer = null;
             void this.reloadBoard();
         }, immediate ? 0 : 200);

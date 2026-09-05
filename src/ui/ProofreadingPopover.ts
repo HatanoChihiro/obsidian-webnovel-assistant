@@ -4,7 +4,8 @@ import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { ProofreadingDiagnostic } from '../types/proofreading';
 import { t } from '../i18n';
 import { isMobile } from '../utils/platform';
-import { isReplacementStale } from '../utils/proofreadingHelpers';
+import { isReplacementStale, computeDiagnosticContextFingerprint } from '../utils/proofreadingHelpers';
+import { forceProofreadingUpdate, dismissProofreadingInstance } from '../editor/ProofreadingExtension';
 
 export function getProofreadingDiagnosticDisplayMessage(diag: ProofreadingDiagnostic): string {
 	if (diag.source === 'builtin') {
@@ -209,12 +210,18 @@ export class ProofreadingPopover extends Component {
 
 		// 建议与应用选项
 		const actionsDiv = popover.createDiv({ cls: 'wn-proofreading-popover-actions' });
+		const preventFocusSteal = (e: MouseEvent) => {
+			e.preventDefault();
+		};
+		actionsDiv.addEventListener('mousedown', preventFocusSteal);
+
 		if (this.diag.suggestions && this.diag.suggestions.length > 0) {
 			for (const s of this.diag.suggestions) {
 				const btn = actionsDiv.createEl('button', {
 					cls: 'wn-proofreading-action-btn',
 					text: `${t('proofreading.btn-apply')}: ${s}`
 				});
+				btn.addEventListener('mousedown', preventFocusSteal);
 				btn.addEventListener('click', (e) => {
 					e.stopPropagation();
 					this.applySuggestion(s);
@@ -222,15 +229,39 @@ export class ProofreadingPopover extends Component {
 			}
 		}
 
-		// 忽略/关闭按钮
-		const dismissBtn = actionsDiv.createEl('button', {
-			cls: 'wn-proofreading-dismiss-btn',
-			text: t('proofreading.btn-dismiss')
-		});
-		dismissBtn.addEventListener('click', (e) => {
-			e.stopPropagation();
-			this.hide();
-		});
+		// 忽略按钮
+		const isWordType = this.diag.type === 'wrong_word' || this.diag.type === 'sensitive' || this.diag.type === 'synonym';
+		if (isWordType) {
+			const dismissInstBtn = actionsDiv.createEl('button', {
+				cls: 'wn-proofreading-dismiss-btn',
+				text: t('proofreading.btn-dismiss-instance')
+			});
+			dismissInstBtn.addEventListener('mousedown', preventFocusSteal);
+			dismissInstBtn.addEventListener('click', (e) => {
+				e.stopPropagation();
+				void this.dismissInstance();
+			});
+
+			const dismissWordBtn = actionsDiv.createEl('button', {
+				cls: 'wn-proofreading-dismiss-btn wn-proofreading-dismiss-word-btn',
+				text: t('proofreading.btn-dismiss-word')
+			});
+			dismissWordBtn.addEventListener('mousedown', preventFocusSteal);
+			dismissWordBtn.addEventListener('click', (e) => {
+				e.stopPropagation();
+				void this.dismissWord();
+			});
+		} else {
+			const dismissBtn = actionsDiv.createEl('button', {
+				cls: 'wn-proofreading-dismiss-btn',
+				text: t('proofreading.btn-dismiss')
+			});
+			dismissBtn.addEventListener('mousedown', preventFocusSteal);
+			dismissBtn.addEventListener('click', (e) => {
+				e.stopPropagation();
+				void this.dismissInstance();
+			});
+		}
 
 		this.updatePosition();
 	}
@@ -262,19 +293,77 @@ export class ProofreadingPopover extends Component {
 			return;
 		}
 
+		const newPos = this.diag.from + replacement.length;
 		this.view.dispatch({
 			changes: {
 				from: this.diag.from,
 				to: this.diag.to,
 				insert: replacement
-			}
+			},
+			selection: { anchor: newPos, head: newPos },
+			userEvent: 'input.proofreading'
 		});
+
+		this.view.focus();
 
 		new Notice(t('notice.proofreading-applied', {
 			original: this.diag.original,
 			replacement
 		}));
 
+		this.hide();
+	}
+
+	private async dismissInstance(): Promise<void> {
+		if (!this.plugin.proofreadingManager) {
+			this.hide();
+			return;
+		}
+
+		const doc = this.view.state.doc;
+		const safeFrom = Math.max(0, Math.min(this.diag.from, doc.length));
+		const safeTo = Math.max(safeFrom, Math.min(this.diag.to, doc.length));
+		const prefix = doc.sliceString(Math.max(0, safeFrom - 12), safeFrom);
+		const suffix = doc.sliceString(safeTo, Math.min(doc.length, safeTo + 12));
+		const fingerprint = computeDiagnosticContextFingerprint(doc, this.diag.from, this.diag.to, this.diag.ruleId, this.diag.original);
+		const contextSnippet = `${prefix}[${this.diag.original}]${suffix}`;
+
+		// 1. 通过 CodeMirror 事务分发 dismissProofreadingInstance，立即建立会话级实时抗漂移映射
+		this.view.dispatch({
+			effects: [
+				dismissProofreadingInstance.of({
+					from: this.diag.from,
+					to: this.diag.to,
+					ruleId: this.diag.ruleId,
+					original: this.diag.original
+				}),
+				forceProofreadingUpdate.of(null)
+			]
+		});
+
+		this.view.focus();
+
+		// 2. 持久化至设置
+		await this.plugin.proofreadingManager.ignoreInstance(fingerprint, this.diag.original, contextSnippet, {
+			ruleId: this.diag.ruleId,
+			prefix,
+			suffix
+		});
+
+		new Notice(t('notice.proofreading-ignored-instance'));
+		this.hide();
+	}
+
+	private async dismissWord(): Promise<void> {
+		if (!this.plugin.proofreadingManager) {
+			this.hide();
+			return;
+		}
+
+		await this.plugin.proofreadingManager.ignoreWord(this.diag.original);
+		this.view.dispatch({ effects: forceProofreadingUpdate.of(null) });
+		this.view.focus();
+		new Notice(t('notice.proofreading-ignored-word', { word: this.diag.original }));
 		this.hide();
 	}
 

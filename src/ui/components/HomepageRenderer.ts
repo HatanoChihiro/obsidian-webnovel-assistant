@@ -44,7 +44,7 @@ export type HomepageRendererStatisticsManager = Pick<
 
 export type HomepageRendererTaskManager = Pick<
 	TaskManager,
-	'checkAndCloseExpired' | 'activatePendingTasks' | 'loadEntries' | 'calcProgress'
+	'checkAndCloseExpired' | 'activatePendingTasks' | 'loadEntries' | 'calcProgress' | 'reconcileTasks'
 >;
 
 export type HomepageRendererCacheManager = Pick<
@@ -198,7 +198,7 @@ export class HomepageRenderer {
 						(leaf.view as WorkbenchView).setBookPath(folderPath);
 					}
 					if (leaf) {
-						revealAndFocusLeaf(this.app, leaf);
+						await revealAndFocusLeaf(this.app, leaf);
 					}
 				} catch (e) { console.error(e); }
 			})();
@@ -312,7 +312,7 @@ export class HomepageRenderer {
 			const header = item.createDiv({ cls: 'homepage-ongoing-header' });
 			const nameEl = header.createDiv({ cls: 'homepage-ongoing-name' });
 			nameEl.textContent = displayName;
-			nameEl.onclick = () => this.navigateToNovel(novel.folderPath);
+			nameEl.onclick = () => void this.navigateToNovel(novel.folderPath);
 			const countEl = header.createDiv({ cls: 'homepage-ongoing-count' });
 			countEl.textContent = novel.wordCount.toLocaleString() + ' ' + t('common.word-char');
 
@@ -385,7 +385,7 @@ export class HomepageRenderer {
 
 			const nameEl = card.createDiv({ cls: 'homepage-completed-name' });
 			nameEl.textContent = displayName;
-			nameEl.onclick = () => this.navigateToNovel(novel.folderPath);
+			nameEl.onclick = () => void this.navigateToNovel(novel.folderPath);
 
 			this.createFieldEl(card, t('homepage.field-total-words'), novel.wordCount.toLocaleString());
 			this.createFieldEl(card, getNovelInfoLabel('protagonist'), novel.metadata?.protagonist || '--');
@@ -417,7 +417,7 @@ export class HomepageRenderer {
 
 			const nameEl = card.createDiv({ cls: 'homepage-completed-name' });
 			nameEl.textContent = displayName;
-			nameEl.onclick = () => this.navigateToNovel(novel.folderPath);
+			nameEl.onclick = () => void this.navigateToNovel(novel.folderPath);
 
 			this.createFieldEl(card, t('homepage.field-total-words'), novel.wordCount.toLocaleString());
 			this.createFieldEl(card, getNovelInfoLabel('genre'), novel.metadata?.genre || '--');
@@ -448,7 +448,7 @@ export class HomepageRenderer {
 
 			const nameEl = card.createDiv({ cls: 'homepage-completed-name' });
 			nameEl.textContent = displayName;
-			nameEl.onclick = () => this.navigateToNovel(novel.folderPath);
+			nameEl.onclick = () => void this.navigateToNovel(novel.folderPath);
 
 			this.createFieldEl(card, t('homepage.field-total-words'), novel.wordCount.toLocaleString());
 			this.createFieldEl(card, getNovelInfoLabel('genre'), novel.metadata?.genre || '--');
@@ -621,8 +621,7 @@ export class HomepageRenderer {
 		entry: TaskEntry;
 	} | null> {
 		const manager = this.plugin.taskManager;
-		await manager.checkAndCloseExpired(folderPath);
-		await manager.activatePendingTasks(folderPath);
+		await manager.reconcileTasks(folderPath);
 		const entries = await manager.loadEntries(folderPath);
 		if (!entries || entries.length === 0) return null;
 
@@ -652,8 +651,8 @@ export class HomepageRenderer {
 		};
 	}
 
-	navigateToNovel(folderPath: string): void {
-		void (async () => {
+	async navigateToNovel(folderPath: string): Promise<void> {
+		try {
 			const viewType = 'webnovel-workbench';
 			const { workspace } = this.app;
 			const leaves = workspace.getLeavesOfType(viewType);
@@ -666,8 +665,10 @@ export class HomepageRenderer {
 				(leaf.view as WorkbenchView).setBookPath(folderPath);
 			}
 			if (leaf) {
-				revealAndFocusLeaf(this.app, leaf);
+				await revealAndFocusLeaf(this.app, leaf);
 			}
-		})();
+		} catch (e) {
+			console.error('[WebNovel Assistant] 导航到作品失败:', e);
+		}
 	}
 }
