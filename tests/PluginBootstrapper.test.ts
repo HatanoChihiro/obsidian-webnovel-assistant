@@ -139,7 +139,8 @@ describe('PluginBootstrapper', () => {
 		'StatisticsManager',
 		'WorkerManager',
 		'MarkdownPostProcessor',
-		'HomepageManager'
+		'HomepageManager',
+		'WritingJourneyService'
 	];
 
 	const EXPECTED_CORE_RUNTIME_SERVICES: readonly (keyof ServiceMap)[] = [

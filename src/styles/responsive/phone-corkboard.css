@@ -1,0 +1,62 @@
+/* ========== Corkboard and workbench cards ========== */
+/* ==========================================================================
+   手机端专属微调 (Tablet 平板端维持 Desktop 原生样式)
+   ========================================================================== */
+body.is-phone .wn-corkboard-card {
+	min-height: var(--wn-phone-card-min-height);
+	font-size: 1em;
+	border-radius: var(--wn-phone-card-radius);
+}
+
+
+body.is-phone .wn-corkboard-card-header {
+	padding: var(--wn-phone-card-header-padding);
+}
+
+
+body.is-phone .wn-corkboard-card-title {
+	font-size: var(--wn-phone-font-title);
+}
+
+
+body.is-phone .wn-corkboard-card-content {
+	padding: var(--wn-phone-card-body-padding);
+	min-height: 3em;
+}
+
+
+body.is-phone .wn-corkboard-card-text {
+	font-size: var(--wn-phone-font-body);
+	line-height: 1.4;
+}
+
+
+body.is-phone textarea.wn-corkboard-textarea,
+body.is-phone .wn-corkboard-card-content .wn-corkboard-textarea {
+	font-size: var(--wn-phone-font-body);
+	line-height: 1.4;
+	background: transparent;
+	border: none;
+	border-radius: 4px;
+	-webkit-border-radius: 4px;
+	-webkit-appearance: none;
+	appearance: none;
+	padding: 2px 4px;
+	box-shadow: none;
+	outline: none;
+}
+
+
+body.is-phone .wn-corkboard-card-footer {
+	padding: var(--wn-phone-card-footer-padding);
+	font-size: var(--wn-phone-font-meta);
+}
+
+
+
+/* ==========================================================================
+   手机端竖屏 (is-phone & orientation: portrait) 工作台显示深度优化
+   ========================================================================== */
+body.is-phone .wn-corkboard-title {
+	display: none;
+}

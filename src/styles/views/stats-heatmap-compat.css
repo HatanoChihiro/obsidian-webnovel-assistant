@@ -1,0 +1,39 @@
+.stats-heat-inputs-wrapper,
+.stats-heat-actions-wrapper {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+
+.stats-subheading {
+	display: flex;
+	align-items: center;
+	font-size: 12px;
+	margin-top: 12px;
+	margin-bottom: 8px;
+}
+
+
+.stats-subheading .stats-heatmap-legend-inline {
+	margin-left: auto;
+	display: flex;
+	gap: 3px;
+}
+
+
+.stats-heat-today-btn {
+	padding: 5px 10px;
+	border-radius: 6px;
+	border: 1px solid color-mix(in srgb, var(--interactive-accent) 30%, var(--background-modifier-border));
+	background: color-mix(in srgb, var(--interactive-accent) 4%, var(--background-primary));
+	color: var(--text-normal);
+	font-size: 13px;
+	cursor: pointer;
+	transition: background 0.2s;
+}
+
+
+.stats-heat-today-btn:hover {
+	background: color-mix(in srgb, var(--interactive-accent) 15%, var(--background-primary));
+}

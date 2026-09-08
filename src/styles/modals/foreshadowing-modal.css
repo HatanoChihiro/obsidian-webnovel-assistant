@@ -1,0 +1,38 @@
+
+
+
+/* Foreshadowing/Timeline Modal popup spacing tightened */
+
+/* Foreshadowing View */
+.foreshadowing-input-modal h2 {
+	color: var(--interactive-accent);
+	margin: 0 0 8px 0;
+	padding: 0;
+}
+
+
+.foreshadowing-input-modal .setting-item {
+	padding: 4px 0;
+}
+
+
+.foreshadowing-input-modal .setting-item-name {
+	font-size: 0.85em;
+}
+
+
+.foreshadowing-input-modal .setting-item-description {
+	font-size: 0.8em;
+}
+
+
+/* -- MarkdownPostProcessor (foreshadowing checkbox) -- */
+
+.webnovel-foreshadowing-checkbox {
+	margin-left: 8px;
+	cursor: pointer;
+	vertical-align: middle;
+	width: 15px;
+	height: 15px;
+	accent-color: var(--interactive-accent);
+}

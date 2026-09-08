@@ -1,0 +1,72 @@
+
+
+.immersive-top-bar {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	height: 40px;
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	z-index: 100;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0 16px;
+	font-family: var(--font-interface);
+	box-shadow: 0 2px 8px color-mix(in srgb, var(--interactive-accent) 30%, rgba(0, 0, 0, 0.15));
+}
+
+.immersive-top-bar-left {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	font-weight: bold;
+	font-size: 0.9em;
+}
+
+.immersive-top-bar-center {
+	display: flex;
+	align-items: center;
+	gap: 20px;
+	font-size: 0.85em;
+}
+
+.immersive-top-bar-center .stat-item {
+	background: color-mix(in srgb, var(--text-on-accent) 15%, var(--interactive-accent));
+	padding: 4px 10px;
+	border-radius: 12px;
+}
+
+.immersive-top-bar-center .stat-item.focus {
+	background: color-mix(in srgb, var(--text-success, var(--interactive-accent)) 25%, var(--interactive-accent));
+}
+
+.immersive-top-bar-center .stat-item.slack {
+	background: color-mix(in srgb, var(--text-warning, var(--interactive-accent)) 25%, var(--interactive-accent));
+}
+
+.immersive-exit-btn {
+	background: color-mix(in srgb, var(--text-on-accent) 10%, transparent);
+	color: var(--text-on-accent);
+	border: 1px solid color-mix(in srgb, var(--text-on-accent) 30%, transparent);
+	padding: 4px 12px;
+	border-radius: 6px;
+	cursor: pointer;
+	font-size: 0.85em;
+	opacity: 0;
+	transition: all 0.3s ease;
+}
+
+.immersive-exit-btn:hover {
+	opacity: 1;
+	background: color-mix(in srgb, var(--text-on-accent) 25%, transparent);
+}
+
+/* Automatically show tooltip when mouse approaches right area */
+
+/* Immersive Top Bar Right */
+
+.immersive-top-bar-right:hover .immersive-exit-btn {
+	opacity: 0.7;
+}

@@ -8,12 +8,19 @@ import { t } from '../i18n';
 export class TemplateChoiceModal extends Modal {
 	private files: TFile[];
 	private onChoose: (file: TFile | null) => void;
-	private isChosen: boolean = false;
+	private onCancel?: () => void;
+	private isResolved = false;
 
-	constructor(app: App, files: TFile[], onChoose: (file: TFile | null) => void) {
+	constructor(
+		app: App,
+		files: TFile[],
+		onChoose: (file: TFile | null) => void,
+		onCancel?: () => void
+	) {
 		super(app);
 		this.files = files;
 		this.onChoose = onChoose;
+		this.onCancel = onCancel;
 	}
 
 	onOpen(): void {
@@ -38,7 +45,7 @@ export class TemplateChoiceModal extends Modal {
 		noTemplateInfo.createDiv({ cls: 'wn-template-choice-path', text: t('template.no-template-desc') });
 
 		noTemplateItem.onclick = () => {
-			this.isChosen = true;
+			this.isResolved = true;
 			this.onChoose(null);
 			this.close();
 		};
@@ -54,7 +61,7 @@ export class TemplateChoiceModal extends Modal {
 			infoEl.createDiv({ cls: 'wn-template-choice-path', text: file.path });
 
 			itemEl.onclick = () => {
-				this.isChosen = true;
+				this.isResolved = true;
 				this.onChoose(file);
 				this.close();
 			};
@@ -64,9 +71,14 @@ export class TemplateChoiceModal extends Modal {
 	onClose(): void {
 		const { contentEl } = this;
 		contentEl.empty();
-		if (!this.isChosen) {
-			// 用户直接关闭/取消弹窗
-			this.onChoose(null);
+		if (!this.isResolved) {
+			this.isResolved = true;
+			if (this.onCancel) {
+				this.onCancel();
+			} else {
+				// 保留仅传入 onChoose 时旧调用方的默认行为
+				this.onChoose(null);
+			}
 		}
 	}
 }

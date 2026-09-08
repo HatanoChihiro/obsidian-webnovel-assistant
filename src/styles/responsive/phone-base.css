@@ -1,0 +1,27 @@
+/*
+ * Phone responsive source of truth
+ *
+ * Sections are ordered from shared status surfaces to feature-specific mobile
+ * layouts, then portrait-only refinements and touch-pointer overrides.
+ * Keep phone/tablet rules here so responsive behavior remains discoverable in
+ * one module while feature styles stay in their desktop/view owners.
+ */
+
+body.is-phone {
+	/* Obsidian mobile text size is the only base; the semantic scale follows it. */
+	--wn-phone-ui-font-size: var(--font-text-size, var(--font-ui-medium));
+	--wn-phone-font-display: 1.2em;
+	--wn-phone-font-title: 0.95em;
+	--wn-phone-font-body: 0.875em;
+	--wn-phone-font-control: 0.8em;
+	--wn-phone-font-meta: 0.75em;
+	--wn-phone-font-caption: 0.625em;
+	--wn-phone-font-kpi: 1.1em;
+	--wn-phone-card-radius: 0.5em;
+	--wn-phone-card-gap: 0.625em;
+	--wn-phone-card-padding: 0.625em;
+	--wn-phone-card-header-padding: 0.375em 0.5em;
+	--wn-phone-card-body-padding: 0.5em;
+	--wn-phone-card-footer-padding: 0.375em 0.5em;
+	--wn-phone-card-min-height: 6.25em;
+}

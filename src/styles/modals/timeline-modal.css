@@ -1,0 +1,89 @@
+
+
+
+
+.wn-timeline-edit-form {
+	background: var(--background-secondary);
+	border-radius: 6px;
+	padding: 10px 12px;
+	margin-bottom: 12px;
+	border: 1px solid var(--interactive-accent);
+}
+
+
+.wn-timeline-form-label {
+	display: block;
+	font-size: 0.85em;
+	color: var(--text-muted);
+	margin-bottom: 3px;
+	margin-top: 8px;
+}
+
+
+.wn-timeline-form-input {
+	width: 100%;
+	padding: 5px 8px;
+	border-radius: 4px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	color: var(--text-normal);
+	font-size: 0.85em;
+	box-sizing: border-box;
+}
+
+
+.wn-timeline-custom-type-input {
+	margin-top: 4px;
+}
+
+
+.wn-timeline-form-textarea {
+	width: 100%;
+	height: 60px;
+	padding: 5px 8px;
+	border-radius: 4px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	color: var(--text-normal);
+	font-size: 0.85em;
+	resize: vertical;
+	box-sizing: border-box;
+	font-family: var(--font-text);
+}
+
+
+.wn-timeline-form-btns {
+	display: flex;
+	justify-content: flex-end;
+	gap: 6px;
+	margin-top: 10px;
+}
+
+
+.wn-timeline-form-hint {
+	font-size: 0.85em;
+	color: var(--text-muted);
+	margin-bottom: 8px;
+}
+
+
+.wn-timeline-add-modal h2 {
+	color: var(--interactive-accent);
+	margin: 0 0 8px 0;
+	padding: 0;
+}
+
+
+.wn-timeline-add-modal .setting-item {
+	padding: 6px 0;
+}
+
+
+.wn-timeline-add-modal .setting-item-name {
+	font-size: 0.85em;
+}
+
+
+.wn-timeline-add-modal .setting-item-description {
+	font-size: 0.8em;
+}

@@ -20,6 +20,8 @@ import { Logger } from '../utils/Logger';
 import { DailyStatsActionModal, type DailyStatsAction } from '../ui/DailyStatsActionModal';
 import { AnnotateDictModal } from '../ui/AnnotateDictModal';
 import { isSelectionEligibleForAnnotate } from '../utils/proofreadingHelpers';
+import { splitChapterAtCursor } from '../services/ChapterSplitter';
+import { ChapterSplitCollisionModal } from '../ui/ChapterSplitCollisionModal';
 
 function getSelectedOrCursorWord(editor: {
 	getSelection: () => string;
@@ -304,7 +306,16 @@ export class CommandManager {
 					}
 					void (async () => {
 						try {
+							this.plugin.writingJourneyService?.markHandledCreate(newFilePath);
 							const newFile = await this.plugin.app.vault.create(newFilePath, templateContent);
+							const bookRoot = findBookRoot(this.plugin.app, this.plugin, currentFile, true);
+							if (bookRoot && this.plugin.writingJourneyService) {
+								try {
+									await this.plugin.writingJourneyService.recordChapterCreated(bookRoot, newFilePath, newFile.basename, 'create-next');
+								} catch (journeyErr) {
+									Logger.error('[CommandManager] Failed to record writing journey event for create-next:', journeyErr);
+								}
+							}
 							await this.plugin.app.workspace.getLeaf(false).openFile(newFile);
 							new Notice(t('notice.chapter-created', { name: newFileName }));
 							// 延迟触发文件树重排序，确保 DOM 挂载完成后自动恢复规则排序
@@ -317,6 +328,40 @@ export class CommandManager {
 						}
 					})();
 				});
+			}
+		});
+
+		this.plugin.addCommand({
+			id: 'split-chapter-at-cursor',
+			name: t('command.split-chapter-at-cursor'),
+			icon: 'scissors',
+			editorCheckCallback: (checking, editor, view) => {
+				if (!(view instanceof MarkdownView)) return false;
+				if (checking) return true;
+
+				void (async () => {
+					try {
+						await splitChapterAtCursor({
+							app: this.plugin.app,
+							view,
+							editor,
+							settings: this.plugin.settings,
+							onRequestName: async (suggestedName, folder, reason) => {
+								return await ChapterSplitCollisionModal.prompt(this.plugin.app, suggestedName, folder, reason);
+							},
+							onRefreshExplorer: () => {
+								this.plugin.fileExplorerPatcher?.refreshManually();
+							},
+							writingJourneyService: this.plugin.writingJourneyService,
+							plugin: this.plugin
+						});
+					} catch (err) {
+						Logger.error('[CommandManager] Unexpected error splitting chapter:', err);
+						new Notice(t('notice.split-chapter-create-failed', { error: String(err) }));
+					}
+				})();
+
+				return true;
 			}
 		});
 

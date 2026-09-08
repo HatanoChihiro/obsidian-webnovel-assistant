@@ -1,0 +1,26 @@
+
+
+/* Immersive Folder View */
+
+.immersive-folder-details {
+	margin: 2px 0;
+}
+
+.immersive-folder-summary {
+	cursor: pointer;
+	padding: 4px;
+	color: var(--text-muted);
+	font-weight: 600;
+	user-select: none;
+	display: flex;
+	align-items: center;
+}
+
+.immersive-folder-summary::-webkit-details-marker {
+	display: none;
+}
+
+.immersive-folder-children {
+	border-left: 1px solid var(--background-modifier-border);
+	margin-left: 6px;
+}

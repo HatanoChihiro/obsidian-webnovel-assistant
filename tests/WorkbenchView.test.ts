@@ -1,9 +1,19 @@
 import { MockElement } from './mocks/MockElement';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { WorkbenchView, WORKBENCH_VIEW_TYPE, type WorkbenchViewPlugin } from '../src/ui/WorkbenchView';
+import {
+	WorkbenchView,
+	WORKBENCH_VIEW_TYPE,
+	type WorkbenchViewPlugin
+} from '../src/ui/WorkbenchView';
+import {
+	WORKBENCH_BOARD_IDS,
+	WORKBENCH_BOARD_LABEL_KEYS,
+	getWorkbenchBoardLabel
+} from '../src/ui/workbenchBoards';
 import { CorkboardGridRenderer } from '../src/ui/components/CorkboardGridRenderer';
 import { TimelineBoardRenderer } from '../src/ui/components/TimelineBoardRenderer';
-import type { TFile } from 'obsidian';
+import { WritingJourneyBoardRenderer } from '../src/ui/components/WritingJourneyBoardRenderer';
+import { Platform, type TFile } from 'obsidian';
 
 const { getCurrentBookContextMock, findBookRootMock, MockTFile, MockTFolder, mockMenuInstances, MockMenu } = vi.hoisted(() => {
 	class HoistedMockMenuItem {
@@ -74,6 +84,16 @@ const { getCurrentBookContextMock, findBookRootMock, MockTFile, MockTFolder, moc
 (globalThis as unknown as { createDiv: (opts?: unknown) => MockElement }).createDiv = function(opts?: unknown) {
 	const cls = typeof opts === 'string' ? opts : (opts as { cls?: string })?.cls || '';
 	const el = new MockElement(cls);
+	if (typeof opts === 'object' && opts !== null && 'text' in opts) {
+		el.textContent = (opts as { text: string }).text;
+	}
+	return el;
+};
+
+(globalThis as unknown as { createEl: (tag: string, opts?: unknown) => MockElement }).createEl = function(tag: string, opts?: unknown) {
+	const cls = typeof opts === 'string' ? opts : (opts as { cls?: string })?.cls || '';
+	const el = new MockElement(cls);
+	(el as unknown as { id: string }).id = '';
 	if (typeof opts === 'object' && opts !== null && 'text' in opts) {
 		el.textContent = (opts as { text: string }).text;
 	}
@@ -174,6 +194,12 @@ vi.mock('../src/ui/components/TimelineBoardRenderer', () => ({
 	}
 }));
 
+vi.mock('../src/ui/components/WritingJourneyBoardRenderer', () => ({
+	WritingJourneyBoardRenderer: {
+		render: vi.fn()
+	}
+}));
+
 vi.mock('../src/i18n', () => ({
 	t: (key: string) => key
 }));
@@ -206,7 +232,12 @@ describe('WorkbenchView', () => {
 
 	beforeEach(() => {
 		vi.clearAllMocks();
+		Platform.isMobile = false;
 		mockMenuInstances.length = 0;
+		vi.stubGlobal('activeDocument', {
+			getElementById: vi.fn().mockReturnValue(null),
+			head: { appendChild: vi.fn() }
+		});
 
 		file1 = new MockTFile('第1章.md', 'NovelA/第1章.md');
 
@@ -263,6 +294,17 @@ describe('WorkbenchView', () => {
 				findForeshadowingFile: vi.fn().mockReturnValue(null),
 				parseEntries: vi.fn().mockReturnValue([]),
 				buildChapterForeshadowingMap: vi.fn().mockResolvedValue(new Map())
+			},
+			writingJourneyService: {
+				getJourneyLog: vi.fn().mockResolvedValue({ status: 'valid', log: { version: 1, events: [] } }),
+				recordChapterCreated: vi.fn().mockResolvedValue(undefined),
+				recordChapterRenamed: vi.fn().mockResolvedValue(undefined),
+				recordChapterDeleted: vi.fn().mockResolvedValue(undefined),
+				recordChapterStatusChanged: vi.fn().mockResolvedValue(undefined),
+				recordWorkStatusChanged: vi.fn().mockResolvedValue(undefined),
+				markHandledCreate: vi.fn(),
+				markHandledRename: vi.fn(),
+				markHandledDelete: vi.fn()
 			},
 			getTrackedMarkdownFiles: vi.fn().mockReturnValue([file1] as unknown as TFile[]),
 			getVaultMarkdownFiles: vi.fn().mockReturnValue([file1] as unknown as TFile[]),
@@ -329,7 +371,7 @@ describe('WorkbenchView', () => {
 		expect(cancelSpy).toHaveBeenCalledWith('workbench-refresh');
 	});
 
-	it('should reload board when debounced refresh or lore-updated triggers in non-sticky modes with proper delays', async () => {
+	it('should reload board when debounced refresh or lore-updated triggers with proper delays', async () => {
 		const vaultHandlers: Record<string, ((...args: unknown[]) => void)> = {};
 		const metadataHandlers: Record<string, ((...args: unknown[]) => void)> = {};
 		const workspaceHandlers: Record<string, ((...args: unknown[]) => void)> = {};
@@ -377,117 +419,6 @@ describe('WorkbenchView', () => {
 		reloadSpy.mockClear();
 		workspaceHandlers['webnovel-workbench-lore-updated']();
 		expect(reloadSpy).toHaveBeenCalledTimes(1);
-	});
-
-	it('should not schedule workbench-refresh or reload board on file/metadata events or lore-updated while in sticky mode', async () => {
-		const vaultHandlers: Record<string, ((...args: unknown[]) => void)> = {};
-		const metadataHandlers: Record<string, ((...args: unknown[]) => void)> = {};
-		const workspaceHandlers: Record<string, ((...args: unknown[]) => void)> = {};
-
-		mockApp.vault.on.mockImplementation((event: string, handler: (...args: unknown[]) => void) => {
-			vaultHandlers[event] = handler;
-		});
-		mockApp.metadataCache.on.mockImplementation((event: string, handler: (...args: unknown[]) => void) => {
-			metadataHandlers[event] = handler;
-		});
-		mockApp.workspace.on.mockImplementation((event: string, handler: (...args: unknown[]) => void) => {
-			workspaceHandlers[event] = handler;
-		});
-
-		const debounceSpy = vi.fn();
-		plugin.adaptiveDebounceManager = {
-			debounceFixed: debounceSpy,
-			cancel: vi.fn()
-		};
-
-		const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
-		(view as unknown as { container: unknown }).container = view.contentEl;
-		(view as unknown as { sortMode: string }).sortMode = 'sticky';
-		const reloadSpy = vi.spyOn(view, 'reloadBoard').mockImplementation(async () => {});
-
-		// Trigger rename while in sticky mode
-		vaultHandlers['rename'](file1, 'NovelA/old.md');
-		expect(debounceSpy).not.toHaveBeenCalled();
-		expect(reloadSpy).not.toHaveBeenCalled();
-
-		// Trigger delete while in sticky mode
-		vaultHandlers['delete'](file1);
-		expect(debounceSpy).not.toHaveBeenCalled();
-		expect(reloadSpy).not.toHaveBeenCalled();
-
-		// Trigger modify while in sticky mode
-		vaultHandlers['modify'](file1);
-		expect(debounceSpy).not.toHaveBeenCalled();
-		expect(reloadSpy).not.toHaveBeenCalled();
-
-		// Trigger metadataCache changed while in sticky mode
-		metadataHandlers['changed'](file1);
-		expect(debounceSpy).not.toHaveBeenCalled();
-		expect(reloadSpy).not.toHaveBeenCalled();
-
-		// Trigger lore-updated while in sticky mode
-		workspaceHandlers['webnovel-workbench-lore-updated']();
-		expect(reloadSpy).not.toHaveBeenCalled();
-	});
-
-	it('should not reload board if a debounced refresh callback runs after switching to sticky mode', async () => {
-		const vaultHandlers: Record<string, ((...args: unknown[]) => void)> = {};
-		mockApp.vault.on.mockImplementation((event: string, handler: (...args: unknown[]) => void) => {
-			vaultHandlers[event] = handler;
-		});
-
-		let queuedCallback: (() => void) | null = null;
-		const debounceSpy = vi.fn((_key: string, fn: () => void) => {
-			queuedCallback = fn;
-		});
-		plugin.adaptiveDebounceManager = {
-			debounceFixed: debounceSpy,
-			cancel: vi.fn()
-		};
-
-		const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
-		(view as unknown as { container: unknown }).container = view.contentEl;
-		(view as unknown as { sortMode: string }).sortMode = 'default';
-
-		// Trigger modify while in default mode -> callback is queued
-		vaultHandlers['modify'](file1);
-		expect(debounceSpy).toHaveBeenCalledWith('workbench-refresh', expect.any(Function), 1000);
-		expect(queuedCallback).not.toBeNull();
-
-		const reloadSpy = vi.spyOn(view, 'reloadBoard').mockImplementation(async () => {});
-
-		// User enters sticky mode before debounce callback fires
-		(view as unknown as { sortMode: string }).sortMode = 'sticky';
-
-		// Now the debounced callback executes
-		queuedCallback!();
-
-		// It must re-check sortMode and NOT call reloadBoard
-		expect(reloadSpy).not.toHaveBeenCalled();
-	});
-
-	it('should forward webnovel:notes-changed to StickyNoteListRenderer.syncNotesFromManager without board reload', async () => {
-		const workspaceHandlers: Record<string, ((...args: unknown[]) => void)> = {};
-		mockApp.workspace.on.mockImplementation((event: string, handler: (...args: unknown[]) => void) => {
-			workspaceHandlers[event] = handler;
-		});
-
-		const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
-		(view as unknown as { container: unknown }).container = view.contentEl;
-		(view as unknown as { sortMode: string }).sortMode = 'sticky';
-
-		const syncNotesMock = vi.fn();
-		(view as unknown as { stickyNoteListRenderer: unknown }).stickyNoteListRenderer = {
-			syncNotesFromManager: syncNotesMock
-		};
-
-		const reloadSpy = vi.spyOn(view, 'reloadBoard').mockImplementation(async () => {});
-
-		// Trigger webnovel:notes-changed
-		workspaceHandlers['webnovel:notes-changed']();
-
-		expect(syncNotesMock).toHaveBeenCalledTimes(1);
-		expect(reloadSpy).not.toHaveBeenCalled();
 	});
 
 	it('should await requestAnimationFrame restoration in reloadBoard and properly flush pending reload', async () => {
@@ -979,6 +910,186 @@ describe('WorkbenchView', () => {
 			await render3Promise;
 			expect(comp3.unload).toHaveBeenCalled();
 			expect(viewInternal.currentBoardComponent).toBeNull();
+		});
+	});
+
+	describe('Workbench Board Visibility and Fallbacks', () => {
+		it('should default all 6 boards enabled for backward compatibility when workbenchBoardVisibility is undefined', async () => {
+			(plugin.settings as Record<string, unknown>).workbenchBoardVisibility = undefined;
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			view.currentBookPath = 'NovelA';
+			(view as unknown as { container: unknown }).container = view.contentEl;
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+
+			const toggleGroup = view.contentEl.querySelector('.wn-corkboard-toggle-group');
+			expect(toggleGroup).toBeDefined();
+			const buttons = toggleGroup?.querySelectorAll('.wn-corkboard-toggle-btn');
+			// All 6 boards (default, timeline, lore, foreshadowing, task, journey) should be rendered
+			expect(buttons?.length).toBe(6);
+			expect((view as unknown as { sortMode: string }).sortMode).toBe('default');
+		});
+
+		it('should fall back to first available board when active or persisted mode is hidden', async () => {
+			plugin.settings.corkboardSortMode = 'lore';
+			(plugin.settings as Record<string, unknown>).workbenchBoardVisibility = {
+				default: false,
+				timeline: true,
+				lore: false,
+				foreshadowing: true,
+				task: true,
+				journey: false
+			};
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			view.currentBookPath = 'NovelA';
+			(view as unknown as { container: unknown }).container = view.contentEl;
+
+			await view.onOpen();
+			// Since 'lore' and 'default' are hidden, first available is 'timeline'
+			expect((view as unknown as { sortMode: string }).sortMode).toBe('timeline');
+
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+			const toggleGroup = view.contentEl.querySelector('.wn-corkboard-toggle-group');
+			const buttons = toggleGroup?.querySelectorAll('.wn-corkboard-toggle-btn');
+			expect(buttons?.length).toBe(3); // timeline, foreshadowing, task
+			expect((view as unknown as { sortMode: string }).sortMode).toBe('timeline');
+		});
+
+		it('should show localized empty guidance with no board renderer and keep header usable to select book when all boards are disabled', async () => {
+			(plugin.settings as Record<string, unknown>).workbenchBoardVisibility = {
+				default: false,
+				timeline: false,
+				lore: false,
+				foreshadowing: false,
+				task: false,
+				journey: false
+			};
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			view.currentBookPath = 'NovelA';
+			(view as unknown as { container: unknown }).container = view.contentEl;
+
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+
+			// No board renderer should be called
+			expect(CorkboardGridRenderer.render).not.toHaveBeenCalled();
+			expect(TimelineBoardRenderer.render).not.toHaveBeenCalled();
+			expect(WritingJourneyBoardRenderer.render).not.toHaveBeenCalled();
+
+			// Localized empty guidance must be displayed
+			const emptyMsg = view.contentEl.querySelector('.wn-corkboard-empty-msg');
+			expect(emptyMsg).toBeDefined();
+			expect(emptyMsg?.textContent).toBe('corkboard.no-boards-enabled');
+
+			// Header must remain usable to select novel
+			const switchSpan = view.contentEl.querySelector('.wn-corkboard-switch-novel');
+			expect(switchSpan).toBeDefined();
+			(switchSpan as HTMLElement | null)?.click?.();
+			expect(mockMenuInstances.length).toBe(1);
+
+			// Active mode is null
+			expect((view as unknown as { sortMode: unknown }).sortMode).toBeNull();
+		});
+
+		it('should fall back to first visible board when legacy sticky sort mode is configured', async () => {
+			plugin.settings.corkboardSortMode = 'sticky';
+			(plugin.settings as Record<string, unknown>).workbenchBoardVisibility = {
+				default: true,
+				timeline: true,
+				lore: true,
+				foreshadowing: true,
+				task: true,
+				journey: true
+			};
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			view.currentBookPath = 'NovelA';
+			(view as unknown as { container: unknown }).container = view.contentEl;
+
+			await view.onOpen();
+			// 'sticky' is legacy in workbench, must fall back to first available visible board ('default')
+			expect((view as unknown as { sortMode: string }).sortMode).toBe('default');
+
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+			const toggleGroup = view.contentEl.querySelector('.wn-corkboard-toggle-group');
+			const buttons = toggleGroup?.querySelectorAll('.wn-corkboard-toggle-btn');
+			expect(buttons?.length).toBe(6);
+		});
+
+		it('should render WritingJourneyBoardRenderer when journey board is active', async () => {
+			plugin.settings.corkboardSortMode = 'journey';
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			view.currentBookPath = 'NovelA';
+			(view as unknown as { container: unknown }).container = view.contentEl;
+
+			await view.onOpen();
+			expect((view as unknown as { sortMode: string }).sortMode).toBe('journey');
+
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+			expect(WritingJourneyBoardRenderer.render).toHaveBeenCalledWith(
+				expect.objectContaining({
+					currentBookPath: 'NovelA',
+					query: '',
+					isDescending: true
+				})
+			);
+		});
+
+		it('should immediately update open workbench views when webnovel-workbench-boards-changed event fires', async () => {
+			let boardsChangedHandler: (() => void) | undefined;
+			mockApp.workspace.on.mockImplementation((event: string, handler: (...args: unknown[]) => void) => {
+				if (event === 'webnovel-workbench-boards-changed') {
+					boardsChangedHandler = handler as () => void;
+				}
+			});
+
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			view.currentBookPath = 'NovelA';
+			(view as unknown as { container: unknown }).container = view.contentEl;
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+
+			expect(boardsChangedHandler).toBeDefined();
+			const reloadSpy = vi.spyOn(view, 'reloadBoard');
+
+			plugin.settings.workbenchBoardVisibility = { default: false, timeline: false, lore: false, foreshadowing: false, task: false, journey: false };
+			boardsChangedHandler!();
+			expect(reloadSpy).toHaveBeenCalled();
+			await reloadSpy.mock.results[0].value;
+			expect(view.contentEl.querySelector('.wn-corkboard-empty-msg')?.textContent).toBe('corkboard.no-boards-enabled');
+			plugin.settings.workbenchBoardVisibility!.default = true;
+			boardsChangedHandler!();
+			await reloadSpy.mock.results[1].value;
+			expect(view.contentEl.querySelectorAll('.wn-corkboard-toggle-btn').length).toBe(1);
+		});
+
+		it('should toggle journey sort descending/ascending independently from chapter sort', async () => {
+			plugin.settings.corkboardSortMode = 'journey';
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			view.currentBookPath = 'NovelA';
+			(view as unknown as { container: unknown }).container = view.contentEl;
+
+			await view.onOpen();
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+
+			expect((view as unknown as { isJourneyDescending: boolean }).isJourneyDescending).toBe(true);
+			expect((view as unknown as { isDescending: boolean }).isDescending).toBe(false);
+
+			const sortToggle = view.contentEl.querySelector('.wn-workbench-sort-toggle') as unknown as MockElement;
+			expect(sortToggle).toBeDefined();
+
+			const reloadSpy = vi.spyOn(view, 'reloadBoard');
+			sortToggle.click();
+
+			expect((view as unknown as { isJourneyDescending: boolean }).isJourneyDescending).toBe(false);
+			expect((view as unknown as { isDescending: boolean }).isDescending).toBe(false);
+			expect(reloadSpy).toHaveBeenCalled();
+		});
+
+		it('should match workbench board label keys and getWorkbenchBoardLabel for all boards', () => {
+			for (const boardId of WORKBENCH_BOARD_IDS) {
+				const labelKey = WORKBENCH_BOARD_LABEL_KEYS[boardId];
+				expect(labelKey).toBeDefined();
+				expect(labelKey.length).toBeGreaterThan(0);
+				expect(getWorkbenchBoardLabel(boardId)).toBe(labelKey);
+			}
+			expect(WORKBENCH_BOARD_LABEL_KEYS.journey).toBe('corkboard.sort-journey');
 		});
 	});
 });

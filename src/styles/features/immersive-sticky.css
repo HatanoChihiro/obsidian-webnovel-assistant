@@ -1,0 +1,56 @@
+
+
+/* Sticky Notes list */
+
+.immersive-sticky-dock {
+	flex: 1;
+	display: flex;
+	flex-direction: row;
+	flex-wrap: nowrap;
+	gap: 10px;
+	padding: 10px 8px 8px 8px;
+	align-items: center;
+	overflow-x: auto;
+	overflow-y: hidden;
+	height: 100%;
+}
+
+.immersive-sticky-card {
+	flex: 0 0 200px;
+	/* Fixed width, no flex shrink/grow */
+	width: 200px;
+	height: 200px;
+	/* Square */
+	border-radius: 8px;
+	padding: 12px;
+	box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+	display: flex;
+	flex-direction: column;
+	transition: transform 0.2s;
+}
+
+.immersive-sticky-card:hover {
+	transform: translateY(-5px);
+}
+
+.immersive-mode-active .immersive-sticky-title span:first-child,
+.immersive-sticky-title,
+.webnovel-immersive-note-title {
+	font-weight: bold;
+	font-size: 0.75em;
+}
+
+.immersive-sticky-card textarea {
+	flex: 1;
+	width: 100%;
+	border: none;
+	background: transparent;
+	resize: none;
+	font-family: inherit;
+	color: inherit;
+}
+
+.immersive-sticky-card textarea:focus {
+	outline: none;
+	box-shadow: none;
+}

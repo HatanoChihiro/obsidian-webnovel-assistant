@@ -1,0 +1,74 @@
+/* ========== Cross-view typography normalization ========== */
+/* ==========================================
+
+   Creative Homepage: Font and Width Lock (Defensive High-Specificity Overrides)
+
+   Use Class Chaining instead of important_override, ensure styles are not hijacked by 3rd-party themes (like Minimal)
+
+   ========================================== */
+
+/* ==========================================
+
+   All custom views: Font and Scaling Defense Lock (Defensive High-Specificity Overrides)
+
+   Protect all plugin custom views (Outline, Timeline, Stats, Sticky Notes) from global font scaling pollution by themes like Minimal
+
+   ========================================== */
+
+body:not(.is-phone) .workspace-leaf-content.is-webnovel-homepage .view-content,
+body:not(.is-phone) .workspace-leaf-content.is-webnovel-homepage .markdown-reading-view,
+body:not(.is-phone) .workspace-leaf-content.is-webnovel-homepage .markdown-preview-view,
+body:not(.is-phone) .workspace-leaf-content.is-webnovel-homepage .markdown-rendered,
+body:not(.is-phone) .workspace-leaf-content.is-webnovel-homepage .markdown-preview-sizer,
+body:not(.is-phone) .markdown-preview-view.webnovel-homepage,
+body:not(.is-phone) .markdown-source-view.webnovel-homepage,
+body:not(.is-phone) .webnovel-homepage-root {
+	font-size: 16px;
+}
+
+
+body.is-phone .workspace-leaf-content.is-webnovel-homepage {
+	font-size: var(--wn-phone-ui-font-size);
+}
+
+
+body.is-phone .workspace-leaf-content.is-webnovel-homepage .view-content,
+body.is-phone .workspace-leaf-content.is-webnovel-homepage .markdown-reading-view,
+body.is-phone .workspace-leaf-content.is-webnovel-homepage .markdown-preview-view,
+body.is-phone .workspace-leaf-content.is-webnovel-homepage .markdown-rendered,
+body.is-phone .workspace-leaf-content.is-webnovel-homepage .markdown-preview-sizer,
+body.is-phone .markdown-preview-view.webnovel-homepage,
+body.is-phone .markdown-source-view.webnovel-homepage,
+body.is-phone .webnovel-homepage-root {
+	font-size: inherit;
+}
+
+
+body:not(.is-phone) .workspace-leaf-content[data-type="webnovel-workbench"] .view-content,
+body:not(.is-phone) .workspace-leaf-content.is-webnovel-workbench .view-content,
+body:not(.is-phone) .workspace-leaf-content[data-type="webnovel-corkboard"] .view-content,
+body:not(.is-phone) .workspace-leaf-content[data-type="timeline"] .view-content,
+body:not(.is-phone) .workspace-leaf-content[data-type="webnovel-status"] .view-content,
+body:not(.is-phone) .workspace-leaf-content[data-type="immersive-sticky-notes"] .view-content {
+	font-size: 16px;
+}
+
+
+body.is-phone .workspace-leaf-content[data-type="webnovel-workbench"],
+body.is-phone .workspace-leaf-content.is-webnovel-workbench,
+body.is-phone .workspace-leaf-content[data-type="webnovel-corkboard"],
+body.is-phone .workspace-leaf-content[data-type="timeline"],
+body.is-phone .workspace-leaf-content[data-type="webnovel-status"],
+body.is-phone .workspace-leaf-content[data-type="immersive-sticky-notes"] {
+	font-size: var(--wn-phone-ui-font-size);
+}
+
+
+body.is-phone .workspace-leaf-content[data-type="webnovel-workbench"] .view-content,
+body.is-phone .workspace-leaf-content.is-webnovel-workbench .view-content,
+body.is-phone .workspace-leaf-content[data-type="webnovel-corkboard"] .view-content,
+body.is-phone .workspace-leaf-content[data-type="timeline"] .view-content,
+body.is-phone .workspace-leaf-content[data-type="webnovel-status"] .view-content,
+body.is-phone .workspace-leaf-content[data-type="immersive-sticky-notes"] .view-content {
+	font-size: inherit;
+}

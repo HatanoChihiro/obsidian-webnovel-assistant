@@ -34,6 +34,7 @@ import type { StickyNoteDataManager } from './src/services/StickyNoteDataManager
 import type { TypographyManager } from './src/services/TypographyManager';
 import type { ChapterMergeManager } from './src/services/ChapterMergeManager';
 import type { ProofreadingManager } from './src/services/ProofreadingManager';
+import type { WritingJourneyService } from './src/services/WritingJourneyService';
 
 import type { CommandManager } from './src/core/CommandManager';
 import type { ViewManager } from './src/core/ViewManager';
@@ -124,6 +125,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	get typographyManager(): TypographyManager { return this.services.get('TypographyManager'); }
 	get chapterMergeManager(): ChapterMergeManager { return this.services.get('ChapterMergeManager'); }
 	get proofreadingManager(): ProofreadingManager { return this.services.get('ProofreadingManager'); }
+	get writingJourneyService(): WritingJourneyService { return this.services.get('WritingJourneyService'); }
 
 	isLayoutReady: boolean = false;
 

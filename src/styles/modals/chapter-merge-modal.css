@@ -1,0 +1,139 @@
+
+
+
+/* 底部操作栏 */
+
+.wn-merge-footer-left,
+.wn-merge-footer-right {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+
+/* ==========================================================================
+   章节合并与原稿预览 Modal 窗口强制 flex 钉底布局 (Pinned Footer Layout)
+   ========================================================================== */
+body .modal.wn-merge-modal-window {
+	width: 94vw;
+	max-width: 1400px;
+	height: 88vh;
+	max-height: 900px;
+	padding: 0;
+	margin: auto;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	border-radius: 8px;
+	position: relative;
+}
+
+
+body .modal-content.wn-merge-modal-content {
+	flex: 1 1 0px;
+	min-height: 0;
+	height: 100%;
+	max-height: 100%;
+	width: 100%;
+	padding: 0;
+	margin: 0;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	box-sizing: border-box;
+}
+
+
+body .wn-merge-modal-header {
+	flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 12px 20px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+}
+
+
+body .wn-merge-modal-body {
+	flex: 1 1 0px;
+	min-height: 0;
+	max-height: 100%;
+	display: flex;
+	overflow: hidden;
+	position: relative;
+}
+
+
+body .wn-merge-modal-footer {
+	flex: 0 0 auto;
+	height: 54px;
+	min-height: 54px;
+	padding: 10px 20px;
+	border-top: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary-alt);
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	z-index: 100;
+	box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.12);
+}
+
+
+/* 左侧 TOC 目录项高亮样式 */
+body .wn-merge-toc-item {
+	display: flex;
+	align-items: center;
+	padding: 6px 10px;
+	margin-bottom: 2px;
+	border-radius: 4px;
+	font-size: 0.85em;
+	color: var(--text-muted);
+	cursor: pointer;
+	transition: background-color 0.15s, color 0.15s;
+	border-left: 3px solid transparent;
+}
+
+
+body .wn-merge-toc-item:hover {
+	background: color-mix(in srgb, var(--interactive-accent) 10%, transparent);
+	color: var(--text-normal);
+}
+
+
+body .wn-merge-toc-item.is-active {
+	background: color-mix(in srgb, var(--interactive-accent) 18%, transparent);
+	color: var(--interactive-accent);
+	font-weight: 600;
+	border-left-color: var(--interactive-accent);
+}
+
+
+/* 合并文档标题勾选框样式 */
+.wn-merge-checkbox-label {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	margin-right: 8px;
+	font-size: 0.85em;
+	color: var(--text-muted);
+	cursor: pointer;
+	user-select: none;
+	transition: color 0.15s ease;
+}
+
+
+.wn-merge-checkbox-label:hover {
+	color: var(--text-normal);
+}
+
+
+.wn-merge-checkbox-input {
+	cursor: pointer;
+	accent-color: var(--interactive-accent);
+}
+
+
+.wn-merge-checkbox-text {
+	font-family: var(--font-interface);
+}

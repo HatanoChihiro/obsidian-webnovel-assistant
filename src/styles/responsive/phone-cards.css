@@ -1,0 +1,238 @@
+/* ========== Lore, foreshadowing, and task cards ========== */
+/* ========== Mobile Lore & Foreshadowing Hover Popover Safe Bounds ========== */
+body.is-phone .webnovel-lore-popover,
+body.is-phone .wn-lore-hover-popover,
+body.is-phone .wn-character-hover-card,
+body.is-phone .wn-hover-card {
+	font-size: var(--wn-phone-ui-font-size);
+	width: min(14em, calc(100vw - 1.5em));
+	max-width: min(14em, calc(100vw - 1.5em));
+	max-height: 18em;
+	box-shadow: 0 4px 18px rgba(0, 0, 0, 0.2);
+	border-radius: 8px;
+	border: 1px solid var(--background-modifier-border);
+	background-color: var(--background-primary);
+	z-index: 1000;
+	box-sizing: border-box;
+	padding: 0.25em;
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+}
+
+
+body.is-phone .wn-lore-hover-popover .wn-lore-card,
+body.is-phone .webnovel-lore-popover .wn-lore-card {
+	width: 100%;
+	max-width: 100%;
+	height: auto;
+	max-height: 17.5em;
+	aspect-ratio: auto;
+	padding: 0;
+	margin: 0;
+	box-shadow: none;
+	border: none;
+	background: transparent;
+	display: block;
+	font-size: 1em;
+}
+
+
+body.is-phone .wn-lore-hover-popover .wn-lore-card-header,
+body.is-phone .webnovel-lore-popover .wn-lore-card-header {
+	padding: var(--wn-phone-card-header-padding);
+}
+
+
+body.is-phone .wn-lore-hover-popover .wn-lore-card-title,
+body.is-phone .webnovel-lore-popover .wn-lore-card-title {
+	font-size: var(--wn-phone-font-title);
+	font-weight: 600;
+}
+
+
+body.is-phone .wn-lore-hover-popover .wn-lore-card-body,
+body.is-phone .webnovel-lore-popover .wn-lore-card-body {
+	display: block;
+	height: auto;
+	min-height: auto;
+	max-height: 15em;
+	overflow-y: auto;
+	padding: var(--wn-phone-card-body-padding);
+	font-size: var(--wn-phone-font-body);
+	font-weight: 400;
+	line-height: 1.5;
+	background: transparent;
+	color: var(--text-muted);
+}
+
+
+body.is-phone .wn-lore-hover-popover .wn-lore-markdown,
+body.is-phone .webnovel-lore-popover .wn-lore-markdown {
+	padding: 0;
+	margin: 0;
+	font-size: 1em;
+	line-height: 1.4;
+	display: block;
+}
+
+
+body.is-phone .wn-lore-hover-popover .wn-lore-markdown p,
+body.is-phone .webnovel-lore-popover .wn-lore-markdown p,
+body.is-phone .wn-lore-hover-popover .wn-lore-markdown div,
+body.is-phone .webnovel-lore-popover .wn-lore-markdown div {
+	padding: 0;
+	margin: 0 0 3px 0;
+}
+
+
+body.is-phone .wn-lore-hover-popover .wn-lore-card-badge,
+body.is-phone .webnovel-lore-popover .wn-lore-card-badge,
+body.is-phone .wn-lore-hover-popover .wn-lore-card-overflow-badge,
+body.is-phone .webnovel-lore-popover .wn-lore-card-overflow-badge {
+	font-size: var(--wn-phone-font-meta);
+	padding: 1px 4px;
+}
+
+
+body.is-phone .mobile-floating-stats {
+	font-size: 0.75em;
+	padding: 4px 10px;
+	min-height: 25px;
+	border-radius: 12px;
+}
+
+
+body.is-phone .wn-foreshadowing-board-card {
+	gap: var(--wn-phone-card-gap);
+	padding: var(--wn-phone-card-padding);
+	border-radius: var(--wn-phone-card-radius);
+	font-size: 1em;
+}
+
+
+body.is-phone .wn-card-description-title {
+	font-size: var(--wn-phone-font-title);
+}
+
+
+body.is-phone .wn-foreshadowing-card-line3,
+body.is-phone .wn-foreshadowing-card-line4 {
+	font-size: var(--wn-phone-font-body);
+}
+
+
+body.is-phone .wn-foreshadowing-status-badge,
+body.is-phone .wn-card-tag-badge {
+	font-size: var(--wn-phone-font-meta);
+}
+
+
+body.is-phone .mobile-floating-stats.is-docked-left {
+	transform: translateX(calc(-100% + 22px));
+}
+
+
+body.is-phone .mobile-floating-stats.is-docked-right {
+	transform: translateX(calc(100% - 22px));
+}
+
+
+body.is-phone div.task-card.wn-task-card,
+body.is-phone div.wn-task-card,
+body.is-phone .wn-task-board-layout .task-card,
+body.is-phone .wn-task-board-layout .wn-corkboard-card {
+	max-width: 100%;
+	width: 100%;
+	margin-left: 0;
+	margin-right: 0;
+	justify-self: stretch;
+	font-size: 1em;
+	padding: var(--wn-phone-card-padding);
+	border-radius: var(--wn-phone-card-radius);
+}
+
+
+/* 手机端任务卡片具体内容与细节字号调大 */
+body.is-phone .wn-task-card .task-card-period,
+body.is-phone .wn-task-card .wn-task-card-period,
+body.is-phone .task-card .task-card-period {
+	font-size: var(--wn-phone-font-title);
+}
+
+
+body.is-phone .wn-task-card .task-card-info-row,
+body.is-phone .wn-task-card .wn-task-card-info-row,
+body.is-phone .task-card .task-card-info-row {
+	font-size: var(--wn-phone-font-body);
+}
+
+
+body.is-phone .wn-task-card .task-card-cycle-row,
+body.is-phone .wn-task-card .wn-task-card-cycle-row,
+body.is-phone .task-card .task-card-cycle-row {
+	font-size: var(--wn-phone-font-meta);
+}
+
+
+body.is-phone .wn-task-card .task-progress-label,
+body.is-phone .wn-task-card .wn-task-progress-label,
+body.is-phone .task-card .task-progress-label {
+	font-size: var(--wn-phone-font-body);
+}
+
+
+body.is-phone .wn-task-card .task-card-footer,
+body.is-phone .wn-task-card .wn-task-card-footer,
+body.is-phone .task-card .task-card-footer {
+	font-size: var(--wn-phone-font-meta);
+}
+
+
+body.is-phone .wn-task-card .task-card-result,
+body.is-phone .wn-task-card .wn-task-card-result,
+body.is-phone .task-card .task-card-result {
+	font-size: var(--wn-phone-font-body);
+}
+
+
+body.is-phone .wn-task-card .wn-task-card-status,
+body.is-phone .wn-task-card .wn-task-complete-btn,
+body.is-phone .wn-task-card .wn-task-abandon-btn {
+	font-size: var(--wn-phone-font-meta);
+}
+
+
+/* 手机端伏笔看板操作按钮与边距响应式微调 */
+body.is-phone .wn-foreshadowing-card-line2 {
+	margin-top: 2px;
+	margin-bottom: 0;
+	gap: 6px;
+	flex-wrap: wrap;
+	align-items: center;
+}
+
+
+body.is-phone .wn-card-actions-wrapper {
+	gap: 6px;
+	flex-wrap: nowrap;
+	align-items: center;
+	margin-top: 0;
+	margin-bottom: 0;
+}
+
+
+body.is-phone .wn-card-action-btn {
+	font-size: var(--wn-phone-font-control);
+	padding: 0 0.625em;
+	height: 2em;
+	min-height: 2em;
+	max-height: 2em;
+	line-height: 2em;
+	border-radius: 4px;
+	margin: 0;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+}

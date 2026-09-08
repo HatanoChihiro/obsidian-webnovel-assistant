@@ -96,7 +96,7 @@ export function createWordCountGutter(plugin: WordCountGutterPlugin): Extension 
 					forceUpdate = true;
 				}
 			}
-			if (!forceUpdate) return value;
+			if (!forceUpdate) return tr.docChanged ? value.map(tr.changes) : value;
 			return computeMarkers(tr.state, plugin);
 		}
 	});

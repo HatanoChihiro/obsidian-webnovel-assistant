@@ -6,7 +6,7 @@ import { smartLocateAndHighlight } from '../utils/leaf';
 import { HistoryStatsModal, type HistoryStatsModalPlugin } from './HistoryModal';
 import { ForeshadowingStatus, type ParsedForeshadowingEntry } from '../types/foreshadowing';
 import { CORKBOARD_STATUS_MAP, getCorkboardStatusText, getCorkboardStatusKeys } from '../i18n/data-keys';
-import { getCurrentBookContext, type CurrentBookContextPlugin } from '../utils/path';
+import { findBookRoot, getCurrentBookContext, type CurrentBookContextPlugin } from '../utils/path';
 import { t } from '../i18n';
 import type { TaskType } from '../types/task';
 import type { AccurateCountSettings } from '../types/settings';
@@ -16,6 +16,7 @@ import type { HomepageManager } from '../services/HomepageManager';
 import type { CharacterManager } from '../services/CharacterManager';
 import type { ForeshadowingManager } from '../services/ForeshadowingManager';
 import type { StatisticsManager } from '../services/StatisticsManager';
+import { Logger } from '../utils/Logger';
 
 export const STATUS_VIEW_TYPE = 'writing-status-view';
 
@@ -94,6 +95,7 @@ export interface WritingStatusViewPlugin
 	homepageManager?: StatusViewHomepageManager;
 	foreshadowingManager?: StatusViewForeshadowingManager;
 	taskManager?: StatusViewTaskManager;
+	writingJourneyService?: { recordChapterStatusChanged(bookPath: string, path: string, chapterTitle: string, fromStatus: string, toStatus: string): Promise<void> };
 }
 
 interface CollapsibleTitleElement extends HTMLElement {
@@ -499,11 +501,20 @@ export class WritingStatusView extends ItemView {
 					item.setTitle(getCorkboardStatusText(s))
 						.setChecked(s === currentStatus)
 						.onClick(async () => {
+							if (s === currentStatus) return;
 							try {
 								await this.app.fileManager.processFrontMatter(file, (fm) => {
 									(fm as Record<string, unknown>)['status'] = getCorkboardStatusText(s);
 								});
 								new Notice(t('corkboard.status-updated', { status: getCorkboardStatusText(s) }));
+								const bookRoot = findBookRoot(this.app, this.plugin, file, true);
+								if (bookRoot && this.plugin.writingJourneyService) {
+									try {
+										await this.plugin.writingJourneyService.recordChapterStatusChanged(bookRoot, file.path, file.basename, currentStatus, s);
+									} catch (journeyErr) {
+										Logger.error('[StatusView] Failed to record chapter status journey event:', journeyErr);
+									}
+								}
 								void this.updateChapterStatus();
 							} catch (err) {
 								window.console.error(err);

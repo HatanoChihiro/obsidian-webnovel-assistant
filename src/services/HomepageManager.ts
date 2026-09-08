@@ -313,6 +313,10 @@ export class HomepageManager {
 
 		const infoFile = await this.createNovelInfoFile(folderPath, { name: novelName, ...overrides });
 
+		if (this.plugin.writingJourneyService) {
+			await this.plugin.writingJourneyService.recordWorkCreated(folderPath, novelName);
+		}
+
 		await this.refreshHomepage();
 
 		return { folderPath, infoFile };

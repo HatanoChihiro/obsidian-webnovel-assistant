@@ -5,12 +5,16 @@ import type { AccurateCountSettings } from '../types/settings';
 import type { HomepageManager } from './HomepageManager';
 import { getDefaultFileName, getNovelInfoLabel, getNovelStatusText } from '../i18n/data-keys';
 
+import type { WritingJourneyService } from './WritingJourneyService';
+import { Logger } from '../utils/Logger';
+
 export interface TextSplitterPlugin {
 	settings?: {
 		workspaceFolders?: string[];
 		novelInfo?: AccurateCountSettings['novelInfo'];
 	};
 	homepageManager?: Pick<HomepageManager, 'createNovelInfoFile'> | null;
+	writingJourneyService?: WritingJourneyService | null;
 }
 
 export interface ParsedChapter {
@@ -329,11 +333,17 @@ export class TextSplitter {
 			}
 		}
 
-		// 3. 异步循环写入章节
+		// 3. 记录作品导入历程事件
+		if (plugin?.writingJourneyService) {
+			await plugin.writingJourneyService.recordWorkImported(targetFolderPath, safeNovelName, chapters.length);
+		}
+
+		// 4. 异步循环写入章节
 		let current = 0;
 		const total = chapters.length;
 		const volumeFolderPaths = new Map<string, string>();
 		const usedVolumeFolderPaths = new Set<string>();
+		const createdChapters: Array<{ path: string; chapterTitle: string; source: 'import' }> = [];
 
 		for (const chapter of chapters) {
 			let chapterFolderPath = targetFolderPath;
@@ -368,9 +378,39 @@ export class TextSplitter {
 				counter++;
 			}
 
+			// 预先向历程服务声明，防止 Vault 监听器产生重复记录
+			if (plugin?.writingJourneyService) {
+				plugin.writingJourneyService.markHandledCreate(chapterPath);
+			}
+
 			// 将内容数组转为完整字符串
 			const content = chapter.content.join('\n');
-			await app.vault.create(chapterPath, content);
+			try {
+				await app.vault.create(chapterPath, content);
+			} catch (createErr) {
+				// 发生异常时，先落盘此前已成功创建的章节事件，再向上抛出
+				if (plugin?.writingJourneyService && createdChapters.length > 0) {
+					try {
+						await plugin.writingJourneyService.recordChaptersCreated(targetFolderPath, createdChapters);
+					} catch (flushErr) {
+						Logger.error('[TextSplitter] Failed to flush journey events before abort:', flushErr);
+					}
+				}
+				throw createErr;
+			}
+
+			if (plugin?.writingJourneyService) {
+				createdChapters.push({
+					path: chapterPath,
+					chapterTitle: safeTitle,
+					source: 'import'
+				});
+				// 达到 100 篇时进行分批落盘，避免内存积压
+				if (createdChapters.length >= 100) {
+					const batch = createdChapters.splice(0, createdChapters.length);
+					await plugin.writingJourneyService.recordChaptersCreated(targetFolderPath, batch);
+				}
+			}
 			
 			current++;
 			onProgress(current, total);
@@ -379,6 +419,10 @@ export class TextSplitter {
 			if (current % 10 === 0) {
 				await new Promise(resolve => window.setTimeout(resolve, 0));
 			}
+		}
+
+		if (plugin?.writingJourneyService && createdChapters.length > 0) {
+			await plugin.writingJourneyService.recordChaptersCreated(targetFolderPath, createdChapters);
 		}
 
 		return current;

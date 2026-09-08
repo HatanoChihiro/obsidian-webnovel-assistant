@@ -17,7 +17,23 @@ export class FileEventManager {
 	}
 
 	private registerCreateHandler(): void {
+		this.plugin.writingJourneyService.initializeStartupBaseline();
+		if (this.plugin.writingJourneyService.checkInitialMetadataReadiness()) {
+			this.plugin.writingJourneyService.markReady();
+		}
+		if (this.plugin.app.metadataCache?.on) {
+			this.plugin.registerEvent(this.plugin.app.metadataCache.on('resolved', () => {
+				this.plugin.writingJourneyService.markReady();
+			}));
+		}
 		this.plugin.registerEvent(this.plugin.app.vault.on('create', async (file) => {
+			if (file instanceof TFile && file.extension === 'md') {
+				try {
+					await this.plugin.writingJourneyService.handleVaultCreate(file);
+				} catch (error) {
+					Logger.error('[WritingJourney] Failed to record external create:', error);
+				}
+			}
 			if (!(file instanceof TFile) || file.extension !== 'md') return;
 			if (!this.plugin.cacheManager.isEligibleForTotalWordCount(file)) return;
 
@@ -78,6 +94,9 @@ export class FileEventManager {
 	private registerDeleteHandler(): void {
 		this.plugin.registerEvent(this.plugin.app.vault.on('delete', (abstractFile) => {
 			if (abstractFile instanceof TFile && abstractFile.extension === 'md') {
+				void this.plugin.writingJourneyService.handleVaultDelete(abstractFile).catch(error => {
+					Logger.error('[WritingJourney] Failed to record external delete:', error);
+				});
 				const oldWordCount = this.plugin.cacheManager.getFileCache(abstractFile.path);
 				
 				if (oldWordCount !== null) {
@@ -88,6 +107,9 @@ export class FileEventManager {
 					}, 500);
 				}
 			} else if (abstractFile instanceof TFolder) {
+				void this.plugin.writingJourneyService.handleVaultDelete(abstractFile).catch(error => {
+					Logger.error('[WritingJourney] Failed to handle folder delete:', error);
+				});
 				// 处理文件夹删除
 				const prefix = abstractFile.path + '/';
 				let hasChanges = false;
@@ -109,6 +131,11 @@ export class FileEventManager {
 
 	private registerRenameHandler(): void {
 		this.plugin.registerEvent(this.plugin.app.vault.on('rename', (abstractFile, oldPath) => {
+			if (abstractFile instanceof TFile && abstractFile.extension === 'md') {
+				void this.plugin.writingJourneyService.handleVaultRename(abstractFile, oldPath).catch(error => {
+					Logger.error('[WritingJourney] Failed to record external rename:', error);
+				});
+			}
 			const isMdFile = abstractFile instanceof TFile && abstractFile.extension === 'md';
 			const wasMdFile = oldPath.endsWith('.md');
 
@@ -153,6 +180,9 @@ export class FileEventManager {
 					}, 500);
 				}
 			} else if (abstractFile instanceof TFolder) {
+				void this.plugin.writingJourneyService.handleVaultRename(abstractFile, oldPath).catch(error => {
+					Logger.error('[WritingJourney] Failed to handle folder rename:', error);
+				});
 				// 处理文件夹重命名
 				const oldPrefix = oldPath + '/';
 				const newPrefix = abstractFile.path + '/';

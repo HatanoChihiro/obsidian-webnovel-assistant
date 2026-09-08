@@ -12,13 +12,29 @@
 @import "./components/drag-drop.css";
 
 /* Features & Systems */
+@import "./features/eye-care-homepage.css";
+@import "./features/typewriter.css";
 @import "./features/typography.css";
+@import "./features/typography-merge.css";
+@import "./features/typography-card.css";
+@import "./features/eye-care-homepage-compat.css";
 @import "./features/relation-graph.css";
 @import "./features/floating-stats.css";
 @import "./features/word-count.css";
 @import "./features/immersive.css";
+@import "./features/immersive-topbar.css";
+@import "./features/immersive-chapters.css";
+@import "./features/immersive-sticky.css";
+@import "./features/immersive-properties.css";
+@import "./features/immersive-sticky-notes.css";
+@import "./features/immersive-layout.css";
+@import "./features/immersive-chapter-badges.css";
+@import "./features/immersive-folders.css";
+@import "./features/immersive-topbar-controls.css";
+@import "./features/immersive-volume.css";
 @import "./features/character-match.css";
-@import "./features/sticky-notes.css";
+@import "./features/sticky-note-list.css";
+@import "./features/floating-notes.css";
 @import "./features/proofreading.css";
 
 /* Core Studio Views */
@@ -27,14 +43,37 @@
 @import "./views/status.css";
 @import "./views/settings.css";
 @import "./views/timeline.css";
+@import "./modals/timeline-modal.css";
+@import "./views/timeline-overrides.css";
+@import "./views/workbench-action-buttons-compat.css";
+@import "./base/modals-timeline-compat.css"; /* Modal heading reset preserved at original timeline cascade position */
+@import "./views/timeline-waterfall.css";
 @import "./views/corkboard.css";
+@import "./views/settings-corkboard-compat.css"; /* Settings layout builder rule preserved at original corkboard cascade position */
+@import "./views/lore-board-corkboard-compat.css";
+@import "./views/corkboard-badges-compat.css";
+@import "./views/lore-board-layout-compat.css";
+@import "./views/corkboard-tasks-compat.css";
 @import "./views/lore-board.css";
 @import "./views/foreshadowing.css";
+@import "./modals/foreshadowing-modal.css";
+@import "./features/foreshadowing-markdown.css";
+@import "./views/foreshadowing-stepper.css";
+@import "./views/foreshadowing-board.css";
+@import "./modals/foreshadowing-modal-quote.css";
 @import "./views/task-board.css";
+@import "./views/writing-journey-board.css";
+@import "./views/status-task-compat.css";
 @import "./views/stats.css";
+@import "./base/modals-stats-compat.css"; /* Settings/history modal headings preserved at original stats cascade position */
+@import "./views/stats-heatmap-compat.css";
 
 /* Modals & Dialogs */
 @import "./modals/chapter-merge.css";
+@import "./modals/chapter-merge-review.css";
+@import "./modals/chapter-merge-modal.css";
+@import "./modals/chapter-merge-mobile.css";
+@import "./modals/chapter-merge-compat.css";
 @import "./modals/advanced-search.css";
 @import "./modals/task-modal.css";
 @import "./modals/lore-modal.css";
@@ -42,5 +81,15 @@
 @import "./modals/template-choice.css";
 
 /* Responsive Device Overrides */
-@import "./responsive/phone.css";
+@import "./responsive/phone-base.css";
+@import "./responsive/phone-status.css";
+@import "./responsive/phone-homepage.css";
+@import "./responsive/phone-typography.css";
+@import "./responsive/phone-settings.css";
+@import "./responsive/phone-corkboard.css";
+@import "./responsive/phone-timeline.css";
+@import "./responsive/phone-stats.css";
+@import "./responsive/phone-cards.css";
+@import "./responsive/phone-portrait.css";
+@import "./responsive/phone-touch.css";
 @import "./responsive/tablet.css";

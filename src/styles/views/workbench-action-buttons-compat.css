@@ -1,0 +1,30 @@
+/* 工作台通用操作按钮（与创作主页「+ 新增作品」风格统一） */
+.wn-corkboard-new-chapter-btn,
+.wn-corkboard-new-lore-btn,
+.wn-corkboard-new-task-btn,
+.wn-corkboard-new-sticky-btn,
+.wn-corkboard-merge-chapters-btn,
+.wn-corkboard-novel-status-btn,
+.wn-timeline-add-node-btn {
+	display: inline-block;
+	font-size: 0.85em;
+	padding: 4px 12px;
+	border-radius: 4px;
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border: none;
+	cursor: pointer;
+	font-weight: 500;
+	transition: filter 0.2s;
+}
+
+
+.wn-corkboard-new-chapter-btn:hover,
+.wn-corkboard-new-lore-btn:hover,
+.wn-corkboard-new-task-btn:hover,
+.wn-corkboard-new-sticky-btn:hover,
+.wn-corkboard-merge-chapters-btn:hover,
+.wn-corkboard-novel-status-btn:hover,
+.wn-timeline-add-node-btn:hover {
+	filter: brightness(1.1);
+}

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { FileEventManager } from '../src/services/FileEventManager';
-import { TFile } from './mocks/obsidian';
+import { TFile, TFolder } from './mocks/obsidian';
 
 describe('FileEventManager', () => {
 	let mockPlugin: any;
@@ -8,6 +8,7 @@ describe('FileEventManager', () => {
 
 	beforeEach(() => {
 		vaultEvents = {};
+		const metadataCacheEvents: Record<string, Function> = {};
 
 		const mockVault = {
 			on: vi.fn((eventName: string, handler: Function) => {
@@ -23,10 +24,20 @@ describe('FileEventManager', () => {
 			trigger: vi.fn()
 		};
 
+		const mockMetadataCache = {
+			on: vi.fn((eventName: string, handler: Function) => {
+				metadataCacheEvents[eventName] = handler;
+				return {};
+			}),
+			resolvedLinks: {},
+			getFileCache: vi.fn().mockReturnValue(null)
+		};
+
 		mockPlugin = {
 			app: {
 				vault: mockVault,
-				workspace: mockWorkspace
+				workspace: mockWorkspace,
+				metadataCache: mockMetadataCache
 			},
 			registerEvent: vi.fn(),
 			cacheManager: {
@@ -36,7 +47,8 @@ describe('FileEventManager', () => {
 				updateFileCache: vi.fn().mockReturnValue(100),
 				getFileCache: vi.fn().mockReturnValue(50),
 				invalidateCache: vi.fn(),
-				updateCachePath: vi.fn()
+				updateCachePath: vi.fn(),
+				getEntries: vi.fn().mockReturnValue([])
 			},
 			stickyNoteManager: {
 				getNotesFilePath: vi.fn().mockReturnValue('notes-data.json'),
@@ -47,10 +59,19 @@ describe('FileEventManager', () => {
 			adaptiveDebounceManager: {
 				debounceFixed: vi.fn((key: string, fn: Function) => fn())
 			},
+			writingJourneyService: {
+				handleVaultCreate: vi.fn().mockResolvedValue(undefined),
+				handleVaultDelete: vi.fn().mockResolvedValue(undefined),
+				handleVaultRename: vi.fn().mockResolvedValue(undefined),
+				initializeStartupBaseline: vi.fn(),
+				checkInitialMetadataReadiness: vi.fn().mockReturnValue(false),
+				markReady: vi.fn()
+			},
 			calculateAccurateWords: vi.fn().mockReturnValue(100),
 			refreshFolderCounts: vi.fn(),
 			updateFileCacheAndRefresh: vi.fn(),
-			isLayoutReady: true
+			isLayoutReady: true,
+			_metadataCacheEvents: metadataCacheEvents
 		};
 	});
 
@@ -145,5 +166,61 @@ describe('FileEventManager', () => {
 		renameHandler(testFile, 'Novel/old.md');
 
 		expect(mockPlugin.updateFileCacheAndRefresh).toHaveBeenCalledWith(testFile);
+	});
+
+	it('should initialize writing journey startup baseline on setup', () => {
+		const manager = new FileEventManager(mockPlugin);
+		manager.setup();
+
+		expect(mockPlugin.writingJourneyService.initializeStartupBaseline).toHaveBeenCalledTimes(1);
+	});
+
+	it('should mark writing journey ready immediately if initial metadata is already ready', () => {
+		mockPlugin.writingJourneyService.checkInitialMetadataReadiness.mockReturnValue(true);
+		const manager = new FileEventManager(mockPlugin);
+		manager.setup();
+
+		expect(mockPlugin.writingJourneyService.checkInitialMetadataReadiness).toHaveBeenCalledTimes(1);
+		expect(mockPlugin.writingJourneyService.markReady).toHaveBeenCalledTimes(1);
+	});
+
+	it('should register metadataCache resolved listener and trigger markReady on resolved event', () => {
+		mockPlugin.writingJourneyService.checkInitialMetadataReadiness.mockReturnValue(false);
+		const manager = new FileEventManager(mockPlugin);
+		manager.setup();
+
+		expect(mockPlugin.app.metadataCache.on).toHaveBeenCalledWith('resolved', expect.any(Function));
+		expect(mockPlugin.registerEvent).toHaveBeenCalled();
+
+		// Trigger 'resolved' callback
+		const resolvedHandler = mockPlugin._metadataCacheEvents['resolved'];
+		expect(resolvedHandler).toBeDefined();
+		resolvedHandler();
+
+		expect(mockPlugin.writingJourneyService.markReady).toHaveBeenCalledTimes(1);
+	});
+
+	it('should forward folder delete to writingJourneyService', () => {
+		const manager = new FileEventManager(mockPlugin);
+		manager.setup();
+
+		const deleteHandler = vaultEvents['delete'];
+		const folder = new TFolder('Vol1', 'Novel/Vol1');
+
+		deleteHandler(folder);
+
+		expect(mockPlugin.writingJourneyService.handleVaultDelete).toHaveBeenCalledWith(folder);
+	});
+
+	it('should forward folder rename to writingJourneyService', () => {
+		const manager = new FileEventManager(mockPlugin);
+		manager.setup();
+
+		const renameHandler = vaultEvents['rename'];
+		const folder = new TFolder('Vol2', 'Novel/Vol2');
+
+		renameHandler(folder, 'Novel/Vol1');
+
+		expect(mockPlugin.writingJourneyService.handleVaultRename).toHaveBeenCalledWith(folder, 'Novel/Vol1');
 	});
 });

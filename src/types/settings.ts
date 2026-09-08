@@ -338,8 +338,11 @@ export interface AccurateCountSettings {
 	/** 是否启用跨文件图谱关联 */
 	loreGraphEnableGlobal: boolean;
 
-	/** 章节一览面板的排序模式 */
-	corkboardSortMode?: 'default' | 'timeline' | 'lore' | 'task' | 'sticky' | 'foreshadowing';
+	/** 章节一览面板的排序模式（保留 sticky 兼容旧版配置） */
+	corkboardSortMode?: 'default' | 'timeline' | 'lore' | 'task' | 'sticky' | 'foreshadowing' | 'journey';
+
+	/** 写作工作台各看板显示状态 */
+	workbenchBoardVisibility?: WorkbenchBoardVisibilitySettings;
 
 	/** 设定看板展示布局 */
 	loreBoardLayout?: 'table' | 'cards' | 'graph';
@@ -369,3 +372,14 @@ export interface AccurateCountSettings {
 }
 
 export type WebNovelAssistantSettings = AccurateCountSettings;
+
+export type WorkbenchBoardId = 'default' | 'timeline' | 'lore' | 'foreshadowing' | 'task' | 'journey';
+
+export interface WorkbenchBoardVisibilitySettings {
+	default: boolean;
+	timeline: boolean;
+	lore: boolean;
+	foreshadowing: boolean;
+	task: boolean;
+	journey?: boolean;
+}

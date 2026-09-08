@@ -1,0 +1,49 @@
+/* ========== Settings controls and timeline actions ========== */
+.is-phone .webnovel-settings-rule-item {
+	flex-wrap: wrap;
+	position: relative;
+	padding-right: 35px;
+}
+
+
+.is-phone .webnovel-settings-rule-item .wn-settings-order-btns {
+	position: absolute;
+	right: 10px;
+	top: 55px;
+}
+
+
+.is-phone .webnovel-settings-rule-item .setting-item-control {
+	width: 100%;
+	justify-content: flex-start;
+	margin-top: 5px;
+	flex-wrap: wrap;
+	gap: 10px;
+}
+
+
+.is-phone .webnovel-rule-name-input,
+.is-phone .webnovel-rule-pattern-input,
+.is-phone .webnovel-settings-rule-item .setting-item-control button {
+	width: 100%;
+	flex: 1 1 100%;
+}
+
+
+body.is-phone .wn-timeline-item-delete-btn {
+	opacity: 0.65;
+	right: 2px;
+	top: 2px;
+	padding: 2px;
+}
+
+
+body.is-phone .wn-timeline-item-delete-btn svg {
+	width: 13px;
+	height: 13px;
+}
+
+
+body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-empty * {
+	display: none;
+}

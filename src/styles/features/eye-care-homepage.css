@@ -1,0 +1,91 @@
+/* Panel-like containers always maintain normal top margin */
+
+.immersive-mode-active .foreshadowing-view-container,
+
+.immersive-mode-active .wn-timeline-view-container,
+
+.immersive-mode-active .markdown-reading-view .markdown-preview-view {
+	padding-top: 30px;
+}
+
+
+/* ==========================================
+
+   Homepage: Hide document properties and inline title
+
+   Real DOM structure (debug confirmed):
+
+     .markdown-reading-view
+
+       ?-- .markdown-preview-view.webnovel-homepage.show-properties
+
+           ?-- .markdown-preview-sizer
+
+               |-- .mod-header.mod-ui          <- contains inline-title + metadata-container
+
+               |-- .el-pre.mod-frontmatter     <- YAML frontmatter raw block
+
+               |-- .el-pre                     <- Homepage code block
+
+               ?-- .mod-footer.mod-ui
+
+   cssclasses is automatically applied by Obsidian to .markdown-preview-view.
+
+   ========================================== */
+
+/* Hide the entire header block (including inline-title and metadata-container) */
+
+.markdown-preview-view.webnovel-homepage .mod-header {
+	display: none;
+}
+
+
+/* Hide YAML frontmatter raw block */
+
+.markdown-preview-view.webnovel-homepage .el-pre.mod-frontmatter {
+	display: none;
+}
+
+
+/* Homepage full width display - Reading View
+   修复：第三方行宽插件（如 "Readable Line Length"、自定义主题等）通过 body 或 :root 注入
+   --file-line-width / --line-width 等 CSS 变量，Obsidian 内部 .markdown-preview-sizer 用
+   max-width: var(--file-line-width) 控制行宽。本规则在 .is-webnovel-homepage 容器层重置
+   所有行宽变量，由于 CSS 变量就近继承，子元素将读取到 none，从根源隔离外来插件的行宽污染。
+   Why CSS variables over property overrides: 变量重置一次覆盖所有子元素，无需逐层为每个
+   Obsidian 内部元素重复 max-width: none，更健壮且对未来 Obsidian DOM 结构变化更兼容。 */
+.workspace-leaf-content.is-webnovel-homepage {
+	/* 重置所有已知行宽 CSS 变量，断绝第三方插件注入的行宽限制 */
+	--file-line-width: none;
+	--line-width: none;
+	--line-width-adaptive: none;
+	--max-width: none;
+	--readable-line-length: none;
+	--max-col-width: none;
+}
+
+.workspace-leaf-content.is-webnovel-homepage .markdown-preview-view {
+	max-width: none;
+	width: 100%;
+	margin-inline: 0;
+	font-size: var(--font-ui-normal, 16px);
+}
+
+
+.workspace-leaf-content.is-webnovel-homepage .markdown-preview-sizer {
+	max-width: none;
+	width: 100%;
+	margin: 0;
+	margin-inline: 0;
+	padding: 20px 30px;
+	font-size: var(--font-ui-normal, 16px);
+}
+
+
+body.webnovel-eye-care-enabled .workspace-leaf-content[data-type="markdown"]:not(.is-webnovel-homepage) .view-content,
+
+body.webnovel-eye-care-enabled .workspace-leaf-content[data-type="markdown"]:not(.is-webnovel-homepage) .markdown-source-view .cm-editor .cm-scroller,
+
+body.webnovel-eye-care-enabled .workspace-leaf-content[data-type="markdown"]:not(.is-webnovel-homepage) .markdown-reading-view .markdown-preview-view {
+	background-color: var(--webnovel-eye-care-color, #E8F5E9);
+}

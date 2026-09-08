@@ -1,0 +1,66 @@
+/* -- Exquisite Lore Hover Card -- */
+
+.wn-lore-board-content {
+	flex: 1;
+	overflow-y: auto;
+	position: relative;
+}
+
+
+.wn-lore-board-layout-switcher {
+	display: flex;
+	flex-direction: row;
+	gap: 4px;
+	align-items: center;
+	flex-shrink: 0;
+}
+
+
+.wn-lore-board-switcher-btn {
+	width: 28px;
+	height: 28px;
+	min-width: 28px;
+	min-height: 28px;
+	padding: 0;
+	border-radius: 4px;
+	cursor: pointer;
+	color: var(--text-muted);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: transparent;
+	transition: all 0.2s ease;
+	box-sizing: border-box;
+}
+
+
+.wn-lore-board-switcher-btn svg {
+	width: 16px;
+	height: 16px;
+}
+
+
+.wn-lore-board-switcher-btn:hover {
+	color: var(--text-normal);
+	background: var(--background-modifier-hover);
+}
+
+
+.wn-lore-board-switcher-btn.is-active {
+	color: var(--interactive-accent);
+	background: color-mix(in srgb, var(--interactive-accent) 15%, transparent);
+}
+
+
+.wn-lore-board-cards-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+	gap: 16px;
+	padding: 0 0 16px 0;
+	align-items: stretch;
+}
+
+
+.wn-lore-board-cards-grid.is-collapsed {
+	display: none;
+}

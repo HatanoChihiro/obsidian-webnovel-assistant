@@ -37,7 +37,8 @@ export function bindFilterInputEvents(options: FilterInputBindingOptions): void 
 
 	input.addEventListener('input', (event) => {
 		updateClearButton();
-		if (isComposing || (event as InputEvent).isComposing) return;
+		const eventIsComposing = 'isComposing' in event && event.isComposing === true;
+		if (isComposing || eventIsComposing) return;
 		onRefresh(false);
 	});
 

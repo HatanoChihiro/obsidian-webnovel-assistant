@@ -1,0 +1,146 @@
+/* Lore Board Layout */
+.wn-lore-board-layout {
+	display: flex;
+	flex-direction: column;
+	gap: 0;
+	padding: 0;
+}
+
+
+.wn-lore-board-layout-table {
+	padding: 4px 0 16px 0;
+}
+
+
+.wn-lore-board-group {
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	padding: 12px;
+	margin-bottom: 12px;
+}
+
+
+.wn-lore-board-group-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-top: 10px;
+	margin-bottom: 6px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	padding-bottom: 6px;
+}
+
+
+.wn-lore-board-group-header:first-child {
+	margin-top: 2px;
+}
+
+
+.wn-lore-board-group-title {
+	font-size: 0.9em;
+	font-weight: 600;
+	color: var(--text-normal);
+	cursor: pointer;
+}
+
+
+.wn-lore-board-group-title:hover {
+	color: var(--text-accent);
+	text-decoration: underline;
+}
+
+
+.wn-lore-board-group-count {
+	font-size: 0.85em;
+	color: var(--text-muted);
+}
+
+
+.wn-lore-board-cards {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+
+.wn-lore-board-mini-card {
+	display: flex;
+	align-items: baseline;
+	gap: 6px;
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	padding: 4px 8px;
+	cursor: pointer;
+	font-size: 0.85em;
+	transition: all 0.2s ease;
+}
+
+
+.wn-lore-board-mini-card:hover {
+	background: var(--background-modifier-hover);
+	border-color: var(--text-accent);
+}
+
+
+.wn-lore-board-mini-card-title {
+	color: var(--text-normal);
+}
+
+
+.wn-lore-board-mini-card-count {
+	color: var(--text-accent);
+	font-weight: bold;
+}
+
+
+/* ==========================================================================
+   通用空状态提示
+   ========================================================================== */
+
+/* WorkbenchView 时间线/设定看板的空状态提示 */
+
+/* ==========================================================================
+   工作台（WorkbenchView）标题按钮容器
+   ========================================================================== */
+
+/* 头部按钮横向排列，样式已由 CSS 类管理，无需内联 setCssProps */
+
+.wn-lore-board-group-left {
+	display: flex;
+	align-items: center;
+}
+
+
+.wn-lore-board-group-relations {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 16px;
+	align-items: center;
+	margin-left: 16px;
+}
+
+
+.wn-lore-board-relation-item {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	font-size: 0.8em;
+}
+
+
+.wn-lore-board-relation-badge {
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+	padding: 2px 6px;
+	border-radius: 4px;
+	font-size: 0.8em;
+	font-weight: 500;
+}
+
+
+.wn-lore-board-relation-targets {
+	color: var(--text-muted);
+	font-size: 0.8em;
+}

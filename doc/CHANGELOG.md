@@ -1,3 +1,37 @@
+## 🔧 v3.9.5
+
+### 新增功能
+
+- **作品写作历程**：在《作品信息》文档中记录作品创建/导入、章节创建、重命名或移动、删除及状态变化，并在工作台中提供「写作历程」视图；采用与工作台一致的通栏列表视觉，支持正序/倒序切换、显示完整时间戳、关键词及日期时间过滤和章节跳转；旧作品仅从启用后的首次变化开始记录，不补写旧历史。
+- **光标处拆分章节**：新增可绑定快捷键的拆分命令，按现有命名规则和章节模板创建下一章，将光标后的内容移至模板正文之后；短篇等无法自动生成下一章名称的文件可自行命名，遇到重名时也可另行命名并保留已有文件。
+
+### 功能优化
+
+- **工作台视图显示**：可在设置中自行勾选显示全章节、时间轴看板、设定看板、伏笔看板、任务看板和写作历程视图；为确保写作工作台为单一作品服务的准确性，移除了工作台的便签管理入口，全局便签统一通过侧面板列表管理。
+
+### Bug 修复
+
+- **实时字数提醒**：修复编辑前文时，下方字数里程碑标签随输入反复闪烁的问题。
+- **设置面板稳定性**：修复修改设置触发面板刷新时的画面跳动与滚动位置延迟回跳。
+
+### English Changelog
+
+#### New Features
+
+- **Writing Journey**: Records work creation/import, chapter creation, rename or move, deletion, and status changes in the Novel Info note, with a dedicated workbench view. Uses a full-width list matching Workbench visual language, full timestamps, ascending/descending order toggle, keyword and date/time search, and chapter navigation. Existing works start from their first new change without fabricated backfill.
+- **Split Chapter at Cursor**: Added a hotkey-compatible command that creates the next chapter using existing naming rules and chapter templates, moves text after the cursor beneath the template body, and prompts for a name when automatic naming is unavailable or a file already exists.
+
+#### Enhancements
+
+- **Workbench View Visibility**: Choose which views appear in the workbench (All Chapters, Timeline Board, Lore Board, Foreshadowing Board, Task Board, Writing Journey). To keep the Writing Workbench accurately scoped to a single work, sticky note management has been removed from the workbench, and global sticky notes are now managed through the sidebar list.
+
+#### Bug Fixes
+
+- **Real-Time Word Count Markers**: Fixed milestone labels below the edit position repeatedly flickering while editing earlier text.
+- **Settings Panel Stability**: Fixed visual jitter and delayed scroll jumping when rebuilding the settings tab.
+
+---
+
 ## 🔧 v3.9.4
 
 ### 功能优化

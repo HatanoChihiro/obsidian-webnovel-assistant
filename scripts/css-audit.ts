@@ -26,10 +26,14 @@ const indexPath = path.join(stylesRoot, 'index.css');
 const artifactPath = path.join(projectRoot, 'styles.css');
 const commonPath = 'src/styles/base/common.css';
 const immersivePath = 'src/styles/features/immersive.css';
+const immersiveThemeBoundaryPaths = new Set([
+	immersivePath,
+	'src/styles/features/immersive-layout.css',
+]);
 const maxCommonLines = 120;
 const classOwners: readonly ClassOwner[] = [
 	{ owner: 'src/styles/modals/advanced-search.css', prefix: 'advanced-search-' },
-	{ owner: 'src/styles/modals/chapter-merge.css', prefix: 'wn-mobile-merge-' },
+	{ owner: 'src/styles/modals/chapter-merge-mobile.css', prefix: 'wn-mobile-merge-' },
 	{ owner: 'src/styles/modals/task-modal.css', prefix: 'wn-task-modal-' },
 	{ owner: 'src/styles/features/word-count.css', prefix: 'webnovel-word-count-' },
 	{ owner: 'src/styles/features/word-count.css', prefix: 'wn-folder-word-count' },
@@ -39,21 +43,31 @@ const classOwners: readonly ClassOwner[] = [
 	{ owner: 'src/styles/components/badges.css', prefix: 'wn-badge-recovered' },
 	{ owner: 'src/styles/components/badges.css', prefix: 'wn-badge-lore' },
 	{ owner: 'src/styles/components/badges.css', prefix: 'wn-badge-more' },
-	{ owner: 'src/styles/views/foreshadowing.css', prefix: 'wn-associated-quote-input' },
+	{
+		owner: 'src/styles/views/lore-board.css',
+		prefix: 'wn-lore-board-',
+		allowed: [
+			'src/styles/base/typography-scopes.css',
+			'src/styles/responsive/phone-portrait.css',
+			'src/styles/views/lore-board-corkboard-compat.css',
+			'src/styles/views/lore-board-layout-compat.css',
+		],
+	},
+	{ owner: 'src/styles/modals/foreshadowing-modal-quote.css', prefix: 'wn-associated-quote-input' },
 	{
 		owner: 'src/styles/views/homepage.css',
 		prefix: 'homepage-',
-		allowed: ['src/styles/base/typography-scopes.css', 'src/styles/responsive/phone.css', 'src/styles/views/stats.css'],
+		allowed: ['src/styles/base/typography-scopes.css', 'src/styles/responsive/phone-status.css', 'src/styles/responsive/phone-homepage.css', 'src/styles/views/stats.css'],
 	},
 	{
 		owner: 'src/styles/views/settings.css',
 		prefix: 'webnovel-rule-',
-		allowed: ['src/styles/responsive/phone.css'],
+		allowed: ['src/styles/responsive/phone-settings.css'],
 	},
 	{
 		owner: 'src/styles/views/settings.css',
 		prefix: 'wn-layout-',
-		allowed: ['src/styles/views/corkboard.css'],
+		allowed: ['src/styles/views/settings-corkboard-compat.css'],
 	},
 ] as const;
 const legacyClassPrefixes = [
@@ -152,7 +166,7 @@ function getSelectors(rule: Rule, file: string): string[] {
 			});
 			// Immersive mode deliberately chains existing Obsidian classes to win over theme resets.
 			// Keep this exception narrow to that feature module and active-mode selectors.
-			const isImmersiveThemeBoundary = file === immersivePath
+			const isImmersiveThemeBoundary = immersiveThemeBoundaryPaths.has(file)
 				&& selectorText.includes('body.immersive-mode-active');
 			if (repeatedClasses.length > 0 && !isImmersiveThemeBoundary) {
 				errors.push(`${file}:${rule.source?.start?.line ?? 1} 禁止通过重复类名提升特异性：'${selectorText}'。`);

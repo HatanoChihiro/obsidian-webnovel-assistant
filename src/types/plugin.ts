@@ -41,6 +41,7 @@ import type { RelationGraphManager } from '../services/RelationGraphManager';
 import type { TypographyManager } from '../services/TypographyManager';
 import type { ChapterMergeManager } from '../services/ChapterMergeManager';
 import type { ProofreadingManager } from '../services/ProofreadingManager';
+import type { WritingJourneyService } from '../services/WritingJourneyService';
 
 // ==========================================
 // 辅助类型
@@ -178,6 +179,7 @@ export interface WebNovelAssistantPlugin extends
 	typographyManager: TypographyManager;
 	chapterMergeManager: ChapterMergeManager;
 	proofreadingManager: ProofreadingManager;
+	writingJourneyService: WritingJourneyService;
 	stickyNoteManager: StickyNoteDataManager;
 	editorTracker?: EditorTracker;
 	styleManager?: StyleManager;

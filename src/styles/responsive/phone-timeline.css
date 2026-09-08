@@ -1,0 +1,390 @@
+/* ========== Mobile Timeline Board (Vertical Column Stack & Bottom Carousel) ========== */
+body.is-phone .wn-timeline-waterfall-layout {
+	flex-direction: column;
+	gap: 10px;
+	margin-left: 0;
+}
+
+
+body.is-phone .wn-timeline-waterfall-main {
+	width: 100%;
+	flex: 1;
+	min-height: 0;
+	padding-left: 12px;
+	padding-right: 6px;
+	padding-bottom: 250px;
+	background-position: 16px 0;
+	overflow-x: auto;
+	-webkit-overflow-scrolling: touch;
+}
+
+
+body.is-phone .wn-timeline-item-row {
+	gap: 8px;
+	padding-left: 0px;
+	margin-bottom: 4px;
+	height: 7.5em;
+	min-height: 7.5em;
+	align-items: center;
+	position: relative;
+}
+
+
+body.is-phone .wn-timeline-item-desc {
+	left: 8px;
+	width: 6.25em;
+	min-width: 6.25em;
+	max-width: 6.25em;
+	height: 100%;
+	min-height: 100%;
+	max-height: 100%;
+	padding: 0.375em 0.75em 0.375em 0.375em;
+	font-size: var(--wn-phone-font-body);
+	line-height: 1.3;
+	flex-shrink: 0;
+	box-sizing: border-box;
+	z-index: 3;
+}
+
+
+body.is-phone .wn-timeline-add-sub-event-row {
+	padding-left: 8px;
+	margin-top: 4px;
+	margin-bottom: 4px;
+	justify-content: flex-start;
+}
+
+
+body.is-phone .wn-timeline-add-sub-event-btn {
+	width: auto;
+	min-width: auto;
+	max-width: none;
+	height: auto;
+	padding: 0.2em 0.5em;
+	font-size: var(--wn-phone-font-control);
+	border-radius: 4px;
+	box-sizing: border-box;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
+
+body.is-phone .wn-timeline-gap {
+	padding: 2px 0;
+	margin: 0;
+	min-height: 16px;
+	display: flex;
+	align-items: center;
+}
+
+
+body.is-phone .wn-timeline-sub-gap {
+	padding: 2px 0;
+	margin: 0;
+}
+
+
+body.is-phone .wn-timeline-add-node-row {
+	margin-top: 10px;
+	margin-bottom: 16px;
+	padding-left: 8px;
+}
+
+
+body.is-phone .wn-timeline-add-node-row::before {
+	width: 7px;
+	height: 7px;
+	border-width: 1.5px;
+	left: -1px;
+}
+
+
+body.is-phone .wn-timeline-gap .wn-timeline-cards-container {
+	margin-left: 6.25em;
+	min-height: 0;
+}
+
+
+body.is-phone .wn-timeline-cards-container {
+	margin-left: 6.25em;
+	display: flex;
+	flex-wrap: nowrap;
+	overflow-x: auto;
+	-webkit-overflow-scrolling: touch;
+	touch-action: pan-x pan-y;
+	padding-bottom: 2px;
+	gap: 8px;
+	flex: 1;
+	min-width: 0;
+	min-height: 0;
+	align-items: center;
+}
+
+
+body.is-phone .wn-timeline-cards-container .wn-corkboard-card {
+	width: 10em;
+	min-width: 10em;
+	max-width: 10em;
+	height: 7.5em;
+	min-height: 7.5em;
+	max-height: 7.5em;
+	flex: 0 0 10em;
+	box-sizing: border-box;
+}
+
+
+/* 手机端未关联章节：屏幕底部固定悬浮抽屉窗 (Fixed Floating Bottom Drawer) */
+body.is-phone .wn-timeline-waterfall-sidebar {
+	position: fixed;
+	bottom: calc(var(--mobile-navbar-height, 52px) + env(safe-area-inset-bottom, 0px));
+	top: auto;
+	left: 0.5em;
+	right: 0.5em;
+	width: calc(100% - 1em);
+	height: auto;
+	max-height: 11em;
+	z-index: 50;
+	background: color-mix(in srgb, var(--background-primary) 85%, transparent);
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
+	border: 1px dashed color-mix(in srgb, var(--background-modifier-border) 70%, transparent);
+	border-radius: 0.875em;
+	box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.12);
+	padding: 0.75em 0.75em 0.5em;
+	box-sizing: border-box;
+	opacity: 0.95;
+	transition: max-height 0.25s cubic-bezier(0.4, 0, 0.2, 1), padding 0.25s ease, opacity 0.2s ease, background 0.2s ease;
+	margin: 0;
+}
+
+
+body.is-phone .wn-timeline-waterfall-sidebar:hover,
+body.is-phone .wn-timeline-waterfall-sidebar:focus-within {
+	opacity: 1;
+	background: color-mix(in srgb, var(--background-primary) 92%, transparent);
+}
+
+
+/* 悬浮抽屉折叠态 */
+body.is-phone .wn-timeline-waterfall-sidebar.is-collapsed {
+	height: auto;
+	max-height: 2.75em;
+	padding-top: 0.625em;
+	padding-bottom: 0.625em;
+	overflow: hidden;
+}
+
+
+body.is-phone .wn-timeline-waterfall-sidebar.is-collapsed .wn-corkboard-grid {
+	display: none;
+}
+
+
+/* 悬浮抽屉 Header 头部与手势标题栏 */
+body.is-phone .wn-timeline-sidebar-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-top: 0;
+	margin-bottom: 0.375em;
+	font-size: var(--wn-phone-font-control);
+	cursor: pointer;
+	user-select: none;
+	-webkit-user-select: none;
+	padding: 0;
+}
+
+
+body.is-phone .wn-timeline-sidebar-title-group {
+	display: flex;
+	align-items: center;
+	gap: 0.375em;
+}
+
+
+body.is-phone .wn-timeline-sidebar-toggle-icon {
+	color: var(--text-muted);
+	display: flex;
+	align-items: center;
+	transition: transform 0.2s ease;
+}
+
+
+body.is-phone .wn-timeline-sidebar-count {
+	color: var(--text-muted);
+	font-size: var(--wn-phone-font-meta);
+	font-weight: normal;
+}
+
+
+body.is-phone .wn-timeline-waterfall-sidebar .wn-corkboard-grid {
+	display: flex;
+	flex-wrap: nowrap;
+	align-items: flex-start;
+	overflow-x: auto;
+	-webkit-overflow-scrolling: touch;
+	touch-action: pan-x pan-y;
+	gap: var(--wn-phone-card-gap);
+	padding-bottom: 0.25em;
+	padding-top: 0;
+	margin-top: 0;
+}
+
+body.is-phone .wn-timeline-waterfall-sidebar .wn-corkboard-grid .wn-corkboard-volume-group {
+	display: flex;
+	flex-direction: row;
+	align-items: stretch;
+	flex: 0 0 auto;
+	gap: var(--wn-phone-card-gap);
+}
+
+
+body.is-phone .wn-timeline-waterfall-sidebar .wn-corkboard-grid .wn-corkboard-volume-cards {
+	display: flex;
+	flex-wrap: nowrap;
+	align-items: flex-start;
+	gap: var(--wn-phone-card-gap);
+}
+
+
+body.is-phone .wn-timeline-waterfall-sidebar .wn-corkboard-grid .wn-corkboard-volume-cards.is-collapsed {
+	display: none;
+}
+
+
+body.is-phone .wn-timeline-waterfall-sidebar .wn-corkboard-grid .wn-corkboard-volume-header {
+	flex: 0 0 2em;
+	width: 2em;
+	min-width: 2em;
+	max-width: 2em;
+	height: 7em;
+	min-height: 7em;
+	max-height: 7em;
+	flex-direction: column;
+	justify-content: center;
+	margin: 0;
+	padding: 5px 3px;
+	border: 1px solid color-mix(in srgb, var(--interactive-accent) 35%, var(--background-modifier-border));
+	border-radius: 6px;
+	line-height: 1.2;
+	box-sizing: border-box;
+}
+
+
+body.is-phone .wn-timeline-waterfall-sidebar .wn-corkboard-grid .wn-corkboard-volume-header .wn-volume-header-title {
+	writing-mode: vertical-rl;
+	text-orientation: mixed;
+	white-space: nowrap;
+}
+
+
+body.is-phone .wn-timeline-waterfall-sidebar .wn-corkboard-grid .wn-corkboard-card {
+	width: 7em;
+	min-width: 7em;
+	max-width: 7em;
+	height: auto;
+	min-height: auto;
+	max-height: 7em;
+	flex: 0 0 auto;
+	margin-left: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	font-size: 1em;
+	box-sizing: border-box;
+}
+
+
+body.is-phone .wn-timeline-waterfall-sidebar .wn-corkboard-grid .wn-corkboard-card-header {
+	padding: var(--wn-phone-card-header-padding);
+	flex-shrink: 0;
+}
+
+
+body.is-phone .wn-timeline-waterfall-sidebar .wn-corkboard-grid .wn-corkboard-card-title {
+	font-size: var(--wn-phone-font-title);
+	font-weight: 600;
+}
+
+
+body.is-phone .wn-timeline-waterfall-sidebar .wn-corkboard-grid .wn-corkboard-card-content {
+	padding: var(--wn-phone-card-body-padding);
+	font-size: 1em;
+	font-weight: 400;
+	line-height: 1.35;
+	flex: 0 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+}
+
+
+body.is-phone .wn-timeline-waterfall-sidebar .wn-corkboard-grid .wn-corkboard-card-text,
+body.is-phone .wn-timeline-waterfall-sidebar .wn-corkboard-grid textarea.wn-corkboard-textarea,
+body.is-phone .wn-timeline-waterfall-sidebar .wn-corkboard-grid .wn-corkboard-card-content .wn-corkboard-textarea {
+	font-size: var(--wn-phone-font-body);
+	font-weight: 400;
+	line-height: 1.4;
+}
+
+
+/* 主时间轴增加底部留白，防止滚动到底部时被悬浮窗遮挡 */
+/* 手机端未关联章节为空时：保留极简狭窄吸底归还槽 (Compact Dropzone) */
+body.is-phone .wn-timeline-waterfall-sidebar.is-empty {
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	position: fixed;
+	bottom: calc(var(--mobile-navbar-height, 45px) + env(safe-area-inset-bottom, 0px));
+	top: auto;
+	left: 0.5em;
+	right: 0.5em;
+	width: calc(100% - 1em);
+	height: 2.625em;
+	min-height: 2.625em;
+	max-height: 2.625em;
+	padding: 0 0.875em;
+	margin: 0;
+	z-index: 50;
+	background: color-mix(in srgb, var(--background-secondary-alt) 95%, var(--background-primary));
+	backdrop-filter: blur(10px);
+	-webkit-backdrop-filter: blur(10px);
+	border: 2px dashed color-mix(in srgb, var(--interactive-accent) 50%, var(--background-modifier-border));
+	border-radius: 0.875em;
+	box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.12);
+	box-sizing: border-box;
+	overflow: hidden;
+}
+
+
+body.is-phone .wn-timeline-waterfall-sidebar.is-empty .wn-timeline-sidebar-header {
+	margin-bottom: 0;
+	height: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+}
+
+
+body.is-phone .wn-timeline-waterfall-sidebar.is-empty .wn-timeline-sidebar-title-group {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+
+body.is-phone .wn-timeline-waterfall-sidebar.is-empty .wn-timeline-sidebar-toggle-icon {
+	display: none;
+}
+
+
+body.is-phone .wn-timeline-waterfall-sidebar.is-empty .wn-corkboard-grid {
+	display: none;
+}
+
+
+body.is-phone .wn-timeline-waterfall-sidebar.is-empty.drag-over,
+body.is-phone .wn-timeline-waterfall-sidebar.is-empty.drag-over-chapter {
+	background: color-mix(in srgb, var(--interactive-accent) 20%, var(--background-secondary-alt));
+	border-top-color: var(--interactive-accent);
+}

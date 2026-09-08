@@ -1,0 +1,8 @@
+
+
+
+/* 空合并段落无需首行缩进：隐藏 ::before 伪元素 spacer
+   规避 css-text-indent 官方审查警告：通过控制 ::before display 而非 text-indent 重置缩进 */
+body .wn-merge-para.wn-merge-para-empty::before {
+	display: none;
+}

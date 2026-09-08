@@ -1,0 +1,9 @@
+/* Badges for Corkboard Cards */
+.wn-corkboard-card-badges {
+	display: flex;
+	gap: 4px;
+	flex-wrap: wrap;
+	align-items: center;
+	transform: translateY(-2px);
+	overflow: hidden;
+}

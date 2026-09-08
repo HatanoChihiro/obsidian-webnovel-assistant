@@ -15,10 +15,23 @@ import { AddLoreModal, type AddLorePlugin } from './AddLoreModal';
 import { DraggableListHelper } from '../utils/DraggableListHelper';
 import { TouchDragPolyfill } from '../utils/TouchDragPolyfill';
 import { TaskBoardRenderer, type TaskBoardPlugin, type TaskBoardManager } from './components/TaskBoardRenderer';
-import { StickyNoteListRenderer, type StickyNoteListRendererPlugin, type StickyNoteListManager } from './components/StickyNoteListRenderer';
+import type { WorkbenchBoardId } from '../types/settings';
 import { ForeshadowingBoardRenderer, type ForeshadowingBoardPlugin, type ForeshadowingBoardStatusManager } from './components/ForeshadowingBoardRenderer';
 import { TaskAddModal } from './TaskModal';
-import { isMobile } from '../utils';
+import { WritingJourneyBoardRenderer } from './components/WritingJourneyBoardRenderer';
+import type { WritingJourneyService } from '../services/WritingJourneyService';
+
+import {
+	WORKBENCH_BOARD_IDS,
+	WORKBENCH_BOARD_LABEL_KEYS,
+	getWorkbenchBoardLabel
+} from './workbenchBoards';
+
+export {
+	WORKBENCH_BOARD_IDS,
+	WORKBENCH_BOARD_LABEL_KEYS,
+	getWorkbenchBoardLabel
+};
 import { Logger } from '../utils/Logger';
 import { WorkbenchFilterIndex } from '../services/WorkbenchFilterIndex';
 import { bindFilterInputEvents } from './components/FilterInputBinding';
@@ -38,10 +51,9 @@ export type WorkbenchViewSettings = Pick<
 	| 'loreFolderName'
 	| 'customSortOrder'
 	| 'corkboardSortMode'
+	| 'workbenchBoardVisibility'
 	| 'loreBoardLayout'
 	| 'enableSmartChapterSort'
-	| 'nextNoteThemeIndex'
-	| 'noteThemes'
 	| 'enableChapterTemplate'
 	| 'chapterTemplatePath'
 	| 'chapterTemplatePaths'
@@ -52,7 +64,6 @@ export type WorkbenchViewSettings = Pick<
 	| 'enableMobileLorePopover'
 	| 'lorePopoverCollapse'
 	| 'loreBoardActiveFile'
-	| 'stickyNoteAutoSave'
 	| 'immersive'
 	| 'homepagePath'
 > & {
@@ -85,8 +96,6 @@ export type WorkbenchTimelineManager = TimelineBoardTimelineManager;
 export type WorkbenchTaskManager = TaskBoardManager &
 	Pick<TaskManager, 'loadEntries' | 'getNextPeriod' | 'addEntry' | 'getChapterWordCount' | 'reconcileTasks'>;
 
-export type WorkbenchStickyNoteManager = StickyNoteListManager;
-
 export type WorkbenchMenuManager = Pick<
 	MenuManager,
 	'openChapterMerge' | 'toggleExcludeFromWordCount'
@@ -108,7 +117,6 @@ export interface WorkbenchViewPlugin
 		Omit<TimelineBoardPlugin, 'settings' | 'timelineManager' | 'characterManager' | 'cacheManager' | 'menuManager'>,
 		Omit<LoreBoardPlugin, 'settings' | 'characterManager' | 'relationGraphManager' | 'saveSettings'>,
 		Omit<TaskBoardPlugin, 'settings' | 'taskManager'>,
-		Omit<StickyNoteListRendererPlugin, 'settings' | 'stickyNoteManager' | 'adaptiveDebounceManager' | 'getVaultMarkdownFiles' | 'saveSettings'>,
 		Omit<ForeshadowingBoardPlugin, 'settings' | 'foreshadowingManager' | 'homepageManager'>,
 		Omit<AddLorePlugin, 'characterManager'>,
 		Omit<CurrentBookContextPlugin, 'settings' | 'homepageManager'>,
@@ -121,10 +129,10 @@ export interface WorkbenchViewPlugin
 	foreshadowingManager: WorkbenchForeshadowingManager;
 	timelineManager: WorkbenchTimelineManager;
 	taskManager: WorkbenchTaskManager;
-	stickyNoteManager: WorkbenchStickyNoteManager;
 	menuManager: WorkbenchMenuManager;
 	relationGraphManager: LoreBoardRelationGraphManager;
 	fileExplorerPatcher: WorkbenchFileExplorerPatcher;
+	writingJourneyService: WritingJourneyService;
 	saveSettings(): Promise<void>;
 	getTrackedMarkdownFiles(includeLore?: boolean): TFile[];
 	getVaultMarkdownFiles(): TFile[];
@@ -200,7 +208,7 @@ export class WorkbenchView extends ItemView {
     private plugin: WorkbenchViewPlugin;
     public currentBookPath: string | null = null;
     private isSavingMetadata: boolean = false;
-    private sortMode: 'default' | 'timeline' | 'lore' | 'foreshadowing' | 'task' | 'sticky' = 'default';
+    private sortMode: WorkbenchBoardId | null = 'default';
     private collapsedGroups: Set<string> = new Set();
     private container!: HTMLElement;
     private currentTimelineFilter: string = 'all';
@@ -212,17 +220,18 @@ export class WorkbenchView extends ItemView {
     private isClosed: boolean = false;
     private hasPendingReload: boolean = false;
     private currentBoardComponent: Component | null = null;
-    private stickyNoteListRenderer: StickyNoteListRenderer | null = null;
     private cachedForeshadowingMap: Map<string, ParsedForeshadowingEntry[]> | null = null;
     private cachedForeshadowingBookPath: string | null = null;
     private chapterFilterQuery: string = '';
     private loreFilterQuery: string = '';
     private foreshadowingFilterQuery: string = '';
+    private journeyFilterQuery: string = '';
     private filterDebounceTimer: number | null = null;
-    private pendingFilterFocus: { mode: 'default' | 'lore' | 'foreshadowing'; start: number; end: number } | null = null;
+    private pendingFilterFocus: { mode: 'default' | 'lore' | 'foreshadowing' | 'journey'; start: number; end: number } | null = null;
     private readonly filterIndex: WorkbenchFilterIndex;
     private isDescending: boolean = false;
     private isTimelineUnscheduledDescending: boolean = false;
+    private isJourneyDescending: boolean = true;
 
     constructor(leaf: WorkspaceLeaf, plugin: WorkbenchViewPlugin) {
         super(leaf);
@@ -246,18 +255,14 @@ export class WorkbenchView extends ItemView {
             if (this.isSavingMetadata) return;
             this.filterIndex.invalidate(oldPath);
             this.filterIndex.invalidate(file.path);
-            if (this.sortMode === 'sticky') return;
             this.plugin.adaptiveDebounceManager.debounceFixed('workbench-refresh', () => {
-                if (this.sortMode === 'sticky') return;
                 void this.reloadBoard();
             }, 500);
         }));
         this.registerEvent(this.app.vault.on('delete', (file) => {
             if (this.isSavingMetadata) return;
             this.filterIndex.invalidate(file.path);
-            if (this.sortMode === 'sticky') return;
             this.plugin.adaptiveDebounceManager.debounceFixed('workbench-refresh', () => {
-                if (this.sortMode === 'sticky') return;
                 void this.reloadBoard();
             }, 500);
         }));
@@ -266,9 +271,7 @@ export class WorkbenchView extends ItemView {
             if (!(file instanceof TFile) || file.extension !== 'md') return;
             if (!this.plugin.cacheManager.isFileInWorkspace(file)) return;
             this.filterIndex.invalidate(file.path);
-            if (this.sortMode === 'sticky') return;
             this.plugin.adaptiveDebounceManager.debounceFixed('workbench-refresh', () => {
-                if (this.sortMode === 'sticky') return;
                 void this.reloadBoard();
             }, 1000);
         }));
@@ -277,9 +280,7 @@ export class WorkbenchView extends ItemView {
             if (!(file instanceof TFile) || file.extension !== 'md') return;
             if (!this.plugin.cacheManager.isFileInWorkspace(file)) return;
             this.filterIndex.invalidate(file.path);
-            if (this.sortMode === 'sticky') return;
             this.plugin.adaptiveDebounceManager.debounceFixed('workbench-refresh', () => {
-                if (this.sortMode === 'sticky') return;
                 void this.reloadBoard();
             }, 1000);
         }));
@@ -309,19 +310,12 @@ export class WorkbenchView extends ItemView {
         }));
         this.registerEvent(
             this.app.workspace.on('webnovel-workbench-lore-updated', () => {
-                if (this.sortMode === 'sticky') return;
                 void this.reloadBoard();
             })
         );
         this.registerEvent(
-            this.app.workspace.on('webnovel:notes-changed', () => {
-                if (this.sortMode === 'sticky') {
-					if (this.stickyNoteListRenderer) {
-						this.stickyNoteListRenderer.syncNotesFromManager();
-					} else {
-						void this.reloadBoard();
-					}
-                }
+            this.app.workspace.on('webnovel-workbench-boards-changed', () => {
+                void this.reloadBoard();
             })
         );
         this.registerEvent(
@@ -336,6 +330,37 @@ export class WorkbenchView extends ItemView {
                 }
             })
         );
+        this.registerEvent(
+            this.app.workspace.on('webnovel-workbench-journey-updated', (bookPath?: string) => {
+                if (this.sortMode === 'journey') {
+                    if (bookPath !== undefined) {
+                        const target = !bookPath || bookPath === '/' ? '' : bookPath.replace(/^\/+|\/+$/g, '');
+                        const current = !this.currentBookPath || this.currentBookPath === '/' ? '' : this.currentBookPath.replace(/^\/+|\/+$/g, '');
+                        if (target !== current) return;
+                    }
+                    void this.reloadBoard();
+                }
+            })
+        );
+    }
+
+    private getVisibleBoards(): WorkbenchBoardId[] {
+        const visibility = this.plugin.settings.workbenchBoardVisibility;
+        return WORKBENCH_BOARD_IDS.filter(id => {
+            if (!visibility) return true;
+            return visibility[id] !== false;
+        });
+    }
+
+    private resolveActiveSortMode(candidateMode: string | null | undefined): WorkbenchBoardId | null {
+        const visibleBoards = this.getVisibleBoards();
+        if (visibleBoards.length === 0) {
+            return null;
+        }
+        if (candidateMode && visibleBoards.some(id => id === candidateMode)) {
+            return candidateMode as WorkbenchBoardId;
+        }
+        return visibleBoards[0];
     }
 
 
@@ -476,20 +501,24 @@ export class WorkbenchView extends ItemView {
             try {
                 // Step 1: Rename to temporary paths to avoid collisions
                 const tempOps = renameOperations.map(op => {
+                    const originalPath = op.file.path;
                     const tempPath = op.newPath + '_temp_' + Date.now();
-                    return { ...op, tempPath };
+                    return { ...op, originalPath, tempPath };
                 });
                 
                 const completedStep1: Array<{ file: TFile; originalPath: string }> = [];
                 try {
                     for (const op of tempOps) {
-                        const originalPath = op.file.path;
+                        this.plugin.writingJourneyService?.markHandledRename(op.originalPath, op.tempPath);
                         await this.app.fileManager.renameFile(op.file, op.tempPath);
-                        completedStep1.push({ file: op.file, originalPath });
+                        completedStep1.push({ file: op.file, originalPath: op.originalPath });
                     }
                 } catch (step1Err) {
                     for (const { file, originalPath } of completedStep1.reverse()) {
-                        try { await this.app.fileManager.renameFile(file, originalPath); } catch { /* rollback best effort */ }
+                        try {
+                            this.plugin.writingJourneyService?.markHandledRename(file.path, originalPath);
+                            await this.app.fileManager.renameFile(file, originalPath);
+                        } catch { /* rollback best effort */ }
                     }
                     throw step1Err;
                 }
@@ -498,18 +527,42 @@ export class WorkbenchView extends ItemView {
                 const completedStep2: Array<{ file: TFile; tempPath: string }> = [];
                 try {
                     for (const op of tempOps) {
-                        const tempPath = op.file.path;
+                        this.plugin.writingJourneyService?.markHandledRename(op.tempPath, op.newPath);
                         await this.app.fileManager.renameFile(op.file, op.newPath);
-                        completedStep2.push({ file: op.file, tempPath });
+                        completedStep2.push({ file: op.file, tempPath: op.tempPath });
                     }
                 } catch (step2Err) {
                     for (const { file, tempPath } of completedStep2.reverse()) {
-                        try { await this.app.fileManager.renameFile(file, tempPath); } catch { /* rollback best effort */ }
+                        try {
+                            this.plugin.writingJourneyService?.markHandledRename(file.path, tempPath);
+                            await this.app.fileManager.renameFile(file, tempPath);
+                        } catch { /* rollback best effort */ }
                     }
                     for (const { file, originalPath } of completedStep1.reverse()) {
-                        try { await this.app.fileManager.renameFile(file, originalPath); } catch { /* rollback best effort */ }
+                        try {
+                            this.plugin.writingJourneyService?.markHandledRename(file.path, originalPath);
+                            await this.app.fileManager.renameFile(file, originalPath);
+                        } catch { /* rollback best effort */ }
                     }
                     throw step2Err;
+                }
+
+                if (this.currentBookPath && this.plugin.writingJourneyService) {
+                    for (const op of tempOps) {
+                        const oldTitle = op.oldName.replace(/\.md$/, '');
+                        const newTitle = op.newName.replace(/\.md$/, '');
+                        try {
+                            await this.plugin.writingJourneyService.recordChapterRenamed(
+                                this.currentBookPath,
+                                op.originalPath,
+                                op.newPath,
+                                oldTitle,
+                                newTitle
+                            );
+                        } catch (journeyErr) {
+                            Logger.error('[WorkbenchView] Failed to record chapter rename journey event:', journeyErr);
+                        }
+                    }
                 }
                 
                 newFiles.forEach((f, idx) => {
@@ -565,10 +618,7 @@ export class WorkbenchView extends ItemView {
 
     async onOpen(): Promise<void> {
         this.isClosed = false;
-        this.sortMode = this.plugin.settings.corkboardSortMode || 'default';
-        if (isMobile() && this.sortMode === 'sticky') {
-            this.sortMode = 'default';
-        }
+        this.sortMode = this.resolveActiveSortMode(this.plugin.settings.corkboardSortMode);
         this.container = this.contentEl;
         this.container.empty();
         this.container.addClass('wn-corkboard-container');
@@ -634,11 +684,15 @@ export class WorkbenchView extends ItemView {
 
     private renderFilterBar(
         container: HTMLElement,
-        mode: 'default' | 'lore' | 'foreshadowing',
+        mode: 'default' | 'lore' | 'foreshadowing' | 'journey',
         matchedCount: number,
         totalCount: number
     ): void {
-        const query = mode === 'default' ? this.chapterFilterQuery : (mode === 'lore' ? this.loreFilterQuery : this.foreshadowingFilterQuery);
+        const query = mode === 'default'
+            ? this.chapterFilterQuery
+            : (mode === 'lore'
+                ? this.loreFilterQuery
+                : (mode === 'foreshadowing' ? this.foreshadowingFilterQuery : this.journeyFilterQuery));
         const bar = container.createDiv('wn-workbench-filter-bar');
 
         bar.createSpan({
@@ -660,7 +714,11 @@ export class WorkbenchView extends ItemView {
         input.value = query;
         input.placeholder = mode === 'default'
             ? t('corkboard.filter-chapters-placeholder')
-            : (mode === 'lore' ? t('corkboard.filter-lore-placeholder') : t('corkboard.filter-foreshadowing-placeholder'));
+            : (mode === 'lore'
+                ? t('corkboard.filter-lore-placeholder')
+                : (mode === 'foreshadowing'
+                    ? t('corkboard.filter-foreshadowing-placeholder')
+                    : t('corkboard.filter-journey-placeholder')));
         input.setAttr('aria-label', input.placeholder);
         input.setAttr('autocomplete', 'off');
         input.setAttr('data-filter-mode', mode);
@@ -674,17 +732,22 @@ export class WorkbenchView extends ItemView {
         setIcon(clearButton, 'x');
 
 
-        if (mode === 'default') {
+        if (mode === 'default' || mode === 'journey') {
             const sortToggle = bar.createDiv('clickable-icon wn-workbench-sort-toggle');
             sortToggle.setAttr('role', 'button');
             sortToggle.setAttr('tabindex', '0');
-            const label = this.isDescending ? t('corkboard.sort-descending') : t('corkboard.sort-ascending');
+            const isDesc = mode === 'journey' ? this.isJourneyDescending : this.isDescending;
+            const label = isDesc ? t('corkboard.sort-descending') : t('corkboard.sort-ascending');
             sortToggle.setAttr('aria-label', label);
-            sortToggle.setAttr('aria-pressed', this.isDescending ? 'true' : 'false');
-            setIcon(sortToggle, this.isDescending ? 'arrow-down-narrow-wide' : 'arrow-up-wide-narrow');
+            sortToggle.setAttr('aria-pressed', isDesc ? 'true' : 'false');
+            setIcon(sortToggle, isDesc ? 'arrow-down-narrow-wide' : 'arrow-up-wide-narrow');
 
             const toggleSort = () => {
-                this.isDescending = !this.isDescending;
+                if (mode === 'journey') {
+                    this.isJourneyDescending = !this.isJourneyDescending;
+                } else {
+                    this.isDescending = !this.isDescending;
+                }
                 this.currentRenderId++;
                 void this.reloadBoard();
             };
@@ -738,10 +801,11 @@ export class WorkbenchView extends ItemView {
         });
     }
 
-    private scheduleFilterRefresh(mode: 'default' | 'lore' | 'foreshadowing', input: HTMLInputElement, immediate: boolean = false): void {
+    private scheduleFilterRefresh(mode: 'default' | 'lore' | 'foreshadowing' | 'journey', input: HTMLInputElement, immediate: boolean = false): void {
         if (mode === 'default') this.chapterFilterQuery = input.value;
         else if (mode === 'lore') this.loreFilterQuery = input.value;
-        else this.foreshadowingFilterQuery = input.value;
+        else if (mode === 'foreshadowing') this.foreshadowingFilterQuery = input.value;
+        else this.journeyFilterQuery = input.value;
 
         this.pendingFilterFocus = {
             mode,
@@ -778,7 +842,11 @@ export class WorkbenchView extends ItemView {
     }
 
     public clearSearchInput(): void {
-        const mode = (this.sortMode === 'lore') ? 'lore' : (this.sortMode === 'foreshadowing' ? 'foreshadowing' : 'default');
+        const mode = (this.sortMode === 'lore')
+            ? 'lore'
+            : (this.sortMode === 'foreshadowing'
+                ? 'foreshadowing'
+                : (this.sortMode === 'journey' ? 'journey' : 'default'));
         const input = this.container.querySelector<HTMLInputElement>(
             `.wn-workbench-filter-input[data-filter-mode="${mode}"]`
         );
@@ -793,7 +861,8 @@ export class WorkbenchView extends ItemView {
         } else {
             if (mode === 'default') this.chapterFilterQuery = '';
             else if (mode === 'lore') this.loreFilterQuery = '';
-            else this.foreshadowingFilterQuery = '';
+            else if (mode === 'foreshadowing') this.foreshadowingFilterQuery = '';
+            else if (mode === 'journey') this.journeyFilterQuery = '';
             void this.reloadBoard();
         }
     }
@@ -928,6 +997,8 @@ export class WorkbenchView extends ItemView {
             menu.showAtMouseEvent(e);
         };
 
+        this.sortMode = this.resolveActiveSortMode(this.sortMode ?? this.plugin.settings.corkboardSortMode);
+
         // 获取该作品下所有章节文件
         const rawFiles = this.getBookMarkdownFiles().filter((file: TFile) => {
             // 只有在开启严格章节模式时，才强制要求必须是章节命名格式
@@ -1002,6 +1073,8 @@ export class WorkbenchView extends ItemView {
                         item.setTitle(getNovelStatusText(st))
                             .setChecked(currentStatus === st)
                             .onClick(async () => {
+                                if (currentStatus === st) return;
+                                const oldStatus = currentStatus;
                                 currentStatus = st;
                                 statusBtn.setText(getNovelStatusText(st));
                                 await this.app.vault.process(infoFile, (data) => {
@@ -1016,6 +1089,17 @@ export class WorkbenchView extends ItemView {
                                         return line;
                                     }).join('\n');
                                 });
+                                if (this.currentBookPath && this.plugin.writingJourneyService) {
+                                    try {
+                                        await this.plugin.writingJourneyService.recordWorkStatusChanged(
+                                            this.currentBookPath,
+                                            oldStatus,
+                                            st
+                                        );
+                                    } catch (journeyErr) {
+                                        Logger.error('[WorkbenchView] Failed to record work status journey event:', journeyErr);
+                                    }
+                                }
                                 new Notice(t('corkboard.status-updated', { status: getNovelStatusText(st) }) || `状态已更新：${getNovelStatusText(st)}`);
                             });
                     });
@@ -1056,15 +1140,7 @@ export class WorkbenchView extends ItemView {
                     bookFolder
                 ).open();
             };
-        } else if (this.sortMode === 'sticky') {
-            const newStickyBtn = buttonsContainer.createDiv({ cls: 'wn-corkboard-new-sticky-btn mod-cta' });
-            newStickyBtn.textContent = t('immersive.new-blank-note');
-            newStickyBtn.onclick = () => {
-                if (this.stickyNoteListRenderer) {
-                    this.stickyNoteListRenderer.createNewNote();
-                }
-            };
-        } else {
+        } else if (this.sortMode !== null) {
             // 右上角：新增章节按钮
             const newChapterBtn = buttonsContainer.createDiv({ cls: 'wn-corkboard-new-chapter-btn' });
             newChapterBtn.textContent = t('corkboard.new-chapter');
@@ -1088,13 +1164,26 @@ export class WorkbenchView extends ItemView {
                     const folder = chapterFolder === '/' ? '' : (chapterFolder + '/');
                     const newPath = folder + title + '.md';
                     this.isSavingMetadata = true;
-                    this.app.vault.create(newPath, templateContent).then(_file => {
+                    this.plugin.writingJourneyService?.markHandledCreate(newPath);
+                    this.app.vault.create(newPath, templateContent).then(async (_file) => {
+                        if (this.currentBookPath && this.plugin.writingJourneyService) {
+                            try {
+                                await this.plugin.writingJourneyService.recordChapterCreated(
+                                    this.currentBookPath,
+                                    newPath,
+                                    title,
+                                    'workbench'
+                                );
+                            } catch (journeyErr) {
+                                Logger.error('[WorkbenchView] Failed to record chapter create journey event:', journeyErr);
+                            }
+                        }
                         new Notice((t('corkboard.new-chapter-success')) + title);
-                        // 留在工作台，仅刷新面?
+                        // 留在工作台，仅刷新面板
                         void this.reloadBoard();
                         window.setTimeout(() => {
                             this.isSavingMetadata = false;
-                        }, 1500); // 避免 metadataCache changed 事件引发的二次刷新跳?
+                        }, 1500); // 避免 metadataCache changed 事件引发的二次刷新跳动
                     }).catch(e => {
                         this.isSavingMetadata = false;
                         console.error(e);
@@ -1106,39 +1195,7 @@ export class WorkbenchView extends ItemView {
 
         // 渲染顶部的多个 Toggle 切换按钮
         const toggleGroup = header.createDiv('wn-corkboard-toggle-group');
-
-        const btnDefault = toggleGroup.createSpan({
-            text: t('corkboard.sort-default'),
-            cls: `wn-corkboard-toggle-btn ${this.sortMode === 'default' ? 'active' : ''}`
-        });
-
-        const btnTimeline = toggleGroup.createSpan({
-            text: t('corkboard.sort-timeline'),
-            cls: `wn-corkboard-toggle-btn ${this.sortMode === 'timeline' ? 'active' : ''}`
-        });
-
-        const btnLore = toggleGroup.createSpan({
-            text: t('corkboard.sort-lore'),
-            cls: `wn-corkboard-toggle-btn ${this.sortMode === 'lore' ? 'active' : ''}`
-        });
-
-        const btnForeshadowing = toggleGroup.createSpan({
-            text: t('corkboard.sort-foreshadowing') || '伏笔看板',
-            cls: `wn-corkboard-toggle-btn ${this.sortMode === 'foreshadowing' ? 'active' : ''}`
-        });
-
-        const btnTask = toggleGroup.createSpan({
-            text: t('view.task') || '任务看板',
-            cls: `wn-corkboard-toggle-btn ${this.sortMode === 'task' ? 'active' : ''}`
-        });
-
-        let btnSticky: HTMLElement | null = null;
-        if (!isMobile()) {
-            btnSticky = toggleGroup.createSpan({
-                text: t('view.immersive-sticky-notes') || '便签管理',
-                cls: `wn-corkboard-toggle-btn ${this.sortMode === 'sticky' ? 'active' : ''}`
-            });
-        }
+        const visibleBoards = this.getVisibleBoards();
 
         const saveSortMode = () => {
             this.plugin.adaptiveDebounceManager.debounceFixed('save-corkboard-sort-mode', () => {
@@ -1151,61 +1208,23 @@ export class WorkbenchView extends ItemView {
             activeBtn.addClass('active');
         };
 
-        btnDefault.onclick = () => {
-            if (this.sortMode === 'default') return;
-            updateButtonActive(btnDefault);
-            this.sortMode = 'default';
-            this.plugin.settings.corkboardSortMode = 'default';
-            saveSortMode();
-            void this.reloadBoard();
-        };
+        visibleBoards.forEach((boardId) => {
+            const label = getWorkbenchBoardLabel(boardId);
 
-        btnTimeline.onclick = () => {
-            if (this.sortMode === 'timeline') return;
-            updateButtonActive(btnTimeline);
-            this.sortMode = 'timeline';
-            this.plugin.settings.corkboardSortMode = 'timeline';
-            saveSortMode();
-            void this.reloadBoard();
-        };
+            const btn = toggleGroup.createSpan({
+                text: label,
+                cls: `wn-corkboard-toggle-btn ${this.sortMode === boardId ? 'active' : ''}`
+            });
 
-        btnLore.onclick = () => {
-            if (this.sortMode === 'lore') return;
-            updateButtonActive(btnLore);
-            this.sortMode = 'lore';
-            this.plugin.settings.corkboardSortMode = 'lore';
-            saveSortMode();
-            void this.reloadBoard();
-        };
-
-        btnForeshadowing.onclick = () => {
-            if (this.sortMode === 'foreshadowing') return;
-            updateButtonActive(btnForeshadowing);
-            this.sortMode = 'foreshadowing';
-            this.plugin.settings.corkboardSortMode = 'foreshadowing';
-            saveSortMode();
-            void this.reloadBoard();
-        };
-
-        btnTask.onclick = () => {
-            if (this.sortMode === 'task') return;
-            updateButtonActive(btnTask);
-            this.sortMode = 'task';
-            this.plugin.settings.corkboardSortMode = 'task';
-            saveSortMode();
-            void this.reloadBoard();
-        };
-
-        if (btnSticky) {
-            btnSticky.onclick = () => {
-                if (this.sortMode === 'sticky') return;
-                updateButtonActive(btnSticky);
-                this.sortMode = 'sticky';
-                this.plugin.settings.corkboardSortMode = 'sticky';
+            btn.onclick = () => {
+                if (this.sortMode === boardId) return;
+                updateButtonActive(btn);
+                this.sortMode = boardId;
+                this.plugin.settings.corkboardSortMode = boardId;
                 saveSortMode();
                 void this.reloadBoard();
             };
-        }
+        });
 
         let filteredChapterFiles = files;
         let matchedLoreHeadings: ReadonlySet<string> | undefined;
@@ -1281,6 +1300,22 @@ export class WorkbenchView extends ItemView {
                 matchedForeshadowingCount,
                 foreshadowingEntriesList.length
             );
+        } else if (this.sortMode === 'journey') {
+            const journeyResult = this.currentBookPath
+                ? await this.plugin.writingJourneyService?.getJourneyLog(this.currentBookPath)
+                : null;
+            const rawEvents = journeyResult?.status === 'valid' ? (journeyResult.log?.events || []) : [];
+            const jTrimmed = this.journeyFilterQuery.trim().toLowerCase();
+            const jMatchedCount = jTrimmed
+                ? rawEvents.filter(ev => WritingJourneyBoardRenderer.matchesQuery(ev, jTrimmed)).length
+                : rawEvents.length;
+            if (this.currentRenderId !== renderId || this.isClosed) return;
+            this.renderFilterBar(
+                header,
+                'journey',
+                jMatchedCount,
+                rawEvents.length
+            );
         }
 
         const renderComponent = new Component();
@@ -1338,24 +1373,23 @@ export class WorkbenchView extends ItemView {
                     currentBookPath: this.currentBookPath || '',
                     reloadBoard: () => { void this.reloadBoard(); }
                 });
-            } else if (this.sortMode === 'sticky') {
-                const stickyRoot = buffer.createDiv({ cls: 'wn-workbench-sticky-list-root' });
-                const renderer = new StickyNoteListRenderer(this.app, this.plugin, stickyRoot, {
-                    mode: 'workbench',
-                    showToolbar: false
+            } else if (this.sortMode === 'journey') {
+                await WritingJourneyBoardRenderer.render({
+                    app: this.app,
+                    plugin: this.plugin,
+                    container: buffer,
+                    currentBookPath: this.currentBookPath || '',
+                    query: this.journeyFilterQuery,
+                    isDescending: this.isJourneyDescending
                 });
-                this.stickyNoteListRenderer = renderer;
-                renderComponent.register(() => {
-                    renderer.destroy();
-                    if (this.stickyNoteListRenderer === renderer) this.stickyNoteListRenderer = null;
-                });
-                renderer.render();
-            } else {
+            } else if (this.sortMode === 'default') {
                 if (filteredChapterFiles.length === 0 && this.chapterFilterQuery.trim().length > 0) {
                     buffer.createDiv({ cls: 'wn-corkboard-empty-msg', text: t('corkboard.filter-no-results') });
                 } else {
                     this.renderOrderedBoard(buffer, filteredChapterFiles, foreshadowingMap);
                 }
+            } else {
+                buffer.createDiv({ cls: 'wn-corkboard-empty-msg', text: t('corkboard.no-boards-enabled') });
             }
 
             if (this.currentRenderId !== renderId || this.isClosed) {

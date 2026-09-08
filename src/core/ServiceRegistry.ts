@@ -25,6 +25,7 @@ import type { RelationGraphManager } from '../services/RelationGraphManager';
 import type { TypographyManager } from '../services/TypographyManager';
 import type { ChapterMergeManager } from '../services/ChapterMergeManager';
 import type { ProofreadingManager } from '../services/ProofreadingManager';
+import type { WritingJourneyService } from '../services/WritingJourneyService';
 
 import { Logger } from '../utils/Logger';
 
@@ -67,6 +68,7 @@ export interface ServiceMap {
 	TypographyManager: TypographyManager;
 	ChapterMergeManager: ChapterMergeManager;
 	ProofreadingManager: ProofreadingManager;
+	WritingJourneyService: WritingJourneyService;
 }
 
 /**

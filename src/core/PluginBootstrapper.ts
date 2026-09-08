@@ -34,6 +34,7 @@ import { ChapterSorter } from '../services/ChapterSorter';
 import { ObsOverlayServer } from '../services/ObsServer';
 import { MobileFloatingStats } from '../ui/MobileFloatingStats';
 import { ProofreadingManager } from '../services/ProofreadingManager';
+import { WritingJourneyService } from '../services/WritingJourneyService';
 import { Logger } from '../utils/Logger';
 
 /**
@@ -283,6 +284,7 @@ export class PluginBootstrapper {
 		this.services.register('WorkerManager', new WorkerManager(this.plugin));
 		this.services.register('MarkdownPostProcessor', new MarkdownPostProcessor(this.plugin));
 		this.services.register('HomepageManager', new HomepageManager(this.plugin.app, this.plugin));
+		this.services.register('WritingJourneyService', new WritingJourneyService(this.plugin.app, this.plugin));
 	}
 
 	/**

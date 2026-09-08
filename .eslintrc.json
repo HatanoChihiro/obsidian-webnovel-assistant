@@ -19,7 +19,11 @@
     "@typescript-eslint/no-unsafe-assignment": "warn",
     "@typescript-eslint/no-unsafe-member-access": "warn",
     "@typescript-eslint/no-unsafe-call": "warn",
-    "@typescript-eslint/no-unnecessary-type-assertion": "warn",
+    "@typescript-eslint/no-unnecessary-type-assertion": "error",
+    "no-restricted-syntax": ["error", {
+      "selector": "CallExpression[callee.property.name='addEventListener'][arguments.0.value='input'] TSAsExpression[typeAnnotation.typeName.name='InputEvent']",
+      "message": "Do not assert input listener events as InputEvent; use inferred types or runtime narrowing."
+    }],
     "@typescript-eslint/no-floating-promises": "warn",
     "@typescript-eslint/await-thenable": "warn",
     "@typescript-eslint/no-misused-promises": "warn",

@@ -1,0 +1,15 @@
+/* StatusView Leaderboard target area */
+
+/* Task Goal Section */
+
+.task-time-desc {
+	font-size: 0.8em;
+	color: var(--text-muted);
+	text-align: right;
+	margin-top: 2px;
+}
+
+.task-time-desc.task-reached {
+	color: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-success, var(--interactive-accent)) 70%);
+	font-weight: 600;
+}

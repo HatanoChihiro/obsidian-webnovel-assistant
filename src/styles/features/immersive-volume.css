@@ -1,0 +1,14 @@
+
+
+.wn-volume-header-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--interactive-accent);
+	transition: transform 0.2s ease;
+}
+
+.wn-volume-header-icon svg {
+	width: 14px;
+	height: 14px;
+}

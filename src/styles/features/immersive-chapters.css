@@ -1,0 +1,44 @@
+
+
+/* Chapter list */
+
+/* Immersive Chapter List */
+
+.immersive-chapter-list {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	overflow-y: auto;
+}
+
+.immersive-chapter-item {
+	display: flex;
+	justify-content: space-between;
+	padding: 6px 10px;
+	border-radius: 4px;
+	cursor: pointer;
+	transition: background 0.2s;
+	font-size: 0.85em;
+}
+
+.immersive-chapter-item:hover {
+	background: color-mix(in srgb, var(--interactive-accent) 10%, var(--background-modifier-hover));
+}
+
+.immersive-chapter-item.is-active {
+	background: color-mix(in srgb, var(--interactive-accent) 20%, transparent);
+	color: var(--text-accent);
+	font-weight: bold;
+}
+
+.immersive-chapter-count {
+	font-size: 0.8em;
+	color: var(--interactive-accent);
+	font-family: var(--font-monospace);
+}
+
+.immersive-chapter-count.is-excluded {
+	color: var(--text-muted);
+	font-style: italic;
+	opacity: 0.85;
+}

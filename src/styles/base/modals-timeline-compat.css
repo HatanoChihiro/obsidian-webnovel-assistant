@@ -1,0 +1,10 @@
+/* Fix plugin modal headings indentation */
+.webnovel-settings-container .setting-item.setting-item-heading,
+.history-stats-modal .setting-item.setting-item-heading,
+.foreshadowing-input-modal .setting-item.setting-item-heading,
+.wn-timeline-add-modal .setting-item.setting-item-heading {
+	padding-left: 0;
+	margin-left: 0;
+	border-top: none;
+	margin-top: 0;
+}

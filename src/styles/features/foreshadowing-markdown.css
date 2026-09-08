@@ -1,0 +1,37 @@
+
+
+
+/* 待回收：主题强调色调和警示 (Accent-blended Warning/Pending) */
+.wn-badge-foreshadowing {
+	background-color: color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%) 15%, transparent);
+	color: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%);
+	border: 1px solid color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%);
+}
+
+
+
+
+
+.wn-foreshadowing-status-pill {
+	padding: 1px 5px;
+	border-radius: 4px;
+	font-weight: 500;
+}
+
+
+.wn-foreshadowing-status-pill.status-pending {
+	background: color-mix(in srgb, var(--text-accent) 15%, transparent);
+	color: var(--text-accent);
+}
+
+
+.wn-foreshadowing-status-pill.status-recovered {
+	background: color-mix(in srgb, var(--text-success) 15%, transparent);
+	color: var(--text-success);
+}
+
+
+.wn-corkboard-volume-header:first-child,
+.wn-foreshadowing-group-section:first-child .wn-corkboard-volume-header {
+	margin-top: 2px;
+}

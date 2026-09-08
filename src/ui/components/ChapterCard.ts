@@ -8,12 +8,15 @@ import { openFileAndFocus, getLeafForFileNavigation } from '../../utils/leaf';
 import { isExcludedFromWordCount } from '../../utils/validation';
 import type { MenuManager } from '../../core/MenuManager';
 import type { CacheManager } from '../../services/CacheManager';
+import type { WritingJourneyService } from '../../services/WritingJourneyService';
+import { Logger } from '../../utils/Logger';
 import { createStickyNoteParagraphEditor } from './StickyNoteParagraphEditor';
 
 export interface ChapterCardPlugin extends LoreBadgePlugin {
 	menuManager: Pick<MenuManager, 'toggleExcludeFromWordCount'>;
 	cacheManager: Pick<CacheManager, 'getFileCache'>;
 	calculateAccurateWords(content: string): number;
+	writingJourneyService?: Pick<WritingJourneyService, 'recordChapterStatusChanged'>;
 }
 
 export interface ChapterCardOptions {
@@ -96,6 +99,8 @@ export class ChapterCard {
 					item.setTitle(getCorkboardStatusText(s))
 						.setChecked(s === status)
 						.onClick(async () => {
+							if (s === status) return;
+							const oldStatus = status;
 							try {
 								if (onSaveStateChange) onSaveStateChange(true);
 								await app.fileManager.processFrontMatter(file, (fm) => {
@@ -104,6 +109,14 @@ export class ChapterCard {
 								status = s;
 								statusEl.setText(getCorkboardStatusText(s));
 								new Notice(t('corkboard.status-updated', { status: getCorkboardStatusText(s) }));
+								const bookRoot = currentBookPath;
+								if (bookRoot && plugin.writingJourneyService) {
+									try {
+										await plugin.writingJourneyService.recordChapterStatusChanged(bookRoot, file.path, file.basename, oldStatus, s);
+									} catch (journeyErr) {
+										Logger.error('[ChapterCard] Failed to record chapter status journey event:', journeyErr);
+									}
+								}
 							} catch (err) {
 								console.error(err);
 								new Notice(t('corkboard.status-update-failed'));

@@ -1,0 +1,83 @@
+
+
+
+/* 参照阅读模式段落 CSS：所有 p 标签均自动享有 var(--wn-type-indent, 2em) 首行缩进与流畅文本拖选 */
+.wn-merge-modal-window .wn-merge-card-render-view {
+	margin-bottom: 8px;
+	user-select: text;
+	-webkit-user-select: text;
+	cursor: text;
+}
+
+
+/* 章节合并预览合并段落排版
+   规避 css-text-indent 官方审查警告：首行缩进用 ::before inline-block 伪元素实现，
+   与阅读模式 p 和 CM6 行方案完全一致，不使用 text-indent 或 padding-inline-start。 */
+.wn-merge-modal-window.wn-typography-active .wn-merge-para,
+.wn-merge-modal-window .wn-merge-para {
+	font-family: var(--font-text);
+	font-size: var(--wn-type-font-size, inherit);
+	line-height: var(--wn-type-line-height, 1.8);
+	letter-spacing: var(--wn-type-letter-spacing, 0.05em);
+	text-align: var(--wn-type-text-align, justify);
+	margin-top: 0;
+	margin-bottom: var(--wn-type-para-spacing, 0.5em);
+	color: var(--text-normal);
+	word-break: break-word;
+	user-select: text;
+	-webkit-user-select: text;
+	cursor: text;
+}
+
+/* .wn-merge-para 首行缩进 ::before 伪元素 */
+.wn-merge-modal-window.wn-typography-active .wn-merge-para::before,
+.wn-merge-modal-window .wn-merge-para::before {
+	content: "";
+	display: inline-block;
+	width: var(--wn-type-indent, 2em);
+}
+
+
+.wn-merge-para-empty {
+	height: var(--wn-type-para-spacing, 0.5em);
+}
+
+
+.wn-merge-card-textarea {
+	width: 100%;
+	min-height: 120px;
+	padding: 12px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	background: var(--background-primary);
+	font-family: var(--font-text);
+	font-size: var(--wn-type-font-size, inherit);
+	line-height: var(--wn-type-line-height, 1.8);
+	letter-spacing: var(--wn-type-letter-spacing, 0.05em);
+	text-align: var(--wn-type-text-align, justify);
+	color: var(--text-normal);
+	resize: none;
+	overflow: hidden;
+	outline: none;
+	transition: border-color 0.2s;
+}
+
+
+/* 章节合并预览正文段落排版 (Typography Binding for Merge Preview Paragraphs)
+   规避 css-text-indent 官方审查警告：首行缩进用 ::before inline-block 伪元素实现 */
+.wn-merge-para {
+	font-size: var(--wn-type-font-size, inherit);
+	line-height: var(--wn-type-line-height, 1.8);
+	margin-top: 0;
+	margin-bottom: var(--wn-type-para-spacing, 0.5em);
+	letter-spacing: var(--wn-type-letter-spacing, normal);
+	text-align: var(--wn-type-text-align, left);
+	font-family: var(--font-text);
+}
+
+/* .wn-merge-para 全局首行缩进 ::before 伪元素 */
+.wn-merge-para::before {
+	content: "";
+	display: inline-block;
+	width: var(--wn-type-indent, 2em);
+}

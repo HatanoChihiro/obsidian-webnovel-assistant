@@ -1,0 +1,177 @@
+/* ==========================================
+   WebNovel Assistant - Writing Journey
+   ========================================== */
+
+.wn-writing-journey-board {
+	width: 100%;
+	padding: 12px 0 24px 0;
+	box-sizing: border-box;
+}
+
+.wn-writing-journey-malformed-box {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 14px 18px;
+	background: color-mix(in srgb, var(--text-error, var(--interactive-accent)) 10%, var(--background-secondary));
+	border: 1px solid color-mix(in srgb, var(--text-error, var(--interactive-accent)) 30%, transparent);
+	border-radius: 8px;
+	color: var(--text-normal);
+}
+
+.wn-writing-journey-malformed-icon {
+	color: var(--text-error, var(--text-accent));
+	display: flex;
+	align-items: center;
+	flex-shrink: 0;
+}
+
+.wn-writing-journey-malformed-text {
+	font-size: var(--font-ui-medium);
+	line-height: 1.4;
+}
+
+.wn-writing-journey-list {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	width: 100%;
+	box-sizing: border-box;
+}
+
+.wn-writing-journey-item {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 10px 14px;
+	border-radius: 6px;
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+	box-sizing: border-box;
+}
+
+.wn-writing-journey-item.wn-clickable {
+	cursor: pointer;
+}
+
+.wn-writing-journey-item.wn-clickable:hover {
+	background: var(--background-modifier-hover);
+	border-color: var(--interactive-accent);
+}
+
+.wn-writing-journey-item.is-deleted {
+	opacity: 0.65;
+}
+
+.wn-writing-journey-time {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+	flex-shrink: 0;
+}
+
+.wn-writing-journey-type {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	padding: 2px 8px;
+	border-radius: 4px;
+	font-size: var(--font-ui-smaller);
+	font-weight: 500;
+	flex-shrink: 0;
+	background: color-mix(in srgb, var(--interactive-accent) 12%, var(--background-primary));
+	color: var(--text-accent);
+}
+
+.wn-writing-journey-type.mod-work-created {
+	background: color-mix(in srgb, var(--interactive-accent) 18%, var(--background-primary));
+	color: var(--text-accent);
+}
+
+.wn-writing-journey-type.mod-work-imported {
+	background: color-mix(in srgb, var(--text-accent) 18%, var(--background-primary));
+	color: var(--text-accent);
+}
+
+.wn-writing-journey-type.mod-tracking-started {
+	background: color-mix(in srgb, var(--text-muted) 20%, var(--background-primary));
+	color: var(--text-muted);
+}
+
+.wn-writing-journey-type.mod-chapter-created {
+	background: color-mix(in srgb, var(--text-success, var(--interactive-accent)) 16%, var(--background-primary));
+	color: var(--text-success, var(--text-accent));
+}
+
+.wn-writing-journey-type.mod-chapter-renamed,
+.wn-writing-journey-type.mod-chapter-moved {
+	background: color-mix(in srgb, var(--text-warning, var(--interactive-accent)) 16%, var(--background-primary));
+	color: var(--text-warning, var(--text-accent));
+}
+
+.wn-writing-journey-type.mod-chapter-deleted {
+	background: color-mix(in srgb, var(--text-error, var(--interactive-accent)) 16%, var(--background-primary));
+	color: var(--text-error, var(--text-accent));
+}
+
+.wn-writing-journey-type.mod-chapter-status {
+	background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-primary));
+	color: var(--text-accent);
+}
+
+.wn-writing-journey-type.mod-work-status {
+	background: color-mix(in srgb, var(--interactive-accent) 20%, var(--background-primary));
+	color: var(--text-accent);
+}
+
+.wn-writing-journey-type-icon {
+	display: flex;
+	align-items: center;
+}
+
+.wn-writing-journey-content {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+}
+
+.wn-writing-journey-title {
+	font-size: var(--font-ui-medium);
+	color: var(--text-normal);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.wn-writing-journey-detail {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.wn-writing-journey-deleted-tag {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-error, var(--text-muted));
+	background: color-mix(in srgb, var(--text-error, var(--text-muted)) 12%, transparent);
+	padding: 1px 6px;
+	border-radius: 3px;
+	flex-shrink: 0;
+}
+
+@media (max-width: 600px) {
+	.wn-writing-journey-item {
+		flex-wrap: wrap;
+		gap: 6px 10px;
+	}
+
+	.wn-writing-journey-content {
+		flex-basis: 100%;
+	}
+}

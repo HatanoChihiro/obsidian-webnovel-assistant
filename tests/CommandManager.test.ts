@@ -27,10 +27,25 @@ vi.mock('../src/ui/AnnotateDictModal', () => ({
     }
 }));
 
-import { MarkdownView, TFile } from 'obsidian';
+vi.mock('../src/ui/ChapterSplitCollisionModal', () => ({
+    ChapterSplitCollisionModal: {
+        prompt: vi.fn().mockResolvedValue(null)
+    }
+}));
+
+import { MarkdownView, TFile, type Editor } from 'obsidian';
 import { mockNoticeMessages, resetNoticeMessages } from './mocks/obsidian';
 import { CommandManager } from '../src/core/CommandManager';
 import type { WebNovelAssistantPlugin } from '../src/types/plugin';
+import * as ChapterSplitterModule from '../src/services/ChapterSplitter';
+
+interface CommandManagerRegisteredCommand {
+    id: string;
+    name: string;
+    icon?: string;
+    editorCheckCallback?: (checking: boolean, editor: Editor, view: MarkdownView) => boolean | void;
+    callback?: () => Promise<void> | void;
+}
 
 describe('CommandManager - refresh-lore-cache', () => {
     let mockApp: any;
@@ -420,5 +435,136 @@ describe('CommandManager - toggle-editor-typewriter', () => {
         expect(mockApp.workspace.updateOptions).not.toHaveBeenCalled();
         expect(mockDispatch).not.toHaveBeenCalled();
         expect(mockNoticeMessages).toContain('保存设置失败，请检查磁盘空间和权限');
+    });
+});
+
+describe('CommandManager - split-chapter-at-cursor', () => {
+    let mockApp: {
+        workspace: {
+            trigger: ReturnType<typeof vi.fn>;
+            getLeavesOfType: ReturnType<typeof vi.fn>;
+        };
+        vault: {
+            getAbstractFileByPath: ReturnType<typeof vi.fn>;
+        };
+    };
+    let mockPlugin: {
+        app: unknown;
+        settings: {
+            enableChapterTemplate: boolean;
+            chapterTemplatePaths: string[];
+            chapterTemplatePath: string;
+        };
+        fileExplorerPatcher: {
+            refreshManually: ReturnType<typeof vi.fn>;
+        };
+        addCommand: ReturnType<typeof vi.fn>;
+    };
+    let registeredCommands: Map<string, CommandManagerRegisteredCommand>;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        resetNoticeMessages();
+        registeredCommands = new Map();
+
+        mockApp = {
+            workspace: {
+                trigger: vi.fn(),
+                getLeavesOfType: vi.fn().mockReturnValue([])
+            },
+            vault: {
+                getAbstractFileByPath: vi.fn()
+            }
+        };
+
+        mockPlugin = {
+            app: mockApp,
+            settings: {
+                enableChapterTemplate: false,
+                chapterTemplatePaths: [],
+                chapterTemplatePath: ''
+            },
+            fileExplorerPatcher: {
+                refreshManually: vi.fn()
+            },
+            addCommand: vi.fn().mockImplementation((cmd: CommandManagerRegisteredCommand) => {
+                registeredCommands.set(cmd.id, cmd);
+            })
+        };
+    });
+
+    it('should register split-chapter-at-cursor with bilingual name, scissors icon, and editorCheckCallback', () => {
+        const commandManager = new CommandManager(mockPlugin as unknown as WebNovelAssistantPlugin);
+        commandManager.registerAllCommands();
+
+        const cmd = registeredCommands.get('split-chapter-at-cursor');
+        expect(cmd).toBeDefined();
+        expect(cmd?.id).toBe('split-chapter-at-cursor');
+        expect(cmd?.name).toBe('在光标处拆分章节');
+        expect(cmd?.icon).toBe('scissors');
+        expect(cmd?.editorCheckCallback).toBeDefined();
+    });
+
+    it('should only be available for full MarkdownView (checking=true)', () => {
+        const commandManager = new CommandManager(mockPlugin as unknown as WebNovelAssistantPlugin);
+        commandManager.registerAllCommands();
+
+        const cmd = registeredCommands.get('split-chapter-at-cursor');
+        const notMarkdownView = {} as unknown as MarkdownView;
+        const mockEditor = {} as unknown as Editor;
+        expect(cmd?.editorCheckCallback?.(true, mockEditor, notMarkdownView)).toBe(false);
+
+        const markdownView = Object.create(MarkdownView.prototype) as MarkdownView;
+        expect(cmd?.editorCheckCallback?.(true, mockEditor, markdownView)).toBe(true);
+    });
+
+    it('should invoke splitChapterAtCursor and pass naming prompt and explorer refresh callbacks', async () => {
+        const splitSpy = vi.spyOn(ChapterSplitterModule, 'splitChapterAtCursor').mockResolvedValue(true);
+
+        const commandManager = new CommandManager(mockPlugin as unknown as WebNovelAssistantPlugin);
+        commandManager.registerAllCommands();
+
+        const cmd = registeredCommands.get('split-chapter-at-cursor');
+        const mockEditor = {} as unknown as Editor;
+        const mockView = Object.create(MarkdownView.prototype) as MarkdownView;
+
+        const checkRes = cmd?.editorCheckCallback?.(false, mockEditor, mockView);
+        expect(checkRes).toBe(true);
+
+        // Allow async invocation in editorCheckCallback to run
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        expect(splitSpy).toHaveBeenCalledTimes(1);
+        const options = splitSpy.mock.calls[0][0];
+        expect(options.app).toBe(mockApp);
+        expect(options.view).toBe(mockView);
+        expect(options.editor).toBe(mockEditor);
+        expect(options.settings).toBe(mockPlugin.settings);
+        expect(options.onRequestName).toBeDefined();
+
+        // Test onRefreshExplorer passes through to refreshManually
+        options.onRefreshExplorer?.();
+        expect(mockPlugin.fileExplorerPatcher.refreshManually).toHaveBeenCalledTimes(1);
+
+        splitSpy.mockRestore();
+    });
+
+    it('should catch unexpected errors at the command boundary and show error notice', async () => {
+        const splitSpy = vi.spyOn(ChapterSplitterModule, 'splitChapterAtCursor').mockRejectedValue(new Error('Fatal explosion'));
+
+        const commandManager = new CommandManager(mockPlugin as unknown as WebNovelAssistantPlugin);
+        commandManager.registerAllCommands();
+
+        const cmd = registeredCommands.get('split-chapter-at-cursor');
+        const mockEditor = {} as unknown as Editor;
+        const mockView = Object.create(MarkdownView.prototype) as MarkdownView;
+
+        cmd?.editorCheckCallback?.(false, mockEditor, mockView);
+
+        // Allow async invocation in editorCheckCallback to run
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        expect(mockNoticeMessages).toContain('创建新章节失败: Error: Fatal explosion');
+        splitSpy.mockRestore();
     });
 });

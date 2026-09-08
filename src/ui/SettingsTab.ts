@@ -7,6 +7,7 @@ import { ChapterSorter } from '../services/ChapterSorter';
 import { MobileFloatingStats } from './MobileFloatingStats';
 import type { FloatingStickyNote } from './StickyNote';
 import type { ThemeScheme } from '../types/settings';
+import { WORKBENCH_BOARD_IDS, getWorkbenchBoardLabel } from './workbenchBoards';
 import { VALIDATION_RULES, DEFAULT_PROOFREADING_SETTINGS } from '../constants';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { t, setLocale, detectLocale, type Locale } from '../i18n';
@@ -134,10 +135,8 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			this.displayDataSettings(containerEl);
 		}
 
-		// 恢复滚动位置，避免由于 DOM 重绘导致的画面回跳
-		window.setTimeout(() => {
-			containerEl.scrollTo(0, scrollTop);
-		}, 0);
+		// 同步恢复滚动位置，在浏览器完成绘制前生效，避免延迟执行导致的画面跳动
+		containerEl.scrollTo(0, scrollTop);
 	}
 
 	// ── 通用设置 ──
@@ -571,6 +570,41 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		if (this.plugin.settings.enableSmartChapterSort) {
 			this.displaySortingRules(containerEl);
 		}
+
+		new Setting(containerEl)
+			.setName(t('setting.workbench-boards-visibility'))
+			.setDesc(t('setting.workbench-boards-visibility-desc'));
+
+		const currentVisibility = this.plugin.settings.workbenchBoardVisibility || {
+			default: true,
+			timeline: true,
+			lore: true,
+			foreshadowing: true,
+			task: true,
+			journey: true
+		};
+
+		WORKBENCH_BOARD_IDS.forEach(boardId => {
+			new Setting(containerEl)
+				.setName(getWorkbenchBoardLabel(boardId))
+				.addToggle(toggle => toggle
+					.setValue(currentVisibility[boardId] ?? true)
+					.onChange(async (value) => {
+						if (!this.plugin.settings.workbenchBoardVisibility) {
+							this.plugin.settings.workbenchBoardVisibility = {
+								default: true,
+								timeline: true,
+								lore: true,
+								foreshadowing: true,
+								task: true,
+								journey: true
+							};
+						}
+						this.plugin.settings.workbenchBoardVisibility[boardId] = value;
+						await this.plugin.saveSettings();
+						this.app.workspace.trigger('webnovel-workbench-boards-changed');
+					}));
+		});
 	}
 
 	// ── 字数统计设置 ──

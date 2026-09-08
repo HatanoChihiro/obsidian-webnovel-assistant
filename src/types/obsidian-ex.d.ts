@@ -29,7 +29,9 @@ declare module 'obsidian' {
 		on(name: 'webnovel:editor-word-count-updated', callback: (file: TAbstractFile, delta: number) => void): EventRef;
         on(name: 'webnovel:tasks-changed', callback: (folderPath?: string) => void): EventRef;
         on(name: 'webnovel-workbench-book-changed', callback: (bookPath: string) => void): EventRef;
+        on(name: 'webnovel-workbench-boards-changed', callback: () => void): EventRef;
         on(name: 'webnovel-workbench-lore-updated', callback: () => void): EventRef;
+        on(name: 'webnovel-workbench-journey-updated', callback: (bookPath?: string) => void): EventRef;
         on(name: 'webnovel-lore-hover-rebuild', callback: () => void): EventRef;
         on(name: 'timeline-filter-changed', callback: (filter: string) => void): EventRef;
         on(name: 'foreshadowing-filter-changed', callback: (filterTag: string) => void): EventRef;
@@ -40,7 +42,9 @@ declare module 'obsidian' {
 		trigger(name: 'webnovel:editor-word-count-updated', file: TAbstractFile, delta: number): void;
         trigger(name: 'webnovel:tasks-changed', folderPath?: string): void;
         trigger(name: 'webnovel-workbench-book-changed', bookPath: string): void;
+        trigger(name: 'webnovel-workbench-boards-changed'): void;
         trigger(name: 'webnovel-workbench-lore-updated'): void;
+        trigger(name: 'webnovel-workbench-journey-updated', bookPath?: string): void;
         trigger(name: 'webnovel-lore-hover-rebuild'): void;
         trigger(name: 'timeline-filter-changed', filter: string): void;
         trigger(name: 'foreshadowing-filter-changed', filterTag: string): void;

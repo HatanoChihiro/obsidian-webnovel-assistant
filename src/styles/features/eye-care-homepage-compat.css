@@ -1,0 +1,14 @@
+
+
+/* ========== Eye-care typography scope (extracted from common.css) ========== */
+
+/* ==========================================================================
+
+   Eye Care Mode
+
+   ========================================================================== */
+
+body.webnovel-eye-care-enabled .workspace-leaf-content[data-type="markdown"]:not(.is-webnovel-homepage) {
+	--background-primary: var(--webnovel-eye-care-color, #E8F5E9);
+	--background-primary-alt: var(--webnovel-eye-care-color, #E8F5E9);
+}

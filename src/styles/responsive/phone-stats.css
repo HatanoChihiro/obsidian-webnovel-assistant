@@ -1,0 +1,190 @@
+/* ========== Mobile History Stats Modal (Compact & Landscape Scrollable) ========== */
+body.is-phone .modal.history-stats-modal-wide {
+	width: 96vw;
+	max-width: 100%;
+	max-height: 90vh;
+	height: auto;
+	margin: auto;
+	padding: 0.625em;
+	font-size: var(--wn-phone-ui-font-size);
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+
+
+body.is-phone .history-stats-modal {
+	--wn-mobile-heatmap-padding-bottom: 2px;
+	overflow-y: auto;
+	-webkit-overflow-scrolling: touch;
+	max-height: calc(90vh - 20px);
+	padding-right: 4px;
+}
+
+
+.is-phone .history-stats-modal .stats-efficiency-row {
+	margin-bottom: 2px;
+}
+
+
+body.is-phone .history-stats-modal .setting-item.setting-item-heading .setting-item-name {
+	font-size: var(--wn-phone-font-title);
+}
+
+
+body.is-phone .history-stats-modal .setting-item-heading:first-child .setting-item-name {
+	font-size: var(--wn-phone-font-display);
+}
+
+
+body.is-phone .history-stats-modal .setting-item.setting-item-heading.stats-subheading .setting-item-name {
+	font-size: var(--wn-phone-font-title);
+}
+
+
+.is-phone .history-stats-modal .stats-efficiency-label {
+	font-size: var(--wn-phone-font-meta);
+	margin-bottom: 2px;
+}
+
+
+.is-phone .history-stats-modal .stats-efficiency-value {
+	font-size: var(--wn-phone-font-kpi);
+}
+
+
+.is-phone .history-stats-modal .setting-item-heading {
+	margin-top: 10px;
+	margin-bottom: 6px;
+	padding-top: 0;
+}
+
+
+.is-phone .history-stats-modal .stats-heat-date-row {
+	flex-direction: column;
+	align-items: stretch;
+	gap: 4px;
+	margin-bottom: 4px;
+}
+
+
+.is-phone .history-stats-modal .stats-heat-inputs-wrapper {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex-wrap: nowrap;
+}
+
+
+.is-phone .history-stats-modal .stats-heat-date-input,
+.is-phone .history-stats-modal .stats-heat-today-btn {
+	font-size: var(--wn-phone-font-control);
+	padding: 0.2em 0.5em;
+	height: 2em;
+	line-height: 1.2;
+	display: inline-flex;
+	align-items: center;
+	box-sizing: border-box;
+	border-radius: 4px;
+}
+
+
+.is-phone .history-stats-modal .stats-heat-actions-wrapper {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	width: 100%;
+	flex: 1;
+}
+
+
+.is-phone .history-stats-modal .stats-heatmap-container {
+	margin-bottom: 2px;
+	overflow-x: visible;
+}
+
+
+.is-phone .history-stats-modal .stats-heatmap-day-label {
+	display: none;
+}
+
+
+.is-phone .history-stats-modal .stats-heatmap-months {
+	margin-left: 0;
+	height: 1em;
+	margin-bottom: 2px;
+}
+
+
+.is-phone .history-stats-modal .stats-heatmap-month-label {
+	font-size: var(--wn-phone-font-caption);
+}
+
+
+body.is-phone .history-stats-modal .setting-item.setting-item-heading.stats-subheading {
+	margin-top: 4px;
+	margin-bottom: 2px;
+	padding: 0 0 2px;
+}
+
+
+body.is-phone .history-stats-modal .stats-filter-row {
+	display: flex;
+	flex-direction: row;
+	flex-wrap: wrap;
+	justify-content: space-between;
+	gap: 4px;
+	margin-top: 2px;
+	margin-bottom: 2px;
+}
+
+
+body.is-phone .history-stats-modal .stats-time-tabs,
+body.is-phone .history-stats-modal .stats-metric-tabs {
+	display: flex;
+	gap: 2px;
+	width: auto;
+	flex-wrap: nowrap;
+}
+
+
+.is-phone .history-stats-modal .stats-tab-btn {
+	font-size: var(--wn-phone-font-control);
+	padding: 0.2em 0.45em;
+	height: 2em;
+	line-height: 1;
+	box-sizing: border-box;
+	border-radius: 4px;
+}
+
+
+.is-phone .stats-large-chart-container {
+	height: 11.25em;
+	min-height: 11.25em;
+	margin-top: 2px;
+	padding: 0.25em 0.125em 1.75em;
+	box-sizing: border-box;
+	display: flex;
+}
+
+
+body.is-phone .history-stats-modal .stats-large-label {
+	font-size: var(--wn-phone-font-caption);
+}
+
+
+body.is-phone .history-stats-modal .stats-large-value {
+	font-size: var(--wn-phone-font-meta);
+}
+
+
+body.is-phone .history-stats-modal .stats-time-tabs .stats-tab-btn,
+body.is-phone .history-stats-modal .stats-metric-tabs .stats-tab-btn {
+	font-size: var(--wn-phone-font-control);
+	padding: 0.2em 0.45em;
+	height: 2em;
+	line-height: 1;
+	min-width: 0;
+	box-sizing: border-box;
+	border-radius: 4px;
+}
