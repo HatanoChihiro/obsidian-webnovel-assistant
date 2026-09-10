@@ -194,7 +194,8 @@ function createMockEnvironment(initialOffset = 0) {
 				setProperty: vi.fn((prop: string, val: string) => domStyles.set(prop, val)),
 				removeProperty: vi.fn((prop: string) => domStyles.delete(prop)),
 				getPropertyValue: vi.fn((prop: string) => domStyles.get(prop) ?? '')
-			}
+			},
+			contains: vi.fn((_node: unknown) => false)
 		};
 		const coordsAtPos = coordsAtPosFn !== undefined ? (coordsAtPosFn ?? undefined) : undefined;
 		const lineBlockAt = lineBlockAtFn ?? ((pos: number) => {
@@ -1841,6 +1842,99 @@ describe('TypewriterExtension - Focus Loss & Offscreen Coordinate Guards', () =>
 		env.mockWindow.flushRaf();
 
 		expect(env.mockScroller.scrollTo).toHaveBeenCalledWith(expect.objectContaining({ behavior: 'auto' }));
+
+		pluginInstance.destroy();
+	});
+
+	it('releases viewport freeze and allows scroll when in-document search (Ctrl+F) navigates without focusin', () => {
+		const extension = createTypewriterExtension(env.mockPlugin);
+		const view = env.createMockView(100, true, null, null, true);
+		const pluginInstance = (extension as unknown as { create: (v: EditorView) => { update: (u: ViewUpdate) => void; destroy: () => void } }).create(view);
+
+		env.mockScroller.scrollTop = 500;
+
+		// Mock activeElement in .document-search-container
+		const mockSearchContainer = { classList: { contains: () => true } };
+		const mockSearchInput = {
+			closest: vi.fn((sel: string) => sel.includes('.document-search-container') ? mockSearchContainer : null)
+		};
+		(env.mockDocument as unknown as { activeElement?: unknown }).activeElement = mockSearchInput;
+
+		// Focus loss occurs to search bar
+		env.mockScroller.dispatchEvent('focusout', { relatedTarget: mockSearchInput });
+
+		// Enter pressed in search bar: Obsidian updates selection and scrolls to match at scrollTop = 1200
+		const navView = env.createMockView(300, false, null, null, false);
+		pluginInstance.update({
+			view: navView,
+			state: navView.state,
+			startState: view.state,
+			docChanged: false,
+			selectionSet: true
+		} as unknown as ViewUpdate);
+
+		env.mockScroller.scrollTop = 1200;
+		env.mockScroller.dispatchEvent('scroll');
+
+		// Viewport must remain at 1200 and NOT be reverted back to 500
+		expect(env.mockScroller.scrollTop).toBe(1200);
+
+		pluginInstance.destroy();
+	});
+
+	it('allows Advanced Search to navigate without focusing or freezing the editor viewport', () => {
+		const extension = createTypewriterExtension(env.mockPlugin);
+		const view = env.createMockView(100, true, null, null, true);
+		const pluginInstance = (extension as unknown as { create: (v: EditorView) => { update: (u: ViewUpdate) => void; decorations: { size: number }; destroy: () => void } }).create(view);
+
+		const mockSearchModal = { closest: vi.fn(() => null) };
+		(env.mockDocument.body.querySelector as ReturnType<typeof vi.fn>).mockImplementation((selector: string) =>
+			selector === '.wn-advanced-search-modal' ? mockSearchModal : null
+		);
+		(env.mockDocument as unknown as { activeElement?: unknown }).activeElement = mockSearchModal;
+
+		env.mockScroller.scrollTop = 500;
+		env.mockScroller.dispatchEvent('focusout', { relatedTarget: mockSearchModal });
+
+		const navView = env.createMockView(300, false, null, null, false);
+		pluginInstance.update({
+			view: navView,
+			state: navView.state,
+			startState: view.state,
+			docChanged: false,
+			selectionSet: true
+		} as unknown as ViewUpdate);
+
+		env.mockScroller.scrollTop = 1200;
+		env.mockScroller.dispatchEvent('scroll');
+
+		expect(env.mockScroller.scrollTop).toBe(1200);
+		expect(pluginInstance.decorations.size).toBe(0);
+
+		pluginInstance.destroy();
+	});
+
+	it('preserves viewport freeze when focus moves to a settings modal', () => {
+		const extension = createTypewriterExtension(env.mockPlugin);
+		const view = env.createMockView(100, true, null, null, true);
+		const pluginInstance = (extension as unknown as { create: (v: EditorView) => { update: (u: ViewUpdate) => void; destroy: () => void } }).create(view);
+
+		env.mockScroller.scrollTop = 500;
+
+		// Mock activeElement in settings modal (.modal-container)
+		const mockSettingsModal = {
+			closest: vi.fn((sel: string) => sel.includes('.modal-container') ? {} : null)
+		};
+		(env.mockDocument as unknown as { activeElement?: unknown }).activeElement = mockSettingsModal;
+
+		env.mockScroller.dispatchEvent('focusout', { relatedTarget: mockSettingsModal });
+
+		// CodeMirror remeasurement attempts to shift scrollTop
+		env.mockScroller.scrollTop = 320;
+		env.mockScroller.dispatchEvent('scroll');
+
+		// Must restore to frozen 500
+		expect(env.mockScroller.scrollTop).toBe(500);
 
 		pluginInstance.destroy();
 	});

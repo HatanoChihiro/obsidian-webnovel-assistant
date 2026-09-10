@@ -175,3 +175,50 @@
 		flex-basis: 100%;
 	}
 }
+
+/* ==========================================
+   Mobile (body.is-phone) Typography Overrides
+   ========================================== */
+body.is-phone .wn-writing-journey-malformed-text {
+	font-size: var(--wn-phone-font-body);
+}
+
+body.is-phone .wn-writing-journey-title {
+	font-size: var(--wn-phone-font-title);
+}
+
+body.is-phone .wn-writing-journey-detail {
+	font-size: var(--wn-phone-font-body);
+}
+
+body.is-phone .wn-writing-journey-time {
+	font-size: var(--wn-phone-font-meta);
+}
+
+body.is-phone .wn-writing-journey-type {
+	font-size: var(--wn-phone-font-meta);
+}
+
+body.is-phone .wn-writing-journey-deleted-tag {
+	font-size: var(--wn-phone-font-meta);
+}
+
+@media screen and (orientation: portrait) {
+	body.is-phone .wn-writing-journey-content {
+		flex-wrap: wrap;
+		overflow: visible;
+	}
+
+	body.is-phone .wn-writing-journey-title {
+		flex: 1 1 0;
+		min-width: 0;
+	}
+
+	body.is-phone .wn-writing-journey-detail {
+		flex: 0 0 100%;
+		white-space: normal;
+		overflow: visible;
+		text-overflow: clip;
+		overflow-wrap: anywhere;
+	}
+}

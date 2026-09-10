@@ -4,9 +4,9 @@ import { highlightReadingViewPhrase } from './preciseTextHighlight';
 import { Logger } from './Logger';
 
 /**
- * 延迟一帧/Tick 揭示并激活 WorkspaceLeaf，确保在 DOM 点击事件或异步渲染完成后正确获取 focus 焦点
+ * 延迟一帧/Tick 揭示并激活 WorkspaceLeaf，并按需将焦点交给目标叶子
  */
-export async function revealAndFocusLeaf(app: App, leaf: WorkspaceLeaf): Promise<void> {
+export async function revealAndFocusLeaf(app: App, leaf: WorkspaceLeaf, focus = true): Promise<void> {
 	const win = leaf.view?.containerEl?.ownerDocument?.defaultView;
 	if (win) {
 		await new Promise<void>((resolve) => {
@@ -15,7 +15,7 @@ export async function revealAndFocusLeaf(app: App, leaf: WorkspaceLeaf): Promise
 	}
 	try {
 		await app.workspace.revealLeaf(leaf);
-		app.workspace.setActiveLeaf(leaf, { focus: true });
+		app.workspace.setActiveLeaf(leaf, { focus });
 	} catch (e) {
 		console.warn('[WebNovel Assistant] 激活 Leaf 失败:', e);
 	}
@@ -308,6 +308,7 @@ export interface SmartLocateOptions {
 	fallbackLine?: number;
 	matchStartGlobal?: number;
 	exactMatchState?: MatchState;
+	focusEditor?: boolean;
 }
 
 /**
@@ -585,7 +586,8 @@ const leafHighlightTokens = new WeakMap<WorkspaceLeaf, number>();
 function applyEditorExactMatch(
 	targetLeaf: WorkspaceLeaf,
 	targetFile: TFile,
-	matchState: MatchState
+	matchState: MatchState,
+	focusEditor: boolean
 ): void {
 	const win = targetLeaf.view?.containerEl?.ownerDocument?.defaultView || (typeof window !== 'undefined' ? window : null);
 	if (!win) return;
@@ -598,7 +600,6 @@ function applyEditorExactMatch(
 	leafHighlightTokens.set(targetLeaf, token);
 
 	let attempts = 0;
-	let successes = 0;
 
 	const apply = () => {
 		if (leafHighlightTokens.get(targetLeaf) !== token) return;
@@ -631,12 +632,14 @@ function applyEditorExactMatch(
 				return;
 			}
 
+			if (focusEditor) {
+				view.editor.focus();
+			}
 			view.editor.setSelection(matchState.matchStartLoc, matchState.matchEndLoc);
 			view.editor.scrollIntoView(
 				{ from: matchState.matchStartLoc, to: matchState.matchEndLoc },
 				true
 			);
-			view.editor.focus();
 
 			targetLeaf.setEphemeralState({
 				cursor: {
@@ -649,7 +652,6 @@ function applyEditorExactMatch(
 				}
 			});
 
-			successes++;
 			Logger.info('[WebNovel-Debug] [leaf] applyEditorExactMatch 选区设置完成:', {
 				attempt: attempts,
 				lineCount,
@@ -658,11 +660,14 @@ function applyEditorExactMatch(
 				lineText: view.editor.getLine(matchState.matchStartLoc.line),
 				currentSelection: view.editor.getSelection()
 			});
+
+			leafTimers.delete(targetLeaf);
+			return;
 		} catch (e) {
 			console.warn('[WebNovel Assistant] 编辑器精准选区定位失败:', e);
 		}
 
-		if (successes < 3 && attempts < 30) {
+		if (attempts < 30) {
 			const timerId = win.setTimeout(apply, 40);
 			leafTimers.set(targetLeaf, { timerId, win });
 		} else {
@@ -808,12 +813,13 @@ export async function smartLocateAndHighlight(
 	// 5. 执行打开与焦点激活，并通过 Leaf 级轮询确保无论跨文件或同文件均精准定位
 	const targetView = targetLeaf.view as (MarkdownView & { getMode?: () => string }) | undefined;
 	const isSameFile = targetView?.file?.path === file.path;
+	const focusEditor = options?.focusEditor !== false;
 
 	if (!isSameFile) {
-		await targetLeaf.openFile(file, { active: true });
+		await targetLeaf.openFile(file, { active: focusEditor });
 	}
 
-	void revealAndFocusLeaf(app, targetLeaf);
+	void revealAndFocusLeaf(app, targetLeaf, focusEditor);
 
 	const isPreview = targetView?.getMode?.() === 'preview';
 	Logger.info('[WebNovel-Debug] [leaf] smartLocateAndHighlight 触发跳转定位:', {
@@ -828,12 +834,15 @@ export async function smartLocateAndHighlight(
 		if (isPreview) {
 			highlightReadingViewExact(targetLeaf, file, matchState);
 		} else {
-			applyEditorExactMatch(targetLeaf, file, matchState);
+			applyEditorExactMatch(targetLeaf, file, matchState, focusEditor);
 		}
 	} else if (options?.fallbackLine !== undefined && options.fallbackLine >= 0) {
 		if (isPreview) {
 			targetLeaf.setEphemeralState({ line: options.fallbackLine });
 		} else if (targetLeaf.view instanceof MarkdownView && targetLeaf.view.editor) {
+			if (focusEditor) {
+				targetLeaf.view.editor.focus();
+			}
 			targetLeaf.view.editor.setCursor({ line: options.fallbackLine, ch: 0 });
 			targetLeaf.view.editor.scrollIntoView(
 				{ from: { line: options.fallbackLine, ch: 0 }, to: { line: options.fallbackLine, ch: 0 } },

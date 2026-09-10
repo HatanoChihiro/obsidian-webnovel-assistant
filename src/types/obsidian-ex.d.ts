@@ -34,6 +34,7 @@ declare module 'obsidian' {
         on(name: 'webnovel-workbench-journey-updated', callback: (bookPath?: string) => void): EventRef;
         on(name: 'webnovel-lore-hover-rebuild', callback: () => void): EventRef;
         on(name: 'timeline-filter-changed', callback: (filter: string) => void): EventRef;
+        on(name: 'timeline-order-changed', callback: (isDescending: boolean) => void): EventRef;
         on(name: 'foreshadowing-filter-changed', callback: (filterTag: string) => void): EventRef;
         
         trigger(name: 'file-menu', menu: Menu, file: TAbstractFile, source?: string, leaf?: WorkspaceLeaf): void;
@@ -47,6 +48,7 @@ declare module 'obsidian' {
         trigger(name: 'webnovel-workbench-journey-updated', bookPath?: string): void;
         trigger(name: 'webnovel-lore-hover-rebuild'): void;
         trigger(name: 'timeline-filter-changed', filter: string): void;
+        trigger(name: 'timeline-order-changed', isDescending: boolean): void;
         trigger(name: 'foreshadowing-filter-changed', filterTag: string): void;
         trigger(name: string, ...data: unknown[]): void;
     }

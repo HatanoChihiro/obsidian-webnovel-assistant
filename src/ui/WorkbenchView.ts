@@ -232,6 +232,7 @@ export class WorkbenchView extends ItemView {
     private isDescending: boolean = false;
     private isTimelineUnscheduledDescending: boolean = false;
     private isJourneyDescending: boolean = true;
+    private isTimelineDescending: boolean = false;
 
     constructor(leaf: WorkspaceLeaf, plugin: WorkbenchViewPlugin) {
         super(leaf);
@@ -241,6 +242,12 @@ export class WorkbenchView extends ItemView {
         // 监听 timeline 筛选事件
         this.registerEvent(this.app.workspace.on('timeline-filter-changed', (filter: string) => {
             this.currentTimelineFilter = filter;
+            void this.reloadBoard();
+        }));
+
+        // 监听 timeline 排序变化事件
+        this.registerEvent(this.app.workspace.on('timeline-order-changed', (isDescending: boolean) => {
+            this.isTimelineDescending = isDescending;
             void this.reloadBoard();
         }));
 
@@ -1331,6 +1338,7 @@ export class WorkbenchView extends ItemView {
                     foreshadowingMap,
                     currentBookPath: this.currentBookPath || '',
                     currentTimelineFilter: this.currentTimelineFilter,
+                    isDescending: this.isTimelineDescending,
                     onSaveStateChange: (isSaving) => { this.isSavingMetadata = isSaving; },
                     reloadBoard: () => { void this.reloadBoard(); },
                     getChapterEvents: (file, fallbackMap) => this.getChapterEvents(file, fallbackMap),

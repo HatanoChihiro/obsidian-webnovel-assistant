@@ -1,5 +1,5 @@
 import type { WorkspaceLeaf, TFile } from 'obsidian';
-import { Notice } from 'obsidian';
+import { Notice, setIcon } from 'obsidian';
 import type { TimelineEntry, TimelineManager } from '../services/TimelineManager';
 import { CreativeView } from './CreativeView';
 import { rafThrottle } from '../utils/dom';
@@ -51,6 +51,7 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 	private manager!: TimelineViewManager;
 	private editingIndex: number = -1;
 	private filterType: string = 'all';
+	private isDescending: boolean = false;
 
 	constructor(leaf: WorkspaceLeaf, plugin: TimelineViewPlugin) {
 		super(leaf, plugin);
@@ -118,8 +119,32 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 		const titleRow = header.createDiv({ cls: 'wn-timeline-view-title-row' });
 		titleRow.createSpan({ text: t('view.timeline'), cls: 'wn-timeline-view-title' });
 
-		const addBtn = titleRow.createEl('button', { cls: 'wn-timeline-add-btn', title: t('modal.new-event') });
-		addBtn.setText('+');
+		const actionRow = titleRow.createDiv({ cls: 'wn-timeline-view-actions' });
+
+		const sortToggle = actionRow.createEl('button', { cls: 'clickable-icon wn-timeline-toolbar-button wn-timeline-sort-toggle' });
+		sortToggle.setAttr('role', 'button');
+		sortToggle.setAttr('tabindex', '0');
+		const sortLabel = this.isDescending ? t('corkboard.sort-descending') : t('corkboard.sort-ascending');
+		sortToggle.setAttr('aria-label', sortLabel);
+		sortToggle.setAttr('aria-pressed', this.isDescending ? 'true' : 'false');
+		setIcon(sortToggle, this.isDescending ? 'arrow-down-narrow-wide' : 'arrow-up-wide-narrow');
+
+		const toggleSort = () => {
+			this.isDescending = !this.isDescending;
+			this.app.workspace.trigger('timeline-order-changed', this.isDescending);
+			void this.refresh();
+		};
+		sortToggle.onclick = toggleSort;
+		sortToggle.addEventListener('keydown', (event) => {
+			if (event.key === 'Enter' || event.key === ' ') {
+				event.preventDefault();
+				toggleSort();
+			}
+		});
+
+		const addBtn = actionRow.createEl('button', { cls: 'clickable-icon wn-timeline-toolbar-button wn-timeline-add-btn' });
+		addBtn.setAttr('aria-label', t('modal.new-event'));
+		setIcon(addBtn, 'plus');
 		addBtn.onclick = () => {
 			const modal = new TimelineAddModal(
 				this.app,
@@ -166,7 +191,6 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 		const entries = this.manager.parseEntries(content);
 
 		// 类型筛选
-		// 类型筛选
 		const typeOptions = this.getTypeFilterOptions(entries);
 		if (typeOptions.length > 0) {
 			const typeRow = header.createDiv({ cls: 'wn-timeline-view-filter-row' });
@@ -199,21 +223,30 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 			return;
 		}
 
+		const displayEntries = this.isDescending ? [...filtered].reverse() : filtered;
+
 		const timeline = container.createDiv({ cls: 'wn-timeline-list' });
-		filtered.forEach(entry => {
+		if (this.isDescending) {
+			timeline.addClass('is-descending');
+		}
+		displayEntries.forEach((entry, displayIndex) => {
 			const originalIndex = entries.indexOf(entry);
+			const isLast = displayIndex === displayEntries.length - 1;
 			if (this.editingIndex === originalIndex) {
 				this.renderEditForm(timeline, entry, originalIndex, entries);
 			} else {
-				this.renderEntry(timeline, entry, originalIndex, entries);
+				this.renderEntry(timeline, entry, originalIndex, entries, isLast);
 			}
 		});
 	}
 
-	private renderEntry(container: HTMLElement, entry: TimelineEntry, index: number, allEntries: TimelineEntry[]) {
+	private renderEntry(container: HTMLElement, entry: TimelineEntry, index: number, allEntries: TimelineEntry[], isLast?: boolean) {
 		const item = container.createDiv({ cls: 'wn-timeline-item' });
+		if (this.isDescending) {
+			item.addClass('is-descending');
+		}
 		item.setAttribute('data-index', String(index));
-		item.setAttribute('draggable', 'true');
+		item.setAttribute('draggable', this.isDescending ? 'false' : 'true');
 
 		// 拖拽事件
 		const onDrag = rafThrottle((e: DragEvent) => {
@@ -245,6 +278,10 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 		});
 
 		item.addEventListener('dragstart', (e) => {
+			if (this.isDescending) {
+				e.preventDefault();
+				return;
+			}
 			e.dataTransfer?.setData('text/plain', String(index));
 			window.setTimeout(() => item.addClass('wn-timeline-dragging'), 0);
 		});
@@ -262,11 +299,13 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 
 		// 仅用于允许放下（防止原生拦截）
 		item.addEventListener('dragover', (e) => {
+			if (this.isDescending) return;
 			e.preventDefault();
 			if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
 		});
 
 		item.addEventListener('drop', (e) => {
+			if (this.isDescending) return;
 			e.preventDefault();
 			const data = e.dataTransfer?.getData('text/plain');
 			container.querySelectorAll('.wn-timeline-drag-over-top, .wn-timeline-drag-over-bottom').forEach(el => {
@@ -295,7 +334,8 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 		// 时间轴线
 		const line = item.createDiv({ cls: 'wn-timeline-line' });
 		line.createDiv({ cls: 'wn-timeline-dot' });
-		if (index < allEntries.length - 1) {
+		const shouldRenderConnector = isLast !== undefined ? !isLast : (index < allEntries.length - 1);
+		if (shouldRenderConnector) {
 			line.createDiv({ cls: 'wn-timeline-connector' });
 		}
 
@@ -303,7 +343,9 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 		const content = item.createDiv({ cls: 'wn-timeline-content' });
 
 		// 拖拽手柄
-		content.createDiv({ cls: 'wn-timeline-drag-handle', text: '⠿' });
+		if (!this.isDescending) {
+			content.createDiv({ cls: 'wn-timeline-drag-handle', text: '⠿' });
+		}
 
 		// 时间点（标题 - 点击直接跳转到时间线文件对应条目）
 		const timeEl = content.createDiv({ cls: 'wn-timeline-time', text: entry.time });

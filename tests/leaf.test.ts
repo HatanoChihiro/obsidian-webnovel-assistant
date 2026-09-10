@@ -888,6 +888,80 @@ describe('highlightReadingViewPhrase (Direct Target Block & Container Fallback W
 		expect(referenceLeaf.openFile).toHaveBeenCalledWith(targetFile, { active: true });
 		expect(mainLeaf.openFile).not.toHaveBeenCalled();
 	});
+
+	it('applyEditorExactMatch should execute once and optionally preserve external focus', async () => {
+		const targetFile = { path: 'Chapter1.md' } as unknown as TFile;
+		const callOrder: string[] = [];
+
+		const mockEditor = {
+			lineCount: vi.fn(() => 10),
+			getLine: vi.fn(() => 'This is target content on line 1'),
+			focus: vi.fn(() => { callOrder.push('focus'); }),
+			setSelection: vi.fn(() => { callOrder.push('setSelection'); }),
+			scrollIntoView: vi.fn(() => { callOrder.push('scrollIntoView'); }),
+			getCursor: vi.fn(() => ({ line: 0, ch: 0 })),
+			getValue: vi.fn(() => 'This is target content on line 1'),
+			getSelection: vi.fn(() => 'target content')
+		};
+
+		const mockLeafView = Object.assign(new MarkdownView(), {
+			file: targetFile,
+			getMode: () => 'source',
+			editor: mockEditor,
+			containerEl: {
+				ownerDocument: {
+					defaultView: {
+						setTimeout: (cb: () => void) => { cb(); return 1; },
+						clearTimeout: vi.fn()
+					}
+				}
+			}
+		});
+
+		const targetLeaf = {
+			view: mockLeafView,
+			openFile: vi.fn().mockResolvedValue(undefined),
+			setEphemeralState: vi.fn()
+		} as unknown as WorkspaceLeaf;
+
+		const mockApp = {
+			workspace: {
+				getLeavesOfType: () => [targetLeaf],
+				getMostRecentLeaf: () => targetLeaf,
+				setActiveLeaf: vi.fn(),
+				revealLeaf: vi.fn().mockResolvedValue(undefined)
+			},
+			vault: {
+				cachedRead: vi.fn().mockResolvedValue('This is target content on line 1')
+			}
+		} as unknown as App;
+
+		await smartLocateAndHighlight(mockApp, targetFile, ['target content'], {
+			preferredLeaf: targetLeaf
+		});
+
+		// Verify that focus is called BEFORE setSelection and scrollIntoView and executed exactly once without looping
+		expect(callOrder).toEqual(['focus', 'setSelection', 'scrollIntoView']);
+		expect(mockEditor.focus).toHaveBeenCalledTimes(1);
+		expect(mockEditor.setSelection).toHaveBeenCalledTimes(1);
+		expect(mockEditor.scrollIntoView).toHaveBeenCalledTimes(1);
+		expect(mockEditor.getCursor).not.toHaveBeenCalled();
+
+		callOrder.length = 0;
+		mockEditor.focus.mockClear();
+		mockEditor.setSelection.mockClear();
+		mockEditor.scrollIntoView.mockClear();
+
+		await smartLocateAndHighlight(mockApp, targetFile, ['target content'], {
+			preferredLeaf: targetLeaf,
+			focusEditor: false
+		});
+
+		expect(callOrder).toEqual(['setSelection', 'scrollIntoView']);
+		expect(mockEditor.focus).not.toHaveBeenCalled();
+		expect(mockEditor.setSelection).toHaveBeenCalledTimes(1);
+		expect(mockEditor.scrollIntoView).toHaveBeenCalledTimes(1);
+	});
 });
 
 describe('isLeafPinned (Tab Lock Detection)', () => {

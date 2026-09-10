@@ -71,6 +71,7 @@ export interface ChapterStatusChangedEvent extends BaseJourneyEvent {
 	chapterTitle: string;
 	fromStatus: string;
 	toStatus: string;
+	wordCount?: number;
 }
 
 export interface WorkStatusChangedEvent extends BaseJourneyEvent {
@@ -277,7 +278,14 @@ export function parseWritingJourneyLog(raw: unknown): WritingJourneyParseResult 
 				) {
 					return { status: 'malformed', log: null, error: `Event at index ${i} lacks status fields` };
 				}
-				validatedEvents.push({
+				const wordCount = eventObj.wordCount;
+				if (
+					wordCount !== undefined &&
+					(typeof wordCount !== 'number' || !Number.isFinite(wordCount) || wordCount < 0)
+				) {
+					return { status: 'malformed', log: null, error: `Event at index ${i} has invalid wordCount` };
+				}
+				const validatedStatusEvent: ChapterStatusChangedEvent = {
 					id,
 					timestamp,
 					type: 'chapter.status_changed',
@@ -285,7 +293,11 @@ export function parseWritingJourneyLog(raw: unknown): WritingJourneyParseResult 
 					chapterTitle,
 					fromStatus,
 					toStatus
-				});
+				};
+				if (wordCount !== undefined) {
+					validatedStatusEvent.wordCount = wordCount;
+				}
+				validatedEvents.push(validatedStatusEvent);
 				break;
 			}
 			case 'work.status_changed': {

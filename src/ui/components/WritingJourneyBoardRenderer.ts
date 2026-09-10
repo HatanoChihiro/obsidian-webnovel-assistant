@@ -167,16 +167,21 @@ export class WritingJourneyBoardRenderer {
 					chapterPath: event.path,
 					isExplicitlyDeleted: true
 				};
-			case 'chapter.status_changed':
+			case 'chapter.status_changed': {
+				const statusText = `${getCorkboardStatusText(event.fromStatus)} → ${getCorkboardStatusText(event.toStatus)}`;
+				const countText = typeof event.wordCount === 'number' && Number.isFinite(event.wordCount) && event.wordCount >= 0
+					? ` (${event.wordCount.toLocaleString()} ${t('common.word-char')})`
+					: '';
 				return {
 					typeText: t('writing-journey.type-chapter-status'),
 					typeClass: 'mod-chapter-status',
 					icon: 'tag',
 					titleText: event.chapterTitle,
-					detailText: `${getCorkboardStatusText(event.fromStatus)} → ${getCorkboardStatusText(event.toStatus)}`,
+					detailText: `${statusText}${countText}`,
 					chapterPath: event.path,
 					isExplicitlyDeleted: false
 				};
+			}
 			case 'work.status_changed':
 				return {
 					typeText: t('writing-journey.type-work-status'),

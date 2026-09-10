@@ -27,25 +27,53 @@
 }
 
 
-.wn-timeline-add-btn {
-	background: var(--interactive-accent);
-	color: var(--text-on-accent);
-	border: none;
-	border-radius: 50%;
-	width: 28px;
-	height: 28px;
-	font-size: 1.3em;
-	cursor: pointer;
+.wn-timeline-view-actions {
 	display: flex;
 	align-items: center;
-	justify-content: center;
-	line-height: 1;
-	padding: 0;
+	gap: 8px;
+	margin-top: 8px;
 }
 
 
-.wn-timeline-add-btn:hover {
-	filter: brightness(1.1);
+.wn-timeline-view-actions .wn-timeline-toolbar-button.clickable-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	min-width: 24px;
+	min-height: 24px;
+	padding: 0;
+	border: 0;
+	border-radius: var(--radius-s);
+	color: var(--icon-color, var(--text-muted));
+	background-color: transparent;
+	box-shadow: none;
+}
+
+
+.wn-timeline-view-actions .wn-timeline-toolbar-button.clickable-icon:hover,
+.wn-timeline-view-actions .wn-timeline-toolbar-button.clickable-icon:active,
+.wn-timeline-view-actions .wn-timeline-toolbar-button.clickable-icon:focus-visible {
+	color: var(--icon-color-hover, var(--interactive-accent));
+	background-color: transparent;
+	box-shadow: none;
+}
+
+
+.wn-timeline-view-actions .wn-timeline-toolbar-button.clickable-icon:focus-visible {
+	outline: 1px solid var(--background-modifier-border-focus);
+	outline-offset: 1px;
+}
+
+
+.wn-timeline-view-actions .wn-timeline-toolbar-button.clickable-icon .svg-icon {
+	width: 15px;
+	height: 15px;
+	color: inherit;
+	opacity: 1;
+	stroke: currentColor;
+	stroke-width: 1.75;
 }
 
 
@@ -85,6 +113,16 @@
 
 .wn-timeline-item:active {
 	cursor: grabbing;
+}
+
+
+.wn-timeline-item.is-descending {
+	cursor: default;
+}
+
+
+.wn-timeline-item.is-descending:active {
+	cursor: default;
 }
 
 

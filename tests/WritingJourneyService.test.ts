@@ -3,6 +3,7 @@ import {
 	WRITING_JOURNEY_SCHEMA_VERSION,
 	WRITING_JOURNEY_YAML_KEY,
 	parseWritingJourneyLog,
+	type ChapterStatusChangedEvent,
 	type WritingJourneyEvent,
 	type WritingJourneyLog
 } from '../src/types/writingJourney';
@@ -51,6 +52,7 @@ vi.mock('../src/i18n', () => ({
 		if (vars?.count) return `${vars.count} events`;
 		if (key === 'writing-journey.type-chapter-created') return '创建章节';
 		if (key === 'writing-journey.type-chapter-moved') return '移动章节';
+		if (key === 'common.word-char') return '字';
 		return key;
 	}
 }));
@@ -181,6 +183,132 @@ describe('Writing Journey Schema Validation (parseWritingJourneyLog)', () => {
 		expect(parseWritingJourneyLog({
 			version: 1,
 			events: [{ id: '1', type: 'work.status_changed', timestamp: '2026-01-01T00:00:00Z', toStatus: 'completed' }]
+		}).status).toBe('malformed');
+	});
+
+	it('should support optional valid wordCount on chapter.status_changed while remaining backward compatible', () => {
+		// Valid with positive wordCount
+		const resWithCount = parseWritingJourneyLog({
+			version: 1,
+			events: [{
+				id: '1',
+				type: 'chapter.status_changed',
+				timestamp: '2026-01-01T00:00:00.000Z',
+				path: 'NovelA/c1.md',
+				chapterTitle: 'c1',
+				fromStatus: 'draft',
+				toStatus: 'completed',
+				wordCount: 3500
+			}]
+		});
+		expect(resWithCount.status).toBe('valid');
+		const eventWithCount = resWithCount.log?.events[0];
+		expect(eventWithCount?.type).toBe('chapter.status_changed');
+		if (eventWithCount?.type === 'chapter.status_changed') {
+			expect(eventWithCount.wordCount).toBe(3500);
+		}
+
+		// Valid with zero wordCount
+		const resZero = parseWritingJourneyLog({
+			version: 1,
+			events: [{
+				id: '1',
+				type: 'chapter.status_changed',
+				timestamp: '2026-01-01T00:00:00.000Z',
+				path: 'NovelA/c1.md',
+				chapterTitle: 'c1',
+				fromStatus: 'draft',
+				toStatus: 'completed',
+				wordCount: 0
+			}]
+		});
+		expect(resZero.status).toBe('valid');
+		const eventZero = resZero.log?.events[0];
+		expect(eventZero?.type).toBe('chapter.status_changed');
+		if (eventZero?.type === 'chapter.status_changed') {
+			expect(eventZero.wordCount).toBe(0);
+		}
+
+		// Backward compatible: without wordCount field
+		const resWithout = parseWritingJourneyLog({
+			version: 1,
+			events: [{
+				id: '1',
+				type: 'chapter.status_changed',
+				timestamp: '2026-01-01T00:00:00.000Z',
+				path: 'NovelA/c1.md',
+				chapterTitle: 'c1',
+				fromStatus: 'draft',
+				toStatus: 'completed'
+			}]
+		});
+		expect(resWithout.status).toBe('valid');
+		const eventWithout = resWithout.log?.events[0];
+		expect(eventWithout?.type).toBe('chapter.status_changed');
+		if (eventWithout?.type === 'chapter.status_changed') {
+			expect(eventWithout.wordCount).toBeUndefined();
+		}
+	});
+
+	it('should reject chapter.status_changed with invalid wordCount', () => {
+		// Negative wordCount
+		expect(parseWritingJourneyLog({
+			version: 1,
+			events: [{
+				id: '1',
+				type: 'chapter.status_changed',
+				timestamp: '2026-01-01T00:00:00.000Z',
+				path: 'NovelA/c1.md',
+				chapterTitle: 'c1',
+				fromStatus: 'draft',
+				toStatus: 'completed',
+				wordCount: -1
+			}]
+		}).status).toBe('malformed');
+
+		// NaN wordCount
+		expect(parseWritingJourneyLog({
+			version: 1,
+			events: [{
+				id: '1',
+				type: 'chapter.status_changed',
+				timestamp: '2026-01-01T00:00:00.000Z',
+				path: 'NovelA/c1.md',
+				chapterTitle: 'c1',
+				fromStatus: 'draft',
+				toStatus: 'completed',
+				wordCount: NaN
+			}]
+		}).status).toBe('malformed');
+
+		// Infinity wordCount
+		expect(parseWritingJourneyLog({
+			version: 1,
+			events: [{
+				id: '1',
+				type: 'chapter.status_changed',
+				timestamp: '2026-01-01T00:00:00.000Z',
+				path: 'NovelA/c1.md',
+				chapterTitle: 'c1',
+				fromStatus: 'draft',
+				toStatus: 'completed',
+				wordCount: Infinity
+			}]
+		}).status).toBe('malformed');
+
+		// String wordCount
+		expect(parseWritingJourneyLog({
+			version: 1,
+			events: [{
+				id: '1',
+				type: 'chapter.status_changed',
+				timestamp: '2026-01-01T00:00:00.000Z',
+				path: 'NovelA/c1.md',
+				chapterTitle: 'c1',
+				fromStatus: 'draft',
+				toStatus: 'completed',
+				wordCount: '3500'
+			}]
 		}).status).toBe('malformed');
 	});
 });
@@ -393,6 +521,56 @@ describe('WritingJourneyService', () => {
 			expect(mockApp.fileManager.processFrontMatter).toHaveBeenCalled();
 			const savedLog = frontmatterState[WRITING_JOURNEY_YAML_KEY] as WritingJourneyLog;
 			expect(savedLog.events.some(e => e.type === 'work.status_changed')).toBe(true);
+		});
+	});
+
+	describe('Chapter status word count snapshot', () => {
+		it('should automatically capture word count snapshot from chapter file when status changes', async () => {
+			const chapterFile = new MockTFile('第1章.md', 'NovelA/第1章.md');
+			mockApp.vault.getAbstractFileByPath.mockImplementation((p: string) => {
+				if (p === 'NovelA/作品信息.md') return infoFile;
+				if (p === 'NovelA/第1章.md') return chapterFile;
+				return null;
+			});
+			mockApp.vault.read.mockImplementation(async (file: unknown) => {
+				if (file === chapterFile) return '# 第1章\n\n正文内容一千字。';
+				return `---\n${JSON.stringify(frontmatterState)}\n---`;
+			});
+			mockPlugin.calculateAccurateWords = vi.fn().mockReturnValue(2450);
+
+			await service.recordChapterStatusChanged('NovelA', 'NovelA/第1章.md', '第1章', 'draft', 'completed');
+
+			const savedLog = frontmatterState[WRITING_JOURNEY_YAML_KEY] as WritingJourneyLog;
+			const statusEvent = savedLog.events.find(
+				(e): e is ChapterStatusChangedEvent => e.type === 'chapter.status_changed'
+			);
+			expect(statusEvent).toBeDefined();
+			expect(statusEvent?.wordCount).toBe(2450);
+		});
+
+		it('should succeed and record status event without wordCount if snapshot read fails', async () => {
+			const chapterFile = new MockTFile('第1章.md', 'NovelA/第1章.md');
+			mockApp.vault.getAbstractFileByPath.mockImplementation((p: string) => {
+				if (p === 'NovelA/作品信息.md') return infoFile;
+				if (p === 'NovelA/第1章.md') return chapterFile;
+				return null;
+			});
+			mockApp.vault.read.mockImplementation(async (file: unknown) => {
+				if (file === chapterFile) throw new Error('File read error during snapshot');
+				return `---\n${JSON.stringify(frontmatterState)}\n---`;
+			});
+			mockPlugin.calculateAccurateWords = vi.fn().mockReturnValue(2450);
+
+			await service.recordChapterStatusChanged('NovelA', 'NovelA/第1章.md', '第1章', 'draft', 'completed');
+
+			const savedLog = frontmatterState[WRITING_JOURNEY_YAML_KEY] as WritingJourneyLog;
+			const statusEvent = savedLog.events.find(
+				(e): e is ChapterStatusChangedEvent => e.type === 'chapter.status_changed'
+			);
+			expect(statusEvent).toBeDefined();
+			expect(statusEvent?.fromStatus).toBe('draft');
+			expect(statusEvent?.toStatus).toBe('completed');
+			expect(statusEvent?.wordCount).toBeUndefined();
 		});
 	});
 
@@ -836,6 +1014,42 @@ describe('WritingJourneyBoardRenderer Search Matching', () => {
 		expect(WritingJourneyBoardRenderer.matchesQuery(statusEvent, '启程 completed')).toBe(true);
 		// One token doesn't match
 		expect(WritingJourneyBoardRenderer.matchesQuery(statusEvent, '启程 absent')).toBe(false);
+	});
+
+	it('should format chapter status event detail with word count and match in search', () => {
+		const statusWithCount: WritingJourneyEvent = {
+			id: 'ev-count',
+			type: 'chapter.status_changed',
+			timestamp: '2026-01-01T00:00:00.000Z',
+			path: 'NovelA/第2章.md',
+			chapterTitle: '第2章 启程',
+			fromStatus: 'draft',
+			toStatus: 'completed',
+			wordCount: 3500
+		};
+
+		const displayInfo = WritingJourneyBoardRenderer.getEventDisplayInfo(statusWithCount);
+		expect(displayInfo.detailText).toContain('3,500');
+		expect(displayInfo.detailText).toContain('字');
+		expect(displayInfo.detailText).toBe('Status:draft → Status:completed (3,500 字)');
+
+		// Search matches formatted word count
+		expect(WritingJourneyBoardRenderer.matchesQuery(statusWithCount, '3,500')).toBe(true);
+		expect(WritingJourneyBoardRenderer.matchesQuery(statusWithCount, '启程 3,500')).toBe(true);
+		expect(WritingJourneyBoardRenderer.matchesQuery(statusWithCount, '99999')).toBe(false);
+
+		// Status event without word count keeps original format without parentheses
+		const statusWithoutCount: WritingJourneyEvent = {
+			id: 'ev-nocount',
+			type: 'chapter.status_changed',
+			timestamp: '2026-01-01T00:00:00.000Z',
+			path: 'NovelA/第2章.md',
+			chapterTitle: '第2章 启程',
+			fromStatus: 'draft',
+			toStatus: 'completed'
+		};
+		const displayNoCount = WritingJourneyBoardRenderer.getEventDisplayInfo(statusWithoutCount);
+		expect(displayNoCount.detailText).toBe('Status:draft → Status:completed');
 	});
 
 	it('should match localized move events by change type and chapter title', () => {

@@ -48,6 +48,7 @@ describe('AdvancedSearchModal source leaf routing', () => {
 				preferredLeaf: sourceLeaf,
 				fallbackLine: 7,
 				matchStartGlobal: 108,
+				focusEditor: false,
 				exactMatchState: {
 					targetLine: 7,
 					matchStartGlobal: 108,
@@ -104,6 +105,7 @@ describe('AdvancedSearchModal source leaf routing', () => {
 				preferredLeaf: fallbackLeaf,
 				fallbackLine: 2,
 				matchStartGlobal: 25,
+				focusEditor: false,
 				exactMatchState: {
 					targetLine: 2,
 					matchStartGlobal: 25,

@@ -80,6 +80,7 @@ export interface TimelineBoardOptions {
 	onSaveStateChange: (isSaving: boolean) => void;
 	reloadBoard: () => void;
 	getChapterEvents: (file: TFile, fallbackMap: Map<string, string[]>) => string[];
+	isDescending?: boolean;
 	isUnscheduledDescending?: boolean;
 	onToggleUnscheduledSort?: () => void;
 }
@@ -97,6 +98,7 @@ export class TimelineBoardRenderer {
 			onSaveStateChange,
 			reloadBoard,
 			getChapterEvents,
+			isDescending = false,
 			isUnscheduledDescending,
 			onToggleUnscheduledSort
 		} = options;
@@ -114,6 +116,8 @@ export class TimelineBoardRenderer {
 			entries = entries.filter(e => e.type === currentTimelineFilter);
 		}
 
+		const displayEntries = (entries && isDescending) ? [...entries].reverse() : (entries ? [...entries] : []);
+
 		const timelineFile = timelineManager.getTimelineFile(bookFolder);
 		const chapterIndex = ChapterSorter.createReferenceIndex(
 			app,
@@ -129,9 +133,8 @@ export class TimelineBoardRenderer {
 		// Find chapters mapped to each event -> itemIndex. Keys are file.path.
 		const chapterToEventMap = new Map<string, { time: string, itemIndex: number }[]>();
 
-		if (entries) {
-			for (const entry of entries) {
-				if (entry.items && entry.items.length > 0) {
+		for (const entry of displayEntries) {
+			if (entry.items && entry.items.length > 0) {
 					for (let i = 0; i < entry.items.length; i++) {
 						const item = entry.items[i];
 						const chaps = item.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean);
@@ -161,7 +164,6 @@ export class TimelineBoardRenderer {
 						}
 					}
 				}
-			}
 		}
 
 		const tLinkResolve = performance.now();
@@ -308,6 +310,18 @@ export class TimelineBoardRenderer {
 				eventsFromMD = fmEvents.map(time => ({ time, itemIndex: 0 }));
 			}
 
+			if (eventsFromMD.length > 1 && displayEntries.length > 0) {
+				eventsFromMD.sort((a, b) => {
+					const idxA = displayEntries.findIndex(e => e.time === a.time);
+					const idxB = displayEntries.findIndex(e => e.time === b.time);
+					if (idxA !== -1 && idxB !== -1) {
+						if (idxA !== idxB) return idxA - idxB;
+						return (a.itemIndex || 0) - (b.itemIndex || 0);
+					}
+					return 0;
+				});
+			}
+
 			if (eventsFromMD.length === 0) {
 				unscheduled.push(file);
 			} else if (eventsFromMD.length === 2) {
@@ -326,20 +340,25 @@ export class TimelineBoardRenderer {
 						continue;
 					}
 				} else {
-					const idx1 = entries?.findIndex(e => e.time === e1.time) ?? -1;
-					const idx2 = entries?.findIndex(e => e.time === e2.time) ?? -1;
+					const idx1 = displayEntries.findIndex(e => e.time === e1.time);
+					const idx2 = displayEntries.findIndex(e => e.time === e2.time);
 					if (idx1 !== -1 && idx2 !== -1 && Math.abs(idx1 - idx2) === 1) {
 						const firstIdx = Math.min(idx1, idx2);
 						const secondIdx = Math.max(idx1, idx2);
-						const firstEntry = entries![firstIdx];
+						const firstEntry = displayEntries[firstIdx];
+						const secondEntry = displayEntries[secondIdx];
 						const firstItemCount = firstEntry.items && firstEntry.items.length > 0 ? firstEntry.items.length : 1;
+						const secondItemCount = secondEntry.items && secondEntry.items.length > 0 ? secondEntry.items.length : 1;
 						
 						const firstEvt = firstIdx === idx1 ? e1 : e2;
 						const secondEvt = firstIdx === idx1 ? e2 : e1;
 						
-						if ((firstEvt.itemIndex || 0) === firstItemCount - 1 && (secondEvt.itemIndex || 0) === 0) {
+						if (
+							((firstEvt.itemIndex || 0) === firstItemCount - 1 && (secondEvt.itemIndex || 0) === 0) ||
+							((secondEvt.itemIndex || 0) === secondItemCount - 1 && (firstEvt.itemIndex || 0) === 0)
+						) {
 							isAdjacent = true;
-							const key = `GAP|${firstEntry.time}|${entries![secondIdx].time}`;
+							const key = `GAP|${firstEntry.time}|${secondEntry.time}`;
 							if (!fileGroups.has(key)) fileGroups.set(key, []);
 							fileGroups.get(key)!.push(file);
 							continue;
@@ -361,9 +380,9 @@ export class TimelineBoardRenderer {
 			}
 		}
 
-		if (entries && entries.length > 0) {
-			for (let i = 0; i < entries.length; i++) {
-				const entry = entries[i];
+		if (displayEntries.length > 0) {
+			for (let i = 0; i < displayEntries.length; i++) {
+				const entry = displayEntries[i];
 
 				// 1. The main node container
 				const nodeDiv = mainCol.createDiv('wn-timeline-node');
@@ -618,8 +637,8 @@ export class TimelineBoardRenderer {
 				};
 
 				// 3. Render Gap to next event if exists
-				if (i < entries.length - 1) {
-					const nextEntry = entries[i + 1];
+				if (i < displayEntries.length - 1) {
+					const nextEntry = displayEntries[i + 1];
 					const gapKey = `GAP|${entry.time}|${nextEntry.time}`;
 
 					const gapDiv = mainCol.createDiv('wn-timeline-gap');
@@ -994,6 +1013,6 @@ export class TimelineBoardRenderer {
 			groupVolumeCards: container.ownerDocument.body.classList.contains('is-phone')
 		});
 
-		Logger.info(`[Perf] TimelineBoardRenderer.render completed in ${(performance.now() - tStart).toFixed(2)}ms (${entries?.length || 0} entries, ${files.length} total files, ${unscheduled.length} unscheduled)`);
+		Logger.info(`[Perf] TimelineBoardRenderer.render completed in ${(performance.now() - tStart).toFixed(2)}ms (${displayEntries.length} entries, ${files.length} total files, ${unscheduled.length} unscheduled)`);
 	}
 }

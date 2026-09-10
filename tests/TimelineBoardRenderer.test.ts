@@ -233,13 +233,21 @@ class MockElement {
 	}
 }
 
+let lastOpenedModal: { contentEl: MockElement; open: () => void; close: () => void } | null = null;
+
 vi.mock('obsidian', () => ({
 	setIcon: vi.fn(),
 	Notice: vi.fn(),
 	Modal: class {
+		contentEl = new MockElement();
 		constructor(_app: unknown) {}
-		open() {}
-		close() {}
+		open() {
+			lastOpenedModal = this as unknown as { contentEl: MockElement; open: () => void; close: () => void };
+			(this as unknown as { onOpen?: () => void }).onOpen?.();
+		}
+		close() {
+			(this as unknown as { onClose?: () => void }).onClose?.();
+		}
 	},
 	TFile: MockFile,
 	TFolder: class {},
@@ -797,5 +805,182 @@ describe('TimelineBoardRenderer', () => {
 			'NovelA',
 			expect.objectContaining({ eligibleChapters: [v1c1, v1c2, v2c1] })
 		);
+	});
+
+	describe('descending viewing order and index invariants', () => {
+		it('should render timeline nodes in descending order without mutating loaded entries array', async () => {
+			const rawEntries = [
+				{ time: '第一年', description: '事件1', items: [{ description: '事件1', chapter: '' }] },
+				{ time: '第二年', description: '事件2', items: [{ description: '事件2', chapter: '' }] }
+			];
+
+			const options: TimelineBoardOptions = {
+				app: mockApp,
+				plugin: {
+					...mockPlugin,
+					timelineManager: {
+						...mockPlugin.timelineManager,
+						loadEntries: vi.fn().mockResolvedValue(rawEntries)
+					}
+				},
+				container: container as unknown as HTMLElement,
+				files: [],
+				foreshadowingMap: new Map(),
+				currentBookPath: 'NovelA',
+				currentTimelineFilter: 'all',
+				isDescending: true,
+				onSaveStateChange: vi.fn(),
+				reloadBoard: vi.fn(),
+				getChapterEvents: vi.fn().mockReturnValue([])
+			};
+
+			await TimelineBoardRenderer.render(options);
+
+			const nodeTitles = container.querySelectorAll('.wn-timeline-node-time-text');
+			expect(nodeTitles).toHaveLength(2);
+			expect(nodeTitles[0].textContent).toBe('第二年');
+			expect(nodeTitles[1].textContent).toBe('第一年');
+
+			// Base entries array must not be mutated
+			expect(rawEntries[0].time).toBe('第一年');
+			expect(rawEntries[1].time).toBe('第二年');
+		});
+
+		it('should resolve original index from unmodified allEntries when editing or deleting in descending order', async () => {
+			const entry0 = { time: '第一年', description: '描述1', items: [{ description: '描述1', chapter: '' }] };
+			const entry1 = { time: '第二年', description: '描述2', items: [{ description: '描述2', chapter: '' }] };
+			const rawEntries = [entry0, entry1];
+
+			const deleteEntrySpy = vi.fn().mockResolvedValue('');
+			const updateEntrySpy = vi.fn().mockResolvedValue('');
+
+			const options: TimelineBoardOptions = {
+				app: mockApp,
+				plugin: {
+					...mockPlugin,
+					timelineManager: {
+						...mockPlugin.timelineManager,
+						loadEntries: vi.fn().mockResolvedValue(rawEntries),
+						deleteEntry: deleteEntrySpy,
+						updateEntry: updateEntrySpy
+					}
+				},
+				container: container as unknown as HTMLElement,
+				files: [],
+				foreshadowingMap: new Map(),
+				currentBookPath: 'NovelA',
+				currentTimelineFilter: 'all',
+				isDescending: true,
+				onSaveStateChange: vi.fn(),
+				reloadBoard: vi.fn(),
+				getChapterEvents: vi.fn().mockReturnValue([])
+			};
+
+			await TimelineBoardRenderer.render(options);
+
+			// First displayed node is entry1 ("第二年", original index 1)
+			const deleteBtns = container.querySelectorAll('.wn-timeline-item-delete-btn');
+			expect(deleteBtns).toHaveLength(2);
+
+			// Click delete on first displayed node (original index 1)
+			deleteBtns[0].onclick?.({ stopPropagation: vi.fn() });
+			expect(lastOpenedModal).not.toBeNull();
+			const confirmBtn = lastOpenedModal?.contentEl.querySelector('.mod-warning') as unknown as MockElement;
+			expect(confirmBtn).not.toBeNull();
+			confirmBtn.onclick?.();
+
+			// deleteEntry must be called with originalIndex = 1
+			expect(deleteEntrySpy).toHaveBeenCalledWith(1, 'NovelA');
+
+			// Now test inline edit on second displayed node (entry0 "第一年", original index 0)
+			const descEls = container.querySelectorAll('.wn-timeline-item-desc');
+			expect(descEls).toHaveLength(2);
+			const descEl0 = descEls[1] as unknown as MockElement; // second displayed node = entry0
+			descEl0.onclick?.({ stopPropagation: vi.fn() });
+			descEl0.textContent = '修改后的第一年描述';
+			descEl0.onblur?.();
+
+			// updateEntry must be called with originalIndex = 0
+			expect(updateEntrySpy).toHaveBeenCalledWith(0, expect.objectContaining({ time: '第一年' }), 'NovelA');
+		});
+
+		it('should render adjacent chapter in descending gap between nodes', async () => {
+			const chap1 = createMockFile('第1章.md', 'NovelA/第1章.md');
+
+			const rawEntries = [
+				{ time: '第一年', description: '描述1', items: [{ description: '描述1', chapter: '第1章' }] },
+				{ time: '第二年', description: '描述2', items: [{ description: '描述2', chapter: '第1章' }] }
+			];
+
+			const options: TimelineBoardOptions = {
+				app: mockApp,
+				plugin: {
+					...mockPlugin,
+					timelineManager: {
+						...mockPlugin.timelineManager,
+						loadEntries: vi.fn().mockResolvedValue(rawEntries)
+					}
+				},
+				container: container as unknown as HTMLElement,
+				files: [chap1],
+				foreshadowingMap: new Map(),
+				currentBookPath: 'NovelA',
+				currentTimelineFilter: 'all',
+				isDescending: true,
+				onSaveStateChange: vi.fn(),
+				reloadBoard: vi.fn(),
+				getChapterEvents: vi.fn().mockReturnValue([])
+			};
+
+			(CorkboardGridRenderer.render as ReturnType<typeof vi.fn>).mockClear();
+			await TimelineBoardRenderer.render(options);
+
+			// In descending order, gap is between 第二年 and 第一年
+			expect(CorkboardGridRenderer.render).toHaveBeenCalledWith(
+				expect.objectContaining({
+					files: [chap1],
+					currentBookPath: 'NovelA'
+				})
+			);
+		});
+
+		it('should associate multi-event non-adjacent chapters with the first displayed node in descending view', async () => {
+			const chap1 = createMockFile('第1章.md', 'NovelA/第1章.md');
+
+			const rawEntries = [
+				{ time: '第一年', description: '描述1', items: [{ description: '描述1', chapter: '第1章' }] },
+				{ time: '第二年', description: '描述2', items: [{ description: '描述2', chapter: '' }] },
+				{ time: '第三年', description: '描述3', items: [{ description: '描述3', chapter: '第1章' }] }
+			];
+
+			const options: TimelineBoardOptions = {
+				app: mockApp,
+				plugin: {
+					...mockPlugin,
+					timelineManager: {
+						...mockPlugin.timelineManager,
+						loadEntries: vi.fn().mockResolvedValue(rawEntries)
+					}
+				},
+				container: container as unknown as HTMLElement,
+				files: [chap1],
+				foreshadowingMap: new Map(),
+				currentBookPath: 'NovelA',
+				currentTimelineFilter: 'all',
+				isDescending: true,
+				onSaveStateChange: vi.fn(),
+				reloadBoard: vi.fn(),
+				getChapterEvents: vi.fn().mockReturnValue([])
+			};
+
+			(CorkboardGridRenderer.render as ReturnType<typeof vi.fn>).mockClear();
+			await TimelineBoardRenderer.render(options);
+
+			// In descending view, 第三年 is the first displayed node among [第三年, 第二年, 第一年]
+			// Non-adjacent chapter is rendered in first displayed node
+			const calls = (CorkboardGridRenderer.render as ReturnType<typeof vi.fn>).mock.calls;
+			const cardCall = calls.find(c => (c[0].files as TFile[]).includes(chap1));
+			expect(cardCall).toBeDefined();
+		});
 	});
 });

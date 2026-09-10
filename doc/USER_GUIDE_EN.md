@@ -20,10 +20,12 @@ Welcome to WebNovel Assistant! An Obsidian plugin designed specifically for web 
     - [File Explorer Word Count](#file-explorer-word-count)
   - [Time Tracking](#time-tracking)
   - [Writing Workbench](#writing-workbench)
+    - [Writing Journey](#writing-journey)
   - [Immersive Writing Mode](#immersive-writing-mode)
 - [Advanced Features](#advanced-features)
   - [Creative Homepage](#creative-homepage)
   - [Smart Chapter Creation](#smart-chapter-creation)
+    - [Split Chapter at Cursor](#split-chapter-at-cursor)
   - [Chapter Templates](#chapter-templates)
   - [Merge Chapters](#merge-chapters)
   - [Floating Sticky Notes](#floating-sticky-notes)
@@ -44,8 +46,9 @@ Welcome to WebNovel Assistant! An Obsidian plugin designed specifically for web 
   - [OBS Overlay](#obs-overlay)
 - [Other Settings](#other-settings)
   - [Language Settings](#language-settings)
-  - [Typography Settings](#typography-settings)
   - [Eye Comfort Mode](#eye-comfort-mode)
+  - [Typewriter Scrolling in Regular Editing](#typewriter-scrolling-in-regular-editing)
+  - [Typography Settings](#typography-settings)
   - [Debug Mode](#debug-mode)
   - [Keyboard Shortcuts](#keyboard-shortcuts)
 - [FAQ](#faq)
@@ -450,6 +453,7 @@ If word counts are displayed incorrectly:
 - **Slack Time**: Tracks idle time
 - **Auto Detection**: Automatically switches to slack after 60 seconds of inactivity
 - **History**: Saves daily statistics
+- **Activity Scope**: Typing in outlines, lore, reference documents, or chapters excluded from word count also resumes focus activity immediately; word totals, net gains, and writing history remain limited to eligible chapters.
 
 #### How to Use
 
@@ -476,7 +480,7 @@ If word counts are displayed incorrectly:
 ### Writing Workbench
 
 #### Overview
-The Writing Workbench is a comprehensive writing management center upgraded from the original "Chapter Overview", integrating 6 main tab panels:
+The Writing Workbench is a comprehensive writing management center upgraded from the original "Chapter Overview", integrating 6 main tab panels. Use **Settings → General → Workbench View Visibility** to choose which panels appear; changes take effect immediately:
 
 Use the links after each panel title to jump to its detailed feature documentation.
 
@@ -487,7 +491,7 @@ Use the links after each panel title to jump to its detailed feature documentati
    - **Supports Multi-Template Selection**: Configure multiple template files in settings to select on demand when creating chapters.
 2. **Timeline Panel** (see [Timeline Management](#timeline-management)):
    - Displays novel events in a vertical timeline flow; supports dragging chapters to timeline nodes and dragging event cards to reorder.
-   - Features a bottom floating window for unlinked chapters and highlighted association lines.
+   - Features a bottom floating window for unassociated chapters and highlighted association lines. The list supports ascending/descending order while preserving the same volume order used by All Chapters and Chapter Overview.
 3. **Lore Panel** (see [Lore Quick Reference](#lore-quick-reference), [Lore Graph](#lore-graph), and [Lore Overview](#lore-overview)):
    - Supports switching between **Table View**, **Card View**, and **Full Lore Graph View**.
    - Automatically tracks appearance counts and chapters; supports double-clicking graph nodes to jump directly to the Markdown document.
@@ -499,11 +503,13 @@ Use the links after each panel title to jump to its detailed feature documentati
 5. **Task Board Panel** (see [Time-Limited Task Tracking](#time-limited-task-tracking)):
    - Consolidates timed writing tasks into a grid card view directly inside the workbench.
    - Provides a voluntary **Abandon Task** button with a confirmation modal for incomplete tasks, setting status to `abandoned` while preserving word count records.
-6. **Notes Management Panel** (see [Floating Sticky Notes](#floating-sticky-notes)):
-   - Centralizes management for all floating and immersive sticky notes. Create, edit, switch themes, or delete notes with real-time bi-directional sync.
+6. **Writing Journey Panel** (see [Writing Journey](#writing-journey)):
+   - Records important work and chapter changes over time, with filtering, ordering, and chapter navigation.
 
 - **Split-Pane Navigation**: Opening chapters, lore, timeline entries, or foreshadowing entries from the Workbench prefers an available unpinned editor split and avoids pinned tabs for side-by-side reference.
 - **Full-Text Filtering**: All Chapters filters chapter titles, synopses, and body text; Lore filters titles, aliases, and body text; Foreshadowing filters titles, source quotes, tags, and resolution notes. Use the clear button, press Esc, or run **Workbench: Clear Search Filter** to restore the full list.
+- **Work Switcher Ordering**: The work switcher beside the title follows the same work order shown in File Explorer.
+- **Sticky Note Entry Point**: The Workbench is scoped to one work and no longer contains vault-wide sticky-note management. Use the cross-platform **Sticky Note List** side panel instead.
 
 #### How to Use
 
@@ -511,6 +517,15 @@ Use the links after each panel title to jump to its detailed feature documentati
 1. Open the command palette (Ctrl/Cmd + P) and type `Toggle Writing Workbench View`
 2. Or click the workbench icon in the left Ribbon menu
 3. After opening any chapter file, the workbench will automatically identify the current novel and display its content.
+
+#### Writing Journey
+
+- **Recorded Events**: Automatically records work creation/import, chapter creation (including new, imported, and cursor-split chapters), rename, move, deletion, and chapter/work status changes. Ordinary manuscript saves are not recorded.
+- **Storage**: Journey data is stored in plugin-owned YAML inside the current work's Novel Info note without changing its existing visible metadata body.
+- **Existing Works**: The plugin does not fabricate earlier history from existing files. The first real post-upgrade change marks the start of tracking, and recording continues from that event onward.
+- **Viewing and Filtering**: Open **Writing Journey** in the Workbench, switch between ascending and descending order, and use the existing search field to filter by event type, date/time, chapter name, path, status, or word count.
+- **Navigation and Historical State**: Existing chapters can be opened directly, while deleted chapters are clearly marked. Older events follow later rename or move records to the chapter's latest path.
+- **Status Word Count Snapshots**: Changing a chapter status records and displays its word count at that moment. Older journey events without a count remain readable.
 
 ---
 
@@ -574,9 +589,9 @@ Use the links after each panel title to jump to its detailed feature documentati
 ### Smart Chapter Creation
 
 #### Overview
-- Provides two entry points: **+ New Chapter** in the Workbench and **Create Next Chapter (Smart Increment)** in the Command Palette.
+- Provides three entry points: **+ New Chapter** in the Workbench, plus **Create Next Chapter (Smart Increment)** and **Split Chapter at Cursor** in the Command Palette.
 - Uses enabled custom chapter naming rules first, with built-in support for common Arabic-number, Chinese-number, and decimal chapter formats.
-- Both paths integrate with [Chapter Templates](#chapter-templates): no valid template creates a blank chapter, one template is applied automatically, and multiple templates open a selector that also offers a blank chapter.
+- All three paths integrate with [Chapter Templates](#chapter-templates): no valid template creates a blank chapter, one template is applied automatically, and multiple templates open a selector that also offers a blank chapter.
 
 #### Create a Chapter from the Workbench
 1. Open the Writing Workbench, switch to the **All Chapters Panel**, and select **+ New Chapter** in the upper-right corner.
@@ -591,6 +606,14 @@ Use the links after each panel title to jump to its detailed feature documentati
 
 > **If creation fails**: When neither a custom rule nor a built-in number format recognizes the current filename, creation stops with a notice. Rename the file or add the corresponding format under Chapter Naming Rules.
 
+#### Split Chapter at Cursor
+
+1. Clear any text selection and place the cursor immediately before the manuscript text that should move into the next chapter. The cursor cannot be inside YAML frontmatter, and manuscript content must remain after it.
+2. Open the Command Palette and run **Split Chapter at Cursor**, or assign the command under **Settings → Hotkeys**.
+3. The plugin first derives the next name from current chapter naming rules. For short fiction or an unrecognized filename, it asks you to enter a name. If the suggested name already exists, it also asks for another name and never overwrites the existing file.
+4. Choose a chapter template using the normal template workflow. The new chapter keeps the complete template first, then appends the text after the cursor beneath the template body; the source chapter retains only the text before the cursor.
+5. When complete, the new chapter opens with the caret at the boundary between the template and moved text. If the source changes during the operation, the split aborts or preserves recoverable source content instead of silently overwriting concurrent edits.
+
 ---
 
 ### Chapter Templates
@@ -598,12 +621,12 @@ Use the links after each panel title to jump to its detailed feature documentati
 #### Overview
 - Configure one or more Markdown templates in Settings for creating new chapters.
 - With no template, new chapters are blank; with one template, it is applied automatically; with multiple templates, creating a chapter opens a selector that also allows a blank chapter.
-- Chapter templates apply both to chapters created from the Workbench and through the **Create Next Chapter (Smart Increment)** command.
+- Chapter templates apply to chapters created from the Workbench and through both **Create Next Chapter (Smart Increment)** and **Split Chapter at Cursor**.
 
 #### How to Use
 1. Open plugin settings and enable **Enable Chapter Template**.
 2. Under **Template File List**, use the add button to select one or more Markdown template files from the vault.
-3. Create a chapter from the Workbench or run the next-chapter command, then choose a template when prompted.
+3. Create a chapter from the Workbench, run the next-chapter command, or split at the cursor, then choose a template when prompted.
 
 ---
 
@@ -651,7 +674,7 @@ Use the links after each panel title to jump to its detailed feature documentati
 2. Use the **+** button in the panel toolbar to create a blank note, or use the folder button to select a Markdown file and open it as a linked note.
 3. Notes are arranged as cards and can be edited directly. With **Sticky Note Auto-Save** enabled, changes are saved automatically and linked files are updated as well.
 4. Use the **×** button on a card to close and remove that note. When content still needs to be saved, the plugin asks for confirmation first.
-5. The side-panel list, desktop floating notes, the Workbench Notes panel, and Immersive Mode notes share the same data, so edits from any entry point appear in the others. On mobile, where desktop floating windows are unavailable, the side panel can serve as the primary note-management interface.
+5. The side-panel list, desktop floating notes, and Immersive Mode notes share the same data. Content and edit/preview state changes from any entry point are synchronized, persisted, and restored in the others. On mobile, where desktop floating windows are unavailable, the side panel can serve as the primary note-management interface.
 
 ##### Editing a Note
 - **Edit Mode**: Click the pencil icon
@@ -679,7 +702,7 @@ Use the links after each panel title to jump to its detailed feature documentati
 - **Note Theme**: 6 preset theme colors, customizable
 - **Idle Opacity**: Floating-note background opacity (0.1-1, default 0.9)
 - **Sticky Note Auto-Save**: Saves edits as you type; when disabled, closing a modified note prompts you to save.
-- **Sticky Note Text Size**: Controls body text size across desktop floating notes, side-panel note lists, Workbench notes, and Immersive Mode notes. Floating notes no longer use `Ctrl/Cmd + mouse wheel` for per-note scaling.
+- **Sticky Note Text Size**: Controls body text size across desktop floating notes, side-panel note lists, and Immersive Mode notes. Floating notes no longer use `Ctrl/Cmd + mouse wheel` for per-note scaling.
 - **Show/Hide All Floating Notes**: On desktop, use the Command Palette to hide or restore all floating notes and their layout at once.
 
 ---
@@ -761,24 +784,25 @@ Use the links after each panel title to jump to its detailed feature documentati
 3. The panel displays all events
 4. Filter timeline events by **type**
 5. Click an event card title to open the timeline file and precisely locate and highlight that entry. The Writing Workbench timeline board supports the same navigation.
+6. The Workbench Timeline Board's **Unassociated Chapters** area supports ascending/descending order and preserves the same volume order used by All Chapters and Chapter Overview.
+
+> **Chapter Synchronization**: Editing event nodes or chapter links in the Timeline side panel, Workbench Timeline Board, or Timeline Markdown automatically reconciles each linked chapter's `timeline` frontmatter. Duplicate chapter names in different volumes of the same work remain isolated by their actual file paths.
 
 ##### Timeline File Format
 ```markdown
-## Day 1 - Main Plot
+## Day 1
 
-> The protagonist leaves home and embarks on an adventure
+- The protagonist leaves home and embarks on an adventure [[Chapter 1]]
 
-**Chapter**: [[第一章]]
-**Type**: Main Plot
+**Type**：Main Plot
 
 ---
 
-## Day 3 - Side Plot
+## Day 3
 
-> The protagonist meets a mysterious old man at the tavern
+- The protagonist meets a mysterious old man at the tavern [[Chapter 5]]
 
-**Chapter**: [[第五章]]
-**Type**: Side Plot
+**Type**：Side Plot
 ```
 
 #### Related Settings
@@ -790,35 +814,29 @@ Use the links after each panel title to jump to its detailed feature documentati
 ### Time-Limited Task Tracking
 
 #### Overview
-- **Time-Limited Task Tracking**: Tracks time-limited tasks from web novel platforms (Qidian, JJWXC, etc.), adapting to various writing scenarios
-- **Auto Calculation**: Records a snapshot of the folder's total word count at creation time and calculates word count increments in real time
-- **Auto-Close on Expiry**: Automatically updates the task status when the task period expires, recording completion status
-- **Period Auto-Increment**: Supports multiple task periods for the same folder; the period number auto-increments when adding a new one
-- **Progress Visualization**: The writing status panel displays task progress bars and deadline reminders
-- **Completion Indicator**: The progress bar turns green when the word goal is met, and "Goal Met!" is displayed at the deadline
-- **Editable Starting Word Count**: When adding a new task, you can view and manually modify the starting word count, making it easy to carry over progress from the previous period
+- **Time-Limited Task Tracking**: Tracks deadlines, ranking periods, and serialization challenges from writing platforms in different workflows.
+- **Workbench Integration**: Timed tasks are managed in the Workbench **Task Board** as a card grid; the former standalone side panel has been removed.
+- **Auto Calculation**: Records a snapshot of the folder's total word count at creation time and calculates word count gains in real time.
+- **Expiry and Voluntary Abandonment**: After a day boundary, continuing to write, opening a related view, or adding a task settles expired tasks and refreshes their state. An unfinished active task can be abandoned from its card after confirmation; it becomes `abandoned` while retaining historical word-count records.
+- **Period Auto-Increment**: Supports multiple periods for the same folder and automatically increments the next period number.
+- **Progress Visualization**: The Writing Status panel and Creative Homepage show task progress and deadline reminders.
+- **Completion Indicator**: The progress bar turns green when the goal is met and the deadline displays “Goal Met!”.
+- **Editable Starting Word Count**: The starting count is prefilled from current chapter totals and can be edited when creating a task.
 
 #### How to Use
 
-##### Enable Time-Limited Task Tracking
-1. Right-click a folder or file → **Start Task Tracking**
-2. Fill in the dialog:
-   - Name (e.g., Qidian Chinese Network)
-   - Period number (auto-increments when adding new)
-   - Start/End time (default: start = today, end = start + 7 days, customizable)
-   - Details (e.g., New Book Rankings #3)
-   - Word count requirement (e.g., 30000)
-   - Starting word count (auto-filled with the current folder's chapter total word count; editable)
-3. Click confirm; a task record file is automatically generated and the time-limited task panel opens
-
-##### View Time-Limited Task Panel
-1. Click the left Ribbon icon (trophy icon)
-2. Or command palette → `Toggle Time-Limited Task Panel`
-3. The panel displays current in-progress task progress and history
+##### View the Task Board
+1. Open the **Writing Workbench** from the left Ribbon or with **Toggle Writing Workbench View**.
+2. Switch to the top **Task Board** tab.
+3. Cards show active, completed, unmet, and abandoned task periods.
 
 ##### Add a Time-Limited Task
-- Click the "Add Task" button in the time-limited task panel, or select "Start Task Tracking" from the context menu again
-- The period number is auto-filled as the previous period + 1
+- Click **+ Add Task** at the top of the Task Board, or right-click a work folder/file in File Explorer and choose **Start Task Tracking**.
+- Fill in the name, period, start/end time, details, target words, and starting word count, then save. The next period number is prefilled from the previous period.
+
+##### Abandon an Unfinished Task
+- Click **Abandon** on an active task card and confirm the action.
+- The task is retained with `abandoned` status and its historical word-count record.
 
 #### Related Settings
 - **Time-Limited Task File Name**: Default `Time-Limited Tasks`, customizable in settings (older versions used the default name `Ranking Records`, which is automatically compatible)
@@ -993,6 +1011,9 @@ When lore files or chapters already exist but lore highlighting, Workbench stati
 3. Type in any Markdown document within the active scope, and diagnostics in the visible viewport will highlight automatically. Hover over or click highlighted text to view replacement options and apply them in place. To check documents outside configured workspaces, enable **Enable Vault-wide Proofreading**.
 4. In any Markdown document except the proofreading dictionary files, select short single-line text and right-click **Annotate to Dictionary** on desktop. You can also assign the command under **Settings → Hotkeys** or add it to Obsidian's mobile toolbar. The first use also prepares the dictionary directory and templates.
 5. Toggle **Punctuation Check** independently in Settings as needed.
+6. To use the downloadable Chinese dictionaries and grammar hints, click **Update Basic Typo Dictionary** or **Update Rule Dictionary** as needed; after downloading the rule dictionary, enable the experimental **“De/Di/De” Grammar Check** manually.
+7. In a suggestion card, choose **Dismiss Here** to hide only that contextual suggestion, or **Never Suggest for Word** to add the word to the global ignored list.
+8. Under **Settings → Proofreading → Ignored Items Management**, review ignored words and contexts, search longer context lists, restore individual items, or clear words, contexts, or all ignored records separately.
 
 ---
 
@@ -1186,11 +1207,20 @@ For detailed CSS customization guide, see: [OBS Overlay CSS Guide](OBS_OVERLAY_C
 #### Overview
 - Adds an eye-friendly background color to the editor
 - Reduces eye strain during long writing sessions
+- Applies consistently to currently open and newly opened Obsidian windows
 
 #### How to Use
 1. Open plugin settings
 2. Enable **Eye Comfort Mode**
 3. Customize the comfort color (default: #E8F5E9 light green)
+
+---
+
+### Typewriter Scrolling in Regular Editing
+
+Regular Markdown editing can use typewriter scrolling independently of Immersive Mode, and it is disabled by default. Open **Settings → Writing Tools → Typewriter Mode (Ordinary Editor)** to enable active-line following, set a center offset from `-30%` to `+30%`, and adjust the opacity of unfocused lines. Regular editing and Immersive Mode keep separate settings; Immersive Mode uses only its own configuration.
+
+You can also run **Toggle Ordinary Editor Typewriter Scrolling** or assign it a hotkey. The switch applies immediately to every open Markdown editor. When you manually review earlier text with the mouse wheel, trackpad, scrollbar, or touch gesture, the viewport remains under manual control until the next edit or caret movement resumes following.
 
 ---
 
@@ -1233,8 +1263,9 @@ This list matches the commands currently registered by the plugin. Commands mark
 - **Open Creative Homepage**
 - **Workbench: Clear Search Filter**
 
-##### Immersive Mode and Typography (Immersive Mode is desktop only)
+##### Typewriter, Immersive Mode, and Typography (Immersive Mode is desktop only)
 - **Toggle Full-Screen Immersive Writing Mode**
+- **Toggle Ordinary Editor Typewriter Scrolling**
 - **Quick Typography Adjustment**
 - **Quickly Adjust Body Font Size: Increase**
 - **Quickly Adjust Body Font Size: Decrease**
@@ -1242,6 +1273,7 @@ This list matches the commands currently registered by the plugin. Commands mark
 ##### Chapters and Statistics
 - **Set Chapter Word Count Goal**
 - **Create Next Chapter (Smart Increment)**
+- **Split Chapter at Cursor**
 - **Manually Refresh Chapter Sort (Usually Unnecessary)**
 - **Rebuild Folder Word Count Cache**
 - **Reset today writing stats**
@@ -1288,7 +1320,7 @@ Here are some recommended shortcut configurations (for reference only):
 
 ## Multi-Platform Adaptation
 
-The plugin provides full feature integration across **Desktop** and **Mobile (Phone / Tablet)**. All core creative tools (Creative Homepage, Writing Workbench, Word Count & Focus Analytics, Foreshadowing Manager, Story Timeline, Lore Graphs, Task Tracker) are fully available on mobile devices, with UI layouts automatically adapted for different screen sizes:
+The plugin provides full feature integration across **Desktop** and **Mobile (Phone / Tablet)**. All core creative tools (Creative Homepage, Writing Workbench and Writing Journey, Word Count & Focus Analytics, Foreshadowing Manager, Story Timeline, Lore Graphs, Task Tracker) are fully available on mobile devices, with UI layouts automatically adapted for different screen sizes:
 
 ### Desktop
 - **Full Feature Suite**: Supports all features including creative homepage, writing workbench, immersive mode, floating desktop notes, OBS streaming overlay, and Worker background time tracking.

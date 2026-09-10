@@ -445,6 +445,21 @@ export class WritingJourneyService {
 		toStatus: string
 	): Promise<void> {
 		if (fromStatus === toStatus) return; // 相同状态选择作为无操作，不记入历史
+
+		let wordCount: number | undefined;
+		try {
+			const file = this.app.vault.getAbstractFileByPath(path);
+			if (file instanceof TFile && typeof this.plugin.calculateAccurateWords === 'function') {
+				const content = await this.app.vault.read(file);
+				const count = this.plugin.calculateAccurateWords(content);
+				if (typeof count === 'number' && Number.isFinite(count) && count >= 0) {
+					wordCount = count;
+				}
+			}
+		} catch (snapshotErr) {
+			Logger.warn(`[WritingJourneyService] Failed to snapshot chapter word count for ${path}:`, snapshotErr);
+		}
+
 		const event: ChapterStatusChangedEvent = {
 			id: this.generateEventId(),
 			type: 'chapter.status_changed',
@@ -454,6 +469,9 @@ export class WritingJourneyService {
 			fromStatus,
 			toStatus
 		};
+		if (wordCount !== undefined) {
+			event.wordCount = wordCount;
+		}
 		await this.appendEvent(bookPath, event);
 	}
 

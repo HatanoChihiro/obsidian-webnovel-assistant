@@ -249,6 +249,33 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 			return Boolean(el.closest?.('.inline-title, .metadata-container, .metadata-properties'));
 		};
 
+		private isDocumentSearchElement = (el: Element | null): boolean => {
+			if (!el) return false;
+			return Boolean(el.closest?.('.document-search-container, .document-search, .cm-search'));
+		};
+
+		private isDocumentSearchFocused = (target?: Element | null): boolean => {
+			const activeEl = target ?? (this.ownerDocument ? this.ownerDocument.activeElement : null);
+			if (!this.isDocumentSearchElement(activeEl)) return false;
+			const leafEl = this.view.dom?.closest?.('.workspace-leaf');
+			if (leafEl && activeEl) {
+				return typeof leafEl.contains === 'function' ? leafEl.contains(activeEl) : true;
+			}
+			const viewContainer = this.view.dom?.closest?.('.view-content, .markdown-source-view');
+			if (viewContainer && activeEl) {
+				return typeof viewContainer.contains === 'function' ? viewContainer.contains(activeEl) : true;
+			}
+			return true;
+		};
+
+		private isAdvancedSearchOpen(): boolean {
+			return Boolean(this.ownerDocument.body?.querySelector?.('.wn-advanced-search-modal'));
+		}
+
+		private isSearchNavigationActive(target?: Element | null): boolean {
+			return this.isDocumentSearchFocused(target) || this.isAdvancedSearchOpen();
+		}
+
 		private isScrollbarTarget(evt?: Event): boolean {
 			if (!evt) return false;
 			const scroller = this.view.scrollDOM;
@@ -290,6 +317,11 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 		};
 
 		private onScroll = (): void => {
+			if (this.isSearchNavigationActive()) {
+				this.releaseViewportFreeze();
+				this.isManualScrolling = false;
+				return;
+			}
 			if (this.frozenScrollTop !== null) {
 				this.restoreFrozenViewport();
 				return;
@@ -323,8 +355,10 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 			}
 		};
 
-		private onFocusLoss = (): void => {
+		private onFocusLoss = (evt?: FocusEvent): void => {
 			if (!this.isTypewriterActive() || !this.view.scrollDOM) return;
+			const related = (evt?.relatedTarget ?? null) as Element | null;
+			if (this.isSearchNavigationActive(related)) return;
 			if (this.frozenScrollTop === null) {
 				this.frozenScrollTop = this.view.scrollDOM.scrollTop;
 			}
@@ -457,10 +491,17 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 
 		update(update: ViewUpdate) {
 			const { spacerChanged, positioningChanged } = this.syncDomState();
-			if (positioningChanged) {
-				this.pendingPositioningRefresh = true;
+			const isSearchNavigation = this.isSearchNavigationActive();
+			if (positioningChanged || isSearchNavigation) {
+				this.pendingPositioningRefresh = positioningChanged;
 				this.releaseViewportFreeze();
+				if (isSearchNavigation) {
+					this.isManualScrolling = false;
+				}
 			} else {
+				if (this.frozenScrollTop === null && this.view.scrollDOM && !this.isEditorActiveAndFocused(update.view)) {
+					this.frozenScrollTop = this.view.scrollDOM.scrollTop;
+				}
 				this.restoreFrozenViewport();
 			}
 			this.decorations = this.buildDecorations(update.view);

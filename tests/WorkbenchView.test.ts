@@ -605,6 +605,60 @@ describe('WorkbenchView', () => {
 		);
 	});
 
+	it('should sync timeline order when timeline-order-changed event is triggered and pass isDescending to TimelineBoardRenderer', async () => {
+		const v1c1 = new MockTFile('第1章.md', 'NovelA/第一卷/第1章.md');
+
+		plugin.getTrackedMarkdownFiles = vi.fn().mockReturnValue([v1c1] as unknown as TFile[]);
+		getCurrentBookContextMock.mockReturnValue('NovelA');
+
+		const listeners = new Map<string, Array<(...args: unknown[]) => void>>();
+		mockApp.workspace.on.mockImplementation((event: string, callback: (...args: unknown[]) => void) => {
+			if (!listeners.has(event)) listeners.set(event, []);
+			listeners.get(event)!.push(callback);
+			return {} as import('obsidian').EventRef;
+		});
+
+		const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+		view.currentBookPath = 'NovelA';
+		(view as unknown as { container: unknown }).container = view.contentEl;
+		(view as unknown as { sortMode: string }).sortMode = 'timeline';
+
+		await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+
+		expect(TimelineBoardRenderer.render).toHaveBeenCalledWith(
+			expect.objectContaining({
+				currentBookPath: 'NovelA',
+				isDescending: false
+			})
+		);
+
+		// Trigger workspace event timeline-order-changed with true (descending)
+		(TimelineBoardRenderer.render as ReturnType<typeof vi.fn>).mockClear();
+		listeners.get('timeline-order-changed')?.[0]?.(true);
+
+		await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+
+		expect(TimelineBoardRenderer.render).toHaveBeenCalledWith(
+			expect.objectContaining({
+				currentBookPath: 'NovelA',
+				isDescending: true
+			})
+		);
+
+		// Trigger workspace event timeline-order-changed with false (ascending)
+		(TimelineBoardRenderer.render as ReturnType<typeof vi.fn>).mockClear();
+		listeners.get('timeline-order-changed')?.[0]?.(false);
+
+		await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+
+		expect(TimelineBoardRenderer.render).toHaveBeenCalledWith(
+			expect.objectContaining({
+				currentBookPath: 'NovelA',
+				isDescending: false
+			})
+		);
+	});
+
 	describe('Switch current work/novel menu ordering', () => {
 		const makeNovel = (folderPath: string, folderName?: string, name?: string) => {
 			const parts = folderPath.replace(/^\/+|\/+$/g, '').split('/');

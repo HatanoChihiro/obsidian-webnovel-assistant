@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="560" viewBox="0 0 1000 560" role="img" aria-labelledby="title desc">
+  <title id="title">WebNovel Assistant logo</title>
+  <desc id="desc">A flowing teal writing stroke shaped like a W, with warm apricot page-turn accents.</desc>
+  <defs>
+    <linearGradient id="teal" x1="180" y1="150" x2="900" y2="430" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#78A8A2" />
+      <stop offset="1" stop-color="#5F908F" />
+    </linearGradient>
+    <linearGradient id="apricot" x1="150" y1="110" x2="640" y2="315" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#E7AD7F" />
+      <stop offset="1" stop-color="#DB936C" />
+    </linearGradient>
+  </defs>
+
+  <path
+    d="M 177 157
+       C 222 184 238 259 254 348
+       C 272 450 330 489 389 420
+       C 429 373 453 303 447 252
+       C 441 203 474 165 521 156
+       C 571 147 617 175 621 216
+       C 625 257 594 290 557 316
+       C 535 331 521 348 516 367
+       C 552 426 610 471 681 474
+       C 757 477 809 432 844 354
+       C 876 283 903 193 950 142"
+    fill="none"
+    stroke="url(#teal)"
+    stroke-width="88"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+
+  <path
+    d="M 143 107
+       C 119 114 109 141 121 164
+       C 135 190 165 198 203 216
+       C 218 223 229 231 239 240
+       C 235 211 228 178 214 151
+       C 197 119 168 99 143 107 Z"
+    fill="url(#apricot)"
+  />
+
+  <path
+    d="M 568 170
+       C 598 162 623 174 628 199
+       C 637 239 610 284 565 313
+       C 583 278 590 224 568 170 Z"
+    fill="url(#apricot)"
+  />
+</svg>

@@ -1,3 +1,29 @@
+## 🔧 v3.9.6
+
+### 功能优化
+
+- **时间线正倒序浏览与工作台联动**：时间线侧面板支持正序/倒序查看，切换后时间轴看板会即时同步节点顺序；倒序查看时暂停整节点拖拽排序，避免意外改动原时间线顺序。
+- **写作历程状态字数快照**：变更章节状态时自动记录并展示当时章节字数，支持本地化数字格式与关键词过滤，历史记录保持向下兼容。
+- **写作历程移动端排版**：统一移动端写作历程字号层级；手机竖屏下优先完整显示状态变化与字数，过长的章节文件名保持省略，桌面端排版不变。
+
+### Bug 修复
+
+- **打字机模式搜索定位**：修复 Obsidian 内置查找回车导航时视口被锁定无法跳转，以及高级搜索结果定位时的视口冻结与滚动闪烁问题。
+
+### English Changelog
+
+#### Enhancements
+
+- **Timeline Viewing Order & Workbench Sync**: Added ascending/descending viewing to the Timeline side panel with immediate Timeline Board synchronization; whole-node drag sorting is paused in descending view to avoid unintended changes to the original timeline order.
+- **Writing Journey Word Count Snapshots**: Automatically captures and displays chapter word count upon status change, with locale-aware number formatting and filter support, while maintaining backward compatibility for earlier records.
+- **Writing Journey Mobile Layout**: Aligned the mobile font-size hierarchy and prioritizes complete status-change and word-count details in phone portrait view while truncating long chapter filenames; desktop layout remains unchanged.
+
+#### Bug Fixes
+
+- **Typewriter Mode Search Navigation**: Fixed an issue where pressing Enter in Obsidian's built-in Find could not navigate because the viewport was frozen, and resolved initial scroll conflict and flickering when jumping to Advanced Search results.
+
+---
+
 ## 🔧 v3.9.5
 
 ### 新增功能

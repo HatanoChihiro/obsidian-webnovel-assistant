@@ -349,6 +349,7 @@ export class AdvancedSearchModal extends Modal {
 			preferredLeaf: leaf || undefined,
 			fallbackLine: snippet.linesBefore,
 			matchStartGlobal: snippet.matchStart,
+			focusEditor: false,
 			exactMatchState: {
 				targetLine: snippet.linesBefore,
 				matchStartGlobal: snippet.matchStart,

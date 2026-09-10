@@ -11,7 +11,7 @@
 [![Obsidian Downloads](https://img.shields.io/badge/dynamic/json?logo=obsidian&color=8b5cf6&label=downloads&query=%24%5B%223.2.0%22%5D&url=https%3A%2F%2Fraw.githubusercontent.com%2FHatanoChihiro%2Fobsidian-webnovel-assistant%2Fmain%2Fversions.json)](https://obsidian.md/plugins?id=web-novel-assistant)
 
 为网络小说与故事创作者打造的 Obsidian 一站式写作套件。<br />
-精准字数统计与目标追踪 · 故事时间线看板 · 伏笔回收管理 · 章节概览看板 · 设定图谱与专注打字模式。
+精准字数统计与目标追踪 · 作品写作历程 · 故事时间线与伏笔管理 · 章节智能创建与拆分 · 设定图谱与专注打字模式。
 
 <br />
 
@@ -48,7 +48,8 @@
 <img width="100%" alt="homepage" src="assets/homepage.gif" />
 
 ### 🗂️ 写作工作台
-<sub>全章节面板 · 时间轴看板 · 伏笔看板 · 设定看板 · 任务看板 · 便签管理</sub>
+<sub>全章节面板 · 时间轴看板 · 伏笔看板 · 设定看板 · 任务看板 · 写作历程</sub><br />
+<sub>六类视图可按需显示；写作历程记录作品与章节变化，支持筛选、排序、跳转及章节状态字数快照。旧作品从升级后的首次变化开始记录，不补写既有历史</sub>
 
 <img width="100%" alt="workbench" src="assets/workbench.gif" />
 
@@ -68,7 +69,7 @@
 <img width="100%" alt="history-chart" src="assets/history-chart.gif" />
 
 ### 🔍 校对
-<sub>完全本地的编辑器内联检查 · 错词与敏感词 · 近义词一致性 · 中英文语境标点 · 可选“的/地/得”规则 · 建议卡片与确认后单处替换</sub>
+<sub>完全本地的编辑器内联检查 · 错词与敏感词 · 近义词一致性 · 中英文语境标点 · 可选“的/地/得”规则 · 建议卡片与确认后单处替换 · 单处/整词忽略及记录恢复</sub>
 
 <img width="100%" alt="proofreading" src="assets/proofreading.gif" />
 
@@ -88,7 +89,7 @@
 <tr>
 <td width="33%" align="center" valign="top"><img width="100%" alt="search" src="assets/search.gif" /><br /><b>高级搜索</b><br /><sub>支持当前书籍、全局、自定义，快速跳转</sub></td>
 <td width="33%" align="center" valign="top"><img width="100%" alt="merge" src="assets/merge.gif" /><br /><b>合并章节</b><br /><sub>桌面预览修订 · 移动端预览导出</sub></td>
-<td width="33%" align="center" valign="top"><img width="100%" alt="auto-create-next" src="assets/auto-create-next.gif" /><br /><b>自动创建下一章</b><br /><sub>自动创建带标号文档，支持模板</sub></td>
+<td width="33%" align="center" valign="top"><img width="100%" alt="auto-create-next" src="assets/auto-create-next.gif" /><br /><b>智能创建与拆分章节</b><br /><sub>智能递增 · 光标拆分 · 章节模板</sub></td>
 </tr>
 </table>
 
@@ -126,13 +127,15 @@
 | 打开/关闭写作实时状态面板 | 详细统计和历史图表 |
 | 打开/关闭伏笔面板 | 管理伏笔标注和回收 |
 | 打开/关闭时间线面板 | 管理故事时间线 |
-| 打开写作工作台面板 | 管理章节、时间线、设定、任务和便签看板 |
+| 打开写作工作台面板 | 管理章节、时间线、伏笔、设定、任务和写作历程看板 |
 | 打开章节一览 | 卡片式展示章节纲要 |
 | 开始/暂停 专注时间统计 | 切换专注/摸鱼计时 |
 | 标注为伏笔 | 将选中文字标注为伏笔 |
 | 新建空白悬浮便签 | 创建浮动便签 |
 | 高级搜索 | 搜索书籍/全局/自定义范围 |
 | 自动创建下一章 (智能递增) | 智能递增章节编号 |
+| 在光标处拆分章节 | 将光标后的正文移入按模板创建的新章节 |
+| 启用/禁用普通编辑打字机滚动 | 切换普通编辑器的居中滚动与非聚焦行淡化 |
 | 重建设定缓存 | 重建设定条目和章节设定引用统计 |
 | 标注为词库 | 将任意 Markdown 文档中的选中文字录入自定义词典 |
 
@@ -152,6 +155,8 @@
 | 今日目标字数 | 5000 | 今日写作目标 |
 | 显示文件列表字数 | 关闭 | 大型项目建议关闭 |
 | 智能章节排序 | 关闭 | 自动按章节编号排序 |
+| 写作工作台视图显示 | 全部显示 | 按需显示或隐藏六类工作台视图 |
+| 打字机滚动（普通编辑） | 关闭 | 独立设置居中偏移量与非聚焦行透明度 |
 | 护眼模式 | 关闭 | 编辑器背景护眼色 |
 | 沉浸便签尺寸 | 280px | 沉浸模式下便签卡片边长 |
 | 伏笔文件名 | `伏笔` | 可按工作区自定义 |
@@ -214,7 +219,7 @@
 [![Obsidian Downloads](https://img.shields.io/badge/dynamic/json?logo=obsidian&color=8b5cf6&label=downloads&query=%24%5B%223.2.0%22%5D&url=https%3A%2F%2Fraw.githubusercontent.com%2FHatanoChihiro%2Fobsidian-webnovel-assistant%2Fmain%2Fversions.json)](https://obsidian.md/plugins?id=web-novel-assistant)
 
 An all-in-one writing studio for novel and story writers in Obsidian.<br />
-Accurate word count & goal tracking · Story timeline · Foreshadowing manager · Chapter corkboard · Lore graphs & focus timers.
+Accurate word count & goal tracking · Writing Journey · Story timeline & foreshadowing · Smart chapter creation & splitting · Lore graphs & focus timers.
 
 <br />
 
@@ -251,7 +256,8 @@ If this plugin helps with your writing, consider supporting the author. Your sup
 <img width="100%" alt="homepage" src="assets/homepage_en.gif" />
 
 ### 🗂️ Writing Workbench
-<sub>All Chapters Panel · Timeline Board · Foreshadowing Board · Lore Board · Task Board · Notes Management</sub>
+<sub>All Chapters Panel · Timeline Board · Foreshadowing Board · Lore Board · Task Board · Writing Journey</sub><br />
+<sub>Show only the boards you need. Writing Journey records work and chapter changes with filtering, sorting, navigation, and chapter-status word-count snapshots. Existing works start recording from their first change after upgrading; earlier history is not backfilled</sub>
 
 <img width="100%" alt="workbench" src="assets/workbench_en.gif" />
 
@@ -271,7 +277,7 @@ If this plugin helps with your writing, consider supporting the author. Your sup
 <img width="100%" alt="history-chart" src="assets/history-chart_en.gif" />
 
 ### 🔍 Proofreading
-<sub>Fully local inline diagnostics · Typos & sensitive words · Synonym consistency · Text-aware Chinese/English punctuation · Optional De/Di/De rules · Review cards & confirmed one-at-a-time replacement</sub>
+<sub>Fully local inline diagnostics · Typos & sensitive words · Synonym consistency · Text-aware Chinese/English punctuation · Optional De/Di/De rules · Review cards & confirmed one-at-a-time replacement · Per-occurrence/whole-word dismissal and ignored-item recovery</sub>
 
 <img width="100%" alt="proofreading" src="assets/proofreading_en.gif" />
 
@@ -291,7 +297,7 @@ If this plugin helps with your writing, consider supporting the author. Your sup
 <tr>
 <td width="33%" align="center" valign="top"><img width="100%" alt="search" src="assets/search_en.gif" /><br /><b>Advanced Search</b><br /><sub>Search by book, global or custom scope</sub></td>
 <td width="33%" align="center" valign="top"><img width="100%" alt="merge" src="assets/merge_en.gif" /><br /><b>Merge Chapters</b><br /><sub>Desktop preview & revision · Mobile preview & export</sub></td>
-<td width="33%" align="center" valign="top"><img width="100%" alt="auto-create-next" src="assets/auto-create-next_en.gif" /><br /><b>Auto-Create Next Chapter</b><br /><sub>Auto-create numbered documents, template support</sub></td>
+<td width="33%" align="center" valign="top"><img width="100%" alt="auto-create-next" src="assets/auto-create-next_en.gif" /><br /><b>Smart Chapter Creation & Split</b><br /><sub>Smart increment · Cursor split · Chapter templates</sub></td>
 </tr>
 </table>
 
@@ -329,13 +335,15 @@ If this plugin helps with your writing, consider supporting the author. Your sup
 | Toggle Writing Status Panel | Detailed stats & history charts |
 | Toggle Foreshadowing Panel | Manage foreshadowing & recovery |
 | Toggle Timeline Panel | Manage story timeline |
-| Toggle Writing Workbench View | Chapters, timeline, lore, task and notes boards |
+| Toggle Writing Workbench View | Chapters, timeline, foreshadowing, lore, task, and Writing Journey boards |
 | Open Chapter Overview | Card-style chapter overview |
 | Start/Pause Focus Time Tracking | Toggle focus/slack tracking |
 | Mark as Foreshadowing | Mark selected text as foreshadowing |
 | Create Blank Sticky Note | New floating sticky note |
 | Advanced Search | Search by book/global/custom scope |
 | Create Next Chapter (Smart Increment) | Smart chapter numbering |
+| Split Chapter at Cursor | Move the text after the cursor into a template-based new chapter |
+| Toggle Ordinary Editor Typewriter Scrolling | Toggle centered scrolling and unfocused-line dimming in the ordinary editor |
 | Rebuild Lore Cache | Rebuild lore entries and chapter reference statistics |
 | Annotate to Dictionary | Add selected text from any Markdown document to a custom dictionary |
 
@@ -355,6 +363,8 @@ If this plugin helps with your writing, consider supporting the author. Your sup
 | Daily Goal | 5000 | Daily writing target |
 | Show Word Counts in File Explorer | Off | Folder word counts in sidebar |
 | Smart Chapter Sorting | Off | Auto-sort by chapter numbers |
+| Workbench View Visibility | All shown | Show or hide any of the six Workbench boards |
+| Typewriter Mode (Ordinary Editor) | Off | Independent center offset and unfocused-line opacity |
 | Eye Care Mode | Off | Warm background color |
 | Immersive Note Size | 280px | Sticky note card size in immersive mode |
 | Foreshadowing Filename | `Foreshadowing` | Customizable per workspace |
