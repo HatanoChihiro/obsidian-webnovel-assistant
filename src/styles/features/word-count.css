@@ -53,7 +53,10 @@ body .markdown-source-view.mod-cm6 .cm-editor.webnovel-show-gutter .cm-scroller 
 	display: flex;
 	align-items: center;
 	/* Rely on internal zero-width character for perfect text baseline vertical centering */
-	justify-content: flex-end;
+	/* 让徽标从 Gutter 左缘向右生长：这一侧永远位于编辑器可视区内。
+		若改为 flex-end（向左溢出），徽标会越出窗格左边缘被 overflow 裁掉，
+		窄窗格（内容未居中的 --file-margins-x 只有 32px）下必然显示不全。 */
+	justify-content: flex-start;
 	width: 0px;
 	/* Remove all hardcoded heights, rely on content to expand, absolutely match current editor line height */
 	overflow: visible;
@@ -78,8 +81,8 @@ body .markdown-source-view.mod-cm6 .cm-editor.webnovel-show-gutter .cm-scroller 
 	z-index: 99;
 	pointer-events: none;
 	/* Avoid blocking mouse clicks in the left area */
-	/* Push left relative to wrapper, fine-tune to align with text line */
-	margin-right: 12px;
+	/* 徽标左缘与 Gutter 左缘对齐，向右生长；旧值 margin-right: 12px 会把徽标整体推到 Gutter 左侧 */
+	margin-right: 0;
 	/* Remove margin-top, hand over completely to flex-center for auto scheduling */
 }
 
