@@ -6,9 +6,9 @@ import zhCNJson from './zh-CN.json';
  * 提供翻译函数 t() 和语言切换能力
  */
 
-export type Locale = 'zh-CN' | 'en';
+export type Locale = 'zh-CN' | 'en' | 'zh-TW';
 
-const SUPPORTED_LOCALES: readonly Locale[] = ['zh-CN', 'en'];
+const SUPPORTED_LOCALES: readonly Locale[] = ['zh-CN', 'en', 'zh-TW'];
 
 /** 类型守卫：校验 string 是否为合法 Locale */
 function isLocale(value: string): value is Locale {
@@ -74,6 +74,8 @@ async function loadTranslations(locale: Locale): Promise<Record<string, string>>
 		switch (locale) {
 			case 'en':
 				return (await import('./en.json')).default;
+			case 'zh-TW':
+				return (await import('./zh-TW.json')).default;
 			case 'zh-CN':
 			default:
 				return (await import('./zh-CN.json')).default;
@@ -90,6 +92,7 @@ async function loadTranslations(locale: Locale): Promise<Record<string, string>>
 function toSupportedLocale(lang: string | null | undefined): Locale | null {
 	if (!lang) return null;
 	const lower = lang.toLowerCase();
+	if (lower.startsWith('zh-tw') || lower.startsWith('zh-hant')) return 'zh-TW';
 	if (lower.startsWith('zh')) return 'zh-CN';
 	if (lower.startsWith('en')) return 'en';
 	return null;
