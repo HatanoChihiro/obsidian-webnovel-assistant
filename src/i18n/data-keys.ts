@@ -17,6 +17,12 @@ const FORESHADOWING_LABELS = {
 		status: '状态',
 		recoveredAt: '回收于',
 	},
+	'zh-TW': {
+		description: '說明',
+		tags: '標籤',
+		status: '狀態',
+		recoveredAt: '回收於',
+	},
 	'en': {
 		description: 'Description',
 		tags: 'Tags',
@@ -34,6 +40,12 @@ const FORESHADOWING_STATUS = {
 		partially_recovered: '阶段回收中',
 		recovered: '已回收',
 		deprecated: '已废弃',
+	},
+	'zh-TW': {
+		pending: '未回收',
+		partially_recovered: '階段回收中',
+		recovered: '已回收',
+		deprecated: '已廢棄',
 	},
 	'en': {
 		pending: 'Unresolved',
@@ -70,6 +82,9 @@ export const FORESHADOWING_STATUS_MAP: Record<string, string> = {
 	'阶段回收': 'partially_recovered',
 	'已回收': 'recovered',
 	'已废弃': 'deprecated',
+	// 繁體中文值
+	'階段回收中': 'partially_recovered',
+	'已廢棄': 'deprecated',
 };
 
 /** 伏笔字段标签双向解析映射 */
@@ -85,6 +100,11 @@ export const FORESHADOWING_LABEL_MAP: Record<string, string> = {
 	'标签': 'tags',
 	'状态': 'status',
 	'回收于': 'recoveredAt',
+	// 繁體中文
+	'說明': 'description',
+	'標籤': 'tags',
+	'狀態': 'status',
+	'回收於': 'recoveredAt',
 };
 
 // ==========================================
@@ -93,6 +113,9 @@ export const FORESHADOWING_LABEL_MAP: Record<string, string> = {
 const TIMELINE_LABELS = {
 	'zh-CN': {
 		type: '类型',
+	},
+	'zh-TW': {
+		type: '類型',
 	},
 	'en': {
 		type: 'Type',
@@ -114,6 +137,19 @@ const TASK_LABELS = {
 		startSnapshot: '起始字数',
 		completedWords: '完成字数',
 		status: '状态',
+		periodPrefix: '第',
+		periodSuffix: '期',
+	},
+	'zh-TW': {
+		platform: '名稱',
+		position: '詳情',
+		taskType: '任務類型',
+		wordTarget: '字數要求',
+		startDate: '起始時間',
+		endDate: '結束時間',
+		startSnapshot: '起始字數',
+		completedWords: '完成字數',
+		status: '狀態',
 		periodPrefix: '第',
 		periodSuffix: '期',
 	},
@@ -140,6 +176,10 @@ const TASK_TYPE = {
 		wordCount: '字数任务',
 		event: '事件任务',
 	},
+	'zh-TW': {
+		wordCount: '字數任務',
+		event: '事件任務',
+	},
 	'en': {
 		wordCount: 'Word Count Task',
 		event: 'Event Task',
@@ -156,6 +196,8 @@ export const TASK_TYPE_MAP: Record<string, string> = {
 	'Event': 'event',
 	'字数任务': 'wordCount',
 	'事件任务': 'event',
+	'字數任務': 'wordCount',
+	'事件任務': 'event',
 };
 
 // ==========================================
@@ -169,6 +211,13 @@ const TASK_STATUS = {
 		incomplete: '未完成',
 		notStarted: '未开始',
 		abandoned: '已放弃',
+	},
+	'zh-TW': {
+		active: '進行中',
+		completed: '已完成',
+		incomplete: '未完成',
+		notStarted: '未開始',
+		abandoned: '已放棄',
 	},
 	'en': {
 		active: 'Active',
@@ -196,6 +245,9 @@ export const TASK_STATUS_MAP: Record<string, string> = {
 	'未完成': 'incomplete',
 	'未开始': 'notStarted',
 	'已放弃': 'abandoned',
+	'進行中': 'active',
+	'未開始': 'notStarted',
+	'已放棄': 'abandoned',
 };
 
 // ==========================================
@@ -228,6 +280,16 @@ export const TASK_LABEL_MAP: Record<string, string> = {
 	'起始字数': 'startSnapshot',
 	'完成字数': 'completedWords',
 	'状态': 'status',
+	// 繁體中文
+	'名稱': 'platform',
+	'詳情': 'position',
+	'任務類型': 'taskType',
+	'字數要求': 'wordTarget',
+	'起始時間': 'startDate',
+	'結束時間': 'endDate',
+	'起始字數': 'startSnapshot',
+	'完成字數': 'completedWords',
+	'狀態': 'status',
 };
 
 // ==========================================
@@ -242,6 +304,15 @@ const NOVEL_INFO_LABELS = {
 		wordGoal: '目标字数',
 		startDate: '开始日期',
 		endDate: '完结日期',
+	},
+	'zh-TW': {
+		status: '狀態',
+		synopsis: '簡介',
+		protagonist: '主角',
+		genre: '類型',
+		wordGoal: '目標字數',
+		startDate: '開始日期',
+		endDate: '完結日期',
 	},
 	'en': {
 		status: 'Status',
@@ -270,6 +341,12 @@ export const NOVEL_INFO_LABEL_MAP: Record<string, string> = {
 	'目标字数': 'wordGoal',
 	'开始日期': 'startDate',
 	'完结日期': 'endDate',
+	'狀態': 'status',
+	'簡介': 'synopsis',
+	'類型': 'genre',
+	'目標字數': 'wordGoal',
+	'開始日期': 'startDate',
+	'完結日期': 'endDate',
 };
 
 // ==========================================
@@ -281,6 +358,12 @@ const NOVEL_STATUS = {
 		stockpiling: '存稿中',
 		paused: '已暂停',
 		completed: '已完结',
+	},
+	'zh-TW': {
+		ongoing: '連載中',
+		stockpiling: '存稿中',
+		paused: '已暫停',
+		completed: '已完結',
 	},
 	'en': {
 		ongoing: 'Ongoing',
@@ -304,6 +387,9 @@ export const NOVEL_STATUS_MAP: Record<string, string> = {
 	'存稿中': 'stockpiling',
 	'已暂停': 'paused',
 	'已完结': 'completed',
+	'連載中': 'ongoing',
+	'已暫停': 'paused',
+	'已完結': 'completed',
 };
 
 // ==========================================
@@ -313,6 +399,13 @@ const CORKBOARD_STATUS = {
 	'zh-CN': {
 		unwritten: '待写',
 		outline: '大纲',
+		draft: '草稿',
+		revising: '修稿中',
+		final: '已完稿',
+	},
+	'zh-TW': {
+		unwritten: '待寫',
+		outline: '大綱',
 		draft: '草稿',
 		revising: '修稿中',
 		final: '已完稿',
@@ -343,6 +436,8 @@ export const CORKBOARD_STATUS_MAP: Record<string, string> = {
 	'草稿': 'draft',
 	'修稿中': 'revising',
 	'已完稿': 'final',
+	'待寫': 'unwritten',
+	'大綱': 'outline',
 };
 
 // ==========================================
@@ -358,6 +453,11 @@ const LORE_LABELS = {
 		alias: '别名',
 		type: '类型',
 		relation: '关系',
+	},
+	'zh-TW': {
+		alias: '別名',
+		type: '類型',
+		relation: '關係',
 	},
 	'en': {
 		alias: 'Alias',
@@ -378,6 +478,10 @@ export const LORE_LABEL_MAP: Record<string, string> = {
 	'别名': 'alias',
 	'类型': 'type',
 	'关系': 'relation',
+	// 繁體中文
+	'別名': 'alias',
+	'類型': 'type',
+	'關係': 'relation',
 };
 
 /** 获取设定文档的字段标签 */
@@ -453,6 +557,14 @@ const DEFAULT_NAMES = {
 		loreFolderName: '设定',
 		homepageWelcome: '欢迎回到创作中心',
 	},
+	'zh-TW': {
+		foreshadowingFileName: '伏筆',
+		timelineFileName: '時間線',
+		taskFileName: '限時任務',
+		novelInfoFileName: '作品資訊',
+		loreFolderName: '設定',
+		homepageWelcome: '歡迎回到創作中心',
+	},
 	'en': {
 		foreshadowingFileName: 'Foreshadowing',
 		timelineFileName: 'Timeline',
@@ -465,11 +577,13 @@ const DEFAULT_NAMES = {
 
 const DEFAULT_TAGS = {
 	'zh-CN': ['人物', '情节', '世界观', '道具', '线索'],
+	'zh-TW': ['人物', '情節', '世界觀', '道具', '線索'],
 	'en': ['Character', 'Plot', 'Worldbuilding', 'Artifact', 'Clue'],
 } as const;
 
 const DEFAULT_TYPES = {
 	'zh-CN': ['主线', '支线', '回忆', '伏笔线', '暗线'],
+	'zh-TW': ['主線', '支線', '回憶', '伏筆線', '暗線'],
 	'en': ['Main', 'Subplot', 'Flashback', 'Foreshadowing', 'Hidden'],
 } as const;
 
