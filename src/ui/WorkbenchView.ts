@@ -233,6 +233,7 @@ export class WorkbenchView extends ItemView {
     private isTimelineUnscheduledDescending: boolean = false;
     private isJourneyDescending: boolean = true;
     private isTimelineDescending: boolean = false;
+    private isTimelineSidebarCollapsed: boolean = false;
 
     constructor(leaf: WorkspaceLeaf, plugin: WorkbenchViewPlugin) {
         super(leaf);
@@ -1152,14 +1153,24 @@ export class WorkbenchView extends ItemView {
             const newChapterBtn = buttonsContainer.createDiv({ cls: 'wn-corkboard-new-chapter-btn' });
             newChapterBtn.textContent = t('corkboard.new-chapter');
             newChapterBtn.onclick = () => {
-                const chapterFolder = getLatestChapterFolderPath(this.currentBookPath || '/', files);
-                const siblingFiles = files.filter((file: TFile) => file.parent?.path === chapterFolder);
-                const namingFiles = siblingFiles.length > 0 ? siblingFiles : files;
+                const creationFiles = getDeterministicChapterDisplayOrder(files, {
+                    currentBookPath: this.currentBookPath || '',
+                    isDescending: false,
+                    // Creation needs semantic volume/chapter order even when the board follows native file ordering.
+                    enableSmartChapterSort: true,
+                    customSortOrder: this.plugin.settings.customSortOrder
+                });
+                const chapterFolder = getLatestChapterFolderPath(this.currentBookPath || '/', creationFiles);
+                const normalizedTarget = chapterFolder === '/' ? '/' : chapterFolder.replace(/\/+$/, '');
+                const siblingFiles = creationFiles.filter((file: TFile) => {
+                    const parentPath = (!file.parent?.path || file.parent.path === '/') ? '/' : file.parent.path.replace(/\/+$/, '');
+                    return parentPath === normalizedTarget;
+                });
                 let defaultPrefix = '01 ';
-                if (namingFiles.length > 0) {
-                    const siblingNames = namingFiles.map((f: TFile) => f.basename);
-                    for (let i = namingFiles.length - 1; i >= 0; i--) {
-                        const nextName = ChapterSorter.getNextChapterName(namingFiles[i].basename, siblingNames);
+                if (siblingFiles.length > 0) {
+                    const siblingNames = siblingFiles.map((f: TFile) => f.basename);
+                    for (let i = siblingFiles.length - 1; i >= 0; i--) {
+                        const nextName = ChapterSorter.getNextChapterName(siblingFiles[i].basename, siblingNames);
                         if (nextName) {
                             defaultPrefix = nextName.replace(/\.md$/, '').trimEnd() + ' ';
                             break;
@@ -1345,6 +1356,12 @@ export class WorkbenchView extends ItemView {
                     isUnscheduledDescending: this.isTimelineUnscheduledDescending,
                     onToggleUnscheduledSort: () => {
                         this.isTimelineUnscheduledDescending = !this.isTimelineUnscheduledDescending;
+                        this.currentRenderId++;
+                        void this.reloadBoard();
+                    },
+                    isSidebarCollapsed: this.isTimelineSidebarCollapsed,
+                    onToggleSidebarCollapse: () => {
+                        this.isTimelineSidebarCollapsed = !this.isTimelineSidebarCollapsed;
                         this.currentRenderId++;
                         void this.reloadBoard();
                     }

@@ -69,6 +69,11 @@
 	padding: 10px 14px;
 	max-width: 320px;
 	min-width: 200px;
+	max-height: 350px;
+	overflow-y: auto;
+	overflow-x: hidden;
+	overscroll-behavior: contain;
+	box-sizing: border-box;
 	font-size: var(--font-ui-small, 12px);
 	line-height: 1.5;
 	color: var(--text-normal);
@@ -78,10 +83,15 @@
 	animation: wn-fade-in 0.15s ease;
 }
 
+body.is-phone .wn-proofreading-popover {
+	max-height: 240px;
+}
+
 .wn-proofreading-popover-header {
 	display: flex;
 	align-items: center;
 	gap: 8px;
+	flex-shrink: 0;
 }
 
 .wn-proofreading-badge {
@@ -125,6 +135,7 @@
 .wn-proofreading-popover-msg {
 	color: var(--text-muted);
 	font-size: 0.9em;
+	flex-shrink: 0;
 }
 
 .wn-proofreading-popover-actions {
@@ -132,6 +143,7 @@
 	flex-wrap: wrap;
 	gap: 6px;
 	margin-top: 2px;
+	flex-shrink: 0;
 }
 
 .wn-proofreading-action-btn {

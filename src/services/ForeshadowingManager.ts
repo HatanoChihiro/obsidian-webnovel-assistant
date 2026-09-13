@@ -293,7 +293,7 @@ export class ForeshadowingManager {
 			
 			// 支持新旧格式的定位，捕获整个条目的前半部分作为 before
 			const pattern = new RegExp(
-				`((?:## \\[\\[${escapeRegex(sourceFile)}\\]\\](?:\\s*-\\s*${escapeRegex(createdAt)})?|## .+?\\n(?:(?!## ).*\\n)*?> \\[\\[${escapeRegex(sourceFile)}\\]\\](?:\\s*-\\s*${escapeRegex(createdAt)})?)(?:(?!\\n(?:---|## ))[\\s\\S])*?)(\\*\\*(?:状态|Status)\\*\\*：)(${status})`,
+				`((?:## \\[\\[${escapeRegex(sourceFile)}\\]\\](?:\\s*-\\s*${escapeRegex(createdAt)})?|## .+?\\n(?:(?!## ).*\\n)*?> \\[\\[${escapeRegex(sourceFile)}\\]\\](?:\\s*-\\s*${escapeRegex(createdAt)})?)(?:(?!\\n(?:---|## ))[\\s\\S])*?)(\\*\\*(?:状态|狀態|Status)\\*\\*：)(${status})`,
 				'm'
 			);
 			
@@ -402,7 +402,7 @@ export class ForeshadowingManager {
 			const pattern = new RegExp(
 				`(## \\[\\[${escapeRegex(sourceFile)}\\]\\]` +
 				(createdAt ? `[^\\n]*${escapeRegex(createdAt)}` : '') +
-				`[\\s\\S]*?\\*\\*(?:回收于|Recovered at|Resolved in)\\*\\*：\\n)([\\s\\S]*?)(\\n\\n|$)`,
+				`[\\s\\S]*?\\*\\*(?:回收于|回收於|Recovered at|Resolved in)\\*\\*：\\n)([\\s\\S]*?)(\\n\\n|$)`,
 				'm'
 			);
 
@@ -435,7 +435,7 @@ export class ForeshadowingManager {
 				if (!isFound) return content;
 
 				let newText = matchedText;
-				const statusPattern = /(\*\*(?:状态|Status)\*\*：)(未回收|pending|Pending|Unresolved)/;
+				const statusPattern = /(\*\*(?:状态|狀態|Status)\*\*：)(未回收|pending|Pending|Unresolved)/;
 				if (statusPattern.test(newText)) {
 					found = true;
 					newText = newText.replace(statusPattern, (match, p1) => {
@@ -465,7 +465,7 @@ export class ForeshadowingManager {
 				if (!isFound) return content;
 
 				let newText = matchedText;
-				const statusPattern = /(\*\*(?:状态|Status)\*\*：)(已废弃|deprecated|Deprecated|Abandoned)/;
+				const statusPattern = /(\*\*(?:状态|狀態|Status)\*\*：)(已废弃|已廢棄|deprecated|Deprecated|Abandoned)/;
 				if (statusPattern.test(newText)) {
 					found = true;
 					newText = newText.replace(statusPattern, (match, p1) => {

@@ -39,12 +39,33 @@ describe('getLatestChapterFolderPath', () => {
 		expect(getLatestChapterFolderPath('作品', files)).toBe('作品');
 	});
 
-	it('should ignore nested folders that are not direct volumes', () => {
+	it('should select nested folder when the final chapter is in a nested subfolder under the volume', () => {
 		const book = createFolder('作品', '作品', null);
 		const volume = createFolder('第一卷', '作品/第一卷', book);
 		const nestedFolder = createFolder('番外', '作品/第一卷/番外', volume);
 		const files = [createFile('第1章.md', '作品/第一卷/番外/第1章.md', nestedFolder)];
 
-		expect(getLatestChapterFolderPath('作品', files)).toBe('作品');
+		expect(getLatestChapterFolderPath('作品', files)).toBe('作品/第一卷/番外');
+	});
+
+	it('should fallback to book root when files list is empty', () => {
+		expect(getLatestChapterFolderPath('作品', [])).toBe('作品');
+		expect(getLatestChapterFolderPath('/', [])).toBe('/');
+		expect(getLatestChapterFolderPath('', [])).toBe('/');
+	});
+
+	it('should support root-vault works correctly', () => {
+		const root = createFolder('/', '/', null);
+		const volume = createFolder('第一卷', '第一卷', root);
+		const nested = createFolder('番外', '第一卷/番外', volume);
+
+		const rootFiles = [createFile('第1章.md', '第1章.md', root)];
+		expect(getLatestChapterFolderPath('/', rootFiles)).toBe('/');
+
+		const volFiles = [createFile('第1章.md', '第一卷/第1章.md', volume)];
+		expect(getLatestChapterFolderPath('/', volFiles)).toBe('第一卷');
+
+		const nestedFiles = [createFile('第1章.md', '第一卷/番外/第1章.md', nested)];
+		expect(getLatestChapterFolderPath('/', nestedFiles)).toBe('第一卷/番外');
 	});
 });

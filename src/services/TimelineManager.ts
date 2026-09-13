@@ -198,7 +198,7 @@ export class TimelineManager {
 			const items: { description: string; chapter: string; origin?: string }[] = [];
 
 			// 匹配类型行：优先当前语言，兼容中文旧格式
-				const typeMatch = trimmed.match(new RegExp(`\\*\\*(?:Type|类型|${t('timeline.type-label')})\\*\\*：(.+)`));
+				const typeMatch = trimmed.match(new RegExp(`\\*\\*(?:Type|类型|類型|${t('timeline.type-label')})\\*\\*：(.+)`));
 
 
 
@@ -663,6 +663,7 @@ export class TimelineManager {
 
 					let boldIndex = body.indexOf(`\n**${getTimelineLabel('type')}**`);
 					if (boldIndex === -1) boldIndex = body.indexOf('\n**类型**');
+					if (boldIndex === -1) boldIndex = body.indexOf('\n**類型**');
 					if (boldIndex === -1) boldIndex = body.indexOf('\n**Type**');
 
 					let newBody: string;

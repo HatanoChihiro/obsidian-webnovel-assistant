@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TimelineBoardRenderer, type TimelineBoardOptions, type TimelineBoardPlugin } from '../src/ui/components/TimelineBoardRenderer';
 import { CorkboardGridRenderer } from '../src/ui/components/CorkboardGridRenderer';
 import { ChapterSorter } from '../src/services/ChapterSorter';
-import type { App, TFile } from 'obsidian';
+import { setIcon, type App, type TFile } from 'obsidian';
 
 const { MockFile } = vi.hoisted(() => {
 	class HoistedMockFile {
@@ -217,6 +217,7 @@ class MockElement {
 		return all[0] ?? null;
 	}
 
+	mockIsPhone = false;
 	get ownerDocument() {
 		return {
 			defaultView: mockOwnerWindow,
@@ -226,7 +227,7 @@ class MockElement {
 			}),
 			body: {
 				classList: {
-					contains: () => false
+					contains: (token: string) => token === 'is-phone' ? this.mockIsPhone : false
 				}
 			}
 		};
@@ -236,7 +237,9 @@ class MockElement {
 let lastOpenedModal: { contentEl: MockElement; open: () => void; close: () => void } | null = null;
 
 vi.mock('obsidian', () => ({
-	setIcon: vi.fn(),
+	setIcon: vi.fn((el: unknown, iconId: string) => {
+		(el as MockElement)?.setAttr?.('data-icon', iconId);
+	}),
 	Notice: vi.fn(),
 	Modal: class {
 		contentEl = new MockElement();
@@ -434,6 +437,191 @@ describe('TimelineBoardRenderer', () => {
 				draggable: true
 			})
 		);
+	});
+
+	it('should render collapse button with chevron-right, expand handle with chevron-left, and keep independent click/keyboard wiring', async () => {
+		const v1c1 = createMockFile('第1章.md', 'NovelA/第一卷/第1章.md');
+		const toggleCollapseSpy = vi.fn();
+		const toggleSortSpy = vi.fn();
+
+		const options: TimelineBoardOptions = {
+			app: mockApp,
+			plugin: mockPlugin,
+			container: container as unknown as HTMLElement,
+			files: [v1c1],
+			foreshadowingMap: new Map(),
+			currentBookPath: 'NovelA',
+			currentTimelineFilter: 'all',
+			onSaveStateChange: vi.fn(),
+			reloadBoard: vi.fn(),
+			getChapterEvents: vi.fn().mockReturnValue([]),
+			isUnscheduledDescending: false,
+			onToggleUnscheduledSort: toggleSortSpy,
+			isSidebarCollapsed: false,
+			onToggleSidebarCollapse: toggleCollapseSpy
+		};
+
+		await TimelineBoardRenderer.render(options);
+
+		// Collapse button in header
+		const collapseBtn = container.querySelector('.wn-timeline-sidebar-collapse-btn');
+		expect(collapseBtn).not.toBeNull();
+		expect(collapseBtn?.getAttribute('role')).toBe('button');
+		expect(collapseBtn?.getAttribute('tabindex')).toBe('0');
+		expect(collapseBtn?.getAttribute('aria-label')).toBe('corkboard.collapse-sidebar');
+		expect(collapseBtn?.getAttribute('data-icon')).toBe('chevron-right');
+		expect(setIcon).toHaveBeenCalledWith(collapseBtn, 'chevron-right');
+
+		// Separate expand handle in sidebar
+		const expandHandle = container.querySelector('.wn-timeline-sidebar-expand-handle');
+		expect(expandHandle).not.toBeNull();
+		expect(expandHandle?.getAttribute('role')).toBe('button');
+		expect(expandHandle?.getAttribute('tabindex')).toBe('0');
+		expect(expandHandle?.getAttribute('aria-label')).toBe('corkboard.expand-sidebar');
+		expect(expandHandle?.getAttribute('data-icon')).toBe('chevron-left');
+		expect(setIcon).toHaveBeenCalledWith(expandHandle, 'chevron-left');
+
+		// Click collapse button triggers onToggleSidebarCollapse with stopPropagation
+		const stopPropagationSpy = vi.fn();
+		collapseBtn?.onclick?.({ stopPropagation: stopPropagationSpy });
+		expect(toggleCollapseSpy).toHaveBeenCalledTimes(1);
+		expect(stopPropagationSpy).toHaveBeenCalledTimes(1);
+		expect(toggleSortSpy).not.toHaveBeenCalled();
+
+		// Keyboard Enter and Space on collapse button triggers onToggleSidebarCollapse
+		const preventDefaultSpy = vi.fn();
+		const stopPropagationKeySpy = vi.fn();
+		collapseBtn?.dispatchEvent('keydown', {
+			key: 'Enter',
+			preventDefault: preventDefaultSpy,
+			stopPropagation: stopPropagationKeySpy
+		});
+		expect(toggleCollapseSpy).toHaveBeenCalledTimes(2);
+		expect(preventDefaultSpy).toHaveBeenCalledTimes(1);
+		expect(stopPropagationKeySpy).toHaveBeenCalled();
+		expect(toggleSortSpy).not.toHaveBeenCalled();
+
+		collapseBtn?.dispatchEvent('keydown', {
+			key: ' ',
+			preventDefault: preventDefaultSpy,
+			stopPropagation: stopPropagationKeySpy
+		});
+		expect(toggleCollapseSpy).toHaveBeenCalledTimes(3);
+		expect(toggleSortSpy).not.toHaveBeenCalled();
+
+		// Click expand handle triggers onToggleSidebarCollapse
+		expandHandle?.onclick?.({ stopPropagation: stopPropagationSpy });
+		expect(toggleCollapseSpy).toHaveBeenCalledTimes(4);
+		expect(toggleSortSpy).not.toHaveBeenCalled();
+
+		// Keyboard Enter and Space on expand handle
+		expandHandle?.dispatchEvent('keydown', {
+			key: 'Enter',
+			preventDefault: preventDefaultSpy,
+			stopPropagation: stopPropagationKeySpy
+		});
+		expect(toggleCollapseSpy).toHaveBeenCalledTimes(5);
+
+		expandHandle?.dispatchEvent('keydown', {
+			key: ' ',
+			preventDefault: preventDefaultSpy,
+			stopPropagation: stopPropagationKeySpy
+		});
+		expect(toggleCollapseSpy).toHaveBeenCalledTimes(6);
+		expect(toggleSortSpy).not.toHaveBeenCalled();
+
+		// Sort button click remains independent: triggers toggleSortSpy, NOT toggleCollapseSpy
+		const sortToggle = container.querySelector('.wn-workbench-sort-toggle');
+		sortToggle?.onclick?.({ stopPropagation: stopPropagationSpy });
+		expect(toggleSortSpy).toHaveBeenCalledTimes(1);
+		expect(toggleCollapseSpy).toHaveBeenCalledTimes(6);
+	});
+
+	it('should add is-collapsed class to sidebar when isSidebarCollapsed is true and keep dropzone active', async () => {
+		const v1c1 = createMockFile('第1章.md', 'NovelA/第一卷/第1章.md');
+
+		const options: TimelineBoardOptions = {
+			app: mockApp,
+			plugin: mockPlugin,
+			container: container as unknown as HTMLElement,
+			files: [v1c1],
+			foreshadowingMap: new Map(),
+			currentBookPath: 'NovelA',
+			currentTimelineFilter: 'all',
+			onSaveStateChange: vi.fn(),
+			reloadBoard: vi.fn(),
+			getChapterEvents: vi.fn().mockReturnValue([]),
+			isSidebarCollapsed: true
+		};
+
+		await TimelineBoardRenderer.render(options);
+
+		const sideCol = container.querySelector('.wn-timeline-waterfall-sidebar');
+		expect(sideCol).not.toBeNull();
+		expect(sideCol?.hasClass('is-collapsed')).toBe(true);
+
+		// Dropzone remains configured
+		expect(sideCol?.listeners.has('dragover')).toBe(true);
+		expect(sideCol?.listeners.has('drop')).toBe(true);
+	});
+
+	it('should not add is-collapsed class when isSidebarCollapsed is false', async () => {
+		const v1c1 = createMockFile('第1章.md', 'NovelA/第一卷/第1章.md');
+
+		const options: TimelineBoardOptions = {
+			app: mockApp,
+			plugin: mockPlugin,
+			container: container as unknown as HTMLElement,
+			files: [v1c1],
+			foreshadowingMap: new Map(),
+			currentBookPath: 'NovelA',
+			currentTimelineFilter: 'all',
+			onSaveStateChange: vi.fn(),
+			reloadBoard: vi.fn(),
+			getChapterEvents: vi.fn().mockReturnValue([]),
+			isSidebarCollapsed: false
+		};
+
+		await TimelineBoardRenderer.render(options);
+
+		const sideCol = container.querySelector('.wn-timeline-waterfall-sidebar');
+		expect(sideCol).not.toBeNull();
+		expect(sideCol?.hasClass('is-collapsed')).toBe(false);
+	});
+
+	it('should preserve phone appearance and keep help-circle without desktop collapse controls when in phone mode', async () => {
+		(container as unknown as MockElement).mockIsPhone = true;
+
+		const v1c1 = createMockFile('第1章.md', 'NovelA/第一卷/第1章.md');
+
+		const options: TimelineBoardOptions = {
+			app: mockApp,
+			plugin: mockPlugin,
+			container: container as unknown as HTMLElement,
+			files: [v1c1],
+			foreshadowingMap: new Map(),
+			currentBookPath: 'NovelA',
+			currentTimelineFilter: 'all',
+			onSaveStateChange: vi.fn(),
+			reloadBoard: vi.fn(),
+			getChapterEvents: vi.fn().mockReturnValue([]),
+			isSidebarCollapsed: true
+		};
+
+		await TimelineBoardRenderer.render(options);
+
+		// Phone mode keeps help-circle iconSpan instead of desktop collapse button
+		expect(container.querySelector('.wn-timeline-sidebar-collapse-btn')).toBeNull();
+		expect(container.querySelector('.wn-timeline-sidebar-expand-handle')).toBeNull();
+
+		const helpCircle = container.querySelector('.wn-timeline-sidebar-icon');
+		expect(helpCircle).not.toBeNull();
+		expect(helpCircle?.getAttribute('data-icon')).toBe('help-circle');
+		expect(setIcon).toHaveBeenCalledWith(helpCircle, 'help-circle');
+
+		// Mobile drawer is not given desktop is-collapsed class
+		const sideCol = container.querySelector('.wn-timeline-waterfall-sidebar');
+		expect(sideCol?.hasClass('is-collapsed')).toBe(false);
 	});
 
 	it('should maintain same-node description element as sole scroll owner without creating nested textarea during event inline edit', async () => {

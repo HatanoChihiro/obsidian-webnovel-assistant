@@ -757,7 +757,7 @@ export class ProofreadingManager {
 		if (hasZhFolder && !hasEnFolder) return zhFolderPath;
 		if (hasEnFolder && !hasZhFolder) return enFolderPath;
 
-		const folderName = getLocale() === 'zh-CN' ? DICT_FOLDER_NAME : DICT_FOLDER_NAME_EN;
+		const folderName = getLocale().startsWith('zh') ? DICT_FOLDER_NAME : DICT_FOLDER_NAME_EN;
 		return normalizePath(baseFolder ? `${baseFolder}/${folderName}` : folderName);
 	}
 
@@ -811,7 +811,7 @@ export class ProofreadingManager {
 			} else if (folderName === DICT_FOLDER_NAME_EN) {
 				establishedScheme = 'en';
 			} else {
-				establishedScheme = getLocale() === 'zh-CN' ? 'zh' : 'en';
+				establishedScheme = getLocale().startsWith('zh') ? 'zh' : 'en';
 			}
 		}
 

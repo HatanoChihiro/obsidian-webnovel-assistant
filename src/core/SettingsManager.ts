@@ -129,7 +129,7 @@ export class SettingsManager {
 		adjusted.timeline = { ...adjusted.timeline, defaultTypes: localized.defaultTypes };
 
 		// 调整章节命名规则默认值
-		if (adjusted.chapterNamingRules) {
+		if (adjusted.chapterNamingRules && locale === 'en') {
 			// 对于非中文环境，提供英文版本的默认规则，并默认启用英文章节和全能括号
 			adjusted.chapterNamingRules = [
 				{ name: 'Arabic Numerals (Chinese Format)', pattern: '^(?:第(\\d+)[章节回卷部册篇]?|第?(\\d+)[章节回卷部册篇])', enabled: false },

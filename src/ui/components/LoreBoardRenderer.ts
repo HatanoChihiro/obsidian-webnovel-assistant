@@ -172,7 +172,7 @@ export class LoreBoardRenderer {
         }
 
         // 设定文件 tab 排序：拉丁字母开头的文件优先于汉字开头，组内按当前语言字母序（中文按拼音）与数字自然升序排列
-        const locale = getLocale() === 'zh-CN' ? 'zh' : 'en';
+        const locale = getLocale().startsWith('zh') ? 'zh' : 'en';
         const collator = new Intl.Collator(locale, { numeric: true, sensitivity: 'base' });
         const isLatinStart = (name: string): boolean => /^[A-Za-z]/.test(name);
         const groups = Array.from(fileGroups.entries()).sort((a, b) => {

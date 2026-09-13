@@ -165,7 +165,7 @@ export class ForeshadowingParser {
 		// 如果没找到，退化到旧格式：寻找 **说明**：说明
 		// 正则意图：多语言兼容匹配旧版说明加粗字段，如 "**说明**：宝库钥匙下落"
 		if (!match) {
-			const oldDescPattern = new RegExp(`\\*\\*(?:说明|Description|${t('foreshadowing.description')})\\*\\*：${escapeRegex(description)}`, 'm');
+			const oldDescPattern = new RegExp(`\\*\\*(?:说明|說明|Description|${t('foreshadowing.description')})\\*\\*：${escapeRegex(description)}`, 'm');
 			match = oldDescPattern.exec(content);
 			isNewFormat = false;
 		}
@@ -304,18 +304,18 @@ export class ForeshadowingParser {
 			}
 
 			// 解析说明
-			const descMatch = trimmed.match(new RegExp(`\\*\\*(?:说明|Description|${t('foreshadowing.description')})\\*\\*：(.+)`));
+			const descMatch = trimmed.match(new RegExp(`\\*\\*(?:说明|說明|Description|${t('foreshadowing.description')})\\*\\*：(.+)`));
 			let description = descMatch ? descMatch[1].trim() : '';
 			if (!description) description = parsedTitleDescription;
 
 			// 解析标签
-			const tagsMatch = trimmed.match(new RegExp(`\\*\\*(?:标签|Tags|${t('foreshadowing.tags')})\\*\\*：(.+)`));
+			const tagsMatch = trimmed.match(new RegExp(`\\*\\*(?:标签|標籤|Tags|${t('foreshadowing.tags')})\\*\\*：(.+)`));
 			const tags = tagsMatch
 				? tagsMatch[1].trim().split(/[,，\s]+/).map(t => t.replace(/^#/, ''))
 				: [];
 
 			// 解析状态
-			const statusMatch = trimmed.match(new RegExp(`\\*\\*(?:状态|Status|${t('foreshadowing.status')})\\*\\*：(.+)`));
+			const statusMatch = trimmed.match(new RegExp(`\\*\\*(?:状态|狀態|Status|${t('foreshadowing.status')})\\*\\*：(.+)`));
 			const rawStatusText = statusMatch ? statusMatch[1].trim() : '';
 			let status = ForeshadowingStatus.Pending;
 			if (rawStatusText) {
@@ -326,7 +326,7 @@ export class ForeshadowingParser {
 			}
 
 			// 解析回收信息（支持阶段日志、多章节、单章节及关联原文 quote）
-			const recoveryListMatch = trimmed.match(new RegExp(`\\*\\*(?:回收于|回收记录|Recovered at|Resolved in|${t('foreshadowing.recovered-at')})\\*\\*：\\n([\\s\\S]*?)(?=\\n\\*\\*|\\n---|\\n## |$)`));
+			const recoveryListMatch = trimmed.match(new RegExp(`\\*\\*(?:回收于|回收於|回收记录|回收記錄|Recovered at|Resolved in|${t('foreshadowing.recovered-at')})\\*\\*：\\n([\\s\\S]*?)(?=\\n\\*\\*|\\n---|\\n## |$)`));
 			let recoveryLogs: ForeshadowingRecoveryLog[] | undefined;
 			let recoveryFiles: string[] | undefined;
 			let recoveredAts: string[] | undefined;
@@ -360,11 +360,11 @@ export class ForeshadowingParser {
 					const line = rawLine.trim();
 					if (!line) continue;
 
-					const stageMatch = line.match(/^- \[(阶段|终结|收束|回收|stage|final)\] \[\[(.+?)\]\](.*)$/i);
+					const stageMatch = line.match(/^- \[(阶段|階段|终结|終結|收束|回收|stage|final)\] \[\[(.+?)\]\](.*)$/i);
 					if (stageMatch) {
 						flushLog();
 						const rawType = stageMatch[1].toLowerCase();
-						const stageType = (rawType === 'stage' || rawType === '阶段') ? 'stage' : 'final';
+						const stageType = (rawType === 'stage' || rawType === '阶段' || rawType === '階段') ? 'stage' : 'final';
 						const file = stageMatch[2];
 						let rest = stageMatch[3].trim();
 						let time = '';
@@ -414,7 +414,7 @@ export class ForeshadowingParser {
 				flushLog();
 			} else {
 				// 旧格式（单章节）：**回收于**：[[章节]] - 时间
-				const singleRecoveryMatch = trimmed.match(new RegExp(`\\*\\*(?:回收于|Recovered at|Resolved in|${t('foreshadowing.recovered-at')})\\*\\*：\\[\\[(.+?)\\]\\](?:\\s*-\\s*(.+))?`));
+				const singleRecoveryMatch = trimmed.match(new RegExp(`\\*\\*(?:回收于|回收於|Recovered at|Resolved in|${t('foreshadowing.recovered-at')})\\*\\*：\\[\\[(.+?)\\]\\](?:\\s*-\\s*(.+))?`));
 				if (singleRecoveryMatch) {
 					recoveryFile = singleRecoveryMatch[1];
 					recoveredAt = singleRecoveryMatch[2]?.trim();

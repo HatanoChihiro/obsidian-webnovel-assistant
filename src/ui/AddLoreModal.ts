@@ -66,7 +66,7 @@ export class AddLoreModal extends Modal {
 		for (const file of mdFiles) {
 			try {
 				const content = await this.app.vault.cachedRead(file);
-				const matches = content.matchAll(/(?:\*\*|__)?(?:类型|Type)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/gi);
+				const matches = content.matchAll(/(?:\*\*|__)?(?:类型|類型|Type)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/gi);
 				for (const match of matches) {
 					if (match[1]) {
 						const typeVal = match[1].trim();

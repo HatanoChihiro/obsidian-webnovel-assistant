@@ -763,7 +763,7 @@ export class CharacterManager {
 				const endLine = nextHeading ? nextHeading.position.start.line : lines.length;
 
 				const chunk = lines.slice(startLine, endLine).join('\n');
-				const aliasMatch = chunk.match(/(?:\*\*|__)?(?:别名|Alias)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/);
+				const aliasMatch = chunk.match(/(?:\*\*|__)?(?:别名|別名|Alias)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/);
 				if (aliasMatch && aliasMatch[1]) {
 					const rawAliases = aliasMatch[1].split(/[,，、/|;；]/);
 					for (const a of rawAliases) {
@@ -778,7 +778,7 @@ export class CharacterManager {
 
 				const fm = fileCache?.frontmatter;
 				if (fm) {
-					const rawAliases = (fm['aliases'] ?? fm['alias'] ?? fm['别名']) as unknown;
+					const rawAliases = (fm['aliases'] ?? fm['alias'] ?? fm['别名'] ?? fm['別名']) as unknown;
 					if (Array.isArray(rawAliases)) {
 						for (const a of rawAliases) {
 							if (typeof a === 'string' || typeof a === 'number') {
@@ -793,7 +793,7 @@ export class CharacterManager {
 					}
 				}
 
-				const aliasMatches = content.matchAll(/(?:\*\*|__)?(?:别名|Alias)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/gi);
+				const aliasMatches = content.matchAll(/(?:\*\*|__)?(?:别名|別名|Alias)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/gi);
 				for (const match of aliasMatches) {
 					if (match[1]) {
 						const rawAliases = match[1].split(/[,，、/|;；]/);

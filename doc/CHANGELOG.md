@@ -1,3 +1,35 @@
+## 🔧 v3.9.7
+
+### 新增功能
+
+- **繁体中文支持**：插件界面和生成的作品文件（如设定、伏笔等模板和标签）现已全面支持繁体中文（zh-TW）。感谢 [@ycc90123](https://github.com/ycc90123) 通过 [PR #29](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/pull/29) 贡献繁体中文翻译。
+
+### 功能优化
+
+- **时间轴看板未关联侧栏折叠**：桌面端时间轴看板支持一键折叠右侧未关联章节侧栏，提供更开阔的时间瀑布流视野；折叠后在右侧边界保留半隐式展开按钮与章节归还拖拽槽，且状态在当前工作台生命周期内持续有效。
+
+### Bug 修复
+
+- **校对建议悬浮卡片视口防溢出**：统一校对建议卡片的最大高度平台策略（桌面端与平板 350px、手机端 240px）与纵向滚动；根据匹配文本周围的视口可用空间智能选择向上或向下展开，并在超长建议项或小屏视口下严格限制在屏幕可视范围内。
+- **工作台新增章节目标分卷与编号推断**：修复多卷作品在各分卷独立从 1 编号或关闭智能排序时，工作台新增章节可能误选首卷或既有章节编号的问题；即使看板采用 Obsidian 默认排序，新增章节仍按中文或阿拉伯数字章节规则独立识别最新卷与卷内最后一章，并支持作品内嵌套子目录继承与空卷根目录回退。
+
+### English Changelog
+
+#### New Features
+
+- **Traditional Chinese Support**: Full interface and generated file support (e.g., templates and tags for Lore, Foreshadowing, etc.) for Traditional Chinese (zh-TW). Thanks to [@ycc90123](https://github.com/ycc90123) for contributing the translation through [PR #29](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/pull/29).
+
+#### Enhancements
+
+- **Timeline Board Sidebar Collapse**: Desktop Timeline Board now supports collapsing the right unscheduled-chapters sidebar for a wider timeline view; the collapsed state maintains a half-hidden edge expand button and chapter drop target, with state persisting across board rerenders during the view lifetime.
+
+#### Bug Fixes
+
+- **Proofreading Suggestion Popover Viewport Containment**: Aligned popover maximum-height platform policy (350px on desktop/tablet, 240px on phone) and added vertical scrolling for overflowing content; intelligently chooses upward vs downward expansion based on available viewport space around matched text while strictly containing the popover within viewport safe padding.
+- **Workbench New Chapter Target Volume & Name Selection**: Fixed an issue in multi-volume works where New Chapter could target the first volume or propose already used chapter numbers when volumes restarted numbering at 1 or smart sorting was disabled; even when the board follows Obsidian's native ordering, chapter creation now independently resolves the latest volume and chapter through Chinese or Arabic numeric naming rules, while retaining nested-folder inheritance and book-root fallback.
+
+---
+
 ## 🔧 v3.9.6
 
 ### 功能优化

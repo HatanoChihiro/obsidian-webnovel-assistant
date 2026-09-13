@@ -83,6 +83,8 @@ export interface TimelineBoardOptions {
 	isDescending?: boolean;
 	isUnscheduledDescending?: boolean;
 	onToggleUnscheduledSort?: () => void;
+	isSidebarCollapsed?: boolean;
+	onToggleSidebarCollapse?: () => void;
 }
 
 export class TimelineBoardRenderer {
@@ -100,7 +102,9 @@ export class TimelineBoardRenderer {
 			getChapterEvents,
 			isDescending = false,
 			isUnscheduledDescending,
-			onToggleUnscheduledSort
+			onToggleUnscheduledSort,
+			isSidebarCollapsed,
+			onToggleSidebarCollapse
 		} = options;
 
 		const tStart = performance.now();
@@ -960,11 +964,58 @@ export class TimelineBoardRenderer {
 			modal.open();
 		};
 
+		const isPhone = container.ownerDocument.body.classList.contains('is-phone');
+
+		if (isSidebarCollapsed && !isPhone) {
+			sideCol.addClass('is-collapsed');
+		}
+
+		const toggleCollapse = (event?: Event) => {
+			if (event) {
+				event.stopPropagation();
+			}
+			if (onToggleSidebarCollapse) {
+				onToggleSidebarCollapse();
+			}
+		};
+
+		if (!isPhone) {
+			const expandHandle = sideCol.createDiv('clickable-icon wn-timeline-sidebar-expand-handle');
+			expandHandle.setAttr('role', 'button');
+			expandHandle.setAttr('tabindex', '0');
+			expandHandle.setAttr('aria-label', t('corkboard.expand-sidebar'));
+			setIcon(expandHandle, 'chevron-left');
+			expandHandle.onclick = (e) => toggleCollapse(e);
+			expandHandle.addEventListener('keydown', (event) => {
+				if (event.key === 'Enter' || event.key === ' ') {
+					event.preventDefault();
+					event.stopPropagation();
+					toggleCollapse(event);
+				}
+			});
+		}
+
 		// Sidebar: Unscheduled (未关联章节侧边栏/底部悬浮抽屉窗)
 		const unscheduledHeader = sideCol.createDiv('wn-timeline-sidebar-header');
 		const titleGroup = unscheduledHeader.createDiv('wn-timeline-sidebar-title-group');
-		const iconSpan = titleGroup.createSpan({ cls: 'wn-timeline-sidebar-icon' });
-		setIcon(iconSpan, 'help-circle');
+		if (!isPhone) {
+			const collapseBtn = titleGroup.createDiv('clickable-icon wn-timeline-sidebar-collapse-btn');
+			collapseBtn.setAttr('role', 'button');
+			collapseBtn.setAttr('tabindex', '0');
+			collapseBtn.setAttr('aria-label', t('corkboard.collapse-sidebar'));
+			setIcon(collapseBtn, 'chevron-right');
+			collapseBtn.onclick = (e) => toggleCollapse(e);
+			collapseBtn.addEventListener('keydown', (event) => {
+				if (event.key === 'Enter' || event.key === ' ') {
+					event.preventDefault();
+					event.stopPropagation();
+					toggleCollapse(event);
+				}
+			});
+		} else {
+			const iconSpan = titleGroup.createSpan({ cls: 'wn-timeline-sidebar-icon' });
+			setIcon(iconSpan, 'help-circle');
+		}
 		titleGroup.createSpan({ text: t('corkboard.unscheduled-chapters') });
 		// 始终展示未关联章节的数量（包含 0），提升作者概览与归还槽感知
 		titleGroup.createSpan({ text: ` (${unscheduled.length})`, cls: 'wn-timeline-sidebar-count' });
@@ -1010,7 +1061,7 @@ export class TimelineBoardRenderer {
 
 		CorkboardGridRenderer.render({
 			app, plugin, container: sideGrid, files: displayUnscheduled, foreshadowingMap, draggable: true, currentBookPath, onSaveStateChange,
-			groupVolumeCards: container.ownerDocument.body.classList.contains('is-phone')
+			groupVolumeCards: isPhone
 		});
 
 		Logger.info(`[Perf] TimelineBoardRenderer.render completed in ${(performance.now() - tStart).toFixed(2)}ms (${displayEntries.length} entries, ${files.length} total files, ${unscheduled.length} unscheduled)`);

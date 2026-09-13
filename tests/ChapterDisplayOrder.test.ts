@@ -6,6 +6,8 @@ import {
 	compareVolumePaths,
 	sortNovelFoldersForSwitchMenu
 } from '../src/utils/chapterDisplayOrder';
+import { getLatestChapterFolderPath } from '../src/utils/path';
+import { ChapterSorter } from '../src/services/ChapterSorter';
 import type { NovelFolderInfo } from '../src/types/homepage';
 
 class MockFile {
@@ -387,6 +389,76 @@ describe('ChapterDisplayOrder', () => {
 				'NovelA/2.md',
 				'NovelA/1.md'
 			]);
+		});
+
+		it('should order volumes canonically when volumes restart chapter numbering from 1 and select the latest volume', () => {
+			const v1c1 = createMockFile('第1章.md', 'NovelA/第一卷/第1章.md', 'NovelA/第一卷');
+			const v1c2 = createMockFile('第2章.md', 'NovelA/第一卷/第2章.md', 'NovelA/第一卷');
+			const v1c3 = createMockFile('第3章.md', 'NovelA/第一卷/第3章.md', 'NovelA/第一卷');
+			const v2c1 = createMockFile('第1章.md', 'NovelA/第二卷/第1章.md', 'NovelA/第二卷');
+			const v2c2 = createMockFile('第2章.md', 'NovelA/第二卷/第2章.md', 'NovelA/第二卷');
+
+			// Scrambled input
+			const files = [v2c1, v1c3, v2c2, v1c1, v1c2];
+
+			const asc = getDeterministicChapterDisplayOrder(files, {
+				currentBookPath: 'NovelA',
+				isDescending: false,
+				enableSmartChapterSort: true
+			});
+
+			expect(asc.map(f => f.path)).toEqual([
+				'NovelA/第一卷/第1章.md',
+				'NovelA/第一卷/第2章.md',
+				'NovelA/第一卷/第3章.md',
+				'NovelA/第二卷/第1章.md',
+				'NovelA/第二卷/第2章.md'
+			]);
+
+			// Verify latest folder is selected as Volume 2, not Volume 1 (despite Vol 1 having Chapter 3)
+			const latestFolder = getLatestChapterFolderPath('NovelA', asc);
+			expect(latestFolder).toBe('NovelA/第二卷');
+
+			// Verify next chapter name is derived strictly from Volume 2's chapters (not Vol 1)
+			const v2Chapters = asc.filter(f => f.parent?.path === latestFolder);
+			const siblingNames = v2Chapters.map(f => f.basename);
+			const nextName = ChapterSorter.getNextChapterName(v2Chapters[v2Chapters.length - 1].basename, siblingNames);
+			expect(nextName).toBe('第3章.md');
+		});
+
+		it('should maintain consistent volume order between smart sort on and off for standard volume names', () => {
+			const v1c1 = createMockFile('第1章.md', 'NovelA/第1卷/第1章.md', 'NovelA/第1卷');
+			const v1c2 = createMockFile('第9章.md', 'NovelA/第1卷/第9章.md', 'NovelA/第1卷');
+			const v1c3 = createMockFile('第10章.md', 'NovelA/第1卷/第10章.md', 'NovelA/第1卷');
+			const v2c1 = createMockFile('第1章.md', 'NovelA/第2卷/第1章.md', 'NovelA/第2卷');
+
+			const files = [v2c1, v1c3, v1c1, v1c2];
+
+			const ascSmart = getDeterministicChapterDisplayOrder(files, {
+				currentBookPath: 'NovelA',
+				isDescending: false,
+				enableSmartChapterSort: true
+			});
+
+			const ascNonSmart = getDeterministicChapterDisplayOrder(files, {
+				currentBookPath: 'NovelA',
+				isDescending: false,
+				enableSmartChapterSort: false
+			});
+
+			// Both smart ON and OFF should place 第1卷 chapters before 第2卷 chapters,
+			// and within 第1卷 should order 1, 9, 10 without lexical regression
+			const expectedPaths = [
+				'NovelA/第1卷/第1章.md',
+				'NovelA/第1卷/第9章.md',
+				'NovelA/第1卷/第10章.md',
+				'NovelA/第2卷/第1章.md'
+			];
+			expect(ascSmart.map(f => f.path)).toEqual(expectedPaths);
+			expect(ascNonSmart.map(f => f.path)).toEqual(expectedPaths);
+
+			expect(getLatestChapterFolderPath('NovelA', ascSmart)).toBe('NovelA/第2卷');
+			expect(getLatestChapterFolderPath('NovelA', ascNonSmart)).toBe('NovelA/第2卷');
 		});
 
 		it('should handle empty input gracefully', () => {

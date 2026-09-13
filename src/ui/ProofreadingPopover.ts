@@ -3,7 +3,7 @@ import type { EditorView } from '@codemirror/view';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { ProofreadingDiagnostic } from '../types/proofreading';
 import { t } from '../i18n';
-import { isMobile } from '../utils/platform';
+import { isMobile, getPlatformTier } from '../utils/platform';
 import { isReplacementStale, computeDiagnosticContextFingerprint } from '../utils/proofreadingHelpers';
 import { forceProofreadingUpdate, dismissProofreadingInstance } from '../editor/ProofreadingExtension';
 
@@ -35,6 +35,94 @@ export function getProofreadingDiagnosticDisplayMessage(diag: ProofreadingDiagno
 	}
 
 	return '';
+}
+
+export interface ProofreadingPopoverPositionOptions {
+	targetRect: { top: number; bottom: number; left: number; width?: number; right?: number };
+	popoverWidth: number;
+	popoverHeight: number;
+	naturalHeight?: number;
+	windowWidth: number;
+	windowHeight: number;
+	platformMaxHeight: number;
+	verticalPadding?: number;
+	horizontalPadding?: number;
+	gap?: number;
+}
+
+export interface ProofreadingPopoverPositionResult {
+	top: number;
+	left: number;
+	maxHeight: number;
+	placement: 'above' | 'below';
+}
+
+export function computeProofreadingPopoverPosition(
+	options: ProofreadingPopoverPositionOptions
+): ProofreadingPopoverPositionResult {
+	const {
+		targetRect,
+		popoverWidth,
+		popoverHeight,
+		naturalHeight = popoverHeight,
+		windowWidth,
+		windowHeight,
+		platformMaxHeight,
+		verticalPadding = 10,
+		horizontalPadding = 10,
+		gap = 6
+	} = options;
+
+	const effectiveNaturalHeight = naturalHeight > 0 ? naturalHeight : popoverHeight;
+	const desiredHeight = effectiveNaturalHeight > 0
+		? Math.min(effectiveNaturalHeight, platformMaxHeight)
+		: platformMaxHeight;
+
+	// 水平防溢出（保持既有水平边界行为）
+	let left = targetRect.left;
+	if (left + popoverWidth > windowWidth - horizontalPadding) {
+		left = windowWidth - popoverWidth - horizontalPadding;
+	}
+	if (left < horizontalPadding) {
+		left = horizontalPadding;
+	}
+
+	// 计算目标文字上下两侧在视口内可用的实际空间
+	const spaceBelow = (windowHeight - verticalPadding) - (targetRect.bottom + gap);
+	const spaceAbove = (targetRect.top - gap) - verticalPadding;
+
+	// 若受限的目标高度可在下方完整容纳，则优先展示在下方；
+	// 否则若上方空间比下方更大，则翻转展示在上方；两者皆不足时选可用空间更大的一侧并严格约束在该侧
+	const fitsBelow = spaceBelow >= desiredHeight;
+	const chooseAbove = !fitsBelow && spaceAbove > spaceBelow;
+
+	let top: number;
+	let maxAllowedHeight: number;
+
+	if (chooseAbove) {
+		maxAllowedHeight = Math.max(0, Math.min(platformMaxHeight, spaceAbove));
+		const actualHeight = Math.min(desiredHeight, maxAllowedHeight);
+		top = targetRect.top - gap - actualHeight;
+		if (top < verticalPadding) {
+			top = verticalPadding;
+		}
+	} else {
+		maxAllowedHeight = Math.max(0, Math.min(platformMaxHeight, spaceBelow));
+		top = targetRect.bottom + gap;
+		if (top < verticalPadding) {
+			top = verticalPadding;
+		}
+		if (top + maxAllowedHeight > windowHeight - verticalPadding) {
+			top = Math.max(verticalPadding, windowHeight - verticalPadding - maxAllowedHeight);
+		}
+	}
+
+	return {
+		top,
+		left,
+		maxHeight: maxAllowedHeight,
+		placement: chooseAbove ? 'above' : 'below'
+	};
 }
 
 export class ProofreadingPopover extends Component {
@@ -370,29 +458,30 @@ export class ProofreadingPopover extends Component {
 	private updatePosition(): void {
 		if (!this.popoverEl || !this.targetEl) return;
 
+		const isPhone = this.ownerDocument.body.classList.contains('is-phone') || getPlatformTier() === 'mobile';
+		const platformMaxHeight = isPhone ? 240 : 350;
+
+		// 先清除可能残留的内联高度约束，测量真实内容所需高度
+		this.popoverEl.setCssStyles({ maxHeight: '' });
+
 		const targetRect = this.targetEl.getBoundingClientRect();
 		const popoverRect = this.popoverEl.getBoundingClientRect();
+		const naturalHeight = this.popoverEl.scrollHeight || popoverRect.height;
 
-		let top = targetRect.bottom + 6;
-		let left = targetRect.left;
-
-		const winWidth = this.ownerWindow.innerWidth;
-		const winHeight = this.ownerWindow.innerHeight;
-
-		// 水平防溢出
-		if (left + popoverRect.width > winWidth - 10) {
-			left = winWidth - popoverRect.width - 10;
-		}
-		if (left < 10) left = 10;
-
-		// 垂直防溢出（若下方空间不足则翻转至上方）
-		if (top + popoverRect.height > winHeight - 10 && targetRect.top > popoverRect.height + 10) {
-			top = targetRect.top - popoverRect.height - 6;
-		}
+		const pos = computeProofreadingPopoverPosition({
+			targetRect,
+			popoverWidth: popoverRect.width,
+			popoverHeight: popoverRect.height,
+			naturalHeight,
+			windowWidth: this.ownerWindow.innerWidth,
+			windowHeight: this.ownerWindow.innerHeight,
+			platformMaxHeight
+		});
 
 		this.popoverEl.setCssStyles({
-			top: `${top}px`,
-			left: `${left}px`
+			top: `${pos.top}px`,
+			left: `${pos.left}px`,
+			maxHeight: `${pos.maxHeight}px`
 		});
 	}
 

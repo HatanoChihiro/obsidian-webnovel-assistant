@@ -14,8 +14,9 @@ import { CorkboardGridRenderer } from '../src/ui/components/CorkboardGridRendere
 import { TimelineBoardRenderer } from '../src/ui/components/TimelineBoardRenderer';
 import { WritingJourneyBoardRenderer } from '../src/ui/components/WritingJourneyBoardRenderer';
 import { Platform, type TFile } from 'obsidian';
+import { getLatestChapterFolderPath } from '../src/utils/path';
 
-const { getCurrentBookContextMock, findBookRootMock, MockTFile, MockTFolder, mockMenuInstances, MockMenu } = vi.hoisted(() => {
+const { getCurrentBookContextMock, findBookRootMock, MockTFile, MockTFolder, mockMenuInstances, MockMenu, mockModalInstances, MockModal } = vi.hoisted(() => {
 	class HoistedMockMenuItem {
 		title = '';
 		icon = '';
@@ -57,9 +58,11 @@ const { getCurrentBookContextMock, findBookRootMock, MockTFile, MockTFolder, moc
 		extension = 'md';
 		basename: string;
 		stat = { mtime: 1 };
+		parent?: HoistedMockTFolder | null;
 
-		constructor(public name: string, public path: string) {
+		constructor(public name: string, public path: string, parent?: HoistedMockTFolder | null) {
 			this.basename = name.replace(/\.md$/, '');
+			this.parent = parent;
 		}
 	}
 
@@ -69,13 +72,30 @@ const { getCurrentBookContextMock, findBookRootMock, MockTFile, MockTFolder, moc
 		constructor(public name: string, public path: string) {}
 	}
 
+	const modalInstances: unknown[] = [];
+	class HoistedMockModal {
+		app: unknown;
+		defaultPrefix?: string;
+		onSubmit?: (title: string, templateContent: string) => void;
+
+		constructor(app: unknown, ..._args: unknown[]) {
+			this.app = app;
+			modalInstances.push(this);
+		}
+
+		open(): void {}
+		close(): void {}
+	}
+
 	return {
 		getCurrentBookContextMock: vi.fn(),
 		findBookRootMock: vi.fn(),
 		MockTFile: HoistedMockTFile,
 		MockTFolder: HoistedMockTFolder,
 		mockMenuInstances: instances,
-		MockMenu: HoistedMockMenu
+		MockMenu: HoistedMockMenu,
+		mockModalInstances: modalInstances,
+		MockModal: HoistedMockModal
 	};
 });
 
@@ -159,7 +179,7 @@ vi.mock('obsidian', () => {
 		setIcon: vi.fn(),
 		Notice: vi.fn(),
 		Menu: MockMenu,
-		Modal: class {},
+		Modal: MockModal,
 		FuzzySuggestModal: class {
 			constructor(_app: unknown) {}
 			setPlaceholder(): void {}
@@ -176,11 +196,15 @@ vi.mock('obsidian', () => {
 	};
 });
 
-vi.mock('../src/utils/path', () => ({
-	getCurrentBookContext: getCurrentBookContextMock,
-	findBookRoot: findBookRootMock,
-	getLatestChapterFolderPath: vi.fn()
-}));
+vi.mock('../src/utils/path', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('../src/utils/path')>();
+	return {
+		...actual,
+		getCurrentBookContext: getCurrentBookContextMock,
+		findBookRoot: findBookRootMock,
+		getLatestChapterFolderPath: vi.fn(actual.getLatestChapterFolderPath)
+	};
+});
 
 vi.mock('../src/ui/components/CorkboardGridRenderer', () => ({
 	CorkboardGridRenderer: {
@@ -216,6 +240,7 @@ describe('WorkbenchView', () => {
 			on: ReturnType<typeof vi.fn>;
 			getAbstractFileByPath: ReturnType<typeof vi.fn>;
 			cachedRead: ReturnType<typeof vi.fn>;
+			create: ReturnType<typeof vi.fn>;
 		};
 		metadataCache: {
 			on: ReturnType<typeof vi.fn>;
@@ -234,6 +259,7 @@ describe('WorkbenchView', () => {
 		vi.clearAllMocks();
 		Platform.isMobile = false;
 		mockMenuInstances.length = 0;
+		mockModalInstances.length = 0;
 		vi.stubGlobal('activeDocument', {
 			getElementById: vi.fn().mockReturnValue(null),
 			head: { appendChild: vi.fn() }
@@ -245,7 +271,8 @@ describe('WorkbenchView', () => {
 			vault: {
 				on: vi.fn(),
 				getAbstractFileByPath: vi.fn().mockReturnValue(null),
-				cachedRead: vi.fn().mockResolvedValue('')
+				cachedRead: vi.fn().mockResolvedValue(''),
+				create: vi.fn().mockImplementation((path: string) => Promise.resolve(new MockTFile(path, path)))
 			},
 			metadataCache: {
 				on: vi.fn(),
@@ -601,6 +628,79 @@ describe('WorkbenchView', () => {
 			expect.objectContaining({
 				currentBookPath: 'NovelA',
 				isUnscheduledDescending: false
+			})
+		);
+	});
+
+	it('should maintain timeline sidebar collapse state across workbench board renders and toggle independently from sort state', async () => {
+		const v1c1 = new MockTFile('第1章.md', 'NovelA/第一卷/第1章.md');
+
+		plugin.getTrackedMarkdownFiles = vi.fn().mockReturnValue([v1c1] as unknown as TFile[]);
+		getCurrentBookContextMock.mockReturnValue('NovelA');
+
+		const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+		view.currentBookPath = 'NovelA';
+		(view as unknown as { container: unknown }).container = view.contentEl;
+		(view as unknown as { sortMode: string }).sortMode = 'timeline';
+
+		await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+
+		expect(TimelineBoardRenderer.render).toHaveBeenCalledWith(
+			expect.objectContaining({
+				currentBookPath: 'NovelA',
+				isSidebarCollapsed: false,
+				onToggleSidebarCollapse: expect.any(Function),
+				isUnscheduledDescending: false,
+				onToggleUnscheduledSort: expect.any(Function)
+			})
+		);
+
+		// Capture callbacks
+		const lastCall = (TimelineBoardRenderer.render as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0];
+		expect(lastCall.isSidebarCollapsed).toBe(false);
+
+		// Trigger toggle sidebar collapse
+		(TimelineBoardRenderer.render as ReturnType<typeof vi.fn>).mockClear();
+		lastCall.onToggleSidebarCollapse();
+
+		await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+
+		expect(TimelineBoardRenderer.render).toHaveBeenCalledWith(
+			expect.objectContaining({
+				currentBookPath: 'NovelA',
+				isSidebarCollapsed: true,
+				isUnscheduledDescending: false
+			})
+		);
+
+		// Trigger toggle sort while sidebar is collapsed
+		const collapsedCall = (TimelineBoardRenderer.render as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0];
+		(TimelineBoardRenderer.render as ReturnType<typeof vi.fn>).mockClear();
+		collapsedCall.onToggleUnscheduledSort();
+
+		await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+
+		// Both states should be preserved independently
+		expect(TimelineBoardRenderer.render).toHaveBeenCalledWith(
+			expect.objectContaining({
+				currentBookPath: 'NovelA',
+				isSidebarCollapsed: true,
+				isUnscheduledDescending: true
+			})
+		);
+
+		// Trigger toggle collapse again (restore sidebar)
+		const restoredCall = (TimelineBoardRenderer.render as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0];
+		(TimelineBoardRenderer.render as ReturnType<typeof vi.fn>).mockClear();
+		restoredCall.onToggleSidebarCollapse();
+
+		await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+
+		expect(TimelineBoardRenderer.render).toHaveBeenCalledWith(
+			expect.objectContaining({
+				currentBookPath: 'NovelA',
+				isSidebarCollapsed: false,
+				isUnscheduledDescending: true
 			})
 		);
 	});
@@ -1144,6 +1244,120 @@ describe('WorkbenchView', () => {
 				expect(getWorkbenchBoardLabel(boardId)).toBe(labelKey);
 			}
 			expect(WORKBENCH_BOARD_LABEL_KEYS.journey).toBe('corkboard.sort-journey');
+		});
+
+		it('should deterministically target the latest volume and infer next chapter name from target folder chapters', async () => {
+			const v1 = new MockTFolder('第一卷', 'NovelA/第一卷');
+			const v2 = new MockTFolder('第二卷', 'NovelA/第二卷');
+			const v1c1 = new MockTFile('第1章.md', 'NovelA/第一卷/第1章.md', v1);
+			const v1c2 = new MockTFile('第2章.md', 'NovelA/第一卷/第2章.md', v1);
+			const v1c3 = new MockTFile('第3章.md', 'NovelA/第一卷/第3章.md', v1);
+			const v2c1 = new MockTFile('第1章.md', 'NovelA/第二卷/第1章.md', v2);
+			const v2c2 = new MockTFile('第2章.md', 'NovelA/第二卷/第2章.md', v2);
+
+			plugin.getTrackedMarkdownFiles = vi.fn().mockReturnValue([
+				v2c1, v1c3, v2c2, v1c1, v1c2
+			]);
+
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			view.currentBookPath = 'NovelA';
+			(view as unknown as { container: unknown }).container = view.contentEl;
+
+			await view.onOpen();
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+
+			// Shared board files passed to foreshadowing map preserve pre-change sorting (v1c3 is last because 3 > 2)
+			const fmSpy = plugin.foreshadowingManager?.buildChapterForeshadowingMap as ReturnType<typeof vi.fn>;
+			expect(fmSpy).toHaveBeenCalled();
+			const sharedFilesArg = fmSpy.mock.calls[0][1] as import('obsidian').TFile[];
+			expect(sharedFilesArg[sharedFilesArg.length - 1].path).toBe('NovelA/第一卷/第3章.md');
+
+			const newChapterBtn = view.contentEl.querySelector('.wn-corkboard-new-chapter-btn') as HTMLElement;
+			expect(newChapterBtn).toBeDefined();
+
+			const folderSpy = vi.mocked(getLatestChapterFolderPath);
+			folderSpy.mockClear();
+			mockModalInstances.length = 0;
+			(mockApp.vault.create as ReturnType<typeof vi.fn>).mockClear();
+
+			newChapterBtn.click();
+
+			expect(folderSpy).toHaveBeenCalled();
+			const [bookPathArg, filesArg] = folderSpy.mock.calls[0];
+			expect(bookPathArg).toBe('NovelA');
+			// Deterministic volume-aware creationFiles: Volume 2's chapter 2 must be last, not Volume 1's chapter 3
+			expect((filesArg as import('obsidian').TFile[])[filesArg.length - 1].path).toBe('NovelA/第二卷/第2章.md');
+			expect(folderSpy.mock.results[0].value).toBe('NovelA/第二卷');
+
+			// Modal receives defaultPrefix inferred strictly from Volume 2's chapters ('第3章 ')
+			expect(mockModalInstances.length).toBe(1);
+			const modal = mockModalInstances[0] as {
+				defaultPrefix?: string;
+				onSubmit?: (title: string, content: string) => void;
+			};
+			expect(modal.defaultPrefix).toBe('第3章 ');
+
+			modal.onSubmit?.('第3章', 'dummy-template');
+			expect(mockApp.vault.create).toHaveBeenCalledWith('NovelA/第二卷/第3章.md', 'dummy-template');
+
+			// Even with isDescending: true on display, creation files remain ascending and Volume 2's chapter 2 is still last
+			(view as unknown as { isDescending: boolean }).isDescending = true;
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+
+			const newChapterBtnDesc = view.contentEl.querySelector('.wn-corkboard-new-chapter-btn') as HTMLElement;
+			folderSpy.mockClear();
+			mockModalInstances.length = 0;
+			(mockApp.vault.create as ReturnType<typeof vi.fn>).mockClear();
+
+			newChapterBtnDesc.click();
+
+			expect(folderSpy).toHaveBeenCalled();
+			const [, filesArgDesc] = folderSpy.mock.calls[0];
+			expect((filesArgDesc as import('obsidian').TFile[])[filesArgDesc.length - 1].path).toBe('NovelA/第二卷/第2章.md');
+			expect(folderSpy.mock.results[0].value).toBe('NovelA/第二卷');
+
+			expect(mockModalInstances.length).toBe(1);
+			const modalDesc = mockModalInstances[0] as {
+				defaultPrefix?: string;
+				onSubmit?: (title: string, content: string) => void;
+			};
+			expect(modalDesc.defaultPrefix).toBe('第3章 ');
+
+			modalDesc.onSubmit?.('第3章', '');
+			expect(mockApp.vault.create).toHaveBeenCalledWith('NovelA/第二卷/第3章.md', '');
+		});
+
+		it('should use semantic Chinese numeral order for chapter creation when smart display sorting is disabled', async () => {
+			plugin.settings.enableSmartChapterSort = false;
+			const v1 = new MockTFolder('第一卷', 'NovelA/第一卷');
+			const v2 = new MockTFolder('第二卷', 'NovelA/第二卷');
+			const v1c1 = new MockTFile('第一章.md', 'NovelA/第一卷/第一章.md', v1);
+			const v2c9 = new MockTFile('第九章.md', 'NovelA/第二卷/第九章.md', v2);
+			const v2c10 = new MockTFile('第十章.md', 'NovelA/第二卷/第十章.md', v2);
+			const v2c11 = new MockTFile('第十一章.md', 'NovelA/第二卷/第十一章.md', v2);
+
+			plugin.getTrackedMarkdownFiles = vi.fn().mockReturnValue([v2c11, v1c1, v2c9, v2c10]);
+
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			view.currentBookPath = 'NovelA';
+			(view as unknown as { container: unknown }).container = view.contentEl;
+
+			await view.onOpen();
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+
+			const newChapterBtn = view.contentEl.querySelector('.wn-corkboard-new-chapter-btn') as HTMLElement;
+			mockModalInstances.length = 0;
+			(mockApp.vault.create as ReturnType<typeof vi.fn>).mockClear();
+			newChapterBtn.click();
+
+			const modal = mockModalInstances[0] as {
+				defaultPrefix?: string;
+				onSubmit?: (title: string, content: string) => void;
+			};
+			expect(modal.defaultPrefix).toBe('第十二章 ');
+
+			modal.onSubmit?.('第十二章', 'dummy-template');
+			expect(mockApp.vault.create).toHaveBeenCalledWith('NovelA/第二卷/第十二章.md', 'dummy-template');
 		});
 	});
 });

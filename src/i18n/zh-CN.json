@@ -843,6 +843,8 @@
 	"corkboard.sort-descending": "倒序排列",
 	"corkboard.sort-timeline": "时间轴看板",
 	"corkboard.unscheduled-chapters": "未关联章节",
+	"corkboard.collapse-sidebar": "折叠侧边栏",
+	"corkboard.expand-sidebar": "展开侧边栏",
 	"common.default-lore-folder-name": "设定",
 	"setting.enable-selection-count": "启用选中字数统计悬浮窗",
 	"setting.enable-selection-count-desc": "选中大于1个字符时，在光标附近悬浮显示当前选区内的准确字数。",

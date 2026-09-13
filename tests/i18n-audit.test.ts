@@ -1,7 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { auditProofreadingSnippet } from '../scripts/i18n-audit';
+import { auditProofreadingSnippet, getInterpolationPlaceholders } from '../scripts/i18n-audit';
 
 describe('i18n AST Audit for Proofreading Sinks', () => {
+	it('compares interpolation placeholder names independently of their order', () => {
+		expect(getInterpolationPlaceholders('{count} / {total}')).toEqual(['count', 'total']);
+		expect(getInterpolationPlaceholders('{total} of {count}')).toEqual(['count', 'total']);
+		expect(getInterpolationPlaceholders('{count}')).not.toEqual(['count', 'total']);
+	});
+
 	it('should flag raw template literals in messageBuilder sinks (original DeDiDe defect style)', () => {
 		const badCode = `
 			const patterns = [];

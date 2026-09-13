@@ -84,7 +84,7 @@ export interface GraphData {
  * 同时支持中英文，确保国际化兼容
  */
 const RELATION_HEADING_KEYWORDS: ReadonlySet<string> = new Set([
-	'关系', 'relation', 'relations', 'relationships',
+	'关系', '關係', 'relation', 'relations', 'relationships',
 ]);
 
 /**
@@ -272,13 +272,13 @@ export class RelationGraphManager {
 					// 额外支持从 Frontmatter 解析关系
 					const fm = fileCache.frontmatter;
 					if (fm) {
-						const rawRelations = (fm['relations'] ?? fm['关系']) as unknown;
+						const rawRelations = (fm['relations'] ?? fm['关系'] ?? fm['關係']) as unknown;
 						if (Array.isArray(rawRelations)) {
 							for (const item of rawRelations) {
 								if (item && typeof item === 'object') {
 									const record = item as Record<string, unknown>;
-									const rawLabel = record['label'] ?? record['关系'] ?? record['type'];
-									const rawTarget = record['target'] ?? record['目标'] ?? record['name'];
+									const rawLabel = record['label'] ?? record['关系'] ?? record['關係'] ?? record['type'];
+									const rawTarget = record['target'] ?? record['目标'] ?? record['目標'] ?? record['name'];
 									const label = typeof rawLabel === 'string' || typeof rawLabel === 'number' ? String(rawLabel).trim() : '';
 									const targetRaw = typeof rawTarget === 'string' || typeof rawTarget === 'number' ? String(rawTarget).trim() : '';
 									if (label && targetRaw) {
@@ -356,7 +356,7 @@ export class RelationGraphManager {
 
 					// 查找 类型：主角、**类型**：主角 等
 					if (!nodeType) {
-						const typeMatch = chunk.match(/(?:\*\*|__)?(?:类型|Type)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/i);
+						const typeMatch = chunk.match(/(?:\*\*|__)?(?:类型|類型|Type)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/i);
 						if (typeMatch) {
 							const typeStr = typeMatch[1].trim();
 							nodeType = typeStr;
@@ -367,7 +367,7 @@ export class RelationGraphManager {
 					}
 
 					// 查找 别名：三哥、**别名**：三哥 等
-					const aliasMatch = chunk.match(/(?:\*\*|__)?(?:别名|Alias)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/i);
+					const aliasMatch = chunk.match(/(?:\*\*|__)?(?:别名|別名|Alias)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/i);
 					if (aliasMatch && aliasMatch[1]) {
 						const rawAliases = aliasMatch[1].split(TARGET_SEPARATOR_REGEX);
 						for (let a of rawAliases) {
@@ -406,12 +406,12 @@ export class RelationGraphManager {
 				// 1. 从 Frontmatter 解析
 				const fm = fileCache.frontmatter;
 				if (fm) {
-					const rawType = (fm['type'] ?? fm['类型']) as unknown;
+					const rawType = (fm['type'] ?? fm['类型'] ?? fm['類型']) as unknown;
 					if (typeof rawType === 'string' || typeof rawType === 'number') {
 						nodeType = String(rawType).trim();
 						if (nodeType.includes('主角')) isProtagonist = true;
 					}
-					const rawFmAliases = (fm['aliases'] ?? fm['alias'] ?? fm['别名']) as unknown;
+					const rawFmAliases = (fm['aliases'] ?? fm['alias'] ?? fm['别名'] ?? fm['別名']) as unknown;
 					if (Array.isArray(rawFmAliases)) {
 						for (const a of rawFmAliases) {
 							const cleanA = String(a).trim();
@@ -433,7 +433,7 @@ export class RelationGraphManager {
 				for (const chunk of lines) {
 					if (!chunk) continue;
 					if (!nodeType) {
-						const typeMatch = chunk.match(/(?:\*\*|__)?(?:类型|Type)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/i);
+						const typeMatch = chunk.match(/(?:\*\*|__)?(?:类型|類型|Type)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/i);
 						if (typeMatch) {
 							const typeStr = typeMatch[1].trim();
 							nodeType = typeStr;
@@ -442,7 +442,7 @@ export class RelationGraphManager {
 							}
 						}
 					}
-					const aliasMatch = chunk.match(/(?:\*\*|__)?(?:别名|Alias)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/i);
+					const aliasMatch = chunk.match(/(?:\*\*|__)?(?:别名|別名|Alias)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/i);
 					if (aliasMatch && aliasMatch[1]) {
 						const rawAliases = aliasMatch[1].split(TARGET_SEPARATOR_REGEX);
 						for (let a of rawAliases) {
@@ -534,7 +534,7 @@ export class RelationGraphManager {
 				}
 			}
 
-			const labelMatch = trimmed.match(/^(?:\*\*|__)?(?:关系|人物关系|Relations?)(?:\*\*|__)?\s*[:：]?\s*$/i);
+			const labelMatch = trimmed.match(/^(?:\*\*|__)?(?:关系|人物关系|關係|人物關係|Relations?)(?:\*\*|__)?\s*[:：]?\s*$/i);
 			if (labelMatch) {
 				const relStart = lineIdx + 1;
 				let relEnd = sectionEnd;

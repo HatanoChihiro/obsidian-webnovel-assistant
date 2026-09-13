@@ -839,6 +839,8 @@
 	"corkboard.sort-descending": "Descending order",
 	"corkboard.sort-timeline": "Timeline Board",
 	"corkboard.unscheduled-chapters": "Unassociated Chapters",
+	"corkboard.collapse-sidebar": "Collapse sidebar",
+	"corkboard.expand-sidebar": "Expand sidebar",
 	"common.default-lore-folder-name": "Lore",
 	"setting.enable-selection-count": "Enable Selection Word Count Tooltip",
 	"setting.enable-selection-count-desc": "Display accurate word count in a tooltip near the cursor when selecting text (more than 1 character).",

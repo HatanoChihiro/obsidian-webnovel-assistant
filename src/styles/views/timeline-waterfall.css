@@ -319,6 +319,80 @@ body .wn-timeline-waterfall-layout .wn-timeline-waterfall-sidebar.drag-over-chap
 }
 
 
+/* 桌面端未关联侧边栏折叠态与展开手柄 */
+body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-collapsed,
+body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-collapsed.is-empty {
+	position: absolute;
+	right: 0;
+	top: 0;
+	bottom: 0;
+	width: 32px;
+	padding: 0;
+	background: transparent;
+	border: 1px dashed transparent;
+	z-index: 100;
+	overflow: visible;
+	height: 100%;
+	max-height: none;
+	align-self: auto;
+}
+
+
+body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-collapsed .wn-timeline-sidebar-header,
+body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-collapsed .wn-corkboard-grid {
+	display: none;
+}
+
+
+body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-collapsed.drag-over,
+body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-collapsed.drag-over-chapter {
+	background: color-mix(in srgb, var(--interactive-accent) 15%, var(--background-primary));
+	border-left: 2px dashed var(--interactive-accent);
+}
+
+
+.wn-timeline-sidebar-expand-handle {
+	display: none;
+}
+
+
+body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-collapsed .wn-timeline-sidebar-expand-handle,
+body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-collapsed.is-empty .wn-timeline-sidebar-expand-handle {
+	display: flex;
+	align-items: center;
+	justify-content: flex-start;
+	position: absolute;
+	right: 0;
+	top: 14px;
+	width: 28px;
+	height: 32px;
+	padding-left: 2px;
+	transform: translateX(50%);
+	background: color-mix(in srgb, var(--background-primary) 92%, transparent);
+	backdrop-filter: blur(8px);
+	-webkit-backdrop-filter: blur(8px);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m, 4px) 0 0 var(--radius-m, 4px);
+	color: var(--text-muted);
+	cursor: pointer;
+	z-index: 101;
+	transition: opacity 0.2s, background 0.2s, color 0.2s;
+}
+
+
+body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-collapsed .wn-timeline-sidebar-expand-handle:hover,
+body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-collapsed.is-empty .wn-timeline-sidebar-expand-handle:hover {
+	color: var(--text-normal);
+	background: var(--background-modifier-hover);
+}
+
+
+body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-collapsed .wn-timeline-sidebar-expand-handle svg {
+	width: 14px;
+	height: 14px;
+}
+
+
 .wn-timeline-sidebar-header {
 	display: flex;
 	align-items: center;
@@ -358,6 +432,31 @@ body .wn-timeline-waterfall-layout .wn-timeline-waterfall-sidebar.drag-over-chap
 
 .wn-timeline-sidebar-icon svg {
 	display: block;
+}
+
+
+.wn-timeline-sidebar-collapse-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--text-muted);
+	cursor: pointer;
+	border-radius: var(--radius-s, 3px);
+	padding: 2px;
+	transition: color 0.15s ease, background 0.15s ease;
+}
+
+
+.wn-timeline-sidebar-collapse-btn:hover {
+	color: var(--text-normal);
+	background: var(--background-modifier-hover);
+}
+
+
+.wn-timeline-sidebar-collapse-btn svg {
+	display: block;
+	width: 16px;
+	height: 16px;
 }
 
 

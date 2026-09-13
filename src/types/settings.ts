@@ -7,6 +7,7 @@ import type { ForeshadowingSettings } from './foreshadowing';
 import type { TaskSettings } from './task';
 import type { NovelInfoSettings } from './homepage';
 import type { ProofreadingSettings } from './proofreading';
+import type { Locale } from '../i18n';
 
 /** 排版功能相关设置 */
 export interface TypographySettings {
@@ -228,7 +229,7 @@ export interface ObsSettings {
  */
 export interface AccurateCountSettings {
 	/** 界面语言 */
-	language: 'zh-CN' | 'en' | 'auto';
+	language: Locale | 'auto';
 	/** 字数统计方式 */
 	wordCountMethod: 'webnovel' | 'standard' | 'obsidian';
 	/** 默认目标字数 */

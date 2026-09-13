@@ -219,51 +219,83 @@ export function auditProofreadingSnippet(code: string, fileName = 'src/services/
 	return auditProofreadingAST(sourceFile);
 }
 
+/** Returns interpolation placeholder names in deterministic order. */
+export function getInterpolationPlaceholders(text: string): string[] {
+	return Array.from(text.matchAll(/\{([a-zA-Z0-9_]+)\}/g), match => match[1]).sort();
+}
+
 export function runI18nAudit(): boolean {
 	console.log('🔍 Running i18n Translation Completeness & Proofreading AST Audit...');
 
 	const i18nDir = path.join(__dirname, '../src/i18n');
-	const zhPath = path.join(i18nDir, 'zh-CN.json');
-	const enPath = path.join(i18nDir, 'en.json');
+	const locales = fs.readdirSync(i18nDir)
+		.filter(fileName => fileName.endsWith('.json'))
+		.map(fileName => path.basename(fileName, '.json'))
+		.sort();
+	const dataMap: Record<string, Record<string, string>> = {};
+	const keysMap: Record<string, Set<string>> = {};
 
-	if (!fs.existsSync(zhPath) || !fs.existsSync(enPath)) {
-		console.error('❌ i18n JSON files missing!');
-		return false;
+	for (const locale of locales) {
+		const filePath = path.join(i18nDir, `${locale}.json`);
+		if (!fs.existsSync(filePath)) {
+			console.error(`❌ i18n JSON file missing: ${locale}.json`);
+			return false;
+		}
+		dataMap[locale] = JSON.parse(fs.readFileSync(filePath, 'utf8') as string);
+		keysMap[locale] = new Set(Object.keys(dataMap[locale]));
 	}
-
-	const zhData = JSON.parse(fs.readFileSync(zhPath, 'utf8') as string) as Record<string, string>;
-	const enData = JSON.parse(fs.readFileSync(enPath, 'utf8') as string) as Record<string, string>;
-
-	const zhKeys = new Set(Object.keys(zhData));
-	const enKeys = new Set(Object.keys(enData));
-
-	const missingInEn: string[] = [];
-	const missingInZh: string[] = [];
-
-	zhKeys.forEach(key => {
-		if (!enKeys.has(key)) {
-			missingInEn.push(key);
-		}
-	});
-
-	enKeys.forEach(key => {
-		if (!zhKeys.has(key)) {
-			missingInZh.push(key);
-		}
-	});
 
 	let hasErrors = false;
+	const referenceLocale = 'zh-CN';
+	const refKeys = keysMap[referenceLocale];
 
-	if (missingInEn.length > 0) {
-		console.error(`❌ [Error] ${missingInEn.length} keys present in zh-CN.json but missing in en.json:`);
-		missingInEn.forEach(k => console.error(`  - ${k}`));
-		hasErrors = true;
-	}
+	for (const locale of locales) {
+		if (locale === referenceLocale) continue;
 
-	if (missingInZh.length > 0) {
-		console.error(`❌ [Error] ${missingInZh.length} keys present in en.json but missing in zh-CN.json:`);
-		missingInZh.forEach(k => console.error(`  - ${k}`));
-		hasErrors = true;
+		const missingInTarget: string[] = [];
+		const extraInTarget: string[] = [];
+		const placeholderMismatch: { key: string, refVars: string[], tgtVars: string[] }[] = [];
+
+		refKeys.forEach(key => {
+			if (!keysMap[locale].has(key)) {
+				missingInTarget.push(key);
+			} else {
+				const refText = dataMap[referenceLocale][key] || '';
+				const tgtText = dataMap[locale][key] || '';
+				const refVars = getInterpolationPlaceholders(refText);
+				const tgtVars = getInterpolationPlaceholders(tgtText);
+
+				if (JSON.stringify(refVars) !== JSON.stringify(tgtVars)) {
+					placeholderMismatch.push({ key, refVars, tgtVars });
+				}
+			}
+		});
+
+		keysMap[locale].forEach(key => {
+			if (!refKeys.has(key)) {
+				extraInTarget.push(key);
+			}
+		});
+
+		if (missingInTarget.length > 0) {
+			console.error(`❌ [Error] ${missingInTarget.length} keys present in ${referenceLocale}.json but missing in ${locale}.json:`);
+			missingInTarget.forEach(k => console.error(`  - ${k}`));
+			hasErrors = true;
+		}
+
+		if (extraInTarget.length > 0) {
+			console.error(`❌ [Error] ${extraInTarget.length} keys present in ${locale}.json but missing in ${referenceLocale}.json:`);
+			extraInTarget.forEach(k => console.error(`  - ${k}`));
+			hasErrors = true;
+		}
+
+		if (placeholderMismatch.length > 0) {
+			console.error(`❌ [Error] ${placeholderMismatch.length} keys have placeholder mismatch in ${locale}.json:`);
+			placeholderMismatch.forEach(m => {
+				console.error(`  - ${m.key}: expected {${m.refVars.join(', ')}}, got {${m.tgtVars.join(', ')}}`);
+			});
+			hasErrors = true;
+		}
 	}
 
 	// 2. TypeScript AST Audit for Proofreading Code
@@ -292,10 +324,10 @@ export function runI18nAudit(): boolean {
 	}
 
 	if (hasErrors) {
-		console.error(`💥 i18n Audit failed! (${missingInEn.length + missingInZh.length} key mismatch errors, ${astIssueCount} proofreading AST sink errors)`);
+		console.error(`💥 i18n Audit failed! (key mismatch errors found, ${astIssueCount} proofreading AST sink errors)`);
 		return false;
 	} else {
-		console.log(`✅ i18n Audit passed! (${zhKeys.size} keys synchronized; ${proofreadingFiles.length} proofreading files audited with 0 AST sink issues)`);
+		console.log(`✅ i18n Audit passed! (${refKeys.size} keys synchronized across ${locales.length} locales; ${proofreadingFiles.length} proofreading files audited with 0 AST sink issues)`);
 		return true;
 	}
 }

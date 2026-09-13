@@ -15,7 +15,7 @@ import { ACMatcher } from '../../src/services/proofreading/AhoCorasick';
 import { DeDiDeScanner } from '../../src/services/proofreading/DeDiDeRule';
 import { PunctuationScanner } from '../../src/services/proofreading/PunctuationRule';
 import type { DeDiDeLexicon } from '../../src/types/proofreading';
-import { getProofreadingDiagnosticDisplayMessage } from '../../src/ui/ProofreadingPopover';
+import { getProofreadingDiagnosticDisplayMessage, computeProofreadingPopoverPosition } from '../../src/ui/ProofreadingPopover';
 import type { WebNovelAssistantPlugin } from '../../src/types/plugin';
 import { TFile, TFolder, type App, type Vault } from 'obsidian';
 import { setLocale } from '../../src/i18n';
@@ -655,6 +655,155 @@ describe('ProofreadingManager prepareDictionaryForEditing, isFileInsideDictionar
 			expect(fallback.prefix).toBe('');
 			expect(fallback.target).toBe('没有中括号的原始段落 第二行');
 			expect(fallback.suffix).toBe('');
+		});
+	});
+
+	describe('computeProofreadingPopoverPosition', () => {
+		it('should position below when capped desired height fits below', () => {
+			const res = computeProofreadingPopoverPosition({
+				targetRect: { top: 100, bottom: 120, left: 50 },
+				popoverWidth: 260,
+				popoverHeight: 140,
+				naturalHeight: 140,
+				windowWidth: 1000,
+				windowHeight: 800,
+				platformMaxHeight: 350
+			});
+
+			expect(res.placement).toBe('below');
+			expect(res.top).toBe(126); // 120 + 6
+			expect(res.left).toBe(50);
+			expect(res.maxHeight).toBe(350);
+		});
+
+		it('should position below when tall synonym list capped at platformMaxHeight fits below', () => {
+			const res = computeProofreadingPopoverPosition({
+				targetRect: { top: 200, bottom: 220, left: 50 },
+				popoverWidth: 260,
+				popoverHeight: 350,
+				naturalHeight: 600, // 20 suggestions
+				windowWidth: 1000,
+				windowHeight: 800,
+				platformMaxHeight: 350
+			});
+
+			// spaceBelow = (800 - 10) - (220 + 6) = 564px >= 350
+			expect(res.placement).toBe('below');
+			expect(res.top).toBe(226);
+			expect(res.maxHeight).toBe(350);
+			// 226 + 350 = 576 <= 790 (stays safely within viewport)
+			expect(res.top + res.maxHeight).toBeLessThanOrEqual(800 - 10);
+		});
+
+		it('should flip above when capped desired height does not fit below but above has more space', () => {
+			const res = computeProofreadingPopoverPosition({
+				targetRect: { top: 550, bottom: 570, left: 50 },
+				popoverWidth: 260,
+				popoverHeight: 350,
+				naturalHeight: 600,
+				windowWidth: 1000,
+				windowHeight: 800,
+				platformMaxHeight: 350
+			});
+
+			// spaceBelow = 790 - 576 = 214px (< 350)
+			// spaceAbove = 544 - 10 = 534px (> 214)
+			expect(res.placement).toBe('above');
+			expect(res.maxHeight).toBe(350);
+			// actualHeight = 350, top = 550 - 6 - 350 = 194
+			expect(res.top).toBe(194);
+			expect(res.top).toBeGreaterThanOrEqual(10);
+			expect(res.top + res.maxHeight).toBe(544); // 6px above target top 550
+		});
+
+		it('should choose the side with more space and constrain maxHeight strictly when neither side fits full platform height', () => {
+			// Small window 400px high, target at top 240, bottom 260
+			const res = computeProofreadingPopoverPosition({
+				targetRect: { top: 240, bottom: 260, left: 50 },
+				popoverWidth: 260,
+				popoverHeight: 350,
+				naturalHeight: 500,
+				windowWidth: 800,
+				windowHeight: 400,
+				platformMaxHeight: 350
+			});
+
+			// spaceBelow = (400 - 10) - (260 + 6) = 124px
+			// spaceAbove = (240 - 6) - 10 = 224px
+			// spaceAbove (224) > spaceBelow (124) => choose above
+			expect(res.placement).toBe('above');
+			expect(res.maxHeight).toBe(224);
+			// top = 240 - 6 - 224 = 10
+			expect(res.top).toBe(10);
+			expect(res.top).toBeGreaterThanOrEqual(10);
+			expect(res.top + res.maxHeight).toBeLessThanOrEqual(400 - 10);
+		});
+
+		it('should choose below and constrain maxHeight when below has more space than above but cannot fit full platform height', () => {
+			// Small window 400px high, target at top 140, bottom 160
+			const res = computeProofreadingPopoverPosition({
+				targetRect: { top: 140, bottom: 160, left: 50 },
+				popoverWidth: 260,
+				popoverHeight: 350,
+				naturalHeight: 500,
+				windowWidth: 800,
+				windowHeight: 400,
+				platformMaxHeight: 350
+			});
+
+			// spaceBelow = (400 - 10) - (160 + 6) = 224px
+			// spaceAbove = (140 - 6) - 10 = 124px
+			// spaceBelow (224) > spaceAbove (124) => choose below
+			expect(res.placement).toBe('below');
+			expect(res.maxHeight).toBe(224);
+			expect(res.top).toBe(166);
+			expect(res.top + res.maxHeight).toBe(390); // 400 - 10
+			expect(res.top + res.maxHeight).toBeLessThanOrEqual(400 - 10);
+		});
+
+		it('should enforce phone platform max height of 240px and constrain properly', () => {
+			// Phone screen 600px high, platformMaxHeight = 240
+			const res = computeProofreadingPopoverPosition({
+				targetRect: { top: 100, bottom: 120, left: 30 },
+				popoverWidth: 240,
+				popoverHeight: 240,
+				naturalHeight: 500,
+				windowWidth: 360,
+				windowHeight: 600,
+				platformMaxHeight: 240
+			});
+
+			expect(res.placement).toBe('below');
+			expect(res.top).toBe(126);
+			expect(res.maxHeight).toBe(240);
+			expect(res.top + res.maxHeight).toBeLessThanOrEqual(600 - 10);
+		});
+
+		it('should maintain horizontal bounds within viewport padding', () => {
+			// Popover overflowing on right
+			const resRight = computeProofreadingPopoverPosition({
+				targetRect: { top: 100, bottom: 120, left: 900 },
+				popoverWidth: 260,
+				popoverHeight: 120,
+				naturalHeight: 120,
+				windowWidth: 1000,
+				windowHeight: 800,
+				platformMaxHeight: 350
+			});
+			// 1000 - 260 - 10 = 730
+			expect(resRight.left).toBe(730);
+
+			// Popover overflowing on left
+			const resLeft = computeProofreadingPopoverPosition({
+				targetRect: { top: 100, bottom: 120, left: -20 },
+				popoverWidth: 260,
+				popoverHeight: 120,
+				naturalHeight: 120,
+				windowWidth: 1000,
+				windowHeight: 800,
+				platformMaxHeight: 350
+			});
+			expect(resLeft.left).toBe(10);
 		});
 	});
 });

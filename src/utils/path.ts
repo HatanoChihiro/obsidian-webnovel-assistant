@@ -152,22 +152,36 @@ export function findBookRoot(app: App, plugin: FindBookRootPlugin, file: TFile |
 }
 
 /**
- * 从已按工作台顺序排列的章节列表中获取最后一个直系卷目录。
- * 没有卷层级时返回作品根目录。
+ * 从已按工作台确定性升序排列的章节列表中获取最终章节所在的目录路径。
+ * 若最终章节位于作品内的卷或其子目录中，则返回该目录；若无卷层级或无章节时返回作品根目录。
  */
 export function getLatestChapterFolderPath(bookPath: string, files: TFile[]): string {
-	const normalizedBookPath = bookPath === '/' ? '/' : bookPath.replace(/\/+$/, '');
-	let latestFolderPath = normalizedBookPath;
+	const normalizedBookPath = (!bookPath || bookPath === '/') ? '/' : bookPath.replace(/\/+$/, '');
 
-	for (const file of files) {
-		const parent = file.parent;
-		if (!parent || parent.path === normalizedBookPath || parent.path === '/') continue;
-		if (parent.parent?.path !== normalizedBookPath) continue;
-		latestFolderPath = parent.path;
+	for (let i = files.length - 1; i >= 0; i--) {
+		const file = files[i];
+		let parentPath = '';
+		if (file.parent) {
+			parentPath = (!file.parent.path || file.parent.path === '/') ? '/' : file.parent.path.replace(/\/+$/, '');
+		} else if (file.path) {
+			const lastSlash = file.path.lastIndexOf('/');
+			parentPath = lastSlash === -1 ? '/' : (file.path.substring(0, lastSlash) || '/');
+		} else {
+			continue;
+		}
+
+		if (normalizedBookPath === '/') {
+			return parentPath;
+		}
+
+		if (parentPath === normalizedBookPath || parentPath.startsWith(normalizedBookPath + '/')) {
+			return parentPath;
+		}
 	}
 
-	return latestFolderPath;
+	return normalizedBookPath;
 }
+
 
 
 /**

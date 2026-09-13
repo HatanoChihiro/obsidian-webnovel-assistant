@@ -200,12 +200,13 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName(t('setting.language')).setDesc(t('setting.language-desc'))
 			.addDropdown(dropdown => {
 				dropdown.addOption('zh-CN', '中文 (Chinese)');
+				dropdown.addOption('zh-TW', '繁體中文 (Traditional Chinese)');
 				dropdown.addOption('en', 'English');
 				dropdown.addOption('auto', t('setting.language-auto'));
 				dropdown.setValue(this.plugin.settings.language || 'auto');
 				dropdown.onChange(async (value: string) => {
 					const locale = value === 'auto' ? detectLocale() : value as Locale;
-					this.plugin.settings.language = value as 'zh-CN' | 'en' | 'auto';
+					this.plugin.settings.language = value as Locale | 'auto';
 					await setLocale(locale);
 					void this.plugin.saveSettings();
 					// 语言切换后刷新设置面板
