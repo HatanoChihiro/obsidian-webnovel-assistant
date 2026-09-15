@@ -130,4 +130,18 @@ describe('LoreHoverPopover lifecycle', () => {
 		expect(removeDocumentListener).toHaveBeenCalledWith('click', expect.any(Function));
 		expect(disconnect).toHaveBeenCalledOnce();
 	});
+
+	it('delegates card highlight to LoreCardRenderer without adding is-important to popover wrapper', () => {
+		const mockEntry = { file: { path: 'Lore/Alice.md' }, heading: 'Alice', important: true };
+		new LoreHoverPopover(target, mockEntry as never, {} as never, true);
+		vi.runOnlyPendingTimers();
+
+		expect(buildCardDOM).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({ important: true }),
+			expect.anything(),
+			expect.anything(),
+			expect.objectContaining({ hideEditButton: true, hideImportanceButton: false })
+		);
+	});
 });

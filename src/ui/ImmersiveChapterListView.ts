@@ -69,8 +69,10 @@ export class ImmersiveChapterListView extends ItemView {
 	async onOpen() {
 		void this.refresh();
 		
-		// 仅轻量更新高亮类名，彻底消除全量清空 DOM 导致的严重卡顿
+		// 仅轻量更新主编辑与参考文档高亮，避免全量清空 DOM 导致卡顿
 		this.registerEvent(this.app.workspace.on('active-leaf-change', () => { this.updateActiveHighlight(); }));
+		this.registerEvent(this.app.workspace.on('file-open', () => { this.updateActiveHighlight(); }));
+		this.registerEvent(this.app.workspace.on('webnovel:immersive-reference-ready', () => { this.updateActiveHighlight(); }));
 		this.registerEvent(this.app.vault.on('create', () => { void this.refresh(); }));
 		this.registerEvent(this.app.vault.on('delete', () => { void this.refresh(); }));
 		this.registerEvent(this.app.vault.on('rename', () => { void this.refresh(); }));
@@ -129,14 +131,25 @@ export class ImmersiveChapterListView extends ItemView {
 		return refLeaf;
 	}
 
+	private getMarkdownFile(leaf: WorkspaceLeaf | null): TFile | null {
+		if (!leaf || leaf.view.getViewType() !== 'markdown') return null;
+		return (leaf.view as MarkdownView).file;
+	}
+
 	private updateActiveHighlight(): void {
-		const activeFile = this.app.workspace.getActiveFile();
+		const mainFile = this.getMarkdownFile(this.getMainEditorLeaf());
+		const referenceFile = this.getMarkdownFile(this.getReferenceViewLeaf());
 		const items = this.containerEl.querySelectorAll<HTMLElement>('.immersive-chapter-item');
 		items.forEach(itemEl => {
-			if (activeFile && itemEl.dataset.path === activeFile.path) {
+			if (mainFile && itemEl.dataset.path === mainFile.path) {
 				itemEl.addClass('is-active');
 			} else {
 				itemEl.removeClass('is-active');
+			}
+			if (referenceFile && itemEl.dataset.path === referenceFile.path) {
+				itemEl.addClass('is-reference-open');
+			} else {
+				itemEl.removeClass('is-reference-open');
 			}
 		});
 	}
@@ -173,10 +186,11 @@ export class ImmersiveChapterListView extends ItemView {
 			? await this.plugin.foreshadowingManager.buildChapterForeshadowingMap(fmFolder, allMdFiles, this.app.vault)
 			: new Map<string, ParsedForeshadowingEntry[]>();
 
-		const activeFile = this.app.workspace.getActiveFile();
+		const mainFile = this.getMarkdownFile(this.getMainEditorLeaf());
+		const referenceFile = this.getMarkdownFile(this.getReferenceViewLeaf());
 		const state = { activeItemEl: null as HTMLElement | null };
 
-		this.renderFolderRecursively(currentFolder, listContainer, foreshadowingMap, activeFile, state, bookPath);
+		this.renderFolderRecursively(currentFolder, listContainer, foreshadowingMap, mainFile, referenceFile, state, bookPath);
 
 		window.requestAnimationFrame(() => {
 			if (listContainer) {
@@ -194,7 +208,8 @@ export class ImmersiveChapterListView extends ItemView {
 		folder: TFolder,
 		container: HTMLElement,
 		foreshadowingMap: Map<string, ParsedForeshadowingEntry[]>,
-		activeFile: TFile | null,
+		mainFile: TFile | null,
+		referenceFile: TFile | null,
 		state: { activeItemEl: HTMLElement | null },
 		bookPath: string
 	) {
@@ -222,14 +237,17 @@ export class ImmersiveChapterListView extends ItemView {
 				summary.createSpan({ text: item.name, cls: 'immersive-folder-name' });
 				
 				const childrenContainer = details.createDiv({ cls: 'immersive-folder-children' });
-				this.renderFolderRecursively(item, childrenContainer, foreshadowingMap, activeFile, state, bookPath);
+				this.renderFolderRecursively(item, childrenContainer, foreshadowingMap, mainFile, referenceFile, state, bookPath);
 			} else if (item instanceof TFile) {
 				const file = item;
 				const itemEl = container.createDiv({ cls: 'immersive-chapter-item' });
 				itemEl.dataset.path = file.path;
-				if (activeFile && file.path === activeFile.path) {
+				if (mainFile && file.path === mainFile.path) {
 					itemEl.addClass('is-active');
 					state.activeItemEl = itemEl;
+				}
+				if (referenceFile && file.path === referenceFile.path) {
+					itemEl.addClass('is-reference-open');
 				}
 				
 				const leftContainer = itemEl.createDiv({ cls: 'immersive-chapter-left' });
@@ -298,6 +316,7 @@ export class ImmersiveChapterListView extends ItemView {
 						void refLeaf.openFile(file, { active: false, state: { mode: 'preview' } }).then(() => {
 							if (refLeaf) {
 								refLeaf.containerEl.classList.add('immersive-reference-view');
+								this.updateActiveHighlight();
 							}
 						});
 					}

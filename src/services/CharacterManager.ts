@@ -8,6 +8,7 @@ import { t } from '../i18n';
 export interface LoreEntry {
 	file: TFile;
 	heading: string;
+	important?: boolean;
 }
 
 /**
@@ -19,6 +20,7 @@ export function cleanLoreHeading(rawHeading: string): string {
 	return rawHeading
 		.trim()
 		.replace(/^#{1,6}\s+/, '')
+		.replace(/<!--\s*wn-important\s*-->/g, '')
 		.replace(/\[\[(?:[^|\]]*\|)?([^\]]+)\]\]/g, '$1')
 		.replace(/(^|\s)#[^\s#]+/g, '')
 		.replace(/\*\*|__/g, '')
@@ -620,7 +622,7 @@ export class CharacterManager {
 
 					// Exclude the heading line itself, return the body
 					const bodyLines = lines.slice(startLine + 1, endLine + 1);
-					return bodyLines.join('\n').trim();
+					return bodyLines.join('\n').replace(/<!--\s*wn-important\s*-->\r?\n?/g, '').trim();
 				}
 			}
 		}
@@ -637,7 +639,7 @@ export class CharacterManager {
 			}
 			// 移除顶部的 # 一级标题（如果存在）
 			body = body.replace(/^\s*#\s+[^\n]*\r?\n/, '');
-			return body.trim();
+			return body.replace(/<!--\s*wn-important\s*-->\r?\n?/g, '').trim();
 		}
 
 		return '';
@@ -664,7 +666,12 @@ export class CharacterManager {
 						}
 						const endLine = nextLevelH ? nextLevelH.position.start.line - 1 : lines.length - 1;
 
-						const newLines = newContent.split('\n');
+						const oldBody = lines.slice(startLine + 1, endLine + 1).join('\n');
+						const isImportant = entry.important ?? /<!--\s*wn-important\s*-->/.test(oldBody);
+
+						const cleanNew = newContent.replace(/<!--\s*wn-important\s*-->\r?\n?/g, '').trim();
+						const finalChunk = isImportant ? (cleanNew ? `<!-- wn-important -->\n${cleanNew}` : '<!-- wn-important -->') : cleanNew;
+						const newLines = finalChunk ? finalChunk.split('\n') : [];
 						// Replace the lines after the heading up to endLine
 						lines.splice(startLine + 1, endLine - startLine, ...newLines);
 						updated = true;
@@ -689,14 +696,99 @@ export class CharacterManager {
 				const h1Match = rest.match(/^\s*#\s+[^\n]*\r?\n/);
 				if (h1Match) {
 					prefix += h1Match[0];
+					rest = rest.slice(h1Match[0].length);
 				}
+				const isImportant = entry.important ?? /<!--\s*wn-important\s*-->/.test(rest);
+				const cleanNew = newContent.replace(/<!--\s*wn-important\s*-->\r?\n?/g, '').trim();
+				const finalContent = isImportant ? (cleanNew ? `<!-- wn-important -->\n${cleanNew}` : '<!-- wn-important -->') : cleanNew;
 				updated = true;
-				return (prefix ? prefix + '\n' : '') + newContent.trim() + '\n';
+				return (prefix ? prefix + (prefix.endsWith('\n') ? '' : '\n') : '') + finalContent + '\n';
 			}
 
 			return data;
 		});
 		return updated;
+	}
+
+	/**
+	 * 切换设定词条的重要标记状态
+	 */
+	public async toggleLoreImportance(entry: LoreEntry): Promise<boolean> {
+		const file = entry.file;
+		const fileCache = this.app.metadataCache.getFileCache(file);
+		let nextState = !entry.important;
+
+		await this.app.vault.process(file, (data) => {
+			const lines = data.split('\n');
+			if (fileCache && fileCache.headings) {
+				for (let i = 0; i < fileCache.headings.length; i++) {
+					const h = fileCache.headings[i];
+					if (h.level === 2 && cleanLoreHeading(h.heading) === cleanLoreHeading(entry.heading)) {
+						const startLine = h.position.start.line;
+						let nextLevelH = null;
+						for (let j = i + 1; j < fileCache.headings.length; j++) {
+							if (fileCache.headings[j].level <= h.level) {
+								nextLevelH = fileCache.headings[j];
+								break;
+							}
+						}
+						const endLine = nextLevelH ? nextLevelH.position.start.line - 1 : lines.length - 1;
+						const bodyLines = lines.slice(startLine + 1, endLine + 1);
+						const bodyText = bodyLines.join('\n');
+						const hasMarker = /<!--\s*wn-important\s*-->/.test(bodyText);
+						nextState = !hasMarker;
+
+						const cleanBody = bodyText.replace(/<!--\s*wn-important\s*-->\r?\n?/g, '').trim();
+						let finalChunk = '';
+						if (nextState) {
+							finalChunk = cleanBody ? `<!-- wn-important -->\n${cleanBody}` : '<!-- wn-important -->';
+						} else {
+							finalChunk = cleanBody;
+						}
+						const newLines = finalChunk ? finalChunk.split('\n') : [];
+						lines.splice(startLine + 1, endLine - startLine, ...newLines);
+						return lines.join('\n');
+					}
+				}
+			}
+
+			// 单文件词条模式回退
+			if (cleanLoreHeading(entry.heading) === cleanLoreHeading(file.basename)) {
+				const hasMarker = /<!--\s*wn-important\s*-->/.test(data);
+				nextState = !hasMarker;
+
+				let prefix = '';
+				let rest = data;
+				if (rest.startsWith('---\n') || rest.startsWith('---\r\n')) {
+					const endMatch = rest.match(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/);
+					if (endMatch) {
+						prefix += endMatch[0];
+						rest = rest.slice(endMatch[0].length);
+					}
+				}
+				const h1Match = rest.match(/^\s*#\s+[^\n]*\r?\n/);
+				if (h1Match) {
+					prefix += h1Match[0];
+					rest = rest.slice(h1Match[0].length);
+				}
+
+				const cleanRest = rest.replace(/<!--\s*wn-important\s*-->\r?\n?/g, '').trim();
+				let finalContent = '';
+				if (nextState) {
+					finalContent = cleanRest ? `<!-- wn-important -->\n${cleanRest}` : '<!-- wn-important -->';
+				} else {
+					finalContent = cleanRest;
+				}
+				return (prefix ? prefix + (prefix.endsWith('\n') ? '' : '\n') : '') + finalContent + '\n';
+			}
+
+			return data;
+		});
+
+		entry.important = nextState;
+		this.cacheVersion++;
+		this.notifyCacheUpdated();
+		return nextState;
 	}
 
 	/**
@@ -756,25 +848,29 @@ export class CharacterManager {
 				const headingText = cleanLoreHeading(rawHeading);
 				if (!headingText) continue;
 
-				addEntry(headingText, { file, heading: headingText });
-
 				const startLine = heading.position.end.line + 1;
 				const nextHeading = headings[i + 1];
 				const endLine = nextHeading ? nextHeading.position.start.line : lines.length;
 
 				const chunk = lines.slice(startLine, endLine).join('\n');
+				const important = /<!--\s*wn-important\s*-->/.test(chunk) ? true : undefined;
+				const entry: LoreEntry = { file, heading: headingText, important };
+				addEntry(headingText, entry);
+
 				const aliasMatch = chunk.match(/(?:\*\*|__)?(?:别名|別名|Alias)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/);
 				if (aliasMatch && aliasMatch[1]) {
 					const rawAliases = aliasMatch[1].split(/[,，、/|;；]/);
 					for (const a of rawAliases) {
-						addEntry(a, { file, heading: headingText });
+						addEntry(a, entry);
 					}
 				}
 			}
 		} else {
 			const fileEntryName = cleanLoreHeading(file.basename);
 			if (fileEntryName) {
-				addEntry(fileEntryName, { file, heading: fileEntryName });
+				const important = /<!--\s*wn-important\s*-->/.test(content) ? true : undefined;
+				const entry: LoreEntry = { file, heading: fileEntryName, important };
+				addEntry(fileEntryName, entry);
 
 				const fm = fileCache?.frontmatter;
 				if (fm) {
@@ -782,13 +878,13 @@ export class CharacterManager {
 					if (Array.isArray(rawAliases)) {
 						for (const a of rawAliases) {
 							if (typeof a === 'string' || typeof a === 'number') {
-								addEntry(String(a), { file, heading: fileEntryName });
+								addEntry(String(a), entry);
 							}
 						}
 					} else if (typeof rawAliases === 'string' && rawAliases.trim()) {
 						const splitAliases = rawAliases.split(/[,，、/|;；]/);
 						for (const a of splitAliases) {
-							addEntry(a, { file, heading: fileEntryName });
+							addEntry(a, entry);
 						}
 					}
 				}
@@ -798,7 +894,7 @@ export class CharacterManager {
 					if (match[1]) {
 						const rawAliases = match[1].split(/[,，、/|;；]/);
 						for (const a of rawAliases) {
-							addEntry(a, { file, heading: fileEntryName });
+							addEntry(a, entry);
 						}
 					}
 				}

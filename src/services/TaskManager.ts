@@ -97,6 +97,7 @@ export class TaskManager {
 				startSnapshot: parseInt(meta['startSnapshot'] || '0', 10),
 				status: (TASK_STATUS_MAP[meta['status']] as TaskStatus) || 'notStarted',
 				completedWords: meta['completedWords'] ? parseInt(meta['completedWords'], 10) : undefined,
+				important: /<!--\s*wn-important\s*-->/.test(trimmed) ? true : undefined,
 				rawBlock: trimmed,
 			});
 		}
@@ -108,6 +109,9 @@ export class TaskManager {
 		const lines: string[] = [];
 		lines.push(`## ${getTaskPeriodTitle(entry.period)}`);
 		lines.push('');
+		if (entry.important) {
+			lines.push('<!-- wn-important -->');
+		}
 		lines.push(`**${getTaskLabel('platform')}**：${entry.platform}`);
 		lines.push(`**${getTaskLabel('position')}**：${entry.position}`);
 		lines.push(`**${getTaskLabel('taskType')}**：${getTaskTypeText(entry.taskType || 'wordCount')}`);
@@ -169,6 +173,31 @@ export class TaskManager {
 		if (notify) {
 			this.notifyTasksChanged(folderPath);
 		}
+	}
+
+	/** 切换任务的重要标记状态 */
+	async toggleImportance(period: number, taskType?: TaskType, folderPath: string = this.currentFolder): Promise<boolean> {
+		let newImportant = false;
+		await this.writer.enqueue(async () => {
+			const file = this.getTaskFile(folderPath);
+			if (!file) return;
+			await this.app.vault.process(file, (content) => {
+				const entries = this.parseEntries(content);
+				const entry = entries.find(e => e.period === period && (taskType === undefined || (e.taskType || 'wordCount') === taskType));
+				if (!entry) return content;
+
+				entry.important = !entry.important;
+				newImportant = !!entry.important;
+
+				let newContent = '';
+				for (const e of entries) {
+					newContent += this.formatEntry(e);
+				}
+				return newContent;
+			});
+		});
+		this.notifyTasksChanged(folderPath);
+		return newImportant;
 	}
 
 	/** 更新进行中任务的完成字数（实时持久化） */

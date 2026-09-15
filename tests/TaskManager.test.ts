@@ -351,4 +351,75 @@ describe('TaskManager work scoping', () => {
 			expect(updatedEntries[0]?.completedWords).toBeUndefined();
 		});
 	});
+
+	describe('Important Marker Management', () => {
+		it('round-trips important marker in parseEntries and formatEntry', () => {
+			const manager = new TaskManager({ vault: {} } as never, { settings: {} } as never);
+			const entry: TaskEntry = {
+				period: 1,
+				platform: '起点中文网',
+				position: '每日更新',
+				taskType: 'wordCount',
+				wordTarget: 4000,
+				startDate: '2026-09-01',
+				endDate: '2026-09-30',
+				startSnapshot: 0,
+				status: 'active',
+				important: true,
+				rawBlock: ''
+			};
+			const formatted = manager.formatEntry(entry);
+			expect(formatted).toContain('<!-- wn-important -->');
+
+			const parsed = manager.parseEntries(formatted);
+			expect(parsed).toHaveLength(1);
+			expect(parsed[0].important).toBe(true);
+
+			entry.important = false;
+			const formattedUnmarked = manager.formatEntry(entry);
+			expect(formattedUnmarked).not.toContain('<!-- wn-important -->');
+			expect(manager.parseEntries(formattedUnmarked)[0].important).toBeUndefined();
+		});
+
+		it('toggles task importance status atomically with toggleImportance', async () => {
+			const taskFile = new TFile('限时任务.md', '作品A/限时任务.md');
+			const files = new Map([[taskFile.path, taskFile]]);
+			const contents = new Map<string, string>();
+			const process = vi.fn(async (file: TFile, update: (content: string) => string) => {
+				contents.set(file.path, update(contents.get(file.path) || ''));
+			});
+			const app = {
+				vault: {
+					getAbstractFileByPath: vi.fn((path: string) => files.get(path) ?? null),
+					process
+				},
+				workspace: { trigger: vi.fn() }
+			};
+			const plugin = {
+				settings: { task: { fileName: '限时任务' } }
+			};
+			const manager = new TaskManager(app as never, plugin as never, '作品A');
+			const initialTask: TaskEntry = {
+				period: 1,
+				platform: '平台',
+				position: '任务',
+				taskType: 'wordCount',
+				wordTarget: 1000,
+				startDate: '2026-09-01',
+				endDate: '2026-09-30',
+				startSnapshot: 0,
+				status: 'active',
+				rawBlock: ''
+			};
+			contents.set(taskFile.path, manager.formatEntry(initialTask));
+
+			const state1 = await manager.toggleImportance(1, 'wordCount', '作品A');
+			expect(state1).toBe(true);
+			expect(contents.get(taskFile.path)).toContain('<!-- wn-important -->');
+
+			const state2 = await manager.toggleImportance(1, 'wordCount', '作品A');
+			expect(state2).toBe(false);
+			expect(contents.get(taskFile.path)).not.toContain('<!-- wn-important -->');
+		});
+	});
 });

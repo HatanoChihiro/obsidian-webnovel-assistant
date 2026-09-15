@@ -480,6 +480,33 @@ export class ForeshadowingManager {
 			return found;
 		});
 	}
+
+	/**
+	 * 切换伏笔条目的重要状态
+	 */
+	async toggleImportance(
+		targetFile: TFile,
+		description: string
+	): Promise<boolean> {
+		return this.writer.enqueue(async () => {
+			let newImportant = false;
+			await this.app.vault.process(targetFile, (content) => {
+				const { found, startPos, endPos, matchedText } = this.findEntryByDescription(content, description);
+				if (!found || startPos === -1) return content;
+
+				const entries = this.parseEntries(matchedText);
+				if (entries.length === 0) return content;
+
+				const entry = entries[0];
+				entry.important = !entry.important;
+				newImportant = Boolean(entry.important);
+
+				const formatted = ForeshadowingParser.formatParsedEntry(entry);
+				return content.slice(0, startPos) + formatted + content.slice(endPos);
+			});
+			return newImportant;
+		});
+	}
 	async getExistingTags(sourceFile: TFile): Promise<string[]> {
 		const folder = sourceFile.parent?.path || '';
 		const foreshadowFile = this.getForeshadowingFileByFolder(folder);

@@ -12,6 +12,7 @@ import { getDeterministicChapterDisplayOrder } from '../../utils/chapterDisplayO
 import type { TimelineFormContext, TimelineFormSettings } from './TimelineFormComponent';
 import type { ChapterCardPlugin } from './ChapterCard';
 import type { AccurateCountSettings } from '../../types/settings';
+import { createCardImportanceButton } from './CardImportanceButton';
 
 class ConfirmDeleteEventModal extends Modal {
 	constructor(app: App, private title: string, private onConfirm: () => void) {
@@ -442,17 +443,40 @@ export class TimelineBoardRenderer {
 					// Description box
 					let descEl: HTMLElement;
 					const hasDesc = Boolean(items[itemIdx].description && items[itemIdx].description.trim().length > 0);
+					const isImportant = Boolean(items[itemIdx].important);
+					const descCls = `${hasDesc ? 'wn-timeline-item-desc' : 'wn-timeline-item-desc is-empty'}${isImportant ? ' is-important' : ''}`;
 					if (itemIdx === 0 || items[itemIdx].description) {
 						descEl = itemRow.createDiv({
 							text: items[itemIdx].description || t('modal.describe-event-placeholder'),
-							cls: hasDesc ? 'wn-timeline-item-desc' : 'wn-timeline-item-desc is-empty'
+							cls: descCls
 						});
 					} else {
-						descEl = itemRow.createDiv({ text: '', cls: 'wn-timeline-item-desc is-empty' });
+						descEl = itemRow.createDiv({ text: '', cls: descCls });
 					}
 
-					// Delete button (内嵌在描述框内部，随描述框自适应宽度移动)
-					const deleteBtn = descEl.createDiv({ cls: 'wn-timeline-item-delete-btn' });
+					// Action rail (包含置顶的星标与下方的删除按钮)
+					const actionRail = descEl.createDiv({ cls: 'wn-timeline-item-actions' });
+					createCardImportanceButton({
+						container: actionRail,
+						isImportant,
+						cardEl: descEl,
+						onToggle: async (newImportant) => {
+							items[itemIdx].important = newImportant;
+							const originalIndex = allEntries.indexOf(entry);
+							onSaveStateChange(true);
+							try {
+								await timelineManager.updateEntry(originalIndex, entry, bookFolder);
+							} catch (err) {
+								Logger.error('[TimelineBoard] 更新事件重要状态失败:', err);
+								throw err;
+							} finally {
+								onSaveStateChange(false);
+							}
+						}
+					});
+
+					// Delete button (在竖向单列中位于星标下方)
+					const deleteBtn = actionRail.createDiv({ cls: 'wn-timeline-item-delete-btn' });
 					setIcon(deleteBtn, 'trash');
 					deleteBtn.onclick = (e) => {
 						e.stopPropagation();

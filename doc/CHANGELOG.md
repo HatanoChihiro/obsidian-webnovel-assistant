@@ -1,3 +1,39 @@
+## 🔧 v3.9.8
+
+### 新增功能
+
+- **重要卡片星标与高亮**：伏笔、时间线事件、章节、任务和设定卡片均可标记为重要。重要卡片会显示金色星标与轮廓，设定悬浮预览中也会同步显示。
+- **沉浸模式番茄钟提醒**：可在沉浸模式中启用番茄钟，并设置 20 至 180 分钟的提醒间隔。时间到达后会弹窗提醒并显示休息时长，可选择开启下一轮或在本次沉浸模式中不再提醒。
+- **沉浸模式当前时间**：可在沉浸模式顶部数据栏显示精确到秒的当前时间。
+
+### 功能优化
+
+- **沉浸章节列表参考文档标记**：参考区当前打开的文档会在章节列表中显示混合浅黄色的主题色背景，并与主编辑区的选中状态独立同步；重新进入沉浸模式并恢复上次参考文档时也会自动显示。
+
+### Bug 修复
+
+- **多卷章节合并顺序**：合并多卷作品时现在会先按卷分组，再按工作台一致的顺序导出，避免各卷从相同章号开始时出现卷顺序颠倒或章节交错。
+- **跨卷同名章节伏笔归属**：状态侧栏现在会按章节路径解析伏笔来源与回收位置，不再将一卷的记录误显示到另一卷的同名章节。
+
+### English Changelog
+
+#### New Features
+
+- **Important Card Star & Highlight**: Foreshadowing, timeline event, chapter, task, and lore cards can now be marked as important. Important cards display a gold star and outline, including in lore hover previews.
+- **Immersive Mode Pomodoro Reminder**: Enable Pomodoro reminders in immersive mode and choose an interval from 20 to 180 minutes. When time is up, the reminder shows elapsed break time and lets you start the next round or stop reminders for the current immersive session.
+- **Immersive Mode Current Time**: Optionally show the current time, accurate to the second, in the immersive mode dashboard.
+
+#### Enhancements
+
+- **Immersive Chapter List Reference Marker**: The document currently open in the reference pane now uses a light-yellow-tinted accent background in the chapter list, independently of the main editor selection; the marker also appears automatically when re-entering immersive mode restores the previous reference document.
+
+#### Bug Fixes
+
+- **Multi-volume Chapter Merge Order**: Merged documents now group chapters by volume and follow the same deterministic order as the Workbench, preventing reversed or interleaved volumes when chapter numbering restarts in each volume.
+- **Duplicate Chapter Foreshadowing Attribution**: The writing status sidebar now resolves foreshadowing source and recovery references by chapter path, preventing records from one volume from appearing on a same-named chapter in another volume.
+
+---
+
 ## 🔧 v3.9.7
 
 ### 新增功能

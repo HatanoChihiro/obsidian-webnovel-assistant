@@ -25,6 +25,7 @@ export type ForeshadowingViewManager = Pick<
 	| 'markAsRecovered'
 	| 'markAsDeprecated'
 	| 'markAsPending'
+	| 'toggleImportance'
 >;
 
 export type ForeshadowingViewSettings = ChapterSorterSettings &

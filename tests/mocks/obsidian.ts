@@ -4,8 +4,10 @@
  */
 
 const mockWindow = {
-	setTimeout: (handler: () => void, timeout?: number) => setTimeout(handler, timeout),
-	clearTimeout: (id: ReturnType<typeof setTimeout>) => clearTimeout(id),
+	setTimeout: (handler: () => void, timeout?: number) => globalThis.setTimeout(handler, timeout),
+	clearTimeout: (id: ReturnType<typeof setTimeout>) => globalThis.clearTimeout(id),
+	setInterval: (handler: () => void, timeout?: number) => globalThis.setInterval(handler, timeout),
+	clearInterval: (id: ReturnType<typeof setInterval>) => globalThis.clearInterval(id),
 	console: globalThis.console
 };
 

@@ -179,6 +179,42 @@ describe('ImmersiveChapterListView context', () => {
 		expect(findBookRootMock).not.toHaveBeenCalled();
 	});
 
+	it('highlights the main editor file and reference file independently', () => {
+		const referenceFile = createTestFile('reference.md', 'Notes/reference.md');
+		const referenceLeaf: MockLeaf = {
+			app,
+			containerEl: { classList: { contains: className => className === 'immersive-reference-view' } },
+			view: { getViewType: () => 'markdown', file: referenceFile }
+		};
+		app.workspace.iterateAllLeaves = callback => {
+			callback(mainLeaf);
+			callback(referenceLeaf);
+		};
+
+		const createItem = (path: string) => ({
+			dataset: { path },
+			addClass: vi.fn(),
+			removeClass: vi.fn()
+		});
+		const mainItem = createItem(currentFile.path);
+		const referenceItem = createItem(referenceFile.path);
+		const unrelatedItem = createItem('Notes/other.md');
+		Object.assign(view, {
+			containerEl: {
+				querySelectorAll: vi.fn().mockReturnValue([mainItem, referenceItem, unrelatedItem])
+			}
+		});
+
+		view['updateActiveHighlight']();
+
+		expect(mainItem.addClass).toHaveBeenCalledWith('is-active');
+		expect(mainItem.removeClass).toHaveBeenCalledWith('is-reference-open');
+		expect(referenceItem.addClass).toHaveBeenCalledWith('is-reference-open');
+		expect(referenceItem.removeClass).toHaveBeenCalledWith('is-active');
+		expect(unrelatedItem.removeClass).toHaveBeenCalledWith('is-active');
+		expect(unrelatedItem.removeClass).toHaveBeenCalledWith('is-reference-open');
+	});
+
 	it('collects markdown files recursively from the current non-novel folder', async () => {
 		findBookRootMock.mockReturnValue('');
 		const directFile = createTestFile('direct.md', 'Notes/direct.md');
@@ -229,6 +265,7 @@ describe('ImmersiveChapterListView context', () => {
 			listContainer,
 			expect.any(Map),
 			currentFile,
+			null,
 			expect.any(Object),
 			'Notes'
 		);

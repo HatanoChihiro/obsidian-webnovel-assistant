@@ -14,6 +14,9 @@ export class ForeshadowingParser {
 
 		// 标题行
 		lines.push(`## ${entry.description}`);
+		if (entry.important) {
+			lines.push('<!-- wn-important -->');
+		}
 		lines.push('');
 
 		// 引用块（处理多行内容）
@@ -84,6 +87,9 @@ export class ForeshadowingParser {
 
 		// 标题行
 		lines.push(`## ${entry.description}`);
+		if (entry.important) {
+			lines.push('<!-- wn-important -->');
+		}
 		lines.push('');
 
 		// 多个引用块
@@ -424,8 +430,10 @@ export class ForeshadowingParser {
 				}
 			}
 
+			const important = /<!--\s*wn-important\s*-->/.test(trimmed);
+
 			if (description) {
-				entries.push({ sourceFile, createdAt, contents, description, tags, status, recoveryLogs, recoveryFiles, recoveredAts, recoveryFile, recoveredAt });
+				entries.push({ sourceFile, createdAt, contents, description, tags, status, recoveryLogs, recoveryFiles, recoveredAts, recoveryFile, recoveredAt, important });
 			}
 		}
 

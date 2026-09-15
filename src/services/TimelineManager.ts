@@ -19,7 +19,8 @@ export interface TimelineEntry {
 	type: string;
 	rawBlock: string;
 	origin?: string;
-	items?: { description: string; chapter: string; origin?: string }[];
+	important?: boolean;
+	items?: { description: string; chapter: string; origin?: string; important?: boolean }[];
 }
 
 
@@ -195,7 +196,7 @@ export class TimelineManager {
 
 
 
-			const items: { description: string; chapter: string; origin?: string }[] = [];
+			const items: { description: string; chapter: string; origin?: string; important?: boolean }[] = [];
 
 			// 匹配类型行：优先当前语言，兼容中文旧格式
 				const typeMatch = trimmed.match(new RegExp(`\\*\\*(?:Type|类型|類型|${t('timeline.type-label')})\\*\\*：(.+)`));
@@ -274,6 +275,13 @@ export class TimelineManager {
 
 					const chapter = chapters.join(', ');
 
+					// 提取隐藏的重要标记
+					let important = false;
+					if (/<!--\s*wn-important\s*-->/.test(desc)) {
+						important = true;
+						desc = desc.replace(/<!--\s*wn-important\s*-->/g, '').trim();
+					}
+
 					// 提取隐藏的原文注释
 					let origin: string | undefined;
 					const originMatch = desc.match(/<!--\s*origin:\s*(.+?)\s*-->/);
@@ -283,7 +291,7 @@ export class TimelineManager {
 						desc = desc.replace(/<!--\s*origin:\s*(.+?)\s*-->/g, '').trim();
 					}
 
-					items.push({ description: desc, chapter, origin });
+					items.push({ description: desc, chapter, origin, important });
 
 					continue;
 
@@ -313,11 +321,16 @@ export class TimelineManager {
 
 				}
 
-				const description = descLines.join('\n');
+				let description = descLines.join('\n');
 
 				if (description) {
+					let important = false;
+					if (/<!--\s*wn-important\s*-->/.test(description)) {
+						important = true;
+						description = description.replace(/<!--\s*wn-important\s*-->/g, '').trim();
+					}
 
-					items.push({ description, chapter: '' });
+					items.push({ description, chapter: '', important });
 
 				}
 
@@ -399,6 +412,10 @@ export class TimelineManager {
 
 					
 
+					if (it.important) {
+						firstLineParts.push('<!-- wn-important -->');
+					}
+
 					if (it.origin) {
 						firstLineParts.push(`<!-- origin: ${it.origin} -->`);
 					}
@@ -421,7 +438,11 @@ export class TimelineManager {
 
 					const chapterLinks = chapters.map(c => `[[${c}]]`).join(' ');
 
-					if (chapterLinks) lines.push(`- ${chapterLinks}`);
+					const parts: string[] = [];
+					if (chapterLinks) parts.push(chapterLinks);
+					if (it.important) parts.push('<!-- wn-important -->');
+
+					if (parts.length > 0) lines.push(`- ${parts.join(' ')}`);
 
 				}
 
@@ -449,6 +470,10 @@ export class TimelineManager {
 					if (chapterLinks) firstLineParts.push(chapterLinks);
 				}
 
+				if (entry.important) {
+					firstLineParts.push('<!-- wn-important -->');
+				}
+
 				if (entry.origin) {
 					firstLineParts.push(`<!-- origin: ${entry.origin.replace(/\n/g, ' ')} -->`);
 				}
@@ -473,7 +498,11 @@ export class TimelineManager {
 
 				const chapterLinks = chapters.map(c => `[[${c}]]`).join(' ');
 
-				if (chapterLinks) lines.push(`- ${chapterLinks}`);
+				const parts: string[] = [];
+				if (chapterLinks) parts.push(chapterLinks);
+				if (entry.important) parts.push('<!-- wn-important -->');
+
+				if (parts.length > 0) lines.push(`- ${parts.join(' ')}`);
 
 			}
 

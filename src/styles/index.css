@@ -93,3 +93,6 @@
 @import "./responsive/phone-portrait.css";
 @import "./responsive/phone-touch.css";
 @import "./responsive/tablet.css";
+
+/* Cross-view states must follow view and responsive layout rules. */
+@import "./components/importance.css";

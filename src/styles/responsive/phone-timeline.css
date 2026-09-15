@@ -47,6 +47,12 @@ body.is-phone .wn-timeline-item-desc {
 }
 
 
+body.is-phone .wn-timeline-item-actions {
+	right: 2px;
+	top: 2px;
+}
+
+
 body.is-phone .wn-timeline-add-sub-event-row {
 	padding-left: 8px;
 	margin-top: 4px;

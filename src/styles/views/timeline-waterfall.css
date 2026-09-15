@@ -134,10 +134,19 @@
 }
 
 
-.wn-timeline-item-delete-btn {
+.wn-timeline-item-actions {
 	position: absolute;
 	right: 3px;
 	top: 3px;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 2px;
+	z-index: 4;
+}
+
+
+.wn-timeline-item-delete-btn {
 	color: var(--text-muted);
 	opacity: 0;
 	cursor: pointer;

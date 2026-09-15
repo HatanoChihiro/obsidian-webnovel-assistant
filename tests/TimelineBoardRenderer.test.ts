@@ -943,6 +943,44 @@ describe('TimelineBoardRenderer', () => {
 		expect(descEl.scrollTop).toBe(50);
 	});
 
+	it('renders the important star before delete in the timeline event action rail', async () => {
+		const options: TimelineBoardOptions = {
+			app: mockApp,
+			plugin: {
+				...mockPlugin,
+				timelineManager: {
+					...mockPlugin.timelineManager,
+					loadEntries: vi.fn().mockResolvedValue([
+						{
+							time: '第一年',
+							description: '关键事件',
+							items: [{ description: '关键事件', chapter: '', important: true }]
+						}
+					])
+				}
+			},
+			container: container as unknown as HTMLElement,
+			files: [],
+			foreshadowingMap: new Map(),
+			currentBookPath: 'NovelA',
+			currentTimelineFilter: 'all',
+			onSaveStateChange: vi.fn(),
+			reloadBoard: vi.fn(),
+			getChapterEvents: vi.fn().mockReturnValue([])
+		};
+
+		await TimelineBoardRenderer.render(options);
+
+		const descEl = container.querySelector('.wn-timeline-item-desc') as unknown as MockElement;
+		const actionRail = descEl.querySelector('.wn-timeline-item-actions') as unknown as MockElement;
+		expect(descEl.hasClass('is-important')).toBe(true);
+		expect(descEl.hasClass('wn-card-is-important')).toBe(true);
+		expect(actionRail.children).toHaveLength(2);
+		expect(actionRail.children[0].hasClass('wn-card-importance-btn')).toBe(true);
+		expect(actionRail.children[0].hasClass('is-important')).toBe(true);
+		expect(actionRail.children[1].hasClass('wn-timeline-item-delete-btn')).toBe(true);
+	});
+
 	it('should construct chapter reference index exactly once for multiple references during render', async () => {
 		const createIndexSpy = vi.spyOn(ChapterSorter, 'createReferenceIndex');
 

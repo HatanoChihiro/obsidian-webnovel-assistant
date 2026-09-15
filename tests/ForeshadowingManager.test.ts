@@ -413,4 +413,47 @@ describe('ForeshadowingManager', () => {
             expect(map.size).toBe(0);
         });
     });
+
+    describe('Important Marker Management', () => {
+        it('should round-trip important marker in parseEntries and formatEntry', () => {
+            const manager = new ForeshadowingManager(mockApp, mockPlugin);
+            const markdown = `## 重要线索\n<!-- wn-important -->\n> [[Chapter 1]]\n> 古龙印记\n\n**状态**：未回收\n---\n`;
+            const entries = manager.parseEntries(markdown);
+            expect(entries).toHaveLength(1);
+            expect(entries[0].important).toBe(true);
+
+            const formatted = manager.formatEntry({
+                description: entries[0].description,
+                content: '古龙印记',
+                sourceFile: 'Chapter 1',
+                tags: ['线索'],
+                status: entries[0].status,
+                important: true,
+                createdAt: '2026-09-14 10:00'
+            });
+            expect(formatted).toContain('<!-- wn-important -->');
+
+            const reparsed = manager.parseEntries(formatted);
+            expect(reparsed[0].important).toBe(true);
+        });
+
+        it('should toggle importance atomically via toggleImportance', async () => {
+            const manager = new ForeshadowingManager(mockApp, mockPlugin);
+            const fFile = Object.assign(new TFile(), { name: 'Foreshadowing.md', path: 'Book 1/Foreshadowing.md', basename: 'Foreshadowing', extension: 'md' });
+            let fileContent = `## 重要线索\n> [[Chapter 1]]\n> 古龙印记\n\n**状态**：未回收\n---\n`;
+
+            mockApp.vault.process.mockImplementation(async (_file: TFile, callback: (data: string) => string) => {
+                fileContent = callback(fileContent);
+                return fileContent;
+            });
+
+            const state1 = await manager.toggleImportance(fFile, '重要线索');
+            expect(state1).toBe(true);
+            expect(fileContent).toContain('<!-- wn-important -->');
+
+            const state2 = await manager.toggleImportance(fFile, '重要线索');
+            expect(state2).toBe(false);
+            expect(fileContent).not.toContain('<!-- wn-important -->');
+        });
+    });
 });

@@ -32,6 +32,8 @@ export interface TaskEntry {
 	completedWords?: number;
 	/** 原始文本块 */
 	rawBlock: string;
+	/** 是否标为重要 */
+	important?: boolean;
 }
 
 /** 限时任务功能设置 */

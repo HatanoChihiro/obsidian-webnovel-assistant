@@ -1,0 +1,157 @@
+/* ==========================================================================
+   WebNovel Assistant - 重要卡片标记与高亮样式 (Important Card Highlight)
+   ========================================================================== */
+
+/* 变量必须在卡片所在文档中就地解析，不能依赖主窗口 :root 的继承链。 */
+button.wn-card-importance-btn,
+.wn-foreshadowing-board-card,
+.wn-corkboard-card,
+.wn-lore-card,
+.task-card,
+.wn-task-card,
+.wn-timeline-item-desc {
+	--wn-important-color: color-mix(in srgb, var(--color-yellow, var(--text-warning, var(--interactive-accent))) 80%, var(--text-normal));
+	--wn-important-border: color-mix(in srgb, var(--wn-important-color) 60%, var(--background-modifier-border));
+	--wn-important-border-hover: color-mix(in srgb, var(--wn-important-color) 70%, var(--background-modifier-border));
+}
+
+/* 1. 统一重要标记按钮 (Star Control Button) */
+button.wn-card-importance-btn {
+	appearance: none;
+	background: transparent;
+	border: none;
+	box-shadow: none;
+	padding: 4px;
+	margin: 0;
+	width: 24px;
+	height: 24px;
+	cursor: pointer;
+	color: var(--text-muted);
+	opacity: 0.55;
+	border-radius: 4px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	transition: opacity 0.2s ease, color 0.2s ease;
+	flex-shrink: 0;
+	line-height: 1;
+}
+
+.wn-card-importance-btn svg {
+	width: 14px;
+	height: 14px;
+	stroke: currentColor;
+	fill: none;
+	transition: fill 0.2s ease, transform 0.15s ease;
+}
+
+/* 激活状态：实心星标，高亮常驻可见 */
+.wn-card-importance-btn.is-important,
+.wn-card-importance-btn[aria-pressed="true"] {
+	--icon-color: var(--wn-important-border);
+	opacity: 1;
+	color: var(--wn-important-border);
+}
+
+.wn-card-importance-btn.is-important svg.svg-icon,
+.wn-card-importance-btn[aria-pressed="true"] svg.svg-icon,
+.wn-card-importance-btn.is-important svg.svg-icon path,
+.wn-card-importance-btn[aria-pressed="true"] svg.svg-icon path {
+	color: var(--wn-important-border);
+	fill: var(--wn-important-border);
+	stroke: var(--wn-important-border);
+}
+
+/* 星标始终可见；悬浮与聚焦只增强对比，不改变占位或显隐。 */
+.wn-card-importance-btn:hover,
+.wn-card-importance-btn:focus-visible {
+	opacity: 1;
+}
+
+button.wn-card-importance-btn:hover,
+button.wn-card-importance-btn:active,
+button.wn-card-importance-btn:focus {
+	opacity: 1;
+	color: var(--wn-important-color);
+	background: transparent;
+	border: none;
+	box-shadow: none;
+}
+
+button.wn-card-importance-btn:focus-visible {
+	outline: 1px solid var(--wn-important-color);
+	outline-offset: -2px;
+}
+
+.wn-card-importance-btn:active svg {
+	transform: scale(0.9);
+}
+
+/* 2. 统一右上角定位与空间预留规则 (Shared Top-Right Spatial Anchor & Reserved Space) */
+.wn-corkboard-card-header,
+.wn-lore-card-header {
+	position: relative;
+	padding-right: 32px;
+}
+
+.wn-foreshadowing-card-line1,
+.task-card-header,
+.wn-task-card-header {
+	position: relative;
+	padding-right: 28px;
+}
+
+.wn-corkboard-card-header .wn-card-importance-btn,
+.wn-lore-card-header .wn-card-importance-btn {
+	position: absolute;
+	top: 50%;
+	right: 8px;
+	transform: translateY(-50%);
+	z-index: 4;
+}
+
+.wn-foreshadowing-card-line1 .wn-card-importance-btn,
+.task-card-header .wn-card-importance-btn,
+.wn-task-card-header .wn-card-importance-btn {
+	position: absolute;
+	top: 50%;
+	right: 0;
+	transform: translateY(-50%);
+	z-index: 4;
+}
+
+/* 时间线操作栏内的星标使用流式定位，位于垂直单列最上方 */
+.wn-timeline-item-actions .wn-card-importance-btn {
+	position: relative;
+	top: auto;
+	right: auto;
+	transform: none;
+}
+
+/* 3. 重要卡片低饱和金色轮廓 (无重排/无布局偏移) */
+.wn-foreshadowing-board-card:is(.is-important, .wn-card-is-important),
+.wn-corkboard-card:is(.is-important, .wn-card-is-important),
+.wn-lore-card:is(.is-important, .wn-card-is-important),
+.task-card:is(.is-important, .wn-card-is-important),
+.wn-task-card:is(.is-important, .wn-card-is-important) {
+	outline: 1px solid var(--wn-important-border);
+	outline-offset: -1px;
+}
+
+.wn-foreshadowing-board-card:is(.is-important, .wn-card-is-important):hover,
+.wn-corkboard-card:is(.is-important, .wn-card-is-important):hover,
+.wn-lore-card:is(.is-important, .wn-card-is-important):hover,
+.task-card:is(.is-important, .wn-card-is-important):hover,
+.wn-task-card:is(.is-important, .wn-card-is-important):hover {
+	outline-color: var(--wn-important-border-hover);
+}
+
+/* 时间线轮廓绘制在滚动容器外沿。 */
+.wn-timeline-item-desc:is(.is-important, .wn-card-is-important) {
+	outline: 1px solid var(--wn-important-border);
+	outline-offset: 0;
+}
+
+.wn-timeline-item-desc:is(.is-important, .wn-card-is-important):hover {
+	outline-color: var(--wn-important-border-hover);
+}

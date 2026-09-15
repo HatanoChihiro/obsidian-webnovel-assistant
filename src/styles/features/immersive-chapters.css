@@ -31,6 +31,14 @@
 	font-weight: bold;
 }
 
+.immersive-chapter-item.is-reference-open {
+	background: color-mix(
+		in srgb,
+		color-mix(in srgb, var(--interactive-accent) 70%, var(--color-yellow)) 18%,
+		transparent
+	);
+}
+
 .immersive-chapter-count {
 	font-size: 0.8em;
 	color: var(--interactive-accent);

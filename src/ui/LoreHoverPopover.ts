@@ -174,6 +174,7 @@ export class LoreHoverPopover extends Component {
 				const cardContainer = popoverEl.createDiv({ cls: 'wn-lore-card-wrapper' });
 				await LoreCardRenderer.buildCardDOM(cardContainer, this.entry, this.plugin, this, {
 					hideEditButton: true,
+					hideImportanceButton: false,
 					onTitleClick: () => this.hide()
 				});
 			}

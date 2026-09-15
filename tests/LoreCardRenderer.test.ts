@@ -98,8 +98,22 @@ function createMockEl(tag = 'div', cls = ''): any {
 		createEl: (t: string, opts?: any) => {
 			const child = createMockEl(t, typeof opts === 'string' ? opts : opts?.cls || '');
 			if (opts?.text) child.textContent = opts.text;
+			if (opts?.attr) {
+				for (const [k, v] of Object.entries(opts.attr)) {
+					child.attributes.set(k, String(v));
+				}
+			}
 			el.children.push(child);
 			return child;
+		},
+		insertBefore: (newChild: any, refChild: any) => {
+			const idx = el.children.indexOf(refChild);
+			if (idx >= 0) {
+				el.children.splice(idx, 0, newChild);
+			} else {
+				el.children.push(newChild);
+			}
+			return newChild;
 		},
 		querySelector: (sel: string) => {
 			const match = (node: any): boolean => {
@@ -152,6 +166,23 @@ function createMockEl(tag = 'div', cls = ''): any {
 		addClass: (c: string) => { el.className = (el.className + ' ' + c).trim(); },
 		removeClass: (c: string) => { el.className = el.className.replace(c, '').trim(); },
 		hasClass: (c: string) => el.className.split(/\s+/).includes(c),
+		classList: {
+			add: (c: string) => { el.addClass(c); },
+			remove: (c: string) => { el.removeClass(c); },
+			contains: (c: string) => el.hasClass(c),
+			toggle: (c: string, force?: boolean) => {
+				const shouldAdd = force !== undefined ? force : !el.hasClass(c);
+				if (shouldAdd) el.addClass(c);
+				else el.removeClass(c);
+				return shouldAdd;
+			}
+		},
+		toggleClass: (c: string, force?: boolean) => {
+			const shouldAdd = force !== undefined ? force : !el.hasClass(c);
+			if (shouldAdd) el.addClass(c);
+			else el.removeClass(c);
+			return shouldAdd;
+		},
 		addEventListener: vi.fn(),
 		removeEventListener: vi.fn(),
 		setCssStyles: vi.fn((styles: Record<string, string>) => {
@@ -529,5 +560,56 @@ type: 主要角色
 		expect(body.hasClass('is-editing')).toBe(false);
 		expect(body.querySelector('.wn-lore-card-editor')).toBeNull();
 		expect(card.getAttribute('draggable')).toBe('true');
+	});
+
+	it('should render is-important class and star button for important entry, and strip marker from rendered markdown', async () => {
+		const mockFile = { basename: '人物', path: '设定/人物.md' };
+		const entry = { file: mockFile as any, heading: '主角', important: true };
+		mockApp.vault.cachedRead.mockResolvedValue('## 主角\n<!-- wn-important -->\n主角的背景描述。');
+		mockApp.metadataCache.getFileCache.mockReturnValue({
+			headings: [{ heading: '主角', level: 2, position: { start: { line: 0 }, end: { line: 0 } } }]
+		});
+		mockPlugin.characterManager.toggleLoreImportance = vi.fn().mockResolvedValue(false);
+
+		await LoreCardRenderer.buildCardDOM(container, entry, mockPlugin, createMockComponent());
+
+		const card = container.querySelector('.wn-lore-card');
+		expect(card.hasClass('is-important')).toBe(true);
+		expect(card.hasClass('wn-card-is-important')).toBe(true);
+
+		const starBtn = container.querySelector('.wn-card-importance-btn');
+		expect(starBtn).not.toBeNull();
+		expect(starBtn.hasClass('is-important')).toBe(true);
+		expect(starBtn.getAttribute('aria-pressed')).toBe('true');
+
+		// MarkdownRenderer.render should receive clean markdown without <!-- wn-important -->
+		expect(MarkdownRenderer.render).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.not.stringContaining('<!-- wn-important -->'),
+			expect.anything(),
+			mockFile.path,
+			expect.anything()
+		);
+
+		// Clicking star toggles importance
+		await starBtn.onclick({ stopPropagation: vi.fn(), preventDefault: vi.fn() });
+		expect(mockPlugin.characterManager.toggleLoreImportance).toHaveBeenCalledWith(entry);
+	});
+
+	it('should not render importance star button when hideImportanceButton is true', async () => {
+		const mockFile = { basename: '人物', path: '设定/人物.md' };
+		const entry = { file: mockFile as any, heading: '主角', important: true };
+		mockApp.vault.cachedRead.mockResolvedValue('## 主角\n主角的背景描述。');
+		mockApp.metadataCache.getFileCache.mockReturnValue({
+			headings: [{ heading: '主角', level: 2, position: { start: { line: 0 }, end: { line: 0 } } }]
+		});
+
+		await LoreCardRenderer.buildCardDOM(container, entry, mockPlugin, createMockComponent(), {
+			hideImportanceButton: true
+		});
+
+		const card = container.querySelector('.wn-lore-card');
+		expect(card.hasClass('is-important')).toBe(true);
+		expect(container.querySelector('.wn-card-importance-btn')).toBeNull();
 	});
 });

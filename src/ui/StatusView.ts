@@ -16,6 +16,7 @@ import type { HomepageManager } from '../services/HomepageManager';
 import type { CharacterManager } from '../services/CharacterManager';
 import type { ForeshadowingManager } from '../services/ForeshadowingManager';
 import type { StatisticsManager } from '../services/StatisticsManager';
+import { ChapterSorter, type ChapterSorterContext } from '../services/ChapterSorter';
 import { Logger } from '../utils/Logger';
 
 export const STATUS_VIEW_TYPE = 'writing-status-view';
@@ -77,11 +78,15 @@ export type WritingStatusViewSettings = Pick<
 	| 'timeline'
 	| 'foreshadowing'
 	| 'novelInfo'
+	| 'homepagePath'
+	| 'enableStrictChapterMode'
+	| 'customSortOrder'
 >;
 
 export interface WritingStatusViewPlugin
 	extends Omit<HistoryStatsModalPlugin, 'settings' | 'homepageManager' | 'statisticsManager'>,
-		Omit<CurrentBookContextPlugin, 'settings' | 'homepageManager'> {
+		Omit<CurrentBookContextPlugin, 'settings' | 'homepageManager'>,
+		Omit<ChapterSorterContext, 'settings' | 'homepageManager'> {
 	settings: WritingStatusViewSettings;
 	isTracking: boolean;
 	focusMs: number;
@@ -776,6 +781,25 @@ export class WritingStatusView extends ItemView {
 	private lastChapterStatusStr: string = '';
 	private lastChapterSynopsisStr: string = '';
 
+	private createChapterReferenceMatcher(
+		file: TFile,
+		folderPath: string,
+		sourcePath: string
+	): (target: string | undefined) => boolean {
+		const eligibleChapters = ChapterSorter.getAllChapters(this.app, this.plugin, folderPath);
+		const chapterIndex = ChapterSorter.createReferenceIndex(
+			this.app,
+			this.plugin,
+			folderPath,
+			{ eligibleChapters, sourcePath }
+		);
+
+		return (target: string | undefined): boolean => {
+			if (!target) return false;
+			return chapterIndex.resolve(target)?.path === file.path;
+		};
+	}
+
 	private async updateChapterStatus() {
 		if (!this.chapterStatusCardEl || !this.chapterBadgesContainer) return;
 
@@ -862,13 +886,9 @@ export class WritingStatusView extends ItemView {
 		const recoveredHereEntries: ParsedForeshadowingEntry[] = [];
 		const resolvedOriginEntries: ParsedForeshadowingEntry[] = [];
 
-		const cleanBase = file.basename.toLowerCase().replace(/\s+/g, '');
-
-		const isMatch = (target: string | undefined): boolean => {
-			if (!target) return false;
-			const cleanTarget = target.toLowerCase().replace(/\s+/g, '');
-			return cleanBase.includes(cleanTarget) || cleanTarget.includes(cleanBase);
-		};
+		const isMatch = fFile
+			? this.createChapterReferenceMatcher(file, fmFolder, fFile.path)
+			: (_target: string | undefined): boolean => false;
 
 		if (fFile && this.plugin.foreshadowingManager) {
 			const content = await this.app.vault.cachedRead(fFile);

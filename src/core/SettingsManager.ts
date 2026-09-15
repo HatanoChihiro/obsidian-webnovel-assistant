@@ -80,6 +80,18 @@ export class SettingsManager {
 				return !isNaN(g) && g >= VALIDATION_RULES.MIN_GOAL;
 			},
 			errorMessage: t('validation.please-fill', { fieldName: t('setting.default-chapter-goal') })
+		},
+		{
+			path: 'immersive.pomodoroInterval',
+			validate: (interval) => {
+				const val = Number(interval);
+				return Number.isFinite(val) && Number.isInteger(val) && val >= VALIDATION_RULES.IMMERSIVE_POMODORO_INTERVAL.min && val <= VALIDATION_RULES.IMMERSIVE_POMODORO_INTERVAL.max;
+			},
+			errorMessage: t('validation.range', {
+				fieldName: t('validation.pomodoro-interval'),
+				min: String(VALIDATION_RULES.IMMERSIVE_POMODORO_INTERVAL.min),
+				max: String(VALIDATION_RULES.IMMERSIVE_POMODORO_INTERVAL.max)
+			})
 		}
 	];
 

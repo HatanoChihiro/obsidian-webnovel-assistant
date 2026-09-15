@@ -1620,6 +1620,30 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					this.refreshOpenEditors();
 				}));
 
+		new Setting(containerEl).setName(t('setting.immersive-pomodoro-title')).setHeading();
+
+		new Setting(containerEl)
+			.setName(t('setting.immersive-pomodoro-enabled'))
+			.setDesc(t('setting.immersive-pomodoro-enabled-desc'))
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.immersive.pomodoroEnabled ?? false)
+				.onChange(async (value) => {
+					this.plugin.settings.immersive.pomodoroEnabled = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName(t('setting.immersive-pomodoro-interval'))
+			.setDesc(t('setting.immersive-pomodoro-interval-desc'))
+			.addSlider(slider => slider
+				.setLimits(20, 180, 5)
+				.setValue(this.plugin.settings.immersive.pomodoroInterval ?? 30)
+				.setDynamicTooltip()
+				.onChange(async (value) => {
+					this.plugin.settings.immersive.pomodoroInterval = value;
+					await this.plugin.saveSettings();
+				}));
+
 		new Setting(containerEl).setName(t('setting.immersive-dashboard-toggles')).setHeading();
 
 		new Setting(containerEl)
@@ -1682,6 +1706,15 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.immersive.immersiveShowSessionWords)
 				.onChange(async (value) => {
 					this.plugin.settings.immersive.immersiveShowSessionWords = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName(t('setting.show-current-time'))
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.immersive.immersiveShowCurrentTime ?? false)
+				.onChange(async (value) => {
+					this.plugin.settings.immersive.immersiveShowCurrentTime = value;
 					await this.plugin.saveSettings();
 				}));
 	}

@@ -5,11 +5,14 @@ import type { CharacterManager, LoreEntry } from '../../services/CharacterManage
 import { cleanLoreHeading } from '../../services/CharacterManager';
 import { smartLocateAndHighlight } from '../../utils/leaf';
 import { injectSoftBreakIndentPlaceholders } from '../../utils/softBreakIndent';
+import { createCardImportanceButton } from './CardImportanceButton';
 
 export interface LoreCardRendererPlugin {
 	app: App;
 	settings: Pick<AccurateCountSettings, 'lorePopoverCollapse'>;
-	characterManager: Pick<CharacterManager, 'getLoreContent' | 'updateLoreContent'>;
+	characterManager: Pick<CharacterManager, 'getLoreContent' | 'updateLoreContent'> & {
+		toggleLoreImportance?: (entry: LoreEntry) => Promise<boolean>;
+	};
 }
 
 export class LoreCardRenderer {
@@ -21,7 +24,10 @@ export class LoreCardRenderer {
 
 		if (aliases.length === 0) return;
 
-		const badgesContainer = header.createDiv({ cls: 'wn-lore-card-badges is-measuring' });
+		const starBtn = header.querySelector('.wn-card-importance-btn');
+		const badgesContainer = starBtn
+			? header.insertBefore(createDiv({ cls: 'wn-lore-card-badges is-measuring' }), starBtn)
+			: header.createDiv({ cls: 'wn-lore-card-badges is-measuring' });
 		const aliasBadges = aliases.map(alias =>
 			badgesContainer.createSpan({ cls: 'wn-lore-card-badge', text: alias })
 		);
@@ -130,9 +136,10 @@ export class LoreCardRenderer {
 			dragDataMimeType?: string;
 			onTitleClick?: () => void;
 			hideEditButton?: boolean;
+			hideImportanceButton?: boolean;
 		} = {}
 	): Promise<void> {
-		const card = container.createDiv({ cls: 'wn-lore-card' });
+		const card = container.createDiv({ cls: `wn-lore-card${entry.important ? ' is-important' : ''}` });
 		if (options.draggable) {
 			card.setAttribute('draggable', 'true');
 			card.setAttribute('data-lore-heading', entry.heading);
@@ -266,6 +273,18 @@ export class LoreCardRenderer {
 			};
 		}
 
+		if (!options.hideImportanceButton && plugin.characterManager.toggleLoreImportance) {
+			createCardImportanceButton({
+				container: header,
+				isImportant: !!entry.important,
+				cardEl: card,
+				onToggle: async (nextState) => {
+					await plugin.characterManager.toggleLoreImportance!(entry);
+					entry.important = nextState;
+				}
+			});
+		}
+
 		// Body area
 		const body = card.createDiv({ cls: 'wn-lore-card-body' });
 		body.setAttr('tabindex', '0');
@@ -319,9 +338,9 @@ export class LoreCardRenderer {
 					const aliasMatch = rawChunk.match(/^(?:\*\*|__)?(?:别名|Alias)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/im);
 					if (aliasMatch && aliasMatch[1]) {
 						aliases = aliasMatch[1].split(/[,，、/|;；]/).map(s => s.trim()).filter(Boolean);
-						chunkToRender = rawChunk.replace(aliasMatch[0], '').trim();
+						chunkToRender = rawChunk.replace(aliasMatch[0], '').replace(/<!--\s*wn-important\s*-->\r?\n?/g, '').trim();
 					} else {
-						chunkToRender = rawChunk.trim();
+						chunkToRender = rawChunk.replace(/<!--\s*wn-important\s*-->\r?\n?/g, '').trim();
 					}
 				}
 			}
@@ -372,7 +391,7 @@ export class LoreCardRenderer {
 					}
 				}
 				// 从渲染内容中移除别名声明行，避免与顶部 badges 重复
-				chunkToRender = bodyText.replace(/^(?:\*\*|__)?(?:别名|Alias)(?:\*\*|__)?\s*[:：]\s*[^\n]+\r?\n?/gim, '').trim();
+				chunkToRender = bodyText.replace(/^(?:\*\*|__)?(?:别名|Alias)(?:\*\*|__)?\s*[:：]\s*[^\n]+\r?\n?/gim, '').replace(/<!--\s*wn-important\s*-->\r?\n?/g, '').trim();
 			}
 
 			loadingEl.remove();

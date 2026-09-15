@@ -119,3 +119,12 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 .immersive-mode-active *:hover::-webkit-scrollbar-thumb {
 	background-color: var(--scrollbar-thumb-bg, rgba(128, 128, 128, 0.3));
 }
+
+/* Immersive Pomodoro expiry reminder modal */
+
+.wn-immersive-pomodoro-modal .wn-pomodoro-rest-timer {
+	font-family: var(--font-monospace);
+	font-variant-numeric: tabular-nums;
+	font-size: var(--font-ui-medium);
+	color: var(--text-normal);
+}

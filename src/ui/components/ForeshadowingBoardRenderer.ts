@@ -8,10 +8,11 @@ import type { ChapterSorterContext } from '../../services/ChapterSorter';
 import { ChapterSorter } from '../../services/ChapterSorter';
 import { smartLocateAndHighlight } from '../../utils/leaf';
 import type { ForeshadowingViewManager } from '../ForeshadowingView';
+import { createCardImportanceButton } from './CardImportanceButton';
 
 export type ForeshadowingBoardStatusManager = Pick<
 	ForeshadowingViewManager,
-	'markAsPartiallyRecovered' | 'markAsRecovered' | 'markAsDeprecated' | 'markAsPending'
+	'markAsPartiallyRecovered' | 'markAsRecovered' | 'markAsDeprecated' | 'markAsPending' | 'toggleImportance'
 >;
 
 export interface ForeshadowingBoardPlugin extends ForeshadowingRecoveryModalPlugin {
@@ -238,7 +239,8 @@ export class ForeshadowingBoardRenderer {
 		const { app, plugin, container, entry, foreshadowingFile, currentBookPath, reloadBoard } = opts;
 		const fm = plugin.foreshadowingManager;
 
-		const card = container.createDiv(`wn-foreshadowing-board-card wn-card-status-${entry.status}`);
+		const isImportant = Boolean(entry.important);
+		const card = container.createDiv(`wn-foreshadowing-board-card wn-card-status-${entry.status}${isImportant ? ' is-important' : ''}`);
 
 		// ─────────────────────────────────────────────
 		// 第 1 行：伏笔标题 + 状态徽章 + 标签
@@ -286,6 +288,18 @@ export class ForeshadowingBoardRenderer {
 				tagsWrapper.createSpan({ cls: 'wn-card-tag-badge', text: `#${tag}` });
 			}
 		}
+
+		createCardImportanceButton({
+			container: line1,
+			isImportant,
+			cardEl: card,
+			onToggle: async () => {
+				if (fm && foreshadowingFile) {
+					const newImportant = await fm.toggleImportance(foreshadowingFile, entry.description);
+					entry.important = newImportant;
+				}
+			}
+		});
 
 		// ─────────────────────────────────────────────
 		// 第 2 行：微型连线步进器 (左) + 快捷操作按钮 (右)

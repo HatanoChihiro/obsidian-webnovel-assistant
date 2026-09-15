@@ -785,5 +785,26 @@ It has multiple lines.
             expect(frontMatterData.get('Book 1/Vol 2/Chapter 1.md')?.timeline).toBe('Vol 2 Event');
             expect(frontMatterData.get('Book 1/Vol 1/Chapter 1.md')?.timeline).toBeUndefined();
         });
+
+        it('21. parseEntries and formatEntry round-trip important marker alongside origin', () => {
+            const rawContent = `## 2026-09-14 10:00\n- [[第1章]] 关键转折点 <!-- wn-important --> <!-- origin: 原文片段 -->\n---\n`;
+            const entries = manager.parseEntries(rawContent);
+            expect(entries).toHaveLength(1);
+            expect(entries[0].items).toHaveLength(1);
+            const item = entries[0]!.items![0]!;
+            expect(item.description).toBe('关键转折点');
+            expect(item.chapter).toBe('第1章');
+            expect(item.important).toBe(true);
+            expect(item.origin).toBe('原文片段');
+
+            const formatted = manager.formatEntry(entries[0]!);
+            expect(formatted).toContain('<!-- wn-important -->');
+            expect(formatted).toContain('<!-- origin: 原文片段 -->');
+
+            const reparsed = manager.parseEntries(formatted);
+            expect(reparsed[0]!.items![0]!.important).toBe(true);
+            expect(reparsed[0]!.items![0]!.origin).toBe('原文片段');
+            expect(reparsed[0]!.items![0]!.description).toBe('关键转折点');
+        });
     });
 });

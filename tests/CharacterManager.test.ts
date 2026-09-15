@@ -1064,4 +1064,82 @@ LinLei is a dragon warrior.`;
             expect(debounceMock).toHaveBeenCalledWith('rebuild-character-cache', expect.any(Function), 500);
         });
     });
+
+    describe('Lore Important Marker Management', () => {
+        it('detects H2 important marker, strips it in getLoreContent, and preserves it in updateLoreContent', async () => {
+            const manager = new CharacterManager(mockApp, mockPlugin);
+            const mockFile = Object.assign(new TFile(), { name: 'Characters.md', path: 'Book1/Lore/Characters.md', basename: 'Characters', extension: 'md' });
+            let fileContent = `## Alice\n<!-- wn-important -->\n**Alias**: White Rabbit\nProtagonist with mysterious origin.\n\n## Bob\nNormal citizen.\n`;
+
+            mockApp.metadataCache.getFileCache.mockReturnValue({
+                headings: [
+                    { heading: 'Alice', level: 2, position: { start: { line: 0 }, end: { line: 0 } } },
+                    { heading: 'Bob', level: 2, position: { start: { line: 5 }, end: { line: 5 } } }
+                ]
+            });
+            mockApp.vault.cachedRead.mockImplementation(() => Promise.resolve(fileContent));
+            mockApp.vault.process.mockImplementation(async (_file: TFile, cb: (data: string) => string) => {
+                fileContent = cb(fileContent);
+                return fileContent;
+            });
+
+            // 1. parseLoreFile detects important
+            const parsed = await manager['parseLoreFile'](mockFile);
+            const aliceEntry = parsed.find(e => e.key === 'Alice')?.entry;
+            expect(aliceEntry).toBeDefined();
+            expect(aliceEntry?.important).toBe(true);
+
+            // 2. getLoreContent strips the marker
+            const cleanContent = await manager.getLoreContent(aliceEntry!);
+            expect(cleanContent).not.toContain('<!-- wn-important -->');
+            expect(cleanContent).toContain('Protagonist with mysterious origin.');
+
+            // 3. updateLoreContent preserves importance even when editor submitted clean text
+            await manager.updateLoreContent(aliceEntry!, 'Updated protagonist description.');
+            expect(fileContent).toContain('<!-- wn-important -->');
+            expect(fileContent).toContain('Updated protagonist description.');
+
+            // 4. toggleLoreImportance removes marker
+            const nextState = await manager.toggleLoreImportance(aliceEntry!);
+            expect(nextState).toBe(false);
+            expect(fileContent).not.toContain('<!-- wn-important -->');
+        });
+
+        it('detects single-file important marker, strips it in getLoreContent, and preserves it in updateLoreContent', async () => {
+            const manager = new CharacterManager(mockApp, mockPlugin);
+            const mockFile = Object.assign(new TFile(), { name: 'WorldMap.md', path: 'Book1/Lore/WorldMap.md', basename: 'WorldMap', extension: 'md' });
+            let fileContent = `---\naliases: [Continents]\n---\n# WorldMap\n<!-- wn-important -->\nDetailed geography description.\n`;
+
+            mockApp.metadataCache.getFileCache.mockReturnValue({
+                frontmatter: { aliases: ['Continents'] },
+                headings: [{ heading: 'WorldMap', level: 1, position: { start: { line: 3 }, end: { line: 3 } } }]
+            });
+            mockApp.vault.cachedRead.mockImplementation(() => Promise.resolve(fileContent));
+            mockApp.vault.process.mockImplementation(async (_file: TFile, cb: (data: string) => string) => {
+                fileContent = cb(fileContent);
+                return fileContent;
+            });
+
+            // 1. parseLoreFile detects single-file important
+            const parsed = await manager['parseLoreFile'](mockFile);
+            const entry = parsed.find(e => e.key === 'WorldMap')?.entry;
+            expect(entry).toBeDefined();
+            expect(entry?.important).toBe(true);
+
+            // 2. getLoreContent strips marker
+            const content = await manager.getLoreContent(entry!);
+            expect(content).not.toContain('<!-- wn-important -->');
+            expect(content).toContain('Detailed geography description.');
+
+            // 3. updateLoreContent preserves marker
+            await manager.updateLoreContent(entry!, 'New world geography details.');
+            expect(fileContent).toContain('<!-- wn-important -->');
+            expect(fileContent).toContain('New world geography details.');
+
+            // 4. toggleLoreImportance removes marker
+            const toggled = await manager.toggleLoreImportance(entry!);
+            expect(toggled).toBe(false);
+            expect(fileContent).not.toContain('<!-- wn-important -->');
+        });
+    });
 });

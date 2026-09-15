@@ -1,18 +1,95 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { TFile, WorkspaceLeaf, WorkspaceSplit, MarkdownView } from 'obsidian';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type { App, TFile, WorkspaceLeaf, WorkspaceSplit, MarkdownView } from 'obsidian';
 import { ImmersiveModeManager, type ImmersiveModeManagerPlugin } from '../src/ui/ImmersiveModeManager';
+import { ImmersivePomodoroModal } from '../src/ui/ImmersivePomodoroModal';
 
-vi.mock('obsidian', () => ({
-    Notice: vi.fn(),
-    MarkdownView: class {},
-    TFile: class {},
-    TFolder: class {},
-    ToggleComponent: class {
-        setValue() { return this; }
-        setTooltip() { return this; }
-        onChange() { return this; }
+vi.mock('obsidian', () => {
+	type MockElement = {
+		empty: ReturnType<typeof vi.fn>;
+		addClass: ReturnType<typeof vi.fn>;
+		removeClass: ReturnType<typeof vi.fn>;
+		createDiv: ReturnType<typeof vi.fn>;
+		createSpan: ReturnType<typeof vi.fn>;
+		createEl: ReturnType<typeof vi.fn>;
+		appendChild: ReturnType<typeof vi.fn>;
+		textContent?: string;
+	};
+	type MockButton = {
+		setButtonText: ReturnType<typeof vi.fn>;
+		setCta: ReturnType<typeof vi.fn>;
+		onClick: ReturnType<typeof vi.fn>;
+		_onClick?: () => void;
+	};
+	const createMockElement = (): MockElement => {
+		const el: MockElement = {
+			empty: vi.fn(),
+			addClass: vi.fn().mockReturnThis(),
+			removeClass: vi.fn().mockReturnThis(),
+			createDiv: vi.fn(() => createMockElement()),
+			createSpan: vi.fn((opts?: { cls?: string; text?: string }) => {
+				const span = createMockElement();
+				if (opts?.text !== undefined) span.textContent = opts.text;
+				return span;
+			}),
+			createEl: vi.fn(() => createMockElement()),
+			appendChild: vi.fn(),
+			textContent: ''
+		};
+		return el;
+	};
+    class MockModal {
+		app: unknown;
+		contentEl: MockElement;
+		modalEl: MockElement;
+		constructor(app: unknown) {
+            this.app = app;
+            this.contentEl = createMockElement();
+            this.modalEl = createMockElement();
+        }
+        open() {
+			(this as unknown as { onOpen?: () => void }).onOpen?.();
+        }
+        close() {
+			(this as unknown as { onClose?: () => void }).onClose?.();
+        }
     }
-}));
+
+    class MockSetting {
+		controlEl: MockElement;
+		constructor(public containerEl: unknown) {
+			this.controlEl = createMockElement();
+		}
+        setName() { return this; }
+        setDesc() { return this; }
+        setHeading() { return this; }
+		addButton(cb: (button: MockButton) => unknown) {
+			const btn: MockButton = {
+                setButtonText: vi.fn().mockReturnThis(),
+                setCta: vi.fn().mockReturnThis(),
+                onClick: vi.fn((fn: () => void) => {
+					btn._onClick = fn;
+                    return btn;
+                })
+			};
+			cb(btn);
+			return this;
+		}
+	}
+
+	return {
+		Notice: vi.fn(),
+		MarkdownView: class {},
+		TFile: class {},
+        TFolder: class {},
+        Modal: MockModal,
+        Setting: MockSetting,
+        ToggleComponent: class {
+            setValue() { return this; }
+            setTooltip() { return this; }
+            onChange() { return this; }
+        }
+    };
+});
 
 describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
     let mockPlugin: ImmersiveModeManagerPlugin;
@@ -22,16 +99,76 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
 
     beforeEach(() => {
         registeredEvents = {};
-        mockActiveDocument = {
-            body: {
+		type MockDomElement = {
+			className: string;
+			style: Record<string, unknown>;
+			classList: {
+				add: ReturnType<typeof vi.fn>;
+				remove: ReturnType<typeof vi.fn>;
+				contains: ReturnType<typeof vi.fn>;
+			};
+			setCssProps: ReturnType<typeof vi.fn>;
+			show: ReturnType<typeof vi.fn>;
+			hide: ReturnType<typeof vi.fn>;
+			isShown: ReturnType<typeof vi.fn>;
+			empty: ReturnType<typeof vi.fn>;
+			remove: ReturnType<typeof vi.fn>;
+			addEventListener: ReturnType<typeof vi.fn>;
+			removeEventListener: ReturnType<typeof vi.fn>;
+			appendChild: ReturnType<typeof vi.fn>;
+			createDiv: ReturnType<typeof vi.fn>;
+			createSpan: ReturnType<typeof vi.fn>;
+			createEl: ReturnType<typeof vi.fn>;
+			innerText: string;
+			readonly textAssignCount: number;
+		};
+		const createMockDOMElement = (cls = ''): MockDomElement => {
+            let isVisible = true;
+            let text = '';
+            let textAssignCount = 0;
+			const element = {
+                className: cls,
+                style: {},
                 classList: {
                     add: vi.fn(),
                     remove: vi.fn(),
                     contains: vi.fn().mockReturnValue(false)
                 },
                 setCssProps: vi.fn(),
-                appendChild: vi.fn()
-            },
+                show: vi.fn(() => { isVisible = true; }),
+                hide: vi.fn(() => { isVisible = false; }),
+                isShown: vi.fn(() => isVisible),
+                empty: vi.fn(),
+                remove: vi.fn(),
+                addEventListener: vi.fn(),
+                removeEventListener: vi.fn(),
+                appendChild: vi.fn(),
+				createDiv: vi.fn((opts?: { cls?: string }) => createMockDOMElement(opts?.cls || '')),
+				createSpan: vi.fn((opts?: { cls?: string }) => createMockDOMElement(opts?.cls || '')),
+				createEl: vi.fn((_tag: string, opts?: { cls?: string }) => createMockDOMElement(opts?.cls || ''))
+			} as unknown as MockDomElement;
+            Object.defineProperty(element, 'innerText', {
+                get: () => text,
+                set: (val: string) => {
+                    text = val;
+                    textAssignCount++;
+                }
+            });
+            Object.defineProperty(element, 'textAssignCount', {
+                get: () => textAssignCount
+            });
+            return element;
+        };
+
+		const domGlobals = globalThis as unknown as {
+			createDiv: (opts?: { cls?: string }) => MockDomElement;
+			createSpan: (opts?: { cls?: string }) => MockDomElement;
+		};
+		domGlobals.createDiv = (opts) => createMockDOMElement(opts?.cls || '');
+		domGlobals.createSpan = (opts) => createMockDOMElement(opts?.cls || '');
+
+        mockActiveDocument = {
+            body: createMockDOMElement('body'),
             documentElement: {
                 // 默认 requestFullscreen 成功
                 requestFullscreen: vi.fn().mockResolvedValue(undefined)
@@ -67,6 +204,7 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
                     getLeavesOfType: vi.fn().mockReturnValue([]),
                     iterateRootLeaves: vi.fn(),
                     on: vi.fn().mockReturnValue({ id: 'ref' }),
+                    trigger: vi.fn(),
                     offref: vi.fn(),
                     getLeaf: vi.fn().mockReturnValue({
                         setViewState: vi.fn().mockResolvedValue(undefined),
@@ -81,12 +219,25 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
                 },
                 vault: {
                     getName: vi.fn().mockReturnValue('Vault'),
-                    getAbstractFileByPath: vi.fn().mockReturnValue(null)
+                    getAbstractFileByPath: vi.fn().mockReturnValue(null),
+                    cachedRead: vi.fn().mockResolvedValue('')
                 },
                 commands: { executeCommandById: vi.fn() }
             },
             adaptiveDebounceManager: {
                 debounceFixed: vi.fn()
+            },
+            statisticsManager: {
+                getCoreStats: vi.fn().mockReturnValue({
+                    totalTime: '01:00:00',
+                    focusTime: '00:50:00',
+                    slackTime: '00:10:00',
+                    todayWords: 100,
+                    goal: 3000,
+                    dailyWords: 500,
+                    dailyGoal: 5000,
+                    sessionWords: 50
+                })
             },
             settings: {
                 immersive: {
@@ -103,7 +254,10 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
                     immersiveLeftInternalSizes: [],
                     immersiveRightInternalSizes: [],
                     immersiveHideProperties: false,
-                    typewriterEnabled: false
+                    typewriterEnabled: false,
+                    immersiveShowCurrentTime: false,
+                    pomodoroEnabled: false,
+                    pomodoroInterval: 30
                 }
             },
             stickyNoteManager: {
@@ -413,6 +567,36 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
         resolve3();
         await new Promise(r => setTimeout(r, 0));
         expect(leaf3.containerEl.classList.remove).toHaveBeenCalledWith('is-immersive-slot-pending');
+    });
+
+    it('notifies the chapter list after the restored reference view finishes mounting', async () => {
+        const referenceLeaf = {
+            setViewState: vi.fn().mockResolvedValue(undefined),
+            containerEl: { classList: { add: vi.fn(), remove: vi.fn() } }
+        } as unknown as WorkspaceLeaf;
+        const chapterListLeaf = {
+            setViewState: vi.fn().mockResolvedValue(undefined),
+            containerEl: { classList: { add: vi.fn(), remove: vi.fn() } }
+        } as unknown as WorkspaceLeaf;
+        manager['createdImmersiveLeaves'].add(referenceLeaf);
+        manager['createdImmersiveLeaves'].add(chapterListLeaf);
+        mockPlugin.settings.immersive.lastReferenceFilePath = 'Book/Reference.md';
+
+        const gen = 1;
+        manager['layoutGeneration'] = gen;
+        manager['scheduleAuxiliaryMounts']([
+            { leaf: referenceLeaf, viewType: 'reference-view' },
+            { leaf: chapterListLeaf, viewType: 'immersive-chapter-list-view' }
+        ], gen);
+
+        await new Promise(r => setTimeout(r, 0));
+        await new Promise(r => setTimeout(r, 0));
+
+        expect(referenceLeaf.setViewState).toHaveBeenCalledWith({
+            type: 'markdown',
+            state: { mode: 'preview', file: 'Book/Reference.md' }
+        });
+        expect(mockPlugin.app.workspace.trigger).toHaveBeenCalledWith('webnovel:immersive-reference-ready');
     });
 
     it('scheduleAuxiliaryMounts isolates failure in one view without blocking partner or following batch', async () => {
@@ -738,5 +922,439 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
 
         expect(mockPlugin.settings.immersive.immersiveTopSize).toBe(35);
         expect(saveSettingsSpy).not.toHaveBeenCalled();
+    });
+
+    describe('Pomodoro Reminder & Current Time Dashboard', () => {
+        const createMockMainLeaf = (editorFocus = vi.fn()) => ({
+            view: {
+                editor: { focus: editorFocus, cm: { dispatch: vi.fn() } }
+            },
+            containerEl: {
+                classList: {
+                    add: vi.fn(),
+                    remove: vi.fn(),
+                    contains: vi.fn((cls: string) => cls === 'immersive-main-editor')
+                },
+                addEventListener: vi.fn(),
+                removeEventListener: vi.fn()
+            },
+            setViewState: vi.fn().mockResolvedValue(undefined),
+            getViewState: vi.fn().mockReturnValue({ type: 'markdown', state: { file: 'Book/Chapter1.md', mode: 'source' } })
+        });
+
+        it('starts first round automatically when Pomodoro is enabled upon entering immersive mode', async () => {
+            mockPlugin.settings.immersive.pomodoroEnabled = true;
+            mockPlugin.settings.immersive.pomodoroInterval = 45;
+
+            const baseTime = 1_700_000_000_000;
+            vi.spyOn(Date, 'now').mockReturnValue(baseTime);
+
+            const mockFile = { path: 'Book/Chapter1.md', basename: 'Chapter1', parent: { isRoot: () => true } } as unknown as TFile;
+            (mockPlugin.app.workspace.getActiveViewOfType as ReturnType<typeof vi.fn>).mockReturnValue({
+                file: mockFile,
+                editor: { cm: { dispatch: vi.fn() } }
+            });
+
+            await manager['enterImmersiveMode']();
+
+            expect(manager['isImmersiveActive']).toBe(true);
+            expect(manager['pomodoroDeadline']).toBe(baseTime + 45 * 60 * 1000);
+            expect(manager['isPomodoroDismissed']).toBe(false);
+
+            manager.cleanup();
+        });
+
+        it('shows reminder modal only once when deadline expires and does not duplicate', () => {
+            mockPlugin.settings.immersive.pomodoroEnabled = true;
+            mockPlugin.settings.immersive.pomodoroInterval = 30;
+            manager['isImmersiveActive'] = true;
+
+            const baseTime = 1_000_000;
+            vi.spyOn(Date, 'now').mockReturnValue(baseTime);
+            manager['startPomodoroRound']();
+
+            const deadline = baseTime + 30 * 60 * 1000;
+            expect(manager['pomodoroDeadline']).toBe(deadline);
+
+            // Advance to deadline
+            vi.spyOn(Date, 'now').mockReturnValue(deadline);
+            manager['checkPomodoroReminder']();
+
+            const activeModal = manager['activePomodoroModal'];
+            expect(activeModal).not.toBeNull();
+            expect(manager['pomodoroDeadline']).toBeNull();
+
+            // Advance further and check again on subsequent ticks: must not duplicate
+            vi.spyOn(Date, 'now').mockReturnValue(deadline + 5000);
+            manager['checkPomodoroReminder']();
+            expect(manager['activePomodoroModal']).toBe(activeModal);
+
+            manager.cleanup();
+        });
+
+        it('suppresses further reminders for the current session when user dismisses or closes implicitly', () => {
+            mockPlugin.settings.immersive.pomodoroEnabled = true;
+            manager['isImmersiveActive'] = true;
+
+            const mockEditorFocus = vi.fn();
+            const mockMainLeaf = createMockMainLeaf(mockEditorFocus);
+            (mockPlugin.app.workspace.getLeavesOfType as ReturnType<typeof vi.fn>).mockReturnValue([mockMainLeaf]);
+            manager['activeMainLeaf'] = mockMainLeaf as unknown as WorkspaceLeaf;
+
+            const baseTime = 1_000_000;
+            vi.spyOn(Date, 'now').mockReturnValue(baseTime);
+            manager['startPomodoroRound']();
+
+            // Trigger reminder
+            vi.spyOn(Date, 'now').mockReturnValue(baseTime + 30 * 60 * 1000);
+            manager['checkPomodoroReminder']();
+            expect(manager['activePomodoroModal']).not.toBeNull();
+
+            // User closes modal via any mechanism other than "开启下一轮" (defaults to dismiss and restores focus)
+            manager['activePomodoroModal']!.close();
+
+            expect(manager['activePomodoroModal']).toBeNull();
+            expect(manager['isPomodoroDismissed']).toBe(true);
+            expect(manager['pomodoroDeadline']).toBeNull();
+            expect(mockEditorFocus).toHaveBeenCalled();
+
+            // Advance time: no more reminders should trigger during this session
+            vi.spyOn(Date, 'now').mockReturnValue(baseTime + 120 * 60 * 1000);
+            manager['checkPomodoroReminder']();
+            expect(manager['activePomodoroModal']).toBeNull();
+
+            manager.cleanup();
+        });
+
+        it('starts next round using click time and can remind once again', () => {
+            mockPlugin.settings.immersive.pomodoroEnabled = true;
+            mockPlugin.settings.immersive.pomodoroInterval = 30;
+            manager['isImmersiveActive'] = true;
+
+            const baseTime = 1_000_000;
+            vi.spyOn(Date, 'now').mockReturnValue(baseTime);
+            manager['startPomodoroRound']();
+
+            // Round 1 expiry at t = 1,000,000 + 1,800,000 = 2,800,000
+            const expiryTime = baseTime + 30 * 60 * 1000;
+            vi.spyOn(Date, 'now').mockReturnValue(expiryTime);
+            manager['checkPomodoroReminder']();
+            const modal = manager['activePomodoroModal']!;
+            expect(modal).not.toBeNull();
+
+            // User pauses/rests until clickTime = 3,500,000 before clicking "开启下一轮"
+            const clickTime = 3_500_000;
+            vi.spyOn(Date, 'now').mockReturnValue(clickTime);
+			(modal as unknown as { actionTaken: 'next' | 'dismiss' | null }).actionTaken = 'next';
+            modal.close();
+
+            expect(manager['activePomodoroModal']).toBeNull();
+            expect(manager['isPomodoroDismissed']).toBe(false);
+            // Next deadline must be based on clickTime, not the previous expiry time
+            const expectedNextDeadline = clickTime + 30 * 60 * 1000;
+            expect(manager['pomodoroDeadline']).toBe(expectedNextDeadline);
+
+            // Before next deadline: no reminder
+            vi.spyOn(Date, 'now').mockReturnValue(expectedNextDeadline - 1000);
+            manager['checkPomodoroReminder']();
+            expect(manager['activePomodoroModal']).toBeNull();
+
+            // At next deadline: reminds once
+            vi.spyOn(Date, 'now').mockReturnValue(expectedNextDeadline);
+            manager['checkPomodoroReminder']();
+            expect(manager['activePomodoroModal']).not.toBeNull();
+
+            manager.cleanup();
+        });
+
+        it('handles time jumps correctly when execution is suspended or sleep occurs', () => {
+            mockPlugin.settings.immersive.pomodoroEnabled = true;
+            mockPlugin.settings.immersive.pomodoroInterval = 30;
+            manager['isImmersiveActive'] = true;
+
+            const startTime = 10_000_000;
+            vi.spyOn(Date, 'now').mockReturnValue(startTime);
+            manager['startPomodoroRound']();
+
+            // Sleep/suspend for 3 hours, jump forward
+            const wakeTime = startTime + 3 * 3600 * 1000;
+            vi.spyOn(Date, 'now').mockReturnValue(wakeTime);
+
+            // On wake resume, checkPomodoroReminder fires once
+            manager['checkPomodoroReminder']();
+            expect(manager['activePomodoroModal']).not.toBeNull();
+            expect(manager['pomodoroDeadline']).toBeNull();
+
+            // Subsequent ticks after resume do not fire again
+            vi.spyOn(Date, 'now').mockReturnValue(wakeTime + 1000);
+            manager['checkPomodoroReminder']();
+            expect(manager['pomodoroDeadline']).toBeNull();
+
+            manager.cleanup();
+        });
+
+        it('silent cleanup cancels runtime state, closes open modal without starting another round or restoring focus', async () => {
+            mockPlugin.settings.immersive.pomodoroEnabled = true;
+            manager['isImmersiveActive'] = true;
+
+            const mockEditorFocus = vi.fn();
+            const mockMainLeaf = createMockMainLeaf(mockEditorFocus);
+            (mockPlugin.app.workspace.getLeavesOfType as ReturnType<typeof vi.fn>).mockReturnValue([mockMainLeaf]);
+            manager['activeMainLeaf'] = mockMainLeaf as unknown as WorkspaceLeaf;
+
+            manager['startPomodoroRound']();
+            vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 60 * 60 * 1000);
+            manager['checkPomodoroReminder']();
+
+            const openModal = manager['activePomodoroModal'];
+            expect(openModal).not.toBeNull();
+            const modalCloseSpy = vi.spyOn(openModal!, 'close');
+
+            // Silent cleanup: closes modal without triggering user dismiss choice and without restoring editor focus
+            manager.cleanup();
+
+            expect(modalCloseSpy).toHaveBeenCalled();
+            expect(mockEditorFocus).not.toHaveBeenCalled();
+            expect(manager['activePomodoroModal']).toBeNull();
+            expect(manager['pomodoroDeadline']).toBeNull();
+            expect(manager['isPomodoroDismissed']).toBe(false);
+            expect(manager['isImmersiveActive']).toBe(false);
+
+            // Re-entering immersive mode starts a fresh first round
+            mockPlugin.settings.immersive.pomodoroEnabled = true;
+            mockPlugin.settings.immersive.pomodoroInterval = 30;
+            const freshStartTime = 20_000_000;
+            vi.spyOn(Date, 'now').mockReturnValue(freshStartTime);
+
+            const mockFile = { path: 'Book/Chapter1.md', basename: 'Chapter1', parent: { isRoot: () => true } } as unknown as TFile;
+            (mockPlugin.app.workspace.getActiveViewOfType as ReturnType<typeof vi.fn>).mockReturnValue({
+                file: mockFile,
+                editor: { cm: { dispatch: vi.fn() } }
+            });
+
+            await manager['enterImmersiveMode']();
+            expect(manager['pomodoroDeadline']).toBe(freshStartTime + 30 * 60 * 1000);
+            expect(manager['isPomodoroDismissed']).toBe(false);
+
+            manager.cleanup();
+        });
+
+        it('executes pomodoro expiry check on top-bar tick even if task reading fails', async () => {
+            manager['createTopBar']();
+            mockPlugin.settings.immersive.pomodoroEnabled = true;
+            mockPlugin.settings.immersive.immersiveShowTaskProgress = true;
+            manager['isImmersiveActive'] = true;
+            mockPlugin.lastTaskFolder = 'Book';
+			(mockPlugin as unknown as { taskManager: ImmersiveModeManagerPlugin['taskManager'] }).taskManager = {
+                getTaskFile: vi.fn().mockReturnValue({ path: 'tasks.json' }),
+                parseEntries: vi.fn(),
+                getActiveTask: vi.fn(),
+                calcProgress: vi.fn()
+            };
+			(mockPlugin.app.vault as unknown as { cachedRead: ReturnType<typeof vi.fn> }).cachedRead = vi.fn().mockRejectedValue(new Error('task read failed'));
+
+            const baseTime = 1_000_000;
+            vi.spyOn(Date, 'now').mockReturnValue(baseTime);
+            manager['startPomodoroRound']();
+
+            // Advance to expiry
+            vi.spyOn(Date, 'now').mockReturnValue(baseTime + 30 * 60 * 1000);
+            await manager['renderTopBarContent']();
+
+            expect(manager['activePomodoroModal']).not.toBeNull();
+            manager.cleanup();
+        });
+
+        it('renders current-time item only when enabled and only updates DOM text when changed', async () => {
+            manager['createTopBar']();
+			const currentTimeEl = manager['topBarStatsEls'].currentTime as HTMLElement & { textAssignCount: number };
+            expect(currentTimeEl).toBeDefined();
+
+            // Default: disabled -> hidden
+            mockPlugin.settings.immersive.immersiveShowCurrentTime = false;
+            await manager['renderTopBarContent']();
+            expect(currentTimeEl.isShown()).toBe(false);
+
+            // Enable current time
+            mockPlugin.settings.immersive.immersiveShowCurrentTime = true;
+			vi.spyOn(manager as unknown as { formatCurrentTime: (date?: Date) => string }, 'formatCurrentTime').mockReturnValue('14:30:15');
+
+            await manager['renderTopBarContent']();
+            expect(currentTimeEl.isShown()).toBe(true);
+			expect(currentTimeEl.innerText).toBe('14:30:15');
+            expect(currentTimeEl.textAssignCount).toBe(1);
+
+			// Subsequent call in the same second with same text: DOM text must NOT be reassigned
+            await manager['renderTopBarContent']();
+            expect(currentTimeEl.textAssignCount).toBe(1);
+
+			// Next second: DOM text updates
+			vi.spyOn(manager as unknown as { formatCurrentTime: (date?: Date) => string }, 'formatCurrentTime').mockReturnValue('14:30:16');
+            await manager['renderTopBarContent']();
+			expect(currentTimeEl.innerText).toBe('14:30:16');
+            expect(currentTimeEl.textAssignCount).toBe(2);
+
+            manager.cleanup();
+        });
+    });
+
+    describe('ImmersivePomodoroModal - Elapsed Rest Timer', () => {
+		let mockApp: App;
+
+        beforeEach(() => {
+            vi.useFakeTimers();
+			const timerWindow = window as unknown as {
+				setInterval: (handler: () => void, timeout?: number) => ReturnType<typeof globalThis.setInterval>;
+				clearInterval: (id: ReturnType<typeof globalThis.setInterval>) => void;
+			};
+			timerWindow.setInterval = (fn, ms) => globalThis.setInterval(fn, ms);
+			timerWindow.clearInterval = (id) => globalThis.clearInterval(id);
+			mockApp = {
+                workspace: {
+                    getLeavesOfType: vi.fn().mockReturnValue([])
+                }
+			} as unknown as App;
+			vi.spyOn(window, 'clearInterval');
+        });
+
+        afterEach(() => {
+            vi.useRealTimers();
+            vi.restoreAllMocks();
+        });
+
+        it('initializes with 00:00:00 when reminder modal opens and starts interval timer', () => {
+            const baseTime = 1_000_000;
+            vi.setSystemTime(baseTime);
+
+            const modal = new ImmersivePomodoroModal(mockApp, {
+                onNextRound: vi.fn(),
+                onDismiss: vi.fn()
+            });
+
+            modal.open();
+
+			const timerEl = modal['timerEl'];
+            expect(timerEl).not.toBeNull();
+            expect(timerEl?.textContent).toBe('00:00:00');
+
+            modal.close();
+        });
+
+        it('renders absolute time jumps correctly without accumulated drift', () => {
+            const baseTime = 1_000_000;
+            vi.setSystemTime(baseTime);
+
+            const modal = new ImmersivePomodoroModal(mockApp, {
+                onNextRound: vi.fn(),
+                onDismiss: vi.fn()
+            });
+
+            modal.open();
+			const timerEl = modal['timerEl']!;
+            expect(timerEl.textContent).toBe('00:00:00');
+
+            // Simulate jump forward by 65 seconds (sleep / time jump)
+            vi.setSystemTime(baseTime + 65_000);
+            vi.advanceTimersByTime(1000);
+            // 65s + 1s tick = 66s = 00:01:06
+            expect(timerEl.textContent).toBe('00:01:06');
+
+            // Simulate jump forward by another 3600 seconds (1 hour)
+            vi.setSystemTime(baseTime + 65_000 + 3600_000);
+            vi.advanceTimersByTime(1000);
+            // 3665s + 1s tick = 3666s = 01:01:06
+            expect(timerEl.textContent).toBe('01:01:06');
+
+            modal.close();
+        });
+
+        it('clears and stops timer on ordinary close paths without firing callbacks after close', () => {
+            const baseTime = 1_000_000;
+            vi.setSystemTime(baseTime);
+
+            const onNextRound = vi.fn();
+            const onDismiss = vi.fn();
+            const onClose = vi.fn();
+
+            const modal = new ImmersivePomodoroModal(mockApp, {
+                onNextRound,
+                onDismiss,
+                onClose
+            });
+
+            modal.open();
+			const timerEl = modal['timerEl']!;
+            expect(timerEl.textContent).toBe('00:00:00');
+
+            // User closes modal (defaults to dismiss)
+            modal.close();
+
+			expect(window.clearInterval).toHaveBeenCalled();
+            expect(onDismiss).toHaveBeenCalledTimes(1);
+            expect(onClose).toHaveBeenCalledTimes(1);
+
+            // Timer should no longer tick or update DOM
+            vi.setSystemTime(baseTime + 10_000);
+            vi.advanceTimersByTime(5000);
+			expect(modal['timerEl']).toBeNull();
+            expect(onDismiss).toHaveBeenCalledTimes(1);
+        });
+
+        it('clears and stops timer on silent close and dispose without triggering user callbacks', () => {
+            const baseTime = 1_000_000;
+            vi.setSystemTime(baseTime);
+
+            const onNextRound = vi.fn();
+            const onDismiss = vi.fn();
+            const onClose = vi.fn();
+
+            const modal = new ImmersivePomodoroModal(mockApp, {
+                onNextRound,
+                onDismiss,
+                onClose
+            });
+
+            modal.open();
+			expect(modal['timerEl']?.textContent).toBe('00:00:00');
+
+            // Silent dispose/close
+            modal.dispose();
+
+			expect(window.clearInterval).toHaveBeenCalled();
+            expect(onDismiss).not.toHaveBeenCalled();
+            expect(onNextRound).not.toHaveBeenCalled();
+            expect(onClose).not.toHaveBeenCalled();
+
+            // Subsequent time advances do not cause updates or callbacks
+            vi.setSystemTime(baseTime + 100_000);
+            vi.advanceTimersByTime(5000);
+            expect(onDismiss).not.toHaveBeenCalled();
+            expect(onNextRound).not.toHaveBeenCalled();
+        });
+
+        it('uses modal owner document/window when available', () => {
+            const baseTime = 1_000_000;
+            vi.setSystemTime(baseTime);
+
+            const customWin = {
+                setInterval: vi.fn((fn: () => void) => window.setInterval(fn, 1000)),
+                clearInterval: vi.fn((id: number) => window.clearInterval(id))
+            };
+
+            const modal = new ImmersivePomodoroModal(mockApp, {
+                onNextRound: vi.fn(),
+                onDismiss: vi.fn()
+            });
+
+            (modal.contentEl as unknown as { ownerDocument: { defaultView: typeof customWin } }).ownerDocument = {
+                defaultView: customWin
+            };
+
+            modal.open();
+            expect(customWin.setInterval).toHaveBeenCalled();
+
+            modal.close();
+            expect(customWin.clearInterval).toHaveBeenCalled();
+        });
     });
 });

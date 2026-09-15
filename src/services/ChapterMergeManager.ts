@@ -2,6 +2,7 @@ import { TFile, type App, type TFolder } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ChapterSorter } from './ChapterSorter';
 import { t } from '../i18n';
+import { getDeterministicChapterDisplayOrder } from '../utils/chapterDisplayOrder';
 
 /**
  * 章节预览与合并条目数据结构
@@ -143,7 +144,15 @@ export class ChapterMergeManager {
 	 * @param folder 目标小说或卷文件夹
 	 */
 	public async loadFolderChapters(folder: TFolder): Promise<ChapterMergeItem[]> {
-		const mdFiles = ChapterSorter.getAllChapters(this.app, this.plugin, folder.path);
+		const mdFiles = getDeterministicChapterDisplayOrder(
+			ChapterSorter.getAllChapters(this.app, this.plugin, folder.path),
+			{
+				currentBookPath: folder.path,
+				isDescending: false,
+				enableSmartChapterSort: this.plugin.settings.enableSmartChapterSort,
+				customSortOrder: this.plugin.settings.customSortOrder
+			}
+		);
 		const items: ChapterMergeItem[] = [];
 
 		for (const mdFile of mdFiles) {

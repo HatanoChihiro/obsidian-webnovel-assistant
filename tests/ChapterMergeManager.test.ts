@@ -2,12 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ChapterMergeManager, ChapterMergeItem } from '../src/services/ChapterMergeManager';
 import type { WebNovelAssistantPlugin } from '../src/types/plugin';
 import { TFile, TFolder } from 'obsidian';
+import { ChapterSorter } from '../src/services/ChapterSorter';
 
 describe('ChapterMergeManager', () => {
 	let mockPlugin: WebNovelAssistantPlugin;
 	let manager: ChapterMergeManager;
 
 	beforeEach(() => {
+		ChapterSorter.setCustomRules([]);
 		mockPlugin = {
 			app: {
 				vault: {
@@ -26,10 +28,64 @@ describe('ChapterMergeManager', () => {
 				dir: 'plugins/test',
 				id: 'test'
 			},
+			settings: {
+				homepagePath: '',
+				loreFolderName: '设定',
+				enableStrictChapterMode: false,
+				enableSmartChapterSort: true,
+				customSortOrder: {}
+			},
+			getVaultMarkdownFiles: vi.fn(() => []),
+			getTrackedMarkdownFiles: vi.fn(() => []),
+			isFileInStrictChapterException: vi.fn(() => false),
+			isPluginGeneratedFile: vi.fn(() => false),
 			calculateAccurateWords: vi.fn((text: string) => text.replace(/\s+/g, '').length)
 		} as unknown as WebNovelAssistantPlugin;
 
 		manager = new ChapterMergeManager(mockPlugin);
+	});
+
+	it('groups duplicate chapter names by volume before exporting a multi-volume book', async () => {
+		const book = Object.assign(new TFolder(), { name: 'Novel', path: 'Novel' });
+		const volume2 = Object.assign(new TFolder(), { name: '第二卷', path: 'Novel/第二卷', parent: book });
+		const volume1 = Object.assign(new TFolder(), { name: '第一卷', path: 'Novel/第一卷', parent: book });
+		const createChapter = (parent: TFolder, basename: string, body: string): TFile => Object.assign(new TFile(), {
+			name: `${basename}.md`,
+			path: `${parent.path}/${basename}.md`,
+			basename,
+			extension: 'md',
+			parent,
+			body
+		});
+		const v2c1 = createChapter(volume2, '第一章', 'V2-C1');
+		const v2c2 = createChapter(volume2, '第二章', 'V2-C2');
+		const v1c1 = createChapter(volume1, '第一章', 'V1-C1');
+		const v1c2 = createChapter(volume1, '第二章', 'V1-C2');
+		const prologue = createChapter(book, '序章', 'PROLOGUE');
+		volume2.children = [v2c1, v2c2];
+		volume1.children = [v1c1, v1c2];
+		book.children = [volume2, volume1, prologue];
+
+		mockPlugin.app.vault.getAbstractFileByPath = vi.fn((path: string) => path === book.path ? book : null);
+		mockPlugin.app.vault.cachedRead = vi.fn((file: TFile & { body?: string }) => Promise.resolve(file.body || ''));
+
+		const items = await manager.loadFolderChapters(book);
+		expect(items.map(item => item.file.path)).toEqual([
+			prologue.path,
+			v1c1.path,
+			v1c2.path,
+			v2c1.path,
+			v2c2.path
+		]);
+
+		await manager.exportMergedDocument(book, items);
+		const createMock = mockPlugin.app.vault.create as ReturnType<typeof vi.fn>;
+		const mergedContent = createMock.mock.calls[0][1] as string;
+		expect(mergedContent.match(/^## 第一卷$/gm)).toHaveLength(1);
+		expect(mergedContent.match(/^## 第二卷$/gm)).toHaveLength(1);
+		expect(mergedContent.indexOf('## 序章')).toBeLessThan(mergedContent.indexOf('## 第一卷'));
+		expect(mergedContent.indexOf('## 第一卷')).toBeLessThan(mergedContent.indexOf('## 第二卷'));
+		expect(mergedContent.indexOf('V1-C2')).toBeLessThan(mergedContent.indexOf('V2-C1'));
 	});
 
 	it('exportMergedDocument should return file and accurate merged word count', async () => {

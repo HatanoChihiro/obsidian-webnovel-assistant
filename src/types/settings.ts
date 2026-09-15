@@ -169,6 +169,8 @@ export interface ImmersiveModeSettings {
 	immersiveShowSessionWords: boolean;
 	/** 数据仪表盘：是否显示任务进度 */
 	immersiveShowTaskProgress: boolean;
+	/** 数据仪表盘：是否显示当前时间 */
+	immersiveShowCurrentTime: boolean;
 
 	/** 是否隐藏笔记属性面板 */
 	immersiveHideProperties: boolean;
@@ -186,6 +188,11 @@ export interface ImmersiveModeSettings {
 	typewriterCenterOffset: number;
 	/** 打字机模式未聚焦行淡化不透明度 (0.1 到 1.0) */
 	typewriterUnfocusedOpacity: number;
+
+	/** 是否启用番茄钟提醒 */
+	pomodoroEnabled: boolean;
+	/** 番茄钟提醒间隔 (分钟) */
+	pomodoroInterval: number;
 }
 
 /** 普通编辑器打字机设置 */

@@ -13,6 +13,7 @@ describe('SettingsManager', () => {
 		const invalid = cloneDefaults();
 		invalid.defaultGoal = -1;
 		invalid.obs.obsPort = 99999;
+		invalid.immersive.pomodoroInterval = 10;
 		const saveData = vi.fn().mockResolvedValue(undefined);
 		const plugin = {
 			loadData: vi.fn().mockResolvedValue(invalid),
@@ -24,6 +25,7 @@ describe('SettingsManager', () => {
 
 		expect(loaded.defaultGoal).toBe(DEFAULT_SETTINGS.defaultGoal);
 		expect(loaded.obs.obsPort).toBe(DEFAULT_SETTINGS.obs.obsPort);
+		expect(loaded.immersive.pomodoroInterval).toBe(DEFAULT_SETTINGS.immersive.pomodoroInterval);
 		expect(manager.validateSettings(loaded).valid).toBe(true);
 		expect(saveData).toHaveBeenCalled();
 	});
@@ -159,5 +161,25 @@ describe('SettingsManager', () => {
 		expect(saved).toHaveLength(2);
 		expect(saved[0].defaultGoal).toBe(1000);
 		expect(saved[1].defaultGoal).toBe(2000);
+	});
+
+	it('validates and repairs invalid persisted immersive pomodoro interval settings to default', async () => {
+		const outOfRange = cloneDefaults();
+		outOfRange.immersive.pomodoroInterval = 240;
+		const plugin = {
+			loadData: vi.fn().mockResolvedValue(outOfRange),
+			saveData: vi.fn().mockResolvedValue(undefined)
+		} as never;
+		const manager = new SettingsManager(plugin, cloneDefaults());
+		const loaded = await manager.loadSettings();
+		expect(loaded.immersive.pomodoroInterval).toBe(30);
+
+		await expect(manager.updateSettings({
+			immersive: { ...loaded.immersive, pomodoroInterval: 15 }
+		})).rejects.toThrow();
+
+		await expect(manager.updateSettings({
+			immersive: { ...loaded.immersive, pomodoroInterval: 20 }
+		})).resolves.not.toThrow();
 	});
 });

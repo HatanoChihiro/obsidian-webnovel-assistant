@@ -1,12 +1,20 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { WorkspaceLeaf, TFile } from './mocks/obsidian';
+import { WorkspaceLeaf, TFile, TFolder } from './mocks/obsidian';
 import { WritingStatusView, type WritingStatusViewPlugin } from '../src/ui/StatusView';
 import type { TaskManager } from '../src/services/TaskManager';
+import { ChapterSorter } from '../src/services/ChapterSorter';
 
 describe('WritingStatusView task lifecycle gating', () => {
 	type TaskLifecycleGate = {
 		reconcileTaskLifecycleForFolder(taskFolder: string, generation?: number, currentDate?: string): Promise<boolean>;
 		updateGeneration: number;
+	};
+	type ChapterReferenceMatcherHarness = {
+		createChapterReferenceMatcher(
+			file: import('obsidian').TFile,
+			folderPath: string,
+			sourcePath: string
+		): (target: string | undefined) => boolean;
 	};
 
 	let view: WritingStatusView;
@@ -24,6 +32,7 @@ describe('WritingStatusView task lifecycle gating', () => {
 	let mockLeaf: WorkspaceLeaf;
 
 	beforeEach(() => {
+		ChapterSorter.setCustomRules([]);
 		const taskFile = new TFile('限时任务.md', '作品A/限时任务.md');
 		mockTaskManager = {
 			reconcileTasks: vi.fn().mockResolvedValue(true),
@@ -52,6 +61,10 @@ describe('WritingStatusView task lifecycle gating', () => {
 				getBookPathForFile: vi.fn(() => '作品A'),
 				isLorePath: vi.fn(() => false)
 			},
+			getVaultMarkdownFiles: vi.fn(() => []),
+			getTrackedMarkdownFiles: vi.fn(() => []),
+			isFileInStrictChapterException: vi.fn(() => false),
+			isPluginGeneratedFile: vi.fn(() => false),
 			statisticsManager: {
 				getCoreStats: vi.fn(() => ({
 					dailyWords: 0,
@@ -79,6 +92,46 @@ describe('WritingStatusView task lifecycle gating', () => {
 		mockLeaf = new WorkspaceLeaf();
 		view = new WritingStatusView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, mockPlugin);
 		taskLifecycleGate = view as unknown as TaskLifecycleGate;
+	});
+
+	it('isolates path-qualified duplicate chapter references and rejects ambiguous legacy basenames', () => {
+		const book = Object.assign(new TFolder(), { name: '作品A', path: '作品A' });
+		const volume1 = Object.assign(new TFolder(), { name: '第一卷', path: '作品A/第一卷', parent: book });
+		const volume2 = Object.assign(new TFolder(), { name: '第二卷', path: '作品A/第二卷', parent: book });
+		const createChapter = (parent: TFolder, basename: string): TFile => Object.assign(new TFile(), {
+			name: `${basename}.md`,
+			path: `${parent.path}/${basename}.md`,
+			basename,
+			extension: 'md',
+			parent
+		});
+		const v1c1 = createChapter(volume1, '第一章');
+		const v1c2 = createChapter(volume1, '第二章');
+		const v2c1 = createChapter(volume2, '第一章');
+		volume1.children = [v1c1, v1c2];
+		volume2.children = [v2c1];
+		book.children = [volume2, volume1];
+
+		(view as unknown as { app: { vault: { getAbstractFileByPath(path: string): TFolder | null } } }).app = {
+			vault: { getAbstractFileByPath: (path: string) => path === book.path ? book : null }
+		};
+		const harness = view as unknown as ChapterReferenceMatcherHarness;
+		const matchesV1C1 = harness.createChapterReferenceMatcher(
+			v1c1 as unknown as import('obsidian').TFile,
+			book.path,
+			'作品A/伏笔.md'
+		);
+
+		expect(matchesV1C1('第一卷/第一章|第一章')).toBe(true);
+		expect(matchesV1C1('第二卷/第一章|第一章')).toBe(false);
+		expect(matchesV1C1('第一章')).toBe(false);
+
+		const matchesUniqueV1C2 = harness.createChapterReferenceMatcher(
+			v1c2 as unknown as import('obsidian').TFile,
+			book.path,
+			'作品A/伏笔.md'
+		);
+		expect(matchesUniqueV1C2('第二章')).toBe(true);
 	});
 
 	it('reconciles on the first call for a folder and gates subsequent calls on the same date', async () => {

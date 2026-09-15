@@ -206,6 +206,8 @@ export const VALIDATION_RULES = {
 	OPACITY_RANGE: { min: 0.1, max: 1.0 },
 	/** 目标字数最小值 */
 	MIN_GOAL: 0,
+	/** 沉浸模式番茄钟提醒间隔范围（分钟） */
+	IMMERSIVE_POMODORO_INTERVAL: { min: 20, max: 180 },
 } as const;
 
 import type { AccurateCountSettings } from './types/settings';
@@ -354,6 +356,7 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 		immersiveShowDailyProgress: true,
 		immersiveShowSessionWords: true,
 		immersiveShowTaskProgress: true,
+		immersiveShowCurrentTime: false,
 
 		immersiveHideProperties: true,
 
@@ -363,6 +366,9 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 		typewriterEnabled: false,
 		typewriterCenterOffset: 0,
 		typewriterUnfocusedOpacity: 0.4,
+
+		pomodoroEnabled: false,
+		pomodoroInterval: 30,
 	},
 
 	// OBS 数据输出默认设置

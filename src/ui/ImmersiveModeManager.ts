@@ -11,6 +11,7 @@ import type { FileExplorerPatcher } from '../services/FileExplorerPatcher';
 import type { AdaptiveDebounceManager } from '../services/AdaptiveDebounceManager';
 import type { StatisticsManager } from '../services/StatisticsManager';
 import type { TaskManager } from '../services/TaskManager';
+import { ImmersivePomodoroModal } from './ImmersivePomodoroModal';
 
 export type ImmersiveModeManagerStickyNoteManager = Pick<
 	StickyNoteDataManager,
@@ -89,6 +90,12 @@ export class ImmersiveModeManager {
 	private activeLeftLeaf: WorkspaceLeaf | null = null;
 	private activeRightLeaf: WorkspaceLeaf | null = null;
 	private activeBottomLeaf: WorkspaceLeaf | null = null;
+	private activeMainLeaf: WorkspaceLeaf | null = null;
+
+	// 番茄钟状态
+	private pomodoroDeadline: number | null = null;
+	private isPomodoroDismissed: boolean = false;
+	private activePomodoroModal: ImmersivePomodoroModal | null = null;
 	
 	private pendingTimers: Set<number> = new Set();
 	private createdImmersiveLeaves: Set<WorkspaceLeaf> = new Set();
@@ -387,6 +394,12 @@ export class ImmersiveModeManager {
 
 			this.isImmersiveActive = true;
 
+			if (this.plugin.settings.immersive.pomodoroEnabled) {
+				this.startPomodoroRound();
+			} else {
+				this.resetPomodoro();
+			}
+
 			new Notice(t('immersive.enter'));
 		} catch (error) {
 			Logger.error('[ImmersiveModeManager] 进入沉浸模式失败:', error);
@@ -621,6 +634,9 @@ export class ImmersiveModeManager {
 		}
 		this.pendingTimers.clear();
 
+		this.resetPomodoro();
+		this.activeMainLeaf = null;
+
 		// 强制解绑并卸载沉浸专属 Leaf 节点
 		for (const leaf of this.createdImmersiveLeaves) {
 			try {
@@ -673,6 +689,7 @@ export class ImmersiveModeManager {
 		if (!mainLeaf) {
 			mainLeaf = workspace.getLeaf(true);
 		}
+		this.activeMainLeaf = mainLeaf;
 
 		// 1.1 隔离主工作区：分离除主编辑器外的所有其它普通模式根叶子，确保沉浸模式无分屏与样式污染
 		const leavesToDetach: WorkspaceLeaf[] = [];
@@ -860,6 +877,7 @@ export class ImmersiveModeManager {
 		const mountAll = async () => {
 			const immersive = this.plugin.settings.immersive;
 			const BATCH_SIZE = 2;
+			const includesReferenceView = pendingMounts.some(({ viewType }) => viewType === 'reference-view');
 
 			const mountLeaf = async ({ leaf, viewType }: { leaf: WorkspaceLeaf; viewType: string }): Promise<void> => {
 				if (generation !== this.layoutGeneration || this.isExiting || !this.createdImmersiveLeaves.has(leaf)) {
@@ -903,6 +921,10 @@ export class ImmersiveModeManager {
 					return;
 				}
 			}
+
+			if (includesReferenceView) {
+				this.app.workspace.trigger('webnovel:immersive-reference-ready');
+			}
 		};
 
 		void mountAll();
@@ -934,7 +956,8 @@ export class ImmersiveModeManager {
 			chapterProgress: centerDiv.createSpan({ cls: 'stat-item' }),
 			dailyProgress: centerDiv.createSpan({ cls: 'stat-item' }),
 			taskProgress: centerDiv.createSpan({ cls: 'stat-item' }),
-			sessionWords: centerDiv.createSpan({ cls: 'stat-item' })
+			sessionWords: centerDiv.createSpan({ cls: 'stat-item' }),
+			currentTime: centerDiv.createSpan({ cls: 'stat-item' })
 		};
 
 		for (const el of Object.values(this.topBarStatsEls)) {
@@ -982,6 +1005,9 @@ export class ImmersiveModeManager {
 
 	private async renderTopBarContent(): Promise<void> {
 		if (!this.topBarEl) return;
+
+		this.checkPomodoroReminder();
+
 		try {
 			const immersive = this.plugin.settings.immersive;
 			const stats = this.plugin.statisticsManager.getCoreStats();
@@ -1029,8 +1055,106 @@ export class ImmersiveModeManager {
 			updateStatEl('dailyProgress', !!immersive.immersiveShowDailyProgress, `${t('immersive.daily-progress')} (${stats.dailyWords}/${stats.dailyGoal})`);
 			updateStatEl('taskProgress', !!immersive.immersiveShowTaskProgress, `${t('immersive.task-progress')} (${taskWords}/${taskGoal})`);
 			updateStatEl('sessionWords', !!immersive.immersiveShowSessionWords, `${t('immersive.session-words')} (${stats.sessionWords})`);
+
+			const showCurrentTime = !!immersive.immersiveShowCurrentTime;
+			updateStatEl('currentTime', showCurrentTime, showCurrentTime ? this.formatCurrentTime() : '');
 		} catch (e) {
 			Logger.error('[ImmersiveModeManager] renderTopBarContent failed:', e);
+		}
+	}
+
+	/**
+	 * 格式化当前本地时间为紧凑的时分秒格式
+	 */
+	private formatCurrentTime(date: Date = new Date()): string {
+		return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+	}
+
+	/**
+	 * 开启新一轮番茄钟
+	 */
+	private startPomodoroRound(): void {
+		this.isPomodoroDismissed = false;
+		const intervalMinutes = this.plugin.settings.immersive.pomodoroInterval ?? 30;
+		this.pomodoroDeadline = Date.now() + intervalMinutes * 60 * 1000;
+	}
+
+	/**
+	 * 重置番茄钟状态并静默关闭活跃弹窗
+	 */
+	private resetPomodoro(): void {
+		this.pomodoroDeadline = null;
+		this.isPomodoroDismissed = false;
+		if (this.activePomodoroModal) {
+			const modal = this.activePomodoroModal;
+			this.activePomodoroModal = null;
+			modal.dispose();
+		}
+	}
+
+	/**
+	 * 检查番茄钟是否到期
+	 */
+	private checkPomodoroReminder(): void {
+		if (!this.isImmersiveActive || this.isExiting) return;
+		if (!this.plugin.settings.immersive.pomodoroEnabled) return;
+		if (this.isPomodoroDismissed || this.activePomodoroModal !== null) return;
+		if (this.pomodoroDeadline === null) return;
+
+		if (Date.now() >= this.pomodoroDeadline) {
+			this.pomodoroDeadline = null;
+			this.showPomodoroReminder();
+		}
+	}
+
+	/**
+	 * 弹出番茄钟到期提醒弹窗
+	 */
+	private showPomodoroReminder(): void {
+		if (this.activePomodoroModal) return;
+
+		const modal = new ImmersivePomodoroModal(this.app, {
+			onNextRound: () => {
+				this.startPomodoroRound();
+			},
+			onDismiss: () => {
+				if (this.isImmersiveActive && !this.isExiting) {
+					this.isPomodoroDismissed = true;
+				}
+				this.pomodoroDeadline = null;
+			},
+			onClose: () => {
+				if (this.activePomodoroModal === modal) {
+					this.activePomodoroModal = null;
+				}
+				this.restoreMainEditorFocus();
+			}
+		});
+
+		this.activePomodoroModal = modal;
+		modal.open();
+	}
+
+	/**
+	 * 弹窗关闭后安全恢复主编辑器焦点
+	 */
+	private restoreMainEditorFocus(): void {
+		if (!this.isImmersiveActive || this.isExiting) return;
+		try {
+			let targetLeaf = this.activeMainLeaf;
+			if (!targetLeaf || !targetLeaf.view) {
+				const mdLeaves = this.app.workspace.getLeavesOfType('markdown');
+				targetLeaf = mdLeaves.find(l => l.containerEl?.classList?.contains('immersive-main-editor')) || mdLeaves[0] || null;
+			}
+			if (targetLeaf) {
+				this.app.workspace.setActiveLeaf(targetLeaf, { focus: true });
+				const editor = (targetLeaf.view as { editor?: { focus?: () => void } } | undefined)?.editor;
+				if (typeof editor?.focus === 'function') {
+					editor.focus();
+				}
+			}
+		} catch (err) {
+			Logger.warn('[ImmersiveModeManager] 恢复主编辑器焦点失败:', err);
 		}
 	}
 

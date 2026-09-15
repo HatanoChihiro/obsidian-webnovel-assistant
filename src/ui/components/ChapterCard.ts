@@ -11,6 +11,7 @@ import type { CacheManager } from '../../services/CacheManager';
 import type { WritingJourneyService } from '../../services/WritingJourneyService';
 import { Logger } from '../../utils/Logger';
 import { createStickyNoteParagraphEditor } from './StickyNoteParagraphEditor';
+import { createCardImportanceButton } from './CardImportanceButton';
 
 export interface ChapterCardPlugin extends LoreBadgePlugin {
 	menuManager: Pick<MenuManager, 'toggleExcludeFromWordCount'>;
@@ -45,7 +46,8 @@ export class ChapterCard {
 		const rawStatus = (frontmatter?.status || frontmatter?.Status || frontmatter?.['状态'] || 'unwritten') as string;
 		let status = CORKBOARD_STATUS_MAP[rawStatus] ?? rawStatus;
 
-		const card = grid.createDiv('wn-corkboard-card');
+		const isImportant = Boolean(frontmatter?.important === true || frontmatter?.['重要'] === true);
+		const card = grid.createDiv(`wn-corkboard-card${isImportant ? ' is-important' : ''}`);
 		card.setAttribute('data-path', file.path);
 		card.setAttribute('data-basename', file.basename);
 
@@ -130,6 +132,32 @@ export class ChapterCard {
 			}
 			menu.showAtMouseEvent(evt);
 		};
+
+		createCardImportanceButton({
+			container: cardHeader,
+			isImportant,
+			cardEl: card,
+			onToggle: async (newImportant) => {
+				if (onSaveStateChange) onSaveStateChange(true);
+				try {
+					await app.fileManager.processFrontMatter(file, (fm) => {
+						if (newImportant) {
+							(fm as Record<string, unknown>)['important'] = true;
+						} else {
+							delete (fm as Record<string, unknown>)['important'];
+							delete (fm as Record<string, unknown>)['重要'];
+						}
+					});
+				} catch (err) {
+					Logger.error('[ChapterCard] Failed to toggle chapter importance:', err);
+					throw err;
+				} finally {
+					window.setTimeout(() => {
+						if (onSaveStateChange) onSaveStateChange(false);
+					}, 500);
+				}
+			}
+		});
 
 		// 内容区：大纲摘要（点击编辑）
 		const contentEl = card.createDiv('wn-corkboard-card-content');

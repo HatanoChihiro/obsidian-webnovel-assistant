@@ -4,6 +4,7 @@ import type { TaskManager } from '../../services/TaskManager';
 import { getTaskStatusText, getTaskTypeText } from '../../i18n/data-keys';
 import { formatCount } from '../../utils';
 import { t } from '../../i18n';
+import { createCardImportanceButton } from './CardImportanceButton';
 
 export type TaskBoardManager = Pick<
     TaskManager,
@@ -16,6 +17,7 @@ export type TaskBoardManager = Pick<
     | 'updateProgress'
     | 'updateEntryStatus'
     | 'reconcileTasks'
+    | 'toggleImportance'
 >;
 
 export interface TaskBoardSettings {
@@ -190,7 +192,7 @@ export class TaskBoardRenderer {
         const taskFolder = currentBookPath === '/' ? '' : currentBookPath;
         const statusCls: Record<string, string> = { active: 'active', completed: 'done', incomplete: 'failed', abandoned: 'failed', notStarted: 'pending' };
         const cls = statusCls[entry.status] || 'pending';
-        const card = container.createDiv({ cls: `wn-corkboard-card task-card task-card-${cls} wn-task-card wn-task-card-${cls}` });
+        const card = container.createDiv({ cls: `wn-corkboard-card task-card task-card-${cls} wn-task-card wn-task-card-${cls}${entry.important ? ' is-important' : ''}` });
 
         // Header: Period + Action Buttons (Complete / Abandon) + Status Label
         const headerRow = card.createDiv({ cls: 'task-card-header wn-task-card-header' });
@@ -259,6 +261,16 @@ export class TaskBoardRenderer {
         }
 
         headerRight.createSpan({ text: getTaskStatusText(entry.status), cls: `task-card-status task-status-${cls} wn-task-card-status wn-task-status-${cls}` });
+
+        createCardImportanceButton({
+            container: headerRow,
+            isImportant: !!entry.important,
+            cardEl: card,
+            onToggle: async (nextState) => {
+                await manager.toggleImportance(entry.period, entry.taskType, taskFolder);
+                entry.important = nextState;
+            }
+        });
 
         // Info: Platform & Position
         const infoRow = card.createDiv({ cls: 'task-card-info-row wn-task-card-info-row' });

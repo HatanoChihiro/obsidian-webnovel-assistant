@@ -57,6 +57,8 @@ export interface ParsedForeshadowingEntry {
 	recoveredAt?: string;
 	/** 解析时的原始 Markdown 块（视图内部使用） */
 	rawBlock?: string;
+	/** 是否标为重要 */
+	important?: boolean;
 }
 
 /** 单条伏笔数据结构（用于保存新条目） */
@@ -83,6 +85,8 @@ export interface ForeshadowingEntry {
 	recoveryFile?: string;
 	/** 旧版单个回收时间（向后兼容） */
 	recoveredAt?: string;
+	/** 是否标为重要 */
+	important?: boolean;
 }
 
 /** 伏笔功能相关设置 */
