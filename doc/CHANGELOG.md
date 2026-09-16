@@ -1,3 +1,27 @@
+## 🔧 v3.9.9
+
+### 新增功能
+
+- **工作台重要卡片筛选**：在“全章节”与“伏笔看板”的搜索框右侧新增星标筛选图标，以空心/实心状态表示是否仅展示重要卡片；支持与既有关键词搜索、伏笔标签筛选组合过滤，筛选计数与无结果状态实时联动，两看板保持独立内存状态。
+
+### Bug 修复
+
+- **重要卡片星标**：修复手机端章节与设定卡片的星标可能遮挡标题或状态文字、平板端星标显示异常，以及时间线事件的星标与删除按钮会随正文滚动或受滚动条挤压的问题；同时统一有无滚动条时的正文宽度，以两端对齐改善正文右侧的不规则留白，并加宽手机端事件卡片。
+- **卡片首行缩进**：修复开启“排版 → 应用至卡片正文”后，章节与设定卡片编辑态以及时间线事件卡片在阅读与编辑态出现整段缩进或仅首段缩进的问题；全面复用段落行架构，使每个自然段的首行均保留设定缩进，自动换行的后续行靠左对齐且不产生多余缩进字符。
+
+### English Changelog
+
+#### New Features
+
+- **Workbench Important Card Filter**: Added a star filter icon immediately to the right of the search field in the "All Chapters" and "Foreshadowing" boards, using outlined/filled states to show whether only important cards are displayed; it composes with keyword and foreshadowing tag filters, updates result counts and empty states immediately, and maintains independent in-memory state between boards.
+
+#### Bug Fixes
+
+- **Important Card Stars**: Fixed important-star controls overlapping chapter or lore card header content on phones, incorrect star rendering on tablets, and timeline event star/delete controls moving or scrolling away with overflowing text; event text now keeps a consistent width with or without a scrollbar, uses justified alignment to reduce uneven right-side gaps, and phone event cards are wider.
+- **Card Paragraph Indentation**: Fixed chapter and lore card editors, as well as timeline event cards in both display and editing modes, either block-indenting all wrapped lines or indenting only the first paragraph when Typography → Apply to Cards is enabled; all card bodies now consistently use the paragraph-line architecture so each paragraph visually indents, wrapped continuation lines align to the left edge, and no indentation characters are persisted.
+
+---
+
 ## 🔧 v3.9.8
 
 ### 新增功能

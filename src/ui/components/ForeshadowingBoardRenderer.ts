@@ -19,6 +19,12 @@ export interface ForeshadowingBoardPlugin extends ForeshadowingRecoveryModalPlug
 	foreshadowingManager: ForeshadowingBoardStatusManager;
 }
 
+export interface ForeshadowingFilterOptions {
+	query?: string;
+	tagFilter?: string;
+	onlyImportant?: boolean;
+}
+
 export interface ForeshadowingBoardOptions {
 	app: App;
 	plugin: ForeshadowingBoardPlugin;
@@ -28,28 +34,22 @@ export interface ForeshadowingBoardOptions {
 	foreshadowingFile: TFile | null;
 	query: string;
 	currentForeshadowingTagFilter?: string;
+	onlyImportant?: boolean;
 	currentBookPath: string;
 	reloadBoard: () => void;
 }
 
 export class ForeshadowingBoardRenderer {
-	static async render(options: ForeshadowingBoardOptions): Promise<void> {
-		const { app, plugin, container, entries, foreshadowingFile, query, currentForeshadowingTagFilter, currentBookPath, reloadBoard } = options;
-
-		const boardContainer = container.createDiv('wn-foreshadowing-board-container');
-
-		const tagFilter = currentForeshadowingTagFilter;
-		if (!foreshadowingFile || entries.length === 0) {
-			boardContainer.createDiv({
-				cls: 'wn-corkboard-empty-msg',
-				text: (query || (tagFilter && tagFilter !== 'all')) ? t('corkboard.filter-no-results') : t('corkboard.no-foreshadowing')
-			});
-			return;
-		}
-
-		// 按搜索关键词和侧面板选中的标签过滤
+	static filterEntries(
+		entries: ParsedForeshadowingEntry[],
+		options: ForeshadowingFilterOptions = {}
+	): ParsedForeshadowingEntry[] {
+		const { query = '', tagFilter, onlyImportant = false } = options;
 		const filterQuery = query.trim().toLowerCase();
-		const filteredEntries = entries.filter((entry) => {
+		return entries.filter((entry) => {
+			if (onlyImportant && !entry.important) {
+				return false;
+			}
 			if (tagFilter && tagFilter !== 'all' && !entry.tags.includes(tagFilter)) {
 				return false;
 			}
@@ -68,6 +68,29 @@ export class ForeshadowingBoardRenderer {
 			if (entry.recoveryLogs && entry.recoveryLogs.some(l => (l.note && l.note.toLowerCase().includes(filterQuery)) || (l.quote && l.quote.toLowerCase().includes(filterQuery)) || l.file.toLowerCase().includes(filterQuery))) return true;
 
 			return false;
+		});
+	}
+
+	static async render(options: ForeshadowingBoardOptions): Promise<void> {
+		const { app, plugin, container, entries, foreshadowingFile, query, currentForeshadowingTagFilter, onlyImportant, currentBookPath, reloadBoard } = options;
+
+		const boardContainer = container.createDiv('wn-foreshadowing-board-container');
+
+		const tagFilter = currentForeshadowingTagFilter;
+		const hasActiveFilter = Boolean(query.trim().length > 0 || (tagFilter && tagFilter !== 'all') || onlyImportant);
+		if (!foreshadowingFile || entries.length === 0) {
+			boardContainer.createDiv({
+				cls: 'wn-corkboard-empty-msg',
+				text: hasActiveFilter ? t('corkboard.filter-no-results') : t('corkboard.no-foreshadowing')
+			});
+			return;
+		}
+
+		// 按搜索关键词、侧面板选中的标签和重要标记过滤
+		const filteredEntries = ForeshadowingBoardRenderer.filterEntries(entries, {
+			query,
+			tagFilter,
+			onlyImportant
 		});
 
 		if (filteredEntries.length === 0) {

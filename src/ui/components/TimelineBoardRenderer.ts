@@ -13,6 +13,7 @@ import type { TimelineFormContext, TimelineFormSettings } from './TimelineFormCo
 import type { ChapterCardPlugin } from './ChapterCard';
 import type { AccurateCountSettings } from '../../types/settings';
 import { createCardImportanceButton } from './CardImportanceButton';
+import { setupStickyNoteParagraphEditor, getStickyNoteEditorContent, setStickyNoteEditorContent } from './StickyNoteParagraphEditor';
 
 class ConfirmDeleteEventModal extends Modal {
 	constructor(app: App, private title: string, private onConfirm: () => void) {
@@ -42,6 +43,9 @@ class ConfirmDeleteEventModal extends Modal {
 }
 
 function getPlaintextContent(el: HTMLElement): string {
+	if (el.querySelector('.wn-sticky-note-editor-line')) {
+		return getStickyNoteEditorContent(el);
+	}
 	const raw = (el.innerText !== undefined && el.innerText !== null) ? el.innerText : (el.textContent ?? '');
 	return raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 }
@@ -441,21 +445,26 @@ export class TimelineBoardRenderer {
 					});
 
 					// Description box
+					const descShell = itemRow.createDiv('wn-timeline-item-desc-shell');
 					let descEl: HTMLElement;
-					const hasDesc = Boolean(items[itemIdx].description && items[itemIdx].description.trim().length > 0);
+					const rawDesc = items[itemIdx].description || '';
+					const hasDesc = Boolean(rawDesc.trim().length > 0);
 					const isImportant = Boolean(items[itemIdx].important);
 					const descCls = `${hasDesc ? 'wn-timeline-item-desc' : 'wn-timeline-item-desc is-empty'}${isImportant ? ' is-important' : ''}`;
-					if (itemIdx === 0 || items[itemIdx].description) {
-						descEl = itemRow.createDiv({
-							text: items[itemIdx].description || t('modal.describe-event-placeholder'),
+					if (hasDesc) {
+						descEl = descShell.createDiv({ cls: descCls });
+						setStickyNoteEditorContent(descEl, rawDesc);
+					} else if (itemIdx === 0) {
+						descEl = descShell.createDiv({
+							text: t('modal.describe-event-placeholder'),
 							cls: descCls
 						});
 					} else {
-						descEl = itemRow.createDiv({ text: '', cls: descCls });
+						descEl = descShell.createDiv({ text: '', cls: descCls });
 					}
 
-					// Action rail (包含置顶的星标与下方的删除按钮)
-					const actionRail = descEl.createDiv({ cls: 'wn-timeline-item-actions' });
+					// Action rail is outside the scrolling description so it remains fixed.
+					const actionRail = descShell.createDiv({ cls: 'wn-timeline-item-actions' });
 					createCardImportanceButton({
 						container: actionRail,
 						isImportant,
@@ -516,11 +525,7 @@ export class TimelineBoardRenderer {
 						descEl.empty();
 						descEl.removeClass('is-empty');
 						descEl.addClass('is-editing');
-						descEl.setAttr('contenteditable', 'plaintext-only');
-						descEl.setAttr('role', 'textbox');
-						descEl.setAttr('aria-multiline', 'true');
-						descEl.setAttr('spellcheck', 'true');
-						descEl.textContent = currentDesc;
+						setupStickyNoteParagraphEditor(descEl, currentDesc);
 
 						descEl.focus({ preventScroll: true });
 						const ownerDocument = descEl.ownerDocument;
@@ -612,11 +617,9 @@ export class TimelineBoardRenderer {
 				addSubEventBtn.onclick = () => {
 					addSubEventRow.hide();
 					const itemRow = nodeDiv.insertBefore(createDiv('wn-timeline-item-row'), addSubEventRow);
-					const descEl = itemRow.createDiv({ text: '', cls: 'wn-timeline-item-desc is-editing' });
-					descEl.setAttr('contenteditable', 'plaintext-only');
-					descEl.setAttr('role', 'textbox');
-					descEl.setAttr('aria-multiline', 'true');
-					descEl.setAttr('spellcheck', 'true');
+					const descShell = itemRow.createDiv('wn-timeline-item-desc-shell');
+					const descEl = descShell.createDiv({ cls: 'wn-timeline-item-desc is-editing' });
+					setupStickyNoteParagraphEditor(descEl, '');
 					itemRow.createDiv('wn-timeline-cards-container');
 
 					descEl.focus({ preventScroll: true });

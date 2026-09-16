@@ -898,6 +898,7 @@
 	"corkboard.filter-clear": "Clear filter",
 	"corkboard.filter-result-count": "{matched} / {total}",
 	"corkboard.filter-no-results": "No results match the filter",
+	"corkboard.filter-important-only": "Important only",
 	"corkboard.foreshadowing-unresolved": "Unresolved",
 	"corkboard.foreshadowing-recovered": "Resolved Here",
 	"corkboard.foreshadowing-recovered-origin": "Resolved",

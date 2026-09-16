@@ -40,7 +40,17 @@ class MockElement {
 	parentElement: MockElement | null = null;
 	children: MockElement[] = [];
 	className = '';
-	textContent = '';
+	private _textContent = '';
+	get textContent(): string {
+		if (this.children.length > 0) {
+			return this.children.map(c => c.textContent).join('');
+		}
+		return this._textContent;
+	}
+	set textContent(val: string) {
+		this._textContent = val;
+		this.children = [];
+	}
 	classes = new Set<string>();
 	attributes = new Map<string, string>();
 	listeners = new Map<string, Array<(e?: unknown) => void>>();
@@ -711,6 +721,10 @@ describe('TimelineBoardRenderer', () => {
 		expect(editingDesc.getAttribute('aria-multiline')).toBe('true');
 		expect(editingDesc.querySelector('textarea')).toBeNull();
 		expect(editingDesc.querySelector('.wn-corkboard-textarea')).toBeNull();
+		expect(editingDesc.hasClass('wn-sticky-note-paragraph-editor')).toBe(true);
+		const initialLines = editingDesc.querySelectorAll('.wn-sticky-note-editor-line');
+		expect(initialLines).toHaveLength(1);
+		expect(initialLines[0].hasClass('is-empty')).toBe(true);
 
 		// Test Chinese IME composition safety: Enter during IME should not trigger blur or save
 		editingDesc.dispatchEvent('compositionstart');
@@ -832,14 +846,27 @@ describe('TimelineBoardRenderer', () => {
 
 		const descEl = container.querySelector('.wn-timeline-item-desc') as unknown as MockElement;
 		expect(descEl).not.toBeNull();
-		// In display mode, text content contains the full multi-line description
-		expect(descEl.textContent).toContain('第一行事件记录');
-		expect(descEl.textContent).toContain('第三行关键转折点');
+		expect(descEl.hasClass('is-editing')).toBe(false);
+		expect(descEl.hasClass('wn-sticky-note-paragraph-editor')).toBe(false);
 
-		// Click into edit mode
+		// Display mode creates three line blocks for three-line description
+		const displayLines = descEl.querySelectorAll('.wn-sticky-note-editor-line');
+		expect(displayLines).toHaveLength(3);
+		expect(displayLines[0].textContent).toBe('第一行事件记录');
+		expect(displayLines[1].textContent).toBe('第二行事件细节');
+		expect(displayLines[2].textContent).toBe('第三行关键转折点');
+
+		// Click into edit mode on the same node
 		descEl.onclick?.({ stopPropagation: vi.fn() });
 		expect(descEl.querySelector('textarea')).toBeNull();
-		expect(descEl.textContent).toBe(multiLineDesc);
+		expect(descEl.hasClass('is-editing')).toBe(true);
+		expect(descEl.hasClass('wn-sticky-note-paragraph-editor')).toBe(true);
+		const lines = descEl.querySelectorAll('.wn-sticky-note-editor-line');
+		expect(lines).toHaveLength(3);
+		expect(lines[0].textContent).toBe('第一行事件记录');
+		expect(lines[1].textContent).toBe('第二行事件细节');
+		expect(lines[2].textContent).toBe('第三行关键转折点');
+		expect((descEl as unknown as { value: string }).value).toBe(multiLineDesc);
 
 		// Modify content and blur
 		descEl.textContent = multiLineDesc + '\n第四行新发展';
@@ -972,9 +999,12 @@ describe('TimelineBoardRenderer', () => {
 		await TimelineBoardRenderer.render(options);
 
 		const descEl = container.querySelector('.wn-timeline-item-desc') as unknown as MockElement;
-		const actionRail = descEl.querySelector('.wn-timeline-item-actions') as unknown as MockElement;
+		const descShell = container.querySelector('.wn-timeline-item-desc-shell') as unknown as MockElement;
+		const actionRail = descShell.querySelector('.wn-timeline-item-actions') as unknown as MockElement;
 		expect(descEl.hasClass('is-important')).toBe(true);
 		expect(descEl.hasClass('wn-card-is-important')).toBe(true);
+		expect(actionRail.parentElement).toBe(descShell);
+		expect(descEl.querySelector('.wn-timeline-item-actions')).toBeNull();
 		expect(actionRail.children).toHaveLength(2);
 		expect(actionRail.children[0].hasClass('wn-card-importance-btn')).toBe(true);
 		expect(actionRail.children[0].hasClass('is-important')).toBe(true);

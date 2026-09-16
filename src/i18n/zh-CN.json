@@ -902,6 +902,7 @@
 	"corkboard.filter-clear": "清除筛选",
 	"corkboard.filter-result-count": "{matched} / {total}",
 	"corkboard.filter-no-results": "没有符合筛选条件的结果",
+	"corkboard.filter-important-only": "仅展示重要",
 	"corkboard.foreshadowing-unresolved": "待回收",
 	"corkboard.foreshadowing-recovered": "本章回收",
 	"corkboard.foreshadowing-recovered-origin": "已回收",

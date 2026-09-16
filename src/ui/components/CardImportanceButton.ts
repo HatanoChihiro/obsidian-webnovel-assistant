@@ -13,7 +13,7 @@ export function createCardImportanceButton(options: CardImportanceButtonOptions)
 	let currentImportant = initialImportant;
 
 	const btn = container.createEl('button', {
-		cls: `wn-card-importance-btn ${currentImportant ? 'is-important' : ''}`,
+		cls: `clickable-icon wn-card-importance-btn ${currentImportant ? 'is-important' : ''}`,
 		attr: {
 			type: 'button',
 			'aria-pressed': currentImportant ? 'true' : 'false',
@@ -22,7 +22,9 @@ export function createCardImportanceButton(options: CardImportanceButtonOptions)
 		}
 	});
 
-	setIcon(btn, 'star');
+	const icon = btn.createSpan({ cls: 'wn-card-importance-icon' });
+	icon.setAttribute('aria-hidden', 'true');
+	setIcon(icon, 'star');
 
 	const updateUI = (important: boolean) => {
 		currentImportant = important;

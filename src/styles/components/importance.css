@@ -4,6 +4,7 @@
 
 /* 变量必须在卡片所在文档中就地解析，不能依赖主窗口 :root 的继承链。 */
 button.wn-card-importance-btn,
+button.wn-workbench-filter-important-toggle,
 .wn-foreshadowing-board-card,
 .wn-corkboard-card,
 .wn-lore-card,
@@ -17,6 +18,9 @@ button.wn-card-importance-btn,
 
 /* 1. 统一重要标记按钮 (Star Control Button) */
 button.wn-card-importance-btn {
+	--icon-size: 14px;
+	--icon-stroke: 2px;
+	--icon-opacity: 1;
 	appearance: none;
 	background: transparent;
 	border: none;
@@ -37,12 +41,57 @@ button.wn-card-importance-btn {
 	line-height: 1;
 }
 
-.wn-card-importance-btn svg {
-	width: 14px;
-	height: 14px;
+.wn-card-importance-icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: var(--icon-size);
+	height: var(--icon-size);
+	flex: 0 0 var(--icon-size);
+}
+
+.wn-card-importance-btn .wn-card-importance-icon svg {
+	display: block;
+	visibility: visible;
+	opacity: 1;
+	width: var(--icon-size);
+	height: var(--icon-size);
+	color: inherit;
 	stroke: currentColor;
+	stroke-width: var(--icon-stroke);
 	fill: none;
 	transition: fill 0.2s ease, transform 0.15s ease;
+}
+
+/* 工作台重要筛选复用卡片星标语义，同时保持与排序图标一致的控件尺寸。 */
+.wn-workbench-filter-important-toggle {
+	--icon-size: 16px;
+	--icon-stroke: 2px;
+}
+
+.wn-workbench-filter-important-toggle .wn-card-importance-icon svg {
+	display: block;
+	width: var(--icon-size);
+	height: var(--icon-size);
+	color: inherit;
+	stroke: currentColor;
+	stroke-width: var(--icon-stroke);
+	fill: none;
+	transition: fill 0.2s ease, transform 0.15s ease;
+}
+
+.wn-workbench-filter-important-toggle.is-important,
+.wn-workbench-filter-important-toggle[aria-pressed="true"] {
+	color: var(--wn-important-border);
+}
+
+.wn-workbench-filter-important-toggle.is-important svg.svg-icon,
+.wn-workbench-filter-important-toggle[aria-pressed="true"] svg.svg-icon,
+.wn-workbench-filter-important-toggle.is-important svg.svg-icon path,
+.wn-workbench-filter-important-toggle[aria-pressed="true"] svg.svg-icon path {
+	color: var(--wn-important-border);
+	fill: var(--wn-important-border);
+	stroke: var(--wn-important-border);
 }
 
 /* 激活状态：实心星标，高亮常驻可见 */
@@ -94,6 +143,14 @@ button.wn-card-importance-btn:focus-visible {
 	padding-right: 32px;
 }
 
+/* 手机端卡片间距规则会重写 padding；在其后恢复星标所需的右侧空间。 */
+body.is-phone .wn-corkboard-card-header,
+body.is-phone .wn-lore-card-header,
+body.is-phone .wn-lore-hover-popover .wn-lore-card-header,
+body.is-phone .webnovel-lore-popover .wn-lore-card-header {
+	padding-right: 32px;
+}
+
 .wn-foreshadowing-card-line1,
 .task-card-header,
 .wn-task-card-header {
@@ -105,7 +162,7 @@ button.wn-card-importance-btn:focus-visible {
 .wn-lore-card-header .wn-card-importance-btn {
 	position: absolute;
 	top: 50%;
-	right: 8px;
+	right: 6px;
 	transform: translateY(-50%);
 	z-index: 4;
 }
@@ -115,7 +172,7 @@ button.wn-card-importance-btn:focus-visible {
 .wn-task-card-header .wn-card-importance-btn {
 	position: absolute;
 	top: 50%;
-	right: 0;
+	right: -2px;
 	transform: translateY(-50%);
 	z-index: 4;
 }

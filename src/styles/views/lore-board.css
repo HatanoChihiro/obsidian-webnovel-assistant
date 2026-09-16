@@ -252,6 +252,9 @@
 	height: 100%;
 	width: 100%;
 	box-sizing: border-box;
+	border: none;
+	background: transparent;
+	outline: none;
 	resize: none;
 	overflow-y: auto;
 	padding-bottom: calc(var(--size-4-2, 8px) + 1.5em);

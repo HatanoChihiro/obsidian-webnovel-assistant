@@ -6,6 +6,7 @@ import { cleanLoreHeading } from '../../services/CharacterManager';
 import { smartLocateAndHighlight } from '../../utils/leaf';
 import { injectSoftBreakIndentPlaceholders } from '../../utils/softBreakIndent';
 import { createCardImportanceButton } from './CardImportanceButton';
+import { createStickyNoteParagraphEditor, setCaretPosition } from './StickyNoteParagraphEditor';
 
 export interface LoreCardRendererPlugin {
 	app: App;
@@ -207,12 +208,10 @@ export class LoreCardRenderer {
 
 				body.addClass('is-editing');
 				const editorContainer = body.createDiv({ cls: 'wn-lore-card-editor' });
-				const textarea = editorContainer.createEl('textarea', { cls: 'wn-lore-card-textarea' });
-				
 				const rawContent = await plugin.characterManager.getLoreContent(entry);
-				textarea.value = rawContent;
+				const editor = createStickyNoteParagraphEditor(editorContainer, rawContent, 'wn-lore-card-textarea');
 
-				const ownerWindow = textarea.ownerDocument?.defaultView ?? null;
+				const ownerWindow = editor.ownerDocument?.defaultView ?? null;
 				const scheduleLayout = (cb: () => void) => {
 					if (ownerWindow?.requestAnimationFrame) {
 						ownerWindow.requestAnimationFrame(cb);
@@ -224,12 +223,12 @@ export class LoreCardRenderer {
 				};
 
 				scheduleLayout(() => {
-					if (!textarea.isConnected) return;
+					if (!editor.isConnected) return;
 					const roughCharIndex = Math.floor(rawContent.length * scrollRatio);
-					textarea.focus({ preventScroll: true });
-					textarea.setSelectionRange(roughCharIndex, roughCharIndex);
-					const maxTextareaScroll = Math.max(0, textarea.scrollHeight - textarea.clientHeight);
-					textarea.scrollTop = Math.round(scrollRatio * maxTextareaScroll);
+					editor.focus({ preventScroll: true });
+					setCaretPosition(editor, roughCharIndex);
+					const maxEditorScroll = Math.max(0, editor.scrollHeight - editor.clientHeight);
+					editor.scrollTop = Math.round(scrollRatio * maxEditorScroll);
 				});
 
 				let isSaving = false;
@@ -245,7 +244,7 @@ export class LoreCardRenderer {
 
 				const performSave = async () => {
 					if (isSaving || isCancelled) return;
-					const newVal = textarea.value;
+					const newVal = editor.value;
 					if (newVal !== rawContent) {
 						isSaving = true;
 						await plugin.characterManager.updateLoreContent(entry, newVal);
@@ -259,11 +258,11 @@ export class LoreCardRenderer {
 					}
 				};
 
-				textarea.addEventListener('blur', () => {
+				editor.addEventListener('blur', () => {
 					void performSave();
 				});
 
-				textarea.addEventListener('keydown', (e) => {
+				editor.addEventListener('keydown', (e) => {
 					if (e.key === 'Escape') {
 						e.preventDefault();
 						isCancelled = true;

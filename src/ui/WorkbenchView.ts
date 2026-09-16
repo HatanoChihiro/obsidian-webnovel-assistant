@@ -230,6 +230,8 @@ export class WorkbenchView extends ItemView {
     private pendingFilterFocus: { mode: 'default' | 'lore' | 'foreshadowing' | 'journey'; start: number; end: number } | null = null;
     private readonly filterIndex: WorkbenchFilterIndex;
     private isDescending: boolean = false;
+    private isChapterImportantOnly: boolean = false;
+    private isForeshadowingImportantOnly: boolean = false;
     private isTimelineUnscheduledDescending: boolean = false;
     private isJourneyDescending: boolean = true;
     private isTimelineDescending: boolean = false;
@@ -739,9 +741,36 @@ export class WorkbenchView extends ItemView {
         clearButton.title = t('corkboard.filter-clear');
         setIcon(clearButton, 'x');
 
+        const filterActions = (mode === 'default' || mode === 'foreshadowing' || mode === 'journey')
+            ? bar.createDiv('wn-workbench-filter-actions')
+            : null;
+
+        if (mode === 'default' || mode === 'foreshadowing') {
+            const isImportantOnly = mode === 'default' ? this.isChapterImportantOnly : this.isForeshadowingImportantOnly;
+            const importantToggle = filterActions!.createEl('button', {
+                cls: `clickable-icon wn-workbench-sort-toggle wn-workbench-filter-important-toggle${isImportantOnly ? ' is-important' : ''}`
+            });
+            importantToggle.type = 'button';
+            importantToggle.setAttr('aria-pressed', isImportantOnly ? 'true' : 'false');
+            importantToggle.setAttr('aria-label', t('corkboard.filter-important-only'));
+            const importantIcon = importantToggle.createSpan({ cls: 'wn-card-importance-icon' });
+            importantIcon.setAttr('aria-hidden', 'true');
+            setIcon(importantIcon, 'star');
+
+            const toggleImportant = () => {
+                if (mode === 'default') {
+                    this.isChapterImportantOnly = !this.isChapterImportantOnly;
+                } else {
+                    this.isForeshadowingImportantOnly = !this.isForeshadowingImportantOnly;
+                }
+                this.currentRenderId++;
+                void this.reloadBoard();
+            };
+            importantToggle.onclick = toggleImportant;
+        }
 
         if (mode === 'default' || mode === 'journey') {
-            const sortToggle = bar.createDiv('clickable-icon wn-workbench-sort-toggle');
+            const sortToggle = filterActions!.createDiv('clickable-icon wn-workbench-sort-toggle');
             sortToggle.setAttr('role', 'button');
             sortToggle.setAttr('tabindex', '0');
             const isDesc = mode === 'journey' ? this.isJourneyDescending : this.isDescending;
@@ -1256,8 +1285,14 @@ export class WorkbenchView extends ItemView {
                 enableSmartChapterSort: this.plugin.settings.enableSmartChapterSort,
                 customSortOrder: this.plugin.settings.customSortOrder
             });
+            const candidateFiles = this.isChapterImportantOnly
+                ? displayFiles.filter(file => {
+                    const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+                    return Boolean(frontmatter?.important === true || frontmatter?.['重要'] === true);
+                })
+                : displayFiles;
             filteredChapterFiles = await this.filterIndex.filterChapters(
-                displayFiles,
+                candidateFiles,
                 this.chapterFilterQuery,
                 (file) => {
                     const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
@@ -1297,20 +1332,17 @@ export class WorkbenchView extends ItemView {
             }
             if (this.currentRenderId !== renderId || this.isClosed) return;
 
-            const fQuery = this.foreshadowingFilterQuery.trim().toLowerCase();
+            const fQuery = this.foreshadowingFilterQuery;
             const tagFilter = this.currentForeshadowingTagFilter;
-            let matchedForeshadowingCount = foreshadowingEntriesList.length;
-            if (fQuery || (tagFilter && tagFilter !== 'all')) {
-                matchedForeshadowingCount = foreshadowingEntriesList.filter(entry => {
-                    if (tagFilter && tagFilter !== 'all' && !entry.tags.includes(tagFilter)) return false;
-                    if (!fQuery) return true;
-                    if (entry.description.toLowerCase().includes(fQuery)) return true;
-                    if (entry.tags.some(t => t.toLowerCase().includes(fQuery))) return true;
-                    if (entry.contents.some(c => c.text.toLowerCase().includes(fQuery) || (c.source && c.source.toLowerCase().includes(fQuery)))) return true;
-                    if (entry.recoveryLogs && entry.recoveryLogs.some(l => (l.note && l.note.toLowerCase().includes(fQuery)) || (l.quote && l.quote.toLowerCase().includes(fQuery)) || l.file.toLowerCase().includes(fQuery))) return true;
-                    return false;
-                }).length;
-            }
+            const onlyImportant = this.isForeshadowingImportantOnly;
+            const hasFilter = Boolean(fQuery.trim().length > 0 || (tagFilter && tagFilter !== 'all') || onlyImportant);
+            const matchedForeshadowingCount = hasFilter
+                ? ForeshadowingBoardRenderer.filterEntries(foreshadowingEntriesList, {
+                    query: fQuery,
+                    tagFilter,
+                    onlyImportant
+                }).length
+                : foreshadowingEntriesList.length;
 
             this.renderFilterBar(
                 header,
@@ -1387,6 +1419,7 @@ export class WorkbenchView extends ItemView {
                     foreshadowingFile: foreshadowingFileObj,
                     query: this.foreshadowingFilterQuery,
                     currentForeshadowingTagFilter: this.currentForeshadowingTagFilter,
+                    onlyImportant: this.isForeshadowingImportantOnly,
                     currentBookPath: this.currentBookPath || '',
                     reloadBoard: () => { void this.reloadBoard(); }
                 });
@@ -1408,7 +1441,7 @@ export class WorkbenchView extends ItemView {
                     isDescending: this.isJourneyDescending
                 });
             } else if (this.sortMode === 'default') {
-                if (filteredChapterFiles.length === 0 && this.chapterFilterQuery.trim().length > 0) {
+                if (filteredChapterFiles.length === 0 && (this.chapterFilterQuery.trim().length > 0 || this.isChapterImportantOnly)) {
                     buffer.createDiv({ cls: 'wn-corkboard-empty-msg', text: t('corkboard.filter-no-results') });
                 } else {
                     this.renderOrderedBoard(buffer, filteredChapterFiles, foreshadowingMap);

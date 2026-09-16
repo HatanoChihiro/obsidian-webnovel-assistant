@@ -62,3 +62,12 @@ body.is-tablet .mobile-floating-stats.is-docked-left {
 body.is-tablet .mobile-floating-stats.is-docked-right {
 	transform: translateX(calc(100% - 24px));
 }
+
+/* 触控平板没有稳定的 hover，事件删除按钮需要常驻可见。 */
+body.is-tablet .wn-timeline-item-delete-btn {
+	opacity: 0.65;
+}
+
+body.is-tablet .wn-timeline-item-actions {
+	right: 1px;
+}

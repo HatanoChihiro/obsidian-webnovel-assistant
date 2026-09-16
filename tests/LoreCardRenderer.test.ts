@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { LoreCardRenderer } from '../src/ui/components/LoreCardRenderer';
 import { MarkdownRenderer, Component } from 'obsidian';
 import { injectSoftBreakIndentPlaceholders } from '../src/utils/softBreakIndent';
+import * as StickyNoteEditor from '../src/ui/components/StickyNoteParagraphEditor';
 
 let animationFrameCallbacks: FrameRequestCallback[] = [];
 let resizeObservers: MockResizeObserver[] = [];
@@ -160,6 +161,7 @@ function createMockEl(tag = 'div', cls = ''): any {
 			return results;
 		},
 		setText: (text: string) => { el.textContent = text; },
+		appendText: (text: string) => { el.textContent = (el.textContent || '') + text; return el; },
 		setAttribute: (k: string, v: string) => { el.attributes.set(k, v); },
 		getAttribute: (k: string) => el.attributes.get(k),
 		setAttr: (k: string, v: string) => { el.attributes.set(k, v); },
@@ -438,6 +440,7 @@ type: 主要角色
 		expect(textarea.value).toBe('## 女主角\n原始内容 long text for testing');
 		expect(textarea.oninput).toBeUndefined();
 
+		const setCaretSpy = vi.spyOn(StickyNoteEditor, 'setCaretPosition');
 		textarea.clientHeight = 100;
 		textarea.scrollHeight = 400;
 		flushAnimationFrames();
@@ -446,10 +449,11 @@ type: 主要角色
 		expect(textarea.scrollTop).toBe(150);
 		expect(textarea.focus).toHaveBeenCalledWith({ preventScroll: true });
 		const expectedCharIndex = Math.floor('## 女主角\n原始内容 long text for testing'.length * 0.5);
-		expect(textarea.setSelectionRange).toHaveBeenCalledWith(expectedCharIndex, expectedCharIndex);
+		expect(setCaretSpy).toHaveBeenCalledWith(textarea, expectedCharIndex);
 	});
 
 	it('should map reading display bottom to textarea bottom precisely when entering edit mode', async () => {
+		const setCaretSpy = vi.spyOn(StickyNoteEditor, 'setCaretPosition');
 		const mockFile = { basename: '人物', path: '设定/人物.md' };
 		const entry = { file: mockFile as unknown as import('obsidian').TFile, heading: '女主角' };
 		mockApp.vault.cachedRead.mockResolvedValue('## 女主角\n原始内容');
@@ -479,7 +483,7 @@ type: 主要角色
 		// textarea max range = 400 - 100 = 300; expected scrollTop = 1.0 * 300 = 300 (bottom)
 		expect(textarea.scrollTop).toBe(300);
 		expect(textarea.focus).toHaveBeenCalledWith({ preventScroll: true });
-		expect(textarea.setSelectionRange).toHaveBeenCalledWith(rawContent.length, rawContent.length);
+		expect(setCaretSpy).toHaveBeenCalledWith(textarea, rawContent.length);
 	});
 
 	it('should clean up is-editing state and restore content elements when cancelling edit mode with Escape', async () => {
@@ -526,7 +530,10 @@ type: 主要角色
 
 		await editBtn.onclick();
 		const textarea = body.querySelector('.wn-lore-card-textarea');
+		expect(textarea.hasClass('wn-sticky-note-paragraph-editor')).toBe(true);
+		expect(textarea.querySelectorAll('.wn-sticky-note-editor-line')).toHaveLength(2);
 		textarea.value = '## 女主角\n新修改的内容';
+		expect(textarea.querySelectorAll('.wn-sticky-note-editor-line')).toHaveLength(2);
 
 		const blurHandler = textarea.addEventListener.mock.calls.find((call: any[]) => call[0] === 'blur')?.[1];
 		await blurHandler();
@@ -579,8 +586,10 @@ type: 主要角色
 
 		const starBtn = container.querySelector('.wn-card-importance-btn');
 		expect(starBtn).not.toBeNull();
+		expect(starBtn.hasClass('clickable-icon')).toBe(true);
 		expect(starBtn.hasClass('is-important')).toBe(true);
 		expect(starBtn.getAttribute('aria-pressed')).toBe('true');
+		expect(starBtn.querySelector('.wn-card-importance-icon')).not.toBeNull();
 
 		// MarkdownRenderer.render should receive clean markdown without <!-- wn-important -->
 		expect(MarkdownRenderer.render).toHaveBeenCalledWith(
@@ -594,6 +603,7 @@ type: 主要角色
 		// Clicking star toggles importance
 		await starBtn.onclick({ stopPropagation: vi.fn(), preventDefault: vi.fn() });
 		expect(mockPlugin.characterManager.toggleLoreImportance).toHaveBeenCalledWith(entry);
+		expect(starBtn.getAttribute('aria-pressed')).toBe('false');
 	});
 
 	it('should not render importance star button when hideImportanceButton is true', async () => {

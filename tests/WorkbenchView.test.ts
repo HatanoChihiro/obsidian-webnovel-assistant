@@ -13,6 +13,8 @@ import {
 import { CorkboardGridRenderer } from '../src/ui/components/CorkboardGridRenderer';
 import { TimelineBoardRenderer } from '../src/ui/components/TimelineBoardRenderer';
 import { WritingJourneyBoardRenderer } from '../src/ui/components/WritingJourneyBoardRenderer';
+import { ForeshadowingBoardRenderer } from '../src/ui/components/ForeshadowingBoardRenderer';
+import { ForeshadowingStatus } from '../src/types/foreshadowing';
 import { Platform, type TFile } from 'obsidian';
 import { getLatestChapterFolderPath } from '../src/utils/path';
 
@@ -1358,6 +1360,192 @@ describe('WorkbenchView', () => {
 
 			modal.onSubmit?.('第十二章', 'dummy-template');
 			expect(mockApp.vault.create).toHaveBeenCalledWith('NovelA/第二卷/第十二章.md', 'dummy-template');
+		});
+	});
+
+	describe('Important Only Filter', () => {
+		it('should render important toggle button only on default and foreshadowing boards with accessible semantics', async () => {
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			view.currentBookPath = 'NovelA';
+			(view as unknown as { container: unknown }).container = view.contentEl;
+
+			// 1. Default board: toggle button exists with aria-pressed="false"
+			(view as unknown as { sortMode: string }).sortMode = 'default';
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+
+			let toggleBtn = view.contentEl.querySelector('.wn-workbench-filter-important-toggle');
+			expect(toggleBtn).not.toBeNull();
+			expect(toggleBtn?.getAttribute('aria-pressed')).toBe('false');
+			expect(toggleBtn?.getAttribute('aria-label')).toBe('corkboard.filter-important-only');
+			expect(toggleBtn?.textContent).toBe('');
+			expect(toggleBtn?.hasClass('wn-workbench-sort-toggle')).toBe(true);
+			expect(toggleBtn?.querySelector('.wn-card-importance-icon')).not.toBeNull();
+			expect(toggleBtn?.parentElement?.hasClass('wn-workbench-filter-actions')).toBe(true);
+
+			// 2. Foreshadowing board: toggle button exists
+			(view as unknown as { sortMode: string }).sortMode = 'foreshadowing';
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+			toggleBtn = view.contentEl.querySelector('.wn-workbench-filter-important-toggle');
+			expect(toggleBtn).not.toBeNull();
+			expect(toggleBtn?.getAttribute('aria-pressed')).toBe('false');
+
+			// 3. Journey board: toggle button does NOT exist
+			(view as unknown as { sortMode: string }).sortMode = 'journey';
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+			toggleBtn = view.contentEl.querySelector('.wn-workbench-filter-important-toggle');
+			expect(toggleBtn).toBeNull();
+		});
+
+		it('should filter chapters by important toggle, compose with keyword search, update counts, and show empty state', async () => {
+			const c1 = new MockTFile('第1章.md', 'NovelA/第1章.md');
+			const c2 = new MockTFile('第2章.md', 'NovelA/第2章.md');
+			const c3 = new MockTFile('第3章.md', 'NovelA/第3章.md');
+
+			const bookFolder = new MockTFolder('NovelA', 'NovelA');
+			bookFolder.children = [c1, c2, c3];
+
+			mockApp.vault.getAbstractFileByPath.mockImplementation((p: string) => (p === 'NovelA' ? bookFolder : null));
+			plugin.getTrackedMarkdownFiles = vi.fn().mockReturnValue([c1, c2, c3] as unknown as TFile[]);
+			getCurrentBookContextMock.mockReturnValue('NovelA');
+
+			// c1 is important (important: true), c2 is important via Chinese key (重要: true), c3 is not important
+			mockApp.metadataCache.getFileCache.mockImplementation((file: unknown) => {
+				const f = file as { path: string };
+				if (f.path === 'NovelA/第1章.md') return { frontmatter: { important: true, synopsis: '主角登场' } };
+				if (f.path === 'NovelA/第2章.md') return { frontmatter: { 重要: true, synopsis: '调查失踪' } };
+				return { frontmatter: { synopsis: '日常过渡' } };
+			});
+
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			view.currentBookPath = 'NovelA';
+			(view as unknown as { container: unknown }).container = view.contentEl;
+
+			// Initial render: all 3 chapters shown
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+			expect(CorkboardGridRenderer.render).toHaveBeenCalledWith(
+				expect.objectContaining({ files: [c1, c2, c3] })
+			);
+
+			// Click toggle: show only important (c1 and c2)
+			const reloadSpy = vi.spyOn(view, 'reloadBoard');
+			const toggleBtn = view.contentEl.querySelector('.wn-workbench-filter-important-toggle') as unknown as MockElement;
+			toggleBtn.click();
+			expect(reloadSpy).toHaveBeenCalled();
+
+			// Render after toggle is active
+			(CorkboardGridRenderer.render as ReturnType<typeof vi.fn>).mockClear();
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+			expect(CorkboardGridRenderer.render).toHaveBeenCalledWith(
+				expect.objectContaining({ files: [c1, c2] })
+			);
+			const activeToggleBtn = view.contentEl.querySelector('.wn-workbench-filter-important-toggle');
+			expect(activeToggleBtn?.getAttribute('aria-pressed')).toBe('true');
+			expect(activeToggleBtn?.hasClass('is-important')).toBe(true);
+
+			// Now compose with keyword filter: "失踪" -> only c2 matches
+			(view as unknown as { chapterFilterQuery: string }).chapterFilterQuery = '失踪';
+			(CorkboardGridRenderer.render as ReturnType<typeof vi.fn>).mockClear();
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+			expect(CorkboardGridRenderer.render).toHaveBeenCalledWith(
+				expect.objectContaining({ files: [c2] })
+			);
+
+			// Search keyword that matches nothing among important chapters: "日常" (only on c3 which is not important)
+			(view as unknown as { chapterFilterQuery: string }).chapterFilterQuery = '日常';
+			(CorkboardGridRenderer.render as ReturnType<typeof vi.fn>).mockClear();
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+			expect(CorkboardGridRenderer.render).not.toHaveBeenCalled();
+			expect(view.contentEl.querySelector('.wn-corkboard-empty-msg')?.textContent).toBe('corkboard.filter-no-results');
+		});
+
+		it('should maintain independent in-memory toggle states between default and foreshadowing boards', async () => {
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			view.currentBookPath = 'NovelA';
+			(view as unknown as { container: unknown }).container = view.contentEl;
+
+			// In default mode, activate important toggle
+			(view as unknown as { sortMode: string }).sortMode = 'default';
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+			let toggleBtn = view.contentEl.querySelector('.wn-workbench-filter-important-toggle') as unknown as MockElement;
+			toggleBtn.click();
+
+			expect((view as unknown as { isChapterImportantOnly: boolean }).isChapterImportantOnly).toBe(true);
+			expect((view as unknown as { isForeshadowingImportantOnly: boolean }).isForeshadowingImportantOnly).toBe(false);
+
+			// Switch to foreshadowing mode: toggle should be inactive
+			(view as unknown as { sortMode: string }).sortMode = 'foreshadowing';
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+			toggleBtn = view.contentEl.querySelector('.wn-workbench-filter-important-toggle') as unknown as MockElement;
+			expect(toggleBtn.getAttribute('aria-pressed')).toBe('false');
+
+			// Activate in foreshadowing mode
+			toggleBtn.click();
+			expect((view as unknown as { isChapterImportantOnly: boolean }).isChapterImportantOnly).toBe(true);
+			expect((view as unknown as { isForeshadowingImportantOnly: boolean }).isForeshadowingImportantOnly).toBe(true);
+
+			// Switch back to default mode: should still be active
+			(view as unknown as { sortMode: string }).sortMode = 'default';
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+			toggleBtn = view.contentEl.querySelector('.wn-workbench-filter-important-toggle') as unknown as MockElement;
+			expect(toggleBtn.getAttribute('aria-pressed')).toBe('true');
+		});
+
+		it('should filter foreshadowing entries with ForeshadowingBoardRenderer.filterEntries composing tags, query, and importance', () => {
+			const entries = [
+				{
+					sourceFile: '第1章',
+					createdAt: '2026-01-01',
+					contents: [{ text: '密室的钥匙藏在画后', source: '第1章', time: '12:00' }],
+					description: '密室钥匙伏笔',
+					tags: ['主线', '线索'],
+					status: ForeshadowingStatus.Pending,
+					important: true
+				},
+				{
+					sourceFile: '第2章',
+					createdAt: '2026-01-02',
+					contents: [{ text: '墙上的划痕', source: '第2章', time: '12:00' }],
+					description: '划痕伏笔',
+					tags: ['线索'],
+					status: ForeshadowingStatus.Pending,
+					important: false
+				},
+				{
+					sourceFile: '第3章',
+					createdAt: '2026-01-03',
+					contents: [{ text: '老人的叹息', source: '第3章', time: '12:00' }],
+					description: '身世伏笔',
+					tags: ['支线'],
+					status: ForeshadowingStatus.Pending,
+					important: true
+				}
+			];
+
+			// 1. Only important
+			const onlyImp = ForeshadowingBoardRenderer.filterEntries(entries, { onlyImportant: true });
+			expect(onlyImp.map(e => e.description)).toEqual(['密室钥匙伏笔', '身世伏笔']);
+
+			// 2. Important + Tag filter
+			const impAndTag = ForeshadowingBoardRenderer.filterEntries(entries, {
+				onlyImportant: true,
+				tagFilter: '线索'
+			});
+			expect(impAndTag.map(e => e.description)).toEqual(['密室钥匙伏笔']);
+
+			// 3. Important + Tag + Query
+			const impTagQuery = ForeshadowingBoardRenderer.filterEntries(entries, {
+				onlyImportant: true,
+				tagFilter: '线索',
+				query: '钥匙'
+			});
+			expect(impTagQuery.map(e => e.description)).toEqual(['密室钥匙伏笔']);
+
+			// 4. Mismatched query
+			const noMatch = ForeshadowingBoardRenderer.filterEntries(entries, {
+				onlyImportant: true,
+				query: '划痕'
+			});
+			expect(noMatch).toEqual([]);
 		});
 	});
 });

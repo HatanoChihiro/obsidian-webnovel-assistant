@@ -186,6 +186,14 @@ input[type="search"].wn-workbench-filter-input::-webkit-search-results-decoratio
 }
 
 
+.wn-workbench-filter-actions {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex-shrink: 0;
+}
+
+
 .wn-workbench-sort-toggle:hover {
 	color: var(--text-normal);
 	background-color: var(--background-modifier-hover);
@@ -193,6 +201,6 @@ input[type="search"].wn-workbench-filter-input::-webkit-search-results-decoratio
 
 
 .wn-workbench-sort-toggle svg {
-	width: 18px;
-	height: 18px;
+	width: 16px;
+	height: 16px;
 }
