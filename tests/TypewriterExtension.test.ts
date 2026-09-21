@@ -2041,6 +2041,64 @@ describe('TypewriterExtension - Focus Loss & Offscreen Coordinate Guards', () =>
 	});
 
 	describe('TypewriterExtension - Opening Lines & Sizer Padding Resilience', () => {
+		it('preserves existing sizer spacing across tab focus and click updates while disabled', () => {
+			env.mockDocument.body.classList.remove('immersive-mode-active');
+			env.mockSizer.style.paddingTop = '120px';
+			env.mockSizer.style.paddingBottom = '280px';
+			const extension = createTypewriterExtension(env.mockPlugin);
+			const view = env.createMockView(100, true, null, null, false);
+			const instance = (extension as unknown as { create: (v: EditorView) => { update: (u: ViewUpdate) => void; destroy: () => void } }).create(view);
+			for (const hasFocus of [false, true]) {
+				const next = env.createMockView(150, true, null, null, hasFocus);
+				env.mockScroller.dispatchEvent(hasFocus ? 'focusin' : 'focusout');
+				env.mockScroller.dispatchEvent('pointerdown');
+				instance.update({ view: next, state: next.state, selectionSet: true } as ViewUpdate);
+				env.mockDocument.dispatchEvent('pointerup');
+				env.mockWindow.flushRaf();
+			}
+			expect(env.mockSizer.style.paddingTop).toBe('120px');
+			expect(env.mockSizer.style.paddingBottom).toBe('280px');
+			expect(env.mockScroller.scrollTop).toBe(500);
+			expect(env.mockScroller.scrollTo).not.toHaveBeenCalled();
+			instance.destroy();
+		});
+
+		it.each([false, true])('restores original spacing on disable (extension rebuilt: %s)', (rebuild) => {
+			env.mockSizer.style.paddingTop = '120px';
+			env.mockSizer.style.paddingBottom = '280px';
+			const extension = createTypewriterExtension(env.mockPlugin);
+			const view = env.createMockView(100);
+			let instance = (extension as unknown as { create: (v: EditorView) => { update: (u: ViewUpdate) => void; destroy: () => void } }).create(view);
+			expect(env.mockSizer.style.paddingTop).toBe('400px');
+			if (rebuild) {
+				instance.destroy();
+				instance = (createTypewriterExtension(env.mockPlugin) as unknown as { create: (v: EditorView) => typeof instance }).create(view);
+			}
+			env.mockPlugin.settings.immersive.typewriterEnabled = false;
+			instance.update({ view, state: view.state } as ViewUpdate);
+			expect(env.mockSizer.style.paddingTop).toBe('120px');
+			expect(env.mockSizer.style.paddingBottom).toBe('280px');
+			instance.destroy();
+		});
+
+		it('does not restore a stale frozen viewport after disabling', () => {
+			const extension = createTypewriterExtension(env.mockPlugin);
+			const view = env.createMockView(100);
+			const instance = (extension as unknown as { create: (v: EditorView) => { update: (u: ViewUpdate) => void; destroy: () => void } }).create(view);
+			instance.update({ view, state: view.state } as ViewUpdate);
+			env.mockWindow.flushRaf();
+			env.mockScroller.scrollTop = 500;
+			env.mockScroller.dispatchEvent('focusout');
+			env.mockPlugin.settings.immersive.typewriterEnabled = false;
+			env.mockScroller.scrollTop = 900;
+			env.mockScroller.dispatchEvent('scroll');
+			env.mockWindow.flushRaf();
+			expect(env.mockScroller.scrollTop).toBe(900);
+			instance.update({ view, state: view.state } as ViewUpdate);
+			expect(env.mockScroller.scrollTop).toBe(900);
+			instance.destroy();
+		});
+
 		it('applies direct inline paddingTop and paddingBottom to .cm-sizer and cleans them up on disable', () => {
 			const extension = createTypewriterExtension(env.mockPlugin);
 			const view = env.createMockView(0);

@@ -14,6 +14,13 @@ export interface TypewriterExtensionPlugin {
 const ALLOWED_USER_EVENTS = /^(select|input|delete|undo|redo)(\..+)?$/;
 const POINTER_SELECTION = /^(select\.pointer)$/;
 
+// 编辑器扩展重建时，可能仍沿用同一个 sizer 元素。
+// 将样式归属和原始值保存在实例之外，避免扩展重建后丢失恢复依据。
+const sizerPadding = new WeakMap<HTMLElement, {
+	top: string; bottom: string; topPriority: string; bottomPriority: string;
+	appliedTop: string; appliedBottom: string;
+}>();
+
 function isUserEventAllowed(event: string): boolean {
 	return ALLOWED_USER_EVENTS.test(event) && !POINTER_SELECTION.test(event);
 }
@@ -165,6 +172,17 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 					}
 
 					if (sizer) {
+						if (!sizerPadding.has(sizer)) {
+							sizerPadding.set(sizer, {
+								top: sizer.style.paddingTop, bottom: sizer.style.paddingBottom,
+								topPriority: sizer.style.getPropertyPriority?.('padding-top') ?? '',
+								bottomPriority: sizer.style.getPropertyPriority?.('padding-bottom') ?? '',
+								appliedTop: targetTop, appliedBottom: targetBottom
+							});
+						}
+						const owned = sizerPadding.get(sizer)!;
+						owned.appliedTop = targetTop;
+						owned.appliedBottom = targetBottom;
 						if (sizer.style?.paddingTop !== targetTop) {
 							if (typeof sizer.setCssStyles === 'function') {
 								sizer.setCssStyles({ paddingTop: targetTop });
@@ -200,23 +218,23 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 					this.view.dom.style.removeProperty('--wn-typewriter-padding-bottom');
 					spacerChanged = true;
 				}
-				if (sizer) {
-					if (sizer.style?.paddingTop) {
-						if (typeof sizer.setCssStyles === 'function') {
-							sizer.setCssStyles({ paddingTop: '' });
+				const owned = sizer && sizerPadding.get(sizer);
+				if (sizer && owned) {
+					// 仅恢复本扩展接管且仍与最近设置值一致的留白，避免覆盖其他组件后续的修改。
+					for (const [key, property, original, priority, applied] of [
+						['paddingTop', 'padding-top', owned.top, owned.topPriority, owned.appliedTop],
+						['paddingBottom', 'padding-bottom', owned.bottom, owned.bottomPriority, owned.appliedBottom]
+					] as const) {
+						if (sizer.style[key] !== applied) continue;
+						if (original && typeof sizer.style.setProperty === 'function') {
+							sizer.style.setProperty(property, original, priority);
+						} else {
+							sizer.style.removeProperty(property);
+							sizer.style[key] = original;
 						}
-						sizer.style.removeProperty('padding-top');
-						Reflect.set(sizer.style, 'paddingTop', '');
 						spacerChanged = true;
 					}
-					if (sizer.style?.paddingBottom) {
-						if (typeof sizer.setCssStyles === 'function') {
-							sizer.setCssStyles({ paddingBottom: '' });
-						}
-						sizer.style.removeProperty('padding-bottom');
-						Reflect.set(sizer.style, 'paddingBottom', '');
-						spacerChanged = true;
-					}
+					sizerPadding.delete(sizer);
 				}
 			}
 
@@ -382,6 +400,10 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 		};
 
 		private restoreFrozenViewport(): void {
+			if (!this.isTypewriterActive()) {
+				this.releaseViewportFreeze();
+				return;
+			}
 			if (this.frozenScrollTop === null || !this.view.scrollDOM) return;
 			if (Math.abs(this.view.scrollDOM.scrollTop - this.frozenScrollTop) > 0.5) {
 				this.view.scrollDOM.scrollTop = this.frozenScrollTop;
@@ -491,6 +513,15 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 
 		update(update: ViewUpdate) {
 			const { spacerChanged, positioningChanged } = this.syncDomState();
+			this.decorations = this.buildDecorations(update.view);
+			// 仅在当前模式下打字机功能开启时生效
+			if (!this.isTypewriterActive()) {
+				this.hasInitialCentered = false;
+				this.pendingPositioningRefresh = false;
+				this.cancelPendingCenter();
+				this.releaseViewportFreeze();
+				return;
+			}
 			const isSearchNavigation = this.isSearchNavigationActive();
 			if (positioningChanged || isSearchNavigation) {
 				this.pendingPositioningRefresh = positioningChanged;
@@ -503,16 +534,6 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 					this.frozenScrollTop = this.view.scrollDOM.scrollTop;
 				}
 				this.restoreFrozenViewport();
-			}
-			this.decorations = this.buildDecorations(update.view);
-
-			// 仅在当前模式下打字机功能开启时生效
-			if (!this.isTypewriterActive()) {
-				this.hasInitialCentered = false;
-				this.pendingPositioningRefresh = false;
-				this.cancelPendingCenter();
-				this.releaseViewportFreeze();
-				return;
 			}
 
 			// 如果当前指针/触摸手势仍处于按住状态，发生的选区变动记录为点击选区
