@@ -161,8 +161,6 @@ export const REGEX_PATTERNS = {
 	ORDERED_LIST: /^[\s]*\d+\.\s/gm,
 	/** 删除线（工厂函数，避免 g 标志状态残留） */
 	STRIKETHROUGH: () => /~~(.*?)~~/g,
-	/** 脚注引用标记（工厂函数，避免 g 标志状态残留） */
-	FOOTNOTE_REF: () => /\[\^[^\]]+\]/g,
 	/** 任务列表标记（gm 标志，保持不变） */
 	TASK_LIST: /^[\s]*[-*+]\s\[[ xX]\]\s/gm,
 	/** 表格分隔行（gm 标志，保持不变） */
@@ -251,6 +249,7 @@ export const DEFAULT_PROOFREADING_SETTINGS: ProofreadingSettings = {
 export const DEFAULT_SETTINGS: AccurateCountSettings = {
 	language: 'auto',
 	wordCountMethod: 'standard',
+	includeFootnotes: false,
 	defaultGoal: 3000,
 	dailyGoal: 5000,
 	showGoal: false,

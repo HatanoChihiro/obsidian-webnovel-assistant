@@ -236,6 +236,8 @@
 	"setting.eyecare-reset-tooltip": "恢復預設顏色 (#E8F5E9)",
 	"setting.word-count-display": "字數顯示",
 	"setting.word-count-mode": "字數統計模式",
+	"setting.include-footnotes": "統計與複製時包含註腳內容",
+	"setting.include-footnotes-desc": "開啟後，字數統計和複製純淨文本時將完整保留註腳引用和定義內容（預設排除註腳）。",
 	"setting.word-count-mode-desc": "選擇底層字數統計算法（切換後將自動全庫重新計算）。\n網文模式：所有非空白字元均算作1個字（含標點）。\n標準模式：合併英文單詞，全形標點算作1個字。\n原生模式：徹底忽略所有標點符號。",
 	"setting.mode-webnovel": "網文模式（標點算字）",
 	"setting.mode-standard": "標準模式（英文算詞，全形標點算字）",

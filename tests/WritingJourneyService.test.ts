@@ -700,6 +700,17 @@ describe('WritingJourneyService', () => {
 			expect(deleteEvent.chapterTitle).toBe('第1章');
 		});
 
+		it('handleVaultDelete should ignore Markdown files that are not eligible chapters', async () => {
+			mockPlugin.cacheManager.isEligibleForChapterList.mockReturnValue(false);
+			const deletedFile = new MockTFile('参考资料.md', 'NovelA/参考资料.md') as unknown as TFile;
+			(deletedFile as unknown as { parent: unknown }).parent = new MockTFolder('NovelA', 'NovelA');
+
+			await service.handleVaultDelete(deletedFile);
+
+			expect(mockApp.fileManager.processFrontMatter).not.toHaveBeenCalled();
+			expect(frontmatterState[WRITING_JOURNEY_YAML_KEY]).toBeUndefined();
+		});
+
 		it('initializeStartupBaseline should populate from plugin.getVaultMarkdownFiles when no paths provided', () => {
 			const file1 = new MockTFile('第1章.md', 'NovelA/第1章.md') as unknown as TFile;
 			mockPlugin.getVaultMarkdownFiles.mockReturnValue([file1]);

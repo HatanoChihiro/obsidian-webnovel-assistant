@@ -709,7 +709,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 
 
 	calculateAccurateWords(text: string): number {
-		return this.wordCounter.calculateAccurateWords(text, this.settings.wordCountMethod);
+		return this.wordCounter.calculateAccurateWords(text, this.settings.wordCountMethod, this.settings.includeFootnotes);
 	}
 
 	updateWordCount(): void {

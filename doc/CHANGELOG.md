@@ -1,3 +1,27 @@
+## 🔧 v3.9.10
+
+### 新增功能
+
+- **可选的脚注统计策略**：在字数统计设置中新增「统计与复制时包含脚注内容」选项（默认关闭）。开启后，多行脚注定义、行内脚注以及引用标记将完整保留在统计数字和“复制纯净文本”中；关闭时则一并排除上述所有非正文内容。
+
+### Bug 修复
+
+- **写作历程删除记录**：删除不符合章节规则的普通 Markdown 文件时不再误记为“删除章节”，写作历程现在与新建、重命名操作使用一致的章节资格判断。
+- **写作实时状态图表自适应**：修复侧边栏变窄时近 7 日字数统计柱状图超出卡片范围的问题，图表列与间距现在会随可用宽度同步收缩。
+
+### English Changelog
+
+#### New Features
+
+- **Optional Footnote Policy**: Added an "Include footnotes in word count and copy" toggle in settings (disabled by default). When enabled, multiline footnote definitions, inline footnotes, and reference markers are fully preserved in word counts and "Copy This Document" plain text; when disabled, all such non-body contents are strictly excluded.
+
+#### Bug Fixes
+
+- **Writing Journey Deletion Records**: Deleting a regular Markdown file that is not eligible as a chapter no longer creates a "Chapter Deleted" event; deletion now uses the same chapter eligibility check as creation and rename operations.
+- **Responsive Live Writing Chart**: Fixed the recent seven-day word-count chart overflowing its card when the Writing Status sidebar is narrowed; chart columns and spacing now shrink with the available width.
+
+---
+
 ## 🔧 v3.9.9
 
 ### 新增功能

@@ -652,7 +652,7 @@ export class CommandManager {
 			name: t('command.copy-document'),
 			icon: 'copy',
 			editorCallback: (editor, view) => {
-				void copyDocumentContent(view.file?.basename ?? '', editor.getValue());
+				void copyDocumentContent(view.file?.basename ?? '', editor.getValue(), { includeFootnotes: this.plugin.settings.includeFootnotes });
 			}
 		});
 	}

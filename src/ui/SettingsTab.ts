@@ -609,6 +609,34 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 	}
 
 	// ── 字数统计设置 ──
+	private async refreshWordCountConfiguration(): Promise<void> {
+		new Notice(t('notice.word-count-recalculating'));
+		this.plugin.cacheManager.clearCache();
+		if (this.plugin.settings.showExplorerCounts) {
+			await this.plugin.cacheManager.buildInitialCache(
+				this.plugin.app.vault,
+				this.plugin.calculateAccurateWords.bind(this.plugin),
+				this.plugin.cacheManager.isEligibleForTotalWordCount.bind(this.plugin.cacheManager)
+			);
+			this.plugin.refreshFolderCounts();
+		} else {
+			await this.plugin.cacheManager.saveCache();
+		}
+
+		if (this.plugin.editorTracker) {
+			await this.plugin.editorTracker.handleFileChange();
+		} else {
+			this.plugin.updateWordCount();
+		}
+
+		this.app.workspace.trigger('webnovel:word-count-gutter-settings-changed');
+		this.plugin.refreshStatusViews(true, true);
+		this.plugin.mobileFloatingStats?.update();
+		if (this.plugin.settings.enableHomepage) {
+			this.plugin.homepageManager?.refreshHomepageViews();
+		}
+	}
+
 	private displayWordCountSettings(containerEl: HTMLElement): void {
 		new Setting(containerEl).setName(t('setting.word-count-display')).setHeading();
 
@@ -623,9 +651,18 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				.onChange(async (value: string) => {
 					this.plugin.settings.wordCountMethod = value as 'webnovel' | 'standard' | 'obsidian';
 					await this.plugin.saveSettings();
-					new Notice(t('notice.word-count-recalculating'));
-					await this.plugin.buildFolderCache();
-					this.plugin.updateWordCount();
+					await this.refreshWordCountConfiguration();
+				}));
+
+		new Setting(containerEl)
+			.setName(t('setting.include-footnotes'))
+			.setDesc(t('setting.include-footnotes-desc'))
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.includeFootnotes ?? false)
+				.onChange(async (value: boolean) => {
+					this.plugin.settings.includeFootnotes = value;
+					await this.plugin.saveSettings();
+					await this.refreshWordCountConfiguration();
 				}));
 
 		new Setting(containerEl)

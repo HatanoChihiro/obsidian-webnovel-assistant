@@ -200,7 +200,7 @@ export class MenuManager {
 					void (async () => {
 						try {
 							const content = await this.plugin.app.vault.read(file);
-							await copyDocumentContent(file.basename, content);
+							await copyDocumentContent(file.basename, content, { includeFootnotes: this.plugin.settings.includeFootnotes });
 						} catch (e) {
 							console.error(e);
 						}
@@ -264,7 +264,7 @@ export class MenuManager {
 						void (async () => {
 							try {
 								const content = await this.plugin.app.vault.read(file);
-								await copyDocumentContent(file.basename, content);
+								await copyDocumentContent(file.basename, content, { includeFootnotes: this.plugin.settings.includeFootnotes });
 							} catch (e) {
 								console.error(e);
 							}

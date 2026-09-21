@@ -10,7 +10,7 @@ import type { WordCounter } from '../services/WordCounter';
 import { t } from '../i18n';
 
 export interface WordCountGutterPlugin {
-	settings: Pick<AccurateCountSettings, 'enableWordCountGutter' | 'wordCountInterval' | 'wordCountMethod'>;
+	settings: Pick<AccurateCountSettings, 'enableWordCountGutter' | 'wordCountInterval' | 'wordCountMethod' | 'includeFootnotes'>;
 	cacheManager: Pick<CacheManager, 'isEligibleForWordCount'>;
 	wordCounter: Pick<WordCounter, 'calculateWordsPerLine'>;
 }
@@ -64,7 +64,7 @@ function computeMarkers(state: EditorState, plugin: WordCountGutterPlugin): Rang
 	const docText = doc.toString();
 
 	// 使用全局精确逐行拆解算法（自动切除 Frontmatter 与代码块，消除跨行统计偏差）
-	const wordsPerLine = plugin.wordCounter.calculateWordsPerLine(docText, plugin.settings.wordCountMethod);
+	const wordsPerLine = plugin.wordCounter.calculateWordsPerLine(docText, plugin.settings.wordCountMethod, plugin.settings.includeFootnotes);
 
 	let currentTotal = 0;
 	let nextTarget = interval;

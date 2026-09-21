@@ -234,6 +234,8 @@
 	"setting.eyecare-reset-tooltip": "Reset to default color (#E8F5E9)",
 	"setting.word-count-display": "Word Count Display",
 	"setting.word-count-mode": "Word Count Mode",
+	"setting.include-footnotes": "Include footnotes in word count and copy",
+	"setting.include-footnotes-desc": "When enabled, footnote reference and definition markers plus their full text are preserved in word counts and copied clean text. Disabled by default.",
 	"setting.word-count-mode-desc": "Choose the underlying word counting algorithm (switching triggers a full re-calculation).\nWeb Novel Mode: All non-whitespace characters count as 1 word (including punctuation).\nStandard Mode: English words are merged, full-width punctuation counts as 1 word.\nNative Mode: All punctuation is completely ignored.",
 	"setting.mode-webnovel": "Web Novel Mode (Punctuation Counts)",
 	"setting.mode-standard": "Standard Mode (English as Words, Full-Width Punctuation Counts)",

@@ -638,6 +638,7 @@ export class WritingJourneyService {
 		this.baselinePaths.delete(abstractFile.path);
 		if (this.consumeHandledDelete(abstractFile.path)) return;
 		if (this.isExcludedDoc(abstractFile)) return;
+		if (!this.plugin.cacheManager.isEligibleForChapterList(abstractFile)) return;
 
 		const bookRoot = this.findBookRootFromPath(abstractFile.path, abstractFile.parent);
 		if (!bookRoot) return;

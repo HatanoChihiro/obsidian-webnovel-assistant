@@ -31,7 +31,8 @@ describe('WordCountGutter', () => {
 			settings: {
 				enableWordCountGutter: true,
 				wordCountInterval: 1,
-				wordCountMethod: 'standard'
+				wordCountMethod: 'standard',
+				includeFootnotes: false
 			},
 			cacheManager: {
 				isEligibleForWordCount: vi.fn(() => true)

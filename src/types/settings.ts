@@ -239,6 +239,8 @@ export interface AccurateCountSettings {
 	language: Locale | 'auto';
 	/** 字数统计方式 */
 	wordCountMethod: 'webnovel' | 'standard' | 'obsidian';
+	/** 是否在字数统计和纯净文本复制中包含脚注内容 */
+	includeFootnotes: boolean;
 	/** 默认目标字数 */
 	defaultGoal: number;
 	/** 今日目标字数（今日新增总字数目标） */

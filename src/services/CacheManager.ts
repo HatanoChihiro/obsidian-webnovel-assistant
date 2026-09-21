@@ -338,10 +338,8 @@ export class CacheManager {
 	 * 清空所有缓存
 	 */
 	clearCache(): void {
-		if (this.cache.size > 0) {
-			this.cache.clear();
-			this.markCacheDirty();
-		}
+		this.cache.clear();
+		this.markCacheDirty();
 	}
 
 	/**

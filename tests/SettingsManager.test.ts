@@ -90,6 +90,20 @@ describe('SettingsManager', () => {
 		expect(loaded.typography.enableGlobal).toBe(false);
 	});
 
+	it('defaults legacy settings without a footnote policy to excluding footnotes', async () => {
+		const legacy = cloneDefaults();
+		delete (legacy as unknown as { includeFootnotes?: boolean }).includeFootnotes;
+		const plugin = {
+			loadData: vi.fn().mockResolvedValue(legacy),
+			saveData: vi.fn().mockResolvedValue(undefined)
+		} as never;
+		const manager = new SettingsManager(plugin, cloneDefaults());
+
+		const loaded = await manager.loadSettings();
+
+		expect(loaded.includeFootnotes).toBe(false);
+	});
+
 	it('provides disabled default values for missing editorTypewriter settings on upgrade', async () => {
 		const legacy = cloneDefaults();
 		delete (legacy as unknown as { editorTypewriter?: unknown }).editorTypewriter;
