@@ -58,7 +58,14 @@ vi.mock('obsidian', () => {
 		ItemView: MockItemView,
 		Modal: class {},
 		Notice: vi.fn(),
-		setIcon: vi.fn()
+		setIcon: vi.fn(),
+		Platform: { isMobile: false },
+		Component: class {
+			load = vi.fn();
+			unload = vi.fn();
+			register = vi.fn();
+		},
+		setTooltip: vi.fn()
 	};
 });
 
@@ -203,5 +210,36 @@ describe('TimelineView', () => {
 		const ascItems = view.containerEl.querySelectorAll('.wn-timeline-item');
 		expect(ascItems[0].getAttribute('draggable')).toBe('true');
 		expect(view.containerEl.querySelector('.wn-timeline-drag-handle')).not.toBeNull();
+	});
+
+	it('filters by node-level lore while keeping every sibling sub-event visible', async () => {
+		parsedEntries = [{
+			time: '第一天',
+			description: '甲事件\n乙事件',
+			chapter: '',
+			type: '主线',
+			lores: ['甲', '乙'],
+			items: [
+				{ description: '甲事件', chapter: '' },
+				{ description: '乙事件', chapter: '' }
+			]
+		}] as unknown as typeof parsedEntries;
+
+		const leaf = { app: mockApp } as unknown as WorkspaceLeaf;
+		const view = new TimelineView(leaf, mockPlugin);
+		await view.renderFromContent('# 时间线\n');
+
+		const loreRow = view.containerEl.querySelector('.wn-timeline-view-lore-filter-row');
+		expect(loreRow).not.toBeNull();
+		expect(loreRow?.children).toHaveLength(3);
+
+		(loreRow?.children[2] as HTMLElement | undefined)?.click();
+		await new Promise(resolve => setTimeout(resolve, 10));
+
+		expect(mockApp.workspace.trigger).toHaveBeenCalledWith('timeline-lore-filter-changed', ['乙']);
+		const renderedItems = view.containerEl.querySelectorAll('.wn-timeline-list-item');
+		expect(renderedItems).toHaveLength(2);
+		expect(renderedItems[0].querySelector('.wn-timeline-desc-text')?.textContent).toBe('甲事件');
+		expect(renderedItems[1].querySelector('.wn-timeline-desc-text')?.textContent).toBe('乙事件');
 	});
 });

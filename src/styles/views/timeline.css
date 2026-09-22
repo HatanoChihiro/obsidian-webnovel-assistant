@@ -283,6 +283,11 @@
 	color: var(--text-muted);
 }
 
+.wn-timeline-view-lore-badges {
+	display: inline-flex;
+	flex-wrap: wrap;
+	gap: 4px;
+}
 
 .wn-timeline-footer {
 	display: flex;

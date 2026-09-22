@@ -205,6 +205,7 @@ class ConfirmModal extends Modal {
 export const WORKBENCH_VIEW_TYPE = 'webnovel-workbench';
 
 export class WorkbenchView extends ItemView {
+    private static readonly FORESHADOWING_REFRESH_DEBOUNCE_MS = 150;
     private plugin: WorkbenchViewPlugin;
     public currentBookPath: string | null = null;
     private isSavingMetadata: boolean = false;
@@ -212,7 +213,8 @@ export class WorkbenchView extends ItemView {
     private collapsedGroups: Set<string> = new Set();
     private container!: HTMLElement;
     private currentTimelineFilter: string = 'all';
-    private currentForeshadowingTagFilter: string = 'all';
+    private currentTimelineLoreFilter: string[] = [];
+    private currentForeshadowingSelectedTags: string[] = [];
     private currentRenderId: number = 0;
     private draggableListCleanup: (() => void) | null = null;
     private touchPolyfillCleanup: (() => void) | null = null;
@@ -248,6 +250,12 @@ export class WorkbenchView extends ItemView {
             void this.reloadBoard();
         }));
 
+        // 监听 timeline 设定筛选事件
+        this.registerEvent(this.app.workspace.on('timeline-lore-filter-changed', (selectedLores: string[]) => {
+            this.currentTimelineLoreFilter = selectedLores;
+            void this.reloadBoard();
+        }));
+
         // 监听 timeline 排序变化事件
         this.registerEvent(this.app.workspace.on('timeline-order-changed', (isDescending: boolean) => {
             this.isTimelineDescending = isDescending;
@@ -255,8 +263,8 @@ export class WorkbenchView extends ItemView {
         }));
 
         // 监听 foreshadowing 筛选事件
-        this.registerEvent(this.app.workspace.on('foreshadowing-filter-changed', (tag: string) => {
-            this.currentForeshadowingTagFilter = tag;
+        this.registerEvent(this.app.workspace.on('foreshadowing-filter-changed', (selectedTags: string[]) => {
+            this.currentForeshadowingSelectedTags = [...selectedTags];
             void this.reloadBoard();
         }));
 
@@ -277,22 +285,10 @@ export class WorkbenchView extends ItemView {
             }, 500);
         }));
         this.registerEvent(this.app.vault.on('modify', (file) => {
-            if (this.isSavingMetadata) return;
-            if (!(file instanceof TFile) || file.extension !== 'md') return;
-            if (!this.plugin.cacheManager.isFileInWorkspace(file)) return;
-            this.filterIndex.invalidate(file.path);
-            this.plugin.adaptiveDebounceManager.debounceFixed('workbench-refresh', () => {
-                void this.reloadBoard();
-            }, 1000);
+            this.handleMarkdownFileChanged(file);
         }));
         this.registerEvent(this.app.metadataCache.on('changed', (file) => {
-            if (this.isSavingMetadata) return;
-            if (!(file instanceof TFile) || file.extension !== 'md') return;
-            if (!this.plugin.cacheManager.isFileInWorkspace(file)) return;
-            this.filterIndex.invalidate(file.path);
-            this.plugin.adaptiveDebounceManager.debounceFixed('workbench-refresh', () => {
-                void this.reloadBoard();
-            }, 1000);
+            this.handleMarkdownFileChanged(file);
         }));
         this.registerEvent(this.app.workspace.on('active-leaf-change', (leaf) => {
             if (!leaf || leaf.view.getViewType() !== 'markdown') return;
@@ -315,6 +311,10 @@ export class WorkbenchView extends ItemView {
             // 4. 只有当确定属于新作品目录时，才进行工作台跟随切换
             if (bookRoot !== this.currentBookPath) {
                 this.currentBookPath = bookRoot;
+                this.invalidateForeshadowingCache();
+                this.currentTimelineLoreFilter = [];
+                this.currentForeshadowingSelectedTags = [];
+                this.currentTimelineFilter = 'all';
                 void this.reloadBoard();
             }
         }));
@@ -375,10 +375,46 @@ export class WorkbenchView extends ItemView {
 
 
 
+    private invalidateForeshadowingCache(): void {
+        this.cachedForeshadowingMap = null;
+        this.cachedForeshadowingBookPath = null;
+    }
+
+    private isCurrentBookForeshadowingFile(file: TFile): boolean {
+        if (!this.currentBookPath || !this.plugin.foreshadowingManager) {
+            return false;
+        }
+        const fmFolder = this.currentBookPath === '/' ? '' : this.currentBookPath.replace(/^\/+|\/+$/g, '');
+        const currentForeshadowingFile = this.plugin.foreshadowingManager.findForeshadowingFile(fmFolder);
+        return currentForeshadowingFile !== null && currentForeshadowingFile.path === file.path;
+    }
+
+    private handleMarkdownFileChanged(file: TAbstractFile): void {
+        if (this.isSavingMetadata) return;
+        if (!(file instanceof TFile) || file.extension !== 'md') return;
+
+        if (this.isCurrentBookForeshadowingFile(file)) {
+            this.invalidateForeshadowingCache();
+            this.plugin.adaptiveDebounceManager.debounceFixed('workbench-refresh', () => {
+                void this.reloadBoard();
+            }, WorkbenchView.FORESHADOWING_REFRESH_DEBOUNCE_MS);
+            return;
+        }
+
+        if (!this.plugin.cacheManager.isFileInWorkspace(file)) return;
+        this.filterIndex.invalidate(file.path);
+        this.plugin.adaptiveDebounceManager.debounceFixed('workbench-refresh', () => {
+            void this.reloadBoard();
+        }, 1000);
+    }
+
     public setBookPath(path: string) {
         if (this.currentBookPath !== path) {
             this.currentBookPath = path;
-            this.cachedForeshadowingMap = null;
+            this.invalidateForeshadowingCache();
+            this.currentTimelineLoreFilter = [];
+            this.currentForeshadowingSelectedTags = [];
+            this.currentTimelineFilter = 'all';
             void this.reloadBoard();
             this.app.workspace.trigger('webnovel-workbench-book-changed', path);
         }
@@ -610,6 +646,9 @@ export class WorkbenchView extends ItemView {
         await super.setState(state, result);
         if (state.currentBookPath) {
             this.currentBookPath = state.currentBookPath as string;
+            this.currentTimelineLoreFilter = [];
+            this.currentForeshadowingSelectedTags = [];
+            this.currentTimelineFilter = 'all';
             void this.reloadBoard();
             this.app.workspace.trigger('webnovel-workbench-book-changed', this.currentBookPath);
         }
@@ -1333,13 +1372,13 @@ export class WorkbenchView extends ItemView {
             if (this.currentRenderId !== renderId || this.isClosed) return;
 
             const fQuery = this.foreshadowingFilterQuery;
-            const tagFilter = this.currentForeshadowingTagFilter;
+            const selectedTags = this.currentForeshadowingSelectedTags;
             const onlyImportant = this.isForeshadowingImportantOnly;
-            const hasFilter = Boolean(fQuery.trim().length > 0 || (tagFilter && tagFilter !== 'all') || onlyImportant);
+            const hasFilter = Boolean(fQuery.trim().length > 0 || selectedTags.length > 0 || onlyImportant);
             const matchedForeshadowingCount = hasFilter
                 ? ForeshadowingBoardRenderer.filterEntries(foreshadowingEntriesList, {
                     query: fQuery,
-                    tagFilter,
+                    selectedTags,
                     onlyImportant
                 }).length
                 : foreshadowingEntriesList.length;
@@ -1381,6 +1420,7 @@ export class WorkbenchView extends ItemView {
                     foreshadowingMap,
                     currentBookPath: this.currentBookPath || '',
                     currentTimelineFilter: this.currentTimelineFilter,
+                    currentTimelineLoreFilter: this.currentTimelineLoreFilter,
                     isDescending: this.isTimelineDescending,
                     onSaveStateChange: (isSaving) => { this.isSavingMetadata = isSaving; },
                     reloadBoard: () => { void this.reloadBoard(); },
@@ -1418,7 +1458,7 @@ export class WorkbenchView extends ItemView {
                     entries: foreshadowingEntriesList,
                     foreshadowingFile: foreshadowingFileObj,
                     query: this.foreshadowingFilterQuery,
-                    currentForeshadowingTagFilter: this.currentForeshadowingTagFilter,
+                    selectedTags: this.currentForeshadowingSelectedTags,
                     onlyImportant: this.isForeshadowingImportantOnly,
                     currentBookPath: this.currentBookPath || '',
                     reloadBoard: () => { void this.reloadBoard(); }

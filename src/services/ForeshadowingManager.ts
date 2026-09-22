@@ -516,6 +516,24 @@ export class ForeshadowingManager {
 		return [...new Set(entries.flatMap(e => e.tags))];
 	}
 
+	async getExistingDescriptions(sourceFile: TFile): Promise<string[]> {
+		const folder = findBookRoot(this.app, this.plugin, sourceFile) || '';
+		const foreshadowFile = this.findForeshadowingFile(folder);
+		if (!foreshadowFile) return [];
+		const content = await this.app.vault.cachedRead(foreshadowFile);
+		const entries = this.parseEntries(content);
+		const descriptions: string[] = [];
+		const seen = new Set<string>();
+		for (const entry of entries) {
+			const desc = typeof entry.description === 'string' ? entry.description.trim() : '';
+			if (desc && !seen.has(desc)) {
+				seen.add(desc);
+				descriptions.push(desc);
+			}
+		}
+		return descriptions;
+	}
+
 	async openForeshadowingFile(targetFile: TFile): Promise<void> {
 		await this.app.workspace.getLeaf('tab').openFile(targetFile);
 	}

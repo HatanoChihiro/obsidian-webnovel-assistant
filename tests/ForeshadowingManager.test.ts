@@ -456,4 +456,34 @@ describe('ForeshadowingManager', () => {
             expect(fileContent).not.toContain('<!-- wn-important -->');
         });
     });
+
+    describe('getExistingDescriptions and getExistingTags', () => {
+        it('should extract unique descriptions and tags from foreshadowing file', async () => {
+            const manager = new ForeshadowingManager(mockApp, mockPlugin);
+            const sourceFile = Object.assign(new TFile(), { name: '第1章.md', path: 'Book 1/第1章.md', basename: '第1章', extension: 'md', parent: { path: 'Book 1' } });
+            const fFile = Object.assign(new TFile(), { name: 'Foreshadowing.md', path: 'Book 1/Foreshadowing.md', basename: 'Foreshadowing', extension: 'md' });
+
+            mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) => path === 'Book 1/Foreshadowing.md' ? fFile : null);
+            vi.mocked(pathUtils.findBookRoot).mockReturnValue('Book 1');
+
+            const content = `## 宝库钥匙下落\n> [[第1章]]\n> 线索文本\n\n**标签**：#线索, #重要\n**状态**：未回收\n---\n## 宝库钥匙下落\n> [[第2章]]\n> 追加线索\n\n**状态**：未回收\n---\n## 神秘老人身份\n> [[第3章]]\n> 老人说了一句话\n\n**标签**：#人物\n**状态**：未回收\n`;
+            mockApp.vault.cachedRead = vi.fn().mockResolvedValue(content);
+
+            const descriptions = await manager.getExistingDescriptions(sourceFile);
+            expect(descriptions).toEqual(['宝库钥匙下落', '神秘老人身份']);
+
+            const tags = await manager.getExistingTags(sourceFile);
+            expect(tags).toEqual(['线索', '重要', '人物']);
+        });
+
+        it('should return empty array if foreshadowing file does not exist', async () => {
+            const manager = new ForeshadowingManager(mockApp, mockPlugin);
+            const sourceFile = Object.assign(new TFile(), { name: '第1章.md', path: 'Book 1/第1章.md', basename: '第1章', extension: 'md' });
+            mockApp.vault.getAbstractFileByPath.mockReturnValue(null);
+            vi.mocked(pathUtils.findBookRoot).mockReturnValue('Book 1');
+
+            const descriptions = await manager.getExistingDescriptions(sourceFile);
+            expect(descriptions).toEqual([]);
+        });
+    });
 });

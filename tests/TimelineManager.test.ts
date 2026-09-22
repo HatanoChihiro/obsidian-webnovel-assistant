@@ -806,5 +806,96 @@ It has multiple lines.
             expect(reparsed[0]!.items![0]!.origin).toBe('原文片段');
             expect(reparsed[0]!.items![0]!.description).toBe('关键转折点');
         });
+
+        it('22. migrates item-level lore comments to one node-level association on round-trip', () => {
+            const rawContent = `## 2026-09-15 14:00\n\n- 结识主角 [[第2章]] <!-- wn-important --> <!-- lore: 张三, 李四 --> <!-- origin: 原文引用 -->\n\n---\n\n`;
+            const entries = manager.parseEntries(rawContent);
+            expect(entries).toHaveLength(1);
+            const item = entries[0]!.items![0]!;
+            expect(item.description).toBe('结识主角');
+            expect(item.chapter).toBe('第2章');
+            expect(item.important).toBe(true);
+            expect(item.origin).toBe('原文引用');
+            expect(entries[0]!.lores).toEqual(['张三', '李四']);
+
+            const formatted = manager.formatEntry(entries[0]!);
+            expect(formatted).toContain('<!-- wn-lore: 张三, 李四 -->');
+            expect(formatted.match(/<!-- wn-lore:/g)).toHaveLength(1);
+            expect(formatted).not.toMatch(/^- .*<!-- wn-lore:/m);
+            expect(formatted).toContain('<!-- wn-important -->');
+            expect(formatted).toContain('<!-- origin: 原文引用 -->');
+            expect(formatted).toContain('[[第2章]]');
+
+            const reparsed = manager.parseEntries(formatted);
+            expect(reparsed[0]!.lores).toEqual(['张三', '李四']);
+            expect(reparsed[0]!.items![0]!.description).toBe('结识主角');
+            expect(reparsed[0]!.items![0]!.chapter).toBe('第2章');
+            expect(reparsed[0]!.items![0]!.important).toBe(true);
+            expect(reparsed[0]!.items![0]!.origin).toBe('原文引用');
+
+			const separatorEntry = {
+				...entries[0]!,
+				lores: ['王,小明', '南；北']
+			};
+			const separatorFormatted = manager.formatEntry(separatorEntry);
+			expect(separatorFormatted).toContain('<!-- wn-lore: ["\u738b,\u5c0f\u660e","\u5357\uff1b\u5317"] -->');
+			expect(manager.parseEntries(separatorFormatted)[0]!.lores).toEqual(['王,小明', '南；北']);
+        });
+
+        it('23. canonicalizes lore aliases and preserves unresolved lore names', () => {
+            mockPlugin.characterManager = {
+                getCharacterFile: vi.fn((book: string, name: string) => {
+                    if (name === '小张' || name === '张三') return { heading: '张三' };
+                    return null;
+                })
+            };
+
+            const rawContent = `## 2026-09-16 10:00\n- 宗门大比 <!-- lore: 小张, 遗失名 -->\n---\n`;
+            const entries = manager.parseEntries(rawContent, 'Book 1');
+            expect(entries).toHaveLength(1);
+            expect(entries[0]!.lores).toEqual(['张三', '遗失名']);
+        });
+
+        it('24. appendEntry preserves lore associations, important, and origin when merging into existing node', async () => {
+            let fileContent = `## 2026-09-17\n- 第一件事 [[第1章]] <!-- lore: 旧设定 -->\n\n**类型**：主线\n---\n`;
+            mockApp.vault.process.mockImplementation(async (_file: any, cb: (c: string) => string) => {
+                fileContent = cb(fileContent);
+                return fileContent;
+            });
+            mockApp.vault.cachedRead.mockImplementation(async () => fileContent);
+            const dummyFile = Object.assign(new TFile(), { name: 'Timeline.md', path: 'Book 1/Timeline.md' });
+            mockApp.vault.getAbstractFileByPath.mockReturnValue(dummyFile);
+
+            const entryToAppend: TimelineEntry = {
+                time: '2026-09-17',
+                description: '第二件事',
+                chapter: '第2章',
+                type: '主线',
+                rawBlock: '',
+                lores: ['林动'],
+                items: [{
+                    description: '第二件事',
+                    chapter: '第2章',
+                    important: true,
+                    origin: '引文'
+                }]
+            };
+
+            await manager.appendEntry(entryToAppend, 'Book 1');
+
+            expect(fileContent).toContain('<!-- wn-lore: 旧设定, 林动 -->');
+            expect(fileContent.match(/<!-- wn-lore:/g)).toHaveLength(1);
+            expect(fileContent).not.toMatch(/^- .*<!-- (?:wn-lore|lore):/m);
+            expect(fileContent).toContain('<!-- wn-important -->');
+            expect(fileContent).toContain('<!-- origin: 引文 -->');
+            expect(fileContent).toContain('[[第2章]]');
+
+            const parsed = manager.parseEntries(fileContent, 'Book 1');
+            expect(parsed).toHaveLength(1);
+            expect(parsed[0]!.items).toHaveLength(2);
+            expect(parsed[0]!.lores).toEqual(['旧设定', '林动']);
+            expect(parsed[0]!.items![1]!.important).toBe(true);
+            expect(parsed[0]!.items![1]!.origin).toBe('引文');
+        });
     });
 });

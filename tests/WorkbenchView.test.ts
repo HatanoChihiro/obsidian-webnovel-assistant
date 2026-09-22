@@ -450,6 +450,67 @@ describe('WorkbenchView', () => {
 		expect(reloadSpy).toHaveBeenCalledTimes(1);
 	});
 
+	it('should invalidate foreshadowing cache and reload on current-book foreshadowing change, ignoring other works', async () => {
+		const vaultHandlers: Record<string, ((...args: unknown[]) => void)> = {};
+		mockApp.vault.on.mockImplementation((event: string, handler: (...args: unknown[]) => void) => {
+			vaultHandlers[event] = handler;
+		});
+
+		let queuedCallback: (() => void) | null = null;
+		const debounceSpy = vi.fn((_key: string, fn: () => void) => {
+			queuedCallback = fn;
+		});
+		plugin.adaptiveDebounceManager = {
+			debounceFixed: debounceSpy,
+			cancel: vi.fn()
+		};
+
+		const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+		(view as unknown as { container: unknown }).container = view.contentEl;
+		view.currentBookPath = 'NovelA';
+
+		const novelAFolder = new MockTFolder('NovelA', 'NovelA');
+		const novelBFolder = new MockTFolder('NovelB', 'NovelB');
+		const currentForeshadowFile = new MockTFile('伏笔.md', 'NovelA/伏笔.md', novelAFolder) as unknown as TFile;
+		const otherBookForeshadowFile = new MockTFile('伏笔.md', 'NovelB/伏笔.md', novelBFolder) as unknown as TFile;
+		const ordinaryChapterFile = new MockTFile('Chapter 1.md', 'NovelA/Chapter 1.md', novelAFolder) as unknown as TFile;
+
+		plugin.foreshadowingManager.findForeshadowingFile = vi.fn((folderPath: string) => {
+			return folderPath === 'NovelA' ? currentForeshadowFile : null;
+		});
+
+		const staleMap = new Map();
+		(view as unknown as { cachedForeshadowingMap: unknown }).cachedForeshadowingMap = staleMap;
+		(view as unknown as { cachedForeshadowingBookPath: unknown }).cachedForeshadowingBookPath = 'NovelA';
+
+		const reloadSpy = vi.spyOn(view, 'reloadBoard').mockImplementation(async () => {});
+
+		// Another work's foreshadowing file with isFileInWorkspace=false is ignored
+		plugin.cacheManager.isFileInWorkspace = vi.fn().mockReturnValue(false);
+		vaultHandlers['modify'](otherBookForeshadowFile);
+		expect(debounceSpy).not.toHaveBeenCalled();
+		expect((view as unknown as { cachedForeshadowingMap: unknown }).cachedForeshadowingMap).toBe(staleMap);
+
+		// Current-book foreshadowing modify with isFileInWorkspace=false clears both cache fields and schedules/executes 150ms reload
+		vaultHandlers['modify'](currentForeshadowFile);
+		expect((view as unknown as { cachedForeshadowingMap: unknown }).cachedForeshadowingMap).toBeNull();
+		expect((view as unknown as { cachedForeshadowingBookPath: unknown }).cachedForeshadowingBookPath).toBeNull();
+		expect(debounceSpy).toHaveBeenCalledWith('workbench-refresh', expect.any(Function), 150);
+		expect(reloadSpy).not.toHaveBeenCalled();
+		(queuedCallback as unknown as () => void)();
+		expect(reloadSpy).toHaveBeenCalledTimes(1);
+
+		// Ordinary file with isFileInWorkspace=true still uses 1000ms
+		reloadSpy.mockClear();
+		debounceSpy.mockClear();
+		queuedCallback = null;
+		plugin.cacheManager.isFileInWorkspace = vi.fn().mockReturnValue(true);
+		vaultHandlers['modify'](ordinaryChapterFile);
+		expect(debounceSpy).toHaveBeenCalledWith('workbench-refresh', expect.any(Function), 1000);
+		(queuedCallback as unknown as () => void)();
+		expect(reloadSpy).toHaveBeenCalledTimes(1);
+	});
+
 	it('should await requestAnimationFrame restoration in reloadBoard and properly flush pending reload', async () => {
 		const rafQueue: Array<(time: number) => void> = [];
 		const rafSpy = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb: (time: number) => void) => {
@@ -1528,17 +1589,23 @@ describe('WorkbenchView', () => {
 			// 2. Important + Tag filter
 			const impAndTag = ForeshadowingBoardRenderer.filterEntries(entries, {
 				onlyImportant: true,
-				tagFilter: '线索'
+				selectedTags: ['线索']
 			});
 			expect(impAndTag.map(e => e.description)).toEqual(['密室钥匙伏笔']);
 
 			// 3. Important + Tag + Query
 			const impTagQuery = ForeshadowingBoardRenderer.filterEntries(entries, {
 				onlyImportant: true,
-				tagFilter: '线索',
+				selectedTags: ['线索'],
 				query: '钥匙'
 			});
 			expect(impTagQuery.map(e => e.description)).toEqual(['密室钥匙伏笔']);
+
+			// 4. Multiple selected tags use OR semantics within the tag group.
+			const multiTag = ForeshadowingBoardRenderer.filterEntries(entries, {
+				selectedTags: ['主线', '支线']
+			});
+			expect(multiTag.map(e => e.description)).toEqual(['密室钥匙伏笔', '身世伏笔']);
 
 			// 4. Mismatched query
 			const noMatch = ForeshadowingBoardRenderer.filterEntries(entries, {

@@ -118,13 +118,39 @@ function createMockEnvironment(initialOffset = 0) {
 		}
 	};
 
+	const sizerPriorities = new Map<string, string>();
+	let sizerPaddingTop = '';
+	let sizerPaddingBottom = '';
 	const mockSizer = {
 		style: {
-			paddingTop: '',
-			paddingBottom: '',
+			get paddingTop() {
+				return sizerPaddingTop;
+			},
+			set paddingTop(val: string) {
+				sizerPaddingTop = val;
+				sizerPriorities.delete('padding-top');
+			},
+			get paddingBottom() {
+				return sizerPaddingBottom;
+			},
+			set paddingBottom(val: string) {
+				sizerPaddingBottom = val;
+				sizerPriorities.delete('padding-bottom');
+			},
+			getPropertyPriority: vi.fn((prop: string) => sizerPriorities.get(prop) ?? ''),
+			setProperty: vi.fn((prop: string, val: string, priority = '') => {
+				if (prop === 'padding-top') sizerPaddingTop = val;
+				if (prop === 'padding-bottom') sizerPaddingBottom = val;
+				if (priority) {
+					sizerPriorities.set(prop, priority);
+				} else {
+					sizerPriorities.delete(prop);
+				}
+			}),
 			removeProperty: vi.fn((prop: string) => {
-				if (prop === 'padding-top') mockSizer.style.paddingTop = '';
-				if (prop === 'padding-bottom') mockSizer.style.paddingBottom = '';
+				if (prop === 'padding-top') sizerPaddingTop = '';
+				if (prop === 'padding-bottom') sizerPaddingBottom = '';
+				sizerPriorities.delete(prop);
 			})
 		}
 	};
@@ -2096,6 +2122,68 @@ describe('TypewriterExtension - Focus Loss & Offscreen Coordinate Guards', () =>
 			expect(env.mockScroller.scrollTop).toBe(900);
 			instance.update({ view, state: view.state } as ViewUpdate);
 			expect(env.mockScroller.scrollTop).toBe(900);
+			instance.destroy();
+		});
+
+		it('restores latest external padding and priority rewritten while typewriter was active', () => {
+			env.mockSizer.style.paddingTop = '100px';
+			env.mockSizer.style.paddingBottom = '200px';
+			const extension = createTypewriterExtension(env.mockPlugin);
+			const view = env.createMockView(100);
+			const instance = (extension as unknown as { create: (v: EditorView) => { update: (u: ViewUpdate) => void; destroy: () => void } }).create(view);
+
+			// 1. Typewriter active: initial centering applied (400px / 400px, no priority)
+			expect(env.mockSizer.style.paddingTop).toBe('400px');
+			expect(env.mockSizer.style.paddingBottom).toBe('400px');
+			expect(env.mockSizer.style.getPropertyPriority('padding-top')).toBe('');
+
+			// 2. External plugin (e.g. Pixel Banner) rewrites padding while typewriter remains active
+			env.mockSizer.style.setProperty('padding-top', '260px', 'important');
+			env.mockSizer.style.setProperty('padding-bottom', '140px', '');
+
+			// 3. Subsequent WNA update occurs while still active (e.g. user typing / cursor move)
+			instance.update({ view, state: view.state, docChanged: false, selectionSet: false } as unknown as ViewUpdate);
+			// WNA reapplies centering padding and clears priority
+			expect(env.mockSizer.style.paddingTop).toBe('400px');
+			expect(env.mockSizer.style.paddingBottom).toBe('400px');
+			expect(env.mockSizer.style.getPropertyPriority('padding-top')).toBe('');
+
+			// 4. Disable typewriter
+			env.mockPlugin.settings.immersive.typewriterEnabled = false;
+			instance.update({ view, state: view.state } as ViewUpdate);
+
+			// 5. The latest external padding and priority are restored (not the stale 100px / 200px)
+			expect(env.mockSizer.style.paddingTop).toBe('260px');
+			expect(env.mockSizer.style.getPropertyPriority('padding-top')).toBe('important');
+			expect(env.mockSizer.style.paddingBottom).toBe('140px');
+			expect(env.mockSizer.style.getPropertyPriority('padding-bottom')).toBe('');
+
+			instance.destroy();
+		});
+
+		it('does not mistake prior applied typewriter padding for an external write when offset changes', () => {
+			env.mockSizer.style.paddingTop = '120px';
+			env.mockSizer.style.paddingBottom = '280px';
+			const extension = createTypewriterExtension(env.mockPlugin);
+			const view = env.createMockView(100);
+			const instance = (extension as unknown as { create: (v: EditorView) => { update: (u: ViewUpdate) => void; destroy: () => void } }).create(view);
+
+			// Initial target padding applied: 400px / 400px
+			expect(env.mockSizer.style.paddingTop).toBe('400px');
+			expect(env.mockSizer.style.paddingBottom).toBe('400px');
+
+			// Offset changes to +20%: target becomes 560px / 240px
+			env.mockPlugin.settings.immersive.typewriterCenterOffset = 20;
+			instance.update({ view, state: view.state, docChanged: false, selectionSet: false } as unknown as ViewUpdate);
+			expect(env.mockSizer.style.paddingTop).toBe('560px');
+			expect(env.mockSizer.style.paddingBottom).toBe('240px');
+
+			// Disable typewriter -> original 120px / 280px must be restored, not 400px
+			env.mockPlugin.settings.immersive.typewriterEnabled = false;
+			instance.update({ view, state: view.state } as ViewUpdate);
+			expect(env.mockSizer.style.paddingTop).toBe('120px');
+			expect(env.mockSizer.style.paddingBottom).toBe('280px');
+
 			instance.destroy();
 		});
 

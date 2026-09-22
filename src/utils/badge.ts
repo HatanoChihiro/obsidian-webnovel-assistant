@@ -153,13 +153,26 @@ export function renderLoreBadges(
 		});
 	};
 
+	const createLoreBadge = (parent: HTMLElement, loreName: string): HTMLElement => {
+		const realLoreName = loreName.split('×')[0];
+		const entry = plugin.characterManager?.getCharacterFile(bookPath, realLoreName);
+		const isUnresolved = !entry;
+		let cls = enableHover ? 'wn-badge wn-badge-lore wn-hoverable' : 'wn-badge wn-badge-lore';
+		if (isUnresolved) {
+			cls += ' is-unresolved';
+		}
+		const badgeEl = parent.createSpan({ cls, text: loreName });
+		if (isUnresolved) {
+			badgeEl.title = t('timeline.unresolved-lore');
+		}
+		bindHover(badgeEl, realLoreName);
+		return badgeEl;
+	};
+
 	// 默认模式：未指定限制，直接全部渲染
 	if (!maxLinesOrDisplay || maxLinesOrDisplay <= 0) {
 		for (const loreName of validLores) {
-			const realLoreName = loreName.split('×')[0];
-			const cls = enableHover ? 'wn-badge wn-badge-lore wn-hoverable' : 'wn-badge wn-badge-lore';
-			const badgeEl = container.createSpan({ cls, text: loreName });
-			bindHover(badgeEl, realLoreName);
+			createLoreBadge(container, loreName);
 		}
 		return;
 	}
@@ -168,11 +181,7 @@ export function renderLoreBadges(
 	if (maxLinesOrDisplay > 2) {
 		const limit = Math.min(validLores.length, maxLinesOrDisplay);
 		for (let i = 0; i < limit; i++) {
-			const loreName = validLores[i];
-			const realLoreName = loreName.split('×')[0];
-			const cls = enableHover ? 'wn-badge wn-badge-lore wn-hoverable' : 'wn-badge wn-badge-lore';
-			const badgeEl = container.createSpan({ cls, text: loreName });
-			bindHover(badgeEl, realLoreName);
+			createLoreBadge(container, validLores[i]);
 		}
 		if (validLores.length > limit) {
 			container.createSpan({
@@ -189,12 +198,7 @@ export function renderLoreBadges(
 
 	// 先尝试全量渲染设定 Badge
 	for (let i = 0; i < validLores.length; i++) {
-		const loreName = validLores[i];
-		const realLoreName = loreName.split('×')[0];
-		const cls = enableHover ? 'wn-badge wn-badge-lore wn-hoverable' : 'wn-badge wn-badge-lore';
-		const badgeEl = container.createSpan({ cls, text: loreName });
-		bindHover(badgeEl, realLoreName);
-		renderedLoreEls.push(badgeEl);
+		renderedLoreEls.push(createLoreBadge(container, validLores[i]));
 	}
 
 	// 如果条目数量不超过最大行数，绝对不会引发换行溢出，无需调度 RAF 触发 DOM 布局重测

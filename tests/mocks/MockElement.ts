@@ -61,6 +61,7 @@ export class MockElement {
 	removeClass(...tokens: string[]) { this.classList.remove(...tokens); return this; }
 	toggleClass(token: string, force?: boolean) { return this.classList.toggle(token, force); }
 	hasClass(token: string) { return this.classes.has(token); }
+	setCssProps(props?: Record<string, string>) { return this; }
 
 	empty() {
 		for (const child of this.children) {
@@ -106,11 +107,12 @@ export class MockElement {
 		return child;
 	}
 
-	createEl(tag: string, opts?: { cls?: string; text?: string; type?: string }) {
+	createEl(tag: string, opts?: { cls?: string; text?: string; type?: string; value?: string }) {
 		const cls = opts?.cls || '';
 		const child = new MockElement(cls);
 		if (opts?.text) child.textContent = opts.text;
 		if (opts?.type) child.type = opts.type;
+		if (opts?.value !== undefined) child.value = opts.value;
 		this.appendChild(child);
 		return child;
 	}

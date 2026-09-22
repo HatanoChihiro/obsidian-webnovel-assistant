@@ -1,4 +1,4 @@
-import type { WorkspaceLeaf, TFile } from 'obsidian';
+import type { App, WorkspaceLeaf, TFile } from 'obsidian';
 import { Notice, setIcon } from 'obsidian';
 import type { TimelineEntry, TimelineManager } from '../services/TimelineManager';
 import { CreativeView } from './CreativeView';
@@ -8,12 +8,14 @@ import { getDefaultFileName } from '../i18n/data-keys';
 import { ChapterSorter } from '../services/ChapterSorter';
 import { TimelineAddModal } from './TimelineAddModal';
 import { smartLocateAndHighlight } from '../utils/leaf';
-import { getFileVolumePath } from '../utils/chapterDisplayOrder';
 import type { CurrentBookContextPlugin } from '../utils/path';
-import type { TimelineFormContext, TimelineFormSettings } from './components/TimelineFormComponent';
+import { TimelineFormComponent, type TimelineFormContext, type TimelineFormSettings } from './components/TimelineFormComponent';
+import { MultiSelectFilterRow } from './components/MultiSelectFilterRow';
+import { renderLoreBadges, type LoreBadgePlugin } from '../utils/badge';
 
 import type { AccurateCountSettings } from '../types/settings';
 import type { HomepageManager } from '../services/HomepageManager';
+import type { CharacterManager } from '../services/CharacterManager';
 
 export const TIMELINE_VIEW_TYPE = 'wn-timeline-view';
 
@@ -29,18 +31,32 @@ export type TimelineViewManager = Pick<
 >;
 
 export type TimelineViewSettings = TimelineFormSettings &
-	Pick<AccurateCountSettings, 'workspaceFolders' | 'loreFolderName' | 'foreshadowing' | 'novelInfo'>;
+	Pick<AccurateCountSettings, 'workspaceFolders' | 'loreFolderName' | 'foreshadowing' | 'novelInfo' | 'enableMobileLorePopover' | 'lorePopoverCollapse'>;
 
 export type TimelineViewHomepageManager = Pick<HomepageManager, 'getNovelFolders'> & {
 	getHomepageFilePath(): string;
 };
 
+export type TimelineViewCharacterManager = Pick<
+	CharacterManager,
+	| 'getCharactersForBook'
+	| 'getCharacterFile'
+	| 'getLoreEntriesInFileOrder'
+	| 'findLoreFolder'
+	| 'createLoreEntry'
+	| 'getLoreContent'
+	| 'updateLoreContent'
+>;
+
 export interface TimelineViewPlugin
 	extends Omit<CurrentBookContextPlugin, 'settings' | 'homepageManager'>,
-		Omit<TimelineFormContext, 'settings' | 'homepageManager'> {
+		Omit<TimelineFormContext, 'settings' | 'homepageManager' | 'characterManager'>,
+		Omit<LoreBadgePlugin, 'app' | 'settings' | 'characterManager'> {
+	app: App;
 	settings: TimelineViewSettings;
 	homepageManager?: TimelineViewHomepageManager;
 	timelineManager: TimelineViewManager;
+	characterManager: TimelineViewCharacterManager;
 }
 
 /**
@@ -51,6 +67,7 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 	private manager!: TimelineViewManager;
 	private editingIndex: number = -1;
 	private filterType: string = 'all';
+	private selectedLores: Set<string> = new Set();
 	private isDescending: boolean = false;
 
 	constructor(leaf: WorkspaceLeaf, plugin: TimelineViewPlugin) {
@@ -66,10 +83,47 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 		return this.plugin.settings.timeline?.fileName || getDefaultFileName('timelineFileName');
 	}
 
+	async onOpen() {
+		await super.onOpen();
+		this.registerEvent(
+			this.app.workspace.on('timeline-filter-changed', (type: string) => {
+				if (this.filterType !== type) {
+					this.filterType = type;
+					void this.refresh();
+				}
+			})
+		);
+		this.registerEvent(
+			this.app.workspace.on('timeline-lore-filter-changed', (selectedLores: string[]) => {
+				const newSet = new Set(selectedLores);
+				let same = this.selectedLores.size === newSet.size;
+				if (same) {
+					for (const s of this.selectedLores) {
+						if (!newSet.has(s)) { same = false; break; }
+					}
+				}
+				if (!same) {
+					this.selectedLores = newSet;
+					void this.refresh();
+				}
+			})
+		);
+		this.registerEvent(
+			this.app.workspace.on('timeline-order-changed', (isDescending: boolean) => {
+				if (this.isDescending !== isDescending) {
+					this.isDescending = isDescending;
+					void this.refresh();
+				}
+			})
+		);
+	}
+
 	protected async onFolderChange() {
 		this.editingIndex = -1;
 		this.filterType = 'all';
+		this.selectedLores.clear();
 		this.app.workspace.trigger('timeline-filter-changed', 'all');
+		this.app.workspace.trigger('timeline-lore-filter-changed', []);
 		await this.refresh();
 	}
 
@@ -101,6 +155,18 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 		const fromSettings = this.plugin.settings.timeline?.defaultTypes || [];
 		const fromEntries = entries.map(e => e.type).filter(Boolean);
 		return [...new Set([...fromSettings, ...fromEntries])];
+	}
+
+	private getLoreFilterOptions(entries: TimelineEntry[]): string[] {
+		const lores: string[] = [];
+		for (const entry of entries) {
+			for (const lore of entry.lores || []) {
+				if (!lores.includes(lore)) {
+					lores.push(lore);
+				}
+			}
+		}
+		return lores;
 	}
 
 	async refresh() {
@@ -188,7 +254,7 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 			return;
 		}
 
-		const entries = this.manager.parseEntries(content);
+		const entries = this.manager.parseEntries(content, this.currentFolder);
 
 		// 类型筛选
 		const typeOptions = this.getTypeFilterOptions(entries);
@@ -213,10 +279,32 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 			});
 		}
 
+		// 设定多选筛选
+		const loreOptions = this.getLoreFilterOptions(entries);
+		if (loreOptions.length > 0) {
+			new MultiSelectFilterRow({
+				container: header,
+				cls: 'wn-timeline-view-filter-row wn-timeline-view-lore-filter-row',
+				buttonCls: 'wn-timeline-filter-btn',
+				allLabel: t('common.all-lore'),
+				options: loreOptions.map(lore => ({ value: lore, label: lore })),
+				selected: this.selectedLores,
+				onChange: (selected) => {
+					this.selectedLores = selected;
+					this.app.workspace.trigger('timeline-lore-filter-changed', Array.from(selected));
+					void this.refresh();
+				}
+			});
+		}
+
 		// 筛选后渲染
-		const filtered = this.filterType === 'all'
-			? entries
-			: entries.filter(e => e.type === this.filterType);
+		let filtered = entries;
+		if (this.filterType !== 'all') {
+			filtered = filtered.filter(e => e.type === this.filterType);
+		}
+		if (this.selectedLores.size > 0) {
+			filtered = filtered.filter(e => (e.lores || []).some(lore => this.selectedLores.has(lore)));
+		}
 
 		if (filtered.length === 0) {
 			container.createDiv({ cls: 'wn-timeline-view-empty' }).createEl('p', { text: t('common.no-matching-entries') });
@@ -441,6 +529,10 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 		if (entry.type) {
 			footer.createSpan({ text: entry.type, cls: 'wn-timeline-type-tag' });
 		}
+		if (entry.lores && entry.lores.length > 0) {
+			const loreContainer = footer.createSpan({ cls: 'wn-timeline-view-lore-badges' });
+			renderLoreBadges(loreContainer, entry.lores, this.currentFolder, this.plugin, true, 0);
+		}
 
 		// 操作按钮（悬停显示）
 		const actions = content.createDiv({ cls: 'wn-timeline-actions' });
@@ -463,220 +555,29 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 	}
 
 	private renderEditForm(container: HTMLElement, entry: TimelineEntry, index: number, allEntries: TimelineEntry[]) {
-		const form = container.createDiv({ cls: 'wn-timeline-edit-form' });
-
-		// 时间点
-		form.createEl('label', { text: t('modal.time-point'), cls: 'wn-timeline-form-label' });
-		const timeInput = form.createEl('input', { type: 'text', cls: 'wn-timeline-form-input' });
-		timeInput.value = entry.time;
-		timeInput.placeholder = t('modal.time-point-desc');
-
-		// 事件列表标题
-		form.createEl('label', { text: t('modal.event-list'), cls: 'wn-timeline-form-label' });
-		form.createDiv({ cls: 'wn-timeline-form-hint', text: t('modal.event-list-hint') })
-
-
-		// 事件列表容器
-		const eventsContainer = form.createDiv();
-		eventsContainer.setCssProps({ marginBottom: '12px' });
-		const targetFiles = ChapterSorter.getAllChapters(this.app, this.plugin, this.currentFolder);
-		const chapterOptions = targetFiles.map(file => {
-			const value = ChapterSorter.generateChapterLinktext(
-				this.app,
-				this.plugin,
-				file,
-				this.currentFolder,
-				{ eligibleChapters: targetFiles }
-			);
-			const volume = getFileVolumePath(file, this.currentFolder);
-			return { file, value, label: volume ? `${file.basename} (${volume})` : file.basename };
-		});
-
-		// 获取已有的事件列表
-		const existingItems = entry.items && entry.items.length > 0 ? entry.items : [{ description: entry.description, chapter: entry.chapter }];
-
-		// 创建单个事件编辑块
-		const createEventBlock = (item: { description: string; chapter: string } = { description: '', chapter: '' }) => {
-			const eventBlock = eventsContainer.createDiv({ cls: 'wn-timeline-event-block' });
-			eventBlock.addClass('webnovel-modal-event-block');
-			// 事件描述
-			eventBlock.createEl('label', { text: t('modal.event-desc-label'), cls: 'wn-timeline-form-label' });
-			const descInput = eventBlock.createEl('textarea', { cls: 'wn-timeline-form-textarea' });
-			descInput.value = item.description;
-			descInput.placeholder = t('modal.event-desc-placeholder');
-			descInput.addClass('webnovel-tl-desc-input-edit');
-			// 关联章节
-			eventBlock.createEl('label', { text: t('modal.related-chapters'), cls: 'wn-timeline-form-label' });
-			const chapterListContainer = eventBlock.createDiv();
-			chapterListContainer.setCssProps({ marginBottom: '8px' });
-			// 解析已有的章节
-			const existingChapters = item.chapter ? item.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean) : [];
-
-			// 创建章节选择行
-			const createChapterRow = (initialValue: string = '') => {
-				const row = chapterListContainer.createDiv();
-				row.addClass('webnovel-tl-chapter-row-sm');
-				const select = row.createEl('select', { cls: 'wn-timeline-form-input' });
-				select.setCssProps({ flex: '1' });
-				select.createEl('option', { value: '', text: t('modal.select-chapter') });
-				const initialFile = initialValue
-					? ChapterSorter.resolveChapterFile(this.app, this.plugin, this.currentFolder, initialValue, { eligibleChapters: targetFiles })
-					: null;
-				chapterOptions.forEach(chapter => {
-					const option = select.createEl('option', { value: chapter.value, text: chapter.label });
-					if (chapter.value === initialValue || initialFile?.path === chapter.file.path) option.selected = true;
-				});
-
-				const removeBtn = row.createEl('button', { text: '−' });
-				removeBtn.addClass('webnovel-tl-remove-btn-sm');
-				removeBtn.onclick = () => {
-					row.remove();
-					if (chapterListContainer.children.length === 1) createChapterRow();
-				};
-
-				return { row, select };
-			};
-
-			// 初始化章节行
-			if (existingChapters.length > 0) {
-				existingChapters.forEach(chapter => createChapterRow(chapter));
-			} else {
-				createChapterRow();
-			}
-
-			// 添加章节按钮
-			const addChapterBtn = chapterListContainer.createEl('button', { text: t('modal.add-chapter') });
-			addChapterBtn.addClass('webnovel-tl-add-btn-sm');
-			addChapterBtn.onclick = () => {
-				const { row } = createChapterRow();
-				chapterListContainer.insertBefore(row, addChapterBtn);
-			};
-
-			// 删除事件按钮
-			const deleteEventBtn = eventBlock.createEl('button', { text: t('modal.delete-this-event') });
-			deleteEventBtn.addClass('webnovel-tl-delete-event-btn');
-			deleteEventBtn.onclick = () => {
-				eventBlock.remove();
-				// 至少保留一个事件块
-				if (eventsContainer.querySelectorAll('.webnovel-modal-event-block').length === 0) {
-					createEventBlock();
-				}
-			};
-
-			return { eventBlock, descInput, chapterListContainer };
-		};
-
-		// 初始化：为每个已有事件创建编辑块
-		existingItems.forEach(item => createEventBlock(item));
-
-		// 添加事件按钮
-		const addEventBtn = eventsContainer.createEl('button', { text: t('modal.add-event') });
-		addEventBtn.addClass('webnovel-tl-add-event-btn');
-		addEventBtn.onclick = () => {
-			const { eventBlock } = createEventBlock();
-			eventsContainer.insertBefore(eventBlock, addEventBtn);
-		};
-
-		// 类型
-		form.createEl('label', { text: t('modal.type-optional'), cls: 'wn-timeline-form-label' });
-		const typeSelect = form.createEl('select', { cls: 'wn-timeline-form-input' });
-
-		typeSelect.createEl('option', { value: '', text: t('modal.select-type') });
-		// 合并全局默认类型 + 文件已有类型
-		const editTypeOptions = this.getTypeFilterOptions(allEntries);
-		editTypeOptions.forEach((type: string) => {
-			const option = typeSelect.createEl('option', { value: type, text: type });
-			if (type === entry.type) option.selected = true;
-		});
-		typeSelect.createEl('option', { value: '__custom__', text: t('modal.custom-type') });
-
-		const customInput = form.createEl('input', { type: 'text', cls: 'wn-timeline-form-input' });
-		customInput.placeholder = t('modal.custom-type-placeholder');
-		customInput.addClass('wn-timeline-custom-type-input');
-		customInput.hidden = true;
-		if (entry.type && !editTypeOptions.includes(entry.type)) {
-			typeSelect.value = '__custom__';
-			customInput.value = entry.type;
-			customInput.hidden = false;
-		}
-
-		typeSelect.addEventListener('change', () => {
-			if (typeSelect.value === '__custom__') {
-				customInput.hidden = false;
-				customInput.focus();
-			} else {
-				customInput.hidden = true;
+		const component = new TimelineFormComponent({
+			container,
+			app: this.app,
+			context: this.plugin,
+			folderPath: this.currentFolder,
+			initialEntry: entry,
+			typeOptions: this.getTypeFilterOptions(allEntries),
+			submitText: t('common.save'),
+			onCancel: () => {
+				this.editingIndex = -1;
+				void this.refresh();
+			},
+			onSubmit: (updated: TimelineEntry) => {
+				void (async () => {
+					try {
+						const newContent = await this.manager.updateEntry(index, updated, this.currentFolder);
+						this.editingIndex = -1;
+						await this.renderFromContent(newContent);
+					} catch (e) { console.error(e); }
+				})();
 			}
 		});
-
-		// 按钮
-		const btnRow = form.createDiv({ cls: 'wn-timeline-form-btns' });
-		const cancelBtn = btnRow.createEl('button', { text: t('common.cancel'), cls: 'wn-timeline-action-btn' });
-		cancelBtn.onclick = () => {
-			this.editingIndex = -1;
-			void this.refresh();
-		};
-		const saveBtn = btnRow.createEl('button', { text: t('common.save'), cls: 'wn-timeline-action-btn mod-cta' });
-		saveBtn.onclick = () => {
-			void (async () => {
-				try {
-					// 收集所有事件
-					const items: { description: string; chapter: string }[] = [];
-					const eventBlocks = eventsContainer.querySelectorAll('.webnovel-modal-event-block');
-
-					eventBlocks.forEach((block) => {
-						const htmlBlock = block as HTMLElement;
-						const descInput = htmlBlock.querySelector('textarea') as HTMLTextAreaElement;
-						const description = descInput.value.trim();
-
-						// 收集该事件的所有章节
-						const chapters: string[] = [];
-						const selects = htmlBlock.querySelectorAll('select');
-						selects.forEach((select: HTMLSelectElement) => {
-							const value = select.value.trim();
-							if (value) chapters.push(value);
-						});
-						const chapter = [...new Set(chapters)].join(', '); // 去重
-
-						// 只添加有描述或有章节的事件
-						if (description || chapter) {
-							items.push({ description, chapter });
-						}
-					});
-
-					// 如果没有任何事件，至少保留一个空事件
-					if (items.length === 0) {
-						items.push({ description: '', chapter: '' });
-					}
-
-					// 获取类型值
-					let typeValue = typeSelect.value;
-					if (typeValue === '__custom__') {
-						typeValue = customInput.value.trim();
-					}
-					const updated: TimelineEntry = {
-						time: timeInput.value.trim(),
-						description: items.map(it => it.description).filter(Boolean).join('\n'),
-						chapter: items.map(it => it.chapter).filter(Boolean).join(', '),
-						type: typeValue,
-						rawBlock: entry.rawBlock,
-						items: items,
-					};
-
-					if (!updated.time) {
-						new Notice(t('modal.please-fill-time-point'));
-						timeInput.focus();
-						return;
-					}
-
-					const newContent = await this.manager.updateEntry(index, updated, this.currentFolder);
-					this.editingIndex = -1;
-					await this.renderFromContent(newContent);
-				} catch (e) { console.error(e); }
-			})();
-		};
-
-		window.setTimeout(() => timeInput.focus(), 50);
+		component.render();
 	}
 
 	// ─── 文件操作 ───────────────────────────────────────

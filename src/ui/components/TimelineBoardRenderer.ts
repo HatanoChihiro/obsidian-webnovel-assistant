@@ -1,7 +1,7 @@
 import type { App, Component } from 'obsidian';
 import { setIcon, TFile, Notice, Modal } from 'obsidian';
 import type { ParsedForeshadowingEntry } from '../../types/foreshadowing';
-import type { TimelineManager } from '../../services/TimelineManager';
+import type { TimelineItem, TimelineManager } from '../../services/TimelineManager';
 import { CorkboardGridRenderer } from './CorkboardGridRenderer';
 import { TimelineAddModal } from '../TimelineAddModal';
 import { t } from '../../i18n';
@@ -14,6 +14,7 @@ import type { ChapterCardPlugin } from './ChapterCard';
 import type { AccurateCountSettings } from '../../types/settings';
 import { createCardImportanceButton } from './CardImportanceButton';
 import { setupStickyNoteParagraphEditor, getStickyNoteEditorContent, setStickyNoteEditorContent } from './StickyNoteParagraphEditor';
+import { renderLoreBadges } from '../../utils/badge';
 
 class ConfirmDeleteEventModal extends Modal {
 	constructor(app: App, private title: string, private onConfirm: () => void) {
@@ -63,14 +64,28 @@ export type TimelineBoardTimelineManager = Pick<
 	| 'appendEntry'
 >;
 
+import type { CharacterManager } from '../../services/CharacterManager';
+
+export type TimelineBoardCharacterManager = Pick<
+	CharacterManager,
+	| 'getCharacterFile'
+	| 'findLoreFolder'
+	| 'createLoreEntry'
+	| 'getLoreContent'
+	| 'updateLoreContent'
+	| 'getCharactersForBook'
+	| 'getLoreEntriesInFileOrder'
+>;
+
 export type TimelineBoardSettings = TimelineFormSettings &
 	Pick<AccurateCountSettings, 'enableMobileLorePopover' | 'lorePopoverCollapse' | 'enableSmartChapterSort' | 'customSortOrder'>;
 
 export interface TimelineBoardPlugin
-	extends Omit<TimelineFormContext, 'settings'>,
-		Omit<ChapterCardPlugin, 'settings'> {
+	extends Omit<TimelineFormContext, 'settings' | 'characterManager'>,
+		Omit<ChapterCardPlugin, 'settings' | 'characterManager'> {
 	settings: TimelineBoardSettings;
 	timelineManager: TimelineBoardTimelineManager;
+	characterManager: TimelineBoardCharacterManager;
 }
 
 export interface TimelineBoardOptions {
@@ -82,6 +97,7 @@ export interface TimelineBoardOptions {
 	foreshadowingMap: Map<string, ParsedForeshadowingEntry[]>;
 	currentBookPath: string;
 	currentTimelineFilter: string;
+	currentTimelineLoreFilter?: string[] | Set<string>;
 	onSaveStateChange: (isSaving: boolean) => void;
 	reloadBoard: () => void;
 	getChapterEvents: (file: TFile, fallbackMap: Map<string, string[]>) => string[];
@@ -102,6 +118,7 @@ export class TimelineBoardRenderer {
 			foreshadowingMap,
 			currentBookPath,
 			currentTimelineFilter,
+			currentTimelineLoreFilter,
 			onSaveStateChange,
 			reloadBoard,
 			getChapterEvents,
@@ -123,6 +140,16 @@ export class TimelineBoardRenderer {
 
 		if (entries && currentTimelineFilter && currentTimelineFilter !== 'all') {
 			entries = entries.filter(e => e.type === currentTimelineFilter);
+		}
+
+		const loreSet = currentTimelineLoreFilter instanceof Set
+			? currentTimelineLoreFilter
+			: (currentTimelineLoreFilter && (Array.isArray(currentTimelineLoreFilter) ? currentTimelineLoreFilter.length > 0 : true)
+				? new Set(currentTimelineLoreFilter)
+				: null);
+
+		if (entries && loreSet && loreSet.size > 0) {
+			entries = entries.filter(e => (e.lores || []).some(lore => loreSet.has(lore)));
 		}
 
 		const displayEntries = (entries && isDescending) ? [...entries].reverse() : (entries ? [...entries] : []);
@@ -399,6 +426,10 @@ export class TimelineBoardRenderer {
 				if (entry.type) {
 					titleDiv.createSpan({ text: entry.type, cls: 'wn-timeline-type-badge' });
 				}
+				if (entry.lores && entry.lores.length > 0) {
+					const loreContainer = titleDiv.createSpan({ cls: 'wn-timeline-node-lore-badges' });
+					renderLoreBadges(loreContainer, entry.lores, bookFolder, plugin, true, 0);
+				}
 				const timeSpan = titleDiv.createSpan({ cls: 'wn-timeline-node-time-text', text: entry.time });
 				timeSpan.title = t('common.jump-to-entry');
 				timeSpan.onclick = async (e) => {
@@ -426,9 +457,13 @@ export class TimelineBoardRenderer {
 				};
 
 				// 2. Render each item row (sub-lane)
-				const items = entry.items && entry.items.length > 0 ? entry.items : [{ description: entry.description, chapter: entry.chapter }];
+				const items: TimelineItem[] = entry.items && entry.items.length > 0
+					? entry.items
+					: [{ description: entry.description, chapter: entry.chapter }];
+				const visibleItemIndices = items.map((_item, index) => index);
 
-				for (let itemIdx = 0; itemIdx < items.length; itemIdx++) {
+				for (let visibleIndex = 0; visibleIndex < visibleItemIndices.length; visibleIndex++) {
+					const itemIdx = visibleItemIndices[visibleIndex];
 					const itemRow = nodeDiv.createDiv('wn-timeline-item-row');
 					itemRow.setAttribute('draggable', 'true');
 					itemRow.addEventListener('dragstart', (e) => {
@@ -598,11 +633,12 @@ export class TimelineBoardRenderer {
 					itemRow.setAttribute('data-time', entry.time);
 					itemRow.setAttribute('data-item-index', String(itemIdx));
 					// Render sub-gap (gap between events in the same time node)
-					if (itemIdx < items.length - 1) {
-						const subGapKey = `GAP|${entry.time}|${itemIdx}|${itemIdx + 1}`;
+					if (visibleIndex < visibleItemIndices.length - 1) {
+						const nextItemIdx = visibleItemIndices[visibleIndex + 1];
+						const subGapKey = `GAP|${entry.time}|${itemIdx}|${nextItemIdx}`;
 						const subGapDiv = nodeDiv.createDiv('wn-timeline-gap wn-timeline-sub-gap');
 						const subCardsContainer = subGapDiv.createDiv('wn-timeline-cards-container');
-						setupDropzone(subGapDiv, [{ time: entry.time, itemIndex: itemIdx }, { time: entry.time, itemIndex: itemIdx + 1 }]);
+						setupDropzone(subGapDiv, [{ time: entry.time, itemIndex: itemIdx }, { time: entry.time, itemIndex: nextItemIdx }]);
 
 						const filesInSubGap = fileGroups.get(subGapKey) || [];
 						CorkboardGridRenderer.render({

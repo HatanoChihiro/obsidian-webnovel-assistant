@@ -19,6 +19,7 @@ export class TimelineAddModal extends Modal {
 	private context: TimelineFormContext;
 	private typeOptions: string[];
 	private origin?: string;
+	private existingNodes: string[];
 
 	constructor(
 		app: App,
@@ -30,7 +31,8 @@ export class TimelineAddModal extends Modal {
 		returnFullEntry: boolean = true,
 		typeOptions: string[] = [],
 		origin?: string,
-		title?: string
+		title?: string,
+		existingNodes: string[] = []
 	) {
 		super(app);
 		this.context = context;
@@ -42,6 +44,7 @@ export class TimelineAddModal extends Modal {
 		this.typeOptions = typeOptions;
 		this.origin = origin;
 		this.title = title || t('modal.add-to-timeline');
+		this.existingNodes = existingNodes;
 	}
 
 	private title: string;
@@ -62,6 +65,7 @@ export class TimelineAddModal extends Modal {
 				origin: this.origin
 			},
 			typeOptions: this.typeOptions,
+			existingNodes: this.existingNodes,
 			onCancel: () => this.close(),
 			onSubmit: (entry: TimelineEntry) => {
 				this.onSubmit(entry);

@@ -489,8 +489,22 @@ export class CharacterManager {
 		}
 	}
 
+	private getBookCache(bookPath: string): Map<string, LoreEntry> | undefined {
+		const norm = (!bookPath || bookPath === '/') ? '/' : bookPath.replace(/^\/+|\/+$/g, '');
+		return norm === '/'
+			? this.characterCache.get('/') ?? this.characterCache.get('')
+			: this.characterCache.get(norm);
+	}
+
+	private getLowerMap(bookPath: string): Map<string, string> | undefined {
+		const norm = (!bookPath || bookPath === '/') ? '/' : bookPath.replace(/^\/+|\/+$/g, '');
+		return norm === '/'
+			? this.lowercaseKeyMap.get('/') ?? this.lowercaseKeyMap.get('')
+			: this.lowercaseKeyMap.get(norm);
+	}
+
 	public getCharactersForBook(bookPath: string): string[] {
-		const bookCache = this.characterCache.get(bookPath);
+		const bookCache = this.getBookCache(bookPath);
 		if (!bookCache) return [];
 		// 按照长度降序排序，避免 "张三" 和 "张三丰" 匹配时被 "张三" 抢占
 		return Array.from(bookCache.keys()).sort((a, b) => b.length - a.length);
@@ -500,7 +514,7 @@ export class CharacterManager {
 	 * 获取指定作品（bookPath）下的所有设定条目，保持严格的文件写入顺序（因为 Map 按照插入顺序迭代，而我们在初始化时是按文件自上而下插入的）
 	 */
 	public getLoreEntriesInFileOrder(bookPath: string): LoreEntry[] {
-		const bookCache = this.characterCache.get(bookPath);
+		const bookCache = this.getBookCache(bookPath);
 		if (!bookCache) return [];
 		
 		const entries: LoreEntry[] = [];
@@ -520,14 +534,14 @@ export class CharacterManager {
 	 * 获取指定作品下，指定设定名对应的缓存条目
 	 */
 	public getCharacterFile(bookPath: string, characterName: string): LoreEntry | null {
-		const bookCache = this.characterCache.get(bookPath);
+		const bookCache = this.getBookCache(bookPath);
 		if (!bookCache) return null;
 		
 		const entry = bookCache.get(characterName);
 		if (entry) return entry;
 		
 		// Fallback: 忽略大小写查找 (O(1))
-		const lowerMap = this.lowercaseKeyMap.get(bookPath);
+		const lowerMap = this.getLowerMap(bookPath);
 		if (lowerMap) {
 			const originalKey = lowerMap.get(characterName.toLowerCase());
 			if (originalKey) {
@@ -974,8 +988,9 @@ export class CharacterManager {
 	 */
 	public findLoreFolder(bookPath: string): TFolder | null {
 		const candidates = this.getLoreCandidates();
+		const norm = (!bookPath || bookPath === '/') ? '' : bookPath.replace(/^\/+|\/+$/g, '');
 		for (const loreFolderName of candidates) {
-			const lorePath = bookPath === '/' ? loreFolderName : bookPath + '/' + loreFolderName;
+			const lorePath = norm ? `${norm}/${loreFolderName}` : loreFolderName;
 			const folder = this.app.vault.getAbstractFileByPath(lorePath);
 			if (folder instanceof TFolder) return folder;
 		}
@@ -1018,7 +1033,8 @@ export class CharacterManager {
 	): Promise<boolean> {
 		let loreFolder = this.findLoreFolder(bookPath);
 		const currentLoreName = this.plugin.settings.loreFolderName || getDefaultFileName('loreFolderName');
-		const expectedLorePath = bookPath === '/' ? currentLoreName : bookPath + '/' + currentLoreName;
+		const norm = (!bookPath || bookPath === '/') ? '' : bookPath.replace(/^\/+|\/+$/g, '');
+		const expectedLorePath = norm ? `${norm}/${currentLoreName}` : currentLoreName;
 
 		if (!loreFolder) {
 			try {

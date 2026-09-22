@@ -21,7 +21,7 @@ export interface ForeshadowingBoardPlugin extends ForeshadowingRecoveryModalPlug
 
 export interface ForeshadowingFilterOptions {
 	query?: string;
-	tagFilter?: string;
+	selectedTags?: readonly string[] | ReadonlySet<string>;
 	onlyImportant?: boolean;
 }
 
@@ -33,7 +33,7 @@ export interface ForeshadowingBoardOptions {
 	entries: ParsedForeshadowingEntry[];
 	foreshadowingFile: TFile | null;
 	query: string;
-	currentForeshadowingTagFilter?: string;
+	selectedTags?: readonly string[] | ReadonlySet<string>;
 	onlyImportant?: boolean;
 	currentBookPath: string;
 	reloadBoard: () => void;
@@ -44,13 +44,15 @@ export class ForeshadowingBoardRenderer {
 		entries: ParsedForeshadowingEntry[],
 		options: ForeshadowingFilterOptions = {}
 	): ParsedForeshadowingEntry[] {
-		const { query = '', tagFilter, onlyImportant = false } = options;
+		const { query = '', selectedTags, onlyImportant = false } = options;
 		const filterQuery = query.trim().toLowerCase();
+		const tags = selectedTags instanceof Set ? [...selectedTags] : [...(selectedTags ?? [])];
+
 		return entries.filter((entry) => {
 			if (onlyImportant && !entry.important) {
 				return false;
 			}
-			if (tagFilter && tagFilter !== 'all' && !entry.tags.includes(tagFilter)) {
+			if (tags.length > 0 && !entry.tags.some(t => tags.includes(t))) {
 				return false;
 			}
 			if (!filterQuery) return true;
@@ -72,12 +74,13 @@ export class ForeshadowingBoardRenderer {
 	}
 
 	static async render(options: ForeshadowingBoardOptions): Promise<void> {
-		const { app, plugin, container, entries, foreshadowingFile, query, currentForeshadowingTagFilter, onlyImportant, currentBookPath, reloadBoard } = options;
+		const { app, plugin, container, entries, foreshadowingFile, query, selectedTags, onlyImportant, currentBookPath, reloadBoard } = options;
 
 		const boardContainer = container.createDiv('wn-foreshadowing-board-container');
 
-		const tagFilter = currentForeshadowingTagFilter;
-		const hasActiveFilter = Boolean(query.trim().length > 0 || (tagFilter && tagFilter !== 'all') || onlyImportant);
+		const tags = selectedTags instanceof Set ? [...selectedTags] : [...(selectedTags ?? [])];
+
+		const hasActiveFilter = Boolean(query.trim().length > 0 || tags.length > 0 || onlyImportant);
 		if (!foreshadowingFile || entries.length === 0) {
 			boardContainer.createDiv({
 				cls: 'wn-corkboard-empty-msg',
@@ -89,7 +92,7 @@ export class ForeshadowingBoardRenderer {
 		// 按搜索关键词、侧面板选中的标签和重要标记过滤
 		const filteredEntries = ForeshadowingBoardRenderer.filterEntries(entries, {
 			query,
-			tagFilter,
+			selectedTags: tags,
 			onlyImportant
 		});
 

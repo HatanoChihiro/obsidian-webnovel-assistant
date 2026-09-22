@@ -30,6 +30,7 @@ export class ForeshadowingInputModal extends Modal {
 	private selectedContent: string;
 	private onSubmit: (description: string, tags: string[]) => void;
 	private extraTags: string[];
+	private existingDescriptions: string[];
 
 	private descriptionEl!: HTMLTextAreaElement;
 	private tagsEl!: HTMLInputElement;
@@ -40,7 +41,8 @@ export class ForeshadowingInputModal extends Modal {
 		sourceFileName: string,
 		selectedContent: string,
 		onSubmit: (description: string, tags: string[]) => void,
-		extraTags: string[] = []
+		extraTags: string[] = [],
+		existingDescriptions: string[] = []
 	) {
 		super(app);
 		this.plugin = plugin;
@@ -48,6 +50,7 @@ export class ForeshadowingInputModal extends Modal {
 		this.selectedContent = selectedContent;
 		this.onSubmit = onSubmit;
 		this.extraTags = extraTags;
+		this.existingDescriptions = existingDescriptions;
 	}
 
 	onOpen() {
@@ -71,6 +74,42 @@ export class ForeshadowingInputModal extends Modal {
 			cls: 'foreshadowing-preview'
 		});
 
+		// 已有伏笔说明（可选选择器）
+		const uniqueDescriptions: string[] = [];
+		if (this.existingDescriptions && this.existingDescriptions.length > 0) {
+			const seenDesc = new Set<string>();
+			for (const desc of this.existingDescriptions) {
+				const trimmed = typeof desc === 'string' ? desc.trim() : '';
+				if (trimmed && !seenDesc.has(trimmed)) {
+					seenDesc.add(trimmed);
+					uniqueDescriptions.push(trimmed);
+				}
+			}
+		}
+
+		let descSelect: HTMLSelectElement | null = null;
+		if (uniqueDescriptions.length > 0) {
+			new Setting(contentEl)
+				.setName(t('modal.existing-foreshadowing-optional'))
+				.setDesc(t('modal.existing-foreshadowing-desc'));
+			descSelect = contentEl.createEl('select', { cls: 'foreshadowing-select-input wn-foreshadowing-desc-select' });
+			descSelect.addClass('webnovel-modal-input');
+			descSelect.setAttr('aria-label', t('modal.existing-foreshadowing-optional'));
+			descSelect.createEl('option', { value: '', text: t('modal.select-existing-foreshadowing') });
+			for (const desc of uniqueDescriptions) {
+				const label = desc.length > 50 ? desc.slice(0, 50) + '…' : desc;
+				descSelect.createEl('option', { value: desc, text: label });
+			}
+			descSelect.addEventListener('change', () => {
+				if (descSelect?.value) {
+					this.descriptionEl.value = descSelect.value;
+				} else {
+					this.descriptionEl.value = '';
+				}
+				this.descriptionEl.removeClass('wn-border-error');
+			});
+		}
+
 		// 补充说明（必填）
 		new Setting(contentEl)
 			.setName(t('modal.supplementary-note'))
@@ -81,6 +120,17 @@ export class ForeshadowingInputModal extends Modal {
 			placeholder: t('modal.supplementary-note-placeholder'),
 		});
 		this.descriptionEl.addClass('webnovel-modal-textarea');
+
+		if (descSelect) {
+			this.descriptionEl.addEventListener('input', () => {
+				const val = this.descriptionEl.value.trim();
+				if (uniqueDescriptions.includes(val)) {
+					descSelect.value = val;
+				} else {
+					descSelect.value = '';
+				}
+			});
+		}
 		// 标签（可选）
 		new Setting(contentEl)
 			.setName(t('modal.tags-optional'))

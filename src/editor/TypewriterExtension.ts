@@ -19,6 +19,7 @@ const POINTER_SELECTION = /^(select\.pointer)$/;
 const sizerPadding = new WeakMap<HTMLElement, {
 	top: string; bottom: string; topPriority: string; bottomPriority: string;
 	appliedTop: string; appliedBottom: string;
+	appliedTopPriority: string; appliedBottomPriority: string;
 }>();
 
 function isUserEventAllowed(event: string): boolean {
@@ -172,18 +173,35 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 					}
 
 					if (sizer) {
-						if (!sizerPadding.has(sizer)) {
-							sizerPadding.set(sizer, {
-								top: sizer.style.paddingTop, bottom: sizer.style.paddingBottom,
-								topPriority: sizer.style.getPropertyPriority?.('padding-top') ?? '',
-								bottomPriority: sizer.style.getPropertyPriority?.('padding-bottom') ?? '',
-								appliedTop: targetTop, appliedBottom: targetBottom
-							});
+						let owned = sizerPadding.get(sizer);
+						const currentTop = sizer.style?.paddingTop ?? '';
+						const currentTopPriority = sizer.style?.getPropertyPriority?.('padding-top') ?? '';
+						const currentBottom = sizer.style?.paddingBottom ?? '';
+						const currentBottomPriority = sizer.style?.getPropertyPriority?.('padding-bottom') ?? '';
+
+						if (!owned) {
+							owned = {
+								top: currentTop, bottom: currentBottom,
+								topPriority: currentTopPriority, bottomPriority: currentBottomPriority,
+								appliedTop: targetTop, appliedBottom: targetBottom,
+								appliedTopPriority: '', appliedBottomPriority: ''
+							};
+							sizerPadding.set(sizer, owned);
+						} else {
+							if (currentTop !== owned.appliedTop || currentTopPriority !== owned.appliedTopPriority) {
+								owned.top = currentTop;
+								owned.topPriority = currentTopPriority;
+							}
+							if (currentBottom !== owned.appliedBottom || currentBottomPriority !== owned.appliedBottomPriority) {
+								owned.bottom = currentBottom;
+								owned.bottomPriority = currentBottomPriority;
+							}
 						}
-						const owned = sizerPadding.get(sizer)!;
-						owned.appliedTop = targetTop;
-						owned.appliedBottom = targetBottom;
-						if (sizer.style?.paddingTop !== targetTop) {
+
+						if (sizer.style?.paddingTop !== targetTop || currentTopPriority !== '') {
+							if (currentTopPriority !== '') {
+								sizer.style?.removeProperty?.('padding-top');
+							}
 							if (typeof sizer.setCssStyles === 'function') {
 								sizer.setCssStyles({ paddingTop: targetTop });
 							} else if (typeof sizer.style?.setProperty === 'function') {
@@ -193,7 +211,10 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 							}
 							spacerChanged = true;
 						}
-						if (sizer.style?.paddingBottom !== targetBottom) {
+						if (sizer.style?.paddingBottom !== targetBottom || currentBottomPriority !== '') {
+							if (currentBottomPriority !== '') {
+								sizer.style?.removeProperty?.('padding-bottom');
+							}
 							if (typeof sizer.setCssStyles === 'function') {
 								sizer.setCssStyles({ paddingBottom: targetBottom });
 							} else if (typeof sizer.style?.setProperty === 'function') {
@@ -203,6 +224,10 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 							}
 							spacerChanged = true;
 						}
+						owned.appliedTop = targetTop;
+						owned.appliedTopPriority = sizer.style?.getPropertyPriority?.('padding-top') ?? '';
+						owned.appliedBottom = targetBottom;
+						owned.appliedBottomPriority = sizer.style?.getPropertyPriority?.('padding-bottom') ?? '';
 					}
 				}
 			} else {
@@ -221,11 +246,12 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 				const owned = sizer && sizerPadding.get(sizer);
 				if (sizer && owned) {
 					// 仅恢复本扩展接管且仍与最近设置值一致的留白，避免覆盖其他组件后续的修改。
-					for (const [key, property, original, priority, applied] of [
-						['paddingTop', 'padding-top', owned.top, owned.topPriority, owned.appliedTop],
-						['paddingBottom', 'padding-bottom', owned.bottom, owned.bottomPriority, owned.appliedBottom]
+					for (const [key, property, original, priority, applied, appliedPriority] of [
+						['paddingTop', 'padding-top', owned.top, owned.topPriority, owned.appliedTop, owned.appliedTopPriority],
+						['paddingBottom', 'padding-bottom', owned.bottom, owned.bottomPriority, owned.appliedBottom, owned.appliedBottomPriority]
 					] as const) {
-						if (sizer.style[key] !== applied) continue;
+						const currentPriority = sizer.style?.getPropertyPriority?.(property) ?? '';
+						if (sizer.style[key] !== applied || currentPriority !== appliedPriority) continue;
 						if (original && typeof sizer.style.setProperty === 'function') {
 							sizer.style.setProperty(property, original, priority);
 						} else {

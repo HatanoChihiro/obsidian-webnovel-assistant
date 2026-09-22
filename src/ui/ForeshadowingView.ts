@@ -11,6 +11,7 @@ import { openFileAndFocus, smartLocateAndHighlight, getLeafForFileNavigation } f
 import type { ChapterSorterSettings } from '../services/ChapterSorter';
 import { ChapterSorter } from '../services/ChapterSorter';
 import type { CurrentBookContextPlugin } from '../utils/path';
+import { MultiSelectFilterRow } from './components/MultiSelectFilterRow';
 
 import type { AccurateCountSettings } from '../types/settings';
 import type { HomepageManager } from '../services/HomepageManager';
@@ -51,7 +52,7 @@ export interface ForeshadowingViewPlugin
  */
 export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 	private filterStatus: 'all' | ForeshadowingStatus = 'all';
-	private filterTag: string = 'all';
+	private selectedTags: Set<string> = new Set();
 	private pendingRefreshTimer: number | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: ForeshadowingViewPlugin) {
@@ -67,8 +68,8 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 	}
 
 	protected async onFolderChange() {
-		this.filterTag = 'all';
-		this.app.workspace.trigger('foreshadowing-filter-changed', 'all');
+		this.selectedTags.clear();
+		this.app.workspace.trigger('foreshadowing-filter-changed', []);
 		await super.onFolderChange();
 	}
 
@@ -127,32 +128,28 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 			return;
 		}
 
-		// 标签筛选行
+		// 标签筛选行（多选）
 		const tagOptions = this.getTagFilterOptions(entries);
 		if (tagOptions.length > 0) {
-			const tagRow = header.createDiv({ cls: 'foreshadowing-view-filter-row foreshadowing-view-tag-filter-row' });
-			const allTagBtn = tagRow.createEl('button', { text: t('common.all-tags'), cls: 'foreshadowing-filter-btn' });
-			if (this.filterTag === 'all') allTagBtn.addClass('is-active');
-			allTagBtn.onclick = () => {
-				this.filterTag = 'all';
-				this.app.workspace.trigger('foreshadowing-filter-changed', 'all');
-				void this.refresh();
-			};
-			tagOptions.forEach(tag => {
-				const btn = tagRow.createEl('button', { text: `#${tag}`, cls: 'foreshadowing-filter-btn' });
-				if (this.filterTag === tag) btn.addClass('is-active');
-				btn.onclick = () => {
-					this.filterTag = tag;
-					this.app.workspace.trigger('foreshadowing-filter-changed', tag);
+			new MultiSelectFilterRow({
+				container: header,
+				cls: 'foreshadowing-view-filter-row foreshadowing-view-tag-filter-row',
+				buttonCls: 'foreshadowing-filter-btn',
+				allLabel: t('common.all-tags'),
+				options: tagOptions.map(tag => ({ value: tag, label: `#${tag}` })),
+				selected: this.selectedTags,
+				onChange: (selected) => {
+					this.selectedTags = selected;
+					this.app.workspace.trigger('foreshadowing-filter-changed', Array.from(selected));
 					void this.refresh();
-				};
+				}
 			});
 		}
 
 		// 筛选
 		let filtered = entries;
 		if (this.filterStatus !== 'all') filtered = filtered.filter(e => e.status === this.filterStatus);
-		if (this.filterTag !== 'all') filtered = filtered.filter(e => e.tags.includes(this.filterTag));
+		if (this.selectedTags.size > 0) filtered = filtered.filter(e => e.tags.some(tag => this.selectedTags.has(tag)));
 
 		if (filtered.length === 0) {
 			container.createDiv({ cls: 'foreshadowing-view-empty', text: t('common.no-matching-foreshadowing') });

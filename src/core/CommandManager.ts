@@ -449,24 +449,30 @@ export class CommandManager {
 
 				if (fm.foreshadowingFileExists(file)) {
 					void (async () => {
+						let extraTags: string[] = [];
+						let existingDescriptions: string[] = [];
 						try {
-							const extraTags = await fm.getExistingTags(file);
-							new ForeshadowingInputModal(this.plugin.app, this.plugin, file.basename, initialText, submitCallback, extraTags).open();
+							extraTags = await fm.getExistingTags(file);
+							existingDescriptions = await fm.getExistingDescriptions(file);
 						} catch (err) {
-							console.error('[CommandManager] getExistingTags failed:', err);
+							console.error('[CommandManager] load existing tags/descriptions failed:', err);
 						}
+						new ForeshadowingInputModal(this.plugin.app, this.plugin, file.basename, initialText, submitCallback, extraTags, existingDescriptions).open();
 					})();
 				} else {
 					const fileName = this.plugin.settings.foreshadowing?.fileName || getDefaultFileName('foreshadowingFileName');
 					const folderPath = findBookRoot(this.plugin.app, this.plugin, file) || '';
 					new ConfirmCreateForeshadowingFileModal(this.plugin.app, fileName, folderPath, () => {
 						void (async () => {
+							let extraTags: string[] = [];
+							let existingDescriptions: string[] = [];
 							try {
-								const extraTags = await fm.getExistingTags(file);
-								new ForeshadowingInputModal(this.plugin.app, this.plugin, file.basename, initialText, submitCallback, extraTags).open();
+								extraTags = await fm.getExistingTags(file);
+								existingDescriptions = await fm.getExistingDescriptions(file);
 							} catch (err) {
-								console.error('[CommandManager] getExistingTags failed:', err);
+								console.error('[CommandManager] load existing tags/descriptions failed:', err);
 							}
+							new ForeshadowingInputModal(this.plugin.app, this.plugin, file.basename, initialText, submitCallback, extraTags, existingDescriptions).open();
 						})();
 					}).open();
 				}
@@ -552,16 +558,23 @@ export class CommandManager {
 					{ sourcePath: tlFile?.path, useAlias: false }
 				);
 
-				// 读取已有条目中的类型，传入 Modal 供下拉选择
+				// 读取已有条目中的类型与节点，传入 Modal 供下拉选择
 				void (async () => {
 					try {
 						const localTypes: string[] = [];
+						const existingNodes: string[] = [];
 						if (tlFile) {
 							const tlContent = await this.plugin.app.vault.read(tlFile);
-							const tlEntries = tlManager.parseEntries(tlContent);
+							const tlEntries = tlManager.parseEntries(tlContent, folderPath);
 							localTypes.push(
 								...new Set(tlEntries.map((e: TimelineEntry) => e.type).filter(Boolean))
 							);
+							for (const e of tlEntries) {
+								const t = typeof e.time === 'string' ? e.time.trim() : '';
+								if (t && !existingNodes.includes(t)) {
+									existingNodes.push(t);
+								}
+							}
 						}
 
 						new TimelineAddModal(
@@ -593,7 +606,11 @@ export class CommandManager {
 									}
 								}).catch(console.error);
 							},
-							false, localTypes, initialText
+							false,
+							localTypes,
+							initialText,
+							undefined,
+							existingNodes
 						).open();
 					} catch (err) {
 						console.error('[CommandManager] add-to-timeline failed:', err);

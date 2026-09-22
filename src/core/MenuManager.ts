@@ -111,12 +111,19 @@ export class MenuManager {
 								? ChapterSorter.generateChapterLinktext(this.plugin.app, this.plugin, view.file, folderPath, { sourcePath: tlFile?.path, useAlias: false })
 								: '';
 
-							// 读取已有条目中的类型，传入 Modal 供选择
+							// 读取已有条目中的类型与节点，传入 Modal 供选择
 							const localTypes: string[] = [];
+							const existingNodes: string[] = [];
 							if (tlFile) {
 								const tlContent = await this.plugin.app.vault.read(tlFile);
-								const tlEntries = tlManager.parseEntries(tlContent);
+								const tlEntries = tlManager.parseEntries(tlContent, folderPath);
 								localTypes.push(...new Set(tlEntries.map((e: TimelineEntry) => e.type).filter(Boolean)));
+								for (const e of tlEntries) {
+									const t = typeof e.time === 'string' ? e.time.trim() : '';
+									if (t && !existingNodes.includes(t)) {
+										existingNodes.push(t);
+									}
+								}
 							}
 
 							new TimelineAddModal(
@@ -147,7 +154,12 @@ export class MenuManager {
 										}
 									}).catch(console.error);
 								},
-								false, localTypes, selectedText.trim()).open();
+								false,
+								localTypes,
+								selectedText.trim(),
+								undefined,
+								existingNodes
+							).open();
 						})().catch(console.error);
 					});
 				});

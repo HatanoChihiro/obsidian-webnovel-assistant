@@ -1,3 +1,31 @@
+## 🔧 v3.9.11
+
+### 新增功能
+
+- **时间线设定关联**：每个时间节点现在可关联多个人物或设定，原时间轴看板会在类型旁以不同混色徽章展示关联设定，并支持通过侧面板快速筛选人物线或其他设定轨迹。
+- **双层多选筛选**：时间线侧面板在类型筛选下新增关联设定多选；伏笔侧面板的标签筛选同步升级为多选，并与工作台实时联动。
+- **快捷合并已有时间节点与伏笔**：从选中正文添加时间线或标注伏笔时，对话框新增已有时间节点与已有伏笔说明的选择器；选择已有条目可快速填充合并键（时间点或伏笔说明），无需手动查找复制，同时输入框保持可编辑。
+
+### Bug 修复
+
+- **写作工作台伏笔状态实时刷新**：修复已打开的写作工作台在添加、阶段回收或最终回收伏笔后章节卡片伏笔徽章仍显示旧状态、必须重新打开工作台才能刷新的问题；现在修改当前作品的伏笔文件后会自动清理内存缓存并即时刷新卡片徽章。
+- **打字机模式与其他插件留白与视口兼容**：修复打字机模式在启用或关闭时可能覆盖其他插件（如 Pixel Banner）设置的编辑器上下留白，以及打字机关闭后仍可能触发过期视口滚动恢复的问题；现在仅接管打字机自身应用的留白并在退出时正确还原第三方最新留白，同时在关闭后立即终止视口位置恢复。感谢 Aluxes（[@AshenAshes](https://github.com/AshenAshes)）通过 [PR #35](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/pull/35) 贡献修复。
+
+### English Changelog
+
+#### New Features
+
+- **Timeline Lore Links**: Each timeline node can now link to multiple characters or lore entries. The editable waterfall shows distinct lore badges beside the type badge, and the sidebar can filter the board by one or more linked lore entries.
+- **Two-Level Multi-Select Filters**: The Timeline sidebar adds a multi-select lore row beneath its type filter, and the Foreshadowing sidebar tag row now supports multi-select as well; both stay synchronized with the Workbench.
+- **Quick Merge for Existing Timeline Nodes & Foreshadowing**: When adding timeline events or marking foreshadowing from selected text, dialogs now offer an optional selector to pick from existing timeline nodes or foreshadowing descriptions, easily filling merge keys while leaving fields fully editable.
+
+#### Bug Fixes
+
+- **Workbench Foreshadowing Badge Live Refresh**: Fixed an issue where an already-open Writing Workbench kept stale foreshadowing badges on chapter cards after adding, partially recovering, or finally recovering foreshadowing until reopening the Workbench; modifying the current novel's foreshadowing file now automatically invalidates the in-memory cache and immediately refreshes chapter badges.
+- **Typewriter Spacing and Viewport Compatibility**: Fixed an issue where typewriter mode could overwrite editor padding set by other plugins (such as Pixel Banner) or trigger stale viewport scroll restoration after being disabled; it now only manages its own applied spacing, reliably restores third-party padding when exiting, and immediately stops viewport restoration once disabled. Thanks to Aluxes ([@AshenAshes](https://github.com/AshenAshes)) for contributing the fix in [PR #35](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/pull/35).
+
+---
+
 ## 🔧 v3.9.10
 
 ### 新增功能

@@ -250,6 +250,8 @@ vi.mock('obsidian', () => ({
 	setIcon: vi.fn((el: unknown, iconId: string) => {
 		(el as MockElement)?.setAttr?.('data-icon', iconId);
 	}),
+	setTooltip: vi.fn(),
+	Platform: { isMobile: false },
 	Notice: vi.fn(),
 	Modal: class {
 		contentEl = new MockElement();
@@ -261,6 +263,14 @@ vi.mock('obsidian', () => ({
 		close() {
 			(this as unknown as { onClose?: () => void }).onClose?.();
 		}
+	},
+	Component: class {
+		load = vi.fn();
+		unload = vi.fn();
+		register = vi.fn();
+		registerDomEvent = vi.fn();
+		addChild = vi.fn();
+		removeChild = vi.fn();
 	},
 	TFile: MockFile,
 	TFolder: class {},
@@ -313,6 +323,15 @@ describe('TimelineBoardRenderer', () => {
 				updateEntry: vi.fn(),
 				getTimelineFilePath: vi.fn(),
 				appendEntry: vi.fn()
+			},
+			characterManager: {
+				getCharacterFile: vi.fn().mockReturnValue(null),
+				findLoreFolder: vi.fn().mockReturnValue(null),
+				createLoreEntry: vi.fn(),
+				getLoreContent: vi.fn(),
+				updateLoreContent: vi.fn(),
+				getCharactersForBook: vi.fn().mockReturnValue([]),
+				getLoreEntriesInFileOrder: vi.fn().mockReturnValue([])
 			}
 		} as unknown as TimelineBoardPlugin;
 
@@ -1061,6 +1080,45 @@ describe('TimelineBoardRenderer', () => {
 			'NovelA',
 			expect.objectContaining({ eligibleChapters: [v1c1, v1c2, v2c1] })
 		);
+	});
+
+	it('filters by node-level lore while preserving all sibling sub-events and indexes', async () => {
+		mockPlugin.timelineManager.loadEntries = vi.fn().mockResolvedValue([{
+			time: '第一天',
+			description: '甲事件\n乙事件',
+			chapter: '',
+			type: '主线',
+			rawBlock: '',
+			lores: ['乙'],
+			items: [
+				{ description: '甲事件', chapter: '' },
+				{ description: '乙事件', chapter: '' }
+			]
+		}]);
+
+		await TimelineBoardRenderer.render({
+			app: mockApp,
+			plugin: mockPlugin,
+			container: container as unknown as HTMLElement,
+			files: [],
+			foreshadowingMap: new Map(),
+			currentBookPath: 'NovelA',
+			currentTimelineFilter: 'all',
+			currentTimelineLoreFilter: ['乙'],
+			onSaveStateChange: vi.fn(),
+			reloadBoard: vi.fn(),
+			getChapterEvents: vi.fn().mockReturnValue([])
+		});
+
+		const rows = container.querySelectorAll('.wn-timeline-item-row');
+		expect(rows).toHaveLength(2);
+		expect(rows[0].getAttribute('data-item-index')).toBe('0');
+		expect(rows[1].getAttribute('data-item-index')).toBe('1');
+		expect(rows[0].textContent).toContain('甲事件');
+		expect(rows[1].textContent).toContain('乙事件');
+		const loreBadges = container.querySelector('.wn-timeline-node-lore-badges');
+		expect(loreBadges).not.toBeNull();
+		expect(loreBadges?.querySelectorAll('.wn-badge-lore')).toHaveLength(1);
 	});
 
 	describe('descending viewing order and index invariants', () => {

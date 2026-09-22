@@ -12,6 +12,13 @@ import { ChapterSorter } from './ChapterSorter';
 
 
 
+export interface TimelineItem {
+	description: string;
+	chapter: string;
+	origin?: string;
+	important?: boolean;
+}
+
 export interface TimelineEntry {
 	time: string;
 	description: string;
@@ -20,7 +27,32 @@ export interface TimelineEntry {
 	rawBlock: string;
 	origin?: string;
 	important?: boolean;
-	items?: { description: string; chapter: string; origin?: string; important?: boolean }[];
+	lores?: string[];
+	items?: TimelineItem[];
+}
+
+export function parseLoreComment(raw: string): string[] {
+	const trimmed = raw.trim();
+	if (!trimmed) return [];
+	if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+		try {
+			const parsed = JSON.parse(trimmed) as unknown;
+			if (Array.isArray(parsed)) {
+				return parsed.map(x => String(x).trim()).filter(Boolean);
+			}
+		} catch {
+			// Fallback to delimiter splitting
+		}
+	}
+	return trimmed.split(/[,，;；]/).map(s => s.trim()).filter(Boolean);
+}
+
+export function formatLoreComment(lores: string[]): string {
+	const clean = lores.map(l => l.trim()).filter(Boolean);
+	if (clean.length === 0) return '';
+	const needsJson = clean.some(l => l.includes(',') || l.includes('，') || l.includes(';') || l.includes('；'));
+	const serialized = needsJson ? JSON.stringify(clean) : clean.join(', ');
+	return `<!-- wn-lore: ${serialized} -->`;
 }
 
 
@@ -85,7 +117,7 @@ export class TimelineManager {
 					void (async () => {
 						try {
 							const content = await this.app.vault.cachedRead(file);
-							const entries = this.parseEntries(content);
+							const entries = this.parseEntries(content, folderPath);
 							await this.reconcileFrontmatter(folderPath, entries, file);
 						} catch (err) {
 							console.error(`[TimelineManager] 自动对账失败 ${file.path}:`, err);
@@ -98,7 +130,7 @@ export class TimelineManager {
 			void (async () => {
 				try {
 					const content = await this.app.vault.cachedRead(file);
-					const entries = this.parseEntries(content);
+					const entries = this.parseEntries(content, folderPath);
 					await this.reconcileFrontmatter(folderPath, entries, file);
 				} catch (err) {
 					console.error(`[TimelineManager] 自动对账失败 ${file.path}:`, err);
@@ -169,111 +201,81 @@ export class TimelineManager {
 		const file = this.getTimelineFile(folder);
 		if (!file) return null;
 		const content = await this.app.vault.cachedRead(file);
-		return this.parseEntries(content);
+		return this.parseEntries(content, folder);
 	}
 
+	private canonicalizeLoreList(lores: string[], folderPath?: string): string[] {
+		if (!lores || lores.length === 0) return [];
+		const bookPath = this.normalizeFolderPath(folderPath);
+		return lores.map(name => {
+			const entry = this.plugin?.characterManager?.getCharacterFile?.(bookPath, name);
+			return entry ? entry.heading : name;
+		});
+	}
 
-
-	parseEntries(content: string): TimelineEntry[] {
-
+	parseEntries(content: string, folderPath?: string): TimelineEntry[] {
+		const bookFolder = folderPath !== undefined ? this.normalizeFolderPath(folderPath) : this.currentFolder;
 		const entries: TimelineEntry[] = [];
-
 		const blocks = content.split(/\n---\n/);
 
-
-
 		for (const block of blocks) {
-
 			const trimmed = block.trim();
-
 			if (!trimmed.startsWith('## ')) continue;
 
-
-
 			const lines = trimmed.split('\n');
-
 			const time = lines[0].replace(/^## /, '').trim();
 
-
-
-			const items: { description: string; chapter: string; origin?: string; important?: boolean }[] = [];
+			const items: TimelineItem[] = [];
+			const nodeLores: string[] = [];
 
 			// 匹配类型行：优先当前语言，兼容中文旧格式
-				const typeMatch = trimmed.match(new RegExp(`\\*\\*(?:Type|类型|類型|${t('timeline.type-label')})\\*\\*：(.+)`));
-
-
+			const typeMatch = trimmed.match(new RegExp(`\\*\\*(?:Type|类型|類型|${t('timeline.type-label')})\\*\\*：(.+)`));
 
 			let i = 1;
-
 			while (i < lines.length) {
-
 				const line = lines[i];
+				const trimmedLine = line.trim();
 
-				
-
-				// 跳过空行和类型行
-
-				if (!line.trim() || line.startsWith('**')) {
-
+				// 跳过空行
+				if (!trimmedLine) {
 					i++;
-
 					continue;
-
 				}
 
-				
+				// 检查独立的块级设定注释
+				const blockLoreMatch = trimmedLine.match(/^<!--\s*(?:wn-lore|lore):\s*([\s\S]+?)\s*-->$/);
+				if (blockLoreMatch) {
+					const rawLores = parseLoreComment(blockLoreMatch[1]);
+					nodeLores.push(...this.canonicalizeLoreList(rawLores, bookFolder));
+					i++;
+					continue;
+				}
+
+				// 跳过类型行（提取可能附带在类型行后的设定注释）
+				if (line.startsWith('**')) {
+					const lineLoreMatch = line.match(/<!--\s*(?:wn-lore|lore):\s*([\s\S]+?)\s*-->/);
+					if (lineLoreMatch) {
+						const rawLores = parseLoreComment(lineLoreMatch[1]);
+						nodeLores.push(...this.canonicalizeLoreList(rawLores, bookFolder));
+					}
+					i++;
+					continue;
+				}
 
 				// 处理列表项
-
 				if (line.startsWith('- ')) {
+					let desc = line.slice(2);
 
-					const itemText = line.slice(2);
-
-					
-
-					// 提取所有 [[章节]] 链接
-
-					const chapterMatches = itemText.matchAll(/\[\[(.+?)\]\]/g);
-
-					const chapters: string[] = [];
-
-					for (const match of chapterMatches) {
-
-						chapters.push(match[1]);
-
-					}
-
-					
-
-					// 移除所有链接后的文本作为描述的第一行
-
-					let desc = itemText.replace(/\[\[.+?\]\]/g, '').trim();
-
-					
-
-					// 收集后续的缩进行（多行描述）
-
+					// 先收集后续的缩进行，再统一剖离隐藏元数据。
+					// origin 等历史注释可能位于续行，不能只解析首行。
 					i++;
-
 					while (i < lines.length && lines[i].startsWith('  ') && !lines[i].startsWith('- ')) {
-
-						const continuationLine = lines[i].slice(2); // 移除缩进
-
+						const continuationLine = lines[i].slice(2);
 						if (continuationLine.trim()) {
-
 							desc += '\n' + continuationLine;
-
 						}
-
 						i++;
-
 					}
-
-					
-
-					// 将多个章节用逗号连接
-
-					const chapter = chapters.join(', ');
 
 					// 提取隐藏的重要标记
 					let important = false;
@@ -282,47 +284,68 @@ export class TimelineManager {
 						desc = desc.replace(/<!--\s*wn-important\s*-->/g, '').trim();
 					}
 
-					// 提取隐藏的原文注释
-					let origin: string | undefined;
-					const originMatch = desc.match(/<!--\s*origin:\s*(.+?)\s*-->/);
-					if (originMatch) {
-						origin = originMatch[1];
-						// 剥离注释
-						desc = desc.replace(/<!--\s*origin:\s*(.+?)\s*-->/g, '').trim();
+					// 向下兼容：提取子事件行内的隐藏设定关联并聚合至节点级
+					const loreMatch = desc.match(/<!--\s*(?:wn-lore|lore):\s*([\s\S]+?)\s*-->/);
+					if (loreMatch) {
+						const rawLores = parseLoreComment(loreMatch[1]);
+						nodeLores.push(...this.canonicalizeLoreList(rawLores, bookFolder));
+						desc = desc.replace(/<!--\s*(?:wn-lore|lore):\s*[\s\S]+?\s*-->/g, '').trim();
 					}
 
-					items.push({ description: desc, chapter, origin, important });
+					// 提取隐藏的原文注释
+					let origin: string | undefined;
+					const originMatch = desc.match(/<!--\s*origin:\s*([\s\S]+?)\s*-->/);
+					if (originMatch) {
+						origin = originMatch[1];
+						desc = desc.replace(/<!--\s*origin:\s*[\s\S]+?\s*-->/g, '').trim();
+					}
 
+					// 提取所有 [[章节]] 链接
+					const chapterMatches = desc.matchAll(/\[\[(.+?)\]\]/g);
+					const chapters: string[] = [];
+					for (const match of chapterMatches) {
+						chapters.push(match[1]);
+					}
+
+					desc = desc
+						.replace(/\[\[.+?\]\]/g, '')
+						.split('\n')
+						.map(text => text.trimEnd())
+						.join('\n')
+						.trim();
+
+					const chapter = chapters.join(', ');
+
+					items.push({
+						description: desc,
+						chapter,
+						origin,
+						important
+					});
 					continue;
-
 				}
-
-				
 
 				i++;
-
 			}
 
-
-
 			// 如果没有找到列表项，尝试从旧格式解析（H2 后的描述行）
-
 			if (items.length === 0) {
-
 				const descLines: string[] = [];
-
 				let j = 1;
-
 				while (j < lines.length && !lines[j].startsWith('**') && !lines[j].startsWith('- ')) {
-
-					if (lines[j].trim()) descLines.push(lines[j].trim());
-
+					const l = lines[j].trim();
+					if (l) {
+						const blockLoreMatch = l.match(/^<!--\s*(?:wn-lore|lore):\s*([\s\S]+?)\s*-->$/);
+						if (blockLoreMatch) {
+							const rawLores = parseLoreComment(blockLoreMatch[1]);
+							nodeLores.push(...this.canonicalizeLoreList(rawLores, bookFolder));
+						} else {
+							descLines.push(l);
+						}
+					}
 					j++;
-
 				}
-
 				let description = descLines.join('\n');
-
 				if (description) {
 					let important = false;
 					if (/<!--\s*wn-important\s*-->/.test(description)) {
@@ -330,200 +353,139 @@ export class TimelineManager {
 						description = description.replace(/<!--\s*wn-important\s*-->/g, '').trim();
 					}
 
-					items.push({ description, chapter: '', important });
-
-				}
-
-			}
-
-
-
-			const finalItems = items.length > 0 ? items : [{ description: '', chapter: '' }];
-
-
-
-			entries.push({
-
-				time,
-
-				description: finalItems.map(it => it.description).filter(Boolean).join('\n'),
-
-				chapter: finalItems.map(it => it.chapter).filter(Boolean).join(', '),
-
-				type: typeMatch ? typeMatch[1].trim() : '',
-
-				rawBlock: trimmed,
-
-				items: finalItems,
-
-			});
-
-		}
-
-
-
-		return entries;
-
-	}
-
-
-
-	formatEntry(entry: TimelineEntry): string {
-
-		const lines: string[] = [];
-
-		lines.push(`## ${entry.time}`);
-
-		lines.push('');
-
-
-
-		const items = entry.items;
-
-		if (items && items.length > 0) {
-
-			for (const it of items) {
-
-				// 处理多行描述：将每一行作为单独的列表项
-
-				const descriptions = it.description ? it.description.split('\n').filter(line => line.trim()) : [];
-
-				
-
-				if (descriptions.length > 0) {
-
-					// 第一行包含章节链接
-
-					const firstLineParts: string[] = [descriptions[0]];
-
-					
-
-					// 支持多章节：将逗号分隔的章节转换为多个 [[链接]]
-
-					if (it.chapter) {
-
-						const chapters = it.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean);
-
-						const chapterLinks = chapters.map(c => `[[${c}]]`).join(' ');
-
-						if (chapterLinks) firstLineParts.push(chapterLinks);
-
+					const loreMatch = description.match(/<!--\s*(?:wn-lore|lore):\s*([\s\S]+?)\s*-->/);
+					if (loreMatch) {
+						const rawLores = parseLoreComment(loreMatch[1]);
+						nodeLores.push(...this.canonicalizeLoreList(rawLores, bookFolder));
+						description = description.replace(/<!--\s*(?:wn-lore|lore):\s*[\s\S]+?\s*-->/g, '').trim();
 					}
 
-					
+					let origin: string | undefined;
+					const originMatch = description.match(/<!--\s*origin:\s*([\s\S]+?)\s*-->/);
+					if (originMatch) {
+						origin = originMatch[1];
+						description = description.replace(/<!--\s*origin:\s*[\s\S]+?\s*-->/g, '').trim();
+					}
 
+					const chapterMatches = description.matchAll(/\[\[(.+?)\]\]/g);
+					const chapters: string[] = [];
+					for (const match of chapterMatches) {
+						chapters.push(match[1]);
+					}
+					if (chapters.length > 0) {
+						description = description.replace(/\[\[.+?\]\]/g, '').trim();
+					}
+
+					items.push({
+						description,
+						chapter: chapters.join(', '),
+						origin,
+						important
+					});
+				}
+			}
+
+			const finalItems = items.length > 0 ? items : [{ description: '', chapter: '' }];
+			const uniqueLores = [...new Set(nodeLores)];
+
+			entries.push({
+				time,
+				description: finalItems.map(it => it.description).filter(Boolean).join('\n'),
+				chapter: finalItems.map(it => it.chapter).filter(Boolean).join(', '),
+				type: typeMatch ? typeMatch[1].replace(/<!--[\s\S]*?-->/g, '').trim() : '',
+				rawBlock: trimmed,
+				items: finalItems,
+				lores: uniqueLores.length > 0 ? uniqueLores : undefined
+			});
+		}
+
+		return entries;
+	}
+
+	formatEntry(entry: TimelineEntry): string {
+		const lines: string[] = [];
+		lines.push(`## ${entry.time}`);
+		lines.push('');
+
+		const items = entry.items;
+		if (items && items.length > 0) {
+			for (const it of items) {
+				const descriptions = it.description ? it.description.split('\n').filter(line => line.trim()) : [];
+				if (descriptions.length > 0) {
+					const firstLineParts: string[] = [descriptions[0]];
+					if (it.chapter) {
+						const chapters = it.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean);
+						const chapterLinks = chapters.map(c => `[[${c}]]`).join(' ');
+						if (chapterLinks) firstLineParts.push(chapterLinks);
+					}
 					if (it.important) {
 						firstLineParts.push('<!-- wn-important -->');
 					}
-
 					if (it.origin) {
 						firstLineParts.push(`<!-- origin: ${it.origin} -->`);
 					}
-
 					lines.push(`- ${firstLineParts.join(' ')}`);
 
-					// 后续行作为缩进的列表项（Markdown 多行列表项格式）
-
 					for (let i = 1; i < descriptions.length; i++) {
-
 						lines.push(`  ${descriptions[i]}`);
-
 					}
-
-				} else if (it.chapter) {
-
-					// 只有章节链接，没有描述
-
-					const chapters = it.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean);
-
+				} else if (it.chapter || it.origin || it.important) {
+					const chapters = it.chapter ? it.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean) : [];
 					const chapterLinks = chapters.map(c => `[[${c}]]`).join(' ');
-
 					const parts: string[] = [];
 					if (chapterLinks) parts.push(chapterLinks);
 					if (it.important) parts.push('<!-- wn-important -->');
-
+					if (it.origin) parts.push(`<!-- origin: ${it.origin} -->`);
 					if (parts.length > 0) lines.push(`- ${parts.join(' ')}`);
-
 				}
-
 			}
-
 		} else {
-
-			// 处理多行描述
-
 			const descriptions = entry.description ? entry.description.split('\n').filter(line => line.trim()) : [];
-
-			
-
 			if (descriptions.length > 0) {
-
 				const firstLineParts: string[] = [descriptions[0]];
-
-				
-
-				// 支持多章节
-
 				if (entry.chapter) {
 					const chapters = entry.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean);
 					const chapterLinks = chapters.map(c => `[[${c}]]`).join(' ');
 					if (chapterLinks) firstLineParts.push(chapterLinks);
 				}
-
 				if (entry.important) {
 					firstLineParts.push('<!-- wn-important -->');
 				}
-
 				if (entry.origin) {
 					firstLineParts.push(`<!-- origin: ${entry.origin.replace(/\n/g, ' ')} -->`);
 				}
-				
 				lines.push(`- ${firstLineParts.join(' ')}`);
 
-				
-
-				// 后续行作为缩进的列表项
-
 				for (let i = 1; i < descriptions.length; i++) {
-
 					lines.push(`  ${descriptions[i]}`);
-
 				}
-
-			} else if (entry.chapter) {
-
-				// 只有章节链接
-
-				const chapters = entry.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean);
-
+			} else if (entry.chapter || entry.origin || entry.important) {
+				const chapters = entry.chapter ? entry.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean) : [];
 				const chapterLinks = chapters.map(c => `[[${c}]]`).join(' ');
-
 				const parts: string[] = [];
 				if (chapterLinks) parts.push(chapterLinks);
 				if (entry.important) parts.push('<!-- wn-important -->');
-
+				if (entry.origin) parts.push(`<!-- origin: ${entry.origin.replace(/\n/g, ' ')} -->`);
 				if (parts.length > 0) lines.push(`- ${parts.join(' ')}`);
-
 			}
-
 		}
-
-
 
 		if (entry.type) {
-
 			lines.push('');
-
 			lines.push(`**${getTimelineLabel('type')}**：${entry.type}`);
+		}
 
+		if (entry.lores && entry.lores.length > 0) {
+			const comment = formatLoreComment(entry.lores);
+			if (comment) {
+				lines.push('');
+				lines.push(comment);
+			}
 		}
 
 		lines.push('');
-
 		lines.push('---');
-
 		lines.push('');
-
 		lines.push('');
 
 		return lines.join('\n');
@@ -665,46 +627,69 @@ export class TimelineManager {
 					const header = match[1];
 					const body = match[2];
 					const separator = match[3];
+					const existingLores = [...body.matchAll(/<!--\s*(?:wn-lore|lore):\s*([\s\S]+?)\s*-->/g)]
+						.flatMap(loreMatch => parseLoreComment(loreMatch[1]));
+					const bodyWithoutLore = body.replace(/<!--\s*(?:wn-lore|lore):\s*[\s\S]+?\s*-->/g, '');
 
-					const descriptions = entry.description ? entry.description.split('\n').filter(line => line.trim()) : [];
+					const itemsToAppend: TimelineItem[] = (entry.items && entry.items.length > 0)
+						? entry.items
+						: [{ description: entry.description, chapter: entry.chapter, origin: entry.origin, important: entry.important }];
 					const newItemLines: string[] = [];
 
-					if (descriptions.length > 0) {
-						const firstLineParts: string[] = [descriptions[0]];
-						if (entry.chapter) {
-							const chapters = entry.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean);
-							const chapterLinks = chapters.map(c => `[[${c}]]`).join(' ');
-							if (chapterLinks) firstLineParts.push(chapterLinks);
-						}
-						if (entry.origin) {
-							firstLineParts.push(`<!-- origin: ${entry.origin.replace(/\n/g, ' ')} -->`);
-						}
-						newItemLines.push(`- ${firstLineParts.join(' ')}`);
+					for (const it of itemsToAppend) {
+						const descriptions = it.description ? it.description.split('\n').filter(line => line.trim()) : [];
+						if (descriptions.length > 0) {
+							const firstLineParts: string[] = [descriptions[0]];
+							if (it.chapter) {
+								const chapters = it.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean);
+								const chapterLinks = chapters.map(c => `[[${c}]]`).join(' ');
+								if (chapterLinks) firstLineParts.push(chapterLinks);
+							}
+							if (it.important) {
+								firstLineParts.push('<!-- wn-important -->');
+							}
+							if (it.origin) {
+								firstLineParts.push(`<!-- origin: ${it.origin.replace(/\n/g, ' ')} -->`);
+							}
+							newItemLines.push(`- ${firstLineParts.join(' ')}`);
 
-						for (let i = 1; i < descriptions.length; i++) {
-							newItemLines.push(`  ${descriptions[i]}`);
+							for (let j = 1; j < descriptions.length; j++) {
+								newItemLines.push(`  ${descriptions[j]}`);
+							}
+						} else if (it.chapter || it.origin || it.important) {
+							const chapters = it.chapter ? it.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean) : [];
+							const chapterLinks = chapters.map(c => `[[${c}]]`).join(' ');
+							const parts: string[] = [];
+							if (chapterLinks) parts.push(chapterLinks);
+							if (it.important) parts.push('<!-- wn-important -->');
+							if (it.origin) parts.push(`<!-- origin: ${it.origin.replace(/\n/g, ' ')} -->`);
+							if (parts.length > 0) newItemLines.push(`- ${parts.join(' ')}`);
 						}
-					} else if (entry.chapter) {
-						const chapters = entry.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean);
-						const chapterLinks = chapters.map(c => `[[${c}]]`).join(' ');
-						if (chapterLinks) newItemLines.push(`- ${chapterLinks}`);
 					}
 
-					let boldIndex = body.indexOf(`\n**${getTimelineLabel('type')}**`);
-					if (boldIndex === -1) boldIndex = body.indexOf('\n**类型**');
-					if (boldIndex === -1) boldIndex = body.indexOf('\n**類型**');
-					if (boldIndex === -1) boldIndex = body.indexOf('\n**Type**');
+					let boldIndex = bodyWithoutLore.indexOf(`\n**${getTimelineLabel('type')}**`);
+					if (boldIndex === -1) boldIndex = bodyWithoutLore.indexOf('\n**类型**');
+					if (boldIndex === -1) boldIndex = bodyWithoutLore.indexOf('\n**類型**');
+					if (boldIndex === -1) boldIndex = bodyWithoutLore.indexOf('\n**Type**');
 
 					let newBody: string;
 					if (newItemLines.length > 0) {
 						const newItemText = newItemLines.join('\n');
 						if (boldIndex !== -1) {
-							newBody = body.slice(0, boldIndex) + '\n' + newItemText + body.slice(boldIndex);
+							newBody = bodyWithoutLore.slice(0, boldIndex) + '\n' + newItemText + bodyWithoutLore.slice(boldIndex);
 						} else {
-							newBody = body.trimEnd() + '\n' + newItemText + '\n';
+							newBody = bodyWithoutLore.trimEnd() + '\n' + newItemText + '\n';
 						}
 					} else {
-						newBody = body;
+						newBody = bodyWithoutLore;
+					}
+
+					const mergedLores = this.canonicalizeLoreList(
+						[...new Set([...existingLores, ...(entry.lores || [])])],
+						folder
+					);
+					if (mergedLores.length > 0) {
+						newBody = newBody.trimEnd() + '\n\n' + formatLoreComment(mergedLores) + '\n';
 					}
 
 					newContent = existing.replace(fullMatch, header + newBody + separator);
@@ -716,7 +701,7 @@ export class TimelineManager {
 				finalContent = newContent;
 				return newContent;
 			});
-			const entries = this.parseEntries(finalContent);
+			const entries = this.parseEntries(finalContent, folder);
 			await this.reconcileFrontmatter(folder, entries, file);
 			return finalContent;
 			});

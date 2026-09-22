@@ -149,6 +149,14 @@
 }
 
 
+.wn-timeline-node-lore-badges {
+	display: inline-flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	align-items: center;
+	margin: 0 8px 0 4px;
+}
+
 .wn-timeline-item-actions {
 	position: absolute;
 	right: 4px;
