@@ -401,7 +401,7 @@ export class ChapterSorter {
 
 		// 没有自定义规则时，使用默认逻辑（向后兼容）
 		// 尝试匹配阿拉伯数字格式（要求至少包含前缀或单位，避免把纯数字误判为章节）
-		const arabicMatch = basename.match(/^(?:(?:第\s*|chapter\s*|ch\s*)(\d+(?:\.\d+)?)(?:[章节回卷部册篇\s-]|$)|(?:第\s*|chapter\s*|ch\s*)?(\d+(?:\.\d+)?)(?:[章节回卷部册篇]+))/i);
+		const arabicMatch = basename.match(/^(?:(?:第\s*|chapter\s*|ch\s*)(\d+(?:\.\d+)?)(?:[章节節回卷部册冊篇\s-]|$)|(?:第\s*|chapter\s*|ch\s*)?(\d+(?:\.\d+)?)(?:[章节節回卷部册冊篇]+))/i);
 		if (arabicMatch) {
 			const numStr = arabicMatch[1] || arabicMatch[2];
 			const num = parseFloat(numStr);
@@ -410,7 +410,7 @@ export class ChapterSorter {
 			}
 		}
 		// 尝试匹配中文数字格式（要求至少包含前缀或单位，避免把纯数字误判为章节）
-		const chineseMatch = basename.match(/^(?:第([零一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]+)(?:[章节回卷部册篇]|$)|(?:第)?([零一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]+)[章节回卷部册篇]+)/);
+		const chineseMatch = basename.match(/^(?:第([零一二三四五六七八九十百千万萬壹贰貳叁參肆伍陆陸柒捌玖拾佰仟〇]+)(?:[章节節回卷部册冊篇]|$)|(?:第)?([零一二三四五六七八九十百千万萬壹贰貳叁參肆伍陆陸柒捌玖拾佰仟〇]+)[章节節回卷部册冊篇]+)/);
 		if (chineseMatch) {
 			const numStr = chineseMatch[1] || chineseMatch[2];
 			const num = this.parseChineseNumber(numStr);
@@ -610,7 +610,7 @@ export class ChapterSorter {
 		// 3. 中文数字格式 (如 一, 二, 十, 第一)
 		const chineseNum = this.parseChineseNumber(numStr);
 		if (chineseNum > 0) {
-			const useUppercase = /[壹贰叁肆伍陆柒捌玖拾佰仟萬]/.test(numStr);
+			const useUppercase = /[壹贰貳叁參肆伍陆陸柒捌玖拾佰仟萬]/.test(numStr);
 			const nextNumStr = this.toChineseNumber(chineseNum + 1, useUppercase);
 			return `${prefix}${nextNumStr}${unitAndStructural}.md`;
 		}
@@ -656,7 +656,7 @@ export class ChapterSorter {
 		}
 
 		// 尝试阿拉伯数字格式：第1章、第01章、Chapter 1 等
-		const arabicMatch = basename.match(/^([^0-9]*)(\d+)([章节回卷部册篇]?)(.*)$/);
+		const arabicMatch = basename.match(/^([^0-9]*)(\d+)([章节節回卷部册冊篇]?)(.*)$/);
 		if (arabicMatch) {
 			const prefix = arabicMatch[1];
 			const currentNumStr = arabicMatch[2];
@@ -685,7 +685,7 @@ export class ChapterSorter {
 		}
 
 		// 尝试中文数字格式：第一章、第二十三章 等
-		const chineseMatch = basename.match(/^([^零一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]*)([零一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]+)([章节回卷部册篇]?)(.*)$/);
+		const chineseMatch = basename.match(/^([^零一二三四五六七八九十百千万萬壹贰貳叁參肆伍陆陸柒捌玖拾佰仟〇]*)([零一二三四五六七八九十百千万萬壹贰貳叁參肆伍陆陸柒捌玖拾佰仟〇]+)([章节節回卷部册冊篇]?)(.*)$/);
 		if (chineseMatch) {
 			const prefix = chineseMatch[1];
 			const currentNumStr = chineseMatch[2];
@@ -694,7 +694,7 @@ export class ChapterSorter {
 			const currentNum = this.parseChineseNumber(currentNumStr);
 			if (currentNum === 0) return null;
 			
-			const useUppercase = /[壹贰叁肆伍陆柒捌玖拾佰仟萬]/.test(currentNumStr);
+			const useUppercase = /[壹贰貳叁參肆伍陆陸柒捌玖拾佰仟萬]/.test(currentNumStr);
 			const nextNumStr = this.toChineseNumber(currentNum + 1, useUppercase);
 			
 			const structuralSuffixMatch = suffix.match(/^([ \-_:：，、.)）\]】]*)/);
