@@ -626,6 +626,21 @@ describe('WritingJourneyService', () => {
 			expect(service.consumeHandledDelete('NovelA/deleted.md')).toBe(true);
 			expect(service.consumeHandledDelete('NovelA/deleted.md')).toBe(false);
 		});
+
+		it('should lazily prune expired TTLs even when only a few keys exist', () => {
+			vi.useFakeTimers();
+			vi.setSystemTime(1000);
+			service.markHandledCreate('NovelA/short.md', 100);
+			service.markHandledCreate('NovelA/long.md', 2000);
+
+			vi.setSystemTime(2000);
+			service.markHandledCreate('NovelA/trigger.md', 100);
+
+			expect(service.consumeHandledCreate('NovelA/short.md')).toBe(false);
+			expect(service.consumeHandledCreate('NovelA/long.md')).toBe(true);
+			expect(service.consumeHandledCreate('NovelA/trigger.md')).toBe(true);
+			vi.useRealTimers();
+		});
 	});
 
 	describe('Vault Event Integration', () => {
@@ -1242,5 +1257,61 @@ describe('WritingJourneyBoardRenderer Search Matching', () => {
 		expect(timeEls.length).toBe(2);
 		expect(timeEls[0].textContent).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
 		expect(timeEls[1].textContent).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+	});
+
+	it('should hide only trailing-space cleanup renames while keeping real title changes', async () => {
+		const events: WritingJourneyEvent[] = [
+			{ id: 'created', type: 'chapter.created', timestamp: '2026-09-08T05:43:00.000Z', path: 'NovelA/01 .md', chapterTitle: '01 ', source: 'workbench' },
+			{ id: 'cleanup', type: 'chapter.renamed', timestamp: '2026-09-08T05:44:00.000Z', oldPath: 'NovelA/01 .md', newPath: 'NovelA/01.md', oldTitle: '01 ', newTitle: '01' },
+			{ id: 'subtitle', type: 'chapter.renamed', timestamp: '2026-09-08T05:45:00.000Z', oldPath: 'NovelA/01.md', newPath: 'NovelA/01 启程.md', oldTitle: '01', newTitle: '01 启程' }
+		];
+		const container = new MockElement('workbench-buffer');
+		const getAbstractFileByPath = vi.fn((path: string) => path === 'NovelA/01 启程.md'
+			? new MockTFile('01 启程.md', path)
+			: null);
+		await WritingJourneyBoardRenderer.render({
+			app: { vault: { getAbstractFileByPath } } as unknown as import('obsidian').App,
+			plugin: { writingJourneyService: { getJourneyLog: async () => ({ status: 'valid', log: { version: 1, events } }) } as unknown as WritingJourneyService },
+			container: container as unknown as HTMLElement,
+			currentBookPath: 'NovelA',
+			query: ''
+		});
+		expect(container.querySelectorAll('.wn-writing-journey-item')).toHaveLength(2);
+		expect(getAbstractFileByPath).toHaveBeenCalledWith('NovelA/01 启程.md');
+		expect(events).toHaveLength(3);
+	});
+
+	it('should keep moves and substantive whitespace edits in the journey', async () => {
+		const events: WritingJourneyEvent[] = [
+			{ id: 'move', type: 'chapter.renamed', timestamp: '2026-09-08T05:43:00.000Z', oldPath: 'NovelA/卷一/01 .md', newPath: 'NovelA/卷二/01.md', oldTitle: '01 ', newTitle: '01' },
+			{ id: 'leading', type: 'chapter.renamed', timestamp: '2026-09-08T05:44:00.000Z', oldPath: 'NovelA/ 01.md', newPath: 'NovelA/01.md', oldTitle: ' 01', newTitle: '01' },
+			{ id: 'subtitle', type: 'chapter.renamed', timestamp: '2026-09-08T05:45:00.000Z', oldPath: 'NovelA/01 .md', newPath: 'NovelA/01 启程.md', oldTitle: '01 ', newTitle: '01 启程' }
+		];
+		const container = new MockElement('workbench-buffer');
+		await WritingJourneyBoardRenderer.render({
+			app: { vault: { getAbstractFileByPath: () => null } } as unknown as import('obsidian').App,
+			plugin: { writingJourneyService: { getJourneyLog: async () => ({ status: 'valid', log: { version: 1, events } }) } as unknown as WritingJourneyService },
+			container: container as unknown as HTMLElement,
+			currentBookPath: 'NovelA',
+			query: ''
+		});
+		expect(container.querySelectorAll('.wn-writing-journey-item')).toHaveLength(3);
+	});
+
+	it('should show an empty journey when its only change was trimming a chapter title', async () => {
+		const events: WritingJourneyEvent[] = [
+			{ id: 'tracking', type: 'tracking.started', timestamp: '2026-09-08T05:43:00.000Z' },
+			{ id: 'cleanup', type: 'chapter.renamed', timestamp: '2026-09-08T05:43:00.000Z', oldPath: 'NovelA/01 .md', newPath: 'NovelA/01.md', oldTitle: '01 ', newTitle: '01' }
+		];
+		const container = new MockElement('workbench-buffer');
+		await WritingJourneyBoardRenderer.render({
+			app: { vault: { getAbstractFileByPath: () => null } } as unknown as import('obsidian').App,
+			plugin: { writingJourneyService: { getJourneyLog: async () => ({ status: 'valid', log: { version: 1, events } }) } as unknown as WritingJourneyService },
+			container: container as unknown as HTMLElement,
+			currentBookPath: 'NovelA',
+			query: ''
+		});
+		expect(container.querySelectorAll('.wn-writing-journey-item')).toHaveLength(0);
+		expect(container.querySelector('.wn-corkboard-empty-msg')).not.toBeNull();
 	});
 });

@@ -520,14 +520,18 @@ export class ChapterSorter {
 	/**
 	 * 将数字转换为中文数字（支持 1-9999）
 	 */
-	static toChineseNumber(num: number, useUppercase: boolean = false): string {
+	static toChineseNumber(num: number, useUppercase: boolean = false, isTraditional: boolean = false): string {
 		if (num === 0) return '零';
 		const numStr = num.toString();
 		const chars = useUppercase 
-			? ['零', '壹', '贰', '叁', '肆', '伍', '陆', '柒', '捌', '玖']
+			? (isTraditional
+				? ['零', '壹', '貳', '參', '肆', '伍', '陸', '柒', '捌', '玖']
+				: ['零', '壹', '贰', '叁', '肆', '伍', '陆', '柒', '捌', '玖'])
 			: ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
 		const units = useUppercase
-			? ['', '拾', '佰', '仟', '万']
+			? (isTraditional
+				? ['', '拾', '佰', '仟', '萬']
+				: ['', '拾', '佰', '仟', '万'])
 			: ['', '十', '百', '千', '万'];
 		
 		let result = '';
@@ -611,7 +615,8 @@ export class ChapterSorter {
 		const chineseNum = this.parseChineseNumber(numStr);
 		if (chineseNum > 0) {
 			const useUppercase = /[壹贰貳叁參肆伍陆陸柒捌玖拾佰仟萬]/.test(numStr);
-			const nextNumStr = this.toChineseNumber(chineseNum + 1, useUppercase);
+			const isTraditional = /[貳參陸萬]/.test(numStr);
+			const nextNumStr = this.toChineseNumber(chineseNum + 1, useUppercase, isTraditional);
 			return `${prefix}${nextNumStr}${unitAndStructural}.md`;
 		}
 
@@ -695,7 +700,8 @@ export class ChapterSorter {
 			if (currentNum === 0) return null;
 			
 			const useUppercase = /[壹贰貳叁參肆伍陆陸柒捌玖拾佰仟萬]/.test(currentNumStr);
-			const nextNumStr = this.toChineseNumber(currentNum + 1, useUppercase);
+			const isTraditional = /[貳參陸萬]/.test(currentNumStr);
+			const nextNumStr = this.toChineseNumber(currentNum + 1, useUppercase, isTraditional);
 			
 			const structuralSuffixMatch = suffix.match(/^([ \-_:：，、.)）\]】]*)/);
 			const structuralSuffix = structuralSuffixMatch ? structuralSuffixMatch[1] : '';

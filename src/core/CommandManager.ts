@@ -562,18 +562,17 @@ export class CommandManager {
 				void (async () => {
 					try {
 						const localTypes: string[] = [];
-						const existingNodes: string[] = [];
+						const existingNodes: Array<{ time: string; type?: string; lores?: string[] }> = [];
 						if (tlFile) {
 							const tlContent = await this.plugin.app.vault.read(tlFile);
 							const tlEntries = tlManager.parseEntries(tlContent, folderPath);
 							localTypes.push(
-								...new Set(tlEntries.map((e: TimelineEntry) => e.type).filter(Boolean))
+								...new Set(tlEntries.map((e: TimelineEntry) => e.type).filter((type): type is string => Boolean(type)))
 							);
 							for (const e of tlEntries) {
 								const t = typeof e.time === 'string' ? e.time.trim() : '';
-								if (t && !existingNodes.includes(t)) {
-									existingNodes.push(t);
-								}
+								const type = e.type?.trim() || undefined;
+								if (t) existingNodes.push({ time: t, type, lores: e.lores });
 							}
 						}
 
@@ -584,14 +583,7 @@ export class CommandManager {
 							chapterRef,
 							folderPath,
 							(result) => {
-								tlManager.appendEntry({
-									time: result.time,
-									description: result.description,
-									chapter: result.chapter,
-									type: result.type,
-									rawBlock: '',
-									origin: result.origin
-								}, folderPath).then(async () => {
+								tlManager.appendEntry(result, folderPath).then(async () => {
 									new Notice(t('notice.timeline-added'));
 
 									// 刷新已打开的时间线视图

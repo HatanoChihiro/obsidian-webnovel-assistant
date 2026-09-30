@@ -20,6 +20,7 @@ export type LoreBoardCardsCharacterManager = Pick<
     | 'rebuildCache'
     | 'getLoreContent'
     | 'updateLoreContent'
+    | 'getBookPathForFile'
 >;
 
 export type LoreBoardCardsSettings = Pick<
@@ -34,7 +35,7 @@ export interface LoreBoardCardsPlugin {
 }
 
 export type LoreBoardCharacterManager = LoreBoardCardsCharacterManager &
-    Pick<CharacterManager, 'ensureInitialized' | 'getCharactersForBook'>;
+    Pick<CharacterManager, 'ensureInitialized' | 'getCharactersForBook' | 'getEffectiveLoreFiles'>;
 
 export type LoreBoardRelationGraphManager = Pick<
     RelationGraphManager,
@@ -129,9 +130,10 @@ export class LoreBoardRenderer {
         const sortedEntries = allEntries;
 
         const renderedHeadings = new Set<string>();
-        const fileGroups = new Map<string, { groupKey: string, displayName: string, entries: LoreEntry[] }>();
+        const fileGroups = new Map<string, { groupKey: string, displayName: string, entries: LoreEntry[], isBorrowed: boolean }>();
         const loreFolder = plugin.characterManager.findLoreFolder(currentBookPath);
         const loreFolderPath = loreFolder ? loreFolder.path : '';
+        const normCurrentBook = (!currentBookPath || currentBookPath === '/') ? '' : currentBookPath.replace(/^\/+|\/+$/g, '');
 
         for (const entry of sortedEntries) {
             if (renderedHeadings.has(entry.heading)) continue;
@@ -140,33 +142,59 @@ export class LoreBoardRenderer {
             const fileCache = app.metadataCache.getFileCache(entry.file);
             const hasH2 = fileCache?.headings?.some(h => h.level === 2) ?? false;
 
+            const entryBookPath = plugin.characterManager.getBookPathForFile(entry.file);
+            const normEntryBook = (!entryBookPath || entryBookPath === '/') ? '' : entryBookPath.replace(/^\/+|\/+$/g, '');
+            const isBorrowed = Boolean(normEntryBook && normEntryBook !== normCurrentBook);
+
             let groupKey = entry.file.path;
             let displayName = entry.file.basename;
 
-            if (hasH2) {
-                // 大纲多词条文件模式：以文件相对路径作为分类
-                if (loreFolderPath && entry.file.path.startsWith(`${loreFolderPath}/`)) {
-                    const rel = entry.file.path.slice(loreFolderPath.length + 1).replace(/\.md$/i, '');
-                    if (rel) displayName = rel;
+            if (isBorrowed) {
+                const entryBookName = normEntryBook ? (normEntryBook.split('/').pop() || normEntryBook) : '';
+                const siblingLoreFolder = plugin.characterManager.findLoreFolder(entryBookPath || '');
+                const siblingLorePath = siblingLoreFolder ? siblingLoreFolder.path : '';
+
+                if (hasH2) {
+                    let rel = entry.file.basename;
+                    if (siblingLorePath && entry.file.path.startsWith(`${siblingLorePath}/`)) {
+                        rel = entry.file.path.slice(siblingLorePath.length + 1).replace(/\.md$/i, '');
+                    }
+                    displayName = `${rel} (${entryBookName})`;
+                } else {
+                    const parentFolder = entry.file.parent;
+                    groupKey = parentFolder ? parentFolder.path : entry.file.path;
+                    let rel = parentFolder?.name || entry.file.basename;
+                    if (parentFolder && siblingLorePath && parentFolder.path.startsWith(`${siblingLorePath}/`)) {
+                        rel = parentFolder.path.slice(siblingLorePath.length + 1) || parentFolder.name;
+                    }
+                    displayName = `${rel} (${entryBookName})`;
                 }
             } else {
-                // 单文件独立词条模式：以该文件所在的文件夹作为分类
-                const parentFolder = entry.file.parent;
-                if (parentFolder) {
-                    groupKey = parentFolder.path;
-                    if (loreFolderPath && parentFolder.path.startsWith(`${loreFolderPath}/`)) {
-                        const rel = parentFolder.path.slice(loreFolderPath.length + 1);
-                        displayName = rel || loreFolder?.name || parentFolder.name;
-                    } else {
-                        displayName = parentFolder.isRoot() ? (loreFolder?.name || parentFolder.name) : parentFolder.name;
+                if (hasH2) {
+                    // 大纲多词条文件模式：以文件相对路径作为分类
+                    if (loreFolderPath && entry.file.path.startsWith(`${loreFolderPath}/`)) {
+                        const rel = entry.file.path.slice(loreFolderPath.length + 1).replace(/\.md$/i, '');
+                        if (rel) displayName = rel;
                     }
                 } else {
-                    displayName = loreFolder ? loreFolder.name : entry.file.basename;
+                    // 单文件独立词条模式：以该文件所在的文件夹作为分类
+                    const parentFolder = entry.file.parent;
+                    if (parentFolder) {
+                        groupKey = parentFolder.path;
+                        if (loreFolderPath && parentFolder.path.startsWith(`${loreFolderPath}/`)) {
+                            const rel = parentFolder.path.slice(loreFolderPath.length + 1);
+                            displayName = rel || loreFolder?.name || parentFolder.name;
+                        } else {
+                            displayName = parentFolder.isRoot() ? (loreFolder?.name || parentFolder.name) : parentFolder.name;
+                        }
+                    } else {
+                        displayName = loreFolder ? loreFolder.name : entry.file.basename;
+                    }
                 }
             }
 
             if (!fileGroups.has(groupKey)) {
-                fileGroups.set(groupKey, { groupKey, displayName, entries: [] });
+                fileGroups.set(groupKey, { groupKey, displayName, entries: [], isBorrowed });
             }
             fileGroups.get(groupKey)!.entries.push(entry);
         }
@@ -248,38 +276,42 @@ export class LoreBoardRenderer {
             for (const entry of group.entries) {
                 const cardContainer = grid.createDiv('wn-lore-card-wrapper');
                 await LoreCardRenderer.buildCardDOM(cardContainer, entry, { app, settings: plugin.settings, characterManager: plugin.characterManager }, boardComponent, {
-                    draggable: true,
-                    dragDataMimeType: mimeType
+                    draggable: !group.isBorrowed,
+                    dragDataMimeType: mimeType,
+                    hideEditButton: group.isBorrowed,
+                    hideImportanceButton: group.isBorrowed
                 });
             }
 
-            DraggableListHelper.init({
-                container: grid,
-                itemSelector: '.wn-lore-card',
-                dragDataMimeType: mimeType,
-                getDragData: (el) => el.getAttribute('data-lore-heading') || '',
-                onDrop: (fromName, toName, insertAfter) => {
-                    if (fromName === toName) return;
+            if (!group.isBorrowed) {
+                DraggableListHelper.init({
+                    container: grid,
+                    itemSelector: '.wn-lore-card',
+                    dragDataMimeType: mimeType,
+                    getDragData: (el) => el.getAttribute('data-lore-heading') || '',
+                    onDrop: (fromName, toName, insertAfter) => {
+                        if (fromName === toName) return;
 
-                    void (async () => {
-                        const fromEntry = plugin.characterManager.getCharacterFile(currentBookPath, fromName);
-                        const toEntry = plugin.characterManager.getCharacterFile(currentBookPath, toName);
+                        void (async () => {
+                            const fromEntry = plugin.characterManager.getCharacterFile(currentBookPath, fromName);
+                            const toEntry = plugin.characterManager.getCharacterFile(currentBookPath, toName);
 
-                        if (fromEntry && toEntry) {
-                            if (fromEntry.file.path !== toEntry.file.path) {
-                                new Notice(t('error.cross-file-drag-not-supported'));
-                                return;
+                            if (fromEntry && toEntry) {
+                                if (fromEntry.file.path !== toEntry.file.path) {
+                                    new Notice(t('error.cross-file-drag-not-supported'));
+                                    return;
+                                }
+                                const moved = await plugin.characterManager.moveLoreItem(fromEntry, toEntry, insertAfter);
+                                if (moved) {
+                                    // 强制重新构建缓存，避免 500ms 异步防抖导致刚重绘时读取的还是旧数据
+                                    await plugin.characterManager.rebuildCache();
+                                    if (reloadBoard) reloadBoard();
+                                }
                             }
-                            const moved = await plugin.characterManager.moveLoreItem(fromEntry, toEntry, insertAfter);
-                            if (moved) {
-                                // 强制重新构建缓存，避免 500ms 异步防抖导致刚重绘时读取的还是旧数据
-                                await plugin.characterManager.rebuildCache();
-                                if (reloadBoard) reloadBoard();
-                            }
-                        }
-                    })();
-                },
-            });
+                        })();
+                    },
+                });
+            }
             
             panels.push({ path, panel, header, grid, iconSpan });
         }
@@ -372,14 +404,11 @@ export class LoreBoardRenderer {
 
         let explicitEdges: GraphEdge[] = [];
         try {
-            const loreFolder = plugin.characterManager.findLoreFolder(bookPath);
-            if (loreFolder && loreFolder instanceof TFolder) {
-                const sampleFile = this.findFirst(loreFolder);
-                if (sampleFile) {
-                    const graphManager = plugin.relationGraphManager;
-                    const data = await graphManager.buildGraphData(sampleFile, { enableGlobal: true, autoLinkMentions: true });
-                    explicitEdges = data.edges.filter(e => e.type === 'explicit');
-                }
+            const effectiveFiles = plugin.characterManager.getEffectiveLoreFiles(bookPath);
+            if (effectiveFiles.length > 0) {
+                const graphManager = plugin.relationGraphManager;
+                const data = await graphManager.buildGraphData(effectiveFiles[0], { files: effectiveFiles, enableGlobal: false, autoLinkMentions: true });
+                explicitEdges = data.edges.filter(e => e.type === 'explicit');
             }
         } catch (e) { console.error(e); }
 
@@ -468,21 +497,14 @@ export class LoreBoardRenderer {
         container.empty();
         container.addClass('wn-lore-graph-container');
 
-        const loreFolder = plugin.characterManager.findLoreFolder(bookPath);
-
-        if (!loreFolder || !(loreFolder instanceof TFolder)) {
-            container.createDiv({ cls: 'wn-corkboard-empty-msg', text: t('corkboard.no-lore') });
-            return;
-        }
-
-        const sampleFile = this.findFirst(loreFolder);
-        if (!sampleFile) {
+        const effectiveFiles = plugin.characterManager.getEffectiveLoreFiles(bookPath);
+        if (effectiveFiles.length === 0) {
             container.createDiv({ cls: 'wn-corkboard-empty-msg', text: t('corkboard.no-lore') });
             return;
         }
 
         const graphManager = plugin.relationGraphManager;
-        const data = await graphManager.buildGraphData(sampleFile, { enableGlobal: true, autoLinkMentions: true });
+        const data = await graphManager.buildGraphData(effectiveFiles[0], { files: effectiveFiles, enableGlobal: false, autoLinkMentions: true });
         if (isDisposed) return;
 
         if (data.nodes.length === 0) {
@@ -738,19 +760,21 @@ export class LoreBoardRenderer {
 
                 // 双击节点：打开对应设定文档并精准定位至标题行
                 const entry = plugin.characterManager.getCharacterFile(bookPath, node.id);
-                if (entry) {
-                    const cache = app.metadataCache.getFileCache(entry.file);
+                const targetFile = entry?.file ?? node.file ?? (node.sourcePath ? app.vault.getAbstractFileByPath(node.sourcePath) : null);
+                if (targetFile instanceof TFile) {
+                    const cache = app.metadataCache.getFileCache(targetFile);
                     let fallbackLine: number | undefined;
+                    const headingToFind = entry?.heading ?? node.heading ?? node.id;
                     if (cache?.headings) {
                         for (const h of cache.headings) {
                             const rawHeading = cleanLoreHeading(h.heading);
-                            if (rawHeading === cleanLoreHeading(entry.heading)) {
+                            if (rawHeading === cleanLoreHeading(headingToFind)) {
                                 fallbackLine = h.position.start.line;
                                 break;
                             }
                         }
                     }
-                    void smartLocateAndHighlight(app, entry.file, [`## ${entry.heading}`, `# ${entry.heading}`, entry.heading, node.id], {
+                    void smartLocateAndHighlight(app, targetFile, [`## ${headingToFind}`, `# ${headingToFind}`, headingToFind, node.id], {
                         splitIfNew: true,
                         fallbackLine
                     });

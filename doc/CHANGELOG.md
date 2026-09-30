@@ -1,3 +1,55 @@
+## ✨ v4.0.0
+
+### 新增功能
+
+#### 时间线全面升级
+
+- **节点更清晰**：时间节点按名称、类型和关联设定区分，只有三者一致才会合并；其他同名节点各自保留事件，已有时间线仍可使用。从正文添加事件时，可直接选用标明类型和关联设定的已有节点。
+- **两种浏览视图**：工作台时间轴可在瀑布流与横向“设定轨迹”间切换。轨迹将同名节点排在同一列，按类型和设定展示各自事件；同名同类型节点共用时间标记，没有未关联节点时隐藏“未关联设定”行。
+- **自由浏览与独立筛选**：在轨迹中拖动画布、缩放或双击空白处恢复原大小；每次重绘会回到初始位置和 100% 缩放。工作台与时间线侧面板可分别筛选类型和关联设定，侧面板排序不影响工作台。
+- **查看与编辑**：点击时间标记可定位到时间线文件中首个对应节点；点击章节名打开正文，悬停查看摘要。事件描述可原位编辑、换行，并在点击外侧时自动保存。
+
+#### 系列作品与公共设定
+
+- 新建、导入或管理作品时可指定所属系列；创作主页和工作台会显示系列名称。
+- 同系列作品可共用“设定/系列”中的设定，并在编辑器速查、工作台设定看板及新增设定时使用。私有设定仍只属于本作品；公共目录名称可在设置中调整。
+
+### 修复与优化
+
+- **繁体中文章节命名**：繁体中文环境首次使用时，可直接识别、排序并续写“第一節”“第一冊”“第貳章”等常见章名，同时兼容已有简体章名。感谢 [@ycc90123](https://github.com/ycc90123) 通过 [PR #39](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/pull/39) 贡献此功能。
+- **作品历程**：仅清理章节标题末尾空格时不再显示改名，已有记录也会隐藏。
+- **时间线**：相同时间文本的节点不再导致编辑或连线错位。
+- **拖拽**：中断长按拖拽后，工作台和时间线不再残留拖拽样式。
+- **多作品**：不同作品的设定更新与工作台刷新不再互相干扰。
+- **文件列表**：修复在默认设置下首次点击子文件夹笔记时只更新状态栏而无法打开文件的问题。
+- **性能**：减少主页、移动端统计和关系图谱的重复刷新；切换作品会释放旧搜索缓存，关闭便签后不再产生延迟界面更新，并减少弹窗监听的重复检查。
+
+### English Changelog
+
+#### New Features
+
+##### Comprehensive Timeline Upgrade
+
+- **Clearer nodes**: Timeline nodes are distinguished by their time label, type, and associated lore, and merge only when all three match. Other nodes with the same label keep their own events, and existing timelines remain usable. When adding an event from selected text, you can choose an existing node with its type and lore shown.
+- **Two ways to browse**: Switch the Workbench timeline between waterfall and horizontal Lore Trajectory views. The trajectory places nodes with the same label in one column and shows their events by type and lore. Nodes with the same label and type share a time marker; the unassociated lore lane appears only when needed.
+- **Flexible browsing and separate filters**: Drag or zoom the trajectory, or double-click blank space to reset its size; each redraw starts at the default position and 100% zoom. Filter type and lore independently in the Workbench and Timeline sidebar; sidebar ordering does not affect the Workbench.
+- **Viewing and editing**: Click a time marker to open its first corresponding node in the timeline file, or click a chapter name to open the chapter and hover for its synopsis. Edit event descriptions in place, add line breaks, and save by clicking outside.
+
+##### Series Works & Shared Lore
+
+- Assign a series when creating, importing, or managing a work. Its series name appears on the Creative Homepage and in the Workbench.
+- Works in a series can share lore from their Lore/Series folders in editor lookup, the Workbench lore board, and Add Lore. Private lore stays with each work; the shared folder name is configurable.
+
+#### Fixes & Improvements
+
+- **Traditional Chinese chapter names**: New Traditional Chinese installations recognize, sort, and continue common chapter names such as “第一節”, “第一冊”, and “第貳章” by default, while still accepting existing Simplified Chinese names. Thanks to [@ycc90123](https://github.com/ycc90123) for contributing this feature in [PR #39](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/pull/39).
+- **Writing Journey**: Trimming trailing spaces from a chapter title no longer appears as a rename, including in existing history.
+- **Timeline**: Nodes with the same time label no longer cause misplaced edits or links.
+- **Drag & drop**: Interrupting a long press no longer leaves drag styling behind in the Workbench or Timeline.
+- **Multiple works**: Lore updates and Workbench refreshes from one work no longer interfere with another.
+- **File Explorer**: Fixed an issue under default settings where clicking a note in a subfolder for the first time changed the status bar but failed to open the file.
+- **Performance**: Fewer duplicate Homepage, mobile statistics, and relation graph refreshes. Switching works releases old search caches, closing notes prevents delayed UI updates, and modal monitoring performs fewer redundant checks.
+
 ## 🔧 v3.9.11
 
 ### 新增功能

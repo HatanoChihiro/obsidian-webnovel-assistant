@@ -40,6 +40,7 @@ export class FileExplorerPatcher {
 	private _currentDropTarget: HTMLElement | null = null;
 	private _currentDropPosition: 'top' | 'bottom' | null = null;
 	private _dragContainerEl: HTMLElement | null = null;
+	private _trackedContainerEl: HTMLElement | null = null;
 
 	constructor(app: App, plugin: WebNovelAssistantPlugin) {
 		this.app = app;
@@ -128,15 +129,29 @@ export class FileExplorerPatcher {
 		const containerEl = (firstLeaf?.view as FileExplorerView | undefined)?.containerEl;
 		let containerChanged = false;
 
-		if (containerEl && containerEl !== this._dragContainerEl) {
-			this.teardownDragSort();
-			this.initDragSort();
+		if (containerEl && containerEl !== this._trackedContainerEl) {
+			this._trackedContainerEl = containerEl;
 			containerChanged = true;
-		} else if (!this._dragContainerEl && containerEl) {
-			this.initDragSort();
+		} else if (!containerEl) {
+			this._trackedContainerEl = null;
 		}
 
-		if (scanResult.newlyPatchedCount > 0 || containerChanged) {
+		let dragSortChanged = false;
+		if (this.plugin.settings.enableSmartChapterSort) {
+			if (containerEl && containerEl !== this._dragContainerEl) {
+				this.teardownDragSort();
+				this.initDragSort(containerEl);
+				dragSortChanged = true;
+			} else if (!containerEl && this._dragContainerEl) {
+				this.teardownDragSort();
+				dragSortChanged = true;
+			}
+		} else if (this._dragContainerEl) {
+			this.teardownDragSort();
+			dragSortChanged = true;
+		}
+
+		if (scanResult.newlyPatchedCount > 0 || containerChanged || dragSortChanged) {
 			this.refreshAllExplorers();
 		}
 
@@ -555,12 +570,14 @@ export class FileExplorerPatcher {
 		this.workspaceEventRefs.forEach(ref => this.app.workspace.offref(ref));
 		this.workspaceEventRefs = [];
 		this.teardownDragSort();
+		this._trackedContainerEl = null;
 		this.refreshAllExplorers();
 		this.removeWordCountElements();
 	}
 
 	unpatch(): void {
 		this.teardownDragSort();
+		this._trackedContainerEl = null;
 		for (const unpatch of this.unpatchFuncs) {
 			unpatch();
 		}
@@ -643,12 +660,12 @@ export class FileExplorerPatcher {
 	private _dropHandler = this._onDrop.bind(this);
 	private _dragEndHandler = this._onDragEnd.bind(this);
 
-	private initDragSort(): void {
+	private initDragSort(targetContainer?: HTMLElement): void {
 		if (!this.enabled || this.destroyed || !this.plugin.settings.enableSmartChapterSort) return;
 
 		const leaf = this.app.workspace.getLeavesOfType('file-explorer')[0];
-		if (!leaf) return;
-		const containerEl = (leaf.view as FileExplorerView)?.containerEl as HTMLElement | undefined;
+		if (!leaf && !targetContainer) return;
+		const containerEl = targetContainer ?? (leaf?.view as FileExplorerView | undefined)?.containerEl;
 		if (!containerEl) return;
 
 		if (this._dragContainerEl === containerEl) return;

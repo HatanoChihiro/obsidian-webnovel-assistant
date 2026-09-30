@@ -315,7 +315,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.homepageWelcome = value.trim();
 						await this.plugin.saveSettings();
-						this.plugin.homepageManager?.refreshHomepageViews();
+						void this.plugin.homepageManager?.refreshHomepageViews();
 					}));
 
 			new Setting(containerEl)
@@ -331,8 +331,10 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					.onChange(async (value: string) => {
 						this.plugin.settings.homepagePinPosition = value as 'none' | 'top' | 'bottom';
 						await this.plugin.saveSettings();
-						if (value !== 'none') {
+						if (value !== 'none' || this.plugin.settings.enableSmartChapterSort) {
 							this.plugin.fileExplorerPatcher.enable();
+						} else {
+							this.plugin.fileExplorerPatcher.disable();
 						}
 						// 触发文件树刷新
 						this.app.workspace.getLeavesOfType('file-explorer').forEach(leaf => {
@@ -389,7 +391,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			if (this.plugin.settings.showExplorerCounts) {
 				void this.plugin.buildFolderCache();
 			}
-			this.plugin.homepageManager?.refreshHomepageViews();
+			void this.plugin.homepageManager?.refreshHomepageViews();
 		};
 
 		new Setting(containerEl)
@@ -436,7 +438,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					if (this.plugin.settings.showExplorerCounts) {
 						void this.plugin.buildFolderCache();
 					}
-					this.plugin.homepageManager?.refreshHomepageViews();
+					void this.plugin.homepageManager?.refreshHomepageViews();
 					this.display();
 				}));
 		if (this.plugin.settings.enableStrictChapterMode) {
@@ -459,7 +461,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				if (this.plugin.settings.showExplorerCounts) {
 					void this.plugin.buildFolderCache();
 				}
-				this.plugin.homepageManager?.refreshHomepageViews();
+				void this.plugin.homepageManager?.refreshHomepageViews();
 			};
 
 			new Setting(containerEl)
@@ -563,7 +565,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.enableSmartChapterSort = value;
 					await this.plugin.saveSettings();
-					if (value) this.plugin.fileExplorerPatcher.enable();
+					if (value || this.plugin.settings.homepagePinPosition !== 'none') this.plugin.fileExplorerPatcher.enable();
 					else this.plugin.fileExplorerPatcher.disable();
 					this.display();
 				}));
@@ -633,7 +635,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		this.plugin.refreshStatusViews(true, true);
 		this.plugin.mobileFloatingStats?.update();
 		if (this.plugin.settings.enableHomepage) {
-			this.plugin.homepageManager?.refreshHomepageViews();
+			void this.plugin.homepageManager?.refreshHomepageViews();
 		}
 	}
 
@@ -1842,7 +1844,57 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 
 				text.inputEl.addEventListener('change', () => { saveAction().catch(console.error); });
 				text.inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); text.inputEl.blur(); } });
-			})
+			});
+
+		new Setting(containerEl)
+			.setName(t('setting.series-lore-folder-name'))
+			.setDesc(t('setting.series-lore-folder-name-desc'))
+			.addText(text => {
+				const oldName = this.plugin.settings.seriesLoreFolderName || getDefaultFileName('seriesLoreFolderName');
+				text.setPlaceholder(t('setting.series-lore-folder-name-placeholder'))
+					.setValue(oldName);
+				let tempValue = oldName;
+				text.onChange((value: string) => { tempValue = value.trim(); });
+
+				const saveAction = async () => {
+					const currentOldName = this.plugin.settings.seriesLoreFolderName || getDefaultFileName('seriesLoreFolderName');
+					const newName = tempValue || getDefaultFileName('seriesLoreFolderName');
+					if (newName === currentOldName) return;
+
+					if (newName.includes('..') || newName.includes('/') || newName.includes('\\')) {
+						new Notice(t('corkboard.rename-failed') || '重命名失败，名称非法');
+						text.setValue(currentOldName);
+						return;
+					}
+
+					const result = await this.plugin.renameAllSeriesLoreFolders(currentOldName, newName);
+					if (result.failed > 0) {
+						if (result.renamed > 0) {
+							// 部分作品重命名成功，部分作品失败/遗留：提示部分完成，绝不宣称全部重命名
+							this.plugin.settings.seriesLoreFolderName = newName;
+							await this.plugin.saveSettings();
+							new Notice(t('notice.files-renamed', { count: String(result.renamed) }) + ` (${result.renamed}/${result.total})`);
+						} else {
+							// 全部作品重命名失败：为防止设定失效且数据不可访问，不更新配置
+							text.setValue(currentOldName);
+							new Notice(t('corkboard.rename-failed') || '重命名失败');
+							await this.plugin.characterManager?.rebuildCache();
+							return;
+						}
+					} else {
+						// 全部重命名成功或无旧文件夹需重命名
+						this.plugin.settings.seriesLoreFolderName = newName;
+						await this.plugin.saveSettings();
+						if (result.renamed > 0) {
+							new Notice(t('notice.files-renamed', { count: String(result.renamed) }));
+						}
+					}
+					await this.plugin.characterManager?.rebuildCache();
+				};
+
+				text.inputEl.addEventListener('change', () => { saveAction().catch(console.error); });
+				text.inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); text.inputEl.blur(); } });
+			});
 
 		// 移动端开启设定悬浮/点击卡片开关（仅在移动端显示，电脑端屏蔽）
 		if (isMobile()) {

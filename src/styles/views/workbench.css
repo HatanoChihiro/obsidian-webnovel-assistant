@@ -204,3 +204,9 @@ input[type="search"].wn-workbench-filter-input::-webkit-search-results-decoratio
 	width: 16px;
 	height: 16px;
 }
+
+.wn-workbench-series-subtitle {
+	font-size: 0.75em;
+	font-weight: 500;
+	color: var(--text-muted);
+}

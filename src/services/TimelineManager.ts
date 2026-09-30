@@ -17,18 +17,24 @@ export interface TimelineItem {
 	chapter: string;
 	origin?: string;
 	important?: boolean;
+	type?: string;
 }
 
 export interface TimelineEntry {
 	time: string;
+	type?: string;
 	description: string;
 	chapter: string;
-	type: string;
 	rawBlock: string;
 	origin?: string;
 	important?: boolean;
 	lores?: string[];
 	items?: TimelineItem[];
+}
+
+export function timelineNodeKey(node: Pick<TimelineEntry, 'time' | 'type' | 'lores'>): string {
+	const lores = [...new Set((node.lores || []).map(lore => lore.trim()).filter(Boolean))].sort();
+	return JSON.stringify([node.time.trim(), node.type?.trim() || '', lores]);
 }
 
 export function parseLoreComment(raw: string): string[] {
@@ -227,9 +233,14 @@ export class TimelineManager {
 
 			const items: TimelineItem[] = [];
 			const nodeLores: string[] = [];
+			const blockTypes: string[] = [];
+			let currentType: string = '';
+			let firstTypeLineIndex = -1;
+			let lastItemLineIndex = -1;
 
 			// 匹配类型行：优先当前语言，兼容中文旧格式
-			const typeMatch = trimmed.match(new RegExp(`\\*\\*(?:Type|类型|類型|${t('timeline.type-label')})\\*\\*：(.+)`));
+			const typeLabel = t('timeline.type-label');
+			const typeRegex = new RegExp(`^\\*\\*(?:Type|类型|類型|${escapeRegex(typeLabel)})\\*\\*[:：]\\s*(.*)$`);
 
 			let i = 1;
 			while (i < lines.length) {
@@ -251,7 +262,26 @@ export class TimelineManager {
 					continue;
 				}
 
-				// 跳过类型行（提取可能附带在类型行后的设定注释）
+				// 检查类型行
+				const typeMatch = trimmedLine.match(typeRegex);
+				if (typeMatch) {
+					if (firstTypeLineIndex === -1) firstTypeLineIndex = i;
+					let typeVal = typeMatch[1].trim();
+					const lineLoreMatch = typeVal.match(/<!--\s*(?:wn-lore|lore):\s*([\s\S]+?)\s*-->/);
+					if (lineLoreMatch) {
+						const rawLores = parseLoreComment(lineLoreMatch[1]);
+						nodeLores.push(...this.canonicalizeLoreList(rawLores, bookFolder));
+						typeVal = typeVal.replace(/<!--\s*(?:wn-lore|lore):\s*[\s\S]+?\s*-->/g, '').trim();
+					}
+					currentType = typeVal;
+					if (typeVal && !blockTypes.includes(typeVal)) {
+						blockTypes.push(typeVal);
+					}
+					i++;
+					continue;
+				}
+
+				// 跳过其他 ** 标记行（提取可能附带在行后的设定注释）
 				if (line.startsWith('**')) {
 					const lineLoreMatch = line.match(/<!--\s*(?:wn-lore|lore):\s*([\s\S]+?)\s*-->/);
 					if (lineLoreMatch) {
@@ -264,12 +294,14 @@ export class TimelineManager {
 
 				// 处理列表项
 				if (line.startsWith('- ')) {
+					lastItemLineIndex = i;
 					let desc = line.slice(2);
 
 					// 先收集后续的缩进行，再统一剖离隐藏元数据。
 					// origin 等历史注释可能位于续行，不能只解析首行。
 					i++;
 					while (i < lines.length && lines[i].startsWith('  ') && !lines[i].startsWith('- ')) {
+						lastItemLineIndex = i;
 						const continuationLine = lines[i].slice(2);
 						if (continuationLine.trim()) {
 							desc += '\n' + continuationLine;
@@ -320,12 +352,27 @@ export class TimelineManager {
 						description: desc,
 						chapter,
 						origin,
-						important
+						important,
+						type: firstTypeLineIndex >= 0 ? currentType : undefined
 					});
 					continue;
 				}
 
 				i++;
+			}
+
+			// 检查是否为旧格式（类型在列表项之后/底部，或者没有列表项）
+			const isBottomLegacyType = firstTypeLineIndex !== -1 && (lastItemLineIndex === -1 || firstTypeLineIndex > lastItemLineIndex);
+			const primaryType = blockTypes[0] || '';
+
+			if (isBottomLegacyType && primaryType) {
+				for (const it of items) {
+					if (!it.type) it.type = primaryType;
+				}
+			} else if (firstTypeLineIndex !== -1) {
+				for (const it of items) {
+					if (it.type === undefined) it.type = '';
+				}
 			}
 
 			// 如果没有找到列表项，尝试从旧格式解析（H2 后的描述行）
@@ -380,23 +427,35 @@ export class TimelineManager {
 						description,
 						chapter: chapters.join(', '),
 						origin,
-						important
+						important,
+						type: primaryType || undefined
 					});
 				}
 			}
 
-			const finalItems = items.length > 0 ? items : [{ description: '', chapter: '' }];
+			const finalItems = items.length > 0 ? items : [{ description: '', chapter: '', type: primaryType || undefined }];
 			const uniqueLores = [...new Set(nodeLores)];
-
-			entries.push({
-				time,
-				description: finalItems.map(it => it.description).filter(Boolean).join('\n'),
-				chapter: finalItems.map(it => it.chapter).filter(Boolean).join(', '),
-				type: typeMatch ? typeMatch[1].replace(/<!--[\s\S]*?-->/g, '').trim() : '',
-				rawBlock: trimmed,
-				items: finalItems,
-				lores: uniqueLores.length > 0 ? uniqueLores : undefined
-			});
+			// Older event-level files may contain several type sections in one block.
+			// Expose each section as its own node; subsequent writes use the node format.
+			const groups = new Map<string, TimelineItem[]>();
+			for (const item of finalItems) {
+				const type = item.type || '';
+				const { type: _legacyType, ...nodeItem } = item;
+				const group = groups.get(type) || [];
+				group.push(nodeItem);
+				groups.set(type, group);
+			}
+			for (const [type, groupItems] of groups) {
+				entries.push({
+					time,
+					type,
+					description: groupItems.map(it => it.description).filter(Boolean).join('\n'),
+					chapter: groupItems.map(it => it.chapter).filter(Boolean).join(', '),
+					rawBlock: trimmed,
+					items: groupItems,
+					lores: uniqueLores.length > 0 ? uniqueLores : undefined
+				});
+			}
 		}
 
 		return entries;
@@ -406,73 +465,49 @@ export class TimelineManager {
 		const lines: string[] = [];
 		lines.push(`## ${entry.time}`);
 		lines.push('');
+		if (entry.type) {
+			lines.push(`**${getTimelineLabel('type')}**：${entry.type}`);
+			lines.push('');
+		}
 
-		const items = entry.items;
-		if (items && items.length > 0) {
-			for (const it of items) {
-				const descriptions = it.description ? it.description.split('\n').filter(line => line.trim()) : [];
-				if (descriptions.length > 0) {
-					const firstLineParts: string[] = [descriptions[0]];
-					if (it.chapter) {
-						const chapters = it.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean);
-						const chapterLinks = chapters.map(c => `[[${c}]]`).join(' ');
-						if (chapterLinks) firstLineParts.push(chapterLinks);
-					}
-					if (it.important) {
-						firstLineParts.push('<!-- wn-important -->');
-					}
-					if (it.origin) {
-						firstLineParts.push(`<!-- origin: ${it.origin} -->`);
-					}
-					lines.push(`- ${firstLineParts.join(' ')}`);
+		const items = entry.items && entry.items.length > 0
+			? entry.items
+			: [{
+				description: entry.description,
+				chapter: entry.chapter,
+				origin: entry.origin,
+				important: entry.important
+			}];
 
-					for (let i = 1; i < descriptions.length; i++) {
-						lines.push(`  ${descriptions[i]}`);
-					}
-				} else if (it.chapter || it.origin || it.important) {
-					const chapters = it.chapter ? it.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean) : [];
-					const chapterLinks = chapters.map(c => `[[${c}]]`).join(' ');
-					const parts: string[] = [];
-					if (chapterLinks) parts.push(chapterLinks);
-					if (it.important) parts.push('<!-- wn-important -->');
-					if (it.origin) parts.push(`<!-- origin: ${it.origin} -->`);
-					if (parts.length > 0) lines.push(`- ${parts.join(' ')}`);
-				}
-			}
-		} else {
-			const descriptions = entry.description ? entry.description.split('\n').filter(line => line.trim()) : [];
+		for (const it of items) {
+			const descriptions = it.description ? it.description.split('\n').filter(line => line.trim()) : [];
 			if (descriptions.length > 0) {
 				const firstLineParts: string[] = [descriptions[0]];
-				if (entry.chapter) {
-					const chapters = entry.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean);
+				if (it.chapter) {
+					const chapters = it.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean);
 					const chapterLinks = chapters.map(c => `[[${c}]]`).join(' ');
 					if (chapterLinks) firstLineParts.push(chapterLinks);
 				}
-				if (entry.important) {
+				if (it.important) {
 					firstLineParts.push('<!-- wn-important -->');
 				}
-				if (entry.origin) {
-					firstLineParts.push(`<!-- origin: ${entry.origin.replace(/\n/g, ' ')} -->`);
+				if (it.origin) {
+					firstLineParts.push(`<!-- origin: ${it.origin.replace(/\n/g, ' ')} -->`);
 				}
 				lines.push(`- ${firstLineParts.join(' ')}`);
 
 				for (let i = 1; i < descriptions.length; i++) {
 					lines.push(`  ${descriptions[i]}`);
 				}
-			} else if (entry.chapter || entry.origin || entry.important) {
-				const chapters = entry.chapter ? entry.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean) : [];
+			} else if (it.chapter || it.origin || it.important) {
+				const chapters = it.chapter ? it.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean) : [];
 				const chapterLinks = chapters.map(c => `[[${c}]]`).join(' ');
 				const parts: string[] = [];
 				if (chapterLinks) parts.push(chapterLinks);
-				if (entry.important) parts.push('<!-- wn-important -->');
-				if (entry.origin) parts.push(`<!-- origin: ${entry.origin.replace(/\n/g, ' ')} -->`);
+				if (it.important) parts.push('<!-- wn-important -->');
+				if (it.origin) parts.push(`<!-- origin: ${it.origin.replace(/\n/g, ' ')} -->`);
 				if (parts.length > 0) lines.push(`- ${parts.join(' ')}`);
 			}
-		}
-
-		if (entry.type) {
-			lines.push('');
-			lines.push(`**${getTimelineLabel('type')}**：${entry.type}`);
 		}
 
 		if (entry.lores && entry.lores.length > 0) {
@@ -489,7 +524,21 @@ export class TimelineManager {
 		lines.push('');
 
 		return lines.join('\n');
+	}
 
+	findEntryHeadingOffset(content: string, entryIndex: number, folderPath?: string): number | undefined {
+		const headings = [...content.matchAll(/^## .+$/gm)];
+		let index = 0;
+		for (let i = 0; i < headings.length; i++) {
+			const start = headings[i].index;
+			const nextHeading = headings[i + 1]?.index ?? content.length;
+			const separator = content.indexOf('\n---\n', start);
+			const end = separator >= 0 && separator < nextHeading ? separator + '\n---\n'.length : nextHeading;
+			const count = this.parseEntries(content.slice(start, end), folderPath).length;
+			if (entryIndex < index + count) return start;
+			index += count;
+		}
+		return undefined;
 	}
 
 	private resolveChapterFile(
@@ -608,108 +657,50 @@ export class TimelineManager {
 	}
 
 	async appendEntry(entry: TimelineEntry, folderPath?: string): Promise<string> {
-			const folder = this.normalizeFolderPath(folderPath);
-			return this.writer.enqueue(async () => {
+		const folder = this.normalizeFolderPath(folderPath);
+		const canonicalEntry = { ...entry, lores: this.canonicalizeLoreList(entry.lores || [], folder) };
+		return this.writer.enqueue(async () => {
 			let file = this.getTimelineFile(folder);
 			if (!file) file = await this.createTimelineFile(folder);
 
 			let finalContent = '';
 			await this.app.vault.process(file, (existing) => {
-				const headerPattern = new RegExp(
-					`(## ${escapeRegex(entry.time)}\\n)([\\s\\S]*?)(\\n---\\n|\\n*$)`,
-					'm'
-				);
-				const match = headerPattern.exec(existing);
+				const headings = [...existing.matchAll(/^## (.+)$/gm)];
+				let lastSameTimeEnd = -1;
+				for (let i = 0; i < headings.length; i++) {
+					const heading = headings[i];
+					if (heading[1].trim() !== entry.time) continue;
+					const start = heading.index;
+					const nextHeading = headings[i + 1]?.index ?? existing.length;
+					const separator = existing.indexOf('\n---\n', start);
+					const end = separator >= 0 && separator < nextHeading ? separator + '\n---\n'.length : nextHeading;
+					lastSameTimeEnd = end;
+					const matchingEntries = this.parseEntries(existing.slice(start, end), folder);
+					const match = matchingEntries.find(candidate => timelineNodeKey(candidate) === timelineNodeKey(canonicalEntry));
+					if (!match) continue;
 
-				let newContent: string;
-				if (match) {
-					const fullMatch = match[0];
-					const header = match[1];
-					const body = match[2];
-					const separator = match[3];
-					const existingLores = [...body.matchAll(/<!--\s*(?:wn-lore|lore):\s*([\s\S]+?)\s*-->/g)]
-						.flatMap(loreMatch => parseLoreComment(loreMatch[1]));
-					const bodyWithoutLore = body.replace(/<!--\s*(?:wn-lore|lore):\s*[\s\S]+?\s*-->/g, '');
-
-					const itemsToAppend: TimelineItem[] = (entry.items && entry.items.length > 0)
-						? entry.items
-						: [{ description: entry.description, chapter: entry.chapter, origin: entry.origin, important: entry.important }];
-					const newItemLines: string[] = [];
-
-					for (const it of itemsToAppend) {
-						const descriptions = it.description ? it.description.split('\n').filter(line => line.trim()) : [];
-						if (descriptions.length > 0) {
-							const firstLineParts: string[] = [descriptions[0]];
-							if (it.chapter) {
-								const chapters = it.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean);
-								const chapterLinks = chapters.map(c => `[[${c}]]`).join(' ');
-								if (chapterLinks) firstLineParts.push(chapterLinks);
-							}
-							if (it.important) {
-								firstLineParts.push('<!-- wn-important -->');
-							}
-							if (it.origin) {
-								firstLineParts.push(`<!-- origin: ${it.origin.replace(/\n/g, ' ')} -->`);
-							}
-							newItemLines.push(`- ${firstLineParts.join(' ')}`);
-
-							for (let j = 1; j < descriptions.length; j++) {
-								newItemLines.push(`  ${descriptions[j]}`);
-							}
-						} else if (it.chapter || it.origin || it.important) {
-							const chapters = it.chapter ? it.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean) : [];
-							const chapterLinks = chapters.map(c => `[[${c}]]`).join(' ');
-							const parts: string[] = [];
-							if (chapterLinks) parts.push(chapterLinks);
-							if (it.important) parts.push('<!-- wn-important -->');
-							if (it.origin) parts.push(`<!-- origin: ${it.origin.replace(/\n/g, ' ')} -->`);
-							if (parts.length > 0) newItemLines.push(`- ${parts.join(' ')}`);
-						}
-					}
-
-					let boldIndex = bodyWithoutLore.indexOf(`\n**${getTimelineLabel('type')}**`);
-					if (boldIndex === -1) boldIndex = bodyWithoutLore.indexOf('\n**类型**');
-					if (boldIndex === -1) boldIndex = bodyWithoutLore.indexOf('\n**類型**');
-					if (boldIndex === -1) boldIndex = bodyWithoutLore.indexOf('\n**Type**');
-
-					let newBody: string;
-					if (newItemLines.length > 0) {
-						const newItemText = newItemLines.join('\n');
-						if (boldIndex !== -1) {
-							newBody = bodyWithoutLore.slice(0, boldIndex) + '\n' + newItemText + bodyWithoutLore.slice(boldIndex);
-						} else {
-							newBody = bodyWithoutLore.trimEnd() + '\n' + newItemText + '\n';
-						}
-					} else {
-						newBody = bodyWithoutLore;
-					}
-
-					const mergedLores = this.canonicalizeLoreList(
-						[...new Set([...existingLores, ...(entry.lores || [])])],
-						folder
-					);
-					if (mergedLores.length > 0) {
-						newBody = newBody.trimEnd() + '\n\n' + formatLoreComment(mergedLores) + '\n';
-					}
-
-					newContent = existing.replace(fullMatch, header + newBody + separator);
-				} else {
-					const sep = existing.endsWith('\n') || existing === '' ? '' : '\n';
-					newContent = existing + sep + this.formatEntry(entry);
+					const existingItems = (match.items || []).filter(it => it.description || it.chapter || it.origin || it.important);
+					const incomingItems = entry.items?.length ? entry.items : [{ description: entry.description, chapter: entry.chapter, origin: entry.origin, important: entry.important }];
+					match.items = [...existingItems, ...incomingItems];
+					finalContent = existing.slice(0, start) + matchingEntries.map(candidate => this.formatEntry(candidate)).join('') + existing.slice(end);
+					return finalContent;
 				}
-
-				finalContent = newContent;
-				return newContent;
+				const insertion = lastSameTimeEnd >= 0 ? lastSameTimeEnd : existing.length;
+				const prefix = existing.slice(0, insertion);
+				const separator = prefix && !prefix.endsWith('\n') ? '\n' : '';
+				finalContent = prefix + separator + this.formatEntry(canonicalEntry) + existing.slice(insertion);
+				return finalContent;
 			});
 			const entries = this.parseEntries(finalContent, folder);
 			await this.reconcileFrontmatter(folder, entries, file);
 			return finalContent;
-			});
-		}
+		});
+	}
 
 
 	async updateEntry(index: number, updated: TimelineEntry, folderPath?: string): Promise<string> {
 			const folder = this.normalizeFolderPath(folderPath);
+			const canonicalUpdated = { ...updated, lores: this.canonicalizeLoreList(updated.lores || [], folder) };
 			return this.writer.enqueue(async () => {
 			const file = this.getTimelineFile(folder);
 
@@ -719,7 +710,17 @@ export class TimelineManager {
 
 			if (!entries) return '';
 
-			entries[index] = updated;
+			entries[index] = canonicalUpdated;
+			const mergeIndex = entries.findIndex((candidate, candidateIndex) =>
+				candidateIndex !== index && timelineNodeKey(candidate) === timelineNodeKey(canonicalUpdated)
+			);
+			if (mergeIndex >= 0) {
+				const target = entries[mergeIndex];
+				const targetItems = (target.items || []).filter(item => item.description || item.chapter || item.origin || item.important);
+				const updatedItems = (canonicalUpdated.items || []).filter(item => item.description || item.chapter || item.origin || item.important);
+				target.items = [...targetItems, ...updatedItems];
+				entries.splice(index, 1);
+			}
 
 			const finalContent = await this.writeAllEntries(file, entries);
 			await this.reconcileFrontmatter(folder, entries, file);
@@ -769,7 +770,7 @@ export class TimelineManager {
 			});
 		}
 
-	async moveEventItem(sourceTime: string, sourceItemIndex: number, targetTime: string, targetItemIndex?: number, folderPath?: string): Promise<string> {
+	async moveEventItem(sourceNode: number | string, sourceItemIndex: number, targetNode: number | string, targetItemIndex?: number, folderPath?: string): Promise<string> {
 		const folder = this.normalizeFolderPath(folderPath);
 		return this.writer.enqueue(async () => {
 			const file = this.getTimelineFile(folder);
@@ -778,8 +779,8 @@ export class TimelineManager {
 			const entries = await this.loadEntries(folder);
 			if (!entries) return '';
 
-			const sourceEntry = entries.find(e => e.time === sourceTime);
-			const targetEntry = entries.find(e => e.time === targetTime);
+			const sourceEntry = typeof sourceNode === 'number' ? entries[sourceNode] : entries.find(e => e.time === sourceNode);
+			const targetEntry = typeof targetNode === 'number' ? entries[targetNode] : entries.find(e => e.time === targetNode);
 			if (!sourceEntry || !targetEntry) return '';
 			if (!sourceEntry.items || sourceItemIndex < 0 || sourceItemIndex >= sourceEntry.items.length) return '';
 
@@ -806,7 +807,7 @@ export class TimelineManager {
 
 	async syncChapterToEventItem(
 		chapterTarget: string | TFile,
-		targetEvents: { time: string, itemIndex?: number }[],
+		targetEvents: { time?: string, entryIndex?: number, itemIndex?: number }[],
 		folderPath?: string
 	): Promise<string> {
 		const folder = this.normalizeFolderPath(folderPath);
@@ -865,7 +866,7 @@ export class TimelineManager {
 
 			// 2. Add to target events
 			for (const target of targetEvents) {
-				const entry = entries.find(e => e.time === target.time);
+				const entry = target.entryIndex !== undefined ? entries[target.entryIndex] : entries.find(e => e.time === target.time);
 				if (entry) {
 					if (!entry.items || entry.items.length === 0) {
 						entry.items = [{ description: entry.description, chapter: '' }];

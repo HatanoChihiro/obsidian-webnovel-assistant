@@ -10,6 +10,7 @@ export interface LoreHoverPopoverPlugin extends LoreCardRendererPlugin {
 }
 
 export class LoreHoverPopover extends Component {
+	private static readonly activePopovers = new WeakMap<HTMLElement, LoreHoverPopover>();
 	private plugin: LoreHoverPopoverPlugin;
 	private entry: LoreEntry;
 	private targetEl: HTMLElement;
@@ -38,6 +39,11 @@ export class LoreHoverPopover extends Component {
 		this.immediate = immediate;
 		this.ownerDocument = targetEl.ownerDocument;
 		this.ownerWindow = this.ownerDocument.defaultView ?? window;
+		const existing = LoreHoverPopover.activePopovers.get(targetEl);
+		if (existing && !existing.isDisposed && !existing.disposeAfterShow) {
+			if (!immediate || existing.immediate) return existing;
+			existing.hide();
+		}
 
 		// 移动端无 mouseover/hover，且需校验 enableMobileLorePopover 开关
 		if (isMobile()) {
@@ -46,6 +52,7 @@ export class LoreHoverPopover extends Component {
 			}
 			this.immediate = true;
 		}
+		LoreHoverPopover.activePopovers.set(targetEl, this);
 		this.load();
 
 		if (this.immediate) {
@@ -71,10 +78,19 @@ export class LoreHoverPopover extends Component {
 			}, 0);
 		}
 
-		this.disconnectObserver = new MutationObserver(() => {
+		this.disconnectObserver = new MutationObserver(records => {
+			if (!records.some(record => record.removedNodes.length > 0)) return;
 			if (!this.targetEl.isConnected) this.hide();
+			else this.observeTargetAncestors(true);
 		});
-		this.disconnectObserver.observe(this.ownerDocument.body, { childList: true, subtree: true });
+		this.observeTargetAncestors();
+	}
+
+	private observeTargetAncestors(reset: boolean = false): void {
+		if (reset) this.disconnectObserver?.disconnect();
+		for (let parent = this.targetEl.parentNode; parent; parent = parent.parentNode) {
+			this.disconnectObserver?.observe(parent, { childList: true });
+		}
 	}
 
 	private onGlobalClick = (e: MouseEvent) => {
@@ -87,6 +103,9 @@ export class LoreHoverPopover extends Component {
 	
 	override onunload() {
 		this.isDisposed = true;
+		if (LoreHoverPopover.activePopovers.get(this.targetEl) === this) {
+			LoreHoverPopover.activePopovers.delete(this.targetEl);
+		}
 		this.disposeAfterShow = true;
 		if (this.showTimeout !== null) {
 			this.ownerWindow.clearTimeout(this.showTimeout);

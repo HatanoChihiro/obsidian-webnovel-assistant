@@ -36,6 +36,19 @@
 	margin-top: 4px;
 }
 
+.wn-timeline-event-type-row {
+	margin-bottom: 8px;
+}
+
+.wn-timeline-event-type-row .wn-timeline-form-input {
+	flex: 1;
+	min-width: 0;
+}
+
+.wn-timeline-event-type-row .wn-timeline-custom-type-input {
+	margin-top: 0;
+}
+
 
 .wn-timeline-form-textarea {
 	width: 100%;

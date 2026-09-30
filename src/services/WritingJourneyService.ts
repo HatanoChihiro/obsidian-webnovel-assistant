@@ -142,12 +142,23 @@ export class WritingJourneyService {
 		return `${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 9)}`;
 	}
 
+	private pruneTTL(map: Map<string, number>): void {
+		const now = Date.now();
+		for (const [k, exp] of map) {
+			if (now > exp) {
+				map.delete(k);
+			}
+		}
+	}
+
 	public markHandledCreate(path: string, ttlMs: number = 3000): void {
+		this.pruneTTL(this.handledCreates);
 		this.handledCreates.set(path, Date.now() + ttlMs);
 		this.baselinePaths.add(path);
 	}
 
 	public consumeHandledCreate(path: string): boolean {
+		this.pruneTTL(this.handledCreates);
 		const exp = this.handledCreates.get(path);
 		if (exp !== undefined) {
 			this.handledCreates.delete(path);
@@ -157,6 +168,7 @@ export class WritingJourneyService {
 	}
 
 	public markHandledRename(oldPath: string, newPath: string, ttlMs: number = 3000): void {
+		this.pruneTTL(this.handledRenames);
 		const key = `${oldPath}->${newPath}`;
 		this.handledRenames.set(key, Date.now() + ttlMs);
 		this.baselinePaths.delete(oldPath);
@@ -164,6 +176,7 @@ export class WritingJourneyService {
 	}
 
 	public consumeHandledRename(oldPath: string, newPath: string): boolean {
+		this.pruneTTL(this.handledRenames);
 		const key = `${oldPath}->${newPath}`;
 		const exp = this.handledRenames.get(key);
 		if (exp !== undefined) {
@@ -174,11 +187,13 @@ export class WritingJourneyService {
 	}
 
 	public markHandledDelete(path: string, ttlMs: number = 3000): void {
+		this.pruneTTL(this.handledDeletes);
 		this.handledDeletes.set(path, Date.now() + ttlMs);
 		this.baselinePaths.delete(path);
 	}
 
 	public consumeHandledDelete(path: string): boolean {
+		this.pruneTTL(this.handledDeletes);
 		const exp = this.handledDeletes.get(path);
 		if (exp !== undefined) {
 			this.handledDeletes.delete(path);

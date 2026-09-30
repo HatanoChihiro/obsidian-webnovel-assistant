@@ -8,6 +8,7 @@ export interface NovelInfoSettings {
 
 export interface NovelMetadata {
 	name: string;
+	series?: string;
 	status: 'ongoing' | 'stockpiling' | 'paused' | 'completed';
 	synopsis: string;
 	protagonist: string;

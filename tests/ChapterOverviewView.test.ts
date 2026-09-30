@@ -123,6 +123,17 @@ interface ChapterOverviewHarness {
 }
 
 describe('ChapterOverviewView', () => {
+	it('clears search scope only when switching works', () => {
+		const view = new ChapterOverviewView(mockLeaf as never, plugin);
+		vi.spyOn(view, 'reloadBoard').mockResolvedValue();
+		const clear = vi.spyOn(view['filterIndex'], 'clear');
+		view.setBookPath('NovelA');
+		clear.mockClear();
+		view.setBookPath('NovelB');
+		expect(clear).toHaveBeenCalledOnce();
+		view.setBookPath('NovelB');
+		expect(clear).toHaveBeenCalledOnce();
+	});
 	let plugin: ChapterOverviewViewPlugin;
 	let mockApp: {
 		vault: {

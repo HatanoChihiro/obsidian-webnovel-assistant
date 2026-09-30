@@ -23,7 +23,7 @@ export type HomepageRendererSettings = Pick<
 
 export type HomepageRendererHomepageManager = Pick<
 	HomepageManager,
-	'createNewNovel' | 'refreshHomepageViews' | 'getNovelFolders' | 'getNovelMetadata' | 'createNovelInfoFile'
+	'createNewNovel' | 'refreshHomepageViews' | 'getNovelFolders' | 'getNovelMetadata' | 'createNovelInfoFile' | 'getAllSeries'
 >;
 
 export type HomepageRendererHistoryManager = Pick<
@@ -178,31 +178,41 @@ export class HomepageRenderer {
 
 	// 欢迎语 + 今日进度 + 新增作品按钮
 	private openNewNovelModal(): void {
-		new NewNovelModal(this.app, (result) => {
-			void (async () => {
-				try {
-					const { folderPath } = await this.plugin.homepageManager!.createNewNovel(result.name, result.meta);
-					new Notice(t('notice.novel-created', { name: result.name }));
-					this.plugin.homepageManager!.refreshHomepageViews();
+		void (async () => {
+			let existingSeries: string[] = [];
+			try {
+				if (this.plugin.homepageManager?.getAllSeries) {
+					existingSeries = await this.plugin.homepageManager.getAllSeries();
+				}
+			} catch (error) {
+				console.error('[HomepageRenderer] 加载已有系列失败:', error);
+			}
+			new NewNovelModal(this.app, (result) => {
+				void (async () => {
+					try {
+						const { folderPath } = await this.plugin.homepageManager!.createNewNovel(result.name, result.meta);
+						new Notice(t('notice.novel-created', { name: result.name }));
+						void this.plugin.homepageManager!.refreshHomepageViews();
 
-					// Open Workbench
-					const viewType = 'webnovel-workbench';
-					const { workspace } = this.app;
-					const leaves = workspace.getLeavesOfType(viewType);
-					let leaf = leaves.length > 0 ? leaves[0] : null;
-					if (!leaf) {
-						leaf = workspace.getLeaf(false);
-						await leaf.setViewState({ type: viewType, active: true });
-					}
-					if (leaf && leaf.view && leaf.view.getViewType() === viewType) {
-						(leaf.view as WorkbenchView).setBookPath(folderPath);
-					}
-					if (leaf) {
-						await revealAndFocusLeaf(this.app, leaf);
-					}
-				} catch (e) { console.error(e); }
-			})();
-		}).open();
+						// Open Workbench
+						const viewType = 'webnovel-workbench';
+						const { workspace } = this.app;
+						const leaves = workspace.getLeavesOfType(viewType);
+						let leaf = leaves.length > 0 ? leaves[0] : null;
+						if (!leaf) {
+							leaf = workspace.getLeaf(false);
+							await leaf.setViewState({ type: viewType, active: true });
+						}
+						if (leaf && leaf.view && leaf.view.getViewType() === viewType) {
+							(leaf.view as WorkbenchView).setBookPath(folderPath);
+						}
+						if (leaf) {
+							await revealAndFocusLeaf(this.app, leaf);
+						}
+					} catch (e) { console.error(e); }
+				})();
+			}, existingSeries).open();
+		})();
 	}
 
 	// 欢迎语 + 今日进度 + 新增作品按钮
@@ -310,9 +320,16 @@ export class HomepageRenderer {
 
 			// 名称 + 字数
 			const header = item.createDiv({ cls: 'homepage-ongoing-header' });
-			const nameEl = header.createDiv({ cls: 'homepage-ongoing-name' });
+			const nameWrapper = header.createDiv({ cls: 'homepage-ongoing-title-wrapper' });
+			const nameEl = nameWrapper.createDiv({ cls: 'homepage-ongoing-name' });
 			nameEl.textContent = displayName;
 			nameEl.onclick = () => void this.navigateToNovel(novel.folderPath);
+			if (novel.metadata?.series?.trim()) {
+				nameWrapper.createSpan({
+					text: novel.metadata.series.trim(),
+					cls: 'wn-badge wn-homepage-series-badge'
+				});
+			}
 			const countEl = header.createDiv({ cls: 'homepage-ongoing-count' });
 			countEl.textContent = novel.wordCount.toLocaleString() + ' ' + t('common.word-char');
 
@@ -387,6 +404,9 @@ export class HomepageRenderer {
 			nameEl.textContent = displayName;
 			nameEl.onclick = () => void this.navigateToNovel(novel.folderPath);
 
+			if (novel.metadata?.series?.trim()) {
+				this.createFieldEl(card, getNovelInfoLabel('series'), novel.metadata.series.trim());
+			}
 			this.createFieldEl(card, t('homepage.field-total-words'), novel.wordCount.toLocaleString());
 			this.createFieldEl(card, getNovelInfoLabel('protagonist'), novel.metadata?.protagonist || '--');
 			this.createFieldEl(card, getNovelInfoLabel('genre'), novel.metadata?.genre || '--');
@@ -419,6 +439,9 @@ export class HomepageRenderer {
 			nameEl.textContent = displayName;
 			nameEl.onclick = () => void this.navigateToNovel(novel.folderPath);
 
+			if (novel.metadata?.series?.trim()) {
+				this.createFieldEl(card, getNovelInfoLabel('series'), novel.metadata.series.trim());
+			}
 			this.createFieldEl(card, t('homepage.field-total-words'), novel.wordCount.toLocaleString());
 			this.createFieldEl(card, getNovelInfoLabel('genre'), novel.metadata?.genre || '--');
 
@@ -450,6 +473,9 @@ export class HomepageRenderer {
 			nameEl.textContent = displayName;
 			nameEl.onclick = () => void this.navigateToNovel(novel.folderPath);
 
+			if (novel.metadata?.series?.trim()) {
+				this.createFieldEl(card, getNovelInfoLabel('series'), novel.metadata.series.trim());
+			}
 			this.createFieldEl(card, t('homepage.field-total-words'), novel.wordCount.toLocaleString());
 			this.createFieldEl(card, getNovelInfoLabel('genre'), novel.metadata?.genre || '--');
 

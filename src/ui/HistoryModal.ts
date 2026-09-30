@@ -140,7 +140,7 @@ export class HistoryStatsModal extends Modal {
 			this.plugin.settings.heatmapStartDate = '';
 			this.plugin.settings.heatmapEndDate = '';
 			await this.plugin.saveSettings();
-			this.plugin.homepageManager?.refreshHomepageViews();
+			void this.plugin.homepageManager?.refreshHomepageViews();
 			const now = window.moment();
 			this.heatStartInput.value = now.clone().startOf('year').format('YYYY-MM-DD');
 			this.heatEndInput.value = now.clone().endOf('year').format('YYYY-MM-DD');
@@ -159,7 +159,7 @@ export class HistoryStatsModal extends Modal {
 				this.plugin.settings.heatmapEndDate = '';
 			}
 			await this.plugin.saveSettings();
-			this.plugin.homepageManager?.refreshHomepageViews();
+			void this.plugin.homepageManager?.refreshHomepageViews();
 			this.renderHeatmap();
 			this.renderEfficiency();
 		};
@@ -175,7 +175,7 @@ export class HistoryStatsModal extends Modal {
 				this.plugin.settings.heatmapEndDate = '';
 			}
 			await this.plugin.saveSettings();
-			this.plugin.homepageManager?.refreshHomepageViews();
+			void this.plugin.homepageManager?.refreshHomepageViews();
 			this.renderHeatmap();
 			this.renderEfficiency();
 		};

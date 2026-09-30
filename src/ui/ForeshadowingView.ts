@@ -78,6 +78,7 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 			window.clearTimeout(this.pendingRefreshTimer);
 			this.pendingRefreshTimer = null;
 		}
+		await super.onClose();
 	}
 
 	private getTagFilterOptions(entries: ParsedForeshadowingEntry[]): string[] {

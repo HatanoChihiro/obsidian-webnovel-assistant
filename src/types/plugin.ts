@@ -212,4 +212,12 @@ export interface WebNovelAssistantPlugin extends
 		isPluginGeneratedFile(basename: string): boolean;
 		/** 重命名工作区内所有功能性文档/文件夹（支持多语言候选名） */
 		renameAllFunctionalFiles(oldName: string, newName: string, type: 'file' | 'folder', field?: DefaultFileNameKey): Promise<number>;
+		/** 重命名所有已识别作品内的公共系列设定子文件夹 */
+		renameAllSeriesLoreFolders(oldName: string, newName: string): Promise<SeriesLoreRenameResult>;
+}
+
+export interface SeriesLoreRenameResult {
+	renamed: number;
+	failed: number;
+	total: number;
 }

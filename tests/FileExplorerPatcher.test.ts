@@ -447,6 +447,170 @@ function mockWindowTimers(scheduledTimeouts: { fn: () => void; ms?: number; id: 
 		expect(sortSpyB).toHaveBeenCalledTimes(1);
 	});
 
+	it('should not repeatedly refresh file explorer on active-leaf-change in default config (smart sort off, homepage pin on)', () => {
+		const containerEl = createMockEl('nav-files-container');
+		class DummyProto { getSortedFolderItems() { return []; } }
+		const proto = new DummyProto();
+		const view = Object.create(proto);
+		view.containerEl = containerEl as unknown as HTMLElement;
+		const sortSpy = vi.fn();
+		view.sort = sortSpy;
+
+		const currentLeaves = [{ view }];
+		const workspaceEvents: Record<string, () => void> = {};
+
+		const mockApp = {
+			vault: { on: vi.fn(), offref: vi.fn() },
+			workspace: {
+				getLeavesOfType: vi.fn(() => currentLeaves),
+				on: vi.fn((eventName: string, handler: () => void) => {
+					workspaceEvents[eventName] = handler;
+					return {};
+				}),
+				offref: vi.fn()
+			}
+		} as unknown as App;
+
+		const mockPlugin = {
+			settings: {
+				enableSmartChapterSort: false,
+				homepagePinPosition: 'top',
+				chapterNamingRules: []
+			},
+			homepageManager: {
+				getHomepageFilePath: vi.fn(() => 'Homepage.md')
+			},
+			cacheManager: {},
+			adaptiveDebounceManager: { debounceFixed: vi.fn() }
+		} as unknown as WebNovelAssistantPlugin;
+
+		const patcher = new FileExplorerPatcher(mockApp, mockPlugin);
+		patcher.enable();
+
+		// Initial enable patches prototype and triggers 1 sort refresh
+		expect(sortSpy).toHaveBeenCalledTimes(1);
+
+		// When active-leaf-change fires (e.g. user clicks a note in a subfolder to open it)
+		expect(workspaceEvents['active-leaf-change']).toBeDefined();
+		workspaceEvents['active-leaf-change']();
+
+		// Regression check: active-leaf-change MUST NOT trigger repeated sort refresh
+		// Under Issue #36 bug, sortSpy was called again (total 2 times) because _dragContainerEl was null
+		expect(sortSpy).toHaveBeenCalledTimes(1);
+
+		// Multiple active-leaf-changes should still not trigger sort refresh
+		workspaceEvents['active-leaf-change']();
+		workspaceEvents['active-leaf-change']();
+		expect(sortSpy).toHaveBeenCalledTimes(1);
+	});
+
+	it('should refresh file explorer when container element is actually replaced even if smart sort is off', () => {
+		const containerEl1 = createMockEl('nav-files-container-1');
+		const containerEl2 = createMockEl('nav-files-container-2');
+		class DummyProto { getSortedFolderItems() { return []; } }
+		const proto = new DummyProto();
+
+		const view1 = Object.create(proto);
+		view1.containerEl = containerEl1 as unknown as HTMLElement;
+		const sortSpy1 = vi.fn();
+		view1.sort = sortSpy1;
+
+		let currentLeaves = [{ view: view1 }];
+		const workspaceEvents: Record<string, () => void> = {};
+
+		const mockApp = {
+			vault: { on: vi.fn(), offref: vi.fn() },
+			workspace: {
+				getLeavesOfType: vi.fn(() => currentLeaves),
+				on: vi.fn((eventName: string, handler: () => void) => {
+					workspaceEvents[eventName] = handler;
+					return {};
+				}),
+				offref: vi.fn()
+			}
+		} as unknown as App;
+
+		const mockPlugin = {
+			settings: {
+				enableSmartChapterSort: false,
+				homepagePinPosition: 'top',
+				chapterNamingRules: []
+			},
+			homepageManager: {
+				getHomepageFilePath: vi.fn(() => 'Homepage.md')
+			},
+			cacheManager: {},
+			adaptiveDebounceManager: { debounceFixed: vi.fn() }
+		} as unknown as WebNovelAssistantPlugin;
+
+		const patcher = new FileExplorerPatcher(mockApp, mockPlugin);
+		patcher.enable();
+		expect(sortSpy1).toHaveBeenCalledTimes(1);
+
+		// Now simulate container replacement (e.g. leaf recreated)
+		const view2 = Object.create(proto);
+		view2.containerEl = containerEl2 as unknown as HTMLElement;
+		const sortSpy2 = vi.fn();
+		view2.sort = sortSpy2;
+		currentLeaves = [{ view: view2 }];
+
+		workspaceEvents['layout-change']();
+		expect(sortSpy2).toHaveBeenCalledTimes(1);
+	});
+
+	it('should refresh and manage drag listeners when smart chapter sort is toggled while homepage pinning is on', () => {
+		const containerEl = createMockEl('nav-files-container');
+		class DummyProto { getSortedFolderItems() { return []; } }
+		const proto = new DummyProto();
+		const view = Object.create(proto);
+		view.containerEl = containerEl as unknown as HTMLElement;
+		const sortSpy = vi.fn();
+		view.sort = sortSpy;
+
+		const currentLeaves = [{ view }];
+
+		const mockApp = {
+			vault: { on: vi.fn(), offref: vi.fn() },
+			workspace: {
+				getLeavesOfType: vi.fn(() => currentLeaves),
+				on: vi.fn(() => ({})),
+				offref: vi.fn()
+			}
+		} as unknown as App;
+
+		const mockPlugin = {
+			settings: {
+				enableSmartChapterSort: false,
+				homepagePinPosition: 'top',
+				chapterNamingRules: []
+			},
+			homepageManager: {
+				getHomepageFilePath: vi.fn(() => 'Homepage.md')
+			},
+			cacheManager: {},
+			adaptiveDebounceManager: { debounceFixed: vi.fn() }
+		} as unknown as WebNovelAssistantPlugin;
+
+		const patcher = new FileExplorerPatcher(mockApp, mockPlugin);
+		patcher.enable();
+		expect(sortSpy).toHaveBeenCalledTimes(1);
+		// Drag sort not attached initially
+		expect(containerEl.addEventListener).not.toHaveBeenCalledWith('dragstart', expect.any(Function), true);
+
+		// Toggle smart chapter sort ON
+		mockPlugin.settings.enableSmartChapterSort = true;
+		patcher.enable(); // simulates SettingsTab action
+		expect(containerEl.addEventListener).toHaveBeenCalledWith('dragstart', expect.any(Function), true);
+		expect(sortSpy).toHaveBeenCalledTimes(2);
+
+		// Toggle smart chapter sort OFF while homepage pin remains 'top'
+		mockPlugin.settings.enableSmartChapterSort = false;
+		patcher.enable(); // simulates SettingsTab action keeping patcher enabled
+		expect(patcher.isEnabled()).toBe(true);
+		expect(containerEl.removeEventListener).toHaveBeenCalledWith('dragstart', expect.any(Function), true);
+		expect(sortSpy).toHaveBeenCalledTimes(3);
+	});
+
 	it('should not double-wrap prototypes or duplicate listeners on repeated enable and lifecycle events', () => {
 		class TestProto { getSortedFolderItems() { return ['item']; } }
 		const proto = new TestProto();

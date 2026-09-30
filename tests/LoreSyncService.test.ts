@@ -172,7 +172,7 @@ lore: ["张三×10"]
             // p1 and p2 should be the exact same promise instance
             expect(p1).toBe(p2);
 
-            vi.runAllTimers();
+            await vi.runAllTimersAsync();
             const [stats1, stats2] = await Promise.all([p1, p2]);
             expect(stats1).toBe(stats2);
             expect(stats1.total).toBe(2);
@@ -181,7 +181,7 @@ lore: ["张三×10"]
             // Once settled, a subsequent run creates a new promise
             const p3 = service.bulkRefresh([file1]);
             expect(p3).not.toBe(p1);
-            vi.runAllTimers();
+            await vi.runAllTimersAsync();
             const stats3 = await p3;
             expect(stats3.total).toBe(1);
         });
@@ -201,7 +201,7 @@ lore: ["张三×10"]
             const statsPromise = service.bulkRefresh([file1, file2, file3]);
 
             // Advance timers if yielding occurs
-            vi.runAllTimers();
+            await vi.runAllTimersAsync();
 
             const stats = await statsPromise;
 
@@ -215,7 +215,7 @@ lore: ["张三×10"]
             mockPlugin.getTrackedMarkdownFiles.mockReturnValue([file1]);
 
             const statsPromise = service.bulkRefresh();
-            vi.runAllTimers();
+            await vi.runAllTimersAsync();
             const stats = await statsPromise;
 
             expect(stats.total).toBe(1);
@@ -230,5 +230,110 @@ lore: ["张三×10"]
 
             expect(mockPlugin.registerEvent).toHaveBeenCalledTimes(2);
         });
+    });
+
+
+    it('should share the in-flight promise and compensate a same-file change', async () => {
+        const file = createTestFile('Chapter.md', 'Book1/Chapter.md');
+        mockCharacterManager.getCharactersForBook.mockReturnValue(['Alice']);
+        let releaseFirstRead = (): void => {
+            throw new Error('First read did not start');
+        };
+        let readCount = 0;
+        mockApp.vault.cachedRead.mockImplementation(async () => {
+            readCount++;
+            if (readCount === 1) {
+                await new Promise<void>(resolve => { releaseFirstRead = resolve; });
+            }
+            return 'Alice was here.';
+        });
+
+        const firstSync = service.syncLoreForFile(file);
+        await Promise.resolve();
+        const secondSync = service.syncLoreForFile(file);
+        expect(secondSync).toBe(firstSync);
+
+        releaseFirstRead();
+        await firstSync;
+        expect(readCount).toBe(2);
+    });
+
+    it('should process different files concurrently without blocking each other', async () => {
+        const fileA = createTestFile('A.md', 'Book1/A.md');
+        const fileB = createTestFile('B.md', 'Book1/B.md');
+        mockCharacterManager.getCharactersForBook.mockReturnValue(['Alice']);
+        let startedA = false;
+        let startedB = false;
+        mockApp.vault.cachedRead = vi.fn().mockImplementation(async (f) => {
+            if (f.path === 'Book1/A.md') startedA = true;
+            if (f.path === 'Book1/B.md') startedB = true;
+            return 'Alice';
+        });
+
+        const pA = service.syncLoreForFile(fileA);
+        const pB = service.syncLoreForFile(fileB);
+        // Both should be able to start concurrently
+        expect(startedA).toBe(true);
+        expect(startedB).toBe(true);
+        await Promise.all([pA, pB]);
+    });
+
+    it('should handle errors and propagate them appropriately', async () => {
+        const file = createTestFile('Err.md', 'Book1/Err.md');
+        mockCharacterManager.getCharactersForBook.mockReturnValue(['Alice']);
+        mockApp.vault.cachedRead.mockRejectedValue(new Error('Read failed'));
+        await expect(service.syncLoreForFile(file)).rejects.toThrow('Read failed');
+        mockApp.vault.cachedRead.mockResolvedValue('Alice');
+        await expect(service.syncLoreForFile(file)).resolves.toBeUndefined();
+        expect(mockApp.vault.cachedRead).toHaveBeenCalledTimes(2);
+    });
+
+    it('should gracefully abort all operations on destroy', async () => {
+        const file = createTestFile('Wait.md', 'Book1/Wait.md');
+        mockCharacterManager.getCharactersForBook.mockReturnValue(['Alice']);
+        let releaseRead = (): void => {
+            throw new Error('Read did not start');
+        };
+        mockApp.vault.cachedRead = vi.fn().mockImplementation(async () => {
+            await new Promise<void>(resolve => { releaseRead = resolve; });
+            return 'Alice';
+        });
+
+        const syncPromise = service.syncLoreForFile(file);
+        const destroyPromise = service.destroy();
+        releaseRead();
+        await Promise.all([syncPromise, destroyPromise]);
+
+        mockApp.vault.cachedRead.mockClear();
+        await service.syncLoreForFile(file);
+        expect(mockApp.vault.cachedRead).not.toHaveBeenCalled();
+    });
+
+    it('should compensate an editor change received during an active sync', async () => {
+        service.initialize();
+        const editorChangeCall = mockApp.workspace.on.mock.calls.find((call: unknown[]) => call[0] === 'editor-change');
+        const editorChangeCb = editorChangeCall?.[1] as ((editor: unknown, info: { file: TFile }) => void) | undefined;
+        expect(editorChangeCb).toBeDefined();
+
+        const file = createTestFile('Doc.md', 'Book1/Doc.md');
+        mockCharacterManager.getCharactersForBook.mockReturnValue(['Alice']);
+        let releaseFirstRead = (): void => {
+            throw new Error('First read did not start');
+        };
+        let readCount = 0;
+        mockApp.vault.cachedRead.mockImplementation(async () => {
+            readCount++;
+            if (readCount === 1) {
+                await new Promise<void>(resolve => { releaseFirstRead = resolve; });
+            }
+            return 'Alice was here.';
+        });
+
+        const syncPromise = service.syncLoreForFile(file);
+        await Promise.resolve();
+        editorChangeCb?.(null, { file });
+        releaseFirstRead();
+        await syncPromise;
+        expect(readCount).toBe(2);
     });
 });

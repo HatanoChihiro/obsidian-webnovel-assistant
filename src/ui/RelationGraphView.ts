@@ -21,7 +21,6 @@
 import { ItemView, Notice, TFile } from 'obsidian';
 declare class ResizeObserver { constructor(callback: (...args: unknown[]) => void); observe(target: Element): void; disconnect(): void; }
 import type { WorkspaceLeaf } from 'obsidian';
-import type { AdaptiveDebounceManager } from '../services/AdaptiveDebounceManager';
 import type { CharacterManager } from '../services/CharacterManager';
 import type { RelationGraphManager, GraphNode, GraphData, GraphEdge } from '../services/RelationGraphManager';
 import { ForceLayoutEngine, type LayoutNode, type LayoutEdge } from '../services/ForceLayoutEngine';
@@ -79,12 +78,7 @@ export interface LayoutData {
 
 export type RelationGraphCharacterManager = Pick<
 	CharacterManager,
-	'ensureInitialized' | 'getBookPathForFile' | 'getCharacterFile'
->;
-
-export type RelationGraphAdaptiveDebounceManager = Pick<
-	AdaptiveDebounceManager,
-	'debounceFixed'
+	'ensureInitialized' | 'getBookPathForFile' | 'getCharacterFile' | 'isLorePath'
 >;
 
 export type RelationGraphManagerCapability = Pick<
@@ -94,7 +88,6 @@ export type RelationGraphManagerCapability = Pick<
 
 export interface RelationGraphViewPlugin {
 	characterManager: RelationGraphCharacterManager;
-	adaptiveDebounceManager: RelationGraphAdaptiveDebounceManager;
 	relationGraphManager: RelationGraphManagerCapability;
 }
 
@@ -148,6 +141,38 @@ export class RelationGraphView extends ItemView {
 	private resizeObserver: ResizeObserver | null = null;
 	private isClosed: boolean = false;
 	private boundVisibilityChange: (() => void) | null = null;
+	private reloadDebounceTimer: number | null = null;
+	private loadGeneration = 0;
+	private reloadPromise: Promise<void> | null = null;
+	private reloadPending = false;
+
+	private isGraphInputFile(file: TFile): boolean {
+		if (!this.filePath) return false;
+		if (file.path === this.filePath) return true;
+		if (!this.bookPath) return false;
+		const fileBookPath = this.plugin.characterManager.getBookPathForFile(file);
+		if (fileBookPath !== this.bookPath) return false;
+		return this.plugin.characterManager.isLorePath(this.bookPath, file.parent?.path || '');
+	}
+
+	private triggerDebouncedReload(): void {
+		if (this.isClosed || !this.filePath) return;
+		this.cancelDebouncedReload();
+		const win = this.container?.ownerDocument?.defaultView ?? window;
+		this.reloadDebounceTimer = win.setTimeout(() => {
+			this.reloadDebounceTimer = null;
+			void this.softReloadGraph()
+				.catch(error => console.error('[RelationGraphView] Failed to refresh lore graph:', error));
+		}, 500);
+	}
+
+	private cancelDebouncedReload(): void {
+		if (this.reloadDebounceTimer !== null) {
+			const win = this.container?.ownerDocument?.defaultView ?? window;
+			win.clearTimeout(this.reloadDebounceTimer);
+			this.reloadDebounceTimer = null;
+		}
+	}
 
 	private isGraphHidden(): boolean {
 		if (this.isClosed || !this.container || !this.container.isConnected) return true;
@@ -214,14 +239,16 @@ export class RelationGraphView extends ItemView {
 				requestRender: () => this.requestRender(),
 				onNodeDoubleClick: (node) => {
 					const entry = this.plugin.characterManager.getCharacterFile(this.bookPath, node.id);
-					if (entry) {
-						const cache = this.app.metadataCache.getFileCache(entry.file);
+					const targetFile = entry?.file ?? node.file ?? (node.sourcePath ? this.app.vault.getAbstractFileByPath(node.sourcePath) : null);
+					if (targetFile instanceof TFile) {
+						const cache = this.app.metadataCache.getFileCache(targetFile);
 						let fallbackLine: number | undefined;
+						const headingToFind = entry?.heading ?? node.heading ?? node.id;
 						if (cache?.headings) {
-							const headingInfo = cache.headings.find(h => cleanLoreHeading(h.heading) === cleanLoreHeading(entry.heading));
+							const headingInfo = cache.headings.find(h => cleanLoreHeading(h.heading) === cleanLoreHeading(headingToFind));
 							if (headingInfo) fallbackLine = headingInfo.position.start.line;
 						}
-						void smartLocateAndHighlight(this.app, entry.file, [`## ${entry.heading}`, `# ${entry.heading}`, entry.heading, node.id], {
+						void smartLocateAndHighlight(this.app, targetFile, [`## ${headingToFind}`, `# ${headingToFind}`, headingToFind, node.id], {
 							sourceLeaf: this.leaf,
 							splitIfNew: true,
 							fallbackLine
@@ -327,26 +354,24 @@ export class RelationGraphView extends ItemView {
 
 		// 监听文档变更实现图谱实时静默刷新
 		this.registerEvent(this.app.metadataCache.on('changed', (file) => {
-			if (file instanceof TFile && this.filePath && this.bookPath === this.plugin.characterManager.getBookPathForFile(file)) {
-				this.plugin.adaptiveDebounceManager.debounceFixed('relation-graph-reload', () => {
-					void this.softReloadGraph();
-					this.requestRender();
-				}, 500);
+			if (file instanceof TFile && this.isGraphInputFile(file)) {
+				this.triggerDebouncedReload();
 			}
 		}));
 
 		// 监听设定缓存刷新事件以实时静默刷新图谱
 		this.registerEvent(this.app.workspace.on('webnovel-workbench-lore-updated', () => {
 			if (this.filePath) {
-				void this.softReloadGraph()
-					.then(() => this.requestRender())
-					.catch(error => console.error('[RelationGraphView] Failed to refresh lore graph:', error));
+				this.triggerDebouncedReload();
 			}
 		}));
 	}
 
 	async onClose(): Promise<void> {
 		this.isClosed = true;
+		this.loadGeneration++;
+		this.reloadPending = false;
+		this.cancelDebouncedReload();
 
 		// 停止动画循环
 		if (this.animationFrameId) {
@@ -416,11 +441,13 @@ export class RelationGraphView extends ItemView {
 	 * 加载指定文件的关系图谱数据并启动布局
 	 */
 	public async loadGraphForFile(filePath: string): Promise<void> {
+		this.cancelDebouncedReload();
+		const token = ++this.loadGeneration;
 		this.filePath = filePath;
 
 		// 确保在手机/平板端，打开图谱时能惰性加载角色管理器缓存，避免双击跳转失效
 		await this.plugin.characterManager.ensureInitialized();
-		if (this.isClosed || !this.canvas || !this.container) return;
+		if (this.isClosed || this.loadGeneration !== token || !this.canvas || !this.container) return;
 
 		const file = this.app.vault.getAbstractFileByPath(filePath);
 		if (!(file instanceof TFile)) {
@@ -432,7 +459,7 @@ export class RelationGraphView extends ItemView {
 
 		const manager = this.plugin.relationGraphManager;
 		const data = await manager.buildGraphData(file);
-		if (this.isClosed || !this.canvas || !this.container) return;
+		if (this.isClosed || this.loadGeneration !== token || !this.canvas || !this.container) return;
 
 		if (data.nodes.length === 0) {
 			this.showEmptyState();
@@ -478,14 +505,34 @@ export class RelationGraphView extends ItemView {
 	/**
 	 * 静默刷新图谱数据（保留现有节点的物理状态），用于文档编辑时的实时反馈
 	 */
-	private async softReloadGraph(): Promise<void> {
+	private softReloadGraph(): Promise<void> {
+		if (this.isClosed) return Promise.resolve();
+		if (this.reloadPromise) {
+			this.reloadPending = true;
+			return this.reloadPromise;
+		}
+		this.reloadPromise = (async () => {
+			try {
+				do {
+					this.reloadPending = false;
+					await this.performGraphReload();
+				} while (this.reloadPending && !this.isClosed);
+			} finally {
+				this.reloadPromise = null;
+			}
+		})();
+		return this.reloadPromise;
+	}
+
+	private async performGraphReload(): Promise<void> {
 		if (this.isClosed || !this.filePath) return;
+		const token = ++this.loadGeneration;
 		const file = this.app.vault.getAbstractFileByPath(this.filePath);
 		if (!(file instanceof TFile)) return;
 
 		const manager = this.plugin.relationGraphManager;
 		const newData = await manager.buildGraphData(file);
-		if (this.isClosed || !this.canvas || !this.container) return;
+		if (this.isClosed || this.loadGeneration !== token || !this.canvas || !this.container) return;
 
 		if (newData.nodes.length === 0) {
 			this.showEmptyState();
@@ -530,6 +577,7 @@ export class RelationGraphView extends ItemView {
 			this.initEngine();
 			this.startAnimationLoop(true);
 		}
+		this.requestRender();
 	}
 
 	/**

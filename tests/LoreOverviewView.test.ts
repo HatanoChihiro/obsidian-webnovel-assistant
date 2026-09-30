@@ -235,9 +235,13 @@ describe('LoreOverviewView', () => {
 		await view.onOpen();
 
 		(LoreBoardRenderer.renderCards as ReturnType<typeof vi.fn>).mockClear();
+		const clear = vi.spyOn(view['filterIndex'], 'clear');
 		await view.setBookPath('NovelB');
 
 		expect(plugin.characterManager.getCharactersForBook).toHaveBeenCalledWith('NovelB');
+		expect(clear).toHaveBeenCalledOnce();
+		await view.setBookPath('NovelB');
+		expect(clear).toHaveBeenCalledOnce();
 	});
 
 	it('should protect against stale async renders when newer queries arrive', async () => {

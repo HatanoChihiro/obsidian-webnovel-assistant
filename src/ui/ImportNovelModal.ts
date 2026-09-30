@@ -1,5 +1,5 @@
 import type { App } from 'obsidian';
-import { Modal, Setting, Notice, setIcon } from 'obsidian';
+import { Modal, Setting, Notice, setIcon, type TextComponent } from 'obsidian';
 import { t } from '../i18n';
 import type { AccurateCountSettings } from '../types/settings';
 import type { HomepageManager } from '../services/HomepageManager';
@@ -12,7 +12,7 @@ export interface ImportNovelModalPlugin extends TextSplitterPlugin {
 		workspaceFolders?: string[];
 		novelInfo?: AccurateCountSettings['novelInfo'];
 	};
-	homepageManager?: Pick<HomepageManager, 'createNovelInfoFile'> | null;
+	homepageManager?: Pick<HomepageManager, 'createNovelInfoFile' | 'getAllSeries'> | null;
 }
 
 export class ImportNovelModal extends Modal {
@@ -26,6 +26,8 @@ export class ImportNovelModal extends Modal {
 	private selectedFile: File | null = null;
 	private parsedChapters: ParsedChapter[] = [];
 	private isImporting: boolean = false;
+	private isClosed: boolean = false;
+	private series: string = '';
 
 	constructor(app: App, plugin: ImportNovelModalPlugin) {
 		super(app);
@@ -75,7 +77,99 @@ export class ImportNovelModal extends Modal {
 				});
 			});
 
-		// 3. 预览区域
+		// 3. 所属系列 (可选)
+		const seriesSetting = new Setting(contentEl)
+			.setName(t('import-novel.series'))
+			.setDesc(t('import-novel.series-desc'));
+
+		// 同步提供文本输入兜底，确保在异步加载前或失败时导入功能始终立即可用
+		seriesSetting.addText(text => {
+			text.setPlaceholder(t('modal.series-placeholder'));
+			text.setValue(this.series);
+			text.onChange(val => {
+				this.series = val;
+			});
+		});
+
+		void (async () => {
+			try {
+				const existingSeries = this.plugin.homepageManager?.getAllSeries
+					? await this.plugin.homepageManager.getAllSeries()
+					: [];
+
+				// 弹窗已关闭或 DOM 已脱离时不再追加或操作控件
+				if (this.isClosed || !this.contentEl.isConnected) {
+					return;
+				}
+
+				if (existingSeries.length > 0) {
+					const currentTyped = this.series.trim();
+					const hasTyped = currentTyped.length > 0;
+					const isExisting = existingSeries.includes(currentTyped);
+					let isCreatingNew = !isExisting && hasTyped;
+
+					seriesSetting.controlEl.empty();
+					seriesSetting.components = [];
+
+					let textComp: TextComponent | null = null;
+
+					seriesSetting.addDropdown(dropdown => {
+						dropdown.addOption('__NONE__', t('modal.series-none'));
+						for (const s of existingSeries) {
+							dropdown.addOption(s, s);
+						}
+						dropdown.addOption('__NEW__', t('modal.new-series'));
+
+						if (isCreatingNew) {
+							dropdown.setValue('__NEW__');
+						} else if (hasTyped) {
+							dropdown.setValue(currentTyped);
+						} else {
+							dropdown.setValue('__NONE__');
+						}
+
+						dropdown.onChange(val => {
+							if (val === '__NONE__') {
+								isCreatingNew = false;
+								this.series = '';
+								textComp?.inputEl.hide();
+							} else if (val === '__NEW__') {
+								isCreatingNew = true;
+								this.series = textComp?.getValue().trim() || '';
+								if (textComp) {
+									textComp.inputEl.show();
+									textComp.inputEl.focus();
+								}
+							} else {
+								isCreatingNew = false;
+								this.series = val;
+								textComp?.inputEl.hide();
+							}
+						});
+					});
+
+					seriesSetting.addText(text => {
+						textComp = text;
+						text.setPlaceholder(t('modal.series-placeholder'));
+						if (isCreatingNew) {
+							text.setValue(currentTyped);
+							text.inputEl.show();
+						} else {
+							text.inputEl.hide();
+						}
+						text.onChange(val => {
+							if (isCreatingNew) {
+								this.series = val;
+							}
+						});
+					});
+				}
+			} catch (err) {
+				console.error('[ImportNovelModal] 加载已有系列失败:', err);
+			}
+		})();
+
+		// 4. 预览区域
 		new Setting(contentEl).setHeading().setName(t('import-novel.preview'));
 		contentEl.createEl('p', { text: t('import-novel.preview-desc'), cls: 'setting-item-description wn-import-preview-desc' });
 		
@@ -286,7 +380,8 @@ export class ImportNovelModal extends Modal {
 						current: String(current), 
 						total: String(total) 
 					}));
-				}
+				},
+				{ series: this.series.trim() }
 			);
 			new Notice(t('import-novel.success', { count: String(totalCount) }));
 			this.close();
@@ -301,6 +396,7 @@ export class ImportNovelModal extends Modal {
 	}
 
 	onClose() {
+		this.isClosed = true;
 		this.contentEl.empty();
 	}
 }

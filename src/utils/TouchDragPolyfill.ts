@@ -1,31 +1,19 @@
 export class TouchDragPolyfill {
-	static register(container: HTMLElement) {
-		let styleSheet = activeDocument.getElementById('wn-touch-polyfill-style');
-		if (!styleSheet) {
-			styleSheet = createEl('style');
-			styleSheet.id = 'wn-touch-polyfill-style';
-			styleSheet.textContent = `
-				body.is-mobile *[draggable="true"],
-				body.is-mobile div[draggable="true"],
-				body.is-mobile a[draggable="true"] {
-					-webkit-user-select: none;
-					user-select: none;
-					-webkit-touch-callout: none;
-					touch-action: pan-x pan-y;
-				}
-			`;
-			activeDocument.head.appendChild(styleSheet);
-		}
+	static register(container: HTMLElement): () => void {
+		const doc = container.ownerDocument;
+		const win = doc.defaultView ?? window;
 
 		let dragSource: HTMLElement | null = null;
-		let startX = 0, startY = 0;
+		let startX = 0;
+		let startY = 0;
 		let longPressTimer: number | null = null;
 		let currentDropTarget: HTMLElement | null = null;
 		let ghostEl: HTMLElement | null = null;
 		let ghostOffsetX = 0;
 		let ghostOffsetY = 0;
-		
-		// 简单的 DataTransfer 模拟
+		let lastTouch: Touch | null = null;
+		let disposed = false;
+
 		class SimpleDataTransfer {
 			private data: Record<string, string> = {};
 			public dropEffect = 'move';
@@ -40,88 +28,99 @@ export class TouchDragPolyfill {
 		let dummyDataTransfer: SimpleDataTransfer | null = null;
 
 		const createDragEvent = (type: string, touch: Touch, dataTransfer: unknown) => {
-			const e = new MouseEvent(type, { 
-				bubbles: true, 
+			const MouseEventCtor = win.MouseEvent ?? MouseEvent;
+			const event = new MouseEventCtor(type, {
+				bubbles: true,
 				cancelable: true,
 				clientX: touch.clientX,
 				clientY: touch.clientY
 			}) as MouseEvent & { dataTransfer: unknown };
-			e.dataTransfer = dataTransfer;
-			return e;
+			event.dataTransfer = dataTransfer;
+			return event;
 		};
 
-		const onTouchStart = (e: TouchEvent) => {
-			const target = (e.target as HTMLElement).closest('[draggable="true"]') as HTMLElement;
-			if (!target) return;
-			
-			// 阻止事件冒泡，防止 Obsidian 的全局长按监听器在 500ms 时触发并打断我们的触摸流
-			e.stopPropagation();
+		const abortDrag = (touch: Touch | null = lastTouch) => {
+			if (longPressTimer !== null) {
+				win.clearTimeout(longPressTimer);
+				longPressTimer = null;
+			}
+			if (dragSource) {
+				dragSource.setCssStyles({ opacity: '', pointerEvents: '' });
+				if (touch && dummyDataTransfer) {
+					dragSource.dispatchEvent(createDragEvent('dragend', touch, dummyDataTransfer));
+				}
+			}
+			dragSource = null;
+			currentDropTarget = null;
+			dummyDataTransfer = null;
+			lastTouch = null;
+			ghostEl?.remove();
+			ghostEl = null;
+		};
 
-			// 如果已经在拖拽中，忽略
+		const onTouchStart = (event: TouchEvent) => {
+			const target = (event.target as HTMLElement).closest<HTMLElement>('[draggable="true"]');
+			if (!target || event.touches.length === 0) return;
+			event.stopPropagation();
 			if (dragSource) return;
 
-			startX = e.touches[0].clientX;
-			startY = e.touches[0].clientY;
-			
-			longPressTimer = window.setTimeout(() => {
+			lastTouch = event.touches[0];
+			startX = lastTouch.clientX;
+			startY = lastTouch.clientY;
+			longPressTimer = win.setTimeout(() => {
 				longPressTimer = null;
 				dragSource = target;
 				dragSource.setCssStyles({ opacity: '0.5', pointerEvents: 'none' });
-				if (navigator.vibrate) navigator.vibrate(40);
+				win.navigator.vibrate?.(40);
 
 				const rect = dragSource.getBoundingClientRect();
 				ghostOffsetX = startX - rect.left;
 				ghostOffsetY = startY - rect.top;
-				
 				ghostEl = dragSource.cloneNode(true) as HTMLElement;
 				ghostEl.setCssStyles({
 					position: 'fixed',
-					left: (startX - ghostOffsetX) + 'px',
-					top: (startY - ghostOffsetY) + 'px',
-					width: rect.width + 'px',
-					height: rect.height + 'px',
+					left: `${startX - ghostOffsetX}px`,
+					top: `${startY - ghostOffsetY}px`,
+					width: `${rect.width}px`,
+					height: `${rect.height}px`,
 					opacity: '0.8',
 					pointerEvents: 'none',
 					zIndex: '999999'
 				});
-				activeDocument.body.appendChild(ghostEl);
-				
+				doc.body.appendChild(ghostEl);
+
 				dummyDataTransfer = new SimpleDataTransfer();
-				const dragStartEvent = createDragEvent('dragstart', e.touches[0], dummyDataTransfer);
-				dragSource.dispatchEvent(dragStartEvent);
+				if (lastTouch) {
+					dragSource.dispatchEvent(createDragEvent('dragstart', lastTouch, dummyDataTransfer));
+				}
 			}, 220);
 		};
 
-		const onTouchMove = (e: TouchEvent) => {
-			if (longPressTimer) {
-				const dx = e.touches[0].clientX - startX;
-				const dy = e.touches[0].clientY - startY;
+		const onTouchMove = (event: TouchEvent) => {
+			if (event.touches.length === 0) return;
+			lastTouch = event.touches[0];
+			if (longPressTimer !== null) {
+				const dx = lastTouch.clientX - startX;
+				const dy = lastTouch.clientY - startY;
 				if (Math.abs(dx) > 18 || Math.abs(dy) > 18) {
-					window.clearTimeout(longPressTimer);
+					win.clearTimeout(longPressTimer);
 					longPressTimer = null;
 				}
 			}
-			
-			if (!dragSource || !dummyDataTransfer) return;
-			e.preventDefault(); // 阻止滚动
-			e.stopPropagation(); // 阻止全局监听器
-			
-			const touch = e.touches[0];
 
-			if (ghostEl) {
-				ghostEl.setCssStyles({
-					left: (touch.clientX - ghostOffsetX) + 'px',
-					top: (touch.clientY - ghostOffsetY) + 'px'
-				});
-			}
-			
-			// dragSource 已在拖拽开始时设置 pointerEvents: 'none'，直接获取触点下方的元素
-			const elemBelow = activeDocument.elementFromPoint(touch.clientX, touch.clientY);
-			
+			if (!dragSource || !dummyDataTransfer) return;
+			event.preventDefault();
+			event.stopPropagation();
+			const touch = lastTouch;
+
+			ghostEl?.setCssStyles({
+				left: `${touch.clientX - ghostOffsetX}px`,
+				top: `${touch.clientY - ghostOffsetY}px`
+			});
+			const elemBelow = doc.elementFromPoint(touch.clientX, touch.clientY);
 			if (!elemBelow) return;
-			
+
 			const dropTarget = elemBelow as HTMLElement;
-			
 			if (currentDropTarget !== dropTarget) {
 				if (currentDropTarget) {
 					currentDropTarget.dispatchEvent(createDragEvent('dragleave', touch, dummyDataTransfer));
@@ -129,58 +128,38 @@ export class TouchDragPolyfill {
 				currentDropTarget = dropTarget;
 				currentDropTarget.dispatchEvent(createDragEvent('dragenter', touch, dummyDataTransfer));
 			}
-			
 			currentDropTarget.dispatchEvent(createDragEvent('dragover', touch, dummyDataTransfer));
 		};
 
-		const onTouchEnd = (e: TouchEvent) => {
-			if (longPressTimer) {
-				window.clearTimeout(longPressTimer);
+		const onTouchEnd = (event: TouchEvent) => {
+			if (longPressTimer !== null) {
+				win.clearTimeout(longPressTimer);
 				longPressTimer = null;
 			}
-			
-			if (!dragSource || !dummyDataTransfer) return;
-			e.stopPropagation(); // 阻止全局监听器
-
-			dragSource.setCssStyles({ opacity: '', pointerEvents: '' });
-			
-			const touch = e.changedTouches[0];
-			
+			if (!dragSource || !dummyDataTransfer || event.changedTouches.length === 0) return;
+			event.stopPropagation();
+			const touch = event.changedTouches[0];
 			if (currentDropTarget) {
-				const dropEvent = createDragEvent('drop', touch, dummyDataTransfer);
-				currentDropTarget.dispatchEvent(dropEvent);
+				currentDropTarget.dispatchEvent(createDragEvent('drop', touch, dummyDataTransfer));
 			}
-			
 			dragSource.dispatchEvent(createDragEvent('dragend', touch, dummyDataTransfer));
-			
+			dragSource.setCssStyles({ opacity: '', pointerEvents: '' });
 			dragSource = null;
 			currentDropTarget = null;
 			dummyDataTransfer = null;
-			if (ghostEl) {
-				ghostEl.remove();
-				ghostEl = null;
-			}
+			lastTouch = null;
+			ghostEl?.remove();
+			ghostEl = null;
 		};
 
-		const onTouchCancel = (e: TouchEvent) => {
-			if (longPressTimer) window.clearTimeout(longPressTimer);
-			if (dragSource && dummyDataTransfer) {
-				dragSource.setCssStyles({ opacity: '', pointerEvents: '' });
-				dragSource.dispatchEvent(createDragEvent('dragend', e.changedTouches[0], dummyDataTransfer));
-			}
-			dragSource = null;
-			currentDropTarget = null;
-			dummyDataTransfer = null;
-			if (ghostEl) {
-				ghostEl.remove();
-				ghostEl = null;
-			}
+		const onTouchCancel = (event: TouchEvent) => {
+			abortDrag(event.changedTouches[0] ?? null);
 		};
 
-		const onContextMenu = (e: MouseEvent) => {
-			if (dragSource || longPressTimer) {
-				e.preventDefault();
-				e.stopPropagation();
+		const onContextMenu = (event: MouseEvent) => {
+			if (dragSource || longPressTimer !== null) {
+				event.preventDefault();
+				event.stopPropagation();
 			}
 		};
 
@@ -191,11 +170,14 @@ export class TouchDragPolyfill {
 		container.addEventListener('contextmenu', onContextMenu);
 
 		return () => {
+			if (disposed) return;
+			disposed = true;
 			container.removeEventListener('touchstart', onTouchStart);
 			container.removeEventListener('touchmove', onTouchMove);
 			container.removeEventListener('touchend', onTouchEnd);
 			container.removeEventListener('touchcancel', onTouchCancel);
 			container.removeEventListener('contextmenu', onContextMenu);
+			abortDrag();
 		};
 	}
 }

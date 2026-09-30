@@ -38,6 +38,7 @@ export interface StickyNoteListManager {
 
 export interface StickyNoteListDebounceManager {
 	debounceFixed(key: string, fn: () => void, delay: number): void;
+	cancel?(key: string): void;
 }
 
 export interface StickyNoteListRendererPlugin {
@@ -82,6 +83,8 @@ class FileSuggestModal extends FuzzySuggestModal<TFile> {
  * 沉浸模式、侧面板与工作台共用阅读、编辑、保存和关闭逻辑，移动端侧面板不会显示悬浮便签。
  */
 export class StickyNoteListRenderer {
+	private static nextInstanceId = 0;
+	private readonly syncKey = `sticky-note-list-sync-${++StickyNoteListRenderer.nextInstanceId}`;
 	private readonly mode: StickyNoteListMode;
 	private readonly showToolbar: boolean;
 	private readonly lastSavedContents = new Map<string, string>();
@@ -150,12 +153,14 @@ export class StickyNoteListRenderer {
 
 	destroy(): void {
 		this.isDestroyed = true;
+		this.plugin.adaptiveDebounceManager.cancel?.(this.syncKey);
 		this.resizeObserver?.disconnect();
 		this.resizeObserver = null;
 		for (const comp of this.cardComponents.values()) {
 			comp.unload();
 		}
 		this.cardComponents.clear();
+		this.lastSavedContents.clear();
 	}
 
 	private observeImmersiveGrid(dockContainer: HTMLElement): void {
@@ -247,7 +252,7 @@ export class StickyNoteListRenderer {
 			const activeEl = this.container.ownerDocument.activeElement;
 			if (activeEl?.classList.contains('wn-sticky-note-paragraph-editor') && this.container.contains(activeEl)) {
 				this.plugin.adaptiveDebounceManager.debounceFixed(
-					`sticky-note-list-sync-${this.mode}`,
+					this.syncKey,
 					() => this.render(),
 					1000
 				);
@@ -375,6 +380,7 @@ export class StickyNoteListRenderer {
 		this.lastSavedContents.set(note.id, note.content || '');
 		void this.plugin.stickyNoteManager.saveNotes(this.plugin.stickyNoteManager.getNotes())
 			.then(() => {
+				if (this.isDestroyed) return;
 				this.render();
 				const dock = this.container.querySelector('.immersive-sticky-dock, .wn-sticky-note-list-grid');
 				const editor = dock?.querySelector<HTMLElement>(`[data-note-id="${note.id}"] .wn-sticky-note-paragraph-editor`);
@@ -385,6 +391,7 @@ export class StickyNoteListRenderer {
 				}
 			})
 			.catch(error => {
+				if (this.isDestroyed) return;
 				Logger.error('[StickyNoteListRenderer] 保存便签失败:', error);
 				new Notice(t('modal.save-failed', { error: String(error) }));
 			});
@@ -396,6 +403,10 @@ export class StickyNoteListRenderer {
 		noteData: StickyNoteState,
 		existingCard?: HTMLElement
 	): HTMLElement {
+		if (this.isDestroyed) {
+			return existingCard ?? dockContainer;
+		}
+
 		if (!this.lastSavedContents.has(noteData.id)) {
 			this.lastSavedContents.set(noteData.id, noteData.content || '');
 		}
@@ -481,7 +492,7 @@ export class StickyNoteListRenderer {
 					if (this.plugin.settings.stickyNoteAutoSave) {
 						this.plugin.adaptiveDebounceManager.debounceFixed(`sticky-note-list-save-${updatedNote.id}`, () => {
 							void this.plugin.stickyNoteManager.saveNotes(this.plugin.stickyNoteManager.getNotes());
-							this.lastSavedContents.set(updatedNote.id, updatedNote.content || '');
+							if (!this.isDestroyed) this.lastSavedContents.set(updatedNote.id, updatedNote.content || '');
 							if (updatedNote.filePath) {
 								const file = this.app.vault.getAbstractFileByPath(updatedNote.filePath);
 								if (file instanceof TFile) void this.app.vault.process(file, () => updatedNote.content || '');
@@ -516,10 +527,18 @@ export class StickyNoteListRenderer {
 				noteData.filePath || '',
 				cardComponent
 			).then(() => {
-				if (!this.isDestroyed && contentEl.isConnected) {
+				if (this.isDestroyed || this.cardComponents.get(noteData.id) !== cardComponent) {
+					cardComponent.unload();
+					return;
+				}
+				if (contentEl.isConnected) {
 					injectSoftBreakIndentPlaceholders(contentEl, false);
 				}
 			}).catch(error => {
+				if (this.isDestroyed || this.cardComponents.get(noteData.id) !== cardComponent) {
+					cardComponent.unload();
+					return;
+				}
 				Logger.error('[StickyNoteListRenderer] 渲染 Markdown 失败:', error);
 			});
 
@@ -550,6 +569,7 @@ export class StickyNoteListRenderer {
 			};
 			this.plugin.stickyNoteManager.updateNote(updatedNote);
 			await this.plugin.stickyNoteManager.saveNotes(this.plugin.stickyNoteManager.getNotes());
+			if (this.isDestroyed) return;
 			this.lastSavedContents.set(noteId, content);
 
 			const dock = this.container.querySelector('.immersive-sticky-dock, .wn-sticky-note-list-grid');
@@ -562,6 +582,7 @@ export class StickyNoteListRenderer {
 
 			new Notice(t('modal.note-synced'));
 		} catch (error) {
+			if (this.isDestroyed) return;
 			Logger.error('[StickyNoteListRenderer] 从关联文档同步便签失败:', error);
 			new Notice(t('modal.save-failed', { error: String(error) }));
 		}
@@ -601,7 +622,7 @@ export class StickyNoteListRenderer {
 		try {
 			const currentNote = this.plugin.stickyNoteManager.getNotes().find(n => n.id === noteId);
 			if (!currentNote) {
-				this.render();
+				if (!this.isDestroyed) this.render();
 				return;
 			}
 
@@ -616,7 +637,6 @@ export class StickyNoteListRenderer {
 			};
 			this.plugin.stickyNoteManager.updateNote(updatedNote);
 			await this.plugin.stickyNoteManager.saveNotes(this.plugin.stickyNoteManager.getNotes());
-			this.lastSavedContents.set(updatedNote.id, fullContent);
 
 			if (updatedNote.filePath) {
 				const file = this.app.vault.getAbstractFileByPath(updatedNote.filePath);
@@ -624,6 +644,9 @@ export class StickyNoteListRenderer {
 					await this.app.vault.process(file, () => fullContent);
 				}
 			}
+
+			if (this.isDestroyed) return;
+			this.lastSavedContents.set(updatedNote.id, fullContent);
 
 			const dock = this.container.querySelector('.immersive-sticky-dock, .wn-sticky-note-list-grid');
 			if (!dock) {
@@ -638,6 +661,7 @@ export class StickyNoteListRenderer {
 				this.render();
 			}
 		} catch (error) {
+			if (this.isDestroyed) return;
 			Logger.error('[StickyNoteListRenderer] 完成便签编辑保存失败:', error);
 			new Notice(t('modal.save-failed', { error: String(error) }));
 		}
@@ -664,6 +688,7 @@ export class StickyNoteListRenderer {
 			this.cardComponents.delete(latestNote.id);
 			await this.plugin.stickyNoteManager.removeNoteAndWait(latestNote.id);
 			this.lastSavedContents.delete(latestNote.id);
+			if (this.isDestroyed) return;
 			this.render();
 		};
 

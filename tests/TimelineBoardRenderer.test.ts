@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TimelineBoardRenderer, type TimelineBoardOptions, type TimelineBoardPlugin } from '../src/ui/components/TimelineBoardRenderer';
+import type { TimelineEntry } from '../src/services/TimelineManager';
 import { CorkboardGridRenderer } from '../src/ui/components/CorkboardGridRenderer';
 import { ChapterSorter } from '../src/services/ChapterSorter';
-import { setIcon, type App, type TFile } from 'obsidian';
+import { setIcon, type App, type Component, type TFile } from 'obsidian';
 
 const { MockFile } = vi.hoisted(() => {
 	class HoistedMockFile {
@@ -33,7 +34,9 @@ const mockOwnerWindow = {
 	getSelection: vi.fn(() => ({
 		removeAllRanges: vi.fn(),
 		addRange: vi.fn()
-	}))
+	})),
+	createSvg: vi.fn(() => new MockElement()),
+	createFragment: vi.fn(() => new MockElement())
 };
 
 class MockElement {
@@ -192,6 +195,13 @@ class MockElement {
 		for (const fn of arr) fn(e);
 	}
 
+	removeEventListener(event: string, fn: (e?: unknown) => void) {
+		const arr = this.listeners.get(event);
+		if (arr) {
+			this.listeners.set(event, arr.filter(l => l !== fn));
+		}
+	}
+
 	matches(_sel: string): boolean {
 		return false;
 	}
@@ -230,6 +240,8 @@ class MockElement {
 	mockIsPhone = false;
 	get ownerDocument() {
 		return {
+			createElementNS: (_ns: string, tag: string) => new MockElement(tag),
+			createDocumentFragment: () => new MockElement('fragment'),
 			defaultView: mockOwnerWindow,
 			createRange: () => ({
 				selectNodeContents: vi.fn(),
@@ -661,7 +673,7 @@ describe('TimelineBoardRenderer', () => {
 				timelineManager: {
 					...mockPlugin.timelineManager,
 					loadEntries: vi.fn().mockResolvedValue([
-						{ time: '第一年', description: '初始事件描述', items: [{ description: '初始事件描述', chapter: '' }] }
+						{ time: '第一年', type: '主线', description: '初始事件描述', items: [{ description: '初始事件描述', chapter: '' }] }
 					])
 				}
 			},
@@ -710,7 +722,7 @@ describe('TimelineBoardRenderer', () => {
 				timelineManager: {
 					...mockPlugin.timelineManager,
 					loadEntries: vi.fn().mockResolvedValue([
-						{ time: '第一年', description: '初始事件描述', items: [{ description: '初始事件描述', chapter: '' }] }
+						{ time: '第一年', type: '主线', description: '初始事件描述', items: [{ description: '初始事件描述', chapter: '' }] }
 					]),
 					updateEntry: updateEntrySpy
 				}
@@ -785,6 +797,7 @@ describe('TimelineBoardRenderer', () => {
 		expect(updateEntrySpy).toHaveBeenCalledWith(
 			0,
 			expect.objectContaining({
+				type: '主线',
 				items: [
 					{ description: '初始事件描述', chapter: '' },
 					{ description: '新添加的子事件描述', chapter: '' }
@@ -1087,12 +1100,11 @@ describe('TimelineBoardRenderer', () => {
 			time: '第一天',
 			description: '甲事件\n乙事件',
 			chapter: '',
-			type: '主线',
 			rawBlock: '',
 			lores: ['乙'],
 			items: [
-				{ description: '甲事件', chapter: '' },
-				{ description: '乙事件', chapter: '' }
+				{ description: '甲事件', chapter: '', type: '主线' },
+				{ description: '乙事件', chapter: '', type: '主线' }
 			]
 		}]);
 
@@ -1134,7 +1146,8 @@ describe('TimelineBoardRenderer', () => {
 					...mockPlugin,
 					timelineManager: {
 						...mockPlugin.timelineManager,
-						loadEntries: vi.fn().mockResolvedValue(rawEntries)
+						loadEntries: vi.fn().mockResolvedValue(rawEntries),
+						getTimelineFile: vi.fn().mockReturnValue(createMockFile('timeline.md', 'NovelA/timeline.md'))
 					}
 				},
 				container: container as unknown as HTMLElement,
@@ -1175,6 +1188,7 @@ describe('TimelineBoardRenderer', () => {
 					timelineManager: {
 						...mockPlugin.timelineManager,
 						loadEntries: vi.fn().mockResolvedValue(rawEntries),
+						getTimelineFile: vi.fn().mockReturnValue(createMockFile('timeline.md', 'NovelA/timeline.md')),
 						deleteEntry: deleteEntrySpy,
 						updateEntry: updateEntrySpy
 					}
@@ -1232,7 +1246,8 @@ describe('TimelineBoardRenderer', () => {
 					...mockPlugin,
 					timelineManager: {
 						...mockPlugin.timelineManager,
-						loadEntries: vi.fn().mockResolvedValue(rawEntries)
+						loadEntries: vi.fn().mockResolvedValue(rawEntries),
+						getTimelineFile: vi.fn().mockReturnValue(createMockFile('timeline.md', 'NovelA/timeline.md'))
 					}
 				},
 				container: container as unknown as HTMLElement,
@@ -1273,7 +1288,8 @@ describe('TimelineBoardRenderer', () => {
 					...mockPlugin,
 					timelineManager: {
 						...mockPlugin.timelineManager,
-						loadEntries: vi.fn().mockResolvedValue(rawEntries)
+						loadEntries: vi.fn().mockResolvedValue(rawEntries),
+						getTimelineFile: vi.fn().mockReturnValue(createMockFile('timeline.md', 'NovelA/timeline.md'))
 					}
 				},
 				container: container as unknown as HTMLElement,
@@ -1295,6 +1311,214 @@ describe('TimelineBoardRenderer', () => {
 			const calls = (CorkboardGridRenderer.render as ReturnType<typeof vi.fn>).mock.calls;
 			const cardCall = calls.find(c => (c[0].files as TFile[]).includes(chap1));
 			expect(cardCall).toBeDefined();
+		});
+	});
+
+	describe('Security and Lifecycle', () => {
+		it('assigns distinct stable entry indexes to nodes with identical time text', async () => {
+			const rawEntries = [
+				{ time: '同一天', description: '事件1', items: [{ description: '事件1', chapter: '' }] },
+				{ time: '同一天', description: '事件2', items: [{ description: '事件2', chapter: '' }] }
+			];
+
+			const options: TimelineBoardOptions = {
+				app: mockApp,
+				plugin: {
+					...mockPlugin,
+					timelineManager: {
+						...mockPlugin.timelineManager,
+						loadEntries: vi.fn().mockResolvedValue(rawEntries),
+						getTimelineFile: vi.fn().mockReturnValue(createMockFile('timeline.md', 'NovelA/timeline.md'))
+					}
+				},
+				container: container as unknown as HTMLElement,
+				files: [],
+				foreshadowingMap: new Map(),
+				currentBookPath: 'NovelA',
+				currentTimelineFilter: 'all',
+				isDescending: false,
+				onSaveStateChange: vi.fn(),
+				reloadBoard: vi.fn(),
+				getChapterEvents: vi.fn().mockReturnValue([])
+			};
+
+			await TimelineBoardRenderer.render(options);
+			const rowEls = container.querySelectorAll('.wn-timeline-item-row');
+			expect(rowEls.length).toBe(2);
+			expect(rowEls[0].getAttribute('data-entry-index')).toBe('0');
+			expect(rowEls[1].getAttribute('data-entry-index')).toBe('1');
+		});
+
+		it('should safely render timeline nodes with special characters in time field without throwing querySelector syntax errors', async () => {
+			const rawEntries = [
+				{ time: '第一年 [特殊: {字符}] #1', description: '描述1', items: [{ description: '描述1', chapter: '' }] }
+			];
+
+			const options: TimelineBoardOptions = {
+				app: mockApp,
+				plugin: {
+					...mockPlugin,
+					timelineManager: {
+						...mockPlugin.timelineManager,
+						loadEntries: vi.fn().mockResolvedValue(rawEntries),
+						getTimelineFile: vi.fn().mockReturnValue(createMockFile('timeline.md', 'NovelA/timeline.md'))
+					}
+				},
+				container: container as unknown as HTMLElement,
+				files: [],
+				foreshadowingMap: new Map(),
+				currentBookPath: 'NovelA',
+				currentTimelineFilter: 'all',
+				isDescending: false,
+				onSaveStateChange: vi.fn(),
+				reloadBoard: vi.fn(),
+				getChapterEvents: vi.fn().mockReturnValue([])
+			};
+
+			await expect(TimelineBoardRenderer.render(options)).resolves.not.toThrow();
+			const node = container.querySelector('.wn-timeline-node');
+			expect(node).not.toBeNull();
+		});
+
+		it('should cancel requestAnimationFrame on cleanup', async () => {
+			let cleanupFn: (() => void) | null = null;
+			const mockOwner = {
+				register: (fn: () => void) => { cleanupFn = fn; }
+			};
+			const chap1 = createMockFile('第1章.md', 'NovelA/第1章.md');
+			const rawEntries = [
+				{ time: '第一年', description: '描述1', items: [{ description: '描述1', chapter: '第1章' }] },
+				{ time: '第三年', description: '描述3', items: [{ description: '描述3', chapter: '第1章' }] }
+			];
+
+			const options: TimelineBoardOptions = {
+				app: mockApp,
+				plugin: {
+					...mockPlugin,
+					timelineManager: {
+						...mockPlugin.timelineManager,
+						loadEntries: vi.fn().mockResolvedValue(rawEntries),
+						getTimelineFile: vi.fn().mockReturnValue(createMockFile('timeline.md', 'NovelA/timeline.md'))
+					}
+				},
+				container: container as unknown as HTMLElement,
+				files: [chap1],
+				foreshadowingMap: new Map(),
+				currentBookPath: 'NovelA',
+				currentTimelineFilter: 'all',
+				isDescending: false,
+				onSaveStateChange: vi.fn(),
+				reloadBoard: vi.fn(),
+				getChapterEvents: vi.fn().mockReturnValue([]),
+				ownerComponent: mockOwner as unknown as Component
+			};
+
+			mockOwnerWindow.cancelAnimationFrame.mockClear();
+			await TimelineBoardRenderer.render(options);
+			const mainCol = container.querySelector('.wn-timeline-waterfall-main');
+			mainCol?.dispatchEvent('scroll');
+			expect(cleanupFn).toBeDefined();
+			if (cleanupFn) (cleanupFn as () => void)();
+			expect(mockOwnerWindow.cancelAnimationFrame).toHaveBeenCalled();
+		});
+
+		it('renders trajectory mode and resets viewport to panX=0, panY=0, scale=1 on render and repeated renders', async () => {
+			const rawEntries: TimelineEntry[] = [
+				{ time: '第一年', description: '描述1', chapter: '第1章', rawBlock: '', items: [{ description: '描述1', chapter: '第1章', type: '主线' }] }
+			];
+
+			const options: TimelineBoardOptions = {
+				app: mockApp,
+				plugin: {
+					...mockPlugin,
+					timelineManager: {
+						...mockPlugin.timelineManager,
+						loadEntries: vi.fn().mockResolvedValue(rawEntries),
+						getTimelineFile: vi.fn().mockReturnValue(createMockFile('timeline.md', 'NovelA/timeline.md'))
+					}
+				},
+				container: container as unknown as HTMLElement,
+				files: [createMockFile('第1章.md', 'NovelA/第1章.md')],
+				foreshadowingMap: new Map(),
+				currentBookPath: 'NovelA',
+				currentTimelineFilter: 'all',
+				isDescending: false,
+				isTrajectoryMode: true,
+				onSaveStateChange: vi.fn(),
+				reloadBoard: vi.fn(),
+				getChapterEvents: vi.fn().mockReturnValue([])
+			};
+
+			await TimelineBoardRenderer.render(options);
+			const grid = container.querySelector('.wn-trajectory-grid');
+			expect(grid).toBeDefined();
+			expect(grid?.style.transform).toBe('translate3d(0px, 0px, 0) scale(1)');
+
+			// Repeated render also starts at default viewport
+			container.empty();
+			await TimelineBoardRenderer.render(options);
+			const grid2 = container.querySelector('.wn-trajectory-grid');
+			expect(grid2?.style.transform).toBe('translate3d(0px, 0px, 0) scale(1)');
+		});
+
+		it('displays same-name typed nodes separately and filters whole nodes', async () => {
+			const mixedEntries: TimelineEntry[] = [
+				{
+					time: '第一年',
+					type: '主线',
+					description: '主线事件',
+					chapter: '第1章',
+					rawBlock: '',
+					items: [{ description: '主线事件描述', chapter: '第1章' }]
+				},
+				{
+					time: '第一年', type: '支线', description: '支线事件', chapter: '第2章', rawBlock: '',
+					items: [{ description: '支线事件描述', chapter: '第2章' }]
+				}
+			];
+
+			const renderWithOptions = async (filter: string) => {
+				const c = new MockElement();
+				await TimelineBoardRenderer.render({
+					app: mockApp,
+					plugin: {
+						...mockPlugin,
+						timelineManager: {
+							...mockPlugin.timelineManager,
+							loadEntries: vi.fn().mockResolvedValue(mixedEntries),
+							getTimelineFile: vi.fn().mockReturnValue(createMockFile('timeline.md', 'NovelA/timeline.md'))
+						}
+					},
+					container: c as unknown as HTMLElement,
+					files: [createMockFile('第1章.md', 'NovelA/第1章.md'), createMockFile('第2章.md', 'NovelA/第2章.md')],
+					foreshadowingMap: new Map(),
+					currentBookPath: 'NovelA',
+					currentTimelineFilter: filter,
+					isDescending: false,
+					onSaveStateChange: vi.fn(),
+					reloadBoard: vi.fn(),
+					getChapterEvents: vi.fn().mockReturnValue([])
+				});
+				return c;
+			};
+
+			// Each same-name node owns one type and its own event cards.
+			const cAll = await renderWithOptions('all');
+			const badgesAll = cAll.querySelectorAll('.wn-timeline-type-badge');
+			expect(badgesAll.map(b => b.textContent)).toEqual(['主线', '支线']);
+			const itemRowsAll = cAll.querySelectorAll('.wn-timeline-item-row');
+			expect(itemRowsAll.length).toBe(2);
+
+			// Filtering retains the entire matching node.
+			const cSub = await renderWithOptions('支线');
+			const nodesSub = cSub.querySelectorAll('.wn-timeline-node');
+			expect(nodesSub.length).toBe(1);
+			const badgesSub = cSub.querySelectorAll('.wn-timeline-type-badge');
+			expect(badgesSub.map(b => b.textContent)).toEqual(['支线']);
+			const itemRowsSub = cSub.querySelectorAll('.wn-timeline-item-row');
+			expect(itemRowsSub.length).toBe(1);
+			expect(itemRowsSub[0].attributes.get('data-item-index')).toBe('0');
+			expect(itemRowsSub[0].querySelector('.wn-timeline-item-desc')?.textContent).toBe('支线事件描述');
 		});
 	});
 });

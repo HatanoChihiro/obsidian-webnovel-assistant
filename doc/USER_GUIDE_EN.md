@@ -134,6 +134,11 @@ Configure Workspace Folders first. The recommended entry points are available di
 #### Creative Homepage Entry (Optional)
 If the Creative Homepage is enabled, its **Create New Work** and **Import Novel** buttons provide the same operations. Users who do not use the homepage can rely entirely on the File Explorer entries.
 
+#### Series Work Marking
+- **Manage Series**: In the File Explorer, right-click any recognized novel folder and choose **Manage Series...** to view the current series, pick from existing series, enter a new series name, or remove the novel from its series.
+- **Set on Creation & Import**: When creating or importing a novel, optionally select an existing series or enter a new one (leave blank for standalone works).
+- **Display & Storage**: Marked works store membership in the visible `**Series**：SeriesName` field in the Novel Info file. The Creative Homepage and Writing Workbench show the series name. Removing a work from a series clears the field without moving or deleting files.
+
 ---
 
 ### Smart Chapter Sorting

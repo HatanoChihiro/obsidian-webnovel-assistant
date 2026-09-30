@@ -48,6 +48,7 @@
 @import "./views/workbench-action-buttons-compat.css";
 @import "./base/modals-timeline-compat.css"; /* Modal heading reset preserved at original timeline cascade position */
 @import "./views/timeline-waterfall.css";
+@import "./views/timeline-trajectory.css";
 @import "./views/corkboard.css";
 @import "./views/settings-corkboard-compat.css"; /* Settings layout builder rule preserved at original corkboard cascade position */
 @import "./views/lore-board-corkboard-compat.css";

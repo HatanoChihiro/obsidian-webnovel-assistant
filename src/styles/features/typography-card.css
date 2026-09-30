@@ -95,20 +95,22 @@ body.wn-card-indent-active .wn-corkboard-card-content .wn-sticky-note-editor-lin
 	width: var(--wn-card-indent, 2em);
 }
 
-/* 4. Timeline Event Cards (Side-panel & Board) */
+/* 4. Timeline Event Cards (Side-panel & Board & Trajectory) */
 body.wn-card-indent-active .wn-timeline-desc-text:not(:empty)::before {
 	content: "";
 	display: inline-block;
 	width: var(--wn-card-indent, 2em);
 }
 
-body.wn-card-indent-active .wn-timeline-item-desc:not(.is-editing) .wn-sticky-note-editor-line:not(.is-empty)::before {
+body.wn-card-indent-active .wn-timeline-item-desc:not(.is-editing) .wn-sticky-note-editor-line:not(.is-empty)::before,
+body.wn-card-indent-active .wn-trajectory-event-text:not(.is-editing) .wn-sticky-note-editor-line:not(.is-empty)::before {
 	content: "";
 	display: inline-block;
 	width: var(--wn-card-indent, 2em);
 }
 
-body.wn-card-indent-active .wn-timeline-item-desc.is-editing .wn-sticky-note-editor-line::before {
+body.wn-card-indent-active .wn-timeline-item-desc.is-editing .wn-sticky-note-editor-line::before,
+body.wn-card-indent-active .wn-trajectory-event-text.is-editing .wn-sticky-note-editor-line::before {
 	content: "";
 	display: inline-block;
 	width: var(--wn-card-indent, 2em);

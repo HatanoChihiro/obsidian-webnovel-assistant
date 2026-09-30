@@ -141,6 +141,12 @@ vi.mock('obsidian', () => {
 		constructor(leaf: { app: unknown }) {
 			this.app = leaf.app;
 			this.containerEl = new MockElement('workspace-leaf-content');
+			(this.containerEl as unknown as { ownerDocument: Document }).ownerDocument = {
+				getElementById: vi.fn(),
+				createElement: vi.fn(() => new MockElement('style')),
+				head: { appendChild: vi.fn(), removeChild: vi.fn() },
+				defaultView: window
+			} as unknown as Document;
 			this.contentEl = new MockElement('view-content');
 			this.containerEl.children.push(this.contentEl);
 			this.contentEl.parentElement = this.containerEl;
@@ -303,6 +309,7 @@ describe('WorkbenchView', () => {
 				isEligibleForChapterList: vi.fn().mockReturnValue(true),
 				getFileCache: vi.fn()
 			},
+			timelineManager: { loadEntries: vi.fn().mockResolvedValue([]) },
 			adaptiveDebounceManager: {
 				debounceFixed: vi.fn((_key: string, fn: () => void) => { fn(); }),
 				cancel: vi.fn()
@@ -400,6 +407,59 @@ describe('WorkbenchView', () => {
 		expect(cancelSpy).toHaveBeenCalledWith('workbench-refresh');
 	});
 
+	it('should only trigger reload for markdown modify if the file belongs to the current book (or its dependencies)', async () => {
+		const vaultHandlers: Record<string, ((...args: unknown[]) => void)> = {};
+
+		mockApp.vault.on.mockImplementation((event: string, handler: (...args: unknown[]) => void) => {
+			vaultHandlers[event] = handler;
+		});
+
+		const debounceSpy = vi.fn();
+		plugin.adaptiveDebounceManager = {
+			debounceFixed: debounceSpy,
+			cancel: vi.fn()
+		};
+
+		const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+		view.currentBookPath = 'NovelA'; // Current book is NovelA
+		(view as unknown as { container: unknown }).container = view.contentEl;
+
+		// Book A file
+		const currentBookFile = new MockTFile('Chapter.md', 'NovelA/Chapter.md');
+		const otherBookFile = new MockTFile('Chapter.md', 'NovelB/Chapter.md');
+		const rootBookFile = new MockTFile('info.md', 'NovelA.md'); // A book defined at vault root
+
+		plugin.cacheManager.isFileInWorkspace = vi.fn().mockReturnValue(true);
+		findBookRootMock.mockImplementation((app, plugin, file) => {
+			if (file.path.startsWith('NovelA/')) return 'NovelA';
+			if (file.path.startsWith('NovelB/')) return 'NovelB';
+			if (file.path === 'NovelA.md') return ''; // Empty string represents vault root
+			return null;
+		});
+
+		// Trigger modify on current book file
+		debounceSpy.mockClear();
+		vaultHandlers['modify'](currentBookFile);
+		expect(debounceSpy).toHaveBeenCalled();
+
+		// Trigger modify on another book file
+		debounceSpy.mockClear();
+		vaultHandlers['modify'](otherBookFile);
+		expect(debounceSpy).not.toHaveBeenCalled();
+
+		// Trigger modify on vault root book when current book is vault root
+		debounceSpy.mockClear();
+		view.currentBookPath = '';
+		vaultHandlers['modify'](rootBookFile);
+		expect(debounceSpy).toHaveBeenCalled();
+
+		// Reset current book path
+		view.currentBookPath = 'NovelA';
+
+		// Close view
+		await view.onClose();
+	});
+
 	it('should reload board when debounced refresh or lore-updated triggers with proper delays', async () => {
 		const vaultHandlers: Record<string, ((...args: unknown[]) => void)> = {};
 		const metadataHandlers: Record<string, ((...args: unknown[]) => void)> = {};
@@ -485,8 +545,8 @@ describe('WorkbenchView', () => {
 
 		const reloadSpy = vi.spyOn(view, 'reloadBoard').mockImplementation(async () => {});
 
-		// Another work's foreshadowing file with isFileInWorkspace=false is ignored
-		plugin.cacheManager.isFileInWorkspace = vi.fn().mockReturnValue(false);
+		// Another work's foreshadowing file with isFileInWorkspace=true is ignored because findBookRoot says it belongs to NovelB
+		plugin.cacheManager.isFileInWorkspace = vi.fn().mockReturnValue(true);
 		vaultHandlers['modify'](otherBookForeshadowFile);
 		expect(debounceSpy).not.toHaveBeenCalled();
 		expect((view as unknown as { cachedForeshadowingMap: unknown }).cachedForeshadowingMap).toBe(staleMap);
@@ -532,6 +592,7 @@ describe('WorkbenchView', () => {
 		let renderCount = 0;
 
 		const fakeContainer = {
+			ownerDocument: { defaultView: window },
 			querySelector: (selector: string) => {
 				if (selector === '.wn-timeline-waterfall-main') return currentMain;
 				if (selector === '.wn-timeline-waterfall-sidebar') return currentSide;
@@ -768,58 +829,111 @@ describe('WorkbenchView', () => {
 		);
 	});
 
-	it('should sync timeline order when timeline-order-changed event is triggered and pass isDescending to TimelineBoardRenderer', async () => {
-		const v1c1 = new MockTFile('第1章.md', 'NovelA/第一卷/第1章.md');
-
-		plugin.getTrackedMarkdownFiles = vi.fn().mockReturnValue([v1c1] as unknown as TFile[]);
-		getCurrentBookContextMock.mockReturnValue('NovelA');
-
+	it('should not register cross-view timeline sync events', () => {
 		const listeners = new Map<string, Array<(...args: unknown[]) => void>>();
 		mockApp.workspace.on.mockImplementation((event: string, callback: (...args: unknown[]) => void) => {
 			if (!listeners.has(event)) listeners.set(event, []);
 			listeners.get(event)!.push(callback);
 			return {} as import('obsidian').EventRef;
 		});
+		new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+		expect(listeners.has('timeline-order-changed')).toBe(false);
+		expect(listeners.has('timeline-filter-changed')).toBe(false);
+		expect(listeners.has('timeline-lore-filter-changed')).toBe(false);
+	});
+
+	it('updates local timeline filters without triggering workspace events and passes default ascending', async () => {
+		const v1c1 = new MockTFile('第1章.md', 'NovelA/第一卷/第1章.md');
+		plugin.getTrackedMarkdownFiles = vi.fn().mockReturnValue([v1c1] as unknown as TFile[]);
+		getCurrentBookContextMock.mockReturnValue('NovelA');
 
 		const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
 		view.currentBookPath = 'NovelA';
 		(view as unknown as { container: unknown }).container = view.contentEl;
 		(view as unknown as { sortMode: string }).sortMode = 'timeline';
 
+		plugin.timelineManager.loadEntries = vi.fn().mockResolvedValue([
+			{ type: '主线', items: [{ description: '', chapter: '' }], lores: ['甲'] }
+		]);
+
 		await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
 
-		expect(TimelineBoardRenderer.render).toHaveBeenCalledWith(
-			expect.objectContaining({
-				currentBookPath: 'NovelA',
-				isDescending: false
-			})
-		);
+		const firstRenderOptions = (TimelineBoardRenderer.render as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as Record<string, unknown> | undefined;
+		expect(firstRenderOptions).not.toHaveProperty('isDescending');
 
-		// Trigger workspace event timeline-order-changed with true (descending)
+		// Click the type tab
+		const typeTabs = view.contentEl.querySelectorAll('.wn-lore-file-tab');
+		const specificTypeTab = Array.from(typeTabs).find(t => t.textContent === '主线');
+		expect(specificTypeTab).toBeDefined();
+
 		(TimelineBoardRenderer.render as ReturnType<typeof vi.fn>).mockClear();
-		listeners.get('timeline-order-changed')?.[0]?.(true);
+		(specificTypeTab as HTMLElement).click();
 
-		await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+		expect(mockApp.workspace.trigger).not.toHaveBeenCalledWith('timeline-filter-changed', expect.anything());
+		expect((view as unknown as { currentTimelineFilter: string }).currentTimelineFilter).toBe('主线');
 
+		// Wait for reloadBoard
+		await new Promise(resolve => setTimeout(resolve, 0));
 		expect(TimelineBoardRenderer.render).toHaveBeenCalledWith(
 			expect.objectContaining({
-				currentBookPath: 'NovelA',
-				isDescending: true
+				currentTimelineFilter: '主线'
 			})
 		);
 
-		// Trigger workspace event timeline-order-changed with false (ascending)
+		// Click lore filter
+		const loreRow = view.contentEl.querySelector('.wn-multi-select-filter-row');
+		expect(loreRow).not.toBeNull();
+		const loreBtns = loreRow?.querySelectorAll('.wn-lore-file-tab');
+		expect(loreBtns).toHaveLength(2);
+		(loreBtns?.[1] as HTMLElement).click();
+
+		expect(mockApp.workspace.trigger).not.toHaveBeenCalledWith('timeline-lore-filter-changed', expect.anything());
+		expect((view as unknown as { currentTimelineLoreFilter: string[] }).currentTimelineLoreFilter).toEqual(['甲']);
+		await new Promise(resolve => setTimeout(resolve, 0));
+		expect(TimelineBoardRenderer.render).toHaveBeenCalledWith(
+			expect.objectContaining({ currentTimelineLoreFilter: ['甲'] })
+		);
+	});
+
+	it('does not retain cross-render trajectory viewport state and starts anew on reload', async () => {
+		const v1c1 = new MockTFile('第1章.md', 'NovelA/第一卷/第1章.md');
+		plugin.getTrackedMarkdownFiles = vi.fn().mockReturnValue([v1c1] as unknown as TFile[]);
+		getCurrentBookContextMock.mockReturnValue('NovelA');
+
+		const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+		view.currentBookPath = 'NovelA';
+		(view as unknown as { container: unknown }).container = view.contentEl;
+		(view as unknown as { sortMode: string }).sortMode = 'timeline';
+		(view as unknown as { isTimelineTrajectoryMode: boolean }).isTimelineTrajectoryMode = true;
+
+		plugin.timelineManager.loadEntries = vi.fn().mockResolvedValue([
+			{ items: [{ description: '', chapter: '', type: '主线' }], lores: ['甲'] }
+		]);
+
 		(TimelineBoardRenderer.render as ReturnType<typeof vi.fn>).mockClear();
-		listeners.get('timeline-order-changed')?.[0]?.(false);
-
 		await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
 
 		expect(TimelineBoardRenderer.render).toHaveBeenCalledWith(
 			expect.objectContaining({
-				currentBookPath: 'NovelA',
-				isDescending: false
+				isTrajectoryMode: true
 			})
 		);
+		const firstCall = (TimelineBoardRenderer.render as ReturnType<typeof vi.fn>).mock.calls[0][0];
+		expect(firstCall.trajectoryViewport).toBeUndefined();
+		expect(firstCall.onTrajectoryViewportChange).toBeUndefined();
+		expect((view as unknown as { timelineTrajectoryViewport?: unknown }).timelineTrajectoryViewport).toBeUndefined();
+
+		(TimelineBoardRenderer.render as ReturnType<typeof vi.fn>).mockClear();
+		await view.reloadBoard();
+
+		expect(TimelineBoardRenderer.render).toHaveBeenCalledWith(
+			expect.objectContaining({
+				isTrajectoryMode: true
+			})
+		);
+		const reloadCall = (TimelineBoardRenderer.render as ReturnType<typeof vi.fn>).mock.calls[0][0];
+		expect(reloadCall.trajectoryViewport).toBeUndefined();
+		expect(reloadCall.onTrajectoryViewportChange).toBeUndefined();
 	});
 
 	describe('Switch current work/novel menu ordering', () => {
@@ -989,6 +1103,16 @@ describe('WorkbenchView', () => {
 	});
 
 	describe('Lifecycle & Generation Safety', () => {
+		it('clears search scope only when switching works', () => {
+			const view = new WorkbenchView(mockLeaf as never, plugin);
+			vi.spyOn(view, 'reloadBoard').mockResolvedValue();
+			view.currentBookPath = 'NovelA';
+			const clear = vi.spyOn(view['filterIndex'], 'clear');
+			view.setBookPath('NovelB');
+			expect(clear).toHaveBeenCalledOnce();
+			view.setBookPath('NovelB');
+			expect(clear).toHaveBeenCalledOnce();
+		});
 		it('should cancel hasPendingReload on close, gate closed reloads, and prevent restarting after close', async () => {
 			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
 			view.currentBookPath = 'NovelA';
@@ -1068,7 +1192,7 @@ describe('WorkbenchView', () => {
 
 			// Start render 1 (in-flight)
 			const render1Promise = viewInternal.renderBoard();
-			await Promise.resolve();
+			await new Promise(r => setTimeout(r, 0));
 			expect(capturedComponents).toHaveLength(1);
 			const comp1 = capturedComponents[0];
 			expect(comp1).toBeDefined();
@@ -1077,7 +1201,7 @@ describe('WorkbenchView', () => {
 
 			// Start render 2 before render 1 finishes -> render 1 becomes stale
 			const render2Promise = viewInternal.renderBoard();
-			await Promise.resolve();
+			await new Promise(r => setTimeout(r, 0));
 			expect(capturedComponents).toHaveLength(2);
 			const comp2 = capturedComponents[1];
 			expect(comp2).not.toBe(comp1);
@@ -1109,7 +1233,7 @@ describe('WorkbenchView', () => {
 			});
 
 			const render3Promise = viewInternal.renderBoard();
-			await Promise.resolve();
+			await new Promise(r => setTimeout(r, 0));
 			expect(capturedComponents).toHaveLength(3);
 			const comp3 = capturedComponents[2];
 

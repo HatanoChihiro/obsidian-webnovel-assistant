@@ -1,6 +1,6 @@
-import { Modal, Setting, TFile, TFolder, setTooltip, setIcon } from 'obsidian';
-import type { App, TextComponent } from 'obsidian';
-import type { CharacterManager } from '../services/CharacterManager';
+import { Modal, Setting, TFile, setTooltip, setIcon } from 'obsidian';
+import type { App, TextComponent, TFolder } from 'obsidian';
+import type { CharacterManager, LoreCategoryOption } from '../services/CharacterManager';
 import { t } from '../i18n';
 
 export interface LoreRelationItem {
@@ -9,7 +9,7 @@ export interface LoreRelationItem {
 }
 
 export interface AddLorePlugin {
-	characterManager: Pick<CharacterManager, 'findLoreFolder' | 'getLoreEntriesInFileOrder' | 'createLoreEntry'>;
+	characterManager: Pick<CharacterManager, 'findLoreFolder' | 'getLoreEntriesInFileOrder' | 'createLoreEntry' | 'getAvailableLoreCategories'>;
 }
 
 export class AddLoreModal extends Modal {
@@ -23,6 +23,8 @@ export class AddLoreModal extends Modal {
 	private loreRelations: LoreRelationItem[];
 	private bookPath: string;
 	private isCreatingNew: boolean = false;
+	private availableCategories: LoreCategoryOption[] = [];
+	private selectedTargetFile: TFile | null = null;
 
 	constructor(app: App, plugin: AddLorePlugin, initialName: string, bookPath: string) {
 		super(app);
@@ -47,23 +49,9 @@ export class AddLoreModal extends Modal {
 	/**
 	 * 扫描设定文件夹中现有所有 md 文件，提取已存在的设定类型
 	 */
-	async collectExistingTypes(loreFolder: TFolder | null): Promise<string[]> {
+	async collectExistingTypes(files: TFile[]): Promise<string[]> {
 		const typesSet = new Set<string>();
-		if (!loreFolder) return [];
-
-		const mdFiles: TFile[] = [];
-		const collectFiles = (folder: TFolder) => {
-			for (const child of folder.children) {
-				if (child instanceof TFile && child.extension === 'md') {
-					mdFiles.push(child);
-				} else if (child instanceof TFolder) {
-					collectFiles(child);
-				}
-			}
-		};
-		collectFiles(loreFolder);
-
-		for (const file of mdFiles) {
+		for (const file of files) {
 			try {
 				const content = await this.app.vault.cachedRead(file);
 				const matches = content.matchAll(/(?:\*\*|__)?(?:类型|類型|Type)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/gi);
@@ -98,52 +86,49 @@ export class AddLoreModal extends Modal {
 					this.loreName = value;
 				}));
 
-		// 查找设定文件夹（支持多语言）
-		const loreFolder = this.findLoreFolder();
+		// 获取可用分类列表（包含本地分类与同系列公共分类）
+		this.availableCategories = await this.plugin.characterManager.getAvailableLoreCategories(this.bookPath);
 
-		// 收集现有的分类文档（支持多层嵌套子文件夹）
-		const categoryFiles: string[] = [];
-		if (loreFolder instanceof TFolder) {
-			const collectCategories = (folder: TFolder, prefix: string = '') => {
-				for (const child of folder.children) {
-					if (child instanceof TFile && child.extension === 'md') {
-						const relName = prefix ? `${prefix}/${child.basename}` : child.basename;
-						categoryFiles.push(relName);
-					} else if (child instanceof TFolder) {
-						const nextPrefix = prefix ? `${prefix}/${child.name}` : child.name;
-						collectCategories(child, nextPrefix);
-					}
-				}
-			};
-			collectCategories(loreFolder);
-		}
-
-		if (categoryFiles.length > 0) {
-			this.loreCategory = categoryFiles[0];
+		if (this.availableCategories.length > 0) {
+			// 优先选中第一个本地分类；若无可降级为第一个可用分类
+			const defaultOpt = this.availableCategories.find(c => !c.isBorrowed) || this.availableCategories[0];
+			this.loreCategory = defaultOpt.baseName;
+			this.selectedTargetFile = defaultOpt.file ?? null;
 		} else {
-			this.loreCategory = t('modal.lore-default-category'); // Default fallback
+			this.loreCategory = '';
+			this.selectedTargetFile = null;
 		}
+		this.isCreatingNew = this.selectedTargetFile === null;
 
 		const categorySetting = new Setting(contentEl)
 			.setName(t('modal.lore-category'))
 			.setDesc(t('modal.lore-category-desc'));
 			
 		categorySetting.addDropdown(dropdown => {
-			for (const file of categoryFiles) {
-				dropdown.addOption(file, file);
+			for (const opt of this.availableCategories) {
+				dropdown.addOption(opt.id, opt.displayName);
 			}
 			dropdown.addOption('__NEW__', t('modal.new-category'));
-			dropdown.setValue(this.loreCategory);
+			if (this.selectedTargetFile) {
+				dropdown.setValue(this.selectedTargetFile.path);
+			} else {
+				dropdown.setValue('__NEW__');
+			}
 			
 			dropdown.onChange(value => {
 				if (value === '__NEW__') {
 					this.isCreatingNew = true;
+					this.selectedTargetFile = null;
 					this.loreCategory = '';
 					textComponent.inputEl.show();
 					textComponent.inputEl.focus();
 				} else {
 					this.isCreatingNew = false;
-					this.loreCategory = value;
+					const chosen = this.availableCategories.find(c => c.id === value);
+					if (chosen) {
+						this.selectedTargetFile = chosen.file ?? null;
+						this.loreCategory = chosen.baseName;
+					}
 					textComponent.inputEl.hide();
 				}
 			});
@@ -158,12 +143,15 @@ export class AddLoreModal extends Modal {
 						this.loreCategory = value;
 					}
 				});
-			text.inputEl.hide(); // 默认隐藏
+			if (!this.isCreatingNew) text.inputEl.hide();
 			return text;
 		});
 
 		// 类型（参考分类：收集已有类型，支持下拉选择与新建）
-		const existingTypes = await this.collectExistingTypes(loreFolder);
+		const existingFiles = this.availableCategories
+			.map(c => c.file)
+			.filter((f): f is TFile => f instanceof TFile);
+		const existingTypes = await this.collectExistingTypes(existingFiles);
 		this.loreType = '';
 		let isCreatingNewType = false;
 
@@ -399,7 +387,8 @@ export class AddLoreModal extends Modal {
 			this.loreAliases,
 			this.loreType,
 			this.loreDescription,
-			this.loreRelations
+			this.loreRelations,
+			this.selectedTargetFile?.path
 		);
 	}
 }

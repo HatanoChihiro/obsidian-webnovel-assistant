@@ -336,6 +336,9 @@ export interface AccurateCountSettings {
 	/** 设定文件夹名称（相对作品根目录，用于人物卡悬停） */
 	loreFolderName: string;
 
+	/** 系列公共设定子文件夹名称（相对设定文件夹，默认：系列） */
+	seriesLoreFolderName: string;
+
 	/** 设定速查悬浮卡片中子标题是否默认折叠 */
 	lorePopoverCollapse: boolean;
 

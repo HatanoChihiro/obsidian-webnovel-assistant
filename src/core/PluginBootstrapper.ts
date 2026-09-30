@@ -167,7 +167,7 @@ export class PluginBootstrapper {
 			this.plugin.registerEvent(this.plugin.app.workspace.on('webnovel:tasks-changed', () => {
 				this.plugin.refreshStatusViews(false, true);
 				if (this.plugin.settings.enableHomepage) {
-					this.plugin.homepageManager?.refreshHomepageViews();
+					void this.plugin.homepageManager?.refreshHomepageViews();
 				}
 			}));
 			this.plugin.registerEvent(this.plugin.app.workspace.on('active-leaf-change', () => {
@@ -436,8 +436,7 @@ export class PluginBootstrapper {
 			});
 		}));
 		this.plugin.registerEvent(this.plugin.app.workspace.on('webnovel-workbench-book-changed', () => {
-			this.plugin.refreshStatusViews();
-			void this.plugin.editorTracker.handleFileChange();
+			this.plugin.mobileFloatingStats?.update();
 		}));
 		this.plugin.registerEvent(this.plugin.app.workspace.on('active-leaf-change', () => {
 			this.plugin.mobileFloatingStats?.update();

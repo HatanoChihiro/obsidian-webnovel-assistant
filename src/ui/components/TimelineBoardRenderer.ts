@@ -1,7 +1,7 @@
-import type { App, Component } from 'obsidian';
+import type { App, Component, WorkspaceLeaf } from 'obsidian';
 import { setIcon, TFile, Notice, Modal } from 'obsidian';
 import type { ParsedForeshadowingEntry } from '../../types/foreshadowing';
-import type { TimelineItem, TimelineManager } from '../../services/TimelineManager';
+import type { TimelineEntry, TimelineItem, TimelineManager } from '../../services/TimelineManager';
 import { CorkboardGridRenderer } from './CorkboardGridRenderer';
 import { TimelineAddModal } from '../TimelineAddModal';
 import { t } from '../../i18n';
@@ -15,6 +15,7 @@ import type { AccurateCountSettings } from '../../types/settings';
 import { createCardImportanceButton } from './CardImportanceButton';
 import { setupStickyNoteParagraphEditor, getStickyNoteEditorContent, setStickyNoteEditorContent } from './StickyNoteParagraphEditor';
 import { renderLoreBadges } from '../../utils/badge';
+import { renderTrajectoryMode } from './TrajectoryBoardRenderer';
 
 class ConfirmDeleteEventModal extends Modal {
 	constructor(app: App, private title: string, private onConfirm: () => void) {
@@ -61,6 +62,7 @@ export type TimelineBoardTimelineManager = Pick<
 	| 'deleteEntry'
 	| 'updateEntry'
 	| 'getTimelineFilePath'
+	| 'findEntryHeadingOffset'
 	| 'appendEntry'
 >;
 
@@ -92,10 +94,12 @@ export interface TimelineBoardOptions {
 	app: App;
 	plugin: TimelineBoardPlugin;
 	ownerComponent?: Component;
+	sourceLeaf?: WorkspaceLeaf;
 	container: HTMLElement;
 	files: TFile[];
 	foreshadowingMap: Map<string, ParsedForeshadowingEntry[]>;
 	currentBookPath: string;
+	loadedEntries?: TimelineEntry[] | null;
 	currentTimelineFilter: string;
 	currentTimelineLoreFilter?: string[] | Set<string>;
 	onSaveStateChange: (isSaving: boolean) => void;
@@ -106,6 +110,7 @@ export interface TimelineBoardOptions {
 	onToggleUnscheduledSort?: () => void;
 	isSidebarCollapsed?: boolean;
 	onToggleSidebarCollapse?: () => void;
+	isTrajectoryMode?: boolean;
 }
 
 export class TimelineBoardRenderer {
@@ -126,13 +131,14 @@ export class TimelineBoardRenderer {
 			isUnscheduledDescending,
 			onToggleUnscheduledSort,
 			isSidebarCollapsed,
-			onToggleSidebarCollapse
+			onToggleSidebarCollapse,
+			isTrajectoryMode
 		} = options;
 
 		const tStart = performance.now();
 		const timelineManager = plugin.timelineManager;
 		const bookFolder = currentBookPath === '/' ? '' : (currentBookPath || '');
-		let entries = await timelineManager.loadEntries(bookFolder);
+		let entries = options.loadedEntries !== undefined ? options.loadedEntries : await timelineManager.loadEntries(bookFolder);
 		const tEntries = performance.now();
 		Logger.info(`[Perf Phase] Timeline.loadEntries: ${(tEntries - tStart).toFixed(2)}ms`);
 
@@ -153,6 +159,9 @@ export class TimelineBoardRenderer {
 		}
 
 		const displayEntries = (entries && isDescending) ? [...entries].reverse() : (entries ? [...entries] : []);
+		const entryIndexByEntry = new Map<TimelineEntry, number>(
+			allEntries.map((entry, index) => [entry, index])
+		);
 
 		const timelineFile = timelineManager.getTimelineFile(bookFolder);
 		const chapterIndex = ChapterSorter.createReferenceIndex(
@@ -166,10 +175,61 @@ export class TimelineBoardRenderer {
 			return chapterIndex.resolve(link);
 		};
 
+		const openTimelineEntry = async (entry: TimelineEntry, entryIndex: number): Promise<void> => {
+			if (!timelineFile) {
+				new Notice(t('common.file-not-found', { name: t('common.default-timeline-filename') }));
+				return;
+			}
+			const content = await app.vault.cachedRead(timelineFile);
+			const matchStartGlobal = timelineManager.findEntryHeadingOffset(content, entryIndex, bookFolder);
+			const fallbackLine = matchStartGlobal === undefined ? undefined : content.slice(0, matchStartGlobal).split('\n').length - 1;
+			await smartLocateAndHighlight(
+				app,
+				timelineFile,
+				[`## ${entry.time}`, `# ${entry.time}`, entry.time],
+				{ splitIfNew: true, fallbackLine, matchStartGlobal }
+			);
+		};
+
+		if (isTrajectoryMode) {
+			renderTrajectoryMode({
+				sourceLeaf: options.sourceLeaf,
+				app,
+				container,
+				displayEntries,
+				allTypes: [...new Set([
+					...(plugin.settings.timeline?.defaultTypes || []),
+					...allEntries.map(entry => entry.type || t('trajectory.main-type'))
+				])],
+				resolveLinkToFile,
+				allEntries,
+				onUpdateEntry: async (index: number, entry: TimelineEntry) => {
+					await timelineManager.updateEntry(index, entry, bookFolder);
+				},
+				onOpenEntry: openTimelineEntry,
+				onSaveStateChange,
+				reloadBoard,
+				typeFilter: currentTimelineFilter
+			});
+			const tTraj = performance.now();
+			Logger.info(`[Perf Phase] Timeline.trajectoryMode: ${(tTraj - tEntries).toFixed(2)}ms`);
+			return;
+		}
+
+		const displayPositionByEntryIndex = new Map<number, number>();
+		displayEntries.forEach((entry, position) => {
+			const entryIndex = entryIndexByEntry.get(entry);
+			if (entryIndex !== undefined) displayPositionByEntryIndex.set(entryIndex, position);
+		});
+		type TimelineEventRef = { time: string; itemIndex: number; entryIndex: number };
+		const eventKey = (event: TimelineEventRef) => `${event.entryIndex}|${event.itemIndex}`;
+
 		// Find chapters mapped to each event -> itemIndex. Keys are file.path.
-		const chapterToEventMap = new Map<string, { time: string, itemIndex: number }[]>();
+		const chapterToEventMap = new Map<string, TimelineEventRef[]>();
 
 		for (const entry of displayEntries) {
+			const entryIndex = entryIndexByEntry.get(entry);
+			if (entryIndex === undefined) continue;
 			if (entry.items && entry.items.length > 0) {
 					for (let i = 0; i < entry.items.length; i++) {
 						const item = entry.items[i];
@@ -181,8 +241,8 @@ export class TimelineBoardRenderer {
 								chapterToEventMap.set(mapKey, []);
 							}
 							const list = chapterToEventMap.get(mapKey)!;
-							if (!list.find(m => m.time === entry.time && m.itemIndex === i)) {
-								list.push({ time: entry.time, itemIndex: i });
+							if (!list.find(m => m.entryIndex === entryIndex && m.itemIndex === i)) {
+								list.push({ time: entry.time, itemIndex: i, entryIndex });
 							}
 						}
 					}
@@ -195,8 +255,8 @@ export class TimelineBoardRenderer {
 							chapterToEventMap.set(mapKey, []);
 						}
 						const list = chapterToEventMap.get(mapKey)!;
-						if (!list.find(m => m.time === entry.time && m.itemIndex === 0)) {
-							list.push({ time: entry.time, itemIndex: 0 });
+						if (!list.find(m => m.entryIndex === entryIndex && m.itemIndex === 0)) {
+							list.push({ time: entry.time, itemIndex: 0, entryIndex });
 						}
 					}
 				}
@@ -211,7 +271,7 @@ export class TimelineBoardRenderer {
 		const sideCol = waterfallLayout.createDiv('wn-timeline-waterfall-sidebar');
 
 		// Handle drag and drop logic
-		const handleDrop = async (e: DragEvent, targetEvents: { time: string, itemIndex?: number }[]) => {
+		const handleDrop = async (e: DragEvent, targetEvents: { time: string, entryIndex: number, itemIndex?: number }[]) => {
 			e.preventDefault();
 			e.stopPropagation();
 			const path = e.dataTransfer?.getData('application/wn-chapter-path') || e.dataTransfer?.getData('text/plain');
@@ -230,7 +290,7 @@ export class TimelineBoardRenderer {
 			}
 		};
 
-		const setupDropzone = (el: HTMLElement, targetEvents: { time: string, itemIndex?: number }[]) => {
+		const setupDropzone = (el: HTMLElement, targetEvents: { time: string, entryIndex: number, itemIndex?: number }[]) => {
 			let dragCounter = 0;
 			let isInsertAfter = false; // Track whether to insert after (bottom half)
 
@@ -297,9 +357,9 @@ export class TimelineBoardRenderer {
 				el.removeClass('drag-over');
 				
 				if (e.dataTransfer?.types.includes('application/wn-timeline-event-time')) {
-					const sourceTime = e.dataTransfer.getData('application/wn-timeline-event-time');
+					const sourceEntryIndex = Number(e.dataTransfer.getData('application/wn-timeline-entry-index'));
 					const sourceIdxStr = e.dataTransfer.getData('application/wn-timeline-event-index');
-					if (sourceTime && sourceIdxStr && targetEvents.length > 0) {
+					if (Number.isInteger(sourceEntryIndex) && sourceEntryIndex >= 0 && sourceIdxStr && targetEvents.length > 0) {
 						e.preventDefault();
 						e.stopPropagation();
 						const sourceIdx = parseInt(sourceIdxStr);
@@ -310,7 +370,7 @@ export class TimelineBoardRenderer {
 						}
 						
 						// If trying to move to its own current position or the exact same spot after removal
-						if (sourceTime === targetEvents[0].time && 
+						if (sourceEntryIndex === targetEvents[0].entryIndex &&
 						   (sourceIdx === targetIdx || sourceIdx === targetIdx - 1)) {
 							return; 
 						}
@@ -318,7 +378,7 @@ export class TimelineBoardRenderer {
 						void (async () => {
 							onSaveStateChange(true);
 							try {
-								await timelineManager.moveEventItem(sourceTime, sourceIdx, targetEvents[0].time, targetIdx, bookFolder);
+								await timelineManager.moveEventItem(sourceEntryIndex, sourceIdx, targetEvents[0].entryIndex, targetIdx, bookFolder);
 							} catch (err) {
 								Logger.error('[TimelineBoard] moveEventItem 失败:', err);
 							} finally {
@@ -336,20 +396,24 @@ export class TimelineBoardRenderer {
 
 		// Determine where each file goes
 		const unscheduled: TFile[] = [];
-		const fileGroups = new Map<string, TFile[]>(); // Key is "time|itemIndex" or "GAP|time1|time2"
+		const fileGroups = new Map<string, TFile[]>(); // Key is "entryIndex|itemIndex" or a GAP key.
 
 		for (const file of files) {
-			let eventsFromMD = chapterToEventMap.get(file.path) || [];
+			let eventsFromMD: TimelineEventRef[] = chapterToEventMap.get(file.path) || [];
 
 			if (!timelineFile && eventsFromMD.length === 0) {
 				const fmEvents = getChapterEvents(file, new Map()); // pass empty map to only get FM
-				eventsFromMD = fmEvents.map(time => ({ time, itemIndex: 0 }));
+				eventsFromMD = fmEvents.flatMap(time => {
+					const entry = displayEntries.find(candidate => candidate.time === time);
+					const entryIndex = entry ? entryIndexByEntry.get(entry) : undefined;
+					return entryIndex === undefined ? [] : [{ time, itemIndex: 0, entryIndex }];
+				});
 			}
 
 			if (eventsFromMD.length > 1 && displayEntries.length > 0) {
 				eventsFromMD.sort((a, b) => {
-					const idxA = displayEntries.findIndex(e => e.time === a.time);
-					const idxB = displayEntries.findIndex(e => e.time === b.time);
+					const idxA = displayPositionByEntryIndex.get(a.entryIndex) ?? -1;
+					const idxB = displayPositionByEntryIndex.get(b.entryIndex) ?? -1;
 					if (idxA !== -1 && idxB !== -1) {
 						if (idxA !== idxB) return idxA - idxB;
 						return (a.itemIndex || 0) - (b.itemIndex || 0);
@@ -365,19 +429,19 @@ export class TimelineBoardRenderer {
 				const e2 = eventsFromMD[1];
 				let isAdjacent = false;
 				
-				if (e1.time === e2.time) {
+				if (e1.entryIndex === e2.entryIndex) {
 					isAdjacent = Math.abs((e1.itemIndex || 0) - (e2.itemIndex || 0)) === 1;
 					if (isAdjacent) {
 						const minIdx = Math.min(e1.itemIndex || 0, e2.itemIndex || 0);
 						const maxIdx = Math.max(e1.itemIndex || 0, e2.itemIndex || 0);
-						const key = `GAP|${e1.time}|${minIdx}|${maxIdx}`;
+						const key = `GAP|${e1.entryIndex}|${minIdx}|${maxIdx}`;
 						if (!fileGroups.has(key)) fileGroups.set(key, []);
 						fileGroups.get(key)!.push(file);
 						continue;
 					}
 				} else {
-					const idx1 = displayEntries.findIndex(e => e.time === e1.time);
-					const idx2 = displayEntries.findIndex(e => e.time === e2.time);
+					const idx1 = displayPositionByEntryIndex.get(e1.entryIndex) ?? -1;
+					const idx2 = displayPositionByEntryIndex.get(e2.entryIndex) ?? -1;
 					if (idx1 !== -1 && idx2 !== -1 && Math.abs(idx1 - idx2) === 1) {
 						const firstIdx = Math.min(idx1, idx2);
 						const secondIdx = Math.max(idx1, idx2);
@@ -394,7 +458,7 @@ export class TimelineBoardRenderer {
 							((secondEvt.itemIndex || 0) === secondItemCount - 1 && (firstEvt.itemIndex || 0) === 0)
 						) {
 							isAdjacent = true;
-							const key = `GAP|${firstEntry.time}|${secondEntry.time}`;
+							const key = `GAP|${firstEvt.entryIndex}|${secondEvt.entryIndex}`;
 							if (!fileGroups.has(key)) fileGroups.set(key, []);
 							fileGroups.get(key)!.push(file);
 							continue;
@@ -404,13 +468,13 @@ export class TimelineBoardRenderer {
 				
 				// Not adjacent exactly 2 events -> fallback to rendering in first event
 				const firstEvent = eventsFromMD[0];
-				const key = `${firstEvent.time}|${firstEvent.itemIndex}`;
+				const key = eventKey(firstEvent);
 				if (!fileGroups.has(key)) fileGroups.set(key, []);
 				fileGroups.get(key)!.push(file);
 			} else {
 				// Render in the first event ONLY
 				const firstEvent = eventsFromMD[0];
-				const key = `${firstEvent.time}|${firstEvent.itemIndex}`;
+				const key = eventKey(firstEvent);
 				if (!fileGroups.has(key)) fileGroups.set(key, []);
 				fileGroups.get(key)!.push(file);
 			}
@@ -419,13 +483,13 @@ export class TimelineBoardRenderer {
 		if (displayEntries.length > 0) {
 			for (let i = 0; i < displayEntries.length; i++) {
 				const entry = displayEntries[i];
+				const entryIndex = entryIndexByEntry.get(entry);
+				if (entryIndex === undefined) continue;
 
 				// 1. The main node container
 				const nodeDiv = mainCol.createDiv('wn-timeline-node');
 				const titleDiv = nodeDiv.createDiv({ cls: 'wn-timeline-node-title' });
-				if (entry.type) {
-					titleDiv.createSpan({ text: entry.type, cls: 'wn-timeline-type-badge' });
-				}
+				if (entry.type) titleDiv.createSpan({ text: entry.type, cls: 'wn-timeline-type-badge' });
 				if (entry.lores && entry.lores.length > 0) {
 					const loreContainer = titleDiv.createSpan({ cls: 'wn-timeline-node-lore-badges' });
 					renderLoreBadges(loreContainer, entry.lores, bookFolder, plugin, true, 0);
@@ -434,32 +498,13 @@ export class TimelineBoardRenderer {
 				timeSpan.title = t('common.jump-to-entry');
 				timeSpan.onclick = async (e) => {
 					e.stopPropagation();
-					if (!timelineFile) {
-						new Notice(t('common.file-not-found', { name: t('common.default-timeline-filename') }));
-						return;
-					}
-					const fileCache = app.metadataCache.getFileCache(timelineFile);
-					let fallbackLine: number | undefined;
-					if (fileCache?.headings) {
-						for (const h of fileCache.headings) {
-							if (h.heading.trim() === entry.time.trim()) {
-								fallbackLine = h.position.start.line;
-								break;
-							}
-						}
-					}
-					await smartLocateAndHighlight(
-						app,
-						timelineFile,
-						[`## ${entry.time}`, `# ${entry.time}`, entry.time],
-						{ splitIfNew: true, fallbackLine }
-					);
+					await openTimelineEntry(entry, entryIndex);
 				};
 
 				// 2. Render each item row (sub-lane)
 				const items: TimelineItem[] = entry.items && entry.items.length > 0
 					? entry.items
-					: [{ description: entry.description, chapter: entry.chapter }];
+					: [{ description: entry.description, chapter: entry.chapter, important: entry.important }];
 				const visibleItemIndices = items.map((_item, index) => index);
 
 				for (let visibleIndex = 0; visibleIndex < visibleItemIndices.length; visibleIndex++) {
@@ -470,6 +515,7 @@ export class TimelineBoardRenderer {
 						if (e.dataTransfer) {
 							e.dataTransfer.effectAllowed = 'move';
 							e.dataTransfer.setData('application/wn-timeline-event-time', entry.time);
+							e.dataTransfer.setData('application/wn-timeline-entry-index', String(entryIndex));
 							e.dataTransfer.setData('application/wn-timeline-event-index', itemIdx.toString());
 							e.dataTransfer.setData('text/plain', `Event: ${entry.time}`);
 						}
@@ -622,23 +668,23 @@ export class TimelineBoardRenderer {
 					// Cards container
 					const cardsContainer = itemRow.createDiv('wn-timeline-cards-container');
 
-					const key = `${entry.time}|${itemIdx}`;
+					const key = `${entryIndex}|${itemIdx}`;
 					const filesInItem = fileGroups.get(key) || [];
 					CorkboardGridRenderer.render({
 						app, plugin, container: cardsContainer, files: filesInItem, foreshadowingMap, draggable: true, currentBookPath, onSaveStateChange, hideVolumeHeaders: true, maxLoreLines: 1
 					});
 
 					// Setup dropzone for this itemRow
-					setupDropzone(itemRow, [{ time: entry.time, itemIndex: itemIdx }]);
-					itemRow.setAttribute('data-time', entry.time);
+					setupDropzone(itemRow, [{ time: entry.time, entryIndex, itemIndex: itemIdx }]);
+					itemRow.setAttribute('data-entry-index', String(entryIndex));
 					itemRow.setAttribute('data-item-index', String(itemIdx));
 					// Render sub-gap (gap between events in the same time node)
 					if (visibleIndex < visibleItemIndices.length - 1) {
 						const nextItemIdx = visibleItemIndices[visibleIndex + 1];
-						const subGapKey = `GAP|${entry.time}|${itemIdx}|${nextItemIdx}`;
+						const subGapKey = `GAP|${entryIndex}|${itemIdx}|${nextItemIdx}`;
 						const subGapDiv = nodeDiv.createDiv('wn-timeline-gap wn-timeline-sub-gap');
 						const subCardsContainer = subGapDiv.createDiv('wn-timeline-cards-container');
-						setupDropzone(subGapDiv, [{ time: entry.time, itemIndex: itemIdx }, { time: entry.time, itemIndex: nextItemIdx }]);
+						setupDropzone(subGapDiv, [{ time: entry.time, entryIndex, itemIndex: itemIdx }, { time: entry.time, entryIndex, itemIndex: nextItemIdx }]);
 
 						const filesInSubGap = fileGroups.get(subGapKey) || [];
 						CorkboardGridRenderer.render({
@@ -675,9 +721,16 @@ export class TimelineBoardRenderer {
 						const newVal = getPlaintextContent(descEl).trim();
 						if (newVal) {
 							if (!entry.items) {
-								entry.items = [{ description: entry.description || '', chapter: entry.chapter || '' }];
+								entry.items = [{
+									description: entry.description || '',
+									chapter: entry.chapter || '',
+									important: entry.important
+								}];
 							}
-							entry.items.push({ description: newVal, chapter: '' });
+							entry.items.push({
+								description: newVal,
+								chapter: ''
+							});
 							const originalIndex = allEntries.indexOf(entry);
 							onSaveStateChange(true);
 							try {
@@ -706,11 +759,12 @@ export class TimelineBoardRenderer {
 				// 3. Render Gap to next event if exists
 				if (i < displayEntries.length - 1) {
 					const nextEntry = displayEntries[i + 1];
-					const gapKey = `GAP|${entry.time}|${nextEntry.time}`;
+					const nextEntryIndex = entryIndexByEntry.get(nextEntry);
+					const gapKey = `GAP|${entryIndex}|${nextEntryIndex ?? -1}`;
 
 					const gapDiv = mainCol.createDiv('wn-timeline-gap');
 					const cardsContainer = gapDiv.createDiv('wn-timeline-cards-container');
-					setupDropzone(gapDiv, [{ time: entry.time, itemIndex: items.length - 1 }, { time: nextEntry.time, itemIndex: 0 }]);
+					setupDropzone(gapDiv, [{ time: entry.time, entryIndex, itemIndex: items.length - 1 }, { time: nextEntry.time, entryIndex: nextEntryIndex ?? -1, itemIndex: 0 }]);
 
 					const filesInGap = fileGroups.get(gapKey) || [];
 					CorkboardGridRenderer.render({
@@ -735,16 +789,29 @@ export class TimelineBoardRenderer {
 
 		if (hasMultiEventLinks) {
 			// --- SVG Link Layer (Background) ---
-			const bgSvgLayer = activeDocument['createElementNS']('http://www.w3.org/2000/svg', 'svg');
+			const doc = waterfallLayout.ownerDocument;
+			const win = doc.defaultView || window;
+			const bgSvgLayer = win.createSvg('svg');
 			bgSvgLayer.classList.add('wn-timeline-svg-layer');
 			waterfallLayout.appendChild(bgSvgLayer);
 
 			// --- SVG Link Layer (Foreground) ---
-			const fgSvgLayer = activeDocument['createElementNS']('http://www.w3.org/2000/svg', 'svg');
+			const fgSvgLayer = win.createSvg('svg');
 			fgSvgLayer.classList.add('wn-timeline-svg-layer-fg');
 			waterfallLayout.appendChild(fgSvgLayer);
 
 			let lastLinksHash = '';
+			const buildRowElementMap = () => {
+				const rowElMap = new Map<string, HTMLElement>();
+				mainCol.querySelectorAll('[data-entry-index][data-item-index]').forEach(el => {
+					const entryIndex = el.getAttribute('data-entry-index');
+					const itemIndex = el.getAttribute('data-item-index');
+					if (entryIndex !== null && itemIndex !== null) {
+						rowElMap.set(`${entryIndex}|${itemIndex}`, el as HTMLElement);
+					}
+				});
+				return rowElMap;
+			};
 
 			const drawLinks = () => {
 				// 剪枝 1：若容器尚未插回 Live DOM 或宽度为 0，跳过昂贵的 reflow 计算
@@ -762,15 +829,8 @@ export class TimelineBoardRenderer {
 					if (dp) localCardElMap.set(dp, el as HTMLElement);
 				});
 
-				// 构建 O(1) 的事件行元素索引（key = "time|itemIndex"）
-				const rowElMap = new Map<string, HTMLElement>();
-				mainCol.querySelectorAll('[data-time][data-item-index]').forEach(el => {
-					const time = el.getAttribute('data-time');
-					const idx = el.getAttribute('data-item-index');
-					if (time !== null && idx !== null) {
-						rowElMap.set(`${time}|${idx}`, el as HTMLElement);
-					}
-				});
+				// 构建 O(1) 的事件行元素索引（key = "entryIndex|itemIndex"）
+				const rowElMap = buildRowElementMap();
 
 				// 一次性读取容器 rect（单次 reflow，所有后续计算基于此快照）
 				const layoutRect = waterfallLayout.getBoundingClientRect();
@@ -796,7 +856,7 @@ export class TimelineBoardRenderer {
 					if (!isHovered) {
 						for (let i = 1; i < events.length; i++) {
 							const targetEvt = events[i];
-							const rowKey = `${targetEvt.time}|${targetEvt.itemIndex ?? 0}`;
+							const rowKey = eventKey(targetEvt);
 							const targetRowEl = rowElMap.get(rowKey);
 							if (targetRowEl && targetRowEl.matches(':hover')) {
 								isHovered = true;
@@ -807,7 +867,7 @@ export class TimelineBoardRenderer {
 
 					for (let i = 1; i < events.length; i++) {
 						const targetEvt = events[i];
-						const rowKey = `${targetEvt.time}|${targetEvt.itemIndex ?? 0}`;
+						const rowKey = eventKey(targetEvt);
 						const targetRowEl = rowElMap.get(rowKey);
 						if (!targetRowEl) continue;
 
@@ -837,23 +897,23 @@ export class TimelineBoardRenderer {
 				bgSvgLayer.empty();
 				fgSvgLayer.empty();
 
-				const bgFrag = createFragment();
-				const fgFrag = createFragment();
+				const bgFrag = win.createFragment();
+				const fgFrag = win.createFragment();
 
 				for (const { startX, startY, endX, endY, isHovered } of links) {
 					const targetFrag = isHovered ? fgFrag : bgFrag;
 
-					const path = activeDocument['createElementNS']('http://www.w3.org/2000/svg', 'path');
+					const path = win.createSvg('path');
 					path.setAttribute('d', `M ${endX} ${endY} C ${endX + 50} ${endY}, ${startX - 50} ${startY}, ${startX} ${startY}`);
 					path.setAttribute('fill', 'none');
 					path.setAttribute('class', isHovered ? 'wn-timeline-svg-path is-hovered' : 'wn-timeline-svg-path');
 
-					const arrow = activeDocument['createElementNS']('http://www.w3.org/2000/svg', 'polygon');
+					const arrow = win.createSvg('polygon');
 					arrow.setAttribute('points', '-6,-3 0,0 -6,3');
 					arrow.setAttribute('transform', `translate(${startX}, ${startY})`);
 					arrow.setAttribute('class', isHovered ? 'wn-timeline-svg-arrow is-hovered' : 'wn-timeline-svg-arrow');
 
-					const dot = activeDocument['createElementNS']('http://www.w3.org/2000/svg', 'circle');
+					const dot = win.createSvg('circle');
 					dot.setAttribute('cx', `${endX}`);
 					dot.setAttribute('cy', `${endY}`);
 					dot.setAttribute('r', '3');
@@ -869,11 +929,13 @@ export class TimelineBoardRenderer {
 			};
 
 			let scheduled = false;
+			let rafId: number | null = null;
 			const scheduleDrawLinks = () => {
 				if (scheduled) return;
 				scheduled = true;
-				window.requestAnimationFrame(() => {
+				rafId = win.requestAnimationFrame(() => {
 					scheduled = false;
+					rafId = null;
 					const tDrawStart = performance.now();
 					drawLinks();
 					Logger.info(`[Perf Phase] Timeline.RAF.drawLinks: ${(performance.now() - tDrawStart).toFixed(2)}ms`);
@@ -898,6 +960,7 @@ export class TimelineBoardRenderer {
 					const dp = el.getAttribute('data-path');
 					if (dp) hoverCardElMap.set(dp, el as HTMLElement);
 				});
+				const rowElMap = buildRowElementMap();
 
 				for (const [key, events] of chapterToEventMap.entries()) {
 					if (events.length <= 1) continue;
@@ -908,7 +971,7 @@ export class TimelineBoardRenderer {
 
 					for (let i = 1; i < events.length; i++) {
 						const targetEvt = events[i];
-						const targetRowEl = mainCol.querySelector(`[data-time="${targetEvt.time}"][data-item-index="${targetEvt.itemIndex ?? 0}"]`);
+						const targetRowEl = rowElMap.get(eventKey(targetEvt));
 						if (!targetRowEl) continue;
 						const targetDescEl = targetRowEl.querySelector('.wn-timeline-item-desc') as HTMLElement;
 						if (targetDescEl) targetEls.push(targetDescEl);
@@ -952,6 +1015,10 @@ export class TimelineBoardRenderer {
 			}
 
 			const cleanup = () => {
+				if (rafId !== null) {
+					win.cancelAnimationFrame(rafId);
+					rafId = null;
+				}
 				mainCol.removeEventListener('scroll', scheduleDrawLinks);
 				sideCol.removeEventListener('scroll', scheduleDrawLinks);
 				while (hoverCleanups.length > 0) {
@@ -997,7 +1064,7 @@ export class TimelineBoardRenderer {
 					return;
 				}
 			}
-			const localTypes = [...new Set((allEntries).map(e => e.type).filter(Boolean))];
+			const localTypes = [...new Set(allEntries.map(e => e.type).filter((type): type is string => Boolean(type)))];
 
 			const modal = new TimelineAddModal(
 				app,

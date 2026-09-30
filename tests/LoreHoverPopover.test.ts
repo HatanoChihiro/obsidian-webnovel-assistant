@@ -64,6 +64,7 @@ function createMockElement(ownerDocument: Document): { element: HTMLElement; sta
 describe('LoreHoverPopover lifecycle', () => {
 	let mutationCallback: MutationCallback;
 	let disconnect: ReturnType<typeof vi.fn>;
+	let observe: ReturnType<typeof vi.fn>;
 	let addDocumentListener: ReturnType<typeof vi.fn>;
 	let removeDocumentListener: ReturnType<typeof vi.fn>;
 	let target: HTMLElement;
@@ -74,11 +75,12 @@ describe('LoreHoverPopover lifecycle', () => {
 		vi.useFakeTimers();
 		buildCardDOM.mockClear();
 		disconnect = vi.fn();
+		observe = vi.fn();
 		vi.stubGlobal('MutationObserver', class {
 			constructor(callback: MutationCallback) {
 				mutationCallback = callback;
 			}
-			observe(): void {}
+			observe(target: Node, options: MutationObserverInit): void { observe(target, options); }
 			disconnect(): void { disconnect(); }
 		});
 
@@ -102,6 +104,7 @@ describe('LoreHoverPopover lifecycle', () => {
 			removeEventListener: removeDocumentListener
 		} as unknown as Document;
 		({ element: target, state: targetState } = createMockElement(ownerDocument));
+		Object.defineProperty(target, 'parentNode', { value: ownerDocument.body });
 	});
 
 	afterEach(() => {
@@ -125,7 +128,7 @@ describe('LoreHoverPopover lifecycle', () => {
 		expect(addDocumentListener).toHaveBeenCalledWith('click', expect.any(Function));
 
 		targetState.connected = false;
-		mutationCallback([], {} as MutationObserver);
+		mutationCallback([{ removedNodes: [target] } as unknown as MutationRecord], {} as MutationObserver);
 
 		expect(removeDocumentListener).toHaveBeenCalledWith('click', expect.any(Function));
 		expect(disconnect).toHaveBeenCalledOnce();
@@ -143,5 +146,53 @@ describe('LoreHoverPopover lifecycle', () => {
 			expect.anything(),
 			expect.objectContaining({ hideEditButton: true, hideImportanceButton: false })
 		);
+	});
+
+	it('does not create duplicate hover popovers for the same target element', () => {
+		const popover1 = new LoreHoverPopover(target, { file: null } as never, {} as never);
+		const popover2 = new LoreHoverPopover(target, { file: null } as never, {} as never);
+
+		// With duplicate prevention, popover2 should not recreate or be a separate active popover
+		expect(popover2).toBe(popover1);
+		popover1.unload();
+	});
+
+	it('safely detects ancestor removal and closes popover and disconnects observer', () => {
+		new LoreHoverPopover(target, { file: null } as never, {} as never, true);
+		vi.runOnlyPendingTimers();
+		expect(observe).toHaveBeenCalledWith(ownerDocument.body, { childList: true });
+
+		// Target becomes disconnected due to ancestor removal
+		targetState.connected = false;
+		mutationCallback([
+			{
+				type: 'childList',
+				addedNodes: [] as unknown as NodeList,
+				removedNodes: [createMockElement(ownerDocument).element as unknown as Node] as unknown as NodeList
+			} as MutationRecord
+		], {} as MutationObserver);
+
+		expect(removeDocumentListener).toHaveBeenCalledWith('click', expect.any(Function));
+		expect(disconnect).toHaveBeenCalledOnce();
+	});
+
+	it('does not evaluate target disconnection on unrelated DOM mutations without removals', () => {
+		new LoreHoverPopover(target, { file: null } as never, {} as never, true);
+		vi.runOnlyPendingTimers();
+
+		// Simulate an unrelated mutation without removals (e.g. typing text)
+		targetState.connected = true;
+		removeDocumentListener.mockClear();
+
+		mutationCallback([
+			{
+				type: 'childList',
+				addedNodes: [createMockElement(ownerDocument).element as unknown as Node] as unknown as NodeList,
+				removedNodes: [] as unknown as NodeList
+			} as MutationRecord
+		], {} as MutationObserver);
+
+		// Should not close or remove listeners
+		expect(removeDocumentListener).not.toHaveBeenCalled();
 	});
 });

@@ -6,7 +6,67 @@ import { TimelineAddModal } from '../src/ui/TimelineAddModal';
 import { ForeshadowingInputModal, type ForeshadowingInputModalPlugin } from '../src/ui/ForeshadowingModal';
 
 describe('QuickMergeSelectors', () => {
-	describe('TimelineFormComponent existing node selector', () => {
+		describe('TimelineFormComponent existing node selector', () => {
+		it('stores the selected type on a same-name node and leaves child events untyped', () => {
+			const container = new MockElement('container');
+			const onSubmit = vi.fn();
+			new TimelineFormComponent({
+				container: container as unknown as HTMLElement,
+				app: { vault: { getAbstractFileByPath: () => null } } as unknown as App,
+				context: { settings: { timeline: { defaultTypes: ['主线', '支线'] } }, getVaultMarkdownFiles: () => [] } as unknown as TimelineFormContext,
+				folderPath: 'Book 1', initialEntry: { time: '同名节点', description: '子事件' },
+				typeOptions: ['主线', '支线'], existingNodes: ['同名节点'], onCancel: vi.fn(), onSubmit
+			}).render();
+			const typeSelect = container.querySelector('.wn-timeline-node-type-select');
+			expect(typeSelect).not.toBeNull();
+			typeSelect!.value = '支线';
+			const save = container.querySelector('.mod-cta');
+			save?.onclick?.();
+			expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ time: '同名节点', type: '支线' }));
+			expect(onSubmit.mock.calls[0][0].items[0].type).toBeUndefined();
+		});
+
+		it('labels same-name existing nodes with their types and restores the selected type', () => {
+			const container = new MockElement('container');
+			new TimelineFormComponent({
+				container: container as unknown as HTMLElement,
+				app: { vault: { getAbstractFileByPath: () => null } } as unknown as App,
+				context: { settings: { timeline: { defaultTypes: ['主线', '支线'] } }, getVaultMarkdownFiles: () => [] } as unknown as TimelineFormContext,
+				folderPath: 'Book 1', typeOptions: ['主线', '支线'],
+				existingNodes: [{ time: '第一天', type: '主线' }, { time: '第一天', type: '支线' }],
+				onCancel: vi.fn(), onSubmit: vi.fn()
+			}).render();
+			const nodeSelect = container.querySelector('.wn-timeline-node-select')!;
+			expect(nodeSelect.children[1].textContent).toBe('[主线] [未关联设定] 第一天');
+			expect(nodeSelect.children[2].textContent).toBe('[支线] [未关联设定] 第一天');
+			nodeSelect.value = nodeSelect.children[2].value;
+			nodeSelect.dispatchEvent('change');
+			expect(container.querySelector('.wn-timeline-node-type-select')?.value).toBe('支线');
+		});
+		it('distinguishes same-name same-type lore sets and restores all selected lore', () => {
+			const container = new MockElement('container');
+			const onSubmit = vi.fn();
+			new TimelineFormComponent({
+				container: container as unknown as HTMLElement,
+				app: { vault: { getAbstractFileByPath: () => null } } as unknown as App,
+				context: { settings: { timeline: { defaultTypes: ['主线'] } }, getVaultMarkdownFiles: () => [], characterManager: { getCharactersForBook: () => ['甲', '乙', '丙'] } } as unknown as TimelineFormContext,
+				folderPath: 'Book 1', typeOptions: ['主线'],
+				existingNodes: [
+					{ time: '第一天', type: '主线', lores: ['甲', '乙'] },
+					{ time: '第一天', type: '主线', lores: ['丙'] }
+				],
+				onCancel: vi.fn(), onSubmit
+			}).render();
+			const nodeSelect = container.querySelector('.wn-timeline-node-select')!;
+			expect(nodeSelect.children).toHaveLength(3);
+			expect(nodeSelect.children[1].textContent).toContain('[甲, 乙]');
+			expect(nodeSelect.children[2].textContent).toContain('[丙]');
+			nodeSelect.value = nodeSelect.children[1].value;
+			nodeSelect.dispatchEvent('change');
+			expect(container.querySelectorAll('.wn-timeline-lore-select').map(select => select.value)).toEqual(['甲', '乙']);
+			container.querySelector('.mod-cta')?.onclick?.();
+			expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ time: '第一天', type: '主线', lores: ['甲', '乙'] }));
+		});
 		it('should render deduplicated existing nodes in selector with blank default', () => {
 			const container = new MockElement('container');
 			const onSubmit = vi.fn();
@@ -42,9 +102,9 @@ describe('QuickMergeSelectors', () => {
 			const options = nodeSelect!.children;
 			expect(options.length).toBe(4);
 			expect(options[0].value).toBe('');
-			expect(options[1].value).toBe('Day 1');
-			expect(options[2].value).toBe('Day 2');
-			expect(options[3].value).toBe('Day 3');
+			expect(options[1].value).toBe('1');
+			expect(options[2].value).toBe('2');
+			expect(options[3].value).toBe('3');
 
 			// Find time input
 			const inputs = container.querySelectorAll('.wn-timeline-form-input');
@@ -52,7 +112,7 @@ describe('QuickMergeSelectors', () => {
 			expect(timeInput).toBeDefined();
 
 			// Selecting Day 2 should fill timeInput
-			nodeSelect!.value = 'Day 2';
+			nodeSelect!.value = options[2].value;
 			nodeSelect!.dispatchEvent('change');
 			expect(timeInput!.value).toBe('Day 2');
 
@@ -64,7 +124,7 @@ describe('QuickMergeSelectors', () => {
 			// Typing into timeInput syncs selector if exact match
 			timeInput!.value = 'Day 3';
 			timeInput!.dispatchEvent('input');
-			expect(nodeSelect!.value).toBe('Day 3');
+			expect(nodeSelect!.value).toBe(options[3].value);
 
 			// Typing something else resets selector to blank
 			timeInput!.value = 'New Custom Node';

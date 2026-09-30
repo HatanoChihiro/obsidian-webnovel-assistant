@@ -634,11 +634,19 @@ describe('PluginBootstrapper', () => {
 				expect(mockFloatingStatsUpdate).toHaveBeenCalled();
 
 				// Check workbench-book-changed event
+				// Check workbench-book-changed event handlers
+				const bookChangeHandlers = workspaceEventHandlers['webnovel-workbench-book-changed'];
+				expect(bookChangeHandlers).toBeDefined();
+				expect(bookChangeHandlers.length).toBe(1);
+
+				// Mobile floating stats handler should ONLY update stats
+				(mockPlugin.refreshStatusViews as ReturnType<typeof vi.fn>).mockClear();
+				mockEditorTracker.handleFileChange.mockClear();
 				mockFloatingStatsUpdate.mockClear();
-				expect(workspaceEventHandlers['webnovel-workbench-book-changed']).toBeDefined();
-				workspaceEventHandlers['webnovel-workbench-book-changed'][0]();
-				expect(mockPlugin.refreshStatusViews).toHaveBeenCalled();
-				expect(mockEditorTracker.handleFileChange).toHaveBeenCalled();
+				bookChangeHandlers[0]();
+				expect(mockPlugin.refreshStatusViews).not.toHaveBeenCalled();
+				expect(mockEditorTracker.handleFileChange).not.toHaveBeenCalled();
+				expect(mockFloatingStatsUpdate).toHaveBeenCalled();
 
 				// Check active-leaf-change event
 				expect(workspaceEventHandlers['active-leaf-change']).toBeDefined();

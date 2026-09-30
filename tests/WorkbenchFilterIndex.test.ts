@@ -115,4 +115,88 @@ describe('WorkbenchFilterIndex helpers', () => {
 
 		expect(await index.filterLoreEntries(entries, aliases, '剑圣 重剑')).toEqual(new Set(['林雷']));
 	});
+
+	it.each(['chapter', 'lore'] as const)('does not repopulate %s cache when read resolves after clear', async mode => {
+		let resolveChapterRead!: (content: string) => void;
+		const chapterReadPromise = new Promise<string>(resolve => { resolveChapterRead = resolve; });
+		const cachedRead = vi.fn((file: { path: string }) => {
+			if (file.path.includes('01')) return chapterReadPromise;
+			return Promise.resolve('other content');
+		});
+		const index = new WorkbenchFilterIndex({ vault: { cachedRead } } as never);
+		const files = [
+			{ path: '小说A/01.md', basename: '01', stat: { mtime: 1 } }
+		] as never;
+
+		const filterPromise = mode === 'chapter'
+			? index.filterChapters(files, 'keyword', () => '')
+			: index.filterLoreEntries([{ file: files[0], heading: '01' }] as never, new Map(), 'keyword');
+		index.clear();
+		resolveChapterRead('some keyword content');
+		await filterPromise;
+		expect(index['chapterContentCache'].size).toBe(0);
+		expect(index['loreSectionCache'].size).toBe(0);
+		expect(index['pendingReads'].size).toBe(0);
+	});
+
+	it('does not repopulate when invalidate is called during pending read', async () => {
+		let resolveChapterRead!: (content: string) => void;
+		const chapterReadPromise = new Promise<string>(resolve => { resolveChapterRead = resolve; });
+		const cachedRead = vi.fn((file: { path: string }) => {
+			if (file.path.includes('01')) return chapterReadPromise;
+			return Promise.resolve('other content');
+		});
+		const index = new WorkbenchFilterIndex({ vault: { cachedRead } } as never);
+		const files = [
+			{ path: '小说A/01.md', basename: '01', stat: { mtime: 1 } }
+		] as never;
+
+		const filterPromise = index.filterChapters(files, 'keyword', () => '');
+		index.invalidate('小说A/01.md');
+		resolveChapterRead('some keyword content');
+		await filterPromise;
+
+		expect(index['chapterContentCache'].size).toBe(0);
+		expect(index['pendingReads'].size).toBe(0);
+	});
+
+	it('does not repopulate when file mtime changes during pending read', async () => {
+		let resolveChapterRead!: (content: string) => void;
+		const chapterReadPromise = new Promise<string>(resolve => { resolveChapterRead = resolve; });
+		const cachedRead = vi.fn(() => chapterReadPromise);
+		const index = new WorkbenchFilterIndex({ vault: { cachedRead } } as never);
+		const file = { path: '小说A/01.md', basename: '01', stat: { mtime: 100 } };
+
+		const filterPromise = index.filterChapters([file] as never, 'keyword', () => '');
+		file.stat.mtime = 200; // modified on disk during read
+		resolveChapterRead('outdated content');
+		await filterPromise;
+
+		expect(index['chapterContentCache'].size).toBe(0);
+	});
+
+	it('stops old search after generation change without evaluating remaining files', async () => {
+		const cachedRead = vi.fn(async (file: { path: string }) => `content for ${file.path}`);
+		const index = new WorkbenchFilterIndex({ vault: { cachedRead } } as never);
+		const files = [
+			{ path: '小说A/01.md', basename: '01', stat: { mtime: 1 } },
+			{ path: '小说A/02.md', basename: '02', stat: { mtime: 1 } },
+			{ path: '小说A/03.md', basename: '03', stat: { mtime: 1 } }
+		] as never;
+
+		// Clear during search after first file read
+		let firstRead = true;
+		const getSynopsis = () => {
+			if (firstRead) {
+				firstRead = false;
+				index.clear(); // switches work or clears
+			}
+			return '';
+		};
+
+		const results = await index.filterChapters(files, 'content', getSynopsis);
+		expect(results).toEqual([]);
+		// Search stopped early, did not read all remaining files
+		expect(cachedRead).toHaveBeenCalledTimes(1);
+	});
 });

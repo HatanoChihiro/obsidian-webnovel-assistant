@@ -8,6 +8,7 @@ import { t } from '../i18n';
 
 const DEFAULT_NOVEL_META: NovelMetadata = {
 	name: '',
+	series: '',
 	status: 'ongoing',
 	synopsis: '',
 	protagonist: '',
@@ -23,10 +24,190 @@ const DEFAULT_NOVEL_META: NovelMetadata = {
 export class HomepageManager {
 	private app: App;
 	private plugin: WebNovelAssistantPlugin;
+	private metadataCache = new Map<string, NovelMetadata>();
+	private activeRefreshPromise: Promise<void> | null = null;
+	private pendingMembershipFolders = new Set<string>();
+	private refreshAllMembershipPending = false;
+	private pendingCallbacks: Array<{ resolve: () => void; reject: (err: unknown) => void }> = [];
 
 	constructor(app: App, plugin: WebNovelAssistantPlugin) {
 		this.app = app;
 		this.plugin = plugin;
+		if (typeof this.plugin?.registerEvent === 'function' && typeof this.app?.vault?.on === 'function') {
+			this.setupVaultEvents();
+		}
+	}
+
+	public refreshSeriesMembership(folders?: string | string[]): Promise<void> {
+		if (!folders) {
+			this.refreshAllMembershipPending = true;
+		} else {
+			const list = Array.isArray(folders) ? folders : [folders];
+			for (const f of list) {
+				const norm = (!f || f === '/') ? '/' : f.replace(/^\/+|\/+$/g, '');
+				this.pendingMembershipFolders.add(norm);
+			}
+		}
+
+		return new Promise<void>((resolve, reject) => {
+			this.pendingCallbacks.push({ resolve, reject });
+			this.scheduleMembershipRefresh();
+		});
+	}
+
+	private scheduleMembershipRefresh(): void {
+		if (this.activeRefreshPromise) {
+			return;
+		}
+
+		this.activeRefreshPromise = (async () => {
+			await Promise.resolve();
+			while (this.pendingCallbacks.length > 0) {
+				const refreshAll = this.refreshAllMembershipPending;
+				const targets = refreshAll ? null : Array.from(this.pendingMembershipFolders);
+				const callbacks = this.pendingCallbacks;
+				this.refreshAllMembershipPending = false;
+				this.pendingMembershipFolders.clear();
+				this.pendingCallbacks = [];
+
+				try {
+					await this.processPendingMembershipRefresh(refreshAll, targets);
+					for (const cb of callbacks) {
+						cb.resolve();
+					}
+				} catch (err) {
+					for (const cb of callbacks) {
+						cb.reject(err);
+					}
+				}
+			}
+		})().finally(() => {
+			this.activeRefreshPromise = null;
+			if (this.pendingCallbacks.length > 0) {
+				this.scheduleMembershipRefresh();
+			}
+		});
+	}
+
+	private async processPendingMembershipRefresh(refreshAll: boolean, targets: string[] | null): Promise<void> {
+		if (refreshAll) {
+			this.invalidateMetadataCache();
+		} else if (targets) {
+			for (const folder of targets) {
+				this.invalidateMetadataCache(folder);
+			}
+		}
+
+		let changed = false;
+		if (this.plugin.characterManager) {
+			changed = await this.plugin.characterManager.refreshSeriesMembership(targets ?? undefined);
+		}
+
+		if (changed) {
+			await this.refreshHomepage();
+			await this.refreshHomepageViews();
+		}
+	}
+
+	private setupVaultEvents(): void {
+		this.plugin.registerEvent(this.app.vault.on('create', (file) => {
+			if (file instanceof TFile && file.extension === 'md' && this.isNovelInfoFile(file)) {
+				const folderPath = file.parent?.path ?? this.getFolderPathForFile(file.path);
+				this.invalidateMetadataCache(folderPath);
+				this.refreshSeriesMembership(folderPath).catch((e) => {
+					Logger.error('[HomepageManager] 刷新系列从属失败:', e);
+				});
+			}
+		}));
+
+		this.plugin.registerEvent(this.app.vault.on('modify', (file) => {
+			if (file instanceof TFile && file.extension === 'md' && this.isNovelInfoFile(file)) {
+				const folderPath = file.parent?.path ?? this.getFolderPathForFile(file.path);
+				this.invalidateMetadataCache(folderPath);
+				this.refreshSeriesMembership(folderPath).catch((e) => {
+					Logger.error('[HomepageManager] 刷新系列从属失败:', e);
+				});
+			}
+		}));
+
+		this.plugin.registerEvent(this.app.vault.on('delete', (file) => {
+			if (file instanceof TFile && (this.isNovelInfoFile(file) || this.isNovelInfoPath(file.path))) {
+				const folderPath = file.parent?.path ?? this.getFolderPathForFile(file.path);
+				this.invalidateMetadataCache(folderPath);
+				this.refreshSeriesMembership(folderPath).catch((e) => {
+					Logger.error('[HomepageManager] 刷新系列从属失败:', e);
+				});
+			} else if (file instanceof TFolder) {
+				this.invalidateMetadataCache();
+				this.refreshSeriesMembership().catch((e) => {
+					Logger.error('[HomepageManager] 刷新系列从属失败:', e);
+				});
+			}
+		}));
+
+		this.plugin.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
+			if (file instanceof TFile) {
+				const wasInfo = this.isNovelInfoPath(oldPath);
+				const isInfo = this.isNovelInfoFile(file) || this.isNovelInfoPath(file.path);
+				if (wasInfo || isInfo) {
+					const oldFolder = this.getFolderPathForFile(oldPath);
+					const newFolder = file.parent?.path ?? this.getFolderPathForFile(file.path);
+					const folders = oldFolder === newFolder ? [newFolder] : [oldFolder, newFolder];
+					for (const folder of folders) {
+						this.invalidateMetadataCache(folder);
+					}
+					this.refreshSeriesMembership(folders).catch((e) => {
+						Logger.error('[HomepageManager] 刷新系列从属失败:', e);
+					});
+				}
+			} else if (file instanceof TFolder) {
+				this.invalidateMetadataCache();
+				this.refreshSeriesMembership().catch((e) => {
+					Logger.error('[HomepageManager] 刷新系列从属失败:', e);
+				});
+			}
+		}));
+	}
+
+	private isNovelInfoPath(path: string): boolean {
+		if (!path.endsWith('.md')) return false;
+		const name = path.split('/').pop() || path;
+		const basename = name.replace(/\.md$/, '');
+		const candidates = getDefaultFileNameCandidates('novelInfoFileName');
+		candidates.push(this.getNovelInfoFileName());
+		return candidates.includes(basename);
+	}
+
+	private getFolderPathForFile(path: string): string {
+		const lastSlash = path.lastIndexOf('/');
+		return lastSlash !== -1 ? path.substring(0, lastSlash) : '';
+	}
+
+	isNovelInfoFile(file: TFile): boolean {
+		if (file.extension !== 'md') return false;
+		const candidates = getDefaultFileNameCandidates('novelInfoFileName');
+		candidates.push(this.getNovelInfoFileName());
+		const basename = file.basename || file.name?.replace(/\.md$/, '') || '';
+		return candidates.includes(basename);
+	}
+
+	invalidateMetadataCache(folderPath?: string): void {
+		if (folderPath) {
+			const normalized = (!folderPath || folderPath === '/') ? '' : folderPath.replace(/^\/+|\/+$/g, '');
+			if (!normalized) {
+				this.metadataCache.clear();
+				return;
+			}
+			this.metadataCache.delete(normalized);
+			const prefix = `${normalized}/`;
+			for (const key of this.metadataCache.keys()) {
+				if (key.startsWith(prefix)) {
+					this.metadataCache.delete(key);
+				}
+			}
+		} else {
+			this.metadataCache.clear();
+		}
 	}
 
 	getHomepageFilePath(): string {
@@ -126,7 +307,7 @@ export class HomepageManager {
 					folderPath: folder.path,
 					folderName: folder.name,
 					metadata: null,
-					wordCount: this.plugin.cacheManager.getFolderWordCount(folder.path) || 0,
+					wordCount: this.plugin.cacheManager?.getFolderWordCount(folder.path) || 0,
 				});
 			}
 		};
@@ -172,6 +353,34 @@ export class HomepageManager {
 		return null;
 	}
 
+	isRecognizedNovelFolder(folder: TFolder | string): boolean {
+		const folderObj = typeof folder === 'string'
+			? this.app.vault.getAbstractFileByPath(folder.replace(/^\/+|\/+$/g, ''))
+			: folder;
+
+		if (!(folderObj instanceof TFolder) || folderObj.isRoot()) {
+			return false;
+		}
+
+		if (folderObj.name.startsWith('_') || folderObj.name.startsWith('.')) {
+			return false;
+		}
+
+		const workspaceFolders = this.plugin.settings.workspaceFolders;
+		if (workspaceFolders && workspaceFolders.length > 0) {
+			const normalized = folderObj.path.replace(/^\/+|\/+$/g, '');
+			const inScope = workspaceFolders.some(ws => {
+				const normWs = ws.replace(/^\/+|\/+$/g, '');
+				return normWs && (normalized === normWs || normalized.startsWith(normWs + '/'));
+			});
+			if (!inScope) {
+				return false;
+			}
+		}
+
+		return !!this.findNovelInfoFile(folderObj.path);
+	}
+
 	// 解析作品信息.md 的 **label**：value 格式
 	getNovelMetadataFromCache(folderPath: string): NovelMetadata | null {
 		const infoFile = this.findNovelInfoFile(folderPath);
@@ -191,11 +400,17 @@ export class HomepageManager {
 	}
 
 	async getNovelMetadata(folderPath: string): Promise<NovelMetadata | null> {
+		const normalized = folderPath.replace(/^\/+|\/+$/g, '');
+		const cached = this.metadataCache.get(normalized);
+		if (cached) return cached;
+
 		const infoFile = this.findNovelInfoFile(folderPath);
 		if (!infoFile) return null;
 
 		const content = await this.app.vault.cachedRead(infoFile);
-		return this.parseNovelInfoContent(content, folderPath);
+		const meta = this.parseNovelInfoContent(content, folderPath);
+		this.metadataCache.set(normalized, meta);
+		return meta;
 	}
 
 	// 解析 **label**：value Markdown 格式
@@ -207,7 +422,7 @@ export class HomepageManager {
 
 		const lines = content.split(/\r?\n/);
 		for (const line of lines) {
-			const match = line.match(/\*\*(.+?)\*\*[：:]\s*(.+)/);
+			const match = line.match(/\*\*(.+?)\*\*[：:]\s*(.*)/);
 			if (!match) continue;
 			const label = match[1];
 			const value = match[2].trim();
@@ -221,6 +436,7 @@ export class HomepageManager {
 					break;
 				}
 				case 'wordGoal': meta.wordGoal = parseInt(value) || 0; break;
+				case 'series': meta.series = value; break;
 				default: (meta as unknown as Record<string, unknown>)[key] = value; break;
 			}
 		}
@@ -260,6 +476,7 @@ export class HomepageManager {
 		const meta = { ...DEFAULT_NOVEL_META, name: folderName, startDate: today, ...overrides };
 
 		const lines = [
+			`**${getNovelInfoLabel('series')}**：${meta.series || ''}`,
 			`**${getNovelInfoLabel('status')}**：${getNovelStatusText(meta.status)}`,
 			`**${getNovelInfoLabel('synopsis')}**：${meta.synopsis}`,
 			`**${getNovelInfoLabel('protagonist')}**：${meta.protagonist}`,
@@ -270,7 +487,123 @@ export class HomepageManager {
 			'',
 		];
 		const file = await this.app.vault.create(filePath, lines.join('\n'));
+		this.invalidateMetadataCache(folderPath);
 		return file;
+	}
+
+	applySeriesToContent(content: string, series: string): string {
+		const trimmedSeries = series.trim();
+		const newline = content.includes('\r\n') ? '\r\n' : '\n';
+		const lines = content.split(/\r?\n/);
+		let seriesLineIndex = -1;
+		let seriesIndent = '';
+		let seriesLabel = getNovelInfoLabel('series');
+		let seriesSep = '：';
+
+		for (let i = 0; i < lines.length; i++) {
+			const match = lines[i].match(/^(\s*)\*\*(.+?)\*\*([：:])\s*(.*)/);
+			if (!match) continue;
+			const key = NOVEL_INFO_LABEL_MAP[match[2]];
+			if (key === 'series') {
+				seriesLineIndex = i;
+				seriesIndent = match[1];
+				seriesLabel = match[2];
+				seriesSep = match[3];
+				break;
+			}
+		}
+
+		if (seriesLineIndex !== -1) {
+			if (trimmedSeries) {
+				lines[seriesLineIndex] = `${seriesIndent}**${seriesLabel}**${seriesSep}${seriesSep === ':' ? ' ' : ''}${trimmedSeries}`;
+			} else {
+				lines[seriesLineIndex] = `${seriesIndent}**${seriesLabel}**${seriesSep}`;
+			}
+			return lines.join(newline);
+		}
+
+		if (!trimmedSeries) {
+			return content;
+		}
+
+		let insertIndex = -1;
+		let insertIndent = '';
+		for (let i = 0; i < lines.length; i++) {
+			const match = lines[i].match(/^(\s*)\*\*(.+?)\*\*([：:])/);
+			if (match && NOVEL_INFO_LABEL_MAP[match[2]]) {
+				insertIndex = i;
+				insertIndent = match[1];
+				break;
+			}
+		}
+
+		const newLine = `${insertIndent}**${getNovelInfoLabel('series')}**：${trimmedSeries}`;
+		if (insertIndex !== -1) {
+			lines.splice(insertIndex, 0, newLine);
+		} else {
+			lines.unshift(newLine);
+		}
+		return lines.join(newline);
+	}
+
+	async getAllSeries(): Promise<string[]> {
+		const folders = this.getNovelFolders();
+		const seriesSet = new Set<string>();
+		for (const folder of folders) {
+			const meta = await this.getNovelMetadata(folder.folderPath);
+			const s = meta?.series?.trim();
+			if (s) {
+				seriesSet.add(s);
+			}
+		}
+		return Array.from(seriesSet).sort();
+	}
+
+	async getSeriesNovels(seriesName: string): Promise<NovelFolderInfo[]> {
+		const targetSeries = seriesName.trim();
+		if (!targetSeries) return [];
+
+		const folders = this.getNovelFolders();
+		const result: NovelFolderInfo[] = [];
+		for (const folder of folders) {
+			const meta = await this.getNovelMetadata(folder.folderPath);
+			if (meta?.series?.trim() === targetSeries) {
+				result.push({
+					...folder,
+					metadata: meta
+				});
+			}
+		}
+		return result;
+	}
+
+	async getNovelSeries(folderPath: string): Promise<string> {
+		const meta = await this.getNovelMetadata(folderPath);
+		return meta?.series?.trim() || '';
+	}
+
+	async getSiblingNovelsInSeries(folderPath: string): Promise<NovelFolderInfo[]> {
+		const series = await this.getNovelSeries(folderPath);
+		if (!series) return [];
+		const normalized = folderPath.replace(/^\/+|\/+$/g, '');
+		const allInSeries = await this.getSeriesNovels(series);
+		return allInSeries.filter(n => n.folderPath.replace(/^\/+|\/+$/g, '') !== normalized);
+	}
+
+	async updateNovelSeries(folderPath: string, seriesName: string): Promise<void> {
+		const infoFile = this.findNovelInfoFile(folderPath);
+		if (!infoFile) return;
+
+		const trimmed = seriesName.trim();
+		await this.app.vault.process(infoFile, (content) => {
+			return this.applySeriesToContent(content, trimmed);
+		});
+
+		await this.refreshSeriesMembership(folderPath);
+	}
+
+	async clearNovelSeries(folderPath: string): Promise<void> {
+		await this.updateNovelSeries(folderPath, '');
 	}
 
 	async ensureNovelInfoFiles(): Promise<void> {
@@ -342,31 +675,43 @@ export class HomepageManager {
 		}
 	}
 
-	refreshHomepageViews(): void {
+	refreshHomepageViews(): Promise<void> {
 		const homepagePath = this.getHomepageFilePath();
 
-		// 1. 直接定位到主页的渲染根节点，进行局部重绘，避免整个视图闪烁
-		const containerEls = activeDocument.querySelectorAll('.webnovel-homepage-root');
-		if (containerEls.length > 0) {
-			// 动态引入 HomepageRenderer 避免循环依赖
-import('../ui/components/HomepageRenderer.js').then(async ({ HomepageRenderer }) => {
-					const renderer = new HomepageRenderer(this.app, this.plugin);
-					for (const el of Array.from(containerEls)) {
-						await renderer.renderHomepage(el as HTMLElement);
+		return import('../ui/components/HomepageRenderer.js').then(async ({ HomepageRenderer }) => {
+			const renderer = new HomepageRenderer(this.app, this.plugin);
+			const promises: Promise<void>[] = [];
+			this.app.workspace.iterateAllLeaves(leaf => {
+				const view = leaf.view;
+				if (view && view.getViewType() === 'markdown') {
+					const mdView = view as MarkdownView;
+					if (mdView?.file?.path === homepagePath && mdView?.previewMode) {
+						const rootEl = mdView.containerEl.querySelector<HTMLElement>('.webnovel-homepage-root');
+						if (rootEl) {
+							promises.push(
+								renderer.renderHomepage(rootEl).catch(err => {
+									Logger.error('[HomepageManager] renderHomepage failed, fallback to rerender:', err);
+									mdView.previewMode.rerender(true);
+								})
+							);
+						} else {
+							mdView.previewMode.rerender(true);
+						}
 					}
-}).catch(err => Logger.error('[HomepageManager] refreshHomepageViews failed:', err));
-		}
-
-		// 2. 作为后备方案，仍然触发 previewMode 的 rerender
-		this.app.workspace.iterateAllLeaves(leaf => {
-			const view = leaf.view;
-			if (view && view.getViewType() === 'markdown') {
-				const mdView = view as MarkdownView;
-				if (mdView?.file?.path === homepagePath && mdView?.previewMode) {
-					// 传递 true 强制重新渲染代码块（如果 API 支持）
-					mdView.previewMode.rerender(true);
 				}
-			}
+			});
+			await Promise.all(promises);
+		}).catch(err => {
+			Logger.error('[HomepageManager] Failed to import HomepageRenderer, fallback to rerender all:', err);
+			this.app.workspace.iterateAllLeaves(leaf => {
+				const view = leaf.view;
+				if (view && view.getViewType() === 'markdown') {
+					const mdView = view as MarkdownView;
+					if (mdView?.file?.path === homepagePath && mdView?.previewMode) {
+						mdView.previewMode.rerender(true);
+					}
+				}
+			});
 		});
 	}
 
@@ -409,7 +754,7 @@ import('../ui/components/HomepageRenderer.js').then(async ({ HomepageRenderer })
 					}
 				}, 50);
 			}
-			this.refreshHomepageViews();
+			void this.refreshHomepageViews();
 		} else {
 			const leafContent = view.containerEl.closest('.workspace-leaf-content') || view.containerEl;
 			leafContent.classList.remove('is-webnovel-homepage');

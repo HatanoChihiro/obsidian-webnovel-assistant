@@ -10,7 +10,8 @@ button.wn-workbench-filter-important-toggle,
 .wn-lore-card,
 .task-card,
 .wn-task-card,
-.wn-timeline-item-desc {
+.wn-timeline-item-desc,
+.wn-trajectory-event {
 	--wn-important-color: color-mix(in srgb, var(--color-yellow, var(--text-warning, var(--interactive-accent))) 80%, var(--text-normal));
 	--wn-important-border: color-mix(in srgb, var(--wn-important-color) 60%, var(--background-modifier-border));
 	--wn-important-border-hover: color-mix(in srgb, var(--wn-important-color) 70%, var(--background-modifier-border));
@@ -210,5 +211,14 @@ body.is-phone .webnovel-lore-popover .wn-lore-card-header {
 }
 
 .wn-timeline-item-desc:is(.is-important, .wn-card-is-important):hover {
+	outline-color: var(--wn-important-border-hover);
+}
+
+.wn-trajectory-event.is-important {
+	outline: 1px solid var(--wn-important-border);
+	outline-offset: 0;
+}
+
+.wn-trajectory-event.is-important:hover {
 	outline-color: var(--wn-important-border-hover);
 }

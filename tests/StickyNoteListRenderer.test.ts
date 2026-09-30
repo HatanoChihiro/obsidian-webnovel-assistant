@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { setStickyNoteEditorContent } from '../src/ui/components/StickyNoteParagraphEditor';
 
 const { mockMarkdownRender, MockComponent } = vi.hoisted(() => {
 	class HoistedMockComponent {
@@ -906,5 +907,169 @@ describe('StickyNoteListRenderer Reading & Editing Interactions', () => {
 		expect(managerNotes[0].isEditing).toBe(false);
 
 		renderer.destroy();
+	});
+
+	it('preserves persistence write while guarding against component recreation and clearing lastSavedContents after destroy', async () => {
+		const initialNote: StickyNoteState = {
+			id: 'note-async-destroy',
+			filePath: 'Notes/test.md',
+			content: 'initial content',
+			title: 'Test',
+			top: '0',
+			left: '0',
+			width: '100px',
+			height: '100px',
+			color: '#fff',
+			isEditing: false
+		};
+		const managerNotes: StickyNoteState[] = [{ ...initialNote }];
+		let resolveSave!: () => void;
+		const savePromise = new Promise<void>(resolve => { resolveSave = resolve; });
+
+		const plugin: StickyNoteListRendererPlugin = {
+			settings: {
+				nextNoteThemeIndex: 0,
+				noteThemes: [{ bg: '#FDF3B8', text: '#2C3E50' }],
+				immersive: { immersiveNoteFontSize: 14 }
+			},
+			stickyNoteManager: {
+				getNotes: vi.fn(() => managerNotes),
+				updateNote: vi.fn((note: StickyNoteState) => {
+					managerNotes[0] = { ...note };
+				}),
+				saveNotes: vi.fn(async () => {
+					await savePromise;
+				}),
+				removeNoteAndWait: vi.fn(async () => {})
+			},
+			adaptiveDebounceManager: {
+				debounceFixed: vi.fn((_key, fn) => fn()),
+				cancel: vi.fn()
+			},
+			getVaultMarkdownFiles: vi.fn(() => []),
+			saveSettings: vi.fn(async () => {})
+		};
+
+		const files = new Map([['Notes/test.md', 'updated content from disk']]);
+		const app = createMockApp(files);
+		const container = new MockElement();
+		const renderer = new StickyNoteListRenderer(app, plugin, asHTMLElement(container), { mode: 'workbench' });
+		renderer.render();
+
+		// Trigger syncNoteFromFile
+		const syncPromise = (renderer as unknown as { syncNoteFromFile: (id: string) => Promise<void> }).syncNoteFromFile('note-async-destroy');
+
+		// Destroy the renderer while saveNotes is pending
+		renderer.destroy();
+
+		// Resolve the save
+		resolveSave();
+		await syncPromise;
+
+		// 1. Persistence write must complete
+		expect(managerNotes[0].content).toBe('updated content from disk');
+		// 2. Destroyed renderer must not recreate card components
+		expect((renderer as unknown as { cardComponents: Map<string, unknown> }).cardComponents.size).toBe(0);
+		// 3. Destroyed renderer must clear retained lastSavedContents
+		expect((renderer as unknown as { lastSavedContents: Map<string, unknown> }).lastSavedContents.size).toBe(0);
+	});
+
+	it('preserves finishEditingNote write while guarding against component recreation after destroy', async () => {
+		const initialNote: StickyNoteState = {
+			id: 'note-finish-destroy',
+			filePath: 'Notes/finish.md',
+			content: 'old content',
+			title: 'Test',
+			top: '0',
+			left: '0',
+			width: '100px',
+			height: '100px',
+			color: '#fff',
+			isEditing: true
+		};
+		const managerNotes: StickyNoteState[] = [{ ...initialNote }];
+		let resolveSave!: () => void;
+		const savePromise = new Promise<void>(resolve => { resolveSave = resolve; });
+
+		const plugin: StickyNoteListRendererPlugin = {
+			settings: {
+				nextNoteThemeIndex: 0,
+				noteThemes: [{ bg: '#FDF3B8', text: '#2C3E50' }],
+				immersive: { immersiveNoteFontSize: 14 }
+			},
+			stickyNoteManager: {
+				getNotes: vi.fn(() => managerNotes),
+				updateNote: vi.fn((note: StickyNoteState) => {
+					managerNotes[0] = { ...note };
+				}),
+				saveNotes: vi.fn(async () => {
+					await savePromise;
+				}),
+				removeNoteAndWait: vi.fn(async () => {})
+			},
+			adaptiveDebounceManager: {
+				debounceFixed: vi.fn((_key, fn) => fn()),
+				cancel: vi.fn()
+			},
+			getVaultMarkdownFiles: vi.fn(() => []),
+			saveSettings: vi.fn(async () => {})
+		};
+
+		const files = new Map([['Notes/finish.md', 'old content']]);
+		const app = createMockApp(files);
+		const container = new MockElement();
+		const renderer = new StickyNoteListRenderer(app, plugin, asHTMLElement(container), { mode: 'workbench' });
+		renderer.render();
+
+		const card = container.querySelector('[data-note-id="note-finish-destroy"]') as MockElement;
+		const editor = card.querySelector('.wn-sticky-note-paragraph-editor') as MockElement;
+		setStickyNoteEditorContent(asHTMLElement(editor), 'new edited content');
+
+		const finishPromise = (renderer as unknown as { finishEditingNote: (id: string, editor: HTMLElement) => Promise<void> })
+			.finishEditingNote('note-finish-destroy', asHTMLElement(editor));
+
+		// Destroy while save is pending
+		renderer.destroy();
+
+		resolveSave();
+		await finishPromise;
+
+		// Write completed
+		expect(managerNotes[0].content).toBe('new edited content');
+		expect(files.get('Notes/finish.md')).toBe('new edited content');
+		// Destroyed renderer has no recreated components
+		expect((renderer as unknown as { cardComponents: Map<string, unknown> }).cardComponents.size).toBe(0);
+	});
+
+	it('cancels renderer-owned delayed UI sync callback on destroy without canceling note saves', () => {
+		const cancelSpy = vi.fn();
+		const plugin: StickyNoteListRendererPlugin = {
+			settings: {
+				nextNoteThemeIndex: 0,
+				noteThemes: [{ bg: '#FDF3B8', text: '#2C3E50' }],
+				immersive: { immersiveNoteFontSize: 14 }
+			},
+			stickyNoteManager: {
+				getNotes: vi.fn(() => []),
+				updateNote: vi.fn(),
+				saveNotes: vi.fn(async () => {}),
+				removeNoteAndWait: vi.fn(async () => {})
+			},
+			adaptiveDebounceManager: {
+				debounceFixed: vi.fn(),
+				cancel: cancelSpy
+			},
+			getVaultMarkdownFiles: vi.fn(() => []),
+			saveSettings: vi.fn(async () => {})
+		};
+
+		const app = createMockApp(new Map());
+		const container = new MockElement();
+		const renderer = new StickyNoteListRenderer(app, plugin, asHTMLElement(container), { mode: 'immersive' });
+
+		renderer.destroy();
+
+		expect(cancelSpy).toHaveBeenCalledOnce();
+		expect(cancelSpy).toHaveBeenCalledWith(expect.stringMatching(/^sticky-note-list-sync-\d+$/));
 	});
 });

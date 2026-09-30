@@ -117,6 +117,7 @@ export class ChapterOverviewView extends ItemView {
             if (!bookRoot) return;
             if (bookRoot !== this.currentBookPath) {
                 this.currentBookPath = bookRoot;
+                this.filterIndex.clear();
                 this.currentRenderId++;
                 void this.reloadBoard();
             }
@@ -126,6 +127,7 @@ export class ChapterOverviewView extends ItemView {
             const folderStr = bookPath === '/' ? '/' : bookPath;
             if (folderStr && folderStr !== this.currentBookPath) {
                 this.currentBookPath = folderStr;
+                this.filterIndex.clear();
                 this.currentRenderId++;
                 void this.reloadBoard();
             }
@@ -135,6 +137,7 @@ export class ChapterOverviewView extends ItemView {
     public setBookPath(path: string) {
         if (this.currentBookPath !== path) {
             this.currentBookPath = path;
+            this.filterIndex.clear();
             this.currentRenderId++;
             void this.reloadBoard();
         }
@@ -156,7 +159,9 @@ export class ChapterOverviewView extends ItemView {
         this.container = this.contentEl;
         this.container.empty();
         this.container.addClass('wn-corkboard-container');
-        this.currentBookPath = getCurrentBookContext(this.app, this.plugin) || null;
+        const bookPath = getCurrentBookContext(this.app, this.plugin) || null;
+        if (this.currentBookPath !== bookPath) this.filterIndex.clear();
+        this.currentBookPath = bookPath;
         await this.reloadBoard();
     }
 

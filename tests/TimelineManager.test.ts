@@ -856,7 +856,7 @@ It has multiple lines.
             expect(entries[0]!.lores).toEqual(['张三', '遗失名']);
         });
 
-        it('24. appendEntry preserves lore associations, important, and origin when merging into existing node', async () => {
+        it('24. appendEntry keeps different lore associations in separate nodes', async () => {
             let fileContent = `## 2026-09-17\n- 第一件事 [[第1章]] <!-- lore: 旧设定 -->\n\n**类型**：主线\n---\n`;
             mockApp.vault.process.mockImplementation(async (_file: any, cb: (c: string) => string) => {
                 fileContent = cb(fileContent);
@@ -868,9 +868,9 @@ It has multiple lines.
 
             const entryToAppend: TimelineEntry = {
                 time: '2026-09-17',
+                type: '主线',
                 description: '第二件事',
                 chapter: '第2章',
-                type: '主线',
                 rawBlock: '',
                 lores: ['林动'],
                 items: [{
@@ -883,19 +883,214 @@ It has multiple lines.
 
             await manager.appendEntry(entryToAppend, 'Book 1');
 
-            expect(fileContent).toContain('<!-- wn-lore: 旧设定, 林动 -->');
-            expect(fileContent.match(/<!-- wn-lore:/g)).toHaveLength(1);
-            expect(fileContent).not.toMatch(/^- .*<!-- (?:wn-lore|lore):/m);
+            expect(fileContent).toContain('<!-- lore: 旧设定 -->');
+            expect(fileContent).toContain('<!-- wn-lore: 林动 -->');
+            expect(fileContent.match(/<!-- wn-lore:|<!-- lore:/g)).toHaveLength(2);
             expect(fileContent).toContain('<!-- wn-important -->');
             expect(fileContent).toContain('<!-- origin: 引文 -->');
             expect(fileContent).toContain('[[第2章]]');
 
             const parsed = manager.parseEntries(fileContent, 'Book 1');
+            expect(parsed).toHaveLength(2);
+            expect(parsed[0]!.items).toHaveLength(1);
+            expect(parsed[0]!.lores).toEqual(['旧设定']);
+            expect(parsed[1]!.lores).toEqual(['林动']);
+            expect(parsed[1]!.items![0]!.important).toBe(true);
+            expect(parsed[1]!.items![0]!.origin).toBe('引文');
+        });
+
+        it('merges matching lore sets regardless of order and keeps distinct sets separate on edit', async () => {
+            let fileContent = manager.formatEntry({ time: '同一天', type: '主线', lores: ['甲', '乙'], description: '旧事件', chapter: '', rawBlock: '' });
+            mockApp.vault.process.mockImplementation(async (_file: any, cb: (c: string) => string) => { fileContent = cb(fileContent); return fileContent; });
+            mockApp.vault.cachedRead.mockImplementation(async () => fileContent);
+            const file = Object.assign(new TFile(), { name: 'Timeline.md', path: 'Book 1/Timeline.md' });
+            mockApp.vault.getAbstractFileByPath.mockReturnValue(file);
+
+            await manager.appendEntry({ time: '同一天', type: '主线', lores: ['乙', '甲'], description: '新事件', chapter: '', rawBlock: '' }, 'Book 1');
+            expect(manager.parseEntries(fileContent, 'Book 1')).toHaveLength(1);
+
+            await manager.appendEntry({ time: '同一天', type: '主线', lores: ['丙'], description: '第三件事', chapter: '', rawBlock: '' }, 'Book 1');
+            expect(manager.parseEntries(fileContent, 'Book 1')).toHaveLength(2);
+
+            const edited = manager.parseEntries(fileContent, 'Book 1')[1]!;
+            edited.lores = ['乙', '甲'];
+            await manager.updateEntry(1, edited, 'Book 1');
+            const result = manager.parseEntries(fileContent, 'Book 1');
+            expect(result).toHaveLength(1);
+            expect(result[0]!.items).toHaveLength(3);
+        });
+
+        it('25. appendEntry keeps same-name nodes of different types separate', async () => {
+            let fileContent = `## 2026-09-28\n\n**类型**：主线\n- 主线事件 [[第1章]]\n\n<!-- wn-lore: 设定A -->\n\n---\n`;
+            mockApp.vault.process.mockImplementation(async (_file: any, cb: (c: string) => string) => {
+                fileContent = cb(fileContent);
+                return fileContent;
+            });
+            mockApp.vault.cachedRead.mockImplementation(async () => fileContent);
+            const dummyFile = Object.assign(new TFile(), { name: 'Timeline.md', path: 'Book 1/Timeline.md' });
+            mockApp.vault.getAbstractFileByPath.mockReturnValue(dummyFile);
+
+            const incomingEntry: TimelineEntry = {
+                time: '2026-09-28',
+                type: '支线',
+                description: '支线事件',
+                chapter: '第2章',
+                rawBlock: '',
+                lores: ['设定B'],
+                items: [{
+                    description: '支线事件',
+                    chapter: '第2章',
+                    important: true,
+                    origin: '支线原著'
+                }]
+            };
+
+            await manager.appendEntry(incomingEntry, 'Book 1');
+
+            // Each type owns its own node and child events.
+            const h2Matches = fileContent.match(/## 2026-09-28/g);
+            expect(h2Matches).toHaveLength(2);
+
+            // Both types should be persisted legibly above relevant events
+            expect(fileContent).toContain('**类型**：主线');
+            expect(fileContent).toContain('**类型**：支线');
+            expect(fileContent).toContain('<!-- wn-lore: 设定A -->');
+            expect(fileContent).toContain('<!-- wn-lore: 设定B -->');
+            expect(fileContent).toContain('<!-- wn-important -->');
+            expect(fileContent).toContain('<!-- origin: 支线原著 -->');
+
+            const parsed = manager.parseEntries(fileContent, 'Book 1');
+            expect(parsed).toHaveLength(2);
+            expect(parsed[0].time).toBe('2026-09-28');
+            expect(parsed[0].type).toBe('主线');
+            expect(parsed[1].type).toBe('支线');
+            expect(parsed[0].items).toHaveLength(1);
+            expect(parsed[0].items![0].description).toBe('主线事件');
+            expect(parsed[0].items![0].chapter).toBe('第1章');
+            expect(parsed[1].items![0].description).toBe('支线事件');
+            expect(parsed[1].items![0].chapter).toBe('第2章');
+            expect(parsed[1].items![0].important).toBe(true);
+            expect(parsed[1].items![0].origin).toBe('支线原著');
+            expect(parsed[0].lores).toEqual(['设定A']);
+            expect(parsed[1].lores).toEqual(['设定B']);
+        });
+
+        it('26. parseEntries migrates a legacy bottom type to the node', () => {
+            const legacyContent = `## 2026-09-01\n- 旧事件一 [[第1章]]\n- 旧事件二 [[第2章]]\n\n**类型**：主线\n\n<!-- wn-lore: 宗门 -->\n\n---\n`;
+            const parsed = manager.parseEntries(legacyContent, 'Book 1');
+
             expect(parsed).toHaveLength(1);
-            expect(parsed[0]!.items).toHaveLength(2);
-            expect(parsed[0]!.lores).toEqual(['旧设定', '林动']);
-            expect(parsed[0]!.items![1]!.important).toBe(true);
-            expect(parsed[0]!.items![1]!.origin).toBe('引文');
+            expect(parsed[0].type).toBe('主线');
+            expect(parsed[0].items).toHaveLength(2);
+            expect(parsed[0].items![0].type).toBeUndefined();
+            expect(parsed[0].items![1].type).toBeUndefined();
+            expect(parsed[0].lores).toEqual(['宗门']);
+
+            const formatted = manager.formatEntry(parsed[0]);
+            expect(formatted).toContain('**类型**：主线');
+            expect(formatted.indexOf('**类型**：主线')).toBeLessThan(formatted.indexOf('- 旧事件一'));
+
+            const reparsed = manager.parseEntries(formatted, 'Book 1');
+            expect(reparsed).toHaveLength(1);
+            expect(reparsed[0].type).toBe('主线');
+            expect(reparsed[0].items![0].chapter).toBe('第1章');
+            expect(reparsed[0].items![1].chapter).toBe('第2章');
+        });
+
+        it('27. moveEventItem makes a moved card follow its target node type', async () => {
+            const initialContent = `## 节点A\n**类型**：主线\n- 事件A1 [[第1章]]\n- 事件A2 [[第2章]]\n\n---\n\n## 节点B\n**类型**：支线\n- 事件B1 [[第3章]]\n\n---\n`;
+            let fileContent = initialContent;
+            mockApp.vault.process.mockImplementation(async (_file: any, cb: (c: string) => string) => {
+                fileContent = cb(fileContent);
+                return fileContent;
+            });
+            mockApp.vault.read.mockImplementation(async () => fileContent);
+            mockApp.vault.cachedRead.mockImplementation(async () => fileContent);
+            const dummyFile = Object.assign(new TFile(), { name: 'Timeline.md', path: 'Book 1/Timeline.md' });
+            mockApp.vault.getAbstractFileByPath.mockReturnValue(dummyFile);
+
+            await manager.moveEventItem('节点A', 0, '节点B', 1, 'Book 1');
+
+            const parsed = manager.parseEntries(fileContent, 'Book 1');
+            expect(parsed).toHaveLength(2);
+            const nodeA = parsed.find(e => e.time === '节点A');
+            const nodeB = parsed.find(e => e.time === '节点B');
+            expect(nodeA?.items).toHaveLength(1);
+            expect(nodeA?.items![0].description).toBe('事件A2');
+            expect(nodeB?.items).toHaveLength(2);
+            expect(nodeB?.type).toBe('支线');
+            expect(nodeB?.items![0].description).toBe('事件B1');
+            expect(nodeB?.items![1].description).toBe('事件A1');
+            expect(nodeB?.items![1].type).toBeUndefined();
+        });
+
+        it('locates the second same-name typed node in the source file', () => {
+            const content = '## 第一天\n**类型**：主线\n- 甲事件\n\n---\n## 第一天\n**类型**：支线\n- 乙事件\n\n---\n';
+            expect(manager.findEntryHeadingOffset(content, 0, 'Book 1')).toBe(0);
+            expect(manager.findEntryHeadingOffset(content, 1, 'Book 1')).toBe(content.indexOf('## 第一天', 1));
+        });
+
+        it('splits interim mixed-type blocks into typed nodes without losing child events', () => {
+            const interim = '## 同名节点\n\n**类型**：主线\n- 主线事件\n\n**类型**：\n- 无类型事件\n\n**类型**：支线\n- 支线事件\n\n---\n';
+            const parsed = manager.parseEntries(interim, 'Book 1');
+            expect(parsed.map(entry => entry.type)).toEqual(['主线', '', '支线']);
+            expect(parsed.map(entry => entry.items?.[0].description)).toEqual(['主线事件', '无类型事件', '支线事件']);
+            expect(manager.parseEntries(parsed.map(entry => manager.formatEntry(entry)).join(''), 'Book 1').map(entry => entry.type)).toEqual(['主线', '', '支线']);
+        });
+
+        it('keeps an untyped node separate from a same-name typed node', async () => {
+            let fileContent = '## 同名节点\n\n**类型**：主线\n- 原事件\n\n---\n';
+            mockApp.vault.process.mockImplementation(async (_file: any, cb: (c: string) => string) => {
+                fileContent = cb(fileContent);
+                return fileContent;
+            });
+            mockApp.vault.cachedRead.mockImplementation(async () => fileContent);
+            mockApp.vault.getAbstractFileByPath.mockReturnValue(Object.assign(new TFile(), { name: 'Timeline.md', path: 'Book 1/Timeline.md' }));
+
+            await manager.appendEntry({ time: '同名节点', description: '无类型事件', chapter: '', rawBlock: '' }, 'Book 1');
+
+            const parsed = manager.parseEntries(fileContent, 'Book 1');
+            expect(parsed).toHaveLength(2);
+            expect(parsed.map(entry => entry.type)).toEqual(['主线', '']);
+            expect(parsed[0].items?.[0].description).toBe('原事件');
+            expect(parsed[1].items?.[0].description).toBe('无类型事件');
+        });
+
+        it('targets the correct same-name node when moving an event and dropping a chapter', async () => {
+            let fileContent = '## 同名节点\n**类型**：主线\n- 主线事件\n- 待移动事件\n\n---\n## 同名节点\n**类型**：支线\n- 支线事件\n\n---\n';
+            const timelineFile = Object.assign(new TFile(), { name: 'Timeline.md', path: 'Book 1/Timeline.md' });
+            const chapterFile = Object.assign(new TFile(), { name: 'Chapter 2.md', basename: 'Chapter 2', path: 'Book 1/Chapter 2.md', extension: 'md' });
+            mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) => path === timelineFile.path ? timelineFile : path === chapterFile.path ? chapterFile : null);
+            mockApp.vault.cachedRead.mockImplementation(async () => fileContent);
+            mockApp.vault.process.mockImplementation(async (_file: TFile, cb: (content: string) => string) => { fileContent = cb(fileContent); });
+            mockPlugin.getTrackedMarkdownFiles.mockReturnValue([chapterFile]);
+
+            await manager.moveEventItem(0, 1, 1, 1, 'Book 1');
+            let parsed = manager.parseEntries(fileContent, 'Book 1');
+            expect(parsed[0].items?.map(item => item.description)).toEqual(['主线事件']);
+            expect(parsed[1].items?.map(item => item.description)).toEqual(['支线事件', '待移动事件']);
+
+            await manager.syncChapterToEventItem(chapterFile, [{ entryIndex: 1, itemIndex: 1 }], 'Book 1');
+            parsed = manager.parseEntries(fileContent, 'Book 1');
+            expect(parsed[0].items?.[0].chapter).toBe('');
+            expect(parsed[1].items?.[1].chapter).toBe('Chapter 2');
+        });
+
+        it('merges nodes when editing a type to an existing same-name type', async () => {
+            let fileContent = '## 同名节点\n**类型**：主线\n- 主线事件\n\n---\n## 同名节点\n**类型**：支线\n- 支线事件\n\n---\n';
+            const timelineFile = Object.assign(new TFile(), { name: 'Timeline.md', path: 'Book 1/Timeline.md' });
+            mockApp.vault.getAbstractFileByPath.mockReturnValue(timelineFile);
+            mockApp.vault.cachedRead.mockImplementation(async () => fileContent);
+            mockApp.vault.process.mockImplementation(async (_file: TFile, cb: (content: string) => string) => { fileContent = cb(fileContent); });
+
+            const edited = manager.parseEntries(fileContent, 'Book 1')[1];
+            edited.type = '主线';
+            await manager.updateEntry(1, edited, 'Book 1');
+
+            const parsed = manager.parseEntries(fileContent, 'Book 1');
+            expect(parsed).toHaveLength(1);
+            expect(parsed[0].type).toBe('主线');
+            expect(parsed[0].items?.map(item => item.description)).toEqual(['主线事件', '支线事件']);
         });
     });
 });

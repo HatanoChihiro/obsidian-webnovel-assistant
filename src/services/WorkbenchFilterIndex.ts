@@ -91,17 +91,22 @@ export function extractLoreSections(content: string, fallbackHeading?: string): 
 export class WorkbenchFilterIndex {
 	private readonly chapterContentCache = new Map<string, CachedText>();
 	private readonly loreSectionCache = new Map<string, CachedLoreSections>();
+	private generation = 0;
+	private readonly pendingReads = new Map<string, object>();
 
 	constructor(private readonly app: App) {}
 
 	public invalidate(path: string): void {
 		this.chapterContentCache.delete(path);
 		this.loreSectionCache.delete(path);
+		this.pendingReads.delete(path);
 	}
 
 	public clear(): void {
+		this.generation++;
 		this.chapterContentCache.clear();
 		this.loreSectionCache.clear();
+		this.pendingReads.clear();
 	}
 
 	public async filterChapters(
@@ -109,13 +114,16 @@ export class WorkbenchFilterIndex {
 		query: string,
 		getSynopsis: (file: TFile) => unknown
 	): Promise<TFile[]> {
+		const expectedGeneration = this.generation;
 		const tokens = tokenizeWorkbenchFilter(query);
 		if (tokens.length === 0) return [...files];
 
 		const results: TFile[] = [];
 		for (let i = 0; i < files.length; i++) {
+			if (this.generation !== expectedGeneration) return [];
 			const file = files[i];
-			const body = await this.getChapterBody(file);
+			const body = await this.getChapterBody(file, expectedGeneration);
+			if (this.generation !== expectedGeneration) return [];
 			const searchableText = [
 				normalizeWorkbenchSearchText(file.basename),
 				normalizeWorkbenchSearchText(getSynopsis(file)),
@@ -123,7 +131,10 @@ export class WorkbenchFilterIndex {
 			].join('\n');
 
 			if (matchesWorkbenchFilter(searchableText, tokens)) results.push(file);
-			if (i > 0 && i % 50 === 0) await this.yieldToMainThread();
+			if (i > 0 && i % 50 === 0) {
+				await this.yieldToMainThread();
+				if (this.generation !== expectedGeneration) return [];
+			}
 		}
 
 		return results;
@@ -134,14 +145,17 @@ export class WorkbenchFilterIndex {
 		aliasesByHeading: ReadonlyMap<string, readonly string[]>,
 		query: string
 	): Promise<Set<string>> {
+		const expectedGeneration = this.generation;
 		const tokens = tokenizeWorkbenchFilter(query);
 		const uniqueEntries = this.getUniqueLoreEntries(entries);
 		if (tokens.length === 0) return new Set(uniqueEntries.map(entry => entry.heading));
 
 		const results = new Set<string>();
 		for (let i = 0; i < uniqueEntries.length; i++) {
+			if (this.generation !== expectedGeneration) return new Set();
 			const entry = uniqueEntries[i];
-			const sections = await this.getLoreSections(entry.file);
+			const sections = await this.getLoreSections(entry.file, expectedGeneration);
+			if (this.generation !== expectedGeneration) return new Set();
 			const aliases = aliasesByHeading.get(entry.heading) ?? [];
 			const searchableText = [
 				normalizeWorkbenchSearchText(entry.heading),
@@ -150,7 +164,10 @@ export class WorkbenchFilterIndex {
 			].join('\n');
 
 			if (matchesWorkbenchFilter(searchableText, tokens)) results.add(entry.heading);
-			if (i > 0 && i % 50 === 0) await this.yieldToMainThread();
+			if (i > 0 && i % 50 === 0) {
+				await this.yieldToMainThread();
+				if (this.generation !== expectedGeneration) return new Set();
+			}
 		}
 
 		return results;
@@ -166,35 +183,55 @@ export class WorkbenchFilterIndex {
 		});
 	}
 
-	private async getChapterBody(file: TFile): Promise<string> {
+	private async getChapterBody(file: TFile, expectedGeneration: number): Promise<string> {
 		const mtime = file.stat.mtime;
 		const cached = this.chapterContentCache.get(file.path);
 		if (cached?.mtime === mtime) return cached.text;
 
+		const path = file.path;
+		const readToken = {};
+		this.pendingReads.set(path, readToken);
+
 		try {
 			const content = await this.app.vault.cachedRead(file);
+			if (this.generation !== expectedGeneration) return '';
+			if (this.pendingReads.get(path) !== readToken) return '';
+			if (file.path !== path || file.stat.mtime !== mtime) return '';
+
 			const text = normalizeWorkbenchSearchText(stripMarkdownFrontmatter(content));
 			this.chapterContentCache.set(file.path, { mtime, text });
 			return text;
 		} catch (error) {
 			console.error(`[WorkbenchFilterIndex] Failed to read chapter: ${file.path}`, error);
 			return '';
+		} finally {
+			if (this.pendingReads.get(path) === readToken) this.pendingReads.delete(path);
 		}
 	}
 
-	private async getLoreSections(file: TFile): Promise<Map<string, string>> {
+	private async getLoreSections(file: TFile, expectedGeneration: number): Promise<Map<string, string>> {
 		const mtime = file.stat.mtime;
 		const cached = this.loreSectionCache.get(file.path);
 		if (cached?.mtime === mtime) return cached.sections;
 
+		const path = file.path;
+		const readToken = {};
+		this.pendingReads.set(path, readToken);
+
 		try {
 			const content = await this.app.vault.cachedRead(file);
+			if (this.generation !== expectedGeneration) return new Map();
+			if (this.pendingReads.get(path) !== readToken) return new Map();
+			if (file.path !== path || file.stat.mtime !== mtime) return new Map();
+
 			const sections = extractLoreSections(content, file.basename);
 			this.loreSectionCache.set(file.path, { mtime, sections });
 			return sections;
 		} catch (error) {
 			console.error(`[WorkbenchFilterIndex] Failed to read lore: ${file.path}`, error);
 			return new Map();
+		} finally {
+			if (this.pendingReads.get(path) === readToken) this.pendingReads.delete(path);
 		}
 	}
 

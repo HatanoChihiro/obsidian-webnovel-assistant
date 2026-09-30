@@ -2,7 +2,7 @@ import type { App } from 'obsidian';
 import { Modal } from 'obsidian';
 import type { TimelineEntry } from '../services/TimelineManager';
 import { t } from '../i18n';
-import { TimelineFormComponent, type TimelineFormContext } from './components/TimelineFormComponent';
+import { TimelineFormComponent, type TimelineFormContext, type TimelineNodeOption } from './components/TimelineFormComponent';
 
 /**
  * 统一的时间线条目添加对话框
@@ -19,7 +19,7 @@ export class TimelineAddModal extends Modal {
 	private context: TimelineFormContext;
 	private typeOptions: string[];
 	private origin?: string;
-	private existingNodes: string[];
+	private existingNodes: Array<string | TimelineNodeOption>;
 
 	constructor(
 		app: App,
@@ -32,7 +32,7 @@ export class TimelineAddModal extends Modal {
 		typeOptions: string[] = [],
 		origin?: string,
 		title?: string,
-		existingNodes: string[] = []
+		existingNodes: Array<string | TimelineNodeOption> = []
 	) {
 		super(app);
 		this.context = context;

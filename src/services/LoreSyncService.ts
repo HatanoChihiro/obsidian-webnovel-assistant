@@ -9,9 +9,26 @@ export interface LoreSyncStats {
 
 export class LoreSyncService {
 	private plugin: WebNovelAssistantPlugin;
-	private isSyncing = false;
 	private regexCache = new Map<string, { version: number, regex: RegExp }>();
 	private _bulkPromise: Promise<LoreSyncStats> | null = null;
+
+	private syncQueue = new Map<string, Promise<void>>();
+	private dirtyFlags = new Set<string>();
+	private _destroyed = false;
+
+	public async destroy(): Promise<void> {
+		this._destroyed = true;
+		const activeSyncs = Array.from(this.syncQueue.values());
+		if (activeSyncs.length > 0) {
+			await Promise.allSettled(activeSyncs);
+		}
+		if (this._bulkPromise) {
+			await this._bulkPromise.catch(() => {});
+		}
+		this.syncQueue.clear();
+		this.dirtyFlags.clear();
+		this.regexCache.clear();
+	}
 
 	constructor(plugin: WebNovelAssistantPlugin) {
 		this.plugin = plugin;
@@ -21,7 +38,6 @@ export class LoreSyncService {
 		// 监听编辑器内容变化
 		this.plugin.registerEvent(
 			this.plugin.app.workspace.on('editor-change', (_editor, info) => {
-				if (this.isSyncing || this._bulkPromise) return;
 				const file = info.file;
 				if (!file || file.extension !== 'md') return;
 				
@@ -34,7 +50,6 @@ export class LoreSyncService {
 				if (this.plugin.characterManager.isLorePath(bookPath, parentPath)) return;
 				
 				if (!this.plugin.cacheManager.isEligibleForWordCount(file)) return;
-
 				this.plugin.adaptiveDebounceManager.debounceFixed(`lore-sync-${file.path}`, () => {
 					void this.syncLoreForFile(file).catch(err => {
 						console.error(`[LoreSyncService] 自动同步设定失败: ${file.path}`, err);
@@ -46,7 +61,7 @@ export class LoreSyncService {
 		// 监听文件打开，补全可能遗漏的同步
 		this.plugin.registerEvent(
 			this.plugin.app.workspace.on('active-leaf-change', (leaf) => {
-				if (this.isSyncing || this._bulkPromise || !leaf) return;
+				if (!leaf) return;
 				const view = leaf.view as MarkdownView;
 				if (view.getViewType() !== 'markdown' || !view.file) return;
 				
@@ -60,7 +75,6 @@ export class LoreSyncService {
 				if (this.plugin.characterManager.isLorePath(bookPath, parentPath)) return;
 
 				if (!this.plugin.cacheManager.isEligibleForWordCount(file)) return;
-
 				this.plugin.adaptiveDebounceManager.debounceFixed(`lore-sync-${file.path}`, () => {
 					void this.syncLoreForFile(file).catch(err => {
 						console.error(`[LoreSyncService] 自动同步设定失败: ${file.path}`, err);
@@ -126,7 +140,38 @@ export class LoreSyncService {
 		return this._bulkPromise;
 	}
 
-	public async syncLoreForFile(file: TFile): Promise<void> {
+	public syncLoreForFile(file: TFile): Promise<void> {
+		if (this._destroyed) return Promise.resolve();
+		const filePath = file.path;
+		if (this.syncQueue.has(filePath)) {
+			this.dirtyFlags.add(filePath);
+			return this.syncQueue.get(filePath) as Promise<void>;
+		}
+
+		const syncTask = (async () => {
+			let lastError: unknown = null;
+			do {
+				this.dirtyFlags.delete(filePath);
+				lastError = null;
+				try {
+					await this._performSync(file);
+				} catch (err) {
+					lastError = err;
+				}
+		} while (this.dirtyFlags.has(filePath));
+
+			if (lastError) {
+				throw lastError instanceof Error ? lastError : new Error('Lore sync failed with a non-Error value');
+			}
+		})();
+
+		this.syncQueue.set(filePath, syncTask);
+		syncTask.catch(() => {}).finally(() => this.syncQueue.delete(filePath));
+		return syncTask;
+	}
+
+	private async _performSync(file: TFile): Promise<void> {
+		if (this._destroyed) return;
 		const bookPath = this.plugin.characterManager.getBookPathForFile(file);
 		if (!bookPath) return;
 
@@ -191,13 +236,12 @@ export class LoreSyncService {
 	}
 
 	private async updateFrontmatterLore(file: TFile, newLore: string[]): Promise<void> {
-		this.isSyncing = true;
+		if (this._destroyed) return;
 		try {
+			let isSame = false;
 			await this.plugin.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
 				const existingLore = fm['lore'];
 				
-				// 对比是否一致
-				let isSame = false;
 				if (Array.isArray(existingLore) && existingLore.length === newLore.length) {
 					const existingSet = new Set(existingLore);
 					isSame = newLore.every(item => existingSet.has(item));
@@ -205,7 +249,7 @@ export class LoreSyncService {
 					isSame = true;
 				}
 
-				if (isSame) return; // 无变化，不触发写入
+				if (isSame) return;
 				if (newLore.length === 0) {
 					delete fm['lore'];
 				} else {
@@ -215,11 +259,6 @@ export class LoreSyncService {
 		} catch (err) {
 			console.error(`[LoreSyncService] Failed to update lore for ${file.path}`, err);
 			throw err;
-		} finally {
-			// 稍微延迟解除，防止连续触发
-			window.setTimeout(() => {
-				this.isSyncing = false;
-			}, 500);
 		}
 	}
 }

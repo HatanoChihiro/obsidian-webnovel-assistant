@@ -12,6 +12,7 @@ import { TaskAddModal } from '../ui/TaskModal';
 import { findBookRoot } from '../utils/path';
 import { NewNovelModal } from '../ui/NewNovelModal';
 import { ImportNovelModal } from '../ui/ImportNovelModal';
+import { SetSeriesModal } from '../ui/SetSeriesModal';
 import { ChapterMergeModal } from '../ui/ChapterMergeModal';
 import { MobileChapterMergeModal } from '../ui/MobileChapterMergeModal';
 import type { WorkbenchView } from '../ui/WorkbenchView';
@@ -49,33 +50,43 @@ export class MenuManager {
 
 				menu.addItem((item) => {
 					item.setTitle(t('menu.create-novel')).setIcon('book-open').setSection('webnovel-assistant').onClick(() => {
-						new NewNovelModal(this.plugin.app, (result) => {
-							void (async () => {
-								try {
-									const { folderPath } = await this.plugin.homepageManager!.createNewNovel(result.name, result.meta);
-									new Notice(t('notice.novel-created', { name: result.name }));
-									if (this.plugin.homepageManager) {
-										const viewType = 'webnovel-workbench';
-										const { workspace } = this.plugin.app;
-										const leaves = workspace.getLeavesOfType(viewType);
-										let leaf = leaves.length > 0 ? leaves[0] : null;
-										if (!leaf) {
-											leaf = workspace.getLeaf(false);
-											await leaf.setViewState({ type: viewType, active: true });
-										}
-										if (leaf && leaf.view && leaf.view.getViewType() === viewType) {
-											(leaf.view as WorkbenchView).setBookPath(folderPath);
-										}
-										if (leaf) {
-											void workspace.revealLeaf(leaf);
-											void workspace.setActiveLeaf(leaf, { focus: true });
-										}
-									}
-								} catch (e) {
-									console.error(e);
+						void (async () => {
+							let existingSeries: string[] = [];
+							try {
+								if (this.plugin.homepageManager) {
+									existingSeries = await this.plugin.homepageManager.getAllSeries();
 								}
-							})();
-						}).open();
+							} catch (error) {
+								console.error('[MenuManager] 加载已有系列失败:', error);
+							}
+							new NewNovelModal(this.plugin.app, (result) => {
+								void (async () => {
+									try {
+										const { folderPath } = await this.plugin.homepageManager!.createNewNovel(result.name, result.meta);
+										new Notice(t('notice.novel-created', { name: result.name }));
+										if (this.plugin.homepageManager) {
+											const viewType = 'webnovel-workbench';
+											const { workspace } = this.plugin.app;
+											const leaves = workspace.getLeavesOfType(viewType);
+											let leaf = leaves.length > 0 ? leaves[0] : null;
+											if (!leaf) {
+												leaf = workspace.getLeaf(false);
+												await leaf.setViewState({ type: viewType, active: true });
+											}
+											if (leaf && leaf.view && leaf.view.getViewType() === viewType) {
+												(leaf.view as WorkbenchView).setBookPath(folderPath);
+											}
+											if (leaf) {
+												void workspace.revealLeaf(leaf);
+												void workspace.setActiveLeaf(leaf, { focus: true });
+											}
+										}
+									} catch (e) {
+										console.error(e);
+									}
+								})();
+							}, existingSeries).open();
+						})();
 					});
 				});
 
@@ -84,6 +95,17 @@ export class MenuManager {
 						new ImportNovelModal(this.plugin.app, this.plugin).open();
 					});
 				});
+
+				if (this.plugin.homepageManager?.isRecognizedNovelFolder(file)) {
+					menu.addItem((item) => {
+						item.setTitle(t('menu.manage-series'))
+							.setIcon('library')
+							.setSection('webnovel-assistant')
+							.onClick(() => {
+								void this.openManageSeries(file.path);
+							});
+					});
+				}
 			}
 		}));
 
@@ -113,16 +135,15 @@ export class MenuManager {
 
 							// 读取已有条目中的类型与节点，传入 Modal 供选择
 							const localTypes: string[] = [];
-							const existingNodes: string[] = [];
+						const existingNodes: Array<{ time: string; type?: string; lores?: string[] }> = [];
 							if (tlFile) {
 								const tlContent = await this.plugin.app.vault.read(tlFile);
 								const tlEntries = tlManager.parseEntries(tlContent, folderPath);
-								localTypes.push(...new Set(tlEntries.map((e: TimelineEntry) => e.type).filter(Boolean)));
+								localTypes.push(...new Set(tlEntries.map((e: TimelineEntry) => e.type).filter((type): type is string => Boolean(type))));
 								for (const e of tlEntries) {
 									const t = typeof e.time === 'string' ? e.time.trim() : '';
-									if (t && !existingNodes.includes(t)) {
-										existingNodes.push(t);
-									}
+									const type = e.type?.trim() || undefined;
+								if (t) existingNodes.push({ time: t, type, lores: e.lores });
 								}
 							}
 
@@ -133,14 +154,7 @@ export class MenuManager {
 								chapterRef,
 								folderPath,
 								(result) => {
-									tlManager.appendEntry({
-										time: result.time,
-										description: result.description,
-										chapter: result.chapter,
-										type: result.type,
-										rawBlock: '',
-										origin: result.origin
-									}, folderPath).then(async () => {
+									tlManager.appendEntry(result, folderPath).then(async () => {
 										new Notice(t('notice.timeline-added'));
 
 										// 刷新已打开的时间线视图
@@ -340,7 +354,7 @@ export class MenuManager {
 			this.plugin.refreshFolderCounts();
 			this.plugin.refreshStatusViews();
 			if (this.plugin.settings.enableHomepage) {
-				this.plugin.homepageManager?.refreshHomepageViews();
+				void this.plugin.homepageManager?.refreshHomepageViews();
 			}
 		} catch (error) {
 			console.error('[MenuManager] 切换字数统计排除标记失败:', error);
@@ -440,5 +454,29 @@ export class MenuManager {
 		}
 		// 兜底：正则匹配 frontmatter
 		return content.replace(/^---\n[\s\S]*?\n---\n?/, '');
+	}
+
+	private async openManageSeries(folderPath: string): Promise<void> {
+		if (!this.plugin.homepageManager) return;
+		try {
+			const meta = await this.plugin.homepageManager.getNovelMetadata(folderPath);
+			const currentSeries = meta?.series?.trim() || '';
+			const existingSeries = await this.plugin.homepageManager.getAllSeries();
+
+			new SetSeriesModal(this.plugin.app, {
+				currentSeries,
+				existingSeries,
+				onSave: async (series: string) => {
+					await this.plugin.homepageManager!.updateNovelSeries(folderPath, series);
+					if (series) {
+						new Notice(t('notice.series-updated', { series }));
+					} else {
+						new Notice(t('notice.series-cleared'));
+					}
+				}
+			}).open();
+		} catch (err) {
+			console.error('[MenuManager] 打开作品系列管理失败:', err);
+		}
 	}
 }

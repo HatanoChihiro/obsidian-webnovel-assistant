@@ -30,6 +30,8 @@ export interface GraphNode {
 	id: string;
 	/** 所属设定文件 */
 	file: TFile;
+	/** 设定文件路径（用于精准定位打开对应文件） */
+	sourcePath?: string;
 	/** 原始标题文本（清理 Markdown 格式后） */
 	heading: string;
 	/** Canvas 坐标 x（初始化为 0，由 ForceLayoutEngine 赋值） */
@@ -120,29 +122,37 @@ export class RelationGraphManager {
 	 * @param file 要解析的设定文件（必须位于设定文件夹内）
 	 * @returns 包含节点和有向边的图谱数据，若无有效数据则返回空图谱
 	 */
-	public async buildGraphData(file: TFile, options?: { enableGlobal?: boolean; autoLinkMentions?: boolean }): Promise<GraphData> {
-		let filesToParse: TFile[] = [file];
+	public async buildGraphData(
+		file?: TFile | null,
+		options?: { enableGlobal?: boolean; autoLinkMentions?: boolean; files?: TFile[] }
+	): Promise<GraphData> {
+		let filesToParse: TFile[] = [];
 		const enableGlobal = options?.enableGlobal ?? this.plugin.settings.loreGraphEnableGlobal;
 		const autoLinkMentions = options?.autoLinkMentions ?? this.plugin.settings.loreGraphAutoLinkMentions;
 
-		if (enableGlobal) {
-			const bookRoot = findBookRoot(this.app, this.plugin, file);
-			const loreFolder = this.plugin.characterManager?.findLoreFolder(bookRoot || '');
-			if (loreFolder && loreFolder instanceof TFolder) {
-				const getAllMdFiles = (folder: TFolder): TFile[] => {
-					let results: TFile[] = [];
-					for (const child of folder.children) {
-						if (child instanceof TFile && child.extension === 'md') {
-							results.push(child);
-						} else if (child instanceof TFolder) {
-							results = results.concat(getAllMdFiles(child));
+		if (options?.files && options.files.length > 0) {
+			filesToParse = options.files;
+		} else if (file) {
+			filesToParse = [file];
+			if (enableGlobal) {
+				const bookRoot = findBookRoot(this.app, this.plugin, file);
+				const loreFolder = this.plugin.characterManager?.findLoreFolder(bookRoot || '');
+				if (loreFolder && loreFolder instanceof TFolder) {
+					const getAllMdFiles = (folder: TFolder): TFile[] => {
+						let results: TFile[] = [];
+						for (const child of folder.children) {
+							if (child instanceof TFile && child.extension === 'md') {
+								results.push(child);
+							} else if (child instanceof TFolder) {
+								results = results.concat(getAllMdFiles(child));
+							}
 						}
+						return results;
+					};
+					const folderFiles = getAllMdFiles(loreFolder);
+					if (folderFiles.length > 0) {
+						filesToParse = folderFiles;
 					}
-					return results;
-				};
-				const folderFiles = getAllMdFiles(loreFolder);
-				if (folderFiles.length > 0) {
-					filesToParse = folderFiles;
 				}
 			}
 		}
@@ -382,6 +392,7 @@ export class RelationGraphManager {
 				nodes.push({
 					id: headingText,
 					file,
+					sourcePath: file.path,
 					heading: headingText,
 					x: 0,
 					y: 0,
@@ -457,6 +468,7 @@ export class RelationGraphManager {
 				nodes.push({
 					id: headingText,
 					file,
+					sourcePath: file.path,
 					heading: headingText,
 					x: 0,
 					y: 0,

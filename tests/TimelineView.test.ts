@@ -1,6 +1,7 @@
 import { MockElement } from './mocks/MockElement';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TimelineView, type TimelineViewPlugin } from '../src/ui/TimelineView';
+import type { TimelineEntry } from '../src/services/TimelineManager';
 import type { WorkspaceLeaf } from 'obsidian';
 
 // Attach global helpers expected by Obsidian runtime
@@ -87,7 +88,7 @@ describe('TimelineView', () => {
 		};
 	};
 	let mockPlugin: TimelineViewPlugin;
-	let parsedEntries: Array<{ time: string; description: string; chapter: string; type: string }>;
+	let parsedEntries: TimelineEntry[];
 
 	beforeEach(() => {
 		vi.clearAllMocks();
@@ -106,9 +107,9 @@ describe('TimelineView', () => {
 		};
 
 		parsedEntries = [
-			{ time: '第一年', description: '第一年事件', chapter: '', type: '主线' },
-			{ time: '第二年', description: '第二年事件', chapter: '', type: '主线' },
-			{ time: '第三年', description: '第三年事件', chapter: '', type: '支线' }
+			{ time: '第一年', description: '第一年事件', chapter: '', rawBlock: '', items: [{ description: '第一年事件', chapter: '', type: '主线' }] },
+			{ time: '第二年', description: '第二年事件', chapter: '', rawBlock: '', items: [{ description: '第二年事件', chapter: '', type: '主线' }] },
+			{ time: '第三年', description: '第三年事件', chapter: '', rawBlock: '', items: [{ description: '第三年事件', chapter: '', type: '支线' }] }
 		];
 
 		mockPlugin = {
@@ -174,7 +175,7 @@ describe('TimelineView', () => {
 		await new Promise(resolve => setTimeout(resolve, 10));
 
 		expect((view as unknown as { isDescending: boolean }).isDescending).toBe(true);
-		expect(mockApp.workspace.trigger).toHaveBeenCalledWith('timeline-order-changed', true);
+		expect(mockApp.workspace.trigger).not.toHaveBeenCalledWith('timeline-order-changed', expect.anything());
 
 		// Rendered in descending order
 		const timeEls = view.containerEl.querySelectorAll('.wn-timeline-time');
@@ -204,7 +205,7 @@ describe('TimelineView', () => {
 		await new Promise(resolve => setTimeout(resolve, 10));
 
 		expect((view as unknown as { isDescending: boolean }).isDescending).toBe(false);
-		expect(mockApp.workspace.trigger).toHaveBeenCalledWith('timeline-order-changed', false);
+		expect(mockApp.workspace.trigger).not.toHaveBeenCalledWith('timeline-order-changed', expect.anything());
 
 		// Items in ascending mode must be draggable with drag handle
 		const ascItems = view.containerEl.querySelectorAll('.wn-timeline-item');
@@ -212,18 +213,55 @@ describe('TimelineView', () => {
 		expect(view.containerEl.querySelector('.wn-timeline-drag-handle')).not.toBeNull();
 	});
 
+	it('filters by type locally without dispatching workspace events', async () => {
+		parsedEntries = [{
+			time: '第一天',
+			type: '主线',
+			description: '甲事件',
+			chapter: '',
+			rawBlock: '',
+			items: [{ description: '甲事件', chapter: '', type: '主线' }]
+		}, {
+			time: '第二天',
+			type: '支线',
+			description: '乙事件',
+			chapter: '',
+			rawBlock: '',
+			items: [{ description: '乙事件', chapter: '', type: '支线' }]
+		}];
+
+		const leaf = { app: mockApp } as unknown as WorkspaceLeaf;
+		const view = new TimelineView(leaf, mockPlugin);
+		await view.renderFromContent('# 时间线\n');
+
+		// Click the first specific type filter ("主线" or similar depending on options)
+		const filterRow = view.containerEl.querySelector('.wn-timeline-view-filter-row');
+		const typeBtns = filterRow?.querySelectorAll('.wn-timeline-filter-btn');
+		expect(typeBtns?.length).toBeGreaterThan(1);
+
+		(typeBtns?.[1] as HTMLElement | undefined)?.click(); // the first specific type
+		await new Promise(resolve => setTimeout(resolve, 10));
+
+		// Assert that event is not dispatched
+		expect(mockApp.workspace.trigger).not.toHaveBeenCalledWith('timeline-filter-changed', expect.anything());
+
+		// Verify filtering worked (only one entry should remain)
+		const timeEls = view.containerEl.querySelectorAll('.wn-timeline-time');
+		expect(timeEls).toHaveLength(1);
+	});
+
 	it('filters by node-level lore while keeping every sibling sub-event visible', async () => {
 		parsedEntries = [{
 			time: '第一天',
 			description: '甲事件\n乙事件',
 			chapter: '',
-			type: '主线',
+			rawBlock: '',
 			lores: ['甲', '乙'],
 			items: [
-				{ description: '甲事件', chapter: '' },
-				{ description: '乙事件', chapter: '' }
+				{ description: '甲事件', chapter: '', type: '主线' },
+				{ description: '乙事件', chapter: '', type: '主线' }
 			]
-		}] as unknown as typeof parsedEntries;
+		}];
 
 		const leaf = { app: mockApp } as unknown as WorkspaceLeaf;
 		const view = new TimelineView(leaf, mockPlugin);
@@ -236,10 +274,47 @@ describe('TimelineView', () => {
 		(loreRow?.children[2] as HTMLElement | undefined)?.click();
 		await new Promise(resolve => setTimeout(resolve, 10));
 
-		expect(mockApp.workspace.trigger).toHaveBeenCalledWith('timeline-lore-filter-changed', ['乙']);
+		expect(mockApp.workspace.trigger).not.toHaveBeenCalledWith('timeline-lore-filter-changed', expect.anything());
 		const renderedItems = view.containerEl.querySelectorAll('.wn-timeline-list-item');
 		expect(renderedItems).toHaveLength(2);
 		expect(renderedItems[0].querySelector('.wn-timeline-desc-text')?.textContent).toBe('甲事件');
 		expect(renderedItems[1].querySelector('.wn-timeline-desc-text')?.textContent).toBe('乙事件');
+	});
+
+	it('displays one type per node and filters same-name nodes by type', async () => {
+		parsedEntries = [{
+			time: '第一天',
+			type: '主线',
+			description: '主线事件',
+			chapter: '',
+			rawBlock: '',
+			items: [{ description: '主线事件描述', chapter: '' }]
+		}, {
+			time: '第一天', type: '支线', description: '支线事件', chapter: '', rawBlock: '',
+			items: [{ description: '支线事件描述', chapter: '' }]
+		}];
+
+		const leaf = { app: mockApp } as unknown as WorkspaceLeaf;
+		const view = new TimelineView(leaf, mockPlugin);
+		await view.renderFromContent('# 时间线\n');
+
+		// 1. In 'all' view: both items rendered, footer shows both type tags
+		const allItems = view.containerEl.querySelectorAll('.wn-timeline-list-item');
+		expect(allItems).toHaveLength(2);
+		const footerTags = Array.from(view.containerEl.querySelectorAll('.wn-timeline-type-tag'));
+		expect(footerTags.map(t => t.textContent)).toEqual(['主线', '支线']);
+
+		// 2. Click '支线' filter button
+		const filterRow = view.containerEl.querySelector('.wn-timeline-view-filter-row');
+		const typeBtns = Array.from(filterRow?.querySelectorAll('.wn-timeline-filter-btn') || []);
+		const subBtn = typeBtns.find(b => b.textContent === '支线');
+		expect(subBtn).toBeDefined();
+		(subBtn as HTMLElement).click();
+		await new Promise(resolve => setTimeout(resolve, 10));
+
+		// Only '支线' item should be rendered
+		const subItems = view.containerEl.querySelectorAll('.wn-timeline-list-item');
+		expect(subItems).toHaveLength(1);
+		expect(subItems[0].querySelector('.wn-timeline-desc-text')?.textContent).toBe('支线事件描述');
 	});
 });

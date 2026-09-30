@@ -292,7 +292,8 @@ export class TextSplitter {
 		plugin: TextSplitterPlugin,
 		novelName: string, 
 		chapters: ParsedChapter[], 
-		onProgress: (current: number, total: number) => void
+		onProgress: (current: number, total: number) => void,
+		options?: { series?: string }
 	): Promise<number> {
 		const workspaceFolders = plugin?.settings?.workspaceFolders || [];
 		const baseFolder = workspaceFolders.length > 0 ? workspaceFolders[0].replace(/^\/+|\/+$/g, '') : '';
@@ -313,13 +314,14 @@ export class TextSplitter {
 
 		// 2. 创建作品信息文件 (与创作主页作品信息格式保持一致)
 		if (plugin?.homepageManager) {
-			await plugin.homepageManager.createNovelInfoFile(targetFolderPath, { name: safeNovelName });
+			await plugin.homepageManager.createNovelInfoFile(targetFolderPath, { name: safeNovelName, series: options?.series });
 		} else {
 			const novelInfoName = plugin?.settings?.novelInfo?.fileName || getDefaultFileName('novelInfoFileName');
 			const novelInfoPath = normalizePath(`${targetFolderPath}/${novelInfoName}.md`);
 			if (!app.vault.getAbstractFileByPath(novelInfoPath)) {
 				const today = new Date().toISOString().slice(0, 10);
 				const lines = [
+					`**${getNovelInfoLabel('series')}**：${options?.series || ''}`,
 					`**${getNovelInfoLabel('status')}**：${getNovelStatusText('ongoing')}`,
 					`**${getNovelInfoLabel('synopsis')}**：`,
 					`**${getNovelInfoLabel('protagonist')}**：`,

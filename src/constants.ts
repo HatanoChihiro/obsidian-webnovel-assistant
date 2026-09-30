@@ -404,6 +404,7 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 		journey: true,
 	},
 	loreFolderName: '设定',
+	seriesLoreFolderName: '系列',
 	lorePopoverCollapse: false,
 	enableMobileLorePopover: false,
 	loreGraphAutoLinkMentions: false,

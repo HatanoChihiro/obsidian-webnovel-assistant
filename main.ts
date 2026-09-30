@@ -1,7 +1,7 @@
 import type { App, PluginManifest } from 'obsidian';
 import { Plugin, TFile, TFolder, Notice, MarkdownView, MarkdownRenderChild, type MarkdownPostProcessorContext, Vault, type TAbstractFile } from 'obsidian';
 import type { AccurateCountSettings } from './src/types/settings';
-import type { WebNovelAssistantPlugin } from './src/types/plugin';
+import type { WebNovelAssistantPlugin, SeriesLoreRenameResult } from './src/types/plugin';
 import { isDesktop } from './src/utils';
 import { getDefaultFileNameCandidates, type DefaultFileNameKey } from './src/i18n/data-keys';
 import type { CacheManager } from './src/services/CacheManager';
@@ -57,6 +57,7 @@ import { isSelectionEligibleForAnnotate } from './src/utils/proofreadingHelpers'
 import type { LoreSyncService } from './src/services/LoreSyncService';
 import { ServiceRegistry } from './src/core/ServiceRegistry';
 import { PluginBootstrapper } from './src/core/PluginBootstrapper';
+import { observeModalState } from './src/utils/modalObserver';
 
 export default class AccurateChineseCountPlugin extends Plugin implements WebNovelAssistantPlugin {
 	public wordCountExtensionHolder: Extension[] = [];
@@ -326,29 +327,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	 */
 	public setupModalObserver(): void {
 		const mainDoc = this.app.workspace.containerEl?.ownerDocument || activeDocument;
-		const updateModalState = () => {
-			const hasModal = !!(
-				mainDoc.body.querySelector('.modal-container, .modal.mod-settings, .vertical-tabs-container, .modal-bg') ||
-				mainDoc.body.classList.contains('is-popout-modal')
-			);
-			if (hasModal) {
-				mainDoc.body.classList.add('webnovel-modal-active');
-			} else {
-				mainDoc.body.classList.remove('webnovel-modal-active');
-			}
-		};
-
-		updateModalState();
-
-		const observer = new MutationObserver(() => {
-			updateModalState();
-		});
-
-		observer.observe(mainDoc.body, { childList: true, subtree: true });
-		this.register(() => {
-			observer.disconnect();
-			mainDoc.body.classList.remove('webnovel-modal-active');
-		});
+		this.register(observeModalState(mainDoc));
 	}
 
 	/**
@@ -703,6 +682,13 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		}
 
 		return count;
+	}
+
+	public async renameAllSeriesLoreFolders(oldName: string, newName: string): Promise<SeriesLoreRenameResult> {
+		if (this.characterManager) {
+			return await this.characterManager.renameAllSeriesLoreFolders(oldName, newName);
+		}
+		return { renamed: 0, failed: 0, total: 0 };
 	}
 
 

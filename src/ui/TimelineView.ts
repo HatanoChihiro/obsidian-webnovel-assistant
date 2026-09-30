@@ -1,6 +1,6 @@
 import type { App, WorkspaceLeaf, TFile } from 'obsidian';
 import { Notice, setIcon } from 'obsidian';
-import type { TimelineEntry, TimelineManager } from '../services/TimelineManager';
+import type { TimelineEntry, TimelineItem, TimelineManager } from '../services/TimelineManager';
 import { CreativeView } from './CreativeView';
 import { rafThrottle } from '../utils/dom';
 import { t } from '../i18n';
@@ -24,6 +24,7 @@ export type TimelineViewManager = Pick<
 	| 'getTimelineFile'
 	| 'createTimelineFile'
 	| 'parseEntries'
+	| 'findEntryHeadingOffset'
 	| 'appendEntry'
 	| 'updateEntry'
 	| 'deleteEntry'
@@ -83,47 +84,10 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 		return this.plugin.settings.timeline?.fileName || getDefaultFileName('timelineFileName');
 	}
 
-	async onOpen() {
-		await super.onOpen();
-		this.registerEvent(
-			this.app.workspace.on('timeline-filter-changed', (type: string) => {
-				if (this.filterType !== type) {
-					this.filterType = type;
-					void this.refresh();
-				}
-			})
-		);
-		this.registerEvent(
-			this.app.workspace.on('timeline-lore-filter-changed', (selectedLores: string[]) => {
-				const newSet = new Set(selectedLores);
-				let same = this.selectedLores.size === newSet.size;
-				if (same) {
-					for (const s of this.selectedLores) {
-						if (!newSet.has(s)) { same = false; break; }
-					}
-				}
-				if (!same) {
-					this.selectedLores = newSet;
-					void this.refresh();
-				}
-			})
-		);
-		this.registerEvent(
-			this.app.workspace.on('timeline-order-changed', (isDescending: boolean) => {
-				if (this.isDescending !== isDescending) {
-					this.isDescending = isDescending;
-					void this.refresh();
-				}
-			})
-		);
-	}
-
 	protected async onFolderChange() {
 		this.editingIndex = -1;
 		this.filterType = 'all';
 		this.selectedLores.clear();
-		this.app.workspace.trigger('timeline-filter-changed', 'all');
-		this.app.workspace.trigger('timeline-lore-filter-changed', []);
 		await this.refresh();
 	}
 
@@ -153,7 +117,7 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 
 	private getTypeFilterOptions(entries: TimelineEntry[]): string[] {
 		const fromSettings = this.plugin.settings.timeline?.defaultTypes || [];
-		const fromEntries = entries.map(e => e.type).filter(Boolean);
+		const fromEntries = entries.map(e => e.type).filter((type): type is string => Boolean(type));
 		return [...new Set([...fromSettings, ...fromEntries])];
 	}
 
@@ -197,7 +161,6 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 
 		const toggleSort = () => {
 			this.isDescending = !this.isDescending;
-			this.app.workspace.trigger('timeline-order-changed', this.isDescending);
 			void this.refresh();
 		};
 		sortToggle.onclick = toggleSort;
@@ -264,7 +227,6 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 			if (this.filterType === 'all') allBtn.addClass('is-active');
 			allBtn.onclick = () => {
 				this.filterType = 'all';
-				this.app.workspace.trigger('timeline-filter-changed', 'all');
 				void this.refresh();
 			};
 
@@ -273,7 +235,6 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 				if (this.filterType === type) btn.addClass('is-active');
 				btn.onclick = () => {
 					this.filterType = type;
-					this.app.workspace.trigger('timeline-filter-changed', type);
 					void this.refresh();
 				};
 			});
@@ -291,7 +252,6 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 				selected: this.selectedLores,
 				onChange: (selected) => {
 					this.selectedLores = selected;
-					this.app.workspace.trigger('timeline-lore-filter-changed', Array.from(selected));
 					void this.refresh();
 				}
 			});
@@ -445,28 +405,22 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 				new Notice(t('common.file-not-found', { name: this.getWatchFileName() }));
 				return;
 			}
-			const fileCache = this.app.metadataCache.getFileCache(timelineFile);
-			let fallbackLine: number | undefined;
-			if (fileCache?.headings) {
-				for (const h of fileCache.headings) {
-					if (h.heading.trim() === entry.time.trim()) {
-						fallbackLine = h.position.start.line;
-						break;
-					}
-				}
-			}
+			const fileContent = await this.app.vault.cachedRead(timelineFile);
+			const matchStartGlobal = this.manager.findEntryHeadingOffset(fileContent, index, this.currentFolder);
+			const fallbackLine = matchStartGlobal === undefined ? undefined : fileContent.slice(0, matchStartGlobal).split('\n').length - 1;
 			await smartLocateAndHighlight(
 				this.app,
 				timelineFile,
 				[`## ${entry.time}`, `# ${entry.time}`, entry.time],
-				{ sourceLeaf: this.leaf, splitIfNew: true, fallbackLine }
+				{ sourceLeaf: this.leaf, splitIfNew: true, fallbackLine, matchStartGlobal }
 			);
 		};
 
 		// 列表项（描述 + 章节链接）
-		const itemsToRender = entry.items && entry.items.length > 0
+		const rawItems: TimelineItem[] = entry.items && entry.items.length > 0
 			? entry.items
-			: [{ description: entry.description, chapter: entry.chapter }];
+			: [{ description: entry.description, chapter: entry.chapter, important: entry.important }];
+		const itemsToRender = rawItems;
 
 		for (const it of itemsToRender) {
 			if (!it.description && !it.chapter) continue;
@@ -526,9 +480,7 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 
 		// 底部信息行（类型标签）
 		const footer = content.createDiv({ cls: 'wn-timeline-footer' });
-		if (entry.type) {
-			footer.createSpan({ text: entry.type, cls: 'wn-timeline-type-tag' });
-		}
+		if (entry.type) footer.createSpan({ text: entry.type, cls: 'wn-timeline-type-tag' });
 		if (entry.lores && entry.lores.length > 0) {
 			const loreContainer = footer.createSpan({ cls: 'wn-timeline-view-lore-badges' });
 			renderLoreBadges(loreContainer, entry.lores, this.currentFolder, this.plugin, true, 0);

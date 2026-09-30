@@ -297,6 +297,7 @@ export const TASK_LABEL_MAP: Record<string, string> = {
 // ==========================================
 const NOVEL_INFO_LABELS = {
 	'zh-CN': {
+		series: '系列',
 		status: '状态',
 		synopsis: '简介',
 		protagonist: '主角',
@@ -306,6 +307,7 @@ const NOVEL_INFO_LABELS = {
 		endDate: '完结日期',
 	},
 	'zh-TW': {
+		series: '系列',
 		status: '狀態',
 		synopsis: '簡介',
 		protagonist: '主角',
@@ -315,6 +317,7 @@ const NOVEL_INFO_LABELS = {
 		endDate: '完結日期',
 	},
 	'en': {
+		series: 'Series',
 		status: 'Status',
 		synopsis: 'Synopsis',
 		protagonist: 'Protagonist',
@@ -327,6 +330,9 @@ const NOVEL_INFO_LABELS = {
 
 /** 作品信息字段标签双向解析映射 */
 export const NOVEL_INFO_LABEL_MAP: Record<string, string> = {
+	'Series': 'series',
+	'series': 'series',
+	'系列': 'series',
 	'Status': 'status',
 	'Synopsis': 'synopsis',
 	'Protagonist': 'protagonist',
@@ -555,6 +561,7 @@ const DEFAULT_NAMES = {
 		taskFileName: '限时任务',
 		novelInfoFileName: '作品信息',
 		loreFolderName: '设定',
+		seriesLoreFolderName: '系列',
 		homepageWelcome: '欢迎回到创作中心',
 	},
 	'zh-TW': {
@@ -563,6 +570,7 @@ const DEFAULT_NAMES = {
 		taskFileName: '限時任務',
 		novelInfoFileName: '作品資訊',
 		loreFolderName: '設定',
+		seriesLoreFolderName: '系列',
 		homepageWelcome: '歡迎回到創作中心',
 	},
 	'en': {
@@ -571,6 +579,7 @@ const DEFAULT_NAMES = {
 		taskFileName: 'Time-limited Task',
 		novelInfoFileName: 'Novel Info',
 		loreFolderName: 'Lore',
+		seriesLoreFolderName: 'Series',
 		homepageWelcome: 'Welcome back to your creative space',
 	},
 } as const;
@@ -605,6 +614,7 @@ export function getDefaultFileNameCandidates(field: DefaultFileNameKey): string[
 			timelineFileName: ['时间线'],
 			novelInfoFileName: ['作品信息'],
 			loreFolderName: ['设定'],
+			seriesLoreFolderName: ['系列', 'Series'],
 			homepageFileName: ['创作主页'],
 		};
 		if (legacyNames[field]) {
@@ -635,6 +645,7 @@ export function getLocalizedDefaults(locale?: Locale): {
 	taskFileName: string;
 	novelInfoFileName: string;
 	loreFolderName: string;
+	seriesLoreFolderName: string;
 	homepageWelcome: string;
 	defaultTags: string[];
 	defaultTypes: string[];
@@ -646,6 +657,7 @@ export function getLocalizedDefaults(locale?: Locale): {
 		taskFileName: DEFAULT_NAMES[effectiveLocale].taskFileName,
 		novelInfoFileName: DEFAULT_NAMES[effectiveLocale].novelInfoFileName,
 		loreFolderName: DEFAULT_NAMES[effectiveLocale].loreFolderName,
+		seriesLoreFolderName: DEFAULT_NAMES[effectiveLocale].seriesLoreFolderName,
 		homepageWelcome: DEFAULT_NAMES[effectiveLocale].homepageWelcome,
 		defaultTags: DEFAULT_TAGS[effectiveLocale].slice(),
 		defaultTypes: DEFAULT_TYPES[effectiveLocale].slice(),

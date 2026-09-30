@@ -62,7 +62,13 @@ export class WritingJourneyBoardRenderer {
 		}
 
 		const rawEvents = result.log?.events || [];
-		if (rawEvents.length === 0) {
+		// 旧记录仍用于追踪章节当前路径，但纯粹清理标题尾部空格不作为创作历程展示。
+		let displayEvents = rawEvents.filter(event => !this.isTrailingSpaceCleanup(event));
+		if (displayEvents.length === 1 && displayEvents[0].type === 'tracking.started'
+			&& rawEvents.some(event => this.isTrailingSpaceCleanup(event))) {
+			displayEvents = [];
+		}
+		if (displayEvents.length === 0) {
 			boardContainer.createDiv({
 				cls: 'wn-corkboard-empty-msg',
 				text: t('writing-journey.empty')
@@ -71,7 +77,7 @@ export class WritingJourneyBoardRenderer {
 		}
 
 		// 排序：默认时间倒序（最新事件在最上方），可切换为时间正序（最早事件在最上方）
-		const sortedEvents = this.sortEvents(rawEvents, isDescending);
+		const sortedEvents = this.sortEvents(displayEvents, isDescending);
 
 		// 关键词与时间过滤
 		const tokens = tokenizeWorkbenchFilter(query);
@@ -93,6 +99,18 @@ export class WritingJourneyBoardRenderer {
 		for (const event of filteredEvents) {
 			this.renderEventRow(listEl, event, app, currentBookPath, rawEvents);
 		}
+	}
+
+	private static isTrailingSpaceCleanup(event: WritingJourneyEvent): boolean {
+		if (event.type !== 'chapter.renamed') return false;
+		if (!event.oldTitle.endsWith(' ') || event.oldTitle.trimEnd() !== event.newTitle) return false;
+		const oldSlash = event.oldPath.lastIndexOf('/');
+		const newSlash = event.newPath.lastIndexOf('/');
+		const oldParent = oldSlash < 0 ? '' : event.oldPath.slice(0, oldSlash);
+		const newParent = newSlash < 0 ? '' : event.newPath.slice(0, newSlash);
+		return oldParent === newParent
+			&& event.oldPath.slice(oldSlash + 1) === `${event.oldTitle}.md`
+			&& event.newPath.slice(newSlash + 1) === `${event.newTitle}.md`;
 	}
 
 	public static getEventDisplayInfo(event: WritingJourneyEvent): EventDisplayInfo {

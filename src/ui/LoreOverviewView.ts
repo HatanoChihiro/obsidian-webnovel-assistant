@@ -24,6 +24,7 @@ export type LoreOverviewCharacterManager = Pick<
 	| 'rebuildCache'
 	| 'getLoreContent'
 	| 'updateLoreContent'
+	| 'getBookPathForFile'
 >;
 
 export type LoreOverviewAdaptiveDebounceManager = Pick<AdaptiveDebounceManager, 'debounceFixed' | 'cancel'>;
@@ -118,6 +119,7 @@ export class LoreOverviewView extends ItemView {
 			if (!bookRoot) return;
 			if (bookRoot !== this.currentBookPath) {
 				this.currentBookPath = bookRoot;
+				this.filterIndex.clear();
 				this.currentRenderId++;
 				void this.reloadBoard();
 			}
@@ -128,6 +130,7 @@ export class LoreOverviewView extends ItemView {
 			const folderStr = bookPath === '/' ? '/' : bookPath;
 			if (folderStr && folderStr !== this.currentBookPath) {
 				this.currentBookPath = folderStr;
+				this.filterIndex.clear();
 				this.currentRenderId++;
 				void this.reloadBoard();
 			}
@@ -137,6 +140,7 @@ export class LoreOverviewView extends ItemView {
 	public async setBookPath(path: string): Promise<void> {
 		if (this.currentBookPath !== path) {
 			this.currentBookPath = path;
+			this.filterIndex.clear();
 			this.currentRenderId++;
 			await this.reloadBoard();
 		}
@@ -160,7 +164,9 @@ export class LoreOverviewView extends ItemView {
 		this.container.empty();
 		this.container.addClass('wn-lore-overview-container');
 		this.container.addClass('wn-corkboard-container');
-		this.currentBookPath = getCurrentBookContext(this.app, this.plugin) || null;
+		const bookPath = getCurrentBookContext(this.app, this.plugin) || null;
+		if (this.currentBookPath !== bookPath) this.filterIndex.clear();
+		this.currentBookPath = bookPath;
 		await this.reloadBoard();
 	}
 

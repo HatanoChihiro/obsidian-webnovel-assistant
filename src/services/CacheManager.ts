@@ -593,12 +593,12 @@ export class CacheManager {
 			if (isMobile()) {
 				const timer = window.setTimeout(() => {
 					this.plugin.fileExplorerPatcher?.refreshFolderCounts();
-					if (this.plugin.settings.enableHomepage) this.plugin.homepageManager?.refreshHomepageViews();
+					if (this.plugin.settings.enableHomepage) void this.plugin.homepageManager?.refreshHomepageViews();
 				}, PLATFORM_DELAYS.MOBILE_CACHE_REFRESH_DELAY);
 				this.plugin.register(() => window.clearTimeout(timer));
 			} else {
 				this.plugin.fileExplorerPatcher?.refreshFolderCounts();
-				if (this.plugin.settings.enableHomepage) this.plugin.homepageManager?.refreshHomepageViews();
+				if (this.plugin.settings.enableHomepage) void this.plugin.homepageManager?.refreshHomepageViews();
 			}
 
 			new Notice(t("notice.explorer-cache-complete"), 3000);

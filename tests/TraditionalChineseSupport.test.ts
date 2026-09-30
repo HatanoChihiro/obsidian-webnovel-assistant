@@ -96,13 +96,41 @@ describe('Traditional Chinese locale support', () => {
 		expect(ChapterSorter.isChapterFile('第一章')).toBe(true);
 		expect(ChapterSorter.isChapterFile('第一節')).toBe(true);
 		expect(ChapterSorter.isChapterFile('第一冊')).toBe(true);
+		expect(ChapterSorter.isChapterFile('第1节')).toBe(true);
+		expect(ChapterSorter.isChapterFile('第1册')).toBe(true);
+		expect(ChapterSorter.isChapterFile('第一节')).toBe(true);
+		expect(ChapterSorter.isChapterFile('第一册')).toBe(true);
+		expect(ChapterSorter.isChapterFile('1节')).toBe(true);
+		expect(ChapterSorter.isChapterFile('1册')).toBe(true);
+		expect(ChapterSorter.isChapterFile('一节')).toBe(true);
+		expect(ChapterSorter.isChapterFile('一册')).toBe(true);
 		expect(ChapterSorter.isChapterFile('第貳章')).toBe(true);
 		expect(ChapterSorter.isChapterFile('第參章')).toBe(true);
 		expect(ChapterSorter.isChapterFile('第陸章')).toBe(true);
+		expect(ChapterSorter.isChapterFile('第贰章')).toBe(true);
+		expect(ChapterSorter.isChapterFile('第叁章')).toBe(true);
+		expect(ChapterSorter.isChapterFile('第陆章')).toBe(true);
 		expect(ChapterSorter.extractChapterNumber('第貳章')?.number).toBe(2);
 		expect(ChapterSorter.extractChapterNumber('第參章')?.number).toBe(3);
 		expect(ChapterSorter.extractChapterNumber('第陸章')?.number).toBe(6);
+		expect(ChapterSorter.extractChapterNumber('第贰章')?.number).toBe(2);
+		expect(ChapterSorter.extractChapterNumber('第叁章')?.number).toBe(3);
+		expect(ChapterSorter.extractChapterNumber('第陆章')?.number).toBe(6);
 		expect(ChapterSorter.isChapterFile('Chapter 1')).toBe(false);
+		// 创建下一章：繁体财务数字保持繁体，保留节/冊等章节单位，简体大写保持原有行为
+		expect(ChapterSorter.getNextChapterName('第貳章', [])).toBe('第參章.md');
+		expect(ChapterSorter.getNextChapterName('第貳節', [])).toBe('第參節.md');
+		expect(ChapterSorter.getNextChapterName('第貳冊', [])).toBe('第參冊.md');
+		expect(ChapterSorter.getNextChapterName('第一節', [])).toBe('第二節.md');
+		expect(ChapterSorter.getNextChapterName('第一冊', [])).toBe('第二冊.md');
+		expect(ChapterSorter.getNextChapterName('第1節', [])).toBe('第2節.md');
+		expect(ChapterSorter.getNextChapterName('第1冊', [])).toBe('第2冊.md');
+		expect(ChapterSorter.getNextChapterName('第贰章', [])).toBe('第叁章.md');
+		expect(ChapterSorter.getNextChapterName('第贰节', [])).toBe('第叁节.md');
+		expect(ChapterSorter.getNextChapterName('第贰册', [])).toBe('第叁册.md');
+		// 歧义大写数字（如壹/肆/伍/拾）保持简体输出，不因同级存在繁体章节或章节单位为節/冊而推断为繁体
+		expect(ChapterSorter.getNextChapterName('第壹章', ['第貳章'])).toBe('第贰章.md');
+		expect(ChapterSorter.getNextChapterName('第壹節', ['第貳節'])).toBe('第贰節.md');
 	});
 
 	it('supports Traditional chapter units and financial numerals in fallback sorting', () => {
@@ -117,6 +145,20 @@ describe('Traditional Chinese locale support', () => {
 		expect(ChapterSorter.extractChapterNumber('第貳章')?.number).toBe(2);
 		expect(ChapterSorter.extractChapterNumber('第參章')?.number).toBe(3);
 		expect(ChapterSorter.extractChapterNumber('第陸章')?.number).toBe(6);
+
+		expect(ChapterSorter.getNextChapterName('第貳章', [])).toBe('第參章.md');
+		expect(ChapterSorter.getNextChapterName('第貳節', [])).toBe('第參節.md');
+		expect(ChapterSorter.getNextChapterName('第貳冊', [])).toBe('第參冊.md');
+		expect(ChapterSorter.getNextChapterName('第一節', [])).toBe('第二節.md');
+		expect(ChapterSorter.getNextChapterName('第一冊', [])).toBe('第二冊.md');
+		expect(ChapterSorter.getNextChapterName('第1節', [])).toBe('第2節.md');
+		expect(ChapterSorter.getNextChapterName('第1冊', [])).toBe('第2冊.md');
+		expect(ChapterSorter.getNextChapterName('第贰章', [])).toBe('第叁章.md');
+		expect(ChapterSorter.getNextChapterName('第贰节', [])).toBe('第叁节.md');
+		expect(ChapterSorter.getNextChapterName('第贰册', [])).toBe('第叁册.md');
+		// 歧义大写数字（如壹/肆/伍/拾）保持简体输出，不因同级存在繁体章节或章节单位为節/冊而推断为繁体
+		expect(ChapterSorter.getNextChapterName('第壹章', ['第貳章'])).toBe('第贰章.md');
+		expect(ChapterSorter.getNextChapterName('第壹節', ['第貳節'])).toBe('第贰節.md');
 	});
 
 	it('round-trips Traditional foreshadowing fields, statuses, and recovery logs', async () => {
@@ -226,10 +268,11 @@ describe('Traditional Chinese locale support', () => {
 		const manager = new TimelineManager(app, plugin);
 		const entry: TimelineEntry = {
 			time: '第一天',
+			type: '主線',
 			description: '找到線索',
 			chapter: '第一章',
-			type: '主線',
-			rawBlock: ''
+			rawBlock: '',
+			items: [{ description: '找到線索', chapter: '第一章' }]
 		};
 		const formatted = manager.formatEntry(entry);
 

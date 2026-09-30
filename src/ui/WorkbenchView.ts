@@ -10,6 +10,7 @@ import { t } from '../i18n';
 import { getNovelStatusText, getNovelInfoLabel } from '../i18n/data-keys';
 import { CorkboardGridRenderer, type CorkboardGridPlugin } from './components/CorkboardGridRenderer';
 import { TimelineBoardRenderer, type TimelineBoardPlugin, type TimelineBoardTimelineManager } from './components/TimelineBoardRenderer';
+import type { TimelineEntry } from '../services/TimelineManager';
 import { LoreBoardRenderer, type LoreBoardPlugin, type LoreBoardRelationGraphManager, type LoreBoardCharacterManager } from './components/LoreBoardRenderer';
 import { AddLoreModal, type AddLorePlugin } from './AddLoreModal';
 import { DraggableListHelper } from '../utils/DraggableListHelper';
@@ -35,6 +36,7 @@ export {
 import { Logger } from '../utils/Logger';
 import { WorkbenchFilterIndex } from '../services/WorkbenchFilterIndex';
 import { bindFilterInputEvents } from './components/FilterInputBinding';
+import { MultiSelectFilterRow } from './components/MultiSelectFilterRow';
 import { resolveChapterTemplate, type ChapterTemplateSettings } from '../utils/template';
 import type { CacheManager } from '../services/CacheManager';
 import type { AdaptiveDebounceManager } from '../services/AdaptiveDebounceManager';
@@ -86,7 +88,7 @@ export type WorkbenchHomepageManager = Pick<
 >;
 
 export type WorkbenchCharacterManager = LoreBoardCharacterManager &
-	Pick<CharacterManager, 'createLoreEntry'>;
+	Pick<CharacterManager, 'createLoreEntry' | 'getAvailableLoreCategories'>;
 
 export type WorkbenchForeshadowingManager = ForeshadowingBoardStatusManager &
 	Pick<ForeshadowingManager, 'findForeshadowingFile' | 'parseEntries' | 'buildChapterForeshadowingMap'>;
@@ -236,31 +238,13 @@ export class WorkbenchView extends ItemView {
     private isForeshadowingImportantOnly: boolean = false;
     private isTimelineUnscheduledDescending: boolean = false;
     private isJourneyDescending: boolean = true;
-    private isTimelineDescending: boolean = false;
     private isTimelineSidebarCollapsed: boolean = false;
+    private isTimelineTrajectoryMode: boolean = false;
 
     constructor(leaf: WorkspaceLeaf, plugin: WorkbenchViewPlugin) {
         super(leaf);
         this.plugin = plugin;
         this.filterIndex = new WorkbenchFilterIndex(this.app);
-
-        // 监听 timeline 筛选事件
-        this.registerEvent(this.app.workspace.on('timeline-filter-changed', (filter: string) => {
-            this.currentTimelineFilter = filter;
-            void this.reloadBoard();
-        }));
-
-        // 监听 timeline 设定筛选事件
-        this.registerEvent(this.app.workspace.on('timeline-lore-filter-changed', (selectedLores: string[]) => {
-            this.currentTimelineLoreFilter = selectedLores;
-            void this.reloadBoard();
-        }));
-
-        // 监听 timeline 排序变化事件
-        this.registerEvent(this.app.workspace.on('timeline-order-changed', (isDescending: boolean) => {
-            this.isTimelineDescending = isDescending;
-            void this.reloadBoard();
-        }));
 
         // 监听 foreshadowing 筛选事件
         this.registerEvent(this.app.workspace.on('foreshadowing-filter-changed', (selectedTags: string[]) => {
@@ -311,6 +295,7 @@ export class WorkbenchView extends ItemView {
             // 4. 只有当确定属于新作品目录时，才进行工作台跟随切换
             if (bookRoot !== this.currentBookPath) {
                 this.currentBookPath = bookRoot;
+                this.filterIndex.clear();
                 this.invalidateForeshadowingCache();
                 this.currentTimelineLoreFilter = [];
                 this.currentForeshadowingSelectedTags = [];
@@ -402,6 +387,21 @@ export class WorkbenchView extends ItemView {
         }
 
         if (!this.plugin.cacheManager.isFileInWorkspace(file)) return;
+
+        if (this.currentBookPath !== null) {
+            const rootPrefix = (this.currentBookPath === '/' || this.currentBookPath === '') ? '' : this.currentBookPath + '/';
+            const fileBookRoot = findBookRoot(this.app, this.plugin, file, true) || '';
+
+            const isInsideCurrentBook = rootPrefix === '' || file.path.startsWith(rootPrefix);
+            const isSameBookRoot = fileBookRoot === this.currentBookPath;
+
+            // 为未来系列共享设定保留清晰但不过度抽象的相关性边界，不实现系列功能
+            // 如果文件既不在当前作品目录下，其解析出的归属作品也不是当前作品，则判定为无关
+            if (!isInsideCurrentBook && !isSameBookRoot) {
+                return;
+            }
+        }
+
         this.filterIndex.invalidate(file.path);
         this.plugin.adaptiveDebounceManager.debounceFixed('workbench-refresh', () => {
             void this.reloadBoard();
@@ -411,6 +411,7 @@ export class WorkbenchView extends ItemView {
     public setBookPath(path: string) {
         if (this.currentBookPath !== path) {
             this.currentBookPath = path;
+            this.filterIndex.clear();
             this.invalidateForeshadowingCache();
             this.currentTimelineLoreFilter = [];
             this.currentForeshadowingSelectedTags = [];
@@ -645,7 +646,9 @@ export class WorkbenchView extends ItemView {
     async setState(state: Record<string, unknown>, result: ViewStateResult): Promise<void> {
         await super.setState(state, result);
         if (state.currentBookPath) {
-            this.currentBookPath = state.currentBookPath as string;
+            const nextBookPath = state.currentBookPath as string;
+            if (this.currentBookPath !== nextBookPath) this.filterIndex.clear();
+            this.currentBookPath = nextBookPath;
             this.currentTimelineLoreFilter = [];
             this.currentForeshadowingSelectedTags = [];
             this.currentTimelineFilter = 'all';
@@ -995,7 +998,8 @@ export class WorkbenchView extends ItemView {
 
             if (this.sortMode === 'timeline') {
                 await new Promise<void>((resolve) => {
-                    window.requestAnimationFrame(() => {
+                    const win = this.container.ownerDocument?.defaultView ?? window;
+                    win.requestAnimationFrame(() => {
                         try {
                             if (this.container && this.sortMode === 'timeline') {
                                 const mainCol = this.container.querySelector('.wn-timeline-waterfall-main') as HTMLElement;
@@ -1026,7 +1030,8 @@ export class WorkbenchView extends ItemView {
         const buffer = createDiv();
 
         const header = buffer.createDiv('wn-corkboard-header');
-        header.createDiv({ text: t('view.workbench'), cls: 'wn-corkboard-title' });
+        const titleEl = header.createDiv({ cls: 'wn-corkboard-title' });
+        titleEl.createSpan({ text: t('view.workbench') });
 
         if (!this.currentBookPath) {
             header.createEl('p', {
@@ -1137,6 +1142,12 @@ export class WorkbenchView extends ItemView {
         const infoFile = this.plugin.homepageManager?.findNovelInfoFile(this.currentBookPath || '');
         if (infoFile) {
             const meta = await this.plugin.homepageManager?.getNovelMetadata(this.currentBookPath || '');
+            if (meta?.series?.trim()) {
+                titleEl.createSpan({
+                    text: ` · ${meta.series.trim()}`,
+                    cls: 'wn-workbench-series-subtitle'
+                });
+            }
             let currentStatus = meta?.status || 'ongoing';
 
             const statusBtn = buttonsContainer.createDiv({ cls: 'wn-corkboard-novel-status-btn' });
@@ -1216,7 +1227,7 @@ export class WorkbenchView extends ItemView {
                     bookFolder
                 ).open();
             };
-        } else if (this.sortMode !== null) {
+        } else if (this.sortMode !== null && !(this.sortMode === 'timeline' && this.isTimelineTrajectoryMode)) {
             // 右上角：新增章节按钮
             const newChapterBtn = buttonsContainer.createDiv({ cls: 'wn-corkboard-new-chapter-btn' });
             newChapterBtn.textContent = t('corkboard.new-chapter');
@@ -1311,6 +1322,92 @@ export class WorkbenchView extends ItemView {
                 void this.reloadBoard();
             };
         });
+
+        let loadedTimelineEntries: TimelineEntry[] | null | undefined;
+        if (this.sortMode === 'timeline') {
+            const bar = header.createDiv('wn-workbench-filter-bar wn-workbench-timeline-layout-bar');
+
+            const filterContainer = bar.createDiv('wn-timeline-workbench-filters');
+
+            const timelineManager = this.plugin.timelineManager;
+            const bookFolder = this.currentBookPath === '/' ? '' : (this.currentBookPath || '');
+            loadedTimelineEntries = await timelineManager.loadEntries(bookFolder);
+            const allEntries = loadedTimelineEntries || [];
+
+            // 1. Type Filter (single-select)
+            const typeOptions = [...new Set([
+                ...(this.plugin.settings.timeline?.defaultTypes || []),
+				...allEntries.map(e => e.type).filter((type): type is string => Boolean(type))
+            ])];
+
+            if (typeOptions.length > 0) {
+                const typeTabs = filterContainer.createDiv('wn-lore-file-tabs');
+
+                const createTypeTab = (label: string, value: string) => {
+                    const isActive = this.currentTimelineFilter === value;
+                    const tab = typeTabs.createEl('button', { cls: `wn-lore-file-tab ${isActive ? 'is-active' : ''}` });
+                    tab.textContent = label;
+                    tab.setAttr('type', 'button');
+                    tab.setAttr('aria-pressed', isActive ? 'true' : 'false');
+
+                    tab.onclick = () => {
+                        this.currentTimelineFilter = value;
+                        void this.reloadBoard();
+                    };
+                };
+
+                createTypeTab(t('common.all-types'), 'all');
+                typeOptions.forEach(type => createTypeTab(type, type));
+            }
+
+            // 2. Lore Filter (multi-select)
+            const loreOptionsSet = new Set<string>();
+            allEntries.forEach(e => {
+                if (e.lores) e.lores.forEach(l => loreOptionsSet.add(l));
+            });
+            const loreOptions = Array.from(loreOptionsSet);
+
+            if (loreOptions.length > 0) {
+                new MultiSelectFilterRow({
+                    container: filterContainer,
+                    cls: 'wn-lore-file-tabs',
+                    buttonCls: 'wn-lore-file-tab',
+                    allLabel: t('common.all-lore'),
+                    options: loreOptions,
+                    selected: this.currentTimelineLoreFilter,
+                    onChange: (selected) => {
+                        this.currentTimelineLoreFilter = Array.from(selected);
+                        void this.reloadBoard();
+                    }
+                });
+            }
+
+            const layoutSwitcher = bar.createDiv('wn-lore-board-layout-switcher');
+            const modes = [
+                { trajectory: false, icon: 'list', label: t('trajectory.tab-waterfall') },
+                { trajectory: true, icon: 'route', label: t('trajectory.tab-trajectory') }
+            ];
+            for (const mode of modes) {
+                const btn = layoutSwitcher.createDiv(`wn-lore-board-switcher-btn ${this.isTimelineTrajectoryMode === mode.trajectory ? 'is-active' : ''}`);
+                btn.setAttr('role', 'button');
+                btn.setAttr('tabindex', '0');
+                btn.setAttr('aria-pressed', this.isTimelineTrajectoryMode === mode.trajectory ? 'true' : 'false');
+                setIcon(btn, mode.icon);
+                btn.title = mode.label;
+                const selectMode = () => {
+                    if (this.isTimelineTrajectoryMode === mode.trajectory) return;
+                    this.isTimelineTrajectoryMode = mode.trajectory;
+                    void this.reloadBoard();
+                };
+                btn.onclick = selectMode;
+                btn.addEventListener('keydown', (event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        selectMode();
+                    }
+                });
+            }
+        }
 
         let filteredChapterFiles = files;
         let matchedLoreHeadings: ReadonlySet<string> | undefined;
@@ -1415,13 +1512,14 @@ export class WorkbenchView extends ItemView {
                     app: this.app,
                     plugin: this.plugin,
                     ownerComponent: renderComponent,
+                    sourceLeaf: this.leaf,
                     container: buffer,
                     files,
                     foreshadowingMap,
                     currentBookPath: this.currentBookPath || '',
+                    loadedEntries: loadedTimelineEntries,
                     currentTimelineFilter: this.currentTimelineFilter,
                     currentTimelineLoreFilter: this.currentTimelineLoreFilter,
-                    isDescending: this.isTimelineDescending,
                     onSaveStateChange: (isSaving) => { this.isSavingMetadata = isSaving; },
                     reloadBoard: () => { void this.reloadBoard(); },
                     getChapterEvents: (file, fallbackMap) => this.getChapterEvents(file, fallbackMap),
@@ -1431,6 +1529,7 @@ export class WorkbenchView extends ItemView {
                         this.currentRenderId++;
                         void this.reloadBoard();
                     },
+                    isTrajectoryMode: this.isTimelineTrajectoryMode,
                     isSidebarCollapsed: this.isTimelineSidebarCollapsed,
                     onToggleSidebarCollapse: () => {
                         this.isTimelineSidebarCollapsed = !this.isTimelineSidebarCollapsed;
