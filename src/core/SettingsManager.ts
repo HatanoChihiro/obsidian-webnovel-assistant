@@ -141,7 +141,15 @@ export class SettingsManager {
 		adjusted.timeline = { ...adjusted.timeline, defaultTypes: localized.defaultTypes };
 
 		// 调整章节命名规则默认值
-		if (adjusted.chapterNamingRules && locale === 'en') {
+		if (adjusted.chapterNamingRules && locale === 'zh-TW') {
+			adjusted.chapterNamingRules = [
+				{ name: '阿拉伯數字（第1章、第01章）', pattern: '^(?:第(\\d+)[章節回卷部冊篇]?|第?(\\d+)[章節回卷部冊篇])', enabled: true },
+				{ name: '中文數字（第一章、第二章）', pattern: '^(?:第([零一二三四五六七八九十百千萬壹貳參肆伍陸柒捌玖拾佰仟〇]+)[章節回卷部冊篇]?|第?([零一二三四五六七八九十百千萬壹貳參肆伍陸柒捌玖拾佰仟〇]+)[章節回卷部冊篇])', enabled: true },
+				{ name: '純數字及標題（1、01、001 標題）', pattern: '^(\\d+)(?:[ \\-].*)?$', enabled: true },
+				{ name: '英文章節 (Chapter 1, Ch.1)', pattern: '^[Cc]h(?:apter)?\\.?\\s*(\\d+)', enabled: false },
+				{ name: '全能括號 ( (1)、【30】 )', pattern: '^[（\\(【「{]([0-9零一二三四五六七八九十百千萬]+)[）\\)】」}]', enabled: false },
+			];
+		} else if (adjusted.chapterNamingRules && locale === 'en') {
 			// 对于非中文环境，提供英文版本的默认规则，并默认启用英文章节和全能括号
 			adjusted.chapterNamingRules = [
 				{ name: 'Arabic Numerals (Chinese Format)', pattern: '^(?:第(\\d+)[章节回卷部册篇]?|第?(\\d+)[章节回卷部册篇])', enabled: false },

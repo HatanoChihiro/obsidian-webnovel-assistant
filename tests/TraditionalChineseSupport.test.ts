@@ -89,10 +89,34 @@ describe('Traditional Chinese locale support', () => {
 
 		expect(settings.loreFolderName).toBe('設定');
 		expect(settings.timeline.fileName).toBe('時間線');
+		expect(settings.chapterNamingRules[0].name).toBe('阿拉伯數字（第1章、第01章）');
+		expect(settings.chapterNamingRules[1].name).toBe('中文數字（第一章、第二章）');
 		ChapterSorter.setCustomRules(settings.chapterNamingRules);
 		expect(ChapterSorter.isChapterFile('第1章')).toBe(true);
 		expect(ChapterSorter.isChapterFile('第一章')).toBe(true);
+		expect(ChapterSorter.isChapterFile('第一節')).toBe(true);
+		expect(ChapterSorter.isChapterFile('第一冊')).toBe(true);
+		expect(ChapterSorter.isChapterFile('第貳章')).toBe(true);
+		expect(ChapterSorter.isChapterFile('第參章')).toBe(true);
+		expect(ChapterSorter.isChapterFile('第陸章')).toBe(true);
+		expect(ChapterSorter.extractChapterNumber('第貳章')?.number).toBe(2);
+		expect(ChapterSorter.extractChapterNumber('第參章')?.number).toBe(3);
+		expect(ChapterSorter.extractChapterNumber('第陸章')?.number).toBe(6);
 		expect(ChapterSorter.isChapterFile('Chapter 1')).toBe(false);
+	});
+
+	it('supports Traditional chapter units and financial numerals in fallback sorting', () => {
+		ChapterSorter.setCustomRules([]);
+		expect(ChapterSorter.isChapterFile('第1章')).toBe(true);
+		expect(ChapterSorter.isChapterFile('第一章')).toBe(true);
+		expect(ChapterSorter.isChapterFile('第一節')).toBe(true);
+		expect(ChapterSorter.isChapterFile('第一冊')).toBe(true);
+		expect(ChapterSorter.isChapterFile('第貳章')).toBe(true);
+		expect(ChapterSorter.isChapterFile('第參章')).toBe(true);
+		expect(ChapterSorter.isChapterFile('第陸章')).toBe(true);
+		expect(ChapterSorter.extractChapterNumber('第貳章')?.number).toBe(2);
+		expect(ChapterSorter.extractChapterNumber('第參章')?.number).toBe(3);
+		expect(ChapterSorter.extractChapterNumber('第陸章')?.number).toBe(6);
 	});
 
 	it('round-trips Traditional foreshadowing fields, statuses, and recovery logs', async () => {
