@@ -56,6 +56,7 @@
 @import "./views/lore-board-layout-compat.css";
 @import "./views/corkboard-tasks-compat.css";
 @import "./views/lore-board.css";
+@import "./views/lore-card-preview.css";
 @import "./views/foreshadowing.css";
 @import "./modals/foreshadowing-modal.css";
 @import "./features/foreshadowing-markdown.css";
