@@ -219,6 +219,8 @@ describe('LoreCardRenderer', () => {
 		animationFrameCallbacks = [];
 		resizeObservers = [];
 		vi.clearAllMocks();
+		// 正文解析缓存是模块级状态，需在用例间清空以保证隔离
+		LoreCardRenderer.clearLoreBodyCache();
 		container = createMockEl('div', 'test-container');
 		mockApp = {
 			vault: {
@@ -621,5 +623,135 @@ type: 主要角色
 		const card = container.querySelector('.wn-lore-card');
 		expect(card.hasClass('is-important')).toBe(true);
 		expect(container.querySelector('.wn-card-importance-btn')).toBeNull();
+	});
+
+	it('should render the expand button only when onExpand is provided and skip it in read-only mode', async () => {
+		const mockFile = { basename: '人物', path: '设定/人物.md' };
+		const entry = { file: mockFile as any, heading: '女主角' };
+		mockApp.vault.cachedRead.mockResolvedValue('## 女主角\n正文内容');
+		mockApp.metadataCache.getFileCache.mockReturnValue({
+			headings: [{ heading: '女主角', level: 2, position: { start: { line: 0 }, end: { line: 0 } } }]
+		});
+
+		const onExpand = vi.fn();
+		await LoreCardRenderer.buildCardDOM(container, entry, mockPlugin, createMockComponent(), { onExpand });
+		const expandBtn = container.querySelector('.wn-lore-card-expand-btn');
+		expect(expandBtn).not.toBeNull();
+		await expandBtn.onclick({ stopPropagation: vi.fn() });
+		expect(onExpand).toHaveBeenCalledTimes(1);
+
+		const readOnlyContainer = createMockEl('div', 'readonly-container');
+		await LoreCardRenderer.buildCardDOM(readOnlyContainer, entry, mockPlugin, createMockComponent(), {
+			onExpand,
+			readOnly: true
+		});
+		expect(readOnlyContainer.querySelector('.wn-lore-card-expand-btn')).toBeNull();
+		expect(readOnlyContainer.querySelector('.wn-lore-card-edit-btn')).toBeNull();
+		expect(readOnlyContainer.querySelector('.wn-lore-card').hasClass('is-preview')).toBe(true);
+	});
+
+	describe('resolveLoreBody 与正文缓存', () => {
+		beforeEach(() => {
+			LoreCardRenderer.clearLoreBodyCache();
+		});
+
+		it('should slice the H2 section and strip the alias declaration line', async () => {
+			const mockFile = { basename: '人物', path: '设定/人物.md' };
+			const entry = { file: mockFile as any, heading: '女主角' };
+			mockApp.vault.cachedRead.mockResolvedValue([
+				'# 角色列表',
+				'## 女主角',
+				'**别名**：小美、月儿',
+				'女主角是青云门弟子。',
+				'## 男主角',
+				'男主角是热血少年。'
+			].join('\n'));
+			mockApp.metadataCache.getFileCache.mockReturnValue({
+				headings: [
+					{ heading: '角色列表', level: 1, position: { start: { line: 0 }, end: { line: 0 } } },
+					{ heading: '女主角', level: 2, position: { start: { line: 1 }, end: { line: 1 } } },
+					{ heading: '男主角', level: 2, position: { start: { line: 4 }, end: { line: 4 } } }
+				]
+			});
+
+			const resolved = await LoreCardRenderer.resolveLoreBody(entry, mockApp);
+
+			expect(resolved.aliases).toEqual(['小美', '月儿']);
+			expect(resolved.chunk).toContain('女主角是青云门弟子。');
+			expect(resolved.chunk).not.toContain('男主角是热血少年。');
+			expect(resolved.chunk).not.toContain('别名');
+		});
+
+		it('should merge frontmatter and in-body aliases for the single-file mode', async () => {
+			const mockFile = { basename: '女主角', path: '设定/角色/女主角.md' };
+			const entry = { file: mockFile as any, heading: '女主角' };
+			mockApp.vault.cachedRead.mockResolvedValue([
+				'---',
+				'aliases: [冰儿, 圣女]',
+				'---',
+				'# 女主角',
+				'**别名**：雪灵',
+				'女主角是九天圣地的传人。'
+			].join('\n'));
+			mockApp.metadataCache.getFileCache.mockReturnValue({
+				headings: [{ heading: '女主角', level: 1, position: { start: { line: 3 }, end: { line: 3 } } }],
+				frontmatter: { aliases: ['冰儿', '圣女'] }
+			});
+
+			const resolved = await LoreCardRenderer.resolveLoreBody(entry, mockApp);
+
+			expect(resolved.aliases).toEqual(['冰儿', '圣女', '雪灵']);
+			expect(resolved.chunk).toBe('女主角是九天圣地的传人。');
+		});
+
+		it('should serve repeated resolutions from cache without re-reading the file', async () => {
+			const mockFile = { basename: '人物', path: '设定/人物.md', stat: { mtime: 1000 } };
+			const entry = { file: mockFile as any, heading: '女主角' };
+			mockApp.vault.cachedRead.mockResolvedValue('## 女主角\n正文内容');
+			mockApp.metadataCache.getFileCache.mockReturnValue({
+				headings: [{ heading: '女主角', level: 2, position: { start: { line: 0 }, end: { line: 0 } } }]
+			});
+
+			const first = await LoreCardRenderer.resolveLoreBody(entry, mockApp);
+			const second = await LoreCardRenderer.resolveLoreBody(entry, mockApp);
+
+			expect(mockApp.vault.cachedRead).toHaveBeenCalledTimes(1);
+			expect(second).toEqual(first);
+		});
+
+		it('should invalidate the cached entry when the file modification time changes', async () => {
+			const mockFile = { basename: '人物', path: '设定/人物.md', stat: { mtime: 1000 } };
+			const entry = { file: mockFile as any, heading: '女主角' };
+			mockApp.vault.cachedRead.mockResolvedValue('## 女主角\n旧内容');
+			mockApp.metadataCache.getFileCache.mockReturnValue({
+				headings: [{ heading: '女主角', level: 2, position: { start: { line: 0 }, end: { line: 0 } } }]
+			});
+
+			await LoreCardRenderer.resolveLoreBody(entry, mockApp);
+
+			mockFile.stat.mtime = 2000;
+			mockApp.vault.cachedRead.mockResolvedValue('## 女主角\n新内容');
+			const refreshed = await LoreCardRenderer.resolveLoreBody(entry, mockApp);
+
+			expect(mockApp.vault.cachedRead).toHaveBeenCalledTimes(2);
+			expect(refreshed.chunk).toBe('新内容');
+		});
+
+		it('should return defensive copies so callers cannot mutate the cache', async () => {
+			const mockFile = { basename: '人物', path: '设定/人物.md', stat: { mtime: 1000 } };
+			const entry = { file: mockFile as any, heading: '女主角' };
+			mockApp.vault.cachedRead.mockResolvedValue('## 女主角\n**别名**：小美\n正文内容');
+			mockApp.metadataCache.getFileCache.mockReturnValue({
+				headings: [{ heading: '女主角', level: 2, position: { start: { line: 0 }, end: { line: 0 } } }]
+			});
+
+			const first = await LoreCardRenderer.resolveLoreBody(entry, mockApp);
+			first.aliases.push('污染');
+			first.chunk = '污染';
+
+			const second = await LoreCardRenderer.resolveLoreBody(entry, mockApp);
+			expect(second.aliases).toEqual(['小美']);
+			expect(second.chunk).toContain('正文内容');
+		});
 	});
 });

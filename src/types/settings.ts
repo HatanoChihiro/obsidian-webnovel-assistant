@@ -342,6 +342,15 @@ export interface AccurateCountSettings {
 	/** 设定速查悬浮卡片中子标题是否默认折叠 */
 	lorePopoverCollapse: boolean;
 
+	/** 设定看板卡片视图：悬停卡片时是否弹出大尺寸只读预览面板 */
+	loreCardHoverPreview: boolean;
+
+	/** 预览面板常驻：开启后仅在手动关闭（关闭按钮 / Esc / 点击面板外）时关闭，滚动与窗口缩放不再自动关闭 */
+	loreCardPreviewPersistent: boolean;
+
+	/** 预览面板同时常驻的数量上限 */
+	loreCardPreviewMaxCount: number;
+
 	/** 移动端是否启用设定悬浮/点击卡片 */
 	enableMobileLorePopover: boolean;
 

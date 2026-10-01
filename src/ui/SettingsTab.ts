@@ -1920,6 +1920,43 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 
+		// 设定卡片悬停大预览开关（全平台生效）
+		new Setting(containerEl)
+			.setName(t('setting.lore-card-hover-preview'))
+			.setDesc(t('setting.lore-card-hover-preview-desc'))
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.loreCardHoverPreview)
+				.onChange(async (value: boolean) => {
+					this.plugin.settings.loreCardHoverPreview = value;
+					await this.plugin.saveSettings();
+				}));
+
+		// 预览面板常驻与数量上限
+		// 注意：不随「悬停大预览」联动禁用。禁用设置项在部分主题/版本下会出现
+		// 控件无法交互且状态不恢复的问题，因此保持始终可操作，
+		// 实际是否生效由功能本身在运行时判断。
+		new Setting(containerEl)
+			.setName(t('setting.lore-card-preview-persistent'))
+			.setDesc(t('setting.lore-card-preview-persistent-desc'))
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.loreCardPreviewPersistent)
+				.onChange(async (value: boolean) => {
+					this.plugin.settings.loreCardPreviewPersistent = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName(t('setting.lore-card-preview-max-count'))
+			.setDesc(t('setting.lore-card-preview-max-count-desc'))
+			.addSlider(slider => slider
+				.setLimits(1, 10, 1)
+				.setValue(this.plugin.settings.loreCardPreviewMaxCount || 3)
+				.setDynamicTooltip()
+				.onChange(async (value: number) => {
+					this.plugin.settings.loreCardPreviewMaxCount = value;
+					await this.plugin.saveSettings();
+				}));
+
 		// 设定图谱是否自动关联提及的设定
 		new Setting(containerEl)
 			.setName(t('setting.lore-graph-auto-link-mentions'))

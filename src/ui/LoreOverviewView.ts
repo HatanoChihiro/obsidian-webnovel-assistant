@@ -38,6 +38,9 @@ export type LoreOverviewSettings = Pick<
 	| 'novelInfo'
 	| 'loreBoardActiveFile'
 	| 'lorePopoverCollapse'
+	| 'loreCardHoverPreview'
+	| 'loreCardPreviewPersistent'
+	| 'loreCardPreviewMaxCount'
 >;
 
 export type LoreOverviewHomepageManager = Pick<HomepageManager, 'getNovelFolders' | 'getHomepageFilePath'>;
