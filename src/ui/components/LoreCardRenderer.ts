@@ -33,7 +33,7 @@ const LORE_BODY_CACHE_LIMIT = 200;
  */
 export const LORE_CARD_ACTION_BTN_CLASS = 'wn-lore-card-action-btn';
 export const LORE_CARD_EDIT_BTN_CLASS = `${LORE_CARD_ACTION_BTN_CLASS} wn-lore-card-edit-btn`;
-export const LORE_CARD_EXPAND_BTN_CLASS = `${LORE_CARD_ACTION_BTN_CLASS} wn-lore-card-expand-btn`;
+export const LORE_CARD_EXPAND_BTN_CLASS = `${LORE_CARD_ACTION_BTN_CLASS} wn-lore-card-expand-btn clickable-icon`;
 
 export class LoreCardRenderer {
 	private static readonly aliasBadgeCleanups = new WeakMap<HTMLElement, () => void>();
@@ -43,7 +43,7 @@ export class LoreCardRenderer {
 	 * 命中后可直接复用 Markdown 片段，避免卡片与悬停预览重复读取与解析同一词条。
 	 * 以文件修改时间为新鲜度凭据，文件被修改时对应文件的全部缓存立即失效。
 	 */
-	private static readonly loreBodyCache = new Map<string, { chunk: string; aliases: string[]; mtime: number }>();
+	private static readonly loreBodyCache = new Map<string, { chunk: string; aliases: string[]; mtime: number; file: TFile }>();
 
 	private static getCacheKey(entry: LoreEntry): string {
 		return `${entry.file.path}\u0000${entry.heading}`;
@@ -69,7 +69,7 @@ export class LoreCardRenderer {
 		const key = LoreCardRenderer.getCacheKey(entry);
 		const cached = LoreCardRenderer.loreBodyCache.get(key);
 		if (!cached) return null;
-		if (cached.mtime !== LoreCardRenderer.getEntryMtime(entry.file)) {
+		if (cached.file !== entry.file || cached.mtime !== LoreCardRenderer.getEntryMtime(entry.file)) {
 			LoreCardRenderer.loreBodyCache.delete(key);
 			return null;
 		}
@@ -79,13 +79,23 @@ export class LoreCardRenderer {
 		return { chunk: cached.chunk, aliases: [...cached.aliases] };
 	}
 
-	private static writeCache(entry: LoreEntry, resolved: ResolvedLoreBody): void {
+	private static writeCache(
+		entry: LoreEntry,
+		resolved: ResolvedLoreBody,
+		expectedMtime: number,
+		targetFile: TFile
+	): void {
+		if (expectedMtime <= 0) return;
+		if (entry.file !== targetFile) return;
+		if (LoreCardRenderer.getEntryMtime(entry.file) !== expectedMtime) return;
+
 		const key = LoreCardRenderer.getCacheKey(entry);
 		LoreCardRenderer.loreBodyCache.delete(key);
 		LoreCardRenderer.loreBodyCache.set(key, {
 			chunk: resolved.chunk,
 			aliases: [...resolved.aliases],
-			mtime: LoreCardRenderer.getEntryMtime(entry.file)
+			mtime: expectedMtime,
+			file: targetFile
 		});
 		while (LoreCardRenderer.loreBodyCache.size > LORE_BODY_CACHE_LIMIT) {
 			const oldest = LoreCardRenderer.loreBodyCache.keys().next();
@@ -102,8 +112,11 @@ export class LoreCardRenderer {
 		const cached = LoreCardRenderer.readCache(entry);
 		if (cached) return cached;
 
+		const targetFile = entry.file;
+		const expectedMtime = LoreCardRenderer.getEntryMtime(targetFile);
+
 		const resolved = await LoreCardRenderer.parseLoreBody(entry, app);
-		LoreCardRenderer.writeCache(entry, resolved);
+		LoreCardRenderer.writeCache(entry, resolved, expectedMtime, targetFile);
 		return resolved;
 	}
 
@@ -449,6 +462,7 @@ export class LoreCardRenderer {
 						body.empty();
 						isEditing = false;
 						if (options.draggable) card.setAttribute('draggable', 'true');
+						LoreCardRenderer.clearLoreBodyCache(entry.file);
 						await LoreCardRenderer.renderBodyContent(body, header, entry, plugin, component);
 					} else {
 						exitEdit();

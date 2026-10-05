@@ -1,6 +1,66 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { CharacterManager, cleanLoreHeading } from '../src/services/CharacterManager';
 import { TFile, TFolder } from 'obsidian';
+import type { App } from 'obsidian';
+import { Text } from '@codemirror/state';
+import type { Decoration, DecorationSet, EditorView, ViewUpdate } from '@codemirror/view';
+import { buildCharacterHoverExtension, type CharacterHoverPlugin } from '../src/editor/CharacterHoverExtension';
+
+describe('Character hover occurrence identity', () => {
+    const file = Object.assign(new TFile(), { name: 'Chapter.md', path: 'Book1/Chapter.md' });
+
+    function createHover(text: string) {
+        const view = {
+            state: { doc: Text.of(text.split('\n')), field: () => ({ file }) },
+            visibleRanges: [{ from: 0, to: text.length }]
+        } as unknown as EditorView;
+        const plugin = {
+            characterManager: {
+                cacheVersion: 1,
+                getBookPathForFile: () => 'Book1',
+                getCharactersForBook: () => ['南总']
+            }
+        } as unknown as CharacterHoverPlugin;
+        const extension = buildCharacterHoverExtension({} as App, plugin);
+        const instance = (extension as unknown as { create: (view: EditorView) => {
+            decorations: DecorationSet;
+            update: (update: ViewUpdate) => void;
+        } }).create(view);
+        return { view, instance };
+    }
+
+    function readMatches(decorations: DecorationSet, length: number) {
+        const matches: { from: number; to: number; decoration: Decoration }[] = [];
+        decorations.between(0, length, (from, to, decoration) => {
+            matches.push({ from, to, decoration });
+        });
+        return matches;
+    }
+
+    it('distinguishes repeated names in one dialogue during DOM reuse', () => {
+        const text = '“南总是这样的南总是这样的南总”';
+        const { instance } = createHover(text);
+        const matches = readMatches(instance.decorations, text.length);
+        expect(matches).toHaveLength(3);
+        expect(matches[0].decoration.eq(matches[1].decoration)).toBe(false);
+        expect(matches[1].decoration.eq(matches[2].decoration)).toBe(false);
+    });
+
+    it('refreshes occurrence positions after an edit before repeated names', () => {
+        const { instance } = createHover('“南总是这样的南总”');
+        const text = '前文“南总是这样的南总”';
+        const { view } = createHover(text);
+        instance.update({ view, docChanged: true, viewportChanged: false } as ViewUpdate);
+        const matches = readMatches(instance.decorations, text.length);
+        expect(matches).toHaveLength(2);
+        for (const { from, to, decoration } of matches) {
+            expect(decoration.spec.attributes['data-character-occurrence']).toBe(`${from}:${to}`);
+            expect(decoration.spec.attributes['data-character']).toBe('南总');
+            expect(decoration.spec.attributes['data-bookpath']).toBe('Book1');
+            expect(decoration.spec.attributes['data-sourcepath']).toBe(file.path);
+        }
+    });
+});
 
 describe('CharacterManager', () => {
     let mockApp: any;

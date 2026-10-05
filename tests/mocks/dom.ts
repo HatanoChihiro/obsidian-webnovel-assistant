@@ -224,9 +224,22 @@ export function createMockDom(): { document: MockDocument; body: MockElement } {
 	const body = createElement('body', { ownerDocument: document });
 	const documentListeners = new Map<string, Set<unknown>>();
 
+	const defaultView = {
+		innerWidth: 1200,
+		innerHeight: 800,
+		setTimeout: (handler: () => void, timeout?: number) => globalThis.setTimeout(handler, timeout) as unknown as number,
+		clearTimeout: (id: unknown) => globalThis.clearTimeout(id as number),
+		requestAnimationFrame: (cb: FrameRequestCallback) => {
+			return globalThis.setTimeout(() => cb(Date.now()), 16) as unknown as number;
+		},
+		cancelAnimationFrame: (id: number) => globalThis.clearTimeout(id),
+		addEventListener: () => undefined,
+		removeEventListener: () => undefined
+	};
+
 	Object.assign(document, {
 		body,
-		defaultView: undefined,
+		defaultView,
 		createDiv: (opts?: string | { cls?: string; text?: string }) => body.createDiv(opts),
 		addEventListener: (type: string, listener: unknown) => {
 			const set = documentListeners.get(type) ?? new Set<unknown>();

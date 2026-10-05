@@ -8,8 +8,9 @@ import { MobileFloatingStats } from './MobileFloatingStats';
 import type { FloatingStickyNote } from './StickyNote';
 import type { ThemeScheme } from '../types/settings';
 import { WORKBENCH_BOARD_IDS, getWorkbenchBoardLabel } from './workbenchBoards';
-import { VALIDATION_RULES, DEFAULT_PROOFREADING_SETTINGS } from '../constants';
+import { VALIDATION_RULES, DEFAULT_PROOFREADING_SETTINGS, VIEW_TYPES } from '../constants';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
+import { LoreCardPreview } from './components/LoreCardPreview';
 import { t, setLocale, detectLocale, type Locale } from '../i18n';
 import { getDefaultFileName } from '../i18n/data-keys';
 import { FolderSuggestModal } from './FolderSuggestModal';
@@ -1389,6 +1390,24 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		}
 	}
 
+	private async refreshLoreViews(): Promise<void> {
+		const leaves = [
+			...this.app.workspace.getLeavesOfType(VIEW_TYPES.WORKBENCH),
+			...this.app.workspace.getLeavesOfType(VIEW_TYPES.LORE_OVERVIEW)
+		];
+		const results = await Promise.allSettled(leaves.map(async leaf => {
+			const view = leaf.view as { reloadBoard?: () => Promise<void> | void } | undefined;
+			if (typeof view?.reloadBoard === 'function') {
+				await view.reloadBoard();
+			}
+		}));
+		for (const result of results) {
+			if (result.status === 'rejected') {
+				Logger.error('[SettingsTab] 设定看板异步重载失败:', result.reason);
+			}
+		}
+	}
+
 	// ── 普通编辑打字机设置 ──
 	private displayEditorTypewriterSettings(containerEl: HTMLElement): void {
 		new Setting(containerEl).setName(t('setting.editor-typewriter-title')).setHeading();
@@ -1920,42 +1939,62 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 
-		// 设定卡片悬停大预览开关（全平台生效）
+		// 设定卡片大预览总开关
 		new Setting(containerEl)
-			.setName(t('setting.lore-card-hover-preview'))
-			.setDesc(t('setting.lore-card-hover-preview-desc'))
+			.setName(t('setting.lore-card-preview-enabled'))
+			.setDesc(t('setting.lore-card-preview-enabled-desc'))
 			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.loreCardHoverPreview)
+				.setValue(this.plugin.settings.loreCardPreviewEnabled)
 				.onChange(async (value: boolean) => {
-					this.plugin.settings.loreCardHoverPreview = value;
-					await this.plugin.saveSettings();
+					this.plugin.settings.loreCardPreviewEnabled = value;
+					if (!value) {
+						LoreCardPreview.closeAll();
+					}
+					try {
+						await this.plugin.saveSettings();
+						await this.refreshLoreViews();
+					} catch (error) {
+						Logger.error('[SettingsTab] 保存设定卡片预览设置或刷新视图失败:', error);
+					} finally {
+						this.display();
+					}
 				}));
 
-		// 预览面板常驻与数量上限
-		// 注意：不随「悬停大预览」联动禁用。禁用设置项在部分主题/版本下会出现
-		// 控件无法交互且状态不恢复的问题，因此保持始终可操作，
-		// 实际是否生效由功能本身在运行时判断。
-		new Setting(containerEl)
-			.setName(t('setting.lore-card-preview-persistent'))
-			.setDesc(t('setting.lore-card-preview-persistent-desc'))
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.loreCardPreviewPersistent)
-				.onChange(async (value: boolean) => {
-					this.plugin.settings.loreCardPreviewPersistent = value;
-					await this.plugin.saveSettings();
-				}));
+		if (this.plugin.settings.loreCardPreviewEnabled) {
+			// 设定卡片悬停大预览开关（全平台生效，受总开关控制，保留用户独立偏好）
+			new Setting(containerEl)
+				.setName(t('setting.lore-card-hover-preview'))
+				.setDesc(t('setting.lore-card-hover-preview-desc'))
+				.addToggle(toggle => toggle
+					.setValue(this.plugin.settings.loreCardHoverPreview)
+					.onChange(async (value: boolean) => {
+						this.plugin.settings.loreCardHoverPreview = value;
+						await this.plugin.saveSettings();
+					}));
 
-		new Setting(containerEl)
-			.setName(t('setting.lore-card-preview-max-count'))
-			.setDesc(t('setting.lore-card-preview-max-count-desc'))
-			.addSlider(slider => slider
-				.setLimits(1, 10, 1)
-				.setValue(this.plugin.settings.loreCardPreviewMaxCount || 3)
-				.setDynamicTooltip()
-				.onChange(async (value: number) => {
-					this.plugin.settings.loreCardPreviewMaxCount = value;
-					await this.plugin.saveSettings();
-				}));
+			// 预览面板常驻与数量上限
+			new Setting(containerEl)
+				.setName(t('setting.lore-card-preview-persistent'))
+				.setDesc(t('setting.lore-card-preview-persistent-desc'))
+				.addToggle(toggle => toggle
+					.setValue(this.plugin.settings.loreCardPreviewPersistent)
+					.onChange(async (value: boolean) => {
+						this.plugin.settings.loreCardPreviewPersistent = value;
+						await this.plugin.saveSettings();
+					}));
+
+			new Setting(containerEl)
+				.setName(t('setting.lore-card-preview-max-count'))
+				.setDesc(t('setting.lore-card-preview-max-count-desc'))
+				.addSlider(slider => slider
+					.setLimits(1, 10, 1)
+					.setValue(this.plugin.settings.loreCardPreviewMaxCount || 3)
+					.setDynamicTooltip()
+					.onChange(async (value: number) => {
+						this.plugin.settings.loreCardPreviewMaxCount = value;
+						await this.plugin.saveSettings();
+					}));
+		}
 
 		// 设定图谱是否自动关联提及的设定
 		new Setting(containerEl)

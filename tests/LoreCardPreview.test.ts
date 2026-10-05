@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { createMockDom, flushMicrotasks, type MockElement } from './mocks/dom';
 
 const isMobileMock = vi.hoisted(() => vi.fn(() => false));
@@ -16,27 +16,47 @@ vi.mock('../src/ui/components/LoreCardRenderer', () => ({
 vi.mock('obsidian', () => ({
 	Component: class {
 		private loaded = false;
+		private children: { unload: () => void }[] = [];
+		private cleanups: (() => void)[] = [];
 
 		load(): void {
 			this.loaded = true;
 		}
 
+		addChild(child: { unload: () => void }): void {
+			this.children.push(child);
+		}
+
+		register(cb: () => void): void {
+			this.cleanups.push(cb);
+		}
+
 		unload(): void {
 			if (!this.loaded) return;
 			this.loaded = false;
+			for (const child of this.children) {
+				child.unload();
+			}
+			for (const cleanup of this.cleanups) {
+				cleanup();
+			}
 			this.onunload();
 		}
 
 		onunload(): void {}
 	},
-	setIcon: vi.fn()
+	setIcon: vi.fn(),
+	Notice: vi.fn()
 }));
 
 vi.mock('../src/i18n', () => ({
-	t: (key: string) => key
+	t: (key: string) => key,
+	getLocale: () => 'zh'
 }));
 
+import { Component } from 'obsidian';
 import { LoreCardPreview } from '../src/ui/components/LoreCardPreview';
+import { LoreBoardRenderer } from '../src/ui/components/LoreBoardRenderer';
 
 let rafQueue: FrameRequestCallback[] = [];
 
@@ -47,14 +67,7 @@ interface Harness {
 	document: ReturnType<typeof createMockDom>['document'];
 }
 
-function createHarness(options: {
-	previewEnabled?: boolean;
-	mobile?: boolean;
-	scrollHeight?: number;
-	persistent?: boolean;
-	maxCount?: number;
-} = {}): Harness {
-	const dom = createMockDom();
+function setupMockOwnerWindow(dom: ReturnType<typeof createMockDom>) {
 	const ownerWindow = {
 		setTimeout: (handler: () => void, timeout?: number) => globalThis.setTimeout(handler, timeout) as unknown as number,
 		clearTimeout: (id: number) => globalThis.clearTimeout(id),
@@ -69,6 +82,19 @@ function createHarness(options: {
 		removeEventListener: vi.fn()
 	};
 	(dom.document as unknown as { defaultView: unknown }).defaultView = ownerWindow;
+	return ownerWindow;
+}
+
+function createHarness(options: {
+	masterEnabled?: boolean;
+	previewEnabled?: boolean;
+	mobile?: boolean;
+	scrollHeight?: number;
+	persistent?: boolean;
+	maxCount?: number;
+} = {}): Harness {
+	const dom = createMockDom();
+	setupMockOwnerWindow(dom);
 
 	isMobileMock.mockReturnValue(Boolean(options.mobile));
 
@@ -86,6 +112,7 @@ function createHarness(options: {
 		app: {},
 		settings: {
 			lorePopoverCollapse: false,
+			loreCardPreviewEnabled: options.masterEnabled ?? true,
 			loreCardHoverPreview: options.previewEnabled ?? true,
 			loreCardPreviewPersistent: options.persistent ?? false,
 			loreCardPreviewMaxCount: options.maxCount ?? 3
@@ -126,9 +153,14 @@ function findPanel(body: MockElement): MockElement | null {
 }
 
 describe('LoreCardPreview', () => {
+	let createdOwners: Component[] = [];
+	let attachSpy: MockInstance<typeof LoreCardPreview.attach>;
+
 	beforeEach(() => {
 		vi.useFakeTimers();
 		rafQueue = [];
+		createdOwners = [];
+		attachSpy = vi.spyOn(LoreCardPreview, 'attach');
 		buildCardDOMMock.mockReset();
 		buildCardDOMMock.mockImplementation(async (container: MockElement) => {
 			const card = container.createDiv({ cls: 'wn-lore-card is-preview' });
@@ -140,8 +172,19 @@ describe('LoreCardPreview', () => {
 	});
 
 	afterEach(() => {
+		for (const owner of createdOwners) {
+			owner.unload();
+		}
+		createdOwners = [];
+		for (const res of attachSpy?.mock?.results ?? []) {
+			if (res.type === 'return' && res.value) {
+				(res.value as LoreCardPreview).unload();
+			}
+		}
+		LoreCardPreview.closeAll();
 		vi.useRealTimers();
-		vi.clearAllMocks();
+		vi.restoreAllMocks();
+		vi.unstubAllGlobals();
 	});
 
 	it('悬停延迟结束后弹出大预览面板，并以只读模式渲染卡片', async () => {
@@ -475,6 +518,321 @@ describe('LoreCardPreview', () => {
 			await flushMicrotasks();
 			expect(harnesses[0].preview.isOpen()).toBe(false);
 			expect(harnesses[3].preview.isOpen()).toBe(true);
+		});
+	});
+
+	describe('总开关、生命周期与异步取消回归', () => {
+		it('总开关关闭时禁用悬停触发与手动 open', async () => {
+			const { preview, target, body } = createHarness({ masterEnabled: false });
+
+			target.dispatchEvent?.('mouseenter');
+			vi.advanceTimersByTime(2000);
+			await flushMicrotasks();
+			expect(findPanel(body)).toBeNull();
+
+			preview.open();
+			await flushMicrotasks();
+			expect(findPanel(body)).toBeNull();
+			expect(preview.isOpen()).toBe(false);
+		});
+
+		it('总开关关闭时 closeAll 关闭所有已打开和常驻的预览面板', async () => {
+			const h1 = createHarness({ persistent: true });
+			const h2 = createHarness({ persistent: true });
+
+			h1.preview.open();
+			await flushMicrotasks();
+			h2.preview.open();
+			await flushMicrotasks();
+
+			expect(h1.preview.isOpen()).toBe(true);
+			expect(h2.preview.isOpen()).toBe(true);
+
+			LoreCardPreview.closeAll();
+
+			expect(h1.preview.isOpen()).toBe(false);
+			expect(h2.preview.isOpen()).toBe(false);
+			expect(findPanel(h1.body)).toBeNull();
+			expect(findPanel(h2.body)).toBeNull();
+		});
+
+		it('异步渲染期间 preview.unload() 取消挂载并释放内部组件', async () => {
+			const holder: { resolve: (() => void) | null } = { resolve: null };
+			buildCardDOMMock.mockImplementation(() => new Promise<void>((resolve) => {
+				holder.resolve = () => resolve();
+			}));
+
+			const { preview, body } = createHarness();
+
+			preview.open();
+			await flushMicrotasks();
+			preview.unload();
+
+			holder.resolve?.();
+			await flushMicrotasks();
+
+			expect(findPanel(body)).toBeNull();
+		});
+
+		it('异步渲染期间总开关被禁用时取消挂载并释放内部组件', async () => {
+			const holder: { resolve: (() => void) | null } = { resolve: null };
+			buildCardDOMMock.mockImplementation(() => new Promise<void>((resolve) => {
+				holder.resolve = () => resolve();
+			}));
+
+			const { preview, body } = createHarness();
+
+			preview.open();
+			await flushMicrotasks();
+			(preview as unknown as { plugin: { settings: { loreCardPreviewEnabled: boolean } } }).plugin.settings.loreCardPreviewEnabled = false;
+
+			holder.resolve?.();
+			await flushMicrotasks();
+
+			expect(findPanel(body)).toBeNull();
+		});
+
+		it('异步渲染期间卡片脱离文档时取消挂载', async () => {
+			const holder: { resolve: (() => void) | null } = { resolve: null };
+			buildCardDOMMock.mockImplementation(() => new Promise<void>((resolve) => {
+				holder.resolve = () => resolve();
+			}));
+
+			const { preview, target, body } = createHarness();
+
+			preview.open();
+			await flushMicrotasks();
+			target.remove();
+
+			holder.resolve?.();
+			await flushMicrotasks();
+
+			expect(findPanel(body)).toBeNull();
+		});
+
+		it('卡片在离屏 buffer 中创建时不误判为销毁，挂载后正常预览，移出后结束生命周期', async () => {
+			const dom = createMockDom();
+			const holder: { callback: MutationCallback | null } = { callback: null };
+			vi.stubGlobal('MutationObserver', class {
+				constructor(callback: MutationCallback) {
+					holder.callback = callback;
+				}
+				observe(): void {}
+				disconnect(): void {}
+			});
+
+			const offscreenTarget = dom.body.createDiv({ cls: 'wn-lore-card-wrapper' });
+			offscreenTarget.remove(); // 离屏 buffer 中未挂载到 document
+			expect(offscreenTarget.isConnected).toBe(false);
+
+			const plugin = {
+				app: {},
+				settings: {
+					lorePopoverCollapse: false,
+					loreCardPreviewEnabled: true,
+					loreCardHoverPreview: true,
+					loreCardPreviewPersistent: false,
+					loreCardPreviewMaxCount: 3
+				},
+				characterManager: {}
+			};
+
+			const preview = LoreCardPreview.attach(offscreenTarget as unknown as HTMLElement, {
+				file: { path: '设定/人物.md', basename: '人物' },
+				heading: '女主角'
+			} as never, plugin as never);
+
+			// 离屏构建期间绝不误判为已销毁
+			expect((preview as unknown as { isDisposed: boolean }).isDisposed).toBe(false);
+
+			// 挂载到 live DOM
+			dom.body.appendChild(offscreenTarget);
+			offscreenTarget.isConnected = true;
+
+			preview.open();
+			await flushMicrotasks();
+			expect(findPanel(dom.body)).not.toBeNull();
+
+			// 从 DOM 中移除
+			offscreenTarget.remove();
+			expect(offscreenTarget.isConnected).toBe(false);
+			holder.callback?.(
+				[{ removedNodes: [offscreenTarget] } as unknown as MutationRecord],
+				{} as MutationObserver
+			);
+
+			expect((preview as unknown as { isDisposed: boolean }).isDisposed).toBe(true);
+			expect(findPanel(dom.body)).toBeNull();
+			vi.unstubAllGlobals();
+		});
+	});
+
+	describe('LoreBoardRenderer.renderCards 入口绑定与生命周期回归', () => {
+		it('总开关启用时在卡片构建阶段绑定预览、设为 focusable 并注册到 boardComponent', async () => {
+			buildCardDOMMock.mockClear();
+			attachSpy.mockClear();
+			const dom = createMockDom();
+			setupMockOwnerWindow(dom);
+			const container = dom.body.createDiv('board-container');
+			const ownerComponent = new Component();
+			ownerComponent.load();
+			createdOwners.push(ownerComponent);
+
+			const testFile = { path: '设定/人物.md', basename: '人物' };
+			const testEntry = { heading: '女主角', file: testFile as unknown as import('obsidian').TFile };
+			const mockPlugin = {
+				characterManager: {
+					getLoreEntriesInFileOrder: vi.fn(() => [testEntry]),
+					findLoreFolder: vi.fn(() => null),
+					getBookPathForFile: vi.fn(() => ''),
+					getCharacterFile: vi.fn(),
+					moveLoreItem: vi.fn(),
+					rebuildCache: vi.fn(),
+					getLoreContent: vi.fn(),
+					updateLoreContent: vi.fn()
+				},
+				settings: {
+					lorePopoverCollapse: false,
+					loreCardPreviewEnabled: true,
+					loreCardHoverPreview: true,
+					loreCardPreviewPersistent: false,
+					loreCardPreviewMaxCount: 3,
+					loreBoardActiveFile: ''
+				}
+			};
+			const mockApp = {
+				metadataCache: {
+					getFileCache: vi.fn(() => ({ headings: [{ level: 2, heading: '女主角' }] }))
+				}
+			};
+
+			await LoreBoardRenderer.renderCards(
+				container as unknown as HTMLElement,
+				mockApp as unknown as import('obsidian').App,
+				mockPlugin as unknown as import('../src/ui/components/LoreBoardRenderer').LoreBoardCardsPlugin,
+				'/',
+				['女主角'],
+				undefined,
+				undefined,
+				ownerComponent
+			);
+
+			// 卡片 wrapper 应该已创建
+			const wrapper = container.querySelector('.wn-lore-card-wrapper');
+			expect(wrapper).not.toBeNull();
+
+			// 验证卡片构建期间已调用 attach，无需测试自身手动补救创建
+			expect(attachSpy).toHaveBeenCalledTimes(1);
+			expect(attachSpy).toHaveBeenCalledWith(
+				wrapper,
+				testEntry,
+				expect.objectContaining({
+					app: mockApp,
+					settings: mockPlugin.settings,
+					characterManager: mockPlugin.characterManager
+				})
+			);
+
+			// 验证 buildCardDOM 调用参数包含 focusable: true 和 onExpand 回调
+			expect(buildCardDOMMock).toHaveBeenCalledWith(
+				wrapper,
+				testEntry,
+				expect.anything(),
+				ownerComponent,
+				expect.objectContaining({
+					focusable: true,
+					onExpand: expect.any(Function)
+				})
+			);
+
+			// 点击展开按钮前，直接派发 mouseenter 验证悬停预览可用
+			expect(findPanel(dom.body)).toBeNull();
+			wrapper?.dispatchEvent?.('mouseenter');
+			vi.advanceTimersByTime(400);
+			await flushMicrotasks();
+			flushRaf();
+
+			expect(findPanel(dom.body)).not.toBeNull();
+
+			// ownerComponent 卸载后断言面板消失且监听不再响应
+			ownerComponent.unload();
+			expect(findPanel(dom.body)).toBeNull();
+
+			wrapper?.dispatchEvent?.('mouseenter');
+			vi.advanceTimersByTime(400);
+			await flushMicrotasks();
+			flushRaf();
+			expect(findPanel(dom.body)).toBeNull();
+
+			const attachedPreview = attachSpy.mock.results[0]?.value;
+			expect((attachedPreview as unknown as { isDisposed: boolean }).isDisposed).toBe(true);
+		});
+
+		it('总开关禁用时不绑定预览，不传递 onExpand 且 focusable 为 false', async () => {
+			buildCardDOMMock.mockClear();
+			attachSpy.mockClear();
+			const dom = createMockDom();
+			setupMockOwnerWindow(dom);
+			const container = dom.body.createDiv('board-container');
+			const ownerComponent = new Component();
+			ownerComponent.load();
+			createdOwners.push(ownerComponent);
+
+			const testFile = { path: '设定/人物.md', basename: '人物' };
+			const testEntry = { heading: '女主角', file: testFile as unknown as import('obsidian').TFile };
+			const mockPlugin = {
+				characterManager: {
+					getLoreEntriesInFileOrder: vi.fn(() => [testEntry]),
+					findLoreFolder: vi.fn(() => null),
+					getBookPathForFile: vi.fn(() => ''),
+					getCharacterFile: vi.fn(),
+					moveLoreItem: vi.fn(),
+					rebuildCache: vi.fn(),
+					getLoreContent: vi.fn(),
+					updateLoreContent: vi.fn()
+				},
+				settings: {
+					lorePopoverCollapse: false,
+					loreCardPreviewEnabled: false,
+					loreCardHoverPreview: true,
+					loreCardPreviewPersistent: false,
+					loreCardPreviewMaxCount: 3,
+					loreBoardActiveFile: ''
+				}
+			};
+			const mockApp = {
+				metadataCache: {
+					getFileCache: vi.fn(() => ({ headings: [{ level: 2, heading: '女主角' }] }))
+				}
+			};
+
+			await LoreBoardRenderer.renderCards(
+				container as unknown as HTMLElement,
+				mockApp as unknown as import('obsidian').App,
+				mockPlugin as unknown as import('../src/ui/components/LoreBoardRenderer').LoreBoardCardsPlugin,
+				'/',
+				['女主角'],
+				undefined,
+				undefined,
+				ownerComponent
+			);
+
+			const wrapper = container.querySelector('.wn-lore-card-wrapper');
+			expect(wrapper).not.toBeNull();
+
+			// 总开关禁用时同时断言 attach 未调用
+			expect(attachSpy).not.toHaveBeenCalled();
+
+			expect(buildCardDOMMock).toHaveBeenCalledWith(
+				wrapper,
+				testEntry,
+				expect.anything(),
+				ownerComponent,
+				expect.objectContaining({
+					focusable: false,
+					onExpand: undefined
+				})
+			);
 		});
 	});
 });

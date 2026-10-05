@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { LoreCardRenderer } from '../src/ui/components/LoreCardRenderer';
-import { MarkdownRenderer, Component } from 'obsidian';
+import { MarkdownRenderer, Component, TFile } from 'obsidian';
 import { injectSoftBreakIndentPlaceholders } from '../src/utils/softBreakIndent';
 import * as StickyNoteEditor from '../src/ui/components/StickyNoteParagraphEditor';
 
@@ -46,6 +46,10 @@ function flushAnimationFrames(): void {
 
 function createMockComponent(): Component {
 	return { register: vi.fn() } as unknown as Component;
+}
+
+async function flushMicrotasks(): Promise<void> {
+	for (let i = 0; i < 4; i++) await Promise.resolve();
 }
 
 vi.mock('../src/utils/softBreakIndent', () => ({
@@ -735,6 +739,90 @@ type: 主要角色
 
 			expect(mockApp.vault.cachedRead).toHaveBeenCalledTimes(2);
 			expect(refreshed.chunk).toBe('新内容');
+		});
+
+		it('should not cache stale body if file modification time changes during cachedRead', async () => {
+			const mockFile = { basename: '人物', path: '设定/人物.md', stat: { mtime: 1000 } };
+			const entry = { file: mockFile as unknown as TFile, heading: '女主角' };
+			mockApp.vault.cachedRead.mockImplementation(async () => {
+				// 模拟读取期间外部文件写入，mtime 变为 2000
+				mockFile.stat.mtime = 2000;
+				return '## 女主角\n旧正文';
+			});
+			mockApp.metadataCache.getFileCache.mockReturnValue({
+				headings: [{ heading: '女主角', level: 2, position: { start: { line: 0 }, end: { line: 0 } } }]
+			});
+
+			const first = await LoreCardRenderer.resolveLoreBody(entry, mockApp);
+			expect(first.chunk).toBe('旧正文');
+
+			// 读取完成后 mtime 保持 2000，内容已更新为“新正文”
+			mockApp.vault.cachedRead.mockResolvedValue('## 女主角\n新正文');
+			const second = await LoreCardRenderer.resolveLoreBody(entry, mockApp);
+
+			// 若存在竞态缺陷，第一次读取会把“旧正文”按新 mtime(2000) 写入缓存，导致第二次读取返回“旧正文”
+			expect(second.chunk).toBe('新正文');
+			expect(mockApp.vault.cachedRead).toHaveBeenCalledTimes(2);
+		});
+
+		it('should invalidate cache when card editing is saved so next read gets fresh content', async () => {
+			const mockFile = { basename: '人物', path: '设定/人物.md', stat: { mtime: 1000 } };
+			const entry = { file: mockFile as unknown as TFile, heading: '女主角' };
+			mockApp.vault.cachedRead.mockResolvedValue('## 女主角\n原始内容');
+			mockApp.metadataCache.getFileCache.mockReturnValue({
+				headings: [{ heading: '女主角', level: 2, position: { start: { line: 0 }, end: { line: 0 } } }]
+			});
+			mockPlugin.characterManager.getLoreContent.mockResolvedValue('## 女主角\n原始内容');
+			mockPlugin.characterManager.updateLoreContent.mockResolvedValue(true);
+
+			const initial = await LoreCardRenderer.resolveLoreBody(entry, mockApp);
+			expect(initial.chunk).toBe('原始内容');
+
+			await LoreCardRenderer.buildCardDOM(container, entry, mockPlugin, createMockComponent());
+
+			const editBtn = container.querySelector('.wn-lore-card-edit-btn');
+			expect(editBtn).not.toBeNull();
+			await editBtn.onclick();
+
+			const body = container.querySelector('.wn-lore-card-body');
+			const textarea = body.querySelector('.wn-lore-card-textarea');
+			expect(textarea).not.toBeNull();
+			textarea.value = '## 女主角\n已保存的新内容';
+
+			// 保存编辑前，cachedRead 准备返回新内容
+			mockApp.vault.cachedRead.mockResolvedValue('## 女主角\n已保存的新内容');
+			const blurCall = textarea.addEventListener.mock.calls.find(
+				(call: unknown) => Array.isArray(call) && call[0] === 'blur'
+			);
+			const blurHandler = Array.isArray(blurCall) && typeof blurCall[1] === 'function' ? (blurCall[1] as () => Promise<void> | void) : undefined;
+			await blurHandler?.();
+			await flushMicrotasks();
+
+			// 验证再次解析时不走过期缓存，而是返回保存后的新内容
+			const refreshed = await LoreCardRenderer.resolveLoreBody(entry, mockApp);
+			expect(refreshed.chunk).toBe('已保存的新内容');
+		});
+
+		it('should miss cache when file object identity differs despite matching path and mtime', async () => {
+			const fileA = { basename: '人物', path: '设定/人物.md', stat: { mtime: 1000 } } as unknown as TFile;
+			const entryA = { file: fileA, heading: '女主角' };
+			mockApp.vault.cachedRead.mockResolvedValueOnce('## 女主角\n来自旧文件对象的内容');
+			mockApp.metadataCache.getFileCache.mockReturnValue({
+				headings: [{ heading: '女主角', level: 2, position: { start: { line: 0 }, end: { line: 0 } } }]
+			});
+
+			const first = await LoreCardRenderer.resolveLoreBody(entryA, mockApp);
+			expect(first.chunk).toBe('来自旧文件对象的内容');
+			expect(mockApp.vault.cachedRead).toHaveBeenCalledTimes(1);
+
+			// 模拟同路径同修改时间但文件对象被重建（例如删除后重建或不同 App 实例上下文）
+			const fileB = { basename: '人物', path: '设定/人物.md', stat: { mtime: 1000 } } as unknown as TFile;
+			const entryB = { file: fileB, heading: '女主角' };
+			mockApp.vault.cachedRead.mockResolvedValueOnce('## 女主角\n来自新文件对象的内容');
+
+			const second = await LoreCardRenderer.resolveLoreBody(entryB, mockApp);
+			expect(mockApp.vault.cachedRead).toHaveBeenCalledTimes(2);
+			expect(second.chunk).toBe('来自新文件对象的内容');
 		});
 
 		it('should return defensive copies so callers cannot mutate the cache', async () => {

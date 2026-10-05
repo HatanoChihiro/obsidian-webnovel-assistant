@@ -108,6 +108,8 @@ export function buildCharacterHoverExtension(app: App, plugin: CharacterHoverPlu
 						class: 'wn-character-match',
 						attributes: { 
 							'data-character': match[0], 
+							// 区分同名词的每次出现，避免嵌套高亮在输入期间复用另一处的 DOM。
+							'data-character-occurrence': `${start}:${end}`,
 							'data-bookpath': bookPath,
 							'data-sourcepath': activeFile.path
 						}

@@ -1,3 +1,23 @@
+## ✨ v4.0.1
+
+### 新增功能
+
+- **设定卡片大预览**：在工作台设定看板的卡片视图与设定一览中，可展开只读大预览，查看完整正文、表格与代码块。设置中的总开关默认关闭；开启后可选择悬停预览、保持面板常驻及常驻数量上限，手机通过展开按钮打开。感谢 [@tyf2018](https://github.com/tyf2018) 通过 [PR #40](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/pull/40) 贡献此功能。
+
+### Bug 修复
+
+- **对白高亮插件兼容**：修复与 aDHL 等对白高亮插件同时启用时，在重复角色名附近键入可能导致前面的名字或中间正文消失的问题，保留角色名标记与悬停卡片。
+
+### English Changelog
+
+#### New Features
+
+- **Large lore card previews**: Expand a read-only panel in the Workbench lore board's card view and Lore Overview to read full descriptions, tables, and code blocks. The master switch is off by default; enable it to use manual expansion, optional hover previews, persistent panels, and a limit on open panels. On phones, use the expand button. Thanks to [@tyf2018](https://github.com/tyf2018) for contributing this feature in [PR #40](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/pull/40).
+
+#### Bug Fixes
+
+- **Dialogue highlighter compatibility**: Fixed typing around repeated character names deleting an earlier name or intervening text when used with aDHL and other dialogue highlighting plugins. Character markers and hover cards remain available.
+
 ## ✨ v4.0.0
 
 ### 新增功能

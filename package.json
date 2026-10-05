@@ -1,6 +1,6 @@
 {
 	"name": "web-novel-assistant",
-	"version": "4.0.0",
+	"version": "4.0.1",
 	"description": "An all-in-one writing studio for novel and story writers — accurate word count, goal tracking, story timeline, foreshadowing manager, chapter corkboard, and lore graphs",
 	"main": "main.js",
 	"scripts": {

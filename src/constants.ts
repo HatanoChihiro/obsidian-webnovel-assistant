@@ -406,6 +406,7 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 	loreFolderName: '设定',
 	seriesLoreFolderName: '系列',
 	lorePopoverCollapse: false,
+	loreCardPreviewEnabled: false,
 	loreCardHoverPreview: false,
 	loreCardPreviewPersistent: false,
 	loreCardPreviewMaxCount: 3,

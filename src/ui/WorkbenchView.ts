@@ -65,6 +65,7 @@ export type WorkbenchViewSettings = Pick<
 	| 'novelInfo'
 	| 'enableMobileLorePopover'
 	| 'lorePopoverCollapse'
+	| 'loreCardPreviewEnabled'
 	| 'loreCardHoverPreview'
 	| 'loreCardPreviewPersistent'
 	| 'loreCardPreviewMaxCount'

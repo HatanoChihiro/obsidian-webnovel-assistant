@@ -342,6 +342,9 @@ export interface AccurateCountSettings {
 	/** 设定速查悬浮卡片中子标题是否默认折叠 */
 	lorePopoverCollapse: boolean;
 
+	/** 设定卡片大预览总开关：开启后卡片展开按钮与悬停大预览功能可用 */
+	loreCardPreviewEnabled: boolean;
+
 	/** 设定看板卡片视图：悬停卡片时是否弹出大尺寸只读预览面板 */
 	loreCardHoverPreview: boolean;
 

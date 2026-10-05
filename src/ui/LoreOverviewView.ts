@@ -38,6 +38,7 @@ export type LoreOverviewSettings = Pick<
 	| 'novelInfo'
 	| 'loreBoardActiveFile'
 	| 'lorePopoverCollapse'
+	| 'loreCardPreviewEnabled'
 	| 'loreCardHoverPreview'
 	| 'loreCardPreviewPersistent'
 	| 'loreCardPreviewMaxCount'

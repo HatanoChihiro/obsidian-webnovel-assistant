@@ -4,6 +4,15 @@
    本模块为大尺寸只读预览面板提供样式，完整呈现 Markdown 正文（含表格、代码块）。
    ========================================================================== */
 
+.wn-lore-card-expand-btn {
+	flex-shrink: 0;
+}
+
+.wn-lore-card-expand-btn svg {
+	width: 14px;
+	height: 14px;
+}
+
 .wn-lore-preview-panel {
 	--wn-lore-preview-font-size: var(--font-text-size, 1em);
 	--wn-lore-preview-padding: 16px;
@@ -155,6 +164,7 @@
 	overscroll-behavior: contain;
 	background-color: var(--background-primary);
 	color: var(--text-normal);
+	font-family: var(--font-text);
 	font-size: 1em;
 	line-height: 1.7;
 }

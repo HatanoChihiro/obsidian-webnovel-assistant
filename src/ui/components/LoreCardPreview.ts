@@ -8,7 +8,7 @@ import { LoreCardRenderer, type LoreCardRendererPlugin } from './LoreCardRendere
 export interface LoreCardPreviewPlugin extends Omit<LoreCardRendererPlugin, 'app'> {
 	app: LoreCardRendererPlugin['app'];
 	settings: LoreCardRendererPlugin['settings'] &
-		Pick<AccurateCountSettings, 'loreCardHoverPreview' | 'loreCardPreviewPersistent' | 'loreCardPreviewMaxCount'>;
+		Pick<AccurateCountSettings, 'loreCardPreviewEnabled' | 'loreCardHoverPreview' | 'loreCardPreviewPersistent' | 'loreCardPreviewMaxCount'>;
 }
 
 export interface LoreCardPreviewOptions {
@@ -55,6 +55,7 @@ export class LoreCardPreview extends Component {
 	private static readonly activePreviews = new WeakMap<HTMLElement, LoreCardPreview>();
 	/** 当前已弹出的面板实例，按打开先后排序，用于常驻数量上限的淘汰 */
 	private static readonly openPreviews: LoreCardPreview[] = [];
+	private static readonly allInstances = new Set<LoreCardPreview>();
 
 	private readonly targetEl: HTMLElement;
 	private readonly entry: LoreEntry;
@@ -77,6 +78,18 @@ export class LoreCardPreview extends Component {
 	private closeRequested = false;
 	/** 重定位的 requestAnimationFrame 句柄（滚动/resize 合并到单帧） */
 	private repositionFrame: number | null = null;
+	/** 标记卡片是否曾挂载到 live DOM，避免卡片在离屏 buffer 构建阶段误判为销毁 */
+	private hasBeenConnected = false;
+
+	/**
+	 * 关闭当前所有已弹出或异步打开中的预览面板并清空静态登记（总开关关闭或视图重载时使用）
+	 */
+	static closeAll(): void {
+		for (const preview of Array.from(LoreCardPreview.allInstances)) {
+			preview.close();
+		}
+		LoreCardPreview.openPreviews.length = 0;
+	}
 
 	/**
 	 * 为卡片挂载悬停预览（同一元素复用同一实例，避免重复注册监听）。
@@ -111,19 +124,27 @@ export class LoreCardPreview extends Component {
 		this.ownerWindow = this.ownerDocument.defaultView ?? window;
 		this.showDelayMs = options.showDelayMs ?? 400;
 		this.closeGraceMs = options.closeGraceMs ?? 200;
+		this.hasBeenConnected = this.targetEl.isConnected;
 
 		this.load();
+		LoreCardPreview.allInstances.add(this);
 
 		this.targetEl.addEventListener('mouseenter', this.onTargetEnter);
 		this.targetEl.addEventListener('mouseleave', this.onTargetLeave);
 		this.targetEl.addEventListener('focus', this.onTargetEnter);
 		this.targetEl.addEventListener('blur', this.onTargetLeave);
 
-		this.observeTargetAncestors();
+		if (this.hasBeenConnected) {
+			this.observeTargetAncestors();
+		}
 	}
 
-	/** 卡片头部的展开按钮入口：立即弹出（移动端唯一入口） */
+	/** 卡片头部的展开按钮入口：立即弹出（受总开关控制，移动端无 hover 时唯一入口） */
 	open(): void {
+		if (this.isDisposed || !this.plugin.settings.loreCardPreviewEnabled) return;
+		if (!this.targetEl.isConnected) return;
+		this.hasBeenConnected = true;
+		this.observeTargetAncestors();
 		this.clearShowTimeout();
 		void this.show();
 	}
@@ -143,10 +164,13 @@ export class LoreCardPreview extends Component {
 	override onunload(): void {
 		if (this.isDisposed) return;
 		this.isDisposed = true;
+		this.closeRequested = true;
+		LoreCardPreview.allInstances.delete(this);
 		if (LoreCardPreview.activePreviews.get(this.targetEl) === this) {
 			LoreCardPreview.activePreviews.delete(this.targetEl);
 		}
 		this.clearTimers();
+		this.cancelRepositionFrame();
 		this.removePanel();
 		this.disconnectDomObserver();
 		this.targetEl.removeEventListener('mouseenter', this.onTargetEnter);
@@ -157,21 +181,24 @@ export class LoreCardPreview extends Component {
 	}
 
 	/**
-	 * 监听卡片祖先链的节点移除：卡片被看板重绘移除时立即关闭面板，
-	 * 避免遗留游离在 body 上的浮层。
+	 * 监听卡片祖先链的节点移除：卡片被看板重绘或移出文档时结束预览生命周期，
+	 * 释放全部监听并卸载组件，避免遗留游离在 body 上的浮层与内存泄露。
+	 * 使用 ownerWindow 的 MutationObserver 构造器以避免跨窗口多实例全局问题。
 	 */
 	private observeTargetAncestors(): void {
-		if (typeof MutationObserver === 'undefined') return;
+		const win = (this.targetEl.ownerDocument?.defaultView ?? this.ownerWindow) as (Window & { MutationObserver?: typeof MutationObserver }) | null;
+		const MutationObserverCtor = win?.MutationObserver ?? (typeof MutationObserver !== 'undefined' ? MutationObserver : null);
+		if (!MutationObserverCtor) return;
 		this.disconnectDomObserver();
-		this.domObserver = new MutationObserver((records) => {
+		const observer = new MutationObserverCtor((records: MutationRecord[]) => {
 			if (!records.some(record => record.removedNodes.length > 0)) return;
-			if (!this.targetEl.isConnected) {
-				this.close();
-				this.disconnectDomObserver();
+			if (this.hasBeenConnected && !this.targetEl.isConnected) {
+				this.unload();
 			}
 		});
+		this.domObserver = observer;
 		for (let parent: Node | null = this.targetEl.parentNode; parent; parent = parent.parentNode) {
-			this.domObserver.observe(parent, { childList: true });
+			observer.observe(parent, { childList: true });
 		}
 	}
 
@@ -184,6 +211,9 @@ export class LoreCardPreview extends Component {
 		this.clearCloseTimeout();
 		if (this.panelEl || this.isDisposed) return;
 		if (!this.canPreview()) return;
+		if (!this.targetEl.isConnected) return;
+		this.hasBeenConnected = true;
+		this.observeTargetAncestors();
 		if (this.showTimeout !== null) return;
 		this.showTimeout = this.ownerWindow.setTimeout(() => {
 			this.showTimeout = null;
@@ -379,6 +409,7 @@ export class LoreCardPreview extends Component {
 	/** 判定当前平台与设置是否允许悬停预览 */
 	private canPreview(): boolean {
 		if (this.isDisposed) return false;
+		if (!this.plugin.settings.loreCardPreviewEnabled) return false;
 		if (!this.plugin.settings.loreCardHoverPreview) return false;
 		// 移动端无 hover 语义，仅保留展开按钮入口，防止滑动误触
 		if (isMobile()) return false;
@@ -390,8 +421,12 @@ export class LoreCardPreview extends Component {
 	private async show(): Promise<void> {
 		if (this.isDisposed || this.isOpening) return;
 		if (!this.entry || !this.entry.file) return;
+		if (!this.plugin.settings.loreCardPreviewEnabled) return;
 		if (!this.targetEl.isConnected) return;
 		if (this.panelEl) return;
+
+		this.hasBeenConnected = true;
+		this.observeTargetAncestors();
 
 		this.isOpening = true;
 		this.closeRequested = false;
@@ -427,7 +462,13 @@ export class LoreCardPreview extends Component {
 
 		this.isOpening = false;
 
-		if (this.isDisposed || this.closeRequested || this.panelEl !== panelEl || !this.targetEl.isConnected) {
+		if (
+			this.isDisposed ||
+			this.closeRequested ||
+			this.panelEl !== panelEl ||
+			!this.targetEl.isConnected ||
+			!this.plugin.settings.loreCardPreviewEnabled
+		) {
 			cardComponent.unload();
 			this.removePanel();
 			return;

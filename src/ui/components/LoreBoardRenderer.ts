@@ -26,7 +26,7 @@ export type LoreBoardCardsCharacterManager = Pick<
 
 export type LoreBoardCardsSettings = Pick<
     AccurateCountSettings,
-    'loreBoardActiveFile' | 'lorePopoverCollapse' | 'loreCardHoverPreview' | 'loreCardPreviewPersistent' | 'loreCardPreviewMaxCount'
+    'loreBoardActiveFile' | 'lorePopoverCollapse' | 'loreCardPreviewEnabled' | 'loreCardHoverPreview' | 'loreCardPreviewPersistent' | 'loreCardPreviewMaxCount'
 >;
 
 export interface LoreBoardCardsPlugin {
@@ -274,27 +274,28 @@ export class LoreBoardRenderer {
             const boardComponent = ownerComponent ?? new Component();
             if (!ownerComponent) boardComponent.load();
 
+            const isPreviewEnabled = Boolean(plugin.settings?.loreCardPreviewEnabled);
+
             for (const entry of group.entries) {
                 const cardContainer = grid.createDiv('wn-lore-card-wrapper');
                 let preview: LoreCardPreview | null = null;
-                const getPreview = (): LoreCardPreview => {
-                    if (!preview) {
-                        preview = LoreCardPreview.attach(cardContainer, entry, {
-                            app,
-                            settings: plugin.settings,
-                            characterManager: plugin.characterManager
-                        });
-                    }
-                    return preview;
-                };
+                if (isPreviewEnabled) {
+                    preview = LoreCardPreview.attach(cardContainer, entry, {
+                        app,
+                        settings: plugin.settings,
+                        characterManager: plugin.characterManager
+                    });
+                    boardComponent.addChild(preview);
+                }
+
                 await LoreCardRenderer.buildCardDOM(cardContainer, entry, { app, settings: plugin.settings, characterManager: plugin.characterManager }, boardComponent, {
                     draggable: !group.isBorrowed,
                     dragDataMimeType: mimeType,
                     hideEditButton: group.isBorrowed,
                     hideImportanceButton: group.isBorrowed,
                     // 卡片容器可聚焦，使键盘用户也能触发悬停大预览（与鼠标悬停同一路径）
-                    focusable: true,
-                    onExpand: () => { getPreview().open(); }
+                    focusable: isPreviewEnabled,
+                    onExpand: isPreviewEnabled && preview ? () => { preview.open(); } : undefined
                 });
             }
 
