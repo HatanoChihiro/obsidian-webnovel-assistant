@@ -1,0 +1,313 @@
+/* ==========================================================================
+   设定卡片悬停大预览面板 (Lore Card Hover Preview)
+   卡片视图中的紧凑卡片受 aspect-ratio 与宽度限制，长词条会被裁切。
+   本模块为大尺寸只读预览面板提供样式，完整呈现 Markdown 正文（含表格、代码块）。
+   ========================================================================== */
+
+.wn-lore-preview-panel {
+	--wn-lore-preview-font-size: var(--font-text-size, 1em);
+	--wn-lore-preview-padding: 16px;
+	position: fixed;
+	top: 0;
+	left: 0;
+	z-index: 1100;
+	display: flex;
+	flex-direction: column;
+	box-sizing: border-box;
+	width: 680px;
+	max-width: calc(100vw - 32px);
+	max-height: 78vh;
+	overflow: hidden;
+	background-color: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 10px;
+	box-shadow: 0 12px 36px rgba(0, 0, 0, 0.22);
+	font-family: var(--font-interface);
+	font-size: var(--wn-lore-preview-font-size);
+	line-height: 1.6;
+	color: var(--text-normal);
+}
+
+.wn-lore-preview-header {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex: 0 0 auto;
+	padding: 10px var(--wn-lore-preview-padding);
+	background-color: var(--background-secondary);
+	border-bottom: 1px solid var(--background-modifier-border);
+	box-shadow: inset 3px 0 0 var(--interactive-accent);
+}
+
+/* 常驻模式下锚点卡片完全滚出视口时隐藏面板（保持布局，便于回来时立即恢复定位） */
+.wn-lore-preview-panel.is-anchor-offscreen {
+	visibility: hidden;
+	pointer-events: none;
+}
+
+.wn-lore-preview-heading {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.wn-lore-preview-badge {
+	flex: 0 0 auto;
+	padding: 2px 8px;
+	border-radius: 10px;
+	background-color: var(--wn-accent-light);
+	color: var(--text-muted);
+	font-size: 0.72em;
+	line-height: 1.6;
+	letter-spacing: 0.04em;
+	white-space: nowrap;
+}
+
+.wn-lore-preview-title {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 1.1em;
+	font-weight: 600;
+	color: var(--text-normal);
+}
+
+.wn-lore-preview-close {
+	flex: 0 0 auto;
+}
+
+.wn-lore-preview-close:hover,
+.wn-lore-preview-close:focus-visible {
+	color: var(--interactive-accent);
+}
+
+/* 卡片本体：解除紧凑卡片的宽高与比例限制，由面板承担滚动 */
+.wn-lore-preview-panel .wn-lore-card-wrapper {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 auto;
+	min-height: 0;
+	width: 100%;
+	height: auto;
+}
+
+.wn-lore-preview-panel .wn-lore-card {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 auto;
+	width: 100%;
+	max-width: none;
+	min-width: 0;
+	height: auto;
+	max-height: none;
+	margin: 0;
+	aspect-ratio: auto;
+	border: none;
+	/* 基态即把边框色固定为 transparent：避免悬停时 border-color 变化导致
+	   悬停/非悬停两种状态的边框计算值不一致 */
+	border-color: transparent;
+	border-radius: 0;
+	box-shadow: none;
+	background-color: var(--background-primary);
+	transform: none;
+	outline: none;
+}
+
+/*
+ * 预览面板内一律不绘制卡片自身的边框与轮廓，且不区分悬停状态。
+ * 「重要」卡片在 importance.css 中通过 outline 标记，若在面板内渲染会与面板
+ * 圆角错位、并与面板边框形成双线；这里连同 hover 状态一并清除，
+ * 使重要词条与普通词条的预览边框在任何状态下都完全一致。
+ * 选择器用 :is() 展开卡片状态类以提高特异性，压过 importance.css 的
+ * .wn-lore-card:is(.is-important, ...):hover { outline-color } 规则。
+ */
+.wn-lore-preview-panel .wn-lore-card:is(.is-important, .wn-card-is-important) {
+	border: none;
+	border-color: transparent;
+	outline: none;
+}
+
+.wn-lore-preview-panel .wn-lore-card:hover,
+.wn-lore-preview-panel .wn-lore-card:focus,
+.wn-lore-preview-panel .wn-lore-card:focus-within,
+.wn-lore-preview-panel .wn-lore-card:is(.is-important, .wn-card-is-important):hover {
+	transform: none;
+	box-shadow: none;
+	border: none;
+	border-color: transparent;
+	outline: none;
+}
+
+/* 预览面板使用自有标题栏，隐藏卡片原有标题栏与别名徽标 */
+.wn-lore-preview-panel .wn-lore-card-header {
+	display: none;
+}
+
+.wn-lore-preview-panel .wn-lore-card-body {
+	flex: 1 1 auto;
+	min-height: 0;
+	padding: var(--wn-lore-preview-padding);
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	background-color: var(--background-primary);
+	color: var(--text-normal);
+	font-size: 1em;
+	line-height: 1.7;
+}
+.wn-lore-preview-panel .wn-lore-card-body:hover,
+.wn-lore-preview-panel .wn-lore-card-body:focus,
+.wn-lore-preview-panel .wn-lore-card-body:focus-within {
+	overflow-y: auto;
+}
+
+.wn-lore-preview-panel .wn-lore-card-body::-webkit-scrollbar {
+	width: 8px;
+}
+
+.wn-lore-preview-panel .wn-lore-card-body::-webkit-scrollbar-thumb {
+	background: var(--background-modifier-border);
+	border-radius: 4px;
+}
+
+.wn-lore-preview-panel .wn-lore-card-body:hover::-webkit-scrollbar-thumb {
+	background: color-mix(in srgb, var(--interactive-accent) 50%, var(--text-muted));
+}
+
+/* 正文排版：完整展示表格、代码块、引用与图片 */
+.wn-lore-preview-panel .wn-lore-markdown {
+	font-size: 1em;
+	line-height: 1.7;
+}
+
+.wn-lore-preview-panel .wn-lore-markdown p,
+.wn-lore-preview-panel .wn-lore-markdown li {
+	margin-bottom: 0.7em;
+	line-height: 1.7;
+}
+
+/* 任务列表：预览面板中适当收小任务字号与任务前缀（复选框）图标。
+   图标尺寸用 em 而非固定 px，避免在手机端（字号更小）反而偏大。 */
+.wn-lore-preview-panel .wn-lore-markdown ul.contains-task-list {
+	--checkbox-size: 0.95em;
+}
+
+.wn-lore-preview-panel .wn-lore-markdown li.task-list-item {
+	font-size: 0.92em;
+}
+
+.wn-lore-preview-panel .wn-lore-markdown li.task-list-item input[type="checkbox"] {
+	width: 0.95em;
+	height: 0.95em;
+	margin-inline-end: 0.45em;
+}
+
+.wn-lore-preview-panel .wn-lore-markdown .task-list-item-checkbox {
+	width: 0.95em;
+	height: 0.95em;
+}
+
+.wn-lore-preview-panel .wn-lore-markdown h1,
+.wn-lore-preview-panel .wn-lore-markdown h2 {
+	margin-top: 1em;
+	margin-bottom: 0.5em;
+	padding-bottom: 0.25em;
+	border-bottom: 1px solid var(--background-modifier-border);
+	font-size: 1.25em;
+	font-weight: 600;
+}
+
+.wn-lore-preview-panel .wn-lore-markdown h3,
+.wn-lore-preview-panel .wn-lore-markdown h4,
+.wn-lore-preview-panel .wn-lore-markdown h5,
+.wn-lore-preview-panel .wn-lore-markdown h6 {
+	margin-top: 0.9em;
+	margin-bottom: 0.4em;
+	font-size: 1.08em;
+	font-weight: 600;
+}
+
+/* 表格：面板内完整呈现，超宽时由外层滚动容器横向滚动 */
+.wn-lore-preview-panel .wn-lore-markdown table {
+	width: auto;
+	max-width: 100%;
+	margin: 0.8em 0;
+	border-collapse: collapse;
+	font-size: 0.95em;
+}
+
+.wn-lore-preview-panel .wn-lore-markdown th,
+.wn-lore-preview-panel .wn-lore-markdown td {
+	padding: 6px 10px;
+	border: 1px solid var(--background-modifier-border);
+	line-height: 1.5;
+	vertical-align: top;
+}
+
+.wn-lore-preview-panel .wn-lore-markdown thead th {
+	background-color: var(--background-secondary-alt);
+	color: var(--text-normal);
+	font-weight: 600;
+	white-space: nowrap;
+}
+
+.wn-lore-preview-panel .wn-lore-markdown tbody tr:nth-child(even) {
+	background-color: var(--background-secondary);
+}
+
+.wn-lore-preview-panel .wn-lore-markdown pre {
+	max-width: 100%;
+	margin: 0.8em 0;
+	padding: 10px 12px;
+	overflow-x: auto;
+	border-radius: 6px;
+	background-color: var(--background-secondary);
+	font-size: 0.9em;
+}
+
+.wn-lore-preview-panel .wn-lore-markdown code {
+	font-size: 0.92em;
+}
+
+.wn-lore-preview-panel .wn-lore-markdown blockquote {
+	margin: 0.8em 0;
+	padding-left: 0.9em;
+	border-left: 3px solid var(--background-modifier-border);
+	color: var(--text-muted);
+}
+
+.wn-lore-preview-panel .wn-lore-markdown img {
+	max-width: 100%;
+	height: auto;
+	border-radius: 6px;
+}
+
+.wn-lore-preview-panel .wn-lore-markdown ul,
+.wn-lore-preview-panel .wn-lore-markdown ol {
+	margin-bottom: 0.7em;
+	padding-left: 1.4em;
+}
+
+/* 悬停大预览面板随平台缩放，保证小屏仍可完整阅读 */
+body.is-tablet .wn-lore-preview-panel {
+	--wn-lore-preview-padding: 14px;
+	max-height: 76vh;
+}
+
+body.is-phone .wn-lore-preview-panel {
+	--wn-lore-preview-padding: 12px;
+	max-width: calc(100vw - 20px);
+	max-height: 82vh;
+	border-radius: 12px;
+}
+
+body.is-phone .wn-lore-preview-title {
+	font-size: 1.05em;
+}
+
+body.is-phone .wn-lore-preview-panel .wn-lore-markdown table {
+	font-size: 0.9em;
+}

@@ -8,6 +8,7 @@ import type { AccurateCountSettings } from '../../types/settings';
 import { GraphRenderer, type GraphRenderState, type ThemeColors } from './GraphRenderer';
 import { GraphInteractionController } from './GraphInteractionController';
 import { LoreCardRenderer } from './LoreCardRenderer';
+import { LoreCardPreview } from './LoreCardPreview';
 import { DraggableListHelper } from '../../utils/DraggableListHelper';
 import { openFileAndFocus, smartLocateAndHighlight, getLeafForFileNavigation } from '../../utils/leaf';
 
@@ -25,7 +26,7 @@ export type LoreBoardCardsCharacterManager = Pick<
 
 export type LoreBoardCardsSettings = Pick<
     AccurateCountSettings,
-    'loreBoardActiveFile' | 'lorePopoverCollapse'
+    'loreBoardActiveFile' | 'lorePopoverCollapse' | 'loreCardHoverPreview' | 'loreCardPreviewPersistent' | 'loreCardPreviewMaxCount'
 >;
 
 export interface LoreBoardCardsPlugin {
@@ -275,11 +276,25 @@ export class LoreBoardRenderer {
 
             for (const entry of group.entries) {
                 const cardContainer = grid.createDiv('wn-lore-card-wrapper');
+                let preview: LoreCardPreview | null = null;
+                const getPreview = (): LoreCardPreview => {
+                    if (!preview) {
+                        preview = LoreCardPreview.attach(cardContainer, entry, {
+                            app,
+                            settings: plugin.settings,
+                            characterManager: plugin.characterManager
+                        });
+                    }
+                    return preview;
+                };
                 await LoreCardRenderer.buildCardDOM(cardContainer, entry, { app, settings: plugin.settings, characterManager: plugin.characterManager }, boardComponent, {
                     draggable: !group.isBorrowed,
                     dragDataMimeType: mimeType,
                     hideEditButton: group.isBorrowed,
-                    hideImportanceButton: group.isBorrowed
+                    hideImportanceButton: group.isBorrowed,
+                    // 卡片容器可聚焦，使键盘用户也能触发悬停大预览（与鼠标悬停同一路径）
+                    focusable: true,
+                    onExpand: () => { getPreview().open(); }
                 });
             }
 
