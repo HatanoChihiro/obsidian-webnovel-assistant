@@ -155,16 +155,17 @@ export const REGEX_PATTERNS = {
 	QUOTE: /^>\s?/gm,
 	/** 分隔线（gm 标志，保持不变） */
 	SEPARATOR: /^[-*_]{3,}\s*$/gm,
+	// Line-local whitespace avoids rescanning preserved code-block newlines.
 	/** 无序列表符号（gm 标志，保持不变） */
-	UNORDERED_LIST: /^[\s]*[-*+]\s/gm,
+	UNORDERED_LIST: /^[ \t]*[-*+][ \t]/gm,
 	/** 有序列表符号（gm 标志，保持不变） */
-	ORDERED_LIST: /^[\s]*\d+\.\s/gm,
+	ORDERED_LIST: /^[ \t]*\d+\.[ \t]/gm,
 	/** 删除线（工厂函数，避免 g 标志状态残留） */
 	STRIKETHROUGH: () => /~~(.*?)~~/g,
 	/** 任务列表标记（gm 标志，保持不变） */
-	TASK_LIST: /^[\s]*[-*+]\s\[[ xX]\]\s/gm,
+	TASK_LIST: /^[ \t]*[-*+][ \t]\[[ xX]\][ \t]/gm,
 	/** 表格分隔行（gm 标志，保持不变） */
-	TABLE_SEPARATOR: /^\|?[\s:]*-{3,}[\s:]*(?:\|[\s:]*-{3,}[\s:]*)*\|?\s*$/gm,
+	TABLE_SEPARATOR: /^\|?[ \t:]*-{3,}[ \t:]*(?:\|[ \t:]*-{3,}[ \t:]*)*\|?[ \t]*$/gm,
 	/** 空白字符（工厂函数，避免 g 标志状态残留） */
 	WHITESPACE: () => /\s+/g,
 	/** 中日韩字符（工厂函数，避免 g 标志状态残留） */
