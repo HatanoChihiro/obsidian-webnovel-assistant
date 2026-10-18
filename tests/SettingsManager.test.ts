@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { SettingsManager } from '../src/core/SettingsManager';
 import { DEFAULT_SETTINGS } from '../src/constants';
+import { parseDirectorySettingLines, formatDirectorySettingLines } from '../src/utils/settingHelpers';
 
 beforeAll(() => {
 	(globalThis as unknown as { window: typeof globalThis }).window = globalThis;
@@ -195,5 +196,63 @@ describe('SettingsManager', () => {
 		await expect(manager.updateSettings({
 			immersive: { ...loaded.immersive, pomodoroInterval: 20 }
 		})).resolves.not.toThrow();
+	});
+
+	describe('parseDirectorySettingLines & formatDirectorySettingLines', () => {
+		it('parses line-delimited directory strings preserving ASCII and fullwidth commas', () => {
+			const input = '  Novels, Drafts/Volume 1  \r\n\n  小说，正文/第一卷  \r\nDrafts/Notes, Ideas\n';
+			const parsed = parseDirectorySettingLines(input);
+
+			expect(parsed).toEqual([
+				'Novels, Drafts/Volume 1',
+				'小说，正文/第一卷',
+				'Drafts/Notes, Ideas'
+			]);
+		});
+
+		it('deduplicates lines while maintaining first-workspace order and skips empty lines', () => {
+			const input = '\n  Workspace A  \nWorkspace B\n  Workspace A  \n\nWorkspace C\n';
+			const parsed = parseDirectorySettingLines(input);
+
+			expect(parsed).toEqual([
+				'Workspace A',
+				'Workspace B',
+				'Workspace C'
+			]);
+		});
+
+		it('formats directory arrays into newline-delimited strings and round-trips correctly', () => {
+			const folders = [
+				'Novels, Drafts',
+				'第一卷，起承转合',
+				'Folder [Special] - "Quotes"'
+			];
+			const formatted = formatDirectorySettingLines(folders);
+			expect(formatted).toBe('Novels, Drafts\n第一卷，起承转合\nFolder [Special] - "Quotes"');
+
+			const roundTripped = parseDirectorySettingLines(formatted);
+			expect(roundTripped).toEqual(folders);
+		});
+
+		it('persists and loads comma-bearing workspaceFolders through SettingsManager', async () => {
+			const settings = cloneDefaults();
+			const commaFolders = ['Novels, Drafts/Book 1', '作品，草稿/卷一'];
+			settings.workspaceFolders = commaFolders;
+			settings.strictChapterExceptions = ['Exceptions, Review/Draft'];
+
+			let persistedData: unknown = null;
+			const plugin = {
+				settings,
+				loadData: vi.fn(async () => persistedData ?? settings),
+				saveData: vi.fn(async (data: unknown) => { persistedData = JSON.parse(JSON.stringify(data)); })
+			} as never;
+
+			const manager = new SettingsManager(plugin, cloneDefaults());
+			await manager.saveSettings();
+
+			const reloaded = await manager.loadSettings();
+			expect(reloaded.workspaceFolders).toEqual(commaFolders);
+			expect(reloaded.strictChapterExceptions).toEqual(['Exceptions, Review/Draft']);
+		});
 	});
 });

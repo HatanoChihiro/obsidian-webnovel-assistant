@@ -10,6 +10,17 @@ export class WordCounter {
 	private readonly reCjkChar = REGEX_PATTERNS.CJK_CHAR();
 	private readonly reWordToken = REGEX_PATTERNS.WORD_TOKEN();
 	private readonly reFullwidthPunct = REGEX_PATTERNS.FULLWIDTH_PUNCT();
+	private lastCleaned: { text: string; includeFootnotes: boolean; cleaned: string } | null = null;
+	private lastCount: { text: string; method: string; includeFootnotes: boolean; count: number } | null = null;
+
+	private getCleanedText(text: string, includeFootnotes: boolean): string {
+		if (this.lastCleaned?.text === text && this.lastCleaned.includeFootnotes === includeFootnotes) {
+			return this.lastCleaned.cleaned;
+		}
+		const cleaned = cleanForWordCount(text, { includeFootnotes });
+		this.lastCleaned = { text, includeFootnotes, cleaned };
+		return cleaned;
+	}
 
 	/**
 	 * 计算准确字数
@@ -21,8 +32,15 @@ export class WordCounter {
 	 * @returns 纯文本字符数
 	 */
 	calculateAccurateWords(text: string, method: 'webnovel' | 'standard' | 'obsidian' = 'webnovel', includeFootnotes: boolean = false): number {
-		const cleaned = cleanForWordCount(text, { includeFootnotes });
+		if (this.lastCount?.text === text && this.lastCount.method === method && this.lastCount.includeFootnotes === includeFootnotes) {
+			return this.lastCount.count;
+		}
+		const count = this.countCleanedText(this.getCleanedText(text, includeFootnotes), method);
+		this.lastCount = { text, method, includeFootnotes, count };
+		return count;
+	}
 
+	private countCleanedText(cleaned: string, method: 'webnovel' | 'standard' | 'obsidian'): number {
 		// 1. 网文模式：移除空白字符后，所有字符均算1个字（含中英数字和标点）
 		if (method === 'webnovel') {
 			return cleaned.replace(this.reWhitespace, '').length;
@@ -57,7 +75,7 @@ export class WordCounter {
 	 * @returns 每一行的字数数组
 	 */
 	calculateWordsPerLine(text: string, method: 'webnovel' | 'standard' | 'obsidian' = 'webnovel', includeFootnotes: boolean = false): number[] {
-		const cleaned = cleanForWordCount(text, { includeFootnotes });
+		const cleaned = this.getCleanedText(text, includeFootnotes);
 		const lines = cleaned.split('\n');
 
 		return lines.map(line => {

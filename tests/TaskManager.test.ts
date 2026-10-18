@@ -422,4 +422,298 @@ describe('TaskManager work scoping', () => {
 			expect(contents.get(taskFile.path)).not.toContain('<!-- wn-important -->');
 		});
 	});
+
+	describe('loadEntries cache, coalescing, and invalidation', () => {
+		it('does not stamp an old in-flight read with a newer modification time', async () => {
+			const taskFile = new TFile('限时任务.md', '作品A/限时任务.md');
+			taskFile.stat = { mtime: 1000, size: 50 };
+			let finish!: (value: string) => void;
+			const read = vi.fn()
+				.mockImplementationOnce(() => new Promise<string>(resolve => { finish = resolve; }))
+				.mockResolvedValue('');
+			const manager = new TaskManager({ vault: {
+				getAbstractFileByPath: () => taskFile,
+				read
+			} } as never, { settings: { task: { fileName: '限时任务' } } } as never, '作品A');
+			const pending = manager.loadEntries();
+			taskFile.stat.mtime = 2000;
+			finish('');
+			await pending;
+			await manager.loadEntries();
+			expect(read).toHaveBeenCalledTimes(2);
+		});
+
+		it('coalesces overlapping reads and returns cloned records to isolate mutations', async () => {
+			const taskFile = new TFile('限时任务.md', '作品A/限时任务.md');
+			taskFile.stat = { mtime: 1000, size: 50 };
+			const files = new Map([[taskFile.path, taskFile]]);
+
+			let resolveRead!: (content: string) => void;
+			const deferredRead = new Promise<string>((resolve) => {
+				resolveRead = resolve;
+			});
+
+			const readFn = vi.fn().mockImplementation(() => deferredRead);
+			const app = {
+				vault: {
+					getAbstractFileByPath: vi.fn((path: string) => files.get(path) ?? null),
+					read: readFn
+				}
+			};
+			const plugin = {
+				settings: { task: { fileName: '限时任务' } }
+			};
+			const manager = new TaskManager(app as never, plugin as never, '作品A');
+
+			const taskEntry: TaskEntry = {
+				period: 1,
+				platform: '起点',
+				position: '日更',
+				taskType: 'wordCount',
+				wordTarget: 4000,
+				startDate: '2026-08-01',
+				endDate: '2026-08-31',
+				startSnapshot: 0,
+				status: 'active',
+				rawBlock: ''
+			};
+			const taskContent = manager.formatEntry(taskEntry);
+
+			// Launch two overlapping reads
+			const readPromise1 = manager.loadEntries('作品A');
+			const readPromise2 = manager.loadEntries('作品A');
+
+			expect(readFn).toHaveBeenCalledTimes(1);
+
+			resolveRead(taskContent);
+			const [entries1, entries2] = await Promise.all([readPromise1, readPromise2]);
+
+			expect(entries1).toBeDefined();
+			expect(entries2).toBeDefined();
+			expect(entries1).not.toBe(entries2);
+			expect(entries1![0]).toEqual(entries2![0]);
+			expect(entries1![0]).not.toBe(entries2![0]);
+
+			// Mutating entries1 must not affect entries2 or cached subsequent reads
+			entries1![0].platform = '已修改平台';
+			expect(entries2![0].platform).toBe('起点');
+
+			const entries3 = await manager.loadEntries('作品A');
+			expect(readFn).toHaveBeenCalledTimes(1); // Cached hit
+			expect(entries3![0].platform).toBe('起点');
+		});
+
+		it('invalidates on all own writes including updateProgress and notify=false operations', async () => {
+			const taskFile = new TFile('限时任务.md', '作品A/限时任务.md');
+			taskFile.stat = { mtime: 1000, size: 50 };
+			const files = new Map([[taskFile.path, taskFile]]);
+			const contents = new Map<string, string>();
+
+			const manager = new TaskManager({
+				vault: {
+					getAbstractFileByPath: vi.fn((path: string) => files.get(path) ?? null),
+					read: vi.fn(async (file: TFile) => contents.get(file.path) || ''),
+					process: vi.fn(async (file: TFile, update: (c: string) => string) => {
+						contents.set(file.path, update(contents.get(file.path) || ''));
+						// Simulate mtime advance on write
+						file.stat.mtime += 100;
+					})
+				},
+				workspace: { trigger: vi.fn() }
+			} as never, {
+				settings: { task: { fileName: '限时任务' } }
+			} as never, '作品A');
+
+			const entry: TaskEntry = {
+				period: 1,
+				platform: '起点',
+				position: '日更',
+				taskType: 'wordCount',
+				wordTarget: 4000,
+				startDate: '2026-08-01',
+				endDate: '2026-08-31',
+				startSnapshot: 0,
+				status: 'active',
+				rawBlock: ''
+			};
+			contents.set(taskFile.path, manager.formatEntry(entry));
+
+			// 1. Initial read caches data
+			const initial = await manager.loadEntries('作品A');
+			expect(initial![0].completedWords).toBeUndefined();
+
+			// 2. updateProgress invalidates cache
+			await manager.updateProgress(1, 500, '作品A');
+			const afterProgress = await manager.loadEntries('作品A');
+			expect(afterProgress![0].completedWords).toBe(500);
+
+			// 3. updateEntryStatus with notify=false still invalidates cache
+			await manager.updateEntryStatus(1, 'completed', 4000, 'wordCount', '作品A', false);
+			const afterStatus = await manager.loadEntries('作品A');
+			expect(afterStatus![0].status).toBe('completed');
+			expect(afterStatus![0].completedWords).toBe(4000);
+		});
+
+		it('ensures a slow stale read does not poison the cache after invalidation or write', async () => {
+			const taskFile = new TFile('限时任务.md', '作品A/限时任务.md');
+			taskFile.stat = { mtime: 1000, size: 50 };
+			const files = new Map([[taskFile.path, taskFile]]);
+
+			let resolveStaleRead!: (content: string) => void;
+			const staleReadPromise = new Promise<string>((resolve) => {
+				resolveStaleRead = resolve;
+			});
+
+			let isFirstRead = true;
+			const freshContent = new TaskManager({} as never, { settings: {} } as never).formatEntry({
+				period: 1,
+				platform: '最新平台',
+				position: '最新任务',
+				taskType: 'wordCount',
+				wordTarget: 5000,
+				startDate: '2026-08-01',
+				endDate: '2026-08-31',
+				startSnapshot: 0,
+				status: 'active',
+				rawBlock: ''
+			});
+
+			const readFn = vi.fn().mockImplementation(() => {
+				if (isFirstRead) {
+					isFirstRead = false;
+					return staleReadPromise;
+				}
+				return Promise.resolve(freshContent);
+			});
+
+			const app = {
+				vault: {
+					getAbstractFileByPath: vi.fn((path: string) => files.get(path) ?? null),
+					read: readFn,
+					process: vi.fn(async () => {})
+				}
+			};
+			const plugin = { settings: { task: { fileName: '限时任务' } } };
+			const manager = new TaskManager(app as never, plugin as never, '作品A');
+
+			// 1. Slow read starts
+			const slowRead = manager.loadEntries('作品A');
+
+			// 2. An explicit invalidation occurs while slow read is in flight
+			manager.invalidateFile(taskFile);
+
+			// 3. Slow read resolves with OLD data
+			const oldContent = manager.formatEntry({
+				period: 1,
+				platform: '旧平台',
+				position: '旧任务',
+				taskType: 'wordCount',
+				wordTarget: 1000,
+				startDate: '2026-08-01',
+				endDate: '2026-08-31',
+				startSnapshot: 0,
+				status: 'active',
+				rawBlock: ''
+			});
+			resolveStaleRead(oldContent);
+			await slowRead;
+
+			// 4. Subsequent read must NOT be poisoned by the stale read
+			const currentEntries = await manager.loadEntries('作品A');
+			expect(currentEntries![0].platform).toBe('最新平台');
+		});
+
+		it('allows retry after read failure and does not leave inFlightReads permanently rejected', async () => {
+			const taskFile = new TFile('限时任务.md', '作品A/限时任务.md');
+			taskFile.stat = { mtime: 1000, size: 50 };
+			const files = new Map([[taskFile.path, taskFile]]);
+
+			const readFn = vi.fn()
+				.mockRejectedValueOnce(new Error('IO error'))
+				.mockResolvedValueOnce('');
+
+			const app = {
+				vault: {
+					getAbstractFileByPath: vi.fn((path: string) => files.get(path) ?? null),
+					read: readFn
+				}
+			};
+			const plugin = { settings: { task: { fileName: '限时任务' } } };
+			const manager = new TaskManager(app as never, plugin as never, '作品A');
+
+			await expect(manager.loadEntries('作品A')).rejects.toThrow('IO error');
+
+			// Retry must call read again rather than returning the previous rejected promise
+			const retryResult = await manager.loadEntries('作品A');
+			expect(retryResult).toEqual([]);
+			expect(readFn).toHaveBeenCalledTimes(2);
+		});
+
+		it('cleans up registered vault listeners and invalidates only files already cached or loading', async () => {
+			const listeners: Record<string, (file: unknown) => void> = {};
+			const offref = vi.fn();
+			const on = vi.fn((event: string, fn: (file: unknown) => void) => {
+				listeners[event] = fn;
+				return { event };
+			});
+
+			const app = {
+				vault: {
+					getAbstractFileByPath: vi.fn(),
+					read: vi.fn().mockResolvedValue(''),
+					on,
+					offref
+				}
+			};
+			const plugin = { settings: { task: { fileName: '限时任务' } } };
+			const manager = new TaskManager(app as never, plugin as never, '作品A');
+
+			expect(on).toHaveBeenCalledWith('modify', expect.any(Function));
+			expect(on).toHaveBeenCalledWith('delete', expect.any(Function));
+			expect(on).toHaveBeenCalledWith('rename', expect.any(Function));
+
+			const taskFile = new TFile('限时任务.md', '作品A/限时任务.md');
+			app.vault.getAbstractFileByPath.mockReturnValue(taskFile);
+			const invalidateSpy = vi.spyOn(manager, 'invalidateFile');
+			listeners['modify'](new TFile('正文.md', '作品A/正文.md'));
+			expect(invalidateSpy).not.toHaveBeenCalled();
+
+			// External modify triggers invalidation
+			await manager.loadEntries();
+			listeners['modify'](taskFile);
+			expect(invalidateSpy).toHaveBeenCalledWith(taskFile);
+
+			// External delete triggers invalidation
+			await manager.loadEntries();
+			listeners['delete'](taskFile);
+			expect(invalidateSpy).toHaveBeenCalledWith(taskFile);
+
+			// External rename triggers invalidation
+			await manager.loadEntries();
+			listeners['rename'](taskFile);
+			expect(invalidateSpy).toHaveBeenCalledWith(taskFile);
+
+			await manager.destroy();
+			expect(offref).toHaveBeenCalledTimes(3);
+		});
+
+		it('waits for queued task persistence during destruction and stops new reads', async () => {
+			const file = new TFile('限时任务.md', '作品A/限时任务.md');
+			let finishWrite!: () => void;
+			const manager = new TaskManager({ vault: {
+				getAbstractFileByPath: () => file,
+				process: () => new Promise<void>(resolve => { finishWrite = resolve; })
+			} } as never, { settings: { task: { fileName: '限时任务' } } } as never, '作品A');
+			const saving = manager.updateProgress(1, 100, '作品A');
+			await Promise.resolve();
+			let destroyed = false;
+			const closing = manager.destroy().then(() => { destroyed = true; });
+			await Promise.resolve();
+			expect(destroyed).toBe(false);
+			finishWrite();
+			await Promise.all([saving, closing]);
+			expect(destroyed).toBe(true);
+			expect(await manager.loadEntries()).toBeNull();
+		});
+	});
 });

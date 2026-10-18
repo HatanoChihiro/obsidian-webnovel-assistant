@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Local synthetic trajectory verification</title>
+<style>
+:root { --background-primary:#fff; --background-secondary:#f3f3f3; --background-secondary-alt:#eee; --background-modifier-border:#aaa; --text-normal:#222; --text-muted:#666; --interactive-accent:#5874ad; --color-blue:#578bd4; --color-green:#51a86c; --color-orange:#cb8c40; --color-purple:#a066c0; --color-red:#c45454; --color-cyan:#44a4b9; --color-pink:#cb7caf; --color-yellow:#c3a33f; --font-interface:sans-serif; --font-text:serif; --radius-s:4px; font-size:16px; }
+body { font-family:sans-serif; }
+#host { width:1100px; height:600px; border:1px solid gray; }
+#report { white-space:pre-wrap; max-height:200px; overflow:auto; }
+</style>
+<style id="trajectory-css"></style>
+<h1>Local synthetic trajectory verification</h1>
+<p>Actual source renderer with synthetic entries and minimal Obsidian DOM helpers. No vault data.</p>
+<button id="geometry">Compare light/dark geometry</button>
+<button id="benchmark">Run 500 columns / 100 lore benchmark</button>
+<button id="preview">Preview current layout</button>
+<pre id="report">Ready</pre>
+<div id="host"></div>
+<script src="/payload.js"></script>
+<script>
+// Minimal Obsidian DOM API; geometry is provided by the browser itself.
+HTMLElement.prototype.createDiv = function(options) {
+    const el = this.ownerDocument.createElement('div');
+    if (typeof options === 'string') el.className = options;
+    else if (options) { el.className = options.cls || ''; if (options.text) el.textContent = options.text; }
+    this.appendChild(el); return el;
+};
+HTMLElement.prototype.setCssStyles = function(styles) { Object.assign(this.style, styles); };
+HTMLElement.prototype.setCssProps = function(styles) { for (const [key, value] of Object.entries(styles)) this.style.setProperty(key, value); };
+HTMLElement.prototype.setAttr = function(key, value) { this.setAttribute(key, value); };
+HTMLElement.prototype.setText = function(text) { this.textContent = text; };
+HTMLElement.prototype.addClass = function(...names) { this.classList.add(...names); };
+HTMLElement.prototype.removeClass = function(...names) { this.classList.remove(...names); };
+HTMLElement.prototype.hasClass = function(name) { return this.classList.contains(name); };
+HTMLElement.prototype.empty = function() { this.replaceChildren(); };
+const labels = { 'trajectory.main-type':'Main', 'trajectory.unassociated':'Unassociated', 'trajectory.no-description':'No description' };
+const sticky = { setStickyNoteEditorContent:(el, text) => { el.textContent = text; } };
+const noop = () => {};
+const obsidian = { Modal:class {}, Notice:class {}, Platform:{isMobile:false}, setIcon:noop, setTooltip:noop };
+function renderer(version) {
+    const timeline = { exports:{} };
+    const requireModule = name => {
+        if (name === 'obsidian') return obsidian;
+        if (name.endsWith('/i18n')) return { t:key => labels[key] || key };
+        if (name.endsWith('/TimelineManager')) return timeline.exports;
+        if (name.endsWith('/StickyNoteParagraphEditor')) return sticky;
+        if (name.endsWith('/Logger')) return { Logger:{error:noop} };
+        return {};
+    };
+    new Function('require','module','exports',benchmarkPayloads[version].timeline)(requireModule,timeline,timeline.exports);
+    const module = { exports:{} };
+    new Function('require','module','exports',benchmarkPayloads[version].renderer)(requireModule,module,module.exports);
+    return module.exports.renderTrajectoryMode;
+}
+const renders = { before:renderer('before'), after:renderer('after') };
+const host = document.querySelector('#host');
+const css = document.querySelector('#trajectory-css');
+const report = document.querySelector('#report');
+const large = Array.from({length:500}, (_,i) => ({time:`Day ${i+1}`, description:`Synthetic event ${i+1}`, chapter:'',lores:[`Lore ${i%100}`],rawBlock:''}));
+const small = Array.from({length:8}, (_,i) => ({time:`Day ${i+1}`,type:i%2?'Main':'Other', description:i===1?'Tall synthetic event\nsecond paragraph\nthird paragraph\nlast paragraph':'Synthetic event',chapter:'',lores:[`Lore ${i%3}`],rawBlock:''}));
+function render(version, entries) {
+    host.replaceChildren(); css.textContent = benchmarkPayloads[version].css;
+    renders[version]({app:{},container:host,displayEntries:entries,allEntries:entries,resolveLinkToFile:()=>null});
+    return host.querySelector('.wn-trajectory-grid');
+}
+function rounded(value) { return Math.round(value*1000)/1000; }
+document.querySelector('#geometry').onclick = () => {
+    try {
+        const rows = [];
+        for (const dark of [false,true]) {
+            document.documentElement.style.setProperty('--background-primary', dark?'#222':'#fff');
+            document.documentElement.style.setProperty('--background-secondary', dark?'#333':'#f3f3f3');
+            document.documentElement.style.setProperty('--background-secondary-alt', dark?'#282828':'#eee');
+            document.documentElement.style.setProperty('--text-normal', dark?'#eee':'#222');
+            for (const scale of [0.5,1,2]) {
+                const versions = {};
+                for (const version of ['before','after']) {
+                    const grid = render(version, small);
+                    grid.style.transform = `scale(${scale})`;
+                    const rect = grid.getBoundingClientRect();
+                    versions[version] = {
+                        width:rounded(rect.width), height:rounded(rect.height),
+                        headers:[...host.querySelectorAll('.wn-trajectory-lane-header')].map(el=>{const r=el.getBoundingClientRect();return [el.textContent,rounded(r.top-rect.top),rounded(r.height)];}),
+                        events:[...host.querySelectorAll('.wn-trajectory-event')].map(el=>{const r=el.getBoundingClientRect();return [rounded(r.left-rect.left),rounded(r.top-rect.top),rounded(r.width),rounded(r.height)];})
+                    };
+                }
+                rows.push({dark,scale,equal:JSON.stringify(versions.before)===JSON.stringify(versions.after),...versions});
+            }
+        }
+        report.textContent=JSON.stringify({geometry:rows},null,2);
+    } catch(error) { report.textContent=String(error.stack); }
+};
+document.querySelector('#benchmark').onclick = async () => {
+    try {
+        report.textContent='Running';
+        const results={};
+        for (const version of ['before','after']) {
+            const times=[];
+            for (let i=0;i<24;i++) {
+                await new Promise(resolve => setTimeout(resolve, 0));
+                const start=performance.now();
+                const grid=render(version,large);
+                const height=grid.getBoundingClientRect().height;
+                const elapsed=performance.now()-start;
+                if(i>=3) times.push(elapsed);
+                if(i===23) results[version]={cells:host.querySelectorAll('.wn-trajectory-cell').length,elements:host.querySelectorAll('*').length,height};
+            }
+            times.sort((a,b)=>a-b);
+            Object.assign(results[version],{medianMs:rounded(times[10]),p95Ms:rounded(times[19]),samples:21});
+        }
+        report.textContent=JSON.stringify({browser:navigator.userAgent,benchmark:results},null,2);
+    } catch(error) { report.textContent=String(error.stack); }
+};
+document.querySelector('#preview').onclick=()=>{render('after',small);report.textContent='Current synthetic layout';};
+</script>
+</html>

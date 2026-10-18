@@ -17,6 +17,7 @@ import { ForeshadowingBoardRenderer } from '../src/ui/components/ForeshadowingBo
 import { ForeshadowingStatus } from '../src/types/foreshadowing';
 import { Platform, type TFile } from 'obsidian';
 import { getLatestChapterFolderPath } from '../src/utils/path';
+import { LoreBoardRenderer } from '../src/ui/components/LoreBoardRenderer';
 
 const { getCurrentBookContextMock, findBookRootMock, MockTFile, MockTFolder, mockMenuInstances, MockMenu, mockModalInstances, MockModal } = vi.hoisted(() => {
 	class HoistedMockMenuItem {
@@ -70,8 +71,15 @@ const { getCurrentBookContextMock, findBookRootMock, MockTFile, MockTFolder, moc
 
 	class HoistedMockTFolder {
 		children: Array<HoistedMockTFile | HoistedMockTFolder> = [];
+		parent?: HoistedMockTFolder | null;
 
-		constructor(public name: string, public path: string) {}
+		constructor(public name: string, public path: string, parent?: HoistedMockTFolder | null) {
+			this.parent = parent;
+		}
+
+		isRoot(): boolean {
+			return this.path === '/' || this.path === '';
+		}
 	}
 
 	const modalInstances: unknown[] = [];
@@ -141,13 +149,20 @@ vi.mock('obsidian', () => {
 		constructor(leaf: { app: unknown }) {
 			this.app = leaf.app;
 			this.containerEl = new MockElement('workspace-leaf-content');
-			(this.containerEl as unknown as { ownerDocument: Document }).ownerDocument = {
+			const mockDoc = {
 				getElementById: vi.fn(),
 				createElement: vi.fn(() => new MockElement('style')),
 				head: { appendChild: vi.fn(), removeChild: vi.fn() },
-				defaultView: window
+				defaultView: window,
+				win: {
+					...window,
+					createDiv: () => new MockElement('div')
+				},
+				activeElement: null as unknown
 			} as unknown as Document;
+			(this.containerEl as unknown as { ownerDocument: Document }).ownerDocument = mockDoc;
 			this.contentEl = new MockElement('view-content');
+			(this.contentEl as unknown as { ownerDocument: Document }).ownerDocument = mockDoc;
 			this.containerEl.children.push(this.contentEl);
 			this.contentEl.parentElement = this.containerEl;
 		}
@@ -155,6 +170,7 @@ vi.mock('obsidian', () => {
 		registerEvent(): void {}
 		addChild<T>(child: T): T { return child; }
 		removeChild(): void {}
+		async setState(_state: unknown, _result: unknown): Promise<void> {}
 	}
 
 	class MockComponent {
@@ -233,13 +249,18 @@ vi.mock('../src/ui/components/WritingJourneyBoardRenderer', () => ({
 }));
 
 vi.mock('../src/i18n', () => ({
-	t: (key: string) => key
+	t: (key: string) => key,
+	getLocale: () => 'zh-CN'
 }));
 
-vi.mock('../src/i18n/data-keys', () => ({
-	getNovelStatusText: () => '',
-	getNovelInfoLabel: () => ''
-}));
+vi.mock('../src/i18n/data-keys', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('../src/i18n/data-keys')>();
+	return {
+		...actual,
+		getNovelStatusText: () => '',
+		getNovelInfoLabel: () => ''
+	};
+});
 
 describe('WorkbenchView', () => {
 	let plugin: WorkbenchViewPlugin;
@@ -324,12 +345,20 @@ describe('WorkbenchView', () => {
 				getCharactersForBook: vi.fn().mockReturnValue([]),
 				getCharacterFile: vi.fn().mockReturnValue(null),
 				getLoreEntriesInFileOrder: vi.fn().mockReturnValue([]),
+				getEffectiveLoreFiles: vi.fn().mockReturnValue([]),
 				ensureInitialized: vi.fn().mockResolvedValue(undefined)
 			},
 			foreshadowingManager: {
 				findForeshadowingFile: vi.fn().mockReturnValue(null),
 				parseEntries: vi.fn().mockReturnValue([]),
 				buildChapterForeshadowingMap: vi.fn().mockResolvedValue(new Map())
+			},
+			taskManager: {
+				reconcileTasks: vi.fn().mockResolvedValue(undefined),
+				loadEntries: vi.fn().mockResolvedValue([]),
+				getTaskFile: vi.fn().mockReturnValue(null),
+				getNextPeriod: vi.fn().mockReturnValue('1'),
+				addEntry: vi.fn().mockResolvedValue(undefined)
 			},
 			writingJourneyService: {
 				getJourneyLog: vi.fn().mockResolvedValue({ status: 'valid', log: { version: 1, events: [] } }),
@@ -355,6 +384,33 @@ describe('WorkbenchView', () => {
 		const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
 		expect(view.getViewType()).toBe(WORKBENCH_VIEW_TYPE);
 		expect(view.getDisplayText()).toBe('view.workbench');
+	});
+
+	it('initializes a new workbench using status memory before broadcasting its selected work', async () => {
+		getCurrentBookContextMock.mockImplementation((_app: unknown, _plugin: unknown, options?: { preferStatusViewContext?: boolean }) =>
+			options?.preferStatusViewContext ? 'NovelB' : 'NovelA');
+		const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+		await view.onOpen();
+		expect(view.currentBookPath).toBe('NovelB');
+		expect(mockApp.workspace.trigger).toHaveBeenCalledWith('webnovel-workbench-book-changed', 'NovelB');
+		expect(mockApp.workspace.trigger).not.toHaveBeenCalledWith('webnovel-workbench-book-changed', 'NovelA');
+		Object.assign(view.containerEl, { removeEventListener: vi.fn() });
+		Object.assign(view.contentEl, { removeEventListener: vi.fn() });
+		await view.onClose();
+		getCurrentBookContextMock.mockReset();
+	});
+
+	it('preserves an already selected work when opening the workbench', async () => {
+		getCurrentBookContextMock.mockReturnValue('NovelB');
+		const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+		view.currentBookPath = 'NovelC';
+		await view.onOpen();
+		expect(view.currentBookPath).toBe('NovelC');
+		expect(getCurrentBookContextMock).not.toHaveBeenCalled();
+		Object.assign(view.containerEl, { removeEventListener: vi.fn() });
+		Object.assign(view.contentEl, { removeEventListener: vi.fn() });
+		await view.onClose();
+		getCurrentBookContextMock.mockReset();
 	});
 
 	it('should debounce vault rename, delete, modify, and metadataCache changed events with workbench-refresh and cancel on close', async () => {
@@ -385,26 +441,75 @@ describe('WorkbenchView', () => {
 
 		// Trigger rename
 		vaultHandlers['rename'](file1, 'NovelA/old.md');
-		expect(debounceSpy).toHaveBeenCalledWith('workbench-refresh', expect.any(Function), 500);
+		const viewRefreshKey = (view as unknown as { refreshDebounceKey: string }).refreshDebounceKey;
+		expect(debounceSpy).toHaveBeenCalledWith(viewRefreshKey, expect.any(Function), 500, expect.anything());
 
 		// Trigger delete
 		debounceSpy.mockClear();
 		vaultHandlers['delete'](file1);
-		expect(debounceSpy).toHaveBeenCalledWith('workbench-refresh', expect.any(Function), 500);
+		expect(debounceSpy).toHaveBeenCalledWith(viewRefreshKey, expect.any(Function), 500, expect.anything());
 
 		// Trigger modify
 		debounceSpy.mockClear();
 		vaultHandlers['modify'](file1);
-		expect(debounceSpy).toHaveBeenCalledWith('workbench-refresh', expect.any(Function), 1000);
+		expect(debounceSpy).toHaveBeenCalledWith(viewRefreshKey, expect.any(Function), 1000, expect.anything());
 
 		// Trigger metadataCache changed
 		debounceSpy.mockClear();
 		metadataHandlers['changed'](file1);
-		expect(debounceSpy).toHaveBeenCalledWith('workbench-refresh', expect.any(Function), 1000);
+		expect(debounceSpy).toHaveBeenCalledWith(viewRefreshKey, expect.any(Function), 1000, expect.anything());
 
 		// Close view
 		await view.onClose();
-		expect(cancelSpy).toHaveBeenCalledWith('workbench-refresh');
+		expect(cancelSpy).toHaveBeenCalledWith(viewRefreshKey);
+	});
+
+	it('2 views receiving rename/modify and closing one without cancelling the other', async () => {
+		const vaultHandlers: Record<string, ((...args: unknown[]) => void)[]> = {};
+
+		mockApp.vault.on.mockImplementation((event: string, handler: (...args: unknown[]) => void) => {
+			if (!vaultHandlers[event]) vaultHandlers[event] = [];
+			vaultHandlers[event].push(handler);
+		});
+
+		// Simulated real debounce manager with callback tracking per key
+		const scheduledCallbacks = new Map<string, () => void>();
+		const debounceSpy = vi.fn((key: string, fn: () => void) => {
+			scheduledCallbacks.set(key, fn);
+		});
+		const cancelSpy = vi.fn((key: string) => {
+			scheduledCallbacks.delete(key);
+		});
+		plugin.adaptiveDebounceManager = {
+			debounceFixed: debounceSpy,
+			cancel: cancelSpy
+		};
+
+		const mockLeaf1 = { app: mockApp, view: { getViewType: () => 'webnovel-workbench' } };
+		const mockLeaf2 = { app: mockApp, view: { getViewType: () => 'webnovel-workbench' } };
+		const view1 = new WorkbenchView(mockLeaf1 as unknown as import('obsidian').WorkspaceLeaf, plugin);
+		const view2 = new WorkbenchView(mockLeaf2 as unknown as import('obsidian').WorkspaceLeaf, plugin);
+		(view1 as unknown as { container: unknown }).container = view1.contentEl;
+		(view2 as unknown as { container: unknown }).container = view2.contentEl;
+
+		// Both views are set to NovelA
+		view1.setBookPath('NovelA');
+		view2.setBookPath('NovelA');
+
+		// Trigger rename: handlers for both views run
+		for (const h of vaultHandlers['rename'] || []) {
+			h(file1, 'NovelA/old.md');
+		}
+
+		// In baseline: both used shared key 'workbench-refresh', so scheduledCallbacks only has 1 entry
+		// and closing view2 cancels that shared key, canceling view1's work!
+		expect(scheduledCallbacks.size).toBe(2);
+
+		// Close view2
+		await view2.onClose();
+
+		// view1's scheduled refresh MUST still be alive and not cancelled!
+		expect(scheduledCallbacks.size).toBe(1);
 	});
 
 	it('should only trigger reload for markdown modify if the file belongs to the current book (or its dependencies)', async () => {
@@ -489,8 +594,9 @@ describe('WorkbenchView', () => {
 		const reloadSpy = vi.spyOn(view, 'reloadBoard').mockImplementation(async () => {});
 
 		// In default mode, rename schedules debounce with 500ms delay and running it reloads board
+		const viewRefreshKey = (view as unknown as { refreshDebounceKey: string }).refreshDebounceKey;
 		vaultHandlers['rename'](file1, 'NovelA/old.md');
-		expect(debounceSpy).toHaveBeenLastCalledWith('workbench-refresh', expect.any(Function), 500);
+		expect(debounceSpy).toHaveBeenLastCalledWith(viewRefreshKey, expect.any(Function), 500, expect.anything());
 		expect(reloadSpy).not.toHaveBeenCalled();
 		expect(queuedCallback).toBeDefined();
 		(queuedCallback as unknown as () => void)();
@@ -499,7 +605,7 @@ describe('WorkbenchView', () => {
 		// In default mode, modify schedules debounce with 1000ms delay and running it reloads board
 		reloadSpy.mockClear();
 		vaultHandlers['modify'](file1);
-		expect(debounceSpy).toHaveBeenLastCalledWith('workbench-refresh', expect.any(Function), 1000);
+		expect(debounceSpy).toHaveBeenLastCalledWith(viewRefreshKey, expect.any(Function), 1000, expect.anything());
 		expect(queuedCallback).toBeDefined();
 		(queuedCallback as unknown as () => void)();
 		expect(reloadSpy).toHaveBeenCalledTimes(1);
@@ -552,10 +658,11 @@ describe('WorkbenchView', () => {
 		expect((view as unknown as { cachedForeshadowingMap: unknown }).cachedForeshadowingMap).toBe(staleMap);
 
 		// Current-book foreshadowing modify with isFileInWorkspace=false clears both cache fields and schedules/executes 150ms reload
+		const viewRefreshKey = (view as unknown as { refreshDebounceKey: string }).refreshDebounceKey;
 		vaultHandlers['modify'](currentForeshadowFile);
 		expect((view as unknown as { cachedForeshadowingMap: unknown }).cachedForeshadowingMap).toBeNull();
 		expect((view as unknown as { cachedForeshadowingBookPath: unknown }).cachedForeshadowingBookPath).toBeNull();
-		expect(debounceSpy).toHaveBeenCalledWith('workbench-refresh', expect.any(Function), 150);
+		expect(debounceSpy).toHaveBeenCalledWith(viewRefreshKey, expect.any(Function), 150, expect.anything());
 		expect(reloadSpy).not.toHaveBeenCalled();
 		(queuedCallback as unknown as () => void)();
 		expect(reloadSpy).toHaveBeenCalledTimes(1);
@@ -566,7 +673,7 @@ describe('WorkbenchView', () => {
 		queuedCallback = null;
 		plugin.cacheManager.isFileInWorkspace = vi.fn().mockReturnValue(true);
 		vaultHandlers['modify'](ordinaryChapterFile);
-		expect(debounceSpy).toHaveBeenCalledWith('workbench-refresh', expect.any(Function), 1000);
+		expect(debounceSpy).toHaveBeenCalledWith(viewRefreshKey, expect.any(Function), 1000, expect.anything());
 		(queuedCallback as unknown as () => void)();
 		expect(reloadSpy).toHaveBeenCalledTimes(1);
 	});
@@ -862,7 +969,9 @@ describe('WorkbenchView', () => {
 		expect(firstRenderOptions).not.toHaveProperty('isDescending');
 
 		// Click the type tab
-		const typeTabs = view.contentEl.querySelectorAll('.wn-lore-file-tab');
+		const typeRow = view.contentEl.querySelector('.wn-timeline-type-filter-row');
+		expect(typeRow).not.toBeNull();
+		const typeTabs = typeRow?.querySelectorAll('.wn-lore-file-tab') || [];
 		const specificTypeTab = Array.from(typeTabs).find(t => t.textContent === '主线');
 		expect(specificTypeTab).toBeDefined();
 
@@ -870,18 +979,18 @@ describe('WorkbenchView', () => {
 		(specificTypeTab as HTMLElement).click();
 
 		expect(mockApp.workspace.trigger).not.toHaveBeenCalledWith('timeline-filter-changed', expect.anything());
-		expect((view as unknown as { currentTimelineFilter: string }).currentTimelineFilter).toBe('主线');
+		expect((view as unknown as { currentTimelineFilter: string[] }).currentTimelineFilter).toEqual(['主线']);
 
 		// Wait for reloadBoard
 		await new Promise(resolve => setTimeout(resolve, 0));
 		expect(TimelineBoardRenderer.render).toHaveBeenCalledWith(
 			expect.objectContaining({
-				currentTimelineFilter: '主线'
+				currentTimelineFilter: ['主线']
 			})
 		);
 
 		// Click lore filter
-		const loreRow = view.contentEl.querySelector('.wn-multi-select-filter-row');
+		const loreRow = view.contentEl.querySelector('.wn-timeline-lore-filter-row');
 		expect(loreRow).not.toBeNull();
 		const loreBtns = loreRow?.querySelectorAll('.wn-lore-file-tab');
 		expect(loreBtns).toHaveLength(2);
@@ -892,6 +1001,171 @@ describe('WorkbenchView', () => {
 		await new Promise(resolve => setTimeout(resolve, 0));
 		expect(TimelineBoardRenderer.render).toHaveBeenCalledWith(
 			expect.objectContaining({ currentTimelineLoreFilter: ['甲'] })
+		);
+	});
+
+	it('supports multi-selecting timeline types, toggling, and clearing types without clearing lore filter', async () => {
+		const v1c1 = new MockTFile('第1章.md', 'NovelA/第一卷/第1章.md');
+		plugin.getTrackedMarkdownFiles = vi.fn().mockReturnValue([v1c1] as unknown as TFile[]);
+		getCurrentBookContextMock.mockReturnValue('NovelA');
+
+		const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+		view.currentBookPath = 'NovelA';
+		(view as unknown as { container: unknown }).container = view.contentEl;
+		(view as unknown as { sortMode: string }).sortMode = 'timeline';
+
+		plugin.timelineManager.loadEntries = vi.fn().mockResolvedValue([
+			{ type: '主线', items: [{ description: '', chapter: '' }], lores: ['甲'] },
+			{ type: '支线', items: [{ description: '', chapter: '' }], lores: ['乙'] },
+			{ type: '日常', items: [{ description: '', chapter: '' }], lores: ['丙'] }
+		]);
+
+		await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+
+		const typeRow = view.contentEl.querySelector('.wn-timeline-type-filter-row');
+		expect(typeRow).not.toBeNull();
+		const getTypeButton = (label: string): HTMLElement => {
+			const row = view.contentEl.querySelector('.wn-timeline-type-filter-row');
+			const button = Array.from(row?.querySelectorAll('.wn-lore-file-tab') || []).find(t => t.textContent === label);
+			expect(button).toBeDefined();
+			return button as HTMLElement;
+		};
+
+		// 1. Select 主线
+		(TimelineBoardRenderer.render as ReturnType<typeof vi.fn>).mockClear();
+		getTypeButton('主线').click();
+		await new Promise(resolve => setTimeout(resolve, 0));
+		expect((view as unknown as { currentTimelineFilter: string[] }).currentTimelineFilter).toEqual(['主线']);
+		expect(TimelineBoardRenderer.render).toHaveBeenCalledWith(
+			expect.objectContaining({ currentTimelineFilter: ['主线'] })
+		);
+
+		// 2. Select 支线 -> multi-selection ['主线', '支线']
+		(TimelineBoardRenderer.render as ReturnType<typeof vi.fn>).mockClear();
+		getTypeButton('支线').click();
+		await new Promise(resolve => setTimeout(resolve, 0));
+		expect((view as unknown as { currentTimelineFilter: string[] }).currentTimelineFilter).toEqual(['主线', '支线']);
+		expect(getTypeButton('主线').getAttribute('aria-pressed')).toBe('true');
+		expect(getTypeButton('支线').getAttribute('aria-pressed')).toBe('true');
+		expect(TimelineBoardRenderer.render).toHaveBeenCalledWith(
+			expect.objectContaining({ currentTimelineFilter: ['主线', '支线'] })
+		);
+
+		// 3. Select lore filter '甲'
+		const loreRow = view.contentEl.querySelector('.wn-timeline-lore-filter-row');
+		const loreBtns = loreRow?.querySelectorAll('.wn-lore-file-tab') || [];
+		const loreJia = Array.from(loreBtns).find(t => t.textContent === '甲');
+		(loreJia as HTMLElement).click();
+		await new Promise(resolve => setTimeout(resolve, 0));
+		expect((view as unknown as { currentTimelineLoreFilter: string[] }).currentTimelineLoreFilter).toEqual(['甲']);
+
+		// 4. Click 'common.all-types' -> clears types to [], but lore filter ['甲'] remains
+		(TimelineBoardRenderer.render as ReturnType<typeof vi.fn>).mockClear();
+		getTypeButton('common.all-types').click();
+		await new Promise(resolve => setTimeout(resolve, 0));
+		expect((view as unknown as { currentTimelineFilter: string[] }).currentTimelineFilter).toEqual([]);
+		expect((view as unknown as { currentTimelineLoreFilter: string[] }).currentTimelineLoreFilter).toEqual(['甲']);
+		expect(TimelineBoardRenderer.render).toHaveBeenCalledWith(
+			expect.objectContaining({
+				currentTimelineFilter: [],
+				currentTimelineLoreFilter: ['甲']
+			})
+		);
+
+		getTypeButton('主线').click();
+		await new Promise(resolve => setTimeout(resolve, 0));
+		getTypeButton('主线').click();
+		await new Promise(resolve => setTimeout(resolve, 0));
+		expect((view as unknown as { currentTimelineFilter: string[] }).currentTimelineFilter).toEqual([]);
+		expect(getTypeButton('common.all-types').getAttribute('aria-pressed')).toBe('true');
+		expect((view as unknown as { currentTimelineLoreFilter: string[] }).currentTimelineLoreFilter).toEqual(['甲']);
+	});
+
+	it('clears timeline type and lore filters on work switch, setBookPath, and setState', async () => {
+		const handlers = new Map<string, (...args: unknown[]) => void>();
+		mockApp.workspace.on.mockImplementation((event: string, callback: (...args: unknown[]) => void) => {
+			handlers.set(event, callback);
+		});
+		const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+		view.currentBookPath = 'NovelA';
+		(view as unknown as { currentTimelineFilter: string[] }).currentTimelineFilter = ['主线'];
+		(view as unknown as { currentTimelineLoreFilter: string[] }).currentTimelineLoreFilter = ['甲'];
+
+		// setBookPath resets filters
+		(view as unknown as { setBookPath: (path: string) => void }).setBookPath('NovelB');
+		expect((view as unknown as { currentTimelineFilter: string[] }).currentTimelineFilter).toEqual([]);
+		expect((view as unknown as { currentTimelineLoreFilter: string[] }).currentTimelineLoreFilter).toEqual([]);
+
+		// setState resets filters
+		(view as unknown as { currentTimelineFilter: string[] }).currentTimelineFilter = ['支线'];
+		(view as unknown as { currentTimelineLoreFilter: string[] }).currentTimelineLoreFilter = ['乙'];
+		await view.setState({ sortMode: 'timeline', currentBookPath: 'NovelC' }, { history: false });
+		expect((view as unknown as { currentTimelineFilter: string[] }).currentTimelineFilter).toEqual([]);
+		expect((view as unknown as { currentTimelineLoreFilter: string[] }).currentTimelineLoreFilter).toEqual([]);
+
+		(view as unknown as { currentTimelineFilter: string[] }).currentTimelineFilter = ['主线', '支线'];
+		(view as unknown as { currentTimelineLoreFilter: string[] }).currentTimelineLoreFilter = ['甲'];
+		mockApp.workspace.getActiveFile.mockReturnValue(new MockTFile('第1章.md', 'NovelD/第1章.md'));
+		findBookRootMock.mockReturnValue('NovelD');
+		handlers.get('active-leaf-change')?.({ view: { getViewType: () => 'markdown' } });
+		expect(view.currentBookPath).toBe('NovelD');
+		expect((view as unknown as { currentTimelineFilter: string[] }).currentTimelineFilter).toEqual([]);
+		expect((view as unknown as { currentTimelineLoreFilter: string[] }).currentTimelineLoreFilter).toEqual([]);
+	});
+
+	it('preserves timeline type and lore filters across layout switcher between waterfall and trajectory', async () => {
+		const v1c1 = new MockTFile('第1章.md', 'NovelA/第一卷/第1章.md');
+		plugin.getTrackedMarkdownFiles = vi.fn().mockReturnValue([v1c1] as unknown as TFile[]);
+		getCurrentBookContextMock.mockReturnValue('NovelA');
+
+		const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+		view.currentBookPath = 'NovelA';
+		(view as unknown as { container: unknown }).container = view.contentEl;
+		(view as unknown as { sortMode: string }).sortMode = 'timeline';
+
+		plugin.timelineManager.loadEntries = vi.fn().mockResolvedValue([
+			{ type: '主线', items: [{ description: '', chapter: '' }], lores: ['甲'] }
+		]);
+
+		(view as unknown as { currentTimelineFilter: string[] }).currentTimelineFilter = ['主线'];
+		(view as unknown as { currentTimelineLoreFilter: string[] }).currentTimelineLoreFilter = ['甲'];
+
+		await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+
+		// Find layout switcher buttons
+		const switcherBtns = view.contentEl.querySelectorAll('.wn-lore-board-switcher-btn');
+		expect(switcherBtns).toHaveLength(2);
+
+		// Switch to Trajectory mode
+		(TimelineBoardRenderer.render as ReturnType<typeof vi.fn>).mockClear();
+		(switcherBtns[1] as HTMLElement).click();
+		await new Promise(resolve => setTimeout(resolve, 0));
+
+		expect((view as unknown as { isTimelineTrajectoryMode: boolean }).isTimelineTrajectoryMode).toBe(true);
+		expect((view as unknown as { currentTimelineFilter: string[] }).currentTimelineFilter).toEqual(['主线']);
+		expect((view as unknown as { currentTimelineLoreFilter: string[] }).currentTimelineLoreFilter).toEqual(['甲']);
+		expect(TimelineBoardRenderer.render).toHaveBeenCalledWith(
+			expect.objectContaining({
+				isTrajectoryMode: true,
+				currentTimelineFilter: ['主线'],
+				currentTimelineLoreFilter: ['甲']
+			})
+		);
+
+		// Switch back to Waterfall mode
+		(TimelineBoardRenderer.render as ReturnType<typeof vi.fn>).mockClear();
+		(view.contentEl.querySelectorAll('.wn-lore-board-switcher-btn')[0] as HTMLElement).click();
+		await new Promise(resolve => setTimeout(resolve, 0));
+
+		expect((view as unknown as { isTimelineTrajectoryMode: boolean }).isTimelineTrajectoryMode).toBe(false);
+		expect((view as unknown as { currentTimelineFilter: string[] }).currentTimelineFilter).toEqual(['主线']);
+		expect((view as unknown as { currentTimelineLoreFilter: string[] }).currentTimelineLoreFilter).toEqual(['甲']);
+		expect(TimelineBoardRenderer.render).toHaveBeenCalledWith(
+			expect.objectContaining({
+				isTrajectoryMode: false,
+				currentTimelineFilter: ['主线'],
+				currentTimelineLoreFilter: ['甲']
+			})
 		);
 	});
 
@@ -1737,6 +2011,549 @@ describe('WorkbenchView', () => {
 				query: '划痕'
 			});
 			expect(noMatch).toEqual([]);
+		});
+	});
+
+	describe('Batch 4 optimization regressions', () => {
+		it('avoids unused chapter enumeration and foreshadowing map for task/journey/lore-card/graph/trajectory', async () => {
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			view.currentBookPath = 'NovelA';
+			(view as unknown as { container: unknown }).container = view.contentEl;
+
+			const getFilesSpy = vi.spyOn(plugin, 'getTrackedMarkdownFiles');
+			const fmSpy = plugin.foreshadowingManager?.buildChapterForeshadowingMap as ReturnType<typeof vi.fn>;
+
+			// 1. Task board
+			(view as unknown as { sortMode: string }).sortMode = 'task';
+			getFilesSpy.mockClear();
+			fmSpy.mockClear();
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+			expect(getFilesSpy).not.toHaveBeenCalled();
+			expect(fmSpy).not.toHaveBeenCalled();
+
+			// 2. Journey board
+			(view as unknown as { sortMode: string }).sortMode = 'journey';
+			getFilesSpy.mockClear();
+			fmSpy.mockClear();
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+			expect(getFilesSpy).not.toHaveBeenCalled();
+			expect(fmSpy).not.toHaveBeenCalled();
+
+			// 3. Lore cards
+			(view as unknown as { sortMode: string }).sortMode = 'lore';
+			plugin.settings.loreBoardLayout = 'cards';
+			getFilesSpy.mockClear();
+			fmSpy.mockClear();
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+			expect(getFilesSpy).not.toHaveBeenCalled();
+			expect(fmSpy).not.toHaveBeenCalled();
+
+			// 4. Lore graph
+			plugin.settings.loreBoardLayout = 'graph';
+			getFilesSpy.mockClear();
+			fmSpy.mockClear();
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+			expect(getFilesSpy).not.toHaveBeenCalled();
+			expect(fmSpy).not.toHaveBeenCalled();
+
+			// 5. Trajectory mode
+			(view as unknown as { sortMode: string }).sortMode = 'timeline';
+			(view as unknown as { isTimelineTrajectoryMode: boolean }).isTimelineTrajectoryMode = true;
+			getFilesSpy.mockClear();
+			fmSpy.mockClear();
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+			expect(getFilesSpy).toHaveBeenCalled();
+			expect(fmSpy).not.toHaveBeenCalled();
+
+			await view.onClose();
+		});
+
+		it('lore table still receives enumerated chapters', async () => {
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			view.currentBookPath = 'NovelA';
+			(view as unknown as { container: unknown }).container = view.contentEl;
+
+			const loreSpy = vi.spyOn(LoreBoardRenderer, 'render').mockResolvedValue(undefined);
+			(view as unknown as { sortMode: string }).sortMode = 'lore';
+			plugin.settings.loreBoardLayout = 'table';
+
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+			expect(loreSpy).toHaveBeenCalled();
+			const opts = loreSpy.mock.calls[0][0];
+			expect(opts.files.length).toBeGreaterThan(0);
+			expect(opts.files[0].path).toBe('NovelA/第1章.md');
+			loreSpy.mockRestore();
+			await view.onClose();
+		});
+
+		it('lazy create finds last chapter when clicked in layouts that skipped chapter enumeration', async () => {
+			const v1 = new MockTFolder('NovelA', 'NovelA');
+			const c1 = new MockTFile('第1章.md', 'NovelA/第1章.md', v1);
+			const c2 = new MockTFile('第2章.md', 'NovelA/第2章.md', v1);
+			plugin.getTrackedMarkdownFiles = vi.fn().mockReturnValue([c1, c2]);
+
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			view.currentBookPath = 'NovelA';
+			(view as unknown as { container: unknown }).container = view.contentEl;
+
+			(view as unknown as { sortMode: string }).sortMode = 'foreshadowing';
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+
+			expect(plugin.getTrackedMarkdownFiles).not.toHaveBeenCalled();
+
+			const newChapterBtn = view.contentEl.querySelector('.wn-corkboard-new-chapter-btn') as HTMLElement;
+			expect(newChapterBtn).toBeDefined();
+
+			mockModalInstances.length = 0;
+			newChapterBtn.click();
+
+			expect(plugin.getTrackedMarkdownFiles).toHaveBeenCalled();
+			expect(mockModalInstances.length).toBe(1);
+			const modal = mockModalInstances[0] as { defaultPrefix?: string };
+			expect(modal.defaultPrefix).toBe('第3章 ');
+
+			await view.onClose();
+		});
+
+		it('default single-file metadata update retains other card identity, header, and preserves collapsed state', async () => {
+			const c1 = new MockTFile('第1章.md', 'NovelA/第1章.md');
+			const c2 = new MockTFile('第2章.md', 'NovelA/第2章.md');
+			plugin.getTrackedMarkdownFiles = vi.fn().mockReturnValue([c1, c2]);
+			(mockApp.vault.getAbstractFileByPath as ReturnType<typeof vi.fn>).mockImplementation((p: string) => {
+				if (p === c1.path) return c1;
+				if (p === c2.path) return c2;
+				return null;
+			});
+
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			view.currentBookPath = 'NovelA';
+			(view as unknown as { container: unknown }).container = view.contentEl;
+
+			vi.mocked(CorkboardGridRenderer.render).mockImplementation((opts) => {
+				for (const f of opts.files) {
+					const card = opts.container.createDiv('wn-corkboard-card');
+					card.setAttribute('data-path', f.path);
+					card.setAttribute('data-basename', f.basename);
+					card.createDiv({ cls: 'wn-corkboard-card-title', text: f.basename });
+				}
+			});
+
+			await view.onOpen();
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+
+			const headerBefore = view.contentEl.querySelector('.wn-corkboard-header');
+			const cardsBefore = view.contentEl.querySelectorAll('.wn-corkboard-card');
+			expect(cardsBefore.length).toBe(2);
+			const card1Before = cardsBefore[0];
+			const card2Before = cardsBefore[1];
+
+			card1Before.addClass('is-volume-collapsed');
+			card1Before.addClass('is-important');
+
+			(view as unknown as { handleMarkdownFileChanged: (f: unknown) => void }).handleMarkdownFileChanged(c1);
+
+			const headerAfter = view.contentEl.querySelector('.wn-corkboard-header');
+			expect(headerAfter).toBe(headerBefore);
+
+			const card2After = view.contentEl.querySelector('.wn-corkboard-card[data-path="NovelA/第2章.md"]');
+			expect(card2After).toBe(card2Before);
+
+			const card1After = view.contentEl.querySelector('.wn-corkboard-card[data-path="NovelA/第1章.md"]');
+			expect(card1After).not.toBe(card1Before);
+			expect(card1After?.hasClass('is-volume-collapsed')).toBe(true);
+			expect(card1After?.hasClass('is-important')).toBe(false);
+
+			await view.onClose();
+		});
+
+		it('preserves an editor opened while a full board render was awaiting data', async () => {
+			const chapter = new MockTFile('第1章.md', 'NovelA/第1章.md');
+			plugin.getTrackedMarkdownFiles = vi.fn().mockReturnValue([chapter]);
+			mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) => path === chapter.path ? chapter : null);
+			vi.mocked(CorkboardGridRenderer.render).mockImplementation(options => {
+				const card = options.container.createDiv('wn-corkboard-card');
+				card.setAttribute('data-path', chapter.path);
+			});
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			view.currentBookPath = 'NovelA';
+			await view.onOpen();
+			const header = view.contentEl.querySelector('.wn-corkboard-header');
+			const card = view.contentEl.querySelector('.wn-corkboard-card')!;
+			let finish!: () => void;
+			vi.mocked(plugin.foreshadowingManager!.buildChapterForeshadowingMap).mockImplementationOnce(() => new Promise(resolve => {
+				finish = () => resolve(new Map());
+			}));
+			(view as unknown as { invalidateForeshadowingCache(): void }).invalidateForeshadowingCache();
+			const rendering = view.reloadBoard();
+			const input = card.createEl('input', { cls: 'wn-corkboard-title-input' });
+			input.value = 'Unsaved title';
+			finish();
+			await rendering;
+			expect(view.contentEl.querySelector('.wn-corkboard-header')).toBe(header);
+			expect(view.contentEl.querySelector('.wn-corkboard-title-input')).toBe(input);
+			await view.onClose();
+		});
+
+		it('filtered and structural changes still trigger full rebuild', async () => {
+			const c1 = new MockTFile('第1章.md', 'NovelA/第1章.md');
+			plugin.getTrackedMarkdownFiles = vi.fn().mockReturnValue([c1]);
+			(mockApp.vault.getAbstractFileByPath as ReturnType<typeof vi.fn>).mockReturnValue(c1);
+
+			vi.mocked(CorkboardGridRenderer.render).mockImplementation((opts) => {
+				const card = opts.container.createDiv('wn-corkboard-card');
+				card.setAttribute('data-path', c1.path);
+			});
+
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			view.currentBookPath = 'NovelA';
+			(view as unknown as { container: unknown }).container = view.contentEl;
+
+			await view.onOpen();
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+
+			// 1. Filter query -> full rebuild
+			(view as unknown as { chapterFilterQuery: string }).chapterFilterQuery = 'search';
+			const header1 = view.contentEl.querySelector('.wn-corkboard-header');
+			(view as unknown as { handleMarkdownFileChanged: (f: unknown) => void }).handleMarkdownFileChanged(c1);
+			await new Promise((r) => setTimeout(r, 0));
+			const header2 = view.contentEl.querySelector('.wn-corkboard-header');
+			expect(header2).not.toBe(header1);
+
+			// 2. Important only -> full rebuild
+			(view as unknown as { chapterFilterQuery: string }).chapterFilterQuery = '';
+			(view as unknown as { isChapterImportantOnly: boolean }).isChapterImportantOnly = true;
+			const header3 = view.contentEl.querySelector('.wn-corkboard-header');
+			(view as unknown as { handleMarkdownFileChanged: (f: unknown) => void }).handleMarkdownFileChanged(c1);
+			await new Promise((r) => setTimeout(r, 0));
+			const header4 = view.contentEl.querySelector('.wn-corkboard-header');
+			expect(header4).not.toBe(header3);
+
+			await view.onClose();
+		});
+
+		it('active editor is retained and updated after blur', async () => {
+			const c1 = new MockTFile('第1章.md', 'NovelA/第1章.md');
+			const c2 = new MockTFile('第2章.md', 'NovelA/第2章.md');
+			plugin.getTrackedMarkdownFiles = vi.fn().mockReturnValue([c1, c2]);
+			(mockApp.vault.getAbstractFileByPath as ReturnType<typeof vi.fn>).mockImplementation((p: string) => {
+				if (p === c1.path) return c1;
+				if (p === c2.path) return c2;
+				return null;
+			});
+
+			vi.mocked(CorkboardGridRenderer.render).mockImplementation((opts) => {
+				for (const f of opts.files) {
+					const card = opts.container.createDiv('wn-corkboard-card');
+					card.setAttribute('data-path', f.path);
+					card.setAttribute('data-basename', f.basename);
+				}
+			});
+
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			view.currentBookPath = 'NovelA';
+			(view as unknown as { container: unknown }).container = view.contentEl;
+
+			await view.onOpen();
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+
+			const card1 = view.contentEl.querySelector('.wn-corkboard-card[data-path="NovelA/第1章.md"]')!;
+			const card2 = view.contentEl.querySelector('.wn-corkboard-card[data-path="NovelA/第2章.md"]')!;
+
+			const input = card1.createEl('input', { cls: 'wn-corkboard-title-input' });
+			input.value = 'User typing...';
+
+			(view as unknown as { handleMarkdownFileChanged: (f: unknown) => void }).handleMarkdownFileChanged(c1);
+			(view as unknown as { handleMarkdownFileChanged: (f: unknown) => void }).handleMarkdownFileChanged(c2);
+
+			// card1 must NOT be replaced while editor is active
+			expect(view.contentEl.querySelector('.wn-corkboard-card[data-path="NovelA/第1章.md"]')).toBe(card1);
+			expect(card1.querySelector('input')?.value).toBe('User typing...');
+
+			// card2 can be replaced
+			expect(view.contentEl.querySelector('.wn-corkboard-card[data-path="NovelA/第2章.md"]')).not.toBe(card2);
+
+			// Blur ends editing
+			input.addEventListener('blur', () => { input.remove(); });
+			input.blur();
+			await new Promise((r) => setTimeout(r, 350));
+
+			// Now card1 is replaced
+			const card1AfterBlur = view.contentEl.querySelector('.wn-corkboard-card[data-path="NovelA/第1章.md"]');
+			expect(card1AfterBlur).not.toBe(card1);
+
+			await view.onClose();
+		});
+
+		it('focused non-editor button does not treat card as editing or create a reschedule loop', async () => {
+			const c1 = new MockTFile('第1章.md', 'NovelA/第1章.md');
+			plugin.getTrackedMarkdownFiles = vi.fn().mockReturnValue([c1]);
+			(mockApp.vault.getAbstractFileByPath as ReturnType<typeof vi.fn>).mockReturnValue(c1);
+
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			view.currentBookPath = 'NovelA';
+			(view as unknown as { container: unknown }).container = view.contentEl;
+
+			vi.mocked(CorkboardGridRenderer.render).mockImplementation((opts) => {
+				const card = opts.container.createDiv('wn-corkboard-card');
+				(card as unknown as { ownerDocument: unknown }).ownerDocument = (view.contentEl as unknown as { ownerDocument: unknown }).ownerDocument;
+				card.setAttribute('data-path', c1.path);
+				const btn = card.createDiv('wn-card-btn');
+				btn.focus = () => {
+					((view.contentEl as unknown as { ownerDocument: { activeElement: unknown } }).ownerDocument).activeElement = btn;
+				};
+			});
+
+			await view.onOpen();
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+
+			const card = view.contentEl.querySelector('.wn-corkboard-card[data-path="NovelA/第1章.md"]')!;
+			const btn = card.querySelector<HTMLElement>('.wn-card-btn')!;
+			btn.focus();
+
+			// Calling isCardEditing on this card must be false
+			const isEditing = (view as unknown as { isCardEditing: (c: unknown) => boolean }).isCardEditing(card);
+			expect(isEditing).toBe(false);
+
+			await view.onClose();
+		});
+
+		it('ignores unrelated work events', async () => {
+			const vaultHandlers: Record<string, ((...args: unknown[]) => void)> = {};
+			mockApp.vault.on.mockImplementation((event: string, handler: (...args: unknown[]) => void) => {
+				vaultHandlers[event] = handler;
+			});
+
+			const debounceSpy = vi.fn();
+			plugin.adaptiveDebounceManager = {
+				debounceFixed: debounceSpy,
+				cancel: vi.fn()
+			};
+
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			view.currentBookPath = 'NovelA';
+			(view as unknown as { container: unknown }).container = view.contentEl;
+
+			const otherFile = new MockTFile('第1章.md', 'NovelB/第1章.md');
+
+			// Unrelated rename
+			vaultHandlers['rename'](otherFile, 'NovelB/old.md');
+			expect(debounceSpy).not.toHaveBeenCalled();
+
+			// Unrelated delete
+			vaultHandlers['delete'](otherFile);
+			expect(debounceSpy).not.toHaveBeenCalled();
+
+			// Unrelated modify
+			(view as unknown as { handleMarkdownFileChanged: (f: unknown) => void }).handleMarkdownFileChanged(otherFile);
+			expect(debounceSpy).not.toHaveBeenCalled();
+
+			await view.onClose();
+		});
+
+		it('rapid work switch and view close prevents stale updates and cache poisoning', async () => {
+			let resolveForeshadowing: ((val: Map<string, import('../src/types/foreshadowing').ParsedForeshadowingEntry[]>) => void) | null = null;
+			(plugin.foreshadowingManager!.buildChapterForeshadowingMap as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+				return new Promise(resolve => {
+					resolveForeshadowing = resolve;
+				});
+			});
+
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			view.currentBookPath = 'NovelA';
+			(view as unknown as { container: unknown }).container = view.contentEl;
+
+			const renderPromise = (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+
+			// Switch to NovelB
+			view.setBookPath('NovelB');
+
+			const staleEntry = { description: 'stale' } as import('../src/types/foreshadowing').ParsedForeshadowingEntry;
+			const staleMap = new Map<string, import('../src/types/foreshadowing').ParsedForeshadowingEntry[]>([
+				['NovelA/第1章.md', [staleEntry]]
+			]);
+			resolveForeshadowing!(staleMap);
+			await renderPromise;
+
+			expect((view as unknown as { cachedForeshadowingMap: Map<string, unknown> | null }).cachedForeshadowingMap).not.toBe(staleMap);
+			expect((view as unknown as { cachedForeshadowingMap: Map<string, unknown> | null }).cachedForeshadowingMap?.get('NovelA/第1章.md')).toBeUndefined();
+
+			// Cache key reflects chapter changes
+			const c1 = new MockTFile('第1章.md', 'NovelA/第1章.md');
+			const key1 = (view as unknown as { getForeshadowingCacheKey: (bp: string, f: import('obsidian').TFile[]) => string }).getForeshadowingCacheKey('NovelA', [c1 as unknown as import('obsidian').TFile]);
+			c1.stat = { mtime: 2 };
+			const key2 = (view as unknown as { getForeshadowingCacheKey: (bp: string, f: import('obsidian').TFile[]) => string }).getForeshadowingCacheKey('NovelA', [c1 as unknown as import('obsidian').TFile]);
+			expect(key1).not.toBe(key2);
+
+			await view.onClose();
+		});
+
+		it('deferred old editor blurring after work switch or close does not schedule refresh on new work', async () => {
+			const c1 = new MockTFile('第1章.md', 'NovelA/第1章.md');
+			plugin.getTrackedMarkdownFiles = vi.fn().mockReturnValue([c1]);
+			(mockApp.vault.getAbstractFileByPath as ReturnType<typeof vi.fn>).mockReturnValue(c1);
+
+			vi.mocked(CorkboardGridRenderer.render).mockImplementation((opts) => {
+				const card = opts.container.createDiv('wn-corkboard-card');
+				(card as unknown as { ownerDocument: unknown }).ownerDocument = opts.container.ownerDocument;
+				card.setAttribute('data-path', c1.path);
+			});
+
+			const debounceSpy = vi.fn();
+			plugin.adaptiveDebounceManager = {
+				debounceFixed: debounceSpy,
+				cancel: vi.fn()
+			};
+
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			view.currentBookPath = 'NovelA';
+			(view as unknown as { container: unknown }).container = view.contentEl;
+
+			await view.onOpen();
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+
+			const card = view.contentEl.querySelector('.wn-corkboard-card[data-path="NovelA/第1章.md"]')!;
+			const input = card.createEl('input', { cls: 'wn-corkboard-title-input' });
+
+			// Incremental refresh triggered while editing is active -> deferred
+			(view as unknown as { handleMarkdownFileChanged: (f: unknown) => void }).handleMarkdownFileChanged(c1);
+
+			// Switch work to NovelB before editor blurs
+			view.setBookPath('NovelB');
+			debounceSpy.mockClear();
+
+			// Old editor blurs AFTER work switch
+			input.blur();
+			await new Promise((r) => setTimeout(r, 50));
+
+			// Must not schedule any incremental or full refresh on NovelB
+			expect(debounceSpy).not.toHaveBeenCalled();
+
+			await view.onClose();
+		});
+
+		it('structural refresh during slow edit save is deferred until save completes and has priority over card updates', async () => {
+			const c1 = new MockTFile('第1章.md', 'NovelA/第1章.md');
+			plugin.getTrackedMarkdownFiles = vi.fn().mockReturnValue([c1]);
+			(mockApp.vault.getAbstractFileByPath as ReturnType<typeof vi.fn>).mockReturnValue(c1);
+
+			vi.mocked(CorkboardGridRenderer.render).mockImplementation((opts) => {
+				const card = opts.container.createDiv('wn-corkboard-card');
+				(card as unknown as { ownerDocument: unknown }).ownerDocument = opts.container.ownerDocument;
+				card.setAttribute('data-path', c1.path);
+			});
+
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			view.currentBookPath = 'NovelA';
+			(view as unknown as { container: unknown }).container = view.contentEl;
+
+			await view.onOpen();
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+
+			const headerBefore = view.contentEl.querySelector('.wn-corkboard-header');
+			const card = view.contentEl.querySelector('.wn-corkboard-card[data-path="NovelA/第1章.md"]')!;
+			const input = card.createEl('input', { cls: 'wn-corkboard-title-input' });
+			input.value = 'Editing...';
+
+			// Trigger a structural refresh while editing
+			await view.reloadBoard();
+
+			// Header must NOT have been recreated yet because reload was deferred
+			expect(view.contentEl.querySelector('.wn-corkboard-header')).toBe(headerBefore);
+			expect((view as unknown as { hasPendingDeferredFullReload: boolean }).hasPendingDeferredFullReload).toBe(true);
+
+			// Simulate async save start
+			(view as unknown as { handleSaveStateChange: (s: boolean) => void }).handleSaveStateChange(true);
+			input.blur();
+
+			// Still saving -> reload remains deferred
+			expect(view.contentEl.querySelector('.wn-corkboard-header')).toBe(headerBefore);
+
+			// Save finishes
+			input.remove();
+			(view as unknown as { handleSaveStateChange: (s: boolean) => void }).handleSaveStateChange(false);
+			await new Promise((r) => setTimeout(r, 50));
+
+			// Full reload completed and replaced header
+			expect(view.contentEl.querySelector('.wn-corkboard-header')).not.toBe(headerBefore);
+			expect((view as unknown as { hasPendingDeferredFullReload: boolean }).hasPendingDeferredFullReload).toBe(false);
+
+			await view.onClose();
+		});
+
+		it('handles vault create as structural refresh and follows work-root or ancestor folder rename', async () => {
+			const vaultHandlers: Record<string, ((...args: unknown[]) => void)> = {};
+			mockApp.vault.on.mockImplementation((event: string, handler: (...args: unknown[]) => void) => {
+				vaultHandlers[event] = handler;
+			});
+
+			const debounceSpy = vi.fn();
+			plugin.adaptiveDebounceManager = {
+				debounceFixed: debounceSpy,
+				cancel: vi.fn()
+			};
+
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			view.currentBookPath = 'Novels/NovelA';
+			(view as unknown as { container: unknown }).container = view.contentEl;
+
+			const setBookPathSpy = vi.spyOn(view, 'setBookPath');
+
+			// 1. Vault create inside current work
+			const newChapter = new MockTFile('第10章.md', 'Novels/NovelA/第10章.md');
+			vaultHandlers['create'](newChapter);
+			expect(debounceSpy).toHaveBeenCalled();
+			debounceSpy.mockClear();
+
+			// 2. Vault create outside current work -> ignored
+			const otherChapter = new MockTFile('第1章.md', 'Other/第1章.md');
+			vaultHandlers['create'](otherChapter);
+			expect(debounceSpy).not.toHaveBeenCalled();
+
+			// 3. Rename of selected work root -> follow moved path via setBookPath
+			const renamedFolder = new MockTFolder('NovelRenamed', 'Novels/NovelRenamed');
+			vaultHandlers['rename'](renamedFolder, 'Novels/NovelA');
+			expect(setBookPathSpy).toHaveBeenCalledWith('Novels/NovelRenamed');
+			setBookPathSpy.mockClear();
+
+			// 4. Rename of ancestor folder -> follow moved path via setBookPath
+			view.currentBookPath = 'Novels/NovelA';
+			const movedAncestor = new MockTFolder('Stories', 'Stories');
+			vaultHandlers['rename'](movedAncestor, 'Novels');
+			expect(setBookPathSpy).toHaveBeenCalledWith('Stories/NovelA');
+
+			await view.onClose();
+		});
+
+		it('switching layout during deferred foreshadowing map prevents wrong layout and cache poisoning', async () => {
+			let resolveForeshadowing: ((val: Map<string, import('../src/types/foreshadowing').ParsedForeshadowingEntry[]>) => void) | null = null;
+			(plugin.foreshadowingManager!.buildChapterForeshadowingMap as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+				return new Promise(resolve => {
+					resolveForeshadowing = resolve;
+				});
+			});
+
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			view.currentBookPath = 'NovelA';
+			(view as unknown as { container: unknown }).container = view.contentEl;
+
+			// Initial render in default layout
+			const renderPromise = (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+
+			// Switch layout to timeline while map is building
+			(view as unknown as { sortMode: string }).sortMode = 'timeline';
+			void view.reloadBoard();
+
+			const staleEntry = { description: 'stale-corkboard' } as import('../src/types/foreshadowing').ParsedForeshadowingEntry;
+			const staleMap = new Map<string, import('../src/types/foreshadowing').ParsedForeshadowingEntry[]>([
+				['NovelA/第1章.md', [staleEntry]]
+			]);
+			resolveForeshadowing!(staleMap);
+			await renderPromise;
+
+			// Stale render should not commit stale map
+			expect((view as unknown as { cachedForeshadowingMap: Map<string, unknown> | null }).cachedForeshadowingMap).not.toBe(staleMap);
+
+			await view.onClose();
 		});
 	});
 });

@@ -1,6 +1,13 @@
 import type { App } from 'obsidian';
 import { Notice, Setting } from 'obsidian';
-import { timelineNodeKey, type TimelineEntry, type TimelineItem } from '../../services/TimelineManager';
+import {
+	timelineNodeKey,
+	parseTimelineChapterList,
+	serializeTimelineChapterList,
+	aggregateTimelineChapterLists,
+	type TimelineEntry,
+	type TimelineItem
+} from '../../services/TimelineManager';
 import type { AccurateCountSettings } from '../../types/settings';
 import type { ChapterSorterContext, ChapterSorterSettings } from '../../services/ChapterSorter';
 import { ChapterSorter } from '../../services/ChapterSorter';
@@ -170,7 +177,7 @@ export class TimelineFormComponent {
 			const chapterListContainer = eventBlock.createDiv();
 			chapterListContainer.setCssProps({ marginBottom: '8px' });
 			
-			const existingChapters = item.chapter ? item.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean) : [];
+			const existingChapters = item.chapter ? parseTimelineChapterList(item.chapter) : [];
 			
 			const createChapterRow = (initialValue: string = '') => {
 				const row = chapterListContainer.createDiv();
@@ -333,7 +340,7 @@ export class TimelineFormComponent {
 					const value = select.value.trim();
 					if (value) chapters.push(value);
 				});
-				const chapter = [...new Set(chapters)].join(', ');
+				const chapter = serializeTimelineChapterList([...new Set(chapters)]);
 				const originalItem = blockItemMap.get(htmlBlock);
 				const important = originalItem?.important;
 				
@@ -366,7 +373,7 @@ export class TimelineFormComponent {
 				time,
 				type: typeSelect.value === '__custom__' ? customTypeInput.value.trim() : typeSelect.value,
 				description: items.map(it => it.description).filter(Boolean).join('\n'),
-				chapter: items.map(it => it.chapter).filter(Boolean).join(', '),
+				chapter: aggregateTimelineChapterLists(items.map(it => it.chapter)),
 				rawBlock: initialEntry?.rawBlock || '',
 				origin: items.find(it => it.origin)?.origin || initialEntry?.origin,
 				important: items.some(it => it.important) || initialEntry?.important,

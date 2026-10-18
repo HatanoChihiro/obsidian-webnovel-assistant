@@ -13,6 +13,15 @@ export class HistoryDataManager {
 	private historyData: Record<string, DailyStat> = {};
 	private historyFilePath: string;
 	private store: JsonSnapshotStore<Record<string, DailyStat>>;
+	private _wordRevision: number = 0;
+
+	public getWordRevision(): number {
+		return this._wordRevision;
+	}
+
+	private bumpWordRevision(): void {
+		this._wordRevision++;
+	}
 
 	constructor(plugin: WebNovelAssistantPlugin) {
 		this.plugin = plugin;
@@ -50,6 +59,7 @@ export class HistoryDataManager {
 				this.historyData = this.validateHistory(canonical);
 				this.plugin.settings.historyData = this.historyData;
 				this.store.markClean(this.historyData);
+				this.bumpWordRevision();
 				return this.historyData;
 			}
 
@@ -69,12 +79,14 @@ export class HistoryDataManager {
 					this.historyData = {};
 				}
 
+				this.bumpWordRevision();
 				return this.historyData;
 			}
 
 			// 3. 迁移：从旧版 dailyHistory key 迁移
 			if (data && data.dailyHistory !== undefined) {
 				this.historyData = this.validateHistory(data.dailyHistory);
+				this.bumpWordRevision();
 				if (Object.keys(this.historyData).length === 0) return {};
 				Logger.info('[HistoryDataManager] 从 dailyHistory 成功迁移数据');
 				this.store.markDirty();
@@ -84,6 +96,7 @@ export class HistoryDataManager {
 
 			// 无历史数据
 			this.historyData = {};
+			this.bumpWordRevision();
 			return {};
 		} catch (error) {
 			Logger.error('[HistoryDataManager] 加载历史数据失败:', error);
@@ -130,6 +143,7 @@ export class HistoryDataManager {
 		const parsed: unknown = JSON.parse(content);
 		const restored = this.parseHistoryBackup(parsed);
 		this.historyData = restored;
+		this.bumpWordRevision();
 		await this.store.save(restored);
 		return Object.keys(restored).length;
 	}
@@ -138,8 +152,13 @@ export class HistoryDataManager {
 	 * 更新指定日期的统计数据
 	 */
 	updateDailyStat(date: string, stat: DailyStat): void {
+		const existing = this.historyData[date];
+		const wordChanged = !existing || existing.addedWords !== stat.addedWords;
 		this.historyData[date] = stat;
 		this.store.markDirty();
+		if (wordChanged) {
+			this.bumpWordRevision();
+		}
 	}
 
 	/**
@@ -163,6 +182,7 @@ export class HistoryDataManager {
 				hourlySlack: new Array(24).fill(0)
 			};
 			this.store.markDirty();
+			this.bumpWordRevision();
 		}
 		return this.historyData[date];
 	}
@@ -171,18 +191,29 @@ export class HistoryDataManager {
 	 * 增加指定日期的字数统计
 	 */
 	addWords(date: string, words: number): void {
+		if (words === 0 && this.historyData[date]) return;
+		const isNewDate = !this.historyData[date];
 		const stat = this.getOrCreateDailyStat(date);
 		stat.addedWords += words;
 		this.store.markDirty();
+		if (!isNewDate) {
+			this.bumpWordRevision();
+		}
 	}
 
 	/**
 	 * 修正指定日期的写作字数，不改变专注和摸鱼计时数据
 	 */
 	setDailyWords(date: string, words: number): void {
+		const existing = this.historyData[date];
+		if (existing && existing.addedWords === words) return;
+		const isNewDate = !existing;
 		const stat = this.getOrCreateDailyStat(date);
 		stat.addedWords = words;
 		this.store.markDirty();
+		if (!isNewDate) {
+			this.bumpWordRevision();
+		}
 	}
 
 	/**
@@ -198,6 +229,7 @@ export class HistoryDataManager {
 				hourlySlack: new Array(24).fill(0)
 			};
 			this.store.markDirty();
+			this.bumpWordRevision();
 		}
 	}
 

@@ -26,6 +26,7 @@ import type { TypographyManager } from '../services/TypographyManager';
 import type { ChapterMergeManager } from '../services/ChapterMergeManager';
 import type { ProofreadingManager } from '../services/ProofreadingManager';
 import type { WritingJourneyService } from '../services/WritingJourneyService';
+import type { ImmersiveReferenceManager } from '../services/ImmersiveReferenceManager';
 
 import { Logger } from '../utils/Logger';
 
@@ -69,6 +70,7 @@ export interface ServiceMap {
 	ChapterMergeManager: ChapterMergeManager;
 	ProofreadingManager: ProofreadingManager;
 	WritingJourneyService: WritingJourneyService;
+	ImmersiveReferenceManager: ImmersiveReferenceManager;
 }
 
 /**

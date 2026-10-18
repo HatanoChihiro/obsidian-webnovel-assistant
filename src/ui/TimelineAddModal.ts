@@ -1,6 +1,6 @@
 import type { App } from 'obsidian';
 import { Modal } from 'obsidian';
-import type { TimelineEntry } from '../services/TimelineManager';
+import { serializeTimelineChapterList, type TimelineEntry } from '../services/TimelineManager';
 import { t } from '../i18n';
 import { TimelineFormComponent, type TimelineFormContext, type TimelineNodeOption } from './components/TimelineFormComponent';
 
@@ -61,7 +61,7 @@ export class TimelineAddModal extends Modal {
 			folderPath: this.folderPath,
 			initialEntry: {
 				description: this.description,
-				chapter: this.sourceFile,
+				chapter: serializeTimelineChapterList(this.sourceFile ? [this.sourceFile] : []),
 				origin: this.origin
 			},
 			typeOptions: this.typeOptions,

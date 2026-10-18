@@ -92,7 +92,8 @@ body .markdown-source-view.mod-cm6 .cm-editor.webnovel-show-gutter .cm-scroller 
 }
 
 .heat-0 {
-	background: var(--background-modifier-border);
+	/* Keep extreme accent lightness from making empty days disappear into the background. */
+	background: color-mix(in srgb, hsl(var(--accent-h) calc(var(--accent-s) * 0.1) clamp(35%, var(--accent-l), 65%)) 24%, var(--background-primary));
 }
 
 .heat-1 {

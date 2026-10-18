@@ -106,7 +106,7 @@ Welcome to WebNovel Assistant! An Obsidian plugin designed specifically for web 
 1. Open plugin settings
 2. Find **Workspace Folders**
 3. Enter a top-level category (e.g., `Novels`), not an individual work or volume folder
-4. Separate top-level categories with commas (e.g., `Novels, Short Stories`); the first is the default location for the homepage and new/imported works
+4. Enter one top-level directory per line; folder names may contain commas. The first is the default location for the homepage and new/imported works. Strict chapter mode exception directories also use one directory per line
 5. Leave empty for vault-wide scope
 
 #### Use Cases
@@ -138,6 +138,25 @@ If the Creative Homepage is enabled, its **Create New Work** and **Import Novel*
 - **Manage Series**: In the File Explorer, right-click any recognized novel folder and choose **Manage Series...** to view the current series, pick from existing series, enter a new series name, or remove the novel from its series.
 - **Set on Creation & Import**: When creating or importing a novel, optionally select an existing series or enter a new one (leave blank for standalone works).
 - **Display & Storage**: Marked works store membership in the visible `**Series**：SeriesName` field in the Novel Info file. The Creative Homepage and Writing Workbench show the series name. Removing a work from a series clears the field without moving or deleting files.
+
+##### Setting Up Shared Lore
+
+1. Right-click Work A's folder, choose **Manage Series...**, enter "Test Series", and save. When no series exists yet, the dialog shows only a text field; this is the normal first-use state.
+2. Repeat for Work B, select "Test Series", and save. Both Novel Info files should show the same series name.
+3. Create a public subfolder inside Work A's lore folder, normally `Work A/Lore/Series/`, and create `Map.md` inside it. Use your configured **Series Lore Folder Name** if you changed it. "Test Series" is the work's membership name; "Series" is the public directory name.
+4. Add a valid lore entry to `Map.md`, for example:
+
+   ```markdown
+   ## Northlands
+
+   **Alias**: Northern Border
+
+   The Northlands lie in the north of the continent and are covered in snow.
+   ```
+
+5. Open Work B's Writing Workbench and switch to the **Lore Board**. The "Series/Map" category appears with its source work identified. Keep shared lore in the source work and edit that file; copying it into every work is unnecessary.
+
+Assigning a series does not automatically create public folders or categories. Empty folders and files do not produce lore cards. Lore outside the public directory remains private to its work.
 
 ---
 
@@ -542,7 +561,8 @@ Use the links after each panel title to jump to its detailed feature documentati
 - **Dynamic Dashboard**: Top bar displays the novel title in real time, focus/slack duration, today's net word count, and goal progress.
 - **Typewriter Scroll & Line Dimming**: Supports Typewriter Scroll and Context Line Dimming, toggleable via the central status bar for focused line writing.
 - **Slot-Based Layout**: Freely assign auxiliary panels to top, bottom, left, and right areas around the main editing zone. Unassigned panel areas collapse to edges to maximize editing area.
-- **Reference Documents**: Left-click a chapter to open the document in the main editing area; right-click to open it in the right reference area.
+- **Reference Documents (Desktop)**: Left-click an item in the immersive chapter list to open it in the main editor, or right-click to open it in the reference pane. Supporting documents such as Novel Info and Timeline remain in the list for reference access. Use the search icon at the top of a reference pane to find any Markdown file in the vault. Results show full paths to distinguish duplicate names. Selecting a file opens it in reading mode while preserving the main editor's file and selection.
+- **Reference Memory**: Changes are saved immediately and remembered separately for the work in the main editor. Reentering Immersive Mode restores that work's reference document. File and work-folder renames or moves update the records, and deleted files do not block restoration. Immersive Mode and reference panes are unavailable on phones and tablets.
 
 #### How to Use
 - **Entering Immersive Mode**: Open any novel chapter (Markdown file), and type `Toggle Full-Screen Immersive Writing Mode` in the command palette (Ctrl/Cmd + P), or click the left Ribbon icon in normal mode.
@@ -681,6 +701,10 @@ Use the links after each panel title to jump to its detailed feature documentati
 4. Use the **×** button on a card to close and remove that note. When content still needs to be saved, the plugin asks for confirmation first.
 5. The side-panel list, desktop floating notes, and Immersive Mode notes share the same data. Content and edit/preview state changes from any entry point are synchronized, persisted, and restored in the others. On mobile, where desktop floating windows are unavailable, the side panel can serve as the primary note-management interface.
 
+##### Restoring Hidden Floating Notes (Desktop)
+
+If existing floating notes disappear, run **Show/Hide All Floating Notes** from the Command Palette until you see "[Visible] Floating notes are now visible". The hidden state is saved and may persist after restarting. This command does not delete notes or hide the cards in **Open Sticky Note List**. On phones and tablets, use the sticky note list.
+
 ##### Editing a Note
 - **Edit Mode**: Click the pencil icon
 - **Preview Mode**: Click the eye icon
@@ -787,9 +811,17 @@ Use the links after each panel title to jump to its detailed feature documentati
 1. Click the left Ribbon icon (clock icon)
 2. Or command palette → `Toggle Timeline Panel`
 3. The panel displays all events
-4. Filter timeline events by **type**
+4. In both the sidebar and Workbench, select multiple **types** and **linked lore entries**. Each row matches any selected option, and the two rows apply together. Click an option again to deselect it; **All Types** or **All Lore** clears only its own row. Sidebar and Workbench selections are independent and clear when switching works. Switching between Waterfall and Trajectory keeps the Workbench selections.
 5. Click an event card title to open the timeline file and precisely locate and highlight that entry. The Writing Workbench timeline board supports the same navigation.
 6. The Workbench Timeline Board's **Unassociated Chapters** area supports ascending/descending order and preserves the same volume order used by All Chapters and Chapter Overview.
+
+##### Horizontal Lore Trajectory
+
+Select **Trajectory** in the Workbench timeline to view events across time nodes and lore lanes. Click a description to edit, press Enter for a new line, and click outside to save while keeping the canvas position and zoom. Copies of the same event across lore lanes update together.
+
+- **Navigation**: On desktop, drag blank space to pan, use the wheel to zoom, and double-click blank space to restore 100%. On phones and tablets, drag non-editing areas with one finger to pan and pinch with two fingers to zoom. Tap a description to edit or a chapter name to open it.
+- **Fullscreen (phones and tablets only)**: Use the expand button at the top right of the trajectory to view and edit across the application window. Portrait devices show a landscape layout. Use the exit button or Escape to return while keeping the viewport.
+- **Input and reset**: The landscape layout rotates the trajectory content; the system keyboard still follows the device orientation. Re-entering the trajectory or switching works resets the canvas position and zoom to 100%.
 
 > **Chapter Synchronization**: Editing event nodes or chapter links in the Timeline side panel, Workbench Timeline Board, or Timeline Markdown automatically reconciles each linked chapter's `timeline` frontmatter. Duplicate chapter names in different volumes of the same work remain isolated by their actual file paths.
 
@@ -1073,7 +1105,10 @@ When lore files or chapters already exist but lore highlighting, Workbench stati
 - **Focus Timer**: Total duration, focus time, slack time
 - **Word Count Statistics**: This week/month/year net increase, cumulative total, 7-day bar chart
 
+Chapter goals, word counts, and status summaries follow the chapter currently open in the main editor. They hide when you switch to the Homepage, a non-work note, a functional document, or the Workbench, or close all documents. Work statistics and tasks keep the last selected work, which is restored after restarting. Clicking sidebar controls keeps chapter information visible while the main editor still shows that chapter.
+
 ##### View Historical Statistics
+
 1. Click **View Historical Statistics** in the panel
 2. A detailed historical data window opens
 3. You can view statistics for any date

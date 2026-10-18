@@ -59,6 +59,7 @@ describe('WorkerManager', () => {
                 debounceFixed: vi.fn((key: string, fn: Function) => fn())
             },
             refreshStatusViews: vi.fn(),
+            refreshStatusTimers: vi.fn(),
             mobileFloatingStats: {
                 updateTimerUI: vi.fn()
             }
@@ -146,5 +147,52 @@ describe('WorkerManager', () => {
         // 不会重复增加
         expect(mockPlugin.slackMs).toBe(31000);
         expect(mockPlugin.historyManager.addSlackTime).toHaveBeenLastCalledWith('2026-07-23', 30000);
+    });
+
+    it('uses timer-only refresh for stable ticks and triggers full refresh exactly once at midnight', () => {
+        let currentDate = '2026-07-23';
+        (global as unknown as { window: { moment: () => { format: () => string } } }).window.moment = () => ({
+            format: () => currentDate
+        });
+
+        const manager = new WorkerManager(mockPlugin);
+        manager.setup();
+        manager.postMessage('start');
+
+        const workerInstance = vi.mocked(Worker).mock.results[0].value as {
+            onmessage(event: { data: string }): void;
+        };
+
+        // 1. First tick on same date
+        mockPlugin.lastTickTime = 10000;
+        vi.spyOn(Date, 'now').mockReturnValue(11000);
+        workerInstance.onmessage({ data: 'tick' });
+
+        expect(mockPlugin.refreshStatusTimers).toHaveBeenCalledTimes(1);
+        expect(mockPlugin.refreshStatusViews).not.toHaveBeenCalled();
+
+        // 2. Second tick on same date
+        vi.spyOn(Date, 'now').mockReturnValue(12000);
+        workerInstance.onmessage({ data: 'tick' });
+
+        expect(mockPlugin.refreshStatusTimers).toHaveBeenCalledTimes(2);
+        expect(mockPlugin.refreshStatusViews).not.toHaveBeenCalled();
+
+        // 3. Midnight strikes: date changes to 2026-07-24
+        currentDate = '2026-07-24';
+        vi.spyOn(Date, 'now').mockReturnValue(13000);
+        workerInstance.onmessage({ data: 'tick' });
+
+        // Midnight must trigger one full refresh (includeChart=true)
+        expect(mockPlugin.refreshStatusViews).toHaveBeenCalledTimes(1);
+        expect(mockPlugin.refreshStatusViews).toHaveBeenCalledWith(true);
+        expect(mockPlugin.refreshStatusTimers).toHaveBeenCalledTimes(2); // unchanged
+
+        // 4. Next tick after midnight continues on new day: timer-only again
+        vi.spyOn(Date, 'now').mockReturnValue(14000);
+        workerInstance.onmessage({ data: 'tick' });
+
+        expect(mockPlugin.refreshStatusViews).toHaveBeenCalledTimes(1); // not called again
+        expect(mockPlugin.refreshStatusTimers).toHaveBeenCalledTimes(3);
     });
 });

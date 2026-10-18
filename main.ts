@@ -28,6 +28,7 @@ import type { TimelineManager } from './src/services/TimelineManager';
 import type { RelationGraphManager } from './src/services/RelationGraphManager';
 import { ObsHtmlBuilder } from './src/services/ObsHtmlBuilder';
 import type { ImmersiveModeManager } from './src/ui/ImmersiveModeManager';
+import type { ImmersiveReferenceManager } from './src/services/ImmersiveReferenceManager';
 import type { HomepageManager } from './src/services/HomepageManager';
 import type { StatisticsManager } from './src/services/StatisticsManager';
 import type { StickyNoteDataManager } from './src/services/StickyNoteDataManager';
@@ -115,6 +116,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	get styleManager(): StyleManager | undefined { return this.services.getOptional('StyleManager'); }
 	get stickyNoteManager(): StickyNoteDataManager { return this.services.get('StickyNoteDataManager'); }
 	get immersiveModeManager(): ImmersiveModeManager { return this.services.get('ImmersiveModeManager'); }
+	get immersiveReferenceManager(): ImmersiveReferenceManager { return this.services.get('ImmersiveReferenceManager'); }
 	get homepageManager(): HomepageManager { return this.services.get('HomepageManager'); }
 	get commandManager(): CommandManager { return this.services.get('CommandManager'); }
 	get viewManager(): ViewManager { return this.services.get('ViewManager'); }
@@ -716,10 +718,16 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		const leaves = this.app.workspace.getLeavesOfType(STATUS_VIEW_TYPE);
 		for (const leaf of leaves) {
 			if (leaf.view instanceof WritingStatusView) {
-				void leaf.view.updateData(immediate);
-				if (includeChart) {
-					leaf.view.renderMiniChart(true);
-				}
+				void leaf.view.updateData(immediate, includeChart);
+			}
+		}
+	}
+
+	refreshStatusTimers() {
+		const leaves = this.app.workspace.getLeavesOfType(STATUS_VIEW_TYPE);
+		for (const leaf of leaves) {
+			if (leaf.view instanceof WritingStatusView) {
+				leaf.view.updateTimer();
 			}
 		}
 	}

@@ -18,6 +18,7 @@ export class WorkerManager {
 	private blobUrl: string | null = null;
 	private backgroundStartTime: number | null = null;
 	private visibilityDocument: Document | null = null;
+	private lastTickDate: string | null = null;
 
 	private visibilityHandler = () => this.handleVisibilityChange();
 
@@ -87,6 +88,7 @@ export class WorkerManager {
 	public postMessage(msg: string): void {
 		if (msg === 'start') {
 			this.backgroundStartTime = null;
+			this.lastTickDate = window.moment().format('YYYY-MM-DD');
 		}
 		this.worker?.postMessage(msg);
 	}
@@ -217,6 +219,14 @@ export class WorkerManager {
 		}, 60000);
 		
 		this.plugin.mobileFloatingStats?.updateTimerUI();
-		this.plugin.refreshStatusViews(false);
+
+		const isNewDay = this.lastTickDate !== null && this.lastTickDate !== today;
+		this.lastTickDate = today;
+
+		if (isNewDay) {
+			this.plugin.refreshStatusViews(true);
+		} else {
+			this.plugin.refreshStatusTimers();
+		}
 	}
 }

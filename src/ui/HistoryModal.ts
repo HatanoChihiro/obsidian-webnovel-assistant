@@ -52,7 +52,7 @@ export type HistoryStatsSettings = Pick<
 
 export type HistoryStatsHistoryManager = Pick<
 	HistoryDataManager,
-	'getHistory'
+	'getHistory' | 'getWordRevision'
 >;
 
 export type HistoryStatsStatisticsManager = Pick<

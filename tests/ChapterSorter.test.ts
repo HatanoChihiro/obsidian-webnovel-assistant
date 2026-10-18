@@ -582,4 +582,81 @@ describe('ChapterSorter', () => {
 			expect(ChapterSorter.generateChapterLinktext(mockApp, mockPlugin, vol2Ch1, '作品', { useAlias: true })).toBe('第二卷/第1章|第1章');
 		});
 	});
+
+	describe('createFileComparator — per-sort memoization', () => {
+		const createFile = (path: string, basename: string): TFile => Object.assign(new TFile(), {
+			path,
+			name: `${basename}.md`,
+			basename,
+			extension: 'md'
+		});
+		const createFolder = (path: string, name: string): TFolder => Object.assign(new TFolder(), {
+			path,
+			name,
+			children: []
+		});
+
+		it('produces identical sort order to compareFilesWithCustomOrder on mixed chapters, folders, and custom order', () => {
+			const folder1 = createFolder('作品/卷一', '卷一');
+			const folder2 = createFolder('作品/设定集', '设定集');
+			const ch1 = createFile('作品/第1章.md', '第1章');
+			const ch2 = createFile('作品/第2章.md', '第2章');
+			const ch10 = createFile('作品/第10章.md', '第10章');
+			const regularFile1 = createFile('作品/大纲.md', '大纲');
+			const regularFile2 = createFile('作品/人物设定.md', '人物设定');
+
+			const customOrder: Record<string, number> = {
+				'作品/大纲.md': 0,
+				'作品/__CHAPTER_BLOCK__': 1,
+				'作品/设定集': 2,
+				'作品/人物设定.md': 3
+			};
+
+			const items = [regularFile2, ch10, folder2, ch1, regularFile1, folder1, ch2];
+
+			const existingSorted = [...items].sort((a, b) => ChapterSorter.compareFilesWithCustomOrder(a, b, customOrder));
+			const comparator = ChapterSorter.createFileComparator(customOrder);
+			const memoizedSorted = [...items].sort(comparator);
+
+			expect(memoizedSorted.map(f => f.path)).toEqual(existingSorted.map(f => f.path));
+		});
+
+		it('asserts each unique filename is parsed only once within a sorting pass', () => {
+			const ch1 = createFile('作品/第1章.md', '第1章');
+			const ch2 = createFile('作品/第2章.md', '第2章');
+			const ch3 = createFile('作品/第3章.md', '第3章');
+			const ch4 = createFile('作品/第4章.md', '第4章');
+			const ch5 = createFile('作品/第5章.md', '第5章');
+			const ch6 = createFile('作品/第6章.md', '第6章');
+			const folder = createFolder('作品/资料', '资料');
+			const nonChapter = createFile('作品/说明.md', '说明');
+
+			const items = [ch6, ch3, folder, ch1, nonChapter, ch5, ch2, ch4];
+
+			const extractSpy = vi.spyOn(ChapterSorter, 'extractChapterNumber');
+
+			const comparator = ChapterSorter.createFileComparator({});
+			[...items].sort(comparator);
+
+			// Collect all names parsed during this sort pass
+			const parsedNames = extractSpy.mock.calls.map(call => call[0]);
+			const uniqueParsedNames = new Set(parsedNames);
+
+			// Each unique name is parsed at most once in this pass
+			expect(parsedNames.length).toBe(uniqueParsedNames.size);
+			expect(uniqueParsedNames.size).toBe(items.length);
+
+			// A second sorting pass with a new comparator creates a fresh per-pass cache
+			extractSpy.mockClear();
+			const comparator2 = ChapterSorter.createFileComparator({});
+			[...items].sort(comparator2);
+
+			const parsedNames2 = extractSpy.mock.calls.map(call => call[0]);
+			const uniqueParsedNames2 = new Set(parsedNames2);
+			expect(parsedNames2.length).toBe(uniqueParsedNames2.size);
+			expect(uniqueParsedNames2.size).toBe(items.length);
+
+			extractSpy.mockRestore();
+		});
+	});
 });

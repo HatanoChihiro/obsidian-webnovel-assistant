@@ -172,9 +172,12 @@ export function getDeterministicChapterDisplayOrder(
 	}
 
 	// 2. Sort chapters inside each volume (canonical ascending)
+	const comparator = enableSmartChapterSort
+		? ChapterSorter.createFileComparator(customSortOrder)
+		: null;
 	for (const [, chapterList] of volumeMap) {
-		if (enableSmartChapterSort) {
-			chapterList.sort((a, b) => ChapterSorter.compareFilesWithCustomOrder(a, b, customSortOrder));
+		if (comparator) {
+			chapterList.sort(comparator);
 		} else {
 			chapterList.sort((a, b) => a.basename.localeCompare(b.basename, undefined, { numeric: true }));
 		}

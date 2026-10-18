@@ -1,6 +1,6 @@
 import type { App, WorkspaceLeaf, TFile } from 'obsidian';
 import { Notice, setIcon } from 'obsidian';
-import type { TimelineEntry, TimelineItem, TimelineManager } from '../services/TimelineManager';
+import { filterTimelineEntries, parseTimelineChapterList, type TimelineEntry, type TimelineItem, type TimelineManager } from '../services/TimelineManager';
 import { CreativeView } from './CreativeView';
 import { rafThrottle } from '../utils/dom';
 import { t } from '../i18n';
@@ -67,7 +67,7 @@ export interface TimelineViewPlugin
 export class TimelineView extends CreativeView<TimelineViewPlugin> {
 	private manager!: TimelineViewManager;
 	private editingIndex: number = -1;
-	private filterType: string = 'all';
+	private selectedTypes: Set<string> = new Set();
 	private selectedLores: Set<string> = new Set();
 	private isDescending: boolean = false;
 
@@ -86,7 +86,7 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 
 	protected async onFolderChange() {
 		this.editingIndex = -1;
-		this.filterType = 'all';
+		this.selectedTypes.clear();
 		this.selectedLores.clear();
 		await this.refresh();
 	}
@@ -222,21 +222,17 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 		// 类型筛选
 		const typeOptions = this.getTypeFilterOptions(entries);
 		if (typeOptions.length > 0) {
-			const typeRow = header.createDiv({ cls: 'wn-timeline-view-filter-row' });
-			const allBtn = typeRow.createEl('button', { text: t('common.all-types'), cls: 'wn-timeline-filter-btn' });
-			if (this.filterType === 'all') allBtn.addClass('is-active');
-			allBtn.onclick = () => {
-				this.filterType = 'all';
-				void this.refresh();
-			};
-
-			typeOptions.forEach(type => {
-				const btn = typeRow.createEl('button', { text: type, cls: 'wn-timeline-filter-btn' });
-				if (this.filterType === type) btn.addClass('is-active');
-				btn.onclick = () => {
-					this.filterType = type;
+			new MultiSelectFilterRow({
+				container: header,
+				cls: 'wn-timeline-view-filter-row wn-timeline-view-type-filter-row',
+				buttonCls: 'wn-timeline-filter-btn',
+				allLabel: t('common.all-types'),
+				options: typeOptions.map(type => ({ value: type, label: type })),
+				selected: this.selectedTypes,
+				onChange: (selected) => {
+					this.selectedTypes = selected;
 					void this.refresh();
-				};
+				}
 			});
 		}
 
@@ -258,13 +254,7 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 		}
 
 		// 筛选后渲染
-		let filtered = entries;
-		if (this.filterType !== 'all') {
-			filtered = filtered.filter(e => e.type === this.filterType);
-		}
-		if (this.selectedLores.size > 0) {
-			filtered = filtered.filter(e => (e.lores || []).some(lore => this.selectedLores.has(lore)));
-		}
+		const filtered = filterTimelineEntries(entries, this.selectedTypes, this.selectedLores);
 
 		if (filtered.length === 0) {
 			container.createDiv({ cls: 'wn-timeline-view-empty' }).createEl('p', { text: t('common.no-matching-entries') });
@@ -370,7 +360,19 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 			if (fromIndex !== -1 && fromIndex !== toIndex) {
 				void (async () => {
 					try {
-						const newContent = await this.manager.moveEntry(fromIndex, toIndex, this.currentFolder);
+						const fromTarget = allEntries[fromIndex];
+						const originalEntry: TimelineEntry | undefined = fromTarget ? {
+							...fromTarget,
+							lores: fromTarget.lores ? [...fromTarget.lores] : undefined,
+							items: fromTarget.items ? fromTarget.items.map(it => ({ ...it })) : undefined
+						} : undefined;
+						const toTarget = allEntries[toIndex];
+						const targetEntry: TimelineEntry | undefined = toTarget ? {
+							...toTarget,
+							lores: toTarget.lores ? [...toTarget.lores] : undefined,
+							items: toTarget.items ? toTarget.items.map(it => ({ ...it })) : undefined
+						} : undefined;
+						const newContent = await this.manager.moveEntry(fromIndex, toIndex, this.currentFolder, originalEntry, targetEntry);
 						await this.renderFromContent(newContent || null);
 					} catch (e) {
 						console.error('[TimelineView] 移动记录失败:', e);
@@ -438,9 +440,9 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 				});
 			}
 
-			// 支持多章节：将逗号分隔的章节显示为多个链接
+			// 按完整章节引用显示多个链接，保留名称中的逗号
 			if (it.chapter) {
-				const chapters = it.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean);
+				const chapters = parseTimelineChapterList(it.chapter);
 				const linksContainer = itemEl.createDiv({ cls: 'wn-timeline-chapter-links' });
 
 				chapters.forEach((chapterName, index) => {
@@ -499,7 +501,13 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 		deleteBtn.onclick = () => {
 			void (async () => {
 				try {
-					const newContent = await this.manager.deleteEntry(index, this.currentFolder);
+					const target = allEntries[index] ? allEntries[index] : entry;
+					const originalEntry: TimelineEntry = {
+						...target,
+						lores: target.lores ? [...target.lores] : undefined,
+						items: target.items ? target.items.map(it => ({ ...it })) : undefined
+					};
+					const newContent = await this.manager.deleteEntry(index, this.currentFolder, originalEntry);
 					await this.renderFromContent(newContent || null);
 				} catch (e) { console.error(e); }
 			})();
@@ -507,6 +515,11 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 	}
 
 	private renderEditForm(container: HTMLElement, entry: TimelineEntry, index: number, allEntries: TimelineEntry[]) {
+		const originalEntrySnapshot: TimelineEntry = {
+			...entry,
+			lores: entry.lores ? [...entry.lores] : undefined,
+			items: entry.items ? entry.items.map(it => ({ ...it })) : undefined
+		};
 		const component = new TimelineFormComponent({
 			container,
 			app: this.app,
@@ -522,7 +535,7 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 			onSubmit: (updated: TimelineEntry) => {
 				void (async () => {
 					try {
-						const newContent = await this.manager.updateEntry(index, updated, this.currentFolder);
+						const newContent = await this.manager.updateEntry(index, updated, this.currentFolder, originalEntrySnapshot);
 						this.editingIndex = -1;
 						await this.renderFromContent(newContent);
 					} catch (e) { console.error(e); }

@@ -258,6 +258,8 @@ export class ItemView {
 	getViewType(): string { return ''; }
 	getDisplayText(): string { return ''; }
 	getIcon(): string { return ''; }
+	getState(): Record<string, unknown> { return {}; }
+	setState(_state: unknown, _result: { history: boolean }): Promise<void> { return Promise.resolve(); }
 	onOpen(): Promise<void> { return Promise.resolve(); }
 	onClose(): Promise<void> { return Promise.resolve(); }
 }

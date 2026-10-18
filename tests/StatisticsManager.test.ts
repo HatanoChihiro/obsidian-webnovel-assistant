@@ -127,4 +127,32 @@ describe('StatisticsManager', () => {
         expect(stats.todayWords).toBe(42);
         expect(stats.goal).toBe(120);
     });
+
+    it('uses the retained chapter even when the last tracked document belongs to another context', () => {
+        const retained = new TFile('第1章.md', 'Novel/第1章.md');
+        mockPlugin.lastFilePath = 'Notes/todo.md';
+        mockPlugin.lastFileWords = 0;
+        mockPlugin.cacheManager.getFileCache.mockReturnValue(42);
+        mockPlugin.app.metadataCache.getFileCache.mockReturnValue({ frontmatter: { 'word-goal': 120 } });
+
+        const stats = new StatisticsManager(mockPlugin).getCoreStats(retained);
+
+        expect(stats.currentFile).toBe('第1章');
+        expect(stats.todayWords).toBe(42);
+        expect(stats.goal).toBe(120);
+        expect(stats.dailyGoal).toBe(500);
+    });
+
+    it('explicitly clears chapter stats without falling back to the previous work', () => {
+        const previous = new TFile('第1章.md', 'Novel/第1章.md');
+        mockPlugin.lastFilePath = previous.path;
+        mockPlugin.app.vault.getAbstractFileByPath.mockReturnValue(previous);
+
+        const stats = new StatisticsManager(mockPlugin).getCoreStats(null);
+
+        expect(stats.currentFile).toBe('');
+        expect(stats.todayWords).toBe(0);
+        expect(stats.goal).toBe(0);
+        expect(stats.dailyGoal).toBe(500);
+    });
 });

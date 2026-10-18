@@ -7,7 +7,7 @@ describe('AdaptiveDebounceManager', () => {
     beforeEach(() => {
         vi.useFakeTimers();
         // 使 window.setTimeout/clearTimeout 直接指向被 Vitest 接管的全局 fake timers
-        (global as any).window = global;
+        (globalThis as unknown as { window: unknown }).window = globalThis;
         manager = new AdaptiveDebounceManager();
     });
 
@@ -101,6 +101,46 @@ describe('AdaptiveDebounceManager', () => {
             
             vi.advanceTimersByTime(1);
             expect(callback).toHaveBeenCalledTimes(3);
+        });
+    });
+
+    describe('cross-window and reentrant timers', () => {
+        it('clears cross-window timer via ownerWindow when transitioning from fixed to adaptive debounce', () => {
+            const fakeClearTimeout = vi.fn();
+            const fakeSetTimeout = vi.fn((_fn: () => void, _delay: number) => {
+                return 42;
+            });
+            const fakeWindow = {
+                setTimeout: fakeSetTimeout,
+                clearTimeout: fakeClearTimeout
+            } as unknown as Window;
+
+            const globalClearTimeoutSpy = vi.spyOn(window, 'clearTimeout');
+
+            manager.debounceFixed('test-key', () => {}, 300, fakeWindow);
+            expect(fakeSetTimeout).toHaveBeenCalledTimes(1);
+
+            // Transition from fixed with fakeWindow to adaptive
+            manager.debounce('test-key', () => {});
+
+            expect(fakeClearTimeout).toHaveBeenCalledWith(42);
+            expect(globalClearTimeoutSpy).not.toHaveBeenCalled();
+        });
+
+        it('does not delete a re-entrant scheduled timer when original callback finishes and allows it to be cancelled', () => {
+            const secondCallback = vi.fn();
+            const firstCallback = vi.fn(() => {
+                manager.debounceFixed('reentrant-key', secondCallback, 200);
+            });
+
+            manager.debounceFixed('reentrant-key', firstCallback, 100);
+            vi.advanceTimersByTime(100);
+            expect(firstCallback).toHaveBeenCalledTimes(1);
+
+            // Reentrant timer must be tracked in manager, so cancel() works properly
+            manager.cancel('reentrant-key');
+            vi.advanceTimersByTime(200);
+            expect(secondCallback).not.toHaveBeenCalled();
         });
     });
 });

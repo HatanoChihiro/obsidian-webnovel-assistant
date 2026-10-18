@@ -34,8 +34,9 @@ export class StatisticsManager {
 	/**
 	 * 获取核心统计数据包 (CoreStatsPayload)
 	 * 统一对外（OBS、沉浸模式等 UI）暴露格式化后的数据
+	 * targetFile 指定章节；传 null 清空章节数据，不传则沿用活动或最后追踪的章节。
 	 */
-	getCoreStats(): CoreStatsPayload {
+	getCoreStats(targetFile?: TFile | null): CoreStatsPayload {
 		const focusSec = Math.round(this.plugin.focusMs / 1000);
 		const slackSec = Math.round(this.plugin.slackMs / 1000);
 		const totalSec = focusSec + slackSec;
@@ -47,10 +48,15 @@ export class StatisticsManager {
 		let currentFolder = '';
 		let chapterWords = 0;
 		const view = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
-		let file = view?.file ?? null;
-		if (!file && this.plugin.lastFilePath) {
-			const lastFile = this.plugin.app.vault.getAbstractFileByPath(this.plugin.lastFilePath);
-			if (lastFile instanceof TFile) file = lastFile;
+		let file: TFile | null = null;
+		if (targetFile !== undefined) {
+			file = targetFile;
+		} else {
+			file = view?.file ?? null;
+			if (!file && this.plugin.lastFilePath) {
+				const lastFile = this.plugin.app.vault.getAbstractFileByPath(this.plugin.lastFilePath);
+				if (lastFile instanceof TFile) file = lastFile;
+			}
 		}
 
 		if (file && this.plugin.cacheManager.isEligibleForWordCount(file)) {

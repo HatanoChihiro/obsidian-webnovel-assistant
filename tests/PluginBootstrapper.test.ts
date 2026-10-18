@@ -20,6 +20,17 @@ vi.mock('../src/core/MenuManager', () => ({
 
 vi.mock('../src/ui/ImmersiveModeManager', () => ({
 	ImmersiveModeManager: class ImmersiveModeManager {
+		constructor(public app: unknown, public plugin: { immersiveReferenceManager?: unknown }) {
+			const refMgr = plugin.immersiveReferenceManager;
+			if (!refMgr) {
+				throw new Error('ImmersiveReferenceManager must be available on plugin when constructing ImmersiveModeManager');
+			}
+		}
+	}
+}));
+
+vi.mock('../src/services/ImmersiveReferenceManager', () => ({
+	ImmersiveReferenceManager: class ImmersiveReferenceManager {
 		constructor(public app: unknown, public plugin: unknown) {}
 	}
 }));
@@ -132,6 +143,7 @@ describe('PluginBootstrapper', () => {
 		'ChapterMergeManager',
 		'FileExplorerPatcher',
 		'WordCounter',
+		'ImmersiveReferenceManager',
 		'ImmersiveModeManager',
 		'CommandManager',
 		'ViewManager',
@@ -258,7 +270,10 @@ describe('PluginBootstrapper', () => {
 			isUnloading: false,
 			isTracking: false,
 			isLayoutReady: false,
-			lastEditTime: 0
+			lastEditTime: 0,
+			get immersiveReferenceManager() {
+				return registry.get('ImmersiveReferenceManager');
+			}
 		} as unknown as BootstrapperHost;
 
 		mockObsStart.mockClear();

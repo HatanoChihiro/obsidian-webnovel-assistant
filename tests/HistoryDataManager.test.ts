@@ -171,4 +171,69 @@ describe('HistoryDataManager persistence', () => {
 		await manager.saveHistory();
 		expect(plugin.settingsManager.saveSettings).toHaveBeenCalledTimes(1);
 	});
+
+	describe('word-data revision tracking', () => {
+		it('increments revision when word values or date membership change, but not on focus/slack increments on existing date', async () => {
+			const manager = new HistoryDataManager(plugin as never);
+			expect(manager.getWordRevision()).toBe(0);
+
+			// 1. loadHistory bumps revision
+			await manager.loadHistory();
+			expect(manager.getWordRevision()).toBe(1);
+
+			// 2. New date membership via getOrCreateDailyStat bumps revision
+			manager.getOrCreateDailyStat('2026-08-12');
+			expect(manager.getWordRevision()).toBe(2);
+
+			// Calling getOrCreateDailyStat again on existing date does not bump
+			manager.getOrCreateDailyStat('2026-08-12');
+			expect(manager.getWordRevision()).toBe(2);
+
+			// 3. Focus and slack increments on existing date do NOT bump revision
+			manager.addFocusTime('2026-08-12', 5000);
+			manager.addSlackTime('2026-08-12', 3000);
+			manager.addHourlyFocusTime('2026-08-12', 10, 2000);
+			manager.addHourlySlackTime('2026-08-12', 10, 1000);
+			expect(manager.getWordRevision()).toBe(2);
+
+			// 4. addWords with non-zero bumps revision
+			manager.addWords('2026-08-12', 100);
+			expect(manager.getWordRevision()).toBe(3);
+
+			// addWords with 0 on existing date is a no-op
+			manager.addWords('2026-08-12', 0);
+			expect(manager.getWordRevision()).toBe(3);
+
+			// 5. setDailyWords with changed words bumps revision
+			manager.setDailyWords('2026-08-12', 150);
+			expect(manager.getWordRevision()).toBe(4);
+
+			// setDailyWords with identical words is a no-op
+			manager.setDailyWords('2026-08-12', 150);
+			expect(manager.getWordRevision()).toBe(4);
+
+			// 6. updateDailyStat on existing date with same words does not bump
+			manager.updateDailyStat('2026-08-12', {
+				...manager.getDailyStat('2026-08-12')!,
+				focusMs: 99999
+			});
+			expect(manager.getWordRevision()).toBe(4);
+
+			// updateDailyStat with changed words bumps revision
+			manager.updateDailyStat('2026-08-12', {
+				...manager.getDailyStat('2026-08-12')!,
+				addedWords: 200
+			});
+			expect(manager.getWordRevision()).toBe(5);
+
+			// 7. resetDailyStat bumps revision
+			manager.resetDailyStat('2026-08-12');
+			expect(manager.getWordRevision()).toBe(6);
+
+			// 8. restoreHistoryBackup bumps revision
+			const backup = manager.createHistoryBackup();
+			await manager.restoreHistoryBackup(backup);
+			expect(manager.getWordRevision()).toBe(7);
+		});
+	});
 });

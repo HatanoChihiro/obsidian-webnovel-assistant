@@ -1,7 +1,7 @@
 import type { App, Component, WorkspaceLeaf } from 'obsidian';
 import { setIcon, TFile, Notice, Modal } from 'obsidian';
 import type { ParsedForeshadowingEntry } from '../../types/foreshadowing';
-import type { TimelineEntry, TimelineItem, TimelineManager } from '../../services/TimelineManager';
+import { filterTimelineEntries, parseTimelineChapterList, type TimelineEntry, type TimelineItem, type TimelineManager } from '../../services/TimelineManager';
 import { CorkboardGridRenderer } from './CorkboardGridRenderer';
 import { TimelineAddModal } from '../TimelineAddModal';
 import { t } from '../../i18n';
@@ -100,8 +100,8 @@ export interface TimelineBoardOptions {
 	foreshadowingMap: Map<string, ParsedForeshadowingEntry[]>;
 	currentBookPath: string;
 	loadedEntries?: TimelineEntry[] | null;
-	currentTimelineFilter: string;
-	currentTimelineLoreFilter?: string[] | Set<string>;
+	currentTimelineFilter?: readonly string[];
+	currentTimelineLoreFilter?: readonly string[] | Set<string>;
 	onSaveStateChange: (isSaving: boolean) => void;
 	reloadBoard: () => void;
 	getChapterEvents: (file: TFile, fallbackMap: Map<string, string[]>) => string[];
@@ -122,7 +122,7 @@ export class TimelineBoardRenderer {
 			files,
 			foreshadowingMap,
 			currentBookPath,
-			currentTimelineFilter,
+			currentTimelineFilter = [],
 			currentTimelineLoreFilter,
 			onSaveStateChange,
 			reloadBoard,
@@ -144,18 +144,8 @@ export class TimelineBoardRenderer {
 
 		const allEntries = entries ? [...entries] : [];
 
-		if (entries && currentTimelineFilter && currentTimelineFilter !== 'all') {
-			entries = entries.filter(e => e.type === currentTimelineFilter);
-		}
-
-		const loreSet = currentTimelineLoreFilter instanceof Set
-			? currentTimelineLoreFilter
-			: (currentTimelineLoreFilter && (Array.isArray(currentTimelineLoreFilter) ? currentTimelineLoreFilter.length > 0 : true)
-				? new Set(currentTimelineLoreFilter)
-				: null);
-
-		if (entries && loreSet && loreSet.size > 0) {
-			entries = entries.filter(e => (e.lores || []).some(lore => loreSet.has(lore)));
+		if (entries) {
+			entries = filterTimelineEntries(entries, currentTimelineFilter, currentTimelineLoreFilter);
 		}
 
 		const displayEntries = (entries && isDescending) ? [...entries].reverse() : (entries ? [...entries] : []);
@@ -193,7 +183,9 @@ export class TimelineBoardRenderer {
 
 		if (isTrajectoryMode) {
 			renderTrajectoryMode({
+				ownerComponent: options.ownerComponent,
 				sourceLeaf: options.sourceLeaf,
+				currentBookPath: options.currentBookPath,
 				app,
 				container,
 				displayEntries,
@@ -203,8 +195,8 @@ export class TimelineBoardRenderer {
 				])],
 				resolveLinkToFile,
 				allEntries,
-				onUpdateEntry: async (index: number, entry: TimelineEntry) => {
-					await timelineManager.updateEntry(index, entry, bookFolder);
+				onUpdateEntry: async (index: number, entry: TimelineEntry, expectedEntry?: TimelineEntry) => {
+					await timelineManager.updateEntry(index, entry, bookFolder, expectedEntry);
 				},
 				onOpenEntry: openTimelineEntry,
 				onSaveStateChange,
@@ -233,7 +225,7 @@ export class TimelineBoardRenderer {
 			if (entry.items && entry.items.length > 0) {
 					for (let i = 0; i < entry.items.length; i++) {
 						const item = entry.items[i];
-						const chaps = item.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean);
+						const chaps = parseTimelineChapterList(item.chapter);
 						for (const c of chaps) {
 							const matchedFile = resolveLinkToFile(c);
 							const mapKey = matchedFile ? matchedFile.path : c;
@@ -247,7 +239,7 @@ export class TimelineBoardRenderer {
 						}
 					}
 				} else if (entry.chapter) {
-					const chaps = entry.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean);
+					const chaps = parseTimelineChapterList(entry.chapter);
 					for (const c of chaps) {
 						const matchedFile = resolveLinkToFile(c);
 						const mapKey = matchedFile ? matchedFile.path : c;
@@ -280,7 +272,19 @@ export class TimelineBoardRenderer {
 			if (targetFile instanceof TFile) {
 				onSaveStateChange(true);
 				try {
-					await timelineManager.syncChapterToEventItem(targetFile, targetEvents, bookFolder);
+					const enrichedTargetEvents = targetEvents.map(target => {
+						const ent = allEntries[target.entryIndex];
+						const expectedEntry: TimelineEntry | undefined = ent ? {
+							...ent,
+							lores: ent.lores ? [...ent.lores] : undefined,
+							items: ent.items ? ent.items.map(it => ({ ...it })) : undefined
+						} : undefined;
+						return {
+							...target,
+							expectedEntry
+						};
+					});
+					await timelineManager.syncChapterToEventItem(targetFile, enrichedTargetEvents, bookFolder);
 				} catch (err) {
 					Logger.error('[TimelineBoard] syncChapterToEventItem 失败:', err);
 				} finally {
@@ -378,7 +382,30 @@ export class TimelineBoardRenderer {
 						void (async () => {
 							onSaveStateChange(true);
 							try {
-								await timelineManager.moveEventItem(sourceEntryIndex, sourceIdx, targetEvents[0].entryIndex, targetIdx, bookFolder);
+								const sourceEntry = allEntries[sourceEntryIndex];
+								const targetEntry = allEntries[targetEvents[0].entryIndex];
+								const expectedItem = sourceEntry?.items?.[sourceIdx] ? { ...sourceEntry.items[sourceIdx] } : undefined;
+								const expectedSourceEntry: TimelineEntry | undefined = sourceEntry ? {
+									...sourceEntry,
+									lores: sourceEntry.lores ? [...sourceEntry.lores] : undefined,
+									items: sourceEntry.items ? sourceEntry.items.map(it => ({ ...it })) : undefined
+								} : undefined;
+								const expectedTargetEntry: TimelineEntry | undefined = targetEntry ? {
+									...targetEntry,
+									lores: targetEntry.lores ? [...targetEntry.lores] : undefined,
+									items: targetEntry.items ? targetEntry.items.map(it => ({ ...it })) : undefined
+								} : undefined;
+
+								await timelineManager.moveEventItem(
+									sourceEntryIndex,
+									sourceIdx,
+									targetEvents[0].entryIndex,
+									targetIdx,
+									bookFolder,
+									expectedItem,
+									expectedSourceEntry,
+									expectedTargetEntry
+								);
 							} catch (err) {
 								Logger.error('[TimelineBoard] moveEventItem 失败:', err);
 							} finally {
@@ -551,12 +578,19 @@ export class TimelineBoardRenderer {
 						isImportant,
 						cardEl: descEl,
 						onToggle: async (newImportant) => {
-							items[itemIdx].important = newImportant;
 							const originalIndex = allEntries.indexOf(entry);
+							const previousImportant = items[itemIdx].important;
+							const originalEntry = {
+								...entry,
+								lores: entry.lores ? [...entry.lores] : undefined,
+								items: entry.items ? entry.items.map(it => ({ ...it })) : undefined
+							};
+							items[itemIdx].important = newImportant;
 							onSaveStateChange(true);
 							try {
-								await timelineManager.updateEntry(originalIndex, entry, bookFolder);
+								await timelineManager.updateEntry(originalIndex, entry, bookFolder, originalEntry);
 							} catch (err) {
+								items[itemIdx].important = previousImportant;
 								Logger.error('[TimelineBoard] 更新事件重要状态失败:', err);
 								throw err;
 							} finally {
@@ -575,12 +609,20 @@ export class TimelineBoardRenderer {
 								onSaveStateChange(true);
 								try {
 									const originalIndex = allEntries.indexOf(entry);
+									const originalEntry = {
+										...entry,
+										lores: entry.lores ? [...entry.lores] : undefined,
+										items: entry.items ? entry.items.map(it => ({ ...it })) : undefined
+									};
 									if (items.length <= 1) {
-										await timelineManager.deleteEntry(originalIndex, bookFolder);
+										await timelineManager.deleteEntry(originalIndex, bookFolder, originalEntry);
 									} else {
-										items.splice(itemIdx, 1);
-										entry.items = items;
-										await timelineManager.updateEntry(originalIndex, entry, bookFolder);
+										const updatedItems = items.filter((_, idx) => idx !== itemIdx);
+										const updatedEntry: TimelineEntry = {
+											...entry,
+											items: updatedItems
+										};
+										await timelineManager.updateEntry(originalIndex, updatedEntry, bookFolder, originalEntry);
 									}
 								} catch (err) {
 									Logger.error('[TimelineBoard] 删除事件失败:', err);
@@ -646,13 +688,25 @@ export class TimelineBoardRenderer {
 							if (newVal !== currentDesc) {
 								onSaveStateChange(true);
 								try {
+									const originalIndex = allEntries.indexOf(entry);
+									const originalEntry = {
+										...entry,
+										lores: entry.lores ? [...entry.lores] : undefined,
+										items: entry.items ? entry.items.map(it => ({ ...it })) : undefined
+									};
+									const updatedItems = items.map((it, idx) =>
+										idx === itemIdx ? { ...it, description: newVal } : { ...it }
+									);
+									const updatedEntry: TimelineEntry = {
+										...entry,
+										items: updatedItems,
+										description: updatedItems.length > 0 ? entry.description : newVal
+									};
+									await timelineManager.updateEntry(originalIndex, updatedEntry, bookFolder, originalEntry);
 									items[itemIdx].description = newVal;
-									// Update the entry in manager
 									if (!entry.items) {
 										entry.description = newVal;
 									}
-									const originalIndex = allEntries.indexOf(entry);
-									await timelineManager.updateEntry(originalIndex, entry, bookFolder);
 								} catch (err) {
 									Logger.error('[TimelineBoard] 更新描述失败:', err);
 								} finally {
@@ -720,21 +774,34 @@ export class TimelineBoardRenderer {
 						isSaving = true;
 						const newVal = getPlaintextContent(descEl).trim();
 						if (newVal) {
-							if (!entry.items) {
-								entry.items = [{
+							const originalIndex = allEntries.indexOf(entry);
+							const originalEntry = {
+								...entry,
+								lores: entry.lores ? [...entry.lores] : undefined,
+								items: entry.items ? entry.items.map(it => ({ ...it })) : undefined
+							};
+							const currentItems = entry.items && entry.items.length > 0
+								? entry.items.map(it => ({ ...it }))
+								: [{
 									description: entry.description || '',
 									chapter: entry.chapter || '',
 									important: entry.important
 								}];
-							}
-							entry.items.push({
-								description: newVal,
-								chapter: ''
-							});
-							const originalIndex = allEntries.indexOf(entry);
+							const updatedItems = [
+								...currentItems,
+								{
+									description: newVal,
+									chapter: ''
+								}
+							];
+							const updatedEntry: TimelineEntry = {
+								...entry,
+								items: updatedItems
+							};
 							onSaveStateChange(true);
 							try {
-								await timelineManager.updateEntry(originalIndex, entry, bookFolder);
+								await timelineManager.updateEntry(originalIndex, updatedEntry, bookFolder, originalEntry);
+								entry.items = updatedItems;
 							} catch (err) {
 								Logger.error('[TimelineBoard] 添加子事件失败:', err);
 							} finally {

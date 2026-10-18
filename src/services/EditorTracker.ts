@@ -11,6 +11,8 @@ import { REGEX_PATTERNS } from '../constants';
  * 负责监听编辑器变化、更新字数统计、管理状态栏显示
  */
 export class EditorTracker {
+	private fileChangeGeneration: number = 0;
+
 	constructor(
 		private app: App,
 		private plugin: WebNovelAssistantPlugin
@@ -21,6 +23,7 @@ export class EditorTracker {
 	 * 更新字数统计和每日历史
 	 */
 	handleEditorChange(): void {
+		this.fileChangeGeneration++;
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (!view) return;
 
@@ -67,6 +70,7 @@ export class EditorTracker {
 	 * 重置字数统计
 	 */
 	async handleFileChange(): Promise<void> {
+		const reqGen = ++this.fileChangeGeneration;
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 
 		// 严格模式：必须符合字数统计条件
@@ -79,33 +83,73 @@ export class EditorTracker {
 		}
 
 		if (!view?.file) {
-			// 侧面板或 Modal 获得焦点时没有活动 Markdown Leaf，保留最后章节供状态面板继续显示。
+			// 侧面板或 Modal 获得焦点时没有活动 Markdown Leaf，维持现有追踪基线并通知状态视图刷新。
 			this.updateWordCount();
 			this.plugin.refreshStatusViews();
 			return;
 		}
 
+		const targetView = view;
+		const targetFile = view.file;
+		const targetPath = targetFile.path;
+		const targetMtime = targetFile.stat?.mtime;
+
 		let currentWords = 0;
 
-		const existingCache = this.plugin.cacheManager.getFileCache(view.file.path);
+		const existingCache = this.plugin.cacheManager.getFileCache(targetPath);
 
 		if (existingCache !== null) {
 			currentWords = existingCache;
 		} else {
+			// 先捕获当前作品，避免文件尚未读完就被关闭时丢失选择。
+			this.plugin.refreshStatusViews();
 			// 只有在缓存缺失时才去安全地读取实际文件内容（避免 active-leaf-change 瞬间 view.getViewData 数据陈旧）
 			try {
-				const content = await this.app.vault.cachedRead(view.file);
+				const content = await this.app.vault.cachedRead(targetFile);
+				if (this.fileChangeGeneration !== reqGen) {
+					return;
+				}
+				if (targetFile.path !== targetPath) {
+					return;
+				}
+				if (targetMtime !== undefined && targetFile.stat?.mtime !== undefined && targetFile.stat.mtime !== targetMtime) {
+					return;
+				}
+				const currentActiveView = this.app.workspace.getActiveViewOfType(MarkdownView);
+				if (currentActiveView && currentActiveView.file && currentActiveView.file.path !== targetPath) {
+					return;
+				}
+				if (targetView.file && targetView.file.path !== targetPath) {
+					return;
+				}
+
 				currentWords = this.plugin.calculateAccurateWords(content);
-				if (this.plugin.cacheManager.isEligibleForTotalWordCount(view.file)) {
-					this.plugin.cacheManager.updateFileCache(view.file, currentWords, this.app.vault);
+				if (this.plugin.cacheManager.isEligibleForTotalWordCount(targetFile)) {
+					this.plugin.cacheManager.updateFileCache(targetFile, currentWords, this.app.vault);
 				}
 			} catch (e) {
 				Logger.error('[EditorTracker] failed to read file on change', e);
+				return;
 			}
 		}
 
+		if (this.fileChangeGeneration !== reqGen) {
+			return;
+		}
+		if (targetFile.path !== targetPath) {
+			return;
+		}
+		if (targetMtime !== undefined && targetFile.stat?.mtime !== undefined && targetFile.stat.mtime !== targetMtime) {
+			return;
+		}
+
+		const currentActiveView = this.app.workspace.getActiveViewOfType(MarkdownView);
+		if (currentActiveView && currentActiveView.file && currentActiveView.file.path !== targetPath) {
+			return;
+		}
+
 		this.plugin.lastFileWords = currentWords;
-		this.plugin.lastFilePath = view.file.path;
+		this.plugin.lastFilePath = targetPath;
 
 		this.updateWordCount();
 		this.plugin.refreshStatusViews();

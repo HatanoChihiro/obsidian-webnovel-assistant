@@ -1,9 +1,36 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { WordCounter } from '../src/services/WordCounter';
+import * as markdownCleaner from '../src/utils/markdownCleaner';
 
 const counter = new WordCounter();
 
 describe('WordCounter', () => {
+	it('reuses Markdown cleaning for unchanged counting requests and line counts', () => {
+		const instance = new WordCounter();
+		const clean = vi.spyOn(markdownCleaner, 'cleanForWordCount');
+		try {
+			const text = '# 标题\n\n正文 **内容**';
+			const expected = instance.calculateAccurateWords(text);
+			for (let i = 0; i < 20; i++) expect(instance.calculateAccurateWords(text)).toBe(expected);
+			expect(instance.calculateWordsPerLine(text).reduce((sum, value) => sum + value, 0)).toBe(expected);
+			expect(clean).toHaveBeenCalledTimes(1);
+		} finally {
+			clean.mockRestore();
+		}
+	});
+
+	it('invalidates bounded cached results when text or counting options change', () => {
+		const instance = new WordCounter();
+		const reference = (text: string, method: 'webnovel' | 'standard' | 'obsidian', footnotes: boolean) =>
+			new WordCounter().calculateAccurateWords(text, method, footnotes);
+		for (const text of ['正文 hello world！ ^[注释]', '修改后的正文', '正文 hello world！ ^[注释]']) {
+			for (const method of ['webnovel', 'standard', 'obsidian'] as const) {
+				for (const footnotes of [false, true]) {
+					expect(instance.calculateAccurateWords(text, method, footnotes)).toBe(reference(text, method, footnotes));
+				}
+			}
+		}
+	});
 	describe('基础计数', () => {
 		it('纯中文字符计数', () => {
 			expect(counter.calculateAccurateWords('你好世界')).toBe(4);

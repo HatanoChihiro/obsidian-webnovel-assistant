@@ -100,6 +100,21 @@ export function setCaretPosition(editor: HTMLElement, charIndex: number): void {
 	}
 }
 
+const editorInputHandlers = new WeakMap<HTMLElement, () => void>();
+
+export function teardownStickyNoteParagraphEditor(editor: HTMLElement): void {
+	editor.removeClass('wn-sticky-note-paragraph-editor');
+	editor.removeAttribute('contenteditable');
+	editor.removeAttribute('role');
+	editor.removeAttribute('aria-multiline');
+	editor.removeAttribute('spellcheck');
+	const handler = editorInputHandlers.get(editor);
+	if (handler) {
+		editor.removeEventListener('input', handler);
+		editorInputHandlers.delete(editor);
+	}
+}
+
 export function setupStickyNoteParagraphEditor<T extends HTMLElement>(
 	editor: T,
 	content?: string
@@ -117,7 +132,13 @@ export function setupStickyNoteParagraphEditor<T extends HTMLElement>(
 	if (content !== undefined) {
 		(editor as T & { value: string }).value = content;
 	}
-	editor.addEventListener('input', () => refreshStickyNoteEditorLines(editor));
+	const existingHandler = editorInputHandlers.get(editor);
+	if (existingHandler) {
+		editor.removeEventListener('input', existingHandler);
+	}
+	const inputHandler = () => refreshStickyNoteEditorLines(editor);
+	editorInputHandlers.set(editor, inputHandler);
+	editor.addEventListener('input', inputHandler);
 	return editor as T & { value: string };
 }
 
@@ -129,16 +150,5 @@ export function createStickyNoteParagraphEditor(
 	const editor = parent.createDiv({
 		cls: `${classes} wn-sticky-note-paragraph-editor`
 	}) as StickyNoteParagraphEditor;
-	editor.setAttr('contenteditable', 'plaintext-only');
-	editor.setAttr('role', 'textbox');
-	editor.setAttr('aria-multiline', 'true');
-	editor.setAttr('spellcheck', 'true');
-	Object.defineProperty(editor, 'value', {
-		configurable: true,
-		get: () => getStickyNoteEditorContent(editor),
-		set: (value: string) => setStickyNoteEditorContent(editor, value)
-	});
-	editor.value = content;
-	editor.addEventListener('input', () => refreshStickyNoteEditorLines(editor));
-	return editor;
+	return setupStickyNoteParagraphEditor(editor, content);
 }

@@ -2380,5 +2380,109 @@ describe('TypewriterExtension - Focus Loss & Offscreen Coordinate Guards', () =>
 
 			pluginInstance.destroy();
 		});
+
+		it('does not re-arm frozen viewport when unfocused viewport update happens during touch scroll', () => {
+			const extension = createTypewriterExtension(env.mockPlugin);
+			const view = env.createMockView(500, true);
+			const pluginInstance = (extension as unknown as { create: (v: EditorView) => { update: (u: ViewUpdate) => void; destroy: () => void } }).create(view);
+
+			// Initial center
+			pluginInstance.update({ view, state: view.state, docChanged: false, selectionSet: false } as unknown as ViewUpdate);
+			env.mockWindow.flushRaf();
+
+			// Simulated parent in-memory probe:
+			// 1. Touch gesture starts at scrollTop 320
+			env.mockScroller.scrollTop = 320;
+			env.mockScroller.dispatchEvent('touchstart');
+			env.mockScroller.dispatchEvent('touchmove');
+
+			// 2. Viewport update occurs while editor is unfocused (view.hasFocus = false)
+			(view as { hasFocus: boolean }).hasFocus = false;
+			pluginInstance.update({ view, state: view.state, docChanged: false, selectionSet: false } as unknown as ViewUpdate);
+
+			// 3. Native scroll moves viewport to 280 and dispatches scroll event
+			env.mockScroller.scrollTop = 280;
+			env.mockScroller.dispatchEvent('scroll');
+
+			// Must not reset back to 320
+			expect(env.mockScroller.scrollTop).toBe(280);
+
+			pluginInstance.destroy();
+		});
+
+		it('does not re-arm frozen viewport during inertia scroll after touch release with repeated geometry updates and blur', () => {
+			const extension = createTypewriterExtension(env.mockPlugin);
+			const view = env.createMockView(500, true);
+			const pluginInstance = (extension as unknown as { create: (v: EditorView) => { update: (u: ViewUpdate) => void; destroy: () => void } }).create(view);
+
+			pluginInstance.update({ view, state: view.state, docChanged: false, selectionSet: false } as unknown as ViewUpdate);
+			env.mockWindow.flushRaf();
+
+			// User performs touch scroll
+			env.mockScroller.scrollTop = 400;
+			env.mockScroller.dispatchEvent('touchstart');
+			env.mockScroller.dispatchEvent('touchmove');
+			// Finger lifted (inertia begins)
+			env.mockDocument.dispatchEvent('touchend');
+
+			// Viewport updates and geometry updates happen while unfocused during momentum
+			(view as { hasFocus: boolean }).hasFocus = false;
+			pluginInstance.update({ view, state: view.state, docChanged: false, selectionSet: false, geometryChanged: true } as unknown as ViewUpdate);
+
+			// Window blur or focusout occurs during manual review
+			env.mockScroller.dispatchEvent('focusout');
+			env.mockWindow.dispatchEvent('blur');
+
+			// Inertial scroll moves scrollTop to 200
+			env.mockScroller.scrollTop = 200;
+			env.mockScroller.dispatchEvent('scroll');
+			env.mockWindow.flushRaf();
+
+			// Viewport must remain at 200 and not snap back to 400
+			expect(env.mockScroller.scrollTop).toBe(200);
+
+			pluginInstance.destroy();
+		});
+
+		it('does not re-arm frozen viewport during wheel manual review when unfocused or losing focus', () => {
+			const extension = createTypewriterExtension(env.mockPlugin);
+			const view = env.createMockView(500, true);
+			const pluginInstance = (extension as unknown as { create: (v: EditorView) => { update: (u: ViewUpdate) => void; destroy: () => void } }).create(view);
+
+			pluginInstance.update({ view, state: view.state, docChanged: false, selectionSet: false } as unknown as ViewUpdate);
+			env.mockWindow.flushRaf();
+
+			env.mockScroller.scrollTop = 450;
+			env.mockScroller.dispatchEvent('wheel');
+
+			// Editor unfocused, geometry update arrives
+			(view as { hasFocus: boolean }).hasFocus = false;
+			env.mockScroller.dispatchEvent('focusout');
+			pluginInstance.update({ view, state: view.state, docChanged: false, selectionSet: false, geometryChanged: true } as unknown as ViewUpdate);
+
+			// Further scrolling to 150
+			env.mockScroller.scrollTop = 150;
+			env.mockScroller.dispatchEvent('scroll');
+			env.mockWindow.flushRaf();
+
+			expect(env.mockScroller.scrollTop).toBe(150);
+
+			// Deliberate user input resumes follow
+			(view as { hasFocus: boolean }).hasFocus = true;
+			env.mockScroller.dispatchEvent('focusin');
+			(view.dispatch as unknown as ReturnType<typeof vi.fn>).mockClear();
+			pluginInstance.update({
+				view,
+				state: view.state,
+				docChanged: true,
+				selectionSet: false,
+				transactions: [{ annotation: () => 'input.type' }]
+			} as unknown as ViewUpdate);
+			env.mockWindow.flushRaf();
+
+			expect(view.dispatch).toHaveBeenCalled();
+
+			pluginInstance.destroy();
+		});
 	});
 });

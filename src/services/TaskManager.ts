@@ -1,29 +1,78 @@
 // 限时任务追踪管理器（内部仍用 Task 命名，待后续重构改为 Task）
-import type { App} from 'obsidian';
+import type { App, EventRef, TAbstractFile } from 'obsidian';
 import { TFile, normalizePath } from 'obsidian';
 import { t } from '../i18n';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { TaskEntry, TaskStatus, TaskType } from '../types/task';
 import { TASK_STATUS_MAP, TASK_LABEL_MAP, TASK_TYPE_MAP, getTaskLabel, getTaskStatusText, getTaskTypeText, getTaskPeriodTitle, getDefaultFileName, getDefaultFileNameCandidates } from '../i18n/data-keys';
 import { SerializedWriter } from '../utils/SerializedWriter';
+import type { Destroyable } from '../core/ServiceRegistry';
 
-export class TaskManager {
+interface TaskCacheRecord {
+	path: string;
+	mtime: number;
+	size: number;
+	entries: TaskEntry[];
+	token: number;
+}
+
+export class TaskManager implements Destroyable {
 	private writer = new SerializedWriter();
+	private fileTokens = new WeakMap<TFile, number>();
+	private fileCache = new WeakMap<TFile, TaskCacheRecord>();
+	private inFlightReads = new WeakMap<TFile, Promise<TaskEntry[] | null>>();
+	private isDestroyed = false;
+	private eventRefs: EventRef[] = [];
 
 	constructor(
 		private app: App,
 		private plugin: WebNovelAssistantPlugin,
 		public currentFolder: string = ''
-	) {}
+	) {
+		this.setupVaultListeners();
+	}
+
+	private setupVaultListeners(): void {
+		if (!this.app?.vault?.on) return;
+		const invalidateCachedFile = (file: TAbstractFile) => {
+			if (file instanceof TFile && (this.fileCache.has(file) || this.inFlightReads.has(file))) {
+				this.invalidateFile(file);
+			}
+		};
+		this.eventRefs.push(
+			this.app.vault.on('modify', invalidateCachedFile),
+			this.app.vault.on('delete', invalidateCachedFile),
+			this.app.vault.on('rename', invalidateCachedFile)
+		);
+	}
+
+	public async destroy(): Promise<void> {
+		this.isDestroyed = true;
+		if (this.app?.vault?.offref) {
+			for (const ref of this.eventRefs) {
+				this.app.vault.offref(ref);
+			}
+		}
+		this.eventRefs = [];
+		this.fileCache = new WeakMap();
+		this.inFlightReads = new WeakMap();
+		await this.writer.flush();
+	}
+
+	public invalidateFile(file: TFile): void {
+		this.fileTokens.set(file, (this.fileTokens.get(file) ?? 0) + 1);
+		this.fileCache.delete(file);
+		this.inFlightReads.delete(file);
+	}
 
 	getTaskFilePath(folderPath: string = this.currentFolder): string {
-		const fileName = (this.plugin.settings.task?.fileName || getDefaultFileName('taskFileName')) + '.md';
+		const fileName = (this.plugin.settings?.task?.fileName || getDefaultFileName('taskFileName')) + '.md';
 		return normalizePath(folderPath ? `${folderPath}/${fileName}` : fileName);
 	}
 
 	findTaskFile(folderPath: string = this.currentFolder): TFile | null {
 		const candidates = new Set<string>();
-		candidates.add(this.plugin.settings.task?.fileName || getDefaultFileName('taskFileName'));
+		candidates.add(this.plugin.settings?.task?.fileName || getDefaultFileName('taskFileName'));
 		for (const name of getDefaultFileNameCandidates('taskFileName')) candidates.add(name);
 		for (const fileName of candidates) {
 			const path = normalizePath(folderPath ? folderPath + "/" + fileName + ".md" : fileName + ".md");
@@ -42,25 +91,82 @@ export class TaskManager {
 		const existing = this.findTaskFile(folderPath);
 		if (existing) {
 			// 如果找到的文件名与当前设置不一致，自动重命名
-			const expectedName = this.plugin.settings.task?.fileName || getDefaultFileName('taskFileName');
+			const expectedName = this.plugin.settings?.task?.fileName || getDefaultFileName('taskFileName');
 			if (existing.name !== expectedName + '.md') {
 				const newPath = normalizePath(folderPath ? folderPath + '/' + expectedName + '.md' : expectedName + '.md');
 				try { await this.app.fileManager.renameFile(existing, newPath); } catch (e) { console.warn('[TaskManager] 重命名任务目标文件失败:', e); }
 			}
 			const foundPath = normalizePath(folderPath ? folderPath + '/' + expectedName + '.md' : expectedName + '.md');
 			const found = this.app.vault.getAbstractFileByPath(foundPath);
-				return found instanceof TFile ? found : existing;
+			const target = found instanceof TFile ? found : existing;
+			this.invalidateFile(target);
+			return target;
 		}
 
 		const path = this.getTaskFilePath(folderPath);
-		return await this.app.vault.create(path, '');
+		const created = await this.app.vault.create(path, '');
+		this.invalidateFile(created);
+		return created;
 	}
 
 	async loadEntries(folderPath: string = this.currentFolder): Promise<TaskEntry[] | null> {
+		if (this.isDestroyed) return null;
 		const file = this.getTaskFile(folderPath);
 		if (!file) return null;
-		const content = await this.app.vault.read(file);
-		return this.parseEntries(content);
+
+		const currentToken = this.fileTokens.get(file) ?? 0;
+		const cached = this.fileCache.get(file);
+		const mtime = file.stat?.mtime ?? 0;
+		const size = file.stat?.size ?? 0;
+
+		if (
+			cached &&
+			cached.token === currentToken &&
+			cached.path === file.path &&
+			cached.mtime === mtime &&
+			cached.size === size
+		) {
+			return cached.entries.map(e => ({ ...e }));
+		}
+
+		let readPromise = this.inFlightReads.get(file);
+		if (!readPromise) {
+			const readToken = currentToken;
+			const readPath = file.path;
+
+			readPromise = (async () => {
+				try {
+					const content = await this.app.vault.read(file);
+					const entries = this.parseEntries(content);
+
+					if (
+						!this.isDestroyed &&
+						(this.fileTokens.get(file) ?? 0) === readToken &&
+						file.path === readPath &&
+						(file.stat?.mtime ?? 0) === mtime &&
+						(file.stat?.size ?? 0) === size
+					) {
+						this.fileCache.set(file, {
+							path: file.path,
+							mtime,
+							size,
+							entries,
+							token: readToken
+						});
+					}
+					return entries;
+				} finally {
+					if (this.inFlightReads.get(file) === readPromise) {
+						this.inFlightReads.delete(file);
+					}
+				}
+			})();
+
+			this.inFlightReads.set(file, readPromise);
+		}
+
+		const result = await readPromise;
+		return result ? result.map(e => ({ ...e })) : null;
 	}
 
 	parseEntries(content: string): TaskEntry[] {
@@ -142,6 +248,7 @@ export class TaskManager {
 				const sep = existing.trim() ? '\n' : '';
 				return existing.trimEnd() + sep + this.formatEntry(entry);
 			});
+			this.invalidateFile(file);
 		});
 		await this.reconcileTasks(folderPath, false);
 		this.notifyTasksChanged(folderPath);
@@ -169,6 +276,7 @@ export class TaskManager {
 				}
 				return newContent;
 			});
+			this.invalidateFile(file);
 		});
 		if (notify) {
 			this.notifyTasksChanged(folderPath);
@@ -195,6 +303,7 @@ export class TaskManager {
 				}
 				return newContent;
 			});
+			this.invalidateFile(file);
 		});
 		this.notifyTasksChanged(folderPath);
 		return newImportant;
@@ -217,6 +326,7 @@ export class TaskManager {
 				}
 				return newContent;
 			});
+			this.invalidateFile(file);
 		});
 	}
 

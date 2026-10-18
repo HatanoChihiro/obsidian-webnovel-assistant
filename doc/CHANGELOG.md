@@ -1,3 +1,67 @@
+## ✨ v4.0.2
+
+### 新增功能
+
+- **移动端设定轨迹**：手机和平板支持全屏横向编辑、单指平移和双指缩放。
+- **沉浸参考文档**：桌面端沉浸模式支持搜索并打开库内 Markdown 文档作为参考，并按作品记住上次的参考文档。
+
+### 功能优化
+
+- **大型设定轨迹**：减少空白单元格，降低大型轨迹板的渲染开销，保留事件编辑、缩放和平移操作。
+- **工作台性能**：按当前看板准备数据，单章变化时局部更新章节卡片，减少整板重建并保留正在编辑的内容。
+- **状态面板性能**：计时刷新减少任务读取和历史汇总，任务文件与章节属性的变化仍及时显示。
+- **写作统计性能**：多个统计入口复用未变化正文的计算结果，减少重复全文统计和 Markdown 清理。
+- **关联与排序性能**：减少时间线、伏笔关联和批量章节排序的重复计算，改善大型作品的处理速度。
+- **时间线筛选**：侧面板和工作台支持同时选择多个类型，并可与关联设定组合筛选。
+- **作品选择记忆**：关闭全部文档或重启后，实时状态面板保留上次作品；无文档时新开的工作台沿用该作品。章节目标与状态摘要仅在当前打开章节时显示，离开章节后自动隐藏。
+- **目录设置**：工作区和严格章节模式例外目录改为每行一个路径，支持名称含逗号的文件夹。
+
+### Bug 修复
+
+- **写作热力图**：零字数使用随主题背景调整的低饱和灰色，与有字数记录区分；图例、数据面板和主页保持一致。
+- **近七日写作图表**：固定显示今天及前六天，缺失日期补零，日期包含月份；下方汇总与日均使用同一七日范围。
+- **时间线保存**：并发编辑或拖动时保留其他修改；目标事件已变化时提示冲突，避免覆盖。
+- **字数统计**：快速切换章节时，延迟读取不再覆盖当前章节的字数和写作增量。
+- **多工作台**：同时打开的工作台分别刷新，关闭其中一个不会取消其他工作台的更新。
+- **轨迹编辑**：保存事件描述后，保留画布位置和缩放。
+- **时间线章节关联**：修复含中英文逗号的章节名被错误拆分、无法正确关联的问题。
+- **主页排版**：长字段在窄面板下可正常换行，不再挤压标签。
+- **打字机滚动**：修复编辑器失焦后手动浏览被拉回旧位置的问题。
+
+此前已被错误拆分的章节关联或目录路径需重新设置。
+
+### English Changelog
+
+#### New Features
+
+- **Mobile Lore Trajectory**: Phones and tablets support fullscreen landscape editing, one-finger panning, and pinch zoom.
+- **Immersive references**: Desktop Immersive Mode can search and open Markdown documents from the vault as references, remembering the last reference document for each work.
+
+#### Enhancements
+
+- **Large lore trajectories**: Render fewer empty cells to reduce overhead on large boards while retaining event editing, zoom, and pan controls.
+- **Workbench performance**: Prepare data for the current board and update individual chapter cards when possible, reducing full rebuilds and preserving active edits.
+- **Status panel performance**: Timer updates avoid repeated task reads and history aggregation while task file and chapter property changes still refresh the panel.
+- **Writing statistics performance**: Reuse results for unchanged text across statistics displays, avoiding repeated full-document counting and Markdown cleanup.
+- **Linking and sorting performance**: Reduce repeated work when resolving timeline and foreshadowing links and sorting large chapter lists.
+- **Timeline filters**: Select multiple types in the sidebar and Workbench, and combine them with linked lore filters.
+- **Work selection memory**: Writing Status keeps the last work selected after all documents are closed or the app restarts. A new Workbench opened with no documents open uses the same work. Chapter goals and status summaries appear only for the currently open chapter and hide when you leave it.
+- **Folder settings**: Workspace folders and strict chapter exceptions now use one path per line, supporting commas in folder names.
+
+#### Bug Fixes
+
+- **Writing heatmap**: Use a low-saturation gray that adapts to the theme background for zero words, distinguishing empty days from writing days consistently across the legend, statistics panel, and Homepage.
+- **Recent writing chart**: Show today and the preceding six calendar days, fill missing dates with zero, include the month in labels, and use the same seven-day range for summaries and daily averages.
+- **Timeline saving**: Preserve concurrent changes during edits and moves, and report conflicts when the target event has changed.
+- **Word counts**: Delayed reads no longer overwrite the current chapter's count or writing delta after a quick chapter switch.
+- **Multiple Workbenches**: Each Workbench refreshes independently; closing one does not cancel another's pending update.
+- **Trajectory editing**: Saving an event description keeps the canvas position and zoom.
+- **Timeline chapter links**: Fixed chapter names containing ASCII or fullwidth commas being split incorrectly and failing to link correctly.
+- **Homepage layout**: Long fields wrap in narrow panes without crowding labels.
+- **Typewriter scrolling**: Fixed manual scrolling being pulled back to an old position after the editor loses focus.
+
+Chapter associations or folder paths previously split incorrectly must be set up again.
+
 ## ✨ v4.0.1
 
 ### 新增功能

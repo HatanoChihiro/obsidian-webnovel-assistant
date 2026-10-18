@@ -1,5 +1,5 @@
 import type { App } from 'obsidian';
-import { TFile, TFolder } from 'obsidian';
+import { ItemView, MarkdownView, TFile, TFolder } from 'obsidian';
 import type { AccurateCountSettings } from '../types/settings';
 import type { HomepageManager } from '../services/HomepageManager';
 import type { WorkbenchView } from '../ui/WorkbenchView';
@@ -10,7 +10,20 @@ export interface FindBookRootPlugin {
 }
 
 export interface CurrentBookContextPlugin extends FindBookRootPlugin {
-	homepageManager?: Pick<HomepageManager, 'getNovelFolders'>;
+	homepageManager?: Pick<HomepageManager, 'getNovelFolders'> & {
+		getHomepageFilePath?: () => string;
+	};
+}
+
+export interface CurrentBookContextOptions {
+	/**
+	 * 若为 false，只在当前存在明确活动的 Markdown 章节或被激活的工作台时返回作品路径；
+	 * 不再兜底寻找后台打开的工作台或全库首个作品，允许调用方保留已有作品选择记忆。
+	 * 默认值为 true，保持其他视图既有兜底行为不变。
+	 */
+	fallback?: boolean;
+	/** 工作台首次打开时，优先沿用状态面板记忆，再使用后台工作台或默认作品。 */
+	preferStatusViewContext?: boolean;
 }
 
 /**
@@ -188,7 +201,45 @@ export function getLatestChapterFolderPath(bookPath: string, files: TFile[]): st
  * 智能获取当前全局作品上下文
  * 避免因点击侧边栏（activeLeaf 改变）或非作品文件导致作品上下文被覆盖
  */
-export function getCurrentBookContext(app: App, plugin: CurrentBookContextPlugin): string | null {
+export function getCurrentBookContext(
+	app: App,
+	plugin: CurrentBookContextPlugin,
+	options?: CurrentBookContextOptions
+): string | null {
+	if (options?.fallback === false) {
+		const activeMarkdown = app.workspace.getActiveViewOfType(MarkdownView);
+		if (activeMarkdown?.file) {
+			const homepagePath = plugin.homepageManager?.getHomepageFilePath?.();
+			const isHomepage = (homepagePath && activeMarkdown.file.path === homepagePath) || activeMarkdown.file.name === '创作主页.md';
+			if (!isHomepage) {
+				const bookPath = findBookRoot(app, plugin, activeMarkdown.file, true);
+				if (bookPath) return bookPath;
+			}
+			return null;
+		}
+
+		const activeItemView = app.workspace.getActiveViewOfType(ItemView);
+		if (activeItemView && activeItemView.getViewType() === 'webnovel-workbench') {
+			const candidate = activeItemView as unknown as { currentBookPath?: unknown };
+			if (typeof candidate.currentBookPath === 'string' && candidate.currentBookPath && candidate.currentBookPath !== '/') {
+				return candidate.currentBookPath;
+			}
+		}
+
+		return null;
+	}
+
+	if (options?.preferStatusViewContext) {
+		const activeContext = getCurrentBookContext(app, plugin, { fallback: false });
+		if (activeContext) return activeContext;
+		for (const leaf of app.workspace.getLeavesOfType('writing-status-view')) {
+			const bookPath = leaf.view.getState().currentBookPath;
+			if (typeof bookPath !== 'string' || !bookPath || bookPath === '/') continue;
+			const folder = app.vault.getAbstractFileByPath(bookPath);
+			if (folder instanceof TFolder && findBookRoot(app, plugin, folder, true) === bookPath) return bookPath;
+		}
+	}
+
 	const activeLeaf = app.workspace.getMostRecentLeaf();
 	
 	// 1. 优先检查当前活动 Leaf（如果是工作台，以工作台自身的 currentBookPath 为准）

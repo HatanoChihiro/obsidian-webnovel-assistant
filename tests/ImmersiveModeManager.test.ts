@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { App, TFile, WorkspaceLeaf, WorkspaceSplit, MarkdownView } from 'obsidian';
+import { TFile, type App, type WorkspaceLeaf, type WorkspaceSplit, type MarkdownView } from 'obsidian';
 import { ImmersiveModeManager, type ImmersiveModeManagerPlugin } from '../src/ui/ImmersiveModeManager';
+import { ImmersiveReferenceManager } from '../src/services/ImmersiveReferenceManager';
 import { ImmersivePomodoroModal } from '../src/ui/ImmersivePomodoroModal';
 
 vi.mock('obsidian', () => {
@@ -78,10 +79,12 @@ vi.mock('obsidian', () => {
 
 	return {
 		Notice: vi.fn(),
+		setIcon: vi.fn(),
 		MarkdownView: class {},
 		TFile: class {},
         TFolder: class {},
         Modal: MockModal,
+        FuzzySuggestModal: MockModal,
         Setting: MockSetting,
         ToggleComponent: class {
             setValue() { return this; }
@@ -143,6 +146,9 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
                 addEventListener: vi.fn(),
                 removeEventListener: vi.fn(),
                 appendChild: vi.fn(),
+                setAttribute: vi.fn(),
+                removeAttribute: vi.fn(),
+                getAttribute: vi.fn(),
 				createDiv: vi.fn((opts?: { cls?: string }) => createMockDOMElement(opts?.cls || '')),
 				createSpan: vi.fn((opts?: { cls?: string }) => createMockDOMElement(opts?.cls || '')),
 				createEl: vi.fn((_tag: string, opts?: { cls?: string }) => createMockDOMElement(opts?.cls || ''))
@@ -175,6 +181,7 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
             },
             fullscreenElement: null,
             activeElement: null,
+            createElement: vi.fn((tag: string) => createMockDOMElement(tag)),
             querySelector: vi.fn().mockReturnValue(null),
             querySelectorAll: vi.fn().mockReturnValue([]),
             addEventListener: vi.fn((event: string, handler: Function) => {
@@ -272,6 +279,7 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
             settingsManager: { flush: vi.fn().mockResolvedValue(undefined) }
         } as unknown as ImmersiveModeManagerPlugin;
 
+        mockPlugin.immersiveReferenceManager = new ImmersiveReferenceManager(mockPlugin.app, mockPlugin);
         manager = new ImmersiveModeManager(mockPlugin.app, mockPlugin);
     });
 
@@ -581,6 +589,12 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
         manager['createdImmersiveLeaves'].add(referenceLeaf);
         manager['createdImmersiveLeaves'].add(chapterListLeaf);
         mockPlugin.settings.immersive.lastReferenceFilePath = 'Book/Reference.md';
+        (mockPlugin.app.vault.getAbstractFileByPath as ReturnType<typeof vi.fn>).mockImplementation((path: string) => {
+            if (path === 'Book/Reference.md') {
+                return Object.assign(new TFile(), { path: 'Book/Reference.md', extension: 'md' });
+            }
+            return null;
+        });
 
         const gen = 1;
         manager['layoutGeneration'] = gen;
@@ -1147,6 +1161,7 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
             mockPlugin.lastTaskFolder = 'Book';
 			(mockPlugin as unknown as { taskManager: ImmersiveModeManagerPlugin['taskManager'] }).taskManager = {
                 getTaskFile: vi.fn().mockReturnValue({ path: 'tasks.json' }),
+                loadEntries: vi.fn().mockRejectedValue(new Error('task read failed')),
                 parseEntries: vi.fn(),
                 getActiveTask: vi.fn(),
                 calcProgress: vi.fn()
@@ -1355,6 +1370,441 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
 
             modal.close();
             expect(customWin.clearInterval).toHaveBeenCalled();
+        });
+    });
+
+    describe('Reference Pane Lifecycle, Search & Sequence Guards', () => {
+        let setReferenceFilePathSpy: ReturnType<typeof vi.fn>;
+        type MockRefService = Pick<
+            ImmersiveReferenceManager,
+            'getWorkPath' | 'getReferenceFilePath' | 'migrateLegacyReference' | 'setReferenceFilePath' | 'handleRename' | 'handleDelete' | 'save' | 'flush' | 'destroy'
+        >;
+
+        beforeEach(() => {
+            setReferenceFilePathSpy = vi.fn().mockResolvedValue(undefined);
+            const mockRefService: MockRefService = {
+                getWorkPath: vi.fn((file: TFile | null) => {
+                    if (!file) return '';
+                    if (file.path.startsWith('Novels/BookB')) return 'Novels/BookB';
+                    if (file.path.startsWith('Novels/BookC')) return 'Novels/BookC';
+                    return 'Novels/BookA';
+                }),
+                getReferenceFilePath: vi.fn((work: string) => {
+                    if (work === 'Novels/BookB') return 'Novels/BookB/RefB.md';
+                    if (work === 'Novels/BookC') return 'Novels/BookC/RefC.md';
+                    return 'Novels/BookA/RefA.md';
+                }),
+                migrateLegacyReference: vi.fn(),
+                setReferenceFilePath: setReferenceFilePathSpy,
+                handleRename: vi.fn(),
+                handleDelete: vi.fn(),
+                save: vi.fn(),
+                flush: vi.fn().mockResolvedValue(undefined),
+                destroy: vi.fn()
+            };
+            manager['referenceManager'] = mockRefService;
+            manager['savedActiveFile'] = Object.assign(new TFile(), { path: 'Novels/BookA/Chapter1.md', extension: 'md' });
+            manager['isImmersiveActive'] = true;
+            manager['isExiting'] = false;
+        });
+
+        it('rapid A/B switches: serializes native leaf operations and ensures latest file B is displayed in leaf.view.file even when A resolves late', async () => {
+            let resolveA!: () => void;
+            const pA = new Promise<void>(resolve => { resolveA = resolve; });
+
+            const mockFileA = Object.assign(new TFile(), { path: 'Novels/BookA/RefA.md', extension: 'md' });
+            const mockFileB = Object.assign(new TFile(), { path: 'Novels/BookA/RefB.md', extension: 'md' });
+
+            (mockPlugin.app.vault.getAbstractFileByPath as ReturnType<typeof vi.fn>).mockImplementation((path: string) => {
+                if (path === mockFileA.path) return mockFileA;
+                if (path === mockFileB.path) return mockFileB;
+                return null;
+            });
+
+            const refLeafView = { file: null as TFile | null, getViewType: () => 'markdown' };
+            const refLeaf = {
+                view: refLeafView,
+                openFile: vi.fn().mockImplementation(async (file: TFile) => {
+                    if (file.path === mockFileA.path) {
+                        await pA;
+                    }
+                    refLeafView.file = file;
+                }),
+                containerEl: {
+                    classList: { add: vi.fn(), remove: vi.fn(), contains: (cls: string) => cls === 'immersive-reference-view' },
+                    ownerDocument: mockActiveDocument,
+                    querySelector: vi.fn().mockReturnValue(null),
+                    createDiv: vi.fn(() => ({
+                        createEl: vi.fn(() => ({
+                            addEventListener: vi.fn(),
+                            removeEventListener: vi.fn(),
+                            setAttribute: vi.fn()
+                        })),
+                        remove: vi.fn()
+                    }))
+                }
+            } as unknown as WorkspaceLeaf;
+
+            manager['createdImmersiveLeaves'].add(refLeaf);
+
+            // 1. Trigger switch to File A (pending)
+            const openPromiseA = manager.openReferenceFile(mockFileA, refLeaf);
+            await vi.waitFor(() => expect(refLeaf.openFile).toHaveBeenCalledWith(mockFileA, expect.anything()));
+
+            // 2. Rapidly trigger switch to File B before File A finishes
+            const openPromiseB = manager.openReferenceFile(mockFileB, refLeaf);
+            resolveA();
+            await Promise.all([openPromiseA, openPromiseB]);
+
+            // B finishes, displays B and persists B
+            expect(refLeafView.file).toBe(mockFileB);
+            expect(setReferenceFilePathSpy).toHaveBeenCalledWith('Novels/BookA', 'Novels/BookA/RefB.md');
+            setReferenceFilePathSpy.mockClear();
+
+            // 3. Stale File A finally resolves
+            resolveA();
+            await openPromiseA;
+
+            // Stale File A must NOT overwrite File B in view.file or settings
+            expect(refLeafView.file).toBe(mockFileB);
+            expect(setReferenceFilePathSpy).not.toHaveBeenCalled();
+        });
+
+        it('queues manual reference switching behind an unfinished initial restoration', async () => {
+            let finishRestore!: () => void;
+            const restoring = new Promise<void>(resolve => { finishRestore = resolve; });
+            const oldFile = Object.assign(new TFile(), { path: 'Novels/BookA/RefA.md', extension: 'md' });
+            const newFile = Object.assign(new TFile(), { path: 'Novels/BookA/RefB.md', extension: 'md' });
+            const view = { file: null as TFile | null, getViewType: () => 'markdown' };
+            const leaf = {
+                view,
+                containerEl: { classList: { contains: () => true, add: vi.fn(), remove: vi.fn() } },
+                setViewState: vi.fn(async () => { await restoring; view.file = oldFile; }),
+                openFile: vi.fn(async (file: TFile) => { view.file = file; })
+            } as unknown as WorkspaceLeaf;
+            vi.mocked(mockPlugin.app.vault.getAbstractFileByPath).mockImplementation(path => path === newFile.path ? newFile : oldFile);
+            vi.spyOn(manager, 'attachReferenceToolbar').mockImplementation(() => {});
+            vi.spyOn(manager as unknown as { yieldToMain: () => Promise<void> }, 'yieldToMain').mockResolvedValue();
+            manager['createdImmersiveLeaves'].add(leaf);
+            manager['layoutGeneration'] = 1;
+            manager['scheduleAuxiliaryMounts']([{ leaf, viewType: 'reference-view' }], 1);
+            await vi.waitFor(() => expect(leaf.setViewState).toHaveBeenCalled());
+            const opening = manager.openReferenceFile(newFile, leaf);
+            await Promise.resolve();
+            expect(leaf.openFile).not.toHaveBeenCalled();
+            finishRestore();
+            await opening;
+            expect(view.file).toBe(newFile);
+        });
+
+        it('captures main work at request time so main file transitions during openFile do not map reference to wrong work', async () => {
+            let resolveA!: () => void;
+            const pA = new Promise<void>(resolve => { resolveA = resolve; });
+
+            const mockRefA = Object.assign(new TFile(), { path: 'Novels/BookA/RefA.md', extension: 'md' });
+            (mockPlugin.app.vault.getAbstractFileByPath as ReturnType<typeof vi.fn>).mockReturnValue(mockRefA);
+
+            const mainFileA = Object.assign(new TFile(), { path: 'Novels/BookA/Chapter1.md' });
+            const mainFileB = Object.assign(new TFile(), { path: 'Novels/BookB/Chapter1.md' });
+
+            let currentMainFile = mainFileA;
+            manager['getMainEditorFile'] = vi.fn(() => currentMainFile);
+
+            const refLeafView = { file: null as TFile | null, getViewType: () => 'markdown' };
+            const refLeaf = {
+                view: refLeafView,
+                openFile: vi.fn().mockImplementation(async (file: TFile) => {
+                    await pA;
+                    refLeafView.file = file;
+                }),
+                containerEl: {
+                    classList: { add: vi.fn(), remove: vi.fn(), contains: (cls: string) => cls === 'immersive-reference-view' },
+                    ownerDocument: mockActiveDocument,
+                    querySelector: vi.fn().mockReturnValue(null),
+                    createDiv: vi.fn(() => ({
+                        createEl: vi.fn(() => ({
+                            addEventListener: vi.fn(),
+                            removeEventListener: vi.fn(),
+                            setAttribute: vi.fn()
+                        })),
+                        remove: vi.fn()
+                    }))
+                }
+            } as unknown as WorkspaceLeaf;
+
+            manager['createdImmersiveLeaves'].add(refLeaf);
+
+            // Request open while main editor is on BookA
+            const openPromise = manager.openReferenceFile(mockRefA, refLeaf);
+
+            // Main editor switches to BookB while RefA is opening
+            currentMainFile = mainFileB;
+
+            resolveA();
+            await openPromise;
+
+            // Must be saved under BookA (request time work), NOT BookB
+            expect(setReferenceFilePathSpy).toHaveBeenCalledWith('Novels/BookA', 'Novels/BookA/RefA.md');
+        });
+
+        it('openReferenceFile handles native openFile rejection gracefully with Notice and preserves focus', async () => {
+            const mockFile = Object.assign(new TFile(), { path: 'Novels/BookA/Corrupt.md', extension: 'md' });
+            (mockPlugin.app.vault.getAbstractFileByPath as ReturnType<typeof vi.fn>).mockReturnValue(mockFile);
+
+            const refLeaf = {
+                openFile: vi.fn().mockRejectedValue(new Error('EACCES: permission denied')),
+                containerEl: {
+                    classList: { add: vi.fn(), remove: vi.fn(), contains: (cls: string) => cls === 'immersive-reference-view' },
+                    ownerDocument: mockActiveDocument,
+                    querySelector: vi.fn().mockReturnValue(null)
+                }
+            } as unknown as WorkspaceLeaf;
+
+            manager['createdImmersiveLeaves'].add(refLeaf);
+            const restoreFocusSpy = vi.spyOn(manager as unknown as { restoreMainEditorFocus: () => void }, 'restoreMainEditorFocus');
+
+            // Should NOT throw an unhandled rejection
+            await expect(manager.openReferenceFile(mockFile, refLeaf)).resolves.not.toThrow();
+
+            expect(setReferenceFilePathSpy).not.toHaveBeenCalled();
+            expect(restoreFocusSpy).toHaveBeenCalled();
+        });
+
+        it('reconciles main work transitions when multiple file-open events occur during active transition (A -> B -> C)', async () => {
+            let resolveB!: () => void;
+            const pB = new Promise<void>(resolve => { resolveB = resolve; });
+
+            const mockRefB = Object.assign(new TFile(), { path: 'Novels/BookB/RefB.md', extension: 'md' });
+            const mockRefC = Object.assign(new TFile(), { path: 'Novels/BookC/RefC.md', extension: 'md' });
+            (mockPlugin.app.vault.getAbstractFileByPath as ReturnType<typeof vi.fn>).mockImplementation((path: string) => {
+                if (path === mockRefB.path) return mockRefB;
+                if (path === mockRefC.path) return mockRefC;
+                return null;
+            });
+
+            const refLeafView = { file: null as TFile | null, getViewType: () => 'markdown' };
+            const refLeaf = {
+                view: refLeafView,
+                openFile: vi.fn().mockImplementation(async (file: TFile) => {
+                    if (file.path === mockRefB.path) {
+                        await pB;
+                    }
+                    refLeafView.file = file;
+                }),
+                setViewState: vi.fn().mockResolvedValue(undefined),
+                containerEl: {
+                    classList: { add: vi.fn(), remove: vi.fn(), contains: (cls: string) => cls === 'immersive-reference-view' },
+                    ownerDocument: mockActiveDocument,
+                    querySelector: vi.fn().mockReturnValue(null),
+                    createDiv: vi.fn(() => ({
+                        createEl: vi.fn(() => ({
+                            addEventListener: vi.fn(),
+                            removeEventListener: vi.fn(),
+                            setAttribute: vi.fn()
+                        })),
+                        remove: vi.fn()
+                    }))
+                }
+            } as unknown as WorkspaceLeaf;
+
+            manager['createdImmersiveLeaves'].add(refLeaf);
+            manager['currentMainWorkPath'] = 'Novels/BookA';
+
+            let currentFile = Object.assign(new TFile(), { path: 'Novels/BookA/Chapter1.md' });
+            const mainLeaf = {
+                view: {
+                    file: currentFile,
+                    getViewType: () => 'markdown'
+                },
+                containerEl: { classList: { contains: (c: string) => c === 'immersive-main-editor' } }
+            } as unknown as WorkspaceLeaf;
+            manager['getMainEditorLeaf'] = vi.fn().mockReturnValue(mainLeaf);
+
+            let onFileOpen: (file: TFile) => void = () => { throw new Error('File listener was not registered'); };
+            Object.assign(mockPlugin.app.workspace, { on: vi.fn((event: string, handler: (file: TFile) => void) => {
+                if (event === 'file-open') onFileOpen = handler;
+                return {};
+            }) });
+            manager['registerImmersiveEventListeners']();
+
+            // Trigger file-open for BookB (starts transition)
+            currentFile = Object.assign(new TFile(), { path: 'Novels/BookB/Chapter1.md' });
+            (mainLeaf.view as unknown as { file: TFile }).file = currentFile;
+            onFileOpen(currentFile);
+
+            // Trigger file-open for BookC while BookB transition is in-flight
+            currentFile = Object.assign(new TFile(), { path: 'Novels/BookC/Chapter1.md' });
+            (mainLeaf.view as unknown as { file: TFile }).file = currentFile;
+            onFileOpen(currentFile);
+
+            // Now resolve BookB transition
+            resolveB();
+            await new Promise(r => setTimeout(r, 20));
+
+            // Final displayed reference must be BookC's reference!
+            expect(refLeafView.file).toBe(mockRefC);
+            expect(manager['currentMainWorkPath']).toBe('Novels/BookC');
+        });
+
+        it('exit generation guard: late in-flight openFile completion after exit is discarded', async () => {
+            let resolvePending!: () => void;
+            const pendingPromise = new Promise<void>(resolve => { resolvePending = resolve; });
+
+            const mockFile = Object.assign(new TFile(), { path: 'Novels/BookA/Ref.md', extension: 'md' });
+            (mockPlugin.app.vault.getAbstractFileByPath as ReturnType<typeof vi.fn>).mockReturnValue(mockFile);
+
+            const refLeaf = {
+                openFile: vi.fn().mockReturnValue(pendingPromise),
+                containerEl: {
+                    classList: { add: vi.fn(), remove: vi.fn(), contains: (cls: string) => cls === 'immersive-reference-view' },
+                    ownerDocument: mockActiveDocument,
+                    querySelector: vi.fn().mockReturnValue(null)
+                }
+            } as unknown as WorkspaceLeaf;
+
+            manager['createdImmersiveLeaves'].add(refLeaf);
+
+            const openPromise = manager.openReferenceFile(mockFile, refLeaf);
+
+            // User exits immersive mode while open is in-flight
+            manager.cleanup();
+            expect(manager['isImmersiveActive']).toBe(false);
+
+            // Now openFile finishes
+            resolvePending();
+            await openPromise;
+
+            // Should NOT persist or re-attach
+            expect(setReferenceFilePathSpy).not.toHaveBeenCalled();
+        });
+
+        it('openReferenceFile rejects invalid or non-markdown files with Notice', async () => {
+            const nonMdFile = Object.assign(new TFile(), { path: 'Images/Cover.png', extension: 'png' });
+            (mockPlugin.app.vault.getAbstractFileByPath as ReturnType<typeof vi.fn>).mockReturnValue(nonMdFile);
+
+            const refLeaf = {
+                openFile: vi.fn()
+            } as unknown as WorkspaceLeaf;
+
+            await manager.openReferenceFile(nonMdFile, refLeaf);
+
+            expect(refLeaf.openFile).not.toHaveBeenCalled();
+            expect(setReferenceFilePathSpy).not.toHaveBeenCalled();
+        });
+
+        it('immediately remembers native reference navigation under the main work', async () => {
+            const reference = Object.assign(new TFile(), { path: 'Novels/BookB/Lore.md', extension: 'md' });
+            const leaf = {
+                view: { file: reference, getViewType: () => 'markdown' },
+                containerEl: { classList: { contains: () => true } }
+            } as unknown as WorkspaceLeaf;
+            manager['createdImmersiveLeaves'].add(leaf);
+            manager['currentMainWorkPath'] = 'Novels/BookA';
+            let onFileOpen: (file: TFile) => void = () => { throw new Error('File listener was not registered'); };
+            Object.assign(mockPlugin.app.workspace, { on: vi.fn((event: string, handler: (file: TFile) => void) => {
+                if (event === 'file-open') onFileOpen = handler;
+                return {};
+            }) });
+            manager['registerImmersiveEventListeners']();
+            onFileOpen(reference);
+            await vi.waitFor(() => expect(setReferenceFilePathSpy).toHaveBeenCalledWith('Novels/BookA', reference.path));
+        });
+
+        it('restores focus without applying a stale search selection to a different main document', () => {
+            const editor = { focus: vi.fn(), setSelections: vi.fn(), setCursor: vi.fn() };
+            manager['activeMainLeaf'] = {
+                view: { file: { path: 'Novels/BookB/Chapter.md' }, editor },
+            } as unknown as WorkspaceLeaf;
+            manager['restoreMainEditorFocus']({
+                targetFilePath: 'Novels/BookA/Chapter.md',
+                selections: [{ anchor: { line: 2, ch: 0 }, head: { line: 2, ch: 4 } }]
+            });
+            expect(editor.focus).toHaveBeenCalled();
+            expect(editor.setSelections).not.toHaveBeenCalled();
+        });
+
+        it('attachReferenceToolbar attaches toolbar with search button and cleans up cleanly', () => {
+            const leafContentEl = {
+                createDiv: vi.fn((_opts?: { cls?: string }) => ({
+                    createEl: vi.fn((_tag: string, _opts?: { cls?: string }) => ({
+                        addEventListener: vi.fn(),
+                        removeEventListener: vi.fn(),
+                        setAttribute: vi.fn()
+                    })),
+                    remove: vi.fn()
+                }))
+            };
+            const refLeaf = {
+                containerEl: {
+                    classList: {
+                        contains: (cls: string) => cls === 'immersive-reference-view',
+                        add: vi.fn(),
+                        remove: vi.fn()
+                    },
+                    ownerDocument: mockActiveDocument,
+                    querySelector: vi.fn().mockReturnValue(leafContentEl)
+                }
+            } as unknown as WorkspaceLeaf;
+
+            manager.attachReferenceToolbar(refLeaf);
+            expect(leafContentEl.createDiv).toHaveBeenCalledWith({ cls: 'wn-immersive-ref-toolbar' });
+
+            // Removing toolbars cleans up
+            manager.removeReferenceToolbars();
+            expect(manager['refToolbarCleanups'].size).toBe(0);
+        });
+
+        it('keeps the search button attached when focusing a reference fires file-open, but replaces a changed host', async () => {
+            const searchButton = { addEventListener: vi.fn(), removeEventListener: vi.fn() };
+            const toolbar = {
+                parentElement: null as unknown,
+                createEl: vi.fn(() => searchButton),
+                remove: vi.fn(() => { toolbar.parentElement = null; })
+            };
+            const content = { createDiv: vi.fn(() => {
+                toolbar.parentElement = content;
+                return toolbar;
+            }) };
+            let host: unknown = content;
+            const reference = Object.assign(new TFile(), { path: 'Novels/BookA/RefA.md', extension: 'md' });
+            const leaf = {
+                view: { file: reference, getViewType: () => 'markdown' },
+                containerEl: {
+                    classList: { contains: (cls: string) => cls === 'immersive-reference-view' },
+                    ownerDocument: mockActiveDocument,
+                    querySelector: vi.fn(() => host)
+                }
+            } as unknown as WorkspaceLeaf;
+            manager['createdImmersiveLeaves'].add(leaf);
+            manager['currentMainWorkPath'] = 'Novels/BookA';
+            let onFileOpen: (file: TFile) => void = () => { throw new Error('Missing file-open listener'); };
+            Object.assign(mockPlugin.app.workspace, { on: vi.fn((event: string, handler: (file: TFile) => void) => {
+                if (event === 'file-open') onFileOpen = handler;
+                return {};
+            }) });
+            manager['registerImmersiveEventListeners']();
+            manager.attachReferenceToolbar(leaf);
+
+            // Focus can announce the reference file between mouse-down and click.
+            onFileOpen(reference);
+            await vi.waitFor(() => expect(setReferenceFilePathSpy).toHaveBeenCalled());
+            expect(content.createDiv).toHaveBeenCalledTimes(1);
+            expect(toolbar.remove).not.toHaveBeenCalled();
+            expect(searchButton.removeEventListener).not.toHaveBeenCalled();
+
+            const replacementContent = { createDiv: vi.fn(() => {
+                toolbar.parentElement = replacementContent;
+                return toolbar;
+            }) };
+            host = replacementContent;
+            manager.attachReferenceToolbar(leaf);
+            expect(toolbar.remove).toHaveBeenCalledTimes(1);
+            expect(replacementContent.createDiv).toHaveBeenCalledTimes(1);
+
+            manager.removeReferenceToolbars();
+            expect(toolbar.remove).toHaveBeenCalledTimes(2);
+            expect(searchButton.removeEventListener).toHaveBeenCalledTimes(2);
+            expect(manager['refToolbarCleanups'].size).toBe(0);
         });
     });
 });

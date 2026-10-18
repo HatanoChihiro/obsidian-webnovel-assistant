@@ -9,7 +9,9 @@ import { getDeterministicChapterDisplayOrder, sortNovelFoldersForSwitchMenu } fr
 import { t } from '../i18n';
 import { getNovelStatusText, getNovelInfoLabel } from '../i18n/data-keys';
 import { CorkboardGridRenderer, type CorkboardGridPlugin } from './components/CorkboardGridRenderer';
+import { ChapterCard } from './components/ChapterCard';
 import { TimelineBoardRenderer, type TimelineBoardPlugin, type TimelineBoardTimelineManager } from './components/TimelineBoardRenderer';
+import { clearTrajectoryViewport } from './components/TrajectoryBoardRenderer';
 import type { TimelineEntry } from '../services/TimelineManager';
 import { LoreBoardRenderer, type LoreBoardPlugin, type LoreBoardRelationGraphManager, type LoreBoardCharacterManager } from './components/LoreBoardRenderer';
 import { AddLoreModal, type AddLorePlugin } from './AddLoreModal';
@@ -218,7 +220,7 @@ export class WorkbenchView extends ItemView {
     private sortMode: WorkbenchBoardId | null = 'default';
     private collapsedGroups: Set<string> = new Set();
     private container!: HTMLElement;
-    private currentTimelineFilter: string = 'all';
+    private currentTimelineFilter: string[] = [];
     private currentTimelineLoreFilter: string[] = [];
     private currentForeshadowingSelectedTags: string[] = [];
     private currentRenderId: number = 0;
@@ -230,6 +232,12 @@ export class WorkbenchView extends ItemView {
     private currentBoardComponent: Component | null = null;
     private cachedForeshadowingMap: Map<string, ParsedForeshadowingEntry[]> | null = null;
     private cachedForeshadowingBookPath: string | null = null;
+    private cachedForeshadowingKey: string | null = null;
+    private readonly pendingCardUpdates = new Set<string>();
+    private hasPendingDeferredFullReload: boolean = false;
+    private readonly deferredCardUpdatePaths = new Set<string>();
+    private readonly deferredEditorCleanups = new Map<HTMLElement, { bookPath: string | null; renderId: number; win: Window; listener: () => void }>();
+    private readonly deferredTimerEntries = new Set<{ win: Window; id: number }>();
     private chapterFilterQuery: string = '';
     private loreFilterQuery: string = '';
     private foreshadowingFilterQuery: string = '';
@@ -244,6 +252,23 @@ export class WorkbenchView extends ItemView {
     private isJourneyDescending: boolean = true;
     private isTimelineSidebarCollapsed: boolean = false;
     private isTimelineTrajectoryMode: boolean = false;
+    private static nextInstanceId: number = 1;
+    private readonly instanceId: number = WorkbenchView.nextInstanceId++;
+    private readonly refreshDebounceKey: string = `workbench-refresh-${this.instanceId}`;
+    private readonly cardRefreshDebounceKey: string = `workbench-card-refresh-${this.instanceId}`;
+
+    private scheduleRefresh(delay: number): void {
+        this.cancelPendingCardUpdates();
+        const win = this.container?.ownerDocument?.defaultView ?? window;
+        this.plugin.adaptiveDebounceManager.debounceFixed(this.refreshDebounceKey, () => {
+            void this.reloadBoard();
+        }, delay, win);
+    }
+
+    private cancelPendingCardUpdates(): void {
+        this.pendingCardUpdates.clear();
+        this.plugin.adaptiveDebounceManager.cancel(this.cardRefreshDebounceKey);
+    }
 
     constructor(leaf: WorkspaceLeaf, plugin: WorkbenchViewPlugin) {
         super(leaf);
@@ -257,20 +282,40 @@ export class WorkbenchView extends ItemView {
         }));
 
         // 监听文件或元数据变化以刷新视图
+        this.registerEvent(this.app.vault.on('create', (file) => {
+            if (this.isSavingMetadata) return;
+            if (!this.isFileOrPathRelevant(file)) return;
+            this.filterIndex.invalidate(file.path);
+            this.invalidateForeshadowingCache();
+            this.scheduleRefresh(500);
+        }));
         this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
             if (this.isSavingMetadata) return;
+            if (!this.isFileOrPathRelevant(file, oldPath)) return;
+
+            if (this.currentBookPath !== null) {
+                if (oldPath === this.currentBookPath) {
+                    this.setBookPath(file.path);
+                    return;
+                }
+                if (oldPath.length > 0 && this.currentBookPath.startsWith(oldPath + '/')) {
+                    const newBookPath = file.path + this.currentBookPath.slice(oldPath.length);
+                    this.setBookPath(newBookPath);
+                    return;
+                }
+            }
+
             this.filterIndex.invalidate(oldPath);
             this.filterIndex.invalidate(file.path);
-            this.plugin.adaptiveDebounceManager.debounceFixed('workbench-refresh', () => {
-                void this.reloadBoard();
-            }, 500);
+            this.invalidateForeshadowingCache();
+            this.scheduleRefresh(500);
         }));
         this.registerEvent(this.app.vault.on('delete', (file) => {
             if (this.isSavingMetadata) return;
+            if (!this.isFileOrPathRelevant(file)) return;
             this.filterIndex.invalidate(file.path);
-            this.plugin.adaptiveDebounceManager.debounceFixed('workbench-refresh', () => {
-                void this.reloadBoard();
-            }, 500);
+            this.invalidateForeshadowingCache();
+            this.scheduleRefresh(500);
         }));
         this.registerEvent(this.app.vault.on('modify', (file) => {
             this.handleMarkdownFileChanged(file);
@@ -299,11 +344,14 @@ export class WorkbenchView extends ItemView {
             // 4. 只有当确定属于新作品目录时，才进行工作台跟随切换
             if (bookRoot !== this.currentBookPath) {
                 this.currentBookPath = bookRoot;
+                clearTrajectoryViewport(this.leaf);
                 this.filterIndex.clear();
                 this.invalidateForeshadowingCache();
+                this.cancelPendingCardUpdates();
+                this.clearDeferredEditorState();
                 this.currentTimelineLoreFilter = [];
                 this.currentForeshadowingSelectedTags = [];
-                this.currentTimelineFilter = 'all';
+                this.currentTimelineFilter = [];
                 void this.reloadBoard();
             }
         }));
@@ -362,11 +410,61 @@ export class WorkbenchView extends ItemView {
         return visibleBoards[0];
     }
 
-
-
     private invalidateForeshadowingCache(): void {
         this.cachedForeshadowingMap = null;
         this.cachedForeshadowingBookPath = null;
+        this.cachedForeshadowingKey = null;
+    }
+
+    private getForeshadowingCacheKey(bookPath: string, files: TFile[]): string {
+        const fmFolder = bookPath === '/' ? '' : (bookPath || '');
+        const fFile = this.plugin.foreshadowingManager?.findForeshadowingFile(fmFolder);
+        const fStat = fFile ? `${fFile.path}:${fFile.stat?.mtime ?? 0}` : 'none';
+        const chaptersPart = files.map(f => {
+            const cache = this.app.metadataCache?.getFileCache(f);
+            const mtime = f.stat?.mtime ?? 0;
+            const fm = cache?.frontmatter;
+            const rawAliases: unknown = fm?.aliases;
+            const aliases = rawAliases ? JSON.stringify(rawAliases) : '';
+            const rawTitle: unknown = fm?.title;
+            const title = typeof rawTitle === 'string' ? rawTitle : JSON.stringify(rawTitle ?? '');
+            return `${f.path}:${mtime}:${aliases}:${title}`;
+        }).join('|');
+        return `${bookPath}::${fStat}::${chaptersPart}`;
+    }
+
+    private isFileOrPathRelevant(file: TAbstractFile, extraPath?: string): boolean {
+        if (this.currentBookPath === null) return true;
+        const currentBook = this.currentBookPath;
+        const rootPrefix = (currentBook === '/' || currentBook === '') ? '' : currentBook + '/';
+        if (rootPrefix === '') return true;
+
+        if (file.path.startsWith(rootPrefix) || (extraPath && extraPath.startsWith(rootPrefix))) {
+            return true;
+        }
+        if (file.path === currentBook || (extraPath !== undefined && extraPath === currentBook)) {
+            return true;
+        }
+        if (file.path.length > 0 && currentBook.startsWith(file.path + '/')) {
+            return true;
+        }
+        if (extraPath && extraPath.length > 0 && currentBook.startsWith(extraPath + '/')) {
+            return true;
+        }
+        if (file instanceof TFile) {
+            if (!this.plugin.cacheManager.isFileInWorkspace(file)) return false;
+            const fileBookRoot = findBookRoot(this.app, this.plugin, file, true) || '';
+            if (fileBookRoot === currentBook) return true;
+        }
+        if (extraPath) {
+            const extraAbstract = this.app.vault.getAbstractFileByPath(extraPath);
+            if (extraAbstract instanceof TFile) {
+                if (!this.plugin.cacheManager.isFileInWorkspace(extraAbstract)) return false;
+                const extraBookRoot = findBookRoot(this.app, this.plugin, extraAbstract, true) || '';
+                if (extraBookRoot === currentBook) return true;
+            }
+        }
+        return false;
     }
 
     private isCurrentBookForeshadowingFile(file: TFile): boolean {
@@ -378,48 +476,356 @@ export class WorkbenchView extends ItemView {
         return currentForeshadowingFile !== null && currentForeshadowingFile.path === file.path;
     }
 
+    private isCurrentBookTimelineFile(file: TFile): boolean {
+        if (!this.currentBookPath || !this.plugin.timelineManager || typeof this.plugin.timelineManager.getTimelineFile !== 'function') return false;
+        const folder = this.currentBookPath === '/' ? '' : this.currentBookPath.replace(/^\/+|\/+$/g, '');
+        const timelineFile = this.plugin.timelineManager.getTimelineFile(folder);
+        return timelineFile !== null && timelineFile.path === file.path;
+    }
+
+    private isCurrentBookNovelInfoFile(file: TFile): boolean {
+        if (!this.currentBookPath || !this.plugin.homepageManager || typeof this.plugin.homepageManager.findNovelInfoFile !== 'function') return false;
+        const infoFile = this.plugin.homepageManager.findNovelInfoFile(this.currentBookPath);
+        return infoFile !== null && infoFile.path === file.path;
+    }
+
+    private isLoreFile(file: TFile): boolean {
+        const lorePath = this.plugin.settings.loreFolderName || t('common.default-lore-folder-name');
+        return file.path.includes(`/${lorePath}/`) || file.path.startsWith(`${lorePath}/`);
+    }
+
+    private isEligibleChapterFile(file: TFile): boolean {
+        if (this.plugin.settings.enableStrictChapterMode
+            && !ChapterSorter.isChapterFile(file.name)
+            && !this.plugin.isFileInStrictChapterException(file)) {
+            return false;
+        }
+        const lorePath = this.plugin.settings.loreFolderName || t('common.default-lore-folder-name');
+        if (file.path.includes(`/${lorePath}/`) || file.path.startsWith(`${lorePath}/`)) {
+            return false;
+        }
+        return true;
+    }
+
+    private getEligibleChapterFiles(): TFile[] {
+        const rawFiles = this.getBookMarkdownFiles().filter((file: TFile) => this.isEligibleChapterFile(file));
+
+        const files = rawFiles;
+        if (this.plugin.settings.enableSmartChapterSort) {
+            const customOrder = this.plugin.settings.customSortOrder || {};
+            const comparator = ChapterSorter.createFileComparator(customOrder);
+            files.sort(comparator);
+        } else {
+            files.sort((a: TFile, b: TFile) => a.basename.localeCompare(b.basename));
+        }
+        return files;
+    }
+
+    private canIncrementallyRefresh(file: TFile): boolean {
+        if (this.sortMode !== 'default') return false;
+        if (this.chapterFilterQuery.trim().length > 0 || this.isChapterImportantOnly) return false;
+        if (!this.container || !this.container.querySelector('.wn-corkboard-grid')) return false;
+        if (!this.isEligibleChapterFile(file)) return false;
+        if (!this.findCardElement(file.path)) return false;
+        return true;
+    }
+
+    private findCardElement(filePath: string): HTMLElement | null {
+        if (!this.container) return null;
+        const cards = this.container.querySelectorAll('.wn-corkboard-card');
+        for (let i = 0; i < cards.length; i++) {
+            const card = cards[i] as HTMLElement;
+            if (card.getAttribute('data-path') === filePath) {
+                return card;
+            }
+        }
+        return null;
+    }
+
+    private getCardEditorElement(card: HTMLElement): HTMLElement | null {
+        const editor = card.querySelector(
+            'input, textarea, [contenteditable="true"], .wn-corkboard-title-input, .wn-corkboard-textarea, .wn-sticky-note-paragraph-editor'
+        );
+        if (editor) return editor as HTMLElement;
+        const doc = card.ownerDocument ?? this.container?.ownerDocument;
+        const activeEl = doc?.activeElement as HTMLElement | null;
+        if (activeEl && card.contains?.(activeEl)) {
+            const tagName = activeEl.tagName?.toUpperCase?.();
+            const isContentEditable = Boolean(activeEl.isContentEditable || activeEl.getAttribute?.('contenteditable') === 'true');
+            if (tagName === 'INPUT' || tagName === 'TEXTAREA' || isContentEditable) {
+                return activeEl;
+            }
+        }
+        return null;
+    }
+
+    private isCardEditing(card: HTMLElement): boolean {
+        return this.getCardEditorElement(card) !== null;
+    }
+
+    private getActiveCardEditor(): HTMLElement | null {
+        if (!this.container) return null;
+        const editor = this.container.querySelector(
+            '.wn-corkboard-title-input, .wn-corkboard-textarea, .wn-sticky-note-paragraph-editor, .wn-corkboard-card input, .wn-corkboard-card textarea, .wn-corkboard-card [contenteditable="true"]'
+        );
+        if (editor) return editor as HTMLElement;
+        const doc = this.container.ownerDocument;
+        const activeEl = doc?.activeElement as HTMLElement | null;
+        if (activeEl && this.container.contains?.(activeEl)) {
+            const card = activeEl.closest?.('.wn-corkboard-card') ?? (activeEl.classList?.contains?.('wn-corkboard-card') ? activeEl : null);
+            if (card) {
+                const tagName = activeEl.tagName?.toUpperCase?.();
+                const isContentEditable = Boolean(activeEl.isContentEditable || activeEl.getAttribute?.('contenteditable') === 'true');
+                if (tagName === 'INPUT' || tagName === 'TEXTAREA' || isContentEditable) {
+                    return activeEl;
+                }
+            }
+        }
+        return null;
+    }
+
+    private setTrackedTimeout(win: Window, callback: () => void, delay: number): number {
+        const entry = { win, id: 0 };
+        entry.id = win.setTimeout(() => {
+            this.deferredTimerEntries.delete(entry);
+            callback();
+        }, delay);
+        this.deferredTimerEntries.add(entry);
+        return entry.id;
+    }
+
+    private clearDeferredTimers(): void {
+        for (const entry of this.deferredTimerEntries) {
+            entry.win.clearTimeout(entry.id);
+        }
+        this.deferredTimerEntries.clear();
+    }
+
+    private clearDeferredEditorListeners(): void {
+        for (const [el, reg] of this.deferredEditorCleanups) {
+            el.removeEventListener('blur', reg.listener);
+        }
+        this.deferredEditorCleanups.clear();
+    }
+
+    private clearDeferredEditorState(): void {
+        this.clearDeferredTimers();
+        this.clearDeferredEditorListeners();
+        this.hasPendingDeferredFullReload = false;
+        this.deferredCardUpdatePaths.clear();
+    }
+
+    private handleSaveStateChange(isSaving: boolean): void {
+        this.isSavingMetadata = isSaving;
+        if (!isSaving && (this.hasPendingDeferredFullReload || this.deferredCardUpdatePaths.size > 0)) {
+            const currentBook = this.currentBookPath;
+            const currentId = this.currentRenderId;
+            const win = this.container?.ownerDocument?.defaultView ?? window;
+            this.setTrackedTimeout(win, () => {
+                if (this.isClosed || this.currentBookPath !== currentBook || this.currentRenderId !== currentId) {
+                    return;
+                }
+                if (!this.isSavingMetadata) {
+                    this.resumeDeferredRefresh(currentBook, currentId);
+                }
+            }, 0);
+        }
+    }
+
+    private registerEditorDeferredListener(editorEl: HTMLElement): void {
+        if (this.deferredEditorCleanups.has(editorEl)) return;
+
+        const doc = editorEl.ownerDocument ?? this.container?.ownerDocument;
+        const win = doc?.defaultView ?? window;
+        const registeredBookPath = this.currentBookPath;
+        const registeredRenderId = this.currentRenderId;
+
+        const onBlur = () => {
+            editorEl.removeEventListener('blur', onBlur);
+            this.deferredEditorCleanups.delete(editorEl);
+
+            if (this.isClosed || this.currentBookPath !== registeredBookPath || this.currentRenderId !== registeredRenderId) {
+                return;
+            }
+
+            if (this.isSavingMetadata) {
+                return;
+            }
+
+            this.setTrackedTimeout(win, () => {
+                if (this.isClosed || this.currentBookPath !== registeredBookPath || this.currentRenderId !== registeredRenderId) {
+                    return;
+                }
+                if (!this.isSavingMetadata) {
+                    this.resumeDeferredRefresh(registeredBookPath, registeredRenderId);
+                }
+            }, 0);
+        };
+
+        editorEl.addEventListener('blur', onBlur);
+        this.deferredEditorCleanups.set(editorEl, {
+            bookPath: registeredBookPath,
+            renderId: registeredRenderId,
+            win,
+            listener: onBlur
+        });
+    }
+
+    private deferCardUpdateUntilBlur(filePath: string, editorEl: HTMLElement): void {
+        this.deferredCardUpdatePaths.add(filePath);
+        this.registerEditorDeferredListener(editorEl);
+    }
+
+    private resumeDeferredRefresh(expectedBookPath?: string | null, expectedRenderId?: number): void {
+        if (this.isClosed) return;
+        if (expectedBookPath !== undefined && this.currentBookPath !== expectedBookPath) return;
+        if (expectedRenderId !== undefined && this.currentRenderId !== expectedRenderId) return;
+
+        if (this.hasPendingDeferredFullReload) {
+            this.hasPendingDeferredFullReload = false;
+            this.deferredCardUpdatePaths.clear();
+            this.pendingCardUpdates.clear();
+            void this.reloadBoard();
+            return;
+        }
+
+        if (this.deferredCardUpdatePaths.size > 0) {
+            for (const path of this.deferredCardUpdatePaths) {
+                this.pendingCardUpdates.add(path);
+            }
+            this.deferredCardUpdatePaths.clear();
+            void this.flushPendingCardUpdates();
+        }
+    }
+
+    private scheduleIncrementalCardRefresh(filePath: string): void {
+        this.pendingCardUpdates.add(filePath);
+        const win = this.container?.ownerDocument?.defaultView ?? window;
+        this.plugin.adaptiveDebounceManager.debounceFixed(this.cardRefreshDebounceKey, () => {
+            void this.flushPendingCardUpdates();
+        }, 1000, win);
+    }
+
+    private async flushPendingCardUpdates(): Promise<void> {
+        if (this.isClosed || !this.container) {
+            this.pendingCardUpdates.clear();
+            return;
+        }
+
+        if (this.isReloadingBoard) {
+            this.pendingCardUpdates.clear();
+            this.hasPendingReload = true;
+            return;
+        }
+
+        if (this.sortMode !== 'default' || this.chapterFilterQuery.trim().length > 0 || this.isChapterImportantOnly) {
+            this.pendingCardUpdates.clear();
+            void this.reloadBoard();
+            return;
+        }
+
+        const pathsToProcess = Array.from(this.pendingCardUpdates);
+        this.pendingCardUpdates.clear();
+
+        const bookPathAtStart = this.currentBookPath;
+        const renderIdAtStart = this.currentRenderId;
+
+        for (const filePath of pathsToProcess) {
+            if (this.isClosed || this.currentBookPath !== bookPathAtStart || this.currentRenderId !== renderIdAtStart) {
+                return;
+            }
+
+            const oldCard = this.findCardElement(filePath);
+            if (!oldCard) {
+                void this.reloadBoard();
+                return;
+            }
+
+            const editorEl = this.getCardEditorElement(oldCard);
+            if (editorEl) {
+                this.deferCardUpdateUntilBlur(filePath, editorEl);
+                continue;
+            }
+
+            const file = this.app.vault.getAbstractFileByPath(filePath);
+            if (!(file instanceof TFile)) {
+                void this.reloadBoard();
+                return;
+            }
+
+            const doc = this.container.ownerDocument;
+            const detached = (doc.win as unknown as Window & { createDiv(cls?: string): HTMLDivElement }).createDiv();
+            const cardForeshadowings = this.cachedForeshadowingMap?.get(filePath) || [];
+
+            const newCard = ChapterCard.render(
+                detached,
+                file,
+                this.app,
+                this.plugin,
+                cardForeshadowings,
+                {
+                    draggable: !this.isDescending,
+                    currentBookPath: this.currentBookPath || '',
+                    onSaveStateChange: (isSaving) => { this.handleSaveStateChange(isSaving); },
+                }
+            );
+
+            if (this.isClosed || this.currentBookPath !== bookPathAtStart || this.currentRenderId !== renderIdAtStart) {
+                return;
+            }
+
+            if (oldCard.hasClass('is-volume-collapsed')) {
+                newCard.addClass('is-volume-collapsed');
+            }
+            oldCard.replaceWith(newCard);
+        }
+    }
+
     private handleMarkdownFileChanged(file: TAbstractFile): void {
         if (this.isSavingMetadata) return;
         if (!(file instanceof TFile) || file.extension !== 'md') return;
 
         if (this.isCurrentBookForeshadowingFile(file)) {
             this.invalidateForeshadowingCache();
-            this.plugin.adaptiveDebounceManager.debounceFixed('workbench-refresh', () => {
-                void this.reloadBoard();
-            }, WorkbenchView.FORESHADOWING_REFRESH_DEBOUNCE_MS);
+            this.scheduleRefresh(WorkbenchView.FORESHADOWING_REFRESH_DEBOUNCE_MS);
             return;
         }
 
         if (!this.plugin.cacheManager.isFileInWorkspace(file)) return;
 
-        if (this.currentBookPath !== null) {
-            const rootPrefix = (this.currentBookPath === '/' || this.currentBookPath === '') ? '' : this.currentBookPath + '/';
-            const fileBookRoot = findBookRoot(this.app, this.plugin, file, true) || '';
-
-            const isInsideCurrentBook = rootPrefix === '' || file.path.startsWith(rootPrefix);
-            const isSameBookRoot = fileBookRoot === this.currentBookPath;
-
-            // 为未来系列共享设定保留清晰但不过度抽象的相关性边界，不实现系列功能
-            // 如果文件既不在当前作品目录下，其解析出的归属作品也不是当前作品，则判定为无关
-            if (!isInsideCurrentBook && !isSameBookRoot) {
-                return;
-            }
-        }
+        if (!this.isFileOrPathRelevant(file)) return;
 
         this.filterIndex.invalidate(file.path);
-        this.plugin.adaptiveDebounceManager.debounceFixed('workbench-refresh', () => {
-            void this.reloadBoard();
-        }, 1000);
+
+        // Functional documents or non-chapter files always trigger full refresh
+        if (
+            this.isCurrentBookTimelineFile(file) ||
+            this.isCurrentBookNovelInfoFile(file) ||
+            this.isLoreFile(file) ||
+            ChapterSorter.isFunctionalDoc(file, this.plugin)
+        ) {
+            this.scheduleRefresh(1000);
+            return;
+        }
+
+        if (this.canIncrementallyRefresh(file)) {
+            this.scheduleIncrementalCardRefresh(file.path);
+        } else {
+            this.scheduleRefresh(1000);
+        }
     }
 
     public setBookPath(path: string) {
         if (this.currentBookPath !== path) {
             this.currentBookPath = path;
+            clearTrajectoryViewport(this.leaf);
             this.filterIndex.clear();
             this.invalidateForeshadowingCache();
+            this.cancelPendingCardUpdates();
+            this.clearDeferredEditorState();
             this.currentTimelineLoreFilter = [];
             this.currentForeshadowingSelectedTags = [];
-            this.currentTimelineFilter = 'all';
+            this.currentTimelineFilter = [];
             void this.reloadBoard();
             this.app.workspace.trigger('webnovel-workbench-book-changed', path);
         }
@@ -651,11 +1057,14 @@ export class WorkbenchView extends ItemView {
         await super.setState(state, result);
         if (state.currentBookPath) {
             const nextBookPath = state.currentBookPath as string;
-            if (this.currentBookPath !== nextBookPath) this.filterIndex.clear();
+            if (this.currentBookPath !== nextBookPath) {
+                this.filterIndex.clear();
+                clearTrajectoryViewport(this.leaf);
+            }
             this.currentBookPath = nextBookPath;
             this.currentTimelineLoreFilter = [];
             this.currentForeshadowingSelectedTags = [];
-            this.currentTimelineFilter = 'all';
+            this.currentTimelineFilter = [];
             void this.reloadBoard();
             this.app.workspace.trigger('webnovel-workbench-book-changed', this.currentBookPath);
         }
@@ -701,7 +1110,7 @@ export class WorkbenchView extends ItemView {
 
         // 确定当前所处的作品目录
         if (!this.currentBookPath) {
-            const context = getCurrentBookContext(this.app, this.plugin);
+            const context = getCurrentBookContext(this.app, this.plugin, { preferStatusViewContext: true });
             this.currentBookPath = (context === '' || context === null) ? '/' : context;
         }
         if (this.currentBookPath) {
@@ -713,9 +1122,12 @@ export class WorkbenchView extends ItemView {
 
     async onClose(): Promise<void> {
         this.isClosed = true;
+        clearTrajectoryViewport(this.leaf);
         this.hasPendingReload = false;
         this.currentRenderId++;
-        this.plugin.adaptiveDebounceManager.cancel('workbench-refresh');
+        this.plugin.adaptiveDebounceManager.cancel(this.refreshDebounceKey);
+        this.cancelPendingCardUpdates();
+        this.clearDeferredEditorState();
         if (this.currentBoardComponent) {
             this.currentBoardComponent.unload();
             this.currentBoardComponent = null;
@@ -964,11 +1376,20 @@ export class WorkbenchView extends ItemView {
     }
 
     public async reloadBoard(): Promise<void> {
+        this.cancelPendingCardUpdates();
         if (!this.container || this.isClosed) return;
         if (this.isReloadingBoard) {
             this.hasPendingReload = true;
             return;
         }
+
+        const activeEditor = this.getActiveCardEditor();
+        if (activeEditor) {
+            this.hasPendingDeferredFullReload = true;
+            this.registerEditorDeferredListener(activeEditor);
+            return;
+        }
+
         this.isReloadingBoard = true;
 
         try {
@@ -1084,45 +1505,70 @@ export class WorkbenchView extends ItemView {
 
         this.sortMode = this.resolveActiveSortMode(this.sortMode ?? this.plugin.settings.corkboardSortMode);
 
-        // 获取该作品下所有章节文件
-        const rawFiles = this.getBookMarkdownFiles().filter((file: TFile) => {
-            // 只有在开启严格章节模式时，才强制要求必须是章节命名格式
-            if (this.plugin.settings.enableStrictChapterMode 
-                && !ChapterSorter.isChapterFile(file.name)
-                && !this.plugin.isFileInStrictChapterException(file)) {
-                return false;
-            }
-            // 排除设定文件夹
-            const lorePath = this.plugin.settings.loreFolderName || t('common.default-lore-folder-name');
-            if (file.path.includes(`/${lorePath}/`) || file.path.startsWith(`${lorePath}/`)) {
-                return false;
-            }
-            return true;
-        });
+        const capturedSortMode = this.sortMode;
+        const capturedTrajectoryMode = this.isTimelineTrajectoryMode;
+        const capturedLoreLayout = this.plugin.settings.loreBoardLayout || 'table';
+        const capturedBookPath = this.currentBookPath;
+        const capturedRenderId = renderId;
 
-        const files = rawFiles;
-        if (this.plugin.settings.enableSmartChapterSort) {
-            const customOrder = this.plugin.settings.customSortOrder || {};
-            files.sort((a: TFile, b: TFile) => ChapterSorter.compareFilesWithCustomOrder(a, b, customOrder));
-        } else {
-            // 否则按文件名简单排序
-            files.sort((a: TFile, b: TFile) => a.basename.localeCompare(b.basename));
+        const isRenderStale = () => (
+            this.isClosed ||
+            this.currentRenderId !== capturedRenderId ||
+            this.currentBookPath !== capturedBookPath ||
+            this.sortMode !== capturedSortMode ||
+            this.isTimelineTrajectoryMode !== capturedTrajectoryMode ||
+            (this.plugin.settings.loreBoardLayout || 'table') !== capturedLoreLayout
+        );
+
+        const loreLayout = this.plugin.settings.loreBoardLayout || 'table';
+        const isTrajectory = this.sortMode === 'timeline' && this.isTimelineTrajectoryMode;
+
+        let needsChapters = false;
+        let needsForeshadowing = false;
+
+        if (this.sortMode === 'default') {
+            needsChapters = true;
+            needsForeshadowing = true;
+        } else if (this.sortMode === 'timeline') {
+            needsChapters = true;
+            if (!isTrajectory) {
+                needsForeshadowing = true;
+            }
+        } else if (this.sortMode === 'lore') {
+            if (loreLayout === 'table') {
+                needsChapters = true;
+            }
+        }
+
+        let files: TFile[] = [];
+        if (needsChapters) {
+            files = this.getEligibleChapterFiles();
         }
         const tFiles = performance.now();
         Logger.info(`[Perf Phase] Workbench.getFiles & sort: ${(tFiles - tStart).toFixed(2)}ms`);
 
         // 解析伏笔（获取待回收列表并构建映射表，带内存 Cache 防重复建模）
-        let foreshadowingMap: Map<string, ParsedForeshadowingEntry[]>;
+        let foreshadowingMap = new Map<string, ParsedForeshadowingEntry[]>();
 
-        if (this.cachedForeshadowingMap && this.cachedForeshadowingBookPath === this.currentBookPath) {
-            foreshadowingMap = this.cachedForeshadowingMap;
-        } else {
-            const fmFolder = this.currentBookPath === '/' ? '' : (this.currentBookPath || '');
-            foreshadowingMap = this.plugin.foreshadowingManager
-                ? await this.plugin.foreshadowingManager.buildChapterForeshadowingMap(fmFolder, files, this.app.vault)
-                : new Map<string, ParsedForeshadowingEntry[]>();
-            this.cachedForeshadowingMap = foreshadowingMap;
-            this.cachedForeshadowingBookPath = this.currentBookPath;
+        if (needsForeshadowing) {
+            const cacheKey = this.getForeshadowingCacheKey(this.currentBookPath, files);
+            if (this.cachedForeshadowingMap && this.cachedForeshadowingBookPath === this.currentBookPath && this.cachedForeshadowingKey === cacheKey) {
+                foreshadowingMap = this.cachedForeshadowingMap;
+            } else {
+                const fmFolder = this.currentBookPath === '/' ? '' : (this.currentBookPath || '');
+                const targetBookPath = this.currentBookPath;
+                const computedMap = this.plugin.foreshadowingManager
+                    ? await this.plugin.foreshadowingManager.buildChapterForeshadowingMap(fmFolder, files, this.app.vault)
+                    : new Map<string, ParsedForeshadowingEntry[]>();
+
+                if (isRenderStale()) {
+                    return;
+                }
+                foreshadowingMap = computedMap;
+                this.cachedForeshadowingMap = computedMap;
+                this.cachedForeshadowingBookPath = targetBookPath;
+                this.cachedForeshadowingKey = cacheKey;
+            }
         }
 
         const tForeshadowing = performance.now();
@@ -1146,6 +1592,7 @@ export class WorkbenchView extends ItemView {
         const infoFile = this.plugin.homepageManager?.findNovelInfoFile(this.currentBookPath || '');
         if (infoFile) {
             const meta = await this.plugin.homepageManager?.getNovelMetadata(this.currentBookPath || '');
+            if (isRenderStale()) return;
             if (meta?.series?.trim()) {
                 titleEl.createSpan({
                     text: ` · ${meta.series.trim()}`,
@@ -1236,7 +1683,8 @@ export class WorkbenchView extends ItemView {
             const newChapterBtn = buttonsContainer.createDiv({ cls: 'wn-corkboard-new-chapter-btn' });
             newChapterBtn.textContent = t('corkboard.new-chapter');
             newChapterBtn.onclick = () => {
-                const creationFiles = getDeterministicChapterDisplayOrder(files, {
+                const resolvedFiles = needsChapters ? files : this.getEligibleChapterFiles();
+                const creationFiles = getDeterministicChapterDisplayOrder(resolvedFiles, {
                     currentBookPath: this.currentBookPath || '',
                     isDescending: false,
                     // Creation needs semantic volume/chapter order even when the board follows native file ordering.
@@ -1321,6 +1769,7 @@ export class WorkbenchView extends ItemView {
                 if (this.sortMode === boardId) return;
                 updateButtonActive(btn);
                 this.sortMode = boardId;
+                clearTrajectoryViewport(this.leaf);
                 this.plugin.settings.corkboardSortMode = boardId;
                 saveSortMode();
                 void this.reloadBoard();
@@ -1338,30 +1787,25 @@ export class WorkbenchView extends ItemView {
             loadedTimelineEntries = await timelineManager.loadEntries(bookFolder);
             const allEntries = loadedTimelineEntries || [];
 
-            // 1. Type Filter (single-select)
+            // 1. Type Filter (multi-select)
             const typeOptions = [...new Set([
                 ...(this.plugin.settings.timeline?.defaultTypes || []),
 				...allEntries.map(e => e.type).filter((type): type is string => Boolean(type))
             ])];
 
             if (typeOptions.length > 0) {
-                const typeTabs = filterContainer.createDiv('wn-lore-file-tabs');
-
-                const createTypeTab = (label: string, value: string) => {
-                    const isActive = this.currentTimelineFilter === value;
-                    const tab = typeTabs.createEl('button', { cls: `wn-lore-file-tab ${isActive ? 'is-active' : ''}` });
-                    tab.textContent = label;
-                    tab.setAttr('type', 'button');
-                    tab.setAttr('aria-pressed', isActive ? 'true' : 'false');
-
-                    tab.onclick = () => {
-                        this.currentTimelineFilter = value;
+                new MultiSelectFilterRow({
+                    container: filterContainer,
+                    cls: 'wn-lore-file-tabs wn-timeline-type-filter-row',
+                    buttonCls: 'wn-lore-file-tab',
+                    allLabel: t('common.all-types'),
+                    options: typeOptions,
+                    selected: this.currentTimelineFilter,
+                    onChange: (selected) => {
+                        this.currentTimelineFilter = Array.from(selected);
                         void this.reloadBoard();
-                    };
-                };
-
-                createTypeTab(t('common.all-types'), 'all');
-                typeOptions.forEach(type => createTypeTab(type, type));
+                    }
+                });
             }
 
             // 2. Lore Filter (multi-select)
@@ -1374,7 +1818,7 @@ export class WorkbenchView extends ItemView {
             if (loreOptions.length > 0) {
                 new MultiSelectFilterRow({
                     container: filterContainer,
-                    cls: 'wn-lore-file-tabs',
+                    cls: 'wn-lore-file-tabs wn-timeline-lore-filter-row',
                     buttonCls: 'wn-lore-file-tab',
                     allLabel: t('common.all-lore'),
                     options: loreOptions,
@@ -1401,6 +1845,7 @@ export class WorkbenchView extends ItemView {
                 const selectMode = () => {
                     if (this.isTimelineTrajectoryMode === mode.trajectory) return;
                     this.isTimelineTrajectoryMode = mode.trajectory;
+                    clearTrajectoryViewport(this.leaf);
                     void this.reloadBoard();
                 };
                 btn.onclick = selectMode;
@@ -1470,7 +1915,7 @@ export class WorkbenchView extends ItemView {
                     foreshadowingEntriesList = this.plugin.foreshadowingManager.parseEntries(content);
                 }
             }
-            if (this.currentRenderId !== renderId || this.isClosed) return;
+            if (isRenderStale()) return;
 
             const fQuery = this.foreshadowingFilterQuery;
             const selectedTags = this.currentForeshadowingSelectedTags;
@@ -1499,7 +1944,7 @@ export class WorkbenchView extends ItemView {
             const jMatchedCount = jTrimmed
                 ? rawEvents.filter(ev => WritingJourneyBoardRenderer.matchesQuery(ev, jTrimmed)).length
                 : rawEvents.length;
-            if (this.currentRenderId !== renderId || this.isClosed) return;
+            if (isRenderStale()) return;
             this.renderFilterBar(
                 header,
                 'journey',
@@ -1524,7 +1969,7 @@ export class WorkbenchView extends ItemView {
                     loadedEntries: loadedTimelineEntries,
                     currentTimelineFilter: this.currentTimelineFilter,
                     currentTimelineLoreFilter: this.currentTimelineLoreFilter,
-                    onSaveStateChange: (isSaving) => { this.isSavingMetadata = isSaving; },
+                    onSaveStateChange: (isSaving) => { this.handleSaveStateChange(isSaving); },
                     reloadBoard: () => { void this.reloadBoard(); },
                     getChapterEvents: (file, fallbackMap) => this.getChapterEvents(file, fallbackMap),
                     isUnscheduledDescending: this.isTimelineUnscheduledDescending,
@@ -1593,10 +2038,19 @@ export class WorkbenchView extends ItemView {
                 buffer.createDiv({ cls: 'wn-corkboard-empty-msg', text: t('corkboard.no-boards-enabled') });
             }
 
-            if (this.currentRenderId !== renderId || this.isClosed) {
+            if (isRenderStale()) {
                 renderComponent.unload();
                 return;
             }
+            const activeEditor = this.getActiveCardEditor();
+            if (activeEditor) {
+                this.hasPendingDeferredFullReload = true;
+                this.registerEditorDeferredListener(activeEditor);
+                renderComponent.unload();
+                return;
+            }
+            this.clearDeferredTimers();
+            this.clearDeferredEditorListeners();
             const prevComponent = this.currentBoardComponent;
             const tSwapStart = performance.now();
             const fragment = (window as unknown as { createFragment: () => DocumentFragment }).createFragment();
@@ -1633,7 +2087,7 @@ export class WorkbenchView extends ItemView {
             foreshadowingMap,
             draggable,
             currentBookPath: this.currentBookPath || '',
-            onSaveStateChange: (isSaving) => { this.isSavingMetadata = isSaving; }
+            onSaveStateChange: (isSaving) => { this.handleSaveStateChange(isSaving); }
         });
     }
 

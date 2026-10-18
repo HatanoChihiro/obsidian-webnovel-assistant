@@ -17,6 +17,7 @@ import { FolderSuggestModal } from './FolderSuggestModal';
 import { FileSuggestModal } from './FileSuggestModal';
 import { Logger } from '../utils/Logger';
 import { formatIgnoredContextSnippet } from '../utils/proofreadingHelpers';
+import { parseDirectorySettingLines, formatDirectorySettingLines } from '../utils/settingHelpers';
 
 class HistoryRestoreConfirmModal extends Modal {
 	constructor(app: App, private onConfirm: () => Promise<void>) {
@@ -348,7 +349,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		}
 
 		let workspaceTextComponent: TextAreaComponent | null = null;
-		let workspaceTempValue = (this.plugin.settings.workspaceFolders || []).join(', ');
+		let workspaceTempValue = formatDirectorySettingLines(this.plugin.settings.workspaceFolders || []);
 
 		const saveWorkspaceAction = async () => {
 			const oldFolders = this.plugin.settings.workspaceFolders || [];
@@ -357,7 +358,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			// 记录在改变 workspaceFolders 之前的旧主页路径
 			const currentPath = this.plugin.homepageManager?.getHomepageFilePath();
 
-			const parsedFolders = workspaceTempValue.trim() ? workspaceTempValue.split(/[,，]+/).map(f => f.trim()).filter(Boolean) : [];
+			const parsedFolders = parseDirectorySettingLines(workspaceTempValue);
 
 			if (JSON.stringify(oldFolders) === JSON.stringify(parsedFolders)) {
 				return;
@@ -403,10 +404,10 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				.setTooltip(t('setting.select-folder-tooltip'))
 				.onClick(() => {
 					new FolderSuggestModal(this.app, (folder) => {
-						const currentArr = workspaceTempValue.trim() ? workspaceTempValue.split(/[,，]+/).map(f => f.trim()).filter(Boolean) : [];
+						const currentArr = parseDirectorySettingLines(workspaceTempValue);
 						if (!currentArr.includes(folder.path)) {
 							currentArr.push(folder.path);
-							workspaceTempValue = currentArr.join(', ');
+							workspaceTempValue = formatDirectorySettingLines(currentArr);
 							workspaceTextComponent?.setValue(workspaceTempValue);
 							saveWorkspaceAction().catch(console.error);
 						}
@@ -444,11 +445,11 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				}));
 		if (this.plugin.settings.enableStrictChapterMode) {
 			let exceptionTextComponent: TextAreaComponent | null = null;
-			let exceptionTempValue = (this.plugin.settings.strictChapterExceptions || []).join(', ');
+			let exceptionTempValue = formatDirectorySettingLines(this.plugin.settings.strictChapterExceptions || []);
 
 			const saveExceptionAction = async () => {
 				const oldExceptions = this.plugin.settings.strictChapterExceptions || [];
-				const parsedExceptions = exceptionTempValue.trim() ? exceptionTempValue.split(/[,，]+/).map(f => f.trim()).filter(Boolean) : [];
+				const parsedExceptions = parseDirectorySettingLines(exceptionTempValue);
 
 				if (JSON.stringify(oldExceptions) === JSON.stringify(parsedExceptions)) {
 					return;
@@ -473,10 +474,10 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					.setTooltip(t('setting.select-folder-tooltip'))
 					.onClick(() => {
 						new FolderSuggestModal(this.app, (folder) => {
-							const currentArr = exceptionTempValue.trim() ? exceptionTempValue.split(/[,，]+/).map(f => f.trim()).filter(Boolean) : [];
+							const currentArr = parseDirectorySettingLines(exceptionTempValue);
 							if (!currentArr.includes(folder.path)) {
 								currentArr.push(folder.path);
-								exceptionTempValue = currentArr.join(', ');
+								exceptionTempValue = formatDirectorySettingLines(currentArr);
 								exceptionTextComponent?.setValue(exceptionTempValue);
 								saveExceptionAction().catch(console.error);
 							}

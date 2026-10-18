@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { findBookRoot, getCurrentBookContext, getCandidateNames, isCandidateSubpath } from '../src/utils/path';
-import { TFile, TFolder, App } from 'obsidian';
+import { TFile, TFolder, App, MarkdownView, ItemView } from 'obsidian';
 
 // Mock getAbstractFileByPath
 const createMockApp = (files: Record<string, 'file' | 'folder'>) => {
@@ -16,7 +16,10 @@ const createMockApp = (files: Record<string, 'file' | 'folder'>) => {
 	} as unknown as App;
 };
 
-const createMockPlugin = (settings: any = {}) => {
+const createMockPlugin = (
+	settings: Record<string, unknown> = {},
+	extra: Record<string, unknown> = {}
+) => {
 	return {
 		settings: {
 			workspaceFolders: [],
@@ -25,8 +28,9 @@ const createMockPlugin = (settings: any = {}) => {
 			foreshadowing: { fileName: '伏笔' },
 			novelInfo: { fileName: '作品信息' },
 			...settings
-		}
-	} as any;
+		},
+		...extra
+	} as unknown as import('../src/utils/path').CurrentBookContextPlugin;
 };
 
 // Custom TFolder with parent references for testing
@@ -117,6 +121,72 @@ describe('path utils - findBookRoot', () => {
 });
 
 describe('path utils - getCurrentBookContext', () => {
+	function createRetainedContextApp(savedPaths: unknown[] = ['作品B'], withBackgroundWorkbench = true) {
+		const app = createMockApp({
+			'作品B': 'folder',
+			'作品B/作品信息.md': 'file',
+			'作品C/作品信息.md': 'file',
+			'Notes': 'folder',
+			'Notes/todo.md': 'file'
+		});
+		const backgroundWorkbench = { view: { getViewType: () => 'webnovel-workbench', currentBookPath: '作品A' } };
+		const workspace = {
+			getActiveViewOfType: vi.fn((_type: unknown): unknown => null),
+			getMostRecentLeaf: () => withBackgroundWorkbench ? backgroundWorkbench : null,
+			getActiveFile: () => null,
+			getLeavesOfType: (type: string) => type === 'writing-status-view'
+				? savedPaths.map(currentBookPath => ({ view: { getState: () => ({ currentBookPath }) } }))
+				: withBackgroundWorkbench ? [backgroundWorkbench] : []
+		};
+		Object.assign(app, { workspace });
+		return { app, workspace };
+	}
+
+	it('initializes a new workbench from status memory before a background workbench or default work', () => {
+		const { app } = createRetainedContextApp();
+		const plugin = createMockPlugin();
+		expect(getCurrentBookContext(app, plugin, { preferStatusViewContext: true })).toBe('作品B');
+		// 其他调用方的既有解析优先级保持不变。
+		expect(getCurrentBookContext(app, plugin)).toBe('作品A');
+	});
+
+	it('uses status memory when all documents are closed and a newly opened workbench has no selection', () => {
+		const { app, workspace } = createRetainedContextApp(['作品B'], false);
+		workspace.getActiveViewOfType.mockImplementation(type => type === ItemView
+			? { getViewType: () => 'webnovel-workbench', currentBookPath: '' }
+			: null);
+		const plugin = createMockPlugin({}, {
+			homepageManager: { getNovelFolders: () => [{ folderPath: '作品A' }] }
+		});
+		expect(getCurrentBookContext(app, plugin, { preferStatusViewContext: true })).toBe('作品B');
+		expect(getCurrentBookContext(app, plugin)).toBe('作品A');
+	});
+
+	it('keeps an explicitly active document or workbench ahead of status memory', () => {
+		const { app, workspace } = createRetainedContextApp();
+		const chapter = new MockFile('作品C/第1章.md', '第1章.md');
+		chapter.parent = new MockFolder('作品C', '作品C');
+		workspace.getActiveViewOfType.mockImplementation(type => type === MarkdownView ? { file: chapter } : null);
+		const plugin = createMockPlugin();
+		expect(getCurrentBookContext(app, plugin, { preferStatusViewContext: true })).toBe('作品C');
+		workspace.getActiveViewOfType.mockImplementation(type => type === ItemView
+			? { getViewType: () => 'webnovel-workbench', currentBookPath: '作品C' }
+			: null);
+		expect(getCurrentBookContext(app, plugin, { preferStatusViewContext: true })).toBe('作品C');
+	});
+
+	it.each([[], [null], [42], [''], ['/'], ['Missing'], ['Notes'], ['Notes/todo.md']].map(savedPaths => ({ savedPaths })))(
+		'ignores unusable status memory $savedPaths and preserves the existing fallback', ({ savedPaths }) => {
+			const { app } = createRetainedContextApp(savedPaths);
+			expect(getCurrentBookContext(app, createMockPlugin(), { preferStatusViewContext: true })).toBe('作品A');
+		});
+
+	it('skips invalid panel memories and validates remembered work against workspace settings', () => {
+		const { app } = createRetainedContextApp(['Missing', '作品B']);
+		expect(getCurrentBookContext(app, createMockPlugin(), { preferStatusViewContext: true })).toBe('作品B');
+		expect(getCurrentBookContext(app, createMockPlugin({ workspaceFolders: ['Other'] }), { preferStatusViewContext: true })).toBe('作品A');
+	});
+
 	it('侧面板聚焦时优先使用最后活跃章节，而不是其他已打开的作品工作台', () => {
 		const rootFolder = new MockFolder('作品B', '作品B');
 		const activeFile = new MockFile('作品B/第1章.md', '第1章.md');
@@ -134,6 +204,87 @@ describe('path utils - getCurrentBookContext', () => {
 		const plugin = createMockPlugin();
 
 		expect(getCurrentBookContext(app, plugin)).toBe('作品B');
+	});
+
+	it('当启用 fallback: false 且所有文档关闭时，不回退到后台工作台或首个作品', () => {
+		const app = createMockApp({});
+		Object.assign(app, {
+			workspace: {
+				getActiveViewOfType: () => null,
+				getMostRecentLeaf: () => null,
+				getActiveFile: () => null,
+				getLeavesOfType: () => [{
+					view: { getViewType: () => 'webnovel-workbench', currentBookPath: '作品A' }
+				}]
+			}
+		});
+		const plugin = createMockPlugin({}, {
+			homepageManager: {
+				getNovelFolders: () => [{ folderPath: '作品A', folderName: '作品A' }]
+			}
+		});
+
+		expect(getCurrentBookContext(app, plugin, { fallback: false })).toBeNull();
+		// 默认或无选项时保持既有回退行为
+		expect(getCurrentBookContext(app, plugin)).toBe('作品A');
+	});
+
+	it('当启用 fallback: false 且侧边栏聚焦（非文件视图）、后台有最近工作台 A 时，返回 null 而非工作台 A', () => {
+		const app = createMockApp({});
+		Object.assign(app, {
+			workspace: {
+				getMostRecentLeaf: () => ({ view: { getViewType: () => 'webnovel-workbench', currentBookPath: '作品A' } }),
+				getActiveViewOfType: () => null,
+				getActiveFile: () => null,
+				getLeavesOfType: () => []
+			}
+		});
+		const plugin = createMockPlugin();
+
+		expect(getCurrentBookContext(app, plugin, { fallback: false })).toBeNull();
+	});
+
+	it('当启用 fallback: false 且明确激活工作台时，返回激活的工作台作品', () => {
+		const app = createMockApp({});
+		const workbenchView = {
+			getViewType: () => 'webnovel-workbench',
+			currentBookPath: '作品C'
+		};
+		Object.assign(app, {
+			workspace: {
+				getMostRecentLeaf: () => ({ view: workbenchView }),
+				getActiveViewOfType: (type: unknown) => type === ItemView ? workbenchView : null,
+				getActiveFile: () => null,
+				getLeavesOfType: () => []
+			}
+		});
+		const plugin = createMockPlugin();
+
+		expect(getCurrentBookContext(app, plugin, { fallback: false })).toBe('作品C');
+	});
+
+	it('当启用 fallback: false 且处于主页或非作品独立笔记时，返回 null 从而允许状态视图保留记忆', () => {
+		const nonworkFile = new MockFile('Notes/todo.md', 'todo.md');
+		nonworkFile.parent = new MockFolder('Notes', 'Notes');
+		const app = createMockApp({});
+		Object.assign(app, {
+			workspace: {
+				getMostRecentLeaf: () => ({ view: { getViewType: () => 'markdown' } }),
+				getActiveViewOfType: (type: unknown) => type === MarkdownView ? { file: nonworkFile } : null,
+				getActiveFile: () => nonworkFile,
+				getLeavesOfType: () => [{
+					view: { getViewType: () => 'webnovel-workbench', currentBookPath: '作品A' }
+				}]
+			}
+		});
+		const plugin = createMockPlugin({}, {
+			homepageManager: {
+				getHomepageFilePath: () => '创作主页.md',
+				getNovelFolders: () => [{ folderPath: '作品A', folderName: '作品A' }]
+			}
+		});
+
+		expect(getCurrentBookContext(app, plugin, { fallback: false })).toBeNull();
 	});
 });
 

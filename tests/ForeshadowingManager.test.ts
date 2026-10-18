@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ForeshadowingManager } from '../src/services/ForeshadowingManager';
 import { ForeshadowingStatus } from '../src/types/foreshadowing';
+import { ChapterSorter } from '../src/services/ChapterSorter';
 import { TFile } from 'obsidian';
 import * as pathUtils from '../src/utils/path';
 
@@ -411,6 +412,55 @@ describe('ForeshadowingManager', () => {
 			const map = await manager.buildChapterForeshadowingMap('Book 1', [vol1Ch1], vault);
 
             expect(map.size).toBe(0);
+        });
+
+        it('buildChapterForeshadowingMap creates reference index once for many links across entries', async () => {
+            const manager = new ForeshadowingManager(mockApp, mockPlugin);
+            const vol1Ch1 = Object.assign(new TFile(), { name: '第1章.md', path: 'Book 1/Vol 1/第1章.md', basename: '第1章', extension: 'md' });
+            const vol2Ch1 = Object.assign(new TFile(), { name: '第1章.md', path: 'Book 1/Vol 2/第1章.md', basename: '第1章', extension: 'md' });
+            const ch2 = Object.assign(new TFile(), { name: '第2章.md', path: 'Book 1/第2章.md', basename: '第2章', extension: 'md' });
+            const fFile = Object.assign(new TFile(), { name: 'Foreshadowing.md', path: 'Book 1/Foreshadowing.md', basename: 'Foreshadowing', extension: 'md' });
+
+            mockApp.vault.getAbstractFileByPath.mockImplementation((p: string) => {
+                if (p === 'Book 1/Foreshadowing.md') return fFile;
+                if (p === 'Book 1/Vol 1/第1章.md') return vol1Ch1;
+                if (p === 'Book 1/Vol 2/第1章.md') return vol2Ch1;
+                if (p === 'Book 1/第2章.md') return ch2;
+                return null;
+            });
+            mockPlugin.getTrackedMarkdownFiles.mockReturnValue([vol1Ch1, vol2Ch1, ch2]);
+            mockPlugin.getVaultMarkdownFiles.mockReturnValue([vol1Ch1, vol2Ch1, ch2]);
+
+            const markdown = `
+## Clue 1
+> [[Vol 1/第1章|第1章]] - 2023-01-01
+> Content 1
+
+**状态**：已回收
+**回收记录**：
+- [回收] [[Vol 2/第1章|第1章]] - 2023-01-02：Log 1
+- [回收] [[第2章]] - 2023-01-03：Log 2
+---
+## Clue 2
+> [[Vol 2/第1章]] - 2023-01-04
+> Content 2
+
+**状态**：未回收
+---
+`;
+            const fakeVault = {
+                cachedRead: vi.fn().mockResolvedValue(markdown)
+            };
+
+            const createIndexSpy = vi.spyOn(ChapterSorter, 'createReferenceIndex');
+            const map = await manager.buildChapterForeshadowingMap('Book 1', [vol1Ch1, vol2Ch1, ch2], fakeVault);
+
+            expect(createIndexSpy).toHaveBeenCalledTimes(1);
+            expect(map.get(vol1Ch1.path)).toHaveLength(1);
+            expect(map.get(vol2Ch1.path)).toHaveLength(2); // Clue 1 recovery + Clue 2 source
+            expect(map.get(ch2.path)).toHaveLength(1);
+
+            createIndexSpy.mockRestore();
         });
     });
 

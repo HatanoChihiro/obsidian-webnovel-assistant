@@ -1,5 +1,5 @@
-import type { WorkspaceLeaf} from 'obsidian';
-import { ItemView, TFile, Notice, setIcon, Menu, MarkdownView } from 'obsidian';
+import type { WorkspaceLeaf, ViewStateResult, TAbstractFile } from 'obsidian';
+import { ItemView, TFile, TFolder, Notice, setIcon, Menu, MarkdownView } from 'obsidian';
 import { formatTime, formatCount, isMobile } from '../utils';
 import { smartLocateAndHighlight } from '../utils/leaf';
 
@@ -26,6 +26,7 @@ export type StatusViewTaskManager = Pick<
 	| 'updateEntryStatus'
 	| 'getTaskFile'
 	| 'parseEntries'
+	| 'loadEntries'
 	| 'getActiveTask'
 	| 'calcProgress'
 	| 'updateProgress'
@@ -152,6 +153,7 @@ export class WritingStatusView extends ItemView {
 	private lastActiveFolderPath: string | null = null;
 	private taskSaveTimer: number | null = null;
 	private currentChapterFile: TFile | null = null;
+	private lastRenderedChapterPath: string | null = null;
 	private updateGeneration = 0;
 	private activeTaskContext: { folderPath: string; period: number; taskType: TaskType } | null = null;
 	private lastReconciledDateByFolder = new Map<string, string>();
@@ -208,6 +210,27 @@ export class WritingStatusView extends ItemView {
 	constructor(leaf: WorkspaceLeaf, plugin: WritingStatusViewPlugin) {
 		super(leaf);
 		this.plugin = plugin;
+		this.registerDataEvents();
+	}
+
+	private registerDataEvents(): void {
+		const refreshForFile = (file: TAbstractFile, oldPath?: string) => {
+			if (!this.workNameEl || !this.lastActiveFolderPath) return;
+			if (file instanceof TFile && file.extension !== 'md') return;
+			const folder = this.lastActiveFolderPath === '/' ? '' : this.lastActiveFolderPath;
+			const belongsToWork = (path: string) => !folder || path === folder || path.startsWith(folder + '/');
+			if (belongsToWork(file.path) || (oldPath !== undefined && belongsToWork(oldPath))) {
+				void this.updateData();
+			}
+		};
+		if (this.app.vault?.on) {
+			this.registerEvent(this.app.vault.on('modify', refreshForFile));
+			this.registerEvent(this.app.vault.on('rename', refreshForFile));
+			this.registerEvent(this.app.vault.on('delete', refreshForFile));
+		}
+		if (this.app.metadataCache?.on) {
+			this.registerEvent(this.app.metadataCache.on('changed', (file) => refreshForFile(file)));
+		}
 	}
 
 	getViewType() {
@@ -220,6 +243,26 @@ export class WritingStatusView extends ItemView {
 
 	getIcon() {
 		return "bar-chart-2";
+	}
+
+	getState(): Record<string, unknown> {
+		return { ...super.getState(), currentBookPath: this.lastActiveFolderPath };
+	}
+
+	async setState(state: unknown, result: ViewStateResult): Promise<void> {
+		await super.setState(state, result);
+		if (state && typeof state === 'object' && 'currentBookPath' in state && typeof state.currentBookPath === 'string') {
+			const folder = this.app.vault.getAbstractFileByPath(state.currentBookPath);
+			if (folder instanceof TFolder && findBookRoot(this.app, this.plugin, folder, true) === folder.path) {
+				if (this.lastActiveFolderPath !== folder.path) {
+					this.currentChapterFile = null;
+					this.lastRenderedChapterPath = null;
+					this.lastChapterMtime = -1;
+				}
+				this.lastActiveFolderPath = folder.path;
+			}
+		}
+		if (this.workNameEl) await this.updateData(true);
 	}
 
 	private preventWorkspaceFocus(el: HTMLElement): void {
@@ -551,26 +594,109 @@ export class WritingStatusView extends ItemView {
 		};
 	}
 
-	private updateTimer: number | null = null;
+	private updateDebounceTimer: number | null = null;
+	private lastRenderedDate: string = '';
 
-	async updateData(immediate = false) {
+	public updateTimer(): void {
+		if (isMobile()) return;
+		const today = window.moment().format('YYYY-MM-DD');
+		if (this.lastRenderedDate && this.lastRenderedDate !== today) {
+			this.lastRenderedDate = today;
+			void this.updateData(false);
+			return;
+		}
+		const focusSec = Math.round(this.plugin.focusMs / 1000);
+		const slackSec = Math.round(this.plugin.slackMs / 1000);
+		const totalSec = focusSec + slackSec;
+
+		if (this.focusTimeEl) this.focusTimeEl.innerText = formatTime(focusSec);
+		if (this.slackTimeEl) this.slackTimeEl.innerText = formatTime(slackSec);
+		if (this.totalTimeEl) this.totalTimeEl.innerText = formatTime(totalSec);
+	}
+
+	private getChapterFileForFolder(folderPath: string): TFile | null {
+		if (!folderPath) {
+			this.currentChapterFile = null;
+			return null;
+		}
+
+		let activeFile: TFile | null = null;
+		const activeMarkdown = this.app.workspace.getActiveViewOfType(MarkdownView);
+		if (activeMarkdown?.file instanceof TFile) {
+			activeFile = activeMarkdown.file;
+		} else {
+			const rootLeaf = this.app.workspace.getMostRecentLeaf?.();
+			if (rootLeaf && (rootLeaf.view instanceof MarkdownView || rootLeaf.view?.getViewType() === 'markdown')) {
+				const fileView = rootLeaf.view as MarkdownView;
+				if (fileView.file instanceof TFile) {
+					activeFile = fileView.file;
+				}
+			}
+		}
+
+		if (activeFile && activeFile.extension === 'md') {
+			const homepagePath = this.plugin.homepageManager?.getHomepageFilePath?.();
+			const isHomepage = (homepagePath && activeFile.path === homepagePath) || activeFile.name === '创作主页.md';
+			if (!isHomepage && this.plugin.cacheManager.isEligibleForWordCount(activeFile)) {
+				const bookRoot = findBookRoot(this.app, this.plugin, activeFile, true);
+				if (bookRoot === folderPath) {
+					const isLore = this.plugin.characterManager?.isLorePath?.(bookRoot, activeFile.parent?.path || '') ?? false;
+					const fmFolder = bookRoot === '/' ? '' : bookRoot;
+					const fFile = this.plugin.foreshadowingManager?.findForeshadowingFile?.(fmFolder);
+					const isForeshadowing = !!(fFile && fFile.path === activeFile.path);
+					if (!isLore && !isForeshadowing) {
+						const vaultFile = this.app.vault.getAbstractFileByPath(activeFile.path);
+						if (vaultFile instanceof TFile) {
+							this.currentChapterFile = vaultFile;
+							return vaultFile;
+						}
+					}
+				}
+			}
+		}
+
+		this.currentChapterFile = null;
+		return null;
+	}
+
+	private captureActiveContext(): void {
+		const previousChapterPath = this.currentChapterFile?.path;
+		const contextPath = getCurrentBookContext(this.app, this.plugin, { fallback: false });
+		if (contextPath) {
+			const changed = this.lastActiveFolderPath !== contextPath;
+			this.lastActiveFolderPath = contextPath;
+			if (changed) this.app.workspace.requestSaveLayout();
+		}
+
+		const currentWork = this.lastActiveFolderPath || '';
+		const targetChapter = this.getChapterFileForFolder(currentWork);
+		if (!targetChapter || targetChapter.path !== previousChapterPath) {
+			this.lastRenderedChapterPath = null;
+			this.lastChapterMtime = -1;
+			this.chapterStatusCardEl?.hide();
+			for (const el of this.chapterSectionEls ?? []) el.hide();
+		}
+	}
+
+	async updateData(immediate = false, force = false) {
+		this.captureActiveContext();
 		const generation = ++this.updateGeneration;
 		if (immediate) {
-			if (this.updateTimer) {
-				window.clearTimeout(this.updateTimer);
-				this.updateTimer = null;
+			if (this.updateDebounceTimer) {
+				window.clearTimeout(this.updateDebounceTimer);
+				this.updateDebounceTimer = null;
 			}
-			await this.performUpdateData(generation);
+			await this.performUpdateData(generation, force);
 			return;
 		}
 
-		if (this.updateTimer) {
-			window.clearTimeout(this.updateTimer);
+		if (this.updateDebounceTimer) {
+			window.clearTimeout(this.updateDebounceTimer);
 		}
 
-		this.updateTimer = window.setTimeout(() => {
-			this.updateTimer = null;
-			void this.performUpdateData(generation);
+		this.updateDebounceTimer = window.setTimeout(() => {
+			this.updateDebounceTimer = null;
+			void this.performUpdateData(generation, force);
 		}, 100);
 	}
 
@@ -589,15 +715,18 @@ export class WritingStatusView extends ItemView {
 		}
 	}
 
-	private async performUpdateData(generation: number) {
+	private async performUpdateData(generation: number, force = false) {
 		if (generation !== this.updateGeneration) return;
-		// 更新作品信息
-		const contextPath = getCurrentBookContext(this.app, this.plugin);
-		if (contextPath) {
-			this.lastActiveFolderPath = contextPath;
+		this.captureActiveContext();
+		let folderPath = this.lastActiveFolderPath || '';
+		if (!folderPath) {
+			const initialDefault = getCurrentBookContext(this.app, this.plugin);
+			if (initialDefault) {
+				folderPath = initialDefault;
+				this.lastActiveFolderPath = initialDefault;
+			}
 		}
-		
-		const folderPath = contextPath || this.lastActiveFolderPath || '';
+
 		let folderName = '--';
 		if (this.activeTaskContext && this.activeTaskContext.folderPath !== folderPath) {
 			this.setTaskSectionVisible(false);
@@ -648,7 +777,9 @@ export class WritingStatusView extends ItemView {
 			}
 		}
 
-		const coreStats = this.plugin.statisticsManager.getCoreStats();
+		const targetChapter = this.getChapterFileForFolder(folderPath);
+		const isEligibleChapter = !!targetChapter;
+		const coreStats = this.plugin.statisticsManager.getCoreStats(targetChapter);
 
 		this.dailyWordEl.innerText = coreStats.dailyWords.toLocaleString();
 		this.dailyGoalEl.innerText = coreStats.dailyGoal.toLocaleString();
@@ -665,23 +796,26 @@ export class WritingStatusView extends ItemView {
 		const dailyState = coreStats.rawDailyWords < 0 ? 'negative' : dailyDone ? 'done' : 'normal';
 		this.setProgressState(this.dailyProgressFillEl, this.dailyWordEl, this.dailyPercentEl, dailyState, Math.max(0, dailyPercent));
 
-		const activeMarkdownFile = this.app.workspace.getActiveViewOfType(MarkdownView)?.file ?? this.currentChapterFile;
-		const isEligibleChapter = !!(activeMarkdownFile && this.plugin.cacheManager.isEligibleForWordCount(activeMarkdownFile));
-
 		if (this.chapterSectionEls) {
 			for (const el of this.chapterSectionEls) {
 				if (isEligibleChapter) { el.show(); } else { el.hide(); }
 			}
 		}
 
-		this.todayWordEl.innerText = coreStats.todayWords.toLocaleString();
-		this.goalWordEl.innerText = coreStats.goal.toLocaleString();
+		if (isEligibleChapter) {
+			this.todayWordEl.innerText = coreStats.todayWords.toLocaleString();
+			this.goalWordEl.innerText = coreStats.goal.toLocaleString();
+			this.percentEl.innerText = ` ${coreStats.percent}%`;
 
-		this.percentEl.innerText = ` ${coreStats.percent}%`;
-
-		const chapterDone = coreStats.goal > 0 && coreStats.todayWords >= coreStats.goal;
-		const chapterState = chapterDone ? 'done' : 'normal';
-		this.setProgressState(this.progressFillEl, this.todayWordEl, null, chapterState, coreStats.percent);
+			const chapterDone = coreStats.goal > 0 && coreStats.todayWords >= coreStats.goal;
+			const chapterState = chapterDone ? 'done' : 'normal';
+			this.setProgressState(this.progressFillEl, this.todayWordEl, null, chapterState, coreStats.percent);
+		} else {
+			this.todayWordEl.innerText = '0';
+			this.goalWordEl.innerText = '0';
+			this.percentEl.innerText = ' 0%';
+			this.setProgressState(this.progressFillEl, this.todayWordEl, null, 'normal', 0);
+		}
 
 		// 任务目标进度：基于目录判断，无活跃 MarkdownView 时使用上次文件夹
 		const taskFolder = folderPath;
@@ -693,10 +827,9 @@ export class WritingStatusView extends ItemView {
 				await this.reconcileTaskLifecycleForFolder(taskFolder, generation);
 				if (generation !== this.updateGeneration) return;
 
-				const taskContent = await this.app.vault.read(taskFile);
+				const entries = await manager.loadEntries(taskFolder);
 				if (generation !== this.updateGeneration) return;
-				const entries = manager.parseEntries(taskContent);
-				const active = manager.getActiveTask(entries);
+				const active = entries ? manager.getActiveTask(entries) : null;
 
 				if (active) {
 					const taskType = active.taskType || 'wordCount';
@@ -747,9 +880,13 @@ export class WritingStatusView extends ItemView {
 
 						// 防抖持久化完成字数
 						if (this.taskSaveTimer) window.clearTimeout(this.taskSaveTimer);
-						this.taskSaveTimer = window.setTimeout(() => {
-							void manager.updateProgress(active.period, progress, taskFolder);
-						}, 5000);
+						this.taskSaveTimer = null;
+						if (active.completedWords !== progress) {
+							this.taskSaveTimer = window.setTimeout(() => {
+								this.taskSaveTimer = null;
+								void manager.updateProgress(active.period, progress, taskFolder);
+							}, 5000);
+						}
 					}
 				} else {
 					this.setTaskSectionVisible(false);
@@ -761,19 +898,15 @@ export class WritingStatusView extends ItemView {
 			this.setTaskSectionVisible(false);
 		}
 
+		this.lastRenderedDate = window.moment().format('YYYY-MM-DD');
 		if (!isMobile()) {
-			const focusSec = Math.round(this.plugin.focusMs / 1000);
-			const slackSec = Math.round(this.plugin.slackMs / 1000);
-			const totalSec = focusSec + slackSec;
-
-			if (this.focusTimeEl) this.focusTimeEl.innerText = formatTime(focusSec);
-			if (this.slackTimeEl) this.slackTimeEl.innerText = formatTime(slackSec);
-			if (this.totalTimeEl) this.totalTimeEl.innerText = formatTime(totalSec);
+			this.updateTimer();
 		}
 
-		void this.updateChapterStatus();
-		this.updateWordStats();
-		this.renderMiniChart();
+		await this.updateChapterStatus(folderPath, generation);
+		if (generation !== this.updateGeneration) return;
+		this.updateWordStats(force);
+		this.renderMiniChart(force);
 	}
 
 	private lastChapterMtime: number = -1;
@@ -800,12 +933,13 @@ export class WritingStatusView extends ItemView {
 		};
 	}
 
-	private async updateChapterStatus() {
+	private async updateChapterStatus(folderPath: string = this.lastActiveFolderPath || '', generation: number = this.updateGeneration) {
 		if (!this.chapterStatusCardEl || !this.chapterBadgesContainer) return;
+		if (generation !== this.updateGeneration) return;
 
-		const file = this.app.workspace.getActiveViewOfType(MarkdownView)?.file ?? this.currentChapterFile;
+		const file = this.getChapterFileForFolder(folderPath);
 		if (!file || file.extension !== 'md') {
-			this.currentChapterFile = null;
+			this.lastRenderedChapterPath = null;
 			this.lastChapterMtime = -1;
 			this.chapterStatusCardEl.hide();
 			return;
@@ -813,14 +947,14 @@ export class WritingStatusView extends ItemView {
 
 		const bookPath = this.plugin.characterManager.getBookPathForFile(file);
 		if (!bookPath || this.plugin.characterManager.isLorePath(bookPath, file.parent?.path || '')) {
-			this.currentChapterFile = null;
+			this.lastRenderedChapterPath = null;
 			this.lastChapterMtime = -1;
 			this.chapterStatusCardEl.hide();
 			return;
 		}
 
 		if (!this.plugin.cacheManager.isEligibleForWordCount(file)) {
-			this.currentChapterFile = null;
+			this.lastRenderedChapterPath = null;
 			this.lastChapterMtime = -1;
 			this.chapterStatusCardEl.hide();
 			return;
@@ -829,7 +963,7 @@ export class WritingStatusView extends ItemView {
 		const fmFolder = bookPath === '/' ? '' : bookPath;
 		const fFile = this.plugin.foreshadowingManager?.findForeshadowingFile(fmFolder);
 		if (fFile && fFile.path === file.path) {
-			this.currentChapterFile = null;
+			this.lastRenderedChapterPath = null;
 			this.lastChapterMtime = -1;
 			this.chapterStatusCardEl.hide();
 			return;
@@ -842,10 +976,11 @@ export class WritingStatusView extends ItemView {
 		const rawStatus = (frontmatter?.status || frontmatter?.Status || frontmatter?.['状态'] || 'unwritten') as string;
 		const status = CORKBOARD_STATUS_MAP[rawStatus] ?? rawStatus;
 		const currentFmtime = fFile ? fFile.stat.mtime : -1;
+		const chapterMtime = file.stat.mtime;
 
 		if (
-			this.currentChapterFile?.path === file.path &&
-			file.stat.mtime === this.lastChapterMtime &&
+			this.lastRenderedChapterPath === file.path &&
+			chapterMtime === this.lastChapterMtime &&
 			currentFmtime === this.lastForeshadowingMtime &&
 			status === this.lastChapterStatusStr &&
 			synopsis === this.lastChapterSynopsisStr
@@ -853,12 +988,6 @@ export class WritingStatusView extends ItemView {
 			this.chapterStatusCardEl.show();
 			return;
 		}
-
-		this.currentChapterFile = file;
-		this.lastChapterMtime = file.stat.mtime;
-		this.lastForeshadowingMtime = currentFmtime;
-		this.lastChapterStatusStr = status;
-		this.lastChapterSynopsisStr = synopsis;
 
 		this.chapterStatusCardEl.show();
 		this.chapterBadgesContainer.empty();
@@ -891,25 +1020,35 @@ export class WritingStatusView extends ItemView {
 			: (_target: string | undefined): boolean => false;
 
 		if (fFile && this.plugin.foreshadowingManager) {
-			const content = await this.app.vault.cachedRead(fFile);
-			const entries = this.plugin.foreshadowingManager.parseEntries(content);
+			try {
+				const content = await this.app.vault.cachedRead(fFile);
+				if (generation !== this.updateGeneration) return;
+				if (this.getChapterFileForFolder(folderPath)?.path !== file.path) return;
+				const entries = this.plugin.foreshadowingManager.parseEntries(content);
 
-			for (const entry of entries) {
-				const matchSource = isMatch(entry.sourceFile) || (entry.contents || []).some(c => isMatch(c.source));
+				for (const entry of entries) {
+					const matchSource = isMatch(entry.sourceFile) || (entry.contents || []).some(c => isMatch(c.source));
 
-				if (entry.status === ForeshadowingStatus.Pending) {
-					if (matchSource) pendingEntries.push(entry);
-				} else if (entry.status === ForeshadowingStatus.PartiallyRecovered) {
-					const matchRecovery = (entry.recoveryLogs || []).some(l => isMatch(l.file)) || (entry.recoveryFiles || []).some(f => isMatch(f)) || isMatch(entry.recoveryFile);
-					if (matchSource) pendingEntries.push(entry);
-					if (matchRecovery && !matchSource) recoveredHereEntries.push(entry);
-				} else if (entry.status === ForeshadowingStatus.Recovered) {
-					const matchRecovery = (entry.recoveryLogs || []).some(l => isMatch(l.file)) || (entry.recoveryFiles || []).some(f => isMatch(f)) || isMatch(entry.recoveryFile);
-					if (matchSource) resolvedOriginEntries.push(entry);
-					if (matchRecovery && !matchSource) recoveredHereEntries.push(entry);
+					if (entry.status === ForeshadowingStatus.Pending) {
+						if (matchSource) pendingEntries.push(entry);
+					} else if (entry.status === ForeshadowingStatus.PartiallyRecovered) {
+						const matchRecovery = (entry.recoveryLogs || []).some(l => isMatch(l.file)) || (entry.recoveryFiles || []).some(f => isMatch(f)) || isMatch(entry.recoveryFile);
+						if (matchSource) pendingEntries.push(entry);
+						if (matchRecovery && !matchSource) recoveredHereEntries.push(entry);
+					} else if (entry.status === ForeshadowingStatus.Recovered) {
+						const matchRecovery = (entry.recoveryLogs || []).some(l => isMatch(l.file)) || (entry.recoveryFiles || []).some(f => isMatch(f)) || isMatch(entry.recoveryFile);
+						if (matchSource) resolvedOriginEntries.push(entry);
+						if (matchRecovery && !matchSource) recoveredHereEntries.push(entry);
+					}
 				}
+			} catch (err) {
+				(window.console || console).error('[WritingStatusView] Failed to read foreshadowing file:', err);
+				return;
 			}
 		}
+
+		if (generation !== this.updateGeneration) return;
+		if (this.getChapterFileForFolder(folderPath)?.path !== file.path) return;
 
 		const loreArray = cache?.frontmatter?.lore as unknown;
 		let validLores: string[] = [];
@@ -992,9 +1131,25 @@ export class WritingStatusView extends ItemView {
 				loreItemsRow.createSpan({ text: loreNameWithCount, cls: 'wn-badge wn-badge-lore' });
 			}
 		}
+
+		this.lastRenderedChapterPath = file.path;
+		this.lastChapterMtime = chapterMtime;
+		this.lastForeshadowingMtime = currentFmtime;
+		this.lastChapterStatusStr = status;
+		this.lastChapterSynopsisStr = synopsis;
 	}
 
-	private updateWordStats() {
+	private lastWordStatsRevision: number | null = null;
+	private lastWordStatsDate: string = '';
+
+	private updateWordStats(force = false) {
+		const today = window.moment().format('YYYY-MM-DD');
+		const currentRevision = this.plugin.historyManager.getWordRevision();
+
+		if (!force && this.lastWordStatsRevision === currentRevision && this.lastWordStatsDate === today) {
+			return;
+		}
+
 		let weekWords = 0;
 		let monthWords = 0;
 		let yearWords = 0;
@@ -1012,29 +1167,43 @@ export class WritingStatusView extends ItemView {
 			if (dateMoment.isSame(now, 'year')) yearWords += dailyAdded;
 		}
 
+		this.lastWordStatsRevision = currentRevision;
+		this.lastWordStatsDate = today;
+
 		if (this.weekWordEl) this.weekWordEl.innerText = weekWords.toLocaleString();
 		if (this.monthWordEl) this.monthWordEl.innerText = monthWords.toLocaleString();
 		if (this.yearWordEl) this.yearWordEl.innerText = yearWords.toLocaleString();
 		if (this.historyTotalWordEl) this.historyTotalWordEl.innerText = totalWords.toLocaleString();
 	}
 
+	private lastMiniChartRevision: number | null = null;
+	private lastMiniChartDate: string = '';
 	private lastHistorySnapshot: string = '';
 
 	renderMiniChart(force = false) {
-		const history = this.plugin.historyManager.getHistory();
-		const dates = Object.keys(history).sort().slice(-7);
+		const now = window.moment();
+		const today = now.format('YYYY-MM-DD');
+		const currentRevision = this.plugin.historyManager.getWordRevision();
 
-		const currentSnapshot = dates.map(d => `${d}:${history[d]?.addedWords ?? 0}`).join('|');
-		if (!force && this.lastHistorySnapshot === currentSnapshot) return;
-		this.lastHistorySnapshot = currentSnapshot;
-
-		this.miniChartEl.empty();
-
-		if (dates.length === 0) {
-			this.miniChartEl.createDiv({ text: t('common.no-data'), cls: 'mini-chart-empty' });
-			this.efficiencySummaryEl.setText('--');
+		if (!force && this.lastMiniChartRevision === currentRevision && this.lastMiniChartDate === today) {
 			return;
 		}
+
+		const history = this.plugin.historyManager.getHistory();
+		const dates = Array.from({ length: 7 }, (_, index) =>
+			now.clone().subtract(6 - index, 'days').format('YYYY-MM-DD')
+		);
+		const recentHistory = Object.fromEntries(dates.map(date => [date,
+			history[date] ?? { addedWords: 0, focusMs: 0, slackMs: 0 }
+		]));
+
+		const currentSnapshot = dates.map(d => `${d}:${history[d]?.addedWords ?? 0}`).join('|');
+		if (!force && this.lastHistorySnapshot === currentSnapshot && this.lastMiniChartRevision === currentRevision && this.lastMiniChartDate === today) return;
+		this.lastHistorySnapshot = currentSnapshot;
+		this.lastMiniChartRevision = currentRevision;
+		this.lastMiniChartDate = today;
+
+		this.miniChartEl.empty();
 
 		const maxAbsValue = Math.max(...dates.map(d => Math.abs(history[d]?.addedWords || 0)), 1);
 
@@ -1060,19 +1229,18 @@ export class WritingStatusView extends ItemView {
 			const focusH = (stat?.focusMs || 0) / 3600000;
 			bar.setAttribute('title', `${date}\n${t('modal.metric-words')}: ${words}\n${t('modal.metric-focus-time')}: ${focusH.toFixed(1)}h`);
 
-			col.createDiv({ cls: 'mini-chart-label', text: date.substring(8) });
+			col.createDiv({ cls: 'mini-chart-label', text: date.substring(5) });
 
 			const displayStr = words < 0 ? formatCount(words) : formatCount(words);
 			col.createDiv({ cls: 'mini-chart-value', text: displayStr });
 		});
 
-		const now = window.moment();
-		const endDate = now.format('YYYY-MM-DD');
-		const startDate = now.clone().subtract(7, 'days').format('YYYY-MM-DD');
+		const endDate = today;
+		const startDate = dates[0];
 		const streak = this.plugin.statisticsManager.calcStreak(history);
-		const focusRate = this.plugin.statisticsManager.calcFocusRate(history, startDate, endDate);
-		const speed = this.plugin.statisticsManager.calcWritingSpeed(history, startDate, endDate);
-		const dailyAvg = this.plugin.statisticsManager.calcDailyAverage(history, startDate, endDate);
+		const focusRate = this.plugin.statisticsManager.calcFocusRate(recentHistory, startDate, endDate);
+		const speed = this.plugin.statisticsManager.calcWritingSpeed(recentHistory, startDate, endDate);
+		const dailyAvg = this.plugin.statisticsManager.calcDailyAverage(recentHistory, startDate, endDate);
 
 		const parts = [
 			t('common.consecutive-days', { count: streak }),
@@ -1085,15 +1253,21 @@ export class WritingStatusView extends ItemView {
 	}
 
 	async onClose() {
-		if (this.updateTimer !== null) {
-			window.clearTimeout(this.updateTimer);
-			this.updateTimer = null;
+		this.updateGeneration++;
+		if (this.updateDebounceTimer !== null) {
+			window.clearTimeout(this.updateDebounceTimer);
+			this.updateDebounceTimer = null;
 		}
 		if (this.taskSaveTimer !== null) {
 			window.clearTimeout(this.taskSaveTimer);
 			this.taskSaveTimer = null;
 		}
 		this.inFlightReconcile.clear();
+		try {
+			await this.app.workspace.requestSaveLayout.run();
+		} catch (error) {
+			Logger.error('[WritingStatusView] Failed to save layout:', error);
+		}
 		await super.onClose();
 	}
 }

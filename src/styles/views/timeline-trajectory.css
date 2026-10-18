@@ -28,9 +28,17 @@
 
 .wn-trajectory-lane-header,
 .wn-trajectory-cell,
-.wn-trajectory-divider {
+.wn-trajectory-divider,
+.wn-trajectory-lane-bg {
 	grid-row: var(--traj-row);
 	grid-column: var(--traj-col);
+}
+
+.wn-trajectory-lane-bg {
+	position: relative;
+	min-height: 72px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	box-sizing: border-box;
 }
 
 .wn-trajectory-lane-header {
@@ -59,7 +67,8 @@
 }
 
 .wn-trajectory-lane-header.is-type,
-.wn-trajectory-cell.is-type {
+.wn-trajectory-cell.is-type,
+.wn-trajectory-lane-bg.is-type {
 	--wn-trajectory-type-background: color-mix(in srgb, var(--wn-trajectory-type-color, var(--background-secondary)) 6%, var(--background-secondary));
 	background: var(--wn-trajectory-type-background);
 }
@@ -79,12 +88,14 @@
 
 .wn-trajectory-cell {
 	position: relative;
+	z-index: 1;
 	min-height: 72px;
 	padding: 12px 8px;
 	border-bottom: 1px solid var(--background-modifier-border);
 	box-sizing: border-box;
 }
 
+.wn-trajectory-lane-bg.is-type::before,
 .wn-trajectory-cell.is-type::before {
 	content: '';
 	position: absolute;
@@ -249,4 +260,149 @@
 
 .wn-trajectory-event-text.is-editing {
 	cursor: text;
+}
+
+.wn-trajectory-expand-btn {
+	position: absolute;
+	top: 12px;
+	right: 12px;
+	z-index: 10;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	background: var(--background-secondary);
+	color: var(--text-muted);
+	cursor: pointer;
+	transition: background 0.15s ease, color 0.15s ease;
+}
+
+.wn-trajectory-expand-btn:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.wn-trajectory-expand-btn:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 1px;
+}
+
+body:not(.is-phone):not(.is-tablet) .wn-trajectory-expand-btn {
+	display: none;
+}
+
+.modal-container.wn-trajectory-modal-container {
+	padding: 0;
+	margin: 0;
+	width: 100vw;
+	height: 100vh;
+	max-width: 100vw;
+	max-height: 100vh;
+	display: flex;
+	align-items: stretch;
+	justify-content: stretch;
+}
+
+.modal.wn-trajectory-fullscreen-modal {
+	width: 100vw;
+	height: 100vh;
+	max-width: 100vw;
+	max-height: 100vh;
+	padding: 0;
+	margin: 0;
+	border: none;
+	border-radius: 0;
+	background: var(--background-primary);
+	overflow: hidden;
+	align-self: stretch;
+	justify-self: stretch;
+	display: flex;
+	flex-direction: column;
+}
+
+.modal.wn-trajectory-fullscreen-modal > .modal-header {
+	display: none;
+}
+
+.modal.wn-trajectory-fullscreen-modal > .modal-content {
+	width: 100%;
+	height: 100%;
+	max-width: none;
+	max-height: none;
+	padding: 0;
+	margin: 0;
+	overflow: hidden;
+	display: flex;
+	flex: 1 1 100%;
+}
+
+.wn-trajectory-fullscreen-shell {
+	position: relative;
+	width: 100%;
+	height: 100%;
+	box-sizing: border-box;
+	overflow: hidden;
+	flex-shrink: 0;
+	padding: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0) env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0);
+}
+
+.wn-trajectory-fullscreen-shell.is-rotated-90 {
+	padding: env(safe-area-inset-right, 0) env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0) env(safe-area-inset-top, 0);
+}
+
+.wn-trajectory-fullscreen-shell .wn-trajectory-expand-btn {
+	display: none;
+}
+
+.wn-trajectory-fullscreen-placeholder {
+	display: none;
+}
+
+.wn-trajectory-exit-btn {
+	position: absolute;
+	top: max(12px, env(safe-area-inset-top, 12px));
+	right: max(12px, env(safe-area-inset-right, 12px));
+	z-index: 100;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 32px;
+	height: 32px;
+	padding: 0;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	background: var(--background-secondary);
+	color: var(--text-muted);
+	cursor: pointer;
+	box-shadow: var(--shadow-s);
+	transition: background 0.15s ease, color 0.15s ease;
+}
+
+.wn-trajectory-fullscreen-shell.is-rotated-90 .wn-trajectory-exit-btn {
+	top: max(12px, env(safe-area-inset-right, 12px));
+	right: max(12px, env(safe-area-inset-bottom, 12px));
+}
+
+.wn-trajectory-exit-btn:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.wn-trajectory-exit-btn:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 1px;
+}
+
+body.is-phone .wn-trajectory-expand-btn,
+body.is-phone .wn-trajectory-exit-btn,
+body.is-tablet .wn-trajectory-expand-btn,
+body.is-tablet .wn-trajectory-exit-btn {
+	min-width: 44px;
+	min-height: 44px;
+	width: 44px;
+	height: 44px;
 }

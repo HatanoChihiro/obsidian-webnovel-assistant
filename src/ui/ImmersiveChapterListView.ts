@@ -9,6 +9,7 @@ import { t } from '../i18n';
 import type { AccurateCountSettings } from '../types/settings';
 import type { CacheManager } from '../services/CacheManager';
 import type { ForeshadowingManager } from '../services/ForeshadowingManager';
+import type { ImmersiveModeManager } from './ImmersiveModeManager';
 
 export type ImmersiveChapterListSettings = Pick<
 	AccurateCountSettings,
@@ -41,6 +42,7 @@ export interface ImmersiveChapterListViewPlugin
 	settings: ImmersiveChapterListSettings;
 	cacheManager: ImmersiveChapterListCacheManager;
 	foreshadowingManager?: ImmersiveChapterListForeshadowingManager;
+	immersiveModeManager?: Pick<ImmersiveModeManager, 'openReferenceFile' | 'registerImmersiveLeaf'>;
 	saveSettings(): Promise<void>;
 }
 
@@ -217,7 +219,8 @@ export class ImmersiveChapterListView extends ItemView {
 
 		if (this.plugin.settings.enableSmartChapterSort) {
 			const customOrder = this.plugin.settings.customSortOrder || {};
-			children.sort((a, b) => ChapterSorter.compareFilesWithCustomOrder(a, b, customOrder));
+			const comparator = ChapterSorter.createFileComparator(customOrder);
+			children.sort(comparator);
 		} else {
 			children.sort((a, b) => {
 				const aIsFolder = a instanceof TFolder;
@@ -303,6 +306,7 @@ export class ImmersiveChapterListView extends ItemView {
 						if (mainLeaf) {
 							refLeaf = this.app.workspace.createLeafBySplit(mainLeaf, 'vertical', false);
 							refLeaf.containerEl.classList.add('immersive-reference-view');
+							this.plugin.immersiveModeManager?.registerImmersiveLeaf(refLeaf);
 							
 							if (!this.plugin.settings.immersive.immersiveRightSlots.includes('reference-view')) {
 								this.plugin.settings.immersive.immersiveRightSlots.push('reference-view');
@@ -313,12 +317,17 @@ export class ImmersiveChapterListView extends ItemView {
 					
 					if (refLeaf) {
 						refLeaf.containerEl.classList.add('immersive-reference-view');
-						void refLeaf.openFile(file, { active: false, state: { mode: 'preview' } }).then(() => {
-							if (refLeaf) {
-								refLeaf.containerEl.classList.add('immersive-reference-view');
-								this.updateActiveHighlight();
-							}
-						});
+						const imm = this.plugin.immersiveModeManager;
+						if (imm && typeof imm.openReferenceFile === 'function') {
+							void imm.openReferenceFile(file, refLeaf);
+						} else {
+							void refLeaf.openFile(file, { active: false, state: { mode: 'preview' } }).then(() => {
+								if (refLeaf) {
+									refLeaf.containerEl.classList.add('immersive-reference-view');
+									this.updateActiveHighlight();
+								}
+							});
+						}
 					}
 				});
 			}

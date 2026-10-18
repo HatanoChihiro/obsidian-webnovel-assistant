@@ -283,6 +283,7 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 		};
 
 		private onTouchMove = (): void => {
+			this.releaseViewportFreeze();
 			this.isManualScrolling = true;
 			this.gestureScrolled = true;
 			this.cancelPendingCenter();
@@ -366,6 +367,10 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 				this.isManualScrolling = false;
 				return;
 			}
+			if (this.isManualScrolling || this.isPointerDown) {
+				this.releaseViewportFreeze();
+				return;
+			}
 			if (this.frozenScrollTop !== null) {
 				this.restoreFrozenViewport();
 				return;
@@ -403,6 +408,7 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 			if (!this.isTypewriterActive() || !this.view.scrollDOM) return;
 			const related = (evt?.relatedTarget ?? null) as Element | null;
 			if (this.isSearchNavigationActive(related)) return;
+			if (this.isManualScrolling || this.isPointerDown) return;
 			if (this.frozenScrollTop === null) {
 				this.frozenScrollTop = this.view.scrollDOM.scrollTop;
 			}
@@ -555,6 +561,8 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 				if (isSearchNavigation) {
 					this.isManualScrolling = false;
 				}
+			} else if (this.isManualScrolling || this.isPointerDown) {
+				this.releaseViewportFreeze();
 			} else {
 				if (this.frozenScrollTop === null && this.view.scrollDOM && !this.isEditorActiveAndFocused(update.view)) {
 					this.frozenScrollTop = this.view.scrollDOM.scrollTop;

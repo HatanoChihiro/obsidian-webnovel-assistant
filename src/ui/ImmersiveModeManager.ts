@@ -1,8 +1,9 @@
 import { Logger } from '../utils/Logger';
-import type { App, WorkspaceLeaf, TFile, WorkspaceSplit, WorkspaceItem } from 'obsidian';
-import { MarkdownView, Notice, ToggleComponent } from 'obsidian';
+import type { App, WorkspaceLeaf, WorkspaceSplit, WorkspaceItem, EventRef, EditorPosition, EditorSelection } from 'obsidian';
+import { MarkdownView, Notice, ToggleComponent, setIcon, TFile } from 'obsidian';
 import { findBookRoot, type FindBookRootPlugin } from '../utils/path';
 import { t } from '../i18n';
+
 import { lockKeyboardEscape, unlockKeyboardEscape } from '../services/ObsidianInternals';
 import type { AccurateCountSettings } from '../types/settings';
 import type { StickyNoteDataManager } from '../services/StickyNoteDataManager';
@@ -12,6 +13,14 @@ import type { AdaptiveDebounceManager } from '../services/AdaptiveDebounceManage
 import type { StatisticsManager } from '../services/StatisticsManager';
 import type { TaskManager } from '../services/TaskManager';
 import { ImmersivePomodoroModal } from './ImmersivePomodoroModal';
+import type { ImmersiveReferenceManager } from '../services/ImmersiveReferenceManager';
+import { ImmersiveReferenceSearchModal } from './ImmersiveReferenceSearchModal';
+
+interface CaretRestoreOptions {
+	targetFilePath?: string;
+	cursor?: EditorPosition | null;
+	selections?: EditorSelection[] | null;
+}
 
 export type ImmersiveModeManagerStickyNoteManager = Pick<
 	StickyNoteDataManager,
@@ -40,7 +49,12 @@ export type ImmersiveModeManagerStatisticsManager = Pick<
 
 export type ImmersiveModeManagerTaskManager = Pick<
 	TaskManager,
-	'getTaskFile' | 'parseEntries' | 'getActiveTask' | 'calcProgress'
+	'getTaskFile' | 'loadEntries' | 'parseEntries' | 'getActiveTask' | 'calcProgress'
+>;
+
+export type ImmersiveModeManagerReferenceManager = Pick<
+	ImmersiveReferenceManager,
+	'getWorkPath' | 'getReferenceFilePath' | 'migrateLegacyReference' | 'setReferenceFilePath' | 'handleRename' | 'handleDelete' | 'save' | 'flush' | 'destroy'
 >;
 
 export type ImmersiveModeManagerSettings = Pick<
@@ -61,12 +75,14 @@ export interface ImmersiveModeManagerPlugin extends Omit<FindBookRootPlugin, 'se
 	settingsManager: ImmersiveModeManagerSettingsManager;
 	adaptiveDebounceManager: ImmersiveModeManagerDebounceManager;
 	statisticsManager: ImmersiveModeManagerStatisticsManager;
+	immersiveReferenceManager: ImmersiveModeManagerReferenceManager;
 	fileExplorerPatcher?: ImmersiveModeManagerFileExplorerPatcher;
 	taskManager?: ImmersiveModeManagerTaskManager;
 	lastTaskFolder?: string;
 	startTracking(): void;
 	stopTracking(): void;
 	saveSettings(): Promise<void>;
+	getVaultMarkdownFiles?: () => TFile[];
 }
 
 /**
@@ -115,9 +131,28 @@ export class ImmersiveModeManager {
 	// 顶部栏元素缓存
 	private topBarStatsEls: Record<string, HTMLElement> = {};
 
+	// 参考文档状态与搜索管理
+	private referenceManager: ImmersiveModeManagerReferenceManager;
+	private currentMainWorkPath: string = '';
+	private activeSearchModal: ImmersiveReferenceSearchModal | null = null;
+	private referenceSwitchSeq: number = 0;
+	private leafOperationQueues = new Map<WorkspaceLeaf, Promise<void>>();
+	private leafSwitchSeqs = new WeakMap<WorkspaceLeaf, number>();
+	private programmaticReferenceLeaves = new WeakSet<WorkspaceLeaf>();
+	private refToolbarCleanups: Map<WorkspaceLeaf, { toolbarEl: HTMLElement; cleanup: () => void }> = new Map();
+	private fileOpenEventRef: EventRef | null = null;
+	private referenceRenameEventRef: EventRef | null = null;
+	private lastReferenceLeaf: WorkspaceLeaf | null = null;
+
 	constructor(app: App, plugin: ImmersiveModeManagerPlugin) {
 		this.app = app;
 		this.plugin = plugin;
+		this.referenceManager = plugin.immersiveReferenceManager;
+	}
+
+	public registerImmersiveLeaf(leaf: WorkspaceLeaf): void {
+		this.createdImmersiveLeaves.add(leaf);
+		this.trackSearchSourceLeaf(leaf);
 	}
 
 	/**
@@ -212,9 +247,55 @@ export class ImmersiveModeManager {
 		fullscreenDocument.addEventListener('pointerdown', this.resizePointerDownHandler, true);
 		fullscreenDocument.addEventListener('pointerup', this.resizePointerUpHandler, true);
 		fullscreenDocument.addEventListener('pointercancel', this.resizePointerUpHandler, true);
+
+		const reconcileReference = (file: TFile | null) => {
+			const generation = this.layoutGeneration;
+			// 文件事件可能先于 MarkdownView 的状态更新；在当前调用栈结束后读取叶子的真实状态。
+			void Promise.resolve().then(async () => {
+				if (!this.isReferenceSessionCurrent(generation)) return;
+				const mainFile = this.getMainEditorFile();
+				const workPath = this.referenceManager.getWorkPath(mainFile);
+				if (workPath !== this.currentMainWorkPath) {
+					this.currentMainWorkPath = workPath;
+					this.referenceSwitchSeq++;
+					await this.switchWorkReference(workPath);
+					return;
+				}
+				if (!file) return;
+				for (const leaf of this.getReferenceLeaves()) {
+					if (this.programmaticReferenceLeaves.has(leaf) || this.leafOperationQueues.has(leaf)) continue;
+					const referenceFile = (leaf.view as MarkdownView).file;
+					if (!(referenceFile instanceof TFile) || referenceFile.extension !== 'md' || referenceFile.path !== file.path) continue;
+					await this.referenceManager.setReferenceFilePath(workPath, referenceFile.path);
+					if (this.isReferenceSessionCurrent(generation)) {
+						this.lastReferenceLeaf = leaf;
+						this.attachReferenceToolbar(leaf);
+						this.app.workspace.trigger('webnovel:immersive-reference-ready');
+					}
+				}
+			}).catch(error => Logger.warn('[ImmersiveModeManager] 同步参考文档失败:', error));
+		};
+		this.fileOpenEventRef = this.app.workspace.on('file-open', reconcileReference);
+		if (typeof this.app.vault.on === 'function') {
+			this.referenceRenameEventRef = this.app.vault.on('rename', () => reconcileReference(null));
+		}
+	}
+
+	private isReferenceSessionCurrent(generation: number): boolean {
+		return generation === this.layoutGeneration && this.isImmersiveActive && !this.isExiting;
 	}
 
 	private unregisterImmersiveEventListeners(): void {
+		if (this.referenceRenameEventRef) {
+			this.app.vault.offref(this.referenceRenameEventRef);
+			this.referenceRenameEventRef = null;
+		}
+		if (this.fileOpenEventRef) {
+			if (this.app?.workspace && typeof this.app.workspace.offref === 'function') {
+				this.app.workspace.offref(this.fileOpenEventRef);
+			}
+			this.fileOpenEventRef = null;
+		}
 		if (this.fullscreenDocument) {
 			if (this.fullscreenChangeHandler) {
 				this.fullscreenDocument.removeEventListener('fullscreenchange', this.fullscreenChangeHandler);
@@ -598,6 +679,7 @@ export class ImmersiveModeManager {
 			this.plugin.settings._savedImmersiveLayout = null;
 			await this.plugin.saveSettings().catch(() => {});
 			await this.plugin.settingsManager.flush().catch(() => {});
+			await this.referenceManager.flush().catch(() => {});
 			this.cleanup();
 			const wsReq = this.app.workspace as unknown as { requestSaveLayout?: { run?: () => void } | (() => void) };
 			if (typeof wsReq.requestSaveLayout === 'object' && wsReq.requestSaveLayout && typeof wsReq.requestSaveLayout.run === 'function') {
@@ -621,6 +703,16 @@ export class ImmersiveModeManager {
 
 	public cleanup(): void {
 		this.layoutGeneration++;
+		this.referenceSwitchSeq++;
+		this.leafOperationQueues.clear();
+		this.lastReferenceLeaf = null;
+		if (this.activeSearchModal) {
+			try {
+				this.activeSearchModal.close();
+			} catch { /* ignored */ }
+			this.activeSearchModal = null;
+		}
+		this.removeReferenceToolbars();
 		this.clearSearchSourceTracking();
 
 		this.unregisterImmersiveEventListeners();
@@ -678,6 +770,9 @@ export class ImmersiveModeManager {
 		const { workspace } = this.app;
 		const immersive = this.plugin.settings.immersive;
 		const currentGeneration = this.layoutGeneration;
+
+		this.currentMainWorkPath = this.referenceManager.getWorkPath(activeFile);
+		this.referenceManager.migrateLegacyReference(activeFile);
 
 		// 1. 寻找当前主编辑器
 		let mainLeaf: WorkspaceLeaf | null = null;
@@ -875,7 +970,6 @@ export class ImmersiveModeManager {
 		if (!pendingMounts.length) return;
 
 		const mountAll = async () => {
-			const immersive = this.plugin.settings.immersive;
 			const BATCH_SIZE = 2;
 			const includesReferenceView = pendingMounts.some(({ viewType }) => viewType === 'reference-view');
 
@@ -887,13 +981,26 @@ export class ImmersiveModeManager {
 				try {
 					if (viewType === 'reference-view') {
 						const state: Record<string, string> = { mode: 'preview' };
-						if (immersive.lastReferenceFilePath) {
-							state.file = immersive.lastReferenceFilePath;
+						const refPath = this.referenceManager.getReferenceFilePath(this.currentMainWorkPath);
+						if (refPath) {
+							state.file = refPath;
 						}
-						await leaf.setViewState({
-							type: 'markdown',
-							state
+						const sequence = (this.leafSwitchSeqs.get(leaf) ?? 0) + 1;
+						this.leafSwitchSeqs.set(leaf, sequence);
+						const previous = this.leafOperationQueues.get(leaf) ?? Promise.resolve();
+						const restoration = previous.catch(() => {}).then(async () => {
+							if (generation !== this.layoutGeneration || this.isExiting || sequence !== this.leafSwitchSeqs.get(leaf)) return;
+							await leaf.setViewState(refPath ? { type: 'markdown', state } : { type: 'empty' });
+							if (generation === this.layoutGeneration && !this.isExiting && sequence === this.leafSwitchSeqs.get(leaf)) {
+								this.attachReferenceToolbar(leaf);
+							}
 						});
+						this.leafOperationQueues.set(leaf, restoration);
+						try {
+							await restoration;
+						} finally {
+							if (this.leafOperationQueues.get(leaf) === restoration) this.leafOperationQueues.delete(leaf);
+						}
 					} else {
 						await leaf.setViewState({ type: viewType });
 					}
@@ -1024,15 +1131,17 @@ export class ImmersiveModeManager {
 					taskFolder = this.plugin.lastTaskFolder;
 				}
 				if (taskFolder && this.plugin.taskManager) {
-					const taskFile = this.plugin.taskManager.getTaskFile(taskFolder);
-					if (taskFile) {
-						const taskContent = await this.plugin.app.vault.cachedRead(taskFile);
-						const entries = this.plugin.taskManager.parseEntries(taskContent);
-						const active = this.plugin.taskManager.getActiveTask(entries);
-						if (active) {
-							taskWords = this.plugin.taskManager.calcProgress(active, taskFolder);
-							taskGoal = active.wordTarget;
+					try {
+						const entries = await this.plugin.taskManager.loadEntries(taskFolder);
+						if (entries) {
+							const active = this.plugin.taskManager.getActiveTask(entries);
+							if (active) {
+								taskWords = this.plugin.taskManager.calcProgress(active, taskFolder);
+								taskGoal = active.wordTarget;
+							}
 						}
+					} catch {
+						// Ignored to allow topbar to render
 					}
 				}
 			}
@@ -1135,44 +1244,257 @@ export class ImmersiveModeManager {
 		modal.open();
 	}
 
-	/**
-	 * 弹窗关闭后安全恢复主编辑器焦点
-	 */
-	private restoreMainEditorFocus(): void {
+	/** 弹窗关闭后恢复主编辑器，只有文件未切换时才恢复原选区。 */
+	private restoreMainEditorFocus(caretRestore?: CaretRestoreOptions): void {
 		if (!this.isImmersiveActive || this.isExiting) return;
 		try {
-			let targetLeaf = this.activeMainLeaf;
-			if (!targetLeaf || !targetLeaf.view) {
-				const mdLeaves = this.app.workspace.getLeavesOfType('markdown');
-				targetLeaf = mdLeaves.find(l => l.containerEl?.classList?.contains('immersive-main-editor')) || mdLeaves[0] || null;
-			}
-			if (targetLeaf) {
-				this.app.workspace.setActiveLeaf(targetLeaf, { focus: true });
-				const editor = (targetLeaf.view as { editor?: { focus?: () => void } } | undefined)?.editor;
-				if (typeof editor?.focus === 'function') {
-					editor.focus();
-				}
+			const targetLeaf = this.getMainEditorLeaf();
+			if (!targetLeaf) return;
+			this.app.workspace.setActiveLeaf(targetLeaf, { focus: true });
+			const view = targetLeaf.view as MarkdownView;
+			const editor = view.editor;
+			if (!editor?.focus) return;
+			editor.focus();
+			if (caretRestore?.targetFilePath !== view.file?.path) return;
+			if (caretRestore?.selections?.length) {
+				editor.setSelections(caretRestore.selections);
+			} else if (caretRestore?.cursor) {
+				editor.setCursor(caretRestore.cursor);
 			}
 		} catch (err) {
 			Logger.warn('[ImmersiveModeManager] 恢复主编辑器焦点失败:', err);
 		}
 	}
 
-	/**
-	 * 记录当前参考文档区打开的文件
-	 */
-	private updateLastReferenceFilePath(): void {
-		const immersive = this.plugin.settings.immersive;
-		if (typeof this.app.workspace.iterateRootLeaves === 'function') {
-			this.app.workspace.iterateRootLeaves(leaf => {
-				if (leaf?.containerEl && leaf.containerEl.classList?.contains('immersive-reference-view')) {
-					const viewType = typeof leaf.view?.getViewType === 'function' ? leaf.view.getViewType() : '';
-					const mdView = viewType === 'markdown' ? leaf.view as MarkdownView : null;
-					if (mdView && mdView.file) {
-						immersive.lastReferenceFilePath = mdView.file.path;
-					}
+	public getMainEditorLeaf(): WorkspaceLeaf | null {
+		if (this.activeMainLeaf) {
+			return this.activeMainLeaf;
+		}
+		let mainLeaf: WorkspaceLeaf | null = null;
+		if (typeof this.app.workspace.iterateAllLeaves === 'function') {
+			this.app.workspace.iterateAllLeaves(leaf => {
+				if (leaf?.containerEl?.classList?.contains('immersive-main-editor')) {
+					mainLeaf = leaf;
 				}
 			});
+			if (mainLeaf) return mainLeaf;
+
+			this.app.workspace.iterateAllLeaves(leaf => {
+				if (
+					leaf?.view?.getViewType?.() === 'markdown' &&
+					!leaf?.containerEl?.classList?.contains('immersive-reference-view')
+				) {
+					mainLeaf = leaf;
+				}
+			});
+			if (mainLeaf) return mainLeaf;
+		}
+		const mdLeaves = this.app.workspace.getLeavesOfType('markdown');
+		return mdLeaves.find(l => l.containerEl?.classList?.contains('immersive-main-editor')) || mdLeaves[0] || null;
+	}
+
+	public getMainEditorFile(): TFile | null {
+		const mainLeaf = this.getMainEditorLeaf();
+		if (mainLeaf?.view.getViewType() === 'markdown') {
+			return (mainLeaf.view as MarkdownView).file;
+		}
+		return this.savedActiveFile;
+	}
+
+	public getReferenceLeaves(): WorkspaceLeaf[] {
+		const leaves = new Set<WorkspaceLeaf>();
+		for (const leaf of this.createdImmersiveLeaves) {
+			if (leaf.containerEl?.classList.contains('immersive-reference-view')) leaves.add(leaf);
+		}
+		if (typeof this.app.workspace.iterateAllLeaves === 'function') {
+			this.app.workspace.iterateAllLeaves(leaf => {
+				if (leaf?.containerEl?.classList?.contains('immersive-reference-view')) {
+					leaves.add(leaf);
+				}
+			});
+		}
+		return [...leaves];
+	}
+
+	public removeReferenceToolbars(): void {
+		for (const { cleanup } of this.refToolbarCleanups.values()) {
+			cleanup();
+		}
+		this.refToolbarCleanups.clear();
+	}
+
+	public attachReferenceToolbar(leaf: WorkspaceLeaf): void {
+		if (!leaf?.containerEl || !this.isImmersiveActive || this.isExiting) return;
+		if (!leaf.containerEl.classList?.contains('immersive-reference-view')) return;
+
+		const ownerDoc = leaf.containerEl.ownerDocument;
+		if (!ownerDoc) return;
+
+		const hostEl = leaf.containerEl.querySelector('.workspace-leaf-content') ?? leaf.containerEl;
+		if (typeof hostEl.createDiv !== 'function') return;
+
+		const existingToolbar = this.refToolbarCleanups.get(leaf);
+		// 切换活动叶子可能在按下与点击之间触发 file-open，保留仍在当前宿主中的按钮。
+		if (existingToolbar?.toolbarEl.parentElement === hostEl) return;
+		if (existingToolbar) {
+			existingToolbar.cleanup();
+			this.refToolbarCleanups.delete(leaf);
+		}
+
+		const toolbarEl = hostEl.createDiv({ cls: 'wn-immersive-ref-toolbar' });
+
+		const searchBtn = toolbarEl.createEl('button', {
+			cls: 'clickable-icon',
+			attr: {
+				'aria-label': t('immersive.search-reference-tooltip'),
+				title: t('immersive.search-reference-tooltip'),
+				type: 'button'
+			}
+		});
+		setIcon(searchBtn, 'search');
+
+		const openSearch = (evt: Event) => {
+			evt.preventDefault();
+			evt.stopPropagation();
+
+			if (!this.isImmersiveActive || this.isExiting) return;
+
+			const mainLeaf = this.getMainEditorLeaf();
+			const mdView = mainLeaf?.view instanceof MarkdownView ? mainLeaf.view : null;
+			const editor = mdView?.editor;
+			const cursor = editor ? editor.getCursor() : null;
+			const selections = editor ? editor.listSelections() : null;
+
+			const generation = this.layoutGeneration;
+			const caret = { cursor, selections, targetFilePath: mdView?.file?.path };
+			const onCancel = () => {
+				if (this.activeSearchModal !== modal) return;
+				this.activeSearchModal = null;
+				if (this.isReferenceSessionCurrent(generation)) this.restoreMainEditorFocus(caret);
+			};
+
+			const onChoose = (file: TFile) => {
+				this.activeSearchModal = null;
+				if (this.isReferenceSessionCurrent(generation)) void this.openReferenceFile(file, leaf, caret);
+			};
+
+			const modal = new ImmersiveReferenceSearchModal(
+				this.app,
+				{
+					getVaultMarkdownFiles: () =>
+						typeof this.plugin.getVaultMarkdownFiles === 'function'
+							? this.plugin.getVaultMarkdownFiles()
+							: []
+				},
+				onChoose,
+				onCancel
+			);
+			const previousModal = this.activeSearchModal;
+			this.activeSearchModal = modal;
+			previousModal?.close();
+			modal.open();
+		};
+
+		searchBtn.addEventListener('click', openSearch);
+
+		const cleanup = () => {
+			searchBtn.removeEventListener('click', openSearch);
+			toolbarEl.remove();
+		};
+
+		this.refToolbarCleanups.set(leaf, { toolbarEl, cleanup });
+	}
+
+	public async openReferenceFile(
+		file: TFile,
+		leaf?: WorkspaceLeaf | null,
+		caretRestore?: CaretRestoreOptions
+	): Promise<void> {
+		if (!this.isReferenceSessionCurrent(this.layoutGeneration)) return;
+		const vaultFile = this.app.vault.getAbstractFileByPath(file.path);
+		if (!(vaultFile instanceof TFile) || vaultFile.extension !== 'md') {
+			new Notice(t('immersive.reference-file-invalid'));
+			return;
+		}
+		const targetLeaf = leaf ?? this.getReferenceLeaves()[0];
+		if (!targetLeaf?.containerEl.classList.contains('immersive-reference-view')) return;
+		const workPath = this.referenceManager.getWorkPath(this.getMainEditorFile());
+		await this.queueReferenceOpen(targetLeaf, vaultFile, workPath, true, caretRestore);
+	}
+
+	/** 同一叶子的原生打开必须串行，旧请求不能在新请求之后覆盖真实 MarkdownView。 */
+	private queueReferenceOpen(
+		leaf: WorkspaceLeaf,
+		file: TFile | null,
+		workPath: string,
+		persist: boolean,
+		caretRestore?: CaretRestoreOptions
+	): Promise<void> {
+		const generation = this.layoutGeneration;
+		const workSequence = this.referenceSwitchSeq;
+		const sequence = (this.leafSwitchSeqs.get(leaf) ?? 0) + 1;
+		this.leafSwitchSeqs.set(leaf, sequence);
+		const isCurrent = () => this.isReferenceSessionCurrent(generation)
+			&& workSequence === this.referenceSwitchSeq && sequence === this.leafSwitchSeqs.get(leaf);
+		const previous = this.leafOperationQueues.get(leaf) ?? Promise.resolve();
+		const operation = previous.catch(() => {}).then(async () => {
+			if (!isCurrent()) return;
+			this.programmaticReferenceLeaves.add(leaf);
+			try {
+				if (file) {
+					const currentFile = this.app.vault.getAbstractFileByPath(file.path);
+					if (!(currentFile instanceof TFile) || currentFile.extension !== 'md') {
+						new Notice(t('immersive.reference-file-invalid'));
+						return;
+					}
+					await leaf.openFile(currentFile, { active: false, state: { mode: 'preview' } });
+				} else {
+					await leaf.setViewState({ type: 'empty' });
+				}
+				if (!isCurrent()) return;
+				leaf.containerEl.classList.add('immersive-reference-view');
+				this.attachReferenceToolbar(leaf);
+				if (persist && file) {
+					this.lastReferenceLeaf = leaf;
+					this.restoreMainEditorFocus(caretRestore);
+					await this.referenceManager.setReferenceFilePath(workPath, file.path);
+				}
+				if (isCurrent()) {
+					this.app.workspace.trigger('webnovel:immersive-reference-ready');
+				}
+			} catch (error) {
+				Logger.warn('[ImmersiveModeManager] 打开参考文档失败:', error);
+				if (isCurrent()) {
+					new Notice(t('immersive.reference-open-failed'));
+					this.restoreMainEditorFocus(caretRestore);
+				}
+			} finally {
+				this.programmaticReferenceLeaves.delete(leaf);
+			}
+		});
+		this.leafOperationQueues.set(leaf, operation);
+		return operation.finally(() => {
+			if (this.leafOperationQueues.get(leaf) === operation) this.leafOperationQueues.delete(leaf);
+		});
+	}
+
+	private async switchWorkReference(workPath: string): Promise<void> {
+		const path = this.referenceManager.getReferenceFilePath(workPath);
+		const candidate = path ? this.app.vault.getAbstractFileByPath(path) : null;
+		const file = candidate instanceof TFile && candidate.extension === 'md' ? candidate : null;
+		await Promise.all(this.getReferenceLeaves().map(leaf => this.queueReferenceOpen(leaf, file, workPath, false)));
+	}
+
+	/** 仅在参考叶子稳定且仍属于当前作品上下文时补存退出状态。 */
+	private updateLastReferenceFilePath(): void {
+		const workPath = this.referenceManager.getWorkPath(this.getMainEditorFile());
+		if (workPath !== this.currentMainWorkPath) return;
+		const leaves = this.getReferenceLeaves();
+		const leaf = this.lastReferenceLeaf && leaves.includes(this.lastReferenceLeaf) ? this.lastReferenceLeaf : leaves[0];
+		if (!leaf || this.leafOperationQueues.has(leaf)) return;
+		const file = (leaf.view as MarkdownView).file;
+		if (file instanceof TFile && file.extension === 'md') {
+			void this.referenceManager.setReferenceFilePath(workPath, file.path);
 		}
 	}
 

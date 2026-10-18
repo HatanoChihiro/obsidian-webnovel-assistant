@@ -35,6 +35,7 @@ import { ObsOverlayServer } from '../services/ObsServer';
 import { MobileFloatingStats } from '../ui/MobileFloatingStats';
 import { ProofreadingManager } from '../services/ProofreadingManager';
 import { WritingJourneyService } from '../services/WritingJourneyService';
+import { ImmersiveReferenceManager } from '../services/ImmersiveReferenceManager';
 import { Logger } from '../utils/Logger';
 
 /**
@@ -174,6 +175,9 @@ export class PluginBootstrapper {
 				void this.plugin.editorTracker.handleFileChange();
 				this.plugin.homepageManager?.handleViewMode();
 			}));
+			this.plugin.registerEvent(this.plugin.app.workspace.on('file-open', () => {
+				void this.plugin.editorTracker.handleFileChange();
+			}));
 			this.plugin.registerEvent(this.plugin.app.metadataCache.on('changed', (file) => {
 				if (file instanceof TFile && !this.plugin.cacheManager.isFileInWorkspace(file)) return;
 				this.plugin.adaptiveDebounceManager.debounceFixed('word-count-update', () => {
@@ -276,6 +280,7 @@ export class PluginBootstrapper {
 		this.services.register('ChapterMergeManager', new ChapterMergeManager(this.plugin));
 		this.services.register('FileExplorerPatcher', new FileExplorerPatcher(this.plugin.app, this.plugin));
 		this.services.register('WordCounter', new WordCounter());
+		this.services.register('ImmersiveReferenceManager', new ImmersiveReferenceManager(this.plugin.app, this.plugin));
 		this.services.register('ImmersiveModeManager', new ImmersiveModeManager(this.plugin.app, this.plugin));
 		this.services.register('CommandManager', new CommandManager(this.plugin));
 		this.services.register('ViewManager', new ViewManager(this.plugin));

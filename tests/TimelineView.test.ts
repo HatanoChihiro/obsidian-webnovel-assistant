@@ -132,7 +132,8 @@ describe('TimelineView', () => {
 				updateEntry: vi.fn().mockResolvedValue(''),
 				deleteEntry: vi.fn().mockResolvedValue(''),
 				moveEntry: vi.fn().mockResolvedValue('')
-			}
+			},
+			getTrackedMarkdownFiles: vi.fn().mockReturnValue([])
 		} as unknown as TimelineViewPlugin;
 	});
 
@@ -197,7 +198,7 @@ describe('TimelineView', () => {
 		(deleteBtns[0] as HTMLElement | undefined)?.click();
 		await new Promise(resolve => setTimeout(resolve, 10));
 
-		expect(mockPlugin.timelineManager.deleteEntry).toHaveBeenCalledWith(2, '');
+		expect(mockPlugin.timelineManager.deleteEntry).toHaveBeenCalledWith(2, '', expect.anything());
 
 		// Click toggle again to switch back to ascending
 		const newSortToggle = view.containerEl.querySelector('.wn-timeline-sort-toggle') as HTMLElement | null;
@@ -316,5 +317,236 @@ describe('TimelineView', () => {
 		const subItems = view.containerEl.querySelectorAll('.wn-timeline-list-item');
 		expect(subItems).toHaveLength(1);
 		expect(subItems[0].querySelector('.wn-timeline-desc-text')?.textContent).toBe('支线事件描述');
+	});
+
+	it('renders chapter link intact for comma-bearing chapter without splitting', async () => {
+		parsedEntries = [{
+			time: '第一天',
+			description: '测试事件',
+			chapter: '["Chapter 1, Hello"]',
+			rawBlock: '',
+			items: [{ description: '测试事件', chapter: '["Chapter 1, Hello"]' }]
+		}];
+
+		const leaf = { app: mockApp } as unknown as WorkspaceLeaf;
+		const view = new TimelineView(leaf, mockPlugin);
+		await view.renderFromContent('# 时间线\n');
+
+		const links = view.containerEl.querySelectorAll('.wn-timeline-chapter-link');
+		expect(links).toHaveLength(1);
+		expect(links[0].textContent).toBe('Chapter 1, Hello');
+	});
+
+	it('supports multi-selecting types with OR logic, deselecting, and All clearing only types without affecting lore', async () => {
+		parsedEntries = [
+			{
+				time: '第一天',
+				type: '主线',
+				description: '主线甲',
+				chapter: '',
+				rawBlock: '',
+				lores: ['角色A'],
+				items: [{ description: '主线甲', chapter: '' }]
+			},
+			{
+				time: '第二天',
+				type: '支线',
+				description: '支线乙',
+				chapter: '',
+				rawBlock: '',
+				lores: ['角色B'],
+				items: [{ description: '支线乙', chapter: '' }]
+			},
+			{
+				time: '第三天',
+				type: '日常',
+				description: '日常丙',
+				chapter: '',
+				rawBlock: '',
+				lores: ['角色A'],
+				items: [{ description: '日常丙', chapter: '' }]
+			}
+		];
+
+		const leaf = { app: mockApp } as unknown as WorkspaceLeaf;
+		const view = new TimelineView(leaf, mockPlugin);
+		await view.renderFromContent('# 时间线\n');
+
+		const typeRow = view.containerEl.querySelector('.wn-timeline-view-type-filter-row');
+		expect(typeRow).not.toBeNull();
+		const getFilterButton = (rowSelector: string, label: string): HTMLElement => {
+			const row = view.containerEl.querySelector(rowSelector);
+			const button = Array.from(row?.querySelectorAll('.wn-timeline-filter-btn') || []).find(b => b.textContent === label);
+			expect(button).toBeDefined();
+			return button as HTMLElement;
+		};
+		const getTypeButton = (label: string) => getFilterButton('.wn-timeline-view-type-filter-row', label);
+
+		// 1. Click '主线' -> selects '主线'
+		getTypeButton('主线').click();
+		await new Promise(resolve => setTimeout(resolve, 10));
+		let rendered = view.containerEl.querySelectorAll('.wn-timeline-item');
+		expect(rendered).toHaveLength(1);
+		expect(rendered[0].querySelector('.wn-timeline-desc-text')?.textContent).toBe('主线甲');
+
+		// 2. Click '支线' -> both '主线' and '支线' selected (OR)
+		getTypeButton('支线').click();
+		await new Promise(resolve => setTimeout(resolve, 10));
+		rendered = view.containerEl.querySelectorAll('.wn-timeline-item');
+		expect(rendered).toHaveLength(2);
+		expect(rendered[0].querySelector('.wn-timeline-desc-text')?.textContent).toBe('主线甲');
+		expect(rendered[1].querySelector('.wn-timeline-desc-text')?.textContent).toBe('支线乙');
+		expect(getTypeButton('主线').getAttribute('aria-pressed')).toBe('true');
+		expect(getTypeButton('支线').getAttribute('aria-pressed')).toBe('true');
+
+		// 3. Also select lore '角色A' -> (主线 OR 支线) AND 角色A => only '主线甲'
+		getFilterButton('.wn-timeline-view-lore-filter-row', '角色A').click();
+		await new Promise(resolve => setTimeout(resolve, 10));
+		rendered = view.containerEl.querySelectorAll('.wn-timeline-item');
+		expect(rendered).toHaveLength(1);
+		expect(rendered[0].querySelector('.wn-timeline-desc-text')?.textContent).toBe('主线甲');
+
+		// 4. Click 'common.all-types' -> clears type filter ONLY, lore filter '角色A' remains active
+		// Under 'all types' AND '角色A': matches '主线甲' (day 1) and '日常丙' (day 3)
+		getTypeButton('common.all-types').click();
+		await new Promise(resolve => setTimeout(resolve, 10));
+		rendered = view.containerEl.querySelectorAll('.wn-timeline-item');
+		expect(rendered).toHaveLength(2);
+		expect(rendered[0].querySelector('.wn-timeline-desc-text')?.textContent).toBe('主线甲');
+		expect(rendered[1].querySelector('.wn-timeline-desc-text')?.textContent).toBe('日常丙');
+
+		// 5. Deselect / toggle '主线' test:
+		// First select 主线 and 支线 again
+		getTypeButton('主线').click();
+		await new Promise(resolve => setTimeout(resolve, 10));
+		getTypeButton('支线').click();
+		await new Promise(resolve => setTimeout(resolve, 10));
+		// Now clear lore to All
+		getFilterButton('.wn-timeline-view-lore-filter-row', 'common.all-lore').click();
+		await new Promise(resolve => setTimeout(resolve, 10));
+		// Now toggle off 主线 -> only 支线 remains
+		getTypeButton('主线').click();
+		await new Promise(resolve => setTimeout(resolve, 10));
+		rendered = view.containerEl.querySelectorAll('.wn-timeline-item');
+		expect(rendered).toHaveLength(1);
+		expect(rendered[0].querySelector('.wn-timeline-desc-text')?.textContent).toBe('支线乙');
+
+		getTypeButton('支线').click();
+		await new Promise(resolve => setTimeout(resolve, 10));
+		expect(view.containerEl.querySelectorAll('.wn-timeline-item')).toHaveLength(3);
+		expect(getTypeButton('common.all-types').getAttribute('aria-pressed')).toBe('true');
+	});
+
+	it('clears type and lore filter selections on folder change', async () => {
+		parsedEntries = [
+			{ time: '第一天', type: '主线', description: '甲', chapter: '', rawBlock: '', items: [] }
+		];
+		const leaf = { app: mockApp } as unknown as WorkspaceLeaf;
+		const view = new TimelineView(leaf, mockPlugin);
+		await view.renderFromContent('# 时间线\n');
+
+		// Set selections
+		(view as unknown as { selectedTypes: Set<string>; selectedLores: Set<string> }).selectedTypes = new Set(['主线']);
+		(view as unknown as { selectedLores: Set<string> }).selectedLores = new Set(['角色A']);
+
+		// Trigger folder change
+		await (view as unknown as { onFolderChange: () => Promise<void> }).onFolderChange();
+
+		expect((view as unknown as { selectedTypes: Set<string> }).selectedTypes.size).toBe(0);
+		expect((view as unknown as { selectedLores: Set<string> }).selectedLores.size).toBe(0);
+	});
+
+	it('preserves correct source indices for edit and delete on same-name nodes with reversed order and combined filters', async () => {
+		parsedEntries = [
+			{
+				time: '同一个时间',
+				type: '主线',
+				description: '第一条原始事件',
+				chapter: '',
+				rawBlock: '',
+				lores: ['角色A'],
+				items: [{ description: '第一条原始事件', chapter: '' }]
+			},
+			{
+				time: '同一个时间',
+				type: '支线',
+				description: '第二条原始事件',
+				chapter: '',
+				rawBlock: '',
+				lores: ['角色B'],
+				items: [{ description: '第二条原始事件', chapter: '' }]
+			},
+			{
+				time: '同一个时间',
+				type: '主线',
+				description: '第三条原始事件',
+				chapter: '',
+				rawBlock: '',
+				lores: ['角色A'],
+				items: [{ description: '第三条原始事件', chapter: '' }]
+			}
+		];
+
+		const leaf = { app: mockApp } as unknown as WorkspaceLeaf;
+		const view = new TimelineView(leaf, mockPlugin);
+		await view.renderFromContent('# 时间线\n');
+
+		// Select both types, then combine with lore A to retain source indices 0 and 2.
+		const typeRow = view.containerEl.querySelector('.wn-timeline-view-type-filter-row');
+		const mainBtn = Array.from(typeRow?.querySelectorAll('.wn-timeline-filter-btn') || []).find(b => b.textContent === '主线');
+		(mainBtn as HTMLElement).click();
+		await new Promise(resolve => setTimeout(resolve, 10));
+		const subBtn = Array.from(view.containerEl.querySelector('.wn-timeline-view-type-filter-row')?.querySelectorAll('.wn-timeline-filter-btn') || []).find(b => b.textContent === '支线');
+		(subBtn as HTMLElement).click();
+		await new Promise(resolve => setTimeout(resolve, 10));
+		const loreBtn = Array.from(view.containerEl.querySelector('.wn-timeline-view-lore-filter-row')?.querySelectorAll('.wn-timeline-filter-btn') || []).find(b => b.textContent === '角色A');
+		(loreBtn as HTMLElement).click();
+		await new Promise(resolve => setTimeout(resolve, 10));
+
+		// Switch to descending sort: items order becomes index 2 then index 0
+		const sortToggle = view.containerEl.querySelector('.wn-timeline-sort-toggle') as HTMLElement;
+		sortToggle.click();
+		await new Promise(resolve => setTimeout(resolve, 10));
+
+		const rendered = view.containerEl.querySelectorAll('.wn-timeline-item');
+		expect(rendered).toHaveLength(2);
+		// First rendered in descending is index 2 ("第三条原始事件")
+		expect(rendered[0].getAttribute('data-index')).toBe('2');
+		expect(rendered[1].getAttribute('data-index')).toBe('0');
+
+		// Click edit on the second rendered item (which is index 0 in parsedEntries)
+		const editBtns = view.containerEl.querySelectorAll('.wn-timeline-action-btn');
+		const editButtons = Array.from(editBtns).filter(b => b.textContent === 'common.edit');
+		expect(editButtons).toHaveLength(2);
+		(editButtons[1] as HTMLElement).click();
+		await new Promise(resolve => setTimeout(resolve, 10));
+		expect((view as unknown as { editingIndex: number }).editingIndex).toBe(0);
+
+		// Click delete on the first rendered item (which is index 2 in parsedEntries)
+		const deleteBtns = view.containerEl.querySelectorAll('.timeline-delete-btn');
+		(deleteBtns[0] as HTMLElement).click();
+		await new Promise(resolve => setTimeout(resolve, 10));
+		expect(mockPlugin.timelineManager.deleteEntry).toHaveBeenCalledWith(2, '', expect.anything());
+	});
+
+	it('supports selecting an actual custom type named "all"', async () => {
+		parsedEntries = [
+			{ time: 'Day 1', type: 'Main', description: 'Main desc', chapter: '', rawBlock: '', items: [] },
+			{ time: 'Day 2', type: 'all', description: 'Actual all type desc', chapter: '', rawBlock: '', items: [] }
+		];
+		const leaf = { app: mockApp } as unknown as WorkspaceLeaf;
+		const view = new TimelineView(leaf, mockPlugin);
+		await view.renderFromContent('# 时间线\n');
+
+		const typeRow = view.containerEl.querySelector('.wn-timeline-view-type-filter-row');
+		const customAllBtn = Array.from(typeRow?.querySelectorAll('.wn-timeline-filter-btn') || []).find(b => b.textContent === 'all');
+		expect(customAllBtn).toBeDefined();
+
+		(customAllBtn as HTMLElement).click();
+		await new Promise(resolve => setTimeout(resolve, 10));
+
+		const rendered = view.containerEl.querySelectorAll('.wn-timeline-item');
+		expect(rendered).toHaveLength(1);
+		expect(rendered[0].querySelector('.wn-timeline-time')?.textContent).toBe('Day 2');
 	});
 });

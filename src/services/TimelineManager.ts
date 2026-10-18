@@ -1,5 +1,5 @@
-import type { App} from 'obsidian';
-import { TFile, normalizePath } from 'obsidian';
+import type { App } from 'obsidian';
+import { TFile, normalizePath, Notice } from 'obsidian';
 import { t } from '../i18n';
 
 import type { WebNovelAssistantPlugin } from '../types/plugin';
@@ -37,6 +37,41 @@ export function timelineNodeKey(node: Pick<TimelineEntry, 'time' | 'type' | 'lor
 	return JSON.stringify([node.time.trim(), node.type?.trim() || '', lores]);
 }
 
+export function filterTimelineEntries<T extends Pick<TimelineEntry, 'type' | 'lores'>>(
+	entries: readonly T[],
+	selectedTypes: readonly string[] | ReadonlySet<string> = [],
+	selectedLores: readonly string[] | ReadonlySet<string> = []
+): T[] {
+	const typeSet = selectedTypes instanceof Set
+		? selectedTypes
+		: new Set(selectedTypes);
+	const loreSet = selectedLores instanceof Set
+		? selectedLores
+		: new Set(selectedLores);
+
+	const hasTypeFilter = typeSet.size > 0;
+	const hasLoreFilter = loreSet.size > 0;
+
+	if (!hasTypeFilter && !hasLoreFilter) {
+		return [...entries];
+	}
+
+	return entries.filter(entry => {
+		if (hasTypeFilter) {
+			if (!entry.type || !typeSet.has(entry.type)) {
+				return false;
+			}
+		}
+		if (hasLoreFilter) {
+			const entryLores = entry.lores || [];
+			if (!entryLores.some(lore => loreSet.has(lore))) {
+				return false;
+			}
+		}
+		return true;
+	});
+}
+
 export function parseLoreComment(raw: string): string[] {
 	const trimmed = raw.trim();
 	if (!trimmed) return [];
@@ -61,16 +96,88 @@ export function formatLoreComment(lores: string[]): string {
 	return `<!-- wn-lore: ${serialized} -->`;
 }
 
+export function parseTimelineChapterList(raw?: string | null): string[] {
+	if (!raw || typeof raw !== 'string') return [];
+	const trimmed = raw.trim();
+	if (!trimmed) return [];
+	if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+		try {
+			const parsed = JSON.parse(trimmed) as unknown;
+			if (Array.isArray(parsed) && parsed.every(item => typeof item === 'string')) {
+				return parsed.map(x => x.trim()).filter(Boolean);
+			}
+		} catch {
+			// Fallback to delimiter splitting
+		}
+	}
+	return trimmed.split(/[,，]/).map(s => s.trim()).filter(Boolean);
+}
 
+export function serializeTimelineChapterList(chapters: string[]): string {
+	const clean = chapters.map(chapter => chapter.trim()).filter(Boolean);
+	if (clean.length === 0) return '';
+	const needsJson = clean.some(c =>
+		c.includes(',') ||
+		c.includes('，') ||
+		(c.startsWith('[') && c.endsWith(']'))
+	);
+	return needsJson ? JSON.stringify(clean) : clean.join(', ');
+}
+
+export function aggregateTimelineChapterLists(chapterLists: Array<string | undefined | null>): string {
+	const chapters: string[] = [];
+	for (const list of chapterLists) {
+		if (!list) continue;
+		chapters.push(...parseTimelineChapterList(list));
+	}
+	return serializeTimelineChapterList(chapters);
+}
+
+
+
+function deepCloneItem(item: TimelineItem): TimelineItem {
+	return {
+		description: item.description,
+		chapter: item.chapter,
+		origin: item.origin,
+		important: item.important,
+		type: item.type
+	};
+}
+
+function deepCloneEntry(entry: TimelineEntry): TimelineEntry {
+	return {
+		time: entry.time,
+		type: entry.type,
+		description: entry.description,
+		chapter: entry.chapter,
+		rawBlock: entry.rawBlock,
+		origin: entry.origin,
+		important: entry.important,
+		lores: entry.lores ? [...entry.lores] : undefined,
+		items: entry.items ? entry.items.map(deepCloneItem) : undefined
+	};
+}
+
+function deepFreezeEntry<T extends TimelineEntry | TimelineItem>(obj: T): Readonly<T> {
+	if (!obj || typeof obj !== 'object') return obj;
+	Object.freeze(obj);
+	if ('items' in obj && Array.isArray(obj.items)) {
+		obj.items?.forEach(it => {
+			if (it && typeof it === 'object') Object.freeze(it);
+		});
+		Object.freeze(obj.items);
+	}
+	if ('lores' in obj && Array.isArray(obj.lores)) {
+		Object.freeze(obj.lores);
+	}
+	return obj;
+}
 
 /**
-
  * 时间线管理服务
-
  * 负责时间线文件的读写、格式化、条目管理
-
  */
-
 export class TimelineManager {
 
 	private writer = new SerializedWriter();
@@ -207,6 +314,7 @@ export class TimelineManager {
 		const file = this.getTimelineFile(folder);
 		if (!file) return null;
 		const content = await this.app.vault.cachedRead(file);
+		if (!content || typeof content !== 'string') return [];
 		return this.parseEntries(content, folder);
 	}
 
@@ -220,6 +328,7 @@ export class TimelineManager {
 	}
 
 	parseEntries(content: string, folderPath?: string): TimelineEntry[] {
+		if (!content || typeof content !== 'string') return [];
 		const bookFolder = folderPath !== undefined ? this.normalizeFolderPath(folderPath) : this.currentFolder;
 		const entries: TimelineEntry[] = [];
 		const blocks = content.split(/\n---\n/);
@@ -346,7 +455,7 @@ export class TimelineManager {
 						.join('\n')
 						.trim();
 
-					const chapter = chapters.join(', ');
+					const chapter = serializeTimelineChapterList(chapters);
 
 					items.push({
 						description: desc,
@@ -425,7 +534,7 @@ export class TimelineManager {
 
 					items.push({
 						description,
-						chapter: chapters.join(', '),
+						chapter: serializeTimelineChapterList(chapters),
 						origin,
 						important,
 						type: primaryType || undefined
@@ -450,7 +559,7 @@ export class TimelineManager {
 					time,
 					type,
 					description: groupItems.map(it => it.description).filter(Boolean).join('\n'),
-					chapter: groupItems.map(it => it.chapter).filter(Boolean).join(', '),
+					chapter: aggregateTimelineChapterLists(groupItems.map(it => it.chapter)),
 					rawBlock: trimmed,
 					items: groupItems,
 					lores: uniqueLores.length > 0 ? uniqueLores : undefined
@@ -484,7 +593,7 @@ export class TimelineManager {
 			if (descriptions.length > 0) {
 				const firstLineParts: string[] = [descriptions[0]];
 				if (it.chapter) {
-					const chapters = it.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean);
+					const chapters = parseTimelineChapterList(it.chapter);
 					const chapterLinks = chapters.map(c => `[[${c}]]`).join(' ');
 					if (chapterLinks) firstLineParts.push(chapterLinks);
 				}
@@ -500,7 +609,7 @@ export class TimelineManager {
 					lines.push(`  ${descriptions[i]}`);
 				}
 			} else if (it.chapter || it.origin || it.important) {
-				const chapters = it.chapter ? it.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean) : [];
+				const chapters = it.chapter ? parseTimelineChapterList(it.chapter) : [];
 				const chapterLinks = chapters.map(c => `[[${c}]]`).join(' ');
 				const parts: string[] = [];
 				if (chapterLinks) parts.push(chapterLinks);
@@ -541,18 +650,6 @@ export class TimelineManager {
 		return undefined;
 	}
 
-	private resolveChapterFile(
-		rawLink: string,
-		folderPath: string,
-		timelineFilePath: string,
-		eligibleChapters: TFile[]
-	): TFile | null {
-		return ChapterSorter.resolveChapterFile(this.app, this.plugin, folderPath, rawLink, {
-			eligibleChapters,
-			sourcePath: timelineFilePath
-		});
-	}
-
 	buildChapterToNodesMap(
 		entries: TimelineEntry[],
 		folderPath?: string,
@@ -563,6 +660,10 @@ export class TimelineManager {
 		const tlPath = tlFile ? tlFile.path : this.getTimelineFilePath(folder);
 
 		const eligibleChapters = ChapterSorter.getAllChapters(this.app, this.plugin, folder);
+		const referenceIndex = ChapterSorter.createReferenceIndex(this.app, this.plugin, folder, {
+			eligibleChapters,
+			sourcePath: tlPath
+		});
 		const chapterPathToNodes = new Map<string, string[]>();
 
 		for (const entry of entries) {
@@ -573,17 +674,17 @@ export class TimelineManager {
 			if (entry.items && entry.items.length > 0) {
 				for (const item of entry.items) {
 					if (item.chapter) {
-						const links = item.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean);
+						const links = parseTimelineChapterList(item.chapter);
 						rawLinks.push(...links);
 					}
 				}
 			} else if (entry.chapter) {
-				const links = entry.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean);
+				const links = parseTimelineChapterList(entry.chapter);
 				rawLinks.push(...links);
 			}
 
 			for (const rawLink of rawLinks) {
-				const targetFile = this.resolveChapterFile(rawLink, folder, tlPath, eligibleChapters);
+				const targetFile = referenceIndex.resolve(rawLink);
 				if (targetFile) {
 					const list = chapterPathToNodes.get(targetFile.path) || [];
 					if (!list.includes(nodeTime)) {
@@ -659,6 +760,8 @@ export class TimelineManager {
 	async appendEntry(entry: TimelineEntry, folderPath?: string): Promise<string> {
 		const folder = this.normalizeFolderPath(folderPath);
 		const canonicalEntry = { ...entry, lores: this.canonicalizeLoreList(entry.lores || [], folder) };
+		const frozenCanonicalEntry = deepFreezeEntry(deepCloneEntry(canonicalEntry));
+
 		return this.writer.enqueue(async () => {
 			let file = this.getTimelineFile(folder);
 			if (!file) file = await this.createTimelineFile(folder);
@@ -669,18 +772,20 @@ export class TimelineManager {
 				let lastSameTimeEnd = -1;
 				for (let i = 0; i < headings.length; i++) {
 					const heading = headings[i];
-					if (heading[1].trim() !== entry.time) continue;
+					if (heading[1].trim() !== frozenCanonicalEntry.time) continue;
 					const start = heading.index;
 					const nextHeading = headings[i + 1]?.index ?? existing.length;
 					const separator = existing.indexOf('\n---\n', start);
 					const end = separator >= 0 && separator < nextHeading ? separator + '\n---\n'.length : nextHeading;
 					lastSameTimeEnd = end;
 					const matchingEntries = this.parseEntries(existing.slice(start, end), folder);
-					const match = matchingEntries.find(candidate => timelineNodeKey(candidate) === timelineNodeKey(canonicalEntry));
+					const match = matchingEntries.find(candidate => timelineNodeKey(candidate) === timelineNodeKey(frozenCanonicalEntry));
 					if (!match) continue;
 
 					const existingItems = (match.items || []).filter(it => it.description || it.chapter || it.origin || it.important);
-					const incomingItems = entry.items?.length ? entry.items : [{ description: entry.description, chapter: entry.chapter, origin: entry.origin, important: entry.important }];
+					const incomingItems = frozenCanonicalEntry.items?.length
+						? frozenCanonicalEntry.items.map(deepCloneItem)
+						: [{ description: frozenCanonicalEntry.description, chapter: frozenCanonicalEntry.chapter, origin: frozenCanonicalEntry.origin, important: frozenCanonicalEntry.important }];
 					match.items = [...existingItems, ...incomingItems];
 					finalContent = existing.slice(0, start) + matchingEntries.map(candidate => this.formatEntry(candidate)).join('') + existing.slice(end);
 					return finalContent;
@@ -688,7 +793,7 @@ export class TimelineManager {
 				const insertion = lastSameTimeEnd >= 0 ? lastSameTimeEnd : existing.length;
 				const prefix = existing.slice(0, insertion);
 				const separator = prefix && !prefix.endsWith('\n') ? '\n' : '';
-				finalContent = prefix + separator + this.formatEntry(canonicalEntry) + existing.slice(insertion);
+				finalContent = prefix + separator + this.formatEntry(deepCloneEntry(frozenCanonicalEntry)) + existing.slice(insertion);
 				return finalContent;
 			});
 			const entries = this.parseEntries(finalContent, folder);
@@ -697,142 +802,452 @@ export class TimelineManager {
 		});
 	}
 
+	private normalizeForSnapshot(entry: TimelineEntry): TimelineEntry {
+		const lores = entry.lores && entry.lores.length > 0
+			? [...new Set(entry.lores.map(l => l.trim()).filter(Boolean))].sort()
+			: undefined;
 
-	async updateEntry(index: number, updated: TimelineEntry, folderPath?: string): Promise<string> {
-			const folder = this.normalizeFolderPath(folderPath);
-			const canonicalUpdated = { ...updated, lores: this.canonicalizeLoreList(updated.lores || [], folder) };
-			return this.writer.enqueue(async () => {
-			const file = this.getTimelineFile(folder);
+		const items = entry.items && entry.items.length > 0
+			? entry.items.map(it => ({
+				description: (it.description || '').trim(),
+				chapter: serializeTimelineChapterList(parseTimelineChapterList(it.chapter)),
+				origin: it.origin?.trim() || undefined,
+				important: !!it.important,
+				type: it.type?.trim() || undefined
+			}))
+			: [{
+				description: (entry.description || '').trim(),
+				chapter: serializeTimelineChapterList(parseTimelineChapterList(entry.chapter)),
+				origin: entry.origin?.trim() || undefined,
+				important: !!entry.important
+			}];
 
-			if (!file) return '';
+		return {
+			time: (entry.time || '').trim(),
+			type: (entry.type || '').trim() || undefined,
+			description: (entry.description || '').trim(),
+			chapter: serializeTimelineChapterList(parseTimelineChapterList(entry.chapter)),
+			rawBlock: '',
+			origin: entry.origin?.trim() || undefined,
+			important: !!entry.important,
+			lores,
+			items
+		};
+	}
 
-			const entries = await this.loadEntries(folder);
+	private matchesEntry(candidate: TimelineEntry, expected: TimelineEntry): boolean {
+		return this.formatEntry(this.normalizeForSnapshot(candidate)).trim() ===
+			this.formatEntry(this.normalizeForSnapshot(expected)).trim();
+	}
 
-			if (!entries) return '';
-
-			entries[index] = canonicalUpdated;
-			const mergeIndex = entries.findIndex((candidate, candidateIndex) =>
-				candidateIndex !== index && timelineNodeKey(candidate) === timelineNodeKey(canonicalUpdated)
-			);
-			if (mergeIndex >= 0) {
-				const target = entries[mergeIndex];
-				const targetItems = (target.items || []).filter(item => item.description || item.chapter || item.origin || item.important);
-				const updatedItems = (canonicalUpdated.items || []).filter(item => item.description || item.chapter || item.origin || item.important);
-				target.items = [...targetItems, ...updatedItems];
-				entries.splice(index, 1);
+	private resolveTargetIndex(
+		entries: TimelineEntry[],
+		index: number,
+		expectedEntry?: TimelineEntry
+	): number {
+		if (expectedEntry) {
+			if (Number.isInteger(index) && index >= 0 && index < entries.length && this.matchesEntry(entries[index], expectedEntry)) {
+				return index;
+			}
+			const matchingIndices: number[] = [];
+			for (let i = 0; i < entries.length; i++) {
+				if (this.matchesEntry(entries[i], expectedEntry)) {
+					matchingIndices.push(i);
+				}
 			}
 
-			const finalContent = await this.writeAllEntries(file, entries);
-			await this.reconcileFrontmatter(folder, entries, file);
-			return finalContent;
-			});
+			if (matchingIndices.length === 1) {
+				return matchingIndices[0];
+			}
+
+			return -1;
 		}
 
-
-	async deleteEntry(index: number, folderPath?: string): Promise<string> {
-			const folder = this.normalizeFolderPath(folderPath);
-			return this.writer.enqueue(async () => {
-			const file = this.getTimelineFile(folder);
-
-			if (!file) return '';
-
-			const entries = await this.loadEntries(folder);
-
-			if (!entries) return '';
-
-			entries.splice(index, 1);
-
-			const finalContent = await this.writeAllEntries(file, entries);
-			await this.reconcileFrontmatter(folder, entries, file);
-			return finalContent;
-			});
+		if (!Number.isInteger(index) || index < 0 || index >= entries.length) {
+			return -1;
 		}
+		return index;
+	}
 
-
-	async moveEntry(fromIndex: number, toIndex: number, folderPath?: string): Promise<string> {
-			const folder = this.normalizeFolderPath(folderPath);
-			return this.writer.enqueue(async () => {
-			const file = this.getTimelineFile(folder);
-
-			if (!file) return '';
-
-			const entries = await this.loadEntries(folder);
-
-			if (!entries) return '';
-
-			const [moved] = entries.splice(fromIndex, 1);
-
-			entries.splice(toIndex, 0, moved);
-
-			const finalContent = await this.writeAllEntries(file, entries);
-			await this.reconcileFrontmatter(folder, entries, file);
-			return finalContent;
-			});
-		}
-
-	async moveEventItem(sourceNode: number | string, sourceItemIndex: number, targetNode: number | string, targetItemIndex?: number, folderPath?: string): Promise<string> {
+	async updateEntry(index: number, updated: TimelineEntry, folderPath?: string, expectedEntry?: TimelineEntry): Promise<string> {
 		const folder = this.normalizeFolderPath(folderPath);
+		const canonicalUpdated = { ...updated, lores: this.canonicalizeLoreList(updated.lores || [], folder) };
+		const frozenUpdated = deepFreezeEntry(deepCloneEntry(canonicalUpdated));
+		const frozenExpected = expectedEntry ? deepFreezeEntry(deepCloneEntry(expectedEntry)) : undefined;
+
 		return this.writer.enqueue(async () => {
 			const file = this.getTimelineFile(folder);
 			if (!file) return '';
 
-			const entries = await this.loadEntries(folder);
-			if (!entries) return '';
+			let finalContent = '';
+			let writeSuccess = false;
 
-			const sourceEntry = typeof sourceNode === 'number' ? entries[sourceNode] : entries.find(e => e.time === sourceNode);
-			const targetEntry = typeof targetNode === 'number' ? entries[targetNode] : entries.find(e => e.time === targetNode);
-			if (!sourceEntry || !targetEntry) return '';
-			if (!sourceEntry.items || sourceItemIndex < 0 || sourceItemIndex >= sourceEntry.items.length) return '';
+			await this.app.vault.process(file, (existing) => {
+				const latestEntries = this.parseEntries(existing, folder);
+				const targetIndex = this.resolveTargetIndex(latestEntries, index, frozenExpected);
 
-			const [movedItem] = sourceEntry.items.splice(sourceItemIndex, 1);
-			sourceEntry.chapter = sourceEntry.items.map(it => it.chapter).filter(Boolean).join(', ');
-			
-			if (sourceEntry.items.length === 0) {
-				entries.splice(entries.indexOf(sourceEntry), 1);
+				if (targetIndex === -1) {
+					if (frozenExpected) {
+						new Notice(t('timeline.conflict-notice'));
+						throw new Error(t('timeline.conflict-notice'));
+					}
+					finalContent = existing;
+					return existing;
+				}
+
+				const clonedPayload = deepCloneEntry(frozenUpdated);
+				latestEntries[targetIndex] = clonedPayload;
+				const mergeIndex = latestEntries.findIndex((candidate, candidateIndex) =>
+					candidateIndex !== targetIndex && timelineNodeKey(candidate) === timelineNodeKey(clonedPayload)
+				);
+				if (mergeIndex >= 0) {
+					const target = latestEntries[mergeIndex];
+					const targetItems = (target.items || []).filter(item => item.description || item.chapter || item.origin || item.important);
+					const updatedItems = (clonedPayload.items || []).filter(item => item.description || item.chapter || item.origin || item.important);
+					target.items = [...targetItems, ...updatedItems];
+					latestEntries.splice(targetIndex, 1);
+				}
+
+				let content = '';
+				for (const entry of latestEntries) {
+					content += this.formatEntry(entry);
+				}
+				finalContent = content;
+				writeSuccess = true;
+				return content;
+			});
+
+			if (writeSuccess) {
+				const resultingEntries = this.parseEntries(finalContent, folder);
+				await this.reconcileFrontmatter(folder, resultingEntries, file);
 			}
+			return finalContent;
+		});
+	}
 
-			if (!targetEntry.items) targetEntry.items = [];
-			let insertIndex = (targetItemIndex !== undefined && targetItemIndex >= 0) ? targetItemIndex : targetEntry.items.length;
-			if (sourceEntry === targetEntry && sourceItemIndex < insertIndex) {
-				insertIndex--;
+	async deleteEntry(index: number, folderPath?: string, expectedEntry?: TimelineEntry): Promise<string> {
+		const folder = this.normalizeFolderPath(folderPath);
+		const frozenExpected = expectedEntry ? deepFreezeEntry(deepCloneEntry(expectedEntry)) : undefined;
+
+		return this.writer.enqueue(async () => {
+			const file = this.getTimelineFile(folder);
+			if (!file) return '';
+
+			let finalContent = '';
+			let writeSuccess = false;
+
+			await this.app.vault.process(file, (existing) => {
+				const latestEntries = this.parseEntries(existing, folder);
+				const targetIndex = this.resolveTargetIndex(latestEntries, index, frozenExpected);
+
+				if (targetIndex === -1) {
+					if (frozenExpected) {
+						new Notice(t('timeline.conflict-notice'));
+						throw new Error(t('timeline.conflict-notice'));
+					}
+					finalContent = existing;
+					return existing;
+				}
+
+				latestEntries.splice(targetIndex, 1);
+
+				let content = '';
+				for (const entry of latestEntries) {
+					content += this.formatEntry(entry);
+				}
+				finalContent = content;
+				writeSuccess = true;
+				return content;
+			});
+
+			if (writeSuccess) {
+				const resultingEntries = this.parseEntries(finalContent, folder);
+				await this.reconcileFrontmatter(folder, resultingEntries, file);
 			}
-			targetEntry.items.splice(insertIndex, 0, movedItem);
-			targetEntry.chapter = targetEntry.items.map(it => it.chapter).filter(Boolean).join(', ');
+			return finalContent;
+		});
+	}
 
-			const finalContent = await this.writeAllEntries(file, entries);
-			await this.reconcileFrontmatter(folder, entries, file);
+	async moveEntry(
+		fromIndex: number,
+		toIndex: number,
+		folderPath?: string,
+		expectedEntry?: TimelineEntry,
+		expectedTargetEntry?: TimelineEntry
+	): Promise<string> {
+		const folder = this.normalizeFolderPath(folderPath);
+		const frozenExpectedFrom = expectedEntry ? deepFreezeEntry(deepCloneEntry(expectedEntry)) : undefined;
+		const frozenExpectedTo = expectedTargetEntry ? deepFreezeEntry(deepCloneEntry(expectedTargetEntry)) : undefined;
+
+		return this.writer.enqueue(async () => {
+			const file = this.getTimelineFile(folder);
+			if (!file) return '';
+
+			let finalContent = '';
+			let writeSuccess = false;
+
+			await this.app.vault.process(file, (existing) => {
+				const latestEntries = this.parseEntries(existing, folder);
+				const actualFromIndex = this.resolveTargetIndex(latestEntries, fromIndex, frozenExpectedFrom);
+				if (actualFromIndex === -1) {
+					if (frozenExpectedFrom) {
+						new Notice(t('timeline.conflict-notice'));
+						throw new Error(t('timeline.conflict-notice'));
+					}
+					finalContent = existing;
+					return existing;
+				}
+
+				let actualToIndex = -1;
+				if (frozenExpectedTo) {
+					actualToIndex = this.resolveTargetIndex(latestEntries, toIndex, frozenExpectedTo);
+					if (actualToIndex === -1) {
+						new Notice(t('timeline.conflict-notice'));
+						throw new Error(t('timeline.conflict-notice'));
+					}
+				} else {
+					if (!Number.isInteger(toIndex) || toIndex < 0 || toIndex >= latestEntries.length) {
+						finalContent = existing;
+						return existing;
+					}
+					actualToIndex = toIndex;
+				}
+
+				if (actualFromIndex === actualToIndex) {
+					finalContent = existing;
+					return existing;
+				}
+
+				const [moved] = latestEntries.splice(actualFromIndex, 1);
+				latestEntries.splice(actualToIndex, 0, moved);
+
+				let content = '';
+				for (const entry of latestEntries) {
+					content += this.formatEntry(entry);
+				}
+				finalContent = content;
+				writeSuccess = true;
+				return content;
+			});
+
+			if (writeSuccess) {
+				const resultingEntries = this.parseEntries(finalContent, folder);
+				await this.reconcileFrontmatter(folder, resultingEntries, file);
+			}
+			return finalContent;
+		});
+	}
+
+	async moveEventItem(
+		sourceNode: number | string,
+		sourceItemIndex: number,
+		targetNode: number | string,
+		targetItemIndex?: number,
+		folderPath?: string,
+		expectedItem?: TimelineItem,
+		expectedSourceEntry?: TimelineEntry,
+		expectedTargetEntry?: TimelineEntry
+	): Promise<string> {
+		const folder = this.normalizeFolderPath(folderPath);
+		const frozenExpectedItem = expectedItem ? deepFreezeEntry(deepCloneItem(expectedItem)) : undefined;
+		const frozenSourceEntry = expectedSourceEntry ? deepFreezeEntry(deepCloneEntry(expectedSourceEntry)) : undefined;
+		const frozenTargetEntry = expectedTargetEntry ? deepFreezeEntry(deepCloneEntry(expectedTargetEntry)) : undefined;
+
+		return this.writer.enqueue(async () => {
+			const file = this.getTimelineFile(folder);
+			if (!file) return '';
+
+			let finalContent = '';
+			let writeSuccess = false;
+
+			await this.app.vault.process(file, (existing) => {
+				const latestEntries = this.parseEntries(existing, folder);
+
+				let sourceIndex = -1;
+				if (typeof sourceNode === 'number') {
+					sourceIndex = this.resolveTargetIndex(latestEntries, sourceNode, frozenSourceEntry);
+				} else if (typeof sourceNode === 'string') {
+					if (frozenSourceEntry) {
+						const matches: number[] = [];
+						for (let i = 0; i < latestEntries.length; i++) {
+							if (this.matchesEntry(latestEntries[i], frozenSourceEntry)) {
+								matches.push(i);
+							}
+						}
+						if (matches.length === 1) sourceIndex = matches[0];
+					} else {
+						const matches = latestEntries
+							.map((e, idx) => e.time === sourceNode ? idx : -1)
+							.filter(idx => idx >= 0);
+						if (matches.length === 1) sourceIndex = matches[0];
+					}
+				}
+
+				if (sourceIndex === -1) {
+					if (frozenSourceEntry || frozenExpectedItem) {
+						new Notice(t('timeline.conflict-notice'));
+						throw new Error(t('timeline.conflict-notice'));
+					}
+					finalContent = existing;
+					return existing;
+				}
+				const sourceEntry = latestEntries[sourceIndex];
+
+				let targetIndex = -1;
+				if (typeof targetNode === 'number') {
+					targetIndex = this.resolveTargetIndex(latestEntries, targetNode, frozenTargetEntry);
+				} else if (typeof targetNode === 'string') {
+					if (frozenTargetEntry) {
+						const matches: number[] = [];
+						for (let i = 0; i < latestEntries.length; i++) {
+							if (this.matchesEntry(latestEntries[i], frozenTargetEntry)) {
+								matches.push(i);
+							}
+						}
+						if (matches.length === 1) targetIndex = matches[0];
+					} else {
+						const matches = latestEntries
+							.map((e, idx) => e.time === targetNode ? idx : -1)
+							.filter(idx => idx >= 0);
+						if (matches.length === 1) targetIndex = matches[0];
+					}
+				}
+
+				if (targetIndex === -1) {
+					if (frozenTargetEntry || frozenExpectedItem) {
+						new Notice(t('timeline.conflict-notice'));
+						throw new Error(t('timeline.conflict-notice'));
+					}
+					finalContent = existing;
+					return existing;
+				}
+				const targetEntry = latestEntries[targetIndex];
+
+				if (!sourceEntry.items || sourceEntry.items.length === 0) {
+					finalContent = existing;
+					return existing;
+				}
+
+				let actualSourceItemIndex = -1;
+				if (frozenExpectedItem) {
+					const itemMatches: number[] = [];
+					for (let i = 0; i < sourceEntry.items.length; i++) {
+						const it = sourceEntry.items[i];
+						if (
+							it.description === frozenExpectedItem.description &&
+							(it.chapter || '') === (frozenExpectedItem.chapter || '') &&
+							it.origin === frozenExpectedItem.origin &&
+							!!it.important === !!frozenExpectedItem.important
+						) {
+							itemMatches.push(i);
+						}
+					}
+					if (Number.isInteger(sourceItemIndex) && sourceItemIndex >= 0 && itemMatches.includes(sourceItemIndex)) {
+						actualSourceItemIndex = sourceItemIndex;
+					} else if (itemMatches.length === 1) {
+						actualSourceItemIndex = itemMatches[0];
+					} else {
+						new Notice(t('timeline.conflict-notice'));
+						throw new Error(t('timeline.conflict-notice'));
+					}
+				} else {
+					if (!Number.isInteger(sourceItemIndex) || sourceItemIndex < 0 || sourceItemIndex >= sourceEntry.items.length) {
+						finalContent = existing;
+						return existing;
+					}
+					actualSourceItemIndex = sourceItemIndex;
+				}
+
+				let insertIndex = targetEntry.items ? targetEntry.items.length : 0;
+				if (targetItemIndex !== undefined) {
+					if (!Number.isInteger(targetItemIndex) || targetItemIndex < 0) {
+						finalContent = existing;
+						return existing;
+					}
+					insertIndex = targetItemIndex;
+				}
+
+				if (sourceEntry === targetEntry) {
+					let adjustedInsert = insertIndex;
+					if (actualSourceItemIndex < adjustedInsert) adjustedInsert--;
+					if (actualSourceItemIndex === adjustedInsert) {
+						let content = '';
+						for (const entry of latestEntries) {
+							content += this.formatEntry(entry);
+						}
+						finalContent = content;
+						writeSuccess = true;
+						return content;
+					}
+				}
+
+				const [movedItem] = sourceEntry.items.splice(actualSourceItemIndex, 1);
+				sourceEntry.chapter = aggregateTimelineChapterLists(sourceEntry.items.map(it => it.chapter));
+
+				// Do not remove sourceEntry when source===target and it temporarily has zero items
+				if (sourceEntry !== targetEntry && sourceEntry.items.length === 0) {
+					latestEntries.splice(latestEntries.indexOf(sourceEntry), 1);
+				}
+
+				if (!targetEntry.items) targetEntry.items = [];
+				if (sourceEntry === targetEntry && actualSourceItemIndex < insertIndex) {
+					insertIndex--;
+				}
+				if (insertIndex > targetEntry.items.length) {
+					insertIndex = targetEntry.items.length;
+				}
+				targetEntry.items.splice(insertIndex, 0, movedItem);
+				targetEntry.chapter = aggregateTimelineChapterLists(targetEntry.items.map(it => it.chapter));
+
+				let content = '';
+				for (const entry of latestEntries) {
+					content += this.formatEntry(entry);
+				}
+				finalContent = content;
+				writeSuccess = true;
+				return content;
+			});
+
+			if (writeSuccess) {
+				const resultingEntries = this.parseEntries(finalContent, folder);
+				await this.reconcileFrontmatter(folder, resultingEntries, file);
+			}
 			return finalContent;
 		});
 	}
 
 	async syncChapterToEventItem(
 		chapterTarget: string | TFile,
-		targetEvents: { time?: string, entryIndex?: number, itemIndex?: number }[],
+		targetEvents: { time?: string, entryIndex?: number, itemIndex?: number, expectedEntry?: TimelineEntry }[],
 		folderPath?: string
 	): Promise<string> {
 		const folder = this.normalizeFolderPath(folderPath);
+		const frozenTargetEvents = targetEvents.map(target => ({
+			...target,
+			expectedEntry: target.expectedEntry ? deepFreezeEntry(deepCloneEntry(target.expectedEntry)) : undefined
+		}));
+
 		return this.writer.enqueue(async () => {
 			const file = this.getTimelineFile(folder);
 			if (!file) return '';
 
-			const entries = await this.loadEntries(folder);
-			if (!entries) return '';
-
 			const eligibleChapters = ChapterSorter.getAllChapters(this.app, this.plugin, folder);
+			const referenceIndex = ChapterSorter.createReferenceIndex(this.app, this.plugin, folder, {
+				eligibleChapters,
+				sourcePath: file.path
+			});
 			let targetFile: TFile | null = null;
 
 			if (chapterTarget instanceof TFile) {
 				targetFile = chapterTarget;
 			} else if (typeof chapterTarget === 'string') {
-				targetFile = this.resolveChapterFile(chapterTarget, folder, file.path, eligibleChapters);
+				targetFile = referenceIndex.resolve(chapterTarget);
 			}
 
 			if (!targetFile) {
-				// 无法唯一确定目标章节文件时，不得修改任何已有关联
 				return await this.app.vault.cachedRead(file);
 			}
 
-			// 计算插入链接时使用的文本：有重名时使用相对路径，无重名使用 basename
 			const linkTextToAdd = ChapterSorter.generateChapterLinktext(
 				this.app,
 				this.plugin,
@@ -842,70 +1257,122 @@ export class TimelineManager {
 			);
 
 			const isLinkMatching = (link: string): boolean => {
-				const resolved = this.resolveChapterFile(link, folder, file.path, eligibleChapters);
+				const resolved = referenceIndex.resolve(link);
 				return resolved !== null && resolved.path === targetFile.path;
 			};
 
-			// 1. Remove from all entries
-			for (const entry of entries) {
-				if (entry.items) {
-					for (const item of entry.items) {
-						if (item.chapter) {
-							const chapters = item.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean);
-							const newChapters = chapters.filter(c => !isLinkMatching(c));
-							item.chapter = newChapters.join(', ');
+			let finalContent = '';
+			let writeSuccess = false;
+
+			await this.app.vault.process(file, (existing) => {
+				const latestEntries = this.parseEntries(existing, folder);
+
+				// STEP 1: If targetEvents is not empty, resolve and validate ALL targets BEFORE removing any links!
+				interface ResolvedTarget {
+					entry: TimelineEntry;
+					itemIndex: number;
+				}
+				const resolvedTargets: ResolvedTarget[] = [];
+
+				for (const target of frozenTargetEvents) {
+					let matchedEntry: TimelineEntry | undefined;
+					if (target.expectedEntry) {
+						const resolvedIdx = this.resolveTargetIndex(
+							latestEntries,
+							target.entryIndex !== undefined ? target.entryIndex : -1,
+							target.expectedEntry
+						);
+						if (resolvedIdx === -1) {
+							new Notice(t('timeline.conflict-notice'));
+							throw new Error(t('timeline.conflict-notice'));
+						}
+						matchedEntry = latestEntries[resolvedIdx];
+					} else {
+						if (target.entryIndex !== undefined) {
+							if (!Number.isInteger(target.entryIndex) || target.entryIndex < 0 || target.entryIndex >= latestEntries.length) {
+								new Notice(t('timeline.conflict-notice'));
+								throw new Error(t('timeline.conflict-notice'));
+							}
+							matchedEntry = latestEntries[target.entryIndex];
+						} else if (target.time) {
+							const matches = latestEntries.filter(e => e.time === target.time);
+							if (matches.length === 1) {
+								matchedEntry = matches[0];
+							} else {
+								new Notice(t('timeline.conflict-notice'));
+								throw new Error(t('timeline.conflict-notice'));
+							}
 						}
 					}
-					entry.chapter = entry.items.map(it => it.chapter).filter(Boolean).join(', ');
-				} else if (entry.chapter) {
-					const chapters = entry.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean);
-					const newChapters = chapters.filter(c => !isLinkMatching(c));
-					entry.chapter = newChapters.join(', ');
-				}
-			}
 
-			// 2. Add to target events
-			for (const target of targetEvents) {
-				const entry = target.entryIndex !== undefined ? entries[target.entryIndex] : entries.find(e => e.time === target.time);
-				if (entry) {
-					if (!entry.items || entry.items.length === 0) {
-						entry.items = [{ description: entry.description, chapter: '' }];
+					if (!matchedEntry) {
+						new Notice(t('timeline.conflict-notice'));
+						throw new Error(t('timeline.conflict-notice'));
 					}
-					
-					const itemIdx = target.itemIndex !== undefined && target.itemIndex >= 0 && target.itemIndex < entry.items.length 
-						? target.itemIndex 
-						: 0; // Default to first item
-						
-					const item = entry.items[itemIdx];
-					const chapters = item.chapter ? item.chapter.split(/[,，]/).map(c => c.trim()).filter(Boolean) : [];
-					
-					// Compare using isLinkMatching to avoid adding duplicate links
-					const exists = chapters.some(c => isLinkMatching(c));
-					if (!exists) {
+
+					if (!matchedEntry.items || matchedEntry.items.length === 0) {
+						matchedEntry.items = [{ description: matchedEntry.description, chapter: '' }];
+					}
+
+					let itemIdx = 0;
+					if (target.itemIndex !== undefined) {
+						if (!Number.isInteger(target.itemIndex) || target.itemIndex < 0 || target.itemIndex >= matchedEntry.items.length) {
+							new Notice(t('timeline.conflict-notice'));
+							throw new Error(t('timeline.conflict-notice'));
+						}
+						itemIdx = target.itemIndex;
+					}
+
+					resolvedTargets.push({
+						entry: matchedEntry,
+						itemIndex: itemIdx
+					});
+				}
+
+				// STEP 2: Only after all targets are verified, remove existing links from all entries
+				for (const entry of latestEntries) {
+					if (entry.items) {
+						for (const item of entry.items) {
+							if (item.chapter) {
+								const chapters = parseTimelineChapterList(item.chapter);
+								const newChapters = chapters.filter(c => !isLinkMatching(c));
+								item.chapter = serializeTimelineChapterList(newChapters);
+							}
+						}
+						entry.chapter = aggregateTimelineChapterLists(entry.items.map(it => it.chapter));
+					} else if (entry.chapter) {
+						const chapters = parseTimelineChapterList(entry.chapter);
+						const newChapters = chapters.filter(c => !isLinkMatching(c));
+						entry.chapter = serializeTimelineChapterList(newChapters);
+					}
+				}
+
+				// STEP 3: Add link to the validated targets
+				for (const { entry, itemIndex } of resolvedTargets) {
+					const item = entry.items![itemIndex];
+					const chapters = item.chapter ? parseTimelineChapterList(item.chapter) : [];
+					if (!chapters.some(c => isLinkMatching(c))) {
 						chapters.push(linkTextToAdd);
 					}
-					item.chapter = chapters.join(', ');
-					
-					entry.chapter = entry.items.map(it => it.chapter).filter(Boolean).join(', ');
+					item.chapter = serializeTimelineChapterList(chapters);
+					entry.chapter = aggregateTimelineChapterLists(entry.items!.map(it => it.chapter));
 				}
-			}
 
-			const finalContent = await this.writeAllEntries(file, entries);
-			await this.reconcileFrontmatter(folder, entries, file);
+				let content = '';
+				for (const entry of latestEntries) {
+					content += this.formatEntry(entry);
+				}
+				finalContent = content;
+				writeSuccess = true;
+				return content;
+			});
+
+			if (writeSuccess) {
+				const resultingEntries = this.parseEntries(finalContent, folder);
+				await this.reconcileFrontmatter(folder, resultingEntries, file);
+			}
 			return finalContent;
 		});
 	}
 
-	async writeAllEntries(file: TFile, entries: TimelineEntry[]): Promise<string> {
-		let finalContent = '';
-		await this.app.vault.process(file, (_existing) => {
-			let content = '';
-			for (const entry of entries) {
-				content += this.formatEntry(entry);
-			}
-			finalContent = content;
-			return content;
-		});
-		return finalContent;
-	}
 }

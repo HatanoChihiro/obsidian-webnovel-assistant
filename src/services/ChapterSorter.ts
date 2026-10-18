@@ -129,7 +129,8 @@ export class ChapterSorter {
 			return true;
 		});
 
-		targetFiles.sort((a, b) => this.compareFilesWithCustomOrder(a, b, plugin.settings.customSortOrder || {}));
+		const comparator = this.createFileComparator(plugin.settings.customSortOrder || {});
+		targetFiles.sort(comparator);
 		
 		return targetFiles;
 	}
@@ -424,19 +425,14 @@ export class ChapterSorter {
 	}
 
 	/**
-	 * 智能排序比较函数
-	 * 
-	 * 排序规则：
-	 * 1. 文件夹优先于文件
-	 * 2. 按规则索引分组（规则顺序决定大块排序）
-	 * 3. 同一规则内按章节编号排序
-	 * 4. 无章节编号的文件保持原始顺序
+	 * 私有智能排序比较逻辑（接收已预先解析的章节抽取结果，避免二次提取）
 	 */
-	static compareFiles(a: TAbstractFile, b: TAbstractFile): number {
-		// 1. 提取章节编号和规则索引
-		const aChapter = ChapterSorter.extractChapterNumber(a.name);
-		const bChapter = ChapterSorter.extractChapterNumber(b.name);
-		
+	private static compareParsedFiles(
+		a: TAbstractFile,
+		b: TAbstractFile,
+		aChapter: ChapterNumberExtraction | null,
+		bChapter: ChapterNumberExtraction | null
+	): number {
 		// 2. 都有章节编号：先按规则索引排序，再按编号排序
 		if (aChapter !== null && bChapter !== null) {
 			// 先按规则索引排序（规则顺序决定大块排序）
@@ -473,19 +469,33 @@ export class ChapterSorter {
 	}
 
 	/**
-	 * 结合用户在文件浏览器中的自定义拖拽顺序，进行混合智能排序
-	 * 逻辑与 FileExplorerPatcher 完全对齐：
-	 * - 章节被打包成虚拟的 __CHAPTER_BLOCK__ 块，在自定义排序中占有一个位置
-	 * - 非章节文件拥有各自的路径作为位置
-	 * - 如果同时没有自定义顺序，章节块（0）会排在普通文件（1）前面，也就是章节在前的默认行为
+	 * 智能排序比较函数
+	 *
+	 * 排序规则：
+	 * 1. 文件夹优先于文件
+	 * 2. 按规则索引分组（规则顺序决定大块排序）
+	 * 3. 同一规则内按章节编号排序
+	 * 4. 无章节编号的文件保持原始顺序
 	 */
-	static compareFilesWithCustomOrder(a: TAbstractFile, b: TAbstractFile, customOrder: Record<string, number>): number {
-		const aChapter = this.extractChapterNumber(a.name);
-		const bChapter = this.extractChapterNumber(b.name);
+	static compareFiles(a: TAbstractFile, b: TAbstractFile): number {
+		const aChapter = ChapterSorter.extractChapterNumber(a.name);
+		const bChapter = ChapterSorter.extractChapterNumber(b.name);
+		return ChapterSorter.compareParsedFiles(a, b, aChapter, bChapter);
+	}
 
+	/**
+	 * 私有自定义排序比较逻辑（接收已预先解析的章节抽取结果）
+	 */
+	private static compareParsedFilesWithCustomOrder(
+		a: TAbstractFile,
+		b: TAbstractFile,
+		customOrder: Record<string, number>,
+		aChapter: ChapterNumberExtraction | null,
+		bChapter: ChapterNumberExtraction | null
+	): number {
 		// 如果两者都是章节，按照章节的内部智能规则对比
 		if (aChapter !== null && bChapter !== null) {
-			return this.compareFiles(a, b);
+			return this.compareParsedFiles(a, b, aChapter, bChapter);
 		}
 
 		const getSortData = (file: TAbstractFile, isChap: boolean) => {
@@ -515,6 +525,43 @@ export class ChapterSorter {
 
 		// 如果是同类型（比如都是普通文件），按文件名拼音/数字排序
 		return a.name.localeCompare(b.name, 'zh-CN', { numeric: true });
+	}
+
+	/**
+	 * 结合用户在文件浏览器中的自定义拖拽顺序，进行混合智能排序
+	 * 逻辑与 FileExplorerPatcher 完全对齐：
+	 * - 章节被打包成虚拟的 __CHAPTER_BLOCK__ 块，在自定义排序中占有一个位置
+	 * - 非章节文件拥有各自的路径作为位置
+	 * - 如果同时没有自定义顺序，章节块（0）会排在普通文件（1）前面，也就是章节在前的默认行为
+	 */
+	static compareFilesWithCustomOrder(a: TAbstractFile, b: TAbstractFile, customOrder: Record<string, number>): number {
+		const aChapter = this.extractChapterNumber(a.name);
+		const bChapter = this.extractChapterNumber(b.name);
+		return this.compareParsedFilesWithCustomOrder(a, b, customOrder, aChapter, bChapter);
+	}
+
+	/**
+	 * 创建单次排序通用的比较器工厂函数。
+	 * 在该次排序过程中按文件名缓存 extractChapterNumber 提取结果，避免 O(N log N) 重复正则匹配。
+	 */
+	static createFileComparator(
+		customOrder: Record<string, number> = {}
+	): (a: TAbstractFile, b: TAbstractFile) => number {
+		const cache = new Map<string, ChapterNumberExtraction | null>();
+		const getExtraction = (name: string): ChapterNumberExtraction | null => {
+			if (cache.has(name)) {
+				return cache.get(name)!;
+			}
+			const parsed = ChapterSorter.extractChapterNumber(name);
+			cache.set(name, parsed);
+			return parsed;
+		};
+
+		return (a: TAbstractFile, b: TAbstractFile): number => {
+			const aChapter = getExtraction(a.name);
+			const bChapter = getExtraction(b.name);
+			return ChapterSorter.compareParsedFilesWithCustomOrder(a, b, customOrder, aChapter, bChapter);
+		};
 	}
 
 	/**

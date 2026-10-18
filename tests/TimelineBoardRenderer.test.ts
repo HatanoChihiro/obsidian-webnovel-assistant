@@ -389,7 +389,7 @@ describe('TimelineBoardRenderer', () => {
 			files: [v2c1, v1c2, v1c1],
 			foreshadowingMap: new Map(),
 			currentBookPath: 'NovelA',
-			currentTimelineFilter: 'all',
+			currentTimelineFilter: [],
 			onSaveStateChange: vi.fn(),
 			reloadBoard: vi.fn(),
 			getChapterEvents: vi.fn().mockReturnValue([]),
@@ -455,7 +455,7 @@ describe('TimelineBoardRenderer', () => {
 			files: [v1c1, v1c2, v2c1],
 			foreshadowingMap: new Map(),
 			currentBookPath: 'NovelA',
-			currentTimelineFilter: 'all',
+			currentTimelineFilter: [],
 			onSaveStateChange: vi.fn(),
 			reloadBoard: vi.fn(),
 			getChapterEvents: vi.fn().mockReturnValue([]),
@@ -492,7 +492,7 @@ describe('TimelineBoardRenderer', () => {
 			files: [v1c1],
 			foreshadowingMap: new Map(),
 			currentBookPath: 'NovelA',
-			currentTimelineFilter: 'all',
+			currentTimelineFilter: [],
 			onSaveStateChange: vi.fn(),
 			reloadBoard: vi.fn(),
 			getChapterEvents: vi.fn().mockReturnValue([]),
@@ -588,7 +588,7 @@ describe('TimelineBoardRenderer', () => {
 			files: [v1c1],
 			foreshadowingMap: new Map(),
 			currentBookPath: 'NovelA',
-			currentTimelineFilter: 'all',
+			currentTimelineFilter: [],
 			onSaveStateChange: vi.fn(),
 			reloadBoard: vi.fn(),
 			getChapterEvents: vi.fn().mockReturnValue([]),
@@ -616,7 +616,7 @@ describe('TimelineBoardRenderer', () => {
 			files: [v1c1],
 			foreshadowingMap: new Map(),
 			currentBookPath: 'NovelA',
-			currentTimelineFilter: 'all',
+			currentTimelineFilter: [],
 			onSaveStateChange: vi.fn(),
 			reloadBoard: vi.fn(),
 			getChapterEvents: vi.fn().mockReturnValue([]),
@@ -642,7 +642,7 @@ describe('TimelineBoardRenderer', () => {
 			files: [v1c1],
 			foreshadowingMap: new Map(),
 			currentBookPath: 'NovelA',
-			currentTimelineFilter: 'all',
+			currentTimelineFilter: [],
 			onSaveStateChange: vi.fn(),
 			reloadBoard: vi.fn(),
 			getChapterEvents: vi.fn().mockReturnValue([]),
@@ -681,7 +681,7 @@ describe('TimelineBoardRenderer', () => {
 			files: [],
 			foreshadowingMap: new Map(),
 			currentBookPath: 'NovelA',
-			currentTimelineFilter: 'all',
+			currentTimelineFilter: [],
 			onSaveStateChange: vi.fn(),
 			reloadBoard: vi.fn(),
 			getChapterEvents: vi.fn().mockReturnValue([])
@@ -731,7 +731,7 @@ describe('TimelineBoardRenderer', () => {
 			files: [],
 			foreshadowingMap: new Map(),
 			currentBookPath: 'NovelA',
-			currentTimelineFilter: 'all',
+			currentTimelineFilter: [],
 			onSaveStateChange: vi.fn(),
 			reloadBoard: reloadBoardSpy,
 			getChapterEvents: vi.fn().mockReturnValue([])
@@ -803,7 +803,8 @@ describe('TimelineBoardRenderer', () => {
 					{ description: '新添加的子事件描述', chapter: '' }
 				]
 			}),
-			'NovelA'
+			'NovelA',
+			expect.anything()
 		);
 		expect(reloadBoardSpy).toHaveBeenCalled();
 	});
@@ -824,7 +825,7 @@ describe('TimelineBoardRenderer', () => {
 			files: [],
 			foreshadowingMap: new Map(),
 			currentBookPath: 'NovelA',
-			currentTimelineFilter: 'all',
+			currentTimelineFilter: [],
 			onSaveStateChange: vi.fn(),
 			reloadBoard: vi.fn(),
 			getChapterEvents: vi.fn().mockReturnValue([])
@@ -868,7 +869,7 @@ describe('TimelineBoardRenderer', () => {
 			files: [],
 			foreshadowingMap: new Map(),
 			currentBookPath: 'NovelA',
-			currentTimelineFilter: 'all',
+			currentTimelineFilter: [],
 			onSaveStateChange: onSaveStateChangeSpy,
 			reloadBoard: reloadBoardSpy,
 			getChapterEvents: vi.fn().mockReturnValue([])
@@ -909,7 +910,8 @@ describe('TimelineBoardRenderer', () => {
 			expect.objectContaining({
 				items: [{ description: multiLineDesc + '\n第四行新发展', chapter: '' }]
 			}),
-			'NovelA'
+			'NovelA',
+			expect.anything()
 		);
 		expect(reloadBoardSpy).toHaveBeenCalled();
 	});
@@ -930,7 +932,7 @@ describe('TimelineBoardRenderer', () => {
 			files: [],
 			foreshadowingMap: new Map(),
 			currentBookPath: 'NovelA',
-			currentTimelineFilter: 'all',
+			currentTimelineFilter: [],
 			onSaveStateChange: vi.fn(),
 			reloadBoard: vi.fn(),
 			getChapterEvents: vi.fn().mockReturnValue([])
@@ -974,7 +976,7 @@ describe('TimelineBoardRenderer', () => {
 			files: [],
 			foreshadowingMap: new Map(),
 			currentBookPath: 'NovelA',
-			currentTimelineFilter: 'all',
+			currentTimelineFilter: [],
 			onSaveStateChange: vi.fn(),
 			reloadBoard: vi.fn(),
 			getChapterEvents: vi.fn().mockReturnValue([])
@@ -1022,7 +1024,7 @@ describe('TimelineBoardRenderer', () => {
 			files: [],
 			foreshadowingMap: new Map(),
 			currentBookPath: 'NovelA',
-			currentTimelineFilter: 'all',
+			currentTimelineFilter: [],
 			onSaveStateChange: vi.fn(),
 			reloadBoard: vi.fn(),
 			getChapterEvents: vi.fn().mockReturnValue([])
@@ -1077,7 +1079,7 @@ describe('TimelineBoardRenderer', () => {
 			files: [v1c1, v1c2, v2c1],
 			foreshadowingMap: new Map(),
 			currentBookPath: 'NovelA',
-			currentTimelineFilter: 'all',
+			currentTimelineFilter: [],
 			onSaveStateChange: vi.fn(),
 			reloadBoard: vi.fn(),
 			getChapterEvents: vi.fn().mockReturnValue([])
@@ -1115,7 +1117,7 @@ describe('TimelineBoardRenderer', () => {
 			files: [],
 			foreshadowingMap: new Map(),
 			currentBookPath: 'NovelA',
-			currentTimelineFilter: 'all',
+			currentTimelineFilter: [],
 			currentTimelineLoreFilter: ['乙'],
 			onSaveStateChange: vi.fn(),
 			reloadBoard: vi.fn(),
@@ -1154,7 +1156,7 @@ describe('TimelineBoardRenderer', () => {
 				files: [],
 				foreshadowingMap: new Map(),
 				currentBookPath: 'NovelA',
-				currentTimelineFilter: 'all',
+				currentTimelineFilter: [],
 				isDescending: true,
 				onSaveStateChange: vi.fn(),
 				reloadBoard: vi.fn(),
@@ -1197,7 +1199,7 @@ describe('TimelineBoardRenderer', () => {
 				files: [],
 				foreshadowingMap: new Map(),
 				currentBookPath: 'NovelA',
-				currentTimelineFilter: 'all',
+				currentTimelineFilter: [],
 				isDescending: true,
 				onSaveStateChange: vi.fn(),
 				reloadBoard: vi.fn(),
@@ -1218,7 +1220,7 @@ describe('TimelineBoardRenderer', () => {
 			confirmBtn.onclick?.();
 
 			// deleteEntry must be called with originalIndex = 1
-			expect(deleteEntrySpy).toHaveBeenCalledWith(1, 'NovelA');
+			expect(deleteEntrySpy).toHaveBeenCalledWith(1, 'NovelA', expect.anything());
 
 			// Now test inline edit on second displayed node (entry0 "第一年", original index 0)
 			const descEls = container.querySelectorAll('.wn-timeline-item-desc');
@@ -1229,7 +1231,7 @@ describe('TimelineBoardRenderer', () => {
 			descEl0.onblur?.();
 
 			// updateEntry must be called with originalIndex = 0
-			expect(updateEntrySpy).toHaveBeenCalledWith(0, expect.objectContaining({ time: '第一年' }), 'NovelA');
+			expect(updateEntrySpy).toHaveBeenCalledWith(0, expect.objectContaining({ time: '第一年' }), 'NovelA', expect.anything());
 		});
 
 		it('should render adjacent chapter in descending gap between nodes', async () => {
@@ -1254,7 +1256,7 @@ describe('TimelineBoardRenderer', () => {
 				files: [chap1],
 				foreshadowingMap: new Map(),
 				currentBookPath: 'NovelA',
-				currentTimelineFilter: 'all',
+				currentTimelineFilter: [],
 				isDescending: true,
 				onSaveStateChange: vi.fn(),
 				reloadBoard: vi.fn(),
@@ -1296,7 +1298,7 @@ describe('TimelineBoardRenderer', () => {
 				files: [chap1],
 				foreshadowingMap: new Map(),
 				currentBookPath: 'NovelA',
-				currentTimelineFilter: 'all',
+				currentTimelineFilter: [],
 				isDescending: true,
 				onSaveStateChange: vi.fn(),
 				reloadBoard: vi.fn(),
@@ -1335,7 +1337,7 @@ describe('TimelineBoardRenderer', () => {
 				files: [],
 				foreshadowingMap: new Map(),
 				currentBookPath: 'NovelA',
-				currentTimelineFilter: 'all',
+				currentTimelineFilter: [],
 				isDescending: false,
 				onSaveStateChange: vi.fn(),
 				reloadBoard: vi.fn(),
@@ -1368,7 +1370,7 @@ describe('TimelineBoardRenderer', () => {
 				files: [],
 				foreshadowingMap: new Map(),
 				currentBookPath: 'NovelA',
-				currentTimelineFilter: 'all',
+				currentTimelineFilter: [],
 				isDescending: false,
 				onSaveStateChange: vi.fn(),
 				reloadBoard: vi.fn(),
@@ -1405,7 +1407,7 @@ describe('TimelineBoardRenderer', () => {
 				files: [chap1],
 				foreshadowingMap: new Map(),
 				currentBookPath: 'NovelA',
-				currentTimelineFilter: 'all',
+				currentTimelineFilter: [],
 				isDescending: false,
 				onSaveStateChange: vi.fn(),
 				reloadBoard: vi.fn(),
@@ -1441,7 +1443,7 @@ describe('TimelineBoardRenderer', () => {
 				files: [createMockFile('第1章.md', 'NovelA/第1章.md')],
 				foreshadowingMap: new Map(),
 				currentBookPath: 'NovelA',
-				currentTimelineFilter: 'all',
+				currentTimelineFilter: [],
 				isDescending: false,
 				isTrajectoryMode: true,
 				onSaveStateChange: vi.fn(),
@@ -1461,6 +1463,43 @@ describe('TimelineBoardRenderer', () => {
 			expect(grid2?.style.transform).toBe('translate3d(0px, 0px, 0) scale(1)');
 		});
 
+		it('renders trajectory mode without reading foreshadowingMap', async () => {
+			const container = new MockElement();
+			const getSpy = vi.fn();
+			const dummyMap = {
+				get: getSpy,
+				has: vi.fn(),
+				entries: vi.fn(),
+				keys: vi.fn(),
+				values: vi.fn()
+			} as unknown as Map<string, import('../src/types/foreshadowing').ParsedForeshadowingEntry[]>;
+
+			const options: TimelineBoardOptions = {
+				app: mockApp,
+				plugin: {
+					...mockPlugin,
+					timelineManager: {
+						...mockPlugin.timelineManager,
+						loadEntries: vi.fn().mockResolvedValue([]),
+						getTimelineFile: vi.fn().mockReturnValue(createMockFile('timeline.md', 'NovelA/timeline.md'))
+					}
+				},
+				container: container as unknown as HTMLElement,
+				files: [createMockFile('第1章.md', 'NovelA/第1章.md')],
+				foreshadowingMap: dummyMap,
+				currentBookPath: 'NovelA',
+				currentTimelineFilter: [],
+				isDescending: false,
+				isTrajectoryMode: true,
+				onSaveStateChange: vi.fn(),
+				reloadBoard: vi.fn(),
+				getChapterEvents: vi.fn().mockReturnValue([])
+			};
+
+			await TimelineBoardRenderer.render(options);
+			expect(getSpy).not.toHaveBeenCalled();
+		});
+
 		it('displays same-name typed nodes separately and filters whole nodes', async () => {
 			const mixedEntries: TimelineEntry[] = [
 				{
@@ -1474,10 +1513,22 @@ describe('TimelineBoardRenderer', () => {
 				{
 					time: '第一年', type: '支线', description: '支线事件', chapter: '第2章', rawBlock: '',
 					items: [{ description: '支线事件描述', chapter: '第2章' }]
+				},
+				{
+					time: '第一年', type: '日常', description: '日常事件', chapter: '第3章', rawBlock: '',
+					items: [{ description: '日常事件描述', chapter: '第3章' }]
+				},
+				{
+					time: '第二年', description: '无类型旧事件', chapter: '第4章', rawBlock: '',
+					items: [{ description: '无类型描述', chapter: '第4章' }]
+				},
+				{
+					time: '第三年', type: 'all', description: '字面量all事件', chapter: '第5章', rawBlock: '',
+					items: [{ description: 'all类型描述', chapter: '第5章' }]
 				}
 			];
 
-			const renderWithOptions = async (filter: string) => {
+			const renderWithOptions = async (filter: readonly string[] = [], isDescending = false, loreFilter?: string[]) => {
 				const c = new MockElement();
 				await TimelineBoardRenderer.render({
 					app: mockApp,
@@ -1490,11 +1541,18 @@ describe('TimelineBoardRenderer', () => {
 						}
 					},
 					container: c as unknown as HTMLElement,
-					files: [createMockFile('第1章.md', 'NovelA/第1章.md'), createMockFile('第2章.md', 'NovelA/第2章.md')],
+					files: [
+						createMockFile('第1章.md', 'NovelA/第1章.md'),
+						createMockFile('第2章.md', 'NovelA/第2章.md'),
+						createMockFile('第3章.md', 'NovelA/第3章.md'),
+						createMockFile('第4章.md', 'NovelA/第4章.md'),
+						createMockFile('第5章.md', 'NovelA/第5章.md')
+					],
 					foreshadowingMap: new Map(),
 					currentBookPath: 'NovelA',
 					currentTimelineFilter: filter,
-					isDescending: false,
+					currentTimelineLoreFilter: loreFilter,
+					isDescending,
 					onSaveStateChange: vi.fn(),
 					reloadBoard: vi.fn(),
 					getChapterEvents: vi.fn().mockReturnValue([])
@@ -1502,15 +1560,15 @@ describe('TimelineBoardRenderer', () => {
 				return c;
 			};
 
-			// Each same-name node owns one type and its own event cards.
-			const cAll = await renderWithOptions('all');
+			// Empty filter: all entries including untyped are rendered.
+			const cAll = await renderWithOptions([]);
 			const badgesAll = cAll.querySelectorAll('.wn-timeline-type-badge');
-			expect(badgesAll.map(b => b.textContent)).toEqual(['主线', '支线']);
+			expect(badgesAll.map(b => b.textContent)).toEqual(['主线', '支线', '日常', 'all']);
 			const itemRowsAll = cAll.querySelectorAll('.wn-timeline-item-row');
-			expect(itemRowsAll.length).toBe(2);
+			expect(itemRowsAll.length).toBe(5);
 
-			// Filtering retains the entire matching node.
-			const cSub = await renderWithOptions('支线');
+			// Filtering by single type retains only that node, excluding untyped.
+			const cSub = await renderWithOptions(['支线']);
 			const nodesSub = cSub.querySelectorAll('.wn-timeline-node');
 			expect(nodesSub.length).toBe(1);
 			const badgesSub = cSub.querySelectorAll('.wn-timeline-type-badge');
@@ -1519,6 +1577,70 @@ describe('TimelineBoardRenderer', () => {
 			expect(itemRowsSub.length).toBe(1);
 			expect(itemRowsSub[0].attributes.get('data-item-index')).toBe('0');
 			expect(itemRowsSub[0].querySelector('.wn-timeline-item-desc')?.textContent).toBe('支线事件描述');
+
+			// Multi-selection: selecting ['主线', '支线'] retains both, excluding '日常', untyped, and 'all'.
+			const cMulti = await renderWithOptions(['主线', '支线']);
+			const badgesMulti = cMulti.querySelectorAll('.wn-timeline-type-badge');
+			expect(badgesMulti.map(b => b.textContent)).toEqual(['主线', '支线']);
+			const nodesMulti = cMulti.querySelectorAll('.wn-timeline-node');
+			expect(nodesMulti.length).toBe(2);
+
+			// Preserves original indices in allEntries even with same-name nodes and descending order
+			const cDesc = await renderWithOptions(['主线', '支线'], true);
+			const nodesDesc = cDesc.querySelectorAll('.wn-timeline-node');
+			expect(nodesDesc.length).toBe(2);
+			const itemsDesc = cDesc.querySelectorAll('.wn-timeline-item-row');
+			// In descending order, '支线' (index 1) renders before '主线' (index 0)
+			expect(itemsDesc[0].querySelector('.wn-timeline-item-desc')?.textContent).toBe('支线事件描述');
+			expect(itemsDesc[1].querySelector('.wn-timeline-item-desc')?.textContent).toBe('主线事件描述');
+			expect(itemsDesc.map(item => item.getAttribute('data-entry-index'))).toEqual(['1', '0']);
+
+			// Custom type named 'all' can be selected explicitly
+			const cCustomAll = await renderWithOptions(['all']);
+			const badgesCustomAll = cCustomAll.querySelectorAll('.wn-timeline-type-badge');
+			expect(badgesCustomAll.map(b => b.textContent)).toEqual(['all']);
+			expect(cCustomAll.querySelectorAll('.wn-timeline-node').length).toBe(1);
+		});
+
+		it('resolves comma-bearing chapter link and does not classify it as unscheduled', async () => {
+			const commaChapter = createMockFile('第1章，你好.md', 'NovelA/第1章，你好.md');
+			const entriesWithComma: TimelineEntry[] = [
+				{
+					time: '第一年',
+					type: '主线',
+					description: '主线事件',
+					chapter: '["第1章，你好"]',
+					rawBlock: '',
+					items: [{ description: '主线事件描述', chapter: '["第1章，你好"]' }]
+				}
+			];
+
+			(CorkboardGridRenderer.render as ReturnType<typeof vi.fn>).mockClear();
+			const c = new MockElement();
+			await TimelineBoardRenderer.render({
+				app: mockApp,
+				plugin: {
+					...mockPlugin,
+					timelineManager: {
+						...mockPlugin.timelineManager,
+						loadEntries: vi.fn().mockResolvedValue(entriesWithComma),
+						getTimelineFile: vi.fn().mockReturnValue(createMockFile('timeline.md', 'NovelA/timeline.md'))
+					}
+				},
+				container: c as unknown as HTMLElement,
+				files: [commaChapter],
+				foreshadowingMap: new Map(),
+				currentBookPath: 'NovelA',
+				currentTimelineFilter: [],
+				isDescending: false,
+				onSaveStateChange: vi.fn(),
+				reloadBoard: vi.fn(),
+				getChapterEvents: vi.fn().mockReturnValue([])
+			});
+
+			// CorkboardGridRenderer should receive empty files for unscheduled since commaChapter is scheduled
+			const lastCall = (CorkboardGridRenderer.render as ReturnType<typeof vi.fn>).mock.calls.at(-1);
+			expect(lastCall?.[0]?.files).toEqual([]);
 		});
 	});
 });

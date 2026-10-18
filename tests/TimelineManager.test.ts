@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { TimelineManager, TimelineEntry } from '../src/services/TimelineManager';
+import { TimelineManager, TimelineEntry, parseTimelineChapterList, serializeTimelineChapterList, filterTimelineEntries } from '../src/services/TimelineManager';
+import { ChapterSorter } from '../src/services/ChapterSorter';
 
 vi.mock('obsidian', () => ({
     normalizePath: (path: string) => path.replace(/\\/g, '/'),
@@ -16,6 +17,11 @@ vi.mock('obsidian', () => ({
     },
     Vault: {
         recurseChildren: () => {}
+    },
+    Notice: class {
+        constructor(_message?: string, _timeout?: number) {}
+        setMessage() { return this; }
+        hide() {}
     }
 }));
 import { TFile } from 'obsidian';
@@ -185,51 +191,73 @@ It has multiple lines.
         });
 
         it('updateEntry should update an existing entry correctly', async () => {
+            const initialContent = `
+---
+## 2023-01-01
+
+- Event A
+- Event B
+`;
             const updatedEntry = { time: '2023-01-01', items: [{ description: 'Updated Event A' }] } as TimelineEntry;
             await manager.updateEntry(0, updatedEntry);
             
             expect(mockApp.vault.process).toHaveBeenCalled();
             const callback = mockApp.vault.process.mock.calls[0][1];
-            const modifiedContent = callback('');
+            const modifiedContent = callback(initialContent);
             expect(modifiedContent).toContain('Updated Event A');
             expect(modifiedContent).not.toContain('- Event A\n');
         });
 
         it('deleteEntry should remove the entire entry', async () => {
+            const initialContent = `
+---
+## 2023-01-01
+
+- Event A
+- Event B
+`;
             await manager.deleteEntry(0);
             
             expect(mockApp.vault.process).toHaveBeenCalled();
             const callback = mockApp.vault.process.mock.calls[0][1];
-            const modifiedContent = callback('');
+            const modifiedContent = callback(initialContent);
             expect(modifiedContent).not.toContain('2023-01-01');
         });
 
         it('moveEventItem should move item within the same node', async () => {
+            const initialContent = `
+---
+## 2023-01-01
+
+- Event A
+- Event B
+`;
             await manager.moveEventItem('2023-01-01', 0, '2023-01-01', 2);
             
             expect(mockApp.vault.process).toHaveBeenCalled();
             const callback = mockApp.vault.process.mock.calls[0][1];
-            const modifiedContent = callback('');
+            const modifiedContent = callback(initialContent);
             const eventAIndex = modifiedContent.indexOf('Event A');
             const eventBIndex = modifiedContent.indexOf('Event B');
             expect(eventBIndex).toBeLessThan(eventAIndex); // Event B is now before Event A
         });
 
         it('moveEventItem should move item to a different node', async () => {
-            mockApp.vault.read.mockResolvedValue(`
----
-## 2023-01-01
-- Event A
-
+            const fileContent = `
 ---
 ## 2023-01-02
 - Event B
-`);
+
+---
+## 2023-01-01
+- Event A
+`;
+            mockApp.vault.read.mockResolvedValue(fileContent);
             await manager.moveEventItem('2023-01-01', 0, '2023-01-02', 1);
             
             expect(mockApp.vault.process).toHaveBeenCalled();
             const callback = mockApp.vault.process.mock.calls[0][1];
-            const modifiedContent = callback('');
+            const modifiedContent = callback(fileContent);
             
             // 2023-01-01 should be gone
             expect(modifiedContent).not.toContain('## 2023-01-01');
@@ -1091,6 +1119,658 @@ It has multiple lines.
             expect(parsed).toHaveLength(1);
             expect(parsed[0].type).toBe('主线');
             expect(parsed[0].items?.map(item => item.description)).toEqual(['主线事件', '支线事件']);
+        });
+    });
+
+    describe('Comma delimiter regression tests', () => {
+        it('preserves literal JSON-like chapter names instead of interpreting them as nested lists', () => {
+            const chapters = ['["literal"]', 'Chapter 1, Hello', '第2章，你好'];
+            expect(parseTimelineChapterList(serializeTimelineChapterList(chapters))).toEqual(chapters);
+        });
+
+        it('preserves exact wikilinks with ASCII and fullwidth commas across parse and format roundtrip', () => {
+            const markdown = `## 2023-01-01
+**Type**：Battle
+
+- Encounter at gates [[Chapter 1, Hello]] [[第2章，你好]] [[Vol 1, Part 1/Chapter 3, World|Alias, Text]]
+  Additional line
+
+---
+
+`;
+            const entries = manager.parseEntries(markdown, 'Book 1');
+            expect(entries).toHaveLength(1);
+            expect(entries[0].items).toHaveLength(1);
+
+            // Format back to markdown
+            const formatted = manager.formatEntry(entries[0]);
+            expect(formatted).toContain('[[Chapter 1, Hello]]');
+            expect(formatted).toContain('[[第2章，你好]]');
+            expect(formatted).toContain('[[Vol 1, Part 1/Chapter 3, World|Alias, Text]]');
+            expect(formatted).not.toContain('[[Chapter 1]]');
+            expect(formatted).not.toContain('[[Hello]]');
+            expect(formatted).not.toContain('[[第2章]]');
+            expect(formatted).not.toContain('[[你好]]');
+        });
+
+        it('buildChapterToNodesMap resolves comma-bearing chapter files and reconciles frontmatter', async () => {
+            const chap1 = Object.assign(new TFile(), {
+                name: 'Chapter 1, Hello.md',
+                basename: 'Chapter 1, Hello',
+                path: 'Book 1/Chapter 1, Hello.md',
+                extension: 'md'
+            });
+            const chap2 = Object.assign(new TFile(), {
+                name: '第2章，你好.md',
+                basename: '第2章，你好',
+                path: 'Book 1/第2章，你好.md',
+                extension: 'md'
+            });
+            mockPlugin.getTrackedMarkdownFiles.mockReturnValue([chap1, chap2]);
+            mockPlugin.getVaultMarkdownFiles.mockReturnValue([chap1, chap2]);
+            mockApp.metadataCache.getFirstLinkpathDest.mockImplementation((link: string) => {
+                if (link === 'Chapter 1, Hello') return chap1;
+                if (link === '第2章，你好') return chap2;
+                return null;
+            });
+
+            const markdown = `## 2023-01-01
+**Type**：Battle
+
+- Event A [[Chapter 1, Hello]]
+- Event B [[第2章，你好]]
+
+---
+`;
+            const entries = manager.parseEntries(markdown, 'Book 1');
+            const { chapterPathToNodes } = manager.buildChapterToNodesMap(entries, 'Book 1');
+            expect(chapterPathToNodes.get(chap1.path)).toEqual(['2023-01-01']);
+            expect(chapterPathToNodes.get(chap2.path)).toEqual(['2023-01-01']);
+            const frontmatter = new Map<string, Record<string, unknown>>();
+            mockApp.fileManager.processFrontMatter.mockImplementation(async (file: TFile, update: (fm: Record<string, unknown>) => void) => {
+                const fm: Record<string, unknown> = {};
+                update(fm);
+                frontmatter.set(file.path, fm);
+            });
+            await manager.reconcileFrontmatter('Book 1', entries);
+            expect(frontmatter.get(chap1.path)?.timeline).toBe('2023-01-01');
+            expect(frontmatter.get(chap2.path)?.timeline).toBe('2023-01-01');
+        });
+
+        it('syncChapterToEventItem adds and removes comma-bearing chapters without corrupting other refs', async () => {
+            let fileContent = `## 2023-01-01
+**Type**：Battle
+
+- Event A [[Chapter 1, Hello]] [[Existing Chapter]]
+
+---
+`;
+            const timelineFile = Object.assign(new TFile(), { name: 'Timeline.md', path: 'Book 1/Timeline.md' });
+            const targetChap = Object.assign(new TFile(), {
+                name: 'Chapter 1, Hello.md',
+                basename: 'Chapter 1, Hello',
+                path: 'Book 1/Chapter 1, Hello.md',
+                extension: 'md'
+            });
+            const existingChap = Object.assign(new TFile(), {
+                name: 'Existing Chapter.md',
+                basename: 'Existing Chapter',
+                path: 'Book 1/Existing Chapter.md',
+                extension: 'md'
+            });
+            const newChap = Object.assign(new TFile(), {
+                name: '第2章，你好.md',
+                basename: '第2章，你好',
+                path: 'Book 1/第2章，你好.md',
+                extension: 'md'
+            });
+
+            mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) => {
+                if (path === timelineFile.path) return timelineFile;
+                if (path === targetChap.path) return targetChap;
+                if (path === existingChap.path) return existingChap;
+                if (path === newChap.path) return newChap;
+                return null;
+            });
+            mockApp.vault.cachedRead.mockImplementation(async () => fileContent);
+            mockApp.vault.process.mockImplementation(async (_file: TFile, cb: (content: string) => string) => {
+                fileContent = cb(fileContent);
+                return fileContent;
+            });
+            mockPlugin.getTrackedMarkdownFiles.mockReturnValue([targetChap, existingChap, newChap]);
+            mockPlugin.getVaultMarkdownFiles.mockReturnValue([targetChap, existingChap, newChap]);
+            mockApp.metadataCache.getFirstLinkpathDest.mockImplementation((link: string) => {
+                if (link === 'Chapter 1, Hello') return targetChap;
+                if (link === 'Existing Chapter') return existingChap;
+                if (link === '第2章，你好') return newChap;
+                return null;
+            });
+            const frontmatter = new Map<string, Record<string, unknown>>();
+            mockApp.fileManager.processFrontMatter.mockImplementation(async (file: TFile, update: (fm: Record<string, unknown>) => void) => {
+                const fm = frontmatter.get(file.path) ?? {};
+                update(fm);
+                frontmatter.set(file.path, fm);
+            });
+
+            // 1. Add newChap (with fullwidth comma) to Event A
+            await manager.syncChapterToEventItem(newChap, [{ entryIndex: 0, itemIndex: 0 }], 'Book 1');
+            expect(fileContent).toContain('[[Chapter 1, Hello]]');
+            expect(fileContent).toContain('[[Existing Chapter]]');
+            expect(fileContent).toContain('[[第2章，你好]]');
+            expect(frontmatter.get(targetChap.path)?.timeline).toBe('2023-01-01');
+            expect(frontmatter.get(newChap.path)?.timeline).toBe('2023-01-01');
+
+            // 2. Remove targetChap from all events
+            await manager.syncChapterToEventItem(targetChap, [], 'Book 1');
+            expect(fileContent).not.toContain('[[Chapter 1, Hello]]');
+            expect(fileContent).toContain('[[Existing Chapter]]');
+            expect(fileContent).toContain('[[第2章，你好]]');
+            expect(frontmatter.get(targetChap.path)).not.toHaveProperty('timeline');
+            expect(frontmatter.get(existingChap.path)?.timeline).toBe('2023-01-01');
+            expect(frontmatter.get(newChap.path)?.timeline).toBe('2023-01-01');
+        });
+
+        it('buildChapterToNodesMap creates reference index once for many links and preserves comma, alias, and duplicate chapter behavior', () => {
+            const vol1Ch1 = Object.assign(new TFile(), { name: '第1章.md', basename: '第1章', path: 'Book 1/Vol 1/第1章.md', extension: 'md' });
+            const vol2Ch1 = Object.assign(new TFile(), { name: '第1章.md', basename: '第1章', path: 'Book 1/Vol 2/第1章.md', extension: 'md' });
+            const commaChap = Object.assign(new TFile(), { name: '第2章，你好.md', basename: '第2章，你好', path: 'Book 1/第2章，你好.md', extension: 'md' });
+            const uniqueChap = Object.assign(new TFile(), { name: '第3章.md', basename: '第3章', path: 'Book 1/第3章.md', extension: 'md' });
+
+            mockPlugin.getTrackedMarkdownFiles.mockReturnValue([vol1Ch1, vol2Ch1, commaChap, uniqueChap]);
+            mockPlugin.getVaultMarkdownFiles.mockReturnValue([vol1Ch1, vol2Ch1, commaChap, uniqueChap]);
+
+            const markdown = `## 2023-01-01
+- Event 1 [[Vol 1/第1章|第1章]] [[第2章，你好]]
+- Event 2 [[Vol 2/第1章]] [[第3章]]
+---
+## 2023-01-02
+- Event 3 [[Vol 1/第1章]] [[第3章|第三章别名]]
+- Event 4 [[第2章，你好]]
+---
+`;
+            const entries = manager.parseEntries(markdown, 'Book 1');
+            const createIndexSpy = vi.spyOn(ChapterSorter, 'createReferenceIndex');
+
+            const { chapterPathToNodes } = manager.buildChapterToNodesMap(entries, 'Book 1');
+
+            expect(createIndexSpy).toHaveBeenCalledTimes(1);
+            expect(chapterPathToNodes.get(vol1Ch1.path)).toEqual(['2023-01-01', '2023-01-02']);
+            expect(chapterPathToNodes.get(vol2Ch1.path)).toEqual(['2023-01-01']);
+            expect(chapterPathToNodes.get(commaChap.path)).toEqual(['2023-01-01', '2023-01-02']);
+            expect(chapterPathToNodes.get(uniqueChap.path)).toEqual(['2023-01-01', '2023-01-02']);
+
+            createIndexSpy.mockRestore();
+        });
+
+        it('syncChapterToEventItem creates reference index once per sync operation across many links and preserves comma/alias/duplicate behavior', async () => {
+            const vol1Ch1 = Object.assign(new TFile(), { name: '第1章.md', basename: '第1章', path: 'Book 1/Vol 1/第1章.md', extension: 'md' });
+            const vol2Ch1 = Object.assign(new TFile(), { name: '第1章.md', basename: '第1章', path: 'Book 1/Vol 2/第1章.md', extension: 'md' });
+            const commaChap = Object.assign(new TFile(), { name: '第2章，你好.md', basename: '第2章，你好', path: 'Book 1/第2章，你好.md', extension: 'md' });
+            const timelineFile = Object.assign(new TFile(), { name: 'Timeline.md', path: 'Book 1/Timeline.md' });
+
+            let fileContent = `## 2023-01-01
+- Event 1 [[Vol 1/第1章|第1章]] [[第2章，你好]]
+- Event 2 [[Vol 2/第1章]]
+---
+`;
+            mockPlugin.getTrackedMarkdownFiles.mockReturnValue([vol1Ch1, vol2Ch1, commaChap]);
+            mockPlugin.getVaultMarkdownFiles.mockReturnValue([vol1Ch1, vol2Ch1, commaChap]);
+
+            mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) => {
+                if (path === timelineFile.path) return timelineFile;
+                if (path === vol1Ch1.path) return vol1Ch1;
+                if (path === vol2Ch1.path) return vol2Ch1;
+                if (path === commaChap.path) return commaChap;
+                return null;
+            });
+            mockApp.vault.cachedRead.mockImplementation(async () => fileContent);
+            mockApp.vault.process.mockImplementation(async (_file: TFile, cb: (content: string) => string) => {
+                fileContent = cb(fileContent);
+                return fileContent;
+            });
+            mockApp.fileManager.processFrontMatter.mockImplementation(async () => {});
+			mockApp.metadataCache.fileToLinktext.mockReturnValue('Vol 2/第1章');
+
+            // Spy on reconcileFrontmatter to isolate syncChapterToEventItem's own index construction
+            const reconcileSpy = vi.spyOn(manager, 'reconcileFrontmatter').mockResolvedValue();
+            const createIndexSpy = vi.spyOn(ChapterSorter, 'createReferenceIndex');
+
+            await manager.syncChapterToEventItem('Vol 2/第1章', [{ entryIndex: 0, itemIndex: 0 }], 'Book 1');
+            expect(createIndexSpy).toHaveBeenCalledTimes(1);
+            expect(fileContent).toContain('Vol 2/第1章');
+
+            createIndexSpy.mockRestore();
+            reconcileSpy.mockRestore();
+        });
+
+        it('moveEventItem preserves comma-bearing chapters on moving items', async () => {
+            let fileContent = `## Node 1
+- Event with comma chapter [[Chapter 1, Hello]]
+
+---
+## Node 2
+- Other event
+
+---
+`;
+            const timelineFile = Object.assign(new TFile(), { name: 'Timeline.md', path: 'Book 1/Timeline.md' });
+            mockApp.vault.getAbstractFileByPath.mockReturnValue(timelineFile);
+            mockApp.vault.cachedRead.mockImplementation(async () => fileContent);
+            mockApp.vault.process.mockImplementation(async (_file: TFile, cb: (content: string) => string) => {
+                fileContent = cb(fileContent);
+                return fileContent;
+            });
+
+            await manager.moveEventItem(0, 0, 1, 0, 'Book 1');
+            expect(fileContent).toContain('[[Chapter 1, Hello]]');
+            expect(fileContent).not.toContain('[[Chapter 1]]');
+            expect(fileContent).not.toContain('[[Hello]]');
+        });
+    });
+
+    describe('filterTimelineEntries', () => {
+        const sampleEntries: TimelineEntry[] = [
+            {
+                time: 'Day 1',
+                type: 'Main',
+                description: 'Main event',
+                chapter: 'Chapter 1',
+                rawBlock: '',
+                lores: ['LoreA'],
+                items: [
+                    { description: 'Sibling item 1', chapter: 'Chapter 1' },
+                    { description: 'Sibling item 2', chapter: 'Chapter 1' }
+                ]
+            },
+            {
+                time: 'Day 2',
+                type: 'Sub',
+                description: 'Sub event',
+                chapter: 'Chapter 2',
+                rawBlock: '',
+                lores: ['LoreB'],
+                items: [{ description: 'Sub event item', chapter: 'Chapter 2' }]
+            },
+            {
+                time: 'Day 3',
+                type: 'Side',
+                description: 'Side event',
+                chapter: 'Chapter 3',
+                rawBlock: '',
+                lores: ['LoreA', 'LoreC'],
+                items: [{ description: 'Side item', chapter: 'Chapter 3' }]
+            },
+            {
+                time: 'Day 4',
+                description: 'Untyped legacy event',
+                chapter: 'Chapter 4',
+                rawBlock: '',
+                items: [{ description: 'Untyped item', chapter: 'Chapter 4' }]
+            },
+            {
+                time: 'Day 5',
+                type: 'all',
+                description: 'Custom type named all',
+                chapter: 'Chapter 5',
+                rawBlock: '',
+                lores: ['LoreB'],
+                items: [{ description: 'Custom all item', chapter: 'Chapter 5' }]
+            }
+        ];
+
+        it('returns all entries including untyped ones when selectedTypes and selectedLores are empty', () => {
+            const result = filterTimelineEntries(sampleEntries, [], []);
+            expect(result).toHaveLength(5);
+            expect(result.map(e => e.time)).toEqual(['Day 1', 'Day 2', 'Day 3', 'Day 4', 'Day 5']);
+        });
+
+        it('supports Set as input for selectedTypes and selectedLores', () => {
+            const result = filterTimelineEntries(sampleEntries, new Set(['Main']), new Set(['LoreA']));
+            expect(result).toHaveLength(1);
+            expect(result[0].time).toBe('Day 1');
+        });
+
+        it('filters by single type and excludes untyped entries', () => {
+            const result = filterTimelineEntries(sampleEntries, ['Main']);
+            expect(result).toHaveLength(1);
+            expect(result[0].time).toBe('Day 1');
+        });
+
+        it('filters by multiple types as OR, excluding third type and untyped entries', () => {
+            const result = filterTimelineEntries(sampleEntries, ['Main', 'Sub']);
+            expect(result).toHaveLength(2);
+            expect(result.map(e => e.time)).toEqual(['Day 1', 'Day 2']);
+        });
+
+        it('clearing types (empty array) returns to all entries including untyped', () => {
+            const filtered = filterTimelineEntries(sampleEntries, ['Main']);
+            expect(filtered).toHaveLength(1);
+            const cleared = filterTimelineEntries(sampleEntries, []);
+            expect(cleared).toHaveLength(5);
+        });
+
+        it('filters an actual custom type named "all" specifically without treating it as a sentinel', () => {
+            const result = filterTimelineEntries(sampleEntries, ['all']);
+            expect(result).toHaveLength(1);
+            expect(result[0].time).toBe('Day 5');
+            expect(result[0].type).toBe('all');
+        });
+
+        it('filters multiple lores as OR', () => {
+            const result = filterTimelineEntries(sampleEntries, [], ['LoreB', 'LoreC']);
+            expect(result).toHaveLength(3);
+            expect(result.map(e => e.time)).toEqual(['Day 2', 'Day 3', 'Day 5']);
+        });
+
+        it('combines types (OR) and lores (OR) with AND logic', () => {
+            // Types: Main or Side. Lores: LoreC.
+            // Day 1: Main, LoreA -> fails lore
+            // Day 3: Side, LoreA & LoreC -> matches both
+            const result = filterTimelineEntries(sampleEntries, ['Main', 'Side'], ['LoreC']);
+            expect(result).toHaveLength(1);
+            expect(result[0].time).toBe('Day 3');
+        });
+
+        it('preserves all sibling items on matching node (node-level filtering)', () => {
+            const result = filterTimelineEntries(sampleEntries, ['Main']);
+            expect(result).toHaveLength(1);
+            expect(result[0].items).toHaveLength(2);
+            expect(result[0].items?.[0].description).toBe('Sibling item 1');
+            expect(result[0].items?.[1].description).toBe('Sibling item 2');
+        });
+
+        it('does not mutate original entries array or selection inputs', () => {
+            const entriesCopy = [...sampleEntries];
+            const typesInput = ['Main', 'Sub'];
+            const loresInput = ['LoreA'];
+            const result = filterTimelineEntries(entriesCopy, typesInput, loresInput);
+            expect(result).not.toBe(entriesCopy);
+            expect(typesInput).toEqual(['Main', 'Sub']);
+            expect(loresInput).toEqual(['LoreA']);
+            expect(sampleEntries).toHaveLength(5);
+        });
+    });
+
+    describe('Atomic transforms, concurrent survival & stale UI index guards', () => {
+        let dummyTlFile: TFile;
+
+        beforeEach(() => {
+            dummyTlFile = Object.assign(new TFile(), { name: 'Timeline.md', path: 'Book 1/Timeline.md', basename: 'Timeline' });
+            mockApp.vault.getAbstractFileByPath.mockImplementation((p: string) => {
+                if (p === 'Book 1/Timeline.md') return dummyTlFile;
+                return null;
+            });
+        });
+
+        it('updateEntry should preserve concurrent added entries when writing to file', async () => {
+            // Initial content before concurrent edit
+            mockApp.vault.read.mockResolvedValue(`## 2023-01-01\n- Event A\n---\n`);
+            // vault.process receives latest file content that includes a concurrently added entry
+            mockApp.vault.process.mockImplementation(async (_file: TFile, cb: (c: string) => string) => {
+                const latestContentWithConcurrent = `## 2023-01-01\n- Event A\n---\n\n## 2023-01-02\n- Concurrent Event B\n---\n`;
+                return cb(latestContentWithConcurrent);
+            });
+
+            const result = await manager.updateEntry(0, {
+                time: '2023-01-01',
+                items: [{ description: 'Updated Event A', chapter: '' }]
+            } as TimelineEntry, 'Book 1');
+
+            expect(result).toContain('Updated Event A');
+            expect(result).toContain('Concurrent Event B');
+        });
+
+        it('deleteEntry should preserve concurrent added entries', async () => {
+            mockApp.vault.read.mockResolvedValue(`## 2023-01-01\n- Event A\n---\n## 2023-01-02\n- Event B\n---\n`);
+            mockApp.vault.process.mockImplementation(async (_file: TFile, cb: (c: string) => string) => {
+                const latestContent = `## 2023-01-01\n- Event A\n---\n## 2023-01-02\n- Event B\n---\n\n## 2023-01-03\n- Concurrent Event C\n---\n`;
+                return cb(latestContent);
+            });
+
+            const result = await manager.deleteEntry(0, 'Book 1');
+            expect(result).not.toContain('Event A');
+            expect(result).toContain('Event B');
+            expect(result).toContain('Concurrent Event C');
+        });
+
+        it('updateEntry guards against stale UI index using expectedEntry snapshot', async () => {
+            // UI captured index 0 for Event A, but in the actual file a new entry was inserted at index 0
+            const expectedSnapshot: TimelineEntry = {
+                time: '2023-01-01',
+                type: 'Main',
+                description: 'Event A',
+                chapter: '',
+                rawBlock: '',
+                items: [{ description: 'Event A', chapter: '' }]
+            };
+            mockApp.vault.read.mockResolvedValue(`## 2023-01-01\n**Type**：Main\n- Event A\n---\n`);
+            mockApp.vault.process.mockImplementation(async (_file: TFile, cb: (c: string) => string) => {
+                const shiftedContent = `## 2022-12-31\n**Type**：Intro\n- Event Zero\n---\n\n## 2023-01-01\n**Type**：Main\n- Event A\n---\n`;
+                return cb(shiftedContent);
+            });
+
+            // UI passes stale index 0, but provides expectedEntry snapshot
+            const result = await manager.updateEntry(0, {
+                time: '2023-01-01',
+                type: 'Main',
+                items: [{ description: 'Updated Event A', chapter: '' }]
+            } as TimelineEntry, 'Book 1', expectedSnapshot);
+
+            expect(result).toContain('Event Zero');
+            expect(result).toContain('Updated Event A');
+            expect(result).not.toContain('- Event A\n');
+        });
+
+        it('updateEntry rejects write and throws when target node is missing/conflicted', async () => {
+            const expectedSnapshot: TimelineEntry = {
+                time: '2023-01-01',
+                type: 'Main',
+                description: 'Event A',
+                chapter: '',
+                rawBlock: '',
+                items: [{ description: 'Event A', chapter: '' }]
+            };
+            const differentContent = `## 2024-01-01\n**Type**：Battle\n- Boss Fight\n---\n`;
+            mockApp.vault.process.mockImplementation(async (_file: TFile, cb: (c: string) => string) => {
+                return cb(differentContent);
+            });
+
+            await expect(manager.updateEntry(0, {
+                time: '2023-01-01',
+                type: 'Main',
+                items: [{ description: 'Conflicted Update', chapter: '' }]
+            } as TimelineEntry, 'Book 1', expectedSnapshot)).rejects.toThrow();
+        });
+
+        it('rejects update with conflict when time/type match but description or lores changed', async () => {
+            const expectedSnapshot: TimelineEntry = {
+                time: '2023-01-01',
+                type: 'Main',
+                description: 'Original Description',
+                chapter: '',
+                rawBlock: '',
+                lores: ['OriginalLore'],
+                items: [{ description: 'Original Description', chapter: '' }]
+            };
+            // Latest file has same time and type, but description and lores changed concurrently
+            const modifiedContent = `## 2023-01-01\n**Type**：Main\n- Concurrent Changed Description\n\n<!-- wn-lore: ChangedLore -->\n---\n`;
+            mockApp.vault.process.mockImplementation(async (_file: TFile, cb: (c: string) => string) => {
+                return cb(modifiedContent);
+            });
+
+            await expect(manager.updateEntry(0, {
+                time: '2023-01-01',
+                type: 'Main',
+                description: 'Attempted Update',
+                chapter: '',
+                rawBlock: '',
+                lores: ['OriginalLore'],
+                items: [{ description: 'Attempted Update', chapter: '' }]
+            } as TimelineEntry, 'Book 1', expectedSnapshot)).rejects.toThrow();
+        });
+
+        it('safely rejects ambiguous relocation when duplicate same-name nodes exist in latest file', async () => {
+            const expectedSnapshot: TimelineEntry = {
+                time: '2023-01-01',
+                type: 'Main',
+                description: 'Duplicate Event',
+                chapter: '',
+                rawBlock: '',
+                items: [{ description: 'Duplicate Event', chapter: '' }]
+            };
+            // Latest file has two identical nodes, making relocation from stale/invalid index ambiguous
+            const duplicateContent = `## 2023-01-01\n**Type**：Main\n- Duplicate Event\n---\n\n## 2023-01-01\n**Type**：Main\n- Duplicate Event\n---\n`;
+            mockApp.vault.process.mockImplementation(async (_file: TFile, cb: (c: string) => string) => {
+                return cb(duplicateContent);
+            });
+
+            // Index 5 does not match directly, requires relocation which finds 2 candidates -> ambiguous!
+            await expect(manager.updateEntry(5, {
+                time: '2023-01-01',
+                type: 'Main',
+                items: [{ description: 'Modified Event', chapter: '' }]
+            } as TimelineEntry, 'Book 1', expectedSnapshot)).rejects.toThrow();
+        });
+
+        it('emptied latest content does not resurrect cached baseEntries', async () => {
+            // Pre-cached entries exist from prior load
+            mockApp.vault.read.mockResolvedValue(`## 2023-01-01\n- Old Cached Event\n---\n`);
+            // But vault.process receives an empty string because user cleared the file
+            mockApp.vault.process.mockImplementation(async (_file: TFile, cb: (c: string) => string) => {
+                return cb('');
+            });
+
+            const result = await manager.updateEntry(0, {
+                time: '2023-01-01',
+                items: [{ description: 'Should Not Resurrect', chapter: '' }]
+            } as TimelineEntry, 'Book 1');
+
+            expect(result).toBe('');
+            expect(result).not.toContain('Old Cached Event');
+        });
+
+        it('moveEventItem does not delete node when source is target and temporarily has zero items', async () => {
+            const initialContent = `## 2023-01-01\n- Only Item\n---\n`;
+            mockApp.vault.process.mockImplementation(async (_file: TFile, cb: (c: string) => string) => {
+                return cb(initialContent);
+            });
+
+            const result = await manager.moveEventItem(0, 0, 0, 0, 'Book 1', {
+                description: 'Only Item',
+                chapter: ''
+            });
+
+            expect(result).toContain('## 2023-01-01');
+            expect(result).toContain('Only Item');
+        });
+
+        it('syncChapterToEventItem validates targets before removing links and preserves links on conflict', async () => {
+            const initialContent = `## Node 1\n- Event A [[Chapter 2]]\n---\n## Node 2\n- Event B\n---\n`;
+            mockApp.vault.process.mockImplementation(async (_file: TFile, cb: (c: string) => string) => {
+                return cb(initialContent);
+            });
+
+            const nonExistentExpected: TimelineEntry = {
+                time: 'Ghost Node',
+                description: 'Does Not Exist',
+                chapter: '',
+                rawBlock: ''
+            };
+
+            const targetFile = Object.assign(new TFile(), { name: 'Chapter 2.md', path: 'Book 1/Chapter 2.md', basename: 'Chapter 2' });
+            mockApp.vault.getAbstractFileByPath.mockImplementation((p: string) => {
+                if (p === 'Book 1/Timeline.md') return dummyTlFile;
+                if (p === 'Book 1/Chapter 2.md') return targetFile;
+                return null;
+            });
+            mockPlugin.getTrackedMarkdownFiles = vi.fn(() => [targetFile]);
+            mockPlugin.getVaultMarkdownFiles = vi.fn(() => [targetFile]);
+            mockApp.metadataCache.getFirstLinkpathDest = vi.fn(() => targetFile);
+
+            // Target specifies expectedEntry that cannot be found
+            await expect(manager.syncChapterToEventItem(targetFile, [{
+                entryIndex: 1,
+                expectedEntry: nonExistentExpected
+            }], 'Book 1')).rejects.toThrow();
+        });
+
+        it('moves items using both original node snapshots after concurrent node insertion', async () => {
+            const original = '## Source\n- First\n- Second\n---\n\n## Target\n- Third\n---\n';
+            const [source, target] = manager.parseEntries(original, 'Book 1');
+            let stored = '## Inserted\n- Concurrent\n---\n\n' + original;
+            mockApp.vault.process.mockImplementation(async (_file: TFile, callback: (content: string) => string) => {
+                stored = callback(stored);
+            });
+            await manager.moveEventItem(0, 0, 1, 1, 'Book 1', source.items![0], source, target);
+            const result = manager.parseEntries(stored, 'Book 1');
+            expect(result.map(entry => entry.time)).toEqual(['Inserted', 'Source', 'Target']);
+            expect(result[1].items?.map(item => item.description)).toEqual(['Second']);
+            expect(result[2].items?.map(item => item.description)).toEqual(['Third', 'First']);
+        });
+
+        it('rejects a changed move destination and preserves file and chapter metadata', async () => {
+            const original = '## Source\n- First\n---\n\n## Target\n- Second\n---\n';
+            const [source, target] = manager.parseEntries(original, 'Book 1');
+            const latest = original.replace('Second', 'Changed elsewhere');
+            let stored = latest;
+            mockApp.vault.process.mockImplementation(async (_file: TFile, callback: (content: string) => string) => {
+                stored = callback(stored);
+            });
+            await expect(manager.moveEntry(0, 1, 'Book 1', source, target)).rejects.toThrow();
+            expect(stored).toBe(latest);
+            expect(mockApp.fileManager.processFrontMatter).not.toHaveBeenCalled();
+        });
+
+        it('invalid index fails safely without throwing or modifying file', async () => {
+            const initialContent = `## 2023-01-01\n- Event A\n---\n`;
+            mockApp.vault.read.mockResolvedValue(initialContent);
+            mockApp.vault.process.mockImplementation(async (_file: TFile, cb: (c: string) => string) => {
+                return cb(initialContent);
+            });
+
+            const result = await manager.updateEntry(-1, { time: 'X', items: [] } as unknown as TimelineEntry, 'Book 1');
+            expect(result).toBe(initialContent);
+
+            const delResult = await manager.deleteEntry(999, 'Book 1');
+            expect(delResult).toBe(initialContent);
+        });
+
+        it('reconciles frontmatter from resulting entries rather than stale snapshot', async () => {
+            const chap1 = Object.assign(new TFile(), { name: 'Chapter 1.md', path: 'Book 1/Chapter 1.md', basename: 'Chapter 1' });
+            const chap2 = Object.assign(new TFile(), { name: 'Chapter 2.md', path: 'Book 1/Chapter 2.md', basename: 'Chapter 2' });
+            mockApp.vault.getAbstractFileByPath.mockImplementation((p: string) => {
+                if (p === 'Book 1/Timeline.md') return dummyTlFile;
+                if (p === 'Book 1/Chapter 1.md') return chap1;
+                if (p === 'Book 1/Chapter 2.md') return chap2;
+                return null;
+            });
+            mockPlugin.getTrackedMarkdownFiles = vi.fn(() => [chap1, chap2]);
+            mockPlugin.getVaultMarkdownFiles = vi.fn(() => [chap1, chap2]);
+            mockApp.metadataCache.getFirstLinkpathDest = vi.fn((link: string) => link === 'Chapter 2' ? chap2 : chap1);
+            mockApp.metadataCache.getFileCache = vi.fn(() => null);
+
+            // Stale snapshot had only Chapter 1
+            mockApp.vault.read.mockResolvedValue(`## 2023-01-01\n- Event A [[Chapter 1]]\n---\n`);
+            // Latest process content had concurrent Chapter 2 link
+            mockApp.vault.process.mockImplementation(async (_file: TFile, cb: (c: string) => string) => {
+                const latestWithChap2 = `## 2023-01-01\n- Event A [[Chapter 1]]\n---\n\n## 2023-01-02\n- Event B [[Chapter 2]]\n---\n`;
+                return cb(latestWithChap2);
+            });
+
+            const frontmatters = new Map<string, Record<string, unknown>>();
+            mockApp.fileManager.processFrontMatter.mockImplementation(async (file: TFile, fn: (fm: Record<string, unknown>) => void) => {
+                const fm = frontmatters.get(file.path) || {};
+                fn(fm);
+                frontmatters.set(file.path, fm);
+            });
+
+            await manager.updateEntry(0, {
+                time: '2023-01-01',
+                items: [{ description: 'Event A updated', chapter: 'Chapter 1' }]
+            } as TimelineEntry, 'Book 1');
+
+            // Chapter 2 must be reconciled from the actual resulting entries
+            expect(frontmatters.get('Book 1/Chapter 2.md')?.timeline).toBe('2023-01-02');
         });
     });
 });

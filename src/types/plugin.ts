@@ -42,6 +42,7 @@ import type { TypographyManager } from '../services/TypographyManager';
 import type { ChapterMergeManager } from '../services/ChapterMergeManager';
 import type { ProofreadingManager } from '../services/ProofreadingManager';
 import type { WritingJourneyService } from '../services/WritingJourneyService';
+import type { ImmersiveReferenceManager } from '../services/ImmersiveReferenceManager';
 
 // ==========================================
 // 辅助类型
@@ -91,6 +92,7 @@ export interface ViewContext {
 	toggleTimelineView(): Promise<void>;
 	toggleFloatingNotesVisibility(): Promise<void>;
 	refreshStatusViews(includeChart?: boolean, immediate?: boolean): void;
+	refreshStatusTimers(): void;
 }
 
 /** 样式管理相关 */
@@ -169,6 +171,7 @@ export interface WebNovelAssistantPlugin extends
 	workerManager: WorkerManager;
 	markdownPostProcessor: MarkdownPostProcessor;
 	immersiveModeManager: ImmersiveModeManager;
+	immersiveReferenceManager: ImmersiveReferenceManager;
 	fileEventManager: FileEventManager;
 	statisticsManager: StatisticsManager;
 

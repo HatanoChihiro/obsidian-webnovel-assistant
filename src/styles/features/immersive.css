@@ -128,3 +128,45 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 	font-size: var(--font-ui-medium);
 	color: var(--text-normal);
 }
+
+/* Immersive reference pane floating search toolbar */
+
+body.immersive-mode-active .workspace-leaf.immersive-reference-view .view-content {
+	padding-top: 40px;
+}
+
+.wn-immersive-ref-toolbar {
+	position: absolute;
+	top: 8px;
+	right: 12px;
+	z-index: var(--layer-popover, 15);
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	pointer-events: auto;
+}
+
+.wn-immersive-ref-toolbar .clickable-icon {
+	color: var(--text-muted);
+	padding: 4px;
+	border-radius: var(--radius-s);
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background-color: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+	transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.wn-immersive-ref-toolbar .clickable-icon:hover {
+	color: var(--text-normal);
+	background-color: var(--background-modifier-hover);
+	border-color: var(--interactive-accent);
+}
+
+.wn-immersive-ref-toolbar .clickable-icon:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 1px;
+}

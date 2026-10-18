@@ -573,6 +573,10 @@ export class ForeshadowingManager {
 		const entries = this.parseEntries(content);
 		const allChapters = ChapterSorter.getAllChapters(this.app, this.plugin, folderPath);
 		const eligibleChapters = allChapters.length > 0 ? allChapters : files;
+		const referenceIndex = ChapterSorter.createReferenceIndex(this.app, this.plugin, folderPath, {
+			eligibleChapters,
+			sourcePath: fFile.path
+		});
 
 		for (const entry of entries) {
 			// 提取所有来源（可能跨多个章节）
@@ -601,13 +605,7 @@ export class ForeshadowingManager {
 
 			for (const target of targets) {
 				if (!target) continue;
-				const resolvedFile = ChapterSorter.resolveChapterFile(
-					this.app,
-					this.plugin,
-					folderPath,
-					target,
-					{ eligibleChapters, sourcePath: fFile.path }
-				);
+				const resolvedFile = referenceIndex.resolve(target);
 				if (resolvedFile) {
 					const list = map.get(resolvedFile.path) || [];
 					if (!list.includes(entry)) {

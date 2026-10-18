@@ -361,6 +361,7 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 
 		immersiveNoteFontSize: 14,
 		immersiveLayout: null,
+		workReferencePaths: {},
 
 		typewriterEnabled: false,
 		typewriterCenterOffset: 0,

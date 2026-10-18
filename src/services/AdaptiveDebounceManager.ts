@@ -23,6 +23,7 @@ interface InputSpeedStats {
 
 export class AdaptiveDebounceManager {
 	private timers: Map<string, number>;
+	private timerWindows: Map<string, Window>;
 	private speedStats: Map<string, InputSpeedStats>;
 	
 	// 防抖延迟配置（毫秒）
@@ -39,6 +40,7 @@ export class AdaptiveDebounceManager {
 
 	constructor() {
 		this.timers = new Map();
+		this.timerWindows = new Map();
 		this.speedStats = new Map();
 	}
 
@@ -49,7 +51,7 @@ export class AdaptiveDebounceManager {
 	 * @param key 唯一标识符
 	 * @param callback 要执行的回调函数
 	 */
-	debounce(key: string, callback: DebounceCallback): void {
+	debounce(key: string, callback: DebounceCallback, ownerWindow?: Window): void {
 		const now = Date.now();
 		
 		// 更新输入速度统计
@@ -58,18 +60,24 @@ export class AdaptiveDebounceManager {
 		// 根据输入速度计算延迟
 		const delay = this.calculateDelay(key);
 		
-		// 取消之前的定时器
-		if (this.timers.has(key)) {
-			window.clearTimeout(this.timers.get(key));
-		}
+		// 取消之前的定时器（走统一 cancel 路径以清理多窗口 timerWindows）
+		this.cancel(key);
 
+		const win = ownerWindow ?? window;
 		// 设置新的定时器
-		const timer = window.setTimeout(() => {
+		let timer: number;
+		timer = win.setTimeout(() => {
+			if (this.timers.get(key) === timer) {
+				this.timers.delete(key);
+				this.timerWindows.delete(key);
+			}
 			callback();
-			this.timers.delete(key);
 		}, delay);
 
 		this.timers.set(key, timer);
+		if (ownerWindow) {
+			this.timerWindows.set(key, ownerWindow);
+		}
 	}
 
 	/**
@@ -79,19 +87,25 @@ export class AdaptiveDebounceManager {
 	 * @param callback 要执行的回调函数
 	 * @param delay 延迟时间（毫秒）
 	 */
-	debounceFixed(key: string, callback: DebounceCallback, delay: number): void {
-		// 取消之前的定时器
-		if (this.timers.has(key)) {
-			window.clearTimeout(this.timers.get(key));
-		}
+	debounceFixed(key: string, callback: DebounceCallback, delay: number, ownerWindow?: Window): void {
+		// 取消之前的定时器（走统一 cancel 路径以清理多窗口 timerWindows）
+		this.cancel(key);
 
+		const win = ownerWindow ?? window;
 		// 设置新的定时器
-		const timer = window.setTimeout(() => {
+		let timer: number;
+		timer = win.setTimeout(() => {
+			if (this.timers.get(key) === timer) {
+				this.timers.delete(key);
+				this.timerWindows.delete(key);
+			}
 			callback();
-			this.timers.delete(key);
 		}, delay);
 
 		this.timers.set(key, timer);
+		if (ownerWindow) {
+			this.timerWindows.set(key, ownerWindow);
+		}
 	}
 
 	/**
@@ -167,8 +181,10 @@ export class AdaptiveDebounceManager {
 	cancel(key: string): void {
 		const timer = this.timers.get(key);
 		if (timer) {
-			window.clearTimeout(timer);
+			const win = this.timerWindows.get(key) ?? window;
+			win.clearTimeout(timer);
 			this.timers.delete(key);
+			this.timerWindows.delete(key);
 		}
 	}
 
@@ -176,10 +192,12 @@ export class AdaptiveDebounceManager {
 	 * 取消所有待处理操作
 	 */
 	cancelAll(): void {
-		this.timers.forEach((timer) => {
-			window.clearTimeout(timer);
+		this.timers.forEach((timer, key) => {
+			const win = this.timerWindows.get(key) ?? window;
+			win.clearTimeout(timer);
 		});
 		this.timers.clear();
+		this.timerWindows.clear();
 		this.speedStats.clear();
 	}
 
