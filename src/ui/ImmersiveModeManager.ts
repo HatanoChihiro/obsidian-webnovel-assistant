@@ -1,11 +1,11 @@
 import { Logger } from '../utils/Logger';
 import type { App, WorkspaceLeaf, WorkspaceSplit, WorkspaceItem, EventRef, EditorPosition, EditorSelection } from 'obsidian';
-import { MarkdownView, Notice, ToggleComponent, setIcon, TFile } from 'obsidian';
+import { MarkdownView, View, Notice, ToggleComponent, setIcon, TFile } from 'obsidian';
 import { findBookRoot, type FindBookRootPlugin } from '../utils/path';
 import { t } from '../i18n';
 
 import { lockKeyboardEscape, unlockKeyboardEscape } from '../services/ObsidianInternals';
-import type { AccurateCountSettings } from '../types/settings';
+import type { AccurateCountSettings, ImmersiveAuxiliaryRegion } from '../types/settings';
 import type { StickyNoteDataManager } from '../services/StickyNoteDataManager';
 import type { SettingsManager } from '../core/SettingsManager';
 import type { FileExplorerPatcher } from '../services/FileExplorerPatcher';
@@ -15,6 +15,7 @@ import type { TaskManager } from '../services/TaskManager';
 import { ImmersivePomodoroModal } from './ImmersivePomodoroModal';
 import type { ImmersiveReferenceManager } from '../services/ImmersiveReferenceManager';
 import { ImmersiveReferenceSearchModal } from './ImmersiveReferenceSearchModal';
+import { ImmersiveTypewriterQuickModal } from './ImmersiveTypewriterQuickModal';
 
 interface CaretRestoreOptions {
 	targetFilePath?: string;
@@ -130,6 +131,20 @@ export class ImmersiveModeManager {
 
 	// 顶部栏元素缓存
 	private topBarStatsEls: Record<string, HTMLElement> = {};
+	private typewriterToggle: ToggleComponent | null = null;
+	private typewriterGearBtn: HTMLButtonElement | null = null;
+	private activeTypewriterQuickModal: ImmersiveTypewriterQuickModal | null = null;
+	private lastTypewriterEnabled: boolean | null = null;
+
+	// 辅助区域分支与折叠状态管理
+	private regionBranches = new Map<ImmersiveAuxiliaryRegion, {
+		region: ImmersiveAuxiliaryRegion;
+		branchItem: WorkspaceItem;
+		parentSplit: WorkspaceSplit;
+		firstLeaf: WorkspaceLeaf;
+	}>();
+	private regionCollapseBtns = new Map<ImmersiveAuxiliaryRegion, HTMLElement>();
+	private regionRestoreBtns = new Map<ImmersiveAuxiliaryRegion, HTMLElement>();
 
 	// 参考文档状态与搜索管理
 	private referenceManager: ImmersiveModeManagerReferenceManager;
@@ -538,6 +553,10 @@ export class ImmersiveModeManager {
 			Array.from(activeDocument.body.getElementsByClassName('immersive-main-editor')).forEach(el => el.classList.remove('immersive-main-editor'));
 			Array.from(activeDocument.body.getElementsByClassName('immersive-reference-view')).forEach(el => el.classList.remove('immersive-reference-view'));
 			Array.from(activeDocument.body.getElementsByClassName('is-immersive-slot-pending')).forEach(el => el.classList.remove('is-immersive-slot-pending'));
+			Array.from(activeDocument.body.getElementsByClassName('wn-immersive-region-collapsed')).forEach(el => el.classList.remove('wn-immersive-region-collapsed'));
+			Array.from(activeDocument.body.getElementsByClassName('wn-immersive-handle-hidden')).forEach(el => el.classList.remove('wn-immersive-handle-hidden'));
+			Array.from(activeDocument.body.getElementsByClassName('wn-immersive-restore-btn')).forEach(el => el.remove());
+			Array.from(activeDocument.body.getElementsByClassName('wn-immersive-collapse-btn')).forEach(el => el.remove());
 		}
 
 		if (detachedAny) {
@@ -702,6 +721,8 @@ export class ImmersiveModeManager {
 	}
 
 	public cleanup(): void {
+		this.closeTypewriterQuickModal();
+		this.clearRegionControls();
 		this.layoutGeneration++;
 		this.referenceSwitchSeq++;
 		this.leafOperationQueues.clear();
@@ -746,6 +767,10 @@ export class ImmersiveModeManager {
 			Array.from(activeDocument.body.getElementsByClassName('immersive-main-editor')).forEach(el => el.classList.remove('immersive-main-editor'));
 			Array.from(activeDocument.body.getElementsByClassName('immersive-reference-view')).forEach(el => el.classList.remove('immersive-reference-view'));
 			Array.from(activeDocument.body.getElementsByClassName('is-immersive-slot-pending')).forEach(el => el.classList.remove('is-immersive-slot-pending'));
+			Array.from(activeDocument.body.getElementsByClassName('wn-immersive-region-collapsed')).forEach(el => el.classList.remove('wn-immersive-region-collapsed'));
+			Array.from(activeDocument.body.getElementsByClassName('wn-immersive-handle-hidden')).forEach(el => el.classList.remove('wn-immersive-handle-hidden'));
+			Array.from(activeDocument.body.getElementsByClassName('wn-immersive-restore-btn')).forEach(el => el.remove());
+			Array.from(activeDocument.body.getElementsByClassName('wn-immersive-collapse-btn')).forEach(el => el.remove());
 		}
 
 		this.removeTopBar();
@@ -911,8 +936,13 @@ export class ImmersiveModeManager {
 		this.activeLeftLeaf = createSlotSkeleton(immersive.immersiveLeftSlots, 'vertical', true, immersive.immersiveLeftSize, immersive.immersiveLeftInternalSizes);
 		this.activeRightLeaf = createSlotSkeleton(immersive.immersiveRightSlots, 'vertical', false, immersive.immersiveRightSize, immersive.immersiveRightInternalSizes);
 
+		// 1.3 解析各区域分支并应用初始折叠与隐藏状态
+		this.resolveRegionBranches();
+
 		// 2. 确定性应用并等待分屏尺寸固化（在视图挂载前完成外层几何稳定）
 		await this.applySplitSizes(pendingSizes);
+
+		this.applyAuxiliaryRegionsVisibility();
 
 		// 3. 确保主编辑器聚焦
 		workspace.setActiveLeaf(mainLeaf, { focus: true });
@@ -1071,24 +1101,48 @@ export class ImmersiveModeManager {
 			el.hide();
 		}
 
-		// 在中间数据栏的最右侧嵌入打字机原生 Toggle 开关
+		// 在中间数据栏的最右侧嵌入打字机原生 Toggle 开关与设置齿轮
 		const typewriterWrapper = centerDiv.createDiv({ cls: 'stat-item typewriter-toggle-container' });
 		typewriterWrapper.createSpan({ cls: 'typewriter-toggle-label', text: t('setting.immersive-typewriter-title') });
 
-		new ToggleComponent(typewriterWrapper)
+		this.typewriterToggle = new ToggleComponent(typewriterWrapper)
 			.setValue(this.plugin.settings.immersive.typewriterEnabled)
 			.setTooltip(t('immersive.typewriter-toggle-tooltip'))
 			.onChange(async (value) => {
 				this.plugin.settings.immersive.typewriterEnabled = value;
-				await this.plugin.saveSettings();
+				this.lastTypewriterEnabled = value;
+				const doc = typewriterWrapper.ownerDocument;
 				if (value) {
-					activeDocument.body.classList.add('wn-typewriter-active');
-					activeDocument.body.setCssProps({ '--wn-typewriter-opacity': String(this.plugin.settings.immersive.typewriterUnfocusedOpacity ?? 0.4) });
+					doc.body.classList.add('wn-typewriter-active');
+					doc.body.setCssProps({ '--wn-typewriter-opacity': String(this.plugin.settings.immersive.typewriterUnfocusedOpacity ?? 0.4) });
 				} else {
-					activeDocument.body.classList.remove('wn-typewriter-active');
+					doc.body.classList.remove('wn-typewriter-active');
+					this.closeTypewriterQuickModal();
 				}
+				this.updateTypewriterGearVisibility();
 				this.app.workspace.updateOptions();
+				try {
+					await this.plugin.saveSettings();
+				} catch (error) {
+					Logger.error('[ImmersiveModeManager] Failed to save typewriter settings:', error);
+				}
 			});
+
+		const gearBtn = typewriterWrapper.createEl('button', {
+			cls: 'clickable-icon wn-immersive-typewriter-settings-btn',
+			type: 'button',
+			attr: {
+				'aria-label': t('immersive.typewriter-settings-tooltip')
+			}
+		});
+		setIcon(gearBtn, 'settings');
+		gearBtn.addEventListener('click', (e) => {
+			e.stopPropagation();
+			this.openTypewriterQuickModal();
+		});
+		this.typewriterGearBtn = gearBtn;
+		this.lastTypewriterEnabled = this.plugin.settings.immersive.typewriterEnabled;
+		this.updateTypewriterGearVisibility();
 
 		activeDocument.body.appendChild(this.topBarEl);
 		void this.renderTopBarContent();
@@ -1099,6 +1153,7 @@ export class ImmersiveModeManager {
 	}
 
 	private removeTopBar(): void {
+		this.closeTypewriterQuickModal();
 		if (this.updateInterval) {
 			window.clearInterval(this.updateInterval);
 			this.updateInterval = null;
@@ -1108,10 +1163,22 @@ export class ImmersiveModeManager {
 			this.topBarEl = null;
 		}
 		this.topBarStatsEls = {};
+		this.typewriterToggle = null;
+		this.typewriterGearBtn = null;
+		this.lastTypewriterEnabled = null;
 	}
 
 	private async renderTopBarContent(): Promise<void> {
 		if (!this.topBarEl) return;
+		const typewriterEnabled = !!this.plugin.settings.immersive.typewriterEnabled;
+		if (this.typewriterToggle && this.lastTypewriterEnabled !== typewriterEnabled) {
+			this.typewriterToggle.setValue(typewriterEnabled);
+			this.lastTypewriterEnabled = typewriterEnabled;
+		}
+		this.updateTypewriterGearVisibility();
+		if (!typewriterEnabled) {
+			this.closeTypewriterQuickModal();
+		}
 
 		this.checkPomodoroReminder();
 
@@ -1169,6 +1236,41 @@ export class ImmersiveModeManager {
 			updateStatEl('currentTime', showCurrentTime, showCurrentTime ? this.formatCurrentTime() : '');
 		} catch (e) {
 			Logger.error('[ImmersiveModeManager] renderTopBarContent failed:', e);
+		}
+	}
+
+	private updateTypewriterGearVisibility(): void {
+		if (!this.typewriterGearBtn) return;
+		const isEnabled = !!this.plugin.settings.immersive.typewriterEnabled;
+		if (isEnabled) {
+			this.typewriterGearBtn.classList.remove('is-hidden');
+		} else {
+			this.typewriterGearBtn.classList.add('is-hidden');
+		}
+	}
+
+	private openTypewriterQuickModal(): void {
+		if (!this.topBarEl || !this.plugin.settings.immersive.typewriterEnabled || this.activeTypewriterQuickModal) return;
+
+		const modal = new ImmersiveTypewriterQuickModal(this.app, this.plugin, {
+			onClose: () => {
+				if (this.activeTypewriterQuickModal === modal) {
+					this.activeTypewriterQuickModal = null;
+				}
+			}
+		});
+
+		this.activeTypewriterQuickModal = modal;
+		modal.open();
+	}
+
+	private closeTypewriterQuickModal(): void {
+		if (this.activeTypewriterQuickModal) {
+			const modal = this.activeTypewriterQuickModal;
+			this.activeTypewriterQuickModal = null;
+			try {
+				modal.close();
+			} catch { /* ignored */ }
 		}
 	}
 
@@ -1347,7 +1449,6 @@ export class ImmersiveModeManager {
 			cls: 'clickable-icon',
 			attr: {
 				'aria-label': t('immersive.search-reference-tooltip'),
-				title: t('immersive.search-reference-tooltip'),
 				type: 'button'
 			}
 		});
@@ -1504,7 +1605,14 @@ export class ImmersiveModeManager {
 	private saveCurrentPanelSizes(): void {
 		const immersive = this.plugin.settings.immersive;
 
-		const saveSize = (leaf: WorkspaceLeaf | null, direction: 'horizontal' | 'vertical', setter: (size: number) => void, internalSetter: (sizes: number[]) => void, slotCount: number) => {
+		const saveSize = (
+			leaf: WorkspaceLeaf | null,
+			direction: 'horizontal' | 'vertical',
+			setter: (size: number) => void,
+			internalSetter: (sizes: number[]) => void,
+			slotCount: number,
+			siblingRegion?: ImmersiveAuxiliaryRegion
+		) => {
 			if (leaf && leaf.containerEl && leaf.containerEl.offsetParent) {
 				const split = this.getParentSplit(leaf, direction);
 				if (split && split.direction === direction && split.containerEl && split.children) {
@@ -1513,7 +1621,16 @@ export class ImmersiveModeManager {
 						const child = split.children.find((c: WorkspaceItem) => c.containerEl && c.containerEl.contains(leaf.containerEl));
 						if (child) {
 							const size = direction === 'horizontal' ? child.containerEl!.offsetHeight : child.containerEl!.offsetWidth;
-							const pct = Math.round((size / totalSize) * 100);
+							const measuredPct = Math.round((size / totalSize) * 100);
+							let siblingCollapsedShare = 0;
+							if (siblingRegion && this.isRegionConfigured(siblingRegion) && !this.isRegionVisible(siblingRegion)) {
+								if (siblingRegion === 'top') siblingCollapsedShare = immersive.immersiveTopSize ?? 0;
+								else if (siblingRegion === 'bottom') siblingCollapsedShare = immersive.immersiveBottomSize ?? 0;
+								else if (siblingRegion === 'left') siblingCollapsedShare = immersive.immersiveLeftSize ?? 0;
+								else if (siblingRegion === 'right') siblingCollapsedShare = immersive.immersiveRightSize ?? 0;
+							}
+							const expandedFraction = Math.max(1, 100 - siblingCollapsedShare) / 100;
+							const pct = Math.round(measuredPct * expandedFraction);
 							if (pct > 0 && pct < 100) {
 								setter(pct);
 							}
@@ -1541,9 +1658,403 @@ export class ImmersiveModeManager {
 
 		this.updateLastReferenceFilePath();
 
-		saveSize(this.activeTopLeaf, 'horizontal', s => immersive.immersiveTopSize = s, s => immersive.immersiveTopInternalSizes = s, (immersive.immersiveTopSlots || []).length);
-		saveSize(this.activeBottomLeaf, 'horizontal', s => immersive.immersiveBottomSize = s, s => immersive.immersiveBottomInternalSizes = s, (immersive.immersiveBottomSlots || []).length);
-		saveSize(this.activeLeftLeaf, 'vertical', s => immersive.immersiveLeftSize = s, s => immersive.immersiveLeftInternalSizes = s, (immersive.immersiveLeftSlots || []).length);
-		saveSize(this.activeRightLeaf, 'vertical', s => immersive.immersiveRightSize = s, s => immersive.immersiveRightInternalSizes = s, (immersive.immersiveRightSlots || []).length);
+		saveSize(this.activeTopLeaf, 'horizontal', s => immersive.immersiveTopSize = s, s => immersive.immersiveTopInternalSizes = s, (immersive.immersiveTopSlots || []).length, 'bottom');
+		saveSize(this.activeBottomLeaf, 'horizontal', s => immersive.immersiveBottomSize = s, s => immersive.immersiveBottomInternalSizes = s, (immersive.immersiveBottomSlots || []).length, 'top');
+		saveSize(this.activeLeftLeaf, 'vertical', s => immersive.immersiveLeftSize = s, s => immersive.immersiveLeftInternalSizes = s, (immersive.immersiveLeftSlots || []).length, 'right');
+		saveSize(this.activeRightLeaf, 'vertical', s => immersive.immersiveRightSize = s, s => immersive.immersiveRightInternalSizes = s, (immersive.immersiveRightSlots || []).length, 'left');
+	}
+
+	/**
+	 * 检查当前是否允许切换辅助区域折叠/显示
+	 */
+	public canToggleAuxiliaryRegions(): boolean {
+		return (
+			this.isImmersiveActive &&
+			!this.isTransitioning &&
+			!this.isExiting &&
+			this.hasConfiguredAuxiliaryRegions()
+		);
+	}
+
+	/**
+	 * 检查是否配置了至少一个辅助区域插槽
+	 */
+	private hasConfiguredAuxiliaryRegions(): boolean {
+		const immersive = this.plugin.settings.immersive;
+		return (
+			(immersive.immersiveTopSlots?.length ?? 0) > 0 ||
+			(immersive.immersiveBottomSlots?.length ?? 0) > 0 ||
+			(immersive.immersiveLeftSlots?.length ?? 0) > 0 ||
+			(immersive.immersiveRightSlots?.length ?? 0) > 0
+		);
+	}
+
+	/**
+	 * 全局切换所有辅助区域的隐藏/恢复状态
+	 */
+	public async toggleAllAuxiliaryRegions(): Promise<void> {
+		if (!this.canToggleAuxiliaryRegions()) return;
+		const immersive = this.plugin.settings.immersive;
+		immersive.allRegionsHidden = !immersive.allRegionsHidden;
+		this.applyAuxiliaryRegionsVisibility();
+		try {
+			await this.plugin.saveSettings();
+		} catch (err) {
+			Logger.warn('[ImmersiveModeManager] 保存沉浸辅助区域隐藏状态失败:', err);
+		}
+	}
+
+	/**
+	 * 设置辅助区域折叠状态并保存
+	 */
+	private async setRegionCollapsedState(region: ImmersiveAuxiliaryRegion, targetCollapsed: boolean): Promise<void> {
+		if (!this.isImmersiveActive || this.isTransitioning || this.isExiting) return;
+		const collapsed = this.getCollapsedRegions();
+		if (collapsed[region] === targetCollapsed) return;
+		collapsed[region] = targetCollapsed;
+		this.applyAuxiliaryRegionsVisibility();
+		try {
+			await this.plugin.saveSettings();
+		} catch (err) {
+			Logger.warn(`[ImmersiveModeManager] 保存区域 ${region} 状态失败:`, err);
+		}
+	}
+
+	/**
+	 * 折叠指定辅助区域
+	 */
+	private async collapseRegion(region: ImmersiveAuxiliaryRegion): Promise<void> {
+		await this.setRegionCollapsedState(region, true);
+	}
+
+	/**
+	 * 展开指定辅助区域
+	 */
+	private async restoreRegion(region: ImmersiveAuxiliaryRegion): Promise<void> {
+		await this.setRegionCollapsedState(region, false);
+	}
+
+	private isRegionConfigured(region: ImmersiveAuxiliaryRegion): boolean {
+		const immersive = this.plugin.settings.immersive;
+		let slots: string[] = [];
+		if (region === 'top') slots = immersive.immersiveTopSlots;
+		else if (region === 'bottom') slots = immersive.immersiveBottomSlots;
+		else if (region === 'left') slots = immersive.immersiveLeftSlots;
+		else if (region === 'right') slots = immersive.immersiveRightSlots;
+		return (slots?.length ?? 0) > 0;
+	}
+
+	private isRegionVisible(region: ImmersiveAuxiliaryRegion): boolean {
+		if (!this.isRegionConfigured(region)) return false;
+		if (this.getAllRegionsHidden()) return false;
+		return !this.getCollapsedRegions()[region];
+	}
+
+	private getCollapsedRegions(): Record<ImmersiveAuxiliaryRegion, boolean> {
+		const s = this.plugin.settings.immersive;
+		if (!s.collapsedRegions) {
+			s.collapsedRegions = { top: false, bottom: false, left: false, right: false };
+		}
+		return s.collapsedRegions;
+	}
+
+	private getAllRegionsHidden(): boolean {
+		return !!this.plugin.settings.immersive?.allRegionsHidden;
+	}
+
+	private resolveRegionBranches(): void {
+		this.regionBranches.clear();
+		const resolve = (
+			region: ImmersiveAuxiliaryRegion,
+			firstLeaf: WorkspaceLeaf | null,
+			direction: 'horizontal' | 'vertical'
+		) => {
+			if (!firstLeaf || !this.isRegionConfigured(region)) return;
+			const parentSplit = this.getParentSplit(firstLeaf, direction);
+			if (!parentSplit || !parentSplit.children) return;
+
+			let current: WorkspaceItem | null = firstLeaf as unknown as WorkspaceItem;
+			while (current && current.parent && (current.parent as unknown as WorkspaceSplit) !== parentSplit) {
+				current = current.parent;
+			}
+			const branchItem = (current && (current.parent as unknown as WorkspaceSplit) === parentSplit && parentSplit.children.includes(current))
+				? current
+				: null;
+			if (!branchItem || !branchItem.containerEl) return;
+			this.regionBranches.set(region, { region, branchItem, parentSplit, firstLeaf });
+		};
+
+		resolve('top', this.activeTopLeaf, 'horizontal');
+		resolve('bottom', this.activeBottomLeaf, 'horizontal');
+		resolve('left', this.activeLeftLeaf, 'vertical');
+		resolve('right', this.activeRightLeaf, 'vertical');
+	}
+
+	private isItemInsideBranch(item: WorkspaceItem | WorkspaceLeaf | null | undefined, branchItem: WorkspaceItem): boolean {
+		if (!item) return false;
+		let current: WorkspaceItem | null = item as unknown as WorkspaceItem;
+		while (current) {
+			if (current === branchItem) return true;
+			if (!current.parent) break;
+			current = current.parent;
+		}
+		if (item.containerEl && branchItem.containerEl && branchItem.containerEl.contains(item.containerEl)) {
+			return true;
+		}
+		return false;
+	}
+
+	private getRegionResizeHandle(region: ImmersiveAuxiliaryRegion, branchEl: HTMLElement): HTMLElement | null {
+		let sibling: HTMLElement | null = null;
+		if (region === 'top' || region === 'left') {
+			sibling = branchEl.nextElementSibling as HTMLElement | null;
+		} else {
+			sibling = branchEl.previousElementSibling as HTMLElement | null;
+		}
+		if (sibling?.classList?.contains('workspace-leaf-resize-handle')) {
+			return sibling;
+		}
+		return null;
+	}
+
+	private applyAuxiliaryRegionsVisibility(): void {
+		const regions: ImmersiveAuxiliaryRegion[] = ['top', 'bottom', 'left', 'right'];
+		const mainLeaf = this.getMainEditorLeaf();
+		const isAllHidden = this.getAllRegionsHidden();
+		const collapsedMap = this.getCollapsedRegions();
+
+		let focusNeedsRestoration = false;
+		const activeEl = activeDocument.activeElement;
+		const activeLeaf = this.app.workspace.getActiveViewOfType(View)?.leaf;
+
+		// 1. 检查焦点是否在即将被折叠的区域内
+		for (const region of regions) {
+			const info = this.regionBranches.get(region);
+			if (!info?.branchItem.containerEl) continue;
+			const willBeVisible = this.isRegionVisible(region);
+			const disappearingButton = willBeVisible ? this.regionRestoreBtns.get(region) : this.regionCollapseBtns.get(region);
+			if (activeEl && disappearingButton?.contains(activeEl)) {
+				focusNeedsRestoration = true;
+			}
+			const isCurrentlyCollapsed = info.branchItem.containerEl.classList.contains('wn-immersive-region-collapsed');
+			if (!willBeVisible && !isCurrentlyCollapsed) {
+				const branchEl = info.branchItem.containerEl;
+				if (
+					(activeEl && branchEl.contains(activeEl)) ||
+					this.isItemInsideBranch(activeLeaf, info.branchItem) ||
+					this.isItemInsideBranch(this.searchSourceLeaf, info.branchItem)
+				) {
+					focusNeedsRestoration = true;
+				}
+			}
+		}
+
+		// 2. 更新各区域的 DOM 类名与控制手柄
+		for (const region of regions) {
+			const info = this.regionBranches.get(region);
+			if (!this.isRegionConfigured(region) || !info) {
+				const colBtn = this.regionCollapseBtns.get(region);
+				if (colBtn) {
+					colBtn.remove();
+					this.regionCollapseBtns.delete(region);
+				}
+				const resBtn = this.regionRestoreBtns.get(region);
+				if (resBtn) {
+					resBtn.remove();
+					this.regionRestoreBtns.delete(region);
+				}
+				continue;
+			}
+
+			const visible = this.isRegionVisible(region);
+			const branchEl = info.branchItem.containerEl;
+			if (!branchEl) continue;
+			const handle = this.getRegionResizeHandle(region, branchEl);
+
+			if (visible) {
+				branchEl.classList.remove('wn-immersive-region-collapsed');
+				if (handle) {
+					handle.classList.remove('wn-immersive-handle-hidden');
+				}
+				const resBtn = this.regionRestoreBtns.get(region);
+				if (resBtn) {
+					resBtn.remove();
+					this.regionRestoreBtns.delete(region);
+				}
+				if (mainLeaf?.containerEl) {
+					this.createRegionCollapseButton(region, mainLeaf.containerEl);
+				}
+			} else {
+				branchEl.classList.add('wn-immersive-region-collapsed');
+				if (handle) {
+					handle.classList.add('wn-immersive-handle-hidden');
+				}
+				const colBtn = this.regionCollapseBtns.get(region);
+				if (colBtn) {
+					colBtn.remove();
+					this.regionCollapseBtns.delete(region);
+				}
+				if (!isAllHidden && collapsedMap[region] && mainLeaf?.containerEl) {
+					this.createRegionRestoreButton(region, mainLeaf.containerEl);
+				} else {
+					const resBtn = this.regionRestoreBtns.get(region);
+					if (resBtn) {
+						resBtn.remove();
+						this.regionRestoreBtns.delete(region);
+					}
+				}
+			}
+		}
+
+		// 3. 焦点回退保护
+		if (focusNeedsRestoration && mainLeaf) {
+			this.restoreMainEditorFocus();
+			this.searchSourceLeaf = mainLeaf;
+		}
+
+		// 4. 规范化可见分屏比例（保持各轴内部比例与配置尺寸）
+		this.normalizeVisibleSplitProportions();
+
+		// 5. 触发工作区重排
+		const ws = this.app.workspace as unknown as { onResize?: () => void };
+		if (typeof ws.onResize === 'function') {
+			ws.onResize();
+		}
+	}
+
+	private normalizeVisibleSplitProportions(): void {
+		const immersive = this.plugin.settings.immersive;
+
+		// 水平切分轴（上下）
+		const infoTop = this.regionBranches.get('top');
+		const infoBottom = this.regionBranches.get('bottom');
+		const hSplit = infoTop?.parentSplit || infoBottom?.parentSplit;
+		if (hSplit?.children && hSplit.children.length > 0) {
+			const topItem = infoTop?.branchItem;
+			const bottomItem = infoBottom?.branchItem;
+			const centerItem = hSplit.children.find(c => c !== topItem && c !== bottomItem);
+
+			const topStored = immersive.immersiveTopSize ?? 20;
+			const bottomStored = immersive.immersiveBottomSize ?? 20;
+			const centerStored = 100 - (infoTop ? topStored : 0) - (infoBottom ? bottomStored : 0);
+
+			const topVis = this.isRegionVisible('top');
+			const bottomVis = this.isRegionVisible('bottom');
+			const totalVisible = (topVis ? topStored : 0) + centerStored + (bottomVis ? bottomStored : 0);
+
+			if (totalVisible > 0) {
+				if (topVis && topItem && typeof topItem.setDimension === 'function') {
+					topItem.setDimension((topStored / totalVisible) * 100);
+				}
+				if (centerItem && typeof centerItem.setDimension === 'function') {
+					centerItem.setDimension((centerStored / totalVisible) * 100);
+				}
+				if (bottomVis && bottomItem && typeof bottomItem.setDimension === 'function') {
+					bottomItem.setDimension((bottomStored / totalVisible) * 100);
+				}
+			}
+		}
+
+		// 垂直切分轴（左右）
+		const infoLeft = this.regionBranches.get('left');
+		const infoRight = this.regionBranches.get('right');
+		const vSplit = infoLeft?.parentSplit || infoRight?.parentSplit;
+		if (vSplit?.children && vSplit.children.length > 0) {
+			const leftItem = infoLeft?.branchItem;
+			const rightItem = infoRight?.branchItem;
+			const mainItem = vSplit.children.find(c => c !== leftItem && c !== rightItem);
+
+			const leftStored = immersive.immersiveLeftSize ?? 20;
+			const rightStored = immersive.immersiveRightSize ?? 20;
+			const mainStored = 100 - (infoLeft ? leftStored : 0) - (infoRight ? rightStored : 0);
+
+			const leftVis = this.isRegionVisible('left');
+			const rightVis = this.isRegionVisible('right');
+			const totalVisible = (leftVis ? leftStored : 0) + mainStored + (rightVis ? rightStored : 0);
+
+			if (totalVisible > 0) {
+				if (leftVis && leftItem && typeof leftItem.setDimension === 'function') {
+					leftItem.setDimension((leftStored / totalVisible) * 100);
+				}
+				if (mainItem && typeof mainItem.setDimension === 'function') {
+					mainItem.setDimension((mainStored / totalVisible) * 100);
+				}
+				if (rightVis && rightItem && typeof rightItem.setDimension === 'function') {
+					rightItem.setDimension((rightStored / totalVisible) * 100);
+				}
+			}
+		}
+	}
+
+	private createRegionCollapseButton(region: ImmersiveAuxiliaryRegion, mainEl: HTMLElement): void {
+		if (this.regionCollapseBtns.has(region)) return;
+		const icons: Record<ImmersiveAuxiliaryRegion, string> = {
+			top: 'chevron-up',
+			bottom: 'chevron-down',
+			left: 'chevron-left',
+			right: 'chevron-right'
+		};
+		const label = t(`immersive.collapse-${region}`);
+		const btn = mainEl.createEl('button', {
+			cls: `clickable-icon wn-immersive-collapse-btn wn-immersive-collapse-btn-${region}`,
+			type: 'button',
+			attr: {
+				'aria-label': label
+			}
+		});
+		setIcon(btn, icons[region]);
+		btn.addEventListener('click', (e) => {
+			e.stopPropagation();
+			void this.collapseRegion(region);
+		});
+		this.regionCollapseBtns.set(region, btn);
+	}
+
+	private createRegionRestoreButton(region: ImmersiveAuxiliaryRegion, mainEl: HTMLElement): void {
+		if (this.regionRestoreBtns.has(region)) return;
+		const icons: Record<ImmersiveAuxiliaryRegion, string> = {
+			top: 'chevron-down',
+			bottom: 'chevron-up',
+			left: 'chevron-right',
+			right: 'chevron-left'
+		};
+		const label = t(`immersive.restore-${region}`);
+		const btn = mainEl.createEl('button', {
+			cls: `clickable-icon wn-immersive-restore-btn wn-immersive-restore-btn-${region}`,
+			type: 'button',
+			attr: {
+				'aria-label': label
+			}
+		});
+		setIcon(btn, icons[region]);
+		btn.addEventListener('click', (e) => {
+			e.stopPropagation();
+			void this.restoreRegion(region);
+		});
+		this.regionRestoreBtns.set(region, btn);
+	}
+
+	private clearRegionControls(): void {
+		for (const btn of this.regionCollapseBtns.values()) {
+			btn.remove();
+		}
+		this.regionCollapseBtns.clear();
+
+		for (const btn of this.regionRestoreBtns.values()) {
+			btn.remove();
+		}
+		this.regionRestoreBtns.clear();
+
+		for (const info of this.regionBranches.values()) {
+			const el = info.branchItem.containerEl;
+			if (el) {
+				el.classList.remove('wn-immersive-region-collapsed');
+				const handle = this.getRegionResizeHandle(info.region, el);
+				if (handle) {
+					handle.classList.remove('wn-immersive-handle-hidden');
+				}
+			}
+		}
+		this.regionBranches.clear();
 	}
 }

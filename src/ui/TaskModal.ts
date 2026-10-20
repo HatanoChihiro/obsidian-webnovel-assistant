@@ -11,7 +11,6 @@ export type TaskAddModalManager = Pick<TaskManager, 'loadEntries' | 'getNextPeri
 
 export class TaskAddModal extends Modal {
 	private manager: TaskAddModalManager;
-	private defaultPeriod: number;
 	private defaultPlatform: string;
 	private onSubmit: (entry: TaskEntry) => Promise<void>;
 	private folderPath: string;
@@ -19,14 +18,13 @@ export class TaskAddModal extends Modal {
 	constructor(
 		app: App,
 		manager: TaskAddModalManager,
-		defaultPeriod: number,
+		_defaultPeriod: number,
 		defaultPlatform: string,
 		onSubmit: (entry: TaskEntry) => Promise<void>,
 		folderPath: string
 	) {
 		super(app);
 		this.manager = manager;
-		this.defaultPeriod = defaultPeriod;
 		this.defaultPlatform = defaultPlatform;
 		this.onSubmit = onSubmit;
 		this.folderPath = folderPath;

@@ -67,3 +67,88 @@ body.immersive-mode-active .workspace-leaf.mod-active.workspace-leaf .workspace-
 	border: 1px solid color-mix(in srgb, var(--interactive-accent) 80%, var(--background-modifier-border));
 	box-shadow: 0 0 0 1px color-mix(in srgb, var(--interactive-accent) 30%, transparent), 0 4px 15px color-mix(in srgb, var(--interactive-accent) 8%, rgba(0, 0, 0, 0.05));
 }
+
+
+/* Auxiliary region collapse state and hidden handles */
+
+body.immersive-mode-active .workspace-split.wn-immersive-region-collapsed,
+body.immersive-mode-active .workspace-leaf.wn-immersive-region-collapsed,
+body.immersive-mode-active .wn-immersive-region-collapsed,
+body.immersive-mode-active .workspace-leaf-resize-handle.wn-immersive-handle-hidden,
+body.immersive-mode-active .wn-immersive-region-collapsed + .workspace-leaf-resize-handle {
+	display: none;
+}
+
+/* Both states share the main editor edge, hit area and icon size. */
+
+body.immersive-mode-active .wn-immersive-collapse-btn,
+body.immersive-mode-active .wn-immersive-restore-btn {
+	position: absolute;
+	z-index: 20;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+	width: 28px;
+	min-width: 0;
+	height: 28px;
+	min-height: 0;
+	padding: 0;
+	border: 0;
+	border-radius: var(--radius-m);
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-muted);
+	cursor: pointer;
+	opacity: 0.65;
+	transition: opacity 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+body.immersive-mode-active .wn-immersive-collapse-btn:hover,
+body.immersive-mode-active .wn-immersive-restore-btn:hover,
+body.immersive-mode-active .wn-immersive-collapse-btn:focus-visible,
+body.immersive-mode-active .wn-immersive-restore-btn:focus-visible {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+	opacity: 1;
+}
+
+body.immersive-mode-active .wn-immersive-collapse-btn:focus-visible,
+body.immersive-mode-active .wn-immersive-restore-btn:focus-visible {
+	outline: 2px solid var(--background-modifier-border-focus);
+	outline-offset: -2px;
+}
+
+body.immersive-mode-active .wn-immersive-collapse-btn svg,
+body.immersive-mode-active .wn-immersive-restore-btn svg {
+	width: 14px;
+	height: 14px;
+}
+
+.wn-immersive-collapse-btn-top,
+.wn-immersive-restore-btn-top {
+	top: 0;
+	left: 50%;
+	transform: translateX(-50%);
+}
+
+.wn-immersive-collapse-btn-bottom,
+.wn-immersive-restore-btn-bottom {
+	bottom: 0;
+	left: 50%;
+	transform: translateX(-50%);
+}
+
+.wn-immersive-collapse-btn-left,
+.wn-immersive-restore-btn-left {
+	left: 0;
+	top: 50%;
+	transform: translateY(-50%);
+}
+
+.wn-immersive-collapse-btn-right,
+.wn-immersive-restore-btn-right {
+	right: 0;
+	top: 50%;
+	transform: translateY(-50%);
+}

@@ -1,8 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { CacheManager } from '../src/services/CacheManager';
 import { ChapterSorter } from '../src/services/ChapterSorter';
 import type { WebNovelAssistantPlugin } from '../src/types/plugin';
-import { TFile, TFolder } from 'obsidian';
+import { Platform, TFile, TFolder } from 'obsidian';
 
 type TestTFileConstructor = new (name: string, path: string) => TFile;
 type TestTFolderConstructor = new (name: string, path: string) => TFolder;
@@ -49,6 +49,7 @@ describe('CacheManager', () => {
             },
             loadData: vi.fn().mockResolvedValue(null),
             saveData: vi.fn().mockResolvedValue(undefined),
+            register: vi.fn(),
         } as unknown as WebNovelAssistantPlugin;
 
         manager = new CacheManager(mockPlugin);
@@ -456,6 +457,61 @@ describe('CacheManager', () => {
             expect(manager.isEligibleForChapterList(customDictFile)).toBe(true);
             expect(manager['_dictPathsCache']?.has('NewDictFolder')).toBe(true);
             expect(manager['_dictPathsCache']?.has('CustomDictFolder')).toBe(false);
+        });
+    });
+
+    describe('Mobile refresh cleanup registration', () => {
+        afterEach(() => {
+            Platform.isMobile = false;
+        });
+
+        it.each([1, 3])('bounds cleanup registration and clears pending mobile timers across %i schedule(s)', async (count) => {
+            Platform.isMobile = true;
+            expect(mockPlugin.register).toHaveBeenCalledTimes(1);
+            const [unloadCleanup] = (mockPlugin.register as ReturnType<typeof vi.fn>).mock.calls[0] as [() => void];
+
+            const refreshFolderCounts = vi.fn();
+            const refreshHomepageViews = vi.fn().mockResolvedValue(undefined);
+            const file = createTestFile('Chapter 1.md', 'Book 1/Chapter 1.md');
+            mockPlugin.settings.enableHomepage = true;
+            Object.assign(mockPlugin, {
+                fileExplorerPatcher: { refreshFolderCounts },
+                homepageManager: {
+                    refreshHomepageViews,
+                    getHomepageFilePath: vi.fn().mockReturnValue(null)
+                },
+                getTrackedMarkdownFiles: vi.fn().mockReturnValue([file]),
+                calculateAccurateWords: vi.fn().mockReturnValue(100),
+                saveSettings: vi.fn().mockResolvedValue(undefined)
+            });
+            manager['cache'].set(file.path, { path: file.path, wordCount: 100, lastModified: file.stat.mtime, isFolder: false });
+
+            for (let i = 0; i < count; i++) {
+                await manager.buildFolderCache();
+            }
+
+            // Repeated schedules do not grow registered cleanup count
+            expect(mockPlugin.register).toHaveBeenCalledTimes(1);
+            const pendingSet = manager['pendingMobileRefreshTimers'];
+            expect(pendingSet.size).toBe(count);
+            expect(refreshFolderCounts).not.toHaveBeenCalled();
+
+            // Exact one callback per schedule
+            vi.advanceTimersByTime(500);
+            expect(refreshFolderCounts).toHaveBeenCalledTimes(count);
+            expect(refreshHomepageViews).toHaveBeenCalledTimes(count);
+
+            // Completed timers leave no pending references
+            expect(pendingSet.size).toBe(0);
+
+            // Unload cancels outstanding callbacks
+            await manager.buildFolderCache();
+            expect(pendingSet.size).toBe(1);
+            unloadCleanup();
+            expect(pendingSet.size).toBe(0);
+            vi.advanceTimersByTime(500);
+            expect(refreshFolderCounts).toHaveBeenCalledTimes(count);
+            expect(refreshHomepageViews).toHaveBeenCalledTimes(count);
         });
     });
 });

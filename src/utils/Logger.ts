@@ -14,6 +14,12 @@ export class Logger {
 		this.plugin = plugin;
 	}
 
+	public static release(plugin: WebNovelAssistantPlugin): void {
+		if (this.plugin === plugin) {
+			this.plugin = null;
+		}
+	}
+
 	private static get isDebug(): boolean {
 		return this.plugin?.settings?.debugMode ?? false;
 	}

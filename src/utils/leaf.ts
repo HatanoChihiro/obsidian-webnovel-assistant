@@ -548,34 +548,6 @@ export function findMatchState(
 	return null;
 }
 
-/**
- * 构建符合 Obsidian 原生规范的 ephemeralState payload：
- * 命中时仅传递 cursor 与 match，不包含 line（避免触发整段整行背景闪烁）；
- * 未命中精准词句时，仅在调用方明确提供 fallbackLine 后降级为 line。
- */
-export function buildEphemeralState(
-	matchState: MatchState | null,
-	fallbackLine?: number,
-	content?: string
-): Record<string, unknown> | null {
-	if (matchState && content !== undefined) {
-		return {
-			cursor: {
-				from: matchState.matchStartLoc,
-				to: matchState.matchEndLoc
-			},
-			match: {
-				content: content,
-				matches: [[matchState.matchStartGlobal, matchState.matchEndGlobal]]
-			}
-		};
-	}
-	if (fallbackLine !== undefined && fallbackLine >= 0) {
-		return { line: fallbackLine };
-	}
-	return null;
-}
-
 const leafTimers = new WeakMap<WorkspaceLeaf, { timerId: number; win: Window }>();
 const leafHighlightTokens = new WeakMap<WorkspaceLeaf, number>();
 

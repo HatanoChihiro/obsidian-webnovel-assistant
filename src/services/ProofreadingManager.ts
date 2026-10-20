@@ -31,7 +31,7 @@ import { Logger } from '../utils/Logger';
 import { getPluginDir } from '../utils/platform';
 import { BASIC_DICT_CONFIG, DEDIDE_DICT_CONFIG, DEFAULT_PROOFREADING_SETTINGS } from '../constants';
 import { computeDiagnosticContextFingerprint, isDiagnosticIgnored, type IgnoredContextDetails } from '../utils/proofreadingHelpers';
-import { getLocale } from '../i18n';
+import { getLocale, t } from '../i18n';
 
 export const DICT_FOLDER_NAME = '校对词典';
 export const DICT_FOLDER_NAME_EN = 'Proofreading Dictionaries';
@@ -379,6 +379,17 @@ export class ProofreadingManager {
 	private cacheVersion = 0;
 	private debounceTimer: number | null = null;
 	private refreshListeners = new Set<(version: number) => void>();
+	private isDisposed = false;
+	private pendingJobs = new Set<Promise<unknown>>();
+	private reloadGeneration = 0;
+	private initializationPromise: Promise<void> | null = null;
+
+	private trackPendingJob<T>(promise: Promise<T>): Promise<T> {
+		this.pendingJobs.add(promise);
+		const remove = () => { this.pendingJobs.delete(promise); };
+		void promise.then(remove, remove);
+		return promise;
+	}
 
 	/** 基础错词库是否正在更新中（防重入锁） */
 	private isUpdatingDict = false;
@@ -426,6 +437,7 @@ export class ProofreadingManager {
 	 * 订阅词典缓存刷新事件（返回取消订阅函数）
 	 */
 	public onRefresh(listener: (version: number) => void): () => void {
+		if (this.isDisposed) return () => {};
 		this.refreshListeners.add(listener);
 		return () => {
 			this.refreshListeners.delete(listener);
@@ -440,6 +452,7 @@ export class ProofreadingManager {
 	}
 
 	public notifyRefresh(): void {
+		if (this.isDisposed) return;
 		this.cacheVersion++;
 		for (const listener of this.refreshListeners) {
 			try {
@@ -482,6 +495,7 @@ export class ProofreadingManager {
 	 * 同步设置中的已忽略词汇与上下文指纹至运行时内存 Set
 	 */
 	public syncIgnoredSets(): void {
+		if (this.isDisposed) return;
 		this.ignoredWordsSet.clear();
 		for (const w of this.plugin.settings.proofreading?.ignoredWords ?? []) {
 			if (w) this.ignoredWordsSet.add(w);
@@ -554,6 +568,11 @@ export class ProofreadingManager {
 	 * 将指定词汇加入全局忽略白名单（全书/全库永久生效）
 	 */
 	public async ignoreWord(word: string): Promise<void> {
+		if (this.isDisposed) return;
+		return this.trackPendingJob(this.executeIgnoreWord(word));
+	}
+
+	private async executeIgnoreWord(word: string): Promise<void> {
 		if (!word || word.trim() === '') return;
 		const cleanWord = word.trim();
 		if (!this.plugin.settings.proofreading) {
@@ -574,6 +593,11 @@ export class ProofreadingManager {
 	 * 从全局忽略白名单中移除词汇
 	 */
 	public async unignoreWord(word: string): Promise<void> {
+		if (this.isDisposed) return;
+		return this.trackPendingJob(this.executeUnignoreWord(word));
+	}
+
+	private async executeUnignoreWord(word: string): Promise<void> {
 		if (!this.plugin.settings.proofreading?.ignoredWords) return;
 		const idx = this.plugin.settings.proofreading.ignoredWords.indexOf(word);
 		if (idx !== -1) {
@@ -587,7 +611,12 @@ export class ProofreadingManager {
 	/**
 	 * 记录特定语境下的忽略实例（以指纹哈希为键，仅在该语境下生效）
 	 */
-	public async ignoreInstance(
+	public async ignoreInstance(fingerprint: string, original: string, contextSnippet: string, details?: { ruleId?: string; prefix?: string; suffix?: string }): Promise<void> {
+		if (this.isDisposed) return;
+		return this.trackPendingJob(this.executeIgnoreInstance(fingerprint, original, contextSnippet, details));
+	}
+
+	private async executeIgnoreInstance(
 		fingerprint: string,
 		original: string,
 		contextSnippet: string,
@@ -647,6 +676,11 @@ export class ProofreadingManager {
 	 * 移除单条特定上下文忽略记录（恢复该处的校对检测）
 	 */
 	public async unignoreInstance(fingerprint: string): Promise<void> {
+		if (this.isDisposed) return;
+		return this.trackPendingJob(this.executeUnignoreInstance(fingerprint));
+	}
+
+	private async executeUnignoreInstance(fingerprint: string): Promise<void> {
 		if (!this.plugin.settings.proofreading?.ignoredContexts) return;
 		if (this.plugin.settings.proofreading.ignoredContexts[fingerprint]) {
 			delete this.plugin.settings.proofreading.ignoredContexts[fingerprint];
@@ -660,6 +694,11 @@ export class ProofreadingManager {
 	 * 清空已忽略的内容
 	 */
 	public async clearIgnored(scope: 'all' | 'words' | 'contexts' = 'all'): Promise<void> {
+		if (this.isDisposed) return;
+		return this.trackPendingJob(this.executeClearIgnored(scope));
+	}
+
+	private async executeClearIgnored(scope: 'all' | 'words' | 'contexts' = 'all'): Promise<void> {
 		if (!this.plugin.settings.proofreading) return;
 		if (scope === 'all' || scope === 'words') {
 			this.plugin.settings.proofreading.ignoredWords = [];
@@ -676,13 +715,30 @@ export class ProofreadingManager {
 	 * 服务初始化：只读加载，启动绝不创建任何文件或文件夹
 	 */
 	public async initialize(): Promise<void> {
-		if (this.initialized) return;
+		if (this.isDisposed || this.initialized) return;
+		if (!this.initializationPromise) {
+			this.initializationPromise = this.trackPendingJob(this.executeInitialize());
+		}
+		try {
+			await this.initializationPromise;
+		} finally {
+			this.initializationPromise = null;
+		}
+	}
+
+	private async executeInitialize(): Promise<void> {
+		if (this.isDisposed || this.initialized) return;
 
 		this.syncIgnoredSets();
 		this.registerEvents();
 
 		if (this.plugin.settings.proofreading?.enabled) {
 			await this.loadDictionaries();
+		}
+
+		if (this.isDisposed) {
+			this.initialized = false;
+			return;
 		}
 
 		this.initialized = true;
@@ -692,6 +748,10 @@ export class ProofreadingManager {
 	 * 销毁服务：注销监听器并清空全部内存结构
 	 */
 	public async destroy(): Promise<void> {
+		this.isDisposed = true;
+		this.initialized = false;
+		this.reloadGeneration++;
+
 		for (const ref of this.eventRefs) {
 			this.app.vault.offref(ref);
 		}
@@ -703,6 +763,10 @@ export class ProofreadingManager {
 		}
 
 		this.refreshListeners.clear();
+
+		while (this.pendingJobs.size > 0) {
+			await Promise.allSettled(Array.from(this.pendingJobs));
+		}
 		this.acMatcher = null;
 		this.dictData = {
 			userWrongWords: new Map(),
@@ -734,6 +798,7 @@ export class ProofreadingManager {
 		this.cachedMaxPatternLength = 50;
 		this.ignoredWordsSet.clear();
 		this.ignoredContextsSet.clear();
+		this.ignoredContextEntriesByOriginal.clear();
 	}
 
 	/**
@@ -839,6 +904,11 @@ export class ProofreadingManager {
 	 * 保留已有文件，持久化实际 path；失败时不启用且不删除已创建内容。
 	 */
 	public async enable(): Promise<boolean> {
+		if (this.isDisposed) return false;
+		return this.trackPendingJob(this.executeEnable());
+	}
+
+	private async executeEnable(): Promise<boolean> {
 		const dictPath = this.resolveDictionaryPath();
 
 		try {
@@ -874,6 +944,12 @@ export class ProofreadingManager {
 	 * 显式禁用校对功能 API
 	 */
 	public async disable(): Promise<void> {
+		if (this.isDisposed) return;
+		return this.trackPendingJob(this.executeDisable());
+	}
+
+	private async executeDisable(): Promise<void> {
+		this.reloadGeneration++;
 		this.plugin.settings.proofreading.enabled = false;
 		await this.plugin.saveSettings();
 		this.acMatcher = null;
@@ -884,6 +960,11 @@ export class ProofreadingManager {
 	 * 显式补全缺失的模板文件
 	 */
 	public async regenerateMissingTemplates(specifiedDictPath?: string): Promise<void> {
+		if (this.isDisposed) return;
+		return this.trackPendingJob(this.executeRegenerateMissingTemplates(specifiedDictPath));
+	}
+
+	private async executeRegenerateMissingTemplates(specifiedDictPath?: string): Promise<void> {
 		const dictPath = this.resolveDictionaryPath(specifiedDictPath);
 
 		// 先成功创建/补齐目录和 3 个模板文件
@@ -912,6 +993,11 @@ export class ProofreadingManager {
 	 * 确保目录与 3 个模板文件存在，并持久化 dictionaryPath，但不更改 enabled 状态
 	 */
 	public async prepareDictionaryForEditing(): Promise<string> {
+		if (this.isDisposed) return '';
+		return this.trackPendingJob(this.executePrepareDictionaryForEditing());
+	}
+
+	private async executePrepareDictionaryForEditing(): Promise<string> {
 		const dictPath = this.resolveDictionaryPath();
 
 		// 先成功创建/补齐目录和 3 个模板文件
@@ -970,6 +1056,11 @@ export class ProofreadingManager {
 	 * 使用 app.fileManager.renameFile，同父 basename，校验非法名/冲突
 	 */
 	public async renameDictionaryFolder(newBasename: string): Promise<boolean> {
+		if (this.isDisposed) return false;
+		return this.trackPendingJob(this.executeRenameDictionaryFolder(newBasename));
+	}
+
+	private async executeRenameDictionaryFolder(newBasename: string): Promise<boolean> {
 		const currentPath = this.plugin.settings.proofreading.dictionaryPath;
 		if (!currentPath) return false;
 
@@ -1040,6 +1131,11 @@ export class ProofreadingManager {
 	 * 5. 迁移成功后更新 dictionaryPath、刷新排除缓存并重新加载词典。
 	 */
 	public async relocateDefaultDictionary(oldFirst: string, newFirst: string): Promise<boolean> {
+		if (this.isDisposed) return false;
+		return this.trackPendingJob(this.executeRelocateDefaultDictionary(oldFirst, newFirst));
+	}
+
+	private async executeRelocateDefaultDictionary(oldFirst: string, newFirst: string): Promise<boolean> {
 		const rawDictPath = this.plugin.settings.proofreading?.dictionaryPath;
 		if (!rawDictPath || rawDictPath.trim() === '') {
 			return false;
@@ -1101,18 +1197,22 @@ export class ProofreadingManager {
 	 * 注册 Vault 事件监听
 	 */
 	private registerEvents(): void {
+		if (this.isDisposed) return;
 		this.eventRefs.push(
 			this.app.vault.on('create', (file) => {
+				if (this.isDisposed) return;
 				if (this.isDictionaryFile(file) || (file instanceof TFolder && this.isFileInsideDictionary(file))) {
 					this.scheduleReload();
 				}
 			}),
 			this.app.vault.on('modify', (file) => {
+				if (this.isDisposed) return;
 				if (this.isDictionaryFile(file)) {
 					this.scheduleReload();
 				}
 			}),
 			this.app.vault.on('delete', (file) => {
+				if (this.isDisposed) return;
 				const currentDict = this.plugin.settings.proofreading?.dictionaryPath;
 				if (!currentDict) return;
 				const normalizedCurrent = normalizePath(currentDict);
@@ -1134,7 +1234,8 @@ export class ProofreadingManager {
 				}
 			}),
 			this.app.vault.on('rename', (file, oldPath) => {
-				void (async () => {
+				if (this.isDisposed) return;
+				void this.trackPendingJob((async () => {
 					const currentDict = this.plugin.settings.proofreading?.dictionaryPath;
 					if (!currentDict) return;
 					const normalizedCurrent = normalizePath(currentDict);
@@ -1169,18 +1270,21 @@ export class ProofreadingManager {
 							this.scheduleReload();
 						}
 					}
-				})();
+				})()).catch(error => Logger.error('[ProofreadingManager] 词典重命名处理失败:', error));
 			})
 		);
 	}
 
 	private scheduleReload(): void {
+		if (this.isDisposed) return;
 		if (this.debounceTimer !== null) {
 			window.clearTimeout(this.debounceTimer);
 		}
 		this.debounceTimer = window.setTimeout(() => {
 			this.debounceTimer = null;
-			void this.loadDictionaries();
+			if (!this.isDisposed) {
+				void this.loadDictionaries().catch(error => Logger.error('[ProofreadingManager] 词典重载失败:', error));
+			}
 		}, 200);
 	}
 
@@ -1218,6 +1322,7 @@ export class ProofreadingManager {
 	}
 
 	private async ensureTemplateFile(path: string, defaultContent: string): Promise<void> {
+		if (this.isDisposed) return;
 		const file = this.app.vault.getAbstractFileByPath(path);
 		if (!file) {
 			await this.app.vault.create(path, defaultContent);
@@ -1228,8 +1333,15 @@ export class ProofreadingManager {
 	 * 加载并解析所有词典文件（容错机制：格式错误或读取抛错时保留 last-known-good，文件确实缺失时视为空）
 	 */
 	public async loadDictionaries(): Promise<void> {
+		if (this.isDisposed) return;
+		return this.trackPendingJob(this.executeLoadDictionaries());
+	}
+
+	private async executeLoadDictionaries(): Promise<void> {
+		const currentGen = ++this.reloadGeneration;
+		if (this.isDisposed) return;
 		this.syncIgnoredSets();
-		const settings = this.plugin.settings.proofreading;
+		const settings = { ...this.plugin.settings.proofreading };
 		const dictPath = settings?.dictionaryPath;
 		const dictFilePaths = dictPath ? this.getResolvedDictFilePaths(dictPath) : null;
 
@@ -1237,16 +1349,21 @@ export class ProofreadingManager {
 		let nextUserWrongWords = new Map<string, WrongWordEntry>();
 		let nextSynonyms = new Map<string, { group: SynonymGroup; suggestions: string[] }>();
 		let nextSensitiveWords = new Map<string, SensitiveWordEntry>();
+		let nextBasicDictInfo = this.basicDictInfo;
+		let nextLkgUserWrongWords = this.lkgData.userWrongWords;
+		let nextLkgSynonyms = this.lkgData.synonyms;
+		let nextLkgSensitiveWords = this.lkgData.sensitiveWords;
 
 		// 1. 加载基础错词（优先本地 dict/ 缓存，无缓存时状态为 not_downloaded，0 条，绝不自动联网）
 		if (settings?.enableBuiltin !== false) {
 			const cached = await this.loadBasicWrongWordsCache();
+			if (this.isDisposed || currentGen !== this.reloadGeneration) return;
 			if (cached) {
 				nextBuiltinWords = cached.entries;
-				this.basicDictInfo = cached.info;
+				nextBasicDictInfo = cached.info;
 			} else {
 				nextBuiltinWords = new Map();
-				this.basicDictInfo = {
+				nextBasicDictInfo = {
 					source: 'not_downloaded',
 					version: '',
 					count: 0,
@@ -1259,17 +1376,20 @@ export class ProofreadingManager {
 
 		// 1.5. 加载 DeDiDe 词典（优先本地 dict/ 缓存，无词典时不可启用且 scanner 为 null，绝不自动联网）
 		const cachedDeDiDe = await this.loadDeDiDeLexiconCache();
+		if (this.isDisposed || currentGen !== this.reloadGeneration) return;
+		let nextDedideDictInfo: BasicDictInfo;
+		let nextDedideScanner: DeDiDeScanner | null;
 		if (cachedDeDiDe) {
-			this.dedideDictInfo = cachedDeDiDe.info;
-			this.dedideScanner = settings?.enableDeDiDe ? new DeDiDeScanner(cachedDeDiDe.lexicon) : null;
+			nextDedideDictInfo = cachedDeDiDe.info;
+			nextDedideScanner = settings?.enableDeDiDe ? new DeDiDeScanner(cachedDeDiDe.lexicon) : null;
 		} else {
-			this.dedideDictInfo = {
+			nextDedideDictInfo = {
 				source: 'not_downloaded',
 				version: '',
 				count: 0,
 				isLarge: false
 			};
-			this.dedideScanner = null;
+			nextDedideScanner = null;
 		}
 
 		// 2. 加载用户错词
@@ -1278,21 +1398,22 @@ export class ProofreadingManager {
 			if (!wrongFile) {
 				// 文件确实缺失：视为空
 				nextUserWrongWords = new Map();
-				this.lkgData.userWrongWords = new Map();
+				nextLkgUserWrongWords = new Map();
 			} else if (wrongFile instanceof TFile) {
 				try {
 					const content = await this.app.vault.read(wrongFile);
+					if (this.isDisposed || currentGen !== this.reloadGeneration) return;
 					const parseRes = parseWrongWordsTable(content);
 					if (parseRes.success) {
 						nextUserWrongWords = parseRes.data;
-						this.lkgData.userWrongWords = new Map(parseRes.data);
+						nextLkgUserWrongWords = new Map(parseRes.data);
 					} else {
 						Logger.warn('[ProofreadingManager] 错词词典解析失败，沿用 Last-Known-Good 缓存:', parseRes.reason);
-						nextUserWrongWords = new Map(this.lkgData.userWrongWords);
+						nextUserWrongWords = new Map(nextLkgUserWrongWords);
 					}
 				} catch (e) {
 					Logger.error('[ProofreadingManager] 读取错词文件失败，沿用 Last-Known-Good 缓存:', e);
-					nextUserWrongWords = new Map(this.lkgData.userWrongWords);
+					nextUserWrongWords = new Map(nextLkgUserWrongWords);
 				}
 			}
 		} else {
@@ -1304,21 +1425,22 @@ export class ProofreadingManager {
 			const synFile = this.app.vault.getAbstractFileByPath(dictFilePaths.synonymFilePath);
 			if (!synFile) {
 				nextSynonyms = new Map();
-				this.lkgData.synonyms = new Map();
+				nextLkgSynonyms = new Map();
 			} else if (synFile instanceof TFile) {
 				try {
 					const content = await this.app.vault.read(synFile);
+					if (this.isDisposed || currentGen !== this.reloadGeneration) return;
 					const parseRes = parseSynonymsTable(content);
 					if (parseRes.success) {
 						nextSynonyms = parseRes.data;
-						this.lkgData.synonyms = new Map(parseRes.data);
+						nextLkgSynonyms = new Map(parseRes.data);
 					} else {
 						Logger.warn('[ProofreadingManager] 近义词词典解析失败，沿用 Last-Known-Good 缓存:', parseRes.reason);
-						nextSynonyms = new Map(this.lkgData.synonyms);
+						nextSynonyms = new Map(nextLkgSynonyms);
 					}
 				} catch (e) {
 					Logger.error('[ProofreadingManager] 读取近义词文件失败，沿用 Last-Known-Good 缓存:', e);
-					nextSynonyms = new Map(this.lkgData.synonyms);
+					nextSynonyms = new Map(nextLkgSynonyms);
 				}
 			}
 		} else {
@@ -1330,27 +1452,40 @@ export class ProofreadingManager {
 			const senFile = this.app.vault.getAbstractFileByPath(dictFilePaths.sensitiveFilePath);
 			if (!senFile) {
 				nextSensitiveWords = new Map();
-				this.lkgData.sensitiveWords = new Map();
+				nextLkgSensitiveWords = new Map();
 			} else if (senFile instanceof TFile) {
 				try {
 					const content = await this.app.vault.read(senFile);
+					if (this.isDisposed || currentGen !== this.reloadGeneration) return;
 					const parseRes = parseSensitiveWordsTable(content);
 					if (parseRes.success) {
 						nextSensitiveWords = parseRes.data;
-						this.lkgData.sensitiveWords = new Map(parseRes.data);
+						nextLkgSensitiveWords = new Map(parseRes.data);
 					} else {
 						Logger.warn('[ProofreadingManager] 敏感词词典解析失败，沿用 Last-Known-Good 缓存:', parseRes.reason);
-						nextSensitiveWords = new Map(this.lkgData.sensitiveWords);
+						nextSensitiveWords = new Map(nextLkgSensitiveWords);
 					}
 				} catch (e) {
 					Logger.error('[ProofreadingManager] 读取敏感词文件失败，沿用 Last-Known-Good 缓存:', e);
-					nextSensitiveWords = new Map(this.lkgData.sensitiveWords);
+					nextSensitiveWords = new Map(nextLkgSensitiveWords);
 				}
 			}
 		} else {
 			nextSensitiveWords = new Map();
 		}
 
+		if (this.isDisposed || currentGen !== this.reloadGeneration) {
+			return;
+		}
+
+		this.basicDictInfo = nextBasicDictInfo;
+		this.dedideDictInfo = nextDedideDictInfo;
+		this.dedideScanner = nextDedideScanner;
+		this.lkgData = {
+			userWrongWords: nextLkgUserWrongWords,
+			synonyms: nextLkgSynonyms,
+			sensitiveWords: nextLkgSensitiveWords
+		};
 		this.dictData = {
 			builtinWrongWords: nextBuiltinWords,
 			userWrongWords: nextUserWrongWords,
@@ -1480,8 +1615,17 @@ export class ProofreadingManager {
 		keyWord: string,
 		rowData: string[]
 	): Promise<boolean> {
+		if (this.isDisposed) return false;
+		return this.trackPendingJob(this.executeUpdateTableEntry(fileType, keyWord, rowData));
+	}
+
+	private async executeUpdateTableEntry(
+		fileType: 'wrong' | 'synonym' | 'sensitive',
+		keyWord: string,
+		rowData: string[]
+	): Promise<boolean> {
 		const dictPath = this.plugin.settings.proofreading?.dictionaryPath;
-		if (!dictPath) return false;
+		if (!dictPath || this.isDisposed) return false;
 
 		const paths = this.getResolvedDictFilePaths(dictPath);
 		let targetFilePath = paths.wrongFilePath;
@@ -1501,7 +1645,7 @@ export class ProofreadingManager {
 			file = this.app.vault.getAbstractFileByPath(targetFilePath);
 		}
 
-		if (!(file instanceof TFile)) return false;
+		if (!(file instanceof TFile) || this.isDisposed) return false;
 
 		let writeSuccess = false;
 
@@ -1515,7 +1659,7 @@ export class ProofreadingManager {
 			return content;
 		});
 
-		if (writeSuccess) {
+		if (writeSuccess && !this.isDisposed) {
 			await this.loadDictionaries();
 		}
 
@@ -1600,7 +1744,9 @@ export class ProofreadingManager {
 				if (bakVal.valid && bakVal.data) {
 					Logger.info('[ProofreadingManager] 从备份文件恢复基础错词库缓存');
 					try {
+						if (this.isDisposed) return null;
 						await this.ensureDictDir();
+						if (this.isDisposed) return null;
 						await adapter.write(cachePath, bakContent);
 					} catch (writeErr) {
 						Logger.warn('[ProofreadingManager] 写回恢复的主缓存失败:', writeErr);
@@ -1641,6 +1787,17 @@ export class ProofreadingManager {
 	 * 7. 成功后无缝切换活动词典运行时并通知视图刷新。
 	 */
 	public async updateBasicDictionary(): Promise<DictUpdateResult> {
+		if (this.isDisposed) {
+			return {
+				status: 'failed',
+				failureReason: 'concurrent_error',
+				errorMessage: t('common.operation-failed')
+			};
+		}
+		return this.trackPendingJob(this.executeUpdateBasicDictionary());
+	}
+
+	private async executeUpdateBasicDictionary(): Promise<DictUpdateResult> {
 		if (this.isUpdatingDict) {
 			return {
 				status: 'failed',
@@ -1666,6 +1823,10 @@ export class ProofreadingManager {
 					failureReason: 'network_error',
 					errorMessage: netErr instanceof Error ? netErr.message : String(netErr)
 				};
+			}
+
+			if (this.isDisposed) {
+				return { status: 'failed', failureReason: 'concurrent_error', errorMessage: t('common.operation-failed') };
 			}
 
 			if (response.status !== 200) {
@@ -1782,6 +1943,14 @@ export class ProofreadingManager {
 				Logger.warn('[ProofreadingManager] 清理基础错词库临时文件失败:', cleanupError);
 			}
 
+			if (this.isDisposed) {
+				return {
+					status: 'failed',
+					failureReason: 'concurrent_error',
+					errorMessage: t('common.operation-failed')
+				};
+			}
+
 			// 7. 切换活动运行时
 			if (this.plugin.settings.proofreading?.enableBuiltin !== false) {
 				this.dictData.builtinWrongWords = candidateBuiltinMap;
@@ -1867,7 +2036,9 @@ export class ProofreadingManager {
 				if (bakVal.valid && bakVal.data) {
 					Logger.info('[ProofreadingManager] 从备份文件恢复DeDiDe词典缓存');
 					try {
+						if (this.isDisposed) return null;
 						await this.ensureDictDir();
+						if (this.isDisposed) return null;
 						await adapter.write(cachePath, bakContent);
 					} catch (writeErr) {
 						Logger.warn('[ProofreadingManager] 写回恢复的主缓存失败:', writeErr);
@@ -1892,6 +2063,17 @@ export class ProofreadingManager {
 	}
 
 	public async updateDeDiDeLexicon(): Promise<DictUpdateResult> {
+		if (this.isDisposed) {
+			return {
+				status: 'failed',
+				failureReason: 'concurrent_error',
+				errorMessage: t('common.operation-failed')
+			};
+		}
+		return this.trackPendingJob(this.executeUpdateDeDiDeLexicon());
+	}
+
+	private async executeUpdateDeDiDeLexicon(): Promise<DictUpdateResult> {
 		if (this.isUpdatingDeDiDe) {
 			return {
 				status: 'failed',
@@ -1916,6 +2098,10 @@ export class ProofreadingManager {
 					failureReason: 'network_error',
 					errorMessage: netErr instanceof Error ? netErr.message : String(netErr)
 				};
+			}
+
+			if (this.isDisposed) {
+				return { status: 'failed', failureReason: 'concurrent_error', errorMessage: t('common.operation-failed') };
 			}
 
 			if (response.status !== 200) {
@@ -2013,6 +2199,14 @@ export class ProofreadingManager {
 				}
 			} catch (cleanupError) {
 				Logger.warn('[ProofreadingManager] 清理DeDiDe词典临时文件失败:', cleanupError);
+			}
+
+			if (this.isDisposed) {
+				return {
+					status: 'failed',
+					failureReason: 'concurrent_error',
+					errorMessage: t('common.operation-failed')
+				};
 			}
 
 			this.dedideScanner = candidateScanner;

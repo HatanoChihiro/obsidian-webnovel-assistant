@@ -78,9 +78,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	lastTaskFolder: string = '';
 
 	lastEditTime: number = Date.now();
-	suspendTime: number = 0;
 	isUnloading: boolean = false;
-	private _loreCandidatesCache: Set<string> | null = null;
 
 	
 	get activeNotes(): FloatingStickyNote[] {
@@ -315,10 +313,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		// 如果处于沉浸模式，立即刷新便签列表视图
 		if (activeDocument.body.classList.contains('immersive-mode-active')) {
 			// 给一点额外时间让设置/文件持久化完成
-			const timer = window.setTimeout(() => {
-				this.stickyNoteManager?.refreshImmersiveNotes();
-			}, 200);
-			this.register(() => window.clearTimeout(timer));
+			this.stickyNoteManager?.scheduleRefresh();
 		}
 	}
 	
@@ -569,7 +564,6 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 
 
 	async saveSettings() {
-		this._loreCandidatesCache = null;
 		await this.settingsManager.saveSettings();
 	}
 

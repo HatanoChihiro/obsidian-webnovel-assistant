@@ -1487,50 +1487,6 @@ export class CharacterManager {
 	}
 
 	/**
-	 * 检查一个文件是否是设定文件，并加入缓存（支持多词条大纲模式与单文件词条模式）
-	 */
-	private async addFileToCacheIfValidInto(
-		file: TFile, 
-		targetCache: Map<string, Map<string, LoreEntry>>,
-		targetLowerMap: Map<string, Map<string, string>>
-	): Promise<void> {
-		const parentPath = file.parent?.path || '';
-
-		// Fast-Path 预判：若 parentPath 中不包含任何设定文件夹名候选词，立刻跳过后续递归路径计算
-		const candidates = this.getLoreCandidates();
-		let hasCandidate = false;
-		for (const candidate of candidates) {
-			if (parentPath.includes(candidate)) {
-				hasCandidate = true;
-				break;
-			}
-		}
-		if (!hasCandidate) return;
-
-		const bookPath = this.getBookPathForFile(file);
-		if (!bookPath) return;
-
-		if (this.isLorePath(bookPath, parentPath)) {
-			if (!targetCache.has(bookPath)) {
-				targetCache.set(bookPath, new Map());
-				targetLowerMap.set(bookPath, new Map());
-			}
-			
-			const bookCache = targetCache.get(bookPath)!;
-			const lowerMap = targetLowerMap.get(bookPath)!;
-			
-			const entries = await this.parseLoreFile(file);
-			for (const { key, entry } of entries) {
-				const cleanedKey = cleanLoreHeading(key);
-				if (cleanedKey) {
-					bookCache.set(cleanedKey, entry);
-					lowerMap.set(cleanedKey.toLowerCase(), cleanedKey);
-				}
-			}
-		}
-	}
-
-	/**
 	 * 递归获取书籍设定文件夹下的所有 Markdown 设定文件
 	 */
 	public getLoreFiles(bookPath: string): TFile[] {

@@ -39,7 +39,9 @@ export interface ChapterSplitOptions {
 		markHandledCreate(path: string): void;
 		recordChapterCreated(bookPath: string, path: string, title: string, source?: string): Promise<void>;
 	};
-	plugin?: CurrentBookContextPlugin;
+	plugin?: CurrentBookContextPlugin & {
+		cacheManager: { isEligibleForChapterList(file: TFile): boolean };
+	};
 }
 
 /**
@@ -319,7 +321,7 @@ export async function splitChapterAtCursor(options: ChapterSplitOptions): Promis
 		const folderPath = folder && !folder.isRoot() ? folder.path : '';
 		const suggestedFileName = ChapterSorter.getNextChapterName(initialFile.basename, siblingNames);
 		let targetBaseName = suggestedFileName
-			? (suggestedFileName.endsWith('.md') ? suggestedFileName.slice(0, -3) : suggestedFileName)
+			? (suggestedFileName.endsWith('.md') ? suggestedFileName.slice(0, -3) : suggestedFileName).trimEnd()
 			: '';
 
 		if (!targetBaseName) {
@@ -406,8 +408,8 @@ export async function splitChapterAtCursor(options: ChapterSplitOptions): Promis
 		try {
 			options.writingJourneyService?.markHandledCreate(targetPath);
 			newFile = await app.vault.create(targetPath, combined.content);
-			if (options.writingJourneyService) {
-				const bookRoot = options.plugin ? findBookRoot(app, options.plugin, newFile, true) : '';
+			if (options.writingJourneyService && options.plugin?.cacheManager.isEligibleForChapterList(newFile)) {
+				const bookRoot = findBookRoot(app, options.plugin, newFile, true);
 				if (bookRoot) {
 					try {
 						await options.writingJourneyService.recordChapterCreated(bookRoot, targetPath, targetBaseName, 'split');

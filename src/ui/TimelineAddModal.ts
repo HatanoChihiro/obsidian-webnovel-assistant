@@ -15,7 +15,6 @@ export class TimelineAddModal extends Modal {
 	private sourceFile: string;
 	private folderPath: string;
 	private onSubmit: (entry: TimelineEntry) => void;
-	private returnFullEntry: boolean; // true 时返回完整 TimelineEntry，false 时返回简化对象
 	private context: TimelineFormContext;
 	private typeOptions: string[];
 	private origin?: string;
@@ -28,7 +27,7 @@ export class TimelineAddModal extends Modal {
 		sourceFile: string,
 		folderPath: string,
 		onSubmit: (entry: TimelineEntry) => void,
-		returnFullEntry: boolean = true,
+		_returnFullEntry: boolean = true,
 		typeOptions: string[] = [],
 		origin?: string,
 		title?: string,
@@ -40,7 +39,6 @@ export class TimelineAddModal extends Modal {
 		this.sourceFile = sourceFile;
 		this.folderPath = folderPath;
 		this.onSubmit = onSubmit;
-		this.returnFullEntry = returnFullEntry;
 		this.typeOptions = typeOptions;
 		this.origin = origin;
 		this.title = title || t('modal.add-to-timeline');

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { TFile, type App, type WorkspaceLeaf, type WorkspaceSplit, type MarkdownView } from 'obsidian';
+import { TFile, type App, type WorkspaceLeaf, type WorkspaceSplit, type WorkspaceItem, type MarkdownView } from 'obsidian';
 import { ImmersiveModeManager, type ImmersiveModeManagerPlugin } from '../src/ui/ImmersiveModeManager';
 import { ImmersiveReferenceManager } from '../src/services/ImmersiveReferenceManager';
 import { ImmersivePomodoroModal } from '../src/ui/ImmersivePomodoroModal';
@@ -40,10 +40,12 @@ vi.mock('obsidian', () => {
 	};
     class MockModal {
 		app: unknown;
+		containerEl: MockElement;
 		contentEl: MockElement;
 		modalEl: MockElement;
 		constructor(app: unknown) {
             this.app = app;
+            this.containerEl = createMockElement();
             this.contentEl = createMockElement();
             this.modalEl = createMockElement();
         }
@@ -63,6 +65,16 @@ vi.mock('obsidian', () => {
         setName() { return this; }
         setDesc() { return this; }
         setHeading() { return this; }
+		addSlider(cb: (slider: Record<'setLimits' | 'setValue' | 'setDynamicTooltip' | 'onChange', ReturnType<typeof vi.fn>>) => unknown) {
+			const slider = {
+				setLimits: vi.fn().mockReturnThis(),
+				setValue: vi.fn().mockReturnThis(),
+				setDynamicTooltip: vi.fn().mockReturnThis(),
+				onChange: vi.fn().mockReturnThis()
+			};
+			cb(slider);
+			return this;
+		}
 		addButton(cb: (button: MockButton) => unknown) {
 			const btn: MockButton = {
                 setButtonText: vi.fn().mockReturnThis(),
@@ -81,15 +93,19 @@ vi.mock('obsidian', () => {
 		Notice: vi.fn(),
 		setIcon: vi.fn(),
 		MarkdownView: class {},
+        View: class {},
 		TFile: class {},
         TFolder: class {},
         Modal: MockModal,
         FuzzySuggestModal: MockModal,
         Setting: MockSetting,
         ToggleComponent: class {
-            setValue() { return this; }
+            _value = false;
+            _onChange?: (v: boolean) => Promise<void> | void;
+            setValue(v: boolean) { this._value = v; return this; }
+            getValue() { return this._value; }
             setTooltip() { return this; }
-            onChange() { return this; }
+            onChange(cb: (v: boolean) => Promise<void> | void) { this._onChange = cb; return this; }
         }
     };
 });
@@ -1807,4 +1823,945 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
             expect(manager['refToolbarCleanups'].size).toBe(0);
         });
     });
+
+    describe('ImmersiveModeManager - Typewriter Settings Gear & Quick Modal', () => {
+        type GearEvent = { stopPropagation: () => void };
+        type GearElement = {
+            className: string;
+            type?: string;
+            innerText: string;
+            ownerDocument: Document;
+            style: Record<string, unknown>;
+            classList: {
+                add: (name: string) => void;
+                remove: (name: string) => void;
+                contains: (name: string) => boolean;
+            };
+            setCssProps: ReturnType<typeof vi.fn>;
+            show: ReturnType<typeof vi.fn>;
+            hide: ReturnType<typeof vi.fn>;
+            isShown: ReturnType<typeof vi.fn>;
+            empty: ReturnType<typeof vi.fn>;
+            remove: ReturnType<typeof vi.fn>;
+            addEventListener: ReturnType<typeof vi.fn>;
+            removeEventListener: ReturnType<typeof vi.fn>;
+            appendChild: ReturnType<typeof vi.fn>;
+            setAttribute: ReturnType<typeof vi.fn>;
+            getAttribute: ReturnType<typeof vi.fn>;
+            trigger: (event: string, value?: GearEvent) => void;
+            createDiv: ReturnType<typeof vi.fn>;
+            createSpan: ReturnType<typeof vi.fn>;
+            createEl: ReturnType<typeof vi.fn>;
+        };
+        type GearToggle = { _onChange?: (value: boolean) => Promise<void> | void };
+        let mockPlugin: ImmersiveModeManagerPlugin;
+        let manager: ImmersiveModeManager;
+        let mockActiveDocument: {
+            body: GearElement;
+            documentElement: { requestFullscreen: ReturnType<typeof vi.fn> };
+        };
+
+        beforeEach(() => {
+            const createMockDOMElement = (cls = ''): GearElement => {
+                let isVisible = true;
+                let text = '';
+                const attrs: Record<string, string> = {};
+                const listeners: Record<string, Array<(event: GearEvent) => void>> = {};
+                const element: GearElement = {
+                    className: cls,
+                    innerText: '',
+                    ownerDocument: mockActiveDocument as unknown as Document,
+                    style: {},
+                    classList: {
+                        add: vi.fn((c: string) => { if (!element.className.includes(c)) element.className += ' ' + c; }),
+                        remove: vi.fn((c: string) => { element.className = element.className.replace(c, '').trim(); }),
+                        contains: vi.fn((c: string) => element.className.includes(c))
+                    },
+                    setCssProps: vi.fn(),
+                    show: vi.fn(() => { isVisible = true; }),
+                    hide: vi.fn(() => { isVisible = false; }),
+                    isShown: vi.fn(() => isVisible),
+                    empty: vi.fn(),
+                    remove: vi.fn(),
+                    addEventListener: vi.fn((evt: string, fn: (event: GearEvent) => void) => {
+                        listeners[evt] = listeners[evt] || [];
+                        listeners[evt].push(fn);
+                    }),
+                    removeEventListener: vi.fn(),
+                    appendChild: vi.fn(),
+                    setAttribute: vi.fn((k: string, v: string) => { attrs[k] = v; }),
+                    getAttribute: vi.fn((k: string) => attrs[k]),
+                    trigger: (evt: string, e?: GearEvent) => {
+                        (listeners[evt] || []).forEach(fn => fn(e || { stopPropagation: vi.fn() }));
+                    },
+                    createDiv: vi.fn((opts?: { cls?: string }) => createMockDOMElement(opts?.cls || '')),
+                    createSpan: vi.fn((opts?: { cls?: string; text?: string }) => {
+                        const span = createMockDOMElement(opts?.cls || '');
+                        if (opts?.text) span.innerText = opts.text;
+                        return span;
+                    }),
+                    createEl: vi.fn((_tag: string, opts?: { cls?: string; type?: string; attr?: Record<string, string> }) => {
+                        const el = createMockDOMElement(opts?.cls || '');
+                        if (opts?.type) el.type = opts.type;
+                        if (opts?.attr) {
+                            for (const [name, value] of Object.entries(opts.attr)) el.setAttribute(name, value);
+                        }
+                        return el;
+                    })
+                };
+                Object.defineProperty(element, 'innerText', {
+                    get: () => text,
+                    set: (val: string) => { text = val; }
+                });
+                return element;
+            };
+
+            const domGlobals = globalThis as unknown as {
+                createDiv: (opts?: { cls?: string }) => GearElement;
+                createSpan: (opts?: { cls?: string }) => GearElement;
+            };
+            domGlobals.createDiv = (opts) => createMockDOMElement(opts?.cls || '');
+            domGlobals.createSpan = (opts) => createMockDOMElement(opts?.cls || '');
+
+            mockActiveDocument = {
+                body: createMockDOMElement('body'),
+                documentElement: { requestFullscreen: vi.fn().mockResolvedValue(undefined) }
+            };
+            Object.assign(globalThis, { activeDocument: mockActiveDocument });
+
+            mockPlugin = {
+                app: {
+                    workspace: {
+                        getActiveViewOfType: vi.fn(),
+                        getLeavesOfType: vi.fn().mockReturnValue([]),
+                        updateOptions: vi.fn(),
+                        on: vi.fn().mockReturnValue({}),
+                        off: vi.fn()
+                    },
+                    vault: {
+                        getMarkdownFiles: vi.fn().mockReturnValue([])
+                    }
+                },
+                settings: {
+                    immersive: {
+                        typewriterEnabled: false,
+                        typewriterCenterOffset: 0,
+                        typewriterUnfocusedOpacity: 0.4
+                    }
+                },
+                statisticsManager: {
+                    getCoreStats: vi.fn().mockReturnValue({
+                        totalTime: '00:00',
+                        focusTime: '00:00',
+                        slackTime: '00:00',
+                        todayWords: 0,
+                        goal: 1000,
+                        dailyWords: 0,
+                        dailyGoal: 2000,
+                        sessionWords: 0
+                    })
+                },
+                saveSettings: vi.fn().mockResolvedValue(undefined)
+            } as unknown as ImmersiveModeManagerPlugin;
+
+            manager = new ImmersiveModeManager(mockPlugin.app, mockPlugin);
+        });
+
+        afterEach(() => {
+            manager.cleanup();
+            vi.clearAllMocks();
+        });
+
+        it('creates typewriter toggle and settings gear button with is-hidden when initially disabled', () => {
+            mockPlugin.settings.immersive.typewriterEnabled = false;
+            manager['createTopBar']();
+
+            const gearBtn = manager['typewriterGearBtn'] as unknown as GearElement;
+            expect(gearBtn).toBeDefined();
+            expect(gearBtn.type).toBe('button');
+            expect(gearBtn.classList.contains('is-hidden')).toBe(true);
+            expect(gearBtn.getAttribute('aria-label')).toBeDefined();
+            expect(gearBtn.getAttribute('title')).toBeUndefined();
+        });
+
+        it('shows settings gear button without is-hidden when initially enabled', () => {
+            mockPlugin.settings.immersive.typewriterEnabled = true;
+            manager['createTopBar']();
+
+            const gearBtn = manager['typewriterGearBtn'] as unknown as GearElement;
+            expect(gearBtn).toBeDefined();
+            expect(gearBtn.classList.contains('is-hidden')).toBe(false);
+        });
+
+        it('immediately updates gear visibility and closes quick modal when typewriter is toggled', async () => {
+            mockPlugin.settings.immersive.typewriterEnabled = false;
+            manager['createTopBar']();
+
+            const gearBtn = manager['typewriterGearBtn'] as unknown as GearElement;
+            const toggle = manager['typewriterToggle'] as unknown as GearToggle;
+            expect(toggle).toBeDefined();
+            expect(gearBtn.classList.contains('is-hidden')).toBe(true);
+
+            // Toggle ON
+            let finishSave!: () => void;
+            (mockPlugin.saveSettings as ReturnType<typeof vi.fn>).mockReturnValueOnce(new Promise<void>(resolve => { finishSave = resolve; }));
+            const enabling = toggle._onChange?.(true);
+            expect(gearBtn.classList.contains('is-hidden')).toBe(false);
+            finishSave();
+            await enabling;
+            expect(mockPlugin.settings.immersive.typewriterEnabled).toBe(true);
+            expect(gearBtn.classList.contains('is-hidden')).toBe(false);
+            expect(mockPlugin.app.workspace.updateOptions).toHaveBeenCalled();
+
+            // Open modal
+            gearBtn.trigger('click');
+            expect(manager['activeTypewriterQuickModal']).toBeDefined();
+
+            // Toggle OFF -> immediately hides gear and closes active modal
+            await toggle._onChange?.(false);
+            expect(mockPlugin.settings.immersive.typewriterEnabled).toBe(false);
+            expect(gearBtn.classList.contains('is-hidden')).toBe(true);
+            expect(manager['activeTypewriterQuickModal']).toBeNull();
+        });
+
+        it('caches single modal reference and prevents duplicate panels', () => {
+            mockPlugin.settings.immersive.typewriterEnabled = true;
+            manager['createTopBar']();
+
+            const gearBtn = manager['typewriterGearBtn'] as unknown as GearElement;
+            gearBtn.trigger('click');
+            const firstModal = manager['activeTypewriterQuickModal'];
+            expect(firstModal).toBeDefined();
+
+            // Clicking again while open should NOT create new modal
+            gearBtn.trigger('click');
+            expect(manager['activeTypewriterQuickModal']).toBe(firstModal);
+
+            // Closing modal releases reference
+            firstModal?.close();
+            expect(manager['activeTypewriterQuickModal']).toBeNull();
+        });
+
+        it('syncs toggle and gear visibility from external settings in renderTopBarContent', async () => {
+            mockPlugin.settings.immersive.typewriterEnabled = false;
+            manager['createTopBar']();
+            const gearBtn = manager['typewriterGearBtn'] as unknown as GearElement;
+            expect(gearBtn.classList.contains('is-hidden')).toBe(true);
+
+            // External change: user enabled typewriter in SettingsTab
+            mockPlugin.settings.immersive.typewriterEnabled = true;
+            await manager['renderTopBarContent']();
+
+            expect(gearBtn.classList.contains('is-hidden')).toBe(false);
+            expect(manager['typewriterToggle']?.getValue?.()).toBe(true);
+
+            // Open modal
+            gearBtn.trigger('click');
+            expect(manager['activeTypewriterQuickModal']).toBeDefined();
+
+            // External change: user disabled typewriter in SettingsTab
+            mockPlugin.settings.immersive.typewriterEnabled = false;
+            await manager['renderTopBarContent']();
+
+            expect(gearBtn.classList.contains('is-hidden')).toBe(true);
+            expect(manager['activeTypewriterQuickModal']).toBeNull();
+        });
+
+        it('closes quick modal and clears references on removeTopBar and cleanup', () => {
+            mockPlugin.settings.immersive.typewriterEnabled = true;
+            manager['createTopBar']();
+
+            const gearBtn = manager['typewriterGearBtn'] as unknown as GearElement;
+            gearBtn.trigger('click');
+            const modal = manager['activeTypewriterQuickModal'];
+            expect(modal).toBeDefined();
+
+            const closeSpy = vi.spyOn(modal!, 'close');
+            manager.cleanup();
+
+            expect(closeSpy).toHaveBeenCalled();
+            expect(manager['activeTypewriterQuickModal']).toBeNull();
+            expect(manager['typewriterGearBtn']).toBeNull();
+            expect(manager['typewriterToggle']).toBeNull();
+        });
+    });
+});
+
+describe('ImmersiveModeManager - Auxiliary Regions Collapse and Global Toggle', () => {
+    type MockAuxElement = {
+        className: string;
+        innerText: string;
+        type?: string;
+        style: Record<string, string>;
+        ownerDocument: Document;
+        parentElement: MockAuxElement | null;
+        children: MockAuxElement[];
+        nextElementSibling: MockAuxElement | null;
+        previousElementSibling: MockAuxElement | null;
+        offsetParent: MockAuxElement | null;
+        offsetWidth: number;
+        offsetHeight: number;
+        classList: {
+            add: (c: string) => void;
+            remove: (c: string) => void;
+            contains: (c: string) => boolean;
+        };
+        setAttribute: (k: string, v: string) => void;
+        getAttribute: (k: string) => string | undefined;
+        addEventListener: (evt: string, fn: (e: { stopPropagation: () => void }) => void) => void;
+        removeEventListener: (evt: string, fn: (e: { stopPropagation: () => void }) => void) => void;
+        trigger: (evt: string) => void;
+        createDiv: (opts?: { cls?: string }) => MockAuxElement;
+        createSpan: (opts?: { cls?: string }) => MockAuxElement;
+        createEl: (tag: string, opts?: { cls?: string; type?: string; attr?: Record<string, string> }) => MockAuxElement;
+        appendChild: (child: MockAuxElement) => MockAuxElement;
+        remove: () => void;
+        contains: (other: unknown) => boolean;
+        setCssProps: (props: Record<string, string>) => void;
+    };
+
+    const createAuxElement = (cls = ''): MockAuxElement => {
+        const attrs: Record<string, string> = {};
+        const listeners: Record<string, Array<(e: { stopPropagation: () => void }) => void>> = {};
+        const classes = new Set(cls.split(/\s+/).filter(Boolean));
+
+        const element: MockAuxElement = {
+            className: cls,
+            innerText: '',
+            style: {},
+            ownerDocument: null as unknown as Document,
+            parentElement: null,
+            children: [],
+            nextElementSibling: null,
+            previousElementSibling: null,
+            offsetParent: null,
+            offsetWidth: 100,
+            offsetHeight: 100,
+            classList: {
+                add: vi.fn((c: string) => {
+                    classes.add(c);
+                    element.className = Array.from(classes).join(' ');
+                }),
+                remove: vi.fn((c: string) => {
+                    classes.delete(c);
+                    element.className = Array.from(classes).join(' ');
+                }),
+                contains: vi.fn((c: string) => classes.has(c))
+            },
+            setAttribute: vi.fn((k: string, v: string) => { attrs[k] = v; }),
+            getAttribute: vi.fn((k: string) => attrs[k]),
+            addEventListener: vi.fn((evt: string, fn: (e: { stopPropagation: () => void }) => void) => {
+                listeners[evt] = listeners[evt] || [];
+                listeners[evt].push(fn);
+            }),
+            removeEventListener: vi.fn((evt: string, fn: (e: { stopPropagation: () => void }) => void) => {
+                if (listeners[evt]) {
+                    listeners[evt] = listeners[evt].filter(f => f !== fn);
+                }
+            }),
+            trigger: (evt: string) => {
+                (listeners[evt] || []).forEach(fn => fn({ stopPropagation: vi.fn() }));
+            },
+            createDiv: vi.fn((opts?: { cls?: string }) => {
+                const child = createAuxElement(opts?.cls || '');
+                element.appendChild(child);
+                return child;
+            }),
+            createSpan: vi.fn((opts?: { cls?: string }) => {
+                const child = createAuxElement(opts?.cls || '');
+                element.appendChild(child);
+                return child;
+            }),
+            createEl: vi.fn((tag: string, opts?: { cls?: string; type?: string; attr?: Record<string, string> }) => {
+                const child = createAuxElement(opts?.cls || '');
+                if (opts?.type) child.type = opts.type;
+                if (opts?.attr) {
+                    for (const [k, v] of Object.entries(opts.attr)) child.setAttribute(k, v);
+                }
+                element.appendChild(child);
+                return child;
+            }),
+            appendChild: vi.fn((child: MockAuxElement) => {
+                if (element.children.length > 0) {
+                    const last = element.children[element.children.length - 1];
+                    last.nextElementSibling = child;
+                    child.previousElementSibling = last;
+                }
+                child.parentElement = element;
+                child.ownerDocument = element.ownerDocument;
+                element.children.push(child);
+                return child;
+            }),
+            remove: vi.fn(() => {
+                if (element.parentElement) {
+                    const siblings = element.parentElement.children;
+                    const idx = siblings.indexOf(element);
+                    if (idx !== -1) siblings.splice(idx, 1);
+                    if (element.previousElementSibling) element.previousElementSibling.nextElementSibling = element.nextElementSibling;
+                    if (element.nextElementSibling) element.nextElementSibling.previousElementSibling = element.previousElementSibling;
+                    element.parentElement = null;
+                }
+            }),
+            contains: vi.fn((other: unknown): boolean => {
+                if (other === element) return true;
+                return element.children.some(c => c.contains(other));
+            }),
+            setCssProps: vi.fn()
+        };
+        element.offsetParent = element;
+        return element;
+    };
+
+    let mockPlugin: ImmersiveModeManagerPlugin;
+    let manager: ImmersiveModeManager;
+    let mockDoc: {
+        body: MockAuxElement;
+        documentElement: { requestFullscreen: ReturnType<typeof vi.fn> };
+        activeElement: MockAuxElement | null;
+        fullscreenElement: null;
+        addEventListener: ReturnType<typeof vi.fn>;
+        removeEventListener: ReturnType<typeof vi.fn>;
+    };
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mockDoc = {
+            body: createAuxElement('body'),
+            documentElement: { requestFullscreen: vi.fn().mockResolvedValue(undefined) },
+            activeElement: null,
+            fullscreenElement: null,
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn()
+        };
+        mockDoc.body.ownerDocument = mockDoc as unknown as Document;
+        (globalThis as unknown as { activeDocument: unknown }).activeDocument = mockDoc;
+        (globalThis as unknown as { activeWindow: unknown }).activeWindow = { innerWidth: 1200 };
+
+        mockPlugin = {
+            app: {
+                workspace: {
+                    getActiveViewOfType: vi.fn(),
+                    getLeavesOfType: vi.fn().mockReturnValue([]),
+                    iterateRootLeaves: vi.fn(),
+                    createLeafBySplit: vi.fn(),
+                    getLeaf: vi.fn(),
+                    setActiveLeaf: vi.fn(),
+                    updateOptions: vi.fn(),
+                    onResize: vi.fn(),
+                    on: vi.fn().mockReturnValue({ id: 'ref' }),
+                    offref: vi.fn(),
+                    trigger: vi.fn()
+                },
+                vault: {
+                    getName: vi.fn().mockReturnValue('Vault'),
+                    getAbstractFileByPath: vi.fn().mockReturnValue(null),
+                    cachedRead: vi.fn().mockResolvedValue('')
+                },
+                commands: { executeCommandById: vi.fn() }
+            },
+            settings: {
+                immersive: {
+                    immersiveTopSlots: ['sticky-note', 'foreshadowing', 'timeline'],
+                    immersiveBottomSlots: [],
+                    immersiveLeftSlots: ['chapter-list'],
+                    immersiveRightSlots: ['reference-view'],
+                    immersiveTopSize: 20,
+                    immersiveBottomSize: 20,
+                    immersiveLeftSize: 25,
+                    immersiveRightSize: 25,
+                    immersiveTopInternalSizes: [],
+                    immersiveBottomInternalSizes: [],
+                    immersiveLeftInternalSizes: [],
+                    immersiveRightInternalSizes: [],
+                    collapsedRegions: { top: false, bottom: false, left: false, right: false },
+                    allRegionsHidden: false,
+                    immersiveHideProperties: false,
+                    typewriterEnabled: false,
+                    immersiveShowCurrentTime: false,
+                    pomodoroEnabled: false,
+                    pomodoroInterval: 30
+                }
+            },
+            stickyNoteManager: {
+                syncActiveNotesToManager: vi.fn(),
+                getNotes: vi.fn().mockReturnValue([]),
+                saveNotes: vi.fn().mockResolvedValue(undefined),
+                syncFloatingNotes: vi.fn()
+            },
+            statisticsManager: {
+                getCoreStats: vi.fn().mockReturnValue({
+                    totalTime: '01:00',
+                    focusTime: '00:50',
+                    slackTime: '00:10',
+                    todayWords: 100,
+                    goal: 1000,
+                    dailyWords: 500,
+                    dailyGoal: 2000,
+                    sessionWords: 50
+                })
+            },
+            adaptiveDebounceManager: { debounceFixed: vi.fn() },
+            settingsManager: { flush: vi.fn().mockResolvedValue(undefined) },
+            startTracking: vi.fn(),
+            stopTracking: vi.fn(),
+            saveSettings: vi.fn().mockResolvedValue(undefined)
+        } as unknown as ImmersiveModeManagerPlugin;
+
+        mockPlugin.immersiveReferenceManager = new ImmersiveReferenceManager(mockPlugin.app, mockPlugin);
+        manager = new ImmersiveModeManager(mockPlugin.app, mockPlugin);
+    });
+
+    afterEach(() => {
+        manager.cleanup();
+    });
+
+    it('canToggleAuxiliaryRegions requires active immersive session with configured slots and no transition', () => {
+        // Not active yet
+        expect(manager.canToggleAuxiliaryRegions()).toBe(false);
+
+        manager['isImmersiveActive'] = true;
+        expect(manager.canToggleAuxiliaryRegions()).toBe(true);
+
+        manager['isTransitioning'] = true;
+        expect(manager.canToggleAuxiliaryRegions()).toBe(false);
+        manager['isTransitioning'] = false;
+
+        manager['isExiting'] = true;
+        expect(manager.canToggleAuxiliaryRegions()).toBe(false);
+        manager['isExiting'] = false;
+
+        // No configured regions
+        mockPlugin.settings.immersive.immersiveTopSlots = [];
+        mockPlugin.settings.immersive.immersiveBottomSlots = [];
+        mockPlugin.settings.immersive.immersiveLeftSlots = [];
+        mockPlugin.settings.immersive.immersiveRightSlots = [];
+        expect(manager.canToggleAuxiliaryRegions()).toBe(false);
+    });
+
+    it('collapses multi-slot top region branch as a unit and toggles handle and restore button', async () => {
+        manager['isImmersiveActive'] = true;
+
+        const mainLeafEl = createAuxElement('immersive-main-editor');
+        const mainLeaf = {
+            containerEl: mainLeafEl,
+            view: { file: new TFile(), getViewType: () => 'markdown' },
+            setDimension: vi.fn()
+        } as unknown as WorkspaceLeaf;
+        manager['activeMainLeaf'] = mainLeaf;
+
+        // Multi-slot top region branch (internal vertical split)
+        const topSplitEl = createAuxElement('workspace-split mod-vertical');
+        const topLeaf1 = { containerEl: createAuxElement('workspace-leaf') } as unknown as WorkspaceLeaf;
+        const topLeaf2 = { containerEl: createAuxElement('workspace-leaf') } as unknown as WorkspaceLeaf;
+        const topLeaf3 = { containerEl: createAuxElement('workspace-leaf') } as unknown as WorkspaceLeaf;
+        topSplitEl.appendChild(topLeaf1.containerEl as unknown as MockAuxElement);
+        topSplitEl.appendChild(topLeaf2.containerEl as unknown as MockAuxElement);
+        topSplitEl.appendChild(topLeaf3.containerEl as unknown as MockAuxElement);
+
+        const topBranchItem = {
+            containerEl: topSplitEl,
+            size: 20,
+            setDimension: vi.fn()
+        } as unknown as WorkspaceSplit;
+
+        const topResizeHandle = createAuxElement('workspace-leaf-resize-handle');
+
+        // Outer horizontal split
+        const hSplitEl = createAuxElement('workspace-split mod-horizontal');
+        hSplitEl.appendChild(topSplitEl);
+        hSplitEl.appendChild(topResizeHandle);
+        hSplitEl.appendChild(mainLeafEl);
+
+        const hSplit = {
+            direction: 'horizontal',
+            containerEl: hSplitEl,
+            children: [topBranchItem, mainLeaf]
+        } as unknown as WorkspaceSplit;
+
+        manager['regionBranches'].set('top', {
+            region: 'top',
+            branchItem: topBranchItem as unknown as WorkspaceItem,
+            parentSplit: hSplit,
+            firstLeaf: topLeaf1
+        });
+
+        manager['applyAuxiliaryRegionsVisibility']();
+        const collapseBtn = manager['regionCollapseBtns'].get('top');
+        expect(collapseBtn?.parentElement).toBe(mainLeafEl);
+        mockDoc.activeElement = collapseBtn as unknown as MockAuxElement;
+        const focusSpy = vi.spyOn(manager as unknown as { restoreMainEditorFocus: () => void }, 'restoreMainEditorFocus').mockImplementation(() => {});
+
+        // 1. Collapse top region
+        await manager['collapseRegion']('top');
+
+        expect(mockPlugin.settings.immersive.collapsedRegions.top).toBe(true);
+        expect(mockPlugin.saveSettings).toHaveBeenCalled();
+        expect(topSplitEl.classList.contains('wn-immersive-region-collapsed')).toBe(true);
+        expect(topResizeHandle.classList.contains('wn-immersive-handle-hidden')).toBe(true);
+
+        // Main leaf has restore button for top
+        const restoreBtn = mainLeafEl.children.find(c => c.className.includes('wn-immersive-restore-btn-top'));
+        expect(restoreBtn).toBeDefined();
+        expect(restoreBtn?.parentElement).toBe(mainLeafEl);
+        expect(focusSpy).toHaveBeenCalledOnce();
+
+        // 2. Restore top region
+        await manager['restoreRegion']('top');
+
+        expect(mockPlugin.settings.immersive.collapsedRegions.top).toBe(false);
+        expect(topSplitEl.classList.contains('wn-immersive-region-collapsed')).toBe(false);
+        expect(topResizeHandle.classList.contains('wn-immersive-handle-hidden')).toBe(false);
+        const restoreBtnAfter = mainLeafEl.children.find(c => c.className.includes('wn-immersive-restore-btn-top'));
+        expect(restoreBtnAfter).toBeUndefined();
+        expect(manager['regionCollapseBtns'].get('top')?.parentElement).toBe(mainLeafEl);
+        focusSpy.mockRestore();
+    });
+
+    it('safely handles empty region with zero slots without creating handles or crashing', async () => {
+        manager['isImmersiveActive'] = true;
+        const mainLeafEl = createAuxElement('immersive-main-editor');
+        manager['activeMainLeaf'] = { containerEl: mainLeafEl } as unknown as WorkspaceLeaf;
+
+        // Bottom has 0 slots
+        mockPlugin.settings.immersive.immersiveBottomSlots = [];
+        await manager['collapseRegion']('bottom');
+        expect(mockPlugin.settings.immersive.collapsedRegions.bottom).toBe(true);
+        expect(mainLeafEl.children.find(c => c.className.includes('wn-immersive-restore-btn-bottom'))).toBeUndefined();
+
+        await manager['restoreRegion']('bottom');
+        expect(mockPlugin.settings.immersive.collapsedRegions.bottom).toBe(false);
+    });
+
+    it('global toggle hides all regions and removes individual restore buttons; second toggle restores visible regions', async () => {
+        manager['isImmersiveActive'] = true;
+        const mainLeafEl = createAuxElement('immersive-main-editor');
+        const mainLeaf = { containerEl: mainLeafEl, setDimension: vi.fn() } as unknown as WorkspaceLeaf;
+        manager['activeMainLeaf'] = mainLeaf;
+
+        const leftEl = createAuxElement('workspace-leaf');
+        const leftLeaf = { containerEl: leftEl, size: 25, setDimension: vi.fn() } as unknown as WorkspaceLeaf;
+        const vSplit = {
+            direction: 'vertical',
+            containerEl: createAuxElement(),
+            children: [leftLeaf, mainLeaf]
+        } as unknown as WorkspaceSplit;
+
+        manager['regionBranches'].set('left', {
+            region: 'left',
+            branchItem: leftLeaf as unknown as WorkspaceItem,
+            parentSplit: vSplit,
+            firstLeaf: leftLeaf
+        });
+
+        const topEl = createAuxElement('workspace-leaf');
+        const topLeaf = { containerEl: topEl, size: 20, setDimension: vi.fn() } as unknown as WorkspaceLeaf;
+        const hSplit = {
+            direction: 'horizontal',
+            containerEl: createAuxElement(),
+            children: [topLeaf, mainLeaf]
+        } as unknown as WorkspaceSplit;
+
+        manager['regionBranches'].set('top', {
+            region: 'top',
+            branchItem: topLeaf as unknown as WorkspaceItem,
+            parentSplit: hSplit,
+            firstLeaf: topLeaf
+        });
+
+        // Set left initially individually collapsed, top visible
+        mockPlugin.settings.immersive.collapsedRegions.left = true;
+        mockPlugin.settings.immersive.collapsedRegions.top = false;
+        manager['applyAuxiliaryRegionsVisibility']();
+
+        expect(leftEl.classList.contains('wn-immersive-region-collapsed')).toBe(true);
+        expect(topEl.classList.contains('wn-immersive-region-collapsed')).toBe(false);
+        expect(mainLeafEl.children.some(c => c.className.includes('wn-immersive-restore-btn-left'))).toBe(true);
+
+        // 1. Global toggle: hide all
+        await manager.toggleAllAuxiliaryRegions();
+
+        expect(mockPlugin.settings.immersive.allRegionsHidden).toBe(true);
+        // Individual mask is preserved, not overwritten!
+        expect(mockPlugin.settings.immersive.collapsedRegions.left).toBe(true);
+        expect(mockPlugin.settings.immersive.collapsedRegions.top).toBe(false);
+
+        // All auxiliary regions hidden
+        expect(leftEl.classList.contains('wn-immersive-region-collapsed')).toBe(true);
+        expect(topEl.classList.contains('wn-immersive-region-collapsed')).toBe(true);
+        // Individual restore buttons on main leaf removed in all-hidden state
+        expect(mainLeafEl.children.some(c => c.className.includes('wn-immersive-restore-btn'))).toBe(false);
+
+        // 2. Global toggle second time: restore visible regions
+        await manager.toggleAllAuxiliaryRegions();
+
+        expect(mockPlugin.settings.immersive.allRegionsHidden).toBe(false);
+        // Top restored to visible
+        expect(topEl.classList.contains('wn-immersive-region-collapsed')).toBe(false);
+        // Left remains collapsed!
+        expect(leftEl.classList.contains('wn-immersive-region-collapsed')).toBe(true);
+        // Left restore button reappears on mainLeaf
+        expect(mainLeafEl.children.some(c => c.className.includes('wn-immersive-restore-btn-left'))).toBe(true);
+    });
+
+    it('repeated collapse and restore toggles cause no geometry loss or dimension contamination', async () => {
+        manager['isImmersiveActive'] = true;
+        const mainLeafEl = createAuxElement('immersive-main-editor');
+        const mainLeaf = { containerEl: mainLeafEl, setDimension: vi.fn() } as unknown as WorkspaceLeaf;
+        manager['activeMainLeaf'] = mainLeaf;
+
+        const leftEl = createAuxElement('workspace-leaf');
+        const leftLeaf = { containerEl: leftEl, size: 25, setDimension: vi.fn() } as unknown as WorkspaceLeaf;
+        const vSplit = {
+            direction: 'vertical',
+            containerEl: createAuxElement(),
+            children: [leftLeaf, mainLeaf]
+        } as unknown as WorkspaceSplit;
+
+        manager['regionBranches'].set('left', {
+            region: 'left',
+            branchItem: leftLeaf as unknown as WorkspaceItem,
+            parentSplit: vSplit,
+            firstLeaf: leftLeaf
+        });
+
+        expect(mockPlugin.settings.immersive.immersiveLeftSize).toBe(25);
+
+        for (let i = 0; i < 5; i++) {
+            await manager['collapseRegion']('left');
+            expect(leftLeaf.size).toBe(25); // Never set to 0
+            expect(mockPlugin.settings.immersive.immersiveLeftSize).toBe(25);
+
+            await manager['restoreRegion']('left');
+            expect(leftLeaf.size).toBe(25);
+            expect(mockPlugin.settings.immersive.immersiveLeftSize).toBe(25);
+        }
+    });
+
+    it('un-normalizes user resize of visible panel when sibling is collapsed', () => {
+        manager['isImmersiveActive'] = true;
+        mockPlugin.settings.immersive.immersiveLeftSize = 20;
+        mockPlugin.settings.immersive.immersiveRightSize = 20;
+        mockPlugin.settings.immersive.collapsedRegions.left = true;
+        mockPlugin.settings.immersive.collapsedRegions.right = false;
+
+        const mainLeafEl = createAuxElement('immersive-main-editor');
+        const mainLeaf = { containerEl: mainLeafEl } as unknown as WorkspaceLeaf;
+
+        const rightEl = createAuxElement('workspace-leaf');
+        const rightLeaf = { containerEl: rightEl } as unknown as WorkspaceLeaf;
+        manager['activeRightLeaf'] = rightLeaf;
+
+        const vSplitEl = createAuxElement('workspace-split mod-vertical');
+        vSplitEl.offsetWidth = 1000;
+        rightEl.offsetWidth = 250; // In visible screen (80% total), 250/1000 = 25%
+
+        const vSplit = {
+            direction: 'vertical',
+            containerEl: vSplitEl,
+            children: [{ containerEl: mainLeafEl }, { containerEl: rightEl }]
+        } as unknown as WorkspaceSplit;
+
+        vi.spyOn(manager as unknown as { getParentSplit: () => WorkspaceSplit | null }, 'getParentSplit').mockReturnValue(vSplit);
+
+        // Calling saveCurrentPanelSizes: right measured at 25%, scaled by (100 - 20)/100 = 80% -> saves 20%
+        manager['saveCurrentPanelSizes']();
+        expect(mockPlugin.settings.immersive.immersiveRightSize).toBe(20);
+
+        // User resized right to 50% of visible container: 50 * 80 / 100 = 40%
+        rightEl.offsetWidth = 500;
+        manager['saveCurrentPanelSizes']();
+        expect(mockPlugin.settings.immersive.immersiveRightSize).toBe(40);
+    });
+
+    it('restores focus to main editor when search source leaf inside collapsed region is hidden', async () => {
+        manager['isImmersiveActive'] = true;
+        const mainLeafEl = createAuxElement('immersive-main-editor');
+        const mainLeaf = {
+            containerEl: mainLeafEl,
+            view: {
+                getViewType: () => 'markdown',
+                editor: { focus: vi.fn(), getCursor: vi.fn(), listSelections: vi.fn() }
+            }
+        } as unknown as WorkspaceLeaf;
+        manager['activeMainLeaf'] = mainLeaf;
+
+        const rightEl = createAuxElement('workspace-leaf');
+        const rightLeaf = { containerEl: rightEl, size: 25, setDimension: vi.fn() } as unknown as WorkspaceLeaf;
+        const vSplit = {
+            direction: 'vertical',
+            containerEl: createAuxElement(),
+            children: [mainLeaf, rightLeaf]
+        } as unknown as WorkspaceSplit;
+
+        manager['regionBranches'].set('right', {
+            region: 'right',
+            branchItem: rightLeaf as unknown as WorkspaceItem,
+            parentSplit: vSplit,
+            firstLeaf: rightLeaf
+        });
+
+        // Set searchSourceLeaf to rightLeaf
+        manager['searchSourceLeaf'] = rightLeaf;
+        mockDoc.activeElement = rightEl;
+
+        await manager['collapseRegion']('right');
+
+        expect(manager.getSearchSourceLeaf()).toBe(mainLeaf);
+        expect(mockPlugin.app.workspace.setActiveLeaf).toHaveBeenCalledWith(mainLeaf, { focus: true });
+
+        // Restoring removes the focused edge button; typing should return to the main editor.
+        mockDoc.activeElement = manager['regionRestoreBtns'].get('right') as unknown as MockAuxElement;
+        await manager['restoreRegion']('right');
+        expect((mainLeaf.view as MarkdownView).editor.focus).toHaveBeenCalledTimes(2);
+    });
+
+    it('preserves collapsed state after async mount finishes and cleans up controls without losing settings', async () => {
+        manager['isImmersiveActive'] = true;
+        mockPlugin.settings.immersive.collapsedRegions.top = true;
+
+        const mainLeafEl = createAuxElement('immersive-main-editor');
+        const mainLeaf = { containerEl: mainLeafEl, setDimension: vi.fn() } as unknown as WorkspaceLeaf;
+        manager['activeMainLeaf'] = mainLeaf;
+
+        const topEl = createAuxElement('workspace-leaf');
+        const topLeaf = {
+            containerEl: topEl,
+            size: 20,
+            setDimension: vi.fn(),
+            setViewState: vi.fn().mockResolvedValue(undefined)
+        } as unknown as WorkspaceLeaf;
+        manager['createdImmersiveLeaves'].add(topLeaf);
+
+        const hSplit = {
+            direction: 'horizontal',
+            containerEl: createAuxElement(),
+            children: [topLeaf, mainLeaf]
+        } as unknown as WorkspaceSplit;
+
+        manager['regionBranches'].set('top', {
+            region: 'top',
+            branchItem: topLeaf as unknown as WorkspaceItem,
+            parentSplit: hSplit,
+            firstLeaf: topLeaf
+        });
+
+        manager['applyAuxiliaryRegionsVisibility']();
+        expect(topEl.classList.contains('wn-immersive-region-collapsed')).toBe(true);
+
+        // Schedule auxiliary mount and await it
+        manager['scheduleAuxiliaryMounts']([{ leaf: topLeaf, viewType: 'test-view' }], 0);
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        // Mount completed: region remains collapsed!
+        expect(topEl.classList.contains('wn-immersive-region-collapsed')).toBe(true);
+
+        // Cleanup
+        manager.cleanup();
+
+        // Control buttons and layout classes cleaned from DOM
+        expect(mainLeafEl.children.length).toBe(0);
+        // Settings preserved
+        expect(mockPlugin.settings.immersive.collapsedRegions.top).toBe(true);
+    });
+
+    it('resolves region branches and normalizes proportions using parent hierarchy even with detached/not-yet-nested DOM', () => {
+        manager['isImmersiveActive'] = true;
+        mockPlugin.settings.immersive.immersiveTopSlots = ['immersive-chapter-list'];
+        mockPlugin.settings.immersive.immersiveTopSize = 25;
+
+        const mainLeafEl = createAuxElement('immersive-main-editor');
+        const mainLeaf = { containerEl: mainLeafEl, setDimension: vi.fn() } as unknown as WorkspaceLeaf;
+        manager['activeMainLeaf'] = mainLeaf;
+
+        // In native Obsidian right after split creation:
+        // topLeaf.containerEl is NOT yet appended to topBranchItem.containerEl (DOM containment returns false)
+        const topLeafEl = createAuxElement('workspace-leaf');
+        const topBranchEl = createAuxElement('workspace-split mod-vertical');
+        // Explicitly verify DOM containment is false
+        expect(topBranchEl.contains(topLeafEl)).toBe(false);
+
+        const hSplitEl = createAuxElement('workspace-split mod-horizontal');
+        const hSplit = {
+            direction: 'horizontal',
+            containerEl: hSplitEl,
+            children: [] as unknown[]
+        } as unknown as WorkspaceSplit;
+
+        const topBranchItem = {
+            parent: hSplit,
+            containerEl: topBranchEl,
+            setDimension: vi.fn()
+        };
+        const topLeaf = {
+            parent: topBranchItem,
+            containerEl: topLeafEl
+        } as unknown as WorkspaceLeaf;
+        manager['activeTopLeaf'] = topLeaf;
+
+        (hSplit as { children: unknown[] }).children = [topBranchItem, mainLeaf];
+        (mainLeaf as unknown as { parent: unknown }).parent = hSplit;
+
+        // Resolve region branches using parent hierarchy
+        manager['resolveRegionBranches']();
+
+        const topInfo = manager['regionBranches'].get('top');
+        expect(topInfo).toBeDefined();
+        expect(topInfo?.branchItem).toBe(topBranchItem);
+        expect(topInfo?.parentSplit).toBe(hSplit);
+
+        // Normalize split proportions without DOM containment
+        manager['normalizeVisibleSplitProportions']();
+        expect(topBranchItem.setDimension).toHaveBeenCalledWith(25);
+        expect(mainLeaf.setDimension).toHaveBeenCalledWith(75);
+    });
+
+    it('restores focus to main editor when the active view leaf is inside hidden branch while DOM activeElement is outside (e.g. command palette)', async () => {
+        manager['isImmersiveActive'] = true;
+        mockPlugin.settings.immersive.collapsedRegions.right = false;
+
+        const mainLeafEl = createAuxElement('immersive-main-editor');
+        const mainLeaf = {
+            containerEl: mainLeafEl,
+            view: {
+                getViewType: () => 'markdown',
+                editor: { focus: vi.fn(), getCursor: vi.fn(), listSelections: vi.fn() }
+            }
+        } as unknown as WorkspaceLeaf;
+        manager['activeMainLeaf'] = mainLeaf;
+
+        const rightEl = createAuxElement('workspace-leaf');
+        const rightLeaf = { containerEl: rightEl, size: 25, setDimension: vi.fn() } as unknown as WorkspaceLeaf;
+        const vSplit = {
+            direction: 'vertical',
+            containerEl: createAuxElement(),
+            children: [mainLeaf, rightLeaf]
+        } as unknown as WorkspaceSplit;
+
+        (rightLeaf as unknown as { parent: unknown }).parent = vSplit;
+
+        manager['regionBranches'].set('right', {
+            region: 'right',
+            branchItem: rightLeaf as unknown as WorkspaceItem,
+            parentSplit: vSplit,
+            firstLeaf: rightLeaf
+        });
+
+        // Simulate: user had rightLeaf active, then opened Command Palette via keyboard (Ctrl+P)
+        // DOM activeElement is in the palette modal input (completely outside rightLeaf branch)
+        const paletteInputEl = createAuxElement('prompt-input');
+        mockDoc.activeElement = paletteInputEl;
+        expect(rightEl.contains(paletteInputEl)).toBe(false);
+
+        // Native activeLeaf is still rightLeaf
+        vi.mocked(mockPlugin.app.workspace.getActiveViewOfType).mockReturnValue({ leaf: rightLeaf } as unknown as MarkdownView);
+        manager['searchSourceLeaf'] = null;
+
+        await manager['collapseRegion']('right');
+
+        expect(mockPlugin.app.workspace.setActiveLeaf).toHaveBeenCalledWith(mainLeaf, { focus: true });
+        expect((mainLeaf.view as unknown as { editor: { focus: ReturnType<typeof vi.fn> } }).editor.focus).toHaveBeenCalled();
+        expect(manager.getSearchSourceLeaf()).toBe(mainLeaf);
+    });
+
+
 });

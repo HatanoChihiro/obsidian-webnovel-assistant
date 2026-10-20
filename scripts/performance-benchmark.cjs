@@ -1,6 +1,7 @@
 // Synthetic, local-only comparison with the pre-optimization source. No vault data is read.
 // node scripts/performance-benchmark.cjs [baseline-ref]
 // node scripts/performance-benchmark.cjs --browser [baseline-ref]
+// node scripts/performance-benchmark.cjs --search [baseline-ref]
 const fs = require('node:fs');
 const path = require('node:path');
 const assert = require('node:assert/strict');
@@ -9,7 +10,8 @@ const { performance } = require('node:perf_hooks');
 const ts = require('typescript');
 const root = path.resolve(__dirname, '..');
 const browserMode = process.argv.includes('--browser');
-const baseline = process.argv.slice(2).find(arg => arg !== '--browser') || '837ac04';
+const searchMode = process.argv.includes('--search');
+const baseline = process.argv.slice(2).find(arg => arg !== '--browser' && arg !== '--search') || (searchMode ? '4.0.2' : '837ac04');
 assert.match(baseline, /^[\w./-]+$/);
 const source = (file, ref) => ref
     ? execFileSync('git', ['show', `${ref}:${file}`], { cwd: root, encoding: 'utf8' })
@@ -135,6 +137,49 @@ async function serviceBenchmarks(ref) {
     });
     return { linking, foreshadowingLinks, sorting, counting };
 }
+async function searchBenchmarks(ref) {
+    const { WorkbenchFilterIndex, stripMarkdownFrontmatter } = loader(ref).load('src/services/WorkbenchFilterIndex.ts');
+    const body = '这是完全生成的检索性能文本。\n'.repeat(4000) + 'clue';
+    const files = Array.from({ length: 50 }, (_, i) => new TFile(`Novel/Atlas ${i}.md`));
+    const aliases = new Map(files.map(file => [file.basename, ['ally']]));
+    const entries = files.map(file => ({ file, heading: file.basename }));
+    let reads = 0;
+    const app = { vault: { cachedRead: async () => { reads++; return body; } } };
+    const search = (index, kind, query) => kind === 'chapter'
+        ? index.filterChapters(files, query, () => 'ally')
+        : index.filterLoreEntries(entries, aliases, query);
+    const retainedCharacters = index =>
+        [...index.chapterContentCache.values()].reduce((sum, value) => sum + value.text.length, 0) +
+        [...index.loreSectionCache.values()].reduce((sum, value) =>
+            sum + [...value.sections.values()].reduce((length, text) => length + text.length, 0), 0);
+    const result = {};
+    for (const kind of ['chapter', 'lore']) {
+        for (const [scenario, query] of [['Metadata', 'atlas ally'], ['BodyCold', 'atlas clue']]) {
+            result[`${kind}${scenario}`] = await measure(async () => {
+                const index = new WorkbenchFilterIndex(app);
+                reads = 0;
+                const matches = await search(index, kind, query);
+                const names = kind === 'chapter' ? matches.map(file => file.basename) : [...matches];
+                assert.deepEqual(names, files.map(file => file.basename));
+                return { matches: names.length, reads, retainedCharacters: retainedCharacters(index) };
+            });
+        }
+        const warmIndex = new WorkbenchFilterIndex(app);
+        await search(warmIndex, kind, 'atlas clue');
+        result[`${kind}BodyWarm`] = await measure(async () => {
+            reads = 0;
+            const matches = await search(warmIndex, kind, 'atlas clue');
+            const names = kind === 'chapter' ? matches.map(file => file.basename) : [...matches];
+            assert.deepEqual(names, files.map(file => file.basename));
+            return { matches: names.length, reads, retainedCharacters: retainedCharacters(warmIndex) };
+        });
+    }
+    result.noFrontmatter = await measure(() => {
+        for (let i = 0; i < 20; i++) assert.equal(stripMarkdownFrontmatter(body), body);
+        return { characters: body.length, calls: 20 };
+    });
+    return result;
+}
 if (browserMode) {
     // A small localhost fixture uses the actual renderer and CSS in a real browser.
     const modules = ['src/ui/components/TrajectoryBoardRenderer.ts', 'src/services/TimelineManager.ts'];
@@ -155,6 +200,7 @@ if (browserMode) {
     });
     server.listen(18765, '127.0.0.1', () => console.log('Synthetic fixture: http://127.0.0.1:18765/'));
 } else {
-    (async () => console.log(JSON.stringify({ baseline, runtime: process.version, before: await serviceBenchmarks(baseline), after: await serviceBenchmarks(null) }, null, 2)))()
+    const benchmark = searchMode ? searchBenchmarks : serviceBenchmarks;
+    (async () => console.log(JSON.stringify({ baseline, runtime: process.version, before: await benchmark(baseline), after: await benchmark(null) }, null, 2)))()
         .catch(error => { console.error(error); process.exitCode = 1; });
 }

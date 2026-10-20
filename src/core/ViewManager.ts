@@ -36,31 +36,6 @@ export class ViewManager {
 		}
 	}
 
-	detachAllViews() {
-		const viewTypes = [
-			STATUS_VIEW_TYPE,
-			FORESHADOWING_VIEW_TYPE,
-			TIMELINE_VIEW_TYPE,
-			WORKBENCH_VIEW_TYPE,
-			CORKBOARD_VIEW_TYPE,
-			LORE_OVERVIEW_VIEW_TYPE,
-			RELATION_GRAPH_VIEW_TYPE,
-			VIEW_TYPES.IMMERSIVE_CHAPTER_LIST,
-			VIEW_TYPES.IMMERSIVE_STICKY_NOTES,
-			VIEW_TYPES.STICKY_NOTE_LIST
-		];
-		
-		for (const type of viewTypes) {
-			try {
-				if (type) {
-					this.plugin.app.workspace.detachLeavesOfType(type);
-				}
-			} catch (e) {
-				console.error(`[WebNovel Assistant] Error detaching leaf ${type}:`, e);
-			}
-		}
-	}
-
 	private isToggling = false;
 
 	async toggleView(viewType: string) {

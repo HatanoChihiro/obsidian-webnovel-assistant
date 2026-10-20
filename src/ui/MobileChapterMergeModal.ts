@@ -1,7 +1,9 @@
 import type { App, TFolder } from 'obsidian';
 import { Modal, setIcon, Notice } from 'obsidian';
 import type { ChapterMergeItem, ChapterMergeManager } from '../services/ChapterMergeManager';
+import { ChapterMergeSelection } from '../services/ChapterMergeSelection';
 import type { TypographyManager } from '../services/TypographyManager';
+import { Logger } from '../utils/Logger';
 import { t } from '../i18n';
 
 export interface MobileChapterMergeModalPlugin {
@@ -17,11 +19,13 @@ export class MobileChapterMergeModal extends Modal {
 	private plugin: MobileChapterMergeModalPlugin;
 	private folder: TFolder;
 	private items: ChapterMergeItem[] = [];
+	private chapterSelection: ChapterMergeSelection = new ChapterMergeSelection();
 	private includeTitles: boolean = true;
-	private isSubmitting: boolean = false;
 
-	private statsEl!: HTMLElement;
 	private previewContainerEl!: HTMLElement;
+	private selectionCountEl?: HTMLElement;
+	private exportBtn?: HTMLButtonElement;
+	private isSubmitting: boolean = false;
 	private typographyPreviewElement: HTMLElement | null = null;
 
 	constructor(app: App, plugin: MobileChapterMergeModalPlugin, folder: TFolder) {
@@ -40,6 +44,7 @@ export class MobileChapterMergeModal extends Modal {
 		this.plugin.typographyManager.registerPreviewElement(modalEl);
 
 		this.items = await this.plugin.chapterMergeManager.loadFolderChapters(this.folder);
+		this.chapterSelection.initialize(this.items);
 
 		this.renderHeader(contentEl);
 		this.renderWaterfallBody(contentEl);
@@ -67,8 +72,37 @@ export class MobileChapterMergeModal extends Modal {
 	 */
 	private renderWaterfallBody(container: HTMLElement): void {
 		const bodyEl = container.createDiv({ cls: 'wn-mobile-merge-body' });
+
+		// 移动端全选/反选与计数工具条
+		const toolbarEl = bodyEl.createDiv({ cls: 'wn-mobile-merge-toolbar' });
+		this.selectionCountEl = toolbarEl.createSpan({ cls: 'wn-mobile-merge-counter' });
+
+		const btnGroup = toolbarEl.createDiv({ cls: 'wn-mobile-merge-bulk-actions' });
+		const bulkSelectBtn = btnGroup.createEl('button', {
+			text: t('merge.bulk-select-all'),
+			cls: 'wn-mobile-merge-btn-bulk'
+		});
+		bulkSelectBtn.title = t('merge.bulk-all-hint');
+		bulkSelectBtn.onclick = () => {
+			this.chapterSelection.selectAll(this.items);
+			this.updateCardCheckboxes();
+			this.updateSelectionUI();
+		};
+
+		const bulkDeselectBtn = btnGroup.createEl('button', {
+			text: t('merge.bulk-deselect-all'),
+			cls: 'wn-mobile-merge-btn-bulk'
+		});
+		bulkDeselectBtn.title = t('merge.bulk-all-hint');
+		bulkDeselectBtn.onclick = () => {
+			this.chapterSelection.deselectAll(this.items);
+			this.updateCardCheckboxes();
+			this.updateSelectionUI();
+		};
+
 		this.previewContainerEl = bodyEl.createDiv({ cls: 'wn-mobile-merge-preview-container' });
 		this.renderPreviewCards();
+		this.updateSelectionUI();
 	}
 
 	/**
@@ -86,15 +120,28 @@ export class MobileChapterMergeModal extends Modal {
 			}
 
 			const cardEl = this.previewContainerEl.createDiv({ cls: 'wn-merge-chapter-card wn-mobile-merge-card' });
+			cardEl.setAttribute('data-filepath', encodeURIComponent(item.file.path));
 			const cardHeader = cardEl.createDiv({ cls: 'wn-merge-card-header' });
 
 			const titleInfo = cardHeader.createDiv({ cls: 'wn-merge-card-title-group' });
+
+			// 移动端卡片复选框
+			const checkbox = titleInfo.createEl('input', {
+				type: 'checkbox',
+				cls: 'wn-mobile-merge-checkbox'
+			});
+			checkbox.checked = this.chapterSelection.isSelected(item.file.path);
+			checkbox.setAttribute('aria-label', t('merge.select-chapter', { title: item.title }));
+
+			checkbox.onclick = (e: MouseEvent) => {
+				e.stopPropagation();
+				this.handleChapterCheckboxClick(item.file.path, checkbox.checked, e.shiftKey);
+			};
+
 			const fileIcon = titleInfo.createSpan({ cls: 'wn-merge-card-icon' });
 			setIcon(fileIcon, 'file-text');
 
-			if (this.includeTitles) {
-				titleInfo.createSpan({ text: item.title, cls: 'wn-merge-card-title' });
-			}
+			titleInfo.createSpan({ text: item.title, cls: 'wn-merge-card-title' });
 
 			const words = this.plugin.calculateAccurateWords(item.currentBody);
 			titleInfo.createSpan({ text: `${words.toLocaleString()} ${t('common.word-char')}`, cls: 'wn-merge-card-badge' });
@@ -110,6 +157,49 @@ export class MobileChapterMergeModal extends Modal {
 					p.setText(line);
 				}
 			}
+		}
+	}
+
+	/**
+	 * 单个章节复选框点击处理（包含 Shift 区间连选）
+	 */
+	private handleChapterCheckboxClick(path: string, isChecked: boolean, isShift: boolean): void {
+		this.chapterSelection.handleCheckboxClick(path, isShift, this.items, isChecked);
+		this.updateCardCheckboxes();
+		this.updateSelectionUI();
+	}
+
+	/**
+	 * 仅同步更新所有卡片复选框状态（不重绘瀑布流卡片）
+	 */
+	private updateCardCheckboxes(): void {
+		if (!this.previewContainerEl) return;
+		const cards = this.previewContainerEl.querySelectorAll<HTMLElement>('.wn-merge-chapter-card');
+		cards.forEach(card => {
+			const pathKey = card.getAttribute('data-filepath');
+			if (!pathKey) return;
+			const filePath = decodeURIComponent(pathKey);
+			const cb = card.querySelector<HTMLInputElement>('.wn-mobile-merge-checkbox');
+			if (cb) {
+				cb.checked = this.chapterSelection.isSelected(filePath);
+			}
+		});
+	}
+
+	/**
+	 * 更新底部导出按钮与计数器状态
+	 */
+	private updateSelectionUI(): void {
+		const selectedCount = this.chapterSelection.getSelectedCount();
+		const totalCount = this.items.length;
+		if (this.selectionCountEl) {
+			this.selectionCountEl.setText(t('merge.selected-counter', {
+				selected: String(selectedCount),
+				total: String(totalCount)
+			}));
+		}
+		if (this.exportBtn) {
+			this.exportBtn.disabled = this.isSubmitting || selectedCount === 0;
 		}
 	}
 
@@ -133,26 +223,54 @@ export class MobileChapterMergeModal extends Modal {
 
 		const rightGroup = footerEl.createDiv({ cls: 'wn-merge-footer-right' });
 
-		const exportBtn = rightGroup.createEl('button', { text: t('merge.btn-export-merged'), cls: 'mod-cta wn-btn-export' });
-		exportBtn.onclick = () => void this.handleExportMerged();
+		this.exportBtn = rightGroup.createEl('button', { text: t('merge.btn-export-merged'), cls: 'mod-cta wn-btn-export' });
+		this.exportBtn.onclick = () => void this.handleExportMerged();
+
+		this.updateSelectionUI();
 	}
 
 	/**
 	 * 处理导出合并文档
 	 */
 	private async handleExportMerged(): Promise<void> {
-		this.isSubmitting = true;
-		const { file: mergedFile, wordCount } = await this.plugin.chapterMergeManager.exportMergedDocument(this.folder, this.items, this.includeTitles);
-		this.plugin.chapterMergeManager.clearDraft(this.folder.path);
+		if (this.isSubmitting) return;
 
-		new Notice(t('notice.merge-success', {
-			count: String(this.items.length),
-			words: wordCount.toLocaleString(),
-			overwriteHint: ''
-		}));
+		const selectedItems = this.chapterSelection.getSelectedItems(this.items);
+		if (selectedItems.length === 0) return;
 
-		await this.app.workspace.getLeaf(false).openFile(mergedFile);
-		this.close();
+		// 捕获入口时刻是否全选的快照，后续草稿清理严格基于快照判定
+		const isAllSelectedSnapshot = selectedItems.length === this.items.length;
+
+		try {
+			this.isSubmitting = true;
+			if (this.exportBtn) this.exportBtn.disabled = true;
+
+			const { file: mergedFile, wordCount } = await this.plugin.chapterMergeManager.exportMergedDocument(
+				this.folder,
+				selectedItems,
+				this.includeTitles
+			);
+
+			// 移动端只读子集导出绝不清除桌面端正在编辑的草稿
+			// 仅在入口快照为全量导出时才清理草稿
+			if (isAllSelectedSnapshot) {
+				this.plugin.chapterMergeManager.clearDraft(this.folder.path);
+			}
+
+			new Notice(t('notice.merge-success', {
+				count: String(selectedItems.length),
+				words: wordCount.toLocaleString(),
+				overwriteHint: ''
+			}));
+
+			await this.app.workspace.getLeaf(false).openFile(mergedFile);
+			this.close();
+		} catch (error) {
+			this.isSubmitting = false;
+			this.updateSelectionUI();
+			Logger.error('[MobileChapterMergeModal] Export merged failed:', error);
+			new Notice(t('notice.merge-failed'));
+		}
 	}
 
 	onClose(): void {

@@ -632,54 +632,6 @@ export class RelationGraphView extends ItemView {
 	}
 
 	/**
-	 * 自动计算图谱的边界，并调整缩放和平移以适应屏幕
-	 */
-	private fitToScreen(): void {
-		if (!this.canvas || this.graphData.nodes.length === 0) return;
-
-		let minX = Infinity;
-		let minY = Infinity;
-		let maxX = -Infinity;
-		let maxY = -Infinity;
-
-		for (const node of this.graphData.nodes) {
-			if (node.x < minX) minX = node.x;
-			if (node.y < minY) minY = node.y;
-			if (node.x > maxX) maxX = node.x;
-			if (node.y > maxY) maxY = node.y;
-		}
-
-		if (minX === Infinity || maxX - minX < 10) {
-			this.renderState.panX = 0;
-			this.renderState.panY = 0;
-			this.renderState.scale = 1;
-			return;
-		}
-
-		const padding = 60;
-		const graphWidth = maxX - minX;
-		const graphHeight = maxY - minY;
-		
-		const canvasWidth = this.canvas.width / DPR;
-		const canvasHeight = this.canvas.height / DPR;
-
-		const scaleX = (canvasWidth - padding * 2) / Math.max(graphWidth, 1);
-		const scaleY = (canvasHeight - padding * 2) / Math.max(graphHeight, 1);
-		
-		// 大幅提高小图谱的默认放大倍率（上限从 1.8 提高到 2.8，基础放大 1.6 倍）
-		let targetScale = Math.min(scaleX, scaleY) * 1.6;
-		targetScale = Math.max(0.6, Math.min(targetScale, 2.8));
-
-		this.renderState.scale = targetScale;
-
-		const centerX = (minX + maxX) / 2;
-		const centerY = (minY + maxY) / 2;
-
-		this.renderState.panX = (canvasWidth / 2 - centerX) * this.renderState.scale;
-		this.renderState.panY = (canvasHeight / 2 - centerY) * this.renderState.scale;
-	}
-
-	/**
 	 * 启动 requestAnimationFrame 动画循环
 	 * @param isFirstLoad 是否为初次加载（进入局部/全量图谱时），是则静默计算完全收敛并居中
 	 */
@@ -818,65 +770,6 @@ export class RelationGraphView extends ItemView {
 	// ==========================================
 
 	/**
-	 * 进入局部模式：仅显示目标节点及其 1 跳邻居
-	 */
-	private enterLocalMode(focusNode: GraphNode): void {
-		if (!this.fullGraphData) {
-			// 首次进入：备份全量数据
-			this.fullGraphData = {
-				nodes: [...this.graphData.nodes],
-				edges: [...this.graphData.edges],
-			};
-		}
-
-		this.renderState.isLocalMode = true;
-		this.renderState.localFocusNode = focusNode;
-
-		// 筛选 1 跳邻居
-		const neighborIds = new Set<string>();
-		neighborIds.add(focusNode.id);
-
-		for (const edge of this.fullGraphData.edges) {
-			if (edge.source === focusNode.id) neighborIds.add(edge.target);
-			if (edge.target === focusNode.id) neighborIds.add(edge.source);
-		}
-
-		// 筛选节点和边
-		this.graphData = {
-			nodes: this.fullGraphData.nodes.filter(n => neighborIds.has(n.id)),
-			edges: this.fullGraphData.edges.filter(
-				e => neighborIds.has(e.source) && neighborIds.has(e.target)
-			),
-		};
-
-		const cx = this.canvas ? this.canvas.width / DPR / 2 : 150;
-		const cy = this.canvas ? this.canvas.height / DPR / 2 : 150;
-
-		// 将焦点节点固定在中心，周围节点随机分布，由 D3 自然散开成圆形
-		for (const node of this.graphData.nodes) {
-			if (node.id === focusNode.id) {
-				node.x = cx;
-				node.y = cy;
-				node.pinned = true;
-			} else {
-				node.x = cx + (Math.random() - 0.5) * 20;
-				node.y = cy + (Math.random() - 0.5) * 20;
-				node.pinned = false;
-			}
-			node.vx = 0;
-			node.vy = 0;
-		}
-
-		this.renderState.selectedNode = focusNode;
-		this.controller?.updateLayout(this.graphData);
-		this.buildEdgeOffsets();
-		this.initEngine();
-		this.updateBreadcrumb();
-		this.updateHint();
-		this.startAnimationLoop(true);
-	}
-
-	/**
 	 * 退出局部模式：恢复全量图谱
 	 */
 	private exitLocalMode(): void {
@@ -978,22 +871,5 @@ export class RelationGraphView extends ItemView {
 		if (!this.graphData) return;
 		const colors = this.getThemeColors();
 		GraphRenderer.buildEdgeOffsets(this.graphData, this.renderState, colors.curveOffset, force);
-	}
-
-	/**
-	 * 将颜色字符串调整透明度
-	 * 简单实现：如果是 hex 格式，转为 rgba
-	 */
-	private adjustAlpha(color: string, alpha: number): string {
-		// 尝试匹配 hex 颜色
-		const hexMatch = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(color);
-		if (hexMatch) {
-			const r = parseInt(hexMatch[1], 16);
-			const g = parseInt(hexMatch[2], 16);
-			const b = parseInt(hexMatch[3], 16);
-			return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-		}
-		// 如果不是 hex，原样返回
-		return color;
 	}
 }

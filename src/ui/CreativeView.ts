@@ -12,6 +12,8 @@ import { TouchDragPolyfill } from '../utils/TouchDragPolyfill';
 export abstract class CreativeView<TPlugin extends CurrentBookContextPlugin> extends ItemView {
 	plugin: TPlugin;
 	currentFolder: string = '';
+	protected isViewClosed: boolean = false;
+	protected refreshGeneration: number = 0;
 	private touchPolyfillCleanup: (() => void) | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: TPlugin) {
@@ -31,6 +33,8 @@ export abstract class CreativeView<TPlugin extends CurrentBookContextPlugin> ext
 	abstract refresh(): Promise<void>;
 
 	async onOpen() {
+		this.isViewClosed = false;
+		this.refreshGeneration++;
 		if (this.touchPolyfillCleanup) this.touchPolyfillCleanup();
 		this.touchPolyfillCleanup = TouchDragPolyfill.register(this.containerEl);
 
@@ -57,7 +61,11 @@ export abstract class CreativeView<TPlugin extends CurrentBookContextPlugin> ext
 				}
 			})
 		);
+		const generation = this.refreshGeneration;
 		await this.onActiveFileChange();
+		if (this.currentFolder && generation === this.refreshGeneration && !this.isViewClosed) {
+			await this.refresh();
+		}
 	}
 
 	protected async onActiveFileChange() {
@@ -79,7 +87,13 @@ export abstract class CreativeView<TPlugin extends CurrentBookContextPlugin> ext
 		await this.refresh();
 	}
 
+	protected isRefreshCurrent(generation: number, folder: string): boolean {
+		return !this.isViewClosed && generation === this.refreshGeneration && folder === this.currentFolder;
+	}
+
 	async onClose() {
+		this.isViewClosed = true;
+		this.refreshGeneration++;
 		if (this.touchPolyfillCleanup) {
 			this.touchPolyfillCleanup();
 			this.touchPolyfillCleanup = null;

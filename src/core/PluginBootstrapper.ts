@@ -37,6 +37,7 @@ import { ProofreadingManager } from '../services/ProofreadingManager';
 import { WritingJourneyService } from '../services/WritingJourneyService';
 import { ImmersiveReferenceManager } from '../services/ImmersiveReferenceManager';
 import { Logger } from '../utils/Logger';
+import { LoreCardRenderer } from '../ui/components/LoreCardRenderer';
 
 /**
  * 启动宿主插件类型
@@ -473,6 +474,7 @@ export class PluginBootstrapper {
 		// 1. 同步设置卸载状态并立即执行所有视觉与 DOM 清理（确保在首个 await 之前执行完毕，界面立刻响应）
 		this.plugin.isUnloading = true;
 		this.services.getOptional('TypographyManager')?.destroy();
+		LoreCardRenderer.clearLoreBodyCache();
 
 		// 1.1 立即移除全局样式类
 		if (typeof activeDocument !== 'undefined' && activeDocument.body?.classList) {
@@ -581,24 +583,28 @@ export class PluginBootstrapper {
 				}
 			};
 
-			// 等待所有异步停止与持久化任务执行完毕（使用 Promise.allSettled 确保所有操作都被尝试，单项失败不阻断其他操作）
-			const tasks: Promise<unknown>[] = [stopObs()];
-			if (!isRollback) {
-				tasks.push(
-					flushHistory(),
-					flushSettings(),
-					saveStickyNotes(),
-					saveCache(),
-					flushChapterMerge()
-				);
-			}
-			await Promise.allSettled(tasks);
-
-			// 3. 在所有持久化任务完成后，统一调用 ServiceRegistry 异步逆序清理所有 Manager
 			try {
-				await this.services.destroyAll();
-			} catch (e) {
-				Logger.error('[PluginBootstrapper] ServiceRegistry 销毁失败:', e);
+				// 等待所有异步停止与持久化任务执行完毕（使用 Promise.allSettled 确保所有操作都被尝试，单项失败不阻断其他操作）
+				const tasks: Promise<unknown>[] = [stopObs()];
+				if (!isRollback) {
+					tasks.push(
+						flushHistory(),
+						flushSettings(),
+						saveStickyNotes(),
+						saveCache(),
+						flushChapterMerge()
+					);
+				}
+				await Promise.allSettled(tasks);
+
+				// 3. 在所有持久化任务完成后，统一调用 ServiceRegistry 异步逆序清理所有 Manager
+				try {
+					await this.services.destroyAll();
+				} catch (e) {
+					Logger.error('[PluginBootstrapper] ServiceRegistry 销毁失败:', e);
+				}
+			} finally {
+				Logger.release(this.plugin);
 			}
 		})();
 

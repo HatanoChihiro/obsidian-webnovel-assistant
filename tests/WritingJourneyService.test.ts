@@ -1122,7 +1122,12 @@ describe('WritingJourneyBoardRenderer Search Matching', () => {
 			}
 		];
 
-		expect(WritingJourneyBoardRenderer.sortEventsNewestFirst(events).map(event => event.id)).toEqual([
+		expect(WritingJourneyBoardRenderer.sortEvents(events, true).map(event => event.id)).toEqual([
+			'deleted',
+			'status',
+			'tracking'
+		]);
+		expect(WritingJourneyBoardRenderer.sortEvents(events).map(event => event.id)).toEqual([
 			'deleted',
 			'status',
 			'tracking'
@@ -1194,8 +1199,8 @@ describe('WritingJourneyBoardRenderer Search Matching', () => {
 			'deleted'
 		]);
 
-		const oldestFirstHelper = WritingJourneyBoardRenderer.sortEventsOldestFirst(events);
-		expect(oldestFirstHelper.map(e => e.id)).toEqual([
+		const oldestFirstExplicit = WritingJourneyBoardRenderer.sortEvents(events, false);
+		expect(oldestFirstExplicit.map(e => e.id)).toEqual([
 			'tracking',
 			'status',
 			'deleted'
@@ -1313,5 +1318,86 @@ describe('WritingJourneyBoardRenderer Search Matching', () => {
 		});
 		expect(container.querySelectorAll('.wn-writing-journey-item')).toHaveLength(0);
 		expect(container.querySelector('.wn-corkboard-empty-msg')).not.toBeNull();
+	});
+
+	it('should resolve navigation through chained renames and moves via per-render index', async () => {
+		const events: WritingJourneyEvent[] = [
+			{ id: 'c1', type: 'chapter.created', timestamp: '2026-09-08T05:00:00.000Z', path: 'NovelA/01.md', chapterTitle: '01' },
+			{ id: 'r1', type: 'chapter.renamed', timestamp: '2026-09-08T05:01:00.000Z', oldPath: 'NovelA/01.md', newPath: 'NovelA/01_draft.md', oldTitle: '01', newTitle: '01_draft' },
+			{ id: 'm1', type: 'chapter.moved', timestamp: '2026-09-08T05:02:00.000Z', oldPath: 'NovelA/01_draft.md', newPath: 'NovelA/Archive/01_final.md', chapterTitle: '01_draft' }
+		];
+		const container = new MockElement('workbench-buffer');
+		const getAbstractFileByPath = vi.fn((path: string) => path === 'NovelA/Archive/01_final.md'
+			? new MockTFile('01_final.md', path)
+			: null);
+
+		await WritingJourneyBoardRenderer.render({
+			app: { vault: { getAbstractFileByPath } } as unknown as import('obsidian').App,
+			plugin: { writingJourneyService: { getJourneyLog: async () => ({ status: 'valid', log: { version: 1, events } }) } as unknown as WritingJourneyService },
+			container: container as unknown as HTMLElement,
+			currentBookPath: 'NovelA',
+			query: ''
+		});
+
+		expect(getAbstractFileByPath).toHaveBeenCalledWith('NovelA/Archive/01_final.md');
+		const rows = container.querySelectorAll('.wn-writing-journey-item');
+		expect(rows).toHaveLength(3);
+		for (const row of rows) {
+			expect(row.hasClass('wn-clickable')).toBe(true);
+			expect(row.hasClass('is-deleted')).toBe(false);
+		}
+	});
+
+	it('should correctly handle A->B->A cycles and path reuse in original chronological order', async () => {
+		const events: WritingJourneyEvent[] = [
+			{ id: 'c1', type: 'chapter.created', timestamp: '2026-09-08T05:00:00.000Z', path: 'NovelA/A.md', chapterTitle: 'A' },
+			{ id: 'r1', type: 'chapter.renamed', timestamp: '2026-09-08T05:01:00.000Z', oldPath: 'NovelA/A.md', newPath: 'NovelA/B.md', oldTitle: 'A', newTitle: 'B' },
+			{ id: 'r2', type: 'chapter.renamed', timestamp: '2026-09-08T05:02:00.000Z', oldPath: 'NovelA/B.md', newPath: 'NovelA/A.md', oldTitle: 'B', newTitle: 'A' },
+			{ id: 'c2', type: 'chapter.created', timestamp: '2026-09-08T05:03:00.000Z', path: 'NovelA/C.md', chapterTitle: 'C' },
+			{ id: 'm1', type: 'chapter.moved', timestamp: '2026-09-08T05:04:00.000Z', oldPath: 'NovelA/C.md', newPath: 'NovelA/B.md', chapterTitle: 'C' },
+			{ id: 'm2', type: 'chapter.moved', timestamp: '2026-09-08T05:05:00.000Z', oldPath: 'NovelA/B.md', newPath: 'NovelA/D.md', chapterTitle: 'C' }
+		];
+		const container = new MockElement('workbench-buffer');
+		const checkedPaths: string[] = [];
+		const getAbstractFileByPath = vi.fn((path: string) => {
+			checkedPaths.push(path);
+			return new MockTFile(path.split('/').pop()!, path);
+		});
+
+		await WritingJourneyBoardRenderer.render({
+			app: { vault: { getAbstractFileByPath } } as unknown as import('obsidian').App,
+			plugin: { writingJourneyService: { getJourneyLog: async () => ({ status: 'valid', log: { version: 1, events } }) } as unknown as WritingJourneyService },
+			container: container as unknown as HTMLElement,
+			currentBookPath: 'NovelA',
+			query: ''
+		});
+
+		expect(checkedPaths).toContain('NovelA/A.md');
+		expect(checkedPaths).toContain('NovelA/D.md');
+	});
+
+	it('should resolve paths using raw events order even when display order is reversed or filtered', async () => {
+		const events: WritingJourneyEvent[] = [
+			{ id: 'c1', type: 'chapter.created', timestamp: '2026-09-08T05:00:00.000Z', path: 'NovelA/01.md', chapterTitle: '独家创世篇' },
+			{ id: 'r1', type: 'chapter.renamed', timestamp: '2026-09-08T05:05:00.000Z', oldPath: 'NovelA/01.md', newPath: 'NovelA/01_renamed.md', oldTitle: '旧标题', newTitle: '改名篇' }
+		];
+		const container = new MockElement('workbench-buffer');
+		const checkedPaths: string[] = [];
+		const getAbstractFileByPath = vi.fn((path: string) => {
+			checkedPaths.push(path);
+			return new MockTFile('01_renamed.md', path);
+		});
+
+		await WritingJourneyBoardRenderer.render({
+			app: { vault: { getAbstractFileByPath } } as unknown as import('obsidian').App,
+			plugin: { writingJourneyService: { getJourneyLog: async () => ({ status: 'valid', log: { version: 1, events } }) } as unknown as WritingJourneyService },
+			container: container as unknown as HTMLElement,
+			currentBookPath: 'NovelA',
+			query: '独家创世篇'
+		});
+
+		const rows = container.querySelectorAll('.wn-writing-journey-item');
+		expect(rows).toHaveLength(1);
+		expect(checkedPaths).toContain('NovelA/01_renamed.md');
 	});
 });

@@ -60,6 +60,11 @@ export class MobileFloatingStats {
 	private timerBtnEl: HTMLElement | null = null;
 	private timerTextEl: HTMLElement | null = null;
 
+	private ownerDocument: Document | null = null;
+	private ownerWindow: Window | null = null;
+	private pendingInitialRaf: { win: Window; id: number } | null = null;
+	private currentTimerIcon: 'play' | 'pause' | null = null;
+
 	constructor(app: App, plugin: MobileFloatingStatsPlugin) {
 		this.app = app;
 		this.plugin = plugin;
@@ -72,10 +77,16 @@ export class MobileFloatingStats {
 	load(): void {
 		if (this.containerEl) return;
 
-		// 创建容器 - 简化为一横排，优化触摸目标
-		this.containerEl = activeDocument.body.createDiv({
+		const container = activeDocument.body.createDiv({
 			cls: 'mobile-floating-stats'
 		});
+		const ownerDoc = container.ownerDocument;
+		const ownerWin = ownerDoc.win;
+
+		this.ownerDocument = ownerDoc;
+		this.ownerWindow = ownerWin;
+		this.containerEl = container;
+
 		this.containerEl.setCssStyles({
 			left: `${this.position.x}px`,
 			top: `${this.position.y}px`
@@ -132,6 +143,7 @@ export class MobileFloatingStats {
 			cls: 'mobile-floating-timer-btn wn-clickable wn-text-muted',
 		});
 		setIcon(this.timerBtnEl, 'play');
+		this.currentTimerIcon = 'play';
 
 		// 时间与文字展示标签（只读，无点击事件）
 		this.timerTextEl = this.timerEl.createSpan({
@@ -156,13 +168,18 @@ export class MobileFloatingStats {
 		this.bindDragEvents(this.containerEl);
 
 		// 监听窗口尺寸变化
-		activeWindow.addEventListener('resize', this.resizeHandler);
+		this.ownerWindow.addEventListener('resize', this.resizeHandler);
 
 		// 初始更新
 		this.update();
 
 		// 确保渲染后位置不溢出
-		window.requestAnimationFrame(() => {
+		this.cancelPendingInitialRaf();
+		const rafEntry = { win: ownerWin, id: 0 };
+		this.pendingInitialRaf = rafEntry;
+		rafEntry.id = ownerWin.requestAnimationFrame(() => {
+			if (this.pendingInitialRaf !== rafEntry) return;
+			this.pendingInitialRaf = null;
 			this.checkBounds();
 		});
 	}
@@ -171,16 +188,31 @@ export class MobileFloatingStats {
 	 * 卸载浮窗
 	 */
 	unload(): void {
+		this.cancelPendingInitialRaf();
+		if (this.ownerWindow) {
+			this.ownerWindow.removeEventListener('resize', this.resizeHandler);
+		}
+		this.removeDragListeners();
+		this.isDragging = false;
+		this.currentTimerIcon = null;
+
 		if (this.containerEl) {
-			// 移除全局监听器以防止内存泄漏
-			activeWindow.removeEventListener('resize', this.resizeHandler);
-			activeDocument.removeEventListener('touchmove', this.touchMoveHandler);
-			activeDocument.removeEventListener('touchend', this.touchEndHandler);
-			activeDocument.removeEventListener('mousemove', this.mouseMoveHandler);
-			activeDocument.removeEventListener('mouseup', this.mouseUpHandler);
-			
 			this.containerEl.remove();
 			this.containerEl = null;
+		}
+		this.wordCountEl = null;
+		this.progressEl = null;
+		this.timerEl = null;
+		this.timerBtnEl = null;
+		this.timerTextEl = null;
+		this.ownerDocument = null;
+		this.ownerWindow = null;
+	}
+
+	private cancelPendingInitialRaf(): void {
+		if (this.pendingInitialRaf !== null) {
+			this.pendingInitialRaf.win.cancelAnimationFrame(this.pendingInitialRaf.id);
+			this.pendingInitialRaf = null;
 		}
 	}
 
@@ -239,11 +271,14 @@ export class MobileFloatingStats {
 			this.timerTextEl.removeClass('wn-text-muted');
 			this.timerTextEl.addClass('wn-text-accent');
 
+			const icon = this.plugin.isTracking ? 'pause' : 'play';
+			if (this.currentTimerIcon !== icon) {
+				setIcon(this.timerBtnEl, icon);
+				this.currentTimerIcon = icon;
+			}
 			if (this.plugin.isTracking) {
-				setIcon(this.timerBtnEl, 'pause');
 				this.timerTextEl.textContent = `${h}:${m}:${s}`;
 			} else {
-				setIcon(this.timerBtnEl, 'play');
 				if (focusSec > 0) {
 					// 暂停状态：继续显示已暂停的时长
 					this.timerTextEl.textContent = `${h}:${m}:${s}`;
@@ -275,8 +310,8 @@ export class MobileFloatingStats {
 			}
 			e.preventDefault();
 			
-			activeDocument.addEventListener('touchmove', this.touchMoveHandler, { passive: false });
-			activeDocument.addEventListener('touchend', this.touchEndHandler);
+			this.ownerDocument?.addEventListener('touchmove', this.touchMoveHandler, { passive: false });
+			this.ownerDocument?.addEventListener('touchend', this.touchEndHandler);
 		}, { passive: false });
 
 		// 鼠标按下
@@ -289,9 +324,18 @@ export class MobileFloatingStats {
 				this.containerEl.removeClass('is-docked', 'is-docked-left', 'is-docked-right', 'is-expanded');
 			}
 			
-			activeDocument.addEventListener('mousemove', this.mouseMoveHandler);
-			activeDocument.addEventListener('mouseup', this.mouseUpHandler);
+			this.ownerDocument?.addEventListener('mousemove', this.mouseMoveHandler);
+			this.ownerDocument?.addEventListener('mouseup', this.mouseUpHandler);
 		});
+	}
+
+	private removeDragListeners(): void {
+		if (this.ownerDocument) {
+			this.ownerDocument.removeEventListener('touchmove', this.touchMoveHandler);
+			this.ownerDocument.removeEventListener('touchend', this.touchEndHandler);
+			this.ownerDocument.removeEventListener('mousemove', this.mouseMoveHandler);
+			this.ownerDocument.removeEventListener('mouseup', this.mouseUpHandler);
+		}
 	}
 
 	private touchMoveHandler = (e: TouchEvent) => {
@@ -323,14 +367,15 @@ export class MobileFloatingStats {
 	}
 
 	private checkBounds(): void {
-		if (!this.containerEl) return;
+		if (!this.containerEl || !this.ownerWindow) return;
 
 		// 考虑到渲染时可能有微小差异，给默认尺寸
 		const elWidth = this.containerEl.offsetWidth || 150;
 		const elHeight = this.containerEl.offsetHeight || 40;
 
-		const maxX = activeWindow.innerWidth - elWidth;
-		const maxY = activeWindow.innerHeight - elHeight;
+		const win = this.ownerWindow;
+		const maxX = win.innerWidth - elWidth;
+		const maxY = win.innerHeight - elHeight;
 
 		// X 轴约束
 		if (this.position.x > maxX) {
@@ -358,11 +403,7 @@ export class MobileFloatingStats {
 				this.evaluateDocking();
 			}
 			this.savePosition();
-			
-			activeDocument.removeEventListener('touchmove', this.touchMoveHandler);
-			activeDocument.removeEventListener('touchend', this.touchEndHandler);
-			activeDocument.removeEventListener('mousemove', this.mouseMoveHandler);
-			activeDocument.removeEventListener('mouseup', this.mouseUpHandler);
+			this.removeDragListeners();
 		}
 	}
 
@@ -370,10 +411,11 @@ export class MobileFloatingStats {
 	 * 贴边检测与半隐/自动缩短判定
 	 */
 	private evaluateDocking(): void {
-		if (!this.containerEl) return;
+		if (!this.containerEl || !this.ownerWindow) return;
 
 		const elWidth = this.containerEl.offsetWidth || 150;
-		const maxX = activeWindow.innerWidth - elWidth;
+		const win = this.ownerWindow;
+		const maxX = win.innerWidth - elWidth;
 		const dockThreshold = 35; // 距离左右边缘 35px 内自动贴边缩短并变淡
 
 		if (this.position.x <= dockThreshold) {

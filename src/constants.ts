@@ -349,6 +349,14 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 		immersiveLeftInternalSizes: [],
 		immersiveRightInternalSizes: [],
 
+		collapsedRegions: {
+			top: false,
+			bottom: false,
+			left: false,
+			right: false,
+		},
+		allRegionsHidden: false,
+
 		immersiveShowTotalTime: true,
 		immersiveShowFocusTime: true,
 		immersiveShowSlackTime: true,

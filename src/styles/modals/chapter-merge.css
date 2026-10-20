@@ -115,6 +115,59 @@
 }
 
 
+.wn-merge-toc-toolbar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 2px 2px 6px;
+	gap: 6px;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+
+.wn-merge-selection-counter {
+	font-size: 0.75em;
+	font-weight: 600;
+	color: var(--text-muted);
+	white-space: nowrap;
+}
+
+
+.wn-merge-bulk-actions {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+
+.wn-merge-btn-bulk {
+	font-size: 0.7em;
+	padding: 2px 6px;
+	height: 22px;
+	line-height: 1;
+	background: var(--background-modifier-form-field);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	color: var(--text-muted);
+	cursor: pointer;
+	transition: color 0.15s, background 0.15s;
+}
+
+
+.wn-merge-btn-bulk:hover {
+	color: var(--text-normal);
+	background: var(--background-modifier-hover);
+}
+
+
+.wn-merge-toc-checkbox {
+	margin: 0;
+	cursor: pointer;
+	flex-shrink: 0;
+	accent-color: var(--interactive-accent);
+}
+
+
 .wn-merge-toc-list {
 	flex: 1;
 	overflow-y: auto;
@@ -150,6 +203,7 @@
 	padding: 6px 10px;
 	border-radius: 6px;
 	cursor: pointer;
+	user-select: none;
 	font-size: 0.85em;
 	color: var(--text-normal);
 	transition: background 0.15s;

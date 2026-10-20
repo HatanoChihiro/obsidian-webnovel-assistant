@@ -82,6 +82,8 @@ import type { TypographyManager } from '../src/services/TypographyManager';
 import type { CommandManager } from '../src/core/CommandManager';
 import type { ViewManager } from '../src/core/ViewManager';
 import type { MenuManager } from '../src/core/MenuManager';
+import { Logger } from '../src/utils/Logger';
+import { LoreCardRenderer } from '../src/ui/components/LoreCardRenderer';
 
 describe('PluginBootstrapper', () => {
 	let registry: ServiceRegistry;
@@ -1006,6 +1008,68 @@ describe('PluginBootstrapper', () => {
 			expect(mockCacheManager.saveCache).toHaveBeenCalled();
 			expect(destroyAllSpy).toHaveBeenCalledTimes(1);
 		});
+
+		it('synchronously clears LoreCardRenderer body cache on shutdown', () => {
+			const clearLoreCacheSpy = vi.spyOn(LoreCardRenderer, 'clearLoreBodyCache');
+			const bootstrapper = new PluginBootstrapper(mockPlugin, registry);
+
+			const shutdownPromise = bootstrapper.shutdown();
+			expect(clearLoreCacheSpy).toHaveBeenCalledTimes(1);
+			return shutdownPromise;
+		});
+
+		it('releases logger only for its own owner after async cleanup and does not clear a newly initialized logger', async () => {
+			const createDeferred = <T = void>() => {
+				let resolve!: (value: T | PromiseLike<T>) => void;
+				const promise = new Promise<T>(res => { resolve = res; });
+				return { promise, resolve };
+			};
+			const destroyDeferred = createDeferred();
+			vi.spyOn(registry, 'destroyAll').mockImplementation(() => destroyDeferred.promise);
+
+			const oldPlugin = mockPlugin;
+			const newPlugin = { settings: { debugMode: true } } as unknown as BootstrapperHost;
+
+			Logger.initialize(oldPlugin);
+			const bootstrapper = new PluginBootstrapper(oldPlugin, registry);
+			const shutdownPromise = bootstrapper.shutdown();
+
+			// During async cleanup, logger is still active with old plugin
+			expect((Logger as unknown as { plugin: unknown }).plugin).toBe(oldPlugin);
+
+			// A new plugin initializes logger before old cleanup completes
+			Logger.initialize(newPlugin);
+
+			// Old shutdown finishes cleanup
+			destroyDeferred.resolve();
+			await shutdownPromise;
+
+			// Old shutdown must not clear the newly initialized plugin's logger
+			expect((Logger as unknown as { plugin: unknown }).plugin).toBe(newPlugin);
+
+			// Repeated shutdown is idempotent and preserves the logger
+			await bootstrapper.shutdown();
+			expect((Logger as unknown as { plugin: unknown }).plugin).toBe(newPlugin);
+		});
+
+		it('releases logger after normal asynchronous cleanup finishes', async () => {
+			const bootstrapper = new PluginBootstrapper(mockPlugin, registry);
+			Logger.initialize(mockPlugin);
+
+			await bootstrapper.shutdown();
+
+			expect((Logger as unknown as { plugin: unknown }).plugin).toBeNull();
+		});
+
+		it('releases logger after async cleanup error in shutdown', async () => {
+			const bootstrapper = new PluginBootstrapper(mockPlugin, registry);
+			vi.spyOn(registry, 'destroyAll').mockRejectedValue(new Error('destroy failed'));
+			Logger.initialize(mockPlugin);
+
+			await expect(bootstrapper.shutdown()).resolves.toBeUndefined();
+
+			expect((Logger as unknown as { plugin: unknown }).plugin).toBeNull();
+		});
 	});
 
 	describe('bootstrap and rollback', () => {
@@ -1129,6 +1193,18 @@ describe('PluginBootstrapper', () => {
 
 			expect(caughtError).toBe(startupError);
 			expect(cleanup).toHaveBeenCalledTimes(1);
+		});
+
+		it('releases logger reference after rollback on bootstrap failure', async () => {
+			registry.register('HomepageManager', { cleanup: vi.fn() } as unknown as HomepageManager);
+			registry.register('FileExplorerPatcher', mockFileExplorerPatcher as unknown as FileExplorerPatcher);
+			Logger.initialize(mockPlugin);
+			mockPlugin.loadSettings = vi.fn().mockRejectedValue(new Error('Settings fail'));
+			const bootstrapper = new PluginBootstrapper(mockPlugin, registry);
+
+			await expect(bootstrapper.bootstrap()).rejects.toThrow('Settings fail');
+
+			expect((Logger as unknown as { plugin: unknown }).plugin).toBeNull();
 		});
 	});
 

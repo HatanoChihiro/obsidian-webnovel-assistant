@@ -18,10 +18,18 @@ export class StickyNoteDataManager {
 	private plugin: WebNovelAssistantPlugin;
 	private notesFilePath: string;
 	private store: JsonSnapshotStore<StickyNoteState[]>;
+	private pendingRefreshTimers = new Set<number>();
 
 	constructor(plugin: WebNovelAssistantPlugin) {
 		this.plugin = plugin;
 		this.notesFilePath = `${getPluginDir(plugin)}/notes-data.json`;
+
+		this.plugin.register(() => {
+			for (const timer of this.pendingRefreshTimers) {
+				window.clearTimeout(timer);
+			}
+			this.pendingRefreshTimers.clear();
+		});
 
 		this.store = new JsonSnapshotStore<StickyNoteState[]>({
 			write: async (content) => {
@@ -255,10 +263,18 @@ export class StickyNoteDataManager {
 		note.load();
 
 		// 给一点额外时间让设置/文件持久化完成，并触发所有便签视图刷新
+		this.scheduleRefresh();
+	}
+
+	/**
+	 * 调度便签列表及全局视图刷新（固定 200ms 延迟，边界化生命周期防泄漏）
+	 */
+	public scheduleRefresh(): void {
 		const timer = window.setTimeout(() => {
+			this.pendingRefreshTimers.delete(timer);
 			this.refreshImmersiveNotes();
 		}, 200);
-		this.plugin.register(() => window.clearTimeout(timer));
+		this.pendingRefreshTimers.add(timer);
 	}
 
 	public refreshImmersiveNotes() {

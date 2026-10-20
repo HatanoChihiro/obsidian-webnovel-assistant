@@ -45,11 +45,19 @@ export class CacheManager {
 	
 	// 快照持久化存储：确保数据保存的原子性、突发合并与冗余写入抑制
 	private store: JsonSnapshotStore<CacheData>;
+	private pendingMobileRefreshTimers = new Set<number>();
 
 	constructor(plugin: WebNovelAssistantPlugin) {
 		this.cache = new Map();
 		this.plugin = plugin;
 		this.cacheFilePath = `${getPluginDir(plugin)}/cache-data.json`;
+
+		this.plugin.register(() => {
+			for (const timer of this.pendingMobileRefreshTimers) {
+				window.clearTimeout(timer);
+			}
+			this.pendingMobileRefreshTimers.clear();
+		});
 		this.store = new JsonSnapshotStore<CacheData>({
 			write: async (content) => {
 				const adapter = this.plugin.app.vault.adapter;
@@ -592,10 +600,11 @@ export class CacheManager {
 
 			if (isMobile()) {
 				const timer = window.setTimeout(() => {
+					this.pendingMobileRefreshTimers.delete(timer);
 					this.plugin.fileExplorerPatcher?.refreshFolderCounts();
 					if (this.plugin.settings.enableHomepage) void this.plugin.homepageManager?.refreshHomepageViews();
 				}, PLATFORM_DELAYS.MOBILE_CACHE_REFRESH_DELAY);
-				this.plugin.register(() => window.clearTimeout(timer));
+				this.pendingMobileRefreshTimers.add(timer);
 			} else {
 				this.plugin.fileExplorerPatcher?.refreshFolderCounts();
 				if (this.plugin.settings.enableHomepage) void this.plugin.homepageManager?.refreshHomepageViews();

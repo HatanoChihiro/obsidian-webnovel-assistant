@@ -581,6 +581,24 @@ describe('ChapterSorter', () => {
 			expect(ChapterSorter.generateChapterLinktext(mockApp, mockPlugin, vol1Ch1, '作品', { useAlias: false })).toBe('第一卷/第1章');
 			expect(ChapterSorter.generateChapterLinktext(mockApp, mockPlugin, vol2Ch1, '作品', { useAlias: true })).toBe('第二卷/第1章|第1章');
 		});
+
+		it('round-trips significant basename whitespace through explicit chapter links', () => {
+			const spaced = createFile('作品/第一卷/第1章 .md', '第1章 ');
+			const eligibleChapters = [spaced, vol2Ch1];
+			const options = { sourcePath: '作品/时间线.md', eligibleChapters };
+			const linktextMock = mockApp.metadataCache.fileToLinktext as ReturnType<typeof vi.fn>;
+			linktextMock.mockReturnValueOnce('第1章 .md');
+			const link = ChapterSorter.generateChapterLinktext(mockApp, mockPlugin, spaced, '作品', options);
+			const index = ChapterSorter.createReferenceIndex(mockApp, mockPlugin, '作品', options);
+			expect(link).toBe('作品/第一卷/第1章 .md');
+			expect(index.resolve(`[[${link}|第1章]]`)).toBe(spaced);
+			expect(index.resolve('第二卷/第1章')).toBe(vol2Ch1);
+			expect(index.resolve('第1章')).toBeNull();
+			expect(ChapterSorter.generateChapterLinktext(mockApp, mockPlugin, spaced, '作品', {
+				eligibleChapters: [spaced]
+			})).toBe('作品/第一卷/第1章 .md');
+			linktextMock.mockReset();
+		});
 	});
 
 	describe('createFileComparator — per-sort memoization', () => {

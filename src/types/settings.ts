@@ -129,6 +129,9 @@ export interface ChapterNamingRule {
 	enabled: boolean;
 }
 
+/** 沉浸模式辅助区域 */
+export type ImmersiveAuxiliaryRegion = 'top' | 'bottom' | 'left' | 'right';
+
 /** 沉浸模式设置 */
 export interface ImmersiveModeSettings {
 	/** 沉浸模式：顶部插槽组件 ID 列表 */
@@ -154,6 +157,11 @@ export interface ImmersiveModeSettings {
 	immersiveBottomInternalSizes: number[];
 	immersiveLeftInternalSizes: number[];
 	immersiveRightInternalSizes: number[];
+
+	/** 各辅助区域独立折叠状态 (top/bottom/left/right) */
+	collapsedRegions: Record<ImmersiveAuxiliaryRegion, boolean>;
+	/** 是否全局隐藏所有辅助区域 */
+	allRegionsHidden: boolean;
 
 	/** 数据仪表盘：是否显示总计时间 */
 	immersiveShowTotalTime: boolean;

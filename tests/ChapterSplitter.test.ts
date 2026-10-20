@@ -11,6 +11,7 @@ import {
 import { TemplateChoiceModal } from '../src/ui/TemplateChoiceModal';
 import { ChapterSplitCollisionModal } from '../src/ui/ChapterSplitCollisionModal';
 import type { ChapterTemplateSettings } from '../src/utils/template';
+import { DEFAULT_SETTINGS } from '../src/constants';
 
 interface MockVault {
 	getAbstractFileByPath: ReturnType<typeof vi.fn>;
@@ -478,6 +479,65 @@ describe('ChapterSplitter - Core Logic & Regressions', () => {
 			expect(mockLeaf.view.editor.setCursor).toHaveBeenCalledWith({ line: 0, ch: 0 });
 			expect(refreshSpy).toHaveBeenCalledTimes(1);
 			expect(mockNoticeMessages).toContain('已拆分章节: 第2章');
+		});
+
+		it('trims the generated title separator before creating a split chapter', async () => {
+			sourceFile.basename = '第1章 标题';
+			const result = await splitChapterAtCursor({
+				app: mockApp as unknown as App,
+				view: mockView as unknown as MarkdownView,
+				editor: mockEditor as unknown as Editor,
+				settings: defaultSplitSettings
+			});
+			expect(result).toBe(true);
+			expect(mockApp.vault.create).toHaveBeenCalledWith('Novel/第2章.md', expect.any(String));
+		});
+
+		it.each([
+			{ title: '温吞水20-48', eligible: false },
+			{ title: '第2章_合并章节', eligible: false },
+			{ title: '第2章', eligible: true }
+		])('should split $title but record creation only when eligible for the chapter list', async ({ title, eligible }) => {
+			sourceFile = createMockFile('Novel/温吞水.md');
+			sourceFile.parent = folder;
+			folder.children = [sourceFile];
+			mockView.file = sourceFile;
+			const infoFile = createMockFile(`Novel/${DEFAULT_SETTINGS.novelInfo.fileName}.md`);
+			mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) => path === infoFile.path ? infoFile : null);
+			mockApp.vault.create.mockImplementation(async (path: string) => {
+				const file = createMockFile(path);
+				file.parent = folder;
+				return file;
+			});
+			const plugin = {
+				settings: { ...DEFAULT_SETTINGS, workspaceFolders: ['Novel'] },
+				cacheManager: { isEligibleForChapterList: vi.fn().mockReturnValue(eligible) }
+			};
+			const writingJourneyService = {
+				markHandledCreate: vi.fn(),
+				recordChapterCreated: vi.fn().mockResolvedValue(undefined)
+			};
+
+			const result = await splitChapterAtCursor({
+				app: mockApp as unknown as App,
+				view: mockView as unknown as MarkdownView,
+				editor: mockEditor as unknown as Editor,
+				settings: defaultSplitSettings,
+				onRequestName: async () => title,
+				plugin,
+				writingJourneyService
+			});
+
+			expect(result).toBe(true);
+			expect(mockApp.vault.create).toHaveBeenCalledWith(`Novel/${title}.md`, ' of chapter\nSecond part of chapter');
+			expect(mockEditor.getValue()).toBe('First part');
+			expect(writingJourneyService.markHandledCreate).toHaveBeenCalledWith(`Novel/${title}.md`);
+			if (eligible) {
+				expect(writingJourneyService.recordChapterCreated).toHaveBeenCalledExactlyOnceWith('Novel', `Novel/${title}.md`, title, 'split');
+			} else {
+				expect(writingJourneyService.recordChapterCreated).not.toHaveBeenCalled();
+			}
+			expect(plugin.cacheManager.isEligibleForChapterList).toHaveBeenCalledWith(expect.objectContaining({ path: `Novel/${title}.md` }));
 		});
 
 		it('should handle root-level files correctly without leading slash', async () => {

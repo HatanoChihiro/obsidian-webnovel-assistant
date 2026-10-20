@@ -294,6 +294,28 @@ describe('RelationGraphManager', () => {
 	});
 
 	describe('GraphRenderer Style Defaults', () => {
+		it.each([false, true])('reuses theme probes per container across switches (separate windows: %s)', separateWindows => {
+			const createTarget = (ownerDocument: object) => {
+				const target = { ownerDocument, isConnected: true, createDiv: vi.fn(), removeChild: vi.fn() };
+				target.createDiv.mockImplementation(() => ({ ownerDocument, isConnected: true, parentElement: target, setCssStyles: vi.fn() }));
+				return target;
+			};
+			const ownerDocument = {};
+			const first = createTarget(ownerDocument);
+			const second = createTarget(separateWindows ? {} : ownerDocument);
+			vi.stubGlobal('document', {});
+			vi.stubGlobal('getComputedStyle', () => ({ color: 'rgb(1, 2, 3)' }));
+			try {
+				for (const target of [first, second, first]) {
+					expect(GraphRenderer.resolveCssColor('var(--text-normal)', target as unknown as HTMLElement, '#000')).toBe('rgb(1, 2, 3)');
+				}
+				expect(first.createDiv).toHaveBeenCalledTimes(1);
+				expect(second.createDiv).toHaveBeenCalledTimes(1);
+			} finally {
+				vi.unstubAllGlobals();
+			}
+		});
+
 		const createRenderState = (graphData: GraphData): GraphRenderState => ({
 			graphData,
 			scale: 1,

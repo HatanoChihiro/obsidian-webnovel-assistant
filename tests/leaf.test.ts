@@ -2,7 +2,6 @@ import { describe, it, expect, vi } from 'vitest';
 import type { App, TFile, WorkspaceLeaf } from 'obsidian';
 import {
 	findMatchState,
-	buildEphemeralState,
 	getMarkdownBodyRange,
 	computeMatchLocation,
 	smartLocateAndHighlight,
@@ -13,12 +12,9 @@ import {
 } from '../src/utils/leaf';
 import { MarkdownView } from './mocks/obsidian';
 import {
-	findNormalizedTextRanges,
-	findNearestBlockLine,
 	prepareNormalizedHaystack,
 	mapHaystackRangeToSourceNodes,
 	getCandidateRenderedBlocks,
-	getTargetRenderedBlock,
 	wrapTextNodes,
 	highlightPersistentTarget,
 	cancelHighlightTracker,
@@ -202,10 +198,10 @@ describe('findMatchState (Source Match Coordinates & Offsets)', () => {
 	});
 });
 
-describe('findNormalizedTextRanges (Whitespace & Multi-Node Text Matching)', () => {
+describe('prepareNormalizedHaystack (Whitespace & Multi-Node Text Matching)', () => {
 	it('should find exact ranges within a single text segment', () => {
 		const texts = ['Hello world!'];
-		const ranges = findNormalizedTextRanges(texts, 'world');
+		const ranges = prepareNormalizedHaystack(texts).findRanges('world');
 
 		expect(ranges).toEqual([
 			{ nodeIndex: 0, startOffset: 6, endOffset: 11 }
@@ -214,7 +210,7 @@ describe('findNormalizedTextRanges (Whitespace & Multi-Node Text Matching)', () 
 
 	it('should find exact ranges spanning across multiple text segments', () => {
 		const texts = ['Hello ', 'beautiful ', 'world!'];
-		const ranges = findNormalizedTextRanges(texts, 'beautiful world');
+		const ranges = prepareNormalizedHaystack(texts).findRanges('beautiful world');
 
 		expect(ranges).toEqual([
 			{ nodeIndex: 1, startOffset: 0, endOffset: 10 },
@@ -224,7 +220,7 @@ describe('findNormalizedTextRanges (Whitespace & Multi-Node Text Matching)', () 
 
 	it('should match across soft-breaks and collapsed whitespace', () => {
 		const texts = ['First paragraph line\n', '   second   line with   spaces'];
-		const ranges = findNormalizedTextRanges(texts, 'line second line');
+		const ranges = prepareNormalizedHaystack(texts).findRanges('line second line');
 
 		expect(ranges.length).toBe(2);
 		expect(ranges[0].nodeIndex).toBe(0);
@@ -233,24 +229,24 @@ describe('findNormalizedTextRanges (Whitespace & Multi-Node Text Matching)', () 
 
 	it('should match case-insensitively and return empty array if not found', () => {
 		const texts = ['Case Sensitive Text'];
-		const ranges = findNormalizedTextRanges(texts, 'sensitive');
+		const ranges = prepareNormalizedHaystack(texts).findRanges('sensitive');
 		expect(ranges).toEqual([
 			{ nodeIndex: 0, startOffset: 5, endOffset: 14 }
 		]);
 
-		const notFound = findNormalizedTextRanges(texts, 'missing word');
+		const notFound = prepareNormalizedHaystack(texts).findRanges('missing word');
 		expect(notFound).toEqual([]);
 	});
 
 	it('should accurately pick the right occurrence when preferredCharOffset is provided', () => {
 		const texts = ['徐太太在前面。', '徐太太在中间。', '徐太太在后面。'];
-		const rangeFirst = findNormalizedTextRanges(texts, '徐太太', 0);
+		const rangeFirst = prepareNormalizedHaystack(texts).findRanges('徐太太', 0);
 		expect(rangeFirst).toEqual([{ nodeIndex: 0, startOffset: 0, endOffset: 3 }]);
 
-		const rangeSecond = findNormalizedTextRanges(texts, '徐太太', 8);
+		const rangeSecond = prepareNormalizedHaystack(texts).findRanges('徐太太', 8);
 		expect(rangeSecond).toEqual([{ nodeIndex: 1, startOffset: 0, endOffset: 3 }]);
 
-		const rangeThird = findNormalizedTextRanges(texts, '徐太太', 16);
+		const rangeThird = prepareNormalizedHaystack(texts).findRanges('徐太太', 16);
 		expect(rangeThird).toEqual([{ nodeIndex: 2, startOffset: 0, endOffset: 3 }]);
 	});
 
@@ -263,17 +259,17 @@ describe('findNormalizedTextRanges (Whitespace & Multi-Node Text Matching)', () 
 		];
 
 		// Disambiguate with occurrenceIndex
-		const match0 = findNormalizedTextRanges(texts, '徐太太', { occurrenceIndex: 0 });
+		const match0 = prepareNormalizedHaystack(texts).findRanges('徐太太', { occurrenceIndex: 0 });
 		expect(match0).toEqual([{ nodeIndex: 1, startOffset: 0, endOffset: 3 }]);
 
-		const match1 = findNormalizedTextRanges(texts, '徐太太', { occurrenceIndex: 1 });
+		const match1 = prepareNormalizedHaystack(texts).findRanges('徐太太', { occurrenceIndex: 1 });
 		expect(match1).toEqual([{ nodeIndex: 2, startOffset: 4, endOffset: 7 }]);
 
-		const match2 = findNormalizedTextRanges(texts, '徐太太', { occurrenceIndex: 2 });
+		const match2 = prepareNormalizedHaystack(texts).findRanges('徐太太', { occurrenceIndex: 2 });
 		expect(match2).toEqual([{ nodeIndex: 3, startOffset: 5, endOffset: 8 }]);
 
 		// Disambiguate with contextPrefix / contextSuffix (even if raw offsets shifted drastically)
-		const matchByContext = findNormalizedTextRanges(texts, '徐太太', {
+		const matchByContext = prepareNormalizedHaystack(texts).findRanges('徐太太', {
 			contextPrefix: '流苏看着',
 			contextSuffix: '，低声说话',
 			preferredCharOffset: 9999 // Shifted raw offset should NOT mislead context matching
@@ -297,14 +293,14 @@ describe('findNormalizedTextRanges (Whitespace & Multi-Node Text Matching)', () 
 		}
 
 		// Single-node match: returns exactly 1 TextNodeRange object
-		const singleMatch = findNormalizedTextRanges(nodes, 'TARGET_PHRASE');
+		const singleMatch = prepareNormalizedHaystack(nodes).findRanges('TARGET_PHRASE');
 		expect(singleMatch).toEqual([
 			{ nodeIndex: 42, startOffset: 200, endOffset: 213 }
 		]);
 		expect(singleMatch.length).toBe(1);
 
 		// Cross-node match: returns exactly 2 TextNodeRange objects
-		const crossMatch = findNormalizedTextRanges(nodes, 'CROSS_NODE_PHRASE');
+		const crossMatch = prepareNormalizedHaystack(nodes).findRanges('CROSS_NODE_PHRASE');
 		expect(crossMatch).toEqual([
 			{ nodeIndex: 70, startOffset: 495, endOffset: 501 },
 			{ nodeIndex: 71, startOffset: 0, endOffset: 11 }
@@ -363,62 +359,60 @@ describe('getCandidateRenderedBlocks (Deterministic Neighborhood Block Ranking)'
 	});
 });
 
-describe('findNearestBlockLine (Rendered Block Selection for Target Soft Lines)', () => {
-	const blockLines = [0, 5, 12, 20];
-
-	it('should pick exact block line when targetLine is a block start', () => {
-		expect(findNearestBlockLine(blockLines, 0)).toBe(0);
-		expect(findNearestBlockLine(blockLines, 5)).toBe(5);
-		expect(findNearestBlockLine(blockLines, 12)).toBe(12);
+describe('getCandidateRenderedBlocks primary block selection', () => {
+	const blocks = [0, 5, 12, 20].map(line => ({ getAttribute: () => String(line) }));
+	const container = { querySelectorAll: () => blocks } as unknown as Element;
+	it.each([[0, 0], [5, 1], [12, 2], [6, 1], [8, 1], [11, 1], [15, 2]])('selects the paragraph for source line %s', (line, index) => {
+		expect(getCandidateRenderedBlocks(container, line)[0]).toBe(blocks[index]);
 	});
-
-	it('should pick paragraph start block line when targetLine is a soft line inside the paragraph', () => {
-		// Lines 6, 7, 8, 11 are inside paragraph starting at line 5
-		expect(findNearestBlockLine(blockLines, 6)).toBe(5);
-		expect(findNearestBlockLine(blockLines, 8)).toBe(5);
-		expect(findNearestBlockLine(blockLines, 11)).toBe(5);
-
-		// Line 15 is inside paragraph starting at line 12
-		expect(findNearestBlockLine(blockLines, 15)).toBe(12);
-	});
-
-	it('should return null if targetLine precedes all block lines or line list is empty', () => {
-		expect(findNearestBlockLine(blockLines, -1)).toBeNull();
-		expect(findNearestBlockLine([], 5)).toBeNull();
+	it('uses the first available block before its start and handles an empty container', () => {
+		expect(getCandidateRenderedBlocks(container, -1)[0]).toBe(blocks[0]);
+		expect(getCandidateRenderedBlocks({ querySelectorAll: () => [] } as unknown as Element, 5)).toEqual([]);
 	});
 });
 
-describe('buildEphemeralState (Exact Match vs Fallback eState Payload)', () => {
-	it('should build cursor and match payload without line when matchState is present', () => {
-		const content = 'Line 0\nTarget phrase in line 1\nLine 2';
-		const matchState = findMatchState(content, ['Target phrase']);
-
-		expect(matchState).not.toBeNull();
-		const eState = buildEphemeralState(matchState, undefined, content);
-
-		// Must NOT contain line to prevent Obsidian from forcing full-line highlight
-		expect(eState).not.toHaveProperty('line');
-		expect(eState).toEqual({
-			cursor: {
-				from: { line: 1, ch: 0 },
-				to: { line: 1, ch: 13 }
-			},
-			match: {
-				content: content,
-				matches: [[7, 20]]
-			}
+describe('smartLocateAndHighlight exact selection and explicit fallback', () => {
+	const content = 'Line 0\nTarget phrase in line 1\nLine 2';
+	function createNavigation() {
+		const file = { path: 'Chapter.md' } as TFile;
+		const editor = {
+			lineCount: () => 3, getLine: (line: number) => content.split('\n')[line],
+			getValue: () => content, getSelection: () => 'Target phrase',
+			focus: vi.fn(), setSelection: vi.fn(), setCursor: vi.fn(), scrollIntoView: vi.fn()
+		};
+		const view = Object.assign(new MarkdownView(), {
+			file, editor, getMode: () => 'source',
+			containerEl: { ownerDocument: { defaultView: { setTimeout: (fn: () => void) => { fn(); return 1; }, clearTimeout: vi.fn() } } }
+		});
+		const ephemeral = vi.fn();
+		const leaf = { view, openFile: vi.fn(), setEphemeralState: ephemeral } as unknown as WorkspaceLeaf;
+		const app = { vault: { cachedRead: async () => content }, workspace: {
+			getLeavesOfType: () => [leaf], getMostRecentLeaf: () => leaf,
+			setActiveLeaf: vi.fn(), revealLeaf: vi.fn().mockResolvedValue(undefined)
+		} } as unknown as App;
+		return { file, editor, leaf, app, ephemeral };
+	}
+	it('selects the precise phrase without a full-line ephemeral highlight', async () => {
+		const { file, editor, leaf, app, ephemeral } = createNavigation();
+		expect(await smartLocateAndHighlight(app, file, ['Target phrase'], { preferredLeaf: leaf })).toBe(true);
+		expect(editor.setSelection).toHaveBeenCalledWith({ line: 1, ch: 0 }, { line: 1, ch: 13 });
+		expect(ephemeral).toHaveBeenCalledWith({
+			cursor: { from: { line: 1, ch: 0 }, to: { line: 1, ch: 13 } },
+			match: { content: 'Line 0\nTarget phrase in line 1\nLine 2', matches: [[7, 20]] }
 		});
 	});
-
-	it('should only build a line payload for an explicit fallback, including line zero', () => {
-		const eStateFallback = buildEphemeralState(null, 10, 'content');
-		expect(eStateFallback).toEqual({ line: 10 });
-
-		const eStateFirstLine = buildEphemeralState(null, 0, 'content');
-		expect(eStateFirstLine).toEqual({ line: 0 });
-
-		const eStateDefault = buildEphemeralState(null, undefined, 'content');
-		expect(eStateDefault).toBeNull();
+	it.each([10, 0, undefined])('only uses an explicitly supplied fallback line %s', async fallbackLine => {
+		const { file, editor, leaf, app, ephemeral } = createNavigation();
+		const found = await smartLocateAndHighlight(app, file, ['absent phrase'], { preferredLeaf: leaf, fallbackLine });
+		if (fallbackLine === undefined) {
+			expect(found).toBe(false);
+			expect(ephemeral).not.toHaveBeenCalled();
+			expect(editor.setCursor).not.toHaveBeenCalled();
+		} else {
+			expect(found).toBe(true);
+			expect(ephemeral).toHaveBeenCalledWith({ line: fallbackLine });
+			expect(editor.setCursor).toHaveBeenCalledWith({ line: fallbackLine, ch: 0 });
+		}
 	});
 });
 

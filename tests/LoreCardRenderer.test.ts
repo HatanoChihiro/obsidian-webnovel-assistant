@@ -841,5 +841,77 @@ type: 主要角色
 			expect(second.aliases).toEqual(['小美']);
 			expect(second.chunk).toContain('正文内容');
 		});
+
+		it('prevents an in-flight read resolving after clearLoreBodyCache() from repopulating the cache', async () => {
+			const mockFile = { basename: '人物', path: '设定/人物.md', stat: { mtime: 1000 } };
+			const entry = { file: mockFile as unknown as TFile, heading: '女主角' };
+			mockApp.metadataCache.getFileCache.mockReturnValue({
+				headings: [{ heading: '女主角', level: 2, position: { start: { line: 0 }, end: { line: 0 } } }]
+			});
+
+			let resolveRead!: (content: string) => void;
+			mockApp.vault.cachedRead.mockImplementationOnce(() => new Promise(res => {
+				resolveRead = res;
+			}));
+
+			// Start asynchronous resolveLoreBody
+			const inFlightPromise = LoreCardRenderer.resolveLoreBody(entry, mockApp);
+
+			// While parse is in flight, clearLoreBodyCache() is called (e.g. during unload)
+			LoreCardRenderer.clearLoreBodyCache();
+
+			// Finish reading
+			resolveRead('## 女主角\n女主角正文');
+			const resolved = await inFlightPromise;
+
+			// Returns parsed result normally
+			expect(resolved.chunk).toBe('女主角正文');
+
+			// Cache must NOT have been repopulated by the late-resolving in-flight read
+			mockApp.vault.cachedRead.mockClear();
+			mockApp.vault.cachedRead.mockResolvedValueOnce('## 女主角\n女主角正文重新读取');
+
+			const second = await LoreCardRenderer.resolveLoreBody(entry, mockApp);
+			expect(mockApp.vault.cachedRead).toHaveBeenCalledTimes(1);
+		});
+	});
+
+	describe('renderAliasBadges lifecycle & bounded component registration', () => {
+		it('registers exactly one unload handler per component across repeated badge renders', () => {
+			const component = createMockComponent();
+			const header = createMockEl('div', 'header');
+
+			for (let i = 0; i < 50; i++) {
+				(LoreCardRenderer as unknown as { renderAliasBadges: (header: HTMLElement, aliases: string[], component: Component) => void }).renderAliasBadges(header, [`alias_${i}`], component);
+			}
+
+			expect(component.register).toHaveBeenCalledTimes(1);
+		});
+
+		it('releases previous resources and badges when aliases become empty', () => {
+			const component = createMockComponent();
+			const header = createMockEl('div', 'header');
+
+			(LoreCardRenderer as unknown as { renderAliasBadges: (header: HTMLElement, aliases: string[], component: Component) => void }).renderAliasBadges(header, ['别名1', '别名2'], component);
+			expect(header.querySelector('.wn-lore-card-badges')).not.toBeNull();
+
+			(LoreCardRenderer as unknown as { renderAliasBadges: (header: HTMLElement, aliases: string[], component: Component) => void }).renderAliasBadges(header, [], component);
+			expect(header.querySelector('.wn-lore-card-badges')).toBeNull();
+		});
+
+		it('executes active cleanups when component unload callback is invoked', () => {
+			let registeredUnload: (() => void) | undefined;
+			const component = {
+				register: vi.fn((cb: () => void) => { registeredUnload = cb; })
+			} as unknown as Component;
+			const header = createMockEl('div', 'header');
+
+			(LoreCardRenderer as unknown as { renderAliasBadges: (header: HTMLElement, aliases: string[], component: Component) => void }).renderAliasBadges(header, ['别名A'], component);
+			expect(component.register).toHaveBeenCalledTimes(1);
+
+			// Calling unload triggers cleanup
+			registeredUnload?.();
+			expect(mockOwnerWindow.cancelAnimationFrame).toHaveBeenCalled();
+		});
 	});
 });

@@ -50,6 +50,12 @@ export class ImmersiveChapterListView extends ItemView {
 	plugin: ImmersiveChapterListViewPlugin;
 	private lastScrollTop: number = 0;
 	private isInitialLoad: boolean = true;
+	private isClosed: boolean = false;
+	private refreshGeneration: number = 0;
+	private retryTimer: number | null = null;
+	private retryWindow: Window | null = null;
+	private scrollRafId: number | null = null;
+	private scrollRafWindow: Window | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: ImmersiveChapterListViewPlugin) {
 		super(leaf);
@@ -69,6 +75,7 @@ export class ImmersiveChapterListView extends ItemView {
 	}
 
 	async onOpen() {
+		this.isClosed = false;
 		void this.refresh();
 		
 		// 仅轻量更新主编辑与参考文档高亮，避免全量清空 DOM 导致卡顿
@@ -157,6 +164,12 @@ export class ImmersiveChapterListView extends ItemView {
 	}
 
 	public async refresh() {
+		this.cancelRetryTimer();
+		this.cancelScrollRaf();
+
+		const currentGen = ++this.refreshGeneration;
+		if (this.isClosed) return;
+
 		const { containerEl } = this;
 		
 		containerEl.empty();
@@ -169,9 +182,16 @@ export class ImmersiveChapterListView extends ItemView {
 		const context = this.resolveListContext();
 		if (!context) {
 			listContainer.createEl('p', { text: t('immersive.loading-folder'), cls: 'immersive-empty-text' });
-			window.setTimeout(() => {
-				if (this.app.workspace.getActiveFile()) void this.refresh();
-			}, 1000);
+			const win = this.containerEl?.ownerDocument?.defaultView;
+			if (win && !this.isClosed) {
+				this.retryWindow = win;
+				this.retryTimer = win.setTimeout(() => {
+					if (this.isClosed || currentGen !== this.refreshGeneration) return;
+					this.retryTimer = null;
+					this.retryWindow = null;
+					if (this.app.workspace.getActiveFile()) void this.refresh();
+				}, 1000);
+			}
 			return;
 		}
 
@@ -188,22 +208,33 @@ export class ImmersiveChapterListView extends ItemView {
 			? await this.plugin.foreshadowingManager.buildChapterForeshadowingMap(fmFolder, allMdFiles, this.app.vault)
 			: new Map<string, ParsedForeshadowingEntry[]>();
 
+		if (this.isClosed || currentGen !== this.refreshGeneration) {
+			return;
+		}
+
 		const mainFile = this.getMarkdownFile(this.getMainEditorLeaf());
 		const referenceFile = this.getMarkdownFile(this.getReferenceViewLeaf());
 		const state = { activeItemEl: null as HTMLElement | null };
 
 		this.renderFolderRecursively(currentFolder, listContainer, foreshadowingMap, mainFile, referenceFile, state, bookPath);
 
-		window.requestAnimationFrame(() => {
-			if (listContainer) {
-				if (this.isInitialLoad && state.activeItemEl) {
-					state.activeItemEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
-					this.isInitialLoad = false;
-				} else {
-					listContainer.scrollTop = this.lastScrollTop;
+		const win = this.containerEl?.ownerDocument?.defaultView;
+		if (win && !this.isClosed && currentGen === this.refreshGeneration) {
+			this.scrollRafWindow = win;
+			this.scrollRafId = win.requestAnimationFrame(() => {
+				if (this.isClosed || currentGen !== this.refreshGeneration) return;
+				this.scrollRafId = null;
+				this.scrollRafWindow = null;
+				if (listContainer) {
+					if (this.isInitialLoad && state.activeItemEl) {
+						state.activeItemEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+						this.isInitialLoad = false;
+					} else {
+						listContainer.scrollTop = this.lastScrollTop;
+					}
 				}
-			}
-		});
+			});
+		}
 	}
 
 	private renderFolderRecursively(
@@ -334,6 +365,28 @@ export class ImmersiveChapterListView extends ItemView {
 		}
 	}
 
+	private cancelRetryTimer(): void {
+		if (this.retryTimer !== null) {
+			const win = this.retryWindow ?? this.containerEl?.ownerDocument?.defaultView;
+			win?.clearTimeout(this.retryTimer);
+			this.retryTimer = null;
+			this.retryWindow = null;
+		}
+	}
+
+	private cancelScrollRaf(): void {
+		if (this.scrollRafId !== null) {
+			const win = this.scrollRafWindow ?? this.containerEl?.ownerDocument?.defaultView;
+			win?.cancelAnimationFrame(this.scrollRafId);
+			this.scrollRafId = null;
+			this.scrollRafWindow = null;
+		}
+	}
+
 	async onClose() {
+		this.isClosed = true;
+		this.refreshGeneration++;
+		this.cancelRetryTimer();
+		this.cancelScrollRaf();
 	}
 }

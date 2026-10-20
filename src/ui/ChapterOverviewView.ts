@@ -62,16 +62,32 @@ export interface ChapterOverviewViewPlugin
 }
 
 export class ChapterOverviewView extends ItemView {
+    private static nextInstanceId: number = 1;
+    private readonly instanceId: number = ChapterOverviewView.nextInstanceId++;
+    private readonly refreshDebounceKey: string = `chapter-overview-refresh-${this.instanceId}`;
+
     private plugin: ChapterOverviewViewPlugin;
     private currentBookPath: string | null = null;
     private isSavingMetadata: boolean = false;
     private container!: HTMLElement;
     private readonly filterIndex: WorkbenchFilterIndex;
     private chapterFilterQuery: string = '';
-    private filterDebounceTimer: number | null = null;
+    private filterDebounceTimer: { win: Window; id: number } | null = null;
     private pendingFilterFocus: { start: number; end: number } | null = null;
+    private pendingScrollRaf: { win: Window; id: number } | null = null;
+    private pendingFocusRaf: { win: Window; id: number } | null = null;
     private isDescending: boolean = false;
     private currentRenderId: number = 0;
+    private isClosed: boolean = false;
+
+    private scheduleRefresh(delay: number): void {
+        if (this.isClosed) return;
+        const win = this.container?.ownerDocument?.defaultView ?? this.contentEl?.ownerDocument?.defaultView ?? window;
+        this.plugin.adaptiveDebounceManager.debounceFixed(this.refreshDebounceKey, () => {
+            if (this.isClosed) return;
+            void this.reloadBoard();
+        }, delay, win);
+    }
 
     constructor(leaf: WorkspaceLeaf, plugin: ChapterOverviewViewPlugin) {
         super(leaf);
@@ -83,24 +99,18 @@ export class ChapterOverviewView extends ItemView {
             if (this.isSavingMetadata) return;
             this.filterIndex.invalidate(oldPath);
             this.filterIndex.invalidate(file.path);
-            this.plugin.adaptiveDebounceManager.debounceFixed('chapter-overview-refresh', () => {
-                void this.reloadBoard();
-            }, 500);
+            this.scheduleRefresh(500);
         }));
         this.registerEvent(this.app.vault.on('delete', (file) => {
             if (this.isSavingMetadata) return;
             this.filterIndex.invalidate(file.path);
-            this.plugin.adaptiveDebounceManager.debounceFixed('chapter-overview-refresh', () => {
-                void this.reloadBoard();
-            }, 500);
+            this.scheduleRefresh(500);
         }));
         this.registerEvent(this.app.metadataCache.on('changed', (file) => {
             if (this.isSavingMetadata) return;
             if (file instanceof TFile && !this.plugin.cacheManager.isFileInWorkspace(file)) return;
             if (file instanceof TFile) this.filterIndex.invalidate(file.path);
-            this.plugin.adaptiveDebounceManager.debounceFixed('chapter-overview-refresh', () => {
-                void this.reloadBoard();
-            }, 1000);
+            this.scheduleRefresh(1000);
         }));
 
         this.registerEvent(this.app.workspace.on('active-leaf-change', (leaf) => {
@@ -156,6 +166,7 @@ export class ChapterOverviewView extends ItemView {
     }
 
     async onOpen() {
+        this.isClosed = false;
         this.container = this.contentEl;
         this.container.empty();
         this.container.addClass('wn-corkboard-container');
@@ -166,23 +177,41 @@ export class ChapterOverviewView extends ItemView {
     }
 
     async onClose() {
+        this.isClosed = true;
         this.currentRenderId++;
-        this.plugin.adaptiveDebounceManager.cancel('chapter-overview-refresh');
-        if (this.filterDebounceTimer !== null) {
-            const win = this.container?.ownerDocument?.defaultView ?? window;
-            win.clearTimeout(this.filterDebounceTimer);
-            this.filterDebounceTimer = null;
-        }
+        this.plugin.adaptiveDebounceManager.cancel(this.refreshDebounceKey);
+        this.clearFilterTimer();
+        this.cancelPendingRafs();
         this.pendingFilterFocus = null;
         this.filterIndex.clear();
         this.contentEl.empty();
     }
 
-    public async reloadBoard(): Promise<void> {
-        if (!this.container) return;
+    private clearFilterTimer(): void {
+        if (this.filterDebounceTimer !== null) {
+            this.filterDebounceTimer.win.clearTimeout(this.filterDebounceTimer.id);
+            this.filterDebounceTimer = null;
+        }
+    }
 
+    private cancelPendingRafs(): void {
+        if (this.pendingScrollRaf !== null) {
+            this.pendingScrollRaf.win.cancelAnimationFrame(this.pendingScrollRaf.id);
+            this.pendingScrollRaf = null;
+        }
+        if (this.pendingFocusRaf !== null) {
+            this.pendingFocusRaf.win.cancelAnimationFrame(this.pendingFocusRaf.id);
+            this.pendingFocusRaf = null;
+        }
+    }
+
+    public async reloadBoard(): Promise<void> {
+        if (!this.container || this.isClosed) return;
+
+        this.cancelPendingRafs();
         const renderId = ++this.currentRenderId;
-        const buffer = createDiv();
+        const win = this.container.ownerDocument.win as Window & typeof window;
+        const buffer = win.createDiv();
 
         let scrollTop = 0;
         const existingGrid = this.container.querySelector('.wn-corkboard-grid');
@@ -191,7 +220,7 @@ export class ChapterOverviewView extends ItemView {
         if (!this.currentBookPath) {
             const emptyEl = buffer.createDiv('wn-corkboard-empty');
             emptyEl.setText(t('corkboard.no-book-open'));
-            if (this.currentRenderId !== renderId) return;
+            if (this.currentRenderId !== renderId || this.isClosed) return;
             this.swapBuffer(buffer);
             return;
         }
@@ -202,7 +231,7 @@ export class ChapterOverviewView extends ItemView {
         if (!(folder instanceof TFolder)) {
             const emptyEl = buffer.createDiv('wn-corkboard-empty');
             emptyEl.setText(t('corkboard.folder-not-found'));
-            if (this.currentRenderId !== renderId) return;
+            if (this.currentRenderId !== renderId || this.isClosed) return;
             this.swapBuffer(buffer);
             return;
         }
@@ -255,7 +284,7 @@ export class ChapterOverviewView extends ItemView {
                 return frontmatter?.synopsis ?? frontmatter?.Synopsis ?? frontmatter?.['摘要'] ?? '';
             }
         );
-        if (this.currentRenderId !== renderId) return;
+        if (this.currentRenderId !== renderId || this.isClosed) return;
 
         this.renderFilterBar(buffer, filteredFiles.length, files.length);
 
@@ -269,7 +298,7 @@ export class ChapterOverviewView extends ItemView {
             const foreshadowingMap = this.plugin.foreshadowingManager
                 ? await this.plugin.foreshadowingManager.buildChapterForeshadowingMap(fmFolder, filteredFiles, this.app.vault)
                 : new Map<string, ParsedForeshadowingEntry[]>();
-            if (this.currentRenderId !== renderId) return;
+            if (this.currentRenderId !== renderId || this.isClosed) return;
 
             CorkboardGridRenderer.render({
                 app: this.app,
@@ -284,18 +313,33 @@ export class ChapterOverviewView extends ItemView {
             });
         }
 
-        if (this.currentRenderId !== renderId) return;
+        if (this.currentRenderId !== renderId || this.isClosed) return;
         this.swapBuffer(buffer);
-        this.restorePendingFilterFocus();
+        this.restorePendingFilterFocus(renderId);
 
-        window.requestAnimationFrame(() => {
-            const newGrid = this.container.querySelector('.wn-corkboard-grid');
-            if (newGrid && scrollTop > 0) newGrid.scrollTop = scrollTop;
-        });
+        if (this.pendingScrollRaf !== null) {
+            this.pendingScrollRaf.win.cancelAnimationFrame(this.pendingScrollRaf.id);
+            this.pendingScrollRaf = null;
+        }
+
+        const scrollWin = this.container?.ownerDocument?.defaultView ?? window;
+        if (typeof scrollWin.requestAnimationFrame === 'function') {
+            const rafEntry = { win: scrollWin, id: 0 };
+            this.pendingScrollRaf = rafEntry;
+            rafEntry.id = scrollWin.requestAnimationFrame(() => {
+                if (this.pendingScrollRaf === rafEntry) {
+                    this.pendingScrollRaf = null;
+                }
+                if (this.isClosed || this.currentRenderId !== renderId) return;
+                const newGrid = this.container?.querySelector('.wn-corkboard-grid');
+                if (newGrid && scrollTop > 0) newGrid.scrollTop = scrollTop;
+            });
+        }
     }
 
     private swapBuffer(buffer: HTMLElement): void {
-        const fragment = (window as unknown as { createFragment: () => DocumentFragment }).createFragment();
+        const win = this.container.ownerDocument.win as Window & typeof window;
+        const fragment = win.createFragment();
         while (buffer.firstChild) {
             fragment.appendChild(buffer.firstChild);
         }
@@ -303,7 +347,7 @@ export class ChapterOverviewView extends ItemView {
         this.container.appendChild(fragment);
     }
 
-    private restorePendingFilterFocus(): void {
+    private restorePendingFilterFocus(renderId: number): void {
         const pending = this.pendingFilterFocus;
         if (!pending) return;
 
@@ -311,12 +355,27 @@ export class ChapterOverviewView extends ItemView {
         if (!input) return;
 
         this.pendingFilterFocus = null;
-        window.requestAnimationFrame(() => {
-            if (!input.isConnected) return;
-            input.focus({ preventScroll: true });
-            const max = input.value.length;
-            input.setSelectionRange(Math.min(pending.start, max), Math.min(pending.end, max));
-        });
+
+        if (this.pendingFocusRaf !== null) {
+            this.pendingFocusRaf.win.cancelAnimationFrame(this.pendingFocusRaf.id);
+            this.pendingFocusRaf = null;
+        }
+
+        const win = input.ownerDocument?.defaultView ?? this.container?.ownerDocument?.defaultView ?? window;
+        if (typeof win.requestAnimationFrame === 'function') {
+            const rafEntry = { win, id: 0 };
+            this.pendingFocusRaf = rafEntry;
+            rafEntry.id = win.requestAnimationFrame(() => {
+                if (this.pendingFocusRaf === rafEntry) {
+                    this.pendingFocusRaf = null;
+                }
+                if (this.isClosed || this.currentRenderId !== renderId) return;
+                if (!input.isConnected) return;
+                input.focus({ preventScroll: true });
+                const max = input.value.length;
+                input.setSelectionRange(Math.min(pending.start, max), Math.min(pending.end, max));
+            });
+        }
     }
 
     public clearSearchInput(): void {
@@ -398,11 +457,7 @@ export class ChapterOverviewView extends ItemView {
             clearButton,
             onCompositionStart: () => {
                 this.currentRenderId++;
-                if (this.filterDebounceTimer !== null) {
-                    const win = input.ownerDocument?.defaultView ?? window;
-                    win.clearTimeout(this.filterDebounceTimer);
-                    this.filterDebounceTimer = null;
-                }
+                this.clearFilterTimer();
             },
             onRefresh: (immediate) => {
                 this.scheduleFilterRefresh(input, immediate);
@@ -411,16 +466,20 @@ export class ChapterOverviewView extends ItemView {
     }
 
     private scheduleFilterRefresh(input: HTMLInputElement, immediate: boolean = false): void {
+        if (this.isClosed) return;
         this.chapterFilterQuery = input.value;
         this.pendingFilterFocus = {
             start: input.selectionStart ?? input.value.length,
             end: input.selectionEnd ?? input.value.length
         };
 
-        const win = input.ownerDocument?.defaultView ?? window;
+        const win = input.ownerDocument?.defaultView ?? this.container?.ownerDocument?.defaultView ?? window;
         this.currentRenderId++;
-        if (this.filterDebounceTimer !== null) win.clearTimeout(this.filterDebounceTimer);
-        this.filterDebounceTimer = win.setTimeout(() => {
+        this.clearFilterTimer();
+        const timerEntry = { win, id: 0 };
+        this.filterDebounceTimer = timerEntry;
+        timerEntry.id = win.setTimeout(() => {
+            if (this.filterDebounceTimer !== timerEntry || this.isClosed) return;
             this.filterDebounceTimer = null;
             void this.reloadBoard();
         }, immediate ? 0 : 200);

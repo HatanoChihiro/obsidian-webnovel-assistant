@@ -60,7 +60,6 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 		private isPointerDown = false;
 		private isManualScrolling = false;
 		private gestureScrolled = false;
-		private pendingClickSelection = false;
 		private hasInitialCentered = false;
 		private rafId: number | null = null;
 		private viewportRestoreRafId: number | null = null;
@@ -278,7 +277,6 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 			this.releaseViewportFreeze();
 			this.isPointerDown = true;
 			this.gestureScrolled = false;
-			this.pendingClickSelection = false;
 			this.cancelPendingCenter();
 		};
 
@@ -349,7 +347,6 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 				this.isPointerDown = true;
 				this.isManualScrolling = true;
 				this.gestureScrolled = true;
-				this.pendingClickSelection = false;
 				this.cancelPendingCenter();
 				return;
 			}
@@ -357,7 +354,6 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 			this.releaseViewportFreeze();
 			this.isPointerDown = true;
 			this.gestureScrolled = false;
-			this.pendingClickSelection = false;
 			this.cancelPendingCenter();
 		};
 
@@ -386,18 +382,15 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 			if (!wasPointerDown) return;
 
 			if (this.gestureScrolled) {
-				this.pendingClickSelection = false;
 				return;
 			}
 
 			const activeEl = this.ownerDocument.activeElement;
 			if (this.isHeaderOrMetadataElement(activeEl)) {
-				this.pendingClickSelection = false;
 				return;
 			}
 
 			if (this.view.state.selection.main.empty && this.isTypewriterActive()) {
-				this.pendingClickSelection = false;
 				this.releaseViewportFreeze();
 				this.isManualScrolling = false;
 				this.scheduleCenter(this.view);
@@ -570,15 +563,10 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 				this.restoreFrozenViewport();
 			}
 
-			// 如果当前指针/触摸手势仍处于按住状态，发生的选区变动记录为点击选区
+			// 当前指针/触摸手势仍处于按住状态时，跳过自动居中
 			// 必须在 isEditorActiveAndFocused 检查之前执行：从其他面板（如沉浸章节列表、侧栏）点击回编辑区时，
 			// 在 pointerdown 事务发生的瞬间，Obsidian 尚未完成将本叶子置为 mod-active 的状态切换。
 			if (this.isPointerDown) {
-				if (update.selectionSet && update.state.selection.main.empty) {
-					this.pendingClickSelection = true;
-				} else if (update.selectionSet && !update.state.selection.main.empty) {
-					this.pendingClickSelection = false;
-				}
 				return;
 			}
 

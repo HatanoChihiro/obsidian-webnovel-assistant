@@ -289,15 +289,18 @@ body .modal-content .setting-item.setting-item-heading:not(:first-of-type) .sett
 	flex-direction: column;
 }
 
-.modal-container.wn-corner-modal-container .modal.wn-corner-modal.wn-typography-modal {
+.modal-container.wn-corner-modal-container .modal.wn-corner-modal.wn-typography-modal,
+.modal-container.wn-corner-modal-container .modal.wn-corner-modal.wn-immersive-typewriter-modal {
 	width: 320px;
 }
 
-.modal-container.wn-corner-modal-container .modal.wn-corner-modal.wn-typography-modal .setting-item {
+.modal-container.wn-corner-modal-container .modal.wn-corner-modal.wn-typography-modal .setting-item,
+.modal-container.wn-corner-modal-container .modal.wn-corner-modal.wn-immersive-typewriter-modal .setting-item {
 	padding: 8px 0;
 	border-top: 1px solid var(--background-modifier-border);
 }
 
-.modal-container.wn-corner-modal-container .modal.wn-corner-modal.wn-typography-modal .setting-item.setting-item-heading {
+.modal-container.wn-corner-modal-container .modal.wn-corner-modal.wn-typography-modal .setting-item.setting-item-heading,
+.modal-container.wn-corner-modal-container .modal.wn-corner-modal.wn-immersive-typewriter-modal .setting-item.setting-item-heading {
 	border-top: none;
 }

@@ -76,6 +76,9 @@ export class WritingJourneyBoardRenderer {
 			return;
 		}
 
+		// 构建路径解析索引（必须使用原始完整的 rawEvents 顺序）
+		const resolvedPathIndex = this.buildResolvedPathIndex(rawEvents);
+
 		// 排序：默认时间倒序（最新事件在最上方），可切换为时间正序（最早事件在最上方）
 		const sortedEvents = this.sortEvents(displayEvents, isDescending);
 
@@ -97,7 +100,7 @@ export class WritingJourneyBoardRenderer {
 		const listEl = boardContainer.createDiv('wn-writing-journey-list');
 
 		for (const event of filteredEvents) {
-			this.renderEventRow(listEl, event, app, currentBookPath, rawEvents);
+			this.renderEventRow(listEl, event, app, currentBookPath, resolvedPathIndex);
 		}
 	}
 
@@ -314,23 +317,23 @@ export class WritingJourneyBoardRenderer {
 			.map(({ event }) => event);
 	}
 
-	public static sortEventsNewestFirst(events: WritingJourneyEvent[]): WritingJourneyEvent[] {
-		return this.sortEvents(events, true);
-	}
-
-	public static sortEventsOldestFirst(events: WritingJourneyEvent[]): WritingJourneyEvent[] {
-		return this.sortEvents(events, false);
-	}
-
-	private static resolveLatestPath(initialPath: string, allEvents: WritingJourneyEvent[]): string {
-		let currentPath = initialPath;
-		// 顺着事件链查找后续的重命名记录
-		for (const ev of allEvents) {
-			if ((ev.type === 'chapter.renamed' || ev.type === 'chapter.moved') && ev.oldPath === currentPath) {
-				currentPath = ev.newPath;
+	private static buildResolvedPathIndex(rawEvents: readonly WritingJourneyEvent[]): ReadonlyMap<string, string> {
+		const resolvedMap = new Map<string, string>();
+		for (let i = rawEvents.length - 1; i >= 0; i--) {
+			const ev = rawEvents[i];
+			if (ev.type === 'chapter.renamed' || ev.type === 'chapter.moved') {
+				const futureTarget = resolvedMap.get(ev.newPath) ?? ev.newPath;
+				resolvedMap.set(ev.oldPath, futureTarget);
 			}
 		}
-		return currentPath;
+		return resolvedMap;
+	}
+
+	private static resolveLatestPath(
+		initialPath: string,
+		resolvedPathIndex: ReadonlyMap<string, string>
+	): string {
+		return resolvedPathIndex.get(initialPath) ?? initialPath;
 	}
 
 	private static renderEventRow(
@@ -338,7 +341,7 @@ export class WritingJourneyBoardRenderer {
 		event: WritingJourneyEvent,
 		app: App,
 		currentBookPath: string,
-		allEvents: WritingJourneyEvent[]
+		resolvedPathIndex: ReadonlyMap<string, string>
 	): void {
 		const info = this.getEventDisplayInfo(event);
 		const row = container.createDiv('wn-writing-journey-item');
@@ -372,7 +375,7 @@ export class WritingJourneyBoardRenderer {
 					text: t('writing-journey.deleted')
 				});
 			} else {
-				const latestPath = this.resolveLatestPath(info.chapterPath, allEvents);
+				const latestPath = this.resolveLatestPath(info.chapterPath, resolvedPathIndex);
 				const file = app.vault.getAbstractFileByPath(latestPath);
 				const isExtant = file instanceof TFile;
 

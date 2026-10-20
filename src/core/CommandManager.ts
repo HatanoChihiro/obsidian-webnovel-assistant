@@ -160,6 +160,22 @@ export class CommandManager {
 				icon: 'maximize-2',
 				callback: () => { void this.plugin.immersiveModeManager.toggleImmersiveMode(); }
 			});
+
+			this.plugin.addCommand({
+				id: 'toggle-immersive-auxiliary-regions',
+				name: t('command.toggle-immersive-auxiliary-regions'),
+				icon: 'panels-top-left',
+				checkCallback: (checking: boolean) => {
+					const canExecute = this.plugin.immersiveModeManager.canToggleAuxiliaryRegions();
+					if (checking) {
+						return canExecute;
+					}
+					if (canExecute) {
+						void this.plugin.immersiveModeManager.toggleAllAuxiliaryRegions();
+					}
+					return canExecute;
+				}
+			});
 		}
 	}
 
@@ -284,11 +300,12 @@ export class CommandManager {
 						.map(f => f.basename)
 					: [];
 
-				const newFileName = ChapterSorter.getNextChapterName(currentFile.basename, siblingNames);
-				if (!newFileName) {
+				const suggestedFileName = ChapterSorter.getNextChapterName(currentFile.basename, siblingNames);
+				if (!suggestedFileName) {
 					new Notice(t('notice.chapter-number-unrecognized'));
 					return;
 				}
+				const newFileName = suggestedFileName.replace(/\.md$/i, '').trimEnd() + '.md';
 
 				const newFilePath = folder && folder.path !== '/' ? `${folder.path}/${newFileName}` : newFileName;
 				const existingFile = this.plugin.app.vault.getAbstractFileByPath(newFilePath);

@@ -13,7 +13,7 @@ import type { TimelineFormContext, TimelineFormSettings } from './TimelineFormCo
 import type { ChapterCardPlugin } from './ChapterCard';
 import type { AccurateCountSettings } from '../../types/settings';
 import { createCardImportanceButton } from './CardImportanceButton';
-import { setupStickyNoteParagraphEditor, getStickyNoteEditorContent, setStickyNoteEditorContent } from './StickyNoteParagraphEditor';
+import { setupStickyNoteParagraphEditor, teardownStickyNoteParagraphEditor, getStickyNoteEditorContent, setStickyNoteEditorContent } from './StickyNoteParagraphEditor';
 import { renderLoreBadges } from '../../utils/badge';
 import { renderTrajectoryMode } from './TrajectoryBoardRenderer';
 
@@ -262,6 +262,28 @@ export class TimelineBoardRenderer {
 		const mainCol = waterfallLayout.createDiv('wn-timeline-waterfall-main');
 		const sideCol = waterfallLayout.createDiv('wn-timeline-waterfall-sidebar');
 
+		// Track in-flight inline editor saves for this rendered board to preserve interaction ordering
+		const pendingInlineSaves = new Set<Promise<boolean>>();
+
+		const registerPendingInlineSave = (promise: Promise<boolean>): void => {
+			pendingInlineSaves.add(promise);
+			void promise.finally(() => {
+				pendingInlineSaves.delete(promise);
+			});
+		};
+
+		const awaitPendingInlineSaves = async (): Promise<boolean> => {
+			let allOk = true;
+			while (pendingInlineSaves.size > 0) {
+				const batch = Array.from(pendingInlineSaves);
+				const results = await Promise.all(batch);
+				if (results.some(res => !res)) {
+					allOk = false;
+				}
+			}
+			return allOk;
+		};
+
 		// Handle drag and drop logic
 		const handleDrop = async (e: DragEvent, targetEvents: { time: string, entryIndex: number, itemIndex?: number }[]) => {
 			e.preventDefault();
@@ -270,6 +292,12 @@ export class TimelineBoardRenderer {
 			if (!path) return;
 			const targetFile = app.vault.getAbstractFileByPath(path);
 			if (targetFile instanceof TFile) {
+				if (pendingInlineSaves.size > 0) {
+					const inlineSaveOk = await awaitPendingInlineSaves();
+					if (!inlineSaveOk) {
+						return;
+					}
+				}
 				onSaveStateChange(true);
 				try {
 					const enrichedTargetEvents = targetEvents.map(target => {
@@ -380,6 +408,12 @@ export class TimelineBoardRenderer {
 						}
 
 						void (async () => {
+							if (pendingInlineSaves.size > 0) {
+								const inlineSaveOk = await awaitPendingInlineSaves();
+								if (!inlineSaveOk) {
+									return;
+								}
+							}
 							onSaveStateChange(true);
 							try {
 								const sourceEntry = allEntries[sourceEntryIndex];
@@ -578,19 +612,26 @@ export class TimelineBoardRenderer {
 						isImportant,
 						cardEl: descEl,
 						onToggle: async (newImportant) => {
+							if (pendingInlineSaves.size > 0) {
+								const inlineSaveOk = await awaitPendingInlineSaves();
+								if (!inlineSaveOk) {
+									throw new Error('Timeline inline save failed');
+								}
+							}
 							const originalIndex = allEntries.indexOf(entry);
-							const previousImportant = items[itemIdx].important;
+							const currentItems = entry.items?.length ? entry.items : items;
+							const previousImportant = currentItems[itemIdx].important;
 							const originalEntry = {
 								...entry,
 								lores: entry.lores ? [...entry.lores] : undefined,
 								items: entry.items ? entry.items.map(it => ({ ...it })) : undefined
 							};
-							items[itemIdx].important = newImportant;
+							currentItems[itemIdx].important = newImportant;
 							onSaveStateChange(true);
 							try {
 								await timelineManager.updateEntry(originalIndex, entry, bookFolder, originalEntry);
 							} catch (err) {
-								items[itemIdx].important = previousImportant;
+								currentItems[itemIdx].important = previousImportant;
 								Logger.error('[TimelineBoard] 更新事件重要状态失败:', err);
 								throw err;
 							} finally {
@@ -606,6 +647,12 @@ export class TimelineBoardRenderer {
 						e.stopPropagation();
 						new ConfirmDeleteEventModal(app, t('modal.confirm-delete-event'), () => {
 							void (async () => {
+								if (pendingInlineSaves.size > 0) {
+									const inlineSaveOk = await awaitPendingInlineSaves();
+									if (!inlineSaveOk) {
+										return;
+									}
+								}
 								onSaveStateChange(true);
 								try {
 									const originalIndex = allEntries.indexOf(entry);
@@ -614,10 +661,11 @@ export class TimelineBoardRenderer {
 										lores: entry.lores ? [...entry.lores] : undefined,
 										items: entry.items ? entry.items.map(it => ({ ...it })) : undefined
 									};
-									if (items.length <= 1) {
+									const currentItems = entry.items?.length ? entry.items : items;
+									if (currentItems.length <= 1) {
 										await timelineManager.deleteEntry(originalIndex, bookFolder, originalEntry);
 									} else {
-										const updatedItems = items.filter((_, idx) => idx !== itemIdx);
+										const updatedItems = currentItems.filter((_, idx) => idx !== itemIdx);
 										const updatedEntry: TimelineEntry = {
 											...entry,
 											items: updatedItems
@@ -680,12 +728,22 @@ export class TimelineBoardRenderer {
 							});
 						}
 
-						let isSaving = false;
-						const saveDesc = async () => {
-							if (isSaving) return;
-							isSaving = true;
-							const newVal = getPlaintextContent(descEl).trim();
-							if (newVal !== currentDesc) {
+
+						let currentSavePromise: Promise<boolean> | null = null;
+						const saveDesc = (): Promise<boolean> => {
+							if (currentSavePromise) return currentSavePromise;
+
+							const savePromise = (async (): Promise<boolean> => {
+								const newVal = getPlaintextContent(descEl).trim();
+								if (newVal === currentDesc) {
+									teardownStickyNoteParagraphEditor(descEl);
+									descEl.removeClass('is-editing');
+									if (!currentDesc) {
+										descEl.addClass('is-empty');
+									}
+									return true;
+								}
+
 								onSaveStateChange(true);
 								try {
 									const originalIndex = allEntries.indexOf(entry);
@@ -707,16 +765,41 @@ export class TimelineBoardRenderer {
 									if (!entry.items) {
 										entry.description = newVal;
 									}
+									teardownStickyNoteParagraphEditor(descEl);
+									descEl.removeClass('is-editing');
+									if (!newVal) {
+										descEl.addClass('is-empty');
+									}
+									return true;
 								} catch (err) {
+									currentSavePromise = null;
 									Logger.error('[TimelineBoard] 更新描述失败:', err);
+									return false;
 								} finally {
 									onSaveStateChange(false);
 								}
-							}
-							reloadBoard();
+							})();
+
+							const trackedPromise: Promise<boolean> = savePromise.finally(() => {
+								if (currentSavePromise === trackedPromise) {
+									currentSavePromise = null;
+								}
+							});
+
+							currentSavePromise = trackedPromise;
+							registerPendingInlineSave(currentSavePromise);
+
+							void currentSavePromise.then((success) => {
+								if (success) {
+									reloadBoard();
+								}
+							});
+
+							return currentSavePromise;
 						};
 
-						descEl.onblur = saveDesc;
+						descEl.onblur = () => saveDesc();
+
 					};
 
 					// Cards container
@@ -768,50 +851,79 @@ export class TimelineBoardRenderer {
 						isComposing = false;
 					});
 
-					let isSaving = false;
-					const saveSubEvent = async () => {
-						if (isSaving) return;
-						isSaving = true;
-						const newVal = getPlaintextContent(descEl).trim();
-						if (newVal) {
-							const originalIndex = allEntries.indexOf(entry);
-							const originalEntry = {
-								...entry,
-								lores: entry.lores ? [...entry.lores] : undefined,
-								items: entry.items ? entry.items.map(it => ({ ...it })) : undefined
-							};
-							const currentItems = entry.items && entry.items.length > 0
-								? entry.items.map(it => ({ ...it }))
-								: [{
-									description: entry.description || '',
-									chapter: entry.chapter || '',
-									important: entry.important
-								}];
-							const updatedItems = [
-								...currentItems,
-								{
-									description: newVal,
-									chapter: ''
-								}
-							];
-							const updatedEntry: TimelineEntry = {
-								...entry,
-								items: updatedItems
-							};
+					let currentSavePromise: Promise<boolean> | null = null;
+					const saveSubEvent = (): Promise<boolean> => {
+						if (currentSavePromise) return currentSavePromise;
+
+						const savePromise = (async (): Promise<boolean> => {
+							const newVal = getPlaintextContent(descEl).trim();
+							if (!newVal) {
+								teardownStickyNoteParagraphEditor(descEl);
+								descEl.removeClass('is-editing');
+								itemRow.remove();
+								addSubEventRow.show();
+								return true;
+							}
+
 							onSaveStateChange(true);
 							try {
+								const originalIndex = allEntries.indexOf(entry);
+								const originalEntry = {
+									...entry,
+									lores: entry.lores ? [...entry.lores] : undefined,
+									items: entry.items ? entry.items.map(it => ({ ...it })) : undefined
+								};
+								const currentItems = entry.items && entry.items.length > 0
+									? entry.items.map(it => ({ ...it }))
+									: [{
+										description: entry.description || '',
+										chapter: entry.chapter || '',
+										important: entry.important
+									}];
+								const updatedItems = [
+									...currentItems,
+									{
+										description: newVal,
+										chapter: ''
+									}
+								];
+								const updatedEntry: TimelineEntry = {
+									...entry,
+									items: updatedItems
+								};
 								await timelineManager.updateEntry(originalIndex, updatedEntry, bookFolder, originalEntry);
 								entry.items = updatedItems;
+								teardownStickyNoteParagraphEditor(descEl);
+								descEl.removeClass('is-editing');
+								return true;
 							} catch (err) {
+								currentSavePromise = null;
 								Logger.error('[TimelineBoard] 添加子事件失败:', err);
+								return false;
 							} finally {
 								onSaveStateChange(false);
 							}
-						}
-						reloadBoard();
+						})();
+
+						const trackedPromise: Promise<boolean> = savePromise.finally(() => {
+							if (currentSavePromise === trackedPromise) {
+								currentSavePromise = null;
+							}
+						});
+
+						currentSavePromise = trackedPromise;
+						registerPendingInlineSave(currentSavePromise);
+
+						void currentSavePromise.then((success) => {
+							if (success) {
+								reloadBoard();
+							}
+						});
+
+						return currentSavePromise;
 					};
 
-					descEl.onblur = saveSubEvent;
+					descEl.onblur = () => saveSubEvent();
 					descEl.onkeydown = (e: KeyboardEvent) => {
 						if (e.key === 'Enter' && !e.shiftKey) {
 							if (isComposing || e.isComposing || (e as { keyCode?: number }).keyCode === 229) {
@@ -1141,6 +1253,12 @@ export class TimelineBoardRenderer {
 				bookFolder,
 				(entry) => {
 					void (async () => {
+						if (pendingInlineSaves.size > 0) {
+							const inlineSaveOk = await awaitPendingInlineSaves();
+							if (!inlineSaveOk) {
+								return;
+							}
+						}
 						onSaveStateChange(true);
 						try {
 							await timelineManager.appendEntry(entry, bookFolder);

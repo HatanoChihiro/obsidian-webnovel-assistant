@@ -2,6 +2,7 @@ import { MockElement } from './mocks/MockElement';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChapterOverviewView, CORKBOARD_VIEW_TYPE, type ChapterOverviewViewPlugin } from '../src/ui/ChapterOverviewView';
 import { CorkboardGridRenderer } from '../src/ui/components/CorkboardGridRenderer';
+import { AdaptiveDebounceManager } from '../src/services/AdaptiveDebounceManager';
 import type { TFile } from 'obsidian';
 
 const { getCurrentBookContextMock, findBookRootMock, MockTFile, MockTFolder } = vi.hoisted(() => {
@@ -44,6 +45,7 @@ type MockTFolderInstance = InstanceType<typeof MockTFolder>;
 };
 
 vi.stubGlobal('window', {
+	createDiv: () => new MockElement(''),
 	createFragment: () => {
 		const frag = new MockElement('');
 		frag.isFragment = true;
@@ -53,8 +55,8 @@ vi.stubGlobal('window', {
 		cb(Date.now());
 		return 0;
 	},
-	setTimeout: globalThis.setTimeout,
-	clearTimeout: globalThis.clearTimeout
+	setTimeout: (...args: Parameters<typeof setTimeout>) => globalThis.setTimeout(...args),
+	clearTimeout: (...args: Parameters<typeof clearTimeout>) => globalThis.clearTimeout(...args)
 });
 
 vi.mock('obsidian', () => {
@@ -67,6 +69,18 @@ vi.mock('obsidian', () => {
 			this.app = leaf.app;
 			this.containerEl = new MockElement('workspace-leaf-content');
 			this.contentEl = new MockElement('view-content');
+			const mockDoc = {
+				createElement: vi.fn((tag: string) => new MockElement(tag === 'div' ? '' : tag)),
+				createDocumentFragment: vi.fn(() => {
+					const frag = new MockElement('');
+					frag.isFragment = true;
+					return frag;
+				}),
+				win: window,
+				defaultView: window
+			} as unknown as Document;
+			(this.containerEl as unknown as { ownerDocument: Document }).ownerDocument = mockDoc;
+			(this.contentEl as unknown as { ownerDocument: Document }).ownerDocument = mockDoc;
 			this.containerEl.children.push(this.contentEl);
 			this.contentEl.parentElement = this.containerEl;
 		}
@@ -115,7 +129,7 @@ interface ChapterOverviewHarness {
 	chapterFilterQuery: string;
 	pendingFilterFocus: { start: number; end: number } | null;
 	currentRenderId: number;
-	filterDebounceTimer: number | null;
+	filterDebounceTimer: { win: Window; id: number } | null;
 	filterIndex: {
 		filterChapters: (files: readonly TFile[], query: string, getSynopsis: (file: TFile) => unknown) => Promise<TFile[]>;
 	};
@@ -211,7 +225,8 @@ describe('ChapterOverviewView', () => {
 				getFileCache: vi.fn()
 			},
 			adaptiveDebounceManager: {
-				debounceFixed: vi.fn((_key: string, fn: () => void) => { fn(); })
+				debounceFixed: vi.fn((_key: string, fn: () => void) => { fn(); }),
+				cancel: vi.fn()
 			},
 			homepageManager: {
 				getHomepageFilePath: vi.fn().mockReturnValue(null),
@@ -302,7 +317,7 @@ describe('ChapterOverviewView', () => {
 
 		harness.scheduleFilterRefresh(mockInput, true);
 		if (harness.filterDebounceTimer !== null) {
-			window.clearTimeout(harness.filterDebounceTimer);
+			harness.filterDebounceTimer.win.clearTimeout(harness.filterDebounceTimer.id);
 			harness.filterDebounceTimer = null;
 		}
 		await view.reloadBoard();
@@ -428,22 +443,196 @@ describe('ChapterOverviewView', () => {
 		expect(vaultHandlers['delete']).toBeDefined();
 		expect(metadataHandlers['changed']).toBeDefined();
 
+		const refreshKey = (view as unknown as { refreshDebounceKey: string }).refreshDebounceKey;
+
 		// Trigger rename
 		vaultHandlers['rename'](file2, 'NovelA/old.md');
-		expect(debounceSpy).toHaveBeenCalledWith('chapter-overview-refresh', expect.any(Function), 500);
+		expect(debounceSpy).toHaveBeenCalledWith(refreshKey, expect.any(Function), 500, expect.anything());
 
 		// Trigger delete
 		debounceSpy.mockClear();
 		vaultHandlers['delete'](file2);
-		expect(debounceSpy).toHaveBeenCalledWith('chapter-overview-refresh', expect.any(Function), 500);
+		expect(debounceSpy).toHaveBeenCalledWith(refreshKey, expect.any(Function), 500, expect.anything());
 
 		// Trigger metadataCache changed
 		debounceSpy.mockClear();
 		metadataHandlers['changed'](file1);
-		expect(debounceSpy).toHaveBeenCalledWith('chapter-overview-refresh', expect.any(Function), 1000);
+		expect(debounceSpy).toHaveBeenCalledWith(refreshKey, expect.any(Function), 1000, expect.anything());
 
 		// Close view
 		await view.onClose();
-		expect(cancelSpy).toHaveBeenCalledWith('chapter-overview-refresh');
+		expect(cancelSpy).toHaveBeenCalledWith(refreshKey);
 	});
+
+	it('closing one view does not cancel refresh debounce of another view sharing AdaptiveDebounceManager', async () => {
+		const realDebounceManager = new AdaptiveDebounceManager();
+		plugin.adaptiveDebounceManager = realDebounceManager;
+
+		const vaultListeners: Record<string, Array<(...args: unknown[]) => void>> = {};
+		mockApp.vault.on.mockImplementation((event: string, handler: (...args: unknown[]) => void) => {
+			(vaultListeners[event] ??= []).push(handler);
+		});
+
+		getCurrentBookContextMock.mockReturnValue('NovelA');
+		const view1 = new ChapterOverviewView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+		const view2 = new ChapterOverviewView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+
+		await view1.onOpen();
+		await view2.onOpen();
+
+		const reloadSpy1 = vi.spyOn(view1, 'reloadBoard').mockResolvedValue();
+		const reloadSpy2 = vi.spyOn(view2, 'reloadBoard').mockResolvedValue();
+
+		vi.useFakeTimers();
+		try {
+			vaultListeners['rename']?.forEach(fn => fn(file2, 'NovelA/old.md'));
+
+			await view1.onClose();
+
+			vi.advanceTimersByTime(500);
+
+			expect(reloadSpy2).toHaveBeenCalledOnce();
+			expect(reloadSpy1).not.toHaveBeenCalled();
+		} finally {
+			vi.useRealTimers();
+			await view2.onClose();
+		}
+	});
+
+	it('creates DOM in its owner document and cancels queued focus/scroll in its owner window', async () => {
+		getCurrentBookContextMock.mockReturnValue('NovelA');
+		const frames: FrameRequestCallback[] = [];
+		const customWin = {
+			createDiv: () => customDoc.createElement('div'),
+			createFragment: () => customDoc.createDocumentFragment(),
+			requestAnimationFrame: vi.fn((cb: FrameRequestCallback) => frames.push(cb)),
+			cancelAnimationFrame: vi.fn(),
+			setTimeout: globalThis.setTimeout,
+			clearTimeout: globalThis.clearTimeout
+		};
+		const customDoc = {
+			win: customWin,
+			defaultView: customWin,
+			createElement: vi.fn((_tag: string) => new MockElement('')),
+			createDocumentFragment: vi.fn(() => Object.assign(new MockElement(''), { isFragment: true }))
+		};
+		const view = new ChapterOverviewView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+		(view.contentEl as unknown as { ownerDocument: unknown }).ownerDocument = customDoc;
+		(view as unknown as { pendingFilterFocus: { start: number; end: number } }).pendingFilterFocus = { start: 0, end: 0 };
+		const globalRaf = vi.spyOn(window, 'requestAnimationFrame');
+		try {
+			await view.onOpen();
+			expect(customDoc.createElement).toHaveBeenCalledWith('div');
+			expect(customDoc.createDocumentFragment).toHaveBeenCalled();
+			expect(frames).toHaveLength(2);
+			expect(globalRaf).not.toHaveBeenCalled();
+			const input = view.contentEl.querySelector<HTMLInputElement>('.wn-workbench-filter-input');
+			await view.onClose();
+			expect(customWin.cancelAnimationFrame.mock.calls).toEqual([[2], [1]]);
+			await view.onOpen();
+			const query = vi.spyOn(view.contentEl, 'querySelector');
+			frames[0](0);
+			frames[1](0);
+			expect(query).not.toHaveBeenCalled();
+			expect(input?.focus).not.toHaveBeenCalled();
+			query.mockRestore();
+		} finally {
+			globalRaf.mockRestore();
+			await view.onClose();
+		}
+	});
+
+	it('aborts in-flight async render on close without modifying DOM or triggering focus/scroll', async () => {
+		getCurrentBookContextMock.mockReturnValue('NovelA');
+		const view = new ChapterOverviewView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+		await view.onOpen();
+
+		(CorkboardGridRenderer.render as ReturnType<typeof vi.fn>).mockClear();
+
+		let resolveFilter: (value: TFile[]) => void = () => {};
+		const filterPromise = new Promise<TFile[]>(resolve => { resolveFilter = resolve; });
+
+		const harness = view as unknown as ChapterOverviewHarness;
+		vi.spyOn(harness.filterIndex, 'filterChapters').mockImplementationOnce(() => filterPromise);
+
+		const renderPromise = view.reloadBoard();
+		await view.onClose();
+
+		expect(view.contentEl.children.length).toBe(0);
+
+		resolveFilter([file1 as unknown as TFile]);
+		await renderPromise;
+
+		expect(view.contentEl.children.length).toBe(0);
+		expect(CorkboardGridRenderer.render).not.toHaveBeenCalled();
+
+		// A direct reload while closed should also be guarded and remain empty
+		await view.reloadBoard();
+		expect(view.contentEl.children.length).toBe(0);
+	});
+
+	it('preserves search debounce delays and restores scheduling on reopen', async () => {
+		getCurrentBookContextMock.mockReturnValue('NovelA');
+		const view = new ChapterOverviewView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+		await view.onOpen();
+
+		const harness = view as unknown as ChapterOverviewHarness;
+		const reloadSpy = vi.spyOn(view, 'reloadBoard').mockResolvedValue();
+
+		vi.useFakeTimers();
+		try {
+			const mockInput = { value: '关键词', selectionStart: 3, selectionEnd: 3 };
+			harness.scheduleFilterRefresh(mockInput, false);
+			vi.advanceTimersByTime(199);
+			expect(reloadSpy).not.toHaveBeenCalled();
+			vi.advanceTimersByTime(1);
+			expect(reloadSpy).toHaveBeenCalledOnce();
+
+			reloadSpy.mockClear();
+			harness.scheduleFilterRefresh({ value: '', selectionStart: 0, selectionEnd: 0 }, true);
+			vi.advanceTimersByTime(0);
+			expect(reloadSpy).toHaveBeenCalledOnce();
+
+			await view.onClose();
+			reloadSpy.mockClear();
+
+			harness.scheduleFilterRefresh(mockInput, false);
+			vi.advanceTimersByTime(200);
+			expect(reloadSpy).not.toHaveBeenCalled();
+
+			await view.onOpen();
+			reloadSpy.mockClear();
+			harness.scheduleFilterRefresh(mockInput, false);
+			vi.advanceTimersByTime(200);
+			expect(reloadSpy).toHaveBeenCalledOnce();
+		} finally {
+			vi.useRealTimers();
+			await view.onClose();
+		}
+	});
+	it('clears search timers in the scheduling window and ignores canceled callbacks after reopen', async () => {
+		getCurrentBookContextMock.mockReturnValue('NovelA');
+		const view = new ChapterOverviewView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+		await view.onOpen();
+		const callbacks: Array<() => void> = [];
+		const owner = {
+			setTimeout: vi.fn((callback: () => void) => { callbacks.push(callback); return 17; }),
+			clearTimeout: vi.fn()
+		};
+		const harness = view as unknown as { scheduleFilterRefresh(input: HTMLInputElement): void };
+		const input = { value: '关键词', ownerDocument: { defaultView: owner } } as unknown as HTMLInputElement;
+		harness.scheduleFilterRefresh(input);
+		const originalDocument = view.contentEl.ownerDocument;
+		const otherWindow = { ...window, clearTimeout: vi.fn() };
+		(view.contentEl as unknown as { ownerDocument: unknown }).ownerDocument = { ...originalDocument, defaultView: otherWindow };
+		await view.onClose();
+		expect(owner.clearTimeout).toHaveBeenCalledWith(17);
+		expect(otherWindow.clearTimeout).not.toHaveBeenCalled();
+		await view.onOpen();
+		const reload = vi.spyOn(view, 'reloadBoard').mockResolvedValue();
+		callbacks[0]();
+		expect(reload).not.toHaveBeenCalled();
+		await view.onClose();
+	});
+
 });

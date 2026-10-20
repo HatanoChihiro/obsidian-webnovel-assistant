@@ -53,7 +53,7 @@ export interface ForeshadowingViewPlugin
 export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 	private filterStatus: 'all' | ForeshadowingStatus = 'all';
 	private selectedTags: Set<string> = new Set();
-	private pendingRefreshTimer: number | null = null;
+	private pendingRefreshTimer: { win: Window; id: number } | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: ForeshadowingViewPlugin) {
 		super(leaf, plugin);
@@ -73,11 +73,31 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 		await super.onFolderChange();
 	}
 
-	async onClose() {
-		if (this.pendingRefreshTimer !== null) {
-			window.clearTimeout(this.pendingRefreshTimer);
+	private schedulePendingRefresh(delay = 100): void {
+		this.cancelPendingRefresh();
+		if (this.isViewClosed) return;
+		const win = this.containerEl.ownerDocument?.defaultView;
+		if (!win) return;
+		const generation = this.refreshGeneration;
+		const folder = this.currentFolder;
+		const task = { win, id: 0 };
+		this.pendingRefreshTimer = task;
+		task.id = win.setTimeout(() => {
+			if (this.pendingRefreshTimer !== task) return;
+			this.pendingRefreshTimer = null;
+			if (this.isRefreshCurrent(generation, folder)) void this.refresh();
+		}, delay);
+	}
+
+	private cancelPendingRefresh(): void {
+		if (this.pendingRefreshTimer) {
+			this.pendingRefreshTimer.win.clearTimeout(this.pendingRefreshTimer.id);
 			this.pendingRefreshTimer = null;
 		}
+	}
+
+	async onClose() {
+		this.cancelPendingRefresh();
 		await super.onClose();
 	}
 
@@ -88,7 +108,19 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 	}
 
 	async refresh() {
+		if (this.isViewClosed) return;
+		const targetFolder = this.currentFolder;
+		const reqGen = ++this.refreshGeneration;
+		this.cancelPendingRefresh();
+
+		// 读取伏笔文件
+		const entries = await this.loadEntries(targetFolder);
+		if (!this.isRefreshCurrent(reqGen, targetFolder)) {
+			return;
+		}
+
 		const container = this.containerEl.children[1] as HTMLElement;
+		if (!container) return;
 		container.empty();
 		container.addClass('foreshadowing-view-container');
 
@@ -99,7 +131,7 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 
 		// 当前文件夹标签
 		const folderLabel = header.createDiv({ cls: 'foreshadowing-view-folder' });
-		folderLabel.setText(this.currentFolder || t('common.root-directory'));
+		folderLabel.setText(targetFolder || t('common.root-directory'));
 
 		// 筛选按钮
 		const filterRow = header.createDiv({ cls: 'foreshadowing-view-filter-row' });
@@ -119,8 +151,6 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 			};
 		});
 
-		// 读取伏笔文件
-		const entries = await this.loadEntries();
 		if (entries === null) {
 			const empty = container.createDiv({ cls: 'foreshadowing-view-empty' });
 			empty.createEl('p', { text: t('common.no-files-hint', { type: t('common.default-foreshadowing-filename') }) });
@@ -200,11 +230,12 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 			groupHeader.createSpan({ text: `${group.items.length}`, cls: 'foreshadowing-group-count' });
 
 			// 条目列表
-			group.items.forEach(entry => this.renderEntry(list, entry));
+			group.items.forEach(entry => this.renderEntry(list, entry, targetFolder));
 		});
 	}
 
-	private renderEntry(container: HTMLElement, entry: ParsedForeshadowingEntry) {
+	private renderEntry(container: HTMLElement, entry: ParsedForeshadowingEntry, folder: string) {
+		const generation = this.refreshGeneration;
 		const statusCls = entry.status === ForeshadowingStatus.Pending
 			? 'pending'
 			: entry.status === ForeshadowingStatus.PartiallyRecovered
@@ -220,12 +251,13 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 		descText.title = t('common.jump-to-entry');
 		descText.onclick = async (e) => {
 			e.stopPropagation();
-			const foreshadowingFile = this.getForeshadowingFile();
+			const foreshadowingFile = this.getForeshadowingFile(folder);
 			if (!foreshadowingFile) {
 				new Notice(t('common.file-not-found', { name: this.getWatchFileName() }));
 				return;
 			}
 			const fileCache = this.app.metadataCache.getFileCache(foreshadowingFile);
+			if (this.isViewClosed) return;
 			let fallbackLine: number | undefined;
 			if (fileCache?.headings) {
 				for (const h of fileCache.headings) {
@@ -244,7 +276,7 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 		};
 
 		// 动态多节点步进器组件（置于标题与标注内容之间）
-		this.renderStageStepper(card, entry);
+		this.renderStageStepper(card, entry, folder);
 
 		// 引用内容（可能多条）
 		const quotesEl = card.createDiv({ cls: 'foreshadowing-entry-quotes' });
@@ -264,9 +296,10 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 					chapterLink.title = t('common.jump-to-reference');
 					chapterLink.onclick = async (e) => {
 						e.stopPropagation();
-						const foreshadowingFile = this.getForeshadowingFile();
-						const sourcePath = foreshadowingFile?.path || (this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '');
-						const file = ChapterSorter.resolveChapterFile(this.app, this.plugin, this.currentFolder, target, { sourcePath });
+						const foreshadowingFile = this.getForeshadowingFile(folder);
+						const sourcePath = foreshadowingFile?.path || (folder ? folder + '/foreshadowing.md' : '');
+						const file = ChapterSorter.resolveChapterFile(this.app, this.plugin, folder, target, { sourcePath });
+						if (this.isViewClosed) return;
 						if (file) {
 							await this.openFileWithSmartLocate(file, c.text);
 						} else {
@@ -285,9 +318,10 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 				textEl.setCssProps({ cursor: 'pointer' });
 				textEl.title = t('common.jump-to-original');
 				textEl.onclick = async () => {
-					const foreshadowingFile = this.getForeshadowingFile();
-					const sourcePath = foreshadowingFile?.path || (this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '');
-					const file = ChapterSorter.resolveChapterFile(this.app, this.plugin, this.currentFolder, target, { sourcePath });
+					const foreshadowingFile = this.getForeshadowingFile(folder);
+					const sourcePath = foreshadowingFile?.path || (folder ? folder + '/foreshadowing.md' : '');
+					const file = ChapterSorter.resolveChapterFile(this.app, this.plugin, folder, target, { sourcePath });
+					if (this.isViewClosed) return;
 					if (file) {
 						await this.openFileWithSmartLocate(file, c.text);
 					} else {
@@ -318,7 +352,7 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 				if (log.note) metaEl.createSpan({ cls: 'wn-log-note', text: `：${log.note}` });
 
 				linkSpan.onclick = async () => {
-					await this.openRecoveryLocation(log.file, [log.quote, log.note, entry.description]);
+					await this.openRecoveryLocation(log.file, [log.quote, log.note, entry.description], folder);
 				};
 
 				// 正文引用行 (样式与 foreshadowing-entry-quote-text 一致)
@@ -329,7 +363,7 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 					});
 					textEl.title = t('common.jump-to-original');
 					textEl.onclick = async () => {
-						await this.openRecoveryLocation(log.file, [log.quote, log.note, entry.description]);
+						await this.openRecoveryLocation(log.file, [log.quote, log.note, entry.description], folder);
 					};
 				}
 			});
@@ -353,13 +387,14 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 		if (entry.status === ForeshadowingStatus.Pending || entry.status === ForeshadowingStatus.PartiallyRecovered) {
 			const recoverBtn = actions.createEl('button', { text: t('foreshadowing.action-recovery'), cls: 'foreshadowing-action-btn foreshadowing-recover-btn' });
 			recoverBtn.onclick = () => {
-				const foreshadowingFile = this.getForeshadowingFile();
+				const actionFolder = folder;
+				const foreshadowingFile = this.getForeshadowingFile(actionFolder);
 				if (!foreshadowingFile) return;
 				new ForeshadowingRecoveryModal(
 					this.app,
 					this.plugin,
 					entry.description,
-					this.currentFolder,
+					actionFolder,
 					(recoveryFileNames, isStage, note, quote) => {
 						if (!this.plugin.foreshadowingManager) return;
 						void (async () => {
@@ -376,11 +411,8 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 								}
 								if (success) {
 									new Notice(t('notice.foreshadowing-recovered', { links: recoveryFileNames.map(f => `[[${f}]]`).join('、') }));
-									if (this.pendingRefreshTimer) window.clearTimeout(this.pendingRefreshTimer);
-									this.pendingRefreshTimer = window.setTimeout(() => {
-										this.pendingRefreshTimer = null;
-										void this.refresh();
-									}, 100);
+									if (!this.isRefreshCurrent(generation, actionFolder)) return;
+									this.schedulePendingRefresh();
 								}
 							} catch (err) {
 								console.error('[ForeshadowingView] recovery failed:', err);
@@ -393,7 +425,8 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 
 			const deprecateBtn = actions.createEl('button', { text: t('common.deprecate'), cls: 'foreshadowing-action-btn foreshadowing-deprecate-btn' });
 			deprecateBtn.onclick = () => {
-				const foreshadowingFile = this.getForeshadowingFile();
+				const actionFolder = folder;
+				const foreshadowingFile = this.getForeshadowingFile(actionFolder);
 				if (!foreshadowingFile) return;
 				if (!this.plugin.foreshadowingManager) return;
 				void (async () => {
@@ -403,11 +436,8 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 						);
 						if (success) {
 							new Notice(t('common.deprecated-marked'));
-							if (this.pendingRefreshTimer) window.clearTimeout(this.pendingRefreshTimer);
-							this.pendingRefreshTimer = window.setTimeout(() => {
-								this.pendingRefreshTimer = null;
-								void this.refresh();
-							}, 100);
+							if (!this.isRefreshCurrent(generation, actionFolder)) return;
+							this.schedulePendingRefresh();
 						}
 					} catch (err) {
 						console.error('[ForeshadowingView] markAsDeprecated failed:', err);
@@ -420,7 +450,8 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 		if (entry.status === ForeshadowingStatus.Deprecated) {
 			const restoreBtn = actions.createEl('button', { text: t('common.restore'), cls: 'foreshadowing-action-btn' });
 			restoreBtn.onclick = async () => {
-				const foreshadowingFile = this.getForeshadowingFile();
+				const actionFolder = folder;
+				const foreshadowingFile = this.getForeshadowingFile(actionFolder);
 				if (!foreshadowingFile) return;
 				if (!this.plugin.foreshadowingManager) return;
 				const success = await this.plugin.foreshadowingManager.markAsPending(
@@ -428,11 +459,8 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 				);
 				if (success) {
 					new Notice(t('common.restored-to-pending'));
-					if (this.pendingRefreshTimer) window.clearTimeout(this.pendingRefreshTimer);
-					this.pendingRefreshTimer = window.setTimeout(() => {
-						this.pendingRefreshTimer = null;
-						void this.refresh();
-					}, 100);
+					if (!this.isRefreshCurrent(generation, actionFolder)) return;
+					this.schedulePendingRefresh();
 				}
 			};
 		}
@@ -441,7 +469,7 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 	/**
 	 * 渲染精简多节点推进器 (仅图标，悬浮 Tooltip 呈现完整详情)
 	 */
-	private renderStageStepper(container: HTMLElement, entry: ParsedForeshadowingEntry) {
+	private renderStageStepper(container: HTMLElement, entry: ParsedForeshadowingEntry, folder: string) {
 		const stepperEl = container.createDiv({ cls: 'foreshadowing-stepper' });
 		
 		// 节点 1: 埋下伏笔 (源章节)
@@ -465,9 +493,10 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 		sourceNode.title = `${t('modal.first-marked-at', { name: firstSourceName })}${firstTime ? ' · ' + firstTime : ''}`;
 		
 		sourceNode.onclick = async () => {
-			const foreshadowingFile = this.getForeshadowingFile();
-			const sourcePath = foreshadowingFile?.path || (this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '');
-			const file = ChapterSorter.resolveChapterFile(this.app, this.plugin, this.currentFolder, firstSource, { sourcePath });
+			const foreshadowingFile = this.getForeshadowingFile(folder);
+			const sourcePath = foreshadowingFile?.path || (folder ? folder + '/foreshadowing.md' : '');
+			const file = ChapterSorter.resolveChapterFile(this.app, this.plugin, folder, firstSource, { sourcePath });
+			if (this.isViewClosed) return;
 			if (file) await openFileAndFocus(this.app, getLeafForFileNavigation(this.app, file, { sourceLeaf: this.leaf }), file);
 		};
 
@@ -485,9 +514,10 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 				const tooltip = `${fileName}${log.time ? ' · ' + log.time : ''}${log.note ? '\n' + log.note : ''}`;
 				node.title = tooltip;
 				node.onclick = async () => {
-					const foreshadowingFile = this.getForeshadowingFile();
-					const sourcePath = foreshadowingFile?.path || (this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '');
-					const file = ChapterSorter.resolveChapterFile(this.app, this.plugin, this.currentFolder, log.file, { sourcePath });
+					const foreshadowingFile = this.getForeshadowingFile(folder);
+					const sourcePath = foreshadowingFile?.path || (folder ? folder + '/foreshadowing.md' : '');
+					const file = ChapterSorter.resolveChapterFile(this.app, this.plugin, folder, log.file, { sourcePath });
+					if (this.isViewClosed) return;
 					if (file) await openFileAndFocus(this.app, getLeafForFileNavigation(this.app, file, { sourceLeaf: this.leaf }), file);
 				};
 			});
@@ -501,9 +531,10 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 				const time = entry.recoveredAts && entry.recoveredAts[index] ? entry.recoveredAts[index] : '';
 				node.title = `${fileName}${time ? ' · ' + time : ''}`;
 				node.onclick = async () => {
-					const foreshadowingFile = this.getForeshadowingFile();
-					const sourcePath = foreshadowingFile?.path || (this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '');
-					const targetFile = ChapterSorter.resolveChapterFile(this.app, this.plugin, this.currentFolder, file, { sourcePath });
+					const foreshadowingFile = this.getForeshadowingFile(folder);
+					const sourcePath = foreshadowingFile?.path || (folder ? folder + '/foreshadowing.md' : '');
+					const targetFile = ChapterSorter.resolveChapterFile(this.app, this.plugin, folder, file, { sourcePath });
+					if (this.isViewClosed) return;
 					if (targetFile) await openFileAndFocus(this.app, getLeafForFileNavigation(this.app, targetFile, { sourceLeaf: this.leaf }), targetFile);
 				};
 			});
@@ -519,13 +550,13 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 		}
 	}
 
-	private getForeshadowingFile(): TFile | null {
+	private getForeshadowingFile(folder?: string): TFile | null {
 		if (!this.plugin.foreshadowingManager) return null;
-		return this.plugin.foreshadowingManager.getForeshadowingFileByFolder(this.currentFolder);
+		return this.plugin.foreshadowingManager.getForeshadowingFileByFolder(folder ?? this.currentFolder);
 	}
 
-	private async loadEntries(): Promise<ParsedForeshadowingEntry[] | null> {
-		const file = this.getForeshadowingFile();
+	private async loadEntries(folder?: string): Promise<ParsedForeshadowingEntry[] | null> {
+		const file = this.getForeshadowingFile(folder);
 		if (!file || !this.plugin.foreshadowingManager) return null;
 
 		const content = await this.app.vault.read(file);
@@ -540,10 +571,12 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 		await smartLocateAndHighlight(this.app, file, [searchText], { sourceLeaf: this.leaf });
 	}
 
-	private async openRecoveryLocation(chapterName: string, searchTexts: (string | undefined)[]) {
-		const foreshadowingFile = this.getForeshadowingFile();
-		const sourcePath = foreshadowingFile?.path || (this.currentFolder ? this.currentFolder + '/foreshadowing.md' : '');
-		const file = ChapterSorter.resolveChapterFile(this.app, this.plugin, this.currentFolder, chapterName, { sourcePath });
+	private async openRecoveryLocation(chapterName: string, searchTexts: (string | undefined)[], folder?: string) {
+		const targetFolder = folder ?? this.currentFolder;
+		const foreshadowingFile = this.getForeshadowingFile(targetFolder);
+		const sourcePath = foreshadowingFile?.path || (targetFolder ? targetFolder + '/foreshadowing.md' : '');
+		const file = ChapterSorter.resolveChapterFile(this.app, this.plugin, targetFolder, chapterName, { sourcePath });
+		if (this.isViewClosed) return;
 		if (!file) {
 			new Notice(t('common.file-not-found', { name: ChapterSorter.extractWikilinkDisplay(chapterName) }));
 			return;

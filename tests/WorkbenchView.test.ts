@@ -131,11 +131,13 @@ const { getCurrentBookContextMock, findBookRootMock, MockTFile, MockTFolder, moc
 };
 
 vi.stubGlobal('window', {
+	createDiv: () => new MockElement('div'),
 	createFragment: () => new MockElement(''),
 	requestAnimationFrame: (cb: (time: number) => void) => {
 		cb(Date.now());
 		return 0;
 	},
+	cancelAnimationFrame: (_id: number) => {},
 	setTimeout: globalThis.setTimeout,
 	clearTimeout: globalThis.clearTimeout
 });
@@ -156,7 +158,9 @@ vi.mock('obsidian', () => {
 				defaultView: window,
 				win: {
 					...window,
-					createDiv: () => new MockElement('div')
+					createDiv: () => new MockElement('div'),
+					createFragment: () => new MockElement(''),
+					cancelAnimationFrame: (_id: number) => {}
 				},
 				activeElement: null as unknown
 			} as unknown as Document;
@@ -2310,9 +2314,9 @@ describe('WorkbenchView', () => {
 			const btn = card.querySelector<HTMLElement>('.wn-card-btn')!;
 			btn.focus();
 
-			// Calling isCardEditing on this card must be false
-			const isEditing = (view as unknown as { isCardEditing: (c: unknown) => boolean }).isCardEditing(card);
-			expect(isEditing).toBe(false);
+			// A focused button does not provide a card editor
+			const editor = (view as unknown as { getCardEditorElement: (c: unknown) => HTMLElement | null }).getCardEditorElement(card);
+			expect(editor).toBeNull();
 
 			await view.onClose();
 		});
@@ -2554,6 +2558,300 @@ describe('WorkbenchView', () => {
 			expect((view as unknown as { cachedForeshadowingMap: Map<string, unknown> | null }).cachedForeshadowingMap).not.toBe(staleMap);
 
 			await view.onClose();
+		});
+
+		it('onClose releases existing foreshadowing cache and prevents late repopulation', async () => {
+			let resolveForeshadowing: ((val: Map<string, import('../src/types/foreshadowing').ParsedForeshadowingEntry[]>) => void) | null = null;
+			(plugin.foreshadowingManager!.buildChapterForeshadowingMap as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+				return new Promise(resolve => {
+					resolveForeshadowing = resolve;
+				});
+			});
+
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			view.currentBookPath = 'NovelA';
+			(view as unknown as { container: unknown }).container = view.contentEl;
+
+			const renderPromise = (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+
+			const viewInternal = view as unknown as {
+				cachedForeshadowingMap: Map<string, unknown> | null;
+				cachedForeshadowingBookPath: string | null;
+				cachedForeshadowingKey: string | null;
+			};
+			viewInternal.cachedForeshadowingMap = new Map();
+			viewInternal.cachedForeshadowingBookPath = 'NovelA';
+			viewInternal.cachedForeshadowingKey = 'NovelA\u0000key';
+			await view.onClose();
+			expect(viewInternal.cachedForeshadowingMap).toBeNull();
+			expect(viewInternal.cachedForeshadowingBookPath).toBeNull();
+			expect(viewInternal.cachedForeshadowingKey).toBeNull();
+
+			const inFlightMap = new Map<string, import('../src/types/foreshadowing').ParsedForeshadowingEntry[]>();
+			resolveForeshadowing!(inFlightMap);
+			await renderPromise;
+
+			expect(viewInternal.cachedForeshadowingMap).toBeNull();
+			expect(viewInternal.cachedForeshadowingBookPath).toBeNull();
+			expect(viewInternal.cachedForeshadowingKey).toBeNull();
+		});
+	});
+
+	describe('WorkbenchView resource-lifecycle regressions', () => {
+		it('clears search timers in the scheduling owner window when container window changes', async () => {
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			await view.onOpen();
+
+			const ownerWin = {
+				setTimeout: vi.fn((_cb: () => void, _ms: number) => 101),
+				clearTimeout: vi.fn()
+			};
+			const mockInput = {
+				value: 'test',
+				ownerDocument: { defaultView: ownerWin }
+			} as unknown as HTMLInputElement;
+
+			const viewInternal = view as unknown as {
+				scheduleFilterRefresh: (mode: 'default', input: HTMLInputElement) => void;
+				filterDebounceTimer: { win: Window; id: number } | null;
+			};
+
+			viewInternal.scheduleFilterRefresh('default', mockInput);
+
+			const otherWin = {
+				clearTimeout: vi.fn()
+			};
+			(view.contentEl.ownerDocument as unknown as { defaultView: unknown }).defaultView = otherWin;
+
+			await view.onClose();
+
+			expect(ownerWin.clearTimeout).toHaveBeenCalledWith(101);
+			expect(otherWin.clearTimeout).not.toHaveBeenCalled();
+		});
+
+		it('ensures canceled search callback after close/reopen cannot clear or schedule current timer', async () => {
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			await view.onOpen();
+
+			let staleCallback: (() => void) | null = null;
+			const schedulingWin = {
+				setTimeout: vi.fn((cb: () => void) => {
+					staleCallback = cb;
+					return 202;
+				}),
+				clearTimeout: vi.fn()
+			};
+			const mockInput = {
+				value: 'initial query',
+				ownerDocument: { defaultView: schedulingWin }
+			} as unknown as HTMLInputElement;
+
+			const viewInternal = view as unknown as {
+				scheduleFilterRefresh: (mode: 'default', input: HTMLInputElement) => void;
+				filterDebounceTimer: { win: unknown; id: number } | null;
+			};
+
+			viewInternal.scheduleFilterRefresh('default', mockInput);
+			expect(staleCallback).not.toBeNull();
+
+			await view.onClose();
+			expect(schedulingWin.clearTimeout).toHaveBeenCalledWith(202);
+
+			await view.onOpen();
+			const reloadSpy = vi.spyOn(view, 'reloadBoard').mockResolvedValue();
+
+			const activeWin = {
+				setTimeout: vi.fn(() => 303),
+				clearTimeout: vi.fn()
+			};
+			const newInput = {
+				value: 'new query',
+				ownerDocument: { defaultView: activeWin }
+			} as unknown as HTMLInputElement;
+
+			viewInternal.scheduleFilterRefresh('default', newInput);
+			expect(viewInternal.filterDebounceTimer).toEqual({ win: activeWin, id: 303 });
+
+			// Execute stale callback from old session
+			staleCallback!();
+
+			// Must not wipe current timer or call reloadBoard
+			expect(viewInternal.filterDebounceTimer).toEqual({ win: activeWin, id: 303 });
+			expect(reloadSpy).not.toHaveBeenCalled();
+
+			await view.onClose();
+		});
+
+		it('cancels focus RAF on close or new generation, making stale frames inert', async () => {
+			getCurrentBookContextMock.mockReturnValue('NovelA');
+			plugin.getTrackedMarkdownFiles = vi.fn().mockReturnValue([file1]);
+			(mockApp.vault.getAbstractFileByPath as ReturnType<typeof vi.fn>).mockReturnValue(file1);
+
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			await view.onOpen();
+
+			const queuedFrames: FrameRequestCallback[] = [];
+			const customWin = {
+				...window,
+				requestAnimationFrame: vi.fn((cb: FrameRequestCallback) => {
+					queuedFrames.push(cb);
+					return 404;
+				}),
+				cancelAnimationFrame: vi.fn()
+			};
+
+			const mockInput = view.contentEl.querySelector('.wn-workbench-filter-input') as unknown as MockElement;
+			expect(mockInput).not.toBeNull();
+			(mockInput as unknown as { ownerDocument: unknown }).ownerDocument = { defaultView: customWin };
+
+			const viewInternal = view as unknown as {
+				pendingFilterFocus: { mode: 'default'; start: number; end: number } | null;
+				restorePendingFilterFocus: () => void;
+				renderBoard: () => Promise<void>;
+				pendingFocusRaf: { win: unknown; id: number } | null;
+			};
+
+			viewInternal.pendingFilterFocus = { mode: 'default', start: 1, end: 3 };
+			viewInternal.restorePendingFilterFocus();
+
+			expect(customWin.requestAnimationFrame).toHaveBeenCalled();
+			expect(viewInternal.pendingFocusRaf).toEqual({ win: customWin, id: 404 });
+			const focusSpy = vi.spyOn(mockInput, 'focus');
+			await viewInternal.renderBoard();
+			expect(customWin.cancelAnimationFrame).toHaveBeenCalledWith(404);
+			queuedFrames[0](0);
+			expect(focusSpy).not.toHaveBeenCalled();
+			expect(viewInternal.pendingFocusRaf).toBeNull();
+
+			const nextInput = view.contentEl.querySelector('.wn-workbench-filter-input') as unknown as MockElement;
+			(nextInput as unknown as { ownerDocument: unknown }).ownerDocument = { defaultView: customWin };
+			viewInternal.pendingFilterFocus = { mode: 'default', start: 0, end: 1 };
+			viewInternal.restorePendingFilterFocus();
+
+			// Close cancels focus RAF
+			await view.onClose();
+			expect(customWin.cancelAnimationFrame).toHaveBeenCalledWith(404);
+			expect(viewInternal.pendingFocusRaf).toBeNull();
+
+			// Stale frame callback executed after close is inert
+			const nextFocusSpy = vi.spyOn(nextInput, 'focus');
+			queuedFrames[1](0);
+			expect(nextFocusSpy).not.toHaveBeenCalled();
+		});
+
+		it('resolves timeline reload Promise on close during awaited frame without stale scroll writes', async () => {
+			const queuedFrames: FrameRequestCallback[] = [];
+			const customWin = {
+				...window,
+				requestAnimationFrame: vi.fn((cb: FrameRequestCallback) => {
+					queuedFrames.push(cb);
+					return 999;
+				}),
+				cancelAnimationFrame: vi.fn()
+			};
+
+			const mainCol = { scrollTop: 50 };
+			const sideCol = { scrollTop: 25 };
+			const fakeContainer = {
+				ownerDocument: { defaultView: customWin, win: customWin },
+				querySelector: (selector: string) => {
+					if (selector === '.wn-timeline-waterfall-main') return mainCol;
+					if (selector === '.wn-timeline-waterfall-sidebar') return sideCol;
+					return null;
+				},
+				scrollTop: 0,
+				empty: vi.fn(),
+				toggleClass: vi.fn(),
+				appendChild: vi.fn()
+			};
+
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			view.currentBookPath = 'NovelA';
+
+			type WorkbenchViewTimelineInternal = {
+				container: unknown;
+				sortMode: string;
+				renderBoard: () => Promise<void>;
+				isReloadingBoard: boolean;
+				pendingTimelineScrollRaf: { win: Window; id: number; resolve: () => void } | null;
+			};
+
+			const viewInternal = view as unknown as WorkbenchViewTimelineInternal;
+			viewInternal.container = fakeContainer;
+			viewInternal.sortMode = 'timeline';
+			viewInternal.renderBoard = async () => {
+				mainCol.scrollTop = 0;
+				sideCol.scrollTop = 0;
+			};
+
+			const reloadPromise = view.reloadBoard();
+			await Promise.resolve(); // Allow renderBoard to finish and queue timeline scroll RAF
+
+			expect(viewInternal.isReloadingBoard).toBe(true);
+			expect(queuedFrames).toHaveLength(1);
+
+			// Close during awaited frame
+			const closePromise = view.onClose();
+
+			// The reloadPromise must resolve when closed, clearing isReloadingBoard
+			await Promise.all([reloadPromise, closePromise]);
+			expect(customWin.cancelAnimationFrame).toHaveBeenCalledWith(999);
+			expect(viewInternal.isReloadingBoard).toBe(false);
+
+			// Running the canceled frame must not perform scroll writes
+			queuedFrames[0](0);
+			expect(mainCol.scrollTop).toBe(0);
+			expect(sideCol.scrollTop).toBe(0);
+		});
+
+		it('creates buffer and fragment via owning window helper methods for empty and populated branches', async () => {
+			const customWin = {
+				...window,
+				createDiv: vi.fn(() => new MockElement('div')),
+				createFragment: vi.fn(() => {
+					const frag = new MockElement('');
+					frag.isFragment = true;
+					return frag;
+				})
+			};
+
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			await view.onOpen();
+			(view.contentEl.ownerDocument as unknown as { win: unknown }).win = customWin;
+
+			const globalDivSpy = vi.spyOn(globalThis as unknown as { createDiv: () => unknown }, 'createDiv');
+			const globalFragSpy = vi.spyOn(window, 'createFragment');
+
+			try {
+				// 1. Empty branch (no book open)
+				view.currentBookPath = null;
+				await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+
+				expect(customWin.createDiv).toHaveBeenCalled();
+				expect(customWin.createFragment).toHaveBeenCalled();
+				expect(globalDivSpy).not.toHaveBeenCalled();
+				expect(globalFragSpy).not.toHaveBeenCalled();
+
+				customWin.createDiv.mockClear();
+				customWin.createFragment.mockClear();
+
+				// 2. Populated branch
+				view.currentBookPath = 'NovelA';
+				const c1 = new MockTFile('第1章.md', 'NovelA/第1章.md');
+				plugin.getTrackedMarkdownFiles = vi.fn().mockReturnValue([c1]);
+				(mockApp.vault.getAbstractFileByPath as ReturnType<typeof vi.fn>).mockReturnValue(c1);
+
+				await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+
+				expect(customWin.createDiv).toHaveBeenCalled();
+				expect(customWin.createFragment).toHaveBeenCalled();
+				expect(globalDivSpy).not.toHaveBeenCalled();
+				expect(globalFragSpy).not.toHaveBeenCalled();
+			} finally {
+				globalDivSpy.mockRestore();
+				globalFragSpy.mockRestore();
+				await view.onClose();
+			}
 		});
 	});
 });

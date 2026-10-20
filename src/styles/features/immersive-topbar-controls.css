@@ -26,3 +26,25 @@
 	transform: scale(0.8);
 	cursor: pointer;
 }
+
+.immersive-top-bar-center .wn-immersive-typewriter-settings-btn {
+	background: transparent;
+	border: none;
+	padding: 0;
+	margin: 0;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--text-muted);
+	cursor: pointer;
+	border-radius: var(--radius-s);
+	line-height: 1;
+}
+
+.immersive-top-bar-center .wn-immersive-typewriter-settings-btn:hover {
+	color: var(--text-normal);
+}
+
+.immersive-top-bar-center .wn-immersive-typewriter-settings-btn.is-hidden {
+	display: none;
+}

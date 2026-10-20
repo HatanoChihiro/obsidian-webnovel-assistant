@@ -28,6 +28,7 @@ describe('StickyNoteDataManager persistence', () => {
 		};
 		manifest: { dir: string; id: string };
 		adaptiveDebounceManager: { debounceFixed: ReturnType<typeof vi.fn> };
+		register: ReturnType<typeof vi.fn>;
 	};
 
 	beforeEach(() => {
@@ -44,7 +45,8 @@ describe('StickyNoteDataManager persistence', () => {
 				} }
 			},
 			manifest: { dir: 'plugins/test', id: 'test' },
-			adaptiveDebounceManager: { debounceFixed: vi.fn() }
+			adaptiveDebounceManager: { debounceFixed: vi.fn() },
+			register: vi.fn()
 		};
 	});
 
@@ -138,5 +140,42 @@ describe('StickyNoteDataManager persistence', () => {
 		expect(JSON.parse(snapshots[0])[0].title).toBe('Original');
 		expect(JSON.parse(snapshots[1])[0].title).toBe('Second');
 		expect(manager.getIsWriting()).toBe(false);
+	});
+
+	it.each([1, 3])('bounds cleanup registration and tracks pending timers across %i schedule(s)', (count) => {
+		vi.useFakeTimers();
+		try {
+			const manager = new StickyNoteDataManager(plugin as never);
+			expect(plugin.register).toHaveBeenCalledTimes(1);
+			const [unloadCleanup] = plugin.register.mock.calls[0] as [() => void];
+			const refreshSpy = vi.spyOn(manager, 'refreshImmersiveNotes');
+
+			for (let i = 0; i < count; i++) {
+				manager.scheduleRefresh();
+			}
+
+			// Repeated schedules do not grow registered cleanup count
+			expect(plugin.register).toHaveBeenCalledTimes(1);
+			const pendingSet = manager['pendingRefreshTimers'];
+			expect(pendingSet.size).toBe(count);
+			expect(refreshSpy).not.toHaveBeenCalled();
+
+			// Exact one callback per schedule
+			vi.advanceTimersByTime(200);
+			expect(refreshSpy).toHaveBeenCalledTimes(count);
+
+			// Completed timers leave no pending references
+			expect(pendingSet.size).toBe(0);
+
+			// Unload cancels outstanding callbacks
+			manager.scheduleRefresh();
+			expect(pendingSet.size).toBe(1);
+			unloadCleanup();
+			expect(pendingSet.size).toBe(0);
+			vi.advanceTimersByTime(200);
+			expect(refreshSpy).toHaveBeenCalledTimes(count);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });

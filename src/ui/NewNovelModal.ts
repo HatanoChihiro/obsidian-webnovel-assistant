@@ -10,7 +10,6 @@ export class NewNovelModal extends Modal {
 	private novelName: string = '';
 	private series: string = '';
 	private synopsis: string = '';
-	private protagonist: string = '';
 	private genre: string = '';
 	private wordGoal: string = '';
 

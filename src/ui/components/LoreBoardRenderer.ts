@@ -1,4 +1,4 @@
-import { Notice, TFile, TFolder, setIcon, Component, type App } from 'obsidian';
+import { Notice, TFile, setIcon, Component, type App } from 'obsidian';
 import { t, getLocale } from '../../i18n';
 import type { GraphEdge, RelationGraphManager } from '../../services/RelationGraphManager';
 import { ForceLayoutEngine } from '../../services/ForceLayoutEngine';
@@ -64,17 +64,6 @@ export interface LoreBoardOptions {
 }
 
 export class LoreBoardRenderer {
-    private static findFirst(f: TFolder): TFile | null {
-        for (const child of f.children) {
-            if (child instanceof TFile && child.extension === 'md') return child;
-            if (child instanceof TFolder) {
-                const res = this.findFirst(child);
-                if (res) return res;
-            }
-        }
-        return null;
-    }
-
     static async render(options: LoreBoardOptions): Promise<void> {
         const { app, plugin, container, files, currentBookPath, matchedLoreHeadings, reloadBoard } = options;
         const bookPath = currentBookPath === '/' ? '' : currentBookPath;

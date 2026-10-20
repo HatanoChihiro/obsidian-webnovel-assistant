@@ -406,56 +406,6 @@ export class MenuManager {
 		}
 	}
 
-	/**
-	 * 移动端直接高效合并章节（无 3 栏 Preview & 批注 Modal）
-	 */
-	private async handleMobileDirectMergeChapters(file: TFolder): Promise<void> {
-		try {
-			new Notice(t('notice.merging-folder', { name: file.name }));
-			const items = await this.plugin.chapterMergeManager.loadFolderChapters(file);
-			if (items.length === 0) {
-				new Notice(t('notice.no-chapter-files-in-folder', { name: file.name }));
-				return;
-			}
-
-			const { file: mergedFile, wordCount } = await this.plugin.chapterMergeManager.exportMergedDocument(file, items);
-			this.plugin.chapterMergeManager.clearDraft(file.path);
-
-			new Notice(t('notice.merge-success', {
-				count: String(items.length),
-				words: wordCount.toLocaleString(),
-				overwriteHint: ''
-			}));
-
-			await this.plugin.app.workspace.getLeaf(false).openFile(mergedFile);
-		} catch (err) {
-			console.error('Failed to direct merge chapters on mobile:', err);
-			new Notice(t('notice.merge-failed'));
-		}
-	}
-
-	/**
-	 * 剥离 Markdown 文件的 YAML frontmatter（文档属性）
-	 * 使用 Obsidian metadataCache 的 frontmatterPosition 精确定位
-	 * 如果 cache 不可用，则用正则兜底
-	 */
-	private stripFrontmatter(file: TFile, content: string): string {
-		const cache = this.plugin.app.metadataCache.getFileCache(file);
-		const pos = cache?.frontmatterPosition;
-		if (pos) {
-			// frontmatterPosition.end.line 是 frontmatter 结束行（含 --- 行）
-			// 从下一行开始截取正文
-			const lines = content.split('\n');
-			const bodyStart = pos.end.line + 1;
-			if (bodyStart < lines.length) {
-				return lines.slice(bodyStart).join('\n');
-			}
-			return '';
-		}
-		// 兜底：正则匹配 frontmatter
-		return content.replace(/^---\n[\s\S]*?\n---\n?/, '');
-	}
-
 	private async openManageSeries(folderPath: string): Promise<void> {
 		if (!this.plugin.homepageManager) return;
 		try {

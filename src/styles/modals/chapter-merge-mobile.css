@@ -60,6 +60,60 @@ body .modal-content.wn-mobile-merge-modal-content {
 }
 
 
+.wn-mobile-merge-toolbar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 4px 2px 8px;
+	gap: 8px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	margin-bottom: 10px;
+}
+
+
+.wn-mobile-merge-counter {
+	font-size: 0.8em;
+	font-weight: 600;
+	color: var(--text-muted);
+	white-space: nowrap;
+}
+
+
+.wn-mobile-merge-bulk-actions {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+
+.wn-mobile-merge-btn-bulk {
+	font-size: 0.75em;
+	padding: 3px 8px;
+	height: 24px;
+	line-height: 1;
+	background: var(--background-modifier-form-field);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	color: var(--text-muted);
+	cursor: pointer;
+	transition: color 0.15s, background 0.15s;
+}
+
+
+.wn-mobile-merge-btn-bulk:hover {
+	color: var(--text-normal);
+	background: var(--background-modifier-hover);
+}
+
+
+.wn-mobile-merge-checkbox {
+	margin: 0;
+	cursor: pointer;
+	flex-shrink: 0;
+	accent-color: var(--interactive-accent);
+}
+
+
 .wn-mobile-merge-preview-container {
 	display: flex;
 	flex-direction: column;

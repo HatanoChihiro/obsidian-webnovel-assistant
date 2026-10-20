@@ -533,6 +533,43 @@ It has multiple lines.
             expect(frontMatterData.get('Book 1/Vol 2/Chapter 1.md')?.timeline).toBeUndefined();
         });
 
+        it('keeps spaced cross-volume chapter links distinct across repeated drops, moves and unlinking', async () => {
+            const timelineFile = Object.assign(new TFile(), { name: 'Timeline.md', path: 'Book 1/Timeline.md', basename: 'Timeline' });
+            const spaced = Object.assign(new TFile(), { name: 'Chapter 1 .md', path: 'Book 1/Vol 1/Chapter 1 .md', basename: 'Chapter 1 ', extension: 'md' });
+            mockPlugin.getVaultMarkdownFiles.mockReturnValue([spaced, vol2Chap1]);
+            mockPlugin.getTrackedMarkdownFiles.mockReturnValue([spaced, vol2Chap1]);
+            mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) =>
+                [timelineFile, spaced, vol2Chap1].find(file => file.path === path) ?? null);
+            mockApp.metadataCache.fileToLinktext.mockReturnValue('Chapter 1 .md');
+            let content = '## Node 1\n- Event [[Vol 2/Chapter 1]]\n---\n## Node 2\n- Event\n---\n';
+            mockApp.vault.read.mockImplementation(async () => content);
+            mockApp.vault.cachedRead.mockImplementation(async () => content);
+            mockApp.vault.process.mockImplementation(async (_file: TFile, callback: (text: string) => string) => {
+                content = callback(content);
+                return content;
+            });
+
+            const target = [{ entryIndex: 1, itemIndex: 0 }];
+            await manager.syncChapterToEventItem(spaced, target, 'Book 1');
+            await manager.syncChapterToEventItem(spaced, target, 'Book 1');
+            expect(content.match(/\[\[Book 1\/Vol 1\/Chapter 1 \.md\]\]/g)).toHaveLength(1);
+            expect(frontMatterData.get(spaced.path)?.timeline).toBe('Node 2');
+            expect(frontMatterData.get(vol2Chap1.path)?.timeline).toBe('Node 1');
+
+            await manager.syncChapterToEventItem(spaced, [{ entryIndex: 0, itemIndex: 0 }], 'Book 1');
+            const entries = manager.parseEntries(content, 'Book 1');
+            expect(entries[0].chapter).toContain('Vol 2/Chapter 1');
+            expect(entries[0].chapter).toContain('Book 1/Vol 1/Chapter 1 .md');
+            expect(entries[1].chapter).toBe('');
+            expect(frontMatterData.get(spaced.path)?.timeline).toBe('Node 1');
+
+            await manager.syncChapterToEventItem(spaced, [], 'Book 1');
+            expect(content).not.toContain('Chapter 1 .md');
+            expect(content).toContain('[[Vol 2/Chapter 1]]');
+            expect(frontMatterData.get(spaced.path)?.timeline).toBeUndefined();
+            expect(frontMatterData.get(vol2Chap1.path)?.timeline).toBe('Node 1');
+        });
+
         it('11. syncChapterToEventItem string argument with ambiguous name does not modify associations', async () => {
             const dummyTlFile = Object.assign(new TFile(), { name: 'Timeline.md', path: 'Book 1/Timeline.md', basename: 'Timeline' });
             mockApp.vault.getAbstractFileByPath.mockImplementation((p: string) => {

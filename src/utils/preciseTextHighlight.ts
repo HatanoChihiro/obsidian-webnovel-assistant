@@ -253,31 +253,6 @@ export function prepareNormalizedHaystack(texts: string[]): PreparedNormalizedHa
 }
 
 /**
- * 在多个连续文本节点中，跨软换行与空白折叠精确定位搜索词的节点字符偏移区间
- * 支持结合上下文片段、命中次序号及相对进度进行多维度精确仲裁
- */
-export function findNormalizedTextRanges(
-	texts: string[],
-	searchText: string,
-	optionsOrOffset?: number | TextMatchOptions
-): TextNodeRange[] {
-	return prepareNormalizedHaystack(texts).findRanges(searchText, optionsOrOffset);
-}
-
-/**
- * 纯逻辑：在可用渲染块起始行号列表中选取最接近 targetLine 的段落起始行
- */
-export function findNearestBlockLine(lineNumbers: number[], targetLine: number): number | null {
-	let closest: number | null = null;
-	for (const line of lineNumbers) {
-		if (line <= targetLine && (closest === null || line > closest)) {
-			closest = line;
-		}
-	}
-	return closest;
-}
-
-/**
  * 在阅读视图容器中寻找对应源码行号的渲染块候选列表（按最接近 targetLine 的优先级排序，含就近邻域）
  */
 export function getCandidateRenderedBlocks(container: Element, targetLine: number): Element[] {
@@ -322,25 +297,6 @@ export function getCandidateRenderedBlocks(container: Element, targetLine: numbe
 	}
 
 	return candidateIndices.map(idx => blockLines[idx].element);
-}
-
-/**
- * 在阅读视图容器中寻找对应源码行号的渲染块（data-line <= targetLine 的最大起始行元素）
- */
-export function getTargetRenderedBlock(container: Element, targetLine: number): Element | null {
-	let target: Element | null = null;
-	let closestLine = -1;
-	const elements = container.querySelectorAll<HTMLElement>('[data-line]');
-	for (let i = 0; i < elements.length; i++) {
-		const el = elements[i];
-		const attr = el.getAttribute('data-line') ?? el.dataset.line;
-		if (!attr) continue;
-		const line = Number.parseInt(attr, 10);
-		if (Number.isNaN(line) || line > targetLine || line < closestLine) continue;
-		closestLine = line;
-		target = el;
-	}
-	return target;
 }
 
 /**

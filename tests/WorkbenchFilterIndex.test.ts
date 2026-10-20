@@ -24,6 +24,8 @@ describe('WorkbenchFilterIndex helpers', () => {
 		expect(stripMarkdownFrontmatter(markdown)).toBe('正文中的线索');
 		expect(stripMarkdownFrontmatter('---\n未闭合\n正文')).toBe('---\n未闭合\n正文');
 		expect(stripMarkdownFrontmatter('# 标题\n---\n正文')).toBe('# 标题\n---\n正文');
+		expect(stripMarkdownFrontmatter('\uFEFF---\r\nsynopsis: 地下室\r\n---\r\n正文中的线索')).toBe('正文中的线索');
+		expect(stripMarkdownFrontmatter('---\nsynopsis: 地下室\n...\n正文中的线索')).toBe('正文中的线索');
 	});
 
 	it('indexes each lore entry independently up to the next level-one or level-two heading', () => {
@@ -66,6 +68,7 @@ describe('WorkbenchFilterIndex helpers', () => {
 
 		expect(results.map(file => file.basename)).toEqual(['01 林默']);
 		await index.filterChapters(files, '林默 地下室', () => '');
+		expect(await index.filterChapters(files, '林默 不存在', () => '')).toEqual([]);
 		expect(cachedRead).toHaveBeenCalledTimes(2);
 	});
 
@@ -133,7 +136,7 @@ describe('WorkbenchFilterIndex helpers', () => {
 			: index.filterLoreEntries([{ file: files[0], heading: '01' }] as never, new Map(), 'keyword');
 		index.clear();
 		resolveChapterRead('some keyword content');
-		await filterPromise;
+		expect(await filterPromise).toEqual(mode === 'chapter' ? [] : new Set());
 		expect(index['chapterContentCache'].size).toBe(0);
 		expect(index['loreSectionCache'].size).toBe(0);
 		expect(index['pendingReads'].size).toBe(0);
@@ -197,6 +200,77 @@ describe('WorkbenchFilterIndex helpers', () => {
 		const results = await index.filterChapters(files, 'content', getSynopsis);
 		expect(results).toEqual([]);
 		// Search stopped early, did not read all remaining files
-		expect(cachedRead).toHaveBeenCalledTimes(1);
+		expect(cachedRead).toHaveBeenCalledTimes(0);
+	});
+
+	it.each([
+		{
+			type: 'chapter',
+			async run(index: WorkbenchFilterIndex) {
+				const files = [
+					{ path: '小说/01.md', basename: '01', stat: { mtime: 1 } }
+				] as never;
+				return index.filterChapters(files, '01 序幕', () => '序幕');
+			},
+			expectedResults: ['01']
+		},
+		{
+			type: 'lore',
+			async run(index: WorkbenchFilterIndex) {
+				const file = { path: '小说/设定.md', basename: '设定', stat: { mtime: 1 } };
+				const entries = [
+					{ file, heading: '林默' }
+				] as never;
+				const aliases = new Map([['林默', ['阿默']]]);
+				return index.filterLoreEntries(entries, aliases, '林默 阿默');
+			},
+			expectedResults: ['林默']
+		}
+	] as const)('avoids body reads and cache allocation when metadata alone satisfies query tokens ($type)', async ({ run, expectedResults }) => {
+		const cachedRead = vi.fn(async () => '正文内容');
+		const index = new WorkbenchFilterIndex({ vault: { cachedRead } } as never);
+
+		const results = await run(index);
+		const resultList = Array.isArray(results) ? results.map((f: { basename: string }) => f.basename) : Array.from(results as Set<string>);
+		expect(resultList).toEqual(expectedResults as readonly string[]);
+		expect(cachedRead).toHaveBeenCalledTimes(0);
+		expect(index['chapterContentCache'].size).toBe(0);
+		expect(index['loreSectionCache'].size).toBe(0);
+	});
+
+	it.each(['chapter', 'lore'] as const)('uses current metadata after a delayed body read (%s)', async mode => {
+		let finishRead!: (content: string) => void;
+		const cachedRead = vi.fn(() => new Promise<string>(resolve => { finishRead = resolve; }));
+		const index = new WorkbenchFilterIndex({ vault: { cachedRead } } as never);
+		const file = { path: 'Novel/Chapter.md', basename: 'Chapter', stat: { mtime: 1 } };
+		let synopsis = 'old';
+		const aliases = new Map([['Chapter', ['old']]]);
+		const searching = mode === 'chapter'
+			? index.filterChapters([file] as never, 'updated body', () => synopsis)
+			: index.filterLoreEntries([{ file, heading: 'Chapter' }] as never, aliases, 'updated body');
+		synopsis = 'updated';
+		aliases.set('Chapter', ['updated']);
+		finishRead('body');
+		const results = await searching;
+		expect(mode === 'chapter' ? (results as typeof file[]).map(result => result.basename) : [...results]).toEqual(['Chapter']);
+	});
+
+	it.each(['chapter', 'lore'] as const)('yields every 50 items for metadata-only queries (%s)', async mode => {
+		const files = Array.from({ length: 55 }, (_, i) => ({
+			path: `小说/${i}.md`,
+			basename: `章节${i}`,
+			stat: { mtime: 1 }
+		})) as never;
+		const cachedRead = vi.fn(async () => '');
+		const index = new WorkbenchFilterIndex({ vault: { cachedRead } } as never);
+		const setTimeoutSpy = vi.spyOn(window, 'setTimeout');
+
+		const results = mode === 'chapter'
+			? await index.filterChapters(files, '章节', () => '')
+			: await index.filterLoreEntries((files as { basename: string }[]).map(file => ({ file, heading: file.basename })) as never, new Map(), '章节');
+		expect(Array.isArray(results) ? results.length : results.size).toBe(55);
+		expect(cachedRead).toHaveBeenCalledTimes(0);
+		expect(setTimeoutSpy).toHaveBeenCalled();
+		setTimeoutSpy.mockRestore();
 	});
 });

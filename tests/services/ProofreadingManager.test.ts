@@ -2700,4 +2700,231 @@ describe('ProofreadingManager - getMaxPatternLength & Caching Lifecycle', () => 
 				expect(diagsAfterInstanceIgnore.length).toBe(0);
 			});
 		});
+
+	describe('ProofreadingManager async lifecycle, disposal protection & job tracking', () => {
+		let app: App;
+		let plugin: WebNovelAssistantPlugin;
+		let virtualFiles: Map<string, string>;
+
+		beforeEach(() => {
+			virtualFiles = new Map();
+			const adapterMock = {
+				exists: vi.fn().mockImplementation((p: string) => Promise.resolve(virtualFiles.has(p))),
+				read: vi.fn().mockImplementation((p: string) => {
+					if (!virtualFiles.has(p)) return Promise.reject(new Error('File not found'));
+					return Promise.resolve(virtualFiles.get(p) || '');
+				}),
+				write: vi.fn().mockImplementation((p: string, content: string) => {
+					virtualFiles.set(p, content);
+					return Promise.resolve();
+				}),
+				remove: vi.fn().mockImplementation((p: string) => {
+					virtualFiles.delete(p);
+					return Promise.resolve();
+				}),
+				mkdir: vi.fn().mockResolvedValue(undefined)
+			};
+
+			const vaultMock = {
+				adapter: adapterMock,
+				on: vi.fn().mockImplementation(() => ({})),
+				offref: vi.fn(),
+				getAbstractFileByPath: vi.fn().mockImplementation((path: string) => {
+					if (virtualFiles.has(path)) return createMockTFile(path);
+					return null;
+				}),
+				read: vi.fn().mockImplementation((file: TFile) => {
+					if (!virtualFiles.has(file.path)) return Promise.reject(new Error('File not found'));
+					return Promise.resolve(virtualFiles.get(file.path) || '');
+				})
+			};
+
+			app = {
+				vault: vaultMock as unknown as Vault,
+				workspace: {
+					trigger: vi.fn()
+				}
+			} as unknown as App;
+
+			plugin = {
+				app,
+				manifest: { dir: '.obsidian/plugins/test-plugin', id: 'test-plugin' },
+				settings: {
+					proofreading: {
+						enabled: true,
+						dictionaryPath: '校对词典',
+						enableBuiltin: false,
+						enableDeDiDe: false,
+						enableUserDict: true,
+						enableSynonyms: false,
+						enableSensitive: false,
+						ignoredWords: [],
+						ignoredContexts: []
+					},
+					workspaceFolders: []
+				},
+				saveSettings: vi.fn().mockResolvedValue(undefined)
+			} as unknown as WebNovelAssistantPlugin;
+		});
+
+		it('prevents in-flight loadDictionaries from resurrecting matcher or state after destroy', async () => {
+			const mgr = new ProofreadingManager(app, plugin);
+			virtualFiles.set('校对词典/错词.md', '| 错词 | 建议 | 说明 |\n| --- | --- | --- |\n| 报歉 | 抱歉 | 错字 |\n');
+
+			let resolveRead!: (content: string) => void;
+			app.vault.read = vi.fn().mockImplementation(() => new Promise<string>((res) => { resolveRead = res; }));
+
+			const loadPromise = mgr.loadDictionaries();
+			// Allow microtasks to reach vault.read
+			for (let i = 0; i < 5; i++) await Promise.resolve();
+
+			// Destroy while read is in flight
+			let destroyed = false;
+			const destroyPromise = mgr.destroy().then(() => { destroyed = true; });
+			await Promise.resolve();
+			expect(destroyed).toBe(false);
+
+			expect((mgr as unknown as { acMatcher: ACMatcher | null }).acMatcher).toBeNull();
+			expect(mgr.getDictSnapshot().userWrongWords.size).toBe(0);
+
+			// Now resolve read
+			resolveRead('| 错词 | 建议 | 说明 |\n| --- | --- | --- |\n| 报歉 | 抱歉 | 错字 |\n');
+			await loadPromise;
+			await destroyPromise;
+
+			// Matcher must remain null, dictData empty, and workspace not triggered after disposal
+			expect((mgr as unknown as { acMatcher: ACMatcher | null }).acMatcher).toBeNull();
+			expect(mgr.getDictSnapshot().userWrongWords.size).toBe(0);
+			expect(app.workspace.trigger).not.toHaveBeenCalled();
+		});
+
+		it('prevents older reload from replacing newer reload data', async () => {
+			const mgr = new ProofreadingManager(app, plugin);
+
+			let resolveFirstRead!: (content: string) => void;
+			const firstReadPromise = new Promise<string>((res) => { resolveFirstRead = res; });
+
+			app.vault.read = vi.fn()
+				.mockImplementationOnce(() => firstReadPromise)
+				.mockResolvedValueOnce('| 错词 | 建议 | 说明 |\n| --- | --- | --- |\n| 词条2 | 建议2 | 说明2 |\n');
+
+			virtualFiles.set('校对词典/错词.md', 'dummy');
+
+			// First reload starts and hangs
+			const firstReload = mgr.loadDictionaries();
+			for (let i = 0; i < 5; i++) await Promise.resolve();
+
+			// Second reload starts and completes immediately
+			await mgr.loadDictionaries();
+			expect(mgr.getDictSnapshot().userWrongWords.has('词条2')).toBe(true);
+
+			// First reload finishes later
+			resolveFirstRead('| 错词 | 建议 | 说明 |\n| --- | --- | --- |\n| 词条1 | 建议1 | 说明1 |\n');
+			await firstReload;
+
+			// Must still have 词条2 and NOT replaced by 词条1
+			expect(mgr.getDictSnapshot().userWrongWords.has('词条2')).toBe(true);
+			expect(mgr.getDictSnapshot().userWrongWords.has('词条1')).toBe(false);
+		});
+
+		it('awaits in-flight update persistence safely on destroy without committing to runtime state', async () => {
+			plugin.settings.proofreading.enableBuiltin = true;
+			const mgr = new ProofreadingManager(app, plugin);
+
+			const validDictPayload = {
+				schemaVersion: 1,
+				dictionaryVersion: 'v2.0.0',
+				updatedAt: '2026-10-19',
+				entries: [
+					{ word: '远程错词', suggestion: '正确词', description: '' }
+				]
+			};
+
+			let resolveNet!: (resp: RequestUrlResponse) => void;
+			const netPromise = new Promise<RequestUrlResponse>((res) => {
+				resolveNet = res;
+			});
+			vi.spyOn(obsidian, 'requestUrl').mockImplementation(() => netPromise as unknown as ReturnType<typeof obsidian.requestUrl>);
+
+			const updatePromise = mgr.updateBasicDictionary();
+			for (let i = 0; i < 5; i++) await Promise.resolve();
+
+			// While request is in flight, call destroy
+			const destroyPromise = mgr.destroy();
+
+			// Release network response
+			resolveNet(createRequestUrlResponse(validDictPayload));
+
+			expect((await updatePromise).status).toBe('failed');
+			await destroyPromise;
+			expect(app.vault.adapter.write).not.toHaveBeenCalled();
+
+			// Runtime structures must be cleared and acMatcher must be null
+			expect((mgr as unknown as { acMatcher: ACMatcher | null }).acMatcher).toBeNull();
+			expect(mgr.getDictSnapshot().builtinWrongWords.size).toBe(0);
+			expect(mgr.getBasicDictInfo().version).toBe('');
+			expect((mgr as unknown as { ignoredContextEntriesByOriginal: Map<string, unknown> }).ignoredContextEntriesByOriginal.size).toBe(0);
+		});
+
+
+		it('waits for an already-started dictionary transaction before releasing runtime state', async () => {
+			const mgr = new ProofreadingManager(app, plugin);
+			const payload = { schemaVersion: 1, dictionaryVersion: 'v3', updatedAt: '2026-10-19',
+				entries: [{ word: '错字', suggestion: '正字', description: '' }] };
+			vi.spyOn(obsidian, 'requestUrl').mockResolvedValue(createRequestUrlResponse(payload));
+			let enterWrite!: () => void;
+			let releaseWrite!: () => void;
+			const entered = new Promise<void>(resolve => { enterWrite = resolve; });
+			const blocked = new Promise<void>(resolve => { releaseWrite = resolve; });
+			vi.mocked(app.vault.adapter.write).mockImplementationOnce(async (path, content) => {
+				enterWrite();
+				await blocked;
+				virtualFiles.set(path, content);
+			});
+			const updating = mgr.updateBasicDictionary();
+			await entered;
+			let destroyed = false;
+			const destroying = mgr.destroy().then(() => { destroyed = true; });
+			await Promise.resolve();
+			expect(destroyed).toBe(false);
+			releaseWrite();
+			await Promise.all([updating, destroying]);
+			expect([...virtualFiles.keys()].some(path => path.endsWith('basic-wrong-words.json'))).toBe(true);
+			expect([...virtualFiles.keys()].some(path => path.endsWith('.tmp'))).toBe(false);
+			expect(mgr.getDictSnapshot().builtinWrongWords.size).toBe(0);
+			expect(app.workspace.trigger).not.toHaveBeenCalled();
+		});
+
+		it('prevents initialize from completing and setting initialized flag after destroy', async () => {
+			const mgr = new ProofreadingManager(app, plugin);
+			virtualFiles.set('校对词典/错词.md', '| 错词 | 建议 | 说明 |\n| --- | --- | --- |\n| 报歉 | 抱歉 | 错字 |\n');
+
+			let resolveRead!: (content: string) => void;
+			app.vault.read = vi.fn().mockImplementation(() => new Promise<string>((res) => { resolveRead = res; }));
+
+			const initPromise = mgr.initialize();
+			for (let i = 0; i < 5; i++) await Promise.resolve();
+
+			// Destroy while initialize is in flight
+			const destroyPromise = mgr.destroy();
+
+			resolveRead('| 错词 | 建议 | 说明 |\n| --- | --- | --- |\n| 报歉 | 抱歉 | 错字 |\n');
+			await initPromise;
+			await destroyPromise;
+
+			expect((mgr as unknown as { initialized: boolean }).initialized).toBe(false);
+			expect((mgr as unknown as { acMatcher: ACMatcher | null }).acMatcher).toBeNull();
+		});
+
+		it('cleans up pendingJobs tracking when jobs settle', async () => {
+			const mgr = new ProofreadingManager(app, plugin);
+			virtualFiles.set('校对词典/错词.md', '| 错词 | 建议 | 说明 |\n| --- | --- | --- |\n| 报歉 | 抱歉 | 错字 |\n');
+
+			expect((mgr as unknown as { pendingJobs: Set<Promise<unknown>> }).pendingJobs?.size ?? 0).toBe(0);
+			const loading = mgr.loadDictionaries();
+			expect((mgr as unknown as { pendingJobs: Set<Promise<unknown>> }).pendingJobs.size).toBeGreaterThan(0);
+			await loading;
+			expect((mgr as unknown as { pendingJobs: Set<Promise<unknown>> }).pendingJobs?.size ?? 0).toBe(0);
+		});
+	});
 });

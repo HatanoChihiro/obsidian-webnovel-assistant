@@ -1178,7 +1178,6 @@ export class WritingStatusView extends ItemView {
 
 	private lastMiniChartRevision: number | null = null;
 	private lastMiniChartDate: string = '';
-	private lastHistorySnapshot: string = '';
 
 	renderMiniChart(force = false) {
 		const now = window.moment();
@@ -1197,9 +1196,6 @@ export class WritingStatusView extends ItemView {
 			history[date] ?? { addedWords: 0, focusMs: 0, slackMs: 0 }
 		]));
 
-		const currentSnapshot = dates.map(d => `${d}:${history[d]?.addedWords ?? 0}`).join('|');
-		if (!force && this.lastHistorySnapshot === currentSnapshot && this.lastMiniChartRevision === currentRevision && this.lastMiniChartDate === today) return;
-		this.lastHistorySnapshot = currentSnapshot;
 		this.lastMiniChartRevision = currentRevision;
 		this.lastMiniChartDate = today;
 
@@ -1231,7 +1227,7 @@ export class WritingStatusView extends ItemView {
 
 			col.createDiv({ cls: 'mini-chart-label', text: date.substring(5) });
 
-			const displayStr = words < 0 ? formatCount(words) : formatCount(words);
+			const displayStr = formatCount(words);
 			col.createDiv({ cls: 'mini-chart-value', text: displayStr });
 		});
 

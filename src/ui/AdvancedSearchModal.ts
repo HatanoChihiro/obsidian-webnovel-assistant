@@ -20,6 +20,22 @@ export interface AdvancedSearchModalPlugin extends FindBookRootPlugin {
 	getTrackedMarkdownFiles(includeLore?: boolean): TFile[];
 }
 
+function buildLineStarts(content: string): number[] {
+	const starts = [0];
+	for (let i = 0; i < content.length; i++) {
+		if (content.charCodeAt(i) === 10) {
+			starts.push(i + 1);
+		}
+	}
+	return starts;
+}
+
+interface PendingYieldWait {
+	win: Window;
+	timerId: number;
+	resolve: () => void;
+}
+
 export class AdvancedSearchModal extends Modal {
 	plugin: AdvancedSearchModalPlugin;
 	query: string = '';
@@ -27,6 +43,8 @@ export class AdvancedSearchModal extends Modal {
 	selectedFolders: Set<string> = new Set();
 	resultsContainer!: HTMLElement;
 	customScopeContainer!: HTMLElement;
+	private activeSearchId: number = 0;
+	private pendingYields: Set<PendingYieldWait> = new Set();
 	
 	constructor(app: App, plugin: AdvancedSearchModalPlugin, private sourceLeaf: WorkspaceLeaf | null = null) {
 		super(app);
@@ -34,7 +52,45 @@ export class AdvancedSearchModal extends Modal {
 		this.query = this.plugin.settings.advancedSearchQuery || '';
 	}
 
+	private getOwnerWindow(): Window | null {
+		return this.contentEl?.ownerDocument?.defaultView ?? null;
+	}
+
+	private cancelActiveSearch(): void {
+		this.activeSearchId++;
+		if (this.pendingYields.size > 0) {
+			const pending = Array.from(this.pendingYields);
+			this.pendingYields.clear();
+			for (const entry of pending) {
+				if (entry.timerId) {
+					entry.win.clearTimeout(entry.timerId);
+				}
+				entry.resolve();
+			}
+		}
+	}
+
+	private async yieldToEventLoop(searchId: number): Promise<void> {
+		if (searchId !== this.activeSearchId) return;
+		const win = this.getOwnerWindow();
+		if (!win) return;
+
+		await new Promise<void>(resolve => {
+			const entry: PendingYieldWait = {
+				win,
+				timerId: 0,
+				resolve: () => {
+					this.pendingYields.delete(entry);
+					resolve();
+				}
+			};
+			this.pendingYields.add(entry);
+			entry.timerId = win.setTimeout(entry.resolve, 0);
+		});
+	}
+
 	onOpen() {
+		this.cancelActiveSearch();
 		this.containerEl.addClass('wn-corner-modal-container');
 		this.modalEl.addClass('wn-corner-modal');
 		this.modalEl.addClass('wn-advanced-search-modal');
@@ -365,9 +421,16 @@ export class AdvancedSearchModal extends Modal {
 	}
 
 	private async executeSearch() {
+		this.cancelActiveSearch();
+		const searchId = this.activeSearchId;
+
 		if (this.query !== this.plugin.settings.advancedSearchQuery) {
 			this.plugin.settings.advancedSearchQuery = this.query;
-			void this.plugin.saveSettings();
+			Promise.resolve()
+				.then(() => this.plugin.saveSettings())
+				.catch(err => {
+					Logger.error('[WebNovel-Debug] 保存高级搜索配置失败:', err);
+				});
 		}
 
 		if (!this.query.trim()) {
@@ -379,53 +442,188 @@ export class AdvancedSearchModal extends Modal {
 		this.resultsContainer.empty();
 		this.resultsContainer.createDiv({ text: t('modal.searching'), cls: 'advanced-search-loading' });
 
-		// 1. 获取目标文件列表
-		const allMarkdownFiles = this.plugin.getVaultMarkdownFiles();
-		let targetFiles: TFile[] = [];
+		try {
+			// 1. 获取目标文件列表
+			const allMarkdownFiles = this.plugin.getVaultMarkdownFiles();
+			let targetFiles: TFile[] = [];
 
-		if (this.searchScope === 'global') {
-			targetFiles = allMarkdownFiles;
-		} else if (this.searchScope === 'current') {
-			const bookPath = this.getCurrentBookPath();
-			if (bookPath && bookPath !== '/') {
-				const bookFolder = this.app.vault.getAbstractFileByPath(bookPath);
-				if (bookFolder instanceof TFolder) {
-					const list: TFile[] = [];
-					Vault.recurseChildren(bookFolder, (child: TAbstractFile) => {
-						if (child instanceof TFile && child.extension === 'md') {
-							list.push(child);
-						}
-					});
-					targetFiles = list;
+			if (this.searchScope === 'global') {
+				targetFiles = allMarkdownFiles;
+			} else if (this.searchScope === 'current') {
+				const bookPath = this.getCurrentBookPath();
+				if (bookPath && bookPath !== '/') {
+					const bookFolder = this.app.vault.getAbstractFileByPath(bookPath);
+					if (bookFolder instanceof TFolder) {
+						const list: TFile[] = [];
+						Vault.recurseChildren(bookFolder, (child: TAbstractFile) => {
+							if (child instanceof TFile && child.extension === 'md') {
+								list.push(child);
+							}
+						});
+						targetFiles = list;
+					} else {
+						targetFiles = allMarkdownFiles.filter(f => f.path.startsWith(bookPath + '/'));
+					}
 				} else {
-					targetFiles = allMarkdownFiles.filter(f => f.path.startsWith(bookPath + '/'));
+					targetFiles = this.plugin.getTrackedMarkdownFiles(); // fallback
 				}
-			} else {
-				targetFiles = this.plugin.getTrackedMarkdownFiles(); // fallback
+			} else if (this.searchScope === 'custom') {
+				if (this.selectedFolders.size > 0) {
+					const selectedArray = Array.from(this.selectedFolders);
+					targetFiles = allMarkdownFiles.filter(f => selectedArray.some(path => path === '/' || f.path === path || f.path.startsWith(path + '/')));
+				}
 			}
-		} else if (this.searchScope === 'custom') {
-			if (this.selectedFolders.size > 0) {
-				const selectedArray = Array.from(this.selectedFolders);
-				targetFiles = allMarkdownFiles.filter(f => selectedArray.some(path => path === '/' || f.path === path || f.path.startsWith(path + '/')));
-			}
-		}
 
-		if (targetFiles.length === 0) {
+			if (targetFiles.length === 0) {
+				if (searchId !== this.activeSearchId) return;
+				this.resultsContainer.empty();
+				this.resultsContainer.createDiv({ text: t('modal.no-files-in-scope'), cls: 'advanced-search-empty' });
+				return;
+			}
+
+			// 2. 对目标文件进行排序（按章节或自定义顺序），保证搜索结果是有序的
+			targetFiles.sort((a, b) => this.compareFiles(a, b));
+
+			// 3. 执行全量文本搜索（仅限正文，自动排除 YAML Frontmatter）
+			const cleanQuery = this.query.trim();
+			const escapedQuery = cleanQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+			const searchPattern = escapedQuery.replace(/\s+/g, '\\s+');
+			const searchRegex = new RegExp(searchPattern, 'gi');
+
+			const results: {
+				file: TFile;
+				snippets: {
+					linesBefore: number;
+					prefix: string;
+					highlight: string;
+					suffix: string;
+					matchStart: number;
+					matchEnd: number;
+					startLoc: { line: number; ch: number };
+					endLoc: { line: number; ch: number };
+					contextPrefix: string;
+					contextSuffix: string;
+					occurrenceIndex: number;
+				}[];
+				totalMatches: number;
+			}[] = [];
+
+			let filesSinceYield = 0;
+			let matchesSinceYield = 0;
+
+			for (let i = 0; i < targetFiles.length; i++) {
+				if (searchId !== this.activeSearchId) return;
+				const file = targetFiles[i];
+				const rawContent = await this.app.vault.cachedRead(file);
+				if (searchId !== this.activeSearchId) return;
+
+				const content = rawContent.replace(/\r\n/g, '\n');
+				const bodyRange = getMarkdownBodyRange(content);
+				const lineStarts = buildLineStarts(content);
+				let lineCursor = 0;
+
+				searchRegex.lastIndex = 0;
+				const snippets: {
+					linesBefore: number;
+					prefix: string;
+					highlight: string;
+					suffix: string;
+					matchStart: number;
+					matchEnd: number;
+					startLoc: { line: number; ch: number };
+					endLoc: { line: number; ch: number };
+					contextPrefix: string;
+					contextSuffix: string;
+					occurrenceIndex: number;
+				}[] = [];
+
+				let execMatch: RegExpExecArray | null = null;
+				let occurrenceIdx = 0;
+
+				while ((execMatch = searchRegex.exec(content)) !== null) {
+					const start = execMatch.index;
+					const text = execMatch[0];
+					const end = start + text.length;
+
+					if (start >= bodyRange.startOffset) {
+						while (lineCursor + 1 < lineStarts.length && lineStarts[lineCursor + 1] <= start) {
+							lineCursor++;
+						}
+						const targetLine = lineCursor;
+						const startCh = start - lineStarts[targetLine];
+
+						let newlineCount = 0;
+						for (let j = 0; j < text.length; j++) {
+							if (text.charCodeAt(j) === 10) newlineCount++;
+						}
+						const endLine = targetLine + newlineCount;
+						const lastNl = text.lastIndexOf('\n');
+						const endCh = newlineCount === 0 ? startCh + text.length : text.length - 1 - lastNl;
+
+						const snippetStart = Math.max(bodyRange.startOffset, start - 20);
+						const snippetEnd = Math.min(content.length, end + 20);
+
+						const prefix = content.substring(snippetStart, start).replace(/\n/g, ' ');
+						const highlight = text.replace(/\n/g, ' ');
+						const suffix = content.substring(end, snippetEnd).replace(/\n/g, ' ');
+
+						const contextPrefixStart = Math.max(bodyRange.startOffset, start - 30);
+						const contextPrefix = content.substring(contextPrefixStart, start).replace(/\n/g, ' ');
+						const contextSuffix = content.substring(end, Math.min(content.length, end + 30)).replace(/\n/g, ' ');
+
+						snippets.push({
+							linesBefore: targetLine,
+							prefix,
+							highlight,
+							suffix,
+							matchStart: start,
+							matchEnd: end,
+							startLoc: { line: targetLine, ch: startCh },
+							endLoc: { line: endLine, ch: endCh },
+							contextPrefix,
+							contextSuffix,
+							occurrenceIndex: occurrenceIdx++
+						});
+
+						if (snippets.length % 50 === 0) {
+							await this.yieldToEventLoop(searchId);
+							if (searchId !== this.activeSearchId) return;
+						}
+					}
+
+					if (text.length === 0) {
+						searchRegex.lastIndex++;
+					}
+				}
+
+				if (snippets.length > 0) {
+					results.push({ file, snippets, totalMatches: snippets.length });
+				}
+
+				matchesSinceYield += snippets.length;
+				filesSinceYield++;
+				if (filesSinceYield >= 25 || matchesSinceYield >= 50) {
+					filesSinceYield = 0;
+					matchesSinceYield = 0;
+					await this.yieldToEventLoop(searchId);
+					if (searchId !== this.activeSearchId) return;
+				}
+			}
+
+			if (searchId !== this.activeSearchId) return;
+
+			// 4. 渲染结果
+			await this.renderSearchResults(results, searchId);
+		} catch (err) {
+			if (searchId !== this.activeSearchId) return;
+			Logger.error('[WebNovel-Debug] 高级搜索执行失败:', err);
 			this.resultsContainer.empty();
-			this.resultsContainer.createDiv({ text: t('modal.no-files-in-scope'), cls: 'advanced-search-empty' });
-			return;
+			this.resultsContainer.createDiv({ text: t('common.error-loading'), cls: 'advanced-search-empty' });
 		}
+	}
 
-		// 2. 对目标文件进行排序（按章节或自定义顺序），保证搜索结果是有序的
-		targetFiles.sort((a, b) => this.compareFiles(a, b));
-
-		// 3. 执行全量文本搜索（仅限正文，自动排除 YAML Frontmatter）
-		const cleanQuery = this.query.trim();
-		const escapedQuery = cleanQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-		const searchPattern = escapedQuery.replace(/\s+/g, '\\s+');
-		const searchRegex = new RegExp(searchPattern, 'gi');
-
-		const results: {
+	private async renderSearchResults(
+		results: {
 			file: TFile;
 			snippets: {
 				linesBefore: number;
@@ -436,88 +634,15 @@ export class AdvancedSearchModal extends Modal {
 				matchEnd: number;
 				startLoc: { line: number; ch: number };
 				endLoc: { line: number; ch: number };
-				contextPrefix: string;
-				contextSuffix: string;
-				occurrenceIndex: number;
+				contextPrefix?: string;
+				contextSuffix?: string;
+				occurrenceIndex?: number;
 			}[];
 			totalMatches: number;
-		}[] = [];
-
-		for (let i = 0; i < targetFiles.length; i++) {
-			const file = targetFiles[i];
-			const rawContent = await this.app.vault.cachedRead(file);
-			const content = rawContent.replace(/\r\n/g, '\n');
-			const bodyRange = getMarkdownBodyRange(content);
-			searchRegex.lastIndex = 0;
-
-			const matchRanges: { start: number; end: number; text: string }[] = [];
-			let execMatch: RegExpExecArray | null = null;
-
-			while ((execMatch = searchRegex.exec(content)) !== null) {
-				const start = execMatch.index;
-				const text = execMatch[0];
-				if (start >= bodyRange.startOffset) {
-					matchRanges.push({ start, end: start + text.length, text });
-				}
-				if (text.length === 0) {
-					searchRegex.lastIndex++;
-				}
-			}
-
-			if (matchRanges.length > 0) {
-				const snippets = matchRanges.map((m, occurrenceIdx) => {
-					const snippetStart = Math.max(bodyRange.startOffset, m.start - 20);
-					const snippetEnd = Math.min(content.length, m.end + 20);
-
-					const prefix = content.substring(snippetStart, m.start).replace(/\n/g, ' ');
-					const highlight = m.text.replace(/\n/g, ' ');
-					const suffix = content.substring(m.end, snippetEnd).replace(/\n/g, ' ');
-
-					const textBefore = content.substring(0, m.start);
-					const linesBeforeList = textBefore.split(/\n/);
-					const targetLine = linesBeforeList.length - 1;
-					const startCh = linesBeforeList[linesBeforeList.length - 1].length;
-
-					const matchLines = m.text.split(/\n/);
-					const endLine = targetLine + matchLines.length - 1;
-					const endCh = matchLines.length === 1 ? startCh + m.text.length : matchLines[matchLines.length - 1].length;
-
-					const contextPrefixStart = Math.max(bodyRange.startOffset, m.start - 30);
-					const contextPrefix = content.substring(contextPrefixStart, m.start).replace(/\n/g, ' ');
-					const contextSuffix = content.substring(m.end, Math.min(content.length, m.end + 30)).replace(/\n/g, ' ');
-
-					return {
-						linesBefore: targetLine,
-						prefix,
-						highlight,
-						suffix,
-						matchStart: m.start,
-						matchEnd: m.end,
-						startLoc: { line: targetLine, ch: startCh },
-						endLoc: { line: endLine, ch: endCh },
-						contextPrefix,
-						contextSuffix,
-						occurrenceIndex: occurrenceIdx
-					};
-				});
-
-				results.push({ file, snippets, totalMatches: matchRanges.length });
-			}
-
-			// 防卡死：每处理 50 个文件让出一次主线程
-			if (i % 50 === 0) {
-				const win = this.contentEl?.ownerDocument?.defaultView || (typeof window !== 'undefined' ? window : null);
-				if (win) {
-					await new Promise(resolve => win.setTimeout(resolve, 0));
-				}
-			}
-		}
-
-		// 3. 渲染结果
-		this.renderSearchResults(results);
-	}
-
-	private renderSearchResults(results: { file: TFile, snippets: {linesBefore: number, prefix: string, highlight: string, suffix: string, matchStart: number, matchEnd: number, startLoc: { line: number; ch: number }, endLoc: { line: number; ch: number }}[], totalMatches: number }[]) {
+		}[],
+		searchId?: number
+	): Promise<void> {
+		if (searchId !== undefined && searchId !== this.activeSearchId) return;
 		this.resultsContainer.empty();
 
 		if (results.length === 0) {
@@ -532,7 +657,9 @@ export class AdvancedSearchModal extends Modal {
 
 		const listEl = this.resultsContainer.createDiv({ cls: 'advanced-search-results-list' });
 
+		let domItemsRendered = 0;
 		for (const result of results) {
+			if (searchId !== undefined && searchId !== this.activeSearchId) return;
 			const fileItem = listEl.createDiv({ cls: 'advanced-search-file-item' });
 			
 			fileItem.createDiv({ text: `${result.file.basename} (${t('modal.matches-count', { count: result.totalMatches })})`, cls: 'advanced-search-file-title' });
@@ -550,6 +677,12 @@ export class AdvancedSearchModal extends Modal {
 					matchEl.classList.add('is-selected');
 					this.openSearchResult(result.file, snippet);
 				});
+
+				domItemsRendered++;
+				if (domItemsRendered % 50 === 0 && searchId !== undefined) {
+					await this.yieldToEventLoop(searchId);
+					if (searchId !== this.activeSearchId) return;
+				}
 			}
 
 			if (result.totalMatches > result.snippets.length) {
@@ -559,6 +692,7 @@ export class AdvancedSearchModal extends Modal {
 	}
 
 	onClose() {
+		this.cancelActiveSearch();
 		const { contentEl } = this;
 		contentEl.empty();
 	}

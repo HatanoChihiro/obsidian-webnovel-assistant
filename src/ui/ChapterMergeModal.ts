@@ -2,8 +2,10 @@ import type { App, TFolder } from 'obsidian';
 import { Modal, Notice, setIcon } from 'obsidian';
 import { t } from '../i18n';
 import type { ChapterMergeItem, ChapterMergeManager } from '../services/ChapterMergeManager';
+import { ChapterMergeSelection } from '../services/ChapterMergeSelection';
 import type { TypographyManager } from '../services/TypographyManager';
 import { highlightPersistentTarget, cancelHighlightTracker } from '../utils/preciseTextHighlight';
+import { Logger } from '../utils/Logger';
 
 /**
  * 选中文本右键修改弹窗 (SelectionRevisionModal)
@@ -23,7 +25,7 @@ class SelectionRevisionModal extends Modal {
 		contentEl.addClass('wn-merge-selection-modal');
 
 		const header = contentEl.createDiv({ cls: 'wn-merge-modal-header' });
-		header.createDiv({ text: t('merge.selection-title'), cls: 'wn-merge-modal-title' });
+		header.createDiv({ text: t('merge.chapterSelection-title'), cls: 'wn-merge-modal-title' });
 
 		const body = contentEl.createDiv({ cls: 'wn-merge-selection-body' });
 
@@ -111,6 +113,7 @@ export class ChapterMergeModal extends Modal {
 	private folder: TFolder;
 	private items: ChapterMergeItem[] = [];
 	private filteredItems: ChapterMergeItem[] = [];
+	private chapterSelection: ChapterMergeSelection = new ChapterMergeSelection();
 	private searchQuery: string = '';
 	/** 是否合并文档标题 (默认开启) */
 	private includeTitles: boolean = true;
@@ -120,11 +123,15 @@ export class ChapterMergeModal extends Modal {
 
 	// DOM 引用
 	private statsEl!: HTMLElement;
+	private selectionCountEl!: HTMLElement;
+	private bulkSelectBtn!: HTMLButtonElement;
+	private bulkDeselectBtn!: HTMLButtonElement;
+	private exportBtn!: HTMLButtonElement;
+	private applyExportBtn!: HTMLButtonElement;
 	private tocContainerEl!: HTMLElement;
 	private previewContainerEl!: HTMLElement;
 	private annotationContainerEl!: HTMLElement;
 	private bodyContainerEl!: HTMLElement;
-	private draftNoticeEl!: HTMLElement | null;
 	/** 当前中栏视口正文对应的章节文件路径 key */
 	private activeChapterFilePath: string = '';
 
@@ -151,6 +158,7 @@ export class ChapterMergeModal extends Modal {
 		// 加载章节数据
 		this.items = await this.plugin.chapterMergeManager.loadFolderChapters(this.folder);
 		this.filteredItems = [...this.items];
+		this.chapterSelection.initialize(this.items);
 		if (this.items.length > 0) {
 			this.activeChapterFilePath = encodeURIComponent(this.items[0].file.path);
 		}
@@ -250,9 +258,33 @@ export class ChapterMergeModal extends Modal {
 			this.filterTocList();
 		};
 
+		// 批量操作与已选计数工具条
+		const toolbar = tocPane.createDiv({ cls: 'wn-merge-toc-toolbar' });
+
+		this.selectionCountEl = toolbar.createSpan({ cls: 'wn-merge-selection-counter' });
+
+		const btnGroup = toolbar.createDiv({ cls: 'wn-merge-bulk-actions' });
+		this.bulkSelectBtn = btnGroup.createEl('button', { cls: 'wn-merge-btn-bulk' });
+		this.bulkDeselectBtn = btnGroup.createEl('button', { cls: 'wn-merge-btn-bulk' });
+
+		this.bulkSelectBtn.onclick = () => {
+			this.chapterSelection.selectAll(this.filteredItems);
+			this.updateTocCheckboxes();
+			this.updateSelectionUI();
+		};
+
+		this.bulkDeselectBtn.onclick = () => {
+			this.chapterSelection.deselectAll(this.filteredItems);
+			this.updateTocCheckboxes();
+			this.updateSelectionUI();
+		};
+
+		this.updateBulkToolbar();
+
 		// 目录列表容器
 		this.tocContainerEl = tocPane.createDiv({ cls: 'wn-merge-toc-list' });
 		this.renderTocItems();
+		this.updateSelectionUI();
 	}
 
 	/**
@@ -267,7 +299,24 @@ export class ChapterMergeModal extends Modal {
 				item.volumeName.toLowerCase().includes(this.searchQuery)
 			);
 		}
+		this.chapterSelection.resetAnchor();
+		this.updateBulkToolbar();
 		this.renderTocItems();
+	}
+
+	/**
+	 * 更新批量选择按钮文案与提示
+	 */
+	private updateBulkToolbar(): void {
+		const isFiltered = this.searchQuery.length > 0;
+		if (this.bulkSelectBtn) {
+			this.bulkSelectBtn.setText(isFiltered ? t('merge.bulk-select-filtered') : t('merge.bulk-select-all'));
+			this.bulkSelectBtn.title = isFiltered ? t('merge.bulk-filtered-hint') : t('merge.bulk-all-hint');
+		}
+		if (this.bulkDeselectBtn) {
+			this.bulkDeselectBtn.setText(isFiltered ? t('merge.bulk-deselect-filtered') : t('merge.bulk-deselect-all'));
+			this.bulkDeselectBtn.title = isFiltered ? t('merge.bulk-filtered-hint') : t('merge.bulk-all-hint');
+		}
 	}
 
 	/**
@@ -299,6 +348,19 @@ export class ChapterMergeModal extends Modal {
 				itemEl.addClass('is-modified');
 			}
 
+			// 复选框
+			const checkbox = itemEl.createEl('input', {
+				type: 'checkbox',
+				cls: 'wn-merge-toc-checkbox'
+			});
+			checkbox.checked = this.chapterSelection.isSelected(item.file.path);
+			checkbox.setAttribute('aria-label', t('merge.select-chapter', { title: item.title }));
+
+			checkbox.onclick = (e: MouseEvent) => {
+				e.stopPropagation();
+				this.handleChapterCheckboxClick(item.file.path, checkbox.checked, e.shiftKey);
+			};
+
 			const dotEl = itemEl.createSpan({ cls: 'wn-merge-status-dot' });
 			if (item.isModified) {
 				dotEl.addClass('active');
@@ -322,6 +384,54 @@ export class ChapterMergeModal extends Modal {
 					annoCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
 				}
 			};
+		}
+	}
+
+	/**
+	 * 单个章节复选框点击处理（包含 Shift 区间连选）
+	 */
+	private handleChapterCheckboxClick(path: string, isChecked: boolean, isShift: boolean): void {
+		this.chapterSelection.handleCheckboxClick(path, isShift, this.filteredItems, isChecked);
+		this.updateTocCheckboxes();
+		this.updateSelectionUI();
+	}
+
+	/**
+	 * 仅同步更新 TOC 中所有复选框状态（不重绘正文流）
+	 */
+	private updateTocCheckboxes(): void {
+		if (!this.tocContainerEl) return;
+		const items = this.tocContainerEl.querySelectorAll<HTMLElement>('.wn-merge-toc-item');
+		items.forEach(el => {
+			const pathKey = el.getAttribute('data-filepath');
+			if (!pathKey) return;
+			const filePath = decodeURIComponent(pathKey);
+			const cb = el.querySelector<HTMLInputElement>('.wn-merge-toc-checkbox');
+			if (cb) {
+				cb.checked = this.chapterSelection.isSelected(filePath);
+			}
+		});
+	}
+
+	/**
+	 * 更新底部导出按钮与计数器状态
+	 */
+	private updateSelectionUI(): void {
+		const selectedCount = this.chapterSelection.getSelectedCount();
+		const totalCount = this.items.length;
+
+		if (this.selectionCountEl) {
+			this.selectionCountEl.setText(t('merge.selected-counter', {
+				selected: String(selectedCount),
+				total: String(totalCount)
+			}));
+		}
+
+		if (this.exportBtn) {
+			this.exportBtn.disabled = this.isSubmitting || selectedCount === 0;
+		}
+		if (this.applyExportBtn) {
+			this.applyExportBtn.disabled = this.isSubmitting || selectedCount === 0;
 		}
 	}
 
@@ -751,6 +861,7 @@ export class ChapterMergeModal extends Modal {
 	 */
 	private refreshUI(): void {
 		this.updateStats();
+		this.updateSelectionUI();
 		this.renderTocItems();
 		this.renderPreviewCards();
 		this.renderRevisionCards();
@@ -782,16 +893,18 @@ export class ChapterMergeModal extends Modal {
 		const rightGroup = footerEl.createDiv({ cls: 'wn-merge-footer-right' });
 
 		// 2. 应用并导出
-		const applyExportBtn = rightGroup.createEl('button', { text: t('merge.btn-apply-and-export'), cls: 'wn-btn-apply-export' });
-		applyExportBtn.onclick = () => void this.handleApplyAndExport();
+		this.applyExportBtn = rightGroup.createEl('button', { text: t('merge.btn-apply-and-export'), cls: 'wn-btn-apply-export' });
+		this.applyExportBtn.onclick = () => void this.handleApplyAndExport();
 
 		// 3. 导出合并文档 (主要按钮 mod-cta)
-		const exportBtn = rightGroup.createEl('button', { text: t('merge.btn-export-merged'), cls: 'mod-cta wn-btn-export' });
-		exportBtn.onclick = () => void this.handleExportMerged();
+		this.exportBtn = rightGroup.createEl('button', { text: t('merge.btn-export-merged'), cls: 'mod-cta wn-btn-export' });
+		this.exportBtn.onclick = () => void this.handleExportMerged();
 
 		// 4. 取消 / 关闭
 		const cancelBtn = rightGroup.createEl('button', { text: t('common.cancel'), cls: 'wn-btn-cancel' });
 		cancelBtn.onclick = () => this.close();
+
+		this.updateSelectionUI();
 	}
 
 	/**
@@ -808,32 +921,93 @@ export class ChapterMergeModal extends Modal {
 	 * 处理“导出合并文档”
 	 */
 	private async handleExportMerged(): Promise<void> {
-		this.isSubmitting = true;
-		const { file: mergedFile, wordCount } = await this.plugin.chapterMergeManager.exportMergedDocument(this.folder, this.items, this.includeTitles);
-		this.plugin.chapterMergeManager.clearDraft(this.folder.path);
+		if (this.isSubmitting) return;
 
-		new Notice(t('notice.merge-success', {
-			count: String(this.items.length),
-			words: wordCount.toLocaleString(),
-			overwriteHint: ''
-		}));
+		const selectedItems = this.chapterSelection.getSelectedItems(this.items);
+		if (selectedItems.length === 0) return;
 
-		await this.app.workspace.getLeaf(false).openFile(mergedFile);
-		this.close();
+		// 捕获入口时刻的选择快照，后续草稿清理/保留严格基于快照判定
+		const selectedPathSet = new Set(selectedItems.map(item => item.file.path));
+		const unselectedItems = this.items.filter(item => !selectedPathSet.has(item.file.path));
+		const unselectedRevisions = new Map<string, ExplicitRevisionRecord[]>();
+		for (const item of unselectedItems) {
+			const revs = this.explicitRevisionsMap.get(item.file.path);
+			if (revs && revs.length > 0) {
+				unselectedRevisions.set(item.file.path, revs);
+			}
+		}
+
+		try {
+			this.isSubmitting = true;
+			if (this.exportBtn) this.exportBtn.disabled = true;
+			if (this.applyExportBtn) this.applyExportBtn.disabled = true;
+
+			const { file: mergedFile, wordCount } = await this.plugin.chapterMergeManager.exportMergedDocument(
+				this.folder,
+				selectedItems,
+				this.includeTitles
+			);
+
+			// 严格基于入口快照保护未导出的修改正文与修订批注
+			const hasUnselectedDraft = unselectedItems.some(i => i.isModified) || unselectedRevisions.size > 0;
+			if (hasUnselectedDraft) {
+				this.plugin.chapterMergeManager.saveDraft(this.folder.path, unselectedItems, unselectedRevisions);
+			} else {
+				this.plugin.chapterMergeManager.clearDraft(this.folder.path);
+			}
+
+			new Notice(t('notice.merge-success', {
+				count: String(selectedItems.length),
+				words: wordCount.toLocaleString(),
+				overwriteHint: ''
+			}));
+
+			await this.app.workspace.getLeaf(false).openFile(mergedFile);
+			this.close();
+		} catch (error) {
+			this.isSubmitting = false;
+			this.updateSelectionUI();
+			Logger.error('[ChapterMergeModal] Export merged failed:', error);
+			new Notice(t('notice.merge-failed'));
+		}
 	}
 
 	/**
 	 * 处理“应用并导出”
 	 */
 	private async handleApplyAndExport(): Promise<void> {
-		this.isSubmitting = true;
-		await this.plugin.chapterMergeManager.saveToOriginalFiles(this.items);
-		const { file: mergedFile } = await this.plugin.chapterMergeManager.exportMergedDocument(this.folder, this.items, this.includeTitles);
-		this.plugin.chapterMergeManager.clearDraft(this.folder.path);
+		if (this.isSubmitting) return;
 
-		new Notice(t('notice.apply-originals-success', { count: String(this.items.length) }));
-		await this.app.workspace.getLeaf(false).openFile(mergedFile);
-		this.close();
+		const selectedItems = this.chapterSelection.getSelectedItems(this.items);
+		if (selectedItems.length === 0) return;
+
+		try {
+			this.isSubmitting = true;
+			if (this.exportBtn) this.exportBtn.disabled = true;
+			if (this.applyExportBtn) this.applyExportBtn.disabled = true;
+
+			const updatedCount = await this.plugin.chapterMergeManager.saveToOriginalFiles(this.items);
+			const { file: mergedFile, wordCount } = await this.plugin.chapterMergeManager.exportMergedDocument(
+				this.folder,
+				selectedItems,
+				this.includeTitles
+			);
+			this.plugin.chapterMergeManager.clearDraft(this.folder.path);
+
+			new Notice(t('notice.apply-originals-success', { count: String(updatedCount) }));
+			new Notice(t('notice.merge-success', {
+				count: String(selectedItems.length),
+				words: wordCount.toLocaleString(),
+				overwriteHint: ''
+			}));
+			await this.app.workspace.getLeaf(false).openFile(mergedFile);
+			this.close();
+		} catch (error) {
+			this.isSubmitting = false;
+			this.updateSelectionUI();
+			Logger.error('[ChapterMergeModal] Apply and export failed:', error);
+			new Notice(t('notice.merge-failed'));
+		}
 	}
 
 	/**

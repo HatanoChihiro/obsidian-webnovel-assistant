@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { LoreOverviewView, LORE_OVERVIEW_VIEW_TYPE, type LoreOverviewViewPlugin } from '../src/ui/LoreOverviewView';
 import { VIEW_TYPES } from '../src/constants';
 import { LoreBoardRenderer } from '../src/ui/components/LoreBoardRenderer';
+import { AdaptiveDebounceManager } from '../src/services/AdaptiveDebounceManager';
 
 const { getCurrentBookContextMock, findBookRootMock } = vi.hoisted(() => ({
 	getCurrentBookContextMock: vi.fn(),
@@ -23,6 +24,7 @@ const { getCurrentBookContextMock, findBookRootMock } = vi.hoisted(() => ({
 };
 
 vi.stubGlobal('window', {
+	createDiv: () => new MockElement(''),
 	createFragment: () => {
 		const frag = new MockElement('');
 		frag.isFragment = true;
@@ -32,8 +34,8 @@ vi.stubGlobal('window', {
 		cb(Date.now());
 		return 0;
 	},
-	setTimeout: globalThis.setTimeout,
-	clearTimeout: globalThis.clearTimeout
+	setTimeout: (...args: Parameters<typeof setTimeout>) => globalThis.setTimeout(...args),
+	clearTimeout: (...args: Parameters<typeof clearTimeout>) => globalThis.clearTimeout(...args)
 });
 
 const { mockComponentInstances, MockComponent } = vi.hoisted(() => {
@@ -60,6 +62,18 @@ vi.mock('obsidian', () => {
 			this.app = leaf.app;
 			this.containerEl = new MockElement('workspace-leaf-content');
 			this.contentEl = new MockElement('view-content');
+			const mockDoc = {
+				createElement: vi.fn((tag: string) => new MockElement(tag === 'div' ? '' : tag)),
+				createDocumentFragment: vi.fn(() => {
+					const frag = new MockElement('');
+					frag.isFragment = true;
+					return frag;
+				}),
+				win: window,
+				defaultView: window
+			} as unknown as Document;
+			(this.containerEl as unknown as { ownerDocument: Document }).ownerDocument = mockDoc;
+			(this.contentEl as unknown as { ownerDocument: Document }).ownerDocument = mockDoc;
 			this.containerEl.children.push(this.contentEl);
 			this.contentEl.parentElement = this.containerEl;
 		}
@@ -292,8 +306,9 @@ describe('LoreOverviewView', () => {
 		};
 
 		const view = new LoreOverviewView(mockLeaf, plugin);
+		const refreshKey = (view as unknown as { refreshDebounceKey: string }).refreshDebounceKey;
 		await view.onClose();
-		expect(cancelSpy).toHaveBeenCalledWith('lore-overview-refresh');
+		expect(cancelSpy).toHaveBeenCalledWith(refreshKey);
 	});
 
 	it('unloads prior render component on new successful render generation', async () => {
@@ -400,6 +415,152 @@ describe('LoreOverviewView', () => {
 		expect(failedComponent.load).toHaveBeenCalled();
 		expect(failedComponent.unload).toHaveBeenCalled();
 	});
+
+	it('closing one view does not cancel refresh debounce of another view sharing AdaptiveDebounceManager', async () => {
+		const realDebounceManager = new AdaptiveDebounceManager();
+		plugin.adaptiveDebounceManager = realDebounceManager;
+
+		const workspaceListeners: Record<string, Array<(...args: unknown[]) => void>> = {};
+		mockApp.workspace.on.mockImplementation((event: string, handler: (...args: unknown[]) => void) => {
+			(workspaceListeners[event] ??= []).push(handler);
+		});
+
+		getCurrentBookContextMock.mockReturnValue('NovelA');
+		const view1 = new LoreOverviewView(mockLeaf, plugin);
+		const view2 = new LoreOverviewView(mockLeaf, plugin);
+
+		await view1.onOpen();
+		await view2.onOpen();
+
+		const reloadSpy1 = vi.spyOn(view1, 'reloadBoard').mockResolvedValue();
+		const reloadSpy2 = vi.spyOn(view2, 'reloadBoard').mockResolvedValue();
+
+		vi.useFakeTimers();
+		try {
+			workspaceListeners['webnovel-workbench-lore-updated']?.forEach(fn => fn());
+
+			await view1.onClose();
+
+			vi.advanceTimersByTime(300);
+
+			expect(reloadSpy2).toHaveBeenCalledOnce();
+			expect(reloadSpy1).not.toHaveBeenCalled();
+		} finally {
+			vi.useRealTimers();
+			await view2.onClose();
+		}
+	});
+
+	it('creates DOM in its owner document and cancels queued focus/scroll in its owner window', async () => {
+		getCurrentBookContextMock.mockReturnValue('NovelA');
+		const frames: FrameRequestCallback[] = [];
+		const customWin = {
+			createDiv: () => customDoc.createElement('div'),
+			createFragment: () => customDoc.createDocumentFragment(),
+			requestAnimationFrame: vi.fn((cb: FrameRequestCallback) => frames.push(cb)),
+			cancelAnimationFrame: vi.fn(),
+			setTimeout: globalThis.setTimeout,
+			clearTimeout: globalThis.clearTimeout
+		};
+		const customDoc = {
+			win: customWin,
+			defaultView: customWin,
+			createElement: vi.fn((_tag: string) => new MockElement('')),
+			createDocumentFragment: vi.fn(() => Object.assign(new MockElement(''), { isFragment: true }))
+		};
+		const view = new LoreOverviewView(mockLeaf, plugin);
+		(view.contentEl as unknown as { ownerDocument: unknown }).ownerDocument = customDoc;
+		(view as unknown as { pendingFilterFocus: { start: number; end: number } }).pendingFilterFocus = { start: 0, end: 0 };
+		const globalRaf = vi.spyOn(window, 'requestAnimationFrame');
+		try {
+			await view.onOpen();
+			expect(customDoc.createElement).toHaveBeenCalledWith('div');
+			expect(customDoc.createDocumentFragment).toHaveBeenCalled();
+			expect(frames).toHaveLength(2);
+			expect(globalRaf).not.toHaveBeenCalled();
+			const input = view.contentEl.querySelector<HTMLInputElement>('.wn-workbench-filter-input');
+			await view.onClose();
+			expect(customWin.cancelAnimationFrame.mock.calls).toEqual([[2], [1]]);
+			await view.onOpen();
+			const query = vi.spyOn(view.contentEl, 'querySelector');
+			frames[0](0);
+			frames[1](0);
+			expect(query).not.toHaveBeenCalled();
+			expect(input?.focus).not.toHaveBeenCalled();
+			query.mockRestore();
+		} finally {
+			globalRaf.mockRestore();
+			await view.onClose();
+		}
+	});
+
+
+	it('preserves search debounce delays and restores scheduling on reopen', async () => {
+		getCurrentBookContextMock.mockReturnValue('NovelA');
+		const view = new LoreOverviewView(mockLeaf, plugin);
+		await view.onOpen();
+
+		const viewHarness = view as unknown as {
+			scheduleFilterRefresh: (input: HTMLInputElement, immediate?: boolean) => void;
+		};
+		const reloadSpy = vi.spyOn(view, 'reloadBoard').mockResolvedValue();
+
+		vi.useFakeTimers();
+		try {
+			const mockInput = { value: '关键词', selectionStart: 3, selectionEnd: 3 } as unknown as HTMLInputElement;
+			viewHarness.scheduleFilterRefresh(mockInput, false);
+			vi.advanceTimersByTime(199);
+			expect(reloadSpy).not.toHaveBeenCalled();
+			vi.advanceTimersByTime(1);
+			expect(reloadSpy).toHaveBeenCalledOnce();
+
+			reloadSpy.mockClear();
+			viewHarness.scheduleFilterRefresh({ value: '', selectionStart: 0, selectionEnd: 0 } as unknown as HTMLInputElement, true);
+			vi.advanceTimersByTime(0);
+			expect(reloadSpy).toHaveBeenCalledOnce();
+
+			await view.onClose();
+			reloadSpy.mockClear();
+
+			viewHarness.scheduleFilterRefresh(mockInput, false);
+			vi.advanceTimersByTime(200);
+			expect(reloadSpy).not.toHaveBeenCalled();
+
+			await view.onOpen();
+			reloadSpy.mockClear();
+			viewHarness.scheduleFilterRefresh(mockInput, false);
+			vi.advanceTimersByTime(200);
+			expect(reloadSpy).toHaveBeenCalledOnce();
+		} finally {
+			vi.useRealTimers();
+			await view.onClose();
+		}
+	});
+	it('clears search timers in the scheduling window and ignores canceled callbacks after reopen', async () => {
+		getCurrentBookContextMock.mockReturnValue('NovelA');
+		const view = new LoreOverviewView(mockLeaf, plugin);
+		await view.onOpen();
+		const callbacks: Array<() => void> = [];
+		const owner = {
+			setTimeout: vi.fn((callback: () => void) => { callbacks.push(callback); return 17; }),
+			clearTimeout: vi.fn()
+		};
+		const harness = view as unknown as { scheduleFilterRefresh(input: HTMLInputElement): void };
+		const input = { value: '关键词', ownerDocument: { defaultView: owner } } as unknown as HTMLInputElement;
+		harness.scheduleFilterRefresh(input);
+		const originalDocument = view.contentEl.ownerDocument;
+		const otherWindow = { ...window, clearTimeout: vi.fn() };
+		(view.contentEl as unknown as { ownerDocument: unknown }).ownerDocument = { ...originalDocument, defaultView: otherWindow };
+		await view.onClose();
+		expect(owner.clearTimeout).toHaveBeenCalledWith(17);
+		expect(otherWindow.clearTimeout).not.toHaveBeenCalled();
+		await view.onOpen();
+		const reload = vi.spyOn(view, 'reloadBoard').mockResolvedValue();
+		callbacks[0]();
+		expect(reload).not.toHaveBeenCalled();
+		await view.onClose();
+	});
+
 });
 
 
@@ -432,4 +593,6 @@ describe('shared filter input events', () => {
         expect(refresh).toHaveBeenLastCalledWith(true);
         expect(clear.getAttribute('aria-hidden')).toBe('true');
     });
+
+
 });

@@ -14,7 +14,6 @@ export interface AddLorePlugin {
 
 export class AddLoreModal extends Modal {
 	private plugin: AddLorePlugin;
-	private initialName: string;
 	private loreName: string;
 	private loreCategory: string;
 	private loreType: string;
@@ -29,7 +28,6 @@ export class AddLoreModal extends Modal {
 	constructor(app: App, plugin: AddLorePlugin, initialName: string, bookPath: string) {
 		super(app);
 		this.plugin = plugin;
-		this.initialName = initialName;
 		this.loreName = initialName;
 		this.loreCategory = '';
 		this.loreType = '';

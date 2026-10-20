@@ -70,6 +70,8 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 	private selectedTypes: Set<string> = new Set();
 	private selectedLores: Set<string> = new Set();
 	private isDescending: boolean = false;
+	private dragTimeout: { win: Window; id: number } | null = null;
+	private dragFrameCleanups = new Set<() => void>();
 
 	constructor(leaf: WorkspaceLeaf, plugin: TimelineViewPlugin) {
 		super(leaf, plugin);
@@ -91,21 +93,22 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 		await this.refresh();
 	}
 
-	private getEventColor(type: string): string {
-		const types = this.plugin.settings.timeline?.defaultTypes || [];
-		const index = types.indexOf(type);
-		if (index === -1) return 'var(--text-accent)';
+	private cancelDragTimeout(): void {
+		if (this.dragTimeout !== null) {
+			this.dragTimeout.win.clearTimeout(this.dragTimeout.id);
+			this.dragTimeout = null;
+		}
+	}
 
-		const colors = [
-			'var(--color-red)',
-			'var(--color-blue)',
-			'var(--color-green)',
-			'var(--color-orange)',
-			'var(--color-purple)',
-			'var(--color-cyan)',
-			'var(--color-pink)'
-		];
-		return colors[index % colors.length];
+	private cancelDragFrames(): void {
+		for (const cancel of this.dragFrameCleanups) cancel();
+		this.dragFrameCleanups.clear();
+	}
+
+	async onClose() {
+		this.cancelDragFrames();
+		this.cancelDragTimeout();
+		await super.onClose();
 	}
 
 	/**
@@ -134,12 +137,25 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 	}
 
 	async refresh() {
-		const file = this.manager.getTimelineFile(this.currentFolder);
+		if (this.isViewClosed) return;
+		const targetFolder = this.currentFolder;
+		const reqGen = ++this.refreshGeneration;
+		const file = this.manager.getTimelineFile(targetFolder);
+		const filePath = file?.path;
 		const content = file ? await this.app.vault.read(file) : null;
-		await this.renderFromContent(content);
+		if (!this.isRefreshCurrent(reqGen, targetFolder) || file?.path !== filePath) {
+			return;
+		}
+		await this.renderFromContent(content, targetFolder);
 	}
 
-	async renderFromContent(content: string | null) {
+	async renderFromContent(content: string | null, targetFolder?: string) {
+		if (this.isViewClosed) return;
+		const folder = targetFolder ?? this.currentFolder;
+		if (targetFolder !== undefined && this.currentFolder !== targetFolder) return;
+		const generation = ++this.refreshGeneration;
+		this.cancelDragFrames();
+		this.cancelDragTimeout();
 		const container = this.containerEl.children[1] as HTMLElement;
 		container.empty();
 		container.addClass('wn-timeline-view-container');
@@ -175,17 +191,19 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 		addBtn.setAttr('aria-label', t('modal.new-event'));
 		setIcon(addBtn, 'plus');
 		addBtn.onclick = () => {
+			const actionFolder = folder;
 			const modal = new TimelineAddModal(
 				this.app,
 				this.plugin,
 				'',
 				'',
-				this.currentFolder,
+				actionFolder,
 				(entry) => {
 					void (async () => {
 						try {
-							const newContent = await this.manager.appendEntry(entry, this.currentFolder);
-							await this.renderFromContent(newContent);
+							const newContent = await this.manager.appendEntry(entry, actionFolder);
+							if (!this.isRefreshCurrent(generation, actionFolder)) return;
+							await this.renderFromContent(newContent, actionFolder);
 						} catch (e) { console.error(e); }
 					})();
 				},
@@ -197,7 +215,7 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 			modal.open();
 		};
 
-		header.createDiv({ cls: 'wn-timeline-view-folder', text: this.currentFolder || t('common.root-directory') });
+		header.createDiv({ cls: 'wn-timeline-view-folder', text: folder || t('common.root-directory') });
 
 		// 用传入的 content，或者文件不存在时显示空状态
 		if (content === null) {
@@ -207,9 +225,11 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 			empty.createEl('p', { text: `（${fileName}.md）`, cls: 'wn-timeline-view-hint' });
 			const createBtn = empty.createEl('button', { text: t('common.create-timeline-file'), cls: 'mod-cta timeline-create-btn' });
 			createBtn.onclick = () => {
+				const actionFolder = folder;
 				void (async () => {
 					try {
-						await this.manager.createTimelineFile(this.currentFolder);
+						await this.manager.createTimelineFile(actionFolder);
+						if (!this.isRefreshCurrent(generation, actionFolder)) return;
 						await this.refresh();
 					} catch (e) { console.error(e); }
 				})();
@@ -217,7 +237,7 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 			return;
 		}
 
-		const entries = this.manager.parseEntries(content, this.currentFolder);
+		const entries = this.manager.parseEntries(content, folder);
 
 		// 类型筛选
 		const typeOptions = this.getTypeFilterOptions(entries);
@@ -271,14 +291,16 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 			const originalIndex = entries.indexOf(entry);
 			const isLast = displayIndex === displayEntries.length - 1;
 			if (this.editingIndex === originalIndex) {
-				this.renderEditForm(timeline, entry, originalIndex, entries);
+				this.renderEditForm(timeline, entry, originalIndex, entries, folder);
 			} else {
-				this.renderEntry(timeline, entry, originalIndex, entries, isLast);
+				this.renderEntry(timeline, entry, originalIndex, entries, folder, isLast);
 			}
 		});
 	}
 
-	private renderEntry(container: HTMLElement, entry: TimelineEntry, index: number, allEntries: TimelineEntry[], isLast?: boolean) {
+	private renderEntry(container: HTMLElement, entry: TimelineEntry, index: number, allEntries: TimelineEntry[], folder: string, isLast?: boolean) {
+		const generation = this.refreshGeneration;
+		const ownerWindow = this.containerEl.ownerDocument?.defaultView ?? null;
 		const item = container.createDiv({ cls: 'wn-timeline-item' });
 		if (this.isDescending) {
 			item.addClass('is-descending');
@@ -291,7 +313,7 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 			if (!e.clientX && !e.clientY) return; // 拖拽结束瞬间可能为 0
 			const pointerX = e.clientX;
 			const pointerY = e.clientY;
-			const target = activeDocument.elementFromPoint(pointerX, pointerY) as HTMLElement;
+			const target = this.containerEl.ownerDocument?.elementFromPoint(pointerX, pointerY) as HTMLElement | null;
 			if (!target) return;
 			const targetItem = target.closest('.wn-timeline-item') as HTMLElement;
 
@@ -313,7 +335,8 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 				targetItem.removeClass('wn-timeline-drag-over-top');
 				targetItem.addClass('wn-timeline-drag-over-bottom');
 			}
-		});
+		}, ownerWindow);
+		this.dragFrameCleanups.add(onDrag.cancel);
 
 		item.addEventListener('dragstart', (e) => {
 			if (this.isDescending) {
@@ -321,13 +344,22 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 				return;
 			}
 			e.dataTransfer?.setData('text/plain', String(index));
-			window.setTimeout(() => item.addClass('wn-timeline-dragging'), 0);
+			this.cancelDragTimeout();
+			if (!ownerWindow) return;
+			const task = { win: ownerWindow, id: 0 };
+			this.dragTimeout = task;
+			task.id = ownerWindow.setTimeout(() => {
+				if (this.dragTimeout !== task || !this.isRefreshCurrent(generation, folder)) return;
+				this.dragTimeout = null;
+				item.addClass('wn-timeline-dragging');
+			}, 0);
 		});
 
 		item.addEventListener('drag', onDrag);
 
 		item.addEventListener('dragend', () => {
 			onDrag.cancel();
+			this.cancelDragTimeout();
 			item.removeClass('wn-timeline-dragging');
 			container.querySelectorAll('.wn-timeline-drag-over-top, .wn-timeline-drag-over-bottom').forEach(el => {
 				el.removeClass('wn-timeline-drag-over-top');
@@ -358,6 +390,7 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 			let toIndex = e.clientY < midY ? index : index + 1;
 			if (fromIndex < toIndex) toIndex -= 1;
 			if (fromIndex !== -1 && fromIndex !== toIndex) {
+				const actionFolder = folder;
 				void (async () => {
 					try {
 						const fromTarget = allEntries[fromIndex];
@@ -372,8 +405,9 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 							lores: toTarget.lores ? [...toTarget.lores] : undefined,
 							items: toTarget.items ? toTarget.items.map(it => ({ ...it })) : undefined
 						} : undefined;
-						const newContent = await this.manager.moveEntry(fromIndex, toIndex, this.currentFolder, originalEntry, targetEntry);
-						await this.renderFromContent(newContent || null);
+						const newContent = await this.manager.moveEntry(fromIndex, toIndex, actionFolder, originalEntry, targetEntry);
+						if (!this.isRefreshCurrent(generation, actionFolder)) return;
+						await this.renderFromContent(newContent || null, actionFolder);
 					} catch (e) {
 						console.error('[TimelineView] 移动记录失败:', e);
 					}
@@ -402,13 +436,14 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 		timeEl.title = t('common.jump-to-entry');
 		timeEl.onclick = async (e) => {
 			e.stopPropagation();
-			const timelineFile = this.manager.getTimelineFile(this.currentFolder);
+			const timelineFile = this.manager.getTimelineFile(folder);
 			if (!timelineFile) {
 				new Notice(t('common.file-not-found', { name: this.getWatchFileName() }));
 				return;
 			}
 			const fileContent = await this.app.vault.cachedRead(timelineFile);
-			const matchStartGlobal = this.manager.findEntryHeadingOffset(fileContent, index, this.currentFolder);
+			if (this.isViewClosed) return;
+			const matchStartGlobal = this.manager.findEntryHeadingOffset(fileContent, index, folder);
 			const fallbackLine = matchStartGlobal === undefined ? undefined : fileContent.slice(0, matchStartGlobal).split('\n').length - 1;
 			await smartLocateAndHighlight(
 				this.app,
@@ -453,15 +488,16 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 					link.onclick = () => {
 						void (async () => {
 							try {
-								const timelineFile = this.manager.getTimelineFile(this.currentFolder);
+								const timelineFile = this.manager.getTimelineFile(folder);
 								const sourcePath = timelineFile?.path || '';
 								const file = ChapterSorter.resolveChapterFile(
 									this.app,
 									this.plugin,
-									this.currentFolder,
+									folder,
 									chapterName,
 									{ sourcePath }
 								);
+								if (this.isViewClosed) return;
 								if (file) {
 									// 优先使用 origin 提供精确高亮，否则降级使用 description
 									const searchText = it.origin || it.description || '';
@@ -485,7 +521,7 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 		if (entry.type) footer.createSpan({ text: entry.type, cls: 'wn-timeline-type-tag' });
 		if (entry.lores && entry.lores.length > 0) {
 			const loreContainer = footer.createSpan({ cls: 'wn-timeline-view-lore-badges' });
-			renderLoreBadges(loreContainer, entry.lores, this.currentFolder, this.plugin, true, 0);
+			renderLoreBadges(loreContainer, entry.lores, folder, this.plugin, true, 0);
 		}
 
 		// 操作按钮（悬停显示）
@@ -499,6 +535,7 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 
 		const deleteBtn = actions.createEl('button', { text: t('common.delete'), cls: 'wn-timeline-action-btn timeline-delete-btn' });
 		deleteBtn.onclick = () => {
+			const actionFolder = folder;
 			void (async () => {
 				try {
 					const target = allEntries[index] ? allEntries[index] : entry;
@@ -507,37 +544,42 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 						lores: target.lores ? [...target.lores] : undefined,
 						items: target.items ? target.items.map(it => ({ ...it })) : undefined
 					};
-					const newContent = await this.manager.deleteEntry(index, this.currentFolder, originalEntry);
-					await this.renderFromContent(newContent || null);
+					const newContent = await this.manager.deleteEntry(index, actionFolder, originalEntry);
+					if (!this.isRefreshCurrent(generation, actionFolder)) return;
+					await this.renderFromContent(newContent || null, actionFolder);
 				} catch (e) { console.error(e); }
 			})();
 		};
 	}
 
-	private renderEditForm(container: HTMLElement, entry: TimelineEntry, index: number, allEntries: TimelineEntry[]) {
+	private renderEditForm(container: HTMLElement, entry: TimelineEntry, index: number, allEntries: TimelineEntry[], folder: string) {
+		const generation = this.refreshGeneration;
 		const originalEntrySnapshot: TimelineEntry = {
 			...entry,
 			lores: entry.lores ? [...entry.lores] : undefined,
 			items: entry.items ? entry.items.map(it => ({ ...it })) : undefined
 		};
+		const actionFolder = folder;
 		const component = new TimelineFormComponent({
 			container,
 			app: this.app,
 			context: this.plugin,
-			folderPath: this.currentFolder,
+			folderPath: actionFolder,
 			initialEntry: entry,
 			typeOptions: this.getTypeFilterOptions(allEntries),
 			submitText: t('common.save'),
 			onCancel: () => {
+				if (this.isViewClosed) return;
 				this.editingIndex = -1;
 				void this.refresh();
 			},
 			onSubmit: (updated: TimelineEntry) => {
 				void (async () => {
 					try {
-						const newContent = await this.manager.updateEntry(index, updated, this.currentFolder, originalEntrySnapshot);
+						const newContent = await this.manager.updateEntry(index, updated, actionFolder, originalEntrySnapshot);
+						if (!this.isRefreshCurrent(generation, actionFolder)) return;
 						this.editingIndex = -1;
-						await this.renderFromContent(newContent);
+						await this.renderFromContent(newContent, actionFolder);
 					} catch (e) { console.error(e); }
 				})();
 			}

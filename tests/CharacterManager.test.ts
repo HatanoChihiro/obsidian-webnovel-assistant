@@ -147,27 +147,25 @@ describe('CharacterManager', () => {
 Some lore content...
             `);
 
-            const targetCache = new Map();
-            const targetLowerMap = new Map();
-
-            await manager['addFileToCacheIfValidInto'](mockFile as any, targetCache, targetLowerMap);
+            mockApp.vault.getMarkdownFiles.mockReturnValue([mockFile]);
+            await manager.rebuildCache();
             
-            const bookCache = targetCache.get('Book1');
+            const bookCache = manager['characterCache'].get('Book1')!;
             expect(bookCache).toBeDefined();
             
             // Primary Heading
             expect(bookCache.get('John Doe')).toBeDefined();
-            expect(bookCache.get('John Doe').heading).toBe('John Doe');
+            expect(bookCache.get('John Doe')?.heading).toBe('John Doe');
 
             // Aliases
             expect(bookCache.get('JD')).toBeDefined();
-            expect(bookCache.get('JD').heading).toBe('John Doe');
+            expect(bookCache.get('JD')?.heading).toBe('John Doe');
 
             expect(bookCache.get('Johnny')).toBeDefined();
-            expect(bookCache.get('Johnny').heading).toBe('John Doe');
+            expect(bookCache.get('Johnny')?.heading).toBe('John Doe');
             
             // Lowercase mapping for quick O(1) fallback
-            const lowerMap = targetLowerMap.get('Book1');
+            const lowerMap = manager['lowercaseKeyMap'].get('Book1')!;
             expect(lowerMap.get('john doe')).toBe('John Doe');
             expect(lowerMap.get('jd')).toBe('JD');
         });
@@ -279,12 +277,10 @@ Some lore content...
 **别名**：三哥；老张
             `);
 
-            const targetCache = new Map();
-            const targetLowerMap = new Map();
+            mockApp.vault.getMarkdownFiles.mockReturnValue([mockFile]);
+            await manager.rebuildCache();
 
-            await manager['addFileToCacheIfValidInto'](mockFile as any, targetCache, targetLowerMap);
-
-            const bookCache = targetCache.get('Book1');
+            const bookCache = manager['characterCache'].get('Book1')!;
             expect(bookCache).toBeDefined();
             expect(bookCache.get('张三')).toBeDefined();
             expect(bookCache.get('三哥')).toBeDefined();
@@ -428,27 +424,25 @@ type: Main
 **Alias**: Savior
 Main character description...`);
 
-            const targetCache = new Map();
-            const targetLowerMap = new Map();
+            mockApp.vault.getMarkdownFiles.mockReturnValue([mockFile]);
+            await manager.rebuildCache();
 
-            await manager['addFileToCacheIfValidInto'](mockFile as any, targetCache, targetLowerMap);
-
-            const bookCache = targetCache.get('Book1');
+            const bookCache = manager['characterCache'].get('Book1')!;
             expect(bookCache).toBeDefined();
 
             // Basename as primary heading
             expect(bookCache.get('Protagonist')).toBeDefined();
-            expect(bookCache.get('Protagonist').heading).toBe('Protagonist');
+            expect(bookCache.get('Protagonist')?.heading).toBe('Protagonist');
 
             // Frontmatter aliases
             expect(bookCache.get('Hero')).toBeDefined();
-            expect(bookCache.get('Hero').heading).toBe('Protagonist');
+            expect(bookCache.get('Hero')?.heading).toBe('Protagonist');
             expect(bookCache.get('Champion')).toBeDefined();
-            expect(bookCache.get('Champion').heading).toBe('Protagonist');
+            expect(bookCache.get('Champion')?.heading).toBe('Protagonist');
 
             // Body text alias
             expect(bookCache.get('Savior')).toBeDefined();
-            expect(bookCache.get('Savior').heading).toBe('Protagonist');
+            expect(bookCache.get('Savior')?.heading).toBe('Protagonist');
         });
 
         it('should get and update content properly for single-file lore', async () => {

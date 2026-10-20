@@ -38,12 +38,14 @@ import { mockNoticeMessages, resetNoticeMessages } from './mocks/obsidian';
 import { CommandManager } from '../src/core/CommandManager';
 import type { WebNovelAssistantPlugin } from '../src/types/plugin';
 import * as ChapterSplitterModule from '../src/services/ChapterSplitter';
+import * as TemplateModule from '../src/utils/template';
 
 interface CommandManagerRegisteredCommand {
     id: string;
     name: string;
     icon?: string;
     editorCheckCallback?: (checking: boolean, editor: Editor, view: MarkdownView) => boolean | void;
+    checkCallback?: (checking: boolean) => boolean | void;
     callback?: () => Promise<void> | void;
 }
 
@@ -129,6 +131,25 @@ describe('CommandManager - refresh-lore-cache', () => {
         // Should not throw unhandled rejection
         await expect(refreshCommand.callback()).resolves.toBeUndefined();
         expect(mockPlugin.characterManager.rebuildCache).toHaveBeenCalledTimes(1);
+    });
+
+    it('checks the trimmed next-chapter path before creating a file', async () => {
+        const commands = new Map<string, { id: string; editorCallback?: (editor: Editor, view: MarkdownView) => Promise<void> }>();
+        const file = Object.assign(new TFile(), { basename: '第1章 标题', parent: null });
+        const getAbstractFileByPath = vi.fn().mockReturnValue(null);
+        const plugin = {
+            app: { vault: { getAbstractFileByPath } },
+            settings: {},
+            addCommand: (command: { id: string }) => commands.set(command.id, command)
+        } as unknown as WebNovelAssistantPlugin;
+        const templateSpy = vi.spyOn(TemplateModule, 'resolveChapterTemplate').mockImplementation(() => {});
+        try {
+            new CommandManager(plugin).registerAllCommands();
+            await commands.get('create-next-chapter')?.editorCallback?.({} as Editor, { file } as MarkdownView);
+            expect(getAbstractFileByPath).toHaveBeenCalledWith('第2章.md');
+        } finally {
+            templateSpy.mockRestore();
+        }
     });
 });
 
@@ -566,5 +587,93 @@ describe('CommandManager - split-chapter-at-cursor', () => {
 
         expect(mockNoticeMessages).toContain('创建新章节失败: Error: Fatal explosion');
         splitSpy.mockRestore();
+    });
+});
+
+describe('CommandManager - toggle-immersive-auxiliary-regions', () => {
+    let mockApp: unknown;
+    let mockPlugin: {
+        app: unknown;
+        settings: { typography: { enableBodyFontSize: boolean; bodyFontSize: number } };
+        immersiveModeManager: {
+            canToggleAuxiliaryRegions: ReturnType<typeof vi.fn>;
+            toggleAllAuxiliaryRegions: ReturnType<typeof vi.fn>;
+        };
+        addCommand: ReturnType<typeof vi.fn>;
+    };
+    let registeredCommands: Map<string, CommandManagerRegisteredCommand>;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        registeredCommands = new Map();
+
+        mockApp = {
+            workspace: {
+                trigger: vi.fn(),
+                getLeavesOfType: vi.fn().mockReturnValue([])
+            },
+            vault: {
+                getAbstractFileByPath: vi.fn()
+            }
+        };
+
+        mockPlugin = {
+            app: mockApp,
+            settings: {
+                typography: {
+                    enableBodyFontSize: false,
+                    bodyFontSize: 16
+                }
+            },
+            immersiveModeManager: {
+                canToggleAuxiliaryRegions: vi.fn().mockReturnValue(true),
+                toggleAllAuxiliaryRegions: vi.fn().mockResolvedValue(undefined)
+            },
+            addCommand: vi.fn().mockImplementation((cmd: CommandManagerRegisteredCommand) => {
+                registeredCommands.set(cmd.id, cmd);
+            })
+        };
+    });
+
+    it('should register toggle-immersive-auxiliary-regions with checkCallback on desktop', () => {
+        const commandManager = new CommandManager(mockPlugin as unknown as WebNovelAssistantPlugin);
+        commandManager.registerAllCommands();
+
+        const cmd = registeredCommands.get('toggle-immersive-auxiliary-regions');
+        expect(cmd).toBeDefined();
+        expect(cmd?.id).toBe('toggle-immersive-auxiliary-regions');
+        expect(cmd?.name).toBe('沉浸模式：隐藏/恢复全部辅助区域');
+        expect(cmd?.icon).toBe('panels-top-left');
+        expect(cmd?.checkCallback).toBeDefined();
+    });
+
+    it('should query immersiveModeManager.canToggleAuxiliaryRegions in checkCallback when checking=true', () => {
+        const commandManager = new CommandManager(mockPlugin as unknown as WebNovelAssistantPlugin);
+        commandManager.registerAllCommands();
+
+        const cmd = registeredCommands.get('toggle-immersive-auxiliary-regions');
+
+        mockPlugin.immersiveModeManager.canToggleAuxiliaryRegions.mockReturnValue(false);
+        expect(cmd?.checkCallback?.(true)).toBe(false);
+
+        mockPlugin.immersiveModeManager.canToggleAuxiliaryRegions.mockReturnValue(true);
+        expect(cmd?.checkCallback?.(true)).toBe(true);
+    });
+
+    it('should invoke toggleAllAuxiliaryRegions when checking=false if eligible', () => {
+        const commandManager = new CommandManager(mockPlugin as unknown as WebNovelAssistantPlugin);
+        commandManager.registerAllCommands();
+
+        const cmd = registeredCommands.get('toggle-immersive-auxiliary-regions');
+
+        mockPlugin.immersiveModeManager.canToggleAuxiliaryRegions.mockReturnValue(false);
+        const res1 = cmd?.checkCallback?.(false);
+        expect(res1).toBe(false);
+        expect(mockPlugin.immersiveModeManager.toggleAllAuxiliaryRegions).not.toHaveBeenCalled();
+
+        mockPlugin.immersiveModeManager.canToggleAuxiliaryRegions.mockReturnValue(true);
+        const res2 = cmd?.checkCallback?.(false);
+        expect(res2).toBe(true);
+        expect(mockPlugin.immersiveModeManager.toggleAllAuxiliaryRegions).toHaveBeenCalledTimes(1);
     });
 });

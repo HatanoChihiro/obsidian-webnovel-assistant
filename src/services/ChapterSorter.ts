@@ -142,7 +142,8 @@ export class ChapterSorter {
 		}
 		const pipeIndex = clean.indexOf('|');
 		if (pipeIndex !== -1) clean = clean.slice(0, pipeIndex).trim();
-		return clean.replace(/\.md$/i, '').trim();
+		// Whitespace before an explicit extension belongs to the filename.
+		return clean.replace(/\.md$/i, '');
 	}
 
 	static extractWikilinkDisplay(link: string): string {
@@ -184,6 +185,10 @@ export class ChapterSorter {
 		folderPath: string,
 		options?: { sourcePath?: string; eligibleChapters?: TFile[]; useAlias?: boolean }
 	): string {
+		// Keep the extension so list/link trimming cannot erase filename whitespace.
+		if (file.basename !== file.basename.trim()) {
+			return options?.useAlias ? `${file.path}|${file.basename}` : file.path;
+		}
 		const chapters = options?.eligibleChapters ?? this.getAllChapters(app, plugin, folderPath);
 		const sameNameCount = chapters.filter(
 			chapter => chapter.basename.toLowerCase().trim() === file.basename.toLowerCase().trim()

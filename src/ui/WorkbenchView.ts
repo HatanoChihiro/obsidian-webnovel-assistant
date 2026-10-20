@@ -218,7 +218,6 @@ export class WorkbenchView extends ItemView {
     public currentBookPath: string | null = null;
     private isSavingMetadata: boolean = false;
     private sortMode: WorkbenchBoardId | null = 'default';
-    private collapsedGroups: Set<string> = new Set();
     private container!: HTMLElement;
     private currentTimelineFilter: string[] = [];
     private currentTimelineLoreFilter: string[] = [];
@@ -242,8 +241,10 @@ export class WorkbenchView extends ItemView {
     private loreFilterQuery: string = '';
     private foreshadowingFilterQuery: string = '';
     private journeyFilterQuery: string = '';
-    private filterDebounceTimer: number | null = null;
+    private filterDebounceTimer: { win: Window; id: number } | null = null;
     private pendingFilterFocus: { mode: 'default' | 'lore' | 'foreshadowing' | 'journey'; start: number; end: number } | null = null;
+    private pendingFocusRaf: { win: Window; id: number } | null = null;
+    private pendingTimelineScrollRaf: { win: Window; id: number; resolve: () => void } | null = null;
     private readonly filterIndex: WorkbenchFilterIndex;
     private isDescending: boolean = false;
     private isChapterImportantOnly: boolean = false;
@@ -557,10 +558,6 @@ export class WorkbenchView extends ItemView {
             }
         }
         return null;
-    }
-
-    private isCardEditing(card: HTMLElement): boolean {
-        return this.getCardEditorElement(card) !== null;
     }
 
     private getActiveCardEditor(): HTMLElement | null {
@@ -1126,17 +1123,17 @@ export class WorkbenchView extends ItemView {
         this.hasPendingReload = false;
         this.currentRenderId++;
         this.plugin.adaptiveDebounceManager.cancel(this.refreshDebounceKey);
+        this.invalidateForeshadowingCache();
         this.cancelPendingCardUpdates();
         this.clearDeferredEditorState();
         if (this.currentBoardComponent) {
             this.currentBoardComponent.unload();
             this.currentBoardComponent = null;
         }
-        if (this.filterDebounceTimer !== null) {
-            const win = this.container?.ownerDocument?.defaultView ?? window;
-            win.clearTimeout(this.filterDebounceTimer);
-            this.filterDebounceTimer = null;
-        }
+        this.clearFilterTimer();
+        this.cancelPendingFocusRaf();
+        this.cancelPendingTimelineScrollRaf();
+        this.pendingFilterFocus = null;
         this.filterIndex.clear();
         if (this.touchPolyfillCleanup) {
             this.touchPolyfillCleanup();
@@ -1147,6 +1144,29 @@ export class WorkbenchView extends ItemView {
             this.draggableListCleanup = null;
         }
         this.container.empty();
+    }
+
+    private clearFilterTimer(): void {
+        if (this.filterDebounceTimer !== null) {
+            this.filterDebounceTimer.win.clearTimeout(this.filterDebounceTimer.id);
+            this.filterDebounceTimer = null;
+        }
+    }
+
+    private cancelPendingFocusRaf(): void {
+        if (this.pendingFocusRaf !== null) {
+            this.pendingFocusRaf.win.cancelAnimationFrame(this.pendingFocusRaf.id);
+            this.pendingFocusRaf = null;
+        }
+    }
+
+    private cancelPendingTimelineScrollRaf(): void {
+        if (this.pendingTimelineScrollRaf !== null) {
+            const { win, id, resolve } = this.pendingTimelineScrollRaf;
+            this.pendingTimelineScrollRaf = null;
+            win.cancelAnimationFrame(id);
+            resolve();
+        }
     }
 
 
@@ -1284,11 +1304,7 @@ export class WorkbenchView extends ItemView {
             onCompositionStart: () => {
                 // Do not allow a previous query render to replace the input during IME composition.
                 this.currentRenderId++;
-                if (this.filterDebounceTimer !== null) {
-                    const win = input.ownerDocument?.defaultView ?? window;
-                    win.clearTimeout(this.filterDebounceTimer);
-                    this.filterDebounceTimer = null;
-                }
+                this.clearFilterTimer();
             },
             onRefresh: (immediate) => {
                 this.scheduleFilterRefresh(mode, input, immediate);
@@ -1297,6 +1313,7 @@ export class WorkbenchView extends ItemView {
     }
 
     private scheduleFilterRefresh(mode: 'default' | 'lore' | 'foreshadowing' | 'journey', input: HTMLInputElement, immediate: boolean = false): void {
+        if (this.isClosed) return;
         if (mode === 'default') this.chapterFilterQuery = input.value;
         else if (mode === 'lore') this.loreFilterQuery = input.value;
         else if (mode === 'foreshadowing') this.foreshadowingFilterQuery = input.value;
@@ -1308,17 +1325,21 @@ export class WorkbenchView extends ItemView {
             end: input.selectionEnd ?? input.value.length
         };
 
-        const win = input.ownerDocument?.defaultView ?? window;
+        const win = input.ownerDocument?.defaultView ?? this.container.ownerDocument.win;
         // Cancel any in-flight render so an older query can never replace newer input.
         this.currentRenderId++;
-        if (this.filterDebounceTimer !== null) win.clearTimeout(this.filterDebounceTimer);
-        this.filterDebounceTimer = win.setTimeout(() => {
+        this.clearFilterTimer();
+        const timerEntry = { win, id: 0 };
+        this.filterDebounceTimer = timerEntry;
+        timerEntry.id = win.setTimeout(() => {
+            if (this.filterDebounceTimer !== timerEntry) return;
             this.filterDebounceTimer = null;
+            if (this.isClosed) return;
             void this.reloadBoard();
         }, immediate ? 0 : 200);
     }
 
-    private restorePendingFilterFocus(): void {
+    private restorePendingFilterFocus(renderId: number = this.currentRenderId): void {
         const pending = this.pendingFilterFocus;
         if (!pending || this.sortMode !== pending.mode) return;
 
@@ -1328,7 +1349,15 @@ export class WorkbenchView extends ItemView {
         if (!input) return;
 
         this.pendingFilterFocus = null;
-        window.requestAnimationFrame(() => {
+        this.cancelPendingFocusRaf();
+
+        const win = input.ownerDocument?.defaultView ?? this.container.ownerDocument.win;
+        const rafEntry = { win, id: 0 };
+        this.pendingFocusRaf = rafEntry;
+        rafEntry.id = win.requestAnimationFrame(() => {
+            if (this.pendingFocusRaf !== rafEntry) return;
+            this.pendingFocusRaf = null;
+            if (this.isClosed || this.currentRenderId !== renderId) return;
             if (!input.isConnected) return;
             input.focus({ preventScroll: true });
             const max = input.value.length;
@@ -1421,12 +1450,21 @@ export class WorkbenchView extends ItemView {
                 prevComponent?.unload();
             }
 
+            const renderId = this.currentRenderId;
+
             if (this.sortMode === 'timeline') {
                 await new Promise<void>((resolve) => {
-                    const win = this.container.ownerDocument?.defaultView ?? window;
-                    win.requestAnimationFrame(() => {
+                    this.cancelPendingTimelineScrollRaf();
+                    const win = this.container.ownerDocument.defaultView ?? this.container.ownerDocument.win;
+                    const rafEntry = { win, id: 0, resolve };
+                    this.pendingTimelineScrollRaf = rafEntry;
+                    rafEntry.id = win.requestAnimationFrame(() => {
+                        if (this.pendingTimelineScrollRaf !== rafEntry) {
+                            return;
+                        }
+                        this.pendingTimelineScrollRaf = null;
                         try {
-                            if (this.container && this.sortMode === 'timeline') {
+                            if (!this.isClosed && this.currentRenderId === renderId && this.container && this.sortMode === 'timeline') {
                                 const mainCol = this.container.querySelector('.wn-timeline-waterfall-main') as HTMLElement;
                                 if (mainCol) mainCol.scrollTop = timelineScrollTop;
                                 const sideCol = this.container.querySelector('.wn-timeline-waterfall-sidebar') as HTMLElement;
@@ -1451,8 +1489,11 @@ export class WorkbenchView extends ItemView {
 
     private async renderBoard(): Promise<void> {
         const tStart = performance.now();
+        this.cancelPendingFocusRaf();
+        this.cancelPendingTimelineScrollRaf();
         const renderId = ++this.currentRenderId;
-        const buffer = createDiv();
+        const win = this.container.ownerDocument.win as Window & typeof window;
+        const buffer = win.createDiv();
 
         const header = buffer.createDiv('wn-corkboard-header');
         const titleEl = header.createDiv({ cls: 'wn-corkboard-title' });
@@ -1465,7 +1506,7 @@ export class WorkbenchView extends ItemView {
             });
             if (this.currentRenderId !== renderId || this.isClosed) return;
             const prevComponent = this.currentBoardComponent;
-            const fragment = (window as unknown as { createFragment: () => DocumentFragment }).createFragment();
+            const fragment = win.createFragment();
             while (buffer.firstChild) fragment.appendChild(buffer.firstChild);
             this.container.empty();
             this.container.appendChild(fragment);
@@ -2053,7 +2094,7 @@ export class WorkbenchView extends ItemView {
             this.clearDeferredEditorListeners();
             const prevComponent = this.currentBoardComponent;
             const tSwapStart = performance.now();
-            const fragment = (window as unknown as { createFragment: () => DocumentFragment }).createFragment();
+            const fragment = win.createFragment();
             while (buffer.firstChild) {
                 fragment.appendChild(buffer.firstChild);
             }
@@ -2062,7 +2103,7 @@ export class WorkbenchView extends ItemView {
             this.container.appendChild(fragment);
             this.currentBoardComponent = renderComponent;
             prevComponent?.unload();
-            this.restorePendingFilterFocus();
+            this.restorePendingFilterFocus(renderId);
             const tSwap = performance.now();
             Logger.info(`[Perf Phase] Workbench.bufferSwap: ${(tSwap - tSwapStart).toFixed(2)}ms`);
             Logger.info(`[Perf] Workbench renderBoard completed in ${(tSwap - tStart).toFixed(2)}ms (mode=${this.sortMode}, files=${files.length})`);

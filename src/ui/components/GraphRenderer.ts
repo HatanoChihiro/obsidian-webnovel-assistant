@@ -353,7 +353,7 @@ export class GraphRenderer {
 		};
 	}
 
-	private static probeEl: HTMLElement | null = null;
+	private static readonly colorProbes = new WeakMap<HTMLElement, HTMLElement>();
 
 	/**
 	 * 将任意 CSS 颜色表达式（包括 var(--xxx)、color-mix(...)、HEX、RGB、HSL）通过 DOM 引擎安全解析为具体的 rgb/rgba 字符串
@@ -377,19 +377,19 @@ export class GraphRenderer {
 		try {
 			const doc = el?.ownerDocument || (typeof activeDocument !== 'undefined' ? activeDocument : document);
 			const parent = (el && el.isConnected) ? el : (doc.body || doc.documentElement);
+			let probe = GraphRenderer.colorProbes.get(parent);
 
-			if (!GraphRenderer.probeEl || GraphRenderer.probeEl.ownerDocument !== doc || !GraphRenderer.probeEl.isConnected) {
-				if (GraphRenderer.probeEl && GraphRenderer.probeEl.parentElement) {
-					GraphRenderer.probeEl.parentElement.removeChild(GraphRenderer.probeEl);
-				}
-				GraphRenderer.probeEl = parent.createDiv({ cls: 'wn-graph-color-probe' });
-			} else if (GraphRenderer.probeEl.parentElement !== parent && parent) {
-				parent.appendChild(GraphRenderer.probeEl);
+			if (!probe || !probe.isConnected) {
+				probe?.remove();
+				probe = parent.createDiv({ cls: 'wn-graph-color-probe' });
+				GraphRenderer.colorProbes.set(parent, probe);
+			} else if (probe.parentElement !== parent && parent) {
+				parent.appendChild(probe);
 			}
 
-			GraphRenderer.probeEl.setCssStyles({ color: trimmed });
-			const computed = getComputedStyle(GraphRenderer.probeEl).color;
-			GraphRenderer.probeEl.setCssStyles({ color: '' });
+			probe.setCssStyles({ color: trimmed });
+			const computed = getComputedStyle(probe).color;
+			probe.setCssStyles({ color: '' });
 
 			if (computed && computed !== 'transparent' && computed !== 'inherit' && computed !== 'initial') {
 				return computed;

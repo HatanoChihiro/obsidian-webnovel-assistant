@@ -61,16 +61,31 @@ export interface LoreOverviewViewPlugin
  * 将设定看板中的设定卡片原样抽出到侧边栏展示，支持分类 Tab/分组、卡片就地编辑与点击跳转定位
  */
 export class LoreOverviewView extends ItemView {
+	private static nextInstanceId: number = 1;
+	private readonly instanceId: number = LoreOverviewView.nextInstanceId++;
+	private readonly refreshDebounceKey: string = `lore-overview-refresh-${this.instanceId}`;
+
 	private plugin: LoreOverviewViewPlugin;
 	private currentBookPath: string | null = null;
 	private container!: HTMLElement;
 	private readonly filterIndex: WorkbenchFilterIndex;
 	private loreFilterQuery: string = '';
-	private filterDebounceTimer: number | null = null;
+	private filterDebounceTimer: { win: Window; id: number } | null = null;
 	private pendingFilterFocus: { start: number; end: number } | null = null;
+	private pendingScrollRaf: { win: Window; id: number } | null = null;
+	private pendingFocusRaf: { win: Window; id: number } | null = null;
 	private currentRenderId: number = 0;
 	private displayedComponent: Component | null = null;
 	private isClosed: boolean = false;
+
+	private scheduleRefresh(delay: number): void {
+		if (this.isClosed) return;
+		const win = this.container?.ownerDocument?.defaultView ?? this.contentEl?.ownerDocument?.defaultView ?? window;
+		this.plugin.adaptiveDebounceManager.debounceFixed(this.refreshDebounceKey, () => {
+			if (this.isClosed) return;
+			void this.reloadBoard();
+		}, delay, win);
+	}
 
 	constructor(leaf: WorkspaceLeaf, plugin: LoreOverviewViewPlugin) {
 		super(leaf);
@@ -82,17 +97,13 @@ export class LoreOverviewView extends ItemView {
 			this.filterIndex.invalidate(oldPath);
 			this.filterIndex.invalidate(file.path);
 			if (file instanceof TFile && file.extension === 'md') {
-				this.plugin.adaptiveDebounceManager.debounceFixed('lore-overview-refresh', () => {
-					void this.reloadBoard();
-				}, 500);
+				this.scheduleRefresh(500);
 			}
 		}));
 		this.registerEvent(this.app.vault.on('delete', (file) => {
 			this.filterIndex.invalidate(file.path);
 			if (file instanceof TFile && file.extension === 'md') {
-				this.plugin.adaptiveDebounceManager.debounceFixed('lore-overview-refresh', () => {
-					void this.reloadBoard();
-				}, 500);
+				this.scheduleRefresh(500);
 			}
 		}));
 		this.registerEvent(this.app.metadataCache.on('changed', (file) => {
@@ -103,9 +114,7 @@ export class LoreOverviewView extends ItemView {
 
 		// 监听设定缓存更新
 		this.registerEvent(this.app.workspace.on('webnovel-workbench-lore-updated', () => {
-			this.plugin.adaptiveDebounceManager.debounceFixed('lore-overview-refresh', () => {
-				void this.reloadBoard();
-			}, 300);
+			this.scheduleRefresh(300);
 		}));
 
 		// 监听活动文件变化，自动关联书籍目录
@@ -177,12 +186,9 @@ export class LoreOverviewView extends ItemView {
 	async onClose() {
 		this.isClosed = true;
 		this.currentRenderId++;
-		this.plugin.adaptiveDebounceManager.cancel('lore-overview-refresh');
-		if (this.filterDebounceTimer !== null) {
-			const win = this.container?.ownerDocument?.defaultView ?? window;
-			win.clearTimeout(this.filterDebounceTimer);
-			this.filterDebounceTimer = null;
-		}
+		this.plugin.adaptiveDebounceManager.cancel(this.refreshDebounceKey);
+		this.clearFilterTimer();
+		this.cancelPendingRafs();
 		this.pendingFilterFocus = null;
 		this.filterIndex.clear();
 		if (this.displayedComponent) {
@@ -192,11 +198,31 @@ export class LoreOverviewView extends ItemView {
 		this.contentEl.empty();
 	}
 
+	private clearFilterTimer(): void {
+		if (this.filterDebounceTimer !== null) {
+			this.filterDebounceTimer.win.clearTimeout(this.filterDebounceTimer.id);
+			this.filterDebounceTimer = null;
+		}
+	}
+
+	private cancelPendingRafs(): void {
+		if (this.pendingScrollRaf !== null) {
+			this.pendingScrollRaf.win.cancelAnimationFrame(this.pendingScrollRaf.id);
+			this.pendingScrollRaf = null;
+		}
+		if (this.pendingFocusRaf !== null) {
+			this.pendingFocusRaf.win.cancelAnimationFrame(this.pendingFocusRaf.id);
+			this.pendingFocusRaf = null;
+		}
+	}
+
 	public async reloadBoard(): Promise<void> {
 		if (!this.container || this.isClosed) return;
 
+		this.cancelPendingRafs();
 		const renderId = ++this.currentRenderId;
-		const buffer = createDiv();
+		const win = this.container.ownerDocument.win as Window & typeof window;
+		const buffer = win.createDiv();
 
 		let scrollTop = 0;
 		const boardLayout = this.container.querySelector('.wn-lore-board-layout');
@@ -274,18 +300,30 @@ export class LoreOverviewView extends ItemView {
 			this.swapBuffer(buffer);
 			this.displayedComponent = renderComponent;
 			prevComponent?.unload();
-			this.restorePendingFilterFocus();
+			this.restorePendingFilterFocus(renderId);
 		} catch (error) {
 			renderComponent.unload();
 			throw error;
 		}
 
-		if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
-			window.requestAnimationFrame(() => {
-				const newBoardLayout = this.container.querySelector('.wn-lore-board-layout');
+		if (this.pendingScrollRaf !== null) {
+			this.pendingScrollRaf.win.cancelAnimationFrame(this.pendingScrollRaf.id);
+			this.pendingScrollRaf = null;
+		}
+
+		const scrollWin = this.container?.ownerDocument?.defaultView ?? window;
+		if (typeof scrollWin.requestAnimationFrame === 'function') {
+			const rafEntry = { win: scrollWin, id: 0 };
+			this.pendingScrollRaf = rafEntry;
+			rafEntry.id = scrollWin.requestAnimationFrame(() => {
+				if (this.pendingScrollRaf === rafEntry) {
+					this.pendingScrollRaf = null;
+				}
+				if (this.isClosed || this.currentRenderId !== renderId) return;
+				const newBoardLayout = this.container?.querySelector('.wn-lore-board-layout');
 				if (newBoardLayout && scrollTop > 0) {
 					(newBoardLayout as HTMLElement).scrollTop = scrollTop;
-				} else if (scrollTop > 0) {
+				} else if (scrollTop > 0 && this.container) {
 					this.container.scrollTop = scrollTop;
 				}
 			});
@@ -293,7 +331,8 @@ export class LoreOverviewView extends ItemView {
 	}
 
 	private swapBuffer(buffer: HTMLElement): void {
-		const fragment = (window as unknown as { createFragment: () => DocumentFragment }).createFragment();
+		const win = this.container.ownerDocument.win as Window & typeof window;
+		const fragment = win.createFragment();
 		while (buffer.firstChild) {
 			fragment.appendChild(buffer.firstChild);
 		}
@@ -301,20 +340,35 @@ export class LoreOverviewView extends ItemView {
 		this.container.appendChild(fragment);
 	}
 
-	private restorePendingFilterFocus(): void {
+	private restorePendingFilterFocus(renderId: number): void {
 		const pending = this.pendingFilterFocus;
 		if (!pending) return;
 
-		const input = this.container.querySelector<HTMLInputElement>('.wn-workbench-filter-input');
+		const input = this.container?.querySelector<HTMLInputElement>('.wn-workbench-filter-input');
 		if (!input) return;
 
 		this.pendingFilterFocus = null;
-		window.requestAnimationFrame(() => {
-			if (!input.isConnected) return;
-			input.focus({ preventScroll: true });
-			const max = input.value.length;
-			input.setSelectionRange(Math.min(pending.start, max), Math.min(pending.end, max));
-		});
+
+		if (this.pendingFocusRaf !== null) {
+			this.pendingFocusRaf.win.cancelAnimationFrame(this.pendingFocusRaf.id);
+			this.pendingFocusRaf = null;
+		}
+
+		const win = input.ownerDocument?.defaultView ?? this.container?.ownerDocument?.defaultView ?? window;
+		if (typeof win.requestAnimationFrame === 'function') {
+			const rafEntry = { win, id: 0 };
+			this.pendingFocusRaf = rafEntry;
+			rafEntry.id = win.requestAnimationFrame(() => {
+				if (this.pendingFocusRaf === rafEntry) {
+					this.pendingFocusRaf = null;
+				}
+				if (this.isClosed || this.currentRenderId !== renderId) return;
+				if (!input.isConnected) return;
+				input.focus({ preventScroll: true });
+				const max = input.value.length;
+				input.setSelectionRange(Math.min(pending.start, max), Math.min(pending.end, max));
+			});
+		}
 	}
 
 	public clearSearchInput(): void {
@@ -388,11 +442,7 @@ export class LoreOverviewView extends ItemView {
 			clearButton,
 			onCompositionStart: () => {
 				this.currentRenderId++;
-				if (this.filterDebounceTimer !== null) {
-					const win = input.ownerDocument?.defaultView ?? window;
-					win.clearTimeout(this.filterDebounceTimer);
-					this.filterDebounceTimer = null;
-				}
+				this.clearFilterTimer();
 			},
 			onRefresh: (immediate) => {
 				this.scheduleFilterRefresh(input, immediate);
@@ -401,16 +451,20 @@ export class LoreOverviewView extends ItemView {
 	}
 
 	private scheduleFilterRefresh(input: HTMLInputElement, immediate: boolean = false): void {
+		if (this.isClosed) return;
 		this.loreFilterQuery = input.value;
 		this.pendingFilterFocus = {
 			start: input.selectionStart ?? input.value.length,
 			end: input.selectionEnd ?? input.value.length
 		};
 
-		const win = input.ownerDocument?.defaultView ?? window;
+		const win = input.ownerDocument?.defaultView ?? this.container?.ownerDocument?.defaultView ?? window;
 		this.currentRenderId++;
-		if (this.filterDebounceTimer !== null) win.clearTimeout(this.filterDebounceTimer);
-		this.filterDebounceTimer = win.setTimeout(() => {
+		this.clearFilterTimer();
+		const timerEntry = { win, id: 0 };
+		this.filterDebounceTimer = timerEntry;
+		timerEntry.id = win.setTimeout(() => {
+			if (this.filterDebounceTimer !== timerEntry || this.isClosed) return;
 			this.filterDebounceTimer = null;
 			void this.reloadBoard();
 		}, immediate ? 0 : 200);

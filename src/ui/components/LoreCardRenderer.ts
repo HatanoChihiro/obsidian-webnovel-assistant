@@ -37,6 +37,7 @@ export const LORE_CARD_EXPAND_BTN_CLASS = `${LORE_CARD_ACTION_BTN_CLASS} wn-lore
 
 export class LoreCardRenderer {
 	private static readonly aliasBadgeCleanups = new WeakMap<HTMLElement, () => void>();
+	private static readonly componentCleanups = new WeakMap<Component, Set<() => void>>();
 
 	/**
 	 * 词条正文解析缓存：键为 `文件路径\u0000词条标题`。
@@ -53,9 +54,12 @@ export class LoreCardRenderer {
 		return file.stat?.mtime ?? 0;
 	}
 
+	private static clearGeneration = 0;
+
 	/** 清空词条正文解析缓存；传入文件时仅清空该文件的全部词条缓存 */
 	static clearLoreBodyCache(file?: TFile): void {
 		if (!file) {
+			LoreCardRenderer.clearGeneration++;
 			LoreCardRenderer.loreBodyCache.clear();
 			return;
 		}
@@ -114,9 +118,12 @@ export class LoreCardRenderer {
 
 		const targetFile = entry.file;
 		const expectedMtime = LoreCardRenderer.getEntryMtime(targetFile);
+		const capturedGeneration = LoreCardRenderer.clearGeneration;
 
 		const resolved = await LoreCardRenderer.parseLoreBody(entry, app);
-		LoreCardRenderer.writeCache(entry, resolved, expectedMtime, targetFile);
+		if (capturedGeneration === LoreCardRenderer.clearGeneration) {
+			LoreCardRenderer.writeCache(entry, resolved, expectedMtime, targetFile);
+		}
 		return resolved;
 	}
 
@@ -218,16 +225,36 @@ export class LoreCardRenderer {
 		return { chunk, aliases };
 	}
 
+	private static getComponentCleanups(component: Component): Set<() => void> {
+		let activeCleanups = LoreCardRenderer.componentCleanups.get(component);
+		if (!activeCleanups) {
+			activeCleanups = new Set<() => void>();
+			LoreCardRenderer.componentCleanups.set(component, activeCleanups);
+			component.register(() => {
+				const cleanups = LoreCardRenderer.componentCleanups.get(component);
+				if (cleanups) {
+					for (const cleanupFn of Array.from(cleanups)) {
+						cleanupFn();
+					}
+					cleanups.clear();
+					LoreCardRenderer.componentCleanups.delete(component);
+				}
+			});
+		}
+		return activeCleanups;
+	}
+
 	private static renderAliasBadges(header: HTMLElement, aliases: string[], component: Component): void {
 		LoreCardRenderer.aliasBadgeCleanups.get(header)?.();
 		header.querySelector('.wn-lore-card-badges')?.remove();
 
 		if (aliases.length === 0) return;
 
+		const activeCleanups = LoreCardRenderer.getComponentCleanups(component);
+
 		const starBtn = header.querySelector('.wn-card-importance-btn');
-		const badgesContainer = starBtn
-			? header.insertBefore(createDiv({ cls: 'wn-lore-card-badges is-measuring' }), starBtn)
-			: header.createDiv({ cls: 'wn-lore-card-badges is-measuring' });
+		const badgesContainer = header.createDiv({ cls: 'wn-lore-card-badges is-measuring' });
+		if (starBtn) header.insertBefore(badgesContainer, starBtn);
 		const aliasBadges = aliases.map(alias =>
 			badgesContainer.createSpan({ cls: 'wn-lore-card-badge', text: alias })
 		);
@@ -238,6 +265,7 @@ export class LoreCardRenderer {
 		let isCleanedUp = false;
 
 		const layoutBadges = () => {
+			if (isCleanedUp) return;
 			animationFrameId = null;
 			if (!badgesContainer.isConnected) return;
 
@@ -312,6 +340,7 @@ export class LoreCardRenderer {
 		const cleanup = () => {
 			if (isCleanedUp) return;
 			isCleanedUp = true;
+			activeCleanups.delete(cleanup);
 			if (animationFrameId !== null && ownerWindow) {
 				ownerWindow.cancelAnimationFrame(animationFrameId);
 				animationFrameId = null;
@@ -322,8 +351,8 @@ export class LoreCardRenderer {
 				LoreCardRenderer.aliasBadgeCleanups.delete(header);
 			}
 		};
+		activeCleanups.add(cleanup);
 		LoreCardRenderer.aliasBadgeCleanups.set(header, cleanup);
-		component.register(cleanup);
 	}
 
 	static async buildCardDOM(

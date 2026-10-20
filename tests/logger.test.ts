@@ -40,4 +40,22 @@ describe('Logger', () => {
 
 		expect(console.info).not.toHaveBeenCalled();
 	});
+
+	it('releases plugin reference only when called with matching owner', () => {
+		const ownerPlugin = createPlugin(true);
+		const otherPlugin = createPlugin(true);
+
+		Logger.initialize(ownerPlugin);
+
+		// Non-matching owner must not release logger
+		Logger.release(otherPlugin);
+		Logger.info('message from active owner');
+		expect(console.info).toHaveBeenCalledWith('message from active owner');
+
+		// Matching owner releases reference
+		vi.clearAllMocks();
+		Logger.release(ownerPlugin);
+		Logger.info('message after release');
+		expect(console.info).not.toHaveBeenCalled();
+	});
 });

@@ -29,9 +29,11 @@ export function matchesWorkbenchFilter(searchableText: string, tokens: readonly 
 }
 
 export function stripMarkdownFrontmatter(content: string): string {
-	const lines = content.split(/\r?\n/);
-	if ((lines[0] ?? '').replace(/^\uFEFF/, '').trim() !== '---') return content;
+	const firstNewlineIndex = content.search(/\r?\n/);
+	const firstLine = firstNewlineIndex === -1 ? content : content.slice(0, firstNewlineIndex);
+	if (firstLine.replace(/^\uFEFF/, '').trim() !== '---') return content;
 
+	const lines = content.split(/\r?\n/);
 	for (let i = 1; i < lines.length; i++) {
 		const line = lines[i].trim();
 		if (line === '---' || line === '...') {
@@ -122,15 +124,29 @@ export class WorkbenchFilterIndex {
 		for (let i = 0; i < files.length; i++) {
 			if (this.generation !== expectedGeneration) return [];
 			const file = files[i];
-			const body = await this.getChapterBody(file, expectedGeneration);
+			const synopsis = getSynopsis(file);
 			if (this.generation !== expectedGeneration) return [];
-			const searchableText = [
+
+			const metadataText = [
 				normalizeWorkbenchSearchText(file.basename),
-				normalizeWorkbenchSearchText(getSynopsis(file)),
-				body
+				normalizeWorkbenchSearchText(synopsis)
 			].join('\n');
 
-			if (matchesWorkbenchFilter(searchableText, tokens)) results.push(file);
+			if (tokens.every(token => metadataText.includes(token))) {
+				results.push(file);
+			} else {
+				const body = await this.getChapterBody(file, expectedGeneration);
+				if (this.generation !== expectedGeneration) return [];
+				const currentMetadata = [
+					normalizeWorkbenchSearchText(file.basename),
+					normalizeWorkbenchSearchText(getSynopsis(file))
+				].join('\n');
+				if (this.generation !== expectedGeneration) return [];
+				if (tokens.every(token => currentMetadata.includes(token) || body.includes(token))) {
+					results.push(file);
+				}
+			}
+
 			if (i > 0 && i % 50 === 0) {
 				await this.yieldToMainThread();
 				if (this.generation !== expectedGeneration) return [];
@@ -154,16 +170,27 @@ export class WorkbenchFilterIndex {
 		for (let i = 0; i < uniqueEntries.length; i++) {
 			if (this.generation !== expectedGeneration) return new Set();
 			const entry = uniqueEntries[i];
-			const sections = await this.getLoreSections(entry.file, expectedGeneration);
-			if (this.generation !== expectedGeneration) return new Set();
 			const aliases = aliasesByHeading.get(entry.heading) ?? [];
-			const searchableText = [
+			const metadataText = [
 				normalizeWorkbenchSearchText(entry.heading),
-				normalizeWorkbenchSearchText(aliases.join('\n')),
-				sections.get(entry.heading) ?? ''
+				normalizeWorkbenchSearchText(aliases.join('\n'))
 			].join('\n');
 
-			if (matchesWorkbenchFilter(searchableText, tokens)) results.add(entry.heading);
+			if (tokens.every(token => metadataText.includes(token))) {
+				results.add(entry.heading);
+			} else {
+				const sections = await this.getLoreSections(entry.file, expectedGeneration);
+				if (this.generation !== expectedGeneration) return new Set();
+				const body = sections.get(entry.heading) ?? '';
+				const currentMetadata = [
+					normalizeWorkbenchSearchText(entry.heading),
+					normalizeWorkbenchSearchText((aliasesByHeading.get(entry.heading) ?? []).join('\n'))
+				].join('\n');
+				if (tokens.every(token => currentMetadata.includes(token) || body.includes(token))) {
+					results.add(entry.heading);
+				}
+			}
+
 			if (i > 0 && i % 50 === 0) {
 				await this.yieldToMainThread();
 				if (this.generation !== expectedGeneration) return new Set();

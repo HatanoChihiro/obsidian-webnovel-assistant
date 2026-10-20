@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ParsedForeshadowingEntry } from '../src/types/foreshadowing';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TFile, TFolder } from 'obsidian';
 import { ImmersiveChapterListView, type ImmersiveChapterListViewPlugin } from '../src/ui/ImmersiveChapterListView';
 
@@ -109,7 +110,10 @@ describe('ImmersiveChapterListView context', () => {
 	let plugin: ImmersiveChapterListViewPlugin;
 	let view: ImmersiveChapterListView;
 
+	afterEach(() => vi.unstubAllGlobals());
+
 	beforeEach(() => {
+		vi.stubGlobal('window', { setTimeout: vi.fn(() => 1), clearTimeout: vi.fn(), requestAnimationFrame: vi.fn(() => 1), cancelAnimationFrame: vi.fn() });
 		findBookRootMock.mockReset();
 		rootFolder = createTestFolder('', '/');
 		novelFolder = createTestFolder('Alpha', 'Novels/Alpha');
@@ -270,4 +274,182 @@ describe('ImmersiveChapterListView context', () => {
 			'Notes'
 		);
 	});
+
+	describe('lifecycle, retry timer & scroll RAF tracking', () => {
+		it('cancels pending retry timer on owner window when closed', async () => {
+			mainLeaf.view.file = null; // context will be null
+
+			const mockOwnerWin = {
+				setTimeout: vi.fn().mockReturnValue(999),
+				clearTimeout: vi.fn(),
+				requestAnimationFrame: vi.fn(),
+				cancelAnimationFrame: vi.fn()
+			};
+			const listContainer = {
+				scrollTop: 0,
+				addEventListener: vi.fn(),
+				createEl: vi.fn()
+			};
+			Object.assign(view, {
+				containerEl: {
+					empty: vi.fn(),
+					createDiv: vi.fn().mockReturnValue(listContainer),
+					ownerDocument: { defaultView: mockOwnerWin }
+				}
+			});
+
+			await view.refresh();
+
+			expect(mockOwnerWin.setTimeout).toHaveBeenCalledWith(expect.any(Function), 1000);
+
+			await view.onClose();
+
+			expect(mockOwnerWin.clearTimeout).toHaveBeenCalledWith(999);
+		});
+
+		it('cancels pending scroll RAF on owner window when closed', async () => {
+			findBookRootMock.mockReturnValue('Novels/Alpha');
+			plugin.settings = { enableSmartChapterSort: false } as ImmersiveChapterListViewPlugin['settings'];
+			const mockOwnerWin = {
+				setTimeout: vi.fn(),
+				clearTimeout: vi.fn(),
+				requestAnimationFrame: vi.fn().mockReturnValue(888),
+				cancelAnimationFrame: vi.fn()
+			};
+			const listContainer = {
+				scrollTop: 0,
+				addEventListener: vi.fn(),
+				createEl: vi.fn()
+			};
+			Object.assign(view, {
+				containerEl: {
+					empty: vi.fn(),
+					createDiv: vi.fn().mockReturnValue(listContainer),
+					ownerDocument: { defaultView: mockOwnerWin }
+				}
+			});
+
+			await view.refresh();
+
+			expect(mockOwnerWin.requestAnimationFrame).toHaveBeenCalled();
+
+			await view.onClose();
+
+			expect(mockOwnerWin.cancelAnimationFrame).toHaveBeenCalledWith(888);
+		});
+
+		it('discards delayed foreshadowing map result if closed before completion', async () => {
+			findBookRootMock.mockReturnValue('Novels/Alpha');
+			let resolveMap!: (map: Map<string, ParsedForeshadowingEntry[]>) => void;
+			const mapPromise = new Promise<Map<string, ParsedForeshadowingEntry[]>>(res => { resolveMap = res; });
+
+			const buildChapterForeshadowingMap = vi.fn().mockReturnValue(mapPromise);
+			Object.assign(plugin, {
+				foreshadowingManager: { buildChapterForeshadowingMap }
+			});
+
+			const mockOwnerWin = {
+				setTimeout: vi.fn(),
+				clearTimeout: vi.fn(),
+				requestAnimationFrame: vi.fn(),
+				cancelAnimationFrame: vi.fn()
+			};
+			const listContainer = {
+				scrollTop: 0,
+				addEventListener: vi.fn(),
+				createEl: vi.fn()
+			};
+			Object.assign(view, {
+				containerEl: {
+					empty: vi.fn(),
+					createDiv: vi.fn().mockReturnValue(listContainer),
+					ownerDocument: { defaultView: mockOwnerWin }
+				}
+			});
+
+			const renderSpy = vi.spyOn(view as unknown as { renderFolderRecursively: (...args: unknown[]) => void }, 'renderFolderRecursively').mockImplementation(() => {});
+
+			const refreshPromise = view.refresh();
+
+			// Close view while map is in flight
+			await view.onClose();
+
+			// Now resolve map
+			resolveMap(new Map());
+			await refreshPromise;
+
+			// Must not render or schedule frame
+			expect(renderSpy).not.toHaveBeenCalled();
+			expect(mockOwnerWin.requestAnimationFrame).not.toHaveBeenCalled();
+		});
+
+		it('discards delayed older refresh when a newer refresh completes first', async () => {
+			findBookRootMock.mockReturnValue('Novels/Alpha');
+			let resolveFirstMap!: (map: Map<string, ParsedForeshadowingEntry[]>) => void;
+			const firstMapPromise = new Promise<Map<string, ParsedForeshadowingEntry[]>>(res => { resolveFirstMap = res; });
+
+			const buildChapterForeshadowingMap = vi.fn()
+				.mockReturnValueOnce(firstMapPromise)
+				.mockResolvedValueOnce(new Map());
+
+			Object.assign(plugin, {
+				foreshadowingManager: { buildChapterForeshadowingMap }
+			});
+
+			const mockOwnerWin = {
+				setTimeout: vi.fn(),
+				clearTimeout: vi.fn(),
+				requestAnimationFrame: vi.fn(),
+				cancelAnimationFrame: vi.fn()
+			};
+			const listContainer = {
+				scrollTop: 0,
+				addEventListener: vi.fn(),
+				createEl: vi.fn()
+			};
+			Object.assign(view, {
+				containerEl: {
+					empty: vi.fn(),
+					createDiv: vi.fn().mockReturnValue(listContainer),
+					ownerDocument: { defaultView: mockOwnerWin }
+				}
+			});
+
+			const renderSpy = vi.spyOn(view as unknown as { renderFolderRecursively: (...args: unknown[]) => void }, 'renderFolderRecursively').mockImplementation(() => {});
+
+			const firstRefresh = view.refresh();
+
+			// Second refresh starts and finishes
+			await view.refresh();
+			expect(renderSpy).toHaveBeenCalledTimes(1);
+
+			// First refresh resolves later
+			resolveFirstMap(new Map());
+			await firstRefresh;
+
+			// renderFolderRecursively must NOT have been called a second time by the older refresh
+			expect(renderSpy).toHaveBeenCalledTimes(1);
+		});
+	});
+	it('ignores a cancelled retry callback without losing the newer retry handle', async () => {
+		mainLeaf.view.file = null;
+		const callbacks: Array<() => void> = [];
+		const ownerWindow = {
+			setTimeout: vi.fn((callback: () => void) => { callbacks.push(callback); return callbacks.length; }),
+			clearTimeout: vi.fn(),
+			requestAnimationFrame: vi.fn(),
+			cancelAnimationFrame: vi.fn()
+		};
+		Object.assign(view, { containerEl: {
+			empty: vi.fn(), createDiv: () => ({ addEventListener: vi.fn(), createEl: vi.fn() }),
+			ownerDocument: { defaultView: ownerWindow }
+		} });
+		await view.refresh();
+		await view.refresh();
+		expect(callbacks).toHaveLength(2);
+		callbacks[0]();
+		await view.onClose();
+		expect(ownerWindow.clearTimeout.mock.calls.map(([id]) => id)).toEqual([1, 2]);
+	});
+
 });

@@ -15,10 +15,6 @@ import { ChapterSorter } from './ChapterSorter';
  * 负责伏笔文件的读写、格式化、状态更新
  */
 export class ForeshadowingManager {
-	/** 正则表达式缓存，避免重复编译（最多缓存 100 个） */
-	private static readonly entryPatternCache = new Map<string, RegExp>();
-	private static readonly MAX_CACHE_SIZE = 100;
-	
 	/** 串行写入器：确保对伏笔文件的读改写操作是原子的 [M-E4] */
 	private writer = new SerializedWriter();
 
@@ -271,36 +267,6 @@ export class ForeshadowingManager {
 			}
 		}
 		return { sourceFile, createdAt, contentPreview, description };
-	}
-
-	/**
-	 * 获取缓存的条目匹配正则表达式
-	 * @param sourceFile 来源文件名
-	 * @param createdAt 创建时间
-	 * @param status 要匹配的状态（如 "未回收|已废弃"）
-	 */
-	private getEntryPattern(sourceFile: string, createdAt: string, status: string): RegExp {
-		const key = `${sourceFile}:${createdAt}:${status}`;
-		
-		if (!ForeshadowingManager.entryPatternCache.has(key)) {
-			// LRU 缓存：超过限制时删除最早的条目
-			if (ForeshadowingManager.entryPatternCache.size >= ForeshadowingManager.MAX_CACHE_SIZE) {
-				const firstKey = Array.from(ForeshadowingManager.entryPatternCache.keys())[0];
-				if (firstKey !== undefined) {
-					ForeshadowingManager.entryPatternCache.delete(firstKey);
-				}
-			}
-			
-			// 支持新旧格式的定位，捕获整个条目的前半部分作为 before
-			const pattern = new RegExp(
-				`((?:## \\[\\[${escapeRegex(sourceFile)}\\]\\](?:\\s*-\\s*${escapeRegex(createdAt)})?|## .+?\\n(?:(?!## ).*\\n)*?> \\[\\[${escapeRegex(sourceFile)}\\]\\](?:\\s*-\\s*${escapeRegex(createdAt)})?)(?:(?!\\n(?:---|## ))[\\s\\S])*?)(\\*\\*(?:状态|狀態|Status)\\*\\*：)(${status})`,
-				'm'
-			);
-			
-			ForeshadowingManager.entryPatternCache.set(key, pattern);
-		}
-		
-		return ForeshadowingManager.entryPatternCache.get(key)!;
 	}
 
 	async markAsPartiallyRecovered(

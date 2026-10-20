@@ -1,3 +1,45 @@
+## ✨ v4.0.3
+
+### 功能优化
+
+- **沉浸辅助区域**：上下左右的辅助区域可通过边缘箭头单独收起、展开，并记住布局和尺寸。也可通过命令或自设快捷键一键隐藏全部区域，再次执行即可恢复原布局。
+- **沉浸打字机设置**：开启打字机滚动后，点击旁边的齿轮，即可调整聚焦行的位置和其他行的透明度，立即生效并自动保存。
+- **合并章节**：可勾选需要合并的章节，按原顺序导出。默认全选，支持全选/全不选、Shift 连选和搜索结果批量选择；手机和平板也可选择合并范围。
+- **搜索体验**：优化工作台搜索和高级搜索，减少重复读取，改善长文和大量结果下的响应速度，保留原有匹配、排序和定位方式。
+- **写作历程**：优化大量记录中的章节链接处理，改名、移动后仍可正常跳转。
+- **多窗口一览**：章节一览和设定一览各自刷新，关闭其中一个不会打断其他窗口的更新。
+- **运行优化**：减少工作台、便签、图谱、校对和移动端悬浮统计的重复处理，降低资源占用；关闭视图或插件后及时停止相关后台任务。
+- **插件体积**：精简插件文件，减小体积。
+
+### Bug 修复
+
+- **章节命名与关联**：创建下一章或自动拆分时，不再给无标题章名留下多余的末尾空格。已有带空格的章节也能正确关联到时间线，跨卷同名章节不会混淆。
+- **工作台时间轴**：新增或编辑事件后及时刷新卡片，随后拖入章节不再误报内容冲突；保存失败会保留输入，遇到其他修改仍会提示，避免覆盖。
+- **写作历程**：从光标处拆分后，仅为符合章节收录规则的新文件记录“创建章节”，避免将普通文档或合并文档误记为新章节。
+- **字数统计**：修复首次统计含大型代码块的文档时长时间卡顿的问题，并保留列表、表格附近的原始空行。感谢 [@SereinLeaves](https://github.com/SereinLeaves) 通过 [PR #45](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/pull/45) 贡献修复。
+- **搜索与侧栏刷新**：关闭搜索、重新查询或切换作品后，旧结果不再干扰当前内容；时间线和伏笔操作不会误改其他作品。
+
+### English Changelog
+
+#### Enhancements
+
+- **Immersive auxiliary regions**: Use edge arrows to collapse or expand each region, with layout and sizes remembered. A command or custom hotkey hides all regions; use it again to restore the previous layout.
+- **Immersive typewriter settings**: With typewriter scrolling enabled, click the nearby gear to adjust the focused line's position and other lines' opacity. Changes apply immediately and save automatically.
+- **Chapter merging**: Choose chapters to export in their original order. All chapters start selected, with select/deselect all, Shift range selection, and bulk selection of search results. Selection is also available on phones and tablets.
+- **Search experience**: Improve Workbench and advanced search responsiveness for long documents and large result lists by reducing repeated reads, while preserving matching, sorting, and navigation.
+- **Writing journey**: Improve chapter-link handling in large histories, with links still working after renames and moves.
+- **Overview windows**: Chapter and lore overviews refresh independently, so closing one does not interrupt updates in another.
+- **Performance**: Reduce repeated work and resource use in the Workbench, sticky notes, graphs, proofreading, and mobile floating statistics. Related background tasks stop when views or the plugin close.
+- **Plugin size**: Reduce the plugin file size.
+
+#### Bug Fixes
+
+- **Chapter names and links**: Creating the next chapter or splitting automatically no longer leaves extra trailing spaces in untitled chapter names. Existing chapters with spaces link correctly to the timeline, including same-name chapters in different volumes.
+- **Workbench timeline**: Event cards refresh after adding or editing, and immediately dropping a chapter no longer reports a false conflict. Failed saves retain your input, while conflicting changes still trigger a warning to prevent overwriting.
+- **Writing journey**: Splitting at the cursor records chapter creation only when the new file meets chapter-list rules, avoiding false entries for ordinary or merged documents.
+- **Word counting**: Fix long stalls on the first count of documents containing large code blocks, and preserve blank lines around lists and tables. Thanks to [@SereinLeaves](https://github.com/SereinLeaves) for contributing the fix in [PR #45](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/pull/45).
+- **Search and sidebar refreshes**: Old results no longer interfere after closing search, starting a new query, or switching works. Timeline and foreshadowing actions do not accidentally change another work.
+
 ## ✨ v4.0.2
 
 ### 新增功能

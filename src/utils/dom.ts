@@ -14,25 +14,31 @@ export interface RafThrottledFn<T extends (...args: never[]) => void> {
 	cancel: () => void;
 }
 
-export function rafThrottle<T extends (...args: never[]) => void>(fn: T): RafThrottledFn<T> {
+export function rafThrottle<T extends (...args: never[]) => void>(fn: T, ownerWindow: Window | null = window): RafThrottledFn<T> {
 	let raf = 0;
+	let generation = 0;
 	let latestArgs: Parameters<T> | null = null;
 
 	const throttled = ((...args: Parameters<T>) => {
+		if (!ownerWindow) return;
 		latestArgs = args;
 
 		if (raf) return;
 
-		raf = window.requestAnimationFrame(() => {
+		const currentGeneration = ++generation;
+		raf = ownerWindow.requestAnimationFrame(() => {
+			if (currentGeneration !== generation) return;
 			raf = 0;
-			if (latestArgs) {
-				fn(...latestArgs);
-			}
+			const pendingArgs = latestArgs;
+			latestArgs = null;
+			if (pendingArgs) fn(...pendingArgs);
 		});
 	}) as RafThrottledFn<T>;
 
 	throttled.cancel = () => {
-		window.cancelAnimationFrame(raf);
+		generation++;
+		ownerWindow?.cancelAnimationFrame(raf);
+		latestArgs = null;
 		raf = 0;
 	};
 

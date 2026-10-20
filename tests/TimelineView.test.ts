@@ -549,4 +549,136 @@ describe('TimelineView', () => {
 		expect(rendered).toHaveLength(1);
 		expect(rendered[0].querySelector('.wn-timeline-time')?.textContent).toBe('Day 2');
 	});
+
+	it('discards delayed read results when switching to another folder', async () => {
+		const leaf = { app: mockApp } as unknown as WorkspaceLeaf;
+		const view = new TimelineView(leaf, mockPlugin);
+
+		let resolveA!: (content: string) => void;
+		const readPromiseA = new Promise<string>((resolve) => { resolveA = resolve; });
+
+		// Read for folder A is delayed
+		mockApp.vault.read.mockImplementationOnce(() => readPromiseA);
+		mockPlugin.timelineManager.getTimelineFile = vi.fn().mockImplementation((folder: string) => {
+			return { path: `${folder}/时间线.md` };
+		});
+		mockPlugin.timelineManager.parseEntries = vi.fn().mockImplementation((content: string, folder: string) => {
+			return content.includes(' B')
+				? [{ time: 'Year B', description: 'Event B', chapter: '', rawBlock: '', items: [] }]
+				: [{ time: 'Year A', description: 'Event A', chapter: '', rawBlock: '', items: [] }];
+		});
+
+		view.currentFolder = 'FolderA';
+		const refreshA = view.refresh();
+
+		// User switches to FolderB and refresh completes
+		mockApp.vault.read.mockResolvedValueOnce('# 时间线 B\n');
+		view.currentFolder = 'FolderB';
+		await view.refresh();
+
+		// At this point, FolderB should be rendered
+		const headerFolder = view.containerEl.querySelector('.wn-timeline-view-folder');
+		expect(headerFolder?.textContent).toBe('FolderB');
+		let times = view.containerEl.querySelectorAll('.wn-timeline-time');
+		expect(times[0]?.textContent).toBe('Year B');
+
+		// Now the delayed read for FolderA resolves
+		resolveA('# 时间线 A\n');
+		await refreshA;
+
+		// Stale FolderA read must NOT overwrite FolderB
+		expect(view.containerEl.querySelector('.wn-timeline-view-folder')?.textContent).toBe('FolderB');
+		times = view.containerEl.querySelectorAll('.wn-timeline-time');
+		expect(times[0]?.textContent).toBe('Year B');
+	});
+
+	it('discards older read when switching A -> B -> A before older read completes', async () => {
+		const leaf = { app: mockApp } as unknown as WorkspaceLeaf;
+		const view = new TimelineView(leaf, mockPlugin);
+
+		let resolveFirstA!: (content: string) => void;
+		const firstReadPromise = new Promise<string>((resolve) => { resolveFirstA = resolve; });
+
+		mockPlugin.timelineManager.getTimelineFile = vi.fn().mockReturnValue({ path: '时间线.md' });
+		mockPlugin.timelineManager.parseEntries = vi.fn().mockImplementation((content: string) => {
+			return [{ time: content.trim(), description: 'Desc', chapter: '', rawBlock: '', items: [] }];
+		});
+
+		mockApp.vault.read.mockImplementationOnce(() => firstReadPromise);
+		view.currentFolder = 'FolderA';
+		const firstRefresh = view.refresh();
+
+		// Switch to B then back to A
+		view.currentFolder = 'FolderB';
+		mockApp.vault.read.mockResolvedValueOnce('Version B');
+		await view.refresh();
+
+		view.currentFolder = 'FolderA';
+		mockApp.vault.read.mockResolvedValueOnce('Version A New');
+		await view.refresh();
+
+		expect(view.containerEl.querySelector('.wn-timeline-time')?.textContent).toBe('Version A New');
+
+		// Now the first delayed read completes
+		resolveFirstA('Version A Old');
+		await firstRefresh;
+
+		// Must still be Version A New, not overwritten by Version A Old
+		expect(view.containerEl.querySelector('.wn-timeline-time')?.textContent).toBe('Version A New');
+	});
+
+	it('discards pending read and does not render if view is closed', async () => {
+		const leaf = { app: mockApp } as unknown as WorkspaceLeaf;
+		const view = new TimelineView(leaf, mockPlugin);
+
+		let resolveRead!: (content: string) => void;
+		mockApp.vault.read.mockImplementationOnce(() => new Promise((resolve) => { resolveRead = resolve; }));
+
+		view.currentFolder = 'FolderA';
+		const refreshPromise = view.refresh();
+
+		// Close view before read resolves
+		await view.onClose();
+
+		// Now resolve read
+		resolveRead('# 时间线\n');
+		await refreshPromise;
+
+		// Container should not have rendered timeline items
+		expect(view.containerEl.querySelectorAll('.wn-timeline-item')).toHaveLength(0);
+	});
+	it('does not render a completed old action after A -> B -> A or a newer direct render', async () => {
+		const view = new TimelineView({ app: mockApp } as unknown as WorkspaceLeaf, mockPlugin);
+		mockPlugin.timelineManager.parseEntries = vi.fn((content: string) => [{ time: content, description: 'event', chapter: '', rawBlock: '' }]);
+		let finishDelete!: (content: string) => void;
+		const deletion = new Promise<string>(resolve => { finishDelete = resolve; });
+		mockPlugin.timelineManager.deleteEntry = vi.fn(() => deletion);
+		view.currentFolder = 'A';
+		await view.renderFromContent('A initial');
+		const button = view.containerEl.querySelector('.timeline-delete-btn') as unknown as MockElement;
+		button.click();
+		view.currentFolder = 'B';
+		await view.renderFromContent('B fresh');
+		view.currentFolder = 'A';
+		await view.renderFromContent('A fresh');
+		finishDelete('A stale');
+		await deletion;
+		for (let i = 0; i < 4; i++) await Promise.resolve();
+		expect(mockPlugin.timelineManager.deleteEntry).toHaveBeenCalledWith(0, 'A', expect.objectContaining({ time: 'A initial' }));
+		expect(view.containerEl.querySelector('.wn-timeline-time')?.textContent).toBe('A fresh');
+	});
+
+	it('invalidates an earlier read when an action renders a newer result', async () => {
+		const view = new TimelineView({ app: mockApp } as unknown as WorkspaceLeaf, mockPlugin);
+		view.currentFolder = 'A';
+		let finishRead!: (content: string) => void;
+		mockApp.vault.read.mockImplementationOnce(() => new Promise<string>(resolve => { finishRead = resolve; }));
+		mockPlugin.timelineManager.parseEntries = vi.fn((content: string) => [{ time: content, description: 'event', chapter: '', rawBlock: '' }]);
+		const pending = view.refresh();
+		await view.renderFromContent('saved result');
+		finishRead('old read');
+		await pending;
+		expect(view.containerEl.querySelector('.wn-timeline-time')?.textContent).toBe('saved result');
+	});
+
 });
