@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "dictionaryVersion": "1.0.1",
-  "updatedAt": "2026-09-05",
+  "dictionaryVersion": "1.0.2",
+  "updatedAt": "2026-10-22",
   "license": "MIT",
   "source": "WebNovel Assistant Project / Self-curated",
   "entries": [
@@ -3044,6 +3044,16 @@
       "word": "鱼梗在喉",
       "suggestion": "鱼鲠在喉",
       "description": "“鲠”指鱼刺骨刺卡在咽喉，比喻有话不吐不快"
+    },
+    {
+      "word": "按耐不住",
+      "suggestion": "按捺不住",
+      "description": "固定表达为“按捺不住”，指抑制不住情绪或冲动；“捺”表示按住。"
+    },
+    {
+      "word": "费劲心思",
+      "suggestion": "费尽心思",
+      "description": "固定搭配为“费尽心思”，表示用尽心思；“尽”强调全部。"
     }
   ]
 }
