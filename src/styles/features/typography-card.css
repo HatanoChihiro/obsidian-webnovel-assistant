@@ -30,8 +30,8 @@ body.wn-card-indent-active.wn-card-reading-compat-active .my-sticky-content.mark
 	width: var(--wn-card-indent, 2em);
 }
 
-body.wn-card-indent-active .my-floating-sticky-note .wn-sticky-note-editor-line:not(.is-empty)::before,
-body.wn-card-indent-active .webnovel-immersive-note-card .wn-sticky-note-editor-line:not(.is-empty)::before {
+body.wn-card-indent-active .my-floating-sticky-note .wn-sticky-note-editor-line::before,
+body.wn-card-indent-active .webnovel-immersive-note-card .wn-sticky-note-editor-line::before {
 	content: "";
 	display: inline-block;
 	width: var(--wn-card-indent, 2em);
@@ -82,8 +82,7 @@ body.wn-card-indent-active .webnovel-lore-popover .wn-sticky-note-editor-line::b
 
 /* 3. Chapter Cards (Corkboard & Overview) */
 body.wn-card-indent-active .wn-corkboard-card-content .wn-corkboard-card-text.is-empty::before,
-body.wn-card-indent-active .wn-corkboard-card-content .wn-corkboard-card-text .wn-corkboard-card-p::before,
-body.wn-card-indent-active .wn-chapter-card-synopsis:not(:empty)::before {
+body.wn-card-indent-active .wn-corkboard-card-content .wn-corkboard-card-text .wn-corkboard-card-p::before {
 	content: "";
 	display: inline-block;
 	width: var(--wn-card-indent, 2em);

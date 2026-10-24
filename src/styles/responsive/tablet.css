@@ -1,8 +1,6 @@
 /* ========== Tablet Lore & Foreshadowing Hover Popover Rules (Match Desktop 1:1) ========== */
 body.is-tablet .webnovel-lore-popover,
-body.is-tablet .wn-lore-hover-popover,
-body.is-tablet .wn-character-hover-card,
-body.is-tablet .wn-hover-card {
+body.is-tablet .wn-lore-hover-popover {
 	font-size: var(--font-ui-medium, 1em);
 	width: 300px;
 	max-width: min(320px, calc(100vw - 32px));
@@ -56,11 +54,13 @@ body.is-tablet .mobile-floating-stats {
 }
 
 body.is-tablet .mobile-floating-stats.is-docked-left {
-	transform: translateX(calc(-100% + 24px));
+	min-height: 44px;
+	transform: translateX(calc(-100% + 48px));
 }
 
 body.is-tablet .mobile-floating-stats.is-docked-right {
-	transform: translateX(calc(100% - 24px));
+	min-height: 44px;
+	transform: translateX(calc(100% - 48px));
 }
 
 /* 触控平板没有稳定的 hover，事件删除按钮需要常驻可见。 */

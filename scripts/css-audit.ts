@@ -67,7 +67,6 @@ const classOwners: readonly ClassOwner[] = [
 	{
 		owner: 'src/styles/views/settings.css',
 		prefix: 'wn-layout-',
-		allowed: ['src/styles/views/settings-corkboard-compat.css'],
 	},
 ] as const;
 const legacyClassPrefixes = [
@@ -360,6 +359,7 @@ async function auditArtifact(): Promise<void> {
 		absWorkingDir: projectRoot,
 		bundle: true,
 		entryPoints: [indexPath],
+		minifyWhitespace: true,
 		logLevel: 'silent',
 		outfile: artifactPath,
 		write: false,

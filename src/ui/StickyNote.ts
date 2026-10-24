@@ -239,7 +239,6 @@ export class FloatingStickyNote extends Component {
 	containerEl!: HTMLElement;
 	contentContainer!: HTMLDivElement;
 	textareaEl!: StickyNoteParagraphEditor;
-	initialContent: string; // 用于检测未保存的更改
 	lastSavedContent: string = ""; // 最后一次保存的内容
 	private resizeObserver: ResizeObserver | null = null; // ResizeObserver 实例
 	private resizeTimer: number | null = null;           // ResizeObserver 防抖计时器
@@ -285,9 +284,6 @@ export class FloatingStickyNote extends Component {
 				Logger.error('[StickyNote] 更新颜色索引失败:', err);
 			});
 		}
-		
-		// 保存初始内容，用于检测是否有未保存的更改
-		this.initialContent = this.state.content || "";
 	}
 
 	/**

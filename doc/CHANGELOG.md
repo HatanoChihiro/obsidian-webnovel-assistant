@@ -1,3 +1,41 @@
+## ✨ v4.0.4
+
+### 新增功能
+
+- **章节快照对比**：修改章节卡片或写作状态面板中的章节状态时，自动关联当时的原生快照。通过命令或写作历程打开独立浮窗，可随写作刷新、切换版本，并突出中文改字与段落拆合；支持仅显示差异，手机竖屏默认合并为单栏差异视图。需启用“文件恢复”；快照仅创建它的本设备可用，受原生保留期限限制，不随历程同步。保存快照后的历程需使用支持此功能的插件版本读取。
+
+### 功能优化
+
+- **运行性能**：优化启动加载、长文字数统计，以及工作台、设定卡片、关系图谱和时间线的响应。
+- **移动端设定轨迹**：优化拖动与双指缩放，保留编辑保存后的画布位置。
+- **移动端悬浮统计**：扩大贴边收起后的拖动区域，更容易拉出，减少误触返回手势。
+- **插件体积**：精简插件文件，减小安装体积。
+
+### Bug 修复
+
+- **便签排版**：修复开启卡片首行缩进后，新建便签或新增段落缺少缩进，以及刚回车时光标顶格的问题。
+- **沉浸章节列表**：修复字数不随编辑实时更新、需要退出重进才刷新的问题。
+- **设定高亮**：修复设定改名后仍高亮旧名称的问题。
+
+### English Changelog
+
+#### New Features
+
+- **Chapter snapshot comparison**: Changing a chapter’s status from a chapter card or the writing status panel links its native snapshot to the writing journey. Open a floating comparison from a command or history, follow the current draft, switch versions, and inspect Chinese character edits and paragraph splits/merges. Show only differences, with a unified differences view by default on phones in portrait orientation. Requires File recovery; snapshots remain on their originating device, follow native retention, and do not sync with journey records. Journeys with snapshots require a compatible plugin version.
+
+#### Enhancements
+
+- **Performance**: Optimize startup, word counting in long documents, and responsiveness across the Workbench, lore cards, relation graphs, and timelines.
+- **Mobile lore trajectories**: Optimize dragging and pinch zoom, preserving the viewport after saving edits.
+- **Mobile floating statistics**: Enlarge the docked touch area for easier dragging with fewer accidental back gestures.
+- **Plugin size**: Reduce the installation size.
+
+#### Bug Fixes
+
+- **Sticky note typography**: Fix missing first-line indentation in new notes and added paragraphs, and the caret appearing unindented immediately after Enter when card indentation is enabled.
+- **Immersive chapter list**: Fix word counts not updating while editing until immersive mode is reopened.
+- **Lore highlighting**: Fix stale highlighting after renaming lore.
+
 ## ✨ v4.0.3
 
 ### 功能优化

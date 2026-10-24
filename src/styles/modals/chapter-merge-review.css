@@ -149,11 +149,6 @@
 }
 
 
-.wn-merge-card-textarea:focus {
-	border-color: var(--interactive-accent);
-}
-
-
 /* 3. 右栏：Word 风格修订与批注侧栏 */
 .wn-merge-annotation-pane {
 	width: 320px;
@@ -282,27 +277,5 @@
 .wn-merge-rev-btn-locate:hover {
 	background: color-mix(in srgb, var(--interactive-accent) 15%, transparent);
 	color: var(--interactive-accent);
-	border-color: var(--interactive-accent);
-}
-
-
-
-.wn-merge-anno-card-textarea {
-	width: 100%;
-	min-height: 64px;
-	padding: 8px;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 6px;
-	background: var(--background-primary);
-	font-size: 0.85em;
-	line-height: 1.5;
-	color: var(--text-normal);
-	resize: vertical;
-	outline: none;
-	transition: border-color 0.2s;
-}
-
-
-.wn-merge-anno-card-textarea:focus {
 	border-color: var(--interactive-accent);
 }

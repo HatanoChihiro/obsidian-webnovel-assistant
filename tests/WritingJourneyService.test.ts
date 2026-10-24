@@ -7,12 +7,13 @@ import {
 	type WritingJourneyEvent,
 	type WritingJourneyLog
 } from '../src/types/writingJourney';
-import type { TFile } from 'obsidian';
+import type { App, TFile } from 'obsidian';
+import type { WebNovelAssistantPlugin } from '../src/types/plugin';
 import { WritingJourneyService } from '../src/services/WritingJourneyService';
 import { WritingJourneyBoardRenderer } from '../src/ui/components/WritingJourneyBoardRenderer';
 import { MockElement } from './mocks/MockElement';
 
-const { MockTFile, MockTFolder, parseYamlMock } = vi.hoisted(() => {
+const { MockTFile, MockTFolder, MockMarkdownView, parseYamlMock } = vi.hoisted(() => {
 	class MockAbstractFile {
 		vault: unknown = {};
 		constructor(public name: string = '', public path: string = '') {}
@@ -32,9 +33,15 @@ const { MockTFile, MockTFolder, parseYamlMock } = vi.hoisted(() => {
 			super(name, path);
 		}
 	}
+	class MockView {
+		file: unknown = null;
+		getViewData(): string { return 'editor content'; }
+		async save(): Promise<void> {}
+	}
 	return {
 		MockTFile: MockFile,
 		MockTFolder: MockFolder,
+		MockMarkdownView: MockView,
 		parseYamlMock: vi.fn()
 	};
 });
@@ -44,7 +51,8 @@ vi.mock('obsidian', () => ({
 	TFolder: MockTFolder,
 	TAbstractFile: class {},
 	parseYaml: parseYamlMock,
-	setIcon: vi.fn()
+	setIcon: vi.fn(),
+	MarkdownView: MockMarkdownView
 }));
 
 vi.mock('../src/i18n', () => ({
@@ -92,7 +100,7 @@ describe('Writing Journey Schema Validation (parseWritingJourneyLog)', () => {
 	});
 
 	it('should return malformed for unsupported schema version', () => {
-		expect(parseWritingJourneyLog({ version: 2, events: [] }).status).toBe('malformed');
+		expect(parseWritingJourneyLog({ version: 3, events: [] }).status).toBe('malformed');
 		expect(parseWritingJourneyLog({ version: 0, events: [] }).status).toBe('malformed');
 		expect(parseWritingJourneyLog({ version: '1', events: [] }).status).toBe('malformed');
 		expect(parseWritingJourneyLog({ events: [] }).status).toBe('malformed');
@@ -494,15 +502,45 @@ describe('WritingJourneyService', () => {
 
 	describe('Same-status selection no-op', () => {
 		it('should not persist or record an event when chapter status is unchanged', async () => {
-			await service.recordChapterStatusChanged('NovelA', 'NovelA/第1章.md', '第1章', 'draft', 'draft');
+			expect('recordChapterStatusChanged' in WritingJourneyService.prototype).toBe(false);
+			const chapterFile = new MockTFile('第1章.md', 'NovelA/第1章.md');
+			mockApp.vault.getAbstractFileByPath.mockImplementation((p: string) => {
+				if (p === 'NovelA/作品信息.md') return infoFile;
+				if (p === 'NovelA/第1章.md') return chapterFile;
+				return null;
+			});
+			mockApp.workspace.getLeavesOfType = vi.fn(() => []);
+			frontmatterState['status'] = 'draft';
 
-			expect(mockApp.fileManager.processFrontMatter).not.toHaveBeenCalled();
+			const res = await service.changeChapterStatus({
+				file: chapterFile as unknown as TFile,
+				toStatus: 'draft',
+				bookPath: 'NovelA'
+			});
+
+			expect(res.success).toBe(true);
+			expect(res.changed).toBe(false);
 			expect(frontmatterState[WRITING_JOURNEY_YAML_KEY]).toBeUndefined();
 		});
 
 		it('should record an event when chapter status actually changes', async () => {
-			await service.recordChapterStatusChanged('NovelA', 'NovelA/第1章.md', '第1章', 'draft', 'completed');
+			const chapterFile = new MockTFile('第1章.md', 'NovelA/第1章.md');
+			mockApp.vault.getAbstractFileByPath.mockImplementation((p: string) => {
+				if (p === 'NovelA/作品信息.md') return infoFile;
+				if (p === 'NovelA/第1章.md') return chapterFile;
+				return null;
+			});
+			mockApp.workspace.getLeavesOfType = vi.fn(() => []);
+			frontmatterState['status'] = 'draft';
 
+			const res = await service.changeChapterStatus({
+				file: chapterFile as unknown as TFile,
+				toStatus: 'completed',
+				bookPath: 'NovelA'
+			});
+
+			expect(res.success).toBe(true);
+			expect(res.changed).toBe(true);
 			expect(mockApp.fileManager.processFrontMatter).toHaveBeenCalled();
 			const savedLog = frontmatterState[WRITING_JOURNEY_YAML_KEY] as WritingJourneyLog;
 			expect(savedLog.events.some(e => e.type === 'chapter.status_changed')).toBe(true);
@@ -532,13 +570,19 @@ describe('WritingJourneyService', () => {
 				if (p === 'NovelA/第1章.md') return chapterFile;
 				return null;
 			});
+			mockApp.workspace.getLeavesOfType = vi.fn(() => []);
+			frontmatterState['status'] = 'draft';
 			mockApp.vault.read.mockImplementation(async (file: unknown) => {
-				if (file === chapterFile) return '# 第1章\n\n正文内容一千字。';
+				if (file === chapterFile) return `---\n${JSON.stringify({ status: 'completed' })}\n---\n# 第1章\n\n正文内容一千字。`;
 				return `---\n${JSON.stringify(frontmatterState)}\n---`;
 			});
 			mockPlugin.calculateAccurateWords = vi.fn().mockReturnValue(2450);
 
-			await service.recordChapterStatusChanged('NovelA', 'NovelA/第1章.md', '第1章', 'draft', 'completed');
+			await service.changeChapterStatus({
+				file: chapterFile as unknown as TFile,
+				toStatus: 'completed',
+				bookPath: 'NovelA'
+			});
 
 			const savedLog = frontmatterState[WRITING_JOURNEY_YAML_KEY] as WritingJourneyLog;
 			const statusEvent = savedLog.events.find(
@@ -555,13 +599,19 @@ describe('WritingJourneyService', () => {
 				if (p === 'NovelA/第1章.md') return chapterFile;
 				return null;
 			});
+			mockApp.workspace.getLeavesOfType = vi.fn(() => []);
+			frontmatterState['status'] = 'draft';
 			mockApp.vault.read.mockImplementation(async (file: unknown) => {
 				if (file === chapterFile) throw new Error('File read error during snapshot');
 				return `---\n${JSON.stringify(frontmatterState)}\n---`;
 			});
 			mockPlugin.calculateAccurateWords = vi.fn().mockReturnValue(2450);
 
-			await service.recordChapterStatusChanged('NovelA', 'NovelA/第1章.md', '第1章', 'draft', 'completed');
+			await service.changeChapterStatus({
+				file: chapterFile as unknown as TFile,
+				toStatus: 'completed',
+				bookPath: 'NovelA'
+			});
 
 			const savedLog = frontmatterState[WRITING_JOURNEY_YAML_KEY] as WritingJourneyLog;
 			const statusEvent = savedLog.events.find(
@@ -619,12 +669,6 @@ describe('WritingJourneyService', () => {
 			service.markHandledRename('NovelA/old.md', 'NovelA/new.md');
 			expect(service.consumeHandledRename('NovelA/old.md', 'NovelA/new.md')).toBe(true);
 			expect(service.consumeHandledRename('NovelA/old.md', 'NovelA/new.md')).toBe(false);
-		});
-
-		it('should correctly mark and consume handled delete events', () => {
-			service.markHandledDelete('NovelA/deleted.md');
-			expect(service.consumeHandledDelete('NovelA/deleted.md')).toBe(true);
-			expect(service.consumeHandledDelete('NovelA/deleted.md')).toBe(false);
 		});
 
 		it('should lazily prune expired TTLs even when only a few keys exist', () => {
@@ -713,6 +757,7 @@ describe('WritingJourneyService', () => {
 			const deleteEvent = savedLog.events.find(e => e.type === 'chapter.deleted') as unknown as { chapterTitle: string };
 			expect(deleteEvent).toBeDefined();
 			expect(deleteEvent.chapterTitle).toBe('第1章');
+			expect(savedLog.events.filter(e => e.type === 'chapter.deleted')).toHaveLength(1);
 		});
 
 		it('handleVaultDelete should ignore Markdown files that are not eligible chapters', async () => {
@@ -731,8 +776,8 @@ describe('WritingJourneyService', () => {
 			mockPlugin.getVaultMarkdownFiles.mockReturnValue([file1]);
 
 			service.initializeStartupBaseline();
-			expect(service.hasBaselinePath('NovelA/第1章.md')).toBe(true);
-			expect(service.hasBaselinePath('NovelA/第2章.md')).toBe(false);
+			expect(service['baselinePaths'].has('NovelA/第1章.md')).toBe(true);
+			expect(service['baselinePaths'].has('NovelA/第2章.md')).toBe(false);
 		});
 
 		it('handleVaultCreate should suppress chapter.created for files present in startup baseline', async () => {
@@ -831,7 +876,7 @@ describe('WritingJourneyService', () => {
 			await unreadyService.handleVaultCreate(file);
 
 			expect(mockApp.fileManager.processFrontMatter).not.toHaveBeenCalled();
-			expect(unreadyService.hasBaselinePath('NovelA/第1章.md')).toBe(true);
+			expect(unreadyService['baselinePaths'].has('NovelA/第1章.md')).toBe(true);
 		});
 
 		it('should transition to ready and refresh baseline upon markReady()', () => {
@@ -839,10 +884,10 @@ describe('WritingJourneyService', () => {
 			mockPlugin.getVaultMarkdownFiles.mockReturnValue([file]);
 
 			const unreadyService = new WritingJourneyService(mockApp, mockPlugin);
-			expect(unreadyService.hasBaselinePath('NovelA/第1章.md')).toBe(false);
+			expect(unreadyService['baselinePaths'].has('NovelA/第1章.md')).toBe(false);
 
 			unreadyService.markReady();
-			expect(unreadyService.hasBaselinePath('NovelA/第1章.md')).toBe(true);
+			expect(unreadyService['baselinePaths'].has('NovelA/第1章.md')).toBe(true);
 		});
 
 		it('markReady should be idempotent and not re-scan after initial readiness', () => {
@@ -851,7 +896,7 @@ describe('WritingJourneyService', () => {
 
 			const unreadyService = new WritingJourneyService(mockApp, mockPlugin);
 			unreadyService.markReady();
-			expect(unreadyService.hasBaselinePath('NovelA/第1章.md')).toBe(true);
+			expect(unreadyService['baselinePaths'].has('NovelA/第1章.md')).toBe(true);
 
 			mockPlugin.getVaultMarkdownFiles.mockClear();
 			unreadyService.markReady();
@@ -949,13 +994,13 @@ describe('WritingJourneyService', () => {
 			// Fresh service instance with empty baseline (marked ready)
 			const freshService = new WritingJourneyService(mockApp, mockPlugin);
 			freshService.markReady();
-			expect(freshService.hasBaselinePath('NovelA/第1章.md')).toBe(false);
+			expect(freshService['baselinePaths'].has('NovelA/第1章.md')).toBe(false);
 
 			const file = new MockTFile('第1章.md', 'NovelA/第1章.md') as unknown as TFile;
 			await freshService.handleVaultCreate(file);
 
 			expect(mockApp.fileManager.processFrontMatter).not.toHaveBeenCalled();
-			expect(freshService.hasBaselinePath('NovelA/第1章.md')).toBe(true);
+			expect(freshService['baselinePaths'].has('NovelA/第1章.md')).toBe(true);
 		});
 
 		it('should allow recreation if chapter was previously deleted in journey log', async () => {
@@ -987,7 +1032,7 @@ describe('WritingJourneyService', () => {
 			await freshService.handleVaultCreate(file);
 
 			expect(mockApp.fileManager.processFrontMatter).toHaveBeenCalledTimes(1);
-			expect(freshService.hasBaselinePath('NovelA/第1章.md')).toBe(true);
+			expect(freshService['baselinePaths'].has('NovelA/第1章.md')).toBe(true);
 		});
 	});
 });
@@ -1400,4 +1445,304 @@ describe('WritingJourneyBoardRenderer Search Matching', () => {
 		expect(rows).toHaveLength(1);
 		expect(checkedPaths).toContain('NovelA/01_renamed.md');
 	});
+});
+describe('WritingJourneyService changeChapterStatus Regressions', () => {
+	beforeEach(() => {
+		parseYamlMock.mockImplementation((text: string) => ({ status: /status: ([^\n]+)/.exec(text)?.[1] }));
+	});
+	it('should return changed: false without mutating or recording when fromStatus === toStatus', async () => {
+		const mockFile = new MockTFile('Chapter1.md', 'NovelA/Chapter1.md');
+		const processFrontMatter = vi.fn(async (_file: unknown, callback: (fm: Record<string, unknown>) => void) => callback({ status: 'draft' }));
+		const mockApp = {
+			vault: {
+				getAbstractFileByPath: vi.fn(() => mockFile),
+				read: vi.fn(async () => 'Content')
+			},
+			workspace: {
+				getLeavesOfType: vi.fn(() => []),
+				trigger: vi.fn()
+			},
+			metadataCache: {
+				getFileCache: vi.fn(() => ({
+					frontmatter: { status: '草稿' }
+				}))
+			},
+			fileManager: { processFrontMatter }
+		};
+
+		const service = new WritingJourneyService(mockApp as unknown as App, {} as WebNovelAssistantPlugin);
+		const result = await service.changeChapterStatus({
+			file: mockFile as unknown as TFile,
+			toStatus: 'draft'
+		});
+
+		expect(result.success).toBe(true);
+		expect(result.changed).toBe(false);
+		expect(processFrontMatter).toHaveBeenCalledOnce();
+	});
+
+	it('should save open editor buffers and save snapshot ref when status changes', async () => {
+		const mockFile = new MockTFile('Chapter1.md', 'NovelA/Chapter1.md');
+		const editorSaveMock = vi.fn(async () => {});
+		let frontmatterStatus = 'unwritten';
+		const processFrontMatter = vi.fn(async (_f: unknown, cb: (fm: Record<string, unknown>) => void) => {
+			const fm: Record<string, unknown> = {};
+			cb(fm);
+			if (typeof fm.status === 'string') frontmatterStatus = fm.status;
+		});
+
+		const saveSnapshotMock = vi.fn(async () => ({
+			provider: 'file-recovery',
+			deviceId: 'dev-1',
+			dbName: 'vault-backup',
+			key: 99,
+			path: 'NovelA/Chapter1.md',
+			ts: Date.now(),
+			digest: 'a'.repeat(64)
+		}));
+
+		const mockApp = {
+			vault: {
+				getAbstractFileByPath: vi.fn(() => mockFile),
+				read: vi.fn(async () => '---\nstatus: draft\n---\nFrozen chapter content')
+			},
+			workspace: {
+				getLeavesOfType: vi.fn(() => [
+					{
+						view: Object.assign(new MockMarkdownView(), {
+							file: mockFile,
+							save: editorSaveMock
+						})
+					}
+				]),
+				trigger: vi.fn()
+			},
+			metadataCache: {
+				getFileCache: vi.fn(() => ({
+					frontmatter: { status: frontmatterStatus }
+				}))
+			},
+			fileManager: { processFrontMatter }
+		};
+
+		const mockPlugin = {
+			calculateAccurateWords: vi.fn(() => 3),
+			homepageManager: {
+				findNovelInfoFile: vi.fn(() => new MockTFile('作品信息.md', 'NovelA/作品信息.md'))
+			},
+			services: {
+				getOptional: vi.fn((key: string) => {
+					if (key === 'NativeSnapshotService') return { saveSnapshot: saveSnapshotMock };
+					return null;
+				})
+			}
+		};
+
+		const service = new WritingJourneyService(mockApp as unknown as App, mockPlugin as unknown as WebNovelAssistantPlugin);
+		vi.spyOn(service, 'getJourneyLog').mockResolvedValue({
+			status: 'valid',
+			log: { version: 1, events: [] }
+		});
+
+		const result = await service.changeChapterStatus({
+			file: mockFile as unknown as TFile,
+			toStatus: 'draft',
+			bookPath: 'NovelA'
+		});
+
+		expect(result.success).toBe(true);
+		expect(result.changed).toBe(true);
+		expect(editorSaveMock).toHaveBeenCalled();
+		expect(saveSnapshotMock).toHaveBeenCalledWith('NovelA/Chapter1.md', '---\nstatus: draft\n---\nFrozen chapter content');
+		expect(result.snapshotRef?.key).toBe(99);
+	});
+
+	it('should NOT roll back status change when native snapshot fails and still record event', async () => {
+		const mockFile = new MockTFile('Chapter1.md', 'NovelA/Chapter1.md');
+		const processFrontMatter = vi.fn(async (_f: unknown, cb: (fm: Record<string, unknown>) => void) => {
+			const fm: Record<string, unknown> = {};
+			cb(fm);
+		});
+
+		const saveSnapshotMock = vi.fn(async () => {
+			throw new Error('Native disk full or disabled');
+		});
+
+		const appendEventMock = vi.fn(async (_bookPath: string, _event: ChapterStatusChangedEvent) => {});
+
+		const mockApp = {
+			vault: {
+				getAbstractFileByPath: vi.fn(() => mockFile),
+				read: vi.fn(async () => 'Some content')
+			},
+			workspace: {
+				getLeavesOfType: vi.fn(() => []),
+				trigger: vi.fn()
+			},
+			metadataCache: {
+				getFileCache: vi.fn(() => ({
+					frontmatter: { status: 'unwritten' }
+				}))
+			},
+			fileManager: { processFrontMatter }
+		};
+
+		const mockPlugin = {
+			calculateAccurateWords: vi.fn(() => 2),
+			services: {
+				getOptional: vi.fn(() => ({ saveSnapshot: saveSnapshotMock }))
+			}
+		};
+
+		const service = new WritingJourneyService(mockApp as unknown as App, mockPlugin as unknown as WebNovelAssistantPlugin);
+		service.appendEvent = appendEventMock;
+
+		const result = await service.changeChapterStatus({
+			file: mockFile as unknown as TFile,
+			toStatus: 'draft',
+			bookPath: 'NovelA'
+		});
+
+		expect(result.success).toBe(true);
+		expect(result.changed).toBe(true);
+		expect(result.snapshotError).toBeDefined();
+		expect(appendEventMock).toHaveBeenCalled();
+		const recordedEvent = appendEventMock.mock.calls[0][1] as ChapterStatusChangedEvent;
+		expect(recordedEvent.snapshotUnavailable).toBe(true);
+		expect(recordedEvent.snapshot).toBeUndefined();
+	});
+
+	it('should deny new status work after service shutdown', async () => {
+		const mockApp = { vault: { getAbstractFileByPath: vi.fn() } };
+		const service = new WritingJourneyService(mockApp as unknown as App, {} as WebNovelAssistantPlugin);
+		await service.destroy();
+
+		const result = await service.changeChapterStatus({
+			file: new MockTFile('C.md', 'C.md') as unknown as TFile,
+			toStatus: 'draft'
+		});
+
+		expect(result.success).toBe(false);
+		expect((result.error as Error).message).toMatch(/shutting down/i);
+	});
+
+	it('should no-op without writing or appending event when processFrontMatter callback sees identical status', async () => {
+		const mockFile = new MockTFile('NovelA/Chapter1.md', 'NovelA/Chapter1.md');
+		const appendEventMock = vi.fn(async () => {});
+		let processCalled = false;
+		const mockApp = {
+			vault: {
+				getAbstractFileByPath: vi.fn((p) => p === mockFile.path ? mockFile : null),
+				read: vi.fn(async () => 'Some content')
+			},
+			workspace: {
+				getLeavesOfType: vi.fn(() => []),
+				trigger: vi.fn()
+			},
+			metadataCache: {
+				getFileCache: vi.fn(() => ({ frontmatter: { status: 'unwritten' } })) // Stale cache says unwritten!
+			},
+			fileManager: {
+				processFrontMatter: vi.fn(async (_f, cb) => {
+					processCalled = true;
+					const fm = { status: '草稿' }; // Actual disk status is already writing!
+					cb(fm);
+				})
+			}
+		};
+		const service = new WritingJourneyService(mockApp as unknown as App, {} as WebNovelAssistantPlugin);
+		service.appendEvent = appendEventMock;
+
+		const result = await service.changeChapterStatus({
+			file: mockFile as unknown as TFile,
+			toStatus: 'draft',
+			bookPath: 'NovelA'
+		});
+
+		expect(result.success).toBe(true);
+		expect(result.changed).toBe(false);
+		expect(appendEventMock).not.toHaveBeenCalled();
+	});
+
+	it('should abort status mutation when editor buffer save fails', async () => {
+		const mockFile = new MockTFile('NovelA/Chapter1.md', 'NovelA/Chapter1.md');
+		const mockSave = vi.fn(async () => { throw new Error('Editor disk IO error'); });
+		const processFrontMatter = vi.fn();
+		const mockApp = {
+			vault: {
+				getAbstractFileByPath: vi.fn(() => mockFile)
+			},
+			workspace: {
+				getLeavesOfType: vi.fn(() => [{
+					view: Object.assign(new MockMarkdownView(), {
+						file: mockFile,
+						save: mockSave
+					})
+				}]),
+				trigger: vi.fn()
+			},
+			metadataCache: { getFileCache: vi.fn(() => ({ frontmatter: {} })) },
+			fileManager: { processFrontMatter }
+		};
+		const service = new WritingJourneyService(mockApp as unknown as App, {} as WebNovelAssistantPlugin);
+		const result = await service.changeChapterStatus({
+			file: mockFile as unknown as TFile,
+			toStatus: 'draft'
+		});
+
+		expect(result.success).toBe(false);
+		expect(processFrontMatter).not.toHaveBeenCalled();
+		expect((result.error as Error).message).toMatch(/Editor disk IO error/i);
+	});
+	it('uses disk state when the metadata cache already reports the target state', async () => {
+		const file = new MockTFile('Chapter1.md', 'NovelA/Chapter1.md');
+		const append = vi.fn(async () => {});
+		const app = {
+			vault: { getAbstractFileByPath: () => file, read: async () => '---\nstatus: draft\n---\n正文' },
+			workspace: { getLeavesOfType: () => [], trigger: vi.fn() },
+			metadataCache: { getFileCache: () => ({ frontmatter: { status: 'draft' } }) },
+			fileManager: { processFrontMatter: async (_file: unknown, callback: (fm: Record<string, unknown>) => void) => callback({ status: 'unwritten' }) }
+		};
+		const service = new WritingJourneyService(app as unknown as import('obsidian').App, {} as import('../src/types/plugin').WebNovelAssistantPlugin);
+		vi.spyOn(service, 'appendEvent').mockImplementation(append);
+		const result = await service.changeChapterStatus({ file: file as unknown as TFile, toStatus: 'draft', bookPath: 'NovelA' });
+		expect(result.changed).toBe(true);
+		expect(result.fromStatus).toBe('unwritten');
+		expect(append).toHaveBeenCalledOnce();
+	});
+
+	it('refuses to overwrite divergent buffers in two open editors', async () => {
+		const file = new MockTFile('Chapter1.md', 'NovelA/Chapter1.md');
+		const save = vi.fn(async () => {});
+		const mutate = vi.fn();
+		const app = {
+			vault: { getAbstractFileByPath: () => file },
+			workspace: { getLeavesOfType: () => ['甲', '乙'].map(text => ({ view: Object.assign(new MockMarkdownView(), { file, save, getViewData: () => text }) })) },
+			fileManager: { processFrontMatter: mutate }
+		};
+		const service = new WritingJourneyService(app as unknown as import('obsidian').App, {} as import('../src/types/plugin').WebNovelAssistantPlugin);
+		const result = await service.changeChapterStatus({ file: file as unknown as TFile, toStatus: 'draft' });
+		expect(result.success).toBe(false);
+		expect(save).not.toHaveBeenCalled();
+		expect(mutate).not.toHaveBeenCalled();
+	});
+
+	it('verifies content again when Obsidian updates file stats during the first post-status read', async () => {
+		const file = Object.assign(new MockTFile('Chapter1.md', 'NovelA/Chapter1.md'), { stat: { mtime: 1, size: 40 } });
+		const text = '---\nstatus: draft\n---\n正文';
+		const read = vi.fn(async () => { file.stat.mtime = 2; return text; });
+		const save = vi.fn(async () => ({ provider: 'file-recovery' as const, deviceId: 'd', dbName: 'b', key: 1, path: file.path, ts: 1000, digest: 'a'.repeat(64) }));
+		const app = {
+			vault: { getAbstractFileByPath: () => file, read },
+			workspace: { getLeavesOfType: () => [], trigger: vi.fn() },
+			fileManager: { processFrontMatter: async (_file: unknown, callback: (fm: Record<string, unknown>) => void) => callback({ status: 'unwritten' }) }
+		};
+		const plugin = { services: { getOptional: () => ({ saveSnapshot: save }) } };
+		const service = new WritingJourneyService(app as unknown as import('obsidian').App, plugin as unknown as import('../src/types/plugin').WebNovelAssistantPlugin);
+		vi.spyOn(service, 'appendEvent').mockResolvedValue();
+		const result = await service.changeChapterStatus({ file: file as unknown as TFile, toStatus: 'draft', bookPath: 'NovelA' });
+		expect(result.snapshotRef?.key).toBe(1);
+		expect(read).toHaveBeenCalledTimes(2);
+	});
+
 });

@@ -204,14 +204,7 @@
 		font-size: 1em;
 	}
 
-	body.is-phone .wn-timeline-title,
-	body.is-phone .wn-timeline-event-title {
-		font-size: var(--wn-phone-font-title);
-		font-weight: 600;
-	}
-
-	body.is-phone .wn-timeline-desc,
-	body.is-phone .wn-timeline-summary {
+	body.is-phone .wn-timeline-desc {
 		font-size: var(--wn-phone-font-body);
 		font-weight: 400;
 		line-height: 1.4;
@@ -257,8 +250,7 @@
 		font-weight: 600;
 	}
 
-	body.is-phone .wn-lore-card-body,
-	body.is-phone .wn-lore-card-content {
+	body.is-phone .wn-lore-card-body {
 		padding: var(--wn-phone-card-body-padding);
 		font-size: var(--wn-phone-font-body);
 		font-weight: 400;
@@ -442,16 +434,8 @@
 
 	/* 悬浮卡片 / Popover 浮窗保持紧凑，标题与内容字号由上方规则单独控制 */
 	body.is-phone .webnovel-lore-popover,
-	body.is-phone .wn-lore-hover-popover,
-	body.is-phone .wn-character-hover-card,
-	body.is-phone .wn-hover-card {
+	body.is-phone .wn-lore-hover-popover {
 		padding: 0.3em 0.45em;
-	}
-
-	body.is-phone .wn-lore-popover-header {
-		font-size: var(--wn-phone-font-title);
-		padding-bottom: 4px;
-		margin-bottom: 6px;
 	}
 
 

@@ -494,11 +494,11 @@ describe('ChapterSplitter - Core Logic & Regressions', () => {
 		});
 
 		it.each([
-			{ title: '温吞水20-48', eligible: false },
+			{ title: '示例作品20-48', eligible: false },
 			{ title: '第2章_合并章节', eligible: false },
 			{ title: '第2章', eligible: true }
 		])('should split $title but record creation only when eligible for the chapter list', async ({ title, eligible }) => {
-			sourceFile = createMockFile('Novel/温吞水.md');
+			sourceFile = createMockFile('Novel/示例作品.md');
 			sourceFile.parent = folder;
 			folder.children = [sourceFile];
 			mockView.file = sourceFile;

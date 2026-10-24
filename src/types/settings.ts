@@ -185,8 +185,6 @@ export interface ImmersiveModeSettings {
 
 	/** 便签字体大小 (px) */
 	immersiveNoteFontSize: number;
-	/** 布局持久化数据 (null 表示使用默认值) */
-	immersiveLayout: Record<string, number> | null;
 	/** 记忆参考文档的路径（向后兼容旧设置） */
 	lastReferenceFilePath?: string;
 	/** 各作品独立记忆的参考文档路径映射 (作品文件夹完整路径 -> 参考文档完整路径) */

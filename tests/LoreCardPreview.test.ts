@@ -58,6 +58,10 @@ import { Component } from 'obsidian';
 import { LoreCardPreview } from '../src/ui/components/LoreCardPreview';
 import { LoreBoardRenderer } from '../src/ui/components/LoreBoardRenderer';
 
+function isPreviewOpen(preview: LoreCardPreview): boolean {
+	return preview['panelEl'] !== null;
+}
+
 let rafQueue: FrameRequestCallback[] = [];
 
 interface Harness {
@@ -386,9 +390,9 @@ describe('LoreCardPreview', () => {
 			third.preview.open();
 			await flushMicrotasks();
 
-			expect(first.preview.isOpen()).toBe(false);
-			expect(second.preview.isOpen()).toBe(true);
-			expect(third.preview.isOpen()).toBe(true);
+			expect(isPreviewOpen(first.preview)).toBe(false);
+			expect(isPreviewOpen(second.preview)).toBe(true);
+			expect(isPreviewOpen(third.preview)).toBe(true);
 			expect(findPanel(first.body)).toBeNull();
 			expect(findPanel(third.body)).not.toBeNull();
 		});
@@ -399,13 +403,13 @@ describe('LoreCardPreview', () => {
 
 			h1.preview.open();
 			await flushMicrotasks();
-			expect(h1.preview.isOpen()).toBe(true);
+			expect(isPreviewOpen(h1.preview)).toBe(true);
 
 			h2.preview.open();
 			await flushMicrotasks();
 			// 非法值被夹到下限 1：打开第二个时第一个被淘汰
-			expect(h1.preview.isOpen()).toBe(false);
-			expect(h2.preview.isOpen()).toBe(true);
+			expect(isPreviewOpen(h1.preview)).toBe(false);
+			expect(isPreviewOpen(h2.preview)).toBe(true);
 		});
 
 		it('点击另一张卡片的展开按钮时，先前打开的面板不被当作“点击外部”关闭', async () => {
@@ -414,21 +418,21 @@ describe('LoreCardPreview', () => {
 
 			h1.preview.open();
 			await flushMicrotasks();
-			expect(h1.preview.isOpen()).toBe(true);
+			expect(isPreviewOpen(h1.preview)).toBe(true);
 
 			// 模拟点击第二张卡片的展开按钮：mousedown 落在 h2 的卡片容器上
 			(h1.document as unknown as { dispatchEvent: (type: string, event?: unknown) => void })
 				.dispatchEvent('mousedown', { type: 'mousedown', target: h2.target });
 
 			// h1 的面板不应被关闭
-			expect(h1.preview.isOpen()).toBe(true);
+			expect(isPreviewOpen(h1.preview)).toBe(true);
 
 			h2.preview.open();
 			await flushMicrotasks();
 
 			// 两个面板同时常驻（上限 3）
-			expect(h1.preview.isOpen()).toBe(true);
-			expect(h2.preview.isOpen()).toBe(true);
+			expect(isPreviewOpen(h1.preview)).toBe(true);
+			expect(isPreviewOpen(h2.preview)).toBe(true);
 			expect(findPanel(h1.body)).not.toBeNull();
 			expect(findPanel(h2.body)).not.toBeNull();
 		});
@@ -441,15 +445,15 @@ describe('LoreCardPreview', () => {
 			await flushMicrotasks();
 			h2.preview.open();
 			await flushMicrotasks();
-			expect(h1.preview.isOpen()).toBe(true);
-			expect(h2.preview.isOpen()).toBe(true);
+			expect(isPreviewOpen(h1.preview)).toBe(true);
+			expect(isPreviewOpen(h2.preview)).toBe(true);
 
 			const blank = h1.body.createDiv({ cls: 'blank-area' });
 			// 两个 harness 各自持有独立文档，需分别派发同一语义的点击
 			dispatchOnAll('mousedown', { type: 'mousedown', target: blank }, [h1.document, h2.document]);
 
-			expect(h1.preview.isOpen()).toBe(false);
-			expect(h2.preview.isOpen()).toBe(false);
+			expect(isPreviewOpen(h1.preview)).toBe(false);
+			expect(isPreviewOpen(h2.preview)).toBe(false);
 		});
 
 		it('点击某个面板的关闭按钮，只关闭该面板，其它常驻面板不受影响', async () => {
@@ -463,18 +467,18 @@ describe('LoreCardPreview', () => {
 			await flushMicrotasks();
 			h3.preview.open();
 			await flushMicrotasks();
-			expect(h1.preview.isOpen()).toBe(true);
-			expect(h2.preview.isOpen()).toBe(true);
-			expect(h3.preview.isOpen()).toBe(true);
+			expect(isPreviewOpen(h1.preview)).toBe(true);
+			expect(isPreviewOpen(h2.preview)).toBe(true);
+			expect(isPreviewOpen(h3.preview)).toBe(true);
 
 			// 点击第二个面板的关闭按钮
 			const closeBtn = findPanel(h2.body)?.querySelector('.wn-lore-preview-close');
 			expect(closeBtn).not.toBeNull();
 			simulateClick(h2.document, closeBtn as MockElement, [h1.document, h2.document, h3.document]);
 
-			expect(h2.preview.isOpen()).toBe(false);
-			expect(h1.preview.isOpen()).toBe(true);
-			expect(h3.preview.isOpen()).toBe(true);
+			expect(isPreviewOpen(h2.preview)).toBe(false);
+			expect(isPreviewOpen(h1.preview)).toBe(true);
+			expect(isPreviewOpen(h3.preview)).toBe(true);
 		});
 
 		it('Esc 仅在焦点位于面板内时关闭，避免编辑器内误关', async () => {
@@ -486,17 +490,17 @@ describe('LoreCardPreview', () => {
 
 			h1.preview.open();
 			await flushMicrotasks();
-			expect(h1.preview.isOpen()).toBe(true);
+			expect(isPreviewOpen(h1.preview)).toBe(true);
 
 			// 焦点在编辑器（面板外）时按 Esc：不关闭
 			doc.activeElement = h1.body.createDiv({ cls: 'editor' });
 			doc.dispatchEvent('keydown', { type: 'keydown', key: 'Escape', preventDefault: vi.fn() });
-			expect(h1.preview.isOpen()).toBe(true);
+			expect(isPreviewOpen(h1.preview)).toBe(true);
 
 			// 焦点在面板内时按 Esc：关闭
 			doc.activeElement = findPanel(h1.body);
 			doc.dispatchEvent('keydown', { type: 'keydown', key: 'Escape', preventDefault: vi.fn() });
-			expect(h1.preview.isOpen()).toBe(false);
+			expect(isPreviewOpen(h1.preview)).toBe(false);
 		});
 
 		it('数量上限默认值：设置项缺省时按 3 处理', async () => {
@@ -511,13 +515,13 @@ describe('LoreCardPreview', () => {
 				h.preview.open();
 				await flushMicrotasks();
 			}
-			expect(harnesses[0].preview.isOpen()).toBe(true);
-			expect(harnesses[2].preview.isOpen()).toBe(true);
+			expect(isPreviewOpen(harnesses[0].preview)).toBe(true);
+			expect(isPreviewOpen(harnesses[2].preview)).toBe(true);
 
 			harnesses[3].preview.open();
 			await flushMicrotasks();
-			expect(harnesses[0].preview.isOpen()).toBe(false);
-			expect(harnesses[3].preview.isOpen()).toBe(true);
+			expect(isPreviewOpen(harnesses[0].preview)).toBe(false);
+			expect(isPreviewOpen(harnesses[3].preview)).toBe(true);
 		});
 	});
 
@@ -533,7 +537,7 @@ describe('LoreCardPreview', () => {
 			preview.open();
 			await flushMicrotasks();
 			expect(findPanel(body)).toBeNull();
-			expect(preview.isOpen()).toBe(false);
+			expect(isPreviewOpen(preview)).toBe(false);
 		});
 
 		it('总开关关闭时 closeAll 关闭所有已打开和常驻的预览面板', async () => {
@@ -545,13 +549,13 @@ describe('LoreCardPreview', () => {
 			h2.preview.open();
 			await flushMicrotasks();
 
-			expect(h1.preview.isOpen()).toBe(true);
-			expect(h2.preview.isOpen()).toBe(true);
+			expect(isPreviewOpen(h1.preview)).toBe(true);
+			expect(isPreviewOpen(h2.preview)).toBe(true);
 
 			LoreCardPreview.closeAll();
 
-			expect(h1.preview.isOpen()).toBe(false);
-			expect(h2.preview.isOpen()).toBe(false);
+			expect(isPreviewOpen(h1.preview)).toBe(false);
+			expect(isPreviewOpen(h2.preview)).toBe(false);
 			expect(findPanel(h1.body)).toBeNull();
 			expect(findPanel(h2.body)).toBeNull();
 		});
@@ -670,6 +674,12 @@ describe('LoreCardPreview', () => {
 	describe('LoreBoardRenderer.renderCards 入口绑定与生命周期回归', () => {
 		it('总开关启用时在卡片构建阶段绑定预览、设为 focusable 并注册到 boardComponent', async () => {
 			buildCardDOMMock.mockClear();
+			const batchReads = new Set<Map<unknown, unknown>>();
+			buildCardDOMMock.mockImplementationOnce(async (...args: unknown[]) => {
+				const reads = args[5] as Map<unknown, unknown>;
+				reads.set('retained-file', 'snapshot');
+				batchReads.add(reads);
+			});
 			attachSpy.mockClear();
 			const dom = createMockDom();
 			setupMockOwnerWindow(dom);
@@ -718,6 +728,8 @@ describe('LoreCardPreview', () => {
 			);
 
 			// 卡片 wrapper 应该已创建
+			expect(batchReads.size).toBe(1);
+			for (const reads of batchReads) expect(reads.size).toBe(0);
 			const wrapper = container.querySelector('.wn-lore-card-wrapper');
 			expect(wrapper).not.toBeNull();
 
@@ -742,7 +754,8 @@ describe('LoreCardPreview', () => {
 				expect.objectContaining({
 					focusable: true,
 					onExpand: expect.any(Function)
-				})
+				}),
+				expect.any(Map)
 			);
 
 			// 点击展开按钮前，直接派发 mouseenter 验证悬停预览可用
@@ -831,7 +844,8 @@ describe('LoreCardPreview', () => {
 				expect.objectContaining({
 					focusable: false,
 					onExpand: undefined
-				})
+				}),
+				expect.any(Map)
 			);
 		});
 	});

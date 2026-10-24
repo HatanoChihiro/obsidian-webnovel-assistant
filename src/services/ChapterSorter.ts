@@ -212,19 +212,6 @@ export class ChapterSorter {
 	}
 
 	/**
-	 * 在指定作品的章节集合中查找记录所引用的章节文件。
-	 * 回收记录只保存章节 basename，因此不能依赖 metadataCache 的相对链接解析。
-	 */
-	static findChapterByName(
-		app: App,
-		plugin: ChapterSorterContext,
-		folderPath: string,
-		chapterName: string
-	): TFile | null {
-		return this.resolveChapterFile(app, plugin, folderPath, chapterName);
-	}
-
-	/**
 	 * 设置自定义章节命名规则
 	 * 会对用户输入的正则表达式进行预编译验证，过滤掉无效规则，
 	 * 并限制模式长度，降低灾难性回溯（ReDoS）导致 UI 冻结的风险。
@@ -533,19 +520,6 @@ export class ChapterSorter {
 	}
 
 	/**
-	 * 结合用户在文件浏览器中的自定义拖拽顺序，进行混合智能排序
-	 * 逻辑与 FileExplorerPatcher 完全对齐：
-	 * - 章节被打包成虚拟的 __CHAPTER_BLOCK__ 块，在自定义排序中占有一个位置
-	 * - 非章节文件拥有各自的路径作为位置
-	 * - 如果同时没有自定义顺序，章节块（0）会排在普通文件（1）前面，也就是章节在前的默认行为
-	 */
-	static compareFilesWithCustomOrder(a: TAbstractFile, b: TAbstractFile, customOrder: Record<string, number>): number {
-		const aChapter = this.extractChapterNumber(a.name);
-		const bChapter = this.extractChapterNumber(b.name);
-		return this.compareParsedFilesWithCustomOrder(a, b, customOrder, aChapter, bChapter);
-	}
-
-	/**
 	 * 创建单次排序通用的比较器工厂函数。
 	 * 在该次排序过程中按文件名缓存 extractChapterNumber 提取结果，避免 O(N log N) 重复正则匹配。
 	 */
@@ -762,9 +736,6 @@ export class ChapterSorter {
 		}
 
 		return null;
-	}
-	static sortFiles(files: TAbstractFile[]): TAbstractFile[] {
-		return files.slice().sort((a, b) => ChapterSorter.compareFiles(a, b));
 	}
 
 	/**

@@ -409,7 +409,7 @@ describe('ChapterSorter', () => {
 				}
 			};
 
-			expect(ChapterSorter.findChapterByName(mockApp, mockPlugin, '例外目录', '第12章 真相')).toBe(chapter);
+			expect(ChapterSorter.resolveChapterFile(mockApp, mockPlugin, '例外目录', '第12章 真相')).toBe(chapter);
 		});
 	});
 
@@ -606,7 +606,8 @@ describe('ChapterSorter', () => {
 			path,
 			name: `${basename}.md`,
 			basename,
-			extension: 'md'
+			extension: 'md',
+			parent: createFolder('作品', '作品')
 		});
 		const createFolder = (path: string, name: string): TFolder => Object.assign(new TFolder(), {
 			path,
@@ -614,7 +615,7 @@ describe('ChapterSorter', () => {
 			children: []
 		});
 
-		it('produces identical sort order to compareFilesWithCustomOrder on mixed chapters, folders, and custom order', () => {
+		it('preserves chapter block order among folders and files with custom order', () => {
 			const folder1 = createFolder('作品/卷一', '卷一');
 			const folder2 = createFolder('作品/设定集', '设定集');
 			const ch1 = createFile('作品/第1章.md', '第1章');
@@ -632,11 +633,13 @@ describe('ChapterSorter', () => {
 
 			const items = [regularFile2, ch10, folder2, ch1, regularFile1, folder1, ch2];
 
-			const existingSorted = [...items].sort((a, b) => ChapterSorter.compareFilesWithCustomOrder(a, b, customOrder));
 			const comparator = ChapterSorter.createFileComparator(customOrder);
 			const memoizedSorted = [...items].sort(comparator);
 
-			expect(memoizedSorted.map(f => f.path)).toEqual(existingSorted.map(f => f.path));
+			expect(memoizedSorted.map(f => f.path)).toEqual([
+				'作品/大纲.md', '作品/第1章.md', '作品/第2章.md', '作品/第10章.md',
+				'作品/设定集', '作品/人物设定.md', '作品/卷一'
+			]);
 		});
 
 		it('asserts each unique filename is parsed only once within a sorting pass', () => {

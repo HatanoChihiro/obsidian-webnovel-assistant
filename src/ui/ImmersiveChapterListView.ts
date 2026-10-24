@@ -56,6 +56,7 @@ export class ImmersiveChapterListView extends ItemView {
 	private retryWindow: Window | null = null;
 	private scrollRafId: number | null = null;
 	private scrollRafWindow: Window | null = null;
+	private renderedCountEls: Map<string, HTMLElement> = new Map();
 
 	constructor(leaf: WorkspaceLeaf, plugin: ImmersiveChapterListViewPlugin) {
 		super(leaf);
@@ -82,6 +83,9 @@ export class ImmersiveChapterListView extends ItemView {
 		this.registerEvent(this.app.workspace.on('active-leaf-change', () => { this.updateActiveHighlight(); }));
 		this.registerEvent(this.app.workspace.on('file-open', () => { this.updateActiveHighlight(); }));
 		this.registerEvent(this.app.workspace.on('webnovel:immersive-reference-ready', () => { this.updateActiveHighlight(); }));
+		this.registerEvent(this.app.workspace.on('webnovel:file-word-count-updated', (file: TFile, count: number) => {
+			this.updateFileWordCount(file, count);
+		}));
 		this.registerEvent(this.app.vault.on('create', () => { void this.refresh(); }));
 		this.registerEvent(this.app.vault.on('delete', () => { void this.refresh(); }));
 		this.registerEvent(this.app.vault.on('rename', () => { void this.refresh(); }));
@@ -169,6 +173,8 @@ export class ImmersiveChapterListView extends ItemView {
 
 		const currentGen = ++this.refreshGeneration;
 		if (this.isClosed) return;
+
+		this.renderedCountEls.clear();
 
 		const { containerEl } = this;
 		
@@ -299,11 +305,13 @@ export class ImmersiveChapterListView extends ItemView {
 				
 				const wordCount = this.plugin.cacheManager.getFileCache(file.path) || 0;
 				if (this.plugin.settings.showExplorerCounts) {
+					let countEl: HTMLElement;
 					if (this.plugin.cacheManager.isEligibleForWordCount(file)) {
-						itemEl.createSpan({ text: `${wordCount}${t('common.word-char')}`, cls: 'immersive-chapter-count' });
+						countEl = itemEl.createSpan({ text: `${wordCount}${t('common.word-char')}`, cls: 'immersive-chapter-count' });
 					} else {
-						itemEl.createSpan({ text: t('corkboard.wordcount-excluded'), cls: 'immersive-chapter-count is-excluded' });
+						countEl = itemEl.createSpan({ text: t('corkboard.wordcount-excluded'), cls: 'immersive-chapter-count is-excluded' });
 					}
+					this.renderedCountEls.set(file.path, countEl);
 				}
 
 				itemEl.addEventListener('click', (e) => {
@@ -383,10 +391,27 @@ export class ImmersiveChapterListView extends ItemView {
 		}
 	}
 
+	private updateFileWordCount(file: TFile, count: number): void {
+		if (this.isClosed) return;
+		if (!this.plugin.settings.showExplorerCounts) return;
+
+		const countEl = this.renderedCountEls.get(file.path);
+		if (!countEl) return;
+
+		if (this.plugin.cacheManager.isEligibleForWordCount(file)) {
+			countEl.setText(`${count}${t('common.word-char')}`);
+			countEl.removeClass('is-excluded');
+		} else {
+			countEl.setText(t('corkboard.wordcount-excluded'));
+			countEl.addClass('is-excluded');
+		}
+	}
+
 	async onClose() {
 		this.isClosed = true;
 		this.refreshGeneration++;
 		this.cancelRetryTimer();
 		this.cancelScrollRaf();
+		this.renderedCountEls.clear();
 	}
 }

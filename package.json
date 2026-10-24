@@ -1,17 +1,17 @@
 {
 	"name": "web-novel-assistant",
-	"version": "4.0.3",
+	"version": "4.0.4",
 	"description": "An all-in-one writing studio for novel and story writers — accurate word count, goal tracking, story timeline, foreshadowing manager, chapter corkboard, and lore graphs",
 	"main": "main.js",
 	"scripts": {
-		"build:css": "esbuild src/styles/index.css --bundle --outfile=styles.css",
+		"build:css": "esbuild src/styles/index.css --bundle --minify-whitespace --outfile=styles.css",
 		"check:css": "npm run build:css && stylelint \"src/styles/**/*.css\" --max-warnings 0 && tsx scripts/css-audit.ts",
 		"dev:js": "esbuild main.ts --bundle --format=cjs --external:obsidian --external:@codemirror/* --outfile=main.js --watch",
 		"dev:css": "esbuild src/styles/index.css --bundle --outfile=styles.css --watch",
 		"dev": "concurrently \"npm:dev:js\" \"npm:dev:css\"",
 		"type-check": "tsc --noEmit",
 		"prebuild": "npm run type-check && npm run lint",
-		"build": "esbuild main.ts --bundle --format=cjs --external:obsidian --external:@codemirror/* --minify --outfile=main.js",
+		"build": "esbuild main.ts --bundle --format=cjs --external:obsidian --external:@codemirror/* --minify --charset=utf8 --outfile=main.js",
 		"test": "vitest run",
 		"test:coverage": "vitest run --coverage",
 		"test:watch": "vitest",
@@ -62,6 +62,7 @@
 	},
 	"dependencies": {
 		"d3-force": "^3.0.0",
+		"diff": "9.0.0",
 		"monkey-around": "^3.0.0"
 	}
 }

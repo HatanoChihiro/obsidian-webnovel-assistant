@@ -1,0 +1,42 @@
+/* Responsive overrides for Chapter Snapshot Comparison on Phone */
+
+body.is-phone .wn-snapshot-panel {
+	top: 0;
+	left: 0;
+	transform: none;
+	width: 100vw;
+	height: 100vh;
+	max-width: 100vw;
+	max-height: 100vh;
+	border-radius: 0;
+	border: none;
+	resize: none;
+}
+
+body.is-phone .wn-snapshot-header-actions button {
+	min-height: 44px;
+	min-width: 44px;
+	padding: 8px 12px;
+}
+
+@media (orientation: portrait) {
+	body.is-phone .wn-snapshot-toolbar {
+		grid-template-columns: minmax(0, 1fr);
+		align-items: stretch;
+		gap: 8px;
+	}
+}
+
+body.is-phone .wn-snapshot-select-group {
+	flex-direction: column;
+	align-items: stretch;
+}
+
+body.is-phone .wn-snapshot-toolbar select,
+body.is-phone .wn-snapshot-toolbar button {
+	min-height: 44px;
+}
+
+body.is-phone .wn-snapshot-header {
+	flex-wrap: wrap;
+}

@@ -1,4 +1,4 @@
-import { MarkdownRenderer, type Component, setIcon, type App, type TFile } from 'obsidian';
+import { MarkdownRenderer, type Component, setIcon, type App, type TFile, type CachedMetadata } from 'obsidian';
 import { t } from '../../i18n';
 import type { AccurateCountSettings } from '../../types/settings';
 import type { CharacterManager, LoreEntry } from '../../services/CharacterManager';
@@ -23,6 +23,16 @@ export interface ResolvedLoreBody {
 	/** 别名（大纲模式取别名行，单文件模式合并 Frontmatter 与正文别名行） */
 	aliases: string[];
 }
+
+interface LoreFileSnapshot {
+	content: string;
+	lines: string[];
+	metadata: CachedMetadata | null;
+	sections: Map<string, { start: number; end: number }>;
+}
+
+/** Shared only during a card-render batch; the caller clears it when the batch ends. */
+export type LoreBodyReadCache = Map<TFile, { mtime: number; generation: number; read: Promise<LoreFileSnapshot> }>;
 
 /** 词条正文解析结果缓存上限（条目数） */
 const LORE_BODY_CACHE_LIMIT = 200;
@@ -58,8 +68,8 @@ export class LoreCardRenderer {
 
 	/** 清空词条正文解析缓存；传入文件时仅清空该文件的全部词条缓存 */
 	static clearLoreBodyCache(file?: TFile): void {
+		LoreCardRenderer.clearGeneration++;
 		if (!file) {
-			LoreCardRenderer.clearGeneration++;
 			LoreCardRenderer.loreBodyCache.clear();
 			return;
 		}
@@ -112,7 +122,7 @@ export class LoreCardRenderer {
 	 * 解析词条正文（切片 + 别名提取 + 标记清理），供卡片正文与悬停预览共用。
 	 * 解析结果按 文件修改时间 缓存，同一词条重复渲染不再重新读取与解析。
 	 */
-	static async resolveLoreBody(entry: LoreEntry, app: App): Promise<ResolvedLoreBody> {
+	static async resolveLoreBody(entry: LoreEntry, app: App, reads?: LoreBodyReadCache): Promise<ResolvedLoreBody> {
 		const cached = LoreCardRenderer.readCache(entry);
 		if (cached) return cached;
 
@@ -120,61 +130,64 @@ export class LoreCardRenderer {
 		const expectedMtime = LoreCardRenderer.getEntryMtime(targetFile);
 		const capturedGeneration = LoreCardRenderer.clearGeneration;
 
-		const resolved = await LoreCardRenderer.parseLoreBody(entry, app);
+		const resolved = await LoreCardRenderer.parseLoreBody(entry, app, reads);
 		if (capturedGeneration === LoreCardRenderer.clearGeneration) {
 			LoreCardRenderer.writeCache(entry, resolved, expectedMtime, targetFile);
 		}
 		return resolved;
 	}
 
-	private static async parseLoreBody(entry: LoreEntry, app: App): Promise<ResolvedLoreBody> {
-		const fileContent = await app.vault.cachedRead(entry.file);
-		const fileCache = app.metadataCache.getFileCache(entry.file);
+	private static async readLoreFile(file: TFile, app: App, reads?: LoreBodyReadCache): Promise<LoreFileSnapshot> {
+		const mtime = LoreCardRenderer.getEntryMtime(file);
+		const generation = LoreCardRenderer.clearGeneration;
+		const cached = reads?.get(file);
+		if (mtime > 0 && cached?.mtime === mtime && cached.generation === generation) return cached.read;
+		const read = app.vault.cachedRead(file).then(content => {
+			const metadata = app.metadataCache.getFileCache(file);
+			const sections = new Map<string, { start: number; end: number }>();
+			const headings = metadata?.headings ?? [];
+			let end = -1;
+			for (let i = headings.length - 1; i >= 0; i--) {
+				const h = headings[i];
+				if (h.level > 2) continue;
+				if (h.level === 2) sections.set(cleanLoreHeading(h.heading), { start: h.position.end.line + 1, end });
+				end = h.position.start.line;
+			}
+			return { content, lines: content.split('\n'), metadata, sections };
+		});
+		if (mtime > 0) reads?.set(file, { mtime, generation, read });
+		try {
+			return await read;
+		} catch (error) {
+			if (reads?.get(file)?.read === read) reads.delete(file);
+			throw error;
+		}
+	}
+
+	private static async parseLoreBody(entry: LoreEntry, app: App, reads?: LoreBodyReadCache): Promise<ResolvedLoreBody> {
+		const snapshot = await LoreCardRenderer.readLoreFile(entry.file, app, reads);
+		const fileContent = snapshot.content;
+		const fileCache = snapshot.metadata;
 
 		let chunk = '';
 		const aliases: string[] = [];
 
-		let hasMatchedH2 = false;
-		if (fileCache && fileCache.headings) {
-			const headings = fileCache.headings;
-			let startIndex = -1;
-			let endIndex = -1;
+		const section = snapshot.sections.get(cleanLoreHeading(entry.heading));
+		if (section) {
+			const slice = section.end === -1 ? snapshot.lines.slice(section.start) : snapshot.lines.slice(section.start, section.end);
+			const rawChunk = slice.join('\n');
 
-			for (let i = 0; i < headings.length; i++) {
-				const h = headings[i];
-				const rawHeading = cleanLoreHeading(h.heading);
-				if (rawHeading === cleanLoreHeading(entry.heading) && h.level === 2) {
-					hasMatchedH2 = true;
-					startIndex = h.position.end.line + 1;
-					let nextLevelH = null;
-					for (let j = i + 1; j < headings.length; j++) {
-						if (headings[j].level <= 2) {
-							nextLevelH = headings[j];
-							break;
-						}
-					}
-					endIndex = nextLevelH ? nextLevelH.position.start.line : -1;
-					break;
-				}
-			}
-
-			if (startIndex !== -1) {
-				const lines = fileContent.split('\n');
-				const slice = endIndex === -1 ? lines.slice(startIndex) : lines.slice(startIndex, endIndex);
-				const rawChunk = slice.join('\n');
-
-				const aliasMatch = rawChunk.match(/^(?:\*\*|__)?(?:别名|Alias)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/im);
-				if (aliasMatch && aliasMatch[1]) {
-					aliases.push(...aliasMatch[1].split(/[,，、/|;；]/).map(s => s.trim()).filter(Boolean));
-					chunk = rawChunk.replace(aliasMatch[0], '').replace(/<!--\s*wn-important\s*-->\r?\n?/g, '').trim();
-				} else {
-					chunk = rawChunk.replace(/<!--\s*wn-important\s*-->\r?\n?/g, '').trim();
-				}
+			const aliasMatch = rawChunk.match(/^(?:\*\*|__)?(?:别名|Alias)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/im);
+			if (aliasMatch && aliasMatch[1]) {
+				aliases.push(...aliasMatch[1].split(/[,，、/|;；]/).map(s => s.trim()).filter(Boolean));
+				chunk = rawChunk.replace(aliasMatch[0], '').replace(/<!--\s*wn-important\s*-->\r?\n?/g, '').trim();
+			} else {
+				chunk = rawChunk.replace(/<!--\s*wn-important\s*-->\r?\n?/g, '').trim();
 			}
 		}
 
 		// 单文件词条模式回退（若无匹配的二级标题且词条名为文件名 basename）
-		if (!hasMatchedH2 && cleanLoreHeading(entry.heading) === cleanLoreHeading(entry.file.basename)) {
+		if (!section && cleanLoreHeading(entry.heading) === cleanLoreHeading(entry.file.basename)) {
 			// 1. 从 Frontmatter 中解析别名
 			const fm = fileCache?.frontmatter;
 			if (fm) {
@@ -372,7 +385,8 @@ export class LoreCardRenderer {
 			onExpand?: () => void;
 			/** 使卡片容器可聚焦，让键盘用户也能触发悬停预览 */
 			focusable?: boolean;
-		} = {}
+		} = {},
+		reads?: LoreBodyReadCache
 	): Promise<void> {
 		const isReadOnly = Boolean(options.readOnly);
 		const card = container.createDiv({ cls: `wn-lore-card${entry.important ? ' is-important' : ''}${isReadOnly ? ' is-preview' : ''}` });
@@ -547,7 +561,7 @@ export class LoreCardRenderer {
 		// Body area
 		const body = card.createDiv({ cls: 'wn-lore-card-body' });
 		body.setAttr('tabindex', '0');
-		await LoreCardRenderer.renderBodyContent(body, header, entry, plugin, component, { collapseSubheadings: !isReadOnly });
+		await LoreCardRenderer.renderBodyContent(body, header, entry, plugin, component, { collapseSubheadings: !isReadOnly }, reads);
 	}
 
 	private static async renderBodyContent(
@@ -556,11 +570,12 @@ export class LoreCardRenderer {
 		entry: LoreEntry,
 		plugin: LoreCardRendererPlugin,
 		component: Component,
-		options: { collapseSubheadings?: boolean } = {}
+		options: { collapseSubheadings?: boolean } = {},
+		reads?: LoreBodyReadCache
 	): Promise<void> {
 		const loadingEl = body.createDiv({ cls: 'wn-lore-card-loading', text: t('common.loading') });
 		try {
-			const { chunk: chunkToRender, aliases } = await LoreCardRenderer.resolveLoreBody(entry, plugin.app);
+			const { chunk: chunkToRender, aliases } = await LoreCardRenderer.resolveLoreBody(entry, plugin.app, reads);
 
 			loadingEl.remove();
 

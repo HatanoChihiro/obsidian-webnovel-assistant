@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MockElement } from './mocks/MockElement';
 import { RelationGraphView, type RelationGraphViewPlugin } from '../src/ui/RelationGraphView';
+import type { GraphData } from '../src/services/RelationGraphManager';
+import type { GraphRenderState, ThemeColors } from '../src/ui/components/GraphRenderer';
 
 const { MockTFile } = vi.hoisted(() => {
 	class HoistedMockTFile {
@@ -111,6 +113,89 @@ vi.mock('../src/ui/components/GraphInteractionController', () => ({
 vi.mock('../src/i18n', () => ({
 	t: (key: string) => key
 }));
+
+describe('graph render work per frame', () => {
+	const node = (id: string, x: number, y: number): GraphData['nodes'][number] => ({
+		id, heading: id, x, y, vx: 0, vy: 0, pinned: false,
+		file: new MockTFile('lore.md', 'Novel/lore.md') as unknown as import('obsidian').TFile
+	});
+	it('indexes focus neighbors while preserving overlap and simultaneous focus fading', async () => {
+		const { GraphRenderer } = await vi.importActual<typeof import('../src/ui/components/GraphRenderer')>('../src/ui/components/GraphRenderer');
+		const nodes = ['A', 'B', 'C', 'D', 'E'].map((id, i) => node(id, i * 100, 0));
+		const data: GraphData = { nodes, edges: [] };
+		const tasks = [[0, 1, true], [0, 1, false], [2, 0, true], [3, 4, false]].map(([src, tgt, overlap]) => ({
+			src: nodes[Number(src)], tgt: nodes[Number(tgt)], isOverlapped: overlap
+		})) as import('../src/ui/components/GraphRenderer').EdgeRenderTask[];
+		const state = { graphData: data, selectedNode: nodes[0], hoveredNode: null } as GraphRenderState;
+		let alpha = 1;
+		const drawn: number[] = [];
+		const ctx = new Proxy({}, {
+			get: (_o, key) => key === 'fillText' ? () => { drawn.push(alpha); } : () => {},
+			set: (_o, key, value: unknown) => { if (key === 'globalAlpha') alpha = Number(value); return true; }
+		}) as CanvasRenderingContext2D;
+		const filter = vi.spyOn(tasks, 'filter');
+		GraphRenderer.drawNodes(ctx, data, {} as ThemeColors, tasks, state);
+		expect(drawn.splice(0)).toEqual([1, 1, 0.35, 0.15, 0.15]);
+		state.hoveredNode = nodes[3];
+		GraphRenderer.drawNodes(ctx, data, {} as ThemeColors, tasks, state);
+		expect(drawn.splice(0)).toEqual([0.3, 1, 0.35, 0.15, 0.15]);
+		state.selectedNode = null;
+		GraphRenderer.drawNodes(ctx, data, {} as ThemeColors, tasks, state);
+		expect(drawn.splice(0)).toEqual([0.3, 0.3, 0.3, 1, 1]);
+		tasks[3].isOverlapped = true;
+		GraphRenderer.drawNodes(ctx, data, {} as ThemeColors, tasks, state);
+		expect(drawn.splice(0)).toEqual([0.3, 0.3, 0.3, 1, 0.35]);
+		expect(filter).not.toHaveBeenCalled();
+	});
+	it('indexes endpoints once, keeps first duplicate identity, and resolves replacement nodes on the next frame', async () => {
+		const { GraphRenderer } = await vi.importActual<typeof import('../src/ui/components/GraphRenderer')>('../src/ui/components/GraphRenderer');
+		const first = node('A', 0, 0);
+		const target = node('B', 100, 100);
+		const data: GraphData = { nodes: [first, target, node('A', 999, 999)],
+			edges: [{ source: 'A', target: 'B', label: '', type: 'explicit' }] };
+		const state = { graphData: data, scale: 1, edgeDrawModeMap: new Map(), edgeOffsetMap: new Map(), combinedLabelMap: new Map() } as GraphRenderState;
+		const ctx = new Proxy({}, { get: (_o, key) => key === 'createLinearGradient' ? () => ({ addColorStop: () => {} }) : () => {}, set: () => true }) as CanvasRenderingContext2D;
+		const find = vi.spyOn(data.nodes, 'find');
+		const tasks = GraphRenderer.renderEdges(ctx, {} as ThemeColors, state);
+		expect(tasks[0].src).toBe(first);
+		expect(tasks[0].tgt).toBe(target);
+		expect(find).not.toHaveBeenCalled();
+		const replacement = { ...first, x: 50 };
+		data.nodes[0] = replacement as GraphData['nodes'][number];
+		expect(GraphRenderer.renderEdges(ctx, {} as ThemeColors, state)[0].src).toBe(replacement);
+		find.mockRestore();
+	});
+
+	it('shares label measurements within one frame and refreshes them for changed typography', async () => {
+		const { GraphRenderer } = await vi.importActual<typeof import('../src/ui/components/GraphRenderer')>('../src/ui/components/GraphRenderer');
+		const data: GraphData = { nodes: [node('A', 0, 0), node('B', 100, 100)],
+			edges: [{ source: 'A', target: 'B', label: 'shared|label', type: 'explicit' }] };
+		const state = { graphData: data, scale: 1, edgeDrawModeMap: new Map(), edgeOffsetMap: new Map(), combinedLabelMap: new Map() } as GraphRenderState;
+		let font = '12px serif';
+		const fonts: string[] = [];
+		const measureText = vi.fn(() => ({ width: Number.parseFloat(font) * 3 }));
+		const ctx = new Proxy({}, {
+			get: (_o, key) => {
+				if (key === 'font') return font;
+				if (key === 'measureText') return measureText;
+				if (key === 'save') return () => { fonts.push(font); };
+				if (key === 'restore') return () => { font = fonts.pop()!; };
+				if (key === 'createLinearGradient') return () => ({ addColorStop: () => {} });
+				return () => {};
+			},
+			set: (_o, key, value: unknown) => { if (key === 'font') font = String(value); return true; }
+		}) as CanvasRenderingContext2D;
+		const colors = { labelFontSize: 10, fontFamily: 'sans-serif' } as ThemeColors;
+		GraphRenderer.renderEdges(ctx, colors, state);
+		// Two labels measured once in the label font and once in the incoming clipping font.
+		expect(measureText).toHaveBeenCalledTimes(4);
+		expect(font).toBe('12px serif');
+		colors.labelFontSize = 20;
+		const tasks = GraphRenderer.renderEdges(ctx, colors, state);
+		expect(measureText).toHaveBeenCalledTimes(8);
+		expect(tasks[0].bgWidth).toBeGreaterThan(120);
+	});
+});
 
 describe('RelationGraphView lifecycle & input narrowing', () => {
 	let plugin: RelationGraphViewPlugin;

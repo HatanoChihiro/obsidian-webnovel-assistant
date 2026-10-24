@@ -17,7 +17,7 @@ export interface ChapterCardPlugin extends LoreBadgePlugin {
 	menuManager: Pick<MenuManager, 'toggleExcludeFromWordCount'>;
 	cacheManager: Pick<CacheManager, 'getFileCache'>;
 	calculateAccurateWords(content: string): number;
-	writingJourneyService?: Pick<WritingJourneyService, 'recordChapterStatusChanged'>;
+	writingJourneyService?: Pick<WritingJourneyService, 'changeChapterStatus'>;
 }
 
 export interface ChapterCardOptions {
@@ -102,21 +102,30 @@ export class ChapterCard {
 						.setChecked(s === status)
 						.onClick(async () => {
 							if (s === status) return;
-							const oldStatus = status;
 							try {
 								if (onSaveStateChange) onSaveStateChange(true);
-								await app.fileManager.processFrontMatter(file, (fm) => {
-									(fm as Record<string, unknown>)['status'] = getCorkboardStatusText(s);
+								if (!plugin.writingJourneyService?.changeChapterStatus) {
+									new Notice(t('corkboard.status-update-failed'));
+									return;
+								}
+								const res = await plugin.writingJourneyService.changeChapterStatus({
+									file,
+									toStatus: s,
+									bookPath: currentBookPath
 								});
-								status = s;
-								statusEl.setText(getCorkboardStatusText(s));
-								new Notice(t('corkboard.status-updated', { status: getCorkboardStatusText(s) }));
-								const bookRoot = currentBookPath;
-								if (bookRoot && plugin.writingJourneyService) {
-									try {
-										await plugin.writingJourneyService.recordChapterStatusChanged(bookRoot, file.path, file.basename, oldStatus, s);
-									} catch (journeyErr) {
-										Logger.error('[ChapterCard] Failed to record chapter status journey event:', journeyErr);
+								if (!res.success) {
+									new Notice(t('corkboard.status-update-failed'));
+									return;
+								}
+								if (res.changed) {
+									status = s;
+									statusEl.setText(getCorkboardStatusText(s));
+									new Notice(t('corkboard.status-updated', { status: getCorkboardStatusText(s) }));
+									if (res.snapshotError) {
+										new Notice(t('snapshot.notice-unavailable'));
+									}
+									if (res.journeyError) {
+										new Notice(t('snapshot.journey-save-failed'));
 									}
 								}
 							} catch (err) {

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { CacheManager } from '../src/services/CacheManager';
 import { ChapterSorter } from '../src/services/ChapterSorter';
 import type { WebNovelAssistantPlugin } from '../src/types/plugin';
-import { Platform, TFile, TFolder } from 'obsidian';
+import { Platform, TFile, TFolder, Vault } from 'obsidian';
 
 type TestTFileConstructor = new (name: string, path: string) => TFile;
 type TestTFolderConstructor = new (name: string, path: string) => TFolder;
@@ -17,6 +17,10 @@ describe('CacheManager', () => {
     let mockPlugin: WebNovelAssistantPlugin;
     let manager: CacheManager;
     let mockAdapter: { exists: any, read: any, write: any };
+    let mockWorkspace: {
+        trigger: ReturnType<typeof vi.fn>;
+        on: ReturnType<typeof vi.fn>;
+    };
     
     beforeEach(() => {
         vi.useFakeTimers();
@@ -27,6 +31,11 @@ describe('CacheManager', () => {
             write: vi.fn()
         };
 
+        mockWorkspace = {
+            trigger: vi.fn(),
+            on: vi.fn()
+        };
+
         mockPlugin = {
             app: {
                 vault: {
@@ -34,7 +43,8 @@ describe('CacheManager', () => {
                 },
                 metadataCache: {
                     getFileCache: vi.fn().mockReturnValue(null)
-                }
+                },
+                workspace: mockWorkspace
             },
             settings: {
                 workspaceFolders: ['Book 1'],
@@ -197,6 +207,17 @@ describe('CacheManager', () => {
         it('isFileInWorkspace should return false for files outside workspace', () => {
             expect(manager.isFileInWorkspace({ path: 'Book 2/Chapter 1.md' } as TFile)).toBe(false);
         });
+
+		it('isFileCacheCurrent should verify whether entry exists, is not folder, and lastModified matches file mtime', () => {
+			const file = { path: 'Book 1/Chapter 1.md', name: 'Chapter 1.md', basename: 'Chapter 1', extension: 'md', stat: { mtime: 5000 } } as unknown as TFile;
+			expect(manager.isFileCacheCurrent(file)).toBe(false);
+
+			manager.updateFileCache(file, 200, mockPlugin.app.vault);
+			expect(manager.isFileCacheCurrent(file)).toBe(true);
+
+			const modifiedFile = { path: 'Book 1/Chapter 1.md', name: 'Chapter 1.md', basename: 'Chapter 1', extension: 'md', stat: { mtime: 6000 } } as unknown as TFile;
+			expect(manager.isFileCacheCurrent(modifiedFile)).toBe(false);
+		});
 
         it('isFileInStrictChapterException should match exceptions correctly', () => {
             expect(manager.isFileInStrictChapterException({ path: 'Book 1/Settings/Lore.md' } as TFile)).toBe(true);
@@ -512,6 +533,149 @@ describe('CacheManager', () => {
             vi.advanceTimersByTime(500);
             expect(refreshFolderCounts).toHaveBeenCalledTimes(count);
             expect(refreshHomepageViews).toHaveBeenCalledTimes(count);
+        });
+    });
+
+    describe('webnovel:file-word-count-updated event emission', () => {
+        it('emits webnovel:file-word-count-updated when a new file entry is cached', () => {
+            const file = {
+                path: 'Book 1/Chapter 1.md',
+                name: 'Chapter 1.md',
+                basename: 'Chapter 1',
+                stat: { mtime: 1000 },
+                parent: { path: 'Book 1', parent: null }
+            } as unknown as TFile;
+
+            manager.updateFileCache(file, 1500, {} as unknown as Vault);
+
+            expect(mockWorkspace.trigger).toHaveBeenCalledWith(
+                'webnovel:file-word-count-updated',
+                file,
+                1500
+            );
+        });
+
+        it('emits webnovel:file-word-count-updated when existing word count changes', () => {
+            const file = {
+                path: 'Book 1/Chapter 1.md',
+                name: 'Chapter 1.md',
+                basename: 'Chapter 1',
+                stat: { mtime: 1000 },
+                parent: { path: 'Book 1', parent: null }
+            } as unknown as TFile;
+
+            manager.updateFileCache(file, 1500, {} as unknown as Vault);
+            mockWorkspace.trigger.mockClear();
+
+            file.stat.mtime = 2000;
+            manager.updateFileCache(file, 1800, {} as unknown as Vault);
+
+            expect(mockWorkspace.trigger).toHaveBeenCalledTimes(1);
+            expect(mockWorkspace.trigger).toHaveBeenCalledWith(
+                'webnovel:file-word-count-updated',
+                file,
+                1800
+            );
+        });
+
+        it('emits webnovel:file-word-count-updated when count drops to zero', () => {
+            const file = {
+                path: 'Book 1/Chapter 1.md',
+                name: 'Chapter 1.md',
+                basename: 'Chapter 1',
+                stat: { mtime: 1000 },
+                parent: { path: 'Book 1', parent: null }
+            } as unknown as TFile;
+
+            manager.updateFileCache(file, 1500, {} as unknown as Vault);
+            mockWorkspace.trigger.mockClear();
+
+            file.stat.mtime = 2000;
+            manager.updateFileCache(file, 0, {} as unknown as Vault);
+
+            expect(mockWorkspace.trigger).toHaveBeenCalledTimes(1);
+            expect(mockWorkspace.trigger).toHaveBeenCalledWith(
+                'webnovel:file-word-count-updated',
+                file,
+                0
+            );
+        });
+
+        it('does NOT emit when count is unchanged', () => {
+            const file = {
+                path: 'Book 1/Chapter 1.md',
+                name: 'Chapter 1.md',
+                basename: 'Chapter 1',
+                stat: { mtime: 1000 },
+                parent: { path: 'Book 1', parent: null }
+            } as unknown as TFile;
+
+            manager.updateFileCache(file, 1500, {} as unknown as Vault);
+            mockWorkspace.trigger.mockClear();
+
+            file.stat.mtime = 2000;
+            manager.updateFileCache(file, 1500, {} as unknown as Vault);
+
+            expect(mockWorkspace.trigger).not.toHaveBeenCalled();
+        });
+
+        it('does NOT emit when update is rejected due to stale timestamp', () => {
+            const file = {
+                path: 'Book 1/Chapter 1.md',
+                name: 'Chapter 1.md',
+                basename: 'Chapter 1',
+                stat: { mtime: 2000 },
+                parent: { path: 'Book 1', parent: null }
+            } as unknown as TFile;
+
+            manager.updateFileCache(file, 1500, {} as unknown as Vault);
+            mockWorkspace.trigger.mockClear();
+
+            file.stat.mtime = 1000;
+            manager.updateFileCache(file, 1600, {} as unknown as Vault);
+
+            expect(mockWorkspace.trigger).not.toHaveBeenCalled();
+        });
+
+        it('does NOT emit when file is ineligible for total word count', () => {
+            vi.spyOn(manager, 'isEligibleForTotalWordCount').mockReturnValue(false);
+            const file = {
+                path: 'Book 1/Excluded.md',
+                name: 'Excluded.md',
+                basename: 'Excluded',
+                stat: { mtime: 1000 },
+                parent: { path: 'Book 1', parent: null }
+            } as unknown as TFile;
+
+            manager.updateFileCache(file, 500, {} as unknown as Vault);
+
+            expect(mockWorkspace.trigger).not.toHaveBeenCalled();
+        });
+
+        it('emits AFTER cache and parent folder counts have already been updated', () => {
+            const bookFolder = { path: 'Book 1', parent: null };
+            const file = {
+                path: 'Book 1/Chapter 1.md',
+                name: 'Chapter 1.md',
+                basename: 'Chapter 1',
+                stat: { mtime: 1000 },
+                parent: bookFolder
+            } as unknown as TFile;
+
+            let fileCacheAtTrigger: number | null = null;
+            let folderCacheAtTrigger: number | null = null;
+
+            mockWorkspace.trigger.mockImplementation((event: string) => {
+                if (event === 'webnovel:file-word-count-updated') {
+                    fileCacheAtTrigger = manager.getFileCache(file.path);
+                    folderCacheAtTrigger = manager.getFolderWordCount('Book 1');
+                }
+            });
+
+            manager.updateFileCache(file, 2000, {} as unknown as Vault);
+
+            expect(fileCacheAtTrigger).toBe(2000);
+            expect(folderCacheAtTrigger).toBe(2000);
         });
     });
 });

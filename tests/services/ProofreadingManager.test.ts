@@ -909,7 +909,7 @@ describe('ProofreadingManager Lifecycle & Vault Operations', () => {
 		expect(diags[0].suggestions).toEqual(['自定义安装建议']);
 	});
 
-	it('should support subscribe / onRefresh notification on dictionary refresh and disable', async () => {
+	it('should notify onRefresh listeners on dictionary refresh and disable', async () => {
 		const listener = vi.fn();
 		const unsubscribe = manager.onRefresh(listener);
 
@@ -919,7 +919,7 @@ describe('ProofreadingManager Lifecycle & Vault Operations', () => {
 		await manager.loadDictionaries();
 
 		expect(listener).toHaveBeenCalled();
-		const lastVersion = manager.getCacheVersion();
+		const lastVersion = manager['cacheVersion'];
 		expect(lastVersion).toBeGreaterThan(0);
 
 		await manager.disable();

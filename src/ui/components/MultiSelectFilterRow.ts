@@ -30,7 +30,7 @@ export class MultiSelectFilterRow {
 	constructor(opts: MultiSelectFilterRowOptions) {
 		this.container = opts.container;
 		this.onChange = opts.onChange;
-		this.selected = new Set(opts.selected ? (Array.isArray(opts.selected) ? opts.selected : Array.from(opts.selected)) : []);
+		this.selected = new Set(opts.selected);
 		this.options = opts.options.map(opt => typeof opt === 'string' ? { value: opt, label: opt } : { value: opt.value, label: opt.label || opt.value });
 
 		const rowCls = ['wn-multi-select-filter-row', opts.cls].filter(Boolean).join(' ');
@@ -61,15 +61,6 @@ export class MultiSelectFilterRow {
 			this.optionBtns.set(opt.value, btn);
 		}
 
-		this.updateUI();
-	}
-
-	public getSelected(): Set<string> {
-		return new Set(this.selected);
-	}
-
-	public setSelected(selected: Set<string> | string[]): void {
-		this.selected = new Set(selected ? (Array.isArray(selected) ? selected : Array.from(selected)) : []);
 		this.updateUI();
 	}
 
@@ -107,9 +98,5 @@ export class MultiSelectFilterRow {
 				btn.removeClass('is-active');
 			}
 		}
-	}
-
-	public getElement(): HTMLElement {
-		return this.rowEl;
 	}
 }

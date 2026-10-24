@@ -728,17 +728,6 @@ export class CharacterManager {
 	}
 
 	/**
-	 * 检查一个文件是否属于公共系列设定文件
-	 */
-	public isSeriesLoreFile(file: TFile): boolean {
-		if (file.extension !== "md") return false;
-		const parentPath = file.parent?.path || "";
-		const bookPath = this.getBookPathForFile(file);
-		if (!bookPath) return false;
-		return this.isSeriesLorePath(bookPath, parentPath);
-	}
-
-	/**
 	 * 查找并返回指定作品路径下的所有公共系列设定子文件夹（按优先级顺序返回）
 	 */
 	public findSeriesLoreFolders(bookPath: string): TFolder[] {
@@ -759,14 +748,6 @@ export class CharacterManager {
 			}
 		}
 		return results;
-	}
-
-	/**
-	 * 查找并返回指定作品路径下的公共系列设定子文件夹（首选匹配，支持多语言候选文件夹名）
-	 */
-	public findSeriesLoreFolder(bookPath: string): TFolder | null {
-		const folders = this.findSeriesLoreFolders(bookPath);
-		return folders.length > 0 ? folders[0] : null;
 	}
 
 	/**

@@ -13,7 +13,7 @@ import {
 
 export { getStickyNoteEditorContent } from './StickyNoteParagraphEditor';
 
-export type StickyNoteListMode = 'immersive' | 'side-panel' | 'workbench';
+export type StickyNoteListMode = 'immersive' | 'side-panel';
 
 interface StickyNoteListRendererOptions {
 	mode: StickyNoteListMode;
@@ -80,7 +80,7 @@ class FileSuggestModal extends FuzzySuggestModal<TFile> {
 
 /**
  * 便签列表的共享渲染器。
- * 沉浸模式、侧面板与工作台共用阅读、编辑、保存和关闭逻辑，移动端侧面板不会显示悬浮便签。
+ * 沉浸模式与侧面板共用阅读、编辑、保存和关闭逻辑，移动端侧面板不会显示悬浮便签。
  */
 export class StickyNoteListRenderer {
 	private static nextInstanceId = 0;
@@ -117,10 +117,8 @@ export class StickyNoteListRenderer {
 		this.container.addClass('wn-sticky-note-list-container');
 		if (this.mode === 'immersive') {
 			this.container.addClass('webnovel-immersive-sticky-container');
-		} else if (this.mode === 'side-panel') {
-			this.container.addClass('wn-sticky-note-list-side-panel');
 		} else {
-			this.container.addClass('wn-sticky-note-list-workbench');
+			this.container.addClass('wn-sticky-note-list-side-panel');
 		}
 
 		if (this.showToolbar) {

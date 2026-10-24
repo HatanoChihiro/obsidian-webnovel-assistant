@@ -5,6 +5,54 @@ import * as markdownCleaner from '../src/utils/markdownCleaner';
 const counter = new WordCounter();
 
 describe('WordCounter', () => {
+	it('recounts only changed plain text lines without cleaning the document again', () => {
+		const instance = new WordCounter();
+		const clean = vi.spyOn(markdownCleaner, 'cleanForWordCount');
+		const count = vi.spyOn(instance as unknown as { countCleanedText(text: string, method: string): number }, 'countCleanedText');
+		try {
+			const lines = Array.from({ length: 3000 }, () => '正文 hello world。');
+			instance.calculateWordsPerLine(lines.join('\n'));
+			for (let i = 0; i < 30; i++) {
+				lines[1500] += '字';
+				const counts = instance.calculateWordsPerLine(lines.join('\n'));
+				expect(counts[1500]).toBe(13 + i + 1);
+				counts[0] = -1;
+			}
+			expect(instance.calculateWordsPerLine(lines.join('\n'))[0]).toBe(13);
+			expect(clean).toHaveBeenCalledTimes(1);
+			expect(count).toHaveBeenCalledTimes(3030);
+		} finally { clean.mockRestore(); count.mockRestore(); }
+	});
+
+	it('matches fresh counts after plain and structural edits in Markdown contexts', () => {
+		const contexts = [
+			'---\ntitle: Title\n---\n正文内容\n结束',
+			'```\n正文内容\n```\n结束',
+			'`开始\n正文内容\n结束`',
+			'<tag attr="\n正文内容\n">\n结束',
+			'[^a]: footnote\n  正文内容\n结束',
+			'开始 ^[注释\n正文内容\n结束]',
+			'[[开始\n正文内容\n结束]]',
+			'开始\n正文内容\n\n[^a]: footnote\n\n  continuation',
+			'# 标题\n正文内容\n---\n结束'
+		];
+		for (const method of ['webnovel', 'standard', 'obsidian'] as const) {
+			for (const includeFootnotes of [true, false]) {
+				for (const original of contexts) {
+					const instance = new WordCounter();
+					for (const text of [original, original.replace('正文内容', '修改后的正文 hello。'),
+						original.replace('正文内容', '  正文内容'), original.replace('正文内容', '**强调**'),
+						original.replace('正文内容', '第一行\n第二行'), original]) {
+						const actual = instance.calculateWordsPerLine(text, method, includeFootnotes);
+						expect(actual).toEqual(new WordCounter().calculateWordsPerLine(text, method, includeFootnotes));
+						expect(instance.calculateAccurateWords(text, method, includeFootnotes))
+							.toBe(new WordCounter().calculateAccurateWords(text, method, includeFootnotes));
+					}
+				}
+			}
+		}
+	});
+
 	it('reuses Markdown cleaning for unchanged counting requests and line counts', () => {
 		const instance = new WordCounter();
 		const clean = vi.spyOn(markdownCleaner, 'cleanForWordCount');

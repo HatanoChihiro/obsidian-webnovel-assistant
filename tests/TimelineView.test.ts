@@ -125,6 +125,7 @@ describe('TimelineView', () => {
 				novelInfo: { fileName: '作品信息' }
 			},
 			timelineManager: {
+				loadContent: vi.fn((folder: string) => mockApp.vault.read(mockPlugin.timelineManager.getTimelineFile(folder))),
 				getTimelineFile: vi.fn().mockReturnValue({ path: '时间线.md' }),
 				createTimelineFile: vi.fn(),
 				parseEntries: vi.fn().mockImplementation(() => parsedEntries),
@@ -135,6 +136,16 @@ describe('TimelineView', () => {
 			},
 			getTrackedMarkdownFiles: vi.fn().mockReturnValue([])
 		} as unknown as TimelineViewPlugin;
+	});
+
+	it('uses the manager shared read path when refreshing the timeline', async () => {
+		const view = new TimelineView({ app: mockApp } as unknown as WorkspaceLeaf, mockPlugin);
+		view.currentFolder = 'Book';
+		vi.mocked(mockPlugin.timelineManager.loadContent).mockResolvedValueOnce('## Shared');
+		await view.refresh();
+		expect(mockPlugin.timelineManager.loadContent).toHaveBeenCalledWith('Book');
+		expect(mockApp.vault.read).not.toHaveBeenCalled();
+		expect(mockPlugin.timelineManager.parseEntries).toHaveBeenCalledWith('## Shared', 'Book');
 	});
 
 	it('should render header sort toggle button defaulting to ascending', async () => {

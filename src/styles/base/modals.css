@@ -5,8 +5,7 @@
 /* 1. Modal Headings Reset (new Setting(contentEl).setName(...).setHeading()) */
 body .modal .setting-item.setting-item-heading,
 body .modal-content .setting-item.setting-item-heading,
-body .modal-container .setting-item.setting-item-heading,
-.webnovel-settings-container .setting-item.setting-item-heading {
+body .modal-container .setting-item.setting-item-heading {
 	padding-left: 0;
 	margin-left: 0;
 	padding-top: 0;
@@ -21,9 +20,7 @@ body .modal-container .setting-item.setting-item-heading,
 body .modal .setting-item.setting-item-heading .setting-item-info,
 body .modal .setting-item.setting-item-heading .setting-item-name,
 body .modal-content .setting-item.setting-item-heading .setting-item-info,
-body .modal-content .setting-item.setting-item-heading .setting-item-name,
-.webnovel-settings-container .setting-item.setting-item-heading .setting-item-info,
-.webnovel-settings-container .setting-item.setting-item-heading .setting-item-name {
+body .modal-content .setting-item.setting-item-heading .setting-item-name {
 	padding-left: 0;
 	margin-left: 0;
 }
@@ -62,25 +59,6 @@ body .modal-content .setting-item.setting-item-heading:not(:first-of-type) .sett
    Generic Modal Form Components
 
    ========================================================================== */
-
-/* Wn Base Input */
-
-.wn-base-input {
-	width: 100%;
-	margin-bottom: 8px;
-	padding: 6px 8px;
-	border-radius: 4px;
-	border: 1px solid var(--background-modifier-border);
-	background: var(--background-primary);
-	color: var(--text-normal);
-	box-sizing: border-box;
-}
-
-.wn-base-textarea {
-	height: 80px;
-	resize: vertical;
-	font-family: var(--font-text);
-}
 
 .wn-base-button-container {
 	display: flex;

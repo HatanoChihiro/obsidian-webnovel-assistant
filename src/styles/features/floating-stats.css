@@ -28,7 +28,8 @@ body.webnovel-modal-active .mobile-floating-stats {
 /* Mobile Floating Stats - Edge Docking & Collapse (贴边自动缩短变淡) */
 .mobile-floating-stats.is-docked-left {
 	opacity: 0.35;
-	transform: translateX(calc(-100% + 24px));
+	min-height: 44px;
+	transform: translateX(calc(-100% + 48px));
 	border-top-left-radius: 0;
 	border-bottom-left-radius: 0;
 	border-left: none;
@@ -37,7 +38,8 @@ body.webnovel-modal-active .mobile-floating-stats {
 
 .mobile-floating-stats.is-docked-right {
 	opacity: 0.35;
-	transform: translateX(calc(100% - 24px));
+	min-height: 44px;
+	transform: translateX(calc(100% - 48px));
 	border-top-right-radius: 0;
 	border-bottom-right-radius: 0;
 	border-right: none;
@@ -48,7 +50,7 @@ body.webnovel-modal-active .mobile-floating-stats {
 .mobile-floating-stats.is-docked-left::after {
 	content: '';
 	position: absolute;
-	right: 4px;
+	right: 12px;
 	top: 50%;
 	transform: translateY(-50%);
 	width: 3px;
@@ -63,7 +65,7 @@ body.webnovel-modal-active .mobile-floating-stats {
 .mobile-floating-stats.is-docked-right::before {
 	content: '';
 	position: absolute;
-	left: 4px;
+	left: 12px;
 	top: 50%;
 	transform: translateY(-50%);
 	width: 3px;

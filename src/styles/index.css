@@ -36,6 +36,7 @@
 @import "./features/sticky-note-list.css";
 @import "./features/floating-notes.css";
 @import "./features/proofreading.css";
+@import "./features/chapter-snapshot.css";
 
 /* Core Studio Views */
 @import "./views/workbench.css";
@@ -50,7 +51,6 @@
 @import "./views/timeline-waterfall.css";
 @import "./views/timeline-trajectory.css";
 @import "./views/corkboard.css";
-@import "./views/settings-corkboard-compat.css"; /* Settings layout builder rule preserved at original corkboard cascade position */
 @import "./views/lore-board-corkboard-compat.css";
 @import "./views/corkboard-badges-compat.css";
 @import "./views/lore-board-layout-compat.css";
@@ -95,6 +95,7 @@
 @import "./responsive/phone-portrait.css";
 @import "./responsive/phone-touch.css";
 @import "./responsive/tablet.css";
+@import "./responsive/phone-snapshot.css";
 
 /* Cross-view states must follow view and responsive layout rules. */
 @import "./components/importance.css";

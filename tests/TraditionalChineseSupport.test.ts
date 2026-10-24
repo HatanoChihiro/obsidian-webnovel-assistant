@@ -85,7 +85,7 @@ describe('Traditional Chinese locale support', () => {
 	it('keeps Chinese chapter rules and Traditional defaults on first install', () => {
 		installMomentLocale('zh-tw');
 		const manager = new SettingsManager(plugin, structuredClone(DEFAULT_SETTINGS));
-		const settings = manager.getSettings();
+		const settings = manager['settings'];
 
 		expect(settings.loreFolderName).toBe('設定');
 		expect(settings.timeline.fileName).toBe('時間線');
@@ -210,8 +210,9 @@ describe('Traditional Chinese locale support', () => {
 		expect(content).toContain('**狀態**：未回收');
 
 		content = '## [[第一章]] - 2026-09-11 12:00\n> 原文段落\n\n**說明**：寶庫鑰匙下落\n**狀態**：階段回收中\n**回收於**：\n- [階段] [[第二章]] - 2026-09-11 13:00\n\n---\n';
-		expect(await manager.addRecoveryChapter(targetFile, '第一章', '2026-09-11 12:00', '第三章')).toBe(true);
-		expect(content).toContain('- [[第三章]]');
+		expect(await manager.markAsPartiallyRecovered(targetFile, '寶庫鑰匙下落', '第三章')).toBe(true);
+		expect(content).toContain('[階段] [[第三章]]');
+		expect(content).toContain('[階段] [[第二章]]');
 	});
 
 	it('reads Traditional aliases into the lore cache', async () => {

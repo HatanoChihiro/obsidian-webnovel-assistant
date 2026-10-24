@@ -213,14 +213,6 @@ body.is-phone .wn-timeline-sidebar-title-group {
 }
 
 
-body.is-phone .wn-timeline-sidebar-toggle-icon {
-	color: var(--text-muted);
-	display: flex;
-	align-items: center;
-	transition: transform 0.2s ease;
-}
-
-
 body.is-phone .wn-timeline-sidebar-count {
 	color: var(--text-muted);
 	font-size: var(--wn-phone-font-meta);
@@ -380,11 +372,6 @@ body.is-phone .wn-timeline-waterfall-sidebar.is-empty .wn-timeline-sidebar-title
 	display: flex;
 	align-items: center;
 	gap: 6px;
-}
-
-
-body.is-phone .wn-timeline-waterfall-sidebar.is-empty .wn-timeline-sidebar-toggle-icon {
-	display: none;
 }
 
 

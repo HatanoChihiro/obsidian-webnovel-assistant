@@ -38,6 +38,8 @@ import { WritingJourneyService } from '../services/WritingJourneyService';
 import { ImmersiveReferenceManager } from '../services/ImmersiveReferenceManager';
 import { Logger } from '../utils/Logger';
 import { LoreCardRenderer } from '../ui/components/LoreCardRenderer';
+import { NativeSnapshotService } from '../services/NativeSnapshotService';
+import { ChapterSnapshotManager } from '../services/ChapterSnapshotManager';
 
 /**
  * 启动宿主插件类型
@@ -73,13 +75,18 @@ export class PluginBootstrapper {
 
 	async bootstrap(): Promise<void> {
 		try {
+			const bootstrapStartTime = performance.now();
+			const tSettingsStart = performance.now();
 			await this.plugin.loadSettings();
+			const settingsDuration = performance.now() - tSettingsStart;
 
 			ChapterSorter.setCustomRules(this.plugin.settings.chapterNamingRules || []);
 
+			const tLocaleStart = performance.now();
 			const langSetting = this.plugin.settings.language || 'auto';
 			const locale = langSetting === 'auto' ? detectLocale() : langSetting;
 			await setLocale(locale);
+			const localeDuration = performance.now() - tLocaleStart;
 
 			if (this.plugin.settings.homepageWelcome === '欢迎回到创作中心' || this.plugin.settings.homepageWelcome === 'Welcome back to your creative space') {
 				this.plugin.settings.homepageWelcome = '';
@@ -88,11 +95,38 @@ export class PluginBootstrapper {
 
 			this.plugin.loreSyncService.initialize();
 
-			await Promise.all([
-				this.plugin.historyManager.loadHistory(),
-				this.plugin.cacheManager.loadCache(),
-				this.plugin.loadFloatingNotes()
-			]);
+			let historyDuration = 0;
+			let cacheDuration = 0;
+			let notesDuration = 0;
+
+			const historyPromise = (async () => {
+				const start = performance.now();
+				try {
+					return await this.plugin.historyManager.loadHistory();
+				} finally {
+					historyDuration = performance.now() - start;
+				}
+			})();
+			const cachePromise = (async () => {
+				const start = performance.now();
+				try {
+					return await this.plugin.cacheManager.loadCache();
+				} finally {
+					cacheDuration = performance.now() - start;
+				}
+			})();
+			const notesPromise = (async () => {
+				const start = performance.now();
+				try {
+					return await this.plugin.loadFloatingNotes();
+				} finally {
+					notesDuration = performance.now() - start;
+				}
+			})();
+
+			await Promise.all([historyPromise, cachePromise, notesPromise]);
+
+			const tSyncSetupStart = performance.now();
 
 			if (this.plugin.settings.showFloatingNotes === false) {
 				activeDocument.body.classList.add('webnovel-notes-hidden');
@@ -123,6 +157,7 @@ export class PluginBootstrapper {
 			this.registerFeatureServices();
 
 			this.plugin.app.workspace.onLayoutReady(() => {
+				if (this.plugin.isUnloading) return;
 				this.plugin.characterManager.initialize().catch(err => {
 					console.error('[Plugin] characterManager 初始化失败:', err);
 				});
@@ -216,7 +251,15 @@ export class PluginBootstrapper {
 				});
 			}, 60 * 1000));
 
+			const syncSetupDuration = performance.now() - tSyncSetupStart;
+			const totalBootstrapDuration = performance.now() - bootstrapStartTime;
+			Logger.info(`[PluginBootstrapper] Startup timings: settings=${settingsDuration.toFixed(1)}ms, locale=${localeDuration.toFixed(1)}ms, history=${historyDuration.toFixed(1)}ms, cache=${cacheDuration.toFixed(1)}ms, notes=${notesDuration.toFixed(1)}ms, syncSetup=${syncSetupDuration.toFixed(1)}ms, totalBootstrap=${totalBootstrapDuration.toFixed(1)}ms`);
+
 			this.plugin.app.workspace.onLayoutReady(() => {
+				if (this.plugin.isUnloading) return;
+				const layoutReadyDelay = performance.now() - bootstrapStartTime;
+				Logger.info(`[PluginBootstrapper] Startup timings: layoutReadyDelay=${layoutReadyDelay.toFixed(1)}ms`);
+
 				this.plugin.isLayoutReady = true;
 
 				const restoreLayout = async () => {
@@ -290,7 +333,10 @@ export class PluginBootstrapper {
 		this.services.register('WorkerManager', new WorkerManager(this.plugin));
 		this.services.register('MarkdownPostProcessor', new MarkdownPostProcessor(this.plugin));
 		this.services.register('HomepageManager', new HomepageManager(this.plugin.app, this.plugin));
+		const nativeSnapshotService = new NativeSnapshotService(this.plugin.app);
+		this.services.register('NativeSnapshotService', nativeSnapshotService);
 		this.services.register('WritingJourneyService', new WritingJourneyService(this.plugin.app, this.plugin));
+		this.services.register('ChapterSnapshotManager', new ChapterSnapshotManager(this.plugin.app, nativeSnapshotService));
 	}
 
 	/**
@@ -327,6 +373,7 @@ export class PluginBootstrapper {
 		if (this.plugin.settings.enableSmartChapterSort || this.plugin.settings.homepagePinPosition !== 'none') {
 			ChapterSorter.setCustomRules(this.plugin.settings.chapterNamingRules || []);
 			this.plugin.app.workspace.onLayoutReady(() => {
+				if (this.plugin.isUnloading) return;
 				this.plugin.fileExplorerPatcher.enable();
 			});
 		}
@@ -334,8 +381,10 @@ export class PluginBootstrapper {
 		// 移动端：如果启用了文件浏览器字数统计，构建缓存
 		if (this.plugin.settings.showExplorerCounts) {
 			this.plugin.app.workspace.onLayoutReady(() => {
+				if (this.plugin.isUnloading) return;
 				// 移动端需要更长的延迟，确保文件浏览器完全加载
 				const timer = window.setTimeout(() => {
+					if (this.plugin.isUnloading) return;
 					void this.plugin.cacheManager.buildFolderCache();
 				}, PLATFORM_DELAYS.MOBILE_EXPLORER_DELAY);
 				this.plugin.register(() => window.clearTimeout(timer));
@@ -365,6 +414,7 @@ export class PluginBootstrapper {
 		if (this.plugin.settings.enableSmartChapterSort || this.plugin.settings.homepagePinPosition !== 'none') {
 			ChapterSorter.setCustomRules(this.plugin.settings.chapterNamingRules || []);
 			this.plugin.app.workspace.onLayoutReady(() => {
+				if (this.plugin.isUnloading) return;
 				this.plugin.fileExplorerPatcher.enable();
 			});
 		}
@@ -372,8 +422,10 @@ export class PluginBootstrapper {
 		// 平板端：如果启用了文件浏览器字数统计，构建缓存
 		if (this.plugin.settings.showExplorerCounts) {
 			this.plugin.app.workspace.onLayoutReady(() => {
+				if (this.plugin.isUnloading) return;
 				// 平板端需要延迟，确保文件浏览器完全加载
 				const timer = window.setTimeout(() => {
+					if (this.plugin.isUnloading) return;
 					void this.plugin.cacheManager.buildFolderCache();
 				}, PLATFORM_DELAYS.TABLET_EXPLORER_DELAY);
 				this.plugin.register(() => window.clearTimeout(timer));
@@ -394,9 +446,11 @@ export class PluginBootstrapper {
 	 */
 	setupDesktopFeatures(): void {
 		this.plugin.app.workspace.onLayoutReady(() => {
+			if (this.plugin.isUnloading) return;
 			// 延迟构建缓存，避免阻塞启动
 			// 500ms 是一个平衡点：既不会阻塞启动，又能快速显示字数
 			const timer = window.setTimeout(() => {
+				if (this.plugin.isUnloading) return;
 				void this.plugin.cacheManager.buildFolderCache();
 			}, PLATFORM_DELAYS.DESKTOP_EXPLORER_DELAY);
 			this.plugin.register(() => window.clearTimeout(timer));
@@ -419,6 +473,7 @@ export class PluginBootstrapper {
 
 			// 延迟设置，确保文件浏览器已加载
 			this.plugin.app.workspace.onLayoutReady(() => {
+				if (this.plugin.isUnloading) return;
 				this.plugin.fileExplorerPatcher.enable();
 			});
 		}
@@ -433,6 +488,7 @@ export class PluginBootstrapper {
 
 		this.plugin.mobileFloatingStats = new MobileFloatingStats(this.plugin.app, this.plugin);
 		this.plugin.app.workspace.onLayoutReady(() => {
+			if (this.plugin.isUnloading) return;
 			this.plugin.mobileFloatingStats?.load();
 		});
 

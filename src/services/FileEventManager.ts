@@ -4,6 +4,11 @@ import { TFile, TFolder } from 'obsidian';
 
 export class FileEventManager {
 	private plugin: WebNovelAssistantPlugin;
+	private pendingCreates = new Map<string, TFile>();
+	private drainTimer: number | null = null;
+	private pendingYield: { timer: number; resolve: () => void } | null = null;
+	private currentDrainPromise: Promise<void> | null = null;
+	private isDestroyed = false;
 
 	constructor(plugin: WebNovelAssistantPlugin) {
 		this.plugin = plugin;
@@ -14,6 +19,133 @@ export class FileEventManager {
 		this.registerModifyHandler();
 		this.registerDeleteHandler();
 		this.registerRenameHandler();
+
+		this.plugin.app.workspace?.onLayoutReady(() => {
+			if (this.isDestroyed || this.plugin.isUnloading) return;
+			this.scheduleDrain();
+		});
+	}
+
+	async destroy(): Promise<void> {
+		this.isDestroyed = true;
+		if (this.drainTimer !== null) {
+			window.clearTimeout(this.drainTimer);
+			this.drainTimer = null;
+		}
+		this.pendingCreates.clear();
+		if (this.pendingYield) {
+			const pendingYield = this.pendingYield;
+			this.pendingYield = null;
+			window.clearTimeout(pendingYield.timer);
+			pendingYield.resolve();
+		}
+		if (this.currentDrainPromise) {
+			await this.currentDrainPromise;
+		}
+	}
+
+	private enqueuePreLayoutCreate(file: TFile): void {
+		if (this.isDestroyed || this.plugin.isUnloading) return;
+		this.pendingCreates.set(file.path, file);
+		if (this.plugin.app.workspace?.layoutReady) {
+			this.scheduleDrain();
+		}
+	}
+
+	private scheduleDrain(): void {
+		if (this.isDestroyed || this.plugin.isUnloading) return;
+		if (this.pendingCreates.size === 0 || this.drainTimer !== null || this.currentDrainPromise) return;
+		this.drainTimer = window.setTimeout(() => {
+			this.drainTimer = null;
+			void this.drainPendingCreates().catch(error => {
+				Logger.error('[FileEventManager] Startup cache update failed:', error);
+			});
+		}, 0);
+	}
+
+	private async drainPendingCreates(): Promise<void> {
+		if (this.isDestroyed || this.plugin.isUnloading) return;
+		if (this.currentDrainPromise) return;
+
+		this.currentDrainPromise = this.processPendingCreates();
+		try {
+			await this.currentDrainPromise;
+		} finally {
+			this.currentDrainPromise = null;
+			this.scheduleDrain();
+		}
+	}
+
+	private async processPendingCreates(): Promise<void> {
+		let processedInBatch = 0;
+		let hasUpdatedCache = false;
+		const BATCH_SIZE = 25;
+
+		while (this.pendingCreates.size > 0) {
+			if (this.isDestroyed || this.plugin.isUnloading) break;
+			if (processedInBatch >= BATCH_SIZE) {
+				processedInBatch = 0;
+				await new Promise<void>(resolve => {
+					this.pendingYield = {
+						timer: window.setTimeout(() => {
+							this.pendingYield = null;
+							resolve();
+						}, 0),
+						resolve
+					};
+				});
+				if (this.isDestroyed || this.plugin.isUnloading) break;
+			}
+			processedInBatch++;
+
+			const nextEntry = this.pendingCreates.entries().next().value;
+			if (!nextEntry) break;
+			const [path, queuedFile] = nextEntry;
+			this.pendingCreates.delete(path);
+
+			const authoritative = this.plugin.app.vault.getAbstractFileByPath(queuedFile.path);
+			if (authoritative !== queuedFile || !(authoritative instanceof TFile) || authoritative.extension !== 'md') {
+				continue;
+			}
+			if (!this.plugin.cacheManager.isEligibleForTotalWordCount(authoritative)) {
+				continue;
+			}
+
+			if (this.plugin.cacheManager.isFileCacheCurrent(authoritative)) {
+				continue;
+			}
+
+			const expectedMtime = authoritative.stat.mtime;
+			const expectedPath = authoritative.path;
+
+			try {
+				const content = await this.plugin.app.vault.read(authoritative);
+				if (this.isDestroyed || this.plugin.isUnloading) break;
+
+				const currentAuth = this.plugin.app.vault.getAbstractFileByPath(expectedPath);
+				if (currentAuth !== authoritative || !(currentAuth instanceof TFile)) {
+					continue;
+				}
+				if (currentAuth.path !== expectedPath || currentAuth.stat.mtime !== expectedMtime
+					|| !this.plugin.cacheManager.isEligibleForTotalWordCount(currentAuth)
+					|| this.plugin.cacheManager.isFileCacheCurrent(currentAuth)) {
+					continue;
+				}
+
+				const wordCount = this.plugin.calculateAccurateWords(content);
+				this.plugin.cacheManager.updateFileCache(authoritative, wordCount, this.plugin.app.vault);
+				hasUpdatedCache = true;
+			} catch (error) {
+				Logger.error('[Plugin] 新文件字数统计失败:', error);
+			}
+		}
+
+		if (hasUpdatedCache && !this.isDestroyed && !this.plugin.isUnloading) {
+			this.plugin.adaptiveDebounceManager.debounceFixed('folder-refresh', () => {
+				if (this.isDestroyed || this.plugin.isUnloading) return;
+				this.plugin.refreshFolderCounts();
+			}, 500);
+		}
 	}
 
 	private registerCreateHandler(): void {
@@ -27,6 +159,9 @@ export class FileEventManager {
 			}));
 		}
 		this.plugin.registerEvent(this.plugin.app.vault.on('create', async (file) => {
+			if (this.isDestroyed || this.plugin.isUnloading) return;
+			const wasLayoutReady = Boolean(this.plugin.app.workspace?.layoutReady);
+
 			if (file instanceof TFile && file.extension === 'md') {
 				try {
 					await this.plugin.writingJourneyService.handleVaultCreate(file);
@@ -34,8 +169,14 @@ export class FileEventManager {
 					Logger.error('[WritingJourney] Failed to record external create:', error);
 				}
 			}
+			if (this.isDestroyed || this.plugin.isUnloading) return;
 			if (!(file instanceof TFile) || file.extension !== 'md') return;
 			if (!this.plugin.cacheManager.isEligibleForTotalWordCount(file)) return;
+
+			if (!wasLayoutReady) {
+				this.enqueuePreLayoutCreate(file);
+				return;
+			}
 
 			try {
 				const content = await this.plugin.app.vault.read(file);
@@ -94,6 +235,7 @@ export class FileEventManager {
 	private registerDeleteHandler(): void {
 		this.plugin.registerEvent(this.plugin.app.vault.on('delete', (abstractFile) => {
 			if (abstractFile instanceof TFile && abstractFile.extension === 'md') {
+				this.pendingCreates.delete(abstractFile.path);
 				void this.plugin.writingJourneyService.handleVaultDelete(abstractFile).catch(error => {
 					Logger.error('[WritingJourney] Failed to record external delete:', error);
 				});
@@ -107,11 +249,16 @@ export class FileEventManager {
 					}, 500);
 				}
 			} else if (abstractFile instanceof TFolder) {
+				const prefix = abstractFile.path + '/';
+				for (const p of Array.from(this.pendingCreates.keys())) {
+					if (p.startsWith(prefix)) {
+						this.pendingCreates.delete(p);
+					}
+				}
 				void this.plugin.writingJourneyService.handleVaultDelete(abstractFile).catch(error => {
 					Logger.error('[WritingJourney] Failed to handle folder delete:', error);
 				});
 				// 处理文件夹删除
-				const prefix = abstractFile.path + '/';
 				let hasChanges = false;
 				const entries = Array.from(this.plugin.cacheManager.getEntries());
 				for (const [path, entry] of entries) {
@@ -140,6 +287,13 @@ export class FileEventManager {
 			const wasMdFile = oldPath.endsWith('.md');
 
 			if (isMdFile || wasMdFile) {
+				if (this.pendingCreates.has(oldPath)) {
+					this.pendingCreates.delete(oldPath);
+					if (abstractFile instanceof TFile && this.plugin.cacheManager.isEligibleForTotalWordCount(abstractFile)) {
+						this.pendingCreates.set(abstractFile.path, abstractFile);
+					}
+				}
+
 				const oldCache = this.plugin.cacheManager.getFileCache(oldPath);
 				
 				// 只要旧文件曾经是 md，就在缓存中将其移除
@@ -180,13 +334,23 @@ export class FileEventManager {
 					}, 500);
 				}
 			} else if (abstractFile instanceof TFolder) {
+				const oldPrefix = oldPath + '/';
+				const newPrefix = abstractFile.path + '/';
+				for (const p of Array.from(this.pendingCreates.keys())) {
+					if (p.startsWith(oldPrefix)) {
+						this.pendingCreates.delete(p);
+						const newFilePath = newPrefix + p.substring(oldPrefix.length);
+						const newFile = this.plugin.app.vault.getAbstractFileByPath(newFilePath);
+						if (newFile instanceof TFile && this.plugin.cacheManager.isEligibleForTotalWordCount(newFile)) {
+							this.pendingCreates.set(newFilePath, newFile);
+						}
+					}
+				}
+
 				void this.plugin.writingJourneyService.handleVaultRename(abstractFile, oldPath).catch(error => {
 					Logger.error('[WritingJourney] Failed to handle folder rename:', error);
 				});
 				// 处理文件夹重命名
-				const oldPrefix = oldPath + '/';
-				const newPrefix = abstractFile.path + '/';
-				
 				const entries = Array.from(this.plugin.cacheManager.getEntries());
 				let hasChanges = false;
 				for (const [path, entry] of entries) {

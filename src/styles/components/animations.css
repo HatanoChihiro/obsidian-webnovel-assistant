@@ -12,26 +12,6 @@
 	}
 }
 
-/* 跳转行闪烁高亮动画 */
-
-@keyframes wnFlashHighlight {
-	0% {
-		background-color: color-mix(in srgb, var(--interactive-accent) 35%, transparent);
-	}
-
-	50% {
-		background-color: color-mix(in srgb, var(--interactive-accent) 20%, transparent);
-	}
-
-	100% {
-		background-color: transparent;
-	}
-}
-
-.wn-flash-highlight {
-	animation: wnFlashHighlight 2s ease-in-out forwards;
-}
-
 /* 阅读视图与正文精准高亮 */
 
 .wn-exact-highlight {

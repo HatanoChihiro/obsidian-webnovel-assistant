@@ -6,14 +6,14 @@ describe('MultiSelectFilterRow', () => {
 	it('initializes with all button active when selected is empty', () => {
 		const container = new MockElement('container');
 		const onChange = vi.fn();
-		const row = new MultiSelectFilterRow({
+		new MultiSelectFilterRow({
 			container: container as unknown as HTMLElement,
 			options: ['tag1', 'tag2', 'tag3'],
 			allLabel: '全部',
 			onChange
 		});
 
-		const el = row.getElement() as unknown as MockElement;
+		const el = container.children[0];
 		const buttons = el.children as unknown as MockElement[];
 		expect(buttons).toHaveLength(4); // All + 3 options
 
@@ -29,7 +29,7 @@ describe('MultiSelectFilterRow', () => {
 	it('initializes with specified options active when selected is provided', () => {
 		const container = new MockElement('container');
 		const onChange = vi.fn();
-		const row = new MultiSelectFilterRow({
+		new MultiSelectFilterRow({
 			container: container as unknown as HTMLElement,
 			options: [
 				{ value: 'tag1', label: '#tag1' },
@@ -40,7 +40,7 @@ describe('MultiSelectFilterRow', () => {
 			onChange
 		});
 
-		const el = row.getElement() as unknown as MockElement;
+		const el = container.children[0];
 		const buttons = el.children as unknown as MockElement[];
 		const allBtn = buttons[0];
 		const opt1 = buttons[1];
@@ -56,14 +56,14 @@ describe('MultiSelectFilterRow', () => {
 	it('toggles option selection on click and emits updated set', () => {
 		const container = new MockElement('container');
 		const onChange = vi.fn();
-		const row = new MultiSelectFilterRow({
+		new MultiSelectFilterRow({
 			container: container as unknown as HTMLElement,
 			options: ['A', 'B'],
 			allLabel: 'All',
 			onChange
 		});
 
-		const el = row.getElement() as unknown as MockElement;
+		const el = container.children[0];
 		const buttons = el.children as unknown as MockElement[];
 		const allBtn = buttons[0];
 		const optA = buttons[1];

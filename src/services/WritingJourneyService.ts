@@ -1,10 +1,11 @@
 import type { App, TAbstractFile } from 'obsidian';
-import { TFile, TFolder, parseYaml } from 'obsidian';
+import type { NativeSnapshotService } from './NativeSnapshotService';
+import { TFile, TFolder, parseYaml, MarkdownView } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { findBookRoot, getCandidateNames } from '../utils/path';
+import { CORKBOARD_STATUS_MAP, getCorkboardStatusText } from '../i18n/data-keys';
 import { Logger } from '../utils/Logger';
 import {
-	WRITING_JOURNEY_SCHEMA_VERSION,
 	WRITING_JOURNEY_YAML_KEY,
 	parseWritingJourneyLog,
 	type WritingJourneyEvent,
@@ -16,6 +17,7 @@ import {
 	type ChapterRenamedEvent,
 	type ChapterMovedEvent,
 	type ChapterDeletedEvent,
+	type ChapterSnapshotRef,
 	type ChapterStatusChangedEvent,
 	type WorkStatusChangedEvent
 } from '../types/writingJourney';
@@ -26,11 +28,12 @@ export class WritingJourneyService {
 
 	/** 每个作品的串行写入队列，避免异步写 YAML 产生覆盖竞争 */
 	private writeQueues = new Map<string, Promise<void>>();
+	private chapterQueues = new Map<string, Promise<unknown>>();
+	private isShuttingDown = false;
 
 	/** 已由插件主动记录的事件路径（带 TTL 时间戳），用于避免 Vault 监听器产生重复记录 */
 	private handledCreates = new Map<string, number>();
 	private handledRenames = new Map<string, number>();
-	private handledDeletes = new Map<string, number>();
 
 	/** 启动/重新加载时的既有文件快照，避免 Vault 回放 create 事件时误记为新章节 */
 	private baselinePaths = new Set<string>();
@@ -44,12 +47,14 @@ export class WritingJourneyService {
 	}
 
 	public async destroy(): Promise<void> {
-		const pending = Array.from(this.writeQueues.values());
-		await Promise.allSettled(pending);
+		this.isShuttingDown = true;
+		const pendingWrites = Array.from(this.writeQueues.values());
+		const pendingChapters = Array.from(this.chapterQueues.values());
+		await Promise.allSettled([...pendingWrites, ...pendingChapters]);
 		this.writeQueues.clear();
+		this.chapterQueues.clear();
 		this.handledCreates.clear();
 		this.handledRenames.clear();
-		this.handledDeletes.clear();
 		this.baselinePaths.clear();
 		this.isReady = false;
 	}
@@ -100,10 +105,6 @@ export class WritingJourneyService {
 				this.baselinePaths.add(file.path);
 			}
 		}
-	}
-
-	public hasBaselinePath(path: string): boolean {
-		return this.baselinePaths.has(path);
 	}
 
 	public removeBaselineFolder(folderPath: string): void {
@@ -181,22 +182,6 @@ export class WritingJourneyService {
 		const exp = this.handledRenames.get(key);
 		if (exp !== undefined) {
 			this.handledRenames.delete(key);
-			if (Date.now() <= exp) return true;
-		}
-		return false;
-	}
-
-	public markHandledDelete(path: string, ttlMs: number = 3000): void {
-		this.pruneTTL(this.handledDeletes);
-		this.handledDeletes.set(path, Date.now() + ttlMs);
-		this.baselinePaths.delete(path);
-	}
-
-	public consumeHandledDelete(path: string): boolean {
-		this.pruneTTL(this.handledDeletes);
-		const exp = this.handledDeletes.get(path);
-		if (exp !== undefined) {
-			this.handledDeletes.delete(path);
 			if (Date.now() <= exp) return true;
 		}
 		return false;
@@ -328,9 +313,13 @@ export class WritingJourneyService {
 				}
 
 				const existingEvents: WritingJourneyEvent[] = currentParsed.log?.events ? [...currentParsed.log.events] : [];
+				const allEvents = [...existingEvents, ...finalEvents];
+				const hasSnapshotRef = allEvents.some(
+					e => e.type === 'chapter.status_changed' && e.snapshot !== undefined
+				);
 				const updatedLog: WritingJourneyLog = {
-					version: WRITING_JOURNEY_SCHEMA_VERSION,
-					events: [...existingEvents, ...finalEvents]
+					version: hasSnapshotRef ? 2 : 1,
+					events: allEvents
 				};
 
 				fm[WRITING_JOURNEY_YAML_KEY] = updatedLog;
@@ -340,6 +329,216 @@ export class WritingJourneyService {
 		} catch (writeErr) {
 			Logger.error(`[WritingJourneyService] Failed to write journey log in ${infoFile.path}:`, writeErr);
 			throw writeErr;
+		}
+	}
+
+	/**
+	 * 集中化章节状态修改与快照保存流程：
+	 * - 按章节严格串行化（单章节同一时刻仅执行一个状态迁移）
+	 * - 自动保存对应已打开的 Markdown 编辑器缓冲区（无光标/滚动扰动）
+	 * - 队列内解析最新真实状态（相同状态自动视为无操作）
+	 * - 状态写入失败不记入历史、不拍摄快照
+	 * - 单次捕获已保存完整正文，同时用于字数统计与原生快照保存
+	 * - 快照失败不回滚已成功的状态变化，标注快照暂不可用
+	 */
+	public async changeChapterStatus(options: {
+		file: TFile;
+		toStatus: string;
+		bookPath?: string;
+	}): Promise<{
+		success: boolean;
+		changed: boolean;
+		fromStatus?: string;
+		toStatus?: string;
+		snapshotRef?: ChapterSnapshotRef;
+		snapshotError?: unknown;
+		journeyError?: unknown;
+		error?: unknown;
+	}> {
+		if (this.isShuttingDown) {
+			const err = new Error('WritingJourneyService is shutting down');
+			return { success: false, changed: false, error: err };
+		}
+
+		const { file, toStatus } = options;
+		const chapterPath = file.path;
+
+		const prev = this.chapterQueues.get(chapterPath) ?? Promise.resolve();
+		let resolveCurrent!: (val: unknown) => void;
+		const currentPromise = new Promise(resolve => { resolveCurrent = resolve; });
+		this.chapterQueues.set(chapterPath, currentPromise);
+
+		try {
+			await prev;
+
+			if (this.isShuttingDown) {
+				return { success: false, changed: false, error: new Error('WritingJourneyService is shutting down') };
+			}
+
+			const currentAbstract = this.app.vault.getAbstractFileByPath(chapterPath);
+			if (currentAbstract !== file || !(currentAbstract instanceof TFile)) {
+				return { success: false, changed: false, error: new Error(`Chapter file ${chapterPath} not found in vault`) };
+			}
+
+			const views = this.app.workspace.getLeavesOfType('markdown')
+				.map(leaf => leaf.view)
+				.filter((view): view is MarkdownView => view instanceof MarkdownView && view.file === file);
+			const buffers = views.map(view => view.editor?.getValue() ?? view.getViewData());
+			if (buffers.some(value => value !== buffers[0])) {
+				return { success: false, changed: false, error: new Error('Chapter has conflicting open editor buffers') };
+			}
+			if (views[0]) {
+				try {
+					await views[0].save();
+					if (views.some((view, index) => view.file !== file || (view.editor?.getValue() ?? view.getViewData()) !== buffers[index])) {
+						throw new Error('Chapter editor changed while saving');
+					}
+				} catch (saveErr) {
+					return { success: false, changed: false, error: saveErr };
+				}
+			}
+
+			const postSaveAbstract = this.app.vault.getAbstractFileByPath(chapterPath);
+			if (postSaveAbstract !== file || !(postSaveAbstract instanceof TFile)) {
+				return { success: false, changed: false, error: new Error(`Chapter file ${chapterPath} modified or missing during save`) };
+			}
+
+			let actualFromStatus = 'unwritten';
+			let didMutate = false;
+			try {
+				await this.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
+					const rawStatus = (fm['status'] || fm['Status'] || fm['状态'] || 'unwritten') as string;
+					actualFromStatus = CORKBOARD_STATUS_MAP[rawStatus] ?? rawStatus;
+					if (actualFromStatus === toStatus) {
+						return;
+					}
+					fm['status'] = getCorkboardStatusText(toStatus);
+					didMutate = true;
+				});
+			} catch (stateErr) {
+				Logger.error(`[WritingJourneyService] State mutation failed for ${chapterPath}:`, stateErr);
+				return { success: false, changed: false, fromStatus: actualFromStatus, toStatus, error: stateErr };
+			}
+
+			if (!didMutate) {
+				return {
+					success: true,
+					changed: false,
+					fromStatus: actualFromStatus,
+					toStatus
+				};
+			}
+
+			const transitionTime = new Date().toISOString();
+			let frozenContent: string | null = null;
+			let snapshotError: unknown;
+			try {
+				const before = { ...file.stat };
+				const text = await this.app.vault.read(file);
+				if (file.path !== chapterPath || this.app.vault.getAbstractFileByPath(chapterPath) !== file) {
+					throw new Error('Chapter changed while capturing status content');
+				}
+				// FileManager can settle file stats during the first read after its write.
+				// Verify the text again in that case instead of rejecting a normal save.
+				if (before.mtime !== file.stat?.mtime || before.size !== file.stat?.size) {
+					const verified = await this.app.vault.read(file);
+					if (verified !== text || file.path !== chapterPath || this.app.vault.getAbstractFileByPath(chapterPath) !== file) {
+						throw new Error('Chapter content changed while capturing status content');
+					}
+				}
+				const header = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(text);
+				const parsed: unknown = header ? parseYaml(header[1]) : null;
+				if (!parsed || typeof parsed !== 'object') throw new Error('Saved chapter status is unavailable');
+				const fm = parsed as Record<string, unknown>;
+				const raw = fm.status || fm.Status || fm['状态'] || 'unwritten';
+				if (typeof raw !== 'string') throw new Error('Saved chapter status is invalid');
+				if ((CORKBOARD_STATUS_MAP[raw] ?? raw) !== toStatus) throw new Error('Saved chapter status changed during capture');
+				frozenContent = text;
+			} catch (readErr) {
+				snapshotError = readErr;
+				Logger.warn(`[WritingJourneyService] Failed to capture status content for ${chapterPath}:`, readErr);
+			}
+
+			let wordCount: number | undefined;
+			if (frozenContent !== null && typeof this.plugin.calculateAccurateWords === 'function') {
+				try {
+					const count = this.plugin.calculateAccurateWords(frozenContent);
+					if (typeof count === 'number' && Number.isFinite(count) && count >= 0) {
+						wordCount = count;
+					}
+				} catch (wcErr) {
+					Logger.warn(`[WritingJourneyService] Word count calculation failed for ${chapterPath}:`, wcErr);
+				}
+			}
+
+			let snapshotRef: ChapterSnapshotRef | undefined;
+			if (frozenContent !== null) {
+				try {
+					const nativeService = this.plugin.services?.getOptional?.('NativeSnapshotService')
+						?? (this.plugin as unknown as { nativeSnapshotService?: NativeSnapshotService }).nativeSnapshotService;
+					if (nativeService && typeof nativeService.saveSnapshot === 'function') {
+						if (typeof nativeService.checkStatus === 'function') {
+							const statusRes = nativeService.checkStatus();
+							if (statusRes.status !== 'available') {
+								const reason = 'reason' in statusRes && statusRes.reason ? statusRes.reason : `Native snapshot service is ${statusRes.status}`;
+								snapshotError = new Error(reason);
+							} else {
+								snapshotRef = await nativeService.saveSnapshot(chapterPath, frozenContent);
+							}
+						} else {
+							snapshotRef = await nativeService.saveSnapshot(chapterPath, frozenContent);
+						}
+					} else {
+						snapshotError = new Error('Native snapshot service not available');
+					}
+				} catch (snapErr) {
+					snapshotError = snapErr;
+					Logger.warn(`[WritingJourneyService] Native snapshot failed for ${chapterPath}:`, snapErr);
+				}
+			}
+
+			let journeyError: unknown;
+			const bookRoot = options.bookPath || findBookRoot(this.app, this.plugin, file, true);
+			if (bookRoot) {
+				const event: ChapterStatusChangedEvent = {
+					id: this.generateEventId(),
+					type: 'chapter.status_changed',
+					timestamp: transitionTime,
+					path: chapterPath,
+					chapterTitle: file.basename,
+					fromStatus: actualFromStatus,
+					toStatus
+				};
+				if (wordCount !== undefined) {
+					event.wordCount = wordCount;
+				}
+				if (snapshotRef) {
+					event.snapshot = snapshotRef;
+				} else {
+					event.snapshotUnavailable = true;
+				}
+				try {
+					await this.appendEvent(bookRoot, event);
+				} catch (jErr) {
+					journeyError = jErr;
+					Logger.error(`[WritingJourneyService] Failed to append status event for ${chapterPath}:`, jErr);
+				}
+			}
+
+			return {
+				success: true,
+				changed: true,
+				fromStatus: actualFromStatus,
+				toStatus,
+				snapshotRef,
+				snapshotError,
+				journeyError
+			};
+		} finally {
+			resolveCurrent(undefined);
+			if (this.chapterQueues.get(chapterPath) === currentPromise) {
+				this.chapterQueues.delete(chapterPath);
+			}
 		}
 	}
 
@@ -449,44 +648,6 @@ export class WritingJourneyService {
 			path,
 			chapterTitle
 		};
-		await this.appendEvent(bookPath, event);
-	}
-
-	public async recordChapterStatusChanged(
-		bookPath: string,
-		path: string,
-		chapterTitle: string,
-		fromStatus: string,
-		toStatus: string
-	): Promise<void> {
-		if (fromStatus === toStatus) return; // 相同状态选择作为无操作，不记入历史
-
-		let wordCount: number | undefined;
-		try {
-			const file = this.app.vault.getAbstractFileByPath(path);
-			if (file instanceof TFile && typeof this.plugin.calculateAccurateWords === 'function') {
-				const content = await this.app.vault.read(file);
-				const count = this.plugin.calculateAccurateWords(content);
-				if (typeof count === 'number' && Number.isFinite(count) && count >= 0) {
-					wordCount = count;
-				}
-			}
-		} catch (snapshotErr) {
-			Logger.warn(`[WritingJourneyService] Failed to snapshot chapter word count for ${path}:`, snapshotErr);
-		}
-
-		const event: ChapterStatusChangedEvent = {
-			id: this.generateEventId(),
-			type: 'chapter.status_changed',
-			timestamp: new Date().toISOString(),
-			path,
-			chapterTitle,
-			fromStatus,
-			toStatus
-		};
-		if (wordCount !== undefined) {
-			event.wordCount = wordCount;
-		}
 		await this.appendEvent(bookPath, event);
 	}
 
@@ -651,7 +812,6 @@ export class WritingJourneyService {
 		}
 		if (!(abstractFile instanceof TFile) || abstractFile.extension !== 'md') return;
 		this.baselinePaths.delete(abstractFile.path);
-		if (this.consumeHandledDelete(abstractFile.path)) return;
 		if (this.isExcludedDoc(abstractFile)) return;
 		if (!this.plugin.cacheManager.isEligibleForChapterList(abstractFile)) return;
 

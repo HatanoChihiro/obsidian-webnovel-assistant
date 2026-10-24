@@ -2,6 +2,7 @@ import type { ParsedForeshadowingEntry } from '../src/types/foreshadowing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TFile, TFolder } from 'obsidian';
 import { ImmersiveChapterListView, type ImmersiveChapterListViewPlugin } from '../src/ui/ImmersiveChapterListView';
+import { MockElement } from './mocks/MockElement';
 
 const { findBookRootMock } = vi.hoisted(() => ({
 	findBookRootMock: vi.fn()
@@ -84,10 +85,16 @@ interface MockApp {
 		iterateAllLeaves: (callback: (leaf: MockLeaf) => void) => void;
 		getLeavesOfType: (type: string) => MockLeaf[];
 		getActiveFile: () => TFile | null;
+		on: (name: string, callback: (...args: unknown[]) => void) => { name: string };
+		trigger: (name: string, ...args: unknown[]) => void;
 	};
 	vault: {
 		getAbstractFileByPath: (path: string) => TFolder | null;
 		getRoot: () => TFolder;
+		on: (name: string, callback: (...args: unknown[]) => void) => { name: string };
+	};
+	metadataCache: {
+		getFileCache: (file: TFile) => unknown;
 	};
 }
 
@@ -121,6 +128,9 @@ describe('ImmersiveChapterListView context', () => {
 		currentFile = createTestFile('scratch.md', 'Notes/scratch.md');
 		Object.assign(currentFile, { parent: notesFolder });
 
+		const workspaceHandlers = new Map<string, Array<(...args: unknown[]) => void>>();
+		const vaultHandlers = new Map<string, Array<(...args: unknown[]) => void>>();
+
 		app = {
 			workspace: {
 				iterateAllLeaves: callback => callback(mainLeaf),
@@ -131,11 +141,30 @@ describe('ImmersiveChapterListView context', () => {
 						view: { getViewType: () => 'webnovel-workbench', file: null, currentBookPath: 'Novels/Alpha' }
 					} as MockLeaf]
 					: [],
-				getActiveFile: () => currentFile
+				getActiveFile: () => currentFile,
+				on: (name: string, callback: (...args: unknown[]) => void) => {
+					const list = workspaceHandlers.get(name) || [];
+					list.push(callback);
+					workspaceHandlers.set(name, list);
+					return { name };
+				},
+				trigger: (name: string, ...args: unknown[]) => {
+					const list = workspaceHandlers.get(name) || [];
+					for (const cb of list) cb(...args);
+				}
 			},
 			vault: {
 				getAbstractFileByPath: path => path === novelFolder.path ? novelFolder : null,
-				getRoot: () => rootFolder
+				getRoot: () => rootFolder,
+				on: (name: string, callback: (...args: unknown[]) => void) => {
+					const list = vaultHandlers.get(name) || [];
+					list.push(callback);
+					vaultHandlers.set(name, list);
+					return { name };
+				}
+			},
+			metadataCache: {
+				getFileCache: () => null
 			}
 		};
 
@@ -150,7 +179,19 @@ describe('ImmersiveChapterListView context', () => {
 			containerEl: { classList: { contains: () => false } },
 			view: { getViewType: () => 'empty', file: null }
 		};
-		plugin = { app } as unknown as ImmersiveChapterListViewPlugin;
+		plugin = {
+			app,
+			settings: {
+				enableSmartChapterSort: false,
+				showExplorerCounts: true,
+				customSortOrder: {}
+			},
+			cacheManager: {
+				getFileCache: vi.fn().mockReturnValue(1000),
+				isEligibleForWordCount: vi.fn().mockReturnValue(true)
+			},
+			saveSettings: vi.fn().mockResolvedValue(undefined)
+		} as unknown as ImmersiveChapterListViewPlugin;
 		view = new ImmersiveChapterListView(
 			viewLeaf as unknown as ConstructorParameters<typeof ImmersiveChapterListView>[0],
 			plugin
@@ -452,4 +493,172 @@ describe('ImmersiveChapterListView context', () => {
 		expect(ownerWindow.clearTimeout.mock.calls.map(([id]) => id)).toEqual([1, 2]);
 	});
 
+	describe('incremental word count update via webnovel:file-word-count-updated', () => {
+		interface MockCountEl {
+			textContent: string;
+			setText: ReturnType<typeof vi.fn>;
+			addClass: ReturnType<typeof vi.fn>;
+			removeClass: ReturnType<typeof vi.fn>;
+		}
+
+		const createMockCountEl = (initialText = ''): MockCountEl => {
+			const el: MockCountEl = {
+				textContent: initialText,
+				setText: vi.fn((text: string) => {
+					el.textContent = text;
+					return el;
+				}),
+				addClass: vi.fn(),
+				removeClass: vi.fn()
+			};
+			return el;
+		};
+
+		it('registers webnovel:file-word-count-updated on open and updates matching rendered item word count', async () => {
+			const originalCreateDiv = MockElement.prototype.createDiv;
+			const createDivSpy = vi.spyOn(MockElement.prototype, 'createDiv').mockImplementation(function (this: MockElement, opts) {
+				return Object.assign(originalCreateDiv.call(this, opts), { dataset: {} });
+			});
+			try {
+				findBookRootMock.mockReturnValue('Novels/Alpha');
+				const file1 = createTestFile('same.md', 'Novels/Alpha/a[1]/same.md');
+				const file2 = createTestFile('same.md', 'Novels/Alpha/b/same.md');
+				Object.assign(novelFolder, { children: [file1, file2] });
+				const container = new MockElement();
+				Object.assign(view, { containerEl: container });
+				await view.onOpen();
+				const [countEl1, countEl2] = container.querySelectorAll('.immersive-chapter-count');
+				expect(countEl1.textContent).toBe('1000common.word-char');
+				expect(countEl2.textContent).toBe('1000common.word-char');
+				const refreshSpy = vi.spyOn(view, 'refresh');
+				app.workspace.trigger('webnovel:file-word-count-updated', file1, 1500);
+				expect(countEl1.textContent).toBe('1500common.word-char');
+				expect(countEl2.textContent).toBe('1000common.word-char');
+				expect(container.querySelectorAll('.immersive-chapter-count')[0]).toBe(countEl1);
+				expect(refreshSpy).not.toHaveBeenCalled();
+				await view.refresh();
+				app.workspace.trigger('webnovel:file-word-count-updated', file1, 1200);
+				expect(countEl1.textContent).toBe('1500common.word-char');
+				expect(container.querySelectorAll('.immersive-chapter-count')[0].textContent).toBe('1200common.word-char');
+			} finally {
+				createDivSpy.mockRestore();
+			}
+		});
+
+		it('updates count to zero immediately when count becomes 0', async () => {
+			const listContainer = {
+				scrollTop: 0,
+				addEventListener: vi.fn(),
+				createEl: vi.fn()
+			};
+			Object.assign(view, {
+				containerEl: {
+					empty: vi.fn(),
+					createDiv: vi.fn().mockReturnValue(listContainer)
+				}
+			});
+
+			await view.onOpen();
+
+			const file1 = createTestFile('chapter1.md', 'Novels/Alpha/chapter1.md');
+			const countEl1 = createMockCountEl('1000common.word-char');
+
+			const internalView = view as unknown as { renderedCountEls: Map<string, MockCountEl> };
+			internalView.renderedCountEls.set(file1.path, countEl1);
+
+			app.workspace.trigger('webnovel:file-word-count-updated', file1, 0);
+
+			expect(countEl1.setText).toHaveBeenCalledWith('0common.word-char');
+			expect(countEl1.removeClass).toHaveBeenCalledWith('is-excluded');
+		});
+
+		it('applies is-excluded when file is not eligible for word count', async () => {
+			const listContainer = {
+				scrollTop: 0,
+				addEventListener: vi.fn(),
+				createEl: vi.fn()
+			};
+			Object.assign(view, {
+				containerEl: {
+					empty: vi.fn(),
+					createDiv: vi.fn().mockReturnValue(listContainer)
+				}
+			});
+
+			await view.onOpen();
+
+			const file1 = createTestFile('chapter1.md', 'Novels/Alpha/chapter1.md');
+			const countEl1 = createMockCountEl('1000common.word-char');
+
+			plugin.cacheManager.isEligibleForWordCount = vi.fn().mockReturnValue(false);
+
+			const internalView = view as unknown as { renderedCountEls: Map<string, MockCountEl> };
+			internalView.renderedCountEls.set(file1.path, countEl1);
+
+			app.workspace.trigger('webnovel:file-word-count-updated', file1, 500);
+
+			expect(countEl1.setText).toHaveBeenCalledWith('corkboard.wordcount-excluded');
+			expect(countEl1.addClass).toHaveBeenCalledWith('is-excluded');
+		});
+
+		it('does not trigger full refresh or mutate unrelated files', async () => {
+			const listContainer = {
+				scrollTop: 0,
+				addEventListener: vi.fn(),
+				createEl: vi.fn()
+			};
+			Object.assign(view, {
+				containerEl: {
+					empty: vi.fn(),
+					createDiv: vi.fn().mockReturnValue(listContainer)
+				}
+			});
+
+			await view.onOpen();
+
+			const file1 = createTestFile('chapter1.md', 'Novels/Alpha/chapter1.md');
+			const countEl1 = createMockCountEl('1000common.word-char');
+
+			const internalView = view as unknown as { renderedCountEls: Map<string, MockCountEl> };
+			internalView.renderedCountEls.set(file1.path, countEl1);
+
+			const refreshSpy = vi.spyOn(view, 'refresh');
+			const unrelatedFile = createTestFile('other.md', 'Novels/Other/other.md');
+
+			app.workspace.trigger('webnovel:file-word-count-updated', unrelatedFile, 800);
+
+			expect(refreshSpy).not.toHaveBeenCalled();
+			expect(countEl1.setText).not.toHaveBeenCalled();
+		});
+
+		it('ignores count events after view is closed and clears rendered element references', async () => {
+			const listContainer = {
+				scrollTop: 0,
+				addEventListener: vi.fn(),
+				createEl: vi.fn()
+			};
+			Object.assign(view, {
+				containerEl: {
+					empty: vi.fn(),
+					createDiv: vi.fn().mockReturnValue(listContainer)
+				}
+			});
+
+			await view.onOpen();
+
+			const file1 = createTestFile('chapter1.md', 'Novels/Alpha/chapter1.md');
+			const countEl1 = createMockCountEl('1000common.word-char');
+
+			const internalView = view as unknown as { renderedCountEls: Map<string, MockCountEl> };
+			internalView.renderedCountEls.set(file1.path, countEl1);
+
+			await view.onClose();
+
+			expect(internalView.renderedCountEls.size).toBe(0);
+
+			app.workspace.trigger('webnovel:file-word-count-updated', file1, 2000);
+
+			expect(countEl1.setText).not.toHaveBeenCalled();
+		});
+	});
 });

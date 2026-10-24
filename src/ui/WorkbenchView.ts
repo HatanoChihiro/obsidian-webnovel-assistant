@@ -36,7 +36,7 @@ export {
 	getWorkbenchBoardLabel
 };
 import { Logger } from '../utils/Logger';
-import { WorkbenchFilterIndex } from '../services/WorkbenchFilterIndex';
+import { getLoreAliasesForBook, WorkbenchFilterIndex } from '../services/WorkbenchFilterIndex';
 import { bindFilterInputEvents } from './components/FilterInputBinding';
 import { MultiSelectFilterRow } from './components/MultiSelectFilterRow';
 import { resolveChapterTemplate, type ChapterTemplateSettings } from '../utils/template';
@@ -232,6 +232,7 @@ export class WorkbenchView extends ItemView {
     private cachedForeshadowingMap: Map<string, ParsedForeshadowingEntry[]> | null = null;
     private cachedForeshadowingBookPath: string | null = null;
     private cachedForeshadowingKey: string | null = null;
+    private chapterMetadataSnapshots = new WeakMap<TFile, string>();
     private readonly pendingCardUpdates = new Set<string>();
     private hasPendingDeferredFullReload: boolean = false;
     private readonly deferredCardUpdatePaths = new Set<string>();
@@ -778,6 +779,16 @@ export class WorkbenchView extends ItemView {
         }
     }
 
+    private getChapterMetadataKey(file: TFile): string | undefined {
+        const cache = this.app.metadataCache.getFileCache(file);
+        if (!cache) return undefined;
+        try {
+            return JSON.stringify(cache.frontmatter ?? null);
+        } catch {
+            return undefined;
+        }
+    }
+
     private handleMarkdownFileChanged(file: TAbstractFile): void {
         if (this.isSavingMetadata) return;
         if (!(file instanceof TFile) || file.extension !== 'md') return;
@@ -803,6 +814,19 @@ export class WorkbenchView extends ItemView {
         ) {
             this.scheduleRefresh(1000);
             return;
+        }
+
+        // Chapter cards and waterfall cards display word counts; other boards only
+        // depend on chapter metadata. Unknown metadata still takes the safe full refresh.
+        if (this.sortMode !== null && this.sortMode !== 'default'
+            && !(this.sortMode === 'timeline' && !this.isTimelineTrajectoryMode)
+            && this.isEligibleChapterFile(file)) {
+            const key = this.getChapterMetadataKey(file);
+            if (key !== undefined) {
+                const previous = this.chapterMetadataSnapshots.get(file);
+                this.chapterMetadataSnapshots.set(file, key);
+                if (previous === key) return;
+            }
         }
 
         if (this.canIncrementallyRefresh(file)) {
@@ -839,18 +863,7 @@ export class WorkbenchView extends ItemView {
             return;
         }
 
-        const rawFiles = this.getBookMarkdownFiles().filter((file: TFile) => {
-            if (this.plugin.settings.enableStrictChapterMode 
-                && !ChapterSorter.isChapterFile(file.name)
-                && !this.plugin.isFileInStrictChapterException(file)) {
-                return false;
-            }
-            const lorePath = this.plugin.settings.loreFolderName || t('common.default-lore-folder-name');
-            if (file.path.includes(`/${lorePath}/`) || file.path.startsWith(`${lorePath}/`)) {
-                return false;
-            }
-            return true;
-        });
+        const rawFiles = this.getBookMarkdownFiles().filter((file: TFile) => this.isEligibleChapterFile(file));
         
         const files = getDeterministicChapterDisplayOrder(rawFiles, {
             currentBookPath: this.currentBookPath || '',
@@ -1119,6 +1132,7 @@ export class WorkbenchView extends ItemView {
 
     async onClose(): Promise<void> {
         this.isClosed = true;
+        this.chapterMetadataSnapshots = new WeakMap();
         clearTrajectoryViewport(this.leaf);
         this.hasPendingReload = false;
         this.currentRenderId++;
@@ -1391,19 +1405,6 @@ export class WorkbenchView extends ItemView {
         }
     }
 
-    private getLoreAliases(bookPath: string): Map<string, string[]> {
-        const aliasesByHeading = new Map<string, string[]>();
-        for (const name of this.plugin.characterManager.getCharactersForBook(bookPath)) {
-            const entry = this.plugin.characterManager.getCharacterFile(bookPath, name);
-            if (!entry || name === entry.heading) continue;
-
-            const aliases = aliasesByHeading.get(entry.heading) ?? [];
-            if (!aliases.includes(name)) aliases.push(name);
-            aliasesByHeading.set(entry.heading, aliases);
-        }
-        return aliasesByHeading;
-    }
-
     public async reloadBoard(): Promise<void> {
         this.cancelPendingCardUpdates();
         if (!this.container || this.isClosed) return;
@@ -1584,6 +1585,12 @@ export class WorkbenchView extends ItemView {
         let files: TFile[] = [];
         if (needsChapters) {
             files = this.getEligibleChapterFiles();
+            if (this.sortMode !== 'default' && !(this.sortMode === 'timeline' && !this.isTimelineTrajectoryMode)) {
+                for (const file of files) {
+                    const key = this.getChapterMetadataKey(file);
+                    if (key !== undefined) this.chapterMetadataSnapshots.set(file, key);
+                }
+            }
         }
         const tFiles = performance.now();
         Logger.info(`[Perf Phase] Workbench.getFiles & sort: ${(tFiles - tStart).toFixed(2)}ms`);
@@ -1936,7 +1943,7 @@ export class WorkbenchView extends ItemView {
             if (hasQuery) {
                 matchedLoreHeadings = await this.filterIndex.filterLoreEntries(
                     loreEntries,
-                    this.getLoreAliases(normalizedBookPath),
+                    getLoreAliasesForBook(this.plugin.characterManager, normalizedBookPath),
                     this.loreFilterQuery
                 );
             }

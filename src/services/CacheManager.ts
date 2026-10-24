@@ -301,6 +301,10 @@ export class CacheManager {
 
 		this.markCacheDirty();
 
+		if (!oldEntry || oldEntry.wordCount !== newWordCount) {
+			this.plugin.app.workspace?.trigger('webnovel:file-word-count-updated', file, newWordCount);
+		}
+
 		// 清理缓存大小
 		if (this.cache.size > this.maxCacheSize) {
 			this.clearOldEntries();
@@ -370,6 +374,15 @@ export class CacheManager {
 	getFileCache(filePath: string): number | null {
 		const entry = this.cache.get(filePath);
 		return entry ? entry.wordCount : null;
+	}
+
+	/**
+	 * 检查指定文件的缓存是否有效且与当前文件修改时间一致
+	 */
+	isFileCacheCurrent(file: TFile): boolean {
+		const entry = this.cache.get(file.path);
+		if (!entry || entry.isFolder) return false;
+		return typeof file.stat?.mtime === 'number' && entry.lastModified === file.stat.mtime;
 	}
 
 	/**

@@ -22,6 +22,7 @@ export const TIMELINE_VIEW_TYPE = 'wn-timeline-view';
 export type TimelineViewManager = Pick<
 	TimelineManager,
 	| 'getTimelineFile'
+	| 'loadContent'
 	| 'createTimelineFile'
 	| 'parseEntries'
 	| 'findEntryHeadingOffset'
@@ -142,7 +143,7 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 		const reqGen = ++this.refreshGeneration;
 		const file = this.manager.getTimelineFile(targetFolder);
 		const filePath = file?.path;
-		const content = file ? await this.app.vault.read(file) : null;
+		const content = file ? await this.manager.loadContent(targetFolder) : null;
 		if (!this.isRefreshCurrent(reqGen, targetFolder) || file?.path !== filePath) {
 			return;
 		}

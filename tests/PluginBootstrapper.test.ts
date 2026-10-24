@@ -82,6 +82,7 @@ import type { TypographyManager } from '../src/services/TypographyManager';
 import type { CommandManager } from '../src/core/CommandManager';
 import type { ViewManager } from '../src/core/ViewManager';
 import type { MenuManager } from '../src/core/MenuManager';
+import type { ProofreadingManager } from '../src/services/ProofreadingManager';
 import { Logger } from '../src/utils/Logger';
 import { LoreCardRenderer } from '../src/ui/components/LoreCardRenderer';
 
@@ -116,6 +117,7 @@ describe('PluginBootstrapper', () => {
 
 	beforeAll(() => {
 		vi.stubGlobal('window', {
+			console: globalThis.console,
 			moment: Object.assign(() => ({ format: () => '2026-08-20' }), {
 				locale: () => 'zh-cn'
 			}),
@@ -154,7 +156,9 @@ describe('PluginBootstrapper', () => {
 		'WorkerManager',
 		'MarkdownPostProcessor',
 		'HomepageManager',
-		'WritingJourneyService'
+		'NativeSnapshotService',
+		'WritingJourneyService',
+		'ChapterSnapshotManager'
 	];
 
 	const EXPECTED_CORE_RUNTIME_SERVICES: readonly (keyof ServiceMap)[] = [
@@ -380,6 +384,7 @@ describe('PluginBootstrapper', () => {
 				});
 				const clearTimeoutSpy = vi.fn();
 				vi.stubGlobal('window', {
+			console: globalThis.console,
 					moment: Object.assign(() => ({ format: () => '2026-08-20' }), {
 						locale: () => 'zh-cn'
 					}),
@@ -407,6 +412,7 @@ describe('PluginBootstrapper', () => {
 			it('should not schedule delayed cache build when showExplorerCounts is false', () => {
 				const setTimeoutSpy = vi.fn();
 				vi.stubGlobal('window', {
+			console: globalThis.console,
 					moment: Object.assign(() => ({ format: () => '2026-08-20' }), {
 						locale: () => 'zh-cn'
 					}),
@@ -466,6 +472,7 @@ describe('PluginBootstrapper', () => {
 				});
 				const clearTimeoutSpy = vi.fn();
 				vi.stubGlobal('window', {
+			console: globalThis.console,
 					moment: Object.assign(() => ({ format: () => '2026-08-20' }), {
 						locale: () => 'zh-cn'
 					}),
@@ -492,6 +499,7 @@ describe('PluginBootstrapper', () => {
 			it('should not schedule delayed cache or register layout-change event when showExplorerCounts is false', () => {
 				const setTimeoutSpy = vi.fn();
 				vi.stubGlobal('window', {
+			console: globalThis.console,
 					moment: Object.assign(() => ({ format: () => '2026-08-20' }), {
 						locale: () => 'zh-cn'
 					}),
@@ -536,6 +544,7 @@ describe('PluginBootstrapper', () => {
 				});
 				const clearTimeoutSpy = vi.fn();
 				vi.stubGlobal('window', {
+			console: globalThis.console,
 					moment: Object.assign(() => ({ format: () => '2026-08-20' }), {
 						locale: () => 'zh-cn'
 					}),
@@ -621,6 +630,7 @@ describe('PluginBootstrapper', () => {
 					return 404;
 				});
 				vi.stubGlobal('window', {
+			console: globalThis.console,
 					moment: Object.assign(() => ({ format: () => '2026-08-20' }), {
 						locale: () => 'zh-cn'
 					}),
@@ -1109,6 +1119,8 @@ describe('PluginBootstrapper', () => {
 
 			mockPlugin.loreSyncService = { initialize: vi.fn() } as unknown as LoreSyncService;
 			mockPlugin.characterManager = { initialize: vi.fn().mockResolvedValue(undefined) } as unknown as CharacterManager;
+			mockPlugin.proofreadingManager = { initialize: vi.fn().mockResolvedValue(undefined) } as unknown as ProofreadingManager;
+			mockPlugin.characterManager = { initialize: vi.fn().mockResolvedValue(undefined) } as unknown as CharacterManager;
 			mockPlugin.fileEventManager = {
 				setup: vi.fn(() => {
 					throw startupError;
@@ -1289,6 +1301,8 @@ describe('PluginBootstrapper', () => {
 			mockPlugin.historyManager = { loadHistory: vi.fn().mockResolvedValue(undefined) } as unknown as HistoryDataManager;
 			mockPlugin.cacheManager.loadCache = vi.fn().mockResolvedValue(undefined);
 			mockPlugin.loreSyncService = { initialize: vi.fn() } as unknown as LoreSyncService;
+			mockPlugin.characterManager = { initialize: vi.fn().mockResolvedValue(undefined) } as unknown as CharacterManager;
+			mockPlugin.proofreadingManager = { initialize: vi.fn().mockResolvedValue(undefined) } as unknown as ProofreadingManager;
 			mockPlugin.fileEventManager = { setup: vi.fn() } as unknown as FileEventManager;
 			mockPlugin.statisticsManager = { setup: vi.fn() } as unknown as StatisticsManager;
 			mockPlugin.workerManager = { setup: vi.fn() } as unknown as WorkerManager;
@@ -1338,6 +1352,8 @@ describe('PluginBootstrapper', () => {
 			mockPlugin.historyManager = { loadHistory: vi.fn().mockResolvedValue(undefined) } as unknown as HistoryDataManager;
 			mockPlugin.cacheManager.loadCache = vi.fn().mockResolvedValue(undefined);
 			mockPlugin.loreSyncService = { initialize: vi.fn() } as unknown as LoreSyncService;
+			mockPlugin.characterManager = { initialize: vi.fn().mockResolvedValue(undefined) } as unknown as CharacterManager;
+			mockPlugin.proofreadingManager = { initialize: vi.fn().mockResolvedValue(undefined) } as unknown as ProofreadingManager;
 			mockPlugin.fileEventManager = { setup: vi.fn() } as unknown as FileEventManager;
 			mockPlugin.statisticsManager = { setup: vi.fn() } as unknown as StatisticsManager;
 			mockPlugin.workerManager = { setup: vi.fn() } as unknown as WorkerManager;
@@ -1362,6 +1378,65 @@ describe('PluginBootstrapper', () => {
 
 			expect(mockPlugin.refreshStatusViews).toHaveBeenCalledWith(false, true);
 			expect(mockHomepageManager.refreshHomepageViews).toHaveBeenCalledTimes(1);
+		});
+
+		it('records startup timings via Logger.info when debugMode is enabled, without exposing sensitive info, and ignores layoutReady on unload', async () => {
+			mockPlugin.settings.debugMode = true;
+			Logger.initialize(mockPlugin);
+			const infoSpy = vi.spyOn(Logger, 'info');
+
+			const bootstrapper = new PluginBootstrapper(mockPlugin, registry);
+			bootstrapper.registerConstructorServices();
+
+			mockPlugin.historyManager = { loadHistory: vi.fn().mockResolvedValue(undefined) } as unknown as HistoryDataManager;
+			mockPlugin.cacheManager.loadCache = vi.fn().mockResolvedValue(undefined);
+			mockPlugin.loreSyncService = { initialize: vi.fn() } as unknown as LoreSyncService;
+			mockPlugin.characterManager = { initialize: vi.fn().mockResolvedValue(undefined) } as unknown as CharacterManager;
+			mockPlugin.proofreadingManager = { initialize: vi.fn().mockResolvedValue(undefined) } as unknown as ProofreadingManager;
+			mockPlugin.fileEventManager = { setup: vi.fn() } as unknown as FileEventManager;
+			mockPlugin.statisticsManager = { setup: vi.fn() } as unknown as StatisticsManager;
+			mockPlugin.workerManager = { setup: vi.fn() } as unknown as WorkerManager;
+			mockPlugin.markdownPostProcessor = { getProcessor: vi.fn() } as unknown as MarkdownPostProcessor;
+			mockPlugin.typographyManager = { updateTypography: vi.fn() } as unknown as TypographyManager;
+			mockPlugin.commandManager = { registerAllCommands: vi.fn() } as unknown as CommandManager;
+			mockPlugin.viewManager = { registerAllViews: vi.fn() } as unknown as ViewManager;
+			mockPlugin.menuManager = { registerAllMenus: vi.fn() } as unknown as MenuManager;
+			mockPlugin.registerMarkdownPostProcessor = vi.fn();
+			mockPlugin.addStatusBarItem = vi.fn().mockReturnValue({});
+			Object.assign(mockPlugin.app, {
+				metadataCache: { on: vi.fn(() => ({})) }
+			});
+
+			await bootstrapper.bootstrap();
+
+			const logCalls = infoSpy.mock.calls.map(c => c.join(' '));
+			const timingLog = logCalls.find(msg => msg.includes('[PluginBootstrapper]') && msg.includes('settings'));
+			expect(timingLog).toBeDefined();
+			expect(timingLog).toMatch(/settings/);
+			expect(timingLog).toMatch(/locale/);
+			expect(timingLog).toMatch(/history/);
+			expect(timingLog).toMatch(/cache/);
+			expect(timingLog).toMatch(/notes/);
+			expect(timingLog).toMatch(/sync/i);
+			expect(timingLog).toMatch(/total/i);
+
+			for (const cb of layoutReadyCallbacks) {
+				cb();
+			}
+			const layoutReadyLog = infoSpy.mock.calls.map(c => c.join(' ')).find(msg => msg.includes('layoutReadyDelay'));
+			expect(layoutReadyLog).toBeDefined();
+
+			const cleanupCount = registeredCleanups.length;
+			const initializeCount = vi.mocked(mockPlugin.characterManager.initialize).mock.calls.length;
+			mockPlugin.isUnloading = true;
+			infoSpy.mockClear();
+			for (const cb of layoutReadyCallbacks) cb();
+			expect(infoSpy).not.toHaveBeenCalled();
+			expect(registeredCleanups).toHaveLength(cleanupCount);
+			expect(mockPlugin.characterManager.initialize).toHaveBeenCalledTimes(initializeCount);
+
+			infoSpy.mockRestore();
+			Logger.release(mockPlugin);
 		});
 	});
 });

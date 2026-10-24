@@ -1,5 +1,13 @@
 export type StickyNoteParagraphEditor = HTMLDivElement & { value: string };
 
+interface EditorListeners {
+	beforeinput: (event: Event) => void;
+	paste: (event: Event) => void;
+	input: (event: Event) => void;
+	compositionstart: () => void;
+	compositionend: () => void;
+}
+
 export function setStickyNoteEditorContent(editor: HTMLElement, content: string): void {
 	editor.empty();
 	for (const line of content.split('\n')) {
@@ -19,16 +27,35 @@ export function getStickyNoteEditorContent(editor: HTMLElement): string {
 	return lines.map(line => line.textContent ?? '').join('\n');
 }
 
-function refreshStickyNoteEditorLines(editor: HTMLElement): void {
+function refreshStickyNoteEditorLines(editor: HTMLElement, isComposing = false): void {
 	const children = Array.from(editor.children);
 	if (children.length === 0) {
-		setStickyNoteEditorContent(editor, editor.textContent ?? '');
+		if (!isComposing) {
+			setStickyNoteEditorContent(editor, editor.textContent ?? '');
+		}
 		return;
 	}
 	for (const child of children) {
 		const lineEl = child as HTMLElement;
 		lineEl.addClass('wn-sticky-note-editor-line');
 		lineEl.toggleClass('is-empty', (lineEl.textContent ?? '').length === 0);
+	}
+}
+
+function runNativeEditorCommand(
+	editor: HTMLElement,
+	commandId: 'insertParagraph' | 'insertText',
+	value?: string
+): boolean {
+	editor.setAttr('contenteditable', 'true');
+	try {
+		// Legacy native editing is required here to preserve undo for paragraph splits and plain-text paste.
+		return editor.ownerDocument.execCommand(commandId, false, value);
+	} catch {
+		// Leave the original event uncanceled so plain-text input still works if unavailable.
+		return false;
+	} finally {
+		editor.setAttr('contenteditable', 'plaintext-only');
 	}
 }
 
@@ -100,7 +127,18 @@ export function setCaretPosition(editor: HTMLElement, charIndex: number): void {
 	}
 }
 
-const editorInputHandlers = new WeakMap<HTMLElement, () => void>();
+const editorListeners = new WeakMap<HTMLElement, EditorListeners>();
+
+function removeEditorListeners(editor: HTMLElement): void {
+	const existing = editorListeners.get(editor);
+	if (!existing) return;
+	editor.removeEventListener('beforeinput', existing.beforeinput);
+	editor.removeEventListener('paste', existing.paste);
+	editor.removeEventListener('input', existing.input);
+	editor.removeEventListener('compositionstart', existing.compositionstart);
+	editor.removeEventListener('compositionend', existing.compositionend);
+	editorListeners.delete(editor);
+}
 
 export function teardownStickyNoteParagraphEditor(editor: HTMLElement): void {
 	editor.removeClass('wn-sticky-note-paragraph-editor');
@@ -108,11 +146,7 @@ export function teardownStickyNoteParagraphEditor(editor: HTMLElement): void {
 	editor.removeAttribute('role');
 	editor.removeAttribute('aria-multiline');
 	editor.removeAttribute('spellcheck');
-	const handler = editorInputHandlers.get(editor);
-	if (handler) {
-		editor.removeEventListener('input', handler);
-		editorInputHandlers.delete(editor);
-	}
+	removeEditorListeners(editor);
 }
 
 export function setupStickyNoteParagraphEditor<T extends HTMLElement>(
@@ -132,13 +166,43 @@ export function setupStickyNoteParagraphEditor<T extends HTMLElement>(
 	if (content !== undefined) {
 		(editor as T & { value: string }).value = content;
 	}
-	const existingHandler = editorInputHandlers.get(editor);
-	if (existingHandler) {
-		editor.removeEventListener('input', existingHandler);
-	}
-	const inputHandler = () => refreshStickyNoteEditorLines(editor);
-	editorInputHandlers.set(editor, inputHandler);
-	editor.addEventListener('input', inputHandler);
+	removeEditorListeners(editor);
+	let isComposing = false;
+	const listeners: EditorListeners = {
+		beforeinput: (event: Event) => {
+			const inputEvent = event as InputEvent;
+			if (event.defaultPrevented || event.cancelable === false || isComposing || inputEvent.isComposing) {
+				return;
+			}
+			if (inputEvent.inputType !== 'insertLineBreak' && inputEvent.inputType !== 'insertParagraph') {
+				return;
+			}
+			if (runNativeEditorCommand(editor, 'insertParagraph')) event.preventDefault();
+		},
+		paste: (event: Event) => {
+			const pasteEvent = event as ClipboardEvent;
+			if (event.defaultPrevented || event.cancelable === false || isComposing) {
+				return;
+			}
+			const clipboardData = pasteEvent.clipboardData;
+			if (!clipboardData || typeof clipboardData.getData !== 'function') {
+				return;
+			}
+			const plainText = clipboardData.getData('text/plain');
+			if (runNativeEditorCommand(editor, 'insertText', plainText)) event.preventDefault();
+		},
+		input: (event: Event) => {
+			refreshStickyNoteEditorLines(editor, isComposing || Boolean((event as InputEvent | undefined)?.isComposing));
+		},
+		compositionstart: () => { isComposing = true; },
+		compositionend: () => { isComposing = false; }
+	};
+	editorListeners.set(editor, listeners);
+	editor.addEventListener('beforeinput', listeners.beforeinput);
+	editor.addEventListener('paste', listeners.paste);
+	editor.addEventListener('input', listeners.input);
+	editor.addEventListener('compositionstart', listeners.compositionstart);
+	editor.addEventListener('compositionend', listeners.compositionend);
 	return editor as T & { value: string };
 }
 

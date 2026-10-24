@@ -5,7 +5,24 @@
  */
 
 import type { Locale } from './index';
-import { getLocale } from './index';
+import { getLocale, t } from './index';
+
+export function getProofreadingTypeLabel(type: string): string {
+	switch (type) {
+		case 'wrong_word':
+			return t('proofreading.type-wrong');
+		case 'sensitive':
+			return t('proofreading.type-sensitive');
+		case 'synonym':
+			return t('proofreading.type-synonym');
+		case 'grammar':
+			return t('proofreading.type-grammar');
+		case 'punctuation':
+			return t('proofreading.type-punctuation');
+		default:
+			return t('proofreading.type-wrong');
+	}
+}
 
 // ==========================================
 // 伏笔文件字段标签
@@ -85,26 +102,6 @@ export const FORESHADOWING_STATUS_MAP: Record<string, string> = {
 	// 繁體中文值
 	'階段回收中': 'partially_recovered',
 	'已廢棄': 'deprecated',
-};
-
-/** 伏笔字段标签双向解析映射 */
-export const FORESHADOWING_LABEL_MAP: Record<string, string> = {
-	// 英文 key（新版）
-	'Description': 'description',
-	'Tags': 'tags',
-	'Status': 'status',
-	'Resolved in': 'recoveredAt',
-	'Recovered at': 'recoveredAt',
-	// 中文 key（旧版兼容）
-	'说明': 'description',
-	'标签': 'tags',
-	'状态': 'status',
-	'回收于': 'recoveredAt',
-	// 繁體中文
-	'說明': 'description',
-	'標籤': 'tags',
-	'狀態': 'status',
-	'回收於': 'recoveredAt',
 };
 
 // ==========================================
@@ -472,24 +469,6 @@ const LORE_LABELS = {
 	},
 } as const;
 
-/** 设定文档字段标签双向解析映射 */
-export const LORE_LABEL_MAP: Record<string, string> = {
-	// 英文
-	'Alias': 'alias',
-	'Type': 'type',
-	'Relation': 'relation',
-	'Relations': 'relation',
-	'Relationships': 'relation',
-	// 中文
-	'别名': 'alias',
-	'类型': 'type',
-	'关系': 'relation',
-	// 繁體中文
-	'別名': 'alias',
-	'類型': 'type',
-	'關係': 'relation',
-};
-
 /** 获取设定文档的字段标签 */
 export function getLoreLabel(field: keyof typeof LORE_LABELS['zh-CN']): string {
 	return LORE_LABELS[getLocale()][field];
@@ -624,16 +603,6 @@ export function getDefaultFileNameCandidates(field: DefaultFileNameKey): string[
 		}
 		return candidates;
 	}
-
-/** 获取当前语言的默认标签列表 */
-export function getDefaultTags(): string[] {
-	return DEFAULT_TAGS[getLocale()].slice();
-}
-
-/** 获取当前语言的默认类型列表 */
-export function getDefaultTypes(): string[] {
-	return DEFAULT_TYPES[getLocale()].slice();
-}
 
 /**
  * 根据当前语言覆盖默认设置中的中文值

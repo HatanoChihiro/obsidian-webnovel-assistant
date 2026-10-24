@@ -1,6 +1,8 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { WorkspaceLeaf, TFile, TFolder, MarkdownView } from './mocks/obsidian';
+import { WorkspaceLeaf, TFile, TFolder, MarkdownView, Menu } from './mocks/obsidian';
+import { MockElement } from './mocks/MockElement';
 import { WritingStatusView, type WritingStatusViewPlugin } from '../src/ui/StatusView';
+import { ChapterCard, type ChapterCardPlugin } from '../src/ui/components/ChapterCard';
 import type { TaskManager } from '../src/services/TaskManager';
 import { ChapterSorter } from '../src/services/ChapterSorter';
 import { ForeshadowingStatus, type ParsedForeshadowingEntry } from '../src/types/foreshadowing';
@@ -1564,5 +1566,69 @@ describe('WritingStatusView work retention and context isolation', () => {
 			await view.updateData(true, true);
 			expect(vi.mocked(mockPlugin.historyManager.getHistory).mock.calls.length).toBeGreaterThan(preForceCount);
 		});
+	});
+
+	it('fails safely without direct frontmatter mutation when writingJourneyService is missing in WritingStatusView and ChapterCard', async () => {
+		const processFrontMatter = vi.fn();
+		const chapterFile = new TFile('第1章.md', '作品A/第1章.md');
+		const env = createTestEnvironment([new TFolder('作品A', '作品A'), chapterFile]);
+		Object.assign(env.app, { fileManager: { processFrontMatter } });
+		Object.assign(view, { app: env.app, currentChapterFile: chapterFile });
+		mockPlugin.writingJourneyService = undefined;
+
+		let capturedCallbacks: Array<() => Promise<void> | void> = [];
+		const addItemSpy = vi.spyOn(Menu.prototype, 'addItem').mockImplementation(function (this: Menu, cb) {
+			const item = {
+				setTitle: () => item,
+				setChecked: () => item,
+				setIcon: () => item,
+				onClick: (fn?: () => Promise<void> | void) => {
+					if (fn) capturedCallbacks.push(fn);
+					return item;
+				}
+			};
+			cb(item);
+			return this;
+		});
+
+		try {
+			// 1. WritingStatusView status badge click
+			const statusContainer = createTestEl();
+			(view as unknown as { createChapterStatusCard(el: Element): void }).createChapterStatusCard(statusContainer);
+			const badgeListeners = vi.mocked(view.chapterStatusBadgeEl.addEventListener).mock.calls;
+			const clickHandler = badgeListeners.find(([type]) => type === 'click')?.[1] as ((e: MouseEvent) => void) | undefined;
+			expect(clickHandler).toBeDefined();
+			clickHandler!({ stopPropagation: vi.fn() } as unknown as MouseEvent);
+			expect(capturedCallbacks.length).toBeGreaterThan(0);
+			for (const fn of capturedCallbacks) {
+				await fn();
+			}
+			expect(processFrontMatter).not.toHaveBeenCalled();
+
+			// 2. ChapterCard status click
+			capturedCallbacks = [];
+			const grid = new MockElement();
+			const cardEl = ChapterCard.render(
+				grid as unknown as HTMLElement,
+				chapterFile as unknown as import('obsidian').TFile,
+				env.app,
+				{
+					...mockPlugin,
+					writingJourneyService: undefined,
+					menuManager: { toggleExcludeFromWordCount: vi.fn() },
+					cacheManager: { getFileCache: vi.fn(() => null) },
+					calculateAccurateWords: vi.fn(() => 0)
+				} as unknown as ChapterCardPlugin
+			) as unknown as InstanceType<typeof MockElement>;
+			const statusEl = cardEl.querySelector('.wn-corkboard-card-status')!;
+			(statusEl.onclick as unknown as (e: MouseEvent) => void)({} as MouseEvent);
+			expect(capturedCallbacks.length).toBeGreaterThan(0);
+			for (const fn of capturedCallbacks) {
+				await fn();
+			}
+			expect(processFrontMatter).not.toHaveBeenCalled();
+		} finally {
+			addItemSpy.mockRestore();
+		}
 	});
 });

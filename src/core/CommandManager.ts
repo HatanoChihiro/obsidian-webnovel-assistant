@@ -274,6 +274,39 @@ export class CommandManager {
 
 	private registerChapterCommands() {
 		this.plugin.addCommand({
+			id: 'compare-chapter-snapshot',
+			name: t('command.compare-chapter-snapshot'),
+			icon: 'history',
+			checkCallback: (checking: boolean) => {
+				const snapshotMgr = this.plugin.services?.getOptional?.('ChapterSnapshotManager')
+					?? (this.plugin as unknown as { chapterSnapshotManager?: { resolveCommandContext(): { file: TFile | null; ownerDocument: Document | null; sourceEditor: MarkdownView | null }; openComparison(opts: unknown): Promise<void> } }).chapterSnapshotManager;
+				if (!snapshotMgr) return false;
+
+				const ctx = snapshotMgr.resolveCommandContext();
+				if (!ctx.file || !ctx.ownerDocument || !this.plugin.cacheManager.isEligibleForChapterList(ctx.file)) return false;
+
+				const bookRoot = findBookRoot(this.plugin.app, this.plugin, ctx.file, true);
+				if (!bookRoot) return false;
+
+				if (checking) return true;
+
+				const journeyService = this.plugin.services?.getOptional?.('WritingJourneyService')
+					?? this.plugin.writingJourneyService;
+
+				const ownerDocument = ctx.ownerDocument;
+				void (async () => {
+					const result = await journeyService?.getJourneyLog(bookRoot);
+					await snapshotMgr.openComparison({
+						file: ctx.file,
+						ownerDocument,
+						sourceEditor: ctx.sourceEditor,
+						allJourneyEvents: result?.status === 'valid' ? result.log?.events : []
+					});
+				})().catch(err => Logger.error('[CommandManager] Failed to open snapshot comparison:', err));
+				return true;
+			}
+		});
+		this.plugin.addCommand({
 			id: 'set-chapter-word-goal',
 			name: t('command.set-chapter-goal'),
 			icon: 'target',

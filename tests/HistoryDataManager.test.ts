@@ -15,6 +15,10 @@ const stat = (addedWords: number) => ({
 	hourlySlack: [30000]
 });
 
+function seedDailyStat(manager: HistoryDataManager, date: string, value: ReturnType<typeof stat>): void {
+	Object.assign(manager.getOrCreateDailyStat(date), value);
+}
+
 describe('HistoryDataManager persistence', () => {
 	let plugin: {
 		loadData: ReturnType<typeof vi.fn>;
@@ -46,7 +50,7 @@ describe('HistoryDataManager persistence', () => {
 
 	it('clears only daily words while preserving focus timing data', () => {
 		const manager = new HistoryDataManager(plugin as never);
-		manager.updateDailyStat('2026-08-12', stat(1200));
+		seedDailyStat(manager, '2026-08-12', stat(1200));
 		manager.setDailyWords('2026-08-12', 0);
 		expect(manager.getDailyStat('2026-08-12')).toEqual(stat(0));
 	});
@@ -59,9 +63,9 @@ describe('HistoryDataManager persistence', () => {
 
 	it('exports and restores a portable history-only backup', async () => {
 		const manager = new HistoryDataManager(plugin as never);
-		manager.updateDailyStat('2026-08-12', stat(1200));
+		seedDailyStat(manager, '2026-08-12', stat(1200));
 		const backup = manager.createHistoryBackup();
-		manager.updateDailyStat('2026-08-13', stat(300));
+		seedDailyStat(manager, '2026-08-13', stat(300));
 
 		const count = await manager.restoreHistoryBackup(backup);
 
@@ -73,7 +77,7 @@ describe('HistoryDataManager persistence', () => {
 
 	it('accepts an empty history backup and replaces current history', async () => {
 		const manager = new HistoryDataManager(plugin as never);
-		manager.updateDailyStat('2026-08-12', stat(1200));
+		seedDailyStat(manager, '2026-08-12', stat(1200));
 
 		expect(await manager.restoreHistoryBackup('{}')).toBe(0);
 		expect(manager.getHistory()).toEqual({});
@@ -82,7 +86,7 @@ describe('HistoryDataManager persistence', () => {
 
 	it('rejects malformed backups without changing current history', async () => {
 		const manager = new HistoryDataManager(plugin as never);
-		manager.updateDailyStat('2026-08-12', stat(1200));
+		seedDailyStat(manager, '2026-08-12', stat(1200));
 
 		await expect(manager.restoreHistoryBackup('{"bad":true}')).rejects.toThrow('Invalid history backup entry');
 
@@ -95,6 +99,7 @@ describe('HistoryDataManager persistence', () => {
 		plugin.app.vault.adapter.exists.mockResolvedValue(true);
 		const manager = new HistoryDataManager(plugin as never);
 		expect(await manager.loadHistory()).toEqual({});
+		expect(plugin.loadData).not.toHaveBeenCalled();
 		expect(plugin.app.vault.adapter.exists).not.toHaveBeenCalled();
 		expect(plugin.settingsManager.saveSettings).not.toHaveBeenCalled();
 		expect(manager.isDirty()).toBe(false);
@@ -105,6 +110,7 @@ describe('HistoryDataManager persistence', () => {
 		plugin.app.vault.adapter.read.mockResolvedValue(JSON.stringify({ '2026-08-11': stat(200) }));
 		const manager = new HistoryDataManager(plugin as never);
 		const data = await manager.loadHistory();
+		expect(plugin.loadData).not.toHaveBeenCalled();
 		expect(data['2026-08-11']).toEqual(stat(200));
 		expect(plugin.settings.historyData).toEqual(data);
 		expect(plugin.settingsManager.saveSettings).toHaveBeenCalledTimes(1);
@@ -117,15 +123,40 @@ describe('HistoryDataManager persistence', () => {
 		plugin.app.vault.adapter.exists.mockResolvedValue(true);
 		const manager = new HistoryDataManager(plugin as never);
 		expect(await manager.loadHistory()).toEqual({});
+		expect(plugin.loadData).not.toHaveBeenCalled();
 		expect(plugin.settings.historyData).toBeUndefined();
 		expect(plugin.settingsManager.saveSettings).not.toHaveBeenCalled();
 		expect(manager.isDirty()).toBe(false);
+	});
+
+	it('does not call loadData when canonical data exists or sidecar exists, only falling through for legacy migration', async () => {
+		plugin.settings.historyData = { '2026-08-12': stat(500) };
+		const manager = new HistoryDataManager(plugin as never);
+		await manager.loadHistory();
+		expect(plugin.loadData).not.toHaveBeenCalled();
+
+		plugin.loadData.mockClear();
+		delete plugin.settings.historyData;
+		plugin.app.vault.adapter.exists.mockResolvedValue(true);
+		plugin.app.vault.adapter.read.mockResolvedValue(JSON.stringify({ '2026-08-11': stat(200) }));
+		const manager2 = new HistoryDataManager(plugin as never);
+		await manager2.loadHistory();
+		expect(plugin.loadData).not.toHaveBeenCalled();
+
+		plugin.loadData.mockClear();
+		delete plugin.settings.historyData;
+		plugin.app.vault.adapter.exists.mockResolvedValue(false);
+		plugin.loadData.mockResolvedValue({ dailyHistory: { '2026-08-10': stat(100) } });
+		const manager3 = new HistoryDataManager(plugin as never);
+		await manager3.loadHistory();
+		expect(plugin.loadData).toHaveBeenCalledTimes(1);
 	});
 
 	it('migrates legacy dailyHistory only when canonical data and sidecar are absent', async () => {
 		plugin.loadData.mockResolvedValue({ dailyHistory: { '2026-08-10': stat(10) } });
 		const manager = new HistoryDataManager(plugin as never);
 		expect(await manager.loadHistory()).toEqual({ '2026-08-10': stat(10) });
+		expect(plugin.loadData).toHaveBeenCalledTimes(1);
 		expect(plugin.settingsManager.saveSettings).toHaveBeenCalledTimes(1);
 	});
 
@@ -212,28 +243,14 @@ describe('HistoryDataManager persistence', () => {
 			manager.setDailyWords('2026-08-12', 150);
 			expect(manager.getWordRevision()).toBe(4);
 
-			// 6. updateDailyStat on existing date with same words does not bump
-			manager.updateDailyStat('2026-08-12', {
-				...manager.getDailyStat('2026-08-12')!,
-				focusMs: 99999
-			});
-			expect(manager.getWordRevision()).toBe(4);
-
-			// updateDailyStat with changed words bumps revision
-			manager.updateDailyStat('2026-08-12', {
-				...manager.getDailyStat('2026-08-12')!,
-				addedWords: 200
-			});
+			// 6. resetDailyStat bumps revision
+			manager.resetDailyStat('2026-08-12');
 			expect(manager.getWordRevision()).toBe(5);
 
-			// 7. resetDailyStat bumps revision
-			manager.resetDailyStat('2026-08-12');
-			expect(manager.getWordRevision()).toBe(6);
-
-			// 8. restoreHistoryBackup bumps revision
+			// 7. restoreHistoryBackup bumps revision
 			const backup = manager.createHistoryBackup();
 			await manager.restoreHistoryBackup(backup);
-			expect(manager.getWordRevision()).toBe(7);
+			expect(manager.getWordRevision()).toBe(6);
 		});
 	});
 });

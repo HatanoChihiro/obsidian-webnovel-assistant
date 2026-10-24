@@ -12,6 +12,7 @@ export class WordCounter {
 	private readonly reFullwidthPunct = REGEX_PATTERNS.FULLWIDTH_PUNCT();
 	private lastCleaned: { text: string; includeFootnotes: boolean; cleaned: string } | null = null;
 	private lastCount: { text: string; method: string; includeFootnotes: boolean; count: number } | null = null;
+	private lastLines: { text: string; method: string; includeFootnotes: boolean; raw: string[]; cleaned: string[]; counts: number[] } | null = null;
 
 	private getCleanedText(text: string, includeFootnotes: boolean): string {
 		if (this.lastCleaned?.text === text && this.lastCleaned.includeFootnotes === includeFootnotes) {
@@ -75,32 +76,41 @@ export class WordCounter {
 	 * @returns 每一行的字数数组
 	 */
 	calculateWordsPerLine(text: string, method: 'webnovel' | 'standard' | 'obsidian' = 'webnovel', includeFootnotes: boolean = false): number[] {
+		const previous = this.lastLines;
+		if (previous?.method === method && previous.includeFootnotes === includeFootnotes && previous.text === text) {
+			return [...previous.counts];
+		}
+		const raw = text.split('\n');
+		if (previous?.method === method && previous.includeFootnotes === includeFootnotes &&
+			previous.raw.length === raw.length && previous.cleaned.length === raw.length) {
+			const changed: number[] = [];
+			const plain = /^[\p{L}\p{N}\p{Zs}\t\r，。！？；：“”‘’（）【】《》、·…—～]+$/u;
+			for (let i = 0; i < raw.length; i++) {
+				if (raw[i] === previous.raw[i]) continue;
+				// 只增量处理行结构与清理语义都不变的正文，Markdown 编辑仍走完整清理。
+				if (previous.raw[i] !== previous.cleaned[i] || !plain.test(previous.raw[i]) || !plain.test(raw[i]) ||
+					!previous.raw[i].trim() || !raw[i].trim() || /^\s*/.exec(previous.raw[i])?.[0] !== /^\s*/.exec(raw[i])?.[0]) {
+					changed.length = 0;
+					break;
+				}
+				changed.push(i);
+			}
+			if (changed.length > 0) {
+				const cleaned = [...previous.cleaned];
+				const counts = [...previous.counts];
+				for (const i of changed) {
+					cleaned[i] = raw[i];
+					counts[i] = this.countCleanedText(raw[i], method);
+				}
+				this.lastLines = { text, method, includeFootnotes, raw, cleaned, counts };
+				this.lastCleaned = { text, includeFootnotes, cleaned: cleaned.join('\n') };
+				return [...counts];
+			}
+		}
 		const cleaned = this.getCleanedText(text, includeFootnotes);
 		const lines = cleaned.split('\n');
-
-		return lines.map(line => {
-			if (!line) return 0;
-			
-			if (method === 'webnovel') {
-				return line.replace(/\s+/g, '').length;
-			}
-			
-			let count = 0;
-			// 统计中日韩字符
-			const cjkMatches = line.match(this.reCjkChar);
-			if (cjkMatches) count += cjkMatches.length;
-			
-			const nonCjk = line.replace(this.reCjkChar, ' ');
-			
-			const wordMatches = nonCjk.match(this.reWordToken);
-			if (wordMatches) count += wordMatches.length;
-			
-			if (method === 'standard') {
-				const punctMatches = nonCjk.match(this.reFullwidthPunct);
-				if (punctMatches) count += punctMatches.length;
-			}
-			
-			return count;
-		});
+		const counts = lines.map(line => line ? this.countCleanedText(line, method) : 0);
+		this.lastLines = { text, method, includeFootnotes, raw, cleaned: lines, counts };
+		return [...counts];
 	}
 }

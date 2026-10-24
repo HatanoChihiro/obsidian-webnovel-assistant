@@ -1,5 +1,10 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { setStickyNoteEditorContent } from '../src/ui/components/StickyNoteParagraphEditor';
+import {
+	createStickyNoteParagraphEditor,
+	setupStickyNoteParagraphEditor,
+	setStickyNoteEditorContent,
+	teardownStickyNoteParagraphEditor
+} from '../src/ui/components/StickyNoteParagraphEditor';
 
 const { mockMarkdownRender, MockComponent } = vi.hoisted(() => {
 	class HoistedMockComponent {
@@ -161,11 +166,18 @@ class MockElement {
 	setAttr(key: string, val: string) { this.attributes.set(key, val); }
 	setAttribute(key: string, val: string) { this.attributes.set(key, val); }
 	getAttribute(key: string) { return this.attributes.get(key) ?? null; }
+	removeAttribute(key: string) { this.attributes.delete(key); }
 
 	addEventListener(event: string, fn: (e?: unknown) => void) {
 		const arr = this.listeners.get(event) ?? [];
 		arr.push(fn);
 		this.listeners.set(event, arr);
+	}
+
+	removeEventListener(event: string, fn: (e?: unknown) => void) {
+		const arr = this.listeners.get(event);
+		if (!arr) return;
+		this.listeners.set(event, arr.filter(listener => listener !== fn));
 	}
 
 	dispatchEvent(event: string, e?: unknown) {
@@ -246,8 +258,14 @@ class MockElement {
 		return results;
 	}
 
+	customOwnerDocument?: {
+		activeElement: MockElement | null;
+		createElement: (_tag: string) => MockElement;
+		execCommand?: (commandId: string, showUI?: boolean, value?: string) => boolean;
+	};
+
 	get ownerDocument() {
-		return {
+		return this.customOwnerDocument ?? {
 			activeElement: null as MockElement | null,
 			createElement: (_tag: string) => new MockElement()
 		};
@@ -388,6 +406,203 @@ describe('StickyNoteListRenderer paragraph editor', () => {
 		editor.appendChild(line3);
 
 		expect(getStickyNoteEditorContent(asHTMLElement(editor))).toBe('第一段\n\n第二段');
+	});
+
+	it('cancels beforeinput line breaks, runs native insertParagraph with temporary contenteditable=true, and tags new sibling lines', () => {
+		const parent = new MockElement();
+		const editor = createStickyNoteParagraphEditor(asHTMLElement(parent), '第一段', 'test-editor');
+		const mockEditor = editor as unknown as MockElement;
+		const seenEditableDuringCommand: Array<string | null> = [];
+
+		const execCommand = vi.fn((commandId: string, _showUI?: boolean, _value?: string) => {
+			seenEditableDuringCommand.push(mockEditor.getAttribute('contenteditable'));
+			if (commandId === 'insertParagraph') {
+				const newDiv = mockEditor.createDiv();
+				newDiv.createEl('br');
+				mockEditor.dispatchEvent('input', { isComposing: false });
+			}
+			return true;
+		});
+		mockEditor.customOwnerDocument = {
+			activeElement: mockEditor,
+			createElement: () => new MockElement(),
+			execCommand
+		};
+
+		const preventDefault = vi.fn();
+		mockEditor.dispatchEvent('beforeinput', {
+			inputType: 'insertLineBreak',
+			isComposing: false,
+			cancelable: true,
+			defaultPrevented: false,
+			preventDefault
+		});
+
+		expect(preventDefault).toHaveBeenCalledTimes(1);
+		expect(execCommand).toHaveBeenCalledWith('insertParagraph', false, undefined);
+		expect(seenEditableDuringCommand).toEqual(['true']);
+		expect(mockEditor.getAttribute('contenteditable')).toBe('plaintext-only');
+		expect(mockEditor.children).toHaveLength(2);
+		expect(mockEditor.children[1].hasClass('wn-sticky-note-editor-line')).toBe(true);
+		expect(mockEditor.children[1].hasClass('is-empty')).toBe(true);
+		expect(editor.value).toBe('第一段\n');
+	});
+
+	it('cancels paste, runs native insertText with plain text and temporary contenteditable=true, and restores plaintext-only', () => {
+		const parent = new MockElement();
+		const editor = createStickyNoteParagraphEditor(asHTMLElement(parent), '', 'test-editor');
+		const mockEditor = editor as unknown as MockElement;
+		const seenEditableDuringCommand: Array<string | null> = [];
+
+		const execCommand = vi.fn((commandId: string, _showUI?: boolean, value?: string) => {
+			seenEditableDuringCommand.push(mockEditor.getAttribute('contenteditable'));
+			if (commandId === 'insertText' && value !== undefined) {
+				mockEditor.empty();
+				for (const line of value.split('\n')) {
+					const div = mockEditor.createDiv();
+					div.textContent = line;
+				}
+				mockEditor.dispatchEvent('input', { isComposing: false });
+			}
+			return true;
+		});
+		mockEditor.customOwnerDocument = {
+			activeElement: mockEditor,
+			createElement: () => new MockElement(),
+			execCommand
+		};
+
+		const preventDefault = vi.fn();
+		mockEditor.dispatchEvent('paste', {
+			cancelable: true,
+			defaultPrevented: false,
+			preventDefault,
+			clipboardData: {
+				getData: (type: string) => (type === 'text/plain' ? '段落一\n\n段落二 <b>\n' : '<b>ignored</b>')
+			}
+		});
+
+		expect(preventDefault).toHaveBeenCalledTimes(1);
+		expect(execCommand).toHaveBeenCalledWith('insertText', false, '段落一\n\n段落二 <b>\n');
+		expect(seenEditableDuringCommand).toEqual(['true']);
+		expect(mockEditor.getAttribute('contenteditable')).toBe('plaintext-only');
+		const lines = mockEditor.querySelectorAll('.wn-sticky-note-editor-line');
+		expect(lines).toHaveLength(4);
+		expect(lines.map(l => l.textContent)).toEqual(['段落一', '', '段落二 <b>', '']);
+		expect(lines[1].hasClass('is-empty')).toBe(true);
+		expect(lines[3].hasClass('is-empty')).toBe(true);
+		expect(editor.value).toBe('段落一\n\n段落二 <b>\n');
+	});
+
+	it('does not interfere during active IME composition or non-cancelable events and restores plaintext-only if native command throws', () => {
+		const parent = new MockElement();
+		const editor = createStickyNoteParagraphEditor(asHTMLElement(parent), '初始', 'test-editor');
+		const mockEditor = editor as unknown as MockElement;
+		const execCommand = vi.fn((): boolean => {
+			throw new Error('native command failure');
+		});
+		mockEditor.customOwnerDocument = {
+			activeElement: mockEditor,
+			createElement: () => new MockElement(),
+			execCommand
+		};
+
+		const imePreventDefault = vi.fn();
+		mockEditor.dispatchEvent('beforeinput', {
+			inputType: 'insertLineBreak',
+			isComposing: true,
+			cancelable: true,
+			defaultPrevented: false,
+			preventDefault: imePreventDefault
+		});
+		mockEditor.dispatchEvent('beforeinput', {
+			inputType: 'insertParagraph',
+			isComposing: false,
+			cancelable: false,
+			defaultPrevented: false,
+			preventDefault: imePreventDefault
+		});
+		expect(imePreventDefault).not.toHaveBeenCalled();
+		expect(execCommand).not.toHaveBeenCalled();
+
+		// During active composition, empty-children input does not rewrite DOM
+		mockEditor.empty();
+		mockEditor.textContent = '拼音中';
+		mockEditor.dispatchEvent('input', { isComposing: true });
+		expect(mockEditor.children).toHaveLength(0);
+		mockEditor.dispatchEvent('compositionstart');
+		mockEditor.dispatchEvent('paste', {
+			cancelable: true,
+			preventDefault: imePreventDefault,
+			clipboardData: { getData: () => '组合输入期间' }
+		});
+		expect(execCommand).not.toHaveBeenCalled();
+		expect(imePreventDefault).not.toHaveBeenCalled();
+		mockEditor.dispatchEvent('compositionend');
+
+		// Native command failure still restores contenteditable="plaintext-only" in finally
+		const failPreventDefault = vi.fn();
+		mockEditor.dispatchEvent('beforeinput', {
+			inputType: 'insertLineBreak',
+			isComposing: false,
+			cancelable: true,
+			defaultPrevented: false,
+			preventDefault: failPreventDefault
+		});
+		expect(execCommand).toHaveBeenCalledTimes(1);
+		expect(failPreventDefault).not.toHaveBeenCalled();
+		expect(mockEditor.getAttribute('contenteditable')).toBe('plaintext-only');
+
+		execCommand.mockImplementation(() => false);
+		mockEditor.dispatchEvent('paste', {
+			cancelable: true,
+			preventDefault: failPreventDefault,
+			clipboardData: { getData: () => '原生回退' }
+		});
+		expect(failPreventDefault).not.toHaveBeenCalled();
+		expect(mockEditor.getAttribute('contenteditable')).toBe('plaintext-only');
+	});
+
+	it('cleans up beforeinput, paste, and input listeners on repeated setup and teardown', () => {
+		const editor = new MockElement();
+		const execCommand = vi.fn(() => true);
+		editor.customOwnerDocument = {
+			activeElement: editor,
+			createElement: () => new MockElement(),
+			execCommand
+		};
+
+		setupStickyNoteParagraphEditor(asHTMLElement(editor), '初始');
+		setupStickyNoteParagraphEditor(asHTMLElement(editor), '二次初始化');
+
+		const preventDefault = vi.fn();
+		editor.dispatchEvent('beforeinput', {
+			inputType: 'insertLineBreak',
+			isComposing: false,
+			cancelable: true,
+			defaultPrevented: false,
+			preventDefault
+		});
+		expect(execCommand).toHaveBeenCalledTimes(1);
+
+		teardownStickyNoteParagraphEditor(asHTMLElement(editor));
+		expect(editor.hasClass('wn-sticky-note-paragraph-editor')).toBe(false);
+		expect(editor.getAttribute('contenteditable')).toBeNull();
+
+		editor.dispatchEvent('beforeinput', {
+			inputType: 'insertLineBreak',
+			isComposing: false,
+			cancelable: true,
+			defaultPrevented: false,
+			preventDefault
+		});
+		editor.dispatchEvent('paste', {
+			cancelable: true,
+			defaultPrevented: false,
+			preventDefault,
+			clipboardData: { getData: () => '粘贴内容' }
+		});
+		expect(execCommand).toHaveBeenCalledTimes(1);
 	});
 });
 
@@ -530,7 +745,7 @@ describe('StickyNoteListRenderer Reading & Editing Interactions', () => {
 		const app = createMockApp(vaultFiles);
 		const container = new MockElement();
 
-		const renderer = new StickyNoteListRenderer(app, plugin, asHTMLElement(container), { mode: 'workbench' });
+		const renderer = new StickyNoteListRenderer(app, plugin, asHTMLElement(container), { mode: 'side-panel' });
 		renderer.render();
 
 		// Switch to edit mode
@@ -784,7 +999,7 @@ describe('StickyNoteListRenderer Reading & Editing Interactions', () => {
 		const container2 = new MockElement();
 
 		const renderer1 = new StickyNoteListRenderer(app, plugin, asHTMLElement(container1), { mode: 'side-panel' });
-		const renderer2 = new StickyNoteListRenderer(app, plugin, asHTMLElement(container2), { mode: 'workbench' });
+		const renderer2 = new StickyNoteListRenderer(app, plugin, asHTMLElement(container2), { mode: 'immersive' });
 		renderer1.render();
 		renderer2.render();
 
@@ -880,7 +1095,7 @@ describe('StickyNoteListRenderer Reading & Editing Interactions', () => {
 
 		const app = createMockApp(new Map());
 		const container = new MockElement();
-		const renderer = new StickyNoteListRenderer(app, plugin, asHTMLElement(container), { mode: 'workbench' });
+		const renderer = new StickyNoteListRenderer(app, plugin, asHTMLElement(container), { mode: 'side-panel' });
 		renderer.render();
 
 		// Click to start editing
@@ -953,7 +1168,7 @@ describe('StickyNoteListRenderer Reading & Editing Interactions', () => {
 		const files = new Map([['Notes/test.md', 'updated content from disk']]);
 		const app = createMockApp(files);
 		const container = new MockElement();
-		const renderer = new StickyNoteListRenderer(app, plugin, asHTMLElement(container), { mode: 'workbench' });
+		const renderer = new StickyNoteListRenderer(app, plugin, asHTMLElement(container), { mode: 'side-panel' });
 		renderer.render();
 
 		// Trigger syncNoteFromFile
@@ -1018,7 +1233,7 @@ describe('StickyNoteListRenderer Reading & Editing Interactions', () => {
 		const files = new Map([['Notes/finish.md', 'old content']]);
 		const app = createMockApp(files);
 		const container = new MockElement();
-		const renderer = new StickyNoteListRenderer(app, plugin, asHTMLElement(container), { mode: 'workbench' });
+		const renderer = new StickyNoteListRenderer(app, plugin, asHTMLElement(container), { mode: 'side-panel' });
 		renderer.render();
 
 		const card = container.querySelector('[data-note-id="note-finish-destroy"]') as MockElement;

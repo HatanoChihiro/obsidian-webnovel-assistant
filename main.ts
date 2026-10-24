@@ -36,6 +36,8 @@ import type { TypographyManager } from './src/services/TypographyManager';
 import type { ChapterMergeManager } from './src/services/ChapterMergeManager';
 import type { ProofreadingManager } from './src/services/ProofreadingManager';
 import type { WritingJourneyService } from './src/services/WritingJourneyService';
+import type { NativeSnapshotService } from './src/services/NativeSnapshotService';
+import type { ChapterSnapshotManager } from './src/services/ChapterSnapshotManager';
 
 import type { CommandManager } from './src/core/CommandManager';
 import type { ViewManager } from './src/core/ViewManager';
@@ -127,6 +129,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	get chapterMergeManager(): ChapterMergeManager { return this.services.get('ChapterMergeManager'); }
 	get proofreadingManager(): ProofreadingManager { return this.services.get('ProofreadingManager'); }
 	get writingJourneyService(): WritingJourneyService { return this.services.get('WritingJourneyService'); }
+	get nativeSnapshotService(): NativeSnapshotService { return this.services.get('NativeSnapshotService'); }
+	get chapterSnapshotManager(): ChapterSnapshotManager { return this.services.get('ChapterSnapshotManager'); }
 
 	isLayoutReady: boolean = false;
 

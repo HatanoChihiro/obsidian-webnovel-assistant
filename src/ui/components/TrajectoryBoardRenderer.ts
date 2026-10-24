@@ -11,13 +11,17 @@ interface TrajectorySession {
 	panY: number;
 	scale: number;
 	isFullscreen?: boolean;
+	flushPending?: () => void;
+	cancelPending?: () => void;
 }
 
 const ephemeralViewportCache = new WeakMap<object, TrajectorySession>();
 
 export function clearTrajectoryViewport(key?: object): void {
 	if (key) {
+		const session = ephemeralViewportCache.get(key);
 		ephemeralViewportCache.delete(key);
+		session?.cancelPending?.();
 	}
 }
 
@@ -248,6 +252,7 @@ export function renderTrajectoryMode(options: TrajectoryModeOptions): void {
 	const cacheKey = (sourceLeaf ?? container) as object;
 	const bookKey = currentBookPath || '';
 	const cached = cacheKey ? ephemeralViewportCache.get(cacheKey) : undefined;
+	cached?.flushPending?.();
 
 	let currentPanX = 0;
 	let currentPanY = 0;
@@ -259,24 +264,65 @@ export function renderTrajectoryMode(options: TrajectoryModeOptions): void {
 		currentScale = cached.scale;
 	}
 
+	const session: TrajectorySession = {
+		bookPath: bookKey, panX: currentPanX, panY: currentPanY, scale: currentScale,
+		isFullscreen: cached?.bookPath === bookKey && cached.isFullscreen
+	};
+	ephemeralViewportCache.set(cacheKey, session);
+	const ownsSession = () => ephemeralViewportCache.get(cacheKey) === session;
 	const updateEphemeralCache = () => {
-		if (cacheKey) {
-			const existing = ephemeralViewportCache.get(cacheKey);
-			ephemeralViewportCache.set(cacheKey, {
-				bookPath: bookKey,
-				panX: currentPanX,
-				panY: currentPanY,
-				scale: currentScale,
-				isFullscreen: activeModal !== null || Boolean(existing?.isFullscreen)
-			});
-		}
+		if (!ownsSession()) return;
+		session.panX = currentPanX;
+		session.panY = currentPanY;
+		session.scale = currentScale;
 	};
 
 	let isRotated = false;
 	let activeModal: TrajectoryFullscreenModal | null = null;
+	const win = layout.ownerDocument.defaultView ?? window;
+	let frameId: number | null = null;
+	let frameRect: DOMRect | null = null;
+	let transformDirty = false;
+	let disposed = false;
+
+	const cancelPending = () => {
+		if (frameId !== null) win.cancelAnimationFrame(frameId);
+		frameId = null;
+		frameRect = null;
+		transformDirty = false;
+	};
+	const flushPending = () => {
+		const dirty = transformDirty;
+		cancelPending();
+		if (!dirty || disposed || !ownsSession()) return;
+		if (layout.isConnected) updateTransform();
+		updateEphemeralCache();
+	};
+	const requestFrame = () => {
+		if (frameId !== null || disposed || !ownsSession()) return;
+		frameId = win.requestAnimationFrame(() => {
+			frameId = null;
+			flushPending();
+		});
+	};
+	const requestTransform = () => {
+		transformDirty = true;
+		requestFrame();
+	};
+	session.flushPending = flushPending;
+	session.cancelPending = cancelPending;
+	ownerComponent?.register(() => {
+		updateEphemeralCache();
+		disposed = true;
+		cancelPending();
+		delete session.flushPending;
+		delete session.cancelPending;
+	});
 
 	const getCoords = (e: { clientX: number; clientY: number }): { x: number; y: number } => {
-		const rect = layout.getBoundingClientRect();
+		const rect = frameRect ?? (frameRect = layout.getBoundingClientRect());
+		// Expire even below the drag threshold, so geometry never outlives a frame.
+		requestFrame();
 		if (isRotated) {
 			return {
 				x: e.clientY - rect.top,
@@ -370,6 +416,7 @@ export function renderTrajectoryMode(options: TrajectoryModeOptions): void {
 			return;
 		}
 
+		if (activePointers.size === 0) frameRect = null;
 		const coords = getCoords(e);
 		activePointers.set(e.pointerId, {
 			x: coords.x,
@@ -432,8 +479,7 @@ export function renderTrajectoryMode(options: TrajectoryModeOptions): void {
 			e.preventDefault();
 			currentPanX = Math.round((startPanX + distanceX) * 100) / 100;
 			currentPanY = Math.round((startPanY + distanceY) * 100) / 100;
-			updateTransform();
-			updateEphemeralCache();
+			requestTransform();
 			suppressClicksCount = Math.max(suppressClicksCount, 1);
 		} else if (activePointers.size >= 2) {
 			const [p1, p2] = Array.from(activePointers.values());
@@ -455,8 +501,7 @@ export function renderTrajectoryMode(options: TrajectoryModeOptions): void {
 				currentPanX = Math.round(newPanX * 100) / 100;
 				currentPanY = Math.round(newPanY * 100) / 100;
 
-				updateTransform();
-				updateEphemeralCache();
+				requestTransform();
 				suppressClicksCount = Math.max(suppressClicksCount, activePointers.size);
 			}
 		}
@@ -464,6 +509,7 @@ export function renderTrajectoryMode(options: TrajectoryModeOptions): void {
 
 	const stopDrag = (e: PointerEvent) => {
 		if (!activePointers.has(e.pointerId)) return;
+		flushPending();
 
 		activePointers.delete(e.pointerId);
 
@@ -620,6 +666,7 @@ export function renderTrajectoryMode(options: TrajectoryModeOptions): void {
 
 	const openFullscreen = () => {
 		if (activeModal) return;
+		flushPending();
 		void closeAllActiveEditors();
 		if (cacheKey) {
 			const s = ephemeralViewportCache.get(cacheKey) || { bookPath: bookKey, panX: currentPanX, panY: currentPanY, scale: currentScale };
@@ -630,6 +677,7 @@ export function renderTrajectoryMode(options: TrajectoryModeOptions): void {
 			app,
 			layout,
 			(rotated) => {
+				flushPending();
 				isRotated = rotated;
 			},
 			closeAllActiveEditors,
@@ -691,8 +739,8 @@ export function renderTrajectoryMode(options: TrajectoryModeOptions): void {
 			&& !target.closest?.('.wn-trajectory-lane-bg'))) return;
 		if (currentScale === 1) return;
 		currentScale = 1;
-		updateTransform();
-		updateEphemeralCache();
+		transformDirty = true;
+		flushPending();
 	});
 
 	layout.addEventListener('wheel', (e: WheelEvent) => {
@@ -718,8 +766,7 @@ export function renderTrajectoryMode(options: TrajectoryModeOptions): void {
 		currentPanX = Math.round(newPanX * 100) / 100;
 		currentPanY = Math.round(newPanY * 100) / 100;
 
-		updateTransform();
-		updateEphemeralCache();
+		requestTransform();
 	}, { passive: false });
 
 	const place = (element: HTMLElement, row: number, column: number, span = 1): void => {

@@ -450,10 +450,6 @@ export class SettingsManager {
 		return migrated;
 	}
 
-	getSettings(): AccurateCountSettings {
-		return this.settings;
-	}
-
 	async updateSettings(partial: Partial<AccurateCountSettings>): Promise<void> {
 		const plugin = this.plugin;
 		const current = plugin.settings || this.settings;
@@ -468,12 +464,6 @@ export class SettingsManager {
 
 		this.settings = updated;
 		plugin.settings = updated;
-		await this.saveSettings();
-	}
-
-	async resetToDefaults(): Promise<void> {
-		this.settings = JSON.parse(JSON.stringify(this.defaultSettings)) as AccurateCountSettings;
-		this.plugin.settings = this.settings;
 		await this.saveSettings();
 	}
 }

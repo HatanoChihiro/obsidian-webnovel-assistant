@@ -243,20 +243,6 @@ body .wn-corkboard-card-content .wn-corkboard-textarea:focus {
 }
 
 
-.wn-footer-2-lines .wn-corkboard-card-word-count {
-	display: flex;
-	flex-direction: column;
-	align-items: flex-end;
-	justify-content: center;
-	align-self: center;
-	text-align: right;
-	margin-left: auto;
-	flex-shrink: 0;
-	gap: 1px;
-	line-height: 1.1;
-}
-
-
 .wn-footer-1-line .wn-corkboard-card-word-count {
 	display: flex;
 	flex-direction: row;
@@ -313,10 +299,4 @@ body .wn-corkboard-card-content .wn-corkboard-textarea:focus {
 	color: var(--text-normal);
 	font-weight: 500;
 	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08), 0 0 0 1px var(--background-modifier-border);
-}
-
-
-
-.wn-corkboard-group-header.collapsed {
-	border-bottom: none;
 }

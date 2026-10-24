@@ -248,11 +248,12 @@ describe('NovelSeriesMembership - Core Metadata & Membership Behavior', () => {
 		expect(await manager.getNovelSeries('NovelA')).toBe('星际编年史');
 		expect(await manager.getNovelSeries('NovelC')).toBe('');
 
-		// getSiblingNovelsInSeries
-		const siblingsA = await manager.getSiblingNovelsInSeries('NovelA');
+		// Compose the public series queries to select other novels in the same series.
+		const siblingsA = (await manager.getSeriesNovels(await manager.getNovelSeries('NovelA')))
+			.filter(novel => novel.folderPath !== 'NovelA');
 		expect(siblingsA.map(s => s.folderPath)).toEqual(['NovelB']);
 
-		const siblingsC = await manager.getSiblingNovelsInSeries('NovelC');
+		const siblingsC = await manager.getSeriesNovels(await manager.getNovelSeries('NovelC'));
 		expect(siblingsC).toEqual([]);
 
 		// Update series on NovelA to clear membership

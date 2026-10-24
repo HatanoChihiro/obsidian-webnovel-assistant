@@ -1,6 +1,7 @@
 import { Project, SyntaxKind, PropertyAccessExpression } from 'ts-morph';
 import * as path from 'path';
 import * as fs from 'fs';
+import { transformSync } from 'esbuild';
 
 console.log('🔍 Running Obsidian API Compliance Audit...');
 
@@ -227,7 +228,8 @@ project.getSourceFiles().forEach(sourceFile => {
 // 10. CSS Checks
 const cssPath = path.join(__dirname, '../styles.css');
 if (fs.existsSync(cssPath)) {
-	const cssText = fs.readFileSync(cssPath, 'utf8') as string;
+	// 展开压缩产物再逐行审计，避免同一行的后续声明漏检。
+	const cssText = transformSync(fs.readFileSync(cssPath, 'utf8'), { loader: 'css' }).code;
 	const cssLines = cssText.split('\n');
 	let inBlock = false;
 	let propsInBlock: { [key: string]: number } = {};

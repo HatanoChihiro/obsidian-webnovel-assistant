@@ -60,13 +60,6 @@ export function t(key: string, params?: Record<string, string | number>): string
 }
 
 /**
- * 检查翻译键是否存在
- */
-export function hasTranslation(key: string): boolean {
-	return key in translations;
-}
-
-/**
  * 动态加载翻译文件
  */
 async function loadTranslations(locale: Locale): Promise<Record<string, string>> {

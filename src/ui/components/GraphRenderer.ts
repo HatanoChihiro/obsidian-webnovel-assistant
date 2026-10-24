@@ -529,6 +529,13 @@ export class GraphRenderer {
 	static renderEdges(ctx: CanvasRenderingContext2D, colors: ThemeColors, state: GraphRenderState): EdgeRenderTask[] {
 		const edgeTasks: EdgeRenderTask[] = [];
 		const showLabelsGlobally = state.scale >= 0.7;
+		const nodesById = new Map<string, GraphNode>();
+		for (const node of state.graphData.nodes) {
+			const id = node.id;
+			if (!nodesById.has(id)) nodesById.set(id, node);
+		}
+		// Only retain measurements for this frame, so font changes never reuse stale widths.
+		const labelWidths = new Map<string, number>();
 
 		// 找出当前未被淡化的活跃节点
 		const activeNodeIds = new Set<string>();
@@ -552,8 +559,8 @@ export class GraphRenderer {
 
 		// 第一遍：收集所有边的信息，计算标签的包围盒，并确定优先级
 		for (const edge of state.graphData.edges) {
-			const src = state.graphData.nodes.find(n => n.id === edge.source);
-			const tgt = state.graphData.nodes.find(n => n.id === edge.target);
+			const src = nodesById.get(edge.source);
+			const tgt = nodesById.get(edge.target);
 			if (!src || !tgt) continue;
 
 			const drawMode = state.edgeDrawModeMap.get(edge);
@@ -598,7 +605,7 @@ export class GraphRenderer {
 				const labels = edge.label.split('|');
 				let totalWidth = 0;
 				for (const l of labels) {
-					totalWidth += ctx.measureText(l).width + paddingX * 2;
+					totalWidth += GraphRenderer.measureLabel(ctx, l, labelWidths) + paddingX * 2;
 				}
 				bgWidth = totalWidth + gap * (labels.length - 1);
 				bgHeight = labelFontSize + paddingY * 2;
@@ -723,7 +730,7 @@ export class GraphRenderer {
 				const paddingY = colors?.labelPaddingY ?? GRAPH_STYLE_DEFAULTS.LABEL_PADDING_Y;
 				const gap = colors?.labelGap ?? GRAPH_STYLE_DEFAULTS.LABEL_GAP;
 				const labels = displayLabel.split('|');
-				const widths = labels.map(l => ctx.measureText(l).width + paddingX * 2);
+				const widths = labels.map(l => GraphRenderer.measureLabel(ctx, l, labelWidths) + paddingX * 2);
 				const totalWidth = widths.reduce((a, b) => a + b, 0) + gap * (labels.length - 1);
 				const bgHeight = labelFontSize + paddingY * 2;
 
@@ -785,13 +792,25 @@ export class GraphRenderer {
 				labelAlpha *= 0.35;
 			}
 
-			GraphRenderer.drawEdgeLabel(ctx, src, tgt, displayLabel, offset, isMention, colors, labelAlpha, isHighlighted);
+			GraphRenderer.drawEdgeLabel(ctx, src, tgt, displayLabel, offset, isMention, colors, labelAlpha, isHighlighted, labelWidths);
 		}
 
 		return edgeTasks;
 	}
 
 	static drawNodes(ctx: CanvasRenderingContext2D, layout: GraphData, colors: ThemeColors, edgeTasks: EdgeRenderTask[], state: GraphRenderState): void {
+		const indexNeighbors = (focusId: string | undefined): Map<string, boolean> => {
+			const neighbors = new Map<string, boolean>();
+			if (focusId === undefined) return neighbors;
+			for (const task of edgeTasks) {
+				const id = task.src.id === focusId ? task.tgt.id : task.tgt.id === focusId ? task.src.id : undefined;
+				if (id !== undefined) neighbors.set(id, (neighbors.get(id) ?? true) && task.isOverlapped);
+			}
+			return neighbors;
+		};
+		const selectedNeighbors = indexNeighbors(state.selectedNode?.id);
+		const hoveredNeighbors = state.hoveredNode?.id === state.selectedNode?.id
+			? selectedNeighbors : indexNeighbors(state.hoveredNode?.id);
 		// 智能截断节点名称，按视觉宽度（中文字符算2，英文字母算1）
 		const truncateNodeName = (name: string): string => {
 			let len = 0;
@@ -822,23 +841,15 @@ export class GraphRenderer {
 			let nodeAlpha = 1.0;
 			let isDimmed = false;
 			if (state.selectedNode && !isSelected) {
-				const neighborTasks = edgeTasks.filter(
-					t => (t.src.id === state.selectedNode!.id && t.tgt.id === node.id) ||
-						 (t.tgt.id === state.selectedNode!.id && t.src.id === node.id)
-				);
-				const isNeighbor = neighborTasks.length > 0;
+				const isNeighbor = selectedNeighbors.has(node.id);
 				// 如果该节点的所有关联边都被重叠淡化了，那么该节点也应跟随淡化
-				const allEdgesOverlapped = isNeighbor && neighborTasks.every(t => t.isOverlapped);
+				const allEdgesOverlapped = selectedNeighbors.get(node.id) === true;
 
 				nodeAlpha = isNeighbor ? (allEdgesOverlapped ? 0.35 : 1.0) : 0.15;
 				isDimmed = !isNeighbor || allEdgesOverlapped;
 			} else if (state.hoveredNode && !isHovered) {
-				const neighborTasks = edgeTasks.filter(
-					t => (t.src.id === state.hoveredNode!.id && t.tgt.id === node.id) ||
-						 (t.tgt.id === state.hoveredNode!.id && t.src.id === node.id)
-				);
-				const isNeighbor = neighborTasks.length > 0;
-				const allEdgesOverlapped = isNeighbor && neighborTasks.every(t => t.isOverlapped);
+				const isNeighbor = hoveredNeighbors.has(node.id);
+				const allEdgesOverlapped = hoveredNeighbors.get(node.id) === true;
 
 				nodeAlpha = isNeighbor ? (allEdgesOverlapped ? 0.35 : 1.0) : 0.3;
 				isDimmed = !isNeighbor || allEdgesOverlapped;
@@ -1435,7 +1446,16 @@ export class GraphRenderer {
 		}
 	}
 
-	static drawEdgeLabel(ctx: CanvasRenderingContext2D, src: GraphNode, tgt: GraphNode, label: string, curveOffset: number, isMention: boolean, colors: ThemeColors, labelAlpha: number = 1.0, isHighlighted: boolean = false): void {
+	private static measureLabel(ctx: CanvasRenderingContext2D, text: string, widths?: Map<string, number>): number {
+		const key = `${ctx.font}\u0000${text}`;
+		const cached = widths?.get(key);
+		if (cached !== undefined) return cached;
+		const width = ctx.measureText(text).width;
+		widths?.set(key, width);
+		return width;
+	}
+
+	static drawEdgeLabel(ctx: CanvasRenderingContext2D, src: GraphNode, tgt: GraphNode, label: string, curveOffset: number, isMention: boolean, colors: ThemeColors, labelAlpha: number = 1.0, isHighlighted: boolean = false, labelWidths?: Map<string, number>): void {
 		if (!label) return;
 
 		// 计算标签位置：连线中点（弧线时加法向偏移）
@@ -1466,7 +1486,7 @@ export class GraphRenderer {
 		const paddingY = colors?.labelPaddingY ?? GRAPH_STYLE_DEFAULTS.LABEL_PADDING_Y;
 		const gap = colors?.labelGap ?? GRAPH_STYLE_DEFAULTS.LABEL_GAP;
 		const labels = label.split('|');
-		const widths = labels.map(l => ctx.measureText(l).width + paddingX * 2);
+		const widths = labels.map(l => GraphRenderer.measureLabel(ctx, l, labelWidths) + paddingX * 2);
 		const totalWidth = widths.reduce((a, b) => a + b, 0) + gap * (labels.length - 1);
 		const bgHeight = labelFontSize + paddingY * 2;
 

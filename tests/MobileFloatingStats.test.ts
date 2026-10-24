@@ -200,6 +200,59 @@ describe('MobileFloatingStats lifecycle & icon caching', () => {
 		expect(internal.currentTimerIcon).toBeNull();
 	});
 
+	it('coalesces drag writes, flushes final bounds before docking, and saves the latest position', () => {
+		const win = new FakeWindow();
+		const doc = new FakeDocument(win);
+		setGlobals(win, doc);
+		const plugin = createPluginFixture();
+		const stats = new MobileFloatingStats(fakeApp, plugin);
+		stats.load();
+		win.triggerRaf(1);
+		const el = (stats as unknown as PrivateStatsAccess).containerEl!;
+		const writes = el.setCssStyles;
+		writes.mockClear();
+		el.dispatchEvent('mousedown', { clientX: 20, clientY: 100 });
+		for (let x = 100; x <= 200; x += 10) {
+			doc.dispatchEvent(Object.assign(new Event('mousemove'), { clientX: x, clientY: 200 }));
+		}
+		expect(writes).not.toHaveBeenCalled();
+		win.triggerRaf(2);
+		expect(writes).toHaveBeenCalledTimes(1);
+		expect(writes).toHaveBeenLastCalledWith({ left: '200px', top: '200px' });
+		doc.dispatchEvent(Object.assign(new Event('mousemove'), { clientX: 300, clientY: 250 }));
+		doc.dispatchEvent(new Event('mouseup'));
+		expect(plugin.settings.mobileFloatingStatsState).toMatchObject({ x: 300, y: 250 });
+		expect(plugin.saveSettings).toHaveBeenCalledTimes(1);
+		const calls = writes.mock.calls.length;
+		win.triggerRaf(3);
+		expect(writes).toHaveBeenCalledTimes(calls);
+		stats.unload();
+	});
+
+	it('cancels pending drag frames on touch cancellation and unload', () => {
+		const win = new FakeWindow();
+		const doc = new FakeDocument(win);
+		setGlobals(win, doc);
+		const stats = new MobileFloatingStats(fakeApp, createPluginFixture());
+		stats.load();
+		win.triggerRaf(1);
+		const internal = stats as unknown as PrivateStatsAccess;
+		const el = internal.containerEl!;
+		el.dispatchEvent('touchstart', { touches: [{ clientX: 20, clientY: 100 }], preventDefault: vi.fn() });
+		doc.dispatchEvent(Object.assign(new Event('touchmove'), { touches: [{ clientX: 250, clientY: 200 }] }));
+		doc.dispatchEvent(new Event('touchcancel'));
+		expect(internal.isDragging).toBe(false);
+		expect(win.rafCallbacks.size).toBe(0);
+		el.dispatchEvent('mousedown', { clientX: 250, clientY: 200 });
+		doc.dispatchEvent(Object.assign(new Event('mousemove'), { clientX: 300, clientY: 250 }));
+		const stale = [...win.rafCallbacks.values()][0];
+		el.setCssStyles.mockClear();
+		stats.unload();
+		expect(win.rafCallbacks.size).toBe(0);
+		stale?.(0);
+		expect(el.setCssStyles).not.toHaveBeenCalled();
+	});
+
 	it('ensures canceled RAF callback from previous window is inert when reloaded in a new owner window', () => {
 		const win1 = new FakeWindow();
 		const doc1 = new FakeDocument(win1);

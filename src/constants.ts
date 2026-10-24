@@ -4,75 +4,11 @@
  */
 
 // ==========================================
-// 防抖延迟配置（毫秒）
-// ==========================================
-export const DEBOUNCE_DELAYS = {
-	/** 编辑器更新防抖延迟 */
-	EDITOR_UPDATE: 300,
-	/** 文件夹刷新防抖延迟 */
-	FOLDER_REFRESH: 500,
-	/** 字数统计更新防抖延迟 */
-	WORD_COUNT_UPDATE: 100,
-	/** Worker 心跳间隔 */
-	WORKER_TICK: 1000,
-} as const;
-
-// ==========================================
 // 缓存配置
 // ==========================================
 export const CACHE_CONFIG = {
 	/** 最大缓存条目数 */
 	MAX_SIZE: 10000,
-	/** 缓存失效超时时间（毫秒） */
-	INVALIDATION_TIMEOUT: 5000,
-	/** 字数计算缓存最大条目数 */
-	WORD_COUNT_CACHE_MAX: 100,
-} as const;
-
-// ==========================================
-// OBS 服务器配置
-// ==========================================
-export const OBS_CONFIG = {
-	/** 默认监听端口 */
-	DEFAULT_PORT: 24816,
-	/** 叠加层默认不透明度 */
-	OVERLAY_OPACITY: 0.9,
-	/** 服务器启动超时时间（毫秒） */
-	STARTUP_TIMEOUT: 5000,
-} as const;
-
-// ==========================================
-// 便签配置
-// ==========================================
-export const STICKY_NOTE_CONFIG = {
-	/** 默认宽度（像素） */
-	DEFAULT_WIDTH: 300,
-	/** 默认高度（像素） */
-	DEFAULT_HEIGHT: 200,
-	/** 最小宽度（像素） */
-	MIN_WIDTH: 150,
-	/** 最小高度（像素） */
-	MIN_HEIGHT: 100,
-	/** 默认不透明度 */
-	DEFAULT_OPACITY: 0.95,
-	/** 最小不透明度 */
-	MIN_OPACITY: 0.1,
-	/** 最大不透明度 */
-	MAX_OPACITY: 1.0,
-} as const;
-
-// ==========================================
-// 时间追踪配置
-// ==========================================
-export const TRACKING_CONFIG = {
-	/** 默认空闲超时阈值（毫秒） */
-	DEFAULT_IDLE_TIMEOUT: 30000,
-	/** 最小空闲超时阈值（毫秒） */
-	MIN_IDLE_TIMEOUT: 10000,
-	/** 最大空闲超时阈值（毫秒） */
-	MAX_IDLE_TIMEOUT: 3600000,
-	/** Worker 自动重启延迟（毫秒） */
-	WORKER_RESTART_DELAY: 5000,
 } as const;
 
 // ==========================================
@@ -88,17 +24,12 @@ export const CHINESE_NUMBERS = {
 // 视图类型常量
 // ==========================================
 export const VIEW_TYPES = {
-	STATUS: 'status-view',
-	FORESHADOWING: 'foreshadowing-view',
 	TIMELINE: 'wn-timeline-view',
-	CREATIVE: 'creative-view',
-	CORKBOARD: 'webnovel-corkboard',
 	LORE_OVERVIEW: 'webnovel-lore-overview',
 	WORKBENCH: 'webnovel-workbench',
 	IMMERSIVE_CHAPTER_LIST: 'immersive-chapter-list-view',
 	IMMERSIVE_STICKY_NOTES: 'immersive-sticky-notes-view',
 	STICKY_NOTE_LIST: 'sticky-note-list-view',
-	RELATION_GRAPH: 'webnovel-relation-graph',
 } as const;
 
 // ==========================================
@@ -121,12 +52,6 @@ export const PLATFORM_DELAYS = {
 export const REGEX_PATTERNS = {
 	/** 中文字符（工厂函数，避免 g 标志状态残留） */
 	CHINESE: () => /[\u4E00-\u9FFF]/g,
-	/** 英文单词（工厂函数，避免 g 标志状态残留） */
-	ENGLISH_WORD: () => /[a-zA-Z]+/g,
-	/** 数字（工厂函数，避免 g 标志状态残留） */
-	NUMBER: () => /\d+/g,
-	/** 标点符号（工厂函数，避免 g 标志状态残留） */
-	PUNCTUATION: () => /[，。！？；：""''（）【】《》、·…—～]/g,
 
 	// Markdown 清理正则（用于字数统计）
 	/** Frontmatter（不带 g 标志，只匹配开头） */
@@ -174,20 +99,6 @@ export const REGEX_PATTERNS = {
 	WORD_TOKEN: () => /[a-zA-Z0-9\u00C0-\u024F\u0400-\u04FF]+/g,
 	/** 全角标点（工厂函数，避免 g 标志状态残留） */
 	FULLWIDTH_PUNCT: () => /[，。！？、；：“”‘’（）《》【】……——]/g,
-} as const;
-
-// ==========================================
-// 时间格式常量
-// ==========================================
-export const TIME_FORMATS = {
-	/** 日期格式 */
-	DATE: 'YYYY-MM-DD',
-	/** 时间格式 */
-	TIME: 'HH:mm:ss',
-	/** 日期时间格式 */
-	DATETIME: 'YYYY-MM-DD HH:mm:ss',
-	/** 文件名格式 */
-	FILENAME: 'YYYYMMDD_HHmmss',
 } as const;
 
 // ==========================================
@@ -280,7 +191,6 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 	],
 	foreshadowing: {
 		fileName: '伏笔',
-		showTimestamp: true,
 		defaultTags: ['人物', '情节', '世界观', '道具', '线索'],
 	},
 	timeline: {
@@ -369,7 +279,6 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 		immersiveHideProperties: true,
 
 		immersiveNoteFontSize: 14,
-		immersiveLayout: null,
 		workReferencePaths: {},
 
 		typewriterEnabled: false,

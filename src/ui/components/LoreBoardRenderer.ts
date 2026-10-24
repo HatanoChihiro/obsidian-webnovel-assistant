@@ -7,7 +7,7 @@ import { cleanLoreHeading } from '../../services/CharacterManager';
 import type { AccurateCountSettings } from '../../types/settings';
 import { GraphRenderer, type GraphRenderState, type ThemeColors } from './GraphRenderer';
 import { GraphInteractionController } from './GraphInteractionController';
-import { LoreCardRenderer } from './LoreCardRenderer';
+import { LoreCardRenderer, type LoreBodyReadCache } from './LoreCardRenderer';
 import { LoreCardPreview } from './LoreCardPreview';
 import { DraggableListHelper } from '../../utils/DraggableListHelper';
 import { openFileAndFocus, smartLocateAndHighlight, getLeafForFileNavigation } from '../../utils/leaf';
@@ -265,27 +265,32 @@ export class LoreBoardRenderer {
 
             const isPreviewEnabled = Boolean(plugin.settings?.loreCardPreviewEnabled);
 
-            for (const entry of group.entries) {
-                const cardContainer = grid.createDiv('wn-lore-card-wrapper');
-                let preview: LoreCardPreview | null = null;
-                if (isPreviewEnabled) {
-                    preview = LoreCardPreview.attach(cardContainer, entry, {
-                        app,
-                        settings: plugin.settings,
-                        characterManager: plugin.characterManager
-                    });
-                    boardComponent.addChild(preview);
-                }
+            const bodyReads: LoreBodyReadCache = new Map();
+            try {
+                for (const entry of group.entries) {
+                    const cardContainer = grid.createDiv('wn-lore-card-wrapper');
+                    let preview: LoreCardPreview | null = null;
+                    if (isPreviewEnabled) {
+                        preview = LoreCardPreview.attach(cardContainer, entry, {
+                            app,
+                            settings: plugin.settings,
+                            characterManager: plugin.characterManager
+                        });
+                        boardComponent.addChild(preview);
+                    }
 
-                await LoreCardRenderer.buildCardDOM(cardContainer, entry, { app, settings: plugin.settings, characterManager: plugin.characterManager }, boardComponent, {
-                    draggable: !group.isBorrowed,
-                    dragDataMimeType: mimeType,
-                    hideEditButton: group.isBorrowed,
-                    hideImportanceButton: group.isBorrowed,
-                    // 卡片容器可聚焦，使键盘用户也能触发悬停大预览（与鼠标悬停同一路径）
-                    focusable: isPreviewEnabled,
-                    onExpand: isPreviewEnabled && preview ? () => { preview.open(); } : undefined
-                });
+                    await LoreCardRenderer.buildCardDOM(cardContainer, entry, { app, settings: plugin.settings, characterManager: plugin.characterManager }, boardComponent, {
+                        draggable: !group.isBorrowed,
+                        dragDataMimeType: mimeType,
+                        hideEditButton: group.isBorrowed,
+                        hideImportanceButton: group.isBorrowed,
+                        // 卡片容器可聚焦，使键盘用户也能触发悬停大预览（与鼠标悬停同一路径）
+                        focusable: isPreviewEnabled,
+                        onExpand: isPreviewEnabled && preview ? () => { preview.open(); } : undefined
+                    }, bodyReads);
+                }
+            } finally {
+                bodyReads.clear();
             }
 
             if (!group.isBorrowed) {

@@ -149,11 +149,6 @@ export class LoreCardPreview extends Component {
 		void this.show();
 	}
 
-	/** 是否已弹出面板 */
-	isOpen(): boolean {
-		return this.panelEl !== null;
-	}
-
 	/** 关闭面板并释放内部组件，但保留悬停监听（卡片仍可再次触发预览） */
 	close(): void {
 		this.closeRequested = true;

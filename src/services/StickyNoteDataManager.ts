@@ -279,7 +279,7 @@ export class StickyNoteDataManager {
 
 	public refreshImmersiveNotes() {
 		this.plugin.activeNotes?.forEach(note => note.updateVisuals());
-		// 触发全局便签变更事件，通知所有便签视图（包括 ImmersiveStickyNotesView 和 WorkbenchView）
+		// 触发全局便签变更事件，通知沉浸与侧面板便签视图
 		this.plugin.app.workspace.trigger('webnovel:notes-changed');
 	}
 

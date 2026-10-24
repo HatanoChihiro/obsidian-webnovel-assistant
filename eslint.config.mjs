@@ -58,5 +58,12 @@ export default tseslint.config(
 			'no-irregular-whitespace': 'error',
 			'obsidianmd/ui/sentence-case': 'off',
 		},
+	},
+	{
+		files: ['src/ui/components/StickyNoteParagraphEditor.ts'],
+		rules: {
+			// No standard editing API preserves native undo for paragraph splits and multiline plain-text paste.
+			'@typescript-eslint/no-deprecated': ['warn', { allow: [{ from: 'lib', name: 'execCommand' }] }],
+		},
 	}
 );

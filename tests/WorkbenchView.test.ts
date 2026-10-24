@@ -369,11 +369,10 @@ describe('WorkbenchView', () => {
 				recordChapterCreated: vi.fn().mockResolvedValue(undefined),
 				recordChapterRenamed: vi.fn().mockResolvedValue(undefined),
 				recordChapterDeleted: vi.fn().mockResolvedValue(undefined),
-				recordChapterStatusChanged: vi.fn().mockResolvedValue(undefined),
+				changeChapterStatus: vi.fn().mockResolvedValue({ success: true, changed: true }),
 				recordWorkStatusChanged: vi.fn().mockResolvedValue(undefined),
 				markHandledCreate: vi.fn(),
 				markHandledRename: vi.fn(),
-				markHandledDelete: vi.fn()
 			},
 			getTrackedMarkdownFiles: vi.fn().mockReturnValue([file1] as unknown as TFile[]),
 			getVaultMarkdownFiles: vi.fn().mockReturnValue([file1] as unknown as TFile[]),
@@ -466,6 +465,52 @@ describe('WorkbenchView', () => {
 		// Close view
 		await view.onClose();
 		expect(cancelSpy).toHaveBeenCalledWith(viewRefreshKey);
+	});
+
+	it.each(['timeline', 'lore', 'foreshadowing', 'task', 'journey'] as const)('avoids body-only chapter refreshes on %s while retaining relevant metadata changes', mode => {
+		const debounce = vi.fn();
+		plugin.adaptiveDebounceManager.debounceFixed = debounce;
+		let frontmatter = { synopsis: 'old', character: ['A'] };
+		mockApp.metadataCache.getFileCache.mockImplementation(() => ({ frontmatter }));
+		const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+		view.currentBookPath = 'NovelA';
+		const internal = view as unknown as { container: HTMLElement; sortMode: string; isTimelineTrajectoryMode: boolean; handleMarkdownFileChanged: (f: unknown) => void };
+		internal.container = view.contentEl;
+		internal.sortMode = mode;
+		internal.isTimelineTrajectoryMode = true;
+		internal.handleMarkdownFileChanged(file1);
+		debounce.mockClear();
+		internal.handleMarkdownFileChanged(file1);
+		expect(debounce).not.toHaveBeenCalled();
+		frontmatter = { synopsis: 'new', character: ['B'] };
+		internal.handleMarkdownFileChanged(file1);
+		expect(debounce).toHaveBeenCalledTimes(1);
+	});
+
+	it('keeps waterfall word counts, unknown metadata, and functional document refreshes current', () => {
+		const debounce = vi.fn();
+		plugin.adaptiveDebounceManager.debounceFixed = debounce;
+		const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+		view.currentBookPath = 'NovelA';
+		const internal = view as unknown as { container: HTMLElement; sortMode: string; isTimelineTrajectoryMode: boolean; handleMarkdownFileChanged: (f: unknown) => void };
+		internal.container = view.contentEl;
+		internal.sortMode = 'timeline';
+		internal.isTimelineTrajectoryMode = false;
+		mockApp.metadataCache.getFileCache.mockReturnValue({ frontmatter: {} });
+		internal.handleMarkdownFileChanged(file1);
+		internal.handleMarkdownFileChanged(file1);
+		expect(debounce).toHaveBeenCalledTimes(2);
+		debounce.mockClear();
+		internal.isTimelineTrajectoryMode = true;
+		mockApp.metadataCache.getFileCache.mockReturnValue(null);
+		internal.handleMarkdownFileChanged(file1);
+		internal.handleMarkdownFileChanged(file1);
+		expect(debounce).toHaveBeenCalledTimes(2);
+		debounce.mockClear();
+		const lore = new MockTFile('人物.md', 'NovelA/设定/人物.md');
+		internal.sortMode = 'task';
+		internal.handleMarkdownFileChanged(lore);
+		expect(debounce).toHaveBeenCalledTimes(1);
 	});
 
 	it('2 views receiving rename/modify and closing one without cancelling the other', async () => {

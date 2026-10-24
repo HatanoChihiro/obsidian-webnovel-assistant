@@ -2,6 +2,9 @@ import type { App } from 'obsidian';
 import { TFile, setIcon } from 'obsidian';
 import type { WritingJourneyEvent } from '../../types/writingJourney';
 import type { WritingJourneyService } from '../../services/WritingJourneyService';
+import type { ChapterSnapshotManager } from '../../services/ChapterSnapshotManager';
+import { buildChapterHistoryIndex, type ChapterHistoryLocation } from '../../services/NativeSnapshotService';
+import { Logger } from '../../utils/Logger';
 import { getCorkboardStatusText, getNovelStatusText } from '../../i18n/data-keys';
 import { t } from '../../i18n';
 import { openFileAndFocus, getLeafForFileNavigation } from '../../utils/leaf';
@@ -13,6 +16,10 @@ import {
 
 export interface WritingJourneyBoardPlugin {
 	writingJourneyService: WritingJourneyService;
+	chapterSnapshotManager?: ChapterSnapshotManager;
+	services?: {
+		getOptional<T>(key: string): T | undefined;
+	};
 }
 
 export interface WritingJourneyBoardOptions {
@@ -75,10 +82,6 @@ export class WritingJourneyBoardRenderer {
 			});
 			return;
 		}
-
-		// 构建路径解析索引（必须使用原始完整的 rawEvents 顺序）
-		const resolvedPathIndex = this.buildResolvedPathIndex(rawEvents);
-
 		// 排序：默认时间倒序（最新事件在最上方），可切换为时间正序（最早事件在最上方）
 		const sortedEvents = this.sortEvents(displayEvents, isDescending);
 
@@ -99,8 +102,9 @@ export class WritingJourneyBoardRenderer {
 		// 直接渲染通栏事件列表（移除日期分组与分组标题）
 		const listEl = boardContainer.createDiv('wn-writing-journey-list');
 
+		const pathIndex = buildChapterHistoryIndex(rawEvents);
 		for (const event of filteredEvents) {
-			this.renderEventRow(listEl, event, app, currentBookPath, resolvedPathIndex);
+			this.renderEventRow(listEl, event, app, plugin, rawEvents, pathIndex);
 		}
 	}
 
@@ -317,33 +321,33 @@ export class WritingJourneyBoardRenderer {
 			.map(({ event }) => event);
 	}
 
-	private static buildResolvedPathIndex(rawEvents: readonly WritingJourneyEvent[]): ReadonlyMap<string, string> {
-		const resolvedMap = new Map<string, string>();
-		for (let i = rawEvents.length - 1; i >= 0; i--) {
-			const ev = rawEvents[i];
-			if (ev.type === 'chapter.renamed' || ev.type === 'chapter.moved') {
-				const futureTarget = resolvedMap.get(ev.newPath) ?? ev.newPath;
-				resolvedMap.set(ev.oldPath, futureTarget);
-			}
-		}
-		return resolvedMap;
+	/**
+	 * 从事件标识和原始事件序列向前追踪文件生命周期（跟踪重命名与移动；删除或路径复用终止生命周期）
+	 */
+	public static resolveForwardChapterFile(
+		targetEvent: WritingJourneyEvent,
+		rawEvents: readonly WritingJourneyEvent[],
+		app: App,
+		pathIndex = buildChapterHistoryIndex(rawEvents)
+	): { file: TFile | null; resolvedPath: string; isDeleted: boolean } {
+		const identity = pathIndex.get(targetEvent.id);
+		if (!identity) return { file: null, resolvedPath: '', isDeleted: true };
+		const candidate = identity.deleted ? null : app.vault.getAbstractFileByPath(identity.path);
+		const file = candidate instanceof TFile ? candidate : null;
+		return { file, resolvedPath: identity.path, isDeleted: !file };
 	}
 
-	private static resolveLatestPath(
-		initialPath: string,
-		resolvedPathIndex: ReadonlyMap<string, string>
-	): string {
-		return resolvedPathIndex.get(initialPath) ?? initialPath;
-	}
 
 	private static renderEventRow(
 		container: HTMLElement,
 		event: WritingJourneyEvent,
 		app: App,
-		currentBookPath: string,
-		resolvedPathIndex: ReadonlyMap<string, string>
+		plugin?: WritingJourneyBoardPlugin,
+		rawEvents?: readonly WritingJourneyEvent[],
+		pathIndex?: ReadonlyMap<string, ChapterHistoryLocation>
 	): void {
 		const info = this.getEventDisplayInfo(event);
+		const resolved = this.resolveForwardChapterFile(event, rawEvents ?? [], app, pathIndex);
 		const row = container.createDiv('wn-writing-journey-item');
 
 		// 1. 本地完整时间显示 (YYYY-MM-DD HH:mm)
@@ -366,6 +370,34 @@ export class WritingJourneyBoardRenderer {
 			detailSpan.setText(info.detailText);
 		}
 
+		if (event.type === 'chapter.status_changed') {
+			const actionsEl = contentEl.createDiv('wn-writing-journey-item-actions');
+			const snapshotBtn = actionsEl.createEl('button', {
+				cls: 'wn-writing-journey-btn-snapshot',
+				text: t('snapshot.open-snapshot')
+			});
+			snapshotBtn.onclick = (e: MouseEvent) => {
+				e.stopPropagation();
+				const chapterFile = resolved.file && app.vault.getAbstractFileByPath(resolved.file.path) === resolved.file ? resolved.file : null;
+
+				const snapshotMgr = plugin?.chapterSnapshotManager
+					?? (plugin?.services?.getOptional ? plugin.services.getOptional<ChapterSnapshotManager>('ChapterSnapshotManager') : undefined);
+
+				if (snapshotMgr && typeof snapshotMgr.openComparison === 'function') {
+					void snapshotMgr.openComparison({
+						file: chapterFile,
+						chapterPath: event.snapshot?.path ?? event.path,
+						chapterTitle: event.chapterTitle,
+						snapshotRef: event.snapshot,
+						snapshotKey: event.snapshot?.key,
+						journeyEvent: event,
+						ownerDocument: container.ownerDocument,
+						allJourneyEvents: rawEvents ?? []
+					}).catch(err => Logger.error('[WritingJourneyBoardRenderer] Failed to open snapshot:', err));
+				}
+			};
+		}
+
 		// 4. 章节存在性与打开交互
 		if (info.chapterPath) {
 			if (info.isExplicitlyDeleted) {
@@ -375,14 +407,13 @@ export class WritingJourneyBoardRenderer {
 					text: t('writing-journey.deleted')
 				});
 			} else {
-				const latestPath = this.resolveLatestPath(info.chapterPath, resolvedPathIndex);
-				const file = app.vault.getAbstractFileByPath(latestPath);
-				const isExtant = file instanceof TFile;
+				const { file, isDeleted } = resolved;
 
-				if (isExtant) {
+				if (!isDeleted && file instanceof TFile) {
 					row.addClass('wn-clickable');
 					row.title = t('writing-journey.click-to-open');
 					row.onclick = () => {
+						if (app.vault.getAbstractFileByPath(file.path) !== file) return;
 						const targetLeaf = getLeafForFileNavigation(app, file);
 						void openFileAndFocus(app, targetLeaf, file);
 					};

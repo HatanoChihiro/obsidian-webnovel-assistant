@@ -181,6 +181,17 @@ function deepFreezeEntry<T extends TimelineEntry | TimelineItem>(obj: T): Readon
 export class TimelineManager {
 
 	private writer = new SerializedWriter();
+	private destroyed = false;
+	private contentReads = new Map<TFile, { path: string; mtime: number | undefined; size: number | undefined; promise: Promise<string> }>();
+	private parsedEntries = new Map<string, { content: string; version: number; label: string; manager: WebNovelAssistantPlugin['characterManager']; entries: TimelineEntry[] }>();
+
+	async destroy(): Promise<void> {
+		this.destroyed = true;
+		this.contentReads.clear();
+		this.parsedEntries.clear();
+		await this.writer.flush();
+		this.parsedEntries.clear();
+	}
 
 
 
@@ -200,10 +211,18 @@ export class TimelineManager {
 		if (typeof this.app?.vault?.on === 'function' && typeof this.plugin?.registerEvent === 'function') {
 			this.plugin.registerEvent(
 				this.app.vault.on('modify', (file) => {
+					if (file instanceof TFile) this.contentReads.delete(file);
+					if (this.destroyed) return;
 					if (!(file instanceof TFile) || file.extension !== 'md') return;
 					this.handleVaultModify(file);
 				})
 			);
+			this.plugin.registerEvent(this.app.vault.on('rename', (file) => {
+				if (file instanceof TFile) this.contentReads.delete(file);
+			}));
+			this.plugin.registerEvent(this.app.vault.on('delete', (file) => {
+				if (file instanceof TFile) this.contentReads.delete(file);
+			}));
 		}
 	}
 
@@ -229,7 +248,9 @@ export class TimelineManager {
 				() => {
 					void (async () => {
 						try {
-							const content = await this.app.vault.cachedRead(file);
+							if (this.destroyed) return;
+							const content = await this.readTimelineFile(file);
+							if (this.destroyed) return;
 							const entries = this.parseEntries(content, folderPath);
 							await this.reconcileFrontmatter(folderPath, entries, file);
 						} catch (err) {
@@ -242,7 +263,8 @@ export class TimelineManager {
 		} else {
 			void (async () => {
 				try {
-					const content = await this.app.vault.cachedRead(file);
+					const content = await this.readTimelineFile(file);
+					if (this.destroyed) return;
 					const entries = this.parseEntries(content, folderPath);
 					await this.reconcileFrontmatter(folderPath, entries, file);
 				} catch (err) {
@@ -311,11 +333,52 @@ export class TimelineManager {
 
 	async loadEntries(folderPath?: string): Promise<TimelineEntry[] | null> {
 		const folder = this.normalizeFolderPath(folderPath);
-		const file = this.getTimelineFile(folder);
-		if (!file) return null;
-		const content = await this.app.vault.cachedRead(file);
+		const content = await this.loadContent(folder);
+		if (content === null) return null;
 		if (!content || typeof content !== 'string') return [];
 		return this.parseEntries(content, folder);
+	}
+
+	async loadContent(folderPath?: string): Promise<string | null> {
+		if (this.destroyed) return null;
+		const folder = this.normalizeFolderPath(folderPath);
+		const file = this.getTimelineFile(folder);
+		if (!file) return null;
+		return this.readTimelineFile(file);
+	}
+
+	private readTimelineFile(file: TFile): Promise<string> {
+		const cached = this.contentReads.get(file);
+		const path = file.path;
+		const mtime = file.stat?.mtime;
+		const size = file.stat?.size;
+		if (cached && cached.path === path && cached.mtime === mtime && cached.size === size) return cached.promise;
+		const record = { path, mtime, size, promise: Promise.resolve().then(() => this.app.vault.cachedRead(file)) };
+		this.contentReads.delete(file);
+		this.contentReads.set(file, record);
+		if (this.contentReads.size > 8) {
+			const oldest = this.contentReads.keys().next().value;
+			if (oldest) this.contentReads.delete(oldest);
+		}
+		record.promise = record.promise.then(content => {
+			// 未知版本仅合并正在进行的读取；旧请求不得移除或覆盖后来的缓存。
+			if (this.contentReads.get(file) === record && (!mtime || file.path !== path || file.stat?.mtime !== mtime || file.stat?.size !== size)) {
+				this.contentReads.delete(file);
+			}
+			return content;
+		}, (error: unknown) => {
+			if (this.contentReads.get(file) === record) this.contentReads.delete(file);
+			throw error;
+		});
+		return record.promise;
+	}
+
+	private async processTimelineFile(file: TFile, transform: (content: string) => string): Promise<string> {
+		try {
+			return await this.app.vault.process(file, transform);
+		} finally {
+			this.contentReads.delete(file);
+		}
 	}
 
 	private canonicalizeLoreList(lores: string[], folderPath?: string): string[] {
@@ -328,8 +391,29 @@ export class TimelineManager {
 	}
 
 	parseEntries(content: string, folderPath?: string): TimelineEntry[] {
+		const folder = this.normalizeFolderPath(folderPath);
+		const manager = this.plugin.characterManager;
+		const version = manager ? manager.cacheVersion : 0;
+		const label = t('timeline.type-label');
+		const cached = this.parsedEntries.get(folder);
+		if (!this.destroyed && typeof version === 'number' && cached?.content === content && cached.version === version && cached.label === label && cached.manager === manager) {
+			return cached.entries.map(deepCloneEntry);
+		}
+		const entries = this.parseTimelineContent(content, folder);
+		if (!this.destroyed && typeof version === 'number') {
+			this.parsedEntries.delete(folder);
+			this.parsedEntries.set(folder, { content, version, label, manager, entries });
+			if (this.parsedEntries.size > 8) {
+				const oldest = this.parsedEntries.keys().next().value;
+				if (oldest !== undefined) this.parsedEntries.delete(oldest);
+			}
+		}
+		return entries.map(deepCloneEntry);
+	}
+
+	private parseTimelineContent(content: string, folderPath: string): TimelineEntry[] {
 		if (!content || typeof content !== 'string') return [];
-		const bookFolder = folderPath !== undefined ? this.normalizeFolderPath(folderPath) : this.currentFolder;
+		const bookFolder = folderPath;
 		const entries: TimelineEntry[] = [];
 		const blocks = content.split(/\n---\n/);
 
@@ -767,7 +851,7 @@ export class TimelineManager {
 			if (!file) file = await this.createTimelineFile(folder);
 
 			let finalContent = '';
-			await this.app.vault.process(file, (existing) => {
+			await this.processTimelineFile(file, (existing) => {
 				const headings = [...existing.matchAll(/^## (.+)$/gm)];
 				let lastSameTimeEnd = -1;
 				for (let i = 0; i < headings.length; i++) {
@@ -882,7 +966,7 @@ export class TimelineManager {
 			let finalContent = '';
 			let writeSuccess = false;
 
-			await this.app.vault.process(file, (existing) => {
+			await this.processTimelineFile(file, (existing) => {
 				const latestEntries = this.parseEntries(existing, folder);
 				const targetIndex = this.resolveTargetIndex(latestEntries, index, frozenExpected);
 
@@ -936,7 +1020,7 @@ export class TimelineManager {
 			let finalContent = '';
 			let writeSuccess = false;
 
-			await this.app.vault.process(file, (existing) => {
+			await this.processTimelineFile(file, (existing) => {
 				const latestEntries = this.parseEntries(existing, folder);
 				const targetIndex = this.resolveTargetIndex(latestEntries, index, frozenExpected);
 
@@ -986,7 +1070,7 @@ export class TimelineManager {
 			let finalContent = '';
 			let writeSuccess = false;
 
-			await this.app.vault.process(file, (existing) => {
+			await this.processTimelineFile(file, (existing) => {
 				const latestEntries = this.parseEntries(existing, folder);
 				const actualFromIndex = this.resolveTargetIndex(latestEntries, fromIndex, frozenExpectedFrom);
 				if (actualFromIndex === -1) {
@@ -1060,7 +1144,7 @@ export class TimelineManager {
 			let finalContent = '';
 			let writeSuccess = false;
 
-			await this.app.vault.process(file, (existing) => {
+			await this.processTimelineFile(file, (existing) => {
 				const latestEntries = this.parseEntries(existing, folder);
 
 				let sourceIndex = -1;
@@ -1264,7 +1348,7 @@ export class TimelineManager {
 			let finalContent = '';
 			let writeSuccess = false;
 
-			await this.app.vault.process(file, (existing) => {
+			await this.processTimelineFile(file, (existing) => {
 				const latestEntries = this.parseEntries(existing, folder);
 
 				// STEP 1: If targetEvents is not empty, resolve and validate ALL targets BEFORE removing any links!

@@ -12,7 +12,7 @@ import { VALIDATION_RULES, DEFAULT_PROOFREADING_SETTINGS, VIEW_TYPES } from '../
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { LoreCardPreview } from './components/LoreCardPreview';
 import { t, setLocale, detectLocale, type Locale } from '../i18n';
-import { getDefaultFileName } from '../i18n/data-keys';
+import { getDefaultFileName, getProofreadingTypeLabel } from '../i18n/data-keys';
 import { FolderSuggestModal } from './FolderSuggestModal';
 import { FileSuggestModal } from './FileSuggestModal';
 import { Logger } from '../utils/Logger';
@@ -1173,7 +1173,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 
 					mainEl.createSpan({
 						cls: `wn-proofreading-ignored-context-badge wn-proofreading-badge-${parsed.type}`,
-						text: this.getProofreadingTypeLabel(parsed.type)
+						text: getProofreadingTypeLabel(parsed.type)
 					});
 
 					const snippetEl = mainEl.createDiv({ cls: 'wn-proofreading-ignored-context-snippet' });
@@ -1213,23 +1213,6 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				cls: 'wn-proofreading-ignored-empty',
 				text: t('setting.proofreading-ignored-contexts-empty')
 			});
-		}
-	}
-
-	private getProofreadingTypeLabel(type: string): string {
-		switch (type) {
-			case 'wrong_word':
-				return t('proofreading.type-wrong');
-			case 'sensitive':
-				return t('proofreading.type-sensitive');
-			case 'synonym':
-				return t('proofreading.type-synonym');
-			case 'grammar':
-				return t('proofreading.type-grammar');
-			case 'punctuation':
-				return t('proofreading.type-punctuation');
-			default:
-				return t('proofreading.type-wrong');
 		}
 	}
 
@@ -1795,7 +1778,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				const saveAction = async () => {
 					const newName = tempValue || getDefaultFileName('foreshadowingFileName');
 					if (newName === oldName) return;
-					if (!this.plugin.settings.foreshadowing) { this.plugin.settings.foreshadowing = { fileName: newName, showTimestamp: true, defaultTags: [] }; }
+					if (!this.plugin.settings.foreshadowing) { this.plugin.settings.foreshadowing = { fileName: newName, defaultTags: [] }; }
 					else { this.plugin.settings.foreshadowing.fileName = newName; }
 					await this.plugin.saveSettings();
 					const count = await this.plugin.renameAllFunctionalFiles(oldName, newName, 'file', 'foreshadowingFileName');
@@ -1818,7 +1801,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					.setValue(tags.join(', '))
 					.onChange(async (value) => {
 						if (!this.plugin.settings.foreshadowing) {
-							this.plugin.settings.foreshadowing = { fileName: getDefaultFileName('foreshadowingFileName'), showTimestamp: true, defaultTags: [] };
+							this.plugin.settings.foreshadowing = { fileName: getDefaultFileName('foreshadowingFileName'), defaultTags: [] };
 						}
 						this.plugin.settings.foreshadowing.defaultTags = value.trim()
 							? value.trim().split(/[,，\s]+/).filter(Boolean)

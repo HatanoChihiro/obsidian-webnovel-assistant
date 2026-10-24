@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { LoreCardRenderer } from '../src/ui/components/LoreCardRenderer';
+import { LoreCardRenderer, type LoreBodyReadCache } from '../src/ui/components/LoreCardRenderer';
 import { MarkdownRenderer, Component, TFile } from 'obsidian';
 import { injectSoftBreakIndentPlaceholders } from '../src/utils/softBreakIndent';
 import * as StickyNoteEditor from '../src/ui/components/StickyNoteParagraphEditor';
@@ -657,6 +657,41 @@ type: 主要角色
 	describe('resolveLoreBody 与正文缓存', () => {
 		beforeEach(() => {
 			LoreCardRenderer.clearLoreBodyCache();
+		});
+
+		it('shares one file snapshot across sibling entries and refreshes it after file invalidation', async () => {
+			const file = { basename: '人物', path: '设定/人物.md', stat: { mtime: 1 } } as TFile;
+			const reads: LoreBodyReadCache = new Map();
+			mockApp.vault.cachedRead.mockResolvedValue('## A\n**别名**：Alias\nAlpha\n## B\nBeta');
+			mockApp.metadataCache.getFileCache.mockReturnValue({ headings: [
+				{ heading: 'A', level: 2, position: { start: { line: 0 }, end: { line: 0 } } },
+				{ heading: 'B', level: 2, position: { start: { line: 3 }, end: { line: 3 } } }
+			] });
+			const [a, b] = await Promise.all(['A', 'B'].map(heading => LoreCardRenderer.resolveLoreBody({ file, heading }, mockApp, reads)));
+			expect(a).toEqual({ chunk: 'Alpha', aliases: ['Alias'] });
+			expect(b).toEqual({ chunk: 'Beta', aliases: [] });
+			expect(mockApp.vault.cachedRead).toHaveBeenCalledTimes(1);
+			file.stat.mtime = 2;
+			mockApp.vault.cachedRead.mockResolvedValue('## A\n**别名**：New\nUpdated\n## B\nNew Beta');
+			expect((await LoreCardRenderer.resolveLoreBody({ file, heading: 'B' }, mockApp, reads)).chunk).toBe('New Beta');
+			expect(mockApp.vault.cachedRead).toHaveBeenCalledTimes(2);
+			LoreCardRenderer.clearLoreBodyCache(file);
+			await LoreCardRenderer.resolveLoreBody({ file, heading: 'A' }, mockApp, reads);
+			expect(mockApp.vault.cachedRead).toHaveBeenCalledTimes(3);
+		});
+
+		it('retries failed shared reads and keeps H1 boundaries and first duplicate headings', async () => {
+			const file = { basename: '人物', path: '设定/人物.md', stat: { mtime: 1 } } as TFile;
+			const reads: LoreBodyReadCache = new Map();
+			mockApp.vault.cachedRead.mockRejectedValueOnce(new Error('read failed')).mockResolvedValue('## A\nFirst\n# End\nnot A\n## A\nSecond');
+			mockApp.metadataCache.getFileCache.mockReturnValue({ headings: [
+				{ heading: 'A', level: 2, position: { start: { line: 0 }, end: { line: 0 } } },
+				{ heading: 'End', level: 1, position: { start: { line: 2 }, end: { line: 2 } } },
+				{ heading: 'A', level: 2, position: { start: { line: 4 }, end: { line: 4 } } }
+			] });
+			await expect(LoreCardRenderer.resolveLoreBody({ file, heading: 'A' }, mockApp, reads)).rejects.toThrow('read failed');
+			expect(reads.size).toBe(0);
+			expect(await LoreCardRenderer.resolveLoreBody({ file, heading: 'A' }, mockApp, reads)).toEqual({ chunk: 'First', aliases: [] });
 		});
 
 		it('should slice the H2 section and strip the alias declaration line', async () => {

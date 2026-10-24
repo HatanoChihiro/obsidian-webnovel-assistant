@@ -51,7 +51,7 @@ export class MobileFloatingStats {
 	private dragOffset: { x: number; y: number } = { x: 0, y: 0 };
 	private isDocked: boolean = false;
 	private dockEdge: 'left' | 'right' | null = null;
-	private resizeHandler = () => this.checkBounds();
+	private resizeHandler = () => this.flushPosition();
 
 	// 显示元素
 	private wordCountEl: HTMLElement | null = null;
@@ -63,6 +63,7 @@ export class MobileFloatingStats {
 	private ownerDocument: Document | null = null;
 	private ownerWindow: Window | null = null;
 	private pendingInitialRaf: { win: Window; id: number } | null = null;
+	private pendingPositionRaf: { win: Window; id: number } | null = null;
 	private currentTimerIcon: 'play' | 'pause' | null = null;
 
 	constructor(app: App, plugin: MobileFloatingStatsPlugin) {
@@ -189,6 +190,7 @@ export class MobileFloatingStats {
 	 */
 	unload(): void {
 		this.cancelPendingInitialRaf();
+		this.cancelPendingPositionRaf();
 		if (this.ownerWindow) {
 			this.ownerWindow.removeEventListener('resize', this.resizeHandler);
 		}
@@ -214,6 +216,18 @@ export class MobileFloatingStats {
 			this.pendingInitialRaf.win.cancelAnimationFrame(this.pendingInitialRaf.id);
 			this.pendingInitialRaf = null;
 		}
+	}
+
+	private cancelPendingPositionRaf(): void {
+		if (this.pendingPositionRaf !== null) {
+			this.pendingPositionRaf.win.cancelAnimationFrame(this.pendingPositionRaf.id);
+			this.pendingPositionRaf = null;
+		}
+	}
+
+	private flushPosition(): void {
+		this.cancelPendingPositionRaf();
+		this.checkBounds();
 	}
 
 	/**
@@ -312,6 +326,7 @@ export class MobileFloatingStats {
 			
 			this.ownerDocument?.addEventListener('touchmove', this.touchMoveHandler, { passive: false });
 			this.ownerDocument?.addEventListener('touchend', this.touchEndHandler);
+			this.ownerDocument?.addEventListener('touchcancel', this.touchEndHandler);
 		}, { passive: false });
 
 		// 鼠标按下
@@ -333,6 +348,7 @@ export class MobileFloatingStats {
 		if (this.ownerDocument) {
 			this.ownerDocument.removeEventListener('touchmove', this.touchMoveHandler);
 			this.ownerDocument.removeEventListener('touchend', this.touchEndHandler);
+			this.ownerDocument.removeEventListener('touchcancel', this.touchEndHandler);
 			this.ownerDocument.removeEventListener('mousemove', this.mouseMoveHandler);
 			this.ownerDocument.removeEventListener('mouseup', this.mouseUpHandler);
 		}
@@ -363,7 +379,14 @@ export class MobileFloatingStats {
 		this.position.x = clientX - this.dragOffset.x;
 		this.position.y = clientY - this.dragOffset.y;
 		
-		this.checkBounds();
+		if (this.pendingPositionRaf || !this.ownerWindow) return;
+		const entry = { win: this.ownerWindow, id: 0 };
+		this.pendingPositionRaf = entry;
+		entry.id = entry.win.requestAnimationFrame(() => {
+			if (this.pendingPositionRaf !== entry) return;
+			this.pendingPositionRaf = null;
+			this.checkBounds();
+		});
 	}
 
 	private checkBounds(): void {
@@ -391,12 +414,13 @@ export class MobileFloatingStats {
 			this.position.y = 0;
 		}
 
-		// 更新 DOM，拖拽时 checkBounds 总是被 updatePosition 触发，因此也会直接更新 DOM
+		// 在动画帧或手势收尾时应用边界约束后的最终位置。
 		this.containerEl.setCssStyles({ left: `${this.position.x}px`, top: `${this.position.y}px` });
 	}
 
 	private endDragging(): void {
 		if (this.isDragging) {
+			this.flushPosition();
 			this.isDragging = false;
 			if (this.containerEl) {
 				this.containerEl.removeClass('is-dragging');

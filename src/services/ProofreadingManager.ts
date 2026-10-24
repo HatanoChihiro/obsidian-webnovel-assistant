@@ -427,13 +427,6 @@ export class ProofreadingManager {
 	}
 
 	/**
-	 * 获取当前词典缓存版本号
-	 */
-	public getCacheVersion(): number {
-		return this.cacheVersion;
-	}
-
-	/**
 	 * 订阅词典缓存刷新事件（返回取消订阅函数）
 	 */
 	public onRefresh(listener: (version: number) => void): () => void {
@@ -442,13 +435,6 @@ export class ProofreadingManager {
 		return () => {
 			this.refreshListeners.delete(listener);
 		};
-	}
-
-	/**
-	 * 订阅词典缓存刷新事件（别名）
-	 */
-	public subscribe(listener: (version: number) => void): () => void {
-		return this.onRefresh(listener);
 	}
 
 	public notifyRefresh(): void {

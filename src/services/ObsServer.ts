@@ -158,15 +158,4 @@ export class ObsOverlayServer {
 			]);
 		}
 	}
-
-	/**
-	 * 更新服务器端口
-	 * 如果端口变化，会自动重启服务器
-	 */
-	async updatePort(newPort: number) {
-		if (this.port === newPort && this.server) return;
-		await this.stop();
-		this.port = newPort;
-		this.start();
-	}
 }

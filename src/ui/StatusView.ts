@@ -16,6 +16,7 @@ import type { HomepageManager } from '../services/HomepageManager';
 import type { CharacterManager } from '../services/CharacterManager';
 import type { ForeshadowingManager } from '../services/ForeshadowingManager';
 import type { StatisticsManager } from '../services/StatisticsManager';
+import type { WritingJourneyService } from '../services/WritingJourneyService';
 import { ChapterSorter, type ChapterSorterContext } from '../services/ChapterSorter';
 import { Logger } from '../utils/Logger';
 
@@ -101,7 +102,7 @@ export interface WritingStatusViewPlugin
 	homepageManager?: StatusViewHomepageManager;
 	foreshadowingManager?: StatusViewForeshadowingManager;
 	taskManager?: StatusViewTaskManager;
-	writingJourneyService?: { recordChapterStatusChanged(bookPath: string, path: string, chapterTitle: string, fromStatus: string, toStatus: string): Promise<void> };
+	writingJourneyService?: Pick<WritingJourneyService, 'changeChapterStatus'>;
 }
 
 interface CollapsibleTitleElement extends HTMLElement {
@@ -551,19 +552,30 @@ export class WritingStatusView extends ItemView {
 						.onClick(async () => {
 							if (s === currentStatus) return;
 							try {
-								await this.app.fileManager.processFrontMatter(file, (fm) => {
-									(fm as Record<string, unknown>)['status'] = getCorkboardStatusText(s);
-								});
-								new Notice(t('corkboard.status-updated', { status: getCorkboardStatusText(s) }));
-								const bookRoot = findBookRoot(this.app, this.plugin, file, true);
-								if (bookRoot && this.plugin.writingJourneyService) {
-									try {
-										await this.plugin.writingJourneyService.recordChapterStatusChanged(bookRoot, file.path, file.basename, currentStatus, s);
-									} catch (journeyErr) {
-										Logger.error('[StatusView] Failed to record chapter status journey event:', journeyErr);
-									}
+								if (!this.plugin.writingJourneyService?.changeChapterStatus) {
+									new Notice(t('corkboard.status-update-failed'));
+									return;
 								}
-								void this.updateChapterStatus();
+								const bookRoot = findBookRoot(this.app, this.plugin, file, true);
+								const res = await this.plugin.writingJourneyService.changeChapterStatus({
+									file,
+									toStatus: s,
+									bookPath: bookRoot || undefined
+								});
+								if (!res.success) {
+									new Notice(t('corkboard.status-update-failed'));
+									return;
+								}
+								if (res.changed) {
+									new Notice(t('corkboard.status-updated', { status: getCorkboardStatusText(s) }));
+									if (res.snapshotError) {
+										new Notice(t('snapshot.notice-unavailable'));
+									}
+									if (res.journeyError) {
+										new Notice(t('snapshot.journey-save-failed'));
+									}
+									void this.updateChapterStatus();
+								}
 							} catch (err) {
 								window.console.error(err);
 								new Notice(t('corkboard.status-update-failed'));

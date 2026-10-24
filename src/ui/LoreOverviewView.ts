@@ -8,7 +8,7 @@ import { t } from '../i18n';
 import type { CurrentBookContextPlugin } from '../utils/path';
 import { getCurrentBookContext, findBookRoot } from '../utils/path';
 import { LoreBoardRenderer, type LoreBoardCardsPlugin } from './components/LoreBoardRenderer';
-import { WorkbenchFilterIndex } from '../services/WorkbenchFilterIndex';
+import { getLoreAliasesForBook, WorkbenchFilterIndex } from '../services/WorkbenchFilterIndex';
 import { bindFilterInputEvents } from './components/FilterInputBinding';
 
 export const LORE_OVERVIEW_VIEW_TYPE = VIEW_TYPES.LORE_OVERVIEW;
@@ -265,7 +265,7 @@ export class LoreOverviewView extends ItemView {
 		if (hasQuery) {
 			matchedLoreHeadings = await this.filterIndex.filterLoreEntries(
 				loreEntries,
-				this.getLoreAliases(normalizedBookPath),
+				getLoreAliasesForBook(this.plugin.characterManager, normalizedBookPath),
 				this.loreFilterQuery
 			);
 			if (this.currentRenderId !== renderId || this.isClosed) return;
@@ -386,19 +386,6 @@ export class LoreOverviewView extends ItemView {
 			this.currentRenderId++;
 			void this.reloadBoard();
 		}
-	}
-
-	private getLoreAliases(bookPath: string): Map<string, string[]> {
-		const aliasesByHeading = new Map<string, string[]>();
-		for (const name of this.plugin.characterManager.getCharactersForBook(bookPath)) {
-			const entry = this.plugin.characterManager.getCharacterFile(bookPath, name);
-			if (!entry || name === entry.heading) continue;
-
-			const aliases = aliasesByHeading.get(entry.heading) ?? [];
-			if (!aliases.includes(name)) aliases.push(name);
-			aliasesByHeading.set(entry.heading, aliases);
-		}
-		return aliasesByHeading;
 	}
 
 	private renderFilterBar(

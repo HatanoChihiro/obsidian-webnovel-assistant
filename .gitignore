@@ -12,6 +12,16 @@ yarn-debug.log*
 yarn-error.log*
 .npm-cache/
 
+# 测试报告与构建缓存
+coverage/
+.nyc_output/
+.cache/
+dist/
+
+# 本机环境与凭据
+.env
+.env.*
+
 # 编译输出
 main.js
 styles.css
@@ -26,6 +36,9 @@ desktop.ini
 *.backup
 *.bak
 *.tmp
+*.temp
+*.log
+*~
 
 # 运行时按需下载词典（公开源位于 dictionary 分支）
 /dict/
@@ -41,6 +54,10 @@ desktop.ini
 
 # 编辑器/IDE 配置
 .vscode/
+.idea/
+*.swp
+*.swo
+**/.claude/settings.local.json
 
 # 内部开发文档
 CODE_*.md

@@ -152,8 +152,7 @@
 	overscroll-behavior: contain;
 }
 
-.wn-sticky-note-list-side-panel .wn-sticky-note-list-card,
-.wn-sticky-note-list-workbench .wn-sticky-note-list-card {
+.wn-sticky-note-list-side-panel .wn-sticky-note-list-card {
 	width: var(--wn-side-note-grid-size, 100%);
 	height: var(--wn-side-note-grid-size, auto);
 	aspect-ratio: 1 / 1;
@@ -162,20 +161,9 @@
 }
 
 .wn-sticky-note-list-side-panel .wn-sticky-note-list-card textarea,
-.wn-sticky-note-list-side-panel .wn-sticky-note-list-card .wn-sticky-note-paragraph-editor,
-.wn-sticky-note-list-workbench .wn-sticky-note-list-card textarea,
-.wn-sticky-note-list-workbench .wn-sticky-note-list-card .wn-sticky-note-paragraph-editor {
+.wn-sticky-note-list-side-panel .wn-sticky-note-list-card .wn-sticky-note-paragraph-editor {
 	min-height: 0;
 	font-size: inherit;
-}
-
-.wn-workbench-sticky-list-root,
-.wn-sticky-note-list-workbench {
-	display: flex;
-	flex: 1 1 0;
-	width: 100%;
-	min-width: 0;
-	min-height: 0;
 }
 
 .wn-sticky-note-paragraph-editor {
@@ -211,13 +199,6 @@ body.is-tablet .wn-sticky-note-list-side-panel .wn-sticky-note-list-card {
 	padding: 24px 12px;
 	color: var(--text-muted);
 	text-align: center;
-}
-
-.wn-sticky-note-list-workbench .wn-sticky-note-list-empty {
-	grid-column: 1 / -1;
-	width: 100%;
-	padding: 40px 20px;
-	font-size: 0.9em;
 }
 
 .wn-sticky-note-card-actions {

@@ -43,26 +43,6 @@
 }
 
 
-.wn-merge-card-textarea {
-	width: 100%;
-	min-height: 120px;
-	padding: 12px;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 6px;
-	background: var(--background-primary);
-	font-family: var(--font-text);
-	font-size: var(--wn-type-font-size, inherit);
-	line-height: var(--wn-type-line-height, 1.8);
-	letter-spacing: var(--wn-type-letter-spacing, 0.05em);
-	text-align: var(--wn-type-text-align, justify);
-	color: var(--text-normal);
-	resize: none;
-	overflow: hidden;
-	outline: none;
-	transition: border-color 0.2s;
-}
-
-
 /* 章节合并预览正文段落排版 (Typography Binding for Merge Preview Paragraphs)
    规避 css-text-indent 官方审查警告：首行缩进用 ::before inline-block 伪元素实现 */
 .wn-merge-para {

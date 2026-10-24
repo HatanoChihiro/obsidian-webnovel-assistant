@@ -1,9 +1,7 @@
 /* ========== Lore, foreshadowing, and task cards ========== */
 /* ========== Mobile Lore & Foreshadowing Hover Popover Safe Bounds ========== */
 body.is-phone .webnovel-lore-popover,
-body.is-phone .wn-lore-hover-popover,
-body.is-phone .wn-character-hover-card,
-body.is-phone .wn-hover-card {
+body.is-phone .wn-lore-hover-popover {
 	font-size: var(--wn-phone-ui-font-size);
 	width: min(14em, calc(100vw - 1.5em));
 	max-width: min(14em, calc(100vw - 1.5em));
@@ -129,12 +127,14 @@ body.is-phone .wn-card-tag-badge {
 
 
 body.is-phone .mobile-floating-stats.is-docked-left {
-	transform: translateX(calc(-100% + 22px));
+	min-height: 44px;
+	transform: translateX(calc(-100% + 48px));
 }
 
 
 body.is-phone .mobile-floating-stats.is-docked-right {
-	transform: translateX(calc(100% - 22px));
+	min-height: 44px;
+	transform: translateX(calc(100% - 48px));
 }
 
 

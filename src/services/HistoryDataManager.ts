@@ -51,7 +51,6 @@ export class HistoryDataManager {
 	 */
 	async loadHistory(): Promise<Record<string, DailyStat>> {
 		try {
-			const data = await this.plugin.loadData() as Record<string, unknown> | null;
 			const canonical = this.plugin.settings?.historyData;
 
 			// 1. 首选：从 canonical plugin.settings 加载（最新标准）
@@ -84,6 +83,7 @@ export class HistoryDataManager {
 			}
 
 			// 3. 迁移：从旧版 dailyHistory key 迁移
+			const data = await this.plugin.loadData() as Record<string, unknown> | null;
 			if (data && data.dailyHistory !== undefined) {
 				this.historyData = this.validateHistory(data.dailyHistory);
 				this.bumpWordRevision();
@@ -146,19 +146,6 @@ export class HistoryDataManager {
 		this.bumpWordRevision();
 		await this.store.save(restored);
 		return Object.keys(restored).length;
-	}
-
-	/**
-	 * 更新指定日期的统计数据
-	 */
-	updateDailyStat(date: string, stat: DailyStat): void {
-		const existing = this.historyData[date];
-		const wordChanged = !existing || existing.addedWords !== stat.addedWords;
-		this.historyData[date] = stat;
-		this.store.markDirty();
-		if (wordChanged) {
-			this.bumpWordRevision();
-		}
 	}
 
 	/**
@@ -277,13 +264,6 @@ export class HistoryDataManager {
 		}
 		stat.hourlySlack[hour] += ms;
 		this.store.markDirty();
-	}
-
-	/**
-	 * 获取历史数据条目数量
-	 */
-	getHistorySize(): number {
-		return Object.keys(this.historyData).length;
 	}
 
 	/**

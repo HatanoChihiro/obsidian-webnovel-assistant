@@ -136,22 +136,6 @@ body .markdown-source-view.mod-cm6 .cm-editor.webnovel-show-gutter .cm-scroller 
 	color: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%);
 }
 
-.wn-footer-2-lines .wn-word-count-num {
-	white-space: nowrap;
-	font-weight: 500;
-	text-align: right;
-	line-height: 1.1;
-}
-
-.wn-footer-2-lines .wn-word-count-unit {
-	white-space: nowrap;
-	text-align: right;
-	margin-left: 0;
-	font-size: 0.85em;
-	color: var(--text-muted);
-	line-height: 1.1;
-}
-
 .wn-footer-1-line .wn-word-count-num {
 	white-space: nowrap;
 	font-weight: 500;

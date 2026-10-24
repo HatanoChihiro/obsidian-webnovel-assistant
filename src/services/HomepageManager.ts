@@ -381,24 +381,6 @@ export class HomepageManager {
 		return !!this.findNovelInfoFile(folderObj.path);
 	}
 
-	// 解析作品信息.md 的 **label**：value 格式
-	getNovelMetadataFromCache(folderPath: string): NovelMetadata | null {
-		const infoFile = this.findNovelInfoFile(folderPath);
-		if (!infoFile) return null;
-
-		// 使用 Obsidian 的 metadataCache 解析 bold-label 格式不够可靠
-		// 这里直接读文件内容解析
-		// 但 metadataCache.getFileCache 可以帮我们识别文件存在
-		// 实际解析需要异步读取文件内容，所以这里返回 null 让异步方法处理
-		// 或者使用缓存的文件内容
-		const cache = this.app.metadataCache.getFileCache(infoFile);
-		if (!cache) return null;
-
-		// 尝试从 cache.frontmatter 解析（兼容旧格式）
-		// 但新格式没有 frontmatter，所以用另一种方式
-		return null; // 让异步方法 getNovelMetadata 处理
-	}
-
 	async getNovelMetadata(folderPath: string): Promise<NovelMetadata | null> {
 		const normalized = folderPath.replace(/^\/+|\/+$/g, '');
 		const cached = this.metadataCache.get(normalized);
@@ -582,14 +564,6 @@ export class HomepageManager {
 		return meta?.series?.trim() || '';
 	}
 
-	async getSiblingNovelsInSeries(folderPath: string): Promise<NovelFolderInfo[]> {
-		const series = await this.getNovelSeries(folderPath);
-		if (!series) return [];
-		const normalized = folderPath.replace(/^\/+|\/+$/g, '');
-		const allInSeries = await this.getSeriesNovels(series);
-		return allInSeries.filter(n => n.folderPath.replace(/^\/+|\/+$/g, '') !== normalized);
-	}
-
 	async updateNovelSeries(folderPath: string, seriesName: string): Promise<void> {
 		const infoFile = this.findNovelInfoFile(folderPath);
 		if (!infoFile) return;
@@ -600,10 +574,6 @@ export class HomepageManager {
 		});
 
 		await this.refreshSeriesMembership(folderPath);
-	}
-
-	async clearNovelSeries(folderPath: string): Promise<void> {
-		await this.updateNovelSeries(folderPath, '');
 	}
 
 	async ensureNovelInfoFiles(): Promise<void> {

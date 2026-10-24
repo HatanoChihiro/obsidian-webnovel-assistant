@@ -27,7 +27,9 @@ export function buildCharacterHoverExtension(app: App, plugin: CharacterHoverPlu
 	const hoverPlugin = ViewPlugin.fromClass(class {
 		decorations: DecorationSet;
 		private cachedPattern: RegExp | null = null;
-		private cachedCharsLength: number = -1;
+		private cachedBookPath: string | null = null;
+		private patternVersion: number = -1;
+		private lastSourcePath: string | undefined;
 		private lastCacheVersion: number = -1;
 
 		constructor(view: EditorView) {
@@ -37,9 +39,10 @@ export function buildCharacterHoverExtension(app: App, plugin: CharacterHoverPlu
 
 		update(update: ViewUpdate) {
 			const currentVersion = plugin.characterManager?.cacheVersion || 0;
-			if (update.docChanged || update.viewportChanged || this.lastCacheVersion !== currentVersion) {
+			const file = this.getFile(update.view);
+			if (update.docChanged || update.viewportChanged || this.lastCacheVersion !== currentVersion || this.lastSourcePath !== file?.path) {
 				this.lastCacheVersion = currentVersion;
-				this.decorations = this.buildDecorations(update.view);
+				this.decorations = this.buildDecorations(update.view, file);
 			}
 		}
 
@@ -64,10 +67,9 @@ export function buildCharacterHoverExtension(app: App, plugin: CharacterHoverPlu
 			return foundFile;
 		}
 
-		buildDecorations(view: EditorView): DecorationSet {
+		buildDecorations(view: EditorView, activeFile = this.getFile(view)): DecorationSet {
 			const builder = [];
-			
-			const activeFile = this.getFile(view);
+			this.lastSourcePath = activeFile?.path;
 
 			if (!activeFile) {
 				return Decoration.none;
@@ -78,19 +80,19 @@ export function buildCharacterHoverExtension(app: App, plugin: CharacterHoverPlu
 			const bookPath = plugin.characterManager.getBookPathForFile(activeFile);
 			if (!bookPath) return Decoration.none;
 
-			const characters = plugin.characterManager.getCharactersForBook(bookPath);
-			if (characters.length === 0) return Decoration.none;
-
-			// 缓存正则以避免每次键盘输入都重新编译大量正则
-			if (this.cachedCharsLength !== characters.length || !this.cachedPattern) {
+			// 名称和正则随作品及设定索引版本更新，输入与视口变化复用同一份结果。
+			const version = plugin.characterManager.cacheVersion;
+			if (this.cachedBookPath !== bookPath || this.patternVersion !== version) {
+				const characters = plugin.characterManager.getCharactersForBook(bookPath);
 				const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 				// 安全措施：过滤空字符串，防止编译出匹配空串的正则导致无限循环
 				const validChars = characters.filter(c => c.length > 0);
-				if (validChars.length === 0) return Decoration.none;
-				this.cachedPattern = new RegExp(`(${validChars.map(escapeRegExp).join('|')})`, 'g');
-				this.cachedCharsLength = characters.length;
+				this.cachedPattern = validChars.length ? new RegExp(`(${validChars.map(escapeRegExp).join('|')})`, 'g') : null;
+				this.cachedBookPath = bookPath;
+				this.patternVersion = version;
 			}
 			const pattern = this.cachedPattern;
+			if (!pattern) return Decoration.none;
 
 			// 只扫描当前视口内的文本
 			for (const { from, to } of view.visibleRanges) {

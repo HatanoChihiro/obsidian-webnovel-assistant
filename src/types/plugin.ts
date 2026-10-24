@@ -43,6 +43,8 @@ import type { ChapterMergeManager } from '../services/ChapterMergeManager';
 import type { ProofreadingManager } from '../services/ProofreadingManager';
 import type { WritingJourneyService } from '../services/WritingJourneyService';
 import type { ImmersiveReferenceManager } from '../services/ImmersiveReferenceManager';
+import type { NativeSnapshotService } from '../services/NativeSnapshotService';
+import type { ChapterSnapshotManager } from '../services/ChapterSnapshotManager';
 
 // ==========================================
 // 辅助类型
@@ -183,6 +185,8 @@ export interface WebNovelAssistantPlugin extends
 	chapterMergeManager: ChapterMergeManager;
 	proofreadingManager: ProofreadingManager;
 	writingJourneyService: WritingJourneyService;
+	nativeSnapshotService?: NativeSnapshotService;
+	chapterSnapshotManager?: ChapterSnapshotManager;
 	stickyNoteManager: StickyNoteDataManager;
 	editorTracker?: EditorTracker;
 	styleManager?: StyleManager;

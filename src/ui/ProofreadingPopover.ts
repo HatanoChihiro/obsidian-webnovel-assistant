@@ -3,6 +3,7 @@ import type { EditorView } from '@codemirror/view';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { ProofreadingDiagnostic } from '../types/proofreading';
 import { t } from '../i18n';
+import { getProofreadingTypeLabel } from '../i18n/data-keys';
 import { isMobile, getPlatformTier } from '../utils/platform';
 import { isReplacementStale, computeDiagnosticContextFingerprint } from '../utils/proofreadingHelpers';
 import { forceProofreadingUpdate, dismissProofreadingInstance } from '../editor/ProofreadingExtension';
@@ -284,7 +285,7 @@ export class ProofreadingPopover extends Component {
 		// 头部徽标与原文展示
 		const header = popover.createDiv({ cls: 'wn-proofreading-popover-header' });
 		const typeBadge = header.createSpan({ cls: `wn-proofreading-badge wn-proofreading-badge-${this.diag.type}` });
-		typeBadge.setText(this.getTypeLabel(this.diag.type));
+		typeBadge.setText(getProofreadingTypeLabel(this.diag.type));
 
 		const origSpan = header.createSpan({ cls: 'wn-proofreading-popover-orig' });
 		origSpan.setText(this.diag.original);
@@ -352,23 +353,6 @@ export class ProofreadingPopover extends Component {
 		}
 
 		this.updatePosition();
-	}
-
-	private getTypeLabel(type: string): string {
-		switch (type) {
-			case 'wrong_word':
-				return t('proofreading.type-wrong');
-			case 'sensitive':
-				return t('proofreading.type-sensitive');
-			case 'synonym':
-				return t('proofreading.type-synonym');
-			case 'grammar':
-				return t('proofreading.type-grammar');
-			case 'punctuation':
-				return t('proofreading.type-punctuation');
-			default:
-				return t('proofreading.type-wrong');
-		}
 	}
 
 	private applySuggestion(replacement: string): void {

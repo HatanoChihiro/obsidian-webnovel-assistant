@@ -1,5 +1,5 @@
 import type { App, TFile } from 'obsidian';
-import { cleanLoreHeading, type LoreEntry } from './CharacterManager';
+import { cleanLoreHeading, type CharacterManager, type LoreEntry } from './CharacterManager';
 
 interface CachedText {
 	mtime: number;
@@ -45,6 +45,22 @@ export function stripMarkdownFrontmatter(content: string): string {
 }
 
 export { cleanLoreHeading };
+
+export function getLoreAliasesForBook(
+	manager: Pick<CharacterManager, 'getCharactersForBook' | 'getCharacterFile'>,
+	bookPath: string
+): Map<string, string[]> {
+	const aliasesByHeading = new Map<string, string[]>();
+	for (const name of manager.getCharactersForBook(bookPath)) {
+		const entry = manager.getCharacterFile(bookPath, name);
+		if (!entry || name === entry.heading) continue;
+
+		const aliases = aliasesByHeading.get(entry.heading) ?? [];
+		if (!aliases.includes(name)) aliases.push(name);
+		aliasesByHeading.set(entry.heading, aliases);
+	}
+	return aliasesByHeading;
+}
 
 /** Extract the same level-two lore sections used by CharacterManager, or fallback to file-level body text for single-file lore. */
 export function extractLoreSections(content: string, fallbackHeading?: string): Map<string, string> {

@@ -910,6 +910,7 @@ describe('TrajectoryBoardRenderer', () => {
 		});
 		expect(layout.hasClass('is-panning')).toBe(true);
 		expect(layout.hasClass('is-dragging')).toBe(false);
+		container.ownerDocument.defaultView.flushRaf();
 		expect(grid.style.transform).toBe('translate3d(20px, -40px, 0) scale(1)');
 
 		layout.dispatchEvent({ type: 'pointerup', pointerId: 10 });
@@ -939,6 +940,7 @@ describe('TrajectoryBoardRenderer', () => {
 			pointerId: 12, clientX: 100, clientY: 100, target: { closest: () => null } });
 		layout.dispatchEvent({ type: 'pointermove', pointerId: 12, clientX: 100, clientY: 140,
 			preventDefault: vi.fn() });
+		container.ownerDocument.defaultView.flushRaf();
 		expect(grid.style.transform).toBe('translate3d(20px, 0px, 0) scale(1)');
 		layout.dispatchEvent({ type: 'pointerup', pointerId: 12 });
 	});
@@ -968,6 +970,7 @@ describe('TrajectoryBoardRenderer', () => {
 		});
 
 		const getScale = () => Number(grid.style.transform.match(/scale\(([^)]+)\)/)?.[1]);
+		container.ownerDocument.defaultView.flushRaf();
 		const zoomedInScale = getScale();
 		expect(zoomedInScale).toBeGreaterThan(1.0);
 		expect(zoomedInScale).toBeLessThanOrEqual(2.0);
@@ -987,6 +990,7 @@ describe('TrajectoryBoardRenderer', () => {
 				preventDefault: vi.fn()
 			});
 		}
+		container.ownerDocument.defaultView.flushRaf();
 		expect(getScale()).toBe(2.0);
 
 		// 3. Large wheel zooming out cannot go below MIN_SCALE 0.5
@@ -999,6 +1003,7 @@ describe('TrajectoryBoardRenderer', () => {
 				preventDefault: vi.fn()
 			});
 		}
+		container.ownerDocument.defaultView.flushRaf();
 		expect(getScale()).toBe(0.5);
 
 		// 4. Horizontal-only wheel (deltaY === 0) does not zoom
@@ -1048,6 +1053,7 @@ describe('TrajectoryBoardRenderer', () => {
 			clientY: 100,
 			preventDefault: vi.fn()
 		});
+		container.ownerDocument.defaultView.flushRaf();
 		expect(grid.style.transform).not.toContain('scale(1)');
 
 		const transformedBefore = grid.style.transform;
@@ -1430,6 +1436,7 @@ describe('TrajectoryBoardRenderer', () => {
 		});
 
 		// Scale should now be 2
+		container.ownerDocument.defaultView.flushRaf();
 		expect(grid.style.transform).toContain('scale(2)');
 	});
 
@@ -1488,6 +1495,7 @@ describe('TrajectoryBoardRenderer', () => {
 			preventDefault: vi.fn()
 		});
 
+		container.ownerDocument.defaultView.flushRaf();
 		expect(grid.style.transform).toBe('translate3d(50px, 20px, 0) scale(1)');
 		expect(layout.hasClass('is-panning')).toBe(true);
 
@@ -1609,6 +1617,7 @@ describe('TrajectoryBoardRenderer', () => {
 			preventDefault: vi.fn()
 		});
 
+		container.ownerDocument.defaultView.flushRaf();
 		expect(grid.style.transform).toBe('translate3d(60px, 0px, 0) scale(1)');
 
 		layout.dispatchEvent({
@@ -2170,6 +2179,7 @@ describe('TrajectoryBoardRenderer', () => {
 		// Move to double distance (100 -> 200) -> scale 2
 		layout.dispatchEvent({ type: 'pointermove', pointerId: 1, clientX: 50, clientY: 100, preventDefault: vi.fn() });
 		layout.dispatchEvent({ type: 'pointermove', pointerId: 2, clientX: 250, clientY: 100, preventDefault: vi.fn() });
+		container.ownerDocument.defaultView.flushRaf();
 		expect(grid.style.transform).toContain('scale(2)');
 
 		// Add 3rd finger
@@ -2179,6 +2189,7 @@ describe('TrajectoryBoardRenderer', () => {
 		layout.dispatchEvent({ type: 'pointerup', pointerId: 1 });
 		// Move finger 2 slightly
 		layout.dispatchEvent({ type: 'pointermove', pointerId: 2, clientX: 251, clientY: 100, preventDefault: vi.fn() });
+		container.ownerDocument.defaultView.flushRaf();
 		expect(grid.style.transform).toContain('scale(2)');
 
 		// Trigger lostpointercapture -> no crash
@@ -2204,6 +2215,7 @@ describe('TrajectoryBoardRenderer', () => {
 		layout.dispatchEvent({ type: 'pointermove', pointerId: 1, clientX: 20, clientY: 0, preventDefault: vi.fn() });
 		layout.dispatchEvent({ type: 'lostpointercapture', pointerId: 1, target: card });
 		layout.dispatchEvent({ type: 'pointermove', pointerId: 1, clientX: 40, clientY: 0, preventDefault: vi.fn() });
+		container.ownerDocument.defaultView.flushRaf();
 		expect(grid.style.transform).toBe('translate3d(40px, 0px, 0) scale(1)');
 		layout.dispatchEvent({ type: 'pointerup', pointerId: 1 });
 		// A drag need not emit a click. The next deliberate control tap must still work.
@@ -2278,6 +2290,177 @@ describe('TrajectoryBoardRenderer', () => {
 		// Layout is immediately restored to container
 		expect(container.querySelector('.wn-timeline-trajectory-layout')).toBe(layout);
 		expect(layout.parentElement).toBe(container);
+	});
+
+	describe('gesture frame scheduling', () => {
+		const entry: TimelineEntry = { time: 'Day 1', description: 'Event', chapter: '', rawBlock: '' };
+		const move = (layout: MockElement, x: number, pointerId = 1) => layout.dispatchEvent({
+			type: 'pointermove', pointerId, clientX: x, clientY: 100, preventDefault: vi.fn()
+		});
+		const down = (layout: MockElement, x: number, pointerId = 1) => layout.dispatchEvent({
+			type: 'pointerdown', pointerType: 'touch', pointerId, clientX: x, clientY: 100
+		});
+		const render = (extra: Partial<TrajectoryModeOptions> = {}) => {
+			renderTrajectoryMode({ app: mockApp, container: container as unknown as HTMLElement,
+				displayEntries: [entry], resolveLinkToFile, ...extra });
+			return { layout: container.querySelector('.wn-timeline-trajectory-layout')!,
+				grid: container.querySelector('.wn-trajectory-grid')!, win: container.ownerDocument.defaultView };
+		};
+
+		it('coalesces movement and position reads within a frame and draws the latest state', () => {
+			const { layout, grid, win } = render();
+			const read = vi.spyOn(layout, 'getBoundingClientRect');
+			const write = vi.spyOn(grid, 'setCssStyles');
+			down(layout, 100);
+			for (let x = 110; x <= 220; x += 10) move(layout, x);
+			expect(read).toHaveBeenCalledTimes(1);
+			expect(write).not.toHaveBeenCalled();
+			win.flushRaf();
+			expect(write).toHaveBeenCalledTimes(1);
+			expect(grid.style.transform).toBe('translate3d(120px, 0px, 0) scale(1)');
+			move(layout, 230);
+			expect(read).toHaveBeenCalledTimes(2);
+			win.flushRaf();
+			expect(grid.style.transform).toBe('translate3d(130px, 0px, 0) scale(1)');
+		});
+
+		it.each(['pointerup', 'pointercancel', 'lostpointercapture'])('flushes the final viewport on %s', type => {
+			const { layout, grid, win } = render();
+			const write = vi.spyOn(grid, 'setCssStyles');
+			down(layout, 100);
+			move(layout, 160);
+			expect(write).not.toHaveBeenCalled();
+			layout.dispatchEvent({ type, pointerId: 1 });
+			expect(grid.style.transform).toBe('translate3d(60px, 0px, 0) scale(1)');
+			win.flushRaf();
+			expect(write).toHaveBeenCalledTimes(1);
+		});
+
+		it('rebases pending pinch state before continuing with one finger', () => {
+			const { layout, grid, win } = render();
+			down(layout, 100);
+			down(layout, 200, 2);
+			move(layout, 50);
+			move(layout, 250, 2);
+			expect(grid.style.transform).toContain('scale(1)');
+			layout.dispatchEvent({ type: 'pointerup', pointerId: 2 });
+			move(layout, 70);
+			win.flushRaf();
+			expect(grid.style.transform).toBe('translate3d(-130px, -100px, 0) scale(2)');
+		});
+
+		it('restores the latest pending viewport on immediate same-leaf render', () => {
+			const leaf = {} as import('obsidian').WorkspaceLeaf;
+			const { layout, win } = render({ sourceLeaf: leaf });
+			down(layout, 100);
+			move(layout, 180);
+			const buffer = new MockElement();
+			renderTrajectoryMode({ app: mockApp, container: buffer as unknown as HTMLElement,
+				displayEntries: [entry], resolveLinkToFile, sourceLeaf: leaf });
+			expect(buffer.querySelector('.wn-trajectory-grid')!.style.transform).toBe('translate3d(80px, 0px, 0) scale(1)');
+			win.flushRaf();
+		});
+
+		it('coalesces wheel updates without losing accumulation or allowing reset to be overwritten', () => {
+			const { layout, grid, win } = render();
+			const write = vi.spyOn(grid, 'setCssStyles');
+			const wheel = () => layout.dispatchEvent({ type: 'wheel', deltaY: -100,
+				clientX: 100, clientY: 100, preventDefault: vi.fn() });
+			wheel();
+			wheel();
+			expect(write).not.toHaveBeenCalled();
+			win.flushRaf();
+			expect(write).toHaveBeenCalledTimes(1);
+			expect(grid.style.transform).toBe('translate3d(-22.1px, -22.1px, 0) scale(1.221)');
+			wheel();
+			layout.dispatchEvent({ type: 'dblclick', button: 0, target: layout });
+			const reset = grid.style.transform;
+			expect(reset).toContain('scale(1)');
+			win.flushRaf();
+			expect(grid.style.transform).toBe(reset);
+			expect(write).toHaveBeenCalledTimes(2);
+		});
+
+		it('expires position reads even while movement remains below the threshold', () => {
+			const { layout, win } = render();
+			const read = vi.spyOn(layout, 'getBoundingClientRect');
+			down(layout, 100);
+			move(layout, 101);
+			win.flushRaf();
+			move(layout, 102);
+			expect(read).toHaveBeenCalledTimes(2);
+		});
+
+		it('flushes fullscreen transitions and reads fresh rotated and restored geometry', () => {
+			container.ownerDocument.body.addClass('is-phone');
+			const { layout, grid, win } = render();
+			win.innerWidth = 400;
+			win.innerHeight = 800;
+			down(layout, 100);
+			move(layout, 160);
+			layout.querySelector('.wn-trajectory-expand-btn')!.onclick!({ stopPropagation: vi.fn() });
+			expect(grid.style.transform).toBe('translate3d(60px, 0px, 0) scale(1)');
+			layout.dispatchEvent({ type: 'pointerup', pointerId: 1 });
+			const read = vi.spyOn(layout, 'getBoundingClientRect');
+			down(layout, 100);
+			layout.dispatchEvent({ type: 'pointermove', pointerId: 1, clientX: 100, clientY: 140, preventDefault: vi.fn() });
+			const shell = layout.parentElement!;
+			shell.querySelector('.wn-trajectory-exit-btn')!.onclick!({ stopPropagation: vi.fn() });
+			expect(grid.style.transform).toBe('translate3d(100px, 0px, 0) scale(1)');
+			layout.dispatchEvent({ type: 'pointerup', pointerId: 1 });
+			down(layout, 100);
+			move(layout, 120);
+			win.flushRaf();
+			expect(grid.style.transform).toBe('translate3d(120px, 0px, 0) scale(1)');
+			expect(read).toHaveBeenCalledTimes(2);
+		});
+
+		it('cancels an unloaded callback and preserves pending state without touching detached DOM', () => {
+			const cleanup: Array<() => void> = [];
+			const ownerComponent = { register: (fn: () => void) => cleanup.push(fn) } as unknown as import('obsidian').Component;
+			const { layout, grid, win } = render({ ownerComponent });
+			const write = vi.spyOn(grid, 'setCssStyles');
+			const cancel = vi.spyOn(win, 'cancelAnimationFrame');
+			down(layout, 100);
+			move(layout, 170);
+			cleanup.forEach(fn => fn());
+			expect(cancel).toHaveBeenCalled();
+			win.flushRaf();
+			expect(write).not.toHaveBeenCalled();
+			container.empty();
+			expect(render().grid.style.transform).toBe('translate3d(70px, 0px, 0) scale(1)');
+		});
+
+		it('skips DOM writes after detachment and cancels a pending frame when the viewport is cleared', () => {
+			const { layout, grid, win } = render();
+			const write = vi.spyOn(grid, 'setCssStyles');
+			down(layout, 100);
+			move(layout, 170);
+			vi.spyOn(layout, 'isConnected', 'get').mockReturnValue(false);
+			win.flushRaf();
+			expect(write).not.toHaveBeenCalled();
+			move(layout, 180);
+			const cancel = vi.spyOn(win, 'cancelAnimationFrame');
+			clearTrajectoryViewport(container);
+			expect(cancel).toHaveBeenCalled();
+			win.flushRaf();
+			expect(write).not.toHaveBeenCalled();
+		});
+
+		it('cancels pending writes on unload without restoring a cleared viewport', () => {
+			const cleanup: Array<() => void> = [];
+			const ownerComponent = { register: (fn: () => void) => cleanup.push(fn) } as unknown as import('obsidian').Component;
+			const { layout, grid, win } = render({ ownerComponent });
+			const write = vi.spyOn(grid, 'setCssStyles');
+			down(layout, 100);
+			move(layout, 190);
+			clearTrajectoryViewport(container);
+			cleanup.forEach(fn => fn());
+			win.flushRaf();
+			expect(write).not.toHaveBeenCalled();
+			container.empty();
+			expect(render().grid.style.transform).toBe('translate3d(0px, 0px, 0) scale(1)');
+		});
 	});
 
 	describe('sparse trajectory rendering regression', () => {
@@ -2439,6 +2622,7 @@ describe('TrajectoryBoardRenderer', () => {
 			const layout = container.querySelector('.wn-timeline-trajectory-layout')!;
 			// First zoom in via wheel
 			layout.dispatchEvent({ type: 'wheel', deltaY: -100, clientX: 100, clientY: 100, preventDefault: vi.fn() });
+			container.ownerDocument.defaultView.flushRaf();
 			expect(grid.style.transform).not.toContain('scale(1)');
 
 			// Double click on empty lane background resets scale to 1
@@ -2449,6 +2633,7 @@ describe('TrajectoryBoardRenderer', () => {
 			// 2. Pan starting on lane background
 			layout.dispatchEvent({ type: 'pointerdown', pointerType: 'mouse', button: 0, pointerId: 1, clientX: 100, clientY: 100, target: bgTarget });
 			layout.dispatchEvent({ type: 'pointermove', pointerId: 1, clientX: 150, clientY: 120, preventDefault: vi.fn() });
+			container.ownerDocument.defaultView.flushRaf();
 			expect(grid.style.transform).toBe('translate3d(39.5px, 9.5px, 0) scale(1)');
 			layout.dispatchEvent({ type: 'pointerup', pointerId: 1 });
 		});

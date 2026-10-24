@@ -77,6 +77,136 @@ describe('TimelineManager', () => {
         manager = new TimelineManager(mockApp, mockPlugin, 'Book 1');
     });
 
+    describe('shared timeline reads', () => {
+        it('coalesces pending and unchanged reads and isolates parsed objects', async () => {
+            const parse = vi.spyOn(manager as unknown as { parseTimelineContent(content: string, folder: string): TimelineEntry[] }, 'parseTimelineContent');
+            const file = Object.assign(new TFile(), { path: 'Book 1/Timeline.md', stat: { mtime: 1, size: 20 } });
+            mockApp.vault.getAbstractFileByPath.mockReturnValue(file);
+            mockApp.vault.read.mockResolvedValue('## Day\n- Event\n<!-- wn-lore: Alias -->');
+            mockPlugin.characterManager = { cacheVersion: 1, getCharacterFile: vi.fn(() => ({ heading: 'Name' })) };
+            const results = await Promise.all(Array.from({ length: 4 }, () => manager.loadEntries()));
+            const lookups = mockPlugin.characterManager.getCharacterFile.mock.calls.length;
+            expect(lookups).toBeGreaterThan(0);
+            results[0]![0].items![0].description = 'mutated';
+            results[0]![0].lores!.push('mutated');
+            const next = await manager.loadEntries();
+            expect(next![0].items![0].description).toBe('Event');
+            expect(next![0].lores).toEqual(['Name']);
+            expect(mockApp.vault.read).toHaveBeenCalledTimes(1);
+            expect(parse).toHaveBeenCalledTimes(1);
+            expect(mockPlugin.characterManager.getCharacterFile).toHaveBeenCalledTimes(lookups);
+        });
+
+        it('does not let a delayed old read replace newer content, and retries failures', async () => {
+            const file = Object.assign(new TFile(), { path: 'Book 1/Timeline.md', stat: { mtime: 1, size: 20 } });
+            mockApp.vault.getAbstractFileByPath.mockReturnValue(file);
+            let finish!: (value: string) => void;
+            mockApp.vault.read.mockReturnValueOnce(new Promise<string>(resolve => { finish = resolve; }));
+            const old = manager.loadEntries();
+            await Promise.resolve();
+            file.stat.mtime++;
+            mockApp.vault.read.mockResolvedValue('## New\n- Current');
+            expect((await manager.loadEntries())![0].time).toBe('New');
+            finish('## Old\n- Previous');
+            await old;
+            expect((await manager.loadEntries())![0].time).toBe('New');
+            expect(mockApp.vault.read).toHaveBeenCalledTimes(2);
+            file.stat.mtime++;
+            mockApp.vault.read.mockRejectedValueOnce(new Error('read failure'));
+            await expect(manager.loadEntries()).rejects.toThrow('read failure');
+            expect((await manager.loadEntries())![0].time).toBe('New');
+        });
+
+        it('refreshes after rename, replacement, unknown versions and internal writes', async () => {
+            const file = Object.assign(new TFile(), { path: 'Book 1/Timeline.md', stat: { mtime: 1, size: 20 } });
+            mockApp.vault.getAbstractFileByPath.mockReturnValue(file);
+            mockApp.vault.read.mockResolvedValue('## Old\n- Event');
+            await manager.loadEntries();
+            mockApp.vault.read.mockResolvedValue('## New\n- Event');
+            const rename = mockApp.vault.on.mock.calls.find((call: unknown[]) => call[0] === 'rename')[1] as (file: TFile) => void;
+            rename(file);
+            expect((await manager.loadEntries())![0].time).toBe('New');
+            const replacement = Object.assign(new TFile(), { path: file.path, stat: { ...file.stat } });
+            mockApp.vault.getAbstractFileByPath.mockReturnValue(replacement);
+            mockApp.vault.read.mockResolvedValue('## Replaced\n- Event');
+            expect((await manager.loadEntries())![0].time).toBe('Replaced');
+            mockApp.vault.process.mockImplementation(async (_file: TFile, transform: (content: string) => string) => {
+                const text = transform('## Replaced\n- Event\n\n---\n\n');
+                mockApp.vault.read.mockResolvedValue(text);
+                return text;
+            });
+            await manager.appendEntry({ time: 'Next', type: 'Type', description: 'Additional', chapter: '', rawBlock: '' }, 'Book 1');
+            expect((await manager.loadEntries())!.some(entry => entry.time === 'Next')).toBe(true);
+            replacement.stat.mtime = 0;
+            await manager.loadEntries();
+            mockApp.vault.read.mockResolvedValue('## Unknown version\n- Event');
+            expect((await manager.loadEntries())![0].time).toBe('Unknown version');
+        });
+
+        it('bounds caches and clears them on shutdown without retaining late reads', async () => {
+            for (let i = 0; i < 12; i++) {
+                const file = Object.assign(new TFile(), { path: `Book ${i}/Timeline.md`, stat: { mtime: 1, size: 20 } });
+                mockApp.vault.getAbstractFileByPath.mockReturnValue(file);
+                mockApp.vault.read.mockResolvedValue('## Day\n- Event');
+                await manager.loadEntries(`Book ${i}`);
+            }
+            const caches = manager as unknown as { contentReads: Map<TFile, unknown>; parsedEntries: Map<string, unknown> };
+            expect(caches.contentReads.size).toBe(8);
+            expect(caches.parsedEntries.size).toBe(8);
+            let finish!: (value: string) => void;
+            mockApp.vault.getAbstractFileByPath.mockReturnValue(Object.assign(new TFile(), { path: 'Pending/Timeline.md' }));
+            mockApp.vault.read.mockReturnValueOnce(new Promise<string>(resolve => { finish = resolve; }));
+            const pending = manager.loadEntries('Pending');
+            await Promise.resolve();
+            await manager.destroy();
+            finish('## Late\n- Event');
+            await pending;
+            expect(caches.contentReads.size).toBe(0);
+            expect(caches.parsedEntries.size).toBe(0);
+            expect(await manager.loadEntries()).toBeNull();
+        });
+
+        it('waits for queued writes during shutdown', async () => {
+            mockApp.vault.getAbstractFileByPath.mockReturnValue(Object.assign(new TFile(), { path: 'Book 1/Timeline.md' }));
+            let finish!: () => void;
+            mockApp.vault.process.mockImplementation(async (_file: TFile, transform: (content: string) => string) => {
+                const result = transform('');
+                await new Promise<void>(resolve => { finish = resolve; });
+                return result;
+            });
+            const write = manager.appendEntry({ time: 'Next', description: 'Additional', chapter: '', rawBlock: '' });
+            await Promise.resolve();
+            let finished = false;
+            const shutdown = manager.destroy().then(() => { finished = true; });
+            await Promise.resolve();
+            expect(finished).toBe(false);
+            finish();
+            await Promise.all([write, shutdown]);
+            expect(finished).toBe(true);
+        });
+
+        it('refreshes after metadata, alias version and same-stat modify notifications', async () => {
+            const file = Object.assign(new TFile(), { path: 'Book 1/Timeline.md', stat: { mtime: 1, size: 20 } });
+            mockApp.vault.getAbstractFileByPath.mockReturnValue(file);
+            mockApp.vault.read.mockResolvedValue('## Day\n- Event\n<!-- wn-lore: Alias -->');
+            mockPlugin.characterManager = { cacheVersion: 1, getCharacterFile: vi.fn(() => ({ heading: 'Name' })) };
+            expect((await manager.loadEntries())![0].lores).toEqual(['Name']);
+            mockPlugin.characterManager.getCharacterFile.mockReturnValue({ heading: 'Renamed' });
+            mockPlugin.characterManager.cacheVersion++;
+            expect((await manager.loadEntries())![0].lores).toEqual(['Renamed']);
+            expect(mockApp.vault.read).toHaveBeenCalledTimes(1);
+            file.stat.mtime++;
+            mockApp.vault.read.mockResolvedValue('## New day\n- New event');
+            expect((await manager.loadEntries())![0].time).toBe('New day');
+            mockApp.vault.read.mockResolvedValue('## Latest\n- Latest event');
+            // Keep reconciliation deferred; invalidation must precede that delayed work.
+            mockPlugin.adaptiveDebounceManager.debounceFixed.mockImplementation(() => {});
+            const modify = mockApp.vault.on.mock.calls.find((call: unknown[]) => call[0] === 'modify')[1] as (file: TFile) => void;
+            modify(file);
+            expect((await manager.loadEntries())![0].time).toBe('Latest');
+        });
+    });
+
     describe('Initialization & Paths', () => {
         it('getTimelineFilePath should return correct path', () => {
             expect(manager.getTimelineFilePath()).toBe('Book 1/Timeline.md');

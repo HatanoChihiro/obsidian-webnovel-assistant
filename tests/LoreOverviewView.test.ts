@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { LoreOverviewView, LORE_OVERVIEW_VIEW_TYPE, type LoreOverviewViewPlugin } from '../src/ui/LoreOverviewView';
 import { VIEW_TYPES } from '../src/constants';
 import { LoreBoardRenderer } from '../src/ui/components/LoreBoardRenderer';
+import { getLoreAliasesForBook } from '../src/services/WorkbenchFilterIndex';
 import { AdaptiveDebounceManager } from '../src/services/AdaptiveDebounceManager';
 
 const { getCurrentBookContextMock, findBookRootMock } = vi.hoisted(() => ({
@@ -225,9 +226,8 @@ describe('LoreOverviewView', () => {
 		);
 	});
 
-	it('should correctly group aliases by canonical heading in getLoreAliases', () => {
-		const view = new LoreOverviewView(mockLeaf, plugin);
-		const aliases = (view as unknown as { getLoreAliases: (book: string) => Map<string, string[]> }).getLoreAliases('NovelA');
+	it('should correctly group aliases by canonical heading', () => {
+		const aliases = getLoreAliasesForBook(plugin.characterManager, 'NovelA');
 
 		expect(aliases.get('林默')).toEqual(['阿默']);
 		expect(aliases.has('苏晴')).toBe(false);

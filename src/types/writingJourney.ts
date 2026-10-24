@@ -3,6 +3,7 @@
  */
 
 export const WRITING_JOURNEY_SCHEMA_VERSION = 1;
+export const WRITING_JOURNEY_SCHEMA_VERSION_V2 = 2;
 export const WRITING_JOURNEY_YAML_KEY = 'webnovel-writing-journey';
 
 export type WritingJourneyEventType =
@@ -65,6 +66,16 @@ export interface ChapterDeletedEvent extends BaseJourneyEvent {
 	chapterTitle: string;
 }
 
+export interface ChapterSnapshotRef {
+	provider: 'file-recovery';
+	deviceId: string;
+	dbName: string;
+	key: number;
+	path: string;
+	ts: number;
+	digest: string;
+}
+
 export interface ChapterStatusChangedEvent extends BaseJourneyEvent {
 	type: 'chapter.status_changed';
 	path: string;
@@ -72,6 +83,8 @@ export interface ChapterStatusChangedEvent extends BaseJourneyEvent {
 	fromStatus: string;
 	toStatus: string;
 	wordCount?: number;
+	snapshot?: ChapterSnapshotRef;
+	snapshotUnavailable?: boolean;
 }
 
 export interface WorkStatusChangedEvent extends BaseJourneyEvent {
@@ -92,7 +105,7 @@ export type WritingJourneyEvent =
 	| WorkStatusChangedEvent;
 
 export interface WritingJourneyLog {
-	version: 1;
+	version: 1 | 2;
 	events: WritingJourneyEvent[];
 }
 
@@ -147,7 +160,7 @@ export function parseWritingJourneyLog(raw: unknown): WritingJourneyParseResult 
 
 	const record = raw as Record<string, unknown>;
 
-	if (record.version !== WRITING_JOURNEY_SCHEMA_VERSION) {
+	if (record.version !== WRITING_JOURNEY_SCHEMA_VERSION && record.version !== WRITING_JOURNEY_SCHEMA_VERSION_V2) {
 		return {
 			status: 'malformed',
 			log: null,
@@ -297,6 +310,39 @@ export function parseWritingJourneyLog(raw: unknown): WritingJourneyParseResult 
 				if (wordCount !== undefined) {
 					validatedStatusEvent.wordCount = wordCount;
 				}
+				if (eventObj.snapshot !== undefined) {
+					const snap = eventObj.snapshot;
+					if (typeof snap !== 'object' || snap === null || Array.isArray(snap)) {
+						return { status: 'malformed', log: null, error: `Event at index ${i} has invalid snapshot object` };
+					}
+					const snapRec = snap as Record<string, unknown>;
+					if (
+						snapRec.provider !== 'file-recovery' ||
+						typeof snapRec.deviceId !== 'string' || snapRec.deviceId.trim().length === 0 ||
+						typeof snapRec.dbName !== 'string' || snapRec.dbName.trim().length === 0 ||
+						typeof snapRec.key !== 'number' || !Number.isSafeInteger(snapRec.key) || snapRec.key <= 0 ||
+						typeof snapRec.path !== 'string' || snapRec.path.trim().length === 0 ||
+						typeof snapRec.ts !== 'number' || !Number.isFinite(snapRec.ts) || snapRec.ts <= 0 ||
+						typeof snapRec.digest !== 'string' || !/^[0-9a-f]{64}$/i.test(snapRec.digest)
+					) {
+						return { status: 'malformed', log: null, error: `Event at index ${i} has malformed snapshot ref fields` };
+					}
+					validatedStatusEvent.snapshot = {
+						provider: 'file-recovery',
+						deviceId: snapRec.deviceId,
+						dbName: snapRec.dbName,
+						key: snapRec.key,
+						path: snapRec.path,
+						ts: snapRec.ts,
+						digest: snapRec.digest
+					};
+				}
+				if (eventObj.snapshotUnavailable !== undefined) {
+					if (typeof eventObj.snapshotUnavailable !== 'boolean') {
+						return { status: 'malformed', log: null, error: `Event at index ${i} has invalid snapshotUnavailable` };
+					}
+					validatedStatusEvent.snapshotUnavailable = eventObj.snapshotUnavailable;
+				}
 				validatedEvents.push(validatedStatusEvent);
 				break;
 			}
@@ -315,7 +361,7 @@ export function parseWritingJourneyLog(raw: unknown): WritingJourneyParseResult 
 	return {
 		status: 'valid',
 		log: {
-			version: WRITING_JOURNEY_SCHEMA_VERSION,
+			version: record.version === 2 ? 2 : 1,
 			events: validatedEvents
 		}
 	};

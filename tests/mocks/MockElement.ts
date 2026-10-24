@@ -183,6 +183,7 @@ export class MockElement {
 	setAttr(key: string, val: string) { this.attributes.set(key, val); }
 	setAttribute(key: string, val: string) { this.attributes.set(key, val); }
 	getAttribute(key: string) { return this.attributes.get(key) ?? null; }
+	removeAttribute(key: string) { this.attributes.delete(key); }
 
 	addEventListener(event: string, fn: (e?: unknown) => void, opts?: boolean | { once?: boolean }) {
 		const once = typeof opts === 'object' ? Boolean(opts?.once) : false;

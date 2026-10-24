@@ -358,7 +358,6 @@
 }
 
 
-.wn-merge-card-btn-edit,
 .wn-merge-card-btn-reset {
 	padding: 4px 8px;
 	border-radius: 4px;
@@ -373,7 +372,6 @@
 }
 
 
-.wn-merge-card-btn-edit:hover,
 .wn-merge-card-btn-reset:hover:not(:disabled) {
 	background: color-mix(in srgb, var(--interactive-accent) 15%, transparent);
 	color: var(--interactive-accent);

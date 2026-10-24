@@ -3,7 +3,6 @@ import { TFile, normalizePath } from 'obsidian';
 import type { ForeshadowingEntry, ParsedForeshadowingEntry } from '../types/foreshadowing';
 import { ForeshadowingStatus } from '../types/foreshadowing';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
-import { escapeRegex } from '../utils/validation';
 import { SerializedWriter } from '../utils/SerializedWriter';
 import { getForeshadowingStatusText, getDefaultFileName, getDefaultFileNameCandidates } from '../i18n/data-keys';
 import { findBookRoot } from '../utils/path';
@@ -344,44 +343,6 @@ export class ForeshadowingManager {
 				const newText = ForeshadowingParser.formatParsedEntry(entry);
 
 				return content.slice(0, startPos) + newText + content.slice(endPos);
-			});
-
-			return found;
-		});
-	}
-
-	/**
-	 * 添加回收章节到已回收的伏笔条目
-	 * 用于在已回收的伏笔上追加新的回收章节
-	 */
-	async addRecoveryChapter(
-		targetFile: TFile,
-		sourceFile: string,
-		createdAt: string,
-		newRecoveryFile: string
-	): Promise<boolean> {
-		return this.writer.enqueue(async () => {
-			let found = false;
-			const now = window.moment().format('YYYY-MM-DD HH:mm');
-
-			// 查找已回收条目的回收列表
-			const pattern = new RegExp(
-				`(## \\[\\[${escapeRegex(sourceFile)}\\]\\]` +
-				(createdAt ? `[^\\n]*${escapeRegex(createdAt)}` : '') +
-				`[\\s\\S]*?\\*\\*(?:回收于|回收於|Recovered at|Resolved in)\\*\\*：\\n)([\\s\\S]*?)(\\n\\n|$)`,
-				'm'
-			);
-
-			await this.app.vault.process(targetFile, (content) => {
-				const match = pattern.exec(content);
-				if (!match) return content;
-
-				found = true;
-				// 在回收列表末尾追加新章节
-				const newLine = `- [[${newRecoveryFile}]] - ${now}\n`;
-				return content.slice(0, match.index + match[1].length + match[2].length) +
-					newLine +
-					content.slice(match.index + match[1].length + match[2].length);
 			});
 
 			return found;
