@@ -849,4 +849,184 @@ describe('LoreCardPreview', () => {
 			);
 		});
 	});
+
+	describe('置顶与拖拽', () => {
+		async function openPanel(harness: Harness): Promise<MockElement> {
+			harness.preview.open();
+			await flushMicrotasks();
+			const panel = findPanel(harness.body);
+			expect(panel).not.toBeNull();
+			return panel as MockElement;
+		}
+
+		/** 点击面板标题栏的置顶按钮 */
+		function clickPin(harness: Harness, panel: MockElement): MockElement {
+			const pin = panel.querySelector('.wn-lore-preview-pin');
+			expect(pin).not.toBeNull();
+			simulateClick(harness.document, pin as MockElement, [harness.document]);
+			return pin as MockElement;
+		}
+
+		/** 在标题栏上模拟一次指针拖拽 */
+		function dragPanel(harness: Harness, panel: MockElement, dx: number, dy: number): void {
+			const header = panel.querySelector('.wn-lore-preview-header');
+			expect(header).not.toBeNull();
+			const preventDefault = vi.fn();
+			(header as MockElement).dispatchEvent('pointerdown', {
+				type: 'pointerdown', button: 0, pointerId: 1,
+				clientX: 100, clientY: 100, target: header, preventDefault
+			});
+			harness.document.dispatchEvent('pointermove', {
+				type: 'pointermove', pointerId: 1,
+				clientX: 100 + dx, clientY: 100 + dy, target: header, preventDefault
+			});
+			harness.document.dispatchEvent('pointerup', {
+				type: 'pointerup', pointerId: 1,
+				clientX: 100 + dx, clientY: 100 + dy, target: header, preventDefault
+			});
+		}
+
+		it('置顶后鼠标移开与点击面板外都不关闭，Esc 才关闭', async () => {
+			const harness = createHarness();
+			const panel = await openPanel(harness);
+
+			const pin = clickPin(harness, panel);
+			expect(pin.hasClass('is-active')).toBe(true);
+			expect(pin.getAttribute('aria-pressed')).toBe('true');
+			expect(panel.hasClass('is-pinned')).toBe(true);
+
+			harness.target.dispatchEvent?.('mouseleave');
+			vi.advanceTimersByTime(5000);
+			expect(isPreviewOpen(harness.preview)).toBe(true);
+
+			const blank = harness.body.createDiv({ cls: 'blank-area' });
+			dispatchOnAll('mousedown', { type: 'mousedown', target: blank }, [harness.document]);
+			expect(isPreviewOpen(harness.preview)).toBe(true);
+
+			(harness.document as unknown as { activeElement: unknown }).activeElement = panel;
+			harness.document.dispatchEvent('keydown', { type: 'keydown', key: 'Escape', preventDefault: vi.fn() });
+			expect(isPreviewOpen(harness.preview)).toBe(false);
+		});
+
+		it('未置顶时点击面板外仍按原规则关闭', async () => {
+			const harness = createHarness();
+			const panel = await openPanel(harness);
+
+			expect(panel.hasClass('is-pinned')).toBe(false);
+			const blank = harness.body.createDiv({ cls: 'blank-area' });
+			dispatchOnAll('mousedown', { type: 'mousedown', target: blank }, [harness.document]);
+			expect(isPreviewOpen(harness.preview)).toBe(false);
+		});
+
+		it('拖拽标题栏可移动面板，且拖拽后外部滚动不再把它拉回锚点', async () => {
+			const harness = createHarness();
+			const panel = await openPanel(harness);
+			clickPin(harness, panel);
+
+			const initialLeft = panel.style.left;
+			const initialTop = panel.style.top;
+
+			dragPanel(harness, panel, 120, 80);
+			expect(panel.style.left).not.toBe(initialLeft);
+			expect(panel.style.top).not.toBe(initialTop);
+			expect(panel.hasClass('is-dragging')).toBe(false);
+
+			const draggedLeft = panel.style.left;
+			const draggedTop = panel.style.top;
+			harness.document.dispatchEvent('scroll', { type: 'scroll', target: harness.body });
+			flushRaf();
+
+			expect(panel.style.left).toBe(draggedLeft);
+			expect(panel.style.top).toBe(draggedTop);
+			expect(isPreviewOpen(harness.preview)).toBe(true);
+		});
+
+		it('位移小于拖拽阈值时视为点击，不改变面板位置', async () => {
+			const harness = createHarness();
+			const panel = await openPanel(harness);
+			const initialLeft = panel.style.left;
+			const initialTop = panel.style.top;
+
+			dragPanel(harness, panel, 2, 2);
+			expect(panel.style.left).toBe(initialLeft);
+			expect(panel.style.top).toBe(initialTop);
+		});
+
+		it('取消置顶后回到跟随锚点的默认定位', async () => {
+			const harness = createHarness();
+			const panel = await openPanel(harness);
+			const defaultLeft = panel.style.left;
+			const defaultTop = panel.style.top;
+
+			clickPin(harness, panel);
+			dragPanel(harness, panel, 120, 80);
+			expect(panel.style.left).not.toBe(defaultLeft);
+
+			clickPin(harness, panel);
+			expect(panel.hasClass('is-pinned')).toBe(false);
+			expect(panel.style.left).toBe(defaultLeft);
+			expect(panel.style.top).toBe(defaultTop);
+		});
+
+		it('双击标题栏复位到卡片旁（保持置顶）', async () => {
+			const harness = createHarness();
+			const panel = await openPanel(harness);
+			const defaultLeft = panel.style.left;
+
+			clickPin(harness, panel);
+			dragPanel(harness, panel, 120, 80);
+			expect(panel.style.left).not.toBe(defaultLeft);
+
+			const header = panel.querySelector('.wn-lore-preview-header') as MockElement;
+			header.dispatchEvent('dblclick', {
+				type: 'dblclick', target: header, preventDefault: vi.fn()
+			});
+
+			expect(panel.style.left).toBe(defaultLeft);
+			expect(panel.hasClass('is-pinned')).toBe(true);
+		});
+
+		it('连续两次按下标题栏（浏览器 dblclick 被吞掉时）也能复位', async () => {
+			const harness = createHarness();
+			const panel = await openPanel(harness);
+			const defaultLeft = panel.style.left;
+
+			clickPin(harness, panel);
+			dragPanel(harness, panel, 120, 80);
+			expect(panel.style.left).not.toBe(defaultLeft);
+
+			// 第二次按下未发生位移：由标题栏内部的双击判定复位
+			dragPanel(harness, panel, 0, 0);
+			expect(panel.style.left).toBe(defaultLeft);
+		});
+
+		it('常驻数量上限淘汰时跳过置顶面板', async () => {
+			const pinned = createHarness({ persistent: true, maxCount: 2 });
+			const middle = createHarness({ persistent: true, maxCount: 2 });
+			const newest = createHarness({ persistent: true, maxCount: 2 });
+
+			const pinnedPanel = await openPanel(pinned);
+			clickPin(pinned, pinnedPanel);
+			await openPanel(middle);
+			await openPanel(newest);
+
+			expect(isPreviewOpen(pinned.preview)).toBe(true);
+			expect(isPreviewOpen(middle.preview)).toBe(false);
+			expect(isPreviewOpen(newest.preview)).toBe(true);
+		});
+
+		it('面板关闭后置顶状态重置，重新打开回到默认行为', async () => {
+			const harness = createHarness();
+			const panel = await openPanel(harness);
+			clickPin(harness, panel);
+			expect(panel.hasClass('is-pinned')).toBe(true);
+
+			harness.preview.close();
+			expect(isPreviewOpen(harness.preview)).toBe(false);
+
+			const reopened = await openPanel(harness);
+			expect(reopened.hasClass('is-pinned')).toBe(false);
+			expect(reopened.querySelector('.wn-lore-preview-pin')?.hasClass('is-active')).toBe(false);
+		});
+	});
 });
