@@ -68,10 +68,14 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		this.plugin = plugin;
 	}
 
-	public getSettingDefinitions(): Record<string, unknown> {
-		// Provide a dummy record to satisfy obsidianmd/no-missing-setting-definitions 
-		// for Obsidian 1.13.0+ since we use the imperative display() API.
-		return {};
+	public getSettingDefinitions(): unknown[] {
+		// 必须返回「数组」而不是对象：Obsidian 1.15 的 SettingTab.update() 里是
+		// `for (let a of n)` 遍历本方法的返回值（app.js 505:57868 的 uz/r），
+		// 返回 {} 会抛 TypeError: n is not iterable，令 onload 中断、插件无法启用。
+		// 1.14 及更早版本用的是下标循环，不会报错，所以这是个潜伏下来的隐患。
+		// 这里返回空数组：既能让渲染回落到命令式 display()，也满足
+		// obsidianmd/settings-tab/prefer-setting-definitions（只检查方法是否存在）。
+		return [];
 	}
 
 	display(): void {
