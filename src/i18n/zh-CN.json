@@ -977,6 +977,8 @@
 	"corkboard.lore-expand-preview": "展开大预览",
 	"corkboard.lore-preview-title": "设定预览",
 	"corkboard.lore-preview-close": "关闭预览",
+	"corkboard.lore-preview-pin": "置顶预览",
+	"corkboard.lore-preview-unpin": "取消置顶",
 	"corkboard.no-timeline": "当前还没有时间线事件...",
 	"corkboard.no-foreshadowing": "当前作品暂无伏笔记录...",
 	"corkboard.no-book-open": "请先打开属于一部小说的文档",

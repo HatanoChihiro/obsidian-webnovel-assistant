@@ -36,6 +36,18 @@ const LORE_CARD_WRAPPER_CLASS = 'wn-lore-card-wrapper';
 const MAX_OPEN_PREVIEWS_MIN = 1;
 const MAX_OPEN_PREVIEWS_MAX = 10;
 const MAX_OPEN_PREVIEWS_DEFAULT = 3;
+/** 拖拽时面板与视口边缘保留的最小间距（像素） */
+const DRAG_VIEWPORT_PADDING = 8;
+/** 拖拽判定阈值：指针位移小于该值视为点击而非拖拽（像素） */
+const DRAG_THRESHOLD = 3;
+/** 置顶面板的起始层级：高于普通面板（样式中的 z-index: 1100），后置顶者压住先置顶者 */
+const PINNED_Z_INDEX_BASE = 1200;
+/** 拖拽期间挂在 body 上的类名（全局抓取光标、禁止选中文本） */
+const DRAG_BODY_CLASS = 'wn-lore-preview-dragging';
+/** 标题栏内不允许作为拖拽起点的交互元素 */
+const DRAG_IGNORE_SELECTOR = '.clickable-icon, button, a, input, select, textarea';
+/** 标题栏双击判定窗口：两次按下间隔小于该值且位移在阈值内，视为双击复位（毫秒） */
+const HEADER_DOUBLE_TAP_MS = 400;
 
 /**
  * 设定卡片悬停大预览面板。
@@ -48,6 +60,9 @@ const MAX_OPEN_PREVIEWS_DEFAULT = 3;
  * - 延迟弹出：鼠标停留在卡片上超过 showDelayMs 才弹出，划过不触发。
  * - 鼠标可从卡片移入面板而不关闭（宽限计时器），移出后延迟关闭。
  * - 卡片被移除、面板滚动、窗口尺寸变化、Esc、点击面板外均立即关闭。
+ * - 标题栏是拖拽把手：按住可移动面板，双击复位到卡片旁；拖拽只影响当前面板，不写回设置。
+ * - 标题栏的置顶按钮把面板「钉」在屏幕上：置顶面板不因移开鼠标、外部滚动、窗口尺寸变化、
+ *   点击外部而关闭，层级高于其它面板，也不参与「常驻数量上限」的自动淘汰。
  * - 移动端无 hover，仅由卡片头部的展开按钮触发。
  * - 该功能默认关闭（settings.loreCardHoverPreview），由用户在设置中主动开启。
  */
@@ -80,6 +95,29 @@ export class LoreCardPreview extends Component {
 	private repositionFrame: number | null = null;
 	/** 标记卡片是否曾挂载到 live DOM，避免卡片在离屏 buffer 构建阶段误判为销毁 */
 	private hasBeenConnected = false;
+	/** 标题栏元素（拖拽把手），随面板创建/销毁 */
+	private headerEl: HTMLElement | null = null;
+	/** 置顶按钮元素，随面板创建/销毁 */
+	private pinBtnEl: HTMLElement | null = null;
+	/** 是否已置顶：置顶面板只在手动关闭时消失，并压在其它预览之上 */
+	private isPinned = false;
+	/** 是否已被拖离锚点：为 true 时不再跟随卡片自动定位 */
+	private isDetachedByDrag = false;
+	/** 标题栏上一次按下的时间/坐标，用于双击复位判定 */
+	private lastHeaderDownAt = 0;
+	private lastHeaderDownX = 0;
+	private lastHeaderDownY = 0;
+	/** 进行中的拖拽会话 */
+	private dragState: {
+		pointerId: number;
+		startX: number;
+		startY: number;
+		originLeft: number;
+		originTop: number;
+		moved: boolean;
+	} | null = null;
+	/** 置顶面板的层级分配计数，保证后置顶者压住先置顶者 */
+	private static pinnedZIndex = PINNED_Z_INDEX_BASE;
 
 	/**
 	 * 关闭当前所有已弹出或异步打开中的预览面板并清空静态登记（总开关关闭或视图重载时使用）
@@ -220,8 +258,10 @@ export class LoreCardPreview extends Component {
 
 	private onTargetLeave = (): void => {
 		this.clearShowTimeout();
-		// 常驻模式下不因鼠标移开而关闭，仅手动关闭
-		if (this.isPersistent()) return;
+		// 拖拽时指针必然离开卡片，此时不能因此关闭
+		if (this.dragState) return;
+		// 常驻 / 置顶模式下不因鼠标移开而关闭，仅手动关闭
+		if (this.isPersistent() || this.isPinned) return;
 		if (!this.panelEl) return;
 		this.scheduleClose();
 	};
@@ -231,8 +271,10 @@ export class LoreCardPreview extends Component {
 	};
 
 	private onPanelLeave = (): void => {
-		// 常驻模式下同样不因鼠标移开面板而关闭
-		if (this.isPersistent()) return;
+		// 拖拽时指针离开面板是常态，不能因此关闭
+		if (this.dragState) return;
+		// 常驻 / 置顶模式下同样不因鼠标移开面板而关闭
+		if (this.isPersistent() || this.isPinned) return;
 		this.scheduleClose();
 	};
 
@@ -260,6 +302,8 @@ export class LoreCardPreview extends Component {
 		if (!this.panelEl) return;
 		const target = event.target as Node | null;
 		if (!target) return;
+		// 置顶面板只在手动关闭（关闭按钮 / Esc）时消失，点击外部不关闭
+		if (this.isPinned) return;
 		if (this.panelEl.contains(target) || this.targetEl.contains(target)) return;
 		if (this.isPersistent() && (this.isNodeInsideAnyCard(target) || this.isNodeInOtherPreviewPanel(target))) return;
 		this.close();
@@ -285,6 +329,12 @@ export class LoreCardPreview extends Component {
 	}
 
 	private onViewportChange = (): void => {
+		// 置顶面板不因窗口尺寸变化而关闭：拖拽过的保持自身位置（仅约束回视口），未拖拽的跟随卡片
+		if (this.isPinned && this.panelEl) {
+			if (this.isDetachedByDrag) this.clampPanelIntoViewport(this.panelEl);
+			else this.scheduleReposition();
+			return;
+		}
 		// 常驻模式下跟随锚点卡片重新定位，不自动关闭
 		if (this.isPersistent() && this.panelEl) {
 			this.scheduleReposition();
@@ -294,16 +344,19 @@ export class LoreCardPreview extends Component {
 	};
 
 	private onAncestorScroll = (event: Event): void => {
+		// 面板自身滚动既不关闭面板也不重新定位
+		const target = event.target as Node | null;
+		if (target && this.panelEl && this.panelEl.contains(target)) return;
+		// 置顶面板常显：手动摆放过的保持原地，未摆放过的仍跟随卡片
+		if (this.isPinned) {
+			if (!this.isDetachedByDrag) this.scheduleReposition();
+			return;
+		}
 		if (this.isPersistent()) {
-			// 面板内部滚动不影响定位；外部滚动则跟随卡片重新定位
-			const target = event.target as Node | null;
-			if (target && this.panelEl && this.panelEl.contains(target)) return;
 			this.scheduleReposition();
 			return;
 		}
-		// 面板自身滚动不应关闭面板，仅关闭因外部容器（网格/侧边栏）滚动导致的错位
-		const target = event.target as Node | null;
-		if (target && this.panelEl && this.panelEl.contains(target)) return;
+		// 外部容器（网格/侧边栏）滚动导致错位时直接关闭
 		this.close();
 	};
 
@@ -324,6 +377,13 @@ export class LoreCardPreview extends Component {
 	private repositionIfVisible(): void {
 		const panelEl = this.panelEl;
 		if (!panelEl || !this.targetEl.isConnected) return;
+		// 置顶面板常显：锚点卡片滚出视口也不隐藏，只把面板约束回视口内
+		if (this.isPinned) {
+			panelEl.removeClass('is-anchor-offscreen');
+			this.positionPanel(panelEl);
+			this.clampPanelIntoViewport(panelEl);
+			return;
+		}
 		const anchor = this.targetEl.getBoundingClientRect();
 		const viewportHeight = this.ownerWindow.innerHeight;
 		const viewportWidth = this.ownerWindow.innerWidth;
@@ -373,7 +433,7 @@ export class LoreCardPreview extends Component {
 		return Math.min(MAX_OPEN_PREVIEWS_MAX, Math.max(MAX_OPEN_PREVIEWS_MIN, value));
 	}
 
-	/** 登记为已弹出面板，并按上限淘汰最早打开的一个 */
+	/** 登记为已弹出面板，并按上限淘汰最早打开的「非置顶」面板（置顶面板永不因数量上限被关闭） */
 	private registerOpenPanel(): void {
 		const list = LoreCardPreview.openPreviews;
 		const index = list.indexOf(this);
@@ -382,9 +442,10 @@ export class LoreCardPreview extends Component {
 
 		const limit = this.getMaxOpenCount();
 		while (list.length > limit) {
-			const oldest = list.shift();
-			if (!oldest || oldest === this) continue;
-			oldest.close();
+			const evictIndex = list.findIndex(item => item !== this && !item.isPinned);
+			if (evictIndex < 0) break;
+			const [oldest] = list.splice(evictIndex, 1);
+			oldest?.close();
 		}
 	}
 
@@ -490,11 +551,35 @@ export class LoreCardPreview extends Component {
 
 	private buildPanelHeader(panelEl: HTMLElement): void {
 		const header = panelEl.createDiv({ cls: 'wn-lore-preview-header' });
+		// 标题栏同时是拖拽把手：按住可移动面板，双击复位到卡片旁
+		this.headerEl = header;
+		header.addEventListener('pointerdown', this.onHeaderPointerDown);
+		header.addEventListener('dblclick', this.onHeaderDoubleClick);
+
 		const heading = header.createDiv({ cls: 'wn-lore-preview-heading' });
 		const badge = heading.createSpan({ cls: 'wn-lore-preview-badge', text: t('corkboard.lore-preview-title') });
 		badge.setAttr('aria-hidden', 'true');
 		const title = heading.createDiv({ cls: 'wn-lore-preview-title', text: this.entry.heading });
 		title.title = this.entry.heading;
+
+		// 置顶开关：置顶后不随鼠标移开 / 滚动 / 点击外部关闭，并压在其它预览之上
+		const pinBtn = header.createDiv({ cls: 'wn-lore-preview-pin clickable-icon' });
+		this.pinBtnEl = pinBtn;
+		pinBtn.setAttr('role', 'button');
+		pinBtn.setAttr('tabindex', '0');
+		pinBtn.setAttr('aria-pressed', 'false');
+		setIcon(pinBtn, 'pin');
+		this.syncPinButton();
+		pinBtn.onclick = (event) => {
+			event?.stopPropagation();
+			this.togglePin();
+		};
+		pinBtn.addEventListener('keydown', (event) => {
+			const key = event.key;
+			if (key !== 'Enter' && key !== ' ') return;
+			event.preventDefault();
+			this.togglePin();
+		});
 
 		const closeBtn = header.createDiv({ cls: 'wn-lore-preview-close clickable-icon' });
 		closeBtn.setAttr('role', 'button');
@@ -513,11 +598,202 @@ export class LoreCardPreview extends Component {
 		});
 	}
 
+	/** 切换置顶状态（标题栏按钮 / 键盘触发） */
+	private togglePin(): void {
+		if (!this.panelEl) return;
+		this.setPinned(!this.isPinned);
+	}
+
+	/**
+	 * 应用置顶状态：更新按钮的图标语义、面板类名与层级，并切换关闭/定位策略。
+	 * 置顶时清空所有延迟关闭计时器；取消置顶时回到「跟随卡片」的默认定位。
+	 */
+	private setPinned(pinned: boolean): void {
+		this.isPinned = pinned;
+		this.syncPinButton();
+		const panelEl = this.panelEl;
+		if (!panelEl) return;
+
+		panelEl.toggleClass('is-pinned', pinned);
+		if (pinned) {
+			this.clearTimers();
+			LoreCardPreview.pinnedZIndex += 1;
+			panelEl.setCssStyles({ zIndex: String(LoreCardPreview.pinnedZIndex) });
+			// 焦点留在面板内（置顶按钮本身可聚焦），否则 Esc 的「焦点在面板内才关闭」守卫会失效
+			(this.pinBtnEl ?? panelEl).focus?.({ preventScroll: true });
+			if (this.isDetachedByDrag) this.clampPanelIntoViewport(panelEl);
+		} else {
+			panelEl.setCssStyles({ zIndex: '' });
+			this.isDetachedByDrag = false;
+			panelEl.removeClass('is-anchor-offscreen');
+			this.positionPanel(panelEl);
+		}
+	}
+
+	/** 同步置顶按钮的可访问属性与提示文案 */
+	private syncPinButton(): void {
+		const pinBtn = this.pinBtnEl;
+		if (!pinBtn) return;
+		const label = this.isPinned ? t('corkboard.lore-preview-unpin') : t('corkboard.lore-preview-pin');
+		pinBtn.toggleClass('is-active', this.isPinned);
+		pinBtn.setAttr('aria-pressed', this.isPinned ? 'true' : 'false');
+		pinBtn.setAttr('aria-label', label);
+		pinBtn.title = label;
+	}
+
+	/**
+	 * 标题栏按下：开启一次拖拽会话。
+	 * 使用 Pointer Events，让鼠标 / 触控笔 / 手指共用一套逻辑；仅主键触发，
+	 * 且不抢走按钮、链接等交互元素的点击。
+	 */
+	private onHeaderPointerDown = (event: PointerEvent): void => {
+		const panelEl = this.panelEl;
+		if (!panelEl || this.dragState) return;
+		if (event.button !== 0) return;
+		const target = event.target as Element | null;
+		if (target?.closest?.(DRAG_IGNORE_SELECTOR)) return;
+
+		// 拖拽用指针坐标；双击复位不依赖浏览器的 dblclick（pointerdown 的 preventDefault 可能吞掉它）
+		const now = Date.now();
+		const isDoubleTap = now - this.lastHeaderDownAt < HEADER_DOUBLE_TAP_MS
+			&& Math.abs(event.clientX - this.lastHeaderDownX) <= DRAG_THRESHOLD
+			&& Math.abs(event.clientY - this.lastHeaderDownY) <= DRAG_THRESHOLD;
+		this.lastHeaderDownAt = now;
+		this.lastHeaderDownX = event.clientX;
+		this.lastHeaderDownY = event.clientY;
+		if (isDoubleTap) this.resetPanelPosition();
+
+		const rect = panelEl.getBoundingClientRect();
+		this.dragState = {
+			pointerId: event.pointerId,
+			startX: event.clientX,
+			startY: event.clientY,
+			originLeft: rect.left,
+			originTop: rect.top,
+			moved: false
+		};
+		this.clearTimers();
+		event.preventDefault?.();
+
+		// 指针捕获让指针移出标题栏甚至窗口后仍能收到 move / up
+		const header = this.headerEl;
+		if (header && typeof header.setPointerCapture === 'function') {
+			try {
+				header.setPointerCapture(event.pointerId);
+			} catch {
+				// pointerId 已失效时退化为文档级监听
+			}
+		}
+		this.ownerDocument.addEventListener('pointermove', this.onDragPointerMove, true);
+		this.ownerDocument.addEventListener('pointerup', this.onDragPointerEnd, true);
+		this.ownerDocument.addEventListener('pointercancel', this.onDragPointerEnd, true);
+	};
+
+	/** 拖拽移动：超过阈值后标记为手动摆放，并把面板约束在视口内 */
+	private onDragPointerMove = (event: PointerEvent): void => {
+		const drag = this.dragState;
+		const panelEl = this.panelEl;
+		if (!drag || !panelEl) return;
+		if (event.pointerId !== drag.pointerId) return;
+
+		const dx = event.clientX - drag.startX;
+		const dy = event.clientY - drag.startY;
+		if (!drag.moved && Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
+		if (!drag.moved) {
+			drag.moved = true;
+			this.isDetachedByDrag = true;
+			panelEl.addClass('is-dragging');
+			this.setBodyDragging(true);
+		}
+
+		const { left, top } = this.clampPanelPosition(drag.originLeft + dx, drag.originTop + dy, panelEl);
+		panelEl.setCssStyles({ top: `${Math.round(top)}px`, left: `${Math.round(left)}px` });
+		event.preventDefault?.();
+	};
+
+	/** 拖拽结束：释放监听与指针捕获，保留面板最终位置 */
+	private onDragPointerEnd = (event: PointerEvent): void => {
+		const drag = this.dragState;
+		if (!drag) return;
+		if (event?.pointerId !== undefined && event.pointerId !== drag.pointerId) return;
+		const moved = drag.moved;
+		this.endDragSession();
+		// 拖拽期间指针停在面板内，取消可能已排队的一次延迟关闭
+		if (moved) this.clearCloseTimeout();
+	};
+
+	/** 结束拖拽会话：移除文档级监听、释放指针捕获、清理全局拖拽样式 */
+	private endDragSession(): void {
+		const drag = this.dragState;
+		this.dragState = null;
+		this.ownerDocument.removeEventListener('pointermove', this.onDragPointerMove, true);
+		this.ownerDocument.removeEventListener('pointerup', this.onDragPointerEnd, true);
+		this.ownerDocument.removeEventListener('pointercancel', this.onDragPointerEnd, true);
+		this.setBodyDragging(false);
+		this.panelEl?.removeClass('is-dragging');
+		const header = this.headerEl;
+		if (drag && header && typeof header.releasePointerCapture === 'function') {
+			try {
+				header.releasePointerCapture(drag.pointerId);
+			} catch {
+				// 指针已释放
+			}
+		}
+	}
+
+	/** 拖拽期间在 body 上切换全局样式类（抓取光标、禁止选中） */
+	private setBodyDragging(active: boolean): void {
+		const body = this.ownerDocument.body as HTMLElement | null;
+		if (!body) return;
+		if (active) body.addClass(DRAG_BODY_CLASS);
+		else body.removeClass(DRAG_BODY_CLASS);
+	}
+
+	/** 双击标题栏：放弃拖拽位置，复位到卡片旁（置顶状态保持不变） */
+	private onHeaderDoubleClick = (event: MouseEvent): void => {
+		const target = event.target as Element | null;
+		if (target?.closest?.(DRAG_IGNORE_SELECTOR)) return;
+		this.resetPanelPosition();
+		event.preventDefault?.();
+	};
+
+	/** 放弃手动摆放的坐标，让面板重新贴回锚点卡片（置顶状态保持不变） */
+	private resetPanelPosition(): void {
+		const panelEl = this.panelEl;
+		if (!panelEl || !this.isDetachedByDrag) return;
+		this.isDetachedByDrag = false;
+		panelEl.removeClass('is-anchor-offscreen');
+		this.positionPanel(panelEl);
+	}
+
+	/** 把拖拽后的坐标约束在视口内 */
+	private clampPanelPosition(left: number, top: number, panelEl: HTMLElement): { left: number; top: number } {
+		const rect = panelEl.getBoundingClientRect();
+		const maxLeft = Math.max(DRAG_VIEWPORT_PADDING, this.ownerWindow.innerWidth - rect.width - DRAG_VIEWPORT_PADDING);
+		const maxTop = Math.max(DRAG_VIEWPORT_PADDING, this.ownerWindow.innerHeight - rect.height - DRAG_VIEWPORT_PADDING);
+		return {
+			left: Math.min(Math.max(left, DRAG_VIEWPORT_PADDING), maxLeft),
+			top: Math.min(Math.max(top, DRAG_VIEWPORT_PADDING), maxTop)
+		};
+	}
+
+	/** 视口变化后把已拖拽的面板拉回可视区域（未拖拽面板由 positionPanel 负责跟随） */
+	private clampPanelIntoViewport(panelEl: HTMLElement): void {
+		if (!this.isDetachedByDrag) return;
+		const rect = panelEl.getBoundingClientRect();
+		const currentLeft = Number.parseFloat(panelEl.style.left) || rect.left;
+		const currentTop = Number.parseFloat(panelEl.style.top) || rect.top;
+		const { left, top } = this.clampPanelPosition(currentLeft, currentTop, panelEl);
+		panelEl.setCssStyles({ left: `${Math.round(left)}px`, top: `${Math.round(top)}px` });
+	}
+
 	/**
 	 * 定位面板：优先显示在卡片下方，下方空间不足时翻转至上方，
 	 * 上下空间均不足时贴靠空间更大的一侧，由面板内部滚动承载剩余内容。
 	 */
 	private positionPanel(panelEl: HTMLElement): void {
+		// 用户拖拽摆放后不再自动定位（取消置顶或双击标题栏会重新跟随）
+		if (this.isDetachedByDrag) return;
 		const anchor = this.targetEl.getBoundingClientRect();
 		const viewportWidth = this.ownerWindow.innerWidth;
 		const viewportHeight = this.ownerWindow.innerHeight;
@@ -574,6 +850,7 @@ export class LoreCardPreview extends Component {
 	private removePanel(): void {
 		const panelEl = this.panelEl;
 		const cardComponent = this.cardComponent;
+		this.endDragSession();
 		this.panelEl = null;
 		this.cardComponent = null;
 		this.cancelRepositionFrame();
@@ -586,6 +863,13 @@ export class LoreCardPreview extends Component {
 			panelEl.remove();
 		}
 		cardComponent?.unload();
+		// 面板关闭后重置窗口状态，下次打开回到默认的跟随/悬停行为
+		this.headerEl?.removeEventListener('pointerdown', this.onHeaderPointerDown);
+		this.headerEl?.removeEventListener('dblclick', this.onHeaderDoubleClick);
+		this.headerEl = null;
+		this.pinBtnEl = null;
+		this.isPinned = false;
+		this.isDetachedByDrag = false;
 		if (panelEl) this.options.onClose?.();
 	}
 }
