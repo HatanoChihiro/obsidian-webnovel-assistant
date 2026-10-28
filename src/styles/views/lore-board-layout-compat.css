@@ -12,6 +12,12 @@
 }
 
 
+/* 表格模式的文件选项卡左对齐表格行（卡片模式由外层网格提供 16px 缩进） */
+.wn-lore-board-layout-table>.wn-lore-file-tabs {
+	padding: 0 0 10px;
+}
+
+
 .wn-lore-board-group {
 	background: var(--background-secondary);
 	border: 1px solid var(--background-modifier-border);

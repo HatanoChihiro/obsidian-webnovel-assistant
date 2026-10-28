@@ -1029,4 +1029,156 @@ describe('LoreCardPreview', () => {
 			expect(reopened.querySelector('.wn-lore-preview-pin')?.hasClass('is-active')).toBe(false);
 		});
 	});
+
+	describe('LoreBoardRenderer.renderTable 文件选项卡', () => {
+		interface TableLoreFile {
+			path: string;
+			basename: string;
+			headings: string[];
+		}
+
+		function buildTableFixture(options: { activeFile?: string; loreFiles?: TableLoreFile[] } = {}) {
+			const dom = createMockDom();
+			setupMockOwnerWindow(dom);
+			const container = dom.body.createDiv('board-container');
+			const loreFiles = options.loreFiles ?? [
+				{ path: '设定/人物.md', basename: '人物', headings: ['女主角', '男主角'] },
+				{ path: '设定/势力.md', basename: '势力', headings: ['宗门'] }
+			];
+
+			const entryByName = new Map<string, { heading: string; file: Record<string, unknown> }>();
+			const cacheByPath = new Map<string, unknown>();
+			for (const file of loreFiles) {
+				const fileRef = { path: file.path, basename: file.basename, parent: null };
+				cacheByPath.set(file.path, { headings: file.headings.map(heading => ({ level: 2, heading })) });
+				for (const heading of file.headings) entryByName.set(heading, { heading, file: fileRef });
+			}
+
+			const chapterLore: Record<string, string[]> = {
+				'正文/第一章.md': ['女主角×2', '宗门×1'],
+				'正文/第二章.md': ['男主角×3', '宗门×2']
+			};
+			const chapterFiles = Object.keys(chapterLore).map(path => ({ path, basename: path.replace(/^.*\//, '').replace(/\.md$/, '') }));
+			for (const chapter of chapterFiles) {
+				cacheByPath.set(chapter.path, { frontmatter: { lore: chapterLore[chapter.path] } });
+			}
+
+			const settings = {
+				loreBoardLayout: 'table',
+				loreBoardActiveFile: options.activeFile ?? '',
+				lorePopoverCollapse: false,
+				loreCardPreviewEnabled: false,
+				loreCardHoverPreview: false,
+				loreCardPreviewPersistent: false,
+				loreCardPreviewMaxCount: 3
+			};
+			const saveSettings = vi.fn(async () => undefined);
+			const plugin = {
+				characterManager: {
+					ensureInitialized: vi.fn(async () => undefined),
+					getCharactersForBook: vi.fn(() => ['女主角', '男主角', '宗门']),
+					getCharacterFile: vi.fn((_book: string, name: string) => entryByName.get(name) ?? null),
+					findLoreFolder: vi.fn(() => null),
+					getBookPathForFile: vi.fn(() => ''),
+					getEffectiveLoreFiles: vi.fn(() => chapterFiles),
+					getLoreEntriesInFileOrder: vi.fn(() => Array.from(entryByName.values())),
+					moveLoreItem: vi.fn(),
+					rebuildCache: vi.fn(),
+					getLoreContent: vi.fn(),
+					updateLoreContent: vi.fn()
+				},
+				relationGraphManager: { buildGraphData: vi.fn(async () => ({ edges: [] })) },
+				settings,
+				saveSettings
+			};
+			const app = {
+				metadataCache: {
+					getFileCache: vi.fn((file: { path: string }) => cacheByPath.get(file.path) ?? null)
+				}
+			};
+
+			const render = async () => {
+				const ownerComponent = new Component();
+				ownerComponent.load();
+				createdOwners.push(ownerComponent);
+				await LoreBoardRenderer.render({
+					ownerComponent: ownerComponent as unknown as import('obsidian').Component,
+					app: app as unknown as import('obsidian').App,
+					plugin: plugin as unknown as import('../src/ui/components/LoreBoardRenderer').LoreBoardPlugin,
+					container: container as unknown as HTMLElement,
+					files: chapterFiles as unknown as import('obsidian').TFile[],
+					currentBookPath: '/'
+				});
+			};
+
+			return { container, settings, saveSettings, render, loreFiles };
+		}
+
+		it('表格模式渲染文件选项卡：全部 + 各设定文件（带条数徽标）', async () => {
+			const fixture = buildTableFixture();
+			await fixture.render();
+
+			const tabs = fixture.container.querySelectorAll('.wn-lore-file-tab');
+			expect(tabs).toHaveLength(3);
+			expect(tabs[0].hasClass('is-active')).toBe(true);
+
+			const labels = fixture.container.querySelectorAll('.wn-lore-file-tab-label').map(label => label.textContent);
+			expect(labels).toEqual(['lore.tab-all', '人物', '势力']);
+
+			const counts = fixture.container.querySelectorAll('.wn-lore-file-tab-count').map(count => count.textContent);
+			expect(counts).toEqual(['3', '2', '1']);
+
+			const rows = fixture.container.querySelectorAll('.wn-lore-board-group');
+			expect(rows).toHaveLength(3);
+			expect(rows.every(row => row.hidden === false)).toBe(true);
+		});
+
+		it('点击文件选项卡按所属文件过滤表格行，并持久化到设置', async () => {
+			const fixture = buildTableFixture();
+			await fixture.render();
+
+			const rows = fixture.container.querySelectorAll('.wn-lore-board-group');
+			const tabs = fixture.container.querySelectorAll('.wn-lore-file-tab');
+			const clickTab = (tab: MockElement) => {
+				const handler = tab.onclick as ((event: MouseEvent) => void) | undefined;
+				handler?.({} as MouseEvent);
+			};
+			// 行顺序按出现次数降序：男主角(人物) / 宗门(势力) / 女主角(人物)
+			clickTab(tabs[2]);
+			await flushMicrotasks(1);
+
+			expect(rows.map(row => row.hidden)).toEqual([true, false, true]);
+			expect(fixture.settings.loreBoardActiveFile).toBe('设定/势力.md');
+			expect(fixture.saveSettings).toHaveBeenCalledTimes(1);
+			expect(tabs[2].hasClass('is-active')).toBe(true);
+			expect(tabs[0].hasClass('is-active')).toBe(false);
+
+			clickTab(tabs[0]);
+			await flushMicrotasks(1);
+			expect(rows.every(row => row.hidden === false)).toBe(true);
+			expect(fixture.settings.loreBoardActiveFile).toBeUndefined();
+			expect(tabs[0].hasClass('is-active')).toBe(true);
+		});
+
+		it('打开看板时沿用上次选择的设定文件，并过滤表格行', async () => {
+			const fixture = buildTableFixture({ activeFile: '设定/人物.md' });
+			await fixture.render();
+
+			const tabs = fixture.container.querySelectorAll('.wn-lore-file-tab');
+			const rows = fixture.container.querySelectorAll('.wn-lore-board-group');
+			expect(tabs).toHaveLength(3);
+			expect(tabs[1].hasClass('is-active')).toBe(true);
+			expect(rows.map(row => row.hidden)).toEqual([false, true, false]);
+		});
+
+		it('仅有一个设定文件时不渲染选项卡，全部行保持可见', async () => {
+			const fixture = buildTableFixture({ loreFiles: [{ path: '设定/人物.md', basename: '人物', headings: ['女主角', '男主角'] }] });
+			await fixture.render();
+
+			expect(fixture.container.querySelectorAll('.wn-lore-file-tab')).toHaveLength(0);
+			const rows = fixture.container.querySelectorAll('.wn-lore-board-group');
+			expect(rows).toHaveLength(3);
+			expect(rows.every(row => row.hidden === false)).toBe(true);
+		});
+	});
 });
