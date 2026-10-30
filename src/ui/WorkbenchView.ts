@@ -74,6 +74,7 @@ export type WorkbenchViewSettings = Pick<
 	| 'loreBoardActiveFile'
 	| 'immersive'
 	| 'homepagePath'
+	| 'loreTemplateHistory'
 > & {
 	task?: Pick<TaskSettings, 'fileName'>;
 };
@@ -126,7 +127,7 @@ export interface WorkbenchViewPlugin
 		Omit<LoreBoardPlugin, 'settings' | 'characterManager' | 'relationGraphManager' | 'saveSettings'>,
 		Omit<TaskBoardPlugin, 'settings' | 'taskManager'>,
 		Omit<ForeshadowingBoardPlugin, 'settings' | 'foreshadowingManager' | 'homepageManager'>,
-		Omit<AddLorePlugin, 'characterManager'>,
+		Omit<AddLorePlugin, 'characterManager' | 'settings'>,
 		Omit<CurrentBookContextPlugin, 'settings' | 'homepageManager'>,
 		Omit<NewChapterModalPlugin, 'settings'> {
 	settings: WorkbenchViewSettings;

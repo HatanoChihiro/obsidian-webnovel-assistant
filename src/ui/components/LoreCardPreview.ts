@@ -1,4 +1,4 @@
-import { Component, setIcon } from 'obsidian';
+import { Component, setIcon, setTooltip } from 'obsidian';
 import { t } from '../../i18n';
 import type { AccurateCountSettings } from '../../types/settings';
 import type { LoreEntry } from '../../services/CharacterManager';
@@ -46,7 +46,7 @@ const PINNED_Z_INDEX_BASE = 1200;
 const DRAG_BODY_CLASS = 'wn-lore-preview-dragging';
 /** 标题栏内不允许作为拖拽起点的交互元素 */
 const DRAG_IGNORE_SELECTOR = '.clickable-icon, button, a, input, select, textarea';
-/** 标题栏双击判定窗口：两次按下间隔小于该值且位移在阈值内，视为双击复位（毫秒） */
+/** 标题栏双击判定窗口：两次完成点击间隔小于该值且位移在阈值内，视为双击复位（毫秒） */
 const HEADER_DOUBLE_TAP_MS = 400;
 
 /**
@@ -103,10 +103,10 @@ export class LoreCardPreview extends Component {
 	private isPinned = false;
 	/** 是否已被拖离锚点：为 true 时不再跟随卡片自动定位 */
 	private isDetachedByDrag = false;
-	/** 标题栏上一次按下的时间/坐标，用于双击复位判定 */
-	private lastHeaderDownAt = 0;
-	private lastHeaderDownX = 0;
-	private lastHeaderDownY = 0;
+	/** 标题栏上一次完成点击（未发生拖拽）的时间/坐标，用于双击降级复位判定 */
+	private lastHeaderClickAt = 0;
+	private lastHeaderClickX = 0;
+	private lastHeaderClickY = 0;
 	/** 进行中的拖拽会话 */
 	private dragState: {
 		pointerId: number;
@@ -329,15 +329,10 @@ export class LoreCardPreview extends Component {
 	}
 
 	private onViewportChange = (): void => {
-		// 置顶面板不因窗口尺寸变化而关闭：拖拽过的保持自身位置（仅约束回视口），未拖拽的跟随卡片
-		if (this.isPinned && this.panelEl) {
+		// 置顶与常驻面板不因窗口尺寸变化而关闭：拖拽过的保持自身位置（仅更新尺寸上限并约束回视口），未拖拽的跟随卡片
+		if ((this.isPinned || this.isPersistent()) && this.panelEl) {
 			if (this.isDetachedByDrag) this.clampPanelIntoViewport(this.panelEl);
 			else this.scheduleReposition();
-			return;
-		}
-		// 常驻模式下跟随锚点卡片重新定位，不自动关闭
-		if (this.isPersistent() && this.panelEl) {
-			this.scheduleReposition();
 			return;
 		}
 		this.close();
@@ -638,7 +633,7 @@ export class LoreCardPreview extends Component {
 		pinBtn.toggleClass('is-active', this.isPinned);
 		pinBtn.setAttr('aria-pressed', this.isPinned ? 'true' : 'false');
 		pinBtn.setAttr('aria-label', label);
-		pinBtn.title = label;
+		setTooltip(pinBtn, label, { classes: ['wn-lore-preview-tooltip'] });
 	}
 
 	/**
@@ -652,16 +647,6 @@ export class LoreCardPreview extends Component {
 		if (event.button !== 0) return;
 		const target = event.target as Element | null;
 		if (target?.closest?.(DRAG_IGNORE_SELECTOR)) return;
-
-		// 拖拽用指针坐标；双击复位不依赖浏览器的 dblclick（pointerdown 的 preventDefault 可能吞掉它）
-		const now = Date.now();
-		const isDoubleTap = now - this.lastHeaderDownAt < HEADER_DOUBLE_TAP_MS
-			&& Math.abs(event.clientX - this.lastHeaderDownX) <= DRAG_THRESHOLD
-			&& Math.abs(event.clientY - this.lastHeaderDownY) <= DRAG_THRESHOLD;
-		this.lastHeaderDownAt = now;
-		this.lastHeaderDownX = event.clientX;
-		this.lastHeaderDownY = event.clientY;
-		if (isDoubleTap) this.resetPanelPosition();
 
 		const rect = panelEl.getBoundingClientRect();
 		this.dragState = {
@@ -711,7 +696,7 @@ export class LoreCardPreview extends Component {
 		event.preventDefault?.();
 	};
 
-	/** 拖拽结束：释放监听与指针捕获，保留面板最终位置 */
+	/** 拖拽或点击结束：释放监听与指针捕获，处理双击降级复位或保留拖拽位置 */
 	private onDragPointerEnd = (event: PointerEvent): void => {
 		const drag = this.dragState;
 		if (!drag) return;
@@ -719,7 +704,30 @@ export class LoreCardPreview extends Component {
 		const moved = drag.moved;
 		this.endDragSession();
 		// 拖拽期间指针停在面板内，取消可能已排队的一次延迟关闭
-		if (moved) this.clearCloseTimeout();
+		if (moved) {
+			this.clearCloseTimeout();
+			this.clearDoubleTapCandidate();
+			return;
+		}
+
+		if (event.type === 'pointercancel') {
+			this.clearDoubleTapCandidate();
+			return;
+		}
+
+		const now = Date.now();
+		const isDoubleTap = now - this.lastHeaderClickAt < HEADER_DOUBLE_TAP_MS
+			&& Math.abs(event.clientX - this.lastHeaderClickX) <= DRAG_THRESHOLD
+			&& Math.abs(event.clientY - this.lastHeaderClickY) <= DRAG_THRESHOLD;
+
+		if (isDoubleTap) {
+			this.clearDoubleTapCandidate();
+			this.resetPanelPosition();
+		} else {
+			this.lastHeaderClickAt = now;
+			this.lastHeaderClickX = event.clientX;
+			this.lastHeaderClickY = event.clientY;
+		}
 	};
 
 	/** 结束拖拽会话：移除文档级监听、释放指针捕获、清理全局拖拽样式 */
@@ -753,9 +761,16 @@ export class LoreCardPreview extends Component {
 	private onHeaderDoubleClick = (event: MouseEvent): void => {
 		const target = event.target as Element | null;
 		if (target?.closest?.(DRAG_IGNORE_SELECTOR)) return;
+		this.clearDoubleTapCandidate();
 		this.resetPanelPosition();
 		event.preventDefault?.();
 	};
+
+	private clearDoubleTapCandidate(): void {
+		this.lastHeaderClickAt = 0;
+		this.lastHeaderClickX = 0;
+		this.lastHeaderClickY = 0;
+	}
 
 	/** 放弃手动摆放的坐标，让面板重新贴回锚点卡片（置顶状态保持不变） */
 	private resetPanelPosition(): void {
@@ -780,11 +795,24 @@ export class LoreCardPreview extends Component {
 	/** 视口变化后把已拖拽的面板拉回可视区域（未拖拽面板由 positionPanel 负责跟随） */
 	private clampPanelIntoViewport(panelEl: HTMLElement): void {
 		if (!this.isDetachedByDrag) return;
+		this.applyPanelSizeCaps(panelEl);
 		const rect = panelEl.getBoundingClientRect();
 		const currentLeft = Number.parseFloat(panelEl.style.left) || rect.left;
 		const currentTop = Number.parseFloat(panelEl.style.top) || rect.top;
 		const { left, top } = this.clampPanelPosition(currentLeft, currentTop, panelEl);
 		panelEl.setCssStyles({ left: `${Math.round(left)}px`, top: `${Math.round(top)}px` });
+	}
+
+	/** 计算并应用视口约束下的面板宽高上限 */
+	private applyPanelSizeCaps(panelEl: HTMLElement): { panelWidth: number; heightCap: number } {
+		const viewportWidth = this.ownerWindow.innerWidth;
+		const viewportHeight = this.ownerWindow.innerHeight;
+		const availableWidth = Math.max(0, viewportWidth - VIEWPORT_PADDING * 2);
+		const availableHeight = Math.max(0, viewportHeight - VIEWPORT_PADDING * 2);
+		const panelWidth = Math.min(PREVIEW_MAX_WIDTH, availableWidth);
+		const heightCap = Math.min(PREVIEW_MAX_HEIGHT, Math.floor(viewportHeight * VIEWPORT_HEIGHT_RATIO), availableHeight);
+		panelEl.setCssStyles({ width: `${panelWidth}px`, maxHeight: `${heightCap}px` });
+		return { panelWidth, heightCap };
 	}
 
 	/**
@@ -793,17 +821,15 @@ export class LoreCardPreview extends Component {
 	 */
 	private positionPanel(panelEl: HTMLElement): void {
 		// 用户拖拽摆放后不再自动定位（取消置顶或双击标题栏会重新跟随）
-		if (this.isDetachedByDrag) return;
+		if (this.isDetachedByDrag) {
+			this.clampPanelIntoViewport(panelEl);
+			return;
+		}
 		const anchor = this.targetEl.getBoundingClientRect();
 		const viewportWidth = this.ownerWindow.innerWidth;
 		const viewportHeight = this.ownerWindow.innerHeight;
 
-		const availableWidth = Math.max(0, viewportWidth - VIEWPORT_PADDING * 2);
-		const availableHeight = Math.max(0, viewportHeight - VIEWPORT_PADDING * 2);
-		const panelWidth = Math.min(PREVIEW_MAX_WIDTH, availableWidth);
-		const heightCap = Math.min(PREVIEW_MAX_HEIGHT, Math.floor(viewportHeight * VIEWPORT_HEIGHT_RATIO), availableHeight);
-
-		panelEl.setCssStyles({ width: `${panelWidth}px`, maxHeight: `${heightCap}px` });
+		const { panelWidth } = this.applyPanelSizeCaps(panelEl);
 
 		const panelHeight = panelEl.getBoundingClientRect().height;
 		const spaceBelow = viewportHeight - anchor.bottom - ANCHOR_GAP - VIEWPORT_PADDING;
@@ -870,6 +896,7 @@ export class LoreCardPreview extends Component {
 		this.pinBtnEl = null;
 		this.isPinned = false;
 		this.isDetachedByDrag = false;
+		this.clearDoubleTapCandidate();
 		if (panelEl) this.options.onClose?.();
 	}
 }

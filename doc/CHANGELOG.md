@@ -1,3 +1,33 @@
+## ✨ v4.0.5
+
+### 新增功能
+
+- **设置搜索**：按名称或说明跨分类查找设置，点击结果即可定位；尚未启用的子选项会引导至对应开关。
+- **设定模板**：新建设定时可选择 Markdown 文件作为模板，自动提取标题与键值字段生成编辑表单，并在保存时规范写入设定条目；弹窗内自动记录最近使用的模板，便于快捷选用与移除记录。
+- **设定预览**：大预览面板支持置顶、拖拽移动和双击复位，便于持续查阅与并排对照。
+- **设定表格筛选**：表格模式支持按设定文件或文件夹筛选，并记住上次选择。
+
+### Bug 修复
+
+- **启动兼容性**：修复 Obsidian 1.15 下插件无法启用的问题。
+
+感谢 @tyf2018 的贡献（[PR #48](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/pull/48)）。
+
+### English Changelog
+
+#### New Features
+
+- **Settings search**: Find settings across categories by name or description and jump to a result, with guidance to the parent toggle for hidden options.
+- **Lore templates**: Select a Markdown file as a template when adding new lore, automatically extracting heading sections and key-value fields into editable form controls to save into lore entries, with recent template history remembered for quick reselection and record removal.
+- **Lore previews**: Pin and drag large previews, or double-click the header to reset their position, for continued reference and side-by-side reading.
+- **Lore table filtering**: Filter table rows by lore file or folder and remember the last selection.
+
+#### Bug Fixes
+
+- **Startup compatibility**: Fix the plugin failing to enable on Obsidian 1.15.
+
+Thanks to @tyf2018 for the contribution ([PR #48](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/pull/48)).
+
 ## ✨ v4.0.4
 
 ### 新增功能

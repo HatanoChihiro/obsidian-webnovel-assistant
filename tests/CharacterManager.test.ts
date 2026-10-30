@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { CharacterManager, cleanLoreHeading } from '../src/services/CharacterManager';
+import { parseLoreTemplate } from '../src/services/LoreTemplateService';
 import { TFile, TFolder } from 'obsidian';
 import type { App } from 'obsidian';
 import { Text } from '@codemirror/state';
@@ -596,6 +597,214 @@ LinLei is a dragon warrior.`;
             expect(createdContent).toContain('**未名**：[[#UnknownPerson]]');
             // Explicit link: [[CustomLink]]
             expect(createdContent).toContain('**手动**：[[CustomLink]]');
+        });
+
+        it('should insert templateContent after description and before relations when creating lore entry', async () => {
+            const manager = new CharacterManager(mockApp, mockPlugin);
+            let createdContent = '';
+
+            const mockLoreFolder = new TFolder();
+            mockLoreFolder.path = 'Book1/Lore';
+            mockLoreFolder.name = 'Lore';
+
+            mockApp.vault.getAbstractFileByPath = vi.fn().mockImplementation((p: string) => {
+                if (p === 'Book1/Lore') return mockLoreFolder;
+                return null;
+            });
+
+            mockApp.vault.create = vi.fn().mockImplementation(async (_p: string, content: string) => {
+                createdContent = content;
+            });
+
+            manager.rebuildCache = vi.fn().mockResolvedValue(undefined);
+
+            const customTemplate = '### Background\nBorn in a storm.\n**Weapon**: Thunder Sword';
+
+            const result = await manager.createLoreEntry(
+                'Book1',
+                'Characters',
+                'Thor',
+                'God of Thunder',
+                'Hero',
+                'A mythological hero',
+                [{ label: 'Brother', target: 'Loki' }],
+                undefined,
+                customTemplate
+            );
+
+            expect(result).toBe(true);
+            expect(createdContent).toContain('## Thor');
+            expect(createdContent).toContain('A mythological hero');
+            expect(createdContent).toContain('### Background\nBorn in a storm.\n**Weapon**: Thunder Sword');
+            expect(createdContent).toContain('### 关系');
+            // Template content must appear AFTER description and BEFORE relations
+            const descIndex = createdContent.indexOf('A mythological hero');
+            const tplIndex = createdContent.indexOf('### Background');
+            const relIndex = createdContent.indexOf('### 关系');
+            expect(descIndex).toBeLessThan(tplIndex);
+            expect(tplIndex).toBeLessThan(relIndex);
+        });
+
+        it('should append templateContent to existing file when targetFilePath is specified', async () => {
+            const manager = new CharacterManager(mockApp, mockPlugin);
+            let appendedContent = '';
+
+            const existingFile = new TFile();
+            existingFile.path = 'Book1/Lore/Characters.md';
+            existingFile.basename = 'Characters';
+
+            manager.validateLoreSaveDestination = vi.fn().mockResolvedValue({ valid: true });
+
+            mockApp.vault.getAbstractFileByPath = vi.fn().mockImplementation((p: string) => {
+                if (p === 'Book1/Lore/Characters.md') return existingFile;
+                return null;
+            });
+
+            mockApp.vault.append = vi.fn().mockImplementation(async (_file: TFile, content: string) => {
+                appendedContent = content;
+            });
+
+            manager.rebuildCache = vi.fn().mockResolvedValue(undefined);
+
+            const customTemplate = '**Affiliation**: Asgard';
+
+            const result = await manager.createLoreEntry(
+                'Book1',
+                'Characters',
+                'Odin',
+                'Allfather',
+                'God',
+                'Ruler of Asgard',
+                [],
+                'Book1/Lore/Characters.md',
+                customTemplate
+            );
+
+            expect(result).toBe(true);
+            expect(appendedContent).toContain('## Odin');
+            expect(appendedContent).toContain('**Affiliation**: Asgard');
+        });
+
+        it('should maintain unchanged output when templateContent is empty or omitted', async () => {
+            const manager = new CharacterManager(mockApp, mockPlugin);
+            let createdContentWithoutTpl = '';
+            let createdContentWithEmptyTpl = '';
+
+            const mockLoreFolder = new TFolder();
+            mockLoreFolder.path = 'Book1/Lore';
+            mockLoreFolder.name = 'Lore';
+
+            mockApp.vault.getAbstractFileByPath = vi.fn().mockImplementation((p: string) => {
+                if (p === 'Book1/Lore') return mockLoreFolder;
+                return null;
+            });
+
+            manager.rebuildCache = vi.fn().mockResolvedValue(undefined);
+
+            mockApp.vault.create = vi.fn().mockImplementation(async (_p: string, content: string) => {
+                createdContentWithoutTpl = content;
+            });
+            await manager.createLoreEntry('Book1', 'Characters', 'HeroA', 'A', 'Warrior', 'Desc', []);
+
+            mockApp.vault.create = vi.fn().mockImplementation(async (_p: string, content: string) => {
+                createdContentWithEmptyTpl = content;
+            });
+            await manager.createLoreEntry('Book1', 'Characters', 'HeroA', 'A', 'Warrior', 'Desc', [], undefined, '   \n  ');
+
+            expect(createdContentWithoutTpl).toBe(createdContentWithEmptyTpl);
+        });
+
+        it('should produce exactly one H2 lore title and retain parsable native relations when template is applied', async () => {
+            const manager = new CharacterManager(mockApp, mockPlugin);
+            let createdContent = '';
+
+            const mockLoreFolder = new TFolder();
+            mockLoreFolder.path = 'Book1/Lore';
+            mockLoreFolder.name = 'Lore';
+
+            mockApp.vault.getAbstractFileByPath = vi.fn().mockImplementation((p: string) => {
+                if (p === 'Book1/Lore') return mockLoreFolder;
+                return null;
+            });
+
+            mockApp.vault.create = vi.fn().mockImplementation(async (_p: string, content: string) => {
+                createdContent = content;
+            });
+
+            manager.rebuildCache = vi.fn().mockResolvedValue(undefined);
+
+            // Raw template with multiple H1s, H2s, and colon lines
+            const rawTemplate = '# Part One\n# Part Two\n## Subsection\n**Rank**: S-Class\n```\n# In Code\n```';
+            const parsed = parseLoreTemplate(rawTemplate);
+            const templateBody = parsed.render({ 'tpl-field-0': 'SS-Class' });
+
+            const result = await manager.createLoreEntry(
+                'Book1',
+                'Characters',
+                'Master Swordsman',
+                'Blade',
+                'Warrior',
+                'Top tier fighter.',
+                [{ label: 'Disciple', target: 'Apprentice' }],
+                undefined,
+                templateBody
+            );
+
+            expect(result).toBe(true);
+
+            // Count occurrences of /^##\s+/m in createdContent: must be exactly 1!
+            const h2Matches = createdContent.match(/^##\s+/gm);
+            expect(h2Matches).toHaveLength(1);
+            expect(createdContent).toContain('## Master Swordsman');
+
+            // Template headings must be H3+
+            expect(createdContent).toContain('### Part One');
+            expect(createdContent).toContain('### Part Two');
+            expect(createdContent).toContain('#### Subsection');
+
+            // Native relations header must be H3
+            expect(createdContent).toContain('### 关系');
+            expect(createdContent).toContain('**Disciple**：[[#Apprentice]]');
+        });
+
+        it('should preserve leading indented code blocks without converting them to H2 lore titles', async () => {
+            const manager = new CharacterManager(mockApp, mockPlugin);
+            let createdContent = '';
+
+            const mockLoreFolder = new TFolder();
+            mockLoreFolder.path = 'Book1/Lore';
+            mockLoreFolder.name = 'Lore';
+
+            mockApp.vault.getAbstractFileByPath = vi.fn().mockImplementation((p: string) => {
+                if (p === 'Book1/Lore') return mockLoreFolder;
+                return null;
+            });
+
+            mockApp.vault.create = vi.fn().mockImplementation(async (_p: string, content: string) => {
+                createdContent = content;
+            });
+
+            manager.rebuildCache = vi.fn().mockResolvedValue(undefined);
+
+            const indentedTemplate = '    ## Example\n    body code';
+            const result = await manager.createLoreEntry(
+                'Book1',
+                'Characters',
+                'Code Master',
+                '',
+                '',
+                '',
+                [],
+                undefined,
+                indentedTemplate
+            );
+
+            expect(result).toBe(true);
+            expect(createdContent).toContain('## Code Master');
+            expect(createdContent).toContain('    ## Example\n    body code');
+            // Must have only 1 H2 heading (^##\s+)
+            const h2Matches = createdContent.match(/^##\s+/gm);
+            expect(h2Matches).toHaveLength(1);
         });
     });
 

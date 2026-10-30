@@ -1,9 +1,13 @@
 import type { App, TextAreaComponent } from 'obsidian';
-import { Modal, PluginSettingTab, Setting, Notice, TFile, MarkdownView } from 'obsidian';
+import { Modal, PluginSettingTab, SearchComponent, Setting, Notice, TFile, MarkdownView } from 'obsidian';
 import type { Plugin } from 'obsidian';
 import { isDesktop, isMobile, getPlatformTier } from '../utils/platform';
 import { ObsOverlayServer } from '../services/ObsServer';
 import { ChapterSorter } from '../services/ChapterSorter';
+import {
+	searchSettingsCatalogue,
+	type SettingCatalogueEntry
+} from '../services/SettingsSearchService';
 import { MobileFloatingStats } from './MobileFloatingStats';
 import type { FloatingStickyNote } from './StickyNote';
 import type { ThemeScheme } from '../types/settings';
@@ -62,6 +66,15 @@ class HistoryRestoreConfirmModal extends Modal {
 export class AccurateCountSettingTab extends PluginSettingTab {
 	plugin: WebNovelAssistantPlugin;
 	private activeTab: string = 'general';
+	private searchQuery: string = '';
+	private isSearchComposing: boolean = false;
+	private searchComponent: SearchComponent | null = null;
+	private searchResultsRegionEl: HTMLElement | null = null;
+	private searchInputListenersCleanup: (() => void) | null = null;
+	private highlightTimer: number | null = null;
+	private highlightTimerWin: { clearTimeout: (id: number) => void } | null = null;
+	private highlightedRowEl: HTMLElement | null = null;
+	private fallbackNoticeEl: HTMLElement | null = null;
 
 	constructor(app: App, plugin: WebNovelAssistantPlugin) {
 		super(app, plugin as unknown as Plugin);
@@ -78,11 +91,28 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		return [];
 	}
 
+	override hide(): void {
+		this.cleanupSearchInputListeners();
+		this.clearSearchHighlight(true);
+		this.searchQuery = '';
+		this.isSearchComposing = false;
+		this.searchComponent = null;
+		this.searchResultsRegionEl = null;
+		super.hide();
+	}
+
 	display(): void {
 		const { containerEl } = this;
+		const ownerDoc = containerEl.ownerDocument;
+		const prevInputEl = this.searchComponent?.inputEl ?? null;
+		const wasSearchFocused = Boolean(prevInputEl && ownerDoc.activeElement === prevInputEl);
+		const prevSelectionStart = prevInputEl?.selectionStart ?? null;
+		const prevSelectionEnd = prevInputEl?.selectionEnd ?? null;
 		const scrollTop = containerEl.scrollTop;
-		containerEl.empty();
 
+		this.cleanupSearchInputListeners();
+		this.clearSearchHighlight(true);
+		containerEl.empty();
 
 		// Add GitHub link box
 		const githubBox = containerEl.createDiv({
@@ -94,6 +124,8 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			href: 'https://github.com/HatanoChihiro/obsidian-webnovel-assistant/releases',
 			cls: 'wn-github-link'
 		});
+
+		this.renderSearchSection(containerEl);
 
 		// 创建选项卡头部
 		const navContainer = containerEl.createDiv({ cls: 'webnovel-settings-tabs' });
@@ -112,6 +144,10 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			if (tier === 'desktop') return true;
 			return !tab.desktopOnly;
 		});
+
+		if (!tabs.some(tab => tab.id === this.activeTab)) {
+			this.activeTab = 'general';
+		}
 
 		tabs.forEach(tab => {
 			const tabEl = navContainer.createDiv({
@@ -142,7 +178,285 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		}
 
 		// 同步恢复滚动位置，在浏览器完成绘制前生效，避免延迟执行导致的画面跳动
-		containerEl.scrollTo(0, scrollTop);
+		if (typeof containerEl.scrollTo === 'function') {
+			containerEl.scrollTo(0, scrollTop);
+		}
+
+		if (wasSearchFocused && this.searchComponent?.inputEl) {
+			const nextInputEl = this.searchComponent.inputEl;
+			nextInputEl.focus({ preventScroll: true });
+			if (
+				prevSelectionStart !== null &&
+				prevSelectionEnd !== null &&
+				typeof nextInputEl.setSelectionRange === 'function'
+			) {
+				nextInputEl.setSelectionRange(prevSelectionStart, prevSelectionEnd);
+			}
+		}
+	}
+
+	private renderSearchSection(containerEl: HTMLElement): void {
+		const searchContainer = containerEl.createDiv({ cls: 'wn-settings-search-container' });
+		const searchBarEl = searchContainer.createDiv({ cls: 'wn-settings-search-bar' });
+		const resultsRegionEl = searchContainer.createDiv({ cls: 'wn-settings-search-results-region is-hidden' });
+		resultsRegionEl.hidden = true;
+		this.searchResultsRegionEl = resultsRegionEl;
+
+		const searchComponent = new SearchComponent(searchBarEl);
+		searchComponent.setPlaceholder(t('setting.search-placeholder'));
+		searchComponent.setValue(this.searchQuery);
+		this.searchComponent = searchComponent;
+
+		const inputEl = searchComponent.inputEl;
+		inputEl.setAttribute('aria-label', t('setting.search-placeholder'));
+
+		const onCompositionStart = () => {
+			this.isSearchComposing = true;
+		};
+
+		const onCompositionEnd = () => {
+			this.isSearchComposing = false;
+			this.searchQuery = inputEl.value;
+			this.updateSearchResultsRegion();
+		};
+
+		const onInputCapture = (event: Event) => {
+			const eventIsComposing = 'isComposing' in event && event.isComposing === true;
+			if (eventIsComposing) {
+				this.isSearchComposing = true;
+			}
+		};
+
+		const onKeyDown = (event: KeyboardEvent) => {
+			const eventIsComposing = 'isComposing' in event && event.isComposing === true;
+			if (this.isSearchComposing || eventIsComposing) return;
+
+			if (event.key === 'Escape') {
+				if (this.searchQuery.length > 0 || inputEl.value.length > 0) {
+					event.preventDefault();
+					event.stopPropagation();
+					this.clearSearchQueryAndResults(true);
+				}
+				return;
+			}
+
+			if (event.key === 'Enter') {
+				if (this.searchQuery.trim().length > 0) {
+					event.preventDefault();
+					event.stopPropagation();
+					const matches = searchSettingsCatalogue(this.searchQuery, { tier: getPlatformTier() });
+					if (matches.length > 0) {
+						this.navigateToSearchResult(matches[0].entry);
+					}
+				}
+			}
+		};
+
+		inputEl.addEventListener('compositionstart', onCompositionStart);
+		inputEl.addEventListener('compositionend', onCompositionEnd);
+		inputEl.addEventListener('input', onInputCapture, true);
+		inputEl.addEventListener('keydown', onKeyDown, true);
+
+		this.searchInputListenersCleanup = () => {
+			inputEl.removeEventListener('compositionstart', onCompositionStart);
+			inputEl.removeEventListener('compositionend', onCompositionEnd);
+			inputEl.removeEventListener('input', onInputCapture, true);
+			inputEl.removeEventListener('keydown', onKeyDown, true);
+		};
+
+		searchComponent.onChange((value: string) => {
+			if (this.isSearchComposing && value.length > 0) {
+				return;
+			}
+			if (value.length === 0) {
+				this.isSearchComposing = false;
+			}
+			this.searchQuery = value;
+			this.updateSearchResultsRegion();
+		});
+
+		if (this.searchQuery.trim().length > 0) {
+			this.updateSearchResultsRegion();
+		}
+	}
+
+	private cleanupSearchInputListeners(): void {
+		if (this.searchInputListenersCleanup) {
+			this.searchInputListenersCleanup();
+			this.searchInputListenersCleanup = null;
+		}
+	}
+
+	private clearSearchQueryAndResults(refocusInput: boolean): void {
+		this.searchQuery = '';
+		this.isSearchComposing = false;
+		if (this.searchComponent) {
+			this.searchComponent.setValue('');
+			if (refocusInput && this.searchComponent.inputEl) {
+				this.searchComponent.inputEl.focus({ preventScroll: true });
+			}
+		}
+		this.updateSearchResultsRegion();
+	}
+
+	private updateSearchResultsRegion(): void {
+		const regionEl = this.searchResultsRegionEl;
+		if (!regionEl) return;
+
+		regionEl.empty();
+		const trimmed = this.searchQuery.trim();
+		if (!trimmed) {
+			regionEl.addClass('is-hidden');
+			regionEl.hidden = true;
+			return;
+		}
+
+		regionEl.removeClass('is-hidden');
+		regionEl.hidden = false;
+
+		const results = searchSettingsCatalogue(this.searchQuery, { tier: getPlatformTier() });
+
+		const statusEl = regionEl.createDiv({
+			cls: 'wn-settings-search-status',
+			text: results.length > 0
+				? t('setting.search-results-count', { count: results.length })
+				: t('setting.search-no-results')
+		});
+		statusEl.setAttribute('role', 'status');
+		statusEl.setAttribute('aria-live', 'polite');
+
+		if (results.length === 0) {
+			return;
+		}
+
+		const listEl = regionEl.createDiv({
+			cls: 'wn-settings-search-list'
+		});
+
+		for (const result of results) {
+			const itemBtn = listEl.createEl('button', {
+				cls: 'wn-settings-search-item',
+				type: 'button'
+			});
+			itemBtn.setAttribute('data-setting-id', result.entry.id);
+			itemBtn.setAttribute('data-setting-category', result.entry.category);
+
+			const headerEl = itemBtn.createDiv({ cls: 'wn-settings-search-item-header' });
+			const categoryBadgeText =
+				result.sectionLabel &&
+				result.sectionLabel !== result.categoryLabel &&
+				result.sectionLabel !== result.title
+					? `${result.categoryLabel} · ${result.sectionLabel}`
+					: result.categoryLabel;
+
+			headerEl.createSpan({
+				cls: 'wn-settings-search-item-category',
+				text: categoryBadgeText
+			});
+			headerEl.createSpan({
+				cls: 'wn-settings-search-item-title',
+				text: result.title
+			});
+
+			itemBtn.createDiv({
+				cls: 'wn-settings-search-item-desc',
+				text: result.description
+			});
+
+			itemBtn.onclick = () => {
+				this.navigateToSearchResult(result.entry);
+			};
+		}
+	}
+
+	private navigateToSearchResult(entry: SettingCatalogueEntry): void {
+		this.searchQuery = '';
+		this.isSearchComposing = false;
+		this.activeTab = entry.category;
+		this.display();
+
+		const resolved = this.resolveSearchTarget(entry);
+		if (!resolved) return;
+
+		const targetEl = resolved.element;
+		if (typeof targetEl.scrollIntoView === 'function') {
+			targetEl.scrollIntoView({ block: 'center' });
+		}
+
+		targetEl.addClass('wn-settings-search-highlight');
+		if (resolved.isFallback) {
+			const fallbackMessage = t('setting.search-conditional-fallback-hint', {
+				target: t(entry.titleKey),
+				parent: t(resolved.matchedFallbackKey ?? entry.sectionKey ?? entry.categoryNameKey)
+			});
+			const infoEl = targetEl.querySelector('.setting-item-info') ?? targetEl;
+			const noticeEl = infoEl.createDiv({
+				cls: 'wn-settings-search-fallback-notice',
+				text: fallbackMessage
+			});
+			noticeEl.setAttribute('role', 'status');
+			noticeEl.setAttribute('aria-live', 'polite');
+			this.fallbackNoticeEl = noticeEl;
+		}
+
+		if (!targetEl.getAttribute('tabindex')) {
+			targetEl.setAttribute('tabindex', '-1');
+		}
+		targetEl.focus({ preventScroll: true });
+		this.highlightedRowEl = targetEl;
+
+		const win = this.containerEl.ownerDocument.defaultView;
+		if (!win) return;
+		this.highlightTimerWin = win;
+		this.highlightTimer = win.setTimeout(() => {
+			this.highlightTimer = null;
+			this.highlightTimerWin = null;
+			this.clearSearchHighlight(false);
+		}, 2400);
+	}
+
+	private resolveSearchTarget(entry: SettingCatalogueEntry): { element: HTMLElement; isFallback: boolean; matchedFallbackKey?: string } | null {
+		const items = Array.from(this.containerEl.querySelectorAll<HTMLElement>('.setting-item')).filter(item =>
+			!item.classList.contains('webnovel-settings-rule-item') && !item.classList.contains('webnovel-add-btn-row'));
+		const find = (titleKey: string, sectionKey?: string, heading?: boolean): HTMLElement | undefined => {
+			const matches = items.filter(item =>
+				item.querySelector('.setting-item-name')?.textContent?.trim() === t(titleKey).trim() &&
+				(heading === undefined || item.classList.contains('setting-item-heading') === heading));
+			if (matches.length === 1) return matches[0];
+			let inSection = !sectionKey;
+			for (const item of items) {
+				const title = item.querySelector('.setting-item-name')?.textContent?.trim();
+				const isHeading = item.classList.contains('setting-item-heading');
+				if (title === t(titleKey).trim() && (heading === undefined || isHeading === heading) && inSection) return item;
+				if (sectionKey && title === t(sectionKey).trim()) inSection = true;
+				else if (isHeading && sectionKey) inSection = false;
+			}
+			return undefined;
+		};
+		const direct = find(entry.titleKey, entry.sectionKey, Boolean(entry.isHeading));
+		if (direct) return { element: direct, isFallback: false };
+		for (const key of [...(entry.fallbackKeys ?? []), ...(entry.sectionKey ? [entry.sectionKey] : [])]) {
+			const fallback = find(key);
+			if (fallback) return { element: fallback, isFallback: true, matchedFallbackKey: key };
+		}
+		return null;
+	}
+
+	private clearSearchHighlight(removeFallbackNotice: boolean): void {
+		if (this.highlightTimer !== null && this.highlightTimerWin) {
+			this.highlightTimerWin.clearTimeout(this.highlightTimer);
+		}
+		this.highlightTimer = null;
+		this.highlightTimerWin = null;
+
+		if (this.highlightedRowEl) {
+			this.highlightedRowEl.removeClass('wn-settings-search-highlight');
+			this.highlightedRowEl = null;
+		}
+		if (removeFallbackNotice && this.fallbackNoticeEl) {
+			this.fallbackNoticeEl.remove();
+			this.fallbackNoticeEl = null;
+		}
 	}
 
 	// ── 通用设置 ──

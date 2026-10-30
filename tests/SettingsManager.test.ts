@@ -1,4 +1,9 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { SETTINGS_SEARCH_CATALOGUE, searchSettingsCatalogue, isEntryAvailableOnPlatform } from '../src/services/SettingsSearchService';
+import zhCN from '../src/i18n/zh-CN.json';
+import zhTW from '../src/i18n/zh-TW.json';
+import en from '../src/i18n/en.json';
 import { SettingsManager } from '../src/core/SettingsManager';
 import { DEFAULT_SETTINGS } from '../src/constants';
 import { parseDirectorySettingLines, formatDirectorySettingLines } from '../src/utils/settingHelpers';
@@ -120,6 +125,41 @@ describe('SettingsManager', () => {
 			centerOffset: 0,
 			unfocusedOpacity: 0.4
 		});
+	});
+
+	it('normalizes loreTemplateHistory on settings load and migration, dropping invalid paths, deduplicating, and capping at 10', async () => {
+		const legacy = cloneDefaults();
+		delete (legacy as unknown as { loreTemplateHistory?: unknown }).loreTemplateHistory;
+		const plugin = {
+			loadData: vi.fn().mockResolvedValue(legacy),
+			saveData: vi.fn().mockResolvedValue(undefined)
+		} as never;
+		const manager = new SettingsManager(plugin, cloneDefaults());
+		const loadedMissing = await manager.loadSettings();
+		expect(loadedMissing.loreTemplateHistory).toEqual([]);
+
+		const invalid = cloneDefaults();
+		invalid.loreTemplateHistory = [
+			'C:/Abs.md',
+			'../Escape.md',
+			123,
+			'Templates/Hero.md',
+			'Templates//Hero.md',
+			'Templates/NonMarkdown.txt',
+			...Array.from({ length: 15 }, (_, i) => 'Templates/Tpl' + i + '.md'),
+		];
+		const invalidPlugin = {
+			loadData: vi.fn().mockResolvedValue(invalid),
+			saveData: vi.fn().mockResolvedValue(undefined)
+		} as never;
+		const invalidManager = new SettingsManager(invalidPlugin, cloneDefaults());
+		const loadedInvalid = await invalidManager.loadSettings();
+		expect(loadedInvalid.loreTemplateHistory.length).toBe(10);
+		expect(loadedInvalid.loreTemplateHistory[0]).toBe('Templates/Hero.md');
+		expect(loadedInvalid.loreTemplateHistory[1]).toBe('Templates/Tpl0.md');
+		expect(loadedInvalid.loreTemplateHistory).not.toContain('C:/Abs.md');
+		expect(loadedInvalid.loreTemplateHistory).not.toContain('../Escape.md');
+		expect(loadedInvalid.loreTemplateHistory).not.toContain('Templates/NonMarkdown.txt');
 	});
 
 	it('keeps canonical history and notes while removing obsolete persistence keys', async () => {
@@ -254,5 +294,69 @@ describe('SettingsManager', () => {
 			expect(reloaded.workspaceFolders).toEqual(commaFolders);
 			expect(reloaded.strictChapterExceptions).toEqual(['Exceptions, Review/Draft']);
 		});
+	});
+});
+
+
+describe('settings search', () => {
+	const translateWith = (dictionary: Record<string, string>) => (key: string) => dictionary[key] ?? key;
+
+	it('covers every fixed setting label and keeps catalogue keys valid in all locales', () => {
+		const source = readFileSync('src/ui/SettingsTab.ts', 'utf8').split('export class AccurateCountSettingTab')[1];
+		const names = [...source.matchAll(/\.setName\(t\('([^']+)'/g)].map(match => match[1]);
+		const titles = new Set(SETTINGS_SEARCH_CATALOGUE.map(entry => entry.titleKey));
+		expect(names.filter(key => !titles.has(key))).toEqual([]);
+		expect(new Set(SETTINGS_SEARCH_CATALOGUE.map(entry => entry.id)).size).toBe(SETTINGS_SEARCH_CATALOGUE.length);
+		for (const dictionary of [zhCN, zhTW, en]) {
+			const keys = dictionary as Record<string, string>;
+			for (const entry of SETTINGS_SEARCH_CATALOGUE) {
+				for (const key of [entry.titleKey, entry.categoryNameKey, ...entry.descKeys, ...(entry.fallbackKeys ?? []), ...(entry.sectionKey ? [entry.sectionKey] : [])]) {
+					expect(keys[key], key).toBeTruthy();
+				}
+			}
+		}
+	});
+
+	it('keeps platform filters consistent for desktop, phone and tablet', () => {
+		for (const tier of ['desktop', 'mobile', 'tablet'] as const) {
+			const entries = SETTINGS_SEARCH_CATALOGUE.filter(entry => isEntryAvailableOnPlatform(entry, tier));
+			expect(entries.some(entry => entry.category === 'immersive')).toBe(tier === 'desktop');
+			expect(entries.some(entry => entry.category === 'obs')).toBe(tier === 'desktop');
+			expect(entries.some(entry => entry.titleKey === 'setting.enable-mobile-focus-timer')).toBe(tier !== 'desktop');
+			for (const entry of entries) {
+				for (const key of entry.fallbackKeys ?? []) {
+					expect(entries.some(parent => parent.category === entry.category && parent.titleKey === key), entry.id).toBe(true);
+				}
+			}
+		}
+	});
+
+	it('ranks an exact setting title first and finds descriptions with all search tokens', () => {
+		const translate = translateWith(en);
+		const title = en['setting.sticky-note-autosave'];
+		const results = searchSettingsCatalogue(title.toUpperCase(), { tier: 'desktop', translate });
+		expect(results[0].entry.titleKey).toBe('setting.sticky-note-autosave');
+		const tokens = searchSettingsCatalogue('  long   PROGRESS  ', { tier: 'desktop', translate: key =>
+			key === 'setting.sticky-note-autosave-desc' ? 'Long writing progress is saved.' : key === 'setting.sticky-note-autosave' ? 'Auto save' : '' });
+		expect(tokens.map(result => result.entry.titleKey)).toEqual(['setting.sticky-note-autosave']);
+		expect(searchSettingsCatalogue('   ', { tier: 'desktop', translate })).toEqual([]);
+		expect(searchSettingsCatalogue('unmatched-absent-setting', { tier: 'desktop', translate })).toEqual([]);
+	});
+
+	it('finds disabled child options and their enabling switches in every locale', () => {
+		for (const dictionary of [zhCN, zhTW, en]) {
+			const results = searchSettingsCatalogue(dictionary['setting.typography-body-font-size'], { tier: 'desktop', translate: translateWith(dictionary) });
+			const child = results.find(result => result.entry.titleKey === 'setting.typography-body-font-size');
+			expect(child?.entry.fallbackKeys).toEqual(['setting.typography-enable-body-font-size', 'setting.typography-master-toggle']);
+		}
+	});
+
+	it('keeps identically named settings in their correct device category', () => {
+		for (const tier of ['desktop', 'mobile', 'tablet'] as const) {
+			const result = searchSettingsCatalogue(zhCN['setting.idle-threshold'], { tier, translate: translateWith(zhCN) })
+				.filter(match => match.entry.titleKey === 'setting.idle-threshold');
+			expect(result).toHaveLength(1);
+			expect(result[0].entry.category).toBe(tier === 'desktop' ? 'obs' : 'general');
+		}
 	});
 });

@@ -9,6 +9,7 @@ import type { TaskSettings } from '../types/task';
 import { VALIDATION_RULES, FLAT_OBS_KEYS, FLAT_IMMERSIVE_KEYS } from '../constants';
 import type { ValidationResult } from '../utils/validation';
 import { JsonSnapshotStore } from '../utils/JsonSnapshotStore';
+import { normalizeLoreTemplateHistory } from '../services/LoreTemplateService';
 
 /**
  * 验证规则接口（支持嵌套路径）
@@ -313,6 +314,8 @@ export class SettingsManager {
 		oldData: unknown
 	): AccurateCountSettings {
 		const migrated = this.deepMerge(this.defaultSettings as unknown as Record<string, unknown>, settings as unknown as Record<string, unknown>) as unknown as AccurateCountSettings;
+
+		migrated.loreTemplateHistory = normalizeLoreTemplateHistory(migrated.loreTemplateHistory);
 
 		if (oldData && typeof oldData === 'object' && 'ranking' in oldData) {
 			const oldRanking = (oldData as Record<string, unknown>).ranking;

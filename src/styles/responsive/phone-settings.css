@@ -29,6 +29,14 @@
 	flex: 1 1 100%;
 }
 
+body.is-phone .wn-settings-search-list {
+	max-height: 220px;
+}
+
+body.is-phone .wn-settings-search-item {
+	padding: 8px 10px;
+}
+
 
 body.is-phone .wn-timeline-item-delete-btn {
 	opacity: 0.65;

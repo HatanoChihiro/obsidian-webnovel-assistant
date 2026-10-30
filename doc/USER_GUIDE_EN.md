@@ -940,7 +940,8 @@ When lore files or chapters already exist but lore highlighting, Workbench stati
 1. Select a new name in the editor (e.g., "Xuan Tie Sword")
 2. Right-click → **Add as New Lore Entry**
 3. Fill in the lore name, select a categorized document, add aliases and description in the dialog
-4. Click save; the lore entry is automatically written to the corresponding categorized document
+4. (Optional) Click **Select Template** to choose a Markdown file from your vault. The 10 most recently used templates remain available below for quick use; removing a record leaves the template file intact. Heading sections and field lines (e.g., `### Biography`, `**Age**: 20`, or `Identity: Scholar`) become editable fields; aliases, types, and relations use the existing controls. Saving adds the template content as sections within the same lore entry and leaves the template file unchanged. Edits survive template switches within the current dialog; closing the dialog discards the drafts.
+5. Click save; the lore entry is automatically written to the corresponding categorized document
 
 > **Mobile**: Lore names and aliases are still recognized and shown with dashed underlines. Enable **Lore Hover Popover on Mobile** to tap and view a card; disabling it only disables the cards to prevent accidental taps while scrolling.
 

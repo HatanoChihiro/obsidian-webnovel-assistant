@@ -383,6 +383,9 @@ export interface AccurateCountSettings {
 	/** 设定看板卡片视图：当前激活的设定文件路径（空字符串 = 全部） */
 	loreBoardActiveFile?: string;
 
+	/** 最近使用的设定模板路径列表（Vault 相对路径，上限 10） */
+	loreTemplateHistory: string[];
+
 	/** 高级搜索：自动记忆的上一次搜索词 */
 	advancedSearchQuery: string;
 

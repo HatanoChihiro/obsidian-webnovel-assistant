@@ -80,6 +80,11 @@ body.wn-lore-preview-dragging {
 	color: var(--interactive-accent);
 }
 
+/* 原生提示须高于按置顶次序递增层级的预览面板。 */
+.tooltip.wn-lore-preview-tooltip {
+	z-index: 2147483647;
+}
+
 .wn-lore-preview-panel.is-pinned {
 	border-color: var(--interactive-accent);
 	box-shadow: 0 16px 44px rgba(0, 0, 0, 0.28);

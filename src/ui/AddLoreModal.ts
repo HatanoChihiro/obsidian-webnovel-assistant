@@ -1,7 +1,17 @@
-import { Modal, Setting, TFile, setTooltip, setIcon } from 'obsidian';
-import type { App, TextComponent, TFolder } from 'obsidian';
+import { Modal, Setting, TFile, setTooltip, setIcon, Notice } from 'obsidian';
+import type { App, TextComponent, TFolder, ButtonComponent } from 'obsidian';
 import type { CharacterManager, LoreCategoryOption } from '../services/CharacterManager';
 import { t } from '../i18n';
+import { FileSuggestModal } from './FileSuggestModal';
+import {
+	parseLoreTemplate,
+	normalizeLoreTemplateHistory,
+	rememberLoreTemplatePath,
+	removeLoreTemplatePath,
+	type ParsedTemplate
+} from '../services/LoreTemplateService';
+import type { AccurateCountSettings } from '../types/settings';
+import { Logger } from '../utils/Logger';
 
 export interface LoreRelationItem {
 	label: string;
@@ -10,6 +20,13 @@ export interface LoreRelationItem {
 
 export interface AddLorePlugin {
 	characterManager: Pick<CharacterManager, 'findLoreFolder' | 'getLoreEntriesInFileOrder' | 'createLoreEntry' | 'getAvailableLoreCategories'>;
+	settings: Pick<AccurateCountSettings, 'loreTemplateHistory'>;
+	saveSettings(): Promise<void>;
+}
+
+interface TemplateDraftCacheEntry {
+	content: string;
+	values: Record<string, string>;
 }
 
 export class AddLoreModal extends Modal {
@@ -24,6 +41,25 @@ export class AddLoreModal extends Modal {
 	private isCreatingNew: boolean = false;
 	private availableCategories: LoreCategoryOption[] = [];
 	private selectedTargetFile: TFile | null = null;
+
+	private selectedTemplateFile: TFile | null = null;
+	private parsedTemplate: ParsedTemplate | null = null;
+	private templateDraftCache = new Map<string, TemplateDraftCacheEntry>();
+	private templateReadToken: number = 0;
+	private isReadingTemplate: boolean = false;
+	private isUpdatingHistory: boolean = false;
+	private isSaving: boolean = false;
+	private isModalClosed: boolean = false;
+
+	private templateSetting: Setting | null = null;
+	private selectTemplateBtn: ButtonComponent | null = null;
+	private clearTemplateBtn: ButtonComponent | null = null;
+	private templateHistoryContainerEl: HTMLElement | null = null;
+	private historyButtons: Array<{ button: ButtonComponent; action: 'use' | 'remove'; isAvailable?: boolean }> = [];
+	private templateContainerEl: HTMLElement | null = null;
+	private descriptionSetting: Setting | null = null;
+	private saveSetting: Setting | null = null;
+	private saveButton: ButtonComponent | null = null;
 
 	constructor(app: App, plugin: AddLorePlugin, initialName: string, bookPath: string) {
 		super(app);
@@ -68,7 +104,282 @@ export class AddLoreModal extends Modal {
 		return Array.from(typesSet);
 	}
 
+	private isHistoryActionDisabled(): boolean {
+		return this.isModalClosed || this.isSaving || this.isReadingTemplate || this.isUpdatingHistory;
+	}
+
+	private updateSaveButtonState(): void {
+		if (this.saveButton) {
+			this.saveButton.setDisabled(this.isSaving || this.isReadingTemplate || this.isUpdatingHistory);
+		}
+	}
+
+	private updateTemplateActionButtonsState(): void {
+		const disabled = this.isSaving || this.isReadingTemplate || this.isUpdatingHistory;
+		if (this.selectTemplateBtn) {
+			this.selectTemplateBtn.setDisabled(disabled);
+		}
+		if (this.clearTemplateBtn) {
+			this.clearTemplateBtn.setDisabled(disabled);
+		}
+	}
+
+	private updateHistoryButtonsState(): void {
+		const disabled = this.isHistoryActionDisabled();
+		for (const item of this.historyButtons) {
+			if (item.action === 'use') {
+				item.button.setDisabled(disabled || !item.isAvailable);
+			} else {
+				item.button.setDisabled(disabled);
+			}
+		}
+	}
+
+	private updateAllButtonsState(): void {
+		this.updateSaveButtonState();
+		this.updateTemplateActionButtonsState();
+		this.updateHistoryButtonsState();
+	}
+
+	private updateTemplateSettingUI(): void {
+		if (!this.templateSetting) return;
+
+		const hint = t('modal.lore-template-desc');
+		const pathText = this.selectedTemplateFile ? ` (${this.selectedTemplateFile.path})` : '';
+		this.templateSetting.setDesc(`${hint}${pathText}`);
+
+		if (this.selectTemplateBtn) {
+			this.selectTemplateBtn.setButtonText(
+				this.selectedTemplateFile ? t('modal.lore-template-change') : t('modal.lore-template-select')
+			);
+		}
+
+		if (this.clearTemplateBtn) {
+			if (this.selectedTemplateFile) {
+				this.clearTemplateBtn.buttonEl.show();
+			} else {
+				this.clearTemplateBtn.buttonEl.hide();
+			}
+		}
+	}
+
+	private renderTemplateHistory(): void {
+		if (!this.templateHistoryContainerEl) {
+			return;
+		}
+
+		this.templateHistoryContainerEl.empty();
+		this.historyButtons = [];
+
+		const rawHistory = this.plugin.settings?.loreTemplateHistory;
+		const history = normalizeLoreTemplateHistory(rawHistory);
+
+		if (history.length === 0) {
+			return;
+		}
+
+		for (const path of history) {
+			const abstractFile = this.app.vault.getAbstractFileByPath(path);
+			const isAvailable = abstractFile instanceof TFile;
+			const filename = path.split('/').pop() || path;
+
+			const entrySetting = new Setting(this.templateHistoryContainerEl)
+				.setName(filename);
+
+			entrySetting.settingEl.addClass('wn-lore-template-history-item');
+
+			if (isAvailable) {
+				entrySetting.setDesc(path);
+			} else {
+				entrySetting.settingEl.addClass('is-unavailable');
+				entrySetting.setDesc(`${path} (${t('modal.lore-template-unavailable')})`);
+			}
+
+			entrySetting.addButton(btn => {
+				btn.setButtonText(t('modal.lore-template-use'))
+					.setDisabled(!isAvailable || this.isHistoryActionDisabled())
+					.onClick(() => {
+						if (abstractFile instanceof TFile) {
+							void this.onSelectTemplate(abstractFile);
+						}
+					});
+				this.historyButtons.push({ button: btn, action: 'use', isAvailable });
+			});
+
+			entrySetting.addButton(btn => {
+				btn.setButtonText(t('modal.lore-template-remove-record'))
+					.setDisabled(this.isHistoryActionDisabled())
+					.onClick(() => {
+						void this.onRemoveHistoryEntry(path);
+					});
+				this.historyButtons.push({ button: btn, action: 'remove' });
+			});
+		}
+	}
+
+	private async commitHistoryUpdate(
+		updateFn: (currentHistory: string[]) => string[]
+	): Promise<void> {
+		if (this.isModalClosed || this.isUpdatingHistory) {
+			return;
+		}
+
+		this.isUpdatingHistory = true;
+		this.updateAllButtonsState();
+
+		const prevHistory = this.plugin.settings?.loreTemplateHistory ?? [];
+		const nextHistory = updateFn(prevHistory);
+
+		this.plugin.settings.loreTemplateHistory = nextHistory;
+
+		if (!this.isModalClosed) {
+			this.renderTemplateHistory();
+		}
+
+		try {
+			await this.plugin.saveSettings();
+		} catch (error) {
+			Logger.error('[AddLoreModal] 保存设定模板历史记录失败:', error);
+			new Notice(t('notice.lore-template-history-save-failed'));
+
+			// Restore previous history on failure only if it is still the exact operation's array reference
+			if (this.plugin.settings.loreTemplateHistory === nextHistory) {
+				this.plugin.settings.loreTemplateHistory = prevHistory;
+				if (!this.isModalClosed) {
+					this.renderTemplateHistory();
+				}
+			}
+		} finally {
+			this.isUpdatingHistory = false;
+			if (!this.isModalClosed) {
+				this.updateAllButtonsState();
+			}
+		}
+	}
+
+	private async onRemoveHistoryEntry(path: string): Promise<void> {
+		if (this.isHistoryActionDisabled()) {
+			return;
+		}
+		await this.commitHistoryUpdate(h => removeLoreTemplatePath(h, path));
+	}
+
+	private async onSelectTemplate(file: TFile): Promise<void> {
+		if (this.isModalClosed || this.isSaving || this.isUpdatingHistory) {
+			return;
+		}
+
+		const currentToken = ++this.templateReadToken;
+		this.isReadingTemplate = true;
+		this.updateAllButtonsState();
+
+		try {
+			const content = await this.app.vault.cachedRead(file);
+			if (this.isModalClosed || currentToken !== this.templateReadToken) {
+				return;
+			}
+
+			// 解析并准备数据，确保解析失败时不覆盖现有已选模板
+			const parsed = parseLoreTemplate(content);
+
+			let draftValues: Record<string, string> = {};
+			const cachedDraft = this.templateDraftCache.get(file.path);
+			if (cachedDraft && cachedDraft.content === content) {
+				draftValues = { ...cachedDraft.values };
+			} else {
+				for (const field of parsed.fields) {
+					draftValues[field.id] = field.defaultValue;
+				}
+			}
+
+			for (const field of parsed.fields) {
+				if (draftValues[field.id] === undefined) {
+					draftValues[field.id] = field.defaultValue;
+				}
+			}
+
+			this.templateDraftCache.set(file.path, { content, values: draftValues });
+			this.selectedTemplateFile = file;
+			this.parsedTemplate = parsed;
+
+			this.updateTemplateSettingUI();
+			this.renderTemplateFields();
+			this.updateDescriptionPosition();
+
+			// Committed template read succeeded. Reset isReadingTemplate before awaiting history persistence.
+			this.isReadingTemplate = false;
+
+			// Integrate history update after successful committed template read
+			await this.commitHistoryUpdate(h => rememberLoreTemplatePath(h, file.path));
+		} catch {
+			if (this.isModalClosed || currentToken !== this.templateReadToken) {
+				return;
+			}
+			new Notice(t('notice.lore-template-read-failed'));
+		} finally {
+			if (!this.isModalClosed && currentToken === this.templateReadToken) {
+				this.isReadingTemplate = false;
+				this.updateAllButtonsState();
+			}
+		}
+	}
+
+	private clearTemplate(): void {
+		this.templateReadToken++;
+		this.isReadingTemplate = false;
+		this.selectedTemplateFile = null;
+		this.parsedTemplate = null;
+		this.updateAllButtonsState();
+		this.updateTemplateSettingUI();
+		if (this.templateContainerEl) {
+			this.templateContainerEl.empty();
+		}
+		this.updateDescriptionPosition();
+	}
+
+	private updateDescriptionPosition(): void {
+		const anchor = this.selectedTemplateFile ? this.saveSetting : this.templateSetting;
+		if (this.descriptionSetting && anchor) {
+			this.contentEl.insertBefore(this.descriptionSetting.settingEl, anchor.settingEl);
+		}
+	}
+
+	private renderTemplateFields(): void {
+		if (!this.templateContainerEl || !this.parsedTemplate || !this.selectedTemplateFile) {
+			return;
+		}
+
+		this.templateContainerEl.empty();
+		const cached = this.templateDraftCache.get(this.selectedTemplateFile.path);
+		const draftValues = cached ? cached.values : {};
+		let lastSectionHeading: string | undefined = undefined;
+
+		for (const field of this.parsedTemplate.fields) {
+			if (field.sectionHeading && field.sectionHeading !== lastSectionHeading && field.type !== 'heading_section') {
+				lastSectionHeading = field.sectionHeading;
+				this.templateContainerEl.createDiv({
+					cls: 'wn-lore-template-section-title',
+					text: field.sectionHeading,
+				});
+			}
+
+			const setting = new Setting(this.templateContainerEl)
+				.setName(field.label);
+
+			const currentVal = draftValues[field.id] !== undefined ? draftValues[field.id] : field.defaultValue;
+
+			// 所有动态控件均使用多行文本域以支持多行输入
+			setting.addTextArea(text => {
+				text.inputEl.rows = field.isMultiline ? 3 : 1;
+				text.setValue(currentVal).onChange(value => {
+					draftValues[field.id] = value;
+				});
+			});
+		}
+	}
+
 	async onOpen() {
+		this.isModalClosed = false;
 		const { contentEl } = this;
 		contentEl.empty();
 		contentEl.addClass('wn-add-lore-modal');
@@ -86,6 +397,7 @@ export class AddLoreModal extends Modal {
 
 		// 获取可用分类列表（包含本地分类与同系列公共分类）
 		this.availableCategories = await this.plugin.characterManager.getAvailableLoreCategories(this.bookPath);
+		if (this.isModalClosed) return;
 
 		if (this.availableCategories.length > 0) {
 			// 优先选中第一个本地分类；若无可降级为第一个可用分类
@@ -150,6 +462,8 @@ export class AddLoreModal extends Modal {
 			.map(c => c.file)
 			.filter((f): f is TFile => f instanceof TFile);
 		const existingTypes = await this.collectExistingTypes(existingFiles);
+		if (this.isModalClosed) return;
+
 		this.loreType = '';
 		let isCreatingNewType = false;
 
@@ -207,7 +521,7 @@ export class AddLoreModal extends Modal {
 				}));
 
 		// 设定描述
-		new Setting(contentEl)
+		this.descriptionSetting = new Setting(contentEl)
 			.setName(t('modal.lore-description'))
 			.addTextArea(text => {
 				text.inputEl.rows = 3;
@@ -216,6 +530,38 @@ export class AddLoreModal extends Modal {
 						this.loreDescription = value;
 					});
 			});
+
+		// 设定模板选择与动态表单
+		this.templateSetting = new Setting(contentEl)
+			.setName(t('modal.lore-template'));
+
+		this.templateSetting.addButton(btn => {
+			this.selectTemplateBtn = btn;
+			btn.setButtonText(this.selectedTemplateFile ? t('modal.lore-template-change') : t('modal.lore-template-select'))
+				.onClick(() => {
+					new FileSuggestModal(this.app, (file: TFile) => {
+						void this.onSelectTemplate(file);
+					}).open();
+				});
+		});
+
+		this.templateSetting.addButton(btn => {
+			this.clearTemplateBtn = btn;
+			btn.setButtonText(t('modal.lore-template-clear'))
+				.onClick(() => {
+					this.clearTemplate();
+				});
+			if (!this.selectedTemplateFile) {
+				btn.buttonEl.hide();
+			}
+		});
+
+		this.updateTemplateSettingUI();
+
+		this.templateHistoryContainerEl = contentEl.createDiv({ cls: 'wn-lore-template-history-container' });
+		this.renderTemplateHistory();
+
+		this.templateContainerEl = contentEl.createDiv({ cls: 'wn-lore-template-container' });
 
 		// 收集当前书籍所有的设定名称，用于目标设定的下拉自动补全
 		const existingLoreEntries = this.plugin.characterManager.getLoreEntriesInFileOrder(this.bookPath);
@@ -357,27 +703,72 @@ export class AddLoreModal extends Modal {
 		renderRelationsList();
 
 		// 保存按钮
-		new Setting(contentEl)
-			.addButton(btn => btn
-				.setButtonText(t('common.save'))
-				.setCta()
-				.onClick(async () => {
-					if (!this.loreName.trim() || !this.loreCategory.trim()) {
-						return;
-					}
-					const success = await this.saveLore();
-					if (success) {
-						this.close();
-					}
-				}));
+		this.saveSetting = new Setting(contentEl)
+			.addButton(btn => {
+				this.saveButton = btn;
+				btn.setButtonText(t('common.save'))
+					.setCta()
+					.onClick(async () => {
+						if (this.isSaving || this.isReadingTemplate) {
+							return;
+						}
+						if (!this.loreName.trim() || !this.loreCategory.trim()) {
+							return;
+						}
+						this.isSaving = true;
+						this.updateSaveButtonState();
+						this.updateTemplateActionButtonsState();
+						try {
+							const success = await this.saveLore();
+							if (success && !this.isModalClosed) {
+								this.close();
+							} else if (!success && !this.isModalClosed) {
+								new Notice(t('notice.lore-save-failed'));
+							}
+						} catch {
+							if (!this.isModalClosed) {
+								new Notice(t('notice.lore-save-failed'));
+							}
+						} finally {
+							this.isSaving = false;
+							if (!this.isModalClosed) {
+								this.updateSaveButtonState();
+								this.updateTemplateActionButtonsState();
+							}
+						}
+					});
+				this.updateSaveButtonState();
+			});
 	}
 
 	onClose() {
+		this.isModalClosed = true;
+		this.templateReadToken++;
+		this.isReadingTemplate = false;
+		this.isSaving = false;
+
+		this.templateSetting = null;
+		this.selectTemplateBtn = null;
+		this.clearTemplateBtn = null;
+		this.templateHistoryContainerEl = null;
+		this.historyButtons = [];
+		this.templateContainerEl = null;
+		this.descriptionSetting = null;
+		this.saveSetting = null;
+		this.saveButton = null;
+
 		const { contentEl } = this;
 		contentEl.empty();
 	}
 
 	async saveLore(): Promise<boolean> {
+		let templateBody: string | undefined = undefined;
+		if (this.parsedTemplate && this.selectedTemplateFile) {
+			const cached = this.templateDraftCache.get(this.selectedTemplateFile.path);
+			const draftValues = cached ? cached.values : {};
+			templateBody = this.parsedTemplate.render(draftValues);
+		}
+
 		return this.plugin.characterManager.createLoreEntry(
 			this.bookPath,
 			this.loreCategory,
@@ -386,7 +777,8 @@ export class AddLoreModal extends Modal {
 			this.loreType,
 			this.loreDescription,
 			this.loreRelations,
-			this.selectedTargetFile?.path
+			this.selectedTargetFile?.path,
+			templateBody
 		);
 	}
 }

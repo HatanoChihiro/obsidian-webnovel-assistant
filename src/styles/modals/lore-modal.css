@@ -116,3 +116,63 @@
 	width: 14px;
 	height: 14px;
 }
+
+
+/* ========== Add Lore Modal: Markdown Lore Template ========== */
+.wn-add-lore-modal .wn-lore-template-container {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin-top: 4px;
+	margin-bottom: 12px;
+}
+
+.wn-add-lore-modal .wn-lore-template-section-title {
+	font-size: var(--font-ui-medium);
+	font-weight: var(--font-bold);
+	color: var(--text-normal);
+	margin-top: 10px;
+	margin-bottom: 2px;
+	padding-bottom: 4px;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.wn-add-lore-modal .wn-lore-template-container textarea {
+	font-family: var(--font-text);
+	width: 100%;
+	box-sizing: border-box;
+	resize: vertical;
+}
+
+/* ========== Add Lore Modal: Lore Template History ========== */
+.wn-add-lore-modal .wn-lore-template-history-container {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	margin-top: 2px;
+	margin-bottom: 8px;
+}
+
+.wn-add-lore-modal .wn-lore-template-history-item {
+	padding: 6px 10px;
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+}
+
+.wn-add-lore-modal .wn-lore-template-history-item .setting-item-name {
+	font-size: var(--font-ui-small);
+	font-weight: var(--font-medium);
+	color: var(--text-normal);
+}
+
+.wn-add-lore-modal .wn-lore-template-history-item .setting-item-description {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	word-break: break-all;
+}
+
+.wn-add-lore-modal .wn-lore-template-history-item.is-unavailable .setting-item-name,
+.wn-add-lore-modal .wn-lore-template-history-item.is-unavailable .setting-item-description {
+	color: var(--text-faint);
+}

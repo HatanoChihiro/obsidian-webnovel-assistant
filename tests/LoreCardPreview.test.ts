@@ -46,6 +46,7 @@ vi.mock('obsidian', () => ({
 		onunload(): void {}
 	},
 	setIcon: vi.fn(),
+	setTooltip: vi.fn(),
 	Notice: vi.fn()
 }));
 
@@ -69,9 +70,11 @@ interface Harness {
 	target: MockElement;
 	body: MockElement;
 	document: ReturnType<typeof createMockDom>['document'];
+	window: ReturnType<typeof setupMockOwnerWindow>;
 }
 
 function setupMockOwnerWindow(dom: ReturnType<typeof createMockDom>) {
+	const listeners = new Map<string, Set<(event: unknown) => void>>();
 	const ownerWindow = {
 		setTimeout: (handler: () => void, timeout?: number) => globalThis.setTimeout(handler, timeout) as unknown as number,
 		clearTimeout: (id: number) => globalThis.clearTimeout(id),
@@ -82,8 +85,19 @@ function setupMockOwnerWindow(dom: ReturnType<typeof createMockDom>) {
 		cancelAnimationFrame: vi.fn(),
 		innerWidth: 1200,
 		innerHeight: 800,
-		addEventListener: vi.fn(),
-		removeEventListener: vi.fn()
+		addEventListener: (type: string, listener: (event: unknown) => void) => {
+			const set = listeners.get(type) ?? new Set<(event: unknown) => void>();
+			set.add(listener);
+			listeners.set(type, set);
+		},
+		removeEventListener: (type: string, listener: (event: unknown) => void) => {
+			listeners.get(type)?.delete(listener);
+		},
+		dispatchEvent: (type: string, event?: unknown) => {
+			for (const listener of Array.from(listeners.get(type) ?? [])) {
+				listener(event ?? { type });
+			}
+		}
 	};
 	(dom.document as unknown as { defaultView: unknown }).defaultView = ownerWindow;
 	return ownerWindow;
@@ -98,7 +112,7 @@ function createHarness(options: {
 	maxCount?: number;
 } = {}): Harness {
 	const dom = createMockDom();
-	setupMockOwnerWindow(dom);
+	const ownerWindow = setupMockOwnerWindow(dom);
 
 	isMobileMock.mockReturnValue(Boolean(options.mobile));
 
@@ -129,7 +143,7 @@ function createHarness(options: {
 		heading: '女主角'
 	} as never, plugin as never);
 
-	return { preview, target, body: dom.body, document: dom.document };
+	return { preview, target, body: dom.body, document: dom.document, window: ownerWindow };
 }
 
 function flushRaf(): void {
@@ -886,6 +900,47 @@ describe('LoreCardPreview', () => {
 			});
 		}
 
+		/** 在标题栏上模拟一次点击（未超过拖拽阈值） */
+		function clickHeader(harness: Harness, panel: MockElement, clientX = 100, clientY = 100): void {
+			const header = panel.querySelector('.wn-lore-preview-header');
+			expect(header).not.toBeNull();
+			const preventDefault = vi.fn();
+			(header as MockElement).dispatchEvent('pointerdown', {
+				type: 'pointerdown', button: 0, pointerId: 1,
+				clientX, clientY, target: header, preventDefault
+			});
+			harness.document.dispatchEvent('pointerup', {
+				type: 'pointerup', pointerId: 1,
+				clientX, clientY, target: header, preventDefault
+			});
+		}
+
+		/** 模拟指针被意外取消（如手势识别或窗口失焦触发 pointercancel） */
+		function cancelPointer(harness: Harness, panel: MockElement, clientX = 100, clientY = 100): void {
+			const header = panel.querySelector('.wn-lore-preview-header');
+			expect(header).not.toBeNull();
+			const preventDefault = vi.fn();
+			(header as MockElement).dispatchEvent('pointerdown', {
+				type: 'pointerdown', button: 0, pointerId: 1,
+				clientX, clientY, target: header, preventDefault
+			});
+			harness.document.dispatchEvent('pointercancel', {
+				type: 'pointercancel', pointerId: 1,
+				clientX, clientY, target: header, preventDefault
+			});
+		}
+
+		/** 让 mock 面板的 getBoundingClientRect 真实反映其 CSS 样式中的尺寸与位置，便于验证实际边界 */
+		function bindDynamicPanelRect(panel: MockElement): void {
+			panel.getBoundingClientRect = () => {
+				const left = Number.parseFloat(panel.style.left) || 0;
+				const top = Number.parseFloat(panel.style.top) || 0;
+				const width = Number.parseFloat(panel.style.width) || 200;
+				const height = Number.parseFloat(panel.style.maxHeight) || 200;
+				return { left, top, width, height, right: left + width, bottom: top + height };
+			};
+		}
+
 		it('置顶后鼠标移开与点击面板外都不关闭，Esc 才关闭', async () => {
 			const harness = createHarness();
 			const panel = await openPanel(harness);
@@ -986,7 +1041,7 @@ describe('LoreCardPreview', () => {
 			expect(panel.hasClass('is-pinned')).toBe(true);
 		});
 
-		it('连续两次按下标题栏（浏览器 dblclick 被吞掉时）也能复位', async () => {
+		it('连续两次真实点击标题栏（浏览器 dblclick 被吞掉时）复位并保持置顶', async () => {
 			const harness = createHarness();
 			const panel = await openPanel(harness);
 			const defaultLeft = panel.style.left;
@@ -995,9 +1050,178 @@ describe('LoreCardPreview', () => {
 			dragPanel(harness, panel, 120, 80);
 			expect(panel.style.left).not.toBe(defaultLeft);
 
-			// 第二次按下未发生位移：由标题栏内部的双击判定复位
-			dragPanel(harness, panel, 0, 0);
+			// 第一次点击：未拖拽，记录为候选点击，不应立即复位
+			clickHeader(harness, panel, 100, 100);
+			expect(panel.style.left).not.toBe(defaultLeft);
+
+			// 第二次点击（双击判定窗口内且未位移）：由标题栏内部的双击降级判定复位并保持置顶
+			clickHeader(harness, panel, 100, 100);
 			expect(panel.style.left).toBe(defaultLeft);
+			expect(panel.hasClass('is-pinned')).toBe(true);
+		});
+
+		it('拖拽完成后立即在原起点点击不应误判为双击复位', async () => {
+			const harness = createHarness();
+			const panel = await openPanel(harness);
+			const defaultLeft = panel.style.left;
+
+			clickPin(harness, panel);
+			dragPanel(harness, panel, 120, 80);
+			const draggedLeft = panel.style.left;
+			expect(draggedLeft).not.toBe(defaultLeft);
+
+			// 拖拽完成后在起始坐标按下并释放，不应将已完成的拖拽计入双击
+			clickHeader(harness, panel, 100, 100);
+			expect(panel.style.left).toBe(draggedLeft);
+		});
+
+		it('指针取消（pointercancel）应清除双击候选状态', async () => {
+			const harness = createHarness();
+			const panel = await openPanel(harness);
+			const defaultLeft = panel.style.left;
+
+			clickPin(harness, panel);
+			dragPanel(harness, panel, 120, 80);
+			const draggedLeft = panel.style.left;
+
+			// 产生一次被取消的指针事件
+			cancelPointer(harness, panel, 100, 100);
+			// 随后单独一次点击不应与被取消的指针合成双击
+			clickHeader(harness, panel, 100, 100);
+			expect(panel.style.left).toBe(draggedLeft);
+		});
+
+		it('关闭并重新打开面板应清除双击候选状态', async () => {
+			const harness = createHarness();
+			const panel = await openPanel(harness);
+
+			// 在第一次打开时点击一次标题栏
+			clickHeader(harness, panel, 100, 100);
+			harness.preview.close();
+
+			// 重新打开并拖拽
+			const reopened = await openPanel(harness);
+			const defaultLeft = reopened.style.left;
+			dragPanel(harness, reopened, 120, 80);
+			const draggedLeft = reopened.style.left;
+			expect(draggedLeft).not.toBe(defaultLeft);
+
+			// 重新打开后的单次点击不应与关闭前的点击合成双击
+			clickHeader(harness, reopened, 100, 100);
+			expect(reopened.style.left).toBe(draggedLeft);
+		});
+
+		it('置顶按钮仅保留 aria-label，不设置 HTML title 属性', async () => {
+			const harness = createHarness();
+			const panel = await openPanel(harness);
+			const pin = panel.querySelector('.wn-lore-preview-pin') as MockElement;
+			expect(pin).not.toBeNull();
+
+			// 默认未置顶
+			expect(pin.title).toBe('');
+			expect(pin.getAttribute('title')).toBeUndefined();
+			expect(pin.getAttribute('aria-label')).toBe('corkboard.lore-preview-pin');
+			expect(pin.getAttribute('aria-pressed')).toBe('false');
+
+			// 切换为置顶
+			clickPin(harness, panel);
+			expect(pin.title).toBe('');
+			expect(pin.getAttribute('title')).toBeUndefined();
+			expect(pin.getAttribute('aria-label')).toBe('corkboard.lore-preview-unpin');
+			expect(pin.getAttribute('aria-pressed')).toBe('true');
+
+			// 键盘交互（Space / Enter）切换
+			pin.dispatchEvent('keydown', { key: ' ', preventDefault: vi.fn() });
+			expect(panel.hasClass('is-pinned')).toBe(false);
+			expect(pin.getAttribute('aria-label')).toBe('corkboard.lore-preview-pin');
+			expect(pin.getAttribute('aria-pressed')).toBe('false');
+			expect(pin.title).toBe('');
+		});
+
+		it('拖拽置顶长面板后视口收缩应重算宽高上限并约束在视口内，视口重新变大不丢失手动摆放位置', async () => {
+			const harness = createHarness();
+			const panel = await openPanel(harness);
+			bindDynamicPanelRect(panel);
+			clickPin(harness, panel);
+
+			// 初始视口 1200x800 下，面板最大高度为 624px (800 * 0.78)
+			expect(panel.style.maxHeight).toBe('624px');
+			expect(panel.style.width).toBe('680px');
+
+			// 手动拖拽面板至 (66, 50)
+			dragPanel(harness, panel, 50, -260);
+			const manuallyPlacedLeft = Number.parseFloat(panel.style.left);
+			const manuallyPlacedTop = Number.parseFloat(panel.style.top);
+			expect(manuallyPlacedLeft).toBe(66);
+			expect(manuallyPlacedTop).toBe(50);
+
+			// 视口急剧收缩为 800x300
+			harness.window.innerWidth = 800;
+			harness.window.innerHeight = 300;
+			harness.window.dispatchEvent('resize');
+			flushRaf();
+
+			// 300 视口下 maxHeight 应重算为 234px (300 * 0.78 = 234)，width 上限为 680px (800 - 32 >= 680)
+			expect(panel.style.maxHeight).toBe('234px');
+			expect(panel.style.width).toBe('680px');
+
+			// 面板必须完全约束在视口内：bottom <= 300, right <= 800
+			const rect = panel.getBoundingClientRect();
+			expect(rect.top).toBeGreaterThanOrEqual(8);
+			expect(rect.bottom).toBeLessThanOrEqual(300);
+			expect(rect.left).toBeGreaterThanOrEqual(8);
+			expect(rect.right).toBeLessThanOrEqual(800);
+
+			// 视口重新变大回 1200x800
+			harness.window.innerWidth = 1200;
+			harness.window.innerHeight = 800;
+			harness.window.dispatchEvent('resize');
+			flushRaf();
+
+			// 宽高上限重新变大，且未重置回卡片锚点，保留了手动摆放的坐标
+			expect(panel.style.maxHeight).toBe('624px');
+			expect(panel.style.width).toBe('680px');
+			expect(Number.parseFloat(panel.style.left)).toBe(manuallyPlacedLeft);
+			expect(Number.parseFloat(panel.style.top)).toBe(manuallyPlacedTop);
+		});
+
+		it('常驻模式下已拖拽的未置顶面板在视口收缩时也应重算尺寸并约束在视口内', async () => {
+			const harness = createHarness({ persistent: true });
+			const panel = await openPanel(harness);
+			bindDynamicPanelRect(panel);
+
+			// 初始视口 1200x800
+			expect(panel.style.maxHeight).toBe('624px');
+
+			// 拖拽面板使其 detached
+			dragPanel(harness, panel, 100, 50);
+
+			// 视口收缩为 500x300
+			harness.window.innerWidth = 500;
+			harness.window.innerHeight = 300;
+			harness.window.dispatchEvent('resize');
+			flushRaf();
+
+			expect(panel.style.maxHeight).toBe('234px');
+			expect(panel.style.width).toBe('468px');
+			const rect = panel.getBoundingClientRect();
+			expect(rect.bottom).toBeLessThanOrEqual(300);
+			expect(rect.right).toBeLessThanOrEqual(500);
+		});
+
+		it('未拖拽的常驻面板在视口变化时跟随锚点卡片正常重新定位', async () => {
+			const harness = createHarness({ persistent: true });
+			const panel = await openPanel(harness);
+
+			// 改变视口尺寸
+			harness.window.innerWidth = 800;
+			harness.window.innerHeight = 600;
+			harness.window.dispatchEvent('resize');
+			flushRaf();
+
+			// 重新定位并更新尺寸
+			expect(panel.style.maxHeight).toBe('468px'); // 600 * 0.78 = 468
+			expect(panel.style.top).toBe('310px'); // 正常跟随卡片下方
 		});
 
 		it('常驻数量上限淘汰时跳过置顶面板', async () => {

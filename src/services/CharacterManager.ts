@@ -4,6 +4,7 @@ import type { WebNovelAssistantPlugin, SeriesLoreRenameResult } from '../types/p
 import { getDefaultFileName, getDefaultFileNameCandidates, getLoreLabel } from '../i18n/data-keys';
 import { findBookRoot, getCandidateNames, isCandidateSubpath } from '../utils/path';
 import { t } from '../i18n';
+import { trimBlankLines } from './LoreTemplateService';
 
 export interface LoreEntry {
 	file: TFile;
@@ -1893,7 +1894,8 @@ export class CharacterManager {
 		loreType: string,
 		loreDescription: string,
 		loreRelations: Array<{ label: string; target: string }>,
-		targetFilePath?: string
+		targetFilePath?: string,
+		templateContent?: string
 	): Promise<boolean> {
 		let filePath: string;
 		let targetFile: TFile | null = null;
@@ -1958,6 +1960,14 @@ export class CharacterManager {
 		}
 		if (loreDescription.trim()) {
 			contentToAppend += `${loreDescription.trim()}\n`;
+		}
+
+		if (templateContent && templateContent.trim()) {
+			const trimmedTemplate = trimBlankLines(templateContent);
+			if (!contentToAppend.endsWith('\n\n')) {
+				contentToAppend += '\n';
+			}
+			contentToAppend += `${trimmedTemplate}\n`;
 		}
 
 		const validRelations = loreRelations.filter(r => r.label.trim() && r.target.trim());
