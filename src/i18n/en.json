@@ -974,6 +974,8 @@
 	"corkboard.lore-expand-preview": "Expand large preview",
 	"corkboard.lore-preview-title": "Lore preview",
 	"corkboard.lore-preview-close": "Close preview",
+	"corkboard.lore-preview-pin": "Pin preview",
+	"corkboard.lore-preview-unpin": "Unpin preview",
 	"corkboard.no-timeline": "No timeline events yet...",
 	"corkboard.no-foreshadowing": "No foreshadowing entries found for current work...",
 	"corkboard.no-book-open": "Please open a document belonging to a novel first",

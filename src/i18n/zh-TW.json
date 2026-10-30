@@ -977,6 +977,8 @@
 	"corkboard.lore-expand-preview": "展開大預覽",
 	"corkboard.lore-preview-title": "設定預覽",
 	"corkboard.lore-preview-close": "關閉預覽",
+	"corkboard.lore-preview-pin": "置頂預覽",
+	"corkboard.lore-preview-unpin": "取消置頂",
 	"corkboard.no-timeline": "當前還沒有時間線事件...",
 	"corkboard.no-foreshadowing": "當前作品暫無伏筆記錄...",
 	"corkboard.no-book-open": "請先開啟屬於一部小說的文件",

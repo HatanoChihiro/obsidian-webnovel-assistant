@@ -46,6 +46,47 @@
 	background-color: var(--background-secondary);
 	border-bottom: 1px solid var(--background-modifier-border);
 	box-shadow: inset 3px 0 0 var(--interactive-accent);
+	/* 标题栏同时是拖拽把手：抓取光标、禁止选中文字，触摸设备上阻止滚动接管 */
+	cursor: grab;
+	user-select: none;
+	touch-action: none;
+}
+
+.wn-lore-preview-panel.is-dragging .wn-lore-preview-header {
+	cursor: grabbing;
+}
+
+.wn-lore-preview-panel.is-dragging {
+	box-shadow: 0 18px 48px rgba(0, 0, 0, 0.3);
+}
+
+/* 拖拽期间禁用文本选中，避免拖动时把正文一起选中 */
+body.wn-lore-preview-dragging {
+	user-select: none;
+}
+
+/* 置顶：按钮点亮、面板描边强调；层级由脚本内联到 z-index */
+.wn-lore-preview-pin {
+	flex: 0 0 auto;
+	color: var(--text-muted);
+}
+
+.wn-lore-preview-pin:hover,
+.wn-lore-preview-pin:focus-visible {
+	color: var(--text-normal);
+}
+
+.wn-lore-preview-pin.is-active {
+	color: var(--interactive-accent);
+}
+
+.wn-lore-preview-panel.is-pinned {
+	border-color: var(--interactive-accent);
+	box-shadow: 0 16px 44px rgba(0, 0, 0, 0.28);
+}
+
+.wn-lore-preview-panel.is-pinned .wn-lore-preview-header {
+	box-shadow: inset 3px 0 0 var(--interactive-accent), inset 0 -1px 0 var(--interactive-accent);
 }
 
 /* 常驻模式下锚点卡片完全滚出视口时隐藏面板（保持布局，便于回来时立即恢复定位） */

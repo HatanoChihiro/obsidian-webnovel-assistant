@@ -121,67 +121,13 @@ export class LoreBoardRenderer {
 
         const renderedHeadings = new Set<string>();
         const fileGroups = new Map<string, { groupKey: string, displayName: string, entries: LoreEntry[], isBorrowed: boolean }>();
-        const loreFolder = plugin.characterManager.findLoreFolder(currentBookPath);
-        const loreFolderPath = loreFolder ? loreFolder.path : '';
-        const normCurrentBook = (!currentBookPath || currentBookPath === '/') ? '' : currentBookPath.replace(/^\/+|\/+$/g, '');
+        const groupContext = this.createLoreGroupContext(plugin, currentBookPath);
 
         for (const entry of sortedEntries) {
             if (renderedHeadings.has(entry.heading)) continue;
             renderedHeadings.add(entry.heading);
 
-            const fileCache = app.metadataCache.getFileCache(entry.file);
-            const hasH2 = fileCache?.headings?.some(h => h.level === 2) ?? false;
-
-            const entryBookPath = plugin.characterManager.getBookPathForFile(entry.file);
-            const normEntryBook = (!entryBookPath || entryBookPath === '/') ? '' : entryBookPath.replace(/^\/+|\/+$/g, '');
-            const isBorrowed = Boolean(normEntryBook && normEntryBook !== normCurrentBook);
-
-            let groupKey = entry.file.path;
-            let displayName = entry.file.basename;
-
-            if (isBorrowed) {
-                const entryBookName = normEntryBook ? (normEntryBook.split('/').pop() || normEntryBook) : '';
-                const siblingLoreFolder = plugin.characterManager.findLoreFolder(entryBookPath || '');
-                const siblingLorePath = siblingLoreFolder ? siblingLoreFolder.path : '';
-
-                if (hasH2) {
-                    let rel = entry.file.basename;
-                    if (siblingLorePath && entry.file.path.startsWith(`${siblingLorePath}/`)) {
-                        rel = entry.file.path.slice(siblingLorePath.length + 1).replace(/\.md$/i, '');
-                    }
-                    displayName = `${rel} (${entryBookName})`;
-                } else {
-                    const parentFolder = entry.file.parent;
-                    groupKey = parentFolder ? parentFolder.path : entry.file.path;
-                    let rel = parentFolder?.name || entry.file.basename;
-                    if (parentFolder && siblingLorePath && parentFolder.path.startsWith(`${siblingLorePath}/`)) {
-                        rel = parentFolder.path.slice(siblingLorePath.length + 1) || parentFolder.name;
-                    }
-                    displayName = `${rel} (${entryBookName})`;
-                }
-            } else {
-                if (hasH2) {
-                    // 大纲多词条文件模式：以文件相对路径作为分类
-                    if (loreFolderPath && entry.file.path.startsWith(`${loreFolderPath}/`)) {
-                        const rel = entry.file.path.slice(loreFolderPath.length + 1).replace(/\.md$/i, '');
-                        if (rel) displayName = rel;
-                    }
-                } else {
-                    // 单文件独立词条模式：以该文件所在的文件夹作为分类
-                    const parentFolder = entry.file.parent;
-                    if (parentFolder) {
-                        groupKey = parentFolder.path;
-                        if (loreFolderPath && parentFolder.path.startsWith(`${loreFolderPath}/`)) {
-                            const rel = parentFolder.path.slice(loreFolderPath.length + 1);
-                            displayName = rel || loreFolder?.name || parentFolder.name;
-                        } else {
-                            displayName = parentFolder.isRoot() ? (loreFolder?.name || parentFolder.name) : parentFolder.name;
-                        }
-                    } else {
-                        displayName = loreFolder ? loreFolder.name : entry.file.basename;
-                    }
-                }
-            }
+            const { groupKey, displayName, isBorrowed } = this.describeLoreGroup(app, plugin, entry, groupContext);
 
             if (!fileGroups.has(groupKey)) {
                 fileGroups.set(groupKey, { groupKey, displayName, entries: [], isBorrowed });
@@ -190,17 +136,7 @@ export class LoreBoardRenderer {
         }
 
         // 设定文件 tab 排序：拉丁字母开头的文件优先于汉字开头，组内按当前语言字母序（中文按拼音）与数字自然升序排列
-        const locale = getLocale().startsWith('zh') ? 'zh' : 'en';
-        const collator = new Intl.Collator(locale, { numeric: true, sensitivity: 'base' });
-        const isLatinStart = (name: string): boolean => /^[A-Za-z]/.test(name);
-        const groups = Array.from(fileGroups.entries()).sort((a, b) => {
-            const nameA = a[1].displayName;
-            const nameB = b[1].displayName;
-            const latinA = isLatinStart(nameA) ? 1 : 0;
-            const latinB = isLatinStart(nameB) ? 1 : 0;
-            if (latinA !== latinB) return latinB - latinA;
-            return collator.compare(nameA, nameB);
-        });
+        const groups = this.sortLoreFileGroups(Array.from(fileGroups.entries()));
 
         const boardLayout = container.createDiv('wn-lore-board-layout');
 
@@ -366,6 +302,105 @@ export class LoreBoardRenderer {
         applyView();
     }
 
+    /**
+     * 计算「设定文件分组」所需的公共上下文（设定目录、当前书目归一化路径）。
+     * 卡片模式与表格模式共用，避免两处各写一套相对路径换算。
+     */
+    private static createLoreGroupContext(
+        plugin: LoreBoardCardsPlugin,
+        currentBookPath: string
+    ): { normCurrentBook: string; loreFolderName: string; loreFolderPath: string } {
+        const loreFolder = plugin.characterManager.findLoreFolder(currentBookPath);
+        return {
+            normCurrentBook: (!currentBookPath || currentBookPath === '/') ? '' : currentBookPath.replace(/^\/+|\/+$/g, ''),
+            loreFolderName: loreFolder ? loreFolder.name : '',
+            loreFolderPath: loreFolder ? loreFolder.path : ''
+        };
+    }
+
+    /**
+     * 求单条设定词条所属的文件分组：分组键 + 展示名 + 是否借自其它书。
+     * 展示名规则：大纲多词条文件用文件相对路径；单文件独立词条用所在文件夹。
+     */
+    private static describeLoreGroup(
+        app: App,
+        plugin: LoreBoardCardsPlugin,
+        entry: LoreEntry,
+        context: { normCurrentBook: string; loreFolderName: string; loreFolderPath: string }
+    ): { groupKey: string; displayName: string; isBorrowed: boolean } {
+        const { normCurrentBook, loreFolderName, loreFolderPath } = context;
+        const fileCache = app.metadataCache.getFileCache(entry.file);
+        const hasH2 = fileCache?.headings?.some(h => h.level === 2) ?? false;
+
+        const entryBookPath = plugin.characterManager.getBookPathForFile(entry.file);
+        const normEntryBook = (!entryBookPath || entryBookPath === '/') ? '' : entryBookPath.replace(/^\/+|\/+$/g, '');
+        const isBorrowed = Boolean(normEntryBook && normEntryBook !== normCurrentBook);
+
+        let groupKey = entry.file.path;
+        let displayName = entry.file.basename;
+
+        if (isBorrowed) {
+            const entryBookName = normEntryBook ? (normEntryBook.split('/').pop() || normEntryBook) : '';
+            const siblingLoreFolder = plugin.characterManager.findLoreFolder(entryBookPath || '');
+            const siblingLorePath = siblingLoreFolder ? siblingLoreFolder.path : '';
+
+            if (hasH2) {
+                let rel = entry.file.basename;
+                if (siblingLorePath && entry.file.path.startsWith(`${siblingLorePath}/`)) {
+                    rel = entry.file.path.slice(siblingLorePath.length + 1).replace(/\.md$/i, '');
+                }
+                displayName = `${rel} (${entryBookName})`;
+            } else {
+                const parentFolder = entry.file.parent;
+                groupKey = parentFolder ? parentFolder.path : entry.file.path;
+                let rel = parentFolder?.name || entry.file.basename;
+                if (parentFolder && siblingLorePath && parentFolder.path.startsWith(`${siblingLorePath}/`)) {
+                    rel = parentFolder.path.slice(siblingLorePath.length + 1) || parentFolder.name;
+                }
+                displayName = `${rel} (${entryBookName})`;
+            }
+        } else if (hasH2) {
+            // 大纲多词条文件模式：以文件相对路径作为分类
+            if (loreFolderPath && entry.file.path.startsWith(`${loreFolderPath}/`)) {
+                const rel = entry.file.path.slice(loreFolderPath.length + 1).replace(/\.md$/i, '');
+                if (rel) displayName = rel;
+            }
+        } else {
+            // 单文件独立词条模式：以该文件所在的文件夹作为分类
+            const parentFolder = entry.file.parent;
+            if (parentFolder) {
+                groupKey = parentFolder.path;
+                if (loreFolderPath && parentFolder.path.startsWith(`${loreFolderPath}/`)) {
+                    const rel = parentFolder.path.slice(loreFolderPath.length + 1);
+                    displayName = rel || loreFolderName || parentFolder.name;
+                } else {
+                    displayName = parentFolder.isRoot() ? (loreFolderName || parentFolder.name) : parentFolder.name;
+                }
+            } else {
+                displayName = loreFolderName || entry.file.basename;
+            }
+        }
+
+        return { groupKey, displayName, isBorrowed };
+    }
+
+    /**
+     * 文件选项卡排序：拉丁字母开头的文件优先于汉字开头，组内按当前语言字母序（中文按拼音）与数字自然升序。
+     */
+    private static sortLoreFileGroups<T extends { displayName: string }>(groups: [string, T][]): [string, T][] {
+        const locale = getLocale().startsWith('zh') ? 'zh' : 'en';
+        const collator = new Intl.Collator(locale, { numeric: true, sensitivity: 'base' });
+        const isLatinStart = (name: string): boolean => /^[A-Za-z]/.test(name);
+        return groups.sort((a, b) => {
+            const nameA = a[1].displayName;
+            const nameB = b[1].displayName;
+            const latinA = isLatinStart(nameA) ? 1 : 0;
+            const latinB = isLatinStart(nameB) ? 1 : 0;
+            if (latinA !== latinB) return latinB - latinA;
+            return collator.compare(nameA, nameB);
+        });
+    }
+
     private static async renderTable(
         container: HTMLElement,
         app: App,
@@ -428,10 +463,50 @@ export class LoreBoardRenderer {
             return sumB - sumA;
         });
 
+        // --- 文件选项卡（与卡片模式同源：按词条所属设定文件分组，仅当存在 2 个及以上设定文件时渲染） ---
+        const groupContext = this.createLoreGroupContext(plugin, currentBookPath);
+        const loreGroupKeys = new Map<string, string>();
+        const tabGroupMap = new Map<string, { displayName: string; count: number }>();
+        for (const [loreName] of sortedLores) {
+            const entry = plugin.characterManager.getCharacterFile(currentBookPath, loreName);
+            if (!entry || !entry.file) continue;
+            const info = this.describeLoreGroup(app, plugin, entry, groupContext);
+            loreGroupKeys.set(loreName, info.groupKey);
+            const bucket = tabGroupMap.get(info.groupKey) ?? { displayName: info.displayName, count: 0 };
+            bucket.count += 1;
+            tabGroupMap.set(info.groupKey, bucket);
+        }
+        const sortedTabGroups = this.sortLoreFileGroups(Array.from(tabGroupMap.entries()));
+
+        let activePath = plugin.settings.loreBoardActiveFile || '';
+        if (activePath !== '' && !tabGroupMap.has(activePath)) activePath = '';
+
         const boardLayout = container.createDiv('wn-lore-board-layout wn-lore-board-layout-table');
+
+        const tabEls: { path: string; el: HTMLElement }[] = [];
+        if (sortedTabGroups.length > 1) {
+            const tabBar = boardLayout.createDiv('wn-lore-file-tabs');
+
+            const allTab = tabBar.createDiv(`wn-lore-file-tab ${activePath === '' ? 'is-active' : ''}`);
+            allTab.createSpan({ cls: 'wn-lore-file-tab-label', text: t('lore.tab-all') });
+            allTab.createSpan({ cls: 'wn-lore-file-tab-count', text: String(sortedLores.length) });
+            allTab.title = t('lore.tab-all');
+            tabEls.push({ path: '', el: allTab });
+
+            for (const [path, group] of sortedTabGroups) {
+                const tab = tabBar.createDiv(`wn-lore-file-tab ${activePath === path ? 'is-active' : ''}`);
+                tab.createSpan({ cls: 'wn-lore-file-tab-label', text: group.displayName });
+                tab.createSpan({ cls: 'wn-lore-file-tab-count', text: String(group.count) });
+                tab.title = `${group.displayName} (${group.count})`;
+                tabEls.push({ path, el: tab });
+            }
+        }
+
+        const groupRows: { groupKey: string; el: HTMLElement }[] = [];
 
         for (const [loreName, chapterList] of sortedLores) {
             const groupDiv = boardLayout.createDiv('wn-lore-board-group');
+            groupRows.push({ groupKey: loreGroupKeys.get(loreName) ?? '', el: groupDiv });
             const headerRow = groupDiv.createDiv('wn-lore-board-group-header');
             const totalCount = chapterList.reduce((acc, curr) => acc + curr.count, 0);
             const leftContainer = headerRow.createSpan('wn-lore-board-group-left');
@@ -489,6 +564,34 @@ export class LoreBoardRenderer {
                 miniCard.createDiv({ text: `×${item.count}`, cls: 'wn-lore-board-mini-card-count' });
             }
         }
+
+        // 文件选项卡过滤：与卡片模式一致，DOM 常驻、仅切换显隐，激活项持久化到插件设置
+        const applyView = () => {
+            if (tabEls.length === 0) {
+                for (const row of groupRows) row.el.hidden = false;
+                return;
+            }
+            for (const tab of tabEls) {
+                tab.el.toggleClass('is-active', tab.path === activePath);
+            }
+            for (const row of groupRows) {
+                row.el.hidden = activePath !== '' && row.groupKey !== activePath;
+            }
+        };
+
+        for (const tab of tabEls) {
+            tab.el.onclick = () => {
+                if (tab.path === activePath) return;
+                activePath = tab.path;
+                plugin.settings.loreBoardActiveFile = tab.path || undefined;
+                if (plugin.saveSettings) {
+                    void plugin.saveSettings();
+                }
+                applyView();
+            };
+        }
+
+        applyView();
     }
 
     private static async renderGraph(
