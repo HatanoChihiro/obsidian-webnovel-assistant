@@ -116,6 +116,24 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
     let registeredEvents: Record<string, Function[]> = {};
     let mockActiveDocument: any;
 
+    const createWorkspaceElement = (initialStyle: Record<string, string> = {}) => {
+        const classes = new Set<string>();
+        const style: Record<string, string> = {
+            width: '', height: '', flex: '', flexGrow: '', flexBasis: '', ...initialStyle
+        };
+        const setCssProps = vi.fn((properties: Record<string, string>) => Object.assign(style, properties));
+        const element = {
+            style, setCssProps,
+            classList: {
+                add: vi.fn((...names: string[]) => names.forEach(name => classes.add(name))),
+                remove: vi.fn((...names: string[]) => names.forEach(name => classes.delete(name))),
+                contains: vi.fn((name: string) => classes.has(name))
+            },
+            addEventListener: vi.fn(), removeEventListener: vi.fn()
+        } as unknown as HTMLElement;
+        return { element, classes, style, setCssProps };
+    };
+
     beforeEach(() => {
         registeredEvents = {};
 		type MockDomElement = {
@@ -378,36 +396,381 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
         expect(manager['isImmersiveLayout']({ type: 'markdown' })).toBe(false);
     });
 
-    it('buildImmersiveLayout isolates root leaves by detaching non-main root leaves', async () => {
-        const targetFile = { path: 'Book/Chapter1.md' } as any;
+    it('buildImmersiveLayout isolates normal branches without closing their leaves', async () => {
+        const targetFile = { path: 'Book/Chapter1.md' } as TFile;
+        const mainElement = createWorkspaceElement();
+        const otherElement = createWorkspaceElement();
         const mainLeaf = {
             view: { file: targetFile },
             getViewState: vi.fn().mockReturnValue({ state: { file: targetFile.path } }),
             setViewState: vi.fn().mockResolvedValue(undefined),
-            containerEl: {
-                classList: { add: vi.fn() },
-                addEventListener: vi.fn(),
-                removeEventListener: vi.fn()
-            }
-        } as any;
+            containerEl: mainElement.element
+        } as unknown as WorkspaceLeaf;
 
         const otherLeaf = {
             detach: vi.fn(),
             view: { file: { path: 'Book/Lore.md' } },
-            containerEl: { classList: { add: vi.fn() } }
-        } as any;
+            containerEl: otherElement.element
+        } as unknown as WorkspaceLeaf;
+        const split = { children: [mainLeaf, otherLeaf] } as unknown as WorkspaceSplit;
+        Object.assign(mainLeaf, { parent: split });
+        Object.assign(otherLeaf, { parent: split });
+        Object.assign(mockPlugin.app.workspace, { rootSplit: split });
 
-        (mockPlugin.app.workspace.getLeavesOfType as any).mockReturnValue([mainLeaf]);
-        (mockPlugin.app.workspace.iterateRootLeaves as any).mockImplementation((cb: (leaf: any) => void) => {
+        vi.mocked(mockPlugin.app.workspace.getLeavesOfType).mockReturnValue([mainLeaf]);
+        vi.mocked(mockPlugin.app.workspace.iterateRootLeaves).mockImplementation((cb: (leaf: WorkspaceLeaf) => void) => {
             cb(mainLeaf);
             cb(otherLeaf);
         });
 
         await manager['buildImmersiveLayout'](targetFile);
 
-        expect(otherLeaf.detach).toHaveBeenCalled();
+        expect(otherLeaf.detach).not.toHaveBeenCalled();
+        expect(otherElement.classes.has('wn-immersive-preserved-branch')).toBe(true);
+        expect(mainElement.classes.has('wn-immersive-preserved-branch')).toBe(false);
         expect(mainLeaf.setViewState).toHaveBeenCalled();
         expect(mainLeaf.containerEl.classList.add).toHaveBeenCalledWith('immersive-main-editor');
+    });
+
+    it('restores editor focus and viewport without rebuilding or replacing its selection', async () => {
+        const file = { path: 'Book/Banner.md' } as TFile;
+        const container = createWorkspaceElement().element;
+        const scrollSnapshot = { marker: 'viewport-anchor' };
+        const cm = { focus: vi.fn(), dispatch: vi.fn(), scrollSnapshot: vi.fn(() => scrollSnapshot) };
+        const editor = {
+            cm, focus: vi.fn(), setSelections: vi.fn(), scrollTo: vi.fn(),
+            listSelections: vi.fn(() => [{ anchor: { line: 42, ch: 3 }, head: { line: 40, ch: 1 } }]),
+            getScrollInfo: vi.fn(() => ({ left: 0, top: 1800 }))
+        };
+        const view = {
+            file, editor, getViewType: () => 'markdown', getEphemeralState: () => ({ scroll: 31.25 }),
+            getState: () => ({ file: file.path, mode: 'source' })
+        };
+        const mainLeaf = {
+            id: 'preserved-main', active: true, view, containerEl: container,
+            getViewState: vi.fn(() => ({ type: 'markdown', state: { file: file.path, mode: 'source' } })),
+            setViewState: vi.fn().mockResolvedValue(undefined), detach: vi.fn()
+        } as unknown as WorkspaceLeaf;
+        const root = { children: [mainLeaf] } as unknown as WorkspaceSplit;
+        Object.assign(mainLeaf, { parent: root });
+        const changeLayout = vi.fn().mockResolvedValue(undefined);
+        Object.assign(mockPlugin.app.workspace, { rootSplit: root, changeLayout });
+        vi.mocked(mockPlugin.app.workspace.getLeavesOfType).mockImplementation(type => type === 'markdown' ? [mainLeaf] : []);
+        await manager['buildImmersiveLayout'](file);
+        manager['isImmersiveActive'] = true;
+        manager['savedLayout'] = { main: { type: 'split', children: [] } };
+        await manager.exitImmersiveMode();
+
+        expect(mainLeaf.setViewState).not.toHaveBeenCalled();
+        expect(mainLeaf.detach).not.toHaveBeenCalled();
+        expect(changeLayout).not.toHaveBeenCalled();
+        expect(editor.setSelections).not.toHaveBeenCalled();
+        expect(editor.scrollTo).not.toHaveBeenCalled();
+        expect(cm.focus).toHaveBeenCalledOnce();
+        expect(cm.dispatch).toHaveBeenCalledWith({ effects: scrollSnapshot });
+        expect(mockPlugin.app.workspace.setActiveLeaf).toHaveBeenLastCalledWith(mainLeaf, { focus: false });
+    });
+
+    it('keeps the visible text fixed over five typewriter round-trips', async () => {
+        let header = 0;
+        let scroll = 1000;
+        const classes = new Set<string>();
+        mockActiveDocument.body.classList.contains = vi.fn((name: string) => classes.has(name));
+        mockActiveDocument.body.classList.add = vi.fn((name: string) => {
+            classes.add(name);
+            if (name === 'immersive-mode-active') header = 300;
+        });
+        mockActiveDocument.body.classList.remove = vi.fn((name: string) => {
+            classes.delete(name);
+            if (name === 'immersive-mode-active') header = 0;
+        });
+        const cm = {
+            scrollDOM: { clientHeight: 800, get scrollTop() { return scroll; }, getBoundingClientRect: () => ({ top: 0, left: 0 }) },
+            contentDOM: { getBoundingClientRect: () => ({ left: 0 }) },
+            defaultLineHeight: 20,
+            posAtCoords: ({ y }: { y: number }) => Math.floor((scroll - header + y) / 20),
+            coordsAtPos: (pos: number) => ({ top: header + pos * 20 - scroll }),
+            focus: vi.fn(),
+            scrollSnapshot: vi.fn(() => ({ value: { isSnapshot: true, top: scroll } })),
+            dispatch: vi.fn((spec: { effects?: unknown }) => {
+                const effects = Array.isArray(spec.effects) ? spec.effects : [spec.effects];
+                for (const effect of effects) {
+                    const value = (effect as { value?: { isSnapshot?: boolean; top?: number; range?: { head: number }; yMargin?: number } })?.value;
+                    if (value?.isSnapshot) scroll = value.top ?? scroll;
+                    else if (value?.range) scroll = header + value.range.head * 20 - (value.yMargin ?? 0);
+                }
+            })
+        };
+        const file = { path: 'Book/Chapter.md', basename: 'Chapter', parent: { isRoot: () => true } } as unknown as TFile;
+        const view = {
+            file, getViewType: () => 'markdown', getMode: () => 'source',
+            getState: () => ({ file: file.path, mode: 'source' }),
+            // A cached progress value must not override the currently visible line.
+            getEphemeralState: () => ({ scroll: 42 }),
+            setEphemeralState: vi.fn((state: { scroll: number }) => { scroll = header + state.scroll * 20; }),
+            editor: { cm, getScrollInfo: () => ({ top: scroll, left: 0 }), listSelections: () => [], focus: vi.fn() }
+        };
+        const leaf = {
+            view, containerEl: createDiv(),
+            getViewState: () => ({ type: 'markdown', state: { file: file.path, mode: 'source' } }),
+            setViewState: vi.fn()
+        } as unknown as WorkspaceLeaf;
+        const root = { children: [leaf] } as unknown as WorkspaceSplit;
+        Object.assign(leaf, { parent: root });
+        Object.assign(mockPlugin.app.workspace, { rootSplit: root });
+        vi.mocked(mockPlugin.app.workspace.getActiveViewOfType).mockReturnValue(leaf.view);
+        vi.mocked(mockPlugin.app.workspace.getLeavesOfType).mockImplementation(type => type === 'markdown' ? [leaf] : []);
+        mockPlugin.settings.immersive.typewriterEnabled = true;
+        try {
+            for (let cycle = 0; cycle < 5; cycle++) {
+                await manager.toggleImmersiveMode();
+                expect(scroll - header).toBe(1000);
+                await manager.exitImmersiveMode();
+                expect(scroll - header).toBe(1000);
+            }
+            expect(view.setEphemeralState).not.toHaveBeenCalled();
+        } finally {
+            manager.cleanup();
+        }
+    });
+
+    it('uses the active editor instance when the same file is open in multiple tabs', async () => {
+        const file = { path: 'Book/Chapter.md' } as TFile;
+        const makeLeaf = () => ({
+            view: { file }, containerEl: createWorkspaceElement().element,
+            getViewState: () => ({ type: 'markdown', state: { file: file.path, mode: 'source' } }),
+            setViewState: vi.fn()
+        } as unknown as WorkspaceLeaf);
+        const first = makeLeaf();
+        const active = makeLeaf();
+        const root = { children: [first, active] } as unknown as WorkspaceSplit;
+        Object.assign(first, { parent: root });
+        Object.assign(active, { parent: root });
+        Object.assign(mockPlugin.app.workspace, { rootSplit: root });
+        vi.mocked(mockPlugin.app.workspace.getActiveViewOfType).mockReturnValue(active.view);
+        vi.mocked(mockPlugin.app.workspace.getLeavesOfType).mockImplementation(type => type === 'markdown' ? [first, active] : []);
+        await manager['buildImmersiveLayout'](file);
+        expect(manager['activeMainLeaf']).toBe(active);
+        expect(mockPlugin.app.workspace.setActiveLeaf).toHaveBeenCalledWith(active, { focus: true });
+        manager.cleanup();
+    });
+
+    it('cleanup reveals nested normal branches and restores every original dimension', () => {
+        const mainElement = createWorkspaceElement({ width: '640px', flex: '1 0 60%' });
+        const tabElement = createWorkspaceElement();
+        const tabsElement = createWorkspaceElement({ height: '500px' });
+        const lowerElement = createWorkspaceElement({ height: '200px' });
+        const columnElement = createWorkspaceElement({ width: '900px', flexBasis: '75%' });
+        const sideElement = createWorkspaceElement({ width: '300px' });
+        const mainLeaf = { containerEl: mainElement.element, size: 100, setDimension: vi.fn() } as unknown as WorkspaceLeaf;
+        const tabLeaf = { containerEl: tabElement.element, size: undefined, detach: vi.fn() } as unknown as WorkspaceLeaf;
+        const tabs = { containerEl: tabsElement.element, size: 60, children: [mainLeaf, tabLeaf], setDimension: vi.fn() } as unknown as WorkspaceSplit;
+        const lower = { containerEl: lowerElement.element, size: 40, setDimension: vi.fn() } as unknown as WorkspaceItem;
+        const column = { containerEl: columnElement.element, size: 75, children: [tabs, lower], setDimension: vi.fn() } as unknown as WorkspaceSplit;
+        const side = { containerEl: sideElement.element, size: 25, setDimension: vi.fn() } as unknown as WorkspaceItem;
+        const root = { children: [column, side] } as unknown as WorkspaceSplit;
+        Object.assign(mainLeaf, { parent: tabs });
+        Object.assign(tabs, { parent: column });
+        Object.assign(column, { parent: root });
+        Object.assign(mockPlugin.app.workspace, { rootSplit: root });
+
+        manager['preserveNormalWorkspace'](mainLeaf);
+        for (const element of [tabElement, lowerElement, sideElement]) {
+            expect(element.classes.has('wn-immersive-preserved-branch')).toBe(true);
+        }
+        for (const element of [mainElement, tabsElement, columnElement]) {
+            expect(element.classes.has('wn-immersive-preserved-branch')).toBe(false);
+        }
+        mainLeaf.size = 80;
+        tabs.size = 100;
+        column.size = 100;
+        mainElement.style.width = '';
+        mainElement.style.flex = '0 0 auto';
+        tabsElement.style.height = '';
+        columnElement.style.flexBasis = '100%';
+
+        manager.cleanup();
+
+        expect(mainLeaf.size).toBe(100);
+        expect(tabs.size).toBe(60);
+        expect(lower.size).toBe(40);
+        expect(column.size).toBe(75);
+        expect(side.size).toBe(25);
+        expect(tabLeaf.size).toBeUndefined();
+        expect(tabLeaf.detach).not.toHaveBeenCalled();
+        expect(tabs.setDimension).toHaveBeenCalledWith(60);
+        expect(column.setDimension).toHaveBeenCalledWith(75);
+        expect(mainElement.style.width).toBe('640px');
+        expect(mainElement.style.flex).toBe('1 0 60%');
+        expect(tabsElement.style.height).toBe('500px');
+        expect(columnElement.setCssProps).toHaveBeenCalledWith(expect.objectContaining({ 'flex-basis': '75%' }));
+        for (const element of [tabElement, lowerElement, sideElement]) {
+            expect(element.classes.has('wn-immersive-preserved-branch')).toBe(false);
+        }
+        expect(manager['preservedBranches'].size).toBe(0);
+        expect(manager['preservedDimensions'].size).toBe(0);
+    });
+
+    it('preserves a background viewport across repeated transitions and late hidden-view scroll resets', async () => {
+        vi.useFakeTimers();
+        Object.assign(window, { setTimeout, clearTimeout, cancelAnimationFrame: clearTimeout });
+        let logicalScroll = 75.5;
+        const handlers = new Map<string, (leaf?: WorkspaceLeaf) => void>();
+        const backgroundView = {
+            file: { path: 'Book/Original.md' },
+            getEphemeralState: () => ({ scroll: logicalScroll }),
+            setEphemeralState: vi.fn((state: { scroll: number }) => { logicalScroll = state.scroll; }),
+            editor: { focus: vi.fn(), setSelections: vi.fn() }
+        };
+        const background = { view: backgroundView, containerEl: createDiv() } as unknown as WorkspaceLeaf;
+        const main = { view: {}, containerEl: createDiv() } as unknown as WorkspaceLeaf;
+        const workspace = mockPlugin.app.workspace;
+        vi.mocked(workspace.getLeavesOfType).mockImplementation(type => type === 'markdown' ? [main, background] : []);
+        Object.assign(workspace, { on: vi.fn((event: string, handler: (leaf?: WorkspaceLeaf) => void) => {
+            handlers.set(event, handler);
+            return { event };
+        }) });
+        try {
+            manager['preserveNormalWorkspace'](main);
+            logicalScroll = 0; // Hidden editor measurements can overwrite Obsidian's native scroll record.
+            manager.cleanup();
+            expect(logicalScroll).toBe(75.5);
+
+            logicalScroll = 0; // A later measurement happens after cleanup, while the tab is still hidden.
+            manager['preserveNormalWorkspace'](main);
+            manager.cleanup();
+            expect(logicalScroll).toBe(75.5);
+
+            logicalScroll = 0;
+            vi.mocked(workspace.getActiveViewOfType).mockReturnValue(backgroundView as unknown as MarkdownView);
+            handlers.get('active-leaf-change')?.(background);
+            setTimeout(() => { logicalScroll = 0; }, 30); // A reading-progress plugin restores its stale record after activation.
+            await vi.runAllTimersAsync();
+            expect(logicalScroll).toBe(75.5);
+            expect(backgroundView.setEphemeralState).toHaveBeenLastCalledWith({ scroll: 75.5 });
+            expect(backgroundView.editor.focus).not.toHaveBeenCalled();
+            expect(backgroundView.editor.setSelections).not.toHaveBeenCalled();
+            expect(workspace.setActiveLeaf).not.toHaveBeenCalled();
+            expect(manager['backgroundScrollPositions'].size).toBe(0);
+            expect(manager['backgroundScrollLeafRef']).toBeNull();
+
+            manager['preserveNormalWorkspace'](main);
+            logicalScroll = 0;
+            manager.cleanup();
+            handlers.get('active-leaf-change')?.(background);
+            await vi.advanceTimersByTimeAsync(0);
+            logicalScroll = 120; // A new user scroll supersedes the saved viewport.
+            const wheelHandler = vi.mocked(background.containerEl.addEventListener).mock.calls
+                .filter(([event]) => event === 'wheel').slice(-1)[0]?.[1];
+            expect(typeof wheelHandler).toBe('function');
+            if (typeof wheelHandler === 'function') wheelHandler.call(background.containerEl, new Event('wheel'));
+            await vi.runAllTimersAsync();
+            expect(logicalScroll).toBe(120);
+            expect(manager['backgroundScrollPositions'].size).toBe(0);
+        } finally {
+            manager.destroy();
+            vi.useRealTimers();
+        }
+    });
+
+    it('discards saved background scroll when a tab changes files and releases tracking on destroy', () => {
+        const main = { view: {}, containerEl: createDiv() } as unknown as WorkspaceLeaf;
+        const backgroundView = {
+            file: { path: 'Book/Original.md' }, getEphemeralState: () => ({ scroll: 50 }),
+            setEphemeralState: vi.fn()
+        };
+        const background = { view: backgroundView } as unknown as WorkspaceLeaf;
+        const workspace = mockPlugin.app.workspace;
+        vi.mocked(workspace.getLeavesOfType).mockImplementation(type => type === 'markdown' ? [main, background] : []);
+        manager['preserveNormalWorkspace'](main);
+        backgroundView.file = { path: 'Book/Other.md' };
+        manager.cleanup();
+        expect(backgroundView.setEphemeralState).not.toHaveBeenCalled();
+        expect(manager['backgroundScrollPositions'].size).toBe(0);
+
+        manager['preserveNormalWorkspace'](main);
+        manager.destroy();
+        expect(manager['backgroundScrollPositions'].size).toBe(0);
+        expect(manager['backgroundScrollLeafRef']).toBeNull();
+        expect(manager['backgroundScrollLayoutRef']).toBeNull();
+        expect(manager['backgroundScrollFrame']).toBeNull();
+    });
+
+    it('applySplitSizes excludes preserved normal branches from dimension assignment', async () => {
+        const hiddenElement = createWorkspaceElement({ width: '300px' });
+        const auxiliary = { containerEl: createWorkspaceElement().element, size: 0, setDimension: vi.fn() } as unknown as WorkspaceItem;
+        const main = { containerEl: createWorkspaceElement().element, size: 0, setDimension: vi.fn() } as unknown as WorkspaceItem;
+        const hidden = { containerEl: hiddenElement.element, size: 35, setDimension: vi.fn() } as unknown as WorkspaceItem;
+        const split = { children: [hidden, auxiliary, main], unsetElSize: vi.fn() } as unknown as WorkspaceSplit;
+        manager['preservedBranches'].add(hiddenElement.element);
+
+        await manager['applySplitSizes']([{ split, sizes: [20, 80] }]);
+
+        expect(hidden.size).toBe(35);
+        expect(hidden.setDimension).not.toHaveBeenCalled();
+        expect(hiddenElement.style.width).toBe('300px');
+        expect(split.unsetElSize).not.toHaveBeenCalledWith(hiddenElement.element);
+        expect(auxiliary.size).toBe(20);
+        expect(main.size).toBe(80);
+        expect(auxiliary.setDimension).toHaveBeenCalledWith(20);
+        expect(main.setDimension).toHaveBeenCalledWith(80);
+    });
+
+    it('normalizes the visible region without changing a preserved sibling', () => {
+        const region = 'left';
+        const hiddenElement = createWorkspaceElement();
+        const hidden = { containerEl: hiddenElement.element, size: 35, setDimension: vi.fn() } as unknown as WorkspaceItem;
+        const main = { containerEl: createWorkspaceElement().element, size: 65, setDimension: vi.fn() } as unknown as WorkspaceItem;
+        const auxiliary = { containerEl: createWorkspaceElement().element, size: 0, setDimension: vi.fn() } as unknown as WorkspaceItem;
+        const split = { children: [hidden, auxiliary, main] } as unknown as WorkspaceSplit;
+        manager['preservedBranches'].add(hiddenElement.element);
+        mockPlugin.settings.immersive.immersiveLeftSlots = ['chapter-list'];
+        mockPlugin.settings.immersive.immersiveLeftSize = 25;
+        manager['regionBranches'].set(region, { region, branchItem: auxiliary, parentSplit: split, firstLeaf: auxiliary as WorkspaceLeaf });
+
+        manager['normalizeVisibleSplitProportions']();
+
+        expect(hidden.setDimension).not.toHaveBeenCalled();
+        expect(auxiliary.setDimension).toHaveBeenCalledWith(25);
+        expect(main.setDimension).toHaveBeenCalledWith(75);
+    });
+
+    it('restores the visible viewport before a pending native fullscreen transition can paint', async () => {
+        const file = { path: 'Book/Chapter1.md', basename: 'Chapter1', parent: { isRoot: () => true } } as unknown as TFile;
+        const snapshot = { marker: 'visible-viewport' };
+        let scroll = 1400;
+        let finishFullscreen = () => {};
+        const fullscreen = new Promise<void>(resolve => { finishFullscreen = resolve; });
+        mockActiveDocument.documentElement.requestFullscreen = vi.fn(() => fullscreen);
+        const cm = {
+            scrollSnapshot: vi.fn(() => snapshot),
+            dispatch: vi.fn((transaction: { effects?: unknown }) => {
+                if (transaction.effects === snapshot) scroll = 1400;
+            })
+        };
+        const leaf = {
+            view: { file, editor: { cm } },
+            containerEl: createDiv(),
+            getViewState: () => ({ type: 'markdown', state: { file: file.path, mode: 'source' } }),
+            setViewState: vi.fn()
+        } as unknown as WorkspaceLeaf;
+        vi.mocked(mockPlugin.app.workspace.getActiveViewOfType).mockReturnValue(leaf.view);
+        vi.mocked(mockPlugin.app.workspace.getLeavesOfType).mockImplementation(type => type === 'markdown' ? [leaf] : []);
+        // Reparenting/focusing the editor during split creation can reset native scrollTop.
+        vi.mocked(mockPlugin.app.workspace.setActiveLeaf).mockImplementation(() => { scroll = 0; });
+
+        const entering = manager['enterImmersiveMode']();
+        try {
+            await new Promise(resolve => setTimeout(resolve, 0));
+            expect(manager['isTransitioning']).toBe(true);
+            expect(mockActiveDocument.documentElement.requestFullscreen).toHaveBeenCalled();
+            expect(scroll).toBe(1400);
+            expect(cm.dispatch).toHaveBeenCalledWith({ effects: snapshot });
+        } finally {
+            finishFullscreen();
+            await entering;
+            manager.cleanup();
+        }
     });
 
     it('exitImmersiveMode detaches created leaves and restores savedLayout via changeLayout', async () => {
@@ -427,6 +790,96 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
         expect(changeLayoutSpy).toHaveBeenCalledWith(normalLayout);
         expect(manager['isImmersiveActive']).toBe(false);
         expect(manager['savedLayout']).toBeNull();
+    });
+
+    it('restores the main chapter, selection, scroll and focus when the workspace must be rebuilt', async () => {
+        const file = { path: 'Book/Chapter-2.md' };
+        const selections = [{ anchor: { line: 80, ch: 3 }, head: { line: 78, ch: 1 } }];
+        const mainLeaf = {
+            id: 'main-editor',
+            view: {
+                file,
+                getViewType: () => 'markdown',
+                getState: vi.fn(() => ({ file: file.path, mode: 'source', source: true })),
+                editor: {
+                    listSelections: vi.fn(() => selections),
+                    getScrollInfo: vi.fn(() => ({ top: 1800, left: 12 }))
+                }
+            }
+        } as unknown as WorkspaceLeaf;
+        let scroll = 0;
+        let focused = false;
+        let restoredSelections: unknown;
+        const restoredEditor = {
+            cm: { dispatch: vi.fn() },
+            setSelections: vi.fn((value: unknown) => { restoredSelections = value; scroll = 0; }),
+            focus: vi.fn(() => { focused = true; scroll = 0; }),
+            scrollTo: vi.fn((left: number, top: number) => { expect(left).toBe(12); scroll = top; })
+        };
+        const restoredLeaf = {
+            id: 'main-editor',
+            active: false,
+            view: { file, editor: restoredEditor },
+            setViewState: vi.fn(async () => {
+                await Promise.resolve();
+                scroll = 0;
+                focused = false;
+                restoredSelections = undefined;
+            })
+        } as unknown as WorkspaceLeaf;
+        const otherLeaf = {
+            id: 'other-editor', active: true,
+            view: { file: { path: 'Book/Reference.md' } },
+            setViewState: vi.fn()
+        } as unknown as WorkspaceLeaf;
+        manager['isImmersiveActive'] = true;
+        manager['activeMainLeaf'] = mainLeaf;
+        const workspace = mockPlugin.app.workspace;
+        vi.mocked(workspace.getActiveViewOfType).mockReturnValue(otherLeaf.view);
+        vi.mocked(workspace.getLeavesOfType).mockImplementation(type => type === 'markdown' ? [otherLeaf, restoredLeaf] : []);
+        vi.mocked(workspace.updateOptions).mockImplementation(() => { scroll = 0; });
+        manager['savedLayout'] = { main: { type: 'split', children: [] } };
+        Object.assign(workspace, { changeLayout: vi.fn().mockResolvedValue(undefined) });
+
+        await manager.exitImmersiveMode();
+        // Also catch restoration scheduled after the method resolves.
+        await new Promise(resolve => setTimeout(resolve, 10));
+
+        expect(workspace.setActiveLeaf).toHaveBeenCalledWith(restoredLeaf, { focus: true });
+        expect(focused).toBe(true);
+        expect(restoredSelections).toEqual(selections);
+        expect(scroll).toBe(1800);
+        expect(otherLeaf.setViewState).not.toHaveBeenCalled();
+        expect(restoredLeaf.setViewState).toHaveBeenCalledWith({
+            type: 'markdown', state: { file: file.path, mode: 'source', source: true }, active: true
+        });
+    });
+
+    it('cancels pending layout scroll restoration when the user scrolls', async () => {
+        vi.useFakeTimers();
+        const handlers = new Map<string, () => void>();
+        const dom = {
+            addEventListener: vi.fn((type: string, handler: () => void) => handlers.set(type, handler)),
+            removeEventListener: vi.fn()
+        };
+        const view = {
+            file: { path: 'Book/Banner.md' },
+            editor: {
+                cm: { dom, scrollDOM: { scrollHeight: 4000 }, state: { doc: {} } },
+                scrollTo: vi.fn()
+            },
+            setEphemeralState: vi.fn()
+        };
+        try {
+            const restoration = manager['restoreLogicalScroll'](view as unknown as MarkdownView, 31.25, 0);
+            handlers.get('wheel')?.();
+            await vi.runAllTimersAsync();
+            await restoration;
+            expect(view.setEphemeralState).not.toHaveBeenCalled();
+            expect(view.editor.scrollTo).not.toHaveBeenCalled();
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('tracks the most recently focused immersive Markdown leaf for advanced search', () => {
