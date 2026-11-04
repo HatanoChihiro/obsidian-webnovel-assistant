@@ -23,6 +23,7 @@ export class ImmersivePomodoroModal extends Modal {
 
 	constructor(app: App, options: ImmersivePomodoroModalOptions) {
 		super(app);
+		this.modalEl.addClass('wn-plugin-modal');
 		this.options = options;
 	}
 

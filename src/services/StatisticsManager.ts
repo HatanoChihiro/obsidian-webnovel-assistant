@@ -88,6 +88,7 @@ export class StatisticsManager {
 			slackTime: formatTime(slackSec),
 			totalTime: formatTime(totalSec),
 			sessionWords: Math.max(0, this.plugin.sessionAddedWords),
+			sessionSpeed: this.getSessionSpeed(),
 			todayWords: chapterWords,
 			goal: targetGoal,
 			percent: targetGoal > 0 ? Math.max(0, Math.min(Math.round((chapterWords / targetGoal) * 100), 100)) : 0,
@@ -207,7 +208,19 @@ export class StatisticsManager {
 	}
 
 	/**
-	 * 计算写作速度 (字/小时)
+	 * 获取当前会话写作时速 (字/小时)
+	 * 公式: max(0, sessionAddedWords) / ((focusMs + slackMs) / 3600000)
+	 * 四舍五入取整，总时长为 0 时返回 0
+	 */
+	getSessionSpeed(): number {
+		const totalMs = (this.plugin.focusMs || 0) + (this.plugin.slackMs || 0);
+		if (totalMs <= 0) return 0;
+		const words = Math.max(0, this.plugin.sessionAddedWords || 0);
+		return Math.round(words / (totalMs / 3600000));
+	}
+
+	/**
+	 * 计算历史写作速度 (字/小时)
 	 */
 	calcWritingSpeed(history: Record<string, DailyStat>, startDate: string, endDate: string): number {
 		let totalWords = 0;

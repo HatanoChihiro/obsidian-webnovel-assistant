@@ -18,6 +18,7 @@ export class TemplateChoiceModal extends Modal {
 		onCancel?: () => void
 	) {
 		super(app);
+		this.modalEl.addClass('wn-plugin-modal');
 		this.files = files;
 		this.onChoose = onChoose;
 		this.onCancel = onCancel;

@@ -98,6 +98,7 @@ export class HistoryStatsModal extends Modal {
 
 	constructor(app: App, plugin: HistoryStatsModalPlugin) {
 		super(app);
+		this.modalEl.addClass('wn-plugin-modal');
 		this.plugin = plugin;
 	}
 

@@ -132,6 +132,14 @@ export class ObsHtmlBuilder {
 	</div>`;
 		}
 
+		let sessionSpeedRowHtml = '';
+		if (this.plugin.settings.obs.obsShowSessionSpeed) {
+			sessionSpeedRowHtml = `\n\t<div class="session-row">
+		<span>${t('obs.session-speed')}</span>
+		<span class="val" id="sessionSpeed">0 ${t('common.words-per-hour-unit')}</span>
+	</div>`;
+		}
+
 		const html = `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -314,6 +322,7 @@ ${this.sanitizeCss(this.plugin.settings.obs.obsCustomCss)}
 	${timeRowHtml}
 	${todayGoalHtml}
 	${sessionRowHtml}
+	${sessionSpeedRowHtml}
 </div>
 <script>
 function safeSetText(id, text) {
@@ -349,6 +358,7 @@ function update() {
 				}
 			}
 			if (d.sessionWords !== lastData.sessionWords) safeSetText('sessionWords', d.sessionWords.toLocaleString());
+			if (d.sessionSpeed !== lastData.sessionSpeed) safeSetText('sessionSpeed', (d.sessionSpeed ?? 0).toLocaleString() + ' ' + ${JSON.stringify(t('common.words-per-hour-unit'))});
 
 			if (d.isTracking !== lastData.isTracking) {
 				const dot = document.getElementById('statusDot');

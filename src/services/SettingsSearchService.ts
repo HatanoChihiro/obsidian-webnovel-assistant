@@ -197,6 +197,7 @@ export const SETTINGS_SEARCH_CATALOGUE: readonly SettingCatalogueEntry[] = [
 		{ titleKey: 'setting.show-daily-progress', sectionKey: 'setting.immersive-dashboard-toggles' },
 		{ titleKey: 'setting.show-task-progress', sectionKey: 'setting.immersive-dashboard-toggles' },
 		{ titleKey: 'setting.show-session-words', sectionKey: 'setting.immersive-dashboard-toggles' },
+		{ titleKey: 'setting.show-session-speed', sectionKey: 'setting.immersive-dashboard-toggles' },
 		{ titleKey: 'setting.show-current-time', sectionKey: 'setting.immersive-dashboard-toggles' },
 	]),
 	...categoryEntries('obs', [
@@ -216,6 +217,7 @@ export const SETTINGS_SEARCH_CATALOGUE: readonly SettingCatalogueEntry[] = [
 		{ titleKey: 'obs.daily-goal', sectionKey: 'setting.obs-overlay' },
 		{ titleKey: 'obs.chapter-goal', sectionKey: 'setting.obs-overlay' },
 		{ titleKey: 'obs.session-words', sectionKey: 'setting.obs-overlay' },
+		{ titleKey: 'obs.session-speed', sectionKey: 'setting.obs-overlay' },
 		{ titleKey: 'setting.copy-obs-url', descKeys: ['setting.copy-obs-url-desc'], sectionKey: 'setting.obs-overlay' },
 		{ titleKey: 'setting.debug-mode', descKeys: ['setting.debug-mode-desc'], sectionKey: 'setting.obs-overlay' },
 	]),

@@ -80,6 +80,25 @@ const legacyClassPrefixes = [
 	'wn-task-type-group',
 	'wn-task-type-badge',
 ] as const;
+const genericModalClasses = new Set(['modal', 'modal-content', 'modal-container', 'modal-title']);
+const genericDragClasses = new Set([
+	'is-dragging',
+	'drag-over',
+	'drag-over-chapter',
+	'drag-over-event',
+	'drag-over-event-top',
+	'drag-over-event-bottom',
+	'drag-over-left',
+	'drag-over-right',
+]);
+const ownedViewDataTypes = new Set([
+	'webnovel-workbench',
+	'webnovel-corkboard',
+	'timeline',
+	'webnovel-status',
+	'immersive-sticky-notes',
+]);
+
 const requiredDeclarations = [
 	{
 		file: 'src/styles/views/homepage.css',
@@ -185,6 +204,54 @@ function getSelectors(rule: Rule, file: string): string[] {
 					errors.push(`${file}:${rule.source?.start?.line ?? 1} 禁止恢复已迁移的旧类名 '${legacyClass}*'。`);
 				}
 			}
+
+			let hasDraggable = false;
+			let hasOwnedViewDataType = false;
+			// Only a direct positive scope establishes ownership; :not(.wn-*) does not.
+			const scopeClasses = selector.nodes
+				.filter((node) => node.type === 'class')
+				.map((node) => node.value);
+			for (const attribute of selector.nodes.filter((node) => node.type === 'attribute')) {
+				if (attribute.attribute === 'draggable') {
+					hasDraggable = true;
+				}
+				if (attribute.attribute === 'data-type' && attribute.operator === '=' && attribute.value) {
+					if (ownedViewDataTypes.has(attribute.value)) {
+						hasOwnedViewDataType = true;
+					}
+				}
+			}
+
+			const isOwnedModal = hasOwnedViewDataType || scopeClasses.some((className) =>
+				className.startsWith('wn-')
+				|| className.startsWith('webnovel-')
+				|| className === 'history-stats-modal'
+				|| className === 'history-stats-modal-wide'
+			);
+
+			const isOwnedDrag = hasOwnedViewDataType || scopeClasses.some((className) =>
+				className.startsWith('wn-')
+				|| className.startsWith('webnovel-')
+				|| className === 'mobile-floating-stats'
+			);
+
+			const isOwnedDraggable = hasOwnedViewDataType || scopeClasses.some((className) =>
+				className.startsWith('wn-')
+				|| className.startsWith('webnovel-')
+			);
+
+			if (!isOwnedModal && [...classCounts.keys()].some((className) => genericModalClasses.has(className))) {
+				errors.push(`${file}:${rule.source?.start?.line ?? 1} 禁止使用未限定归属的通用弹窗选择器 '${selectorText}'。`);
+			}
+
+			if (!isOwnedDrag && [...classCounts.keys()].some((className) => genericDragClasses.has(className))) {
+				errors.push(`${file}:${rule.source?.start?.line ?? 1} 禁止使用未限定归属的通用拖拽状态选择器 '${selectorText}'。`);
+			}
+
+			if (!isOwnedDraggable && hasDraggable) {
+				errors.push(`${file}:${rule.source?.start?.line ?? 1} 禁止使用未限定归属的 draggable 属性选择器 '${selectorText}'。`);
+			}
+
 			return selectorText;
 		});
 		parsed.walkPseudos((pseudo) => {
@@ -262,6 +329,10 @@ function auditSourceFiles(allCssFiles: string[]): number {
 				}
 				if (declaration.prop === 'text-indent') {
 					errors.push(`${file}:${declarationLine} 禁止使用 text-indent。`);
+				}
+				if ((rule.selector === ':root' || rule.selector.includes(':root'))
+					&& (declaration.prop === '--font-interface' || declaration.prop === '--font-text')) {
+					errors.push(`${file}:${declarationLine} 禁止在 :root 重新定义原生字体变量 '${declaration.prop}'。`);
 				}
 				const allowedHexFallback = declarationValue.includes('var(--text-on-accent, #ffffff)')
 					|| declarationValue.includes('var(--webnovel-eye-care-color, #E8F5E9)');

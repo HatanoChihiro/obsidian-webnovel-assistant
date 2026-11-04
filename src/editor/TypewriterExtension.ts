@@ -579,7 +579,10 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 		}
 
 		update(update: ViewUpdate) {
-			if (update.transactions?.some(transaction => transaction.effects?.some(effect => effect.is(preserveTypewriterViewport)))) {
+			const hasPreserveEffect = update.transactions?.some(transaction =>
+				transaction.effects?.some(effect => effect.is(preserveTypewriterViewport))
+			);
+			if (hasPreserveEffect) {
 				this.preserveViewportUntilInput = true;
 				this.hasInitialCentered = true;
 				this.pendingPositioningRefresh = false;
@@ -590,7 +593,7 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 			this.decorations = this.buildDecorations(update.view);
 			// 仅在当前模式下打字机功能开启时生效
 			if (!this.isTypewriterActive()) {
-				if (positioningChanged) this.preserveViewportUntilInput = false;
+				if (positioningChanged && !hasPreserveEffect) this.preserveViewportUntilInput = false;
 				this.hasInitialCentered = false;
 				this.pendingPositioningRefresh = false;
 				this.cancelPendingCenter();

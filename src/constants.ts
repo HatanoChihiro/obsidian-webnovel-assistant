@@ -273,6 +273,7 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 		immersiveShowChapterProgress: true,
 		immersiveShowDailyProgress: true,
 		immersiveShowSessionWords: true,
+		immersiveShowSessionSpeed: false,
 		immersiveShowTaskProgress: true,
 		immersiveShowCurrentTime: false,
 
@@ -302,6 +303,7 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 		obsShowTodayWords: true,
 		obsShowDailyGoal: true,
 		obsShowSessionWords: true,
+		obsShowSessionSpeed: false,
 	},
 
 	// 创作主页默认设置

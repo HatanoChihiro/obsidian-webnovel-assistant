@@ -9,6 +9,7 @@ export type DailyStatsAction =
 class ConfirmDailyStatsClearAllModal extends Modal {
 	constructor(app: App, private onConfirm: () => void) {
 		super(app);
+		this.modalEl.addClass('wn-plugin-modal');
 	}
 
 	onOpen(): void {
@@ -44,6 +45,7 @@ export class DailyStatsActionModal extends Modal {
 		private onAction: (action: DailyStatsAction) => void
 	) {
 		super(app);
+		this.modalEl.addClass('wn-plugin-modal');
 		this.correctedWords = String(currentWords);
 	}
 

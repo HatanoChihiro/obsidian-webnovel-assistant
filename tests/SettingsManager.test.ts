@@ -32,6 +32,8 @@ describe('SettingsManager', () => {
 		expect(loaded.defaultGoal).toBe(DEFAULT_SETTINGS.defaultGoal);
 		expect(loaded.obs.obsPort).toBe(DEFAULT_SETTINGS.obs.obsPort);
 		expect(loaded.immersive.pomodoroInterval).toBe(DEFAULT_SETTINGS.immersive.pomodoroInterval);
+		expect(loaded.obs.obsShowSessionSpeed).toBe(false);
+		expect(loaded.immersive.immersiveShowSessionSpeed).toBe(false);
 		expect(manager.validateSettings(loaded).valid).toBe(true);
 		expect(saveData).toHaveBeenCalled();
 	});
@@ -53,6 +55,8 @@ describe('SettingsManager', () => {
 		expect((plugin as unknown as { settings: typeof settings }).settings.obs.obsPort).toBe(26000);
 		expect((plugin as unknown as { settings: typeof settings }).settings.obs.obsShowFocusTime).toBe(false);
 		expect((plugin as unknown as { settings: typeof settings }).settings.workspaceFolders).toEqual(['Novel']);
+		expect((plugin as unknown as { settings: typeof settings }).settings.obs.obsShowSessionSpeed).toBe(false);
+		expect((plugin as unknown as { settings: typeof settings }).settings.immersive.immersiveShowSessionSpeed).toBe(false);
 	});
 
 	it('fills and clamps the persisted typography body font size', async () => {

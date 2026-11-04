@@ -340,6 +340,49 @@ describe('TypewriterExtension - Manual Scroll & Race Condition Prevention', () =
 		}
 	});
 
+	it('preserves viewport on exit from immersive mode when editorTypewriter is enabled but immersive typewriter was disabled even if positioningChanged', () => {
+		env.mockPlugin.settings.editorTypewriter = { enabled: true, centerOffset: 0, unfocusedOpacity: 0.4 };
+		env.mockPlugin.settings.immersive.typewriterEnabled = false;
+		env.mockDocument.body.classList.add('immersive-mode-active');
+
+		const extension = createTypewriterExtension(env.mockPlugin);
+		const view = env.createMockView(500);
+		const instance = (extension as unknown as { create: (v: EditorView) => { update: (u: ViewUpdate) => void; destroy: () => void } }).create(view);
+		try {
+			// First update establishes initial positioningKey
+			instance.update({ view, state: view.state, transactions: [] } as unknown as ViewUpdate);
+
+			// Now exit starts, dispatching preserveTypewriterViewport while inactive
+			env.mockPlugin.settings.immersive.typewriterCenterOffset = 5;
+			instance.update({
+				view,
+				state: view.state,
+				transactions: [{ effects: [preserveTypewriterViewport.of(null)], annotation: () => undefined }]
+			} as unknown as ViewUpdate);
+
+			// Mode switch finishes: immersive-mode-active removed, normal mode active
+			env.mockDocument.body.classList.remove('immersive-mode-active');
+			env.mockScroller.dispatchEvent('focusin');
+			instance.update({ view, state: view.state, geometryChanged: true, transactions: [] } as unknown as ViewUpdate);
+			env.mockWindow.flushRaf();
+
+			// Must NOT have recentered/dispatched scrollIntoView
+			expect(view.dispatch).not.toHaveBeenCalled();
+
+			// Deliberate user input resumes typewriter follow
+			instance.update({
+				view,
+				state: view.state,
+				docChanged: true,
+				transactions: [{ effects: [], annotation: () => 'input.type' }]
+			} as unknown as ViewUpdate);
+			env.mockWindow.flushRaf();
+			expect(view.dispatch).toHaveBeenCalled();
+		} finally {
+			instance.destroy();
+		}
+	});
+
 	it.each([false, true])('compensates typewriter spacer changes before the next paint (banner: %s)', (banner) => {
 		const view = env.createMockView(500);
 		if (banner) {

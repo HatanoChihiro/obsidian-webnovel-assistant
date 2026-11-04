@@ -53,9 +53,8 @@ body .workspace-leaf-content.is-webnovel-homepage .stats-efficiency-label,
 .immersive-sticky-title,
 .webnovel-immersive-note-title,
 .wn-log-note,
-body .modal .setting-item-heading .setting-item-name,
-body .modal h2,
-body .modal-content h2 {
+body .modal.wn-plugin-modal .setting-item-heading .setting-item-name,
+body .modal.wn-plugin-modal h2 {
    font-family: var(--font-interface);
 }
 

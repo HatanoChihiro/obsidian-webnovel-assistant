@@ -61,6 +61,7 @@ export type StatusViewForeshadowingManager = Pick<
 export type StatusViewStatisticsManager = Pick<
 	StatisticsManager,
 	| 'getCoreStats'
+	| 'getSessionSpeed'
 	| 'calcStreak'
 	| 'calcFocusRate'
 	| 'calcActiveHours'
@@ -139,6 +140,7 @@ export class WritingStatusView extends ItemView {
 	chapterTitleEl!: HTMLElement;
 	slackTimeEl!: HTMLElement;
 	totalTimeEl!: HTMLElement;
+	sessionSpeedEl!: HTMLElement;
 	miniChartEl!: HTMLElement;
 	efficiencySummaryEl!: HTMLElement;
 	statusBadgeEl!: HTMLElement;
@@ -435,11 +437,15 @@ export class WritingStatusView extends ItemView {
 		const contentContainer = timeCard.createDiv({ cls: 'wn-status-card-content' });
 		this.setupCollapsibleCard(titleRow, titleSpan, contentContainer, () => t('common.focus-timing'));
 
-		const totalBox = contentContainer.createDiv({ cls: 'time-box time-box-total' });
+		const timeGrid = contentContainer.createDiv({ cls: 'time-grid' });
+
+		const totalBox = timeGrid.createDiv({ cls: 'time-box' });
 		totalBox.createDiv({ cls: 'time-box-title', text: t('common.total-elapsed') });
 		this.totalTimeEl = totalBox.createDiv({ cls: 'time-box-value', text: '00:00:00' });
 
-		const timeGrid = contentContainer.createDiv({ cls: 'time-grid' });
+		const speedBox = timeGrid.createDiv({ cls: 'time-box' });
+		speedBox.createDiv({ cls: 'time-box-title', text: `${t('common.session-speed')} (${t('common.words-per-hour-unit')})` });
+		this.sessionSpeedEl = speedBox.createDiv({ cls: 'time-box-value', text: '0' });
 
 		const focusBox = timeGrid.createDiv({ cls: 'time-box' });
 		focusBox.createDiv({ cls: 'time-box-title', text: t('common.focus-duration') });
@@ -624,6 +630,7 @@ export class WritingStatusView extends ItemView {
 		if (this.focusTimeEl) this.focusTimeEl.innerText = formatTime(focusSec);
 		if (this.slackTimeEl) this.slackTimeEl.innerText = formatTime(slackSec);
 		if (this.totalTimeEl) this.totalTimeEl.innerText = formatTime(totalSec);
+		if (this.sessionSpeedEl) this.sessionSpeedEl.innerText = String(this.plugin.statisticsManager.getSessionSpeed());
 	}
 
 	private getChapterFileForFolder(folderPath: string): TFile | null {

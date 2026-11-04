@@ -24,6 +24,7 @@ export class TaskAddModal extends Modal {
 		folderPath: string
 	) {
 		super(app);
+		this.modalEl.addClass('wn-plugin-modal');
 		this.manager = manager;
 		this.defaultPlatform = defaultPlatform;
 		this.onSubmit = onSubmit;

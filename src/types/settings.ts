@@ -175,6 +175,8 @@ export interface ImmersiveModeSettings {
 	immersiveShowDailyProgress: boolean;
 	/** 数据仪表盘：是否显示本场净增字数 */
 	immersiveShowSessionWords: boolean;
+	/** 数据仪表盘：是否显示本场时速 */
+	immersiveShowSessionSpeed: boolean;
 	/** 数据仪表盘：是否显示任务进度 */
 	immersiveShowTaskProgress: boolean;
 	/** 数据仪表盘：是否显示当前时间 */
@@ -237,6 +239,8 @@ export interface ObsSettings {
 	obsShowDailyGoal: boolean;
 	/** OBS 叠加层是否显示本场净增字数 */
 	obsShowSessionWords: boolean;
+	/** OBS 叠加层是否显示本场时速 */
+	obsShowSessionSpeed: boolean;
 }
 
 /**

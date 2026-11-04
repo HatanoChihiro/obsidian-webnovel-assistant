@@ -24,6 +24,8 @@ export interface CoreStatsPayload {
 	totalTime: string;
 	/** 本场净增字数 */
 	sessionWords: number;
+	/** 本场时速 (字/小时，四舍五入整数) */
+	sessionSpeed: number;
 	/** 今日已写字数（当前章节总字数） */
 	todayWords: number;
 	/** 章节目标字数 */

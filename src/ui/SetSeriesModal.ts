@@ -23,6 +23,7 @@ export class SetSeriesModal extends Modal {
 
 	constructor(app: App, options: SetSeriesModalOptions) {
 		super(app);
+		this.modalEl.addClass('wn-plugin-modal');
 		this.currentSeries = options.currentSeries.trim();
 		this.existingSeries = options.existingSeries;
 		this.onSave = options.onSave;

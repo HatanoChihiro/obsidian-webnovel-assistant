@@ -37,6 +37,8 @@ describe('StatisticsManager', () => {
             },
             registerEvent: vi.fn(),
             isTracking: false,
+            focusMs: 0,
+            slackMs: 0,
             sessionAddedWords: 0,
             lastFilePath: '',
             lastFileWords: 0,
@@ -141,6 +143,81 @@ describe('StatisticsManager', () => {
         expect(stats.todayWords).toBe(42);
         expect(stats.goal).toBe(120);
         expect(stats.dailyGoal).toBe(500);
+    });
+
+    describe('session writing speed calculation', () => {
+        it('calculates positive speed including slack duration in total elapsed time', () => {
+            const manager = new StatisticsManager(mockPlugin);
+            mockPlugin.isTracking = true;
+            mockPlugin.sessionAddedWords = 1500;
+            mockPlugin.focusMs = 1800000; // 30 min focus
+            mockPlugin.slackMs = 1800000; // 30 min slack (total 1 hour)
+
+            expect(manager.getSessionSpeed()).toBe(1500);
+            expect(manager.getCoreStats().sessionSpeed).toBe(1500);
+        });
+
+        it('returns zero when total duration is zero', () => {
+            const manager = new StatisticsManager(mockPlugin);
+            mockPlugin.isTracking = true;
+            mockPlugin.sessionAddedWords = 500;
+            mockPlugin.focusMs = 0;
+            mockPlugin.slackMs = 0;
+
+            expect(manager.getSessionSpeed()).toBe(0);
+            expect(manager.getCoreStats().sessionSpeed).toBe(0);
+        });
+
+        it('returns zero when net session added words is negative', () => {
+            const manager = new StatisticsManager(mockPlugin);
+            mockPlugin.isTracking = true;
+            mockPlugin.sessionAddedWords = -200;
+            mockPlugin.focusMs = 3600000; // 1 hour
+            mockPlugin.slackMs = 0;
+
+            expect(manager.getSessionSpeed()).toBe(0);
+            expect(manager.getCoreStats().sessionSpeed).toBe(0);
+        });
+
+        it('rounds speed to the nearest integer chars/hour', () => {
+            const manager = new StatisticsManager(mockPlugin);
+            mockPlugin.isTracking = true;
+            mockPlugin.sessionAddedWords = 100;
+            mockPlugin.focusMs = 2100000; // 35 min
+            mockPlugin.slackMs = 2100000; // 35 min -> total 70 min = 7/6 hours -> 100 / (7/6) = 85.714... -> 86
+
+            expect(manager.getSessionSpeed()).toBe(86);
+            expect(manager.getCoreStats().sessionSpeed).toBe(86);
+        });
+
+        it('retains speed calculation during pause state', () => {
+            const manager = new StatisticsManager(mockPlugin);
+            mockPlugin.isTracking = false; // paused
+            mockPlugin.sessionAddedWords = 1200;
+            mockPlugin.focusMs = 1800000;
+            mockPlugin.slackMs = 1800000;
+
+            expect(manager.getSessionSpeed()).toBe(1200);
+            expect(manager.getCoreStats().sessionSpeed).toBe(1200);
+        });
+
+        it('resets speed to zero when tracking values are reset', () => {
+            const manager = new StatisticsManager(mockPlugin);
+            // Simulate prior session
+            mockPlugin.sessionAddedWords = 1200;
+            mockPlugin.focusMs = 1800000;
+            mockPlugin.slackMs = 1800000;
+            expect(manager.getSessionSpeed()).toBe(1200);
+
+            // Reset following existing lifecycle values
+            mockPlugin.sessionAddedWords = 0;
+            mockPlugin.focusMs = 0;
+            mockPlugin.slackMs = 0;
+            mockPlugin.isTracking = false;
+
+            expect(manager.getSessionSpeed()).toBe(0);
+            expect(manager.getCoreStats().sessionSpeed).toBe(0);
+        });
     });
 
     it('explicitly clears chapter stats without falling back to the previous work', () => {

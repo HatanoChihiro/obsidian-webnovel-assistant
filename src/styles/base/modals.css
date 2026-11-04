@@ -3,9 +3,7 @@
    ========================================================================== */
 
 /* 1. Modal Headings Reset (new Setting(contentEl).setName(...).setHeading()) */
-body .modal .setting-item.setting-item-heading,
-body .modal-content .setting-item.setting-item-heading,
-body .modal-container .setting-item.setting-item-heading {
+body .modal.wn-plugin-modal .setting-item.setting-item-heading {
 	padding-left: 0;
 	margin-left: 0;
 	padding-top: 0;
@@ -17,22 +15,17 @@ body .modal-container .setting-item.setting-item-heading {
 	min-height: unset;
 }
 
-body .modal .setting-item.setting-item-heading .setting-item-info,
-body .modal .setting-item.setting-item-heading .setting-item-name,
-body .modal-content .setting-item.setting-item-heading .setting-item-info,
-body .modal-content .setting-item.setting-item-heading .setting-item-name {
+body .modal.wn-plugin-modal .setting-item.setting-item-heading .setting-item-info,
+body .modal.wn-plugin-modal .setting-item.setting-item-heading .setting-item-name {
 	padding-left: 0;
 	margin-left: 0;
 }
 
 /* 2. Unified Modal Main Title Size & Color */
-body .modal .setting-item.setting-item-heading:first-child .setting-item-name,
-body .modal .setting-item.setting-item-heading:first-of-type .setting-item-name,
-body .modal-content .setting-item.setting-item-heading:first-child .setting-item-name,
-body .modal-content .setting-item.setting-item-heading:first-of-type .setting-item-name,
-body .modal .modal-title,
-body .modal-content h2,
-body .modal h2,
+body .modal.wn-plugin-modal .setting-item.setting-item-heading:first-child .setting-item-name,
+body .modal.wn-plugin-modal .setting-item.setting-item-heading:first-of-type .setting-item-name,
+body .modal.wn-plugin-modal .modal-title,
+body .modal.wn-plugin-modal h2,
 .history-stats-modal .setting-item-heading:first-child .setting-item-name,
 .foreshadowing-input-modal h2,
 .wn-timeline-add-modal h2 {
@@ -44,8 +37,7 @@ body .modal h2,
 }
 
 /* 3. Secondary Sub-headings inside Modal */
-body .modal .setting-item.setting-item-heading:not(:first-of-type) .setting-item-name,
-body .modal-content .setting-item.setting-item-heading:not(:first-of-type) .setting-item-name {
+body .modal.wn-plugin-modal .setting-item.setting-item-heading:not(:first-of-type) .setting-item-name {
 	font-family: var(--font-interface);
 	font-size: 0.95em;
 	font-weight: 600;

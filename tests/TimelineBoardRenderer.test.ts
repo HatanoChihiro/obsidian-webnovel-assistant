@@ -286,6 +286,7 @@ vi.mock('obsidian', () => ({
 	Platform: { isMobile: false },
 	Notice: vi.fn(),
 	Modal: class {
+		modalEl = new MockElement();
 		contentEl = new MockElement();
 		constructor(_app: unknown) {}
 		open() {

@@ -30,41 +30,46 @@ body.webnovel-custom-dragging .nav-folder-title-content {
 	background: color-mix(in srgb, var(--interactive-accent) 5%, transparent);
 }
 
-.drag-over *,
-.drag-over-chapter *,
-.drag-over-event *,
-.drag-over-event-top *,
-.drag-over-event-bottom * {
+.wn-timeline-waterfall-layout .drag-over *,
+.wn-timeline-waterfall-layout .drag-over-chapter *,
+.wn-timeline-waterfall-layout .drag-over-event *,
+.wn-timeline-waterfall-layout .drag-over-event-top *,
+.wn-timeline-waterfall-layout .drag-over-event-bottom * {
 	pointer-events: none;
 }
 
-.drag-over,
-.drag-over-chapter,
-.drag-over-event,
-.drag-over-event-top,
-.drag-over-event-bottom {
+.wn-timeline-waterfall-layout .drag-over,
+.wn-timeline-waterfall-layout .drag-over-chapter,
+.wn-timeline-waterfall-layout .drag-over-event,
+.wn-timeline-waterfall-layout .drag-over-event-top,
+.wn-timeline-waterfall-layout .drag-over-event-bottom {
 	background: var(--background-modifier-hover);
 }
 
-.is-dragging {
+.wn-corkboard-card.is-dragging,
+.wn-lore-card.is-dragging,
+.wn-timeline-item-row.is-dragging {
 	opacity: 0.5;
 }
 
 /* Drag Over Indicators */
 
-body .drag-over-left {
+body .wn-drag-over-left {
 	border-left: 2px dashed var(--interactive-accent);
 }
 
-body .drag-over-right {
+body .wn-drag-over-right {
 	border-right: 2px dashed var(--interactive-accent);
 }
-body.is-phone *[draggable="true"],
-body.is-phone div[draggable="true"],
-body.is-phone a[draggable="true"],
-body.is-tablet *[draggable="true"],
-body.is-tablet div[draggable="true"],
-body.is-tablet a[draggable="true"] {
+
+body.is-phone .wn-corkboard-card[draggable="true"],
+body.is-phone .wn-lore-card[draggable="true"],
+body.is-phone .wn-timeline-item-row[draggable="true"],
+body.is-phone .wn-timeline-item[draggable="true"],
+body.is-tablet .wn-corkboard-card[draggable="true"],
+body.is-tablet .wn-lore-card[draggable="true"],
+body.is-tablet .wn-timeline-item-row[draggable="true"],
+body.is-tablet .wn-timeline-item[draggable="true"] {
 	-webkit-user-select: none;
 	user-select: none;
 	-webkit-touch-callout: none;

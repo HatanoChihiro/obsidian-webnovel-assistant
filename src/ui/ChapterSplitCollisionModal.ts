@@ -19,6 +19,7 @@ export class ChapterSplitCollisionModal extends Modal {
 		resolve: (value: string | null) => void
 	) {
 		super(app);
+		this.modalEl.addClass('wn-plugin-modal');
 		this.suggestedName = suggestedName;
 		this.folder = folder;
 		this.reason = reason;

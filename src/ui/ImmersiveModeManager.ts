@@ -74,6 +74,7 @@ export type ImmersiveModeManagerSettings = Pick<
 	AccurateCountSettings,
 	| '_savedImmersiveLayout'
 	| 'immersive'
+	| 'editorTypewriter'
 	| 'workspaceFolders'
 	| 'loreFolderName'
 	| 'timeline'
@@ -111,6 +112,10 @@ export class ImmersiveModeManager {
 	private savedFolderCollapsedState: Record<string, boolean> = {};
 	private preservedMainLeaf: WorkspaceLeaf | null = null;
 	private immersiveDocument: Document | null = null;
+	private entryScrollAnchor: {
+		view: EditorView; doc: EditorView['state']['doc']; position: number;
+		yMargin: number; effect: StateEffect<unknown>;
+	} | null = null;
 	private preservedBranches = new Set<HTMLElement>();
 	private preservedDimensions = new Map<PreservedWorkspaceItem, {
 		size: number | undefined;
@@ -120,10 +125,14 @@ export class ImmersiveModeManager {
 		view: MarkdownView;
 		filePath: string;
 		scroll: number;
+		ownerDocument: Document;
+		cleanup?: () => void;
 	}>();
 	private backgroundScrollLeafRef: EventRef | null = null;
 	private backgroundScrollLayoutRef: EventRef | null = null;
-	private backgroundScrollFrame: { ownerWindow: Window; id: number; timer?: number; cleanup?: () => void } | null = null;
+	private backgroundScrollFrame: { leaf: WorkspaceLeaf; ownerWindow: Window; id: number; timer?: number } | null = null;
+	private immersiveActiveLeafRef: EventRef | null = null;
+	private isRedirectingActiveLeaf: boolean = false;
 
 	private topBarEl: HTMLElement | null = null;
 	private updateInterval: number | null = null;
@@ -325,6 +334,24 @@ export class ImmersiveModeManager {
 		if (typeof this.app.vault.on === 'function') {
 			this.referenceRenameEventRef = this.app.vault.on('rename', () => reconcileReference(null));
 		}
+		this.immersiveActiveLeafRef = this.app.workspace.on('active-leaf-change', (leaf: WorkspaceLeaf | null) => {
+			if (!this.isImmersiveActive || this.isExiting || this.isTransitioning) return;
+			if (!leaf || !leaf.containerEl) return;
+			const main = this.activeMainLeaf;
+			if (!main || !main.containerEl || leaf === main) return;
+			if (!this.app.workspace.getLeavesOfType('markdown').includes(main)) return;
+			if (main.containerEl.ownerDocument !== leaf.containerEl.ownerDocument) return;
+			if (this.createdImmersiveLeaves.has(leaf)) return;
+			if (!this.isRetainedPreservedLeaf(leaf)) return;
+			if (this.isRedirectingActiveLeaf) return;
+			try {
+				this.isRedirectingActiveLeaf = true;
+				// 原生标签导航不会过滤 CSS 隐藏的普通分支，交还给仍存活的沉浸主编辑器。
+				this.app.workspace.setActiveLeaf(main, { focus: true });
+			} finally {
+				this.isRedirectingActiveLeaf = false;
+			}
+		});
 	}
 
 	private isReferenceSessionCurrent(generation: number): boolean {
@@ -341,6 +368,10 @@ export class ImmersiveModeManager {
 				this.app.workspace.offref(this.fileOpenEventRef);
 			}
 			this.fileOpenEventRef = null;
+		}
+		if (this.immersiveActiveLeafRef) {
+			this.app.workspace.offref(this.immersiveActiveLeafRef);
+			this.immersiveActiveLeafRef = null;
 		}
 		if (this.fullscreenDocument) {
 			if (this.fullscreenChangeHandler) {
@@ -366,7 +397,9 @@ export class ImmersiveModeManager {
 	 */
 	public destroy(): void {
 		this.cleanup();
-		this.backgroundScrollPositions.clear();
+		for (const leaf of Array.from(this.backgroundScrollPositions.keys())) {
+			this.discardBackgroundScroll(leaf);
+		}
 		this.releaseBackgroundScrollTracking();
 	}
 
@@ -442,7 +475,7 @@ export class ImmersiveModeManager {
 		this.savedActiveFile = activeView.file;
 		const entryEditor = activeView.editor?.cm;
 		const entryScrollSnapshot = this.captureEditorScrollEffect(activeView);
-		const preserveTypewriter = this.plugin.settings.immersive.typewriterEnabled;
+		const preserveTypewriter = Boolean(this.plugin.settings.immersive.typewriterEnabled || this.plugin.settings.editorTypewriter?.enabled);
 		const ownerDocument = activeView.containerEl?.ownerDocument || this.sessionDocument;
 		this.immersiveDocument = ownerDocument;
 		if (preserveTypewriter) entryEditor?.dispatch({ effects: preserveTypewriterViewport.of(null) });
@@ -633,7 +666,8 @@ export class ImmersiveModeManager {
 		const reuseWorkspace = !!mainLeaf && this.preservedMainLeaf === mainLeaf
 			&& this.app.workspace.getLeavesOfType('markdown').includes(mainLeaf);
 		const scrollSnapshot = reuseWorkspace ? this.captureEditorScrollEffect(mainView) : undefined;
-		if (reuseWorkspace && this.plugin.settings.immersive.typewriterEnabled) {
+		const preserveTypewriter = Boolean(this.plugin.settings.immersive.typewriterEnabled || this.plugin.settings.editorTypewriter?.enabled);
+		if (reuseWorkspace && preserveTypewriter) {
 			mainView?.editor?.cm?.dispatch({ effects: preserveTypewriterViewport.of(null) });
 		}
 		let restoredLeaf: WorkspaceLeaf | null = null;
@@ -816,16 +850,28 @@ export class ImmersiveModeManager {
 	/** 用屏幕上真实可见的文字和偏移量作锚点，避免留白变化或旧进度缓存带来累计偏移。 */
 	private captureEditorScrollEffect(view: MarkdownView | undefined): StateEffect<unknown> | undefined {
 		const cm = view?.editor?.cm;
+		if (!this.isImmersiveActive) this.entryScrollAnchor = null;
 		if (!cm) return undefined;
 		if (cm.scrollDOM?.clientHeight && cm.scrollDOM.scrollTop > 0 && cm.posAtCoords && cm.coordsAtPos && cm.contentDOM) {
 			const viewport = cm.scrollDOM.getBoundingClientRect();
+			const entry = this.entryScrollAnchor;
+			// 宽度变化可能把同一字符重排到更早的行首；未滚动或编辑时沿用原字符，避免往返累积偏移。
+			if (this.isImmersiveActive && entry?.view === cm && cm.state?.doc === entry.doc) {
+				const coords = cm.coordsAtPos(entry.position);
+				if (coords && Math.abs(coords.top - viewport.top - entry.yMargin) <= 1) return entry.effect;
+			}
 			const position = cm.posAtCoords({
 				x: Math.max(viewport.left, cm.contentDOM.getBoundingClientRect().left) + 2,
 				y: viewport.top + Math.min(cm.defaultLineHeight || 24, cm.scrollDOM.clientHeight / 2)
 			});
 			const coords = position === null ? null : cm.coordsAtPos(position);
 			if (position !== null && coords) {
-				return EditorView.scrollIntoView(position, { y: 'start', yMargin: Math.max(0, coords.top - viewport.top) });
+				const yMargin = Math.max(0, coords.top - viewport.top);
+				const effect = EditorView.scrollIntoView(position, { y: 'start', yMargin });
+				if (!this.isImmersiveActive && cm.state?.doc) {
+					this.entryScrollAnchor = { view: cm, doc: cm.state.doc, position, yMargin, effect };
+				}
+				return effect;
 			}
 		}
 		return cm.scrollSnapshot?.();
@@ -859,6 +905,15 @@ export class ImmersiveModeManager {
 		} finally {
 			for (const event of events) cm.dom.removeEventListener(event, cancel, true);
 		}
+	}
+
+	private isRetainedPreservedLeaf(leaf: WorkspaceLeaf): boolean {
+		let el: HTMLElement | null = leaf.containerEl;
+		while (el) {
+			if (this.preservedBranches.has(el)) return true;
+			el = el.parentElement;
+		}
+		return false;
 	}
 
 	/** 暂时隐藏主编辑器之外的普通分支，沿用原 Leaf、编辑器和第三方插件 DOM。 */
@@ -913,14 +968,32 @@ export class ImmersiveModeManager {
 
 	/** 隐藏编辑器的 scrollTop 是 0，必须使用视图保存的正文位置，并保留到标签重新显示。 */
 	private rememberBackgroundScrollPositions(mainLeaf: WorkspaceLeaf): void {
+		const ownerDocument = mainLeaf.containerEl?.ownerDocument;
+		for (const leaf of this.backgroundScrollPositions.keys()) {
+			if (leaf.containerEl?.ownerDocument !== ownerDocument) this.discardBackgroundScroll(leaf);
+		}
 		this.pruneBackgroundScrollPositions();
-		this.backgroundScrollPositions.delete(mainLeaf);
+		this.discardBackgroundScroll(mainLeaf);
 		for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
 			if (leaf === mainLeaf || this.createdImmersiveLeaves.has(leaf) || this.backgroundScrollPositions.has(leaf)) continue;
+			if (leaf.containerEl?.ownerDocument !== ownerDocument) continue;
 			const view = leaf.view as MarkdownView;
 			const scroll = view.getEphemeralState?.().scroll;
 			if (view.file && typeof scroll === 'number' && Number.isFinite(scroll)) {
-				this.backgroundScrollPositions.set(leaf, { view, filePath: view.file.path, scroll });
+				const target = leaf.containerEl;
+				const events = ['wheel', 'touchstart', 'pointerdown', 'keydown'] as const;
+				const onUserIntent = () => {
+					if (this.isImmersiveActive || this.isTransitioning) return;
+					this.discardBackgroundScroll(leaf);
+				};
+				let cleanup: (() => void) | undefined;
+				if (target && typeof target.addEventListener === 'function') {
+					for (const event of events) target.addEventListener(event, onUserIntent, { capture: true, passive: true });
+					cleanup = () => {
+						for (const event of events) target.removeEventListener(event, onUserIntent, true);
+					};
+				}
+				this.backgroundScrollPositions.set(leaf, { view, filePath: view.file.path, scroll, ownerDocument, cleanup });
 			}
 		}
 		if (this.backgroundScrollPositions.size && !this.backgroundScrollLeafRef) {
@@ -935,32 +1008,27 @@ export class ImmersiveModeManager {
 					this.backgroundScrollFrame = null;
 					if (this.isImmersiveActive || this.isTransitioning || this.app.workspace.getActiveViewOfType(MarkdownView) !== position.view) return;
 					if (this.backgroundScrollPositions.get(leaf) !== position || leaf.view !== position.view || position.view.file?.path !== position.filePath) return;
+					if (leaf.containerEl?.ownerDocument !== position.ownerDocument) {
+						this.discardBackgroundScroll(leaf);
+						return;
+					}
 					// 在原生标签切换和聚焦完成后恢复滚动，不改光标、不重新抢焦点。
 					position.view.setEphemeralState({ scroll: position.scroll });
 					// 阅读进度插件还可能延迟恢复旧值，短暂确认一次；用户操作立即放弃自动恢复。
-					const target = leaf.containerEl;
-					const events = ['wheel', 'touchstart', 'pointerdown', 'keydown'] as const;
-					const cancel = () => {
-						this.backgroundScrollPositions.delete(leaf);
-						this.cancelBackgroundScrollFrame();
-						if (!this.backgroundScrollPositions.size) this.releaseBackgroundScrollTracking();
-					};
-					for (const event of events) target.addEventListener(event, cancel, { capture: true, passive: true });
-					const cleanup = () => {
-						for (const event of events) target.removeEventListener(event, cancel, true);
-					};
 					const timer = ownerWindow.setTimeout(() => {
 						this.backgroundScrollFrame = null;
-						cleanup();
 						if (this.isImmersiveActive || this.isTransitioning || this.app.workspace.getActiveViewOfType(MarkdownView) !== position.view) return;
 						if (this.backgroundScrollPositions.get(leaf) !== position || leaf.view !== position.view || position.view.file?.path !== position.filePath) return;
+						if (leaf.containerEl?.ownerDocument !== position.ownerDocument) {
+							this.discardBackgroundScroll(leaf);
+							return;
+						}
 						position.view.setEphemeralState({ scroll: position.scroll });
-						this.backgroundScrollPositions.delete(leaf);
-						if (!this.backgroundScrollPositions.size) this.releaseBackgroundScrollTracking();
+						this.discardBackgroundScroll(leaf);
 					}, 60);
-					this.backgroundScrollFrame = { ownerWindow, id: 0, timer, cleanup };
+					this.backgroundScrollFrame = { leaf, ownerWindow, id: 0, timer };
 				});
-				this.backgroundScrollFrame = { ownerWindow, id };
+				this.backgroundScrollFrame = { leaf, ownerWindow, id };
 			});
 			this.backgroundScrollLayoutRef = this.app.workspace.on('layout-change', () => {
 				if (!this.isTransitioning) this.pruneBackgroundScrollPositions();
@@ -968,11 +1036,21 @@ export class ImmersiveModeManager {
 		}
 	}
 
+	private discardBackgroundScroll(leaf: WorkspaceLeaf): void {
+		const position = this.backgroundScrollPositions.get(leaf);
+		if (!position) return;
+		position.cleanup?.();
+		this.cancelBackgroundScrollFrame(leaf);
+		this.backgroundScrollPositions.delete(leaf);
+		if (!this.backgroundScrollPositions.size) this.releaseBackgroundScrollTracking();
+	}
+
 	private pruneBackgroundScrollPositions(): void {
 		const leaves = new Set(this.app.workspace.getLeavesOfType('markdown'));
 		for (const [leaf, position] of this.backgroundScrollPositions) {
-			if (!leaves.has(leaf) || leaf.view !== position.view || position.view.file?.path !== position.filePath) {
-				this.backgroundScrollPositions.delete(leaf);
+			if (!leaves.has(leaf) || leaf.view !== position.view || position.view.file?.path !== position.filePath
+				|| leaf.containerEl?.ownerDocument !== position.ownerDocument) {
+				this.discardBackgroundScroll(leaf);
 			}
 		}
 		if (!this.backgroundScrollPositions.size) this.releaseBackgroundScrollTracking();
@@ -986,11 +1064,11 @@ export class ImmersiveModeManager {
 		this.cancelBackgroundScrollFrame();
 	}
 
-	private cancelBackgroundScrollFrame(): void {
+	private cancelBackgroundScrollFrame(forLeaf?: WorkspaceLeaf): void {
 		if (this.backgroundScrollFrame) {
+			if (forLeaf && this.backgroundScrollFrame.leaf !== forLeaf) return;
 			this.backgroundScrollFrame.ownerWindow.cancelAnimationFrame(this.backgroundScrollFrame.id);
 			if (this.backgroundScrollFrame.timer !== undefined) this.backgroundScrollFrame.ownerWindow.clearTimeout(this.backgroundScrollFrame.timer);
-			this.backgroundScrollFrame.cleanup?.();
 			this.backgroundScrollFrame = null;
 		}
 	}
@@ -1057,6 +1135,7 @@ export class ImmersiveModeManager {
 		this.isExiting = false;
 		this.savedLayout = null;
 		this.savedActiveFile = null;
+		this.entryScrollAnchor = null;
 
 		this.activeTopLeaf = null;
 		this.activeLeftLeaf = null;
@@ -1366,6 +1445,7 @@ export class ImmersiveModeManager {
 			dailyProgress: centerDiv.createSpan({ cls: 'stat-item' }),
 			taskProgress: centerDiv.createSpan({ cls: 'stat-item' }),
 			sessionWords: centerDiv.createSpan({ cls: 'stat-item' }),
+			sessionSpeed: centerDiv.createSpan({ cls: 'stat-item' }),
 			currentTime: centerDiv.createSpan({ cls: 'stat-item' })
 		};
 
@@ -1503,6 +1583,7 @@ export class ImmersiveModeManager {
 			updateStatEl('dailyProgress', !!immersive.immersiveShowDailyProgress, `${t('immersive.daily-progress')} (${stats.dailyWords}/${stats.dailyGoal})`);
 			updateStatEl('taskProgress', !!immersive.immersiveShowTaskProgress, `${t('immersive.task-progress')} (${taskWords}/${taskGoal})`);
 			updateStatEl('sessionWords', !!immersive.immersiveShowSessionWords, `${t('immersive.session-words')} (${stats.sessionWords})`);
+			updateStatEl('sessionSpeed', !!immersive.immersiveShowSessionSpeed, `${t('immersive.session-speed')} (${stats.sessionSpeed} ${t('common.words-per-hour-unit')})`);
 
 			const showCurrentTime = !!immersive.immersiveShowCurrentTime;
 			updateStatEl('currentTime', showCurrentTime, showCurrentTime ? this.formatCurrentTime() : '');

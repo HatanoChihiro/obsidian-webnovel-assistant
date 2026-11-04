@@ -22,6 +22,7 @@ export class TypographyQuickModal extends Modal {
 		private plugin: TypographyQuickPlugin
 	) {
 		super(app);
+		this.modalEl.addClass('wn-plugin-modal');
 	}
 
 	onOpen(): void {

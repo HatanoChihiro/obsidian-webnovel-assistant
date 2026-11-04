@@ -18,6 +18,7 @@ export class GoalModal extends Modal {
 
 	constructor(app: App, plugin: GoalModalPlugin, file: TFile) {
 		super(app);
+		this.modalEl.addClass('wn-plugin-modal');
 		this.plugin = plugin;
 		this.file = file;
 	}

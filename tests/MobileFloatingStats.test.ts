@@ -84,6 +84,7 @@ const createPluginFixture = (overrides?: Partial<MobileFloatingStatsPlugin>): Mo
 			slackTime: '00:00:00',
 			totalTime: '00:00:00',
 			sessionWords: 0,
+			sessionSpeed: 0,
 			todayWords: 1000,
 			goal: 2000,
 			percent: 50,

@@ -26,6 +26,7 @@ import { parseDirectorySettingLines, formatDirectorySettingLines } from '../util
 class HistoryRestoreConfirmModal extends Modal {
 	constructor(app: App, private onConfirm: () => Promise<void>) {
 		super(app);
+		this.modalEl.addClass('wn-plugin-modal');
 	}
 
 	onOpen(): void {
@@ -2070,6 +2071,15 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				}));
 
 		new Setting(containerEl)
+			.setName(t('setting.show-session-speed'))
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.immersive.immersiveShowSessionSpeed ?? false)
+				.onChange(async (value) => {
+					this.plugin.settings.immersive.immersiveShowSessionSpeed = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
 			.setName(t('setting.show-current-time'))
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.immersive.immersiveShowCurrentTime ?? false)
@@ -2569,6 +2579,13 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			.setName(t('obs.session-words'))
 			.addToggle(toggle => toggle.setValue(this.plugin.settings.obs.obsShowSessionWords).onChange(async (v) => {
 				this.plugin.settings.obs.obsShowSessionWords = v;
+				await this.plugin.saveSettings();
+			}));
+
+		new Setting(containerEl)
+			.setName(t('obs.session-speed'))
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.obs.obsShowSessionSpeed ?? false).onChange(async (v) => {
+				this.plugin.settings.obs.obsShowSessionSpeed = v;
 				await this.plugin.saveSettings();
 			}));
 

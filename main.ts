@@ -55,6 +55,7 @@ import { t } from './src/i18n';
 import { buildCharacterHoverExtension } from './src/editor/CharacterHoverExtension';
 import { createTypewriterExtension } from './src/editor/TypewriterExtension';
 import { buildProofreadingExtension } from './src/editor/ProofreadingExtension';
+import { createTypographyImeIndentFixExtension } from './src/editor/TypographyImeIndentFixExtension';
 import { AnnotateDictModal } from './src/ui/AnnotateDictModal';
 import { isSelectionEligibleForAnnotate } from './src/utils/proofreadingHelpers';
 import type { LoreSyncService } from './src/services/LoreSyncService';
@@ -407,6 +408,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.registerEditorExtension(selectionCountTooltipExtension(this));
 		this.registerEditorExtension(createTypewriterExtension(this));
 		this.registerEditorExtension(buildProofreadingExtension(this.app, this));
+		this.registerEditorExtension(createTypographyImeIndentFixExtension(this));
 	}
 
 	public registerEditorContextMenu(): void {

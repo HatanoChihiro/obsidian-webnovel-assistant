@@ -15,6 +15,7 @@ export class NewNovelModal extends Modal {
 
 	constructor(app: App, onSubmit: (result: { name: string; meta: Partial<NovelMetadata> }) => void, existingSeries?: string[]) {
 		super(app);
+		this.modalEl.addClass('wn-plugin-modal');
 		this.onSubmit = onSubmit;
 		this.existingSeries = existingSeries || [];
 	}

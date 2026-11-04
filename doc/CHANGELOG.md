@@ -1,3 +1,33 @@
+## 🛠 v4.0.6
+
+### 新增功能
+
+- **本场时速**：实时状态面板的专注计时以四格展示总计耗时、本场时速、专注时长与摸鱼时长；时速按本场净增字数和总计耗时计算，直播叠加层及沉浸模式顶部栏可独立开启显示。
+
+### Bug 修复
+
+- **沉浸模式切换**：修复进出沉浸模式时编辑器焦点丢失、正文及后台标签页位置跳动的问题，改善与 Banner 页面及打字机模式的兼容性。
+- **首行缩进**：修复开启首行缩进后，在普通正文段首输入中文、选择候选词时续行整体右移的问题。
+- **界面样式隔离**：修复插件样式影响其他插件弹窗标题、拖拽状态和移动端拖拽元素的问题，并移除对原生字体变量的全局覆盖。
+- **词库标注窗口**：统一标题与其他面板的布局，修复部分主题下标题额外缩进的问题。
+
+感谢 @AshenAshes 对沉浸模式切换的贡献（[PR #52](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/pull/52)）。
+
+### English Changelog
+
+#### New Features
+
+- **Session writing speed**: The live status panel shows total elapsed time, session speed, focus time, and idle time in four equal cells. Speed uses session net words divided by total elapsed time, with independent display toggles for the streaming overlay and immersive top bar.
+
+#### Bug Fixes
+
+- **Immersive mode transitions**: Fix lost editor focus and shifting document or background-tab positions when entering or leaving immersive mode, with improved compatibility for banner pages and typewriter mode.
+- **First-line indentation**: Fix wrapped lines shifting right during Chinese IME composition at the start of ordinary paragraphs when first-line indentation is enabled.
+- **Style isolation**: Fix plugin styles affecting other plugins' modal headings, drag states, and mobile draggable elements, and remove global overrides of native font variables.
+- **Dictionary annotation dialog**: Align its heading layout with other panels and fix extra title indentation under some themes.
+
+Thanks to @AshenAshes for the immersive transition contribution ([PR #52](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/pull/52)).
+
 ## ✨ v4.0.5
 
 ### 新增功能

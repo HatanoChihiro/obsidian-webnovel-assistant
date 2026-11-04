@@ -26,6 +26,7 @@ export class ImmersiveTypewriterQuickModal extends Modal {
 		private options?: ImmersiveTypewriterQuickModalOptions
 	) {
 		super(app);
+		this.modalEl.addClass('wn-plugin-modal');
 	}
 
 	onOpen(): void {

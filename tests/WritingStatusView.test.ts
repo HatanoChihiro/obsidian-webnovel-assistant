@@ -81,8 +81,10 @@ describe('WritingStatusView task lifecycle gating', () => {
 					dailyPercent: 0,
 					todayWords: 0,
 					goal: 0,
-					percent: 0
+					percent: 0,
+					sessionSpeed: 0
 				})),
+				getSessionSpeed: vi.fn(() => 0),
 				calcStreak: vi.fn(() => 0),
 				calcFocusRate: vi.fn(() => 0),
 				calcActiveHours: vi.fn(() => 0),
@@ -350,6 +352,7 @@ describe('WritingStatusView work retention and context isolation', () => {
 		v.focusTimeEl = createTestEl();
 		v.slackTimeEl = createTestEl();
 		v.totalTimeEl = createTestEl();
+		v.sessionSpeedEl = createTestEl();
 		v.weekWordEl = createTestEl();
 		v.monthWordEl = createTestEl();
 		v.yearWordEl = createTestEl();
@@ -439,8 +442,10 @@ describe('WritingStatusView work retention and context isolation', () => {
 					dailyPercent: 75,
 					todayWords: 2000,
 					goal: 2000,
-					percent: 100
+					percent: 100,
+					sessionSpeed: 0
 				})),
+				getSessionSpeed: vi.fn(() => 0),
 				calcStreak: vi.fn(() => 0),
 				calcFocusRate: vi.fn(() => 0),
 				calcActiveHours: vi.fn(() => 0),
@@ -1402,12 +1407,16 @@ describe('WritingStatusView work retention and context isolation', () => {
 			mockPlugin.focusMs = 3600000; // 1 hour = 01:00:00
 			mockPlugin.slackMs = 120000;  // 2 minutes = 00:02:00
 
+			vi.mocked(mockPlugin.statisticsManager.getSessionSpeed).mockReturnValue(1234);
+
 			// Call updateTimer
 			view.updateTimer();
 
 			expect(view.focusTimeEl.innerText).toBe('01:00:00');
 			expect(view.slackTimeEl.innerText).toBe('00:02:00');
 			expect(view.totalTimeEl.innerText).toBe('01:02:00');
+			expect(view.sessionSpeedEl.innerText).toBe('1234');
+			expect(mockPlugin.statisticsManager.getCoreStats).not.toHaveBeenCalled();
 
 			// Must not perform task IO or history traversal
 			expect(mockTaskManager.loadEntries).not.toHaveBeenCalled();

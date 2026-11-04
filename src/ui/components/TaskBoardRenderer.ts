@@ -44,6 +44,7 @@ class TaskAbandonConfirmModal extends Modal {
         private onConfirm: () => void
     ) {
         super(app);
+        this.modalEl.addClass('wn-plugin-modal');
     }
 
     onOpen() {
@@ -81,6 +82,7 @@ class TaskCompleteConfirmModal extends Modal {
         private onConfirm: () => void
     ) {
         super(app);
+        this.modalEl.addClass('wn-plugin-modal');
     }
 
     onOpen() {

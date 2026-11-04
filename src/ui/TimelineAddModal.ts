@@ -34,6 +34,7 @@ export class TimelineAddModal extends Modal {
 		existingNodes: Array<string | TimelineNodeOption> = []
 	) {
 		super(app);
+		this.modalEl.addClass('wn-plugin-modal');
 		this.context = context;
 		this.description = description;
 		this.sourceFile = sourceFile;

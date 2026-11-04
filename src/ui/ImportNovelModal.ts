@@ -31,6 +31,7 @@ export class ImportNovelModal extends Modal {
 
 	constructor(app: App, plugin: ImportNovelModalPlugin) {
 		super(app);
+		this.modalEl.addClass('wn-plugin-modal');
 		this.plugin = plugin;
 	}
 

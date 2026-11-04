@@ -51,6 +51,7 @@ export class SaveStickyNoteModal extends Modal {
 
 	constructor(app: App, onSubmit: (fileName: string, folderPath: string) => void | Promise<void>) {
 		super(app);
+		this.modalEl.addClass('wn-plugin-modal');
 		this.onSubmit = onSubmit;
 	}
 
@@ -166,6 +167,7 @@ export class ConfirmCloseModal extends Modal {
 
 	constructor(app: App, onSubmit: (shouldSave: boolean) => void | Promise<void>) {
 		super(app);
+		this.modalEl.addClass('wn-plugin-modal');
 		this.onSubmit = onSubmit;
 	}
 

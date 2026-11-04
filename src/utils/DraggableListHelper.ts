@@ -25,10 +25,10 @@ export class DraggableListHelper {
 			e.preventDefault();
 			const targetItem = (e.target as HTMLElement).closest(itemSelector) as HTMLElement;
 			
-			container.querySelectorAll('.drag-over-left, .drag-over-right').forEach(el => {
+			container.querySelectorAll('.wn-drag-over-left, .wn-drag-over-right').forEach(el => {
 				if (el !== targetItem) {
-					el.removeClass('drag-over-left');
-					el.removeClass('drag-over-right');
+					el.removeClass('wn-drag-over-left');
+					el.removeClass('wn-drag-over-right');
 				}
 			});
 
@@ -37,11 +37,11 @@ export class DraggableListHelper {
 			const rect = targetItem.getBoundingClientRect();
 			const midX = rect.left + rect.width / 2;
 			if (e.clientX < midX) {
-				targetItem.removeClass('drag-over-right');
-				targetItem.addClass('drag-over-left');
+				targetItem.removeClass('wn-drag-over-right');
+				targetItem.addClass('wn-drag-over-left');
 			} else {
-				targetItem.removeClass('drag-over-left');
-				targetItem.addClass('drag-over-right');
+				targetItem.removeClass('wn-drag-over-left');
+				targetItem.addClass('wn-drag-over-right');
 			}
 		};
 
@@ -53,9 +53,9 @@ export class DraggableListHelper {
 			e.preventDefault();
 			const targetItem = (e.target as HTMLElement).closest(itemSelector) as HTMLElement;
 			
-			container.querySelectorAll('.drag-over-left, .drag-over-right').forEach(el => {
-				el.removeClass('drag-over-left');
-				el.removeClass('drag-over-right');
+			container.querySelectorAll('.wn-drag-over-left, .wn-drag-over-right').forEach(el => {
+				el.removeClass('wn-drag-over-left');
+				el.removeClass('wn-drag-over-right');
 			});
 
 			if (!targetItem) return;

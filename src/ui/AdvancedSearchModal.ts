@@ -48,6 +48,7 @@ export class AdvancedSearchModal extends Modal {
 	
 	constructor(app: App, plugin: AdvancedSearchModalPlugin, private sourceLeaf: WorkspaceLeaf | null = null) {
 		super(app);
+		this.modalEl.addClass('wn-plugin-modal');
 		this.plugin = plugin;
 		this.query = this.plugin.settings.advancedSearchQuery || '';
 	}

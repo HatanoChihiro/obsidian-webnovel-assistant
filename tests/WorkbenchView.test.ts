@@ -85,6 +85,7 @@ const { getCurrentBookContextMock, findBookRootMock, MockTFile, MockTFolder, moc
 	const modalInstances: unknown[] = [];
 	class HoistedMockModal {
 		app: unknown;
+		modalEl = { addClass: vi.fn() };
 		defaultPrefix?: string;
 		onSubmit?: (title: string, templateContent: string) => void;
 

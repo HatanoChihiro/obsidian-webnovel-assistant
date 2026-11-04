@@ -57,6 +57,7 @@ class TrajectoryFullscreenModal extends Modal {
 		private readonly onModalClosed?: () => void
 	) {
 		super(app);
+		this.modalEl.addClass('wn-plugin-modal');
 	}
 
 	onOpen(): void {

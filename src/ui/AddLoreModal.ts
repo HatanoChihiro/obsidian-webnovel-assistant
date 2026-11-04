@@ -63,6 +63,7 @@ export class AddLoreModal extends Modal {
 
 	constructor(app: App, plugin: AddLorePlugin, initialName: string, bookPath: string) {
 		super(app);
+		this.modalEl.addClass('wn-plugin-modal');
 		this.plugin = plugin;
 		this.loreName = initialName;
 		this.loreCategory = '';

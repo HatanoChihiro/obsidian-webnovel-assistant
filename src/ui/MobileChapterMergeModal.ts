@@ -30,6 +30,7 @@ export class MobileChapterMergeModal extends Modal {
 
 	constructor(app: App, plugin: MobileChapterMergeModalPlugin, folder: TFolder) {
 		super(app);
+		this.modalEl.addClass('wn-plugin-modal');
 		this.plugin = plugin;
 		this.folder = folder;
 	}

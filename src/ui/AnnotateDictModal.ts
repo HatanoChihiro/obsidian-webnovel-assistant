@@ -29,6 +29,7 @@ export class AnnotateDictModal extends Modal {
 
 	constructor(app: App, plugin: WebNovelAssistantPlugin, selectedText: string) {
 		super(app);
+		this.modalEl.addClass('wn-plugin-modal');
 		this.plugin = plugin;
 		this.selectedText = selectedText.trim();
 		this.wrongWord = this.selectedText;
@@ -54,14 +55,14 @@ export class AnnotateDictModal extends Modal {
 		contentEl.empty();
 		contentEl.addClass('wn-annotate-dict-modal');
 
-		this.titleEl.setText(t('modal.annotate-dict-title'));
-
 		this.renderForm();
 	}
 
 	private renderForm(): void {
 		const { contentEl } = this;
 		contentEl.empty();
+
+		new Setting(contentEl).setName(t('modal.annotate-dict-title')).setHeading();
 
 		// 类型选择
 		new Setting(contentEl)

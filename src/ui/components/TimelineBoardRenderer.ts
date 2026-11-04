@@ -20,6 +20,7 @@ import { renderTrajectoryMode } from './TrajectoryBoardRenderer';
 class ConfirmDeleteEventModal extends Modal {
 	constructor(app: App, private title: string, private onConfirm: () => void) {
 		super(app);
+		this.modalEl.addClass('wn-plugin-modal');
 	}
 
 	onOpen() {

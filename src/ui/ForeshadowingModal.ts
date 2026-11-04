@@ -45,6 +45,7 @@ export class ForeshadowingInputModal extends Modal {
 		existingDescriptions: string[] = []
 	) {
 		super(app);
+		this.modalEl.addClass('wn-plugin-modal');
 		this.plugin = plugin;
 		this.sourceFileName = sourceFileName;
 		this.selectedContent = selectedContent;
@@ -225,6 +226,7 @@ class ChapterMultiSelectModal extends Modal {
 
 	constructor(app: App, candidates: ChapterCandidateOption[], onSubmit: (chapters: string[]) => void) {
 		super(app);
+		this.modalEl.addClass('wn-plugin-modal');
 		this.candidates = candidates;
 		this.onSubmit = onSubmit;
 	}
@@ -364,6 +366,7 @@ export class ForeshadowingRecoveryModal extends Modal {
 		initialQuote: string = ''
 	) {
 		super(app);
+		this.modalEl.addClass('wn-plugin-modal');
 		this.plugin = plugin;
 		this.contentPreview = contentPreview;
 		this.folderPath = folderPath;
@@ -565,6 +568,7 @@ export class ConfirmCreateForeshadowingFileModal extends Modal {
 		onConfirm: () => void
 	) {
 		super(app);
+		this.modalEl.addClass('wn-plugin-modal');
 		this.fileName = fileName;
 		this.folderPath = folderPath;
 		this.onConfirm = onConfirm;

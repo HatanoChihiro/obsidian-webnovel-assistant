@@ -17,6 +17,7 @@ class SelectionRevisionModal extends Modal {
 		private onSubmit: (newText: string, noteText: string) => void
 	) {
 		super(app);
+		this.modalEl.addClass('wn-plugin-modal');
 	}
 
 	onOpen(): void {
@@ -141,6 +142,7 @@ export class ChapterMergeModal extends Modal {
 
 	constructor(app: App, plugin: ChapterMergeModalPlugin, folder: TFolder) {
 		super(app);
+		this.modalEl.addClass('wn-plugin-modal');
 		this.plugin = plugin;
 		this.folder = folder;
 	}

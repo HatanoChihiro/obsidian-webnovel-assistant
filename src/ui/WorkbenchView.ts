@@ -158,6 +158,7 @@ class NewChapterModal extends Modal {
         private onSubmit: (title: string, templateContent: string) => void
     ) {
         super(app);
+        this.modalEl.addClass('wn-plugin-modal');
     }
     onOpen() {
         const { contentEl } = this;
@@ -192,6 +193,7 @@ class NewChapterModal extends Modal {
 class ConfirmModal extends Modal {
     constructor(app: App, private message: string, private onConfirm: () => void) {
         super(app);
+        this.modalEl.addClass('wn-plugin-modal');
     }
     onOpen() {
         const { contentEl } = this;

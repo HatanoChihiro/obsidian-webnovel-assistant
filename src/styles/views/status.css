@@ -246,18 +246,6 @@
 	color: var(--interactive-accent);
 }
 
-.time-box-total {
-	background: linear-gradient(145deg, color-mix(in srgb, var(--interactive-accent) 12%, color-mix(in srgb, var(--background-primary) 55%, transparent)), color-mix(in srgb, var(--interactive-accent) 4%, color-mix(in srgb, var(--background-primary) 55%, transparent)));
-	backdrop-filter: blur(10px);
-	-webkit-backdrop-filter: blur(10px);
-	padding: 12px;
-	border-radius: 8px;
-	text-align: center;
-	border: 1px solid color-mix(in srgb, var(--interactive-accent) 30%, var(--background-modifier-border));
-	margin-bottom: 10px;
-	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 2px 4px rgba(0, 0, 0, 0.02);
-}
-
 .time-grid {
 	display: grid;
 	grid-template-columns: 1fr 1fr;
