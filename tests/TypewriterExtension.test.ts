@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createTypewriterExtension, type TypewriterExtensionPlugin } from '../src/editor/TypewriterExtension';
+import { createTypewriterExtension, preserveTypewriterViewport, type TypewriterExtensionPlugin } from '../src/editor/TypewriterExtension';
 import type { EditorView, ViewUpdate } from '@codemirror/view';
 
 interface MockScrollerElement {
@@ -303,6 +303,90 @@ describe('TypewriterExtension - Manual Scroll & Race Condition Prevention', () =
 
 	afterEach(() => {
 		vi.useRealTimers();
+	});
+
+	it('preserves the viewport through geometry and focus changes until deliberate user input', () => {
+		env.mockDocument.body.classList.remove('immersive-mode-active');
+		const extension = createTypewriterExtension(env.mockPlugin);
+		const view = env.createMockView(500);
+		const instance = (extension as unknown as { create: (v: EditorView) => { update: (u: ViewUpdate) => void; destroy: () => void } }).create(view);
+		try {
+			instance.update({ view, state: view.state, transactions: [{ effects: [preserveTypewriterViewport.of(null)], annotation: () => undefined }] } as unknown as ViewUpdate);
+			env.mockDocument.body.classList.add('immersive-mode-active');
+			env.mockScroller.dispatchEvent('focusin');
+			instance.update({ view, state: view.state, geometryChanged: true, transactions: [] } as unknown as ViewUpdate);
+			env.mockWindow.flushRaf();
+			expect(view.dispatch).not.toHaveBeenCalled();
+			expect(env.mockScroller.scrollTop).toBe(500);
+
+			// Refocusing must not restart automatic centering.
+			env.mockScroller.dispatchEvent('focusout');
+			env.mockScroller.dispatchEvent('focusin');
+			instance.update({ view, state: view.state, geometryChanged: true, transactions: [] } as unknown as ViewUpdate);
+			env.mockWindow.flushRaf();
+			expect(view.dispatch).not.toHaveBeenCalled();
+
+			instance.update({ view, state: view.state, docChanged: true, transactions: [{ effects: [], annotation: () => 'input.type' }] } as unknown as ViewUpdate);
+			env.mockWindow.flushRaf();
+			expect(view.dispatch).toHaveBeenCalled();
+			vi.mocked(view.dispatch).mockClear();
+			instance.update({ view, state: view.state, transactions: [{ effects: [preserveTypewriterViewport.of(null)], annotation: () => undefined }] } as unknown as ViewUpdate);
+			env.mockScroller.dispatchEvent('pointerdown');
+			env.mockDocument.dispatchEvent('pointerup');
+			env.mockWindow.flushRaf();
+			expect(view.dispatch).toHaveBeenCalled();
+		} finally {
+			instance.destroy();
+		}
+	});
+
+	it.each([false, true])('compensates typewriter spacer changes before the next paint (banner: %s)', (banner) => {
+		const view = env.createMockView(500);
+		if (banner) {
+			env.mockSizer.style.paddingTop = '220px';
+			Object.assign(view.dom, { closest: () => ({}) });
+		}
+		const textTop = () => {
+			const padding = Number.parseFloat(view.dom.style.getPropertyValue('--wn-typewriter-padding-top')) || 0;
+			return (banner ? Math.max(220, padding) : Number.parseFloat(env.mockSizer.style.paddingTop) || 0) + 1000 - env.mockScroller.scrollTop;
+		};
+		Object.assign(env.mockContentDOM, { firstElementChild: { getBoundingClientRect: () => ({ top: textTop() }) } });
+		const extension = createTypewriterExtension(env.mockPlugin);
+		const instance = (extension as unknown as { create: (v: EditorView) => { update: (u: ViewUpdate) => void; destroy: () => void } }).create(view);
+		try {
+			instance.update({ view, state: view.state, transactions: [{ effects: [preserveTypewriterViewport.of(null)], annotation: () => undefined }] } as unknown as ViewUpdate);
+			const before = textTop();
+			for (const height of [582, 606, 800, 582, 606]) {
+				env.mockScroller.clientHeight = height;
+				instance.update({ view, state: view.state, geometryChanged: true, transactions: [] } as unknown as ViewUpdate);
+				// Assert synchronously: a later fullscreen restore would conceal a visible bounce.
+				expect(textTop()).toBe(before);
+			}
+			expect(view.dispatch).not.toHaveBeenCalled();
+		} finally {
+			instance.destroy();
+		}
+	});
+
+	it('keeps Pixel Banner in control of sizer padding while providing separate typewriter spacing', () => {
+		const bannerPadding = 'var(--pixel-banner-content-start, 355px)';
+		env.mockSizer.style.setProperty('padding-top', bannerPadding, 'important');
+		const view = env.createMockView(500);
+		Object.assign(view.dom, { closest: (selector: string) => selector === '.pixel-banner' ? {} : null });
+		const extension = createTypewriterExtension(env.mockPlugin);
+		const instance = (extension as unknown as { create: (v: EditorView) => { update: (u: ViewUpdate) => void; destroy: () => void } }).create(view);
+		try {
+			expect(env.mockSizer.style.paddingTop).toBe(bannerPadding);
+			expect(env.mockSizer.style.getPropertyPriority('padding-top')).toBe('important');
+			env.mockSizer.style.paddingTop = '220px';
+			instance.update({ view, state: view.state, geometryChanged: true } as unknown as ViewUpdate);
+			expect(env.mockSizer.style.paddingTop).toBe('220px');
+			env.mockPlugin.settings.immersive.typewriterEnabled = false;
+			instance.update({ view, state: view.state } as unknown as ViewUpdate);
+			expect(env.mockSizer.style.paddingTop).toBe('220px');
+		} finally {
+			instance.destroy();
+		}
 	});
 
 	it('cancels pending requestAnimationFrame when user initiates wheel/touch scroll', () => {

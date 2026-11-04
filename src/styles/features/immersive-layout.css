@@ -2,6 +2,11 @@
 
 /* Immersive Mode: Hide split handle, show only on hover */
 
+/* Keep ordinary tabs and splits alive while the immersive editor occupies their space. */
+body.immersive-mode-active .wn-immersive-preserved-branch {
+	display: none;
+}
+
 body.immersive-mode-active.immersive-mode-active .workspace-leaf-resize-handle {
 	opacity: 0;
 	transition: opacity 0.2s ease;

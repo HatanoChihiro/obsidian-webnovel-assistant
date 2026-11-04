@@ -2,10 +2,17 @@
 
 
 /* ========== 打字机模式：垂直留白居中与焦点淡化 ========== */
-.workspace-leaf .markdown-source-view.mod-cm6 .cm-editor.wn-typewriter-active .cm-sizer,
-.cm-editor.wn-typewriter-active .cm-sizer {
+.workspace-leaf .markdown-source-view.mod-cm6 .cm-editor.wn-typewriter-active:not(.wn-typewriter-banner) .cm-sizer,
+.cm-editor.wn-typewriter-active:not(.wn-typewriter-banner) .cm-sizer {
 	padding-top: var(--wn-typewriter-padding-top, 0px);
+}
+
+.cm-editor.wn-typewriter-active .cm-sizer {
 	padding-bottom: var(--wn-typewriter-padding-bottom, 0px);
+}
+
+.cm-editor.wn-typewriter-active.wn-typewriter-banner .cm-content {
+	padding-top: calc(var(--wn-typewriter-content-base-top, 0px) + max(0px, var(--wn-typewriter-padding-top, 0px) - var(--wn-typewriter-banner-base-top, 0px)));
 }
 
 /* 仅在编辑器获得焦点时，对非当前行进行平滑淡化；失焦时统一保持全不透明度，彻底杜绝闪烁 */

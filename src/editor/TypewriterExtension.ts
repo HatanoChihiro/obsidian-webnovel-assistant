@@ -1,5 +1,5 @@
 import { ViewPlugin, type ViewUpdate, Decoration, type DecorationSet, EditorView } from '@codemirror/view';
-import { RangeSetBuilder, Transaction, type Extension } from '@codemirror/state';
+import { RangeSetBuilder, StateEffect, Transaction, type Extension } from '@codemirror/state';
 import { type App, type EventRef } from 'obsidian';
 import type { ImmersiveModeSettings, EditorTypewriterSettings } from '../types/settings';
 
@@ -14,10 +14,13 @@ export interface TypewriterExtensionPlugin {
 const ALLOWED_USER_EVENTS = /^(select|input|delete|undo|redo)(\..+)?$/;
 const POINTER_SELECTION = /^(select\.pointer)$/;
 
+export const preserveTypewriterViewport = StateEffect.define<null>();
+
 // 编辑器扩展重建时，可能仍沿用同一个 sizer 元素。
 // 将样式归属和原始值保存在实例之外，避免扩展重建后丢失恢复依据。
 const sizerPadding = new WeakMap<HTMLElement, {
 	top: string; bottom: string; topPriority: string; bottomPriority: string;
+	ownsTop: boolean;
 	appliedTop: string; appliedBottom: string;
 	appliedTopPriority: string; appliedBottomPriority: string;
 }>();
@@ -61,6 +64,7 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 		private isManualScrolling = false;
 		private gestureScrolled = false;
 		private hasInitialCentered = false;
+		private preserveViewportUntilInput = false;
 		private rafId: number | null = null;
 		private viewportRestoreRafId: number | null = null;
 		private frozenScrollTop: number | null = null;
@@ -103,7 +107,7 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 						this.releaseViewportFreeze();
 						this.isManualScrolling = false;
 						this.syncDomState();
-						this.scheduleCenter(this.view);
+						if (!this.preserveViewportUntilInput) this.scheduleCenter(this.view);
 					}
 				});
 			}
@@ -131,6 +135,11 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 
 		private syncDomState(): { spacerChanged: boolean; positioningChanged: boolean } {
 			if (!this.view.dom) return { spacerChanged: false, positioningChanged: false };
+			// 全屏尺寸可能分多帧到达。留白与滚动必须在同一帧补偿，不能等全屏结束后再回滚。
+			// 读取正文子元素可同时覆盖 sizer 留白与 Banner 页的 content 留白。
+			const viewportAnchor = this.preserveViewportUntilInput && this.view.scrollDOM.scrollTop > 0
+				? this.view.contentDOM.firstElementChild : null;
+			const anchorTop = viewportAnchor?.getBoundingClientRect().top;
 			const config = this.getActiveConfig();
 			let spacerChanged = false;
 			const centerOffset = Math.max(-30, Math.min(30, config.centerOffset));
@@ -139,6 +148,7 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 			this.positioningKey = nextPositioningKey;
 
 			const sizer = (this.view.scrollDOM?.querySelector<HTMLElement>('.cm-sizer') ?? this.view.dom?.querySelector<HTMLElement>('.cm-sizer')) ?? null;
+			const hasBanner = Boolean(this.view.dom.closest?.('.pixel-banner'));
 
 			if (config.isActive) {
 				if (!this.view.dom.classList.contains('wn-typewriter-active')) {
@@ -181,6 +191,7 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 						if (!owned) {
 							owned = {
 								top: currentTop, bottom: currentBottom,
+								ownsTop: !hasBanner,
 								topPriority: currentTopPriority, bottomPriority: currentBottomPriority,
 								appliedTop: targetTop, appliedBottom: targetBottom,
 								appliedTopPriority: '', appliedBottomPriority: ''
@@ -197,7 +208,25 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 							}
 						}
 
-						if (sizer.style?.paddingTop !== targetTop || currentTopPriority !== '') {
+						if (hasBanner) {
+							if (owned.ownsTop && currentTop === owned.appliedTop && currentTopPriority === owned.appliedTopPriority) {
+								if (owned.top) sizer.style.setProperty('padding-top', owned.top, owned.topPriority);
+								else sizer.style.removeProperty('padding-top');
+							}
+							owned.ownsTop = false;
+							// Banner 保留 sizer 的留白和 CSS 变量；打字机只补充正文内不足的空间。
+							const contentBase = this.view.dom.style.getPropertyValue('--wn-typewriter-content-base-top')
+								|| this.ownerWindow.getComputedStyle?.(this.view.contentDOM).paddingTop || '0px';
+							this.view.dom.style.setProperty('--wn-typewriter-content-base-top', contentBase);
+							this.view.dom.style.setProperty('--wn-typewriter-banner-base-top', sizer.style.paddingTop || '0px');
+							this.view.dom.classList.add('wn-typewriter-banner');
+						} else {
+							owned.ownsTop = true;
+							this.view.dom.classList.remove('wn-typewriter-banner');
+							this.view.dom.style.removeProperty('--wn-typewriter-content-base-top');
+							this.view.dom.style.removeProperty('--wn-typewriter-banner-base-top');
+						}
+						if (owned.ownsTop && (sizer.style?.paddingTop !== targetTop || currentTopPriority !== '')) {
 							if (currentTopPriority !== '') {
 								sizer.style?.removeProperty?.('padding-top');
 							}
@@ -230,6 +259,9 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 					}
 				}
 			} else {
+				this.view.dom.classList.remove('wn-typewriter-banner');
+				this.view.dom.style.removeProperty('--wn-typewriter-content-base-top');
+				this.view.dom.style.removeProperty('--wn-typewriter-banner-base-top');
 				if (this.view.dom.classList.contains('wn-typewriter-active')) {
 					this.view.dom.classList.remove('wn-typewriter-active');
 				}
@@ -249,6 +281,7 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 						['paddingTop', 'padding-top', owned.top, owned.topPriority, owned.appliedTop, owned.appliedTopPriority],
 						['paddingBottom', 'padding-bottom', owned.bottom, owned.bottomPriority, owned.appliedBottom, owned.appliedBottomPriority]
 					] as const) {
+						if (key === 'paddingTop' && !owned.ownsTop) continue;
 						const currentPriority = sizer.style?.getPropertyPriority?.(property) ?? '';
 						if (sizer.style[key] !== applied || currentPriority !== appliedPriority) continue;
 						if (original && typeof sizer.style.setProperty === 'function') {
@@ -263,6 +296,9 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 				}
 			}
 
+			if (spacerChanged && viewportAnchor && anchorTop !== undefined) {
+				this.view.scrollDOM.scrollTop += viewportAnchor.getBoundingClientRect().top - anchorTop;
+			}
 			return { spacerChanged, positioningChanged };
 		}
 
@@ -391,6 +427,7 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 			}
 
 			if (this.view.state.selection.main.empty && this.isTypewriterActive()) {
+				this.preserveViewportUntilInput = false;
 				this.releaseViewportFreeze();
 				this.isManualScrolling = false;
 				this.scheduleCenter(this.view);
@@ -398,6 +435,11 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 		};
 
 		private onFocusLoss = (evt?: FocusEvent): void => {
+			if (this.preserveViewportUntilInput) {
+				this.releaseViewportFreeze();
+				this.cancelPendingCenter();
+				return;
+			}
 			if (!this.isTypewriterActive() || !this.view.scrollDOM) return;
 			const related = (evt?.relatedTarget ?? null) as Element | null;
 			if (this.isSearchNavigationActive(related)) return;
@@ -421,7 +463,7 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 			this.isManualScrolling = false;
 			this.hasInitialCentered = true;
 			this.syncDomState();
-			this.scheduleCenter(this.view);
+			if (!this.preserveViewportUntilInput) this.scheduleCenter(this.view);
 		};
 
 		private restoreFrozenViewport(): void {
@@ -537,15 +579,30 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 		}
 
 		update(update: ViewUpdate) {
+			if (update.transactions?.some(transaction => transaction.effects?.some(effect => effect.is(preserveTypewriterViewport)))) {
+				this.preserveViewportUntilInput = true;
+				this.hasInitialCentered = true;
+				this.pendingPositioningRefresh = false;
+				this.cancelPendingCenter();
+				this.releaseViewportFreeze();
+			}
 			const { spacerChanged, positioningChanged } = this.syncDomState();
 			this.decorations = this.buildDecorations(update.view);
 			// 仅在当前模式下打字机功能开启时生效
 			if (!this.isTypewriterActive()) {
+				if (positioningChanged) this.preserveViewportUntilInput = false;
 				this.hasInitialCentered = false;
 				this.pendingPositioningRefresh = false;
 				this.cancelPendingCenter();
 				this.releaseViewportFreeze();
 				return;
+			}
+			if (this.preserveViewportUntilInput) {
+				this.pendingPositioningRefresh = false;
+				this.cancelPendingCenter();
+				this.releaseViewportFreeze();
+				if (!hasAllowedUserEvent(update)) return;
+				this.preserveViewportUntilInput = false;
 			}
 			const isSearchNavigation = this.isSearchNavigationActive();
 			if (positioningChanged || isSearchNavigation) {
@@ -625,6 +682,7 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 		}
 
 		private centerCursorLine(view: EditorView) {
+			if (this.preserveViewportUntilInput) return;
 			const config = this.getActiveConfig();
 			if (!config.isActive) return;
 			if (this.frozenScrollTop !== null) return;
