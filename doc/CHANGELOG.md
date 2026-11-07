@@ -1,3 +1,25 @@
+## 🛠 v4.0.7
+
+### 新增功能
+
+- **工作台搜索**：回车添加可删除的关键词标签，直观组合多个条件；支持搜索章节状态，并保存最近关键词，点击即可复用。
+- **护眼模式**：支持分别设置浅色、深色主题的背景色，随主题自动切换，并可独立恢复默认颜色。
+
+### Bug 修复
+
+- **章节快照对比**：修复默认及部分主题下改动文字与高亮背景颜色接近、难以辨认的问题，保留新增下划线与删除线标记。
+
+### English Changelog
+
+#### New Features
+
+- **Workbench search**: Press Enter to add removable keyword tags and combine search conditions. Search chapter status and reuse saved recent keywords with a click.
+- **Eye care mode**: Set separate backgrounds for light and dark themes, switch colors automatically with the theme, and reset each color independently.
+
+#### Bug Fixes
+
+- **Chapter snapshot comparison**: Fix changed text blending into its highlight background with the default and some community themes, while preserving insertion underlines and deletion strikethroughs.
+
 ## 🛠 v4.0.6
 
 ### 新增功能

@@ -9,6 +9,6 @@
    ========================================================================== */
 
 body.webnovel-eye-care-enabled .workspace-leaf-content[data-type="markdown"]:not(.is-webnovel-homepage) {
-	--background-primary: var(--webnovel-eye-care-color, #E8F5E9);
-	--background-primary-alt: var(--webnovel-eye-care-color, #E8F5E9);
+	--background-primary: var(--wn-eye-care-background);
+	--background-primary-alt: var(--wn-eye-care-background);
 }

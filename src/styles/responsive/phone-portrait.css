@@ -108,6 +108,15 @@
 		height: 30px;
 	}
 
+	body.is-phone .wn-workbench-filter-input-wrapper.wn-workbench-filter-tag-search {
+		height: auto;
+		min-height: 30px;
+	}
+
+	body.is-phone .wn-workbench-filter-history {
+		order: 5;
+	}
+
 	body.is-phone .wn-workbench-filter-icon svg {
 		width: 14px;
 		height: 14px;

@@ -94,7 +94,8 @@ export const SETTINGS_SEARCH_CATALOGUE: readonly SettingCatalogueEntry[] = [
 	...categoryEntries('typography', [
 		{ titleKey: 'setting.eyecare-mode', isHeading: true },
 		{ titleKey: 'setting.enable-eyecare', descKeys: ['setting.enable-eyecare-desc'], sectionKey: 'setting.eyecare-mode' },
-		{ titleKey: 'setting.eyecare-bg-color', descKeys: ['setting.eyecare-bg-color-desc'], sectionKey: 'setting.eyecare-mode' },
+		{ titleKey: 'setting.eyecare-bg-color', descKeys: ['setting.eyecare-bg-color-desc'], sectionKey: 'setting.eyecare-mode', fallbackKeys: ['setting.enable-eyecare'] },
+		{ titleKey: 'setting.eyecare-dark-bg-color', descKeys: ['setting.eyecare-dark-bg-color-desc'], sectionKey: 'setting.eyecare-mode', fallbackKeys: ['setting.enable-eyecare'] },
 		{ titleKey: 'setting.tab-typography', isHeading: true },
 		{ titleKey: 'setting.typography-master-toggle', descKeys: ['setting.typography-master-toggle-desc'], sectionKey: 'setting.tab-typography' },
 		{ titleKey: 'setting.typography-scope-heading', fallbackKeys: ['setting.typography-master-toggle'], isHeading: true },

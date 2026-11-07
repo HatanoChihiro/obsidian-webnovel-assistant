@@ -10,19 +10,24 @@ export interface FilterInputBindingOptions {
 	clearButton: HTMLElement;
 	onCompositionStart: () => void;
 	onRefresh: (immediate: boolean) => void;
+	onEnter?: (draft: string) => void;
+	onClear?: () => void;
+	hasActiveTags?: () => boolean;
+	onEscape?: () => boolean | void;
 }
 
 export function bindFilterInputEvents(options: FilterInputBindingOptions): void {
-	const { input, inputWrapper, clearButton, onCompositionStart, onRefresh } = options;
+	const { input, inputWrapper, clearButton, onCompositionStart, onRefresh, onEnter, onClear, hasActiveTags, onEscape } = options;
 
 	const updateClearButton = () => {
-		const isVisible = input.value.length > 0;
+		const isVisible = input.value.length > 0 || (hasActiveTags?.() ?? false);
 		clearButton.toggleClass('is-visible', isVisible);
 		clearButton.setAttr('aria-hidden', isVisible ? 'false' : 'true');
 	};
 	updateClearButton();
 
 	let isComposing = false;
+	let lastCompositionEndTime = 0;
 
 	input.addEventListener('compositionstart', () => {
 		isComposing = true;
@@ -31,6 +36,7 @@ export function bindFilterInputEvents(options: FilterInputBindingOptions): void 
 
 	input.addEventListener('compositionend', () => {
 		isComposing = false;
+		lastCompositionEndTime = Date.now();
 		updateClearButton();
 		onRefresh(false);
 	});
@@ -51,16 +57,39 @@ export function bindFilterInputEvents(options: FilterInputBindingOptions): void 
 	});
 
 	input.addEventListener('keydown', (event) => {
-		if (isComposing || event.isComposing) return;
-		if (event.key !== 'Escape' || input.value.length === 0) return;
-		event.preventDefault();
-		input.value = '';
-		updateClearButton();
-		onRefresh(true);
+		const keyCode = 'keyCode' in event ? (event as { keyCode: number }).keyCode : 0;
+		if (isComposing || event.isComposing || keyCode === 229) return;
+
+		if (event.key === 'Enter') {
+			if (Date.now() - lastCompositionEndTime < 50) return;
+			if (onEnter) {
+				event.preventDefault();
+				onEnter(input.value);
+				updateClearButton();
+				return;
+			}
+		}
+
+		if (event.key === 'Escape') {
+			if (input.value.length > 0) {
+				event.preventDefault();
+				input.value = '';
+				updateClearButton();
+				onRefresh(true);
+			} else if (onEscape) {
+				const handled = onEscape();
+				if (handled) event.preventDefault();
+				updateClearButton();
+			}
+			return;
+		}
 	});
 
 	clearButton.onclick = () => {
 		input.value = '';
+		if (onClear) {
+			onClear();
+		}
 		updateClearButton();
 		onRefresh(true);
 	};

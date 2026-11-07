@@ -82,10 +82,18 @@
 }
 
 
+body.webnovel-eye-care-enabled {
+	--wn-eye-care-background: var(--webnovel-eye-care-color, #E8F5E9);
+}
+
+body.theme-dark.webnovel-eye-care-enabled {
+	--wn-eye-care-background: var(--webnovel-eye-care-dark-color, #202B24);
+}
+
 body.webnovel-eye-care-enabled .workspace-leaf-content[data-type="markdown"]:not(.is-webnovel-homepage) .view-content,
 
 body.webnovel-eye-care-enabled .workspace-leaf-content[data-type="markdown"]:not(.is-webnovel-homepage) .markdown-source-view .cm-editor .cm-scroller,
 
 body.webnovel-eye-care-enabled .workspace-leaf-content[data-type="markdown"]:not(.is-webnovel-homepage) .markdown-reading-view .markdown-preview-view {
-	background-color: var(--webnovel-eye-care-color, #E8F5E9);
+	background-color: var(--wn-eye-care-background);
 }

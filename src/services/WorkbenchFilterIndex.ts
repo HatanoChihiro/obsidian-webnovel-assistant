@@ -1,5 +1,6 @@
 import type { App, TFile } from 'obsidian';
 import { cleanLoreHeading, type CharacterManager, type LoreEntry } from './CharacterManager';
+import { CORKBOARD_STATUS_MAP, getCorkboardStatusText } from '../i18n/data-keys';
 
 interface CachedText {
 	mtime: number;
@@ -17,6 +18,12 @@ export function normalizeWorkbenchSearchText(value: unknown): string {
 	return str.normalize('NFKC').toLocaleLowerCase('zh-CN');
 }
 
+function getChapterStatusSearchText(rawStatus: unknown): string {
+	if (typeof rawStatus !== 'string') return normalizeWorkbenchSearchText(rawStatus);
+	const status = CORKBOARD_STATUS_MAP[rawStatus] ?? rawStatus;
+	return normalizeWorkbenchSearchText([rawStatus, status, getCorkboardStatusText(status)].join('\n'));
+}
+
 export function tokenizeWorkbenchFilter(query: string): string[] {
 	return normalizeWorkbenchSearchText(query)
 		.trim()
@@ -26,6 +33,51 @@ export function tokenizeWorkbenchFilter(query: string): string[] {
 
 export function matchesWorkbenchFilter(searchableText: string, tokens: readonly string[]): boolean {
 	return tokens.every(token => searchableText.includes(token));
+}
+
+export const MAX_WORKBENCH_SEARCH_HISTORY = 20;
+
+export function resolveWorkbenchFilterTokens(query: string | readonly string[]): string[] {
+	if (typeof query === 'string') {
+		return tokenizeWorkbenchFilter(query);
+	}
+	return query
+		.map(token => normalizeWorkbenchSearchText(token).trim())
+		.filter(Boolean);
+}
+
+export function sanitizeWorkbenchSearchHistory(list: unknown): string[] {
+	if (!Array.isArray(list)) return [];
+	const result: string[] = [];
+	const seen = new Set<string>();
+
+	for (const item of list) {
+		if (typeof item !== 'string') continue;
+		const trimmed = item.trim();
+		if (!trimmed) continue;
+		const normalized = normalizeWorkbenchSearchText(trimmed);
+		if (!seen.has(normalized)) {
+			seen.add(normalized);
+			result.push(trimmed);
+			if (result.length >= MAX_WORKBENCH_SEARCH_HISTORY) {
+				break;
+			}
+		}
+	}
+
+	return result;
+}
+
+export function rememberWorkbenchSearchHistory(
+	history: unknown,
+	keyword: string
+): string[] {
+	const trimmed = keyword.trim();
+	const sanitized = sanitizeWorkbenchSearchHistory(history);
+	if (!trimmed) return sanitized;
+	const normalized = normalizeWorkbenchSearchText(trimmed);
+	const filtered = sanitized.filter(item => normalizeWorkbenchSearchText(item) !== normalized);
+	return [trimmed, ...filtered].slice(0, MAX_WORKBENCH_SEARCH_HISTORY);
 }
 
 export function stripMarkdownFrontmatter(content: string): string {
@@ -129,11 +181,12 @@ export class WorkbenchFilterIndex {
 
 	public async filterChapters(
 		files: readonly TFile[],
-		query: string,
-		getSynopsis: (file: TFile) => unknown
+		query: string | readonly string[],
+		getSynopsis: (file: TFile) => unknown,
+		getStatus?: (file: TFile) => unknown
 	): Promise<TFile[]> {
 		const expectedGeneration = this.generation;
-		const tokens = tokenizeWorkbenchFilter(query);
+		const tokens = resolveWorkbenchFilterTokens(query);
 		if (tokens.length === 0) return [...files];
 
 		const results: TFile[] = [];
@@ -145,8 +198,10 @@ export class WorkbenchFilterIndex {
 
 			const metadataText = [
 				normalizeWorkbenchSearchText(file.basename),
-				normalizeWorkbenchSearchText(synopsis)
+				normalizeWorkbenchSearchText(synopsis),
+				getChapterStatusSearchText(getStatus?.(file))
 			].join('\n');
+			if (this.generation !== expectedGeneration) return [];
 
 			if (tokens.every(token => metadataText.includes(token))) {
 				results.push(file);
@@ -155,7 +210,8 @@ export class WorkbenchFilterIndex {
 				if (this.generation !== expectedGeneration) return [];
 				const currentMetadata = [
 					normalizeWorkbenchSearchText(file.basename),
-					normalizeWorkbenchSearchText(getSynopsis(file))
+					normalizeWorkbenchSearchText(getSynopsis(file)),
+					getChapterStatusSearchText(getStatus?.(file))
 				].join('\n');
 				if (this.generation !== expectedGeneration) return [];
 				if (tokens.every(token => currentMetadata.includes(token) || body.includes(token))) {
@@ -175,10 +231,10 @@ export class WorkbenchFilterIndex {
 	public async filterLoreEntries(
 		entries: readonly LoreEntry[],
 		aliasesByHeading: ReadonlyMap<string, readonly string[]>,
-		query: string
+		query: string | readonly string[]
 	): Promise<Set<string>> {
 		const expectedGeneration = this.generation;
-		const tokens = tokenizeWorkbenchFilter(query);
+		const tokens = resolveWorkbenchFilterTokens(query);
 		const uniqueEntries = this.getUniqueLoreEntries(entries);
 		if (tokens.length === 0) return new Set(uniqueEntries.map(entry => entry.heading));
 

@@ -7,6 +7,7 @@ import en from '../src/i18n/en.json';
 import { SettingsManager } from '../src/core/SettingsManager';
 import { DEFAULT_SETTINGS } from '../src/constants';
 import { parseDirectorySettingLines, formatDirectorySettingLines } from '../src/utils/settingHelpers';
+import { sanitizeWorkbenchSearchHistory, rememberWorkbenchSearchHistory } from '../src/services/WorkbenchFilterIndex';
 
 beforeAll(() => {
 	(globalThis as unknown as { window: typeof globalThis }).window = globalThis;
@@ -299,6 +300,88 @@ describe('SettingsManager', () => {
 			expect(reloaded.strictChapterExceptions).toEqual(['Exceptions, Review/Draft']);
 		});
 	});
+
+	it('supplies default #202B24 for missing eyeCareDarkColor while preserving custom eyeCareColor', async () => {
+		const legacy = cloneDefaults();
+		delete (legacy as unknown as { eyeCareDarkColor?: string }).eyeCareDarkColor;
+		legacy.eyeCareColor = '#E0F2F1';
+		const plugin = {
+			loadData: vi.fn().mockResolvedValue(legacy),
+			saveData: vi.fn().mockResolvedValue(undefined)
+		} as never;
+		const manager = new SettingsManager(plugin, cloneDefaults());
+		const loaded = await manager.loadSettings();
+
+		expect(loaded.eyeCareColor).toBe('#E0F2F1');
+		expect(loaded.eyeCareDarkColor).toBe('#202B24');
+	});
+
+	it('persists and round-trips independent eyeCareColor and eyeCareDarkColor values', async () => {
+		const settings = cloneDefaults();
+		settings.eyeCareColor = '#FDF6E3';
+		settings.eyeCareDarkColor = '#1D2621';
+
+		let persistedData: unknown = null;
+		const plugin = {
+			settings,
+			loadData: vi.fn(async () => persistedData ?? settings),
+			saveData: vi.fn(async (data: unknown) => { persistedData = JSON.parse(JSON.stringify(data)); })
+		} as never;
+
+		const manager = new SettingsManager(plugin, cloneDefaults());
+		await manager.saveSettings();
+
+		const reloaded = await manager.loadSettings();
+		expect(reloaded.eyeCareColor).toBe('#FDF6E3');
+		expect(reloaded.eyeCareDarkColor).toBe('#1D2621');
+	});
+
+	describe('workbenchSearchHistory', () => {
+		it('defaults workbenchSearchHistory to an empty array', () => {
+			expect((DEFAULT_SETTINGS as unknown as { workbenchSearchHistory: unknown }).workbenchSearchHistory).toEqual([]);
+		});
+
+		it('sanitizes and bounds workbenchSearchHistory to 20 unique normalized entries', () => {
+			const raw = [
+				'  tag1  ',
+				'Tag1',
+				'tag2',
+				'  ',
+				null,
+				123,
+				...Array.from({ length: 25 }, (_, i) => `kw-${i}`)
+			];
+			const sanitized = sanitizeWorkbenchSearchHistory(raw);
+			expect(sanitized[0]).toBe('tag1');
+			expect(sanitized[1]).toBe('tag2');
+			expect(sanitized).toHaveLength(20);
+			expect(sanitized.filter(s => s.toLowerCase() === 'tag1')).toHaveLength(1);
+		});
+
+		it('remembers new keyword at the front and dedupes by normalized text without altering display text', () => {
+			const history = ['tag1', 'tag2'];
+			const next = rememberWorkbenchSearchHistory(history, 'TAG1');
+			expect(next).toEqual(['TAG1', 'tag2']);
+		});
+
+		it('persists and round-trips workbenchSearchHistory via SettingsManager', async () => {
+			const settings = cloneDefaults();
+			(settings as unknown as { workbenchSearchHistory: string[] }).workbenchSearchHistory = ['keywordA', 'keywordB'];
+
+			let persistedData: unknown = null;
+			const plugin = {
+				settings,
+				loadData: vi.fn(async () => persistedData ?? settings),
+				saveData: vi.fn(async (data: unknown) => { persistedData = JSON.parse(JSON.stringify(data)); })
+			} as never;
+
+			const manager = new SettingsManager(plugin, cloneDefaults());
+			await manager.saveSettings();
+
+			const reloaded = await manager.loadSettings();
+			expect((reloaded as unknown as { workbenchSearchHistory: string[] }).workbenchSearchHistory).toEqual(['keywordA', 'keywordB']);
+		});
+	});
 });
 
 
@@ -362,5 +445,21 @@ describe('settings search', () => {
 			expect(result).toHaveLength(1);
 			expect(result[0].entry.category).toBe(tier === 'desktop' ? 'obs' : 'general');
 		}
+	});
+	it('includes both light and dark eye-care background color settings in the search catalogue under eyecare-mode', () => {
+		const lightEntry = SETTINGS_SEARCH_CATALOGUE.find(entry => entry.titleKey === 'setting.eyecare-bg-color');
+		const darkEntry = SETTINGS_SEARCH_CATALOGUE.find(entry => entry.titleKey === 'setting.eyecare-dark-bg-color');
+
+		expect(lightEntry).toBeDefined();
+		expect(lightEntry?.category).toBe('typography');
+		expect(lightEntry?.sectionKey).toBe('setting.eyecare-mode');
+
+		expect(darkEntry).toBeDefined();
+		expect(darkEntry?.category).toBe('typography');
+		expect(darkEntry?.sectionKey).toBe('setting.eyecare-mode');
+
+		const translate = translateWith(en);
+		const searchResults = searchSettingsCatalogue('Dark Theme', { tier: 'desktop', translate });
+		expect(searchResults.some(result => result.entry.titleKey === 'setting.eyecare-dark-bg-color')).toBe(true);
 	});
 });

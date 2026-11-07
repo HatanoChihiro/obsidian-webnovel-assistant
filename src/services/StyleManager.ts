@@ -22,11 +22,12 @@ export class StyleManager {
 	 */
 	applyEyeCare(): void {
 		this.isEyeCareActive = true;
-		const color = this.settings.eyeCareColor || '#E8F5E9';
+		const lightColor = this.settings.eyeCareColor || '#E8F5E9';
+		const darkColor = this.settings.eyeCareDarkColor || '#202B24';
 		this.registerWindowListeners();
 
 		for (const doc of this.collectDocuments()) {
-			this.applyToDocument(doc, color);
+			this.applyToDocument(doc, lightColor, darkColor);
 		}
 	}
 
@@ -67,7 +68,9 @@ export class StyleManager {
 			if (!this.isEyeCareActive) return;
 			const doc = win?.doc || window?.document;
 			if (doc) {
-				this.applyToDocument(doc, this.settings.eyeCareColor || '#E8F5E9');
+				const lightColor = this.settings.eyeCareColor || '#E8F5E9';
+				const darkColor = this.settings.eyeCareDarkColor || '#202B24';
+				this.applyToDocument(doc, lightColor, darkColor);
 			}
 		});
 		this.windowCloseRef = this.app.workspace.on('window-close', (win: WorkspaceWindow, window: Window) => {
@@ -108,10 +111,11 @@ export class StyleManager {
 		return docs;
 	}
 
-	private applyToDocument(doc: Document, color: string): void {
+	private applyToDocument(doc: Document, lightColor: string, darkColor: string): void {
 		if (!doc.body) return;
 		doc.body.classList.add('webnovel-eye-care-enabled');
-		doc.body.style?.setProperty('--webnovel-eye-care-color', color);
+		doc.body.style?.setProperty('--webnovel-eye-care-dark-color', darkColor);
+		doc.body.style?.setProperty('--webnovel-eye-care-color', lightColor);
 		this.trackedDocs.add(doc);
 	}
 
@@ -119,5 +123,6 @@ export class StyleManager {
 		if (!doc.body) return;
 		doc.body.classList.remove('webnovel-eye-care-enabled');
 		doc.body.style?.removeProperty('--webnovel-eye-care-color');
+		doc.body.style?.removeProperty('--webnovel-eye-care-dark-color');
 	}
 }

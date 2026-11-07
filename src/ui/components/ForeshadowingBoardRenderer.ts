@@ -9,6 +9,7 @@ import { ChapterSorter } from '../../services/ChapterSorter';
 import { smartLocateAndHighlight } from '../../utils/leaf';
 import type { ForeshadowingViewManager } from '../ForeshadowingView';
 import { createCardImportanceButton } from './CardImportanceButton';
+import { normalizeWorkbenchSearchText, resolveWorkbenchFilterTokens } from '../../services/WorkbenchFilterIndex';
 
 export type ForeshadowingBoardStatusManager = Pick<
 	ForeshadowingViewManager,
@@ -20,7 +21,7 @@ export interface ForeshadowingBoardPlugin extends ForeshadowingRecoveryModalPlug
 }
 
 export interface ForeshadowingFilterOptions {
-	query?: string;
+	query?: string | readonly string[];
 	selectedTags?: readonly string[] | ReadonlySet<string>;
 	onlyImportant?: boolean;
 }
@@ -32,7 +33,7 @@ export interface ForeshadowingBoardOptions {
 	container: HTMLElement;
 	entries: ParsedForeshadowingEntry[];
 	foreshadowingFile: TFile | null;
-	query: string;
+	query: string | readonly string[];
 	selectedTags?: readonly string[] | ReadonlySet<string>;
 	onlyImportant?: boolean;
 	currentBookPath: string;
@@ -45,8 +46,30 @@ export class ForeshadowingBoardRenderer {
 		options: ForeshadowingFilterOptions = {}
 	): ParsedForeshadowingEntry[] {
 		const { query = '', selectedTags, onlyImportant = false } = options;
-		const filterQuery = query.trim().toLowerCase();
 		const tags = selectedTags instanceof Set ? [...selectedTags] : [...(selectedTags ?? [])];
+		const normalizeText = typeof query === 'string'
+			? (text: string) => text.toLowerCase()
+			: normalizeWorkbenchSearchText;
+		const tokens = typeof query === 'string'
+			? [query.trim().toLowerCase()].filter(Boolean)
+			: resolveWorkbenchFilterTokens(query);
+
+		const matchesEntry = (entry: ParsedForeshadowingEntry, term: string): boolean => {
+			if (!term) return true;
+			// 匹配标题/说明
+			if (normalizeText(entry.description).includes(term)) return true;
+
+			// 匹配标签
+			if (entry.tags.some(t => normalizeText(t).includes(term))) return true;
+
+			// 匹配引用原文
+			if (entry.contents.some(c => normalizeText(c.text).includes(term) || (c.source && normalizeText(c.source).includes(term)))) return true;
+
+			// 匹配回收记录说明及章节
+			if (entry.recoveryLogs && entry.recoveryLogs.some(l => (l.note && normalizeText(l.note).includes(term)) || (l.quote && normalizeText(l.quote).includes(term)) || normalizeText(l.file).includes(term))) return true;
+
+			return false;
+		};
 
 		return entries.filter((entry) => {
 			if (onlyImportant && !entry.important) {
@@ -55,21 +78,7 @@ export class ForeshadowingBoardRenderer {
 			if (tags.length > 0 && !entry.tags.some(t => tags.includes(t))) {
 				return false;
 			}
-			if (!filterQuery) return true;
-
-			// 匹配标题/说明
-			if (entry.description.toLowerCase().includes(filterQuery)) return true;
-
-			// 匹配标签
-			if (entry.tags.some(t => t.toLowerCase().includes(filterQuery))) return true;
-
-			// 匹配引用原文
-			if (entry.contents.some(c => c.text.toLowerCase().includes(filterQuery) || (c.source && c.source.toLowerCase().includes(filterQuery)))) return true;
-
-			// 匹配回收记录说明及章节
-			if (entry.recoveryLogs && entry.recoveryLogs.some(l => (l.note && l.note.toLowerCase().includes(filterQuery)) || (l.quote && l.quote.toLowerCase().includes(filterQuery)) || l.file.toLowerCase().includes(filterQuery))) return true;
-
-			return false;
+			return tokens.every(token => matchesEntry(entry, token));
 		});
 	}
 
@@ -80,7 +89,10 @@ export class ForeshadowingBoardRenderer {
 
 		const tags = selectedTags instanceof Set ? [...selectedTags] : [...(selectedTags ?? [])];
 
-		const hasActiveFilter = Boolean(query.trim().length > 0 || tags.length > 0 || onlyImportant);
+		const hasActiveQuery = typeof query === 'string'
+			? query.trim().length > 0
+			: query.some(t => t.trim().length > 0);
+		const hasActiveFilter = Boolean(hasActiveQuery || tags.length > 0 || onlyImportant);
 		if (!foreshadowingFile || entries.length === 0) {
 			boardContainer.createDiv({
 				cls: 'wn-corkboard-empty-msg',

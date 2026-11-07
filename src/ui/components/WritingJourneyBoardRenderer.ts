@@ -10,7 +10,7 @@ import { t } from '../../i18n';
 import { openFileAndFocus, getLeafForFileNavigation } from '../../utils/leaf';
 import {
 	normalizeWorkbenchSearchText,
-	tokenizeWorkbenchFilter,
+	resolveWorkbenchFilterTokens,
 	matchesWorkbenchFilter
 } from '../../services/WorkbenchFilterIndex';
 
@@ -27,7 +27,7 @@ export interface WritingJourneyBoardOptions {
 	plugin: WritingJourneyBoardPlugin;
 	container: HTMLElement;
 	currentBookPath: string;
-	query: string;
+	query: string | readonly string[];
 	isDescending?: boolean;
 }
 
@@ -86,7 +86,7 @@ export class WritingJourneyBoardRenderer {
 		const sortedEvents = this.sortEvents(displayEvents, isDescending);
 
 		// 关键词与时间过滤
-		const tokens = tokenizeWorkbenchFilter(query);
+		const tokens = resolveWorkbenchFilterTokens(query);
 		const filteredEvents = tokens.length > 0
 			? sortedEvents.filter((ev) => this.matchesTokens(ev, tokens))
 			: sortedEvents;
@@ -292,8 +292,8 @@ export class WritingJourneyBoardRenderer {
 		return matchesWorkbenchFilter(haystack, tokens);
 	}
 
-	public static matchesQuery(event: WritingJourneyEvent, query: string): boolean {
-		const tokens = tokenizeWorkbenchFilter(query);
+	public static matchesQuery(event: WritingJourneyEvent, query: string | readonly string[]): boolean {
+		const tokens = resolveWorkbenchFilterTokens(query);
 		return this.matchesTokens(event, tokens);
 	}
 

@@ -202,6 +202,7 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 	},
 	eyeCareEnabled: false,
 	eyeCareColor: '#E8F5E9',
+	eyeCareDarkColor: '#202B24',
 	typography: {
 		enabled: false,
 		enableGlobal: false,
@@ -324,6 +325,7 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 		task: true,
 		journey: true,
 	},
+	workbenchSearchHistory: [],
 	loreFolderName: '设定',
 	seriesLoreFolderName: '系列',
 	loreTemplateHistory: [],

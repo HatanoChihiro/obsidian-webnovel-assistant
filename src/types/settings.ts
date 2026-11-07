@@ -284,8 +284,10 @@ export interface AccurateCountSettings {
 	task: TaskSettings;
 	/** 护眼模式：是否启用编辑区绿色背景 */
 	eyeCareEnabled: boolean;
-	/** 护眼模式背景色（十六进制） */
+	/** 护眼模式背景色（浅色主题，十六进制） */
 	eyeCareColor: string;
+	/** 护眼模式背景色（深色主题，十六进制） */
+	eyeCareDarkColor: string;
 	/** 排版功能设置 */
 	typography: TypographySettings;
 	/** 是否显示移动端浮动字数统计窗口 */
@@ -380,6 +382,9 @@ export interface AccurateCountSettings {
 
 	/** 写作工作台各看板显示状态 */
 	workbenchBoardVisibility?: WorkbenchBoardVisibilitySettings;
+
+	/** 写作工作台搜索历史关键字（上限 20） */
+	workbenchSearchHistory?: string[];
 
 	/** 设定看板展示布局 */
 	loreBoardLayout?: 'table' | 'cards' | 'graph';

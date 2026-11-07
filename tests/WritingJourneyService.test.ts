@@ -1205,6 +1205,24 @@ describe('WritingJourneyBoardRenderer Search Matching', () => {
 		expect(WritingJourneyBoardRenderer.matchesQuery(timedEvent, '1999-01-01')).toBe(false);
 	});
 
+	it('should match writing journey events with string array tokens (phrase matching and AND logic)', () => {
+		const event: WritingJourneyEvent = {
+			id: '1',
+			timestamp: '2026-01-01T10:00:00.000Z',
+			type: 'chapter.created',
+			path: 'Novels/Book/01 序章.md',
+			chapterTitle: '01 序章'
+		};
+		// Array token preserving space
+		expect(WritingJourneyBoardRenderer.matchesQuery(event, ['01 序章'])).toBe(true);
+		// Array tokens AND together
+		expect(WritingJourneyBoardRenderer.matchesQuery(event, ['01 序章', 'Novels'])).toBe(true);
+		// One mismatching token
+		expect(WritingJourneyBoardRenderer.matchesQuery(event, ['01 序章', 'NonExistent'])).toBe(false);
+		// Empty array matches all
+		expect(WritingJourneyBoardRenderer.matchesQuery(event, [])).toBe(true);
+	});
+
 	it('should format timestamps into YYYY-MM-DD HH:mm and produce time search haystack without error', () => {
 		const formatted = WritingJourneyBoardRenderer.formatTimestamp('2026-09-08T13:45:00.000Z');
 		expect(formatted).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);

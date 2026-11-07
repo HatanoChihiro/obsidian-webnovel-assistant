@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { setLocale } from '../src/i18n';
 import {
 	extractLoreSections,
 	matchesWorkbenchFilter,
@@ -9,6 +10,48 @@ import {
 } from '../src/services/WorkbenchFilterIndex';
 
 describe('WorkbenchFilterIndex helpers', () => {
+	it.each([
+		['zh-CN', 'draft', '草稿'],
+		['zh-CN', 'Final', '已完稿'],
+		['zh-TW', 'outline', '大綱'],
+		['en', '草稿', 'draft'],
+		['zh-CN', 'unwritten', '待写'],
+		['zh-CN', '待寫', 'unwritten'],
+		['zh-CN', '待核对', '待核对']
+	])('matches stored and displayed chapter status (%s, %s)', async (locale, status, query) => {
+		await setLocale(locale);
+		try {
+			const cachedRead = vi.fn(async () => '');
+			const index = new WorkbenchFilterIndex({ vault: { cachedRead } } as never);
+			const file = { path: 'Fiction/01.md', basename: '01', stat: { mtime: 1 } };
+			expect(await index.filterChapters([file] as never, query, () => '', () => status)).toEqual([file]);
+			expect(cachedRead).not.toHaveBeenCalled();
+		} finally {
+			await setLocale('zh-CN');
+		}
+	});
+
+	it('intersects status with title, synopsis, and body without matching other YAML fields', async () => {
+		const cachedRead = vi.fn(async () => '---\nprivate: hidden-marker\n---\n探查灯塔');
+		const index = new WorkbenchFilterIndex({ vault: { cachedRead } } as never);
+		const file = { path: 'Fiction/01 归航.md', basename: '01 归航', stat: { mtime: 1 } };
+		expect(await index.filterChapters([file] as never, '归航 线索 灯塔 草稿', () => '追寻线索', () => 'draft')).toEqual([file]);
+		expect(await index.filterChapters([file] as never, '归航 已完稿', () => '追寻线索', () => 'draft')).toEqual([]);
+		expect(await index.filterChapters([file] as never, 'hidden-marker', () => '', () => 'draft')).toEqual([]);
+	});
+
+	it.each(['draft', 'final'])('rereads chapter status after asynchronous body reads (initial %s)', async initialStatus => {
+		let finishRead!: (content: string) => void;
+		const cachedRead = vi.fn(() => new Promise<string>(resolve => { finishRead = resolve; }));
+		const index = new WorkbenchFilterIndex({ vault: { cachedRead } } as never);
+		const file = { path: 'Fiction/01.md', basename: '01', stat: { mtime: 1 } };
+		let status = initialStatus;
+		const searching = index.filterChapters([file] as never, '草稿 灯塔', () => '', () => status);
+		status = initialStatus === 'draft' ? 'final' : 'draft';
+		finishRead('灯塔');
+		expect(await searching).toEqual(status === 'draft' ? [file] : []);
+	});
+
 	it('normalizes full-width text and splits whitespace-separated keywords', () => {
 		expect(tokenizeWorkbenchFilter('  林默　Ｄungeon  失踪  ')).toEqual(['林默', 'dungeon', '失踪']);
 	});
@@ -272,5 +315,57 @@ describe('WorkbenchFilterIndex helpers', () => {
 		expect(cachedRead).toHaveBeenCalledTimes(0);
 		expect(setTimeoutSpy).toHaveBeenCalled();
 		setTimeoutSpy.mockRestore();
+	});
+
+	it('filters chapters with string array tokens without splitting on internal whitespace (phrase match)', async () => {
+		const files = [
+			{ path: '小说/01.md', basename: '第一卷 序幕', stat: { mtime: 1 } },
+			{ path: '小说/02.md', basename: '第一卷 终章', stat: { mtime: 1 } },
+			{ path: '小说/03.md', basename: '第二卷 序幕', stat: { mtime: 1 } }
+		] as never;
+		const index = new WorkbenchFilterIndex({ vault: { cachedRead: vi.fn(async () => '') } } as never);
+
+		// Array token with internal space: must match the full phrase "第一卷 序幕"
+		const result1 = await index.filterChapters(files, ['第一卷 序幕'], () => '');
+		expect(result1.map((f: { basename: string }) => f.basename)).toEqual(['第一卷 序幕']);
+
+		// Multiple array tokens AND together
+		const result2 = await index.filterChapters(files, ['第一卷', '终章'], () => '');
+		expect(result2.map((f: { basename: string }) => f.basename)).toEqual(['第一卷 终章']);
+
+		// Empty array tokens matches all
+		const result3 = await index.filterChapters(files, [], () => '');
+		expect(result3).toHaveLength(3);
+	});
+
+	it('filters lore entries with string array tokens AND-ed together and phrase matching', async () => {
+		const file = { path: '小说/设定.md', basename: '设定', stat: { mtime: 1 } };
+		const entries = [
+			{ file, heading: '林默' },
+			{ file, heading: '顾云 飞' },
+			{ file, heading: '顾云' }
+		] as never;
+		const aliases = new Map([
+			['林默', ['代号 影子']],
+			['顾云 飞', ['小顾']],
+			['顾云', ['老顾']]
+		]);
+		const index = new WorkbenchFilterIndex({ vault: { cachedRead: vi.fn(async () => '') } } as never);
+
+		// Phrase match on alias
+		const result1 = await index.filterLoreEntries(entries, aliases, ['代号 影子']);
+		expect([...result1]).toEqual(['林默']);
+
+		// Phrase match with internal space in heading
+		const result2 = await index.filterLoreEntries(entries, aliases, ['顾云 飞']);
+		expect([...result2]).toEqual(['顾云 飞']);
+
+		// Multiple tokens AND together
+		const result3 = await index.filterLoreEntries(entries, aliases, ['林默', '影子']);
+		expect([...result3]).toEqual(['林默']);
+
+		// Empty tokens matches all
+		const result4 = await index.filterLoreEntries(entries, aliases, []);
+		expect(result4.size).toBe(3);
 	});
 });

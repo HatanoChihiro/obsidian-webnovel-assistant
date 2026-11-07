@@ -154,4 +154,47 @@ describe('StyleManager', () => {
 		expect(leafDoc.body.classList.remove).toHaveBeenCalledWith('webnovel-eye-care-enabled');
 		expect(leafDoc.body.style.removeProperty).toHaveBeenCalledWith('--webnovel-eye-care-color');
 	});
+	it('applies default dark color #202B24 alongside light color for legacy settings and propagates independent updates', () => {
+		styleManager.applyEyeCare();
+
+		expect(mainDoc.body.style.setProperty).toHaveBeenCalledWith('--webnovel-eye-care-color', '#E8F5E9');
+		expect(mainDoc.body.style.setProperty).toHaveBeenCalledWith('--webnovel-eye-care-dark-color', '#202B24');
+		expect(leafDoc.body.style.setProperty).toHaveBeenCalledWith('--webnovel-eye-care-dark-color', '#202B24');
+		expect(settingsDoc.body.style.setProperty).toHaveBeenCalledWith('--webnovel-eye-care-dark-color', '#202B24');
+
+		settings.eyeCareColor = '#FAF7EE';
+		settings.eyeCareDarkColor = '#1A241E';
+		styleManager.updateSettings(settings);
+		styleManager.applyEyeCare();
+
+		expect(mainDoc.body.style.setProperty).toHaveBeenCalledWith('--webnovel-eye-care-color', '#FAF7EE');
+		expect(mainDoc.body.style.setProperty).toHaveBeenCalledWith('--webnovel-eye-care-dark-color', '#1A241E');
+		expect(leafDoc.body.style.setProperty).toHaveBeenCalledWith('--webnovel-eye-care-color', '#FAF7EE');
+		expect(leafDoc.body.style.setProperty).toHaveBeenCalledWith('--webnovel-eye-care-dark-color', '#1A241E');
+		expect(settingsDoc.body.style.setProperty).toHaveBeenCalledWith('--webnovel-eye-care-color', '#FAF7EE');
+		expect(settingsDoc.body.style.setProperty).toHaveBeenCalledWith('--webnovel-eye-care-dark-color', '#1A241E');
+	});
+
+	it('propagates both light and dark colors to new windows and cleans both on window-close, disable and destroy', () => {
+		styleManager.applyEyeCare();
+
+		const popoutDoc = createMockDoc();
+		eventHandlers['window-open']({ doc: popoutDoc } as unknown as WorkspaceWindow, {} as Window);
+
+		expect(popoutDoc.body.style.setProperty).toHaveBeenCalledWith('--webnovel-eye-care-color', '#E8F5E9');
+		expect(popoutDoc.body.style.setProperty).toHaveBeenCalledWith('--webnovel-eye-care-dark-color', '#202B24');
+
+		eventHandlers['window-close']({ doc: popoutDoc } as unknown as WorkspaceWindow, {} as Window);
+		expect(popoutDoc.body.style.removeProperty).toHaveBeenCalledWith('--webnovel-eye-care-color');
+		expect(popoutDoc.body.style.removeProperty).toHaveBeenCalledWith('--webnovel-eye-care-dark-color');
+
+		styleManager.removeEyeCare();
+		expect(mainDoc.body.style.removeProperty).toHaveBeenCalledWith('--webnovel-eye-care-dark-color');
+		expect(leafDoc.body.style.removeProperty).toHaveBeenCalledWith('--webnovel-eye-care-dark-color');
+
+		styleManager.applyEyeCare();
+		styleManager.destroy();
+		expect(mainDoc.body.style.removeProperty).toHaveBeenCalledWith('--webnovel-eye-care-dark-color');
+		expect(leafDoc.body.style.removeProperty).toHaveBeenCalledWith('--webnovel-eye-care-dark-color');
+	});
 });

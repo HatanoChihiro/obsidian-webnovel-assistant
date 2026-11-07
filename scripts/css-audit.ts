@@ -335,7 +335,8 @@ function auditSourceFiles(allCssFiles: string[]): number {
 					errors.push(`${file}:${declarationLine} 禁止在 :root 重新定义原生字体变量 '${declaration.prop}'。`);
 				}
 				const allowedHexFallback = declarationValue.includes('var(--text-on-accent, #ffffff)')
-					|| declarationValue.includes('var(--webnovel-eye-care-color, #E8F5E9)');
+					|| declarationValue.includes('var(--webnovel-eye-care-color, #E8F5E9)')
+					|| declarationValue.includes('var(--webnovel-eye-care-dark-color, #202B24)');
 				if (/#[0-9a-f]{3,8}\b/i.test(declarationValue) && !allowedHexFallback) {
 					errors.push(`${file}:${declarationLine} 禁止硬编码颜色 '${declarationValue}'，请使用主题或 wn 语义变量。`);
 				}

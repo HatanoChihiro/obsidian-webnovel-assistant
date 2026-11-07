@@ -2636,31 +2636,58 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					} else {
 						this.plugin.removeEyeCare();
 					}
-				}));
-
-		new Setting(containerEl)
-			.setName(t('setting.eyecare-bg-color'))
-			.setDesc(t('setting.eyecare-bg-color-desc'))
-			.addColorPicker(picker => picker
-				.setValue(this.plugin.settings.eyeCareColor || '#E8F5E9')
-				.onChange(async (value) => {
-					this.plugin.settings.eyeCareColor = value;
-					await this.plugin.saveSettings();
-					if (this.plugin.settings.eyeCareEnabled) {
-						this.plugin.applyEyeCare();
-					}
-				}))
-			.addExtraButton(btn => btn
-				.setIcon('reset')
-				.setTooltip(t('setting.eyecare-reset-tooltip'))
-				.onClick(async () => {
-					this.plugin.settings.eyeCareColor = '#E8F5E9';
-					await this.plugin.saveSettings();
-					if (this.plugin.settings.eyeCareEnabled) {
-						this.plugin.applyEyeCare();
-					}
 					this.display();
 				}));
+
+		if (this.plugin.settings.eyeCareEnabled) {
+			new Setting(containerEl)
+				.setName(t('setting.eyecare-bg-color'))
+				.setDesc(t('setting.eyecare-bg-color-desc'))
+				.addColorPicker(picker => picker
+					.setValue(this.plugin.settings.eyeCareColor || '#E8F5E9')
+					.onChange(async (value) => {
+						this.plugin.settings.eyeCareColor = value;
+						await this.plugin.saveSettings();
+						if (this.plugin.settings.eyeCareEnabled) {
+							this.plugin.applyEyeCare();
+						}
+					}))
+				.addExtraButton(btn => btn
+					.setIcon('reset')
+					.setTooltip(t('setting.eyecare-reset-tooltip'))
+					.onClick(async () => {
+						this.plugin.settings.eyeCareColor = '#E8F5E9';
+						await this.plugin.saveSettings();
+						if (this.plugin.settings.eyeCareEnabled) {
+							this.plugin.applyEyeCare();
+						}
+						this.display();
+					}));
+
+			new Setting(containerEl)
+				.setName(t('setting.eyecare-dark-bg-color'))
+				.setDesc(t('setting.eyecare-dark-bg-color-desc'))
+				.addColorPicker(picker => picker
+					.setValue(this.plugin.settings.eyeCareDarkColor || '#202B24')
+					.onChange(async (value) => {
+						this.plugin.settings.eyeCareDarkColor = value;
+						await this.plugin.saveSettings();
+						if (this.plugin.settings.eyeCareEnabled) {
+							this.plugin.applyEyeCare();
+						}
+					}))
+				.addExtraButton(btn => btn
+					.setIcon('reset')
+					.setTooltip(t('setting.eyecare-dark-reset-tooltip'))
+					.onClick(async () => {
+						this.plugin.settings.eyeCareDarkColor = '#202B24';
+						await this.plugin.saveSettings();
+						if (this.plugin.settings.eyeCareEnabled) {
+							this.plugin.applyEyeCare();
+						}
+						this.display();
+					}));
+		}
 
 		// 2. 排版系统开关与作用域
 		new Setting(containerEl).setName(t('setting.tab-typography')).setHeading();

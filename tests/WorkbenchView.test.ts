@@ -247,14 +247,22 @@ vi.mock('../src/ui/components/TimelineBoardRenderer', () => ({
 	}
 }));
 
-vi.mock('../src/ui/components/WritingJourneyBoardRenderer', () => ({
-	WritingJourneyBoardRenderer: {
-		render: vi.fn()
+vi.mock('../src/ui/components/WritingJourneyBoardRenderer', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('../src/ui/components/WritingJourneyBoardRenderer')>();
+	class MockWritingJourneyBoardRenderer extends actual.WritingJourneyBoardRenderer {
+		public static override render = vi.fn();
 	}
-}));
+	return {
+		WritingJourneyBoardRenderer: MockWritingJourneyBoardRenderer
+	};
+});
 
 vi.mock('../src/i18n', () => ({
-	t: (key: string) => key,
+	t: (key: string, vars?: Record<string, string>) => {
+		if (key === 'corkboard.filter-result-count' && vars) return `${vars.matched} / ${vars.total}`;
+		if (vars?.keyword) return `移除 ${vars.keyword}`;
+		return key;
+	},
 	getLocale: () => 'zh-CN'
 }));
 
@@ -382,6 +390,22 @@ describe('WorkbenchView', () => {
 			calculateAccurateWords: vi.fn().mockReturnValue(100),
 			saveSettings: vi.fn().mockResolvedValue(undefined)
 		} as unknown as WorkbenchViewPlugin;
+	});
+
+	it.each([
+		[{ status: 'draft' }, '草稿'],
+		[{ Status: 'Final' }, '已完稿'],
+		[{ 状态: '草稿' }, 'draft'],
+		[{}, '待写'],
+		[{ status: 'draft', Status: 'final', 状态: '已完稿' }, '草稿']
+	])('filters All Chapters by the same status property precedence as chapter cards (%j)', async (frontmatter, query) => {
+		mockApp.metadataCache.getFileCache.mockReturnValue({ frontmatter });
+		const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+		view.currentBookPath = 'NovelA';
+		view['container'] = view.contentEl;
+		view['chapterFilterQuery'] = query;
+		await view['renderBoard']();
+		expect(CorkboardGridRenderer.render).toHaveBeenCalledWith(expect.objectContaining({ files: [file1] }));
 	});
 
 	it('should return correct view type and display text', () => {
@@ -1691,7 +1715,7 @@ describe('WorkbenchView', () => {
 			expect(WritingJourneyBoardRenderer.render).toHaveBeenCalledWith(
 				expect.objectContaining({
 					currentBookPath: 'NovelA',
-					query: '',
+					query: [],
 					isDescending: true
 				})
 			);
@@ -2061,6 +2085,22 @@ describe('WorkbenchView', () => {
 				query: '划痕'
 			});
 			expect(noMatch).toEqual([]);
+
+			// 5. Array tokens AND together preserving phrases
+			const arrayMatch = ForeshadowingBoardRenderer.filterEntries(entries, {
+				query: ['密室钥匙', '线索']
+			});
+			expect(arrayMatch.map(e => e.description)).toEqual(['密室钥匙伏笔']);
+
+			const arrayNoMatch = ForeshadowingBoardRenderer.filterEntries(entries, {
+				query: ['密室钥匙', '不存在']
+			});
+			expect(arrayNoMatch).toEqual([]);
+
+			const normalizedEntry = { ...entries[0], description: 'Signal RED' };
+			expect(ForeshadowingBoardRenderer.filterEntries([normalizedEntry], {
+				query: ['ＳＩＧＮＡＬ', 'red']
+			})).toEqual([normalizedEntry]);
 		});
 	});
 
@@ -2898,6 +2938,376 @@ describe('WorkbenchView', () => {
 				globalFragSpy.mockRestore();
 				await view.onClose();
 			}
+		});
+	});
+
+	describe('Workbench search tags & history', () => {
+		it('commits trimmed draft as tag on Enter, clears draft, and retains focus via RAF', async () => {
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			await view.onOpen();
+			view.currentBookPath = 'NovelA';
+			const c1 = new MockTFile('第一章.md', 'NovelA/第一章.md');
+			plugin.getTrackedMarkdownFiles = vi.fn().mockReturnValue([c1]);
+			(mockApp.vault.getAbstractFileByPath as ReturnType<typeof vi.fn>).mockReturnValue(c1);
+
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+
+			let input = view.contentEl.querySelector('.wn-workbench-filter-input') as unknown as MockElement;
+			expect(input).not.toBeNull();
+
+			// Enter with text commits tag
+			input.value = '  第一章  ';
+			input.dispatchEvent('keydown', {
+				key: 'Enter',
+				preventDefault: vi.fn(),
+				isComposing: false
+			});
+			await new Promise(r => setTimeout(r, 10));
+
+			const tags = view.contentEl.querySelectorAll('.wn-workbench-filter-tag');
+			expect(tags).toHaveLength(1);
+			expect(tags[0].querySelector('.wn-workbench-filter-tag-text')?.textContent).toContain('第一章');
+
+			// Acquire current input after render and verify cleared draft and focus restoration
+			input = view.contentEl.querySelector('.wn-workbench-filter-input') as unknown as MockElement;
+			expect(input.value).toBe('');
+			expect(input.focus).toHaveBeenCalled();
+		});
+
+		it('ignores empty and normalized duplicate tags on Enter', async () => {
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			await view.onOpen();
+			view.currentBookPath = 'NovelA';
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+
+			let input = view.contentEl.querySelector('.wn-workbench-filter-input') as unknown as MockElement;
+
+			// Empty enter
+			input.value = '   ';
+			input.dispatchEvent('keydown', {
+				key: 'Enter',
+				preventDefault: vi.fn(),
+				isComposing: false
+			});
+			await new Promise(r => setTimeout(r, 10));
+			expect(view.contentEl.querySelectorAll('.wn-workbench-filter-tag')).toHaveLength(0);
+
+			// First commit
+			input.value = 'TagA';
+			input.dispatchEvent('keydown', { key: 'Enter', preventDefault: vi.fn(), isComposing: false });
+			await new Promise(r => setTimeout(r, 10));
+			expect(view.contentEl.querySelectorAll('.wn-workbench-filter-tag')).toHaveLength(1);
+
+			// Duplicate commit with different case/spacing
+			input = view.contentEl.querySelector('.wn-workbench-filter-input') as unknown as MockElement;
+			input.value = '  taga  ';
+			input.dispatchEvent('keydown', { key: 'Enter', preventDefault: vi.fn(), isComposing: false });
+			await new Promise(r => setTimeout(r, 10));
+			expect(view.contentEl.querySelectorAll('.wn-workbench-filter-tag')).toHaveLength(1);
+		});
+
+		it('preserves phrase matching before and after Enter, and combines multiple tags with AND', async () => {
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			await view.onOpen();
+			view.currentBookPath = 'NovelA';
+			const c1 = new MockTFile('red blue note.md', 'NovelA/red blue note.md');
+			const c2 = new MockTFile('red note.md', 'NovelA/red note.md');
+			const c3 = new MockTFile('blue note.md', 'NovelA/blue note.md');
+			plugin.getTrackedMarkdownFiles = vi.fn().mockReturnValue([c1, c2, c3]);
+			(mockApp.vault.getAbstractFileByPath as ReturnType<typeof vi.fn>).mockImplementation((p: string) => {
+				if (p.includes('red blue note')) return c1;
+				if (p.includes('red note')) return c2;
+				if (p.includes('blue note')) return c3;
+				return null;
+			});
+
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+
+			// 1. Draft before Enter: 'red blue' phrase matching
+			let input = view.contentEl.querySelector('.wn-workbench-filter-input') as unknown as MockElement;
+			input.value = 'red blue';
+			input.dispatchEvent('input', {});
+			await new Promise(r => setTimeout(r, 10));
+
+			const effectiveBefore = (view as unknown as { getEffectiveTokens: (m: string) => string[] }).getEffectiveTokens('default');
+			expect(effectiveBefore).toEqual(['red blue']);
+
+			// 2. Press Enter: commits 'red blue' as a single tag
+			input.dispatchEvent('keydown', { key: 'Enter', preventDefault: vi.fn(), isComposing: false });
+			await new Promise(r => setTimeout(r, 10));
+
+			const effectiveAfter = (view as unknown as { getEffectiveTokens: (m: string) => string[] }).getEffectiveTokens('default');
+			expect(effectiveAfter).toEqual(['red blue']);
+
+			// 3. Add second tag 'note': both tags combined with AND
+			input = view.contentEl.querySelector('.wn-workbench-filter-input') as unknown as MockElement;
+			input.value = 'note';
+			input.dispatchEvent('keydown', { key: 'Enter', preventDefault: vi.fn(), isComposing: false });
+			await new Promise(r => setTimeout(r, 10));
+
+			const effectiveCombined = (view as unknown as { getEffectiveTokens: (m: string) => string[] }).getEffectiveTokens('default');
+			expect(effectiveCombined).toEqual(['red blue', 'note']);
+		});
+
+		it('deletes tag on tag remove button click, updating filter and refreshing input', async () => {
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			await view.onOpen();
+			view.currentBookPath = 'NovelA';
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+
+			let input = view.contentEl.querySelector('.wn-workbench-filter-input') as unknown as MockElement;
+			input.value = 'tag1';
+			input.dispatchEvent('keydown', { key: 'Enter', preventDefault: vi.fn(), isComposing: false });
+			await new Promise(r => setTimeout(r, 10));
+
+			input = view.contentEl.querySelector('.wn-workbench-filter-input') as unknown as MockElement;
+			input.value = 'tag2';
+			input.dispatchEvent('keydown', { key: 'Enter', preventDefault: vi.fn(), isComposing: false });
+			await new Promise(r => setTimeout(r, 10));
+
+			expect(view.contentEl.querySelectorAll('.wn-workbench-filter-tag')).toHaveLength(2);
+
+			// Remove first tag
+			const removeBtns = view.contentEl.querySelectorAll('.wn-workbench-filter-tag-remove');
+			expect(removeBtns).toHaveLength(2);
+			(removeBtns[0] as HTMLElement).click();
+			await new Promise(r => setTimeout(r, 10));
+
+			const remainingTags = view.contentEl.querySelectorAll('.wn-workbench-filter-tag');
+			expect(remainingTags).toHaveLength(1);
+			expect(remainingTags[0].querySelector('.wn-workbench-filter-tag-text')?.textContent).toContain('tag2');
+
+			// Accessible label check: localized Remove tag2
+			const remainingRemoveBtn = remainingTags[0].querySelector('.wn-workbench-filter-tag-remove');
+			expect(remainingRemoveBtn?.getAttribute('aria-label')).toBe('移除 tag2');
+		});
+
+		it('handles Escape: first clears draft, second clears tags', async () => {
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			await view.onOpen();
+			view.currentBookPath = 'NovelA';
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+
+			// Add a tag first
+			let input = view.contentEl.querySelector('.wn-workbench-filter-input') as unknown as MockElement;
+			input.value = 'tag1';
+			input.dispatchEvent('keydown', { key: 'Enter', preventDefault: vi.fn(), isComposing: false });
+			await new Promise(r => setTimeout(r, 10));
+			expect(view.contentEl.querySelectorAll('.wn-workbench-filter-tag')).toHaveLength(1);
+
+			// Type into draft
+			input = view.contentEl.querySelector('.wn-workbench-filter-input') as unknown as MockElement;
+			input.value = 'draftText';
+			input.dispatchEvent('input', {});
+
+			// 1st Escape: clears draft, retains tags
+			input.dispatchEvent('keydown', { key: 'Escape', preventDefault: vi.fn() });
+			await new Promise(r => setTimeout(r, 10));
+			input = view.contentEl.querySelector('.wn-workbench-filter-input') as unknown as MockElement;
+			expect(input.value).toBe('');
+			expect(view.contentEl.querySelectorAll('.wn-workbench-filter-tag')).toHaveLength(1);
+
+			// 2nd Escape with empty draft: clears tags
+			input.dispatchEvent('keydown', { key: 'Escape', preventDefault: vi.fn() });
+			await new Promise(r => setTimeout(r, 10));
+			expect(view.contentEl.querySelectorAll('.wn-workbench-filter-tag')).toHaveLength(0);
+		});
+
+		it('clears active tags and draft when clear button is clicked or clearSearchInput is called', async () => {
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			await view.onOpen();
+			view.currentBookPath = 'NovelA';
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+
+			let input = view.contentEl.querySelector('.wn-workbench-filter-input') as unknown as MockElement;
+			input.value = 'tag1';
+			input.dispatchEvent('keydown', { key: 'Enter', preventDefault: vi.fn() });
+			await new Promise(r => setTimeout(r, 10));
+			expect(view.contentEl.querySelectorAll('.wn-workbench-filter-tag')).toHaveLength(1);
+
+			// Clear button clears tags and draft
+			const clearBtn = view.contentEl.querySelector('.wn-workbench-filter-clear') as unknown as MockElement;
+			clearBtn.click();
+			await new Promise(r => setTimeout(r, 10));
+			expect(view.contentEl.querySelectorAll('.wn-workbench-filter-tag')).toHaveLength(0);
+
+			// Add tag2 and draft2, then call clearSearchInput directly
+			input = view.contentEl.querySelector('.wn-workbench-filter-input') as unknown as MockElement;
+			input.value = 'tag2';
+			input.dispatchEvent('keydown', { key: 'Enter', preventDefault: vi.fn() });
+			await new Promise(r => setTimeout(r, 10));
+			input = view.contentEl.querySelector('.wn-workbench-filter-input') as unknown as MockElement;
+			input.value = 'draft2';
+			input.dispatchEvent('input', {});
+			expect(view.contentEl.querySelectorAll('.wn-workbench-filter-tag')).toHaveLength(1);
+
+			view.clearSearchInput();
+			await new Promise(r => setTimeout(r, 10));
+			expect(view.contentEl.querySelectorAll('.wn-workbench-filter-tag')).toHaveLength(0);
+			input = view.contentEl.querySelector('.wn-workbench-filter-input') as unknown as MockElement;
+			expect(input.value).toBe('');
+		});
+
+		it('ensures per-mode independence for search tags and drafts', async () => {
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			await view.onOpen();
+			view.currentBookPath = 'NovelA';
+
+			// 1. Chapter mode
+			(view as unknown as { sortMode: string }).sortMode = 'default';
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+			let input = view.contentEl.querySelector('.wn-workbench-filter-input') as unknown as MockElement;
+			input.value = 'chapTag';
+			input.dispatchEvent('keydown', { key: 'Enter', preventDefault: vi.fn(), isComposing: false });
+			await new Promise(r => setTimeout(r, 10));
+
+			const chapTokens = (view as unknown as { getEffectiveTokens: (m: string) => string[] }).getEffectiveTokens('default');
+			expect(chapTokens).toEqual(['chapTag']);
+
+			// 2. Journey mode is independent
+			(view as unknown as { sortMode: string }).sortMode = 'journey';
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+			const journeyTokensInitial = (view as unknown as { getEffectiveTokens: (m: string) => string[] }).getEffectiveTokens('journey');
+			expect(journeyTokensInitial).toEqual([]);
+
+			input = view.contentEl.querySelector('.wn-workbench-filter-input') as unknown as MockElement;
+			input.value = 'journeyTag';
+			input.dispatchEvent('keydown', { key: 'Enter', preventDefault: vi.fn(), isComposing: false });
+			await new Promise(r => setTimeout(r, 10));
+
+			// 3. Chapter tokens remained untouched
+			const chapTokensAfter = (view as unknown as { getEffectiveTokens: (m: string) => string[] }).getEffectiveTokens('default');
+			expect(chapTokensAfter).toEqual(['chapTag']);
+			const journeyTokensAfter = (view as unknown as { getEffectiveTokens: (m: string) => string[] }).getEffectiveTokens('journey');
+			expect(journeyTokensAfter).toEqual(['journeyTag']);
+		});
+
+		it('normalizes journey tags and query for journey matched count', async () => {
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			await view.onOpen();
+			view.currentBookPath = 'NovelA';
+			(view as unknown as { sortMode: string }).sortMode = 'journey';
+
+			const mockEvents = [
+				{
+					timestamp: '2026-01-01T10:00:00.000Z',
+					type: 'chapter.created',
+					path: 'NovelA/01 序章.md',
+					chapterTitle: '01 序章'
+				}
+			];
+			plugin.writingJourneyService = {
+				getJourneyLog: vi.fn().mockResolvedValue({
+					status: 'valid',
+					log: { events: mockEvents }
+				})
+			} as never;
+
+			// Tag with uppercase / Unicode
+			(view as unknown as { journeyFilterTags: string[] }).journeyFilterTags = ['ＮＯＶＥＬＡ', '01 序章'];
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+
+			const countEl = view.contentEl.querySelector('.wn-workbench-filter-count');
+			expect(countEl?.textContent).toBe('1 / 1');
+		});
+
+		it('does not commit tag during IME composition, immediate Enter within guard window, or keyCode 229', async () => {
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			await view.onOpen();
+			view.currentBookPath = 'NovelA';
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+
+			let input = view.contentEl.querySelector('.wn-workbench-filter-input') as unknown as MockElement;
+
+			// 1. isComposing = true during compositionstart
+			input.value = 'zhong';
+			input.dispatchEvent('compositionstart', {});
+			input.dispatchEvent('keydown', { key: 'Enter', isComposing: true, preventDefault: vi.fn() });
+			await new Promise(r => setTimeout(r, 10));
+			expect(view.contentEl.querySelectorAll('.wn-workbench-filter-tag')).toHaveLength(0);
+
+			// 2. compositionend with immediate Enter (< 50ms guard window)
+			input.dispatchEvent('compositionend', {});
+			input.dispatchEvent('keydown', { key: 'Enter', isComposing: false, preventDefault: vi.fn() });
+			await new Promise(r => setTimeout(r, 10));
+			expect(view.contentEl.querySelectorAll('.wn-workbench-filter-tag')).toHaveLength(0);
+
+			// 3. After guard window elapsed (60ms), keyCode === 229 still ignored
+			await new Promise(r => setTimeout(r, 60));
+			input.dispatchEvent('keydown', { key: 'Enter', keyCode: 229, isComposing: false, preventDefault: vi.fn() });
+			await new Promise(r => setTimeout(r, 10));
+			expect(view.contentEl.querySelectorAll('.wn-workbench-filter-tag')).toHaveLength(0);
+
+			// 4. Normal Enter after guard window commits tag
+			input.dispatchEvent('keydown', { key: 'Enter', keyCode: 13, isComposing: false, preventDefault: vi.fn() });
+			await new Promise(r => setTimeout(r, 10));
+			expect(view.contentEl.querySelectorAll('.wn-workbench-filter-tag')).toHaveLength(1);
+		});
+
+		it('renders clickable history keywords and clear history button', async () => {
+			plugin.settings.workbenchSearchHistory = ['keyword1', 'keyword2'];
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			await view.onOpen();
+			view.currentBookPath = 'NovelA';
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+
+			const historyItems = view.contentEl.querySelectorAll('.wn-workbench-filter-history-item');
+			expect(historyItems).toHaveLength(2);
+			expect(historyItems[0].textContent).toBe('keyword1');
+
+			// Clicking history item adds tag
+			(historyItems[0] as HTMLElement).click();
+			await new Promise(r => setTimeout(r, 10));
+			const tags = view.contentEl.querySelectorAll('.wn-workbench-filter-tag');
+			expect(tags).toHaveLength(1);
+			expect(tags[0].querySelector('.wn-workbench-filter-tag-text')?.textContent).toContain('keyword1');
+
+			// Clear history button
+			const clearHistoryBtn = view.contentEl.querySelector('.wn-workbench-filter-history-clear') as unknown as MockElement;
+			expect(clearHistoryBtn).not.toBeNull();
+			clearHistoryBtn.click();
+			await new Promise(r => setTimeout(r, 10));
+			expect(plugin.settings.workbenchSearchHistory).toEqual([]);
+		});
+
+		it('handles two deferred overlapping saves and onClose cleans up immediately while awaiting the second', async () => {
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			await view.onOpen();
+
+			let resolveSave1!: () => void;
+			let resolveSave2!: () => void;
+			const save1 = new Promise<void>(resolve => { resolveSave1 = resolve; });
+			const save2 = new Promise<void>(resolve => { resolveSave2 = resolve; });
+
+			let callCount = 0;
+			(plugin.saveSettings as ReturnType<typeof vi.fn>).mockImplementation(() => {
+				callCount++;
+				return callCount === 1 ? save1 : save2;
+			});
+
+			// Trigger save 1
+			const p1 = (view as unknown as { saveSearchHistory: () => Promise<void> }).saveSearchHistory();
+			// Trigger save 2 (deferred overlapping)
+			const p2 = (view as unknown as { saveSearchHistory: () => Promise<void> }).saveSearchHistory();
+
+			// Finish save 1
+			resolveSave1();
+			await p1;
+
+			// Start close while save 2 is still pending
+			let closed = false;
+			const closePromise = view.onClose().then(() => { closed = true; });
+
+			// Verify onClose marked isClosed and cleaned up DOM/timers immediately, BEFORE slow save 2 finishes
+			expect((view as unknown as { isClosed: boolean }).isClosed).toBe(true);
+			expect(view.contentEl.children).toHaveLength(0); // contentEl.empty() executed
+			expect(closed).toBe(false); // but onClose promise is awaiting save 2
+
+			// Now resolve save 2
+			resolveSave2();
+			await p2;
+			await closePromise;
+			expect(closed).toBe(true);
 		});
 	});
 });

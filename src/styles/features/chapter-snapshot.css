@@ -1,6 +1,8 @@
 /* Chapter Snapshot Comparison Floating Panel */
 
 .wn-snapshot-panel {
+	--wn-snapshot-added-bg: color-mix(in srgb, var(--text-success) 8%, var(--background-primary));
+	--wn-snapshot-deleted-bg: color-mix(in srgb, var(--text-error) 8%, var(--background-primary));
 	position: fixed;
 	top: 50%;
 	left: 50%;
@@ -233,13 +235,13 @@
 }
 
 .wn-snapshot-yaml-line.is-added {
-	background-color: var(--background-modifier-success);
-	color: var(--text-success);
+	background-color: var(--wn-snapshot-added-bg);
+	color: var(--text-normal);
 }
 
 .wn-snapshot-yaml-line.is-deleted {
-	background-color: var(--background-modifier-error);
-	color: var(--text-error);
+	background-color: var(--wn-snapshot-deleted-bg);
+	color: var(--text-normal);
 	text-decoration: line-through;
 }
 
@@ -296,11 +298,11 @@
 
 /* Row types */
 .wn-snapshot-row.is-added {
-	background-color: var(--background-modifier-success);
+	background-color: var(--wn-snapshot-added-bg);
 }
 
 .wn-snapshot-row.is-deleted {
-	background-color: var(--background-modifier-error);
+	background-color: var(--wn-snapshot-deleted-bg);
 }
 
 .wn-snapshot-row.is-modified {
@@ -326,15 +328,15 @@
 }
 
 /* In-text character highlights */
-.wn-diff-ins {
-	background-color: var(--background-modifier-success);
-	color: var(--text-success);
+.wn-snapshot-panel .wn-diff-ins {
+	background-color: var(--wn-snapshot-added-bg);
+	color: var(--text-normal);
 	text-decoration: underline;
 }
 
-.wn-diff-del {
-	background-color: var(--background-modifier-error);
-	color: var(--text-error);
+.wn-snapshot-panel .wn-diff-del {
+	background-color: var(--wn-snapshot-deleted-bg);
+	color: var(--text-normal);
 	text-decoration: line-through;
 }
 

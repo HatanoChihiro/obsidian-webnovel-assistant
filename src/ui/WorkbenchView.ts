@@ -36,7 +36,12 @@ export {
 	getWorkbenchBoardLabel
 };
 import { Logger } from '../utils/Logger';
-import { getLoreAliasesForBook, WorkbenchFilterIndex } from '../services/WorkbenchFilterIndex';
+import {
+	getLoreAliasesForBook,
+	WorkbenchFilterIndex,
+	rememberWorkbenchSearchHistory,
+	normalizeWorkbenchSearchText
+} from '../services/WorkbenchFilterIndex';
 import { bindFilterInputEvents } from './components/FilterInputBinding';
 import { MultiSelectFilterRow } from './components/MultiSelectFilterRow';
 import { resolveChapterTemplate, type ChapterTemplateSettings } from '../utils/template';
@@ -75,6 +80,7 @@ export type WorkbenchViewSettings = Pick<
 	| 'immersive'
 	| 'homepagePath'
 	| 'loreTemplateHistory'
+	| 'workbenchSearchHistory'
 > & {
 	task?: Pick<TaskSettings, 'fileName'>;
 };
@@ -242,9 +248,110 @@ export class WorkbenchView extends ItemView {
     private readonly deferredEditorCleanups = new Map<HTMLElement, { bookPath: string | null; renderId: number; win: Window; listener: () => void }>();
     private readonly deferredTimerEntries = new Set<{ win: Window; id: number }>();
     private chapterFilterQuery: string = '';
+    private chapterFilterTags: string[] = [];
     private loreFilterQuery: string = '';
+    private loreFilterTags: string[] = [];
     private foreshadowingFilterQuery: string = '';
+    private foreshadowingFilterTags: string[] = [];
     private journeyFilterQuery: string = '';
+    private journeyFilterTags: string[] = [];
+    private pendingHistorySave: Promise<void> | null = null;
+
+    private async saveSearchHistory(): Promise<void> {
+        const previousSave = this.pendingHistorySave;
+        const currentSave = (async () => {
+            try {
+                if (previousSave) {
+                    await previousSave.catch(() => {});
+                }
+                await this.plugin.saveSettings();
+            } catch (error) {
+                console.error('[WorkbenchView] Failed to save search history:', error);
+            }
+        })();
+
+        this.pendingHistorySave = currentSave;
+        try {
+            await currentSave;
+        } finally {
+            if (this.pendingHistorySave === currentSave) {
+                this.pendingHistorySave = null;
+            }
+        }
+    }
+
+    private getFilterDraft(mode: 'default' | 'lore' | 'foreshadowing' | 'journey'): string {
+        if (mode === 'default') return this.chapterFilterQuery;
+        if (mode === 'lore') return this.loreFilterQuery;
+        if (mode === 'foreshadowing') return this.foreshadowingFilterQuery;
+        return this.journeyFilterQuery;
+    }
+
+    private setFilterDraft(mode: 'default' | 'lore' | 'foreshadowing' | 'journey', value: string): void {
+        if (mode === 'default') this.chapterFilterQuery = value;
+        else if (mode === 'lore') this.loreFilterQuery = value;
+        else if (mode === 'foreshadowing') this.foreshadowingFilterQuery = value;
+        else this.journeyFilterQuery = value;
+    }
+
+    private getFilterTags(mode: 'default' | 'lore' | 'foreshadowing' | 'journey'): string[] {
+        if (mode === 'default') return this.chapterFilterTags;
+        if (mode === 'lore') return this.loreFilterTags;
+        if (mode === 'foreshadowing') return this.foreshadowingFilterTags;
+        return this.journeyFilterTags;
+    }
+
+    private setFilterTags(mode: 'default' | 'lore' | 'foreshadowing' | 'journey', tags: string[]): void {
+        if (mode === 'default') this.chapterFilterTags = tags;
+        else if (mode === 'lore') this.loreFilterTags = tags;
+        else if (mode === 'foreshadowing') this.foreshadowingFilterTags = tags;
+        else this.journeyFilterTags = tags;
+    }
+
+    private getEffectiveTokens(mode: 'default' | 'lore' | 'foreshadowing' | 'journey'): string[] {
+        const tags = this.getFilterTags(mode);
+        const draft = this.getFilterDraft(mode).trim();
+        return draft.length > 0 ? [...tags, draft] : [...tags];
+    }
+
+    private hasActiveFilter(mode: 'default' | 'lore' | 'foreshadowing' | 'journey'): boolean {
+        return this.getFilterTags(mode).length > 0 || this.getFilterDraft(mode).trim().length > 0;
+    }
+
+    private addFilterTag(mode: 'default' | 'lore' | 'foreshadowing' | 'journey', rawTag: string): boolean {
+        const trimmed = rawTag.trim();
+        if (!trimmed) return false;
+        const normalized = normalizeWorkbenchSearchText(trimmed);
+        const currentTags = this.getFilterTags(mode);
+        if (currentTags.some(t => normalizeWorkbenchSearchText(t) === normalized)) {
+            return false;
+        }
+        this.setFilterTags(mode, [...currentTags, trimmed]);
+        const history = this.plugin.settings.workbenchSearchHistory ?? [];
+        this.plugin.settings.workbenchSearchHistory = rememberWorkbenchSearchHistory(history, trimmed);
+        void this.saveSearchHistory();
+        return true;
+    }
+
+    private removeFilterTag(mode: 'default' | 'lore' | 'foreshadowing' | 'journey', index: number): void {
+        const currentTags = [...this.getFilterTags(mode)];
+        if (index >= 0 && index < currentTags.length) {
+            currentTags.splice(index, 1);
+            this.setFilterTags(mode, currentTags);
+            this.pendingFilterFocus = {
+                mode,
+                start: this.getFilterDraft(mode).length,
+                end: this.getFilterDraft(mode).length
+            };
+            this.currentRenderId++;
+            void this.reloadBoard();
+        }
+    }
+
+    private clearFilterForMode(mode: 'default' | 'lore' | 'foreshadowing' | 'journey'): void {
+        this.setFilterTags(mode, []);
+        this.setFilterDraft(mode, '');
+    }
     private filterDebounceTimer: { win: Window; id: number } | null = null;
     private pendingFilterFocus: { mode: 'default' | 'lore' | 'foreshadowing' | 'journey'; start: number; end: number } | null = null;
     private pendingFocusRaf: { win: Window; id: number } | null = null;
@@ -528,7 +635,7 @@ export class WorkbenchView extends ItemView {
 
     private canIncrementallyRefresh(file: TFile): boolean {
         if (this.sortMode !== 'default') return false;
-        if (this.chapterFilterQuery.trim().length > 0 || this.isChapterImportantOnly) return false;
+        if (this.hasActiveFilter('default') || this.isChapterImportantOnly) return false;
         if (!this.container || !this.container.querySelector('.wn-corkboard-grid')) return false;
         if (!this.isEligibleChapterFile(file)) return false;
         if (!this.findCardElement(file.path)) return false;
@@ -719,7 +826,7 @@ export class WorkbenchView extends ItemView {
             return;
         }
 
-        if (this.sortMode !== 'default' || this.chapterFilterQuery.trim().length > 0 || this.isChapterImportantOnly) {
+        if (this.sortMode !== 'default' || this.hasActiveFilter('default') || this.isChapterImportantOnly) {
             this.pendingCardUpdates.clear();
             void this.reloadBoard();
             return;
@@ -1161,6 +1268,14 @@ export class WorkbenchView extends ItemView {
             this.draggableListCleanup = null;
         }
         this.container.empty();
+
+        if (this.pendingHistorySave) {
+            try {
+                await this.pendingHistorySave;
+            } catch {
+                // Ignore errors during view close
+            }
+        }
     }
 
     private clearFilterTimer(): void {
@@ -1193,11 +1308,7 @@ export class WorkbenchView extends ItemView {
         matchedCount: number,
         totalCount: number
     ): void {
-        const query = mode === 'default'
-            ? this.chapterFilterQuery
-            : (mode === 'lore'
-                ? this.loreFilterQuery
-                : (mode === 'foreshadowing' ? this.foreshadowingFilterQuery : this.journeyFilterQuery));
+        const query = this.getFilterDraft(mode);
         const bar = container.createDiv('wn-workbench-filter-bar');
 
         bar.createSpan({
@@ -1208,9 +1319,28 @@ export class WorkbenchView extends ItemView {
             })
         });
 
-        const inputWrapper = bar.createDiv('wn-workbench-filter-input-wrapper');
+        const inputWrapper = bar.createDiv('wn-workbench-filter-input-wrapper wn-workbench-filter-tag-search');
         const searchIcon = inputWrapper.createSpan('wn-workbench-filter-icon');
         setIcon(searchIcon, 'search');
+
+        const tags = this.getFilterTags(mode);
+        if (tags.length > 0) {
+            const tagsWrapper = inputWrapper.createSpan('wn-workbench-filter-tags');
+            tags.forEach((tag, index) => {
+                const tagEl = tagsWrapper.createSpan('wn-workbench-filter-tag');
+                tagEl.createSpan({ cls: 'wn-workbench-filter-tag-text', text: tag });
+                const removeBtn = tagEl.createEl('button', {
+                    type: 'button',
+                    cls: 'clickable-icon wn-workbench-filter-tag-remove'
+                });
+                removeBtn.setAttr('aria-label', t('corkboard.filter-tag-remove', { keyword: tag }));
+                setIcon(removeBtn, 'x');
+                removeBtn.onclick = (e) => {
+                    e?.stopPropagation?.();
+                    this.removeFilterTag(mode, index);
+                };
+            });
+        }
 
         const input = inputWrapper.createEl('input', {
             type: 'search',
@@ -1218,9 +1348,9 @@ export class WorkbenchView extends ItemView {
         });
         input.value = query;
         input.placeholder = mode === 'default'
-            ? t('corkboard.filter-chapters-placeholder')
+            ? t('corkboard.filter-workbench-chapters-placeholder')
             : (mode === 'lore'
-                ? t('corkboard.filter-lore-placeholder')
+                ? t('corkboard.filter-workbench-lore-placeholder')
                 : (mode === 'foreshadowing'
                     ? t('corkboard.filter-foreshadowing-placeholder')
                     : t('corkboard.filter-journey-placeholder')));
@@ -1233,7 +1363,6 @@ export class WorkbenchView extends ItemView {
         clearButton.setAttr('role', 'button');
         clearButton.setAttr('tabindex', '0');
         clearButton.setAttr('aria-label', t('corkboard.filter-clear'));
-        clearButton.title = t('corkboard.filter-clear');
         setIcon(clearButton, 'x');
 
         const filterActions = (mode === 'default' || mode === 'foreshadowing' || mode === 'journey')
@@ -1318,6 +1447,27 @@ export class WorkbenchView extends ItemView {
             input,
             inputWrapper,
             clearButton,
+            hasActiveTags: () => this.getFilterTags(mode).length > 0,
+            onEnter: (draft) => {
+                const trimmed = draft.trim();
+                if (trimmed) {
+                    this.addFilterTag(mode, trimmed);
+                }
+                input.value = '';
+                this.setFilterDraft(mode, '');
+                this.scheduleFilterRefresh(mode, input, true);
+            },
+            onClear: () => {
+                this.clearFilterForMode(mode);
+            },
+            onEscape: () => {
+                if (this.getFilterTags(mode).length > 0) {
+                    this.setFilterTags(mode, []);
+                    this.scheduleFilterRefresh(mode, input, true);
+                    return true;
+                }
+                return false;
+            },
             onCompositionStart: () => {
                 // Do not allow a previous query render to replace the input during IME composition.
                 this.currentRenderId++;
@@ -1327,14 +1477,51 @@ export class WorkbenchView extends ItemView {
                 this.scheduleFilterRefresh(mode, input, immediate);
             }
         });
+
+        const historyList = this.plugin.settings.workbenchSearchHistory ?? [];
+        if (historyList.length > 0) {
+            const historyBar = container.createDiv('wn-workbench-filter-history');
+            historyBar.createSpan({
+                cls: 'wn-workbench-filter-history-label',
+                text: t('corkboard.filter-history-label')
+            });
+            const itemsContainer = historyBar.createDiv('wn-workbench-filter-history-items');
+            for (const item of historyList) {
+                const btn = itemsContainer.createEl('button', {
+                    type: 'button',
+                    cls: 'wn-workbench-filter-history-item',
+                    text: item
+                });
+                btn.setAttr('aria-label', item);
+                btn.onclick = () => {
+                    this.addFilterTag(mode, item);
+                    this.pendingFilterFocus = {
+                        mode,
+                        start: this.getFilterDraft(mode).length,
+                        end: this.getFilterDraft(mode).length
+                    };
+                    this.currentRenderId++;
+                    void this.reloadBoard();
+                };
+            }
+            const clearHistoryBtn = historyBar.createEl('button', {
+                type: 'button',
+                cls: 'wn-workbench-filter-history-clear',
+                text: t('corkboard.filter-history-clear')
+            });
+            clearHistoryBtn.setAttr('aria-label', t('corkboard.filter-history-clear'));
+            clearHistoryBtn.onclick = async () => {
+                this.plugin.settings.workbenchSearchHistory = [];
+                await this.saveSearchHistory();
+                this.currentRenderId++;
+                void this.reloadBoard();
+            };
+        }
     }
 
     private scheduleFilterRefresh(mode: 'default' | 'lore' | 'foreshadowing' | 'journey', input: HTMLInputElement, immediate: boolean = false): void {
         if (this.isClosed) return;
-        if (mode === 'default') this.chapterFilterQuery = input.value;
-        else if (mode === 'lore') this.loreFilterQuery = input.value;
-        else if (mode === 'foreshadowing') this.foreshadowingFilterQuery = input.value;
-        else this.journeyFilterQuery = input.value;
+        this.setFilterDraft(mode, input.value);
 
         this.pendingFilterFocus = {
             mode,
@@ -1388,6 +1575,7 @@ export class WorkbenchView extends ItemView {
             : (this.sortMode === 'foreshadowing'
                 ? 'foreshadowing'
                 : (this.sortMode === 'journey' ? 'journey' : 'default'));
+        this.clearFilterForMode(mode);
         const input = this.container.querySelector<HTMLInputElement>(
             `.wn-workbench-filter-input[data-filter-mode="${mode}"]`
         );
@@ -1400,10 +1588,6 @@ export class WorkbenchView extends ItemView {
             }
             this.scheduleFilterRefresh(mode, input, true);
         } else {
-            if (mode === 'default') this.chapterFilterQuery = '';
-            else if (mode === 'lore') this.loreFilterQuery = '';
-            else if (mode === 'foreshadowing') this.foreshadowingFilterQuery = '';
-            else if (mode === 'journey') this.journeyFilterQuery = '';
             void this.reloadBoard();
         }
     }
@@ -1929,10 +2113,14 @@ export class WorkbenchView extends ItemView {
                 : displayFiles;
             filteredChapterFiles = await this.filterIndex.filterChapters(
                 candidateFiles,
-                this.chapterFilterQuery,
+                this.getEffectiveTokens('default'),
                 (file) => {
                     const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
                     return frontmatter?.synopsis ?? frontmatter?.Synopsis ?? frontmatter?.['摘要'] ?? '';
+                },
+                (file) => {
+                    const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+                    return frontmatter?.status || frontmatter?.Status || frontmatter?.['状态'] || 'unwritten';
                 }
             );
             if (this.currentRenderId !== renderId) return;
@@ -1941,13 +2129,14 @@ export class WorkbenchView extends ItemView {
             await this.plugin.characterManager.ensureInitialized();
             const normalizedBookPath = this.currentBookPath === '' ? '/' : this.currentBookPath;
             const loreEntries = this.plugin.characterManager.getLoreEntriesInFileOrder(normalizedBookPath);
-            const hasQuery = this.loreFilterQuery.trim().length > 0;
+            const effectiveLoreTokens = this.getEffectiveTokens('lore');
+            const hasQuery = effectiveLoreTokens.length > 0;
 
             if (hasQuery) {
                 matchedLoreHeadings = await this.filterIndex.filterLoreEntries(
                     loreEntries,
                     getLoreAliasesForBook(this.plugin.characterManager, normalizedBookPath),
-                    this.loreFilterQuery
+                    this.getEffectiveTokens('lore')
                 );
             }
             if (this.currentRenderId !== renderId) return;
@@ -1968,13 +2157,13 @@ export class WorkbenchView extends ItemView {
             }
             if (isRenderStale()) return;
 
-            const fQuery = this.foreshadowingFilterQuery;
+            const fTokens = this.getEffectiveTokens('foreshadowing');
             const selectedTags = this.currentForeshadowingSelectedTags;
             const onlyImportant = this.isForeshadowingImportantOnly;
-            const hasFilter = Boolean(fQuery.trim().length > 0 || selectedTags.length > 0 || onlyImportant);
+            const hasFilter = Boolean(fTokens.length > 0 || selectedTags.length > 0 || onlyImportant);
             const matchedForeshadowingCount = hasFilter
                 ? ForeshadowingBoardRenderer.filterEntries(foreshadowingEntriesList, {
-                    query: fQuery,
+                    query: this.getEffectiveTokens('foreshadowing'),
                     selectedTags,
                     onlyImportant
                 }).length
@@ -1991,9 +2180,9 @@ export class WorkbenchView extends ItemView {
                 ? await this.plugin.writingJourneyService?.getJourneyLog(this.currentBookPath)
                 : null;
             const rawEvents = journeyResult?.status === 'valid' ? (journeyResult.log?.events || []) : [];
-            const jTrimmed = this.journeyFilterQuery.trim().toLowerCase();
-            const jMatchedCount = jTrimmed
-                ? rawEvents.filter(ev => WritingJourneyBoardRenderer.matchesQuery(ev, jTrimmed)).length
+            const jTokens = this.getEffectiveTokens('journey');
+            const jMatchedCount = jTokens.length > 0
+                ? rawEvents.filter(ev => WritingJourneyBoardRenderer.matchesQuery(ev, jTokens)).length
                 : rawEvents.length;
             if (isRenderStale()) return;
             this.renderFilterBar(
@@ -2056,7 +2245,7 @@ export class WorkbenchView extends ItemView {
                     container: buffer,
                     entries: foreshadowingEntriesList,
                     foreshadowingFile: foreshadowingFileObj,
-                    query: this.foreshadowingFilterQuery,
+                    query: this.getEffectiveTokens('foreshadowing'),
                     selectedTags: this.currentForeshadowingSelectedTags,
                     onlyImportant: this.isForeshadowingImportantOnly,
                     currentBookPath: this.currentBookPath || '',
@@ -2076,11 +2265,11 @@ export class WorkbenchView extends ItemView {
                     plugin: this.plugin,
                     container: buffer,
                     currentBookPath: this.currentBookPath || '',
-                    query: this.journeyFilterQuery,
+                    query: this.getEffectiveTokens('journey'),
                     isDescending: this.isJourneyDescending
                 });
             } else if (this.sortMode === 'default') {
-                if (filteredChapterFiles.length === 0 && (this.chapterFilterQuery.trim().length > 0 || this.isChapterImportantOnly)) {
+                if (filteredChapterFiles.length === 0 && (this.hasActiveFilter('default') || this.isChapterImportantOnly)) {
                     buffer.createDiv({ cls: 'wn-corkboard-empty-msg', text: t('corkboard.filter-no-results') });
                 } else {
                     this.renderOrderedBoard(buffer, filteredChapterFiles, foreshadowingMap);
