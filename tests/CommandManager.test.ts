@@ -480,6 +480,9 @@ describe('CommandManager - split-chapter-at-cursor', () => {
             refreshManually: ReturnType<typeof vi.fn>;
         };
         addCommand: ReturnType<typeof vi.fn>;
+        editorTracker?: {
+            handleStructuralEdit: ReturnType<typeof vi.fn>;
+        };
     };
     let registeredCommands: Map<string, CommandManagerRegisteredCommand>;
 
@@ -566,6 +569,13 @@ describe('CommandManager - split-chapter-at-cursor', () => {
         // Test onRefreshExplorer passes through to refreshManually
         options.onRefreshExplorer?.();
         expect(mockPlugin.fileExplorerPatcher.refreshManually).toHaveBeenCalledTimes(1);
+
+        // Test onStructuralEdit passes through to editorTracker.handleStructuralEdit
+        expect(options.onStructuralEdit).toBeDefined();
+        mockPlugin.editorTracker = { handleStructuralEdit: vi.fn() };
+        const dummyFile = new TFile();
+        options.onStructuralEdit?.(dummyFile, 'before', 'after');
+        expect(mockPlugin.editorTracker.handleStructuralEdit).toHaveBeenCalledWith(dummyFile, 'before', 'after');
 
         splitSpy.mockRestore();
     });

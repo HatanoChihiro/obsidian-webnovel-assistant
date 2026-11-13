@@ -167,6 +167,7 @@ export class ImmersiveModeManager {
 
 	// 顶部栏元素缓存
 	private topBarStatsEls: Record<string, HTMLElement> = {};
+	private typewriterControlsEl: HTMLElement | null = null;
 	private typewriterToggle: ToggleComponent | null = null;
 	private typewriterGearBtn: HTMLButtonElement | null = null;
 	private activeTypewriterQuickModal: ImmersiveTypewriterQuickModal | null = null;
@@ -1455,6 +1456,7 @@ export class ImmersiveModeManager {
 
 		// 在中间数据栏的最右侧嵌入打字机原生 Toggle 开关与设置齿轮
 		const typewriterWrapper = centerDiv.createDiv({ cls: 'stat-item typewriter-toggle-container' });
+		this.typewriterControlsEl = typewriterWrapper;
 		typewriterWrapper.createSpan({ cls: 'typewriter-toggle-label', text: t('setting.immersive-typewriter-title') });
 
 		this.typewriterToggle = new ToggleComponent(typewriterWrapper)
@@ -1515,6 +1517,7 @@ export class ImmersiveModeManager {
 			this.topBarEl = null;
 		}
 		this.topBarStatsEls = {};
+		this.typewriterControlsEl = null;
 		this.typewriterToggle = null;
 		this.typewriterGearBtn = null;
 		this.lastTypewriterEnabled = null;
@@ -1522,20 +1525,26 @@ export class ImmersiveModeManager {
 
 	private async renderTopBarContent(): Promise<void> {
 		if (!this.topBarEl) return;
-		const typewriterEnabled = !!this.plugin.settings.immersive.typewriterEnabled;
+		const immersive = this.plugin.settings.immersive;
+		const showTypewriterControls = immersive.immersiveShowTypewriterControls !== false;
+		const controls = this.typewriterControlsEl;
+		if (controls && controls.isShown() !== showTypewriterControls) {
+			if (showTypewriterControls) controls.show();
+			else controls.hide();
+		}
+		const typewriterEnabled = !!immersive.typewriterEnabled;
 		if (this.typewriterToggle && this.lastTypewriterEnabled !== typewriterEnabled) {
 			this.typewriterToggle.setValue(typewriterEnabled);
 			this.lastTypewriterEnabled = typewriterEnabled;
 		}
 		this.updateTypewriterGearVisibility();
-		if (!typewriterEnabled) {
+		if (!showTypewriterControls || !typewriterEnabled) {
 			this.closeTypewriterQuickModal();
 		}
 
 		this.checkPomodoroReminder();
 
 		try {
-			const immersive = this.plugin.settings.immersive;
 			const stats = this.plugin.statisticsManager.getCoreStats();
 			
 			let taskWords = 0;
@@ -1603,7 +1612,8 @@ export class ImmersiveModeManager {
 	}
 
 	private openTypewriterQuickModal(): void {
-		if (!this.topBarEl || !this.plugin.settings.immersive.typewriterEnabled || this.activeTypewriterQuickModal) return;
+		const immersive = this.plugin.settings.immersive;
+		if (!this.topBarEl || immersive.immersiveShowTypewriterControls === false || !immersive.typewriterEnabled || this.activeTypewriterQuickModal) return;
 
 		const modal = new ImmersiveTypewriterQuickModal(this.app, this.plugin, {
 			onClose: () => {

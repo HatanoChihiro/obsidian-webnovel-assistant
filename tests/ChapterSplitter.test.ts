@@ -29,20 +29,20 @@ interface MockApp {
 }
 
 interface MockEditor {
-	getValue: ReturnType<typeof vi.fn>;
-	setValue: ReturnType<typeof vi.fn>;
-	somethingSelected: ReturnType<typeof vi.fn>;
-	listSelections: ReturnType<typeof vi.fn>;
-	getCursor: ReturnType<typeof vi.fn>;
-	lastLine: ReturnType<typeof vi.fn>;
-	getLine: ReturnType<typeof vi.fn>;
-	replaceRange: ReturnType<typeof vi.fn>;
-	focus?: ReturnType<typeof vi.fn>;
-	setCursor?: ReturnType<typeof vi.fn>;
+	getValue: ReturnType<typeof vi.fn<() => string>>;
+	setValue: ReturnType<typeof vi.fn<(val: string) => void>>;
+	somethingSelected: ReturnType<typeof vi.fn<() => boolean>>;
+	listSelections: ReturnType<typeof vi.fn<() => Array<{ anchor: { line: number; ch: number }; head: { line: number; ch: number } }>>>;
+	getCursor: ReturnType<typeof vi.fn<() => { line: number; ch: number }>>;
+	lastLine: ReturnType<typeof vi.fn<() => number>>;
+	getLine: ReturnType<typeof vi.fn<(l: number) => string>>;
+	replaceRange: ReturnType<typeof vi.fn<(replacement: string, from?: { line: number; ch: number }, to?: { line: number; ch: number }) => void>>;
+	focus?: ReturnType<typeof vi.fn<() => void>>;
+	setCursor?: ReturnType<typeof vi.fn<(pos: { line: number; ch: number }) => void>>;
 }
 
 interface MockTargetEditor {
-	focus: ReturnType<typeof vi.fn>;
+	focus: ReturnType<typeof vi.fn<() => void>>;
 	setCursor: ReturnType<typeof vi.fn>;
 }
 
@@ -949,6 +949,80 @@ describe('ChapterSplitter - Core Logic & Regressions', () => {
 				settings: defaultSplitSettings
 			});
 			expect(split3).toBe(true);
+		});
+
+		it('should invoke onStructuralEdit callback on cut with pre and post content', async () => {
+			const structuralEditSpy = vi.fn();
+
+			const result = await splitChapterAtCursor({
+				app: mockApp as unknown as App,
+				view: mockView as unknown as MarkdownView,
+				editor: mockEditor as unknown as Editor,
+				settings: defaultSplitSettings,
+				onStructuralEdit: structuralEditSpy
+			});
+
+			expect(result).toBe(true);
+			expect(structuralEditSpy).toHaveBeenCalledTimes(1);
+			expect(structuralEditSpy).toHaveBeenCalledWith(
+				sourceFile,
+				'First part of chapter\nSecond part of chapter',
+				'First part'
+			);
+		});
+
+		it('should invoke onStructuralEdit callback on suffix restoration if post-cut save fails', async () => {
+			const structuralEditSpy = vi.fn();
+			let saveCount = 0;
+			mockView.save.mockImplementation(async () => {
+				saveCount++;
+				if (saveCount === 2) {
+					throw new Error('Save failed after cut');
+				}
+			});
+
+			const result = await splitChapterAtCursor({
+				app: mockApp as unknown as App,
+				view: mockView as unknown as MarkdownView,
+				editor: mockEditor as unknown as Editor,
+				settings: defaultSplitSettings,
+				onStructuralEdit: structuralEditSpy
+			});
+
+			expect(result).toBe(false);
+			// Called twice: 1 for cut, 1 for restore
+			expect(structuralEditSpy).toHaveBeenCalledTimes(2);
+			expect(structuralEditSpy).toHaveBeenNthCalledWith(
+				1,
+				sourceFile,
+				'First part of chapter\nSecond part of chapter',
+				'First part'
+			);
+			expect(structuralEditSpy).toHaveBeenNthCalledWith(
+				2,
+				sourceFile,
+				'First part',
+				'First part of chapter\nSecond part of chapter'
+			);
+		});
+
+		it('should not let onStructuralEdit callback failure prevent save and split completion', async () => {
+			const explodingCallback = vi.fn().mockImplementation(() => {
+				throw new Error('Stats callback crashed!');
+			});
+
+			const result = await splitChapterAtCursor({
+				app: mockApp as unknown as App,
+				view: mockView as unknown as MarkdownView,
+				editor: mockEditor as unknown as Editor,
+				settings: defaultSplitSettings,
+				onStructuralEdit: explodingCallback
+			});
+
+			expect(result).toBe(true);
+			// Source cut save and open still executed despite callback explosion
+			expect(mockView.save).toHaveBeenCalledTimes(2);
+			expect(mockLeaf.openFile).toHaveBeenCalledTimes(1);
 		});
 	});
 

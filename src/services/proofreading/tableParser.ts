@@ -353,7 +353,7 @@ export function parseSensitiveWordsTable(content: string): TableParseResult<Map<
 function sanitizeCellContent(content: string): string {
 	// 去除换行符，并将未转义的 | 转义为 \|
 	const singleLine = content.replace(/[\r\n]+/g, ' ').trim();
-	return singleLine.replace(/(?<!\\)\|/g, '\\|');
+	return singleLine.replace(/\\?\|/g, match => match.length === 1 ? '\\|' : match);
 }
 
 /**

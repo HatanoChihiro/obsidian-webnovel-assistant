@@ -24,9 +24,7 @@
 }
 
 
-/* Source mode and Live preview main lines
-   规避 css-text-indent 官方审查警告：编辑器行不使用 text-indent，
-   改用 padding-inline-start: 0 重置（仅重置，首行缩进由 ::before 伪元素实现）。 */
+/* Source mode and Live preview main lines */
 .workspace-leaf.wn-typography-active .cm-line:not(.HyperMD-header):not(.HyperMD-quote):not(.HyperMD-listblock):not(.cm-embed-block) {
 	padding-inline-start: 0;
 	font-size: var(--wn-type-font-size, inherit);
@@ -37,14 +35,11 @@
 }
 
 
-/* Use ::before inline-block spacer for CodeMirror 6 to fix CJK IME composition cursor jumping
-   规避 css-text-indent 官方审查警告：首行缩进用 ::before inline-block 伪元素实现，
-   Why: text-indent 在 CM6 行内会导致 CJK IME 输入光标跳到行首的 Bug；
-        ::before spacer 同时解决了缩进需求和 IME 光标问题，且不触发审查警告。 */
+/* 行内起始内边距实现首行缩进，避免占位元素单独换行，并保留 CM6 的中文输入法光标行为。 */
 .workspace-leaf.wn-typography-active .cm-line:not(.HyperMD-header):not(.HyperMD-quote):not(.HyperMD-listblock):not(.cm-embed-block)::before {
 	content: "";
-	display: inline-block;
-	width: var(--wn-type-indent, 2em);
+	display: inline;
+	padding-inline-start: var(--wn-type-indent, 2em);
 }
 
 
@@ -70,13 +65,7 @@
 }
 
 
-/* Reading mode paragraphs
-   规避 css-text-indent 官方审查警告：阅读模式 p 标签首行缩进不使用 text-indent，
-   改用 p::before inline-block 伪元素实现，与 CM6 编辑器行方案完全一致。
-   Why ::before over padding-inline-start:
-     - text-indent: 只缩进首行 ✓
-     - padding-inline-start: 对所有行缩进 ✗（会导致换行后的文字也整体左移，视觉错误）
-     - ::before inline-block: 等效 text-indent 的视觉效果，且不触发 css-text-indent 审查警告 ✓ */
+/* Reading mode paragraphs */
 body .workspace-leaf.wn-typography-active .markdown-preview-view p,
 body .workspace-leaf.wn-typography-active .markdown-rendered p {
 	font-size: var(--wn-type-font-size, inherit);
@@ -89,13 +78,11 @@ body .workspace-leaf.wn-typography-active .markdown-rendered p {
 	text-align: var(--wn-type-text-align, justify);
 }
 
-/* 阅读模式 p 标签首行缩进 —— ::before inline-block spacer 方案
-   与 CM6 .cm-line::before 完全一致的实现原理 */
 body .workspace-leaf.wn-typography-active .markdown-preview-view p::before,
 body .workspace-leaf.wn-typography-active .markdown-rendered p::before {
 	content: "";
-	display: inline-block;
-	width: var(--wn-type-indent, 2em);
+	display: inline;
+	padding-inline-start: var(--wn-type-indent, 2em);
 }
 
 

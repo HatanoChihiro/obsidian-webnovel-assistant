@@ -387,4 +387,144 @@ describe('EditorTracker', () => {
 			expect(mockPlugin.cacheManager.updateFileCache).not.toHaveBeenCalled();
 		});
 	});
+
+	describe('Chapter split statistics', () => {
+		const full = 'a'.repeat(500);
+		const shortened = 'a'.repeat(260);
+		let tracker: EditorTracker;
+
+		beforeEach(() => {
+			mockPlugin.lastFileWords = 500;
+			mockPlugin.calculateAccurateWords.mockImplementation((text: string) => text.length);
+			tracker = new EditorTracker(mockApp, mockPlugin);
+		});
+
+		it('keeps writing totals unchanged when the deferred edit runs before navigation', () => {
+			tracker.handleStructuralEdit(testFile, full, shortened);
+			expect(mockPlugin.cacheManager.updateFileCache).toHaveBeenCalledWith(testFile, 260, mockApp.vault);
+
+			mockView.getViewData.mockReturnValue(shortened);
+			tracker.handleEditorChange();
+			expect(mockApp.workspace.trigger).not.toHaveBeenCalled();
+			expect(mockPlugin.lastFileWords).toBe(260);
+		});
+
+		it('uses the shortened source baseline after a fast switch to the target and back', async () => {
+			const target = new TFile('B.md', 'Novel/B.md');
+			const cachedWords = new Map([[testFile.path, 500], [target.path, 240]]);
+			mockPlugin.cacheManager.getFileCache.mockImplementation((path: string) => cachedWords.get(path) ?? null);
+			mockPlugin.cacheManager.updateFileCache.mockImplementation((file: TFile, count: number) => {
+				cachedWords.set(file.path, count);
+			});
+
+			tracker.handleStructuralEdit(testFile, full, shortened);
+			mockView.file = target;
+			mockView.getViewData.mockReturnValue('b'.repeat(240));
+			await tracker.handleFileChange();
+			mockView.file = testFile;
+			mockView.getViewData.mockReturnValue(shortened);
+			await tracker.handleFileChange();
+
+			mockView.getViewData.mockReturnValue(shortened + 'a');
+			tracker.handleEditorChange();
+			expect(mockApp.workspace.trigger).toHaveBeenCalledExactlyOnceWith(
+				'webnovel:editor-word-count-updated', testFile, 1
+			);
+		});
+
+		it.each([10, -10])('keeps a pending real edit of %i words exactly once', (delta) => {
+			const edited = 'a'.repeat(500 + delta);
+			const cut = 'a'.repeat(260 + delta);
+			tracker.handleStructuralEdit(testFile, edited, cut);
+
+			mockView.getViewData.mockReturnValue(cut);
+			tracker.handleEditorChange();
+			expect(mockApp.workspace.trigger).toHaveBeenCalledExactlyOnceWith(
+				'webnovel:editor-word-count-updated', testFile, delta
+			);
+		});
+
+		it('restores the cache after a save failure without recording the restored suffix', () => {
+			tracker.handleStructuralEdit(testFile, full, shortened);
+			mockView.getViewData.mockReturnValue(shortened);
+			tracker.handleEditorChange();
+
+			tracker.handleStructuralEdit(testFile, shortened, full);
+			expect(mockPlugin.lastFileWords).toBe(500);
+			expect(mockPlugin.cacheManager.updateFileCache).toHaveBeenLastCalledWith(testFile, 500, mockApp.vault);
+
+			mockView.getViewData.mockReturnValue(full);
+			tracker.handleEditorChange();
+			expect(mockApp.workspace.trigger).not.toHaveBeenCalled();
+		});
+
+		it('counts real deletion and typing after the cut while saving is pending', () => {
+			tracker.handleStructuralEdit(testFile, full, shortened);
+			mockView.getViewData.mockReturnValue(shortened.slice(10));
+			tracker.handleEditorChange();
+			mockView.getViewData.mockReturnValue(shortened + 'a'.repeat(5));
+			tracker.handleEditorChange();
+			expect(mockApp.workspace.trigger.mock.calls).toEqual([
+				['webnovel:editor-word-count-updated', testFile, -10],
+				['webnovel:editor-word-count-updated', testFile, 15]
+			]);
+		});
+
+		it.each([true, false])('rejects a stale source read while another chapter supplies the baseline (focused: %s)', async (focused) => {
+			let finishRead!: (text: string) => void;
+			mockApp.vault.cachedRead.mockReturnValue(new Promise<string>(resolve => { finishRead = resolve; }));
+			mockPlugin.cacheManager.getFileCache.mockReturnValue(null);
+			mockPlugin.lastFilePath = 'Novel/Other.md';
+			const pendingRead = tracker.handleFileChange();
+			if (!focused) mockApp.workspace.getActiveViewOfType.mockReturnValue(null);
+
+			tracker.handleStructuralEdit(testFile, full, shortened);
+			finishRead(full);
+			await pendingRead;
+
+			expect(mockApp.workspace.trigger).not.toHaveBeenCalled();
+			expect(mockPlugin.cacheManager.updateFileCache).toHaveBeenCalledExactlyOnceWith(testFile, 260, mockApp.vault);
+			expect(mockPlugin.lastFilePath).toBe(focused ? testFile.path : 'Novel/Other.md');
+			expect(mockPlugin.lastFileWords).toBe(focused ? 260 : 500);
+		});
+
+		it.each([true, false])('preserves the pending read for a different chapter (source tracked: %s)', async (sourceTracked) => {
+			let finishRead!: (text: string) => void;
+			mockApp.vault.cachedRead.mockReturnValue(new Promise<string>(resolve => { finishRead = resolve; }));
+			mockPlugin.cacheManager.getFileCache.mockReturnValue(null);
+			const activeFile = new TFile('Other.md', 'Novel/Other.md');
+			if (!sourceTracked) mockPlugin.lastFilePath = activeFile.path;
+			mockView.file = activeFile;
+			const pendingRead = tracker.handleFileChange();
+
+			tracker.handleStructuralEdit(testFile, full, shortened);
+			expect(mockPlugin.lastFilePath).toBe(sourceTracked ? testFile.path : activeFile.path);
+			finishRead('b'.repeat(300));
+			await pendingRead;
+
+			expect(mockApp.workspace.trigger).not.toHaveBeenCalled();
+			expect(mockPlugin.lastFilePath).toBe(activeFile.path);
+			expect(mockPlugin.lastFileWords).toBe(300);
+		});
+
+		it('initializes an unknown baseline without creating writing history', () => {
+			mockPlugin.lastFilePath = '';
+			mockPlugin.lastFileWords = 0;
+			tracker.handleStructuralEdit(testFile, full, shortened);
+
+			expect(mockApp.workspace.trigger).not.toHaveBeenCalled();
+			expect(mockPlugin.lastFilePath).toBe(testFile.path);
+			expect(mockPlugin.lastFileWords).toBe(260);
+		});
+
+		it('does not add words or populate the cache for an excluded source', () => {
+			mockPlugin.cacheManager.isEligibleForWordCount.mockReturnValue(false);
+			mockPlugin.cacheManager.isEligibleForTotalWordCount.mockReturnValue(false);
+			tracker.handleStructuralEdit(testFile, full + 'a', shortened + 'a');
+
+			expect(mockApp.workspace.trigger).not.toHaveBeenCalled();
+			expect(mockPlugin.cacheManager.updateFileCache).not.toHaveBeenCalled();
+			expect(mockPlugin.lastFileWords).toBe(0);
+		});
+	});
 });

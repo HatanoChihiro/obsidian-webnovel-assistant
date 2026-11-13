@@ -194,6 +194,8 @@ export interface ImmersiveModeSettings {
 
 	/** 是否启用沉浸模式打字机居中与淡化功能 */
 	typewriterEnabled: boolean;
+	/** 是否显示顶部仪表盘中的打字机滚动控件 */
+	immersiveShowTypewriterControls: boolean;
 	/** 打字机模式中心垂直偏移量 (%) (-30 到 30) */
 	typewriterCenterOffset: number;
 	/** 打字机模式未聚焦行淡化不透明度 (0.1 到 1.0) */

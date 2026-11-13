@@ -167,6 +167,24 @@ body .workspace-leaf-content[data-type="webnovel-workbench"][data-type="webnovel
 	color: var(--text-muted);
 	white-space: nowrap;
 	flex-shrink: 0;
+	cursor: pointer;
+}
+
+body .wn-corkboard-card input.wn-corkboard-title-input {
+	border: none;
+	background: transparent;
+	outline: none;
+	font-weight: 600;
+	font-size: 1.05em;
+	color: var(--text-normal);
+	padding: 0;
+	width: 100%;
+	min-width: 50px;
+}
+
+body .wn-corkboard-card input.wn-corkboard-title-input:disabled {
+	opacity: 0.6;
+	cursor: not-allowed;
 }
 
 

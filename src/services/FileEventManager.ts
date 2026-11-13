@@ -278,6 +278,7 @@ export class FileEventManager {
 
 	private registerRenameHandler(): void {
 		this.plugin.registerEvent(this.plugin.app.vault.on('rename', (abstractFile, oldPath) => {
+			this.plugin.workerManager.handleFileRename(abstractFile, oldPath);
 			if (abstractFile instanceof TFile && abstractFile.extension === 'md') {
 				void this.plugin.writingJourneyService.handleVaultRename(abstractFile, oldPath).catch(error => {
 					Logger.error('[WritingJourney] Failed to record external rename:', error);

@@ -135,8 +135,7 @@ class TrajectoryFullscreenModal extends Modal {
 				this.shell.setCssStyles({
 					width: `${visibleH}px`,
 					height: `${visibleW}px`,
-					transform: `translate(${visibleW + offsetLeft}px, ${offsetTop}px) rotate(90deg)`,
-					transformOrigin: '0 0'
+					transform: `translate(${visibleW + offsetLeft}px, ${offsetTop}px) rotate(90deg)`
 				});
 			} else {
 				this.onRotationChange(false);

@@ -81,7 +81,7 @@ describe('TimelineView', () => {
 			trigger: ReturnType<typeof vi.fn>;
 		};
 		vault: {
-			read: ReturnType<typeof vi.fn>;
+			read: ReturnType<typeof vi.fn<(file: unknown) => Promise<string>>>;
 		};
 		metadataCache: {
 			getFileCache: ReturnType<typeof vi.fn>;

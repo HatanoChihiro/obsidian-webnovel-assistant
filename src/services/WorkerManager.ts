@@ -1,5 +1,5 @@
 import { Logger } from '../utils/Logger';
-import { Notice } from 'obsidian';
+import { Notice, TFile, type TAbstractFile } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { t } from '../i18n';
 import { isMobile } from '../utils/platform';
@@ -19,6 +19,8 @@ export class WorkerManager {
 	private backgroundStartTime: number | null = null;
 	private visibilityDocument: Document | null = null;
 	private lastTickDate: string | null = null;
+	private currentScopeFile: TFile | null = null;
+	private isCurrentDocumentInWorkspace: boolean = false;
 
 	private visibilityHandler = () => this.handleVisibilityChange();
 
@@ -40,6 +42,16 @@ export class WorkerManager {
 			this.visibilityDocument?.removeEventListener('visibilitychange', this.visibilityHandler);
 			this.visibilityDocument = this.plugin.app?.workspace?.containerEl?.ownerDocument ?? activeDocument;
 			this.visibilityDocument.addEventListener('visibilitychange', this.visibilityHandler);
+		}
+
+		const activeFile = this.plugin.app.workspace.getActiveFile();
+		if (activeFile) {
+			this.currentScopeFile = activeFile;
+			this.isCurrentDocumentInWorkspace = this.plugin.cacheManager.isFileInWorkspace(activeFile);
+		} else if (this.currentScopeFile) {
+			this.isCurrentDocumentInWorkspace = this.plugin.cacheManager.isFileInWorkspace(this.currentScopeFile);
+		} else {
+			this.isCurrentDocumentInWorkspace = false;
 		}
 
 		const workerCode = `
@@ -89,8 +101,84 @@ export class WorkerManager {
 		if (msg === 'start') {
 			this.backgroundStartTime = null;
 			this.lastTickDate = window.moment().format('YYYY-MM-DD');
+			this.reevaluateScope();
 		}
 		this.worker?.postMessage(msg);
+	}
+
+	/**
+	 * 重新评估当前文档的工作区归属范围（用于设置变更或当前文件重命名等场景）
+	 */
+	public reevaluateScope(): void {
+		if (!this.currentScopeFile) {
+			const activeFile = this.plugin.app.workspace.getActiveFile();
+			if (activeFile) {
+				this.currentScopeFile = activeFile;
+			}
+		}
+		if (this.currentScopeFile) {
+			const newScope = this.plugin.cacheManager.isFileInWorkspace(this.currentScopeFile);
+			const hasScopeChanged = this.isCurrentDocumentInWorkspace !== newScope;
+			if (this.plugin.isTracking && hasScopeChanged) {
+				const now = Date.now();
+				this.accumulateElapsedTime(now);
+			}
+			this.isCurrentDocumentInWorkspace = newScope;
+		} else {
+			this.isCurrentDocumentInWorkspace = false;
+		}
+	}
+
+	/**
+	 * 处理活动文档切换：
+	 * 1. 侧边栏/工作台/Modal 无文件时保留最近文档的作用域
+	 * 2. 捕获 Worker tick 之间的快速切入/切出，按旧作用域结算过渡段耗时
+	 * 3. 工作区内部文档间切换不重置/刷新打字活动时间戳
+	 */
+	public handleActiveFileChange(file: TFile | null): void {
+		if (!file) {
+			return;
+		}
+
+		const newScope = this.plugin.cacheManager.isFileInWorkspace(file);
+		const hasScopeChanged = this.currentScopeFile !== file && this.isCurrentDocumentInWorkspace !== newScope;
+
+		if (this.plugin.isTracking && hasScopeChanged) {
+			const now = Date.now();
+			this.accumulateElapsedTime(now);
+		}
+
+		this.currentScopeFile = file;
+		this.isCurrentDocumentInWorkspace = newScope;
+	}
+
+	/**
+	 * 处理编辑器变动事件：
+	 * 仅当正在编辑的文件为当前活动文件且位于工作区时才刷新用户活动时间戳；
+	 * 工作区外的输入以及后台非活动文档的输入绝不刷新工作区内专注所用的活动时间戳。
+	 */
+	public handleEditorChange(file?: TFile | null): void {
+		const activeFile = this.plugin.app.workspace.getActiveFile() ?? this.currentScopeFile;
+		if (file && activeFile && file !== activeFile && file.path !== activeFile.path) {
+			return;
+		}
+
+		const targetFile = file ?? activeFile;
+		if (targetFile && this.plugin.cacheManager.isFileInWorkspace(targetFile)) {
+			this.plugin.lastEditTime = Date.now();
+		}
+	}
+
+	/**
+	 * 当文件或包含当前文件的文件夹重命名时，重新评估工作区归属（无需全库扫描）
+	 */
+	public handleFileRename(file: TAbstractFile, oldPath: string): void {
+		if (file instanceof TFile && (this.currentScopeFile === file || this.currentScopeFile?.path === oldPath)) {
+			this.currentScopeFile = file;
+		}
+		if (this.currentScopeFile) {
+			this.reevaluateScope();
+		}
 	}
 
 	/**
@@ -123,6 +211,8 @@ export class WorkerManager {
 	 */
 	public destroy(): void {
 		this.terminate();
+		this.currentScopeFile = null;
+		this.isCurrentDocumentInWorkspace = false;
 	}
 
 	/**
@@ -178,12 +268,17 @@ export class WorkerManager {
 		}, 5000);
 	}
 
-	private handleMessage(): void {
+	/**
+	 * 计算并结算从上一个时间点到当前时间点的耗时
+	 */
+	private accumulateElapsedTime(now: number): void {
 		if (!this.plugin.isTracking) return;
-		
-		const now = Date.now();
-		if (!this.plugin.lastTickTime) this.plugin.lastTickTime = now;
+		if (!this.plugin.lastTickTime) {
+			this.plugin.lastTickTime = now;
+			return;
+		}
 		const delta = now - this.plugin.lastTickTime;
+		if (delta <= 0) return;
 		this.plugin.lastTickTime = now;
 
 		const visibilityDocument = this.visibilityDocument;
@@ -201,7 +296,7 @@ export class WorkerManager {
 			this.plugin.slackMs += delta;
 			this.plugin.historyManager.addSlackTime(today, delta);
 			this.plugin.historyManager.addHourlySlackTime(today, hour, delta);
-		} else if (isAppFocused && isTypingActive) {
+		} else if (this.isCurrentDocumentInWorkspace && isAppFocused && isTypingActive) {
 			this.plugin.focusMs += delta;
 			this.plugin.historyManager.addFocusTime(today, delta);
 			this.plugin.historyManager.addHourlyFocusTime(today, hour, delta);
@@ -210,6 +305,13 @@ export class WorkerManager {
 			this.plugin.historyManager.addSlackTime(today, delta);
 			this.plugin.historyManager.addHourlySlackTime(today, hour, delta);
 		}
+	}
+
+	private handleMessage(): void {
+		if (!this.plugin.isTracking) return;
+
+		const now = Date.now();
+		this.accumulateElapsedTime(now);
 		
 		// 调度保存
 		this.plugin.adaptiveDebounceManager.debounceFixed('save-history-worker', () => {
@@ -220,6 +322,7 @@ export class WorkerManager {
 		
 		this.plugin.mobileFloatingStats?.updateTimerUI();
 
+		const today = window.moment().format('YYYY-MM-DD');
 		const isNewDay = this.lastTickDate !== null && this.lastTickDate !== today;
 		this.lastTickDate = today;
 

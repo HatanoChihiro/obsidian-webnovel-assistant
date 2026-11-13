@@ -9,6 +9,9 @@ import { ForeshadowingStatus, type ParsedForeshadowingEntry } from '../src/types
 import moment from 'moment';
 import { StatisticsManager } from '../src/services/StatisticsManager';
 import type { DailyStat } from '../src/types/settings';
+import { getCurrentBookContext } from '../src/utils/path';
+import type { TaskEntry } from '../src/types/task';
+import { CacheManager } from '../src/services/CacheManager';
 
 describe('WritingStatusView task lifecycle gating', () => {
 	type TaskLifecycleGate = {
@@ -478,6 +481,9 @@ describe('WritingStatusView work retention and context isolation', () => {
 		attachMockElements(view);
 	});
 
+	type VaultListener = (file: import('obsidian').TAbstractFile, oldPath?: string) => void;
+	type MetadataListener = (file: import('obsidian').TFile) => void;
+
 	type TestAppEnvironment = {
 		app: import('obsidian').App;
 		vaultFiles: Map<string, TFile | TFolder>;
@@ -490,9 +496,14 @@ describe('WritingStatusView work retention and context isolation', () => {
 			promise: Promise<string>;
 			resolve: (content: string) => void;
 		};
+		triggerVaultEvent?(event: string, file: import('obsidian').TAbstractFile, oldPath?: string): void;
+		triggerMetadataEvent?(event: string, file: import('obsidian').TFile): void;
 	};
 
-	function createTestEnvironment(initialFiles: Array<TFile | TFolder> = []): TestAppEnvironment {
+	function createTestEnvironment(
+		initialFiles: Array<TFile | TFolder> = [],
+		options?: { disableSynthesizedNovelInfo?: boolean }
+	): TestAppEnvironment {
 		const vaultFiles = new Map<string, TFile | TFolder>();
 		for (const f of initialFiles) {
 			vaultFiles.set(f.path, f);
@@ -500,6 +511,9 @@ describe('WritingStatusView work retention and context isolation', () => {
 				f.parent.children.push(f);
 			}
 		}
+
+		const vaultListeners = new Map<string, Set<VaultListener>>();
+		const metadataListeners = new Map<string, Set<MetadataListener>>();
 
 		let activeFile: TFile | null = null;
 		let activeItemView: { getViewType(): string; file?: TFile | null; currentBookPath?: string } | null = null;
@@ -513,7 +527,7 @@ describe('WritingStatusView work retention and context isolation', () => {
 				getAbstractFileByPath: vi.fn((path: string) => {
 					const f = vaultFiles.get(path);
 					if (f) return f;
-					if (path.endsWith('/作品信息.md')) {
+					if (!options?.disableSynthesizedNovelInfo && path.endsWith('/作品信息.md')) {
 						const parent = path.slice(0, path.lastIndexOf('/'));
 						const parentFile = vaultFiles.get(parent);
 						if (!parent.includes('/') && parentFile instanceof TFolder) {
@@ -528,12 +542,22 @@ describe('WritingStatusView work retention and context isolation', () => {
 						return delayedReadPromise;
 					}
 					return Promise.resolve('');
+				}),
+				on: vi.fn((event: string, fn: VaultListener) => {
+					if (!vaultListeners.has(event)) vaultListeners.set(event, new Set());
+					vaultListeners.get(event)!.add(fn);
+					return { fn };
 				})
 			},
 			metadataCache: {
-				getFileCache: vi.fn((_file: TFile) => ({
-					frontmatter: { status: 'writing' }
-				}))
+				getFileCache: vi.fn((file: TFile) => ({
+					frontmatter: (file as unknown as { frontmatter?: Record<string, unknown> }).frontmatter ?? { status: 'writing' }
+				})),
+				on: vi.fn((event: string, fn: MetadataListener) => {
+					if (!metadataListeners.has(event)) metadataListeners.set(event, new Set());
+					metadataListeners.get(event)!.add(fn);
+					return { fn };
+				})
 			},
 			workspace: {
 				requestSaveLayout: Object.assign(vi.fn(), { run: vi.fn().mockResolvedValue(undefined) }),
@@ -554,6 +578,8 @@ describe('WritingStatusView work retention and context isolation', () => {
 				})
 			}
 		} as unknown as import('obsidian').App;
+
+		(mockPlugin as unknown as { app: unknown }).app = app;
 
 		return {
 			app,
@@ -597,6 +623,12 @@ describe('WritingStatusView work retention and context isolation', () => {
 						if (delayedReadResolve) delayedReadResolve(content);
 					}
 				};
+			},
+			triggerVaultEvent(event: string, file: import('obsidian').TAbstractFile, oldPath?: string) {
+				vaultListeners.get(event)?.forEach(fn => fn(file, oldPath));
+			},
+			triggerMetadataEvent(event: string, file: import('obsidian').TFile) {
+				metadataListeners.get(event)?.forEach(fn => fn(file));
 			}
 		};
 	}
@@ -1639,5 +1671,654 @@ describe('WritingStatusView work retention and context isolation', () => {
 		} finally {
 			addItemSpy.mockRestore();
 		}
+	});
+
+	describe('WritingStatusView live writing chapter word counts without novel markers', () => {
+		const realCacheManager = Object.create(CacheManager.prototype) as CacheManager;
+		Object.assign(realCacheManager, {
+			plugin: mockPlugin,
+			_loreCandidatesCache: null,
+			_dictPathsCache: null,
+			_normalizedWorkspaceFolders: null,
+			_normalizedStrictExceptions: null,
+		});
+
+		function syncRealEligibility(): void {
+			Object.assign(realCacheManager, { plugin: mockPlugin });
+			realCacheManager.resetLoreCache();
+			mockPlugin.cacheManager.isEligibleForWordCount = (file: import('obsidian').TFile) => {
+				return realCacheManager.isEligibleForWordCount(file);
+			};
+		}
+
+		it('1. 严格模式：按命名规则识别有效章节并显示字数与父目录，拒绝非章节普通文档、工作区外文档及显式排除文档', async () => {
+			mockPlugin.settings.enableStrictChapterMode = true;
+			mockPlugin.settings.workspaceFolders = ['StandFolderB'];
+			syncRealEligibility();
+
+			const folderB = new TFolder('StandFolderB', 'StandFolderB');
+			const outsideFolder = new TFolder('OutsideFolder', 'OutsideFolder');
+			const namedChapter = Object.assign(new TFile('第1章.md', 'StandFolderB/第1章.md'), {
+				basename: '第1章',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: folderB
+			});
+			const plainDoc = Object.assign(new TFile('draft-notes.md', 'StandFolderB/draft-notes.md'), {
+				basename: 'draft-notes',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: folderB
+			});
+			const outsideChapter = Object.assign(new TFile('第1章.md', 'OutsideFolder/第1章.md'), {
+				basename: '第1章',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: outsideFolder
+			});
+			const excludedChapter = Object.assign(new TFile('第2章.md', 'StandFolderB/第2章.md'), {
+				basename: '第2章',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: folderB,
+				frontmatter: { 'exclude-word-count': true }
+			});
+
+			const env = createTestEnvironment([folderB, outsideFolder, namedChapter, plainDoc, outsideChapter, excludedChapter], { disableSynthesizedNovelInfo: true });
+			Object.assign(view, { app: env.app });
+			mockPlugin.cacheManager.getFolderWordCount = vi.fn((f: string) => f === 'StandFolderB' ? 3500 : 0);
+
+			// 激活工作区内且符合命名规则的有效章节
+			env.setActiveMarkdown(namedChapter);
+			await view.updateData(true);
+
+			// 断言：顶部显示直接父目录及字数
+			expect(view.workNameEl.innerText).toBe('StandFolderB');
+			expect(view.workWordCountEl.innerText).toBe('3,500字');
+			// 断言：章节卡片与章节目标行正常显示，且字数取自该章节
+			expect(view.chapterStatusCardEl.hidden).toBe(false);
+			expect(view.chapterSectionEls.every((el: HTMLElement) => !el.hidden)).toBe(true);
+			expect(mockPlugin.statisticsManager.getCoreStats).toHaveBeenLastCalledWith(namedChapter);
+			expect(view.todayWordEl.innerText).toBe('2,000');
+			expect(view.goalWordEl.innerText).toBe('2,000');
+
+			// 切换到同目录下非章节普通文档：在严格模式下应被拒绝
+			env.setActiveMarkdown(plainDoc);
+			await view.updateData(true);
+			expect(view.chapterStatusCardEl.hidden).toBe(true);
+			expect(view.chapterSectionEls.every((el: HTMLElement) => el.hidden)).toBe(true);
+			expect(mockPlugin.statisticsManager.getCoreStats).toHaveBeenLastCalledWith(null);
+			expect(view.todayWordEl.innerText).toBe('0');
+
+			// 切换到工作区外的命名章节：即使符合严格章节命名，也应被真实 isFileInWorkspace 拒绝
+			env.setActiveMarkdown(outsideChapter);
+			await view.updateData(true);
+			expect(view.chapterStatusCardEl.hidden).toBe(true);
+			expect(view.chapterSectionEls.every((el: HTMLElement) => el.hidden)).toBe(true);
+			expect(mockPlugin.statisticsManager.getCoreStats).toHaveBeenLastCalledWith(null);
+
+			// 切换到带 frontmatter exclude-word-count 的章节：被真实 isExcludedFromWordCount 拒绝
+			env.setActiveMarkdown(excludedChapter);
+			await view.updateData(true);
+			expect(view.chapterStatusCardEl.hidden).toBe(true);
+			expect(view.chapterSectionEls.every((el: HTMLElement) => el.hidden)).toBe(true);
+			expect(mockPlugin.statisticsManager.getCoreStats).toHaveBeenLastCalledWith(null);
+		});
+
+		it('2. 非严格模式：普通无标记 Markdown 文档亦可作为有效正文显示章节统计，但工作区外文档被拒绝', async () => {
+			mockPlugin.settings.enableStrictChapterMode = false;
+			mockPlugin.settings.workspaceFolders = ['StandFolderB'];
+			syncRealEligibility();
+
+			const folderB = new TFolder('StandFolderB', 'StandFolderB');
+			const outsideFolder = new TFolder('OutsideFolder', 'OutsideFolder');
+			const plainDoc = Object.assign(new TFile('plain-article.md', 'StandFolderB/plain-article.md'), {
+				basename: 'plain-article',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: folderB
+			});
+			const outsideDoc = Object.assign(new TFile('plain-article.md', 'OutsideFolder/plain-article.md'), {
+				basename: 'plain-article',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: outsideFolder
+			});
+
+			const env = createTestEnvironment([folderB, outsideFolder, plainDoc, outsideDoc], { disableSynthesizedNovelInfo: true });
+			Object.assign(view, { app: env.app });
+			mockPlugin.cacheManager.getFolderWordCount = vi.fn((f: string) => f === 'StandFolderB' ? 1200 : 0);
+
+			env.setActiveMarkdown(plainDoc);
+			await view.updateData(true);
+
+			expect(view.workNameEl.innerText).toBe('StandFolderB');
+			expect(view.chapterStatusCardEl.hidden).toBe(false);
+			expect(view.chapterSectionEls.every((el: HTMLElement) => !el.hidden)).toBe(true);
+			expect(mockPlugin.statisticsManager.getCoreStats).toHaveBeenLastCalledWith(plainDoc);
+
+			// 切换到工作区外普通文档：被拒绝
+			env.setActiveMarkdown(outsideDoc);
+			await view.updateData(true);
+			expect(view.chapterStatusCardEl.hidden).toBe(true);
+			expect(view.chapterSectionEls.every((el: HTMLElement) => el.hidden)).toBe(true);
+			expect(mockPlugin.statisticsManager.getCoreStats).toHaveBeenLastCalledWith(null);
+		});
+
+		it('3. 无任何既有保留作品时：独立无标记章节独立展示字数，不凭空捏造作品或任务，保留状态为 null', async () => {
+			mockPlugin.settings.enableStrictChapterMode = true;
+			mockPlugin.settings.workspaceFolders = [];
+			syncRealEligibility();
+
+			const folderB = new TFolder('StandFolderB', 'StandFolderB');
+			const chapterB = Object.assign(new TFile('第1章.md', 'StandFolderB/第1章.md'), {
+				basename: '第1章',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: folderB
+			});
+
+			const env = createTestEnvironment([folderB, chapterB], { disableSynthesizedNovelInfo: true });
+			Object.assign(view, { app: env.app });
+			mockPlugin.cacheManager.getFolderWordCount = vi.fn((f: string) => f === 'StandFolderB' ? 2500 : 0);
+
+			(view as unknown as { lastActiveFolderPath: string | null }).lastActiveFolderPath = null;
+			env.setActiveMarkdown(chapterB);
+			await view.updateData(true);
+
+			expect(view.workNameEl.innerText).toBe('StandFolderB');
+			expect(view.workGoalEl.hidden).toBe(true);
+			expect(view.taskSectionEls.every((el: HTMLElement) => el.hidden)).toBe(true);
+			expect(view.chapterStatusCardEl.hidden).toBe(false);
+			expect(view.chapterSectionEls.every((el: HTMLElement) => !el.hidden)).toBe(true);
+			expect(view.getState().currentBookPath).toBeNull();
+		});
+
+		it('4. 标记作品 A -> 无标记独立章节 B -> 侧边栏 -> 工作台/关闭：无跨作品泄漏且作品记忆维持 A', async () => {
+			mockPlugin.settings.enableStrictChapterMode = true;
+			mockPlugin.settings.workspaceFolders = ['NovelA', 'StandFolderB'];
+			syncRealEligibility();
+
+			const novelA = new TFolder('NovelA', 'NovelA');
+			const infoFileA = Object.assign(new TFile('作品信息.md', 'NovelA/作品信息.md'), {
+				basename: '作品信息',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: novelA
+			});
+			const chapterA = Object.assign(new TFile('第1章.md', 'NovelA/第1章.md'), {
+				basename: '第1章',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: novelA
+			});
+
+			const standFolderB = new TFolder('StandFolderB', 'StandFolderB');
+			const chapterB = Object.assign(new TFile('第1章.md', 'StandFolderB/第1章.md'), {
+				basename: '第1章',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: standFolderB
+			});
+
+			const env = createTestEnvironment([novelA, infoFileA, chapterA, standFolderB, chapterB], { disableSynthesizedNovelInfo: true });
+			env.app.vault.cachedRead = vi.fn((file: import('obsidian').TFile) => {
+				if (file.path === 'NovelA/作品信息.md') return Promise.resolve('Word Goal: 80000');
+				return Promise.resolve('');
+			});
+			Object.assign(view, { app: env.app });
+			mockPlugin.homepageManager = {
+				...mockPlugin.homepageManager,
+				findNovelInfoFile: vi.fn((f: string) => f === 'NovelA' ? infoFileA : null)
+			} as unknown as typeof mockPlugin.homepageManager;
+			mockPlugin.cacheManager.getFolderWordCount = vi.fn((f: string) => f === 'NovelA' ? 60000 : (f === 'StandFolderB' ? 4000 : 0));
+
+			const taskFileA = Object.assign(new TFile('任务.md', 'NovelA/任务.md'), { parent: novelA });
+			mockPlugin.taskManager = {
+				...mockTaskManager,
+				getTaskFile: vi.fn((f: string) => f === 'NovelA' ? taskFileA : null),
+				loadEntries: vi.fn().mockResolvedValue([{ period: '2026-10-17', wordTarget: 5000, completedWords: 1000, endDate: '2026-10-20' }]),
+				getActiveTask: vi.fn((entries: TaskEntry[]) => entries[0]),
+				calcProgress: vi.fn(() => 1000)
+			} as unknown as TaskManager;
+
+			// 步骤 1：激活作品 A
+			env.setActiveMarkdown(chapterA);
+			await view.updateData(true);
+			expect(view.workNameEl.innerText).toBe('NovelA');
+			expect(view.workGoalEl.hidden).toBe(false);
+			expect(view.taskSectionEls.every((el: HTMLElement) => !el.hidden)).toBe(true);
+			expect(view.getState().currentBookPath).toBe('NovelA');
+
+			// 步骤 2：切换到无标记独立章节 B
+			env.setActiveMarkdown(chapterB);
+			await view.updateData(true);
+
+			// 顶部展示当前 B 的直接父目录与字数
+			expect(view.workNameEl.innerText).toBe('StandFolderB');
+			expect(view.workWordCountEl.innerText).toBe('4,000字');
+			// 严格隔离：不泄露 A 的总目标进度与任务
+			expect(view.workGoalEl.hidden).toBe(true);
+			expect(view.taskSectionEls.every((el: HTMLElement) => el.hidden)).toBe(true);
+			// 章节卡片与字数正确显示 B
+			expect(view.chapterStatusCardEl.hidden).toBe(false);
+			expect(view.chapterSectionEls.every((el: HTMLElement) => !el.hidden)).toBe(true);
+			expect(view.chapterTitleEl.innerText).toBe('第1章');
+			// 核心状态记忆保持为 A（不被临时展示目录覆盖）
+			expect(view.getState().currentBookPath).toBe('NovelA');
+
+			// 步骤 3：点击侧边栏（主工作区保留活跃文档 B）
+			env.setActiveSidebar('writing-status-view');
+			await view.updateData(true);
+			expect(view.workNameEl.innerText).toBe('StandFolderB');
+			expect(view.chapterStatusCardEl.hidden).toBe(false);
+			expect(view.getState().currentBookPath).toBe('NovelA');
+
+			// 步骤 4：切换到工作台
+			env.setActiveWorkbench('NovelA');
+			await view.updateData(true);
+			expect(view.workNameEl.innerText).toBe('NovelA');
+			expect(view.chapterStatusCardEl.hidden).toBe(true);
+			expect(view.chapterSectionEls.every((el: HTMLElement) => el.hidden)).toBe(true);
+
+			// 步骤 5：切回无标记章节 B
+			env.setActiveMarkdown(chapterB);
+			await view.updateData(true);
+			expect(view.workNameEl.innerText).toBe('StandFolderB');
+			expect(view.chapterStatusCardEl.hidden).toBe(false);
+
+			// 步骤 6：关闭所有文档
+			env.closeAllDocuments();
+			await view.updateData(true);
+			expect(view.workNameEl.innerText).toBe('NovelA');
+			expect(view.chapterStatusCardEl.hidden).toBe(true);
+			expect(view.chapterSectionEls.every((el: HTMLElement) => el.hidden)).toBe(true);
+			expect(view.getState().currentBookPath).toBe('NovelA');
+		});
+
+		it('5. 嵌套卷目录与根目录章节展示：直接父目录名称正确，避开不同层级的误导性总目标，保留作品级任务与元数据', async () => {
+			mockPlugin.settings.enableStrictChapterMode = true;
+			mockPlugin.settings.workspaceFolders = [];
+			syncRealEligibility();
+
+			const novelA = new TFolder('NovelA', 'NovelA');
+			const volume1 = Object.assign(new TFolder('第一卷', 'NovelA/第一卷'), { parent: novelA });
+			const infoFileA = Object.assign(new TFile('作品信息.md', 'NovelA/作品信息.md'), {
+				basename: '作品信息',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: novelA
+			});
+			const chapterV1 = Object.assign(new TFile('第1章.md', 'NovelA/第一卷/第1章.md'), {
+				basename: '第1章',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: volume1
+			});
+			const rootChapter = Object.assign(new TFile('第1章.md', '第1章.md'), {
+				basename: '第1章',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: new TFolder('/', '/')
+			});
+
+			const env = createTestEnvironment([novelA, volume1, infoFileA, chapterV1, rootChapter], { disableSynthesizedNovelInfo: true });
+			Object.assign(view, { app: env.app });
+			mockPlugin.homepageManager = {
+				...mockPlugin.homepageManager,
+				findNovelInfoFile: vi.fn((f: string) => f === 'NovelA' ? infoFileA : null)
+			} as unknown as typeof mockPlugin.homepageManager;
+			mockPlugin.cacheManager.getFolderWordCount = vi.fn((f: string) => {
+				if (f === 'NovelA/第一卷') return 8000;
+				if (f === 'NovelA') return 60000;
+				if (f === '/' || f === '') return 15000;
+				return 0;
+			});
+
+			const taskFileA = Object.assign(new TFile('任务.md', 'NovelA/任务.md'), { parent: novelA });
+			mockPlugin.taskManager = {
+				...mockTaskManager,
+				getTaskFile: vi.fn((f: string) => f === 'NovelA' ? taskFileA : null),
+				loadEntries: vi.fn().mockResolvedValue([{ period: '2026-10-17', wordTarget: 5000, completedWords: 2000, endDate: '2026-10-20' }]),
+				getActiveTask: vi.fn((entries: TaskEntry[]) => entries[0]),
+				calcProgress: vi.fn(() => 2000)
+			} as unknown as TaskManager;
+
+			// 1. 激活卷子目录章节
+			env.setActiveMarkdown(chapterV1);
+			await view.updateData(true);
+
+			// 顶部显示直接父文件夹名称与卷字数
+			expect(view.workNameEl.innerText).toBe('第一卷');
+			expect(view.workWordCountEl.innerText).toBe('8,000字');
+			// 避免卷字数与作品总目标不匹配的误导性百分比：总进度目标应隐藏
+			expect(view.workGoalEl.hidden).toBe(true);
+			// 作品级任务依然正确保留
+			expect(view.taskSectionEls.every((el: HTMLElement) => !el.hidden)).toBe(true);
+			expect(mockPlugin.taskManager.getTaskFile).toHaveBeenCalledWith('NovelA');
+			// 章节行与章节卡片可见
+			expect(view.chapterStatusCardEl.hidden).toBe(false);
+			expect(view.chapterSectionEls.every((el: HTMLElement) => !el.hidden)).toBe(true);
+
+			// 2. 激活根目录直接章节
+			env.setActiveMarkdown(rootChapter);
+			await view.updateData(true);
+
+			// 顶部显示本地化的根目录名称
+			expect(view.workNameEl.innerText).toBe('根目录');
+			expect(view.workWordCountEl.innerText).toBe('15,000字');
+			expect(view.workGoalEl.hidden).toBe(true);
+			expect(view.chapterStatusCardEl.hidden).toBe(false);
+			expect(view.chapterSectionEls.every((el: HTMLElement) => !el.hidden)).toBe(true);
+		});
+
+		it('6. 功能性排除项检验：设定、伏笔、主页及正文字数排除前置属性均被真实 CacheManager 拒绝', async () => {
+			mockPlugin.settings.enableStrictChapterMode = true;
+			mockPlugin.settings.workspaceFolders = ['NovelA'];
+			mockPlugin.settings.loreFolderName = '设定';
+			syncRealEligibility();
+
+			const novelA = new TFolder('NovelA', 'NovelA');
+			const loreFolder = Object.assign(new TFolder('设定', 'NovelA/设定'), { parent: novelA });
+			const loreFile = Object.assign(new TFile('人物.md', 'NovelA/设定/人物.md'), { parent: loreFolder, extension: 'md' });
+			const foreshadowingFile = Object.assign(new TFile('伏笔.md', 'NovelA/伏笔.md'), { parent: novelA, extension: 'md' });
+			const homepageFile = Object.assign(new TFile('创作主页.md', '创作主页.md'), { extension: 'md' });
+			const excludedChapter = Object.assign(new TFile('第2章.md', 'NovelA/第2章.md'), {
+				parent: novelA,
+				extension: 'md',
+				frontmatter: { 'exclude-word-count': true }
+			});
+
+			const env = createTestEnvironment([novelA, loreFolder, loreFile, foreshadowingFile, homepageFile, excludedChapter], { disableSynthesizedNovelInfo: true });
+			Object.assign(view, { app: env.app });
+
+			mockPlugin.characterManager.isLorePath = vi.fn((_book: string, parentPath: string) => parentPath.includes('设定'));
+			mockPlugin.foreshadowingManager = {
+				findForeshadowingFile: vi.fn((folder: string) => folder === 'NovelA' ? foreshadowingFile : null)
+			} as unknown as typeof mockPlugin.foreshadowingManager;
+			mockPlugin.homepageManager = {
+				...mockPlugin.homepageManager,
+				getHomepageFilePath: vi.fn(() => '创作主页.md')
+			} as unknown as typeof mockPlugin.homepageManager;
+
+			for (const file of [loreFile, foreshadowingFile, homepageFile, excludedChapter]) {
+				env.setActiveMarkdown(file);
+				await view.updateData(true);
+				expect(view.chapterStatusCardEl.hidden).toBe(true);
+				expect(view.chapterSectionEls.every((el: HTMLElement) => el.hidden)).toBe(true);
+				expect(mockPlugin.statisticsManager.getCoreStats).toHaveBeenLastCalledWith(null);
+			}
+		});
+
+		it('7. 切换时作品 A 异步挂起读取不阻塞独立章节 B 的字数渲染，完成时不污染 B', async () => {
+			mockPlugin.settings.enableStrictChapterMode = true;
+			mockPlugin.settings.workspaceFolders = ['NovelA', 'StandFolderB'];
+			syncRealEligibility();
+
+			const novelA = new TFolder('NovelA', 'NovelA');
+			const infoFileA = Object.assign(new TFile('作品信息.md', 'NovelA/作品信息.md'), {
+				basename: '作品信息',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: novelA
+			});
+			const chapterA = Object.assign(new TFile('第1章.md', 'NovelA/第1章.md'), {
+				basename: '第1章',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: novelA
+			});
+			const folderB = new TFolder('StandFolderB', 'StandFolderB');
+			const chapterB = Object.assign(new TFile('第1章.md', 'StandFolderB/第1章.md'), {
+				basename: '第1章',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: folderB
+			});
+
+			const env = createTestEnvironment([novelA, infoFileA, chapterA, folderB, chapterB], { disableSynthesizedNovelInfo: true });
+			Object.assign(view, { app: env.app });
+			mockPlugin.homepageManager = {
+				...mockPlugin.homepageManager,
+				findNovelInfoFile: vi.fn((f: string) => f === 'NovelA' ? infoFileA : null)
+			} as unknown as typeof mockPlugin.homepageManager;
+			mockPlugin.cacheManager.getFolderWordCount = vi.fn((f: string) => f === 'StandFolderB' ? 4200 : 50000);
+
+			// 1. 先激活 A
+			env.setActiveMarkdown(chapterA);
+			await view.updateData(true);
+			expect(view.workNameEl.innerText).toBe('NovelA');
+
+			// 2. 挂起 A 的作品信息读取
+			const delayed = env.setDelayedCachedRead(f => f.path === 'NovelA/作品信息.md');
+
+			// 3. 在 A 活跃时启动带 force 的 updateData，确认 cachedRead(infoFileA) 触发且 Promise 尚未 resolve
+			const pendingUpdateA = view.updateData(true);
+			expect(env.app.vault.cachedRead).toHaveBeenCalledWith(infoFileA);
+
+			// 4. 切换到独立章节 B：由于 B 无作品信息，无需等待 A 的挂起读取即可直接完成渲染
+			env.setActiveMarkdown(chapterB);
+			const updatePromiseB = view.updateData(true);
+
+			// B 的章节及字数立刻渲染
+			await updatePromiseB;
+			expect(view.workNameEl.innerText).toBe('StandFolderB');
+			expect(view.todayWordEl.innerText).toBe('2,000');
+			expect(view.chapterStatusCardEl.hidden).toBe(false);
+			expect(view.workGoalEl.hidden).toBe(true);
+
+			// 5. A 的挂起读取晚到 resolve，并等待 pendingUpdateA 完成
+			delayed.resolve('Word Goal: 80000');
+			await pendingUpdateA;
+
+			// 验证 B 依然维持自身展示，A 的晚到回调不破坏 B
+			expect(view.workNameEl.innerText).toBe('StandFolderB');
+			expect(view.todayWordEl.innerText).toBe('2,000');
+			expect(view.chapterStatusCardEl.hidden).toBe(false);
+			expect(view.workGoalEl.hidden).toBe(true);
+			expect(view.taskSectionEls.every((el: HTMLElement) => el.hidden)).toBe(true);
+			expect(view.getState().currentBookPath).toBe('NovelA');
+		});
+
+		it('8. 独立章节文件在当前目录或跨目录重命名/移动时，能够正确触发事件刷新', async () => {
+			vi.useFakeTimers();
+			mockPlugin.settings.enableStrictChapterMode = true;
+			mockPlugin.settings.workspaceFolders = [];
+			syncRealEligibility();
+
+			const folderB = new TFolder('StandFolderB', 'StandFolderB');
+			const folderC = new TFolder('StandFolderC', 'StandFolderC');
+			const chapterB1 = Object.assign(new TFile('第1章.md', 'StandFolderB/第1章.md'), {
+				basename: '第1章',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: folderB
+			});
+
+			const deepNovel = new TFolder('DeepNovel', 'DeepNovel');
+			const deepVolume = Object.assign(new TFolder('第一卷', 'DeepNovel/第一卷'), { parent: deepNovel });
+			const chapterDeep = Object.assign(new TFile('第1章.md', 'DeepNovel/第一卷/第1章.md'), {
+				basename: '第1章',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: deepVolume
+			});
+
+			const env = createTestEnvironment([folderB, folderC, chapterB1, deepNovel, deepVolume, chapterDeep], { disableSynthesizedNovelInfo: true });
+			(mockLeaf as unknown as { app: unknown }).app = env.app;
+			const newView = new WritingStatusView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, mockPlugin);
+			attachMockElements(newView);
+			Object.assign(newView, { app: env.app });
+
+			mockPlugin.cacheManager.getFolderWordCount = vi.fn((f: string) => {
+				if (f === 'StandFolderB') return 3000;
+				if (f === 'StandFolderC') return 9900;
+				if (f === 'DeepNovel/第一卷') return 5500;
+				if (f === 'DeepNovel_Renamed/第一卷') return 6600;
+				return 0;
+			});
+
+			try {
+				env.setActiveMarkdown(chapterB1);
+				await newView.updateData(true);
+				expect(newView.workNameEl.innerText).toBe('StandFolderB');
+				expect(newView.chapterTitleEl.innerText).toBe('第1章');
+
+				// 子用例 1：同一 TFile 跨目录重命名/移动，仅触发 rename 事件，不手动调用 updateData
+				const oldPathA = chapterB1.path;
+				chapterB1.name = '第2章.md';
+				chapterB1.basename = '第2章';
+				chapterB1.path = 'StandFolderC/第2章.md';
+				chapterB1.parent = folderC;
+				env.vaultFiles.delete(oldPathA);
+				env.vaultFiles.set(chapterB1.path, chapterB1);
+
+				env.triggerVaultEvent?.('rename', chapterB1, oldPathA);
+				await vi.advanceTimersByTimeAsync(150);
+
+				expect(newView.workNameEl.innerText).toBe('StandFolderC');
+				expect(newView.workWordCountEl.innerText).toBe('9,900字');
+				expect(newView.chapterTitleEl.innerText).toBe('第2章');
+				expect(newView.chapterStatusCardEl.hidden).toBe(false);
+
+				// 子用例 2：祖先目录重命名（DeepNovel -> DeepNovel_Renamed）
+				env.setActiveMarkdown(chapterDeep);
+				await newView.updateData(true);
+				expect(newView.workNameEl.innerText).toBe('第一卷');
+				expect(newView.chapterTitleEl.innerText).toBe('第1章');
+
+				const oldDeepPath = 'DeepNovel';
+				deepNovel.name = 'DeepNovel_Renamed';
+				deepNovel.path = 'DeepNovel_Renamed';
+				deepVolume.path = 'DeepNovel_Renamed/第一卷';
+				const oldChapterPath = chapterDeep.path;
+				chapterDeep.path = 'DeepNovel_Renamed/第一卷/第1章.md';
+				env.vaultFiles.delete(oldChapterPath);
+				env.vaultFiles.set(chapterDeep.path, chapterDeep);
+				env.vaultFiles.delete(oldDeepPath);
+				env.vaultFiles.set(deepNovel.path, deepNovel);
+
+				env.triggerVaultEvent?.('rename', deepNovel, oldDeepPath);
+				await vi.advanceTimersByTimeAsync(150);
+
+				expect(newView.workNameEl.innerText).toBe('第一卷');
+				expect(newView.chapterTitleEl.innerText).toBe('第1章');
+				expect(newView.chapterStatusCardEl.hidden).toBe(false);
+				expect(newView.workWordCountEl.innerText).toBe('6,600字');
+
+				// 子用例 3：有效章节重命名为普通文档（第1章.md -> notes.md），通过真实 eligibility 隐藏章节卡片
+				const oldCPath = chapterDeep.path;
+				chapterDeep.name = 'notes.md';
+				chapterDeep.basename = 'notes';
+				chapterDeep.path = 'DeepNovel_Renamed/第一卷/notes.md';
+				env.vaultFiles.delete(oldCPath);
+				env.vaultFiles.set(chapterDeep.path, chapterDeep);
+
+				env.triggerVaultEvent?.('rename', chapterDeep, oldCPath);
+				await vi.advanceTimersByTimeAsync(150);
+
+				expect(newView.chapterStatusCardEl.hidden).toBe(true);
+				expect(newView.chapterSectionEls.every((el: HTMLElement) => el.hidden)).toBe(true);
+
+				// 子用例 4：普通笔记重命名为有效章节（notes.md -> 第3章.md），此时原 currentChapterFile 为 null，事件依然触发刷新
+				const oldDPath = chapterDeep.path;
+				chapterDeep.name = '第3章.md';
+				chapterDeep.basename = '第3章';
+				chapterDeep.path = 'DeepNovel_Renamed/第一卷/第3章.md';
+				env.vaultFiles.delete(oldDPath);
+				env.vaultFiles.set(chapterDeep.path, chapterDeep);
+
+				env.triggerVaultEvent?.('rename', chapterDeep, oldDPath);
+				await vi.advanceTimersByTimeAsync(150);
+
+				expect(newView.chapterStatusCardEl.hidden).toBe(false);
+				expect(newView.chapterSectionEls.every((el: HTMLElement) => !el.hidden)).toBe(true);
+				expect(newView.chapterTitleEl.innerText).toBe('第3章');
+			} finally {
+				vi.useRealTimers();
+				await newView.onClose();
+			}
+		});
+
+		it('refreshes the loose chapter folder total when a sibling chapter changes', async () => {
+			vi.useFakeTimers();
+			mockPlugin.settings.workspaceFolders = [];
+			syncRealEligibility();
+			const folder = new TFolder('Drafts', 'Drafts');
+			const chapter = Object.assign(new TFile('第1章.md', 'Drafts/第1章.md'), { parent: folder });
+			const sibling = Object.assign(new TFile('第2章.md', 'Drafts/第2章.md'), { parent: folder });
+			const env = createTestEnvironment([folder, chapter, sibling], { disableSynthesizedNovelInfo: true });
+			(mockLeaf as unknown as { app: unknown }).app = env.app;
+			const liveView = new WritingStatusView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, mockPlugin);
+			attachMockElements(liveView);
+			const folderWords = vi.fn(() => 2000);
+			mockPlugin.cacheManager.getFolderWordCount = folderWords;
+			try {
+				env.setActiveMarkdown(chapter);
+				await liveView.updateData(true);
+				expect(liveView.workWordCountEl.innerText).toBe('2,000字');
+				folderWords.mockReturnValue(2500);
+				env.triggerMetadataEvent?.('changed', sibling);
+				await vi.advanceTimersByTimeAsync(150);
+				expect(liveView.workWordCountEl.innerText).toBe('2,500字');
+				expect(liveView.getState().currentBookPath).toBeNull();
+			} finally {
+				await liveView.onClose();
+				vi.useRealTimers();
+			}
+		});
+
+		it('9. 活跃于独立章节 B 时，新工作台通过 preferStatusViewContext 依然继承保留作品 A', async () => {
+			mockPlugin.settings.enableStrictChapterMode = true;
+			mockPlugin.settings.workspaceFolders = ['NovelA', 'StandFolderB'];
+			syncRealEligibility();
+
+			const novelA = new TFolder('NovelA', 'NovelA');
+			const infoFileA = Object.assign(new TFile('作品信息.md', 'NovelA/作品信息.md'), {
+				basename: '作品信息',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: novelA
+			});
+			const chapterA = Object.assign(new TFile('第1章.md', 'NovelA/第1章.md'), {
+				basename: '第1章',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: novelA
+			});
+			const folderB = new TFolder('StandFolderB', 'StandFolderB');
+			const chapterB = Object.assign(new TFile('第1章.md', 'StandFolderB/第1章.md'), {
+				basename: '第1章',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: folderB
+			});
+
+			const env = createTestEnvironment([novelA, infoFileA, chapterA, folderB, chapterB], { disableSynthesizedNovelInfo: true });
+			Object.assign(view, { app: env.app });
+
+			// 访问作品 A
+			env.setActiveMarkdown(chapterA);
+			await view.updateData(true);
+			expect(view.getState().currentBookPath).toBe('NovelA');
+
+			// 切换到独立章节 B（处于 workspaceFolders 内，但无任何作品标记）
+			env.setActiveMarkdown(chapterB);
+			await view.updateData(true);
+			expect(view.workNameEl.innerText).toBe('StandFolderB');
+			expect(view.getState().currentBookPath).toBe('NovelA');
+
+			// mock leaf of writing-status-view in app.workspace (严格类型，无 any)
+			vi.spyOn(env.app.workspace, 'getLeavesOfType').mockImplementation((type: string) => {
+				if (type === 'writing-status-view') {
+					return [{ view } as unknown as import('obsidian').WorkspaceLeaf];
+				}
+				return [];
+			});
+
+			// 新工作台打开时请求 preferStatusViewContext，正确解析为保留作品 A
+			const resolvedContext = getCurrentBookContext(env.app, mockPlugin, { preferStatusViewContext: true });
+			expect(resolvedContext).toBe('NovelA');
+		});
 	});
 });

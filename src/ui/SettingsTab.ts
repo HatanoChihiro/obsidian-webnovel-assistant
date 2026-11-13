@@ -1,4 +1,4 @@
-import type { App, TextAreaComponent } from 'obsidian';
+import type { App, SettingDefinitionItem, TextAreaComponent } from 'obsidian';
 import { Modal, PluginSettingTab, SearchComponent, Setting, Notice, TFile, MarkdownView } from 'obsidian';
 import type { Plugin } from 'obsidian';
 import { isDesktop, isMobile, getPlatformTier } from '../utils/platform';
@@ -82,7 +82,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		this.plugin = plugin;
 	}
 
-	public getSettingDefinitions(): unknown[] {
+	public getSettingDefinitions(): SettingDefinitionItem[] {
 		// 必须返回「数组」而不是对象：Obsidian 1.15 的 SettingTab.update() 里是
 		// `for (let a of n)` 遍历本方法的返回值（app.js 505:57868 的 uz/r），
 		// 返回 {} 会抛 TypeError: n is not iterable，令 onload 中断、插件无法启用。
@@ -708,6 +708,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			await this.plugin.saveSettings();
 			this.plugin.cacheManager?.resetLoreCache();
 			this.plugin.cacheManager?.clearCache();
+			this.plugin.workerManager.reevaluateScope();
 			this.plugin.updateWordCount();
 			if (this.plugin.settings.showExplorerCounts) {
 				void this.plugin.buildFolderCache();
@@ -2006,6 +2007,15 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				}));
 
 		new Setting(containerEl).setName(t('setting.immersive-dashboard-toggles')).setHeading();
+
+		new Setting(containerEl)
+			.setName(t('setting.show-typewriter-controls'))
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.immersive.immersiveShowTypewriterControls)
+				.onChange(async (value) => {
+					this.plugin.settings.immersive.immersiveShowTypewriterControls = value;
+					await this.plugin.saveSettings();
+				}));
 
 		new Setting(containerEl)
 			.setName(t('setting.show-total-time'))

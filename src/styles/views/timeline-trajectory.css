@@ -351,6 +351,7 @@ body:not(.is-phone):not(.is-tablet) .wn-trajectory-expand-btn {
 }
 
 .wn-trajectory-fullscreen-shell.is-rotated-90 {
+	transform-origin: 0 0;
 	padding: env(safe-area-inset-right, 0) env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0) env(safe-area-inset-top, 0);
 }
 

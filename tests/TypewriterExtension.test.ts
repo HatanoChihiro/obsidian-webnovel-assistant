@@ -6,7 +6,7 @@ interface MockScrollerElement {
 	scrollTop: number;
 	clientHeight: number;
 	ownerDocument: MockDocument;
-	scrollTo: ReturnType<typeof vi.fn>;
+	scrollTo: ReturnType<typeof vi.fn<(target: { top: number; behavior?: string }) => void>>;
 	getBoundingClientRect: () => { top: number; bottom: number; left: number; right: number; width: number; height: number };
 	addEventListener: (event: string, handler: (e?: unknown) => void, options?: unknown) => void;
 	removeEventListener: (event: string, handler: (e?: unknown) => void) => void;

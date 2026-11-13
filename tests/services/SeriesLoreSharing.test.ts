@@ -769,7 +769,7 @@ describe('SeriesLoreSharing - Same-Series Public Lore Subfolders', () => {
 		await manager.rebuildCache();
 
 		const parseSpy = vi.spyOn(manager as unknown as { parseLoreFile: () => Promise<unknown> }, 'parseLoreFile');
-		const triggerSpy = vi.spyOn(app.workspace, 'trigger');
+		const triggerSpy = vi.spyOn(app.workspace, 'trigger').mockClear();
 
 		// Series for NovelA is unchanged ('三体宇宙')
 		const changed = await manager.refreshSeriesMembership('NovelA');
@@ -786,7 +786,7 @@ describe('SeriesLoreSharing - Same-Series Public Lore Subfolders', () => {
 		expect(manager.getCharacterFile('NovelB', '丁仪')).not.toBeNull();
 
 		const parseSpy = vi.spyOn(manager as unknown as { parseLoreFile: () => Promise<unknown> }, 'parseLoreFile');
-		const triggerSpy = vi.spyOn(app.workspace, 'trigger');
+		const triggerSpy = vi.spyOn(app.workspace, 'trigger').mockClear();
 
 		// NovelB leaves series
 		seriesMetaMap['NovelB'] = '';
@@ -812,7 +812,7 @@ describe('SeriesLoreSharing - Same-Series Public Lore Subfolders', () => {
 		seriesMetaMap['NovelA'] = '';
 		seriesMetaMap['NovelNew'] = '三体宇宙';
 
-		const triggerSpy = vi.spyOn(app.workspace, 'trigger');
+		const triggerSpy = vi.spyOn(app.workspace, 'trigger').mockClear();
 
 		const changed = await manager.refreshSeriesMembership(['NovelA', 'NovelNew']);
 

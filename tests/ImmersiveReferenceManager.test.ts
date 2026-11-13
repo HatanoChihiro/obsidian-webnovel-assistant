@@ -38,8 +38,8 @@ describe('ImmersiveReferenceManager - Work-Isolated Memory & Persistence', () =>
 	let mockPlugin: ImmersiveReferenceManagerPlugin;
 	let registeredVaultEvents: Record<string, ((...args: unknown[]) => void)[]> = {};
 	let offrefSpy: ReturnType<typeof vi.fn>;
-	let saveSettingsSpy: ReturnType<typeof vi.fn>;
-	let flushSpy: ReturnType<typeof vi.fn>;
+	let saveSettingsSpy: ReturnType<typeof vi.fn<() => Promise<void>>>;
+	let flushSpy: ReturnType<typeof vi.fn<() => Promise<void>>>;
 	let vaultFiles: Map<string, unknown>;
 
 	const folders = new Map<string, unknown>();

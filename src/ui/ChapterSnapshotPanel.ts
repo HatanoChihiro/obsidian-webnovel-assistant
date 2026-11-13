@@ -1342,23 +1342,20 @@ export class ChapterSnapshotPanel {
 		nextX = Math.max(10, Math.min(nextX, maxW));
 		nextY = Math.max(10, Math.min(nextY, maxH));
 
+		this.panelEl.addClass('is-dragged');
 		this.panelEl.setCssProps({
 			left: `${nextX}px`,
-			top: `${nextY}px`,
-			transform: 'none',
-			right: 'auto',
-			bottom: 'auto'
+			top: `${nextY}px`
 		});
 	}
 
 	private clampPosition(): void {
 		if (this.isDestroyed || this.doc.body.hasClass('is-phone')) return;
 		const rect = this.panelEl.getBoundingClientRect();
+		this.panelEl.addClass('is-dragged');
 		this.panelEl.setCssProps({
 			left: `${Math.max(10, Math.min(rect.left, this.win.innerWidth - rect.width - 10))}px`,
-			top: `${Math.max(10, Math.min(rect.top, this.win.innerHeight - Math.min(rect.height, 60) - 10))}px`,
-			transform: 'none',
-			right: 'auto', bottom: 'auto'
+			top: `${Math.max(10, Math.min(rect.top, this.win.innerHeight - Math.min(rect.height, 60) - 10))}px`
 		});
 	}
 

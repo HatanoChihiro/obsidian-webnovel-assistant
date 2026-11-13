@@ -218,12 +218,72 @@ export class WritingStatusView extends ItemView {
 
 	private registerDataEvents(): void {
 		const refreshForFile = (file: TAbstractFile, oldPath?: string) => {
-			if (!this.workNameEl || !this.lastActiveFolderPath) return;
+			if (!this.workNameEl) return;
 			if (file instanceof TFile && file.extension !== 'md') return;
-			const folder = this.lastActiveFolderPath === '/' ? '' : this.lastActiveFolderPath;
-			const belongsToWork = (path: string) => !folder || path === folder || path.startsWith(folder + '/');
-			if (belongsToWork(file.path) || (oldPath !== undefined && belongsToWork(oldPath))) {
+
+			// 1. 匹配当前已选中的章节文档
+			const currentChapterPath = this.currentChapterFile?.path;
+			if (currentChapterPath && (file.path === currentChapterPath || oldPath === currentChapterPath)) {
 				void this.updateData();
+				return;
+			}
+
+			// 2. 匹配当前活动 Markdown 文档（例如从未命中章节的普通笔记重命名为有效章节）
+			let activePath: string | undefined;
+			const activeMarkdown = this.app.workspace.getActiveViewOfType(MarkdownView);
+			if (activeMarkdown?.file instanceof TFile) {
+				activePath = activeMarkdown.file.path;
+			} else {
+				const rootLeaf = this.app.workspace.getMostRecentLeaf?.();
+				if (rootLeaf && (rootLeaf.view instanceof MarkdownView || rootLeaf.view?.getViewType() === 'markdown')) {
+					const fileView = rootLeaf.view as MarkdownView;
+					if (fileView.file instanceof TFile) {
+						activePath = fileView.file.path;
+					}
+				}
+			}
+			if (activePath && (file.path === activePath || oldPath === activePath)) {
+				void this.updateData();
+				return;
+			}
+
+			// 3. 匹配当前章节或活动文档所在直接目录及祖先目录的重命名/移动
+			const targetPaths: string[] = [];
+			if (currentChapterPath) targetPaths.push(currentChapterPath);
+			if (activePath && activePath !== currentChapterPath) targetPaths.push(activePath);
+
+			for (const target of targetPaths) {
+				const isContainingFolder = (folderPath: string) => {
+					if (!folderPath || folderPath === '/') return false;
+					const norm = folderPath.replace(/\/+$/, '');
+					return target.startsWith(norm + '/');
+				};
+
+				if (isContainingFolder(file.path) || (oldPath !== undefined && isContainingFolder(oldPath))) {
+					void this.updateData();
+					return;
+				}
+			}
+
+			// 当前章节所在目录的总字数也会受同目录其他文档影响。
+			const parentPath = this.currentChapterFile?.parent?.path;
+			if (parentPath !== undefined) {
+				const folder = parentPath === '/' ? '' : parentPath;
+				const belongsToParent = (path: string) => !folder || path === folder || path.startsWith(folder + '/');
+				if (belongsToParent(file.path) || (oldPath !== undefined && belongsToParent(oldPath))) {
+					void this.updateData();
+					return;
+				}
+			}
+
+			// 4. 匹配保留作品目录范围内的变动
+			if (this.lastActiveFolderPath) {
+				const folder = this.lastActiveFolderPath === '/' ? '' : this.lastActiveFolderPath;
+				const belongsToWork = (path: string) => !folder || path === folder || path.startsWith(folder + '/');
+				if (belongsToWork(file.path) || (oldPath !== undefined && belongsToWork(oldPath))) {
+					void this.updateData();
+					return;
+				}
 			}
 		};
 		if (this.app.vault?.on) {
@@ -633,12 +693,7 @@ export class WritingStatusView extends ItemView {
 		if (this.sessionSpeedEl) this.sessionSpeedEl.innerText = String(this.plugin.statisticsManager.getSessionSpeed());
 	}
 
-	private getChapterFileForFolder(folderPath: string): TFile | null {
-		if (!folderPath) {
-			this.currentChapterFile = null;
-			return null;
-		}
-
+	private resolveActiveEligibleChapter(): TFile | null {
 		let activeFile: TFile | null = null;
 		const activeMarkdown = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (activeMarkdown?.file instanceof TFile) {
@@ -658,23 +713,26 @@ export class WritingStatusView extends ItemView {
 			const isHomepage = (homepagePath && activeFile.path === homepagePath) || activeFile.name === '创作主页.md';
 			if (!isHomepage && this.plugin.cacheManager.isEligibleForWordCount(activeFile)) {
 				const bookRoot = findBookRoot(this.app, this.plugin, activeFile, true);
-				if (bookRoot === folderPath) {
-					const isLore = this.plugin.characterManager?.isLorePath?.(bookRoot, activeFile.parent?.path || '') ?? false;
+				if (!activeMarkdown && bookRoot && (!this.lastActiveFolderPath || bookRoot !== this.lastActiveFolderPath)) {
+					return null;
+				}
+				let isLore = false;
+				let isForeshadowing = false;
+				if (bookRoot) {
+					isLore = this.plugin.characterManager?.isLorePath?.(bookRoot, activeFile.parent?.path || '') ?? false;
 					const fmFolder = bookRoot === '/' ? '' : bookRoot;
 					const fFile = this.plugin.foreshadowingManager?.findForeshadowingFile?.(fmFolder);
-					const isForeshadowing = !!(fFile && fFile.path === activeFile.path);
-					if (!isLore && !isForeshadowing) {
-						const vaultFile = this.app.vault.getAbstractFileByPath(activeFile.path);
-						if (vaultFile instanceof TFile) {
-							this.currentChapterFile = vaultFile;
-							return vaultFile;
-						}
+					isForeshadowing = !!(fFile && fFile.path === activeFile.path);
+				}
+				if (!isLore && !isForeshadowing) {
+					const vaultFile = this.app.vault.getAbstractFileByPath(activeFile.path);
+					if (vaultFile instanceof TFile) {
+						return vaultFile;
 					}
 				}
 			}
 		}
 
-		this.currentChapterFile = null;
 		return null;
 	}
 
@@ -687,8 +745,8 @@ export class WritingStatusView extends ItemView {
 			if (changed) this.app.workspace.requestSaveLayout();
 		}
 
-		const currentWork = this.lastActiveFolderPath || '';
-		const targetChapter = this.getChapterFileForFolder(currentWork);
+		const targetChapter = this.resolveActiveEligibleChapter();
+		this.currentChapterFile = targetChapter;
 		if (!targetChapter || targetChapter.path !== previousChapterPath) {
 			this.lastRenderedChapterPath = null;
 			this.lastChapterMtime = -1;
@@ -737,31 +795,52 @@ export class WritingStatusView extends ItemView {
 	private async performUpdateData(generation: number, force = false) {
 		if (generation !== this.updateGeneration) return;
 		this.captureActiveContext();
-		let folderPath = this.lastActiveFolderPath || '';
-		if (!folderPath) {
-			const initialDefault = getCurrentBookContext(this.app, this.plugin);
-			if (initialDefault) {
-				folderPath = initialDefault;
-				this.lastActiveFolderPath = initialDefault;
+		const targetChapter = this.currentChapterFile;
+		const isEligibleChapter = !!targetChapter;
+
+		let displayFolderPath = '';
+		let bookRoot = '';
+
+		if (targetChapter) {
+			bookRoot = findBookRoot(this.app, this.plugin, targetChapter, true);
+			const parent = targetChapter.parent;
+			displayFolderPath = (!parent || parent.isRoot()) ? '/' : parent.path;
+		} else {
+			displayFolderPath = this.lastActiveFolderPath || '';
+			if (!displayFolderPath) {
+				const initialDefault = getCurrentBookContext(this.app, this.plugin);
+				if (initialDefault) {
+					displayFolderPath = initialDefault;
+					this.lastActiveFolderPath = initialDefault;
+				}
 			}
 		}
 
-		let folderName = '--';
-		if (this.activeTaskContext && this.activeTaskContext.folderPath !== folderPath) {
+		// 任务目标进度：有活跃章节时以所属作品为准（独立章节无作品归属则不展示），无活跃章节时沿用保留作品
+		const taskFolder = targetChapter ? bookRoot : (this.lastActiveFolderPath || '');
+
+		if (this.activeTaskContext && this.activeTaskContext.folderPath !== taskFolder) {
 			this.setTaskSectionVisible(false);
 		}
 
-		if (folderPath) {
-			const folder = this.app.vault.getAbstractFileByPath(folderPath);
-			if (folder) {
-                folderName = folder.path === '/' ? t('common.root-directory') : folder.name;
-            }
-			const wordCount = this.plugin.cacheManager.getFolderWordCount(folderPath) || 0;
+		let folderName = '--';
+		if (displayFolderPath) {
+			if (displayFolderPath === '/') {
+				folderName = t('common.root-directory');
+			} else {
+				const folder = targetChapter?.parent ?? this.app.vault.getAbstractFileByPath(displayFolderPath);
+				if (folder) {
+					folderName = folder.name;
+				}
+			}
+			const wordCount = this.plugin.cacheManager.getFolderWordCount(displayFolderPath) || 0;
+
 			this.workNameEl.innerText = folderName;
 			this.workWordCountEl.innerText = wordCount > 0 ? `${wordCount.toLocaleString()}${t('common.word-char')}` : '';
 
-			const infoFile = this.plugin.homepageManager?.findNovelInfoFile(folderPath);
 			let wordGoal = 0;
+			const shouldCheckGoal = displayFolderPath !== '/' && (!targetChapter || (bookRoot !== '' && displayFolderPath === bookRoot));
+			const infoFile = shouldCheckGoal ? this.plugin.homepageManager?.findNovelInfoFile(displayFolderPath) : null;
 			if (infoFile instanceof TFile) {
 				const content = await this.app.vault.cachedRead(infoFile);
 				if (generation !== this.updateGeneration) return;
@@ -796,8 +875,6 @@ export class WritingStatusView extends ItemView {
 			}
 		}
 
-		const targetChapter = this.getChapterFileForFolder(folderPath);
-		const isEligibleChapter = !!targetChapter;
 		const coreStats = this.plugin.statisticsManager.getCoreStats(targetChapter);
 
 		this.dailyWordEl.innerText = coreStats.dailyWords.toLocaleString();
@@ -836,10 +913,7 @@ export class WritingStatusView extends ItemView {
 			this.setProgressState(this.progressFillEl, this.todayWordEl, null, 'normal', 0);
 		}
 
-		// 任务目标进度：基于目录判断，无活跃 MarkdownView 时使用上次文件夹
-		const taskFolder = folderPath;
-
-		if ((taskFolder || taskFolder === '') && this.plugin.taskManager) {
+		if (taskFolder && this.plugin.taskManager) {
 			const manager = this.plugin.taskManager;
 			const taskFile = manager.getTaskFile(taskFolder);
 			if (taskFile) {
@@ -922,7 +996,7 @@ export class WritingStatusView extends ItemView {
 			this.updateTimer();
 		}
 
-		await this.updateChapterStatus(folderPath, generation);
+		await this.updateChapterStatus(generation);
 		if (generation !== this.updateGeneration) return;
 		this.updateWordStats(force);
 		this.renderMiniChart(force);
@@ -952,20 +1026,12 @@ export class WritingStatusView extends ItemView {
 		};
 	}
 
-	private async updateChapterStatus(folderPath: string = this.lastActiveFolderPath || '', generation: number = this.updateGeneration) {
+	private async updateChapterStatus(generation: number = this.updateGeneration) {
 		if (!this.chapterStatusCardEl || !this.chapterBadgesContainer) return;
 		if (generation !== this.updateGeneration) return;
 
-		const file = this.getChapterFileForFolder(folderPath);
+		const file = this.currentChapterFile;
 		if (!file || file.extension !== 'md') {
-			this.lastRenderedChapterPath = null;
-			this.lastChapterMtime = -1;
-			this.chapterStatusCardEl.hide();
-			return;
-		}
-
-		const bookPath = this.plugin.characterManager.getBookPathForFile(file);
-		if (!bookPath || this.plugin.characterManager.isLorePath(bookPath, file.parent?.path || '')) {
 			this.lastRenderedChapterPath = null;
 			this.lastChapterMtime = -1;
 			this.chapterStatusCardEl.hide();
@@ -979,8 +1045,16 @@ export class WritingStatusView extends ItemView {
 			return;
 		}
 
-		const fmFolder = bookPath === '/' ? '' : bookPath;
-		const fFile = this.plugin.foreshadowingManager?.findForeshadowingFile(fmFolder);
+		const recognizedBookRoot = findBookRoot(this.app, this.plugin, file, true);
+		if (recognizedBookRoot && this.plugin.characterManager.isLorePath(recognizedBookRoot, file.parent?.path || '')) {
+			this.lastRenderedChapterPath = null;
+			this.lastChapterMtime = -1;
+			this.chapterStatusCardEl.hide();
+			return;
+		}
+
+		const fmFolder = (recognizedBookRoot && recognizedBookRoot !== '/') ? recognizedBookRoot : '';
+		const fFile = recognizedBookRoot ? this.plugin.foreshadowingManager?.findForeshadowingFile?.(fmFolder) : null;
 		if (fFile && fFile.path === file.path) {
 			this.lastRenderedChapterPath = null;
 			this.lastChapterMtime = -1;
@@ -1042,7 +1116,7 @@ export class WritingStatusView extends ItemView {
 			try {
 				const content = await this.app.vault.cachedRead(fFile);
 				if (generation !== this.updateGeneration) return;
-				if (this.getChapterFileForFolder(folderPath)?.path !== file.path) return;
+				if (this.currentChapterFile?.path !== file.path) return;
 				const entries = this.plugin.foreshadowingManager.parseEntries(content);
 
 				for (const entry of entries) {
@@ -1067,11 +1141,11 @@ export class WritingStatusView extends ItemView {
 		}
 
 		if (generation !== this.updateGeneration) return;
-		if (this.getChapterFileForFolder(folderPath)?.path !== file.path) return;
+		if (this.currentChapterFile?.path !== file.path) return;
 
 		const loreArray = cache?.frontmatter?.lore as unknown;
 		let validLores: string[] = [];
-		if (Array.isArray(loreArray)) {
+		if (recognizedBookRoot && Array.isArray(loreArray)) {
 			validLores = (loreArray as unknown[]).filter((l: unknown): l is string => typeof l === 'string');
 		}
 

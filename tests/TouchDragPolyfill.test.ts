@@ -57,16 +57,18 @@ describe('TouchDragPolyfill', () => {
 
 	it('cancels pending work and aborts an active drag during cleanup', () => {
 		const fixture = createContainerFixture();
-		const sourceStyles = vi.fn();
+		const sourceAddClass = vi.fn();
+		const sourceRemoveClass = vi.fn();
 		const sourceDispatch = vi.fn();
 		const ghostRemove = vi.fn();
-		const ghost = { setCssStyles: vi.fn(), remove: ghostRemove };
+		const ghost = { setCssStyles: vi.fn(), addClass: vi.fn(), removeClass: vi.fn(), remove: ghostRemove };
 		const source = {
 			closest: vi.fn().mockReturnThis(),
 			getBoundingClientRect: vi.fn().mockReturnValue({ left: 0, top: 0, width: 100, height: 50 }),
 			cloneNode: vi.fn().mockReturnValue(ghost),
 			dispatchEvent: sourceDispatch,
-			setCssStyles: sourceStyles
+			addClass: sourceAddClass,
+			removeClass: sourceRemoveClass
 		};
 		const cleanup = TouchDragPolyfill.register(fixture.createContainer());
 		const touch = { clientX: 10, clientY: 10 } as Touch;
@@ -80,10 +82,13 @@ describe('TouchDragPolyfill', () => {
 		expect(vi.getTimerCount()).toBe(1);
 		vi.advanceTimersByTime(220);
 		expect(fixture.bodyAppend).toHaveBeenCalledWith(ghost);
+		expect(sourceAddClass).toHaveBeenCalledWith('wn-touch-drag-source');
+		expect(ghost.removeClass).toHaveBeenCalledWith('wn-touch-drag-source');
+		expect(ghost.addClass).toHaveBeenCalledWith('wn-touch-drag-ghost');
 
 		cleanup();
 		expect(vi.getTimerCount()).toBe(0);
-		expect(sourceStyles).toHaveBeenLastCalledWith({ opacity: '', pointerEvents: '' });
+		expect(sourceRemoveClass).toHaveBeenCalledWith('wn-touch-drag-source');
 		expect(ghostRemove).toHaveBeenCalled();
 		expect(sourceDispatch.mock.calls.some(([event]) => event.type === 'dragend')).toBe(true);
 	});

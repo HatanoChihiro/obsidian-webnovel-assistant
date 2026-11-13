@@ -26,6 +26,12 @@
 	font-family: var(--font-interface);
 }
 
+.wn-snapshot-panel.is-dragged {
+	transform: none;
+	right: auto;
+	bottom: auto;
+}
+
 /* Header */
 .wn-snapshot-header {
 	display: flex;

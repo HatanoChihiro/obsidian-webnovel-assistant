@@ -403,7 +403,10 @@ export class CommandManager {
 								this.plugin.fileExplorerPatcher?.refreshManually();
 							},
 							writingJourneyService: this.plugin.writingJourneyService,
-							plugin: this.plugin
+							plugin: this.plugin,
+							onStructuralEdit: (file, preContent, postContent) => {
+								this.plugin.editorTracker?.handleStructuralEdit(file, preContent, postContent);
+							}
 						});
 					} catch (err) {
 						Logger.error('[CommandManager] Unexpected error splitting chapter:', err);

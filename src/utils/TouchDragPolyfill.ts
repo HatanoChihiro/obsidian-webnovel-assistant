@@ -45,7 +45,7 @@ export class TouchDragPolyfill {
 				longPressTimer = null;
 			}
 			if (dragSource) {
-				dragSource.setCssStyles({ opacity: '', pointerEvents: '' });
+				dragSource.removeClass('wn-touch-drag-source');
 				if (touch && dummyDataTransfer) {
 					dragSource.dispatchEvent(createDragEvent('dragend', touch, dummyDataTransfer));
 				}
@@ -70,22 +70,20 @@ export class TouchDragPolyfill {
 			longPressTimer = win.setTimeout(() => {
 				longPressTimer = null;
 				dragSource = target;
-				dragSource.setCssStyles({ opacity: '0.5', pointerEvents: 'none' });
+				dragSource.addClass('wn-touch-drag-source');
 				win.navigator.vibrate?.(40);
 
 				const rect = dragSource.getBoundingClientRect();
 				ghostOffsetX = startX - rect.left;
 				ghostOffsetY = startY - rect.top;
 				ghostEl = dragSource.cloneNode(true) as HTMLElement;
+				ghostEl.removeClass('wn-touch-drag-source');
+				ghostEl.addClass('wn-touch-drag-ghost');
 				ghostEl.setCssStyles({
-					position: 'fixed',
 					left: `${startX - ghostOffsetX}px`,
 					top: `${startY - ghostOffsetY}px`,
 					width: `${rect.width}px`,
-					height: `${rect.height}px`,
-					opacity: '0.8',
-					pointerEvents: 'none',
-					zIndex: '999999'
+					height: `${rect.height}px`
 				});
 				doc.body.appendChild(ghostEl);
 
@@ -143,7 +141,7 @@ export class TouchDragPolyfill {
 				currentDropTarget.dispatchEvent(createDragEvent('drop', touch, dummyDataTransfer));
 			}
 			dragSource.dispatchEvent(createDragEvent('dragend', touch, dummyDataTransfer));
-			dragSource.setCssStyles({ opacity: '', pointerEvents: '' });
+			dragSource.removeClass('wn-touch-drag-source');
 			dragSource = null;
 			currentDropTarget = null;
 			dummyDataTransfer = null;

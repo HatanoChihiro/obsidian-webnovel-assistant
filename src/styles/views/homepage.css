@@ -167,6 +167,7 @@
 }
 
 .homepage-ongoing-progress-bar-fill {
+	width: var(--wn-progress-width, 0%);
 	height: 100%;
 	background: linear-gradient(90deg, color-mix(in srgb, var(--interactive-accent) 70%, transparent), var(--interactive-accent));
 	border-radius: 2px;

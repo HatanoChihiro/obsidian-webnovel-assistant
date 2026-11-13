@@ -48,6 +48,9 @@ describe('FileEventManager', () => {
 				metadataCache: mockMetadataCache
 			},
 			registerEvent: vi.fn(),
+			workerManager: {
+				handleFileRename: vi.fn()
+			},
 			cacheManager: {
 				isEligibleForWordCount: vi.fn().mockReturnValue(true),
 				isEligibleForTotalWordCount: vi.fn().mockReturnValue(true),
@@ -164,6 +167,7 @@ describe('FileEventManager', () => {
 
 		renameHandler(testFile, 'Novel/old.md');
 
+		expect(mockPlugin.workerManager.handleFileRename).toHaveBeenCalledWith(testFile, 'Novel/old.md');
 		expect(mockPlugin.cacheManager.invalidateCache).toHaveBeenCalledWith('Novel/old.md', mockPlugin.app.vault);
 		expect(mockPlugin.cacheManager.updateFileCache).toHaveBeenCalledWith(testFile, 50, mockPlugin.app.vault);
 		expect(mockPlugin.updateFileCacheAndRefresh).not.toHaveBeenCalled();
@@ -235,6 +239,7 @@ describe('FileEventManager', () => {
 
 		renameHandler(folder, 'Novel/Vol1');
 
+		expect(mockPlugin.workerManager.handleFileRename).toHaveBeenCalledWith(folder, 'Novel/Vol1');
 		expect(mockPlugin.writingJourneyService.handleVaultRename).toHaveBeenCalledWith(folder, 'Novel/Vol1');
 	});
 

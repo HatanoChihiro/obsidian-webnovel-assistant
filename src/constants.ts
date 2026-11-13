@@ -284,6 +284,7 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 		workReferencePaths: {},
 
 		typewriterEnabled: false,
+		immersiveShowTypewriterControls: true,
 		typewriterCenterOffset: 0,
 		typewriterUnfocusedOpacity: 0.4,
 

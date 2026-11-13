@@ -79,7 +79,7 @@ export class ChapterMergeManager {
 	}
 
 	private getDraftFilePath(): string {
-		const dir = this.plugin.manifest.dir || `.obsidian/plugins/${this.plugin.manifest.id}`;
+		const dir = this.plugin.manifest.dir || `${this.app.vault.configDir}/plugins/${this.plugin.manifest.id}`;
 		return `${dir}/${this.DRAFT_FILE_NAME}`;
 	}
 

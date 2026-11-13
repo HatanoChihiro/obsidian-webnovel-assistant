@@ -158,7 +158,7 @@ export class LoreCardPreview extends Component {
 		this.entry = entry;
 		this.plugin = plugin;
 		this.options = options;
-		this.ownerDocument = targetEl.ownerDocument ?? document;
+		this.ownerDocument = targetEl.ownerDocument ?? activeDocument;
 		this.ownerWindow = this.ownerDocument.defaultView ?? window;
 		this.showDelayMs = options.showDelayMs ?? 400;
 		this.closeGraceMs = options.closeGraceMs ?? 200;

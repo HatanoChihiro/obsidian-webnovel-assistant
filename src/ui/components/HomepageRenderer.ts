@@ -360,7 +360,6 @@ export class HomepageRenderer {
 					const progressBg = rankContainer.createDiv({ cls: 'homepage-ongoing-progress-bar-bg' });
 					const progressFill = progressBg.createDiv({ cls: 'homepage-ongoing-progress-bar-fill' });
 					progressFill.style.setProperty('--wn-progress-width', `${progressPercent}%`);
-					progressFill.setCssProps({ width: 'var(--wn-progress-width)' });
 					// 进度条颜色区分状态
 					if (progressPercent >= 100) progressFill.addClass('is-done');
 				}

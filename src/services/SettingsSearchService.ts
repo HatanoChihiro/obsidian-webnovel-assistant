@@ -191,6 +191,7 @@ export const SETTINGS_SEARCH_CATALOGUE: readonly SettingCatalogueEntry[] = [
 		{ titleKey: 'setting.immersive-pomodoro-enabled', descKeys: ['setting.immersive-pomodoro-enabled-desc'], sectionKey: 'setting.immersive-pomodoro-title' },
 		{ titleKey: 'setting.immersive-pomodoro-interval', descKeys: ['setting.immersive-pomodoro-interval-desc'], sectionKey: 'setting.immersive-pomodoro-title' },
 		{ titleKey: 'setting.immersive-dashboard-toggles', isHeading: true },
+		{ titleKey: 'setting.show-typewriter-controls', sectionKey: 'setting.immersive-dashboard-toggles' },
 		{ titleKey: 'setting.show-total-time', sectionKey: 'setting.immersive-dashboard-toggles' },
 		{ titleKey: 'setting.show-focus-time', sectionKey: 'setting.immersive-dashboard-toggles' },
 		{ titleKey: 'setting.show-slack-time', sectionKey: 'setting.immersive-dashboard-toggles' },

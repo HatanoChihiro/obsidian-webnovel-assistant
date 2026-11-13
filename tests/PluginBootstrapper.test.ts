@@ -58,6 +58,7 @@ vi.mock('../src/ui/MobileFloatingStats', () => ({
 }));
 
 import { PluginBootstrapper, type BootstrapperHost } from '../src/core/PluginBootstrapper';
+import type { TFile } from 'obsidian';
 import { ServiceRegistry, type ServiceMap } from '../src/core/ServiceRegistry';
 import { DEFAULT_SETTINGS, PLATFORM_DELAYS } from '../src/constants';
 import { ChapterSorter } from '../src/services/ChapterSorter';
@@ -234,7 +235,8 @@ describe('PluginBootstrapper', () => {
 					}),
 					onLayoutReady: vi.fn((cb: () => void) => {
 						layoutReadyCallbacks.push(cb);
-					})
+					}),
+					getActiveFile: vi.fn(() => null)
 				}
 			},
 			manifest: {
@@ -713,7 +715,7 @@ describe('PluginBootstrapper', () => {
 		let mockSettingsManager: { flush: ReturnType<typeof vi.fn> };
 		let mockStickyNoteManager: {
 			saveNotes: ReturnType<typeof vi.fn>;
-			getNotes: ReturnType<typeof vi.fn>;
+			getNotes: ReturnType<typeof vi.fn<() => unknown[]>>;
 			updateNote: ReturnType<typeof vi.fn>;
 		};
 		let mockChapterMergeManager: { flush: ReturnType<typeof vi.fn> };
@@ -1127,7 +1129,12 @@ describe('PluginBootstrapper', () => {
 				})
 			} as unknown as FileEventManager;
 			mockPlugin.statisticsManager = { setup: vi.fn() } as unknown as StatisticsManager;
-			mockPlugin.workerManager = { setup: vi.fn() } as unknown as WorkerManager;
+			mockPlugin.workerManager = {
+				setup: vi.fn(),
+				handleEditorChange: vi.fn(),
+				handleActiveFileChange: vi.fn(),
+				handleFileRename: vi.fn()
+			} as unknown as WorkerManager;
 			mockPlugin.markdownPostProcessor = { getProcessor: vi.fn() } as unknown as MarkdownPostProcessor;
 			mockPlugin.typographyManager = { updateTypography: vi.fn() } as unknown as TypographyManager;
 			mockPlugin.commandManager = { registerAllCommands: vi.fn() } as unknown as CommandManager;
@@ -1258,7 +1265,12 @@ describe('PluginBootstrapper', () => {
 			mockPlugin.loreSyncService = { initialize: vi.fn() } as unknown as LoreSyncService;
 			mockPlugin.fileEventManager = { setup: vi.fn() } as unknown as FileEventManager;
 			mockPlugin.statisticsManager = { setup: vi.fn() } as unknown as StatisticsManager;
-			mockPlugin.workerManager = { setup: vi.fn() } as unknown as WorkerManager;
+			mockPlugin.workerManager = {
+				setup: vi.fn(),
+				handleEditorChange: vi.fn(),
+				handleActiveFileChange: vi.fn(),
+				handleFileRename: vi.fn()
+			} as unknown as WorkerManager;
 			mockPlugin.markdownPostProcessor = { getProcessor: vi.fn() } as unknown as MarkdownPostProcessor;
 			mockPlugin.typographyManager = { updateTypography: vi.fn() } as unknown as TypographyManager;
 			mockPlugin.commandManager = { registerAllCommands: vi.fn() } as unknown as CommandManager;
@@ -1286,7 +1298,7 @@ describe('PluginBootstrapper', () => {
 	});
 
 	describe('editor-change activity tracking', () => {
-		it('should synchronously refresh lastEditTime on editor-change even before debounced callback runs', async () => {
+		it('forwards activity and document changes to the timer before debounced statistics run', async () => {
 			let debouncedCallback: (() => void) | null = null;
 			mockAdaptiveDebounceManager.debounce = vi.fn((key: string, callback: () => void) => {
 				if (key === 'editor-update') {
@@ -1305,7 +1317,12 @@ describe('PluginBootstrapper', () => {
 			mockPlugin.proofreadingManager = { initialize: vi.fn().mockResolvedValue(undefined) } as unknown as ProofreadingManager;
 			mockPlugin.fileEventManager = { setup: vi.fn() } as unknown as FileEventManager;
 			mockPlugin.statisticsManager = { setup: vi.fn() } as unknown as StatisticsManager;
-			mockPlugin.workerManager = { setup: vi.fn() } as unknown as WorkerManager;
+			mockPlugin.workerManager = {
+				setup: vi.fn(),
+				handleEditorChange: vi.fn(),
+				handleActiveFileChange: vi.fn(),
+				handleFileRename: vi.fn()
+			} as unknown as WorkerManager;
 			mockPlugin.markdownPostProcessor = { getProcessor: vi.fn() } as unknown as MarkdownPostProcessor;
 			mockPlugin.typographyManager = { updateTypography: vi.fn() } as unknown as TypographyManager;
 			mockPlugin.commandManager = { registerAllCommands: vi.fn() } as unknown as CommandManager;
@@ -1323,12 +1340,12 @@ describe('PluginBootstrapper', () => {
 			expect(editorChangeHandlers).toBeDefined();
 			expect(editorChangeHandlers.length).toBeGreaterThan(0);
 
-			const beforeTime = Date.now();
-			// Trigger editor-change synchronously
-			editorChangeHandlers[0]();
+			const sampleFile = { path: 'workspace/Chapter 1.md' } as TFile;
+			// Trigger editor-change synchronously with file info
+			editorChangeHandlers[0](null, { file: sampleFile });
 
-			// 1. lastEditTime must be refreshed synchronously immediately
-			expect(mockPlugin.lastEditTime).toBeGreaterThanOrEqual(beforeTime);
+			// 1. workerManager.handleEditorChange must be called synchronously immediately before debounce runs
+			expect(mockPlugin.workerManager.handleEditorChange).toHaveBeenCalledWith(sampleFile);
 
 			// 2. EditorTracker.handleEditorChange has NOT run because debounce callback was captured and not yet invoked
 			expect(mockEditorTracker.handleEditorChange).not.toHaveBeenCalled();
@@ -1337,6 +1354,33 @@ describe('PluginBootstrapper', () => {
 			expect(debouncedCallback).not.toBeNull();
 			debouncedCallback!();
 			expect(mockEditorTracker.handleEditorChange).toHaveBeenCalledTimes(1);
+
+			// 4. Test workspace event forwarding for active-leaf-change and file-open (including same-leaf and null panels)
+			const activeLeafHandlers = workspaceEventHandlers['active-leaf-change'];
+			const fileOpenHandlers = workspaceEventHandlers['file-open'];
+
+			// Active leaf with known file forwards to workerManager
+			vi.mocked(mockPlugin.workerManager.handleActiveFileChange).mockClear();
+			vi.mocked(mockPlugin.app.workspace.getActiveFile).mockReturnValue(sampleFile);
+			for (const handler of activeLeafHandlers) handler(null);
+			expect(mockPlugin.workerManager.handleActiveFileChange).toHaveBeenCalledWith(sampleFile);
+
+			// Active leaf with null (fileless panel) forwards null to workerManager
+			vi.mocked(mockPlugin.workerManager.handleActiveFileChange).mockClear();
+			vi.mocked(mockPlugin.app.workspace.getActiveFile).mockReturnValue(null);
+			for (const handler of activeLeafHandlers) handler(null);
+			expect(mockPlugin.workerManager.handleActiveFileChange).toHaveBeenCalledWith(null);
+
+			// file-open with file forwards to workerManager (initial or same-leaf file switch)
+			const sameLeafFile = { path: 'workspace/Chapter 2.md' } as TFile;
+			vi.mocked(mockPlugin.workerManager.handleActiveFileChange).mockClear();
+			for (const handler of fileOpenHandlers) handler(sameLeafFile);
+			expect(mockPlugin.workerManager.handleActiveFileChange).toHaveBeenCalledWith(sameLeafFile);
+
+			// file-open with null (e.g. all tabs closed) forwards null
+			vi.mocked(mockPlugin.workerManager.handleActiveFileChange).mockClear();
+			for (const handler of fileOpenHandlers) handler(null);
+			expect(mockPlugin.workerManager.handleActiveFileChange).toHaveBeenCalledWith(null);
 		});
 	});
 
@@ -1356,7 +1400,12 @@ describe('PluginBootstrapper', () => {
 			mockPlugin.proofreadingManager = { initialize: vi.fn().mockResolvedValue(undefined) } as unknown as ProofreadingManager;
 			mockPlugin.fileEventManager = { setup: vi.fn() } as unknown as FileEventManager;
 			mockPlugin.statisticsManager = { setup: vi.fn() } as unknown as StatisticsManager;
-			mockPlugin.workerManager = { setup: vi.fn() } as unknown as WorkerManager;
+			mockPlugin.workerManager = {
+				setup: vi.fn(),
+				handleEditorChange: vi.fn(),
+				handleActiveFileChange: vi.fn(),
+				handleFileRename: vi.fn()
+			} as unknown as WorkerManager;
 			mockPlugin.markdownPostProcessor = { getProcessor: vi.fn() } as unknown as MarkdownPostProcessor;
 			mockPlugin.typographyManager = { updateTypography: vi.fn() } as unknown as TypographyManager;
 			mockPlugin.commandManager = { registerAllCommands: vi.fn() } as unknown as CommandManager;
@@ -1395,7 +1444,12 @@ describe('PluginBootstrapper', () => {
 			mockPlugin.proofreadingManager = { initialize: vi.fn().mockResolvedValue(undefined) } as unknown as ProofreadingManager;
 			mockPlugin.fileEventManager = { setup: vi.fn() } as unknown as FileEventManager;
 			mockPlugin.statisticsManager = { setup: vi.fn() } as unknown as StatisticsManager;
-			mockPlugin.workerManager = { setup: vi.fn() } as unknown as WorkerManager;
+			mockPlugin.workerManager = {
+				setup: vi.fn(),
+				handleEditorChange: vi.fn(),
+				handleActiveFileChange: vi.fn(),
+				handleFileRename: vi.fn()
+			} as unknown as WorkerManager;
 			mockPlugin.markdownPostProcessor = { getProcessor: vi.fn() } as unknown as MarkdownPostProcessor;
 			mockPlugin.typographyManager = { updateTypography: vi.fn() } as unknown as TypographyManager;
 			mockPlugin.commandManager = { registerAllCommands: vi.fn() } as unknown as CommandManager;

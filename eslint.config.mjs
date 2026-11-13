@@ -60,6 +60,25 @@ export default tseslint.config(
 		},
 	},
 	{
+		files: [
+			'src/ui/DailyStatsActionModal.ts',
+			'src/ui/SetSeriesModal.ts',
+			'src/ui/SettingsTab.ts',
+			'src/ui/ImmersiveTypewriterQuickModal.ts',
+			'src/ui/TypographyQuickModal.ts',
+		],
+		rules: {
+			// Obsidian 1.8.7 needs these APIs: setDestructive starts at 1.13,
+			// and older sliders still need setDynamicTooltip to show their value.
+			'@typescript-eslint/no-deprecated': ['warn', { allow: [
+				{ from: 'package', package: 'obsidian', name: 'setWarning' },
+				{ from: 'package', package: 'obsidian', name: 'setDynamicTooltip' },
+				// Declarative settings start at 1.13; keep this tab's imperative fallback.
+				{ from: 'file', path: 'src/ui/SettingsTab.ts', name: 'display' },
+			] }],
+		},
+	},
+	{
 		files: ['src/ui/components/StickyNoteParagraphEditor.ts'],
 		rules: {
 			// No standard editing API preserves native undo for paragraph splits and multiline plain-text paste.

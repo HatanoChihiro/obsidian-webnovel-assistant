@@ -90,7 +90,6 @@ export class ChapterCard {
 
 		const statusEl = cardHeader.createDiv('wn-corkboard-card-status');
 		statusEl.setText(getCorkboardStatusText(status));
-		statusEl.setCssProps({ cursor: 'pointer' });
 		statusEl.title = t('corkboard.click-to-change-status');
 
 		statusEl.onclick = (evt: MouseEvent) => {
@@ -372,19 +371,6 @@ export class ChapterCard {
 		});
 		input.value = file.basename;
 
-		// 继承样式
-		input.setCssProps({
-			border: 'none',
-			background: 'transparent',
-			outline: 'none',
-			fontWeight: '600',
-			fontSize: '1.05em',
-			color: 'var(--text-normal)',
-			padding: '0',
-			width: '100%',
-			minWidth: '50px'
-		});
-
 		// 自动聚焦并全选
 		input.focus();
 		input.select();
@@ -427,7 +413,6 @@ export class ChapterCard {
 			}
 
 			input.disabled = true; // 锁定状态，模拟 loading
-			input.setCssProps({ opacity: '0.6', cursor: 'not-allowed' });
 
 			try {
 				if (onSaveStateChange) onSaveStateChange(true);

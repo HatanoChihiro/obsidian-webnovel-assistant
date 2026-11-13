@@ -155,8 +155,7 @@ export class TimelineFormComponent {
 		form.createDiv({ cls: 'wn-timeline-form-hint', text: t('modal.event-list-hint') || '' });
 
 		// 事件列表容器
-		const eventsContainer = form.createDiv();
-		eventsContainer.setCssProps({ marginBottom: '12px' });
+		const eventsContainer = form.createDiv({ cls: 'wn-timeline-event-list' });
 
 		const blockItemMap = new WeakMap<HTMLElement, TimelineItem>();
 
@@ -174,8 +173,7 @@ export class TimelineFormComponent {
 			
 			// 关联章节
 			eventBlock.createEl('label', { text: t('modal.related-chapters-optional') || t('modal.related-chapters'), cls: 'wn-timeline-form-label' });
-			const chapterListContainer = eventBlock.createDiv();
-			chapterListContainer.setCssProps({ marginBottom: '8px' });
+			const chapterListContainer = eventBlock.createDiv({ cls: 'wn-timeline-chapter-list' });
 			
 			const existingChapters = item.chapter ? parseTimelineChapterList(item.chapter) : [];
 			
@@ -183,7 +181,6 @@ export class TimelineFormComponent {
 				const row = chapterListContainer.createDiv();
 				row.addClass('webnovel-tl-chapter-row-sm');
 				const select = row.createEl('select', { cls: 'wn-timeline-form-input' });
-				select.setCssProps({ flex: '1' });
 				select.createEl('option', { value: '', text: t('modal.select-chapter') });
 				const initialFile = initialValue
 					? ChapterSorter.resolveChapterFile(app, context, folderPath, initialValue, { eligibleChapters: targetFiles })
@@ -247,7 +244,6 @@ export class TimelineFormComponent {
 		// 关联设定（节点级别：单个多选选择器）
 		form.createEl('label', { text: t('modal.related-lore-optional'), cls: 'wn-timeline-form-label' });
 		const loreListContainer = form.createDiv({ cls: 'wn-timeline-lore-list' });
-		loreListContainer.setCssProps({ marginBottom: '12px' });
 
 		const existingLores = initialEntry?.lores || [];
 
@@ -255,7 +251,6 @@ export class TimelineFormComponent {
 			const row = loreListContainer.createDiv();
 			row.addClass('webnovel-tl-chapter-row-sm');
 			const select = row.createEl('select', { cls: 'wn-timeline-form-input wn-timeline-lore-select' });
-			select.setCssProps({ flex: '1' });
 			select.createEl('option', { value: '', text: t('modal.select-lore') });
 
 			if (initialValue && !canonicalLoreNames.includes(initialValue)) {

@@ -1,7 +1,6 @@
 import { Logger } from '../utils/Logger';
-import type { App} from 'obsidian';
+import { MarkdownView, type TFile, type App } from 'obsidian';
 import { t } from '../i18n';
-import { MarkdownView } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { isMobile, parseGoal } from '../utils';
 import { REGEX_PATTERNS } from '../constants';
@@ -12,6 +11,7 @@ import { REGEX_PATTERNS } from '../constants';
  */
 export class EditorTracker {
 	private fileChangeGeneration: number = 0;
+	private pendingFileRead: { file: TFile } | null = null;
 
 	constructor(
 		private app: App,
@@ -66,6 +66,40 @@ export class EditorTracker {
 	}
 
 	/**
+	 * 结算尚未入账的真实编辑，并同步切分或恢复后的基线。
+	 */
+	handleStructuralEdit(file: TFile, previousContent: string, content: string): void {
+		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+		const isActive = view?.file === file;
+		const isTracked = this.plugin.lastFilePath === file.path;
+		const isEligible = this.plugin.cacheManager.isEligibleForWordCount(file);
+		const pendingDelta = isTracked && isEligible
+			? this.plugin.calculateAccurateWords(previousContent) - this.plugin.lastFileWords
+			: 0;
+		const count = this.plugin.calculateAccurateWords(content);
+
+		// 仅让此文件的旧读取失效，保留其他文件正在初始化的基线。
+		if (this.pendingFileRead?.file === file) {
+			this.fileChangeGeneration++;
+		}
+		if (isActive || isTracked) {
+			this.plugin.lastFilePath = file.path;
+			this.plugin.lastFileWords = isEligible ? count : 0;
+		}
+		if (this.plugin.cacheManager.isEligibleForTotalWordCount(file)) {
+			this.plugin.cacheManager.updateFileCache(file, count, this.app.vault);
+		}
+		if (pendingDelta !== 0) {
+			this.app.workspace.trigger('webnovel:editor-word-count-updated', file, pendingDelta);
+		}
+		if (isActive) {
+			this.displayWordCount(view, content, count);
+			this.plugin.refreshStatusViews();
+			this.plugin.mobileFloatingStats?.update();
+		}
+	}
+
+	/**
 	 * 处理文件切换
 	 * 重置字数统计
 	 */
@@ -104,6 +138,8 @@ export class EditorTracker {
 			// 先捕获当前作品，避免文件尚未读完就被关闭时丢失选择。
 			this.plugin.refreshStatusViews();
 			// 只有在缓存缺失时才去安全地读取实际文件内容（避免 active-leaf-change 瞬间 view.getViewData 数据陈旧）
+			const pendingRead = { file: targetFile };
+			this.pendingFileRead = pendingRead;
 			try {
 				const content = await this.app.vault.cachedRead(targetFile);
 				if (this.fileChangeGeneration !== reqGen) {
@@ -130,6 +166,10 @@ export class EditorTracker {
 			} catch (e) {
 				Logger.error('[EditorTracker] failed to read file on change', e);
 				return;
+			} finally {
+				if (this.pendingFileRead === pendingRead) {
+					this.pendingFileRead = null;
+				}
 			}
 		}
 

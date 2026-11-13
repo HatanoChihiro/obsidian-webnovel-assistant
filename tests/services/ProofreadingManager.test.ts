@@ -187,6 +187,11 @@ describe('Table Parser & Strict Markdown Validation', () => {
 		expect(insertRes.success).toBe(true);
 		expect(insertRes.newContent).toContain('| 按装 | 安装 \\| 装配 | 换行 说明 |');
 
+		// Preserve existing backslash sequences while escaping adjacent bare pipes.
+		const escapedRes = updateTableInMarkdown(original, 'wrong', '示例', ['示例', String.raw`路径\\|别名||尾`, '说明']);
+		expect(escapedRes.success).toBe(true);
+		expect(escapedRes.newContent).toContain(String.raw`| 示例 | 路径\\|别名\|\|尾 | 说明 |`);
+
 		// 3. 列数不匹配时拒写
 		const badColRes = updateTableInMarkdown(original, 'wrong', '按装', ['按装', '安装']);
 		expect(badColRes.success).toBe(false);

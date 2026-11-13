@@ -327,11 +327,8 @@ body .wn-timeline-waterfall-layout .wn-timeline-waterfall-sidebar.drag-over-chap
 }
 
 
+/* 紧凑归还槽保留在看板布局内，避免覆盖主栏滚动条。 */
 .wn-timeline-waterfall-sidebar.is-empty {
-	position: absolute;
-	right: 0;
-	top: 0;
-	bottom: 0;
 	width: 40px;
 	padding: 0;
 	background: transparent;
@@ -354,10 +351,6 @@ body .wn-timeline-waterfall-layout .wn-timeline-waterfall-sidebar.drag-over-chap
 /* 桌面端未关联侧边栏折叠态与展开手柄 */
 body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-collapsed,
 body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-collapsed.is-empty {
-	position: absolute;
-	right: 0;
-	top: 0;
-	bottom: 0;
 	width: 32px;
 	padding: 0;
 	background: transparent;

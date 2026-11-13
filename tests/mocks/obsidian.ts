@@ -65,7 +65,11 @@ export class Platform {
 	static isMobile = false;
 }
 
-export class Component {}
+export class Component {
+	registerEvent(eventRef: unknown): unknown {
+		return eventRef;
+	}
+}
 
 export const mockNoticeMessages: string[] = [];
 
@@ -207,11 +211,12 @@ export class WorkspaceLeaf {
 	}
 }
 
-export class ItemView {
+export class ItemView extends Component {
 	leaf: WorkspaceLeaf;
 	containerEl: unknown;
 	app: unknown;
 	constructor(leaf: WorkspaceLeaf) {
+		super();
 		this.leaf = leaf;
 		this.app = (leaf as unknown as { app?: unknown }).app ?? {};
 		type MockElement = {

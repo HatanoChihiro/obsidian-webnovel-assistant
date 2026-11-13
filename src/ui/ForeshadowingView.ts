@@ -315,7 +315,6 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 
 			if (c.text) {
 				const textEl = quoteEl.createDiv({ cls: 'foreshadowing-entry-quote-text', text: c.text });
-				textEl.setCssProps({ cursor: 'pointer' });
 				textEl.title = t('common.jump-to-original');
 				textEl.onclick = async () => {
 					const foreshadowingFile = this.getForeshadowingFile(folder);

@@ -2327,7 +2327,7 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
     });
 
     describe('Reference Pane Lifecycle, Search & Sequence Guards', () => {
-        let setReferenceFilePathSpy: ReturnType<typeof vi.fn>;
+        let setReferenceFilePathSpy: ReturnType<typeof vi.fn<(workPath: string, refPath: string | null) => Promise<void>>>;
         type MockRefService = Pick<
             ImmersiveReferenceManager,
             'getWorkPath' | 'getReferenceFilePath' | 'migrateLegacyReference' | 'setReferenceFilePath' | 'handleRename' | 'handleDelete' | 'save' | 'flush' | 'destroy'
@@ -2783,8 +2783,8 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
             addEventListener: ReturnType<typeof vi.fn>;
             removeEventListener: ReturnType<typeof vi.fn>;
             appendChild: ReturnType<typeof vi.fn>;
-            setAttribute: ReturnType<typeof vi.fn>;
-            getAttribute: ReturnType<typeof vi.fn>;
+            setAttribute: ReturnType<typeof vi.fn<(k: string, v: string) => void>>;
+            getAttribute: ReturnType<typeof vi.fn<(k: string) => string | undefined>>;
             trigger: (event: string, value?: GearEvent) => void;
             createDiv: ReturnType<typeof vi.fn>;
             createSpan: ReturnType<typeof vi.fn>;
@@ -2908,6 +2908,31 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
         afterEach(() => {
             manager.cleanup();
             vi.clearAllMocks();
+        });
+
+        it('hides both typewriter controls without disabling scrolling and restores them when shown', async () => {
+            const immersive = mockPlugin.settings.immersive;
+            immersive.typewriterEnabled = true;
+            immersive.immersiveShowTypewriterControls = false;
+            manager['createTopBar']();
+
+            const controls = manager['typewriterControlsEl'];
+            expect(controls?.isShown()).toBe(false);
+
+            immersive.immersiveShowTypewriterControls = true;
+            await manager['renderTopBarContent']();
+            expect(controls?.isShown()).toBe(true);
+            expect(manager['typewriterToggle']?.getValue()).toBe(true);
+
+            const gearBtn = manager['typewriterGearBtn'] as unknown as GearElement;
+            gearBtn.trigger('click');
+            expect(manager['activeTypewriterQuickModal']).not.toBeNull();
+
+            immersive.immersiveShowTypewriterControls = false;
+            await manager['renderTopBarContent']();
+            expect(controls?.isShown()).toBe(false);
+            expect(manager['activeTypewriterQuickModal']).toBeNull();
+            expect(immersive.typewriterEnabled).toBe(true);
         });
 
         it('creates typewriter toggle and settings gear button with is-hidden when initially disabled', () => {

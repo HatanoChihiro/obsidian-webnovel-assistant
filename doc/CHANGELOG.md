@@ -1,3 +1,31 @@
+## 🛠 v4.0.8
+
+### 功能优化
+
+- **沉浸模式顶部仪表盘**：可隐藏打字机滚动开关与快捷调整按钮，同时保留当前滚动设置。
+- **工作区专注计时**：专注计时仅在已配置工作区内的文档中保持打字活跃与闲置阈值判定。切换至工作区外的文档时即时计为摸鱼时长，且外部输入不计入专注活动；返回工作区后恢复原有活跃判定，无文档面板沿用最近文档作用域。未配置工作区时默认作用于整库。
+
+### Bug 修复
+
+- **实时写作状态**：修复无作品信息等标记的目录中，符合统计条件的文档不显示章节字数的问题。面板顶部显示当前章节所在文件夹，工作台继续保留此前选择的作品。
+- **首行缩进**：修复文档在某些宽度下，段首长串字符换行时出现空白首行、正文顶格的问题。
+- **时间轴看板**：修复收起「未关联章节」面板或没有未关联章节时，主时间轴的滚动条被遮挡、无法拖动的问题。
+- **章节切分统计**：修复切分章节或返回原章继续编辑时，搬移的正文被误算为今日和本场删字的问题。
+
+### English Changelog
+
+#### Improvements
+
+- **Immersive dashboard**: Hide the typewriter scrolling toggle and quick adjustment button while keeping the current scrolling settings.
+- **Workspace-scoped focus timer**: Focus tracking and idle timeout checks are now restricted to documents within configured workspace folders. Active time outside configured workspace folders counts as idle time, and outside input does not refresh focus activity; returning inside restores the normal activity check, while panels without a file preserve the most recent document's scope. When no workspace folders are configured, the entire vault remains in scope.
+
+#### Bug Fixes
+
+- **Live writing status**: Fix chapter word counts being hidden for eligible documents in folders without novel markers. The panel shows the current chapter's containing folder while the workbench retains its previous work selection.
+- **First-line indentation**: Fix a blank first line and lost indentation when a long sequence of characters starts a paragraph at certain document widths.
+- **Timeline board**: Fix the main scrollbar being covered when the unlinked chapters panel is collapsed or empty.
+- **Chapter split statistics**: Fix moved text being counted as deleted in daily and session writing totals when splitting a chapter or resuming edits in the original chapter.
+
 ## 🛠 v4.0.7
 
 ### 新增功能

@@ -20,7 +20,7 @@ export default defineConfig({
 	resolve: {
 		alias: {
 			// Mock obsidian 模块，覆盖所有依赖链中的 obsidian 导入
-			'obsidian': path.resolve(__dirname, 'tests/mocks/obsidian.ts'),
+			'obsidian': path.resolve(import.meta.dirname, 'tests/mocks/obsidian.ts'),
 		},
 	},
 });

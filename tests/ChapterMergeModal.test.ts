@@ -5,7 +5,7 @@ import { mockNoticeMessages, resetNoticeMessages } from './mocks/obsidian';
 import { MockElement } from './mocks/MockElement';
 import { ChapterMergeModal, type ChapterMergeModalPlugin } from '../src/ui/ChapterMergeModal';
 import { MobileChapterMergeModal, type MobileChapterMergeModalPlugin } from '../src/ui/MobileChapterMergeModal';
-import type { ChapterMergeItem, ChapterMergeDraft } from '../src/services/ChapterMergeManager';
+import type { ChapterMergeItem, ChapterMergeDraft, ChapterMergeManager } from '../src/services/ChapterMergeManager';
 import type { ChapterMergeSelection } from '../src/services/ChapterMergeSelection';
 
 interface ChapterMergeModalSeam {
@@ -69,13 +69,13 @@ interface MockAppInstance {
 
 interface MockPluginInstance extends ChapterMergeModalPlugin, MobileChapterMergeModalPlugin {
 	typographyManager: {
-		registerPreviewElement: ReturnType<typeof vi.fn>;
-		unregisterPreviewElement: ReturnType<typeof vi.fn>;
+		registerPreviewElement: ReturnType<typeof vi.fn<(element: HTMLElement) => void>>;
+		unregisterPreviewElement: ReturnType<typeof vi.fn<(element: HTMLElement) => void>>;
 	};
 	chapterMergeManager: {
 		loadFolderChapters: ReturnType<typeof vi.fn<(folder: TFolder) => Promise<ChapterMergeItem[]>>>;
 		loadDraft: ReturnType<typeof vi.fn<(folderPath: string) => Promise<ChapterMergeDraft | null>>>;
-		saveDraft: ReturnType<typeof vi.fn>;
+		saveDraft: ReturnType<typeof vi.fn<ChapterMergeManager['saveDraft']>>;
 		saveToOriginalFiles: ReturnType<typeof vi.fn<(items: ChapterMergeItem[]) => Promise<number>>>;
 		clearDraft: ReturnType<typeof vi.fn<(folderPath: string) => void>>;
 		exportMergedDocument: ReturnType<

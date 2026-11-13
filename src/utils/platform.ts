@@ -27,6 +27,6 @@ export function getPlatformTier(): 'desktop' | 'tablet' | 'mobile' {
 	return 'mobile';
 }
 
-export function getPluginDir(plugin: { manifest: { dir?: string; id?: string } }): string {
-	return plugin.manifest.dir || `.obsidian/plugins/${plugin.manifest.id || 'web-novel-assistant'}`;
+export function getPluginDir(plugin: { manifest: { dir?: string; id?: string }; app: { vault: { configDir: string } } }): string {
+	return plugin.manifest.dir || `${plugin.app.vault.configDir}/plugins/${plugin.manifest.id || 'web-novel-assistant'}`;
 }

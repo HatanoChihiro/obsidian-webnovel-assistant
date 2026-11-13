@@ -63,8 +63,8 @@ function createMockElement(ownerDocument: Document): { element: HTMLElement; sta
 
 describe('LoreHoverPopover lifecycle', () => {
 	let mutationCallback: MutationCallback;
-	let disconnect: ReturnType<typeof vi.fn>;
-	let observe: ReturnType<typeof vi.fn>;
+	let disconnect: ReturnType<typeof vi.fn<() => void>>;
+	let observe: ReturnType<typeof vi.fn<(target: Node, options?: MutationObserverInit) => void>>;
 	let addDocumentListener: ReturnType<typeof vi.fn>;
 	let removeDocumentListener: ReturnType<typeof vi.fn>;
 	let target: HTMLElement;

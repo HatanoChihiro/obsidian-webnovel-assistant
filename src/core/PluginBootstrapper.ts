@@ -191,8 +191,8 @@ export class PluginBootstrapper {
 			this.plugin.menuManager.registerAllMenus();
 			this.plugin.registerCommonRibbonIcons();
 
-			this.plugin.registerEvent(this.plugin.app.workspace.on('editor-change', () => {
-				this.plugin.lastEditTime = Date.now();
+			this.plugin.registerEvent(this.plugin.app.workspace.on('editor-change', (_editor, info) => {
+				this.plugin.workerManager.handleEditorChange(info.file);
 				this.plugin.adaptiveDebounceManager.debounce('editor-update', () => {
 					this.plugin.editorTracker.handleEditorChange();
 				});
@@ -208,10 +208,12 @@ export class PluginBootstrapper {
 				}
 			}));
 			this.plugin.registerEvent(this.plugin.app.workspace.on('active-leaf-change', () => {
+				this.plugin.workerManager.handleActiveFileChange(this.plugin.app.workspace.getActiveFile());
 				void this.plugin.editorTracker.handleFileChange();
 				this.plugin.homepageManager?.handleViewMode();
 			}));
-			this.plugin.registerEvent(this.plugin.app.workspace.on('file-open', () => {
+			this.plugin.registerEvent(this.plugin.app.workspace.on('file-open', (file) => {
+				this.plugin.workerManager.handleActiveFileChange(file);
 				void this.plugin.editorTracker.handleFileChange();
 			}));
 			this.plugin.registerEvent(this.plugin.app.metadataCache.on('changed', (file) => {

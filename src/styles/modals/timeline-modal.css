@@ -10,6 +10,22 @@
 	border: 1px solid var(--interactive-accent);
 }
 
+.wn-timeline-event-list {
+	margin-bottom: 12px;
+}
+
+.wn-timeline-chapter-list {
+	margin-bottom: 8px;
+}
+
+.wn-timeline-lore-list {
+	margin-bottom: 12px;
+}
+
+.webnovel-tl-chapter-row-sm .wn-timeline-form-input {
+	flex: 1;
+}
+
 
 .wn-timeline-form-label {
 	display: block;

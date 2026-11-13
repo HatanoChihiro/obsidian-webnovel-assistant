@@ -42,6 +42,7 @@ export interface ChapterSplitOptions {
 	plugin?: CurrentBookContextPlugin & {
 		cacheManager: { isEligibleForChapterList(file: TFile): boolean };
 	};
+	onStructuralEdit?: (file: TFile, preContent: string, postContent: string) => void;
 }
 
 /**
@@ -429,9 +430,17 @@ export async function splitChapterAtCursor(options: ChapterSplitOptions): Promis
 			return false;
 		}
 
+		const notifyStructuralEdit = (previousContent: string): void => {
+			try {
+				options.onStructuralEdit?.(initialFile, previousContent, editor.getValue());
+			} catch (error) {
+				Logger.error('[ChapterSplitter] Failed to update statistics after structural edit:', error);
+			}
+		};
 		const lastLine = editor.lastLine();
 		const lastLineLength = editor.getLine(lastLine).length;
 		editor.replaceRange('', cursor, { line: lastLine, ch: lastLineLength });
+		notifyStructuralEdit(initialContent);
 
 		try {
 			await view.save();
@@ -440,6 +449,7 @@ export async function splitChapterAtCursor(options: ChapterSplitOptions): Promis
 			if (view.file === initialFile && view.file.path === initialFilePath && editor.getValue() === analysis.prefix) {
 				try {
 					editor.replaceRange(analysis.suffix, cursor);
+					notifyStructuralEdit(analysis.prefix);
 					await view.save();
 				} catch (restoreError) {
 					Logger.error('[ChapterSplitter] Failed to restore suffix in editor:', restoreError);

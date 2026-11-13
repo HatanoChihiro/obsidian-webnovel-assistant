@@ -402,7 +402,7 @@ export class GraphRenderer {
 	}
 
 	static getThemeColors(el?: HTMLElement | null): ThemeColors {
-		const doc = el?.ownerDocument || (typeof activeDocument !== 'undefined' ? activeDocument : (typeof document !== 'undefined' ? document : null));
+		const doc = el?.ownerDocument || (typeof activeDocument !== 'undefined' ? activeDocument : null);
 		const isDark = doc?.body ? doc.body.classList.contains('theme-dark') : true;
 
 		const targetEl = (el && el.isConnected) ? el : (doc?.body || doc?.documentElement || null);
@@ -1089,7 +1089,7 @@ export class GraphRenderer {
 		const trailRatio = colors.pulseTrailRatio ?? GRAPH_STYLE_DEFAULTS.PULSE_TRAIL_RATIO;
 		const t = (animTime % period) / period;
 
-		const doc = (typeof activeDocument !== 'undefined' ? activeDocument : (typeof document !== 'undefined' ? document : null));
+		const doc = (typeof activeDocument !== 'undefined' ? activeDocument : null);
 		const isDark = doc?.body ? doc.body.classList.contains('theme-dark') : true;
 
 		// 深色模式下混合白色产生柔和发光，浅色模式下保持饱和鲜明色与高透明度以确保白底清晰可见，且严格联动外部 alpha 与自定义变量
@@ -1181,7 +1181,7 @@ export class GraphRenderer {
 		const trailRatio = colors.pulseTrailRatio ?? GRAPH_STYLE_DEFAULTS.PULSE_TRAIL_RATIO;
 		const t = (animTime % period) / period;
 
-		const doc = (typeof activeDocument !== 'undefined' ? activeDocument : (typeof document !== 'undefined' ? document : null));
+		const doc = (typeof activeDocument !== 'undefined' ? activeDocument : null);
 		const isDark = doc?.body ? doc.body.classList.contains('theme-dark') : true;
 
 		// 深色模式下混合白色产生柔和发光，浅色模式下保持饱和鲜明色与高透明度以确保白底清晰可见，且严格联动外部 alpha 与自定义变量
