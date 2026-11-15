@@ -4,6 +4,13 @@ import type { NativeSnapshotService, NativeSnapshotMeta } from '../services/Nati
 import { getChapterSnapshotScopes } from '../services/NativeSnapshotService';
 import type { ChapterSnapshotRef, WritingJourneyEvent } from '../types/writingJourney';
 import { ChapterDiffEngine, isFormattingOnlyRow, type ChapterDiffResult, type AlignedDiffRow } from '../services/ChapterDiffEngine';
+import {
+	ChapterSnapshotReplayController,
+	getReplayTextChanges,
+	type ReplayFrameData,
+	type ReplaySpeed,
+	type ReplayState
+} from '../services/ChapterSnapshotReplayController';
 import { getCorkboardStatusText } from '../i18n/data-keys';
 import { t } from '../i18n';
 import { Logger } from '../utils/Logger';
@@ -33,6 +40,13 @@ interface CachedSnapshotEntry {
 	ts: number;
 }
 
+interface ReplayViewportAnchor {
+	index: number;
+	rightOffset: number;
+	node: Text;
+	nodeOffset: number;
+}
+
 export class ChapterSnapshotPanel {
 	private app: App;
 	private nativeSnapshotService: NativeSnapshotService;
@@ -60,6 +74,18 @@ export class ChapterSnapshotPanel {
 	private onlyDifferencesBtnEl: HTMLButtonElement | null = null;
 	private previousDiffBtnEl: HTMLButtonElement | null = null;
 	private nextDiffBtnEl: HTMLButtonElement | null = null;
+	private isReplayActive = false;
+	private replayController: ChapterSnapshotReplayController | null = null;
+	private replayEntryBtnEl: HTMLButtonElement | null = null;
+	private replayPlayBtnEl: HTMLButtonElement | null = null;
+	private replayPrevBtnEl: HTMLButtonElement | null = null;
+	private replayNextBtnEl: HTMLButtonElement | null = null;
+	private replayScrubberEl: HTMLInputElement | null = null;
+	private replayInfoEl: HTMLElement | null = null;
+	private replaySpeedBtns: HTMLButtonElement[] = [];
+	private bannerTextEl: HTMLElement | null = null;
+	private savedComparisonState: { leftMode: 'current' | number | null; rightMode: 'current' | number } | null = null;
+	private replayAnchor: ReplayViewportAnchor | null = null;
 	private onlyDifferences = false;
 	private onlyPhoneDifferences = true;
 	private isPhonePortrait = false;
@@ -164,6 +190,7 @@ export class ChapterSnapshotPanel {
 		this.boundPointerMove = this.onPointerMove.bind(this);
 		this.boundPointerUp = this.onPointerUp.bind(this);
 		this.boundCompStart = (e: CompositionEvent) => {
+			if (this.isReplayActive) return;
 			const target = e.target as Node | null;
 			if (this.hasCurrentSide() && this.isEventInBoundEditor(target)) {
 				this.isComposing = true;
@@ -172,6 +199,7 @@ export class ChapterSnapshotPanel {
 			}
 		};
 		this.boundCompEnd = (e: CompositionEvent) => {
+			if (this.isReplayActive) return;
 			const target = e.target as Node | null;
 			if (this.isEventInBoundEditor(target)) {
 				this.isComposing = false;
@@ -208,6 +236,7 @@ export class ChapterSnapshotPanel {
 		this.bodyEl = this.panelEl.createDiv('wn-snapshot-body');
 		this.buildBanner();
 		this.buildToolbar();
+		this.buildReplayToolbar();
 		this.diffContainerEl = this.bodyEl.createDiv('wn-snapshot-diff-content');
 
 		this.orientationQuery = this.win.matchMedia?.('(orientation: portrait)') ?? null;
@@ -252,7 +281,7 @@ export class ChapterSnapshotPanel {
 
 		// 监听 editor-change 事件（500ms 停顿刷新，不抢焦点）
 		this.editorChangeRef = this.app.workspace.on('editor-change', (editor, info) => {
-			if (this.isDestroyed || !this.hasCurrentSide() || !this.chapterFile || info?.file !== this.chapterFile) return;
+			if (this.isDestroyed || this.isReplayActive || !this.hasCurrentSide() || !this.chapterFile || info?.file !== this.chapterFile) return;
 			if (this.sourceEditor && editor !== this.sourceEditor.editor) return;
 			if (!this.sourceEditor && info instanceof MarkdownView && info.containerEl.ownerDocument !== this.doc) return;
 
@@ -266,7 +295,7 @@ export class ChapterSnapshotPanel {
 
 		// 监听 vault 事件
 		this.vaultModifyRef = this.app.vault.on?.('modify', (file) => {
-			if (this.isDestroyed) return;
+			if (this.isDestroyed || this.isReplayActive) return;
 			if (file === this.chapterFile && this.resolveCurrentEditorText() === null && (this.leftMode === 'current' || this.rightMode === 'current')) {
 				void this.loadAndRenderDiff();
 			}
@@ -293,6 +322,7 @@ export class ChapterSnapshotPanel {
 				this.cachedLeftSnapshot = null;
 				this.cachedRightSnapshot = null;
 				this.diffResult = null;
+				if (this.isReplayActive) return;
 				this.renderGeneration = (this.renderGeneration ?? 0) + 1;
 				this.populateDropdowns();
 				void this.loadAndRenderDiff();
@@ -391,8 +421,8 @@ export class ChapterSnapshotPanel {
 		const banner = this.bodyEl.createDiv('wn-snapshot-banner');
 		const bannerIcon = banner.createSpan('wn-snapshot-banner-icon');
 		setIcon(bannerIcon, 'info');
-		const bannerText = banner.createSpan('wn-snapshot-banner-text');
-		bannerText.setText(t('snapshot.banner-local-retention'));
+		this.bannerTextEl = banner.createSpan('wn-snapshot-banner-text');
+		this.bannerTextEl.setText(t('snapshot.banner-local-retention'));
 	}
 
 	private buildToolbar(): void {
@@ -508,6 +538,291 @@ export class ChapterSnapshotPanel {
 		this.nextDiffBtnEl = nextBtn;
 		nextBtn.disabled = true;
 		nextBtn.onclick = () => this.navigateDiff(1);
+
+		// 回放模式入口（文字按钮）
+		this.replayEntryBtnEl = actionsGroup.createEl('button', {
+			cls: 'wn-snapshot-replay-entry',
+			text: t('snapshot.replay-entry')
+		});
+		this.replayEntryBtnEl.disabled = true;
+		this.replayEntryBtnEl.onclick = () => {
+			void this.enterReplayMode();
+		};
+	}
+
+	private buildReplayToolbar(): void {
+		const replayToolbar = this.bodyEl.createDiv('wn-snapshot-replay-toolbar');
+
+		// 返回对比按钮
+		const backBtn = replayToolbar.createEl('button', {
+			cls: 'wn-snapshot-replay-back-btn',
+			text: t('snapshot.replay-back')
+		});
+		backBtn.onclick = () => {
+			void this.exitReplayMode();
+		};
+
+		// 播放 / 暂停
+		this.replayPlayBtnEl = replayToolbar.createEl('button', {
+			cls: 'wn-snapshot-replay-play-btn',
+			text: t('snapshot.replay-play')
+		});
+		this.replayPlayBtnEl.onclick = () => {
+			if (this.replayController?.isPlaying) {
+				this.replayController.pause();
+			} else {
+				void this.replayController?.play();
+			}
+		};
+
+		// 步进控制组
+		const navGroup = replayToolbar.createDiv('wn-snapshot-replay-nav-group');
+		this.replayPrevBtnEl = navGroup.createEl('button', {
+			cls: 'wn-snapshot-replay-prev-btn',
+			text: t('snapshot.replay-prev')
+		});
+		this.replayPrevBtnEl.onclick = () => {
+			void this.replayController?.step(-1);
+		};
+
+		this.replayNextBtnEl = navGroup.createEl('button', {
+			cls: 'wn-snapshot-replay-next-btn',
+			text: t('snapshot.replay-next')
+		});
+		this.replayNextBtnEl.onclick = () => {
+			void this.replayController?.step(1);
+		};
+
+		// 进度条与版本信息
+		const scrubberGroup = replayToolbar.createDiv('wn-snapshot-replay-scrubber-group');
+		this.replayScrubberEl = scrubberGroup.createEl('input', {
+			cls: 'wn-snapshot-replay-scrubber',
+			type: 'range'
+		});
+		this.replayScrubberEl.setAttribute('aria-label', t('snapshot.replay-position'));
+		this.replayScrubberEl.min = '0';
+		this.replayScrubberEl.max = '0';
+		this.replayScrubberEl.value = '0';
+		this.replayScrubberEl.oninput = () => {
+			const val = parseInt(this.replayScrubberEl?.value ?? '0', 10);
+			if (!isNaN(val)) void this.replayController?.seek(val);
+		};
+
+		this.replayInfoEl = scrubberGroup.createSpan('wn-snapshot-replay-info');
+		this.replayInfoEl.setText('0 / 0');
+
+		// 倍速控制组
+		const speedGroup = replayToolbar.createDiv('wn-snapshot-replay-speed-group');
+		const speeds: ReplaySpeed[] = [1, 3, 5];
+		this.replaySpeedBtns = speeds.map((spd) => {
+			const btn = speedGroup.createEl('button', {
+				cls: `wn-snapshot-replay-speed-btn${spd === 1 ? ' is-active' : ''}`,
+				text: `${spd}x`
+			});
+			btn?.setAttribute?.('aria-label', `${spd}x ${t('snapshot.replay-speed')}`);
+			btn?.setAttribute?.('aria-pressed', String(spd === 1));
+			btn.onclick = () => {
+				this.replayController?.setSpeed(spd);
+			};
+			return btn;
+		});
+	}
+
+	public async enterReplayMode(): Promise<void> {
+		if (this.isDestroyed || this.isReplayActive || this.snapshotsMetaList.length === 0) return;
+		this.cancelRefresh();
+		this.isReplayActive = true;
+		this.replayAnchor = null;
+		this.renderGeneration++;
+		this.savedComparisonState = { leftMode: this.leftMode, rightMode: this.rightMode };
+
+		// Clear comparison plaintext & caches on entry to avoid holding 2+ extra snapshots
+		this.leftContent = '';
+		this.rightContent = '';
+		this.cachedLeftSnapshot = null;
+		this.cachedRightSnapshot = null;
+		this.diffResult = null;
+
+		this.panelEl.addClass('is-replay');
+		this.panelEl.removeClass('is-single-view');
+		this.diffContainerEl.empty();
+		if (this.bannerTextEl) this.bannerTextEl.setText(t('snapshot.replay-hint'));
+		this.clearNavigation();
+
+		this.replayController = new ChapterSnapshotReplayController({
+			nativeSnapshotService: this.nativeSnapshotService,
+			snapshots: this.snapshotsMetaList,
+			currentSnapshotRef: this.currentSnapshotRef,
+			getScopeList: () => this.snapshotsListScope,
+			timerWindow: {
+				setTimeout: (fn, ms) => this.win.setTimeout(() => { void fn(); }, ms),
+				clearTimeout: (id) => this.win.clearTimeout(id)
+			},
+			onStateChange: (state) => this.onReplayStateChange(state),
+			onFrame: (frame) => this.onReplayFrame(frame),
+			onError: (err) => this.onReplayError(err)
+		});
+
+		await this.replayController.startReplay();
+	}
+
+	public async exitReplayMode(options?: { restoreComparison?: boolean }): Promise<void> {
+		if (!this.isReplayActive) return;
+		this.isReplayActive = false;
+		this.replayAnchor = null;
+
+		if (this.replayController) {
+			this.replayController.destroy();
+			this.replayController = null;
+		}
+
+		this.panelEl.removeClass('is-replay');
+		this.renderGeneration++;
+		this.updatePresentationMode();
+		if (this.bannerTextEl) this.bannerTextEl.setText(t('snapshot.banner-local-retention'));
+		this.clearNavigation();
+
+		if (options?.restoreComparison === false) {
+			this.savedComparisonState = null;
+			return;
+		}
+
+		if (this.savedComparisonState) {
+			this.leftMode = this.savedComparisonState.leftMode;
+			this.rightMode = this.savedComparisonState.rightMode;
+			this.savedComparisonState = null;
+		}
+		this.updateSelectDropdownValues();
+		await this.loadAndRenderDiff();
+	}
+
+	private onReplayStateChange(state: ReplayState): void {
+		if (this.isDestroyed || !this.isReplayActive) return;
+
+		if (this.replayPlayBtnEl) {
+			this.replayPlayBtnEl.setText(state.isPlaying ? t('snapshot.replay-pause') : t('snapshot.replay-play'));
+			this.replayPlayBtnEl.disabled = state.total <= 1;
+		}
+
+		if (this.replayPrevBtnEl) {
+			this.replayPrevBtnEl.disabled = state.currentIndex <= 0;
+		}
+
+		if (this.replayNextBtnEl) {
+			this.replayNextBtnEl.disabled = state.currentIndex >= state.total - 1;
+		}
+
+		if (this.replayScrubberEl) {
+			this.replayScrubberEl.max = String(Math.max(0, state.total - 1));
+			this.replayScrubberEl.value = String(state.currentIndex);
+			this.replayScrubberEl.disabled = state.total <= 1;
+		}
+
+		if (this.replayInfoEl) {
+			const meta = state.currentMeta;
+			let timeStr = '';
+			if (meta) {
+				const d = new Date(meta.ts);
+				const pad = (n: number) => String(n).padStart(2, '0');
+				timeStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+			}
+			const idxStr = state.total > 0 ? `${state.currentIndex + 1} / ${state.total}` : '0 / 0';
+			const label = timeStr ? `${idxStr} (${timeStr})` : idxStr;
+			this.replayInfoEl.setText(label);
+			this.replayScrubberEl?.setAttribute?.('aria-valuetext', label);
+		}
+
+		const speeds: ReplaySpeed[] = [1, 3, 5];
+		this.replaySpeedBtns.forEach((btn, i) => {
+			const active = speeds[i] === state.speed;
+			btn.toggleClass('is-active', active);
+			btn?.setAttribute?.('aria-pressed', String(active));
+		});
+	}
+
+	private getReplayAnchorTop(anchor: ReplayViewportAnchor): number | null {
+		const value = anchor.node.textContent ?? '';
+		if (!value || typeof this.doc.createRange !== 'function') return null;
+		let start = Math.min(anchor.nodeOffset, value.length - 1);
+		const code = value.charCodeAt(start);
+		if (start > 0 && code >= 0xdc00 && code <= 0xdfff) start--;
+		const range = this.doc.createRange();
+		range.setStart(anchor.node, start);
+		range.setEnd(anchor.node, Math.min(value.length, start + ((value.codePointAt(start) ?? 0) > 0xffff ? 2 : 1)));
+		const rect = range.getClientRects()[0];
+		return rect && rect.height > 0 ? rect.top : null;
+	}
+
+	private async onReplayFrame(frame: ReplayFrameData): Promise<void> {
+		if (frame.cancellationToken.isCancelled || this.isDestroyed || !this.isReplayActive) return;
+		this.clearNavigation();
+		const renderGen = (this.renderGeneration = (this.renderGeneration ?? 0) + 1);
+		const previousScrollTop = this.diffContainerEl.scrollTop ?? 0;
+		const previousAnchor = frame.mode === 'settled' && this.replayAnchor?.index === frame.index ? this.replayAnchor : null;
+		const previousAnchorTop = previousAnchor ? this.getReplayAnchorTop(previousAnchor) : null;
+		let nextAnchor: ReplayViewportAnchor | null = null;
+
+		const content = this.doc.createElement('div');
+		content.addClass('wn-snapshot-replay-body');
+
+		const { body } = ChapterDiffEngine.splitFrontmatterAndBody(frame.text);
+		const trimmed = body.trim();
+
+		if (frame.mode === 'transition' && frame.diffResult) {
+			const changes = getReplayTextChanges(frame.diffResult);
+			let rightOffset = 0;
+			let firstGroupFinished = false;
+			let anchorIsRemoval = false;
+			for (let index = 0; index < changes.length; index++) {
+				if (index > 0 && index % 80 === 0) {
+					await new Promise<void>((resolve) => this.win.setTimeout(resolve, 0));
+					if (frame.cancellationToken.isCancelled || this.isDestroyed || !this.isReplayActive || renderGen !== this.renderGeneration) return;
+				}
+				const change = changes[index];
+				if (!change.value) continue;
+				const node = this.doc.createTextNode(change.value);
+				const isChange = Boolean(change.added || change.removed);
+				const parent = isChange
+					? content.createEl(change.added ? 'ins' : 'del', { cls: change.added ? 'wn-diff-ins' : 'wn-diff-del' })
+					: content;
+				parent.appendChild(node);
+				const substantiveOffset = change.value.search(/\S/u);
+				if (substantiveOffset >= 0) {
+					if (isChange && (!nextAnchor || (!firstGroupFinished && anchorIsRemoval && change.added))) {
+						nextAnchor = { index: frame.index, node, nodeOffset: substantiveOffset, rightOffset: rightOffset + (change.removed ? 0 : substantiveOffset) };
+						anchorIsRemoval = Boolean(change.removed);
+					} else if (!isChange && nextAnchor) firstGroupFinished = true;
+				}
+				if (!change.removed) rightOffset += change.value.length;
+			}
+		} else if (!trimmed) {
+			const emptyMsg = content.createDiv('wn-snapshot-empty-msg');
+			emptyMsg.createSpan({ text: t('snapshot.replay-empty') });
+		} else {
+			const node = this.doc.createTextNode(body);
+			content.appendChild(node);
+			if (previousAnchor) nextAnchor = { ...previousAnchor, node, nodeOffset: previousAnchor.rightOffset };
+		}
+
+		if (frame.cancellationToken.isCancelled || this.isDestroyed || !this.isReplayActive || renderGen !== this.renderGeneration) return;
+		this.diffContainerEl.empty();
+		this.diffContainerEl.appendChild(content);
+		this.updateObservedContentRoot(content);
+		this.diffContainerEl.scrollTop = frame.mode === 'first' ? 0 : previousScrollTop;
+		this.replayAnchor = nextAnchor;
+		const nextAnchorTop = nextAnchor ? this.getReplayAnchorTop(nextAnchor) : null;
+		if (nextAnchorTop !== null) {
+			const wantedTop = previousAnchorTop ?? (this.diffContainerEl.getBoundingClientRect().top + 40);
+			this.diffContainerEl.scrollTop = Math.max(0, this.diffContainerEl.scrollTop + nextAnchorTop - wantedTop);
+		}
+	}
+
+	private onReplayError(error: string): void {
+		if (this.isDestroyed || !this.isReplayActive) return;
+		this.replayAnchor = null;
+		this.updateObservedContentRoot(null);
+		this.diffContainerEl.empty();
+		this.diffContainerEl.setText(error);
 	}
 
 	private swapSides(): void {
@@ -540,7 +855,7 @@ export class ChapterSnapshotPanel {
 	}
 
 	private updatePresentationMode(): void {
-		if (this.isDestroyed) return;
+		if (this.isDestroyed || this.isReplayActive) return;
 		const next = this.doc.body.hasClass?.('is-phone') === true
 			&& (this.orientationQuery?.matches ?? this.win.innerHeight >= this.win.innerWidth);
 		const changed = next !== this.isPhonePortrait;
@@ -550,7 +865,7 @@ export class ChapterSnapshotPanel {
 	}
 
 	private async renderPresentation(): Promise<void> {
-		if (this.isDestroyed || !this.diffResult) return;
+		if (this.isDestroyed || this.isReplayActive || !this.diffResult) return;
 		this.clearNavigation();
 		await this.renderDiffDom(this.diffGeneration, this.diffResult);
 	}
@@ -774,6 +1089,8 @@ export class ChapterSnapshotPanel {
 	}
 
 	private async initializeData(): Promise<void> {
+		if (this.replayEntryBtnEl) this.replayEntryBtnEl.disabled = true;
+		this.snapshotsMetaList = [];
 		this.clearNavigation();
 		this.cachedLeftSnapshot = null;
 		this.cachedRightSnapshot = null;
@@ -859,6 +1176,10 @@ export class ChapterSnapshotPanel {
 			});
 		}
 
+		if (this.replayEntryBtnEl) {
+			this.replayEntryBtnEl.disabled = this.snapshotsMetaList.length === 0;
+		}
+
 		this.updateSelectDropdownValues();
 	}
 
@@ -882,6 +1203,10 @@ export class ChapterSnapshotPanel {
 		sourceEditor?: MarkdownView | null
 	): Promise<void> {
 		if (this.isDestroyed) return;
+
+		if (this.isReplayActive) {
+			await this.exitReplayMode({ restoreComparison: false });
+		}
 
 		if (this.editorDebounceTimer !== null) {
 			this.win.clearTimeout(this.editorDebounceTimer);
@@ -940,6 +1265,7 @@ export class ChapterSnapshotPanel {
 	}
 
 	private async loadAndRenderDiff(currentTextOverride?: string): Promise<void> {
+		if (this.isReplayActive) return;
 		this.cancelRefresh();
 		const currentGen = this.diffGeneration;
 		this.clearNavigation();
@@ -1418,6 +1744,13 @@ export class ChapterSnapshotPanel {
 		this.doc.removeEventListener('fullscreenchange', this.boundFullscreenChange);
 
 		this.onPointerUp();
+
+		if (this.replayController) {
+			this.replayController.destroy();
+			this.replayController = null;
+		}
+		this.isReplayActive = false;
+		this.replayAnchor = null;
 
 		// 清理内存明文缓存，避免长期持有
 		this.leftContent = '';

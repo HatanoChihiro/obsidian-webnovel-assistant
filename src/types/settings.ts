@@ -61,6 +61,8 @@ export interface TimelineSettings {
 	fileName: string;
 	/** 默认类型标签列表 */
 	defaultTypes: string[];
+	/** 是否在编辑器中显示关联到当前章节的时间线原文样式与悬浮展示 */
+	showEditorReferences?: boolean;
 }
 
 /**
@@ -253,7 +255,7 @@ export interface AccurateCountSettings {
 	language: Locale | 'auto';
 	/** 字数统计方式 */
 	wordCountMethod: 'webnovel' | 'standard' | 'obsidian';
-	/** 是否在字数统计和纯净文本复制中包含脚注内容 */
+	/** 是否在字数统计和纯净文本复制中包含脚注及 Obsidian 注释 */
 	includeFootnotes: boolean;
 	/** 默认目标字数 */
 	defaultGoal: number;
@@ -369,6 +371,9 @@ export interface AccurateCountSettings {
 
 	/** 预览面板同时常驻的数量上限 */
 	loreCardPreviewMaxCount: number;
+
+	/** 是否启用设定悬浮卡片（全平台总开关，未设置时保留桌面开启与移动端旧配置） */
+	enableLorePopover?: boolean;
 
 	/** 移动端是否启用设定悬浮/点击卡片 */
 	enableMobileLorePopover: boolean;

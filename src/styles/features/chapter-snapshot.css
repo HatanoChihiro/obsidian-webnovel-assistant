@@ -183,6 +183,65 @@
 	color: var(--text-on-accent);
 }
 
+.wn-snapshot-panel.is-replay .wn-snapshot-toolbar {
+	display: none;
+}
+
+.wn-snapshot-panel:not(.is-replay) .wn-snapshot-replay-toolbar {
+	display: none;
+}
+
+/* Replay Toolbar & Controls */
+.wn-snapshot-replay-toolbar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 12px;
+	background-color: var(--background-secondary);
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.wn-snapshot-replay-nav-group,
+.wn-snapshot-replay-speed-group {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.wn-snapshot-replay-scrubber-group {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 8px;
+	flex: 1;
+	min-width: 140px;
+}
+
+.wn-snapshot-replay-scrubber {
+	flex: 1;
+	min-width: 80px;
+	height: 20px;
+	cursor: pointer;
+}
+
+.wn-snapshot-replay-info {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	white-space: nowrap;
+}
+
+.wn-snapshot-replay-speed-btn.is-active {
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+.wn-snapshot-replay-body {
+	white-space: pre-wrap;
+	word-break: break-word;
+	line-height: var(--line-height-normal);
+}
+
 /* Diff Container */
 .wn-snapshot-diff-content {
 	flex: 1;

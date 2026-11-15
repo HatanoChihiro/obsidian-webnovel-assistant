@@ -1,5 +1,5 @@
 import type { App, TAbstractFile } from 'obsidian';
-import { TFile, TFolder, type MarkdownView, Notice, normalizePath } from 'obsidian';
+import { TFile, TFolder, type MarkdownView, Notice, normalizePath, parseYaml } from 'obsidian';
 import type { WebNovelAssistantPlugin, SeriesLoreRenameResult } from '../types/plugin';
 import { getDefaultFileName, getDefaultFileNameCandidates, getLoreLabel } from '../i18n/data-keys';
 import { findBookRoot, getCandidateNames, isCandidateSubpath } from '../utils/path';
@@ -21,6 +21,45 @@ export interface LoreCategoryOption {
 	sourceBookPath: string;
 	sourceBookName: string;
 	relPath: string;
+}
+
+export interface LoreRelationItem {
+	label: string;
+	target: string;
+	rawTarget?: string;
+	rawLine?: string;
+}
+
+export interface LoreSnapshot {
+	name: string;
+	category: string;
+	categoryDisplayName: string;
+	type: string;
+	aliases: string;
+	body: string;
+	relations: LoreRelationItem[];
+	rawRelationItems?: LoreRelationItem[];
+	important?: boolean;
+	isBorrowed: boolean;
+	isSingleFile: boolean;
+	readonly file: TFile;
+	readonly filePath: string;
+	readonly heading: string;
+	readonly rawChunk: string;
+	retainedTail?: string;
+	relationProse?: string;
+	relationHeading?: string;
+}
+
+export interface UpdateLoreInput {
+	oldHeading: string;
+	newHeading: string;
+	type: string;
+	aliases: string;
+	body: string;
+	relations: LoreRelationItem[];
+	contextBookPath?: string;
+	expectedSnapshot?: LoreSnapshot;
 }
 
 /**
@@ -2020,5 +2059,829 @@ export class CharacterManager {
 		await this.rebuildCache();
 		new Notice(t('modal.lore-saved'));
 		return true;
+	}
+
+	public isBorrowedLoreEntry(entry: LoreEntry, contextBookPath?: string): boolean {
+		if (!entry || !entry.file) return false;
+		if (!contextBookPath) return false;
+		const entryBook = this.getBookPathForFile(entry.file);
+		const normContext = contextBookPath === '/' ? '' : contextBookPath.replace(/^\/+|\/+$/g, '');
+		const normEntryBook = (!entryBook || entryBook === '/') ? '' : entryBook.replace(/^\/+|\/+$/g, '');
+		return Boolean(normEntryBook && normContext !== normEntryBook);
+	}
+
+	private locateLoreChunk(content: string, heading: string, file: TFile): {
+		isSingleFile: boolean;
+		headingLineIndex: number;
+		chunkStartLine: number;
+		chunkEndLine: number;
+		frontmatterEndLine: number;
+		h1LineIndex: number;
+		lines: string[];
+		isDuplicate: boolean;
+	} {
+		const lines = content.split('\n');
+		let currentFence: { char: string; length: number } | null = null;
+		let h2LineIndex = -1;
+		let nextHeadingIndex = -1;
+		let isDuplicate = false;
+		const targetHeading = cleanLoreHeading(heading);
+
+		let frontmatterEndLine = -1;
+		if (lines.length > 0 && (lines[0] === '---' || lines[0] === '---\r')) {
+			for (let i = 1; i < lines.length; i++) {
+				if (lines[i] === '---' || lines[i] === '---\r') {
+					frontmatterEndLine = i;
+					break;
+				}
+			}
+		}
+
+		let h1LineIndex = -1;
+		const startScanLine = frontmatterEndLine !== -1 ? frontmatterEndLine + 1 : 0;
+
+		for (let i = startScanLine; i < lines.length; i++) {
+			const line = lines[i];
+
+			if (!currentFence) {
+				const m = line.match(/^ {0,3}(`{3,}|~{3,})/);
+				if (m) {
+					currentFence = { char: m[1][0], length: m[1].length };
+					continue;
+				}
+			} else {
+				const m = line.match(/^ {0,3}(`{3,}|~{3,})\s*$/);
+				if (m && m[1][0] === currentFence.char && m[1].length >= currentFence.length) {
+					currentFence = null;
+				}
+				continue;
+			}
+
+			if (h1LineIndex === -1 && /^#\s+[^\n]*/.test(line)) {
+				h1LineIndex = i;
+			}
+
+			const h2Match = line.match(/^##\s+(.+)$/);
+			if (h2Match) {
+				const cleaned = cleanLoreHeading(h2Match[1]);
+				if (cleaned === targetHeading) {
+					if (h2LineIndex === -1) {
+						h2LineIndex = i;
+						continue;
+					} else {
+						isDuplicate = true;
+					}
+				}
+			}
+
+			if (h2LineIndex !== -1 && nextHeadingIndex === -1 && /^#{1,2}\s+/.test(line)) {
+				nextHeadingIndex = i;
+			}
+		}
+
+		if (h2LineIndex !== -1) {
+			const chunkEnd = nextHeadingIndex !== -1 ? nextHeadingIndex : lines.length;
+			return {
+				isSingleFile: false,
+				headingLineIndex: h2LineIndex,
+				chunkStartLine: h2LineIndex + 1,
+				chunkEndLine: chunkEnd,
+				frontmatterEndLine,
+				h1LineIndex,
+				lines,
+				isDuplicate
+			};
+		}
+
+		const isSingle = cleanLoreHeading(file.basename) === targetHeading;
+		let singleStart = startScanLine;
+		if (h1LineIndex !== -1 && h1LineIndex >= singleStart) {
+			singleStart = h1LineIndex + 1;
+		}
+
+		return {
+			isSingleFile: isSingle,
+			headingLineIndex: isSingle ? h1LineIndex : -1,
+			chunkStartLine: isSingle ? singleStart : -1,
+			chunkEndLine: isSingle ? lines.length : -1,
+			frontmatterEndLine,
+			h1LineIndex,
+			lines,
+			isDuplicate: false
+		};
+	}
+
+	private extractRelationTargetName(rawTarget: string): string {
+		const trimmed = rawTarget.trim();
+		if (!trimmed) return '';
+		const linkMatch = trimmed.match(/^\[\[(.*?)\]\]$/);
+		if (!linkMatch) return trimmed;
+		const inner = linkMatch[1];
+		const targetPart = inner.includes('|') ? inner.split('|')[0].trim() : inner.trim();
+		if (targetPart.includes('#')) {
+			return targetPart.split('#').pop()?.trim() || targetPart;
+		}
+		if (targetPart.includes('/')) {
+			return targetPart.split('/').pop()?.trim() || targetPart;
+		}
+		return targetPart;
+	}
+
+	private parseChunkFields(lines: string[], start: number, end: number): {
+		aliases: string;
+		type: string;
+		body: string;
+		relations: LoreRelationItem[];
+		rawRelationItems: LoreRelationItem[];
+		retainedTail: string;
+		relationProse: string;
+		relationHeading: string;
+		important: boolean;
+	} {
+		if (start === -1 || end === -1 || start >= end) {
+			return { aliases: '', type: '', body: '', relations: [], rawRelationItems: [], retainedTail: '', relationProse: '', relationHeading: '', important: false };
+		}
+		const chunkLines = lines.slice(start, end);
+		let currentFence: { char: string; length: number } | null = null;
+		let important = false;
+		let aliases = '';
+		let type = '';
+		let relationHeading = '';
+
+		let inRelationSection = false;
+		let passedRelationSection = false;
+
+		const relations: LoreRelationItem[] = [];
+		const rawRelationItems: LoreRelationItem[] = [];
+		const relationProseLines: string[] = [];
+		const bodyLines: string[] = [];
+		const tailLines: string[] = [];
+
+		for (let i = 0; i < chunkLines.length; i++) {
+			const line = chunkLines[i];
+
+			let isFenceLine = false;
+			if (!currentFence) {
+				const m = line.match(/^ {0,3}(`{3,}|~{3,})/);
+				if (m) {
+					currentFence = { char: m[1][0], length: m[1].length };
+					isFenceLine = true;
+				}
+			} else {
+				isFenceLine = true;
+				const m = line.match(/^ {0,3}(`{3,}|~{3,})\s*$/);
+				if (m && m[1][0] === currentFence.char && m[1].length >= currentFence.length) {
+					currentFence = null;
+				}
+			}
+
+			if (!isFenceLine) {
+				if (/^<!--\s*wn-important\s*-->$/.test(line.trim())) {
+					important = true;
+					continue;
+				}
+
+				const relHeadingMatch = line.match(/^###\s+(?:关系|關係|Relations?)\s*$/i);
+				if (relHeadingMatch) {
+					inRelationSection = true;
+					relationHeading = line.trim().replace(/^###\s+/, '');
+					continue;
+				}
+
+				if (inRelationSection && /^#{1,3}\s+/.test(line)) {
+					inRelationSection = false;
+					passedRelationSection = true;
+					tailLines.push(line);
+					continue;
+				}
+
+				if (!inRelationSection && !passedRelationSection) {
+					const aliasMatch = line.match(/^(?:\*\*|__)?(?:别名|別名|Alias)(?:\*\*|__)?\s*[:：]\s*(.*)$/i);
+					if (aliasMatch && !aliases) {
+						aliases = aliasMatch[1].trim();
+						continue;
+					}
+
+					const typeMatch = line.match(/^(?:\*\*|__)?(?:类型|類型|Type)(?:\*\*|__)?\s*[:：]\s*(.*)$/i);
+					if (typeMatch && !type) {
+						type = typeMatch[1].trim();
+						continue;
+					}
+
+					bodyLines.push(line);
+					continue;
+				}
+
+				if (inRelationSection) {
+					const relMatch = line.match(/^(?:[-*]\s+)?(?:\*\*|__)?([^\n*:]+?)(?:\*\*|__)?\s*[:：]\s*(.*)$/);
+					if (relMatch) {
+						const label = relMatch[1].trim();
+						const rawTargetStr = relMatch[2].trim();
+						const rawTargets = rawTargetStr.split(/[,，、]/).map(t => t.trim()).filter(Boolean);
+						for (const rawT of rawTargets) {
+							const cleanTarget = this.extractRelationTargetName(rawT);
+							if (cleanTarget) {
+								relations.push({ label, target: cleanTarget });
+								rawRelationItems.push({ label, target: cleanTarget, rawTarget: rawT, rawLine: line });
+							}
+						}
+					} else {
+						relationProseLines.push(line);
+					}
+					continue;
+				}
+
+				if (passedRelationSection) {
+					tailLines.push(line);
+					continue;
+				}
+			} else {
+				if (inRelationSection) {
+					relationProseLines.push(line);
+				} else if (passedRelationSection) {
+					tailLines.push(line);
+				} else {
+					bodyLines.push(line);
+				}
+			}
+		}
+
+		return {
+			aliases,
+			type,
+			body: bodyLines.join('\n').trim(),
+			relations,
+			rawRelationItems,
+			retainedTail: tailLines.join('\n').trim(),
+			relationProse: relationProseLines.join('\n').trim(),
+			relationHeading,
+			important
+		};
+	}
+
+	public async getLoreSnapshot(entry: LoreEntry, contextBookPath?: string): Promise<LoreSnapshot | null> {
+		if (!entry || !entry.file) return null;
+
+		const targetAbstract = this.app.vault.getAbstractFileByPath(entry.file.path);
+		if (targetAbstract !== undefined && targetAbstract !== entry.file) {
+			return null;
+		}
+
+		let content = '';
+		try {
+			content = await this.app.vault.cachedRead(entry.file);
+		} catch {
+			return null;
+		}
+
+		const chunk = this.locateLoreChunk(content, entry.heading, entry.file);
+		if (chunk.isDuplicate || (chunk.headingLineIndex === -1 && !chunk.isSingleFile)) {
+			return null;
+		}
+
+		let rawChunk = '';
+		if (chunk.isSingleFile) {
+			rawChunk = content;
+		} else {
+			rawChunk = chunk.lines.slice(chunk.headingLineIndex, chunk.chunkEndLine).join('\n');
+		}
+
+		const parsed = this.parseChunkFields(chunk.lines, chunk.chunkStartLine, chunk.chunkEndLine);
+		const bookPath = this.getBookPathForFile(entry.file) || '';
+		const loreFolder = this.findLoreFolder(bookPath);
+		const loreFolderPath = loreFolder ? loreFolder.path : '';
+		let categoryDisplayName = entry.file.basename;
+		let category = entry.file.basename;
+
+		if (chunk.isSingleFile) {
+			const parentFolder = entry.file.parent;
+			if (parentFolder) {
+				category = parentFolder.name;
+				if (loreFolderPath && parentFolder.path.startsWith(`${loreFolderPath}/`)) {
+					categoryDisplayName = parentFolder.path.slice(loreFolderPath.length + 1) || parentFolder.name;
+				} else {
+					categoryDisplayName = parentFolder.name;
+				}
+			}
+
+			let frontmatter: unknown;
+			try {
+				frontmatter = chunk.frontmatterEndLine >= 0 ? parseYaml(chunk.lines.slice(1, chunk.frontmatterEndLine).join('\n')) : null;
+			} catch { return null; }
+			if (frontmatter && typeof frontmatter === 'object' && !Array.isArray(frontmatter)) {
+				const fm = frontmatter as Record<string, unknown>;
+				const rawFmAliases = fm['aliases'] ?? fm['alias'] ?? fm['别名'] ?? fm['別名'];
+				const fmList: string[] = [];
+				if (Array.isArray(rawFmAliases)) {
+					for (const a of rawFmAliases) {
+						if (typeof a === 'string' || typeof a === 'number') {
+							const cleanA = String(a).trim();
+							if (cleanA) fmList.push(cleanA);
+						}
+					}
+				} else if (typeof rawFmAliases === 'string' && rawFmAliases.trim()) {
+					for (const a of rawFmAliases.split(/[,，、/|;；]/)) {
+						const cleanA = a.trim();
+						if (cleanA) fmList.push(cleanA);
+					}
+				}
+				if (fmList.length > 0) {
+					const existingList = parsed.aliases ? parsed.aliases.split(/[,，、/|;；]/).map(s => s.trim()).filter(Boolean) : [];
+					for (const fmA of fmList) {
+						if (!existingList.includes(fmA)) {
+							existingList.push(fmA);
+						}
+					}
+					parsed.aliases = existingList.join(', ');
+				}
+			}
+		} else {
+			if (loreFolderPath && entry.file.path.startsWith(`${loreFolderPath}/`)) {
+				categoryDisplayName = entry.file.path.slice(loreFolderPath.length + 1).replace(/\.md$/i, '') || entry.file.basename;
+			}
+		}
+
+		const isBorrowed = this.isBorrowedLoreEntry(entry, contextBookPath);
+
+		return {
+			name: cleanLoreHeading(entry.heading),
+			category,
+			categoryDisplayName,
+			type: parsed.type,
+			aliases: parsed.aliases,
+			body: [parsed.body, parsed.retainedTail].filter(Boolean).join('\n\n'),
+			relations: parsed.relations,
+			rawRelationItems: parsed.rawRelationItems,
+			important: entry.important ?? parsed.important,
+			isBorrowed,
+			isSingleFile: chunk.isSingleFile,
+			file: entry.file,
+			filePath: entry.file.path,
+			heading: entry.heading,
+			rawChunk,
+			retainedTail: parsed.retainedTail,
+			relationProse: parsed.relationProse,
+			relationHeading: parsed.relationHeading
+		};
+	}
+
+	public async updateLoreEntry(entry: LoreEntry, input: UpdateLoreInput): Promise<boolean> {
+		if (!entry || !entry.file) return false;
+
+		// 1. Borrowed check
+		if (this.isBorrowedLoreEntry(entry, input.contextBookPath)) {
+			new Notice(t('notice.lore-borrowed-readonly'));
+			return false;
+		}
+
+		// 2. Strict target TFile verification at captured path
+		const capturedPath = input.expectedSnapshot?.filePath ?? entry.file.path;
+		if (input.expectedSnapshot && input.expectedSnapshot.file !== entry.file) {
+			new Notice(t('notice.lore-save-failed'));
+			return false;
+		}
+		const diskFile = this.app.vault.getAbstractFileByPath(capturedPath);
+		if (diskFile !== undefined && (diskFile !== entry.file || entry.file.path !== capturedPath)) {
+			new Notice(t('notice.lore-save-failed'));
+			return false;
+		}
+
+		// 3. Multiline & Markdown-injection checks before writes
+		const newName = cleanLoreHeading(input.newHeading);
+		const oldName = cleanLoreHeading(input.oldHeading || entry.heading);
+		if (!newName) {
+			new Notice(t('notice.lore-name-invalid'));
+			return false;
+		}
+
+		const hasInjection = (str: string): boolean => {
+			return /[\r\n]/.test(str) || /[#*_[\]<>]/.test(str);
+		};
+
+		if (hasInjection(newName)) {
+			new Notice(t('notice.lore-name-invalid'));
+			return false;
+		}
+
+		if (input.type && hasInjection(input.type)) {
+			new Notice(t('notice.lore-name-invalid'));
+			return false;
+		}
+
+		const rawAliases = input.aliases.split(/[,，、/|;；]/).map(s => s.trim()).filter(Boolean);
+		for (const a of rawAliases) {
+			if (hasInjection(a)) {
+				new Notice(t('notice.lore-name-invalid'));
+				return false;
+			}
+		}
+
+		for (const rel of input.relations) {
+			if (rel.label && (hasInjection(rel.label) || /[:：]/.test(rel.label))) {
+				new Notice(t('notice.lore-name-invalid'));
+				return false;
+			}
+			if (rel.target && /[\r\n]/.test(rel.target)) {
+				new Notice(t('notice.lore-name-invalid'));
+				return false;
+			}
+		}
+
+		const bookPath = this.getBookPathForFile(entry.file) || '';
+
+		// 4. Conflict check for both new name AND all requested aliases against other entries
+		const namesToCheck = [newName, ...rawAliases];
+		for (const name of namesToCheck) {
+			const existing = this.getCharacterFile(bookPath, name);
+			if (existing) {
+				const isSame = existing.file.path === entry.file.path && cleanLoreHeading(existing.heading) === cleanLoreHeading(oldName);
+				if (!isSame) {
+					new Notice(t('notice.lore-name-exists', { name }));
+					return false;
+				}
+			}
+		}
+
+		// Read current file content
+		let latestContent = '';
+		try {
+			latestContent = await this.app.vault.read(entry.file);
+		} catch {
+			return false;
+		}
+		const initialContent = latestContent;
+
+		// 5. Initial chunk locate & filename validation
+		const chunk = this.locateLoreChunk(latestContent, oldName, entry.file);
+		if (chunk.isDuplicate || (chunk.headingLineIndex === -1 && !chunk.isSingleFile)) {
+			new Notice(t('notice.lore-save-failed'));
+			return false;
+		}
+
+		if (chunk.isSingleFile && newName !== oldName) {
+			if (newName === '.' || newName === '..' || newName.startsWith('.') || /[\\/:*?"<>|]/.test(newName)) {
+				new Notice(t('notice.lore-name-invalid'));
+				return false;
+			}
+			const parentPath = entry.file.parent ? entry.file.parent.path : '';
+			const targetPath = parentPath ? `${parentPath}/${newName}.md` : `${newName}.md`;
+			const fileOnDisk = this.app.vault.getAbstractFileByPath(targetPath);
+			if (fileOnDisk && fileOnDisk.path !== entry.file.path) {
+				new Notice(t('notice.lore-name-exists', { name: newName }));
+				return false;
+			}
+		}
+
+		// 6. Preserve old name as alias when renaming
+		let finalAliases = input.aliases.trim();
+		if (newName !== oldName) {
+			const aliasList = finalAliases ? finalAliases.split(/[,，、/|;；]/).map(s => s.trim()).filter(Boolean) : [];
+			if (oldName && !aliasList.some(a => cleanLoreHeading(a) === oldName)) {
+				aliasList.push(oldName);
+			}
+			finalAliases = aliasList.join(', ');
+		}
+
+		// 7. Parse latest chunk fields
+		const chunkFields = this.parseChunkFields(chunk.lines, chunk.chunkStartLine, chunk.chunkEndLine);
+		const isImportant = entry.important ?? chunkFields.important;
+		const bodyChangedWithTail = Boolean(input.expectedSnapshot?.retainedTail && input.body !== input.expectedSnapshot.body);
+		const retainedTail = bodyChangedWithTail ? '' : chunkFields.retainedTail;
+		const body = input.expectedSnapshot?.retainedTail && !bodyChangedWithTail ? chunkFields.body : input.body;
+		const relationProse = input.expectedSnapshot?.relationProse ?? chunkFields.relationProse;
+		const relationHeading = input.expectedSnapshot?.relationHeading || chunkFields.relationHeading || getLoreLabel('relation');
+
+		// 8. Format new chunk content
+		const parts: string[] = [];
+		if (isImportant) {
+			parts.push('<!-- wn-important -->');
+		}
+		if (!chunk.isSingleFile || chunk.frontmatterEndLine === -1) {
+			if (finalAliases) {
+				parts.push(`**${getLoreLabel('alias')}**：${finalAliases}`);
+			}
+		}
+		if (input.type.trim()) {
+			parts.push(`**${getLoreLabel('type')}**：${input.type.trim()}`);
+		}
+		if (body.trim()) {
+			parts.push(body.trim());
+		}
+
+		const validRelations = input.relations.filter(r => r.label.trim() && r.target.trim());
+		if (validRelations.length > 0 || relationProse) {
+			let relationBlock = `### ${relationHeading}`;
+			if (relationProse) {
+				relationBlock += `\n${relationProse}`;
+			}
+			const snapshotRelations = input.expectedSnapshot?.rawRelationItems ?? input.expectedSnapshot?.relations ?? chunkFields.rawRelationItems ?? chunkFields.relations;
+			for (const rel of validRelations) {
+				const existingRel = snapshotRelations.find(
+					r => r.label.trim() === rel.label.trim() && cleanLoreHeading(r.target) === cleanLoreHeading(rel.target) && (r.rawLine || r.rawTarget)
+				);
+				if (existingRel?.rawLine && snapshotRelations.filter(r => r.rawLine === existingRel.rawLine).length === 1) {
+					relationBlock += `\n${existingRel.rawLine}`;
+					continue;
+				}
+				if (existingRel?.rawTarget) {
+					relationBlock += `\n**${rel.label.trim()}**：${existingRel.rawTarget}`;
+					continue;
+				}
+
+				const targetStrRaw = rel.target.trim();
+				const rawTargets = targetStrRaw.split(/[,，、]/).map(t => t.trim()).filter(Boolean);
+				const formattedTargets = rawTargets.map(t => {
+					if (t.startsWith('[[')) return t;
+					const targetEntry = this.getCharacterFile(bookPath, t);
+					if (targetEntry) {
+						const normEntryPath = targetEntry.file.path.replace(/\\/g, '/').replace(/^\/+/, '');
+						const normCurrentPath = entry.file.path.replace(/\\/g, '/').replace(/^\/+/, '');
+						const isSameFile = (targetEntry.file === entry.file) || normEntryPath === normCurrentPath;
+
+						if (isSameFile) {
+							return t === targetEntry.heading ? `[[#${targetEntry.heading}]]` : `[[#${targetEntry.heading}|${t}]]`;
+						}
+
+						const linkPath = (this.app?.metadataCache?.fileToLinktext
+							? this.app.metadataCache.fileToLinktext(targetEntry.file, entry.file.path, true)
+							: targetEntry.file.basename) || targetEntry.file.basename;
+
+						if (targetEntry.file.basename === targetEntry.heading) {
+							return t === targetEntry.heading ? `[[${linkPath}]]` : `[[${linkPath}|${t}]]`;
+						}
+
+						return `[[${linkPath}#${targetEntry.heading}|${t}]]`;
+					} else {
+						return `[[#${t}]]`;
+					}
+				});
+				relationBlock += `\n**${rel.label.trim()}**：${formattedTargets.join('、')}`;
+			}
+			parts.push(relationBlock);
+		}
+
+		if (retainedTail) {
+			parts.push(retainedTail);
+		}
+
+		const formattedChunk = parts.join('\n\n');
+
+		// 9. Atomic process update with snapshot verification
+		let updateSucceeded = false;
+		let expectedWrittenContent = '';
+
+		await this.app.vault.process(entry.file, (data) => {
+			const currentFile = this.app.vault.getAbstractFileByPath(capturedPath);
+			if (currentFile !== undefined && (currentFile !== entry.file || entry.file.path !== capturedPath)) return data;
+			const currentChunk = this.locateLoreChunk(data, oldName, entry.file);
+			if (currentChunk.isDuplicate) {
+				return data;
+			}
+			if (currentChunk.headingLineIndex === -1 && !currentChunk.isSingleFile) {
+				return data;
+			}
+
+			{
+				let currentRawChunk = '';
+				if (currentChunk.isSingleFile) {
+					currentRawChunk = data;
+				} else {
+					currentRawChunk = currentChunk.lines.slice(currentChunk.headingLineIndex, currentChunk.chunkEndLine).join('\n');
+				}
+
+				const expectedRawChunk = input.expectedSnapshot?.rawChunk ?? (chunk.isSingleFile
+					? latestContent
+					: chunk.lines.slice(chunk.headingLineIndex, chunk.chunkEndLine).join('\n'));
+				if (currentRawChunk !== expectedRawChunk) {
+					return data;
+				}
+			}
+
+			if (currentChunk.isSingleFile) {
+				let prefix = '';
+				if (currentChunk.frontmatterEndLine !== -1) {
+					const fmLines = currentChunk.lines.slice(1, currentChunk.frontmatterEndLine);
+					const newFmLines: string[] = [];
+					let inAliasBlock = false;
+					let aliasReplaced = false;
+
+					for (const fLine of fmLines) {
+						const trimmed = fLine.trim();
+						const isKeyLine = /^(?:aliases|alias|别名|別名|'(?:aliases|alias|别名|別名)'|"(?:aliases|alias|别名|別名)")\s*:/i.test(fLine);
+						if (isKeyLine) {
+							inAliasBlock = true;
+							if (!aliasReplaced && finalAliases) {
+								const aliasArr = finalAliases.split(/[,，、/|;；]/).map(s => s.trim()).filter(Boolean);
+								newFmLines.push(`aliases: ${JSON.stringify(aliasArr)}`);
+								aliasReplaced = true;
+							}
+							continue;
+						}
+						if (inAliasBlock) {
+							if (!trimmed || trimmed.startsWith('#')) { newFmLines.push(fLine); continue; }
+							if (trimmed.startsWith('- ') || (fLine.startsWith(' ') && !/^[^\s:]+:\s*/.test(fLine))) {
+								continue;
+							}
+							inAliasBlock = false;
+						}
+						newFmLines.push(fLine);
+					}
+
+					if (!aliasReplaced && finalAliases) {
+						const aliasArr = finalAliases.split(/[,，、/|;；]/).map(s => s.trim()).filter(Boolean);
+						newFmLines.push(`aliases: ${JSON.stringify(aliasArr)}`);
+					}
+
+					prefix = '---\n' + newFmLines.join('\n') + (newFmLines.length > 0 ? '\n' : '') + '---\n';
+				}
+
+				let preH1 = '';
+				const preH1Start = currentChunk.frontmatterEndLine !== -1 ? currentChunk.frontmatterEndLine + 1 : 0;
+				const preH1End = currentChunk.h1LineIndex !== -1 ? currentChunk.h1LineIndex : preH1Start;
+				if (preH1End > preH1Start) {
+					preH1 = currentChunk.lines.slice(preH1Start, preH1End).join('\n');
+					if (preH1.length > 0 && !preH1.endsWith('\n')) preH1 += '\n';
+				}
+
+				let h1Line = '';
+				if (currentChunk.h1LineIndex !== -1) {
+					const originalH1 = currentChunk.lines[currentChunk.h1LineIndex];
+					const h1Match = originalH1.match(/^#\s+(.+)$/);
+					if (h1Match && cleanLoreHeading(h1Match[1]) === oldName) {
+						h1Line = `# ${newName}\n`;
+					} else {
+						h1Line = originalH1 + '\n';
+					}
+				}
+
+				updateSucceeded = true;
+				const fullResult = prefix + preH1 + h1Line + formattedChunk + '\n';
+				expectedWrittenContent = fullResult;
+				return fullResult;
+			}
+
+			const lines = currentChunk.lines;
+			const replacement = `## ${newName}\n\n` + formattedChunk;
+			lines.splice(currentChunk.headingLineIndex, currentChunk.chunkEndLine - currentChunk.headingLineIndex, replacement);
+			updateSucceeded = true;
+			const fullResult = lines.join('\n');
+			expectedWrittenContent = fullResult;
+			return fullResult;
+		});
+
+		if (!updateSucceeded) {
+			new Notice(t('notice.lore-save-failed'));
+			return false;
+		}
+
+		// 10. Single file rename with rollback
+		if (chunk.isSingleFile && newName !== oldName) {
+			const parentPath = entry.file.parent ? entry.file.parent.path : '';
+			const targetPath = parentPath ? `${parentPath}/${newName}.md` : `${newName}.md`;
+			try {
+				await this.app.fileManager.renameFile(entry.file, targetPath);
+			} catch (renameErr) {
+				let rollbackFailed = false;
+				try {
+					await this.app.vault.process(entry.file, (currentData) => {
+						if (currentData === expectedWrittenContent) {
+							return initialContent;
+						}
+						rollbackFailed = true;
+						return currentData;
+					});
+				} catch {
+					rollbackFailed = true;
+				}
+				if (rollbackFailed) {
+					console.error('Failed to rollback single-file content: concurrent external edits or process failure', renameErr);
+				}
+				throw renameErr;
+			}
+		}
+
+		// 11. Scoped structured relation links update on H2 rename
+		const linksUpdated = chunk.isSingleFile || newName === oldName
+			? true
+			: await this.updateScopedLoreRelationLinks(bookPath, entry.file, oldName, newName);
+
+		// 12. Finalize
+		entry.heading = newName;
+		await this.rebuildCache();
+		new Notice(t(linksUpdated ? 'modal.lore-saved' : 'notice.lore-links-update-failed'));
+		return true;
+	}
+
+	private async updateScopedLoreRelationLinks(bookPath: string, targetFile: TFile, oldName: string, newName: string): Promise<boolean> {
+		const cleanOld = cleanLoreHeading(oldName);
+		const cleanNew = cleanLoreHeading(newName);
+		if (!cleanOld || !cleanNew || cleanOld === cleanNew) return true;
+
+		const loreFiles = this.getLoreFiles(bookPath);
+		const ownedLoreFiles = loreFiles.filter(file => !this.isBorrowedLoreEntry({ file, heading: '' }, bookPath));
+
+		let hadErrors = false;
+
+		for (const file of ownedLoreFiles) {
+			try {
+				await this.app.vault.process(file, (data) => {
+					const lines = data.split('\n');
+					let fileModified = false;
+					let currentFence: { char: string; length: number } | null = null;
+					let inRelationSection = false;
+
+					for (let i = 0; i < lines.length; i++) {
+						const line = lines[i];
+
+						if (!currentFence) {
+							const m = line.match(/^ {0,3}(`{3,}|~{3,})/);
+							if (m) {
+								currentFence = { char: m[1][0], length: m[1].length };
+								continue;
+							}
+						} else {
+							const m = line.match(/^ {0,3}(`{3,}|~{3,})\s*$/);
+							if (m && m[1][0] === currentFence.char && m[1].length >= currentFence.length) {
+								currentFence = null;
+							}
+							continue;
+						}
+
+						if (/^###\s+(?:关系|關係|Relations?)\s*$/i.test(line)) {
+							inRelationSection = true;
+							continue;
+						}
+
+						if (inRelationSection && /^#{1,3}\s+/.test(line)) {
+							inRelationSection = false;
+							continue;
+						}
+
+						if (!inRelationSection) {
+							continue;
+						}
+
+						const relMatch = line.match(/^(\s*(?:[-*]\s+)?(?:\*\*|__)?([^\n*:]+?)(?:\*\*|__)?\s*[:：]\s*)(.*)$/);
+						if (!relMatch) {
+							continue;
+						}
+
+						const prefix = relMatch[1];
+						const valuePart = relMatch[3];
+
+						const updatedValuePart = valuePart.replace(/\[\[(.*?)\]\]/g, (fullMatch, inner: string) => {
+							const pipeIndex = inner.indexOf('|');
+							const targetPart = pipeIndex !== -1 ? inner.slice(0, pipeIndex).trim() : inner.trim();
+							const aliasSuffix = pipeIndex !== -1 ? inner.slice(pipeIndex) : '';
+
+							const hashIndex = targetPart.indexOf('#');
+							if (hashIndex === -1) {
+								return fullMatch;
+							}
+
+							const linkPath = targetPart.slice(0, hashIndex).trim();
+							const heading = targetPart.slice(hashIndex + 1).trim();
+
+							if (cleanLoreHeading(heading) !== cleanOld) {
+								return fullMatch;
+							}
+
+							if (!linkPath) {
+								if (file.path === targetFile.path) {
+									fileModified = true;
+									return `[[#${cleanNew}${aliasSuffix}]]`;
+								}
+								return fullMatch;
+							}
+
+							const destFile = this.app.metadataCache.getFirstLinkpathDest
+								? this.app.metadataCache.getFirstLinkpathDest(linkPath, file.path)
+								: null;
+							if (destFile && destFile.path === targetFile.path) {
+								fileModified = true;
+								return `[[${linkPath}#${cleanNew}${aliasSuffix}]]`;
+							}
+
+							return fullMatch;
+						});
+
+						if (updatedValuePart !== valuePart) {
+							lines[i] = prefix + updatedValuePart;
+							fileModified = true;
+						}
+					}
+
+					if (!fileModified) {
+						return data;
+					}
+					return lines.join('\n');
+				});
+			} catch (err) {
+				hadErrors = true;
+				console.error(`Failed to update scoped relation links in ${file.path}:`, err);
+			}
+		}
+
+		return !hadErrors;
 	}
 }

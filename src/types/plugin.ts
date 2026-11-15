@@ -13,6 +13,7 @@ import type { CacheManager } from '../services/CacheManager';
 import type { ForeshadowingManager } from '../services/ForeshadowingManager';
 import type { TaskManager } from '../services/TaskManager';
 import type { TimelineManager } from '../services/TimelineManager';
+import type { ChapterReferenceService } from '../services/ChapterReferenceService';
 import type { ServiceRegistry } from '../core/ServiceRegistry';
 import type { FileExplorerPatcher } from '../services/FileExplorerPatcher';
 import type { SettingsManager } from '../core/SettingsManager';
@@ -180,6 +181,7 @@ export interface WebNovelAssistantPlugin extends
 	foreshadowingManager: ForeshadowingManager;
 	taskManager: TaskManager;
 	timelineManager: TimelineManager;
+	chapterReferenceService: ChapterReferenceService;
 	relationGraphManager: RelationGraphManager;
 	typographyManager: TypographyManager;
 	chapterMergeManager: ChapterMergeManager;

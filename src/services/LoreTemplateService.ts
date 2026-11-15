@@ -193,6 +193,7 @@ export function sanitizeLoreHeadings(text: string): string {
 }
 
 interface ColonFieldMatch {
+	valueOffset: number;
 	bullet: string;
 	marker: string;
 	label: string;
@@ -244,6 +245,7 @@ function matchColonFieldLine(line: string): ColonFieldMatch | null {
 	}
 
 	return {
+		valueOffset: line.length - match[5].length,
 		bullet: match[1] ? `${match[1]} ` : '',
 		marker,
 		label,
@@ -607,6 +609,90 @@ export function parseLoreTemplate(rawContent: string): ParsedTemplate {
 		rawContent,
 		fields,
 		render,
+	};
+}
+
+/**
+ * Reuses template field recognition for existing lore, retaining source ranges instead
+ * of importing/normalizing the document. Only edited values are replaced on save.
+ */
+export function parseLoreBodyForEditing(rawContent: string): ParsedTemplate {
+	interface BodySection {
+		start: number;
+		valueStart: number;
+		field: TemplateField;
+	}
+	const sections: BodySection[] = [{
+		start: 0, valueStart: 0,
+		field: { id: 'body-field-0', type: 'heading_section', label: '', defaultValue: '', isMultiline: true },
+	}];
+	const fenceState: FenceScanState = { inFence: false, fenceChar: '', fenceLength: 0 };
+	let offset = 0;
+	let sectionHeading: string | undefined;
+	for (const rawLine of rawContent.split('\n')) {
+		const line = rawLine.replace(/\r$/, '');
+		const { inFenceBefore, inFenceAfter } = scanFenceLine(line, fenceState);
+		if (!inFenceBefore && !inFenceAfter) {
+			const heading = line.match(/^[ ]{0,3}(#{1,6})[ \t]+(.*?)(?:[ \t]+#+[ \t]*)?$/);
+			const colon = heading ? null : matchColonFieldLine(line);
+			if (heading || colon) {
+				if (heading) sectionHeading = heading[2].trim();
+				sections.push({
+					start: offset,
+					valueStart: heading ? Math.min(rawContent.length, offset + rawLine.length + 1) : offset + colon!.valueOffset,
+					field: {
+						id: `body-field-${sections.length}`,
+						type: heading ? 'heading_section' : 'colon_field',
+						label: heading ? sectionHeading! : colon!.label,
+						defaultValue: '',
+						sectionHeading,
+						isMultiline: true,
+					},
+				});
+			}
+		}
+		offset += rawLine.length + 1;
+	}
+
+	const ranges: { field: TemplateField; start: number; end: number }[] = [];
+	for (let i = 0; i < sections.length; i++) {
+		const section = sections[i];
+		const next = sections[i + 1];
+		const rawValue = rawContent.slice(section.valueStart, next?.start ?? rawContent.length);
+		const value = trimBlankLines(rawValue);
+		// Empty headings immediately above colon fields are structural group labels.
+		if (!value && ((i === 0 && sections.length > 1) ||
+			(section.field.type === 'heading_section' && next?.field.type === 'colon_field'))) continue;
+		section.field.defaultValue = value;
+		section.field.isMultiline = section.field.type === 'heading_section' || value.includes('\n');
+		const start = section.valueStart + (value ? rawValue.indexOf(value) : 0);
+		ranges.push({ field: section.field, start, end: start + value.length });
+	}
+
+	return {
+		rawContent,
+		fields: ranges.map(range => range.field),
+		render: values => {
+			let result = rawContent;
+			const newline = rawContent.includes('\r\n') ? '\r\n' : '\n';
+			for (const { field, start, end } of [...ranges].reverse()) {
+				if (values[field.id] === undefined || values[field.id] === field.defaultValue) continue;
+				let value = sanitizeLoreHeadings(trimBlankLines(values[field.id]));
+				// Bound new code fences so a value cannot absorb later fields or entries.
+				const state: FenceScanState = { inFence: false, fenceChar: '', fenceLength: 0 };
+				for (const line of value.split('\n')) scanFenceLine(line, state);
+				if (state.inFence) value += `\n${state.fenceChar.repeat(state.fenceLength)}`;
+				value = value.replace(/\r?\n/g, newline);
+				if (value && start === end) {
+					const previous = rawContent[start - 1];
+					if (field.type === 'colon_field' && /[:：]/.test(previous ?? '')) value = ` ${value}`;
+					if (field.type === 'heading_section' && start > 0 && previous !== '\n') value = `${newline}${value}`;
+					if (end < rawContent.length && rawContent[end] !== '\n' && rawContent[end] !== '\r') value += newline;
+				}
+				result = result.slice(0, start) + value + result.slice(end);
+			}
+			return result;
+		},
 	};
 }
 

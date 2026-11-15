@@ -25,6 +25,7 @@ import { Logger } from './src/utils/Logger';
 
 import type { TaskManager } from './src/services/TaskManager';
 import type { TimelineManager } from './src/services/TimelineManager';
+import type { ChapterReferenceService } from './src/services/ChapterReferenceService';
 import type { RelationGraphManager } from './src/services/RelationGraphManager';
 import { ObsHtmlBuilder } from './src/services/ObsHtmlBuilder';
 import type { ImmersiveModeManager } from './src/ui/ImmersiveModeManager';
@@ -55,6 +56,7 @@ import { t } from './src/i18n';
 import { buildCharacterHoverExtension } from './src/editor/CharacterHoverExtension';
 import { createTypewriterExtension } from './src/editor/TypewriterExtension';
 import { buildProofreadingExtension } from './src/editor/ProofreadingExtension';
+import { buildChapterReferenceExtension } from './src/editor/ChapterReferenceExtension';
 import { createTypographyImeIndentFixExtension } from './src/editor/TypographyImeIndentFixExtension';
 import { AnnotateDictModal } from './src/ui/AnnotateDictModal';
 import { isSelectionEligibleForAnnotate } from './src/utils/proofreadingHelpers';
@@ -125,6 +127,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	get loreSyncService(): LoreSyncService { return this.services.get('LoreSyncService'); }
 	get characterManager(): CharacterManager { return this.services.get('CharacterManager'); }
 	get timelineManager(): TimelineManager { return this.services.get('TimelineManager'); }
+	get chapterReferenceService(): ChapterReferenceService { return this.services.get('ChapterReferenceService'); }
 	get relationGraphManager(): RelationGraphManager { return this.services.get('RelationGraphManager'); }
 	get typographyManager(): TypographyManager { return this.services.get('TypographyManager'); }
 	get chapterMergeManager(): ChapterMergeManager { return this.services.get('ChapterMergeManager'); }
@@ -408,6 +411,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.registerEditorExtension(selectionCountTooltipExtension(this));
 		this.registerEditorExtension(createTypewriterExtension(this));
 		this.registerEditorExtension(buildProofreadingExtension(this.app, this));
+		this.registerEditorExtension(buildChapterReferenceExtension(this.app, this));
 		this.registerEditorExtension(createTypographyImeIndentFixExtension(this));
 	}
 
@@ -570,6 +574,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 
 
 	async saveSettings() {
+		this.services.getOptional('ChapterReferenceService')?.refreshSettings();
 		await this.settingsManager.saveSettings();
 	}
 

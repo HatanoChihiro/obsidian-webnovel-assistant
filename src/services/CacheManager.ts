@@ -10,7 +10,7 @@ import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { JsonSnapshotStore } from '../utils/JsonSnapshotStore';
 import { Logger } from '../utils/Logger';
 
-const CACHE_VERSION = 3;
+const CACHE_VERSION = 4;
 
 /**
  * 缓存条目接口

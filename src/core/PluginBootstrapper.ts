@@ -28,6 +28,7 @@ import { FileEventManager } from '../services/FileEventManager';
 import { ForeshadowingManager } from '../services/ForeshadowingManager';
 import { TaskManager } from '../services/TaskManager';
 import { TimelineManager } from '../services/TimelineManager';
+import { ChapterReferenceService } from '../services/ChapterReferenceService';
 import { RelationGraphManager } from '../services/RelationGraphManager';
 import { TypographyManager } from '../services/TypographyManager';
 import { ChapterSorter } from '../services/ChapterSorter';
@@ -38,14 +39,16 @@ import { WritingJourneyService } from '../services/WritingJourneyService';
 import { ImmersiveReferenceManager } from '../services/ImmersiveReferenceManager';
 import { Logger } from '../utils/Logger';
 import { LoreCardRenderer } from '../ui/components/LoreCardRenderer';
+import { LoreHoverPopover } from '../ui/LoreHoverPopover';
 import { NativeSnapshotService } from '../services/NativeSnapshotService';
 import { ChapterSnapshotManager } from '../services/ChapterSnapshotManager';
 
 /**
  * 启动宿主插件类型
  * 插件主类同时继承自 Obsidian Plugin 并实现 WebNovelAssistantPlugin 门面
+ * settings 使用插件自有声明，避免与 SDK 1.13 新增的同名字段合并。
  */
-export type BootstrapperHost = Plugin & WebNovelAssistantPlugin & {
+export type BootstrapperHost = Omit<Plugin, 'settings'> & WebNovelAssistantPlugin & {
 	editorTracker: EditorTracker;
 	setupModalObserver(): void;
 	setupHomepage(): void;
@@ -359,6 +362,7 @@ export class PluginBootstrapper {
 		this.services.register('ForeshadowingManager', new ForeshadowingManager(this.plugin.app, this.plugin));
 		this.services.register('TaskManager', new TaskManager(this.plugin.app, this.plugin));
 		this.services.register('TimelineManager', new TimelineManager(this.plugin.app, this.plugin));
+		this.services.register('ChapterReferenceService', new ChapterReferenceService(this.plugin.app, this.plugin));
 		this.services.register('RelationGraphManager', new RelationGraphManager(this.plugin.app, this.plugin));
 		this.services.register('TypographyManager', new TypographyManager(this.plugin.app, this.plugin));
 		this.services.register('ProofreadingManager', new ProofreadingManager(this.plugin.app, this.plugin));
@@ -532,6 +536,7 @@ export class PluginBootstrapper {
 		// 1. 同步设置卸载状态并立即执行所有视觉与 DOM 清理（确保在首个 await 之前执行完毕，界面立刻响应）
 		this.plugin.isUnloading = true;
 		this.services.getOptional('TypographyManager')?.destroy();
+		LoreHoverPopover.closeAll();
 		LoreCardRenderer.clearLoreBodyCache();
 
 		// 1.1 立即移除全局样式类

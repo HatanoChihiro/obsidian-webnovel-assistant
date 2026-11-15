@@ -86,6 +86,7 @@ import type { MenuManager } from '../src/core/MenuManager';
 import type { ProofreadingManager } from '../src/services/ProofreadingManager';
 import { Logger } from '../src/utils/Logger';
 import { LoreCardRenderer } from '../src/ui/components/LoreCardRenderer';
+import { LoreHoverPopover } from '../src/ui/LoreHoverPopover';
 
 describe('PluginBootstrapper', () => {
 	let registry: ServiceRegistry;
@@ -172,6 +173,7 @@ describe('PluginBootstrapper', () => {
 		'ForeshadowingManager',
 		'TaskManager',
 		'TimelineManager',
+		'ChapterReferenceService',
 		'RelationGraphManager',
 		'TypographyManager',
 		'ProofreadingManager'
@@ -375,6 +377,18 @@ describe('PluginBootstrapper', () => {
 		expect(typeof proofreadingManager.scan).toBe('function');
 		expect(typeof proofreadingManager.enable).toBe('function');
 		expect(typeof proofreadingManager.disable).toBe('function');
+	});
+
+	it('should register ChapterReferenceService and keep it accessible from ServiceRegistry', () => {
+		const bootstrapper = new PluginBootstrapper(mockPlugin, registry);
+		bootstrapper.registerConstructorServices();
+		bootstrapper.registerCoreRuntimeServices();
+		bootstrapper.registerFeatureServices();
+
+		const chapterReferenceService = registry.get('ChapterReferenceService');
+		expect(chapterReferenceService).toBeDefined();
+		expect(typeof chapterReferenceService.getReferencesSync).toBe('function');
+		expect(typeof chapterReferenceService.prefetchReferences).toBe('function');
 	});
 
 	describe('Platform Features Assembly', () => {
@@ -1028,6 +1042,18 @@ describe('PluginBootstrapper', () => {
 			const shutdownPromise = bootstrapper.shutdown();
 			expect(clearLoreCacheSpy).toHaveBeenCalledTimes(1);
 			return shutdownPromise;
+		});
+
+		it('synchronously closes lore popovers before shutdown persistence waits', async () => {
+			const closeAll = vi.spyOn(LoreHoverPopover, 'closeAll');
+			const bootstrapper = new PluginBootstrapper(mockPlugin, registry);
+			try {
+				const shutdownPromise = bootstrapper.shutdown();
+				expect(closeAll).toHaveBeenCalledOnce();
+				await shutdownPromise;
+			} finally {
+				closeAll.mockRestore();
+			}
 		});
 
 		it('releases logger only for its own owner after async cleanup and does not clear a newly initialized logger', async () => {

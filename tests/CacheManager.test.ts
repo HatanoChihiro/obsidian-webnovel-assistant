@@ -75,7 +75,7 @@ describe('CacheManager', () => {
         it('loadCache should load data from valid cache file', async () => {
             mockAdapter.exists.mockResolvedValue(true);
             const validData = {
-				version: 3,
+				version: 4,
                 timestamp: Date.now(),
                 entries: [['Book 1/Chapter 1.md', { path: 'Book 1/Chapter 1.md', wordCount: 1000, lastModified: 1000, isFolder: false }]]
             };
@@ -85,6 +85,18 @@ describe('CacheManager', () => {
             expect(result).toBe(true);
             expect(manager.getFileCache('Book 1/Chapter 1.md')).toBe(1000);
         });
+
+		it('rejects cached totals from before the comment inclusion policy so unchanged chapters are recounted', async () => {
+			mockAdapter.exists.mockResolvedValue(true);
+			mockAdapter.read.mockResolvedValue(JSON.stringify({
+				version: 3,
+				timestamp: Date.now(),
+				entries: [['Book 1/Chapter 1.md', { path: 'Book 1/Chapter 1.md', wordCount: 12, lastModified: 1000, isFolder: false }]]
+			}));
+
+			expect(await manager.loadCache()).toBe(false);
+			expect(manager.getFileCache('Book 1/Chapter 1.md')).toBeNull();
+		});
 
 		it('loadCache should reject the old cache scope so totals are rebuilt from chapters only', async () => {
 			mockAdapter.exists.mockResolvedValue(true);
@@ -101,7 +113,7 @@ describe('CacheManager', () => {
         it('loadCache should reject expired cache', async () => {
             mockAdapter.exists.mockResolvedValue(true);
             const expiredData = {
-				version: 3,
+				version: 4,
                 timestamp: Date.now() - (8 * 24 * 60 * 60 * 1000), // 8 days ago
                 entries: [['file.md', { path: 'file.md', wordCount: 1000, lastModified: 1000, isFolder: false }]]
             };
@@ -118,7 +130,7 @@ describe('CacheManager', () => {
             
             expect(mockAdapter.write).toHaveBeenCalled();
             const writtenContent = mockAdapter.write.mock.calls[0][1];
-			expect(JSON.parse(writtenContent).version).toBe(3);
+			expect(JSON.parse(writtenContent).version).toBe(4);
             expect(writtenContent).toContain('Book 1/Chapter 1.md');
             expect(writtenContent).toContain('1500');
         });
@@ -126,7 +138,7 @@ describe('CacheManager', () => {
 		it('suppresses redundant writes when cache has not changed', async () => {
 			mockAdapter.exists.mockResolvedValue(true);
 			const validData = {
-				version: 3,
+				version: 4,
 				timestamp: Date.now(),
 				entries: [['Book 1/Chapter 1.md', { path: 'Book 1/Chapter 1.md', wordCount: 1000, lastModified: 1000, isFolder: false }]]
 			};
@@ -151,7 +163,7 @@ describe('CacheManager', () => {
 		it('suppresses periodic saveCache writes when advancing mocked time without cache mutation', async () => {
 			mockAdapter.exists.mockResolvedValue(true);
 			const validData = {
-				version: 3,
+				version: 4,
 				timestamp: Date.now(),
 				entries: [['Book 1/Chapter 1.md', { path: 'Book 1/Chapter 1.md', wordCount: 1000, lastModified: 1000, isFolder: false }]]
 			};

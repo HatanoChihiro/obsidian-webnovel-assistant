@@ -1,16 +1,35 @@
-import { Component } from 'obsidian';
-import { isMobile, getPlatformTier } from '../utils/platform';
+import { Component, type TFile } from 'obsidian';
+import { isMobile, getPlatformTier, isLorePopoverEnabled } from '../utils/platform';
 import type { AccurateCountSettings } from '../types/settings';
 import type { LoreEntry } from '../services/CharacterManager';
 import { t } from '../i18n';
 import { LoreCardRenderer, type LoreCardRendererPlugin } from './components/LoreCardRenderer';
+import { LoreEditModal, type LoreEditPlugin } from './LoreEditModal';
 
 export interface LoreHoverPopoverPlugin extends LoreCardRendererPlugin {
-	settings: Pick<AccurateCountSettings, 'enableMobileLorePopover' | 'lorePopoverCollapse'>;
+	settings: Pick<AccurateCountSettings, 'enableLorePopover' | 'enableMobileLorePopover' | 'lorePopoverCollapse'>;
+	characterManager: LoreCardRendererPlugin['characterManager'] & Partial<LoreEditPlugin['characterManager']> & {
+		isBorrowedLoreEntry?: (entry: LoreEntry, contextBookPath?: string) => boolean;
+		getBookPathForFile?: (file: TFile) => string | null;
+	};
 }
 
 export class LoreHoverPopover extends Component {
 	private static readonly activePopovers = new WeakMap<HTMLElement, LoreHoverPopover>();
+	private static readonly openInstances = new Set<LoreHoverPopover>();
+
+	public static closeForDocument(document: Document): void {
+		for (const popover of Array.from(LoreHoverPopover.openInstances)) {
+			if (popover.ownerDocument === document) popover.hide();
+		}
+	}
+
+	public static closeAll(): void {
+		for (const popover of Array.from(LoreHoverPopover.openInstances)) {
+			popover.hide();
+		}
+		LoreHoverPopover.openInstances.clear();
+	}
 	private plugin: LoreHoverPopoverPlugin;
 	private entry: LoreEntry;
 	private targetEl: HTMLElement;
@@ -23,6 +42,7 @@ export class LoreHoverPopover extends Component {
 	private disposeAfterShow = false;
 	private isDisposed = false;
 	private immediate: boolean = false;
+	private originatingBookPath?: string;
 	private readonly ownerDocument: Document;
 	private readonly ownerWindow: Window;
 	
@@ -30,13 +50,15 @@ export class LoreHoverPopover extends Component {
 		targetEl: HTMLElement,
 		entry: LoreEntry,
 		plugin: LoreHoverPopoverPlugin,
-		immediate: boolean = false
+		immediate: boolean = false,
+		originatingBookPath?: string
 	) {
 		super();
 		this.plugin = plugin;
 		this.entry = entry;
 		this.targetEl = targetEl;
 		this.immediate = immediate;
+		this.originatingBookPath = originatingBookPath;
 		this.ownerDocument = targetEl.ownerDocument;
 		this.ownerWindow = this.ownerDocument.defaultView ?? window;
 		const existing = LoreHoverPopover.activePopovers.get(targetEl);
@@ -45,23 +67,30 @@ export class LoreHoverPopover extends Component {
 			existing.hide();
 		}
 
-		// 移动端无 mouseover/hover，且需校验 enableMobileLorePopover 开关
+		// 全平台校验设定悬浮卡片开关
+		if (!isLorePopoverEnabled(this.plugin.settings)) {
+			return;
+		}
+
 		if (isMobile()) {
-			if (!this.plugin.settings.enableMobileLorePopover) {
-				return;
-			}
 			this.immediate = true;
 		}
 		LoreHoverPopover.activePopovers.set(targetEl, this);
+		LoreHoverPopover.openInstances.add(this);
 		this.load();
+		this.ownerWindow.addEventListener('unload', this.onOwnerWindowUnload);
 
 		if (this.immediate) {
 			void this.show();
 		} else {
 			// 桌面端延迟 1000ms 后显示，避免鼠标快速划过时误触
 			this.showTimeout = this.ownerWindow.setTimeout(() => {
+				this.showTimeout = null;
 				// 确保鼠标没有离开
-				if (!this.targetEl.isConnected || !this.targetEl.matches(':hover')) return;
+				if (!this.targetEl.isConnected || !this.targetEl.matches(':hover')) {
+					this.hide();
+					return;
+				}
 				void this.show();
 			}, 1000);
 		}
@@ -101,12 +130,15 @@ export class LoreHoverPopover extends Component {
 	};
 
 	
-	override onunload() {
-		this.isDisposed = true;
+	private onOwnerWindowUnload = () => {
+		this.hide();
+	};
+
+	private cleanupResources(): void {
+		LoreHoverPopover.openInstances.delete(this);
 		if (LoreHoverPopover.activePopovers.get(this.targetEl) === this) {
 			LoreHoverPopover.activePopovers.delete(this.targetEl);
 		}
-		this.disposeAfterShow = true;
 		if (this.showTimeout !== null) {
 			this.ownerWindow.clearTimeout(this.showTimeout);
 			this.showTimeout = null;
@@ -122,6 +154,12 @@ export class LoreHoverPopover extends Component {
 		this.disconnectObserver?.disconnect();
 		this.disconnectObserver = null;
 		this.removeDomAndListeners();
+	}
+
+	override onunload() {
+		this.isDisposed = true;
+		this.disposeAfterShow = true;
+		this.cleanupResources();
 		super.onunload();
 	}
 
@@ -153,13 +191,14 @@ export class LoreHoverPopover extends Component {
 	private hide() {
 		if (this.isDisposed || this.disposeAfterShow) return;
 		this.disposeAfterShow = true;
-		this.removeDomAndListeners();
+		this.cleanupResources();
 		if (!this.isShowing) this.finishDispose();
 	}
 
 	private finishDispose() {
 		if (this.isDisposed) return;
 		this.isDisposed = true;
+		LoreHoverPopover.openInstances.delete(this);
 		this.unload();
 	}
 
@@ -172,6 +211,7 @@ export class LoreHoverPopover extends Component {
 		}
 		this.targetEl.removeEventListener('mouseleave', this.onMouseLeaveTarget);
 		this.ownerDocument.removeEventListener('click', this.onGlobalClick);
+		this.ownerWindow.removeEventListener('unload', this.onOwnerWindowUnload);
 	}
 
 	private async show() {
@@ -191,15 +231,21 @@ export class LoreHoverPopover extends Component {
 				popoverEl.createDiv({ cls: 'wn-lore-card-empty', text: t('corkboard.lore-not-found') });
 			} else {
 				const cardContainer = popoverEl.createDiv({ cls: 'wn-lore-card-wrapper' });
+				const isBorrowed = this.plugin.characterManager?.isBorrowedLoreEntry
+					? this.plugin.characterManager.isBorrowedLoreEntry(this.entry, this.originatingBookPath)
+					: false;
+				const canEdit = Boolean(this.plugin.characterManager?.updateLoreEntry && !isBorrowed);
+
 				await LoreCardRenderer.buildCardDOM(cardContainer, this.entry, this.plugin, this, {
-					hideEditButton: true,
+					hideEditButton: !canEdit,
 					hideImportanceButton: false,
-					onTitleClick: () => this.hide()
+					onTitleClick: () => this.hide(),
+					onEdit: canEdit ? () => this.openEditModal() : undefined
 				});
 			}
 		} catch (error) {
 			this.isShowing = false;
-			this.removeDomAndListeners();
+			this.cleanupResources();
 			this.finishDispose();
 			throw error;
 		} finally {
@@ -207,7 +253,7 @@ export class LoreHoverPopover extends Component {
 		}
 
 		if (this.disposeAfterShow || this.isDisposed || !this.targetEl.isConnected) {
-			this.removeDomAndListeners();
+			this.cleanupResources();
 			this.finishDispose();
 			return;
 		}
@@ -259,5 +305,19 @@ export class LoreHoverPopover extends Component {
 		const finalMaxHeight = maxAvailHeight > 100 ? maxAvailHeight : defaultMaxHeight;
 
 		this.popoverEl.setCssStyles({ top: `${top}px`, left: `${left}px`, maxHeight: `${finalMaxHeight}px` });
+	}
+
+	private openEditModal(): void {
+		if (this.closeTimeout !== null) {
+			this.ownerWindow.clearTimeout(this.closeTimeout);
+			this.closeTimeout = null;
+		}
+		this.hide();
+		new LoreEditModal(
+			this.plugin.app,
+			this.plugin,
+			this.entry,
+			this.originatingBookPath
+		).open();
 	}
 }

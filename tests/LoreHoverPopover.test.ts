@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const buildCardDOM = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+const openEditModalMock = vi.hoisted(() => vi.fn());
 
 vi.mock('obsidian', () => ({
+	Platform: { isMobile: false },
 	Component: class {
 		private loaded = false;
 
@@ -20,13 +22,26 @@ vi.mock('obsidian', () => ({
 	}
 }));
 
-vi.mock('../src/utils/platform', () => ({
-	isMobile: () => false,
-	getPlatformTier: () => 'desktop'
-}));
+vi.mock('../src/utils/platform', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('../src/utils/platform')>();
+	return {
+		...actual,
+		isMobile: () => false,
+		getPlatformTier: () => 'desktop'
+	};
+});
 
 vi.mock('../src/ui/components/LoreCardRenderer', () => ({
 	LoreCardRenderer: { buildCardDOM }
+}));
+
+vi.mock('../src/ui/LoreEditModal', () => ({
+	LoreEditModal: class {
+		constructor(...args: unknown[]) {
+			openEditModalMock(...args);
+		}
+		open(): void {}
+	}
 }));
 
 import { LoreHoverPopover } from '../src/ui/LoreHoverPopover';
@@ -86,12 +101,12 @@ describe('LoreHoverPopover lifecycle', () => {
 
 		addDocumentListener = vi.fn();
 		removeDocumentListener = vi.fn();
-		const ownerWindow = {
+		const ownerWindow = Object.assign(new EventTarget(), {
 			setTimeout: (handler: () => void, timeout?: number) => globalThis.setTimeout(handler, timeout) as unknown as number,
 			clearTimeout: (id: number) => globalThis.clearTimeout(id),
 			innerWidth: 1200,
 			innerHeight: 800
-		} as unknown as Window;
+		}) as unknown as Window;
 		const body = {
 			appendChild: vi.fn()
 		} as unknown as HTMLElement;
@@ -108,8 +123,21 @@ describe('LoreHoverPopover lifecycle', () => {
 	});
 
 	afterEach(() => {
+		LoreHoverPopover.closeAll();
 		vi.useRealTimers();
 		vi.unstubAllGlobals();
+	});
+
+	it('releases the instance, observer and document listeners when its owner window unloads', () => {
+		new LoreHoverPopover(target, { file: null } as never, { settings: { enableLorePopover: true } } as never, true);
+		vi.runOnlyPendingTimers();
+		const openInstances = (LoreHoverPopover as unknown as { openInstances: Set<LoreHoverPopover> }).openInstances;
+		expect(openInstances.size).toBe(1);
+		ownerDocument.defaultView!.dispatchEvent(new Event('unload'));
+		expect(openInstances.size).toBe(0);
+		expect(disconnect).toHaveBeenCalledOnce();
+		expect(removeDocumentListener).toHaveBeenCalledWith('click', expect.any(Function));
+		expect(vi.getTimerCount()).toBe(0);
 	});
 
 	it('does not attach a deferred document listener after unload', () => {
@@ -194,5 +222,216 @@ describe('LoreHoverPopover lifecycle', () => {
 
 		// Should not close or remove listeners
 		expect(removeDocumentListener).not.toHaveBeenCalled();
+	});
+
+	it('configures editable card with onEdit when not borrowed, and hides edit button when borrowed', () => {
+		const mockEntry = { file: { path: 'Book1/Lore/Alice.md' }, heading: 'Alice' };
+		const editablePlugin = {
+			characterManager: {
+				updateLoreEntry: vi.fn(),
+				isBorrowedLoreEntry: vi.fn().mockReturnValue(false)
+			}
+		};
+
+		new LoreHoverPopover(target, mockEntry as never, editablePlugin as never, true, 'Book1');
+		vi.runOnlyPendingTimers();
+
+		expect(buildCardDOM).toHaveBeenCalledWith(
+			expect.anything(),
+			mockEntry,
+			editablePlugin,
+			expect.anything(),
+			expect.objectContaining({ hideEditButton: false, onEdit: expect.any(Function) })
+		);
+
+		buildCardDOM.mockClear();
+		const borrowedPlugin = {
+			characterManager: {
+				updateLoreEntry: vi.fn(),
+				isBorrowedLoreEntry: vi.fn().mockReturnValue(true)
+			}
+		};
+
+		const { element: borrowedTarget } = createMockElement(ownerDocument);
+		new LoreHoverPopover(borrowedTarget, mockEntry as never, borrowedPlugin as never, true, 'Book2');
+		vi.runOnlyPendingTimers();
+
+		expect(buildCardDOM).toHaveBeenCalledWith(
+			expect.anything(),
+			mockEntry,
+			borrowedPlugin,
+			expect.anything(),
+			expect.objectContaining({ hideEditButton: true })
+		);
+	});
+
+	it('invoking onEdit closes hover popover and launches LoreEditModal', () => {
+		const mockEntry = { file: { path: 'Book1/Lore/Alice.md' }, heading: 'Alice' };
+		const plugin = {
+			app: {},
+			characterManager: {
+				updateLoreEntry: vi.fn(),
+				isBorrowedLoreEntry: vi.fn().mockReturnValue(false)
+			}
+		};
+
+		new LoreHoverPopover(target, mockEntry as never, plugin as never, true, 'Book1');
+		vi.runOnlyPendingTimers();
+
+		const calls = buildCardDOM.mock.calls;
+		const options = calls[calls.length - 1][4] as { onEdit?: () => void };
+		expect(options.onEdit).toBeDefined();
+
+		openEditModalMock.mockClear();
+		options.onEdit!();
+
+		expect(openEditModalMock).toHaveBeenCalledWith(
+			plugin.app,
+			plugin,
+			mockEntry,
+			'Book1'
+		);
+	});
+
+	it('LoreHoverPopover.closeAll() dismisses all open instances immediately', () => {
+		const mockEntry = { file: null };
+		const plugin = { settings: { enableLorePopover: true } };
+
+		new LoreHoverPopover(target, mockEntry as never, plugin as never, true, 'Book1');
+		vi.runOnlyPendingTimers();
+
+		expect(addDocumentListener).toHaveBeenCalled();
+
+		LoreHoverPopover.closeAll();
+		vi.runOnlyPendingTimers();
+
+		// Popover should be closed and its document listeners removed
+		expect(removeDocumentListener).toHaveBeenCalled();
+	});
+
+	it('closing lore cards for a reference preview preserves cards in another document', () => {
+		const entry = { file: null };
+		const plugin = { settings: { enableLorePopover: true } };
+		const otherDocument = Object.create(ownerDocument) as Document;
+		const { element: otherTarget } = createMockElement(otherDocument);
+		const first = new LoreHoverPopover(target, entry as never, plugin as never, true);
+		const second = new LoreHoverPopover(otherTarget, entry as never, plugin as never, true);
+		const firstHide = vi.spyOn(first as unknown as { hide(): void }, 'hide');
+		const secondHide = vi.spyOn(second as unknown as { hide(): void }, 'hide');
+		LoreHoverPopover.closeForDocument(ownerDocument);
+		expect(firstHide).toHaveBeenCalledOnce();
+		expect(secondHide).not.toHaveBeenCalled();
+		LoreHoverPopover.closeAll();
+	});
+
+	it('does not create popover when enableLorePopover is explicitly false', () => {
+		const mockEntry = { file: { path: 'Book1/Lore/Alice.md' }, heading: 'Alice' };
+		const plugin = { settings: { enableLorePopover: false } };
+
+		buildCardDOM.mockClear();
+		const { element: target1 } = createMockElement(ownerDocument);
+		new LoreHoverPopover(target1, mockEntry as never, plugin as never, true, 'Book1');
+		vi.runOnlyPendingTimers();
+
+		expect(buildCardDOM).not.toHaveBeenCalled();
+	});
+
+	it('cancels delayed show timer and cleans up resources when owner window unloads', () => {
+		new LoreHoverPopover(target, { file: null } as never, { settings: { enableLorePopover: true } } as never, false);
+		const openInstances = (LoreHoverPopover as unknown as { openInstances: Set<LoreHoverPopover> }).openInstances;
+		expect(openInstances.size).toBe(1);
+		expect(vi.getTimerCount()).toBe(1);
+
+		ownerDocument.defaultView!.dispatchEvent(new Event('unload'));
+
+		expect(openInstances.size).toBe(0);
+		expect(vi.getTimerCount()).toBe(0);
+		expect(disconnect).toHaveBeenCalledOnce();
+		expect(target.removeEventListener).toHaveBeenCalledWith('mouseleave', expect.any(Function));
+		vi.runAllTimers();
+		expect(buildCardDOM).not.toHaveBeenCalled();
+	});
+
+	it('disposes an expired hover candidate even if no mouseleave event was delivered', () => {
+		new LoreHoverPopover(target, { file: null } as never, { settings: { enableLorePopover: true } } as never, false);
+		vi.mocked(target.matches).mockReturnValue(false);
+		vi.runAllTimers();
+		const openInstances = (LoreHoverPopover as unknown as { openInstances: Set<LoreHoverPopover> }).openInstances;
+		expect(openInstances.size).toBe(0);
+		expect(disconnect).toHaveBeenCalledOnce();
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	it('prevents late DOM resurrection and preserves component unload ordering when closed during in-flight buildCardDOM', async () => {
+		let resolveBuild!: () => void;
+		let registeredCleanup!: ReturnType<typeof vi.fn<() => void>>;
+		buildCardDOM.mockImplementationOnce((_container, _entry, _plugin, component: { onunload: () => void }) => {
+			registeredCleanup = vi.fn<() => void>();
+			const originalOnUnload = component.onunload.bind(component);
+			component.onunload = () => {
+				registeredCleanup();
+				originalOnUnload();
+			};
+			return new Promise<void>(resolve => {
+				resolveBuild = resolve;
+			});
+		});
+
+		const mockEntry = { file: { path: 'Lore/Alice.md' }, heading: 'Alice' };
+		new LoreHoverPopover(target, mockEntry as never, { settings: { enableLorePopover: true } } as never, true);
+		vi.runOnlyPendingTimers();
+
+		const openInstances = (LoreHoverPopover as unknown as { openInstances: Set<LoreHoverPopover> }).openInstances;
+		expect(openInstances.size).toBe(1);
+
+		ownerDocument.defaultView!.dispatchEvent(new Event('unload'));
+
+		expect(openInstances.size).toBe(0);
+		expect(disconnect).toHaveBeenCalledOnce();
+		expect(removeDocumentListener).toHaveBeenCalledWith('click', expect.any(Function));
+		expect(registeredCleanup).not.toHaveBeenCalled();
+
+		resolveBuild();
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(registeredCleanup).toHaveBeenCalledOnce();
+		expect(ownerDocument.body.appendChild).not.toHaveBeenCalled();
+	});
+
+	it('unloading one window leaves popovers in another window open and unaffected', () => {
+		const otherWindow = Object.assign(new EventTarget(), {
+			setTimeout: (handler: () => void, timeout?: number) => globalThis.setTimeout(handler, timeout) as unknown as number,
+			clearTimeout: (id: number) => globalThis.clearTimeout(id),
+			innerWidth: 1200,
+			innerHeight: 800
+		}) as unknown as Window;
+		const otherBody = {
+			appendChild: vi.fn()
+		} as unknown as HTMLElement;
+		const otherDocument = {
+			defaultView: otherWindow,
+			body: Object.assign(otherBody, {
+				createDiv: vi.fn(() => createMockElement(otherDocument).element)
+			}),
+			addEventListener: vi.fn(),
+			removeEventListener: vi.fn()
+		} as unknown as Document;
+		const { element: otherTarget } = createMockElement(otherDocument);
+
+		const entry = { file: null };
+		const plugin = { settings: { enableLorePopover: true } };
+		const first = new LoreHoverPopover(target, entry as never, plugin as never, true);
+		const second = new LoreHoverPopover(otherTarget, entry as never, plugin as never, true);
+		vi.runOnlyPendingTimers();
+
+		const openInstances = (LoreHoverPopover as unknown as { openInstances: Set<LoreHoverPopover> }).openInstances;
+		expect(openInstances.size).toBe(2);
+
+		ownerDocument.defaultView!.dispatchEvent(new Event('unload'));
+
+		expect(openInstances.has(first)).toBe(false);
+		expect(openInstances.has(second)).toBe(true);
+		expect(otherDocument.removeEventListener).not.toHaveBeenCalled();
 	});
 });

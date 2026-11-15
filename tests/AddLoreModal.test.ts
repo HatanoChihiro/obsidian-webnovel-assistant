@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { TFile } from 'obsidian';
+import { TFile, Setting } from 'obsidian';
 import type { App, TextComponent, TextAreaComponent, DropdownComponent, ButtonComponent } from 'obsidian';
 import { MockElement } from './mocks/MockElement';
 import type { AddLorePlugin } from '../src/ui/AddLoreModal';
@@ -110,10 +110,13 @@ vi.mock('obsidian', async (importOriginal) => {
 	return {
 		...actual,
 		Setting: MockSetting,
+		setTooltip: vi.fn(),
+		setIcon: vi.fn(),
 	};
 });
 
 import { AddLoreModal } from '../src/ui/AddLoreModal';
+import { LoreEditModal, type LoreEditPlugin } from '../src/ui/LoreEditModal';
 
 interface MockVault {
 	cachedRead: ReturnType<typeof vi.fn>;
@@ -518,6 +521,199 @@ describe('AddLoreModal Async Guards and Draft Cache', () => {
 			await selectPromise;
 
 			expect(mockPlugin.settings.loreTemplateHistory).toEqual(['Templates/A.md']);
+		});
+	});
+
+	describe('LoreEditModal (Batch C)', () => {
+		it('renders body fields individually and saves edited values without losing other Markdown', async () => {
+			const file = Object.assign(new TFile(), { path: 'Book1/Lore/Scout.md', basename: 'Scout' });
+			const body = 'Opening paragraph.\n\n### Profile\n**Age**： 24\n\n### History\nA first journey.\n';
+			const plugin: LoreEditPlugin = {
+				app: mockApp as unknown as App,
+				characterManager: {
+					getLoreSnapshot: vi.fn().mockResolvedValue({
+						name: 'Scout', type: '', aliases: '', category: 'Characters', body,
+						relations: [], isBorrowed: false, file, heading: 'Scout',
+					}),
+					updateLoreEntry: vi.fn().mockResolvedValue(true),
+				},
+			};
+			const textareaSpy = vi.spyOn(Setting.prototype, 'addTextArea');
+			try {
+				const modal = new LoreEditModal(mockApp as unknown as App, plugin, { file, heading: 'Scout' }, 'Book1');
+				(modal as unknown as { contentEl: MockElement }).contentEl = new MockElement('modal-content');
+				await modal.onOpen();
+				expect(textareaSpy).toHaveBeenCalledTimes(3);
+				const controls = textareaSpy.mock.calls.map(([setup]) => {
+					const control = { value: '', change: (_value: string) => {} };
+					const component = {
+						inputEl: { rows: 1 },
+						setValue: (value: string) => { control.value = value; return component; },
+						onChange: (change: (value: string) => void) => { control.change = change; return component; },
+					} as unknown as TextAreaComponent;
+					setup(component);
+					return control;
+				});
+				expect(controls.map(control => control.value)).toEqual(['Opening paragraph.', '24', 'A first journey.']);
+				await modal.saveLore();
+				expect(plugin.characterManager.updateLoreEntry).toHaveBeenLastCalledWith(
+					expect.anything(), expect.objectContaining({ body }));
+				controls[1].change('25');
+				controls[2].change('A second journey.');
+				await modal.saveLore();
+				expect(plugin.characterManager.updateLoreEntry).toHaveBeenLastCalledWith(
+					expect.anything(), expect.objectContaining({ body: body.replace('24', '25').replace('first', 'second') }));
+			} finally {
+				textareaSpy.mockRestore();
+			}
+		});
+
+		it('onOpen pre-populates snapshot fields, renders read-only category, and saveLore calls updateLoreEntry', async () => {
+			const mockFile = Object.assign(new TFile(), { path: 'Book1/Lore/Hero.md', basename: 'Hero' });
+			const entry = { file: mockFile, heading: 'Hero' };
+
+			const mockEditPlugin: LoreEditPlugin = {
+				app: mockApp as unknown as App,
+				characterManager: {
+					getLoreSnapshot: vi.fn().mockResolvedValue({
+						name: 'Hero',
+						category: 'Characters',
+						categoryDisplayName: 'Characters',
+						type: 'MainRole',
+						aliases: 'HeroAlias',
+						body: 'Hero description body',
+						relations: [{ label: 'Rival', target: 'Villain' }],
+						important: true,
+						isBorrowed: false,
+						isSingleFile: false,
+						file: mockFile,
+						heading: 'Hero'
+					}),
+					updateLoreEntry: vi.fn().mockResolvedValue(true),
+					getLoreEntriesInFileOrder: vi.fn().mockReturnValue([]),
+					findLoreFolder: vi.fn().mockReturnValue(null),
+					getAvailableLoreCategories: vi.fn().mockResolvedValue([]),
+					isBorrowedLoreEntry: vi.fn().mockReturnValue(false)
+				}
+			};
+
+			const modal = new LoreEditModal(mockApp as unknown as App, mockEditPlugin, entry, 'Book1');
+			(modal as unknown as { contentEl: MockElement }).contentEl = new MockElement('modal-content');
+			const closeSpy = vi.spyOn(modal, 'close');
+
+			await modal.onOpen();
+
+			// Pre-populated correctly
+			expect(modal['loreName']).toBe('Hero');
+			expect(modal['loreType']).toBe('MainRole');
+			expect(modal['loreAliases']).toBe('HeroAlias');
+			expect(modal['loreDescription']).toBe('Hero description body');
+			expect(modal['loreRelations']).toEqual([{ label: 'Rival', target: 'Villain' }]);
+
+			// Content contains read-only category and heading
+			expect(modal.contentEl.textContent).toContain('Characters');
+
+			// Save lore
+			const saveSuccess = await modal.saveLore();
+			expect(saveSuccess).toBe(true);
+			expect(mockEditPlugin.characterManager.updateLoreEntry).toHaveBeenCalledWith(
+				entry,
+				expect.objectContaining({
+					oldHeading: 'Hero',
+					newHeading: 'Hero',
+					type: 'MainRole',
+					aliases: 'HeroAlias',
+					body: 'Hero description body',
+					relations: [{ label: 'Rival', target: 'Villain' }],
+					contextBookPath: 'Book1'
+				})
+			);
+		});
+
+		it('preserves draft and does not close modal when updateLoreEntry returns false', async () => {
+			const mockFile = Object.assign(new TFile(), { path: 'Book1/Lore/Hero.md', basename: 'Hero' });
+			const entry = { file: mockFile, heading: 'Hero' };
+
+			const mockEditPlugin: LoreEditPlugin = {
+				app: mockApp as unknown as App,
+				characterManager: {
+					getLoreSnapshot: vi.fn().mockResolvedValue({
+						name: 'Hero',
+						category: 'Characters',
+						categoryDisplayName: 'Characters',
+						type: 'MainRole',
+						aliases: 'HeroAlias',
+						body: 'Hero description body',
+						relations: [],
+						important: false,
+						isBorrowed: false,
+						isSingleFile: false,
+						file: mockFile,
+						heading: 'Hero'
+					}),
+					updateLoreEntry: vi.fn().mockResolvedValue(false), // Save failure
+					getLoreEntriesInFileOrder: vi.fn().mockReturnValue([]),
+					findLoreFolder: vi.fn().mockReturnValue(null),
+					getAvailableLoreCategories: vi.fn().mockResolvedValue([]),
+					isBorrowedLoreEntry: vi.fn().mockReturnValue(false)
+				}
+			};
+
+			const modal = new LoreEditModal(mockApp as unknown as App, mockEditPlugin, entry, 'Book1');
+			(modal as unknown as { contentEl: MockElement }).contentEl = new MockElement('modal-content');
+			const closeSpy = vi.spyOn(modal, 'close');
+
+			await modal.onOpen();
+
+			// Modify draft
+			modal['loreName'] = 'RenamedHero';
+			modal['loreDescription'] = 'Modified draft body';
+
+			const saveSuccess = await modal.saveLore();
+			expect(saveSuccess).toBe(false);
+
+			// Modal should not close, draft preserved
+			expect(closeSpy).not.toHaveBeenCalled();
+			expect(modal['loreName']).toBe('RenamedHero');
+			expect(modal['loreDescription']).toBe('Modified draft body');
+			expect(modal['isModalClosed']).toBe(false);
+		});
+
+		it('cancel/close cleans up without calling updateLoreEntry', async () => {
+			const mockFile = Object.assign(new TFile(), { path: 'Book1/Lore/Hero.md', basename: 'Hero' });
+			const entry = { file: mockFile, heading: 'Hero' };
+
+			const mockEditPlugin: LoreEditPlugin = {
+				app: mockApp as unknown as App,
+				characterManager: {
+					getLoreSnapshot: vi.fn().mockResolvedValue({
+						name: 'Hero',
+						category: 'Characters',
+						categoryDisplayName: 'Characters',
+						type: '',
+						aliases: '',
+						body: '',
+						relations: [],
+						isBorrowed: false,
+						isSingleFile: false,
+						file: mockFile,
+						heading: 'Hero'
+					}),
+					updateLoreEntry: vi.fn(),
+					getLoreEntriesInFileOrder: vi.fn().mockReturnValue([]),
+					findLoreFolder: vi.fn().mockReturnValue(null),
+					getAvailableLoreCategories: vi.fn().mockResolvedValue([]),
+					isBorrowedLoreEntry: vi.fn().mockReturnValue(false)
+				}
+			};
+
+			const modal = new LoreEditModal(mockApp as unknown as App, mockEditPlugin, entry, 'Book1');
+			(modal as unknown as { contentEl: MockElement }).contentEl = new MockElement('modal-content');
+			await modal.onOpen();
+			modal.onClose();
+
+			expect(modal['isModalClosed']).toBe(true);
+			expect(mockEditPlugin.characterManager.updateLoreEntry).not.toHaveBeenCalled();
 		});
 	});
 });

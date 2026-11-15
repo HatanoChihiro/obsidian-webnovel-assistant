@@ -29,7 +29,7 @@ export class WordCounter {
 	 * 
 	 * @param text - 原始 Markdown 文本
 	 * @param method - 统计算法
-	 * @param includeFootnotes - 是否包含脚注（默认 false）
+	 * @param includeFootnotes - 是否包含脚注及 Obsidian 注释（默认 false）
 	 * @returns 纯文本字符数
 	 */
 	calculateAccurateWords(text: string, method: 'webnovel' | 'standard' | 'obsidian' = 'webnovel', includeFootnotes: boolean = false): number {
@@ -72,7 +72,7 @@ export class WordCounter {
 	 * 
 	 * @param text - 原始 Markdown 文本
 	 * @param method - 统计算法
-	 * @param includeFootnotes - 是否包含脚注（默认 false）
+	 * @param includeFootnotes - 是否包含脚注及 Obsidian 注释（默认 false）
 	 * @returns 每一行的字数数组
 	 */
 	calculateWordsPerLine(text: string, method: 'webnovel' | 'standard' | 'obsidian' = 'webnovel', includeFootnotes: boolean = false): number[] {

@@ -3,6 +3,8 @@
  * 仅提供测试所需的类型桩，避免测试依赖完整的 Obsidian 运行环境
  */
 
+import { vi } from 'vitest';
+
 const mockWindow = {
 	setTimeout: (handler: () => void, timeout?: number) => globalThis.setTimeout(handler, timeout),
 	clearTimeout: (id: ReturnType<typeof setTimeout>) => globalThis.clearTimeout(id),
@@ -297,3 +299,5 @@ export async function requestUrl(_params: unknown): Promise<{
 }> {
 	return { status: 200, headers: {}, arrayBuffer: new ArrayBuffer(0), text: '', json: {} };
 }
+
+export const parseYaml = vi.fn((_text: string): unknown => ({}));

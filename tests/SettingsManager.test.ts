@@ -8,6 +8,8 @@ import { SettingsManager } from '../src/core/SettingsManager';
 import { DEFAULT_SETTINGS } from '../src/constants';
 import { parseDirectorySettingLines, formatDirectorySettingLines } from '../src/utils/settingHelpers';
 import { sanitizeWorkbenchSearchHistory, rememberWorkbenchSearchHistory } from '../src/services/WorkbenchFilterIndex';
+import { isLorePopoverEnabled } from '../src/utils/platform';
+import { Platform } from 'obsidian';
 
 beforeAll(() => {
 	(globalThis as unknown as { window: typeof globalThis }).window = globalThis;
@@ -16,6 +18,16 @@ beforeAll(() => {
 const cloneDefaults = () => JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
 
 describe('SettingsManager', () => {
+	it.each([false, true])('uses one explicit lore switch on every platform while preserving legacy behavior (touch=%s)', touch => {
+		const descriptor = Object.getOwnPropertyDescriptor(Platform, 'isMobile')!;
+		Object.defineProperty(Platform, 'isMobile', { ...descriptor, value: touch });
+		try {
+			expect(isLorePopoverEnabled({ enableMobileLorePopover: false })).toBe(!touch);
+			expect(isLorePopoverEnabled({ enableMobileLorePopover: true })).toBe(true);
+			expect(isLorePopoverEnabled({ enableLorePopover: false, enableMobileLorePopover: true })).toBe(false);
+			expect(isLorePopoverEnabled({ enableLorePopover: true, enableMobileLorePopover: false })).toBe(true);
+		} finally { Object.defineProperty(Platform, 'isMobile', descriptor); }
+	});
 	it('writes default values back for invalid nested and top-level settings', async () => {
 		const invalid = cloneDefaults();
 		invalid.defaultGoal = -1;
@@ -243,6 +255,66 @@ describe('SettingsManager', () => {
 		})).resolves.not.toThrow();
 	});
 
+	it('preserves undefined enableLorePopover for legacy configurations across unrelated saves', async () => {
+		const legacy = cloneDefaults();
+		delete (legacy as Record<string, unknown>).enableLorePopover;
+		legacy.enableMobileLorePopover = true;
+
+		const state: { savedData: Record<string, unknown> | null } = { savedData: null };
+		const plugin = {
+			settings: legacy,
+			loadData: vi.fn(async () => state.savedData ?? legacy),
+			saveData: vi.fn(async (data: unknown) => {
+				state.savedData = JSON.parse(JSON.stringify(data));
+			})
+		} as never;
+		const manager = new SettingsManager(plugin, cloneDefaults());
+		const loaded = await manager.loadSettings();
+
+		expect(loaded.enableLorePopover).toBeUndefined();
+		expect(loaded.enableMobileLorePopover).toBe(true);
+
+		// Save unrelated setting
+		await manager.updateSettings({ defaultGoal: 5000 });
+		expect(state.savedData?.enableLorePopover).toBeUndefined();
+		expect(state.savedData?.defaultGoal).toBe(5000);
+
+		// Explicit boolean toggle overrides legacy mode
+		await manager.updateSettings({ enableLorePopover: false });
+		expect(state.savedData?.enableLorePopover).toBe(false);
+
+		const reloaded = await manager.loadSettings();
+		expect(reloaded.enableLorePopover).toBe(false);
+	});
+
+	it('defaults timeline and foreshadowing editor references to false and round-trips updates', async () => {
+		const legacy = cloneDefaults();
+		delete (legacy.timeline as Record<string, unknown>).showEditorReferences;
+		delete (legacy.foreshadowing as Record<string, unknown>).showEditorReferences;
+
+		const state: { savedData: Record<string, unknown> | null } = { savedData: null };
+		const plugin = {
+			settings: legacy,
+			loadData: vi.fn(async () => state.savedData ?? legacy),
+			saveData: vi.fn(async (data: unknown) => {
+				state.savedData = JSON.parse(JSON.stringify(data));
+			})
+		} as never;
+		const manager = new SettingsManager(plugin, cloneDefaults());
+		const loaded = await manager.loadSettings();
+
+		expect(loaded.timeline.showEditorReferences).toBe(false);
+		expect(loaded.foreshadowing.showEditorReferences).toBe(false);
+
+		await manager.updateSettings({
+			timeline: { ...loaded.timeline, showEditorReferences: true },
+			foreshadowing: { ...loaded.foreshadowing, showEditorReferences: true }
+		});
+
+		expect(state.savedData?.timeline).toEqual(expect.objectContaining({ showEditorReferences: true }));
+		expect(state.savedData?.foreshadowing).toEqual(expect.objectContaining({ showEditorReferences: true }));
+	});
+
 	describe('parseDirectorySettingLines & formatDirectorySettingLines', () => {
 		it('parses line-delimited directory strings preserving ASCII and fullwidth commas', () => {
 			const input = '  Novels, Drafts/Volume 1  \r\n\n  小说，正文/第一卷  \r\nDrafts/Notes, Ideas\n';
@@ -461,5 +533,27 @@ describe('settings search', () => {
 		const translate = translateWith(en);
 		const searchResults = searchSettingsCatalogue('Dark Theme', { tier: 'desktop', translate });
 		expect(searchResults.some(result => result.entry.titleKey === 'setting.eyecare-dark-bg-color')).toBe(true);
+	});
+
+	it('includes all-platform enable-lore-popover and editor reference toggles in search catalogue', () => {
+		const loreEntry = SETTINGS_SEARCH_CATALOGUE.find(entry => entry.titleKey === 'setting.enable-lore-popover');
+		const tlEntry = SETTINGS_SEARCH_CATALOGUE.find(entry => entry.titleKey === 'setting.timeline-show-editor-references');
+		const fsEntry = SETTINGS_SEARCH_CATALOGUE.find(entry => entry.titleKey === 'setting.foreshadowing-show-editor-references');
+
+		expect(loreEntry).toBeDefined();
+		expect(loreEntry?.category).toBe('creative');
+		expect(loreEntry?.platform).toBe('all');
+
+		expect(tlEntry).toBeDefined();
+		expect(tlEntry?.category).toBe('creative');
+		expect(tlEntry?.platform).toBe('all');
+
+		expect(fsEntry).toBeDefined();
+		expect(fsEntry?.category).toBe('creative');
+		expect(fsEntry?.platform).toBe('all');
+
+		// The old visible mobile-only setting should no longer exist in the search catalogue
+		const oldMobileEntry = SETTINGS_SEARCH_CATALOGUE.find(entry => entry.titleKey === 'setting.enable-mobile-lore-popover');
+		expect(oldMobileEntry).toBeUndefined();
 	});
 });

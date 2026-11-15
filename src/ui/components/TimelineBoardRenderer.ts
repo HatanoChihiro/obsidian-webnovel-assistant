@@ -1,9 +1,10 @@
 import type { App, Component, WorkspaceLeaf } from 'obsidian';
-import { setIcon, TFile, Notice, Modal } from 'obsidian';
+import { setIcon, setTooltip, TFile, Notice, Modal } from 'obsidian';
 import type { ParsedForeshadowingEntry } from '../../types/foreshadowing';
-import { filterTimelineEntries, parseTimelineChapterList, type TimelineEntry, type TimelineItem, type TimelineManager } from '../../services/TimelineManager';
+import { deepCloneEntry, filterTimelineEntries, parseTimelineChapterList, type TimelineEntry, type TimelineItem, type TimelineManager } from '../../services/TimelineManager';
 import { CorkboardGridRenderer } from './CorkboardGridRenderer';
 import { TimelineAddModal } from '../TimelineAddModal';
+import { TimelineEditModal } from '../TimelineEditModal';
 import { t } from '../../i18n';
 import { Logger } from '../../utils/Logger';
 import { smartLocateAndHighlight } from '../../utils/leaf';
@@ -81,7 +82,7 @@ export type TimelineBoardCharacterManager = Pick<
 >;
 
 export type TimelineBoardSettings = TimelineFormSettings &
-	Pick<AccurateCountSettings, 'enableMobileLorePopover' | 'lorePopoverCollapse' | 'enableSmartChapterSort' | 'customSortOrder'>;
+	Pick<AccurateCountSettings, 'enableLorePopover' | 'enableMobileLorePopover' | 'lorePopoverCollapse' | 'enableSmartChapterSort' | 'customSortOrder'>;
 
 export interface TimelineBoardPlugin
 	extends Omit<TimelineFormContext, 'settings' | 'characterManager'>,
@@ -155,6 +156,7 @@ export class TimelineBoardRenderer {
 		);
 
 		const timelineFile = timelineManager.getTimelineFile(bookFolder);
+		const timelineSource = timelineFile ? { file: timelineFile, path: timelineFile.path } : undefined;
 		const chapterIndex = ChapterSorter.createReferenceIndex(
 			app,
 			plugin,
@@ -265,6 +267,7 @@ export class TimelineBoardRenderer {
 
 		// Track in-flight inline editor saves for this rendered board to preserve interaction ordering
 		const pendingInlineSaves = new Set<Promise<boolean>>();
+		let isEditModalLaunching = false;
 
 		const registerPendingInlineSave = (promise: Promise<boolean>): void => {
 			pendingInlineSaves.add(promise);
@@ -561,6 +564,82 @@ export class TimelineBoardRenderer {
 				timeSpan.onclick = async (e) => {
 					e.stopPropagation();
 					await openTimelineEntry(entry, entryIndex);
+				};
+
+				const editBtn = titleDiv.createEl('button', {
+					cls: 'clickable-icon wn-timeline-node-edit-btn'
+				});
+				editBtn.setAttr('type', 'button');
+				editBtn.setAttr('aria-label', t('common.edit'));
+				setTooltip(editBtn, t('common.edit'));
+				setIcon(editBtn, 'pencil');
+				editBtn.addEventListener('dragstart', (e) => e.stopPropagation());
+				editBtn.addEventListener('keydown', (e: KeyboardEvent) => {
+					if (e.key === 'Enter' || e.key === ' ') {
+						e.stopPropagation();
+					}
+				});
+				editBtn.onclick = (e: MouseEvent) => {
+					e.stopPropagation();
+					if (isEditModalLaunching) {
+						return;
+					}
+					isEditModalLaunching = true;
+					const targetBookFolder = bookFolder;
+					void (async () => {
+						try {
+							if (pendingInlineSaves.size > 0) {
+								const inlineSaveOk = await awaitPendingInlineSaves();
+								if (!inlineSaveOk) {
+									return;
+								}
+							}
+
+							const currentOriginalIndex = allEntries.indexOf(entry);
+							const targetIndex = currentOriginalIndex >= 0 ? currentOriginalIndex : entryIndex;
+							const originalEntrySnapshot = deepCloneEntry(entry);
+
+							const fromSettings = plugin.settings.timeline?.defaultTypes || [];
+							const fromEntries = allEntries.map(e => e.type).filter((type): type is string => Boolean(type));
+							const typeOptions = [...new Set([...fromSettings, ...fromEntries])];
+
+							new TimelineEditModal({
+								app,
+								context: plugin,
+								folderPath: targetBookFolder,
+								initialEntry: originalEntrySnapshot,
+								typeOptions,
+								onSubmit: async (updated: TimelineEntry) => {
+									onSaveStateChange(true);
+									try {
+										if (!timelineSource) {
+											const message = t('common.no-files-hint', { type: t('setting.timeline') });
+											new Notice(message);
+											throw new Error(message);
+										}
+										const result = await timelineManager.updateEntry(targetIndex, updated, targetBookFolder, originalEntrySnapshot, timelineSource);
+										if (!result) {
+											const hasFile = typeof timelineManager.getTimelineFile === 'function'
+												? Boolean(timelineManager.getTimelineFile(targetBookFolder))
+												: true;
+											const msg = !hasFile
+												? t('common.no-files-hint', { type: t('setting.timeline') })
+												: t('timeline.conflict-notice');
+											new Notice(msg);
+											throw new Error(msg);
+										}
+										reloadBoard();
+									} finally {
+										onSaveStateChange(false);
+									}
+								}
+							}).open();
+						} catch (err) {
+							Logger.error('[TimelineBoard] 打开节点编辑对话框失败:', err);
+						} finally {
+							isEditModalLaunching = false;
+						}
+					})();
 				};
 
 				// 2. Render each item row (sub-lane)

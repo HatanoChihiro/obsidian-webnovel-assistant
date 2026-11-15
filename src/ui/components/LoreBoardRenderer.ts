@@ -9,6 +9,7 @@ import { GraphRenderer, type GraphRenderState, type ThemeColors } from './GraphR
 import { GraphInteractionController } from './GraphInteractionController';
 import { LoreCardRenderer, type LoreBodyReadCache } from './LoreCardRenderer';
 import { LoreCardPreview } from './LoreCardPreview';
+import { LoreEditModal, type LoreEditPlugin } from '../LoreEditModal';
 import { DraggableListHelper } from '../../utils/DraggableListHelper';
 import { openFileAndFocus, smartLocateAndHighlight, getLeafForFileNavigation } from '../../utils/leaf';
 
@@ -19,10 +20,8 @@ export type LoreBoardCardsCharacterManager = Pick<
     | 'getCharacterFile'
     | 'moveLoreItem'
     | 'rebuildCache'
-    | 'getLoreContent'
-    | 'updateLoreContent'
     | 'getBookPathForFile'
->;
+> & LoreEditPlugin['characterManager'] & Partial<Pick<CharacterManager, 'toggleLoreImportance'>>;
 
 export type LoreBoardCardsSettings = Pick<
     AccurateCountSettings,
@@ -220,6 +219,9 @@ export class LoreBoardRenderer {
                         dragDataMimeType: mimeType,
                         hideEditButton: group.isBorrowed,
                         hideImportanceButton: group.isBorrowed,
+                        onEdit: group.isBorrowed ? undefined : target => {
+                            new LoreEditModal(app, { app, characterManager: plugin.characterManager }, target, currentBookPath).open();
+                        },
                         // 卡片容器可聚焦，使键盘用户也能触发悬停大预览（与鼠标悬停同一路径）
                         focusable: isPreviewEnabled,
                         onExpand: isPreviewEnabled && preview ? () => { preview.open(); } : undefined

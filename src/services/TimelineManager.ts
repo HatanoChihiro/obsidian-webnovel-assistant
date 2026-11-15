@@ -32,6 +32,14 @@ export interface TimelineEntry {
 	items?: TimelineItem[];
 }
 
+export interface ChapterTimelineNode {
+	time: string;
+	type?: string;
+	lores?: string[];
+	items: TimelineItem[];
+	entry: TimelineEntry;
+}
+
 export function timelineNodeKey(node: Pick<TimelineEntry, 'time' | 'type' | 'lores'>): string {
 	const lores = [...new Set((node.lores || []).map(lore => lore.trim()).filter(Boolean))].sort();
 	return JSON.stringify([node.time.trim(), node.type?.trim() || '', lores]);
@@ -145,7 +153,7 @@ function deepCloneItem(item: TimelineItem): TimelineItem {
 	};
 }
 
-function deepCloneEntry(entry: TimelineEntry): TimelineEntry {
+export function deepCloneEntry(entry: TimelineEntry): TimelineEntry {
 	return {
 		time: entry.time,
 		type: entry.type,
@@ -782,6 +790,71 @@ export class TimelineManager {
 		return { eligibleChapters, chapterPathToNodes };
 	}
 
+	getTimelineNodesForChapter(
+		chapterFile: TFile,
+		entries: TimelineEntry[],
+		folderPath?: string,
+		timelineFile?: TFile
+	): ChapterTimelineNode[] {
+		if (!chapterFile || !entries || entries.length === 0) return [];
+
+		const folder = this.normalizeFolderPath(folderPath);
+		const tlFile = timelineFile || this.getTimelineFile(folder);
+		const tlPath = tlFile ? tlFile.path : this.getTimelineFilePath(folder);
+
+		const eligibleChapters = ChapterSorter.getAllChapters(this.app, this.plugin, folder);
+		const referenceIndex = ChapterSorter.createReferenceIndex(this.app, this.plugin, folder, {
+			eligibleChapters,
+			sourcePath: tlPath
+		});
+
+		const results: ChapterTimelineNode[] = [];
+
+		for (const entry of entries) {
+			const nodeTime = entry.time?.trim();
+			if (!nodeTime) continue;
+
+			const matchedItems: TimelineItem[] = [];
+
+			if (entry.items && entry.items.length > 0) {
+				for (const item of entry.items) {
+					if (!item.chapter) continue;
+					const links = parseTimelineChapterList(item.chapter);
+					const isMatch = links.some(link => referenceIndex.resolve(link)?.path === chapterFile.path);
+					if (isMatch) {
+						// Don't fallback to aggregate node origin for unrelated individual items.
+						matchedItems.push(item);
+					}
+				}
+			} else if (entry.chapter) {
+				// Legacy node with no items maps description/chapter/origin as a single item.
+				const links = parseTimelineChapterList(entry.chapter);
+				const isMatch = links.some(link => referenceIndex.resolve(link)?.path === chapterFile.path);
+				if (isMatch) {
+					matchedItems.push({
+						description: entry.description,
+						chapter: entry.chapter,
+						origin: entry.origin,
+						important: entry.important,
+						type: entry.type
+					});
+				}
+			}
+
+			if (matchedItems.length > 0) {
+				results.push({
+					time: entry.time,
+					type: entry.type,
+					lores: entry.lores,
+					items: matchedItems,
+					entry
+				});
+			}
+		}
+
+		return results;
+	}
+
 	isFrontMatterInSync(current: unknown, target: string[]): boolean {
 		if (target.length === 0) {
 			return current === undefined;
@@ -953,13 +1026,22 @@ export class TimelineManager {
 		return index;
 	}
 
-	async updateEntry(index: number, updated: TimelineEntry, folderPath?: string, expectedEntry?: TimelineEntry): Promise<string> {
+	async updateEntry(index: number, updated: TimelineEntry, folderPath?: string, expectedEntry?: TimelineEntry, expectedSource?: { file: TFile; path: string }): Promise<string> {
 		const folder = this.normalizeFolderPath(folderPath);
+		const expectedFile = expectedSource?.file;
+		const expectedPath = expectedSource?.path;
+		const assertSource = (): void => {
+			if (expectedFile && (this.getTimelineFile(folder) !== expectedFile || expectedFile.path !== expectedPath)) {
+				new Notice(t('timeline.conflict-notice'));
+				throw new Error(t('timeline.conflict-notice'));
+			}
+		};
 		const canonicalUpdated = { ...updated, lores: this.canonicalizeLoreList(updated.lores || [], folder) };
 		const frozenUpdated = deepFreezeEntry(deepCloneEntry(canonicalUpdated));
 		const frozenExpected = expectedEntry ? deepFreezeEntry(deepCloneEntry(expectedEntry)) : undefined;
 
 		return this.writer.enqueue(async () => {
+			assertSource();
 			const file = this.getTimelineFile(folder);
 			if (!file) return '';
 
@@ -967,6 +1049,7 @@ export class TimelineManager {
 			let writeSuccess = false;
 
 			await this.processTimelineFile(file, (existing) => {
+				assertSource();
 				const latestEntries = this.parseEntries(existing, folder);
 				const targetIndex = this.resolveTargetIndex(latestEntries, index, frozenExpected);
 

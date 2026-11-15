@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TimelineBoardRenderer, type TimelineBoardOptions, type TimelineBoardPlugin } from '../src/ui/components/TimelineBoardRenderer';
 import { TimelineManager, type TimelineEntry } from '../src/services/TimelineManager';
+import { TimelineEditModal } from '../src/ui/TimelineEditModal';
 import { CorkboardGridRenderer } from '../src/ui/components/CorkboardGridRenderer';
 import { ChapterSorter } from '../src/services/ChapterSorter';
-import { setIcon, type App, type Component, type TFile } from 'obsidian';
+import { setIcon, setTooltip, Notice, type App, type Component, type TFile } from 'obsidian';
 
 const { MockFile } = vi.hoisted(() => {
 	class HoistedMockFile {
@@ -36,7 +37,9 @@ const mockOwnerWindow = {
 		addRange: vi.fn()
 	})),
 	createSvg: vi.fn(() => new MockElement()),
-	createFragment: vi.fn(() => new MockElement())
+	createFragment: vi.fn(() => new MockElement()),
+	setTimeout: (fn: (...args: unknown[]) => void, ms?: number) => globalThis.setTimeout(fn, ms),
+	clearTimeout: (id: NodeJS.Timeout | number) => globalThis.clearTimeout(id as number)
 };
 
 class MockElement {
@@ -80,6 +83,11 @@ class MockElement {
 	setSelectionRange = vi.fn();
 	hide = vi.fn();
 	show = vi.fn();
+	click = vi.fn((e?: unknown) => {
+		const evt = (e && typeof e === 'object') ? e : { stopPropagation: vi.fn(), preventDefault: vi.fn() };
+		this.onclick?.(evt);
+		this.dispatchEvent('click', evt);
+	});
 
 	remove() {
 		if (this.parentElement) {
@@ -285,10 +293,19 @@ vi.mock('obsidian', () => ({
 	setTooltip: vi.fn(),
 	Platform: { isMobile: false },
 	Notice: vi.fn(),
+	Setting: class {
+		constructor(_containerEl?: unknown) {}
+		setName(_name: string) { return this; }
+		setHeading() { return this; }
+		setDesc(_desc: string) { return this; }
+	},
 	Modal: class {
 		modalEl = new MockElement();
 		contentEl = new MockElement();
-		constructor(_app: unknown) {}
+		app: unknown;
+		constructor(app: unknown) {
+			this.app = app;
+		}
 		open() {
 			lastOpenedModal = this as unknown as { contentEl: MockElement; open: () => void; close: () => void };
 			(this as unknown as { onOpen?: () => void }).onOpen?.();
@@ -366,7 +383,10 @@ describe('TimelineBoardRenderer', () => {
 				updateLoreContent: vi.fn(),
 				getCharactersForBook: vi.fn().mockReturnValue([]),
 				getLoreEntriesInFileOrder: vi.fn().mockReturnValue([])
-			}
+			},
+			getVaultMarkdownFiles: vi.fn(() => []),
+			getTrackedMarkdownFiles: vi.fn(() => []),
+			isPluginGeneratedFile: vi.fn(() => false)
 		} as unknown as TimelineBoardPlugin;
 
 		container = new MockElement('wn-timeline-board');
@@ -2223,6 +2243,517 @@ describe('TimelineBoardRenderer', () => {
 				expect(finalContent).toContain('[[第1章]]');
 			});
 			expect(reloadBoardSpy).toHaveBeenCalled();
+		});
+	});
+
+	describe('Batch A: Vertical timeline board node quick edit modal', () => {
+		beforeEach(() => {
+			(mockPlugin.timelineManager.getTimelineFile as ReturnType<typeof vi.fn>).mockReturnValue(createMockFile('Timeline.md', 'FictionalBook/Timeline.md'));
+		});
+		const fictionalChapter1 = createMockFile('第1章.md', 'FictionalBook/第1章.md');
+		const fictionalChapter2 = createMockFile('第2章.md', 'FictionalBook/第2章.md');
+
+		it('renders keyboard-focusable pencil button at right of vertical node title with setTooltip and aria-label, stopping propagation', async () => {
+			const entry: TimelineEntry = {
+				time: '永和元年春',
+				type: '主线',
+				lores: ['灵剑宗'],
+				description: '初入宗门',
+				chapter: '[[第1章]]',
+				rawBlock: '',
+				items: [{ description: '初入宗门', chapter: '[[第1章]]' }]
+			};
+
+			const reloadBoardSpy = vi.fn();
+			const onSaveStateChangeSpy = vi.fn();
+			lastOpenedModal = null;
+
+			await TimelineBoardRenderer.render({
+				app: mockApp,
+				plugin: mockPlugin,
+				container: container as unknown as HTMLElement,
+				files: [fictionalChapter1],
+				foreshadowingMap: new Map(),
+				currentBookPath: 'FictionalBook',
+				loadedEntries: [entry],
+				onSaveStateChange: onSaveStateChangeSpy,
+				reloadBoard: reloadBoardSpy,
+				getChapterEvents: vi.fn().mockReturnValue([])
+			});
+
+			const titleDiv = container.querySelector('.wn-timeline-node-title');
+			expect(titleDiv).not.toBeNull();
+
+			const editBtn = titleDiv?.querySelector('.wn-timeline-node-edit-btn');
+			expect(editBtn).not.toBeNull();
+			expect(editBtn?.getAttr('aria-label')).toBe('common.edit');
+			expect(editBtn?.getAttr('data-icon')).toBe('pencil');
+			expect(setTooltip).toHaveBeenCalledWith(editBtn, 'common.edit');
+
+			// Preserves horizontal title layout: time text is sibling before editBtn
+			const timeTextEl = titleDiv?.querySelector('.wn-timeline-node-time-text');
+			expect(timeTextEl).not.toBeNull();
+			expect(timeTextEl?.textContent).toBe('永和元年春');
+
+			// Stop propagation on edit button click
+			const clickEvt = { stopPropagation: vi.fn(), preventDefault: vi.fn() };
+			editBtn?.onclick?.(clickEvt);
+			expect(clickEvt.stopPropagation).toHaveBeenCalled();
+
+			// Keydown on edit button stops propagation
+			const keyEvt = { key: 'Enter', stopPropagation: vi.fn() };
+			editBtn?.dispatchEvent('keydown', keyEvt);
+			expect(keyEvt.stopPropagation).toHaveBeenCalled();
+		});
+
+		it('opens thin edit modal with full deep-cloned initial TimelineEntry including all items, chapter, origin, importance, and lores', async () => {
+			const entry: TimelineEntry = {
+				time: '永和元年夏',
+				type: '主线',
+				lores: ['灵剑宗', '古阵法'],
+				description: '内门大比\n暗中探查',
+				chapter: '[[第1章]], [[第2章]]',
+				origin: '比武擂台一角',
+				important: true,
+				rawBlock: '',
+				items: [
+					{ description: '内门大比', chapter: '[[第1章]]', origin: '比武擂台一角', important: true },
+					{ description: '暗中探查', chapter: '[[第2章]]', origin: '藏经阁深处', important: false }
+				]
+			};
+
+			lastOpenedModal = null;
+
+			await TimelineBoardRenderer.render({
+				app: mockApp,
+				plugin: mockPlugin,
+				container: container as unknown as HTMLElement,
+				files: [fictionalChapter1, fictionalChapter2],
+				foreshadowingMap: new Map(),
+				currentBookPath: 'FictionalBook',
+				loadedEntries: [entry],
+				onSaveStateChange: vi.fn(),
+				reloadBoard: vi.fn(),
+				getChapterEvents: vi.fn().mockReturnValue([])
+			});
+
+			const editBtn = container.querySelector('.wn-timeline-node-edit-btn');
+			expect(editBtn).not.toBeNull();
+			editBtn?.click();
+
+			expect(lastOpenedModal).not.toBeNull();
+			const modalContent = lastOpenedModal!.contentEl;
+			expect(modalContent.hasClass('wn-timeline-edit-modal')).toBe(true);
+
+			// Check form initial values
+			const timeInput = modalContent.querySelector('.wn-timeline-form-input') as unknown as MockElement;
+			expect(timeInput?.value).toBe('永和元年夏');
+
+			const typeSelect = modalContent.querySelector('.wn-timeline-node-type-select') as unknown as MockElement;
+			expect(typeSelect?.value).toBe('主线');
+
+			const eventBlocks = modalContent.querySelectorAll('.webnovel-modal-event-block');
+			expect(eventBlocks).toHaveLength(2);
+
+			const desc1 = eventBlocks[0].querySelectorAll('.wn-timeline-form-textarea')[0] as unknown as MockElement;
+			const quote1 = eventBlocks[0].querySelectorAll('.wn-timeline-form-textarea')[1] as unknown as MockElement;
+			expect(desc1?.value).toBe('内门大比');
+			expect(quote1?.value).toBe('比武擂台一角');
+
+			const desc2 = eventBlocks[1].querySelectorAll('.wn-timeline-form-textarea')[0] as unknown as MockElement;
+			const quote2 = eventBlocks[1].querySelectorAll('.wn-timeline-form-textarea')[1] as unknown as MockElement;
+			expect(desc2?.value).toBe('暗中探查');
+			expect(quote2?.value).toBe('藏经阁深处');
+
+			// Deep clone verification: modifying form inputs does not mutate original entry object
+			timeInput.value = '永和元年秋';
+			expect(entry.time).toBe('永和元年夏');
+			desc1.value = '篡改事件';
+			expect(entry.items![0].description).toBe('内门大比');
+		});
+
+		it('awaits pending inline saves before taking snapshot for edit modal', async () => {
+			const entry: TimelineEntry = {
+				time: '永和二年春',
+				type: '支线',
+				description: '旧事件描述',
+				chapter: '',
+				rawBlock: '',
+				items: [{ description: '旧事件描述', chapter: '' }]
+			};
+
+			lastOpenedModal = null;
+
+			await TimelineBoardRenderer.render({
+				app: mockApp,
+				plugin: mockPlugin,
+				container: container as unknown as HTMLElement,
+				files: [fictionalChapter1],
+				foreshadowingMap: new Map(),
+				currentBookPath: 'FictionalBook',
+				loadedEntries: [entry],
+				onSaveStateChange: vi.fn(),
+				reloadBoard: vi.fn(),
+				getChapterEvents: vi.fn().mockReturnValue([])
+			});
+
+			const descEl = container.querySelector('.wn-timeline-item-desc') as unknown as MockElement;
+			expect(descEl).not.toBeNull();
+			descEl.click();
+			expect(descEl.hasClass('wn-sticky-note-paragraph-editor')).toBe(true);
+			descEl.textContent = '新行内编辑事件描述';
+
+			let resolveUpdate!: (content: string) => void;
+			const updatePromise = new Promise<string>(resolve => { resolveUpdate = resolve; });
+			(mockPlugin.timelineManager.updateEntry as unknown as ReturnType<typeof vi.fn>).mockReturnValueOnce(updatePromise);
+
+			// Trigger blur which initiates pending inline save
+			void descEl.onblur?.();
+
+			// Click node edit button synchronously while inline save is in-flight
+			const editBtn = container.querySelector('.wn-timeline-node-edit-btn') as unknown as MockElement;
+			expect(editBtn).not.toBeNull();
+			editBtn.click();
+
+			// Flush microtasks; modal should NOT have opened yet because pending save is still in flight
+			await new Promise(resolve => setTimeout(resolve, 0));
+			expect(lastOpenedModal).toBeNull();
+
+			// Resolve inline save
+			resolveUpdate('Updated content');
+			await vi.waitFor(() => {
+				expect(lastOpenedModal).not.toBeNull();
+			});
+
+			// Modal receives updated description from inline save
+			const descInput = lastOpenedModal!.contentEl.querySelector('.wn-timeline-form-textarea') as unknown as MockElement;
+			expect(descInput?.value).toBe('新行内编辑事件描述');
+		});
+
+		it('cancel closes modal without modifying timeline or calling updateEntry', async () => {
+			const entry: TimelineEntry = {
+				time: '永和三年',
+				description: '未修改事件',
+				chapter: '',
+				rawBlock: ''
+			};
+
+			lastOpenedModal = null;
+
+			await TimelineBoardRenderer.render({
+				app: mockApp,
+				plugin: mockPlugin,
+				container: container as unknown as HTMLElement,
+				files: [fictionalChapter1],
+				foreshadowingMap: new Map(),
+				currentBookPath: 'FictionalBook',
+				loadedEntries: [entry],
+				onSaveStateChange: vi.fn(),
+				reloadBoard: vi.fn(),
+				getChapterEvents: vi.fn().mockReturnValue([])
+			});
+
+			const editBtn = container.querySelector('.wn-timeline-node-edit-btn') as unknown as MockElement;
+			expect(editBtn).not.toBeNull();
+			editBtn.click();
+			expect(lastOpenedModal).not.toBeNull();
+
+			const cancelBtn = lastOpenedModal!.contentEl.querySelector('.wn-timeline-action-btn') as unknown as MockElement;
+			expect(cancelBtn).not.toBeNull();
+
+			const closeSpy = vi.spyOn(lastOpenedModal!, 'close');
+			cancelBtn.click();
+
+			expect(closeSpy).toHaveBeenCalled();
+			expect(mockPlugin.timelineManager.updateEntry).not.toHaveBeenCalled();
+		});
+
+		it('awaits save success before closing, serializes save, guards double-save/cancel, and reloads board', async () => {
+			const entry: TimelineEntry = {
+				time: '永和四年',
+				type: '主线',
+				description: '原始事件',
+				chapter: '',
+				rawBlock: ''
+			};
+
+			const reloadBoardSpy = vi.fn();
+			const onSaveStateChangeSpy = vi.fn();
+			let resolveSave!: (content: string) => void;
+			const savePromise = new Promise<string>(resolve => { resolveSave = resolve; });
+			(mockPlugin.timelineManager.updateEntry as unknown as ReturnType<typeof vi.fn>).mockReturnValueOnce(savePromise);
+
+			lastOpenedModal = null;
+
+			await TimelineBoardRenderer.render({
+				app: mockApp,
+				plugin: mockPlugin,
+				container: container as unknown as HTMLElement,
+				files: [fictionalChapter1],
+				foreshadowingMap: new Map(),
+				currentBookPath: 'FictionalBook',
+				loadedEntries: [entry],
+				onSaveStateChange: onSaveStateChangeSpy,
+				reloadBoard: reloadBoardSpy,
+				getChapterEvents: vi.fn().mockReturnValue([])
+			});
+
+			const editBtn = container.querySelector('.wn-timeline-node-edit-btn') as unknown as MockElement;
+			expect(editBtn).not.toBeNull();
+			editBtn.click();
+			expect(lastOpenedModal).not.toBeNull();
+
+			const modal = lastOpenedModal!;
+			const saveBtn = modal.contentEl.querySelector('.mod-cta') as unknown as MockElement;
+			const cancelBtn = modal.contentEl.querySelector('.wn-timeline-action-btn') as unknown as MockElement;
+			const onCloseSpy = vi.spyOn(modal as unknown as { onClose: () => void }, 'onClose');
+
+			// Click save
+			saveBtn.click();
+
+			// While save is in-flight:
+			expect(onSaveStateChangeSpy).toHaveBeenCalledWith(true);
+			// Save button disabled / double save prevented
+			saveBtn.click();
+			expect(mockPlugin.timelineManager.updateEntry).toHaveBeenCalledTimes(1);
+
+			// Cancel and close guarded while saving
+			cancelBtn.click();
+			modal.close();
+			expect(onCloseSpy).not.toHaveBeenCalled();
+
+			// Resolve save
+			resolveSave('saved content');
+			await vi.waitFor(() => {
+				expect(onCloseSpy).toHaveBeenCalled();
+			});
+
+			expect(onSaveStateChangeSpy).toHaveBeenCalledWith(false);
+			expect(reloadBoardSpy).toHaveBeenCalled();
+		});
+
+		it('failed save displays failure notice, preserves form draft, and keeps modal open', async () => {
+			const entry: TimelineEntry = {
+				time: '永和五年',
+				description: '准备更新的事件',
+				chapter: '',
+				rawBlock: ''
+			};
+
+			(mockPlugin.timelineManager.updateEntry as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('Simulated disk error'));
+
+			lastOpenedModal = null;
+
+			await TimelineBoardRenderer.render({
+				app: mockApp,
+				plugin: mockPlugin,
+				container: container as unknown as HTMLElement,
+				files: [fictionalChapter1],
+				foreshadowingMap: new Map(),
+				currentBookPath: 'FictionalBook',
+				loadedEntries: [entry],
+				onSaveStateChange: vi.fn(),
+				reloadBoard: vi.fn(),
+				getChapterEvents: vi.fn().mockReturnValue([])
+			});
+
+			const editBtn = container.querySelector('.wn-timeline-node-edit-btn') as unknown as MockElement;
+			expect(editBtn).not.toBeNull();
+			editBtn.click();
+			expect(lastOpenedModal).not.toBeNull();
+
+			const modal = lastOpenedModal!;
+			const timeInput = modal.contentEl.querySelector('.wn-timeline-form-input') as unknown as MockElement;
+			timeInput.value = '永和五年末';
+
+			const saveBtn = modal.contentEl.querySelector('.mod-cta') as unknown as MockElement;
+			const closeSpy = vi.spyOn(modal, 'close');
+
+			saveBtn.click();
+
+			await vi.waitFor(() => {
+				expect(Notice).toHaveBeenCalled();
+			});
+
+			// Modal remains open
+			expect(closeSpy).not.toHaveBeenCalled();
+
+			// Form draft preserved
+			expect(timeInput.value).toBe('永和五年末');
+		});
+
+		it('pins bookFolder and passes expectedEntry snapshot to guard against stale index', async () => {
+			const entry0: TimelineEntry = { time: '节点A', description: '事件A', chapter: '', rawBlock: '' };
+			const entry1: TimelineEntry = {
+				time: '节点B',
+				type: '主线',
+				lores: ['绝密设定'],
+				description: '事件B描述',
+				chapter: '[[第1章]]',
+				origin: '原文章节线索',
+				important: true,
+				rawBlock: '',
+				items: [{ description: '事件B描述', chapter: '[[第1章]]', origin: '原文章节线索', important: true }]
+			};
+
+			(mockPlugin.timelineManager.updateEntry as unknown as ReturnType<typeof vi.fn>).mockResolvedValue('updated');
+
+			lastOpenedModal = null;
+
+			await TimelineBoardRenderer.render({
+				app: mockApp,
+				plugin: mockPlugin,
+				container: container as unknown as HTMLElement,
+				files: [fictionalChapter1],
+				foreshadowingMap: new Map(),
+				currentBookPath: 'FictionalBook',
+				loadedEntries: [entry0, entry1],
+				onSaveStateChange: vi.fn(),
+				reloadBoard: vi.fn(),
+				getChapterEvents: vi.fn().mockReturnValue([])
+			});
+
+			const editBtns = container.querySelectorAll('.wn-timeline-node-edit-btn');
+			expect(editBtns).toHaveLength(2);
+
+			// Edit Node B (index 1)
+			editBtns[1].click();
+			expect(lastOpenedModal).not.toBeNull();
+
+			const modal = lastOpenedModal!;
+			const saveBtn = modal.contentEl.querySelector('.mod-cta') as unknown as MockElement;
+			saveBtn.click();
+
+			await vi.waitFor(() => {
+				expect(mockPlugin.timelineManager.updateEntry).toHaveBeenCalled();
+			});
+
+			// Pinned bookFolder and expectedEntry snapshot matching entry1
+			expect(mockPlugin.timelineManager.updateEntry).toHaveBeenCalledWith(
+				1,
+				expect.objectContaining({ time: '节点B' }),
+				'FictionalBook',
+				expect.objectContaining({
+					time: '节点B',
+					type: '主线',
+					lores: ['绝密设定'],
+					items: expect.arrayContaining([
+						expect.objectContaining({ description: '事件B描述', important: true, origin: '原文章节线索' })
+					])
+				}),
+				expect.objectContaining({ path: 'FictionalBook/Timeline.md' })
+			);
+		});
+
+		it('guards against duplicate modal launches when edit is clicked multiple times while awaiting pending inline saves', async () => {
+			const entry: TimelineEntry = {
+				time: '永和六年',
+				type: '主线',
+				description: '原始描述',
+				chapter: '',
+				rawBlock: '',
+				items: [{ description: '原始描述', chapter: '' }]
+			};
+
+			lastOpenedModal = null;
+
+			await TimelineBoardRenderer.render({
+				app: mockApp,
+				plugin: mockPlugin,
+				container: container as unknown as HTMLElement,
+				files: [fictionalChapter1],
+				foreshadowingMap: new Map(),
+				currentBookPath: 'FictionalBook',
+				loadedEntries: [entry],
+				onSaveStateChange: vi.fn(),
+				reloadBoard: vi.fn(),
+				getChapterEvents: vi.fn().mockReturnValue([])
+			});
+
+			const descEl = container.querySelector('.wn-timeline-item-desc') as unknown as MockElement;
+			descEl.click();
+			descEl.textContent = '行内修改中';
+
+			let resolveUpdate!: (content: string) => void;
+			const updatePromise = new Promise<string>(resolve => { resolveUpdate = resolve; });
+			(mockPlugin.timelineManager.updateEntry as unknown as ReturnType<typeof vi.fn>).mockReturnValueOnce(updatePromise);
+
+			void descEl.onblur?.();
+
+			const editBtn = container.querySelector('.wn-timeline-node-edit-btn') as unknown as MockElement;
+			expect(editBtn).not.toBeNull();
+
+			const openSpy = vi.spyOn(TimelineEditModal.prototype, 'open');
+
+			// Multiple rapid clicks while inline save is pending
+			editBtn.click();
+			editBtn.click();
+			editBtn.click();
+
+			await new Promise(resolve => setTimeout(resolve, 0));
+			expect(openSpy).not.toHaveBeenCalled();
+
+			resolveUpdate('Updated content');
+
+			await vi.waitFor(() => {
+				expect(openSpy).toHaveBeenCalledTimes(1);
+			});
+
+			openSpy.mockRestore();
+		});
+
+		it('rejects save, preserves draft, and keeps modal open when updateEntry returns empty string due to missing timeline file', async () => {
+			const entry: TimelineEntry = {
+				time: '永和七年',
+				type: '主线',
+				description: '原始事件',
+				chapter: '',
+				rawBlock: '',
+				items: [{ description: '原始事件', chapter: '' }]
+			};
+
+			// getTimelineFile returns null simulating missing timeline file
+			(mockPlugin.timelineManager.getTimelineFile as unknown as ReturnType<typeof vi.fn>).mockReturnValue(null);
+			(mockPlugin.timelineManager.updateEntry as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce('');
+
+			lastOpenedModal = null;
+
+			await TimelineBoardRenderer.render({
+				app: mockApp,
+				plugin: mockPlugin,
+				container: container as unknown as HTMLElement,
+				files: [fictionalChapter1],
+				foreshadowingMap: new Map(),
+				currentBookPath: 'FictionalBook',
+				loadedEntries: [entry],
+				onSaveStateChange: vi.fn(),
+				reloadBoard: vi.fn(),
+				getChapterEvents: vi.fn().mockReturnValue([])
+			});
+
+			const editBtn = container.querySelector('.wn-timeline-node-edit-btn') as unknown as MockElement;
+			expect(editBtn).not.toBeNull();
+			editBtn.click();
+			expect(lastOpenedModal).not.toBeNull();
+
+			const modal = lastOpenedModal!;
+			const timeInput = modal.contentEl.querySelector('.wn-timeline-form-input') as unknown as MockElement;
+			timeInput.value = '永和七年夏';
+
+			const saveBtn = modal.contentEl.querySelector('.mod-cta') as unknown as MockElement;
+			const closeSpy = vi.spyOn(modal, 'close');
+
+			saveBtn.click();
+
+			await vi.waitFor(() => {
+				expect(Notice).toHaveBeenCalled();
+			});
+
+			// Modal remains open and does not close on false success
+			expect(closeSpy).not.toHaveBeenCalled();
+
+			// User draft is preserved
+			expect(timeInput.value).toBe('永和七年夏');
 		});
 	});
 });

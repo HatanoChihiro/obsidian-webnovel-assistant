@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
 	parseLoreTemplate,
+	parseLoreBodyForEditing,
 	stripLeadingYamlFrontmatter,
 	sanitizeLoreHeadings,
 	isBuiltInFieldOrHeading,
@@ -12,6 +13,52 @@ import {
 } from '../src/services/LoreTemplateService';
 
 describe('LoreTemplateService', () => {
+	describe('parseLoreBodyForEditing', () => {
+		it('splits bold labels and heading sections while preserving unstructured text and exact source', () => {
+			const body = 'Opening paragraph.\r\n\r\n### Profile ###\r\n**Age**： 24\r\n__Role__: Scout\r\n\r\n### History\r\nFirst journey.\r\n\r\n> A remembered line.\r\n';
+			const parsed = parseLoreBodyForEditing(body);
+			expect(parsed.fields.map(field => [field.label, field.defaultValue])).toEqual([
+				['', 'Opening paragraph.'], ['Age', '24'], ['Role', 'Scout'],
+				['History', 'First journey.\r\n\r\n> A remembered line.'],
+			]);
+			expect(parsed.fields[1].sectionHeading).toBe('Profile');
+			expect(parsed.render({})).toBe(body);
+			const values = Object.fromEntries(parsed.fields.map(field => [field.id, field.defaultValue]));
+			expect(parsed.render(values)).toBe(body);
+			values[parsed.fields[1].id] = '25';
+			expect(parsed.render(values)).toBe(body.replace('24', '25'));
+		});
+
+		it('keeps repeated fields independent and ignores headings and labels inside fenced code', () => {
+			const body = '**Item**: Lantern\n**Item**: Map\n\n### Notes\n````md\n### Example\n**Fake**: sample\n```\n````\n';
+			const parsed = parseLoreBodyForEditing(body);
+			expect(parsed.fields.map(field => field.label)).toEqual(['Item', 'Item', 'Notes']);
+			expect(new Set(parsed.fields.map(field => field.id)).size).toBe(3);
+			expect(parsed.render({ [parsed.fields[1].id]: 'Compass' })).toBe(body.replace('Map', 'Compass'));
+		});
+
+		it('allows filling empty fields without merging adjacent sections or creating entry headings', () => {
+			const body = '**Age**:\n### History\n### Notes';
+			const parsed = parseLoreBodyForEditing(body);
+			expect(parsed.fields.map(field => field.label)).toEqual(['Age', 'History', 'Notes']);
+			expect(parsed.render(Object.fromEntries(parsed.fields.map(field => [field.id, '# Draft']))))
+				.toBe('**Age**: ### Draft\n### History\n### Draft\n### Notes\n### Draft');
+		});
+
+		it('preserves reserved-looking content and exposes plain or empty descriptions', () => {
+			const body = '### Type\nA term in the story.\n\n**Aliases**: a quoted label';
+			const parsed = parseLoreBodyForEditing(body);
+			expect(parsed.fields.map(field => field.label)).toEqual(['Type', 'Aliases']);
+			expect(parsed.render({})).toBe(body);
+			for (const description of ['', 'Plain description.']) {
+				const plain = parseLoreBodyForEditing(description);
+				expect(plain.fields).toHaveLength(1);
+				expect(plain.fields[0].label).toBe('');
+				expect(plain.render({ [plain.fields[0].id]: 'Revised description.' })).toBe('Revised description.');
+			}
+		});
+	});
+
 	describe('stripLeadingYamlFrontmatter', () => {
 		it('should strip valid YAML frontmatter', () => {
 			const md = '---\ntitle: Fictional Hero\ncategory: Character\n---\n# Real Title\nBody text';

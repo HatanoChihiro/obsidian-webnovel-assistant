@@ -15,6 +15,7 @@ import type { TaskManager } from '../services/TaskManager';
 import type { HomepageManager } from '../services/HomepageManager';
 import type { CharacterManager } from '../services/CharacterManager';
 import type { ForeshadowingManager } from '../services/ForeshadowingManager';
+import type { TimelineManager, ChapterTimelineNode } from '../services/TimelineManager';
 import type { StatisticsManager } from '../services/StatisticsManager';
 import type { WritingJourneyService } from '../services/WritingJourneyService';
 import { ChapterSorter, type ChapterSorterContext } from '../services/ChapterSorter';
@@ -56,6 +57,11 @@ export type StatusViewCharacterManager = Pick<
 export type StatusViewForeshadowingManager = Pick<
 	ForeshadowingManager,
 	'findForeshadowingFile' | 'parseEntries'
+>;
+
+export type StatusViewTimelineManager = Pick<
+	TimelineManager,
+	'findTimelineFile' | 'parseEntries' | 'getTimelineNodesForChapter'
 >;
 
 export type StatusViewStatisticsManager = Pick<
@@ -102,6 +108,7 @@ export interface WritingStatusViewPlugin
 	statisticsManager: StatusViewStatisticsManager;
 	homepageManager?: StatusViewHomepageManager;
 	foreshadowingManager?: StatusViewForeshadowingManager;
+	timelineManager?: StatusViewTimelineManager;
 	taskManager?: StatusViewTaskManager;
 	writingJourneyService?: Pick<WritingJourneyService, 'changeChapterStatus'>;
 }
@@ -285,8 +292,22 @@ export class WritingStatusView extends ItemView {
 					return;
 				}
 			}
+
+			// 5. 匹配当前选中章节所属真实作品目录范围内的变动（例如时间线新建、修改或删除）
+			if (this.currentChapterFile) {
+				const currentBookRoot = findBookRoot(this.app, this.plugin, this.currentChapterFile, true);
+				if (currentBookRoot) {
+					const folder = currentBookRoot === '/' ? '' : currentBookRoot;
+					const belongsToBook = (path: string) => !folder || path === folder || path.startsWith(folder + '/');
+					if (belongsToBook(file.path) || (oldPath !== undefined && belongsToBook(oldPath))) {
+						void this.updateData();
+						return;
+					}
+				}
+			}
 		};
 		if (this.app.vault?.on) {
+			this.registerEvent(this.app.vault.on('create', refreshForFile));
 			this.registerEvent(this.app.vault.on('modify', refreshForFile));
 			this.registerEvent(this.app.vault.on('rename', refreshForFile));
 			this.registerEvent(this.app.vault.on('delete', refreshForFile));
@@ -319,8 +340,7 @@ export class WritingStatusView extends ItemView {
 			if (folder instanceof TFolder && findBookRoot(this.app, this.plugin, folder, true) === folder.path) {
 				if (this.lastActiveFolderPath !== folder.path) {
 					this.currentChapterFile = null;
-					this.lastRenderedChapterPath = null;
-					this.lastChapterMtime = -1;
+					this.resetChapterStatusCache();
 				}
 				this.lastActiveFolderPath = folder.path;
 			}
@@ -718,13 +738,16 @@ export class WritingStatusView extends ItemView {
 				}
 				let isLore = false;
 				let isForeshadowing = false;
+				let isTimeline = false;
 				if (bookRoot) {
 					isLore = this.plugin.characterManager?.isLorePath?.(bookRoot, activeFile.parent?.path || '') ?? false;
 					const fmFolder = bookRoot === '/' ? '' : bookRoot;
 					const fFile = this.plugin.foreshadowingManager?.findForeshadowingFile?.(fmFolder);
 					isForeshadowing = !!(fFile && fFile.path === activeFile.path);
+					const tlFile = this.plugin.timelineManager?.findTimelineFile?.(fmFolder);
+					isTimeline = !!(tlFile && tlFile.path === activeFile.path);
 				}
-				if (!isLore && !isForeshadowing) {
+				if (!isLore && !isForeshadowing && !isTimeline) {
 					const vaultFile = this.app.vault.getAbstractFileByPath(activeFile.path);
 					if (vaultFile instanceof TFile) {
 						return vaultFile;
@@ -748,8 +771,7 @@ export class WritingStatusView extends ItemView {
 		const targetChapter = this.resolveActiveEligibleChapter();
 		this.currentChapterFile = targetChapter;
 		if (!targetChapter || targetChapter.path !== previousChapterPath) {
-			this.lastRenderedChapterPath = null;
-			this.lastChapterMtime = -1;
+			this.resetChapterStatusCache();
 			this.chapterStatusCardEl?.hide();
 			for (const el of this.chapterSectionEls ?? []) el.hide();
 		}
@@ -804,7 +826,7 @@ export class WritingStatusView extends ItemView {
 		if (targetChapter) {
 			bookRoot = findBookRoot(this.app, this.plugin, targetChapter, true);
 			const parent = targetChapter.parent;
-			displayFolderPath = (!parent || parent.isRoot()) ? '/' : parent.path;
+			displayFolderPath = bookRoot || (parent && !parent.isRoot() ? parent.path : '/');
 		} else {
 			displayFolderPath = this.lastActiveFolderPath || '';
 			if (!displayFolderPath) {
@@ -828,7 +850,9 @@ export class WritingStatusView extends ItemView {
 			if (displayFolderPath === '/') {
 				folderName = t('common.root-directory');
 			} else {
-				const folder = targetChapter?.parent ?? this.app.vault.getAbstractFileByPath(displayFolderPath);
+				const folder = targetChapter?.parent?.path === displayFolderPath
+					? targetChapter.parent
+					: this.app.vault.getAbstractFileByPath(displayFolderPath);
 				if (folder) {
 					folderName = folder.name;
 				}
@@ -1004,8 +1028,22 @@ export class WritingStatusView extends ItemView {
 
 	private lastChapterMtime: number = -1;
 	private lastForeshadowingMtime: number = -1;
+	private lastTimelinePath: string | null = null;
+	private lastTimelineMtime: number = -1;
+	private lastTimelineFileName: string | undefined = undefined;
 	private lastChapterStatusStr: string = '';
 	private lastChapterSynopsisStr: string = '';
+
+	private resetChapterStatusCache(): void {
+		this.lastRenderedChapterPath = null;
+		this.lastChapterMtime = -1;
+		this.lastForeshadowingMtime = -1;
+		this.lastTimelinePath = null;
+		this.lastTimelineMtime = -1;
+		this.lastTimelineFileName = undefined;
+		this.lastChapterStatusStr = '';
+		this.lastChapterSynopsisStr = '';
+	}
 
 	private createChapterReferenceMatcher(
 		file: TFile,
@@ -1032,23 +1070,20 @@ export class WritingStatusView extends ItemView {
 
 		const file = this.currentChapterFile;
 		if (!file || file.extension !== 'md') {
-			this.lastRenderedChapterPath = null;
-			this.lastChapterMtime = -1;
+			this.resetChapterStatusCache();
 			this.chapterStatusCardEl.hide();
 			return;
 		}
 
 		if (!this.plugin.cacheManager.isEligibleForWordCount(file)) {
-			this.lastRenderedChapterPath = null;
-			this.lastChapterMtime = -1;
+			this.resetChapterStatusCache();
 			this.chapterStatusCardEl.hide();
 			return;
 		}
 
 		const recognizedBookRoot = findBookRoot(this.app, this.plugin, file, true);
 		if (recognizedBookRoot && this.plugin.characterManager.isLorePath(recognizedBookRoot, file.parent?.path || '')) {
-			this.lastRenderedChapterPath = null;
-			this.lastChapterMtime = -1;
+			this.resetChapterStatusCache();
 			this.chapterStatusCardEl.hide();
 			return;
 		}
@@ -1056,8 +1091,14 @@ export class WritingStatusView extends ItemView {
 		const fmFolder = (recognizedBookRoot && recognizedBookRoot !== '/') ? recognizedBookRoot : '';
 		const fFile = recognizedBookRoot ? this.plugin.foreshadowingManager?.findForeshadowingFile?.(fmFolder) : null;
 		if (fFile && fFile.path === file.path) {
-			this.lastRenderedChapterPath = null;
-			this.lastChapterMtime = -1;
+			this.resetChapterStatusCache();
+			this.chapterStatusCardEl.hide();
+			return;
+		}
+
+		const tlFile = recognizedBookRoot ? this.plugin.timelineManager?.findTimelineFile?.(fmFolder) : null;
+		if (tlFile && tlFile.path === file.path) {
+			this.resetChapterStatusCache();
 			this.chapterStatusCardEl.hide();
 			return;
 		}
@@ -1069,12 +1110,18 @@ export class WritingStatusView extends ItemView {
 		const rawStatus = (frontmatter?.status || frontmatter?.Status || frontmatter?.['状态'] || 'unwritten') as string;
 		const status = CORKBOARD_STATUS_MAP[rawStatus] ?? rawStatus;
 		const currentFmtime = fFile ? fFile.stat.mtime : -1;
+		const currentTlPath = tlFile ? tlFile.path : '';
+		const currentTlmtime = tlFile ? tlFile.stat.mtime : -1;
+		const configuredTlName = this.plugin.settings.timeline?.fileName;
 		const chapterMtime = file.stat.mtime;
 
 		if (
 			this.lastRenderedChapterPath === file.path &&
 			chapterMtime === this.lastChapterMtime &&
 			currentFmtime === this.lastForeshadowingMtime &&
+			currentTlPath === this.lastTimelinePath &&
+			currentTlmtime === this.lastTimelineMtime &&
+			configuredTlName === this.lastTimelineFileName &&
 			status === this.lastChapterStatusStr &&
 			synopsis === this.lastChapterSynopsisStr
 		) {
@@ -1107,6 +1154,7 @@ export class WritingStatusView extends ItemView {
 		const pendingEntries: ParsedForeshadowingEntry[] = [];
 		const recoveredHereEntries: ParsedForeshadowingEntry[] = [];
 		const resolvedOriginEntries: ParsedForeshadowingEntry[] = [];
+		let referenceReadFailed = false;
 
 		const isMatch = fFile
 			? this.createChapterReferenceMatcher(file, fmFolder, fFile.path)
@@ -1135,8 +1183,30 @@ export class WritingStatusView extends ItemView {
 					}
 				}
 			} catch (err) {
+				referenceReadFailed = true;
 				(window.console || console).error('[WritingStatusView] Failed to read foreshadowing file:', err);
-				return;
+			}
+		}
+
+		if (generation !== this.updateGeneration) return;
+		if (this.currentChapterFile?.path !== file.path) return;
+
+		let timelineNodes: ChapterTimelineNode[] = [];
+		if (tlFile && this.plugin.timelineManager) {
+			try {
+				const content = await this.app.vault.cachedRead(tlFile);
+				if (generation !== this.updateGeneration) return;
+				if (this.currentChapterFile?.path !== file.path) return;
+				const entries = this.plugin.timelineManager.parseEntries(content, fmFolder);
+				timelineNodes = this.plugin.timelineManager.getTimelineNodesForChapter(
+					file,
+					entries,
+					fmFolder,
+					tlFile
+				);
+			} catch (err) {
+				referenceReadFailed = true;
+				(window.console || console).error('[WritingStatusView] Failed to read timeline file:', err);
 			}
 		}
 
@@ -1211,11 +1281,38 @@ export class WritingStatusView extends ItemView {
 			}
 		}
 
+		if (timelineNodes.length > 0) {
+			const timelineDiv = this.chapterBadgesContainer.createDiv('wn-chapter-status-section is-timeline');
+			timelineDiv.createDiv({ text: t('corkboard.timeline'), cls: 'wn-chapter-status-section-title' });
+
+			for (const node of timelineNodes) {
+				const nodeGroupEl = timelineDiv.createDiv('wn-chapter-timeline-node');
+				const nodeTitle = node.type ? `${node.time} (${node.type})` : node.time;
+				nodeGroupEl.createDiv({ text: nodeTitle, cls: 'wn-chapter-timeline-node-time' });
+
+				for (const item of node.items) {
+					const text = item.description || item.origin || '';
+					if (!text) continue;
+					const itemEl = nodeGroupEl.createDiv({ text, cls: 'wn-chapter-status-item' });
+					if (item.origin && item.origin.trim()) {
+						itemEl.addClass('wn-clickable');
+						this.preventWorkspaceFocus(itemEl);
+						const origin = item.origin.trim();
+						itemEl.addEventListener('click', (e) => {
+							e.stopPropagation();
+							e.preventDefault();
+							void smartLocateAndHighlight(this.app, file, [origin]);
+						});
+					}
+				}
+			}
+		}
+
 		if (validLores.length > 0) {
 			const loreDiv = this.chapterBadgesContainer.createDiv('wn-chapter-status-section is-lore');
 			
 			// Add a small divider
-			if (pendingEntries.length > 0 || recoveredHereEntries.length > 0 || resolvedOriginEntries.length > 0) {
+			if (pendingEntries.length > 0 || recoveredHereEntries.length > 0 || resolvedOriginEntries.length > 0 || timelineNodes.length > 0) {
 				loreDiv.createDiv({ cls: 'wn-chapter-status-divider' });
 			}
 			
@@ -1226,8 +1323,11 @@ export class WritingStatusView extends ItemView {
 		}
 
 		this.lastRenderedChapterPath = file.path;
-		this.lastChapterMtime = chapterMtime;
+		this.lastChapterMtime = referenceReadFailed ? -1 : chapterMtime;
 		this.lastForeshadowingMtime = currentFmtime;
+		this.lastTimelinePath = currentTlPath;
+		this.lastTimelineMtime = currentTlmtime;
+		this.lastTimelineFileName = configuredTlName;
 		this.lastChapterStatusStr = status;
 		this.lastChapterSynopsisStr = synopsis;
 	}

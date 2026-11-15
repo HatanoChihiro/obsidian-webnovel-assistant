@@ -535,5 +535,15 @@ describe('ForeshadowingManager', () => {
             const descriptions = await manager.getExistingDescriptions(sourceFile);
             expect(descriptions).toEqual([]);
         });
+
+        it('parses recovery logs with quote and distinguishes them from records without quote', () => {
+            const manager = new ForeshadowingManager(mockApp, mockPlugin);
+            const content = `## 宝库钥匙下落\n> [[第1章]]\n> 钥匙藏在后山古树下\n\n**状态**：阶段回收中\n**回收记录**：\n- [阶段] [[第2章]] - 2026-08-01：发现残片\n  > 树根下挖出半截青铜钥匙\n- [终结] [[第3章]] - 2026-08-02：彻底拼合\n---\n`;
+            const entries = manager.parseEntries(content);
+            expect(entries).toHaveLength(1);
+            expect(entries[0].recoveryLogs).toHaveLength(2);
+            expect(entries[0].recoveryLogs![0].quote).toBe('树根下挖出半截青铜钥匙');
+            expect(entries[0].recoveryLogs![1].quote).toBeUndefined();
+        });
     });
 });

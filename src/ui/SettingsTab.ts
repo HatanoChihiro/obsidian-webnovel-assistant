@@ -1,7 +1,7 @@
 import type { App, SettingDefinitionItem, TextAreaComponent } from 'obsidian';
 import { Modal, PluginSettingTab, SearchComponent, Setting, Notice, TFile, MarkdownView } from 'obsidian';
 import type { Plugin } from 'obsidian';
-import { isDesktop, isMobile, getPlatformTier } from '../utils/platform';
+import { isDesktop, getPlatformTier, isLorePopoverEnabled } from '../utils/platform';
 import { ObsOverlayServer } from '../services/ObsServer';
 import { ChapterSorter } from '../services/ChapterSorter';
 import {
@@ -15,6 +15,7 @@ import { WORKBENCH_BOARD_IDS, getWorkbenchBoardLabel } from './workbenchBoards';
 import { VALIDATION_RULES, DEFAULT_PROOFREADING_SETTINGS, VIEW_TYPES } from '../constants';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { LoreCardPreview } from './components/LoreCardPreview';
+import { LoreHoverPopover } from './LoreHoverPopover';
 import { t, setLocale, detectLocale, type Locale } from '../i18n';
 import { getDefaultFileName, getProofreadingTypeLabel } from '../i18n/data-keys';
 import { FolderSuggestModal } from './FolderSuggestModal';
@@ -2148,6 +2149,20 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					});
 				text.inputEl.addClass('webnovel-settings-input-full');
 			});
+
+		new Setting(containerEl)
+			.setName(t('setting.foreshadowing-show-editor-references'))
+			.setDesc(t('setting.foreshadowing-show-editor-references-desc'))
+			.addToggle(toggle => toggle
+				.setValue(Boolean(this.plugin.settings.foreshadowing?.showEditorReferences))
+				.onChange(async (value: boolean) => {
+					if (!this.plugin.settings.foreshadowing) {
+						this.plugin.settings.foreshadowing = { fileName: getDefaultFileName('foreshadowingFileName'), defaultTags: [], showEditorReferences: false };
+					}
+					this.plugin.settings.foreshadowing.showEditorReferences = value;
+					this.plugin.chapterReferenceService?.notifyRefresh();
+					await this.plugin.saveSettings();
+				}));
 	}
 
 	// ── 设定速查设置 ──
@@ -2237,18 +2252,19 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				text.inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); text.inputEl.blur(); } });
 			});
 
-		// 移动端开启设定悬浮/点击卡片开关（仅在移动端显示，电脑端屏蔽）
-		if (isMobile()) {
-			new Setting(containerEl)
-				.setName(t('setting.enable-mobile-lore-popover'))
-				.setDesc(t('setting.enable-mobile-lore-popover-desc'))
-				.addToggle(toggle => toggle
-					.setValue(this.plugin.settings.enableMobileLorePopover)
-					.onChange(async (value: boolean) => {
-						this.plugin.settings.enableMobileLorePopover = value;
-						await this.plugin.saveSettings();
-					}));
-		}
+		// 设定悬浮卡片开关（全平台生效）
+		new Setting(containerEl)
+			.setName(t('setting.enable-lore-popover'))
+			.setDesc(t('setting.enable-lore-popover-desc'))
+			.addToggle(toggle => toggle
+				.setValue(isLorePopoverEnabled(this.plugin.settings))
+				.onChange(async (value: boolean) => {
+					this.plugin.settings.enableLorePopover = value;
+					if (!value) {
+						LoreHoverPopover.closeAll();
+					}
+					await this.plugin.saveSettings();
+				}));
 
 		// 设定卡片子标题折叠开关（全平台生效）
 		new Setting(containerEl)
@@ -2388,6 +2404,20 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					});
 				text.inputEl.addClass('webnovel-settings-input-full');
 			});
+
+		new Setting(containerEl)
+			.setName(t('setting.timeline-show-editor-references'))
+			.setDesc(t('setting.timeline-show-editor-references-desc'))
+			.addToggle(toggle => toggle
+				.setValue(Boolean(this.plugin.settings.timeline?.showEditorReferences))
+				.onChange(async (value: boolean) => {
+					if (!this.plugin.settings.timeline) {
+						this.plugin.settings.timeline = { fileName: getDefaultFileName('timelineFileName'), defaultTypes: [], showEditorReferences: false };
+					}
+					this.plugin.settings.timeline.showEditorReferences = value;
+					this.plugin.chapterReferenceService?.notifyRefresh();
+					await this.plugin.saveSettings();
+				}));
 	}
 
 	// ── 数据输出设置 ──

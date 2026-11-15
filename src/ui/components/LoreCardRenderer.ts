@@ -1,17 +1,16 @@
-import { MarkdownRenderer, type Component, setIcon, type App, type TFile, type CachedMetadata } from 'obsidian';
+import { MarkdownRenderer, type Component, setIcon, setTooltip, type App, type TFile, type CachedMetadata } from 'obsidian';
 import { t } from '../../i18n';
 import type { AccurateCountSettings } from '../../types/settings';
-import type { CharacterManager, LoreEntry } from '../../services/CharacterManager';
+import type { LoreEntry } from '../../services/CharacterManager';
 import { cleanLoreHeading } from '../../services/CharacterManager';
 import { smartLocateAndHighlight } from '../../utils/leaf';
 import { injectSoftBreakIndentPlaceholders } from '../../utils/softBreakIndent';
 import { createCardImportanceButton } from './CardImportanceButton';
-import { createStickyNoteParagraphEditor, setCaretPosition } from './StickyNoteParagraphEditor';
 
 export interface LoreCardRendererPlugin {
 	app: App;
 	settings: Pick<AccurateCountSettings, 'lorePopoverCollapse'>;
-	characterManager: Pick<CharacterManager, 'getLoreContent' | 'updateLoreContent'> & {
+	characterManager: {
 		toggleLoreImportance?: (entry: LoreEntry) => Promise<boolean>;
 	};
 }
@@ -385,6 +384,8 @@ export class LoreCardRenderer {
 			onExpand?: () => void;
 			/** 使卡片容器可聚焦，让键盘用户也能触发悬停预览 */
 			focusable?: boolean;
+			/** 触发快捷编辑弹窗回调；提供时点击编辑按钮调用此回调而非正文行内编辑 */
+			onEdit?: (entry: LoreEntry) => void | Promise<void>;
 		} = {},
 		reads?: LoreBodyReadCache
 	): Promise<void> {
@@ -442,88 +443,35 @@ export class LoreCardRenderer {
 			});
 		};
 
-		if (!options.hideEditButton && !isReadOnly) {
-			const editBtn = titleContainer.createDiv({ cls: LORE_CARD_EDIT_BTN_CLASS });
+		if (!options.hideEditButton && !isReadOnly && options.onEdit) {
+			const editBtn = titleContainer.createEl('button', {
+				cls: LORE_CARD_EDIT_BTN_CLASS,
+				type: 'button'
+			});
 			setIcon(editBtn, 'pencil');
-			editBtn.title = t('corkboard.edit-lore');
-		
-			let isEditing = false;
-			editBtn.onclick = async () => {
-				if (isEditing) return;
-				isEditing = true;
-				if (options.draggable) card.setAttribute('draggable', 'false');
+			editBtn.setAttr('tabindex', '0');
+			editBtn.setAttr('role', 'button');
+			editBtn.setAttr('aria-label', t('corkboard.edit-lore'));
+			setTooltip(editBtn, t('corkboard.edit-lore'));
 
-				const maxBodyScroll = Math.max(1, body.scrollHeight - body.clientHeight);
-				const scrollRatio = Math.max(0, Math.min(1, body.scrollTop / maxBodyScroll));
-
-				const oldContentEls = Array.from(body.children);
-				oldContentEls.forEach((el) => { (el as HTMLElement).hidden = true; });
-
-				body.addClass('is-editing');
-				const editorContainer = body.createDiv({ cls: 'wn-lore-card-editor' });
-				const rawContent = await plugin.characterManager.getLoreContent(entry);
-				const editor = createStickyNoteParagraphEditor(editorContainer, rawContent, 'wn-lore-card-textarea');
-
-				const ownerWindow = editor.ownerDocument?.defaultView ?? null;
-				const scheduleLayout = (cb: () => void) => {
-					if (ownerWindow?.requestAnimationFrame) {
-						ownerWindow.requestAnimationFrame(cb);
-					} else if (ownerWindow?.setTimeout) {
-						ownerWindow.setTimeout(cb, 0);
-					} else {
-						cb();
-					}
-				};
-
-				scheduleLayout(() => {
-					if (!editor.isConnected) return;
-					const roughCharIndex = Math.floor(rawContent.length * scrollRatio);
-					editor.focus({ preventScroll: true });
-					setCaretPosition(editor, roughCharIndex);
-					const maxEditorScroll = Math.max(0, editor.scrollHeight - editor.clientHeight);
-					editor.scrollTop = Math.round(scrollRatio * maxEditorScroll);
-				});
-
-				let isSaving = false;
-				let isCancelled = false;
-
-				const exitEdit = () => {
-					body.removeClass('is-editing');
-					editorContainer.remove();
-					oldContentEls.forEach((el) => { (el as HTMLElement).hidden = false; });
-					isEditing = false;
-					if (options.draggable) card.setAttribute('draggable', 'true');
-				};
-
-				const performSave = async () => {
-					if (isSaving || isCancelled) return;
-					const newVal = editor.value;
-					if (newVal !== rawContent) {
-						isSaving = true;
-						await plugin.characterManager.updateLoreContent(entry, newVal);
-						body.removeClass('is-editing');
-						body.empty();
-						isEditing = false;
-						if (options.draggable) card.setAttribute('draggable', 'true');
-						LoreCardRenderer.clearLoreBodyCache(entry.file);
-						await LoreCardRenderer.renderBodyContent(body, header, entry, plugin, component);
-					} else {
-						exitEdit();
-					}
-				};
-
-				editor.addEventListener('blur', () => {
-					void performSave();
-				});
-
-				editor.addEventListener('keydown', (e) => {
-					if (e.key === 'Escape') {
-						e.preventDefault();
-						isCancelled = true;
-						exitEdit();
-					}
-				});
+			const handleEdit = async (e: Event) => {
+				e.stopPropagation();
+				e.preventDefault();
+				try {
+					await options.onEdit!(entry);
+				} catch (err) {
+					console.error('Failed to handle lore edit:', err);
+				}
 			};
+
+			editBtn.addEventListener('click', (e) => {
+				void handleEdit(e);
+			});
+			editBtn.addEventListener('keydown', (e: KeyboardEvent) => {
+				if (e.key === 'Enter' || e.key === ' ') {
+					void handleEdit(e);
+				}
+			});
 		}
 
 		if (!options.hideImportanceButton && plugin.characterManager.toggleLoreImportance) {

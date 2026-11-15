@@ -6,9 +6,191 @@ export interface MarkdownCleanerOptions {
 
 const FOOTNOTE_DEFINITION = /^\[\^[^\]\r\n]+\]:/;
 const FOOTNOTE_CONTINUATION = /^(?: {2,}|\t)/;
+const FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+const FENCE_CLOSE = /^ {0,3}(`{3,}|~{3,})[ \t]*$/;
 
 function preserveNewlines(value: string): string {
 	return value.replace(/[^\r\n]/g, '');
+}
+
+function findLineEnd(text: string, start: number): number {
+	let index = start;
+	while (index < text.length && text[index] !== '\r' && text[index] !== '\n') {
+		index++;
+	}
+	return index;
+}
+
+function removeObsidianComments(text: string): string {
+	const frontmatter = REGEX_PATTERNS.FRONTMATTER.exec(text)?.[0] ?? '';
+	let result = frontmatter;
+	let index = frontmatter.length;
+	let atLineStart = index === 0;
+	let activeFence: { char: string; len: number } | null = null;
+	let currentLineEnd = -1;
+	let nextPercentPair = -2;
+	let backtickScanPos = 0;
+	const backtickRuns = new Map<number, { ends: number[]; next: number }>();
+
+	const findClosingBackticks = (start: number, tickCount: number): number => {
+		const existing = backtickRuns.get(tickCount);
+		if (existing) {
+			while (existing.next < existing.ends.length && existing.ends[existing.next] - tickCount < start) {
+				existing.next++;
+			}
+			if (existing.next < existing.ends.length) {
+				const found = existing.ends[existing.next];
+				existing.next++;
+				return found;
+			}
+		}
+
+		if (backtickScanPos < start) {
+			backtickScanPos = start;
+		}
+		while (backtickScanPos < text.length) {
+			if (text[backtickScanPos] !== '`') {
+				backtickScanPos++;
+				continue;
+			}
+			const runStart = backtickScanPos;
+			while (backtickScanPos < text.length && text[backtickScanPos] === '`') {
+				backtickScanPos++;
+			}
+			const len = backtickScanPos - runStart;
+			if (len === tickCount) {
+				return backtickScanPos;
+			}
+			let entry = backtickRuns.get(len);
+			if (!entry) {
+				entry = { ends: [], next: 0 };
+				backtickRuns.set(len, entry);
+			}
+			entry.ends.push(backtickScanPos);
+		}
+		return -1;
+	};
+
+	while (index < text.length) {
+		const ch = text[index];
+
+		if (ch === '\r') {
+			if (text[index + 1] === '\n') {
+				result += '\r\n';
+				index += 2;
+			} else {
+				result += '\r';
+				index += 1;
+			}
+			atLineStart = true;
+			continue;
+		}
+
+		if (ch === '\n') {
+			result += '\n';
+			index += 1;
+			atLineStart = true;
+			continue;
+		}
+
+		if (atLineStart) {
+			if (currentLineEnd < index) {
+				currentLineEnd = findLineEnd(text, index);
+			}
+			const lineEnd = currentLineEnd;
+			const line = text.slice(index, lineEnd);
+
+			if (activeFence) {
+				result += line;
+				index = lineEnd;
+				atLineStart = false;
+				const closeMatch = FENCE_CLOSE.exec(line);
+				if (closeMatch && closeMatch[1][0] === activeFence.char && closeMatch[1].length >= activeFence.len) {
+					activeFence = null;
+				}
+				continue;
+			}
+
+			const openMatch = FENCE_OPEN.exec(line);
+			if (openMatch) {
+				const fence = openMatch[1];
+				const info = openMatch[2];
+				if (fence[0] !== '`' || !info.includes('`')) {
+					activeFence = { char: fence[0], len: fence.length };
+					result += line;
+					index = lineEnd;
+					atLineStart = false;
+					continue;
+				}
+			}
+		}
+
+		if (ch === '\\') {
+			if (index + 1 < text.length && text[index + 1] !== '\r' && text[index + 1] !== '\n') {
+				result += text.slice(index, index + 2);
+				index += 2;
+			} else {
+				result += '\\';
+				index += 1;
+			}
+			atLineStart = false;
+			continue;
+		}
+
+		if (ch === '`') {
+			let tickEnd = index;
+			while (tickEnd < text.length && text[tickEnd] === '`') {
+				tickEnd++;
+			}
+			const tickCount = tickEnd - index;
+			const closeEnd = findClosingBackticks(tickEnd, tickCount);
+			if (closeEnd !== -1) {
+				result += text.slice(index, closeEnd);
+				index = closeEnd;
+			} else {
+				result += text.slice(index, tickEnd);
+				index = tickEnd;
+			}
+			atLineStart = false;
+			continue;
+		}
+
+		if (ch === '%' && text[index + 1] === '%') {
+			if (atLineStart) {
+				const closeIndex = text.indexOf('%%', index + 2);
+				if (closeIndex === -1) {
+					result += preserveNewlines(text.slice(index));
+					break;
+				}
+				result += preserveNewlines(text.slice(index, closeIndex + 2));
+				index = closeIndex + 2;
+				atLineStart = false;
+				continue;
+			}
+
+			if (currentLineEnd < index) {
+				currentLineEnd = findLineEnd(text, index);
+			}
+			if (nextPercentPair !== -1 && nextPercentPair < index + 2) {
+				nextPercentPair = text.indexOf('%%', index + 2);
+			}
+			const closeIndex = nextPercentPair;
+			if (closeIndex !== -1 && closeIndex + 2 <= currentLineEnd) {
+				index = closeIndex + 2;
+			} else {
+				result += '%%';
+				index += 2;
+			}
+			atLineStart = false;
+			continue;
+		}
+
+		result += ch;
+		index += 1;
+		atLineStart = false;
+	}
+
+	return result;
 }
 
 function removeFootnoteDefinitions(text: string): string {
@@ -96,10 +278,10 @@ function removeFootnoteMarkers(text: string): string {
 	return result;
 }
 
-/** Apply the shared footnote inclusion policy while retaining source line breaks. */
+/** Apply the shared footnote and comment inclusion policy while retaining source line breaks. */
 export function applyFootnotePolicy(text: string, includeFootnotes = false): string {
 	if (includeFootnotes) return text;
-	return removeFootnoteMarkers(removeFootnoteDefinitions(text));
+	return removeFootnoteMarkers(removeFootnoteDefinitions(removeObsidianComments(text)));
 }
 
 /** Clean Markdown for whole-document and per-line word counting. */

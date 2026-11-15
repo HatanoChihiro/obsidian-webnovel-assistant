@@ -70,6 +70,7 @@ export type WorkbenchViewSettings = Pick<
 	| 'timeline'
 	| 'foreshadowing'
 	| 'novelInfo'
+	| 'enableLorePopover'
 	| 'enableMobileLorePopover'
 	| 'lorePopoverCollapse'
 	| 'loreCardPreviewEnabled'
@@ -101,7 +102,7 @@ export type WorkbenchHomepageManager = Pick<
 >;
 
 export type WorkbenchCharacterManager = LoreBoardCharacterManager &
-	Pick<CharacterManager, 'createLoreEntry' | 'getAvailableLoreCategories'>;
+	Pick<CharacterManager, 'createLoreEntry' | 'getAvailableLoreCategories' | 'getLoreContent' | 'updateLoreContent'>;
 
 export type WorkbenchForeshadowingManager = ForeshadowingBoardStatusManager &
 	Pick<ForeshadowingManager, 'findForeshadowingFile' | 'parseEntries' | 'buildChapterForeshadowingMap'>;

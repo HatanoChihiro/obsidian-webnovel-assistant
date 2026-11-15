@@ -5,26 +5,73 @@ body.is-phone .wn-snapshot-panel {
 	left: 0;
 	transform: none;
 	width: 100vw;
-	height: 100vh;
+	height: 100dvh;
+	min-height: 0;
 	max-width: 100vw;
-	max-height: 100vh;
+	max-height: 100dvh;
+	box-sizing: border-box;
+	padding-top: max(var(--safe-area-inset-top, 0px), env(safe-area-inset-top, 0px));
+	padding-right: max(var(--safe-area-inset-right, 0px), env(safe-area-inset-right, 0px));
+	padding-bottom: max(var(--safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 0px));
+	padding-left: max(var(--safe-area-inset-left, 0px), env(safe-area-inset-left, 0px));
 	border-radius: 0;
 	border: none;
 	resize: none;
 }
 
-body.is-phone .wn-snapshot-header-actions button {
-	min-height: 44px;
-	min-width: 44px;
-	padding: 8px 12px;
+body.is-phone .wn-snapshot-header {
+	flex-shrink: 0;
+	flex-wrap: nowrap;
+	gap: 8px;
+	padding: 4px 8px;
+	cursor: default;
+	touch-action: auto;
 }
 
-@media (orientation: portrait) {
-	body.is-phone .wn-snapshot-toolbar {
-		grid-template-columns: minmax(0, 1fr);
-		align-items: stretch;
-		gap: 8px;
-	}
+body.is-phone .wn-snapshot-title-group {
+	flex: 1;
+	overflow: hidden;
+}
+
+body.is-phone .wn-snapshot-header-icon,
+body.is-phone .wn-snapshot-header-title,
+body.is-phone .wn-snapshot-header-actions {
+	flex-shrink: 0;
+}
+
+body.is-phone .wn-snapshot-header-title {
+	white-space: nowrap;
+}
+
+body.is-phone .wn-snapshot-header-actions button {
+	height: auto;
+	min-height: 36px;
+	min-width: 44px;
+	padding: 4px 8px;
+}
+
+/* Keep the header reachable even when controls exceed a short viewport. */
+body.is-phone .wn-snapshot-body {
+	overflow-y: auto;
+}
+
+body.is-phone .wn-snapshot-banner,
+body.is-phone .wn-snapshot-toolbar,
+body.is-phone .wn-snapshot-replay-toolbar {
+	flex-shrink: 0;
+	padding: 6px 8px;
+}
+
+body.is-phone .wn-snapshot-banner {
+	align-items: flex-start;
+}
+
+body.is-phone .wn-snapshot-banner-icon {
+	flex-shrink: 0;
+}
+
+body.is-phone .wn-snapshot-toolbar {
+	gap: 6px;
 }
 
 body.is-phone .wn-snapshot-select-group {
@@ -32,11 +79,80 @@ body.is-phone .wn-snapshot-select-group {
 	align-items: stretch;
 }
 
-body.is-phone .wn-snapshot-toolbar select,
-body.is-phone .wn-snapshot-toolbar button {
-	min-height: 44px;
+body.is-phone .wn-snapshot-select-group label {
+	white-space: normal;
+	overflow-wrap: anywhere;
 }
 
-body.is-phone .wn-snapshot-header {
-	flex-wrap: wrap;
+body.is-phone .wn-snapshot-toolbar select,
+body.is-phone .wn-snapshot-toolbar button,
+body.is-phone .wn-snapshot-replay-toolbar button {
+	height: auto;
+	min-height: 36px;
+	min-width: 0;
+	padding: 4px 6px;
+	font-size: var(--font-ui-smaller);
+}
+
+body.is-phone .wn-snapshot-toolbar-actions {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 6px;
+}
+
+body.is-phone .wn-snapshot-toolbar-actions button,
+body.is-phone .wn-snapshot-replay-toolbar button {
+	white-space: normal;
+	overflow-wrap: anywhere;
+}
+
+body.is-phone .wn-snapshot-replay-toolbar {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	gap: 6px;
+}
+
+body.is-phone .wn-snapshot-replay-back-btn,
+body.is-phone .wn-snapshot-replay-nav-group {
+	grid-column: 1 / 3;
+}
+
+body.is-phone .wn-snapshot-replay-play-btn,
+body.is-phone .wn-snapshot-replay-speed-group {
+	grid-column: 3 / -1;
+}
+
+body.is-phone .wn-snapshot-replay-nav-group,
+body.is-phone .wn-snapshot-replay-speed-group {
+	grid-row: 2;
+}
+
+body.is-phone .wn-snapshot-replay-nav-group button,
+body.is-phone .wn-snapshot-replay-speed-group button {
+	flex: 1;
+}
+
+body.is-phone .wn-snapshot-replay-scrubber-group {
+	grid-column: 1 / -1;
+	grid-row: 3;
+	display: grid;
+	min-width: 0;
+	gap: 0;
+}
+
+body.is-phone .wn-snapshot-replay-scrubber {
+	width: 100%;
+	min-width: 0;
+	min-height: 36px;
+}
+
+body.is-phone .wn-snapshot-replay-info {
+	white-space: normal;
+	overflow-wrap: anywhere;
+	text-align: center;
+}
+
+body.is-phone .wn-snapshot-diff-content {
+	flex: 1 0 96px;
+	padding: 8px;
 }

@@ -1,3 +1,41 @@
+## 🛠 v4.0.9
+
+### 新增功能
+
+- **设定速查**：悬浮卡片与设定看板卡片共用编辑弹窗，快速修改名称、类型、别名、正文与关系，正文按标题和冒号标签自动拆分为独立字段；悬浮展示开关开放至全平台。
+- **章节实时状态**：展示当前章节关联的时间节点及事件，有关联原文时可点击定位。
+- **时间轴看板**：竖向时间节点增加快捷编辑按钮，可在弹窗中编辑节点及其事件。
+- **关联原文速查**：编辑器支持为时间线与伏笔关联的原文添加底色高亮和悬浮展示；两项均默认关闭，可在各自的创作辅助设置中开启。与设定名重叠时，优先展示已开启的设定卡片。
+- **章节快照回放**：按时间顺序回放已加载的历史版本，支持播放与暂停、逐版切换、进度拖动和倍速调整；保持正文段落排版并跟随改动位置，手动选版可停留查看增删标记。
+
+### 功能优化
+
+- **脚注与注释统计**：现有脚注开关同时控制 %%…%% 注释；关闭时，字数统计与纯净复制一并排除行内及多行注释。
+
+### Bug 修复
+
+- **手机快照面板**：修复顶部关闭按钮被系统状态栏遮挡的问题，紧凑排列竖屏下的对比与回放控件，为正文留出更多空间。
+- **实时写作状态**：修复编辑作品内卷目录章节时，顶部显示卷名而非作品名的问题；作品总字数与目标进度同步使用作品范围。
+
+### English Changelog
+
+#### New Features
+
+- **Lore lookup**: Hover cards and lore board cards share an edit dialog for names, types, aliases, descriptions and relationships, with headings and colon labels automatically split into individual fields. Control hover cards with an all-platform switch.
+- **Live chapter status**: Show associated timeline nodes and events, with navigation to linked original text.
+- **Timeline board**: Quickly edit a vertical timeline node and its events in a dialog.
+- **Linked text lookup**: Optionally highlight timeline and foreshadowing quotes with a background color in the editor and preview their records in a popover. Both options are off by default and available in their respective creative assistance settings. Lore cards take priority over overlapping quotes when enabled.
+- **Chapter snapshot replay**: Replay loaded historical versions with play/pause, step navigation, seeking and adjustable speed. Preserve paragraph spacing, follow changed text, and inspect persistent diff highlights when selecting versions manually.
+
+#### Improvements
+
+- **Footnotes and comments**: The existing footnote toggle also controls %%…%% comments. When disabled, inline and multiline comments are excluded from word counts and clean text copies.
+
+#### Bug Fixes
+
+- **Phone snapshot panel**: Keep the close button clear of the system status bar and arrange comparison and replay controls more compactly in portrait mode, leaving more room for text.
+- **Live writing status**: Fix the header showing a volume folder name instead of the book name when editing a chapter inside a recognized book. Total word count and goal progress use the same book scope.
+
 ## 🛠 v4.0.8
 
 ### 功能优化

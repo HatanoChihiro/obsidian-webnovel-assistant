@@ -37,6 +37,7 @@
 @import "./features/floating-notes.css";
 @import "./features/proofreading.css";
 @import "./features/chapter-snapshot.css";
+@import "./features/chapter-reference.css";
 
 /* Core Studio Views */
 @import "./views/workbench.css";

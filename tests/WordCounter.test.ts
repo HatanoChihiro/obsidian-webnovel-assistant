@@ -32,6 +32,7 @@ describe('WordCounter', () => {
 			'<tag attr="\n正文内容\n">\n结束',
 			'[^a]: footnote\n  正文内容\n结束',
 			'开始 ^[注释\n正文内容\n结束]',
+			'开始\n%%\n正文内容\n%%结束',
 			'[[开始\n正文内容\n结束]]',
 			'开始\n正文内容\n\n[^a]: footnote\n\n  continuation',
 			'# 标题\n正文内容\n---\n结束'

@@ -21,6 +21,7 @@ import type { FileEventManager } from '../services/FileEventManager';
 import type { ForeshadowingManager } from '../services/ForeshadowingManager';
 import type { TaskManager } from '../services/TaskManager';
 import type { TimelineManager } from '../services/TimelineManager';
+import type { ChapterReferenceService } from '../services/ChapterReferenceService';
 import type { RelationGraphManager } from '../services/RelationGraphManager';
 import type { TypographyManager } from '../services/TypographyManager';
 import type { ChapterMergeManager } from '../services/ChapterMergeManager';
@@ -67,6 +68,7 @@ export interface ServiceMap {
 	ForeshadowingManager: ForeshadowingManager;
 	TaskManager: TaskManager;
 	TimelineManager: TimelineManager;
+	ChapterReferenceService: ChapterReferenceService;
 	RelationGraphManager: RelationGraphManager;
 	TypographyManager: TypographyManager;
 	ChapterMergeManager: ChapterMergeManager;

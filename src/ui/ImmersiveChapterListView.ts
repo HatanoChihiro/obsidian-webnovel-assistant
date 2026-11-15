@@ -17,6 +17,7 @@ export type ImmersiveChapterListSettings = Pick<
 	| 'customSortOrder'
 	| 'showExplorerCounts'
 	| 'lorePopoverCollapse'
+	| 'enableLorePopover'
 	| 'enableMobileLorePopover'
 	| 'workspaceFolders'
 	| 'loreFolderName'

@@ -31,7 +31,7 @@ export interface TimelineFormOptions {
 	typeOptions: string[];
 	existingNodes?: Array<string | TimelineNodeOption>;
 	onCancel: () => void;
-	onSubmit: (entry: TimelineEntry) => void;
+	onSubmit: (entry: TimelineEntry) => void | Promise<void>;
 	submitText?: string;
 	title?: string;
 }
@@ -302,15 +302,18 @@ export class TimelineFormComponent {
 		};
 
 		// 按钮
+		let isSaving = false;
 		const btnRow = form.createDiv({ cls: 'wn-timeline-form-btns' });
 		const cancelBtn = btnRow.createEl('button', { text: t('common.cancel'), cls: 'wn-timeline-action-btn' });
 		cancelBtn.onclick = () => {
+			if (isSaving) return;
 			form.remove();
 			onCancel();
 		};
 
 		const saveBtn = btnRow.createEl('button', { text: submitText || t('common.add'), cls: 'wn-timeline-action-btn mod-cta' });
 		saveBtn.onclick = () => {
+			if (isSaving) return;
 			const time = timeInput.value.trim();
 			if (!time) {
 				new Notice(t('modal.please-fill-time-point'));
@@ -376,7 +379,23 @@ export class TimelineFormComponent {
 				items: items
 			};
 			
-			onSubmit(entry);
+			void (async () => {
+				try {
+					isSaving = true;
+					saveBtn.disabled = true;
+					cancelBtn.disabled = true;
+					await onSubmit(entry);
+				} catch (err) {
+					const msg = err instanceof Error ? err.message : String(err);
+					if (!msg.includes(t('timeline.conflict-notice')) && !msg.includes(t('common.no-files-hint', { type: t('setting.timeline') }))) {
+						new Notice(t('modal.save-failed', { error: msg }));
+					}
+				} finally {
+					isSaving = false;
+					saveBtn.disabled = false;
+					cancelBtn.disabled = false;
+				}
+			})();
 		};
 
 		window.setTimeout(() => timeInput.focus(), 50);

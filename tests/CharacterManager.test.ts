@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { CharacterManager, cleanLoreHeading } from '../src/services/CharacterManager';
 import { parseLoreTemplate } from '../src/services/LoreTemplateService';
-import { TFile, TFolder } from 'obsidian';
+import { TFile, TFolder, parseYaml } from 'obsidian';
 import type { App } from 'obsidian';
 import { Text } from '@codemirror/state';
 import type { Decoration, DecorationSet, EditorView, ViewUpdate } from '@codemirror/view';
@@ -77,7 +77,8 @@ describe('CharacterManager', () => {
                 cachedRead: vi.fn(),
                 read: vi.fn(),
                 modify: vi.fn(),
-                process: vi.fn()
+                process: vi.fn(),
+                getAbstractFileByPath: vi.fn()
             },
             workspace: {
                 iterateAllLeaves: vi.fn(),
@@ -1403,6 +1404,508 @@ LinLei is a dragon warrior.`;
             const toggled = await manager.toggleLoreImportance(entry!);
             expect(toggled).toBe(false);
             expect(fileContent).not.toContain('<!-- wn-important -->');
+        });
+    });
+
+    describe('Batch C: Lore snapshot and full structured quick-edit', () => {
+        it('loads single-file aliases from the captured source instead of delayed metadata', async () => {
+            const manager = new CharacterManager(mockApp, mockPlugin);
+            const file = Object.assign(new TFile(), { name: 'Hero.md', path: 'Book1/Lore/Hero.md', basename: 'Hero' });
+            mockApp.vault.cachedRead.mockResolvedValue('---\naliases: [LatestAlias]\n---\n# Hero\nBody\n');
+            mockApp.metadataCache.getFileCache.mockReturnValue({ frontmatter: { aliases: ['StaleAlias'] } });
+            vi.mocked(parseYaml).mockReturnValueOnce({ aliases: ['LatestAlias'] });
+            const snapshot = await manager.getLoreSnapshot({ file, heading: 'Hero' }, 'Book1');
+            expect(parseYaml).toHaveBeenCalledWith('aliases: [LatestAlias]');
+            expect(snapshot?.aliases).toBe('LatestAlias');
+        });
+        it('rejects duplicate target headings separated by another entry', async () => {
+            const manager = new CharacterManager(mockApp, mockPlugin);
+            const file = Object.assign(new TFile(), { path: 'Book1/Lore/Characters.md', basename: 'Characters' });
+            mockApp.vault.cachedRead.mockResolvedValue('## Hero\nFirst\n## Other\nOther\n## Hero\nSecond\n');
+            expect(await manager.getLoreSnapshot({ file, heading: 'Hero' }, 'Book1')).toBeNull();
+        });
+
+        it('protects single-file YAML during concurrent edits and safely quotes edited aliases', async () => {
+            const manager = new CharacterManager(mockApp, mockPlugin);
+            manager.getBookPathForFile = vi.fn().mockReturnValue('Book1');
+            const file = Object.assign(new TFile(), { name: 'Hero.md', path: 'Book1/Lore/Hero.md', basename: 'Hero' });
+            let content = '---\naliases: [Old]\nconfig:\n  aliases: [Nested]\n---\n# Hero\nBody\n';
+            mockApp.vault.cachedRead.mockImplementation(async () => content);
+            mockApp.vault.read.mockImplementation(async () => content);
+            mockApp.vault.process.mockImplementation(async (_file: TFile, transform: (data: string) => string) => { content = transform(content); return content; });
+            const entry = { file, heading: 'Hero' };
+            const snapshot = await manager.getLoreSnapshot(entry, 'Book1');
+            const input = { oldHeading: 'Hero', newHeading: 'Hero', aliases: 'yes, A: B', type: '', body: 'New body', relations: [], contextBookPath: 'Book1', expectedSnapshot: snapshot! };
+            content = content.replace('aliases: [Old]', 'aliases: [External]');
+            expect(await manager.updateLoreEntry(entry, input)).toBe(false);
+            expect(content).toContain('aliases: [External]');
+            input.expectedSnapshot = (await manager.getLoreSnapshot(entry, 'Book1'))!;
+            expect(await manager.updateLoreEntry(entry, input)).toBe(true);
+            expect(content).toContain('aliases: ["yes","A: B"]');
+            expect(content).toContain('config:\n  aliases: [Nested]');
+        });
+
+        it('removes one target from a multi-target relation without restoring it from the old raw line', async () => {
+            const manager = new CharacterManager(mockApp, mockPlugin);
+            manager.getBookPathForFile = vi.fn().mockReturnValue('Book1');
+            const file = Object.assign(new TFile(), { name: 'Characters.md', path: 'Book1/Lore/Characters.md', basename: 'Characters' });
+            let content = '## Hero\nBody\n\n### Relation\n**Friend**: [[#First]], [[#Second]]\n';
+            mockApp.vault.cachedRead.mockImplementation(async () => content);
+            mockApp.vault.read.mockImplementation(async () => content);
+            mockApp.vault.process.mockImplementation(async (_file: TFile, transform: (data: string) => string) => { content = transform(content); return content; });
+            const entry = { file, heading: 'Hero' };
+            const snapshot = (await manager.getLoreSnapshot(entry, 'Book1'))!;
+            expect(snapshot.relations).toHaveLength(2);
+            expect(await manager.updateLoreEntry(entry, { oldHeading: 'Hero', newHeading: 'Hero', aliases: '', type: '', body: snapshot.body, relations: snapshot.relations.slice(1), contextBookPath: 'Book1', expectedSnapshot: snapshot })).toBe(true);
+            expect(content).not.toContain('[[#First]]');
+            expect(content).toContain('[[#Second]]');
+        });
+
+        it('rejects a stale modal snapshot instead of overwriting a concurrent body edit', async () => {
+            const manager = new CharacterManager(mockApp, mockPlugin);
+            manager.getBookPathForFile = vi.fn().mockReturnValue('Book1');
+            const file = Object.assign(new TFile(), { name: 'Characters.md', path: 'Book1/Lore/Characters.md', basename: 'Characters', extension: 'md' });
+            let content = '## TargetHero\nOld body\n\n## OtherHero\nOther body\n';
+            mockApp.vault.cachedRead.mockImplementation(async () => content);
+            mockApp.vault.read.mockImplementation(async () => content);
+            mockApp.vault.process.mockImplementation(async (_file: TFile, transform: (data: string) => string) => { content = transform(content); return content; });
+            const entry = { file, heading: 'TargetHero' };
+            const snapshot = await manager.getLoreSnapshot(entry, 'Book1');
+            content = content.replace('Old body', 'Concurrent body');
+            const input = { oldHeading: 'TargetHero', newHeading: 'TargetHero', aliases: '', type: '', body: 'Modal draft', relations: [], contextBookPath: 'Book1', expectedSnapshot: snapshot! };
+            await expect(manager.updateLoreEntry(entry, input)).resolves.toBe(false);
+            expect(content).toContain('Concurrent body');
+            expect(content).not.toContain('Modal draft');
+        });
+
+        it('preserves unrecognized prose in the relation section when saving unchanged fields', async () => {
+            const manager = new CharacterManager(mockApp, mockPlugin);
+            manager.getBookPathForFile = vi.fn().mockReturnValue('Book1');
+            const file = Object.assign(new TFile(), { name: 'Characters.md', path: 'Book1/Lore/Characters.md', basename: 'Characters', extension: 'md' });
+            let content = '## TargetHero\nHero body\n\n### Relation\nThis explanatory paragraph must survive.\n**Friend**: [[#OtherHero]]\n\n## OtherHero\nOther body\n';
+            mockApp.vault.cachedRead.mockImplementation(async () => content);
+            mockApp.vault.read.mockImplementation(async () => content);
+            mockApp.vault.process.mockImplementation(async (_file: TFile, transform: (data: string) => string) => { content = transform(content); return content; });
+            const entry = { file, heading: 'TargetHero' };
+            const snapshot = await manager.getLoreSnapshot(entry, 'Book1');
+            const input = { oldHeading: 'TargetHero', newHeading: 'TargetHero', aliases: snapshot!.aliases, type: snapshot!.type, body: snapshot!.body, relations: snapshot!.relations, contextBookPath: 'Book1', expectedSnapshot: snapshot! };
+            expect(await manager.updateLoreEntry(entry, input)).toBe(true);
+            expect(content).toContain('This explanatory paragraph must survive.');
+            expect(content).toContain('## OtherHero\nOther body');
+        });
+
+        it('getLoreSnapshot extracts H2 fields, relations, custom sections and ignores fenced code fake lines', async () => {
+            const manager = new CharacterManager(mockApp, mockPlugin);
+            manager.getBookPathForFile = vi.fn().mockReturnValue('Book1');
+            const mockFile = Object.assign(new TFile(), { name: 'Characters.md', path: 'Book1/Lore/Characters.md', basename: 'Characters', extension: 'md' });
+
+            const rawContent = [
+                '## SiblingBefore',
+                'Some before text',
+                '',
+                '## TargetHero',
+                '<!-- wn-important -->',
+                '**别名**：HeroAlias1, HeroAlias2',
+                '**类型**：Protagonist',
+                'This is the hero description paragraph.',
+                '```markdown',
+                '## FakeHeadingInsideCode',
+                '**别名**：FakeAlias',
+                '```',
+                'Second description line.',
+                '',
+                '### 关系',
+                '**Friend**：[[Book1/Lore/Characters#SiblingBefore|SiblingBefore]]',
+                '',
+                '### CustomSkills',
+                '- Skill A',
+                '- Skill B',
+                '',
+                '## SiblingAfter',
+                'Some after text'
+            ].join('\n');
+
+            mockApp.vault.cachedRead.mockReturnValue(Promise.resolve(rawContent));
+            mockApp.vault.read.mockReturnValue(Promise.resolve(rawContent));
+
+            const entry = { file: mockFile, heading: 'TargetHero', important: true };
+            const snapshot = await manager.getLoreSnapshot(entry, 'Book1');
+
+            expect(snapshot).not.toBeNull();
+            expect(snapshot?.name).toBe('TargetHero');
+            expect(snapshot?.type).toBe('Protagonist');
+            expect(snapshot?.aliases).toBe('HeroAlias1, HeroAlias2');
+            expect(snapshot?.body).toContain('This is the hero description paragraph.');
+            expect(snapshot?.body).toContain('## FakeHeadingInsideCode');
+            expect(snapshot?.body).toContain('Second description line.');
+            expect(snapshot?.relations).toEqual([{ label: 'Friend', target: 'SiblingBefore' }]);
+            expect(snapshot?.retainedTail).toContain('### CustomSkills');
+            expect(snapshot?.retainedTail).toContain('- Skill A');
+            expect(snapshot?.important).toBe(true);
+            expect(snapshot?.isBorrowed).toBe(false);
+        });
+
+        it('updateLoreEntry updates H2 entry, preserves custom sections and sibling entries', async () => {
+            const manager = new CharacterManager(mockApp, mockPlugin);
+            const mockFile = Object.assign(new TFile(), { name: 'Characters.md', path: 'Book1/Lore/Characters.md', basename: 'Characters', extension: 'md' });
+
+            let fileContent = [
+                '## SiblingBefore',
+                'Before text',
+                '',
+                '## TargetHero',
+                '**别名**：OldAlias',
+                '**类型**：OldType',
+                'Old body text',
+                '',
+                '### 关系',
+                '**Friend**：[[SiblingBefore]]',
+                '',
+                '### CustomSkills',
+                '- Skill A',
+                '',
+                '## SiblingAfter',
+                'After text'
+            ].join('\n');
+
+            mockApp.vault.read.mockImplementation(() => Promise.resolve(fileContent));
+            mockApp.vault.cachedRead.mockImplementation(() => Promise.resolve(fileContent));
+            mockApp.vault.process.mockImplementation(async (_file: TFile, cb: (data: string) => string) => {
+                fileContent = cb(fileContent);
+                return fileContent;
+            });
+
+            const entry = { file: mockFile, heading: 'TargetHero' };
+            const success = await manager.updateLoreEntry(entry, {
+                oldHeading: 'TargetHero',
+                newHeading: 'TargetHero',
+                aliases: 'NewAlias',
+                type: 'MainRole',
+                body: 'Updated body text with rich Markdown',
+                relations: [{ label: 'Master', target: 'SiblingBefore' }],
+                contextBookPath: 'Book1'
+            });
+
+            expect(success).toBe(true);
+            expect(fileContent).toContain('## SiblingBefore');
+            expect(fileContent).toContain('Before text');
+            expect(fileContent).toContain('## SiblingAfter');
+            expect(fileContent).toContain('After text');
+            expect(fileContent).toContain('NewAlias');
+            expect(fileContent).toContain('MainRole');
+            expect(fileContent).toContain('Updated body text with rich Markdown');
+            expect(fileContent).toContain('Master');
+            expect(fileContent).toContain('CustomSkills');
+            expect(fileContent).toContain('- Skill A');
+            expect(fileContent).not.toContain('Old body text');
+        });
+
+        it('updateLoreEntry single-file edit and rename renames file, preserves frontmatter and rolls back on failure', async () => {
+            const manager = new CharacterManager(mockApp, mockPlugin);
+            manager.getBookPathForFile = vi.fn().mockReturnValue('Book1');
+            const mockFolder = Object.assign(new TFolder(), { name: 'Lore', path: 'Book1/Lore' });
+            const mockFile = Object.assign(new TFile(), {
+                name: 'Alice.md',
+                path: 'Book1/Lore/Alice.md',
+                basename: 'Alice',
+                extension: 'md',
+                parent: mockFolder
+            });
+
+            let fileContent = `---\ntags: [character]\naliases: [Ally]\n---\n# Alice\n**类型**：Hero\nAlice body\n`;
+            const initialContent = fileContent;
+
+            mockApp.vault.read.mockImplementation(() => Promise.resolve(fileContent));
+            mockApp.vault.cachedRead.mockImplementation(() => Promise.resolve(fileContent));
+            mockApp.vault.process.mockImplementation(async (_file: TFile, cb: (data: string) => string) => {
+                fileContent = cb(fileContent);
+                return fileContent;
+            });
+            mockApp.vault.modify = vi.fn().mockImplementation(async (_file: TFile, data: string) => {
+                fileContent = data;
+            });
+            mockApp.fileManager = {
+                renameFile: vi.fn().mockRejectedValue(new Error('Disk write error'))
+            };
+
+            const entry = { file: mockFile, heading: 'Alice' };
+
+            // Attempt rename Alice -> AliceRenamed which will fail at renameFile
+            await expect(manager.updateLoreEntry(entry, {
+                oldHeading: 'Alice',
+                newHeading: 'AliceRenamed',
+                aliases: 'Ally',
+                type: 'Hero',
+                body: 'Alice body modified',
+                relations: [],
+                contextBookPath: 'Book1'
+            })).rejects.toThrow('Disk write error');
+
+            // Must have rolled back content to initialContent via safe process
+            expect(fileContent).toBe(initialContent);
+        });
+
+        it('updateLoreEntry denies editing borrowed lore and prevents name conflicts', async () => {
+            const manager = new CharacterManager(mockApp, mockPlugin);
+            manager.getBookPathForFile = vi.fn().mockImplementation((f: TFile | null) => f?.path.startsWith('Book2') ? 'Book2' : 'Book1');
+            const mockFile = Object.assign(new TFile(), { name: 'SharedLore.md', path: 'Book2/Lore/SharedLore.md', basename: 'SharedLore', extension: 'md' });
+            const entry = { file: mockFile, heading: 'SharedLore' };
+
+            // 1. Borrowed check: contextBookPath Book1 !== Book2 -> borrowed read-only
+            const isBorrowed = manager.isBorrowedLoreEntry(entry, 'Book1');
+            expect(isBorrowed).toBe(true);
+
+            const borrowedResult = await manager.updateLoreEntry(entry, {
+                oldHeading: 'SharedLore',
+                newHeading: 'SharedLore',
+                aliases: '',
+                type: '',
+                body: 'New content',
+                relations: [],
+                contextBookPath: 'Book1'
+            });
+            expect(borrowedResult).toBe(false);
+
+            // 2. Conflict check: renaming to existing name in same book returns false
+            const localFile = Object.assign(new TFile(), { name: 'Alice.md', path: 'Book1/Lore/Alice.md', basename: 'Alice', extension: 'md' });
+            const localEntry = { file: localFile, heading: 'Alice' };
+            vi.spyOn(manager, 'getCharacterFile').mockImplementation((_book: string, name: string) => {
+                if (name === 'ExistingBob') {
+                    return { file: Object.assign(new TFile(), { name: 'Bob.md', path: 'Book1/Lore/Bob.md' }), heading: 'ExistingBob' };
+                }
+                return null;
+            });
+
+            const conflictResult = await manager.updateLoreEntry(localEntry, {
+                oldHeading: 'Alice',
+                newHeading: 'ExistingBob',
+                aliases: '',
+                type: '',
+                body: 'Some body',
+                relations: [],
+                contextBookPath: 'Book1'
+            });
+            expect(conflictResult).toBe(false);
+        });
+
+        it('permits unrelated sibling edits when target chunk matches expectedSnapshot', async () => {
+            const manager = new CharacterManager(mockApp, mockPlugin);
+            manager.getBookPathForFile = vi.fn().mockReturnValue('Book1');
+            const file = Object.assign(new TFile(), { name: 'Characters.md', path: 'Book1/Lore/Characters.md', basename: 'Characters', extension: 'md' });
+            let content = '## SiblingHero\nSibling initial body\n\n## TargetHero\nTarget body\n';
+            mockApp.vault.cachedRead.mockImplementation(async () => content);
+            mockApp.vault.read.mockImplementation(async () => content);
+            mockApp.vault.process.mockImplementation(async (_file: TFile, transform: (data: string) => string) => { content = transform(content); return content; });
+            const entry = { file, heading: 'TargetHero' };
+            const snapshot = await manager.getLoreSnapshot(entry, 'Book1');
+
+            // Sibling edited concurrently, TargetHero untouched
+            content = content.replace('Sibling initial body', 'Sibling concurrent body');
+
+            const input = { oldHeading: 'TargetHero', newHeading: 'TargetHero', aliases: '', type: '', body: 'Target updated body', relations: [], contextBookPath: 'Book1', expectedSnapshot: snapshot! };
+            const success = await manager.updateLoreEntry(entry, input);
+            expect(success).toBe(true);
+            expect(content).toContain('Sibling concurrent body');
+            expect(content).toContain('Target updated body');
+        });
+
+        it('detects read->process race where chunk modified before process commit', async () => {
+            const manager = new CharacterManager(mockApp, mockPlugin);
+            manager.getBookPathForFile = vi.fn().mockReturnValue('Book1');
+            const file = Object.assign(new TFile(), { name: 'Characters.md', path: 'Book1/Lore/Characters.md', basename: 'Characters', extension: 'md' });
+            let content = '## TargetHero\nTarget initial body\n';
+            mockApp.vault.cachedRead.mockImplementation(async () => content);
+            mockApp.vault.read.mockImplementation(async () => content);
+            mockApp.vault.process.mockImplementation(async (_file: TFile, transform: (data: string) => string) => {
+                // Simulate external modification right as process begins
+                content = '## TargetHero\nTarget racing external body\n';
+                content = transform(content);
+                return content;
+            });
+            const entry = { file, heading: 'TargetHero' };
+            const snapshot = await manager.getLoreSnapshot(entry, 'Book1');
+
+            const input = { oldHeading: 'TargetHero', newHeading: 'TargetHero', aliases: '', type: '', body: 'My modal draft', relations: [], contextBookPath: 'Book1', expectedSnapshot: snapshot! };
+            const success = await manager.updateLoreEntry(entry, input);
+            expect(success).toBe(false);
+            expect(content).toContain('Target racing external body');
+            expect(content).not.toContain('My modal draft');
+        });
+
+        it('preserves complex fences and unrecognized prose in relation section without treating code as relations', async () => {
+            const manager = new CharacterManager(mockApp, mockPlugin);
+            manager.getBookPathForFile = vi.fn().mockReturnValue('Book1');
+            const file = Object.assign(new TFile(), { name: 'Characters.md', path: 'Book1/Lore/Characters.md', basename: 'Characters', extension: 'md' });
+            const complexChunk = [
+                '## Hero',
+                'Hero bio',
+                '',
+                '### Relation',
+                'Introductory commentary before relations.',
+                '````markdown',
+                '```',
+                '**FakeRelation**: [[#FakeTarget]]',
+                '```',
+                '````',
+                '**RealFriend**: [[#Buddy]]',
+                'Post commentary.'
+            ].join('\n');
+            let content = complexChunk + '\n';
+            mockApp.vault.cachedRead.mockImplementation(async () => content);
+            mockApp.vault.read.mockImplementation(async () => content);
+            mockApp.vault.process.mockImplementation(async (_file: TFile, transform: (data: string) => string) => { content = transform(content); return content; });
+
+            const entry = { file, heading: 'Hero' };
+            const snapshot = await manager.getLoreSnapshot(entry, 'Book1');
+            expect(snapshot?.relations).toEqual([{ label: 'RealFriend', target: 'Buddy' }]);
+            expect(snapshot?.relationProse).toContain('Introductory commentary before relations.');
+            expect(snapshot?.relationProse).toContain('````markdown');
+            expect(snapshot?.relationProse).toContain('Post commentary.');
+
+            const success = await manager.updateLoreEntry(entry, {
+                oldHeading: 'Hero',
+                newHeading: 'Hero',
+                aliases: '',
+                type: '',
+                body: snapshot!.body,
+                relations: snapshot!.relations,
+                contextBookPath: 'Book1',
+                expectedSnapshot: snapshot!
+            });
+            expect(success).toBe(true);
+            expect(content).toContain('Introductory commentary before relations.');
+            expect(content).toContain('````markdown');
+            expect(content).toContain('**FakeRelation**: [[#FakeTarget]]');
+            expect(content).toContain('Post commentary.');
+            expect(content).toContain('**RealFriend**: [[#Buddy]]');
+        });
+
+        it('synchronizes single-file frontmatter alias removal while retaining unrelated YAML', async () => {
+            const manager = new CharacterManager(mockApp, mockPlugin);
+            manager.getBookPathForFile = vi.fn().mockReturnValue('Book1');
+            const file = Object.assign(new TFile(), { name: 'Item.md', path: 'Book1/Lore/Item.md', basename: 'Item', extension: 'md' });
+            let content = [
+                '---',
+                'tags: [equipment, rare]',
+                'aliases: [Blade, Sword]',
+                'status: active',
+                '---',
+                '# Item',
+                'Item description text.'
+            ].join('\n') + '\n';
+
+            mockApp.vault.cachedRead.mockImplementation(async () => content);
+            mockApp.vault.read.mockImplementation(async () => content);
+            mockApp.vault.process.mockImplementation(async (_file: TFile, transform: (data: string) => string) => { content = transform(content); return content; });
+
+            const entry = { file, heading: 'Item' };
+            const snapshot = await manager.getLoreSnapshot(entry, 'Book1');
+            expect(snapshot).not.toBeNull();
+
+            // Save with aliases cleared: ''
+            const success = await manager.updateLoreEntry(entry, {
+                oldHeading: 'Item',
+                newHeading: 'Item',
+                aliases: '',
+                type: '',
+                body: 'Updated item description.',
+                relations: [],
+                contextBookPath: 'Book1',
+                expectedSnapshot: snapshot!
+            });
+
+            expect(success).toBe(true);
+            expect(content).toContain('tags: [equipment, rare]');
+            expect(content).toContain('status: active');
+            expect(content).not.toContain('aliases:');
+            expect(content).not.toContain('Blade');
+            expect(content).toContain('Updated item description.');
+        });
+
+        it('safely updates scoped relation links on H2 rename without touching plain links or borrowed files', async () => {
+            const manager = new CharacterManager(mockApp, mockPlugin);
+            manager.getBookPathForFile = vi.fn().mockReturnValue('Book1');
+            const targetFile = Object.assign(new TFile(), { name: 'Chars.md', path: 'Book1/Lore/Chars.md', basename: 'Chars', extension: 'md' });
+            const siblingFile = Object.assign(new TFile(), { name: 'Other.md', path: 'Book1/Lore/Other.md', basename: 'Other', extension: 'md' });
+
+            let charsContent = '## OldHero\nHero body\n\n### Relation\n**SelfRef**: [[#OldHero]]\n';
+            let otherContent = '## Bob\nBob body\n\n### Relation\n**BestFriend**: [[Chars#OldHero|HeroAlias]]\n**PlainDoc**: [[Chars]]\n';
+
+            const fileMap = new Map<string, string>([
+                [targetFile.path, charsContent],
+                [siblingFile.path, otherContent]
+            ]);
+
+            manager.getLoreFiles = vi.fn().mockReturnValue([targetFile, siblingFile]);
+            manager.isBorrowedLoreEntry = vi.fn().mockReturnValue(false);
+
+            mockApp.metadataCache.getFirstLinkpathDest = vi.fn().mockImplementation((linkPath: string, _sourcePath: string) => {
+                if (linkPath === 'Chars') return targetFile;
+                return null;
+            });
+
+            mockApp.vault.process.mockImplementation(async (f: TFile, transform: (d: string) => string) => {
+                const prev = fileMap.get(f.path) || '';
+                const next = transform(prev);
+                fileMap.set(f.path, next);
+                return next;
+            });
+
+            const updated = await manager['updateScopedLoreRelationLinks']('Book1', targetFile, 'OldHero', 'NewHero');
+            expect(updated).toBe(true);
+
+            // Same file anchor [[#OldHero]] -> [[#NewHero]]
+            expect(fileMap.get(targetFile.path)).toContain('**SelfRef**: [[#NewHero]]');
+
+            // Cross file anchor [[Chars#OldHero|HeroAlias]] -> [[Chars#NewHero|HeroAlias]]
+            expect(fileMap.get(siblingFile.path)).toContain('**BestFriend**: [[Chars#NewHero|HeroAlias]]');
+
+            // Plain file link [[Chars]] is untouched
+            expect(fileMap.get(siblingFile.path)).toContain('**PlainDoc**: [[Chars]]');
+        });
+
+        it('rollback concurrency preserves concurrent external edits when rename fails', async () => {
+            const manager = new CharacterManager(mockApp, mockPlugin);
+            manager.getBookPathForFile = vi.fn().mockReturnValue('Book1');
+            const mockFolder = Object.assign(new TFolder(), { name: 'Lore', path: 'Book1/Lore' });
+            const mockFile = Object.assign(new TFile(), {
+                name: 'Item.md',
+                path: 'Book1/Lore/Item.md',
+                basename: 'Item',
+                extension: 'md',
+                parent: mockFolder
+            });
+
+            let fileContent = '# Item\nInitial body\n';
+            mockApp.vault.read.mockImplementation(async () => fileContent);
+            mockApp.vault.cachedRead.mockImplementation(async () => fileContent);
+
+            mockApp.vault.process.mockImplementation(async (_file: TFile, cb: (data: string) => string) => {
+                fileContent = cb(fileContent);
+                return fileContent;
+            });
+
+            // Simulate external modification happening right after process write
+            mockApp.fileManager = {
+                renameFile: vi.fn().mockImplementation(async () => {
+                    fileContent = '# ItemRenamed\nExternal concurrent write during rename\n';
+                    throw new Error('Disk error');
+                })
+            };
+
+            const entry = { file: mockFile, heading: 'Item' };
+            await expect(manager.updateLoreEntry(entry, {
+                oldHeading: 'Item',
+                newHeading: 'ItemRenamed',
+                aliases: '',
+                type: '',
+                body: 'Modified body',
+                relations: [],
+                contextBookPath: 'Book1'
+            })).rejects.toThrow('Disk error');
+
+            // Must NOT have clobbered the external concurrent write
+            expect(fileContent).toContain('External concurrent write during rename');
         });
     });
 });

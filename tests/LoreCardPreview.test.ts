@@ -3,6 +3,14 @@ import { createMockDom, flushMicrotasks, type MockElement } from './mocks/dom';
 
 const isMobileMock = vi.hoisted(() => vi.fn(() => false));
 const buildCardDOMMock = vi.hoisted(() => vi.fn());
+const loreEditMock = vi.hoisted(() => ({ construct: vi.fn(), open: vi.fn() }));
+
+vi.mock('../src/ui/LoreEditModal', () => ({
+	LoreEditModal: class {
+		constructor(...args: unknown[]) { loreEditMock.construct(...args); }
+		open = loreEditMock.open;
+	}
+}));
 
 vi.mock('../src/utils/platform', () => ({
 	isMobile: isMobileMock,
@@ -180,6 +188,8 @@ describe('LoreCardPreview', () => {
 		createdOwners = [];
 		attachSpy = vi.spyOn(LoreCardPreview, 'attach');
 		buildCardDOMMock.mockReset();
+		loreEditMock.construct.mockClear();
+		loreEditMock.open.mockClear();
 		buildCardDOMMock.mockImplementation(async (container: MockElement) => {
 			const card = container.createDiv({ cls: 'wn-lore-card is-preview' });
 			card.createDiv({ cls: 'wn-lore-card-header' });
@@ -771,6 +781,19 @@ describe('LoreCardPreview', () => {
 				}),
 				expect.any(Map)
 			);
+
+			// 看板编辑复用字段弹窗，并传递当前作品上下文。
+			const cardOptions = buildCardDOMMock.mock.calls[0]?.[4] as {
+				onEdit?: (entry: typeof testEntry) => void;
+			};
+			expect(cardOptions.onEdit).toEqual(expect.any(Function));
+			cardOptions.onEdit?.(testEntry);
+			expect(loreEditMock.construct).toHaveBeenCalledWith(mockApp, {
+				app: mockApp, characterManager: mockPlugin.characterManager
+			}, testEntry, '/');
+			expect(loreEditMock.open).toHaveBeenCalledTimes(1);
+			expect(mockPlugin.characterManager.getLoreContent).not.toHaveBeenCalled();
+			expect(mockPlugin.characterManager.updateLoreContent).not.toHaveBeenCalled();
 
 			// 点击展开按钮前，直接派发 mouseenter 验证悬停预览可用
 			expect(findPanel(dom.body)).toBeNull();

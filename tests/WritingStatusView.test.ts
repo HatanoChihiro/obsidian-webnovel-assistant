@@ -12,6 +12,7 @@ import type { DailyStat } from '../src/types/settings';
 import { getCurrentBookContext } from '../src/utils/path';
 import type { TaskEntry } from '../src/types/task';
 import { CacheManager } from '../src/services/CacheManager';
+import * as LeafUtils from '../src/utils/leaf';
 
 describe('WritingStatusView task lifecycle gating', () => {
 	type TaskLifecycleGate = {
@@ -1936,13 +1937,14 @@ describe('WritingStatusView work retention and context isolation', () => {
 			expect(view.getState().currentBookPath).toBe('NovelA');
 		});
 
-		it('5. 嵌套卷目录与根目录章节展示：直接父目录名称正确，避开不同层级的误导性总目标，保留作品级任务与元数据', async () => {
-			mockPlugin.settings.enableStrictChapterMode = true;
+		it.each([false, true])('5. 已识别作品的卷内章节展示作品范围，无标记根目录章节保留兜底（strict=%s）', async (strict) => {
+			mockPlugin.settings.enableStrictChapterMode = strict;
 			mockPlugin.settings.workspaceFolders = [];
 			syncRealEligibility();
 
 			const novelA = new TFolder('NovelA', 'NovelA');
 			const volume1 = Object.assign(new TFolder('第一卷', 'NovelA/第一卷'), { parent: novelA });
+			const section = Object.assign(new TFolder('Section', 'NovelA/第一卷/Section'), { parent: volume1 });
 			const infoFileA = Object.assign(new TFile('作品信息.md', 'NovelA/作品信息.md'), {
 				basename: '作品信息',
 				extension: 'md',
@@ -1961,8 +1963,12 @@ describe('WritingStatusView work retention and context isolation', () => {
 				stat: { mtime: 1000 },
 				parent: new TFolder('/', '/')
 			});
+			const nestedChapter = Object.assign(new TFile('第2章.md', 'NovelA/第一卷/Section/第2章.md'), {
+				basename: '第2章', extension: 'md', stat: { mtime: 1000 }, parent: section
+			});
 
-			const env = createTestEnvironment([novelA, volume1, infoFileA, chapterV1, rootChapter], { disableSynthesizedNovelInfo: true });
+			const env = createTestEnvironment([novelA, volume1, section, infoFileA, chapterV1, nestedChapter, rootChapter], { disableSynthesizedNovelInfo: true });
+			env.app.vault.cachedRead = vi.fn((file: TFile) => Promise.resolve(file === infoFileA ? 'Word Goal: 100000' : ''));
 			Object.assign(view, { app: env.app });
 			mockPlugin.homepageManager = {
 				...mockPlugin.homepageManager,
@@ -1988,17 +1994,25 @@ describe('WritingStatusView work retention and context isolation', () => {
 			env.setActiveMarkdown(chapterV1);
 			await view.updateData(true);
 
-			// 顶部显示直接父文件夹名称与卷字数
-			expect(view.workNameEl.innerText).toBe('第一卷');
-			expect(view.workWordCountEl.innerText).toBe('8,000字');
-			// 避免卷字数与作品总目标不匹配的误导性百分比：总进度目标应隐藏
-			expect(view.workGoalEl.hidden).toBe(true);
+			// 已识别作品时，名称、总字数和目标保持同一作品范围。
+			expect(view.workNameEl.innerText).toBe('NovelA');
+			expect(view.workWordCountEl.innerText).toBe('60,000字');
+			expect(view.workGoalEl.hidden).toBe(false);
 			// 作品级任务依然正确保留
 			expect(view.taskSectionEls.every((el: HTMLElement) => !el.hidden)).toBe(true);
 			expect(mockPlugin.taskManager.getTaskFile).toHaveBeenCalledWith('NovelA');
 			// 章节行与章节卡片可见
 			expect(view.chapterStatusCardEl.hidden).toBe(false);
 			expect(view.chapterSectionEls.every((el: HTMLElement) => !el.hidden)).toBe(true);
+
+			// 同一作品更深层目录的章节也保持作品范围。
+			env.setActiveMarkdown(nestedChapter);
+			await view.updateData(true);
+			expect(view.workNameEl.innerText).toBe('NovelA');
+			expect(view.workWordCountEl.innerText).toBe('60,000字');
+			expect(view.workGoalEl.hidden).toBe(false);
+			expect(view.chapterTitleEl.innerText).toBe('第2章');
+			expect(view.getState().currentBookPath).toBe('NovelA');
 
 			// 2. 激活根目录直接章节
 			env.setActiveMarkdown(rootChapter);
@@ -2319,6 +2333,322 @@ describe('WritingStatusView work retention and context isolation', () => {
 			// 新工作台打开时请求 preferStatusViewContext，正确解析为保留作品 A
 			const resolvedContext = getCurrentBookContext(env.app, mockPlugin, { preferStatusViewContext: true });
 			expect(resolvedContext).toBe('NovelA');
+		});
+	});
+
+	describe('WritingStatusView timeline section rendering and original-text jump', () => {
+		it('renders associated timeline nodes and events with jump capability', async () => {
+			const novelA = Object.assign(new TFolder(), { name: '作品A', path: '作品A' });
+			const infoFileA = Object.assign(new TFile('作品信息.md', '作品A/作品信息.md'), { parent: novelA });
+			const chapterA = Object.assign(new TFile('第1章.md', '作品A/第1章.md'), {
+				basename: '第1章',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: novelA
+			});
+			const timelineFile = Object.assign(new TFile('时间线.md', '作品A/时间线.md'), {
+				basename: '时间线',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: novelA
+			});
+
+			const timelineContent = `## 2023-01-01
+- 事件1 [[第1章]] <!-- origin: 具体的第1章原文 -->
+- 事件2 [[第1章]]
+`;
+			const env = createTestEnvironment([novelA, infoFileA, chapterA, timelineFile], { disableSynthesizedNovelInfo: true });
+			(env.app.vault.cachedRead as ReturnType<typeof vi.fn>).mockImplementation((file: TFile) => {
+				if (file.path === timelineFile.path) return Promise.resolve(timelineContent);
+				return Promise.resolve('');
+			});
+
+			mockPlugin.timelineManager = {
+				findTimelineFile: vi.fn((folder: string) => folder === '作品A' ? timelineFile : null),
+				parseEntries: vi.fn(() => [
+					{
+						time: '2023-01-01',
+						type: '主线',
+						description: '事件1\n事件2',
+						chapter: '[[第1章]]',
+						rawBlock: '',
+						items: [
+							{ description: '事件1', chapter: '[[第1章]]', origin: '具体的第1章原文' },
+							{ description: '事件2', chapter: '[[第1章]]' }
+						]
+					}
+				]),
+				getTimelineNodesForChapter: vi.fn(() => [
+					{
+						time: '2023-01-01',
+						type: '主线',
+						items: [
+							{ description: '事件1', chapter: '[[第1章]]', origin: '具体的第1章原文' },
+							{ description: '事件2', chapter: '[[第1章]]' }
+						],
+						entry: { time: 'Day 1', description: '', chapter: '', rawBlock: '' }
+					}
+				])
+			};
+
+			Object.assign(view, { app: env.app });
+			env.setActiveMarkdown(chapterA);
+
+			const locateSpy = vi.spyOn(LeafUtils, 'smartLocateAndHighlight').mockResolvedValue(true);
+
+			await view.updateData(true);
+
+			// Should render timeline section
+			const timelineSection = Array.from(view.chapterBadgesContainer.children).find(
+				child => child.className?.includes('is-timeline')
+			);
+			expect(timelineSection).toBeDefined();
+
+			// Should find node time
+			const nodeTimes = Array.from(timelineSection!.children).flatMap(c =>
+				Array.from(c.children)?.filter(sub => sub.className?.includes('wn-chapter-timeline-node-time')) || []
+			);
+			expect(nodeTimes).toHaveLength(1);
+			expect(nodeTimes[0].textContent).toContain('2023-01-01');
+
+			// Should find items
+			const items = Array.from(timelineSection!.children).flatMap(c =>
+				Array.from(c.children)?.filter(sub => sub.className?.includes('wn-chapter-status-item')) || []
+			);
+			expect(items).toHaveLength(2);
+
+			// Item 1 has origin -> wn-clickable and click triggers jump with exact origin
+			const item1 = items[0];
+			expect(item1.textContent).toBe('事件1');
+			expect(item1.className).toContain('wn-clickable');
+			const clickHandlers1 = (item1.addEventListener as ReturnType<typeof vi.fn>).mock.calls.filter(call => call[0] === 'click');
+			expect(clickHandlers1.length).toBeGreaterThan(0);
+			const clickEvt1 = { stopPropagation: vi.fn(), preventDefault: vi.fn() };
+			clickHandlers1[0][1](clickEvt1);
+			expect(locateSpy).toHaveBeenCalledWith(env.app, chapterA, ['具体的第1章原文']);
+
+			// Item 2 has no origin -> stays informational, NO wn-clickable, no click listener for jump
+			const item2 = items[1];
+			expect(item2.textContent).toBe('事件2');
+			expect(item2.className).not.toContain('wn-clickable');
+			const clickHandlers2 = (item2.addEventListener as ReturnType<typeof vi.fn>).mock.calls.filter(call => call[0] === 'click');
+			expect(clickHandlers2.length).toBe(0);
+
+			locateSpy.mockRestore();
+		});
+
+		it('refreshes timeline section on mtime change, file deletion, and file creation', async () => {
+			const novelA = Object.assign(new TFolder(), { name: '作品A', path: '作品A' });
+			const infoFileA = Object.assign(new TFile('作品信息.md', '作品A/作品信息.md'), { parent: novelA });
+			const chapterA = Object.assign(new TFile('第1章.md', '作品A/第1章.md'), {
+				basename: '第1章',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: novelA
+			});
+			const timelineFile = Object.assign(new TFile('时间线.md', '作品A/时间线.md'), {
+				basename: '时间线',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: novelA
+			});
+
+			const env = createTestEnvironment([novelA, infoFileA, chapterA, timelineFile], { disableSynthesizedNovelInfo: true });
+			Object.assign(view, { app: env.app });
+			env.setActiveMarkdown(chapterA);
+
+			let timelineNodes = [
+				{
+					time: '2023-01-01',
+					items: [{ description: '事件版本1', chapter: '[[第1章]]' }],
+					entry: { time: 'Day 1', description: '', chapter: '', rawBlock: '' }
+				}
+			];
+			let hasTimelineFile = true;
+
+			mockPlugin.timelineManager = {
+				findTimelineFile: vi.fn((folder: string) => hasTimelineFile && folder === '作品A' ? timelineFile : null),
+				parseEntries: vi.fn(() => []),
+				getTimelineNodesForChapter: vi.fn(() => timelineNodes)
+			};
+
+			// 1. Initial render
+			await view.updateData(true);
+			let timelineSection = Array.from(view.chapterBadgesContainer.children).find(
+				child => child.className?.includes('is-timeline')
+			);
+			expect(timelineSection).toBeDefined();
+
+			// 2. Only timeline mtime changed (chapter mtime unchanged)
+			timelineFile.stat.mtime = 2000;
+			timelineNodes = [
+				{
+					time: '2023-01-01',
+					items: [{ description: '事件版本2', chapter: '[[第1章]]' }],
+					entry: { time: 'Day 1', description: '', chapter: '', rawBlock: '' }
+				}
+			];
+			await view.updateData(true);
+			timelineSection = Array.from(view.chapterBadgesContainer.children).find(
+				child => child.className?.includes('is-timeline')
+			);
+			const items = Array.from(timelineSection!.children).flatMap(c =>
+				Array.from(c.children)?.filter(sub => sub.className?.includes('wn-chapter-status-item')) || []
+			);
+			expect(items[0].textContent).toBe('事件版本2');
+
+			// 3. Timeline file deleted
+			hasTimelineFile = false;
+			await view.updateData(true);
+			timelineSection = Array.from(view.chapterBadgesContainer.children).find(
+				child => child.className?.includes('is-timeline')
+			);
+			expect(timelineSection).toBeUndefined();
+
+			// 4. Missing-file recovery (timeline file created)
+			hasTimelineFile = true;
+			timelineFile.stat.mtime = 3000;
+			await view.updateData(true);
+			timelineSection = Array.from(view.chapterBadgesContainer.children).find(
+				child => child.className?.includes('is-timeline')
+			);
+			expect(timelineSection).toBeDefined();
+		});
+
+		it('does not display timeline section or stale associations for unmarked chapters', async () => {
+			const novelA = Object.assign(new TFolder(), { name: '作品A', path: '作品A' });
+			const infoFileA = Object.assign(new TFile('作品信息.md', '作品A/作品信息.md'), { parent: novelA });
+			const chapterA = Object.assign(new TFile('第1章.md', '作品A/第1章.md'), {
+				basename: '第1章',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: novelA
+			});
+			const timelineFile = Object.assign(new TFile('时间线.md', '作品A/时间线.md'), {
+				basename: '时间线',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: novelA
+			});
+
+			const unmarkedFolder = Object.assign(new TFolder(), { name: '未标记目录', path: '未标记目录' });
+			const unmarkedChapter = Object.assign(new TFile('第1章.md', '未标记目录/第1章.md'), {
+				basename: '第1章',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: unmarkedFolder
+			});
+
+			const env = createTestEnvironment([novelA, infoFileA, chapterA, timelineFile, unmarkedFolder, unmarkedChapter], { disableSynthesizedNovelInfo: true });
+			Object.assign(view, { app: env.app });
+
+			mockPlugin.timelineManager = {
+				findTimelineFile: vi.fn((folder: string) => folder === '作品A' ? timelineFile : null),
+				parseEntries: vi.fn(() => []),
+				getTimelineNodesForChapter: vi.fn(() => [
+					{
+						time: '2023-01-01',
+						items: [{ description: '作品A时间事件', chapter: '[[第1章]]' }],
+						entry: { time: 'Day 1', description: '', chapter: '', rawBlock: '' }
+					}
+				])
+			};
+
+			// 1. Visit novelA chapter
+			env.setActiveMarkdown(chapterA);
+			await view.updateData(true);
+			let timelineSection = Array.from(view.chapterBadgesContainer.children).find(
+				child => child.className?.includes('is-timeline')
+			);
+			expect(timelineSection).toBeDefined();
+
+			// 2. Switch to unmarked chapter outside any recognized book
+			env.setActiveMarkdown(unmarkedChapter);
+			await view.updateData(true);
+
+			// Unmarked chapter should show card but have NO timeline section
+			timelineSection = Array.from(view.chapterBadgesContainer.children).find(
+				child => child.className?.includes('is-timeline')
+			);
+			expect(timelineSection).toBeUndefined();
+		});
+
+		it('handles delayed timeline read and async read failure safely without overwriting or breaking other status', async () => {
+			const novelA = Object.assign(new TFolder(), { name: '作品A', path: '作品A' });
+			const infoFileA = Object.assign(new TFile('作品信息.md', '作品A/作品信息.md'), { parent: novelA });
+			const chapterA1 = Object.assign(new TFile('第1章.md', '作品A/第1章.md'), {
+				basename: '第1章',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: novelA
+			});
+			const chapterA2 = Object.assign(new TFile('第2章.md', '作品A/第2章.md'), {
+				basename: '第2章',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: novelA
+			});
+			const timelineFile = Object.assign(new TFile('时间线.md', '作品A/时间线.md'), {
+				basename: '时间线',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: novelA
+			});
+
+			const env = createTestEnvironment([novelA, infoFileA, chapterA1, chapterA2, timelineFile], { disableSynthesizedNovelInfo: true });
+			Object.assign(view, { app: env.app });
+
+			mockPlugin.timelineManager = {
+				findTimelineFile: vi.fn((folder: string) => folder === '作品A' ? timelineFile : null),
+				parseEntries: vi.fn(() => []),
+				getTimelineNodesForChapter: vi.fn((file: TFile) => {
+					if (file.path === chapterA1.path) {
+						return [{ time: '2023-01-01', items: [{ description: '第1章事件', chapter: '[[第1章]]' }], entry: { time: 'Day 1', description: '', chapter: '', rawBlock: '' } }];
+					}
+					return [];
+				})
+			};
+
+			// Case 1: Delayed read during rapid chapter switch
+			env.setActiveMarkdown(chapterA1);
+			let readCallCount = 0;
+			const delayed = env.setDelayedCachedRead((file) => {
+				readCallCount++;
+				return readCallCount === 1 && file.path === timelineFile.path;
+			});
+
+			// Start update on chapterA1 (hangs at cachedRead)
+			const promise1 = view.updateData(true);
+			await vi.waitFor(() => expect(env.app.vault.cachedRead).toHaveBeenCalledWith(timelineFile));
+
+			// Immediately switch to chapterA2
+			env.setActiveMarkdown(chapterA2);
+			await view.updateData(true);
+
+			// Now resolve delayed chapterA1 timeline read
+			delayed.resolve('## 2023-01-01\n- 第1章事件 [[第1章]]');
+			await promise1;
+
+			// Active chapter is chapterA2; chapterA1's delayed timeline read must NOT overwrite it
+			expect(view.chapterTitleEl.innerText).toBe('第2章');
+			const timelineSection = Array.from(view.chapterBadgesContainer.children).find(
+				child => child.className?.includes('is-timeline')
+			);
+			expect(timelineSection).toBeUndefined();
+
+			// Case 2: Read failure does not throw or prevent chapter synopsis/status display
+			const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+			(env.app.vault.cachedRead as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('Timeline disk failure'));
+
+			env.setActiveMarkdown(chapterA1);
+			await expect(view.updateData(true)).resolves.not.toThrow();
+
+			expect(view.chapterStatusCardEl.hidden).toBe(false);
+			expect(view.chapterTitleEl.innerText).toBe('第1章');
+			// A transient read failure must retry even without another file modification.
+			await view.updateData(true);
+			expect(Array.from(view.chapterBadgesContainer.children).some(child => child.className.includes('is-timeline'))).toBe(true);
+			consoleSpy.mockRestore();
 		});
 	});
 });

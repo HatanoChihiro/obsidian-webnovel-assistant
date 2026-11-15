@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { LoreCardRenderer, type LoreBodyReadCache } from '../src/ui/components/LoreCardRenderer';
 import { MarkdownRenderer, Component, TFile } from 'obsidian';
 import { injectSoftBreakIndentPlaceholders } from '../src/utils/softBreakIndent';
-import * as StickyNoteEditor from '../src/ui/components/StickyNoteParagraphEditor';
 
 let animationFrameCallbacks: FrameRequestCallback[] = [];
 let resizeObservers: MockResizeObserver[] = [];
@@ -61,6 +60,7 @@ vi.mock('obsidian', async (importOriginal) => {
 	return {
 		...actual,
 		setIcon: vi.fn(),
+		setTooltip: vi.fn(),
 		MarkdownRenderer: {
 			render: vi.fn((_app, markdown, container) => {
 				const div = container.createDiv({ cls: 'rendered-markdown' });
@@ -417,164 +417,6 @@ type: 主要角色
 		expect(injectSoftBreakIndentPlaceholders).toHaveBeenCalledWith(markdownContainer, false);
 	});
 
-	it('should map reading scroll position to textarea.scrollTop based on max scroll ranges when entering edit mode', async () => {
-		const mockFile = { basename: '人物', path: '设定/人物.md' };
-		const entry = { file: mockFile as unknown as import('obsidian').TFile, heading: '女主角' };
-		mockApp.vault.cachedRead.mockResolvedValue('## 女主角\n原始内容');
-		mockApp.metadataCache.getFileCache.mockReturnValue({
-			headings: [{ heading: '女主角', level: 2, position: { start: { line: 0 }, end: { line: 0 } } }]
-		});
-		mockPlugin.characterManager.getLoreContent.mockResolvedValue('## 女主角\n原始内容 long text for testing');
-
-		await LoreCardRenderer.buildCardDOM(container, entry, mockPlugin, createMockComponent(), { draggable: true });
-		const editBtn = container.querySelector('.wn-lore-card-edit-btn');
-		expect(editBtn).not.toBeNull();
-
-		const card = container.querySelector('.wn-lore-card');
-		const body = container.querySelector('.wn-lore-card-body');
-		body.clientHeight = 100;
-		body.scrollHeight = 200;
-		body.scrollTop = 50; // max range = 200 - 100 = 100; scrollRatio = 50 / 100 = 0.5
-
-		await editBtn.onclick();
-
-		expect(body.hasClass('is-editing')).toBe(true);
-		expect(card.getAttribute('draggable')).toBe('false');
-
-		const textarea = body.querySelector('.wn-lore-card-textarea');
-		expect(textarea).not.toBeNull();
-		expect(textarea.value).toBe('## 女主角\n原始内容 long text for testing');
-		expect(textarea.oninput).toBeUndefined();
-
-		const setCaretSpy = vi.spyOn(StickyNoteEditor, 'setCaretPosition');
-		textarea.clientHeight = 100;
-		textarea.scrollHeight = 400;
-		flushAnimationFrames();
-
-		// textarea max range = 400 - 100 = 300; expected scrollTop = 0.5 * 300 = 150
-		expect(textarea.scrollTop).toBe(150);
-		expect(textarea.focus).toHaveBeenCalledWith({ preventScroll: true });
-		const expectedCharIndex = Math.floor('## 女主角\n原始内容 long text for testing'.length * 0.5);
-		expect(setCaretSpy).toHaveBeenCalledWith(textarea, expectedCharIndex);
-	});
-
-	it('should map reading display bottom to textarea bottom precisely when entering edit mode', async () => {
-		const setCaretSpy = vi.spyOn(StickyNoteEditor, 'setCaretPosition');
-		const mockFile = { basename: '人物', path: '设定/人物.md' };
-		const entry = { file: mockFile as unknown as import('obsidian').TFile, heading: '女主角' };
-		mockApp.vault.cachedRead.mockResolvedValue('## 女主角\n原始内容');
-		mockApp.metadataCache.getFileCache.mockReturnValue({
-			headings: [{ heading: '女主角', level: 2, position: { start: { line: 0 }, end: { line: 0 } } }]
-		});
-		const rawContent = '## 女主角\n原始内容 long text for testing';
-		mockPlugin.characterManager.getLoreContent.mockResolvedValue(rawContent);
-
-		await LoreCardRenderer.buildCardDOM(container, entry, mockPlugin, createMockComponent(), { draggable: true });
-		const editBtn = container.querySelector('.wn-lore-card-edit-btn');
-		expect(editBtn).not.toBeNull();
-
-		const body = container.querySelector('.wn-lore-card-body');
-		body.clientHeight = 100;
-		body.scrollHeight = 200;
-		body.scrollTop = 100; // max range = 200 - 100 = 100; scrollRatio = 100 / 100 = 1.0 (bottom)
-
-		await editBtn.onclick();
-
-		const textarea = body.querySelector('.wn-lore-card-textarea');
-		expect(textarea).not.toBeNull();
-		textarea.clientHeight = 100;
-		textarea.scrollHeight = 400;
-		flushAnimationFrames();
-
-		// textarea max range = 400 - 100 = 300; expected scrollTop = 1.0 * 300 = 300 (bottom)
-		expect(textarea.scrollTop).toBe(300);
-		expect(textarea.focus).toHaveBeenCalledWith({ preventScroll: true });
-		expect(setCaretSpy).toHaveBeenCalledWith(textarea, rawContent.length);
-	});
-
-	it('should clean up is-editing state and restore content elements when cancelling edit mode with Escape', async () => {
-		const mockFile = { basename: '人物', path: '设定/人物.md' };
-		const entry = { file: mockFile as unknown as import('obsidian').TFile, heading: '女主角' };
-		mockApp.vault.cachedRead.mockResolvedValue('## 女主角\n原始内容');
-		mockApp.metadataCache.getFileCache.mockReturnValue({
-			headings: [{ heading: '女主角', level: 2, position: { start: { line: 0 }, end: { line: 0 } } }]
-		});
-		mockPlugin.characterManager.getLoreContent.mockResolvedValue('## 女主角\n原始内容');
-
-		await LoreCardRenderer.buildCardDOM(container, entry, mockPlugin, createMockComponent(), { draggable: true });
-		const editBtn = container.querySelector('.wn-lore-card-edit-btn');
-		const card = container.querySelector('.wn-lore-card');
-		const body = container.querySelector('.wn-lore-card-body');
-
-		await editBtn.onclick();
-		expect(body.hasClass('is-editing')).toBe(true);
-
-		const textarea = body.querySelector('.wn-lore-card-textarea');
-		const escapeEvent = { key: 'Escape', preventDefault: vi.fn() };
-		const keydownHandler = textarea.addEventListener.mock.calls.find((call: any[]) => call[0] === 'keydown')?.[1];
-		keydownHandler(escapeEvent);
-
-		expect(escapeEvent.preventDefault).toHaveBeenCalled();
-		expect(body.hasClass('is-editing')).toBe(false);
-		expect(body.querySelector('.wn-lore-card-editor')).toBeNull();
-		expect(card.getAttribute('draggable')).toBe('true');
-	});
-
-	it('should clean up is-editing state before re-rendering when saving edited lore content', async () => {
-		const mockFile = { basename: '人物', path: '设定/人物.md' };
-		const entry = { file: mockFile as unknown as import('obsidian').TFile, heading: '女主角' };
-		mockApp.vault.cachedRead.mockResolvedValue('## 女主角\n原始内容');
-		mockApp.metadataCache.getFileCache.mockReturnValue({
-			headings: [{ heading: '女主角', level: 2, position: { start: { line: 0 }, end: { line: 0 } } }]
-		});
-		mockPlugin.characterManager.getLoreContent.mockResolvedValue('## 女主角\n原始内容');
-
-		await LoreCardRenderer.buildCardDOM(container, entry, mockPlugin, createMockComponent(), { draggable: true });
-		const editBtn = container.querySelector('.wn-lore-card-edit-btn');
-		const card = container.querySelector('.wn-lore-card');
-		const body = container.querySelector('.wn-lore-card-body');
-
-		await editBtn.onclick();
-		const textarea = body.querySelector('.wn-lore-card-textarea');
-		expect(textarea.hasClass('wn-sticky-note-paragraph-editor')).toBe(true);
-		expect(textarea.querySelectorAll('.wn-sticky-note-editor-line')).toHaveLength(2);
-		textarea.value = '## 女主角\n新修改的内容';
-		expect(textarea.querySelectorAll('.wn-sticky-note-editor-line')).toHaveLength(2);
-
-		const blurHandler = textarea.addEventListener.mock.calls.find((call: any[]) => call[0] === 'blur')?.[1];
-		await blurHandler();
-
-		expect(mockPlugin.characterManager.updateLoreContent).toHaveBeenCalledWith(entry, '## 女主角\n新修改的内容');
-		expect(body.hasClass('is-editing')).toBe(false);
-		expect(card.getAttribute('draggable')).toBe('true');
-	});
-
-	it('should exit edit mode without saving when content is unchanged on blur', async () => {
-		const mockFile = { basename: '人物', path: '设定/人物.md' };
-		const entry = { file: mockFile as unknown as import('obsidian').TFile, heading: '女主角' };
-		mockApp.vault.cachedRead.mockResolvedValue('## 女主角\n原始内容');
-		mockApp.metadataCache.getFileCache.mockReturnValue({
-			headings: [{ heading: '女主角', level: 2, position: { start: { line: 0 }, end: { line: 0 } } }]
-		});
-		mockPlugin.characterManager.getLoreContent.mockResolvedValue('## 女主角\n原始内容');
-
-		await LoreCardRenderer.buildCardDOM(container, entry, mockPlugin, createMockComponent(), { draggable: true });
-		const editBtn = container.querySelector('.wn-lore-card-edit-btn');
-		const card = container.querySelector('.wn-lore-card');
-		const body = container.querySelector('.wn-lore-card-body');
-
-		await editBtn.onclick();
-		const textarea = body.querySelector('.wn-lore-card-textarea');
-
-		const blurHandler = textarea.addEventListener.mock.calls.find((call: any[]) => call[0] === 'blur')?.[1];
-		await blurHandler();
-
-		expect(mockPlugin.characterManager.updateLoreContent).not.toHaveBeenCalled();
-		expect(body.hasClass('is-editing')).toBe(false);
-		expect(body.querySelector('.wn-lore-card-editor')).toBeNull();
-		expect(card.getAttribute('draggable')).toBe('true');
-	});
-
 	it('should render is-important class and star button for important entry, and strip marker from rendered markdown', async () => {
 		const mockFile = { basename: '人物', path: '设定/人物.md' };
 		const entry = { file: mockFile as any, heading: '主角', important: true };
@@ -807,30 +649,26 @@ type: 主要角色
 			mockApp.metadataCache.getFileCache.mockReturnValue({
 				headings: [{ heading: '女主角', level: 2, position: { start: { line: 0 }, end: { line: 0 } } }]
 			});
-			mockPlugin.characterManager.getLoreContent.mockResolvedValue('## 女主角\n原始内容');
-			mockPlugin.characterManager.updateLoreContent.mockResolvedValue(true);
 
 			const initial = await LoreCardRenderer.resolveLoreBody(entry, mockApp);
 			expect(initial.chunk).toBe('原始内容');
 
-			await LoreCardRenderer.buildCardDOM(container, entry, mockPlugin, createMockComponent());
+			await LoreCardRenderer.buildCardDOM(container, entry, mockPlugin, createMockComponent(), {
+				onEdit: async (targetEntry) => {
+					mockApp.vault.cachedRead.mockResolvedValue('## 女主角\n已保存的新内容');
+					LoreCardRenderer.clearLoreBodyCache(targetEntry.file);
+				}
+			});
 
 			const editBtn = container.querySelector('.wn-lore-card-edit-btn');
 			expect(editBtn).not.toBeNull();
-			await editBtn.onclick();
-
-			const body = container.querySelector('.wn-lore-card-body');
-			const textarea = body.querySelector('.wn-lore-card-textarea');
-			expect(textarea).not.toBeNull();
-			textarea.value = '## 女主角\n已保存的新内容';
-
-			// 保存编辑前，cachedRead 准备返回新内容
-			mockApp.vault.cachedRead.mockResolvedValue('## 女主角\n已保存的新内容');
-			const blurCall = textarea.addEventListener.mock.calls.find(
-				(call: unknown) => Array.isArray(call) && call[0] === 'blur'
+			const clickCall = editBtn.addEventListener.mock.calls.find(
+				(call: unknown) => Array.isArray(call) && call[0] === 'click'
 			);
-			const blurHandler = Array.isArray(blurCall) && typeof blurCall[1] === 'function' ? (blurCall[1] as () => Promise<void> | void) : undefined;
-			await blurHandler?.();
+			const clickHandler = Array.isArray(clickCall) && typeof clickCall[1] === 'function'
+				? (clickCall[1] as (e: unknown) => Promise<void> | void)
+				: undefined;
+			await clickHandler?.({ stopPropagation: vi.fn(), preventDefault: vi.fn() });
 			await flushMicrotasks();
 
 			// 验证再次解析时不走过期缓存，而是返回保存后的新内容
@@ -947,6 +785,38 @@ type: 主要角色
 			// Calling unload triggers cleanup
 			registeredUnload?.();
 			expect(mockOwnerWindow.cancelAnimationFrame).toHaveBeenCalled();
+		});
+
+		it('when onEdit option is provided, pencil button triggers onEdit modal callback with accessible attributes and without inline editor', async () => {
+			const container = createMockEl('div', 'container');
+			const file = { basename: '人物', path: '设定/人物.md', stat: { mtime: 100 } } as unknown as TFile;
+			const entry = { file, heading: '主角' };
+			mockApp.vault.cachedRead.mockResolvedValue('## 主角\n主角正文');
+			mockApp.metadataCache.getFileCache.mockReturnValue({
+				headings: [{ heading: '主角', level: 2, position: { start: { line: 0 }, end: { line: 0 } } }]
+			});
+
+			const onEditSpy = vi.fn();
+			await LoreCardRenderer.buildCardDOM(container, entry, mockPlugin, createMockComponent(), {
+				onEdit: onEditSpy
+			});
+
+			const editBtn = container.querySelector('.wn-lore-card-edit-btn');
+			expect(editBtn).not.toBeNull();
+			expect(editBtn.title).toBe('');
+			expect(editBtn.getAttribute('aria-label')).toBeTruthy();
+			expect(editBtn.getAttribute('tabindex')).toBe('0');
+
+			const clickEvent = { stopPropagation: vi.fn(), preventDefault: vi.fn() };
+			const clickListener = editBtn.addEventListener.mock.calls.find(
+				(call: unknown) => Array.isArray(call) && call[0] === 'click'
+			);
+			const clickHandler = Array.isArray(clickListener) && typeof clickListener[1] === 'function' ? clickListener[1] : editBtn.onclick;
+			await clickHandler(clickEvent);
+
+			expect(onEditSpy).toHaveBeenCalledWith(entry);
+			const body = container.querySelector('.wn-lore-card-body');
+			expect(body.querySelector('.wn-lore-card-textarea')).toBeNull();
 		});
 	});
 });

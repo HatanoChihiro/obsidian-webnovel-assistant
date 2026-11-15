@@ -192,10 +192,12 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 	foreshadowing: {
 		fileName: '伏笔',
 		defaultTags: ['人物', '情节', '世界观', '道具', '线索'],
+		showEditorReferences: false,
 	},
 	timeline: {
 		fileName: '时间线',
 		defaultTypes: ['主线', '支线', '回忆', '伏笔线', '暗线'],
+		showEditorReferences: false,
 	},
 	task: {
 		fileName: '限时任务',

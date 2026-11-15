@@ -78,6 +78,34 @@
 	text-decoration: underline;
 }
 
+.wn-timeline-node-edit-btn {
+	background: transparent;
+	border: none;
+	box-shadow: none;
+	padding: 2px;
+	margin-left: 6px;
+	width: 20px;
+	height: 20px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--text-muted);
+	cursor: pointer;
+	border-radius: var(--radius-s, 4px);
+	flex-shrink: 0;
+	transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.wn-timeline-node-edit-btn:hover {
+	color: var(--text-normal);
+	background-color: var(--background-modifier-hover);
+}
+
+.wn-timeline-node-edit-btn:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 1px;
+}
+
 
 .wn-timeline-item-row {
 	z-index: 2;

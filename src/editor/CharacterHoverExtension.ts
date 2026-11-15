@@ -5,14 +5,14 @@ import type { DecorationSet, EditorView, ViewUpdate } from '@codemirror/view';
 import { ViewPlugin, Decoration } from '@codemirror/view';
 import type { AccurateCountSettings } from '../types/settings';
 import type { CharacterManager } from '../services/CharacterManager';
-import { isMobile } from '../utils/platform';
+import { isLorePopoverEnabled } from '../utils/platform';
 import { LoreHoverPopover, type LoreHoverPopoverPlugin } from '../ui/LoreHoverPopover';
 
 import { editorInfoField } from 'obsidian';
 
 export interface CharacterHoverPlugin extends LoreHoverPopoverPlugin {
-	characterManager: Pick<CharacterManager, 'cacheVersion' | 'getBookPathForFile' | 'getCharactersForBook' | 'getCharacterFile' | 'getLoreContent' | 'updateLoreContent'>;
-	settings: Pick<AccurateCountSettings, 'enableMobileLorePopover' | 'lorePopoverCollapse'>;
+	characterManager: Pick<CharacterManager, 'cacheVersion' | 'getBookPathForFile' | 'getCharactersForBook' | 'getCharacterFile'>;
+	settings: Pick<AccurateCountSettings, 'enableLorePopover' | 'enableMobileLorePopover' | 'lorePopoverCollapse'>;
 }
 
 const touchStateMap = new WeakMap<EditorView, {startX: number, startY: number}>();
@@ -127,35 +127,36 @@ export function buildCharacterHoverExtension(app: App, plugin: CharacterHoverPlu
 		eventHandlers: {
 			mouseover(e: MouseEvent, _view: EditorView) {
 				const target = (e.target as HTMLElement)?.closest('.wn-character-match') as HTMLElement;
-				if (target) {
-					const characterName = target.getAttribute('data-character');
-					const bookPath = target.getAttribute('data-bookpath');
-					
-					if (characterName && bookPath && plugin.characterManager) {
-						const charEntry = plugin.characterManager.getCharacterFile(bookPath, characterName);
-						if (charEntry) {
-							new LoreHoverPopover(target, charEntry, plugin);
-						}
+				if (!target) return;
+				if (!isLorePopoverEnabled(plugin.settings)) return;
+
+				const characterName = target.getAttribute('data-character');
+				const bookPath = target.getAttribute('data-bookpath');
+
+				if (characterName && bookPath && plugin.characterManager) {
+					const charEntry = plugin.characterManager.getCharacterFile(bookPath, characterName);
+					if (charEntry) {
+						new LoreHoverPopover(target, charEntry, plugin, false, bookPath);
 					}
 				}
 			},
 			click(e: MouseEvent, _view: EditorView) {
-				if (isMobile() && !plugin.settings.enableMobileLorePopover) return;
 				const target = (e.target as HTMLElement)?.closest('.wn-character-match') as HTMLElement;
-				if (target) {
-					const characterName = target.getAttribute('data-character');
-					const bookPath = target.getAttribute('data-bookpath');
-					
-					if (characterName && bookPath && plugin.characterManager) {
-						const charEntry = plugin.characterManager.getCharacterFile(bookPath, characterName);
-						if (charEntry) {
-							new LoreHoverPopover(target, charEntry, plugin, true);
-						}
+				if (!target) return;
+				if (!isLorePopoverEnabled(plugin.settings)) return;
+
+				const characterName = target.getAttribute('data-character');
+				const bookPath = target.getAttribute('data-bookpath');
+
+				if (characterName && bookPath && plugin.characterManager) {
+					const charEntry = plugin.characterManager.getCharacterFile(bookPath, characterName);
+					if (charEntry) {
+						new LoreHoverPopover(target, charEntry, plugin, true, bookPath);
 					}
 				}
 			},
 			touchstart(e: TouchEvent, view: EditorView) {
-				if (isMobile() && !plugin.settings.enableMobileLorePopover) return;
+				if (!isLorePopoverEnabled(plugin.settings)) return;
 				if (e.touches.length > 0) {
 					touchStateMap.set(view, {
 						startX: e.touches[0].clientX,
@@ -164,13 +165,13 @@ export function buildCharacterHoverExtension(app: App, plugin: CharacterHoverPlu
 				}
 			},
 			touchend(e: TouchEvent, view: EditorView) {
-				if (isMobile() && !plugin.settings.enableMobileLorePopover) return;
+				if (!isLorePopoverEnabled(plugin.settings)) return;
 				const state = touchStateMap.get(view);
 				if (!state) return;
-				
+
 				const { startX, startY } = state;
 				touchStateMap.delete(view);
-				
+
 				if (e.changedTouches.length > 0) {
 					const dx = e.changedTouches[0].clientX - startX;
 					const dy = e.changedTouches[0].clientY - startY;
@@ -184,7 +185,7 @@ export function buildCharacterHoverExtension(app: App, plugin: CharacterHoverPlu
 							if (characterName && bookPath && plugin.characterManager) {
 								const charEntry = plugin.characterManager.getCharacterFile(bookPath, characterName);
 								if (charEntry) {
-									new LoreHoverPopover(target, charEntry, plugin, true);
+									new LoreHoverPopover(target, charEntry, plugin, true, bookPath);
 								}
 							}
 						}

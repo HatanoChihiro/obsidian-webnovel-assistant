@@ -692,4 +692,23 @@ describe('TimelineView', () => {
 		expect(view.containerEl.querySelector('.wn-timeline-time')?.textContent).toBe('saved result');
 	});
 
+	it('preserves inline renderEditForm interaction without opening an edit modal', async () => {
+		parsedEntries = [
+			{ time: 'Day 1', description: 'View inline event', chapter: '', rawBlock: '', items: [] }
+		];
+		const leaf = { app: mockApp } as unknown as WorkspaceLeaf;
+		const view = new TimelineView(leaf, mockPlugin);
+		await view.renderFromContent('# 时间线\n');
+
+		const editBtn = view.containerEl.querySelector('.wn-timeline-action-btn') as HTMLElement;
+		expect(editBtn).not.toBeNull();
+		editBtn.click();
+		await new Promise(resolve => setTimeout(resolve, 10));
+
+		// editingIndex is updated and renderEditForm rendered inline inside container
+		expect((view as unknown as { editingIndex: number }).editingIndex).toBe(0);
+		const inlineForm = view.containerEl.querySelector('.wn-timeline-edit-form');
+		expect(inlineForm).not.toBeNull();
+	});
+
 });

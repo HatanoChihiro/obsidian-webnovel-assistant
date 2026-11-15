@@ -22,6 +22,7 @@ export type ChapterOverviewSettings = Pick<
 	| 'enableSmartChapterSort'
 	| 'customSortOrder'
 	| 'lorePopoverCollapse'
+	| 'enableLorePopover'
 	| 'enableMobileLorePopover'
 	| 'workspaceFolders'
 	| 'timeline'

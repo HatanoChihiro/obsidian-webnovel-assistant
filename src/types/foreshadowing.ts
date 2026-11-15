@@ -95,4 +95,6 @@ export interface ForeshadowingSettings {
 	fileName: string;
 	/** 常用标签列表 */
 	defaultTags: string[];
+	/** 是否在编辑器中显示关联到当前章节的伏笔原文样式与悬浮展示 */
+	showEditorReferences?: boolean;
 }

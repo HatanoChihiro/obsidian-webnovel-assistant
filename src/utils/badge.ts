@@ -6,7 +6,7 @@
  */
 
 import { ForeshadowingStatus, type ParsedForeshadowingEntry } from '../types/foreshadowing';
-import { isMobile } from './platform';
+import { isLorePopoverEnabled } from './platform';
 import { LoreHoverPopover, type LoreHoverPopoverPlugin } from '../ui/LoreHoverPopover';
 import type { CharacterManager } from '../services/CharacterManager';
 import { t } from '../i18n';
@@ -134,22 +134,24 @@ export function renderLoreBadges(
 
 	const bindHover = (badgeEl: HTMLElement, realLoreName: string) => {
 		if (!enableHover) return;
-		if (isMobile() && !plugin.settings.enableMobileLorePopover) return;
 		let hoverTimeout: number | null = null;
+		const ownerWindow = badgeEl.ownerDocument?.defaultView ?? window;
 		badgeEl.addEventListener('mouseenter', () => {
-			hoverTimeout = window.setTimeout(() => {
+			if (!isLorePopoverEnabled(plugin.settings)) return;
+			hoverTimeout = ownerWindow.setTimeout(() => {
 				if (!badgeEl.isConnected || !badgeEl.matches(':hover')) return;
 				const entry = plugin.characterManager.getCharacterFile(bookPath, realLoreName);
-				if (entry) new LoreHoverPopover(badgeEl, entry, plugin, true);
+				if (entry) new LoreHoverPopover(badgeEl, entry, plugin, true, bookPath);
 			}, 500);
 		});
 		badgeEl.addEventListener('mouseleave', () => {
-			if (hoverTimeout) window.clearTimeout(hoverTimeout);
+			if (hoverTimeout) ownerWindow.clearTimeout(hoverTimeout);
 		});
 		badgeEl.addEventListener('click', (e) => {
+			if (!isLorePopoverEnabled(plugin.settings)) return;
 			e.stopPropagation();
 			const entry = plugin.characterManager.getCharacterFile(bookPath, realLoreName);
-			if (entry) new LoreHoverPopover(badgeEl, entry, plugin, true);
+			if (entry) new LoreHoverPopover(badgeEl, entry, plugin, true, bookPath);
 		});
 	};
 

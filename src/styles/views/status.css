@@ -458,6 +458,35 @@
 	opacity: 0.8;
 }
 
+/* 非可点击的章节状态条目：保持纯信息展示 */
+
+.wn-chapter-status-item:not(.wn-clickable) {
+	cursor: default;
+}
+
+.wn-chapter-status-item:not(.wn-clickable):hover {
+	color: var(--text-normal);
+}
+
+/* 时间线分区与节点分组 */
+
+.wn-chapter-status-section.is-timeline {
+	margin-top: 2px;
+}
+
+.wn-chapter-timeline-node {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	margin-bottom: 2px;
+}
+
+.wn-chapter-timeline-node-time {
+	font-size: 0.8em;
+	font-weight: 500;
+	color: var(--text-muted);
+}
+
 /* 设定分区：与伏笔区之间的微小间距 */
 
 .wn-chapter-status-section.is-lore {

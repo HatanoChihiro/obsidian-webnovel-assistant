@@ -1,0 +1,145 @@
+/* ========== Chapter Reference Feature Styles ========== */
+
+/* Match marks in editor */
+.wn-reference-match {
+	cursor: pointer;
+	transition: background-color 0.15s ease;
+}
+
+/* 1. 时间线匹配 */
+.wn-reference-match.wn-reference-timeline {
+	background-color: color-mix(in srgb, var(--text-accent) 15%, transparent);
+}
+
+.wn-reference-match.wn-reference-timeline:hover {
+	background-color: color-mix(in srgb, var(--text-accent) 22%, transparent);
+}
+
+/* 2. 伏笔匹配 */
+.wn-reference-match.wn-reference-foreshadowing {
+	background-color: color-mix(in srgb, var(--text-warning) 15%, transparent);
+}
+
+.wn-reference-match.wn-reference-foreshadowing:hover {
+	background-color: color-mix(in srgb, var(--text-warning) 22%, transparent);
+}
+
+/* 3. 混合匹配 */
+.wn-reference-match.wn-reference-merged {
+	background-color: color-mix(in srgb, var(--interactive-accent) 18%, transparent);
+}
+
+.wn-reference-match.wn-reference-merged:hover {
+	background-color: color-mix(in srgb, var(--interactive-accent) 25%, transparent);
+}
+
+/* Popover container */
+.wn-reference-popover {
+	position: fixed;
+	z-index: var(--layer-popover, 100);
+	background-color: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m, 8px);
+	box-shadow: var(--shadow-s, 0 4px 12px rgba(0, 0, 0, 0.15));
+	padding: 8px;
+	width: min(360px, calc(100vw - 24px));
+	box-sizing: border-box;
+	overflow-y: auto;
+	font-family: var(--font-interface);
+	font-size: var(--font-ui-small, 12px);
+}
+
+.wn-reference-popover-list {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.wn-reference-popover-title {
+	font-weight: 600;
+	margin-bottom: 8px;
+}
+
+.wn-reference-popover-item {
+	background-color: var(--background-secondary);
+	border-radius: var(--radius-s, 4px);
+	padding: 8px;
+	border-left: 3px solid var(--interactive-accent);
+}
+
+.wn-reference-popover-item.is-timeline {
+	border-left-color: var(--text-accent);
+}
+
+.wn-reference-popover-item.is-foreshadowing {
+	border-left-color: var(--text-warning);
+}
+
+.wn-reference-item-header {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-bottom: 4px;
+}
+
+.wn-reference-tag {
+	font-size: var(--font-ui-smaller, 11px);
+	padding: 1px 5px;
+	border-radius: 3px;
+	font-weight: 600;
+	background-color: var(--background-modifier-border);
+	color: var(--text-normal);
+}
+
+.wn-reference-time,
+.wn-reference-type,
+.wn-reference-kind,
+.wn-reference-status {
+	font-size: var(--font-ui-smaller, 11px);
+	color: var(--text-muted);
+}
+
+.wn-reference-status {
+	font-weight: 500;
+}
+
+.wn-reference-desc {
+	font-family: var(--font-text);
+	color: var(--text-normal);
+	font-size: var(--font-ui-small, 12px);
+	line-height: 1.4;
+	word-break: break-word;
+	margin-bottom: 4px;
+}
+
+.wn-reference-note {
+	font-family: var(--font-text);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller, 11px);
+	line-height: 1.3;
+	font-style: italic;
+	margin-bottom: 4px;
+}
+
+.wn-reference-item-actions {
+	display: flex;
+	justify-content: flex-end;
+	margin-top: 4px;
+}
+
+.wn-reference-action-link {
+	border: none;
+	background: transparent;
+	box-shadow: none;
+	padding: 0;
+	height: auto;
+	color: var(--text-accent);
+	cursor: pointer;
+	text-decoration: underline;
+	font-size: var(--font-ui-smaller, 11px);
+}
+
+.wn-reference-action-link:hover {
+	color: var(--interactive-accent-hover, var(--text-accent));
+}

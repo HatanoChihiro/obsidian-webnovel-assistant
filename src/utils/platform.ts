@@ -30,3 +30,16 @@ export function getPlatformTier(): 'desktop' | 'tablet' | 'mobile' {
 export function getPluginDir(plugin: { manifest: { dir?: string; id?: string }; app: { vault: { configDir: string } } }): string {
 	return plugin.manifest.dir || `${plugin.app.vault.configDir}/plugins/${plugin.manifest.id || 'web-novel-assistant'}`;
 }
+
+/**
+ * 校验设定悬浮卡片是否启用
+ * 全平台总开关：未显式配置 enableLorePopover 时，保留桌面端开启与移动端旧配置（enableMobileLorePopover）；
+ * 一旦用户显式设置了 enableLorePopover（true 或 false），全平台统一按该值生效。
+ */
+export function isLorePopoverEnabled(settings?: { enableLorePopover?: boolean; enableMobileLorePopover?: boolean }): boolean {
+	if (!settings) return !isMobile();
+	if (typeof settings.enableLorePopover === 'boolean') {
+		return settings.enableLorePopover;
+	}
+	return !isMobile() || Boolean(settings.enableMobileLorePopover);
+}

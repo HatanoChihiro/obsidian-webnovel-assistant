@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { TimelineManager, TimelineEntry, parseTimelineChapterList, serializeTimelineChapterList, filterTimelineEntries } from '../src/services/TimelineManager';
 import { ChapterSorter } from '../src/services/ChapterSorter';
+import { ChapterReferenceService } from '../src/services/ChapterReferenceService';
+import { ForeshadowingStatus } from '../src/types/foreshadowing';
 
 vi.mock('obsidian', () => ({
     normalizePath: (path: string) => path.replace(/\\/g, '/'),
@@ -37,6 +39,7 @@ describe('TimelineManager', () => {
         mockApp = {
             vault: {
                 on: vi.fn(),
+				offref: vi.fn(),
                 getAbstractFileByPath: vi.fn(),
                 create: vi.fn(),
                 read: vi.fn(),
@@ -1938,6 +1941,369 @@ It has multiple lines.
 
             // Chapter 2 must be reconciled from the actual resulting entries
             expect(frontmatters.get('Book 1/Chapter 2.md')?.timeline).toBe('2023-01-02');
+        });
+
+        it('updateEntry expected snapshot semantics preserves full deep-cloned entry with items, origin, and lores', async () => {
+            let fileContent = '';
+            const initialContent = `
+---
+timeline:
+  - '2023-01-01'
+---
+## 2023-01-01
+- [主线] [宗门] 试炼开启 ^quote: 钟声九响
+`;
+            mockApp.vault.process.mockImplementation(async (file: unknown, cb: (c: string) => string) => {
+                fileContent = cb(initialContent);
+                return fileContent;
+            });
+
+            const parsed = manager.parseEntries(initialContent, 'Book 1');
+            expect(parsed).toHaveLength(1);
+            const originalSnapshot = parsed[0];
+
+            // Stale index passed (e.g. index 5 instead of 0), but expectedEntry provided
+            const updated = {
+                ...originalSnapshot,
+                items: [{ description: '试炼圆满结束', chapter: '', origin: '各峰长老赞叹', important: true }]
+            } as TimelineEntry;
+
+            const res = await manager.updateEntry(5, updated, 'Book 1', originalSnapshot);
+            expect(res).toContain('试炼圆满结束');
+            expect(res).toContain('各峰长老赞叹');
+
+            // Mismatched expectedEntry snapshot should reject with conflict
+            const mismatchedSnapshot = {
+                ...originalSnapshot,
+                time: '2023-99-99'
+            };
+            await expect(manager.updateEntry(0, updated, 'Book 1', mismatchedSnapshot)).rejects.toThrow();
+        });
+    });
+
+    it('rejects a queued modal update if its source file is replaced, even with identical node data', async () => {
+        const originalFile = Object.assign(new TFile(), { path: 'Book 1/Timeline.md' });
+        const replacementFile = Object.assign(new TFile(), { path: originalFile.path });
+        let currentFile = originalFile;
+        vi.spyOn(manager, 'getTimelineFile').mockImplementation(() => currentFile);
+        const content = manager.formatEntry({ time: 'Day 1', description: 'Original event', chapter: '', rawBlock: '' });
+        const entry = manager.parseEntries(content, 'Book 1')[0];
+        mockApp.vault.process.mockImplementation(async (_file: TFile, transform: (data: string) => string) => transform(content));
+        const update = manager.updateEntry(0, entry, 'Book 1', entry, { file: originalFile, path: originalFile.path });
+        currentFile = replacementFile;
+        await expect(update).rejects.toThrow();
+        expect(mockApp.vault.process).not.toHaveBeenCalled();
+        currentFile = originalFile;
+        let wrote = false;
+        mockApp.vault.process.mockImplementation(async (_file: TFile, transform: (data: string) => string) => {
+            currentFile = replacementFile;
+            const next = transform(content);
+            wrote = true;
+            return next;
+        });
+        await expect(manager.updateEntry(0, entry, 'Book 1', entry, { file: originalFile, path: originalFile.path })).rejects.toThrow();
+        expect(wrote).toBe(false);
+    });
+
+    describe('getTimelineNodesForChapter', () => {
+        it('matches chapters with same name across volumes and ignores ambiguous references', () => {
+            const vol1Ch1 = Object.assign(new TFile(), { name: '第1章.md', basename: '第1章', path: 'Book 1/卷1/第1章.md', extension: 'md' });
+            const vol2Ch1 = Object.assign(new TFile(), { name: '第1章.md', basename: '第1章', path: 'Book 1/卷2/第1章.md', extension: 'md' });
+            const ch2 = Object.assign(new TFile(), { name: '第2章.md', basename: '第2章', path: 'Book 1/第2章.md', extension: 'md' });
+
+            mockPlugin.getTrackedMarkdownFiles.mockReturnValue([vol1Ch1, vol2Ch1, ch2]);
+            mockPlugin.getVaultMarkdownFiles.mockReturnValue([vol1Ch1, vol2Ch1, ch2]);
+
+            const entries: TimelineEntry[] = [
+                {
+                    time: '2023-01-01',
+                    type: '主线',
+                    description: '卷1专属事件',
+                    chapter: '[[卷1/第1章]]',
+                    rawBlock: '',
+                    items: [{ description: '卷1专属事件', chapter: '[[卷1/第1章]]', origin: '原文卷1', type: '主线' }]
+                },
+                {
+                    time: '2023-01-01',
+                    type: '支线',
+                    description: '卷2专属事件',
+                    chapter: '[[卷2/第1章]]',
+                    rawBlock: '',
+                    items: [{ description: '卷2专属事件', chapter: '[[卷2/第1章]]', origin: '原文卷2', type: '支线' }]
+                },
+                {
+                    time: '2023-01-02',
+                    type: '主线',
+                    description: '跨卷歧义引用事件',
+                    chapter: '[[第1章]]',
+                    rawBlock: '',
+                    items: [{ description: '跨卷歧义引用事件', chapter: '[[第1章]]', origin: '歧义原文', type: '主线' }]
+                }
+            ];
+
+            const nodesVol1 = manager.getTimelineNodesForChapter(vol1Ch1, entries, 'Book 1');
+            expect(nodesVol1).toHaveLength(1);
+            expect(nodesVol1[0].time).toBe('2023-01-01');
+            expect(nodesVol1[0].type).toBe('主线');
+            expect(nodesVol1[0].items).toHaveLength(1);
+            expect(nodesVol1[0].items[0].description).toBe('卷1专属事件');
+            expect(nodesVol1[0].items[0].origin).toBe('原文卷1');
+
+            const nodesVol2 = manager.getTimelineNodesForChapter(vol2Ch1, entries, 'Book 1');
+            expect(nodesVol2).toHaveLength(1);
+            expect(nodesVol2[0].time).toBe('2023-01-01');
+            expect(nodesVol2[0].type).toBe('支线');
+            expect(nodesVol2[0].items).toHaveLength(1);
+            expect(nodesVol2[0].items[0].description).toBe('卷2专属事件');
+
+            // Ambiguous reference [[第1章]] cannot match either vol1 or vol2 uniquely
+            const allVol1Items = nodesVol1.flatMap(n => n.items);
+            expect(allVol1Items.some(it => it.description === '跨卷歧义引用事件')).toBe(false);
+            const allVol2Items = nodesVol2.flatMap(n => n.items);
+            expect(allVol2Items.some(it => it.description === '跨卷歧义引用事件')).toBe(false);
+        });
+
+        it('filters multi-event and multi-chapter nodes without leaking aggregate node origin to individual items', () => {
+            const ch1 = Object.assign(new TFile(), { name: '第1章.md', basename: '第1章', path: 'Book 1/第1章.md', extension: 'md' });
+            const ch2 = Object.assign(new TFile(), { name: '第2章.md', basename: '第2章', path: 'Book 1/第2章.md', extension: 'md' });
+            const ch3 = Object.assign(new TFile(), { name: '第3章.md', basename: '第3章', path: 'Book 1/第3章.md', extension: 'md' });
+
+            mockPlugin.getTrackedMarkdownFiles.mockReturnValue([ch1, ch2, ch3]);
+            mockPlugin.getVaultMarkdownFiles.mockReturnValue([ch1, ch2, ch3]);
+
+            const entries: TimelineEntry[] = [
+                {
+                    time: '纪元历100年',
+                    type: '主线',
+                    description: '聚合描述',
+                    chapter: '[[第1章]], [[第2章]], [[第3章]]',
+                    origin: '节点级聚合原文',
+                    rawBlock: '',
+                    items: [
+                        { description: '第1章事件A', chapter: '[[第1章]]', origin: '章1具体原文' },
+                        { description: '第2章独占事件', chapter: '[[第2章]]', origin: '章2具体原文' },
+                        { description: '第1章事件B（无原文，多章节JSON语法）', chapter: '["第1章", "第3章"]' }
+                    ]
+                }
+            ];
+
+            const nodes = manager.getTimelineNodesForChapter(ch1, entries, 'Book 1');
+            expect(nodes).toHaveLength(1);
+            expect(nodes[0].time).toBe('纪元历100年');
+            expect(nodes[0].items).toHaveLength(2);
+
+            expect(nodes[0].items[0].description).toBe('第1章事件A');
+            expect(nodes[0].items[0].origin).toBe('章1具体原文');
+
+            expect(nodes[0].items[1].description).toBe('第1章事件B（无原文，多章节JSON语法）');
+            // Must NOT fall back to aggregate node origin!
+            expect(nodes[0].items[1].origin).toBeUndefined();
+        });
+
+        it('supports legacy node with no items mapping description/chapter/origin as a single item', () => {
+            const ch1 = Object.assign(new TFile(), { name: '第1章.md', basename: '第1章', path: 'Book 1/第1章.md', extension: 'md' });
+            const ch2 = Object.assign(new TFile(), { name: '第2章.md', basename: '第2章', path: 'Book 1/第2章.md', extension: 'md' });
+
+            mockPlugin.getTrackedMarkdownFiles.mockReturnValue([ch1, ch2]);
+            mockPlugin.getVaultMarkdownFiles.mockReturnValue([ch1, ch2]);
+
+            const legacyEntry: TimelineEntry = {
+                time: '纪元历200年',
+                type: '秘境',
+                description: '旧单条目事件描述',
+                chapter: '[[第1章]]',
+                origin: '旧条目原文标记',
+                rawBlock: ''
+            };
+
+            const nodesCh1 = manager.getTimelineNodesForChapter(ch1, [legacyEntry], 'Book 1');
+            expect(nodesCh1).toHaveLength(1);
+            expect(nodesCh1[0].time).toBe('纪元历200年');
+            expect(nodesCh1[0].type).toBe('秘境');
+            expect(nodesCh1[0].items).toHaveLength(1);
+            expect(nodesCh1[0].items[0].description).toBe('旧单条目事件描述');
+            expect(nodesCh1[0].items[0].origin).toBe('旧条目原文标记');
+
+            const nodesCh2 = manager.getTimelineNodesForChapter(ch2, [legacyEntry], 'Book 1');
+            expect(nodesCh2).toHaveLength(0);
+        });
+
+        it('returns empty array when chapter is in another work or entries is empty', () => {
+            const extCh = Object.assign(new TFile(), { name: '外书章节.md', basename: '外书章节', path: 'Book 2/外书章节.md', extension: 'md' });
+            mockPlugin.getTrackedMarkdownFiles.mockReturnValue([]);
+            mockPlugin.getVaultMarkdownFiles.mockReturnValue([]);
+
+            expect(manager.getTimelineNodesForChapter(extCh, [], 'Book 1')).toEqual([]);
+        });
+    });
+
+    describe('ChapterReferenceService integration', () => {
+        it.each(['Timeline', 'Foreshadowing'])('settles an empty reference cache when navigating to %s details', async (basename) => {
+            const { source, service } = referenceFixture();
+            const file = Object.assign(new TFile(), { name: `${basename}.md`, basename, path: `Book 1/${basename}.md`, extension: 'md', parent: source.parent });
+            const lookup = mockApp.vault.getAbstractFileByPath.getMockImplementation();
+            mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) => path === file.path ? file : lookup(path));
+            mockPlugin.isPluginGeneratedFile.mockImplementation((name: string) => name === basename);
+            expect(ChapterSorter.isFunctionalDoc(file, mockPlugin)).toBe(true);
+            expect(service.getReferencesSync(file)).toBeNull();
+            await expect(service.prefetchReferences(file)).resolves.toEqual([]);
+            // Editor refresh must observe a ready empty result, rather than schedule another prefetch forever.
+            expect(service.getReferencesSync(file)).toEqual([]);
+            await expect(service.prefetchReferences(file)).resolves.toEqual([]);
+            expect(service.getReferencesSync(file)).toEqual([]);
+            expect(mockApp.vault.read).not.toHaveBeenCalled();
+            await service.destroy();
+        });
+
+        function referenceFixture() {
+            const folder = { path: 'Book 1', isRoot: () => false, parent: null };
+            const source = Object.assign(new TFile(), { name: 'Timeline.md', basename: 'Timeline', path: 'Book 1/Timeline.md', extension: 'md', parent: folder, stat: { mtime: 1, size: 100 } });
+            const chapter = Object.assign(new TFile(), { name: 'Chapter 1.md', basename: 'Chapter 1', path: 'Book 1/Chapter 1.md', extension: 'md', parent: folder, stat: { mtime: 1, size: 100 } });
+            mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) => path === source.path ? source : path === chapter.path ? chapter : null);
+            mockPlugin.getTrackedMarkdownFiles.mockReturnValue([chapter]);
+            mockPlugin.getVaultMarkdownFiles.mockReturnValue([chapter]);
+            mockPlugin.timelineManager = manager;
+            mockPlugin.settings.timeline = { fileName: 'Timeline', defaultTypes: [], showEditorReferences: true };
+            mockPlugin.settings.foreshadowing = { fileName: 'Foreshadowing', defaultTags: [], showEditorReferences: false };
+            const content = manager.formatEntry({ time: 'Day 1', description: 'Event', chapter: 'Chapter 1', origin: 'Alpha beta', rawBlock: '', items: [{ description: 'Event', chapter: 'Chapter 1', origin: 'Alpha beta' }] });
+            mockApp.vault.read.mockResolvedValue(content);
+            return { source, chapter, content, service: new ChapterReferenceService(mockApp, mockPlugin) };
+        }
+
+        it('coalesces pending reads, rejects a disabled result, and waits for outstanding reads on destroy', async () => {
+            const { chapter, content, service } = referenceFixture();
+            let finish!: (content: string) => void;
+            mockApp.vault.read.mockReturnValueOnce(new Promise<string>(resolve => { finish = resolve; }));
+            const first = service.prefetchReferences(chapter);
+            const second = service.prefetchReferences(chapter);
+            expect(mockApp.vault.read).toHaveBeenCalledTimes(1);
+            mockPlugin.settings.timeline.showEditorReferences = false;
+            service.notifyRefresh();
+            let destroyed = false;
+            const shutdown = service.destroy().then(() => { destroyed = true; });
+            await Promise.resolve();
+            expect(destroyed).toBe(false);
+            finish(content);
+            expect(await first).toEqual([]);
+            expect(await second).toEqual([]);
+            await shutdown;
+            expect(mockApp.vault.offref).toHaveBeenCalled();
+            expect(service.getReferencesSync(chapter)).toEqual([]);
+        });
+
+        it('retries read errors and refreshes changed source data even when its mtime is unchanged', async () => {
+            const { chapter, source, content, service } = referenceFixture();
+            mockApp.vault.read.mockRejectedValueOnce(new Error('Transient read error'));
+            await expect(service.prefetchReferences(chapter)).rejects.toThrow('Transient read error');
+            expect((await service.prefetchReferences(chapter))[0].quote).toBe('Alpha beta');
+            mockApp.vault.read.mockResolvedValue(content.replace('Alpha beta', 'Current quote'));
+            const listeners = mockApp.vault.on.mock.calls.filter((call: unknown[]) => call[0] === 'modify');
+            const change = listeners[listeners.length - 1][1] as (file: TFile) => void;
+            change(source);
+            expect(service.getReferencesSync(chapter)).toBeNull();
+            expect((await service.prefetchReferences(chapter))[0].quote).toBe('Current quote');
+            await service.destroy();
+        });
+
+        it('collects only actual planting and recovery quotes associated with this chapter', async () => {
+            const { chapter, service } = referenceFixture();
+            const fsFile = Object.assign(new TFile(), { name: 'Foreshadowing.md', basename: 'Foreshadowing', path: 'Book 1/Foreshadowing.md', extension: 'md', stat: { mtime: 1, size: 100 } });
+            const lookup = mockApp.vault.getAbstractFileByPath.getMockImplementation();
+            mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) => path === fsFile.path ? fsFile : lookup(path));
+            mockPlugin.settings.timeline.showEditorReferences = false;
+            mockPlugin.settings.foreshadowing.showEditorReferences = true;
+            mockPlugin.foreshadowingManager = {
+                findForeshadowingFile: () => fsFile,
+                parseEntries: () => [{ sourceFile: 'Chapter 1', createdAt: 'Day 1', description: 'Description is not a quote', status: ForeshadowingStatus.PartiallyRecovered, tags: [],
+                    contents: [{ source: 'Chapter 1', time: '', text: 'Planted quote' }, { source: 'Other chapter', time: '', text: 'Unrelated quote' }],
+                    recoveryLogs: [{ file: 'Chapter 1', time: 'Day 2', stageType: 'stage', quote: 'Recovered quote', note: 'Note is not a quote' }, { file: 'Chapter 1', time: 'Day 3', stageType: 'final' }] }]
+            };
+            const references = await service.prefetchReferences(chapter);
+            expect(references.map(reference => reference.quote)).toEqual(['Planted quote', 'Recovered quote']);
+            expect(references[1]).toMatchObject({ type: 'foreshadowing', kind: 'recovery', status: ForeshadowingStatus.PartiallyRecovered });
+            await service.destroy();
+        });
+
+        it('returns empty when showEditorReferences is false or document is outside recognized book', async () => {
+            const tlFile = Object.assign(new TFile(), { name: 'Timeline.md', basename: 'Timeline', path: 'Book 1/Timeline.md', extension: 'md' });
+            const bookFolder = { path: 'Book 1', isRoot: () => false, parent: null };
+            const chFile = Object.assign(new TFile(), { name: '第1章.md', basename: '第1章', path: 'Book 1/第1章.md', extension: 'md', parent: bookFolder });
+            const outsideFile = Object.assign(new TFile(), { name: '随笔.md', basename: '随笔', path: 'Notes/随笔.md', extension: 'md', parent: { path: 'Notes', isRoot: () => false, parent: null } });
+
+            mockApp.vault.getAbstractFileByPath.mockImplementation((p: string) => {
+                if (p === 'Book 1/Timeline.md') return tlFile;
+                return null;
+            });
+
+            mockPlugin.timelineManager = manager;
+            mockPlugin.settings.timeline = { fileName: 'Timeline', defaultTypes: [], showEditorReferences: false };
+            mockPlugin.settings.foreshadowing = { fileName: 'Foreshadowing', defaultTags: [], showEditorReferences: false };
+
+            const service = new ChapterReferenceService(mockApp, mockPlugin);
+
+            // Both toggles false: returns [] synchronously with no I/O
+            expect(service.getReferencesSync(chFile)).toEqual([]);
+            expect(await service.prefetchReferences(chFile)).toEqual([]);
+
+            // Enable timeline references
+            mockPlugin.settings.timeline.showEditorReferences = true;
+
+            // Outside document: returns [] and never associates with book
+            expect(service.getReferencesSync(outsideFile)).toEqual([]);
+            expect(await service.prefetchReferences(outsideFile)).toEqual([]);
+
+            await service.destroy();
+        });
+
+        it('associates accurate quotes, caches without re-read, and rejects late reads after destroy', async () => {
+            const tlFile = Object.assign(new TFile(), { name: 'Timeline.md', basename: 'Timeline', path: 'Book 1/Timeline.md', extension: 'md', stat: { mtime: 1000, size: 200 } });
+            const bookFolder = { path: 'Book 1', isRoot: () => false, parent: null };
+            const chFile = Object.assign(new TFile(), { name: '第1章.md', basename: '第1章', path: 'Book 1/第1章.md', extension: 'md', parent: bookFolder, stat: { mtime: 2000, size: 500 } });
+
+            mockApp.vault.getAbstractFileByPath.mockImplementation((p: string) => {
+                if (p === 'Book 1/Timeline.md') return tlFile;
+                if (p === 'Book 1/第1章.md') return chFile;
+                return null;
+            });
+            mockPlugin.getTrackedMarkdownFiles.mockReturnValue([chFile]);
+            mockPlugin.getVaultMarkdownFiles.mockReturnValue([chFile]);
+
+            const timelineContent = `## 2026-01-01
+- 登基大典 [[第1章]] <!-- origin: 登基当日，九龙齐鸣。 -->
+- 密谋无原文 [[第1章]]
+`;
+            mockApp.vault.read.mockImplementation((file: TFile) => {
+                if (file.path === 'Book 1/Timeline.md') return Promise.resolve(timelineContent);
+                return Promise.resolve('');
+            });
+
+            mockPlugin.timelineManager = manager;
+            mockPlugin.settings.timeline = { fileName: 'Timeline', defaultTypes: [], showEditorReferences: true };
+            mockPlugin.settings.foreshadowing = { fileName: 'Foreshadowing', defaultTags: [], showEditorReferences: false };
+
+            const service = new ChapterReferenceService(mockApp, mockPlugin);
+
+            // Initially uncached
+            expect(service.getReferencesSync(chFile)).toBeNull();
+
+            // Prefetch loads and parses
+            const items = await service.prefetchReferences(chFile);
+            expect(items).toHaveLength(1);
+            expect(items[0].quote).toBe('登基当日，九龙齐鸣。');
+            expect(items[0].description).toBe('登基大典');
+            // The item without quote is ignored: no description-as-quote leakage
+            expect(items.some(i => i.description === '密谋无原文')).toBe(false);
+
+            // Second call: served from in-memory cache, read was called only once
+            expect(mockApp.vault.read).toHaveBeenCalledTimes(1);
+            const cachedItems = service.getReferencesSync(chFile);
+            expect(cachedItems).toEqual(items);
+            expect(mockApp.vault.read).toHaveBeenCalledTimes(1);
+
+            // Destroy rejects late reads
+            await service.destroy();
+            expect(service.getReferencesSync(chFile)).toEqual([]);
+            expect(await service.prefetchReferences(chFile)).toEqual([]);
         });
     });
 });

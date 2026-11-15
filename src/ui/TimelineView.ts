@@ -33,7 +33,7 @@ export type TimelineViewManager = Pick<
 >;
 
 export type TimelineViewSettings = TimelineFormSettings &
-	Pick<AccurateCountSettings, 'workspaceFolders' | 'loreFolderName' | 'foreshadowing' | 'novelInfo' | 'enableMobileLorePopover' | 'lorePopoverCollapse'>;
+	Pick<AccurateCountSettings, 'workspaceFolders' | 'loreFolderName' | 'foreshadowing' | 'novelInfo' | 'enableLorePopover' | 'enableMobileLorePopover' | 'lorePopoverCollapse'>;
 
 export type TimelineViewHomepageManager = Pick<HomepageManager, 'getNovelFolders'> & {
 	getHomepageFilePath(): string;

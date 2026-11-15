@@ -5,6 +5,7 @@ import { ChapterSnapshotPanel } from '../src/ui/ChapterSnapshotPanel';
 import { ChapterDiffEngine } from '../src/services/ChapterDiffEngine';
 import { MockElement } from './mocks/MockElement';
 import { ChapterSnapshotManager } from '../src/services/ChapterSnapshotManager';
+import { ChapterSnapshotReplayController, getReplayTextChanges } from '../src/services/ChapterSnapshotReplayController';
 import type { NativeSnapshotService } from '../src/services/NativeSnapshotService';
 import { WritingJourneyBoardRenderer } from '../src/ui/components/WritingJourneyBoardRenderer';
 import type { WritingJourneyEvent } from '../src/types/writingJourney';
@@ -95,6 +96,7 @@ describe('ChapterSnapshotManager Regressions', () => {
 					removeClass: vi.fn(),
 					toggleClass: vi.fn(),
 					setText: vi.fn(),
+					setAttribute: vi.fn(),
 					empty: vi.fn(),
 					createDiv: vi.fn(() => el),
 					createSpan: vi.fn(() => el),
@@ -1201,4 +1203,1138 @@ describe('snapshot diff navigation and compact display regressions', () => {
 		}
 	});
 
+	describe('ChapterSnapshotReplayController & Panel Replay Mode', () => {
+		const createMockEl = (tag = 'div'): HTMLElement => {
+			const children: HTMLElement[] = [];
+			const el: Record<string, unknown> = {
+				tagName: tag.toUpperCase(),
+				children,
+				style: {},
+				addClass: vi.fn(),
+				removeClass: vi.fn(),
+				toggleClass: vi.fn(),
+				setCssProps: vi.fn(),
+				setAttribute: vi.fn(),
+				removeAttribute: vi.fn(),
+				setText: vi.fn(),
+				empty: vi.fn(() => {
+					children.length = 0;
+				}),
+				createDiv: vi.fn(() => {
+					const child = createMockEl('div');
+					children.push(child);
+					return child;
+				}),
+				createSpan: vi.fn(() => {
+					const child = createMockEl('span');
+					children.push(child);
+					return child;
+				}),
+				createEl: vi.fn((childTag: string) => {
+					const child = createMockEl(childTag);
+					children.push(child);
+					return child;
+				}),
+				appendChild: vi.fn((child: HTMLElement) => {
+					children.push(child);
+					return child;
+				}),
+				insertBefore: vi.fn(),
+				removeChild: vi.fn(),
+				addEventListener: vi.fn(),
+				removeEventListener: vi.fn(),
+				querySelector: vi.fn(() => null),
+				querySelectorAll: vi.fn(() => []),
+				closest: vi.fn(() => null),
+				getClientRects: vi.fn(() => [{ top: 100, height: 20 }]),
+				getBoundingClientRect: vi.fn(() => ({ top: 100, left: 100, width: 600, height: 400 }))
+			};
+			return el as unknown as HTMLElement;
+		};
+
+		let fakeTimers: {
+			setTimeout: (fn: () => Promise<void> | void, ms: number) => number;
+			clearTimeout: (id: number) => void;
+			advanceBy: (ms: number) => Promise<void>;
+			activeCount: () => number;
+		};
+
+		beforeEach(() => {
+			let timerId = 0;
+			const tasks = new Map<number, { fn: () => Promise<void> | void; triggerAt: number }>();
+			let currentTime = 0;
+
+			fakeTimers = {
+				setTimeout: (fn: () => Promise<void> | void, ms: number) => {
+					const id = ++timerId;
+					tasks.set(id, { fn, triggerAt: currentTime + ms });
+					return id;
+				},
+				clearTimeout: (id: number) => {
+					tasks.delete(id);
+				},
+				advanceBy: async (ms: number) => {
+					const targetTime = currentTime + ms;
+					while (true) {
+						const due = Array.from(tasks.entries())
+							.filter(([, t]) => t.triggerAt <= targetTime)
+							.sort((a, b) => a[1].triggerAt - b[1].triggerAt);
+						if (due.length === 0) break;
+						const [id, t] = due[0];
+						tasks.delete(id);
+						currentTime = t.triggerAt;
+						await t.fn();
+					}
+					currentTime = targetTime;
+				},
+				activeCount: () => tasks.size
+			};
+		});
+
+		it('orders loaded snapshots oldest first with deterministic key tie-break and starts at nonzero first body', async () => {
+			const snapshots = [
+				{ key: 10, path: 'Fictional/Chapter.md', ts: 2000 },
+				{ key: 3, path: 'Fictional/Chapter.md', ts: 1000 },
+				{ key: 7, path: 'Fictional/Chapter.md', ts: 2000 }
+			];
+			const textMap: Record<number, string> = {
+				3: '第一版正文内容',
+				7: '第二版正文修改',
+				10: '第三版正文终稿'
+			};
+			const readCalls: number[] = [];
+			const nativeSvc = {
+				checkStatus: vi.fn(() => ({ status: 'available' as const, deviceId: 'dev-1', dbName: 'db-1' })),
+				readSnapshotByKey: vi.fn(async (key: number) => {
+					readCalls.push(key);
+					return textMap[key] ?? '';
+				})
+			} as unknown as NativeSnapshotService;
+
+			const frames: Array<{ index: number; mode: string; text: string; metaKey: number }> = [];
+			const controller = new ChapterSnapshotReplayController({
+				nativeSnapshotService: nativeSvc,
+				snapshots,
+				getScopeList: () => ({ deviceId: 'dev-1', dbName: 'db-1' }),
+				onFrame: (frame) => {
+					frames.push({ index: frame.index, mode: frame.mode, text: frame.text, metaKey: frame.meta.key });
+				},
+				onStateChange: vi.fn(),
+				onError: vi.fn(),
+				timerWindow: fakeTimers
+			});
+
+			await controller.startReplay();
+
+			// Sorted oldest first: key 3 (1000), key 7 (2000), key 10 (2000, key 7 < 10)
+			expect(controller.snapshots.map(s => s.key)).toEqual([3, 7, 10]);
+			expect(controller.currentIndex).toBe(0);
+			expect(controller.isPlaying).toBe(false);
+			expect(frames.length).toBe(1);
+			expect(frames[0]).toEqual({
+				index: 0,
+				mode: 'first',
+				text: '第一版正文内容',
+				metaKey: 3
+			});
+			expect(readCalls).toEqual([3]);
+
+			controller.destroy();
+		});
+
+		it('advances playback frame-by-frame, auto-stops at last frame, and restarts from first when played at end', async () => {
+			const snapshots = [
+				{ key: 1, path: 'Fictional/Chapter.md', ts: 1000 },
+				{ key: 2, path: 'Fictional/Chapter.md', ts: 2000 },
+				{ key: 3, path: 'Fictional/Chapter.md', ts: 3000 }
+			];
+			const textMap: Record<number, string> = {
+				1: '初始文本内容',
+				2: '初始文本修改后内容',
+				3: '初始文本修改后内容已完成'
+			};
+			const nativeSvc = {
+				checkStatus: vi.fn(() => ({ status: 'available' as const, deviceId: 'dev-1', dbName: 'db-1' })),
+				readSnapshotByKey: vi.fn(async (key: number) => textMap[key] ?? '')
+			} as unknown as NativeSnapshotService;
+
+			const frameModes: string[] = [];
+			const controller = new ChapterSnapshotReplayController({
+				nativeSnapshotService: nativeSvc,
+				snapshots,
+				getScopeList: () => ({ deviceId: 'dev-1', dbName: 'db-1' }),
+				onFrame: (frame) => {
+					frameModes.push(`${frame.index}:${frame.mode}`);
+				},
+				onStateChange: vi.fn(),
+				onError: vi.fn(),
+				timerWindow: fakeTimers
+			});
+
+			await controller.startReplay();
+			expect(controller.currentIndex).toBe(0);
+
+			await controller.play();
+			expect(controller.isPlaying).toBe(true);
+
+			// Tick 1 (2500ms interval): reaches frame 1 transition
+			await fakeTimers.advanceBy(2500);
+			expect(controller.currentIndex).toBe(1);
+
+			// Next tick (2000ms highlight + 500ms remaining): reaches frame 2 transition
+			await fakeTimers.advanceBy(2500);
+			expect(controller.currentIndex).toBe(2);
+
+			// Settle of last frame completes, auto-stops
+			await fakeTimers.advanceBy(2000);
+			expect(controller.isPlaying).toBe(false);
+
+			// Verify all frames actually transitioned AND settled
+			expect(frameModes).toEqual([
+				'0:first',
+				'1:transition',
+				'1:settled',
+				'2:transition',
+				'2:settled'
+			]);
+
+			// Playing from last frame restarts from frame 0
+			await controller.play();
+			expect(controller.isPlaying).toBe(true);
+			expect(controller.currentIndex).toBe(0);
+
+			// Pausing preserves highlights for inspection without advancing or settling.
+			await fakeTimers.advanceBy(2500); // reaches frame 1 transition
+			expect(controller.currentIndex).toBe(1);
+			controller.pause();
+			expect(controller.isPlaying).toBe(false);
+			await fakeTimers.advanceBy(5000);
+			expect(controller.isPlaying).toBe(false);
+			expect(frameModes.at(-1)).toBe('1:transition');
+
+			// Speed change adjusts interval and timer scheduling
+			controller.setSpeed(3);
+			expect(controller.speed).toBe(3);
+			await controller.play();
+			expect(controller.isPlaying).toBe(true);
+			// At speed 3, interval is 833ms: reaches frame 2 transition
+			await fakeTimers.advanceBy(832);
+			expect(controller.currentIndex).toBe(1);
+			await fakeTimers.advanceBy(1);
+			expect(controller.currentIndex).toBe(2);
+
+			controller.destroy();
+		});
+
+		it('pauses playback on stepping or scrubber seeking, and updates speed', async () => {
+			const snapshots = [
+				{ key: 1, path: 'Fictional/Chapter.md', ts: 1000 },
+				{ key: 2, path: 'Fictional/Chapter.md', ts: 2000 },
+				{ key: 3, path: 'Fictional/Chapter.md', ts: 3000 }
+			];
+			const nativeSvc = {
+				checkStatus: vi.fn(() => ({ status: 'available' as const, deviceId: 'dev-1', dbName: 'db-1' })),
+				readSnapshotByKey: vi.fn(async (key: number) => `段落内容 ${key}`)
+			} as unknown as NativeSnapshotService;
+
+			const controller = new ChapterSnapshotReplayController({
+				nativeSnapshotService: nativeSvc,
+				snapshots,
+				getScopeList: () => ({ deviceId: 'dev-1', dbName: 'db-1' }),
+				onFrame: vi.fn(),
+				onStateChange: vi.fn(),
+				onError: vi.fn(),
+				timerWindow: fakeTimers
+			});
+
+			await controller.startReplay();
+			await controller.play();
+			expect(controller.isPlaying).toBe(true);
+
+			// Stepping pauses
+			await controller.step(1);
+			expect(controller.isPlaying).toBe(false);
+			expect(controller.currentIndex).toBe(1);
+
+			// Resume play, then seek pauses
+			await controller.play();
+			expect(controller.isPlaying).toBe(true);
+			await controller.seek(0);
+			expect(controller.isPlaying).toBe(false);
+			expect(controller.currentIndex).toBe(0);
+
+			// Speed change
+			controller.setSpeed(5);
+			expect(controller.speed).toBe(5);
+			await controller.play();
+			await fakeTimers.advanceBy(499);
+			expect(controller.currentIndex).toBe(0);
+			await fakeTimers.advanceBy(1);
+			expect(controller.currentIndex).toBe(1);
+			controller.pause();
+			controller.setSpeed(1);
+			expect(controller.speed).toBe(1);
+
+			controller.destroy();
+		});
+
+		it('disallows playback on single snapshot and handles empty snapshot list gracefully', async () => {
+			const nativeSvc = {
+				checkStatus: vi.fn(() => ({ status: 'available' as const, deviceId: 'dev-1', dbName: 'db-1' })),
+				readSnapshotByKey: vi.fn(async () => '独一版本内容')
+			} as unknown as NativeSnapshotService;
+
+			// Single snapshot
+			const singleController = new ChapterSnapshotReplayController({
+				nativeSnapshotService: nativeSvc,
+				snapshots: [{ key: 1, path: 'Fictional/Chapter.md', ts: 1000 }],
+				getScopeList: () => ({ deviceId: 'dev-1', dbName: 'db-1' }),
+				onFrame: vi.fn(),
+				onStateChange: vi.fn(),
+				onError: vi.fn(),
+				timerWindow: fakeTimers
+			});
+			await singleController.startReplay();
+			expect(singleController.currentIndex).toBe(0);
+			const canPlay = await singleController.play();
+			expect(canPlay).toBe(false);
+			expect(singleController.isPlaying).toBe(false);
+			singleController.destroy();
+
+			// Empty list
+			const emptyController = new ChapterSnapshotReplayController({
+				nativeSnapshotService: nativeSvc,
+				snapshots: [],
+				getScopeList: () => ({ deviceId: 'dev-1', dbName: 'db-1' }),
+				onFrame: vi.fn(),
+				onStateChange: vi.fn(),
+				onError: vi.fn(),
+				timerWindow: fakeTimers
+			});
+			await emptyController.startReplay();
+			expect(emptyController.currentIndex).toBe(-1);
+			expect(await emptyController.play()).toBe(false);
+			emptyController.destroy();
+		});
+
+		it('bounds plaintext cache to at most two adjacent snapshots in memory', async () => {
+			const snapshots = [
+				{ key: 1, path: 'Fictional/Chapter.md', ts: 1000 },
+				{ key: 2, path: 'Fictional/Chapter.md', ts: 2000 },
+				{ key: 3, path: 'Fictional/Chapter.md', ts: 3000 },
+				{ key: 4, path: 'Fictional/Chapter.md', ts: 4000 }
+			];
+			const nativeSvc = {
+				checkStatus: vi.fn(() => ({ status: 'available' as const, deviceId: 'dev-1', dbName: 'db-1' })),
+				readSnapshotByKey: vi.fn(async (key: number) => `正文段落版本 ${key}`)
+			} as unknown as NativeSnapshotService;
+
+			const controller = new ChapterSnapshotReplayController({
+				nativeSnapshotService: nativeSvc,
+				snapshots,
+				getScopeList: () => ({ deviceId: 'dev-1', dbName: 'db-1' }),
+				onFrame: vi.fn(),
+				onStateChange: vi.fn(),
+				onError: vi.fn(),
+				timerWindow: fakeTimers
+			});
+
+			await controller.startReplay();
+			expect(controller.getCacheSize()).toBeLessThanOrEqual(2);
+
+			await controller.step(1);
+			expect(controller.getCacheSize()).toBeLessThanOrEqual(2);
+
+			await controller.step(1);
+			expect(controller.getCacheSize()).toBeLessThanOrEqual(2);
+
+			await controller.seek(0);
+			expect(controller.getCacheSize()).toBeLessThanOrEqual(2);
+
+			controller.destroy();
+			expect(controller.getCacheSize()).toBe(0);
+		});
+
+		it('cancels stale reads on rapid scrubber seeking and only displays latest generation', async () => {
+			const snapshots = [
+				{ key: 1, path: 'Fictional/Chapter.md', ts: 1000 },
+				{ key: 2, path: 'Fictional/Chapter.md', ts: 2000 },
+				{ key: 3, path: 'Fictional/Chapter.md', ts: 3000 }
+			];
+			const delays: Record<number, number> = { 1: 50, 2: 10, 3: 5 };
+			const nativeSvc = {
+				checkStatus: vi.fn(() => ({ status: 'available' as const, deviceId: 'dev-1', dbName: 'db-1' })),
+				readSnapshotByKey: vi.fn(async (key: number) => {
+					await new Promise(r => setTimeout(r, delays[key] ?? 5));
+					return `延迟正文 ${key}`;
+				})
+			} as unknown as NativeSnapshotService;
+
+			const renderedKeys: number[] = [];
+			const controller = new ChapterSnapshotReplayController({
+				nativeSnapshotService: nativeSvc,
+				snapshots,
+				getScopeList: () => ({ deviceId: 'dev-1', dbName: 'db-1' }),
+				onFrame: (frame) => {
+					renderedKeys.push(frame.meta.key);
+				},
+				onStateChange: vi.fn(),
+				onError: vi.fn(),
+				timerWindow: fakeTimers
+			});
+
+			await controller.startReplay();
+			renderedKeys.length = 0;
+
+			// Rapid seeks
+			const p1 = controller.seek(1);
+			const p2 = controller.seek(2);
+			const p0 = controller.seek(0);
+			await Promise.all([p1, p2, p0]);
+
+			// Only the final seek (index 0, key 1) should be rendered last
+			expect(renderedKeys[renderedKeys.length - 1]).toBe(1);
+			expect(controller.currentIndex).toBe(0);
+
+			controller.destroy();
+		});
+
+		it('stops playback and fires localized error on device/db scope mismatch or read error', async () => {
+			const snapshots = [
+				{ key: 1, path: 'Fictional/Chapter.md', ts: 1000 },
+				{ key: 2, path: 'Fictional/Chapter.md', ts: 2000 }
+			];
+			let callCount = 0;
+			const nativeSvc = {
+				checkStatus: vi.fn(() => {
+					callCount++;
+					if (callCount > 2) {
+						return { status: 'available' as const, deviceId: 'foreign-dev', dbName: 'db-1' };
+					}
+					return { status: 'available' as const, deviceId: 'dev-1', dbName: 'db-1' };
+				}),
+				readSnapshotByKey: vi.fn(async (key: number) => `正文内容 ${key}`)
+			} as unknown as NativeSnapshotService;
+
+			const errors: string[] = [];
+			const controller = new ChapterSnapshotReplayController({
+				nativeSnapshotService: nativeSvc,
+				snapshots,
+				getScopeList: () => ({ deviceId: 'dev-1', dbName: 'db-1' }),
+				onFrame: vi.fn(),
+				onStateChange: vi.fn(),
+				onError: (err) => errors.push(err),
+				timerWindow: fakeTimers
+			});
+
+			await controller.startReplay();
+			expect(controller.currentIndex).toBe(0);
+
+			await controller.step(1);
+			expect(errors.length).toBeGreaterThan(0);
+			expect(controller.isPlaying).toBe(false);
+
+			controller.destroy();
+		});
+
+		it('coalesces rapid seeks without concurrent snapshot reads', async () => {
+			let active = 0;
+			let peak = 0;
+			let releaseRead: (() => void) | undefined;
+			const blocked = new Promise<void>(resolve => { releaseRead = resolve; });
+			const svc = {
+				checkStatus: () => ({ status: 'available', deviceId: 'd', dbName: 'b' }),
+				readSnapshotByKey: async (key: number) => {
+					active++;
+					peak = Math.max(peak, active);
+					if (key === 3) await blocked;
+					active--;
+					return `Fictional paragraph ${key}`;
+				}
+			} as unknown as NativeSnapshotService;
+			const controller = new ChapterSnapshotReplayController({
+				nativeSnapshotService: svc,
+				snapshots: [1, 2, 3, 4].map(key => ({ key, ts: key * 1000, path: 'Sample/Part.md' })),
+				getScopeList: () => ({ deviceId: 'd', dbName: 'b' }), timerWindow: fakeTimers
+			});
+			await controller.startReplay();
+			const first = controller.seek(2);
+			const second = controller.seek(3);
+			const last = controller.seek(1);
+			releaseRead?.();
+			await Promise.all([first, second, last]);
+			controller.destroy();
+			expect(peak).toBe(1);
+		});
+
+		it('does not resume after pause during an asynchronous restart from the end', async () => {
+			let blockRestart = false;
+			let releaseRead: (() => void) | undefined;
+			const blocked = new Promise<void>(resolve => { releaseRead = resolve; });
+			const svc = {
+				checkStatus: () => ({ status: 'available', deviceId: 'd', dbName: 'b' }),
+				readSnapshotByKey: async (key: number) => {
+					if (blockRestart && key === 1) await blocked;
+					return `Fictional paragraph ${key}`;
+				}
+			} as unknown as NativeSnapshotService;
+			const controller = new ChapterSnapshotReplayController({
+				nativeSnapshotService: svc,
+				snapshots: [1, 2, 3].map(key => ({ key, ts: key * 1000, path: 'Sample/Part.md' })),
+				getScopeList: () => ({ deviceId: 'd', dbName: 'b' }), timerWindow: fakeTimers
+			});
+			await controller.startReplay();
+			await controller.seek(2);
+			blockRestart = true;
+			const restarting = controller.play();
+			controller.pause();
+			releaseRead?.();
+			await restarting;
+			const playing = controller.isPlaying;
+			const timers = fakeTimers.activeCount();
+			controller.destroy();
+			expect(playing).toBe(false);
+			expect(timers).toBe(0);
+		});
+
+		it('keeps playback stopped when restarting from the end fails', async () => {
+			let fail = false;
+			const svc = {
+				checkStatus: () => ({ status: 'available', deviceId: 'd', dbName: 'b' }),
+				readSnapshotByKey: async (key: number) => {
+					if (fail && key === 1) throw new Error('snapshot.missing-ref');
+					return `Fictional paragraph ${key}`;
+				}
+			} as unknown as NativeSnapshotService;
+			const controller = new ChapterSnapshotReplayController({
+				nativeSnapshotService: svc,
+				snapshots: [1, 2, 3].map(key => ({ key, ts: key * 1000, path: 'Sample/Part.md' })),
+				getScopeList: () => ({ deviceId: 'd', dbName: 'b' }), timerWindow: fakeTimers
+			});
+			await controller.startReplay();
+			await controller.seek(2);
+			fail = true;
+			const started = await controller.play();
+			const playing = controller.isPlaying;
+			const timers = fakeTimers.activeCount();
+			controller.destroy();
+			expect(started).toBe(false);
+			expect(playing).toBe(false);
+			expect(timers).toBe(0);
+		});
+
+		it('rejects a changed database scope before reading snapshot data', async () => {
+			const read = vi.fn(async () => 'Fictional paragraph');
+			const svc = {
+				checkStatus: () => ({ status: 'available', deviceId: 'foreign', dbName: 'b' }),
+				readSnapshotByKey: read
+			} as unknown as NativeSnapshotService;
+			const controller = new ChapterSnapshotReplayController({
+				nativeSnapshotService: svc,
+				snapshots: [{ key: 1, ts: 1000, path: 'Sample/Part.md' }],
+				getScopeList: () => ({ deviceId: 'd', dbName: 'b' }), timerWindow: fakeTimers
+			});
+			await controller.startReplay();
+			const error = controller.error;
+			controller.destroy();
+			expect(error).toBeTruthy();
+			expect(read).not.toHaveBeenCalled();
+		});
+
+		it('keeps transition highlights when paused during its asynchronous read', async () => {
+			let releaseRead: (() => void) | undefined;
+			const blocked = new Promise<void>(resolve => { releaseRead = resolve; });
+			const modes: string[] = [];
+			const svc = {
+				checkStatus: () => ({ status: 'available', deviceId: 'd', dbName: 'b' }),
+				readSnapshotByKey: async (key: number) => {
+					if (key === 2) await blocked;
+					return `Fictional paragraph ${key}`;
+				}
+			} as unknown as NativeSnapshotService;
+			const controller = new ChapterSnapshotReplayController({
+				nativeSnapshotService: svc,
+				snapshots: [1, 2, 3].map(key => ({ key, ts: key * 1000, path: 'Sample/Part.md' })),
+				getScopeList: () => ({ deviceId: 'd', dbName: 'b' }), timerWindow: fakeTimers,
+				onFrame: frame => { modes.push(frame.mode); }
+			});
+			await controller.startReplay();
+			await controller.play();
+			const tick = fakeTimers.advanceBy(2500);
+			controller.pause();
+			releaseRead?.();
+			await tick;
+			await fakeTimers.advanceBy(5000);
+			expect(modes.at(-1)).toBe('transition');
+			expect(controller.isPlaying).toBe(false);
+			expect(controller.currentIndex).toBe(1);
+			expect(fakeTimers.activeCount()).toBe(0);
+			controller.destroy();
+		});
+
+		it('clears a prior error after successfully seeking to a readable version', async () => {
+			const svc = {
+				checkStatus: () => ({ status: 'available', deviceId: 'd', dbName: 'b' }),
+				readSnapshotByKey: async (key: number) => {
+					if (key === 2) throw new Error('expired');
+					return `Fictional paragraph ${key}`;
+				}
+			} as unknown as NativeSnapshotService;
+			const controller = new ChapterSnapshotReplayController({
+				nativeSnapshotService: svc,
+				snapshots: [1, 2, 3, 4].map(key => ({ key, ts: key * 1000, path: 'Sample/Part.md' })),
+				getScopeList: () => ({ deviceId: 'd', dbName: 'b' }), timerWindow: fakeTimers
+			});
+			await controller.startReplay();
+			await controller.seek(1);
+			expect(controller.error).toBeTruthy();
+			await controller.seek(3);
+			expect(controller.error).toBeNull();
+			controller.destroy();
+		});
+
+		it('integrates with ChapterSnapshotPanel: enters replay, suppresses editor refreshes, and restores comparison on exit', async () => {
+			const ownerDoc = {
+				defaultView: {
+					createDiv: vi.fn(() => createMockEl('div')),
+					innerWidth: 1200,
+					innerHeight: 800,
+					addEventListener: vi.fn(),
+					removeEventListener: vi.fn(),
+					setTimeout: vi.fn((cb: () => void) => { cb(); return 1; }),
+					clearTimeout: vi.fn()
+				},
+				createElement: vi.fn(() => createMockEl()),
+				createTextNode: vi.fn((text: string) => Object.assign(new MockElement(), { textContent: text })),
+				body: Object.assign(createMockEl(), { hasClass: () => false }),
+				addEventListener: vi.fn(),
+				removeEventListener: vi.fn()
+			} as unknown as Document;
+
+			const nativeSvc = {
+				getOrCreateDeviceId: vi.fn(() => 'd'),
+				listSnapshotsForPath: vi.fn(async () => [
+					{ key: 1, path: 'Book/Chapter1.md', ts: 1000 },
+					{ key: 2, path: 'Book/Chapter1.md', ts: 2000 }
+				]),
+				readSnapshotByKey: vi.fn(async (key: number) => `历史内容 ${key}`),
+				checkStatus: vi.fn(() => ({ status: 'available' as const, dbName: 'b', deviceId: 'd' }))
+			} as unknown as NativeSnapshotService;
+
+			let editorChangeHandler: ((e: unknown, info: unknown) => void) | null = null;
+			const app = {
+				workspace: {
+					getLeavesOfType: vi.fn(() => []),
+					on: vi.fn((name: string, cb: (...args: unknown[]) => void) => {
+						if (name === 'editor-change') editorChangeHandler = cb;
+						return {};
+					}),
+					offref: vi.fn()
+				},
+				vault: {
+					on: vi.fn(() => ({})),
+					offref: vi.fn(),
+					read: vi.fn(async () => '当前草稿内容')
+				}
+			} as unknown as App;
+
+			const chapterFile = new MockTFile('Chapter1.md', 'Book/Chapter1.md') as unknown as TFile;
+			const panel = new ChapterSnapshotPanel({
+				app,
+				nativeSnapshotService: nativeSvc,
+				ownerDocument: ownerDoc,
+				chapterFile,
+				chapterPath: 'Book/Chapter1.md',
+				chapterTitle: 'Chapter1',
+				onClose: vi.fn()
+			});
+			await panel.readyPromise;
+
+			const panelInternal = panel as unknown as {
+				isReplayActive: boolean;
+				enterReplayMode(): Promise<void>;
+				exitReplayMode(): Promise<void>;
+				replayController: ChapterSnapshotReplayController | null;
+				loadAndRenderDiff: () => Promise<void>;
+				editorDebounceTimer: number | null;
+			};
+
+			const diffSpy = vi.spyOn(panelInternal, 'loadAndRenderDiff');
+
+			// Enter replay mode
+			await panelInternal.enterReplayMode();
+			expect(panelInternal.isReplayActive).toBe(true);
+			expect(panelInternal.replayController).not.toBeNull();
+
+			// Editor change while in replay mode should NOT schedule refresh
+			diffSpy.mockClear();
+			(editorChangeHandler as ((e: unknown, info: unknown) => void) | null)?.({}, { file: chapterFile });
+			expect(panelInternal.editorDebounceTimer).toBeNull();
+			expect(diffSpy).not.toHaveBeenCalled();
+
+			// Exit replay mode restores comparison
+			await panelInternal.exitReplayMode();
+			expect(panelInternal.isReplayActive).toBe(false);
+			expect(panelInternal.replayController).toBeNull();
+			expect(diffSpy).toHaveBeenCalled();
+
+			panel.destroy();
+		});
+
+		it('preserves replay scroll position when transition highlights settle', async () => {
+			const container = Object.assign(createMockEl(), { scrollTop: 120 });
+			container.empty = () => { container.scrollTop = 0; };
+			const panel = Object.create(ChapterSnapshotPanel.prototype) as {
+				onReplayFrame(frame: import('../src/services/ChapterSnapshotReplayController').ReplayFrameData): Promise<void>;
+			};
+			Object.assign(panel, {
+				isReplayActive: true, isDestroyed: false, renderGeneration: 0,
+				diffContainerEl: container, clearNavigation: vi.fn(), updateObservedContentRoot: vi.fn(),
+				doc: { createElement: () => createMockEl(), createTextNode: (text: string) => ({ textContent: text }) }
+			});
+			await panel.onReplayFrame({
+				index: 1, total: 2, meta: { key: 2, ts: 2000, path: 'Sample/Part.md' },
+				mode: 'settled', text: 'Fictional paragraph', cancellationToken: { isCancelled: false }
+			});
+			expect(container.scrollTop).toBe(120);
+		});
+
+		it('compares a scrubbed version against its chronological predecessor and keeps paused highlights visible', async () => {
+			const frames: import('../src/services/ChapterSnapshotReplayController').ReplayFrameData[] = [];
+			const service = {
+				checkStatus: () => ({ status: 'available', deviceId: 'd', dbName: 'b' }),
+				readSnapshotByKey: async (key: number) => `Sample paragraph ${key}`
+			} as unknown as NativeSnapshotService;
+			const controller = new ChapterSnapshotReplayController({
+				nativeSnapshotService: service,
+				snapshots: [1, 2, 3, 4].map(key => ({ key, ts: key * 1000, path: 'Sample/Part.md' })),
+				getScopeList: () => ({ deviceId: 'd', dbName: 'b' }), timerWindow: fakeTimers,
+				onFrame: frame => { frames.push(frame); }
+			});
+			await controller.startReplay();
+			await controller.seek(3);
+			const selected = frames.at(-1);
+			await fakeTimers.advanceBy(10000);
+			const held = frames.at(-1);
+			await controller.step(-1);
+			const backward = frames.at(-1);
+			controller.destroy();
+			expect(selected?.mode).toBe('transition');
+			expect(selected?.previousMeta?.key).toBe(3);
+			expect(held).toBe(selected);
+			expect(backward?.meta.key).toBe(3);
+			expect(backward?.previousMeta?.key).toBe(2);
+		});
+
+		it('keeps automatic transition changes visible long enough to inspect them', async () => {
+			const modes: string[] = [];
+			const service = {
+				checkStatus: () => ({ status: 'available', deviceId: 'd', dbName: 'b' }),
+				readSnapshotByKey: async (key: number) => `Sample paragraph ${key}`
+			} as unknown as NativeSnapshotService;
+			const controller = new ChapterSnapshotReplayController({
+				nativeSnapshotService: service,
+				snapshots: [1, 2, 3].map(key => ({ key, ts: key * 1000, path: 'Sample/Part.md' })),
+				getScopeList: () => ({ deviceId: 'd', dbName: 'b' }), timerWindow: fakeTimers,
+				onFrame: frame => { modes.push(frame.mode); }
+			});
+			await controller.startReplay();
+			await controller.play();
+			await fakeTimers.advanceBy(2500);
+			const selectedIndex = controller.currentIndex;
+			const firstTransition = modes.at(-1);
+			await fakeTimers.advanceBy(600);
+			const mode = modes.at(-1);
+			controller.destroy();
+			expect(selectedIndex).toBe(1);
+			expect(firstTransition).toBe('transition');
+			expect(mode).toBe('transition');
+		});
+
+		it('preserves the literal body line breaks without extra spacing in replay presentation', async () => {
+			const container = Object.assign(new MockElement(), { scrollTop: 0 });
+			const panel = Object.create(ChapterSnapshotPanel.prototype) as {
+				onReplayFrame(frame: import('../src/services/ChapterSnapshotReplayController').ReplayFrameData): Promise<void>;
+			};
+			Object.assign(panel, {
+				isReplayActive: true, isDestroyed: false, renderGeneration: 0,
+				diffContainerEl: container, clearNavigation: vi.fn(), updateObservedContentRoot: vi.fn(),
+				doc: { createElement: () => new MockElement(), createTextNode: (text: string) => Object.assign(new MockElement(), { textContent: text }) }
+			});
+			const body = 'First sample paragraph.\n\nSecond sample paragraph.\n';
+			await panel.onReplayFrame({
+				index: 0, total: 1, meta: { key: 1, ts: 1000, path: 'Sample/Part.md' },
+				mode: 'first', text: '---\nstatus: draft\n---\n' + body, cancellationToken: { isCancelled: false }
+			});
+			const text = (node: MockElement): string => node.textContent + node.children.map(text).join('');
+			expect(text(container)).toBe(body);
+		});
+
+		it('reconstructs the selected body exactly from replay chunks after paragraph and whitespace changes', async () => {
+			const pairs = [
+				['Opening.\n\n', 'Opening.\n\nNew paragraph.\n'],
+				['Opening.\n\nDiscarded paragraph.\n\nEnd.', 'Opening.\n\nEnd.'],
+				['Line one.\r\n\r\nLine two.', 'Line one.\r\nLine two.'],
+				['示例甲😀\n\n示例乙。', '示例甲😀\n\n示例丙。']
+			];
+			for (const [left, right] of pairs) {
+				const result = await ChapterDiffEngine.computeDiff(left, right);
+				const chunks = getReplayTextChanges(result);
+				expect(chunks.filter(chunk => !chunk.removed).map(chunk => chunk.value).join('')).toBe(right);
+			}
+		});
+
+		it.each(['deletion', 'replacement'] as const)('keeps the surviving reading anchor stable after a large %s, including manual scrolling', async kind => {
+			const prefix = 'Opening.\n\n';
+			const removed = 'Discarded sample paragraph. '.repeat(100) + '\n\n';
+			const inserted = kind === 'replacement' ? 'Revised sample paragraph.\n\n' : '';
+			const ending = 'Surviving ending.';
+			const body = prefix + inserted + ending;
+			const container = Object.assign(new MockElement(), { scrollTop: 0, getBoundingClientRect: () => ({ top: 100 }) });
+			const rangeStarts: Array<{ value: string; offset: number }> = [];
+			const panel = Object.create(ChapterSnapshotPanel.prototype) as {
+				onReplayFrame(frame: import('../src/services/ChapterSnapshotReplayController').ReplayFrameData): Promise<void>;
+			};
+			Object.assign(panel, {
+				isReplayActive: true, isDestroyed: false, renderGeneration: 0,
+				diffContainerEl: container, clearNavigation: vi.fn(), updateObservedContentRoot: vi.fn(),
+				doc: {
+					createElement: () => new MockElement(),
+					createTextNode: (text: string) => Object.assign(new MockElement(), { textContent: text }),
+					createRange: () => {
+						let measuredText = '';
+						return {
+							setStart: (node: Text, offset: number) => { measuredText = node.textContent ?? ''; rangeStarts.push({ value: measuredText, offset }); },
+							setEnd: vi.fn(),
+							getClientRects: () => [{ top: 100 + (measuredText === body ? 2200 : 3800) - container.scrollTop, height: 20 }]
+						};
+					}
+				}
+			});
+			const frame: import('../src/services/ChapterSnapshotReplayController').ReplayFrameData = {
+				index: 1, total: 2, meta: { key: 2, ts: 2000, path: 'Sample/Part.md' },
+				mode: 'transition', text: body, cancellationToken: { isCancelled: false },
+				diffResult: { hasDifferences: true, rows: [
+					{ id: 1, type: 'unchanged', leftLines: [prefix], rightLines: [prefix] },
+					{ id: 2, type: kind === 'replacement' ? 'modified' : 'deleted', leftLines: [removed], rightLines: inserted ? [inserted] : [] },
+					{ id: 3, type: 'unchanged', leftLines: [ending], rightLines: [ending] }
+				] }
+			};
+			await panel.onReplayFrame(frame);
+			expect(container.scrollTop).toBe(3760);
+			expect(rangeStarts[0].value).toBe(inserted || removed);
+			container.scrollTop -= 80;
+			const beforeOffset = 100 + 3800 - container.scrollTop;
+			await panel.onReplayFrame({ ...frame, mode: 'settled', diffResult: undefined });
+			expect(100 + 2200 - container.scrollTop).toBe(beforeOffset);
+			expect(container.scrollTop).toBe(2080);
+			expect(rangeStarts.at(-1)).toEqual({ value: body, offset: prefix.length });
+		});
+
+		it('strips YAML, preserves blank lines, and renders empty placeholder when body is empty in whole body replay', async () => {
+			const textNodes: string[] = [];
+			const ownerDoc = {
+				defaultView: {
+					createDiv: vi.fn(() => createMockEl('div')),
+					innerWidth: 1200,
+					innerHeight: 800,
+					addEventListener: vi.fn(),
+					removeEventListener: vi.fn(),
+					setTimeout: vi.fn((cb: () => void) => { cb(); return 1; }),
+					clearTimeout: vi.fn()
+				},
+				createElement: vi.fn(() => createMockEl()),
+				createTextNode: vi.fn((text: string) => {
+					textNodes.push(text);
+					return Object.assign(new MockElement(), { textContent: text });
+				}),
+				body: Object.assign(createMockEl(), { hasClass: () => false }),
+				addEventListener: vi.fn(),
+				removeEventListener: vi.fn()
+			} as unknown as Document;
+
+			const nativeSvc = {
+				getOrCreateDeviceId: vi.fn(() => 'd'),
+				listSnapshotsForPath: vi.fn(async () => [
+					{ key: 1, path: 'Book/Chapter1.md', ts: 1000 }
+				]),
+				readSnapshotByKey: vi.fn(async () => '---\ntitle: Sample\n---\n第一行正文\n\n第三行正文'),
+				checkStatus: vi.fn(() => ({ status: 'available' as const, dbName: 'b', deviceId: 'd' }))
+			} as unknown as NativeSnapshotService;
+
+			const app = {
+				workspace: { getLeavesOfType: vi.fn(() => []), on: vi.fn(() => ({})), offref: vi.fn() },
+				vault: { on: vi.fn(() => ({})), offref: vi.fn(), read: vi.fn(async () => '') }
+			} as unknown as App;
+
+			const chapterFile = new MockTFile('Chapter1.md', 'Book/Chapter1.md') as unknown as TFile;
+			const panel = new ChapterSnapshotPanel({
+				app,
+				nativeSnapshotService: nativeSvc,
+				ownerDocument: ownerDoc,
+				chapterFile,
+				chapterPath: 'Book/Chapter1.md',
+				chapterTitle: 'Chapter1',
+				onClose: vi.fn()
+			});
+			await panel.readyPromise;
+
+			const panelInternal = panel as unknown as {
+				enterReplayMode(): Promise<void>;
+				onReplayFrame(frame: unknown): Promise<void>;
+				diffContainerEl: { empty: () => void; appendChild: (c: unknown) => void };
+			};
+
+			await panelInternal.enterReplayMode();
+
+			// Preserve the source newline sequence, without per-line placeholders.
+			expect(textNodes.join('')).toBe('第一行正文\n\n第三行正文');
+			expect(textNodes.some(t => t.includes('title: Sample'))).toBe(false);
+
+			// Test empty body placeholder
+			textNodes.length = 0;
+			await panelInternal.onReplayFrame({
+				index: 0,
+				total: 1,
+				meta: { key: 1, path: 'Book/Chapter1.md', ts: 1000 },
+				mode: 'settled',
+				text: '---\ntitle: Only Header\n---\n   \n',
+				cancellationToken: { isCancelled: false }
+			});
+			expect(textNodes.length).toBe(0);
+
+			panel.destroy();
+		});
+
+		it('clears comparison plaintext on replay entry and avoids comparison refresh on orientation change, delete, and rebind', async () => {
+			let vaultDeleteHandler: ((file: unknown) => void) | undefined;
+			let compStartHandler: ((e: unknown) => void) | undefined;
+			let compEndHandler: ((e: unknown) => void) | undefined;
+
+			const ownerDoc = {
+				defaultView: {
+					createDiv: vi.fn(() => createMockEl('div')),
+					innerWidth: 1200,
+					innerHeight: 800,
+					addEventListener: vi.fn(),
+					removeEventListener: vi.fn(),
+					setTimeout: vi.fn((cb: () => void) => { cb(); return 1; }),
+					clearTimeout: vi.fn()
+				},
+				createElement: vi.fn(() => createMockEl()),
+				createTextNode: vi.fn((text: string) => Object.assign(new MockElement(), { textContent: text })),
+				body: Object.assign(createMockEl(), { hasClass: () => false }),
+				addEventListener: vi.fn((event: string, cb: (e: unknown) => void) => {
+					if (event === 'compositionstart') compStartHandler = cb;
+					if (event === 'compositionend') compEndHandler = cb;
+				}),
+				removeEventListener: vi.fn()
+			} as unknown as Document;
+
+			const nativeSvc = {
+				getOrCreateDeviceId: vi.fn(() => 'd'),
+				listSnapshotsForPath: vi.fn(async () => [
+					{ key: 1, path: 'Book/Chapter1.md', ts: 1000 },
+					{ key: 2, path: 'Book/Chapter1.md', ts: 2000 }
+				]),
+				readSnapshotByKey: vi.fn(async (key: number) => `历史内容 ${key}`),
+				checkStatus: vi.fn(() => ({ status: 'available' as const, dbName: 'b', deviceId: 'd' }))
+			} as unknown as NativeSnapshotService;
+
+			const app = {
+				workspace: { getLeavesOfType: vi.fn(() => []), on: vi.fn(() => ({})), offref: vi.fn() },
+				vault: {
+					on: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
+						if (event === 'delete') vaultDeleteHandler = cb;
+						return {};
+					}),
+					offref: vi.fn(),
+					read: vi.fn(async () => '当前正文')
+				}
+			} as unknown as App;
+
+			const chapterFile = new MockTFile('Chapter1.md', 'Book/Chapter1.md') as unknown as TFile;
+			const panel = new ChapterSnapshotPanel({
+				app,
+				nativeSnapshotService: nativeSvc,
+				ownerDocument: ownerDoc,
+				chapterFile,
+				chapterPath: 'Book/Chapter1.md',
+				chapterTitle: 'Chapter1',
+				onClose: vi.fn()
+			});
+			await panel.readyPromise;
+
+			const panelInternal = panel as unknown as {
+				leftContent: string;
+				rightContent: string;
+				diffResult: unknown;
+				isReplayActive: boolean;
+				enterReplayMode(): Promise<void>;
+				exitReplayMode(options?: { restoreComparison?: boolean }): Promise<void>;
+				updatePresentationMode(): void;
+				loadAndRenderDiff(): Promise<void>;
+				rebindChapter(file: TFile | null, path: string, title: string): Promise<void>;
+			};
+
+			panelInternal.leftContent = '基准文本';
+			panelInternal.rightContent = '对比文本';
+			panelInternal.diffResult = { rows: [] };
+
+			const diffSpy = vi.spyOn(panelInternal, 'loadAndRenderDiff');
+
+			// Entering replay clears plaintext memory
+			await panelInternal.enterReplayMode();
+			expect(panelInternal.leftContent).toBe('');
+			expect(panelInternal.rightContent).toBe('');
+			expect(panelInternal.diffResult).toBeNull();
+			diffSpy.mockClear();
+
+			// Orientation change / presentation update in replay does not render comparison
+			panelInternal.updatePresentationMode();
+			expect(diffSpy).not.toHaveBeenCalled();
+
+			// Composition events in replay do not schedule editor refresh
+			(compStartHandler as ((e: unknown) => void) | undefined)?.({ target: null });
+			(compEndHandler as ((e: unknown) => void) | undefined)?.({ target: null });
+			expect(diffSpy).not.toHaveBeenCalled();
+
+			// Vault delete during replay preserves replay without loading deleted comparison
+			(vaultDeleteHandler as ((file: unknown) => void) | undefined)?.(chapterFile);
+			expect(panelInternal.isReplayActive).toBe(true);
+			expect(diffSpy).not.toHaveBeenCalled();
+
+			// Rebind stops replay without refreshing old chapter comparison
+			const newFile = new MockTFile('Chapter2.md', 'Book/Chapter2.md') as unknown as TFile;
+			await panelInternal.rebindChapter(newFile, 'Book/Chapter2.md', 'Chapter2');
+			expect(panelInternal.isReplayActive).toBe(false);
+
+			panel.destroy();
+		});
+
+		it('does not append a replay frame whose token is already cancelled', async () => {
+			const ownerDoc = {
+				defaultView: {
+					createDiv: vi.fn(() => createMockEl('div')),
+					innerWidth: 1200,
+					innerHeight: 800,
+					addEventListener: vi.fn(),
+					removeEventListener: vi.fn(),
+					setTimeout: vi.fn((cb: () => void) => { cb(); return 1; }),
+					clearTimeout: vi.fn()
+				},
+				createElement: vi.fn(() => createMockEl()),
+				createTextNode: vi.fn((text: string) => Object.assign(new MockElement(), { textContent: text })),
+				body: Object.assign(createMockEl(), { hasClass: () => false }),
+				addEventListener: vi.fn(),
+				removeEventListener: vi.fn()
+			} as unknown as Document;
+
+			const nativeSvc = {
+				getOrCreateDeviceId: vi.fn(() => 'd'),
+				listSnapshotsForPath: vi.fn(async () => [{ key: 1, path: 'Book/Chapter1.md', ts: 1000 }]),
+				readSnapshotByKey: vi.fn(async () => '历史正文'),
+				checkStatus: vi.fn(() => ({ status: 'available' as const, dbName: 'b', deviceId: 'd' }))
+			} as unknown as NativeSnapshotService;
+
+			const app = {
+				workspace: { getLeavesOfType: vi.fn(() => []), on: vi.fn(() => ({})), offref: vi.fn() },
+				vault: { on: vi.fn(() => ({})), offref: vi.fn(), read: vi.fn(async () => '') }
+			} as unknown as App;
+
+			const chapterFile = new MockTFile('Chapter1.md', 'Book/Chapter1.md') as unknown as TFile;
+			const panel = new ChapterSnapshotPanel({
+				app,
+				nativeSnapshotService: nativeSvc,
+				ownerDocument: ownerDoc,
+				chapterFile,
+				chapterPath: 'Book/Chapter1.md',
+				chapterTitle: 'Chapter1',
+				onClose: vi.fn()
+			});
+			await panel.readyPromise;
+
+			const panelInternal = panel as unknown as {
+				enterReplayMode(): Promise<void>;
+				onReplayFrame(frame: unknown): Promise<void>;
+				diffContainerEl: { empty: () => void; appendChild: (c: unknown) => void };
+			};
+
+			await panelInternal.enterReplayMode();
+
+			const appendSpy = vi.spyOn(panelInternal.diffContainerEl, 'appendChild');
+			appendSpy.mockClear();
+
+			// Cancelled token before commit prevents appendChild
+			await panelInternal.onReplayFrame({
+				index: 0,
+				total: 1,
+				meta: { key: 1, path: 'Book/Chapter1.md', ts: 1000 },
+				mode: 'settled',
+				text: 'Stale chunk content',
+				cancellationToken: { isCancelled: true }
+			});
+			expect(appendSpy).not.toHaveBeenCalled();
+
+			panel.destroy();
+		});
+
+		it('configures accessible attributes on range, speed buttons, and initial button state', async () => {
+			const ownerDoc = {
+				defaultView: {
+					createDiv: vi.fn(() => createMockEl('div')),
+					innerWidth: 1200,
+					innerHeight: 800,
+					addEventListener: vi.fn(),
+					removeEventListener: vi.fn(),
+					setTimeout: vi.fn((cb: () => void) => { cb(); return 1; }),
+					clearTimeout: vi.fn()
+				},
+				createElement: vi.fn(() => createMockEl()),
+				createTextNode: vi.fn((text: string) => Object.assign(new MockElement(), { textContent: text })),
+				body: Object.assign(createMockEl(), { hasClass: () => false }),
+				addEventListener: vi.fn(),
+				removeEventListener: vi.fn()
+			} as unknown as Document;
+
+			const nativeSvc = {
+				getOrCreateDeviceId: vi.fn(() => 'd'),
+				listSnapshotsForPath: vi.fn(async () => []),
+				checkStatus: vi.fn(() => ({ status: 'available' as const, dbName: 'b', deviceId: 'd' }))
+			} as unknown as NativeSnapshotService;
+
+			const app = {
+				workspace: { getLeavesOfType: vi.fn(() => []), on: vi.fn(() => ({})), offref: vi.fn() },
+				vault: { on: vi.fn(() => ({})), offref: vi.fn(), read: vi.fn(async () => '') }
+			} as unknown as App;
+
+			const chapterFile = new MockTFile('Chapter1.md', 'Book/Chapter1.md') as unknown as TFile;
+			const panel = new ChapterSnapshotPanel({
+				app,
+				nativeSnapshotService: nativeSvc,
+				ownerDocument: ownerDoc,
+				chapterFile,
+				chapterPath: 'Book/Chapter1.md',
+				chapterTitle: 'Chapter1',
+				onClose: vi.fn()
+			});
+			await panel.readyPromise;
+
+			const panelInternal = panel as unknown as {
+				replayScrubberEl: { setAttribute: (k: string, v: string) => void };
+				replaySpeedBtns: Array<{ setAttribute: (k: string, v: string) => void }>;
+				replayEntryBtnEl: { disabled: boolean };
+			};
+
+			// Replay entry is disabled when list is empty
+			expect(panelInternal.replayEntryBtnEl.disabled).toBe(true);
+			expect(panelInternal.replayScrubberEl.setAttribute).toHaveBeenCalledWith('aria-label', 'snapshot.replay-position');
+			panelInternal.replaySpeedBtns.forEach((button, index) => {
+				expect(button.setAttribute).toHaveBeenCalledWith('aria-pressed', String(index === 0));
+				expect(button.setAttribute).toHaveBeenCalledWith('aria-label', `${[1, 3, 5][index]}x snapshot.replay-speed`);
+			});
+
+			panel.destroy();
+		});
+	});
 });
