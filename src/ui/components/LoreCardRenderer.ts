@@ -432,6 +432,11 @@ export class LoreCardRenderer {
 		const titleEl = titleContainer.createDiv({ cls: 'wn-lore-card-title' });
 		titleEl.setText(entry.heading);
 		titleEl.title = isReadOnly ? entry.heading : t('corkboard.click-to-open-lore');
+		const parent = entry.section?.parent;
+		if (parent && parent.level >= 2) {
+			const breadcrumb = card.createDiv({ cls: 'wn-lore-card-parent', text: parent.path.slice(1).join(' › ') || parent.title });
+			breadcrumb.title = parent.path.join(' › ');
+		}
 
 		titleEl.onclick = async () => {
 			if (isReadOnly) return;

@@ -988,14 +988,14 @@ Place the cursor on the line to format. Open the wheel and press `1`–`6` to se
 
 ###### Define a relationship from a subheading
 
-Add `Relation:: Label → [[Note#Heading]]` to the body of the heading that declares the relationship. Write one target per line. Use `[[#Heading]]` for a target in the same note, and include the parent headings in the link when titles are repeated.
+In a lore card's editor, choose **Add Relationship**, enter a label, and search for a target. In a Markdown editor, place the cursor inside the lore entry and run **Add Lore Relationship**. Duplicate titles show their file and parent headings. The link stores the exact target and displays its short name.
 
 ```markdown
 ###### East Pier
-Relation:: Supplies → [[Factions#Seagull Guild]]
+Relation:: Supplies → [[Factions#Seagull Guild|Seagull Guild]]
 ```
 
-The lore graph shows H1–H6 hierarchy with “Contains” edges. Expand **Heading outline** above a group of Workbench lore cards to browse headings and jump to the source. Each card shows the prose directly under its own heading. The card editor and graph read the reserved relationship sections and inline declarations.
+The lore graph shows H1–H6 hierarchy with “Contains” edges. Each card shows the prose directly under its own heading. Deeper cards show their parent path. The existing `### Relations` sections remain readable. New and edited relationships use inline declarations.
 
 ##### Related Settings
 - **Collapse Subheadings in Hover Card**: For long quick-reference content, collapse level-3 and deeper subheadings by default and expand them on click.

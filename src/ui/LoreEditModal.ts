@@ -1,9 +1,10 @@
-import { Modal, Setting, setTooltip, setIcon, Notice } from 'obsidian';
+import { Modal, Setting, Notice } from 'obsidian';
 import type { App, TextComponent } from 'obsidian';
 import type { CharacterManager, LoreEntry, LoreRelationItem, LoreSnapshot } from '../services/CharacterManager';
 import { parseLoreBodyForEditing } from '../services/LoreTemplateService';
 import { LoreCardRenderer } from './components/LoreCardRenderer';
 import { t } from '../i18n';
+import { renderLoreRelationEditor } from './LoreRelationEditor';
 
 export interface LoreEditPlugin {
 	app: App;
@@ -77,7 +78,8 @@ export class LoreEditModal extends Modal {
 		this.loreType = this.snapshot.type;
 		this.loreAliases = this.snapshot.aliases;
 		this.loreDescription = this.snapshot.body;
-		this.loreRelations = this.snapshot.relations.map(r => ({ ...r }));
+		this.loreRelations = this.snapshot.rawRelationItems?.map((row, sourceId) => ({ ...row, sourceId }))
+			?? this.snapshot.relations.map(row => ({ ...row }));
 
 		// 1. 设定分类（只读展示，不可移动分类）
 		new Setting(contentEl)
@@ -100,7 +102,6 @@ export class LoreEditModal extends Modal {
 		const existingLoreEntries = this.plugin.characterManager.getLoreEntriesInFileOrder
 			? this.plugin.characterManager.getLoreEntriesInFileOrder(this.bookPath)
 			: [];
-		const existingLoreNames = Array.from(new Set(existingLoreEntries.map(e => e.heading).filter(Boolean)));
 
 		const typeSetting = new Setting(contentEl)
 			.setName(t('modal.lore-type'))
@@ -182,133 +183,7 @@ export class LoreEditModal extends Modal {
 
 		const relationsListContainer = contentEl.createDiv({ cls: 'wn-lore-relations-container' });
 
-		const renderRelationsList = () => {
-			relationsListContainer.empty();
-
-			this.loreRelations.forEach((rel, index) => {
-				const rowEl = relationsListContainer.createDiv({ cls: 'wn-lore-relation-row' });
-
-				// 关系描述输入框
-				const labelInputEl = rowEl.createEl('input', {
-					type: 'text',
-					cls: 'wn-lore-relation-label-input',
-					value: rel.label,
-					placeholder: t('modal.lore-relation-label-placeholder'),
-				});
-				labelInputEl.addEventListener('input', (e) => {
-					this.loreRelations[index].label = (e.target as HTMLInputElement).value;
-				});
-
-				// 分隔冒号
-				rowEl.createSpan({ cls: 'wn-lore-relation-colon', text: t('modal.lore-colon') });
-
-				// 目标设定选择容器
-				const targetWrapperEl = rowEl.createDiv({ cls: 'wn-lore-relation-target-wrapper' });
-				const isExistingTarget = rel.target ? existingLoreNames.includes(rel.target) : false;
-				let isManualInput = !isExistingTarget;
-
-				const targetSelectEl = targetWrapperEl.createEl('select', {
-					cls: 'wn-lore-relation-target-select',
-				});
-
-				const defaultOption = targetSelectEl.createEl('option', {
-					value: '',
-					text: existingLoreNames.length > 0 ? t('modal.lore-select-existing') : t('modal.lore-no-existing'),
-				});
-				defaultOption.disabled = true;
-
-				for (const name of existingLoreNames) {
-					targetSelectEl.createEl('option', { value: name, text: name });
-				}
-				targetSelectEl.createEl('option', {
-					value: '__CUSTOM__',
-					text: t('modal.lore-custom-target'),
-				});
-				targetSelectEl.value = isExistingTarget ? rel.target : '';
-
-				const targetInputEl = targetWrapperEl.createEl('input', {
-					type: 'text',
-					cls: 'wn-lore-relation-target-input',
-					value: rel.target,
-					placeholder: t('modal.lore-relation-target-placeholder'),
-				});
-
-				const modeToggleBtn = targetWrapperEl.createEl('button', {
-					cls: 'wn-lore-relation-toggle-btn',
-				});
-				modeToggleBtn.setAttr('type', 'button');
-
-				const applyMode = () => {
-					modeToggleBtn.empty();
-					if (isManualInput || existingLoreNames.length === 0) {
-						targetSelectEl.hide();
-						targetInputEl.show();
-						setIcon(modeToggleBtn, 'list');
-						modeToggleBtn.setAttr('aria-label', t('modal.lore-toggle-select-tooltip'));
-						setTooltip(modeToggleBtn, t('modal.lore-toggle-select-tooltip'));
-					} else {
-						targetInputEl.hide();
-						targetSelectEl.show();
-						setIcon(modeToggleBtn, 'pencil');
-						modeToggleBtn.setAttr('aria-label', t('modal.lore-toggle-input-tooltip'));
-						setTooltip(modeToggleBtn, t('modal.lore-toggle-input-tooltip'));
-					}
-				};
-
-				targetSelectEl.addEventListener('change', (e) => {
-					const selectedVal = (e.target as HTMLSelectElement).value;
-					if (selectedVal === '__CUSTOM__') {
-						isManualInput = true;
-						this.loreRelations[index].target = '';
-						targetInputEl.value = '';
-						applyMode();
-						targetInputEl.focus();
-					} else {
-						this.loreRelations[index].target = selectedVal;
-					}
-				});
-
-				targetInputEl.addEventListener('input', (e) => {
-					this.loreRelations[index].target = (e.target as HTMLInputElement).value;
-				});
-
-				modeToggleBtn.addEventListener('click', (e) => {
-					e.preventDefault();
-					isManualInput = !isManualInput;
-					if (isManualInput) {
-						targetInputEl.value = this.loreRelations[index].target;
-					} else {
-						targetSelectEl.value = existingLoreNames.includes(this.loreRelations[index].target) ? this.loreRelations[index].target : '';
-					}
-					applyMode();
-				});
-
-				applyMode();
-
-				// 删除按钮
-				const removeBtn = rowEl.createEl('button', {
-					cls: 'wn-lore-relation-remove-btn',
-					text: '✕',
-				});
-				removeBtn.setAttr('type', 'button');
-				removeBtn.setAttr('aria-label', t('modal.lore-remove-relation'));
-				setTooltip(removeBtn, t('modal.lore-remove-relation'));
-				removeBtn.addEventListener('click', (e) => {
-					e.preventDefault();
-					this.loreRelations.splice(index, 1);
-					renderRelationsList();
-				});
-			});
-		};
-
-		relationSectionSetting.addButton(btn => btn
-			.setButtonText(t('modal.lore-add-relation'))
-			.onClick(() => {
-				this.loreRelations.push({ label: '', target: '' });
-				renderRelationsList();
-			}));
-
-		renderRelationsList();
+		renderLoreRelationEditor(this.app, relationSectionSetting, relationsListContainer, existingLoreEntries, this.loreRelations, this.entry);
 
 		// 保存按钮
 		new Setting(contentEl)

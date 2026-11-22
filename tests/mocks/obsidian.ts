@@ -181,6 +181,11 @@ export class Modal {
 	}
 }
 
+export class FuzzySuggestModal<T> extends Modal {
+	setPlaceholder(_text: string): void {}
+	getItems(): T[] { return []; }
+}
+
 export class Setting {
 	constructor(containerEl: any) {}
 	setHeading() { return this; }

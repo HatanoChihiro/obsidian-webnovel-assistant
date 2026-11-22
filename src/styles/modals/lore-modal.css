@@ -19,6 +19,16 @@
 	border: 1px solid var(--background-modifier-border);
 }
 
+.wn-add-lore-modal .wn-lore-relation-picker-btn {
+	flex: 1;
+	min-width: 0;
+	justify-content: flex-start;
+	text-align: start;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
 
 .wn-add-lore-modal .wn-lore-relation-label-input,
 .wn-add-lore-modal .wn-lore-relation-target-select,

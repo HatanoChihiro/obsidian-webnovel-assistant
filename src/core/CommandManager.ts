@@ -23,6 +23,7 @@ import { isSelectionEligibleForAnnotate } from '../utils/proofreadingHelpers';
 import { splitChapterAtCursor } from '../services/ChapterSplitter';
 import { ChapterSplitCollisionModal } from '../ui/ChapterSplitCollisionModal';
 import { HeadingWheelModal } from '../ui/HeadingWheelModal';
+import { LoreQuickRelationModal } from '../ui/LoreQuickRelationModal';
 
 function getSelectedOrCursorWord(editor: {
 	getSelection: () => string;
@@ -681,6 +682,24 @@ export class CommandManager {
 	 * 注册“添加新设定”全平台命令面板命令
 	 */
 	private registerLoreCommands() {
+		this.plugin.addCommand({
+			id: 'add-lore-relation',
+			name: t('command.add-lore-relation'),
+			icon: 'link',
+			editorCheckCallback: (checking, editor, view) => {
+				if (!(view instanceof MarkdownView) || !view.file) return false;
+				const manager = this.plugin.characterManager;
+				const file = view.file;
+				const book = manager.getBookPathForFile(file) ?? '';
+				if (!manager.isLorePath(book, file.parent?.path ?? '')) return false;
+				if (!checking) {
+					void manager.ensureInitialized().then(() => {
+						if (view.file === file) LoreQuickRelationModal.show(this.plugin.app, view, editor, manager.getLoreEntriesInFileOrder(book));
+					}).catch(() => { new Notice(t('notice.lore-save-failed')); });
+				}
+				return true;
+			},
+		});
 		this.plugin.addCommand({
 			id: 'add-new-lore',
 			name: t('command.add-new-lore'),

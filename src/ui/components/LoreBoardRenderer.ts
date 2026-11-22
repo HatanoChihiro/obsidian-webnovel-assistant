@@ -1,7 +1,6 @@
 import { Notice, TFile, setIcon, Component, type App } from 'obsidian';
 import { t, getLocale } from '../../i18n';
 import type { GraphEdge, RelationGraphManager } from '../../services/RelationGraphManager';
-import type { LoreOutlineHeading } from '../../services/LoreOutline';
 import { getLoreFilterKey } from '../../services/WorkbenchFilterIndex';
 import { ForceLayoutEngine } from '../../services/ForceLayoutEngine';
 import type { CharacterManager, LoreEntry } from '../../services/CharacterManager';
@@ -87,7 +86,7 @@ export class LoreBoardRenderer {
         }
 
         if (layoutMode === 'cards') {
-            await this.renderCards(contentArea, app, plugin, normalizedBookPath, allCharacters, matchedLoreHeadings, reloadBoard, options.ownerComponent, { showHeadingOutline: true });
+            await this.renderCards(contentArea, app, plugin, normalizedBookPath, allCharacters, matchedLoreHeadings, reloadBoard, options.ownerComponent);
             return;
         }
 
@@ -106,7 +105,6 @@ export class LoreBoardRenderer {
         ownerComponent?: Component,
         options?: {
             hideTabs?: boolean;
-            showHeadingOutline?: boolean;
         }
     ) {
         if (allCharacters.length === 0) {
@@ -181,7 +179,6 @@ export class LoreBoardRenderer {
                 cls: 'wn-volume-header-title'
             });
 
-            if (options?.showHeadingOutline) this.renderHeadingOutline(panel, app, group.entries);
             const grid = panel.createDiv('wn-lore-board-cards-grid');
 
             header.onclick = () => {
@@ -309,25 +306,6 @@ export class LoreBoardRenderer {
         }
 
         applyView();
-    }
-
-    private static renderHeadingOutline(panel: HTMLElement, app: App, entries: readonly LoreEntry[]): void {
-        if (!entries.some(entry => entry.section?.parent)) return;
-        const lists = new Map<LoreOutlineHeading, HTMLUListElement>();
-        const details = panel.createEl('details', { cls: 'wn-lore-card-outline' });
-        details.createEl('summary', { text: t('lore.heading-outline') });
-        const list = details.createEl('ul');
-        for (const entry of entries) {
-            const heading = entry.section;
-            if (!heading) continue;
-            const parent = (heading.parent && lists.get(heading.parent)) ?? list;
-            const item = parent.createEl('li');
-            const button = item.createEl('button', { text: heading.title, attr: { type: 'button' } });
-            button.onclick = () => {
-                void smartLocateAndHighlight(app, entry.file, [], { splitIfNew: true, fallbackLine: heading.line });
-            };
-            lists.set(heading, item.createEl('ul'));
-        }
     }
 
     /**

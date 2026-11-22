@@ -1,7 +1,8 @@
-import { Modal, Setting, TFile, setTooltip, setIcon, Notice } from 'obsidian';
+import { Modal, Setting, TFile, Notice } from 'obsidian';
 import type { App, TextComponent, TFolder, ButtonComponent } from 'obsidian';
 import type { CharacterManager, LoreCategoryOption } from '../services/CharacterManager';
 import { t } from '../i18n';
+import { renderLoreRelationEditor } from './LoreRelationEditor';
 import { FileSuggestModal } from './FileSuggestModal';
 import {
 	parseLoreTemplate,
@@ -566,7 +567,6 @@ export class AddLoreModal extends Modal {
 
 		// 收集当前书籍所有的设定名称，用于目标设定的下拉自动补全
 		const existingLoreEntries = this.plugin.characterManager.getLoreEntriesInFileOrder(this.bookPath);
-		const existingLoreNames = Array.from(new Set(existingLoreEntries.map(e => e.heading).filter(Boolean)));
 
 		// 设定关系列表
 		const relationSectionSetting = new Setting(contentEl)
@@ -575,133 +575,7 @@ export class AddLoreModal extends Modal {
 
 		const relationsListContainer = contentEl.createDiv({ cls: 'wn-lore-relations-container' });
 
-		const renderRelationsList = () => {
-			relationsListContainer.empty();
-
-			this.loreRelations.forEach((rel, index) => {
-				const rowEl = relationsListContainer.createDiv({ cls: 'wn-lore-relation-row' });
-
-				// 关系名称输入框
-				const labelInputEl = rowEl.createEl('input', {
-					type: 'text',
-					cls: 'wn-lore-relation-label-input',
-					value: rel.label,
-					placeholder: t('modal.lore-relation-label-placeholder'),
-				});
-				labelInputEl.addEventListener('input', (e) => {
-					this.loreRelations[index].label = (e.target as HTMLInputElement).value;
-				});
-
-				// 分隔冒号
-				rowEl.createSpan({ cls: 'wn-lore-relation-colon', text: t('modal.lore-colon') });
-
-				// 目标设定选择容器（支持移动端原生下拉轮播菜单与自定义手动输入模式无缝切换）
-				const targetWrapperEl = rowEl.createDiv({ cls: 'wn-lore-relation-target-wrapper' });
-
-				const isExistingTarget = rel.target ? existingLoreNames.includes(rel.target) : false;
-				let isManualInput = !isExistingTarget;
-
-				// 方式 1: 原生下拉选择框（移动端不会被虚拟键盘遮挡，调用原生底栏 Picker）
-				const targetSelectEl = targetWrapperEl.createEl('select', {
-					cls: 'wn-lore-relation-target-select',
-				});
-
-				const defaultOption = targetSelectEl.createEl('option', {
-					value: '',
-					text: existingLoreNames.length > 0 ? t('modal.lore-select-existing') : t('modal.lore-no-existing'),
-				});
-				defaultOption.disabled = true;
-
-				for (const name of existingLoreNames) {
-					targetSelectEl.createEl('option', { value: name, text: name });
-				}
-				targetSelectEl.createEl('option', {
-					value: '__CUSTOM__',
-					text: t('modal.lore-custom-target'),
-				});
-
-				targetSelectEl.value = existingLoreNames.includes(rel.target) ? rel.target : '';
-
-				// 方式 2: 自由文本输入框（当设定不在已有列表中时使用）
-				const targetInputEl = targetWrapperEl.createEl('input', {
-					type: 'text',
-					cls: 'wn-lore-relation-target-input',
-					value: rel.target,
-					placeholder: t('modal.lore-relation-target-placeholder'),
-				});
-
-				// 模式切换按钮（使用 Obsidian 原生 Lucide 图标）
-				const modeToggleBtn = targetWrapperEl.createEl('button', {
-					cls: 'wn-lore-relation-toggle-btn',
-				});
-
-				const applyMode = () => {
-					modeToggleBtn.empty();
-					if (isManualInput || existingLoreNames.length === 0) {
-						targetSelectEl.hide();
-						targetInputEl.show();
-						setIcon(modeToggleBtn, 'list');
-						setTooltip(modeToggleBtn, t('modal.lore-toggle-select-tooltip'));
-					} else {
-						targetInputEl.hide();
-						targetSelectEl.show();
-						setIcon(modeToggleBtn, 'pencil');
-						setTooltip(modeToggleBtn, t('modal.lore-toggle-input-tooltip'));
-					}
-				};
-
-				targetSelectEl.addEventListener('change', (e) => {
-					const selectedVal = (e.target as HTMLSelectElement).value;
-					if (selectedVal === '__CUSTOM__') {
-						isManualInput = true;
-						this.loreRelations[index].target = '';
-						targetInputEl.value = '';
-						applyMode();
-						targetInputEl.focus();
-					} else {
-						this.loreRelations[index].target = selectedVal;
-					}
-				});
-
-				targetInputEl.addEventListener('input', (e) => {
-					this.loreRelations[index].target = (e.target as HTMLInputElement).value;
-				});
-
-				modeToggleBtn.addEventListener('click', (e) => {
-					e.preventDefault();
-					isManualInput = !isManualInput;
-					if (isManualInput) {
-						targetInputEl.value = this.loreRelations[index].target;
-					} else {
-						targetSelectEl.value = existingLoreNames.includes(this.loreRelations[index].target) ? this.loreRelations[index].target : '';
-					}
-					applyMode();
-				});
-
-				applyMode();
-
-				// 删除操作按钮
-				const removeBtn = rowEl.createEl('button', {
-					cls: 'wn-lore-relation-remove-btn',
-					text: '✕',
-				});
-				setTooltip(removeBtn, t('modal.lore-remove-relation'));
-				removeBtn.addEventListener('click', (e) => {
-					e.preventDefault();
-					this.loreRelations.splice(index, 1);
-					renderRelationsList();
-				});
-			});
-		};
-
-		relationSectionSetting.addButton(btn => btn
-			.setButtonText(t('modal.lore-add-relation'))
-			.onClick(() => {
-				this.loreRelations.push({ label: '', target: '' });
-				renderRelationsList();
-			}));
-
-		renderRelationsList();
+		renderLoreRelationEditor(this.app, relationSectionSetting, relationsListContainer, existingLoreEntries, this.loreRelations);
 
 		// 保存按钮
 		this.saveSetting = new Setting(contentEl)

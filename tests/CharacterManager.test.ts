@@ -637,22 +637,14 @@ LinLei is a dragon warrior.`;
             );
 
             expect(result).toBe(true);
-            // Same file heading: [[#ZhangSan]] (no file prefix!)
-            expect(createdContent).toContain('**朋友**：[[#ZhangSan]]');
-            // Same file alias: [[#ZhangSan|SanGe]] (no file prefix!)
-            expect(createdContent).toContain('**义弟**：[[#ZhangSan|SanGe]]');
-            // Cross-file single file with nested path: [[Characters/Major/Hero]]
-            expect(createdContent).toContain('**偶像**：[[Characters/Major/Hero]]');
-            // Cross-file single file alias with nested path: [[Characters/Major/Hero|DragonLord]]
-            expect(createdContent).toContain('**战神**：[[Characters/Major/Hero|DragonLord]]');
-            // Cross-file multi-entry with nested path: [[Characters/Minor/SideCharacters#WangWu|WangWu]]
-            expect(createdContent).toContain('**同门**：[[Characters/Minor/SideCharacters#WangWu|WangWu]]');
-            // Cross-file multi-entry alias with nested path: [[Characters/Minor/SideCharacters#WangWu|LaoWang]]
-            expect(createdContent).toContain('**师兄**：[[Characters/Minor/SideCharacters#WangWu|LaoWang]]');
-            // Unknown: [[#UnknownPerson]]
-            expect(createdContent).toContain('**未名**：[[#UnknownPerson]]');
-            // Explicit link: [[CustomLink]]
-            expect(createdContent).toContain('**手动**：[[CustomLink]]');
+            expect(createdContent).toContain('关系:: 朋友 → [[#ZhangSan|ZhangSan]]');
+            expect(createdContent).toContain('关系:: 义弟 → [[#ZhangSan|SanGe]]');
+            expect(createdContent).toContain('关系:: 偶像 → [[Book1/Lore/Characters/Major/Hero|Hero]]');
+            expect(createdContent).toContain('关系:: 战神 → [[Book1/Lore/Characters/Major/Hero|DragonLord]]');
+            expect(createdContent).toContain('关系:: 同门 → [[Book1/Lore/Characters/Minor/SideCharacters#WangWu|WangWu]]');
+            expect(createdContent).toContain('关系:: 师兄 → [[Book1/Lore/Characters/Minor/SideCharacters#WangWu|LaoWang]]');
+            expect(createdContent).toContain('关系:: 未名 → [[UnknownPerson|UnknownPerson]]');
+            expect(createdContent).toContain('关系:: 手动 → [[CustomLink|CustomLink]]');
         });
 
         it('should insert templateContent after description and before relations when creating lore entry', async () => {
@@ -692,13 +684,13 @@ LinLei is a dragon warrior.`;
             expect(createdContent).toContain('## Thor');
             expect(createdContent).toContain('A mythological hero');
             expect(createdContent).toContain('### Background\nBorn in a storm.\n**Weapon**: Thunder Sword');
-            expect(createdContent).toContain('### 关系');
-            // Template content must appear AFTER description and BEFORE relations
+            expect(createdContent).toContain('关系:: Brother → [[Loki|Loki]]');
+            // Relations belong to the new entry, before any template subheading.
             const descIndex = createdContent.indexOf('A mythological hero');
             const tplIndex = createdContent.indexOf('### Background');
-            const relIndex = createdContent.indexOf('### 关系');
-            expect(descIndex).toBeLessThan(tplIndex);
-            expect(tplIndex).toBeLessThan(relIndex);
+            const relIndex = createdContent.indexOf('关系:: Brother');
+            expect(descIndex).toBeLessThan(relIndex);
+            expect(relIndex).toBeLessThan(tplIndex);
         });
 
         it('should append templateContent to existing file when targetFilePath is specified', async () => {
@@ -818,9 +810,7 @@ LinLei is a dragon warrior.`;
             expect(createdContent).toContain('### Part Two');
             expect(createdContent).toContain('#### Subsection');
 
-            // Native relations header must be H3
-            expect(createdContent).toContain('### 关系');
-            expect(createdContent).toContain('**Disciple**：[[#Apprentice]]');
+            expect(createdContent).toContain('关系:: Disciple → [[Apprentice|Apprentice]]');
         });
 
         it('should preserve leading indented code blocks without converting them to H2 lore titles', async () => {

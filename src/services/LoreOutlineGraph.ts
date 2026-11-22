@@ -1,5 +1,5 @@
 import type { App, CachedMetadata, TFile } from 'obsidian';
-import { buildLoreOutline, findLoreOutlineTarget, getLoreInlineRelations, getLoreSectionProse, scanLoreHeadings, type LoreOutlineHeading } from './LoreOutline';
+import { buildLoreOutline, findLoreOutlineTarget, getLoreFrontmatterEnd, getLoreInlineRelations, getLoreSectionProse, scanLoreHeadings, type LoreOutlineHeading } from './LoreOutline';
 import type { GraphData, GraphEdge, GraphNode } from './RelationGraphManager';
 import { scanFenceLine, type FenceScanState } from './LoreTemplateService';
 import { t } from '../i18n';
@@ -105,10 +105,21 @@ export function addLoreOutlineToGraph(app: App, input: ReadonlyMap<TFile, LoreGr
 		return heading ? targetItem.nodes.get(heading.line)?.id : undefined;
 	};
 	for (const item of byPath.values()) {
+		const resolveRelationLink = (link: string) => {
+			const bare = link.split('|')[0].trim();
+			return resolveLink(item, link) ?? (/[#/]/.test(bare) ? undefined : resolveName(bare));
+		};
+		if (!item.outline.length && item.fileNode) {
+			const start = getLoreFrontmatterEnd(item.lines) + 1;
+			const end = scanLoreHeadings(item.lines)[0]?.position.start.line ?? item.lines.length;
+			for (const relation of getLoreInlineRelations(item.lines, start, end)) {
+				addEdge(item.fileNode.id, resolveRelationLink(relation.link), relation.label);
+			}
+		}
 		for (const section of item.outline) {
 			const source = item.nodes.get(section.line)!.id;
 			for (const relation of getLoreInlineRelations(item.lines, section.bodyStart, section.bodyEnd)) {
-				addEdge(source, resolveLink(item, relation.link), relation.label);
+				addEdge(source, resolveRelationLink(relation.link), relation.label);
 			}
 			for (const block of section.relationBlocks) {
 				const fence: FenceScanState = { inFence: false, fenceChar: '', fenceLength: 0 };
@@ -120,8 +131,7 @@ export function addLoreOutlineToGraph(app: App, input: ReadonlyMap<TFile, LoreGr
 					const label = relation[2].trim();
 					const links = [...relation[3].matchAll(/\[\[([^\]]+)\]\]/g)];
 					for (const link of links) {
-						const bare = link[1].split('|')[0].trim();
-						addEdge(source, resolveLink(item, link[1]) ?? (/[#/]/.test(bare) ? undefined : resolveName(bare)), label);
+						addEdge(source, resolveRelationLink(link[1]), label);
 					}
 					if (links.length) continue;
 					for (const name of relation[3].split(/[、,，|/]/)) {

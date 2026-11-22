@@ -6,6 +6,7 @@ import { findBookRoot, getCandidateNames, isCandidateSubpath } from '../utils/pa
 import { t } from '../i18n';
 import { scanFenceLine, trimBlankLines, type FenceScanState } from './LoreTemplateService';
 import { buildLoreOutline, findLoreOutlineTarget, getLoreFrontmatterEnd, getLoreInlineRelations, getLoreSectionProse, getLoreSectionText, scanLoreHeadings, type LoreOutlineHeading } from './LoreOutline';
+import { formatInlineLoreRelation, formatLoreRelationTarget, legacyRelationLine, loreRelationLinkName, planLoreRelationEdits, rewriteLoreRelationLines, splitLoreRelationTargets } from './LoreRelations';
 
 export interface LoreEntry {
 	file: TFile;
@@ -39,6 +40,8 @@ export interface LoreRelationItem {
 	target: string;
 	rawTarget?: string;
 	rawLine?: string;
+	sourceId?: number;
+	sourceLine?: number;
 }
 
 export interface LoreSnapshot {
@@ -1963,7 +1966,7 @@ export class CharacterManager {
 		loreAliases: string,
 		loreType: string,
 		loreDescription: string,
-		loreRelations: Array<{ label: string; target: string }>,
+		loreRelations: LoreRelationItem[],
 		targetFilePath?: string,
 		templateContent?: string
 	): Promise<boolean> {
@@ -2032,53 +2035,17 @@ export class CharacterManager {
 			contentToAppend += `${loreDescription.trim()}\n`;
 		}
 
-		if (templateContent && templateContent.trim()) {
-			const trimmedTemplate = trimBlankLines(templateContent);
-			if (!contentToAppend.endsWith('\n\n')) {
-				contentToAppend += '\n';
-			}
-			contentToAppend += `${trimmedTemplate}\n`;
-		}
+		const newRelations = loreRelations.flatMap(row => {
+			if (!row.label.trim() || !row.target.trim()) return [];
+			return row.rawTarget ? [this.formatLoreRelation(bookPath, filePath, row)]
+				: splitLoreRelationTargets(row.target).map(target => this.formatLoreRelation(bookPath, filePath, { label: row.label, target }));
+		});
+		if (newRelations.some(line => !line)) return false;
+		if (newRelations.length) contentToAppend += `\n${newRelations.join('\n')}\n`;
 
-		const validRelations = loreRelations.filter(r => r.label.trim() && r.target.trim());
-		if (validRelations.length > 0) {
-			contentToAppend += `\n### ${getLoreLabel('relation')}\n`;
-			for (const rel of validRelations) {
-				const targetStrRaw = rel.target.trim();
-				const rawTargets = targetStrRaw.split(/[,，、]/).map(t => t.trim()).filter(Boolean);
-				const formattedTargets = rawTargets.map(t => {
-					if (t.startsWith('[[')) return t;
-					const entry = this.getCharacterFile(bookPath, t);
-					if (entry) {
-						// 检查目标设定是否与当前新建设定处于同一个文件
-						const normEntryPath = entry.file.path.replace(/\\/g, '/').replace(/^\/+/, '');
-						const normCurrentPath = filePath.replace(/\\/g, '/').replace(/^\/+/, '');
-						const isSameFile = (targetFile && entry.file === targetFile) || normEntryPath === normCurrentPath;
-
-						if (isSameFile) {
-							// 同文件词条：直接使用同文档标题跳转 [[#标题]] 或 [[#标题|别名]]，无需冗余的文件名前缀
-							return t === entry.heading ? `[[#${entry.heading}]]` : `[[#${entry.heading}|${t}]]`;
-						}
-
-						// 跨文件词条：通过 Obsidian metadataCache.fileToLinktext 生成精准路径（支持嵌套文件夹防重名）
-						const linkPath = (this.app?.metadataCache?.fileToLinktext
-							? this.app.metadataCache.fileToLinktext(entry.file, filePath, true)
-							: entry.file.basename) || entry.file.basename;
-
-						// 跨文件单文件词条模式（无 H2 标题的大纲单文档设定）
-						if (entry.file.basename === entry.heading) {
-							return t === entry.heading ? `[[${linkPath}]]` : `[[${linkPath}|${t}]]`;
-						}
-
-						// 跨文件多词条大纲模式：[[文件路径#标题|显示名]]
-						return `[[${linkPath}#${entry.heading}|${t}]]`;
-					} else {
-						return `[[#${t}]]`;
-					}
-				});
-				const targetStr = formattedTargets.join('、');
-				contentToAppend += `**${rel.label.trim()}**：${targetStr}\n`;
-			}
+		if (templateContent?.trim()) {
+			if (!contentToAppend.endsWith('\n\n')) contentToAppend += '\n';
+			contentToAppend += `${trimBlankLines(templateContent)}\n`;
 		}
 
 		if (targetFile) {
@@ -2218,6 +2185,14 @@ export class CharacterManager {
 		return targetPart;
 	}
 
+	private formatLoreRelation(bookPath: string, sourcePath: string, row: LoreRelationItem): string | undefined {
+		const explicitLink = [row.rawTarget, row.target].find(target => target && /^\[\[[^\]\r\n]+\]\]$/.test(target.trim()));
+		if (explicitLink) return formatInlineLoreRelation(row.label, explicitLink);
+		const target = this.getCharacterFile(bookPath, row.target.trim());
+		const name = row.target.trim();
+		return formatInlineLoreRelation(row.label, target ? formatLoreRelationTarget(target, sourcePath, name) : `[[${name}|${name}]]`);
+	}
+
 	private parseChunkFields(lines: string[], start: number, end: number): {
 		aliases: string;
 		type: string;
@@ -2247,6 +2222,7 @@ export class CharacterManager {
 		const relationProseLines: string[] = [];
 		const bodyLines: string[] = [];
 		const tailLines: string[] = [];
+		const inlineByLine = new Map(getLoreInlineRelations(lines, start, end).map(relation => [relation.line, relation]));
 
 		for (let i = 0; i < chunkLines.length; i++) {
 			const line = chunkLines[i];
@@ -2267,6 +2243,14 @@ export class CharacterManager {
 			}
 
 			if (!isFenceLine) {
+				const inline = inlineByLine.get(start + i);
+				if (inline && !inRelationSection) {
+					const rawTarget = `[[${inline.link}]]`;
+					const target = loreRelationLinkName(rawTarget);
+					relations.push({ label: inline.label, target });
+					rawRelationItems.push({ label: inline.label, target, rawTarget, rawLine: line, sourceLine: start + i });
+					continue;
+				}
 				if (/^<!--\s*wn-important\s*-->$/.test(line.trim())) {
 					important = true;
 					continue;
@@ -2304,16 +2288,15 @@ export class CharacterManager {
 				}
 
 				if (inRelationSection) {
-					const relMatch = line.match(/^(?:[-*]\s+)?(?:\*\*|__)?([^\n*:]+?)(?:\*\*|__)?\s*[:：]\s*(.*)$/);
+					const relMatch = legacyRelationLine.exec(line);
 					if (relMatch) {
-						const label = relMatch[1].trim();
-						const rawTargetStr = relMatch[2].trim();
-						const rawTargets = rawTargetStr.split(/[,，、]/).map(t => t.trim()).filter(Boolean);
+						const label = relMatch[2].trim();
+						const rawTargets = splitLoreRelationTargets(relMatch[3]);
 						for (const rawT of rawTargets) {
 							const cleanTarget = this.extractRelationTargetName(rawT);
 							if (cleanTarget) {
 								relations.push({ label, target: cleanTarget });
-								rawRelationItems.push({ label, target: cleanTarget, rawTarget: rawT, rawLine: line });
+								rawRelationItems.push({ label, target: cleanTarget, rawTarget: rawT, rawLine: line, sourceLine: start + i });
 							}
 						}
 					} else {
@@ -2471,13 +2454,16 @@ export class CharacterManager {
 				.filter(value => typeof value === 'string' || typeof value === 'number').map(value => String(value).trim()).filter(Boolean))].join(', ');
 		}
 		const inline = getLoreInlineRelations(lines, section.bodyStart, section.bodyEnd).map(relation => ({
-			label: relation.label, target: this.extractRelationTargetName(`[[${relation.link}]]`), rawTarget: `[[${relation.link}]]`,
+			label: relation.label, target: loreRelationLinkName(`[[${relation.link}]]`), rawTarget: `[[${relation.link}]]`,
+			rawLine: lines[relation.line], sourceLine: relation.line,
 		}));
 		const legacy = section.relationBlocks.flatMap(block => {
 			const buffer = ['### 关系', ...lines.slice(block.start + 1, block.end)];
-			return this.parseChunkFields(buffer, 0, buffer.length).rawRelationItems;
+			return this.parseChunkFields(buffer, 0, buffer.length).rawRelationItems.map(row => ({
+				...row, sourceLine: block.start + (row.sourceLine ?? 0),
+			}));
 		});
-		const relations = [...inline, ...legacy];
+		const relations = [...inline, ...legacy].map((row, sourceId) => ({ ...row, sourceId }));
 		const ownerBook = this.getBookPathForFile(entry.file) || '';
 		const loreFolder = this.findLoreFolder(ownerBook)?.path;
 		const category = entry.file.basename;
@@ -2514,26 +2500,8 @@ export class CharacterManager {
 				return false;
 			}
 		}
-		const canonicalRelations = (relations: LoreRelationItem[]) => JSON.stringify(relations.map(relation => [relation.label.trim(), relation.target.trim()]));
-		const relationsChanged = canonicalRelations(input.relations) !== canonicalRelations(snapshot.relations);
-		const serializeRelation = (relation: LoreRelationItem): string | undefined => {
-			const label = relation.label.trim();
-			const name = relation.target.trim();
-			if (!label || !name) return undefined;
-			const saved = snapshot.rawRelationItems?.find(item => item.label === label && item.target === name)?.rawTarget;
-			let link = /^(\[\[[^\]\r\n]+\]\])$/.exec(name)?.[1] ?? /^(\[\[[^\]\r\n]+\]\])$/.exec(saved ?? '')?.[1];
-			if (!link) {
-				const target = this.getCharacterFile(bookPath, name);
-				if (!target) return undefined;
-				const file = target.file.path === entry.file.path ? '' : target.file.path.replace(/\.md$/i, '');
-				const anchor = target.section ? `#${target.section.path.join('#')}` : '';
-				if (!file && !anchor) return undefined;
-				link = `[[${file}${anchor}]]`;
-			}
-			return `关系:: ${label} → ${link}`;
-		};
-		const newRelations = relationsChanged ? input.relations.filter(relation => relation.label.trim() && relation.target.trim()).map(serializeRelation) : [];
-		if (newRelations.some(line => !line)) {
+		const plan = planLoreRelationEdits(snapshot.relations, input.relations, row => this.formatLoreRelation(bookPath, entry.file.path, row));
+		if (!plan) {
 			new Notice(t('notice.lore-save-failed'));
 			return false;
 		}
@@ -2541,18 +2509,32 @@ export class CharacterManager {
 		let original = '';
 		let written = '';
 		await this.app.vault.process(entry.file, data => {
-			if (entry.file.path !== snapshot.filePath || this.getIndexedLoreSnapshot(entry, data, input.contextBookPath)?.rawChunk !== snapshot.rawChunk) return data;
+			const current = this.getIndexedLoreSnapshot(entry, data, input.contextBookPath);
+			if (entry.file.path !== snapshot.filePath || !current || current.rawChunk !== snapshot.rawChunk) return data;
 			const lines = data.split('\n');
 			const section = buildLoreOutline(scanLoreHeadings(lines), lines.length).find(candidate => candidate.key === entry.section?.key);
 			if (!section) return data;
-			const inline = relationsChanged ? newRelations : getLoreInlineRelations(lines, section.bodyStart, section.bodyEnd).map(relation => lines[relation.line].trimEnd());
-			if (relationsChanged) {
-				for (const block of [...section.relationBlocks].sort((a, b) => b.start - a.start)) {
-					const buffer = ['### 关系', ...lines.slice(block.start + 1, block.end)];
-					const relationLines = new Set(this.parseChunkFields(buffer, 0, buffer.length).rawRelationItems.map(item => item.rawLine));
-					const rest = lines.slice(block.start + 1, block.end).filter(line => !relationLines.has(line));
-					lines.splice(block.start + 1, block.end - block.start - 1, ...rest);
+			const newline = data.includes('\r\n') ? '\r' : '';
+			const lineEdits = [...rewriteLoreRelationLines(current.relations, plan.kept)].sort(([a], [b]) => b - a);
+			if (newName === entry.heading && newBody === snapshot.body && input.type.trim() === snapshot.type && input.aliases.trim() === snapshot.aliases) {
+				let insertAt = section.bodyEnd;
+				while (insertAt > section.bodyStart && !lines[insertAt - 1].trim()) insertAt--;
+				const needsBlank = insertAt === section.bodyEnd;
+				const removedBefore = lineEdits.filter(([line, replacement]) => line < insertAt && !replacement).length;
+				for (const [line, replacement] of lineEdits) lines.splice(line, 1, ...(replacement ? [`${replacement.trimEnd()}${newline}`] : []));
+				if (plan.inserted.length) {
+					lines.splice(insertAt - removedBefore, 0, newline, ...plan.inserted.map(line => `${line}${newline}`), ...(needsBlank ? [newline] : []));
 				}
+				changed = true;
+				original = data;
+				written = lines.join('\n');
+				return written;
+			}
+			const inline = getLoreInlineRelations(lines, section.bodyStart, section.bodyEnd)
+				.filter(relation => !lineEdits.some(([line]) => line === relation.line)).map(relation => lines[relation.line].replace(/\r$/, ''));
+			inline.push(...plan.inserted);
+			for (const [line, replacement] of lineEdits) {
+				if (line >= section.bodyEnd) lines.splice(line, 1, ...(replacement ? [`${replacement.trimEnd()}${newline}`] : []));
 			}
 			const aliases = input.aliases.split(/[,，、/|;；]/).map(alias => alias.trim()).filter(Boolean);
 			if (newName !== entry.heading && !aliases.includes(entry.heading)) aliases.push(entry.heading);
@@ -2561,7 +2543,6 @@ export class CharacterManager {
 				aliases.length ? `**${getLoreLabel('alias')}**：${aliases.join(', ')}` : '',
 				input.type.trim() ? `**${getLoreLabel('type')}**：${input.type.trim()}` : '', newBody, inline.join('\n'),
 			].filter(Boolean).join('\n\n');
-			const newline = data.includes('\r\n') ? '\r' : '';
 			const keepHeading = newName === entry.heading || (entry.fileBacked && section.title !== entry.heading);
 			const heading = keepHeading ? lines.slice(section.line, section.bodyStart)
 				: [`${'#'.repeat(section.level)} ${newName}${newline}`];
@@ -2806,56 +2787,24 @@ export class CharacterManager {
 			parts.push(body.trim());
 		}
 
-		const validRelations = input.relations.filter(r => r.label.trim() && r.target.trim());
-		if (validRelations.length > 0 || relationProse) {
-			let relationBlock = `### ${relationHeading}`;
-			if (relationProse) {
-				relationBlock += `\n${relationProse}`;
-			}
-			const snapshotRelations = input.expectedSnapshot?.rawRelationItems ?? input.expectedSnapshot?.relations ?? chunkFields.rawRelationItems ?? chunkFields.relations;
-			for (const rel of validRelations) {
-				const existingRel = snapshotRelations.find(
-					r => r.label.trim() === rel.label.trim() && cleanLoreHeading(r.target) === cleanLoreHeading(rel.target) && (r.rawLine || r.rawTarget)
-				);
-				if (existingRel?.rawLine && snapshotRelations.filter(r => r.rawLine === existingRel.rawLine).length === 1) {
-					relationBlock += `\n${existingRel.rawLine}`;
-					continue;
-				}
-				if (existingRel?.rawTarget) {
-					relationBlock += `\n**${rel.label.trim()}**：${existingRel.rawTarget}`;
-					continue;
-				}
-
-				const targetStrRaw = rel.target.trim();
-				const rawTargets = targetStrRaw.split(/[,，、]/).map(t => t.trim()).filter(Boolean);
-				const formattedTargets = rawTargets.map(t => {
-					if (t.startsWith('[[')) return t;
-					const targetEntry = this.getCharacterFile(bookPath, t);
-					if (targetEntry) {
-						const normEntryPath = targetEntry.file.path.replace(/\\/g, '/').replace(/^\/+/, '');
-						const normCurrentPath = entry.file.path.replace(/\\/g, '/').replace(/^\/+/, '');
-						const isSameFile = (targetEntry.file === entry.file) || normEntryPath === normCurrentPath;
-
-						if (isSameFile) {
-							return t === targetEntry.heading ? `[[#${targetEntry.heading}]]` : `[[#${targetEntry.heading}|${t}]]`;
-						}
-
-						const linkPath = (this.app?.metadataCache?.fileToLinktext
-							? this.app.metadataCache.fileToLinktext(targetEntry.file, entry.file.path, true)
-							: targetEntry.file.basename) || targetEntry.file.basename;
-
-						if (targetEntry.file.basename === targetEntry.heading) {
-							return t === targetEntry.heading ? `[[${linkPath}]]` : `[[${linkPath}|${t}]]`;
-						}
-
-						return `[[${linkPath}#${targetEntry.heading}|${t}]]`;
-					} else {
-						return `[[#${t}]]`;
-					}
-				});
-				relationBlock += `\n**${rel.label.trim()}**：${formattedTargets.join('、')}`;
-			}
-			parts.push(relationBlock);
+		const previousRelations = chunkFields.rawRelationItems;
+		const relationPlan = planLoreRelationEdits(previousRelations, input.relations, row => this.formatLoreRelation(bookPath, entry.file.path, row));
+		if (!relationPlan) return false;
+		const lineEdits = rewriteLoreRelationLines(previousRelations, relationPlan.kept);
+		const legacyLines: string[] = [];
+		const inlineLines = [...relationPlan.inserted];
+		const seenLines = new Set<number>();
+		for (const row of previousRelations) {
+			if (row.sourceLine === undefined || seenLines.has(row.sourceLine)) continue;
+			seenLines.add(row.sourceLine);
+			const line = lineEdits.get(row.sourceLine) ?? row.rawLine;
+			if (!line) continue;
+			if (getLoreInlineRelations([line], 0, 1).length) inlineLines.push(line);
+			else legacyLines.push(line);
+		}
+		if (inlineLines.length) parts.push(inlineLines.join('\n'));
+		if (legacyLines.length || relationProse) {
+			parts.push([`### ${relationHeading}`, relationProse, ...legacyLines].filter(Boolean).join('\n'));
 		}
 
 		if (retainedTail) {
