@@ -143,6 +143,18 @@ describe('CharacterManager', () => {
         expect(content).toContain('关系:: 停靠 → [[#白岬#北境#港城#旧区#东渡码头]]');
     });
 
+    it('keeps an existing H2 term addressable when a deep heading has the same name', async () => {
+        const manager = new CharacterManager(mockApp, mockPlugin);
+        const file = Object.assign(new TFile(), { path: 'Book1/Lore/Map.md', basename: 'Map' });
+        manager.getBookPathForFile = vi.fn().mockReturnValue('Book1');
+        manager.isLorePath = vi.fn().mockReturnValue(true);
+        mockApp.vault.getMarkdownFiles.mockReturnValue([file]);
+        mockApp.vault.cachedRead.mockResolvedValue('## 码头\n旧码头。\n## 旧城\n###### 码头\n城内码头。');
+        await manager.rebuildCache();
+        expect(manager.getCharacterFile('Book1', '码头')?.section?.level).toBe(2);
+        expect(manager.getLoreEntriesInFileOrder('Book1').filter(entry => entry.heading === '码头').map(entry => entry.section?.level)).toEqual([2, 6]);
+    });
+
     describe('isLorePath', () => {
         it('should correctly identify lore paths and nested folders', () => {
             const manager = new CharacterManager(mockApp, mockPlugin);

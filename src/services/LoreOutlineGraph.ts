@@ -41,6 +41,7 @@ function addHeading(graph: GraphData, item: OutlineFile, heading: LoreOutlineHea
 
 export function addLoreOutlineToGraph(app: App, input: ReadonlyMap<TFile, LoreGraphFile>, graph: GraphData,
 	findMentions?: (source: string, lines: string[], terms: { term: string; targetId: string }[]) => GraphEdge[]): void {
+	const originalIds = new Set(graph.nodes.map(node => node.id));
 	const byPath = new Map<string, OutlineFile>();
 	for (const [file, data] of input) {
 		byPath.set(file.path, {
@@ -80,6 +81,12 @@ export function addLoreOutlineToGraph(app: App, input: ReadonlyMap<TFile, LoreGr
 		}
 	}
 	const explicit = new Set(graph.edges.filter(edge => edge.type === 'explicit').map(edge => JSON.stringify([edge.source, edge.target, edge.label])));
+	const resolveName = (name: string): string | undefined => {
+		const ids = names.get(name);
+		if (!ids) return undefined;
+		if (ids.size === 1 || ids.has(name)) return ids.has(name) ? name : ids.values().next().value;
+		return [...ids].find(id => originalIds.has(id));
+	};
 	const addEdge = (source: string, target: string | undefined, label: string) => {
 		if (!target || !label || source === target) return;
 		const key = JSON.stringify([source, target, label]);
@@ -114,20 +121,21 @@ export function addLoreOutlineToGraph(app: App, input: ReadonlyMap<TFile, LoreGr
 					const links = [...relation[3].matchAll(/\[\[([^\]]+)\]\]/g)];
 					for (const link of links) {
 						const bare = link[1].split('|')[0].trim();
-						const fallback = /[#/]/.test(bare) ? undefined : names.get(bare);
-						addEdge(source, resolveLink(item, link[1]) ?? (fallback?.size === 1 ? fallback.values().next().value : undefined), label);
+						addEdge(source, resolveLink(item, link[1]) ?? (/[#/]/.test(bare) ? undefined : resolveName(bare)), label);
 					}
 					if (links.length) continue;
 					for (const name of relation[3].split(/[、,，|/]/)) {
-						const ids = names.get(name.trim());
-						if (ids?.size === 1) addEdge(source, ids.values().next().value, label);
+						addEdge(source, resolveName(name.trim()), label);
 					}
 				}
 			}
 		}
 	}
 	if (findMentions) {
-		const terms = [...names].flatMap(([term, ids]) => ids.size === 1 ? Array.from(ids, targetId => ({ term, targetId })) : [])
+		const terms = [...names.keys()].flatMap(term => {
+			const targetId = resolveName(term);
+			return targetId ? [{ term, targetId }] : [];
+		})
 			.sort((left, right) => right.term.length - left.term.length);
 		const explicitPairs = new Set(graph.edges.filter(edge => edge.type === 'explicit').map(edge => JSON.stringify([edge.source, edge.target])));
 		for (const [source, lines] of ownedText) {

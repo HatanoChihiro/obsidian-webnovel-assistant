@@ -19,6 +19,10 @@ export function getLoreEntryIdentity(entry: LoreEntry): string {
 	return JSON.stringify([entry.file.path, entry.section?.key ?? entry.heading]);
 }
 
+function isLegacyPrimaryLore(entry: LoreEntry): boolean {
+	return !entry.section || entry.section.level === 2 || Boolean(entry.fileBacked);
+}
+
 export interface LoreCategoryOption {
 	id: string;
 	displayName: string;
@@ -437,8 +441,12 @@ export class CharacterManager {
 					for (const { key, entry } of entries) {
 						const cleanedKey = cleanLoreHeading(key);
 						if (cleanedKey) {
-							effectiveCache.set(cleanedKey, entry);
-							effectiveLower.set(cleanedKey.toLowerCase(), cleanedKey);
+							const lower = cleanedKey.toLowerCase();
+							const original = effectiveCache.get(cleanedKey);
+							if (!original || !isLegacyPrimaryLore(original) || isLegacyPrimaryLore(entry)) effectiveCache.set(cleanedKey, entry);
+							const previousKey = effectiveLower.get(lower);
+							const previous = previousKey ? effectiveCache.get(previousKey) : undefined;
+							if (!previous || !isLegacyPrimaryLore(previous) || isLegacyPrimaryLore(entry)) effectiveLower.set(lower, cleanedKey);
 							const identity = getLoreEntryIdentity(entry);
 							if (!seenEntries.has(identity)) {
 								seenEntries.add(identity);

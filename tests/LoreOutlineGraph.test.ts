@@ -85,4 +85,11 @@ describe('标题层级与设定关系', () => {
 		expect(body.render({ [editableLocation.id]: '外港' })).toBe(before.replace('地点：旧港区', '地点：外港'));
 		expect(body.render({ [editableRelation.id]: '同盟 → [[势力志#海鸥商会]]' })).toBe(before.replace('补给', '同盟'));
 	});
+
+	it('旧式正名关系优先保留同名的原二级词条', async () => {
+		const note = fixture('设定/地图.md', '## 码头\n原词条。\n## 城区\n###### 码头\n子词条。\n### 关系\n- **通商**：码头');
+		const graph = await graphFor([note]);
+		expect(graph.nodes.filter(node => node.heading === '码头')).toHaveLength(2);
+		expect(graph.edges.filter(edge => edge.label === '通商')).toEqual([{ source: '城区', target: '码头', label: '通商', type: 'explicit' }]);
+	});
 });
