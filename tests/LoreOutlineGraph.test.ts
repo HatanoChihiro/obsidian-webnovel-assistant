@@ -35,6 +35,29 @@ function graphFor(documents: ReturnType<typeof fixture>[], includeHeadingHierarc
 }
 
 describe('标题层级与设定关系', () => {
+	it('reads type and aliases from each heading only, ignoring examples and metadata mentions', async () => {
+		const note = fixture('设定/潮镜城.md', [
+			'# 潮镜城', '类型：地区', '## 水网', 'Type: 水系', '### 北环', '類型：渠段',
+			'#### 闸站', '型別：站点', '##### 检修层', '**类型**：设施', '###### 值班人',
+			'%%', '类型：隐藏类型', '%%', '<!--', '类型：注释类型', '-->',
+			'```md', '类型：示例类型', '```', '**类型**：主角', '别名：守门人',
+			'## 空目录', '### 潮钟', '类型：仪器', '## 另一区', '这里提到守门人。',
+		].join('\n'));
+		const graph = await graphFor([note, fixture('设定/类型同名.md', '## 仪器\n## 主角')]);
+		const names = new Map(graph.nodes.map(node => [node.heading, node]));
+		expect(['潮镜城', '水网', '北环', '闸站', '检修层', '值班人', '空目录', '潮钟']
+			.map(name => names.get(name)?.nodeType)).toEqual(['地区', '水系', '渠段', '站点', '设施', '主角', undefined, '仪器']);
+		expect(graph.nodes.filter(node => node.isProtagonist).map(node => node.heading)).toEqual(['值班人']);
+		expect(names.get('值班人')?.aliases).toContain('守门人');
+		expect(names.get('水网')?.aliases).not.toContain('守门人');
+		expect(graph.edges.filter(edge => edge.type === 'mention')).toEqual([
+			{ source: names.get('另一区')?.id, target: names.get('值班人')?.id, type: 'mention', label: expect.any(String) },
+		]);
+		const legacy = await graphFor([note], false);
+		expect(legacy.nodes.find(node => node.heading === '空目录')?.nodeType).toBeUndefined();
+		expect(legacy.nodes.some(node => node.isProtagonist)).toBe(false);
+	});
+
 	it('沿 H1–H6 连接直属父节点，并在 H6 上同时保留旧词条的独立关系', async () => {
 		const map = fixture('设定/地理志.md', [
 			'# 地理志', '## 白岬王国', '### 北境领', '#### 雾港城', '##### 旧港区', '###### 东码头',

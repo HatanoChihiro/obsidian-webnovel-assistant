@@ -474,6 +474,7 @@ export class RelationGraphView extends ItemView {
 			return;
 		}
 
+		this.showCanvas();
 		this.graphData = data;
 		this.fullGraphData = null;
 		this.renderState.isLocalMode = false;
@@ -536,7 +537,10 @@ export class RelationGraphView extends ItemView {
 		if (this.isClosed || !this.filePath) return;
 		const token = ++this.loadGeneration;
 		const file = this.app.vault.getAbstractFileByPath(this.filePath);
-		if (!(file instanceof TFile)) return;
+		if (!(file instanceof TFile)) {
+			this.showEmptyState();
+			return;
+		}
 
 		const manager = this.plugin.relationGraphManager;
 		const newData = await manager.buildGraphData(file, { includeHeadingHierarchy: true });
@@ -546,6 +550,7 @@ export class RelationGraphView extends ItemView {
 			this.showEmptyState();
 			return;
 		}
+		this.showCanvas();
 
 		// 保留现有节点的物理坐标，避免刷新时图谱“爆炸”
 		const oldNodesMap = new Map(this.graphData.nodes.map(n => [n.id, n]));
@@ -596,6 +601,15 @@ export class RelationGraphView extends ItemView {
 		if (this.canvas) {
 			this.canvas.hidden = true;
 		}
+		this.engine?.destroy();
+		this.engine = null;
+		this.graphData = { nodes: [], edges: [] };
+		this.fullGraphData = null;
+		this.renderState.graphData = this.graphData;
+		this.renderState.isLocalMode = false;
+		this.renderState.localFocusNode = null;
+		this.controller?.updateLayout(this.graphData);
+		this.updateBreadcrumb();
 		// 检查是否已有空状态 div，避免重复创建
 		const existing = this.container.querySelector('.wna-relation-graph-empty');
 		if (!existing) {
@@ -604,6 +618,11 @@ export class RelationGraphView extends ItemView {
 				text: t('relation-graph.no-data'),
 			});
 		}
+	}
+
+	private showCanvas(): void {
+		if (this.canvas) this.canvas.hidden = false;
+		this.container?.querySelector('.wna-relation-graph-empty')?.remove();
 	}
 
 	// ==========================================

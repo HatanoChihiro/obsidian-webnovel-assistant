@@ -723,6 +723,25 @@ describe('RelationGraphManager', () => {
 	});
 
 	describe('ForceLayoutEngine simulation lifecycle', () => {
+		it('updates protagonist placement and preserves graph nodes during a data refresh', () => {
+			const nodes = ['Root', 'Deep'].map(id => ({ id, x: 0, y: 0, vx: 0, vy: 0, pinned: false, nodeType: '' }));
+			const engine = new ForceLayoutEngine(nodes, [{ source: 'Root', target: 'Deep' }], 400, 300);
+			try {
+				nodes[1].nodeType = '主角';
+				engine.updateData(engine.nodes, engine.edges);
+				expect(engine.nodes).toHaveLength(2);
+				expect(engine.nodes[1]).toMatchObject({ id: 'Deep', fx: 200, fy: 150 });
+				expect(engine.nodes[0]).toMatchObject({ id: 'Root', fx: null, fy: null });
+				engine.resize(620, 480);
+				expect(engine.nodes[1]).toMatchObject({ fx: 310, fy: 240 });
+				nodes[1].nodeType = '人物';
+				engine.updateData(engine.nodes, []);
+				expect(engine.nodes[1]).toMatchObject({ fx: null, fy: null });
+			} finally {
+				engine.destroy();
+			}
+		});
+
 		it('keeps simulation timer stopped through construction, reset, and reheat so alpha does not advance without manual tick', async () => {
 			const nodes = [{ id: 'A', x: 0, y: 0, vx: 0, vy: 0, pinned: false }];
 			const edges: Array<{ source: string; target: string }> = [];

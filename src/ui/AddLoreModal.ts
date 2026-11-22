@@ -1,6 +1,7 @@
 import { Modal, Setting, TFile, Notice } from 'obsidian';
 import type { App, TextComponent, TFolder, ButtonComponent } from 'obsidian';
 import type { CharacterManager, LoreCategoryOption } from '../services/CharacterManager';
+import { collectLoreTypes } from '../services/LoreOutline';
 import { t } from '../i18n';
 import { renderLoreRelationEditor } from './LoreRelationEditor';
 import { FileSuggestModal } from './FileSuggestModal';
@@ -85,27 +86,6 @@ export class AddLoreModal extends Modal {
 	/**
 	 * 扫描设定文件夹中现有所有 md 文件，提取已存在的设定类型
 	 */
-	async collectExistingTypes(files: TFile[]): Promise<string[]> {
-		const typesSet = new Set<string>();
-		for (const file of files) {
-			try {
-				const content = await this.app.vault.cachedRead(file);
-				const matches = content.matchAll(/(?:\*\*|__)?(?:类型|類型|Type)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/gi);
-				for (const match of matches) {
-					if (match[1]) {
-						const typeVal = match[1].trim();
-						if (typeVal) {
-							typesSet.add(typeVal);
-						}
-					}
-				}
-			} catch {
-				// 忽略读取异常
-			}
-		}
-		return Array.from(typesSet);
-	}
-
 	private isHistoryActionDisabled(): boolean {
 		return this.isModalClosed || this.isSaving || this.isReadingTemplate || this.isUpdatingHistory;
 	}
@@ -463,7 +443,7 @@ export class AddLoreModal extends Modal {
 		const existingFiles = this.availableCategories
 			.map(c => c.file)
 			.filter((f): f is TFile => f instanceof TFile);
-		const existingTypes = await this.collectExistingTypes(existingFiles);
+		const existingTypes = await collectLoreTypes(this.app, existingFiles);
 		if (this.isModalClosed) return;
 
 		this.loreType = '';

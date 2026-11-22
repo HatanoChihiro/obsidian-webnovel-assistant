@@ -1,4 +1,5 @@
 import type { GraphNode, GraphEdge, GraphData } from '../../services/RelationGraphManager';
+import { isProtagonistType } from '../../services/LoreMetadata';
 
 export type GraphMarkerStyle = 'ring' | 'dot' | 'arrow' | 'none';
 
@@ -318,7 +319,7 @@ export class GraphRenderer {
 		}
 
 		const protagonist = nodes.find(n =>
-			n.isProtagonist || Boolean(n.nodeType && (n.nodeType.includes('主角') || n.nodeType.toLowerCase().includes('protagonist')))
+			n.isProtagonist || isProtagonistType(n.nodeType)
 		);
 
 		let targetCenterX = width / 2;
@@ -834,7 +835,7 @@ export class GraphRenderer {
 			const isSelected = !state.hoveredNode && state.selectedNode?.id === node.id;
 			const isHovered = state.hoveredNode?.id === node.id;
 			const isFilterMatch = state.filterMatchNodeIds?.has(node.id) ?? false;
-			const isProtagonistNode = node.isProtagonist || Boolean(node.nodeType && (node.nodeType.includes('主角') || node.nodeType.toLowerCase().includes('protagonist')));
+			const isProtagonistNode = node.isProtagonist || isProtagonistType(node.nodeType);
 			const isEmphasized = isSelected || isHovered || isFilterMatch;
 			const radius = GraphRenderer.getNodeRadius(node, colors, isSelected || isHovered);
 
@@ -1533,7 +1534,7 @@ export class GraphRenderer {
 	}
 
 	static getNodeTypeColor(typeStr: string, colors: ThemeColors): string {
-		if (typeStr.includes('主角') || typeStr.toLowerCase().includes('protagonist')) {
+		if (isProtagonistType(typeStr)) {
 			const redColor = colors.typePalette[0] || '#ef4444';
 			// 主角类型默认分配红色混色，且红色占比设为 0.8，使其色彩显著且突出
 			return GraphRenderer.mixColors(colors.accent, redColor, 0.8);

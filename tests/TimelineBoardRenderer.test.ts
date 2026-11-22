@@ -287,6 +287,7 @@ class MockElement {
 let lastOpenedModal: { contentEl: MockElement; open: () => void; close: () => void } | null = null;
 
 vi.mock('obsidian', () => ({
+	FuzzySuggestModal: class {},
 	setIcon: vi.fn((el: unknown, iconId: string) => {
 		(el as MockElement)?.setAttr?.('data-icon', iconId);
 	}),

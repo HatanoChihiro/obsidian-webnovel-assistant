@@ -1,4 +1,5 @@
 import * as d3 from 'd3-force';
+import { isProtagonistType } from './LoreMetadata';
 
 /** 力导向布局中的节点坐标与速度状态 */
 export interface LayoutNode extends d3.SimulationNodeDatum {
@@ -66,6 +67,7 @@ export class ForceLayoutEngine {
 	public readonly nodes: LayoutNode[];
 	public readonly edges: LayoutEdge[];
 	private simulation: d3.Simulation<LayoutNode, LayoutEdge>;
+	private degreeMap: Map<string, number>;
 
 	constructor(nodes: LayoutNode[], edges: LayoutEdge[], public width: number, public height: number) {
 		this.nodes = nodes;
@@ -75,7 +77,11 @@ export class ForceLayoutEngine {
 		// 同步初始状态与主角中心锁定
 		this.updateProtagonistPositions();
 
-		const degreeMap = this.calculateDegreeMap(this.edges);
+		this.degreeMap = this.calculateDegreeMap(this.edges);
+		const gravityStrength = (node: LayoutNode) => {
+			if (node.isProtagonist || isProtagonistType(node.nodeType)) return PHYSICS_CONFIG.PROTAGONIST_GRAVITY;
+			return this.degreeMap.has(node.id) ? PHYSICS_CONFIG.OTHER_NODE_GRAVITY : PHYSICS_CONFIG.ISOLATED_NODE_GRAVITY;
+		};
 
 		// 构建 D3 物理引擎
 		this.simulation = d3.forceSimulation<LayoutNode>(this.nodes)
@@ -91,18 +97,8 @@ export class ForceLayoutEngine {
 				.distanceMax(PHYSICS_CONFIG.CHARGE_DISTANCE_MAX)
 			)
 			// 聚拢引力：防止孤立节点散落太远，同时维持主角的中心地位
-			.force('gravityX', d3.forceX<LayoutNode>(width / 2).strength((d: LayoutNode) => {
-				const isProtagonist = d.isProtagonist || Boolean(d.nodeType && (d.nodeType.includes('主角') || d.nodeType.toLowerCase().includes('protagonist')));
-				if (isProtagonist) return PHYSICS_CONFIG.PROTAGONIST_GRAVITY;
-				if ((degreeMap.get(d.id) || 0) === 0) return PHYSICS_CONFIG.ISOLATED_NODE_GRAVITY; // 孤立节点施加向心力
-				return PHYSICS_CONFIG.OTHER_NODE_GRAVITY; // 其他节点微弱向心力
-			}))
-			.force('gravityY', d3.forceY<LayoutNode>(height / 2).strength((d: LayoutNode) => {
-				const isProtagonist = d.isProtagonist || Boolean(d.nodeType && (d.nodeType.includes('主角') || d.nodeType.toLowerCase().includes('protagonist')));
-				if (isProtagonist) return PHYSICS_CONFIG.PROTAGONIST_GRAVITY;
-				if ((degreeMap.get(d.id) || 0) === 0) return PHYSICS_CONFIG.ISOLATED_NODE_GRAVITY;
-				return PHYSICS_CONFIG.OTHER_NODE_GRAVITY;
-			}))
+			.force('gravityX', d3.forceX<LayoutNode>(width / 2).strength(gravityStrength))
+			.force('gravityY', d3.forceY<LayoutNode>(height / 2).strength(gravityStrength))
 			// 中心引力：防止整体飘走
 			.force('center', d3.forceCenter(width / 2, height / 2).strength(PHYSICS_CONFIG.CENTER_STRENGTH))
 			// 碰撞检测：保证孤立节点聚拢时也不会重叠
@@ -119,7 +115,7 @@ export class ForceLayoutEngine {
 	 */
 	private updateProtagonistPositions(): void {
 		const protagonists = this.nodes.filter(n =>
-			n.isProtagonist || Boolean(n.nodeType && (n.nodeType.includes('主角') || n.nodeType.toLowerCase().includes('protagonist')))
+			n.isProtagonist || isProtagonistType(n.nodeType)
 		);
 
 		const nonProtagonists = this.nodes.filter(n => !protagonists.includes(n));
@@ -219,6 +215,8 @@ export class ForceLayoutEngine {
 		if (centerForce) {
 			centerForce.x(width / 2).y(height / 2);
 		}
+		this.simulation.force<d3.ForceX<LayoutNode>>('gravityX')?.x(width / 2);
+		this.simulation.force<d3.ForceY<LayoutNode>>('gravityY')?.y(height / 2);
 		
 		this.updateProtagonistPositions();
 	}
@@ -228,10 +226,14 @@ export class ForceLayoutEngine {
 	 */
 	public updateData(nodes: LayoutNode[], edges: LayoutEdge[]): void {
 		// 清空并重新推入数据以保持对内部数组的引用
-		this.nodes.length = 0;
-		this.nodes.push(...nodes);
-		this.edges.length = 0;
-		this.edges.push(...edges.map(e => ({ ...e })));
+		this.nodes.splice(0, this.nodes.length, ...nodes);
+		this.edges.splice(0, this.edges.length, ...edges.map(edge => ({
+			...edge,
+			source: typeof edge.source === 'string' ? edge.source : edge.source.id,
+			target: typeof edge.target === 'string' ? edge.target : edge.target.id,
+		})));
+		this.degreeMap = this.calculateDegreeMap(this.edges);
+		this.updateProtagonistPositions();
 
 		// 通知 D3 引擎数据已变化
 		this.simulation.nodes(this.nodes);

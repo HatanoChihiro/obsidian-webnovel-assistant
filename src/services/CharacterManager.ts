@@ -5,7 +5,8 @@ import { getDefaultFileName, getDefaultFileNameCandidates, getLoreLabel } from '
 import { findBookRoot, getCandidateNames, isCandidateSubpath } from '../utils/path';
 import { t } from '../i18n';
 import { trimBlankLines } from './LoreTemplateService';
-import { buildLoreOutline, findLoreOutlineTarget, getLoreFrontmatterEnd, getLoreSectionText, relationBodyLines, scanLoreHeadings, type LoreOutlineHeading } from './LoreOutline';
+import { buildLoreOutline, findLoreOutlineTarget, getFileLoreBody, getLoreFrontmatterEnd, getLoreSectionText, readLoreFrontmatter, relationBodyLines, scanLoreHeadings, type LoreOutlineHeading } from './LoreOutline';
+import { getLoreFrontmatterType, readLoreMetadata, readLoreMetadataLine, rewriteLoreFrontmatterType, visibleLoreLines } from './LoreMetadata';
 import { formatLoreRelationLine, formatLoreRelationTarget, legacyRelationLine, loreRelationsHeading, planLoreRelationBlockInsertion, planLoreRelationEdits, rewriteLoreRelationLines, splitLoreRelationTargets } from './LoreRelations';
 
 export interface LoreEntry {
@@ -1489,7 +1490,8 @@ export class CharacterManager {
 		const fileCache = this.app.metadataCache.getFileCache(file);
 		const content = await this.app.vault.cachedRead(file);
 		const lines = content.split('\n');
-		const outline = buildLoreOutline(scanLoreHeadings(lines), lines.length);
+		const headings = scanLoreHeadings(lines);
+		const outline = buildLoreOutline(headings, lines.length);
 		const fileEntryName = cleanLoreHeading(file.basename);
 		const hasH2 = outline.some(section => section.level === 2);
 		const entries = outline.map((section, index) => {
@@ -1500,8 +1502,7 @@ export class CharacterManager {
 				section: fileBacked && outline.length === 1 ? undefined : section, fileBacked };
 			addEntry(entry.heading, entry);
 			if (entry.heading !== section.title) addEntry(section.title, entry);
-			const aliases = body.match(/^(?:\*\*|__)?(?:别名|別名|Alias)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/im)?.[1];
-			for (const alias of aliases?.split(/[,，、/|;；]/) ?? []) addEntry(alias, entry);
+			for (const alias of readLoreMetadata(lines.slice(section.bodyStart, section.bodyEnd)).aliases) addEntry(alias, entry);
 			return entry;
 		});
 		if (!hasH2) {
@@ -1510,32 +1511,9 @@ export class CharacterManager {
 				const entry: LoreEntry = entries[0] ?? { file, heading: fileEntryName, important };
 				addEntry(fileEntryName, entry);
 
-				const fm = fileCache?.frontmatter;
-				if (fm) {
-					const rawAliases = (fm['aliases'] ?? fm['alias'] ?? fm['别名'] ?? fm['別名']) as unknown;
-					if (Array.isArray(rawAliases)) {
-						for (const a of rawAliases) {
-							if (typeof a === 'string' || typeof a === 'number') {
-								addEntry(String(a), entry);
-							}
-						}
-					} else if (typeof rawAliases === 'string' && rawAliases.trim()) {
-						const splitAliases = rawAliases.split(/[,，、/|;；]/);
-						for (const a of splitAliases) {
-							addEntry(a, entry);
-						}
-					}
-				}
-
-				const aliasMatches = entries.length ? [] : content.matchAll(/(?:\*\*|__)?(?:别名|別名|Alias)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/gi);
-				for (const match of aliasMatches) {
-					if (match[1]) {
-						const rawAliases = match[1].split(/[,，、/|;；]/);
-						for (const a of rawAliases) {
-							addEntry(a, entry);
-						}
-					}
-				}
+				const body = entries.length ? [] : getFileLoreBody(lines, headings);
+				const { aliases } = readLoreMetadata(body, fileCache?.frontmatter);
+				for (const alias of aliases) addEntry(alias, entry);
 			}
 		}
 
@@ -2209,6 +2187,7 @@ export class CharacterManager {
 			return { aliases: '', type: '', body: '', relations: [], rawRelationItems: [], retainedTail: '', relationProse: '', relationHeading: '', important: false };
 		}
 		const chunkLines = lines.slice(start, end);
+		const visibleLines = visibleLoreLines(chunkLines);
 		let currentFence: { char: string; length: number } | null = null;
 		let important = false;
 		let aliases = '';
@@ -2250,7 +2229,7 @@ export class CharacterManager {
 					continue;
 				}
 
-				const relHeadingMatch = /^ {0,3}(#{3}|#{6})[ \t]+(关系|關係|Relations?|Relationships)(?:[ \t]+#+)?\s*$/i.exec(line);
+				const relHeadingMatch = /^ {0,3}(#{3}|#{6})[ \t]+(关系|關係|Relations?|Relationships)(?:[ \t]+#+)?\s*$/i.exec(visibleLines[i]);
 				if (relHeadingMatch) {
 					inRelationSection = true;
 					relationLevel = relHeadingMatch[1].length;
@@ -2259,7 +2238,7 @@ export class CharacterManager {
 					continue;
 				}
 
-				const nextHeading = /^ {0,3}(#{1,6})[ \t]+/.exec(line);
+				const nextHeading = /^ {0,3}(#{1,6})[ \t]+/.exec(visibleLines[i]);
 				if (inRelationSection && nextHeading && nextHeading[1].length <= relationLevel) {
 					inRelationSection = false;
 					passedRelationSection = true;
@@ -2268,15 +2247,14 @@ export class CharacterManager {
 				}
 
 				if (!inRelationSection && !passedRelationSection) {
-					const aliasMatch = line.match(/^(?:\*\*|__)?(?:别名|別名|Alias)(?:\*\*|__)?\s*[:：]\s*(.*)$/i);
-					if (aliasMatch && !aliases) {
-						aliases = aliasMatch[1].trim();
+					const field = readLoreMetadataLine(visibleLines[i]);
+					if (field?.key === 'aliases') {
+						aliases = [aliases, field.value].filter(Boolean).join(', ');
 						continue;
 					}
 
-					const typeMatch = line.match(/^(?:\*\*|__)?(?:类型|類型|Type)(?:\*\*|__)?\s*[:：]\s*(.*)$/i);
-					if (typeMatch && !type) {
-						type = typeMatch[1].trim();
+					if (field?.key === 'type') {
+						type ||= field.value;
 						continue;
 					}
 
@@ -2285,7 +2263,7 @@ export class CharacterManager {
 				}
 
 				if (inRelationSection) {
-					const relMatch = legacyRelationLine.exec(line);
+					const relMatch = legacyRelationLine.exec(visibleLines[i]);
 					if (relMatch) {
 						const label = relMatch[2].trim();
 						const rawTargets = splitLoreRelationTargets(relMatch[3]);
@@ -2382,6 +2360,7 @@ export class CharacterManager {
 			} catch { return null; }
 			if (frontmatter && typeof frontmatter === 'object' && !Array.isArray(frontmatter)) {
 				const fm = frontmatter as Record<string, unknown>;
+				parsed.type = getLoreFrontmatterType(fm) || parsed.type;
 				const rawFmAliases = fm['aliases'] ?? fm['alias'] ?? fm['别名'] ?? fm['別名'];
 				const fmList: string[] = [];
 				if (Array.isArray(rawFmAliases)) {
@@ -2444,7 +2423,8 @@ export class CharacterManager {
 		const prose = getLoreSectionText(lines, section).split('\n');
 		const direct = this.parseChunkFields(prose, 0, prose.length);
 		if (entry.fileBacked) {
-			const fm = this.app.metadataCache.getFileCache(entry.file)?.frontmatter;
+			const fm = readLoreFrontmatter(lines) ?? this.app.metadataCache.getFileCache(entry.file)?.frontmatter;
+			direct.type = getLoreFrontmatterType(fm) || direct.type;
 			const rawAliases: unknown = fm?.aliases ?? fm?.alias ?? fm?.别名 ?? fm?.別名;
 			const known: unknown[] = typeof rawAliases === 'string' ? rawAliases.split(/[,，、/|;；]/) : Array.isArray(rawAliases) ? rawAliases : [];
 			direct.aliases = [...new Set([...direct.aliases.split(/[,，、/|;；]/), ...known]
@@ -2522,16 +2502,22 @@ export class CharacterManager {
 			}
 			const aliases = input.aliases.split(/[,，、/|;；]/).map(alias => alias.trim()).filter(Boolean);
 			if (newName !== entry.heading && !aliases.includes(entry.heading)) aliases.push(entry.heading);
+			const frontmatterEnd = entry.fileBacked ? getLoreFrontmatterEnd(lines) : -1;
+			const hasFrontmatterType = frontmatterEnd > 0 && Boolean(getLoreFrontmatterType(readLoreFrontmatter(lines)));
 			const body = [
 				snapshot.important ? '<!-- wn-important -->' : '',
 				aliases.length ? `**${getLoreLabel('alias')}**：${aliases.join(', ')}` : '',
-				input.type.trim() ? `**${getLoreLabel('type')}**：${input.type.trim()}` : '', newBody,
+				!hasFrontmatterType && input.type.trim() ? `**${getLoreLabel('type')}**：${input.type.trim()}` : '', newBody,
 			].filter(Boolean).join('\n\n');
 			const keepHeading = newName === entry.heading || (entry.fileBacked && section.title !== entry.heading);
 			const heading = keepHeading ? lines.slice(section.line, section.bodyStart)
 				: [`${'#'.repeat(section.level)} ${newName}${newline}`];
 			const replacement = body ? [...heading, `${newline}`, ...body.split(/\r?\n/).map(line => `${line}${newline}`), `${newline}`] : [...heading, `${newline}`];
 			lines.splice(section.line, section.bodyEnd - section.line, ...replacement);
+			if (hasFrontmatterType && input.type.trim() !== snapshot.type) {
+				const fields = rewriteLoreFrontmatterType(lines.slice(1, frontmatterEnd), input.type.trim());
+				lines.splice(1, frontmatterEnd - 1, ...fields);
+			}
 			if (entry.fileBacked && input.aliases !== snapshot.aliases) {
 				const frontmatterEnd = getLoreFrontmatterEnd(lines);
 				if (frontmatterEnd > 0) {
@@ -2744,6 +2730,7 @@ export class CharacterManager {
 
 		// 7. Parse latest chunk fields
 		const chunkFields = this.parseChunkFields(chunk.lines, chunk.chunkStartLine, chunk.chunkEndLine);
+		const frontmatterType = chunk.isSingleFile ? getLoreFrontmatterType(readLoreFrontmatter(chunk.lines)) : '';
 		const isImportant = entry.important ?? chunkFields.important;
 		const bodyChangedWithTail = Boolean(input.expectedSnapshot?.retainedTail && input.body !== input.expectedSnapshot.body);
 		const retainedTail = bodyChangedWithTail ? '' : chunkFields.retainedTail;
@@ -2761,7 +2748,7 @@ export class CharacterManager {
 				parts.push(`**${getLoreLabel('alias')}**：${finalAliases}`);
 			}
 		}
-		if (input.type.trim()) {
+		if (!frontmatterType && input.type.trim()) {
 			parts.push(`**${getLoreLabel('type')}**：${input.type.trim()}`);
 		}
 		if (body.trim()) {
@@ -2834,7 +2821,9 @@ export class CharacterManager {
 			if (currentChunk.isSingleFile) {
 				let prefix = '';
 				if (currentChunk.frontmatterEndLine !== -1) {
-					const fmLines = currentChunk.lines.slice(1, currentChunk.frontmatterEndLine);
+					const originalFm = currentChunk.lines.slice(1, currentChunk.frontmatterEndLine);
+					const fmLines = frontmatterType && input.type.trim() !== frontmatterType
+						? rewriteLoreFrontmatterType(originalFm, input.type.trim()) : originalFm;
 					const newFmLines: string[] = [];
 					let inAliasBlock = false;
 					let aliasReplaced = false;

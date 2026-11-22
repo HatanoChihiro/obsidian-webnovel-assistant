@@ -1,12 +1,15 @@
-import type { App, CachedMetadata, TFile } from 'obsidian';
-import { buildLoreOutline, findLoreOutlineTarget, getFileLoreRelationBlocks, getLoreSectionText, relationBodyLines, scanLoreHeadings, type LoreOutlineHeading } from './LoreOutline';
+import type { App, TFile } from 'obsidian';
+import { findLoreOutlineTarget, getFileLoreBody, getFileLoreRelationBlocks, relationBodyLines, type HeadingPosition, type LoreOutlineHeading } from './LoreOutline';
 import { legacyRelationLine, splitLoreRelationTargets } from './LoreRelations';
+import { isProtagonistType, readLoreMetadata } from './LoreMetadata';
 import type { GraphData, GraphEdge, GraphNode } from './RelationGraphManager';
 import { t } from '../i18n';
 
 export interface LoreGraphFile {
-	fileCache: CachedMetadata;
+	frontmatter?: Record<string, unknown>;
 	lines: string[];
+	headings: HeadingPosition[];
+	outline?: LoreOutlineHeading[];
 }
 
 interface OutlineFile extends LoreGraphFile {
@@ -45,7 +48,7 @@ export function addLoreOutlineToGraph(app: App, input: ReadonlyMap<TFile, LoreGr
 	const byPath = new Map<string, OutlineFile>();
 	for (const [file, data] of input) {
 		byPath.set(file.path, {
-			...data, file, outline: buildLoreOutline(scanLoreHeadings(data.lines), data.lines.length), nodes: new Map(),
+			...data, file, outline: data.outline ?? [], nodes: new Map(),
 		});
 	}
 	for (const node of graph.nodes) {
@@ -64,13 +67,15 @@ export function addLoreOutlineToGraph(app: App, input: ReadonlyMap<TFile, LoreGr
 	const names = new Map<string, Set<string>>();
 	const ownedText = new Map<string, string[]>();
 	for (const item of byPath.values()) {
-		if (!item.outline.length && item.fileNode) ownedText.set(item.fileNode.id, item.lines);
+		if (!item.outline.length && item.fileNode) ownedText.set(item.fileNode.id, getFileLoreBody(item.lines, item.headings));
 		for (const section of item.outline) {
 			const node = addHeading(graph, item, section);
-			const text = getLoreSectionText(item.lines, section);
-			const aliasText = text.match(/^(?:\*\*|__)?(?:别名|別名|Alias)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/im)?.[1];
-			if (node !== item.fileNode) node.aliases = aliasText?.split(/[,，、/|;；]/).map(alias => alias.trim()).filter(Boolean);
-			ownedText.set(node.id, text.split('\n'));
+			const body = item.lines.slice(section.bodyStart, section.bodyEnd);
+			const { type, aliases } = readLoreMetadata(body, node === item.fileNode ? item.frontmatter : undefined);
+			node.nodeType = type || undefined;
+			node.isProtagonist = isProtagonistType(type);
+			node.aliases = aliases.filter(alias => alias !== node.heading);
+			ownedText.set(node.id, body);
 		}
 	}
 	// Markdown has at most six ancestor levels. Only containment contributes to node size.
@@ -122,7 +127,7 @@ export function addLoreOutlineToGraph(app: App, input: ReadonlyMap<TFile, LoreGr
 		};
 		const sources = item.outline.map(section => ({ source: item.nodes.get(section.line)!.id, blocks: section.relationBlocks }));
 		if (!sources.length && item.fileNode) {
-			sources.push({ source: item.fileNode.id, blocks: getFileLoreRelationBlocks(scanLoreHeadings(item.lines), item.lines.length) });
+			sources.push({ source: item.fileNode.id, blocks: getFileLoreRelationBlocks(item.headings, item.lines.length) });
 		}
 		for (const { source, blocks } of sources) {
 			for (const block of blocks) {

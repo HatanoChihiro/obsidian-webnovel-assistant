@@ -19,8 +19,9 @@ import { findBookRoot } from '../utils/path';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { t } from '../i18n';
 import { cleanLoreHeading } from './CharacterManager';
-import { buildLoreOutline, getFileLoreRelationBlocks, loreRelationHeadings, scanLoreHeadings, type HeadingPosition } from './LoreOutline';
+import { buildLoreOutline, getFileLoreBody, getFileLoreRelationBlocks, getLoreFrontmatterEnd, loreRelationHeadings, readLoreFrontmatter, scanLoreHeadings, type HeadingPosition, type LoreOutlineHeading } from './LoreOutline';
 import { addLoreOutlineToGraph, type LoreGraphFile } from './LoreOutlineGraph';
+import { isProtagonistType, readLoreMetadata, readLoreMetadataLine, visibleLoreLines } from './LoreMetadata';
 
 // ==========================================
 // 类型定义
@@ -164,8 +165,11 @@ export class RelationGraphManager {
 			const fileCache = this.app.metadataCache.getFileCache(f) ?? {};
 			const content = await this.app.vault.cachedRead(f);
 			const lines = content.split(/\r?\n/);
-			fileDataCache.set(f, { fileCache, lines });
-			const nodes = this.extractNodes(f, fileCache, lines, options?.includeHeadingHierarchy ? scanLoreHeadings(lines) : undefined);
+			const frontmatter = (options?.includeHeadingHierarchy ? readLoreFrontmatter(lines) : undefined) ?? fileCache.frontmatter;
+			const headings = options?.includeHeadingHierarchy ? scanLoreHeadings(lines) : fileCache.headings ?? [];
+			const outline = options?.includeHeadingHierarchy ? buildLoreOutline(headings, lines.length) : undefined;
+			fileDataCache.set(f, { frontmatter, lines, headings, outline });
+			const nodes = this.extractNodes(f, fileCache, lines, headings, outline, frontmatter);
 
 			for (const node of nodes) {
 				if (!nodeIds.has(node.id)) {
@@ -203,27 +207,28 @@ export class RelationGraphManager {
 
 		// 第二步：解析关系（显式关系 + 提及关联）
 		const allEdges: GraphEdge[] = [];
+		const nodesById = new Map(allNodes.map(node => [node.id, node]));
 		const directedPairs = new Set<string>();
 		const uniqueExplicitEdges = new Set<string>();
 
 		for (const f of filesToParse) {
 			const data = fileDataCache.get(f);
 			if (!data) continue;
-			const { fileCache, lines } = data;
-			const headings = options?.includeHeadingHierarchy ? scanLoreHeadings(lines) : (fileCache.headings ?? []);
-			const outline = options?.includeHeadingHierarchy ? buildLoreOutline(headings, lines.length) : [];
-			const blocks = outline.length ? outline.flatMap(section => section.relationBlocks)
-				: options?.includeHeadingHierarchy ? getFileLoreRelationBlocks(headings, lines.length) : [];
+			const { frontmatter, lines, headings, outline } = data;
+			const blocks = outline?.length ? outline.flatMap(section => section.relationBlocks)
+				: outline ? getFileLoreRelationBlocks(headings, lines.length) : [];
 			const scopedBlocks = new Set(blocks.map(block => block.bodyStart));
-			const level2Headings = headings.filter(h => h.level === 2);
+			const hasLevel2 = (outline ?? headings).some(heading => heading.level === 2);
 
-			if (level2Headings.length > 0) {
+			if (hasLevel2) {
 				for (let i = 0; i < headings.length; i++) {
 					const heading = headings[i];
 					if (heading.level !== 2) continue;
 
 					const characterName = this.cleanHeadingText(heading.heading);
 					if (!characterName || !nodeIds.has(characterName)) continue;
+					const sourceNode = nodesById.get(characterName);
+					if (outline && (sourceNode?.file !== f || sourceNode.headingLine !== heading.position.start.line)) continue;
 
 					const sectionStart = heading.position.end.line + 1;
 					const sectionEnd = this.findNextHeadingLine(headings, i, 2, lines.length);
@@ -261,7 +266,7 @@ export class RelationGraphManager {
 			} else {
 				// 单文件词条模式
 				const characterName = this.cleanHeadingText(f.basename);
-				if (characterName && nodeIds.has(characterName)) {
+				if (characterName && nodeIds.has(characterName) && (!outline || nodesById.get(characterName)?.file === f)) {
 					const sectionStart = 0;
 					const sectionEnd = lines.length;
 					const relationSection = this.findRelationSection(headings, -1, sectionStart, sectionEnd, lines);
@@ -282,9 +287,9 @@ export class RelationGraphManager {
 					}
 
 					// 额外支持从 Frontmatter 解析关系
-					const fm = fileCache.frontmatter;
+					const fm = frontmatter;
 					if (fm) {
-						const rawRelations = (fm['relations'] ?? fm['关系'] ?? fm['關係']) as unknown;
+						const rawRelations = fm['relations'] ?? fm['关系'] ?? fm['關係'];
 						if (Array.isArray(rawRelations)) {
 							for (const item of rawRelations) {
 								if (item && typeof item === 'object') {
@@ -340,153 +345,34 @@ export class RelationGraphManager {
 	/**
 	 * 从文件缓存中提取所有词条作为图谱节点，并提取节点的类型与别名（支持大纲二级标题与单文件模式）
 	 */
-	private extractNodes(file: TFile, fileCache: CachedMetadata, lines: string[], headings: HeadingPosition[] = fileCache.headings ?? []): GraphNode[] {
+	private extractNodes(file: TFile, fileCache: CachedMetadata, lines: string[],
+		headings: HeadingPosition[] = fileCache.headings ?? [], outline?: LoreOutlineHeading[],
+		frontmatter: Record<string, unknown> | undefined = fileCache.frontmatter): GraphNode[] {
 		const nodes: GraphNode[] = [];
 		const seenIds = new Set<string>();
+		const addNode = (heading: string, body: string[], headingLine?: number, frontmatter?: Record<string, unknown>) => {
+			if (!heading || seenIds.has(heading)) return;
+			seenIds.add(heading);
+			const { type, aliases } = readLoreMetadata(body, frontmatter);
+			nodes.push({
+				id: heading, file, sourcePath: file.path, heading, headingLine,
+				x: 0, y: 0, vx: 0, vy: 0, pinned: false,
+				nodeType: type || undefined, isProtagonist: isProtagonistType(type),
+				aliases: aliases.length ? aliases.filter(alias => alias !== heading) : undefined,
+			});
+		};
 
-		const level2Headings = headings.filter(h => h.level === 2);
-
-		if (level2Headings.length > 0) {
-			for (let i = 0; i < headings.length; i++) {
-				const heading = headings[i];
-				if (heading.level !== 2) continue;
-
-				const headingText = this.cleanHeadingText(heading.heading);
-				if (!headingText || seenIds.has(headingText)) continue;
-
-				seenIds.add(headingText);
-
-				// 解析“类型”与“别名”
-				let isProtagonist = false;
-				let nodeType: string | undefined = undefined;
-				const aliases: string[] = [];
-
-				const sectionStart = heading.position.end.line + 1;
-				const sectionEnd = this.findNextHeadingLine(headings, i, 2, lines.length);
-
-				for (let lineIdx = sectionStart; lineIdx < sectionEnd; lineIdx++) {
-					const chunk = lines[lineIdx];
-					if (!chunk) continue;
-
-					// 查找 类型：主角、**类型**：主角 等
-					if (!nodeType) {
-						const typeMatch = chunk.match(/(?:\*\*|__)?(?:类型|類型|Type)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/i);
-						if (typeMatch) {
-							const typeStr = typeMatch[1].trim();
-							nodeType = typeStr;
-							if (typeStr.includes('主角')) {
-								isProtagonist = true;
-							}
-						}
-					}
-
-					// 查找 别名：三哥、**别名**：三哥 等
-					const aliasMatch = chunk.match(/(?:\*\*|__)?(?:别名|別名|Alias)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/i);
-					if (aliasMatch && aliasMatch[1]) {
-						const rawAliases = aliasMatch[1].split(TARGET_SEPARATOR_REGEX);
-						for (let a of rawAliases) {
-							a = a.trim();
-							if (a && a !== headingText && !aliases.includes(a)) {
-								aliases.push(a);
-							}
-						}
-					}
-				}
-
-				nodes.push({
-					id: headingText,
-					file,
-					sourcePath: file.path,
-					heading: headingText,
-					headingLine: heading.position.start.line,
-					x: 0,
-					y: 0,
-					vx: 0,
-					vy: 0,
-					pinned: false,
-					isProtagonist,
-					nodeType,
-					aliases: aliases.length > 0 ? aliases : undefined,
-				});
-			}
-		} else {
-			// 单文件词条模式：以文件名 basename 为正名
-			const headingText = this.cleanHeadingText(file.basename);
-			if (headingText && !seenIds.has(headingText)) {
-				seenIds.add(headingText);
-
-				let isProtagonist = false;
-				let nodeType: string | undefined = undefined;
-				const aliases: string[] = [];
-
-				// 1. 从 Frontmatter 解析
-				const fm = fileCache.frontmatter;
-				if (fm) {
-					const rawType = (fm['type'] ?? fm['类型'] ?? fm['類型']) as unknown;
-					if (typeof rawType === 'string' || typeof rawType === 'number') {
-						nodeType = String(rawType).trim();
-						if (nodeType.includes('主角')) isProtagonist = true;
-					}
-					const rawFmAliases = (fm['aliases'] ?? fm['alias'] ?? fm['别名'] ?? fm['別名']) as unknown;
-					if (Array.isArray(rawFmAliases)) {
-						for (const a of rawFmAliases) {
-							const cleanA = String(a).trim();
-							if (cleanA && cleanA !== headingText && !aliases.includes(cleanA)) {
-								aliases.push(cleanA);
-							}
-						}
-					} else if (typeof rawFmAliases === 'string' && rawFmAliases.trim()) {
-						for (const a of rawFmAliases.split(TARGET_SEPARATOR_REGEX)) {
-							const cleanA = a.trim();
-							if (cleanA && cleanA !== headingText && !aliases.includes(cleanA)) {
-								aliases.push(cleanA);
-							}
-						}
-					}
-				}
-
-				// 2. 从正文中解析
-				for (const chunk of lines) {
-					if (!chunk) continue;
-					if (!nodeType) {
-						const typeMatch = chunk.match(/(?:\*\*|__)?(?:类型|類型|Type)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/i);
-						if (typeMatch) {
-							const typeStr = typeMatch[1].trim();
-							nodeType = typeStr;
-							if (typeStr.includes('主角')) {
-								isProtagonist = true;
-							}
-						}
-					}
-					const aliasMatch = chunk.match(/(?:\*\*|__)?(?:别名|別名|Alias)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/i);
-					if (aliasMatch && aliasMatch[1]) {
-						const rawAliases = aliasMatch[1].split(TARGET_SEPARATOR_REGEX);
-						for (let a of rawAliases) {
-							const cleanA = a.trim();
-							if (cleanA && cleanA !== headingText && !aliases.includes(cleanA)) {
-								aliases.push(cleanA);
-							}
-						}
-					}
-				}
-
-				nodes.push({
-					id: headingText,
-					file,
-					sourcePath: file.path,
-					heading: headingText,
-					x: 0,
-					y: 0,
-					vx: 0,
-					vy: 0,
-					pinned: false,
-					isProtagonist,
-					nodeType,
-					aliases: aliases.length > 0 ? aliases : undefined,
-				});
-			}
+		const sections = outline ?? buildLoreOutline(headings, lines.length);
+		for (const section of sections) {
+			if (section.level === 2) addNode(section.title, lines.slice(section.bodyStart, section.bodyEnd), section.line);
 		}
+		if (nodes.length) return nodes;
 
+		const firstSection = sections[0];
+		const body = firstSection
+			? lines.slice(Math.max(firstSection.bodyStart, getLoreFrontmatterEnd(lines) + 1), firstSection.bodyEnd)
+			: getFileLoreBody(lines, headings);
+		addNode(this.cleanHeadingText(file.basename), body, undefined, frontmatter);
 		return nodes;
 	}
 
@@ -669,13 +555,15 @@ export class RelationGraphManager {
 				.sort((a, b) => b.term.length - a.term.length);
 		}
 
-		for (let i = sectionStart; i < sectionEnd; i++) {
+		const visible = visibleLoreLines(lines.slice(sectionStart, sectionEnd));
+		for (const [offset, line] of visible.entries()) {
 			// 跳过关系声明块，避免将显式声明的目标角色重复计入
+			const i = sectionStart + offset;
 			if (relationSection && i >= relationSection.startLine && i < relationSection.endLine) {
 				continue;
 			}
 
-			const line = lines[i] || '';
+			if (readLoreMetadataLine(line)) continue;
 			for (const { term, targetId } of searchTerms) {
 				if (targetId === sourceName) continue;
 				if (mentioned.has(targetId)) continue;

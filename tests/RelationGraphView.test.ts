@@ -293,6 +293,25 @@ describe('RelationGraphView lifecycle & input narrowing', () => {
 		vi.useRealTimers();
 	});
 
+	it('restores the canvas when graph data returns after an empty reload', async () => {
+		const file = new MockTFile('Alice.md', 'BookA/设定/Alice.md', 'BookA/设定');
+		mockApp.vault.getAbstractFileByPath.mockReturnValue(file);
+		const view = new RelationGraphView({ app: mockApp } as never, plugin);
+		await view.onOpen();
+		await view.loadGraphForFile(file.path);
+		const graph = vi.mocked(plugin.relationGraphManager.buildGraphData);
+		graph.mockResolvedValueOnce({ nodes: [], edges: [] });
+		await view['softReloadGraph']();
+		expect(view['canvas']?.hidden).toBe(true);
+		expect(view['container']?.querySelector('.wna-relation-graph-empty')).toBeTruthy();
+		expect(view['graphData'].nodes).toHaveLength(0);
+		await view['softReloadGraph']();
+		expect(view['canvas']?.hidden).toBe(false);
+		expect(view['container']?.querySelector('.wna-relation-graph-empty')).toBeFalsy();
+		expect(view['graphData'].nodes).toHaveLength(1);
+		await view.onClose();
+	});
+
 	it('skips reload on same-book chapter edits while reloading on lore file edits', async () => {
 		const displayedLore = new MockTFile('Alice.md', 'BookA/设定/Alice.md', 'BookA/设定');
 		mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) => {

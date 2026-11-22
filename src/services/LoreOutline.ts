@@ -1,5 +1,7 @@
-import type { HeadingCache } from 'obsidian';
+import type { App, HeadingCache, TFile } from 'obsidian';
+import { parseYaml } from 'obsidian';
 import { cleanLoreHeading } from './CharacterManager';
+import { readLoreMetadata, visibleLoreLines } from './LoreMetadata';
 import { scanFenceLine, type FenceScanState } from './LoreTemplateService';
 
 export const loreRelationHeadings = new Set(['关系', '關係', 'relation', 'relations', 'relationships']);
@@ -30,6 +32,18 @@ export type HeadingPosition = Pick<HeadingCache, 'heading' | 'level'> & {
 
 export function getLoreFrontmatterEnd(lines: readonly string[]): number {
 	return lines[0]?.trimEnd() === '---' ? lines.findIndex((line, index) => index > 0 && /^(?:---|\.\.\.)\r?$/.test(line)) : -1;
+}
+
+export function readLoreFrontmatter(lines: readonly string[]): Record<string, unknown> | undefined {
+	const end = getLoreFrontmatterEnd(lines);
+	if (end < 0) return undefined;
+	try {
+		const data: unknown = parseYaml(lines.slice(1, end).join('\n'));
+		if (data && typeof data === 'object' && !Array.isArray(data)) return data as Record<string, unknown>;
+	} catch {
+		// Incomplete frontmatter may be present while typing.
+	}
+	return undefined;
 }
 
 /** A fresh section lookup for edits made inside Vault.process. */
@@ -140,25 +154,35 @@ export function getFileLoreRelationBlocks(headings: readonly HeadingPosition[], 
 }
 
 export function relationBodyLines(lines: readonly string[], block: LoreRelationBlock): string[] {
-	const fence: FenceScanState = { inFence: false, fenceChar: '', fenceLength: 0 };
-	let comment: '%%' | '-->' | undefined;
-	return lines.slice(block.bodyStart, block.end).map(line => {
-		if (comment) {
-			if (line.includes(comment)) comment = undefined;
-			return '';
+	return visibleLoreLines(lines.slice(block.bodyStart, block.end));
+}
+
+export function getFileLoreBody(lines: readonly string[], headings: readonly HeadingPosition[]): string[] {
+	return lines.slice(getLoreFrontmatterEnd(lines) + 1, headings[0]?.position.start.line ?? lines.length);
+}
+
+export async function collectLoreTypes(app: App, files: readonly TFile[]): Promise<string[]> {
+	const types = new Set<string>();
+	for (const file of new Set(files)) {
+		try {
+			const lines = (await app.vault.cachedRead(file)).split(/\r?\n/);
+			const headings = scanLoreHeadings(lines);
+			const outline = buildLoreOutline(headings, lines.length);
+			const hasH2 = outline.some(section => section.level === 2);
+			const frontmatter = hasH2 ? undefined : readLoreFrontmatter(lines) ?? app.metadataCache.getFileCache(file)?.frontmatter;
+			if (!outline.length) {
+				const { type } = readLoreMetadata(getFileLoreBody(lines, headings), frontmatter);
+				if (type) types.add(type);
+			}
+			for (const [index, section] of outline.entries()) {
+				const { type } = readLoreMetadata(lines.slice(section.bodyStart, section.bodyEnd), index === 0 ? frontmatter : undefined);
+				if (type) types.add(type);
+			}
+		} catch {
+			// A file may be removed while opening the editor.
 		}
-		const state = scanFenceLine(line, fence);
-		if (state.inFenceBefore || state.inFenceAfter) return '';
-		if (line.trimStart().startsWith('<!--')) {
-			if (!line.includes('-->')) comment = '-->';
-			return '';
-		}
-		if (line.trimStart().startsWith('%%')) {
-			if (line.trimStart().indexOf('%%', 2) < 0) comment = '%%';
-			return '';
-		}
-		return line;
-	});
+	}
+	return [...types];
 }
 
 export function findLoreOutlineTarget(outline: readonly LoreOutlineHeading[], parts: readonly string[]): LoreOutlineHeading | undefined {

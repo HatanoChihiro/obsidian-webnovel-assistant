@@ -1,6 +1,7 @@
 import { Modal, Setting, Notice } from 'obsidian';
 import type { App, TextComponent } from 'obsidian';
 import type { CharacterManager, LoreEntry, LoreRelationItem, LoreSnapshot } from '../services/CharacterManager';
+import { collectLoreTypes } from '../services/LoreOutline';
 import { parseLoreBodyForEditing } from '../services/LoreTemplateService';
 import { LoreCardRenderer } from './components/LoreCardRenderer';
 import { t } from '../i18n';
@@ -102,6 +103,8 @@ export class LoreEditModal extends Modal {
 		const existingLoreEntries = this.plugin.characterManager.getLoreEntriesInFileOrder
 			? this.plugin.characterManager.getLoreEntriesInFileOrder(this.bookPath)
 			: [];
+		const existingTypes = await collectLoreTypes(this.app, [this.entry.file, ...existingLoreEntries.map(entry => entry.file)]);
+		if (this.isModalClosed) return;
 
 		const typeSetting = new Setting(contentEl)
 			.setName(t('modal.lore-type'))
@@ -109,9 +112,7 @@ export class LoreEditModal extends Modal {
 
 		typeSetting.addDropdown(dropdown => {
 			dropdown.addOption('__NONE__', t('modal.lore-type-none'));
-			if (this.loreType) {
-				dropdown.addOption(this.loreType, this.loreType);
-			}
+			for (const type of new Set([this.loreType, ...existingTypes].filter(Boolean))) dropdown.addOption(type, type);
 			dropdown.addOption('__NEW__', t('modal.new-type'));
 			dropdown.setValue(this.loreType ? this.loreType : '__NONE__');
 

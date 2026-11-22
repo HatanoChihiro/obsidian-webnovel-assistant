@@ -56,6 +56,7 @@ vi.mock('obsidian', () => {
 	}
 
 	return {
+		FuzzySuggestModal: class {},
 		ItemView: MockItemView,
 		Modal: class {},
 		Notice: vi.fn(),

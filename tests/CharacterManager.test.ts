@@ -105,7 +105,7 @@ describe('CharacterManager', () => {
         const file = Object.assign(new TFile(), { path: 'Book1/Lore/Map.md', basename: 'Map' });
         manager.getBookPathForFile = vi.fn().mockReturnValue('Book1');
         manager.isLorePath = vi.fn().mockReturnValue(true);
-        let content = '# 地理志\n## 白岬\n旧领地说明。\n### 北境\n#### 港城\n##### 旧区\n###### 东码头\n独立码头正文。\n###### 关系\n- **隶属**：[[#白岬]]\n### 关系\n- **贸易**：北境\n';
+        let content = '# 地理志\n## 白岬\n旧领地说明。\n### 北境\n#### 港城\n##### 旧区\n###### 东码头\n类型：旧设施\n独立码头正文。\n###### 关系\n- **隶属**：[[#白岬]]\n### 关系\n- **贸易**：北境\n';
         mockApp.vault.getMarkdownFiles.mockReturnValue([file]);
         mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) => path === file.path ? file : undefined);
         mockApp.vault.cachedRead.mockImplementation(async () => content);
@@ -120,17 +120,19 @@ describe('CharacterManager', () => {
         const parentSnapshot = await manager.getLoreSnapshot(parent, 'Book1');
         const childSnapshot = await manager.getLoreSnapshot(child, 'Book1');
         expect(parentSnapshot?.body).toBe('旧领地说明。');
+        expect(parentSnapshot?.type).toBe('');
         expect(parentSnapshot?.relations.map(relation => relation.label)).toEqual(['贸易']);
         expect(childSnapshot?.body).toBe('独立码头正文。');
+        expect(childSnapshot?.type).toBe('旧设施');
         expect(childSnapshot?.relations.map(relation => relation.label)).toEqual(['隶属']);
         expect(await manager.updateLoreEntry(child, {
-            oldHeading: child.heading, newHeading: child.heading, aliases: '', type: '', body: '更新码头正文。',
+            oldHeading: child.heading, newHeading: child.heading, aliases: '', type: '港口', body: '更新码头正文。',
             relations: childSnapshot!.relations, expectedSnapshot: childSnapshot!, contextBookPath: 'Book1',
         })).toBe(true);
         expect(content).toContain('## 白岬\n旧领地说明。');
         expect(content).toContain('- **隶属**：[[#白岬]]');
         expect(content).toContain('### 关系\n- **贸易**：北境');
-        expect(await manager.getLoreContent(child)).toBe('更新码头正文。');
+        expect(await manager.getLoreSnapshot(child, 'Book1')).toMatchObject({ type: '港口', body: '更新码头正文。' });
 
         content += '\n## 商会\n###### 关系\n- **停靠**：[[#白岬#北境#港城#旧区#东码头]]\n';
         manager.getLoreFiles = vi.fn().mockReturnValue([file]);
@@ -140,6 +142,7 @@ describe('CharacterManager', () => {
             relations: renamedSnapshot!.relations, expectedSnapshot: renamedSnapshot!, contextBookPath: 'Book1',
         })).toBe(true);
         expect(content).toContain('###### 东渡码头');
+        expect(content).not.toContain('**类型**：港口');
         expect(content).toContain('- **停靠**：[[#白岬#北境#港城#旧区#东渡码头]]');
     });
 
@@ -1453,6 +1456,37 @@ LinLei is a dragon warrior.`;
     });
 
     describe('Batch C: Lore snapshot and full structured quick-edit', () => {
+        it('edits and clears a file-backed YAML type while preserving nested properties', async () => {
+            const manager = new CharacterManager(mockApp, mockPlugin);
+            manager.getBookPathForFile = vi.fn().mockReturnValue('Book1');
+            const file = Object.assign(new TFile(), { path: 'Book1/Lore/Hero.md', basename: 'Hero' });
+            const entry = { file, heading: 'Hero' };
+            let content = '---\ntype: 旧类型\nconfig:\n  type: Nested\n---\n# Hero\nBody\n';
+            mockApp.vault.cachedRead.mockImplementation(async () => content);
+            mockApp.vault.read.mockImplementation(async () => content);
+            mockApp.vault.process.mockImplementation(async (_file: TFile, transform: (data: string) => string) => {
+                content = transform(content);
+                return content;
+            });
+            vi.mocked(parseYaml).mockImplementation(text => ({ type: /^type: "?([^"\n]+)"?$/m.exec(text)?.[1] }));
+            try {
+                const initial = (await manager.getLoreSnapshot(entry, 'Book1'))!;
+                expect(initial.type).toBe('旧类型');
+                const updateType = (snapshot: typeof initial, type: string) => manager.updateLoreEntry(entry, {
+                    oldHeading: entry.heading, newHeading: entry.heading, aliases: '', type, body: snapshot.body,
+                    relations: snapshot.relations, expectedSnapshot: snapshot, contextBookPath: 'Book1',
+                });
+                expect(await updateType(initial, '主角')).toBe(true);
+                const updated = (await manager.getLoreSnapshot(entry, 'Book1'))!;
+                expect(updated.type).toBe('主角');
+                expect(await updateType(updated, '')).toBe(true);
+                expect(await manager.getLoreSnapshot(entry, 'Book1')).toMatchObject({ type: '', body: 'Body' });
+                expect(content).toContain('config:\n  type: Nested');
+            } finally {
+                vi.mocked(parseYaml).mockImplementation(() => ({}));
+            }
+        });
+
         it('loads single-file aliases from the captured source instead of delayed metadata', async () => {
             const manager = new CharacterManager(mockApp, mockPlugin);
             const file = Object.assign(new TFile(), { name: 'Hero.md', path: 'Book1/Lore/Hero.md', basename: 'Hero' });
