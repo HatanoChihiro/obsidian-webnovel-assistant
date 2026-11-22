@@ -18,20 +18,20 @@ describe('persistent lore ancestor paths', () => {
 		expect(key(before.replace('#外港', '#南港'))).not.toBe(key(before));
 	});
 
-	it('hides the folded path behind one unlabeled dot and toggles it without replacing the row', () => {
+	it('hides both paths behind one unlabeled dot and toggles them together', () => {
 		const row = new MockElement();
-		renderLoreAncestorRow(row as unknown as HTMLElement, ['港务志', '北港'], true);
+		renderLoreAncestorRow(row as unknown as HTMLElement, [['港务志', '北港'], ['潮历仪器', '回摆潮钟']], true);
 		const dot = row.querySelector('.wn-lore-ancestor-dot')!;
-		const path = row.querySelector('.wn-lore-ancestor-text')! as MockElement & { hidden: boolean };
+		const paths = row.querySelector('.wn-lore-ancestor-list')! as MockElement & { hidden: boolean };
 		expect(row.children).toHaveLength(2);
 		expect(dot.textContent).toBe('');
-		expect(path.textContent).toBe('港务志 › 北港');
-		expect(path.hidden).toBe(true);
+		expect(paths.children.map(path => path.textContent)).toEqual(['港务志 › 北港', '潮历仪器 › 回摆潮钟']);
+		expect(paths.hidden).toBe(true);
 		dot.dispatchEvent('click');
-		expect(path.hidden).toBe(false);
+		expect(paths.hidden).toBe(false);
 		expect(dot.getAttribute('aria-expanded')).toBe('true');
 		dot.dispatchEvent('click');
-		expect(path.hidden).toBe(true);
+		expect(paths.hidden).toBe(true);
 		expect(dot.getAttribute('aria-expanded')).toBe('false');
 	});
 });

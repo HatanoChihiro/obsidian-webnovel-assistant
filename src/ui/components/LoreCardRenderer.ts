@@ -395,7 +395,7 @@ export class LoreCardRenderer {
 			draggable?: boolean;
 			dragDataMimeType?: string;
 			dragIdentity?: string;
-			ancestorPath?: readonly string[];
+			ancestorPaths?: readonly (readonly string[])[];
 			onTitleClick?: () => void;
 			hideEditButton?: boolean;
 			hideImportanceButton?: boolean;
@@ -439,9 +439,10 @@ export class LoreCardRenderer {
 		const titleEl = titleContainer.createDiv({ cls: 'wn-lore-card-title' });
 		titleEl.setText(entry.heading);
 		titleEl.title = isReadOnly ? entry.heading : t('corkboard.click-to-open-lore');
-		const ancestorPath = options.ancestorPath ?? entry.section?.parent?.path;
-		if (plugin.settings.loreShowAncestorPath !== false && ancestorPath?.length) {
-			renderLoreAncestorRow(card.createDiv('wn-lore-card-parent'), ancestorPath, plugin.settings.loreFoldAncestorPath === true);
+		const localPath = entry.section?.parent?.path;
+		const ancestorPaths = options.ancestorPaths ?? (localPath ? [localPath] : []);
+		if (plugin.settings.loreShowAncestorPath !== false && ancestorPaths.length) {
+			renderLoreAncestorRow(card.createDiv('wn-lore-card-parent'), ancestorPaths, plugin.settings.loreFoldAncestorPath === true);
 		}
 
 		titleEl.onclick = async () => {

@@ -39,7 +39,7 @@ export interface GraphNode {
 	heading: string;
 	headingLine?: number;
 	sectionKey?: string;
-	outlineParent?: string;
+	outlineParents?: string[];
 	descendantCount?: number;
 	/** Canvas 坐标 x（初始化为 0，由 ForceLayoutEngine 赋值） */
 	x: number;

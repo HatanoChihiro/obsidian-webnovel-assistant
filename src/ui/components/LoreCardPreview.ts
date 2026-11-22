@@ -12,7 +12,7 @@ export interface LoreCardPreviewPlugin extends Omit<LoreCardRendererPlugin, 'app
 }
 
 export interface LoreCardPreviewOptions {
-	ancestorPath?: readonly string[];
+	ancestorPaths?: readonly (readonly string[])[];
 	/** 悬停后延迟弹出的毫秒数（默认 400ms，避免划过误触） */
 	showDelayMs?: number;
 	/** 鼠标离开卡片与面板后的宽限毫秒数（默认 200ms，允许鼠标在两者间移动） */
@@ -502,7 +502,7 @@ export class LoreCardPreview extends Component {
 				this.entry,
 				this.plugin,
 				cardComponent,
-				{ readOnly: true, hideImportanceButton: true, ancestorPath: this.options.ancestorPath }
+				{ readOnly: true, hideImportanceButton: true, ancestorPaths: this.options.ancestorPaths }
 			);
 		} catch (error) {
 			this.isOpening = false;

@@ -1,7 +1,7 @@
 import { Notice, TFile, setIcon, Component, type App } from 'obsidian';
 import { t, getLocale } from '../../i18n';
 import type { GraphEdge, RelationGraphManager } from '../../services/RelationGraphManager';
-import { getLoreGraphAncestors } from '../../services/LoreOutlineGraph';
+import { getLoreGraphAncestorPaths } from '../../services/LoreOutlineGraph';
 import { getLoreFilterKey } from '../../services/WorkbenchFilterIndex';
 import { ForceLayoutEngine } from '../../services/ForceLayoutEngine';
 import type { CharacterManager, LoreEntry } from '../../services/CharacterManager';
@@ -120,7 +120,7 @@ export class LoreBoardRenderer {
 
         // 卡片视图下强制遵循文件本身的物理顺序，忽略 customSortOrder，确保拖拽修改文件后所见即所得
         const sortedEntries = allEntries;
-        const ancestorPaths = new Map<string, string[]>();
+        const pathsByEntry = new Map<string, string[][]>();
         const loreFiles = plugin.settings.loreShowAncestorPath !== false && plugin.relationGraphManager
             ? plugin.characterManager.getEffectiveLoreFiles?.(currentBookPath) : undefined;
         if (loreFiles?.length && plugin.relationGraphManager) {
@@ -130,12 +130,12 @@ export class LoreBoardRenderer {
                 });
                 const byId = new Map(graph.nodes.map(node => [node.id, node]));
                 const byEntry = new Map(graph.nodes.map(node => [JSON.stringify([node.file.path, node.sectionKey ?? node.heading]), node]));
-                const byFile = new Map(graph.nodes.filter(node => !node.outlineParent || node.heading === node.file.basename)
+                const byFile = new Map(graph.nodes.filter(node => !node.outlineParents?.length || node.heading === node.file.basename)
                     .map(node => [JSON.stringify([node.file.path, node.heading]), node]));
                 for (const entry of sortedEntries) {
                     const key = getLoreEntryIdentity(entry);
                     const node = byEntry.get(key) ?? (!entry.section ? byFile.get(key) : undefined);
-                    if (node) ancestorPaths.set(key, getLoreGraphAncestors(node, byId).map(parent => parent.heading));
+                    if (node) pathsByEntry.set(key, getLoreGraphAncestorPaths(node, byId).map(path => path.map(parent => parent.heading)));
                 }
             } catch (error) {
                 console.error('Failed to load lore ancestors', error);
@@ -228,7 +228,7 @@ export class LoreBoardRenderer {
             const bodyReads: LoreBodyReadCache = new Map();
             try {
                 for (const entry of group.entries) {
-                    const ancestorPath = ancestorPaths.get(getLoreEntryIdentity(entry));
+                    const ancestorPaths = pathsByEntry.get(getLoreEntryIdentity(entry));
                     const cardContainer = grid.createDiv('wn-lore-card-wrapper');
                     let preview: LoreCardPreview | null = null;
                     if (isPreviewEnabled) {
@@ -236,7 +236,7 @@ export class LoreBoardRenderer {
                             app,
                             settings: plugin.settings,
                             characterManager: plugin.characterManager
-                        }, { ancestorPath });
+                        }, { ancestorPaths });
                         boardComponent.addChild(preview);
                     }
 
@@ -244,7 +244,7 @@ export class LoreBoardRenderer {
                         draggable: !group.isBorrowed,
                         dragDataMimeType: mimeType,
                         dragIdentity: getLoreEntryIdentity(entry),
-                        ancestorPath,
+                        ancestorPaths,
                         hideEditButton: group.isBorrowed,
                         hideImportanceButton: group.isBorrowed,
                         onEdit: group.isBorrowed ? undefined : target => {

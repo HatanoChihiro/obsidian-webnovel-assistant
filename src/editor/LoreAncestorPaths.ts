@@ -2,7 +2,7 @@ import { editorInfoField, MarkdownRenderChild, type Plugin, type TFile } from 'o
 import { StateEffect, StateField } from '@codemirror/state';
 import { Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from '@codemirror/view';
 import { buildLoreOutline, relationBodyLines, scanLoreHeadings, type LoreOutlineHeading } from '../services/LoreOutline';
-import { getLoreGraphAncestors } from '../services/LoreOutlineGraph';
+import { getLoreGraphAncestorPaths } from '../services/LoreOutlineGraph';
 import { isLoreParentRelation, legacyRelationLine } from '../services/LoreRelations';
 import type { GraphData, GraphNode } from '../services/RelationGraphManager';
 import { cleanLoreHeading } from '../services/CharacterManager';
@@ -23,6 +23,9 @@ export function getLoreAncestorLayoutKey(lines: readonly string[], outline: read
 }
 
 const replaceAncestorRows = StateEffect.define<DecorationSet>();
+const getPathKey = (paths: readonly GraphNode[][], folded: boolean) => JSON.stringify([
+	folded, paths.map(path => path.map(node => [node.heading, node.file.path, node.headingLine])),
+]);
 const ancestorRows = StateField.define<DecorationSet>({
 	create: () => Decoration.none,
 	update(rows, transaction) {
@@ -89,26 +92,28 @@ export function registerLoreAncestorPaths(plugin: WebNovelAssistantPlugin & Pick
 		indexes.set(graph, index);
 		return index;
 	};
-	const renderRow = (row: HTMLElement, path: readonly GraphNode[], folded: boolean) => {
-		renderLoreAncestorRow(row, path.map(node => node.heading), folded, index => {
-			const node = path[index];
+	const renderRow = (row: HTMLElement, paths: readonly GraphNode[][], folded: boolean, remeasure?: () => void) => {
+		renderLoreAncestorRow(row, paths.map(path => path.map(node => node.heading)), folded, (pathIndex, index) => {
+			const node = paths[pathIndex][index];
 			if (node.headingLine === undefined) {
 				void app.workspace.getLeaf(false).openFile(node.file);
 			} else {
 				void smartLocateAndHighlight(app, node.file, [], { splitIfNew: false, fallbackLine: node.headingLine });
 			}
-		});
+		}, remeasure);
 	};
 	class AncestorWidget extends WidgetType {
-		constructor(private readonly path: GraphNode[], private readonly folded: boolean) { super(); }
+		private readonly key: string;
+		constructor(private readonly paths: GraphNode[][], private readonly folded: boolean) {
+			super();
+			this.key = getPathKey(paths, folded);
+		}
 		eq(other: AncestorWidget): boolean {
-			return this.folded === other.folded && this.path.length === other.path.length && this.path.every((entry, index) =>
-				entry.heading === other.path[index].heading && entry.file.path === other.path[index].file.path
-				&& entry.headingLine === other.path[index].headingLine);
+			return this.key === other.key;
 		}
 		toDOM(view: EditorView): HTMLElement {
 			const row = view.dom.ownerDocument.createElement('div');
-			renderRow(row, this.path, this.folded);
+			renderRow(row, this.paths, this.folded, () => view.requestMeasure());
 			return row;
 		}
 	}
@@ -166,10 +171,10 @@ export function registerLoreAncestorPaths(plugin: WebNovelAssistantPlugin & Pick
 			const byLine = byFile.get(file.path);
 			const marks = outline.flatMap(section => {
 				const node = byLine?.get(section.line);
-				if (!node?.outlineParent) return [];
-				const path = getLoreGraphAncestors(node, byId);
-				if (!path.length) return [];
-				return [Decoration.widget({ widget: new AncestorWidget(path, isFolded()), block: true, side: 1 }).range(doc.line(section.bodyStart).to)];
+				if (!node?.outlineParents?.length) return [];
+				const paths = getLoreGraphAncestorPaths(node, byId);
+				if (!paths.length) return [];
+				return [Decoration.widget({ widget: new AncestorWidget(paths, isFolded()), block: true, side: 1 }).range(doc.line(section.bodyStart).to)];
 			});
 			this.signature = key;
 			this.view.dispatch({ effects: replaceAncestorRows.of(Decoration.set(marks)) });
@@ -215,16 +220,16 @@ export function registerLoreAncestorPaths(plugin: WebNovelAssistantPlugin & Pick
 					const exact = candidates.findIndex(node => node.heading === name);
 					const index = exact >= 0 ? exact : headings.length === 1 && candidates.length === 1 ? 0 : -1;
 					const node = index >= 0 ? candidates.splice(index, 1)[0] : undefined;
-					const path = node ? getLoreGraphAncestors(node, byId) : [];
+					const paths = node ? getLoreGraphAncestorPaths(node, byId) : [];
 					const folded = isFolded();
-					const key = JSON.stringify([folded, path.map(parent => [parent.heading, parent.file.path, parent.headingLine])]);
+					const key = getPathKey(paths, folded);
 					const old = rows.get(heading);
 					if (old?.key === key) continue;
 					old?.row.remove();
 					rows.delete(heading);
-					if (!path.length) continue;
+					if (!paths.length) continue;
 					const row = heading.ownerDocument.createElement('div');
-					renderRow(row, path, folded);
+					renderRow(row, paths, folded);
 					heading.after(row);
 					rows.set(heading, { row, key });
 				}

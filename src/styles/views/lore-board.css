@@ -43,6 +43,10 @@
 	text-align: center;
 }
 
+.wn-lore-ancestor-list {
+	min-width: 0;
+}
+
 .wn-lore-ancestor-text {
 	overflow: hidden;
 	text-overflow: ellipsis;

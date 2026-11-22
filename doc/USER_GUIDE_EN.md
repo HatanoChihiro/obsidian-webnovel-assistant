@@ -997,7 +997,7 @@ H1–H5 define lore entries. Add `###### 关系` (or `###### Relations`) after t
 **Supplies**: [[Factions#Seagull Guild|Seagull Guild]]
 ```
 
-An H1–H5 entry can declare a `Parent Entry` of any level in another lore note. A valid declaration overrides the parent inferred from the local heading structure in the graph. The entry's descendants follow it. Conflicting or cyclic links fall back to the local heading structure.
+An H1–H5 entry can declare one or more `Parent Entry` links to other lore notes at any level, alongside the parent inferred from its local heading structure. Separate multiple links with commas or put them on separate lines. Cross-note links that form a cycle are skipped.
 
 ```markdown
 # Tide Platform
@@ -1008,9 +1008,9 @@ An H1–H5 entry can declare a `Parent Entry` of any level in another lore note.
 ## Gauge Station
 ```
 
-The graph shows “Contains” edges across both notes and through their headings. Each entry has a single parent. Existing `### Relations` sections remain readable.
+The graph shows “Contains” edges across both notes and through their headings. Each descendant contributes to node size once, even if several paths lead to it. Existing `### Relations` sections remain readable.
 
-Under Lore Quick Lookup in WNA settings, toggle ancestor paths in cards and lore notes independently. Paths appear in small gray text directly below entry headings. Collapse them by default to show a small gray dot that opens or closes the path. In lore notes, selecting an ancestor opens its heading.
+Under Lore Quick Lookup in WNA settings, toggle ancestor paths in cards and lore notes independently. Each path appears in small gray text on a separate line below its entry, with the local path first. Collapse them by default to show one small gray dot that opens or closes the paths. In lore notes, selecting an ancestor opens its heading.
 
 ##### Related Settings
 - **Collapse Subheadings in Hover Card**: For long quick-reference content, collapse level-3 and deeper subheadings by default and expand them on click.

@@ -5,13 +5,27 @@ import { isProtagonistType, readLoreMetadata } from './LoreMetadata';
 import type { GraphData, GraphEdge, GraphNode } from './RelationGraphManager';
 import { t } from '../i18n';
 
-export function getLoreGraphAncestors(node: GraphNode, nodes: ReadonlyMap<string, GraphNode>): GraphNode[] {
-	const ancestors: GraphNode[] = [];
-	for (let parent = node.outlineParent ? nodes.get(node.outlineParent) : undefined; parent;
-		parent = parent.outlineParent ? nodes.get(parent.outlineParent) : undefined) {
-		ancestors.push(parent);
+export function getLoreGraphAncestorPaths(node: GraphNode, nodes: ReadonlyMap<string, GraphNode>): GraphNode[][] {
+	interface Step { node: GraphNode; next?: Step }
+	const paths: GraphNode[][] = [];
+	const pending: Step[] = [];
+	const addParents = (entry: GraphNode, next?: Step) => {
+		const before = pending.length;
+		for (const id of [...entry.outlineParents ?? []].reverse()) {
+			const parent = nodes.get(id);
+			if (parent) pending.push({ node: parent, next });
+		}
+		return pending.length > before;
+	};
+	addParents(node);
+	while (pending.length) {
+		const step = pending.pop()!;
+		if (addParents(step.node, step)) continue;
+		const path: GraphNode[] = [];
+		for (let part: Step | undefined = step; part; part = part.next) path.push(part.node);
+		paths.push(path);
 	}
-	return ancestors.reverse();
+	return paths;
 }
 
 export interface LoreGraphFile {
@@ -33,72 +47,114 @@ function addHeading(graph: GraphData, item: OutlineFile, heading: LoreOutlineHea
 	const parent = heading.parent?.title ? addHeading(graph, item, heading.parent) : heading.level > 1 ? item.fileNode : undefined;
 	if (previous) {
 		previous.sectionKey = heading.key;
-		// Original term nodes retain their identifiers and add the outline edge only once.
-		if (parent && parent !== previous && !previous.outlineParent) {
-			previous.outlineParent = parent.id;
+		if (parent && parent !== previous && !previous.outlineParents) {
+			previous.outlineParents = [parent.id];
 		}
 		return previous;
 	}
 	const node: GraphNode = {
 		id: `\0${JSON.stringify([item.file.path, heading.key])}`,
 		file: item.file, sourcePath: item.file.path, heading: heading.title, headingLine: heading.line, sectionKey: heading.key,
-		outlineParent: parent?.id, x: 0, y: 0, vx: 0, vy: 0, pinned: false,
+		outlineParents: parent ? [parent.id] : undefined, x: 0, y: 0, vx: 0, vy: 0, pinned: false,
 	};
 	item.nodes.set(heading.line, node);
 	graph.nodes.push(node);
 	return node;
 }
 
-function findCyclicParents(candidates: ReadonlyMap<string, string>, nodes: ReadonlyMap<string, GraphNode>): Set<string> {
-	const checked = new Set<string>();
-	const cyclic = new Set<string>();
-	for (const start of candidates.keys()) {
-		const path = new Set<string>();
-		let id: string | undefined = start;
-		while (id && !checked.has(id) && !path.has(id)) {
-			path.add(id);
-			id = candidates.get(id) ?? nodes.get(id)?.outlineParent;
+function childrenByParent(parents: ReadonlyMap<string, readonly string[]>): Map<string, string[]> {
+	const children = new Map<string, string[]>();
+	for (const [child, entries] of parents) {
+		for (const parent of entries) {
+			const siblings = children.get(parent) ?? [];
+			siblings.push(child);
+			children.set(parent, siblings);
 		}
-		if (id && path.has(id)) {
-			let mark = false;
-			for (const step of path) {
-				if (step === id) mark = true;
-				if (mark) cyclic.add(step);
-			}
-		}
-		for (const step of path) checked.add(step);
 	}
-	return cyclic;
+	return children;
 }
 
-function attachContinuationNotes(graph: GraphData, candidates: Map<string, string>, nodes: ReadonlyMap<string, GraphNode>): void {
-	// Restoring a rejected link's local parent can expose another cycle.
-	for (let cyclic = findCyclicParents(candidates, nodes); cyclic.size; cyclic = findCyclicParents(candidates, nodes)) {
-		for (const id of cyclic) candidates.delete(id);
+/** Nodes in the same strongly connected component reach one another in both directions. */
+function findHierarchyComponents(parents: ReadonlyMap<string, readonly string[]>): Map<string, string> {
+	const visited = new Set<string>();
+	const finished: string[] = [];
+	for (const start of parents.keys()) {
+		if (visited.has(start)) continue;
+		const stack = [{ id: start, nextParent: 0 }];
+		visited.add(start);
+		while (stack.length) {
+			const frame = stack[stack.length - 1];
+			const parent = parents.get(frame.id)?.[frame.nextParent++];
+			if (parent === undefined) {
+				finished.push(frame.id);
+				stack.pop();
+			} else if (!visited.has(parent)) {
+				visited.add(parent);
+				stack.push({ id: parent, nextParent: 0 });
+			}
+		}
 	}
+	const children = childrenByParent(parents);
+	const components = new Map<string, string>();
+	for (const start of finished.reverse()) {
+		if (components.has(start)) continue;
+		const stack = [start];
+		components.set(start, start);
+		while (stack.length) {
+			for (const child of children.get(stack.pop()!) ?? []) {
+				if (components.has(child)) continue;
+				components.set(child, start);
+				stack.push(child);
+			}
+		}
+	}
+	return components;
+}
+
+function attachContinuationNotes(graph: GraphData, candidates: ReadonlyMap<string, Set<string>>, nodes: ReadonlyMap<string, GraphNode>): void {
+	const components = candidates.size ? findHierarchyComponents(new Map([...nodes.values()].map(node =>
+		[node.id, [...node.outlineParents ?? [], ...candidates.get(node.id) ?? []]]))) : undefined;
 	for (const node of nodes.values()) {
-		node.outlineParent = candidates.get(node.id) ?? node.outlineParent;
-		if (node.outlineParent) {
-			graph.edges.push({ source: node.outlineParent, target: node.id, label: t('relation-graph.edge-hierarchy'), type: 'hierarchy' });
+		const parents = new Set(node.outlineParents);
+		for (const parent of candidates.get(node.id) ?? []) {
+			if (components?.get(parent) !== components?.get(node.id)) parents.add(parent);
+		}
+		if (!parents.size) continue;
+		node.outlineParents = [...parents];
+		for (const parent of parents) {
+			graph.edges.push({ source: parent, target: node.id, label: t('relation-graph.edge-hierarchy'), type: 'hierarchy' });
 		}
 	}
 }
 
 function countDescendants(nodes: ReadonlyMap<string, GraphNode>): void {
-	const remainingChildren = new Map<string, number>();
-	for (const node of nodes.values()) {
-		if (node.outlineParent) remainingChildren.set(node.outlineParent, (remainingChildren.get(node.outlineParent) ?? 0) + 1);
-	}
-	const queue = [...nodes.values()].filter(node => !remainingChildren.has(node.id));
+	const children = childrenByParent(new Map([...nodes.values()].map(node => [node.id, node.outlineParents ?? []])));
+	const remaining = new Map([...children].map(([id, entries]) => [id, entries.length]));
+	const shared = new Set<string>(); // Branches containing a node with more than one parent.
+	const queue = [...nodes.values()].filter(node => !children.has(node.id));
 	for (let index = 0; index < queue.length; index++) {
 		const node = queue[index];
-		if (!node.outlineParent) continue;
-		const parent = nodes.get(node.outlineParent);
-		if (!parent) continue;
-		parent.descendantCount = (parent.descendantCount ?? 0) + (node.descendantCount ?? 0) + 1;
-		const remaining = remainingChildren.get(parent.id)! - 1;
-		remainingChildren.set(parent.id, remaining);
-		if (!remaining) queue.push(parent);
+		const entries = children.get(node.id) ?? [];
+		const sharedBranches = entries.filter(child => shared.has(child)).length;
+		if (sharedBranches || (node.outlineParents?.length ?? 0) > 1) shared.add(node.id);
+		if (sharedBranches > 1) {
+			const descendants = new Set<string>();
+			const pending = [...entries];
+			while (pending.length) {
+				const child = pending.pop()!;
+				if (descendants.has(child)) continue;
+				descendants.add(child);
+				pending.push(...children.get(child) ?? []);
+			}
+			node.descendantCount = descendants.size;
+		} else if (entries.length) {
+			node.descendantCount = entries.reduce((count, child) => count + (nodes.get(child)?.descendantCount ?? 0) + 1, 0);
+		}
+		for (const parent of node.outlineParents ?? []) {
+			const next = remaining.get(parent)! - 1;
+			remaining.set(parent, next);
+			if (!next) queue.push(nodes.get(parent)!);
+		}
 	}
 }
 
@@ -139,7 +195,7 @@ export function addLoreOutlineToGraph(app: App, input: ReadonlyMap<TFile, LoreGr
 		}
 	}
 	const nodesById = new Map(graph.nodes.map(node => [node.id, node]));
-	const continuationParents = new Map<string, string>();
+	const continuationParents = new Map<string, Set<string>>();
 	for (const node of graph.nodes) {
 		for (const term of [node.heading, ...(node.aliases ?? [])]) {
 			const ids = names.get(term) ?? new Set<string>();
@@ -184,17 +240,18 @@ export function addLoreOutlineToGraph(app: App, input: ReadonlyMap<TFile, LoreGr
 			sources.push({ source: item.fileNode.id, blocks: getFileLoreRelationBlocks(item.headings, item.lines.length) });
 		}
 		for (const { source, blocks } of sources) {
-			const parentDeclarations = new Set<string | undefined>();
+			const parentDeclarations = new Set<string>();
 			for (const block of blocks) {
 				for (const line of relationBodyLines(item.lines, block)) {
 					const relation = legacyRelationLine.exec(line);
 					if (!relation) continue;
 					const label = relation[2].trim();
 					if (block.level === 6 && isLoreParentRelation(label)) {
-						const link = /^\[\[([^\]]+)\]\]$/.exec(relation[3].trim());
-						const target = link && resolveLink(item, link[1]);
-						const parent = target ? nodesById.get(target) : undefined;
-						parentDeclarations.add(parent && parent.file.path !== item.file.path ? parent.id : undefined);
+						for (const target of splitLoreRelationTargets(relation[3])) {
+							const link = /^\[\[([^\]]+)\]\]$/.exec(target);
+							const parent = link && resolveLink(item, link[1]);
+							if (parent && nodesById.get(parent)?.file.path !== item.file.path) parentDeclarations.add(parent);
+						}
 						continue;
 					}
 					for (const target of splitLoreRelationTargets(relation[3])) {
@@ -204,8 +261,7 @@ export function addLoreOutlineToGraph(app: App, input: ReadonlyMap<TFile, LoreGr
 					}
 				}
 			}
-			const parent = parentDeclarations.values().next().value;
-			if (parentDeclarations.size === 1 && parent) continuationParents.set(source, parent);
+			if (parentDeclarations.size) continuationParents.set(source, parentDeclarations);
 		}
 	}
 	attachContinuationNotes(graph, continuationParents, nodesById);
