@@ -59,7 +59,6 @@ export const RELATION_GRAPH_VIEW_TYPE = 'webnovel-relation-graph';
 const ZOOM_FACTOR = 0.001;
 
 /** Canvas 设备像素比（用于高分辨率屏幕清晰渲染） */
-const DPR = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
 
 // ==========================================
 // ViewState 接口
@@ -100,6 +99,8 @@ export class RelationGraphView extends ItemView {
 
 	// --- Canvas 相关 ---
 	private canvas: HTMLCanvasElement | null = null;
+	private canvasWidth = 300;
+	private canvasHeight = 300;
 	private ctx: CanvasRenderingContext2D | null = null;
 	private container: HTMLElement | null = null;
 
@@ -297,7 +298,8 @@ export class RelationGraphView extends ItemView {
 				}
 			},
 			{
-				zoomSensitivity: ZOOM_FACTOR
+				zoomSensitivity: ZOOM_FACTOR,
+				getColors: () => this.getThemeColors(),
 			}
 		);
 		this.controller.updateLayout(this.graphData);
@@ -310,7 +312,7 @@ export class RelationGraphView extends ItemView {
 		this.resizeObserver = new ResizeObserver(() => {
 			this.updateCanvasSize();
 			if (this.engine) {
-				this.engine.resize(this.canvas!.width / DPR, this.canvas!.height / DPR);
+				this.engine.resize(this.canvasWidth, this.canvasHeight);
 				if (this.engine.isConverged) {
 					this.engine.reset();
 					this.startAnimationLoop();
@@ -481,8 +483,8 @@ export class RelationGraphView extends ItemView {
 
 		// 在初始化物理引擎前，将所有节点在一个大圆上均匀排布
 		// 这种初始状态能给 D3 最大的拓扑解开空间，极大减少全量图谱的最终连线交叉
-		const cx = this.canvas ? this.canvas.width / DPR / 2 : 150;
-		const cy = this.canvas ? this.canvas.height / DPR / 2 : 150;
+		const cx = this.canvasWidth / 2;
+		const cy = this.canvasHeight / 2;
 		const radius = Math.min(cx, cy) * 0.8;
 
 		this.graphData.nodes.forEach((node, i) => {
@@ -548,8 +550,8 @@ export class RelationGraphView extends ItemView {
 		// 保留现有节点的物理坐标，避免刷新时图谱“爆炸”
 		const oldNodesMap = new Map(this.graphData.nodes.map(n => [n.id, n]));
 		
-		const cx = this.canvas ? this.canvas.width / DPR / 2 : 150;
-		const cy = this.canvas ? this.canvas.height / DPR / 2 : 150;
+		const cx = this.canvasWidth / 2;
+		const cy = this.canvasHeight / 2;
 		const radius = Math.min(cx, cy) * 0.8;
 
 		newData.nodes.forEach((newNode, i) => {
@@ -619,8 +621,8 @@ export class RelationGraphView extends ItemView {
 
 		if (!this.canvas) return;
 
-		const width = this.canvas.width / DPR;
-		const height = this.canvas.height / DPR;
+		const width = this.canvasWidth;
+		const height = this.canvasHeight;
 
 		// 将 GraphNode 转换为 LayoutNode（接口兼容）
 		const layoutNodes: LayoutNode[] = this.graphData.nodes.map(n => ({
@@ -735,8 +737,7 @@ export class RelationGraphView extends ItemView {
 		const canvas = this.canvas;
 		if (!ctx || !canvas) return;
 
-		const width = canvas.width / DPR;
-		const height = canvas.height / DPR;
+		const { width, height } = canvas.getBoundingClientRect();
 
 		// 读取 Obsidian 主题颜色（使用缓存）
 		const colors = this.getThemeColors();
@@ -788,8 +789,8 @@ export class RelationGraphView extends ItemView {
 		this.renderState.selectedNode = null;
 		this.controller?.updateLayout(this.graphData);
 
-		const cx = this.canvas ? this.canvas.width / DPR / 2 : 150;
-		const cy = this.canvas ? this.canvas.height / DPR / 2 : 150;
+		const cx = this.canvasWidth / 2;
+		const cy = this.canvasHeight / 2;
 		const radius = Math.min(cx, cy) * 0.8;
 
 		// 退回全量图谱时，也按照大圆环排布，帮助物理引擎理顺交叉
@@ -861,11 +862,12 @@ export class RelationGraphView extends ItemView {
 		if (!this.canvas || !this.container) return;
 
 		const rect = this.container.getBoundingClientRect();
-		const width = Math.max(rect.width, 100);
-		const height = Math.max(rect.height, 100);
+		this.canvasWidth = Math.max(rect.width, 100);
+		this.canvasHeight = Math.max(rect.height, 100);
 
-		this.canvas.width = width * DPR;
-		this.canvas.height = height * DPR;
+		const dpr = this.canvas.ownerDocument?.defaultView?.devicePixelRatio || 1;
+		this.canvas.width = Math.round(this.canvasWidth * dpr);
+		this.canvas.height = Math.round(this.canvasHeight * dpr);
 	}
 
 	/**

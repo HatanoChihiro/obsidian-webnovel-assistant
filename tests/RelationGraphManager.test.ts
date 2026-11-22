@@ -816,6 +816,7 @@ describe('RelationGraphManager', () => {
 					listeners.get(type)?.delete(fn);
 				}),
 				setCssStyles: vi.fn(),
+				getContext: () => ({ save: vi.fn(), restore: vi.fn(), measureText: (text: string) => ({ width: text.length * 6 }) }),
 				dispatch: (type: string, event: unknown) => {
 					listeners.get(type)?.forEach(fn => fn(event));
 				},
@@ -837,6 +838,7 @@ describe('RelationGraphManager', () => {
 
 			expect(canvas.hasListener('mousedown')).toBe(true);
 			expect(canvas.hasListener('mousemove')).toBe(true);
+			expect(canvas.hasListener('mouseleave')).toBe(true);
 			expect(canvas.hasListener('wheel')).toBe(true);
 			expect(canvas.hasListener('contextmenu')).toBe(true);
 			expect(canvas.hasWindowListener('mouseup')).toBe(true);
@@ -845,6 +847,7 @@ describe('RelationGraphManager', () => {
 
 			expect(canvas.hasListener('mousedown')).toBe(false);
 			expect(canvas.hasListener('mousemove')).toBe(false);
+			expect(canvas.hasListener('mouseleave')).toBe(false);
 			expect(canvas.hasListener('wheel')).toBe(false);
 			expect(canvas.hasListener('contextmenu')).toBe(false);
 			expect(canvas.hasWindowListener('mouseup')).toBe(false);
@@ -994,6 +997,29 @@ describe('RelationGraphManager', () => {
 			expect(canvas.setCssStyles).toHaveBeenCalledWith({ cursor: 'default' });
 			expect(callbacks.onNodeHover).toHaveBeenCalledWith(null, expect.anything());
 
+			controller.unbindEvents();
+		});
+
+		it('hits a larger parent and deep heading label under zoom, then clears hover on leave', () => {
+			const canvas = createMockCanvas();
+			const state = createTestState();
+			state.scale = 2;
+			state.panX = 20;
+			const callbacks = createCallbacks();
+			const parent = { id: 'Root', heading: 'Root', x: 160, y: 180, descendantCount: 15 } as GraphNode;
+			const child = { id: '\0deep', heading: 'East Pier', x: 235, y: 220 } as GraphNode;
+			const controller = new GraphInteractionController(canvas as unknown as HTMLCanvasElement, state, callbacks);
+			controller.updateLayout({ nodes: [parent, child], edges: [] });
+			controller.bindEvents();
+			expect(GraphRenderer.getNodeRadius(parent)).toBeGreaterThan(GraphRenderer.getNodeRadius(child));
+			canvas.dispatch('mousemove', { clientX: 156, clientY: 160 });
+			expect(state.hoveredNode).toBe(parent);
+			canvas.dispatch('mousemove', { clientX: 310, clientY: 266 });
+			expect(state.hoveredNode).toBe(child);
+			canvas.dispatch('mouseleave', {});
+			expect(state.hoveredNode).toBeNull();
+			expect(callbacks.onNodeHover).toHaveBeenLastCalledWith(null, expect.anything());
+			expect(callbacks.requestRender).toHaveBeenCalledTimes(3);
 			controller.unbindEvents();
 		});
 	});

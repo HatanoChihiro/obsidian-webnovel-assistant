@@ -73,6 +73,17 @@ export function addLoreOutlineToGraph(app: App, input: ReadonlyMap<TFile, LoreGr
 			ownedText.set(node.id, text.split('\n'));
 		}
 	}
+	// Markdown has at most six ancestor levels. Only containment contributes to node size.
+	const nodesById = new Map(graph.nodes.map(node => [node.id, node]));
+	for (const node of graph.nodes) {
+		let parentId = node.outlineParent;
+		while (parentId) {
+			const parent = nodesById.get(parentId);
+			if (!parent) break;
+			parent.descendantCount = (parent.descendantCount ?? 0) + 1;
+			parentId = parent.outlineParent;
+		}
+	}
 	for (const node of graph.nodes) {
 		for (const term of [node.heading, ...(node.aliases ?? [])]) {
 			const ids = names.get(term) ?? new Set<string>();

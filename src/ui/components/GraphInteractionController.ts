@@ -1,6 +1,6 @@
 import type { GraphNode } from '../../services/RelationGraphManager';
 import type { GraphData } from '../../services/RelationGraphManager';
-import { GraphRenderer, type GraphRenderState } from './GraphRenderer';
+import { GraphRenderer, type GraphRenderState, type ThemeColors } from './GraphRenderer';
 
 export interface GraphInteractionCallbacks {
 	requestRender: () => void;
@@ -14,6 +14,7 @@ export interface GraphInteractionCallbacks {
 
 export interface GraphInteractionOptions {
 	zoomSensitivity?: number;
+	getColors?: () => ThemeColors | undefined;
 }
 
 export class GraphInteractionController {
@@ -39,6 +40,7 @@ export class GraphInteractionController {
 
 	private boundHandleMouseDown = this.handleMouseDown.bind(this);
 	private boundHandleMouseMove = this.handleMouseMove.bind(this);
+	private boundHandleMouseLeave = (e: MouseEvent) => this.updateHover(null, e);
 	private boundHandleMouseUp = this.handleMouseUp.bind(this);
 	private boundHandleWheel = this.handleWheel.bind(this);
 	private boundHandleContextMenu = (e: MouseEvent) => e.preventDefault();
@@ -63,6 +65,7 @@ export class GraphInteractionController {
 	public bindEvents() {
 		this.canvas.addEventListener('mousedown', this.boundHandleMouseDown);
 		this.canvas.addEventListener('mousemove', this.boundHandleMouseMove);
+		this.canvas.addEventListener('mouseleave', this.boundHandleMouseLeave);
 		this.ownerWindow.addEventListener('mouseup', this.boundHandleMouseUp);
 		this.canvas.addEventListener('wheel', this.boundHandleWheel, { passive: false });
 		this.canvas.addEventListener('contextmenu', this.boundHandleContextMenu);
@@ -76,6 +79,7 @@ export class GraphInteractionController {
 	public unbindEvents() {
 		this.canvas.removeEventListener('mousedown', this.boundHandleMouseDown);
 		this.canvas.removeEventListener('mousemove', this.boundHandleMouseMove);
+		this.canvas.removeEventListener('mouseleave', this.boundHandleMouseLeave);
 		this.ownerWindow.removeEventListener('mouseup', this.boundHandleMouseUp);
 		this.canvas.removeEventListener('wheel', this.boundHandleWheel);
 		this.canvas.removeEventListener('contextmenu', this.boundHandleContextMenu);
@@ -87,7 +91,11 @@ export class GraphInteractionController {
 	}
 
 	public updateLayout(layout: GraphData) {
+		if (this.layout === layout) return;
 		this.layout = layout;
+		const selectedId = this.state.selectedNode?.id;
+		this.state.selectedNode = selectedId === undefined ? null : layout.nodes.find(node => node.id === selectedId) ?? null;
+		this.state.hoveredNode = null;
 	}
 
 	public getState(): GraphRenderState {
@@ -111,18 +119,42 @@ export class GraphInteractionController {
 
 	private findNodeAt(gx: number, gy: number): GraphNode | null {
 		if (!this.layout) return null;
-		
-		const hitRadius = Math.max(6, GraphRenderer.NODE_HIGHLIGHT_RADIUS);
-		const hitRadiusSq = hitRadius * hitRadius;
+		const colors = this.options?.getColors?.();
+		const focus = this.state.hoveredNode ?? this.state.selectedNode;
+		const font = GraphRenderer.getNodeFont(colors);
+		const fontSize = Number.parseFloat(font);
+		let labelHit: GraphNode | null = null;
 		for (let i = this.layout.nodes.length - 1; i >= 0; i--) {
-			const n = this.layout.nodes[i];
-			const dx = n.x - gx;
-			const dy = n.y - gy;
-			if (dx * dx + dy * dy <= hitRadiusSq) {
-				return n;
-			}
+			const node = this.layout.nodes[i];
+			const dx = gx - node.x;
+			const dy = gy - node.y;
+			const radius = GraphRenderer.getNodeRadius(node, colors, node.id === focus?.id);
+			const hitRadius = Math.max(radius, 5 / this.state.scale);
+			if (dx * dx + dy * dy <= hitRadius * hitRadius) return node;
+
+			const labelTop = Math.min(radius, GraphRenderer.getNodeRadius(node, colors)) + GraphRenderer.NODE_LABEL_GAP;
+			const labelBottom = radius + GraphRenderer.NODE_LABEL_GAP + fontSize;
+			if (labelHit || dy < labelTop - 2 || dy > labelBottom + 2 || Math.abs(dx) > fontSize * 6) continue;
+			const ctx = this.canvas.getContext('2d');
+			if (!ctx) continue;
+			ctx.save();
+			ctx.font = font;
+			const width = ctx.measureText(GraphRenderer.getNodeLabel(node.heading)).width;
+			ctx.restore();
+			if (Math.abs(dx) <= width / 2 + 2) labelHit = node;
 		}
-		return null;
+		return labelHit;
+	}
+
+	private updateHover(node: GraphNode | null, e: MouseEvent): void {
+		this.canvas.setCssStyles({ cursor: node ? 'pointer' : 'default' });
+		if (node !== this.state.hoveredNode) {
+			this.state.hoveredNode = node;
+			this.callbacks.onNodeHover(node, e);
+			this.callbacks.requestRender();
+		} else if (node) {
+			this.callbacks.onNodeHover(node, e);
+		}
 	}
 
 	private handleMouseDown(e: MouseEvent): void {
@@ -176,16 +208,7 @@ export class GraphInteractionController {
 			this.callbacks.onNodeDrag(this.draggedNode, pos.x, pos.y);
 		} else {
 			const pos = this.screenToGraph(e.clientX, e.clientY);
-			const node = this.findNodeAt(pos.x, pos.y);
-			this.canvas.setCssStyles({ cursor: node ? 'pointer' : 'default' });
-			if (node !== this.state.hoveredNode) {
-				this.state.hoveredNode = node;
-				this.callbacks.onNodeHover(node, e);
-				this.callbacks.requestRender();
-			} else if (node) {
-				// Continue hovering to update tooltip position if needed
-				this.callbacks.onNodeHover(node, e);
-			}
+			this.updateHover(this.findNodeAt(pos.x, pos.y), e);
 		}
 	}
 

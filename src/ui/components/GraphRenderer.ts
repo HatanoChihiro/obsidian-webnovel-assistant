@@ -126,7 +126,28 @@ export interface GraphRenderState {
 export class GraphRenderer {
 	static readonly NODE_RADIUS = 3.5;
 	static readonly NODE_HIGHLIGHT_RADIUS = 5.5;
-	static readonly DPR = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
+
+	static getNodeRadius(node: GraphNode, colors?: ThemeColors, focused = false): number {
+		const base = colors?.nodeRadius ?? GraphRenderer.NODE_RADIUS;
+		const descendants = node.descendantCount ?? 0;
+		const emphasis = focused ? (colors?.nodeHighlightRadius ?? GraphRenderer.NODE_HIGHLIGHT_RADIUS) - base : 0;
+		return base * (1 + 2.4 * descendants / (descendants + 6)) + emphasis;
+	}
+
+	static getNodeFont(colors?: ThemeColors): string {
+		return `${colors?.nodeFontSize ?? GRAPH_STYLE_DEFAULTS.NODE_FONT_SIZE}px ${colors?.fontFamily || 'sans-serif'}`;
+	}
+
+	static getNodeLabel(name: string): string {
+		let width = 0;
+		for (let i = 0; i < name.length; i++) {
+			width += name.charCodeAt(i) > 255 ? 2 : 1;
+			if (width > 10) return name.slice(0, i) + '…';
+		}
+		return name;
+	}
+
+	static readonly NODE_LABEL_GAP = 5;
 
 	private static edgeCacheMap = new WeakMap<GraphData, { offsetMap: Map<GraphEdge, number>; drawModeMap: Map<GraphEdge, 'hide' | 'bidirectional'>; labelMap: Map<GraphEdge, string>; curveOffsetStep: number }>();
 
@@ -255,10 +276,12 @@ export class GraphRenderer {
 		state: GraphRenderState,
 		colors: ThemeColors
 	): void {
-		ctx.clearRect(0, 0, width * GraphRenderer.DPR, height * GraphRenderer.DPR);
+		if (width <= 0 || height <= 0) return;
+		const canvas = ctx.canvas;
+		ctx.clearRect(0, 0, canvas.width, canvas.height);
 
 		ctx.save();
-		ctx.scale(GraphRenderer.DPR, GraphRenderer.DPR);
+		ctx.scale(canvas.width / width, canvas.height / height);
 		ctx.translate(width / 2 + state.panX, height / 2 + state.panY);
 		ctx.scale(state.scale, state.scale);
 		ctx.translate(-width / 2, -height / 2);
@@ -539,7 +562,7 @@ export class GraphRenderer {
 
 		// 找出当前未被淡化的活跃节点
 		const activeNodeIds = new Set<string>();
-		const centerNode = state.selectedNode || state.hoveredNode;
+		const centerNode = state.hoveredNode ?? state.selectedNode;
 		if (centerNode) {
 			activeNodeIds.add(centerNode.id);
 			for (const edge of state.graphData.edges) {
@@ -570,11 +593,8 @@ export class GraphRenderer {
 
 			let isHighlighted = false;
 			let isDimmed = false;
-			if (state.selectedNode) {
-				isHighlighted = edge.source === state.selectedNode.id || edge.target === state.selectedNode.id;
-				isDimmed = !isHighlighted;
-			} else if (state.hoveredNode) {
-				isHighlighted = edge.source === state.hoveredNode.id || edge.target === state.hoveredNode.id;
+			if (centerNode) {
+				isHighlighted = edge.source === centerNode.id || edge.target === centerNode.id;
 				isDimmed = !isHighlighted;
 			} else if (state.filterMatchNodeIds) {
 				isHighlighted = state.filterMatchNodeIds.has(edge.source) && state.filterMatchNodeIds.has(edge.target);
@@ -664,14 +684,14 @@ export class GraphRenderer {
 			// 3. 碰撞检测：与活跃节点（排除起止节点）
 			// 明确关系极为重要，不让步于节点；提及关系则主动让步于节点
 			const shouldYieldToNode = !task.isHighlighted || task.isMention;
-			const isCollidingWithNode = shouldYieldToNode && state.graphData.nodes.some(n =>
-				n.id !== task.src.id && n.id !== task.tgt.id && activeNodeIds.has(n.id) && (
-					(Math.abs(task.labelX - n.x) < task.bgWidth / 2 + 12 &&
-					 Math.abs(task.labelY - n.y) < task.bgHeight / 2 + 12) ||
+			const isCollidingWithNode = shouldYieldToNode && state.graphData.nodes.some(n => {
+				if (n.id === task.src.id || n.id === task.tgt.id || !activeNodeIds.has(n.id)) return false;
+				const radius = GraphRenderer.getNodeRadius(n, colors, n.id === centerNode?.id);
+				return (Math.abs(task.labelX - n.x) < task.bgWidth / 2 + radius + 7 &&
+						Math.abs(task.labelY - n.y) < task.bgHeight / 2 + radius + 7) ||
 					(Math.abs(task.labelX - n.x) < task.bgWidth / 2 + 35 &&
-					 Math.abs(task.labelY - (n.y + 15)) < task.bgHeight / 2 + 8)
-				)
-			);
+						Math.abs(task.labelY - (n.y + radius + GraphRenderer.NODE_LABEL_GAP + 5)) < task.bgHeight / 2 + 8);
+			});
 
 			if (isCollidingWithLabel || isCollidingWithLine || isCollidingWithNode) {
 				task.isOverlapped = true;
@@ -684,15 +704,17 @@ export class GraphRenderer {
 		// 第三遍：画线（由于之前从高到低排序，我们要从后往前画，让低优先级的在底层）
 		for (let i = edgeTasks.length - 1; i >= 0; i--) {
 			const task = edgeTasks[i];
-			const { src, tgt, offset, isHighlighted, isDimmed, isMention, isOverlapped } = task;
+			const { edge, src, tgt, offset, isHighlighted, isDimmed, isMention, isOverlapped } = task;
+			const sourceRadius = GraphRenderer.getNodeRadius(src, colors, src.id === centerNode?.id);
+			const targetRadius = GraphRenderer.getNodeRadius(tgt, colors, tgt.id === centerNode?.id);
 
 			const baseLineWidth = colors?.lineWidth ?? GRAPH_STYLE_DEFAULTS.LINE_WIDTH;
 			let lineWidth = baseLineWidth;
 			let alpha = 0.5;
 
 			if (isHighlighted) {
-				lineWidth = isMention ? baseLineWidth * 0.8 : baseLineWidth * 1.2;
-				alpha = isMention ? 0.6 : 0.9;
+				lineWidth = edge.type === 'mention' ? baseLineWidth * 0.8 : baseLineWidth * 1.2;
+				alpha = edge.type === 'mention' ? 0.6 : 0.9;
 			} else if (isDimmed) {
 				lineWidth = isMention ? baseLineWidth * 0.3 : baseLineWidth * 0.4;
 				alpha = isMention ? 0.1 : 0.15;
@@ -702,7 +724,7 @@ export class GraphRenderer {
 			}
 
 			// 如果该边的标签被遮挡，连同整条线一起适度淡化
-			if (isOverlapped) {
+			if (isOverlapped && !isHighlighted) {
 				alpha *= 0.35;
 			}
 
@@ -763,9 +785,9 @@ export class GraphRenderer {
 			const animTime = state.animTime ?? performance.now();
 
 			if (offset !== 0) {
-				GraphRenderer.drawCurvedArrow(ctx, src, tgt, offset, colors, isBidirectional, isHighlighted, isMention, alpha, lineWidth, animTime);
+				GraphRenderer.drawCurvedArrow(ctx, src, tgt, offset, colors, isBidirectional, isHighlighted, isMention, alpha, lineWidth, animTime, sourceRadius, targetRadius);
 			} else {
-				GraphRenderer.drawStraightArrow(ctx, src, tgt, colors, isBidirectional, isHighlighted, isMention, alpha, lineWidth, animTime);
+				GraphRenderer.drawStraightArrow(ctx, src, tgt, colors, isBidirectional, isHighlighted, isMention, alpha, lineWidth, animTime, sourceRadius, targetRadius);
 			}
 			ctx.restore();
 		}
@@ -799,61 +821,32 @@ export class GraphRenderer {
 	}
 
 	static drawNodes(ctx: CanvasRenderingContext2D, layout: GraphData, colors: ThemeColors, edgeTasks: EdgeRenderTask[], state: GraphRenderState): void {
-		const indexNeighbors = (focusId: string | undefined): Map<string, boolean> => {
-			const neighbors = new Map<string, boolean>();
-			if (focusId === undefined) return neighbors;
+		const focus = state.hoveredNode ?? state.selectedNode;
+		const neighbors = new Map<string, boolean>();
+		if (focus) {
 			for (const task of edgeTasks) {
-				const id = task.src.id === focusId ? task.tgt.id : task.tgt.id === focusId ? task.src.id : undefined;
+				const id = task.src.id === focus.id ? task.tgt.id : task.tgt.id === focus.id ? task.src.id : undefined;
 				if (id !== undefined) neighbors.set(id, (neighbors.get(id) ?? true) && task.isOverlapped);
 			}
-			return neighbors;
-		};
-		const selectedNeighbors = indexNeighbors(state.selectedNode?.id);
-		const hoveredNeighbors = state.hoveredNode?.id === state.selectedNode?.id
-			? selectedNeighbors : indexNeighbors(state.hoveredNode?.id);
-		// 智能截断节点名称，按视觉宽度（中文字符算2，英文字母算1）
-		const truncateNodeName = (name: string): string => {
-			let len = 0;
-			let result = '';
-			for (let i = 0; i < name.length; i++) {
-				const char = name[i];
-				const code = char.charCodeAt(0);
-				len += (code > 255) ? 2 : 1;
-				if (len > 10) { // 限制视觉长度大约为 5个汉字 或 10个英文字母
-					return result + '…';
-				}
-				result += char;
-			}
-			return result;
-		};
+		}
 
-		for (const node of state.graphData.nodes) {
-			const isSelected = state.selectedNode?.id === node.id;
+		for (const node of layout.nodes) {
+			const isSelected = !state.hoveredNode && state.selectedNode?.id === node.id;
 			const isHovered = state.hoveredNode?.id === node.id;
 			const isFilterMatch = state.filterMatchNodeIds?.has(node.id) ?? false;
 			const isProtagonistNode = node.isProtagonist || Boolean(node.nodeType && (node.nodeType.includes('主角') || node.nodeType.toLowerCase().includes('protagonist')));
 			const isEmphasized = isSelected || isHovered || isFilterMatch;
-			const defaultRadius = colors?.nodeRadius ?? GraphRenderer.NODE_RADIUS;
-			const highlightRadius = colors?.nodeHighlightRadius ?? GraphRenderer.NODE_HIGHLIGHT_RADIUS;
-			const radius = isSelected || isHovered ? highlightRadius : defaultRadius;
+			const radius = GraphRenderer.getNodeRadius(node, colors, isSelected || isHovered);
 
 			// 当有选中节点时，非关联节点大幅度淡出，模仿官方高对比度渐隐
 			let nodeAlpha = 1.0;
 			let isDimmed = false;
-			if (state.selectedNode && !isSelected) {
-				const isNeighbor = selectedNeighbors.has(node.id);
-				// 如果该节点的所有关联边都被重叠淡化了，那么该节点也应跟随淡化
-				const allEdgesOverlapped = selectedNeighbors.get(node.id) === true;
-
-				nodeAlpha = isNeighbor ? (allEdgesOverlapped ? 0.35 : 1.0) : 0.15;
+			if (focus && focus.id !== node.id) {
+				const isNeighbor = neighbors.has(node.id);
+				const allEdgesOverlapped = !state.hoveredNode && neighbors.get(node.id) === true;
+				nodeAlpha = isNeighbor ? (allEdgesOverlapped ? 0.35 : 1) : state.hoveredNode ? 0.25 : 0.15;
 				isDimmed = !isNeighbor || allEdgesOverlapped;
-			} else if (state.hoveredNode && !isHovered) {
-				const isNeighbor = hoveredNeighbors.has(node.id);
-				const allEdgesOverlapped = hoveredNeighbors.get(node.id) === true;
-
-				nodeAlpha = isNeighbor ? (allEdgesOverlapped ? 0.35 : 1.0) : 0.3;
-				isDimmed = !isNeighbor || allEdgesOverlapped;
-			} else if (state.filterMatchNodeIds && !isFilterMatch) {
+			} else if (!focus && state.filterMatchNodeIds && !isFilterMatch) {
 				nodeAlpha = 0.15;
 				isDimmed = true;
 			}
@@ -928,15 +921,13 @@ export class GraphRenderer {
 			ctx.shadowBlur = 0; // 重置阴影防止影响其他元素
 
 			// 绘制标签文本
-			const textY = node.y + radius + 5; // 稍微靠近节点一点
-			const nodeFontSize = colors?.nodeFontSize ?? GRAPH_STYLE_DEFAULTS.NODE_FONT_SIZE;
-			const nodeFontFamily = colors?.fontFamily || 'sans-serif';
-			ctx.font = `${nodeFontSize}px ${nodeFontFamily}`;
+			const textY = node.y + radius + GraphRenderer.NODE_LABEL_GAP;
+			ctx.font = GraphRenderer.getNodeFont(colors);
 			ctx.textAlign = 'center';
 			ctx.textBaseline = 'top';
 
 			// 智能截断名称
-			const displayName = truncateNodeName(node.heading);
+			const displayName = GraphRenderer.getNodeLabel(node.heading);
 
 			// 文字实体 (移除边框)
 			ctx.fillStyle = isSelected || isHovered ? colors.graphText : (isDimmed ? colors.textFaint : colors.textNormal);
@@ -1270,7 +1261,9 @@ export class GraphRenderer {
 		isMention: boolean = false,
 		alpha: number = 1.0,
 		lineWidth: number = 0.5,
-		animTime: number = performance.now()
+		animTime: number = performance.now(),
+		sourceNodeRadius = GraphRenderer.getNodeRadius(src, colors),
+		targetNodeRadius = GraphRenderer.getNodeRadius(tgt, colors),
 	): void {
 		const dx = tgt.x - src.x;
 		const dy = tgt.y - src.y;
@@ -1278,9 +1271,9 @@ export class GraphRenderer {
 		if (dist === 0) return;
 
 		// 呼吸感间距：从主题变量读取
-		const nodeRadius = colors?.nodeRadius ?? GraphRenderer.NODE_RADIUS;
-		const gap = nodeRadius + colors.nodeGap;
-		if (dist < gap * 2 + 2) {
+		const sourceGap = sourceNodeRadius + colors.nodeGap;
+		const targetGap = targetNodeRadius + colors.nodeGap;
+		if (dist < sourceGap + targetGap + 2) {
 			ctx.beginPath();
 			ctx.moveTo(src.x, src.y);
 			ctx.lineTo(tgt.x, tgt.y);
@@ -1290,10 +1283,10 @@ export class GraphRenderer {
 
 		const unitX = dx / dist;
 		const unitY = dy / dist;
-		const startX = src.x + unitX * gap;
-		const startY = src.y + unitY * gap;
-		const arrowTipX = tgt.x - unitX * gap;
-		const arrowTipY = tgt.y - unitY * gap;
+		const startX = src.x + unitX * sourceGap;
+		const startY = src.y + unitY * sourceGap;
+		const arrowTipX = tgt.x - unitX * targetGap;
+		const arrowTipY = tgt.y - unitY * targetGap;
 
 		const baseColor = isHighlighted ? colors.accent : (isMention ? colors.mentionLineColor : colors.graphLine);
 		const startAlpha = isBidirectional ? alpha * colors.lineGradientEndAlpha : alpha * colors.lineGradientStartAlpha;
@@ -1357,7 +1350,9 @@ export class GraphRenderer {
 		isMention: boolean = false,
 		alpha: number = 1.0,
 		lineWidth: number = 0.5,
-		animTime: number = performance.now()
+		animTime: number = performance.now(),
+		sourceNodeRadius = GraphRenderer.getNodeRadius(src, colors),
+		targetNodeRadius = GraphRenderer.getNodeRadius(tgt, colors),
 	): void {
 		const dx = tgt.x - src.x;
 		const dy = tgt.y - src.y;
@@ -1376,16 +1371,20 @@ export class GraphRenderer {
 		const midY = (src.y + tgt.y) / 2 + normalY * offset;
 
 		// 起止点缩进到节点边缘，并留出呼吸感间距
-		const nodeRadius = colors?.nodeRadius ?? GraphRenderer.NODE_RADIUS;
-		const gap = nodeRadius + colors.nodeGap;
+		const sourceGap = sourceNodeRadius + colors.nodeGap;
+		const targetGap = targetNodeRadius + colors.nodeGap;
+		if (dist < sourceGap + targetGap + 2) {
+			GraphRenderer.drawStraightArrow(ctx, src, tgt, colors, isBidirectional, isHighlighted, isMention, alpha, lineWidth, animTime, sourceNodeRadius, targetNodeRadius);
+			return;
+		}
 
 		// 根据曲率偏移量，稍微沿法线分开起止点，避免多条不同关系线的端点和箭头完全交叠
 		const spread = Math.sign(offset) * Math.min(Math.abs(offset * 0.15), 5);
 
-		const startX = src.x + unitX * gap + normalX * spread;
-		const startY = src.y + unitY * gap + normalY * spread;
-		const endX = tgt.x - unitX * gap + normalX * spread;
-		const endY = tgt.y - unitY * gap + normalY * spread;
+		const startX = src.x + unitX * sourceGap + normalX * spread;
+		const startY = src.y + unitY * sourceGap + normalY * spread;
+		const endX = tgt.x - unitX * targetGap + normalX * spread;
+		const endY = tgt.y - unitY * targetGap + normalY * spread;
 
 		// 计算起点切线方向 (从 start指向 mid)
 		const startAngle = Math.atan2(midY - startY, midX - startX);

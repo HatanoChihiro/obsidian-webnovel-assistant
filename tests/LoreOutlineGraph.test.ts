@@ -51,6 +51,9 @@ describe('标题层级与设定关系', () => {
 		expect(edges).toContainEqual(['白岬王国', '海鸥商会', 'explicit', '通商']);
 		expect(graph.nodes.find(node => node.heading === '东码头')?.headingLine).toBe(5);
 		expect([...titles.values()]).not.toContain('关系');
+		expect(['地理志', '白岬王国', '北境领', '雾港城', '旧港区', '东码头', '海鸥商会']
+			.map(title => graph.nodes.find(node => node.heading === title)?.descendantCount ?? 0))
+			.toEqual([5, 4, 3, 2, 1, 0, 0]);
 
 		const legacy = await graphFor([map, faction], false);
 		expect(legacy.nodes.map(node => node.id)).toEqual(['白岬王国', '海鸥商会']);

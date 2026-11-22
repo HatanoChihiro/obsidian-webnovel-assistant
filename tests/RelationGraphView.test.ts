@@ -119,7 +119,7 @@ describe('graph render work per frame', () => {
 		id, heading: id, x, y, vx: 0, vy: 0, pinned: false,
 		file: new MockTFile('lore.md', 'Novel/lore.md') as unknown as import('obsidian').TFile
 	});
-	it('indexes focus neighbors while preserving overlap and simultaneous focus fading', async () => {
+	it('shows the hovered node and its neighbors first with a different node selected', async () => {
 		const { GraphRenderer } = await vi.importActual<typeof import('../src/ui/components/GraphRenderer')>('../src/ui/components/GraphRenderer');
 		const nodes = ['A', 'B', 'C', 'D', 'E'].map((id, i) => node(id, i * 100, 0));
 		const data: GraphData = { nodes, edges: [] };
@@ -138,14 +138,43 @@ describe('graph render work per frame', () => {
 		expect(drawn.splice(0)).toEqual([1, 1, 0.35, 0.15, 0.15]);
 		state.hoveredNode = nodes[3];
 		GraphRenderer.drawNodes(ctx, data, {} as ThemeColors, tasks, state);
-		expect(drawn.splice(0)).toEqual([0.3, 1, 0.35, 0.15, 0.15]);
+		expect(drawn.splice(0)).toEqual([0.25, 0.25, 0.25, 1, 1]);
 		state.selectedNode = null;
 		GraphRenderer.drawNodes(ctx, data, {} as ThemeColors, tasks, state);
-		expect(drawn.splice(0)).toEqual([0.3, 0.3, 0.3, 1, 1]);
+		expect(drawn.splice(0)).toEqual([0.25, 0.25, 0.25, 1, 1]);
 		tasks[3].isOverlapped = true;
 		GraphRenderer.drawNodes(ctx, data, {} as ThemeColors, tasks, state);
-		expect(drawn.splice(0)).toEqual([0.3, 0.3, 0.3, 1, 0.35]);
+		expect(drawn.splice(0)).toEqual([0.25, 0.25, 0.25, 1, 1]);
 		expect(filter).not.toHaveBeenCalled();
+	});
+
+	it('uses the current canvas bitmap scale and highlights both hierarchy and explicit edges on hover', async () => {
+		const { GraphRenderer } = await vi.importActual<typeof import('../src/ui/components/GraphRenderer')>('../src/ui/components/GraphRenderer');
+		const nodes = [node('Root', 30, 40), node('Child', 130, 40), node('Guild', 130, 140), node('Other', 30, 140)];
+		const data: GraphData = { nodes, edges: [
+			{ source: 'Root', target: 'Child', label: '', type: 'hierarchy' },
+			{ source: 'Child', target: 'Guild', label: '', type: 'explicit' },
+			{ source: 'Other', target: 'Guild', label: '', type: 'explicit' },
+		] };
+		const state = { graphData: data, scale: 0.75, panX: 13, panY: 17, selectedNode: nodes[3], hoveredNode: nodes[1],
+			edgeDrawModeMap: new Map(), edgeOffsetMap: new Map(), combinedLabelMap: new Map() } as GraphRenderState;
+		const scale = vi.fn();
+		const ctx = new Proxy({}, {
+			get: (_o, key) => {
+				if (key === 'canvas') return { width: 600, height: 450 };
+				if (key === 'scale') return scale;
+				if (key === 'createLinearGradient') return () => ({ addColorStop: () => {} });
+				return () => {};
+			},
+			set: () => true,
+		}) as CanvasRenderingContext2D;
+		const colors = GraphRenderer.getThemeColors();
+		GraphRenderer.render(ctx, 400, 300, data, state, colors);
+		expect(scale.mock.calls).toEqual([[1.5, 1.5], [0.75, 0.75]]);
+		const renderEdges = () => new Map(GraphRenderer.renderEdges(ctx, colors, state).map(task => [task.edge, task.isHighlighted]));
+		expect(data.edges.map(edge => renderEdges().get(edge))).toEqual([true, true, false]);
+		state.hoveredNode = null;
+		expect(data.edges.map(edge => renderEdges().get(edge))).toEqual([false, false, true]);
 	});
 	it('indexes endpoints once, keeps first duplicate identity, and resolves replacement nodes on the next frame', async () => {
 		const { GraphRenderer } = await vi.importActual<typeof import('../src/ui/components/GraphRenderer')>('../src/ui/components/GraphRenderer');

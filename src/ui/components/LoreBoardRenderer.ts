@@ -644,9 +644,9 @@ export class LoreBoardRenderer {
         const rect = graphWrapper.getBoundingClientRect();
         const initialWidth = rect.width || 600;
         const initialHeight = rect.height || 400;
-        const DPR = window.devicePixelRatio || 1;
-        canvas.width = initialWidth * DPR;
-        canvas.height = initialHeight * DPR;
+        const ownerWin = canvas.ownerDocument.defaultView ?? window;
+        canvas.width = Math.round(initialWidth * ownerWin.devicePixelRatio);
+        canvas.height = Math.round(initialHeight * ownerWin.devicePixelRatio);
         // 不在 canvas 上设置固定 css width/height 内联样式，由 CSS .wn-lore-graph-canvas (width: 100%; height: 100%) 自适应填充容器
 
         // 像 RelationGraphView 一样，在力导向引擎启动前将节点在大圆上均匀分布，避免中心重叠或初始暴弹
@@ -717,8 +717,6 @@ export class LoreBoardRenderer {
             }
         };
 
-        const ownerWin = canvas.ownerDocument.defaultView ?? window;
-
         const startAnimationLoop = (isFirstLoad: boolean = false) => {
             if (animationFrameId) {
                 ownerWin.cancelAnimationFrame(animationFrameId);
@@ -771,10 +769,9 @@ export class LoreBoardRenderer {
                         currentColors = GraphRenderer.getThemeColors(canvas.parentElement || canvas.ownerDocument.body);
                         GraphRenderer.buildEdgeOffsets(data, state, currentColors.curveOffset, true);
                     }
-                    const w = canvas.width / GraphRenderer.DPR;
-                    const h = canvas.height / GraphRenderer.DPR;
+                    const { width, height } = canvas.getBoundingClientRect();
                     state.animTime = performance.now();
-                    GraphRenderer.render(ctx, w, h, data, state, currentColors);
+                    GraphRenderer.render(ctx, width, height, data, state, currentColors);
                     needsRender = false;
                 }
 
@@ -815,11 +812,14 @@ export class LoreBoardRenderer {
         const resizeCanvas = () => {
             const rect = graphWrapper.getBoundingClientRect();
             if (rect.width === 0 || rect.height === 0) return;
+            const pixelWidth = Math.round(rect.width * ownerWin.devicePixelRatio);
+            const pixelHeight = Math.round(rect.height * ownerWin.devicePixelRatio);
+            if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+                canvas.width = pixelWidth;
+                canvas.height = pixelHeight;
+                requestRender();
+            }
             if (!isFirstValidResize && rect.width === lastWidth && rect.height === lastHeight) return;
-
-            const DPR = window.devicePixelRatio || 1;
-            canvas.width = rect.width * DPR;
-            canvas.height = rect.height * DPR;
 
             if (isFirstValidResize) {
                 isFirstValidResize = false;
@@ -920,9 +920,7 @@ export class LoreBoardRenderer {
                 state.selectedNode = null;
                 requestRender();
             },
-            onNodeHover: (node) => {
-                state.hoveredNode = node;
-            },
+            onNodeHover: () => {},
             onNodeDragStart: (node) => {
                 const ln = engine.nodes.find(n => n.id === node.id);
                 if (ln) {
@@ -961,7 +959,7 @@ export class LoreBoardRenderer {
                 }
                 node.pinned = true;
             }
-        });
+        }, { getColors: () => currentColors ?? undefined });
 
         controller.updateLayout(data);
         controller.bindEvents();
