@@ -1436,16 +1436,14 @@ describe('WorkbenchView', () => {
 			expect(mockMenuInstances).toHaveLength(1);
 			const menu = mockMenuInstances[0];
 
-			// When smart sort is false, customSortOrder is ignored and native natural numeric locale ordering is used
-			expect(menu.items.map(item => item.title)).toEqual([
-				'第1部',
-				'第2部',
-				'第10部',
-				'设定集'
-			]);
+			// Native collation may place the unnumbered title before or after the numbered titles.
+			const titles = menu.items.map(item => item.title);
+			const collator = new Intl.Collator(undefined, { numeric: true });
+			expect(titles).toEqual(['第10部', '设定集', '第2部', '第1部'].sort(collator.compare));
+			expect(titles.filter(title => title !== '设定集')).toEqual(['第1部', '第2部', '第10部']);
 
 			const setBookPathSpy = vi.spyOn(view, 'setBookPath');
-			menu.items[0].clickHandler?.();
+			menu.items.find(item => item.title === '第1部')?.clickHandler?.();
 			expect(setBookPathSpy).toHaveBeenCalledWith('Novels/第1部');
 		});
 	});
