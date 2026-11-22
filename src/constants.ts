@@ -334,6 +334,8 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 	seriesLoreFolderName: '系列',
 	loreTemplateHistory: [],
 	lorePopoverCollapse: false,
+	loreShowAncestorPath: true,
+	loreAutoShowAncestors: true,
 	loreCardPreviewEnabled: false,
 	loreCardHoverPreview: false,
 	loreCardPreviewPersistent: false,

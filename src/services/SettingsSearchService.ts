@@ -176,6 +176,8 @@ export const SETTINGS_SEARCH_CATALOGUE: readonly SettingCatalogueEntry[] = [
 		{ titleKey: 'setting.series-lore-folder-name', descKeys: ['setting.series-lore-folder-name-desc'], sectionKey: 'setting.lore-lookup' },
 		{ titleKey: 'setting.enable-lore-popover', descKeys: ['setting.enable-lore-popover-desc'], sectionKey: 'setting.lore-lookup' },
 		{ titleKey: 'setting.lore-popover-collapse', descKeys: ['setting.lore-popover-collapse-desc'], sectionKey: 'setting.lore-lookup' },
+		{ titleKey: 'setting.lore-show-ancestor-path', descKeys: ['setting.lore-show-ancestor-path-desc'], sectionKey: 'setting.lore-lookup' },
+		{ titleKey: 'setting.lore-auto-show-ancestors', descKeys: ['setting.lore-auto-show-ancestors-desc'], sectionKey: 'setting.lore-lookup' },
 		{ titleKey: 'setting.lore-card-preview-enabled', descKeys: ['setting.lore-card-preview-enabled-desc'], sectionKey: 'setting.lore-lookup' },
 		{ titleKey: 'setting.lore-card-hover-preview', descKeys: ['setting.lore-card-hover-preview-desc'], sectionKey: 'setting.lore-lookup', fallbackKeys: ['setting.lore-card-preview-enabled'] },
 		{ titleKey: 'setting.lore-card-preview-persistent', descKeys: ['setting.lore-card-preview-persistent-desc'], sectionKey: 'setting.lore-lookup', fallbackKeys: ['setting.lore-card-preview-enabled'] },

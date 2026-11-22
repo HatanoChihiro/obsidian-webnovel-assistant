@@ -123,7 +123,13 @@ export class RelationGraphManager {
 	 */
 	public async buildGraphData(
 		file?: TFile | null,
-		options?: { enableGlobal?: boolean; autoLinkMentions?: boolean; files?: TFile[]; includeHeadingHierarchy?: boolean }
+		options?: {
+			enableGlobal?: boolean;
+			autoLinkMentions?: boolean;
+			files?: TFile[];
+			includeHeadingHierarchy?: boolean;
+			editorSource?: { file: TFile; text: string };
+		}
 	): Promise<GraphData> {
 		let filesToParse: TFile[] = [];
 		const enableGlobal = options?.enableGlobal ?? this.plugin.settings.loreGraphEnableGlobal;
@@ -168,7 +174,7 @@ export class RelationGraphManager {
 		// 第一步：提取所有节点（包含正文本名与别名）
 		for (const f of filesToParse) {
 			const fileCache = this.app.metadataCache.getFileCache(f) ?? {};
-			const content = await this.app.vault.cachedRead(f);
+			const content = options?.editorSource?.file === f ? options.editorSource.text : await this.app.vault.cachedRead(f);
 			const lines = content.split(/\r?\n/);
 			const frontmatter = (options?.includeHeadingHierarchy ? readLoreFrontmatter(lines) : undefined) ?? fileCache.frontmatter;
 			const headings = options?.includeHeadingHierarchy ? scanLoreHeadings(lines) : fileCache.headings ?? [];

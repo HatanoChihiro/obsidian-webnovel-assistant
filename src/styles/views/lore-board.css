@@ -404,3 +404,50 @@
 	background: color-mix(in srgb, var(--interactive-accent) 22%, transparent);
 	color: var(--text-normal);
 }
+.wn-lore-hierarchy-preview {
+	position: fixed;
+	inset-block-start: 50%;
+	inset-inline-start: 50%;
+	transform: translate(-50%, -50%);
+	z-index: 1100;
+	width: min(22rem, calc(100vw - 2rem));
+	padding: var(--size-4-3);
+	color: var(--text-normal);
+	background-color: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	box-shadow: var(--shadow-s);
+}
+
+.wn-lore-hierarchy-preview-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--size-4-2);
+}
+
+.wn-lore-hierarchy-preview-path {
+	max-height: min(45vh, 20rem);
+	overflow-y: auto;
+	list-style: none;
+	margin: var(--size-4-2) 0 0;
+	padding: 0 var(--size-4-2);
+}
+
+.wn-lore-hierarchy-preview-path li {
+	padding: var(--size-2-1) var(--size-4-2);
+	border-inline-start: 1px solid var(--background-modifier-border);
+}
+
+.wn-lore-hierarchy-preview-path button {
+	height: auto;
+	justify-content: flex-start;
+	max-width: 100%;
+	white-space: normal;
+	text-align: start;
+}
+
+.wn-lore-hierarchy-preview-path button[aria-current="true"] {
+	color: var(--text-on-accent);
+	background-color: var(--interactive-accent);
+}

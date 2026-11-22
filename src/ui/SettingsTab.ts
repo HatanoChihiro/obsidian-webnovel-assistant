@@ -2287,6 +2287,27 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 
+		new Setting(containerEl)
+			.setName(t('setting.lore-show-ancestor-path'))
+			.setDesc(t('setting.lore-show-ancestor-path-desc'))
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.loreShowAncestorPath !== false)
+				.onChange(async value => {
+					this.plugin.settings.loreShowAncestorPath = value;
+					await this.plugin.saveSettings();
+					this.app.workspace.trigger('webnovel-workbench-lore-updated');
+				}));
+
+		new Setting(containerEl)
+			.setName(t('setting.lore-auto-show-ancestors'))
+			.setDesc(t('setting.lore-auto-show-ancestors-desc'))
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.loreAutoShowAncestors !== false)
+				.onChange(async value => {
+					this.plugin.settings.loreAutoShowAncestors = value;
+					await this.plugin.saveSettings();
+				}));
+
 		// 设定卡片大预览总开关
 		new Setting(containerEl)
 			.setName(t('setting.lore-card-preview-enabled'))

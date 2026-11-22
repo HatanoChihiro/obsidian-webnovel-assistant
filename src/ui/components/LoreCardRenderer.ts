@@ -10,7 +10,7 @@ import { createCardImportanceButton } from './CardImportanceButton';
 
 export interface LoreCardRendererPlugin {
 	app: App;
-	settings: Pick<AccurateCountSettings, 'lorePopoverCollapse'>;
+	settings: Pick<AccurateCountSettings, 'lorePopoverCollapse' | 'loreShowAncestorPath'>;
 	characterManager: {
 		toggleLoreImportance?: (entry: LoreEntry) => Promise<boolean>;
 	};
@@ -394,6 +394,7 @@ export class LoreCardRenderer {
 			draggable?: boolean;
 			dragDataMimeType?: string;
 			dragIdentity?: string;
+			ancestorPath?: readonly string[];
 			onTitleClick?: () => void;
 			hideEditButton?: boolean;
 			hideImportanceButton?: boolean;
@@ -437,10 +438,11 @@ export class LoreCardRenderer {
 		const titleEl = titleContainer.createDiv({ cls: 'wn-lore-card-title' });
 		titleEl.setText(entry.heading);
 		titleEl.title = isReadOnly ? entry.heading : t('corkboard.click-to-open-lore');
-		const parent = entry.section?.parent;
-		if (parent && parent.level >= 2) {
-			const breadcrumb = card.createDiv({ cls: 'wn-lore-card-parent', text: parent.path.slice(1).join(' › ') || parent.title });
-			breadcrumb.title = parent.path.join(' › ');
+		const ancestorPath = options.ancestorPath ?? entry.section?.parent?.path;
+		if (plugin.settings.loreShowAncestorPath !== false && ancestorPath?.length) {
+			const text = ancestorPath.join(' › ');
+			const breadcrumb = card.createDiv({ cls: 'wn-lore-card-parent', text });
+			breadcrumb.title = text;
 		}
 
 		titleEl.onclick = async () => {

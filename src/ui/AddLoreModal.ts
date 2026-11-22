@@ -1,7 +1,7 @@
 import { Modal, Setting, TFile, Notice } from 'obsidian';
 import type { App, TextComponent, TFolder, ButtonComponent } from 'obsidian';
 import type { CharacterManager, LoreCategoryOption } from '../services/CharacterManager';
-import { collectLoreTypes } from '../services/LoreOutline';
+import { buildLoreOutline, collectLoreTypes, scanLoreHeadings } from '../services/LoreOutline';
 import { t } from '../i18n';
 import { renderLoreRelationEditor } from './LoreRelationEditor';
 import { FileSuggestModal } from './FileSuggestModal';
@@ -34,6 +34,8 @@ interface TemplateDraftCacheEntry {
 export class AddLoreModal extends Modal {
 	private plugin: AddLorePlugin;
 	private loreName: string;
+	private loreLevel = 2;
+	private parentKey?: string;
 	private loreCategory: string;
 	private loreType: string;
 	private loreAliases: string;
@@ -391,6 +393,7 @@ export class AddLoreModal extends Modal {
 			this.selectedTargetFile = null;
 		}
 		this.isCreatingNew = this.selectedTargetFile === null;
+		let refreshParents = () => {};
 
 		const categorySetting = new Setting(contentEl)
 			.setName(t('modal.lore-category'))
@@ -423,8 +426,45 @@ export class AddLoreModal extends Modal {
 					}
 					textComponent.inputEl.hide();
 				}
+				this.parentKey = undefined;
+				refreshParents();
 			});
 		});
+
+		new Setting(contentEl)
+			.setName(t('modal.lore-heading-level'))
+			.addDropdown(dropdown => {
+				for (let level = 1; level <= 5; level++) {
+					dropdown.addOption(String(level), t('heading-wheel.level', { level: String(level) }));
+				}
+				dropdown.setValue(String(this.loreLevel)).onChange(value => {
+					this.loreLevel = Number(value);
+					this.parentKey = undefined;
+					refreshParents();
+				});
+			});
+		const parentsContainer = contentEl.createDiv();
+		let parentRead = 0;
+		refreshParents = () => {
+			const generation = ++parentRead;
+			parentsContainer.empty();
+			const targetFile = this.selectedTargetFile;
+			if (!targetFile || this.loreLevel === 1) return;
+			void this.app.vault.cachedRead(targetFile).then(source => {
+				if (this.isModalClosed || generation !== parentRead) return;
+				const lines = source.split(/\r?\n/);
+				const parents = buildLoreOutline(scanLoreHeadings(lines), lines.length).filter(parent => parent.level < this.loreLevel);
+				if (!parents.length) return;
+				new Setting(parentsContainer)
+					.setName(t('modal.lore-local-parent'))
+					.addDropdown(dropdown => {
+						dropdown.addOption('', t('modal.lore-local-parent-auto'));
+						for (const parent of parents) dropdown.addOption(parent.key, parent.path.join(' › '));
+						dropdown.setValue(this.parentKey ?? '').onChange(value => { this.parentKey = value || undefined; });
+					});
+			}).catch(() => { /* Destination may have been removed. */ });
+		};
+		refreshParents();
 
 		let textComponent: TextComponent;
 		categorySetting.addText(text => {
@@ -633,7 +673,8 @@ export class AddLoreModal extends Modal {
 			this.loreDescription,
 			this.loreRelations,
 			this.selectedTargetFile?.path,
-			templateBody
+			templateBody,
+			this.loreLevel !== 2 || this.parentKey ? { level: this.loreLevel, parentKey: this.parentKey } : undefined
 		);
 	}
 }

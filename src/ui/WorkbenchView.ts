@@ -73,6 +73,7 @@ export type WorkbenchViewSettings = Pick<
 	| 'enableLorePopover'
 	| 'enableMobileLorePopover'
 	| 'lorePopoverCollapse'
+	| 'loreShowAncestorPath'
 	| 'loreCardPreviewEnabled'
 	| 'loreCardHoverPreview'
 	| 'loreCardPreviewPersistent'

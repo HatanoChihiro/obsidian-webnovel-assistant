@@ -766,7 +766,8 @@ describe('LoreCardPreview', () => {
 					app: mockApp,
 					settings: mockPlugin.settings,
 					characterManager: mockPlugin.characterManager
-				})
+				}),
+				{ ancestorPath: undefined }
 			);
 
 			// 验证 buildCardDOM 调用参数包含 focusable: true 和 onExpand 回调

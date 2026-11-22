@@ -361,6 +361,12 @@ export interface AccurateCountSettings {
 	/** 设定速查悬浮卡片中子标题是否默认折叠 */
 	lorePopoverCollapse: boolean;
 
+	/** 显示设定卡片的上级词条路径 */
+	loreShowAncestorPath?: boolean;
+
+	/** 新建词条时显示居中的上级路径预览 */
+	loreAutoShowAncestors?: boolean;
+
 	/** 设定卡片大预览总开关：开启后卡片展开按钮与悬停大预览功能可用 */
 	loreCardPreviewEnabled: boolean;
 

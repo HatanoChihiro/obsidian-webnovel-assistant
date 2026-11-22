@@ -5,6 +5,15 @@ import { isProtagonistType, readLoreMetadata } from './LoreMetadata';
 import type { GraphData, GraphEdge, GraphNode } from './RelationGraphManager';
 import { t } from '../i18n';
 
+export function getLoreGraphAncestors(node: GraphNode, nodes: ReadonlyMap<string, GraphNode>): GraphNode[] {
+	const ancestors: GraphNode[] = [];
+	for (let parent = node.outlineParent ? nodes.get(node.outlineParent) : undefined; parent;
+		parent = parent.outlineParent ? nodes.get(parent.outlineParent) : undefined) {
+		ancestors.push(parent);
+	}
+	return ancestors.reverse();
+}
+
 export interface LoreGraphFile {
 	frontmatter?: Record<string, unknown>;
 	lines: string[];
@@ -21,13 +30,12 @@ interface OutlineFile extends LoreGraphFile {
 
 function addHeading(graph: GraphData, item: OutlineFile, heading: LoreOutlineHeading): GraphNode {
 	const previous = item.nodes.get(heading.line);
-	const parent = heading.parent?.title ? addHeading(graph, item, heading.parent) : item.fileNode;
+	const parent = heading.parent?.title ? addHeading(graph, item, heading.parent) : heading.level > 1 ? item.fileNode : undefined;
 	if (previous) {
 		previous.sectionKey = heading.key;
 		// Original term nodes retain their identifiers and add the outline edge only once.
 		if (parent && parent !== previous && !previous.outlineParent) {
 			previous.outlineParent = parent.id;
-			graph.edges.push({ source: parent.id, target: previous.id, label: t('relation-graph.edge-hierarchy'), type: 'hierarchy' });
 		}
 		return previous;
 	}
@@ -38,11 +46,10 @@ function addHeading(graph: GraphData, item: OutlineFile, heading: LoreOutlineHea
 	};
 	item.nodes.set(heading.line, node);
 	graph.nodes.push(node);
-	if (parent) graph.edges.push({ source: parent.id, target: node.id, label: t('relation-graph.edge-hierarchy'), type: 'hierarchy' });
 	return node;
 }
 
-function attachContinuationNotes(graph: GraphData, candidates: ReadonlyMap<string, string>, nodes: ReadonlyMap<string, GraphNode>): void {
+function findCyclicParents(candidates: ReadonlyMap<string, string>, nodes: ReadonlyMap<string, GraphNode>): Set<string> {
 	const checked = new Set<string>();
 	const cyclic = new Set<string>();
 	for (const start of candidates.keys()) {
@@ -61,10 +68,19 @@ function attachContinuationNotes(graph: GraphData, candidates: ReadonlyMap<strin
 		}
 		for (const step of path) checked.add(step);
 	}
-	for (const [child, parent] of candidates) {
-		if (cyclic.has(child)) continue;
-		nodes.get(child)!.outlineParent = parent;
-		graph.edges.push({ source: parent, target: child, label: t('relation-graph.edge-hierarchy'), type: 'hierarchy' });
+	return cyclic;
+}
+
+function attachContinuationNotes(graph: GraphData, candidates: Map<string, string>, nodes: ReadonlyMap<string, GraphNode>): void {
+	// Restoring a rejected link's local parent can expose another cycle.
+	for (let cyclic = findCyclicParents(candidates, nodes); cyclic.size; cyclic = findCyclicParents(candidates, nodes)) {
+		for (const id of cyclic) candidates.delete(id);
+	}
+	for (const node of nodes.values()) {
+		node.outlineParent = candidates.get(node.id) ?? node.outlineParent;
+		if (node.outlineParent) {
+			graph.edges.push({ source: node.outlineParent, target: node.id, label: t('relation-graph.edge-hierarchy'), type: 'hierarchy' });
+		}
 	}
 }
 
@@ -151,7 +167,10 @@ export function addLoreOutlineToGraph(app: App, input: ReadonlyMap<TFile, LoreGr
 		const targetFile = fileName ? app.metadataCache.getFirstLinkpathDest(fileName, item.file.path) : item.file;
 		const targetItem = targetFile && byPath.get(targetFile.path);
 		if (!targetItem) return undefined;
-		if (!path.length) return targetItem.fileNode?.id;
+		if (!path.length) {
+			const root = targetItem.outline.find(section => section.level === 1 && section.title === targetItem.file.basename);
+			return targetItem.fileNode?.id ?? (root && targetItem.nodes.get(root.line)?.id);
+		}
 		const heading = findLoreOutlineTarget(targetItem.outline, path);
 		return heading ? targetItem.nodes.get(heading.line)?.id : undefined;
 	};
@@ -161,7 +180,6 @@ export function addLoreOutlineToGraph(app: App, input: ReadonlyMap<TFile, LoreGr
 			return resolveLink(item, link) ?? (/[#/]/.test(bare) ? undefined : resolveName(bare));
 		};
 		const sources = item.outline.map(section => ({ source: item.nodes.get(section.line)!.id, blocks: section.relationBlocks }));
-		const root = item.outline[0]?.level === 1 ? item.nodes.get(item.outline[0].line) : undefined;
 		if (!sources.length && item.fileNode) {
 			sources.push({ source: item.fileNode.id, blocks: getFileLoreRelationBlocks(item.headings, item.lines.length) });
 		}
@@ -173,12 +191,10 @@ export function addLoreOutlineToGraph(app: App, input: ReadonlyMap<TFile, LoreGr
 					if (!relation) continue;
 					const label = relation[2].trim();
 					if (block.level === 6 && isLoreParentRelation(label)) {
-						if (root?.id === source && !root.outlineParent) {
-							const link = /^\[\[([^\]]+)\]\]$/.exec(relation[3].trim());
-							const target = link && resolveLink(item, link[1]);
-							const parent = target ? nodesById.get(target) : undefined;
-							parentDeclarations.add(parent && parent.file.path !== item.file.path ? parent.id : undefined);
-						}
+						const link = /^\[\[([^\]]+)\]\]$/.exec(relation[3].trim());
+						const target = link && resolveLink(item, link[1]);
+						const parent = target ? nodesById.get(target) : undefined;
+						parentDeclarations.add(parent && parent.file.path !== item.file.path ? parent.id : undefined);
 						continue;
 					}
 					for (const target of splitLoreRelationTargets(relation[3])) {

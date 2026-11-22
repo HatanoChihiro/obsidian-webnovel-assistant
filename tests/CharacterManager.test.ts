@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { CharacterManager, cleanLoreHeading } from '../src/services/CharacterManager';
+import { buildLoreOutline, scanLoreHeadings } from '../src/services/LoreOutline';
 import { parseLoreTemplate } from '../src/services/LoreTemplateService';
 import { TFile, TFolder, parseYaml } from 'obsidian';
 import type { App } from 'obsidian';
@@ -581,6 +582,32 @@ LinLei is a dragon warrior.`;
             expect(createdFolders).toContain('Book1/Lore/Characters');
             expect(createdFolders).toContain('Book1/Lore/Characters/Major');
             expect(createdFiles).toContain('Book1/Lore/Characters/Major/Protagonist.md');
+        });
+
+        it('inserts a new H5 before existing children of the chosen local parent and reports its exact line', async () => {
+            const manager = new CharacterManager(mockApp, mockPlugin);
+            const file = Object.assign(new TFile(), { path: 'Book1/Lore/Map.md', basename: 'Map' });
+            mockPlugin.settings.loreAutoShowAncestors = true;
+            let content = '# 地理\r\n## 港区\r\n### 船坞\r\n#### 现有码头\r\n码头正文。\r\n';
+            mockApp.vault.getAbstractFileByPath.mockReturnValue(file);
+            mockApp.vault.process.mockImplementation(async (_file: TFile, mutate: (source: string) => string) => {
+                content = mutate(content);
+                return content;
+            });
+            manager.validateLoreSaveDestination = vi.fn().mockResolvedValue({ valid: true });
+            manager.rebuildCache = vi.fn().mockResolvedValue(undefined);
+            const outline = () => {
+                const lines = content.split(/\r?\n/);
+                return buildLoreOutline(scanLoreHeadings(lines), lines.length);
+            };
+            const parent = outline().find(entry => entry.title === '船坞')!;
+            expect(await manager.createLoreEntry('Book1', 'Map', '灯标', '', '', '灯标正文。', [], file.path,
+                undefined, { level: 5, parentKey: parent.key })).toBe(true);
+            const created = outline().find(entry => entry.title === '灯标')!;
+            expect(created.parent?.title).toBe('船坞');
+            expect(content.split('\r\n')[created.line]).toBe('##### 灯标');
+            expect(content).toContain('#### 现有码头\r\n码头正文。');
+            expect(mockApp.workspace.trigger).toHaveBeenCalledWith('webnovel:lore-created', file, 'Book1', created.line);
         });
 
         it('should format same-file and cross-file relation links cleanly in createLoreEntry', async () => {

@@ -17,6 +17,11 @@ export interface LoreEntry {
 	fileBacked?: boolean;
 }
 
+export interface LorePlacement {
+	level: number;
+	parentKey?: string;
+}
+
 export function getLoreEntryIdentity(entry: LoreEntry): string {
 	return JSON.stringify([entry.file.path, entry.section?.key ?? entry.heading]);
 }
@@ -1948,7 +1953,8 @@ export class CharacterManager {
 		loreDescription: string,
 		loreRelations: LoreRelationItem[],
 		targetFilePath?: string,
-		templateContent?: string
+		templateContent?: string,
+		placement?: LorePlacement
 	): Promise<boolean> {
 		let filePath: string;
 		let targetFile: TFile | null = null;
@@ -2004,7 +2010,12 @@ export class CharacterManager {
 			}
 		}
 
-		let contentToAppend = `\n\n## ${loreName.trim()}\n\n`;
+		const level = placement?.level ?? 2;
+		if (!Number.isInteger(level) || level < 1 || level > 5) return false;
+		const title = loreName.trim();
+		if (!title || /[\r\n]/.test(title) || loreRelationHeadings.has(cleanLoreHeading(title).toLowerCase())) return false;
+		const heading = `${'#'.repeat(level)} ${title}`;
+		let contentToAppend = `\n\n${heading}\n\n`;
 		if (loreAliases.trim()) {
 			contentToAppend += `**${getLoreLabel('alias')}**：${loreAliases.trim()}\n`;
 		}
@@ -2025,17 +2036,55 @@ export class CharacterManager {
 
 		if (templateContent?.trim()) {
 			if (!contentToAppend.endsWith('\n\n')) contentToAppend += '\n';
-			contentToAppend += `${trimBlankLines(templateContent)}\n`;
+			const templateLines = trimBlankLines(templateContent).split('\n');
+			if (placement && level !== 2) {
+				for (const section of scanLoreHeadings(templateLines)) {
+					const line = section.position.start.line;
+					const headingLevel = Math.min(6, Math.max(level + 1, section.level + level - 2));
+					templateLines.splice(line, 1, `${'#'.repeat(headingLevel)} ${section.heading}`);
+					if (section.position.end.line !== line) templateLines[section.position.end.line] = '';
+				}
+			}
+			contentToAppend += `${templateLines.join('\n')}\n`;
 		}
 
-		if (targetFile) {
-			await this.app.vault.append(targetFile, contentToAppend);
+		let createdLine: number | undefined;
+		if (targetFile && placement?.parentKey) {
+			const parentKey = placement.parentKey;
+			await this.app.vault.process(targetFile, content => {
+				const lines = content.split('\n');
+				const outline = buildLoreOutline(scanLoreHeadings(lines), lines.length);
+				const parent = outline.find(section => section.key === parentKey && section.level < level);
+				if (!parent) return content;
+				const position = outline.find(section => section.parent === parent)?.line ?? parent.subtreeEnd;
+				const eol = content.includes('\r\n') ? '\r' : '';
+				const insertion = [...contentToAppend.trimEnd().split(/\r?\n/).map(line => line + eol), eol];
+				lines.splice(position, 0, ...insertion);
+				createdLine = position + 2;
+				return lines.join('\n');
+			});
+			if (createdLine === undefined) return false;
+		} else if (targetFile) {
+			if (this.plugin.settings.loreAutoShowAncestors) {
+				await this.app.vault.process(targetFile, content => {
+					const eol = content.includes('\r\n') ? '\r\n' : '\n';
+					createdLine = content.split('\n').length + 1;
+					return content + contentToAppend.replace(/\r?\n/g, eol);
+				});
+			} else {
+				await this.app.vault.append(targetFile, contentToAppend);
+			}
 		} else {
-			await this.app.vault.create(filePath, contentToAppend.trimStart());
+			if (placement?.parentKey) return false;
+			targetFile = await this.app.vault.create(filePath, contentToAppend.trimStart());
+			createdLine = 0;
 		}
 
 		await this.rebuildCache();
 		new Notice(t('modal.lore-saved'));
+		if (this.plugin.settings.loreAutoShowAncestors && targetFile && createdLine !== undefined) {
+			this.app.workspace.trigger('webnovel:lore-created', targetFile, bookPath, createdLine);
+		}
 		return true;
 	}
 

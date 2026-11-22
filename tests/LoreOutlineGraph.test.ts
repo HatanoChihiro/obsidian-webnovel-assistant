@@ -2,6 +2,7 @@ import type { App, CachedMetadata, HeadingCache, TFile } from 'obsidian';
 import { describe, expect, it } from 'vitest';
 import { RelationGraphManager } from '../src/services/RelationGraphManager';
 import { buildLoreOutline, getLoreSectionText, scanLoreHeadings } from '../src/services/LoreOutline';
+import { getLoreGraphAncestors } from '../src/services/LoreOutlineGraph';
 import type { WebNovelAssistantPlugin } from '../src/types/plugin';
 
 function fixture(path: string, text: string) {
@@ -173,6 +174,37 @@ describe('标题层级与设定关系', () => {
 			expect(graph.nodes.find(node => node.heading === name)?.outlineParent).toBeUndefined();
 		}
 		expect(graph.edges.some(edge => edge.type === 'explicit')).toBe(false);
+	});
+
+	it('reparents a nested heading to a different level in another note and carries its own children along', async () => {
+		const origin = fixture('设定/水压图.md', [
+			'# 水压图', '## 北区', '### 车床', '#### 阀芯',
+			'###### 关系', '**上级词条**：[[名册#名册#检定站|检定站]]', '**校验**：[[名册#名册#备用站]]',
+			'##### 铜环', '## 备用站',
+		].join('\n'));
+		const other = fixture('设定/名册.md', '# 名册\n## 检定站\n## 备用站');
+		const graph = await graphFor([origin, other]);
+		const byId = new Map(graph.nodes.map(node => [node.id, node]));
+		const valve = graph.nodes.find(node => node.heading === '阀芯')!;
+		const ring = graph.nodes.find(node => node.heading === '铜环')!;
+		const lathe = graph.nodes.find(node => node.heading === '车床')!;
+		expect(getLoreGraphAncestors(ring, byId).map(node => node.heading)).toEqual(['名册', '检定站', '阀芯']);
+		expect(graph.edges.filter(edge => edge.type === 'hierarchy' && edge.target === valve.id)).toHaveLength(1);
+		expect(graph.edges.some(edge => edge.source === lathe.id && edge.target === valve.id)).toBe(false);
+		expect(valve.descendantCount).toBe(1);
+		expect(lathe.descendantCount ?? 0).toBe(0);
+		expect(graph.edges.filter(edge => edge.type === 'explicit').map(edge => edge.label)).toEqual(['校验']);
+	});
+
+	it('restores local parents whenever cross-note reparenting would form a cycle', async () => {
+		const first = fixture('设定/甲.md', '# 甲\n## 甲子\n###### 关系\n**上级词条**：[[乙#乙#乙子]]');
+		const second = fixture('设定/乙.md', '# 乙\n## 乙子\n###### 关系\n**上级词条**：[[甲#甲#甲子]]');
+		const graph = await graphFor([first, second]);
+		const byId = new Map(graph.nodes.map(node => [node.id, node]));
+		for (const title of ['甲', '乙']) {
+			const child = graph.nodes.find(node => node.heading === title + '子')!;
+			expect(getLoreGraphAncestors(child, byId).map(node => node.heading)).toEqual([title]);
+		}
 	});
 
 	it('旧式正名关系优先保留同名的原二级词条', async () => {

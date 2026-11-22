@@ -997,7 +997,7 @@ H1–H5 define lore entries. Add `###### 关系` (or `###### Relations`) after t
 **Supplies**: [[Factions#Seagull Guild|Seagull Guild]]
 ```
 
-To continue beyond H5, create another note in the same work's lore folder. Use `Parent Entry` in the first H1's relationship section to link to the parent heading in the other note.
+An H1–H5 entry can declare a `Parent Entry` of any level in another lore note. A valid declaration overrides the parent inferred from the local heading structure in the graph. The entry's descendants follow it. Conflicting or cyclic links fall back to the local heading structure.
 
 ```markdown
 # Tide Platform
@@ -1008,7 +1008,9 @@ To continue beyond H5, create another note in the same work's lore folder. Use `
 ## Gauge Station
 ```
 
-The graph shows “Contains” edges across both notes and through their headings. Multiple notes can continue from the same parent. Each continuation uses one parent link. Existing `### Relations` sections remain readable.
+The graph shows “Contains” edges across both notes and through their headings. Each entry has a single parent. Existing `### Relations` sections remain readable.
+
+Under Lore Quick Lookup in WNA settings, toggle card ancestor paths and the centered preview for newly created entries independently. Choose H1–H5 and a local parent in the Add Lore dialog, or write a heading directly in a lore note. Select an ancestor in the preview to jump to its note.
 
 ##### Related Settings
 - **Collapse Subheadings in Hover Card**: For long quick-reference content, collapse level-3 and deeper subheadings by default and expand them on click.
