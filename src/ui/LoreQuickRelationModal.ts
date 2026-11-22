@@ -1,6 +1,6 @@
 import { Modal, Notice, Setting, type App, type Editor, type MarkdownView } from 'obsidian';
-import { buildLoreOutline, getLoreFrontmatterEnd, scanLoreHeadings } from '../services/LoreOutline';
-import { formatInlineLoreRelation, formatLoreRelationTarget } from '../services/LoreRelations';
+import { buildLoreOutline, getFileLoreRelationBlocks, getLoreFrontmatterEnd, scanLoreHeadings } from '../services/LoreOutline';
+import { formatLoreRelationListItem, formatLoreRelationTarget, planLoreRelationBlockInsertion } from '../services/LoreRelations';
 import type { LoreEntry } from '../services/CharacterManager';
 import { LoreRelationTargetPicker } from './LoreRelationEditor';
 import { t } from '../i18n';
@@ -22,19 +22,19 @@ export class LoreQuickRelationModal extends Modal {
 		}
 		const entry = entries.find(item => item.file.path === file.path && item.section?.key === section?.key)
 			?? { file, heading: section?.title ?? file.basename, section };
-		let insertAt = section?.bodyEnd ?? headings[0]?.position.start.line ?? lines.length;
-		const start = section?.bodyStart ?? getLoreFrontmatterEnd(lines) + 1;
-		while (insertAt > start && !lines[insertAt - 1].trim()) insertAt--;
+		const blocks = section?.relationBlocks ?? getFileLoreRelationBlocks(headings, lines.length);
 		new LoreQuickRelationModal(app, entry, entries, relation => {
 			if (view.file !== file || view.editor !== editor || editor.getValue() !== source) {
 				new Notice(t('notice.lore-quick-source-changed'));
 				return;
 			}
-			if (insertAt < lines.length) {
-				editor.replaceRange(`\n${relation}\n${lines[insertAt].trim() ? '\n' : ''}`, { line: insertAt, ch: 0 });
+			const insertion = planLoreRelationBlockInsertion(lines, section?.bodyEnd ?? headings[0]?.position.start.line ?? lines.length, blocks, [relation]);
+			const text = insertion.lines.join('\n');
+			if (insertion.line < lines.length) {
+				editor.replaceRange(`${text}\n`, { line: insertion.line, ch: 0 });
 			} else {
 				const lastLine = editor.lastLine();
-				editor.replaceRange(`\n\n${relation}\n`, { line: lastLine, ch: editor.getLine(lastLine).length });
+				editor.replaceRange(`\n${text}`, { line: lastLine, ch: editor.getLine(lastLine).length });
 			}
 			editor.focus();
 		}).open();
@@ -54,7 +54,7 @@ export class LoreQuickRelationModal extends Modal {
 		new Setting(this.contentEl).setName(sourcePath);
 		const field = new Setting(this.contentEl).setName(t('modal.lore-relation-label-placeholder'));
 		const target = new Setting(this.contentEl);
-		const format = () => selected && formatInlineLoreRelation(label, formatLoreRelationTarget(selected, this.source.file.path));
+		const format = () => selected && formatLoreRelationListItem(label, formatLoreRelationTarget(selected, this.source.file.path));
 		new Setting(this.contentEl).addButton(save => {
 			const update = () => { save.setDisabled(!format()); };
 			field.addText(text => {

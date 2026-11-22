@@ -4,9 +4,9 @@ import type { WebNovelAssistantPlugin, SeriesLoreRenameResult } from '../types/p
 import { getDefaultFileName, getDefaultFileNameCandidates, getLoreLabel } from '../i18n/data-keys';
 import { findBookRoot, getCandidateNames, isCandidateSubpath } from '../utils/path';
 import { t } from '../i18n';
-import { scanFenceLine, trimBlankLines, type FenceScanState } from './LoreTemplateService';
-import { buildLoreOutline, findLoreOutlineTarget, getLoreFrontmatterEnd, getLoreInlineRelations, getLoreSectionProse, getLoreSectionText, scanLoreHeadings, type LoreOutlineHeading } from './LoreOutline';
-import { formatInlineLoreRelation, formatLoreRelationTarget, legacyRelationLine, loreRelationLinkName, planLoreRelationEdits, rewriteLoreRelationLines, splitLoreRelationTargets } from './LoreRelations';
+import { trimBlankLines } from './LoreTemplateService';
+import { buildLoreOutline, findLoreOutlineTarget, getLoreFrontmatterEnd, getLoreSectionText, relationBodyLines, scanLoreHeadings, type LoreOutlineHeading } from './LoreOutline';
+import { formatLoreRelationListItem, formatLoreRelationTarget, legacyRelationLine, loreRelationsHeading, planLoreRelationBlockInsertion, planLoreRelationEdits, rewriteLoreRelationLines, splitLoreRelationTargets } from './LoreRelations';
 
 export interface LoreEntry {
 	file: TFile;
@@ -42,6 +42,7 @@ export interface LoreRelationItem {
 	rawLine?: string;
 	sourceId?: number;
 	sourceLine?: number;
+	sourceBlock?: string;
 }
 
 export interface LoreSnapshot {
@@ -1249,7 +1250,7 @@ export class CharacterManager {
 		const lines = content.split('\n');
 		if (entry.section) {
 			const section = buildLoreOutline(scanLoreHeadings(lines), lines.length).find(candidate => candidate.key === entry.section?.key);
-			return section ? getLoreSectionProse(lines, section).replace(/<!--\s*wn-important\s*-->\r?\n?/g, '').trim() : '';
+			return section ? getLoreSectionText(lines, section).replace(/<!--\s*wn-important\s*-->\r?\n?/g, '').trim() : '';
 		}
 		
 		if (fileCache && fileCache.headings) {
@@ -2041,7 +2042,7 @@ export class CharacterManager {
 				: splitLoreRelationTargets(row.target).map(target => this.formatLoreRelation(bookPath, filePath, { label: row.label, target }));
 		});
 		if (newRelations.some(line => !line)) return false;
-		if (newRelations.length) contentToAppend += `\n${newRelations.join('\n')}\n`;
+		if (newRelations.length) contentToAppend += `\n${loreRelationsHeading}\n${newRelations.join('\n')}\n`;
 
 		if (templateContent?.trim()) {
 			if (!contentToAppend.endsWith('\n\n')) contentToAppend += '\n';
@@ -2187,10 +2188,10 @@ export class CharacterManager {
 
 	private formatLoreRelation(bookPath: string, sourcePath: string, row: LoreRelationItem): string | undefined {
 		const explicitLink = [row.rawTarget, row.target].find(target => target && /^\[\[[^\]\r\n]+\]\]$/.test(target.trim()));
-		if (explicitLink) return formatInlineLoreRelation(row.label, explicitLink);
+		if (explicitLink) return formatLoreRelationListItem(row.label, explicitLink);
 		const target = this.getCharacterFile(bookPath, row.target.trim());
 		const name = row.target.trim();
-		return formatInlineLoreRelation(row.label, target ? formatLoreRelationTarget(target, sourcePath, name) : `[[${name}|${name}]]`);
+		return formatLoreRelationListItem(row.label, target ? formatLoreRelationTarget(target, sourcePath, name) : `[[${name}|${name}]]`);
 	}
 
 	private parseChunkFields(lines: string[], start: number, end: number): {
@@ -2213,6 +2214,8 @@ export class CharacterManager {
 		let aliases = '';
 		let type = '';
 		let relationHeading = '';
+		let relationBlock = '';
+		let relationLevel = 0;
 
 		let inRelationSection = false;
 		let passedRelationSection = false;
@@ -2222,7 +2225,6 @@ export class CharacterManager {
 		const relationProseLines: string[] = [];
 		const bodyLines: string[] = [];
 		const tailLines: string[] = [];
-		const inlineByLine = new Map(getLoreInlineRelations(lines, start, end).map(relation => [relation.line, relation]));
 
 		for (let i = 0; i < chunkLines.length; i++) {
 			const line = chunkLines[i];
@@ -2243,27 +2245,22 @@ export class CharacterManager {
 			}
 
 			if (!isFenceLine) {
-				const inline = inlineByLine.get(start + i);
-				if (inline && !inRelationSection) {
-					const rawTarget = `[[${inline.link}]]`;
-					const target = loreRelationLinkName(rawTarget);
-					relations.push({ label: inline.label, target });
-					rawRelationItems.push({ label: inline.label, target, rawTarget, rawLine: line, sourceLine: start + i });
-					continue;
-				}
 				if (/^<!--\s*wn-important\s*-->$/.test(line.trim())) {
 					important = true;
 					continue;
 				}
 
-				const relHeadingMatch = line.match(/^###\s+(?:关系|關係|Relations?)\s*$/i);
+				const relHeadingMatch = /^ {0,3}(#{3}|#{6})[ \t]+(关系|關係|Relations?|Relationships)(?:[ \t]+#+)?\s*$/i.exec(line);
 				if (relHeadingMatch) {
 					inRelationSection = true;
-					relationHeading = line.trim().replace(/^###\s+/, '');
+					relationLevel = relHeadingMatch[1].length;
+					relationHeading = relHeadingMatch[2];
+					relationBlock = line.trimEnd();
 					continue;
 				}
 
-				if (inRelationSection && /^#{1,3}\s+/.test(line)) {
+				const nextHeading = /^ {0,3}(#{1,6})[ \t]+/.exec(line);
+				if (inRelationSection && nextHeading && nextHeading[1].length <= relationLevel) {
 					inRelationSection = false;
 					passedRelationSection = true;
 					tailLines.push(line);
@@ -2296,7 +2293,7 @@ export class CharacterManager {
 							const cleanTarget = this.extractRelationTargetName(rawT);
 							if (cleanTarget) {
 								relations.push({ label, target: cleanTarget });
-								rawRelationItems.push({ label, target: cleanTarget, rawTarget: rawT, rawLine: line, sourceLine: start + i });
+								rawRelationItems.push({ label, target: cleanTarget, rawTarget: rawT, rawLine: line, sourceLine: start + i, sourceBlock: relationBlock });
 							}
 						}
 					} else {
@@ -2444,7 +2441,7 @@ export class CharacterManager {
 		const lines = content.split('\n');
 		const section = buildLoreOutline(scanLoreHeadings(lines), lines.length).find(candidate => candidate.key === entry.section?.key);
 		if (!section) return null;
-		const prose = getLoreSectionProse(lines, section).split('\n');
+		const prose = getLoreSectionText(lines, section).split('\n');
 		const direct = this.parseChunkFields(prose, 0, prose.length);
 		if (entry.fileBacked) {
 			const fm = this.app.metadataCache.getFileCache(entry.file)?.frontmatter;
@@ -2453,17 +2450,12 @@ export class CharacterManager {
 			direct.aliases = [...new Set([...direct.aliases.split(/[,，、/|;；]/), ...known]
 				.filter(value => typeof value === 'string' || typeof value === 'number').map(value => String(value).trim()).filter(Boolean))].join(', ');
 		}
-		const inline = getLoreInlineRelations(lines, section.bodyStart, section.bodyEnd).map(relation => ({
-			label: relation.label, target: loreRelationLinkName(`[[${relation.link}]]`), rawTarget: `[[${relation.link}]]`,
-			rawLine: lines[relation.line], sourceLine: relation.line,
-		}));
-		const legacy = section.relationBlocks.flatMap(block => {
-			const buffer = ['### 关系', ...lines.slice(block.start + 1, block.end)];
+		const relations = section.relationBlocks.flatMap(block => {
+			const buffer = [block.level === 6 ? loreRelationsHeading : '### 关系', ...relationBodyLines(lines, block)];
 			return this.parseChunkFields(buffer, 0, buffer.length).rawRelationItems.map(row => ({
-				...row, sourceLine: block.start + (row.sourceLine ?? 0),
+				...row, sourceLine: block.bodyStart - 1 + (row.sourceLine ?? 0),
 			}));
-		});
-		const relations = [...inline, ...legacy].map((row, sourceId) => ({ ...row, sourceId }));
+		}).map((row, sourceId) => ({ ...row, sourceId }));
 		const ownerBook = this.getBookPathForFile(entry.file) || '';
 		const loreFolder = this.findLoreFolder(ownerBook)?.path;
 		const category = entry.file.basename;
@@ -2516,32 +2508,24 @@ export class CharacterManager {
 			if (!section) return data;
 			const newline = data.includes('\r\n') ? '\r' : '';
 			const lineEdits = [...rewriteLoreRelationLines(current.relations, plan.kept)].sort(([a], [b]) => b - a);
+			const insertion = plan.inserted.length ? planLoreRelationBlockInsertion(lines, section.bodyEnd, section.relationBlocks, plan.inserted) : undefined;
+			for (const [line, replacement] of lineEdits) lines.splice(line, 1, ...(replacement ? [`${replacement.trimEnd()}${newline}`] : []));
+			if (insertion) {
+				const removedBefore = lineEdits.filter(([line, replacement]) => line < insertion.line && !replacement).length;
+				lines.splice(insertion.line - removedBefore, 0, ...insertion.lines.map(line => `${line}${newline}`));
+			}
 			if (newName === entry.heading && newBody === snapshot.body && input.type.trim() === snapshot.type && input.aliases.trim() === snapshot.aliases) {
-				let insertAt = section.bodyEnd;
-				while (insertAt > section.bodyStart && !lines[insertAt - 1].trim()) insertAt--;
-				const needsBlank = insertAt === section.bodyEnd;
-				const removedBefore = lineEdits.filter(([line, replacement]) => line < insertAt && !replacement).length;
-				for (const [line, replacement] of lineEdits) lines.splice(line, 1, ...(replacement ? [`${replacement.trimEnd()}${newline}`] : []));
-				if (plan.inserted.length) {
-					lines.splice(insertAt - removedBefore, 0, newline, ...plan.inserted.map(line => `${line}${newline}`), ...(needsBlank ? [newline] : []));
-				}
 				changed = true;
 				original = data;
 				written = lines.join('\n');
 				return written;
-			}
-			const inline = getLoreInlineRelations(lines, section.bodyStart, section.bodyEnd)
-				.filter(relation => !lineEdits.some(([line]) => line === relation.line)).map(relation => lines[relation.line].replace(/\r$/, ''));
-			inline.push(...plan.inserted);
-			for (const [line, replacement] of lineEdits) {
-				if (line >= section.bodyEnd) lines.splice(line, 1, ...(replacement ? [`${replacement.trimEnd()}${newline}`] : []));
 			}
 			const aliases = input.aliases.split(/[,，、/|;；]/).map(alias => alias.trim()).filter(Boolean);
 			if (newName !== entry.heading && !aliases.includes(entry.heading)) aliases.push(entry.heading);
 			const body = [
 				snapshot.important ? '<!-- wn-important -->' : '',
 				aliases.length ? `**${getLoreLabel('alias')}**：${aliases.join(', ')}` : '',
-				input.type.trim() ? `**${getLoreLabel('type')}**：${input.type.trim()}` : '', newBody, inline.join('\n'),
+				input.type.trim() ? `**${getLoreLabel('type')}**：${input.type.trim()}` : '', newBody,
 			].filter(Boolean).join('\n\n');
 			const keepHeading = newName === entry.heading || (entry.fileBacked && section.title !== entry.heading);
 			const heading = keepHeading ? lines.slice(section.line, section.bodyStart)
@@ -2603,12 +2587,9 @@ export class CharacterManager {
 					const outline = buildLoreOutline(scanLoreHeadings(lines), lines.length);
 					const declared = new Set<number>();
 					for (const section of outline) {
-						for (const relation of getLoreInlineRelations(lines, section.bodyStart, section.bodyEnd)) declared.add(relation.line);
 						for (const block of section.relationBlocks) {
-							const fence: FenceScanState = { inFence: false, fenceChar: '', fenceLength: 0 };
-							for (let i = block.start + 1; i < block.end; i++) {
-								const { inFenceBefore, inFenceAfter } = scanFenceLine(lines[i], fence);
-								if (!inFenceBefore && !inFenceAfter && /^(?:[-*]\s+)?(?:\*\*|__)?[^\n*:]+?(?:\*\*|__)?\s*[:：]/.test(lines[i])) declared.add(i);
+							for (const [offset, line] of relationBodyLines(lines, block).entries()) {
+								if (legacyRelationLine.test(line)) declared.add(block.bodyStart + offset);
 							}
 						}
 					}
@@ -2791,21 +2772,27 @@ export class CharacterManager {
 		const relationPlan = planLoreRelationEdits(previousRelations, input.relations, row => this.formatLoreRelation(bookPath, entry.file.path, row));
 		if (!relationPlan) return false;
 		const lineEdits = rewriteLoreRelationLines(previousRelations, relationPlan.kept);
-		const legacyLines: string[] = [];
-		const inlineLines = [...relationPlan.inserted];
+		const blocks = new Map<string, string[]>();
 		const seenLines = new Set<number>();
 		for (const row of previousRelations) {
 			if (row.sourceLine === undefined || seenLines.has(row.sourceLine)) continue;
 			seenLines.add(row.sourceLine);
 			const line = lineEdits.get(row.sourceLine) ?? row.rawLine;
 			if (!line) continue;
-			if (getLoreInlineRelations([line], 0, 1).length) inlineLines.push(line);
-			else legacyLines.push(line);
+			const heading = row.sourceBlock || `### ${relationHeading}`;
+			const items = blocks.get(heading) ?? [];
+			items.push(line);
+			blocks.set(heading, items);
 		}
-		if (inlineLines.length) parts.push(inlineLines.join('\n'));
-		if (legacyLines.length || relationProse) {
-			parts.push([`### ${relationHeading}`, relationProse, ...legacyLines].filter(Boolean).join('\n'));
+		if (relationProse) {
+			const heading = blocks.keys().next().value ?? `### ${relationHeading}`;
+			blocks.set(heading, [relationProse, ...(blocks.get(heading) ?? [])]);
 		}
+		if (relationPlan.inserted.length) {
+			const canonical = [...blocks.keys()].find(heading => /^ {0,3}######\s/.test(heading)) ?? loreRelationsHeading;
+			blocks.set(canonical, [...(blocks.get(canonical) ?? []), ...relationPlan.inserted]);
+		}
+		for (const [heading, items] of blocks) parts.push([heading, ...items].join('\n'));
 
 		if (retainedTail) {
 			parts.push(retainedTail);

@@ -462,9 +462,9 @@ describe('SeriesLoreSharing - Same-Series Public Lore Subfolders', () => {
 		expect(updatedContent).toContain('## 杨冬');
 		expect(updatedContent).toContain('**别名**：冬冬');
 		// Cross-file relation to NovelA's 丁仪
-		expect(updatedContent).toContain('关系:: 师从 → [[NovelA/设定/系列/公共人物#丁仪|丁仪]]');
+		expect(updatedContent).toContain('- **师从**：[[NovelA/设定/系列/公共人物#丁仪|丁仪]]');
 		// Cross-file relation to NovelA's local 冲突人物
-		expect(updatedContent).toContain('关系:: 关联 → [[NovelA/设定/系列/公共人物#冲突人物|冲突人物]]');
+		expect(updatedContent).toContain('- **关联**：[[NovelA/设定/系列/公共人物#冲突人物|冲突人物]]');
 
 		// Crucial verification: NovelA should NOT have created a duplicate local file!
 		expect(fileMap.has('NovelA/设定/系列/公共人物.md.md')).toBe(false);

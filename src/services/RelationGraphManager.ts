@@ -19,7 +19,7 @@ import { findBookRoot } from '../utils/path';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { t } from '../i18n';
 import { cleanLoreHeading } from './CharacterManager';
-import { buildLoreOutline, loreRelationHeadings, readLoreInlineRelation, scanLoreHeadings, type HeadingPosition } from './LoreOutline';
+import { buildLoreOutline, getFileLoreRelationBlocks, loreRelationHeadings, scanLoreHeadings, type HeadingPosition } from './LoreOutline';
 import { addLoreOutlineToGraph, type LoreGraphFile } from './LoreOutlineGraph';
 
 // ==========================================
@@ -210,8 +210,10 @@ export class RelationGraphManager {
 			if (!data) continue;
 			const { fileCache, lines } = data;
 			const headings = options?.includeHeadingHierarchy ? scanLoreHeadings(lines) : (fileCache.headings ?? []);
-			const scopedBlocks = options?.includeHeadingHierarchy
-				? new Set(buildLoreOutline(headings, lines.length).flatMap(section => section.relationBlocks.map(block => block.start + 1))) : new Set<number>();
+			const outline = options?.includeHeadingHierarchy ? buildLoreOutline(headings, lines.length) : [];
+			const blocks = outline.length ? outline.flatMap(section => section.relationBlocks)
+				: options?.includeHeadingHierarchy ? getFileLoreRelationBlocks(headings, lines.length) : [];
+			const scopedBlocks = new Set(blocks.map(block => block.bodyStart));
 			const level2Headings = headings.filter(h => h.level === 2);
 
 			if (level2Headings.length > 0) {
@@ -673,7 +675,6 @@ export class RelationGraphManager {
 			}
 
 			const line = lines[i] || '';
-			if (readLoreInlineRelation(line)) continue;
 			for (const { term, targetId } of searchTerms) {
 				if (targetId === sourceName) continue;
 				if (mentioned.has(targetId)) continue;

@@ -1,6 +1,6 @@
 import type { App, TFile } from 'obsidian';
 import { cleanLoreHeading, getLoreEntryIdentity, type CharacterManager, type LoreEntry } from './CharacterManager';
-import { buildLoreOutline, getLoreSectionProse, scanLoreHeadings } from './LoreOutline';
+import { buildLoreOutline, getLoreSectionText, scanLoreHeadings } from './LoreOutline';
 import { CORKBOARD_STATUS_MAP, getCorkboardStatusText } from '../i18n/data-keys';
 
 interface CachedText {
@@ -333,7 +333,7 @@ export class WorkbenchFilterIndex {
 			const sections = extractLoreSections(content, file.basename);
 			const lines = content.split(/\r?\n/);
 			for (const section of buildLoreOutline(scanLoreHeadings(lines), lines.length)) {
-				sections.set(section.key, normalizeWorkbenchSearchText(getLoreSectionProse(lines, section)));
+				sections.set(section.key, normalizeWorkbenchSearchText(getLoreSectionText(lines, section)));
 			}
 			this.loreSectionCache.set(file.path, { mtime, sections });
 			return sections;

@@ -3,12 +3,12 @@ import { cleanLoreHeading } from './CharacterManager';
 import { scanFenceLine, type FenceScanState } from './LoreTemplateService';
 
 export const loreRelationHeadings = new Set(['关系', '關係', 'relation', 'relations', 'relationships']);
-const inlineRelation = /^ {0,3}(?:关系|關係|relations?)::[ \t]+(.+?)[ \t]+(?:→|->)[ \t]+\[\[([^\]\r\n]+)\]\][ \t]*$/i;
 
-export function readLoreInlineRelation(line: string): { label: string; link: string } | undefined {
-	const match = inlineRelation.exec(line);
-	if (match?.[1].trim() && match[2].trim()) return { label: match[1].trim(), link: match[2].trim() };
-	return undefined;
+export interface LoreRelationBlock {
+	level: number;
+	start: number;
+	bodyStart: number;
+	end: number;
 }
 
 export interface LoreOutlineHeading {
@@ -18,7 +18,7 @@ export interface LoreOutlineHeading {
 	bodyStart: number;
 	bodyEnd: number;
 	subtreeEnd: number;
-	relationBlocks: { start: number; end: number }[];
+	relationBlocks: LoreRelationBlock[];
 	path: string[];
 	key: string;
 	parent?: LoreOutlineHeading;
@@ -83,25 +83,32 @@ export function scanLoreHeadings(lines: readonly string[]): HeadingPosition[] {
 /** Parent and section boundaries come from Obsidian's parsed headings. */
 export function buildLoreOutline(headings: readonly HeadingPosition[], lineCount: number): LoreOutlineHeading[] {
 	const outline: LoreOutlineHeading[] = [];
-	const stack: { heading: LoreOutlineHeading; relationBlock: boolean }[] = [];
+	const stack: { heading: LoreOutlineHeading; relationBlock: boolean; relationOwner?: LoreOutlineHeading }[] = [];
 	const occurrences = new Map<string, number>();
+	const close = (end: number) => {
+		const { heading, relationOwner } = stack.pop()!;
+		heading.subtreeEnd = end;
+		if (relationOwner) {
+			relationOwner.relationBlocks.push({ level: heading.level, start: heading.line, bodyStart: heading.bodyStart, end });
+			if (heading.level === 6 && relationOwner.level === 6) relationOwner.subtreeEnd = end;
+		}
+	};
 	for (let index = 0; index < headings.length; index++) {
 		const source = headings[index];
-		while (stack.length && stack[stack.length - 1].heading.level >= source.level) {
-			const closed = stack.pop()!.heading;
-			closed.subtreeEnd = source.position.start.line;
-			if (loreRelationHeadings.has(closed.title.toLowerCase()) && closed.parent) {
-				closed.parent.relationBlocks.push({ start: closed.line, end: closed.subtreeEnd });
-			}
-		}
+		const title = cleanLoreHeading(source.heading);
+		const isRelation = loreRelationHeadings.has(title.toLowerCase());
+		const last = stack.at(-1);
+		// Level six has no child heading level, so a following H6 relation block belongs to that entry.
+		const precedingSix = isRelation && source.level === 6 && last?.heading.level === 6
+			? last.relationBlock ? last.relationOwner : last.heading : undefined;
+		while (stack.length && stack[stack.length - 1].heading.level >= source.level) close(source.position.start.line);
 		const previous = stack[stack.length - 1];
 		const parent = previous?.heading;
-		const title = cleanLoreHeading(source.heading);
 		const path = [...(parent?.path ?? []), title];
 		const slot = JSON.stringify([parent?.key, title]);
 		const occurrence = (occurrences.get(slot) ?? 0) + 1;
 		occurrences.set(slot, occurrence);
-		const relationBlock = Boolean(previous?.relationBlock) || loreRelationHeadings.has(title.toLowerCase());
+		const relationBlock = Boolean(previous?.relationBlock) || isRelation;
 		const heading: LoreOutlineHeading = {
 			title, path, parent, level: source.level, line: source.position.start.line,
 			bodyStart: source.position.end.line + 1,
@@ -109,14 +116,11 @@ export function buildLoreOutline(headings: readonly HeadingPosition[], lineCount
 			subtreeEnd: lineCount, relationBlocks: [],
 			key: `${parent?.key ?? ''}/${JSON.stringify([title, occurrence])}`,
 		};
-		stack.push({ heading, relationBlock });
+		const relationOwner = isRelation && !previous?.relationBlock ? precedingSix ?? parent : undefined;
+		stack.push({ heading, relationBlock, relationOwner });
 		if (!relationBlock && title) outline.push(heading);
 	}
-	for (const { heading } of stack) {
-		if (loreRelationHeadings.has(heading.title.toLowerCase()) && heading.parent) {
-			heading.parent.relationBlocks.push({ start: heading.line, end: lineCount });
-		}
-	}
+	while (stack.length) close(lineCount);
 	return outline;
 }
 
@@ -124,37 +128,37 @@ export function getLoreSectionText(lines: readonly string[], section: LoreOutlin
 	return lines.slice(section.bodyStart, section.bodyEnd).join('\n').trim();
 }
 
-export function getLoreInlineRelations(lines: readonly string[], start: number, end: number) {
-	const declarations: Array<{ line: number; label: string; link: string }> = [];
-	const fence: FenceScanState = { inFence: false, fenceChar: '', fenceLength: 0 };
-	let commented = false;
-	let htmlCommented = false;
-	for (let index = start; index < end; index++) {
-		const text = lines[index].replace(/\r$/, '');
-		if (htmlCommented) {
-			htmlCommented = !text.includes('-->');
-			continue;
-		}
-		if (!commented) {
-			const state = scanFenceLine(text, fence);
-			if (state.inFenceBefore || state.inFenceAfter) continue;
-		}
-		const startsInComment = commented;
-		if ((text.match(/%%/g)?.length ?? 0) % 2) commented = !commented;
-		if (startsInComment || commented) continue;
-		if (/^ {0,3}<!--/.test(text)) {
-			htmlCommented = !text.includes('-->');
-			continue;
-		}
-		const relation = readLoreInlineRelation(text);
-		if (relation) declarations.push({ line: index, ...relation });
+export function getFileLoreRelationBlocks(headings: readonly HeadingPosition[], lineCount: number): LoreRelationBlock[] {
+	const blocks: LoreRelationBlock[] = [];
+	for (const [index, heading] of headings.entries()) {
+		const start = heading.position.start.line;
+		if (start < (blocks.at(-1)?.end ?? 0) || !loreRelationHeadings.has(cleanLoreHeading(heading.heading).toLowerCase())) continue;
+		const next = headings.slice(index + 1).find(item => item.level <= heading.level);
+		blocks.push({ level: heading.level, start, bodyStart: heading.position.end.line + 1, end: next?.position.start.line ?? lineCount });
 	}
-	return declarations;
+	return blocks;
 }
 
-export function getLoreSectionProse(lines: readonly string[], section: LoreOutlineHeading): string {
-	const relationLines = new Set(getLoreInlineRelations(lines, section.bodyStart, section.bodyEnd).map(relation => relation.line));
-	return lines.slice(section.bodyStart, section.bodyEnd).filter((_line, offset) => !relationLines.has(section.bodyStart + offset)).join('\n').trim();
+export function relationBodyLines(lines: readonly string[], block: LoreRelationBlock): string[] {
+	const fence: FenceScanState = { inFence: false, fenceChar: '', fenceLength: 0 };
+	let comment: '%%' | '-->' | undefined;
+	return lines.slice(block.bodyStart, block.end).map(line => {
+		if (comment) {
+			if (line.includes(comment)) comment = undefined;
+			return '';
+		}
+		const state = scanFenceLine(line, fence);
+		if (state.inFenceBefore || state.inFenceAfter) return '';
+		if (line.trimStart().startsWith('<!--')) {
+			if (!line.includes('-->')) comment = '-->';
+			return '';
+		}
+		if (line.trimStart().startsWith('%%')) {
+			if (line.trimStart().indexOf('%%', 2) < 0) comment = '%%';
+			return '';
+		}
+		return line;
+	});
 }
 
 export function findLoreOutlineTarget(outline: readonly LoreOutlineHeading[], parts: readonly string[]): LoreOutlineHeading | undefined {

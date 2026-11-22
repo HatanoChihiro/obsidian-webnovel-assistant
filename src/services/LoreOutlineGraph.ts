@@ -1,7 +1,7 @@
 import type { App, CachedMetadata, TFile } from 'obsidian';
-import { buildLoreOutline, findLoreOutlineTarget, getLoreFrontmatterEnd, getLoreInlineRelations, getLoreSectionProse, scanLoreHeadings, type LoreOutlineHeading } from './LoreOutline';
+import { buildLoreOutline, findLoreOutlineTarget, getFileLoreRelationBlocks, getLoreSectionText, relationBodyLines, scanLoreHeadings, type LoreOutlineHeading } from './LoreOutline';
+import { legacyRelationLine, splitLoreRelationTargets } from './LoreRelations';
 import type { GraphData, GraphEdge, GraphNode } from './RelationGraphManager';
-import { scanFenceLine, type FenceScanState } from './LoreTemplateService';
 import { t } from '../i18n';
 
 export interface LoreGraphFile {
@@ -67,7 +67,7 @@ export function addLoreOutlineToGraph(app: App, input: ReadonlyMap<TFile, LoreGr
 		if (!item.outline.length && item.fileNode) ownedText.set(item.fileNode.id, item.lines);
 		for (const section of item.outline) {
 			const node = addHeading(graph, item, section);
-			const text = getLoreSectionProse(item.lines, section);
+			const text = getLoreSectionText(item.lines, section);
 			const aliasText = text.match(/^(?:\*\*|__)?(?:别名|別名|Alias)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/im)?.[1];
 			if (node !== item.fileNode) node.aliases = aliasText?.split(/[,，、/|;；]/).map(alias => alias.trim()).filter(Boolean);
 			ownedText.set(node.id, text.split('\n'));
@@ -109,33 +109,20 @@ export function addLoreOutlineToGraph(app: App, input: ReadonlyMap<TFile, LoreGr
 			const bare = link.split('|')[0].trim();
 			return resolveLink(item, link) ?? (/[#/]/.test(bare) ? undefined : resolveName(bare));
 		};
-		if (!item.outline.length && item.fileNode) {
-			const start = getLoreFrontmatterEnd(item.lines) + 1;
-			const end = scanLoreHeadings(item.lines)[0]?.position.start.line ?? item.lines.length;
-			for (const relation of getLoreInlineRelations(item.lines, start, end)) {
-				addEdge(item.fileNode.id, resolveRelationLink(relation.link), relation.label);
-			}
+		const sources = item.outline.map(section => ({ source: item.nodes.get(section.line)!.id, blocks: section.relationBlocks }));
+		if (!sources.length && item.fileNode) {
+			sources.push({ source: item.fileNode.id, blocks: getFileLoreRelationBlocks(scanLoreHeadings(item.lines), item.lines.length) });
 		}
-		for (const section of item.outline) {
-			const source = item.nodes.get(section.line)!.id;
-			for (const relation of getLoreInlineRelations(item.lines, section.bodyStart, section.bodyEnd)) {
-				addEdge(source, resolveRelationLink(relation.link), relation.label);
-			}
-			for (const block of section.relationBlocks) {
-				const fence: FenceScanState = { inFence: false, fenceChar: '', fenceLength: 0 };
-				for (const line of item.lines.slice(block.start + 1, block.end)) {
-					const { inFenceBefore, inFenceAfter } = scanFenceLine(line, fence);
-					if (inFenceBefore || inFenceAfter) continue;
-					const relation = /^(?:[-*]\s+)?(\*\*|__)(.+?)\1\s*[:：]\s*(.+)$/.exec(line.trim());
+		for (const { source, blocks } of sources) {
+			for (const block of blocks) {
+				for (const line of relationBodyLines(item.lines, block)) {
+					const relation = legacyRelationLine.exec(line);
 					if (!relation) continue;
 					const label = relation[2].trim();
-					const links = [...relation[3].matchAll(/\[\[([^\]]+)\]\]/g)];
-					for (const link of links) {
-						addEdge(source, resolveRelationLink(link[1]), label);
-					}
-					if (links.length) continue;
-					for (const name of relation[3].split(/[、,，|/]/)) {
-						addEdge(source, resolveName(name.trim()), label);
+					for (const target of splitLoreRelationTargets(relation[3])) {
+						const link = /^\[\[([^\]]+)\]\]$/.exec(target);
+						if (link) addEdge(source, resolveRelationLink(link[1]), label);
+						else for (const name of target.split(/[|/]/)) addEdge(source, resolveName(name.trim()), label);
 					}
 				}
 			}

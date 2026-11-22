@@ -988,14 +988,16 @@ Place the cursor on the line to format. Open the wheel and press `1`–`6` to se
 
 ###### Define a relationship from a subheading
 
-In a lore card's editor, choose **Add Relationship**, enter a label, and search for a target. In a Markdown editor, place the cursor inside the lore entry and run **Add Lore Relationship**. Duplicate titles show their file and parent headings. The link stores the exact target and displays its short name.
+Add `###### 关系` (or `###### Relations`) after the entry's prose and before the next heading. A relationship section immediately after an H6 entry belongs to that H6 entry. **Add Relationship** in the card editor and **Add Lore Relationship** in a Markdown editor generate the same section and list format.
 
 ```markdown
 ###### East Pier
-Relation:: Supplies → [[Factions#Seagull Guild|Seagull Guild]]
+
+###### Relations
+- **Supplies**: [[Factions#Seagull Guild|Seagull Guild]]
 ```
 
-The lore graph shows H1–H6 hierarchy with “Contains” edges. Each card shows the prose directly under its own heading. Deeper cards show their parent path. The existing `### Relations` sections remain readable. New and edited relationships use inline declarations.
+The lore graph shows H1–H6 hierarchy with “Contains” edges. Each card shows the prose directly under its own heading. Deeper cards show their parent path. Existing `### Relations` sections remain readable. New and edited relationships use the H6 section.
 
 ##### Related Settings
 - **Collapse Subheadings in Hover Card**: For long quick-reference content, collapse level-3 and deeper subheadings by default and expand them on click.

@@ -1,7 +1,7 @@
 import type { App, CachedMetadata, HeadingCache, TFile } from 'obsidian';
 import { describe, expect, it } from 'vitest';
 import { RelationGraphManager } from '../src/services/RelationGraphManager';
-import { parseLoreBodyForEditing } from '../src/services/LoreTemplateService';
+import { buildLoreOutline, getLoreSectionText, scanLoreHeadings } from '../src/services/LoreOutline';
 import type { WebNovelAssistantPlugin } from '../src/types/plugin';
 
 function fixture(path: string, text: string) {
@@ -38,7 +38,7 @@ describe('标题层级与设定关系', () => {
 	it('沿 H1–H6 连接直属父节点，并在 H6 上同时保留旧词条的独立关系', async () => {
 		const map = fixture('设定/地理志.md', [
 			'# 地理志', '## 白岬王国', '### 北境领', '#### 雾港城', '##### 旧港区', '###### 东码头',
-			'关系:: 补给 → [[势力志#海鸥商会|海鸥]]', '', '### 关系', '- **通商**：海鸥商会',
+			'###### 关系', '- **补给**：[[势力志#海鸥商会|海鸥]]', '', '### 关系', '- **通商**：海鸥商会',
 		].join('\n'));
 		const faction = fixture('设定/势力志.md', '# 势力志\n## 海鸥商会');
 		const graph = await graphFor([map, faction]);
@@ -60,11 +60,11 @@ describe('标题层级与设定关系', () => {
 	it('按完整路径区分同名标题，并略过有歧义的链接和预览示例', async () => {
 		const map = fixture('设定/地理志.md', [
 			'# 地理志', '## 白岬王国', '### 北境领', '##### 码头', '### 南部领', '##### 码头',
-			'关系:: 同行 → [[#白岬王国#北境领#码头]]',
-			'关系:: 歧义 → [[#码头]]',
-			'```md', '关系:: 代码 → [[#白岬王国]]', '```',
-			'%%', '关系:: 注释 → [[#白岬王国]]', '%%',
-			'<!--', '###### 隐藏', '关系:: 隐藏 → [[#白岬王国]]', '-->',
+			'###### 关系', '- **同行**：[[#白岬王国#北境领#码头]]',
+			'- **歧义**：[[#码头]]',
+			'```md', '- **代码**：[[#白岬王国]]', '```',
+			'%%', '- **注释**：[[#白岬王国]]', '%%',
+			'<!--', '###### 隐藏', '- **隐藏**：[[#白岬王国]]', '-->',
 		].join('\n'));
 		const graph = await graphFor([map]);
 		const south = graph.nodes.find(node => node.headingLine === 5)!;
@@ -76,14 +76,32 @@ describe('标题层级与设定关系', () => {
 		]);
 	});
 
-	it('卡片字段编辑保留 H6 的行内关系格式', () => {
-		const before = '### 北境领\n###### 东码头\n地点：旧港区\n关系:: 补给 → [[势力志#海鸥商会]]';
-		const body = parseLoreBodyForEditing(before);
-		const editableRelation = body.fields.find(field => field.label === '关系')!;
-		const editableLocation = body.fields.find(field => field.label === '地点')!;
-		expect(editableRelation.defaultValue).toBe('补给 → [[势力志#海鸥商会]]');
-		expect(body.render({ [editableLocation.id]: '外港' })).toBe(before.replace('地点：旧港区', '地点：外港'));
-		expect(body.render({ [editableRelation.id]: '同盟 → [[势力志#海鸥商会]]' })).toBe(before.replace('补给', '同盟'));
+	it('六级关系块分别归属于 H1–H6 的词条，并与直属正文和下个同级词条隔离', async () => {
+		const names = ['地图', '王国', '北领', '港城', '旧港', '东码头'];
+		const lines = names.flatMap((name, index) => [
+			`${'#'.repeat(index + 1)} ${name}`, `${name}正文`,
+			'###### 关系', `- **${name}补给**：[[势力志#商会]]`, '',
+		]);
+		lines.push('###### 西码头', '西码头正文', '关系:: 已退出 → [[势力志#商会]]');
+		const outline = buildLoreOutline(scanLoreHeadings(lines), lines.length);
+		expect(outline.map(section => section.title)).toEqual([...names, '西码头']);
+		expect(outline.slice(0, -1).map(section => getLoreSectionText(lines, section))).toEqual(names.map(name => `${name}正文`));
+		expect(outline.at(-2)?.subtreeEnd).toBe(outline.at(-1)?.line);
+		const graph = await graphFor([fixture('设定/地图.md', lines.join('\n')), fixture('设定/势力志.md', '## 商会')]);
+		const titles = new Map(graph.nodes.map(node => [node.id, node.heading]));
+		expect(graph.edges.filter(edge => edge.type === 'explicit').map(edge => [
+			titles.get(edge.source), titles.get(edge.target), edge.label,
+		])).toEqual(names.map(name => [name, '商会', `${name}补给`]));
+	});
+
+	it('无词条标题的单文件设定可同时读取六级关系块和旧关系列表', async () => {
+		const note = fixture('设定/档案.md', '独立设定。\n###### 关系\n- **补给**：[[地图#地区#王国#东码头|东码头]]\n### 关系\n- **合作**：王国');
+		const map = fixture('设定/地图.md', '# 地区\n## 王国\n###### 东码头');
+		const graph = await graphFor([note, map]);
+		const titles = new Map(graph.nodes.map(node => [node.id, node.heading]));
+		expect(graph.edges.filter(edge => edge.type === 'explicit').map(edge => [
+			titles.get(edge.source), titles.get(edge.target), edge.label,
+		])).toEqual([['档案', '东码头', '补给'], ['档案', '王国', '合作']]);
 	});
 
 	it('旧式正名关系优先保留同名的原二级词条', async () => {

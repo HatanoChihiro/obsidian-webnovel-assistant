@@ -1,6 +1,9 @@
 import type { LoreEntry, LoreRelationItem } from './CharacterManager';
+import type { LoreRelationBlock } from './LoreOutline';
 
-export const legacyRelationLine = /^(\s*(?:[-*]\s+)?(?:\*\*|__)?([^\n*:]+?)(?:\*\*|__)?\s*[:：]\s*)(.*)$/;
+export const loreRelationsHeading = '###### 关系';
+
+export const legacyRelationLine = /^(\s*(?:[-*]\s+)?(?:\*\*|__)?([^\n*:：]+?)(?:\*\*|__)?\s*[:：](?![:：])\s*)(.*)$/;
 
 export function splitLoreRelationTargets(text: string): string[] {
 	return (text.match(/\[\[[^\]\r\n]+\]\]|[^,，、]+?(?=\[\[|[,，、]|$)/g) ?? []).map(part => part.trim()).filter(Boolean);
@@ -13,18 +16,29 @@ export function loreRelationLinkName(link: string): string {
 	return alias?.trim() || target.split(/[#/]/).at(-1)?.trim().replace(/\.md$/i, '') || target.trim();
 }
 
-	export function formatLoreRelationTarget(entry: LoreEntry, sourcePath?: string, displayName = entry.heading): string {
+export function formatLoreRelationTarget(entry: LoreEntry, sourcePath?: string, displayName = entry.heading): string {
 	const headingPath = entry.section?.path.join('#') ?? (entry.file.basename !== entry.heading ? entry.heading : undefined);
 	const filePath = headingPath && sourcePath === entry.file.path ? '' : entry.file.path.replace(/\.md$/i, '');
 	return `[[${filePath}${headingPath ? `#${headingPath}` : ''}|${displayName}]]`;
 }
 
-export function formatInlineLoreRelation(label: string, rawLink: string): string | undefined {
+export function formatLoreRelationListItem(label: string, rawLink: string): string | undefined {
 	const link = /^\[\[([^\]\r\n]+)\]\]$/.exec(rawLink.trim());
-	if (!link || !label.trim() || /\r|\n|\s(?:→|->)\s/.test(label)) return undefined;
+	if (!link || !label.trim() || /[\r\n*:：]/.test(label)) return undefined;
 	const [target, alias] = link[1].split('|');
 	if (!target.trim()) return undefined;
-	return `关系:: ${label.trim()} → [[${target.trim()}|${alias?.trim() || loreRelationLinkName(rawLink)}]]`;
+	return `- **${label.trim()}**：[[${target.trim()}|${alias?.trim() || loreRelationLinkName(rawLink)}]]`;
+}
+
+export function planLoreRelationBlockInsertion(lines: readonly string[], bodyEnd: number, blocks: readonly LoreRelationBlock[], items: readonly string[]) {
+	const block = blocks.find(candidate => candidate.level === 6);
+	if (!block) {
+		const leadingBlank = bodyEnd > 0 && lines[bodyEnd - 1].trim() ? [''] : [];
+		return { line: bodyEnd, lines: [...leadingBlank, loreRelationsHeading, ...items, ''] };
+	}
+	let line = block.end;
+	while (line > block.bodyStart && !lines[line - 1].trim()) line--;
+	return { line, lines: [...items, ...(line === block.end ? [''] : [])] };
 }
 
 export function planLoreRelationEdits(previous: readonly LoreRelationItem[], requested: readonly LoreRelationItem[],

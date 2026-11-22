@@ -105,7 +105,7 @@ describe('CharacterManager', () => {
         const file = Object.assign(new TFile(), { path: 'Book1/Lore/Map.md', basename: 'Map' });
         manager.getBookPathForFile = vi.fn().mockReturnValue('Book1');
         manager.isLorePath = vi.fn().mockReturnValue(true);
-        let content = '# 地理志\n## 白岬\n旧领地说明。\n### 北境\n#### 港城\n##### 旧区\n###### 东码头\n独立码头正文。\n关系:: 隶属 → [[#白岬]]\n### 关系\n- **贸易**：北境\n';
+        let content = '# 地理志\n## 白岬\n旧领地说明。\n### 北境\n#### 港城\n##### 旧区\n###### 东码头\n独立码头正文。\n###### 关系\n- **隶属**：[[#白岬]]\n### 关系\n- **贸易**：北境\n';
         mockApp.vault.getMarkdownFiles.mockReturnValue([file]);
         mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) => path === file.path ? file : undefined);
         mockApp.vault.cachedRead.mockImplementation(async () => content);
@@ -128,11 +128,11 @@ describe('CharacterManager', () => {
             relations: childSnapshot!.relations, expectedSnapshot: childSnapshot!, contextBookPath: 'Book1',
         })).toBe(true);
         expect(content).toContain('## 白岬\n旧领地说明。');
-        expect(content).toContain('关系:: 隶属 → [[#白岬]]');
+        expect(content).toContain('- **隶属**：[[#白岬]]');
         expect(content).toContain('### 关系\n- **贸易**：北境');
         expect(await manager.getLoreContent(child)).toBe('更新码头正文。');
 
-        content += '\n## 商会\n关系:: 停靠 → [[#白岬#北境#港城#旧区#东码头]]\n';
+        content += '\n## 商会\n###### 关系\n- **停靠**：[[#白岬#北境#港城#旧区#东码头]]\n';
         manager.getLoreFiles = vi.fn().mockReturnValue([file]);
         const renamedSnapshot = await manager.getLoreSnapshot(child, 'Book1');
         expect(await manager.updateLoreEntry(child, {
@@ -140,7 +140,7 @@ describe('CharacterManager', () => {
             relations: renamedSnapshot!.relations, expectedSnapshot: renamedSnapshot!, contextBookPath: 'Book1',
         })).toBe(true);
         expect(content).toContain('###### 东渡码头');
-        expect(content).toContain('关系:: 停靠 → [[#白岬#北境#港城#旧区#东渡码头]]');
+        expect(content).toContain('- **停靠**：[[#白岬#北境#港城#旧区#东渡码头]]');
     });
 
     it('keeps an existing H2 term addressable when a deep heading has the same name', async () => {
@@ -637,14 +637,14 @@ LinLei is a dragon warrior.`;
             );
 
             expect(result).toBe(true);
-            expect(createdContent).toContain('关系:: 朋友 → [[#ZhangSan|ZhangSan]]');
-            expect(createdContent).toContain('关系:: 义弟 → [[#ZhangSan|SanGe]]');
-            expect(createdContent).toContain('关系:: 偶像 → [[Book1/Lore/Characters/Major/Hero|Hero]]');
-            expect(createdContent).toContain('关系:: 战神 → [[Book1/Lore/Characters/Major/Hero|DragonLord]]');
-            expect(createdContent).toContain('关系:: 同门 → [[Book1/Lore/Characters/Minor/SideCharacters#WangWu|WangWu]]');
-            expect(createdContent).toContain('关系:: 师兄 → [[Book1/Lore/Characters/Minor/SideCharacters#WangWu|LaoWang]]');
-            expect(createdContent).toContain('关系:: 未名 → [[UnknownPerson|UnknownPerson]]');
-            expect(createdContent).toContain('关系:: 手动 → [[CustomLink|CustomLink]]');
+            expect(createdContent).toContain('- **朋友**：[[#ZhangSan|ZhangSan]]');
+            expect(createdContent).toContain('- **义弟**：[[#ZhangSan|SanGe]]');
+            expect(createdContent).toContain('- **偶像**：[[Book1/Lore/Characters/Major/Hero|Hero]]');
+            expect(createdContent).toContain('- **战神**：[[Book1/Lore/Characters/Major/Hero|DragonLord]]');
+            expect(createdContent).toContain('- **同门**：[[Book1/Lore/Characters/Minor/SideCharacters#WangWu|WangWu]]');
+            expect(createdContent).toContain('- **师兄**：[[Book1/Lore/Characters/Minor/SideCharacters#WangWu|LaoWang]]');
+            expect(createdContent).toContain('- **未名**：[[UnknownPerson|UnknownPerson]]');
+            expect(createdContent).toContain('- **手动**：[[CustomLink|CustomLink]]');
         });
 
         it('should insert templateContent after description and before relations when creating lore entry', async () => {
@@ -684,11 +684,11 @@ LinLei is a dragon warrior.`;
             expect(createdContent).toContain('## Thor');
             expect(createdContent).toContain('A mythological hero');
             expect(createdContent).toContain('### Background\nBorn in a storm.\n**Weapon**: Thunder Sword');
-            expect(createdContent).toContain('关系:: Brother → [[Loki|Loki]]');
+            expect(createdContent).toContain('- **Brother**：[[Loki|Loki]]');
             // Relations belong to the new entry, before any template subheading.
             const descIndex = createdContent.indexOf('A mythological hero');
             const tplIndex = createdContent.indexOf('### Background');
-            const relIndex = createdContent.indexOf('关系:: Brother');
+            const relIndex = createdContent.indexOf('###### 关系');
             expect(descIndex).toBeLessThan(relIndex);
             expect(relIndex).toBeLessThan(tplIndex);
         });
@@ -810,7 +810,7 @@ LinLei is a dragon warrior.`;
             expect(createdContent).toContain('### Part Two');
             expect(createdContent).toContain('#### Subsection');
 
-            expect(createdContent).toContain('关系:: Disciple → [[Apprentice|Apprentice]]');
+            expect(createdContent).toContain('- **Disciple**：[[Apprentice|Apprentice]]');
         });
 
         it('should preserve leading indented code blocks without converting them to H2 lore titles', async () => {

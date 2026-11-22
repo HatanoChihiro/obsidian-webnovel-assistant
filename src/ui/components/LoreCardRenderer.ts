@@ -3,7 +3,7 @@ import { t } from '../../i18n';
 import type { AccurateCountSettings } from '../../types/settings';
 import type { LoreEntry } from '../../services/CharacterManager';
 import { cleanLoreHeading, getLoreEntryIdentity } from '../../services/CharacterManager';
-import { buildLoreOutline, getLoreSectionProse, scanLoreHeadings, type LoreOutlineHeading } from '../../services/LoreOutline';
+import { buildLoreOutline, getFileLoreRelationBlocks, getLoreSectionText, scanLoreHeadings, type LoreOutlineHeading } from '../../services/LoreOutline';
 import { smartLocateAndHighlight } from '../../utils/leaf';
 import { injectSoftBreakIndentPlaceholders } from '../../utils/softBreakIndent';
 import { createCardImportanceButton } from './CardImportanceButton';
@@ -176,7 +176,7 @@ export class LoreCardRenderer {
 		if (entry.section) {
 			const section = snapshot.outline.get(entry.section.key);
 			if (!section) return { chunk, aliases };
-			const body = getLoreSectionProse(snapshot.lines, section);
+			const body = getLoreSectionText(snapshot.lines, section);
 			const aliasLine = /^(?:\*\*|__)?(?:别名|別名|Alias)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/im;
 			const found = body.match(aliasLine)?.[1];
 			if (found) aliases.push(...found.split(/[,，、/|;；]/).map(alias => alias.trim()).filter(Boolean));
@@ -229,6 +229,11 @@ export class LoreCardRenderer {
 			}
 			// 移除顶部的 # 一级标题（如果存在）
 			bodyText = bodyText.replace(/^\s*#\s+[^\n]*\r?\n/, '');
+			const lines = bodyText.split(/\r?\n/);
+			for (const block of getFileLoreRelationBlocks(scanLoreHeadings(lines), lines.length).reverse()) {
+				lines.splice(block.start, block.end - block.start);
+			}
+			bodyText = lines.join('\n');
 
 			// 3. 从正文中解析别名声明行并提取
 			const aliasMatches = bodyText.matchAll(/(?:\*\*|__)?(?:别名|Alias)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/gi);
