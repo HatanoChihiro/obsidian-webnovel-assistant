@@ -19,14 +19,16 @@ import { findBookRoot } from '../utils/path';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { t } from '../i18n';
 import { cleanLoreHeading } from './CharacterManager';
+import { loreRelationHeadings, readLoreInlineRelation } from './LoreOutline';
+import { addLoreOutlineToGraph, type LoreGraphFile } from './LoreOutlineGraph';
 
 // ==========================================
 // 类型定义
 // ==========================================
 
-/** 图谱节点 — 代表一个角色词条 */
+/** 图谱节点 — 设定词条或所属标题 */
 export interface GraphNode {
-	/** 角色名（唯一标识），取自 ## 标题文本 */
+	/** 原有词条保留正名，其他标题采用文件和标题路径标识 */
 	id: string;
 	/** 所属设定文件 */
 	file: TFile;
@@ -34,6 +36,8 @@ export interface GraphNode {
 	sourcePath?: string;
 	/** 原始标题文本（清理 Markdown 格式后） */
 	heading: string;
+	headingLine?: number;
+	outlineParent?: string;
 	/** Canvas 坐标 x（初始化为 0，由 ForceLayoutEngine 赋值） */
 	x: number;
 	/** Canvas 坐标 y */
@@ -67,8 +71,8 @@ export interface GraphEdge {
 	target: string;
 	/** 关系描述标签（如 "喜欢"、"师父"、"提及"） */
 	label: string;
-	/** 关系来源类型：explicit=用户在 ### 关系 中显式声明，mention=正文自动扫描 */
-	type: 'explicit' | 'mention';
+	/** 显式关系、正文提及或标题父子关系 */
+	type: 'explicit' | 'mention' | 'hierarchy';
 }
 
 /** 完整的图谱数据 */
@@ -80,14 +84,6 @@ export interface GraphData {
 // ==========================================
 // 常量
 // ==========================================
-
-/**
- * 匹配 `### 关系` 标题的候选关键词集合
- * 同时支持中英文，确保国际化兼容
- */
-const RELATION_HEADING_KEYWORDS: ReadonlySet<string> = new Set([
-	'关系', '關係', 'relation', 'relations', 'relationships',
-]);
 
 /**
  * 匹配 `**关系类型**：目标角色` 格式的正则
@@ -124,7 +120,7 @@ export class RelationGraphManager {
 	 */
 	public async buildGraphData(
 		file?: TFile | null,
-		options?: { enableGlobal?: boolean; autoLinkMentions?: boolean; files?: TFile[] }
+		options?: { enableGlobal?: boolean; autoLinkMentions?: boolean; files?: TFile[]; includeHeadingHierarchy?: boolean }
 	): Promise<GraphData> {
 		let filesToParse: TFile[] = [];
 		const enableGlobal = options?.enableGlobal ?? this.plugin.settings.loreGraphEnableGlobal;
@@ -159,13 +155,13 @@ export class RelationGraphManager {
 
 		const allNodes: GraphNode[] = [];
 		const nodeIds = new Set<string>();
-		const fileDataCache = new Map<TFile, { fileCache: CachedMetadata; lines: string[] }>();
+		const fileDataCache = new Map<TFile, LoreGraphFile>();
 
 		// 第一步：提取所有节点（包含正文本名与别名）
 		for (const f of filesToParse) {
 			const fileCache = this.app.metadataCache.getFileCache(f) ?? {};
 			const content = await this.app.vault.cachedRead(f);
-			const lines = content.split('\n');
+			const lines = content.split(/\r?\n/);
 			fileDataCache.set(f, { fileCache, lines });
 			const nodes = this.extractNodes(f, fileCache, lines);
 
@@ -329,7 +325,9 @@ export class RelationGraphManager {
 			}
 		}
 
-		return { nodes: allNodes, edges: allEdges };
+		const graph = { nodes: allNodes, edges: allEdges };
+		if (options?.includeHeadingHierarchy) addLoreOutlineToGraph(this.app, fileDataCache, graph);
+		return graph;
 	}
 
 	/**
@@ -394,6 +392,7 @@ export class RelationGraphManager {
 					file,
 					sourcePath: file.path,
 					heading: headingText,
+					headingLine: heading.position.start.line,
 					x: 0,
 					y: 0,
 					vx: 0,
@@ -509,7 +508,7 @@ export class RelationGraphManager {
 
 			// 检查标题文本是否匹配关系关键词
 			const subText = this.cleanHeadingText(sub.heading).toLowerCase();
-			if (!RELATION_HEADING_KEYWORDS.has(subText)) continue;
+			if (!loreRelationHeadings.has(subText)) continue;
 
 			// 已找到关系标题，确定其内容的行范围
 			const relStart = sub.position.end.line + 1;
@@ -533,7 +532,7 @@ export class RelationGraphManager {
 			const headingMatch = trimmed.match(/^#{1,4}\s+(.+)$/);
 			if (headingMatch) {
 				const headingText = this.cleanHeadingText(headingMatch[1]).toLowerCase();
-				if (RELATION_HEADING_KEYWORDS.has(headingText)) {
+				if (loreRelationHeadings.has(headingText)) {
 					const relStart = lineIdx + 1;
 					let relEnd = sectionEnd;
 					for (let k = relStart; k < sectionEnd; k++) {
@@ -671,6 +670,7 @@ export class RelationGraphManager {
 			}
 
 			const line = lines[i] || '';
+			if (readLoreInlineRelation(line)) continue;
 			for (const { term, targetId } of searchTerms) {
 				if (targetId === sourceName) continue;
 				if (mentioned.has(targetId)) continue;

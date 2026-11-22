@@ -150,16 +150,16 @@ export class GraphRenderer {
 		for (const edge of graphData.edges) {
 			const id1 = edge.source < edge.target ? edge.source : edge.target;
 			const id2 = edge.source < edge.target ? edge.target : edge.source;
-			const key = `${id1}_${id2}`;
+			const key = JSON.stringify([id1, id2]);
 			if (!pairMap.has(key)) pairMap.set(key, []);
 			pairMap.get(key)!.push(edge);
 		}
 
 		for (const edges of pairMap.values()) {
-			const visualLines: GraphEdge[] = [];
+			const visualLines = edges.filter(edge => edge.type === 'hierarchy');
 
-			const forwards = edges.filter(e => e.source < e.target);
-			const backwards = edges.filter(e => e.source > e.target);
+			const forwards = edges.filter(e => e.type !== 'hierarchy' && e.source < e.target);
+			const backwards = edges.filter(e => e.type !== 'hierarchy' && e.source > e.target);
 
 			const forwardLabels = new Map<string, GraphEdge[]>();
 			for (const e of forwards) {
@@ -581,7 +581,7 @@ export class GraphRenderer {
 				isDimmed = !isHighlighted;
 			}
 
-			const isMention = edge.type === 'mention';
+			const isMention = edge.type !== 'explicit';
 			const showLabel = showLabelsGlobally || isHighlighted;
 
 			let labelX = 0, labelY = 0, bgWidth = 0, bgHeight = 0;
@@ -936,7 +936,7 @@ export class GraphRenderer {
 			ctx.textBaseline = 'top';
 
 			// 智能截断名称
-			const displayName = truncateNodeName(node.id);
+			const displayName = truncateNodeName(node.heading);
 
 			// 文字实体 (移除边框)
 			ctx.fillStyle = isSelected || isHovered ? colors.graphText : (isDimmed ? colors.textFaint : colors.textNormal);

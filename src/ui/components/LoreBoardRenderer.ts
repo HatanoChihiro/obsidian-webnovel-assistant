@@ -1,6 +1,7 @@
 import { Notice, TFile, setIcon, Component, type App } from 'obsidian';
 import { t, getLocale } from '../../i18n';
 import type { GraphEdge, RelationGraphManager } from '../../services/RelationGraphManager';
+import { buildLoreOutline, type LoreOutlineHeading } from '../../services/LoreOutline';
 import { ForceLayoutEngine } from '../../services/ForceLayoutEngine';
 import type { CharacterManager, LoreEntry } from '../../services/CharacterManager';
 import { cleanLoreHeading } from '../../services/CharacterManager';
@@ -85,7 +86,7 @@ export class LoreBoardRenderer {
         }
 
         if (layoutMode === 'cards') {
-            await this.renderCards(contentArea, app, plugin, normalizedBookPath, allCharacters, matchedLoreHeadings, reloadBoard, options.ownerComponent);
+            await this.renderCards(contentArea, app, plugin, normalizedBookPath, allCharacters, matchedLoreHeadings, reloadBoard, options.ownerComponent, { showHeadingOutline: true });
             return;
         }
 
@@ -104,6 +105,7 @@ export class LoreBoardRenderer {
         ownerComponent?: Component,
         options?: {
             hideTabs?: boolean;
+            showHeadingOutline?: boolean;
         }
     ) {
         if (allCharacters.length === 0) {
@@ -138,6 +140,7 @@ export class LoreBoardRenderer {
         const groups = this.sortLoreFileGroups(Array.from(fileGroups.entries()));
 
         const boardLayout = container.createDiv('wn-lore-board-layout');
+        const outlines = new Map<TFile, LoreOutlineHeading[]>();
 
         // --- 文件选项卡栏（“全部” + 各设定文件，带条数徽标） ---
         // 设计考量：仅在存在 2 个及以上设定文件且未显式隐藏 Tab 栏时渲染文件 Tab 栏
@@ -226,6 +229,16 @@ export class LoreBoardRenderer {
                         focusable: isPreviewEnabled,
                         onExpand: isPreviewEnabled && preview ? () => { preview.open(); } : undefined
                     }, bodyReads);
+                    if (options?.showHeadingOutline) {
+                        let outline = outlines.get(entry.file);
+                        if (!outline) {
+                            const headings = app.metadataCache.getFileCache(entry.file)?.headings ?? [];
+                            outline = buildLoreOutline(headings, Infinity);
+                            outlines.set(entry.file, outline);
+                        }
+                        const body = cardContainer.querySelector<HTMLElement>('.wn-lore-card-body');
+                        if (body) this.renderCardOutline(body, app, entry, outline);
+                    }
                 }
             } finally {
                 bodyReads.clear();
@@ -302,6 +315,28 @@ export class LoreBoardRenderer {
         }
 
         applyView();
+    }
+
+    private static renderCardOutline(body: HTMLElement, app: App, entry: LoreEntry, outline: readonly LoreOutlineHeading[]): void {
+        const owner = outline.find(heading => heading.level === 2 && heading.title === cleanLoreHeading(entry.heading));
+        if (!owner && outline.some(heading => heading.level === 2)) return;
+        const lists = new Map<LoreOutlineHeading, HTMLUListElement>();
+        const details = body.createEl('details', { cls: 'wn-lore-card-outline' });
+        details.createEl('summary', { text: t('lore.heading-outline') });
+        const list = details.createEl('ul');
+        if (owner) lists.set(owner, list);
+        for (const heading of outline) {
+            const parent = heading.parent ? lists.get(heading.parent) : owner ? undefined : list;
+            if (!parent) continue;
+            const item = parent.createEl('li');
+            const button = item.createEl('button', { text: heading.title, attr: { type: 'button' } });
+            button.onclick = () => {
+                void smartLocateAndHighlight(app, entry.file, [], { splitIfNew: true, fallbackLine: heading.line });
+            };
+            lists.set(heading, item.createEl('ul'));
+        }
+        if (list.childElementCount) body.prepend(details);
+        else details.remove();
     }
 
     /**
@@ -619,7 +654,9 @@ export class LoreBoardRenderer {
         }
 
         const graphManager = plugin.relationGraphManager;
-        const data = await graphManager.buildGraphData(effectiveFiles[0], { files: effectiveFiles, enableGlobal: false, autoLinkMentions: true });
+        const data = await graphManager.buildGraphData(effectiveFiles[0], {
+            files: effectiveFiles, enableGlobal: false, autoLinkMentions: true, includeHeadingHierarchy: true,
+        });
         if (isDisposed) return;
 
         if (data.nodes.length === 0) {
@@ -872,6 +909,11 @@ export class LoreBoardRenderer {
                 // 高亮选中双击的节点
                 state.selectedNode = node;
                 requestRender();
+
+                if (node.headingLine !== undefined) {
+                    void smartLocateAndHighlight(app, node.file, [], { splitIfNew: true, fallbackLine: node.headingLine });
+                    return;
+                }
 
                 // 双击节点：打开对应设定文档并精准定位至标题行
                 const entry = plugin.characterManager.getCharacterFile(bookPath, node.id);

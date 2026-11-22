@@ -635,6 +635,8 @@ export function parseLoreBodyForEditing(rawContent: string): ParsedTemplate {
 		if (!inFenceBefore && !inFenceAfter) {
 			const heading = line.match(/^[ ]{0,3}(#{1,6})[ \t]+(.*?)(?:[ \t]+#+[ \t]*)?$/);
 			const colon = heading ? null : matchColonFieldLine(line);
+			const inlineRelationPrefix = line.match(/^ {0,3}(?:关系|關係|relations?)::[ \t]+/i);
+			if (colon && inlineRelationPrefix) colon.valueOffset = inlineRelationPrefix[0].length;
 			if (heading || colon) {
 				if (heading) sectionHeading = heading[2].trim();
 				sections.push({

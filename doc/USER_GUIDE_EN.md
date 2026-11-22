@@ -980,9 +980,20 @@ When lore files or chapters already exist but lore highlighting, Workbench stati
 ```
 4. The Lore Graph will parse `**Relation Name**: Target Name` and draw arrows and labels with solid lines in the graph.
 
+###### Define a relationship from a subheading
+
+Add `Relation:: Label → [[Note#Heading]]` to the body of the heading that declares the relationship. Write one target per line. Use `[[#Heading]]` for a target in the same note, and include the parent headings in the link when titles are repeated.
+
+```markdown
+###### East Pier
+Relation:: Supplies → [[Factions#Seagull Guild]]
+```
+
+The lore graph connects the relationship endpoints to their ancestors with “Contains” edges. In the Workbench lore board, expand **Heading outline** on a lore card to browse its subheadings and jump to the source.
+
 ##### Related Settings
 - **Collapse Subheadings in Hover Card**: For long quick-reference content, collapse level-3 and deeper subheadings by default and expand them on click.
-- **Auto-Link Mentions**: When enabled, the graph creates relationships from mentions of other lore names or aliases. When disabled, it displays only relationships explicitly defined under `### Relations`.
+- **Auto-Link Mentions**: When enabled, the graph creates relationships from mentions of other lore names or aliases. Heading hierarchy and explicit relationships are independent of this setting.
 - **Enable Cross-File Lore Graph**: When enabled, the graph reads the entire lore folder and builds global relationships. This may add processing cost with very large lore collections. When disabled, it stays within the current lore document.
 
 #### Lore Overview

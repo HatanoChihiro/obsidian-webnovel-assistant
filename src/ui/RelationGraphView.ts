@@ -238,6 +238,12 @@ export class RelationGraphView extends ItemView {
 			{
 				requestRender: () => this.requestRender(),
 				onNodeDoubleClick: (node) => {
+					if (node.headingLine !== undefined) {
+						void smartLocateAndHighlight(this.app, node.file, [], {
+							sourceLeaf: this.leaf, splitIfNew: true, fallbackLine: node.headingLine,
+						});
+						return;
+					}
 					const entry = this.plugin.characterManager.getCharacterFile(this.bookPath, node.id);
 					const targetFile = entry?.file ?? node.file ?? (node.sourcePath ? this.app.vault.getAbstractFileByPath(node.sourcePath) : null);
 					if (targetFile instanceof TFile) {
@@ -458,7 +464,7 @@ export class RelationGraphView extends ItemView {
 		this.bookPath = this.plugin.characterManager.getBookPathForFile(file) || '';
 
 		const manager = this.plugin.relationGraphManager;
-		const data = await manager.buildGraphData(file);
+		const data = await manager.buildGraphData(file, { includeHeadingHierarchy: true });
 		if (this.isClosed || this.loadGeneration !== token || !this.canvas || !this.container) return;
 
 		if (data.nodes.length === 0) {
@@ -531,7 +537,7 @@ export class RelationGraphView extends ItemView {
 		if (!(file instanceof TFile)) return;
 
 		const manager = this.plugin.relationGraphManager;
-		const newData = await manager.buildGraphData(file);
+		const newData = await manager.buildGraphData(file, { includeHeadingHierarchy: true });
 		if (this.isClosed || this.loadGeneration !== token || !this.canvas || !this.container) return;
 
 		if (newData.nodes.length === 0) {

@@ -777,7 +777,7 @@ export async function smartLocateAndHighlight(
 
 	// 读取文本内容并计算 matchState（优先使用已计算的高精度 exactMatchState）
 	let matchState: MatchState | null = options?.exactMatchState ?? null;
-	if (!matchState) {
+	if (!matchState && searchTexts.some(Boolean)) {
 		const content = await app.vault.cachedRead(file);
 		matchState = findMatchState(content, searchTexts, options?.matchStartGlobal);
 	}

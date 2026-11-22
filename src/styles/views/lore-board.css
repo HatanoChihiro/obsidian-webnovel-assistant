@@ -27,6 +27,34 @@
 	opacity: 0.5;
 }
 
+.wn-lore-card-outline {
+	margin-bottom: 0.5em;
+	font-size: var(--font-ui-small);
+}
+
+.wn-lore-card-outline summary {
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.wn-lore-card-outline ul {
+	margin: 0;
+	padding-inline-start: 1em;
+}
+
+.wn-lore-card-outline ul:empty {
+	display: none;
+}
+
+.wn-lore-card-outline button {
+	background: none;
+	box-shadow: none;
+	height: auto;
+	padding: 0.15em 0;
+	text-align: start;
+	white-space: normal;
+}
+
 .wn-lore-hover-popover>div {
 	display: flex;
 	flex-direction: column;

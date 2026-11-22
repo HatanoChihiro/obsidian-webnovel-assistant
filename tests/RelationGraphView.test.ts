@@ -400,7 +400,7 @@ describe('RelationGraphView lifecycle & input narrowing', () => {
 		// Start loading fileA (which is slow)
 		const loadAPromise = view.loadGraphForFile(fileA.path);
 		await Promise.resolve();
-		expect(plugin.relationGraphManager.buildGraphData).toHaveBeenCalledWith(fileA);
+		expect(plugin.relationGraphManager.buildGraphData).toHaveBeenCalledWith(fileA, { includeHeadingHierarchy: true });
 
 		// Switch to fileB immediately
 		await view.loadGraphForFile(fileB.path);
