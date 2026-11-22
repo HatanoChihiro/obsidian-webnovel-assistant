@@ -435,6 +435,8 @@ export interface AccurateCountSettings {
 
 	/** 词条上级路径默认折叠成灰点 */
 	loreFoldAncestorPath?: boolean;
+	enableLoreQuickLink?: boolean;
+	loreQuickLinkShortcut?: string;
 
 	/** 设定卡片大预览总开关：开启后卡片展开按钮与悬停大预览功能可用 */
 	loreCardPreviewEnabled: boolean;

@@ -7,6 +7,7 @@ import { parseLoreBodyForEditing } from '../services/LoreTemplateService';
 import { LoreCardRenderer } from './components/LoreCardRenderer';
 import { t } from '../i18n';
 import { renderLoreRelationEditor } from './LoreRelationEditor';
+import { registerLoreLinkField, registerLoreQuickLinkModalScope } from './LoreQuickLink';
 
 export interface LoreEditPlugin {
 	app: App;
@@ -37,6 +38,7 @@ export class LoreEditModal extends Modal {
 
 	constructor(app: App, plugin: LoreEditPlugin, entry: LoreEntry, contextBookPath?: string) {
 		super(app);
+		registerLoreQuickLinkModalScope(app, this.scope);
 		this.modalEl.addClass('wn-plugin-modal');
 		this.plugin = plugin;
 		this.entry = entry;
@@ -171,6 +173,7 @@ export class LoreEditModal extends Modal {
 				.setName(field.label || t('modal.lore-description'))
 				.addTextArea(text => {
 					text.inputEl.rows = field.isMultiline ? 3 : 1;
+					registerLoreLinkField(text.inputEl, this.entry.file, this.bookPath);
 					text.setValue(field.defaultValue).onChange(value => {
 						bodyValues[field.id] = value;
 						this.loreDescription = parsedBody.render(bodyValues);

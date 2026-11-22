@@ -21,10 +21,27 @@ export function loreRelationLinkName(link: string): string {
 	return alias?.trim() || target.split(/[#/]/).at(-1)?.trim().replace(/\.md$/i, '') || target.trim();
 }
 
-export function formatLoreRelationTarget(entry: LoreEntry, sourcePath?: string, displayName = entry.heading): string {
+function loreHeadingSubpath(entry: LoreEntry): string {
 	const headingPath = entry.section?.path.join('#') ?? (entry.file.basename !== entry.heading ? entry.heading : undefined);
-	const filePath = headingPath && sourcePath === entry.file.path ? '' : entry.file.path.replace(/\.md$/i, '');
-	return `[[${filePath}${headingPath ? `#${headingPath}` : ''}|${displayName}]]`;
+	return headingPath ? `#${headingPath}` : '';
+}
+
+export function formatLoreRelationTarget(entry: LoreEntry, sourcePath?: string, displayName = entry.heading): string {
+	const subpath = loreHeadingSubpath(entry);
+	const filePath = subpath && sourcePath === entry.file.path ? '' : entry.file.path.replace(/\.md$/i, '');
+	return `[[${filePath}${subpath}|${displayName}]]`;
+}
+
+export function formatRelativeLoreLink(entry: LoreEntry, sourcePath: string): string {
+	const subpath = loreHeadingSubpath(entry);
+	if (subpath && sourcePath === entry.file.path) return `[[${subpath}|${entry.heading}]]`;
+
+	const sourceFolder = sourcePath.split('/').slice(0, -1);
+	const target = entry.file.path.replace(/\.md$/i, '').split('/');
+	let common = 0;
+	while (common < sourceFolder.length && common < target.length - 1 && sourceFolder[common] === target[common]) common++;
+	const prefix = sourceFolder.length === common ? './' : '../'.repeat(sourceFolder.length - common);
+	return `[[${prefix}${target.slice(common).join('/')}${subpath}|${entry.heading}]]`;
 }
 
 export function formatLoreRelationLine(label: string, rawLink: string): string | undefined {

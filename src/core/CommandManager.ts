@@ -25,6 +25,7 @@ import { splitChapterAtCursor } from '../services/ChapterSplitter';
 import { ChapterSplitCollisionModal } from '../ui/ChapterSplitCollisionModal';
 import { HeadingWheelModal } from '../ui/HeadingWheelModal';
 import { LoreQuickRelationModal } from '../ui/LoreQuickRelationModal';
+import { checkLoreQuickLink } from '../ui/LoreQuickLink';
 
 function getSelectedOrCursorWord(editor: {
 	getSelection: () => string;
@@ -694,6 +695,12 @@ export class CommandManager {
 	 * 注册“添加新设定”全平台命令面板命令
 	 */
 	private registerLoreCommands() {
+		this.plugin.addCommand({
+			id: 'insert-relative-lore-link',
+			name: t('command.insert-relative-lore-link'),
+			icon: 'link',
+			checkCallback: checking => checkLoreQuickLink(this.plugin, checking),
+		});
 		this.plugin.addCommand({
 			id: 'add-lore-relation',
 			name: t('command.add-lore-relation'),

@@ -368,6 +368,8 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 	loreShowAncestorPath: true,
 	loreAutoShowAncestors: true,
 	loreFoldAncestorPath: false,
+	enableLoreQuickLink: false,
+	loreQuickLinkShortcut: '',
 	loreCardPreviewEnabled: false,
 	loreCardHoverPreview: false,
 	loreCardPreviewPersistent: false,

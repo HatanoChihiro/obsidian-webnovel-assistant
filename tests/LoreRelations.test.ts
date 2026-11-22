@@ -1,6 +1,6 @@
 import type { TFile } from 'obsidian';
 import { describe, expect, it } from 'vitest';
-import { formatLoreRelationLine, formatLoreRelationTarget, loreRelationLinkName, planLoreRelationBlockInsertion, planLoreRelationEdits, rewriteLoreRelationLines, splitLoreRelationTargets } from '../src/services/LoreRelations';
+import { formatLoreRelationLine, formatLoreRelationTarget, formatRelativeLoreLink, loreRelationLinkName, planLoreRelationBlockInsertion, planLoreRelationEdits, rewriteLoreRelationLines, splitLoreRelationTargets } from '../src/services/LoreRelations';
 import { buildLoreOutline, scanLoreHeadings } from '../src/services/LoreOutline';
 
 describe('lore relation editing', () => {
@@ -28,6 +28,17 @@ describe('lore relation editing', () => {
 		const plan = planLoreRelationEdits(previous, [previous[0], previous[1], { ...previous[2], sourceId: 2, label: '支持' }], row => formatLoreRelationLine(row.label, `[[${row.target}]]`))!;
 		expect(plan.inserted).toEqual(['**支持**：[[乙|乙]]']);
 		expect(rewriteLoreRelationLines(previous, plan.kept)).toEqual(new Map([[6, '- **协作**：[[笔记#甲,一|甲]]']]));
+	});
+
+	it('uses native relative wiki paths from the source note and preserves deep heading identity', () => {
+		const lines = ['# 地理', '## 南境', '##### 码头'];
+		const section = buildLoreOutline(scanLoreHeadings(lines), lines.length)[2];
+		const file = { path: '小说/新书/设定/地理.md', basename: '地理' } as TFile;
+		const entry = { file, heading: '码头', section };
+		expect(formatRelativeLoreLink(entry, file.path)).toBe('[[#地理#南境#码头|码头]]');
+		expect(formatRelativeLoreLink(entry, '小说/新书/设定/势力.md')).toBe('[[./地理#地理#南境#码头|码头]]');
+		expect(formatRelativeLoreLink(entry, '小说/新书/正文/卷一/序章.md')).toBe('[[../../设定/地理#地理#南境#码头|码头]]');
+		expect(formatRelativeLoreLink({ file, heading: '地理' }, '首页.md')).toBe('[[./小说/新书/设定/地理|地理]]');
 	});
 
 	it('adds the H6 block before the next heading and appends later rows to the same block', () => {

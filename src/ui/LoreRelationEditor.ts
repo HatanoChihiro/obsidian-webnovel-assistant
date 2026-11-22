@@ -1,6 +1,7 @@
-import { FuzzySuggestModal, Notice, setTooltip, type App, type FuzzyMatch, type Setting } from 'obsidian';
+import { FuzzySuggestModal, setTooltip, type App, type FuzzyMatch, type Setting } from 'obsidian';
 import { getLoreEntryIdentity, type LoreEntry, type LoreRelationItem } from '../services/CharacterManager';
 import { formatLoreRelationTarget, loreRelationLinkName } from '../services/LoreRelations';
+import { showPluginNotice } from '../services/PluginNoticeService';
 import { t } from '../i18n';
 
 export class LoreRelationTargetPicker extends FuzzySuggestModal<LoreEntry> {
@@ -22,6 +23,14 @@ export class LoreRelationTargetPicker extends FuzzySuggestModal<LoreEntry> {
 
 	getItems(): LoreEntry[] { return this.entries; }
 
+	openForQuery(query: string): void {
+		this.open();
+		if (!query) return;
+		this.inputEl.value = query;
+		this.inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+		this.inputEl.select();
+	}
+
 	getItemText(entry: LoreEntry): string {
 		return [entry.heading, ...entry.section?.parent?.path ?? [], entry.file.path].join(' ');
 	}
@@ -36,7 +45,7 @@ export class LoreRelationTargetPicker extends FuzzySuggestModal<LoreEntry> {
 
 	onChooseItem(entry: LoreEntry): void {
 		if ((this.destinations.get(formatLoreRelationTarget(entry, undefined, '')) ?? 0) > 1) {
-			new Notice(t('notice.lore-relation-ambiguous'));
+			showPluginNotice(t('notice.lore-relation-ambiguous'));
 			return;
 		}
 		this.choose(entry);

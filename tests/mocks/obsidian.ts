@@ -148,6 +148,7 @@ if (typeof Element !== 'undefined') {
 }
 
 export class Modal {
+	scope = { register: () => undefined };
 	app: any;
 	modalEl: any;
 	contentEl: any;

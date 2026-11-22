@@ -1055,6 +1055,12 @@ The graph shows “Hierarchy” edges across notes and their headings. Each desc
 
 Under Lore Quick Lookup in WNA settings, toggle ancestor paths in cards and lore notes independently. Each path appears in small gray text on a separate line below its entry, with the local path first. Collapse them by default to show one small gray dot that opens or closes the paths. In lore notes, selecting an ancestor opens its heading.
 
+###### Insert a relative lore link
+
+Enable **Quick Relative Lore Links** under **Lore Quick Lookup** in WNA settings and record a shortcut in the same setting. Use it in a novel note or an existing lore card body. Type an entry name and press Enter. A single-line text selection pre-fills the search and is replaced when you choose a result. For entries with identical names, choose by note and ancestor path.
+
+The inserted wiki link uses a path relative to the current note and displays the entry name. Enable Obsidian’s automatic internal link updates to update links when notes move or are renamed. To preserve relative paths during those updates, use the relative path option in Obsidian’s new link format setting.
+
 ##### Related Settings
 - **Collapse Subheadings in Hover Card**: For long quick-reference content, collapse level-3 and deeper subheadings by default and expand them on click.
 - **Auto-Link Mentions**: When enabled, the graph creates relationships from mentions of other lore names or aliases. Heading hierarchy and explicit relationships are independent of this setting.

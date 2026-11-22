@@ -1,4 +1,5 @@
 import { showPluginNotice } from '../services/PluginNoticeService';
+import { readLoreLinkShortcut } from './LoreQuickLink';
 import type { App, SettingDefinitionItem, TextAreaComponent } from 'obsidian';
 import { Modal, PluginSettingTab, SearchComponent, Setting, TFile, MarkdownView } from 'obsidian';
 import type { Plugin } from 'obsidian';
@@ -2360,6 +2361,32 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					this.plugin.settings.lorePopoverCollapse = value;
 					await this.plugin.saveSettings();
 				}));
+
+		new Setting(containerEl)
+			.setName(t('setting.lore-quick-link'))
+			.setDesc(t('setting.lore-quick-link-desc'))
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.enableLoreQuickLink === true)
+				.onChange(async value => {
+					this.plugin.settings.enableLoreQuickLink = value;
+					await this.plugin.saveSettings();
+				}))
+			.addText(text => {
+				text.setValue(this.plugin.settings.loreQuickLinkShortcut ?? '').setPlaceholder(t('setting.lore-quick-link-shortcut'));
+				text.inputEl.readOnly = true;
+				text.inputEl.setAttribute('aria-label', t('setting.lore-quick-link-shortcut'));
+				text.inputEl.addEventListener('keydown', event => {
+					const clear = ['Backspace', 'Delete'].includes(event.key)
+						&& !event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey;
+					const value = clear ? '' : readLoreLinkShortcut(event);
+					if (value === undefined) return;
+					event.preventDefault();
+					event.stopPropagation();
+					this.plugin.settings.loreQuickLinkShortcut = value;
+					text.setValue(value);
+					void this.plugin.saveSettings();
+				});
+			});
 
 		new Setting(containerEl)
 			.setName(t('setting.lore-show-ancestor-path'))
