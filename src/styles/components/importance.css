@@ -8,7 +8,6 @@ button.wn-workbench-filter-important-toggle,
 .wn-foreshadowing-board-card,
 .wn-corkboard-card,
 .wn-lore-card,
-.task-card,
 .wn-task-card,
 .wn-timeline-item-desc,
 .wn-trajectory-event {
@@ -153,7 +152,6 @@ body.is-phone .webnovel-lore-popover .wn-lore-card-header {
 }
 
 .wn-foreshadowing-card-line1,
-.task-card-header,
 .wn-task-card-header {
 	position: relative;
 	padding-right: 28px;
@@ -169,7 +167,6 @@ body.is-phone .webnovel-lore-popover .wn-lore-card-header {
 }
 
 .wn-foreshadowing-card-line1 .wn-card-importance-btn,
-.task-card-header .wn-card-importance-btn,
 .wn-task-card-header .wn-card-importance-btn {
 	position: absolute;
 	top: 50%;
@@ -190,7 +187,6 @@ body.is-phone .webnovel-lore-popover .wn-lore-card-header {
 .wn-foreshadowing-board-card:is(.is-important, .wn-card-is-important),
 .wn-corkboard-card:is(.is-important, .wn-card-is-important),
 .wn-lore-card:is(.is-important, .wn-card-is-important),
-.task-card:is(.is-important, .wn-card-is-important),
 .wn-task-card:is(.is-important, .wn-card-is-important) {
 	outline: 1px solid var(--wn-important-border);
 	outline-offset: -1px;
@@ -199,7 +195,6 @@ body.is-phone .webnovel-lore-popover .wn-lore-card-header {
 .wn-foreshadowing-board-card:is(.is-important, .wn-card-is-important):hover,
 .wn-corkboard-card:is(.is-important, .wn-card-is-important):hover,
 .wn-lore-card:is(.is-important, .wn-card-is-important):hover,
-.task-card:is(.is-important, .wn-card-is-important):hover,
 .wn-task-card:is(.is-important, .wn-card-is-important):hover {
 	outline-color: var(--wn-important-border-hover);
 }

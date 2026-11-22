@@ -112,7 +112,7 @@ export function registerLoreAncestorPaths(plugin: WebNovelAssistantPlugin & Pick
 			return this.key === other.key;
 		}
 		toDOM(view: EditorView): HTMLElement {
-			const row = view.dom.ownerDocument.createElement('div');
+			const row = view.dom.ownerDocument.adoptNode(createDiv());
 			renderRow(row, this.paths, this.folded, () => view.requestMeasure());
 			return row;
 		}
@@ -228,7 +228,7 @@ export function registerLoreAncestorPaths(plugin: WebNovelAssistantPlugin & Pick
 					old?.row.remove();
 					rows.delete(heading);
 					if (!paths.length) continue;
-					const row = heading.ownerDocument.createElement('div');
+					const row = heading.ownerDocument.adoptNode(createDiv());
 					renderRow(row, paths, folded);
 					heading.after(row);
 					rows.set(heading, { row, key });

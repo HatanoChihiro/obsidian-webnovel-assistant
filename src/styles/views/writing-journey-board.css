@@ -133,7 +133,7 @@
 
 .wn-writing-journey-content {
 	display: flex;
-	align-items: center;
+	align-items: baseline;
 	gap: 8px;
 	flex: 1;
 	min-width: 0;

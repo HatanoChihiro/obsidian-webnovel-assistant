@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { CacheManager } from '../src/services/CacheManager';
 import { ChapterSorter } from '../src/services/ChapterSorter';
 import type { WebNovelAssistantPlugin } from '../src/types/plugin';
-import { Platform, TFile, TFolder, Vault } from 'obsidian';
+import { Platform, TFile, TFolder, Vault, type TAbstractFile } from 'obsidian';
 
 type TestTFileConstructor = new (name: string, path: string) => TFile;
 type TestTFolderConstructor = new (name: string, path: string) => TFolder;
@@ -325,7 +325,7 @@ describe('CacheManager', () => {
 			manager['cache'].set('Book 1', { path: 'Book 1', wordCount: 150, lastModified: 1000, isFolder: true });
 			Object.assign(mockPlugin.app.vault, {
 				cachedRead: vi.fn().mockResolvedValue('新的正文'),
-				getAbstractFileByPath: vi.fn()
+				getAbstractFileByPath: vi.fn((p: string) => (p === file.path ? file : null))
 			});
 			Object.assign(mockPlugin, {
 				getTrackedMarkdownFiles: vi.fn().mockReturnValue([file]),
@@ -688,6 +688,277 @@ describe('CacheManager', () => {
 
             expect(fileCacheAtTrigger).toBe(2000);
             expect(folderCacheAtTrigger).toBe(2000);
+        });
+    });
+
+    describe('Async rebuild race protection (buildInitialCache & buildFolderCache)', () => {
+        function createDeferred<T>() {
+            let resolve!: (value: T) => void;
+            let reject!: (reason?: unknown) => void;
+            const promise = new Promise<T>((res, rej) => {
+                resolve = res;
+                reject = rej;
+            });
+            return { promise, resolve, reject };
+        }
+
+        function setupVaultForRebuild(files: TFile[], cachedReadImpl: (file: TFile) => Promise<string>) {
+            const bookFolder = createTestFolder('Book 1', 'Book 1');
+            const rootFolder = createTestFolder('', '/');
+            (bookFolder as unknown as { children: TAbstractFile[] }).children = files;
+            (rootFolder as unknown as { children: TAbstractFile[] }).children = [bookFolder];
+            for (const f of files) {
+                (f as unknown as { parent: TFolder }).parent = bookFolder;
+            }
+            (bookFolder as unknown as { parent: TFolder }).parent = rootFolder;
+
+            const pathMap = new Map<string, TAbstractFile>();
+            for (const f of files) {
+                pathMap.set(f.path, f);
+            }
+
+            const vault = {
+                adapter: mockAdapter,
+                getRoot: vi.fn().mockReturnValue(rootFolder),
+                cachedRead: vi.fn(cachedReadImpl),
+                getAbstractFileByPath: vi.fn((p: string) => pathMap.get(p) ?? null),
+            } as unknown as Vault;
+
+            mockPlugin.app.vault = vault;
+            Object.assign(mockPlugin, {
+                getTrackedMarkdownFiles: vi.fn().mockReturnValue(files),
+                calculateAccurateWords: vi.fn((content: string) => content.trim() ? content.trim().split(/\s+/).length : 0),
+                saveSettings: vi.fn().mockResolvedValue(undefined),
+                fileExplorerPatcher: { refreshFolderCounts: vi.fn() },
+                homepageManager: {
+                    refreshHomepageViews: vi.fn().mockResolvedValue(undefined),
+                    getHomepageFilePath: vi.fn().mockReturnValue(null)
+                }
+            });
+
+            return { vault, pathMap, bookFolder };
+        }
+
+        it('buildInitialCache: does not overwrite newer mtime editor cache with delayed stale read', async () => {
+            const file = createTestFile('Chapter 1.md', 'Book 1/Chapter 1.md');
+            file.stat = { mtime: 10, ctime: 10, size: 50 };
+            const deferred = createDeferred<string>();
+            const { vault } = setupVaultForRebuild([file], () => deferred.promise);
+
+            const rebuildPromise = manager.buildInitialCache(
+                vault,
+                (c) => (c.trim() ? c.trim().split(/\s+/).length : 0),
+                (f) => manager.isEligibleForTotalWordCount(f)
+            );
+
+            // Simulate newer editor update while cachedRead is pending
+            file.stat = { mtime: 20, ctime: 10, size: 500 };
+            manager.updateFileCache(file, 100, vault);
+
+            // Delayed stale read (10 words) resolves
+            deferred.resolve('one two three four five six seven eight nine ten');
+            await rebuildPromise;
+
+            expect(manager.getFileCache(file.path)).toBe(100);
+            expect(manager.getFolderWordCount('Book 1')).toBe(100);
+        });
+
+        it('buildInitialCache: does not overwrite same-mtime newer editor cache with delayed stale read', async () => {
+            const file = createTestFile('Chapter 1.md', 'Book 1/Chapter 1.md');
+            file.stat = { mtime: 10, ctime: 10, size: 50 };
+            const deferred = createDeferred<string>();
+            const { vault } = setupVaultForRebuild([file], () => deferred.promise);
+
+            const rebuildPromise = manager.buildInitialCache(
+                vault,
+                (c) => (c.trim() ? c.trim().split(/\s+/).length : 0),
+                (f) => manager.isEligibleForTotalWordCount(f)
+            );
+
+            // Same-mtime editor update during pending read
+            manager.updateFileCache(file, 100, vault);
+
+            deferred.resolve('one two three four five six seven eight nine ten');
+            await rebuildPromise;
+
+            expect(manager.getFileCache(file.path)).toBe(100);
+            expect(manager.getFolderWordCount('Book 1')).toBe(100);
+        });
+
+        it('buildInitialCache: skips write if file is deleted, replaced, renamed, or becomes ineligible during read', async () => {
+            const fDeleted = createTestFile('Chapter 1.md', 'Book 1/Chapter 1.md');
+            const fReplaced = createTestFile('Chapter 2.md', 'Book 1/Chapter 2.md');
+            const fRenamed = createTestFile('Chapter 3.md', 'Book 1/Chapter 3.md');
+            const fIneligible = createTestFile('Chapter 4.md', 'Book 1/Chapter 4.md');
+            for (const f of [fDeleted, fReplaced, fRenamed, fIneligible]) {
+                f.stat = { mtime: 10, ctime: 10, size: 50 };
+            }
+
+            const deferreds = new Map<string, ReturnType<typeof createDeferred<string>>>();
+            const { vault, pathMap } = setupVaultForRebuild(
+                [fDeleted, fReplaced, fRenamed, fIneligible],
+                (f) => {
+                    const d = createDeferred<string>();
+                    deferreds.set(f.path, d);
+                    return d.promise;
+                }
+            );
+
+            let ineligibleFlag = false;
+            const origEligible = manager.isEligibleForTotalWordCount.bind(manager);
+            vi.spyOn(manager, 'isEligibleForTotalWordCount').mockImplementation((f) => {
+                if (f === fIneligible && ineligibleFlag) return false;
+                return origEligible(f);
+            });
+
+            const rebuildPromise = manager.buildInitialCache(
+                vault,
+                (c) => (c.trim() ? c.trim().split(/\s+/).length : 0),
+                (f) => manager.isEligibleForTotalWordCount(f)
+            );
+
+            // Mutate vault state while reads are pending sequentially
+            await vi.waitFor(() => expect(deferreds.has('Book 1/Chapter 1.md')).toBe(true));
+            pathMap.delete(fDeleted.path);
+            deferreds.get('Book 1/Chapter 1.md')!.resolve('one two');
+
+            await vi.waitFor(() => expect(deferreds.has('Book 1/Chapter 2.md')).toBe(true));
+            const replacement = createTestFile('Chapter 2.md', 'Book 1/Chapter 2.md');
+            replacement.stat = { mtime: 10, ctime: 10, size: 50 };
+            pathMap.set('Book 1/Chapter 2.md', replacement);
+            deferreds.get('Book 1/Chapter 2.md')!.resolve('one two');
+
+            await vi.waitFor(() => expect(deferreds.has('Book 1/Chapter 3.md')).toBe(true));
+            fRenamed.path = 'Book 1/Chapter 3-new.md';
+            deferreds.get('Book 1/Chapter 3.md')!.resolve('one two');
+
+            await vi.waitFor(() => expect(deferreds.has('Book 1/Chapter 4.md')).toBe(true));
+            ineligibleFlag = true;
+            deferreds.get('Book 1/Chapter 4.md')!.resolve('one two');
+
+            await rebuildPromise;
+
+            expect(manager.getFileCache('Book 1/Chapter 1.md')).toBeNull();
+            expect(manager.getFileCache('Book 1/Chapter 2.md')).toBeNull();
+            expect(manager.getFileCache('Book 1/Chapter 3.md')).toBeNull();
+            expect(manager.getFileCache('Book 1/Chapter 3-new.md')).toBeNull();
+            expect(manager.getFileCache('Book 1/Chapter 4.md')).toBeNull();
+        });
+
+        it('buildInitialCache: accepts legitimate backwards-mtime rebuild when read is uncontested', async () => {
+            const file = createTestFile('Chapter 1.md', 'Book 1/Chapter 1.md');
+            file.stat = { mtime: 2000, ctime: 1000, size: 100 };
+            const { vault } = setupVaultForRebuild([file], async () => 'one two three');
+            manager.updateFileCache(file, 50, vault);
+
+            // File restored to earlier mtime before rebuild
+            file.stat = { mtime: 1000, ctime: 1000, size: 20 };
+            await manager.buildInitialCache(
+                vault,
+                (c) => (c.trim() ? c.trim().split(/\s+/).length : 0),
+                (f) => manager.isEligibleForTotalWordCount(f)
+            );
+
+            expect(manager.getFileCache(file.path)).toBe(3);
+            expect(manager.getFolderWordCount('Book 1')).toBe(3);
+        });
+
+        it('buildFolderCache: does not overwrite newer mtime or same-mtime editor cache and preserves racing writes on backwards-mtime', async () => {
+            const fMtimeRace = createTestFile('Chapter 1.md', 'Book 1/Chapter 1.md');
+            fMtimeRace.stat = { mtime: 10, ctime: 10, size: 50 };
+            const fSameMtimeRace = createTestFile('Chapter 2.md', 'Book 1/Chapter 2.md');
+            fSameMtimeRace.stat = { mtime: 10, ctime: 10, size: 50 };
+            const fBackwardsRace = createTestFile('Chapter 3.md', 'Book 1/Chapter 3.md');
+            fBackwardsRace.stat = { mtime: 2000, ctime: 10, size: 50 };
+
+            const deferreds = new Map<string, ReturnType<typeof createDeferred<string>>>();
+            const { vault } = setupVaultForRebuild(
+                [fMtimeRace, fSameMtimeRace, fBackwardsRace],
+                (f) => {
+                    const d = createDeferred<string>();
+                    deferreds.set(f.path, d);
+                    return d.promise;
+                }
+            );
+
+            // Seed cache with older mtime for f1 & f2, newer mtime for f3
+            manager['cache'].set(fMtimeRace.path, { path: fMtimeRace.path, wordCount: 5, lastModified: 5, isFolder: false });
+            manager['cache'].set(fSameMtimeRace.path, { path: fSameMtimeRace.path, wordCount: 5, lastModified: 5, isFolder: false });
+            manager['cache'].set(fBackwardsRace.path, { path: fBackwardsRace.path, wordCount: 50, lastModified: 2000, isFolder: false });
+            // Restore fBackwardsRace to earlier mtime 1000 so buildFolderCache picks it up
+            fBackwardsRace.stat = { mtime: 1000, ctime: 10, size: 20 };
+
+            const buildPromise = manager.buildFolderCache();
+
+            // Wait until first read is pending, then simulate racing editor updates
+            await vi.waitFor(() => expect(deferreds.has(fMtimeRace.path)).toBe(true));
+            fMtimeRace.stat = { mtime: 20, ctime: 10, size: 500 };
+            manager.updateFileCache(fMtimeRace, 100, vault);
+            deferreds.get(fMtimeRace.path)!.resolve('one two');
+
+            await vi.waitFor(() => expect(deferreds.has(fSameMtimeRace.path)).toBe(true));
+            manager.updateFileCache(fSameMtimeRace, 200, vault);
+            deferreds.get(fSameMtimeRace.path)!.resolve('one two');
+
+            await vi.waitFor(() => expect(deferreds.has(fBackwardsRace.path)).toBe(true));
+            fBackwardsRace.stat = { mtime: 3000, ctime: 10, size: 300 };
+            manager.updateFileCache(fBackwardsRace, 300, vault);
+            deferreds.get(fBackwardsRace.path)!.resolve('one two');
+
+            await buildPromise;
+
+            expect(manager.getFileCache(fMtimeRace.path)).toBe(100);
+            expect(manager.getFileCache(fSameMtimeRace.path)).toBe(200);
+            expect(manager.getFileCache(fBackwardsRace.path)).toBe(300);
+            expect(manager.getFolderWordCount('Book 1')).toBe(600);
+        });
+
+        it('buildFolderCache: accepts legitimate backwards-mtime rebuild and updates parent totals coherently', async () => {
+            const file = createTestFile('Chapter 1.md', 'Book 1/Chapter 1.md');
+            file.stat = { mtime: 2000, ctime: 1000, size: 100 };
+            const { vault } = setupVaultForRebuild([file], async () => 'one two three four');
+
+            manager.updateFileCache(file, 500, vault);
+            file.stat = { mtime: 1000, ctime: 1000, size: 25 };
+
+            await manager.buildFolderCache();
+
+            expect(manager.getFileCache(file.path)).toBe(4);
+            expect(manager.getFolderWordCount('Book 1')).toBe(4);
+        });
+
+        it('rejects already-deleted or already-replaced queued TFile before read starts and leaves no unbounded revision tombstones', async () => {
+            const fAlreadyDeleted = createTestFile('Chapter 1.md', 'Book 1/Chapter 1.md');
+            fAlreadyDeleted.stat = { mtime: 10, ctime: 10, size: 50 };
+            const fAlreadyReplaced = createTestFile('Chapter 2.md', 'Book 1/Chapter 2.md');
+            fAlreadyReplaced.stat = { mtime: 10, ctime: 10, size: 50 };
+            const replacement = createTestFile('Chapter 2.md', 'Book 1/Chapter 2.md');
+            replacement.stat = { mtime: 20, ctime: 10, size: 80 };
+
+            const { vault, pathMap } = setupVaultForRebuild([fAlreadyDeleted, fAlreadyReplaced], async () => 'stale old words');
+            // Mutate vault authority BEFORE rebuild even starts reading
+            pathMap.delete(fAlreadyDeleted.path);
+            pathMap.set(fAlreadyReplaced.path, replacement);
+
+            await manager.buildInitialCache(
+                vault,
+                (c) => (c.trim() ? c.trim().split(/\s+/).length : 0),
+                (f) => manager.isEligibleForTotalWordCount(f)
+            );
+            expect(manager.getFileCache(fAlreadyDeleted.path)).toBeNull();
+            expect(manager.getFileCache(fAlreadyReplaced.path)).toBeNull();
+
+            // Also test buildFolderCache when queued file is already replaced before read
+            manager['cache'].set(fAlreadyReplaced.path, { path: fAlreadyReplaced.path, wordCount: 99, lastModified: 5, isFolder: false });
+            await manager.buildFolderCache();
+            expect(manager.getFileCache(fAlreadyReplaced.path)).toBe(99);
+
+            // Absent-path invalidations & updates must not leave unbounded revision map entries
+            for (let i = 0; i < 50; i++) {
+                manager.invalidateCache(`Book 1/Ghost-${i}.md`, vault);
+            }
+            expect((manager as unknown as { pathRevisions?: Map<string, number> }).pathRevisions).toBeUndefined();
+            expect((manager as unknown as { activeReadTokens?: Map<string, unknown> }).activeReadTokens?.size ?? 0).toBe(0);
         });
     });
 });

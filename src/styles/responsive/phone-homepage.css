@@ -1,7 +1,7 @@
 /* ========== Homepage mobile layout ========== */
 /* Mobile Phone (is-phone) Creation Homepage Layout Optimizations */
 
-body.is-phone .homepage-welcome-section {
+body.is-phone .wn-homepage-welcome-section {
 	display: flex;
 	flex-direction: column;
 	gap: 0.5em;
@@ -9,7 +9,7 @@ body.is-phone .homepage-welcome-section {
 }
 
 
-body.is-phone .homepage-welcome-header {
+body.is-phone .wn-homepage-welcome-header {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
@@ -17,7 +17,7 @@ body.is-phone .homepage-welcome-header {
 }
 
 
-body.is-phone .homepage-welcome-title {
+body.is-phone .wn-homepage-welcome-title {
 	width: 100%;
 	font-size: var(--wn-phone-font-display);
 	line-height: 1.4;
@@ -25,24 +25,24 @@ body.is-phone .homepage-welcome-title {
 }
 
 
-body.is-phone .homepage-welcome-icon {
+body.is-phone .wn-homepage-welcome-icon {
 	margin-top: 2px;
 	margin-right: 8px;
 }
 
 
-body.is-phone .homepage-welcome-icon svg {
+body.is-phone .wn-homepage-welcome-icon svg {
 	width: 20px;
 	height: 20px;
 }
 
 
-body.is-phone .homepage-desktop-actions {
+body.is-phone .wn-homepage-desktop-actions {
 	display: none;
 }
 
 
-body.is-phone .homepage-phone-actions {
+body.is-phone .wn-homepage-phone-actions {
 	display: flex;
 	flex-direction: column;
 	align-items: flex-end;
@@ -55,7 +55,7 @@ body.is-phone .homepage-phone-actions {
 }
 
 
-body.is-phone .homepage-add-novel-btn.phone-add-btn {
+body.is-phone .wn-homepage-add-novel-btn.wn-phone-add-btn {
 	display: inline-flex;
 	font-size: var(--wn-phone-font-control);
 	padding: 0.35em 0.75em;
@@ -64,22 +64,22 @@ body.is-phone .homepage-add-novel-btn.phone-add-btn {
 }
 
 
-body.is-phone .homepage-ongoing-name,
-body.is-phone .homepage-completed-name {
+body.is-phone .wn-homepage-ongoing-name,
+body.is-phone .wn-homepage-completed-name {
 	font-size: var(--wn-phone-font-title);
 	font-weight: 600;
 }
 
 
-body.is-phone .homepage-ongoing-item,
-body.is-phone .homepage-completed-card {
+body.is-phone .wn-homepage-ongoing-item,
+body.is-phone .wn-homepage-completed-card {
 	border-radius: var(--wn-phone-card-radius);
 	padding: var(--wn-phone-card-padding);
 }
 
 
-body.is-phone .homepage-completed-card,
-body.is-phone .homepage-single-column .homepage-completed-card {
+body.is-phone .wn-homepage-completed-card,
+body.is-phone .wn-homepage-single-column .wn-homepage-completed-card {
 	flex: 0 0 12em;
 	width: 12em;
 	min-width: 12em;
@@ -87,18 +87,18 @@ body.is-phone .homepage-single-column .homepage-completed-card {
 }
 
 
-body.is-phone .homepage-ongoing-count {
+body.is-phone .wn-homepage-ongoing-count {
 	font-size: var(--wn-phone-font-body);
 }
 
 
-body.is-phone .homepage-chart-container {
+body.is-phone .wn-homepage-chart-container {
 	height: 5.5em;
 	min-height: 5.5em;
 }
 
 
-body.is-phone .homepage-progress-row {
+body.is-phone .wn-homepage-progress-row {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) auto;
 	grid-template-rows: repeat(2, auto);
@@ -107,12 +107,12 @@ body.is-phone .homepage-progress-row {
 }
 
 
-body.is-phone .homepage-progress-separator {
+body.is-phone .wn-homepage-progress-separator {
 	display: none;
 }
 
 
-body.is-phone .homepage-progress-item:nth-child(1) {
+body.is-phone .wn-homepage-progress-item:nth-child(1) {
 	grid-column: 1;
 	grid-row: 1;
 	width: auto;
@@ -123,7 +123,7 @@ body.is-phone .homepage-progress-item:nth-child(1) {
 }
 
 
-body.is-phone .homepage-progress-item:nth-child(3) {
+body.is-phone .wn-homepage-progress-item:nth-child(3) {
 	grid-column: 1;
 	grid-row: 2;
 	width: auto;
@@ -134,17 +134,17 @@ body.is-phone .homepage-progress-item:nth-child(3) {
 }
 
 
-body.is-phone .homepage-progress-label {
+body.is-phone .wn-homepage-progress-label {
 	font-size: var(--wn-phone-font-body);
 }
 
 
-body.is-phone .homepage-progress-value {
+body.is-phone .wn-homepage-progress-value {
 	font-size: var(--wn-phone-font-kpi);
 }
 
 
-body.is-phone .homepage-task-row:not(.homepage-task-sub) {
+body.is-phone .wn-homepage-task-row:not(.wn-homepage-task-sub) {
 	display: flex;
 	flex-direction: column;
 	align-items: flex-start;
@@ -152,7 +152,7 @@ body.is-phone .homepage-task-row:not(.homepage-task-sub) {
 }
 
 
-body.is-phone .homepage-task-sub {
+body.is-phone .wn-homepage-task-sub {
 	display: flex;
 	flex-direction: row;
 	align-items: center;
@@ -160,11 +160,11 @@ body.is-phone .homepage-task-sub {
 }
 
 
-body.is-phone .homepage-grid-container,
+body.is-phone .wn-homepage-grid-container,
 
-body.is-phone .homepage-grid-left,
+body.is-phone .wn-homepage-grid-left,
 
-body.is-phone .homepage-grid-right {
+body.is-phone .wn-homepage-grid-right {
 	gap: 1em;
 }
 
@@ -172,8 +172,8 @@ body.is-phone .homepage-grid-right {
 
 /* Mobile Phone (is-phone) Creation Homepage Heatmap Optimizations */
 
-body.is-phone .webnovel-homepage .stats-heatmap-grid,
-body.is-phone .history-stats-modal .stats-heatmap-grid {
+body.is-phone .webnovel-homepage .wn-stats-heatmap-grid,
+body.is-phone .wn-history-stats-modal .wn-stats-heatmap-grid {
 	gap: 0.1em;
 	overflow-x: auto;
 	-webkit-overflow-scrolling: touch;
@@ -184,22 +184,22 @@ body.is-phone .history-stats-modal .stats-heatmap-grid {
 }
 
 
-body.is-phone .webnovel-homepage .stats-heatmap-grid::-webkit-scrollbar,
-body.is-phone .history-stats-modal .stats-heatmap-grid::-webkit-scrollbar {
+body.is-phone .webnovel-homepage .wn-stats-heatmap-grid::-webkit-scrollbar,
+body.is-phone .wn-history-stats-modal .wn-stats-heatmap-grid::-webkit-scrollbar {
 	display: none;
 }
 
 
-body.is-phone .webnovel-homepage .stats-heatmap-row,
-body.is-phone .history-stats-modal .stats-heatmap-row {
+body.is-phone .webnovel-homepage .wn-stats-heatmap-row,
+body.is-phone .wn-history-stats-modal .wn-stats-heatmap-row {
 	gap: 0.1em;
 	width: max-content;
 	min-width: 100%;
 }
 
 
-body.is-phone .webnovel-homepage .stats-heatmap-cell,
-body.is-phone .history-stats-modal .stats-heatmap-cell {
+body.is-phone .webnovel-homepage .wn-stats-heatmap-cell,
+body.is-phone .wn-history-stats-modal .wn-stats-heatmap-cell {
 	flex: 0 0 0.55em;
 	width: 0.55em;
 	height: 0.55em;
@@ -207,8 +207,8 @@ body.is-phone .history-stats-modal .stats-heatmap-cell {
 }
 
 
-body.is-phone .webnovel-homepage .stats-heatmap-today,
-body.is-phone .history-stats-modal .stats-heatmap-today {
+body.is-phone .webnovel-homepage .wn-stats-heatmap-today,
+body.is-phone .wn-history-stats-modal .wn-stats-heatmap-today {
 	outline: 1.5px solid var(--interactive-accent);
 	outline-offset: 0.5px;
 	border-radius: 2px;

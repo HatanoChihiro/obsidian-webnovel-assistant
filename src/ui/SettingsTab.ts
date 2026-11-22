@@ -1,5 +1,6 @@
+import { showPluginNotice } from '../services/PluginNoticeService';
 import type { App, SettingDefinitionItem, TextAreaComponent } from 'obsidian';
-import { Modal, PluginSettingTab, SearchComponent, Setting, Notice, TFile, MarkdownView } from 'obsidian';
+import { Modal, PluginSettingTab, SearchComponent, Setting, TFile, MarkdownView } from 'obsidian';
 import type { Plugin } from 'obsidian';
 import { isDesktop, getPlatformTier, isLorePopoverEnabled } from '../utils/platform';
 import { ObsOverlayServer } from '../services/ObsServer';
@@ -13,6 +14,8 @@ import type { FloatingStickyNote } from './StickyNote';
 import type { ThemeScheme } from '../types/settings';
 import { WORKBENCH_BOARD_IDS, getWorkbenchBoardLabel } from './workbenchBoards';
 import { VALIDATION_RULES, DEFAULT_PROOFREADING_SETTINGS, VIEW_TYPES } from '../constants';
+import { sanitizeMobileAuxPanelState } from '../services/MobileImmersivePanelGeometry';
+import { MOBILE_AUX_VIEW_LABEL_KEYS } from './MobileImmersiveController';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { LoreCardPreview } from './components/LoreCardPreview';
 import { LoreHoverPopover } from './LoreHoverPopover';
@@ -23,6 +26,7 @@ import { FileSuggestModal } from './FileSuggestModal';
 import { Logger } from '../utils/Logger';
 import { formatIgnoredContextSnippet } from '../utils/proofreadingHelpers';
 import { parseDirectorySettingLines, formatDirectorySettingLines } from '../utils/settingHelpers';
+import { applyDestructiveButtonStyle, attachLegacySliderValue } from '../utils/ui';
 
 class HistoryRestoreConfirmModal extends Modal {
 	constructor(app: App, private onConfirm: () => Promise<void>) {
@@ -42,7 +46,7 @@ class HistoryRestoreConfirmModal extends Modal {
 				.onClick(() => this.close()))
 			.addButton(button => button
 				.setButtonText(t('setting.history-restore-button'))
-				.setWarning()
+				.then(applyDestructiveButtonStyle)
 				.onClick(async () => {
 					button.setDisabled(true);
 					try {
@@ -50,7 +54,7 @@ class HistoryRestoreConfirmModal extends Modal {
 						this.close();
 					} catch (error) {
 						Logger.error('[SettingsTab] 恢复历史数据失败:', error);
-						new Notice(t('notice.history-restore-failed'));
+						showPluginNotice(t('notice.history-restore-failed'));
 						button.setDisabled(false);
 					}
 				}));
@@ -77,6 +81,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 	private highlightTimerWin: { clearTimeout: (id: number) => void } | null = null;
 	private highlightedRowEl: HTMLElement | null = null;
 	private fallbackNoticeEl: HTMLElement | null = null;
+	private workspaceSaveQueue: Promise<void> = Promise.resolve();
 
 	constructor(app: App, plugin: WebNovelAssistantPlugin) {
 		super(app, plugin as unknown as Plugin);
@@ -88,8 +93,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		// `for (let a of n)` 遍历本方法的返回值（app.js 505:57868 的 uz/r），
 		// 返回 {} 会抛 TypeError: n is not iterable，令 onload 中断、插件无法启用。
 		// 1.14 及更早版本用的是下标循环，不会报错，所以这是个潜伏下来的隐患。
-		// 这里返回空数组：既能让渲染回落到命令式 display()，也满足
-		// obsidianmd/settings-tab/prefer-setting-definitions（只检查方法是否存在）。
+		// 这里刻意返回空数组，使 1.13+ 宿主回落到 legacy display() 入口，以保留自定义多标签与搜索面板。
 		return [];
 	}
 
@@ -104,6 +108,10 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 	}
 
 	display(): void {
+		this.renderSettings();
+	}
+
+	private renderSettings(): void {
 		const { containerEl } = this;
 		const ownerDoc = containerEl.ownerDocument;
 		const prevInputEl = this.searchComponent?.inputEl ?? null;
@@ -138,7 +146,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			{ id: 'proofreading', name: t('setting.proofreading-title'), icon: 'spell-check' },
 			{ id: 'wordcount', name: t('setting.tab-wordcount') },
 			{ id: 'creative', name: t('setting.tab-creative'), icon: 'pen-tool' },
-			{ id: 'immersive', name: t('setting.tab-immersive'), icon: 'maximize', desktopOnly: true },
+			{ id: 'immersive', name: t('setting.tab-immersive'), icon: 'maximize' },
 			{ id: 'obs', name: t('setting.tab-obs'), desktopOnly: true }
 		];
 
@@ -158,7 +166,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			});
 			tabEl.onclick = () => {
 				this.activeTab = tab.id;
-				this.display();
+				this.renderSettings();
 			};
 		});
 
@@ -375,7 +383,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		this.searchQuery = '';
 		this.isSearchComposing = false;
 		this.activeTab = entry.category;
-		this.display();
+		this.renderSettings();
 
 		const resolved = this.resolveSearchTarget(entry);
 		if (!resolved) return;
@@ -492,30 +500,16 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					}));
 
 			new Setting(containerEl)
-				.setName(t('setting.enable-mobile-focus-timer'))
-				.setDesc(t('setting.enable-mobile-focus-timer-desc'))
-				.addToggle(toggle => toggle
-					.setValue(this.plugin.settings.enableMobileFocusTimer)
+				.setName(t('setting.idle-threshold'))
+				.setDesc(t('setting.idle-threshold-desc'))
+				.addSlider(slider => slider
+					.setLimits(30, 600, 30)
+					.setValue(this.plugin.settings.idleTimeoutThreshold / 1000)
+					.then(attachLegacySliderValue)
 					.onChange(async (value) => {
-						this.plugin.settings.enableMobileFocusTimer = value;
-						void this.plugin.saveSettings();
-						this.plugin.mobileFloatingStats?.update();
-						this.display();
+						this.plugin.settings.idleTimeoutThreshold = value * 1000;
+						await this.plugin.saveSettings();
 					}));
-
-			if (this.plugin.settings.enableMobileFocusTimer) {
-				new Setting(containerEl)
-					.setName(t('setting.idle-threshold'))
-					.setDesc(t('setting.idle-threshold-desc'))
-					.addSlider(slider => slider
-						.setLimits(30, 600, 30)
-						.setValue(this.plugin.settings.idleTimeoutThreshold / 1000)
-						.setDynamicTooltip()
-						.onChange(async (value) => {
-							this.plugin.settings.idleTimeoutThreshold = value * 1000;
-							await this.plugin.saveSettings();
-						}));
-			}
 		}
 
 		// 语言切换
@@ -532,9 +526,19 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					await setLocale(locale);
 					void this.plugin.saveSettings();
 					// 语言切换后刷新设置面板
-					this.display();
+					this.renderSettings();
 				});
 			});
+
+		new Setting(containerEl)
+			.setName(t('setting.show-notices'))
+			.setDesc(t('setting.show-notices-desc'))
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.showNotices)
+				.onChange(async value => {
+					this.plugin.settings.showNotices = value;
+					await this.plugin.saveSettings();
+				}));
 
 		new Setting(containerEl).setName(t('setting.workspace-and-chapters')).setHeading();
 
@@ -555,7 +559,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					else { this.plugin.settings.novelInfo.fileName = newName; }
 					await this.plugin.saveSettings();
 					const count = await this.plugin.renameAllFunctionalFiles(oldName, newName, 'file', 'novelInfoFileName');
-					if (count > 0) new Notice(t('notice.files-renamed', { count: String(count) }));
+					if (count > 0) showPluginNotice(t('notice.files-renamed', { count: String(count) }));
 				};
 
 				text.inputEl.addEventListener('change', () => { saveAction().catch(console.error); });
@@ -575,7 +579,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					} else {
 						this.plugin.homepageManager?.deleteHomepage().catch(err => console.error('主页删除失败:', err));
 					}
-					this.display();
+					this.renderSettings();
 				}));
 
 		if (this.plugin.settings.enableHomepage) {
@@ -614,7 +618,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 							this.plugin.settings.homepagePath = newPath;
 							await this.plugin.saveSettings();
 							this.plugin.homepageManager?.renameHomepageFile(oldPath, newPath).catch(console.error);
-							new Notice(t('notice.homepage-renamed', { name: basename }));
+							showPluginNotice(t('notice.homepage-renamed', { name: basename }));
 						}
 					};
 
@@ -671,50 +675,63 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		let workspaceTextComponent: TextAreaComponent | null = null;
 		let workspaceTempValue = formatDirectorySettingLines(this.plugin.settings.workspaceFolders || []);
 
-		const saveWorkspaceAction = async () => {
-			const oldFolders = this.plugin.settings.workspaceFolders || [];
-			const oldFirst = oldFolders.length > 0 ? oldFolders[0].replace(/^\/+|\/+$/g, '') : '';
+		const saveWorkspaceAction = (): Promise<void> => {
+			const nextSave = this.workspaceSaveQueue
+				.catch(() => undefined)
+				.then(async () => {
+					const oldFolders = this.plugin.settings.workspaceFolders || [];
+					const oldFirst = oldFolders.length > 0 ? oldFolders[0].replace(/^\/+|\/+$/g, '') : '';
 
-			// 记录在改变 workspaceFolders 之前的旧主页路径
-			const currentPath = this.plugin.homepageManager?.getHomepageFilePath();
+					// 记录在改变 workspaceFolders 之前的旧主页路径
+					const currentPath = this.plugin.homepageManager?.getHomepageFilePath();
 
-			const parsedFolders = parseDirectorySettingLines(workspaceTempValue);
+					const parsedFolders = parseDirectorySettingLines(workspaceTempValue);
 
-			if (JSON.stringify(oldFolders) === JSON.stringify(parsedFolders)) {
-				return;
-			}
-
-			this.plugin.settings.workspaceFolders = parsedFolders;
-			const newFolders = this.plugin.settings.workspaceFolders;
-			const newFirst = newFolders.length > 0 ? newFolders[0].replace(/^\/+|\/+$/g, '') : '';
-
-			if (oldFirst !== newFirst) {
-				if (currentPath) {
-					const basename = currentPath.split('/').pop() || `${t('common.default-homepage-name')}.md`;
-					const expectedOldPath = oldFirst ? `${oldFirst}/${basename}` : basename;
-
-					// 如果当前主页在原工作区根目录下，自动跟随移动到新工作区
-					if (currentPath === expectedOldPath) {
-						const newPath = newFirst ? `${newFirst}/${basename}` : basename;
-						this.plugin.settings.homepagePath = newPath;
-						this.plugin.homepageManager?.renameHomepageFile(currentPath, newPath).catch(console.error);
+					if (JSON.stringify(oldFolders) === JSON.stringify(parsedFolders)) {
+						return;
 					}
-				}
 
-				if (this.plugin.proofreadingManager) {
-					await this.plugin.proofreadingManager.relocateDefaultDictionary(oldFirst, newFirst);
-				}
-			}
+					this.plugin.settings.workspaceFolders = parsedFolders;
+					const newFolders = this.plugin.settings.workspaceFolders;
+					const newFirst = newFolders.length > 0 ? newFolders[0].replace(/^\/+|\/+$/g, '') : '';
+					let dictionaryRelocated = false;
 
-			await this.plugin.saveSettings();
-			this.plugin.cacheManager?.resetLoreCache();
-			this.plugin.cacheManager?.clearCache();
-			this.plugin.workerManager.reevaluateScope();
-			this.plugin.updateWordCount();
-			if (this.plugin.settings.showExplorerCounts) {
-				void this.plugin.buildFolderCache();
-			}
-			void this.plugin.homepageManager?.refreshHomepageViews();
+					if (oldFirst !== newFirst) {
+						if (currentPath) {
+							const basename = currentPath.split('/').pop() || `${t('common.default-homepage-name')}.md`;
+							const expectedOldPath = oldFirst ? `${oldFirst}/${basename}` : basename;
+
+							// 如果当前主页在原工作区根目录下，自动跟随移动到新工作区
+							if (currentPath === expectedOldPath) {
+								const newPath = newFirst ? `${newFirst}/${basename}` : basename;
+								this.plugin.settings.homepagePath = newPath;
+								this.plugin.homepageManager?.renameHomepageFile(currentPath, newPath).catch(console.error);
+							}
+						}
+
+						if (this.plugin.proofreadingManager) {
+							dictionaryRelocated = await this.plugin.proofreadingManager.relocateDefaultDictionary(oldFirst, newFirst);
+						}
+					}
+
+					await this.plugin.saveSettings();
+					this.plugin.cacheManager?.resetLoreCache();
+					this.plugin.cacheManager?.clearCache();
+					this.plugin.workerManager.reevaluateScope();
+					this.plugin.updateWordCount();
+					if (this.plugin.settings.showExplorerCounts) {
+						void this.plugin.buildFolderCache();
+					}
+					void this.plugin.homepageManager?.refreshHomepageViews();
+					if (dictionaryRelocated && this.activeTab === 'proofreading') {
+						this.renderSettings();
+					}
+				});
+
+			this.workspaceSaveQueue = nextSave.catch((err) => {
+				console.error(err);
+			});
+			return nextSave;
 		};
 
 		new Setting(containerEl)
@@ -762,7 +779,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 						void this.plugin.buildFolderCache();
 					}
 					void this.plugin.homepageManager?.refreshHomepageViews();
-					this.display();
+					this.renderSettings();
 				}));
 		if (this.plugin.settings.enableStrictChapterMode) {
 			let exceptionTextComponent: TextAreaComponent | null = null;
@@ -827,7 +844,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.enableChapterTemplate = value;
 					await this.plugin.saveSettings();
-					this.display();
+					this.renderSettings();
 				}));
 
 		if (this.plugin.settings.enableChapterTemplate) {
@@ -852,7 +869,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 								this.plugin.settings.chapterTemplatePaths.push(file.path);
 								this.plugin.settings.chapterTemplatePath = this.plugin.settings.chapterTemplatePaths[0] || '';
 								void this.plugin.saveSettings();
-								this.display();
+								this.renderSettings();
 							}
 						}).open();
 					}));
@@ -874,7 +891,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 								this.plugin.settings.chapterTemplatePaths.splice(index, 1);
 								this.plugin.settings.chapterTemplatePath = this.plugin.settings.chapterTemplatePaths[0] || '';
 								await this.plugin.saveSettings();
-								this.display();
+								this.renderSettings();
 							}));
 				});
 			}
@@ -890,7 +907,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 					if (value || this.plugin.settings.homepagePinPosition !== 'none') this.plugin.fileExplorerPatcher.enable();
 					else this.plugin.fileExplorerPatcher.disable();
-					this.display();
+					this.renderSettings();
 				}));
 
 		if (this.plugin.settings.enableSmartChapterSort) {
@@ -935,7 +952,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 
 	// ── 字数统计设置 ──
 	private async refreshWordCountConfiguration(): Promise<void> {
-		new Notice(t('notice.word-count-recalculating'));
+		showPluginNotice(t('notice.word-count-recalculating'));
 		this.plugin.cacheManager.clearCache();
 		if (this.plugin.settings.showExplorerCounts) {
 			await this.plugin.cacheManager.buildInitialCache(
@@ -1033,7 +1050,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 						this.plugin.settings.enableWordCountGutter = value;
 						await this.plugin.saveSettings();
 						this.app.workspace.trigger('webnovel:word-count-gutter-settings-changed');
-						this.display(); // 刷新界面以显示/隐藏间隔输入框
+						this.renderSettings(); // 刷新界面以显示/隐藏间隔输入框
 					}));
 
 			if (this.plugin.settings.enableWordCountGutter) {
@@ -1107,15 +1124,15 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 						if (value) {
 							const success = await this.plugin.proofreadingManager.enable();
 							if (!success) {
-								new Notice(t('notice.proofreading-enable-failed'));
+								showPluginNotice(t('notice.proofreading-enable-failed'));
 							}
 						} else {
 							await this.plugin.proofreadingManager.disable();
 						}
 					} catch {
-						new Notice(t('notice.proofreading-enable-failed'));
+						showPluginNotice(t('notice.proofreading-enable-failed'));
 					} finally {
-						this.display();
+						this.renderSettings();
 					}
 				}));
 
@@ -1168,10 +1185,10 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 
 					const success = await this.plugin.proofreadingManager.renameDictionaryFolder(tempName);
 					if (success) {
-						new Notice(t('notice.proofreading-rename-success'));
-						this.display();
+						showPluginNotice(t('notice.proofreading-rename-success'));
+						this.renderSettings();
 					} else {
-						new Notice(t('notice.proofreading-rename-failed'));
+						showPluginNotice(t('notice.proofreading-rename-failed'));
 						text.setValue(currentBasename);
 					}
 				};
@@ -1194,10 +1211,12 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				.onClick(async () => {
 					if (!this.plugin.proofreadingManager) return;
 					try {
+						await this.workspaceSaveQueue;
 						await this.plugin.proofreadingManager.regenerateMissingTemplates();
-						new Notice(t('notice.proofreading-templates-regenerated'));
+						showPluginNotice(t('notice.proofreading-templates-regenerated'));
+						this.renderSettings();
 					} catch {
-						new Notice(t('notice.proofreading-regenerate-failed'));
+						showPluginNotice(t('notice.proofreading-regenerate-failed'));
 					}
 				}));
 
@@ -1230,7 +1249,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				.onChange(async (value: boolean) => {
 					if (value && !isDeDiDeDownloaded) {
 						toggle.setValue(false);
-						new Notice(t('notice.proofreading-dedide-not-downloaded'));
+						showPluginNotice(t('notice.proofreading-dedide-not-downloaded'));
 						return;
 					}
 					if (!this.plugin.settings.proofreading) {
@@ -1289,34 +1308,34 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					try {
 						const res = await this.plugin.proofreadingManager.updateBasicDictionary();
 						if (res.status === 'updated') {
-							new Notice(t('notice.proofreading-dict-updated', {
+							showPluginNotice(t('notice.proofreading-dict-updated', {
 								version: res.version || '',
 								count: String(res.count ?? 0)
 							}));
 							if (res.isLarge) {
-								new Notice(t('notice.proofreading-dict-large-warn', {
+								showPluginNotice(t('notice.proofreading-dict-large-warn', {
 									count: String(res.count ?? 0)
 								}));
 							}
 						} else if (res.status === 'already-current') {
-							new Notice(t('notice.proofreading-dict-already-latest', {
+							showPluginNotice(t('notice.proofreading-dict-already-latest', {
 								version: res.version || ''
 							}));
 						} else {
 							if (res.failureReason === 'network_error') {
-								new Notice(t('notice.proofreading-dict-network-error', { error: res.errorMessage || '' }));
+								showPluginNotice(t('notice.proofreading-dict-network-error', { error: res.errorMessage || '' }));
 							} else if (res.failureReason === 'validation_error' || res.failureReason === 'corrupt_data') {
-								new Notice(t('notice.proofreading-dict-validation-error', { error: res.errorMessage || '' }));
+								showPluginNotice(t('notice.proofreading-dict-validation-error', { error: res.errorMessage || '' }));
 							} else if (res.failureReason === 'disk_error') {
-								new Notice(t('notice.proofreading-dict-persist-error', { error: res.errorMessage || '' }));
+								showPluginNotice(t('notice.proofreading-dict-persist-error', { error: res.errorMessage || '' }));
 							} else {
-								new Notice(t('notice.proofreading-dict-network-error', { error: res.errorMessage || '' }));
+								showPluginNotice(t('notice.proofreading-dict-network-error', { error: res.errorMessage || '' }));
 							}
 						}
 					} catch (e) {
-						new Notice(t('notice.proofreading-dict-network-error', { error: e instanceof Error ? e.message : String(e) }));
+						showPluginNotice(t('notice.proofreading-dict-network-error', { error: e instanceof Error ? e.message : String(e) }));
 					} finally {
-						this.display();
+						this.renderSettings();
 					}
 				}));
 
@@ -1362,34 +1381,34 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					try {
 						const res = await this.plugin.proofreadingManager.updateDeDiDeLexicon();
 						if (res.status === 'updated') {
-							new Notice(t('notice.proofreading-dict-updated', {
+							showPluginNotice(t('notice.proofreading-dict-updated', {
 								version: res.version || '',
 								count: String(res.count ?? 0)
 							}));
 							if (res.isLarge) {
-								new Notice(t('notice.proofreading-dict-large-warn', {
+								showPluginNotice(t('notice.proofreading-dict-large-warn', {
 									count: String(res.count ?? 0)
 								}));
 							}
 						} else if (res.status === 'already-current') {
-							new Notice(t('notice.proofreading-dict-already-latest', {
+							showPluginNotice(t('notice.proofreading-dict-already-latest', {
 								version: res.version || ''
 							}));
 						} else {
 							if (res.failureReason === 'network_error') {
-								new Notice(t('notice.proofreading-dict-network-error', { error: res.errorMessage || '' }));
+								showPluginNotice(t('notice.proofreading-dict-network-error', { error: res.errorMessage || '' }));
 							} else if (res.failureReason === 'validation_error' || res.failureReason === 'corrupt_data') {
-								new Notice(t('notice.proofreading-dict-validation-error', { error: res.errorMessage || '' }));
+								showPluginNotice(t('notice.proofreading-dict-validation-error', { error: res.errorMessage || '' }));
 							} else if (res.failureReason === 'disk_error') {
-								new Notice(t('notice.proofreading-dict-persist-error', { error: res.errorMessage || '' }));
+								showPluginNotice(t('notice.proofreading-dict-persist-error', { error: res.errorMessage || '' }));
 							} else {
-								new Notice(t('notice.proofreading-dict-network-error', { error: res.errorMessage || '' }));
+								showPluginNotice(t('notice.proofreading-dict-network-error', { error: res.errorMessage || '' }));
 							}
 						}
 					} catch (e) {
-						new Notice(t('notice.proofreading-dict-network-error', { error: e instanceof Error ? e.message : String(e) }));
+						showPluginNotice(t('notice.proofreading-dict-network-error', { error: e instanceof Error ? e.message : String(e) }));
 					} finally {
-						this.display();
+						this.renderSettings();
 					}
 				}));
 
@@ -1407,13 +1426,13 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			}))
 			.addButton(btn => btn
 				.setButtonText(t('setting.btn-clear-ignored'))
-				.setWarning()
+				.then(applyDestructiveButtonStyle)
 				.setDisabled(wordsCount === 0 && contextsCount === 0)
 				.onClick(async () => {
 					if (!this.plugin.proofreadingManager) return;
 					await this.plugin.proofreadingManager.clearIgnored('all');
-					new Notice(t('notice.proofreading-ignored-cleared'));
-					this.display();
+					showPluginNotice(t('notice.proofreading-ignored-cleared'));
+					this.renderSettings();
 				}));
 
 		// 1. 已忽略词汇列表 (全局白名单)
@@ -1427,8 +1446,8 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				.onClick(async () => {
 					if (!this.plugin.proofreadingManager) return;
 					await this.plugin.proofreadingManager.clearIgnored('words');
-					new Notice(t('notice.proofreading-ignored-words-cleared'));
-					this.display();
+					showPluginNotice(t('notice.proofreading-ignored-words-cleared'));
+					this.renderSettings();
 				}));
 		}
 
@@ -1446,8 +1465,8 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					void (async () => {
 						if (!this.plugin.proofreadingManager) return;
 						await this.plugin.proofreadingManager.unignoreWord(word);
-						new Notice(t('notice.proofreading-word-unignored', { word }));
-						this.display();
+						showPluginNotice(t('notice.proofreading-word-unignored', { word }));
+						this.renderSettings();
 					})();
 				});
 			}
@@ -1469,8 +1488,8 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				.onClick(async () => {
 					if (!this.plugin.proofreadingManager) return;
 					await this.plugin.proofreadingManager.clearIgnored('contexts');
-					new Notice(t('notice.proofreading-ignored-contexts-cleared'));
-					this.display();
+					showPluginNotice(t('notice.proofreading-ignored-contexts-cleared'));
+					this.renderSettings();
 				}));
 		}
 
@@ -1520,8 +1539,8 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 						void (async () => {
 							if (!this.plugin.proofreadingManager) return;
 							await this.plugin.proofreadingManager.unignoreInstance(item.fingerprint);
-							new Notice(t('notice.proofreading-context-unignored'));
-							this.display();
+							showPluginNotice(t('notice.proofreading-context-unignored'));
+							this.renderSettings();
 						})();
 					});
 				}
@@ -1568,7 +1587,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					else { this.plugin.settings.task.fileName = newName; }
 					await this.plugin.saveSettings();
 					const count = await this.plugin.renameAllFunctionalFiles(oldName, newName, 'file', 'taskFileName');
-					if (count > 0) new Notice(t('notice.files-renamed', { count: String(count) }));
+					if (count > 0) showPluginNotice(t('notice.files-renamed', { count: String(count) }));
 				};
 
 				text.inputEl.addEventListener('change', () => { saveAction().catch(console.error); });
@@ -1640,13 +1659,13 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 						.onChange(async (value) => {
 							// [安全] ReDoS 防护：长度限制
 							if (value.length > 200) {
-								new Notice(t('notice.regex-too-long'));
+								showPluginNotice(t('notice.regex-too-long'));
 								return;
 							}
 
 							// [安全] ReDoS 防护：禁止嵌套量词（如 (a+)+、(a*)*）
 							if (/([+*])\)?[+*]/.test(value)) {
-								new Notice(t('notice.regex-nested-quantifier'));
+								showPluginNotice(t('notice.regex-nested-quantifier'));
 								return;
 							}
 
@@ -1654,7 +1673,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 							try {
 								new RegExp(value, 'i');
 							} catch {
-								new Notice(t('notice.regex-invalid'));
+								showPluginNotice(t('notice.regex-invalid'));
 								return;
 							}
 
@@ -1668,7 +1687,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 
 				s.addButton(btn => btn
 					.setButtonText(t('common.delete'))
-					.setWarning()
+					.then(applyDestructiveButtonStyle)
 					.onClick(async () => {
 						this.plugin.settings.chapterNamingRules.splice(index, 1);
 						await this.plugin.saveSettings();
@@ -1751,7 +1770,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			.addSlider(slider => slider
 				.setLimits(-30, 30, 1)
 				.setValue(this.plugin.settings.editorTypewriter?.centerOffset ?? 0)
-				.setDynamicTooltip()
+				.then(attachLegacySliderValue)
 				.onChange(async (value) => {
 					if (!this.plugin.settings.editorTypewriter) {
 						this.plugin.settings.editorTypewriter = {
@@ -1771,7 +1790,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			.addSlider(slider => slider
 				.setLimits(0.1, 1.0, 0.05)
 				.setValue(this.plugin.settings.editorTypewriter?.unfocusedOpacity ?? 0.4)
-				.setDynamicTooltip()
+				.then(attachLegacySliderValue)
 				.onChange(async (value) => {
 					if (!this.plugin.settings.editorTypewriter) {
 						this.plugin.settings.editorTypewriter = {
@@ -1815,7 +1834,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			.addSlider(slider => slider
 				.setLimits(10, 30, 1)
 				.setValue(this.plugin.settings.immersive.immersiveNoteFontSize || 14)
-				.setDynamicTooltip()
+				.then(attachLegacySliderValue)
 				.onChange(async (value) => {
 					this.plugin.settings.immersive.immersiveNoteFontSize = value;
 					await this.plugin.saveSettings();
@@ -1847,13 +1866,14 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 	private getAvailableViews(): Record<string, string> {
 		return {
 			'immersive-chapter-list-view': t('setting.layout-view-chapter-list'),
-			'webnovel-corkboard': t('setting.layout-view-corkboard'),
-			'webnovel-lore-overview': t('setting.layout-view-lore-overview'),
-			'immersive-sticky-notes-view': t('setting.layout-view-sticky-notes'),
-			'foreshadowing-view': t('setting.layout-view-foreshadowing'),
-			'wn-timeline-view': t('setting.layout-view-timeline'),
-			'reference-view': t('setting.layout-view-reference'),
-			'outline': t('setting.layout-view-outline')
+			[VIEW_TYPES.IMMERSIVE_CHAPTER_STATUS]: t(MOBILE_AUX_VIEW_LABEL_KEYS['immersive-chapter-status-view']),
+			'webnovel-corkboard': t(MOBILE_AUX_VIEW_LABEL_KEYS['webnovel-corkboard']),
+			'webnovel-lore-overview': t(MOBILE_AUX_VIEW_LABEL_KEYS['webnovel-lore-overview']),
+			'immersive-sticky-notes-view': t(MOBILE_AUX_VIEW_LABEL_KEYS['immersive-sticky-notes-view']),
+			'foreshadowing-view': t(MOBILE_AUX_VIEW_LABEL_KEYS['foreshadowing-view']),
+			'wn-timeline-view': t(MOBILE_AUX_VIEW_LABEL_KEYS['wn-timeline-view']),
+			'reference-view': t(MOBILE_AUX_VIEW_LABEL_KEYS['reference-view']),
+			'outline': t(MOBILE_AUX_VIEW_LABEL_KEYS['outline'])
 		};
 	}
 
@@ -1923,7 +1943,33 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 	}
 
 	private displayImmersiveModeSettings(containerEl: HTMLElement): void {
-		this.displayImmersiveLayoutBuilder(containerEl);
+		const desktop = isDesktop();
+		if (desktop) {
+			this.displayImmersiveLayoutBuilder(containerEl);
+		} else {
+			new Setting(containerEl).setName(t('setting.immersive-mobile-aux-title')).setHeading();
+
+			const auxState = sanitizeMobileAuxPanelState(this.plugin.settings.immersive.mobileAuxPanel);
+
+			new Setting(containerEl)
+				.setName(t('setting.immersive-mobile-aux-enabled'))
+				.setDesc(t('setting.immersive-mobile-aux-enabled-desc'))
+				.addToggle(toggle => toggle
+					.setValue(auxState.isOpen)
+					.onChange(async (value) => {
+						if (this.plugin.immersiveModeManager) {
+							await this.plugin.immersiveModeManager.updateMobileAuxPanelSettings({ isOpen: value });
+						} else {
+							const fresh = sanitizeMobileAuxPanelState(this.plugin.settings.immersive.mobileAuxPanel);
+							this.plugin.settings.immersive.mobileAuxPanel = sanitizeMobileAuxPanelState({
+								...fresh,
+								isOpen: value,
+								...(value ? { isMinimized: false } : {})
+							});
+							await this.plugin.saveSettings();
+						}
+					}));
+		}
 
 		new Setting(containerEl)
 			.setName(t('setting.immersive-hide-properties'))
@@ -1935,9 +1981,25 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 
 					// 如果当前处于沉浸模式则立即生效
-					if (activeDocument.body.classList.contains('immersive-mode-active')) {
-						if (value) activeDocument.body.classList.add('immersive-hide-properties');
-						else activeDocument.body.classList.remove('immersive-hide-properties');
+					if (activeDocument.body.classList.contains('wn-immersive-mode-active')) {
+						if (value) activeDocument.body.classList.add('wn-immersive-hide-properties');
+						else activeDocument.body.classList.remove('wn-immersive-hide-properties');
+					}
+				}));
+
+		new Setting(containerEl)
+			.setName(t('setting.immersive-manuscript-mode'))
+			.setDesc(t('setting.immersive-manuscript-mode-desc'))
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.immersive.manuscriptModeEnabled ?? false)
+				.onChange(async (value) => {
+					this.plugin.settings.immersive.manuscriptModeEnabled = value;
+					await this.plugin.saveSettings();
+					if (this.plugin.immersiveModeManager) {
+						const effective = await this.plugin.immersiveModeManager.handleManuscriptModeSettingChanged(value);
+						if (effective !== value) {
+							toggle.setValue(effective);
+						}
 					}
 				}));
 
@@ -1952,7 +2014,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					this.plugin.settings.immersive.typewriterEnabled = value;
 					await this.plugin.saveSettings();
 
-					if (activeDocument.body.classList.contains('immersive-mode-active')) {
+					if (activeDocument.body.classList.contains('wn-immersive-mode-active')) {
 						if (value) {
 							activeDocument.body.classList.add('wn-typewriter-active');
 							activeDocument.body.setCssProps({ '--wn-typewriter-opacity': String(this.plugin.settings.immersive.typewriterUnfocusedOpacity ?? 0.4) });
@@ -1969,7 +2031,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			.addSlider(slider => slider
 				.setLimits(-30, 30, 1)
 				.setValue(this.plugin.settings.immersive.typewriterCenterOffset ?? 0)
-				.setDynamicTooltip()
+				.then(attachLegacySliderValue)
 				.onChange(async (value) => {
 					this.plugin.settings.immersive.typewriterCenterOffset = value;
 					await this.plugin.saveSettings();
@@ -1982,12 +2044,12 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			.addSlider(slider => slider
 				.setLimits(0.1, 1.0, 0.05)
 				.setValue(this.plugin.settings.immersive.typewriterUnfocusedOpacity ?? 0.4)
-				.setDynamicTooltip()
+				.then(attachLegacySliderValue)
 				.onChange(async (value) => {
 					this.plugin.settings.immersive.typewriterUnfocusedOpacity = value;
 					await this.plugin.saveSettings();
 
-					if (activeDocument.body.classList.contains('immersive-mode-active')) {
+					if (activeDocument.body.classList.contains('wn-immersive-mode-active')) {
 						activeDocument.body.setCssProps({ '--wn-typewriter-opacity': String(value) });
 					}
 					this.refreshOpenEditors();
@@ -2001,8 +2063,12 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.immersive.pomodoroEnabled ?? false)
 				.onChange(async (value) => {
-					this.plugin.settings.immersive.pomodoroEnabled = value;
-					await this.plugin.saveSettings();
+					if (this.plugin.immersiveModeManager) {
+						await this.plugin.immersiveModeManager.updatePomodoroSettings({ pomodoroEnabled: value });
+					} else {
+						this.plugin.settings.immersive.pomodoroEnabled = value;
+						await this.plugin.saveSettings();
+					}
 				}));
 
 		new Setting(containerEl)
@@ -2011,11 +2077,19 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			.addSlider(slider => slider
 				.setLimits(20, 180, 5)
 				.setValue(this.plugin.settings.immersive.pomodoroInterval ?? 30)
-				.setDynamicTooltip()
+				.then(attachLegacySliderValue)
 				.onChange(async (value) => {
-					this.plugin.settings.immersive.pomodoroInterval = value;
-					await this.plugin.saveSettings();
+					if (this.plugin.immersiveModeManager) {
+						await this.plugin.immersiveModeManager.updatePomodoroSettings({ pomodoroInterval: value });
+					} else {
+						this.plugin.settings.immersive.pomodoroInterval = value;
+						await this.plugin.saveSettings();
+					}
 				}));
+
+		if (!desktop) {
+			return;
+		}
 
 		new Setting(containerEl).setName(t('setting.immersive-dashboard-toggles')).setHeading();
 
@@ -2131,7 +2205,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					else { this.plugin.settings.foreshadowing.fileName = newName; }
 					await this.plugin.saveSettings();
 					const count = await this.plugin.renameAllFunctionalFiles(oldName, newName, 'file', 'foreshadowingFileName');
-					if (count > 0) new Notice(t('notice.files-renamed', { count: String(count) }));
+					if (count > 0) showPluginNotice(t('notice.files-renamed', { count: String(count) }));
 				};
 
 				text.inputEl.addEventListener('change', () => { saveAction().catch(console.error); });
@@ -2205,7 +2279,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 					this.plugin.cacheManager?.resetLoreCache();
 					const count = await this.plugin.renameAllFunctionalFiles(oldName, newName, 'folder', 'loreFolderName');
-					if (count > 0) new Notice(t('notice.files-renamed', { count: String(count) }));
+					if (count > 0) showPluginNotice(t('notice.files-renamed', { count: String(count) }));
 				};
 
 				text.inputEl.addEventListener('change', () => { saveAction().catch(console.error); });
@@ -2228,7 +2302,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					if (newName === currentOldName) return;
 
 					if (newName.includes('..') || newName.includes('/') || newName.includes('\\')) {
-						new Notice(t('corkboard.rename-failed') || '重命名失败，名称非法');
+						showPluginNotice(t('corkboard.rename-failed') || '重命名失败，名称非法');
 						text.setValue(currentOldName);
 						return;
 					}
@@ -2239,11 +2313,11 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 							// 部分作品重命名成功，部分作品失败/遗留：提示部分完成，绝不宣称全部重命名
 							this.plugin.settings.seriesLoreFolderName = newName;
 							await this.plugin.saveSettings();
-							new Notice(t('notice.files-renamed', { count: String(result.renamed) }) + ` (${result.renamed}/${result.total})`);
+							showPluginNotice(t('notice.files-renamed', { count: String(result.renamed) }) + ` (${result.renamed}/${result.total})`);
 						} else {
 							// 全部作品重命名失败：为防止设定失效且数据不可访问，不更新配置
 							text.setValue(currentOldName);
-							new Notice(t('corkboard.rename-failed') || '重命名失败');
+							showPluginNotice(t('corkboard.rename-failed') || '重命名失败');
 							await this.plugin.characterManager?.rebuildCache();
 							return;
 						}
@@ -2252,7 +2326,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 						this.plugin.settings.seriesLoreFolderName = newName;
 						await this.plugin.saveSettings();
 						if (result.renamed > 0) {
-							new Notice(t('notice.files-renamed', { count: String(result.renamed) }));
+							showPluginNotice(t('notice.files-renamed', { count: String(result.renamed) }));
 						}
 					}
 					await this.plugin.characterManager?.rebuildCache();
@@ -2337,7 +2411,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					} catch (error) {
 						Logger.error('[SettingsTab] 保存设定卡片预览设置或刷新视图失败:', error);
 					} finally {
-						this.display();
+						this.renderSettings();
 					}
 				}));
 
@@ -2370,7 +2444,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				.addSlider(slider => slider
 					.setLimits(1, 10, 1)
 					.setValue(this.plugin.settings.loreCardPreviewMaxCount || 3)
-					.setDynamicTooltip()
+					.then(attachLegacySliderValue)
 					.onChange(async (value: number) => {
 						this.plugin.settings.loreCardPreviewMaxCount = value;
 						await this.plugin.saveSettings();
@@ -2386,6 +2460,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				.onChange(async (value: boolean) => {
 					this.plugin.settings.loreGraphAutoLinkMentions = value;
 					await this.plugin.saveSettings();
+					this.app.workspace.trigger('webnovel-workbench-lore-updated');
 				}));
 
 		// 启用跨文件图谱关联
@@ -2421,7 +2496,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					else { this.plugin.settings.timeline.fileName = newName; }
 					await this.plugin.saveSettings();
 					const count = await this.plugin.renameAllFunctionalFiles(oldName, newName, 'file', 'timelineFileName');
-					if (count > 0) new Notice(t('notice.files-renamed', { count: String(count) }));
+					if (count > 0) showPluginNotice(t('notice.files-renamed', { count: String(count) }));
 				};
 
 				text.inputEl.addEventListener('change', () => { saveAction().catch(console.error); });
@@ -2485,7 +2560,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			.addSlider(slider => slider
 				.setLimits(30, 600, 30)
 				.setValue(this.plugin.settings.idleTimeoutThreshold / 1000)
-				.setDynamicTooltip()
+				.then(attachLegacySliderValue)
 				.onChange(async (value) => {
 					this.plugin.settings.idleTimeoutThreshold = value * 1000;
 					await this.plugin.saveSettings();
@@ -2505,10 +2580,10 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			anchor.click();
 			anchor.remove();
 			ownerDocument.win.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
-			new Notice(t('notice.history-export-success'));
+			showPluginNotice(t('notice.history-export-success'));
 		} catch (error) {
 			Logger.error('[SettingsTab] 导出历史数据失败:', error);
-			new Notice(t('notice.history-export-failed'));
+			showPluginNotice(t('notice.history-export-failed'));
 		}
 	}
 
@@ -2525,11 +2600,11 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				new HistoryRestoreConfirmModal(this.app, async () => {
 					const count = await this.plugin.historyManager.restoreHistoryBackup(content);
 					this.plugin.refreshStatusViews(true);
-					new Notice(t('notice.history-restore-success', { count: String(count) }));
+					showPluginNotice(t('notice.history-restore-success', { count: String(count) }));
 				}).open();
 			}).catch(error => {
 				Logger.error('[SettingsTab] 读取历史数据备份失败:', error);
-				new Notice(t('notice.history-restore-failed'));
+				showPluginNotice(t('notice.history-restore-failed'));
 			});
 		}, { once: true });
 		input.addEventListener('cancel', () => input.remove(), { once: true });
@@ -2575,10 +2650,10 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 							await this.plugin.obsServer.stop();
 							this.plugin.obsServer = new ObsOverlayServer(this.plugin, this.plugin.settings.obs.obsPort);
 							this.plugin.obsServer.start();
-							new Notice(t('notice.obs-overlay-restarted', { port: String(parsed) }));
+							showPluginNotice(t('notice.obs-overlay-restarted', { port: String(parsed) }));
 						}
 					} else if (!isNaN(parsed)) {
-						new Notice(t('notice.port-range-invalid', { min: String(VALIDATION_RULES.PORT_RANGE.min), max: String(VALIDATION_RULES.PORT_RANGE.max) }));
+						showPluginNotice(t('notice.port-range-invalid', { min: String(VALIDATION_RULES.PORT_RANGE.min), max: String(VALIDATION_RULES.PORT_RANGE.max) }));
 					}
 				}));
 
@@ -2588,7 +2663,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 			.addSlider(slider => slider
 				.setLimits(0, 1, 0.05)
 				.setValue(this.plugin.settings.obs.obsOverlayOpacity ?? 0.85)
-				.setDynamicTooltip()
+				.then(attachLegacySliderValue)
 				.onChange(async (value) => {
 					this.plugin.settings.obs.obsOverlayOpacity = value;
 					await this.plugin.saveSettings();
@@ -2680,7 +2755,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				.onClick(() => {
 					const url = `http://127.0.0.1:${this.plugin.settings.obs.obsPort}/`;
 					void navigator.clipboard.writeText(url);
-					new Notice(t('notice.obs-url-copied', { url }));
+					showPluginNotice(t('notice.obs-url-copied', { url }));
 				}));
 
 		// 调试模式
@@ -2719,7 +2794,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					} else {
 						this.plugin.removeEyeCare();
 					}
-					this.display();
+					this.renderSettings();
 				}));
 
 		if (this.plugin.settings.eyeCareEnabled) {
@@ -2744,7 +2819,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 						if (this.plugin.settings.eyeCareEnabled) {
 							this.plugin.applyEyeCare();
 						}
-						this.display();
+						this.renderSettings();
 					}));
 
 			new Setting(containerEl)
@@ -2768,7 +2843,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 						if (this.plugin.settings.eyeCareEnabled) {
 							this.plugin.applyEyeCare();
 						}
-						this.display();
+						this.renderSettings();
 					}));
 		}
 
@@ -2786,7 +2861,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					typo.enabled = value;
 					await this.plugin.saveSettings();
 					this.plugin.typographyManager.updateTypography(true);
-					this.display();
+					this.renderSettings();
 				}));
 
 		if (!typo.enabled) return;
@@ -2802,7 +2877,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					typo.enableGlobal = value;
 					await this.plugin.saveSettings();
 					this.plugin.typographyManager.updateTypography(true);
-					this.display();
+					this.renderSettings();
 				}));
 
 		new Setting(containerEl)
@@ -2919,7 +2994,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					typo.enableBodyFontSize = value;
 					await this.plugin.saveSettings();
 					this.plugin.typographyManager.updateTypography();
-					this.display();
+					this.renderSettings();
 				}));
 
 		if (typo.enableBodyFontSize) {
@@ -2929,7 +3004,7 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				.addSlider(slider => slider
 					.setLimits(12, 32, 1)
 					.setValue(typo.bodyFontSize || 16)
-					.setDynamicTooltip()
+					.then(attachLegacySliderValue)
 					.onChange(async (value) => {
 						typo.bodyFontSize = value;
 						await this.plugin.saveSettings();
@@ -2972,6 +3047,18 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 						this.plugin.typographyManager.updateTypography();
 					}
+				}));
+
+		new Setting(containerEl)
+			.setName(t('setting.typography-para-before'))
+			.setDesc(t('setting.typography-para-before-desc'))
+			.addText(text => text
+				.setValue(typo.paragraphSpacingBefore || '0em')
+				.setPlaceholder('0em')
+				.onChange(async (value) => {
+					typo.paragraphSpacingBefore = value.trim() || '0em';
+					await this.plugin.saveSettings();
+					this.plugin.typographyManager.updateTypography();
 				}));
 
 		new Setting(containerEl)

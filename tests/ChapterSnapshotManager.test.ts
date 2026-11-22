@@ -5,7 +5,7 @@ import { ChapterSnapshotPanel } from '../src/ui/ChapterSnapshotPanel';
 import { ChapterDiffEngine } from '../src/services/ChapterDiffEngine';
 import { MockElement } from './mocks/MockElement';
 import { ChapterSnapshotManager } from '../src/services/ChapterSnapshotManager';
-import { ChapterSnapshotReplayController, getReplayTextChanges } from '../src/services/ChapterSnapshotReplayController';
+import { ChapterSnapshotReplayController, getReplayTextChanges, type ReplayState } from '../src/services/ChapterSnapshotReplayController';
 import type { NativeSnapshotService } from '../src/services/NativeSnapshotService';
 import { WritingJourneyBoardRenderer } from '../src/ui/components/WritingJourneyBoardRenderer';
 import type { WritingJourneyEvent } from '../src/types/writingJourney';
@@ -14,12 +14,20 @@ if (typeof window === 'undefined') {
 	(globalThis as unknown as { window: unknown }).window = globalThis;
 }
 
-const { MockTFile, MockMarkdownView } = vi.hoisted(() => {
+const { MockTFile, MockTFolder, MockMarkdownView, MockNotice, MockModal, MockSetting, mockNotices, mockOpenModals } = vi.hoisted(() => {
 	class MockFile {
 		extension = 'md';
 		basename: string;
+		parent: unknown = null;
 		constructor(public name: string, public path: string) {
 			this.basename = name.replace(/\.md$/, '');
+		}
+	}
+	class MockFolder {
+		children: unknown[] = [];
+		constructor(public name: string, public path: string) {}
+		isRoot(): boolean {
+			return this.path === '/' || this.path === '';
 		}
 	}
 	class MockView {
@@ -54,17 +62,118 @@ const { MockTFile, MockMarkdownView } = vi.hoisted(() => {
 			}
 		};
 		getViewData() { return 'editor content'; }
+		save = vi.fn(async () => {});
 		editor = { getValue: () => 'editor content' };
+	}
+	const notices: string[] = [];
+	class NoticeMock {
+		constructor(public message: string) {
+			notices.push(message);
+		}
+	}
+	const openModals: ModalMock[] = [];
+	const createModalEl = (): Record<string, unknown> => {
+		const el: Record<string, unknown> = {
+			classList: { add: vi.fn(), remove: vi.fn(), contains: vi.fn(() => false) },
+			addClass: vi.fn(() => el),
+			removeClass: vi.fn(() => el),
+			setAttribute: vi.fn(),
+			setText: vi.fn(),
+			empty: vi.fn(),
+			appendChild: vi.fn(),
+			remove: vi.fn(),
+			children: [] as unknown[],
+			textContent: '',
+			onclick: null as (() => void) | null
+		};
+		el.createDiv = vi.fn((opts?: { cls?: string; text?: string }) => {
+			const child = createModalEl();
+			if (opts?.text) child.textContent = opts.text;
+			(el.children as unknown[]).push(child);
+			return child;
+		});
+		el.createEl = vi.fn((_tag: string, opts?: { cls?: string; text?: string }) => {
+			const child = createModalEl();
+			if (opts?.cls) child.className = opts.cls;
+			if (opts?.text) child.textContent = opts.text;
+			(el.children as unknown[]).push(child);
+			return child;
+		});
+		el.createSpan = vi.fn((opts?: { cls?: string; text?: string }) => {
+			const child = createModalEl();
+			if (opts?.text) child.textContent = opts.text;
+			(el.children as unknown[]).push(child);
+			return child;
+		});
+		return el;
+	};
+	class ModalMock {
+		app: unknown;
+		containerEl: Record<string, unknown>;
+		modalEl: Record<string, unknown>;
+		contentEl: Record<string, unknown>;
+		constructor(app: unknown) {
+			this.app = app;
+			this.containerEl = {
+				ownerDocument: (app as { workspace?: { containerEl?: { ownerDocument?: Document } } }).workspace?.containerEl?.ownerDocument,
+				parentElement: null
+			};
+			this.modalEl = createModalEl();
+			this.contentEl = createModalEl();
+		}
+		open(): void {
+			openModals.push(this);
+			const self = this as unknown as { onOpen?: () => void };
+			self.onOpen?.();
+		}
+		close(): void {
+			const idx = openModals.indexOf(this);
+			if (idx >= 0) openModals.splice(idx, 1);
+			const self = this as unknown as { onClose?: () => void };
+			self.onClose?.();
+		}
+	}
+	class SettingMock {
+		constructor(public containerEl: unknown) {}
+		setHeading() { return this; }
+		setName(name: string) {
+			(this.containerEl as { createDiv?: (opts?: { text?: string }) => unknown }).createDiv?.({ text: name });
+			return this;
+		}
+		setDesc(desc: string) {
+			(this.containerEl as { createDiv?: (opts?: { text?: string }) => unknown }).createDiv?.({ text: desc });
+			return this;
+		}
+		addButton(cb: (btn: Record<string, unknown>) => void) {
+			const btn: Record<string, unknown> = {
+				setButtonText: vi.fn(() => btn),
+				setCta: vi.fn(() => btn),
+				setWarning: vi.fn(() => btn),
+				onClick: vi.fn(() => btn)
+			};
+			cb(btn);
+			return this;
+		}
 	}
 	return {
 		MockTFile: MockFile,
-		MockMarkdownView: MockView
+		MockTFolder: MockFolder,
+		MockMarkdownView: MockView,
+		MockNotice: NoticeMock,
+		MockModal: ModalMock,
+		MockSetting: SettingMock,
+		mockNotices: notices,
+		mockOpenModals: openModals
 	};
 });
 
 vi.mock('obsidian', () => ({
 	TFile: MockTFile,
+	TFolder: MockTFolder,
 	MarkdownView: MockMarkdownView,
+	Notice: MockNotice,
+	Modal: MockModal,
+	Setting: MockSetting,
 	setIcon: vi.fn()
 }));
 
@@ -1028,6 +1137,10 @@ describe('snapshot diff navigation and compact display regressions', () => {
 				createDiv: vi.fn(() => {
 					const child = createMockEl('div');
 					children.push(child);
+					(child as unknown as { remove: () => void }).remove = vi.fn(() => {
+						const idx = children.indexOf(child);
+						if (idx !== -1) children.splice(idx, 1);
+					});
 					return child;
 				}),
 				createSpan: vi.fn(() => {
@@ -1044,6 +1157,7 @@ describe('snapshot diff navigation and compact display regressions', () => {
 					children.push(child);
 					return child;
 				}),
+				remove: vi.fn(),
 				insertBefore: vi.fn(),
 				removeChild: vi.fn(),
 				addEventListener: vi.fn(),
@@ -1223,6 +1337,10 @@ describe('snapshot diff navigation and compact display regressions', () => {
 				createDiv: vi.fn(() => {
 					const child = createMockEl('div');
 					children.push(child);
+					(child as unknown as { remove: () => void }).remove = vi.fn(() => {
+						const idx = children.indexOf(child);
+						if (idx !== -1) children.splice(idx, 1);
+					});
 					return child;
 				}),
 				createSpan: vi.fn(() => {
@@ -1239,6 +1357,7 @@ describe('snapshot diff navigation and compact display regressions', () => {
 					children.push(child);
 					return child;
 				}),
+				remove: vi.fn(),
 				insertBefore: vi.fn(),
 				removeChild: vi.fn(),
 				addEventListener: vi.fn(),
@@ -2335,6 +2454,706 @@ describe('snapshot diff navigation and compact display regressions', () => {
 			});
 
 			panel.destroy();
+		});
+	});
+
+	describe('Replay Export & Restore Regressions', () => {
+		const createReplayTestEnv = (options?: {
+			files?: Map<string, { file: TFile; content: string }>;
+			folders?: Set<string>;
+			snapshots?: Map<number, { key: number; path: string; ts: number; data: string }>;
+			deviceId?: string;
+			dbName?: string;
+			views?: Array<InstanceType<typeof MockMarkdownView>>;
+		}) => {
+			mockNotices.length = 0;
+			mockOpenModals.length = 0;
+			const files = options?.files ?? new Map<string, { file: TFile; content: string }>();
+			const folders = options?.folders ?? new Set<string>(['', 'Book']);
+			const snapshots = options?.snapshots ?? new Map<number, { key: number; path: string; ts: number; data: string }>();
+			const views = options?.views ?? [];
+			const scopeState = {
+				deviceId: options?.deviceId ?? 'dev-1',
+				dbName: options?.dbName ?? 'vault-backup',
+				status: 'available' as 'available' | 'disabled' | 'not-ready'
+			};
+			const vaultHandlers = new Map<string, Array<(...args: unknown[]) => void>>();
+
+			const makeEl = (tag = 'div', opts?: { cls?: string; text?: string }): Record<string, unknown> => {
+				const el: Record<string, unknown> = {
+					tagName: tag.toUpperCase(),
+					className: opts?.cls ?? '',
+					textContent: opts?.text ?? '',
+					disabled: false,
+					style: {},
+					children: [] as unknown[],
+					addClass: vi.fn(),
+					removeClass: vi.fn(),
+					toggleClass: vi.fn(),
+					setText: vi.fn((txt: string) => { el.textContent = txt; }),
+					setAttribute: vi.fn(),
+					empty: vi.fn(() => { (el.children as unknown[]).length = 0; }),
+					appendChild: vi.fn((child: unknown) => { (el.children as unknown[]).push(child); return child; }),
+					insertBefore: vi.fn(),
+					remove: vi.fn(),
+					removeChild: vi.fn(),
+					addEventListener: vi.fn(),
+					removeEventListener: vi.fn(),
+					querySelector: vi.fn(() => null),
+					querySelectorAll: vi.fn(() => []),
+					getClientRects: vi.fn(() => [{ top: 100, height: 20 }]),
+					getBoundingClientRect: vi.fn(() => ({ top: 100, left: 100, width: 600, height: 400 })),
+					scrollTo: vi.fn(),
+					scrollTop: 0,
+					onclick: null as (() => void) | null
+				};
+				el.createDiv = vi.fn((o?: string | { cls?: string; text?: string }) => {
+					const child = makeEl('div', typeof o === 'string' ? { cls: o } : o);
+					(el.children as unknown[]).push(child);
+					return child;
+				});
+				el.createSpan = vi.fn((o?: string | { cls?: string; text?: string }) => {
+					const child = makeEl('span', typeof o === 'string' ? { cls: o } : o);
+					(el.children as unknown[]).push(child);
+					return child;
+				});
+				el.createEl = vi.fn((tName: string, o?: { cls?: string; text?: string }) => {
+					const child = makeEl(tName, o);
+					(el.children as unknown[]).push(child);
+					return child;
+				});
+				return el;
+			};
+
+			const ownerDoc = {
+				defaultView: {
+					innerWidth: 1200,
+					innerHeight: 800,
+					addEventListener: vi.fn(),
+					removeEventListener: vi.fn(),
+					setTimeout: vi.fn((cb: () => void) => { cb(); return 1; }),
+					clearTimeout: vi.fn(),
+					focus: vi.fn()
+				},
+				createElement: vi.fn((tName: string) => makeEl(tName)),
+				createTextNode: vi.fn((text: string) => ({ textContent: text })),
+				body: Object.assign(makeEl('body'), { hasClass: () => false }),
+				addEventListener: vi.fn(),
+				removeEventListener: vi.fn()
+			} as unknown as Document;
+
+			const app = {
+				workspace: {
+					containerEl: { ownerDocument: ownerDoc },
+					getActiveViewOfType: vi.fn(() => null),
+					getActiveFile: vi.fn(() => null),
+					getLeavesOfType: vi.fn(() => views.map(v => ({ view: v, containerEl: { ownerDocument: ownerDoc } }))),
+					on: vi.fn(() => ({})),
+					offref: vi.fn()
+				},
+				vault: {
+					getAbstractFileByPath: vi.fn((p: string) => {
+						const entry = files.get(p);
+						if (entry) return entry.file;
+						if (folders.has(p)) {
+							const name = p.split('/').pop() ?? '';
+							return new MockTFolder(name, p);
+						}
+						return null;
+					}),
+					read: vi.fn(async (file: TFile) => {
+						const entry = files.get(file.path);
+						if (!entry) throw new Error(`File not found: ${file.path}`);
+						return entry.content;
+					}),
+					create: vi.fn(async (p: string, data: string) => {
+						if (files.has(p) || folders.has(p)) {
+							throw new Error(`File already exists: ${p}`);
+						}
+						const name = p.split('/').pop() ?? p;
+						const newFile = new MockTFile(name, p) as unknown as TFile;
+						files.set(p, { file: newFile, content: data });
+						return newFile;
+					}),
+					process: vi.fn(async (file: TFile, fn: (data: string) => string) => {
+						const entry = files.get(file.path);
+						if (!entry || entry.file !== file) throw new Error(`Missing file during process: ${file.path}`);
+						const next = fn(entry.content);
+						entry.content = next;
+						return next;
+					}),
+					createFolder: vi.fn(async () => {
+						throw new Error('createFolder must not be called');
+					}),
+					on: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
+						const list = vaultHandlers.get(event) ?? [];
+						list.push(cb);
+						vaultHandlers.set(event, list);
+						return { event, cb };
+					}),
+					offref: vi.fn()
+				}
+			} as unknown as App;
+
+			const nativeSvc = {
+				getOrCreateDeviceId: vi.fn(() => scopeState.deviceId),
+				checkStatus: vi.fn(() => {
+					if (scopeState.status !== 'available') return { status: scopeState.status };
+					return { status: 'available' as const, dbName: scopeState.dbName, deviceId: scopeState.deviceId };
+				}),
+				listSnapshotsForPath: vi.fn(async (p: string) => {
+					return Array.from(snapshots.values())
+						.filter(s => s.path === p)
+						.map(s => ({ key: s.key, path: s.path, ts: s.ts, size: s.data.length }));
+				}),
+				readSnapshot: vi.fn(async (ref: { key: number }) => {
+					const s = snapshots.get(ref.key);
+					if (!s) throw new Error(`Snapshot ${ref.key} not found`);
+					return s.data;
+				}),
+				readSnapshotByKey: vi.fn(async (key: number, expectedPath: string) => {
+					const s = snapshots.get(key);
+					if (!s || s.path !== expectedPath) throw new Error(`Snapshot ${key} mismatch`);
+					return s.data;
+				}),
+				saveSnapshot: vi.fn(async (p: string, data: string) => {
+					const key = Math.max(0, ...Array.from(snapshots.keys())) + 1;
+					const ts = Date.now();
+					snapshots.set(key, { key, path: p, ts, data });
+					return {
+						provider: 'file-recovery' as const,
+						deviceId: scopeState.deviceId,
+						dbName: scopeState.dbName,
+						key,
+						path: p,
+						ts,
+						digest: 'b'.repeat(64)
+					};
+				})
+			} as unknown as NativeSnapshotService;
+
+			const emitVault = (event: string, ...args: unknown[]) => {
+				for (const cb of vaultHandlers.get(event) ?? []) {
+					cb(...args);
+				}
+			};
+
+			return { app, ownerDoc, nativeSvc, files, folders, snapshots, scopeState, views, emitVault };
+		};
+
+		const formatLocalTs = (ts: number): string => {
+			const d = new Date(ts);
+			const pad = (n: number) => String(n).padStart(2, '0');
+			return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
+		};
+
+		const clickConfirmOnLatestModal = () => {
+			const modal = mockOpenModals[mockOpenModals.length - 1] as unknown as {
+				onConfirm?: () => void;
+				confirmAction?: () => void;
+				contentEl: { children: Array<{ onclick?: (() => void) | null; children?: Array<{ onclick?: (() => void) | null }> }> };
+			};
+			expect(modal).toBeDefined();
+			const findConfirmBtn = (node: unknown): (() => void) | null => {
+				if (!node || typeof node !== 'object') return null;
+				const rec = node as { className?: string; onclick?: (() => void) | null; children?: unknown[] };
+				if (typeof rec.onclick === 'function' && typeof rec.className === 'string' && rec.className.includes('mod-warning')) {
+					return rec.onclick;
+				}
+				for (const child of rec.children ?? []) {
+					const found = findConfirmBtn(child);
+					if (found) return found;
+				}
+				return null;
+			};
+			const btnClick = findConfirmBtn(modal.contentEl);
+			if (!btnClick) throw new Error('Confirm button not found on Restore modal');
+			btnClick();
+		};
+
+		it('exports full YAML, newlines, and empty bytes using local timestamp + current full chapter name and resolves collisions', async () => {
+			const ts1 = new Date(2026, 4, 3, 9, 5, 7).getTime();
+			const ts2 = new Date(2026, 4, 3, 10, 15, 20).getTime();
+			const yamlContent = '---\ntitle: Fictional\n---\n\nLine 1\r\nLine 2\n';
+			const currentFile = new MockTFile('01 示例章节 标题.md', 'Book/Vol2/01 示例章节 标题.md') as unknown as TFile;
+			const files = new Map<string, { file: TFile; content: string }>([
+				['Book/Vol2/01 示例章节 标题.md', { file: currentFile, content: 'current' }]
+			]);
+			const snapshots = new Map<number, { key: number; path: string; ts: number; data: string }>([
+				[1, { key: 1, path: 'Book/01.md', ts: ts1, data: yamlContent }],
+				[2, { key: 2, path: 'Book/01.md', ts: ts2, data: '' }]
+			]);
+			const env = createReplayTestEnv({
+				files,
+				folders: new Set(['', 'Book', 'Book/Vol2']),
+				snapshots
+			});
+			const events: WritingJourneyEvent[] = [
+				{
+					id: 'ev-rename',
+					type: 'chapter.renamed',
+					timestamp: new Date(ts2 + 1000).toISOString(),
+					oldPath: 'Book/01.md',
+					newPath: 'Book/Vol2/01 示例章节 标题.md',
+					oldTitle: '01',
+					newTitle: '01 示例章节 标题'
+				}
+			];
+
+			const mgr = new ChapterSnapshotManager(env.app, env.nativeSvc);
+			await mgr.openComparison({
+				file: currentFile,
+				chapterPath: 'Book/Vol2/01 示例章节 标题.md',
+				chapterTitle: '01 示例章节 标题',
+				ownerDocument: env.ownerDoc,
+				allJourneyEvents: events
+			});
+			const panel = mgr.getPanel(env.ownerDoc)! as unknown as {
+				enterReplayMode(): Promise<void>;
+				replayExportBtnEl: { disabled: boolean; onclick: (() => void) | null };
+				replayController: { seek(idx: number): Promise<void> };
+			};
+			await panel.enterReplayMode();
+			expect(panel.replayExportBtnEl.disabled).toBe(false);
+
+			// Export frame 0 (YAML + newlines) -> goes to current dir Book/Vol2 with the current complete chapter name
+			panel.replayExportBtnEl.onclick?.();
+			await new Promise(r => globalThis.setTimeout(r, 0));
+			const expectedName1 = `Book/Vol2/${formatLocalTs(ts1)} 01 示例章节 标题.md`;
+			expect(env.files.get(expectedName1)?.content).toBe(yamlContent);
+
+			// Export same frame again -> collision suffix (1)
+			panel.replayExportBtnEl.onclick?.();
+			await new Promise(r => globalThis.setTimeout(r, 0));
+			const expectedName1Dup = `Book/Vol2/${formatLocalTs(ts1)} 01 示例章节 标题 (1).md`;
+			expect(env.files.get(expectedName1Dup)?.content).toBe(yamlContent);
+
+			// Seek to frame 1 (empty content "") -> preserves empty string
+			await panel.replayController.seek(1);
+			panel.replayExportBtnEl.onclick?.();
+			await new Promise(r => globalThis.setTimeout(r, 0));
+			const expectedName2 = `Book/Vol2/${formatLocalTs(ts2)} 01 示例章节 标题.md`;
+			expect(env.files.get(expectedName2)?.content).toBe('');
+
+			// Original file untouched
+			expect(env.files.get('Book/Vol2/01 示例章节 标题.md')?.content).toBe('current');
+			await mgr.destroy();
+		});
+
+		it('exports to historical directory when missing and errors without creating folders or falling back to root if folder missing', async () => {
+			const ts1 = new Date(2026, 2, 1, 8, 0, 0).getTime();
+			const snapshots = new Map<number, { key: number; path: string; ts: number; data: string }>([
+				[1, { key: 1, path: 'MissingBook/Ch1.md', ts: ts1, data: 'hello' }]
+			]);
+			const env = createReplayTestEnv({
+				folders: new Set(['']), // MissingBook does NOT exist
+				snapshots
+			});
+			const mgr = new ChapterSnapshotManager(env.app, env.nativeSvc);
+			await mgr.openComparison({
+				file: null,
+				chapterPath: 'MissingBook/Ch1.md',
+				chapterTitle: 'Ch1',
+				ownerDocument: env.ownerDoc
+			});
+			const panel = mgr.getPanel(env.ownerDoc)! as unknown as {
+				enterReplayMode(): Promise<void>;
+				replayExportBtnEl: { disabled: boolean; onclick: (() => void) | null };
+				replayRestoreBtnEl: { disabled: boolean };
+			};
+			await panel.enterReplayMode();
+			// Lost identity is ambiguous -> Restore disabled, Export allowed
+			expect(panel.replayRestoreBtnEl.disabled).toBe(true);
+			expect(panel.replayExportBtnEl.disabled).toBe(false);
+
+			panel.replayExportBtnEl.onclick?.();
+			await new Promise(r => globalThis.setTimeout(r, 0));
+			expect(env.app.vault.create).not.toHaveBeenCalled();
+			expect(env.app.vault.createFolder).not.toHaveBeenCalled();
+			expect(env.files.size).toBe(0);
+			env.folders.add('MissingBook');
+			panel.replayExportBtnEl.onclick?.();
+			await new Promise(r => globalThis.setTimeout(r, 0));
+			expect(env.files.get(`MissingBook/${formatLocalTs(ts1)} Ch1.md`)?.content).toBe('hello');
+			await mgr.destroy();
+		});
+
+		it('backs up unsaved open editor content before restore and blocks on backup failure or conflicting editors', async () => {
+			const ts1 = new Date(2026, 5, 10, 12, 0, 0).getTime();
+			const targetFile = new MockTFile('Ch1.md', 'Book/Ch1.md') as unknown as TFile;
+			const files = new Map<string, { file: TFile; content: string }>([
+				['Book/Ch1.md', { file: targetFile, content: 'stale disk' }]
+			]);
+			const snapshots = new Map<number, { key: number; path: string; ts: number; data: string }>([
+				[1, { key: 1, path: 'Book/Ch1.md', ts: ts1, data: '---\ntag: v1\n---\nRestored body\n' }]
+			]);
+			const view1 = new MockMarkdownView();
+			view1.file = targetFile;
+			let editorText = 'unsaved editor text';
+			view1.editor = { getValue: () => editorText };
+			view1.getViewData = () => editorText;
+			view1.save = vi.fn(async () => {
+				files.get('Book/Ch1.md')!.content = editorText;
+			});
+
+			const env = createReplayTestEnv({ files, snapshots, views: [view1] });
+			const mgr = new ChapterSnapshotManager(env.app, env.nativeSvc);
+			await mgr.openComparison({
+				file: targetFile,
+				chapterPath: 'Book/Ch1.md',
+				chapterTitle: 'Ch1',
+				ownerDocument: env.ownerDoc
+			});
+			const panel = mgr.getPanel(env.ownerDoc)! as unknown as {
+				enterReplayMode(): Promise<void>;
+				replayRestoreBtnEl: { disabled: boolean; onclick: (() => void) | null };
+			};
+			await panel.enterReplayMode();
+
+			// 1. Backup failure -> no write
+			vi.mocked(env.nativeSvc.saveSnapshot).mockRejectedValueOnce(new Error('idb full'));
+			panel.replayRestoreBtnEl.onclick?.();
+			clickConfirmOnLatestModal();
+			await new Promise(r => globalThis.setTimeout(r, 0));
+			expect(env.app.vault.process).not.toHaveBeenCalled();
+			expect(files.get('Book/Ch1.md')!.content).toBe('unsaved editor text');
+
+			// 2. Successful restore -> view.save() called, unsaved text backed up, then overwritten
+			panel.replayRestoreBtnEl.onclick?.();
+			clickConfirmOnLatestModal();
+			await new Promise(r => globalThis.setTimeout(r, 0));
+			expect(view1.save).toHaveBeenCalled();
+			expect(env.nativeSvc.saveSnapshot).toHaveBeenCalledWith('Book/Ch1.md', 'unsaved editor text');
+			expect(files.get('Book/Ch1.md')!.content).toBe('---\ntag: v1\n---\nRestored body\n');
+
+			// 3. Conflicting open editors -> blocked before backup/write
+			const view2 = new MockMarkdownView();
+			view2.file = targetFile;
+			view2.editor = { getValue: () => 'conflicting text' };
+			view2.getViewData = () => 'conflicting text';
+			env.views.push(view2);
+			vi.mocked(env.app.vault.process).mockClear();
+			vi.mocked(env.nativeSvc.saveSnapshot).mockClear();
+
+			panel.replayRestoreBtnEl.onclick?.();
+			await new Promise(r => globalThis.setTimeout(r, 0));
+			expect(mockOpenModals.length).toBe(0);
+			expect(env.nativeSvc.saveSnapshot).not.toHaveBeenCalled();
+			expect(env.app.vault.process).not.toHaveBeenCalled();
+
+			await mgr.destroy();
+		});
+
+		it.each(['', '---\r\ncategory: sample\r\n---\r\n\r\nRestored line\r\n'])(
+			'restores complete snapshot content including an empty file (%j)', async (content) => {
+				const targetFile = new MockTFile('Draft.md', 'Book/Draft.md') as unknown as TFile;
+				const files = new Map([['Book/Draft.md', { file: targetFile, content: 'current draft' }]]);
+				const snapshots = new Map([[1, { key: 1, path: 'Book/Draft.md', ts: 1000, data: content }]]);
+				const env = createReplayTestEnv({ files, snapshots });
+				const mgr = new ChapterSnapshotManager(env.app, env.nativeSvc);
+				await mgr.openComparison({ file: targetFile, ownerDocument: env.ownerDoc });
+				const panel = mgr.getPanel(env.ownerDoc)!;
+				await panel.enterReplayMode();
+				const action = (panel as unknown as { triggerReplayAction(kind: 'restore'): Promise<void> }).triggerReplayAction('restore');
+				clickConfirmOnLatestModal();
+				await action;
+				expect(env.nativeSvc.saveSnapshot).toHaveBeenCalledWith('Book/Draft.md', 'current draft');
+				expect(files.get('Book/Draft.md')?.content).toBe(content);
+				await mgr.destroy();
+			}
+		);
+
+		it('rejects concurrent disk changes during backup and stale scope during snapshot reads', async () => {
+			const ts1 = new Date(2026, 5, 11, 14, 0, 0).getTime();
+			const targetFile = new MockTFile('Ch1.md', 'Book/Ch1.md') as unknown as TFile;
+			const files = new Map<string, { file: TFile; content: string }>([
+				['Book/Ch1.md', { file: targetFile, content: 'initial disk' }]
+			]);
+			const snapshots = new Map<number, { key: number; path: string; ts: number; data: string }>([
+				[1, { key: 1, path: 'Book/Ch1.md', ts: ts1, data: 'snapshot v1' }]
+			]);
+			const env = createReplayTestEnv({ files, snapshots });
+			const mgr = new ChapterSnapshotManager(env.app, env.nativeSvc);
+			await mgr.openComparison({
+				file: targetFile,
+				chapterPath: 'Book/Ch1.md',
+				chapterTitle: 'Ch1',
+				ownerDocument: env.ownerDoc
+			});
+			const panel = mgr.getPanel(env.ownerDoc)! as unknown as {
+				enterReplayMode(): Promise<void>;
+				replayRestoreBtnEl: { onclick: (() => void) | null };
+				replayExportBtnEl: { onclick: (() => void) | null };
+			};
+			await panel.enterReplayMode();
+
+			// Case A: disk content changes during saveSnapshot -> vault.process rejects without overwrite
+			vi.mocked(env.nativeSvc.saveSnapshot).mockImplementationOnce(async () => {
+				files.get('Book/Ch1.md')!.content = 'concurrent edit';
+				return { provider: 'file-recovery', deviceId: 'dev-1', dbName: 'vault-backup', key: 99, path: 'Book/Ch1.md', ts: Date.now(), digest: 'c'.repeat(64) };
+			});
+			panel.replayRestoreBtnEl.onclick?.();
+			clickConfirmOnLatestModal();
+			await new Promise(r => globalThis.setTimeout(r, 0));
+			expect(files.get('Book/Ch1.md')!.content).toBe('concurrent edit');
+
+			// Case B: scope becomes stale during readSnapshotByKey -> export & restore abort
+			vi.mocked(env.nativeSvc.readSnapshotByKey).mockImplementationOnce(async () => {
+				env.scopeState.deviceId = 'other-device';
+				return 'snapshot v1';
+			});
+			panel.replayExportBtnEl.onclick?.();
+			await new Promise(r => globalThis.setTimeout(r, 0));
+			expect(env.app.vault.create).not.toHaveBeenCalled();
+
+			await mgr.destroy();
+		});
+
+		it.each(['editor', 'rename', 'delete', 'replacement', 'scope', 'rebind', 'close', 'shutdown', 'process-edit', 'process-scope'] as const)(
+			'aborts restore safely when %s changes during an asynchronous operation', async (change) => {
+				const targetFile = new MockTFile('Draft.md', 'Book/Draft.md') as unknown as TFile;
+				const files = new Map([['Book/Draft.md', { file: targetFile, content: 'current draft' }]]);
+				const snapshots = new Map([[1, { key: 1, path: 'Book/Draft.md', ts: 1000, data: 'historical draft' }]]);
+				const env = createReplayTestEnv({ files, snapshots });
+				const mgr = new ChapterSnapshotManager(env.app, env.nativeSvc);
+				await mgr.openComparison({ file: targetFile, ownerDocument: env.ownerDoc });
+				const panel = mgr.getPanel(env.ownerDoc)!;
+				await panel.enterReplayMode();
+				let finishBackup!: () => void;
+				const backup = new Promise<void>(resolve => { finishBackup = resolve; });
+				const saveSnapshot = vi.mocked(env.nativeSvc.saveSnapshot);
+				const originalSave = saveSnapshot.getMockImplementation()!;
+				saveSnapshot.mockImplementation(async (...args) => { await backup; return originalSave(...args); });
+				const action = (panel as unknown as { triggerReplayAction(kind: 'restore'): Promise<void> }).triggerReplayAction('restore');
+				clickConfirmOnLatestModal();
+				await new Promise(resolve => globalThis.setTimeout(resolve, 0));
+				expect(saveSnapshot).toHaveBeenCalledWith('Book/Draft.md', 'current draft');
+				let shutdown: Promise<void> | undefined;
+				let drained = false;
+				if (change === 'editor') {
+					const view = new MockMarkdownView();
+					view.file = targetFile;
+					view.editor = { getValue: () => 'new unsaved edit' };
+					env.views.push(view);
+				} else if (change === 'rename') {
+					targetFile.path = 'Book/Moved.md';
+					files.delete('Book/Draft.md');
+					files.set(targetFile.path, { file: targetFile, content: 'current draft' });
+					env.emitVault('rename', targetFile, 'Book/Draft.md');
+				} else if (change === 'delete') {
+					files.delete('Book/Draft.md');
+					env.emitVault('delete', targetFile);
+				} else if (change === 'replacement') {
+					files.set('Book/Draft.md', { file: new MockTFile('Draft.md', 'Book/Draft.md') as unknown as TFile, content: 'replacement' });
+				} else if (change === 'scope') {
+					env.scopeState.dbName = 'different-backup-store';
+				} else if (change === 'rebind') {
+					await panel.rebindChapter(targetFile, targetFile.path, 'Draft');
+				} else if (change === 'close') {
+					panel.destroy();
+				} else if (change === 'shutdown') {
+					shutdown = mgr.destroy().then(() => { drained = true; });
+					await Promise.resolve();
+					expect(drained).toBe(false);
+				} else {
+					const process = vi.mocked(env.app.vault.process);
+					const originalProcess = process.getMockImplementation()!;
+					process.mockImplementation(async (...args) => {
+						if (change === 'process-edit') files.get('Book/Draft.md')!.content = 'external edit';
+						else env.scopeState.dbName = 'different-backup-store';
+						return originalProcess(...args);
+					});
+				}
+				finishBackup();
+				await action;
+				await shutdown;
+				for (const entry of files.values()) expect(entry.content).not.toBe('historical draft');
+				expect(env.app.vault.create).not.toHaveBeenCalled();
+				if (change === 'shutdown') expect(drained).toBe(true);
+				await mgr.destroy();
+			}
+		);
+
+		it('recreates deleted original at tracked last path only when unoccupied, and blocks same-path replacement', async () => {
+			const ts1 = new Date(2026, 6, 1, 9, 0, 0).getTime();
+			const targetFile = new MockTFile('Ch1.md', 'Book/Ch1.md') as unknown as TFile;
+			const files = new Map<string, { file: TFile; content: string }>([
+				['Book/Ch1.md', { file: targetFile, content: 'live' }]
+			]);
+			const snapshots = new Map<number, { key: number; path: string; ts: number; data: string }>([
+				[1, { key: 1, path: 'Book/Ch1.md', ts: ts1, data: 'recovered text' }]
+			]);
+			const env = createReplayTestEnv({ files, snapshots });
+			const mgr = new ChapterSnapshotManager(env.app, env.nativeSvc);
+			await mgr.openComparison({
+				file: targetFile,
+				chapterPath: 'Book/Ch1.md',
+				chapterTitle: 'Ch1',
+				ownerDocument: env.ownerDoc
+			});
+			const panel = mgr.getPanel(env.ownerDoc)! as unknown as {
+				enterReplayMode(): Promise<void>;
+				replayRestoreBtnEl: { disabled: boolean; onclick: (() => void) | null };
+				replayExportBtnEl: { disabled: boolean; onclick: (() => void) | null };
+			};
+			await panel.enterReplayMode();
+
+			// Rename then delete while panel open -> tracked last path becomes Book/Ch1_moved.md
+			targetFile.path = 'Book/Ch1_moved.md';
+			targetFile.name = 'Ch1_moved.md';
+			targetFile.basename = 'Ch1_moved';
+			files.delete('Book/Ch1.md');
+			files.set('Book/Ch1_moved.md', { file: targetFile, content: 'live' });
+			env.emitVault('rename', targetFile, 'Book/Ch1.md');
+
+			files.delete('Book/Ch1_moved.md');
+			env.emitVault('delete', targetFile);
+			panel.replayExportBtnEl.onclick?.();
+			await new Promise(r => globalThis.setTimeout(r, 0));
+			expect(files.get(`Book/${formatLocalTs(ts1)} Ch1_moved.md`)?.content).toBe('recovered text');
+
+			// Unrelated file replaces Book/Ch1_moved.md -> must block restore!
+			const replacement = new MockTFile('Ch1_moved.md', 'Book/Ch1_moved.md') as unknown as TFile;
+			files.set('Book/Ch1_moved.md', { file: replacement, content: 'unrelated novel chapter' });
+			panel.replayRestoreBtnEl.onclick?.();
+			await new Promise(r => globalThis.setTimeout(r, 0));
+			expect(mockOpenModals.length).toBe(0);
+			expect(files.get('Book/Ch1_moved.md')!.content).toBe('unrelated novel chapter');
+
+			// Remove replacement -> now unoccupied -> restore recreates at Book/Ch1_moved.md
+			files.delete('Book/Ch1_moved.md');
+			panel.replayRestoreBtnEl.onclick?.();
+			clickConfirmOnLatestModal();
+			await new Promise(r => globalThis.setTimeout(r, 0));
+			expect(env.app.vault.create).toHaveBeenCalledWith('Book/Ch1_moved.md', 'recovered text');
+			expect(files.get('Book/Ch1_moved.md')?.content).toBe('recovered text');
+			expect((panel as unknown as { chapterFile: TFile | null }).chapterFile).toBe(files.get('Book/Ch1_moved.md')?.file);
+
+			await mgr.destroy();
+		});
+
+		it('disables export and restore during playback and rejects action events until paused', async () => {
+			const file = new MockTFile('Draft.md', 'Book/Draft.md') as unknown as TFile;
+			const meta = { key: 1, path: file.path, ts: 1000 };
+			const env = createReplayTestEnv({
+				files: new Map([[file.path, { file, content: 'current draft' }]]),
+				snapshots: new Map([
+					[1, { ...meta, data: 'historical draft' }],
+					[2, { ...meta, key: 2, ts: 2000, data: 'later draft' }]
+				])
+			});
+			const exportAction = vi.fn(async () => {});
+			const restoreAction = vi.fn(async () => {});
+			const panel = new ChapterSnapshotPanel({
+				app: env.app, nativeSnapshotService: env.nativeSvc, ownerDocument: env.ownerDoc,
+				chapterFile: file, chapterPath: file.path, chapterTitle: file.basename,
+				onClose: vi.fn(), onExportReplaySnapshot: exportAction, onRestoreReplaySnapshot: restoreAction
+			});
+			await panel.readyPromise;
+			await panel.enterReplayMode();
+			const internal = panel as unknown as {
+				onReplayStateChange(state: ReplayState): void;
+				triggerReplayAction(kind: 'export' | 'restore'): Promise<void>;
+				replayExportBtnEl: { disabled: boolean };
+				replayRestoreBtnEl: { disabled: boolean };
+			};
+			const state: ReplayState = { isPlaying: true, currentIndex: 0, total: 2, currentMeta: meta, speed: 1, error: null };
+			internal.onReplayStateChange(state);
+			expect.soft(internal.replayExportBtnEl.disabled).toBe(true);
+			expect.soft(internal.replayRestoreBtnEl.disabled).toBe(true);
+			await internal.triggerReplayAction('export');
+			await internal.triggerReplayAction('restore');
+			expect.soft(exportAction).not.toHaveBeenCalled();
+			expect.soft(restoreAction).not.toHaveBeenCalled();
+			exportAction.mockClear();
+			restoreAction.mockClear();
+			internal.onReplayStateChange({ ...state, isPlaying: false });
+			expect(internal.replayExportBtnEl.disabled).toBe(false);
+			expect(internal.replayRestoreBtnEl.disabled).toBe(false);
+			await internal.triggerReplayAction('export');
+			await internal.triggerReplayAction('restore');
+			expect(exportAction).toHaveBeenCalledTimes(1);
+			expect(restoreAction).toHaveBeenCalledTimes(1);
+			panel.destroy();
+		});
+
+		it('cancels pending modal on rebind/destroy, ignores duplicate clicks, and disables actions on pending frames', async () => {
+			const ts1 = new Date(2026, 6, 2, 10, 0, 0).getTime();
+			const ts2 = new Date(2026, 6, 2, 10, 5, 0).getTime();
+			const targetFile = new MockTFile('Ch1.md', 'Book/Ch1.md') as unknown as TFile;
+			const files = new Map<string, { file: TFile; content: string }>([
+				['Book/Ch1.md', { file: targetFile, content: 'live' }]
+			]);
+			const snapshots = new Map<number, { key: number; path: string; ts: number; data: string }>([
+				[1, { key: 1, path: 'Book/Ch1.md', ts: ts1, data: 'v1' }],
+				[2, { key: 2, path: 'Book/Ch1.md', ts: ts2, data: 'v2' }]
+			]);
+			const env = createReplayTestEnv({ files, snapshots });
+			const mgr = new ChapterSnapshotManager(env.app, env.nativeSvc);
+			await mgr.openComparison({
+				file: targetFile,
+				chapterPath: 'Book/Ch1.md',
+				chapterTitle: 'Ch1',
+				ownerDocument: env.ownerDoc
+			});
+			const panel = mgr.getPanel(env.ownerDoc)! as unknown as {
+				enterReplayMode(): Promise<void>;
+				onReplayStateChange(state: { isPlaying: boolean; currentIndex: number; total: number; currentMeta: { key: number; path: string; ts: number } | null; speed: 1 | 3 | 5; error: string | null }): void;
+				replayExportBtnEl: { disabled: boolean; onclick: (() => void) | null };
+				replayRestoreBtnEl: { disabled: boolean; onclick: (() => void) | null };
+				replayPlayBtnEl: { disabled: boolean };
+				replayNextBtnEl: { disabled: boolean };
+				replayScrubberEl: { disabled: boolean };
+				replaySpeedBtns: Array<{ disabled: boolean }>;
+			};
+			await panel.enterReplayMode();
+
+			// State targeting another frame (index 1 while index 0 is committed) disables actions
+			panel.onReplayStateChange({
+				isPlaying: false,
+				currentIndex: 1,
+				total: 2,
+				currentMeta: { key: 2, path: 'Book/Ch1.md', ts: ts2 },
+				speed: 1,
+				error: null
+			});
+			expect(panel.replayExportBtnEl.disabled).toBe(true);
+			expect(panel.replayRestoreBtnEl.disabled).toBe(true);
+
+			// Restore state to committed frame 0
+			panel.onReplayStateChange({
+				isPlaying: false,
+				currentIndex: 0,
+				total: 2,
+				currentMeta: { key: 1, path: 'Book/Ch1.md', ts: ts1 },
+				speed: 1,
+				error: null
+			});
+			expect(panel.replayExportBtnEl.disabled).toBe(false);
+			expect(panel.replayRestoreBtnEl.disabled).toBe(false);
+
+			// Open restore confirmation -> locks controls, ignores duplicate click
+			panel.replayRestoreBtnEl.onclick?.();
+			expect(mockOpenModals.length).toBe(1);
+			expect(panel.replayPlayBtnEl.disabled).toBe(true);
+			expect(panel.replayNextBtnEl.disabled).toBe(true);
+			expect(panel.replayScrubberEl.disabled).toBe(true);
+			expect(panel.replaySpeedBtns.every(b => b.disabled)).toBe(true);
+			panel.replayRestoreBtnEl.onclick?.();
+			panel.replayExportBtnEl.onclick?.();
+			expect(mockOpenModals.length).toBe(1);
+
+			await mgr.openComparison({ file: targetFile, ownerDocument: env.ownerDoc });
+			expect(mockOpenModals.length).toBe(0);
+			expect(env.app.vault.process).not.toHaveBeenCalled();
+			await panel.enterReplayMode();
+			panel.replayRestoreBtnEl.onclick?.();
+			expect(mockOpenModals.length).toBe(1);
+
+			// Destroy manager closes pending modal without writing
+			await mgr.destroy();
+			expect(mockOpenModals.length).toBe(0);
+			expect(env.app.vault.process).not.toHaveBeenCalled();
 		});
 	});
 });

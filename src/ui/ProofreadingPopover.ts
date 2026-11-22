@@ -1,4 +1,5 @@
-import { Component, Notice } from 'obsidian';
+import { showPluginNotice } from '../services/PluginNoticeService';
+import { Component } from 'obsidian';
 import type { EditorView } from '@codemirror/view';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { ProofreadingDiagnostic } from '../types/proofreading';
@@ -175,7 +176,11 @@ export class ProofreadingPopover extends Component {
 			// 桌面端鼠标悬停防抖 (300ms)
 			this.showTimeout = this.ownerWindow.setTimeout(() => {
 				this.showTimeout = null;
-				if (!this.targetEl.isConnected || !this.targetEl.matches(':hover')) return;
+				if (this.isDisposed) return;
+				if (!this.targetEl.isConnected || !this.targetEl.matches(':hover')) {
+					this.hide();
+					return;
+				}
 				this.show();
 			}, 300);
 		}
@@ -221,8 +226,12 @@ export class ProofreadingPopover extends Component {
 			this.ownerWindow.clearTimeout(this.showTimeout);
 			this.showTimeout = null;
 		}
-		if (!this.immediate && this.isShowing) {
-			this.scheduleClose();
+		if (!this.immediate) {
+			if (this.isShowing) {
+				this.scheduleClose();
+			} else {
+				this.hide();
+			}
 		}
 	};
 
@@ -360,7 +369,7 @@ export class ProofreadingPopover extends Component {
 		const isStale = isReplacementStale(docText, this.diag.from, this.diag.to, this.diag.original);
 
 		if (isStale) {
-			new Notice(t('notice.proofreading-stale'));
+			showPluginNotice(t('notice.proofreading-stale'));
 			this.hide();
 			return;
 		}
@@ -378,7 +387,7 @@ export class ProofreadingPopover extends Component {
 
 		this.view.focus();
 
-		new Notice(t('notice.proofreading-applied', {
+		showPluginNotice(t('notice.proofreading-applied', {
 			original: this.diag.original,
 			replacement
 		}));
@@ -422,7 +431,7 @@ export class ProofreadingPopover extends Component {
 			suffix
 		});
 
-		new Notice(t('notice.proofreading-ignored-instance'));
+		showPluginNotice(t('notice.proofreading-ignored-instance'));
 		this.hide();
 	}
 
@@ -435,7 +444,7 @@ export class ProofreadingPopover extends Component {
 		await this.plugin.proofreadingManager.ignoreWord(this.diag.original);
 		this.view.dispatch({ effects: forceProofreadingUpdate.of(null) });
 		this.view.focus();
-		new Notice(t('notice.proofreading-ignored-word', { word: this.diag.original }));
+		showPluginNotice(t('notice.proofreading-ignored-word', { word: this.diag.original }));
 		this.hide();
 	}
 
@@ -470,6 +479,9 @@ export class ProofreadingPopover extends Component {
 	}
 
 	public hide(): void {
+		if (this.isDisposed && !this.isShowing && !this.popoverEl && !this.onHideCallback) {
+			return;
+		}
 		if (this.rafId !== null) {
 			this.ownerWindow.cancelAnimationFrame(this.rafId);
 			this.rafId = null;

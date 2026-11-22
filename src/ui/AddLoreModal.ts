@@ -1,4 +1,5 @@
-import { Modal, Setting, TFile, Notice } from 'obsidian';
+import { showPluginNotice } from '../services/PluginNoticeService';
+import { Modal, Setting, TFile } from 'obsidian';
 import type { App, TextComponent, TFolder, ButtonComponent } from 'obsidian';
 import type { CharacterManager, LoreCategoryOption } from '../services/CharacterManager';
 import { buildLoreOutline, collectLoreTypes, scanLoreHeadings } from '../services/LoreOutline';
@@ -224,7 +225,7 @@ export class AddLoreModal extends Modal {
 			await this.plugin.saveSettings();
 		} catch (error) {
 			Logger.error('[AddLoreModal] 保存设定模板历史记录失败:', error);
-			new Notice(t('notice.lore-template-history-save-failed'));
+			showPluginNotice(t('notice.lore-template-history-save-failed'));
 
 			// Restore previous history on failure only if it is still the exact operation's array reference
 			if (this.plugin.settings.loreTemplateHistory === nextHistory) {
@@ -299,7 +300,7 @@ export class AddLoreModal extends Modal {
 			if (this.isModalClosed || currentToken !== this.templateReadToken) {
 				return;
 			}
-			new Notice(t('notice.lore-template-read-failed'));
+			showPluginNotice(t('notice.lore-template-read-failed'));
 		} finally {
 			if (!this.isModalClosed && currentToken === this.templateReadToken) {
 				this.isReadingTemplate = false;
@@ -618,11 +619,11 @@ export class AddLoreModal extends Modal {
 							if (success && !this.isModalClosed) {
 								this.close();
 							} else if (!success && !this.isModalClosed) {
-								new Notice(t('notice.lore-save-failed'));
+								showPluginNotice(t('notice.lore-save-failed'));
 							}
 						} catch {
 							if (!this.isModalClosed) {
-								new Notice(t('notice.lore-save-failed'));
+								showPluginNotice(t('notice.lore-save-failed'));
 							}
 						} finally {
 							this.isSaving = false;

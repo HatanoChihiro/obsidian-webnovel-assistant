@@ -1,4 +1,5 @@
-import { TFile, TFolder, Notice, type Menu } from 'obsidian';
+import { showPluginNotice } from '../services/PluginNoticeService';
+import { TFile, TFolder, type Menu } from 'obsidian';
 import { t } from '../i18n';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { GoalModal } from '../ui/GoalModal';
@@ -63,7 +64,7 @@ export class MenuManager {
 								void (async () => {
 									try {
 										const { folderPath } = await this.plugin.homepageManager!.createNewNovel(result.name, result.meta);
-										new Notice(t('notice.novel-created', { name: result.name }));
+										showPluginNotice(t('notice.novel-created', { name: result.name }));
 										if (this.plugin.homepageManager) {
 											const viewType = 'webnovel-workbench';
 											const { workspace } = this.plugin.app;
@@ -122,7 +123,7 @@ export class MenuManager {
 						(async () => {
 							const selectedText = editor.getSelection();
 							if (!selectedText.trim()) {
-								new Notice(t('notice.select-text-first'));
+								showPluginNotice(t('notice.select-text-first'));
 								return;
 							}
 
@@ -155,7 +156,7 @@ export class MenuManager {
 								folderPath,
 								(result) => {
 									tlManager.appendEntry(result, folderPath).then(async () => {
-										new Notice(t('notice.timeline-added'));
+										showPluginNotice(t('notice.timeline-added'));
 
 										// 刷新已打开的时间线视图
 										const leaves = this.plugin.app.workspace.getLeavesOfType(VIEW_TYPES.TIMELINE);
@@ -344,11 +345,11 @@ export class MenuManager {
 				const content = await this.plugin.app.vault.read(file);
 				const count = this.plugin.calculateAccurateWords(content);
 				this.plugin.cacheManager.updateFileCache(file, count, this.plugin.app.vault);
-				new Notice(t('notice.wordcount-included', { name: file.basename }));
+				showPluginNotice(t('notice.wordcount-included', { name: file.basename }));
 			} else {
 				// 排除统计：从缓存中失效该文件，并从父文件夹中扣除
 				this.plugin.cacheManager.invalidateCache(file.path, this.plugin.app.vault);
-				new Notice(t('notice.wordcount-excluded', { name: file.basename }));
+				showPluginNotice(t('notice.wordcount-excluded', { name: file.basename }));
 			}
 
 			this.plugin.refreshFolderCounts();
@@ -358,7 +359,7 @@ export class MenuManager {
 			}
 		} catch (error) {
 			console.error('[MenuManager] 切换字数统计排除标记失败:', error);
-			new Notice(t('notice.wordcount-toggle-failed'));
+			showPluginNotice(t('notice.wordcount-toggle-failed'));
 		}
 	}
 
@@ -373,7 +374,7 @@ export class MenuManager {
 			// 首次新建
 			new TaskAddModal(this.plugin.app, manager, 1, '', async (entry) => {
 				await manager.addEntry(entry, folderPath);
-				new Notice(t('notice.task-created'));
+				showPluginNotice(t('notice.task-created'));
 			}, folderPath).open();
 		} else {
 			// 已有任务记录，新增任务
@@ -384,7 +385,7 @@ export class MenuManager {
 					? entries[entries.length - 1].platform : '';
 				new TaskAddModal(this.plugin.app, manager, nextPeriod, lastPlatform, async (entry) => {
 					await manager.addEntry(entry, folderPath);
-					new Notice(t('notice.task-added'));
+					showPluginNotice(t('notice.task-added'));
 				}, folderPath).open();
 			} catch (err) {
 				console.error(err);
@@ -395,7 +396,7 @@ export class MenuManager {
 	public async openChapterMerge(file: TFolder): Promise<void> {
 		const mdFiles = ChapterSorter.getAllChapters(this.plugin.app, this.plugin, file.path);
 		if (mdFiles.length === 0) {
-			new Notice(t('notice.no-chapter-files-in-folder', { name: file.name }));
+			showPluginNotice(t('notice.no-chapter-files-in-folder', { name: file.name }));
 			return;
 		}
 
@@ -419,9 +420,9 @@ export class MenuManager {
 				onSave: async (series: string) => {
 					await this.plugin.homepageManager!.updateNovelSeries(folderPath, series);
 					if (series) {
-						new Notice(t('notice.series-updated', { series }));
+						showPluginNotice(t('notice.series-updated', { series }));
 					} else {
-						new Notice(t('notice.series-cleared'));
+						showPluginNotice(t('notice.series-cleared'));
 					}
 				}
 			}).open();

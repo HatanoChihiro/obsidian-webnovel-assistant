@@ -1,3 +1,4 @@
+import { configurePluginNotices } from '../src/services/PluginNoticeService';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TimelineBoardRenderer, type TimelineBoardOptions, type TimelineBoardPlugin } from '../src/ui/components/TimelineBoardRenderer';
 import { TimelineManager, type TimelineEntry } from '../src/services/TimelineManager';
@@ -338,6 +339,8 @@ vi.mock('../src/ui/components/CorkboardGridRenderer', () => ({
 		render: vi.fn()
 	}
 }));
+
+beforeEach(() => { configurePluginNotices(() => true); });
 
 describe('TimelineBoardRenderer', () => {
 	let mockApp: App;

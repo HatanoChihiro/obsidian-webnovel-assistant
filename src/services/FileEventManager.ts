@@ -198,7 +198,12 @@ export class FileEventManager {
 			// 智能前置过滤：非目标网文文件立即早期返回，避免多余的 IO 与计算调度
 			if (!this.plugin.cacheManager.isEligibleForTotalWordCount(file)) return;
 
-			const isActiveFile = file.path === this.plugin.app.workspace.getActiveFile()?.path;
+			const imm = this.plugin.immersiveModeManager;
+			const isMobileScoped = Boolean(imm?.isMobileDataIsolationActive?.() ?? imm?.isMobileImmersiveSessionActive?.());
+			const activeTrackedPath = isMobileScoped
+				? (imm?.getDataScopedMainFile?.() ?? imm?.getActiveSessionMainFile?.())?.path
+				: this.plugin.app.workspace.getActiveFile()?.path;
+			const isActiveFile = file.path === activeTrackedPath;
 
 			if (!isActiveFile) {
 				try {

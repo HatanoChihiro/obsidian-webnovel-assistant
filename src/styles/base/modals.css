@@ -26,8 +26,8 @@ body .modal.wn-plugin-modal .setting-item.setting-item-heading:first-child .sett
 body .modal.wn-plugin-modal .setting-item.setting-item-heading:first-of-type .setting-item-name,
 body .modal.wn-plugin-modal .modal-title,
 body .modal.wn-plugin-modal h2,
-.history-stats-modal .setting-item-heading:first-child .setting-item-name,
-.foreshadowing-input-modal h2,
+.wn-history-stats-modal .setting-item-heading:first-child .setting-item-name,
+.wn-foreshadowing-input-modal h2,
 .wn-timeline-add-modal h2 {
 	font-family: var(--font-interface);
 	font-size: 1.15em;

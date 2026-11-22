@@ -1,6 +1,6 @@
 
 
-.immersive-top-bar {
+.wn-immersive-top-bar {
 	position: fixed;
 	top: 0;
 	left: 0;
@@ -17,7 +17,7 @@
 	box-shadow: 0 2px 8px color-mix(in srgb, var(--interactive-accent) 30%, rgba(0, 0, 0, 0.15));
 }
 
-.immersive-top-bar-left {
+.wn-immersive-top-bar-left {
 	display: flex;
 	align-items: center;
 	gap: 12px;
@@ -25,7 +25,7 @@
 	font-size: 0.9em;
 }
 
-.immersive-top-bar-center {
+.wn-immersive-top-bar-center {
 	min-width: 0;
 	overflow-x: auto;
 	overflow-y: hidden;
@@ -35,7 +35,7 @@
 	font-size: 0.85em;
 }
 
-.immersive-top-bar-center .stat-item {
+.wn-immersive-top-bar-center .wn-stat-item {
 	flex-shrink: 0;
 	white-space: nowrap;
 	background: color-mix(in srgb, var(--text-on-accent) 15%, var(--interactive-accent));
@@ -43,15 +43,15 @@
 	border-radius: 12px;
 }
 
-.immersive-top-bar-center .stat-item.focus {
+.wn-immersive-top-bar-center .wn-stat-item.focus {
 	background: color-mix(in srgb, var(--text-success, var(--interactive-accent)) 25%, var(--interactive-accent));
 }
 
-.immersive-top-bar-center .stat-item.slack {
+.wn-immersive-top-bar-center .wn-stat-item.slack {
 	background: color-mix(in srgb, var(--text-warning, var(--interactive-accent)) 25%, var(--interactive-accent));
 }
 
-.immersive-exit-btn {
+.wn-immersive-exit-btn {
 	background: color-mix(in srgb, var(--text-on-accent) 10%, transparent);
 	color: var(--text-on-accent);
 	border: 1px solid color-mix(in srgb, var(--text-on-accent) 30%, transparent);
@@ -63,7 +63,7 @@
 	transition: all 0.3s ease;
 }
 
-.immersive-exit-btn:hover {
+.wn-immersive-exit-btn:hover {
 	opacity: 1;
 	background: color-mix(in srgb, var(--text-on-accent) 25%, transparent);
 }
@@ -72,13 +72,13 @@
 
 /* Immersive Top Bar Right */
 
-.immersive-top-bar-right {
+.wn-immersive-top-bar-right {
 	display: flex;
 	align-items: center;
 	flex-shrink: 0;
 	white-space: nowrap;
 }
 
-.immersive-top-bar-right:hover .immersive-exit-btn {
+.wn-immersive-top-bar-right:hover .wn-immersive-exit-btn {
 	opacity: 0.7;
 }

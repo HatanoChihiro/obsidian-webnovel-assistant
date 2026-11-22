@@ -1,3 +1,4 @@
+import { configurePluginNotices } from '../src/services/PluginNoticeService';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 vi.mock('../src/ui/WorkbenchView', () => ({ WorkbenchView: class WorkbenchView {} }));
@@ -49,6 +50,8 @@ interface CommandManagerRegisteredCommand {
     callback?: () => Promise<void> | void;
 }
 
+beforeEach(() => { configurePluginNotices(() => true); });
+
 describe('CommandManager - refresh-lore-cache', () => {
     let mockApp: any;
     let mockPlugin: any;
@@ -88,7 +91,9 @@ describe('CommandManager - refresh-lore-cache', () => {
         };
     });
 
-    it('should register refresh-lore-cache command and invoke BOTH rebuildCache and bulkRefresh', async () => {
+    it.each([true, false])('rebuilds and refreshes lore even when progress notices are disabled (notices=%s)', async enabled => {
+        configurePluginNotices(() => enabled);
+        resetNoticeMessages();
         const commandManager = new CommandManager(mockPlugin);
         commandManager.registerAllCommands();
 
@@ -103,6 +108,7 @@ describe('CommandManager - refresh-lore-cache', () => {
 
         // 2. Triggered workspace signal to refresh workbench and relation graph views
         expect(mockApp.workspace.trigger).toHaveBeenCalledWith('webnovel-workbench-lore-updated');
+        if (!enabled) expect(mockNoticeMessages).toEqual([]);
     });
 
     it('should handle failure during rebuildCache or bulkRefresh gracefully', async () => {
@@ -149,6 +155,62 @@ describe('CommandManager - refresh-lore-cache', () => {
             expect(getAbstractFileByPath).toHaveBeenCalledWith('第2章.md');
         } finally {
             templateSpy.mockRestore();
+        }
+    });
+});
+
+describe('CommandManager - create-next-chapter navigation', () => {
+    it.each([
+        { manuscript: true, exists: false },
+        { manuscript: true, exists: true },
+        { manuscript: false, exists: false },
+        { manuscript: false, exists: true }
+    ])('opens the next chapter through the correct navigation path (manuscript=$manuscript, exists=$exists)', async ({ manuscript, exists }) => {
+        vi.useFakeTimers();
+        const current = Object.assign(new TFile(), { basename: '第1章', path: '第1章.md', parent: null });
+        const next = Object.assign(new TFile(), { basename: '第2章', path: '第2章.md', parent: null });
+        const openFile = vi.fn().mockResolvedValue(undefined);
+        const getLeaf = vi.fn().mockReturnValue({ openFile });
+        const create = vi.fn().mockResolvedValue(next);
+        const navigateManuscriptChapter = vi.fn().mockResolvedValue(undefined);
+        const commands = new Map<string, { id: string; editorCallback?: (editor: Editor, view: MarkdownView) => Promise<void> }>();
+        const plugin = {
+            app: {
+                vault: { getAbstractFileByPath: vi.fn().mockReturnValue(exists ? next : null), create },
+                workspace: { getLeaf }
+            },
+            settings: {},
+            immersiveModeManager: {
+                isManuscriptModeActive: () => manuscript,
+                navigateManuscriptChapter
+            },
+            addCommand: (command: { id: string }) => commands.set(command.id, command)
+        } as unknown as WebNovelAssistantPlugin;
+        const templateSpy = vi.spyOn(TemplateModule, 'resolveChapterTemplate').mockImplementation((_app, _settings, callback) => callback('Fictional chapter template'));
+        try {
+            new CommandManager(plugin).registerAllCommands();
+            await commands.get('create-next-chapter')?.editorCallback?.({} as Editor, { file: current } as MarkdownView);
+            await vi.waitFor(() => {
+                if (manuscript) {
+                    expect(navigateManuscriptChapter).toHaveBeenCalledWith(next);
+                    expect(getLeaf).not.toHaveBeenCalled();
+                    expect(openFile).not.toHaveBeenCalled();
+                } else {
+                    expect(openFile).toHaveBeenCalledWith(next);
+                    expect(getLeaf).toHaveBeenCalledWith(false);
+                    expect(navigateManuscriptChapter).not.toHaveBeenCalled();
+                }
+            });
+            if (exists) {
+                expect(create).not.toHaveBeenCalled();
+                expect(templateSpy).not.toHaveBeenCalled();
+            } else {
+                expect(create).toHaveBeenCalledWith('第2章.md', 'Fictional chapter template');
+            }
+        } finally {
+            templateSpy.mockRestore();
+            vi.clearAllTimers();
+            vi.useRealTimers();
         }
     });
 });
@@ -685,5 +747,21 @@ describe('CommandManager - toggle-immersive-auxiliary-regions', () => {
         const res2 = cmd?.checkCallback?.(false);
         expect(res2).toBe(true);
         expect(mockPlugin.immersiveModeManager.toggleAllAuxiliaryRegions).toHaveBeenCalledTimes(1);
+    });
+
+    it('registers toggle-immersive-mode on mobile while keeping toggle-immersive-auxiliary-regions desktop-only', async () => {
+        const { Platform } = await import('obsidian');
+        const originalIsMobile = Platform.isMobile;
+        Platform.isMobile = true;
+        try {
+            registeredCommands.clear();
+            const commandManager = new CommandManager(mockPlugin as unknown as WebNovelAssistantPlugin);
+            commandManager.registerAllCommands();
+
+            expect(registeredCommands.get('toggle-immersive-mode')).toBeDefined();
+            expect(registeredCommands.get('toggle-immersive-auxiliary-regions')).toBeUndefined();
+        } finally {
+            Platform.isMobile = originalIsMobile;
+        }
     });
 });

@@ -1,5 +1,6 @@
+import { showPluginNotice } from './PluginNoticeService';
 import type { MarkdownPostProcessorContext} from 'obsidian';
-import { TFile, Notice } from 'obsidian';
+import { TFile } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { ForeshadowingRecoveryModal } from '../ui/ForeshadowingModal';
 import { getDefaultFileName } from '../i18n/data-keys';
@@ -126,9 +127,9 @@ export class MarkdownPostProcessor {
 						).then(success => {
 							if (success) {
 								const fileList = recoveryFileNames.map(f => `[[${f}]]`).join('、');
-												new Notice(t('notice.foreshadowing-recovered', { links: fileList }));
+												showPluginNotice(t('notice.foreshadowing-recovered', { links: fileList }));
 							} else {
-								new Notice(t('notice.foreshadowing-entry-not-found'));
+								showPluginNotice(t('notice.foreshadowing-entry-not-found'));
 							}
 						});
 					}).open();

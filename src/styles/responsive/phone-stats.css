@@ -1,5 +1,5 @@
 /* ========== Mobile History Stats Modal (Compact & Landscape Scrollable) ========== */
-body.is-phone .modal.history-stats-modal-wide {
+body.is-phone .modal.wn-history-stats-modal-wide {
 	width: 96vw;
 	max-width: 100%;
 	max-height: 90vh;
@@ -13,7 +13,7 @@ body.is-phone .modal.history-stats-modal-wide {
 }
 
 
-body.is-phone .history-stats-modal {
+body.is-phone .wn-history-stats-modal {
 	--wn-mobile-heatmap-padding-bottom: 2px;
 	overflow-y: auto;
 	-webkit-overflow-scrolling: touch;
@@ -22,45 +22,45 @@ body.is-phone .history-stats-modal {
 }
 
 
-.is-phone .history-stats-modal .stats-efficiency-row {
+.is-phone .wn-history-stats-modal .wn-stats-efficiency-row {
 	margin-bottom: 2px;
 }
 
 
-body.is-phone .history-stats-modal .setting-item.setting-item-heading .setting-item-name {
+body.is-phone .wn-history-stats-modal .setting-item.setting-item-heading .setting-item-name {
 	font-size: var(--wn-phone-font-title);
 }
 
 
-body.is-phone .history-stats-modal .setting-item-heading:first-child .setting-item-name {
+body.is-phone .wn-history-stats-modal .setting-item-heading:first-child .setting-item-name {
 	font-size: var(--wn-phone-font-display);
 }
 
 
-body.is-phone .history-stats-modal .setting-item.setting-item-heading.stats-subheading .setting-item-name {
+body.is-phone .wn-history-stats-modal .setting-item.setting-item-heading.wn-stats-subheading .setting-item-name {
 	font-size: var(--wn-phone-font-title);
 }
 
 
-.is-phone .history-stats-modal .stats-efficiency-label {
+.is-phone .wn-history-stats-modal .wn-stats-efficiency-label {
 	font-size: var(--wn-phone-font-meta);
 	margin-bottom: 2px;
 }
 
 
-.is-phone .history-stats-modal .stats-efficiency-value {
+.is-phone .wn-history-stats-modal .wn-stats-efficiency-value {
 	font-size: var(--wn-phone-font-kpi);
 }
 
 
-.is-phone .history-stats-modal .setting-item-heading {
+.is-phone .wn-history-stats-modal .setting-item-heading {
 	margin-top: 10px;
 	margin-bottom: 6px;
 	padding-top: 0;
 }
 
 
-.is-phone .history-stats-modal .stats-heat-date-row {
+.is-phone .wn-history-stats-modal .wn-stats-heat-date-row {
 	flex-direction: column;
 	align-items: stretch;
 	gap: 4px;
@@ -68,7 +68,7 @@ body.is-phone .history-stats-modal .setting-item.setting-item-heading.stats-subh
 }
 
 
-.is-phone .history-stats-modal .stats-heat-inputs-wrapper {
+.is-phone .wn-history-stats-modal .wn-stats-heat-inputs-wrapper {
 	display: flex;
 	align-items: center;
 	gap: 4px;
@@ -76,8 +76,8 @@ body.is-phone .history-stats-modal .setting-item.setting-item-heading.stats-subh
 }
 
 
-.is-phone .history-stats-modal .stats-heat-date-input,
-.is-phone .history-stats-modal .stats-heat-today-btn {
+.is-phone .wn-history-stats-modal .wn-stats-heat-date-input,
+.is-phone .wn-history-stats-modal .wn-stats-heat-today-btn {
 	font-size: var(--wn-phone-font-control);
 	padding: 0.2em 0.5em;
 	height: 2em;
@@ -89,7 +89,7 @@ body.is-phone .history-stats-modal .setting-item.setting-item-heading.stats-subh
 }
 
 
-.is-phone .history-stats-modal .stats-heat-actions-wrapper {
+.is-phone .wn-history-stats-modal .wn-stats-heat-actions-wrapper {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
@@ -98,37 +98,37 @@ body.is-phone .history-stats-modal .setting-item.setting-item-heading.stats-subh
 }
 
 
-.is-phone .history-stats-modal .stats-heatmap-container {
+.is-phone .wn-history-stats-modal .wn-stats-heatmap-container {
 	margin-bottom: 2px;
 	overflow-x: visible;
 }
 
 
-.is-phone .history-stats-modal .stats-heatmap-day-label {
+.is-phone .wn-history-stats-modal .wn-stats-heatmap-day-label {
 	display: none;
 }
 
 
-.is-phone .history-stats-modal .stats-heatmap-months {
+.is-phone .wn-history-stats-modal .wn-stats-heatmap-months {
 	margin-left: 0;
 	height: 1em;
 	margin-bottom: 2px;
 }
 
 
-.is-phone .history-stats-modal .stats-heatmap-month-label {
+.is-phone .wn-history-stats-modal .wn-stats-heatmap-month-label {
 	font-size: var(--wn-phone-font-caption);
 }
 
 
-body.is-phone .history-stats-modal .setting-item.setting-item-heading.stats-subheading {
+body.is-phone .wn-history-stats-modal .setting-item.setting-item-heading.wn-stats-subheading {
 	margin-top: 4px;
 	margin-bottom: 2px;
 	padding: 0 0 2px;
 }
 
 
-body.is-phone .history-stats-modal .stats-filter-row {
+body.is-phone .wn-history-stats-modal .wn-stats-filter-row {
 	display: flex;
 	flex-direction: row;
 	flex-wrap: wrap;
@@ -139,8 +139,8 @@ body.is-phone .history-stats-modal .stats-filter-row {
 }
 
 
-body.is-phone .history-stats-modal .stats-time-tabs,
-body.is-phone .history-stats-modal .stats-metric-tabs {
+body.is-phone .wn-history-stats-modal .wn-stats-time-tabs,
+body.is-phone .wn-history-stats-modal .wn-stats-metric-tabs {
 	display: flex;
 	gap: 2px;
 	width: auto;
@@ -148,7 +148,7 @@ body.is-phone .history-stats-modal .stats-metric-tabs {
 }
 
 
-.is-phone .history-stats-modal .stats-tab-btn {
+.is-phone .wn-history-stats-modal .wn-stats-tab-btn {
 	font-size: var(--wn-phone-font-control);
 	padding: 0.2em 0.45em;
 	height: 2em;
@@ -158,7 +158,7 @@ body.is-phone .history-stats-modal .stats-metric-tabs {
 }
 
 
-.is-phone .stats-large-chart-container {
+.is-phone .wn-stats-large-chart-container {
 	height: 11.25em;
 	min-height: 11.25em;
 	margin-top: 2px;
@@ -168,18 +168,18 @@ body.is-phone .history-stats-modal .stats-metric-tabs {
 }
 
 
-body.is-phone .history-stats-modal .stats-large-label {
+body.is-phone .wn-history-stats-modal .wn-stats-large-label {
 	font-size: var(--wn-phone-font-caption);
 }
 
 
-body.is-phone .history-stats-modal .stats-large-value {
+body.is-phone .wn-history-stats-modal .wn-stats-large-value {
 	font-size: var(--wn-phone-font-meta);
 }
 
 
-body.is-phone .history-stats-modal .stats-time-tabs .stats-tab-btn,
-body.is-phone .history-stats-modal .stats-metric-tabs .stats-tab-btn {
+body.is-phone .wn-history-stats-modal .wn-stats-time-tabs .wn-stats-tab-btn,
+body.is-phone .wn-history-stats-modal .wn-stats-metric-tabs .wn-stats-tab-btn {
 	font-size: var(--wn-phone-font-control);
 	padding: 0.2em 0.45em;
 	height: 2em;

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createTypewriterExtension, preserveTypewriterViewport, type TypewriterExtensionPlugin } from '../src/editor/TypewriterExtension';
-import type { EditorView, ViewUpdate } from '@codemirror/view';
+import { EditorView, type ViewUpdate } from '@codemirror/view';
+import { EditorState } from '@codemirror/state';
 
 interface MockScrollerElement {
 	scrollTop: number;
@@ -88,7 +89,7 @@ function createMockEnvironment(initialOffset = 0) {
 	};
 
 	const docListeners = new Map<string, Array<(e?: unknown) => void>>();
-	const bodyClasses = new Set<string>(['immersive-mode-active']);
+	const bodyClasses = new Set<string>(['wn-immersive-mode-active']);
 
 	const mockDocument: MockDocument = {
 		body: {
@@ -306,13 +307,13 @@ describe('TypewriterExtension - Manual Scroll & Race Condition Prevention', () =
 	});
 
 	it('preserves the viewport through geometry and focus changes until deliberate user input', () => {
-		env.mockDocument.body.classList.remove('immersive-mode-active');
+		env.mockDocument.body.classList.remove('wn-immersive-mode-active');
 		const extension = createTypewriterExtension(env.mockPlugin);
 		const view = env.createMockView(500);
 		const instance = (extension as unknown as { create: (v: EditorView) => { update: (u: ViewUpdate) => void; destroy: () => void } }).create(view);
 		try {
 			instance.update({ view, state: view.state, transactions: [{ effects: [preserveTypewriterViewport.of(null)], annotation: () => undefined }] } as unknown as ViewUpdate);
-			env.mockDocument.body.classList.add('immersive-mode-active');
+			env.mockDocument.body.classList.add('wn-immersive-mode-active');
 			env.mockScroller.dispatchEvent('focusin');
 			instance.update({ view, state: view.state, geometryChanged: true, transactions: [] } as unknown as ViewUpdate);
 			env.mockWindow.flushRaf();
@@ -343,7 +344,7 @@ describe('TypewriterExtension - Manual Scroll & Race Condition Prevention', () =
 	it('preserves viewport on exit from immersive mode when editorTypewriter is enabled but immersive typewriter was disabled even if positioningChanged', () => {
 		env.mockPlugin.settings.editorTypewriter = { enabled: true, centerOffset: 0, unfocusedOpacity: 0.4 };
 		env.mockPlugin.settings.immersive.typewriterEnabled = false;
-		env.mockDocument.body.classList.add('immersive-mode-active');
+		env.mockDocument.body.classList.add('wn-immersive-mode-active');
 
 		const extension = createTypewriterExtension(env.mockPlugin);
 		const view = env.createMockView(500);
@@ -361,7 +362,7 @@ describe('TypewriterExtension - Manual Scroll & Race Condition Prevention', () =
 			} as unknown as ViewUpdate);
 
 			// Mode switch finishes: immersive-mode-active removed, normal mode active
-			env.mockDocument.body.classList.remove('immersive-mode-active');
+			env.mockDocument.body.classList.remove('wn-immersive-mode-active');
 			env.mockScroller.dispatchEvent('focusin');
 			instance.update({ view, state: view.state, geometryChanged: true, transactions: [] } as unknown as ViewUpdate);
 			env.mockWindow.flushRaf();
@@ -785,7 +786,7 @@ describe('TypewriterExtension - Manual Scroll & Race Condition Prevention', () =
 		const pluginInstance = (extension as unknown as { create: (v: EditorView) => { update: (u: ViewUpdate) => void; destroy: () => void } }).create(view);
 
 		// Turn off immersive mode
-		env.mockDocument.body.classList.remove('immersive-mode-active');
+		env.mockDocument.body.classList.remove('wn-immersive-mode-active');
 
 		pluginInstance.update({ view, state: view.state, docChanged: true, selectionSet: false } as unknown as ViewUpdate);
 		env.mockWindow.flushRaf();
@@ -793,7 +794,7 @@ describe('TypewriterExtension - Manual Scroll & Race Condition Prevention', () =
 		expect(env.mockScroller.scrollTo).not.toHaveBeenCalled();
 
 		// Turn on immersive mode but disable typewriter setting
-		env.mockDocument.body.classList.add('immersive-mode-active');
+		env.mockDocument.body.classList.add('wn-immersive-mode-active');
 		env.mockPlugin.settings.immersive.typewriterEnabled = false;
 
 		pluginInstance.update({ view, state: view.state, docChanged: true, selectionSet: false } as unknown as ViewUpdate);
@@ -958,7 +959,7 @@ describe('TypewriterExtension - Ordinary Editor Mode & Mode Isolation', () => {
 	});
 
 	it('activates typewriter centering, DOM classes, and CSS variables in ordinary mode when enabled', () => {
-		env.mockDocument.body.classList.remove('immersive-mode-active');
+		env.mockDocument.body.classList.remove('wn-immersive-mode-active');
 		env.mockPlugin.settings.editorTypewriter = {
 			enabled: true,
 			centerOffset: 0,
@@ -981,7 +982,7 @@ describe('TypewriterExtension - Ordinary Editor Mode & Mode Isolation', () => {
 	});
 
 	it('remains completely inactive in ordinary mode when disabled (default for existing and upgraded users)', () => {
-		env.mockDocument.body.classList.remove('immersive-mode-active');
+		env.mockDocument.body.classList.remove('wn-immersive-mode-active');
 		env.mockPlugin.settings.editorTypewriter = {
 			enabled: false,
 			centerOffset: 0,
@@ -1004,7 +1005,7 @@ describe('TypewriterExtension - Ordinary Editor Mode & Mode Isolation', () => {
 
 	it('strictly isolates modes: ordinary mode does not leak into immersive mode when immersive typewriter is disabled', () => {
 		// Document body has immersive-mode-active
-		env.mockDocument.body.classList.add('immersive-mode-active');
+		env.mockDocument.body.classList.add('wn-immersive-mode-active');
 		// Immersive typewriter is disabled
 		env.mockPlugin.settings.immersive.typewriterEnabled = false;
 		// Ordinary typewriter is enabled
@@ -1029,7 +1030,7 @@ describe('TypewriterExtension - Ordinary Editor Mode & Mode Isolation', () => {
 	});
 
 	it('strictly isolates modes: uses immersive settings when in immersive mode even if ordinary mode is disabled', () => {
-		env.mockDocument.body.classList.add('immersive-mode-active');
+		env.mockDocument.body.classList.add('wn-immersive-mode-active');
 		env.mockPlugin.settings.immersive.typewriterEnabled = true;
 		env.mockPlugin.settings.immersive.typewriterCenterOffset = -10;
 		env.mockPlugin.settings.immersive.typewriterUnfocusedOpacity = 0.25;
@@ -1059,7 +1060,7 @@ describe('TypewriterExtension - Ordinary Editor Mode & Mode Isolation', () => {
 
 	it('allows ordinary mode to resume with ordinary settings after exiting immersive mode', () => {
 		// Step 1: In immersive mode with immersive typewriter disabled, ordinary enabled
-		env.mockDocument.body.classList.add('immersive-mode-active');
+		env.mockDocument.body.classList.add('wn-immersive-mode-active');
 		env.mockPlugin.settings.immersive.typewriterEnabled = false;
 		env.mockPlugin.settings.editorTypewriter = {
 			enabled: true,
@@ -1076,7 +1077,7 @@ describe('TypewriterExtension - Ordinary Editor Mode & Mode Isolation', () => {
 		expect(env.mockScroller.scrollTo).not.toHaveBeenCalled();
 
 		// Step 2: Exit immersive mode
-		env.mockDocument.body.classList.remove('immersive-mode-active');
+		env.mockDocument.body.classList.remove('wn-immersive-mode-active');
 
 		// Step 3: Editor updates after exit
 		pluginInstance.update({ view, state: view.state, docChanged: true, selectionSet: false } as unknown as ViewUpdate);
@@ -1095,7 +1096,7 @@ describe('TypewriterExtension - Ordinary Editor Mode & Mode Isolation', () => {
 	});
 
 	it('preserves layout classes and styles when an enabled ordinary-mode instance is destroyed', () => {
-		env.mockDocument.body.classList.remove('immersive-mode-active');
+		env.mockDocument.body.classList.remove('wn-immersive-mode-active');
 		env.mockPlugin.settings.editorTypewriter = {
 			enabled: true,
 			centerOffset: 0,
@@ -1118,7 +1119,7 @@ describe('TypewriterExtension - Ordinary Editor Mode & Mode Isolation', () => {
 	});
 
 	it('handles missing or undefined editorTypewriter settings without throwing', () => {
-		env.mockDocument.body.classList.remove('immersive-mode-active');
+		env.mockDocument.body.classList.remove('wn-immersive-mode-active');
 		delete env.mockPlugin.settings.editorTypewriter;
 
 		const extension = createTypewriterExtension(env.mockPlugin);
@@ -1853,7 +1854,7 @@ describe('TypewriterExtension - Focus Loss & Offscreen Coordinate Guards', () =>
 	});
 
 	it('preserves existing spacers when the extension is rebuilt while a settings modal owns focus', () => {
-		env.mockDocument.body.classList.remove('immersive-mode-active');
+		env.mockDocument.body.classList.remove('wn-immersive-mode-active');
 		env.mockPlugin.settings.editorTypewriter = {
 			enabled: true,
 			centerOffset: 0,
@@ -1897,7 +1898,7 @@ describe('TypewriterExtension - Focus Loss & Offscreen Coordinate Guards', () =>
 	});
 
 	it('initializes layout on a fresh editor DOM while settings owns focus without scrolling it', () => {
-		env.mockDocument.body.classList.remove('immersive-mode-active');
+		env.mockDocument.body.classList.remove('wn-immersive-mode-active');
 		env.mockPlugin.settings.editorTypewriter = {
 			enabled: true,
 			centerOffset: 0,
@@ -2195,7 +2196,7 @@ describe('TypewriterExtension - Focus Loss & Offscreen Coordinate Guards', () =>
 
 	describe('TypewriterExtension - Opening Lines & Sizer Padding Resilience', () => {
 		it('preserves existing sizer spacing across tab focus and click updates while disabled', () => {
-			env.mockDocument.body.classList.remove('immersive-mode-active');
+			env.mockDocument.body.classList.remove('wn-immersive-mode-active');
 			env.mockSizer.style.paddingTop = '120px';
 			env.mockSizer.style.paddingBottom = '280px';
 			const extension = createTypewriterExtension(env.mockPlugin);
@@ -2508,6 +2509,71 @@ describe('TypewriterExtension - Focus Loss & Offscreen Coordinate Guards', () =>
 			pluginInstance.destroy();
 		});
 
+		it('keeps scrollbar drag manual when focusin arrives before pointerup', () => {
+			const extension = createTypewriterExtension(env.mockPlugin);
+			const view = env.createMockView(500, true);
+			const instance = (extension as unknown as { create: (v: EditorView) => { update: (u: ViewUpdate) => void; destroy: () => void } }).create(view);
+			instance.update({ view, state: view.state, docChanged: false, selectionSet: false } as unknown as ViewUpdate);
+			env.mockWindow.flushRaf();
+			const dispatch = view.dispatch as unknown as ReturnType<typeof vi.fn>;
+			dispatch.mockClear();
+			env.mockScroller.dispatchEvent('pointerdown', { clientX: 595, clientY: 400 });
+			env.mockScroller.dispatchEvent('focusin');
+			env.mockScroller.scrollTop = 1200;
+			env.mockScroller.dispatchEvent('scroll');
+			env.mockDocument.dispatchEvent('pointerup');
+			env.mockWindow.flushRaf();
+			expect(dispatch).not.toHaveBeenCalled();
+			instance.destroy();
+		});
+
+		it('resumes typewriter on deliberate body click or input after scrollbar drag, and ignores child target near right edge', () => {
+			const extension = createTypewriterExtension(env.mockPlugin);
+			const view = env.createMockView(500, true);
+			const instance = (extension as unknown as { create: (v: EditorView) => { update: (u: ViewUpdate) => void; destroy: () => void } }).create(view);
+			instance.update({ view, state: view.state, docChanged: false, selectionSet: false } as unknown as ViewUpdate);
+			env.mockWindow.flushRaf();
+			const dispatch = view.dispatch as unknown as ReturnType<typeof vi.fn>;
+			dispatch.mockClear();
+
+			// Drag scrollbar, then window blur releases pointer without jumping back
+			env.mockScroller.dispatchEvent('pointerdown', { clientX: 595, clientY: 400 });
+			env.mockScroller.dispatchEvent('focusin');
+			env.mockScroller.scrollTop = 1200;
+			env.mockScroller.dispatchEvent('scroll');
+			env.mockWindow.dispatchEvent('blur');
+			instance.update({ view, state: view.state, docChanged: false, selectionSet: false, geometryChanged: true } as unknown as ViewUpdate);
+			env.mockWindow.flushRaf();
+			expect(dispatch).not.toHaveBeenCalled();
+
+			// Deliberate body click (child target near right edge, not scroller itself) resumes typewriter
+			const childTarget = { closest: () => null };
+			env.mockScroller.dispatchEvent('pointerdown', { clientX: 595, clientY: 400, target: childTarget });
+			env.mockDocument.dispatchEvent('pointerup');
+			env.mockWindow.flushRaf();
+			expect(dispatch).toHaveBeenCalledTimes(1);
+
+			// Another scrollbar drag followed by real user input resumes follow
+			dispatch.mockClear();
+			env.mockScroller.dispatchEvent('pointerdown', { clientX: 595, clientY: 400 });
+			env.mockScroller.scrollTop = 900;
+			env.mockDocument.dispatchEvent('pointerup');
+			env.mockWindow.flushRaf();
+			expect(dispatch).not.toHaveBeenCalled();
+
+			instance.update({
+				view,
+				state: view.state,
+				docChanged: true,
+				selectionSet: false,
+				transactions: [{ annotation: () => 'input.type' }]
+			} as unknown as ViewUpdate);
+			env.mockWindow.flushRaf();
+			expect(dispatch).toHaveBeenCalledTimes(1);
+
+			instance.destroy();
+		});
+
 		it('does not re-arm frozen viewport when unfocused viewport update happens during touch scroll', () => {
 			const extension = createTypewriterExtension(env.mockPlugin);
 			const view = env.createMockView(500, true);
@@ -2610,6 +2676,150 @@ describe('TypewriterExtension - Focus Loss & Offscreen Coordinate Guards', () =>
 			expect(view.dispatch).toHaveBeenCalled();
 
 			pluginInstance.destroy();
+		});
+	});
+
+	describe('Shared Manuscript Scroller Integration', () => {
+		it('overrides native scroll-past-end padding only while hosted in the manuscript, including with typewriter disabled', () => {
+			const env = createMockEnvironment(0);
+			env.mockPlugin.settings.immersive.typewriterEnabled = false;
+			const state = EditorState.create({ extensions: [
+				EditorView.contentAttributes.of({ style: 'padding-bottom: 640px' }),
+				createTypewriterExtension(env.mockPlugin)
+			] });
+			let inManuscript = true;
+			const view = { dom: { closest: () => inManuscript ? {} : null } } as unknown as EditorView;
+			const mergedStyle = () => state.facet(EditorView.contentAttributes).slice().reverse()
+				.map(source => typeof source === 'function' ? source(view) : source)
+				.map(attrs => attrs?.style ?? '').filter(Boolean).join(';');
+			expect(mergedStyle()).toMatch(/padding-bottom:\s*0px;?$/);
+			inManuscript = false;
+			expect(mergedStyle()).toBe('padding-bottom: 640px');
+		});
+
+		it('applies global padding to shared manuscript scroller without per-chapter sizer padding, centers on input, pauses on manual scroll/outside click, and cleans up on unmount/destroy', () => {
+			const env = createMockEnvironment(0);
+			const sharedListeners = new Map<string, Array<(e?: unknown) => void>>();
+			const sharedStyles = new Map<string, string>();
+			const sharedClasses = new Set<string>();
+			let sharedScrollTop = 500;
+			const mockManuscriptScroller = {
+				clientHeight: 800,
+				get scrollTop() { return sharedScrollTop; },
+				set scrollTop(v: number) { sharedScrollTop = v; },
+				ownerDocument: env.mockDocument,
+				getBoundingClientRect: () => ({ top: 40, bottom: 840, left: 0, right: 600, width: 600, height: 800 }),
+				scrollTo: vi.fn(({ top }: { top: number }) => { sharedScrollTop = top; }),
+				classList: {
+					add: vi.fn((cls: string) => sharedClasses.add(cls)),
+					remove: vi.fn((cls: string) => sharedClasses.delete(cls)),
+					contains: vi.fn((cls: string) => sharedClasses.has(cls))
+				},
+				style: {
+					setProperty: vi.fn((prop: string, val: string) => sharedStyles.set(prop, val)),
+					removeProperty: vi.fn((prop: string) => sharedStyles.delete(prop)),
+					getPropertyValue: vi.fn((prop: string) => sharedStyles.get(prop) ?? '')
+				},
+				addEventListener: vi.fn((event: string, handler: (e?: unknown) => void) => {
+					const list = sharedListeners.get(event) ?? [];
+					list.push(handler);
+					sharedListeners.set(event, list);
+				}),
+				removeEventListener: vi.fn((event: string, handler: (e?: unknown) => void) => {
+					const list = sharedListeners.get(event) ?? [];
+					const idx = list.indexOf(handler);
+					if (idx !== -1) list.splice(idx, 1);
+				}),
+				dispatchEvent: (event: string, payload?: unknown) => {
+					const list = sharedListeners.get(event) ?? [];
+					for (const handler of list) handler(payload);
+				}
+			};
+
+			// Caret sits at viewport y = 620..640 (center = 630). Target center in scroller = 40 + 400 = 440 -> delta = +190 -> scrollTop = 690
+			const coordsAtPos = vi.fn(() => ({ top: 620, bottom: 640, left: 20, right: 25 }));
+			const view = env.createMockView(200, true, coordsAtPos);
+			(view as unknown as { requestMeasure: ReturnType<typeof vi.fn> }).requestMeasure = vi.fn();
+
+			let isMountedInManuscript = true;
+			const viewDom = view.dom as unknown as {
+				closest?: (sel: string) => unknown;
+				contains: ReturnType<typeof vi.fn>;
+			};
+			viewDom.closest = vi.fn((sel: string) => {
+				if (isMountedInManuscript && sel.includes('.wn-manuscript-scroller')) return mockManuscriptScroller;
+				return null;
+			});
+			const innerNode = {};
+			viewDom.contains = vi.fn((node: unknown) => node === innerNode);
+
+			const extension = createTypewriterExtension(env.mockPlugin);
+			const pluginInstance = (extension as unknown as { create: (v: EditorView) => { update: (u: ViewUpdate) => void; destroy: () => void } }).create(view);
+
+			// 1. Global padding applied to manuscript scroller, NOT per-chapter sizer!
+			expect(sharedClasses.has('wn-manuscript-typewriter-active')).toBe(true);
+			expect(sharedStyles.get('--wn-manuscript-typewriter-padding-top')).toBe('400px');
+			expect(sharedStyles.get('--wn-manuscript-typewriter-padding-bottom')).toBe('400px');
+			expect(env.mockSizer.style.paddingTop).toBe('');
+			expect(env.mockSizer.style.paddingBottom).toBe('');
+			expect(viewDom.contains).toBeDefined();
+
+			// 2. Initial centering scrolls shared manuscript scroller and requests CM measure
+			pluginInstance.update({ view, state: view.state, docChanged: false, selectionSet: false } as unknown as ViewUpdate);
+			env.mockWindow.flushRaf();
+			expect(sharedScrollTop).toBe(690);
+			expect((view as unknown as { requestMeasure: ReturnType<typeof vi.fn> }).requestMeasure).toHaveBeenCalled();
+
+			// 3. Manual wheel pauses centering
+			sharedScrollTop = 100;
+			mockManuscriptScroller.dispatchEvent('wheel');
+			pluginInstance.update({ view, state: view.state, docChanged: false, selectionSet: false, geometryChanged: true } as unknown as ViewUpdate);
+			env.mockWindow.flushRaf();
+			expect(sharedScrollTop).toBe(100);
+
+			// 4. Clicking another chapter preview card outside view.dom does NOT yank scroll back to old caret
+			mockManuscriptScroller.dispatchEvent('pointerdown', { target: { closest: () => null } });
+			env.mockDocument.dispatchEvent('pointerup', { target: { closest: () => null } });
+			env.mockWindow.flushRaf();
+			expect(sharedScrollTop).toBe(100);
+
+			// 5. Chapter navigation resumes follow after its temporary viewport preservation,
+			// even with unchanged selection and no second body click or input.
+			pluginInstance.update({ view, state: view.state, transactions: [{
+				effects: [preserveTypewriterViewport.of(null)], annotation: () => undefined
+			}] } as unknown as ViewUpdate);
+			env.mockWindow.flushRaf();
+			expect(sharedScrollTop).toBe(100);
+			pluginInstance.update({
+				view, state: view.state, docChanged: false, selectionSet: false,
+				transactions: [EditorState.create().update({ userEvent: 'select' })]
+			} as unknown as ViewUpdate);
+			env.mockWindow.flushRaf();
+			expect(sharedScrollTop).toBe(290);
+
+			// Real user input still resumes follow after later manual browsing.
+			mockManuscriptScroller.dispatchEvent('wheel');
+			sharedScrollTop = 100;
+			pluginInstance.update({
+				view,
+				state: view.state,
+				docChanged: true,
+				selectionSet: false,
+				transactions: [{ annotation: () => 'input.type' }]
+			} as unknown as ViewUpdate);
+			env.mockWindow.flushRaf();
+			expect(sharedScrollTop).toBe(290); // 100 + (630 - 440) = 290
+
+			// 6. Dynamic unmount rebinds listeners back to view.scrollDOM
+			isMountedInManuscript = false;
+			pluginInstance.update({ view, state: view.state, docChanged: false, selectionSet: false } as unknown as ViewUpdate);
+			expect(sharedListeners.get('wheel') ?? []).toHaveLength(0);
+			expect(env.mockScroller.listeners.get('wheel')?.length ?? 0).toBeGreaterThan(0);
+
+			// 7. Destroy cleans up all listeners
+			pluginInstance.destroy();
+			expect(env.mockScroller.listeners.get('wheel') ?? []).toHaveLength(0);
+			expect(env.mockWindow.listeners.get('blur') ?? []).toHaveLength(0);
 		});
 	});
 });

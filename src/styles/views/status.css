@@ -161,21 +161,21 @@
 	transform: translateY(-1px);
 }
 
-.status-goal-label {
+.wn-status-goal-label {
 	font-size: 0.8em;
 	color: var(--text-muted);
 	margin-bottom: 2px;
 	font-weight: 500;
 }
 
-.status-goal-row {
+.wn-status-goal-row {
 	display: flex;
 	justify-content: space-between;
 	align-items: baseline;
 	margin-top: 16px;
 }
 
-.goal-display-row-right {
+.wn-goal-display-row-right {
 	display: flex;
 	align-items: baseline;
 	justify-content: flex-end;
@@ -186,31 +186,31 @@
 	flex-wrap: wrap;
 }
 
-.goal-current {
+.wn-goal-current {
 	font-size: 1.35em;
 	font-weight: bold;
 	color: var(--text-normal);
 }
 
-.goal-separator {
+.wn-goal-separator {
 	font-size: 0.9em;
 	color: var(--text-muted);
 	opacity: 0.5;
 }
 
-.goal-target {
+.wn-goal-target {
 	font-size: 1.35em;
 	color: var(--text-muted);
 	opacity: 0.8;
 }
 
-.goal-percent {
+.wn-goal-percent {
 	font-size: 0.85em;
 	color: var(--interactive-accent);
 	font-weight: 600;
 }
 
-.progress-bar-bg {
+.wn-progress-bar-bg {
 	width: 100%;
 	height: 8px;
 	background: color-mix(in srgb, var(--background-modifier-border) 50%, transparent);
@@ -220,7 +220,7 @@
 	box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
-.progress-bar-fill {
+.wn-progress-bar-fill {
 	height: 100%;
 	background: linear-gradient(90deg, color-mix(in srgb, var(--interactive-accent) 70%, transparent), var(--interactive-accent));
 	border-radius: 4px;
@@ -228,31 +228,31 @@
 	box-shadow: 0 0 4px color-mix(in srgb, var(--interactive-accent) 50%, transparent);
 }
 
-.progress-bar-fill.is-negative {
+.wn-progress-bar-fill.is-negative {
 	background: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%);
 }
 
-.progress-bar-fill.is-done {
+.wn-progress-bar-fill.is-done {
 	background: var(--interactive-accent);
 }
 
-.goal-current.is-negative,
-.goal-percent.is-negative {
+.wn-goal-current.is-negative,
+.wn-goal-percent.is-negative {
 	color: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%);
 }
 
-.goal-current.is-done,
-.goal-percent.is-done {
+.wn-goal-current.is-done,
+.wn-goal-percent.is-done {
 	color: var(--interactive-accent);
 }
 
-.time-grid {
+.wn-time-grid {
 	display: grid;
 	grid-template-columns: 1fr 1fr;
 	gap: 10px;
 }
 
-.time-box {
+.wn-time-box {
 	background: color-mix(in srgb, var(--background-primary) 55%, transparent);
 	backdrop-filter: blur(10px);
 	-webkit-backdrop-filter: blur(10px);
@@ -264,7 +264,7 @@
 	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
 }
 
-.time-box-title {
+.wn-time-box-title {
 	font-size: 0.75em;
 	color: var(--text-muted);
 	margin-bottom: 4px;
@@ -273,7 +273,7 @@
 	text-overflow: ellipsis;
 }
 
-.time-box-value {
+.wn-time-box-value {
 	font-family: var(--font-monospace);
 	font-size: 1.15em;
 	font-weight: bold;
@@ -283,37 +283,37 @@
 	text-overflow: ellipsis;
 }
 
-.history-chart {
+.wn-history-chart {
 	margin-top: 20px;
 }
 
-.history-chart-title {
+.wn-history-chart-title {
 	font-size: 0.85em;
 	font-weight: 600;
 	color: var(--interactive-accent-hover);
 	margin-bottom: 4px;
 }
 
-.history-chart-subtitle {
+.wn-history-chart-subtitle {
 	font-size: 0.75em;
 	color: var(--text-muted);
 	margin-bottom: 8px;
 	cursor: pointer;
 }
 
-.history-chart-subtitle:hover {
+.wn-history-chart-subtitle:hover {
 	color: var(--interactive-accent);
 	text-decoration: underline;
 }
 
-.mini-efficiency-summary {
+.wn-mini-efficiency-summary {
 	font-size: 0.75em;
 	color: var(--text-muted);
 	margin-top: 16px;
 	text-align: center;
 }
 
-.history-chart-title-row {
+.wn-history-chart-title-row {
 	display: flex;
 	align-items: baseline;
 	justify-content: space-between;
@@ -324,7 +324,7 @@
 
 /* Mini Chart Container */
 
-.mini-chart-container {
+.wn-mini-chart-container {
 	display: grid;
 	grid-template-columns: repeat(7, minmax(0, 1fr));
 	align-items: baseline;
@@ -335,7 +335,7 @@
 	margin-top: 8px;
 }
 
-.mini-chart-col {
+.wn-mini-chart-col {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
@@ -347,7 +347,7 @@
 	justify-self: center;
 }
 
-.mini-chart-bar {
+.wn-mini-chart-bar {
 	width: 60%;
 	min-width: 10px;
 	max-width: 28px;
@@ -357,18 +357,22 @@
 	cursor: crosshair;
 }
 
-.mini-chart-bar:hover {
+.wn-mini-chart-bar:hover {
 	opacity: 1;
 }
 
-.mini-chart-label {
+.wn-mini-chart-col.wn-daily-stats-trigger .wn-mini-chart-bar {
+	cursor: pointer;
+}
+
+.wn-mini-chart-label {
 	font-size: 0.7em;
 	margin-top: 4px;
 	color: var(--text-muted);
 	white-space: nowrap;
 }
 
-.mini-chart-value {
+.wn-mini-chart-value {
 	font-size: 0.65em;
 	margin-top: 2px;
 	font-weight: bold;
@@ -377,7 +381,7 @@
 	color: var(--text-muted);
 }
 
-.mini-chart-empty {
+.wn-mini-chart-empty {
 	color: var(--text-muted);
 	font-size: 0.75em;
 	padding: 10px 0;
@@ -518,14 +522,14 @@
 
 /* 写作实时状态面板 - 事件任务详情字号与布局规范 */
 
-.goal-display-row-right.is-event-task {
+.wn-goal-display-row-right.is-event-task {
 	justify-content: space-between;
 	align-items: center;
 	margin-top: 10px;
 	margin-bottom: 8px;
 }
 
-.goal-display-row-right.is-event-task .goal-current {
+.wn-goal-display-row-right.is-event-task .wn-goal-current {
 	font-size: 0.8em;
 	font-weight: 500;
 	color: var(--text-normal);
@@ -540,20 +544,20 @@
 	justify-content: center;
 }
 
-.event-task-title {
+.wn-event-task-title {
 	font-size: 0.85em;
 	font-weight: 500;
 	color: var(--text-normal);
 }
 
-.event-task-detail {
+.wn-event-task-detail {
 	font-size: 0.75em;
 	font-weight: normal;
 	color: var(--text-muted);
 	margin-top: 2px;
 }
 
-button.status-task-complete-btn {
+button.wn-status-task-complete-btn {
 	font-size: 0.8em;
 	padding: 3px 10px;
 	border-radius: 4px;
@@ -566,6 +570,33 @@ button.status-task-complete-btn {
 	transition: all 0.15s ease;
 }
 
-button.status-task-complete-btn:hover {
+button.wn-status-task-complete-btn:hover {
 	background: color-mix(in srgb, var(--interactive-accent) 25%, transparent);
+}
+
+.wn-immersive-chapter-status-container {
+	font-family: var(--font-interface);
+}
+
+.wn-immersive-chapter-status-container .wn-status-card {
+	margin-bottom: 0;
+}
+
+.wn-immersive-chapter-status-container .wn-chapter-synopsis-text,
+.wn-immersive-chapter-status-container .wn-chapter-status-item {
+	font-family: var(--font-text);
+}
+
+.wn-status-title-badge[role="button"]:focus-visible,
+.wn-chapter-title-badge[role="button"]:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 2px;
+}
+
+.wn-immersive-chapter-status-empty {
+	padding: 20px 12px;
+	text-align: center;
+	font-size: 0.9em;
+	color: var(--text-muted);
+	font-family: var(--font-interface);
 }

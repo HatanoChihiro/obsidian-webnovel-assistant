@@ -1,5 +1,6 @@
+import { showPluginNotice } from '../../services/PluginNoticeService';
 import type { App, TFile } from 'obsidian';
-import { Notice, setIcon } from 'obsidian';
+import { setIcon } from 'obsidian';
 import type { TaskEntry } from '../../types/task';
 import type { NovelFolderInfo } from '../../types/homepage';
 import type { AccurateCountSettings, DailyStat } from '../../types/settings';
@@ -15,6 +16,7 @@ import { ImportNovelModal, type ImportNovelModalPlugin } from '../ImportNovelMod
 import type { WorkbenchView } from '../WorkbenchView';
 import { revealAndFocusLeaf } from '../../utils/leaf';
 import { getHeatClass } from '../HistoryModal';
+import { bindDailyStatsTrigger } from '../DailyStatsModal';
 
 export type HomepageRendererSettings = Pick<
 	AccurateCountSettings,
@@ -40,6 +42,7 @@ export type HomepageRendererStatisticsManager = Pick<
 	| 'calcWritingSpeed'
 	| 'calcTaskCompletion'
 	| 'calcNovelCompletionRate'
+	| 'getDailyStats'
 >;
 
 export type HomepageRendererTaskManager = Pick<
@@ -77,9 +80,9 @@ export class HomepageRenderer {
 	 * 安全创建「标签 + 值」字段元素（替代 innerHTML，消除 XSS 风险）
 	 */
 	private createFieldEl(parent: HTMLElement, label: string, value: string): HTMLElement {
-		const field = parent.createDiv({ cls: 'homepage-completed-field' });
-		field.createSpan({ cls: 'homepage-field-label', text: label });
-		field.createSpan({ cls: 'homepage-field-value', text: value });
+		const field = parent.createDiv({ cls: 'wn-homepage-completed-field' });
+		field.createSpan({ cls: 'wn-homepage-field-label', text: label });
+		field.createSpan({ cls: 'wn-homepage-field-value', text: value });
 		return field;
 	}
 
@@ -87,11 +90,11 @@ export class HomepageRenderer {
 	async renderHomepage(container: HTMLElement): Promise<void> {
 		container.empty();
 
-		const grid = container.createDiv({ cls: 'homepage-grid-container' });
+		const grid = container.createDiv({ cls: 'wn-homepage-grid-container' });
 
 		// 顶部行：欢迎语 + 今日字数 + 新增作品 + 连载中
-		const topRow = grid.createDiv({ cls: 'homepage-grid-top' });
-		const welcomeCell = topRow.createDiv({ cls: 'homepage-grid-cell' });
+		const topRow = grid.createDiv({ cls: 'wn-homepage-grid-top' });
+		const welcomeCell = topRow.createDiv({ cls: 'wn-homepage-grid-cell' });
 		try {
 			await this.renderWelcome(welcomeCell);
 		} catch (e) {
@@ -99,7 +102,7 @@ export class HomepageRenderer {
 		}
 
 		const novelsPromise = this.getAllNovelsWithMetadata();
-		const ongoingCell = topRow.createDiv({ cls: 'homepage-grid-cell' });
+		const ongoingCell = topRow.createDiv({ cls: 'wn-homepage-grid-cell' });
 		try {
 			await this.renderOngoing(ongoingCell, novelsPromise);
 		} catch (e) {
@@ -107,22 +110,22 @@ export class HomepageRenderer {
 		}
 
 		// 底部左列：其他作品区块
-		const leftCol = grid.createDiv({ cls: 'homepage-grid-left' });
-		const draftingCell = leftCol.createDiv({ cls: 'homepage-grid-cell' });
+		const leftCol = grid.createDiv({ cls: 'wn-homepage-grid-left' });
+		const draftingCell = leftCol.createDiv({ cls: 'wn-homepage-grid-cell' });
 		try {
 			await this.renderDrafting(draftingCell, novelsPromise);
 		} catch (e) {
 			console.error('[WebNovel] Error rendering drafting cell:', e);
 		}
 
-		const pausedCell = leftCol.createDiv({ cls: 'homepage-grid-cell' });
+		const pausedCell = leftCol.createDiv({ cls: 'wn-homepage-grid-cell' });
 		try {
 			await this.renderPaused(pausedCell, novelsPromise);
 		} catch (e) {
 			console.error('[WebNovel] Error rendering paused cell:', e);
 		}
 
-		const completedCell = leftCol.createDiv({ cls: 'homepage-grid-cell' });
+		const completedCell = leftCol.createDiv({ cls: 'wn-homepage-grid-cell' });
 		try {
 			await this.renderCompleted(completedCell, novelsPromise);
 		} catch (e) {
@@ -130,22 +133,22 @@ export class HomepageRenderer {
 		}
 
 		// 底部右列：数据区块
-		const rightCol = grid.createDiv({ cls: 'homepage-grid-right' });
-		const statsCell = rightCol.createDiv({ cls: 'homepage-grid-cell' });
+		const rightCol = grid.createDiv({ cls: 'wn-homepage-grid-right' });
+		const statsCell = rightCol.createDiv({ cls: 'wn-homepage-grid-cell' });
 		try {
 			await this.renderStatsSummary(statsCell, novelsPromise);
 		} catch (e) {
 			console.error('[WebNovel] Error rendering stats summary:', e);
 		}
 
-		const heatmapCell = rightCol.createDiv({ cls: 'homepage-grid-cell' });
+		const heatmapCell = rightCol.createDiv({ cls: 'wn-homepage-grid-cell' });
 		try {
 			this.renderHeatmap(heatmapCell);
 		} catch (e) {
 			console.error('[WebNovel] Error rendering heatmap:', e);
 		}
 
-		const chartCell = rightCol.createDiv({ cls: 'homepage-grid-cell' });
+		const chartCell = rightCol.createDiv({ cls: 'wn-homepage-grid-cell' });
 		try {
 			this.renderBarChart(chartCell);
 		} catch (e) {
@@ -157,9 +160,9 @@ export class HomepageRenderer {
 			const width = container.clientWidth;
 			// 将阈值从 1200 降低到 800，避免稍微放大字体或缩小窗口就变成单列
 			if (width < 800) {
-				grid.addClass('homepage-single-column');
+				grid.addClass('wn-homepage-single-column');
 			} else {
-				grid.removeClass('homepage-single-column');
+				grid.removeClass('wn-homepage-single-column');
 			}
 		};
 		updateLayout();
@@ -191,7 +194,7 @@ export class HomepageRenderer {
 				void (async () => {
 					try {
 						const { folderPath } = await this.plugin.homepageManager!.createNewNovel(result.name, result.meta);
-						new Notice(t('notice.novel-created', { name: result.name }));
+						showPluginNotice(t('notice.novel-created', { name: result.name }));
 						void this.plugin.homepageManager!.refreshHomepageViews();
 
 						// Open Workbench
@@ -219,11 +222,11 @@ export class HomepageRenderer {
 	async renderWelcome(container: HTMLElement): Promise<void> {
 		container.empty();
 
-		const section = container.createDiv({ cls: 'homepage-welcome-section' });
+		const section = container.createDiv({ cls: 'wn-homepage-welcome-section' });
 
 		// 欢迎语 + 桌面/平板端新增按钮
-		const headerRow = section.createDiv({ cls: 'homepage-welcome-header' });
-		const title = headerRow.createDiv({ cls: 'homepage-welcome-title' });
+		const headerRow = section.createDiv({ cls: 'wn-homepage-welcome-header' });
+		const title = headerRow.createDiv({ cls: 'wn-homepage-welcome-title' });
 
 		if (this.plugin.settings.homepageWelcome) {
 			title.textContent = this.plugin.settings.homepageWelcome;
@@ -239,18 +242,18 @@ export class HomepageRenderer {
 			else if (hour < 22) { welcomeText = t('homepage.welcome-evening'); iconName = 'moon-star'; }
 			else { welcomeText = t('homepage.welcome-night'); iconName = 'moon'; }
 
-			const iconEl = title.createSpan({ cls: 'homepage-welcome-icon' });
+			const iconEl = title.createSpan({ cls: 'wn-homepage-welcome-icon' });
 			setIcon(iconEl, iconName);
 			title.createSpan({ text: welcomeText });
 		}
 
-		const desktopActionsGroup = headerRow.createDiv({ cls: 'homepage-desktop-actions' });
+		const desktopActionsGroup = headerRow.createDiv({ cls: 'wn-homepage-desktop-actions' });
 
-		const desktopAddBtn = desktopActionsGroup.createDiv({ cls: 'homepage-add-novel-btn desktop-add-btn' });
+		const desktopAddBtn = desktopActionsGroup.createDiv({ cls: 'wn-homepage-add-novel-btn wn-desktop-add-btn' });
 		desktopAddBtn.textContent = t('homepage.add-novel');
 		desktopAddBtn.onclick = () => this.openNewNovelModal();
 
-		const desktopImportBtn = desktopActionsGroup.createDiv({ cls: 'homepage-add-novel-btn desktop-add-btn' });
+		const desktopImportBtn = desktopActionsGroup.createDiv({ cls: 'wn-homepage-add-novel-btn wn-desktop-add-btn' });
 		desktopImportBtn.textContent = t('import-novel.title');
 		desktopImportBtn.onclick = () => { new ImportNovelModal(this.app, this.plugin).open(); };
 
@@ -259,7 +262,7 @@ export class HomepageRenderer {
 		const today = window.moment().format('YYYY-MM-DD');
 		const todayWords = history[today]?.addedWords || 0;
 
-		const progressRow = section.createDiv({ cls: 'homepage-progress-row' });
+		const progressRow = section.createDiv({ cls: 'wn-homepage-progress-row' });
 
 		// 总字数：从缓存中仅统计当前工作区跟踪的有效 Markdown 文件实际字数
 		let totalWords = 0;
@@ -278,23 +281,23 @@ export class HomepageRenderer {
 			}
 			totalWords += cached;
 		}
-		const totalGroup = progressRow.createDiv({ cls: 'homepage-progress-item' });
-		totalGroup.createDiv({ cls: 'homepage-progress-label', text: t('homepage.total-words') });
-		totalGroup.createDiv({ cls: 'homepage-progress-value', text: totalWords.toLocaleString() });
+		const totalGroup = progressRow.createDiv({ cls: 'wn-homepage-progress-item' });
+		totalGroup.createDiv({ cls: 'wn-homepage-progress-label', text: t('homepage.total-words') });
+		totalGroup.createDiv({ cls: 'wn-homepage-progress-value', text: totalWords.toLocaleString() });
 
-		progressRow.createDiv({ cls: 'homepage-progress-separator' });
+		progressRow.createDiv({ cls: 'wn-homepage-progress-separator' });
 
-		const todayGroup = progressRow.createDiv({ cls: 'homepage-progress-item' });
-		todayGroup.createDiv({ cls: 'homepage-progress-label', text: t('homepage.today-added') });
-		todayGroup.createDiv({ cls: 'homepage-progress-value', text: todayWords.toLocaleString() });
+		const todayGroup = progressRow.createDiv({ cls: 'wn-homepage-progress-item' });
+		todayGroup.createDiv({ cls: 'wn-homepage-progress-label', text: t('homepage.today-added') });
+		todayGroup.createDiv({ cls: 'wn-homepage-progress-value', text: todayWords.toLocaleString() });
 
-		const phoneActionsGroup = progressRow.createDiv({ cls: 'homepage-phone-actions' });
+		const phoneActionsGroup = progressRow.createDiv({ cls: 'wn-homepage-phone-actions' });
 
-		const phoneAddBtn = phoneActionsGroup.createDiv({ cls: 'homepage-add-novel-btn phone-add-btn' });
+		const phoneAddBtn = phoneActionsGroup.createDiv({ cls: 'wn-homepage-add-novel-btn wn-phone-add-btn' });
 		phoneAddBtn.textContent = t('homepage.add-novel');
 		phoneAddBtn.onclick = () => this.openNewNovelModal();
 
-		const phoneImportBtn = phoneActionsGroup.createDiv({ cls: 'homepage-add-novel-btn phone-add-btn' });
+		const phoneImportBtn = phoneActionsGroup.createDiv({ cls: 'wn-homepage-add-novel-btn wn-phone-add-btn' });
 		phoneImportBtn.textContent = t('import-novel.title');
 		phoneImportBtn.onclick = () => { new ImportNovelModal(this.app, this.plugin).open(); };
 	}
@@ -304,24 +307,24 @@ export class HomepageRenderer {
 		const allNovels = await (novelsPromise ?? this.getAllNovelsWithMetadata());
 		const ongoing = allNovels.filter(n => n.metadata?.status === 'ongoing');
 		container.empty();
-		container.createDiv({ cls: 'homepage-section-label', text: getNovelStatusText('ongoing') });
+		container.createDiv({ cls: 'wn-homepage-section-label', text: getNovelStatusText('ongoing') });
 
 		if (ongoing.length === 0) {
-			container.createDiv({ cls: 'stats-empty-msg', text: t('homepage.no-ongoing') });
+			container.createDiv({ cls: 'wn-stats-empty-msg', text: t('homepage.no-ongoing') });
 			return;
 		}
 
-		const section = container.createDiv({ cls: 'homepage-ongoing-section' });
+		const section = container.createDiv({ cls: 'wn-homepage-ongoing-section' });
 
 		for (const novel of ongoing) {
 			const displayName = novel.metadata?.name || novel.folderName;
 
-			const item = section.createDiv({ cls: 'homepage-ongoing-item' });
+			const item = section.createDiv({ cls: 'wn-homepage-ongoing-item' });
 
 			// 名称 + 字数
-			const header = item.createDiv({ cls: 'homepage-ongoing-header' });
-			const nameWrapper = header.createDiv({ cls: 'homepage-ongoing-title-wrapper' });
-			const nameEl = nameWrapper.createDiv({ cls: 'homepage-ongoing-name' });
+			const header = item.createDiv({ cls: 'wn-homepage-ongoing-header' });
+			const nameWrapper = header.createDiv({ cls: 'wn-homepage-ongoing-title-wrapper' });
+			const nameEl = nameWrapper.createDiv({ cls: 'wn-homepage-ongoing-name' });
 			nameEl.textContent = displayName;
 			nameEl.onclick = () => void this.navigateToNovel(novel.folderPath);
 			if (novel.metadata?.series?.trim()) {
@@ -330,13 +333,13 @@ export class HomepageRenderer {
 					cls: 'wn-badge wn-homepage-series-badge'
 				});
 			}
-			const countEl = header.createDiv({ cls: 'homepage-ongoing-count' });
+			const countEl = header.createDiv({ cls: 'wn-homepage-ongoing-count' });
 			countEl.textContent = novel.wordCount.toLocaleString() + ' ' + t('common.word-char');
 
 			// 任务信息（最近一条）
 			const taskInfo = await this.getLatestTask(novel.folderPath);
 			if (taskInfo) {
-				const rankContainer = item.createDiv({ cls: 'homepage-ongoing-task' });
+				const rankContainer = item.createDiv({ cls: 'wn-homepage-ongoing-task' });
 
 				const isEventTask = taskInfo.entry.taskType === 'event';
 				const progress = taskInfo.progress;
@@ -344,36 +347,36 @@ export class HomepageRenderer {
 				const statusText = taskInfo.statusText;
 				const daysLeft = taskInfo.daysLeft;
 
-				const topRow = rankContainer.createDiv({ cls: 'homepage-task-row' });
-				const leftWrapper = topRow.createDiv({ cls: 'homepage-task-left-wrapper' });
-				leftWrapper.createSpan({ cls: 'homepage-task-title-inline', text: t('homepage.current-task') });
+				const topRow = rankContainer.createDiv({ cls: 'wn-homepage-task-row' });
+				const leftWrapper = topRow.createDiv({ cls: 'wn-homepage-task-left-wrapper' });
+				leftWrapper.createSpan({ cls: 'wn-homepage-task-title-inline', text: t('homepage.current-task') });
 				const periodText = t('common.period-prefix', { period: taskInfo.period }) + ' ' + taskInfo.position;
-				leftWrapper.createSpan({ cls: 'homepage-task-period', text: periodText });
+				leftWrapper.createSpan({ cls: 'wn-homepage-task-period', text: periodText });
 				
 				if (isEventTask) {
-					topRow.createSpan({ cls: 'homepage-task-progress', text: '(' + statusText + ')' });
+					topRow.createSpan({ cls: 'wn-homepage-task-progress', text: '(' + statusText + ')' });
 				} else {
-					topRow.createSpan({ cls: 'homepage-task-progress', text: progress.toLocaleString() + ' / ' + target.toLocaleString() + ' ' + t('common.word-char') + ' (' + statusText + ')' });
+					topRow.createSpan({ cls: 'wn-homepage-task-progress', text: progress.toLocaleString() + ' / ' + target.toLocaleString() + ' ' + t('common.word-char') + ' (' + statusText + ')' });
 
 					// 动态进度条作为分割线
 					const progressPercent = target > 0 ? Math.min(100, Math.max(0, (progress / target) * 100)) : 0;
-					const progressBg = rankContainer.createDiv({ cls: 'homepage-ongoing-progress-bar-bg' });
-					const progressFill = progressBg.createDiv({ cls: 'homepage-ongoing-progress-bar-fill' });
+					const progressBg = rankContainer.createDiv({ cls: 'wn-homepage-ongoing-progress-bar-bg' });
+					const progressFill = progressBg.createDiv({ cls: 'wn-homepage-ongoing-progress-bar-fill' });
 					progressFill.style.setProperty('--wn-progress-width', `${progressPercent}%`);
 					// 进度条颜色区分状态
 					if (progressPercent >= 100) progressFill.addClass('is-done');
 				}
 
 				if (daysLeft > 0 && taskInfo.entry.status === 'active') {
-					const bottomRow = rankContainer.createDiv({ cls: 'homepage-task-row homepage-task-sub' });
-					bottomRow.createSpan({ cls: 'homepage-task-days', text: t('homepage.days-remaining', { days: daysLeft }) });
+					const bottomRow = rankContainer.createDiv({ cls: 'wn-homepage-task-row wn-homepage-task-sub' });
+					bottomRow.createSpan({ cls: 'wn-homepage-task-days', text: t('homepage.days-remaining', { days: daysLeft }) });
 					if (!isEventTask) {
 						const remaining = target - progress;
 						if (remaining > 0) {
 							const dailyNeeded = Math.round(remaining / daysLeft);
-							bottomRow.createSpan({ cls: 'homepage-task-daily', text: t('homepage.daily-needed', { words: dailyNeeded.toLocaleString() }) });
+							bottomRow.createSpan({ cls: 'wn-homepage-task-daily', text: t('homepage.daily-needed', { words: dailyNeeded.toLocaleString() }) });
 						} else {
-							bottomRow.createSpan({ cls: 'homepage-task-daily', text: t('homepage.goal-reached') });
+							bottomRow.createSpan({ cls: 'wn-homepage-task-daily', text: t('homepage.goal-reached') });
 						}
 					}
 				}
@@ -386,32 +389,32 @@ export class HomepageRenderer {
 		const allNovels = await (novelsPromise ?? this.getAllNovelsWithMetadata());
 		const completed = allNovels.filter(n => n.metadata?.status === 'completed');
 		container.empty();
-		container.createDiv({ cls: 'homepage-section-label', text: getNovelStatusText('completed') });
+		container.createDiv({ cls: 'wn-homepage-section-label', text: getNovelStatusText('completed') });
 
 		if (completed.length === 0) {
-			container.createDiv({ cls: 'stats-empty-msg', text: t('homepage.no-completed') });
+			container.createDiv({ cls: 'wn-stats-empty-msg', text: t('homepage.no-completed') });
 			return;
 		}
 
-		const grid = container.createDiv({ cls: 'homepage-completed-grid' });
+		const grid = container.createDiv({ cls: 'wn-homepage-completed-grid' });
 
 		for (const novel of completed) {
 			const displayName = novel.metadata?.name || novel.folderName;
-			const card = grid.createDiv({ cls: 'homepage-completed-card' });
+			const card = grid.createDiv({ cls: 'wn-homepage-completed-card' });
 
-			const nameEl = card.createDiv({ cls: 'homepage-completed-name' });
+			const heading = card.createDiv({ cls: 'wn-homepage-card-heading' });
+			const nameEl = heading.createDiv({ cls: 'wn-homepage-completed-name' });
 			nameEl.textContent = displayName;
 			nameEl.onclick = () => void this.navigateToNovel(novel.folderPath);
-
 			if (novel.metadata?.series?.trim()) {
-				this.createFieldEl(card, getNovelInfoLabel('series'), novel.metadata.series.trim());
+				heading.createSpan({ cls: 'wn-badge wn-homepage-series-badge', text: novel.metadata.series.trim() });
 			}
+
 			this.createFieldEl(card, t('homepage.field-total-words'), novel.wordCount.toLocaleString());
-			this.createFieldEl(card, getNovelInfoLabel('protagonist'), novel.metadata?.protagonist || '--');
 			this.createFieldEl(card, getNovelInfoLabel('genre'), novel.metadata?.genre || '--');
 
 			if (novel.metadata?.synopsis) {
-				card.createDiv({ cls: 'homepage-completed-synopsis', text: novel.metadata.synopsis });
+				card.createDiv({ cls: 'wn-homepage-completed-synopsis', text: novel.metadata.synopsis });
 			}
 		}
 	}
@@ -421,31 +424,32 @@ export class HomepageRenderer {
 		const allNovels = await (novelsPromise ?? this.getAllNovelsWithMetadata());
 		const drafting = allNovels.filter(n => n.metadata?.status === 'stockpiling');
 		container.empty();
-		container.createDiv({ cls: 'homepage-section-label', text: getNovelStatusText('stockpiling') });
+		container.createDiv({ cls: 'wn-homepage-section-label', text: getNovelStatusText('stockpiling') });
 
 		if (drafting.length === 0) {
-			container.createDiv({ cls: 'stats-empty-msg', text: t('homepage.no-drafting') });
+			container.createDiv({ cls: 'wn-stats-empty-msg', text: t('homepage.no-drafting') });
 			return;
 		}
 
-		const grid = container.createDiv({ cls: 'homepage-completed-grid homepage-drafting-grid' });
+		const grid = container.createDiv({ cls: 'wn-homepage-completed-grid wn-homepage-drafting-grid' });
 
 		for (const novel of drafting) {
 			const displayName = novel.metadata?.name || novel.folderName;
-			const card = grid.createDiv({ cls: 'homepage-completed-card homepage-drafting-card' });
+			const card = grid.createDiv({ cls: 'wn-homepage-completed-card wn-homepage-drafting-card' });
 
-			const nameEl = card.createDiv({ cls: 'homepage-completed-name' });
+			const heading = card.createDiv({ cls: 'wn-homepage-card-heading' });
+			const nameEl = heading.createDiv({ cls: 'wn-homepage-completed-name' });
 			nameEl.textContent = displayName;
 			nameEl.onclick = () => void this.navigateToNovel(novel.folderPath);
-
 			if (novel.metadata?.series?.trim()) {
-				this.createFieldEl(card, getNovelInfoLabel('series'), novel.metadata.series.trim());
+				heading.createSpan({ cls: 'wn-badge wn-homepage-series-badge', text: novel.metadata.series.trim() });
 			}
+
 			this.createFieldEl(card, t('homepage.field-total-words'), novel.wordCount.toLocaleString());
 			this.createFieldEl(card, getNovelInfoLabel('genre'), novel.metadata?.genre || '--');
 
 			if (novel.metadata?.synopsis) {
-				card.createDiv({ cls: 'homepage-completed-synopsis', text: novel.metadata.synopsis });
+				card.createDiv({ cls: 'wn-homepage-completed-synopsis', text: novel.metadata.synopsis });
 			}
 		}
 	}
@@ -455,31 +459,32 @@ export class HomepageRenderer {
 		const allNovels = await (novelsPromise ?? this.getAllNovelsWithMetadata());
 		const paused = allNovels.filter(n => n.metadata?.status === 'paused');
 		container.empty();
-		container.createDiv({ cls: 'homepage-section-label', text: getNovelStatusText('paused') });
+		container.createDiv({ cls: 'wn-homepage-section-label', text: getNovelStatusText('paused') });
 
 		if (paused.length === 0) {
-			container.createDiv({ cls: 'stats-empty-msg', text: t('homepage.no-paused') });
+			container.createDiv({ cls: 'wn-stats-empty-msg', text: t('homepage.no-paused') });
 			return;
 		}
 
-		const grid = container.createDiv({ cls: 'homepage-completed-grid homepage-paused-grid' });
+		const grid = container.createDiv({ cls: 'wn-homepage-completed-grid wn-homepage-paused-grid' });
 
 		for (const novel of paused) {
 			const displayName = novel.metadata?.name || novel.folderName;
-			const card = grid.createDiv({ cls: 'homepage-completed-card homepage-paused-card' });
+			const card = grid.createDiv({ cls: 'wn-homepage-completed-card wn-homepage-paused-card' });
 
-			const nameEl = card.createDiv({ cls: 'homepage-completed-name' });
+			const heading = card.createDiv({ cls: 'wn-homepage-card-heading' });
+			const nameEl = heading.createDiv({ cls: 'wn-homepage-completed-name' });
 			nameEl.textContent = displayName;
 			nameEl.onclick = () => void this.navigateToNovel(novel.folderPath);
-
 			if (novel.metadata?.series?.trim()) {
-				this.createFieldEl(card, getNovelInfoLabel('series'), novel.metadata.series.trim());
+				heading.createSpan({ cls: 'wn-badge wn-homepage-series-badge', text: novel.metadata.series.trim() });
 			}
+
 			this.createFieldEl(card, t('homepage.field-total-words'), novel.wordCount.toLocaleString());
 			this.createFieldEl(card, getNovelInfoLabel('genre'), novel.metadata?.genre || '--');
 
 			if (novel.metadata?.synopsis) {
-				card.createDiv({ cls: 'homepage-completed-synopsis', text: novel.metadata.synopsis });
+				card.createDiv({ cls: 'wn-homepage-completed-synopsis', text: novel.metadata.synopsis });
 			}
 		}
 	}
@@ -488,7 +493,7 @@ export class HomepageRenderer {
 	async renderStatsSummary(container: HTMLElement, novelsPromise?: Promise<NovelFolderInfo[]>): Promise<void> {
 		const history: Record<string, DailyStat> = this.plugin.historyManager ? this.plugin.historyManager.getHistory() : {};
 		container.empty();
-		container.createDiv({ cls: 'homepage-section-label', text: t('homepage.efficiency-overview') });
+		container.createDiv({ cls: 'wn-homepage-section-label', text: t('homepage.efficiency-overview') });
 
 		const rangeStart = this.plugin.settings.heatmapStartDate || window.moment().clone().startOf('year').format('YYYY-MM-DD');
 		const rangeEnd = this.plugin.settings.heatmapEndDate || window.moment().format('YYYY-MM-DD');
@@ -519,7 +524,7 @@ export class HomepageRenderer {
 			console.error('[WebNovel] Error calculating novel completion rates:', e);
 		}
 
-		const row = container.createDiv({ cls: 'stats-efficiency-row' });
+		const row = container.createDiv({ cls: 'wn-stats-efficiency-row' });
 		const metrics = [
 			{ label: t('common.consecutive-creation'), value: t('common.consecutive-days', { count: streak }) },
 			{ label: t('common.active-period'), value: activeHours },
@@ -532,9 +537,9 @@ export class HomepageRenderer {
 		];
 
 		for (const m of metrics) {
-			const card = row.createDiv({ cls: 'stats-efficiency-card' });
-			card.createDiv({ cls: 'stats-efficiency-label', text: m.label });
-			card.createDiv({ cls: 'stats-efficiency-value', text: m.value });
+			const card = row.createDiv({ cls: 'wn-stats-efficiency-card' });
+			card.createDiv({ cls: 'wn-stats-efficiency-label', text: m.label });
+			card.createDiv({ cls: 'wn-stats-efficiency-value', text: m.value });
 		}
 	}
 
@@ -542,7 +547,7 @@ export class HomepageRenderer {
 	renderHeatmap(container: HTMLElement): void {
 		const history: Record<string, DailyStat> = this.plugin.historyManager ? this.plugin.historyManager.getHistory() : {};
 		container.empty();
-		container.createDiv({ cls: 'homepage-section-label', text: t('homepage.heatmap') });
+		container.createDiv({ cls: 'wn-homepage-section-label', text: t('homepage.heatmap') });
 
 		const now = window.moment();
 		const rangeStart = this.plugin.settings.heatmapStartDate
@@ -558,27 +563,45 @@ export class HomepageRenderer {
 		const totalWeeks = Math.ceil(alignedEnd.diff(alignedStart, 'days') / 7) + 1;
 
 		// 图例（含字数减少）
-		const gridContainer = container.createDiv({ cls: 'stats-heatmap-grid' });
+		const gridContainer = container.createDiv({ cls: 'wn-stats-heatmap-grid' });
 
 		for (let dayOfWeek = 0; dayOfWeek < 7; dayOfWeek++) {
-			const row = gridContainer.createDiv({ cls: 'stats-heatmap-row' });
+			const row = gridContainer.createDiv({ cls: 'wn-stats-heatmap-row' });
 
 			for (let w = 0; w < totalWeeks; w++) {
 				const cellDate = alignedStart.clone().add(w, 'weeks').add(dayOfWeek, 'days');
 				const dateStr = cellDate.format('YYYY-MM-DD');
 				const stat = history[dateStr];
-				const cell = row.createDiv({ cls: 'stats-heatmap-cell' });
+				const cell = row.createDiv({ cls: 'wn-stats-heatmap-cell' });
 
-				if (cellDate.isSame(now, 'day')) cell.addClass('stats-heatmap-today');
+				if (cellDate.isSame(now, 'day')) cell.addClass('wn-stats-heatmap-today');
+
+				const isFuture = cellDate.isAfter(now, 'day');
 
 				if (stat) {
 					const words = stat.addedWords || 0;
 					cell.addClass(getHeatClass(words));
-					cell.setAttribute('title', dateStr + ': ' + words.toLocaleString() + ' ' + t('common.word-char'));
-				} else if (cellDate.isAfter(now, 'day')) {
-					cell.addClass('stats-heatmap-future');
+					const details = `${words.toLocaleString()} ${t('common.word-char')}`;
+					if (isFuture) {
+						cell.addClass('wn-stats-heatmap-future');
+						cell.setAttribute('title', `${dateStr}: ${details}`);
+					} else {
+						bindDailyStatsTrigger(cell, {
+							app: this.app,
+							plugin: this.plugin,
+							date: dateStr,
+							details
+						});
+					}
+				} else if (isFuture) {
+					cell.addClass('wn-stats-heatmap-future');
 				} else {
-					cell.addClass('heat-0');
+					cell.addClass('wn-heat-0');
+					bindDailyStatsTrigger(cell, {
+						app: this.app,
+						plugin: this.plugin,
+						date: dateStr
+					});
 				}
 			}
 		}
@@ -588,7 +611,7 @@ export class HomepageRenderer {
 	renderBarChart(container: HTMLElement): void {
 		const history: Record<string, DailyStat> = this.plugin.historyManager ? this.plugin.historyManager.getHistory() : {};
 		container.empty();
-		container.createDiv({ cls: 'homepage-section-label', text: t('homepage.trend-30days') });
+		container.createDiv({ cls: 'wn-homepage-section-label', text: t('homepage.trend-30days') });
 
 		const now = window.moment();
 		const days: { date: string; words: number }[] = [];
@@ -600,30 +623,35 @@ export class HomepageRenderer {
 		}
 
 		if (days.length === 0) {
-			container.createDiv({ cls: 'stats-empty-msg', text: t('common.no-data') });
+			container.createDiv({ cls: 'wn-stats-empty-msg', text: t('common.no-data') });
 			return;
 		}
 
 		const maxAbsValue = Math.max(...days.map(d => Math.abs(d.words)), 1);
 
-		const chartArea = container.createDiv({ cls: 'homepage-chart-container' });
+		const chartArea = container.createDiv({ cls: 'wn-homepage-chart-container' });
 
 		for (const day of days) {
 			const val = day.words;
 			const heightPercent = Math.max(4, (Math.abs(val) / maxAbsValue) * 100);
-			const bar = chartArea.createDiv({ cls: 'homepage-chart-bar' });
+			const bar = chartArea.createDiv({ cls: 'wn-homepage-chart-bar' });
 			bar.setCssProps({ height: `${heightPercent}%` });
 
 			if (val < 0) {
-				bar.addClass('bar-negative');
+				bar.addClass('wn-bar-negative');
 			} else {
 				const ratio = val / maxAbsValue;
-				if (ratio >= 0.8) bar.addClass('bar-high');
-				else if (ratio >= 0.5) bar.addClass('bar-medium');
-				else if (ratio >= 0.2) bar.addClass('bar-low');
-				else bar.addClass('bar-minimal');
+				if (ratio >= 0.8) bar.addClass('wn-bar-high');
+				else if (ratio >= 0.5) bar.addClass('wn-bar-medium');
+				else if (ratio >= 0.2) bar.addClass('wn-bar-low');
+				else bar.addClass('wn-bar-minimal');
 			}
-			bar.setAttribute('title', day.date + ': ' + day.words.toLocaleString() + ' ' + t('common.word-char'));
+			bindDailyStatsTrigger(bar, {
+				app: this.app,
+				plugin: this.plugin,
+				date: day.date,
+				details: `${day.words.toLocaleString()} ${t('common.word-char')}`
+			});
 		}
 	}
 

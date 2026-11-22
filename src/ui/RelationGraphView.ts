@@ -1,3 +1,4 @@
+import { showPluginNotice } from '../services/PluginNoticeService';
 /**
  * 关系图谱视图 (Relation Graph View)
  *
@@ -18,7 +19,7 @@
  * - 定时器使用 window.requestAnimationFrame 并在 onClose 中清理
  */
 
-import { ItemView, Notice, TFile } from 'obsidian';
+import { ItemView, TFile, type App } from 'obsidian';
 declare class ResizeObserver { constructor(callback: (...args: unknown[]) => void); observe(target: Element): void; disconnect(): void; }
 import type { WorkspaceLeaf } from 'obsidian';
 import type { CharacterManager } from '../services/CharacterManager';
@@ -27,6 +28,8 @@ import { ForceLayoutEngine, type LayoutNode, type LayoutEdge } from '../services
 import { GraphRenderer, type GraphRenderState, type ThemeColors } from './components/GraphRenderer';
 import { cleanLoreHeading } from '../services/CharacterManager';
 import { GraphInteractionController } from './components/GraphInteractionController';
+import { GraphHoverAdapter } from './components/GraphHoverAdapter';
+import type { AccurateCountSettings } from '../types/settings';
 import { t } from '../i18n';
 import { smartLocateAndHighlight } from '../utils/leaf';
 
@@ -78,7 +81,16 @@ export interface LayoutData {
 export type RelationGraphCharacterManager = Pick<
 	CharacterManager,
 	'ensureInitialized' | 'getBookPathForFile' | 'getCharacterFile' | 'isLorePath'
->;
+> & Partial<Pick<
+	CharacterManager,
+	| 'getLoreEntriesInFileOrder'
+	| 'toggleLoreImportance'
+	| 'isBorrowedLoreEntry'
+	| 'updateLoreEntry'
+	| 'getLoreSnapshot'
+	| 'findLoreFolder'
+	| 'getAvailableLoreCategories'
+>>;
 
 export type RelationGraphManagerCapability = Pick<
 	RelationGraphManager,
@@ -86,6 +98,8 @@ export type RelationGraphManagerCapability = Pick<
 >;
 
 export interface RelationGraphViewPlugin {
+	app?: App;
+	settings?: Partial<Pick<AccurateCountSettings, 'enableLorePopover' | 'enableMobileLorePopover' | 'lorePopoverCollapse'>>;
 	characterManager: RelationGraphCharacterManager;
 	relationGraphManager: RelationGraphManagerCapability;
 }
@@ -114,6 +128,7 @@ export class RelationGraphView extends ItemView {
 
 	// --- 交互控制器与渲染状态 ---
 	private controller: GraphInteractionController | null = null;
+	private hoverAdapter: GraphHoverAdapter | null = null;
 	private renderState: GraphRenderState = {
 		scale: 1.0,
 		panX: 0,
@@ -175,6 +190,13 @@ export class RelationGraphView extends ItemView {
 		}
 	}
 
+	private resetHoverState(): void {
+		this.hoverAdapter?.cancel();
+		if (this.renderState.hoveredNode !== null) {
+			this.renderState.hoveredNode = null;
+		}
+	}
+
 	private isGraphHidden(): boolean {
 		if (this.isClosed || !this.container || !this.container.isConnected) return true;
 		const doc = this.container.ownerDocument;
@@ -232,6 +254,21 @@ export class RelationGraphView extends ItemView {
 		this.hintEl = this.container.createDiv({ cls: 'wna-relation-graph-hint' });
 		this.hintEl.textContent = t('relation-graph.hint-double-click-node');
 
+		this.hoverAdapter = new GraphHoverAdapter({
+			app: this.plugin.app ?? this.app,
+			canvas: this.canvas,
+			anchorParent: this.container,
+			state: this.renderState,
+			characterManager: this.plugin.characterManager,
+			getSettings: () => ({
+				enableLorePopover: this.plugin.settings?.enableLorePopover,
+				enableMobileLorePopover: this.plugin.settings?.enableMobileLorePopover ?? false,
+				lorePopoverCollapse: this.plugin.settings?.lorePopoverCollapse ?? false
+			}),
+			getBookPath: () => this.bookPath,
+			isHidden: () => this.isGraphHidden()
+		});
+
 		// 绑定交互控制器
 		this.controller = new GraphInteractionController(
 			this.canvas,
@@ -239,6 +276,7 @@ export class RelationGraphView extends ItemView {
 			{
 				requestRender: () => this.requestRender(),
 				onNodeDoubleClick: (node) => {
+					this.resetHoverState();
 					if (node.headingLine !== undefined) {
 						void smartLocateAndHighlight(this.app, node.file, [], {
 							sourceLeaf: this.leaf, splitIfNew: true, fallbackLine: node.headingLine,
@@ -261,15 +299,24 @@ export class RelationGraphView extends ItemView {
 							fallbackLine
 						});
 					} else {
-						new Notice(t('relation.character-not-found', { id: node.id }));
+						showPluginNotice(t('relation.character-not-found', { id: node.id }));
 					}
 				},
 				onBackgroundDoubleClick: () => {
+					this.resetHoverState();
 					if (this.renderState.isLocalMode) {
 						this.exitLocalMode();
 					}
 				},
-				onNodeHover: () => {},
+				onNodeHover: (node, e) => {
+					this.hoverAdapter?.handleNodeHover(node, e);
+				},
+				onCanvasMouseLeave: (e) => {
+					this.hoverAdapter?.handleCanvasMouseLeave(e);
+				},
+				onViewportInteraction: () => {
+					this.hoverAdapter?.cancel();
+				},
 				onNodeDragStart: (node) => {
 					if (this.engine) {
 						const layoutNode = this.engine.nodes.find(n => n.id === node.id);
@@ -310,6 +357,9 @@ export class RelationGraphView extends ItemView {
 
 		// 设置 ResizeObserver 监听容器变化
 		this.resizeObserver = new ResizeObserver(() => {
+			if (this.isGraphHidden()) {
+				this.resetHoverState();
+			}
 			this.updateCanvasSize();
 			if (this.engine) {
 				this.engine.resize(this.canvasWidth, this.canvasHeight);
@@ -326,6 +376,7 @@ export class RelationGraphView extends ItemView {
 		// 监听容器所属文档的可见性变化（窗口最小化或后台时暂停动画）
 		const onVisibilityChange = () => {
 			if (this.isGraphHidden()) {
+				this.resetHoverState();
 				if (this.animationFrameId) {
 					const win = this.container?.ownerDocument?.defaultView ?? window;
 					win.cancelAnimationFrame(this.animationFrameId);
@@ -407,6 +458,12 @@ export class RelationGraphView extends ItemView {
 		}
 
 		// 清理交互控制器
+		if (this.hoverAdapter) {
+			this.hoverAdapter.dispose();
+			this.hoverAdapter = null;
+		}
+		this.renderState.hoveredNode = null;
+
 		if (this.controller) {
 			this.controller.unbindEvents();
 			this.controller = null;
@@ -450,6 +507,7 @@ export class RelationGraphView extends ItemView {
 	 */
 	public async loadGraphForFile(filePath: string): Promise<void> {
 		this.cancelDebouncedReload();
+		this.resetHoverState();
 		const token = ++this.loadGeneration;
 		this.filePath = filePath;
 
@@ -474,6 +532,7 @@ export class RelationGraphView extends ItemView {
 			return;
 		}
 
+		this.resetHoverState();
 		this.showCanvas();
 		this.graphData = data;
 		this.fullGraphData = null;
@@ -578,6 +637,7 @@ export class RelationGraphView extends ItemView {
 			}
 		});
 
+		this.resetHoverState();
 		this.graphData = newData;
 		this.controller?.updateLayout(this.graphData);
 		this.buildEdgeOffsets();
@@ -597,6 +657,7 @@ export class RelationGraphView extends ItemView {
 	 * 显示空状态提示（无数据时）
 	 */
 	private showEmptyState(): void {
+		this.resetHoverState();
 		if (!this.container) return;
 		if (this.canvas) {
 			this.canvas.hidden = true;
@@ -801,6 +862,7 @@ export class RelationGraphView extends ItemView {
 	private exitLocalMode(): void {
 		if (!this.fullGraphData) return;
 
+		this.resetHoverState();
 		this.renderState.isLocalMode = false;
 		this.renderState.localFocusNode = null;
 		this.graphData = this.fullGraphData;

@@ -2,6 +2,8 @@
 
 Welcome to WebNovel Assistant! An Obsidian plugin designed specifically for web novel writing.
 
+> This guide covers the current 4.1.0 feature set and requires Obsidian 1.8.7 or later. Features marked “4.1.0” require that version; see [Releases](https://github.com/HatanoChihiro/obsidian-webnovel-assistant/releases) for published versions and installation files.
+
 ## 📚 Table of Contents
 
 - [Getting Started](#getting-started)
@@ -22,6 +24,7 @@ Welcome to WebNovel Assistant! An Obsidian plugin designed specifically for web 
   - [Writing Workbench](#writing-workbench)
     - [Writing Journey](#writing-journey)
   - [Immersive Writing Mode](#immersive-writing-mode)
+    - [Manuscript Mode (4.1.0, Desktop)](#manuscript-mode-410-desktop)
 - [Advanced Features](#advanced-features)
   - [Creative Homepage](#creative-homepage)
   - [Smart Chapter Creation](#smart-chapter-creation)
@@ -41,7 +44,9 @@ Welcome to WebNovel Assistant! An Obsidian plugin designed specifically for web 
   - [Chapter Overview (Classic)](#chapter-overview-classic)
   - [Advanced Search](#advanced-search)
   - [Writing Status Panel](#writing-status-panel)
-- [Multi-Platform Adaptation](#multi-platform-adaptation)
+  - [Data Storage and Sync Scope](#data-storage-and-sync-scope)
+  - [Chapter Snapshots and Replay](#chapter-snapshots-and-replay)
+- [Mobile Features](#mobile-features)
 - [Streaming Features](#streaming-features)
   - [OBS Overlay](#obs-overlay)
 - [Other Settings](#other-settings)
@@ -51,6 +56,7 @@ Welcome to WebNovel Assistant! An Obsidian plugin designed specifically for web 
   - [Typography Settings](#typography-settings)
   - [Debug Mode](#debug-mode)
   - [Keyboard Shortcuts](#keyboard-shortcuts)
+- [Multi-Platform Adaptation](#multi-platform-adaptation)
 - [FAQ](#faq)
 - [Feedback & Support](#feedback--support)
 - [Related Documentation](#related-documentation)
@@ -81,9 +87,11 @@ Welcome to WebNovel Assistant! An Obsidian plugin designed specifically for web 
 
 ### First Use
 
-1. Open any Markdown file
-2. The status bar will display the current file's word count
-3. Click the status bar to set a word count goal
+1. Open **Settings → WebNovel Assistant → General** and choose your workspace scope. Enter parent directories containing works, one per line, or leave empty for vault-wide use.
+2. Open an existing chapter, or right-click the first workspace folder to create or import a work. Existing works do not need to be imported again.
+3. View word counts in the desktop status bar. Run **Set Chapter Word Count Goal**, or use the file menu, to set a goal. **Show Status Bar Progress** is off by default and must be enabled to show goal progress there.
+4. Run **Toggle Writing Workbench View** to manage chapters and references. Enable typography, proofreading, ordinary-editor typewriter scrolling, the mobile widget, or immersive manuscript mode as needed.
+5. Use the search field at the top of plugin settings to find an option and jump to it. Phones and tablets do not show the **Immersive Mode** or **Data Output** tabs.
 
 ---
 
@@ -192,7 +200,7 @@ Assigning a series does not automatically create public folders or categories. E
 
 ##### Custom Rules
 
-1. Open plugin settings → **Smart Sorting**.
+1. Open plugin settings → **General** and enable **Smart Chapter Sorting** to show its rule configuration.
 2. Find **Sorting Rule Configuration**.
 3. Click **+ Add New Rule**.
 4. Enter the rule name and regular expression.
@@ -206,12 +214,12 @@ Assigning a series does not automatically create public folders or categories. E
 
 ##### Default Rules
 
-The plugin comes with 5 pre-configured rules in settings (the first 3 are enabled by default), which you can toggle anytime:
+Five rules are provided. The examples below describe the Simplified Chinese initial configuration, whose first three rules are enabled. English installations instead enable pure numbers, English chapters, and brackets; Traditional Chinese uses corresponding traditional naming rules. Switching languages does not reset existing rules. Adjust the enabled rules to match your files:
 
 **Rule 1: Arabic Numerals (第1章, 第01章)**
 ```
 Name: Arabic Numerals (第1章, 第01章)
-Regex: ^第?(\d+)[章节回卷部册篇]?
+Regex: ^(?:第(\d+)[章节回卷部册篇]?|第?(\d+)[章节回卷部册篇])
 Enabled: Yes
 ```
 Supported formats: `第1章`, `第01章`, `1章`, `第1节`, `第1回`, `第1卷`, `第1部`, `第1册`, `第1篇`
@@ -219,7 +227,7 @@ Supported formats: `第1章`, `第01章`, `1章`, `第1节`, `第1回`, `第1卷
 **Rule 2: Chinese Numerals (第一章, 第二章)**
 ```
 Name: Chinese Numerals (第一章, 第二章)
-Regex: ^第?([零一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]+)[章节回卷部册篇]?
+Regex: ^(?:第([零一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]+)[章节回卷部册篇]?|第?([零一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟萬〇]+)[章节回卷部册篇])
 Enabled: Yes
 ```
 Supported formats: `第一章`, `第二十三章`, `第一百章`, `第九百九十九章` (supports one through nine hundred ninety-nine)
@@ -337,26 +345,24 @@ This way `番外1` → number 1, `番外2` → number 2, and they are automatica
 - **Real-Time Updates**: Word count updates automatically while editing
 - **Net Word Count**: Displays the number of new words added in the current session
 - **Status Bar Display**: Shown in the Obsidian bottom status bar
+- **Footnotes and Comments**: Excluded by default; one setting includes them in word counts and clean text copies
 - **Strict Chapter Mode**: Restricts word count features to only files that match chapter naming rules (see [Strict Chapter Mode](#strict-chapter-mode))
 - **Real-Time Word Count Reminders**: Displays cumulative word count reminders on the left side of the editor in real time (see [Real-Time Word Count Reminders](#real-time-word-count-reminders))
 
 #### How to Use
 1. Open any Markdown file
 2. The status bar automatically displays the word count: `1,234 words | Net: +56 words`
-3. Click the status bar to quickly set a goal
+3. Run **Set Chapter Word Count Goal** or use the file menu; enable **Show Status Bar Progress** to display goal progress
 
 #### Related Settings
 - **Workspace Folder**: Limits the counting scope (see [Workspace Settings](#workspace-settings))
 - **Non-Workspace Files**: Files outside the workspace scope still display basic word counts in the status bar (without tracking state and net word count)
 
 - Counted: Chinese characters, English words, numbers
-- Not counted: Markdown syntax, code blocks, comments, YAML frontmatter
+- Excluded by default: Markdown formatting markers, code blocks, YAML frontmatter, footnotes, and `%%…%%` comments; footnotes and comments can be included with the setting below
 
-#### Word Count Stability and Anti-Jitter [HOT]
-To solve the common "word count spike/drop" problem in Obsidian plugins, this plugin uses a multi-layer verification architecture:
-- **Real-Time Sync**: Changes in the editor are immediately synced to the in-memory cache.
-- **File Baseline Sync**: When a file is auto-saved (triggering a modify event), the plugin compares the current cache against disk content using timestamp verification, ensuring incremental calculations are based on the same baseline.
-- **Cold Start Protection**: During plugin loading and index building, all file changes are captured in real time to update the cache baseline, preventing massive false increments after layout is ready.
+#### Current Count and Writing Increments
+The current count measures existing document content; daily and session net counts measure recorded changes, so deleting text can reduce those totals. Changing the counting mode or rebuilding the cache updates current counts without rewriting stored daily history. To correct today's history manually, run **Reset today writing stats** and choose whether to correct only the word count or clear today's data.
 
 #### Word Count Modes
 
@@ -375,6 +381,10 @@ The plugin provides three word count algorithms for different writing scenarios:
 4. After switching, the entire vault is automatically recalculated
 
 > **Tip**: Word counts for the same document may differ significantly between modes. This is normal. Simply choose the counting mode that matches your publishing platform.
+
+#### Footnotes, Comments, and Clean Copies
+
+Under **Settings → Word Count**, **Include Footnotes and Comments in Counts and Copies** is off by default. Footnote references, definitions (including indented multiline or multiparagraph content), inline footnotes, and inline or multiline `%%…%%` comments are excluded from counts and clean text copies. Enabling the option includes them under the current counting mode and preserves their content in clean copies; other Markdown cleanup rules still apply.
 
 #### Selection Word Count Tooltip
 
@@ -405,7 +415,7 @@ To restore counting, choose **Include in Word Count** from the same location. Th
 ##### How to Use
 
 ###### Setting a Chapter Goal
-1. Right-click a file → **Set Chapter Word Goal**
+1. Right-click a file → **Set Chapter Word Count Goal**
 2. Enter the target word count (e.g., 3000)
 3. The status bar displays progress: `1,234 / 3,000 (41%)`
 
@@ -417,7 +427,7 @@ To restore counting, choose **Include in Word Count** from the same location. Th
 ##### Related Settings
 - **Default Chapter Goal**: Default target for new files (default: 3000 words)
 - **Daily Word Goal**: Today's writing target (default: 5000 words)
-- **Show Status Bar Progress**: Whether to display progress in the status bar (desktop only, enabled by default)
+- **Show Status Bar Progress**: Whether to display progress in the status bar (desktop only, off by default)
 
 ###### Viewing Progress
 - **Status Bar**: Displays current file progress
@@ -477,7 +487,7 @@ If word counts are displayed incorrectly:
 - **Slack Time**: Tracks idle time
 - **Auto Detection**: Automatically switches to slack after 60 seconds of inactivity
 - **History**: Saves daily statistics
-- **Activity Scope**: Typing in outlines, lore, reference documents, or chapters excluded from word count also resumes focus activity immediately; word totals, net gains, and writing history remain limited to eligible chapters.
+- **Activity Scope**: Input in outlines, lore, reference documents, and excluded chapters within a workspace participates in focus/idle detection. Switching to an outside document immediately counts as slack, and outside input does not extend focused activity. An empty workspace setting means vault-wide scope. Chapter word-count eligibility is evaluated separately.
 
 #### How to Use
 
@@ -497,7 +507,7 @@ If word counts are displayed incorrectly:
 #### Related Settings
 - **Idle Timeout Threshold**: How many seconds without keyboard input count as slack time (default: 60 seconds)
 
-> **Mobile**: Phones and tablets can use the experimental focus timer after enabling **Show Floating Word Stats** and **Enable Focus Timer on Mobile**. Control it with the play/pause button in the floating widget; screen-off and background time are filtered out, and data syncs with desktop.
+> **Mobile**: Focus timing is always available on phones and tablets. Enable **Show Floating Word Stats** to show its controls; no separate timer setting is needed. Control it with the floating widget's play/pause button or the status button beside Today's Status in the Writing Status Panel; screen-off and background time are filtered out, and data syncs with desktop.
 
 ---
 
@@ -515,7 +525,7 @@ Use the links after each panel title to jump to its detailed feature documentati
    - **Supports Multi-Template Selection**: Configure multiple template files in settings to select on demand when creating chapters.
 2. **Timeline Panel** (see [Timeline Management](#timeline-management)):
    - Displays novel events in a vertical timeline flow; supports dragging chapters to timeline nodes and dragging event cards to reorder.
-   - Features a bottom floating window for unassociated chapters and highlighted association lines. The list supports ascending/descending order while preserving the same volume order used by All Chapters and Chapter Overview.
+   - Provides a collapsible unassociated-chapter panel and highlighted association lines. The list supports ascending/descending order while preserving the same volume order used by All Chapters and Chapter Overview.
 3. **Lore Panel** (see [Lore Quick Reference](#lore-quick-reference), [Lore Graph](#lore-graph), and [Lore Overview](#lore-overview)):
    - Supports switching between **Table View**, **Card View**, and **Full Lore Graph View**.
    - Automatically tracks appearance counts and chapters; supports double-clicking graph nodes to jump directly to the Markdown document.
@@ -534,6 +544,7 @@ Use the links after each panel title to jump to its detailed feature documentati
 - **Full-Text Filtering**: All Chapters filters chapter titles, synopses, and body text; Lore filters titles, aliases, and body text; Foreshadowing filters titles, source quotes, tags, and resolution notes. Use the clear button, press Esc, or run **Workbench: Clear Search Filter** to restore the full list.
 - **Work Switcher Ordering**: The work switcher beside the title follows the same work order shown in File Explorer.
 - **Sticky Note Entry Point**: The Workbench is scoped to one work and no longer contains vault-wide sticky-note management. Use the cross-platform **Sticky Note List** side panel instead.
+- **Important Chapters**: Mark a chapter as important on its card; this is stored separately from its writing status.
 
 #### How to Use
 
@@ -572,10 +583,30 @@ Use the links after each panel title to jump to its detailed feature documentati
 - **Typewriter Scroll**: Keeps the active cursor line vertically centered on screen.
 - **Context Line Dimming**: Dims non-focused lines when typewriter mode is active to boost concentration.
 - **Center Offset and Unfocused Line Opacity**: Fine-tune the active line's vertical position and the dimming strength of surrounding text.
-- **Slot Layout**: In settings under Immersive Mode, use the visual layout editor to freely assign panels (chapter list, foreshadowing, timeline, notes, reference documents, chapter overview, lore overview) to top, bottom, left, and right slots.
+- **Slot Layout**: In settings under Immersive Mode, assign chapter list, chapter status, foreshadowing, timeline, notes, reference, chapter overview, or lore overview panels to the four regions.
 - **Auto-Hide Properties Panel**: When enabled, the Markdown properties panel at the top is automatically hidden in immersive mode.
 - **Top Dashboard Data Toggles**: Independently show or hide total time, focus time, slack time, chapter goal, daily goal, task goal, and session net words.
 - **Note Typography & Style**: Note font sizes and display styles are now centrally managed under **Writing Tools** settings.
+
+#### Manuscript Mode (4.1.0, Desktop)
+
+1. Turn on **Enable manuscript mode** under **Settings → Immersive Mode** (off by default). Open a non-excluded Markdown chapter that matches a chapter naming rule or lies in a strict-mode exception directory, then enter Immersive Mode. Manuscript mode always requires chapter eligibility; disabling strict chapter mode does not make it include all ordinary documents.
+2. Chapters appear in the work's chapter order in one continuous view. The active chapter uses Obsidian's native editor; other chapters load previews as needed. Scrolling or dragging the scrollbar lets you read other chapters without automatically changing the editing target.
+3. Click a chapter title to edit from its start, or click a passage to continue at that position. You can also switch from the chapter list or run **Create Next Chapter (Smart Increment)**. The current chapter is saved before switching; a failed save cancels the switch and preserves edits.
+4. Cursor and reading positions are remembered per work and restored when returning. This view keeps chapter files separate. Read Novel Info, timelines, lore, and other supporting documents in the reference pane; opening a non-chapter in the main editor returns to an eligible chapter.
+5. Disable **Enable Manuscript Mode** to return to single-chapter immersive editing. This mode is unavailable on phones and tablets.
+
+#### Chapter Status Auxiliary Panel (4.1.0, Desktop)
+
+Add **Chapter Status** to any of the four regions in the immersive layout editor. It follows the main editing chapter and shows status, synopsis, foreshadowing, timeline, and lore; click the status badge to change the chapter status. Focusing a reference document or another auxiliary panel does not change the chapter it follows.
+
+#### Auxiliary Regions, Break Reminders, and Dashboard Controls
+
+Use the arrows along the main editor's edges to collapse or restore configured regions. Sizes and collapsed states are remembered. **Immersive mode: Toggle auxiliary regions** temporarily hides all regions, then restores the previously visible ones; bind a hotkey under Obsidian's **Settings → Hotkeys**.
+
+The typewriter switch has a quick-adjustment button for center offset (-30% to +30%) and unfocused-line opacity (10% to 100%). **Top Dashboard Display Toggles** can also show session speed, the current time, and typewriter controls. Hiding the controls does not disable typewriter scrolling.
+
+**Pomodoro Reminder** is off by default, with a default interval of 30 minutes and a supported range of 20–180 minutes. It starts on entering Immersive Mode and offers another round or dismissal when reminding you to rest. It is controlled separately from focus/slack statistics.
 
 ---
 
@@ -658,21 +689,25 @@ Use the links after each panel title to jump to its detailed feature documentati
 ### Merge Chapters
 
 #### Overview
-- Merge an entire work or a selected volume in the current chapter order, with an option to include chapter titles.
+- Merge an entire work, a volume, or selected chapters in the current chapter order, with an option to include chapter titles.
 - Desktop provides merged/original comparison, content revision, applying changes back to source chapters, and export.
 - Phones and tablets provide a single-column waterfall preview, a chapter-title toggle, and export, but do not support revision or applying changes back.
 
 #### How to Use
 1. Select **Merge Chapters** to the left of the work-status button in the Workbench All Chapters panel, or right-click a work or volume folder in the File Explorer and select **Merge Chapters**.
-2. Preview the merged result and choose whether to include chapter titles.
-3. On desktop, revise and apply changes back or export directly; on mobile, export after reviewing the preview.
+2. Chapters start selected. Toggle them individually or use **Select All/Deselect All**; Shift-click a checkbox to select or deselect a range in the current list order.
+3. On desktop, search chapter or volume names; bulk selection affects only visible results and keeps hidden selections. On mobile, use **Range** to choose start/end chapters or select by volume, and **Directory** to search and navigate the preview. The selected count covers the entire list; export is unavailable when none are selected.
+4. Choose whether to include chapter titles. Export includes only selected chapters in their existing order; preview and revision still show all chapters. Mobile keeps chapter names on cards even when exported titles are disabled.
+5. Desktop supports applying revisions back or exporting directly. **Apply and Overwrite Originals** and **Apply and Export** save all modified chapters; selection controls only the merged export. Partial export preserves drafts for unselected chapters. Mobile supports preview and export without source revision.
+
+> If another editor or sync changes source chapters during revision, preserve the merged draft and review the latest originals before applying changes, to avoid overwriting newer content.
 
 ---
 
 ### Floating Sticky Notes
 
 #### Overview
-- **Floating Windows**: Draggable, resizable note windows.
+- **Desktop Floating Windows**: Draggable and resizable; phones and tablets use the **Sticky Note List** below.
 - **Multiple Themes**: 6 preset theme colors with real-time switching.
 - **Auto Save**: When enabled, content is saved instantly as you type, no manual saving needed.
 - **Obsidian Sync Compatibility**: Sticky-note data is stored with plugin settings in `data.json` so it can sync across devices through Obsidian Sync.
@@ -779,7 +814,7 @@ If existing floating notes disappear, run **Show/Hide All Floating Notes** from 
 
 #### Related Settings
 - **Foreshadowing File Name**: Default `Foreshadowing`, customizable
-- **Show Timestamps**: Whether to display creation time (enabled by default)
+- **Enable Foreshadowing Hover Cards**: Off by default; displays background highlights and cards for linked original text. Disabling hides both. Enabled lore cards take priority where annotations overlap.
 - **Default Tags**: Preset common tags (default: Character, Plot, Worldbuilding, Item, Clue)
 
 ---
@@ -815,6 +850,8 @@ If existing floating notes disappear, run **Show/Hide All Floating Notes** from 
 5. Click an event card title to open the timeline file and precisely locate and highlight that entry. The Writing Workbench timeline board supports the same navigation.
 6. The Workbench Timeline Board's **Unassociated Chapters** area supports ascending/descending order and preserves the same volume order used by All Chapters and Chapter Overview.
 
+Use a vertical time node's edit button to update the node and its events together in a dialog, then confirm to save.
+
 ##### Horizontal Lore Trajectory
 
 Select **Trajectory** in the Workbench timeline to view events across time nodes and lore lanes. Click a description to edit, press Enter for a new line, and click outside to save while keeping the canvas position and zoom. Copies of the same event across lore lanes update together.
@@ -845,6 +882,7 @@ Select **Trajectory** in the Workbench timeline to view events across time nodes
 #### Related Settings
 - **Timeline File Name**: Default `Timeline`, customizable
 - **Default Types**: Preset common types (default: Main Plot, Side Plot, Flashback, Foreshadowing Line, Hidden Line)
+- **Enable Timeline Hover Cards**: Off by default; enables background highlights and cards for linked original text. Disabling hides both.
 
 ---
 
@@ -943,7 +981,11 @@ When lore files or chapters already exist but lore highlighting, Workbench stati
 4. (Optional) Click **Select Template** to choose a Markdown file from your vault. The 10 most recently used templates remain available below for quick use; removing a record leaves the template file intact. Heading sections and field lines (e.g., `### Biography`, `**Age**: 20`, or `Identity: Scholar`) become editable fields; aliases, types, and relations use the existing controls. Saving adds the template content as sections within the same lore entry and leaves the template file unchanged. Edits survive template switches within the current dialog; closing the dialog discards the drafts.
 5. Click save; the lore entry is automatically written to the corresponding categorized document
 
-> **Mobile**: Lore names and aliases are still recognized and shown with dashed underlines. Enable **Lore Hover Popover on Mobile** to tap and view a card; disabling it only disables the cards to prevent accidental taps while scrolling.
+###### Viewing and Editing Lore Cards
+
+Use **Settings → Writing Tools → Enable Lore Hover Cards** to control editor cards. Before this switch is explicitly set, desktop defaults to enabled and mobile to disabled; a manual setting applies across platforms. Hover over a lore name on desktop or tap it on mobile to view its card. Disabling cards keeps dashed annotations and navigation. Hover cards, Workbench cards, and Lore Overview share an edit dialog for names, types, aliases, descriptions, and relationships; headings and colon labels become separate fields. Saving updates the source document. Borrowed series lore is read-only and must be edited in its source work.
+
+The board and Lore Overview also have a separate large-card preview setting (off by default), with controls for hover activation, persistence, and the maximum number of previews. It is independent of lore-name cards in the editor.
 
 ##### Related Settings
 - **Lore Folder Name**: Default `Lore`, customizable
@@ -958,6 +1000,7 @@ When lore files or chapters already exist but lore highlighting, Workbench stati
 - **Customizable Styles**: Highly customizable appearance (colors, lines, dashes, etc.), which can be deeply modified via CSS Snippets.
 - **Complete Example**: Copy and customize the [complete Lore Graph CSS snippet example](LORE_GRAPH_CSS_EXAMPLE.css), which applies to both the standalone graph and Workbench Full Lore Graph.
 - **Dynamic Interaction**: Double-click to jump to the character document, scroll wheel to zoom, and right-click to pan the canvas. Hover to highlight related nodes and edges.
+- **Node Lore Cards**: On desktop, hover over a node for one second to preview its lore card, then move the pointer into the card to keep reading or use its controls. Available in both the Workbench and standalone graph, controlled by **Settings → Writing Tools → Enable Lore Hover Cards**. Borrowed series lore remains read-only; dragging, panning, or zooming closes the card.
 
 ##### How to Use
 
@@ -1022,7 +1065,7 @@ Under Lore Quick Lookup in WNA settings, toggle ancestor paths in cards and lore
 ##### Overview
 - **Direct Card Extraction**: Extracts all setting cards from the Lore Board into a dedicated side panel for intuitive reference across categories.
 - **Collapsible Category Groups**: Groups cards under collapsible headers showing the category name and item count, matching the Chapter Overview volume grid experience.
-- **In-Place Editing & Saving**: Click the edit pencil icon on any card to open an adaptive textarea for direct editing; auto-saves on blur or Esc and updates the source note.
+- **Editing and Saving**: Click the pencil to open the shared lore edit dialog and save explicitly to update the source document. Closing it discards drafts. Borrowed series lore is read-only.
 - **Click-to-Locate Navigation**: Click any lore card title to open the source setting note in a split pane and jump directly to highlighted keyword position.
 - **Immersive Mode Component**: Can be slotted into any Immersive Mode layout slot for real-time reference and note-taking during full-screen writing.
 
@@ -1120,7 +1163,7 @@ Under Lore Quick Lookup in WNA settings, toggle ancestor paths in cards and lore
 ### Writing Status Panel
 
 #### Overview
-- **Current Work Info**: Displays the directory name and total word count of the current file
+- **Current Work Info**: Recognized works use the work root's name and total, including chapters inside volumes; eligible chapters without a recognized work can show their immediate parent folder's statistics
 - **Real-Time Statistics**: Displays progress for daily goals and chapter goals
 - **Time Breakdown**: Displays focus time and slack time
 - **Historical Charts**: Displays writing data for the last 7 days
@@ -1135,16 +1178,18 @@ Under Lore Quick Lookup in WNA settings, toggle ancestor paths in cards and lore
 ##### Panel Content
 - **Current Work**: Directory name, total word count
 - **Today's Status**: Daily goal progress, chapter goal progress, time-limited task goal progress
-- **Focus Timer**: Total duration, focus time, slack time
+- **Focus Timer**: Total duration, session writing speed, focus time, slack time
 - **Word Count Statistics**: This week/month/year net increase, cumulative total, 7-day bar chart
 
-Chapter goals, word counts, and status summaries follow the chapter currently open in the main editor. They hide when you switch to the Homepage, a non-work note, a functional document, or the Workbench, or close all documents. Work statistics and tasks keep the last selected work, which is restored after restarting. Clicking sidebar controls keeps chapter information visible while the main editor still shows that chapter.
+Chapter goals, counts, and status summaries follow the current eligible chapter, using the same eligibility rules as word counting without requiring a work marker. The chapter card also shows related foreshadowing, timeline, and lore, with navigation to linked original text when recorded. Chapter information hides for ineligible documents or when all documents close; work context can retain the last recognized work. Focusing sidebar controls keeps the main chapter selected, and work memory survives restarts.
 
 ##### View Historical Statistics
 
 1. Click **View Historical Statistics** in the panel
 2. A detailed historical data window opens
 3. You can view statistics for any date
+
+Click a day in a heatmap or daily bar chart on the homepage, Writing Status panel, or history view to open **Daily Writing Details** (4.1.0). It shows active hours, total/focus/slack time, added words, and writing speed from existing statistics; missing records are not reconstructed.
 
 ##### Back Up and Restore History Data (Desktop)
 1. Open **Settings → WebNovel Assistant → Data Output**
@@ -1154,7 +1199,42 @@ Chapter goals, word counts, and status summaries follow the chapter currently op
 
 > History-only backups do not include plugin settings or sticky notes. Mobile users, and anyone who also needs settings or sticky notes, should continue to back up the complete `data.json` file from the plugin directory.
 
-> **Mobile**: The Writing Status Panel does not show the time-tracking card on mobile; use the Mobile Floating Word Count & Focus Timer widget instead. Its experimental timer filters out screen-off and background time, and data syncs with desktop.
+> **Mobile**: The Writing Status Panel shows focus timing statistics and lets you start or pause tracking with the status button beside Today's Status. The Mobile Floating Word Count & Focus Timer widget controls timing and displays session writing speed after the timer. Session speed divides words added during the session by total duration, including slack time. Its timer filters out screen-off and background time, and data syncs with desktop.
+
+---
+
+### Data Storage and Sync Scope
+
+| Data | Storage and backup |
+|---|---|
+| Plugin settings, daily statistics, sticky notes | Plugin `data.json`; enable the corresponding plugin-data sync in your sync tool, and close Obsidian normally before a complete backup |
+| Chapter status/synopsis, Novel Info, Writing Journey | Vault Markdown documents and YAML; back up and sync the documents |
+| Lore, timelines, foreshadowing, tasks, custom proofreading dictionaries | Their vault Markdown documents; plugin-data backups do not replace these files |
+| Word-count cache, downloaded official dictionaries | Device-local caches that can be rebuilt or downloaded again |
+| Native File Recovery snapshots | Current device's Obsidian File Recovery storage; absent from `data.json` and history-backup JSON. Export versions for long-term retention |
+
+---
+
+### Chapter Snapshots and Replay
+
+#### Opening and Comparing
+
+1. Enable Obsidian's **File Recovery** core plugin and wait for initialization. Snapshot availability depends on its save interval, retention period, and compatibility with the installed Obsidian version.
+2. Open a Markdown chapter and run **Compare Current Chapter with Snapshot**. You can also select **Compare Snapshot** on a chapter-status event in **Writing Journey**. Events without a recorded snapshot, or snapshots that have expired, show an unavailable message.
+3. Choose the current draft or a retained version on each side. Inspect text changes and YAML attribute differences, navigate between differences, show only differences, swap sides, or use single-side view. Deleted files can still have readable historical snapshots, but have no live current draft.
+
+#### Replaying Versions
+
+Select **Replay Mode** to browse loaded versions in save-time order. Play/pause, previous/next version, seeking, and **1x / 3x / 5x** speed are supported, with changes brought into view. Replay shows differences between retained versions, not individual keystrokes or a complete writing history.
+
+#### Exporting and Restoring (4.1.0)
+
+- Pause and wait for the selected version to finish loading before using **Export This Version** or **Restore This Version**.
+- **Export** creates a separate Markdown file in the target chapter's directory, named with a timestamp and full chapter name. Existing filenames are avoided. It includes the complete snapshot and YAML without changing the current chapter.
+- **Restore** replaces the entire chapter, including YAML, after confirmation. An existing chapter is backed up to a native snapshot first; a failed backup aborts restoration. A deleted chapter can be recreated only when its original path is known, the parent folder exists, and the path is unoccupied.
+- Restoration aborts if content, file identity, or snapshot scope changes during the operation, or open editors contain conflicting unsaved text. If the original location is uncertain, export and review the version manually.
+
+> **Sync and Backup Scope**: Native snapshots are available only on the device that created them; they do not sync with `data.json` or Writing Journey. A retained journey reference does not guarantee the snapshot text still exists. Export versions you need to keep and back them up separately.
 
 ---
 
@@ -1163,9 +1243,10 @@ Chapter goals, word counts, and status summaries follow the chapter currently op
 ### Copy Document Pure Text
 
 #### Overview
-- **Extract Pure Text**: One-click extraction of all text content from the current document, automatically stripping out all Markdown formatting (headings, bold, italics, code blocks, links, images) and HTML tags.
+- **Extract Pure Text**: Available on all platforms. Processes the entire document under the plugin's cleanup rules, removing formatting markers, code blocks, and HTML tags. It is not an original-text backup; preserve the source file when complete content matters.
+- **Footnotes and Comments**: Excluded by default. Enable **Include footnotes and comments in word count and copy** to include them.
 - **Auto Formatting**: When copying, the document title and a blank line are automatically added at the top, making it ready to paste directly to web novel platforms, blogs, or social media.
-- **Solves Mobile Limitations**: Overcomes Obsidian mobile's native selection bug where "Select All" fails on long documents beyond the visible viewport.
+- **Long Documents**: Reads the entire text without depending on selection within the visible mobile viewport.
 - **Quick Access**: Available via the command palette, file explorer context menu, and editor context menu.
 
 #### How to Use
@@ -1190,16 +1271,16 @@ Chapter goals, word counts, and status summaries follow the chapter currently op
 
 #### Overview
 - **Mobile Exclusive**: Displays floating word count and focus timer window on mobile devices.
-- **Real-Time Updates**: Automatically updates word count, target percentage, and focus timer while editing.
+- **Real-Time Updates**: Automatically updates word count and target percentage while editing; enabling the focus timer also displays elapsed focus time and session writing speed.
 - **Edge Docking & Auto-Collapse**: Dragging to left/right screen edges (≤35px) automatically collapses the widget into a subtle semi-transparent handle (opacity 0.35) without obstructing typing; click or hover expands it back.
 - **Settings Customization**: Adjust the **Focus Sensitivity Threshold** slider in mobile settings to control idle timeout detection.
 
 #### How to Use
-1. Open plugin settings → Enable **Show Floating Word Stats**; for timing, also enable **Enable Focus Timer on Mobile (Experimental)**.
-2. The widget displays current word count, chapter goal, and completion percentage; when timing is enabled, use the play/pause button to control focus duration.
+1. Open plugin settings → Enable **Show Floating Word Stats**. The widget includes focus timing by default; no separate timer setting is needed.
+2. The widget displays current word count, chapter goal, completion percentage, and focus timing. Use the play/pause button to control focus duration.
 3. Drag to left or right screen edge to trigger edge docking collapse.
 
-> **Tip**: After enabling the floating window, status bar word count is automatically hidden to avoid duplicate display. The experimental focus timer filters out screen-off and background time, and data syncs with desktop.
+> **Tip**: After enabling the floating window, status bar word count is automatically hidden to avoid duplicate display. The focus timer filters out screen-off and background time, and data syncs with desktop.
 
 ---
 
@@ -1219,13 +1300,13 @@ Chapter goals, word counts, and status summaries follow the chapter currently op
 1. Open plugin settings
 2. Enable **OBS Overlay**
 3. Set the port (default: 24816)
-4. Restart the plugin
+4. Enabling starts the service immediately; changing the port restarts it automatically. OBS and Obsidian must run on the same computer
 
 ##### Add in OBS
 1. Open OBS Studio
 2. Add a **Browser** source
 3. Enter the URL: `http://127.0.0.1:24816/`
-4. Width: 800, Height: 600
+4. Start with width 400 and height 700, then adjust for enabled items and custom styles to avoid clipping
 5. Check **Refresh browser when scene becomes active**
 
 ##### Copy URL
@@ -1236,16 +1317,19 @@ In plugin settings, you can toggle the visibility of:
 - Focus time
 - Slack time
 - Total duration
-- Today's word count
+- Current chapter word count and goal
 - Today's goal
 - Current session word count
+- Session writing speed (off by default)
 
 ##### Custom Styles
-1. **Change Theme**: Select **Light** or **Dark** in settings
+1. **Change Theme**: Select **Light**, **Dark**, or a sticky-note preset
 2. **Adjust Transparency**: Drag the slider to adjust background transparency (0-1, default 0.85)
 3. **Custom CSS**: Enter custom style code in settings
 
-For detailed CSS customization guide, see: [OBS Overlay CSS Guide](OBS_OVERLAY_CSS_GUIDE.md)
+Refresh the OBS browser source after changing theme, opacity, visibility, or CSS. Statistics update automatically, but styles and page structure do not reload automatically.
+
+For CSS examples and supported selectors, see the [OBS Overlay CSS Guide](OBS_OVERLAY_CSS_GUIDE_EN.md).
 
 ---
 
@@ -1254,8 +1338,8 @@ For detailed CSS customization guide, see: [OBS Overlay CSS Guide](OBS_OVERLAY_C
 ### Language Settings
 
 #### Overview
-- **Bilingual Support**: The plugin supports both Chinese and English language interfaces
-- **Auto Language Detection**: On first installation, the plugin automatically detects Obsidian's language setting — Chinese environment displays Chinese, other environments display English
+- **Three Interface Languages**: Simplified Chinese, Traditional Chinese, and English, with an option to follow Obsidian
+- **Automatic Language Detection**: Automatically matches a supported language; choose one manually if detection does not match your preference
 - **Seamless Language Switching**: Custom document names are preserved when switching languages, old language documents are automatically matched, and no duplicates are generated
 - **Cross-Language Document Compatibility**: English mode can recognize old Chinese documents (e.g., `伏笔.md`), and Chinese mode can also recognize English documents
 - **Auto Document Renaming**: When changing the default document name in settings, all old documents under every workspace are automatically renamed in bulk
@@ -1265,7 +1349,7 @@ For detailed CSS customization guide, see: [OBS Overlay CSS Guide](OBS_OVERLAY_C
 ##### Switch Language
 1. Open plugin settings → **General**
 2. Find the **语言/Language** option
-3. Select **中文** or **English** from the dropdown
+3. Select **Follow Obsidian**, **中文 (Chinese)**, **繁體中文 (Traditional Chinese)**, or **English** from the dropdown
 4. After switching, all panels, dialogs, and document labels update automatically
 
 > **Tips**:
@@ -1300,6 +1384,8 @@ You can also run **Toggle Ordinary Editor Typewriter Scrolling** or assign it a 
 ### Typography Settings
 
 In the plugin settings **Typography** tab, enable **Enable Typography Control** to apply first-line indent, line height, paragraph spacing, letter spacing, maximum line width, heading/body alignment, and body text size to chapters, other documents, or selected functional documents (Lore, Novel Info, Timeline, Foreshadowing, and Timed Tasks). Enabling **Apply Across Vault** extends typography to every ordinary document in the current vault; functional documents and card content remain independently controlled, and the Homepage is always excluded. **Apply to Cards** in Scope Settings applies only the current indent setting to both displayed and edited sticky-note, lore-card (including hover preview), chapter-card, and timeline-event-card content; font size and all other typography continue to follow each card's existing design. Body text size is shared by editing, reading, and chapter-merge previews; when custom body text size is disabled, Obsidian's native `Ctrl + mouse wheel` adjustment remains available. If you use `<br>` soft breaks, enable **Reading Mode Compatibility** to add indent placeholders to continuation lines in Reading Mode. The Command Palette also provides **Quick Typography Adjustment** and increase/decrease body-font commands.
+
+First-line indentation is a display style and needs no manually inserted spaces. For unusual paragraphs, see the [leading-space FAQ](#q-why-does-first-line-indentation-seem-to-stop-working-when-a-paragraph-starts-with-spaces).
 
 ---
 
@@ -1338,6 +1424,7 @@ This list matches the commands currently registered by the plugin. Commands mark
 
 ##### Typewriter, Immersive Mode, and Typography (Immersive Mode is desktop only)
 - **Toggle Full-Screen Immersive Writing Mode**
+- **Immersive mode: Toggle auxiliary regions**
 - **Toggle Ordinary Editor Typewriter Scrolling**
 - **Quick Typography Adjustment**
 - **Quickly Adjust Body Font Size: Increase**
@@ -1350,6 +1437,7 @@ This list matches the commands currently registered by the plugin. Commands mark
 - **Manually Refresh Chapter Sort (Usually Unnecessary)**
 - **Rebuild Folder Word Count Cache**
 - **Reset today writing stats**
+- **Compare current chapter with snapshot**
 - **Start/Pause Focus Time Tracking** (desktop only)
 
 ##### Foreshadowing, Timeline, Lore, and Proofreading
@@ -1387,7 +1475,7 @@ Here are some recommended shortcut configurations (for reference only):
 > **Tips**:
 > - Shortcuts can be freely customized to your personal preferences
 > - Avoid conflicts with Obsidian or other plugin shortcuts
-> - Mobile does not support keyboard shortcuts; use the command palette or menus instead
+> - On phones and tablets, use the command palette, file menu, or mobile toolbar; external-keyboard shortcuts depend on Obsidian's support
 
 ---
 
@@ -1397,13 +1485,13 @@ The plugin provides full feature integration across **Desktop** and **Mobile (Ph
 
 ### Desktop
 - **Full Feature Suite**: Supports all features including creative homepage, writing workbench, immersive mode, floating desktop notes, OBS streaming overlay, and Worker background time tracking.
-- **High Performance**: Enables full file explorer word count caching and high-performance graph rendering.
+- **Continuous Manuscript and Auxiliary Panels**: Use manuscript and chapter status panels in Immersive Mode; snapshots, Writing Journey, and the Sticky Note List are also accessible outside it.
 
 ### Mobile (Phone & Tablet)
 - **Unified Functionality**: Phones and tablets share full mobile capabilities, including the full workbench suite, mobile floating stats widget (with focus timer and edge docking/collapse), quick lookup cards, and one-click full document copy command.
 - **Responsive Layout Adaptation**:
-  - **Phone (`body.is-phone`)**: Activates mobile-first compact layouts (stacked headers, compact heatmaps, touch-scrolling timeline cards, vertical button flows).
-  - **Tablet (`body.is-tablet`)**: Activates tablet widescreen layouts (inline header buttons, expanded multi-column grids, sidebar integration).
+  - **Phone**: Compact layouts, touch browsing, wrapping controls, and fullscreen lore trajectories.
+  - **Tablet**: Wider layouts with additional grid columns and sidebar space.
 - **Platform Limitations**: Immersive Writing Mode, OBS Streaming Overlay (requires local HTTP server), and multi-window desktop floating notes are desktop-exclusive.
 
 ---
@@ -1412,6 +1500,13 @@ The plugin provides full feature integration across **Desktop** and **Mobile (Ph
 
 ### Q: How do I exit Immersive Writing Mode?
 A: Immersive Writing Mode is desktop-only. Move the pointer to the extreme top-right corner to reveal the semi-hidden **Exit Immersive Mode** button, then click it. You can also open the Command Palette and run **Toggle Full-Screen Immersive Writing Mode** again. Assigning this command under **Settings → Hotkeys** in advance is recommended. The plugin locks `Esc` so the system does not leave fullscreen without fully restoring the immersive layout, so `Esc` is not the normal exit method.
+
+### Q: Why does first-line indentation seem to stop working when a paragraph starts with spaces?
+A: In Editing Mode, existing leading spaces or tabs may trigger Obsidian's wrapped-line alignment and interact with the plugin's first-line indent. This can shift the whole paragraph to the right or make the first-line indent less noticeable.
+
+- **Ordinary prose**: Use the plugin's first-line indent without adding spaces manually. If only some paragraphs look wrong, first check for and remove accidentally entered leading spaces or tabs.
+- **Markdown structures**: Indentation in lists, block quotes, and code blocks may have syntactic meaning. Preserve necessary whitespace instead of removing all leading spaces in bulk.
+- **Troubleshooting clue**: Unusual indentation can help you spot leading whitespace, but does not necessarily mean a space was entered by mistake. The plugin's first-line indent changes only the display; it does not automatically add or remove spaces in the text.
 
 ### Q: Why does proofreading miss issues or produce inaccurate or false-positive results?
 A: Proofreading runs entirely locally and does not use AI or online semantic analysis. The official local dictionaries are still growing, so limited coverage can cause missed issues; context-based checks such as De/Di/De and punctuation may also flag proper nouns, fictional phrasing, or ambiguous sentences. Treat every suggestion as a prompt for manual review rather than applying it blindly. Use **Annotate to Dictionary** to add missing entries to your custom dictionaries. Contributions of high-confidence entries and anonymized examples to the repository's `dictionary` branch are also welcome; see the contribution instructions in the Proofreading section.
@@ -1444,16 +1539,16 @@ A: Run **Command Palette (Ctrl/Cmd + P) → `Rebuild Lore Cache`**. It rebuilds 
 3. When installing the plugin for the first time in an existing library that already contains lore files and chapters.
 
 ### Q: Why can't I find the commands to open the Chapter Overview and Lore Overview side panels in the Command Palette?
-A: Chapter Overview and Lore Overview depend on the currently active novel context, so their open commands are available only while a chapter file from a novel is focused.
+A: First focus a Markdown document, then search for **Open Chapter Overview** or **Open Lore Overview**. Panel contents depend on work context; if the expected work is missing, open one of its chapters and check workspace scope and work markers such as Novel Info or a lore folder.
 
 ### Q: Lore highlights / hover popovers do not appear, or Workbench shows "No lore entries"?
 A:
 1. **Check Workspace Folders Setting (Common Misconfiguration)**:
    - **Single Book / Vault-wide Novel Project**: If your entire vault is dedicated to writing, **leave the "Workspace Folders" setting empty**.
-   - **Multiple Books Under a Library Directory**: The Workspace Folder setting is designed as a "parent container for multiple books" (e.g., `Novels/`), and the plugin automatically treats each direct subfolder as an independent book. **Do NOT add an individual book folder (e.g., `Novels/Book1/`) directly as a workspace folder**, as this causes volume subfolders (e.g., `Volume 1`) to be misidentified as separate books and lose link to the peer `Lore/` directory.
+   - **Multiple Works in a Library**: Enter parent directories such as `Novels/`, one per line, rather than an individual work or volume. For works under nested categories, use Novel Info or lore-folder markers to identify the work root so chapters and lore share the same work context.
 2. **Verify Lore Folder & Entry Format**:
    - Lore markdown files must be placed inside the `Lore/` (or `设定/`) directory under the book root.
-   - Lore entries must use `## Level 2 Headings` as the canonical entry names (aliases can be added using `**Alias**: Alias1, Alias2` in the content).
+   - Use `## Level 2 Headings` for entries in category documents. A document without level-two headings becomes one entry named after its file. Add aliases in the content as needed. If only cards are missing, check **Enable Lore Hover Cards**; dashed annotations and card visibility are separate behaviors.
 3. **Rebuild Lore Cache**:
    - Press `Ctrl/Cmd + P` to open the Command Palette and run **`WebNovel Assistant: Rebuild Lore Cache`**.
 
@@ -1472,7 +1567,7 @@ A:
 
 ### Q: Can't find the foreshadowing file?
 A:
-1. The foreshadowing file is in the same directory as the current file
+1. Keep the foreshadowing file at the work root; chapters inside volumes do not need separate copies
 2. The default filename is `Foreshadowing.md`
 3. You can change the filename in settings
 
@@ -1480,7 +1575,7 @@ A:
 A:
 1. Confirm time tracking is started (command palette)
 2. Check the **Idle Timeout Threshold** setting
-3. 60 seconds of inactivity automatically switches to slack time
+3. The default is 60 seconds without input; use your configured threshold. Input in documents outside configured workspaces does not count as focused activity
 
 ### Q: Note content lost?
 A:
@@ -1491,7 +1586,7 @@ A:
 ### Q: What is the difference between Mobile and Desktop features?
 A:
 - **Unified Core Features**: Mobile devices (both phones and tablets) support the Creative Homepage, Writing Workbench (Chapters, Timeline, Lore, Task boards), focus timing, and foreshadowing tracking.
-- **Mobile-Exclusive Features**: Includes the Mobile Floating Stats Widget (with edge docking/auto-collapse) and the "Copy This Document" command (solves the mobile Obsidian restriction where Select All only selects text in the visible viewport).
+- **Mobile Helpers**: The floating statistics/timer widget supports edge docking and collapse. **Copy Document Pure Text** is available on all platforms and is especially useful for long documents on mobile.
 - **Device-Specific UI**: Phone and tablet views automatically adapt layout and touch gestures to fit screen sizes.
 - **Desktop-Only Features**: Immersive Writing Mode (full-screen typewriter focus mode), OBS Streaming Overlay (HTTP server), and multi-window floating notes remain desktop-exclusive due to mobile touch interaction and OS sandbox restrictions.
 

@@ -3,9 +3,9 @@
 
 /* Auxiliary panel content fine-tuning */
 
-.immersive-mode-active .foreshadowing-view-container,
+.wn-immersive-mode-active .wn-foreshadowing-view-container,
 
-.immersive-mode-active .wn-timeline-view-container {
+.wn-immersive-mode-active .wn-timeline-view-container {
 	background-color: transparent;
 }
 

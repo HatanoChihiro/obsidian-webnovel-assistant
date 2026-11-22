@@ -1,7 +1,7 @@
 import type { App, EventRef } from 'obsidian';
 import { MarkdownView, setIcon, TFile } from 'obsidian';
 import type { NativeSnapshotService, NativeSnapshotMeta } from '../services/NativeSnapshotService';
-import { getChapterSnapshotScopes } from '../services/NativeSnapshotService';
+import { buildChapterHistoryIndex, getChapterSnapshotScopes } from '../services/NativeSnapshotService';
 import type { ChapterSnapshotRef, WritingJourneyEvent } from '../types/writingJourney';
 import { ChapterDiffEngine, isFormattingOnlyRow, type ChapterDiffResult, type AlignedDiffRow } from '../services/ChapterDiffEngine';
 import {
@@ -14,6 +14,21 @@ import {
 import { getCorkboardStatusText } from '../i18n/data-keys';
 import { t } from '../i18n';
 import { Logger } from '../utils/Logger';
+
+export interface ChapterSnapshotReplayActionRequest {
+	readonly meta: NativeSnapshotMeta;
+	readonly scope: { readonly deviceId: string; readonly dbName: string };
+	readonly snapshotRef: ChapterSnapshotRef | null;
+	readonly targetFile: TFile | null;
+	readonly targetPath: string;
+	readonly exportDir: string;
+	readonly isLostIdentityAmbiguous: boolean;
+	readonly ownerDocument: Document;
+	readonly isValid: () => boolean;
+	readonly onConfirmationOpen?: (cancelFn: () => void) => void;
+	readonly onConfirmationClose?: () => void;
+	readonly onRestored?: (file: TFile) => void;
+}
 
 export interface ChapterSnapshotPanelOptions {
 	app: App;
@@ -29,6 +44,8 @@ export interface ChapterSnapshotPanelOptions {
 	sourceEditor?: MarkdownView | null;
 	allJourneyEvents?: readonly WritingJourneyEvent[];
 	onClose: () => void;
+	onExportReplaySnapshot?: (request: ChapterSnapshotReplayActionRequest) => Promise<void>;
+	onRestoreReplaySnapshot?: (request: ChapterSnapshotReplayActionRequest) => Promise<void>;
 }
 
 interface CachedSnapshotEntry {
@@ -83,6 +100,18 @@ export class ChapterSnapshotPanel {
 	private replayScrubberEl: HTMLInputElement | null = null;
 	private replayInfoEl: HTMLElement | null = null;
 	private replaySpeedBtns: HTMLButtonElement[] = [];
+	private replayExportBtnEl: HTMLButtonElement | null = null;
+	private replayRestoreBtnEl: HTMLButtonElement | null = null;
+	private onExportReplaySnapshotCallback?: (request: ChapterSnapshotReplayActionRequest) => Promise<void>;
+	private onRestoreReplaySnapshotCallback?: (request: ChapterSnapshotReplayActionRequest) => Promise<void>;
+	private committedReplayFrameMeta: NativeSnapshotMeta | null = null;
+	private committedReplayFrameIndex = -1;
+	private latestReplayState: ReplayState | null = null;
+	private isReplayActionPending = false;
+	private replayActionGeneration = 0;
+	private activeReplayModalCancel: (() => void) | null = null;
+	private trackedDeletedPath: string | null = null;
+	private isLostIdentityAmbiguous = false;
 	private bannerTextEl: HTMLElement | null = null;
 	private savedComparisonState: { leftMode: 'current' | number | null; rightMode: 'current' | number } | null = null;
 	private replayAnchor: ReplayViewportAnchor | null = null;
@@ -162,6 +191,9 @@ export class ChapterSnapshotPanel {
 		this.sourceEditor = options.sourceEditor ?? null;
 		this.journeyEventId = options.journeyEvent?.id;
 		this.onCloseCallback = options.onClose;
+		this.onExportReplaySnapshotCallback = options.onExportReplaySnapshot;
+		this.onRestoreReplaySnapshotCallback = options.onRestoreReplaySnapshot;
+		this.refreshLostIdentityState();
 
 		if (options.journeyEvent) {
 			if (options.journeyEvent.type === 'chapter.status_changed') {
@@ -305,6 +337,7 @@ export class ChapterSnapshotPanel {
 			if (this.isDestroyed) return;
 			if (file === this.chapterFile && file instanceof TFile) {
 				this.chapterTitle = file.basename;
+				this.chapterPath = file.path;
 				const chapterSpan = this.panelEl.querySelector('.wn-snapshot-chapter-name');
 				if (chapterSpan) {
 					chapterSpan.setText(`(${this.chapterTitle})`);
@@ -315,6 +348,10 @@ export class ChapterSnapshotPanel {
 		this.vaultDeleteRef = this.app.vault.on?.('delete', (file) => {
 			if (this.isDestroyed) return;
 			if (file === this.chapterFile) {
+				const lastPath = file instanceof TFile && file.path ? file.path : this.chapterPath;
+				this.chapterPath = lastPath;
+				this.trackedDeletedPath = lastPath;
+				this.isLostIdentityAmbiguous = false;
 				this.chapterFile = null;
 				this.sourceEditor = null;
 				if (this.leftMode === 'current' && typeof this.rightMode === 'number') this.leftMode = this.rightMode;
@@ -322,7 +359,10 @@ export class ChapterSnapshotPanel {
 				this.cachedLeftSnapshot = null;
 				this.cachedRightSnapshot = null;
 				this.diffResult = null;
-				if (this.isReplayActive) return;
+				if (this.isReplayActive) {
+					this.updateReplayControlStates();
+					return;
+				}
 				this.renderGeneration = (this.renderGeneration ?? 0) + 1;
 				this.populateDropdowns();
 				void this.loadAndRenderDiff();
@@ -568,6 +608,7 @@ export class ChapterSnapshotPanel {
 			text: t('snapshot.replay-play')
 		});
 		this.replayPlayBtnEl.onclick = () => {
+			if (this.isReplayActionPending) return;
 			if (this.replayController?.isPlaying) {
 				this.replayController.pause();
 			} else {
@@ -582,6 +623,7 @@ export class ChapterSnapshotPanel {
 			text: t('snapshot.replay-prev')
 		});
 		this.replayPrevBtnEl.onclick = () => {
+			if (this.isReplayActionPending) return;
 			void this.replayController?.step(-1);
 		};
 
@@ -590,6 +632,7 @@ export class ChapterSnapshotPanel {
 			text: t('snapshot.replay-next')
 		});
 		this.replayNextBtnEl.onclick = () => {
+			if (this.isReplayActionPending) return;
 			void this.replayController?.step(1);
 		};
 
@@ -604,6 +647,7 @@ export class ChapterSnapshotPanel {
 		this.replayScrubberEl.max = '0';
 		this.replayScrubberEl.value = '0';
 		this.replayScrubberEl.oninput = () => {
+			if (this.isReplayActionPending) return;
 			const val = parseInt(this.replayScrubberEl?.value ?? '0', 10);
 			if (!isNaN(val)) void this.replayController?.seek(val);
 		};
@@ -622,17 +666,204 @@ export class ChapterSnapshotPanel {
 			btn?.setAttribute?.('aria-label', `${spd}x ${t('snapshot.replay-speed')}`);
 			btn?.setAttribute?.('aria-pressed', String(spd === 1));
 			btn.onclick = () => {
+				if (this.isReplayActionPending) return;
 				this.replayController?.setSpeed(spd);
 			};
 			return btn;
 		});
+
+		// 导出与恢复操作组（文字按钮）
+		const actionGroup = replayToolbar.createDiv('wn-snapshot-replay-action-group');
+		this.replayExportBtnEl = actionGroup.createEl('button', {
+			cls: 'wn-snapshot-replay-export-btn',
+			text: t('snapshot.replay-export')
+		});
+		this.replayExportBtnEl.disabled = true;
+		this.replayExportBtnEl.onclick = () => {
+			void this.triggerReplayAction('export');
+		};
+
+		this.replayRestoreBtnEl = actionGroup.createEl('button', {
+			cls: 'wn-snapshot-replay-restore-btn',
+			text: t('snapshot.replay-restore')
+		});
+		this.replayRestoreBtnEl.disabled = true;
+		this.replayRestoreBtnEl.onclick = () => {
+			void this.triggerReplayAction('restore');
+		};
+	}
+
+	private refreshLostIdentityState(): void {
+		if (this.chapterFile) {
+			this.trackedDeletedPath = null;
+			this.isLostIdentityAmbiguous = false;
+			return;
+		}
+		if (this.journeyEventId) {
+			const identity = buildChapterHistoryIndex(this.allJourneyEvents).get(this.journeyEventId);
+			if (identity && identity.deleted) {
+				this.trackedDeletedPath = identity.path;
+				this.isLostIdentityAmbiguous = false;
+				return;
+			}
+		}
+		this.trackedDeletedPath = null;
+		this.isLostIdentityAmbiguous = true;
+	}
+
+	private cancelPendingReplayAction(): void {
+		this.replayActionGeneration++;
+		this.isReplayActionPending = false;
+		const cancelModal = this.activeReplayModalCancel;
+		this.activeReplayModalCancel = null;
+		cancelModal?.();
+	}
+
+	private getParentDir(filePath: string): string {
+		const idx = filePath.lastIndexOf('/');
+		return idx > 0 ? filePath.slice(0, idx) : '';
+	}
+
+	private updateReplayControlStates(): void {
+		const state = this.latestReplayState;
+		const locked = this.isReplayActionPending;
+
+		if (this.replayPlayBtnEl) {
+			this.replayPlayBtnEl.setText(state?.isPlaying ? t('snapshot.replay-pause') : t('snapshot.replay-play'));
+			this.replayPlayBtnEl.disabled = locked || !state || state.total <= 1;
+		}
+
+		if (this.replayPrevBtnEl) {
+			this.replayPrevBtnEl.disabled = locked || !state || state.currentIndex <= 0;
+		}
+
+		if (this.replayNextBtnEl) {
+			this.replayNextBtnEl.disabled = locked || !state || state.currentIndex >= state.total - 1;
+		}
+
+		if (this.replayScrubberEl) {
+			this.replayScrubberEl.max = String(Math.max(0, (state?.total ?? 0) - 1));
+			this.replayScrubberEl.value = String(state?.currentIndex ?? 0);
+			this.replayScrubberEl.disabled = locked || !state || state.total <= 1;
+		}
+
+		for (const btn of this.replaySpeedBtns ?? []) {
+			btn.disabled = locked;
+		}
+
+		const hasCommittedFrame = Boolean(
+			!locked &&
+			this.isReplayActive &&
+			!this.isDestroyed &&
+			(this.snapshotsMetaList?.length ?? 0) > 0 &&
+			this.snapshotsListScope &&
+			this.committedReplayFrameMeta &&
+			state &&
+			!state.isPlaying &&
+			!state.error &&
+			state.currentIndex === this.committedReplayFrameIndex
+		);
+
+		if (this.replayExportBtnEl) {
+			this.replayExportBtnEl.disabled = !hasCommittedFrame || !this.onExportReplaySnapshotCallback;
+		}
+
+		if (this.replayRestoreBtnEl) {
+			const restoreBlockedByAmbiguity = this.chapterFile === null && this.isLostIdentityAmbiguous;
+			this.replayRestoreBtnEl.disabled = !hasCommittedFrame || !this.onRestoreReplaySnapshotCallback || restoreBlockedByAmbiguity;
+		}
+	}
+
+	private async triggerReplayAction(kind: 'export' | 'restore'): Promise<void> {
+		if (this.isDestroyed || !this.isReplayActive || this.isReplayActionPending) return;
+		if (this.snapshotsMetaList.length === 0 || !this.snapshotsListScope) return;
+		const state = this.latestReplayState;
+		const committedMeta = this.committedReplayFrameMeta;
+		if (!committedMeta || !state || state.isPlaying || state.error || state.currentIndex !== this.committedReplayFrameIndex) return;
+		if (kind === 'restore' && this.chapterFile === null && this.isLostIdentityAmbiguous) return;
+
+		const callback = kind === 'export' ? this.onExportReplaySnapshotCallback : this.onRestoreReplaySnapshotCallback;
+		if (!callback) return;
+
+		this.replayController?.pause();
+		this.isReplayActionPending = true;
+		const actionGen = ++this.replayActionGeneration;
+		const listGen = this.listGeneration;
+		const frozenMeta: NativeSnapshotMeta = { ...committedMeta };
+		const frozenScope = { ...this.snapshotsListScope };
+		const matchingRef = (
+			this.currentSnapshotRef &&
+			this.currentSnapshotRef.key === frozenMeta.key &&
+			this.currentSnapshotRef.deviceId === frozenScope.deviceId &&
+			this.currentSnapshotRef.dbName === frozenScope.dbName
+		) ? { ...this.currentSnapshotRef } : null;
+
+		const frozenFile = this.chapterFile;
+		const historicalPath = this.trackedDeletedPath || this.chapterPath;
+		const exportDir = this.getParentDir(frozenFile ? frozenFile.path : historicalPath);
+		const targetPath = frozenFile ? frozenFile.path : (this.trackedDeletedPath ?? '');
+
+		this.updateReplayControlStates();
+
+		const request: ChapterSnapshotReplayActionRequest = {
+			meta: frozenMeta,
+			scope: frozenScope,
+			snapshotRef: matchingRef,
+			targetFile: frozenFile,
+			targetPath,
+			exportDir,
+			isLostIdentityAmbiguous: frozenFile === null && this.isLostIdentityAmbiguous,
+			ownerDocument: this.doc,
+			isValid: () => (
+				!this.isDestroyed &&
+				this.isReplayActive &&
+				this.replayActionGeneration === actionGen &&
+				this.listGeneration === listGen &&
+				this.committedReplayFrameMeta?.key === frozenMeta.key
+			),
+			onConfirmationOpen: (cancelFn) => {
+				if (this.replayActionGeneration === actionGen && !this.isDestroyed) {
+					this.activeReplayModalCancel = cancelFn;
+				} else {
+					cancelFn();
+				}
+			},
+			onConfirmationClose: () => {
+				if (this.replayActionGeneration === actionGen) {
+					this.activeReplayModalCancel = null;
+				}
+			},
+			onRestored: (file) => {
+				if (!request.isValid()) return;
+				this.chapterFile = file;
+				this.chapterPath = file.path;
+				this.chapterTitle = file.basename;
+				this.refreshLostIdentityState();
+				this.populateDropdowns();
+				if (!frozenFile && this.savedComparisonState) this.savedComparisonState.rightMode = 'current';
+			}
+		};
+
+		try {
+			await callback(request);
+		} finally {
+			if (!this.isDestroyed && this.replayActionGeneration === actionGen) {
+				this.isReplayActionPending = false;
+				this.activeReplayModalCancel = null;
+				this.updateReplayControlStates();
+			}
+		}
 	}
 
 	public async enterReplayMode(): Promise<void> {
 		if (this.isDestroyed || this.isReplayActive || this.snapshotsMetaList.length === 0) return;
 		this.cancelRefresh();
+		this.cancelPendingReplayAction();
 		this.isReplayActive = true;
 		this.replayAnchor = null;
+		this.committedReplayFrameMeta = null;
+		this.committedReplayFrameIndex = -1;
+		this.latestReplayState = null;
 		this.renderGeneration++;
 		this.savedComparisonState = { leftMode: this.leftMode, rightMode: this.rightMode };
 
@@ -668,8 +899,13 @@ export class ChapterSnapshotPanel {
 
 	public async exitReplayMode(options?: { restoreComparison?: boolean }): Promise<void> {
 		if (!this.isReplayActive) return;
+		this.cancelPendingReplayAction();
 		this.isReplayActive = false;
 		this.replayAnchor = null;
+		this.committedReplayFrameMeta = null;
+		this.committedReplayFrameIndex = -1;
+		this.latestReplayState = null;
+		this.updateReplayControlStates();
 
 		if (this.replayController) {
 			this.replayController.destroy();
@@ -698,25 +934,12 @@ export class ChapterSnapshotPanel {
 
 	private onReplayStateChange(state: ReplayState): void {
 		if (this.isDestroyed || !this.isReplayActive) return;
-
-		if (this.replayPlayBtnEl) {
-			this.replayPlayBtnEl.setText(state.isPlaying ? t('snapshot.replay-pause') : t('snapshot.replay-play'));
-			this.replayPlayBtnEl.disabled = state.total <= 1;
+		this.latestReplayState = state;
+		if (state.error || state.total === 0) {
+			this.committedReplayFrameMeta = null;
+			this.committedReplayFrameIndex = -1;
 		}
-
-		if (this.replayPrevBtnEl) {
-			this.replayPrevBtnEl.disabled = state.currentIndex <= 0;
-		}
-
-		if (this.replayNextBtnEl) {
-			this.replayNextBtnEl.disabled = state.currentIndex >= state.total - 1;
-		}
-
-		if (this.replayScrubberEl) {
-			this.replayScrubberEl.max = String(Math.max(0, state.total - 1));
-			this.replayScrubberEl.value = String(state.currentIndex);
-			this.replayScrubberEl.disabled = state.total <= 1;
-		}
+		this.updateReplayControlStates();
 
 		if (this.replayInfoEl) {
 			const meta = state.currentMeta;
@@ -762,8 +985,8 @@ export class ChapterSnapshotPanel {
 		const previousAnchorTop = previousAnchor ? this.getReplayAnchorTop(previousAnchor) : null;
 		let nextAnchor: ReplayViewportAnchor | null = null;
 
-		const content = this.doc.createElement('div');
-		content.addClass('wn-snapshot-replay-body');
+		const content = this.diffContainerEl.createDiv({ cls: 'wn-snapshot-replay-body' });
+		content.remove();
 
 		const { body } = ChapterDiffEngine.splitFrontmatterAndBody(frame.text);
 		const trimmed = body.trim();
@@ -807,6 +1030,9 @@ export class ChapterSnapshotPanel {
 		if (frame.cancellationToken.isCancelled || this.isDestroyed || !this.isReplayActive || renderGen !== this.renderGeneration) return;
 		this.diffContainerEl.empty();
 		this.diffContainerEl.appendChild(content);
+		this.committedReplayFrameMeta = { ...frame.meta };
+		this.committedReplayFrameIndex = frame.index;
+		this.updateReplayControlStates();
 		this.updateObservedContentRoot(content);
 		this.diffContainerEl.scrollTop = frame.mode === 'first' ? 0 : previousScrollTop;
 		this.replayAnchor = nextAnchor;
@@ -819,6 +1045,9 @@ export class ChapterSnapshotPanel {
 
 	private onReplayError(error: string): void {
 		if (this.isDestroyed || !this.isReplayActive) return;
+		this.committedReplayFrameMeta = null;
+		this.committedReplayFrameIndex = -1;
+		this.updateReplayControlStates();
 		this.replayAnchor = null;
 		this.updateObservedContentRoot(null);
 		this.diffContainerEl.empty();
@@ -1206,6 +1435,8 @@ export class ChapterSnapshotPanel {
 
 		if (this.isReplayActive) {
 			await this.exitReplayMode({ restoreComparison: false });
+		} else {
+			this.cancelPendingReplayAction();
 		}
 
 		if (this.editorDebounceTimer !== null) {
@@ -1221,6 +1452,7 @@ export class ChapterSnapshotPanel {
 		if (events) this.allJourneyEvents = events;
 		this.sourceEditor = sourceEditor ?? null;
 		this.journeyEventId = journeyEvent?.id;
+		this.refreshLostIdentityState();
 		this.isComposing = false;
 		this.hasPendingDiffAfterComposition = false;
 		this.leftContent = '';
@@ -1697,6 +1929,7 @@ export class ChapterSnapshotPanel {
 	public destroy(): void {
 		if (this.isDestroyed) return;
 		this.isDestroyed = true;
+		this.cancelPendingReplayAction();
 		this.renderGeneration = (this.renderGeneration ?? 0) + 1;
 
 		if (this.editorDebounceTimer !== null && this.editorDebounceTimer !== undefined) {

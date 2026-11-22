@@ -1,10 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ChapterMergeManager, ChapterMergeItem } from '../src/services/ChapterMergeManager';
 import type { WebNovelAssistantPlugin } from '../src/types/plugin';
 import { TFile, TFolder } from 'obsidian';
 import { ChapterSorter } from '../src/services/ChapterSorter';
 
 describe('ChapterMergeManager', () => {
+	afterEach(() => vi.restoreAllMocks());
 	let mockPlugin: WebNovelAssistantPlugin;
 	let manager: ChapterMergeManager;
 
@@ -43,6 +44,41 @@ describe('ChapterMergeManager', () => {
 		} as unknown as WebNovelAssistantPlugin;
 
 		manager = new ChapterMergeManager(mockPlugin);
+	});
+
+	it('bounds concurrent chapter reads and stops scheduling after cancellation', async () => {
+		const folder = Object.assign(new TFolder(), { path: 'Fiction', name: 'Fiction' });
+		const files = Array.from({ length: 12 }, (_, i) => Object.assign(new TFile(), {
+			path: `Fiction/${i + 1}.md`, basename: String(i + 1), parent: folder
+		}));
+		const chapters = vi.spyOn(ChapterSorter, 'getAllChapters').mockReturnValue(files);
+		const pending: Array<() => void> = [];
+		mockPlugin.app.vault.cachedRead = vi.fn(file => new Promise<string>(resolve => pending.push(() => resolve(file.basename))));
+		const controller = new AbortController();
+		const loading = manager.loadFolderChapters(folder, controller.signal);
+		await Promise.resolve();
+		expect(pending.length).toBeGreaterThan(1);
+		expect(pending.length).toBeLessThanOrEqual(4);
+		controller.abort();
+		pending.forEach(resolve => resolve());
+		await expect(loading).rejects.toThrow();
+		expect(mockPlugin.app.vault.cachedRead).toHaveBeenCalledTimes(pending.length);
+		chapters.mockRestore();
+	});
+
+	it('preserves deterministic order when concurrent reads finish in reverse order', async () => {
+		const folder = Object.assign(new TFolder(), { path: 'Fiction', name: 'Fiction' });
+		const files = Array.from({ length: 4 }, (_, i) => Object.assign(new TFile(), {
+			path: `Fiction/${i + 1}.md`, basename: String(i + 1), parent: folder
+		}));
+		vi.spyOn(ChapterSorter, 'getAllChapters').mockReturnValue(files);
+		const pending: Array<() => void> = [];
+		mockPlugin.app.vault.cachedRead = vi.fn(file => new Promise<string>(resolve => pending.push(() => resolve(`Body ${file.basename}`))));
+		const loading = manager.loadFolderChapters(folder);
+		pending.reverse().forEach(resolve => resolve());
+		const loaded = await loading;
+		expect(loaded.map(item => item.file.path)).toEqual(files.map(file => file.path));
+		expect(loaded.map(item => item.currentBody)).toEqual(['Body 1', 'Body 2', 'Body 3', 'Body 4']);
 	});
 
 	it('groups duplicate chapter names by volume before exporting a multi-volume book', async () => {

@@ -52,7 +52,6 @@ export class ImmersiveTypewriterQuickModal extends Modal {
 				slider
 					.setLimits(-30, 30, 1)
 					.setValue(currentOffset)
-					.setDynamicTooltip()
 					.onChange(async (val) => {
 						immersive.typewriterCenterOffset = val;
 						offsetSetting.setDesc(`${val}%`);
@@ -69,7 +68,6 @@ export class ImmersiveTypewriterQuickModal extends Modal {
 				slider
 					.setLimits(0.1, 1.0, 0.05)
 					.setValue(currentOpacity)
-					.setDynamicTooltip()
 					.onChange(async (val) => {
 						const roundedVal = Math.round(val * 100) / 100;
 						immersive.typewriterUnfocusedOpacity = roundedVal;
@@ -82,7 +80,7 @@ export class ImmersiveTypewriterQuickModal extends Modal {
 	private async applyChange(updateOpacityProperty: boolean): Promise<void> {
 		const doc = this.containerEl.ownerDocument;
 		const immersive = this.plugin.settings.immersive;
-		if (updateOpacityProperty && immersive.typewriterEnabled && doc.body.classList.contains('immersive-mode-active')) {
+		if (updateOpacityProperty && immersive.typewriterEnabled && doc.body.classList.contains('wn-immersive-mode-active')) {
 			doc.body.setCssProps({ '--wn-typewriter-opacity': String(immersive.typewriterUnfocusedOpacity ?? 0.4) });
 		}
 

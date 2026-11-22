@@ -93,7 +93,7 @@ body .wn-corkboard-grid .wn-task-card .wn-task-card-header-right button.wn-task-
 /* Corkboard Chapter Cards: Equal height alignment per row in Corkboard View */
 
 
-.wn-corkboard-card:not(.wn-task-card):not(.task-card) {
+.wn-corkboard-grid .wn-corkboard-card:not(.wn-task-card) {
 	height: 100%;
 	align-self: stretch;
 }
@@ -107,9 +107,8 @@ body .wn-corkboard-grid .wn-task-card .wn-task-card-header-right button.wn-task-
 }
 
 
-div.task-card.wn-task-card,
-div.wn-task-card,
-.wn-task-board-layout .task-card,
+.wn-task-board-layout div.wn-task-card,
+.wn-task-board-layout .wn-task-card,
 .wn-task-board-layout .wn-corkboard-card {
 	max-width: 260px;
 	width: 100%;

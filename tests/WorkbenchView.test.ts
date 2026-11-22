@@ -15,9 +15,12 @@ import { TimelineBoardRenderer } from '../src/ui/components/TimelineBoardRendere
 import { WritingJourneyBoardRenderer } from '../src/ui/components/WritingJourneyBoardRenderer';
 import { ForeshadowingBoardRenderer } from '../src/ui/components/ForeshadowingBoardRenderer';
 import { ForeshadowingStatus } from '../src/types/foreshadowing';
-import { Platform, type TFile } from 'obsidian';
+import { Component, Platform, type TFile } from 'obsidian';
+import { RelationGraphManager, type GraphData, type GraphNode } from '../src/services/RelationGraphManager';
 import { getLatestChapterFolderPath } from '../src/utils/path';
 import { LoreBoardRenderer } from '../src/ui/components/LoreBoardRenderer';
+import { LoreCardRenderer } from '../src/ui/components/LoreCardRenderer';
+import { LoreHoverPopover } from '../src/ui/LoreHoverPopover';
 
 const { getCurrentBookContextMock, findBookRootMock, MockTFile, MockTFolder, mockMenuInstances, MockMenu, mockModalInstances, MockModal } = vi.hoisted(() => {
 	class HoistedMockMenuItem {
@@ -412,6 +415,230 @@ describe('WorkbenchView', () => {
 		const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
 		expect(view.getViewType()).toBe(WORKBENCH_VIEW_TYPE);
 		expect(view.getDisplayText()).toBe('view.workbench');
+	});
+
+	it('uses the shared mention setting for the full lore graph while preserving explicit edges and nodes', async () => {
+		const source = new MockTFile('Cedar.md', 'Fiction/Lore/Cedar.md') as unknown as TFile;
+		const target = new MockTFile('Brook.md', 'Fiction/Lore/Brook.md') as unknown as TFile;
+		const ally = new MockTFile('Harbor.md', 'Fiction/Lore/Harbor.md') as unknown as TFile;
+		mockApp.vault.cachedRead.mockImplementation(async (file: TFile) =>
+			file === source ? 'Met Stream.\n### Relations\n- **Ally**: Harbor' : '');
+		mockApp.metadataCache.getFileCache.mockImplementation((file: TFile) =>
+			file === target ? { frontmatter: { aliases: ['Stream'] } } : {});
+		vi.mocked(plugin.characterManager.getEffectiveLoreFiles).mockReturnValue([source, target, ally]);
+		plugin.settings.loreBoardLayout = 'graph';
+		const settings = { loreGraphAutoLinkMentions: false, loreGraphEnableGlobal: false };
+		const manager = new RelationGraphManager(mockApp as unknown as import('obsidian').App,
+			{ settings } as unknown as import('../src/types/plugin').WebNovelAssistantPlugin);
+		let renderedData: GraphData = { nodes: [], edges: [] };
+		plugin.relationGraphManager = {
+			buildGraphData: async (file, options) => {
+				renderedData = await manager.buildGraphData(file, options);
+				// Inspect the real graph data without starting canvas animation in this test.
+				return { nodes: [], edges: [] };
+			}
+		};
+		for (const enabled of [false, true, false]) {
+			settings.loreGraphAutoLinkMentions = enabled;
+			await LoreBoardRenderer.render({
+				app: mockApp as unknown as import('obsidian').App,
+				plugin,
+				container: new MockElement() as unknown as HTMLElement,
+				files: [], currentBookPath: 'Fiction', ownerComponent: new Component()
+			});
+			expect(renderedData.nodes.map(node => node.id)).toEqual(['Cedar', 'Brook', 'Harbor']);
+			expect(renderedData.edges.filter(edge => edge.type === 'explicit')).toEqual([
+				{ source: 'Cedar', target: 'Harbor', label: 'Ally', type: 'explicit' }
+			]);
+			expect(renderedData.edges.filter(edge => edge.type === 'mention')).toEqual(enabled
+				? [{ source: 'Cedar', target: 'Brook', label: 'relation-graph.edge-mention', type: 'mention' }]
+				: []);
+		}
+	});
+
+	it('opens, updates, and cleans up LoreHoverPopover on workbench graph node hover with real identity and lifecycle', async () => {
+		vi.useFakeTimers();
+		const bodyEl = new MockElement('body');
+		const ownerWindow = Object.assign(new EventTarget(), {
+			setTimeout: (cb: () => void, ms?: number) => globalThis.setTimeout(cb, ms) as unknown as number,
+			clearTimeout: (id: number) => globalThis.clearTimeout(id),
+			requestAnimationFrame: (_cb: () => void) => 1,
+			cancelAnimationFrame: vi.fn(),
+			innerWidth: 1200,
+			innerHeight: 800
+		}) as unknown as Window & EventTarget;
+		const ownerDocument = Object.assign(new EventTarget(), {
+			defaultView: ownerWindow,
+			visibilityState: 'visible',
+			body: bodyEl,
+			addEventListener: EventTarget.prototype.addEventListener,
+			removeEventListener: EventTarget.prototype.removeEventListener
+		}) as unknown as Document & { visibilityState: string };
+		(bodyEl as unknown as { ownerDocument: Document }).ownerDocument = ownerDocument;
+
+		const originalCreateDiv = MockElement.prototype.createDiv;
+		const originalCreateEl = MockElement.prototype.createEl;
+		const originalSetCssStyles = (MockElement.prototype as unknown as { setCssStyles?: unknown }).setCssStyles;
+		const originalGetRect = (MockElement.prototype as unknown as { getBoundingClientRect?: unknown }).getBoundingClientRect;
+		const originalGetContext = (MockElement.prototype as unknown as { getContext?: unknown }).getContext;
+		const originalMatches = (MockElement.prototype as unknown as { matches?: unknown }).matches;
+
+		MockElement.prototype.createDiv = function (this: MockElement, opts?: string | { cls?: string; text?: string }) {
+			const child = originalCreateDiv.call(this, opts);
+			(child as unknown as { ownerDocument: Document }).ownerDocument =
+				(this as unknown as { ownerDocument?: Document }).ownerDocument ?? ownerDocument;
+			return child;
+		};
+		MockElement.prototype.createEl = function (this: MockElement, tag: string, opts?: { cls?: string; text?: string; type?: string; value?: string }) {
+			const child = originalCreateEl.call(this, tag, opts);
+			(child as unknown as { ownerDocument: Document }).ownerDocument =
+				(this as unknown as { ownerDocument?: Document }).ownerDocument ?? ownerDocument;
+			return child;
+		};
+		(MockElement.prototype as unknown as { setCssStyles: (s: Record<string, string>) => void }).setCssStyles = vi.fn();
+		(MockElement.prototype as unknown as { getBoundingClientRect: () => DOMRect }).getBoundingClientRect = () => ({
+			left: 0, top: 0, right: 600, bottom: 400, width: 600, height: 400, x: 0, y: 0, toJSON: () => ({})
+		});
+		(MockElement.prototype as unknown as { getContext: () => unknown }).getContext = () => ({
+			clearRect: vi.fn(), save: vi.fn(), restore: vi.fn(), scale: vi.fn(), translate: vi.fn(),
+			beginPath: vi.fn(), arc: vi.fn(), fill: vi.fn(), stroke: vi.fn(), fillText: vi.fn(), measureText: () => ({ width: 20 })
+		});
+		(MockElement.prototype as unknown as { matches: () => boolean }).matches = () => false;
+
+		const originalResizeObserver = (globalThis as unknown as { ResizeObserver?: unknown }).ResizeObserver;
+		const originalMutationObserver = (globalThis as unknown as { MutationObserver?: unknown }).MutationObserver;
+		vi.stubGlobal('ResizeObserver', class {
+			observe = vi.fn();
+			disconnect = vi.fn();
+		});
+		vi.stubGlobal('MutationObserver', class {
+			observe = vi.fn();
+			disconnect = vi.fn();
+		});
+
+		const buildCardSpy = vi.spyOn(LoreCardRenderer, 'buildCardDOM').mockResolvedValue(undefined);
+		try {
+			const cedarFile = new MockTFile('Cedar.md', 'Fiction/Lore/Cedar.md') as unknown as TFile;
+			const duplicateNameFile = new MockTFile('OtherCedar.md', 'Fiction/Lore/OtherCedar.md') as unknown as TFile;
+			const borrowedFile = new MockTFile('Alder.md', 'SeriesOther/Lore/Alder.md') as unknown as TFile;
+
+			const cedarNode: GraphNode = {
+				id: 'Cedar', heading: 'Cedar', file: cedarFile, sourcePath: cedarFile.path,
+				x: 300, y: 200, vx: 0, vy: 0, pinned: false
+			};
+			const alderNode: GraphNode = {
+				id: 'Alder', heading: 'Alder', file: borrowedFile, sourcePath: borrowedFile.path,
+				x: 380, y: 200, vx: 0, vy: 0, pinned: false
+			};
+
+			plugin.settings.loreBoardLayout = 'graph';
+			plugin.settings.enableLorePopover = true;
+			vi.mocked(plugin.characterManager.getEffectiveLoreFiles).mockReturnValue([cedarFile, borrowedFile]);
+			vi.mocked(plugin.characterManager.getCharactersForBook).mockReturnValue(['Cedar', 'Alder']);
+			vi.mocked(plugin.characterManager.getCharacterFile).mockImplementation((_book: string, name: string) => {
+				if (name === 'Cedar') return { file: duplicateNameFile, heading: 'Cedar' };
+				return null;
+			});
+			(plugin.characterManager as unknown as { isBorrowedLoreEntry: (entry: { file: TFile }, book?: string) => boolean }).isBorrowedLoreEntry =
+				(entry) => entry.file.path === borrowedFile.path;
+			(plugin.characterManager as unknown as { updateLoreEntry: ReturnType<typeof vi.fn> }).updateLoreEntry = vi.fn();
+
+			plugin.relationGraphManager = {
+				buildGraphData: vi.fn(async () => ({
+					nodes: [cedarNode, alderNode],
+					edges: []
+				}))
+			};
+
+			const registerCallbacks: Array<() => void> = [];
+			const ownerComponent = {
+				load: vi.fn(),
+				unload: () => {
+					for (const cb of [...registerCallbacks]) cb();
+				},
+				register: (cb: () => void) => { registerCallbacks.push(cb); },
+				registerEvent: vi.fn()
+			} as unknown as Component;
+
+			const rootContainer = new MockElement('wn-board-host');
+			(rootContainer as unknown as { ownerDocument: Document }).ownerDocument = ownerDocument;
+
+			await LoreBoardRenderer.render({
+				app: mockApp as unknown as import('obsidian').App,
+				plugin,
+				container: rootContainer as unknown as HTMLElement,
+				files: [],
+				currentBookPath: 'Fiction',
+				ownerComponent
+			});
+
+			const canvas = rootContainer.querySelector('.wn-lore-graph-canvas')!;
+			expect(canvas).not.toBeNull();
+			// Reset randomized/circular coordinates to deterministic positions matching scale=2.2 (<=6 nodes), center=(300,200)
+			cedarNode.x = 300;
+			cedarNode.y = 200;
+			alderNode.x = 340;
+			alderNode.y = 200;
+
+			// 1. Hover Cedar (300,200) for 1000ms -> uses real cedarFile, NOT duplicateNameFile
+			canvas.dispatchEvent('mousemove', { clientX: 300, clientY: 200 });
+			vi.advanceTimersByTime(500);
+			canvas.dispatchEvent('mousemove', { clientX: 301, clientY: 201 });
+			vi.advanceTimersByTime(499);
+			expect(buildCardSpy).not.toHaveBeenCalled();
+			vi.advanceTimersByTime(1);
+			await Promise.resolve();
+			await Promise.resolve();
+
+			expect(buildCardSpy).toHaveBeenCalledTimes(1);
+			const firstEntry = buildCardSpy.mock.calls[0][1] as { file: { path: string }; heading: string };
+			expect(firstEntry.file.path).toBe(cedarFile.path);
+			expect(firstEntry.heading).toBe('Cedar');
+			expect(buildCardSpy.mock.calls[0][4]).toEqual(expect.objectContaining({ hideEditButton: false }));
+
+			// 2. Wheel zoom cancels active preview
+			canvas.dispatchEvent('wheel', { deltaY: -100, clientX: 300, clientY: 200, preventDefault: vi.fn() });
+			expect(bodyEl.querySelectorAll('.wn-lore-hover-popover')).toHaveLength(0);
+
+			// 3. Hover borrowed node Alder -> hides edit button
+			buildCardSpy.mockClear();
+			// After wheel step zoom (+10%), scale=2.42, panX/Y=0 -> screenX = (340-300)*2.42 + 300 = 396.8
+			canvas.dispatchEvent('mousemove', { clientX: 397, clientY: 200 });
+			vi.advanceTimersByTime(1000);
+			await Promise.resolve();
+			await Promise.resolve();
+			expect(buildCardSpy).toHaveBeenCalledWith(
+				expect.anything(),
+				expect.objectContaining({ file: borrowedFile, heading: 'Alder' }),
+				expect.anything(),
+				expect.anything(),
+				expect.objectContaining({ hideEditButton: true })
+			);
+
+			// 4. Unloading ownerComponent removes anchor/popover and prevents late async attachment
+			let resolveLate!: () => void;
+			buildCardSpy.mockImplementationOnce(() => new Promise<void>(resolve => { resolveLate = resolve; }));
+			canvas.dispatchEvent('mousemove', { clientX: 300, clientY: 200 });
+			vi.advanceTimersByTime(1000);
+			ownerComponent.unload();
+			resolveLate();
+			await Promise.resolve();
+			await Promise.resolve();
+			expect(bodyEl.querySelectorAll('.wn-lore-hover-popover')).toHaveLength(0);
+			expect(rootContainer.querySelectorAll('.wn-graph-hover-anchor')).toHaveLength(0);
+		} finally {
+			LoreHoverPopover.closeAll();
+			buildCardSpy.mockRestore();
+			MockElement.prototype.createDiv = originalCreateDiv;
+			MockElement.prototype.createEl = originalCreateEl;
+			(MockElement.prototype as unknown as { setCssStyles?: unknown }).setCssStyles = originalSetCssStyles;
+			(MockElement.prototype as unknown as { getBoundingClientRect?: unknown }).getBoundingClientRect = originalGetRect;
+			(MockElement.prototype as unknown as { getContext?: unknown }).getContext = originalGetContext;
+			(MockElement.prototype as unknown as { matches?: unknown }).matches = originalMatches;
+			(globalThis as unknown as { ResizeObserver?: unknown }).ResizeObserver = originalResizeObserver;
+			(globalThis as unknown as { MutationObserver?: unknown }).MutationObserver = originalMutationObserver;
+			vi.useRealTimers();
+		}
 	});
 
 	it('initializes a new workbench using status memory before broadcasting its selected work', async () => {

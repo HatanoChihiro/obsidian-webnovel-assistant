@@ -1,4 +1,5 @@
-import { TFile, Notice, type Plugin } from 'obsidian';
+import { configurePluginNotices, showPluginNotice } from '../services/PluginNoticeService';
+import { TFile, type Plugin } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { ServiceRegistry } from './ServiceRegistry';
 import { DEFAULT_SETTINGS, PLATFORM_DELAYS } from '../constants';
@@ -37,6 +38,7 @@ import { MobileFloatingStats } from '../ui/MobileFloatingStats';
 import { ProofreadingManager } from '../services/ProofreadingManager';
 import { WritingJourneyService } from '../services/WritingJourneyService';
 import { ImmersiveReferenceManager } from '../services/ImmersiveReferenceManager';
+import { ImmersiveManuscriptManager } from '../services/ImmersiveManuscriptManager';
 import { Logger } from '../utils/Logger';
 import { LoreCardRenderer } from '../ui/components/LoreCardRenderer';
 import { LoreHoverPopover } from '../ui/LoreHoverPopover';
@@ -70,6 +72,7 @@ export type BootstrapperHost = Omit<Plugin, 'settings'> & WebNovelAssistantPlugi
  */
 export class PluginBootstrapper {
 	private shutdownPromise: Promise<void> | null = null;
+	private releaseNotices: (() => void) | null = null;
 
 	constructor(
 		private plugin: BootstrapperHost,
@@ -78,6 +81,8 @@ export class PluginBootstrapper {
 
 	async bootstrap(): Promise<void> {
 		try {
+			this.releaseNotices = configurePluginNotices(() => !this.plugin.isUnloading && this.plugin.settings?.showNotices === true);
+			this.plugin.register(this.releaseNotices);
 			const bootstrapStartTime = performance.now();
 			const tSettingsStart = performance.now();
 			await this.plugin.loadSettings();
@@ -194,10 +199,16 @@ export class PluginBootstrapper {
 			this.plugin.menuManager.registerAllMenus();
 			this.plugin.registerCommonRibbonIcons();
 
-			this.plugin.registerEvent(this.plugin.app.workspace.on('editor-change', (_editor, info) => {
-				this.plugin.workerManager.handleEditorChange(info.file);
+			this.plugin.registerEvent(this.plugin.app.workspace.on('editor-change', (editor, info) => {
+				const imm = this.plugin.immersiveModeManager;
+				const isMobileScoped = Boolean(imm?.isMobileDataIsolationActive?.() ?? imm?.isMobileImmersiveSessionActive?.());
+				if (isMobileScoped && !imm?.isMainEditorOrigin?.(info, editor)) {
+					return;
+				}
+				const origin = { editor, info };
+				this.plugin.workerManager.handleEditorChange(info.file, origin);
 				this.plugin.adaptiveDebounceManager.debounce('editor-update', () => {
-					this.plugin.editorTracker.handleEditorChange();
+					this.plugin.editorTracker.handleEditorChange(origin);
 				});
 			}));
 			this.plugin.registerEvent(this.plugin.app.workspace.on('webnovel-workbench-book-changed', () => {
@@ -211,12 +222,22 @@ export class PluginBootstrapper {
 				}
 			}));
 			this.plugin.registerEvent(this.plugin.app.workspace.on('active-leaf-change', () => {
-				this.plugin.workerManager.handleActiveFileChange(this.plugin.app.workspace.getActiveFile());
+				const imm = this.plugin.immersiveModeManager;
+				const isMobileScoped = Boolean(imm?.isMobileDataIsolationActive?.() ?? imm?.isMobileImmersiveSessionActive?.());
+				const scopedFile = isMobileScoped
+					? (imm?.getDataScopedMainFile?.() ?? imm?.getActiveSessionMainFile?.() ?? null)
+					: this.plugin.app.workspace.getActiveFile();
+				this.plugin.workerManager.handleActiveFileChange(scopedFile);
 				void this.plugin.editorTracker.handleFileChange();
 				this.plugin.homepageManager?.handleViewMode();
 			}));
 			this.plugin.registerEvent(this.plugin.app.workspace.on('file-open', (file) => {
-				this.plugin.workerManager.handleActiveFileChange(file);
+				const imm = this.plugin.immersiveModeManager;
+				const isMobileScoped = Boolean(imm?.isMobileDataIsolationActive?.() ?? imm?.isMobileImmersiveSessionActive?.());
+				const scopedFile = isMobileScoped
+					? (imm?.getDataScopedMainFile?.() ?? imm?.getActiveSessionMainFile?.() ?? null)
+					: file;
+				this.plugin.workerManager.handleActiveFileChange(scopedFile);
 				void this.plugin.editorTracker.handleFileChange();
 			}));
 			this.plugin.registerEvent(this.plugin.app.metadataCache.on('changed', (file) => {
@@ -280,7 +301,7 @@ export class PluginBootstrapper {
 							} else if (typeof ws.setLayout === 'function') {
 								await ws.setLayout(layout);
 							}
-							new Notice(t('immersive.recovered-from-crash'));
+							showPluginNotice(t('immersive.recovered-from-crash'));
 						} catch (err) {
 							Logger.error('[Plugin] 恢复沉浸模式布局失败:', err);
 						} finally {
@@ -330,6 +351,7 @@ export class PluginBootstrapper {
 		this.services.register('FileExplorerPatcher', new FileExplorerPatcher(this.plugin.app, this.plugin));
 		this.services.register('WordCounter', new WordCounter());
 		this.services.register('ImmersiveReferenceManager', new ImmersiveReferenceManager(this.plugin.app, this.plugin));
+		this.services.register('ImmersiveManuscriptManager', new ImmersiveManuscriptManager(this.plugin.app, this.plugin));
 		this.services.register('ImmersiveModeManager', new ImmersiveModeManager(this.plugin.app, this.plugin));
 		this.services.register('CommandManager', new CommandManager(this.plugin));
 		this.services.register('ViewManager', new ViewManager(this.plugin));
@@ -498,21 +520,37 @@ export class PluginBootstrapper {
 			this.plugin.mobileFloatingStats?.load();
 		});
 
-		this.plugin.registerEvent(this.plugin.app.workspace.on('editor-change', () => {
+		this.plugin.registerEvent(this.plugin.app.workspace.on('editor-change', (editor, info) => {
+			const imm = this.plugin.immersiveModeManager;
+			const isMobileScoped = Boolean(imm?.isMobileDataIsolationActive?.() ?? imm?.isMobileImmersiveSessionActive?.());
+			if (isMobileScoped) {
+				if (imm?.isMobileImmersiveSessionActive?.() && imm.isMainEditorOrigin?.(info, editor)) {
+					this.plugin.adaptiveDebounceManager.debounce('mobile-stats-update', () => {
+						imm.refreshMobileTopBar?.();
+					});
+				}
+				return;
+			}
 			this.plugin.adaptiveDebounceManager.debounce('mobile-stats-update', () => {
 				this.plugin.mobileFloatingStats?.update();
 			});
 		}));
 		this.plugin.registerEvent(this.plugin.app.workspace.on('webnovel-workbench-book-changed', () => {
+			const imm = this.plugin.immersiveModeManager;
+			if (imm?.isMobileDataIsolationActive?.() ?? imm?.isMobileImmersiveSessionActive?.()) return;
 			this.plugin.mobileFloatingStats?.update();
 		}));
 		this.plugin.registerEvent(this.plugin.app.workspace.on('active-leaf-change', () => {
+			const imm = this.plugin.immersiveModeManager;
+			if (imm?.isMobileDataIsolationActive?.() ?? imm?.isMobileImmersiveSessionActive?.()) return;
 			this.plugin.mobileFloatingStats?.update();
 		}));
 
 		// 监听专注计时刷新
 		this.plugin.registerInterval(window.setInterval(() => {
-			if (this.plugin.isTracking) {
+			const imm = this.plugin.immersiveModeManager;
+			const isMobileScoped = Boolean(imm?.isMobileDataIsolationActive?.() ?? imm?.isMobileImmersiveSessionActive?.());
+			if (this.plugin.isTracking && !isMobileScoped) {
 				this.plugin.mobileFloatingStats?.update();
 			}
 		}, 1000));
@@ -535,6 +573,9 @@ export class PluginBootstrapper {
 
 		// 1. 同步设置卸载状态并立即执行所有视觉与 DOM 清理（确保在首个 await 之前执行完毕，界面立刻响应）
 		this.plugin.isUnloading = true;
+		this.releaseNotices?.();
+		this.releaseNotices = null;
+		this.services.getOptional('ImmersiveModeManager')?.prepareShutdownCleanup?.();
 		this.services.getOptional('TypographyManager')?.destroy();
 		LoreHoverPopover.closeAll();
 		LoreCardRenderer.clearLoreBodyCache();
@@ -545,14 +586,15 @@ export class PluginBootstrapper {
 				'webnovel-notes-hidden',
 				'webnovel-custom-dragging',
 				'webnovel-eye-care-enabled',
-				'immersive-mode-active',
-				'immersive-hide-properties'
+				'wn-immersive-mode-active',
+				'wn-immersive-mobile-active',
+				'wn-immersive-hide-properties'
 			);
 		}
 
 		// 1.2 立即移除浮动便签 DOM 元素
 		if (typeof activeDocument !== 'undefined' && activeDocument.body?.getElementsByClassName) {
-			for (const el of Array.from(activeDocument.body.getElementsByClassName('my-floating-sticky-note'))) {
+			for (const el of Array.from(activeDocument.body.getElementsByClassName('wn-my-floating-sticky-note'))) {
 				el.remove();
 			}
 		}
@@ -615,6 +657,7 @@ export class PluginBootstrapper {
 
 			const flushSettings = async () => {
 				try {
+					await this.services.getOptional('ImmersiveManuscriptManager')?.flush();
 					await this.plugin.settingsManager.flush();
 				} catch (e) {
 					Logger.error('[WebNovel Assistant] 卸载时数据刷新失败:', e);

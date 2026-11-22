@@ -7,30 +7,30 @@
    ========================================================================== */
 
 /* 1. Floating Sticky Notes */
-body.wn-card-indent-active .my-floating-sticky-note .my-sticky-content.markdown-rendered p:not(:empty)::before,
-body.wn-card-indent-active .my-sticky-content.markdown-rendered p:not(:empty)::before {
+body.wn-card-indent-active .wn-my-floating-sticky-note .wn-my-sticky-content.markdown-rendered p:not(:empty)::before,
+body.wn-card-indent-active .wn-my-sticky-content.markdown-rendered p:not(:empty)::before {
 	content: "";
 	display: inline-block;
 	width: var(--wn-card-indent, 2em);
 }
 
-body.wn-card-indent-active .my-floating-sticky-note .my-sticky-content.markdown-rendered p:empty::before,
-body.wn-card-indent-active .my-sticky-content.markdown-rendered p:empty::before {
+body.wn-card-indent-active .wn-my-floating-sticky-note .wn-my-sticky-content.markdown-rendered p:empty::before,
+body.wn-card-indent-active .wn-my-sticky-content.markdown-rendered p:empty::before {
 	display: none;
 }
 
-.my-sticky-content.markdown-rendered p .wn-soft-break-spacer,
-.my-sticky-content.markdown-rendered p .wn-soft-break-indent {
+.wn-my-sticky-content.markdown-rendered p .wn-soft-break-spacer,
+.wn-my-sticky-content.markdown-rendered p .wn-soft-break-indent {
 	display: none;
 }
 
-body.wn-card-indent-active.wn-card-reading-compat-active .my-floating-sticky-note .my-sticky-content.markdown-rendered p .wn-soft-break-indent,
-body.wn-card-indent-active.wn-card-reading-compat-active .my-sticky-content.markdown-rendered p .wn-soft-break-indent {
+body.wn-card-indent-active.wn-card-reading-compat-active .wn-my-floating-sticky-note .wn-my-sticky-content.markdown-rendered p .wn-soft-break-indent,
+body.wn-card-indent-active.wn-card-reading-compat-active .wn-my-sticky-content.markdown-rendered p .wn-soft-break-indent {
 	display: inline-block;
 	width: var(--wn-card-indent, 2em);
 }
 
-body.wn-card-indent-active .my-floating-sticky-note .wn-sticky-note-editor-line::before,
+body.wn-card-indent-active .wn-my-floating-sticky-note .wn-sticky-note-editor-line::before,
 body.wn-card-indent-active .webnovel-immersive-note-card .wn-sticky-note-editor-line::before {
 	content: "";
 	display: inline-block;

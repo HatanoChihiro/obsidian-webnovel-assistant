@@ -29,6 +29,7 @@
 	padding-inline-start: 0;
 	font-size: var(--wn-type-font-size, inherit);
 	line-height: var(--wn-type-line-height, 1.8);
+	padding-top: var(--wn-type-para-before, 0em);
 	padding-bottom: var(--wn-type-para-spacing, 0.5em);
 	letter-spacing: var(--wn-type-letter-spacing, 0.05em);
 	text-align: var(--wn-type-text-align, justify);
@@ -72,6 +73,7 @@ body .workspace-leaf.wn-typography-active .markdown-rendered p {
 	line-height: var(--wn-type-line-height, 1.8);
 	margin-top: 0;
 	margin-block-start: 0;
+	padding-top: var(--wn-type-para-before, 0em);
 	margin-bottom: calc(var(--wn-type-line-height, 1.8) * 1em + var(--wn-type-para-spacing, 0.5em));
 	margin-block-end: calc(var(--wn-type-line-height, 1.8) * 1em + var(--wn-type-para-spacing, 0.5em));
 	letter-spacing: var(--wn-type-letter-spacing, 0.05em);
@@ -108,7 +110,7 @@ body .workspace-leaf.wn-typography-active .markdown-rendered p::before {
 .workspace-leaf.wn-typography-active.wn-type-reading-compat .markdown-rendered p .wn-soft-break-spacer,
 .markdown-rendered p .wn-soft-break-spacer {
 	display: block;
-	height: var(--wn-type-para-spacing, 0.5em);
+	height: calc(var(--wn-type-para-before, 0em) + var(--wn-type-para-spacing, 0.5em));
 }
 
 

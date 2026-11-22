@@ -1,6 +1,8 @@
+import { showPluginNotice } from '../services/PluginNoticeService';
 import type { App } from 'obsidian';
-import { Modal, Setting, Notice, type TextComponent, type ButtonComponent } from 'obsidian';
+import { Modal, Setting, type TextComponent, type ButtonComponent } from 'obsidian';
 import { t } from '../i18n';
+import { applyDestructiveButtonStyle } from '../utils/ui';
 
 export interface SetSeriesModalOptions {
 	currentSeries: string;
@@ -119,7 +121,7 @@ export class SetSeriesModal extends Modal {
 			btnSetting.addButton(btn => {
 				this.clearButton = btn;
 				btn.setButtonText(t('modal.clear-series'))
-					.setWarning()
+					.then(applyDestructiveButtonStyle)
 					.onClick(() => {
 						void this.handleSave('');
 					});
@@ -162,7 +164,7 @@ export class SetSeriesModal extends Modal {
 			this.close();
 		} catch (error) {
 			console.error('[SetSeriesModal] 保存作品系列失败:', error);
-			new Notice(t('notice.series-update-failed'));
+			showPluginNotice(t('notice.series-update-failed'));
 			this.isSubmitting = false;
 			if (this.saveButton) this.saveButton.setDisabled(false);
 			if (this.clearButton) this.clearButton.setDisabled(false);

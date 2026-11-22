@@ -5,9 +5,9 @@
 
 /* Sticky Notes */
 
-body.webnovel-notes-hidden .floating-sticky-note,
-body.webnovel-notes-hidden .my-floating-sticky-note,
-body.webnovel-modal-active .my-floating-sticky-note {
+body.webnovel-notes-hidden .wn-floating-sticky-note,
+body.webnovel-notes-hidden .wn-my-floating-sticky-note,
+body.webnovel-modal-active .wn-my-floating-sticky-note {
 	display: none;
 }
 
@@ -17,7 +17,7 @@ body.webnovel-modal-active .my-floating-sticky-note {
 
    ========================================================================== */
 
-body .my-floating-sticky-note {
+body .wn-my-floating-sticky-note {
 	position: fixed;
 	min-width: 200px;
 	min-height: 200px;
@@ -32,12 +32,12 @@ body .my-floating-sticky-note {
 	background-color: var(--note-bg-color-alpha, transparent);
 }
 
-body .my-floating-sticky-note:hover {
+body .wn-my-floating-sticky-note:hover {
 	box-shadow: 0 12px 35px rgba(0, 0, 0, 0.22);
 	background-color: var(--note-bg-color);
 }
 
-body .my-sticky-header {
+body .wn-my-sticky-header {
 	padding: 8px 12px;
 	background-color: transparent;
 	border-bottom: 1px solid transparent;
@@ -53,16 +53,16 @@ body .my-sticky-header {
 	gap: 10px;
 }
 
-body .my-floating-sticky-note:hover .my-sticky-header {
+body .wn-my-floating-sticky-note:hover .wn-my-sticky-header {
 	background-color: rgba(0, 0, 0, 0.04);
 	border-bottom: 1px solid rgba(0, 0, 0, 0.06);
 }
 
-body .my-sticky-header:active {
+body .wn-my-sticky-header:active {
 	cursor: grabbing;
 }
 
-body .my-sticky-title-wrapper {
+body .wn-my-sticky-title-wrapper {
 	display: flex;
 	align-items: center;
 	gap: 6px;
@@ -72,7 +72,7 @@ body .my-sticky-title-wrapper {
 	min-width: 0;
 }
 
-body .my-sticky-title-icon {
+body .wn-my-sticky-title-icon {
 	display: flex;
 	align-items: center;
 	color: var(--note-text-color);
@@ -80,12 +80,12 @@ body .my-sticky-title-icon {
 	flex-shrink: 0;
 }
 
-body .my-sticky-title-icon svg {
+body .wn-my-sticky-title-icon svg {
 	width: 14px;
 	height: 14px;
 }
 
-body .my-sticky-title {
+body .wn-my-sticky-title {
 	font-weight: bold;
 	font-size: 12px;
 	color: var(--note-text-color);
@@ -97,7 +97,7 @@ body .my-sticky-title {
 	min-width: 0;
 }
 
-body .my-sticky-controls {
+body .wn-my-sticky-controls {
 	display: flex;
 	align-items: center;
 	gap: 4px;
@@ -108,13 +108,13 @@ body .my-sticky-controls {
 	transition: opacity 0.2s ease;
 }
 
-body .my-floating-sticky-note:hover .my-sticky-controls {
+body .wn-my-floating-sticky-note:hover .wn-my-sticky-controls {
 	opacity: 1;
 	pointer-events: auto;
 }
 
-body .my-sticky-btn,
-body .my-sticky-close {
+body .wn-my-sticky-btn,
+body .wn-my-sticky-close {
 	background: transparent;
 	border: none;
 	box-shadow: none;
@@ -129,32 +129,32 @@ body .my-sticky-close {
 	transition: all 0.2s;
 }
 
-body .my-sticky-btn svg,
-body .my-sticky-close svg {
+body .wn-my-sticky-btn svg,
+body .wn-my-sticky-close svg {
 	width: 16px;
 	height: 16px;
 	stroke-width: 2px;
 }
 
-body .my-sticky-btn:hover {
+body .wn-my-sticky-btn:hover {
 	background-color: rgba(0, 0, 0, 0.08);
 	opacity: 1;
 }
 
-body .my-sticky-btn.is-active {
+body .wn-my-sticky-btn.is-active {
 	color: var(--interactive-accent);
 	background-color: rgba(0, 0, 0, 0.06);
 	opacity: 1;
 }
 
-body .my-sticky-close:hover {
+body .wn-my-sticky-close:hover {
 	color: var(--text-error, var(--interactive-accent));
 	/* 与文字色语义一致，跟随 --text-error 主题变量 */
 	background-color: color-mix(in srgb, var(--text-error, var(--interactive-accent)) 10%, transparent);
 	opacity: 1;
 }
 
-body .my-sticky-palette-popup {
+body .wn-my-sticky-palette-popup {
 	display: none;
 	position: absolute;
 	top: 32px;
@@ -169,12 +169,12 @@ body .my-sticky-palette-popup {
 	gap: 8px;
 }
 
-body .my-sticky-palette-popup.is-active {
+body .wn-my-sticky-palette-popup.is-active {
 	display: grid;
 	animation: popupFadeIn 0.15s ease-out;
 }
 
-body .my-sticky-swatch {
+body .wn-my-sticky-swatch {
 	width: 26px;
 	height: 26px;
 	border-radius: 50%;
@@ -189,12 +189,12 @@ body .my-sticky-swatch {
 	font-size: 13px;
 }
 
-body .my-sticky-swatch:hover {
+body .wn-my-sticky-swatch:hover {
 	transform: scale(1.15);
 	border-color: rgba(0, 0, 0, 0.5);
 }
 
-body .my-sticky-content {
+body .wn-my-sticky-content {
 	padding: 15px;
 	overflow-y: auto;
 	font-size: var(--wn-sticky-note-font-size, 14px);
@@ -204,15 +204,15 @@ body .my-sticky-content {
 	background-color: transparent;
 }
 
-body .my-sticky-content * {
+body .wn-my-sticky-content * {
 	color: inherit;
 }
 
-body .my-sticky-content.markdown-rendered :is(h1, h2, h3, h4, h5, h6) {
+body .wn-my-sticky-content.markdown-rendered :is(h1, h2, h3, h4, h5, h6) {
 	font-size: inherit;
 }
 
-body .my-sticky-textarea {
+body .wn-my-sticky-textarea {
 	box-sizing: border-box;
 	flex-grow: 1;
 	width: 100%;
@@ -232,16 +232,16 @@ body .my-sticky-textarea {
 	line-height: 1.5;
 }
 
-body .my-sticky-textarea.wn-show-block {
+body .wn-my-sticky-textarea.wn-show-block {
 	display: block;
 }
 
-body .my-sticky-textarea:focus {
+body .wn-my-sticky-textarea:focus {
 	box-shadow: none;
 	background-color: transparent;
 }
 
-body .my-sticky-content h1.inline-title {
+body .wn-my-sticky-content h1.inline-title {
 	display: none;
 }
 

@@ -1129,6 +1129,38 @@ describe('ProofreadingManager Lifecycle & Vault Operations', () => {
 		expect(virtualFiles.has('CustomPath/MyDicts/Sensitive Words.md')).toBe(true);
 		expect(virtualFiles.has('CustomPath/MyDicts/近义词.md')).toBe(false);
 	});
+
+	it('regenerates templates in the new primary workspace when dictionaryPath still points to an old workspace default folder', async () => {
+		plugin.settings.workspaceFolders = ['NewWorkspace'];
+		plugin.settings.proofreading.dictionaryPath = 'OldWorkspace/校对词典';
+		virtualFolders.add('OldWorkspace/校对词典');
+		virtualFiles.set('OldWorkspace/校对词典/错词.md', '| 错词 | 建议 | 说明 |\n| --- | --- | --- |\n| 旧词 | 新词 | 保留旧目录 |');
+
+		await setLocale('zh-CN');
+		await manager.regenerateMissingTemplates();
+
+		expect(plugin.settings.proofreading.dictionaryPath).toBe('NewWorkspace/校对词典');
+		expect(virtualFolders.has('NewWorkspace/校对词典')).toBe(true);
+		expect(virtualFiles.has('NewWorkspace/校对词典/错词.md')).toBe(true);
+		expect(virtualFiles.has('NewWorkspace/校对词典/近义词.md')).toBe(true);
+		expect(virtualFiles.has('NewWorkspace/校对词典/敏感词.md')).toBe(true);
+		// Does not generate missing templates in the previous workspace or overwrite its existing file
+		expect(virtualFiles.has('OldWorkspace/校对词典/近义词.md')).toBe(false);
+		expect(virtualFiles.get('OldWorkspace/校对词典/错词.md')).toContain('旧词');
+	});
+
+	it('regenerates templates at vault root when workspaceFolders is cleared while dictionaryPath points to an old workspace default folder', async () => {
+		plugin.settings.workspaceFolders = [];
+		plugin.settings.proofreading.dictionaryPath = 'OldWorkspace/校对词典';
+
+		await setLocale('zh-CN');
+		await manager.regenerateMissingTemplates();
+
+		expect(plugin.settings.proofreading.dictionaryPath).toBe('校对词典');
+		expect(virtualFolders.has('校对词典')).toBe(true);
+		expect(virtualFiles.has('校对词典/错词.md')).toBe(true);
+		expect(virtualFiles.has('OldWorkspace/校对词典/错词.md')).toBe(false);
+	});
 });
 
 describe('Basic Typo Dictionary Validation & Advisory Threshold Rules', () => {
@@ -2577,6 +2609,44 @@ describe('ProofreadingManager - getMaxPatternLength & Caching Lifecycle', () => 
 				const failedMoved = await mgr.relocateDefaultDictionary('OldWorkspace', 'NewWorkspace');
 				expect(failedMoved).toBe(false);
 				expect(plugin.settings.proofreading.dictionaryPath).toBe('OldWorkspace/校对词典');
+			});
+
+			it('syncs non-existent stale default dictionaryPath to the new workspace even when oldFirst did not match', async () => {
+				const abstractFiles = new Map<string, TFolder | TFile>();
+				const renameFileMock = vi.fn();
+				const resetLoreCacheMock = vi.fn();
+
+				const vaultMock = {
+					getAbstractFileByPath: vi.fn((path: string) => abstractFiles.get(path) ?? null)
+				} as unknown as Vault;
+
+				const app = {
+					vault: vaultMock,
+					fileManager: { renameFile: renameFileMock },
+					workspace: { trigger: vi.fn() }
+				} as unknown as App;
+
+				const plugin = {
+					app,
+					settings: {
+						proofreading: {
+							enabled: true,
+							dictionaryPath: 'StaleWorkspace/校对词典'
+						},
+						workspaceFolders: ['NewWorkspace']
+					},
+					cacheManager: {
+						resetLoreCache: resetLoreCacheMock
+					}
+				} as unknown as WebNovelAssistantPlugin;
+
+				const mgr = new ProofreadingManager(app, plugin);
+				const synced = await mgr.relocateDefaultDictionary('OtherWorkspace', 'NewWorkspace');
+
+				expect(synced).toBe(true);
+				expect(renameFileMock).not.toHaveBeenCalled();
+				expect(plugin.settings.proofreading.dictionaryPath).toBe('NewWorkspace/校对词典');
+				expect(resetLoreCacheMock).toHaveBeenCalled();
 			});
 		});
 

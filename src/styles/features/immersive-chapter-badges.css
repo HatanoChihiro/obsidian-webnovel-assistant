@@ -1,17 +1,17 @@
 
 
-.immersive-chapter-left {
+.wn-immersive-chapter-left {
 	display: flex;
 	flex-direction: column;
 	gap: 4px;
 	align-items: flex-start;
 }
 
-.immersive-chapter-title {
+.wn-immersive-chapter-title {
 	word-break: break-all;
 }
 
-.immersive-chapter-badges {
+.wn-immersive-chapter-badges {
 	display: flex;
 	flex-wrap: wrap;
 	gap: 4px;

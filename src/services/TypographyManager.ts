@@ -220,6 +220,7 @@ export class TypographyManager {
 		}
 		el.style.setProperty('--wn-type-indent', typo.enableIndent ? (typo.indentSize || '2em') : '0');
 		el.style.setProperty('--wn-type-line-height', String(typo.lineHeight || 1.8));
+		el.style.setProperty('--wn-type-para-before', typo.paragraphSpacingBefore || '0em');
 		el.style.setProperty('--wn-type-para-spacing', typo.paragraphSpacing || '0.5em');
 		el.style.setProperty('--wn-type-letter-spacing', typo.letterSpacing || '0.05em');
 		el.style.setProperty('--wn-type-text-align', typo.justifyText ? 'justify' : 'left');
@@ -247,6 +248,7 @@ export class TypographyManager {
 		el.style.removeProperty('--wn-type-font-size');
 		el.style.removeProperty('--wn-type-indent');
 		el.style.removeProperty('--wn-type-line-height');
+		el.style.removeProperty('--wn-type-para-before');
 		el.style.removeProperty('--wn-type-para-spacing');
 		el.style.removeProperty('--wn-type-letter-spacing');
 		el.style.removeProperty('--wn-type-text-align');

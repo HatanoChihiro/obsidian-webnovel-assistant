@@ -4,14 +4,14 @@
 
 /* Immersive Chapter List */
 
-.immersive-chapter-list {
+.wn-immersive-chapter-list {
 	display: flex;
 	flex-direction: column;
 	gap: 4px;
 	overflow-y: auto;
 }
 
-.immersive-chapter-item {
+.wn-immersive-chapter-item {
 	display: flex;
 	justify-content: space-between;
 	padding: 6px 10px;
@@ -21,17 +21,17 @@
 	font-size: 0.85em;
 }
 
-.immersive-chapter-item:hover {
+.wn-immersive-chapter-item:hover {
 	background: color-mix(in srgb, var(--interactive-accent) 10%, var(--background-modifier-hover));
 }
 
-.immersive-chapter-item.is-active {
+.wn-immersive-chapter-item.is-active {
 	background: color-mix(in srgb, var(--interactive-accent) 20%, transparent);
 	color: var(--text-accent);
 	font-weight: bold;
 }
 
-.immersive-chapter-item.is-reference-open {
+.wn-immersive-chapter-item.is-reference-open {
 	background: color-mix(
 		in srgb,
 		color-mix(in srgb, var(--interactive-accent) 70%, var(--color-yellow)) 18%,
@@ -39,13 +39,13 @@
 	);
 }
 
-.immersive-chapter-count {
+.wn-immersive-chapter-count {
 	font-size: 0.8em;
 	color: var(--interactive-accent);
 	font-family: var(--font-monospace);
 }
 
-.immersive-chapter-count.is-excluded {
+.wn-immersive-chapter-count.is-excluded {
 	color: var(--text-muted);
 	font-style: italic;
 	opacity: 0.85;

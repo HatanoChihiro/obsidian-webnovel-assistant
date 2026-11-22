@@ -20,7 +20,7 @@
 	border: 1px solid var(--background-modifier-border);
 	border-radius: var(--radius-m);
 	box-shadow: var(--shadow-l);
-	z-index: calc(var(--layer-menu, 65) - 1);
+	z-index: calc(var(--layer-modal, 50) - 1);
 	resize: both;
 	overflow: hidden;
 	font-family: var(--font-interface);
@@ -203,10 +203,18 @@
 }
 
 .wn-snapshot-replay-nav-group,
-.wn-snapshot-replay-speed-group {
+.wn-snapshot-replay-speed-group,
+.wn-snapshot-replay-action-group {
 	display: inline-flex;
 	align-items: center;
 	gap: 4px;
+}
+
+.wn-snapshot-restore-modal-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+	margin-top: 16px;
 }
 
 .wn-snapshot-replay-scrubber-group {
@@ -416,22 +424,21 @@
 /* Journey row snapshot button */
 .wn-writing-journey-item-actions {
 	display: inline-flex;
-	align-items: center;
+	align-items: baseline;
+	flex-shrink: 0;
 	margin-left: 8px;
 }
 
-.wn-writing-journey-btn-snapshot {
-	font-size: var(--font-ui-smaller);
-	padding: 2px 6px;
+button.wn-writing-journey-btn-snapshot.mod-cta {
+	font-size: calc(var(--font-ui-smaller) * 0.9);
+	font-weight: var(--font-normal);
+	line-height: var(--line-height-normal);
+	height: auto;
+	min-height: 0;
+	/* Lift the visible glyphs slightly without changing the button height. */
+	padding: 0.5px 8px 1.5px;
 	border-radius: var(--radius-s);
-	border: 1px solid var(--background-modifier-border);
-	background-color: var(--interactive-normal);
-	color: var(--text-normal);
 	cursor: pointer;
-}
-
-.wn-writing-journey-btn-snapshot:hover {
-	background-color: var(--interactive-hover);
 }
 
 .wn-snapshot-panel.is-single-view .wn-snapshot-row {

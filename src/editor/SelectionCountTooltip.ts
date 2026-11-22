@@ -45,7 +45,7 @@ export const selectionCountTooltipExtension = (plugin: SelectionCountTooltipPlug
 			strictSide: true,
 			create: () => {
 				const dom = createDiv();
-				dom.className = 'cm-tooltip-selection-count';
+				dom.className = 'wn-cm-tooltip-selection-count';
 				dom.textContent = t('common.selection-count', { count: String(wordCount) });
 				return { dom };
 			}

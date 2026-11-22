@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AdvancedSearchModal, type AdvancedSearchModalPlugin } from '../src/ui/AdvancedSearchModal';
-import { TFile } from 'obsidian';
+import { TFile, TFolder } from 'obsidian';
 import { smartLocateAndHighlight } from '../src/utils/leaf';
 import { MockElement } from './mocks/MockElement';
 import { t } from '../src/i18n';
@@ -553,22 +553,22 @@ describe('AdvancedSearchModal source leaf routing', () => {
 		// 1. Start search with query '旧词'
 		(modal as unknown as { query: string }).query = '旧词';
 		const search1Promise = (modal as unknown as { executeSearch: () => Promise<void> }).executeSearch();
-		expect(container.querySelector('.advanced-search-loading')).not.toBeNull();
+		expect(container.querySelector('.wn-advanced-search-loading')).not.toBeNull();
 
 		// 2. Clear query and execute empty search
 		(modal as unknown as { query: string }).query = '   ';
 		const emptySearchPromise = (modal as unknown as { executeSearch: () => Promise<void> }).executeSearch();
 		await emptySearchPromise;
 
-		expect(container.querySelector('.advanced-search-empty')).not.toBeNull();
-		expect(container.querySelector('.advanced-search-empty')?.textContent).toBe(t('modal.please-enter-keyword'));
+		expect(container.querySelector('.wn-advanced-search-empty')).not.toBeNull();
+		expect(container.querySelector('.wn-advanced-search-empty')?.textContent).toBe(t('modal.please-enter-keyword'));
 
 		// 3. Now delayed read completes
 		resolveDelayedRead('正文包含 旧词');
 		await search1Promise;
 
-		expect(container.querySelector('.advanced-search-empty')?.textContent).toBe(t('modal.please-enter-keyword'));
-		expect(container.querySelectorAll('.advanced-search-match-item')).toHaveLength(0);
+		expect(container.querySelector('.wn-advanced-search-empty')?.textContent).toBe(t('modal.please-enter-keyword'));
+		expect(container.querySelectorAll('.wn-advanced-search-match-item')).toHaveLength(0);
 	});
 
 	it('yields during actual DOM render and stops appending after cancellation', async () => {
@@ -606,7 +606,7 @@ describe('AdvancedSearchModal source leaf routing', () => {
 			renderSearchResults: (res: typeof results, id?: number) => Promise<void>;
 		}).renderSearchResults(results, searchId);
 
-		const items = container.querySelectorAll('.advanced-search-match-item');
+		const items = container.querySelectorAll('.wn-advanced-search-match-item');
 		expect(items).toHaveLength(50);
 	});
 
@@ -639,8 +639,19 @@ describe('AdvancedSearchModal source leaf routing', () => {
 			renderSearchResults: (res: typeof results, id?: number) => Promise<void>;
 		}).renderSearchResults(results, searchId);
 
-		const items = container.querySelectorAll('.advanced-search-match-item');
+		const items = container.querySelectorAll('.wn-advanced-search-match-item');
 		expect(items).toHaveLength(60);
+		const querySelectorAll = container.querySelectorAll.bind(container);
+		vi.spyOn(container, 'querySelectorAll').mockImplementation(selector =>
+			selector === '.wn-advanced-search-match-item.is-selected'
+				? items.filter(item => item.hasClass('is-selected'))
+				: querySelectorAll(selector));
+		vi.spyOn(modal as unknown as { openSearchResult: () => void }, 'openSearchResult').mockImplementation(() => {});
+		items[0].dispatchEvent('click', { stopPropagation: vi.fn() });
+		expect(items[0].hasClass('is-selected')).toBe(true);
+		items[1].dispatchEvent('click', { stopPropagation: vi.fn() });
+		expect(items[0].hasClass('is-selected')).toBe(false);
+		expect(items[1].hasClass('is-selected')).toBe(true);
 	});
 
 	it('correctly handles CRLF normalization, frontmatter exclusion, and multiline coordinates', async () => {
@@ -712,5 +723,105 @@ describe('AdvancedSearchModal source leaf routing', () => {
 		expect(s1.endLoc).toEqual({ line: 6, ch: 2 });
 		expect(s1.occurrenceIndex).toBe(0);
 		expect(s1.highlight).toBe('跨行 目标');
+	});
+
+	it('current scope enumerates book folder directly without calling getVaultMarkdownFiles', async () => {
+		const ch1 = Object.assign(new TFile(), { basename: 'Chapter 1', name: 'Chapter 1.md', path: 'Book A/Chapter 1.md', extension: 'md' });
+		const ch2 = Object.assign(new TFile(), { basename: 'Chapter 2', name: 'Chapter 2.md', path: 'Book A/Vol 1/Chapter 2.md', extension: 'md' });
+		const volFolder = Object.assign(new TFolder(), { name: 'Vol 1', path: 'Book A/Vol 1', children: [ch2] });
+		const bookFolder = Object.assign(new TFolder(), { name: 'Book A', path: 'Book A', children: [ch1, volFolder] });
+
+		const getVaultMarkdownFiles = vi.fn().mockReturnValue([]);
+		const app = {
+			vault: {
+				cachedRead: vi.fn().mockResolvedValue('正文包含 目标 关键词'),
+				getAbstractFileByPath: vi.fn((p: string) => (p === 'Book A' ? bookFolder : null)),
+			},
+			workspace: { getLeavesOfType: vi.fn().mockReturnValue([]) }
+		};
+		const plugin = {
+			settings: { advancedSearchQuery: '', customSortOrder: {} },
+			saveSettings: vi.fn(),
+			getVaultMarkdownFiles,
+			getTrackedMarkdownFiles: vi.fn().mockReturnValue([]),
+		} as unknown as AdvancedSearchModalPlugin;
+
+		const modal = new AdvancedSearchModal(app as never, plugin);
+		(modal as unknown as { searchScope: string }).searchScope = 'current';
+		(modal as unknown as { query: string }).query = '目标';
+		(modal as unknown as { getCurrentBookPath: () => string | null }).getCurrentBookPath = () => 'Book A';
+		(modal as unknown as { resultsContainer: { empty: () => void; createDiv: () => void } }).resultsContainer = {
+			empty: vi.fn(),
+			createDiv: vi.fn()
+		};
+		let renderedResults: Array<{ file: TFile; totalMatches: number }> = [];
+		(modal as unknown as { renderSearchResults: (results: typeof renderedResults) => void }).renderSearchResults = (results) => {
+			renderedResults = results;
+		};
+
+		await (modal as unknown as { executeSearch: () => Promise<void> }).executeSearch();
+
+		expect(getVaultMarkdownFiles).not.toHaveBeenCalled();
+		expect(renderedResults).toHaveLength(2);
+		expect(renderedResults.map(r => r.file.path)).toEqual(['Book A/Chapter 1.md', 'Book A/Vol 1/Chapter 2.md']);
+	});
+
+	it('custom scope enumerates selected folders/files directly, deduplicates overlaps, and only scans root when "/" is selected', async () => {
+		const ch1 = Object.assign(new TFile(), { basename: 'Chapter 1', name: 'Chapter 1.md', path: 'Book A/Sub/Chapter 1.md', extension: 'md' });
+		const ch2 = Object.assign(new TFile(), { basename: 'Chapter 2', name: 'Chapter 2.md', path: 'Book A/Chapter 2.md', extension: 'md' });
+		const subFolder = Object.assign(new TFolder(), { name: 'Sub', path: 'Book A/Sub', children: [ch1] });
+		const bookFolder = Object.assign(new TFolder(), { name: 'Book A', path: 'Book A', children: [ch2, subFolder] });
+
+		const getVaultMarkdownFiles = vi.fn().mockReturnValue([ch1, ch2]);
+		const app = {
+			vault: {
+				cachedRead: vi.fn().mockResolvedValue('命中 目标 词'),
+				getAbstractFileByPath: vi.fn((p: string) => {
+					if (p === 'Book A') return bookFolder;
+					if (p === 'Book A/Sub') return subFolder;
+					if (p === 'Book A/Sub/Chapter 1.md') return ch1;
+					return null;
+				}),
+			},
+			workspace: { getLeavesOfType: vi.fn().mockReturnValue([]) }
+		};
+		const plugin = {
+			settings: { advancedSearchQuery: '', customSortOrder: {} },
+			saveSettings: vi.fn(),
+			getVaultMarkdownFiles,
+			getTrackedMarkdownFiles: vi.fn().mockReturnValue([]),
+		} as unknown as AdvancedSearchModalPlugin;
+
+		const modal = new AdvancedSearchModal(app as never, plugin);
+		(modal as unknown as { searchScope: string }).searchScope = 'custom';
+		(modal as unknown as { query: string }).query = '目标';
+		(modal as unknown as { selectedFolders: Set<string> }).selectedFolders = new Set(['Book A', 'Book A/Sub', 'Book A/Sub/Chapter 1.md']);
+		(modal as unknown as { resultsContainer: { empty: () => void; createDiv: () => void } }).resultsContainer = {
+			empty: vi.fn(),
+			createDiv: vi.fn()
+		};
+		let renderedResults: Array<{ file: TFile; totalMatches: number }> = [];
+		(modal as unknown as { renderSearchResults: (results: typeof renderedResults) => void }).renderSearchResults = (results) => {
+			renderedResults = results;
+		};
+
+		await (modal as unknown as { executeSearch: () => Promise<void> }).executeSearch();
+
+		expect(getVaultMarkdownFiles).not.toHaveBeenCalled();
+		expect(renderedResults).toHaveLength(2);
+		expect(app.vault.cachedRead).toHaveBeenCalledTimes(2);
+		// Ancestor selection 'Book A' must prevent walking/looking up overlapping descendants
+		expect(app.vault.getAbstractFileByPath).toHaveBeenCalledTimes(1);
+		expect(app.vault.getAbstractFileByPath).toHaveBeenCalledWith('Book A');
+
+		// Empty custom selection should also avoid scanning vault
+		(modal as unknown as { selectedFolders: Set<string> }).selectedFolders = new Set();
+		await (modal as unknown as { executeSearch: () => Promise<void> }).executeSearch();
+		expect(getVaultMarkdownFiles).not.toHaveBeenCalled();
+
+		// Root selection "/" should scan vault
+		(modal as unknown as { selectedFolders: Set<string> }).selectedFolders = new Set(['/']);
+		await (modal as unknown as { executeSearch: () => Promise<void> }).executeSearch();
+		expect(getVaultMarkdownFiles).toHaveBeenCalledTimes(1);
 	});
 });

@@ -5,23 +5,23 @@
    Foreshadowing View & Stage Stepper
    ========================================================================== */
 
-.foreshadowing-entry-card.status-partially-recovered {
+.wn-foreshadowing-entry-card.wn-status-partially-recovered {
 	border-left: 3px solid color-mix(in srgb, var(--interactive-accent) 65%, var(--text-error, var(--interactive-accent)) 35%);
 }
 
 
-.foreshadowing-action-btn.foreshadowing-stage-recover-btn {
+.wn-foreshadowing-action-btn.wn-foreshadowing-stage-recover-btn {
 	background-color: color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 65%, var(--text-error, var(--interactive-accent)) 35%) 15%, transparent);
 	color: var(--text-normal);
 }
 
 
-.foreshadowing-action-btn.foreshadowing-stage-recover-btn:hover {
+.wn-foreshadowing-action-btn.wn-foreshadowing-stage-recover-btn:hover {
 	background-color: color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 65%, var(--text-error, var(--interactive-accent)) 35%) 30%, transparent);
 }
 
 
-.foreshadowing-stepper {
+.wn-foreshadowing-stepper {
 	display: flex;
 	align-items: center;
 	flex: 1 1 auto;
@@ -37,12 +37,12 @@
 }
 
 
-.foreshadowing-stepper::-webkit-scrollbar {
+.wn-foreshadowing-stepper::-webkit-scrollbar {
 	display: none;
 }
 
 
-.foreshadowing-step-item {
+.wn-foreshadowing-step-item {
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -56,49 +56,49 @@
 }
 
 
-.foreshadowing-stepper>.foreshadowing-step-item:first-child {
+.wn-foreshadowing-stepper>.wn-foreshadowing-step-item:first-child {
 	margin-left: 0;
 }
 
 
-.foreshadowing-stepper>.foreshadowing-step-item:last-child {
+.wn-foreshadowing-stepper>.wn-foreshadowing-step-item:last-child {
 	margin-right: 4px;
 }
 
 
-.foreshadowing-step-item:hover {
+.wn-foreshadowing-step-item:hover {
 	background-color: var(--background-modifier-hover);
 	transform: scale(1.15);
 }
 
 
-.foreshadowing-step-item.is-current svg {
+.wn-foreshadowing-step-item.is-current svg {
 	filter: drop-shadow(0 0 2px currentColor);
 }
 
 
-.foreshadowing-step-item.is-source {
+.wn-foreshadowing-step-item.is-source {
 	color: var(--interactive-accent);
 }
 
 
-.foreshadowing-step-item.is-stage {
+.wn-foreshadowing-step-item.is-stage {
 	color: color-mix(in srgb, var(--interactive-accent) 65%, var(--text-error, var(--interactive-accent)) 35%);
 }
 
 
-.foreshadowing-step-item.is-final {
+.wn-foreshadowing-step-item.is-final {
 	color: color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%);
 }
 
 
-.foreshadowing-step-item.is-pending-tail {
+.wn-foreshadowing-step-item.is-pending-tail {
 	color: var(--text-muted);
 	opacity: 0.6;
 }
 
 
-.foreshadowing-step-dot {
+.wn-foreshadowing-step-dot {
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -111,7 +111,7 @@
 }
 
 
-.foreshadowing-step-dot svg {
+.wn-foreshadowing-step-dot svg {
 	width: 12px;
 	height: 12px;
 	stroke-width: 2px;
@@ -119,7 +119,7 @@
 }
 
 
-.foreshadowing-step-line {
+.wn-foreshadowing-step-line {
 	flex: 0 0 14px;
 	flex-shrink: 0;
 	height: 0;
@@ -131,19 +131,19 @@
 }
 
 
-.foreshadowing-step-line.is-stage {
+.wn-foreshadowing-step-line.is-stage {
 	border-top-color: color-mix(in srgb, var(--interactive-accent) 65%, var(--text-error, var(--interactive-accent)) 35%);
 	opacity: 0.75;
 }
 
 
-.foreshadowing-step-line.is-final {
+.wn-foreshadowing-step-line.is-final {
 	border-top-color: color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%);
 	opacity: 0.85;
 }
 
 
-.foreshadowing-step-line.is-pending-tail {
+.wn-foreshadowing-step-line.is-pending-tail {
 	border-top-style: dashed;
 	border-top-color: var(--text-muted);
 	opacity: 0.35;

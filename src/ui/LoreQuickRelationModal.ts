@@ -1,4 +1,5 @@
-import { Modal, Notice, Setting, type App, type Editor, type MarkdownView } from 'obsidian';
+import { showPluginNotice } from '../services/PluginNoticeService';
+import { Modal, Setting, type App, type Editor, type MarkdownView } from 'obsidian';
 import { buildLoreOutline, getFileLoreRelationBlocks, getLoreFrontmatterEnd, scanLoreHeadings } from '../services/LoreOutline';
 import { formatLoreRelationLine, formatLoreRelationTarget, planLoreRelationBlockInsertion } from '../services/LoreRelations';
 import type { LoreEntry } from '../services/CharacterManager';
@@ -17,7 +18,7 @@ export class LoreQuickRelationModal extends Modal {
 		const section = outline.find(heading => heading.relationBlocks.some(block => block.start <= cursor.line && cursor.line < block.end))
 			?? outline.find(heading => heading.line <= cursor.line && cursor.line < heading.bodyEnd);
 		if ((!section && outline.length) || cursor.line <= getLoreFrontmatterEnd(lines)) {
-			new Notice(t('notice.lore-no-source-heading'));
+			showPluginNotice(t('notice.lore-no-source-heading'));
 			return;
 		}
 		const entry = entries.find(item => item.file.path === file.path && item.section?.key === section?.key)
@@ -25,7 +26,7 @@ export class LoreQuickRelationModal extends Modal {
 		const blocks = section?.relationBlocks ?? getFileLoreRelationBlocks(headings, lines.length);
 		new LoreQuickRelationModal(app, entry, entries, relation => {
 			if (view.file !== file || view.editor !== editor || editor.getValue() !== source) {
-				new Notice(t('notice.lore-quick-source-changed'));
+				showPluginNotice(t('notice.lore-quick-source-changed'));
 				return;
 			}
 			const insertion = planLoreRelationBlockInsertion(lines, section?.bodyEnd ?? headings[0]?.position.start.line ?? lines.length, blocks, [relation]);

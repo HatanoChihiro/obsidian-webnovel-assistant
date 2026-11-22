@@ -1,4 +1,4 @@
-import { TFile, type App, type EventRef, type TAbstractFile } from 'obsidian';
+import { TFile, TFolder, type App, type EventRef, type TAbstractFile } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { ChapterReferenceItem, ReferenceCluster } from '../types/reference';
 import type { TimelineEntry } from './TimelineManager';
@@ -243,13 +243,16 @@ export function matchChapterReferences(text: string, items: readonly ChapterRefe
 	return matchCompiledChapterReferences(normalizeReferenceDocument(text), plan, visibleRanges);
 }
 interface SourceRecord<T> { file: TFile; path: string; mtime: number; size: number; read: Promise<T[]> }
-interface ChapterRecord { file: TFile; bookRoot: string; items: ChapterReferenceItem[] }
+interface ChapterRecord { file: TFile; bookRoot: string; eligible: boolean; aliasesKey: string; items: ChapterReferenceItem[] }
+interface PendingContext { file: TFile; bookRoot: string; token: number }
 
 export class ChapterReferenceService {
 	private timelineCache = new Map<string, SourceRecord<TimelineEntry>>();
 	private foreshadowingCache = new Map<string, SourceRecord<ParsedForeshadowingEntry>>();
 	private chapters = new Map<string, ChapterRecord>();
 	private pending = new Map<string, Promise<ChapterReferenceItem[]>>();
+	private pendingContexts = new Map<string, PendingContext>();
+	private nextPendingToken = 0;
 	private activeReads = new Set<Promise<unknown>>();
 	private listeners = new Set<() => void>();
 	private events: EventRef[] = [];
@@ -264,23 +267,212 @@ export class ChapterReferenceService {
 	}
 	private syncListeners(): void {
 		if (this.destroyed || !this.isAnyReferenceEnabled()) {
-			for (const event of this.events) this.app.vault.offref(event);
-			for (const event of this.metadataEvents) this.app.metadataCache.offref(event);
+			for (const event of this.events) this.app.vault.offref?.(event);
+			for (const event of this.metadataEvents) this.app.metadataCache.offref?.(event);
 			this.events = [];
 			this.metadataEvents = [];
 			return;
 		}
 		if (this.events.length > 0 || !this.app.vault?.on) return;
 		const app = this.app;
-		const change = (file: TAbstractFile, oldPath?: string): void => {
-			if (this.destroyed) return;
-			if (!(file instanceof TFile) || oldPath !== undefined || this.isSource(file)) this.clearCache();
+		this.events.push(
+			app.vault.on('modify', (file: TAbstractFile) => this.handleVaultEvent('modify', file)),
+			app.vault.on('rename', (file: TAbstractFile, oldPath: string) => this.handleVaultEvent('rename', file, oldPath)),
+			app.vault.on('create', (file: TAbstractFile) => this.handleVaultEvent('create', file)),
+			app.vault.on('delete', (file: TAbstractFile) => this.handleVaultEvent('delete', file))
+		);
+		if (app.metadataCache?.on) {
+			this.metadataEvents.push(app.metadataCache.on('changed', (file?: TFile) => this.handleMetadataChanged(file)));
+		}
+	}
+	private isNovelInfoFile(file: TFile): boolean {
+		return getCandidateNames(this.plugin.settings.novelInfo?.fileName || getDefaultFileName('novelInfoFileName'), 'novelInfoFileName').has(file.basename);
+	}
+	private isSourcePath(path: string): boolean {
+		const name = path.split('/').pop() || '';
+		const basename = name.replace(/\.md$/i, '');
+		return getCandidateNames(this.plugin.settings.timeline?.fileName || getDefaultFileName('timelineFileName'), 'timelineFileName').has(basename)
+			|| getCandidateNames(this.plugin.settings.foreshadowing?.fileName || getDefaultFileName('foreshadowingFileName'), 'foreshadowingFileName').has(basename);
+	}
+	private isNovelInfoPath(path: string): boolean {
+		const name = path.split('/').pop() || '';
+		const basename = name.replace(/\.md$/i, '');
+		return getCandidateNames(this.plugin.settings.novelInfo?.fileName || getDefaultFileName('novelInfoFileName'), 'novelInfoFileName').has(basename);
+	}
+	private isPathUnderOrEqual(targetPath: string, rootPath: string): boolean {
+		return Boolean(rootPath) && (targetPath === rootPath || targetPath.startsWith(rootPath + '/'));
+	}
+	private invalidateSourceCache(path: string): void {
+		this.timelineCache.delete(path);
+		this.foreshadowingCache.delete(path);
+	}
+	private collectBookAffectedPaths(bookRoot: string, fallbackPath: string, affected: Set<string>): void {
+		for (const [chPath, rec] of this.chapters) {
+			if (bookRoot ? rec.bookRoot === bookRoot : this.isPathUnderOrEqual(chPath, fallbackPath)) {
+				affected.add(chPath);
+			}
+		}
+		for (const [chPath, rec] of this.pendingContexts) {
+			if (bookRoot ? rec.bookRoot === bookRoot : this.isPathUnderOrEqual(chPath, fallbackPath)) {
+				affected.add(chPath);
+			}
+		}
+	}
+	private applyScopedInvalidation(affected: Set<string>): void {
+		if (affected.size === 0) return;
+		for (const path of affected) {
+			this.chapters.delete(path);
+			this.pending.delete(path);
+			this.pendingContexts.delete(path);
+		}
+		this.emitRefresh();
+	}
+	private handleVaultEvent(kind: 'modify' | 'create' | 'delete' | 'rename', file?: TAbstractFile, oldPath?: string): void {
+		if (this.destroyed) return;
+		if (!file) {
+			this.clearCache();
 			this.notifyRefresh();
-		};
-		this.events.push(app.vault.on('modify', change), app.vault.on('rename', change));
-		this.events.push(app.vault.on('create', () => { this.clearCache(); this.notifyRefresh(); }));
-		this.events.push(app.vault.on('delete', () => { this.clearCache(); this.notifyRefresh(); }));
-		if (app.metadataCache?.on) this.metadataEvents.push(app.metadataCache.on('changed', () => this.notifyRefresh()));
+			return;
+		}
+		const affected = new Set<string>();
+		if (kind === 'modify') {
+			if (!(file instanceof TFile)) return;
+			if (this.isSource(file)) {
+				this.invalidateSourceCache(file.path);
+				const bookRoot = findBookRoot(this.app, this.plugin, file, true);
+				const parentPath = file.parent?.path || '';
+				this.collectBookAffectedPaths(bookRoot, parentPath, affected);
+				this.applyScopedInvalidation(affected);
+			}
+			return;
+		}
+
+		const pathsToCheck = oldPath !== undefined ? [file.path, oldPath] : [file.path];
+		if (file instanceof TFile) {
+			if (this.isSource(file) || (oldPath !== undefined && this.isSourcePath(oldPath))) {
+				this.invalidateSourceCache(file.path);
+				if (oldPath !== undefined) this.invalidateSourceCache(oldPath);
+			}
+			for (const p of pathsToCheck) {
+				if (this.chapters.has(p) || this.pendingContexts.has(p)) affected.add(p);
+				const br = p === file.path ? findBookRoot(this.app, this.plugin, file, true) : '';
+				if (br) {
+					this.collectBookAffectedPaths(br, p, affected);
+				} else {
+					for (const [chPath, rec] of this.chapters) {
+						if (rec.bookRoot && this.isPathUnderOrEqual(p, rec.bookRoot)) affected.add(chPath);
+					}
+					for (const [chPath, rec] of this.pendingContexts) {
+						if (rec.bookRoot && this.isPathUnderOrEqual(p, rec.bookRoot)) affected.add(chPath);
+					}
+				}
+				if (this.isNovelInfoFile(file) || (oldPath !== undefined && this.isNovelInfoPath(oldPath))) {
+					const parentDir = p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '';
+					for (const [chPath] of this.chapters) {
+						if (!parentDir || this.isPathUnderOrEqual(chPath, parentDir)) affected.add(chPath);
+					}
+					for (const [chPath] of this.pendingContexts) {
+						if (!parentDir || this.isPathUnderOrEqual(chPath, parentDir)) affected.add(chPath);
+					}
+				}
+			}
+		} else {
+			for (const p of pathsToCheck) {
+				for (const [chPath, rec] of this.chapters) {
+					if (this.isPathUnderOrEqual(chPath, p) || this.isPathUnderOrEqual(p, chPath)
+						|| (rec.bookRoot && (this.isPathUnderOrEqual(rec.bookRoot, p) || this.isPathUnderOrEqual(p, rec.bookRoot)))) {
+						affected.add(chPath);
+					}
+				}
+				for (const [chPath, rec] of this.pendingContexts) {
+					if (this.isPathUnderOrEqual(chPath, p) || this.isPathUnderOrEqual(p, chPath)
+						|| (rec.bookRoot && (this.isPathUnderOrEqual(rec.bookRoot, p) || this.isPathUnderOrEqual(p, rec.bookRoot)))) {
+						affected.add(chPath);
+					}
+				}
+			}
+			if (file instanceof TFolder && (kind === 'create' || kind === 'rename')) {
+				const parentDir = file.parent?.path || '';
+				if (parentDir) {
+					for (const [chPath] of this.chapters) {
+						if (this.isPathUnderOrEqual(chPath, parentDir)) affected.add(chPath);
+					}
+					for (const [chPath] of this.pendingContexts) {
+						if (this.isPathUnderOrEqual(chPath, parentDir)) affected.add(chPath);
+					}
+				}
+			}
+		}
+		this.applyScopedInvalidation(affected);
+	}
+	private handleMetadataChanged(file?: TFile): void {
+		if (this.destroyed) return;
+		if (!file) {
+			this.notifyRefresh();
+			return;
+		}
+		const affected = new Set<string>();
+		if (this.isSource(file)) {
+			this.invalidateSourceCache(file.path);
+			const bookRoot = findBookRoot(this.app, this.plugin, file, true);
+			this.collectBookAffectedPaths(bookRoot, file.parent?.path || '', affected);
+			this.applyScopedInvalidation(affected);
+			return;
+		}
+		if (this.isNovelInfoFile(file)) {
+			const parentDir = file.parent?.path || '';
+			for (const [chPath] of this.chapters) {
+				if (!parentDir || this.isPathUnderOrEqual(chPath, parentDir)) affected.add(chPath);
+			}
+			for (const [chPath] of this.pendingContexts) {
+				if (!parentDir || this.isPathUnderOrEqual(chPath, parentDir)) affected.add(chPath);
+			}
+			this.applyScopedInvalidation(affected);
+			return;
+		}
+		if (this.pendingContexts.has(file.path)) {
+			affected.add(file.path);
+		}
+		const cached = this.chapters.get(file.path);
+		if (cached) {
+			const next = this.isSingleFileEligible(file);
+			const nextAliasesKey = this.getAliasesKey(file);
+			if (nextAliasesKey !== cached.aliasesKey) {
+				this.collectBookAffectedPaths(cached.bookRoot, file.parent?.path || '', affected);
+			} else if (next.eligible !== cached.eligible || next.bookRoot !== cached.bookRoot) {
+				affected.add(file.path);
+			}
+		} else if (!this.pendingContexts.has(file.path)) {
+			// Another file in a known book (e.g. chapter alias frontmatter change) may affect link resolution
+			const bookRoot = findBookRoot(this.app, this.plugin, file, true);
+			if (bookRoot) {
+				this.collectBookAffectedPaths(bookRoot, file.parent?.path || '', affected);
+			}
+		}
+		this.applyScopedInvalidation(affected);
+	}
+	private getAliasesKey(file: TFile): string {
+		const fm = this.app.metadataCache?.getFileCache?.(file)?.frontmatter;
+		if (!fm) return '';
+		const raw: unknown = fm.aliases ?? fm.alias;
+		return raw === undefined ? '' : JSON.stringify(raw);
+	}
+	private isSingleFileEligible(file: TFile | null): { eligible: boolean; bookRoot: string } {
+		if (!file || file.extension !== 'md') return { eligible: false, bookRoot: '' };
+		const bookRoot = findBookRoot(this.app, this.plugin, file, true);
+		if (!bookRoot) return { eligible: false, bookRoot: '' };
+		if (this.app.vault.getAbstractFileByPath(file.path) !== file) return { eligible: false, bookRoot };
+		if (ChapterSorter.isFunctionalDoc(file, this.plugin)
+			|| this.plugin.characterManager?.isLorePath?.(bookRoot, file.parent?.path || '')) {
+			return { eligible: false, bookRoot };
+		}
+		if (this.plugin.settings.enableStrictChapterMode) {
+			return {
+				eligible: ChapterSorter.isChapterFile(file.basename) || this.plugin.isFileInStrictChapterException(file),
+				bookRoot
+			};
+		}
+		return { eligible: true, bookRoot };
 	}
 	private settingsKey(): string {
 		return JSON.stringify([this.plugin.settings.timeline, this.plugin.settings.foreshadowing,
@@ -301,12 +493,7 @@ export class ChapterReferenceService {
 		return Boolean(this.plugin.settings.timeline?.showEditorReferences || this.plugin.settings.foreshadowing?.showEditorReferences);
 	}
 	public isEligibleChapter(file: TFile | null): { eligible: boolean; bookRoot: string } {
-		if (!file || file.extension !== 'md') return { eligible: false, bookRoot: '' };
-		const bookRoot = findBookRoot(this.app, this.plugin, file, true);
-		if (!bookRoot) return { eligible: false, bookRoot: '' };
-		if (ChapterSorter.isFunctionalDoc(file, this.plugin)
-			|| this.plugin.characterManager?.isLorePath?.(bookRoot, file.parent?.path || '')) return { eligible: false, bookRoot };
-		return { eligible: ChapterSorter.getAllChapters(this.app, this.plugin, bookRoot).some(chapter => chapter.path === file.path), bookRoot };
+		return this.isSingleFileEligible(file);
 	}
 	public getReferencesSync(file: TFile): ChapterReferenceItem[] | null {
 		this.checkSettings();
@@ -325,12 +512,21 @@ export class ChapterReferenceService {
 		const inFlight = this.pending.get(path);
 		if (inFlight) return inFlight;
 		const generation = this.generation;
-		const promise = this.collect(file, path, generation);
+		const token = ++this.nextPendingToken;
+		const initialBookRoot = findBookRoot(this.app, this.plugin, file, true);
+		this.pendingContexts.set(path, { file, bookRoot: initialBookRoot, token });
+		const promise = this.collect(file, path, generation, token);
 		this.pending.set(path, promise);
 		try { return await promise; }
-		finally { if (this.pending.get(path) === promise) this.pending.delete(path); }
+		finally {
+			if (this.pending.get(path) === promise) this.pending.delete(path);
+			if (this.pendingContexts.get(path)?.token === token) this.pendingContexts.delete(path);
+		}
 	}
-	private async collect(file: TFile, path: string, generation: number): Promise<ChapterReferenceItem[]> {
+	private isCollectStale(file: TFile, path: string, generation: number, token: number): boolean {
+		return this.destroyed || generation !== this.generation || file.path !== path || this.pendingContexts.get(path)?.token !== token;
+	}
+	private async collect(file: TFile, path: string, generation: number, token: number): Promise<ChapterReferenceItem[]> {
 		const { eligible, bookRoot } = this.isEligibleChapter(file);
 		const items: ChapterReferenceItem[] = [];
 		if (eligible) {
@@ -338,7 +534,7 @@ export class ChapterReferenceService {
 				const source = this.plugin.timelineManager.findTimelineFile(bookRoot);
 				if (source) {
 					const entries = await this.readSource(source, this.timelineCache, content => this.plugin.timelineManager.parseEntries(content, bookRoot));
-					if (this.destroyed || generation !== this.generation || file.path !== path) return [];
+					if (this.isCollectStale(file, path, generation, token)) return [];
 					for (const [nodeIndex, node] of this.plugin.timelineManager.getTimelineNodesForChapter(file, entries, bookRoot, source).entries()) {
 						for (const [itemIndex, item] of node.items.entries()) {
 							if (!item.origin?.trim()) continue;
@@ -353,7 +549,7 @@ export class ChapterReferenceService {
 				const source = this.plugin.foreshadowingManager.findForeshadowingFile(bookRoot);
 				if (source) {
 					const entries = await this.readSource(source, this.foreshadowingCache, content => this.plugin.foreshadowingManager.parseEntries(content));
-					if (this.destroyed || generation !== this.generation || file.path !== path) return [];
+					if (this.isCollectStale(file, path, generation, token)) return [];
 					const index = ChapterSorter.createReferenceIndex(this.app, this.plugin, bookRoot, { sourcePath: source.path });
 					for (const [entryIndex, entry] of entries.entries()) {
 						for (const [contentIndex, content] of entry.contents.entries()) {
@@ -373,8 +569,8 @@ export class ChapterReferenceService {
 			}
 		}
 		this.checkSettings();
-		if (this.destroyed || generation !== this.generation || file.path !== path) return [];
-		this.chapters.set(path, { file, bookRoot, items });
+		if (this.isCollectStale(file, path, generation, token)) return [];
+		this.chapters.set(path, { file, bookRoot, eligible, aliasesKey: this.getAliasesKey(file), items });
 		if (this.chapters.size > 80) this.chapters.delete(this.chapters.keys().next().value!);
 		return items;
 	}
@@ -398,22 +594,29 @@ export class ChapterReferenceService {
 		catch (error) { if (cache.get(path) === record) cache.delete(path); throw error; }
 	}
 	public onRefresh(callback: () => void): () => void { this.listeners.add(callback); return () => this.listeners.delete(callback); }
+	private emitRefresh(): void {
+		if (this.destroyed) return;
+		this.checkSettings();
+		for (const listener of this.listeners) {
+			try { listener(); } catch (error) { console.error('[ChapterReferenceService] Could not refresh an editor:', error); }
+		}
+	}
 	public notifyRefresh(): void {
 		if (this.destroyed) return;
 		this.checkSettings();
-		this.chapters.clear(); this.pending.clear(); this.generation++;
+		this.chapters.clear(); this.pending.clear(); this.pendingContexts.clear(); this.generation++;
 		for (const listener of this.listeners) {
 			try { listener(); } catch (error) { console.error('[ChapterReferenceService] Could not refresh an editor:', error); }
 		}
 	}
 	public clearCache(): void {
-		this.timelineCache.clear(); this.foreshadowingCache.clear(); this.chapters.clear(); this.pending.clear(); this.generation++;
+		this.timelineCache.clear(); this.foreshadowingCache.clear(); this.chapters.clear(); this.pending.clear(); this.pendingContexts.clear(); this.generation++;
 	}
 	public async destroy(): Promise<void> {
 		const reads = [...this.pending.values(), ...this.activeReads];
 		this.destroyed = true; this.listeners.clear();
-		for (const event of this.events) this.app.vault.offref(event);
-		for (const event of this.metadataEvents) this.app.metadataCache.offref(event);
+		for (const event of this.events) this.app.vault.offref?.(event);
+		for (const event of this.metadataEvents) this.app.metadataCache.offref?.(event);
 		this.metadataEvents = [];
 		this.events = []; this.clearCache();
 		await Promise.allSettled(reads);

@@ -787,17 +787,25 @@ export class ProofreadingManager {
 		this.ignoredContextEntriesByOriginal.clear();
 	}
 
-	/**
-	 * 获取或初始化词典根路径（若未配置，推断已有默认目录或依 locale 创建）
-	 */
-	public resolveDictionaryPath(customPath?: string): string {
-		let dictPath = customPath || this.plugin.settings.proofreading?.dictionaryPath;
-		if (dictPath && dictPath.trim() !== '') {
-			return normalizePath(dictPath);
-		}
-
+	private getPrimaryWorkspaceFolder(): string {
 		const workspaceFolders = this.plugin.settings.workspaceFolders;
-		const baseFolder = workspaceFolders && workspaceFolders.length > 0 ? workspaceFolders[0] : '';
+		const rawFirst = workspaceFolders && workspaceFolders.length > 0 ? workspaceFolders[0] : '';
+		const trimmed = rawFirst.replace(/^\/+|\/+$/g, '');
+		return trimmed ? normalizePath(trimmed) : '';
+	}
+
+	private getDefaultDictionaryBasename(dictPath: string): string | null {
+		const normalized = normalizePath(dictPath);
+		const lastSlash = normalized.lastIndexOf('/');
+		const basename = lastSlash === -1 ? normalized : normalized.slice(lastSlash + 1);
+		if (basename === DICT_FOLDER_NAME || basename === DICT_FOLDER_NAME_EN) {
+			return basename;
+		}
+		return null;
+	}
+
+	private resolveDefaultDictionaryPathForWorkspace(): string {
+		const baseFolder = this.getPrimaryWorkspaceFolder();
 
 		const zhFolderPath = normalizePath(baseFolder ? `${baseFolder}/${DICT_FOLDER_NAME}` : DICT_FOLDER_NAME);
 		const enFolderPath = normalizePath(baseFolder ? `${baseFolder}/${DICT_FOLDER_NAME_EN}` : DICT_FOLDER_NAME_EN);
@@ -810,6 +818,18 @@ export class ProofreadingManager {
 
 		const folderName = getLocale().startsWith('zh') ? DICT_FOLDER_NAME : DICT_FOLDER_NAME_EN;
 		return normalizePath(baseFolder ? `${baseFolder}/${folderName}` : folderName);
+	}
+
+	/**
+	 * 获取或初始化词典根路径（若未配置，推断已有默认目录或依 locale 创建）
+	 */
+	public resolveDictionaryPath(customPath?: string): string {
+		const dictPath = customPath || this.plugin.settings.proofreading?.dictionaryPath;
+		if (dictPath && dictPath.trim() !== '') {
+			return normalizePath(dictPath);
+		}
+
+		return this.resolveDefaultDictionaryPathForWorkspace();
 	}
 
 	/**
@@ -951,9 +971,23 @@ export class ProofreadingManager {
 	}
 
 	private async executeRegenerateMissingTemplates(specifiedDictPath?: string): Promise<void> {
-		const dictPath = this.resolveDictionaryPath(specifiedDictPath);
+		let dictPath = this.resolveDictionaryPath(specifiedDictPath);
+
+		// 若未显式指定路径，且当前配置为默认词典目录但仍指向旧工作区，则对齐到当前主工作区
+		if (!specifiedDictPath) {
+			const currentDictPath = this.plugin.settings.proofreading?.dictionaryPath;
+			if (currentDictPath && currentDictPath.trim() !== '' && this.getDefaultDictionaryBasename(currentDictPath)) {
+				const normalizedCurrent = normalizePath(currentDictPath);
+				const lastSlash = normalizedCurrent.lastIndexOf('/');
+				const currentParent = lastSlash === -1 ? '' : normalizedCurrent.slice(0, lastSlash);
+				if (currentParent !== this.getPrimaryWorkspaceFolder()) {
+					dictPath = this.resolveDefaultDictionaryPathForWorkspace();
+				}
+			}
+		}
 
 		// 先成功创建/补齐目录和 3 个模板文件
+		await this.ensureParentFolderExists(dictPath);
 		const folder = this.app.vault.getAbstractFileByPath(dictPath);
 		if (!folder) {
 			await this.app.vault.createFolder(dictPath);
@@ -1135,10 +1169,15 @@ export class ProofreadingManager {
 		const expectedEnOld = normalizePath(normOldFirst ? `${normOldFirst}/${DICT_FOLDER_NAME_EN}` : DICT_FOLDER_NAME_EN);
 
 		let matchedBasename: string | null = null;
+		let matchedOldFirst = false;
 		if (currentDictPath === expectedZhOld) {
 			matchedBasename = DICT_FOLDER_NAME;
+			matchedOldFirst = true;
 		} else if (currentDictPath === expectedEnOld) {
 			matchedBasename = DICT_FOLDER_NAME_EN;
+			matchedOldFirst = true;
+		} else {
+			matchedBasename = this.getDefaultDictionaryBasename(currentDictPath);
 		}
 
 		if (!matchedBasename) {
@@ -1151,6 +1190,16 @@ export class ProofreadingManager {
 		}
 
 		const oldFolder = this.app.vault.getAbstractFileByPath(currentDictPath);
+		if (!matchedOldFirst) {
+			// 非原首个工作区下的旧默认目录：仅在磁盘目录已不存在时同步逻辑路径，不擅自移动其他目录
+			if (!oldFolder) {
+				this.plugin.settings.proofreading.dictionaryPath = targetPath;
+				this.plugin.cacheManager?.resetLoreCache();
+				return true;
+			}
+			return false;
+		}
+
 		if (oldFolder instanceof TFolder) {
 			const destExists = this.app.vault.getAbstractFileByPath(targetPath);
 			if (destExists) {

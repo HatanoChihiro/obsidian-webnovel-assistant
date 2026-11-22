@@ -763,5 +763,39 @@ describe('WorkerManager', () => {
             expect(mockPlugin.focusMs).toBe(1000);
             expect(mockPlugin.slackMs).toBe(1000);
         });
+
+        it('keeps focus scope and typing activity bound to main editor during mobile immersive even for same-path reference', () => {
+            const mainFile = createMockFile('workspace/Chapter 1.md');
+            const refOutsideFile = createMockFile('outside/Reference.md');
+            const mainEditor = { id: 'main' };
+            const refEditor = { id: 'ref' };
+            const mainView = { file: mainFile, editor: mainEditor };
+            const refSameFileView = { file: mainFile, editor: refEditor };
+
+            mockPlugin.app.workspace.getActiveFile.mockReturnValue(refOutsideFile);
+            mockPlugin.immersiveModeManager = {
+                isMobileImmersiveSessionActive: () => true,
+                getActiveSessionMainFile: () => mainFile,
+                isMainEditorOrigin: (info: unknown, editor?: unknown) =>
+                    info === mainView || editor === mainEditor
+            };
+
+            const manager = new WorkerManager(mockPlugin);
+            manager.setup();
+            manager.postMessage('start');
+
+            // Reference file activation outside workspace must NOT break main workspace scope
+            manager.handleActiveFileChange(refOutsideFile);
+            mockPlugin.lastEditTime = 10000;
+            vi.spyOn(Date, 'now').mockReturnValue(50000);
+
+            // Reference edit on SAME path as main must NOT refresh lastEditTime
+            manager.handleEditorChange(mainFile, { editor: refEditor, info: refSameFileView } as never);
+            expect(mockPlugin.lastEditTime).toBe(10000);
+
+            // Background main edit while reference is active MUST refresh lastEditTime
+            manager.handleEditorChange(mainFile, { editor: mainEditor, info: mainView } as never);
+            expect(mockPlugin.lastEditTime).toBe(50000);
+        });
     });
 });

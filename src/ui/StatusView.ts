@@ -1,9 +1,11 @@
+import { showPluginNotice } from '../services/PluginNoticeService';
 import type { WorkspaceLeaf, ViewStateResult, TAbstractFile } from 'obsidian';
-import { ItemView, TFile, TFolder, Notice, setIcon, Menu, MarkdownView } from 'obsidian';
-import { formatTime, formatCount, isMobile } from '../utils';
+import { ItemView, TFile, TFolder, setIcon, setTooltip, Menu, MarkdownView } from 'obsidian';
+import { formatTime, formatCount } from '../utils';
 import { smartLocateAndHighlight } from '../utils/leaf';
 
 import { HistoryStatsModal, type HistoryStatsModalPlugin } from './HistoryModal';
+import { bindDailyStatsTrigger } from './DailyStatsModal';
 import { ForeshadowingStatus, type ParsedForeshadowingEntry } from '../types/foreshadowing';
 import { CORKBOARD_STATUS_MAP, getCorkboardStatusText, getCorkboardStatusKeys } from '../i18n/data-keys';
 import { findBookRoot, getCurrentBookContext, type CurrentBookContextPlugin } from '../utils/path';
@@ -18,10 +20,13 @@ import type { ForeshadowingManager } from '../services/ForeshadowingManager';
 import type { TimelineManager, ChapterTimelineNode } from '../services/TimelineManager';
 import type { StatisticsManager } from '../services/StatisticsManager';
 import type { WritingJourneyService } from '../services/WritingJourneyService';
+import type { ImmersiveModeManager } from './ImmersiveModeManager';
 import { ChapterSorter, type ChapterSorterContext } from '../services/ChapterSorter';
 import { Logger } from '../utils/Logger';
 
 export const STATUS_VIEW_TYPE = 'writing-status-view';
+
+export type WritingStatusViewMode = 'full' | 'chapter-only';
 
 export type StatusViewTaskManager = Pick<
 	TaskManager,
@@ -52,7 +57,9 @@ export type StatusViewHomepageManager = Pick<
 export type StatusViewCharacterManager = Pick<
 	CharacterManager,
 	'getBookPathForFile' | 'isLorePath'
->;
+> & {
+	readonly cacheVersion?: number;
+};
 
 export type StatusViewForeshadowingManager = Pick<
 	ForeshadowingManager,
@@ -76,6 +83,7 @@ export type StatusViewStatisticsManager = Pick<
 	| 'calcTaskCompletion'
 	| 'calcNovelCompletionRate'
 	| 'aggregateHistoryData'
+	| 'getDailyStats'
 >;
 
 export type WritingStatusViewSettings = Pick<
@@ -90,7 +98,7 @@ export type WritingStatusViewSettings = Pick<
 	| 'homepagePath'
 	| 'enableStrictChapterMode'
 	| 'customSortOrder'
->;
+> & Partial<Pick<AccurateCountSettings, 'chapterNamingRules' | 'strictChapterExceptions'>>;
 
 export interface WritingStatusViewPlugin
 	extends Omit<HistoryStatsModalPlugin, 'settings' | 'homepageManager' | 'statisticsManager'>,
@@ -111,6 +119,14 @@ export interface WritingStatusViewPlugin
 	timelineManager?: StatusViewTimelineManager;
 	taskManager?: StatusViewTaskManager;
 	writingJourneyService?: Pick<WritingJourneyService, 'changeChapterStatus'>;
+	immersiveModeManager?: Pick<ImmersiveModeManager, 'getMainEditorLeaf'> & {
+		isMobileImmersiveSessionActive?: () => boolean;
+		isMobileDataIsolationActive?: () => boolean;
+		getActiveSessionMainLeaf?: () => WorkspaceLeaf | null;
+		getDataScopedMainLeaf?: () => WorkspaceLeaf | null;
+		getActiveSessionMainFile?: () => TFile | null;
+		getDataScopedMainFile?: () => TFile | null;
+	};
 }
 
 interface CollapsibleTitleElement extends HTMLElement {
@@ -120,6 +136,7 @@ interface CollapsibleTitleElement extends HTMLElement {
 
 export class WritingStatusView extends ItemView {
 	plugin: WritingStatusViewPlugin;
+	private readonly viewMode: WritingStatusViewMode;
 
 	goalWordEl!: HTMLElement;
 	todayWordEl!: HTMLElement;
@@ -165,6 +182,7 @@ export class WritingStatusView extends ItemView {
 	private currentChapterFile: TFile | null = null;
 	private lastRenderedChapterPath: string | null = null;
 	private updateGeneration = 0;
+	private chapterEmptyStateEl: HTMLElement | null = null;
 	private activeTaskContext: { folderPath: string; period: number; taskType: TaskType } | null = null;
 	private lastReconciledDateByFolder = new Map<string, string>();
 	private inFlightReconcile = new Map<string, Promise<boolean>>();
@@ -217,16 +235,73 @@ export class WritingStatusView extends ItemView {
 		return result;
 	}
 
-	constructor(leaf: WorkspaceLeaf, plugin: WritingStatusViewPlugin) {
+	constructor(leaf: WorkspaceLeaf, plugin: WritingStatusViewPlugin, mode: WritingStatusViewMode = 'full') {
 		super(leaf);
 		this.plugin = plugin;
+		this.viewMode = mode;
 		this.registerDataEvents();
+	}
+
+	private isChapterOnlyMode(): boolean {
+		return this.viewMode === 'chapter-only';
+	}
+
+	private isViewMounted(): boolean {
+		return this.isChapterOnlyMode() ? !!this.chapterStatusCardEl : !!this.workNameEl;
+	}
+
+	private getOwningWindow(): Window {
+		return this.containerEl?.ownerDocument?.defaultView ?? window;
+	}
+
+	private clearUpdateDebounceTimer(): void {
+		if (this.updateDebounceTimer !== null) {
+			(this.updateDebounceTimerWindow ?? this.getOwningWindow()).clearTimeout(this.updateDebounceTimer);
+			this.updateDebounceTimer = null;
+			this.updateDebounceTimerWindow = null;
+		}
+	}
+
+	private setChapterEmptyStateVisible(visible: boolean): void {
+		if (!this.chapterEmptyStateEl) return;
+		if (visible) {
+			this.chapterEmptyStateEl.show();
+		} else {
+			this.chapterEmptyStateEl.hide();
+		}
+	}
+
+	private getImmersiveMainTargetFile(): TFile | null {
+		const imm = this.plugin.immersiveModeManager;
+		if (imm?.isMobileDataIsolationActive?.() ?? imm?.isMobileImmersiveSessionActive?.()) {
+			const explicitFile = imm?.getDataScopedMainFile?.() ?? imm?.getActiveSessionMainFile?.();
+			if (explicitFile instanceof TFile) return explicitFile;
+		}
+		const mainLeaf = imm?.getDataScopedMainLeaf?.() ?? imm?.getActiveSessionMainLeaf?.() ?? imm?.getMainEditorLeaf?.();
+		if (!mainLeaf?.view) return null;
+
+		const isMarkdown =
+			mainLeaf.view instanceof MarkdownView ||
+			mainLeaf.view.getViewType?.() === 'markdown';
+		if (!isMarkdown) return null;
+
+		const leafFile = (mainLeaf.view as MarkdownView).file;
+		return leafFile instanceof TFile ? leafFile : null;
 	}
 
 	private registerDataEvents(): void {
 		const refreshForFile = (file: TAbstractFile, oldPath?: string) => {
-			if (!this.workNameEl) return;
+			if (!this.isViewMounted()) return;
 			if (file instanceof TFile && file.extension !== 'md') return;
+
+			if (this.chapterAssociationCache) {
+				const fPath = this.chapterAssociationCache.foreshadowingPath;
+				const tlPath = this.chapterAssociationCache.timelinePath;
+				if ((fPath && (file.path === fPath || oldPath === fPath))
+					|| (tlPath && (file.path === tlPath || oldPath === tlPath))) {
+					this.chapterAssociationCache = null;
+				}
+			}
 
 			// 1. 匹配当前已选中的章节文档
 			const currentChapterPath = this.currentChapterFile?.path;
@@ -237,15 +312,22 @@ export class WritingStatusView extends ItemView {
 
 			// 2. 匹配当前活动 Markdown 文档（例如从未命中章节的普通笔记重命名为有效章节）
 			let activePath: string | undefined;
-			const activeMarkdown = this.app.workspace.getActiveViewOfType(MarkdownView);
-			if (activeMarkdown?.file instanceof TFile) {
-				activePath = activeMarkdown.file.path;
+			if (this.isChapterOnlyMode()) {
+				const mainFile = this.getImmersiveMainTargetFile();
+				if (mainFile instanceof TFile) {
+					activePath = mainFile.path;
+				}
 			} else {
-				const rootLeaf = this.app.workspace.getMostRecentLeaf?.();
-				if (rootLeaf && (rootLeaf.view instanceof MarkdownView || rootLeaf.view?.getViewType() === 'markdown')) {
-					const fileView = rootLeaf.view as MarkdownView;
-					if (fileView.file instanceof TFile) {
-						activePath = fileView.file.path;
+				const activeMarkdown = this.app.workspace.getActiveViewOfType(MarkdownView);
+				if (activeMarkdown?.file instanceof TFile) {
+					activePath = activeMarkdown.file.path;
+				} else {
+					const rootLeaf = this.app.workspace.getMostRecentLeaf?.();
+					if (rootLeaf && (rootLeaf.view instanceof MarkdownView || rootLeaf.view?.getViewType() === 'markdown')) {
+						const fileView = rootLeaf.view as MarkdownView;
+						if (fileView.file instanceof TFile) {
+							activePath = fileView.file.path;
+						}
 					}
 				}
 			}
@@ -307,13 +389,24 @@ export class WritingStatusView extends ItemView {
 			}
 		};
 		if (this.app.vault?.on) {
-			this.registerEvent(this.app.vault.on('create', refreshForFile));
+			const onStructureChange = (file: TAbstractFile, oldPath?: string) => {
+				this.chapterStructureVersion++;
+				refreshForFile(file, oldPath);
+			};
+			this.registerEvent(this.app.vault.on('create', onStructureChange));
 			this.registerEvent(this.app.vault.on('modify', refreshForFile));
-			this.registerEvent(this.app.vault.on('rename', refreshForFile));
-			this.registerEvent(this.app.vault.on('delete', refreshForFile));
+			this.registerEvent(this.app.vault.on('rename', onStructureChange));
+			this.registerEvent(this.app.vault.on('delete', onStructureChange));
 		}
 		if (this.app.metadataCache?.on) {
-			this.registerEvent(this.app.metadataCache.on('changed', (file) => refreshForFile(file)));
+			this.registerEvent(this.app.metadataCache.on('changed', (file) => {
+				const association = this.chapterAssociationCache;
+				if (association?.bookRoot && file !== association.chapterFile
+					&& findBookRoot(this.app, this.plugin, file, true) === association.bookRoot) {
+					this.chapterAssociationCache = null;
+				}
+				refreshForFile(file);
+			}));
 		}
 	}
 
@@ -330,12 +423,15 @@ export class WritingStatusView extends ItemView {
 	}
 
 	getState(): Record<string, unknown> {
+		if (this.isChapterOnlyMode()) {
+			return super.getState();
+		}
 		return { ...super.getState(), currentBookPath: this.lastActiveFolderPath };
 	}
 
 	async setState(state: unknown, result: ViewStateResult): Promise<void> {
 		await super.setState(state, result);
-		if (state && typeof state === 'object' && 'currentBookPath' in state && typeof state.currentBookPath === 'string') {
+		if (!this.isChapterOnlyMode() && state && typeof state === 'object' && 'currentBookPath' in state && typeof state.currentBookPath === 'string') {
 			const folder = this.app.vault.getAbstractFileByPath(state.currentBookPath);
 			if (folder instanceof TFolder && findBookRoot(this.app, this.plugin, folder, true) === folder.path) {
 				if (this.lastActiveFolderPath !== folder.path) {
@@ -345,7 +441,7 @@ export class WritingStatusView extends ItemView {
 				this.lastActiveFolderPath = folder.path;
 			}
 		}
-		if (this.workNameEl) await this.updateData(true);
+		if (this.isViewMounted()) await this.updateData(true);
 	}
 
 	private preventWorkspaceFocus(el: HTMLElement): void {
@@ -358,6 +454,18 @@ export class WritingStatusView extends ItemView {
 		const container = this.containerEl.children[1];
 		container.empty();
 		container.addClass('wn-status-view-container');
+
+		if (this.isChapterOnlyMode()) {
+			container.addClass('wn-immersive-chapter-status-container');
+			this.createChapterStatusCard(container);
+			this.chapterEmptyStateEl = container.createDiv({
+				cls: 'wn-immersive-chapter-status-empty',
+				text: t('immersive.chapter-status-empty')
+			});
+			this.chapterEmptyStateEl.hide();
+			void this.updateData(true);
+			return;
+		}
 
 		this.createWorkInfoCard(container);
 		this.createGoalCard(container);
@@ -414,7 +522,7 @@ export class WritingStatusView extends ItemView {
 		const row = card.createDiv({ cls: 'wn-work-info-row' });
 		this.workNameEl = row.createSpan({ cls: 'wn-work-info-name', text: '--' });
 		this.workWordCountEl = row.createSpan({ cls: 'wn-work-info-count', text: '' });
-		this.workGoalEl = card.createDiv({ cls: 'work-info-goal' });
+		this.workGoalEl = card.createDiv({ cls: 'wn-work-info-goal' });
 		this.workGoalEl.addClass('webnovel-work-goal'); this.workGoalEl.hide();
 	}
 
@@ -424,61 +532,74 @@ export class WritingStatusView extends ItemView {
 		const titleLeft = titleRow.createDiv({ cls: 'wn-status-title-left' });
 		const titleSpan = titleLeft.createSpan({ text: t('common.today-status') });
 
-		if (!isMobile()) {
-			this.statusBadgeEl = titleLeft.createSpan({ cls: 'wn-status-title-badge', text: t('status.paused') });
-			this.statusBadgeEl.addClass('wn-clickable');
-			this.statusBadgeEl.title = t('common.click-to-toggle-status');
-			this.statusBadgeEl.addEventListener('click', () => {
-				if (this.plugin.isTracking) {
-					this.plugin.stopTracking();
-				} else {
-					this.plugin.startTracking();
-				}
-			});
-		}
+		this.statusBadgeEl = titleLeft.createSpan({
+			cls: 'wn-status-title-badge wn-clickable',
+			text: t(this.plugin.isTracking ? 'status.recording' : 'status.paused')
+		});
+		this.statusBadgeEl.setAttribute('role', 'button');
+		this.statusBadgeEl.setAttribute('tabindex', '0');
+		this.statusBadgeEl.setAttribute('aria-pressed', String(this.plugin.isTracking));
+		setTooltip(this.statusBadgeEl, t('common.click-to-toggle-status'));
+		const toggleTracking = () => {
+			if (this.plugin.isTracking) {
+				this.plugin.stopTracking();
+			} else {
+				this.plugin.startTracking();
+			}
+		};
+		this.statusBadgeEl.addEventListener('click', e => {
+			e.stopPropagation();
+			toggleTracking();
+		});
+		this.statusBadgeEl.addEventListener('keydown', e => {
+			if (e.key !== 'Enter' && e.key !== ' ') return;
+			e.preventDefault();
+			e.stopPropagation();
+			toggleTracking();
+		});
 
 		const contentContainer = goalCard.createDiv({ cls: 'wn-status-card-content' });
 		this.setupCollapsibleCard(titleRow, titleSpan, contentContainer, () => t('common.today-status'));
 
 		// 今日目标：小标题 + 百分比居右同行
-		const dailyLabelRow = contentContainer.createDiv({ cls: 'status-goal-row' });
-		dailyLabelRow.createSpan({ cls: 'status-goal-label', text: t('common.today-goal') });
-		this.dailyPercentEl = dailyLabelRow.createSpan({ cls: 'goal-percent', text: '0%' });
+		const dailyLabelRow = contentContainer.createDiv({ cls: 'wn-status-goal-row' });
+		dailyLabelRow.createSpan({ cls: 'wn-status-goal-label', text: t('common.today-goal') });
+		this.dailyPercentEl = dailyLabelRow.createSpan({ cls: 'wn-goal-percent', text: '0%' });
 
-		const dailyRow = contentContainer.createDiv({ cls: 'goal-display-row-right' });
-		this.dailyWordEl = dailyRow.createSpan({ cls: 'goal-current', text: '0' });
-		dailyRow.createSpan({ cls: 'goal-separator', text: ' / ' });
-		this.dailyGoalEl = dailyRow.createSpan({ cls: 'goal-target', text: '0' });
-		const dailyProgressBg = contentContainer.createDiv({ cls: 'progress-bar-bg' });
-		this.dailyProgressFillEl = dailyProgressBg.createDiv({ cls: 'progress-bar-fill' });
+		const dailyRow = contentContainer.createDiv({ cls: 'wn-goal-display-row-right' });
+		this.dailyWordEl = dailyRow.createSpan({ cls: 'wn-goal-current', text: '0' });
+		dailyRow.createSpan({ cls: 'wn-goal-separator', text: ' / ' });
+		this.dailyGoalEl = dailyRow.createSpan({ cls: 'wn-goal-target', text: '0' });
+		const dailyProgressBg = contentContainer.createDiv({ cls: 'wn-progress-bar-bg' });
+		this.dailyProgressFillEl = dailyProgressBg.createDiv({ cls: 'wn-progress-bar-fill' });
 
 		// 章节目标：小标题 + 百分比居右同行
-		const chapterLabelRow = contentContainer.createDiv({ cls: 'status-goal-row' });
-		chapterLabelRow.createSpan({ cls: 'status-goal-label', text: t('common.chapter-goal') });
-		this.percentEl = chapterLabelRow.createSpan({ cls: 'goal-percent', text: '0%' });
+		const chapterLabelRow = contentContainer.createDiv({ cls: 'wn-status-goal-row' });
+		chapterLabelRow.createSpan({ cls: 'wn-status-goal-label', text: t('common.chapter-goal') });
+		this.percentEl = chapterLabelRow.createSpan({ cls: 'wn-goal-percent', text: '0%' });
 
-		const goalRow = contentContainer.createDiv({ cls: 'goal-display-row-right' });
-		this.todayWordEl = goalRow.createSpan({ cls: 'goal-current', text: '0' });
-		goalRow.createSpan({ cls: 'goal-separator', text: ' / ' });
-		this.goalWordEl = goalRow.createSpan({ cls: 'goal-target', text: '0' });
-		const progressBg = contentContainer.createDiv({ cls: 'progress-bar-bg' });
-		this.progressFillEl = progressBg.createDiv({ cls: 'progress-bar-fill' });
+		const goalRow = contentContainer.createDiv({ cls: 'wn-goal-display-row-right' });
+		this.todayWordEl = goalRow.createSpan({ cls: 'wn-goal-current', text: '0' });
+		goalRow.createSpan({ cls: 'wn-goal-separator', text: ' / ' });
+		this.goalWordEl = goalRow.createSpan({ cls: 'wn-goal-target', text: '0' });
+		const progressBg = contentContainer.createDiv({ cls: 'wn-progress-bar-bg' });
+		this.progressFillEl = progressBg.createDiv({ cls: 'wn-progress-bar-fill' });
 
 		this.chapterSectionEls = [chapterLabelRow, goalRow, progressBg];
 
 		// 任务目标
-		const taskLabelRow = contentContainer.createDiv({ cls: 'status-goal-row task-goal-section' });
+		const taskLabelRow = contentContainer.createDiv({ cls: 'wn-status-goal-row wn-task-goal-section' });
 		taskLabelRow.hide();
-		taskLabelRow.createSpan({ cls: 'status-goal-label', text: t('common.task-goal') });
-		this.taskPercentEl = taskLabelRow.createSpan({ cls: 'goal-percent', text: '0%' });
+		taskLabelRow.createSpan({ cls: 'wn-status-goal-label', text: t('common.task-goal') });
+		this.taskPercentEl = taskLabelRow.createSpan({ cls: 'wn-goal-percent', text: '0%' });
 
-		this.taskRowEl = contentContainer.createDiv({ cls: 'goal-display-row-right task-goal-section' });
+		this.taskRowEl = contentContainer.createDiv({ cls: 'wn-goal-display-row-right wn-task-goal-section' });
 		this.taskRowEl.hide();
-		this.taskWordEl = this.taskRowEl.createSpan({ cls: 'goal-current', text: '0' });
-		this.taskSeparatorEl = this.taskRowEl.createSpan({ cls: 'goal-separator', text: ' / ' });
-		this.taskTargetEl = this.taskRowEl.createSpan({ cls: 'goal-target', text: '0' });
+		this.taskWordEl = this.taskRowEl.createSpan({ cls: 'wn-goal-current', text: '0' });
+		this.taskSeparatorEl = this.taskRowEl.createSpan({ cls: 'wn-goal-separator', text: ' / ' });
+		this.taskTargetEl = this.taskRowEl.createSpan({ cls: 'wn-goal-target', text: '0' });
 
-		this.taskEventCompleteBtn = this.taskRowEl.createEl('button', { cls: 'status-task-complete-btn', text: t('common.complete-task') });
+		this.taskEventCompleteBtn = this.taskRowEl.createEl('button', { cls: 'wn-status-task-complete-btn', text: t('common.complete-task') });
 		this.preventWorkspaceFocus(this.taskEventCompleteBtn);
 		this.taskEventCompleteBtn.hide();
 		this.taskEventCompleteBtn.onclick = () => {
@@ -492,15 +613,15 @@ export class WritingStatusView extends ItemView {
 				taskContext.taskType,
 				taskContext.folderPath
 			).then(() => {
-				new Notice(t('notice.task-completed'));
+				showPluginNotice(t('notice.task-completed'));
 			});
 		};
 
-		const taskProgressBg = contentContainer.createDiv({ cls: 'progress-bar-bg task-goal-section' });
+		const taskProgressBg = contentContainer.createDiv({ cls: 'wn-progress-bar-bg wn-task-goal-section' });
 		taskProgressBg.hide();
-		this.taskProgressFillEl = taskProgressBg.createDiv({ cls: 'progress-bar-fill' });
+		this.taskProgressFillEl = taskProgressBg.createDiv({ cls: 'wn-progress-bar-fill' });
 
-		const taskTimeDesc = contentContainer.createDiv({ cls: 'task-time-desc task-goal-section' });
+		const taskTimeDesc = contentContainer.createDiv({ cls: 'wn-task-time-desc wn-task-goal-section' });
 		taskTimeDesc.hide();
 		this.taskTimeDescEl = taskTimeDesc;
 
@@ -508,8 +629,6 @@ export class WritingStatusView extends ItemView {
 	}
 
 	private createTimeCard(container: Element) {
-		if (isMobile()) return;
-
 		const timeCard = container.createDiv({ cls: 'wn-status-card' });
 		const titleRow = timeCard.createDiv({ cls: 'wn-status-title' });
 		const titleSpan = titleRow.createSpan({ text: t('common.focus-timing') });
@@ -517,23 +636,23 @@ export class WritingStatusView extends ItemView {
 		const contentContainer = timeCard.createDiv({ cls: 'wn-status-card-content' });
 		this.setupCollapsibleCard(titleRow, titleSpan, contentContainer, () => t('common.focus-timing'));
 
-		const timeGrid = contentContainer.createDiv({ cls: 'time-grid' });
+		const timeGrid = contentContainer.createDiv({ cls: 'wn-time-grid' });
 
-		const totalBox = timeGrid.createDiv({ cls: 'time-box' });
-		totalBox.createDiv({ cls: 'time-box-title', text: t('common.total-elapsed') });
-		this.totalTimeEl = totalBox.createDiv({ cls: 'time-box-value', text: '00:00:00' });
+		const totalBox = timeGrid.createDiv({ cls: 'wn-time-box' });
+		totalBox.createDiv({ cls: 'wn-time-box-title', text: t('common.total-elapsed') });
+		this.totalTimeEl = totalBox.createDiv({ cls: 'wn-time-box-value', text: '00:00:00' });
 
-		const speedBox = timeGrid.createDiv({ cls: 'time-box' });
-		speedBox.createDiv({ cls: 'time-box-title', text: `${t('common.session-speed')} (${t('common.words-per-hour-unit')})` });
-		this.sessionSpeedEl = speedBox.createDiv({ cls: 'time-box-value', text: '0' });
+		const speedBox = timeGrid.createDiv({ cls: 'wn-time-box' });
+		speedBox.createDiv({ cls: 'wn-time-box-title', text: `${t('common.session-speed')} (${t('common.words-per-hour-unit')})` });
+		this.sessionSpeedEl = speedBox.createDiv({ cls: 'wn-time-box-value', text: '0' });
 
-		const focusBox = timeGrid.createDiv({ cls: 'time-box' });
-		focusBox.createDiv({ cls: 'time-box-title', text: t('common.focus-duration') });
-		this.focusTimeEl = focusBox.createDiv({ cls: 'time-box-value', text: '00:00:00' });
+		const focusBox = timeGrid.createDiv({ cls: 'wn-time-box' });
+		focusBox.createDiv({ cls: 'wn-time-box-title', text: t('common.focus-duration') });
+		this.focusTimeEl = focusBox.createDiv({ cls: 'wn-time-box-value', text: '00:00:00' });
 
-		const slackBox = timeGrid.createDiv({ cls: 'time-box' });
-		slackBox.createDiv({ cls: 'time-box-title', text: t('common.slack-duration') });
-		this.slackTimeEl = slackBox.createDiv({ cls: 'time-box-value', text: '00:00:00' });
+		const slackBox = timeGrid.createDiv({ cls: 'wn-time-box' });
+		slackBox.createDiv({ cls: 'wn-time-box-title', text: t('common.slack-duration') });
+		this.slackTimeEl = slackBox.createDiv({ cls: 'wn-time-box-value', text: '00:00:00' });
 	}
 
 	private createHistoryCard(container: Element) {
@@ -544,42 +663,42 @@ export class WritingStatusView extends ItemView {
 		const contentContainer = historyCard.createDiv({ cls: 'wn-status-card-content' });
 		this.setupCollapsibleCard(titleRow, titleSpan, contentContainer, () => t('common.word-count'));
 
-		const historyGrid = contentContainer.createDiv({ cls: 'time-grid' });
+		const historyGrid = contentContainer.createDiv({ cls: 'wn-time-grid' });
 
-		const weekBox = historyGrid.createDiv({ cls: 'time-box' });
-		weekBox.createDiv({ cls: 'time-box-title', text: t('common.weekly-net') });
-		this.weekWordEl = weekBox.createDiv({ cls: 'time-box-value', text: '0' });
+		const weekBox = historyGrid.createDiv({ cls: 'wn-time-box' });
+		weekBox.createDiv({ cls: 'wn-time-box-title', text: t('common.weekly-net') });
+		this.weekWordEl = weekBox.createDiv({ cls: 'wn-time-box-value', text: '0' });
 
-		const monthBox = historyGrid.createDiv({ cls: 'time-box' });
-		monthBox.createDiv({ cls: 'time-box-title', text: t('common.monthly-net') });
-		this.monthWordEl = monthBox.createDiv({ cls: 'time-box-value', text: '0' });
+		const monthBox = historyGrid.createDiv({ cls: 'wn-time-box' });
+		monthBox.createDiv({ cls: 'wn-time-box-title', text: t('common.monthly-net') });
+		this.monthWordEl = monthBox.createDiv({ cls: 'wn-time-box-value', text: '0' });
 
-		const yearBox = historyGrid.createDiv({ cls: 'time-box' });
-		yearBox.createDiv({ cls: 'time-box-title', text: t('common.yearly-net') });
-		this.yearWordEl = yearBox.createDiv({ cls: 'time-box-value', text: '0' });
+		const yearBox = historyGrid.createDiv({ cls: 'wn-time-box' });
+		yearBox.createDiv({ cls: 'wn-time-box-title', text: t('common.yearly-net') });
+		this.yearWordEl = yearBox.createDiv({ cls: 'wn-time-box-value', text: '0' });
 
-		const histTotalBox = historyGrid.createDiv({ cls: 'time-box' });
-		histTotalBox.createDiv({ cls: 'time-box-title', text: t('common.total-accumulated') });
-		this.historyTotalWordEl = histTotalBox.createDiv({ cls: 'time-box-value', text: '0' });
+		const histTotalBox = historyGrid.createDiv({ cls: 'wn-time-box' });
+		histTotalBox.createDiv({ cls: 'wn-time-box-title', text: t('common.total-accumulated') });
+		this.historyTotalWordEl = histTotalBox.createDiv({ cls: 'wn-time-box-value', text: '0' });
 
 		// 近7日迷你柱状图
-		const chartSection = contentContainer.createDiv({ cls: 'history-chart' });
+		const chartSection = contentContainer.createDiv({ cls: 'wn-history-chart' });
 
-		const chartTitleRow = chartSection.createDiv({ cls: 'history-chart-title-row' });
-		chartTitleRow.createSpan({ text: t('common.recent-7days-writing'), cls: 'history-chart-title' });
-		const chartLink = chartTitleRow.createSpan({ text: t('common.details'), cls: 'history-chart-subtitle' });
+		const chartTitleRow = chartSection.createDiv({ cls: 'wn-history-chart-title-row' });
+		chartTitleRow.createSpan({ text: t('common.recent-7days-writing'), cls: 'wn-history-chart-title' });
+		const chartLink = chartTitleRow.createSpan({ text: t('common.details'), cls: 'wn-history-chart-subtitle' });
 		this.preventWorkspaceFocus(chartLink);
 		chartLink.onclick = () => {
 			new HistoryStatsModal(this.app, this.plugin).open();
 		};
 
-		this.miniChartEl = chartSection.createDiv({ cls: 'mini-chart-container' });
+		this.miniChartEl = chartSection.createDiv({ cls: 'wn-mini-chart-container' });
 		this.preventWorkspaceFocus(this.miniChartEl);
 		this.miniChartEl.onclick = () => {
 			new HistoryStatsModal(this.app, this.plugin).open();
 		};
 
-		this.efficiencySummaryEl = chartSection.createDiv({ cls: 'mini-efficiency-summary', text: '--' });
+		this.efficiencySummaryEl = chartSection.createDiv({ cls: 'wn-mini-efficiency-summary', text: '--' });
 	}
 
 	private setProgressState(
@@ -618,8 +737,11 @@ export class WritingStatusView extends ItemView {
 		const titleLeft = titleRow.createDiv({ cls: 'wn-status-title-left' });
 		this.chapterTitleEl = titleLeft.createSpan();
 		this.chapterStatusBadgeEl = titleLeft.createSpan({ cls: 'wn-chapter-title-badge wn-clickable' });
-		this.chapterStatusBadgeEl.title = t('corkboard.click-to-change-status');
-		this.chapterStatusBadgeEl.addEventListener('click', (evt: MouseEvent) => {
+		this.chapterStatusBadgeEl.setAttribute('role', 'button');
+		this.chapterStatusBadgeEl.setAttribute('tabindex', '0');
+		setTooltip(this.chapterStatusBadgeEl, t('corkboard.click-to-change-status'));
+
+		const openChapterStatusMenu = (evt: MouseEvent | KeyboardEvent, isKeyboard = false) => {
 			evt.stopPropagation();
 			const file = this.currentChapterFile;
 			if (!file) return;
@@ -639,7 +761,7 @@ export class WritingStatusView extends ItemView {
 							if (s === currentStatus) return;
 							try {
 								if (!this.plugin.writingJourneyService?.changeChapterStatus) {
-									new Notice(t('corkboard.status-update-failed'));
+									showPluginNotice(t('corkboard.status-update-failed'));
 									return;
 								}
 								const bookRoot = findBookRoot(this.app, this.plugin, file, true);
@@ -649,27 +771,42 @@ export class WritingStatusView extends ItemView {
 									bookPath: bookRoot || undefined
 								});
 								if (!res.success) {
-									new Notice(t('corkboard.status-update-failed'));
+									showPluginNotice(t('corkboard.status-update-failed'));
 									return;
 								}
 								if (res.changed) {
-									new Notice(t('corkboard.status-updated', { status: getCorkboardStatusText(s) }));
+									showPluginNotice(t('corkboard.status-updated', { status: getCorkboardStatusText(s) }));
 									if (res.snapshotError) {
-										new Notice(t('snapshot.notice-unavailable'));
+										showPluginNotice(t('snapshot.notice-unavailable'));
 									}
 									if (res.journeyError) {
-										new Notice(t('snapshot.journey-save-failed'));
+										showPluginNotice(t('snapshot.journey-save-failed'));
 									}
 									void this.updateChapterStatus();
 								}
 							} catch (err) {
 								window.console.error(err);
-								new Notice(t('corkboard.status-update-failed'));
+								showPluginNotice(t('corkboard.status-update-failed'));
 							}
 						});
 				});
 			}
-			menu.showAtMouseEvent(evt);
+			if (isKeyboard) {
+				const rect = this.chapterStatusBadgeEl.getBoundingClientRect();
+				menu.showAtPosition({ x: rect.left, y: rect.bottom }, this.chapterStatusBadgeEl.ownerDocument);
+			} else {
+				menu.showAtMouseEvent(evt as MouseEvent);
+			}
+		};
+
+		this.chapterStatusBadgeEl.addEventListener('click', (evt: MouseEvent) => {
+			openChapterStatusMenu(evt, false);
+		});
+		this.chapterStatusBadgeEl.addEventListener('keydown', (evt: KeyboardEvent) => {
+			if (evt.key === 'Enter' || evt.key === ' ') {
+				evt.preventDefault();
+				openChapterStatusMenu(evt, true);
+			}
 		});
 
 		const contentContainer = this.chapterStatusCardEl.createDiv({ cls: 'wn-status-card-content' });
@@ -693,10 +830,11 @@ export class WritingStatusView extends ItemView {
 	}
 
 	private updateDebounceTimer: number | null = null;
+	private updateDebounceTimerWindow: Window | null = null;
 	private lastRenderedDate: string = '';
 
 	public updateTimer(): void {
-		if (isMobile()) return;
+		if (this.isChapterOnlyMode()) return;
 		const today = window.moment().format('YYYY-MM-DD');
 		if (this.lastRenderedDate && this.lastRenderedDate !== today) {
 			this.lastRenderedDate = today;
@@ -715,15 +853,22 @@ export class WritingStatusView extends ItemView {
 
 	private resolveActiveEligibleChapter(): TFile | null {
 		let activeFile: TFile | null = null;
-		const activeMarkdown = this.app.workspace.getActiveViewOfType(MarkdownView);
-		if (activeMarkdown?.file instanceof TFile) {
-			activeFile = activeMarkdown.file;
+		let activeMarkdown: MarkdownView | null = null;
+		const imm = this.plugin.immersiveModeManager;
+		const isMobileImmersive = Boolean(imm?.isMobileDataIsolationActive?.() ?? imm?.isMobileImmersiveSessionActive?.());
+		if (this.isChapterOnlyMode() || isMobileImmersive) {
+			activeFile = this.getImmersiveMainTargetFile();
 		} else {
-			const rootLeaf = this.app.workspace.getMostRecentLeaf?.();
-			if (rootLeaf && (rootLeaf.view instanceof MarkdownView || rootLeaf.view?.getViewType() === 'markdown')) {
-				const fileView = rootLeaf.view as MarkdownView;
-				if (fileView.file instanceof TFile) {
-					activeFile = fileView.file;
+			activeMarkdown = this.app.workspace.getActiveViewOfType(MarkdownView);
+			if (activeMarkdown?.file instanceof TFile) {
+				activeFile = activeMarkdown.file;
+			} else {
+				const rootLeaf = this.app.workspace.getMostRecentLeaf?.();
+				if (rootLeaf && (rootLeaf.view instanceof MarkdownView || rootLeaf.view?.getViewType() === 'markdown')) {
+					const fileView = rootLeaf.view as MarkdownView;
+					if (fileView.file instanceof TFile) {
+						activeFile = fileView.file;
+					}
 				}
 			}
 		}
@@ -733,7 +878,7 @@ export class WritingStatusView extends ItemView {
 			const isHomepage = (homepagePath && activeFile.path === homepagePath) || activeFile.name === '创作主页.md';
 			if (!isHomepage && this.plugin.cacheManager.isEligibleForWordCount(activeFile)) {
 				const bookRoot = findBookRoot(this.app, this.plugin, activeFile, true);
-				if (!activeMarkdown && bookRoot && (!this.lastActiveFolderPath || bookRoot !== this.lastActiveFolderPath)) {
+				if (!this.isChapterOnlyMode() && !activeMarkdown && bookRoot && (!this.lastActiveFolderPath || bookRoot !== this.lastActiveFolderPath)) {
 					return null;
 				}
 				let isLore = false;
@@ -761,6 +906,18 @@ export class WritingStatusView extends ItemView {
 
 	private captureActiveContext(): void {
 		const previousChapterPath = this.currentChapterFile?.path;
+		if (this.isChapterOnlyMode()) {
+			const targetChapter = this.resolveActiveEligibleChapter();
+			this.lastActiveFolderPath = targetChapter ? (findBookRoot(this.app, this.plugin, targetChapter, true) || null) : null;
+			this.currentChapterFile = targetChapter;
+			if (!targetChapter || targetChapter.path !== previousChapterPath) {
+				this.resetChapterStatusCache();
+				this.chapterStatusCardEl?.hide();
+			}
+			this.setChapterEmptyStateVisible(!targetChapter);
+			return;
+		}
+
 		const contextPath = getCurrentBookContext(this.app, this.plugin, { fallback: false });
 		if (contextPath) {
 			const changed = this.lastActiveFolderPath !== contextPath;
@@ -781,20 +938,18 @@ export class WritingStatusView extends ItemView {
 		this.captureActiveContext();
 		const generation = ++this.updateGeneration;
 		if (immediate) {
-			if (this.updateDebounceTimer) {
-				window.clearTimeout(this.updateDebounceTimer);
-				this.updateDebounceTimer = null;
-			}
+			this.clearUpdateDebounceTimer();
 			await this.performUpdateData(generation, force);
 			return;
 		}
 
-		if (this.updateDebounceTimer) {
-			window.clearTimeout(this.updateDebounceTimer);
-		}
+		this.clearUpdateDebounceTimer();
 
-		this.updateDebounceTimer = window.setTimeout(() => {
+		const owningWindow = this.getOwningWindow();
+		this.updateDebounceTimerWindow = owningWindow;
+		this.updateDebounceTimer = owningWindow.setTimeout(() => {
 			this.updateDebounceTimer = null;
+			this.updateDebounceTimerWindow = null;
 			void this.performUpdateData(generation, force);
 		}, 100);
 	}
@@ -817,6 +972,10 @@ export class WritingStatusView extends ItemView {
 	private async performUpdateData(generation: number, force = false) {
 		if (generation !== this.updateGeneration) return;
 		this.captureActiveContext();
+		if (this.isChapterOnlyMode()) {
+			await this.updateChapterStatus(generation);
+			return;
+		}
 		const targetChapter = this.currentChapterFile;
 		const isEligibleChapter = !!targetChapter;
 
@@ -889,7 +1048,8 @@ export class WritingStatusView extends ItemView {
 			this.workGoalEl.hide();
 		}
 
-		if (!isMobile() && this.statusBadgeEl) {
+		if (this.statusBadgeEl) {
+			this.statusBadgeEl.setAttribute('aria-pressed', String(this.plugin.isTracking));
 			if (this.plugin.isTracking) {
 				this.statusBadgeEl.innerText = t('status.recording');
 				this.statusBadgeEl.removeClass('wn-bg-muted'); 
@@ -961,10 +1121,10 @@ export class WritingStatusView extends ItemView {
 						this.taskWordEl.empty();
 						const titleText = active.platform || t('common.task-event');
 						if (active.position) {
-							this.taskWordEl.createDiv({ cls: 'event-task-title', text: titleText + ' -' });
-							this.taskWordEl.createDiv({ cls: 'event-task-detail', text: active.position });
+							this.taskWordEl.createDiv({ cls: 'wn-event-task-title', text: titleText + ' -' });
+							this.taskWordEl.createDiv({ cls: 'wn-event-task-detail', text: active.position });
 						} else {
-							this.taskWordEl.createDiv({ cls: 'event-task-title', text: titleText });
+							this.taskWordEl.createDiv({ cls: 'wn-event-task-title', text: titleText });
 						}
 						this.taskSeparatorEl.hidden = true;
 						this.taskTargetEl.hidden = true;
@@ -974,7 +1134,7 @@ export class WritingStatusView extends ItemView {
 						const daysLeft = Math.max(0, window.moment(active.endDate).diff(window.moment().startOf('day'), 'days') + 1);
 						const endShort = active.endDate.substring(5);
 						this.taskTimeDescEl.setText(t('common.task-deadline-remaining', { date: endShort, days: String(daysLeft) }));
-						this.taskTimeDescEl.removeClass('task-reached');
+						this.taskTimeDescEl.removeClass('wn-task-reached');
 					} else {
 						this.taskRowEl.removeClass('is-event-task');
 						this.taskSeparatorEl.hidden = false;
@@ -992,7 +1152,7 @@ export class WritingStatusView extends ItemView {
 						const daysLeft = Math.max(0, window.moment(active.endDate).diff(window.moment().startOf('day'), 'days') + 1);
 						const endShort = active.endDate.substring(5);
 						this.taskTimeDescEl.setText(taskDone ? t('common.task-deadline-reached', { date: endShort }) : t('common.task-deadline-remaining', { date: endShort, days: String(daysLeft) }));
-						this.taskTimeDescEl.toggleClass('task-reached', taskDone);
+						this.taskTimeDescEl.toggleClass('wn-task-reached', taskDone);
 						this.setProgressState(this.taskProgressFillEl, this.taskWordEl, this.taskPercentEl, taskState, taskPercent);
 
 						// 防抖持久化完成字数
@@ -1016,9 +1176,7 @@ export class WritingStatusView extends ItemView {
 		}
 
 		this.lastRenderedDate = window.moment().format('YYYY-MM-DD');
-		if (!isMobile()) {
-			this.updateTimer();
-		}
+		this.updateTimer();
 
 		await this.updateChapterStatus(generation);
 		if (generation !== this.updateGeneration) return;
@@ -1026,23 +1184,55 @@ export class WritingStatusView extends ItemView {
 		this.renderMiniChart(force);
 	}
 
-	private lastChapterMtime: number = -1;
-	private lastForeshadowingMtime: number = -1;
-	private lastTimelinePath: string | null = null;
-	private lastTimelineMtime: number = -1;
-	private lastTimelineFileName: string | undefined = undefined;
-	private lastChapterStatusStr: string = '';
-	private lastChapterSynopsisStr: string = '';
+	private chapterStructureVersion = 0;
+	private chapterAssociationCache: {
+		chapterFile: TFile;
+		chapterPath: string;
+		chapterAliasesKey: string;
+		bookRoot: string;
+		foreshadowingFile: TFile | null;
+		foreshadowingPath: string;
+		foreshadowingMtime: number;
+		foreshadowingSize: number;
+		foreshadowingFileName: string | undefined;
+		timelineFile: TFile | null;
+		timelinePath: string;
+		timelineMtime: number;
+		timelineSize: number;
+		timelineFileName: string | undefined;
+		characterCacheVersion: number;
+		structureKey: string;
+		pendingEntries: ParsedForeshadowingEntry[];
+		recoveredHereEntries: ParsedForeshadowingEntry[];
+		resolvedOriginEntries: ParsedForeshadowingEntry[];
+		timelineNodes: ChapterTimelineNode[];
+		isMatch: (target: string | undefined) => boolean;
+	} | null = null;
+	private lastRenderedChapterSignature: {
+		chapterFile: TFile;
+		chapterPath: string;
+		chapterTitle: string;
+		status: string;
+		synopsis: string;
+		validLoresKey: string;
+		associationRef: object | null;
+	} | null = null;
 
 	private resetChapterStatusCache(): void {
 		this.lastRenderedChapterPath = null;
-		this.lastChapterMtime = -1;
-		this.lastForeshadowingMtime = -1;
-		this.lastTimelinePath = null;
-		this.lastTimelineMtime = -1;
-		this.lastTimelineFileName = undefined;
-		this.lastChapterStatusStr = '';
-		this.lastChapterSynopsisStr = '';
+		this.chapterAssociationCache = null;
+		this.lastRenderedChapterSignature = null;
+	}
+
+	private getChapterStructureKey(): string {
+		return JSON.stringify([
+			this.chapterStructureVersion,
+			this.plugin.settings.enableStrictChapterMode,
+			this.plugin.settings.chapterNamingRules,
+			this.plugin.settings.strictChapterExceptions,
+			this.plugin.settings.loreFolderName,
+			this.plugin.settings.workspaceFolders
+		]);
 	}
 
 	private createChapterReferenceMatcher(
@@ -1072,12 +1262,14 @@ export class WritingStatusView extends ItemView {
 		if (!file || file.extension !== 'md') {
 			this.resetChapterStatusCache();
 			this.chapterStatusCardEl.hide();
+			this.setChapterEmptyStateVisible(true);
 			return;
 		}
 
 		if (!this.plugin.cacheManager.isEligibleForWordCount(file)) {
 			this.resetChapterStatusCache();
 			this.chapterStatusCardEl.hide();
+			this.setChapterEmptyStateVisible(true);
 			return;
 		}
 
@@ -1085,6 +1277,7 @@ export class WritingStatusView extends ItemView {
 		if (recognizedBookRoot && this.plugin.characterManager.isLorePath(recognizedBookRoot, file.parent?.path || '')) {
 			this.resetChapterStatusCache();
 			this.chapterStatusCardEl.hide();
+			this.setChapterEmptyStateVisible(true);
 			return;
 		}
 
@@ -1093,6 +1286,7 @@ export class WritingStatusView extends ItemView {
 		if (fFile && fFile.path === file.path) {
 			this.resetChapterStatusCache();
 			this.chapterStatusCardEl.hide();
+			this.setChapterEmptyStateVisible(true);
 			return;
 		}
 
@@ -1100,6 +1294,7 @@ export class WritingStatusView extends ItemView {
 		if (tlFile && tlFile.path === file.path) {
 			this.resetChapterStatusCache();
 			this.chapterStatusCardEl.hide();
+			this.setChapterEmptyStateVisible(true);
 			return;
 		}
 
@@ -1109,26 +1304,172 @@ export class WritingStatusView extends ItemView {
 		const synopsis = (frontmatter?.synopsis || frontmatter?.Synopsis || frontmatter?.['摘要'] || '') as string;
 		const rawStatus = (frontmatter?.status || frontmatter?.Status || frontmatter?.['状态'] || 'unwritten') as string;
 		const status = CORKBOARD_STATUS_MAP[rawStatus] ?? rawStatus;
-		const currentFmtime = fFile ? fFile.stat.mtime : -1;
+		const currentFPath = fFile ? fFile.path : '';
+		const currentFmtime = fFile ? (fFile.stat?.mtime ?? -1) : -1;
+		const currentFsize = fFile ? (fFile.stat?.size ?? -1) : -1;
+		const configuredFName = this.plugin.settings.foreshadowing?.fileName;
 		const currentTlPath = tlFile ? tlFile.path : '';
-		const currentTlmtime = tlFile ? tlFile.stat.mtime : -1;
+		const currentTlmtime = tlFile ? (tlFile.stat?.mtime ?? -1) : -1;
+		const currentTlsize = tlFile ? (tlFile.stat?.size ?? -1) : -1;
 		const configuredTlName = this.plugin.settings.timeline?.fileName;
-		const chapterMtime = file.stat.mtime;
+		const charCacheVersion = this.plugin.characterManager?.cacheVersion ?? 0;
+		const structureKey = this.getChapterStructureKey();
+		const chapterAliasesKey = JSON.stringify(frontmatter?.aliases ?? frontmatter?.alias ?? null);
 
+		const loreArray = cache?.frontmatter?.lore as unknown;
+		let validLores: string[] = [];
+		if (recognizedBookRoot && Array.isArray(loreArray)) {
+			validLores = (loreArray as unknown[]).filter((l: unknown): l is string => typeof l === 'string');
+		}
+		const validLoresKey = validLores.join('\0');
+
+		const cachedAssoc = this.chapterAssociationCache;
+		const isAssociationValid = !!(
+			cachedAssoc &&
+			cachedAssoc.chapterFile === file &&
+			cachedAssoc.chapterPath === file.path &&
+			cachedAssoc.chapterAliasesKey === chapterAliasesKey &&
+			cachedAssoc.bookRoot === recognizedBookRoot &&
+			cachedAssoc.foreshadowingFile === (fFile ?? null) &&
+			cachedAssoc.foreshadowingPath === currentFPath &&
+			cachedAssoc.foreshadowingMtime === currentFmtime &&
+			cachedAssoc.foreshadowingSize === currentFsize &&
+			cachedAssoc.foreshadowingFileName === configuredFName &&
+			cachedAssoc.timelineFile === (tlFile ?? null) &&
+			cachedAssoc.timelinePath === currentTlPath &&
+			cachedAssoc.timelineMtime === currentTlmtime &&
+			cachedAssoc.timelineSize === currentTlsize &&
+			cachedAssoc.timelineFileName === configuredTlName &&
+			cachedAssoc.characterCacheVersion === charCacheVersion &&
+			cachedAssoc.structureKey === structureKey
+		);
+
+		const lastSig = this.lastRenderedChapterSignature;
 		if (
-			this.lastRenderedChapterPath === file.path &&
-			chapterMtime === this.lastChapterMtime &&
-			currentFmtime === this.lastForeshadowingMtime &&
-			currentTlPath === this.lastTimelinePath &&
-			currentTlmtime === this.lastTimelineMtime &&
-			configuredTlName === this.lastTimelineFileName &&
-			status === this.lastChapterStatusStr &&
-			synopsis === this.lastChapterSynopsisStr
+			isAssociationValid &&
+			lastSig &&
+			lastSig.chapterFile === file &&
+			lastSig.chapterPath === file.path &&
+			lastSig.chapterTitle === file.basename &&
+			lastSig.status === status &&
+			lastSig.synopsis === synopsis &&
+			lastSig.validLoresKey === validLoresKey &&
+			lastSig.associationRef === cachedAssoc
 		) {
+			this.setChapterEmptyStateVisible(false);
 			this.chapterStatusCardEl.show();
 			return;
 		}
 
+		let pendingEntries: ParsedForeshadowingEntry[];
+		let recoveredHereEntries: ParsedForeshadowingEntry[];
+		let resolvedOriginEntries: ParsedForeshadowingEntry[];
+		let timelineNodes: ChapterTimelineNode[];
+		let isMatch: (target: string | undefined) => boolean;
+		let activeAssocRef: typeof this.chapterAssociationCache = null;
+
+		if (isAssociationValid && cachedAssoc) {
+			pendingEntries = cachedAssoc.pendingEntries;
+			recoveredHereEntries = cachedAssoc.recoveredHereEntries;
+			resolvedOriginEntries = cachedAssoc.resolvedOriginEntries;
+			timelineNodes = cachedAssoc.timelineNodes;
+			isMatch = cachedAssoc.isMatch;
+			activeAssocRef = cachedAssoc;
+		} else {
+			pendingEntries = [];
+			recoveredHereEntries = [];
+			resolvedOriginEntries = [];
+			timelineNodes = [];
+			let referenceReadFailed = false;
+
+			isMatch = fFile
+				? this.createChapterReferenceMatcher(file, fmFolder, fFile.path)
+				: (_target: string | undefined): boolean => false;
+
+			if (fFile && this.plugin.foreshadowingManager) {
+				try {
+					const content = await this.app.vault.cachedRead(fFile);
+					if (generation !== this.updateGeneration) return;
+					if (this.currentChapterFile !== file || this.currentChapterFile?.path !== file.path) return;
+					const entries = this.plugin.foreshadowingManager.parseEntries(content);
+
+					for (const entry of entries) {
+						const matchSource = isMatch(entry.sourceFile) || (entry.contents || []).some(c => isMatch(c.source));
+
+						if (entry.status === ForeshadowingStatus.Pending) {
+							if (matchSource) pendingEntries.push(entry);
+						} else if (entry.status === ForeshadowingStatus.PartiallyRecovered) {
+							const matchRecovery = (entry.recoveryLogs || []).some(l => isMatch(l.file)) || (entry.recoveryFiles || []).some(f => isMatch(f)) || isMatch(entry.recoveryFile);
+							if (matchSource) pendingEntries.push(entry);
+							if (matchRecovery && !matchSource) recoveredHereEntries.push(entry);
+						} else if (entry.status === ForeshadowingStatus.Recovered) {
+							const matchRecovery = (entry.recoveryLogs || []).some(l => isMatch(l.file)) || (entry.recoveryFiles || []).some(f => isMatch(f)) || isMatch(entry.recoveryFile);
+							if (matchSource) resolvedOriginEntries.push(entry);
+							if (matchRecovery && !matchSource) recoveredHereEntries.push(entry);
+						}
+					}
+				} catch (err) {
+					referenceReadFailed = true;
+					(window.console || console).error('[WritingStatusView] Failed to read foreshadowing file:', err);
+				}
+			}
+
+			if (generation !== this.updateGeneration) return;
+			if (this.currentChapterFile !== file || this.currentChapterFile?.path !== file.path) return;
+
+			if (tlFile && this.plugin.timelineManager) {
+				try {
+					const content = await this.app.vault.cachedRead(tlFile);
+					if (generation !== this.updateGeneration) return;
+					if (this.currentChapterFile !== file || this.currentChapterFile?.path !== file.path) return;
+					const entries = this.plugin.timelineManager.parseEntries(content, fmFolder);
+					timelineNodes = this.plugin.timelineManager.getTimelineNodesForChapter(
+						file,
+						entries,
+						fmFolder,
+						tlFile
+					);
+				} catch (err) {
+					referenceReadFailed = true;
+					(window.console || console).error('[WritingStatusView] Failed to read timeline file:', err);
+				}
+			}
+
+			if (generation !== this.updateGeneration) return;
+			if (this.currentChapterFile !== file || this.currentChapterFile?.path !== file.path) return;
+
+			if (referenceReadFailed) {
+				this.chapterAssociationCache = null;
+				activeAssocRef = null;
+			} else {
+				activeAssocRef = {
+					chapterFile: file,
+					chapterPath: file.path,
+					chapterAliasesKey,
+					bookRoot: recognizedBookRoot,
+					foreshadowingFile: fFile ?? null,
+					foreshadowingPath: currentFPath,
+					foreshadowingMtime: currentFmtime,
+					foreshadowingSize: currentFsize,
+					foreshadowingFileName: configuredFName,
+					timelineFile: tlFile ?? null,
+					timelinePath: currentTlPath,
+					timelineMtime: currentTlmtime,
+					timelineSize: currentTlsize,
+					timelineFileName: configuredTlName,
+					characterCacheVersion: charCacheVersion,
+					structureKey,
+					pendingEntries,
+					recoveredHereEntries,
+					resolvedOriginEntries,
+					timelineNodes,
+					isMatch
+				};
+				this.chapterAssociationCache = activeAssocRef;
+			}
+		}
+
+		this.setChapterEmptyStateVisible(false);
 		this.chapterStatusCardEl.show();
 		this.chapterBadgesContainer.empty();
 		this.chapterSubInfoEl.empty();
@@ -1142,81 +1483,14 @@ export class WritingStatusView extends ItemView {
 		}
 
 		// 2. Set Status and Synopsis
-		this.chapterStatusBadgeEl.setText(getCorkboardStatusText(status));
-		this.chapterStatusBadgeEl.className = `wn-chapter-title-badge status-${status} wn-clickable`;
-		this.chapterStatusBadgeEl.title = t('corkboard.click-to-change-status');
+		const statusText = getCorkboardStatusText(status);
+		this.chapterStatusBadgeEl.setText(statusText);
+		this.chapterStatusBadgeEl.className = `wn-chapter-title-badge wn-status-${status} wn-clickable`;
+		setTooltip(this.chapterStatusBadgeEl, `${statusText} - ${t('corkboard.click-to-change-status')}`);
 
 		if (synopsis.trim() !== '') {
 			const synopsisEl = this.chapterSubInfoEl.createDiv({ cls: 'wn-chapter-synopsis-text' });
 			synopsisEl.setText(synopsis);
-		}
-
-		const pendingEntries: ParsedForeshadowingEntry[] = [];
-		const recoveredHereEntries: ParsedForeshadowingEntry[] = [];
-		const resolvedOriginEntries: ParsedForeshadowingEntry[] = [];
-		let referenceReadFailed = false;
-
-		const isMatch = fFile
-			? this.createChapterReferenceMatcher(file, fmFolder, fFile.path)
-			: (_target: string | undefined): boolean => false;
-
-		if (fFile && this.plugin.foreshadowingManager) {
-			try {
-				const content = await this.app.vault.cachedRead(fFile);
-				if (generation !== this.updateGeneration) return;
-				if (this.currentChapterFile?.path !== file.path) return;
-				const entries = this.plugin.foreshadowingManager.parseEntries(content);
-
-				for (const entry of entries) {
-					const matchSource = isMatch(entry.sourceFile) || (entry.contents || []).some(c => isMatch(c.source));
-
-					if (entry.status === ForeshadowingStatus.Pending) {
-						if (matchSource) pendingEntries.push(entry);
-					} else if (entry.status === ForeshadowingStatus.PartiallyRecovered) {
-						const matchRecovery = (entry.recoveryLogs || []).some(l => isMatch(l.file)) || (entry.recoveryFiles || []).some(f => isMatch(f)) || isMatch(entry.recoveryFile);
-						if (matchSource) pendingEntries.push(entry);
-						if (matchRecovery && !matchSource) recoveredHereEntries.push(entry);
-					} else if (entry.status === ForeshadowingStatus.Recovered) {
-						const matchRecovery = (entry.recoveryLogs || []).some(l => isMatch(l.file)) || (entry.recoveryFiles || []).some(f => isMatch(f)) || isMatch(entry.recoveryFile);
-						if (matchSource) resolvedOriginEntries.push(entry);
-						if (matchRecovery && !matchSource) recoveredHereEntries.push(entry);
-					}
-				}
-			} catch (err) {
-				referenceReadFailed = true;
-				(window.console || console).error('[WritingStatusView] Failed to read foreshadowing file:', err);
-			}
-		}
-
-		if (generation !== this.updateGeneration) return;
-		if (this.currentChapterFile?.path !== file.path) return;
-
-		let timelineNodes: ChapterTimelineNode[] = [];
-		if (tlFile && this.plugin.timelineManager) {
-			try {
-				const content = await this.app.vault.cachedRead(tlFile);
-				if (generation !== this.updateGeneration) return;
-				if (this.currentChapterFile?.path !== file.path) return;
-				const entries = this.plugin.timelineManager.parseEntries(content, fmFolder);
-				timelineNodes = this.plugin.timelineManager.getTimelineNodesForChapter(
-					file,
-					entries,
-					fmFolder,
-					tlFile
-				);
-			} catch (err) {
-				referenceReadFailed = true;
-				(window.console || console).error('[WritingStatusView] Failed to read timeline file:', err);
-			}
-		}
-
-		if (generation !== this.updateGeneration) return;
-		if (this.currentChapterFile?.path !== file.path) return;
-
-		const loreArray = cache?.frontmatter?.lore as unknown;
-		let validLores: string[] = [];
-		if (recognizedBookRoot && Array.isArray(loreArray)) {
-			validLores = (loreArray as unknown[]).filter((l: unknown): l is string => typeof l === 'string');
 		}
 
 		// 点击伏笔条目，跳转到正文中对应文本位置
@@ -1323,13 +1597,17 @@ export class WritingStatusView extends ItemView {
 		}
 
 		this.lastRenderedChapterPath = file.path;
-		this.lastChapterMtime = referenceReadFailed ? -1 : chapterMtime;
-		this.lastForeshadowingMtime = currentFmtime;
-		this.lastTimelinePath = currentTlPath;
-		this.lastTimelineMtime = currentTlmtime;
-		this.lastTimelineFileName = configuredTlName;
-		this.lastChapterStatusStr = status;
-		this.lastChapterSynopsisStr = synopsis;
+		this.lastRenderedChapterSignature = activeAssocRef
+			? {
+				chapterFile: file,
+				chapterPath: file.path,
+				chapterTitle: file.basename,
+				status,
+				synopsis,
+				validLoresKey,
+				associationRef: activeAssocRef
+			}
+			: null;
 	}
 
 	private lastWordStatsRevision: number | null = null;
@@ -1373,6 +1651,7 @@ export class WritingStatusView extends ItemView {
 	private lastMiniChartDate: string = '';
 
 	renderMiniChart(force = false) {
+		if (this.isChapterOnlyMode() || !this.miniChartEl) return;
 		const now = window.moment();
 		const today = now.format('YYYY-MM-DD');
 		const currentRevision = this.plugin.historyManager.getWordRevision();
@@ -1399,29 +1678,37 @@ export class WritingStatusView extends ItemView {
 		dates.forEach(date => {
 			const stat = history[date];
 			const words = stat?.addedWords || 0;
-			const col = this.miniChartEl.createDiv({ cls: 'mini-chart-col' });
+			const col = this.miniChartEl.createDiv({ cls: 'wn-mini-chart-col' });
 
 			const heightPercent = Math.max(3, (Math.abs(words) / maxAbsValue) * 100);
-			const bar = col.createDiv({ cls: 'mini-chart-bar' });
+			const bar = col.createDiv({ cls: 'wn-mini-chart-bar' });
 			bar.setCssProps({ height: `${heightPercent}%` });
 
 			if (words < 0) {
-				bar.addClass('bar-negative');
+				bar.addClass('wn-bar-negative');
 			} else {
 				const ratio = words / maxAbsValue;
-				if (ratio >= 0.8) bar.addClass('bar-high');
-				else if (ratio >= 0.5) bar.addClass('bar-medium');
-				else if (ratio >= 0.2) bar.addClass('bar-low');
-				else bar.addClass('bar-minimal');
+				if (ratio >= 0.8) bar.addClass('wn-bar-high');
+				else if (ratio >= 0.5) bar.addClass('wn-bar-medium');
+				else if (ratio >= 0.2) bar.addClass('wn-bar-low');
+				else bar.addClass('wn-bar-minimal');
 			}
 
 			const focusH = (stat?.focusMs || 0) / 3600000;
-			bar.setAttribute('title', `${date}\n${t('modal.metric-words')}: ${words}\n${t('modal.metric-focus-time')}: ${focusH.toFixed(1)}h`);
+			const details = `${t('modal.metric-words')}: ${words}\n${t('modal.metric-focus-time')}: ${focusH.toFixed(1)}h`;
 
-			col.createDiv({ cls: 'mini-chart-label', text: date.substring(5) });
+			col.createDiv({ cls: 'wn-mini-chart-label', text: date.substring(5) });
 
 			const displayStr = formatCount(words);
-			col.createDiv({ cls: 'mini-chart-value', text: displayStr });
+			col.createDiv({ cls: 'wn-mini-chart-value', text: displayStr });
+
+			bindDailyStatsTrigger(col, {
+				app: this.app,
+				plugin: this.plugin,
+				date,
+				details,
+				stopPropagation: true
+			});
 		});
 
 		const endDate = today;
@@ -1443,19 +1730,19 @@ export class WritingStatusView extends ItemView {
 
 	async onClose() {
 		this.updateGeneration++;
-		if (this.updateDebounceTimer !== null) {
-			window.clearTimeout(this.updateDebounceTimer);
-			this.updateDebounceTimer = null;
-		}
+		this.clearUpdateDebounceTimer();
+		this.resetChapterStatusCache();
 		if (this.taskSaveTimer !== null) {
 			window.clearTimeout(this.taskSaveTimer);
 			this.taskSaveTimer = null;
 		}
 		this.inFlightReconcile.clear();
-		try {
-			await this.app.workspace.requestSaveLayout.run();
-		} catch (error) {
-			Logger.error('[WritingStatusView] Failed to save layout:', error);
+		if (!this.isChapterOnlyMode()) {
+			try {
+				await this.app.workspace.requestSaveLayout.run();
+			} catch (error) {
+				Logger.error('[WritingStatusView] Failed to save layout:', error);
+			}
 		}
 		await super.onClose();
 	}

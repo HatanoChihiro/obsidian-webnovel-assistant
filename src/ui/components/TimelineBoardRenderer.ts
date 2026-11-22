@@ -1,5 +1,6 @@
+import { showPluginNotice } from '../../services/PluginNoticeService';
 import type { App, Component, WorkspaceLeaf } from 'obsidian';
-import { setIcon, setTooltip, TFile, Notice, Modal } from 'obsidian';
+import { setIcon, setTooltip, TFile, Modal } from 'obsidian';
 import type { ParsedForeshadowingEntry } from '../../types/foreshadowing';
 import { deepCloneEntry, filterTimelineEntries, parseTimelineChapterList, type TimelineEntry, type TimelineItem, type TimelineManager } from '../../services/TimelineManager';
 import { CorkboardGridRenderer } from './CorkboardGridRenderer';
@@ -170,7 +171,7 @@ export class TimelineBoardRenderer {
 
 		const openTimelineEntry = async (entry: TimelineEntry, entryIndex: number): Promise<void> => {
 			if (!timelineFile) {
-				new Notice(t('common.file-not-found', { name: t('common.default-timeline-filename') }));
+				showPluginNotice(t('common.file-not-found', { name: t('common.default-timeline-filename') }));
 				return;
 			}
 			const content = await app.vault.cachedRead(timelineFile);
@@ -614,7 +615,7 @@ export class TimelineBoardRenderer {
 									try {
 										if (!timelineSource) {
 											const message = t('common.no-files-hint', { type: t('setting.timeline') });
-											new Notice(message);
+											showPluginNotice(message);
 											throw new Error(message);
 										}
 										const result = await timelineManager.updateEntry(targetIndex, updated, targetBookFolder, originalEntrySnapshot, timelineSource);
@@ -625,7 +626,7 @@ export class TimelineBoardRenderer {
 											const msg = !hasFile
 												? t('common.no-files-hint', { type: t('setting.timeline') })
 												: t('timeline.conflict-notice');
-											new Notice(msg);
+											showPluginNotice(msg);
 											throw new Error(msg);
 										}
 										reloadBoard();
@@ -1315,11 +1316,11 @@ export class TimelineBoardRenderer {
 					tlFile = await timelineManager.createTimelineFile(bookFolder);
 					if (tlFile) {
 						const msg = t('notice.timeline-file-created');
-						new Notice(msg.replace('{name}', tlFile.path));
+						showPluginNotice(msg.replace('{name}', tlFile.path));
 					}
 				} catch (e) {
 					console.error('[TimelineBoardRenderer] 创建时间线文件失败:', e);
-					new Notice(t('notice.timeline-file-create-failed'));
+					showPluginNotice(t('notice.timeline-file-create-failed'));
 					return;
 				}
 			}
@@ -1342,7 +1343,7 @@ export class TimelineBoardRenderer {
 						onSaveStateChange(true);
 						try {
 							await timelineManager.appendEntry(entry, bookFolder);
-							new Notice(t('notice.timeline-added'));
+							showPluginNotice(t('notice.timeline-added'));
 						} catch (e) {
 							console.error('[TimelineBoardRenderer] 写入记录失败:', e);
 						} finally {

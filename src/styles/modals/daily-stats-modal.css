@@ -1,0 +1,108 @@
+/* Daily Writing Statistics Modal & Trigger Styles */
+
+.modal.wn-daily-stats-modal-container {
+	width: 400px;
+	max-width: 92vw;
+}
+
+.wn-daily-stats-modal {
+	font-family: var(--font-interface);
+}
+
+.wn-daily-stats-heading {
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 6px 12px;
+	padding-right: 20px;
+}
+
+.wn-daily-stats-heading .wn-daily-stats-heading-info {
+	align-self: center;
+	margin-bottom: 0;
+}
+
+.wn-daily-stats-heading .setting-item-control {
+	display: none;
+}
+
+.wn-daily-stats-date-nav {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	font-size: 0.8em;
+	font-weight: 400;
+	line-height: 1;
+	color: var(--text-muted);
+	white-space: nowrap;
+}
+
+.wn-daily-stats-date {
+	font-variant-numeric: tabular-nums;
+}
+
+.wn-daily-stats-date-nav .wn-daily-stats-date-button {
+	width: 24px;
+	height: 24px;
+	padding: 3px;
+	color: inherit;
+	--icon-size: 14px;
+}
+
+.wn-daily-stats-date-nav .wn-daily-stats-date-button:disabled {
+	opacity: 0.35;
+	cursor: default;
+}
+
+.wn-daily-stats-date-button:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 2px;
+}
+
+body.is-phone .wn-daily-stats-date-button,
+body.is-tablet .wn-daily-stats-date-button {
+	width: 28px;
+	height: 28px;
+}
+
+.wn-daily-stats-grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 10px;
+	margin-top: 8px;
+}
+
+.wn-daily-stats-card {
+	background: color-mix(in srgb, var(--interactive-accent) 6%, var(--background-secondary));
+	border-radius: 8px;
+	padding: 12px 10px;
+	text-align: center;
+	border-top: 3px solid var(--interactive-accent);
+	box-sizing: border-box;
+	min-width: 0;
+}
+
+.wn-daily-stats-label {
+	font-size: 0.85em;
+	color: var(--text-muted);
+	margin-bottom: 6px;
+	overflow-wrap: anywhere;
+	word-break: break-word;
+}
+
+.wn-daily-stats-value {
+	font-size: 1.1em;
+	font-weight: 700;
+	color: var(--interactive-accent);
+	line-height: 1.3;
+	overflow-wrap: anywhere;
+	word-break: break-word;
+}
+
+.wn-daily-stats-trigger {
+	cursor: pointer;
+}
+
+.wn-daily-stats-trigger:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 2px;
+}

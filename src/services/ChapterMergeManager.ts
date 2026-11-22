@@ -143,7 +143,7 @@ export class ChapterMergeManager {
 	 * 加载指定文件夹下按章节顺序排列的所有章节合并条目
 	 * @param folder 目标小说或卷文件夹
 	 */
-	public async loadFolderChapters(folder: TFolder): Promise<ChapterMergeItem[]> {
+	public async loadFolderChapters(folder: TFolder, signal?: AbortSignal): Promise<ChapterMergeItem[]> {
 		const mdFiles = getDeterministicChapterDisplayOrder(
 			ChapterSorter.getAllChapters(this.app, this.plugin, folder.path),
 			{
@@ -153,27 +153,40 @@ export class ChapterMergeManager {
 				customSortOrder: this.plugin.settings.customSortOrder
 			}
 		);
-		const items: ChapterMergeItem[] = [];
-
-		for (const mdFile of mdFiles) {
-			const inVolume = mdFile.parent && mdFile.parent.path !== folder.path;
-			const volumeName = inVolume ? mdFile.parent!.name : '';
-
-			const fullContent = await this.app.vault.cachedRead(mdFile);
-			const { frontmatter, body } = this.splitFrontmatter(fullContent);
-
-			items.push({
-				file: mdFile,
-				volumeName,
-				title: mdFile.basename,
-				frontmatter,
-				originalBody: body,
-				currentBody: body,
-				annotation: '',
-				originalAnnotation: '',
-				isModified: false
-			});
-		}
+		const items = new Array<ChapterMergeItem>(mdFiles.length);
+		let nextIndex = 0;
+		let failed = false;
+		const readNext = async (): Promise<void> => {
+			while (nextIndex < mdFiles.length && !failed) {
+				signal?.throwIfAborted();
+				const index = nextIndex++;
+				const mdFile = mdFiles[index];
+				try {
+					const fullContent = await this.app.vault.cachedRead(mdFile);
+					signal?.throwIfAborted();
+					const { frontmatter, body } = this.splitFrontmatter(fullContent);
+					items[index] = {
+						file: mdFile,
+						volumeName: mdFile.parent && mdFile.parent.path !== folder.path ? mdFile.parent.name : '',
+						title: mdFile.basename,
+						frontmatter,
+						originalBody: body,
+						currentBody: body,
+						annotation: '',
+						originalAnnotation: '',
+						isModified: false
+					};
+				} catch (error) {
+					failed = true;
+					throw error;
+				}
+			}
+		};
+		// All readers settle before returning, including after cancellation or a read error.
+		const results = await Promise.allSettled(Array.from({ length: Math.min(4, mdFiles.length) }, readNext));
+		const failure = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+		if (failure) throw failure.reason;
+		signal?.throwIfAborted();
 
 		return items;
 	}

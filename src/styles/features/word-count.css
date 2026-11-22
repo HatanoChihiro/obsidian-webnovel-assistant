@@ -22,7 +22,7 @@ body .markdown-source-view.mod-cm6 .cm-editor .cm-scroller .cm-gutters .webnovel
 
 /* When this plugin's Gutter is the only Gutter (e.g. no line numbers), clear all padding Obsidian adds by default to eliminate indentation placeholder */
 
-body .markdown-source-view.mod-cm6 .cm-editor .cm-scroller .cm-gutters.is-only-word-count-gutter {
+body .markdown-source-view.mod-cm6 .cm-editor .cm-scroller .cm-gutters.wn-only-word-count-gutter {
 	margin-right: 0;
 	padding-right: 0;
 	border-right: none;
@@ -31,7 +31,7 @@ body .markdown-source-view.mod-cm6 .cm-editor .cm-scroller .cm-gutters.is-only-w
 
 /* Hide entire container when not in workspace/chapter (if only our gutter exists) */
 
-.cm-editor:not(.webnovel-show-gutter) body .markdown-source-view.mod-cm6 .cm-editor .cm-scroller .cm-gutters.is-only-word-count-gutter {
+.cm-editor:not(.webnovel-show-gutter) body .markdown-source-view.mod-cm6 .cm-editor .cm-scroller .cm-gutters.wn-only-word-count-gutter {
 	display: none;
 }
 
@@ -87,24 +87,24 @@ body .markdown-source-view.mod-cm6 .cm-editor.webnovel-show-gutter .cm-scroller 
 
 /* Heat Negative */
 
-.heat-negative {
+.wn-heat-negative {
 	background: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%);
 }
 
-.heat-0 {
+.wn-heat-0 {
 	/* Keep extreme accent lightness from making empty days disappear into the background. */
 	background: color-mix(in srgb, hsl(var(--accent-h) calc(var(--accent-s) * 0.1) clamp(35%, var(--accent-l), 65%)) 24%, var(--background-primary));
 }
 
-.heat-1 {
+.wn-heat-1 {
 	background: color-mix(in srgb, var(--interactive-accent) 28%, var(--background-primary));
 }
 
-.heat-2 {
+.wn-heat-2 {
 	background: color-mix(in srgb, var(--interactive-accent) 50%, var(--background-primary));
 }
 
-.heat-3 {
+.wn-heat-3 {
 	background: color-mix(in srgb, var(--interactive-accent) 78%, var(--background-primary));
 }
 
@@ -112,27 +112,27 @@ body .markdown-source-view.mod-cm6 .cm-editor.webnovel-show-gutter .cm-scroller 
 
 /* Bar Negative */
 
-.bar-negative {
+.wn-bar-negative {
 	background: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%);
 }
 
-.bar-minimal {
+.wn-bar-minimal {
 	background: color-mix(in srgb, var(--interactive-accent) 15%, var(--background-modifier-border));
 }
 
-.bar-low {
+.wn-bar-low {
 	background: color-mix(in srgb, var(--interactive-accent) 40%, var(--background-primary));
 }
 
-.bar-medium {
+.wn-bar-medium {
 	background: color-mix(in srgb, var(--interactive-accent) 60%, var(--background-primary));
 }
 
-.bar-high {
+.wn-bar-high {
 	background: var(--interactive-accent);
 }
 
-.bar-negative-text {
+.wn-bar-negative-text {
 	color: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%);
 }
 
@@ -156,7 +156,7 @@ body .markdown-source-view.mod-cm6 .cm-editor.webnovel-show-gutter .cm-scroller 
 
 /* Selection word count tooltip */
 
-body .cm-tooltip.cm-tooltip-selection-count {
+body .cm-tooltip.wn-cm-tooltip-selection-count {
 	padding: 4px 8px;
 	background-color: var(--background-secondary);
 	color: var(--text-normal);

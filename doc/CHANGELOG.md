@@ -1,3 +1,91 @@
+## 🚀 v4.1.0
+
+### 新增功能
+
+#### 沉浸原稿模式
+
+将同一作品的章节串联为连续滚动的长稿，方便在上下文中回看、定位和继续写作。
+
+- 当前章保留 Obsidian 原生编辑体验，相邻章节按需显示预览。
+- 点击章节标题或正文即可跳转到对应位置；支持拖动滚动条快速阅览、快捷新建并切换下一章。
+- 支持打字机滚动，按作品记忆编辑光标与浏览位置；切换章节时自动保存，重新进入时可恢复上次位置。
+
+#### 移动端沉浸模式
+
+为手机和平板提供精简的沉浸写作布局，将正文、选章和辅助资料集中在同一界面。
+
+- **精简界面**：顶栏显示作品名、字数进度、专注时间和本场时速，随宽度缩小字体并保持单行；窄屏正文保留原生双侧边距，普通编辑与原稿模式一致。
+- **快捷操作**：左侧章节目录可隐藏，退出按钮旁的快捷设置可开启／关闭打字机滚动、调整位置与透明度，以及切换原稿模式。
+- **灵活辅助窗**：可在设置中启用，窗内快捷选择组件，支持拖动、调整大小和锁定；最小化后仅保留可拖动的展开图标。平板还可将辅助窗贴靠右侧，拖动边界调宽，主编辑区自动让位。
+- **专注写作**：进入时自动开始专注计时，退出时停止；支持在设置中开启番茄钟休息提醒并调整间隔。
+- **独立参考资料**：参考文档仅通过搜索选择，不影响主章节上下文和写作统计。
+
+### 功能优化
+
+- **通知控制**：通用设置新增通知开关，本插件的通知条默认关闭，可按需开启，保留番茄钟提醒及确认弹窗，不影响其他插件。
+- **沉浸章节状态面板**：可添加到上、下、左、右辅助区域，跟随主写作章节查看状态、摘要、伏笔、时间线及设定，并直接修改章节状态。
+- **单日写作详情**：点击热力图或按日柱状图，查看当日活跃时段、写作时长、新增字数与时速，支持切换前后日期。
+- **排版调节**：支持分别调整段前距与段后距，设置页和快捷微调同步生效，沿用已有段间距配置。
+- **创作主页**：存稿、暂停与完结作品卡片统一显示系列、字数、类型和简介，系列角标位于作品名下方并左对齐。
+- **界面样式**：统一卡片、按钮与悬浮提示样式，优化文字对齐及编辑入口，减少与主题和其他插件的样式干扰。
+- **悬浮卡片**：设定图谱支持悬停节点查看设定卡片，工作台与独立图谱共用设定悬浮开关；伏笔、时间线与设定卡片统一等待 1 秒，减少快速划过时误触。
+- **移动端写作统计**：手机和平板的专注计时默认可用，无需单独启用，保留悬浮窗的开始／暂停操作及闲置判定时长设置；实时状态面板支持查看专注统计，并可在“今日状态”旁开始／暂停计时，计时悬浮窗显示本场时速。
+- **章节合并预览**：提升大量章节的加载与滚动性能，移动端支持搜索、范围和按卷选章。
+- **章节快照回放**：暂停后可导出完整原文，或确认并备份后恢复所选版本。
+- **性能与资源占用**：减少章节状态和关联原文的重复计算，降低原稿连续浏览的内存占用，优化按范围搜索。
+
+### Bug 修复
+
+- **沉浸模式番茄钟**：到时自动暂停专注计时，点击“开启下一轮”后继续累计，休息期间不计时。
+- **设定图谱**：修复工作台图谱不遵循「自动关联提及」开关的问题。
+- **字数缓存**：修复重建缓存期间，旧读取结果覆盖较新字数的问题。
+- **实时校对**：修复取消悬停后，未显示的校对浮层仍持续进行后台检查的问题；修复修改工作区后，补全缺失词典模板仍按旧工作区默认目录生成文件的问题。
+- **沉浸章节列表**：修复进入沉浸模式时，列表未滚动到当前章节的问题。
+
+### English Changelog
+
+#### New Features
+
+##### Immersive manuscript mode
+
+Read a work's chapters as one continuously scrolling manuscript, making it easier to review context, find a passage, and continue writing.
+
+- Keep the native Obsidian editing experience in the current chapter, with adjacent chapters previewed as needed.
+- Click a chapter title or passage to jump to that position. Browse with the scrollbar, or create and open the next chapter with a shortcut.
+- Use typewriter scrolling and remember the cursor and reading position per work. The current chapter is saved before switching, and returning restores your last position.
+
+##### Mobile immersive mode
+
+A compact writing layout for phones and tablets brings the editor, chapter navigation, and reference material into one view.
+
+- **Compact interface**: The top bar shows the work name, word progress, focus time, and session speed, scaling text down to stay on one line. Native side margins remain on narrow screens in both ordinary editing and manuscript mode.
+- **Quick controls**: Hide or show the chapter directory on the left. Quick settings beside the exit button toggle typewriter scrolling, adjust its position and opacity, and switch manuscript mode.
+- **Flexible auxiliary panel**: Enable it in settings, select components directly in the panel, and drag, resize, or lock it. Minimize it to a draggable restore icon. On tablets, dock it on the right and resize its boundary while the editor makes room.
+- **Focused writing**: Focus timing starts on entry and stops on exit. Enable Pomodoro break reminders and adjust their interval in settings.
+- **Independent reference material**: Select reference documents through search without changing the main chapter context or writing statistics.
+
+#### Improvements
+
+- **Notification controls**: This plugin’s notification messages are off by default and can be enabled in general settings while keeping Pomodoro reminders and confirmation dialogs, without affecting other plugins.
+- **Immersive chapter status panel**: Place the panel above, below, or beside the editor to follow the main writing chapter, view its status, synopsis, foreshadowing, timeline, and lore, and change its status directly.
+- **Daily writing details**: Click a heatmap or daily bar chart to view a day's active hours, writing time, added words, and writing speed, and navigate between dates.
+- **Typography controls**: Adjust spacing before and after paragraphs separately in settings and quick adjustments, preserving existing paragraph spacing preferences.
+- **Creation homepage**: Stockpiling, paused, and completed work cards consistently show series, word count, genre, and synopsis, with a series badge aligned below the title on the left.
+- **Interface styling**: Unify card, button, and tooltip styles, improve text alignment and editing controls, and reduce style conflicts with themes and other plugins.
+- **Hover cards**: Hover over lore graph nodes to preview lore cards in both the Workbench and standalone graph, using the existing lore hover setting. Foreshadowing, timeline, and lore cards share a one-second delay to reduce accidental previews.
+- **Mobile writing statistics**: Focus timing is always available on phones and tablets without a separate enable setting. The floating widget retains start/pause controls and session speed, idle-timeout settings remain available, and the Writing Status Panel shows focus statistics and lets you start or pause tracking beside Today's Status.
+- **Chapter merge preview**: Improve loading and scrolling for large chapter collections. On mobile, select chapters by search, range, or volume.
+- **Chapter snapshot replay**: While paused, export full text or restore the selected version after confirmation and backup.
+- **Performance and resource usage**: Reduce repeated chapter status and linked-text calculations, lower memory usage while browsing manuscripts, and improve scoped searches.
+
+#### Bug Fixes
+
+- **Immersive Pomodoro**: Focus tracking now pauses when a round ends and resumes when starting the next round, excluding rest time.
+- **Lore graphs**: Fixed the workbench graph ignoring the Auto-Link Mentions setting.
+- **Word count cache**: Fixed older reads overwriting newer word counts during a cache rebuild.
+- **Live proofreading**: Fixed hidden proofreading popovers continuing background checks after a hover was cancelled, and fixed regenerating missing dictionary templates still creating files in the previous workspace's default folder after switching workspaces.
+- **Immersive chapter list**: Fixed the list failing to scroll to the current chapter when entering immersive mode.
+
 ## 🛠 v4.0.9
 
 ### 新增功能

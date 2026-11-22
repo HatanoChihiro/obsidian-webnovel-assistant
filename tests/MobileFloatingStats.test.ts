@@ -64,6 +64,7 @@ interface PrivateStatsAccess {
 	timerEl: MockElement | null;
 	timerBtnEl: MockElement | null;
 	timerTextEl: MockElement | null;
+	speedEl: MockElement | null;
 	ownerDocument: Document | null;
 	ownerWindow: Window | null;
 	pendingInitialRaf: { win: Window; id: number } | null;
@@ -74,10 +75,10 @@ const createPluginFixture = (overrides?: Partial<MobileFloatingStatsPlugin>): Mo
 	isTracking: false,
 	focusMs: 0,
 	settings: {
-		enableMobileFocusTimer: true,
 		mobileFloatingStatsState: { x: 20, y: 100 }
 	},
 	statisticsManager: {
+		getSessionSpeed: vi.fn(() => 0),
 		getCoreStats: () => ({
 			isTracking: false,
 			focusTime: '00:00:00',
@@ -195,6 +196,7 @@ describe('MobileFloatingStats lifecycle & icon caching', () => {
 		expect(internal.timerEl).toBeNull();
 		expect(internal.timerBtnEl).toBeNull();
 		expect(internal.timerTextEl).toBeNull();
+		expect(internal.speedEl).toBeNull();
 		expect(internal.ownerDocument).toBeNull();
 		expect(internal.ownerWindow).toBeNull();
 		expect(internal.pendingInitialRaf).toBeNull();
@@ -301,6 +303,36 @@ describe('MobileFloatingStats lifecycle & icon caching', () => {
 		stats.unload();
 	});
 
+	it('updates session speed on timer ticks without requiring an active editor', async () => {
+		const win = new FakeWindow();
+		const doc = new FakeDocument(win);
+		setGlobals(win, doc);
+		const plugin = createPluginFixture();
+		const speed = vi.mocked(plugin.statisticsManager.getSessionSpeed);
+		speed.mockReturnValue(1200);
+		const stats = new MobileFloatingStats(fakeApp, plugin);
+		stats.load();
+		const internal = stats as unknown as PrivateStatsAccess;
+		expect(internal.timerEl?.children.at(-1)).toBe(internal.speedEl);
+		expect(internal.speedEl?.textContent).toBe(`1200 ${t('common.words-per-hour-unit')}`);
+		plugin.isTracking = true;
+		speed.mockReturnValue(1300);
+		stats.updateTimerUI();
+		expect(internal.speedEl?.textContent).toBe(`1300 ${t('common.words-per-hour-unit')}`);
+		plugin.isTracking = false;
+		speed.mockReturnValue(0);
+		await setLocale('en');
+		stats.updateTimerUI();
+		expect(internal.speedEl?.textContent).toBe(`0 ${t('common.words-per-hour-unit')}`);
+		const hide = vi.spyOn(internal.timerEl!, 'hide');
+		Object.assign(plugin.settings, { enableMobileFocusTimer: false });
+		stats.updateTimerUI();
+		expect(hide).not.toHaveBeenCalled();
+		expect(internal.speedEl?.textContent).toBe(`0 ${t('common.words-per-hour-unit')}`);
+		stats.unload();
+		expect(internal.speedEl).toBeNull();
+	});
+
 	it('avoids redundant setIcon calls while preserving text, settings, locale, and recreated DOM', async () => {
 		const win = new FakeWindow();
 		const doc = new FakeDocument(win);
@@ -311,7 +343,6 @@ describe('MobileFloatingStats lifecycle & icon caching', () => {
 			isTracking: false,
 			focusMs: 0,
 			settings: {
-				enableMobileFocusTimer: true,
 				mobileFloatingStatsState: { x: 20, y: 100 }
 			}
 		});
@@ -352,13 +383,6 @@ describe('MobileFloatingStats lifecycle & icon caching', () => {
 		}
 		expect(setIconSpy).not.toHaveBeenCalled();
 		expect(timerTextEl?.textContent).toBe('01:01:51');
-
-		// Toggle timer off and on in settings
-		plugin.settings.enableMobileFocusTimer = false;
-		stats.updateTimerUI();
-		plugin.settings.enableMobileFocusTimer = true;
-		stats.updateTimerUI();
-		expect(setIconSpy).not.toHaveBeenCalled();
 
 		// Transition to tracking: false -> sets 'play' icon once and resets text
 		plugin.isTracking = false;

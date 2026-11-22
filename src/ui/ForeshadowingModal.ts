@@ -1,5 +1,6 @@
+import { showPluginNotice } from '../services/PluginNoticeService';
 import type { App, TFile } from 'obsidian';
-import { Modal, Notice, Setting, MarkdownView } from 'obsidian';
+import { Modal, Setting, MarkdownView } from 'obsidian';
 import type { ForeshadowingSettings } from '../types/foreshadowing';
 import type { ChapterSorterContext } from '../services/ChapterSorter';
 import { t } from '../i18n';
@@ -57,22 +58,22 @@ export class ForeshadowingInputModal extends Modal {
 	onOpen() {
 		const { contentEl } = this;
 		contentEl.empty();
-		contentEl.addClass('foreshadowing-input-modal');
+		contentEl.addClass('wn-foreshadowing-input-modal');
 
 		new Setting(contentEl).setName(t('modal.mark-foreshadowing')).setHeading();
 
 		// 来源和内容预览
-		const infoEl = contentEl.createDiv({ cls: 'foreshadowing-info' });
+		const infoEl = contentEl.createDiv({ cls: 'wn-foreshadowing-info' });
 		infoEl.createDiv({
 			text: t('modal.source-label', { name: this.sourceFileName }),
-			cls: 'foreshadowing-source'
+			cls: 'wn-foreshadowing-source'
 		});
 		const preview = this.selectedContent.length > 80
 			? this.selectedContent.slice(0, 80) + '…'
 			: this.selectedContent;
 		infoEl.createDiv({
 			text: t('modal.content-label', { preview }),
-			cls: 'foreshadowing-preview'
+			cls: 'wn-foreshadowing-preview'
 		});
 
 		// 已有伏笔说明（可选选择器）
@@ -93,7 +94,7 @@ export class ForeshadowingInputModal extends Modal {
 			new Setting(contentEl)
 				.setName(t('modal.existing-foreshadowing-optional'))
 				.setDesc(t('modal.existing-foreshadowing-desc'));
-			descSelect = contentEl.createEl('select', { cls: 'foreshadowing-select-input wn-foreshadowing-desc-select' });
+			descSelect = contentEl.createEl('select', { cls: 'wn-foreshadowing-select-input wn-foreshadowing-desc-select' });
 			descSelect.addClass('webnovel-modal-input');
 			descSelect.setAttr('aria-label', t('modal.existing-foreshadowing-optional'));
 			descSelect.createEl('option', { value: '', text: t('modal.select-existing-foreshadowing') });
@@ -117,7 +118,7 @@ export class ForeshadowingInputModal extends Modal {
 			.setDesc(t('modal.supplementary-note-desc'));
 
 		this.descriptionEl = contentEl.createEl('textarea', {
-			cls: 'foreshadowing-description',
+			cls: 'wn-foreshadowing-description',
 			placeholder: t('modal.supplementary-note-placeholder'),
 		});
 		this.descriptionEl.addClass('webnovel-modal-textarea');
@@ -140,14 +141,14 @@ export class ForeshadowingInputModal extends Modal {
 		this.tagsEl = contentEl.createEl('input', {
 			type: 'text',
 			placeholder: t('modal.tags-placeholder'),
-			cls: 'foreshadowing-tags-input'
+			cls: 'wn-foreshadowing-tags-input'
 		});
 		this.tagsEl.addClass('webnovel-modal-input');
 		// 常用标签快捷按钮
 		const globalTags: string[] = this.plugin.settings.foreshadowing?.defaultTags || [];
 		const allTags = [...new Set([...globalTags, ...this.extraTags])];
 		if (allTags.length > 0) {
-			const tagBtnContainer = contentEl.createDiv({ cls: 'foreshadowing-tag-buttons' });
+			const tagBtnContainer = contentEl.createDiv({ cls: 'wn-foreshadowing-tag-buttons' });
 			tagBtnContainer.addClass('wn-base-tag-button-container');
 			for (const tag of allTags) {
 				const btn = tagBtnContainer.createEl('button', { text: `#${tag}` });
@@ -187,7 +188,7 @@ export class ForeshadowingInputModal extends Modal {
 		const description = this.descriptionEl.value.trim();
 		if (!description) {
 			this.descriptionEl.addClass('wn-border-error');
-			new Notice(t('modal.please-fill-note'));
+			showPluginNotice(t('modal.please-fill-note'));
 			this.descriptionEl.focus();
 			return;
 		}
@@ -248,7 +249,7 @@ class ChapterMultiSelectModal extends Modal {
 		});
 		searchInput.addClass('webnovel-modal-input');
 		// 章节列表
-		this.listEl = contentEl.createDiv({ cls: 'chapter-multi-select-list' });
+		this.listEl = contentEl.createDiv({ cls: 'wn-chapter-multi-select-list' });
 		this.listEl.addClass('webnovel-modal-list');
 		this.renderChapterList(this.candidates);
 
@@ -260,7 +261,7 @@ class ChapterMultiSelectModal extends Modal {
 		});
 
 		// 已选择的章节显示
-		const selectedEl = contentEl.createDiv({ cls: 'selected-chapters' });
+		const selectedEl = contentEl.createDiv({ cls: 'wn-selected-chapters' });
 		selectedEl.addClass('webnovel-modal-selected');
 		const updateSelected = () => {
 			selectedEl.empty();
@@ -287,7 +288,7 @@ class ChapterMultiSelectModal extends Modal {
 		const confirmBtn = btnContainer.createEl('button', { text: t('common.confirm'), cls: 'mod-cta' });
 		confirmBtn.onclick = () => {
 			if (this.selectedValues.size === 0) {
-				new Notice(t('modal.please-select-chapter'));
+				showPluginNotice(t('modal.please-select-chapter'));
 				return;
 			}
 			this.onSubmit(Array.from(this.selectedValues));
@@ -304,7 +305,7 @@ class ChapterMultiSelectModal extends Modal {
 	private renderChapterList(candidates: ChapterCandidateOption[]) {
 		this.listEl.empty();
 		candidates.forEach(cand => {
-			const item = this.listEl.createDiv({ cls: 'chapter-item' });
+			const item = this.listEl.createDiv({ cls: 'wn-chapter-item' });
 			item.addClass('webnovel-modal-chapter-item');
 			const checkbox = item.createEl('input', { type: 'checkbox' });
 			checkbox.checked = this.selectedValues.has(cand.value);
@@ -397,7 +398,7 @@ export class ForeshadowingRecoveryModal extends Modal {
 			: this.contentPreview;
 		contentEl.createEl('p', {
 			text: t('modal.foreshadowing-preview', { preview }),
-			cls: 'foreshadowing-preview'
+			cls: 'wn-foreshadowing-preview'
 		});
 
 		// 回收模式选择 (阶段回收 vs 彻底回收)
@@ -502,7 +503,7 @@ export class ForeshadowingRecoveryModal extends Modal {
 
 		this.quoteEl = contentEl.createEl('textarea', {
 			placeholder: t('modal.associated-quote-placeholder'),
-			cls: 'foreshadowing-quote-input webnovel-modal-textarea'
+			cls: 'wn-foreshadowing-quote-input webnovel-modal-textarea'
 		});
 		const finalQuote = this.initialQuote || activeSelection;
 		if (finalQuote) {
@@ -532,7 +533,7 @@ export class ForeshadowingRecoveryModal extends Modal {
 		const value = this.inputEl.value.trim().replace(/\.md$/gi, '');
 		if (!value) {
 			this.inputEl.addClass('wn-border-error');
-			new Notice(t('modal.please-enter-recovery-chapter'));
+			showPluginNotice(t('modal.please-enter-recovery-chapter'));
 			this.inputEl.focus();
 			return;
 		}

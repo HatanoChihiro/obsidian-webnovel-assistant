@@ -1,6 +1,6 @@
 
 /* ========== Mobile Floating Stats Widget ========== */
-.mobile-floating-stats {
+.wn-mobile-floating-stats {
 	position: fixed;
 	z-index: 1000;
 	display: flex;
@@ -20,13 +20,13 @@
 	transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.3s ease, background-color 0.15s ease, box-shadow 0.3s ease;
 }
 
-body.webnovel-modal-active .mobile-floating-stats {
+body.webnovel-modal-active .wn-mobile-floating-stats {
 	display: none;
 }
 
 
 /* Mobile Floating Stats - Edge Docking & Collapse (贴边自动缩短变淡) */
-.mobile-floating-stats.is-docked-left {
+.wn-mobile-floating-stats.is-docked-left {
 	opacity: 0.35;
 	min-height: 44px;
 	transform: translateX(calc(-100% + 48px));
@@ -36,7 +36,7 @@ body.webnovel-modal-active .mobile-floating-stats {
 }
 
 
-.mobile-floating-stats.is-docked-right {
+.wn-mobile-floating-stats.is-docked-right {
 	opacity: 0.35;
 	min-height: 44px;
 	transform: translateX(calc(100% - 48px));
@@ -47,7 +47,7 @@ body.webnovel-modal-active .mobile-floating-stats {
 
 
 /* 贴边半隐状态下的拉手指引小线条 */
-.mobile-floating-stats.is-docked-left::after {
+.wn-mobile-floating-stats.is-docked-left::after {
 	content: '';
 	position: absolute;
 	right: 12px;
@@ -62,7 +62,7 @@ body.webnovel-modal-active .mobile-floating-stats {
 }
 
 
-.mobile-floating-stats.is-docked-right::before {
+.wn-mobile-floating-stats.is-docked-right::before {
 	content: '';
 	position: absolute;
 	left: 12px;
@@ -78,27 +78,27 @@ body.webnovel-modal-active .mobile-floating-stats {
 
 
 /* 触摸/悬停/点击展开状态 */
-.mobile-floating-stats.is-docked-left:hover,
-.mobile-floating-stats.is-docked-left.is-expanded,
-.mobile-floating-stats.is-docked-right:hover,
-.mobile-floating-stats.is-docked-right.is-expanded {
+.wn-mobile-floating-stats.is-docked-left:hover,
+.wn-mobile-floating-stats.is-docked-left.is-expanded,
+.wn-mobile-floating-stats.is-docked-right:hover,
+.wn-mobile-floating-stats.is-docked-right.is-expanded {
 	opacity: 0.96;
 	transform: translateX(0);
 	box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
 }
 
 
-.mobile-floating-stats.is-docked-left:hover::after,
-.mobile-floating-stats.is-docked-left.is-expanded::after,
-.mobile-floating-stats.is-docked-right:hover::before,
-.mobile-floating-stats.is-docked-right.is-expanded::before {
+.wn-mobile-floating-stats.is-docked-left:hover::after,
+.wn-mobile-floating-stats.is-docked-left.is-expanded::after,
+.wn-mobile-floating-stats.is-docked-right:hover::before,
+.wn-mobile-floating-stats.is-docked-right.is-expanded::before {
 	opacity: 0;
 }
 
 
-.mobile-floating-stats.is-dragging,
-.mobile-floating-stats.is-docked-left.is-dragging,
-.mobile-floating-stats.is-docked-right.is-dragging {
+.wn-mobile-floating-stats.is-dragging,
+.wn-mobile-floating-stats.is-docked-left.is-dragging,
+.wn-mobile-floating-stats.is-docked-right.is-dragging {
 	opacity: 0.95;
 	transform: none;
 	transition: none;
@@ -106,8 +106,9 @@ body.webnovel-modal-active .mobile-floating-stats {
 }
 
 
-.mobile-floating-word-count,
-.mobile-floating-progress {
+.wn-mobile-floating-word-count,
+.wn-mobile-floating-progress,
+.wn-mobile-floating-stats .wn-mobile-floating-speed {
 	font-weight: 500;
 	white-space: nowrap;
 	display: inline-flex;
@@ -116,22 +117,22 @@ body.webnovel-modal-active .mobile-floating-stats {
 }
 
 
-.mobile-floating-word-count {
+.wn-mobile-floating-word-count {
 	color: var(--text-normal);
 }
 
 
-.mobile-floating-progress.wn-text-orange {
+.wn-mobile-floating-progress.wn-text-orange {
 	color: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-warning, var(--interactive-accent)) 70%);
 }
 
 
-.mobile-floating-progress.wn-text-green {
+.wn-mobile-floating-progress.wn-text-green {
 	color: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-success, var(--interactive-accent)) 70%);
 }
 
 
-.mobile-floating-divider {
+.wn-mobile-floating-divider {
 	margin: 0 6px;
 	color: var(--text-faint);
 	opacity: 0.4;
@@ -141,7 +142,7 @@ body.webnovel-modal-active .mobile-floating-stats {
 }
 
 
-.mobile-floating-timer {
+.wn-mobile-floating-timer {
 	display: inline-flex;
 	align-items: center;
 	gap: 2px;
@@ -149,7 +150,7 @@ body.webnovel-modal-active .mobile-floating-stats {
 }
 
 
-.mobile-floating-timer-btn {
+.wn-mobile-floating-timer-btn {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -163,8 +164,8 @@ body.webnovel-modal-active .mobile-floating-stats {
 }
 
 
-.mobile-floating-timer-btn .svg-icon,
-.mobile-floating-timer-btn svg {
+.wn-mobile-floating-timer-btn .svg-icon,
+.wn-mobile-floating-timer-btn svg {
 	width: 12px;
 	height: 12px;
 	display: block;
@@ -174,19 +175,19 @@ body.webnovel-modal-active .mobile-floating-stats {
 }
 
 
-.mobile-floating-timer-btn:hover {
+.wn-mobile-floating-timer-btn:hover {
 	background-color: var(--background-modifier-hover);
 	color: var(--text-normal);
 }
 
 
-.mobile-floating-timer-btn:hover .svg-icon,
-.mobile-floating-timer-btn:hover svg {
+.wn-mobile-floating-timer-btn:hover .svg-icon,
+.wn-mobile-floating-timer-btn:hover svg {
 	color: var(--text-normal);
 }
 
 
-.mobile-floating-timer-text {
+.wn-mobile-floating-timer-text {
 	display: inline-flex;
 	align-items: center;
 	margin-left: 3px;

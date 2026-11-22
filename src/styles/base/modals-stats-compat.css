@@ -1,12 +1,12 @@
-.history-stats-modal .setting-item.setting-item-heading .setting-item-info,
-.history-stats-modal .setting-item.setting-item-heading .setting-item-name {
+.wn-history-stats-modal .setting-item.setting-item-heading .setting-item-info,
+.wn-history-stats-modal .setting-item.setting-item-heading .setting-item-name {
 	padding-left: 0;
 	margin-left: 0;
 }
 
 
 /* Unified Modal Main Title Size */
-.history-stats-modal .setting-item-heading:first-child .setting-item-name {
+.wn-history-stats-modal .setting-item-heading:first-child .setting-item-name {
 	font-size: 1.15em;
 	font-weight: 700;
 	color: var(--interactive-accent);

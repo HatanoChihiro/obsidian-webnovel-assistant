@@ -1,7 +1,9 @@
+import { showPluginNotice } from './src/services/PluginNoticeService';
 import type { App, PluginManifest } from 'obsidian';
-import { Plugin, TFile, TFolder, Notice, MarkdownView, MarkdownRenderChild, type MarkdownPostProcessorContext, Vault, type TAbstractFile } from 'obsidian';
+import { Plugin, TFile, TFolder, MarkdownView, MarkdownRenderChild, type MarkdownPostProcessorContext, Vault, type TAbstractFile } from 'obsidian';
 import type { AccurateCountSettings } from './src/types/settings';
 import type { WebNovelAssistantPlugin, SeriesLoreRenameResult } from './src/types/plugin';
+import { VIEW_TYPES } from './src/constants';
 import { isDesktop } from './src/utils';
 import { getDefaultFileNameCandidates, type DefaultFileNameKey } from './src/i18n/data-keys';
 import type { CacheManager } from './src/services/CacheManager';
@@ -30,6 +32,7 @@ import type { RelationGraphManager } from './src/services/RelationGraphManager';
 import { ObsHtmlBuilder } from './src/services/ObsHtmlBuilder';
 import type { ImmersiveModeManager } from './src/ui/ImmersiveModeManager';
 import type { ImmersiveReferenceManager } from './src/services/ImmersiveReferenceManager';
+import type { ImmersiveManuscriptManager } from './src/services/ImmersiveManuscriptManager';
 import type { HomepageManager } from './src/services/HomepageManager';
 import type { StatisticsManager } from './src/services/StatisticsManager';
 import type { StickyNoteDataManager } from './src/services/StickyNoteDataManager';
@@ -121,6 +124,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	get stickyNoteManager(): StickyNoteDataManager { return this.services.get('StickyNoteDataManager'); }
 	get immersiveModeManager(): ImmersiveModeManager { return this.services.get('ImmersiveModeManager'); }
 	get immersiveReferenceManager(): ImmersiveReferenceManager { return this.services.get('ImmersiveReferenceManager'); }
+	get immersiveManuscriptManager(): ImmersiveManuscriptManager { return this.services.get('ImmersiveManuscriptManager'); }
 	get homepageManager(): HomepageManager { return this.services.get('HomepageManager'); }
 	get commandManager(): CommandManager { return this.services.get('CommandManager'); }
 	get viewManager(): ViewManager { return this.services.get('ViewManager'); }
@@ -170,7 +174,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.workerManager.postMessage('start');
 		this.editorTracker.updateWordCount();
 		this.refreshStatusViews();
-		new Notice(t('notice.tracking-started'));
+		showPluginNotice(t('notice.tracking-started'));
 	}
 
 	/**
@@ -182,7 +186,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.workerManager.postMessage('stop');
 		this.editorTracker.updateWordCount();
 		this.refreshStatusViews();
-		new Notice(t('notice.tracking-stopped'));
+		showPluginNotice(t('notice.tracking-stopped'));
 	}
 
 
@@ -278,8 +282,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		if (!isDesktop()) return;
 
 		// 清除可能残留的便签 DOM（如插件上次未正常卸载）
-		activeDocument.body.querySelectorAll('.my-floating-sticky-note').forEach(el => el.remove());
-		this.app.workspace.containerEl?.querySelectorAll('.my-floating-sticky-note').forEach(el => el.remove());
+		activeDocument.body.querySelectorAll('.wn-my-floating-sticky-note').forEach(el => el.remove());
+		this.app.workspace.containerEl?.querySelectorAll('.wn-my-floating-sticky-note').forEach(el => el.remove());
 		this.activeNotes = [];
 
 		for (const noteState of notes) {
@@ -310,8 +314,8 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		// 如果在移动端调用（如通过命令），由于交互限制，仅给予提示或在沉浸模式中处理
 		if (!isDesktop()) {
 			// 在沉浸模式中创建是允许的，因为它会渲染到辅助面板视图中
-			if (!activeDocument.body.classList.contains('immersive-mode-active')) {
-				new Notice(t('notice.floating-notes-desktop-only'));
+			if (!activeDocument.body.classList.contains('wn-immersive-mode-active')) {
+				showPluginNotice(t('notice.floating-notes-desktop-only'));
 				return;
 			}
 		}
@@ -320,7 +324,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		note.load();
 
 		// 如果处于沉浸模式，立即刷新便签列表视图
-		if (activeDocument.body.classList.contains('immersive-mode-active')) {
+		if (activeDocument.body.classList.contains('wn-immersive-mode-active')) {
 			// 给一点额外时间让设置/文件持久化完成
 			this.stickyNoteManager?.scheduleRefresh();
 		}
@@ -344,10 +348,10 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		await this.saveSettings();
 		if (this.settings.showFloatingNotes) {
 			activeDocument.body.classList.remove('webnovel-notes-hidden');
-			new Notice(t('notice.floating-notes-shown'));
+			showPluginNotice(t('notice.floating-notes-shown'));
 		} else {
 			activeDocument.body.classList.add('webnovel-notes-hidden');
-			new Notice(t('notice.floating-notes-hidden'));
+			showPluginNotice(t('notice.floating-notes-hidden'));
 		}
 	}
 
@@ -370,12 +374,9 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.addRibbonIcon('laptop', t('command.toggle-workbench-view'), () => {
 			void this.toggleWorkbenchView();
 		});
-
-		if (isDesktop()) {
-			this.addRibbonIcon('expand', t('command.toggle-immersive-mode'), () => {
-				void this.immersiveModeManager.toggleImmersiveMode();
-			});
-		}
+		this.addRibbonIcon('expand', t('command.toggle-immersive-mode'), () => {
+			void this.immersiveModeManager.toggleImmersiveMode();
+		});
 	}
 
 	public registerSettingsTab(): void {
@@ -431,7 +432,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 								if (bookPath) {
 									new AddLoreModal(this.app, this, selection.trim(), bookPath).open();
 								} else {
-									new Notice(t('notice.add-to-lore-failed'));
+									showPluginNotice(t('notice.add-to-lore-failed'));
 								}
 							});
 					});
@@ -455,7 +456,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 									await this.proofreadingManager.prepareDictionaryForEditing();
 									new AnnotateDictModal(this.app, this, selection.trim()).open();
 								} catch {
-									new Notice(t('notice.proofreading-prepare-failed'));
+									showPluginNotice(t('notice.proofreading-prepare-failed'));
 								}
 							});
 					});
@@ -722,7 +723,10 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 
 
 	refreshStatusViews(includeChart = false, immediate = false) {
-		const leaves = this.app.workspace.getLeavesOfType(STATUS_VIEW_TYPE);
+		const leaves = [
+			...this.app.workspace.getLeavesOfType(STATUS_VIEW_TYPE),
+			...this.app.workspace.getLeavesOfType(VIEW_TYPES.IMMERSIVE_CHAPTER_STATUS)
+		];
 		for (const leaf of leaves) {
 			if (leaf.view instanceof WritingStatusView) {
 				void leaf.view.updateData(immediate, includeChart);

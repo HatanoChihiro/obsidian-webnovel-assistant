@@ -1,8 +1,8 @@
 import type { App, CachedMetadata, HeadingCache, TFile } from 'obsidian';
 import { describe, expect, it } from 'vitest';
-import { RelationGraphManager } from '../src/services/RelationGraphManager';
+import { RelationGraphManager, type GraphNode } from '../src/services/RelationGraphManager';
 import { buildLoreOutline, getLoreSectionText, scanLoreHeadings } from '../src/services/LoreOutline';
-import { getLoreGraphAncestorPaths } from '../src/services/LoreOutlineGraph';
+import { getLoreGraphAncestorPaths, LORE_ANCESTOR_PATH_DISPLAY_LIMIT } from '../src/services/LoreOutlineGraph';
 import type { WebNovelAssistantPlugin } from '../src/types/plugin';
 
 function fixture(path: string, text: string) {
@@ -37,6 +37,24 @@ function graphFor(documents: ReturnType<typeof fixture>[], includeHeadingHierarc
 }
 
 describe('标题层级与设定关系', () => {
+	it('bounds path expansion in a dense hierarchy while representing each direct parent', () => {
+		const nodes = new Map<string, GraphNode>();
+		const add = (id: string, outlineParents: string[]) => {
+			const node = { id, heading: id, outlineParents } as GraphNode;
+			nodes.set(id, node);
+			return node;
+		};
+		let parents: string[] = [];
+		for (let level = 0; level < 40; level++) {
+			parents = [add(`Left ${level}`, parents).id, add(`Right ${level}`, parents).id];
+		}
+		const entry = add('Entry', parents);
+		const paths = getLoreGraphAncestorPaths(entry, nodes);
+		expect(paths).toHaveLength(LORE_ANCESTOR_PATH_DISPLAY_LIMIT + 1);
+		expect(paths.slice(0, 2).map(path => path.at(-1)?.id)).toEqual(parents);
+		expect(paths.every(path => path.length === 40)).toBe(true);
+	});
+
 	it('reads type and aliases from each heading only, ignoring examples and metadata mentions', async () => {
 		const note = fixture('设定/潮镜城.md', [
 			'# 潮镜城', '类型：地区', '## 水网', 'Type: 水系', '### 北环', '類型：渠段',

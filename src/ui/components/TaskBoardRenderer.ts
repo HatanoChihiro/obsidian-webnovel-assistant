@@ -1,4 +1,5 @@
-import { Modal, Notice, Setting, setIcon, type App } from 'obsidian';
+import { showPluginNotice } from '../../services/PluginNoticeService';
+import { Modal, Setting, setIcon, type App } from 'obsidian';
 import type { TaskEntry, TaskSettings } from '../../types/task';
 import type { TaskManager } from '../../services/TaskManager';
 import { getTaskStatusText, getTaskTypeText } from '../../i18n/data-keys';
@@ -62,7 +63,7 @@ class TaskAbandonConfirmModal extends Modal {
 
         const confirmBtn = buttonContainer.createEl('button', {
             text: t('task.abandon'),
-            cls: 'mod-warning task-abandon-confirm-btn'
+            cls: 'mod-warning wn-task-abandon-confirm-btn'
         });
         confirmBtn.onclick = () => {
             this.close();
@@ -100,7 +101,7 @@ class TaskCompleteConfirmModal extends Modal {
 
         const confirmBtn = buttonContainer.createEl('button', {
             text: t('task.complete'),
-            cls: 'mod-cta task-complete-confirm-btn'
+            cls: 'mod-cta wn-task-complete-confirm-btn'
         });
         confirmBtn.onclick = () => {
             this.close();
@@ -194,13 +195,13 @@ export class TaskBoardRenderer {
         const taskFolder = currentBookPath === '/' ? '' : currentBookPath;
         const statusCls: Record<string, string> = { active: 'active', completed: 'done', incomplete: 'failed', abandoned: 'failed', notStarted: 'pending' };
         const cls = statusCls[entry.status] || 'pending';
-        const card = container.createDiv({ cls: `wn-corkboard-card task-card task-card-${cls} wn-task-card wn-task-card-${cls}${entry.important ? ' is-important' : ''}` });
+        const card = container.createDiv({ cls: `wn-corkboard-card wn-task-card wn-task-card-${cls}${entry.important ? ' is-important' : ''}` });
 
         // Header: Period + Action Buttons (Complete / Abandon) + Status Label
-        const headerRow = card.createDiv({ cls: 'task-card-header wn-task-card-header' });
-        headerRow.createSpan({ text: t('common.period-prefix', { period: entry.period }), cls: 'task-card-period wn-task-card-period' });
+        const headerRow = card.createDiv({ cls: 'wn-task-card-header' });
+        headerRow.createSpan({ text: t('common.period-prefix', { period: entry.period }), cls: 'wn-task-card-period' });
 
-        const headerRight = headerRow.createDiv({ cls: 'task-card-header-right wn-task-card-header-right' });
+        const headerRight = headerRow.createDiv({ cls: 'wn-task-card-header-right' });
 
         if (entry.status === 'active') {
             const progress = manager.calcProgress(entry, taskFolder);
@@ -222,11 +223,11 @@ export class TaskBoardRenderer {
                             void (async () => {
                                 try {
                                     await manager.updateEntryStatus(entry.period, 'completed', progress, entry.taskType, taskFolder);
-                                    new Notice(t('task.complete-success', { period: entry.period }));
+                                    showPluginNotice(t('task.complete-success', { period: entry.period }));
                                     reloadBoard();
                                 } catch (err) {
                                     window.console.error(err);
-                                    new Notice(t('task.complete-failed'));
+                                    showPluginNotice(t('task.complete-failed'));
                                 }
                             })();
                         }
@@ -249,11 +250,11 @@ export class TaskBoardRenderer {
                             void (async () => {
                                 try {
                                     await manager.updateEntryStatus(entry.period, 'abandoned', progress, entry.taskType, taskFolder);
-                                    new Notice(t('task.abandon-success', { period: entry.period }));
+                                    showPluginNotice(t('task.abandon-success', { period: entry.period }));
                                     reloadBoard();
                                 } catch (err) {
                                     window.console.error(err);
-                                    new Notice(t('task.abandon-failed'));
+                                    showPluginNotice(t('task.abandon-failed'));
                                 }
                             })();
                         }
@@ -262,7 +263,7 @@ export class TaskBoardRenderer {
             }
         }
 
-        headerRight.createSpan({ text: getTaskStatusText(entry.status), cls: `task-card-status task-status-${cls} wn-task-card-status wn-task-status-${cls}` });
+        headerRight.createSpan({ text: getTaskStatusText(entry.status), cls: `wn-task-card-status wn-task-status-${cls}` });
 
         createCardImportanceButton({
             container: headerRow,
@@ -275,11 +276,11 @@ export class TaskBoardRenderer {
         });
 
         // Info: Platform & Position
-        const infoRow = card.createDiv({ cls: 'task-card-info-row wn-task-card-info-row' });
-        infoRow.createSpan({ text: entry.platform, cls: 'task-card-platform wn-task-card-platform' });
-        infoRow.createSpan({ text: entry.position, cls: 'task-card-position wn-task-card-position' });
-        const cycleRow = card.createDiv({ cls: 'task-card-cycle-row wn-task-card-cycle-row' });
-        cycleRow.createSpan({ text: `${entry.startDate} ~ ${entry.endDate}`, cls: 'task-card-cycle wn-task-card-cycle' });
+        const infoRow = card.createDiv({ cls: 'wn-task-card-info-row' });
+        infoRow.createSpan({ text: entry.platform, cls: 'wn-task-card-platform' });
+        infoRow.createSpan({ text: entry.position, cls: 'wn-task-card-position' });
+        const cycleRow = card.createDiv({ cls: 'wn-task-card-cycle-row' });
+        cycleRow.createSpan({ text: `${entry.startDate} ~ ${entry.endDate}`, cls: 'wn-task-card-cycle' });
 
         // Progress (if active)
         if (entry.status === 'active') {
@@ -287,8 +288,8 @@ export class TaskBoardRenderer {
 
             if (entry.taskType === 'event') {
                 // 事件任务：无需显示字数进度条，仅在底部展示倒计时
-                const footer = card.createDiv({ cls: 'task-card-footer wn-task-card-footer wn-task-card-footer-event' });
-                footer.createSpan({ text: t('common.days-remaining', { days: daysLeft }), cls: 'task-days-left wn-task-days-left' });
+                const footer = card.createDiv({ cls: 'wn-task-card-footer wn-task-card-footer-event' });
+                footer.createSpan({ text: t('common.days-remaining', { days: daysLeft }), cls: 'wn-task-days-left' });
             } else {
                 // 字数任务：正常展示字数进度条
                 const progress = manager.calcProgress(entry, taskFolder);
@@ -304,8 +305,8 @@ export class TaskBoardRenderer {
                 progressLabel.createSpan({ text: t('common.words-added', { current: formatCount(progress), target: formatCount(entry.wordTarget) }) });
                 progressLabel.createSpan({ text: `${percent}%`, cls: 'wn-task-progress-percent' });
 
-                const progressBg = progressSection.createDiv({ cls: 'progress-bar-bg' });
-                const progressFill = progressBg.createDiv({ cls: 'progress-bar-fill' });
+                const progressBg = progressSection.createDiv({ cls: 'wn-progress-bar-bg' });
+                const progressFill = progressBg.createDiv({ cls: 'wn-progress-bar-fill' });
                 progressFill.setCssProps({ width: `${Math.max(percent, 0)}%` });
                 if (percent >= 100) {
                     progressFill.addClass('is-done');

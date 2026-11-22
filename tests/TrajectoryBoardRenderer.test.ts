@@ -1,3 +1,4 @@
+import { configurePluginNotices } from '../src/services/PluginNoticeService';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderTrajectoryMode, clearTrajectoryViewport, type TrajectoryModeOptions } from '../src/ui/components/TrajectoryBoardRenderer';
 import { getStickyNoteEditorContent } from '../src/ui/components/StickyNoteParagraphEditor';
@@ -443,6 +444,8 @@ class MockElement {
         return results;
     }
 }
+
+beforeEach(() => { configurePluginNotices(() => true); });
 
 describe('TrajectoryBoardRenderer', () => {
     let mockApp: App;

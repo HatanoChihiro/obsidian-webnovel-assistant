@@ -1,7 +1,59 @@
-import { Project, SyntaxKind, PropertyAccessExpression } from 'ts-morph';
+import { Project, SyntaxKind, PropertyAccessExpression, ElementAccessExpression, Node, Type } from 'ts-morph';
 import * as path from 'path';
 import * as fs from 'fs';
 import { transformSync } from 'esbuild';
+
+const DOCUMENT_TYPE_NAMES = new Set(['Document', 'HTMLDocument', 'XMLDocument']);
+const BUTTON_COMPONENT_TYPE_NAMES = new Set(['ButtonComponent']);
+const SLIDER_COMPONENT_TYPE_NAMES = new Set(['SliderComponent']);
+const SETTING_TAB_TYPE_NAMES = new Set(['PluginSettingTab', 'SettingTab']);
+
+function hasTypeName(type: Type, targetNames: ReadonlySet<string>, visited = new Set<Type>()): boolean {
+	if (visited.has(type)) return false;
+	visited.add(type);
+
+	if (type.isUnion()) {
+		return type.getUnionTypes().some(part => hasTypeName(part, targetNames, visited));
+	}
+	if (type.isIntersection()) {
+		return type.getIntersectionTypes().some(part => hasTypeName(part, targetNames, visited));
+	}
+
+	const symbolName = type.getSymbol()?.getName();
+	if (symbolName && targetNames.has(symbolName)) return true;
+
+	const aliasName = type.getAliasSymbol()?.getName();
+	if (aliasName && targetNames.has(aliasName)) return true;
+
+	// Resolve polymorphic `this` through its class declaration to inspect inheritance.
+	const declaredType = type.getSymbol()?.getDeclaredType();
+	if (declaredType && declaredType !== type && hasTypeName(declaredType, targetNames, visited)) return true;
+
+	return type.getBaseTypes().some(base => hasTypeName(base, targetNames, visited));
+}
+
+function isDocumentType(type: Type): boolean {
+	return hasTypeName(type, DOCUMENT_TYPE_NAMES);
+}
+
+function getElementAccessStringKey(elemAccess: ElementAccessExpression): string | null {
+	const arg = elemAccess.getArgumentExpression();
+	if (!arg) return null;
+	if (Node.isStringLiteral(arg) || Node.isNoSubstitutionTemplateLiteral(arg)) {
+		return arg.getLiteralValue();
+	}
+	return null;
+}
+
+function isApprovedStickyNoteExecCommand(filePath: string, node: Node): boolean {
+	if (path.resolve(filePath) !== path.resolve(__dirname, '../src/ui/components/StickyNoteParagraphEditor.ts')) return false;
+	const enclosingFn = node.getFirstAncestorByKind(SyntaxKind.FunctionDeclaration);
+	const call = node.getParent();
+	return enclosingFn?.getName() === 'runNativeEditorCommand'
+		&& node.getText() === 'editor.ownerDocument.execCommand'
+		&& Node.isCallExpression(call)
+		&& call.getArguments().map(arg => arg.getText()).join(',') === 'commandId,false,value';
+}
 
 console.log('🔍 Running Obsidian API Compliance Audit...');
 
@@ -10,6 +62,17 @@ const project = new Project({
 });
 
 let hasErrors = false;
+let approvedExecCommandCount = 0;
+
+function checkDeprecatedObsidianAccess(access: PropertyAccessExpression | ElementAccessExpression): void {
+	const name = Node.isPropertyAccessExpression(access) ? access.getName() : getElementAccessStringKey(access);
+	const targetTypes = name === 'setWarning' ? BUTTON_COMPONENT_TYPE_NAMES
+		: name === 'setDynamicTooltip' ? SLIDER_COMPONENT_TYPE_NAMES
+		: name === 'display' ? SETTING_TAB_TYPE_NAMES : null;
+	if (!targetTypes || !hasTypeName(access.getExpression().getType(), targetTypes)) return;
+	console.error(`❌ [Error] Uses deprecated '${name}' in ${access.getSourceFile().getFilePath()}:${access.getStartLineNumber()}. Use a compatible replacement instead.`);
+	hasErrors = true;
+}
 
 project.getSourceFiles().forEach(sourceFile => {
 	const filePath = sourceFile.getFilePath();
@@ -142,14 +205,30 @@ project.getSourceFiles().forEach(sourceFile => {
 			}
 		}
 
-		// 6d. Check for createElement / createElementNS
+		// 6d. Check for Document.createElement / Document.createElementNS
 		if (propAccess.getName() === 'createElement' || propAccess.getName() === 'createElementNS') {
-			const left = propAccess.getExpression().getText();
-			if (left.includes('document') || left.includes('activeDocument')) {
-				console.error(`❌ [Warning] Uses '${left}.${propAccess.getName()}' instead of Obsidian's 'createEl' helpers. Use bracket notation like activeDocument['createElementNS'] if necessary in ${filePath}:${propAccess.getStartLineNumber()}`);
+			const receiverExpr = propAccess.getExpression();
+			if (isDocumentType(receiverExpr.getType())) {
+				console.error(`❌ [Warning] Uses '${receiverExpr.getText()}.${propAccess.getName()}' instead of Obsidian's 'createEl' helpers. Use bracket notation like activeDocument['createElementNS'] if necessary in ${filePath}:${propAccess.getStartLineNumber()}`);
 				hasErrors = true;
 			}
 		}
+
+		// 6d2. Check for Document.execCommand (dot access)
+		if (propAccess.getName() === 'execCommand') {
+			const receiverExpr = propAccess.getExpression();
+			if (isDocumentType(receiverExpr.getType())) {
+				if (isApprovedStickyNoteExecCommand(filePath, propAccess) && ++approvedExecCommandCount === 1) {
+					console.warn(`💡 [Recommendation] Approved execCommand exception in ${filePath}:${propAccess.getStartLineNumber()} (runNativeEditorCommand): retained for native undo/paste.`);
+				} else {
+					console.error(`❌ [Error] Uses deprecated '${receiverExpr.getText()}.execCommand' in ${filePath}:${propAccess.getStartLineNumber()}`);
+					hasErrors = true;
+				}
+			}
+		}
+
+		// 6d3. Explicitly scan deprecated Obsidian APIs independently of ESLint exceptions.
+		checkDeprecatedObsidianAccess(propAccess);
 
 		// 6e. Behavior Recommendation Check: Clipboard Access & Vault Enumeration
 		if (propAccess.getName() === 'clipboard') {
@@ -163,6 +242,24 @@ project.getSourceFiles().forEach(sourceFile => {
 			if (left.includes('vault')) {
 				console.warn(`💡 [Recommendation] Vault Enumeration ('vault.${propAccess.getName()}') in ${filePath}:${propAccess.getStartLineNumber()}. Ensure vault file scanning has a clear functional requirement.`);
 			}
+		}
+	});
+
+	// 6f. Check bracket-access bypasses for Document.createElement and Document.execCommand
+	const elemAccesses = sourceFile.getDescendantsOfKind(SyntaxKind.ElementAccessExpression);
+	elemAccesses.forEach(elemAccess => {
+		checkDeprecatedObsidianAccess(elemAccess);
+		const key = getElementAccessStringKey(elemAccess);
+		if (key !== 'createElement' && key !== 'execCommand') return;
+		const receiverExpr = elemAccess.getExpression();
+		if (!isDocumentType(receiverExpr.getType())) return;
+
+		if (key === 'createElement') {
+			console.error(`❌ [Warning] Uses bracket-access '${receiverExpr.getText()}['createElement']' instead of Obsidian's 'createEl' helpers in ${filePath}:${elemAccess.getStartLineNumber()}`);
+			hasErrors = true;
+		} else if (key === 'execCommand') {
+			console.error(`❌ [Error] Uses bracket-access deprecated '${receiverExpr.getText()}['execCommand']' in ${filePath}:${elemAccess.getStartLineNumber()}`);
+			hasErrors = true;
 		}
 	});
 

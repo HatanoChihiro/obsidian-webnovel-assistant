@@ -9,7 +9,9 @@ import { DEFAULT_SETTINGS } from '../src/constants';
 import { parseDirectorySettingLines, formatDirectorySettingLines } from '../src/utils/settingHelpers';
 import { sanitizeWorkbenchSearchHistory, rememberWorkbenchSearchHistory } from '../src/services/WorkbenchFilterIndex';
 import { isLorePopoverEnabled } from '../src/utils/platform';
-import { Platform } from 'obsidian';
+import { Notice, Platform } from 'obsidian';
+import { mockNoticeMessages, resetNoticeMessages } from './mocks/obsidian';
+import { configurePluginNotices, showPluginNotice } from '../src/services/PluginNoticeService';
 
 beforeAll(() => {
 	(globalThis as unknown as { window: typeof globalThis }).window = globalThis;
@@ -18,6 +20,55 @@ beforeAll(() => {
 const cloneDefaults = () => JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
 
 describe('SettingsManager', () => {
+	it.each([undefined, true, false, 'invalid'])('loads and persists the plugin notification preference (%s)', async value => {
+		const saveData = vi.fn().mockResolvedValue(undefined);
+		const plugin = { loadData: vi.fn().mockResolvedValue({ showNotices: value }), saveData } as never;
+		const manager = new SettingsManager(plugin, cloneDefaults());
+		const loaded = await manager.loadSettings();
+		expect(loaded.showNotices).toBe(value === true);
+		loaded.showNotices = !loaded.showNotices;
+		await manager.saveSettings();
+		await manager.flush();
+		expect(saveData).toHaveBeenLastCalledWith(expect.objectContaining({ showNotices: loaded.showNotices }));
+		loaded.showNotices = false;
+		await manager.saveSettings();
+		await manager.flush();
+		expect(saveData).toHaveBeenLastCalledWith(expect.objectContaining({ showNotices: false }));
+	});
+
+	it('gates only plugin notices, applies changes immediately and releases the host on cleanup', () => {
+		expect(showPluginNotice('Disabled by default')).toBeUndefined();
+		let enabled = false;
+		const release = configurePluginNotices(() => enabled);
+		resetNoticeMessages();
+		try {
+			expect(showPluginNotice('Hidden progress', 0)).toBeUndefined();
+			new Notice('Native notice remains visible');
+			expect(mockNoticeMessages).toEqual(['Native notice remains visible']);
+			enabled = true;
+			const progress = showPluginNotice('Visible progress', 0);
+			expect(progress).toBeInstanceOf(Notice);
+			expect(progress).toMatchObject({ message: 'Visible progress', timeout: 0 });
+			progress?.hide();
+			enabled = false;
+			expect(showPluginNotice('Hidden error')).toBeUndefined();
+			enabled = true;
+			expect(showPluginNotice('Visible again', 8000)).toMatchObject({ timeout: 8000 });
+			release();
+			expect(showPluginNotice('Late notice after unload')).toBeUndefined();
+			expect(mockNoticeMessages).toEqual(['Native notice remains visible', 'Visible progress', 'Visible again']);
+		} finally {
+			release();
+			resetNoticeMessages();
+		}
+	});
+
+	it('exposes the notification toggle in general settings search on every platform', () => {
+		const entry = SETTINGS_SEARCH_CATALOGUE.find(item => item.titleKey === 'setting.show-notices');
+		expect(entry?.category).toBe('general');
+		expect(entry?.platform).toBe('all');
+	});
+
 	it.each([false, true])('uses one explicit lore switch on every platform while preserving legacy behavior (touch=%s)', touch => {
 		const descriptor = Object.getOwnPropertyDescriptor(Platform, 'isMobile')!;
 		Object.defineProperty(Platform, 'isMobile', { ...descriptor, value: touch });
@@ -51,6 +102,21 @@ describe('SettingsManager', () => {
 		expect(saveData).toHaveBeenCalled();
 	});
 
+	it.each([false, true])('retires the mobile focus timer opt-in setting on load and save (legacy=%s)', async enabled => {
+		const legacy = { ...cloneDefaults(), enableMobileFocusTimer: enabled };
+		const saveData = vi.fn().mockResolvedValue(undefined);
+		const plugin = { loadData: vi.fn().mockResolvedValue(legacy), saveData } as never;
+		const manager = new SettingsManager(plugin, cloneDefaults());
+		const loaded = await manager.loadSettings();
+		expect(loaded).not.toHaveProperty('enableMobileFocusTimer');
+		expect(loaded.idleTimeoutThreshold).toBe(DEFAULT_SETTINGS.idleTimeoutThreshold);
+		loaded.defaultGoal = DEFAULT_SETTINGS.defaultGoal + 1;
+		await manager.saveSettings();
+		await manager.flush();
+		expect(saveData).toHaveBeenCalled();
+		expect(saveData.mock.calls.at(-1)![0]).not.toHaveProperty('enableMobileFocusTimer');
+	});
+
 	it('merges partial updates into current settings without resetting siblings', async () => {
 		const settings = cloneDefaults();
 		settings.obs.obsPort = 25000;
@@ -77,6 +143,8 @@ describe('SettingsManager', () => {
 		delete (missing.typography as unknown as { enableBodyFontSize?: boolean }).enableBodyFontSize;
 		delete (missing.typography as unknown as { bodyFontSize?: number }).bodyFontSize;
 		delete (missing.typography as unknown as { applyToCards?: boolean }).applyToCards;
+		delete (missing.typography as unknown as { paragraphSpacingBefore?: string }).paragraphSpacingBefore;
+		missing.typography.paragraphSpacing = '0em';
 		const missingPlugin = {
 			loadData: vi.fn().mockResolvedValue(missing),
 			saveData: vi.fn().mockResolvedValue(undefined)
@@ -86,6 +154,8 @@ describe('SettingsManager', () => {
 		expect(loadedMissing.typography.enableBodyFontSize).toBe(false);
 		expect(loadedMissing.typography.bodyFontSize).toBe(16);
 		expect(loadedMissing.typography.applyToCards).toBe(false);
+		expect(loadedMissing.typography.paragraphSpacingBefore).toBe('0em');
+		expect(loadedMissing.typography.paragraphSpacing).toBe('0em');
 
 		const oversized = cloneDefaults();
 		oversized.typography.bodyFontSize = 48;
@@ -454,6 +524,143 @@ describe('SettingsManager', () => {
 			expect((reloaded as unknown as { workbenchSearchHistory: string[] }).workbenchSearchHistory).toEqual(['keywordA', 'keywordB']);
 		});
 	});
+
+	describe('immersive manuscript settings compatibility and sanitization', () => {
+		it('defaults manuscriptModeEnabled to false for legacy settings and preserves existing values', async () => {
+			const legacy = cloneDefaults();
+			delete (legacy.immersive as Record<string, unknown>).manuscriptModeEnabled;
+			delete (legacy.immersive as Record<string, unknown>).lastManuscriptPosition;
+			delete (legacy.immersive as Record<string, unknown>).workManuscriptPositions;
+
+			const plugin = {
+				loadData: vi.fn().mockResolvedValue(legacy),
+				saveData: vi.fn().mockResolvedValue(undefined)
+			} as never;
+			const manager = new SettingsManager(plugin, cloneDefaults());
+			const loaded = await manager.loadSettings();
+
+			expect(loaded.immersive.manuscriptModeEnabled).toBe(false);
+		});
+
+		it('sanitizes invalid persisted manuscript paths and cursor/scroll numbers on load', async () => {
+			const dirty = cloneDefaults();
+			(dirty.immersive as Record<string, unknown>).manuscriptModeEnabled = true;
+			(dirty.immersive as Record<string, unknown>).lastManuscriptPosition = {
+				filePath: '../escape/第1章.md',
+				workPath: 'Novels/Book',
+				cursorLine: -5,
+				cursorCh: Number.NaN
+			};
+			(dirty.immersive as Record<string, unknown>).workManuscriptPositions = {
+				'Novels/Book': {
+					filePath: 'Novels/Book//第2章.md',
+					workPath: 'Novels/Book/',
+					cursorLine: 12.9,
+					cursorCh: -3,
+					chapterRelativeScroll: -20,
+					anchorLine: 5.7
+				},
+				'Novels/Bad': {
+					filePath: 'C:/Secret/note.txt',
+					workPath: 'Novels/Bad',
+					cursorLine: 1,
+					cursorCh: 1
+				}
+			};
+
+			const plugin = {
+				loadData: vi.fn().mockResolvedValue(dirty),
+				saveData: vi.fn().mockResolvedValue(undefined)
+			} as never;
+			const manager = new SettingsManager(plugin, cloneDefaults());
+			const loaded = await manager.loadSettings();
+
+			expect(loaded.immersive.manuscriptModeEnabled).toBe(true);
+			expect(loaded.immersive.lastManuscriptPosition).toBeUndefined();
+			expect(loaded.immersive.workManuscriptPositions?.['Novels/Bad']).toBeUndefined();
+			expect(loaded.immersive.workManuscriptPositions?.['Novels/Book']).toEqual({
+				filePath: 'Novels/Book/第2章.md',
+				workPath: 'Novels/Book',
+				cursorLine: 12,
+				cursorCh: 0,
+				anchorLine: 5
+			});
+		});
+	});
+
+	describe('mobile immersive auxiliary panel settings sanitization', () => {
+		it('sanitizes malformed mobileAuxPanel settings and rejects chapter-list/workbench without affecting desktop slots', async () => {
+			const dirty = cloneDefaults();
+			dirty.immersive.immersiveLeftSlots = ['immersive-chapter-list-view'];
+			dirty.immersive.immersiveRightSlots = ['reference-view'];
+			(dirty.immersive as Record<string, unknown>).mobileAuxPanel = {
+				viewType: 'immersive-chapter-list-view',
+				isOpen: 'yes',
+				isMinimized: 1,
+				isLocked: null,
+				isDocked: 'yes',
+				x: Number.NaN,
+				y: -50,
+				width: 10,
+				height: Number.POSITIVE_INFINITY
+			};
+
+			const plugin = {
+				loadData: vi.fn().mockResolvedValue(dirty),
+				saveData: vi.fn().mockResolvedValue(undefined)
+			} as never;
+			const manager = new SettingsManager(plugin, cloneDefaults());
+			const loaded = await manager.loadSettings();
+
+			expect(loaded.immersive.mobileAuxPanel).toBeDefined();
+			expect(loaded.immersive.mobileAuxPanel?.viewType).not.toBe('immersive-chapter-list-view');
+			expect(loaded.immersive.mobileAuxPanel?.isOpen).toBe(false);
+			expect(loaded.immersive.mobileAuxPanel?.isMinimized).toBe(false);
+			expect(loaded.immersive.mobileAuxPanel?.isLocked).toBe(false);
+			expect(loaded.immersive.mobileAuxPanel?.isDocked).toBe(false);
+			expect(Number.isFinite(loaded.immersive.mobileAuxPanel?.x)).toBe(true);
+			expect(loaded.immersive.mobileAuxPanel?.y).toBeGreaterThanOrEqual(0);
+			expect(loaded.immersive.mobileAuxPanel?.width).toBeGreaterThanOrEqual(220);
+			expect(loaded.immersive.mobileAuxPanel?.height).toBeGreaterThanOrEqual(160);
+			// Desktop slots stay untouched
+			expect(loaded.immersive.immersiveLeftSlots).toEqual(['immersive-chapter-list-view']);
+			expect(loaded.immersive.immersiveRightSlots).toEqual(['reference-view']);
+		});
+
+		it('migrates legacy auxiliary view IDs and round-trips valid mobileAuxPanel state', async () => {
+			const legacy = cloneDefaults();
+			(legacy.immersive as Record<string, unknown>).mobileAuxPanel = {
+				viewType: 'timeline-view',
+				isOpen: true,
+				isMinimized: true,
+				isLocked: true,
+				isDocked: true,
+				x: 42.6,
+				y: 88.2,
+				width: 340,
+				height: 310
+			};
+
+			const plugin = {
+				loadData: vi.fn().mockResolvedValue(legacy),
+				saveData: vi.fn().mockResolvedValue(undefined)
+			} as never;
+			const manager = new SettingsManager(plugin, cloneDefaults());
+			const loaded = await manager.loadSettings();
+
+			expect(loaded.immersive.mobileAuxPanel).toEqual({
+				viewType: 'wn-timeline-view',
+				isOpen: true,
+				isMinimized: true,
+				isLocked: true,
+				isDocked: true,
+				x: 43,
+				y: 88,
+				width: 340,
+				height: 310
+			});
+		});
+	});
 });
 
 
@@ -479,9 +686,14 @@ describe('settings search', () => {
 	it('keeps platform filters consistent for desktop, phone and tablet', () => {
 		for (const tier of ['desktop', 'mobile', 'tablet'] as const) {
 			const entries = SETTINGS_SEARCH_CATALOGUE.filter(entry => isEntryAvailableOnPlatform(entry, tier));
-			expect(entries.some(entry => entry.category === 'immersive')).toBe(tier === 'desktop');
+			expect(entries.some(entry => entry.category === 'immersive')).toBe(true);
+			expect(entries.some(entry => entry.titleKey === 'setting.immersive-layout-builder')).toBe(tier === 'desktop');
+			expect(entries.some(entry => entry.titleKey === 'setting.immersive-dashboard-toggles')).toBe(tier === 'desktop');
+			expect(entries.some(entry => entry.titleKey === 'setting.immersive-typewriter-enable')).toBe(true);
+			expect(entries.some(entry => entry.titleKey === 'setting.immersive-manuscript-mode')).toBe(true);
 			expect(entries.some(entry => entry.category === 'obs')).toBe(tier === 'desktop');
-			expect(entries.some(entry => entry.titleKey === 'setting.enable-mobile-focus-timer')).toBe(tier !== 'desktop');
+			expect(entries.some(entry => entry.titleKey === 'setting.enable-mobile-focus-timer')).toBe(false);
+			expect(entries.some(entry => entry.titleKey === 'setting.idle-threshold')).toBe(true);
 			for (const entry of entries) {
 				for (const key of entry.fallbackKeys ?? []) {
 					expect(entries.some(parent => parent.category === entry.category && parent.titleKey === key), entry.id).toBe(true);
@@ -555,5 +767,48 @@ describe('settings search', () => {
 		// The old visible mobile-only setting should no longer exist in the search catalogue
 		const oldMobileEntry = SETTINGS_SEARCH_CATALOGUE.find(entry => entry.titleKey === 'setting.enable-mobile-lore-popover');
 		expect(oldMobileEntry).toBeUndefined();
+	});
+
+	it('includes immersive manuscript mode toggle in search catalogue under immersive for all platforms', () => {
+		const entry = SETTINGS_SEARCH_CATALOGUE.find(item => item.titleKey === 'setting.immersive-manuscript-mode');
+		expect(entry).toBeDefined();
+		expect(entry?.category).toBe('immersive');
+		expect(entry?.platform).toBe('all');
+	});
+
+	it('exposes Pomodoro and mobile auxiliary panel settings in mobile/tablet search catalogue', () => {
+		for (const key of [
+			'setting.immersive-pomodoro-title',
+			'setting.immersive-pomodoro-enabled',
+			'setting.immersive-pomodoro-interval'
+		]) {
+			const entry = SETTINGS_SEARCH_CATALOGUE.find(item => item.titleKey === key);
+			expect(entry, key).toBeDefined();
+			expect(isEntryAvailableOnPlatform(entry!, 'desktop'), `${key} desktop`).toBe(true);
+			expect(isEntryAvailableOnPlatform(entry!, 'mobile'), `${key} mobile`).toBe(true);
+			expect(isEntryAvailableOnPlatform(entry!, 'tablet'), `${key} tablet`).toBe(true);
+		}
+
+		for (const key of [
+			'setting.immersive-mobile-aux-title',
+			'setting.immersive-mobile-aux-enabled'
+		]) {
+			const entry = SETTINGS_SEARCH_CATALOGUE.find(item => item.titleKey === key);
+			expect(entry, key).toBeDefined();
+			expect(entry?.category).toBe('immersive');
+			expect(isEntryAvailableOnPlatform(entry!, 'desktop'), `${key} desktop`).toBe(false);
+			expect(isEntryAvailableOnPlatform(entry!, 'mobile'), `${key} mobile`).toBe(true);
+			expect(isEntryAvailableOnPlatform(entry!, 'tablet'), `${key} tablet`).toBe(true);
+		}
+
+		for (const key of ['setting.immersive-mobile-aux-view', 'immersive.mobile-aux-lock']) {
+			expect(SETTINGS_SEARCH_CATALOGUE.some(entry => entry.titleKey === key)).toBe(false);
+		}
+
+		const mobilePomodoroResults = searchSettingsCatalogue(en['setting.immersive-pomodoro-enabled'], {
+			tier: 'mobile',
+			translate: translateWith(en)
+		});
+		expect(mobilePomodoroResults.some(r => r.entry.titleKey === 'setting.immersive-pomodoro-enabled')).toBe(true);
 	});
 });

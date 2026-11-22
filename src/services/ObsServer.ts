@@ -1,5 +1,6 @@
+import { showPluginNotice } from './PluginNoticeService';
 import { Logger } from '../utils/Logger';
-import { Notice, Platform } from 'obsidian';
+import { Platform } from 'obsidian';
 import { t } from '../i18n';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 
@@ -94,7 +95,7 @@ export class ObsOverlayServer {
 			});
 
 			this.server.listen(this.port, '127.0.0.1', () => {
-				new Notice(t('notice.obs-overlay-started', { url: `http://127.0.0.1:${this.port}` }));
+				showPluginNotice(t('notice.obs-overlay-started', { url: `http://127.0.0.1:${this.port}` }));
 			});
 
 			this.server.on('error', (e: ServerError) => {
@@ -105,12 +106,12 @@ export class ObsOverlayServer {
 
 				if (e.code === 'EADDRINUSE') {
 					const suggestedPorts = [this.port + 1, this.port + 2, this.port + 10];
-					new Notice(
+					showPluginNotice(
 						t('notice.obs-port-in-use', { port: String(this.port), suggestions: suggestedPorts.join(', ') }),
 						15000
 					);
 				} else {
-					new Notice(
+					showPluginNotice(
 						t('notice.obs-start-failed', { message: e.message }),
 						12000
 					);
@@ -122,7 +123,7 @@ export class ObsOverlayServer {
 			Logger.error('[WebNovel Assistant] 无法启动 OBS 服务器:', e);
 			this.server = null;
 
-			new Notice(
+			showPluginNotice(
 				t('notice.obs-module-unavailable'),
 				12000
 			);

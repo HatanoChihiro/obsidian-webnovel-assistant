@@ -2,7 +2,7 @@
 
 /* ========== 沉浸模式顶栏打字机 Toggle 开关 ========== */
 
-.immersive-top-bar-center .stat-item.typewriter-toggle-container {
+.wn-immersive-top-bar-center .wn-stat-item.wn-typewriter-toggle-container {
 	display: inline-flex;
 	align-items: center;
 	gap: 6px;
@@ -15,19 +15,19 @@
 	user-select: none;
 }
 
-.immersive-top-bar-center .typewriter-toggle-label {
+.wn-immersive-top-bar-center .wn-typewriter-toggle-label {
 	font-size: 0.85em;
 	color: var(--text-muted);
 	white-space: nowrap;
 }
 
-.immersive-top-bar-center .checkbox-container {
+.wn-immersive-top-bar-center .checkbox-container {
 	margin: 0;
 	transform: scale(0.8);
 	cursor: pointer;
 }
 
-.immersive-top-bar-center .wn-immersive-typewriter-settings-btn {
+.wn-immersive-top-bar-center .wn-immersive-typewriter-settings-btn {
 	background: transparent;
 	border: none;
 	padding: 0;
@@ -41,10 +41,10 @@
 	line-height: 1;
 }
 
-.immersive-top-bar-center .wn-immersive-typewriter-settings-btn:hover {
+.wn-immersive-top-bar-center .wn-immersive-typewriter-settings-btn:hover {
 	color: var(--text-normal);
 }
 
-.immersive-top-bar-center .wn-immersive-typewriter-settings-btn.is-hidden {
+.wn-immersive-top-bar-center .wn-immersive-typewriter-settings-btn.is-hidden {
 	display: none;
 }

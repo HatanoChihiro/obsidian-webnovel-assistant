@@ -32,6 +32,17 @@ describe('ChapterMergeSelection', () => {
 		selection = new ChapterMergeSelection(items);
 	});
 
+	it('applies explicit reversed ranges without altering outside selection and rejects missing endpoints', () => {
+		selection.deselectAll(items);
+		selection.selectAll([items[4]]);
+		expect(selection.setRange(items[2].file.path, items[0].file.path, items, true)).toBe(true);
+		expect(selection.getSelectedItems(items)).toEqual([items[0], items[1], items[2], items[4]]);
+		expect(selection.setRange(items[0].file.path, 'Missing.md', items, false)).toBe(false);
+		expect(selection.getSelectedCount()).toBe(4);
+		selection.setRange(items[1].file.path, items[2].file.path, items, false);
+		expect(selection.getSelectedItems(items)).toEqual([items[0], items[4]]);
+	});
+
 	it('selects all loaded chapters by default upon initialization', () => {
 		expect(selection.getSelectedCount()).toBe(5);
 		for (const item of items) {

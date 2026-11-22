@@ -186,8 +186,44 @@ export class FuzzySuggestModal<T> extends Modal {
 	getItems(): T[] { return []; }
 }
 
+type SettingElementStub = {
+	addClass: (...tokens: string[]) => SettingElementStub;
+	removeClass: (...tokens: string[]) => SettingElementStub;
+	querySelector: (selector: string) => unknown;
+	createDiv: (options?: unknown) => SettingElementStub;
+};
+
+type SettingContainer =
+	| HTMLElement
+	| { createDiv?: (options?: { cls?: string }) => SettingElementStub }
+	| null
+	| undefined;
+
+function createSettingElementStub(): SettingElementStub {
+	const stub: SettingElementStub = {
+		addClass: () => stub,
+		removeClass: () => stub,
+		querySelector: () => null,
+		createDiv: () => createSettingElementStub()
+	};
+	return stub;
+}
+
 export class Setting {
-	constructor(containerEl: any) {}
+	settingEl: HTMLElement | SettingElementStub;
+	infoEl: HTMLElement | SettingElementStub;
+	nameEl: HTMLElement | SettingElementStub;
+	constructor(containerEl?: SettingContainer) {
+		if (containerEl && typeof containerEl === 'object' && 'createDiv' in containerEl && typeof containerEl.createDiv === 'function') {
+			this.settingEl = containerEl.createDiv({ cls: 'setting-item' });
+			this.infoEl = this.settingEl.createDiv({ cls: 'setting-item-info' });
+			this.nameEl = this.infoEl.createDiv({ cls: 'setting-item-name' });
+		} else {
+			this.settingEl = createSettingElementStub();
+			this.infoEl = createSettingElementStub();
+			this.nameEl = createSettingElementStub();
+		}
+	}
 	setHeading() { return this; }
 	setName(name: any) { return this; }
 	setDesc(desc: any) { return this; }
@@ -196,7 +232,16 @@ export class Setting {
 	addExtraButton(cb: any) { return this; }
 }
 
+export interface TooltipOptions {
+	placement?: 'top' | 'bottom' | 'left' | 'right';
+	delay?: number;
+	classes?: string[];
+}
+
 export function setIcon(el: any, iconId: string) {}
+export function setTooltip(el: HTMLElement, tooltip: string, _options?: TooltipOptions): void {
+	el.setAttribute('aria-label', tooltip);
+}
 
 export class MarkdownView {
 	file?: any;
@@ -231,6 +276,9 @@ export class ItemView extends Component {
 			addClass: () => MockElement;
 			removeClass: () => MockElement;
 			setAttribute: () => void;
+			removeAttribute: () => void;
+			addEventListener: () => void;
+			setCssProps: () => MockElement;
 			style: { setProperty: () => void };
 			setText: () => void;
 			createDiv: () => MockElement;
@@ -245,6 +293,9 @@ export class ItemView extends Component {
 				addClass: () => el,
 				removeClass: () => el,
 				setAttribute: () => {},
+				removeAttribute: () => {},
+				addEventListener: () => {},
+				setCssProps: () => el,
 				style: { setProperty: () => {} },
 				setText: () => {},
 				createDiv: () => createMockEl(false),
@@ -293,6 +344,7 @@ export class Menu {
 		return this;
 	}
 	showAtMouseEvent(_evt: unknown) {}
+	showAtPosition(_position: { x: number; y: number }, _doc?: Document) { return this; }
 }
 
 export async function requestUrl(_params: unknown): Promise<{

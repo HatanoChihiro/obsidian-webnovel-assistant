@@ -8,23 +8,23 @@
 
 /* Immersive Mode overrides */
 
-body.immersive-mode-active .workspace-ribbon,
+body.wn-immersive-mode-active .workspace-ribbon,
 
-body.immersive-mode-active .workspace-tab-header-container,
+body.wn-immersive-mode-active .workspace-tab-header-container,
 
-body.immersive-mode-active .titlebar,
+body.wn-immersive-mode-active .titlebar,
 
-body.immersive-mode-active .status-bar,
+body.wn-immersive-mode-active .status-bar,
 
-body.immersive-mode-active .workspace-split.mod-left-split,
+body.wn-immersive-mode-active .workspace-split.mod-left-split,
 
-body.immersive-mode-active .workspace-split.mod-right-split,
+body.wn-immersive-mode-active .workspace-split.mod-right-split,
 
-body.immersive-mode-active .floating-sticky-note,
+body.wn-immersive-mode-active .wn-floating-sticky-note,
 
-body.immersive-mode-active .my-floating-sticky-note,
+body.wn-immersive-mode-active .wn-my-floating-sticky-note,
 
-body.immersive-mode-active .view-header {
+body.wn-immersive-mode-active .view-header {
 	display: none;
 }
 
@@ -34,41 +34,41 @@ body.immersive-mode-active .view-header {
 
 /* Default non-adapted state */
 
-.immersive-mode-active .view-content {
+.wn-immersive-mode-active .view-content {
 	padding-top: 30px;
 }
 
 /* Keep standard auxiliary panels compact; sticky notes manage their own symmetric inset */
-body.immersive-mode-active .webnovel-immersive-slot-horizontal .view-content:not(.webnovel-immersive-sticky-container),
-body.immersive-mode-active .webnovel-immersive-slot-vertical .view-content:not(.webnovel-immersive-sticky-container) {
+body.wn-immersive-mode-active .webnovel-immersive-slot-horizontal .view-content:not(.webnovel-immersive-sticky-container),
+body.wn-immersive-mode-active .webnovel-immersive-slot-vertical .view-content:not(.webnovel-immersive-sticky-container) {
 	padding-top: 8px;
 }
 
-body.immersive-mode-active .webnovel-immersive-slot-horizontal,
-body.immersive-mode-active .webnovel-immersive-slot-vertical {
+body.wn-immersive-mode-active .webnovel-immersive-slot-horizontal,
+body.wn-immersive-mode-active .webnovel-immersive-slot-vertical {
 	min-width: 0;
 	min-height: 0;
 }
 
-body.immersive-mode-active .webnovel-immersive-slot-horizontal.is-immersive-slot-pending .empty-state,
-body.immersive-mode-active .webnovel-immersive-slot-vertical.is-immersive-slot-pending .empty-state {
+body.wn-immersive-mode-active .webnovel-immersive-slot-horizontal.is-immersive-slot-pending .empty-state,
+body.wn-immersive-mode-active .webnovel-immersive-slot-vertical.is-immersive-slot-pending .empty-state {
 	display: none;
 }
 
-body.immersive-mode-active .webnovel-immersive-slot-horizontal .wn-corkboard-header,
-body.immersive-mode-active .webnovel-immersive-slot-vertical .wn-corkboard-header {
+body.wn-immersive-mode-active .webnovel-immersive-slot-horizontal .wn-corkboard-header,
+body.wn-immersive-mode-active .webnovel-immersive-slot-vertical .wn-corkboard-header {
 	top: -8px;
 	margin-top: -8px;
 	padding-top: 8px;
 }
 
-.immersive-mode-active .workspace-split {
+.wn-immersive-mode-active .workspace-split {
 	background-color: color-mix(in srgb, var(--interactive-accent) 3%, var(--background-secondary));
 }
 
 /* Prevent nested workspace-split from creating double padding causing inconsistent indentation */
 
-.immersive-mode-active .workspace-split .workspace-split {
+.wn-immersive-mode-active .workspace-split .workspace-split {
 	background-color: transparent;
 }
 
@@ -80,14 +80,14 @@ body.immersive-mode-active .webnovel-immersive-slot-vertical .wn-corkboard-heade
 
 */
 
-body.immersive-mode-active .workspace-leaf.workspace-leaf {
+body.wn-immersive-mode-active .workspace-leaf.workspace-leaf {
 	background-color: transparent;
 	padding: 8px;
 	border: none;
 	box-sizing: border-box;
 }
 
-body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-content {
+body.wn-immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-content {
 	position: relative;
 	background-color: var(--background-primary);
 	border: 1px solid color-mix(in srgb, var(--interactive-accent) 20%, var(--background-modifier-border));
@@ -97,26 +97,26 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 	overflow: hidden;
 }
 
-body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-content:hover {
+body.wn-immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-content:hover {
 	box-shadow: 0 6px 20px color-mix(in srgb, var(--interactive-accent) 12%, rgba(0, 0, 0, 0.1));
 }
 
 /* Settings tab style */
 
 .theme-dark
-/* Immersive Mode: Smart scrollbar (show only on mouse hover) */
 
-.immersive-mode-active *::-webkit-scrollbar {
+
+.wn-immersive-mode-active *::-webkit-scrollbar {
 	width: 4px;
 	height: 4px;
 }
 
-.immersive-mode-active *::-webkit-scrollbar-thumb {
+.wn-immersive-mode-active *::-webkit-scrollbar-thumb {
 	background-color: transparent;
 	border-radius: 4px;
 }
 
-.immersive-mode-active *:hover::-webkit-scrollbar-thumb {
+.wn-immersive-mode-active *:hover::-webkit-scrollbar-thumb {
 	background-color: var(--scrollbar-thumb-bg, rgba(128, 128, 128, 0.3));
 }
 
@@ -131,7 +131,7 @@ body.immersive-mode-active .workspace-leaf.workspace-leaf .workspace-leaf-conten
 
 /* Immersive reference pane floating search toolbar */
 
-body.immersive-mode-active .workspace-leaf.immersive-reference-view .view-content {
+body.wn-immersive-mode-active .workspace-leaf.wn-immersive-reference-view .view-content {
 	padding-top: 40px;
 }
 

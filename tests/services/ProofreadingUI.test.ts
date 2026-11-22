@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
 	isSelectionEligibleForAnnotate,
 	validateSynonymGroupInput,
@@ -15,9 +15,12 @@ import { ACMatcher } from '../../src/services/proofreading/AhoCorasick';
 import { DeDiDeScanner } from '../../src/services/proofreading/DeDiDeRule';
 import { PunctuationScanner } from '../../src/services/proofreading/PunctuationRule';
 import type { DeDiDeLexicon } from '../../src/types/proofreading';
-import { getProofreadingDiagnosticDisplayMessage, computeProofreadingPopoverPosition } from '../../src/ui/ProofreadingPopover';
+import { getProofreadingDiagnosticDisplayMessage, computeProofreadingPopoverPosition, ProofreadingPopover } from '../../src/ui/ProofreadingPopover';
+import type { ProofreadingDiagnostic } from '../../src/types/proofreading';
+import type { EditorView } from '@codemirror/view';
+import { createMockDom } from '../mocks/dom';
 import type { WebNovelAssistantPlugin } from '../../src/types/plugin';
-import { TFile, TFolder, type App, type Vault } from 'obsidian';
+import { TFile, TFolder, Component, type App, type Vault } from 'obsidian';
 import { setLocale } from '../../src/i18n';
 
 function createMockTFile(path: string): TFile {
@@ -804,6 +807,214 @@ describe('ProofreadingManager prepareDictionaryForEditing, isFileInsideDictionar
 				platformMaxHeight: 350
 			});
 			expect(resLeft.left).toBe(10);
+		});
+	});
+
+	describe('ProofreadingPopover lifecycle', () => {
+		const loadedMap = new WeakMap<object, boolean>();
+		const origLoad = (Component.prototype as { load?: () => void }).load;
+		const origUnload = (Component.prototype as { unload?: () => void }).unload;
+		const origOnunload = (Component.prototype as { onunload?: () => void }).onunload;
+
+		beforeEach(() => {
+			const proto = Component.prototype as { load?: () => void; unload?: () => void; onunload?: () => void };
+			proto.load = function () {
+				loadedMap.set(this, true);
+			};
+			proto.unload = function () {
+				if (!loadedMap.get(this)) return;
+				loadedMap.set(this, false);
+				this.onunload?.();
+			};
+			if (!proto.onunload) {
+				proto.onunload = function () {};
+			}
+		});
+
+		afterEach(() => {
+			const proto = Component.prototype as { load?: () => void; unload?: () => void; onunload?: () => void };
+			proto.load = origLoad;
+			proto.unload = origUnload;
+			proto.onunload = origOnunload;
+		});
+
+		function createPopoverHost() {
+			const { document: ownerDocument, body } = createMockDom();
+			let nextRafId = 1;
+			const activeRafs = new Map<number, FrameRequestCallback>();
+
+			const ownerWindow = {
+				innerWidth: 1000,
+				innerHeight: 800,
+				setTimeout: (fn: () => void, ms?: number) => globalThis.setTimeout(fn, ms) as unknown as number,
+				clearTimeout: (id: number) => globalThis.clearTimeout(id as unknown as ReturnType<typeof setTimeout>),
+				requestAnimationFrame: vi.fn((cb: FrameRequestCallback) => {
+					const id = nextRafId++;
+					activeRafs.set(id, cb);
+					return id;
+				}),
+				cancelAnimationFrame: vi.fn((id: number) => {
+					activeRafs.delete(id);
+				})
+			} as unknown as Window;
+
+			ownerDocument.defaultView = ownerWindow;
+			body.classList = { contains: vi.fn(() => false) };
+			const hoveredEls = new Set<unknown>();
+			const origCreateDiv = body.createDiv.bind(body);
+			const createDivSpy = vi.fn((opts?: string | { cls?: string; text?: string }) => {
+				const child = origCreateDiv(opts);
+				child.matches = (sel: string) => sel === ':hover' ? hoveredEls.has(child) : false;
+				return child;
+			});
+			body.createDiv = createDivSpy;
+
+			const targetEl = origCreateDiv({ cls: 'wn-proofreading-mark' });
+			targetEl.matches = (sel: string) => sel === ':hover' ? hoveredEls.has(targetEl) : false;
+			hoveredEls.add(targetEl);
+			vi.spyOn(targetEl, 'removeEventListener');
+
+			const flushRafFrames = (count: number) => {
+				for (let i = 0; i < count; i++) {
+					const entries = Array.from(activeRafs.entries());
+					if (entries.length === 0) break;
+					for (const [id, cb] of entries) {
+						activeRafs.delete(id);
+						cb(performance.now());
+					}
+				}
+			};
+
+			const diag: ProofreadingDiagnostic = {
+				from: 0,
+				to: 2,
+				type: 'wrong_word',
+				severity: 'warning',
+				confidence: 'high',
+				original: 'ab',
+				message: 'test message',
+				suggestions: ['cd'],
+				ruleId: 'r1',
+				source: 'builtin'
+			};
+			const view = {
+				state: { doc: { toString: () => 'ab', length: 2, sliceString: () => '' } },
+				dispatch: vi.fn(),
+				focus: vi.fn()
+			} as unknown as EditorView;
+			const plugin = {} as unknown as WebNovelAssistantPlugin;
+
+			return {
+				ownerWindow,
+				ownerDocument: ownerDocument as unknown as Document & { dispatchEvent: (type: string, evt?: unknown) => void },
+				body,
+				createDivSpy,
+				targetEl: targetEl as unknown as HTMLElement & { isConnected: boolean; dispatchEvent: (type: string, evt?: unknown) => void },
+				hoveredEls,
+				activeRafs,
+				flushRafFrames,
+				diag,
+				view,
+				plugin
+			};
+		}
+
+		it('ends lifecycle, cancels RAF/listeners, and fires onHide once on pre-show mouseleave', () => {
+			vi.useFakeTimers();
+			try {
+				const host = createPopoverHost();
+				const onHide = vi.fn();
+				new ProofreadingPopover(host.targetEl, host.diag, host.view, host.plugin, false, onHide);
+
+				expect(host.activeRafs.size).toBe(1);
+				host.hoveredEls.delete(host.targetEl);
+				host.targetEl.dispatchEvent('mouseleave');
+
+				expect(host.activeRafs.size).toBe(0);
+				host.flushRafFrames(10);
+				expect(host.ownerWindow.requestAnimationFrame).toHaveBeenCalledTimes(1);
+				expect(host.createDivSpy).not.toHaveBeenCalled();
+				expect(host.targetEl.removeEventListener).toHaveBeenCalledWith('mouseleave', expect.any(Function));
+				expect(host.targetEl.removeEventListener).toHaveBeenCalledWith('mouseenter', expect.any(Function));
+				expect(onHide).toHaveBeenCalledTimes(1);
+
+				vi.advanceTimersByTime(500);
+				expect(host.createDivSpy).not.toHaveBeenCalled();
+				expect(onHide).toHaveBeenCalledTimes(1);
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it('ends lifecycle and fires onHide once when show timer fires on unhovered or detached target', () => {
+			vi.useFakeTimers();
+			try {
+				const host1 = createPopoverHost();
+				const onHide1 = vi.fn();
+				new ProofreadingPopover(host1.targetEl, host1.diag, host1.view, host1.plugin, false, onHide1);
+				host1.hoveredEls.delete(host1.targetEl);
+				vi.advanceTimersByTime(300);
+
+				expect(host1.activeRafs.size).toBe(0);
+				expect(host1.createDivSpy).not.toHaveBeenCalled();
+				expect(onHide1).toHaveBeenCalledTimes(1);
+
+				const host2 = createPopoverHost();
+				const onHide2 = vi.fn();
+				new ProofreadingPopover(host2.targetEl, host2.diag, host2.view, host2.plugin, false, onHide2);
+				host2.targetEl.isConnected = false;
+				vi.advanceTimersByTime(300);
+
+				expect(host2.activeRafs.size).toBe(0);
+				expect(host2.createDivSpy).not.toHaveBeenCalled();
+				expect(onHide2).toHaveBeenCalledTimes(1);
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it('preserves shown hover grace, immediate click dismissal, and per-document isolation', () => {
+			vi.useFakeTimers();
+			try {
+				const host1 = createPopoverHost();
+				const onHide1 = vi.fn();
+
+				new ProofreadingPopover(host1.targetEl, host1.diag, host1.view, host1.plugin, false, onHide1);
+				vi.advanceTimersByTime(300);
+				expect(host1.createDivSpy).toHaveBeenCalledTimes(1);
+				const popover1 = host1.body.children.find(c => c.className.includes('wn-proofreading-popover'))!;
+				expect(popover1).toBeDefined();
+
+				// Mouse leaves target, enters popover within 200ms grace -> stays open
+				host1.hoveredEls.delete(host1.targetEl);
+				host1.targetEl.dispatchEvent('mouseleave');
+				vi.advanceTimersByTime(100);
+				host1.hoveredEls.add(popover1);
+				popover1.dispatchEvent('mouseenter');
+				vi.advanceTimersByTime(200);
+				expect(onHide1).not.toHaveBeenCalled();
+
+				// Separate document popover does not close host1
+				const host2 = createPopoverHost();
+				const onHide2 = vi.fn();
+				new ProofreadingPopover(host2.targetEl, host2.diag, host2.view, host2.plugin, true, onHide2);
+				expect(onHide1).not.toHaveBeenCalled();
+
+				// Immediate popover closes on outside global click
+				vi.advanceTimersByTime(0);
+				host2.ownerDocument.dispatchEvent('click', { target: host2.body });
+				expect(onHide2).toHaveBeenCalledTimes(1);
+				expect(host2.activeRafs.size).toBe(0);
+
+				// Leaving popover on host1 closes after 200ms
+				host1.hoveredEls.delete(popover1);
+				popover1.dispatchEvent('mouseleave');
+				vi.advanceTimersByTime(200);
+				expect(onHide1).toHaveBeenCalledTimes(1);
+				expect(host1.activeRafs.size).toBe(0);
+			} finally {
+				vi.useRealTimers();
+			}
 		});
 	});
 });

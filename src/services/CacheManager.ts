@@ -1,4 +1,5 @@
-import { TFile, Notice, Vault, type TAbstractFile } from 'obsidian';
+import { showPluginNotice } from './PluginNoticeService';
+import { TFile, Vault, type TAbstractFile } from 'obsidian';
 import { ChapterSorter } from './ChapterSorter';
 import { getDefaultFileName, getDefaultFileNameCandidates } from '../i18n/data-keys';
 import { PLATFORM_DELAYS } from '../constants';
@@ -46,6 +47,8 @@ export class CacheManager {
 	// 快照持久化存储：确保数据保存的原子性、突发合并与冗余写入抑制
 	private store: JsonSnapshotStore<CacheData>;
 	private pendingMobileRefreshTimers = new Set<number>();
+	private activeReadTokens = new Map<string, Set<{ stale: boolean }>>();
+	private cacheEpoch = 0;
 
 	constructor(plugin: WebNovelAssistantPlugin) {
 		this.cache = new Map();
@@ -130,6 +133,8 @@ export class CacheManager {
 
 			// 加载缓存并标记为未修改干净状态（保持加载时的稳定时间戳）
 			this.lastCacheTimestamp = cacheData.timestamp;
+			this.cacheEpoch++;
+			this.markAllActiveReadsStale();
 			this.cache = new Map(cacheData.entries);
 			this.store.markClean(cacheData);
 
@@ -206,12 +211,20 @@ export class CacheManager {
 			for (let i = 0; i < filesToProcess.length; i++) {
 				const file = filesToProcess[i];
 				try {
-					const content = await vault.cachedRead(file);
-					const count = calculateWords(content);
+					const snapshot = this.beginFileReadSnapshot(file, vault);
+					if (!snapshot) continue;
+					try {
+						const content = await vault.cachedRead(file);
+						if (!this.isFileReadSnapshotValid(snapshot, vault, isFileInWorkspace)) {
+							continue;
+						}
+						const count = calculateWords(content);
 
-					// [BUGFIX] 使用 updateFileCache 而非直接 set，以复用时间戳守卫逻辑。
-					// 这样可以防止扫描过程中的旧字数覆盖掉启动瞬时产生的 modify 变动。
-					this.updateFileCache(file, count, vault);
+						// 已在读取前后完成文件身份、路径、mtime/size 与缓存版本校验，安全写入（允许合法回退 mtime 重建）。
+						this.applyFileCacheUpdate(file, count, vault, true);
+					} finally {
+						this.endFileReadSnapshot(snapshot);
+					}
 				} catch (error) {
 					console.error(`[CacheManager] 读取文件失败: ${file.path}`, error);
 					failCount++;
@@ -248,6 +261,70 @@ export class CacheManager {
 		return entry ? entry.wordCount : null;
 	}
 
+	private markPathReadsStale(path: string): void {
+		const tokens = this.activeReadTokens.get(path);
+		if (!tokens) return;
+		for (const token of tokens) {
+			token.stale = true;
+		}
+	}
+
+	private markAllActiveReadsStale(): void {
+		for (const tokens of this.activeReadTokens.values()) {
+			for (const token of tokens) {
+				token.stale = true;
+			}
+		}
+	}
+
+	private beginFileReadSnapshot(file: TFile, vault: Vault) {
+		const path = file.path;
+		if (typeof vault.getAbstractFileByPath === 'function' && vault.getAbstractFileByPath(path) !== file) {
+			return null;
+		}
+		const token = { stale: false };
+		let set = this.activeReadTokens.get(path);
+		if (!set) {
+			set = new Set();
+			this.activeReadTokens.set(path, set);
+		}
+		set.add(token);
+		return {
+			file,
+			path,
+			mtime: file.stat?.mtime,
+			size: file.stat?.size,
+			entry: this.cache.get(path),
+			token,
+			epoch: this.cacheEpoch,
+		};
+	}
+
+	private endFileReadSnapshot(snapshot: NonNullable<ReturnType<CacheManager['beginFileReadSnapshot']>>): void {
+		const set = this.activeReadTokens.get(snapshot.path);
+		if (!set) return;
+		set.delete(snapshot.token);
+		if (set.size === 0) {
+			this.activeReadTokens.delete(snapshot.path);
+		}
+	}
+
+	private isFileReadSnapshotValid(
+		snapshot: NonNullable<ReturnType<CacheManager['beginFileReadSnapshot']>>,
+		vault: Vault,
+		isFileInWorkspace?: (file: TFile) => boolean
+	): boolean {
+		const { file, path, mtime, size, entry, token, epoch } = snapshot;
+		if (token.stale || this.cacheEpoch !== epoch) return false;
+		if (file.path !== path) return false;
+		if (file.stat?.mtime !== mtime || file.stat?.size !== size) return false;
+		if (typeof vault.getAbstractFileByPath === 'function' && vault.getAbstractFileByPath(path) !== file) return false;
+		if (this.cache.get(path) !== entry) return false;
+		if (!this.isEligibleForTotalWordCount(file)) return false;
+		if (isFileInWorkspace && !isFileInWorkspace(file)) return false;
+		return true;
+	}
+
 	/**
 	 * 更新单个文件的缓存（增量更新）
 	 * @param file 文件对象
@@ -255,6 +332,15 @@ export class CacheManager {
 	 * @param vault Vault 实例
 	 */
 	updateFileCache(file: TFile, newWordCount: number, _vault: Vault): number {
+		return this.applyFileCacheUpdate(file, newWordCount, _vault, false);
+	}
+
+	private applyFileCacheUpdate(
+		file: TFile,
+		newWordCount: number,
+		_vault: Vault,
+		allowBackwardsMtime: boolean
+	): number {
 		if (!this.isEligibleForTotalWordCount(file)) {
 			if (this.cache.has(file.path)) {
 				this.invalidateCache(file.path, _vault);
@@ -266,10 +352,11 @@ export class CacheManager {
 		
 		// [BUGFIX] 时间戳校验：防止旧的异步读取结果覆盖新的缓存。
 		// 如果现有缓存的时间戳晚于当前文件的修改时间，说明已经有更近的修改（如编辑器实时更新）写入了缓存，应跳过。
-		if (oldEntry && oldEntry.lastModified > file.stat.mtime) {
+		if (!allowBackwardsMtime && oldEntry && oldEntry.lastModified > file.stat.mtime) {
 			return 0;
 		}
 
+		this.markPathReadsStale(file.path);
 		const oldCount = oldEntry ? oldEntry.wordCount : 0;
 		const delta = newWordCount - oldCount;
 
@@ -319,6 +406,7 @@ export class CacheManager {
 	 * @param _vault Vault 实例
 	 */
 	invalidateCache(path: string, _vault: Vault): void {
+		this.markPathReadsStale(path);
 		const entry = this.cache.get(path);
 		if (!entry) return;
 
@@ -350,6 +438,8 @@ export class CacheManager {
 	 * 清空所有缓存
 	 */
 	clearCache(): void {
+		this.cacheEpoch++;
+		this.markAllActiveReadsStale();
 		this.cache.clear();
 		this.markCacheDirty();
 	}
@@ -574,13 +664,13 @@ export class CacheManager {
 			const workspaceFiles = this.plugin.getTrackedMarkdownFiles()
 				.filter(file => this.isEligibleForTotalWordCount(file));
 			if (!loaded) {
-				const notice = new Notice(t("notice.building-explorer-cache"), 0);
+				const notice = showPluginNotice(t("notice.building-explorer-cache"), 0);
 				await this.buildInitialCache(
 					this.plugin.app.vault,
 					this.plugin.calculateAccurateWords.bind(this.plugin),
 					this.isEligibleForTotalWordCount.bind(this)
 				);
-				notice.hide();
+				notice?.hide();
 			} else {
 				const currentPaths = new Set(workspaceFiles.map(file => file.path));
 				for (const [path, entry] of Array.from(this.getEntries())) {
@@ -596,13 +686,19 @@ export class CacheManager {
 
 				for (const file of filesToRefresh) {
 					try {
-						// 先移除旧条目，避免“文件被恢复为更早 mtime”时触发时间戳守卫而跳过更新。
-						if (this.cache.has(file.path)) {
-							this.invalidateCache(file.path, this.plugin.app.vault);
+						const vault = this.plugin.app.vault;
+						const snapshot = this.beginFileReadSnapshot(file, vault);
+						if (!snapshot) continue;
+						try {
+							const content = await vault.cachedRead(file);
+							if (!this.isFileReadSnapshotValid(snapshot, vault)) {
+								continue;
+							}
+							const count = this.plugin.calculateAccurateWords(content);
+							this.applyFileCacheUpdate(file, count, vault, true);
+						} finally {
+							this.endFileReadSnapshot(snapshot);
 						}
-						const content = await this.plugin.app.vault.cachedRead(file);
-						const count = this.plugin.calculateAccurateWords(content);
-						this.updateFileCache(file, count, this.plugin.app.vault);
 					} catch (err) {
 						console.warn("[CacheManager] Failed to read file during cache build", err);
 					}
@@ -623,12 +719,12 @@ export class CacheManager {
 				if (this.plugin.settings.enableHomepage) void this.plugin.homepageManager?.refreshHomepageViews();
 			}
 
-			new Notice(t("notice.explorer-cache-complete"), 3000);
+			showPluginNotice(t("notice.explorer-cache-complete"), 3000);
 		} catch (error) {
 			console.error("[Plugin] 缓存构建失败:", error);
 			this.plugin.settings.showExplorerCounts = false;
 			await this.plugin.saveSettings();
-			new Notice(
+			showPluginNotice(
 				t("notice.explorer-cache-failed", { error: error instanceof Error ? error.message : String(error) }),
 				10000
 			);

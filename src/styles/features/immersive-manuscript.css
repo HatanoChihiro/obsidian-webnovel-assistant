@@ -1,0 +1,173 @@
+/* Immersive Manuscript Mode: continuous chapter waterfall with rehosted native editor */
+
+.wn-manuscript-leaf.wn-manuscript-redirecting .view-content {
+	visibility: hidden;
+}
+
+.wn-manuscript-view-content {
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	height: 100%;
+	min-height: 0;
+}
+
+.wn-manuscript-root {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 auto;
+	min-height: 0;
+	width: 100%;
+	height: 100%;
+}
+
+.wn-manuscript-scroller {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	overflow-x: hidden;
+	overflow-anchor: none;
+	position: relative;
+}
+
+.wn-manuscript-flow {
+	display: flex;
+	flex-direction: column;
+	gap: 64px;
+	width: 100%;
+	padding: 24px 0 64px;
+	box-sizing: border-box;
+	font-family: var(--font-text);
+	font-size: var(--font-text-size);
+}
+
+.wn-manuscript-scroller.wn-manuscript-typewriter-active .wn-manuscript-flow {
+	padding-top: var(--wn-manuscript-typewriter-padding-top, 24px);
+	padding-bottom: var(--wn-manuscript-typewriter-padding-bottom, 64px);
+}
+
+.wn-manuscript-card {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+}
+
+.wn-manuscript-card.is-active:last-child {
+	min-height: max(0px, calc(var(--wn-manuscript-viewport-height, 0px) - 64px));
+}
+
+.wn-manuscript-scroller.wn-manuscript-typewriter-active .wn-manuscript-card.is-active:last-child {
+	min-height: max(
+		0px,
+		calc(var(--wn-manuscript-viewport-height, 0px) - var(--wn-manuscript-typewriter-padding-bottom, 64px))
+	);
+}
+
+.wn-manuscript-scroller.wn-manuscript-typewriter-active .wn-manuscript-card:not(.is-active) {
+	opacity: var(--wn-typewriter-opacity, 0.4);
+}
+
+.wn-manuscript-card > .wn-manuscript-card-header {
+	width: 100%;
+	max-width: var(--wn-type-max-width, var(--file-line-width, 760px));
+	margin-inline: auto;
+	cursor: pointer;
+	user-select: none;
+}
+
+.wn-manuscript-card.is-active > .wn-manuscript-card-header,
+.wn-manuscript-card-volume {
+	display: none;
+}
+
+.wn-manuscript-card-header:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 2px;
+	border-radius: var(--radius-s);
+}
+
+.wn-manuscript-card-title {
+	font: inherit;
+	color: inherit;
+}
+
+.wn-manuscript-card-body {
+	position: relative;
+	min-height: 48px;
+}
+
+.wn-manuscript-preview {
+	width: 100%;
+	max-width: var(--wn-type-max-width, var(--file-line-width, 760px));
+	margin-inline: auto;
+	font-family: var(--font-text);
+	font-size: var(--font-text-size);
+	line-height: var(--line-height-normal);
+	color: var(--text-normal);
+	cursor: text;
+	user-select: text;
+}
+
+.wn-manuscript-preview.wn-manuscript-lazy-shell {
+	min-height: var(--wn-manuscript-estimated-height, 140px);
+	opacity: 0.45;
+}
+
+.wn-manuscript-preview-line {
+	min-height: 1.5em;
+	white-space: pre-wrap;
+	overflow-wrap: break-word;
+}
+
+.wn-manuscript-preview-line.is-heading {
+	font-weight: var(--font-semibold);
+	color: var(--text-normal);
+}
+
+.wn-manuscript-preview-line.is-blockquote {
+	color: var(--text-muted);
+	padding-left: 12px;
+	border-left: 2px solid var(--background-modifier-border);
+}
+
+.wn-typography-active .wn-manuscript-preview {
+	font-size: var(--wn-type-font-size, var(--font-text-size));
+	line-height: var(--wn-type-line-height, 1.8);
+	letter-spacing: var(--wn-type-letter-spacing, 0.05em);
+	text-align: var(--wn-type-text-align, justify);
+}
+
+.wn-typography-active .wn-manuscript-preview-line {
+	padding-top: var(--wn-type-para-before, 0em);
+	padding-bottom: var(--wn-type-para-spacing, 0.5em);
+	min-height: calc(var(--wn-type-line-height, 1.8) * 1em);
+}
+
+.wn-typography-active .wn-manuscript-preview-line:not(.is-blank):not(.is-heading):not(.is-blockquote)::before {
+	content: "";
+	display: inline;
+	padding-inline-start: var(--wn-type-indent, 2em);
+}
+
+.wn-manuscript-editor-slot {
+	position: relative;
+	width: 100%;
+}
+
+/* Rehosted native MarkdownView expands naturally inside the shared outer scroller */
+.wn-manuscript-editor-slot .markdown-source-view.mod-cm6,
+.wn-manuscript-editor-slot .markdown-source-view.mod-cm6 .cm-editor,
+.wn-manuscript-editor-slot .markdown-source-view.mod-cm6 .cm-scroller {
+	height: auto;
+	flex: none;
+	overflow: visible;
+}
+
+.wn-manuscript-editor-slot .markdown-source-view.mod-cm6 > .cm-editor > .cm-scroller {
+	padding-inline: 0;
+}
+
+.wn-manuscript-editor-slot .markdown-source-view.mod-cm6 .cm-sizer,
+.wn-manuscript-editor-slot .markdown-source-view.mod-cm6 .cm-contentContainer {
+	min-height: 0;
+}

@@ -28,6 +28,7 @@ export const VIEW_TYPES = {
 	LORE_OVERVIEW: 'webnovel-lore-overview',
 	WORKBENCH: 'webnovel-workbench',
 	IMMERSIVE_CHAPTER_LIST: 'immersive-chapter-list-view',
+	IMMERSIVE_CHAPTER_STATUS: 'immersive-chapter-status-view',
 	IMMERSIVE_STICKY_NOTES: 'immersive-sticky-notes-view',
 	STICKY_NOTE_LIST: 'sticky-note-list-view',
 } as const;
@@ -120,8 +121,31 @@ export const VALIDATION_RULES = {
 	IMMERSIVE_POMODORO_INTERVAL: { min: 20, max: 180 },
 } as const;
 
-import type { AccurateCountSettings } from './types/settings';
+import type { AccurateCountSettings, MobileImmersiveAuxPanelState, MobileImmersiveAuxViewType } from './types/settings';
 import type { ProofreadingSettings } from './types/proofreading';
+
+export const MOBILE_IMMERSIVE_AUX_VIEW_TYPES: readonly MobileImmersiveAuxViewType[] = [
+	VIEW_TYPES.IMMERSIVE_CHAPTER_STATUS,
+	VIEW_TYPES.IMMERSIVE_STICKY_NOTES,
+	'reference-view',
+	'foreshadowing-view',
+	VIEW_TYPES.TIMELINE,
+	VIEW_TYPES.LORE_OVERVIEW,
+	'webnovel-corkboard',
+	'outline'
+] as const;
+
+export const DEFAULT_MOBILE_IMMERSIVE_AUX_PANEL: MobileImmersiveAuxPanelState = {
+	viewType: VIEW_TYPES.IMMERSIVE_CHAPTER_STATUS,
+	isOpen: false,
+	isMinimized: false,
+	isLocked: false,
+	isDocked: false,
+	x: 16,
+	y: 64,
+	width: 300,
+	height: 280
+};
 // 已迁移到嵌套结构的扁平化字段名（用于设置迁移和清理）
 export const FLAT_OBS_KEYS = [
 	'enableObs', 'obsPort',
@@ -160,6 +184,7 @@ export const DEFAULT_PROOFREADING_SETTINGS: ProofreadingSettings = {
 
 export const DEFAULT_SETTINGS: AccurateCountSettings = {
 	language: 'auto',
+	showNotices: false,
 	wordCountMethod: 'standard',
 	includeFootnotes: false,
 	defaultGoal: 3000,
@@ -220,6 +245,7 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 		enableIndent: true,
 		indentSize: '2em',
 		lineHeight: 1.8,
+		paragraphSpacingBefore: '0em',
 		paragraphSpacing: '0.5em',
 		letterSpacing: '0.05em',
 		maxLineWidth: '700px',
@@ -229,7 +255,6 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 		enableReadingModeCompat: false,
 	},
 	showMobileFloatingStats: false, // 默认不显示移动端浮窗
-	enableMobileFocusTimer: false, // 默认不启用移动端计时器
 	mobileFloatingStatsState: null, // 默认无保存状态
 	enableStrictChapterMode: false, // 严格章节模式，默认关闭
 	strictChapterExceptions: [],
@@ -293,6 +318,12 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 
 		pomodoroEnabled: false,
 		pomodoroInterval: 30,
+
+		manuscriptModeEnabled: false,
+		workManuscriptPositions: {},
+		mobileAuxPanel: {
+			...DEFAULT_MOBILE_IMMERSIVE_AUX_PANEL
+		},
 	},
 
 	// OBS 数据输出默认设置

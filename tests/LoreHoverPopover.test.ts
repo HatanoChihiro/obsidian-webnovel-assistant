@@ -434,4 +434,107 @@ describe('LoreHoverPopover lifecycle', () => {
 		expect(openInstances.has(second)).toBe(true);
 		expect(otherDocument.removeEventListener).not.toHaveBeenCalled();
 	});
+
+	it('supports virtual anchor hover predicate and onDispose callback for delayed desktop popovers', async () => {
+		let virtualHovered = true;
+		const onDispose = vi.fn();
+		vi.mocked(target.matches).mockReturnValue(false);
+
+		const popover = new (LoreHoverPopover as unknown as new (
+			t: HTMLElement,
+			e: unknown,
+			p: unknown,
+			imm: boolean,
+			book?: string,
+			opts?: { isTargetHovered?: () => boolean; onDispose?: () => void }
+		) => LoreHoverPopover & {
+			isActive(): boolean;
+			isCardVisible(): boolean;
+			handleTargetLeave(): void;
+			cancelPendingClose(): void;
+		})(
+			target,
+			{ file: { path: 'Lore/Rowan.md' }, heading: 'Rowan' },
+			{ settings: { enableLorePopover: true } },
+			false,
+			undefined,
+			{ isTargetHovered: () => virtualHovered, onDispose }
+		);
+
+		expect(popover.isActive()).toBe(true);
+		expect(popover.isCardVisible()).toBe(false);
+
+		vi.advanceTimersByTime(1000);
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(buildCardDOM).toHaveBeenCalledOnce();
+		expect(popover.isCardVisible()).toBe(true);
+
+		// Moving off virtual anchor starts 200ms close grace without resetting on repeated leave calls
+		popover.handleTargetLeave();
+		vi.advanceTimersByTime(100);
+		popover.handleTargetLeave();
+		vi.advanceTimersByTime(50);
+		expect(popover.isCardVisible()).toBe(true);
+
+		// Re-entering or entering popover cancels pending close
+		popover.cancelPendingClose();
+		vi.advanceTimersByTime(200);
+		expect(popover.isCardVisible()).toBe(true);
+
+		// Leaving and letting grace period expire disposes once
+		popover.handleTargetLeave();
+		vi.advanceTimersByTime(200);
+		expect(popover.isActive()).toBe(false);
+		expect(onDispose).toHaveBeenCalledOnce();
+
+		// When virtualHovered is false at 1000ms, pending popover aborts cleanly
+		virtualHovered = false;
+		const abortedDispose = vi.fn();
+		buildCardDOM.mockClear();
+		const aborted = new (LoreHoverPopover as unknown as new (
+			t: HTMLElement,
+			e: unknown,
+			p: unknown,
+			imm: boolean,
+			book?: string,
+			opts?: { isTargetHovered?: () => boolean; onDispose?: () => void }
+		) => LoreHoverPopover & { isActive(): boolean })(
+			target,
+			{ file: { path: 'Lore/Rowan.md' }, heading: 'Rowan' },
+			{ settings: { enableLorePopover: true } },
+			false,
+			undefined,
+			{ isTargetHovered: () => virtualHovered, onDispose: abortedDispose }
+		);
+		vi.advanceTimersByTime(1000);
+		expect(buildCardDOM).not.toHaveBeenCalled();
+		expect(aborted.isActive()).toBe(false);
+		expect(abortedDispose).toHaveBeenCalledOnce();
+	});
+
+	it('cancels a pending delayed popover immediately on handleTargetLeave before card is visible', () => {
+		const onDispose = vi.fn();
+		const popover = new (LoreHoverPopover as unknown as new (
+			t: HTMLElement,
+			e: unknown,
+			p: unknown,
+			imm: boolean,
+			book?: string,
+			opts?: { isTargetHovered?: () => boolean; onDispose?: () => void }
+		) => LoreHoverPopover & { isActive(): boolean; handleTargetLeave(): void })(
+			target,
+			{ file: { path: 'Lore/Rowan.md' }, heading: 'Rowan' },
+			{ settings: { enableLorePopover: true } },
+			false,
+			undefined,
+			{ isTargetHovered: () => true, onDispose }
+		);
+
+		popover.handleTargetLeave();
+		expect(popover.isActive()).toBe(false);
+		expect(onDispose).toHaveBeenCalledOnce();
+		expect(vi.getTimerCount()).toBe(0);
+	});
 });

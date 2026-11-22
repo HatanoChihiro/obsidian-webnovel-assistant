@@ -1,416 +1,153 @@
 # OBS 叠加层 CSS 自定义指南
 
-本指南帮助你通过自定义 CSS 来个性化 OBS 直播叠加层的外观。
+本指南适用于桌面端 OBS 浏览器源。插件在本机提供统计页面；这套 CSS 与 Obsidian 主题、CSS 代码片段分别生效。英文版见 [English Guide](OBS_OVERLAY_CSS_GUIDE_EN.md)。
 
----
+## 目录
 
-## 📋 目录
+- [连接与刷新](#连接与刷新)
+- [可用选择器](#可用选择器)
+- [可直接使用的示例](#可直接使用的示例)
+- [自定义 CSS 的限制](#自定义-css-的限制)
+- [常见问题](#常见问题)
 
-- [快速开始](#快速开始)
-- [可用的 CSS 类名](#可用的-css-类名)
-- [常见自定义示例](#常见自定义示例)
-- [高级技巧](#高级技巧)
+## 连接与刷新
 
----
+1. 在 **设置 → WebNovel Assistant → 数据输出 → OBS 数据叠加层** 开启 **启用数据叠加层 (OBS/直播)**，默认端口为 `24816`。开启即启动服务，无需重载插件；修改端口后服务自动重启。
+2. 点击 **复制 URL**，在同一台电脑的 OBS 中添加浏览器源并粘贴，默认地址为 `http://127.0.0.1:24816/`。
+3. 可先将浏览器源设为 **400×700px**，再根据启用的数据项调整。默认卡片宽 280px，另有 1.1 倍缩放，浏览器源太窄或太矮可能裁切内容。
+4. 在插件设置中选择主题、背景透明度和显示项目；将下面需要的样式粘贴到 **自定义 CSS**。示例彼此独立，同一属性重复配置时后面的规则生效。
+5. 修改 CSS、主题或显示开关后，**手动刷新 OBS 浏览器源**。统计值会自动更新，页面结构与样式不会因此自动重载。
 
-## 快速开始
+页面通过本机 `/api/stats` 获取数据，每次请求完成后约 500ms 再次更新。服务仅监听 `127.0.0.1`，OBS 与 Obsidian 需在同一台电脑上；关闭 Obsidian 或关闭叠加层后数据停止更新。
 
-1. 在插件设置中找到「OBS 叠加层」部分
-2. 滚动到「自定义 CSS」输入框
-3. 输入你的 CSS 代码
-4. 保存设置后，OBS 浏览器源会自动刷新
+## 可用选择器
 
----
+关闭某项显示后，对应节点不会出现在页面中；CSS 不能显示未生成的统计项，请先打开对应设置。
 
-## 可用的 CSS 类名
+| 选择器 | 用途 |
+|---|---|
+| `.overlay-card` | 卡片外壳，默认宽 280px、圆角 14px、内边距 20px 24px |
+| `.overlay-title` | 顶部状态指示区域，当前没有标题文字 |
+| `.status-dot`、`.status-dot.active`、`.status-dot.paused` | 12px 状态灯、记录中、已暂停 |
+| `.time-row` | 时间统计区域，包含各个 `.time-item` |
+| `.time-item`、`.time-label`、`.time-value` | 单项时间、标签与数值 |
+| `.time-value.focus`、`.time-value.slack` | 专注与摸鱼时间数值 |
+| `#totalTime`、`#focusTime`、`#slackTime` | 单独选择总时长、专注时长或摸鱼时长 |
+| `.divider` | 时间区下方分隔线 |
+| `.goal-row`、`.goal-label`、`.goal-value` | 章节或今日目标行、标签与数值组 |
+| `.current-val`、`.target-val`、`.sep`、`.percent` | 当前字数、目标字数、斜线与百分比 |
+| `#todayWords`、`#goalValue`、`#percentText` | 当前章节字数、章节目标与百分比；todayWords 实际对应当前章节 |
+| `#dailyWords`、`#dailyGoalValue`、`#dailyPercentText` | 今日净增、今日目标与百分比 |
+| `.progress-bg`、`.progress-fill`、`.progress-fill.done` | 进度槽、进度条与达标状态 |
+| `#progressFill`、`#dailyProgressFill` | 章节与今日进度条 |
+| `.session-row`、`.session-row .val` | 本场统计行与数值 |
+| `#sessionWords`、`#sessionSpeed` | 本场净增与本场时速（时速默认不显示） |
 
-### 容器和布局
+## 可直接使用的示例
 
-| 类名 | 说明 | 默认样式 |
-|------|------|----------|
-| `.overlay-card` | 叠加层外壳容器 | 宽度 280px，圆角 12px，半透明背景 |
-| `.overlay-header` | 顶部标题区域 | 包含标题和状态指示灯 |
-| `.overlay-title` | 标题文字 | 字体大小 1.1em，加粗 |
-| `.status-dot` | 状态指示灯 | 圆形，8px 直径 |
-| `.status-dot.active` | 记录中状态 | 绿色，呼吸动画 |
-| `.status-dot.paused` | 已暂停状态 | 灰色 |
-
-### 时间统计
-
-| 类名 | 说明 | 默认样式 |
-|------|------|----------|
-| `.time-section` | 时间统计区域容器 | 包含所有时间显示 |
-| `.time-row` | 单行时间显示 | 左右布局，标签+数值 |
-| `.time-label` | 时间标签文字 | 如"总计"、"专注"、"摸鱼" |
-| `.time-value` | 时间数值 | 等宽字体，加粗 |
-| `.time-value.focus` | 专注时间数值 | 绿色 |
-| `.time-value.slack` | 摸鱼时间数值 | 橙色 |
-
-### 目标进度
-
-| 类名 | 说明 | 默认样式 |
-|------|------|----------|
-| `.goal-section` | 目标进度区域容器 | 包含进度条和数值 |
-| `.goal-label` | 目标标签文字 | 如"章节目标"、"今日目标" |
-| `.goal-value` | 目标数值容器 | 包含当前值、分隔符、目标值、百分比 |
-| `.current-val` | 当前已写字数 | 大字号，加粗 |
-| `.target-val` | 目标总字数 | 中等字号，半透明 |
-| `.sep` | 分隔符 `/` | 半透明 |
-| `.percent` | 百分比文字 | 强调色 |
-| `.goal-value.done` | 目标达成状态 | 当百分比 ≥ 100% 时应用 |
-| `.progress-bg` | 进度条背景槽 | 灰色，圆角 |
-| `.progress-fill` | 进度条填充 | 强调色，过渡动画 |
-| `.progress-fill.done` | 进度条达成状态 | 绿色 |
-
-### 本场净增
-
-| 类名 | 说明 | 默认样式 |
-|------|------|----------|
-| `.session-row` | 本场净增行容器 | 左右布局 |
-| `.session-label` | "本场净增"标签 | 小字号 |
-| `.session-value` | 净增字数数值 | 等宽字体，加粗 |
-
----
-
-## 常见自定义示例
-
-### 1. 修改卡片尺寸和圆角
+### 调整卡片与字号
 
 ```css
-/* 加宽卡片 */
 .overlay-card {
-  width: 350px;
+  width: 340px;
+  border-radius: 18px;
+  padding: 18px;
+  font-family: "Microsoft YaHei", sans-serif;
 }
-
-/* 更圆的圆角 */
-.overlay-card {
-  border-radius: 20px;
-}
-
-/* 方形卡片 */
-.overlay-card {
-  border-radius: 0;
-}
-```
-
-### 2. 修改字体
-
-```css
-/* 使用自定义字体 */
-.overlay-card {
-  font-family: "Microsoft YaHei", "微软雅黑", sans-serif;
-}
-
-/* 加大所有字号 */
-.overlay-card {
-  font-size: 1.1em;
-}
-
-/* 只加大时间数值字号 */
 .time-value {
-  font-size: 1.5em;
+  font-size: 28px;
+}
+.goal-value .current-val {
+  font-size: 30px;
 }
 ```
 
-### 3. 修改颜色主题
+### 设置颜色与边框
 
 ```css
-/* 深色主题 */
 .overlay-card {
-  background: rgba(20, 20, 30, 0.95);
-  color: #e0e0e0;
+  background: rgba(20, 24, 32, 0.9);
+  color: #eeeeee;
+  border: 1px solid #667788;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
 }
-
-/* 浅色主题 */
-.overlay-card {
-  background: rgba(255, 255, 255, 0.95);
-  color: #333;
+.time-label,
+.session-row .val {
+  color: #eeeeee;
 }
-
-/* 自定义强调色 */
-.status-dot.active,
-.progress-fill {
-  background: #ff6b6b; /* 红色 */
-}
-
 .time-value.focus {
-  color: #51cf66; /* 绿色 */
+  color: #8cc7ff;
 }
-
 .time-value.slack {
-  color: #ffd43b; /* 黄色 */
+  color: #ffc078;
 }
-```
-
-### 4. 添加边框和阴影
-
-```css
-/* 添加边框 */
-.overlay-card {
-  border: 2px solid rgba(255, 255, 255, 0.3);
-}
-
-/* 加强阴影 */
-.overlay-card {
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-}
-
-/* 发光效果 */
-.overlay-card {
-  box-shadow: 0 0 20px rgba(100, 200, 255, 0.5);
-}
-```
-
-### 5. 修改进度条样式
-
-```css
-/* 更粗的进度条 */
-.progress-bg {
-  height: 12px;
-}
-
-/* 方形进度条 */
-.progress-bg,
 .progress-fill {
-  border-radius: 0;
+  background: linear-gradient(90deg, #667eea, #90b5ff);
 }
-
-/* 渐变进度条 */
-.progress-fill {
-  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-}
-
-/* 达成时的特殊效果 */
 .progress-fill.done {
-  background: linear-gradient(90deg, #56ab2f 0%, #a8e063 100%);
-  box-shadow: 0 0 10px rgba(86, 171, 47, 0.5);
+  background: #76c893;
 }
 ```
 
-### 6. 隐藏特定元素
+### 紧凑显示
 
 ```css
-/* 隐藏状态指示灯 */
-.status-dot {
-  display: none;
-}
-
-/* 隐藏标题 */
-.overlay-title {
-  display: none;
-}
-
-/* 隐藏摸鱼时间 */
-.time-row:has(.time-value.slack) {
-  display: none;
-}
-
-/* 隐藏百分比 */
-.percent {
-  display: none;
-}
-```
-
-### 7. 调整间距和布局
-
-```css
-/* 增加内边距 */
 .overlay-card {
-  padding: 24px;
+  padding: 12px;
+  gap: 4px;
 }
-
-/* 增加各区域间距 */
-.time-section,
-.goal-section,
-.session-row {
-  margin-bottom: 20px;
-}
-
-/* 紧凑布局 */
 .time-row {
-  margin-bottom: 4px;
+  gap: 6px;
+}
+.time-value {
+  font-size: 20px;
+}
+.percent,
+.divider {
+  display: none;
 }
 ```
 
-### 8. 添加动画效果
+优先在插件设置中隐藏整项统计。上例隐藏百分比与分隔线，不会改变统计数据。
+
+### 透明背景
 
 ```css
-/* 数值变化时的闪烁效果 */
-.time-value,
-.session-value {
-  transition: all 0.3s ease;
-}
-
-/* 进度条填充动画 */
-.progress-fill {
-  transition: width 0.5s ease-out;
-}
-
-/* 卡片悬停效果（虽然在 OBS 中不会触发，但可以用于测试） */
-.overlay-card:hover {
-  transform: scale(1.02);
-  transition: transform 0.2s ease;
-}
-```
-
-### 9. 毛玻璃效果增强
-
-```css
-/* 更强的毛玻璃效果 */
-.overlay-card {
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-}
-
-/* 完全透明背景 + 毛玻璃 */
-.overlay-card {
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(30px);
-}
-```
-
-### 10. 极简风格
-
-```css
-/* 移除所有装饰 */
 .overlay-card {
   background: transparent;
-  box-shadow: none;
   border: none;
-}
-
-/* 只显示关键数据 */
-.overlay-title,
-.time-label,
-.goal-label {
-  display: none;
-}
-
-/* 大号数值 */
-.time-value,
-.session-value {
-  font-size: 2em;
-  font-weight: bold;
+  box-shadow: none;
 }
 ```
 
----
+同时将插件的 **背景透明度** 调到 `0`，以移除默认毛玻璃背景效果。保留文字与进度条，便于叠加到直播画面上。
 
-## 高级技巧
+## 自定义 CSS 的限制
 
-### 使用 CSS 变量
+插件的输入框会过滤 CSS，不等同于完整的样式表编辑器：
 
-你可以定义变量来统一管理颜色：
+- 使用上例的简单类名或 ID 选择器，每条属性单独占一行。
+- 常用支持项包括颜色、背景、字体大小、字体族、宽高、整体 `margin` / `padding`、边框、圆角、阴影、显示、Flex/Grid 及 `gap`。
+- 当前过滤器会移除 CSS 自定义属性定义（`--变量`）、`content`、`text-shadow`、`backdrop-filter`、`padding-top` 等未列入允许范围的属性。含冒号的伪类选择器和部分高级规则也可能被过滤；不要直接将复杂主题 CSS 粘贴到此处。
+- 不支持通过 `@import` 导入外部样式，也不能添加 HTML 或脚本。自行使用远程图片或字体 URL 时，浏览器源可能访问对应地址；使用本机已安装字体无需此类请求。
+- 不要固定进度条的 `width`：它由实时统计更新。达标样式使用 `.progress-fill.done`；页面没有 `data-minutes` 属性或 `.goal-value.done` 状态，不能用它们判断时长与达标。
 
-```css
-.overlay-card {
-  --primary-color: #667eea;
-  --success-color: #51cf66;
-  --warning-color: #ffd43b;
-  --text-color: #ffffff;
-}
+## 常见问题
 
-.status-dot.active {
-  background: var(--success-color);
-}
+**Q: 样式修改后没有变化？**
 
-.progress-fill {
-  background: var(--primary-color);
-}
+A: 先刷新浏览器源；确认样式写在插件的 **自定义 CSS** 中、选择器对应当前已启用的节点，再检查属性是否被上述过滤器移除。可在同机普通浏览器中打开 URL，用开发者工具检查实际页面。
 
-.time-value.slack {
-  color: var(--warning-color);
-}
-```
+**Q: 统计显示不再更新？**
 
-### 响应式设计
+A: 确认 Obsidian 正在运行、叠加层已开启、端口与浏览器源 URL 一致。修改端口后要同时更新 OBS 地址；端口占用时在插件设置中更换。
 
-虽然 OBS 浏览器源尺寸固定，但你可以为不同尺寸准备样式：
+**Q: 卡片显示不全？**
 
-```css
-/* 小尺寸布局 */
-@media (max-width: 300px) {
-  .overlay-card {
-    padding: 12px;
-    font-size: 0.9em;
-  }
-}
-```
+A: 增大浏览器源宽高，检查自定义卡片尺寸。默认 280px 卡片还会进行 1.1 倍缩放；显示项目越多，需要的高度越大。
 
-### 使用伪元素添加装饰
+**Q: 可以用于另一台电脑上的 OBS 吗？**
 
-```css
-/* 在标题前添加图标 */
-.overlay-title::before {
-  content: "📝 ";
-}
+A: 当前服务仅监听本机回环地址，另一台电脑无法直接连接。本文的配置适用于同机使用。
 
-/* 在进度条上添加刻度 */
-.progress-bg::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 50%;
-  width: 2px;
-  height: 100%;
-  background: rgba(255, 255, 255, 0.3);
-}
-```
-
-### 条件样式
-
-```css
-/* 当专注时间超过 1 小时时高亮 */
-.time-value.focus[data-minutes="60"] {
-  color: #ffd700;
-  font-size: 1.2em;
-}
-
-/* 目标达成时的庆祝效果 */
-.goal-value.done {
-  animation: celebrate 0.5s ease;
-}
-
-@keyframes celebrate {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.1); }
-}
-```
-
----
-
-## 💡 调试技巧
-
-1. **在浏览器中测试**：先在普通浏览器中打开 `http://127.0.0.1:24816/` 测试 CSS
-2. **使用浏览器开发者工具**：按 F12 打开开发者工具，实时调试样式
-3. **OBS 浏览器源刷新**：修改 CSS 后，在 OBS 中右键浏览器源 → 刷新
-4. **保存常用样式**：将满意的 CSS 保存到文本文件中备用
-
----
-
-## 📚 参考资源
-
-- [CSS 颜色参考](https://developer.mozilla.org/zh-CN/docs/Web/CSS/color_value)
-- [CSS 渐变生成器](https://cssgradient.io/)
-- [CSS 动画参考](https://developer.mozilla.org/zh-CN/docs/Web/CSS/animation)
-- [毛玻璃效果生成器](https://glassmorphism.com/)
-
----
-
-## ❓ 常见问题
-
-**Q: 为什么我的 CSS 没有生效？**
-A: 检查 CSS 语法是否正确，确保选择器拼写无误，在 OBS 中刷新浏览器源。
-
-**Q: 可以完全隐藏背景吗？**
-A: 可以，设置 `background: transparent;` 并将透明度滑块调到 0。
-
-**Q: 如何让文字更清晰？**
-A: 添加文字阴影：`text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);`
-
-**Q: 可以使用自定义字体吗？**
-A: 可以，但需要确保 OBS 浏览器源所在系统已安装该字体。
-
----
-
-如果你创建了很酷的样式，欢迎分享！🎨
+返回 [用户指南](USER_GUIDE.md#obs-叠加层) · [README](../README.md)

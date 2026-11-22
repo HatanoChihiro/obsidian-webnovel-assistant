@@ -1,13 +1,18 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { WorkspaceLeaf, TFile, TFolder, MarkdownView, Menu } from './mocks/obsidian';
+import { WorkspaceLeaf, TFile, TFolder, MarkdownView, Menu, Platform } from './mocks/obsidian';
 import { MockElement } from './mocks/MockElement';
 import { WritingStatusView, type WritingStatusViewPlugin } from '../src/ui/StatusView';
+import { ImmersiveChapterStatusView } from '../src/ui/ImmersiveChapterStatusView';
+import { VIEW_TYPES } from '../src/constants';
+import { t } from '../src/i18n';
 import { ChapterCard, type ChapterCardPlugin } from '../src/ui/components/ChapterCard';
 import type { TaskManager } from '../src/services/TaskManager';
 import { ChapterSorter } from '../src/services/ChapterSorter';
 import { ForeshadowingStatus, type ParsedForeshadowingEntry } from '../src/types/foreshadowing';
 import moment from 'moment';
 import { StatisticsManager } from '../src/services/StatisticsManager';
+import { DailyStatsModal } from '../src/ui/DailyStatsModal';
+import { HistoryStatsModal } from '../src/ui/HistoryModal';
 import type { DailyStat } from '../src/types/settings';
 import { getCurrentBookContext } from '../src/utils/path';
 import type { TaskEntry } from '../src/types/task';
@@ -320,6 +325,7 @@ describe('WritingStatusView work retention and context isolation', () => {
 			setCssProps: vi.fn(),
 			setAttribute: vi.fn(),
 			getAttribute: vi.fn(),
+			removeAttribute: vi.fn(),
 			addEventListener: vi.fn(),
 			children
 		};
@@ -1408,6 +1414,66 @@ describe('WritingStatusView work retention and context isolation', () => {
 		});
 
 	describe('batch 3b statistics refresh optimizations', () => {
+		it.each([true, false])('exposes the shared focus tracking control and updates its state (mobile=%s)', async mobile => {
+			const wasMobile = Platform.isMobile;
+			Platform.isMobile = mobile;
+			try {
+				const env = createTestEnvironment([]);
+				Object.assign(view, { app: env.app });
+				const container = new MockElement();
+				(view as unknown as { createGoalCard(container: Element): void }).createGoalCard(container as unknown as Element);
+				const badge = container.querySelector('.wn-status-title-badge');
+				expect(badge).not.toBeNull();
+				expect(badge!.getAttribute('role')).toBe('button');
+				expect(badge!.getAttribute('tabindex')).toBe('0');
+				expect(badge!.getAttribute('aria-label')).toBe(t('common.click-to-toggle-status'));
+				expect(badge!.getAttribute('title')).toBeNull();
+				attachMockElements(view);
+				vi.mocked(mockPlugin.startTracking).mockImplementation(() => { mockPlugin.isTracking = true; });
+				vi.mocked(mockPlugin.stopTracking).mockImplementation(() => { mockPlugin.isTracking = false; });
+				badge!.dispatchEvent('click', { stopPropagation: vi.fn() });
+				expect(mockPlugin.startTracking).toHaveBeenCalledOnce();
+				await view.updateData(true);
+				expect(view.statusBadgeEl.innerText).toBe(t('status.recording'));
+				expect(badge!.getAttribute('aria-pressed')).toBe('true');
+				const preventDefault = vi.fn();
+				badge!.dispatchEvent('keydown', { key: ' ', preventDefault, stopPropagation: vi.fn() });
+				expect(mockPlugin.stopTracking).toHaveBeenCalledOnce();
+				expect(preventDefault).toHaveBeenCalledOnce();
+				await view.updateData(true);
+				expect(view.statusBadgeEl.innerText).toBe(t('status.paused'));
+				expect(badge!.getAttribute('aria-pressed')).toBe('false');
+				badge!.dispatchEvent('keydown', { key: 'Enter', preventDefault, stopPropagation: vi.fn() });
+				expect(mockPlugin.startTracking).toHaveBeenCalledTimes(2);
+			} finally { Platform.isMobile = wasMobile; }
+		});
+
+		it('creates and refreshes focus statistics on mobile, including full data refreshes', async () => {
+			const wasMobile = Platform.isMobile;
+			Platform.isMobile = true;
+			try {
+				const env = createTestEnvironment([]);
+				Object.assign(view, { app: env.app });
+				const container = new MockElement();
+				(view as unknown as { createTimeCard(container: Element): void }).createTimeCard(container as unknown as Element);
+				expect(container.children).toHaveLength(1);
+				attachMockElements(view);
+				mockPlugin.focusMs = 60000;
+				mockPlugin.slackMs = 30000;
+				vi.mocked(mockPlugin.statisticsManager.getSessionSpeed).mockReturnValue(900);
+				view.updateTimer();
+				expect(view.focusTimeEl.innerText).toBe('00:01:00');
+				expect(view.slackTimeEl.innerText).toBe('00:00:30');
+				expect(view.totalTimeEl.innerText).toBe('00:01:30');
+				expect(view.sessionSpeedEl.innerText).toBe('900');
+				const timer = vi.spyOn(view, 'updateTimer');
+				await view.updateData(true);
+				expect(timer).toHaveBeenCalled();
+			} finally {
+				Platform.isMobile = wasMobile;
+			}
+		});
+
 		it('refreshes task and metadata changes in the selected work without polling other works', () => {
 			const env = createTestEnvironment([new TFolder('作品A', '作品A')]);
 			const vaultHandlers = new Map<string, (file: TFile, oldPath?: string) => void>();
@@ -1525,7 +1591,7 @@ describe('WritingStatusView work retention and context isolation', () => {
 			expect(columns).toHaveLength(7);
 			expect(columns.map(col => col.children[1].textContent)).toEqual(['10-12', '10-13', '10-14', '10-15', '10-16', '10-17', '10-18']);
 			expect(columns.map(col => col.children[2].textContent)).toEqual(['-7', '0', '0', '0', '21', '0', '0']);
-			expect(columns[0].children[0].className).toContain('bar-negative');
+			expect(columns[0].children[0].className).toContain('wn-bar-negative');
 			const average = vi.mocked(mockPlugin.statisticsManager.calcDailyAverage);
 			const [summaryHistory, start, end] = average.mock.calls[0];
 			expect(Object.keys(summaryHistory)).toEqual(['2026-10-12', '2026-10-13', '2026-10-14', '2026-10-15', '2026-10-16', '2026-10-17', '2026-10-18']);
@@ -2649,6 +2715,626 @@ describe('WritingStatusView work retention and context isolation', () => {
 			await view.updateData(true);
 			expect(Array.from(view.chapterBadgesContainer.children).some(child => child.className.includes('is-timeline'))).toBe(true);
 			consoleSpy.mockRestore();
+		});
+	});
+
+	describe('7-day mini-bar chart daily stats triggers', () => {
+		it('opens DailyStatsModal on column click/Enter/Space without bubbling to HistoryStatsModal', () => {
+			(globalThis as unknown as { window: { moment: typeof moment } }).window = { moment };
+			const today = moment().format('YYYY-MM-DD');
+
+			mockPlugin.historyManager = {
+				getHistory: vi.fn(() => ({
+					[today]: { focusMs: 1800000, slackMs: 0, addedWords: 400 }
+				})),
+				getWordRevision: vi.fn(() => 7)
+			};
+
+			const miniChartEl = new MockElement('wn-mini-chart-container');
+			const historyModalSpy = vi.spyOn(HistoryStatsModal.prototype, 'open').mockImplementation(() => {});
+			const dailyModalSpy = vi.spyOn(DailyStatsModal.prototype, 'open').mockImplementation(() => {});
+			miniChartEl.onclick = () => {
+				new HistoryStatsModal(mockLeaf as never, mockPlugin).open();
+			};
+
+			view.miniChartEl = miniChartEl as unknown as HTMLElement;
+			view.efficiencySummaryEl = new MockElement('wn-mini-efficiency-summary') as unknown as HTMLElement;
+			view.renderMiniChart(true);
+
+			const cols = miniChartEl.children;
+			expect(cols).toHaveLength(7);
+			const todayCol = cols[6];
+			expect(todayCol.hasClass('wn-daily-stats-trigger')).toBe(true);
+			expect(todayCol.getAttribute('role')).toBe('button');
+			expect(todayCol.getAttribute('tabindex')).toBe('0');
+			expect(todayCol.children[0]?.getAttribute('title')).toBeNull();
+
+			const stopProp = vi.fn();
+			todayCol.dispatchEvent('click', { stopPropagation: stopProp });
+			expect(stopProp).toHaveBeenCalledOnce();
+			expect(dailyModalSpy).toHaveBeenCalledTimes(1);
+			expect(historyModalSpy).not.toHaveBeenCalled();
+
+			const enterEvt = { key: 'Enter', preventDefault: vi.fn(), stopPropagation: vi.fn() };
+			todayCol.dispatchEvent('keydown', enterEvt);
+			expect(enterEvt.preventDefault).toHaveBeenCalledOnce();
+			expect(enterEvt.stopPropagation).toHaveBeenCalledOnce();
+			expect(dailyModalSpy).toHaveBeenCalledTimes(2);
+
+			historyModalSpy.mockRestore();
+			dailyModalSpy.mockRestore();
+		});
+	});
+
+	describe('ImmersiveChapterStatusView (chapter-only mode)', () => {
+		const createImmersiveView = (app: import('obsidian').App, plugin: WritingStatusViewPlugin) => {
+			if (typeof (globalThis.window as unknown as { setTimeout?: unknown })?.setTimeout !== 'function') {
+				Object.assign(globalThis.window, {
+					setTimeout: globalThis.setTimeout.bind(globalThis),
+					clearTimeout: globalThis.clearTimeout.bind(globalThis)
+				});
+			}
+			const leaf = new WorkspaceLeaf();
+			const immersiveView = new ImmersiveChapterStatusView(leaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			const rootEl = new MockElement('view-container');
+			const headerEl = new MockElement('view-header');
+			const contentEl = new MockElement('view-content');
+			const origCreateDiv = contentEl.createDiv.bind(contentEl);
+			contentEl.createDiv = (...args: Parameters<MockElement['createDiv']>) => {
+				const el = origCreateDiv(...args);
+				el.hide = function () { (this as unknown as { hidden: boolean }).hidden = true; return this; };
+				el.show = function () { (this as unknown as { hidden: boolean }).hidden = false; return this; };
+				return el;
+			};
+			rootEl.children = [headerEl, contentEl];
+			Object.assign(immersiveView, { app, containerEl: rootEl });
+			(immersiveView as unknown as { registerDataEvents(): void }).registerDataEvents();
+			return immersiveView;
+		};
+
+		it('renders only the shared chapter status card and skips stats/tasks/timer/chart work', async () => {
+			const novelA = Object.assign(new TFolder(), { name: '作品A', path: '作品A' });
+			const infoFileA = Object.assign(new TFile('作品信息.md', '作品A/作品信息.md'), { parent: novelA });
+			const chapter1 = Object.assign(new TFile('第1章.md', '作品A/第1章.md'), {
+				basename: '第1章',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: novelA
+			});
+
+			const env = createTestEnvironment([novelA, infoFileA, chapter1], { disableSynthesizedNovelInfo: true });
+			const mainLeaf = {
+				view: {
+					getViewType: () => 'markdown',
+					file: chapter1
+				}
+			} as unknown as import('obsidian').WorkspaceLeaf;
+
+			const immersivePlugin: WritingStatusViewPlugin = {
+				...mockPlugin,
+				immersiveModeManager: {
+					getMainEditorLeaf: vi.fn(() => mainLeaf)
+				}
+			};
+
+			const immersiveView = createImmersiveView(env.app, immersivePlugin);
+
+			expect(immersiveView.getViewType()).toBe(VIEW_TYPES.IMMERSIVE_CHAPTER_STATUS);
+			expect(immersiveView.getDisplayText()).toBe(t('view.immersive-chapter-status'));
+			expect(immersiveView.getIcon()).toBe('file-check');
+
+			await immersiveView.onOpen();
+			await new Promise(resolve => setTimeout(resolve, 0));
+
+			const container = immersiveView.containerEl.children[1] as unknown as MockElement;
+			const cards = container.children.filter(c => c.className?.includes('wn-status-card'));
+			expect(cards).toHaveLength(1);
+			expect(immersiveView.workNameEl).toBeUndefined();
+			expect(immersiveView.miniChartEl).toBeUndefined();
+
+			expect(immersivePlugin.statisticsManager.getCoreStats).not.toHaveBeenCalled();
+			expect(mockTaskManager.reconcileTasks).not.toHaveBeenCalled();
+			expect(mockTaskManager.loadEntries).not.toHaveBeenCalled();
+
+			immersiveView.updateTimer();
+			immersiveView.renderMiniChart(true);
+			expect(immersivePlugin.statisticsManager.getSessionSpeed).not.toHaveBeenCalled();
+
+			await immersiveView.onClose();
+		});
+
+		it('always targets main editor chapter (including valid unmarked chapters) and ignores active reference or fallback', async () => {
+			const novelA = Object.assign(new TFolder(), { name: '作品A', path: '作品A' });
+			const infoFileA = Object.assign(new TFile('作品信息.md', '作品A/作品信息.md'), { parent: novelA });
+			const mainChapter = Object.assign(new TFile('第1章.md', '作品A/第1章.md'), {
+				basename: '第1章',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: novelA
+			});
+			const refFile = Object.assign(new TFile('设定集.md', '作品B/设定集.md'), {
+				basename: '设定集',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: Object.assign(new TFolder(), { name: '作品B', path: '作品B' })
+			});
+			const unmarkedFolder = Object.assign(new TFolder(), { name: '随笔', path: '随笔' });
+			const unmarkedChapter = Object.assign(new TFile('第2章.md', '随笔/第2章.md'), {
+				basename: '第2章',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: unmarkedFolder
+			});
+
+			const env = createTestEnvironment([novelA, infoFileA, mainChapter, refFile, unmarkedFolder, unmarkedChapter], { disableSynthesizedNovelInfo: true });
+			const frontmatterByPath: Record<string, Record<string, unknown>> = {
+				[mainChapter.path]: { status: 'draft', synopsis: '主章简介' },
+				[refFile.path]: { status: 'completed', synopsis: '参考文档简介' }
+			};
+			vi.mocked(env.app.metadataCache.getFileCache).mockImplementation((file: import('obsidian').TFile) => ({
+				frontmatter: frontmatterByPath[file.path] ?? {}
+			}));
+
+			let currentMainFile: import('obsidian').TFile | null = mainChapter as unknown as import('obsidian').TFile;
+			let currentMainLeaf: import('obsidian').WorkspaceLeaf | null = {
+				view: { getViewType: () => 'markdown', file: currentMainFile }
+			} as unknown as import('obsidian').WorkspaceLeaf;
+
+			const immersivePlugin: WritingStatusViewPlugin = {
+				...mockPlugin,
+				immersiveModeManager: {
+					getMainEditorLeaf: vi.fn(() => currentMainLeaf)
+				}
+			};
+
+			const immersiveView = createImmersiveView(env.app, immersivePlugin);
+			await immersiveView.onOpen();
+
+			// Focus is on reference file or auxiliary panel, NOT main chapter
+			env.setActiveMarkdown(refFile);
+			await immersiveView.updateData(true);
+			expect(immersiveView.chapterStatusCardEl.hidden).toBe(false);
+			expect(immersiveView.chapterTitleEl.textContent).toBe('第1章');
+			expect(immersiveView.chapterSubInfoEl.children[0]?.textContent).toBe('主章简介');
+
+			// Focus moves to auxiliary panel (no active markdown), still follows main
+			env.setActiveSidebar(VIEW_TYPES.IMMERSIVE_CHAPTER_STATUS);
+			await immersiveView.updateData(true);
+			expect(immersiveView.chapterTitleEl.textContent).toBe('第1章');
+
+			// Switch main to valid unmarked chapter
+			currentMainFile = unmarkedChapter as unknown as import('obsidian').TFile;
+			currentMainLeaf = {
+				view: { getViewType: () => 'markdown', file: currentMainFile }
+			} as unknown as import('obsidian').WorkspaceLeaf;
+			await immersiveView.updateData(true);
+			expect(immersiveView.chapterStatusCardEl.hidden).toBe(false);
+			expect(immersiveView.chapterTitleEl.textContent).toBe('第2章');
+
+			// No valid main chapter -> hides card even if reference file is active
+			currentMainFile = null;
+			currentMainLeaf = null;
+			env.setActiveMarkdown(refFile);
+			await immersiveView.updateData(true);
+			expect(immersiveView.chapterStatusCardEl.hidden).toBe(true);
+
+			await immersiveView.onClose();
+		});
+
+		it('refreshes on metadata/vault changes without workNameEl, mutates status via writingJourneyService, and suppresses stale async reads or closed timers', async () => {
+			const novelA = Object.assign(new TFolder(), { name: '作品A', path: '作品A' });
+			const infoFileA = Object.assign(new TFile('作品信息.md', '作品A/作品信息.md'), { parent: novelA });
+			const chapter1 = Object.assign(new TFile('第1章.md', '作品A/第1章.md'), {
+				basename: '第1章',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: novelA
+			});
+			const chapter2 = Object.assign(new TFile('第2章.md', '作品A/第2章.md'), {
+				basename: '第2章',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: novelA
+			});
+			const timelineFile = Object.assign(new TFile('时间线.md', '作品A/时间线.md'), {
+				basename: '时间线',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: novelA
+			});
+
+			const env = createTestEnvironment([novelA, infoFileA, chapter1, chapter2, timelineFile], { disableSynthesizedNovelInfo: true });
+			const frontmatterByPath: Record<string, Record<string, unknown>> = {
+				[chapter1.path]: { status: 'draft', synopsis: '初始简介' }
+			};
+			vi.mocked(env.app.metadataCache.getFileCache).mockImplementation((file: import('obsidian').TFile) => ({
+				frontmatter: frontmatterByPath[file.path] ?? {}
+			}));
+
+			let currentMainFile: import('obsidian').TFile = chapter1 as unknown as import('obsidian').TFile;
+			const changeChapterStatus = vi.fn().mockResolvedValue({ success: true, changed: true });
+
+			const immersivePlugin: WritingStatusViewPlugin = {
+				...mockPlugin,
+				timelineManager: {
+					findTimelineFile: vi.fn((folder: string) => folder === '作品A' ? (timelineFile as unknown as import('obsidian').TFile) : null),
+					parseEntries: vi.fn(() => []),
+					getTimelineNodesForChapter: vi.fn((file: import('obsidian').TFile) =>
+						file.path === chapter1.path
+							? [{ time: '2024-01-01', items: [{ description: '第1章事件', origin: '原文', chapter: '[[第1章]]' }], entry: { time: 'Day 1', description: '', chapter: '', rawBlock: '' } }]
+							: []
+					)
+				},
+				writingJourneyService: { changeChapterStatus },
+				immersiveModeManager: {
+					getMainEditorLeaf: vi.fn(() => ({ view: { getViewType: () => 'markdown', file: currentMainFile } }) as unknown as import('obsidian').WorkspaceLeaf)
+				}
+			};
+
+			const immersiveView = createImmersiveView(env.app, immersivePlugin);
+			await immersiveView.onOpen();
+			await immersiveView.setState({}, { history: false });
+
+			// Status badge uses writingJourneyService.changeChapterStatus
+			const menuItems: Array<{ setTitle: (t: string) => unknown; setChecked: (c: boolean) => unknown; onClick: (cb: () => Promise<void>) => unknown }> = [];
+			const addItemSpy = vi.spyOn(Menu.prototype, 'addItem').mockImplementation((cb) => {
+				const item = {
+					setTitle: vi.fn().mockReturnThis(),
+					setChecked: vi.fn().mockReturnThis(),
+					onClick: vi.fn((handler: () => Promise<void>) => {
+						menuItems.push({ ...item, onClick: handler } as never);
+						return item;
+					})
+				};
+				cb(item as never);
+				return Menu.prototype;
+			});
+
+			(immersiveView.chapterStatusBadgeEl as unknown as MockElement).dispatchEvent('click', { stopPropagation: vi.fn(), clientX: 10 });
+			expect(menuItems.length).toBeGreaterThan(1);
+			await (menuItems[1].onClick as unknown as () => Promise<void>)();
+			expect(changeChapterStatus).toHaveBeenCalledWith(expect.objectContaining({
+				file: chapter1,
+				bookPath: '作品A'
+			}));
+			addItemSpy.mockRestore();
+
+			// Metadata change refreshes without workNameEl
+			frontmatterByPath[chapter1.path] = { status: 'completed', synopsis: '更新简介' };
+			chapter1.stat.mtime = 2000;
+			env.triggerMetadataEvent?.('changed', chapter1 as unknown as import('obsidian').TFile);
+			await new Promise(resolve => setTimeout(resolve, 150));
+			expect(immersiveView.chapterSubInfoEl.children[0]?.textContent).toBe('更新简介');
+
+			// Async stale read suppression when switching main chapter
+			timelineFile.stat.mtime = 3000;
+			let readCount = 0;
+			const delayed = env.setDelayedCachedRead((file) => {
+				readCount++;
+				return readCount === 1 && file.path === timelineFile.path;
+			});
+			const p1 = immersiveView.updateData(true);
+			await vi.waitFor(() => expect(env.app.vault.cachedRead).toHaveBeenCalledWith(timelineFile));
+			currentMainFile = chapter2 as unknown as import('obsidian').TFile;
+			await immersiveView.updateData(true);
+			delayed.resolve('## 2024-01-01\n- 第1章事件 [[第1章]]');
+			await p1;
+			expect(immersiveView.chapterTitleEl.textContent).toBe('第2章');
+
+			// Close cancels pending debounce timer
+			void immersiveView.updateData(false);
+			await immersiveView.onClose();
+			expect((immersiveView as unknown as { updateDebounceTimer: number | null }).updateDebounceTimer).toBeNull();
+		});
+
+		it('uses single setTooltip (no HTML title), preserves accessible name, and opens menu via showAtPosition with ownerDocument on Enter/Space', async () => {
+			const novelA = Object.assign(new TFolder(), { name: '作品A', path: '作品A' });
+			const infoFileA = Object.assign(new TFile('作品信息.md', '作品A/作品信息.md'), { parent: novelA });
+			const chapter1 = Object.assign(new TFile('第1章.md', '作品A/第1章.md'), {
+				basename: '第1章',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: novelA
+			});
+
+			const env = createTestEnvironment([novelA, infoFileA, chapter1], { disableSynthesizedNovelInfo: true });
+			vi.mocked(env.app.metadataCache.getFileCache).mockImplementation((file: import('obsidian').TFile) => ({
+				frontmatter: file.path === chapter1.path ? { status: 'draft' } : {}
+			}));
+
+			const changeChapterStatus = vi.fn().mockResolvedValue({ success: true, changed: true });
+			const mainLeaf = {
+				view: { getViewType: () => 'markdown', file: chapter1 }
+			} as unknown as import('obsidian').WorkspaceLeaf;
+
+			const immersivePlugin: WritingStatusViewPlugin = {
+				...mockPlugin,
+				writingJourneyService: { changeChapterStatus },
+				immersiveModeManager: {
+					getMainEditorLeaf: vi.fn(() => mainLeaf)
+				}
+			};
+
+			const immersiveView = createImmersiveView(env.app, immersivePlugin);
+			await immersiveView.onOpen();
+			await immersiveView.updateData(true);
+
+			const badge = immersiveView.chapterStatusBadgeEl as unknown as MockElement & {
+				title?: string;
+				getBoundingClientRect?: () => { left: number; bottom: number };
+				ownerDocument?: Document;
+			};
+
+			// Single tooltip mechanism: no HTML title, accessible role/tabindex/aria-label preserved
+			expect(badge.title).toBeUndefined();
+			expect(badge.getAttribute('title')).toBeNull();
+			expect(badge.getAttribute('role')).toBe('button');
+			expect(badge.getAttribute('tabindex')).toBe('0');
+			const ariaLabel = badge.getAttribute('aria-label');
+			expect(ariaLabel).toContain(t('corkboard.click-to-change-status'));
+			expect(ariaLabel).toContain('草稿');
+
+			const fakeDoc = { nodeType: 9 } as unknown as Document;
+			badge.ownerDocument = fakeDoc;
+			badge.getBoundingClientRect = () => ({ left: 120, bottom: 240 });
+
+			const menuItems: Array<{ onClick: () => Promise<void> }> = [];
+			const addItemSpy = vi.spyOn(Menu.prototype, 'addItem').mockImplementation((cb) => {
+				const item = {
+					setTitle: vi.fn().mockReturnThis(),
+					setChecked: vi.fn().mockReturnThis(),
+					onClick: vi.fn((handler: () => Promise<void>) => {
+						menuItems.push({ onClick: handler });
+						return item;
+					})
+				};
+				cb(item as never);
+				return Menu.prototype;
+			});
+			const showAtPosSpy = vi.spyOn(Menu.prototype, 'showAtPosition');
+			const showAtMouseSpy = vi.spyOn(Menu.prototype, 'showAtMouseEvent');
+
+			// Enter opens menu at badge position with ownerDocument
+			const enterPrevent = vi.fn();
+			const enterStop = vi.fn();
+			badge.dispatchEvent('keydown', { key: 'Enter', preventDefault: enterPrevent, stopPropagation: enterStop });
+			expect(enterPrevent).toHaveBeenCalledOnce();
+			expect(enterStop).toHaveBeenCalledOnce();
+			expect(showAtPosSpy).toHaveBeenCalledWith({ x: 120, y: 240 }, fakeDoc);
+			expect(showAtMouseSpy).not.toHaveBeenCalled();
+
+			// Selecting menu item mutates current chapter status
+			await menuItems[1].onClick();
+			expect(changeChapterStatus).toHaveBeenCalledWith(expect.objectContaining({
+				file: chapter1,
+				bookPath: '作品A'
+			}));
+
+			// Space also opens menu via showAtPosition
+			showAtPosSpy.mockClear();
+			const spacePrevent = vi.fn();
+			const spaceStop = vi.fn();
+			badge.dispatchEvent('keydown', { key: ' ', preventDefault: spacePrevent, stopPropagation: spaceStop });
+			expect(spacePrevent).toHaveBeenCalledOnce();
+			expect(spaceStop).toHaveBeenCalledOnce();
+			expect(showAtPosSpy).toHaveBeenCalledWith({ x: 120, y: 240 }, fakeDoc);
+
+			// Pointer click still uses showAtMouseEvent
+			const mouseEvt = { stopPropagation: vi.fn(), clientX: 50, clientY: 60 };
+			badge.dispatchEvent('click', mouseEvt);
+			expect(showAtMouseSpy).toHaveBeenCalledWith(mouseEvt);
+
+			addItemSpy.mockRestore();
+			showAtPosSpy.mockRestore();
+			showAtMouseSpy.mockRestore();
+			await immersiveView.onClose();
+		});
+
+		it('hides chapter card and shows empty state when mainLeaf is null or non-markdown even if saved/reference files exist', async () => {
+			const novelA = Object.assign(new TFolder(), { name: '作品A', path: '作品A' });
+			const infoFileA = Object.assign(new TFile('作品信息.md', '作品A/作品信息.md'), { parent: novelA });
+			const savedChapter = Object.assign(new TFile('第1章.md', '作品A/第1章.md'), {
+				basename: '第1章',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: novelA
+			});
+			const refFile = Object.assign(new TFile('设定.md', '作品A/设定.md'), {
+				basename: '设定',
+				extension: 'md',
+				stat: { mtime: 1000 },
+				parent: novelA
+			});
+
+			const env = createTestEnvironment([novelA, infoFileA, savedChapter, refFile], { disableSynthesizedNovelInfo: true });
+			env.setActiveMarkdown(refFile);
+
+			let currentMainLeaf: import('obsidian').WorkspaceLeaf | null = null;
+			const immersivePlugin: WritingStatusViewPlugin = {
+				...mockPlugin,
+				immersiveModeManager: {
+					getMainEditorLeaf: vi.fn(() => currentMainLeaf),
+					// Simulate stale savedActiveFile returned by manager if anyone wrongly called getMainEditorFile
+					getMainEditorFile: vi.fn(() => savedChapter as unknown as import('obsidian').TFile)
+				} as unknown as WritingStatusViewPlugin['immersiveModeManager']
+			};
+
+			const immersiveView = createImmersiveView(env.app, immersivePlugin);
+			await immersiveView.onOpen();
+			await immersiveView.updateData(true);
+
+			// mainLeaf === null -> must hide card and show empty state, never fall back to getMainEditorFile or active reference
+			expect(immersiveView.chapterStatusCardEl.hidden).toBe(true);
+			expect((immersiveView as unknown as { chapterEmptyStateEl: MockElement & { hidden: boolean } }).chapterEmptyStateEl.hidden).toBe(false);
+
+			// Non-markdown mainLeaf -> must also hide card and show empty state
+			currentMainLeaf = {
+				view: { getViewType: () => 'canvas', file: savedChapter }
+			} as unknown as import('obsidian').WorkspaceLeaf;
+			await immersiveView.updateData(true);
+			expect(immersiveView.chapterStatusCardEl.hidden).toBe(true);
+			expect((immersiveView as unknown as { chapterEmptyStateEl: MockElement & { hidden: boolean } }).chapterEmptyStateEl.hidden).toBe(false);
+
+			await immersiveView.onClose();
+		});
+
+		it('reuses chapter association across chapter mtime and metadata updates while invalidating on source, replacement, character cache, or error', async () => {
+			const novelA = Object.assign(new TFolder(), { name: '作品A', path: '作品A' });
+			const infoFileA = Object.assign(new TFile('作品信息.md', '作品A/作品信息.md'), { parent: novelA });
+			const fFile = Object.assign(new TFile('伏笔.md', '作品A/伏笔.md'), {
+				basename: '伏笔',
+				extension: 'md',
+				stat: { mtime: 100, size: 50 },
+				parent: novelA
+			});
+			const tlFile = Object.assign(new TFile('时间线.md', '作品A/时间线.md'), {
+				basename: '时间线',
+				extension: 'md',
+				stat: { mtime: 100, size: 50 },
+				parent: novelA
+			});
+			let chapter = Object.assign(new TFile('第1章.md', '作品A/第1章.md'), {
+				basename: '第1章',
+				extension: 'md',
+				stat: { mtime: 1000, size: 100 },
+				parent: novelA,
+				frontmatter: { status: 'writing', synopsis: '初始摘要', lore: ['角色甲'] }
+			});
+
+			const env = createTestEnvironment([novelA, infoFileA, fFile, tlFile, chapter], { disableSynthesizedNovelInfo: true });
+			const mainLeaf = { view: { getViewType: () => 'markdown', file: chapter } } as unknown as import('obsidian').WorkspaceLeaf;
+
+			const cachedReadSpy = env.app.vault.cachedRead as ReturnType<typeof vi.fn>;
+			cachedReadSpy.mockImplementation(async (f: TFile) => {
+				if (f.path === fFile.path) return 'fs-content';
+				if (f.path === tlFile.path) return 'tl-content';
+				return '';
+			});
+
+			const parseForeshadowing = vi.fn((): ParsedForeshadowingEntry[] => [{
+				sourceFile: '第1章',
+				createdAt: 'Day 1',
+				description: '伏笔A',
+				status: ForeshadowingStatus.Pending,
+				tags: [],
+				contents: [{ source: '第1章', time: 'Day 1', text: '原文A' }],
+				rawBlock: ''
+			}]);
+			const parseTimeline = vi.fn(() => [{ time: 'Day 1', type: '事件', description: '事件A', chapter: '第1章', rawBlock: '', items: [{ description: '事件A', chapter: '第1章', origin: '原文TL' }] }]);
+			const getTimelineNodesForChapter = vi.fn(() => [{
+				time: 'Day 1',
+				type: '事件',
+				entry: { time: 'Day 1', type: '事件', description: '事件A', chapter: '第1章', rawBlock: '' },
+				items: [{ description: '事件A', chapter: '第1章', origin: '原文TL' }]
+			}]);
+			const createRefIndexSpy = vi.spyOn(ChapterSorter, 'createReferenceIndex');
+
+			let charCacheVersion = 1;
+			const immersivePlugin: WritingStatusViewPlugin = {
+				...mockPlugin,
+				getVaultMarkdownFiles: vi.fn(() => [chapter]),
+				getTrackedMarkdownFiles: vi.fn(() => [chapter]),
+				foreshadowingManager: {
+					findForeshadowingFile: vi.fn(() => fFile as unknown as import('obsidian').TFile),
+					parseEntries: parseForeshadowing
+				} as unknown as WritingStatusViewPlugin['foreshadowingManager'],
+				timelineManager: {
+					findTimelineFile: vi.fn(() => tlFile as unknown as import('obsidian').TFile),
+					parseEntries: parseTimeline,
+					getTimelineNodesForChapter
+				} as unknown as WritingStatusViewPlugin['timelineManager'],
+				characterManager: {
+					...mockPlugin.characterManager,
+					get cacheVersion() { return charCacheVersion; }
+				} as unknown as WritingStatusViewPlugin['characterManager'],
+				immersiveModeManager: {
+					getMainEditorLeaf: vi.fn(() => mainLeaf),
+					getMainEditorFile: vi.fn(() => chapter as unknown as import('obsidian').TFile)
+				} as unknown as WritingStatusViewPlugin['immersiveModeManager']
+			};
+
+			const immersiveView = createImmersiveView(env.app, immersivePlugin);
+			await immersiveView.onOpen();
+			await immersiveView.updateData(true);
+			cachedReadSpy.mockClear();
+			parseForeshadowing.mockClear();
+			parseTimeline.mockClear();
+			createRefIndexSpy.mockClear();
+
+			// 20 chapter-only updates changing chapter mtime while sources remain fixed
+			for (let i = 0; i < 20; i++) {
+				chapter.stat.mtime = 1001 + i;
+				await immersiveView.updateData(true);
+			}
+
+			expect(cachedReadSpy).toHaveBeenCalledTimes(0);
+			expect(parseForeshadowing).toHaveBeenCalledTimes(0);
+			expect(parseTimeline).toHaveBeenCalledTimes(0);
+			expect(createRefIndexSpy).toHaveBeenCalledTimes(0);
+
+			// Status / synopsis / lore frontmatter updates refresh UI without re-reading or re-parsing sources
+			(chapter as unknown as { frontmatter: Record<string, unknown> }).frontmatter = {
+				status: 'completed',
+				synopsis: '更新摘要',
+				lore: ['角色乙']
+			};
+			await immersiveView.updateData(true);
+
+			expect(cachedReadSpy).toHaveBeenCalledTimes(0);
+			expect(parseForeshadowing).toHaveBeenCalledTimes(0);
+			expect(parseTimeline).toHaveBeenCalledTimes(0);
+			expect(createRefIndexSpy).toHaveBeenCalledTimes(0);
+			expect((immersiveView.chapterStatusCardEl as unknown as MockElement).querySelector('.wn-chapter-synopsis-text')?.textContent).toBe('更新摘要');
+			expect((immersiveView.chapterStatusCardEl as unknown as MockElement).querySelector('.wn-badge-lore')?.textContent).toBe('角色乙');
+
+			// Alias changes can redirect chapter references without modifying either source file.
+			Object.assign((chapter as unknown as { frontmatter: Record<string, unknown> }).frontmatter, { aliases: ['Alternate chapter'] });
+			await immersiveView.updateData(true);
+			expect(cachedReadSpy).toHaveBeenCalledTimes(2);
+			const sibling = Object.assign(new TFile('第2章.md', '作品A/第2章.md'), { parent: novelA, extension: 'md' });
+			env.vaultFiles.set(sibling.path, sibling);
+			env.triggerMetadataEvent?.('changed', sibling);
+			await immersiveView.updateData(true);
+			expect(cachedReadSpy).toHaveBeenCalledTimes(4);
+			cachedReadSpy.mockClear();
+			parseForeshadowing.mockClear();
+			parseTimeline.mockClear();
+
+			// Source mtime change invalidates and re-reads only when source changes
+			fFile.stat.mtime = 200;
+			await immersiveView.updateData(true);
+			expect(cachedReadSpy).toHaveBeenCalledTimes(2);
+			expect(parseForeshadowing).toHaveBeenCalledTimes(1);
+
+			// characterManager cacheVersion change invalidates timeline/association
+			charCacheVersion = 2;
+			await immersiveView.updateData(true);
+			expect(cachedReadSpy).toHaveBeenCalledTimes(4);
+
+			// Same-path chapter file replacement invalidates association
+			const replacementChapter = Object.assign(new TFile('第1章.md', '作品A/第1章.md'), {
+				basename: '第1章',
+				extension: 'md',
+				stat: { mtime: 1020, size: 100 },
+				parent: novelA,
+				frontmatter: { status: 'completed', synopsis: '更新摘要', lore: ['角色乙'] }
+			});
+			chapter = replacementChapter;
+			env.vaultFiles.set(replacementChapter.path, replacementChapter);
+			(mainLeaf.view as unknown as { file: TFile }).file = replacementChapter;
+			await immersiveView.updateData(true);
+			expect(cachedReadSpy).toHaveBeenCalledTimes(6);
+
+			// Read error must NOT cache failed association, allowing retry
+			fFile.stat.mtime = 300;
+			cachedReadSpy.mockRejectedValueOnce(new Error('transient read error'));
+			await immersiveView.updateData(true);
+			expect(cachedReadSpy).toHaveBeenCalledTimes(8);
+			await immersiveView.updateData(true);
+			expect(cachedReadSpy).toHaveBeenCalledTimes(10);
+
+			createRefIndexSpy.mockRestore();
+			await immersiveView.onClose();
 		});
 	});
 });

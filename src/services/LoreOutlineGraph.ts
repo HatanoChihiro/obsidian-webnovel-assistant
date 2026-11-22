@@ -5,25 +5,44 @@ import { isProtagonistType, readLoreMetadata } from './LoreMetadata';
 import type { GraphData, GraphEdge, GraphNode } from './RelationGraphManager';
 import { t } from '../i18n';
 
-export function getLoreGraphAncestorPaths(node: GraphNode, nodes: ReadonlyMap<string, GraphNode>): GraphNode[][] {
+export const LORE_ANCESTOR_PATH_DISPLAY_LIMIT = 32;
+
+function* walkAncestorPaths(parent: GraphNode, nodes: ReadonlyMap<string, GraphNode>): Generator<GraphNode[]> {
 	interface Step { node: GraphNode; next?: Step }
-	const paths: GraphNode[][] = [];
-	const pending: Step[] = [];
-	const addParents = (entry: GraphNode, next?: Step) => {
-		const before = pending.length;
-		for (const id of [...entry.outlineParents ?? []].reverse()) {
-			const parent = nodes.get(id);
-			if (parent) pending.push({ node: parent, next });
-		}
-		return pending.length > before;
-	};
-	addParents(node);
+	const pending: Step[] = [{ node: parent }];
 	while (pending.length) {
 		const step = pending.pop()!;
-		if (addParents(step.node, step)) continue;
+		const before = pending.length;
+		const parents = step.node.outlineParents ?? [];
+		for (let index = parents.length - 1; index >= 0; index--) {
+			const ancestor = nodes.get(parents[index]);
+			if (ancestor) pending.push({ node: ancestor, next: step });
+		}
+		if (pending.length > before) continue;
 		const path: GraphNode[] = [];
 		for (let part: Step | undefined = step; part; part = part.next) path.push(part.node);
-		paths.push(path);
+		yield path;
+	}
+}
+
+/** Collect display paths fairly across direct parents, with one extra path to detect overflow. */
+export function getLoreGraphAncestorPaths(node: GraphNode, nodes: ReadonlyMap<string, GraphNode>): GraphNode[][] {
+	const cursors = new Set<Generator<GraphNode[]>>();
+	for (const id of node.outlineParents ?? []) {
+		const parent = nodes.get(id);
+		if (parent) cursors.add(walkAncestorPaths(parent, nodes));
+	}
+	const paths: GraphNode[][] = [];
+	while (cursors.size) {
+		for (const cursor of cursors) {
+			const next = cursor.next();
+			if (next.done) {
+				cursors.delete(cursor);
+				continue;
+			}
+			paths.push(next.value);
+			if (paths.length > LORE_ANCESTOR_PATH_DISPLAY_LIMIT) return paths;
+		}
 	}
 	return paths;
 }
