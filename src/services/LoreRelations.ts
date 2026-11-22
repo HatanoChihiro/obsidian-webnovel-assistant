@@ -2,6 +2,11 @@ import type { LoreEntry, LoreRelationItem } from './CharacterManager';
 import type { LoreRelationBlock } from './LoreOutline';
 
 export const loreRelationsHeading = '###### 关系';
+const parentRelationLabels = new Set(['上级词条', '上級詞條', 'parent entry']);
+
+export function isLoreParentRelation(label: string): boolean {
+	return parentRelationLabels.has(label.trim().toLowerCase());
+}
 
 export const legacyRelationLine = /^(\s*(?:[-*]\s+)?(?:\*\*|__)?([^\n*:：]+?)(?:\*\*|__)?\s*[:：](?![:：])\s*)(.*)$/;
 

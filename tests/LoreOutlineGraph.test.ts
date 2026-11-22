@@ -20,7 +20,7 @@ function fixture(path: string, text: string) {
 	return { file, text, cache };
 }
 
-function graphFor(documents: ReturnType<typeof fixture>[], includeHeadingHierarchy = true) {
+function graphFor(documents: ReturnType<typeof fixture>[], includeHeadingHierarchy = true, focus?: ReturnType<typeof fixture>) {
 	const app = {
 		vault: { cachedRead: (file: TFile) => Promise.resolve(documents.find(item => item.file === file)!.text) },
 		metadataCache: {
@@ -28,9 +28,10 @@ function graphFor(documents: ReturnType<typeof fixture>[], includeHeadingHierarc
 			getFirstLinkpathDest: (link: string) => documents.find(item => item.file.basename === link)?.file ?? null,
 		},
 	} as unknown as App;
-	const plugin = { settings: {} } as WebNovelAssistantPlugin;
-	return new RelationGraphManager(app, plugin).buildGraphData(null, {
-		files: documents.map(item => item.file), includeHeadingHierarchy, autoLinkMentions: true,
+	const files = documents.map(item => item.file);
+	const plugin = { settings: {}, characterManager: { getBookPathForFile: () => '作品', getEffectiveLoreFiles: () => files } } as unknown as WebNovelAssistantPlugin;
+	return new RelationGraphManager(app, plugin).buildGraphData(focus?.file, {
+		files: focus ? undefined : files, includeHeadingHierarchy, autoLinkMentions: true, enableGlobal: false,
 	});
 }
 
@@ -38,7 +39,7 @@ describe('标题层级与设定关系', () => {
 	it('reads type and aliases from each heading only, ignoring examples and metadata mentions', async () => {
 		const note = fixture('设定/潮镜城.md', [
 			'# 潮镜城', '类型：地区', '## 水网', 'Type: 水系', '### 北环', '類型：渠段',
-			'#### 闸站', '型別：站点', '##### 检修层', '**类型**：设施', '###### 值班人',
+			'#### 闸站', '型別：站点', '##### 检修层', '**类型**：设施', '##### 值班人',
 			'%%', '类型：隐藏类型', '%%', '<!--', '类型：注释类型', '-->',
 			'```md', '类型：示例类型', '```', '**类型**：主角', '别名：守门人',
 			'## 空目录', '### 潮钟', '类型：仪器', '## 另一区', '这里提到守门人。',
@@ -58,25 +59,25 @@ describe('标题层级与设定关系', () => {
 		expect(legacy.nodes.some(node => node.isProtagonist)).toBe(false);
 	});
 
-	it('沿 H1–H6 连接直属父节点，并在 H6 上同时保留旧词条的独立关系', async () => {
+	it('沿 H1–H5 连接直属父节点，并保留旧词条的独立关系', async () => {
 		const map = fixture('设定/地理志.md', [
-			'# 地理志', '## 白岬王国', '### 北境领', '#### 雾港城', '##### 旧港区', '###### 东码头',
+			'# 地理志', '## 白岬王国', '### 北境领', '#### 雾港城', '##### 东码头',
 			'###### 关系', '**补给**：[[势力志#海鸥商会|海鸥]]', '', '### 关系', '- **通商**：海鸥商会',
 		].join('\n'));
 		const faction = fixture('设定/势力志.md', '# 势力志\n## 海鸥商会');
 		const graph = await graphFor([map, faction]);
 		const titles = new Map(graph.nodes.map(node => [node.id, node.heading]));
 		const edges = graph.edges.map(edge => [titles.get(edge.source), titles.get(edge.target), edge.type, edge.label]);
-		for (const [parent, child] of [['地理志', '白岬王国'], ['白岬王国', '北境领'], ['北境领', '雾港城'], ['雾港城', '旧港区'], ['旧港区', '东码头']]) {
+		for (const [parent, child] of [['地理志', '白岬王国'], ['白岬王国', '北境领'], ['北境领', '雾港城'], ['雾港城', '东码头']]) {
 			expect(edges).toContainEqual([parent, child, 'hierarchy', expect.any(String)]);
 		}
 		expect(edges).toContainEqual(['东码头', '海鸥商会', 'explicit', '补给']);
 		expect(edges).toContainEqual(['白岬王国', '海鸥商会', 'explicit', '通商']);
-		expect(graph.nodes.find(node => node.heading === '东码头')?.headingLine).toBe(5);
+		expect(graph.nodes.find(node => node.heading === '东码头')?.headingLine).toBe(4);
 		expect([...titles.values()]).not.toContain('关系');
-		expect(['地理志', '白岬王国', '北境领', '雾港城', '旧港区', '东码头', '海鸥商会']
+		expect(['地理志', '白岬王国', '北境领', '雾港城', '东码头', '海鸥商会']
 			.map(title => graph.nodes.find(node => node.heading === title)?.descendantCount ?? 0))
-			.toEqual([5, 4, 3, 2, 1, 0, 0]);
+			.toEqual([4, 3, 2, 1, 0, 0]);
 
 		const legacy = await graphFor([map, faction], false);
 		expect(legacy.nodes.map(node => node.id)).toEqual(['白岬王国', '海鸥商会']);
@@ -102,13 +103,14 @@ describe('标题层级与设定关系', () => {
 		]);
 	});
 
-	it('六级关系块分别归属于 H1–H6 的词条，并与直属正文和下个同级词条隔离', async () => {
-		const names = ['地图', '王国', '北领', '港城', '旧港', '东码头'];
+	it('H6 关系块分别归属于 H1–H5，旧测试 H6 标题及其关系不会并入 H5', async () => {
+		const names = ['地图', '王国', '北领', '港城', '东码头'];
 		const lines = names.flatMap((name, index) => [
 			`${'#'.repeat(index + 1)} ${name}`, `${name}正文`,
 			'###### 关系', `- **${name}补给**：[[势力志#商会]]`, '',
 		]);
-		lines.push('###### 西码头', '西码头正文', '关系:: 已退出 → [[势力志#商会]]');
+		lines.push('###### 旧六级词条', '六级正文', '###### 关系', '**不应继承**：[[势力志#商会]]',
+			'##### 西码头', '西码头正文', '关系:: 已退出 → [[势力志#商会]]');
 		const outline = buildLoreOutline(scanLoreHeadings(lines), lines.length);
 		expect(outline.map(section => section.title)).toEqual([...names, '西码头']);
 		expect(outline.slice(0, -1).map(section => getLoreSectionText(lines, section))).toEqual(names.map(name => `${name}正文`));
@@ -122,7 +124,7 @@ describe('标题层级与设定关系', () => {
 
 	it('无词条标题的单文件设定可同时读取六级关系块和旧关系列表', async () => {
 		const note = fixture('设定/档案.md', '独立设定。\n###### 关系\n- **补给**：[[地图#地区#王国#东码头|东码头]]\n### 关系\n- **合作**：王国');
-		const map = fixture('设定/地图.md', '# 地区\n## 王国\n###### 东码头');
+		const map = fixture('设定/地图.md', '# 地区\n## 王国\n##### 东码头');
 		const graph = await graphFor([note, map]);
 		const titles = new Map(graph.nodes.map(node => [node.id, node.heading]));
 		expect(graph.edges.filter(edge => edge.type === 'explicit').map(edge => [
@@ -130,8 +132,51 @@ describe('标题层级与设定关系', () => {
 		])).toEqual([['档案', '东码头', '补给'], ['档案', '王国', '合作']]);
 	});
 
+	it('connects an H5 in one note to the H1 and local children of a continuation in both standalone directions', async () => {
+		const map = fixture('设定/地图.md', [
+			'# 世界', '## 王国', '### 北领', '#### 港城', '##### 东码头', '这里只有码头正文。',
+			'###### 关系', '**担保**：[[势力志#商会]]',
+			'###### 旧六级条目', '###### 关系', '**过期关系**：[[势力志#商会]]',
+		].join('\n'));
+		const next = fixture('设定/外港.md', [
+			'# 外港', '###### 关系', '**上级词条**：[[地图#世界#王国#北领#港城#东码头|东码头]]',
+			'**配给**：[[势力志#商会]]', '## 下层吊桥', '### 夜班', '#### 接驳口', '##### 潮尺',
+		].join('\n'));
+		const nested = fixture('设定/潮室.md', '# 潮室\n###### 关系\n**上级词条**：[[外港#外港#下层吊桥#夜班#接驳口#潮尺]]');
+		const unrelated = fixture('设定/势力志.md', '## 商会');
+		const files = [map, next, nested, unrelated];
+		const graph = await graphFor(files);
+		const nodes = new Map(graph.nodes.map(node => [node.heading, node]));
+		expect(nodes.get('外港')?.outlineParent).toBe(nodes.get('东码头')?.id);
+		expect(nodes.get('潮室')?.outlineParent).toBe(nodes.get('潮尺')?.id);
+		expect(nodes.get('世界')?.descendantCount).toBe(10);
+		expect(nodes.get('东码头')?.descendantCount).toBe(6);
+		expect(nodes.get('外港')?.descendantCount).toBe(5);
+		expect(nodes.get('商会')?.descendantCount).toBeUndefined();
+		expect(graph.edges.filter(edge => edge.type === 'explicit').map(edge => edge.label)).toEqual(['担保', '配给']);
+		expect(graph.edges.filter(edge => edge.source === nodes.get('东码头')?.id && edge.target === nodes.get('外港')?.id))
+			.toEqual([{ source: nodes.get('东码头')?.id, target: nodes.get('外港')?.id, label: expect.any(String), type: 'hierarchy' }]);
+		for (const focus of [map, next, nested]) {
+			const local = await graphFor(files, true, focus);
+			expect(local.nodes.map(node => node.heading).sort()).toEqual(graph.nodes.map(node => node.heading).filter(name => name !== '商会').sort());
+		}
+	});
+
+	it('ignores a cycle, conflicting parent declarations, and ambiguous heading links without emitting fake relationships', async () => {
+		const first = fixture('设定/甲.md', '# 甲\n###### 关系\n**上级词条**：[[乙#乙#乙子]]\n## 甲子');
+		const second = fixture('设定/乙.md', '# 乙\n###### 关系\n**上级词条**：[[甲#甲#甲子]]\n## 乙子');
+		const conflicting = fixture('设定/丙.md', '# 丙\n###### 关系\n**上级词条**：[[甲#甲子]]\n**上级词条**：[[乙#乙子]]');
+		const ambiguous = fixture('设定/丁.md', '# 丁\n###### 关系\n**上级词条**：[[重名#码头]]');
+		const duplicates = fixture('设定/重名.md', '# 重名\n## 北区\n##### 码头\n## 南区\n##### 码头');
+		const graph = await graphFor([first, second, conflicting, ambiguous, duplicates]);
+		for (const name of ['甲', '乙', '丙', '丁']) {
+			expect(graph.nodes.find(node => node.heading === name)?.outlineParent).toBeUndefined();
+		}
+		expect(graph.edges.some(edge => edge.type === 'explicit')).toBe(false);
+	});
+
 	it('旧式正名关系优先保留同名的原二级词条', async () => {
-		const note = fixture('设定/地图.md', '## 码头\n原词条。\n## 城区\n###### 码头\n子词条。\n### 关系\n- **通商**：码头');
+		const note = fixture('设定/地图.md', '## 码头\n原词条。\n## 城区\n##### 码头\n子词条。\n### 关系\n- **通商**：码头');
 		const graph = await graphFor([note]);
 		expect(graph.nodes.filter(node => node.heading === '码头')).toHaveLength(2);
 		expect(graph.edges.filter(edge => edge.label === '通商')).toEqual([{ source: '城区', target: '码头', label: '通商', type: 'explicit' }]);

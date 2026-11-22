@@ -6,6 +6,19 @@ import { scanFenceLine, type FenceScanState } from './LoreTemplateService';
 
 export const loreRelationHeadings = new Set(['关系', '關係', 'relation', 'relations', 'relationships']);
 
+function isRelationHeading(heading: HeadingPosition): boolean {
+	return loreRelationHeadings.has(cleanLoreHeading(heading.heading).toLowerCase());
+}
+
+function followsPlainH6(headings: readonly HeadingPosition[], index: number): boolean {
+	let previous = index - 1;
+	while (previous >= 0 && headings[previous].level === 6) {
+		if (!isRelationHeading(headings[previous])) return true;
+		previous--;
+	}
+	return false;
+}
+
 export interface LoreRelationBlock {
 	level: number;
 	start: number;
@@ -104,17 +117,14 @@ export function buildLoreOutline(headings: readonly HeadingPosition[], lineCount
 		heading.subtreeEnd = end;
 		if (relationOwner) {
 			relationOwner.relationBlocks.push({ level: heading.level, start: heading.line, bodyStart: heading.bodyStart, end });
-			if (heading.level === 6 && relationOwner.level === 6) relationOwner.subtreeEnd = end;
 		}
 	};
 	for (let index = 0; index < headings.length; index++) {
 		const source = headings[index];
 		const title = cleanLoreHeading(source.heading);
-		const isRelation = loreRelationHeadings.has(title.toLowerCase());
-		const last = stack.at(-1);
-		// Level six has no child heading level, so a following H6 relation block belongs to that entry.
-		const precedingSix = isRelation && source.level === 6 && last?.heading.level === 6
-			? last.relationBlock ? last.relationOwner : last.heading : undefined;
+		const isRelation = isRelationHeading(source);
+		// Earlier test builds used plain H6 titles as entries. Do not promote their relations to H5.
+		const detachedRelation = isRelation && source.level === 6 && followsPlainH6(headings, index);
 		while (stack.length && stack[stack.length - 1].heading.level >= source.level) close(source.position.start.line);
 		const previous = stack[stack.length - 1];
 		const parent = previous?.heading;
@@ -130,9 +140,9 @@ export function buildLoreOutline(headings: readonly HeadingPosition[], lineCount
 			subtreeEnd: lineCount, relationBlocks: [],
 			key: `${parent?.key ?? ''}/${JSON.stringify([title, occurrence])}`,
 		};
-		const relationOwner = isRelation && !previous?.relationBlock ? precedingSix ?? parent : undefined;
+		const relationOwner = isRelation && !detachedRelation && !previous?.relationBlock ? parent : undefined;
 		stack.push({ heading, relationBlock, relationOwner });
-		if (!relationBlock && title) outline.push(heading);
+		if (!relationBlock && source.level < 6 && title) outline.push(heading);
 	}
 	while (stack.length) close(lineCount);
 	return outline;
@@ -142,11 +152,12 @@ export function getLoreSectionText(lines: readonly string[], section: LoreOutlin
 	return lines.slice(section.bodyStart, section.bodyEnd).join('\n').trim();
 }
 
-export function getFileLoreRelationBlocks(headings: readonly HeadingPosition[], lineCount: number): LoreRelationBlock[] {
+export function getFileLoreRelationBlocks(headings: readonly HeadingPosition[], lineCount: number, includeDetached = false): LoreRelationBlock[] {
 	const blocks: LoreRelationBlock[] = [];
 	for (const [index, heading] of headings.entries()) {
 		const start = heading.position.start.line;
-		if (start < (blocks.at(-1)?.end ?? 0) || !loreRelationHeadings.has(cleanLoreHeading(heading.heading).toLowerCase())) continue;
+		if (start < (blocks.at(-1)?.end ?? 0) || !isRelationHeading(heading)) continue;
+		if (!includeDetached && heading.level === 6 && followsPlainH6(headings, index)) continue;
 		const next = headings.slice(index + 1).find(item => item.level <= heading.level);
 		blocks.push({ level: heading.level, start, bodyStart: heading.position.end.line + 1, end: next?.position.start.line ?? lineCount });
 	}

@@ -988,16 +988,27 @@ Place the cursor on the line to format. Open the wheel and press `1`–`6` to se
 
 ###### Define a relationship from a subheading
 
-Add `###### 关系` (or `###### Relations`) after the entry's prose and before the next heading. A relationship section immediately after an H6 entry belongs to that H6 entry. **Add Relationship** in the card editor and **Add Lore Relationship** in a Markdown editor generate the same section and relation lines.
+H1–H5 define lore entries. Add `###### 关系` (or `###### Relations`) after the entry's prose and before any subsequent heading. **Add Relationship** in the card editor and **Add Lore Relationship** in a Markdown editor generate the same section and relation lines. Other H6 headings remain in Markdown. Move any relationship section that follows one to a supported entry so WNA can read it.
 
 ```markdown
-###### East Pier
+##### East Pier
 
 ###### Relations
 **Supplies**: [[Factions#Seagull Guild|Seagull Guild]]
 ```
 
-The lore graph shows H1–H6 hierarchy with “Contains” edges. Each card shows the prose directly under its own heading. Deeper cards show their parent path. Existing `### Relations` sections remain readable. New and edited relationships use the H6 section.
+To continue beyond H5, create another note in the same work's lore folder. Use `Parent Entry` in the first H1's relationship section to link to the parent heading in the other note.
+
+```markdown
+# Tide Platform
+
+###### Relations
+**Parent Entry**: [[Harbor#Harbor#Outer Port#North Bay#Old District#East Pier|East Pier]]
+
+## Gauge Station
+```
+
+The graph shows “Contains” edges across both notes and through their headings. Multiple notes can continue from the same parent. Each continuation uses one parent link. Existing `### Relations` sections remain readable.
 
 ##### Related Settings
 - **Collapse Subheadings in Hover Card**: For long quick-reference content, collapse level-3 and deeper subheadings by default and expand them on click.

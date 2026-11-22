@@ -230,7 +230,7 @@ export class LoreCardRenderer {
 			// 移除顶部的 # 一级标题（如果存在）
 			bodyText = bodyText.replace(/^\s*#\s+[^\n]*\r?\n/, '');
 			const lines = bodyText.split(/\r?\n/);
-			for (const block of getFileLoreRelationBlocks(scanLoreHeadings(lines), lines.length).reverse()) {
+			for (const block of getFileLoreRelationBlocks(scanLoreHeadings(lines), lines.length, true).reverse()) {
 				lines.splice(block.start, block.end - block.start);
 			}
 			bodyText = lines.join('\n');

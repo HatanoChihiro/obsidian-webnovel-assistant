@@ -5,7 +5,7 @@ import { getDefaultFileName, getDefaultFileNameCandidates, getLoreLabel } from '
 import { findBookRoot, getCandidateNames, isCandidateSubpath } from '../utils/path';
 import { t } from '../i18n';
 import { trimBlankLines } from './LoreTemplateService';
-import { buildLoreOutline, findLoreOutlineTarget, getFileLoreBody, getLoreFrontmatterEnd, getLoreSectionText, readLoreFrontmatter, relationBodyLines, scanLoreHeadings, type LoreOutlineHeading } from './LoreOutline';
+import { buildLoreOutline, findLoreOutlineTarget, getFileLoreBody, getLoreFrontmatterEnd, getLoreSectionText, loreRelationHeadings, readLoreFrontmatter, relationBodyLines, scanLoreHeadings, type LoreOutlineHeading } from './LoreOutline';
 import { getLoreFrontmatterType, readLoreMetadata, readLoreMetadataLine, rewriteLoreFrontmatterType, visibleLoreLines } from './LoreMetadata';
 import { formatLoreRelationLine, formatLoreRelationTarget, legacyRelationLine, loreRelationsHeading, planLoreRelationBlockInsertion, planLoreRelationEdits, rewriteLoreRelationLines, splitLoreRelationTargets } from './LoreRelations';
 
@@ -1494,12 +1494,13 @@ export class CharacterManager {
 		const outline = buildLoreOutline(headings, lines.length);
 		const fileEntryName = cleanLoreHeading(file.basename);
 		const hasH2 = outline.some(section => section.level === 2);
+		const hasPlainH6 = headings.some(heading => heading.level === 6 && !loreRelationHeadings.has(cleanLoreHeading(heading.heading).toLowerCase()));
 		const entries = outline.map((section, index) => {
 			const body = getLoreSectionText(lines, section);
 			const important = /<!--\s*wn-important\s*-->/.test(body) || undefined;
 			const fileBacked = index === 0 && !hasH2 && Boolean(fileEntryName);
 			const entry: LoreEntry = { file, heading: fileBacked ? fileEntryName : section.title, important,
-				section: fileBacked && outline.length === 1 ? undefined : section, fileBacked };
+				section: fileBacked && outline.length === 1 && !hasPlainH6 ? undefined : section, fileBacked };
 			addEntry(entry.heading, entry);
 			if (entry.heading !== section.title) addEntry(section.title, entry);
 			for (const alias of readLoreMetadata(lines.slice(section.bodyStart, section.bodyEnd)).aliases) addEntry(alias, entry);
@@ -2198,6 +2199,7 @@ export class CharacterManager {
 
 		let inRelationSection = false;
 		let passedRelationSection = false;
+		let inPlainH6 = false;
 
 		const relations: LoreRelationItem[] = [];
 		const rawRelationItems: LoreRelationItem[] = [];
@@ -2230,6 +2232,15 @@ export class CharacterManager {
 				}
 
 				const relHeadingMatch = /^ {0,3}(#{3}|#{6})[ \t]+(关系|關係|Relations?|Relationships)(?:[ \t]+#+)?\s*$/i.exec(visibleLines[i]);
+				const nextHeading = /^ {0,3}(#{1,6})(?:[ \t]+|$)/.exec(visibleLines[i]);
+				if (nextHeading?.[1].length === 6 && (inPlainH6 || !relHeadingMatch)) {
+					inPlainH6 = true;
+					inRelationSection = false;
+					passedRelationSection = true;
+					tailLines.push(line);
+					continue;
+				}
+				if (nextHeading && nextHeading[1].length < 6) inPlainH6 = false;
 				if (relHeadingMatch) {
 					inRelationSection = true;
 					relationLevel = relHeadingMatch[1].length;
@@ -2238,7 +2249,6 @@ export class CharacterManager {
 					continue;
 				}
 
-				const nextHeading = /^ {0,3}(#{1,6})[ \t]+/.exec(visibleLines[i]);
 				if (inRelationSection && nextHeading && nextHeading[1].length <= relationLevel) {
 					inRelationSection = false;
 					passedRelationSection = true;

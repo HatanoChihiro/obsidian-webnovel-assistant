@@ -5,7 +5,7 @@ import { buildLoreOutline, scanLoreHeadings } from '../src/services/LoreOutline'
 
 describe('lore relation editing', () => {
 	it('uses the full heading identity with a short display alias', () => {
-		const lines = ['# 地理', '## 白岬', '### 北境', '###### 码头', '### 南境', '###### 码头'];
+		const lines = ['# 地理', '## 白岬', '### 北境', '##### 码头', '### 南境', '##### 码头'];
 		const sections = buildLoreOutline(scanLoreHeadings(lines), lines.length);
 		const file = { path: '小说/新书/设定/地理.md' } as TFile;
 		const [north, south] = sections.filter(section => section.title === '码头');
@@ -31,7 +31,7 @@ describe('lore relation editing', () => {
 	});
 
 	it('adds the H6 block before the next heading and appends later rows to the same block', () => {
-		const lines = ['##### 港区', '###### 东码头', '东码头正文', '', '###### 西码头'];
+		const lines = ['#### 港区', '##### 东码头', '东码头正文', '', '##### 西码头'];
 		const [firstRow, secondRow] = ['**补给**：[[甲]]', '**运输**：[[乙]]'];
 		const east = buildLoreOutline(scanLoreHeadings(lines), lines.length)[1];
 		const first = planLoreRelationBlockInsertion(lines, east.bodyEnd, east.relationBlocks, [firstRow]);
@@ -39,7 +39,7 @@ describe('lore relation editing', () => {
 		const updated = buildLoreOutline(scanLoreHeadings(lines), lines.length)[1];
 		const second = planLoreRelationBlockInsertion(lines, updated.bodyEnd, updated.relationBlocks, [secondRow]);
 		lines.splice(second.line, 0, ...second.lines);
-		expect(lines.slice(lines.indexOf('###### 关系'))).toEqual(['###### 关系', firstRow, secondRow, '', '###### 西码头']);
+		expect(lines.slice(lines.indexOf('###### 关系'))).toEqual(['###### 关系', firstRow, secondRow, '', '##### 西码头']);
 		expect(lines.filter(line => line === '###### 关系')).toHaveLength(1);
 	});
 });

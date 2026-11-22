@@ -105,7 +105,8 @@ describe('CharacterManager', () => {
         const file = Object.assign(new TFile(), { path: 'Book1/Lore/Map.md', basename: 'Map' });
         manager.getBookPathForFile = vi.fn().mockReturnValue('Book1');
         manager.isLorePath = vi.fn().mockReturnValue(true);
-        let content = '# 地理志\n## 白岬\n旧领地说明。\n### 北境\n#### 港城\n##### 旧区\n###### 东码头\n类型：旧设施\n独立码头正文。\n###### 关系\n- **隶属**：[[#白岬]]\n### 关系\n- **贸易**：北境\n';
+        const detached = '###### 旧测试条目\n备用正文。\n###### 关系\n**旧式补给**：[[#白岬]]\n';
+        let content = '# 地理志\n## 白岬\n旧领地说明。\n### 北境\n#### 港城\n##### 东码头\n类型：旧设施\n独立码头正文。\n###### 关系\n- **隶属**：[[#白岬]]\n' + detached + '### 关系\n- **贸易**：北境\n';
         mockApp.vault.getMarkdownFiles.mockReturnValue([file]);
         mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) => path === file.path ? file : undefined);
         mockApp.vault.cachedRead.mockImplementation(async () => content);
@@ -114,7 +115,8 @@ describe('CharacterManager', () => {
             return content;
         });
         await manager.rebuildCache();
-        expect(manager.getLoreEntriesInFileOrder('Book1').map(entry => entry.section?.level)).toEqual([1, 2, 3, 4, 5, 6]);
+        expect(manager.getLoreEntriesInFileOrder('Book1').map(entry => entry.section?.level)).toEqual([1, 2, 3, 4, 5]);
+        expect(manager.getCharacterFile('Book1', '旧测试条目')).toBeNull();
         const parent = manager.getCharacterFile('Book1', '白岬')!;
         const child = manager.getCharacterFile('Book1', '东码头')!;
         const parentSnapshot = await manager.getLoreSnapshot(parent, 'Book1');
@@ -132,18 +134,19 @@ describe('CharacterManager', () => {
         expect(content).toContain('## 白岬\n旧领地说明。');
         expect(content).toContain('- **隶属**：[[#白岬]]');
         expect(content).toContain('### 关系\n- **贸易**：北境');
+        expect(content).toContain(detached);
         expect(await manager.getLoreSnapshot(child, 'Book1')).toMatchObject({ type: '港口', body: '更新码头正文。' });
 
-        content += '\n## 商会\n###### 关系\n- **停靠**：[[#白岬#北境#港城#旧区#东码头]]\n';
+        content += '\n## 商会\n###### 关系\n- **停靠**：[[#白岬#北境#港城#东码头]]\n';
         manager.getLoreFiles = vi.fn().mockReturnValue([file]);
         const renamedSnapshot = await manager.getLoreSnapshot(child, 'Book1');
         expect(await manager.updateLoreEntry(child, {
             oldHeading: child.heading, newHeading: '东渡码头', aliases: '', type: '', body: '更新码头正文。',
             relations: renamedSnapshot!.relations, expectedSnapshot: renamedSnapshot!, contextBookPath: 'Book1',
         })).toBe(true);
-        expect(content).toContain('###### 东渡码头');
+        expect(content).toContain('##### 东渡码头');
         expect(content).not.toContain('**类型**：港口');
-        expect(content).toContain('- **停靠**：[[#白岬#北境#港城#旧区#东渡码头]]');
+        expect(content).toContain('- **停靠**：[[#白岬#北境#港城#东渡码头]]');
     });
 
     it('keeps an existing H2 term addressable when a deep heading has the same name', async () => {
@@ -152,10 +155,10 @@ describe('CharacterManager', () => {
         manager.getBookPathForFile = vi.fn().mockReturnValue('Book1');
         manager.isLorePath = vi.fn().mockReturnValue(true);
         mockApp.vault.getMarkdownFiles.mockReturnValue([file]);
-        mockApp.vault.cachedRead.mockResolvedValue('## 码头\n旧码头。\n## 旧城\n###### 码头\n城内码头。');
+        mockApp.vault.cachedRead.mockResolvedValue('## 码头\n旧码头。\n## 旧城\n##### 码头\n城内码头。');
         await manager.rebuildCache();
         expect(manager.getCharacterFile('Book1', '码头')?.section?.level).toBe(2);
-        expect(manager.getLoreEntriesInFileOrder('Book1').filter(entry => entry.heading === '码头').map(entry => entry.section?.level)).toEqual([2, 6]);
+        expect(manager.getLoreEntriesInFileOrder('Book1').filter(entry => entry.heading === '码头').map(entry => entry.section?.level)).toEqual([2, 5]);
     });
 
     describe('isLorePath', () => {

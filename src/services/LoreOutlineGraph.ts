@@ -1,6 +1,6 @@
 import type { App, TFile } from 'obsidian';
 import { findLoreOutlineTarget, getFileLoreBody, getFileLoreRelationBlocks, relationBodyLines, type HeadingPosition, type LoreOutlineHeading } from './LoreOutline';
-import { legacyRelationLine, splitLoreRelationTargets } from './LoreRelations';
+import { isLoreParentRelation, legacyRelationLine, splitLoreRelationTargets } from './LoreRelations';
 import { isProtagonistType, readLoreMetadata } from './LoreMetadata';
 import type { GraphData, GraphEdge, GraphNode } from './RelationGraphManager';
 import { t } from '../i18n';
@@ -42,6 +42,50 @@ function addHeading(graph: GraphData, item: OutlineFile, heading: LoreOutlineHea
 	return node;
 }
 
+function attachContinuationNotes(graph: GraphData, candidates: ReadonlyMap<string, string>, nodes: ReadonlyMap<string, GraphNode>): void {
+	const checked = new Set<string>();
+	const cyclic = new Set<string>();
+	for (const start of candidates.keys()) {
+		const path = new Set<string>();
+		let id: string | undefined = start;
+		while (id && !checked.has(id) && !path.has(id)) {
+			path.add(id);
+			id = candidates.get(id) ?? nodes.get(id)?.outlineParent;
+		}
+		if (id && path.has(id)) {
+			let mark = false;
+			for (const step of path) {
+				if (step === id) mark = true;
+				if (mark) cyclic.add(step);
+			}
+		}
+		for (const step of path) checked.add(step);
+	}
+	for (const [child, parent] of candidates) {
+		if (cyclic.has(child)) continue;
+		nodes.get(child)!.outlineParent = parent;
+		graph.edges.push({ source: parent, target: child, label: t('relation-graph.edge-hierarchy'), type: 'hierarchy' });
+	}
+}
+
+function countDescendants(nodes: ReadonlyMap<string, GraphNode>): void {
+	const remainingChildren = new Map<string, number>();
+	for (const node of nodes.values()) {
+		if (node.outlineParent) remainingChildren.set(node.outlineParent, (remainingChildren.get(node.outlineParent) ?? 0) + 1);
+	}
+	const queue = [...nodes.values()].filter(node => !remainingChildren.has(node.id));
+	for (let index = 0; index < queue.length; index++) {
+		const node = queue[index];
+		if (!node.outlineParent) continue;
+		const parent = nodes.get(node.outlineParent);
+		if (!parent) continue;
+		parent.descendantCount = (parent.descendantCount ?? 0) + (node.descendantCount ?? 0) + 1;
+		const remaining = remainingChildren.get(parent.id)! - 1;
+		remainingChildren.set(parent.id, remaining);
+		if (!remaining) queue.push(parent);
+	}
+}
+
 export function addLoreOutlineToGraph(app: App, input: ReadonlyMap<TFile, LoreGraphFile>, graph: GraphData,
 	findMentions?: (source: string, lines: string[], terms: { term: string; targetId: string }[]) => GraphEdge[]): void {
 	const originalIds = new Set(graph.nodes.map(node => node.id));
@@ -78,17 +122,8 @@ export function addLoreOutlineToGraph(app: App, input: ReadonlyMap<TFile, LoreGr
 			ownedText.set(node.id, body);
 		}
 	}
-	// Markdown has at most six ancestor levels. Only containment contributes to node size.
 	const nodesById = new Map(graph.nodes.map(node => [node.id, node]));
-	for (const node of graph.nodes) {
-		let parentId = node.outlineParent;
-		while (parentId) {
-			const parent = nodesById.get(parentId);
-			if (!parent) break;
-			parent.descendantCount = (parent.descendantCount ?? 0) + 1;
-			parentId = parent.outlineParent;
-		}
-	}
+	const continuationParents = new Map<string, string>();
 	for (const node of graph.nodes) {
 		for (const term of [node.heading, ...(node.aliases ?? [])]) {
 			const ids = names.get(term) ?? new Set<string>();
@@ -126,15 +161,26 @@ export function addLoreOutlineToGraph(app: App, input: ReadonlyMap<TFile, LoreGr
 			return resolveLink(item, link) ?? (/[#/]/.test(bare) ? undefined : resolveName(bare));
 		};
 		const sources = item.outline.map(section => ({ source: item.nodes.get(section.line)!.id, blocks: section.relationBlocks }));
+		const root = item.outline[0]?.level === 1 ? item.nodes.get(item.outline[0].line) : undefined;
 		if (!sources.length && item.fileNode) {
 			sources.push({ source: item.fileNode.id, blocks: getFileLoreRelationBlocks(item.headings, item.lines.length) });
 		}
 		for (const { source, blocks } of sources) {
+			const parentDeclarations = new Set<string | undefined>();
 			for (const block of blocks) {
 				for (const line of relationBodyLines(item.lines, block)) {
 					const relation = legacyRelationLine.exec(line);
 					if (!relation) continue;
 					const label = relation[2].trim();
+					if (block.level === 6 && isLoreParentRelation(label)) {
+						if (root?.id === source && !root.outlineParent) {
+							const link = /^\[\[([^\]]+)\]\]$/.exec(relation[3].trim());
+							const target = link && resolveLink(item, link[1]);
+							const parent = target ? nodesById.get(target) : undefined;
+							parentDeclarations.add(parent && parent.file.path !== item.file.path ? parent.id : undefined);
+						}
+						continue;
+					}
 					for (const target of splitLoreRelationTargets(relation[3])) {
 						const link = /^\[\[([^\]]+)\]\]$/.exec(target);
 						if (link) addEdge(source, resolveRelationLink(link[1]), label);
@@ -142,15 +188,22 @@ export function addLoreOutlineToGraph(app: App, input: ReadonlyMap<TFile, LoreGr
 					}
 				}
 			}
+			const parent = parentDeclarations.values().next().value;
+			if (parentDeclarations.size === 1 && parent) continuationParents.set(source, parent);
 		}
 	}
+	attachContinuationNotes(graph, continuationParents, nodesById);
+	countDescendants(nodesById);
 	if (findMentions) {
 		const terms = [...names.keys()].flatMap(term => {
 			const targetId = resolveName(term);
 			return targetId ? [{ term, targetId }] : [];
 		})
 			.sort((left, right) => right.term.length - left.term.length);
-		const explicitPairs = new Set(graph.edges.filter(edge => edge.type === 'explicit').map(edge => JSON.stringify([edge.source, edge.target])));
+		const explicitPairs = new Set(graph.edges.map(edge => JSON.stringify([edge.source, edge.target])));
+		for (const edge of graph.edges) {
+			if (edge.type === 'hierarchy') explicitPairs.add(JSON.stringify([edge.target, edge.source]));
+		}
 		for (const [source, lines] of ownedText) {
 			for (const edge of findMentions(source, lines, terms)) {
 				if (!explicitPairs.has(JSON.stringify([edge.source, edge.target]))) graph.edges.push(edge);

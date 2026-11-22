@@ -128,12 +128,17 @@ export class RelationGraphManager {
 		let filesToParse: TFile[] = [];
 		const enableGlobal = options?.enableGlobal ?? this.plugin.settings.loreGraphEnableGlobal;
 		const autoLinkMentions = options?.autoLinkMentions ?? this.plugin.settings.loreGraphAutoLinkMentions;
+		const showFileBranch = Boolean(file && !options?.files?.length && !enableGlobal && options?.includeHeadingHierarchy);
 
 		if (options?.files && options.files.length > 0) {
 			filesToParse = options.files;
 		} else if (file) {
 			filesToParse = [file];
-			if (enableGlobal) {
+			if (showFileBranch) {
+				const book = this.plugin.characterManager?.getBookPathForFile?.(file);
+				const effective = book === null || book === undefined ? [] : this.plugin.characterManager?.getEffectiveLoreFiles?.(book) ?? [];
+				filesToParse = [...new Map([file, ...effective].map(candidate => [candidate.path, candidate])).values()];
+			} else if (enableGlobal) {
 				const bookRoot = findBookRoot(this.app, this.plugin, file);
 				const loreFolder = this.plugin.characterManager?.findLoreFolder(bookRoot || '');
 				if (loreFolder && loreFolder instanceof TFolder) {
@@ -269,7 +274,7 @@ export class RelationGraphManager {
 				if (characterName && nodeIds.has(characterName) && (!outline || nodesById.get(characterName)?.file === f)) {
 					const sectionStart = 0;
 					const sectionEnd = lines.length;
-					const relationSection = this.findRelationSection(headings, -1, sectionStart, sectionEnd, lines);
+					const relationSection = this.findRelationSection(outline ? headings.filter(heading => heading.level < 6) : headings, -1, sectionStart, sectionEnd, lines);
 
 					if (relationSection && !scopedBlocks.has(relationSection.startLine)) {
 						const explicitEdges = this.parseExplicitRelations(
@@ -339,7 +344,29 @@ export class RelationGraphManager {
 		const graph = { nodes: allNodes, edges: allEdges };
 		if (options?.includeHeadingHierarchy) addLoreOutlineToGraph(this.app, fileDataCache, graph, autoLinkMentions
 			? (source, lines, terms) => this.scanMentions(source, lines, 0, lines.length, null, terms) : undefined);
-		return graph;
+		return showFileBranch && file ? this.getFileBranch(graph, file) : graph;
+	}
+
+	private getFileBranch(graph: GraphData, file: TFile): GraphData {
+		const neighbors = new Map<string, string[]>();
+		for (const { source, target, type } of graph.edges) {
+			if (type !== 'hierarchy') continue;
+			for (const [from, to] of [[source, target], [target, source]]) {
+				const related = neighbors.get(from) ?? [];
+				related.push(to);
+				neighbors.set(from, related);
+			}
+		}
+		const queue = graph.nodes.filter(node => node.file.path === file.path).map(node => node.id);
+		const visible = new Set(queue);
+		for (let index = 0; index < queue.length; index++) {
+			for (const id of neighbors.get(queue[index]) ?? []) {
+				if (visible.has(id)) continue;
+				visible.add(id);
+				queue.push(id);
+			}
+		}
+		return { nodes: graph.nodes.filter(node => visible.has(node.id)), edges: graph.edges.filter(edge => visible.has(edge.source) && visible.has(edge.target)) };
 	}
 
 	/**
