@@ -16,7 +16,6 @@ import { FileExplorerPatcher } from '../services/FileExplorerPatcher';
 import { WordCounter } from '../services/WordCounter';
 import { ImmersiveModeManager } from '../ui/ImmersiveModeManager';
 import { CommandManager } from './CommandManager';
-import { registerLoreHierarchyPreview } from '../ui/LoreHierarchyPreview';
 import { ViewManager } from './ViewManager';
 import { MenuManager } from './MenuManager';
 import { StatisticsManager } from '../services/StatisticsManager';
@@ -189,16 +188,14 @@ export class PluginBootstrapper {
 
 			this.plugin.commandManager.registerAllCommands();
 			this.plugin.viewManager.registerAllViews();
-			const loreHierarchyPreview = registerLoreHierarchyPreview(this.plugin);
 
 			this.plugin.registerEditorExtensions();
 
 			this.plugin.menuManager.registerAllMenus();
 			this.plugin.registerCommonRibbonIcons();
 
-			this.plugin.registerEvent(this.plugin.app.workspace.on('editor-change', (editor, info) => {
+			this.plugin.registerEvent(this.plugin.app.workspace.on('editor-change', (_editor, info) => {
 				this.plugin.workerManager.handleEditorChange(info.file);
-				loreHierarchyPreview.onEditorChange(editor, info);
 				this.plugin.adaptiveDebounceManager.debounce('editor-update', () => {
 					this.plugin.editorTracker.handleEditorChange();
 				});
@@ -213,8 +210,7 @@ export class PluginBootstrapper {
 					void this.plugin.homepageManager?.refreshHomepageViews();
 				}
 			}));
-			this.plugin.registerEvent(this.plugin.app.workspace.on('active-leaf-change', leaf => {
-				loreHierarchyPreview.onActiveLeafChange(leaf);
+			this.plugin.registerEvent(this.plugin.app.workspace.on('active-leaf-change', () => {
 				this.plugin.workerManager.handleActiveFileChange(this.plugin.app.workspace.getActiveFile());
 				void this.plugin.editorTracker.handleFileChange();
 				this.plugin.homepageManager?.handleViewMode();

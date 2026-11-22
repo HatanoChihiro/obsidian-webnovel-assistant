@@ -364,8 +364,11 @@ export interface AccurateCountSettings {
 	/** 显示设定卡片的上级词条路径 */
 	loreShowAncestorPath?: boolean;
 
-	/** 新建词条时显示居中的上级路径预览 */
+	/** 在设定笔记的词条标题下显示上级路径 */
 	loreAutoShowAncestors?: boolean;
+
+	/** 词条上级路径默认折叠成灰点 */
+	loreFoldAncestorPath?: boolean;
 
 	/** 设定卡片大预览总开关：开启后卡片展开按钮与悬停大预览功能可用 */
 	loreCardPreviewEnabled: boolean;

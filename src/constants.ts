@@ -336,6 +336,7 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 	lorePopoverCollapse: false,
 	loreShowAncestorPath: true,
 	loreAutoShowAncestors: true,
+	loreFoldAncestorPath: false,
 	loreCardPreviewEnabled: false,
 	loreCardHoverPreview: false,
 	loreCardPreviewPersistent: false,

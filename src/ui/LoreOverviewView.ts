@@ -40,6 +40,7 @@ export type LoreOverviewSettings = Pick<
 	| 'loreBoardActiveFile'
 	| 'lorePopoverCollapse'
 	| 'loreShowAncestorPath'
+	| 'loreFoldAncestorPath'
 	| 'loreCardPreviewEnabled'
 	| 'loreCardHoverPreview'
 	| 'loreCardPreviewPersistent'

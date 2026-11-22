@@ -2306,6 +2306,18 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 				.onChange(async value => {
 					this.plugin.settings.loreAutoShowAncestors = value;
 					await this.plugin.saveSettings();
+					this.app.workspace.trigger('webnovel-workbench-lore-updated');
+				}));
+
+		new Setting(containerEl)
+			.setName(t('setting.lore-fold-ancestor-path'))
+			.setDesc(t('setting.lore-fold-ancestor-path-desc'))
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.loreFoldAncestorPath === true)
+				.onChange(async value => {
+					this.plugin.settings.loreFoldAncestorPath = value;
+					await this.plugin.saveSettings();
+					this.app.workspace.trigger('webnovel-workbench-lore-updated');
 				}));
 
 		// 设定卡片大预览总开关

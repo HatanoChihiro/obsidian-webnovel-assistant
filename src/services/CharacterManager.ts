@@ -2048,9 +2048,9 @@ export class CharacterManager {
 			contentToAppend += `${templateLines.join('\n')}\n`;
 		}
 
-		let createdLine: number | undefined;
 		if (targetFile && placement?.parentKey) {
 			const parentKey = placement.parentKey;
+			let created = false;
 			await this.app.vault.process(targetFile, content => {
 				const lines = content.split('\n');
 				const outline = buildLoreOutline(scanLoreHeadings(lines), lines.length);
@@ -2060,31 +2060,19 @@ export class CharacterManager {
 				const eol = content.includes('\r\n') ? '\r' : '';
 				const insertion = [...contentToAppend.trimEnd().split(/\r?\n/).map(line => line + eol), eol];
 				lines.splice(position, 0, ...insertion);
-				createdLine = position + 2;
+				created = true;
 				return lines.join('\n');
 			});
-			if (createdLine === undefined) return false;
+			if (!created) return false;
 		} else if (targetFile) {
-			if (this.plugin.settings.loreAutoShowAncestors) {
-				await this.app.vault.process(targetFile, content => {
-					const eol = content.includes('\r\n') ? '\r\n' : '\n';
-					createdLine = content.split('\n').length + 1;
-					return content + contentToAppend.replace(/\r?\n/g, eol);
-				});
-			} else {
-				await this.app.vault.append(targetFile, contentToAppend);
-			}
+			await this.app.vault.append(targetFile, contentToAppend);
 		} else {
 			if (placement?.parentKey) return false;
-			targetFile = await this.app.vault.create(filePath, contentToAppend.trimStart());
-			createdLine = 0;
+			await this.app.vault.create(filePath, contentToAppend.trimStart());
 		}
 
 		await this.rebuildCache();
 		new Notice(t('modal.lore-saved'));
-		if (this.plugin.settings.loreAutoShowAncestors && targetFile && createdLine !== undefined) {
-			this.app.workspace.trigger('webnovel:lore-created', targetFile, bookPath, createdLine);
-		}
 		return true;
 	}
 

@@ -33,7 +33,6 @@ declare module 'obsidian' {
         on(name: 'webnovel-workbench-book-changed', callback: (bookPath: string) => void): EventRef;
         on(name: 'webnovel-workbench-boards-changed', callback: () => void): EventRef;
         on(name: 'webnovel-workbench-lore-updated', callback: () => void): EventRef;
-        on(name: 'webnovel:lore-created', callback: (file: TFile, bookPath: string, line: number) => void): EventRef;
         on(name: 'webnovel-workbench-journey-updated', callback: (bookPath?: string) => void): EventRef;
         on(name: 'webnovel-lore-hover-rebuild', callback: () => void): EventRef;
         on(name: 'foreshadowing-filter-changed', callback: (selectedTags: string[]) => void): EventRef;
@@ -48,7 +47,6 @@ declare module 'obsidian' {
         trigger(name: 'webnovel-workbench-book-changed', bookPath: string): void;
         trigger(name: 'webnovel-workbench-boards-changed'): void;
         trigger(name: 'webnovel-workbench-lore-updated'): void;
-        trigger(name: 'webnovel:lore-created', file: TFile, bookPath: string, line: number): void;
         trigger(name: 'webnovel-workbench-journey-updated', bookPath?: string): void;
         trigger(name: 'webnovel-lore-hover-rebuild'): void;
         trigger(name: 'foreshadowing-filter-changed', selectedTags: string[]): void;

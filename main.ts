@@ -58,6 +58,7 @@ import { createTypewriterExtension } from './src/editor/TypewriterExtension';
 import { buildProofreadingExtension } from './src/editor/ProofreadingExtension';
 import { buildChapterReferenceExtension } from './src/editor/ChapterReferenceExtension';
 import { createTypographyImeIndentFixExtension } from './src/editor/TypographyImeIndentFixExtension';
+import { registerLoreAncestorPaths } from './src/editor/LoreAncestorPaths';
 import { AnnotateDictModal } from './src/ui/AnnotateDictModal';
 import { isSelectionEligibleForAnnotate } from './src/utils/proofreadingHelpers';
 import type { LoreSyncService } from './src/services/LoreSyncService';
@@ -413,6 +414,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.registerEditorExtension(buildProofreadingExtension(this.app, this));
 		this.registerEditorExtension(buildChapterReferenceExtension(this.app, this));
 		this.registerEditorExtension(createTypographyImeIndentFixExtension(this));
+		registerLoreAncestorPaths(this);
 	}
 
 	public registerEditorContextMenu(): void {

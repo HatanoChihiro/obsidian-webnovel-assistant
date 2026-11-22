@@ -1010,7 +1010,7 @@ An H1–H5 entry can declare a `Parent Entry` of any level in another lore note.
 
 The graph shows “Contains” edges across both notes and through their headings. Each entry has a single parent. Existing `### Relations` sections remain readable.
 
-Under Lore Quick Lookup in WNA settings, toggle card ancestor paths and the centered preview for newly created entries independently. Choose H1–H5 and a local parent in the Add Lore dialog, or write a heading directly in a lore note. Select an ancestor in the preview to jump to its note.
+Under Lore Quick Lookup in WNA settings, toggle ancestor paths in cards and lore notes independently. Paths appear in small gray text directly below entry headings. Collapse them by default to show a small gray dot that opens or closes the path. In lore notes, selecting an ancestor opens its heading.
 
 ##### Related Settings
 - **Collapse Subheadings in Hover Card**: For long quick-reference content, collapse level-3 and deeper subheadings by default and expand them on click.

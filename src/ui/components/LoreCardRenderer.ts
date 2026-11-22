@@ -7,10 +7,11 @@ import { buildLoreOutline, getFileLoreRelationBlocks, getLoreSectionText, scanLo
 import { smartLocateAndHighlight } from '../../utils/leaf';
 import { injectSoftBreakIndentPlaceholders } from '../../utils/softBreakIndent';
 import { createCardImportanceButton } from './CardImportanceButton';
+import { renderLoreAncestorRow } from './LoreAncestorRow';
 
 export interface LoreCardRendererPlugin {
 	app: App;
-	settings: Pick<AccurateCountSettings, 'lorePopoverCollapse' | 'loreShowAncestorPath'>;
+	settings: Pick<AccurateCountSettings, 'lorePopoverCollapse' | 'loreShowAncestorPath' | 'loreFoldAncestorPath'>;
 	characterManager: {
 		toggleLoreImportance?: (entry: LoreEntry) => Promise<boolean>;
 	};
@@ -440,9 +441,7 @@ export class LoreCardRenderer {
 		titleEl.title = isReadOnly ? entry.heading : t('corkboard.click-to-open-lore');
 		const ancestorPath = options.ancestorPath ?? entry.section?.parent?.path;
 		if (plugin.settings.loreShowAncestorPath !== false && ancestorPath?.length) {
-			const text = ancestorPath.join(' › ');
-			const breadcrumb = card.createDiv({ cls: 'wn-lore-card-parent', text });
-			breadcrumb.title = text;
+			renderLoreAncestorRow(card.createDiv('wn-lore-card-parent'), ancestorPath, plugin.settings.loreFoldAncestorPath === true);
 		}
 
 		titleEl.onclick = async () => {

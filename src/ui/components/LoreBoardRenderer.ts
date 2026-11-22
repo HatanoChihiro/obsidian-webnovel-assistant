@@ -27,7 +27,7 @@ export type LoreBoardCardsCharacterManager = Pick<
 
 export type LoreBoardCardsSettings = Pick<
     AccurateCountSettings,
-    'loreBoardActiveFile' | 'lorePopoverCollapse' | 'loreShowAncestorPath' | 'loreCardPreviewEnabled' | 'loreCardHoverPreview' | 'loreCardPreviewPersistent' | 'loreCardPreviewMaxCount'
+    'loreBoardActiveFile' | 'lorePopoverCollapse' | 'loreShowAncestorPath' | 'loreFoldAncestorPath' | 'loreCardPreviewEnabled' | 'loreCardHoverPreview' | 'loreCardPreviewPersistent' | 'loreCardPreviewMaxCount'
 >;
 
 export interface LoreBoardCardsPlugin {

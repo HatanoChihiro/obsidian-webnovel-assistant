@@ -28,12 +28,62 @@
 }
 
 .wn-lore-card-parent {
-	padding: 4px 12px 0;
+	padding-inline: 12px;
+}
+
+.wn-lore-ancestor-row {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--size-4-1);
+	margin: 3px 0;
 	color: var(--text-muted);
 	font-size: var(--font-ui-smaller);
+	line-height: 1.35;
+	text-align: center;
+}
+
+.wn-lore-ancestor-text {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+
+.wn-lore-ancestor-row button.wn-lore-ancestor-link,
+.wn-lore-ancestor-row button.wn-lore-ancestor-dot {
+	appearance: none;
+	min-width: 0;
+	padding: 0;
+	color: inherit;
+	font: inherit;
+	background: transparent;
+	border: 0;
+	box-shadow: none;
+	cursor: pointer;
+}
+
+.wn-lore-ancestor-row button.wn-lore-ancestor-link {
+	height: auto;
+}
+
+.wn-lore-ancestor-row button.wn-lore-ancestor-link:hover {
+	text-decoration: underline;
+}
+
+.wn-lore-ancestor-row button.wn-lore-ancestor-dot {
+	display: inline-grid;
+	flex: 0 0 auto;
+	width: 18px;
+	height: 18px;
+	place-items: center;
+}
+
+.wn-lore-ancestor-dot::before {
+	width: 4px;
+	height: 4px;
+	background: var(--text-muted);
+	border-radius: 50%;
+	content: '';
 }
 
 .wn-lore-hover-popover>div {
@@ -403,51 +453,4 @@
 .wn-lore-file-tab.is-active .wn-lore-file-tab-count {
 	background: color-mix(in srgb, var(--interactive-accent) 22%, transparent);
 	color: var(--text-normal);
-}
-.wn-lore-hierarchy-preview {
-	position: fixed;
-	inset-block-start: 50%;
-	inset-inline-start: 50%;
-	transform: translate(-50%, -50%);
-	z-index: 1100;
-	width: min(22rem, calc(100vw - 2rem));
-	padding: var(--size-4-3);
-	color: var(--text-normal);
-	background-color: var(--background-primary);
-	border: 1px solid var(--background-modifier-border);
-	border-radius: var(--radius-m);
-	box-shadow: var(--shadow-s);
-}
-
-.wn-lore-hierarchy-preview-header {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: var(--size-4-2);
-}
-
-.wn-lore-hierarchy-preview-path {
-	max-height: min(45vh, 20rem);
-	overflow-y: auto;
-	list-style: none;
-	margin: var(--size-4-2) 0 0;
-	padding: 0 var(--size-4-2);
-}
-
-.wn-lore-hierarchy-preview-path li {
-	padding: var(--size-2-1) var(--size-4-2);
-	border-inline-start: 1px solid var(--background-modifier-border);
-}
-
-.wn-lore-hierarchy-preview-path button {
-	height: auto;
-	justify-content: flex-start;
-	max-width: 100%;
-	white-space: normal;
-	text-align: start;
-}
-
-.wn-lore-hierarchy-preview-path button[aria-current="true"] {
-	color: var(--text-on-accent);
-	background-color: var(--interactive-accent);
 }
