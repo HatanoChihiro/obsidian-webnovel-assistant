@@ -1,10 +1,10 @@
 /* Panel-like containers always maintain normal top margin */
 
-.immersive-mode-active .foreshadowing-view-container,
+.wn-immersive-mode-active .wn-foreshadowing-view-container,
 
-.immersive-mode-active .wn-timeline-view-container,
+.wn-immersive-mode-active .wn-timeline-view-container,
 
-.immersive-mode-active .markdown-reading-view .markdown-preview-view {
+.wn-immersive-mode-active .markdown-reading-view .markdown-preview-view {
 	padding-top: 30px;
 }
 

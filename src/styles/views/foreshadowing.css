@@ -1,15 +1,15 @@
-.foreshadowing-view-container {
+.wn-foreshadowing-view-container {
 	padding: 18px;
 	overflow-y: auto;
 }
 
 
-.foreshadowing-view-header {
+.wn-foreshadowing-view-header {
 	margin-bottom: 12px;
 }
 
 
-.foreshadowing-view-title-row {
+.wn-foreshadowing-view-title-row {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
@@ -17,7 +17,7 @@
 }
 
 
-.foreshadowing-view-title {
+.wn-foreshadowing-view-title {
 	font-size: 1.1em;
 	font-weight: bold;
 	color: var(--interactive-accent);
@@ -25,21 +25,21 @@
 }
 
 
-.foreshadowing-view-folder {
+.wn-foreshadowing-view-folder {
 	font-size: 0.85em;
 	color: var(--text-muted);
 	margin-bottom: 8px;
 }
 
 
-.foreshadowing-view-filter-row {
+.wn-foreshadowing-view-filter-row {
 	display: flex;
 	gap: 6px;
 	flex-wrap: wrap;
 }
 
 
-.foreshadowing-filter-btn {
+.wn-foreshadowing-filter-btn {
 	padding: 4px 10px;
 	border-radius: 4px;
 	border: 1px solid var(--background-modifier-border);
@@ -50,20 +50,20 @@
 }
 
 
-.foreshadowing-filter-btn:hover {
+.wn-foreshadowing-filter-btn:hover {
 	border-color: var(--interactive-accent);
 	color: var(--interactive-accent);
 }
 
 
-.foreshadowing-filter-btn.is-active {
+.wn-foreshadowing-filter-btn.is-active {
 	background: var(--interactive-accent);
 	color: var(--text-on-accent);
 	border-color: var(--interactive-accent);
 }
 
 
-.foreshadowing-view-empty {
+.wn-foreshadowing-view-empty {
 	color: var(--text-muted);
 	font-size: 0.9em;
 	padding: 24px 0;
@@ -71,17 +71,17 @@
 }
 
 
-.foreshadowing-view-hint {
+.wn-foreshadowing-view-hint {
 	font-size: 0.85em;
 }
 
 
-.foreshadowing-view-tag-filter-row {
+.wn-foreshadowing-view-tag-filter-row {
 	margin-top: 4px;
 }
 
 
-.foreshadowing-group-header {
+.wn-foreshadowing-group-header {
 	display: flex;
 	align-items: center;
 	gap: 6px;
@@ -91,14 +91,14 @@
 }
 
 
-.foreshadowing-group-label {
+.wn-foreshadowing-group-label {
 	font-size: 0.85em;
 	font-weight: 600;
 	color: var(--interactive-accent);
 }
 
 
-.foreshadowing-group-count {
+.wn-foreshadowing-group-count {
 	font-size: 0.8em;
 	background: var(--background-modifier-border);
 	color: var(--text-muted);
@@ -107,7 +107,7 @@
 }
 
 
-.foreshadowing-entry-card {
+.wn-foreshadowing-entry-card {
 	background: color-mix(in srgb, var(--interactive-accent) 4%, var(--background-secondary));
 	border-radius: 8px;
 	padding: 14px 18px;
@@ -116,29 +116,29 @@
 }
 
 
-.foreshadowing-entry-card.status-pending {
+.wn-foreshadowing-entry-card.wn-status-pending {
 	border-left-color: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%);
 }
 
 
-.foreshadowing-entry-card.status-recovered {
+.wn-foreshadowing-entry-card.wn-status-recovered {
 	border-left-color: color-mix(in srgb, var(--interactive-accent) 60%, var(--text-success, var(--interactive-accent)));
 	opacity: 0.75;
 }
 
 
-.foreshadowing-entry-card.status-deprecated {
+.wn-foreshadowing-entry-card.wn-status-deprecated {
 	border-left-color: var(--text-muted);
 	opacity: 0.5;
 }
 
 
-.foreshadowing-entry-desc {
+.wn-foreshadowing-entry-desc {
 	margin-bottom: 6px;
 }
 
 
-.foreshadowing-entry-desc-text {
+.wn-foreshadowing-entry-desc-text {
 	font-weight: 600;
 	font-size: 1.0em;
 	color: var(--text-normal);
@@ -146,18 +146,18 @@
 	transition: color 0.15s ease;
 }
 
-.foreshadowing-entry-desc-text:hover {
+.wn-foreshadowing-entry-desc-text:hover {
 	color: var(--interactive-accent);
 	text-decoration: underline;
 }
 
 
-.foreshadowing-entry-quotes {
+.wn-foreshadowing-entry-quotes {
 	margin-bottom: 6px;
 }
 
 
-.foreshadowing-entry-quotes.mod-recovery-logs {
+.wn-foreshadowing-entry-quotes.mod-recovery-logs {
 	margin-top: 8px;
 	margin-bottom: 6px;
 	padding-top: 6px;
@@ -165,12 +165,12 @@
 }
 
 
-.foreshadowing-entry-quote {
+.wn-foreshadowing-entry-quote {
 	margin-bottom: 4px;
 }
 
 
-.foreshadowing-entry-quote-meta {
+.wn-foreshadowing-entry-quote-meta {
 	font-size: 0.8em;
 	color: var(--text-muted);
 	margin-bottom: 2px;
@@ -181,7 +181,7 @@
 }
 
 
-.foreshadowing-entry-quote-text {
+.wn-foreshadowing-entry-quote-text {
 	font-size: 0.85em;
 	color: var(--interactive-accent);
 	padding: 0 0 0 8px;
@@ -195,7 +195,7 @@
 }
 
 
-.foreshadowing-entry-quote-text.mod-recovery-quote {
+.wn-foreshadowing-entry-quote-text.mod-recovery-quote {
 	margin-top: 4px;
 	width: 100%;
 	cursor: pointer;
@@ -206,19 +206,19 @@
 }
 
 
-.foreshadowing-entry-quote-text.mod-recovery-quote.mod-stage {
+.wn-foreshadowing-entry-quote-text.mod-recovery-quote.mod-stage {
 	border-left-color: color-mix(in srgb, var(--interactive-accent) 65%, var(--text-error, var(--interactive-accent)) 35%);
 	color: color-mix(in srgb, var(--interactive-accent) 65%, var(--text-error, var(--interactive-accent)) 35%);
 }
 
 
-.foreshadowing-entry-quote-text.mod-recovery-quote.mod-final {
+.wn-foreshadowing-entry-quote-text.mod-recovery-quote.mod-final {
 	border-left-color: color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%);
 	color: color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%);
 }
 
 
-.foreshadowing-entry-footer {
+.wn-foreshadowing-entry-footer {
 	display: flex;
 	align-items: center;
 	gap: 6px;
@@ -227,7 +227,7 @@
 }
 
 
-.foreshadowing-entry-tags {
+.wn-foreshadowing-entry-tags {
 	display: flex;
 	gap: 4px;
 	flex-wrap: wrap;
@@ -235,7 +235,7 @@
 }
 
 
-.foreshadowing-entry-tag {
+.wn-foreshadowing-entry-tag {
 	font-size: 0.8em;
 	color: var(--interactive-accent);
 	background: var(--background-primary);
@@ -246,7 +246,7 @@
 }
 
 
-.foreshadowing-entry-actions {
+.wn-foreshadowing-entry-actions {
 	display: flex;
 	gap: 4px;
 	flex-shrink: 0;
@@ -254,7 +254,7 @@
 }
 
 
-.foreshadowing-action-btn {
+.wn-foreshadowing-action-btn {
 	padding: 4px 10px;
 	border-radius: 4px;
 	border: 1px solid var(--background-modifier-border);
@@ -265,31 +265,31 @@
 }
 
 
-.foreshadowing-action-btn:hover {
+.wn-foreshadowing-action-btn:hover {
 	border-color: var(--interactive-accent);
 	color: var(--interactive-accent);
 }
 
 
-.foreshadowing-recover-btn {
+.wn-foreshadowing-recover-btn {
 	border-color: color-mix(in srgb, var(--interactive-accent) 70%, var(--text-warning, var(--interactive-accent)));
 	color: color-mix(in srgb, var(--interactive-accent) 70%, var(--text-warning, var(--interactive-accent)));
 }
 
 
-.foreshadowing-recover-btn:hover {
+.wn-foreshadowing-recover-btn:hover {
 	background: color-mix(in srgb, var(--interactive-accent) 70%, var(--text-warning, var(--interactive-accent)));
 	color: var(--text-on-accent);
 }
 
 
-.foreshadowing-deprecate-btn {
+.wn-foreshadowing-deprecate-btn {
 	border-color: var(--text-muted);
 	color: var(--text-muted);
 }
 
 
-.foreshadowing-deprecate-btn:hover {
+.wn-foreshadowing-deprecate-btn:hover {
 	background: var(--text-muted);
 	color: white;
 }

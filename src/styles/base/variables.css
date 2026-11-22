@@ -6,6 +6,7 @@
 	/* 1. 排版系统 (Typography Subsystem) 默认回退变量 */
 	--wn-type-indent: 2em;
 	--wn-type-line-height: 1.8;
+	--wn-type-para-before: 0em;
 	--wn-type-para-spacing: 0.5em;
 	--wn-type-letter-spacing: 0.05em;
 	--wn-type-text-align: justify;

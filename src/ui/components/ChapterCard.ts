@@ -1,5 +1,6 @@
+import { showPluginNotice } from '../../services/PluginNoticeService';
 import type { App, TFile } from 'obsidian';
-import { Menu, Notice, setIcon } from 'obsidian';
+import { Menu, setIcon } from 'obsidian';
 import { t } from '../../i18n';
 import { CORKBOARD_STATUS_MAP, getCorkboardStatusKeys, getCorkboardStatusText } from '../../i18n/data-keys';
 import type { ParsedForeshadowingEntry } from '../../types/foreshadowing';
@@ -104,7 +105,7 @@ export class ChapterCard {
 							try {
 								if (onSaveStateChange) onSaveStateChange(true);
 								if (!plugin.writingJourneyService?.changeChapterStatus) {
-									new Notice(t('corkboard.status-update-failed'));
+									showPluginNotice(t('corkboard.status-update-failed'));
 									return;
 								}
 								const res = await plugin.writingJourneyService.changeChapterStatus({
@@ -113,23 +114,23 @@ export class ChapterCard {
 									bookPath: currentBookPath
 								});
 								if (!res.success) {
-									new Notice(t('corkboard.status-update-failed'));
+									showPluginNotice(t('corkboard.status-update-failed'));
 									return;
 								}
 								if (res.changed) {
 									status = s;
 									statusEl.setText(getCorkboardStatusText(s));
-									new Notice(t('corkboard.status-updated', { status: getCorkboardStatusText(s) }));
+									showPluginNotice(t('corkboard.status-updated', { status: getCorkboardStatusText(s) }));
 									if (res.snapshotError) {
-										new Notice(t('snapshot.notice-unavailable'));
+										showPluginNotice(t('snapshot.notice-unavailable'));
 									}
 									if (res.journeyError) {
-										new Notice(t('snapshot.journey-save-failed'));
+										showPluginNotice(t('snapshot.journey-save-failed'));
 									}
 								}
 							} catch (err) {
 								console.error(err);
-								new Notice(t('corkboard.status-update-failed'));
+								showPluginNotice(t('corkboard.status-update-failed'));
 							} finally {
 								window.setTimeout(() => {
 									if (onSaveStateChange) onSaveStateChange(false);
@@ -324,10 +325,10 @@ export class ChapterCard {
 						// 默认使用 synopsis 字段
 						(fm as Record<string, unknown>)['synopsis'] = newValue;
 					});
-					new Notice(t('common.synopsis-saved', { name: file.basename }));
+					showPluginNotice(t('common.synopsis-saved', { name: file.basename }));
 				} catch (err) {
 					console.error(err);
-					new Notice(t('corkboard.synopsis-save-failed'));
+					showPluginNotice(t('corkboard.synopsis-save-failed'));
 				} finally {
 					window.setTimeout(() => {
 						if (onSaveStateChange) onSaveStateChange(false);
@@ -392,7 +393,7 @@ export class ChapterCard {
 			// 检查非法字符
 			const illegalChars = /[\\/:*?"<>|]/g;
 			if (illegalChars.test(newTitle)) {
-				new Notice(t('corkboard.rename-failed'));
+				showPluginNotice(t('corkboard.rename-failed'));
 				input.remove();
 				titleEl.show();
 				editIcon.show();
@@ -405,7 +406,7 @@ export class ChapterCard {
 			// 检查是否存在同名文件
 			const existFile = app.vault.getAbstractFileByPath(targetPath);
 			if (existFile) {
-				new Notice(t('corkboard.rename-failed'));
+				showPluginNotice(t('corkboard.rename-failed'));
 				input.remove();
 				titleEl.show();
 				editIcon.show();
@@ -420,10 +421,10 @@ export class ChapterCard {
 
 				// 成功后更新 DOM
 				titleEl.setText(newTitle);
-				new Notice(t('corkboard.rename-success'));
+				showPluginNotice(t('corkboard.rename-success'));
 			} catch (err) {
 				console.error("[ChapterCard] rename failed:", err);
-				new Notice(t('corkboard.rename-failed'));
+				showPluginNotice(t('corkboard.rename-failed'));
 			} finally {
 				input.remove();
 				titleEl.show();

@@ -7,7 +7,7 @@
 @media (hover: none) and (pointer: coarse) {
 
 	/* Disable hover effects */
-	.stats-tab-btn:hover {
+	.wn-stats-tab-btn:hover {
 		background: transparent;
 		color: var(--text-muted);
 	}

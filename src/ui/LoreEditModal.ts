@@ -1,4 +1,5 @@
-import { Modal, Setting, setTooltip, setIcon, Notice } from 'obsidian';
+import { showPluginNotice } from '../services/PluginNoticeService';
+import { Modal, Setting, setTooltip, setIcon } from 'obsidian';
 import type { App, TextComponent } from 'obsidian';
 import type { CharacterManager, LoreEntry, LoreRelationItem, LoreSnapshot } from '../services/CharacterManager';
 import { parseLoreBodyForEditing } from '../services/LoreTemplateService';
@@ -55,20 +56,20 @@ export class LoreEditModal extends Modal {
 				? await this.plugin.characterManager.getLoreSnapshot(this.entry, this.bookPath)
 				: null;
 		} catch {
-			new Notice(t('notice.lore-save-failed'));
+			showPluginNotice(t('notice.lore-save-failed'));
 			this.close();
 			return;
 		}
 		if (this.isModalClosed) return;
 
 		if (!this.snapshot) {
-			new Notice(t('notice.lore-save-failed'));
+			showPluginNotice(t('notice.lore-save-failed'));
 			this.close();
 			return;
 		}
 
 		if (this.snapshot.isBorrowed) {
-			new Notice(t('notice.lore-borrowed-readonly'));
+			showPluginNotice(t('notice.lore-borrowed-readonly'));
 			this.close();
 			return;
 		}
@@ -318,7 +319,7 @@ export class LoreEditModal extends Modal {
 					.onClick(async () => {
 						if (this.isSaving) return;
 						if (!this.loreName.trim()) {
-							new Notice(t('notice.lore-name-invalid'));
+							showPluginNotice(t('notice.lore-name-invalid'));
 							return;
 						}
 						this.isSaving = true;
@@ -333,9 +334,9 @@ export class LoreEditModal extends Modal {
 								}
 								return;
 							}
-							new Notice(t('notice.lore-save-failed'));
+							showPluginNotice(t('notice.lore-save-failed'));
 						} catch {
-							new Notice(t('notice.lore-save-failed'));
+							showPluginNotice(t('notice.lore-save-failed'));
 						} finally {
 							this.isSaving = false;
 							if (!this.isModalClosed) {

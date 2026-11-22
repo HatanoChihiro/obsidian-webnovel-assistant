@@ -1,4 +1,5 @@
-import { Modal, Notice, Platform, setIcon, setTooltip, type App, type Component, type TFile, type WorkspaceLeaf } from 'obsidian';
+import { showPluginNotice } from '../../services/PluginNoticeService';
+import { Modal, Platform, setIcon, setTooltip, type App, type Component, type TFile, type WorkspaceLeaf } from 'obsidian';
 import { filterTimelineEntries, parseTimelineChapterList, type TimelineEntry, type TimelineItem } from '../../services/TimelineManager';
 import { t } from '../../i18n';
 import { setupStickyNoteParagraphEditor, teardownStickyNoteParagraphEditor, getStickyNoteEditorContent, setStickyNoteEditorContent } from './StickyNoteParagraphEditor';
@@ -1107,7 +1108,7 @@ export function renderTrajectoryMode(options: TrajectoryModeOptions): void {
 								item.description = newVal;
 							} catch (err) {
 								Logger.error('[TrajectoryBoard] Failed to update description:', err);
-								new Notice(t('trajectory.save-failed'));
+								showPluginNotice(t('trajectory.save-failed'));
 								if (targetEntry.items && targetEntry.items[itemIndex]) {
 									targetEntry.items[itemIndex].description = originalItemDesc;
 								} else {

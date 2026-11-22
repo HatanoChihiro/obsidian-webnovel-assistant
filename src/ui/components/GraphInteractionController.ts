@@ -10,6 +10,8 @@ export interface GraphInteractionCallbacks {
 	onNodeDragStart: (node: GraphNode) => void;
 	onNodeDrag: (node: GraphNode, x: number, y: number) => void;
 	onNodeDragEnd: (node: GraphNode) => void;
+	onCanvasMouseLeave?: (e: MouseEvent) => void;
+	onViewportInteraction?: () => void;
 }
 
 export interface GraphInteractionOptions {
@@ -40,6 +42,7 @@ export class GraphInteractionController {
 	private boundHandleMouseDown = this.handleMouseDown.bind(this);
 	private boundHandleMouseMove = this.handleMouseMove.bind(this);
 	private boundHandleMouseUp = this.handleMouseUp.bind(this);
+	private boundHandleMouseLeave = this.handleMouseLeave.bind(this);
 	private boundHandleWheel = this.handleWheel.bind(this);
 	private boundHandleContextMenu = (e: MouseEvent) => e.preventDefault();
 	
@@ -63,6 +66,7 @@ export class GraphInteractionController {
 	public bindEvents() {
 		this.canvas.addEventListener('mousedown', this.boundHandleMouseDown);
 		this.canvas.addEventListener('mousemove', this.boundHandleMouseMove);
+		this.canvas.addEventListener('mouseleave', this.boundHandleMouseLeave);
 		this.ownerWindow.addEventListener('mouseup', this.boundHandleMouseUp);
 		this.canvas.addEventListener('wheel', this.boundHandleWheel, { passive: false });
 		this.canvas.addEventListener('contextmenu', this.boundHandleContextMenu);
@@ -76,6 +80,7 @@ export class GraphInteractionController {
 	public unbindEvents() {
 		this.canvas.removeEventListener('mousedown', this.boundHandleMouseDown);
 		this.canvas.removeEventListener('mousemove', this.boundHandleMouseMove);
+		this.canvas.removeEventListener('mouseleave', this.boundHandleMouseLeave);
 		this.ownerWindow.removeEventListener('mouseup', this.boundHandleMouseUp);
 		this.canvas.removeEventListener('wheel', this.boundHandleWheel);
 		this.canvas.removeEventListener('contextmenu', this.boundHandleContextMenu);
@@ -125,8 +130,35 @@ export class GraphInteractionController {
 		return null;
 	}
 
+	private updateCanvasCursor(isPointer: boolean): void {
+		this.canvas.setCssStyles({ cursor: isPointer ? 'pointer' : 'default' });
+	}
+
+	private cancelHoverOnInteraction(): void {
+		if (this.state.hoveredNode !== null) {
+			this.state.hoveredNode = null;
+			this.callbacks.requestRender();
+		}
+		this.callbacks.onViewportInteraction?.();
+	}
+
+	private handleMouseLeave(e: MouseEvent): void {
+		this.updateCanvasCursor(false);
+		const hadHoveredNode = this.state.hoveredNode !== null;
+		if (hadHoveredNode) {
+			this.state.hoveredNode = null;
+			this.callbacks.requestRender();
+		}
+		if (this.callbacks.onCanvasMouseLeave) {
+			this.callbacks.onCanvasMouseLeave(e);
+		} else if (hadHoveredNode) {
+			this.callbacks.onNodeHover(null, e);
+		}
+	}
+
 	private handleMouseDown(e: MouseEvent): void {
 		if (e.button === 0) {
+			this.cancelHoverOnInteraction();
 			const pos = this.screenToGraph(e.clientX, e.clientY);
 			const node = this.findNodeAt(pos.x, pos.y);
 			
@@ -159,6 +191,7 @@ export class GraphInteractionController {
 			}
 			this.callbacks.requestRender();
 		} else if (e.button === 1 || e.button === 2) {
+			this.cancelHoverOnInteraction();
 			this.isPanning = true;
 			this.panStartX = e.clientX - this.state.panX;
 			this.panStartY = e.clientY - this.state.panY;
@@ -177,7 +210,7 @@ export class GraphInteractionController {
 		} else {
 			const pos = this.screenToGraph(e.clientX, e.clientY);
 			const node = this.findNodeAt(pos.x, pos.y);
-			this.canvas.setCssStyles({ cursor: node ? 'pointer' : 'default' });
+			this.updateCanvasCursor(Boolean(node));
 			if (node !== this.state.hoveredNode) {
 				this.state.hoveredNode = node;
 				this.callbacks.onNodeHover(node, e);
@@ -199,6 +232,7 @@ export class GraphInteractionController {
 
 	private handleWheel(e: WheelEvent): void {
 		e.preventDefault();
+		this.cancelHoverOnInteraction();
 		const minScale = 0.2;
 		const maxScale = 5.0;
 
@@ -231,6 +265,7 @@ export class GraphInteractionController {
 	}
 
 	private handleTouchStart(e: TouchEvent): void {
+		this.cancelHoverOnInteraction();
 		if (e.touches.length === 1) {
 			const touch = e.touches[0];
 			const pos = this.screenToGraph(touch.clientX, touch.clientY);

@@ -46,13 +46,19 @@ describe('TypographyManager', () => {
 
 		manager.registerPreviewElement(preview);
 		expect(setProperty).toHaveBeenCalledWith('--wn-type-font-size', '20px');
+		expect(setProperty).toHaveBeenCalledWith('--wn-type-para-before', '0em');
 
 		mockPlugin.settings.typography.bodyFontSize = 24;
+		mockPlugin.settings.typography.paragraphSpacingBefore = '1em';
+		mockPlugin.settings.typography.paragraphSpacing = '0em';
 		manager.updateTypography();
 		expect(setProperty).toHaveBeenCalledWith('--wn-type-font-size', '24px');
+		expect(setProperty).toHaveBeenCalledWith('--wn-type-para-before', '1em');
+		expect(setProperty).toHaveBeenCalledWith('--wn-type-para-spacing', '0em');
 
 		manager.unregisterPreviewElement(preview);
 		expect(removeProperty).toHaveBeenCalledWith('--wn-type-font-size');
+		expect(removeProperty).toHaveBeenCalledWith('--wn-type-para-before');
 	});
 
 	it('removes the custom font-size variable when body size control is disabled', () => {

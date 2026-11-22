@@ -527,4 +527,132 @@ describe('EditorTracker', () => {
 			expect(mockPlugin.lastFileWords).toBe(0);
 		});
 	});
+
+	describe('Mobile immersive main/reference isolation', () => {
+		it('ignores reference edits (including same file path as main) and still tracks background main edits while reference is active', async () => {
+			const mainFile = new TFile('Chapter1.md', 'Novel/Chapter1.md');
+			const refOtherFile = new TFile('Outline.md', 'Novel/Outline.md');
+			const mainEditor = { id: 'main-editor' };
+			const refEditor = { id: 'ref-editor' };
+			const mainLeaf = { id: 'main-leaf' };
+			const refLeaf = { id: 'ref-leaf' };
+
+			const mainView = {
+				leaf: mainLeaf,
+				file: mainFile,
+				editor: mainEditor,
+				getViewData: vi.fn().mockReturnValue('main text updated')
+			};
+			const refViewSamePath = {
+				leaf: refLeaf,
+				file: mainFile,
+				editor: refEditor,
+				getViewData: vi.fn().mockReturnValue('reference same-file edited content much longer')
+			};
+			const refViewOtherPath = {
+				leaf: refLeaf,
+				file: refOtherFile,
+				editor: refEditor,
+				getViewData: vi.fn().mockReturnValue('reference other file content')
+			};
+
+			// Reference is currently the active view in Obsidian
+			mockApp.workspace.getActiveViewOfType.mockReturnValue(refViewSamePath);
+			mockPlugin.lastFilePath = mainFile.path;
+			mockPlugin.lastFileWords = 10;
+			mockPlugin.calculateAccurateWords.mockImplementation((text: string) => text.length);
+			mockPlugin.immersiveModeManager = {
+				isMobileImmersiveSessionActive: () => true,
+				getActiveSessionMainLeaf: () => mainLeaf,
+				getActiveSessionMainView: () => mainView,
+				getActiveSessionMainFile: () => mainFile,
+				isMainEditorOrigin: (info: unknown, editor?: unknown) =>
+					info === mainView || editor === mainEditor || (info as { leaf?: unknown })?.leaf === mainLeaf
+			};
+
+			const tracker = new EditorTracker(mockApp, mockPlugin);
+
+			// 1. Reference edit on SAME path as main must NOT emit delta or alter baseline
+			tracker.handleEditorChange({ editor: refEditor, info: refViewSamePath } as never);
+			expect(mockApp.workspace.trigger).not.toHaveBeenCalled();
+			expect(mockPlugin.lastFileWords).toBe(10);
+
+			// 2. Reference focus / file change must NOT rebind lastFilePath to reference other file
+			mockApp.workspace.getActiveViewOfType.mockReturnValue(refViewOtherPath);
+			mockPlugin.cacheManager.getFileCache.mockImplementation((p: string) => p === mainFile.path ? 10 : 999);
+			await tracker.handleFileChange();
+			expect(mockPlugin.lastFilePath).toBe(mainFile.path);
+			expect(mockPlugin.lastFileWords).toBe(10);
+
+			// 3. Background main edit while reference is active MUST emit delta from mainView
+			tracker.handleEditorChange({ editor: mainEditor, info: mainView } as never);
+			expect(mockApp.workspace.trigger).toHaveBeenCalledWith(
+				'webnovel:editor-word-count-updated',
+				mainFile,
+				'main text updated'.length - 10
+			);
+			expect(mockPlugin.lastFileWords).toBe('main text updated'.length);
+		});
+
+		it('maintains main-bound tracking during mobile exit teardown while isMobileImmersiveSessionActive is false and isMobileDataIsolationActive is true', async () => {
+			const mainFile = new TFile('Ch1.md', 'Novel/Ch1.md');
+			const refFile = new TFile('Ref1.md', 'Novel/Ref1.md');
+			const mainEditor = { id: 'main-ed-exit' };
+			const refEditor = { id: 'ref-ed-exit' };
+			const mainLeaf = { id: 'main-leaf-exit' };
+			const refLeaf = { id: 'ref-leaf-exit' };
+			const mainView = {
+				leaf: mainLeaf,
+				file: mainFile,
+				editor: mainEditor,
+				getViewData: vi.fn().mockReturnValue('main debounced edit!')
+			};
+			const refView = {
+				leaf: refLeaf,
+				file: refFile,
+				editor: refEditor,
+				getViewData: vi.fn().mockReturnValue('late reference edit while exiting teardown')
+			};
+
+			// Reference is still the active view during awaited exit teardown
+			mockApp.workspace.getActiveViewOfType.mockReturnValue(refView);
+			mockPlugin.lastFilePath = mainFile.path;
+			mockPlugin.lastFileWords = 10;
+			mockPlugin.calculateAccurateWords.mockImplementation((text: string) => text.length);
+			mockPlugin.immersiveModeManager = {
+				isMobileImmersiveSessionActive: () => false,
+				isMobileDataIsolationActive: () => true,
+				getActiveSessionMainLeaf: () => null,
+				getActiveSessionMainView: () => null,
+				getActiveSessionMainFile: () => null,
+				getDataScopedMainLeaf: () => mainLeaf,
+				getDataScopedMainView: () => mainView,
+				getDataScopedMainFile: () => mainFile,
+				isMainEditorOrigin: (info: unknown, editor?: unknown) =>
+					info === mainView || editor === mainEditor || (info as { leaf?: unknown })?.leaf === mainLeaf
+			};
+
+			const tracker = new EditorTracker(mockApp, mockPlugin);
+
+			// Late reference edit during exit must be ignored
+			tracker.handleEditorChange({ editor: refEditor, info: refView } as never);
+			expect(mockApp.workspace.trigger).not.toHaveBeenCalled();
+			expect(mockPlugin.lastFileWords).toBe(10);
+
+			// Late file-change while reference is still active must NOT rebind to refFile
+			mockPlugin.cacheManager.getFileCache.mockImplementation((p: string) => p === mainFile.path ? 10 : 777);
+			await tracker.handleFileChange();
+			expect(mockPlugin.lastFilePath).toBe(mainFile.path);
+			expect(mockPlugin.lastFileWords).toBe(10);
+
+			// Pending debounced MAIN edit firing during exit still tracks MAIN words
+			tracker.handleEditorChange({ editor: mainEditor, info: mainView } as never);
+			expect(mockApp.workspace.trigger).toHaveBeenCalledWith(
+				'webnovel:editor-word-count-updated',
+				mainFile,
+				'main debounced edit!'.length - 10
+			);
+			expect(mockPlugin.lastFileWords).toBe('main debounced edit!'.length);
+		});
+	});
 });

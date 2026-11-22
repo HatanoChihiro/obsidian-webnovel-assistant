@@ -5,134 +5,16 @@
 }
 
 
-.task-card {
-	background: color-mix(in srgb, var(--interactive-accent) 4%, var(--background-secondary));
-	border-radius: 8px;
-	padding: 14px 18px;
-	margin-bottom: 12px;
-	border-top: 3px solid var(--interactive-accent);
-}
-
-
-.task-card-active {
-	border-top-color: var(--interactive-accent);
-}
-
-
-.task-card-done {
-	border-top-color: color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%);
-}
-
-
-.task-card-failed {
-	border-top-color: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%);
-}
-
-
-.task-card-pending {
-	border-top-color: var(--text-muted);
-}
-
-
-.task-card-header {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	margin-bottom: 8px;
-}
-
-
-.task-card-period {
-	font-weight: 600;
-	font-size: 0.9em;
-	color: var(--interactive-accent);
-}
-
-
-.task-card-status {
-	font-size: 0.75em;
-	padding: 2px 8px;
-	border-radius: 4px;
-	font-weight: normal;
-}
-
-
-.task-status-active {
-	background: var(--interactive-accent);
-	color: var(--text-on-accent);
-}
-
-
-.task-status-done {
-	background: color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%);
-	color: var(--text-on-accent);
-}
-
-
-.task-status-failed {
-	background: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%);
-	color: var(--text-on-accent);
-}
-
-
-.task-status-pending {
-	background: var(--text-muted);
-	color: var(--text-on-accent);
-}
-
-
-.task-card-info-row {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	font-size: 0.85em;
-	color: var(--text-normal);
-	font-weight: 500;
-	flex-wrap: nowrap;
-	overflow: hidden;
-	margin-bottom: 4px;
-}
-
-
-
-.task-card-position::before {
+.wn-task-card-position::before {
 	content: '\00b7';
 	margin-right: 6px;
 }
 
 
-.task-card-cycle-row {
-	font-size: 0.8em;
-	color: var(--text-muted);
-	margin-bottom: 10px;
-}
-
-
-.task-card-cycle-below {
+.wn-task-card-cycle-below {
 	text-align: right;
 	margin-top: 4px;
 }
-
-
-.task-card-progress {
-	margin-bottom: 6px;
-}
-
-
-.task-card-footer {
-	display: flex;
-	justify-content: space-between;
-	font-size: 0.8em;
-	color: var(--text-muted);
-}
-
-
-.task-card-result {
-	font-size: 0.85em;
-	color: var(--text-muted);
-	margin-top: 4px;
-}
-
 
 
 /* ==========================================================================
@@ -146,6 +28,7 @@
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 8px;
 	padding: 12px 14px;
+	margin-bottom: 12px;
 	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 	transition: all 0.2s ease;
 	position: relative;
@@ -196,7 +79,6 @@
 }
 
 
-.task-card-header-right,
 .wn-task-card-header-right {
 	display: flex;
 	align-items: center;
@@ -246,9 +128,13 @@
 
 .wn-task-card-info-row {
 	display: flex;
+	align-items: center;
 	gap: 8px;
 	font-size: 0.8em;
+	font-weight: 500;
 	color: var(--text-muted);
+	flex-wrap: nowrap;
+	overflow: hidden;
 	margin-bottom: 4px;
 }
 
@@ -393,47 +279,27 @@
 
 .wn-task-card-footer-event {
 	justify-content: flex-end;
+	color: var(--text-muted);
 }
 
 
-.wn-task-card .task-card-cycle-row,
-.wn-task-card .wn-task-card-cycle-row,
-.task-card .task-card-cycle-row {
+.wn-task-card .wn-task-card-cycle-row {
 	margin-bottom: 4px;
 }
 
 
-.wn-task-board-layout .task-card-footer-event,
-.wn-task-card .wn-task-card-footer-event,
-.task-card .wn-task-card-footer-event,
-.task-card .task-card-footer-event {
+.wn-task-board-layout .wn-task-card-footer-event,
+.wn-task-card .wn-task-card-footer-event {
 	margin-top: auto;
 	display: flex;
 	justify-content: flex-end;
 }
-/* ========== Task board view styles (extracted from common.css) ========== */
 
-.task-progress-label {
-	display: flex;
-	justify-content: space-between;
-	font-size: 0.85em;
-	margin-bottom: 4px;
-}
-
-.task-progress-percent {
-	font-weight: 600;
-	color: var(--interactive-accent);
-}
-
-.task-remaining {
-	color: var(--text-muted);
-}
-
-.task-reached {
+.wn-task-reached {
 	color: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-success, var(--interactive-accent)) 70%);
 	font-weight: 600;
 }
 
-.task-days-left {
+.wn-task-days-left {
 	color: var(--text-muted);
 }

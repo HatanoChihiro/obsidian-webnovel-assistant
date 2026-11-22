@@ -1,4 +1,5 @@
-import { TFile, TFolder, Vault, Component, type TAbstractFile, type WorkspaceLeaf, ItemView, Notice, Menu, Modal, Setting, setIcon } from 'obsidian';
+import { showPluginNotice } from '../services/PluginNoticeService';
+import { TFile, TFolder, Vault, Component, type TAbstractFile, type WorkspaceLeaf, ItemView, Menu, Modal, Setting, setIcon } from 'obsidian';
 import type { App, ViewStateResult } from 'obsidian';
 import type { ParsedForeshadowingEntry } from '../types/foreshadowing';
 import type { AccurateCountSettings } from '../types/settings';
@@ -970,7 +971,7 @@ export class WorkbenchView extends ItemView {
         const fromFolder = fromPath.substring(0, fromPath.lastIndexOf('/'));
         const toFolder = toPath.substring(0, toPath.lastIndexOf('/'));
         if (fromFolder !== toFolder) {
-            new Notice(t('error.cross-volume-drag-not-supported'));
+            showPluginNotice(t('error.cross-volume-drag-not-supported'));
             return;
         }
 
@@ -1153,7 +1154,7 @@ export class WorkbenchView extends ItemView {
                 this.plugin.fileExplorerPatcher.refreshAllExplorers();
                 void this.reloadBoard();
             } catch (e) {
-                new Notice(t('workbench.rename-failed', { error: String(e) }) || ('重命名失败: ' + String(e)));
+                showPluginNotice(t('workbench.rename-failed', { error: String(e) }) || ('重命名失败: ' + String(e)));
             } finally {
                 window.setTimeout(() => { this.isSavingMetadata = false; }, 500);
             }
@@ -1874,7 +1875,7 @@ export class WorkbenchView extends ItemView {
                                         Logger.error('[WorkbenchView] Failed to record work status journey event:', journeyErr);
                                     }
                                 }
-                                new Notice(t('corkboard.status-updated', { status: getNovelStatusText(st) }) || `状态已更新：${getNovelStatusText(st)}`);
+                                showPluginNotice(t('corkboard.status-updated', { status: getNovelStatusText(st) }) || `状态已更新：${getNovelStatusText(st)}`);
                             });
                     });
                 }
@@ -1909,7 +1910,7 @@ export class WorkbenchView extends ItemView {
                     lastPlatform,
                     async (entry) => {
                         await manager.addEntry(entry, bookFolder);
-                        new Notice(t('notice.task-added') || '任务已添加');
+                        showPluginNotice(t('notice.task-added') || '任务已添加');
                     },
                     bookFolder
                 ).open();
@@ -1963,7 +1964,7 @@ export class WorkbenchView extends ItemView {
                                 Logger.error('[WorkbenchView] Failed to record chapter create journey event:', journeyErr);
                             }
                         }
-                        new Notice((t('corkboard.new-chapter-success')) + title);
+                        showPluginNotice((t('corkboard.new-chapter-success')) + title);
                         // 留在工作台，仅刷新面板
                         void this.reloadBoard();
                         window.setTimeout(() => {
@@ -1972,7 +1973,7 @@ export class WorkbenchView extends ItemView {
                     }).catch(e => {
                         this.isSavingMetadata = false;
                         console.error(e);
-                        new Notice(t('corkboard.new-chapter-failed'));
+                        showPluginNotice(t('corkboard.new-chapter-failed'));
                     });
                 }).open();
             };

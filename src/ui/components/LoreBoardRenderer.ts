@@ -1,4 +1,5 @@
-import { Notice, TFile, setIcon, Component, type App } from 'obsidian';
+import { showPluginNotice } from '../../services/PluginNoticeService';
+import { TFile, setIcon, Component, type App } from 'obsidian';
 import { t, getLocale } from '../../i18n';
 import type { GraphEdge, RelationGraphManager } from '../../services/RelationGraphManager';
 import { ForceLayoutEngine } from '../../services/ForceLayoutEngine';
@@ -7,6 +8,7 @@ import { cleanLoreHeading } from '../../services/CharacterManager';
 import type { AccurateCountSettings } from '../../types/settings';
 import { GraphRenderer, type GraphRenderState, type ThemeColors } from './GraphRenderer';
 import { GraphInteractionController } from './GraphInteractionController';
+import { GraphHoverAdapter } from './GraphHoverAdapter';
 import { LoreCardRenderer, type LoreBodyReadCache } from './LoreCardRenderer';
 import { LoreCardPreview } from './LoreCardPreview';
 import { LoreEditModal, type LoreEditPlugin } from '../LoreEditModal';
@@ -43,7 +45,8 @@ export type LoreBoardRelationGraphManager = Pick<
 >;
 
 export type LoreBoardSettings = LoreBoardCardsSettings &
-    Pick<AccurateCountSettings, 'loreBoardLayout'>;
+    Pick<AccurateCountSettings, 'loreBoardLayout'> &
+    Partial<Pick<AccurateCountSettings, 'enableLorePopover' | 'enableMobileLorePopover'>>;
 
 export interface LoreBoardPlugin extends LoreBoardCardsPlugin {
     characterManager: LoreBoardCharacterManager;
@@ -246,7 +249,7 @@ export class LoreBoardRenderer {
 
                             if (fromEntry && toEntry) {
                                 if (fromEntry.file.path !== toEntry.file.path) {
-                                    new Notice(t('error.cross-file-drag-not-supported'));
+                                    showPluginNotice(t('error.cross-file-drag-not-supported'));
                                     return;
                                 }
                                 const moved = await plugin.characterManager.moveLoreItem(fromEntry, toEntry, insertAfter);
@@ -619,7 +622,7 @@ export class LoreBoardRenderer {
         }
 
         const graphManager = plugin.relationGraphManager;
-        const data = await graphManager.buildGraphData(effectiveFiles[0], { files: effectiveFiles, enableGlobal: false, autoLinkMentions: true });
+        const data = await graphManager.buildGraphData(effectiveFiles[0], { files: effectiveFiles, enableGlobal: false });
         if (isDisposed) return;
 
         if (data.nodes.length === 0) {
@@ -776,9 +779,26 @@ export class LoreBoardRenderer {
             animationFrameId = ownerWin.requestAnimationFrame(loop);
         };
 
+        const hoverAdapter = new GraphHoverAdapter({
+            app,
+            canvas,
+            anchorParent: graphWrapper,
+            state,
+            characterManager: plugin.characterManager,
+            getSettings: () => ({
+                enableLorePopover: plugin.settings.enableLorePopover,
+                enableMobileLorePopover: plugin.settings.enableMobileLorePopover ?? false,
+                lorePopoverCollapse: plugin.settings.lorePopoverCollapse
+            }),
+            getBookPath: () => bookPath,
+            isHidden
+        });
+
         const doc = canvas.ownerDocument;
         const onVisibilityChange = () => {
             if (isHidden()) {
+                hoverAdapter.cancel();
+                state.hoveredNode = null;
                 if (animationFrameId) ownerWin.cancelAnimationFrame(animationFrameId);
                 animationFrameId = 0;
             } else if (!animationFrameId) {
@@ -801,11 +821,16 @@ export class LoreBoardRenderer {
         let lastHeight = initialHeight;
 
         const resizeCanvas = () => {
+            if (isHidden()) {
+                hoverAdapter.cancel();
+                state.hoveredNode = null;
+                return;
+            }
             const rect = graphWrapper.getBoundingClientRect();
             if (rect.width === 0 || rect.height === 0) return;
             if (!isFirstValidResize && rect.width === lastWidth && rect.height === lastHeight) return;
 
-            const DPR = window.devicePixelRatio || 1;
+            const DPR = ownerWin.devicePixelRatio || 1;
             canvas.width = rect.width * DPR;
             canvas.height = rect.height * DPR;
 
@@ -832,6 +857,7 @@ export class LoreBoardRenderer {
             }
 
             // 容器尺寸发生实质变化（例如双击词条分屏打开文档后工作台宽度减半）
+            hoverAdapter.cancel();
             const dx = (rect.width - lastWidth) / 2;
             const dy = (rect.height - lastHeight) / 2;
             lastWidth = rect.width;
@@ -869,6 +895,7 @@ export class LoreBoardRenderer {
         const controller = new GraphInteractionController(canvas, state, {
             requestRender: () => requestRender(),
             onNodeDoubleClick: (node) => {
+                hoverAdapter.cancel();
                 // 高亮选中双击的节点
                 state.selectedNode = node;
                 requestRender();
@@ -894,17 +921,25 @@ export class LoreBoardRenderer {
                         fallbackLine
                     });
                 } else {
-                    new Notice(t('relation.character-not-found', { id: node.id }) || `未找到设定 ${node.id} 的设定文件`);
+                    showPluginNotice(t('relation.character-not-found', { id: node.id }) || `未找到设定 ${node.id} 的设定文件`);
                 }
             },
             onBackgroundDoubleClick: () => {
+                hoverAdapter.cancel();
                 state.isLocalMode = false;
                 state.localFocusNode = null;
                 state.selectedNode = null;
                 requestRender();
             },
-            onNodeHover: (node) => {
+            onNodeHover: (node, e) => {
                 state.hoveredNode = node;
+                hoverAdapter.handleNodeHover(node, e);
+            },
+            onCanvasMouseLeave: (e) => {
+                hoverAdapter.handleCanvasMouseLeave(e);
+            },
+            onViewportInteraction: () => {
+                hoverAdapter.cancel();
             },
             onNodeDragStart: (node) => {
                 const ln = engine.nodes.find(n => n.id === node.id);
@@ -951,6 +986,8 @@ export class LoreBoardRenderer {
 
         ownerComponent.register(() => {
             isDisposed = true;
+            hoverAdapter.dispose();
+            state.hoveredNode = null;
             if (animationFrameId) {
                 ownerWin.cancelAnimationFrame(animationFrameId);
                 animationFrameId = 0;

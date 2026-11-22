@@ -102,14 +102,14 @@ describe('ForeshadowingView', () => {
 		await view.refresh();
 
 		const contentEl = view.containerEl.children[1] as HTMLElement;
-		expect(contentEl.querySelector('.foreshadowing-view-folder')?.textContent).toBe('BookB');
+		expect(contentEl.querySelector('.wn-foreshadowing-view-folder')?.textContent).toBe('BookB');
 
 		// Resolve delayed read for A
 		resolveA('## 伏笔A\n');
 		await refreshA;
 
 		// Should not be overwritten with BookA
-		expect(contentEl.querySelector('.foreshadowing-view-folder')?.textContent).toBe('BookB');
+		expect(contentEl.querySelector('.wn-foreshadowing-view-folder')?.textContent).toBe('BookB');
 	});
 
 	it('discards pending read and does not render when closed', async () => {
@@ -142,7 +142,7 @@ describe('ForeshadowingView', () => {
 		await refreshPromise;
 
 		const contentEl = view.containerEl.children[1] as HTMLElement;
-		expect(contentEl.querySelectorAll('.foreshadowing-entry-card')).toHaveLength(0);
+		expect(contentEl.querySelectorAll('.wn-foreshadowing-entry-card')).toHaveLength(0);
 	});
 
 	it('cancels pending refresh timer on owner window when closed', async () => {
@@ -228,7 +228,7 @@ describe('ForeshadowingView', () => {
 		await view.refresh();
 
 		const contentEl = view.containerEl.children[1] as HTMLElement;
-		const descBefore = contentEl.querySelector('.foreshadowing-entry-desc-text')?.textContent;
+		const descBefore = contentEl.querySelector('.wn-foreshadowing-entry-desc-text')?.textContent;
 		expect(descBefore).toBe('## 伏笔A_New');
 
 		// Resolve first read
@@ -236,7 +236,7 @@ describe('ForeshadowingView', () => {
 		await firstRefresh;
 
 		// Stale read must NOT append or replace A_Old
-		const allDescs = contentEl.querySelectorAll('.foreshadowing-entry-desc-text');
+		const allDescs = contentEl.querySelectorAll('.wn-foreshadowing-entry-desc-text');
 		expect(allDescs).toHaveLength(1);
 		expect(allDescs[0]?.textContent).toBe('## 伏笔A_New');
 	});
@@ -257,7 +257,7 @@ describe('ForeshadowingView', () => {
 		const { contentEl } = setupMockContainer(view, owner);
 		view.currentFolder = 'A';
 		await view.refresh();
-		(contentEl.querySelector('.foreshadowing-deprecate-btn') as unknown as MockElement).click();
+		(contentEl.querySelector('.wn-foreshadowing-deprecate-btn') as unknown as MockElement).click();
 		view.currentFolder = 'B';
 		await view.refresh();
 		view.currentFolder = 'A';

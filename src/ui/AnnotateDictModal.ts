@@ -1,4 +1,5 @@
-import { Modal, Setting, Notice, type App } from 'obsidian';
+import { showPluginNotice } from '../services/PluginNoticeService';
+import { Modal, Setting, type App } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { t, getLocale } from '../i18n';
 import { validateSynonymGroupInput } from '../utils/proofreadingHelpers';
@@ -195,27 +196,27 @@ export class AnnotateDictModal extends Modal {
 
 	private async handleSubmit(): Promise<void> {
 		if (!this.plugin.proofreadingManager) {
-			new Notice(t('notice.annotate-dict-failed', { error: t('modal.annotate-error-write-failed') }));
+			showPluginNotice(t('notice.annotate-dict-failed', { error: t('modal.annotate-error-write-failed') }));
 			return;
 		}
 
 		if (this.currentType === 'wrong') {
 			if (!this.wrongWord) {
-				new Notice(t('notice.annotate-dict-failed', { error: t('modal.annotate-error-word-empty') }));
+				showPluginNotice(t('notice.annotate-dict-failed', { error: t('modal.annotate-error-word-empty') }));
 				return;
 			}
 			if (!this.wrongSuggestion) {
-				new Notice(t('notice.annotate-dict-failed', { error: t('modal.annotate-error-suggestion-empty') }));
+				showPluginNotice(t('notice.annotate-dict-failed', { error: t('modal.annotate-error-suggestion-empty') }));
 				return;
 			}
 
 			const rowData = [this.wrongWord, this.wrongSuggestion, this.wrongDescription];
 			const success = await this.plugin.proofreadingManager.updateTableEntry('wrong', this.wrongWord, rowData);
 			if (success) {
-				new Notice(t('notice.annotate-dict-success'));
+				showPluginNotice(t('notice.annotate-dict-success'));
 				this.close();
 			} else {
-				new Notice(t('notice.annotate-dict-failed', { error: t('modal.annotate-error-write-failed') }));
+				showPluginNotice(t('notice.annotate-dict-failed', { error: t('modal.annotate-error-write-failed') }));
 			}
 		} else if (this.currentType === 'synonym') {
 			const snapshot = this.plugin.proofreadingManager.getDictSnapshot();
@@ -234,7 +235,7 @@ export class AnnotateDictModal extends Modal {
 				} else if (validation.errorCode === 'CROSS_GROUP_COLLISION') {
 					errorMsg = t('modal.annotate-error-synonym-collision', { word: validation.conflictWord || '' });
 				}
-				new Notice(t('notice.annotate-dict-failed', { error: errorMsg }));
+				showPluginNotice(t('notice.annotate-dict-failed', { error: errorMsg }));
 				return;
 			}
 
@@ -242,14 +243,14 @@ export class AnnotateDictModal extends Modal {
 			const rowData = [groupWordsFormatted, this.synonymDescription];
 			const success = await this.plugin.proofreadingManager.updateTableEntry('synonym', this.selectedText, rowData);
 			if (success) {
-				new Notice(t('notice.annotate-dict-success'));
+				showPluginNotice(t('notice.annotate-dict-success'));
 				this.close();
 			} else {
-				new Notice(t('notice.annotate-dict-failed', { error: t('modal.annotate-error-write-failed') }));
+				showPluginNotice(t('notice.annotate-dict-failed', { error: t('modal.annotate-error-write-failed') }));
 			}
 		} else if (this.currentType === 'sensitive') {
 			if (!this.sensitiveWord) {
-				new Notice(t('notice.annotate-dict-failed', { error: t('modal.annotate-error-word-empty') }));
+				showPluginNotice(t('notice.annotate-dict-failed', { error: t('modal.annotate-error-word-empty') }));
 				return;
 			}
 
@@ -269,10 +270,10 @@ export class AnnotateDictModal extends Modal {
 
 			const success = await this.plugin.proofreadingManager.updateTableEntry('sensitive', this.sensitiveWord, rowData);
 			if (success) {
-				new Notice(t('notice.annotate-dict-success'));
+				showPluginNotice(t('notice.annotate-dict-success'));
 				this.close();
 			} else {
-				new Notice(t('notice.annotate-dict-failed', { error: t('modal.annotate-error-write-failed') }));
+				showPluginNotice(t('notice.annotate-dict-failed', { error: t('modal.annotate-error-write-failed') }));
 			}
 		}
 	}

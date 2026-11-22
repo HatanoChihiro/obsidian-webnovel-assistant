@@ -106,28 +106,28 @@
 }
 
 
-.wn-foreshadowing-status-badge.status-pending {
+.wn-foreshadowing-status-badge.wn-status-pending {
 	background: color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%) 15%, transparent);
 	color: color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%);
 	border: 1px solid color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 30%, var(--text-error, var(--interactive-accent)) 70%) 30%, transparent);
 }
 
 
-.wn-foreshadowing-status-badge.status-partially_recovered {
+.wn-foreshadowing-status-badge.wn-status-partially_recovered {
 	background: color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 65%, var(--text-error, var(--interactive-accent)) 35%) 15%, transparent);
 	color: color-mix(in srgb, var(--interactive-accent) 65%, var(--text-error, var(--interactive-accent)) 35%);
 	border: 1px solid color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 65%, var(--text-error, var(--interactive-accent)) 35%) 30%, transparent);
 }
 
 
-.wn-foreshadowing-status-badge.status-recovered {
+.wn-foreshadowing-status-badge.wn-status-recovered {
 	background: color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%) 15%, transparent);
 	color: color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%);
 	border: 1px solid color-mix(in srgb, color-mix(in srgb, var(--interactive-accent) 40%, var(--text-success, var(--interactive-accent)) 60%) 30%, transparent);
 }
 
 
-.wn-foreshadowing-status-badge.status-deprecated {
+.wn-foreshadowing-status-badge.wn-status-deprecated {
 	background: color-mix(in srgb, var(--text-muted) 15%, transparent);
 	color: var(--text-muted);
 	border: 1px solid color-mix(in srgb, var(--text-muted) 30%, transparent);

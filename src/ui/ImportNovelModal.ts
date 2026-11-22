@@ -1,5 +1,6 @@
+import { showPluginNotice } from '../services/PluginNoticeService';
 import type { App } from 'obsidian';
-import { Modal, Setting, Notice, setIcon, type TextComponent } from 'obsidian';
+import { Modal, Setting, setIcon, type TextComponent } from 'obsidian';
 import { t } from '../i18n';
 import type { AccurateCountSettings } from '../types/settings';
 import type { HomepageManager } from '../services/HomepageManager';
@@ -222,7 +223,7 @@ export class ImportNovelModal extends Modal {
 							if (gbkErrors < utf8Errors) {
 								text = gbkText;
 								this.encodingDropdown.value = 'gbk';
-								new Notice(t('import-novel.auto-encoding-gbk'));
+								showPluginNotice(t('import-novel.auto-encoding-gbk'));
 							} else {
 								text = utf8Text;
 							}
@@ -255,12 +256,12 @@ export class ImportNovelModal extends Modal {
 				this.renderPreview();
 			} catch (err) {
 				window.console.error(err);
-				new Notice(t('import-novel.error-read', { error: String(err) }));
+				showPluginNotice(t('import-novel.error-read', { error: String(err) }));
 			}
 		};
 
 		reader.onerror = () => {
-			new Notice(t('import-novel.error-read', { error: 'FileReader error' }));
+			showPluginNotice(t('import-novel.error-read', { error: 'FileReader error' }));
 		};
 
 		// 以 ArrayBuffer 读取以便进行智能编码检测与 TextDecoder 无损解析
@@ -355,7 +356,7 @@ export class ImportNovelModal extends Modal {
 	private async startImport() {
 		if (this.isImporting) return;
 		if (!this.selectedFile) {
-			new Notice(t('import-novel.error-empty'));
+			showPluginNotice(t('import-novel.error-empty'));
 			return;
 		}
 		
@@ -384,11 +385,11 @@ export class ImportNovelModal extends Modal {
 				},
 				{ series: this.series.trim() }
 			);
-			new Notice(t('import-novel.success', { count: String(totalCount) }));
+			showPluginNotice(t('import-novel.success', { count: String(totalCount) }));
 			this.close();
 		} catch (error) {
 			window.console.error(error);
-			new Notice(t('import-novel.error-import-failed', { error: String(error) }));
+			showPluginNotice(t('import-novel.error-import-failed', { error: String(error) }));
 			this.startButton.disabled = false;
 			this.startButton.setText(t('import-novel.start-import'));
 		} finally {

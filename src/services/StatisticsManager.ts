@@ -7,6 +7,15 @@ import { formatTime, parseGoal } from '../utils';
 import { Logger } from '../utils/Logger';
 import { t } from '../i18n';
 
+export interface DailyStatsSummary {
+	activeHours: string;
+	totalMs: number;
+	focusMs: number;
+	slackMs: number;
+	addedWords: number;
+	writingSpeed: number | null;
+}
+
 /**
  * 统计数据管理器 (StatisticsManager)
  * 
@@ -47,10 +56,16 @@ export class StatisticsManager {
 		let currentFile = '';
 		let currentFolder = '';
 		let chapterWords = 0;
-		const view = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
+		const imm = this.plugin.immersiveModeManager;
+		const isMobileImmersive = Boolean(imm?.isMobileDataIsolationActive?.() ?? imm?.isMobileImmersiveSessionActive?.());
+		const view = isMobileImmersive
+			? (imm?.getDataScopedMainView?.() ?? imm?.getActiveSessionMainView?.() ?? null)
+			: this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
 		let file: TFile | null = null;
 		if (targetFile !== undefined) {
 			file = targetFile;
+		} else if (isMobileImmersive) {
+			file = imm?.getDataScopedMainFile?.() ?? imm?.getActiveSessionMainFile?.() ?? view?.file ?? null;
 		} else {
 			file = view?.file ?? null;
 			if (!file && this.plugin.lastFilePath) {
@@ -233,6 +248,42 @@ export class StatisticsManager {
 		}
 		const hours = totalMs / (1000 * 60 * 60);
 		return hours > 0 ? Math.round(totalWords / hours) : 0;
+	}
+
+	/**
+	 * 获取指定单日的写作统计摘要
+	 */
+	getDailyStats(history: Record<string, DailyStat>, date: string): DailyStatsSummary {
+		const stat = history[date];
+		if (!stat) {
+			return {
+				activeHours: '',
+				totalMs: 0,
+				focusMs: 0,
+				slackMs: 0,
+				addedWords: 0,
+				writingSpeed: null
+			};
+		}
+
+		const focusMs = stat.focusMs || 0;
+		const slackMs = stat.slackMs || 0;
+		const totalMs = focusMs + slackMs;
+		const addedWords = stat.addedWords || 0;
+		const singleDayHistory: Record<string, DailyStat> = { [date]: stat };
+		const activeHours = this.calcActiveHours(singleDayHistory, date, date);
+		// 与分钟级耗时显示保持一致，避免显示 0m 时由零碎计时算出异常高时速。
+		const rawSpeed = totalMs >= 60000 ? this.calcWritingSpeed(singleDayHistory, date, date) : 0;
+		const writingSpeed = Object.is(rawSpeed, -0) ? 0 : rawSpeed;
+
+		return {
+			activeHours,
+			totalMs,
+			focusMs,
+			slackMs,
+			addedWords,
+			writingSpeed
+		};
 	}
 
 	/**

@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MockElement } from './mocks/MockElement';
 import { RelationGraphView, type RelationGraphViewPlugin } from '../src/ui/RelationGraphView';
-import type { GraphData } from '../src/services/RelationGraphManager';
+import type { GraphData, GraphNode } from '../src/services/RelationGraphManager';
 import type { GraphRenderState, ThemeColors } from '../src/ui/components/GraphRenderer';
+import { LoreCardRenderer } from '../src/ui/components/LoreCardRenderer';
+import { LoreHoverPopover } from '../src/ui/LoreHoverPopover';
 
 const { MockTFile } = vi.hoisted(() => {
 	class HoistedMockTFile {
@@ -66,11 +68,38 @@ vi.mock('obsidian', () => {
 		registerEvent(): void {}
 	}
 
+	class MockComponent {
+		private loaded = false;
+		load(): void { this.loaded = true; }
+		unload(): void {
+			if (!this.loaded) return;
+			this.loaded = false;
+			this.onunload();
+		}
+		onunload(): void {}
+		register(_cb: () => void): void {}
+		registerEvent(): void {}
+	}
+
 	return {
 		ItemView: MockItemView,
+		Component: MockComponent,
+		Modal: class {
+			modalEl = new MockElement('modal');
+			contentEl = new MockElement('modal-content');
+			open(): void {}
+			close(): void {}
+		},
+		Setting: class {
+			setName() { return this; }
+			setHeading() { return this; }
+		},
+		MarkdownRenderer: { render: vi.fn() },
+		Platform: { isMobile: false },
 		TFile: MockTFile,
 		Notice: class {},
-		setIcon: vi.fn()
+		setIcon: vi.fn(),
+		setTooltip: vi.fn()
 	};
 });
 
@@ -102,8 +131,13 @@ vi.mock('../src/ui/components/GraphRenderer', () => ({
 	}
 }));
 
+const capturedGraphCallbacks: Array<Record<string, (...args: unknown[]) => unknown>> = [];
+
 vi.mock('../src/ui/components/GraphInteractionController', () => ({
 	GraphInteractionController: class {
+		constructor(_canvas: unknown, _state: unknown, callbacks: Record<string, (...args: unknown[]) => unknown>) {
+			capturedGraphCallbacks.push(callbacks);
+		}
 		bindEvents = vi.fn();
 		unbindEvents = vi.fn();
 		updateLayout = vi.fn();
@@ -415,5 +449,290 @@ describe('RelationGraphView lifecycle & input narrowing', () => {
 
 		// Stale data for fileA must not overwrite fileB!
 		expect((view as unknown as { graphData: { nodes: Array<{ id: string }> } }).graphData.nodes[0].id).toBe('Bob');
+	});
+});
+
+describe('RelationGraphView hover previews', () => {
+	let ownerWindow: Window & EventTarget;
+	let ownerDocument: Document & { visibilityState: string };
+	let bodyEl: MockElement;
+	let buildCardSpy: ReturnType<typeof vi.spyOn>;
+	let originalCreateDiv: typeof MockElement.prototype.createDiv;
+	let originalCreateEl: typeof MockElement.prototype.createEl;
+
+	function setupHostDom() {
+		bodyEl = new MockElement('body');
+		ownerWindow = Object.assign(new EventTarget(), {
+			setTimeout: (cb: () => void, ms?: number) => globalThis.setTimeout(cb, ms) as unknown as number,
+			clearTimeout: (id: number) => globalThis.clearTimeout(id),
+			requestAnimationFrame: (cb: () => void) => globalThis.setTimeout(cb, 0) as unknown as number,
+			cancelAnimationFrame: (id: number) => globalThis.clearTimeout(id),
+			innerWidth: 1200,
+			innerHeight: 800
+		}) as unknown as Window & EventTarget;
+
+		ownerDocument = Object.assign(new EventTarget(), {
+			defaultView: ownerWindow,
+			visibilityState: 'visible',
+			body: bodyEl,
+			addEventListener: EventTarget.prototype.addEventListener,
+			removeEventListener: EventTarget.prototype.removeEventListener
+		}) as unknown as Document & { visibilityState: string };
+
+		(bodyEl as unknown as { ownerDocument: Document }).ownerDocument = ownerDocument;
+		(MockElement.prototype as unknown as { setCssStyles?: (s: Record<string, string>) => void }).setCssStyles = vi.fn();
+		(MockElement.prototype as unknown as { matches?: (s: string) => boolean }).matches = () => false;
+
+		originalCreateDiv = MockElement.prototype.createDiv;
+		originalCreateEl = MockElement.prototype.createEl;
+		MockElement.prototype.createDiv = function (this: MockElement, opts?: string | { cls?: string; text?: string }) {
+			const child = originalCreateDiv.call(this, opts);
+			(child as unknown as { ownerDocument: Document }).ownerDocument =
+				(this as unknown as { ownerDocument?: Document }).ownerDocument ?? ownerDocument;
+			return child;
+		};
+		MockElement.prototype.createEl = function (this: MockElement, tag: string, opts?: { cls?: string; text?: string; type?: string; value?: string }) {
+			const child = originalCreateEl.call(this, tag, opts);
+			(child as unknown as { ownerDocument: Document }).ownerDocument =
+				(this as unknown as { ownerDocument?: Document }).ownerDocument ?? ownerDocument;
+			return child;
+		};
+	}
+
+	beforeEach(() => {
+		vi.useFakeTimers();
+		capturedGraphCallbacks.length = 0;
+		setupHostDom();
+		vi.stubGlobal('MutationObserver', class {
+			observe = vi.fn();
+			disconnect = vi.fn();
+		});
+		buildCardSpy = vi.spyOn(LoreCardRenderer, 'buildCardDOM').mockResolvedValue(undefined);
+	});
+
+	afterEach(() => {
+		LoreHoverPopover.closeAll();
+		buildCardSpy.mockRestore();
+		MockElement.prototype.createDiv = originalCreateDiv;
+		MockElement.prototype.createEl = originalCreateEl;
+		delete (MockElement.prototype as unknown as { setCssStyles?: unknown }).setCssStyles;
+		delete (MockElement.prototype as unknown as { matches?: unknown }).matches;
+		vi.useRealTimers();
+		vi.unstubAllGlobals();
+		vi.stubGlobal('window', {
+			requestAnimationFrame: (cb: () => void) => setTimeout(cb, 0),
+			cancelAnimationFrame: (id: number) => clearTimeout(id),
+			setTimeout: (cb: () => void, ms?: number) => setTimeout(cb, ms),
+			clearTimeout: (id: ReturnType<typeof setTimeout>) => clearTimeout(id)
+		});
+		vi.stubGlobal('ResizeObserver', class {
+			observe = vi.fn();
+			disconnect = vi.fn();
+		});
+	});
+
+	function createGraphTestFixture(overrides?: {
+		enableLorePopover?: boolean;
+		isBorrowed?: boolean;
+		sameNameWrongFile?: InstanceType<typeof MockTFile>;
+	}) {
+		const nodeFile = new MockTFile('CastA.md', 'FictionA/Lore/CastA.md', 'FictionA/Lore');
+		const secondFile = new MockTFile('CastB.md', 'FictionA/Lore/CastB.md', 'FictionA/Lore');
+		const nodeA: GraphNode = {
+			id: 'Rowan',
+			heading: 'Rowan',
+			file: nodeFile as unknown as import('obsidian').TFile,
+			sourcePath: nodeFile.path,
+			x: 200,
+			y: 200,
+			vx: 0,
+			vy: 0,
+			pinned: false
+		};
+		const nodeB: GraphNode = {
+			id: 'Briar',
+			heading: 'Briar',
+			file: secondFile as unknown as import('obsidian').TFile,
+			sourcePath: secondFile.path,
+			x: 350,
+			y: 260,
+			vx: 0,
+			vy: 0,
+			pinned: false
+		};
+
+		const mockApp = {
+			vault: {
+				getAbstractFileByPath: vi.fn((path: string) => {
+					if (path === nodeFile.path) return nodeFile;
+					if (path === secondFile.path) return secondFile;
+					return null;
+				})
+			},
+			metadataCache: { on: vi.fn(() => ({ id: 'meta' })) },
+			workspace: { on: vi.fn(() => ({ id: 'ws' })) }
+		};
+
+		const plugin = {
+			app: mockApp,
+			settings: {
+				enableLorePopover: overrides?.enableLorePopover ?? true,
+				enableMobileLorePopover: false,
+				lorePopoverCollapse: false
+			},
+			characterManager: {
+				ensureInitialized: vi.fn().mockResolvedValue(undefined),
+				getBookPathForFile: vi.fn(() => 'FictionA'),
+				getCharacterFile: vi.fn((_book: string, name: string) => {
+					if (name === 'Rowan' && overrides?.sameNameWrongFile) {
+						return { file: overrides.sameNameWrongFile, heading: 'Rowan' };
+					}
+					return null;
+				}),
+				getLoreEntriesInFileOrder: vi.fn(() => []),
+				isLorePath: vi.fn(() => true),
+				isBorrowedLoreEntry: vi.fn(() => overrides?.isBorrowed ?? false),
+				updateLoreEntry: vi.fn()
+			},
+			relationGraphManager: {
+				buildGraphData: vi.fn().mockResolvedValue({
+					nodes: [nodeA, nodeB],
+					edges: []
+				})
+			}
+		} as unknown as RelationGraphViewPlugin;
+
+		const view = new RelationGraphView({ app: mockApp } as never, plugin);
+		(view.containerEl as unknown as { ownerDocument: Document }).ownerDocument = ownerDocument;
+		(view.contentEl as unknown as { ownerDocument: Document }).ownerDocument = ownerDocument;
+		return { view, plugin, mockApp, nodeA, nodeB, nodeFile, secondFile };
+	}
+
+	it('opens one lore card after 1000ms using real node file+heading identity, ignores repeated mousemove, and allows pointer entry into card', async () => {
+		const wrongFile = new MockTFile('Other.md', 'FictionA/Lore/Other.md', 'FictionA/Lore');
+		const { view, nodeA, nodeFile } = createGraphTestFixture({ sameNameWrongFile: wrongFile });
+
+		await view.onOpen();
+		await view.loadGraphForFile(nodeFile.path);
+
+		const callbacks = capturedGraphCallbacks[capturedGraphCallbacks.length - 1];
+		expect(callbacks).toBeDefined();
+
+		// Hover nodeA -> repeated mousemove at 600ms must NOT restart the 1000ms timer
+		callbacks.onNodeHover(nodeA, { clientX: 200, clientY: 200 });
+		vi.advanceTimersByTime(600);
+		callbacks.onNodeHover(nodeA, { clientX: 202, clientY: 201 });
+		vi.advanceTimersByTime(399);
+		expect(buildCardSpy).not.toHaveBeenCalled();
+
+		vi.advanceTimersByTime(1);
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(buildCardSpy).toHaveBeenCalledTimes(1);
+		const passedEntry = buildCardSpy.mock.calls[0][1] as { file: { path: string }; heading: string };
+		expect(passedEntry.file.path).toBe(nodeFile.path);
+		expect(passedEntry.heading).toBe('Rowan');
+		expect(bodyEl.querySelectorAll('.wn-lore-hover-popover')).toHaveLength(1);
+
+		// Moving pointer away onto empty canvas triggers 200ms grace; entering card keeps it open
+		callbacks.onNodeHover(null, { clientX: 220, clientY: 220 });
+		const popoverEl = bodyEl.querySelector('.wn-lore-hover-popover')!;
+		popoverEl.dispatchEvent('mouseenter');
+		vi.advanceTimersByTime(300);
+		expect(bodyEl.querySelectorAll('.wn-lore-hover-popover')).toHaveLength(1);
+
+		await view.onClose();
+		expect(bodyEl.querySelectorAll('.wn-lore-hover-popover')).toHaveLength(0);
+	});
+
+	it('cancels stale previews and late async reattachment on node change, interaction, mouseleave, hidden view, reload, and close', async () => {
+		const { view, nodeA, nodeB, nodeFile } = createGraphTestFixture();
+		await view.onOpen();
+		await view.loadGraphForFile(nodeFile.path);
+		const callbacks = capturedGraphCallbacks[capturedGraphCallbacks.length - 1];
+
+		// 1. Moving away before 1000ms cancels pending timer
+		callbacks.onNodeHover(nodeA, { clientX: 200, clientY: 200 });
+		vi.advanceTimersByTime(500);
+		callbacks.onNodeHover(null, { clientX: 50, clientY: 50 });
+		vi.advanceTimersByTime(1000);
+		expect(buildCardSpy).not.toHaveBeenCalled();
+
+		// 2. Changing nodes cancels previous pending preview
+		callbacks.onNodeHover(nodeA, { clientX: 200, clientY: 200 });
+		vi.advanceTimersByTime(700);
+		callbacks.onNodeHover(nodeB, { clientX: 350, clientY: 260 });
+		vi.advanceTimersByTime(400);
+		expect(buildCardSpy).not.toHaveBeenCalled();
+		vi.advanceTimersByTime(600);
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(buildCardSpy).toHaveBeenCalledTimes(1);
+		expect((buildCardSpy.mock.calls[0][1] as { heading: string }).heading).toBe('Briar');
+
+		// 3. Viewport interaction (drag/pan/zoom) cancels active preview
+		callbacks.onViewportInteraction();
+		expect(bodyEl.querySelectorAll('.wn-lore-hover-popover')).toHaveLength(0);
+
+		// 4. Canvas mouseleave clears pending timer
+		buildCardSpy.mockClear();
+		callbacks.onNodeHover(nodeA, { clientX: 200, clientY: 200 });
+		vi.advanceTimersByTime(500);
+		callbacks.onCanvasMouseLeave({ relatedTarget: null });
+		vi.advanceTimersByTime(1000);
+		expect(buildCardSpy).not.toHaveBeenCalled();
+
+		// 5. Hidden view clears active/pending preview
+		callbacks.onNodeHover(nodeA, { clientX: 200, clientY: 200 });
+		vi.advanceTimersByTime(1000);
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(bodyEl.querySelectorAll('.wn-lore-hover-popover')).toHaveLength(1);
+		ownerDocument.visibilityState = 'hidden';
+		ownerDocument.dispatchEvent(new Event('visibilitychange'));
+		expect(bodyEl.querySelectorAll('.wn-lore-hover-popover')).toHaveLength(0);
+
+		// 6. Late async buildCardDOM resolution after onClose must not attach card or leave anchor
+		ownerDocument.visibilityState = 'visible';
+		ownerDocument.dispatchEvent(new Event('visibilitychange'));
+		let resolveBuild!: () => void;
+		buildCardSpy.mockImplementationOnce(() => new Promise<void>(resolve => { resolveBuild = resolve; }));
+		callbacks.onNodeHover(nodeA, { clientX: 200, clientY: 200 });
+		vi.advanceTimersByTime(1000);
+		await view.onClose();
+		resolveBuild();
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(bodyEl.querySelectorAll('.wn-lore-hover-popover')).toHaveLength(0);
+		expect(view.contentEl.querySelectorAll('.wn-graph-hover-anchor')).toHaveLength(0);
+	});
+
+	it('respects enableLorePopover=false and hides edit button for borrowed entries', async () => {
+		const disabledFixture = createGraphTestFixture({ enableLorePopover: false });
+		await disabledFixture.view.onOpen();
+		await disabledFixture.view.loadGraphForFile(disabledFixture.nodeFile.path);
+		const disabledCb = capturedGraphCallbacks[capturedGraphCallbacks.length - 1];
+		disabledCb.onNodeHover(disabledFixture.nodeA, { clientX: 200, clientY: 200 });
+		vi.advanceTimersByTime(1200);
+		expect(buildCardSpy).not.toHaveBeenCalled();
+		await disabledFixture.view.onClose();
+
+		const borrowedFixture = createGraphTestFixture({ enableLorePopover: true, isBorrowed: true });
+		await borrowedFixture.view.onOpen();
+		await borrowedFixture.view.loadGraphForFile(borrowedFixture.nodeFile.path);
+		const borrowedCb = capturedGraphCallbacks[capturedGraphCallbacks.length - 1];
+		borrowedCb.onNodeHover(borrowedFixture.nodeA, { clientX: 200, clientY: 200 });
+		vi.advanceTimersByTime(1000);
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(buildCardSpy).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({ heading: 'Rowan' }),
+			expect.anything(),
+			expect.anything(),
+			expect.objectContaining({ hideEditButton: true })
+		);
+		await borrowedFixture.view.onClose();
 	});
 });

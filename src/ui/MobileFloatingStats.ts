@@ -14,12 +14,12 @@ export interface MobileFloatingStatsState {
 
 export type MobileFloatingStatsSettings = Pick<
 	AccurateCountSettings,
-	'enableMobileFocusTimer' | 'mobileFloatingStatsState'
+	'mobileFloatingStatsState'
 >;
 
 export type MobileFloatingStatsStatisticsManager = Pick<
 	StatisticsManager,
-	'getCoreStats'
+	'getCoreStats' | 'getSessionSpeed'
 >;
 
 export interface MobileFloatingStatsPlugin {
@@ -59,6 +59,7 @@ export class MobileFloatingStats {
 	private timerEl: HTMLElement | null = null;
 	private timerBtnEl: HTMLElement | null = null;
 	private timerTextEl: HTMLElement | null = null;
+	private speedEl: HTMLElement | null = null;
 
 	private ownerDocument: Document | null = null;
 	private ownerWindow: Window | null = null;
@@ -79,7 +80,7 @@ export class MobileFloatingStats {
 		if (this.containerEl) return;
 
 		const container = activeDocument.body.createDiv({
-			cls: 'mobile-floating-stats'
+			cls: 'wn-mobile-floating-stats'
 		});
 		const ownerDoc = container.ownerDocument;
 		const ownerWin = ownerDoc.win;
@@ -113,42 +114,49 @@ export class MobileFloatingStats {
 		// 字数显示
 		this.wordCountEl = this.containerEl.createSpan({
 			text: `0${t('common.word-char')}`, 
-			cls: 'mobile-floating-word-count'
+			cls: 'wn-mobile-floating-word-count'
 		});
 
 		// 分隔符
 		this.containerEl.createSpan({
 			text: '|',
-			cls: 'mobile-floating-divider'
+			cls: 'wn-mobile-floating-divider'
 		});
 
 		// 进度显示
 		this.progressEl = this.containerEl.createSpan({
 			text: '0%',
-			cls: 'mobile-floating-progress'
+			cls: 'wn-mobile-floating-progress'
 		});
 
 		// 专注计时容器
 		this.timerEl = this.containerEl.createSpan({
-			cls: 'mobile-floating-timer'
+			cls: 'wn-mobile-floating-timer'
 		});
 
 		// 播放/暂停按键前的分隔符
 		this.timerEl.createSpan({
 			text: '|',
-			cls: 'mobile-floating-divider'
+			cls: 'wn-mobile-floating-divider'
 		});
 		
 		// 仅图标响应点击/触摸事件，防止误触
 		this.timerBtnEl = this.timerEl.createSpan({
-			cls: 'mobile-floating-timer-btn wn-clickable wn-text-muted',
+			cls: 'wn-mobile-floating-timer-btn wn-clickable wn-text-muted',
 		});
 		setIcon(this.timerBtnEl, 'play');
 		this.currentTimerIcon = 'play';
 
 		// 时间与文字展示标签（只读，无点击事件）
 		this.timerTextEl = this.timerEl.createSpan({
-			cls: 'mobile-floating-timer-text wn-text-accent'
+			cls: 'wn-mobile-floating-timer-text wn-text-accent'
+		});
+		this.timerEl.createSpan({
+			text: '|',
+			cls: 'wn-mobile-floating-divider'
+		});
+		this.speedEl = this.timerEl.createSpan({
+			cls: 'wn-mobile-floating-speed'
 		});
 
 		const onTimerAction = (e: Event) => {
@@ -207,6 +215,7 @@ export class MobileFloatingStats {
 		this.timerEl = null;
 		this.timerBtnEl = null;
 		this.timerTextEl = null;
+		this.speedEl = null;
 		this.ownerDocument = null;
 		this.ownerWindow = null;
 	}
@@ -230,11 +239,15 @@ export class MobileFloatingStats {
 		this.checkBounds();
 	}
 
+	private isSuspendedByMobileImmersive(): boolean {
+		return Boolean(this.ownerDocument?.body?.classList?.contains?.('wn-immersive-mobile-active'));
+	}
+
 	/**
 	 * 更新显示内容
 	 */
 	update(): void {
-		if (!this.containerEl) return;
+		if (!this.containerEl || this.isSuspendedByMobileImmersive()) return;
 		
 		this.updateTimerUI();
 
@@ -270,41 +283,40 @@ export class MobileFloatingStats {
 	}
 	
 	public updateTimerUI(): void {
-		if (!this.timerEl || !this.timerBtnEl || !this.timerTextEl) return;
+		if (!this.timerEl || !this.timerBtnEl || !this.timerTextEl || this.isSuspendedByMobileImmersive()) return;
 		
-		if (this.plugin.settings.enableMobileFocusTimer) {
-			this.timerEl.show();
-			const focusSec = Math.round((this.plugin.focusMs || 0) / 1000);
-			const h = Math.floor(focusSec / 3600).toString().padStart(2, '0');
-			const m = Math.floor((focusSec % 3600) / 60).toString().padStart(2, '0');
-			const s = (focusSec % 60).toString().padStart(2, '0');
+		this.timerEl.show();
+		if (this.speedEl) {
+			this.speedEl.textContent = `${this.plugin.statisticsManager.getSessionSpeed()} ${t('common.words-per-hour-unit')}`;
+		}
+		const focusSec = Math.round((this.plugin.focusMs || 0) / 1000);
+		const h = Math.floor(focusSec / 3600).toString().padStart(2, '0');
+		const m = Math.floor((focusSec % 3600) / 60).toString().padStart(2, '0');
+		const s = (focusSec % 60).toString().padStart(2, '0');
 
-			// 图标按键符号使用 muted 默认色（不高亮），仅时间显示采用主题色
-			this.timerBtnEl.removeClass('wn-text-accent');
-			this.timerBtnEl.addClass('wn-text-muted');
-			this.timerTextEl.removeClass('wn-text-muted');
-			this.timerTextEl.addClass('wn-text-accent');
+		// 图标按键符号使用 muted 默认色（不高亮），仅时间显示采用主题色
+		this.timerBtnEl.removeClass('wn-text-accent');
+		this.timerBtnEl.addClass('wn-text-muted');
+		this.timerTextEl.removeClass('wn-text-muted');
+		this.timerTextEl.addClass('wn-text-accent');
 
-			const icon = this.plugin.isTracking ? 'pause' : 'play';
-			if (this.currentTimerIcon !== icon) {
-				setIcon(this.timerBtnEl, icon);
-				this.currentTimerIcon = icon;
-			}
-			if (this.plugin.isTracking) {
+		const icon = this.plugin.isTracking ? 'pause' : 'play';
+		if (this.currentTimerIcon !== icon) {
+			setIcon(this.timerBtnEl, icon);
+			this.currentTimerIcon = icon;
+		}
+		if (this.plugin.isTracking) {
+			this.timerTextEl.textContent = `${h}:${m}:${s}`;
+		} else {
+			if (focusSec > 0) {
+				// 暂停状态：继续显示已暂停的时长
 				this.timerTextEl.textContent = `${h}:${m}:${s}`;
 			} else {
-				if (focusSec > 0) {
-					// 暂停状态：继续显示已暂停的时长
-					this.timerTextEl.textContent = `${h}:${m}:${s}`;
-				} else {
-					// 初始或重置状态（未开始计时）：显示“专注计时”
-					const rawText = t('setting.mobile-focus-timer-start');
-					const labelText = rawText.replace(/^[▶⏸\s]+/, '');
-					this.timerTextEl.textContent = labelText;
-				}
+				// 初始或重置状态（未开始计时）：显示“专注计时”
+				const rawText = t('setting.mobile-focus-timer-start');
+				const labelText = rawText.replace(/^[▶⏸\s]+/, '');
+				this.timerTextEl.textContent = labelText;
 			}
-		} else {
-			this.timerEl.hide();
 		}
 	}
 

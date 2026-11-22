@@ -6,9 +6,11 @@ import { ChapterSorter } from '../services/ChapterSorter';
 import { findBookRoot, type FindBookRootPlugin } from '../utils/path';
 import { renderForeshadowingBadges, renderLoreBadges, type LoreBadgePlugin } from '../utils/badge';
 import { t } from '../i18n';
+import { isMobile } from '../utils/platform';
 import type { AccurateCountSettings } from '../types/settings';
 import type { CacheManager } from '../services/CacheManager';
 import type { ForeshadowingManager } from '../services/ForeshadowingManager';
+import type { ImmersiveManuscriptManager } from '../services/ImmersiveManuscriptManager';
 import type { ImmersiveModeManager } from './ImmersiveModeManager';
 
 export type ImmersiveChapterListSettings = Pick<
@@ -43,7 +45,14 @@ export interface ImmersiveChapterListViewPlugin
 	settings: ImmersiveChapterListSettings;
 	cacheManager: ImmersiveChapterListCacheManager;
 	foreshadowingManager?: ImmersiveChapterListForeshadowingManager;
-	immersiveModeManager?: Pick<ImmersiveModeManager, 'openReferenceFile' | 'registerImmersiveLeaf'>;
+	immersiveManuscriptManager?: Pick<ImmersiveManuscriptManager, 'isEligibleManuscriptChapter'>;
+	immersiveModeManager?: Pick<ImmersiveModeManager, 'openReferenceFile' | 'registerImmersiveLeaf'> & {
+		isManuscriptModeActive?: () => boolean;
+		navigateManuscriptChapter?: (file: TFile) => Promise<void>;
+		isMobileImmersiveSessionActive?: () => boolean;
+		getActiveSessionMainLeaf?: () => WorkspaceLeaf | null;
+		onMobileDirectoryChapterSelected?: () => void;
+	};
 	saveSettings(): Promise<void>;
 }
 
@@ -76,6 +85,19 @@ export class ImmersiveChapterListView extends ItemView {
 		return 'list';
 	}
 
+	onResize(): void {
+		if (!this.isInitialLoad || this.isClosed) return;
+		const listContainer = this.containerEl.querySelector<HTMLElement>('.wn-immersive-chapter-list');
+		const activeItemEl = this.containerEl.querySelector<HTMLElement>('.wn-immersive-chapter-item.is-active');
+		// A hidden or not-yet-mounted panel must retain its pending initial positioning.
+		if (!listContainer || listContainer.clientHeight <= 0 || !activeItemEl) return;
+
+		activeItemEl.scrollIntoView({ block: 'center', behavior: 'instant' });
+		// Persist synchronously: a refresh can replace the list before its scroll event fires.
+		this.lastScrollTop = listContainer.scrollTop;
+		this.isInitialLoad = false;
+	}
+
 	async onOpen() {
 		this.isClosed = false;
 		void this.refresh();
@@ -92,13 +114,20 @@ export class ImmersiveChapterListView extends ItemView {
 		this.registerEvent(this.app.vault.on('rename', () => { void this.refresh(); }));
 	}
 
+	private isMobileDirectoryMode(): boolean {
+		return isMobile() || Boolean(this.plugin.immersiveModeManager?.isMobileImmersiveSessionActive?.());
+	}
+
 	private getMainEditorLeaf(): WorkspaceLeaf | null {
+		if (this.plugin.immersiveModeManager?.isMobileImmersiveSessionActive?.()) {
+			return this.plugin.immersiveModeManager.getActiveSessionMainLeaf?.() ?? null;
+		}
 		const { workspace } = this.app;
 		let mainLeaf: WorkspaceLeaf | null = null;
 
 		// 1. 优先查带有 immersive-main-editor 标记的叶子
 		workspace.iterateAllLeaves(leaf => {
-			if (leaf.containerEl && leaf.containerEl.classList.contains('immersive-main-editor')) {
+			if (leaf.containerEl && leaf.containerEl.classList.contains('wn-immersive-main-editor')) {
 				mainLeaf = leaf;
 			}
 		});
@@ -106,7 +135,7 @@ export class ImmersiveChapterListView extends ItemView {
 
 		// 2. 查找类型为 markdown 且不属于参考视图的叶子
 		workspace.iterateAllLeaves(leaf => {
-			if (leaf.view.getViewType() === 'markdown' && (!leaf.containerEl || !leaf.containerEl.classList.contains('immersive-reference-view'))) {
+			if (leaf.view.getViewType() === 'markdown' && (!leaf.containerEl || !leaf.containerEl.classList.contains('wn-immersive-reference-view'))) {
 				mainLeaf = leaf;
 			}
 		});
@@ -132,12 +161,15 @@ export class ImmersiveChapterListView extends ItemView {
 	}
 
 	private getReferenceViewLeaf(): WorkspaceLeaf | null {
+		if (this.isMobileDirectoryMode()) {
+			return null;
+		}
 		const { workspace } = this.app;
 		let refLeaf: WorkspaceLeaf | null = null;
 
 		// 全量遍历检索带 immersive-reference-view 标记的叶子
 		workspace.iterateAllLeaves(leaf => {
-			if (leaf.containerEl && leaf.containerEl.classList.contains('immersive-reference-view')) {
+			if (leaf.containerEl && leaf.containerEl.classList.contains('wn-immersive-reference-view')) {
 				refLeaf = leaf;
 			}
 		});
@@ -153,7 +185,7 @@ export class ImmersiveChapterListView extends ItemView {
 	private updateActiveHighlight(): void {
 		const mainFile = this.getMarkdownFile(this.getMainEditorLeaf());
 		const referenceFile = this.getMarkdownFile(this.getReferenceViewLeaf());
-		const items = this.containerEl.querySelectorAll<HTMLElement>('.immersive-chapter-item');
+		const items = this.containerEl.querySelectorAll<HTMLElement>('.wn-immersive-chapter-item');
 		items.forEach(itemEl => {
 			if (mainFile && itemEl.dataset.path === mainFile.path) {
 				itemEl.addClass('is-active');
@@ -181,14 +213,15 @@ export class ImmersiveChapterListView extends ItemView {
 		
 		containerEl.empty();
 		
-		const listContainer = containerEl.createDiv({ cls: 'immersive-chapter-list' });
+		const listContainer = containerEl.createDiv({ cls: 'wn-immersive-chapter-list' });
 		listContainer.addEventListener('scroll', () => {
+			if (this.isClosed || currentGen !== this.refreshGeneration) return;
 			this.lastScrollTop = listContainer.scrollTop;
 		}, { passive: true });
 		
 		const context = this.resolveListContext();
 		if (!context) {
-			listContainer.createEl('p', { text: t('immersive.loading-folder'), cls: 'immersive-empty-text' });
+			listContainer.createEl('p', { text: t('immersive.loading-folder'), cls: 'wn-immersive-empty-text' });
 			const win = this.containerEl?.ownerDocument?.defaultView;
 			if (win && !this.isClosed) {
 				this.retryWindow = win;
@@ -234,8 +267,7 @@ export class ImmersiveChapterListView extends ItemView {
 				this.scrollRafWindow = null;
 				if (listContainer) {
 					if (this.isInitialLoad && state.activeItemEl) {
-						state.activeItemEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
-						this.isInitialLoad = false;
+						this.onResize();
 					} else {
 						listContainer.scrollTop = this.lastScrollTop;
 					}
@@ -253,7 +285,15 @@ export class ImmersiveChapterListView extends ItemView {
 		state: { activeItemEl: HTMLElement | null },
 		bookPath: string
 	) {
-		const children = folder.children.filter(f => f instanceof TFolder || (f instanceof TFile && f.extension === 'md'));
+		const children = folder.children.filter(f => {
+			if (f instanceof TFolder) {
+				return !this.isManuscriptMode() || this.folderHasEligibleChapters(f);
+			}
+			if (f instanceof TFile && f.extension === 'md') {
+				return !this.isManuscriptMode() || Boolean(this.plugin.immersiveManuscriptManager?.isEligibleManuscriptChapter(f));
+			}
+			return false;
+		});
 
 		if (this.plugin.settings.enableSmartChapterSort) {
 			const customOrder = this.plugin.settings.customSortOrder || {};
@@ -271,17 +311,17 @@ export class ImmersiveChapterListView extends ItemView {
 
 		for (const item of children) {
 			if (item instanceof TFolder) {
-				const details = container.createEl('details', { cls: 'immersive-folder-details' });
+				const details = container.createEl('details', { cls: 'wn-immersive-folder-details' });
 				details.setAttribute('open', '');
 				
-				const summary = details.createEl('summary', { cls: 'immersive-folder-summary' });
-				summary.createSpan({ text: item.name, cls: 'immersive-folder-name' });
+				const summary = details.createEl('summary', { cls: 'wn-immersive-folder-summary' });
+				summary.createSpan({ text: item.name, cls: 'wn-immersive-folder-name' });
 				
-				const childrenContainer = details.createDiv({ cls: 'immersive-folder-children' });
+				const childrenContainer = details.createDiv({ cls: 'wn-immersive-folder-children' });
 				this.renderFolderRecursively(item, childrenContainer, foreshadowingMap, mainFile, referenceFile, state, bookPath);
 			} else if (item instanceof TFile) {
 				const file = item;
-				const itemEl = container.createDiv({ cls: 'immersive-chapter-item' });
+				const itemEl = container.createDiv({ cls: 'wn-immersive-chapter-item' });
 				itemEl.dataset.path = file.path;
 				if (mainFile && file.path === mainFile.path) {
 					itemEl.addClass('is-active');
@@ -291,10 +331,10 @@ export class ImmersiveChapterListView extends ItemView {
 					itemEl.addClass('is-reference-open');
 				}
 				
-				const leftContainer = itemEl.createDiv({ cls: 'immersive-chapter-left' });
-				leftContainer.createSpan({ text: file.basename, cls: 'immersive-chapter-title' });
+				const leftContainer = itemEl.createDiv({ cls: 'wn-immersive-chapter-left' });
+				leftContainer.createSpan({ text: file.basename, cls: 'wn-immersive-chapter-title' });
 				
-				const badgesContainer = leftContainer.createSpan({ cls: 'immersive-chapter-badges' });
+				const badgesContainer = leftContainer.createSpan({ cls: 'wn-immersive-chapter-badges' });
 				const cardForeshadowings = foreshadowingMap.get(file.path) || [];
 				
 				renderForeshadowingBadges(badgesContainer, cardForeshadowings, file.path, this.plugin);
@@ -308,23 +348,32 @@ export class ImmersiveChapterListView extends ItemView {
 				if (this.plugin.settings.showExplorerCounts) {
 					let countEl: HTMLElement;
 					if (this.plugin.cacheManager.isEligibleForWordCount(file)) {
-						countEl = itemEl.createSpan({ text: `${wordCount}${t('common.word-char')}`, cls: 'immersive-chapter-count' });
+						countEl = itemEl.createSpan({ text: `${wordCount}${t('common.word-char')}`, cls: 'wn-immersive-chapter-count' });
 					} else {
-						countEl = itemEl.createSpan({ text: t('corkboard.wordcount-excluded'), cls: 'immersive-chapter-count is-excluded' });
+						countEl = itemEl.createSpan({ text: t('corkboard.wordcount-excluded'), cls: 'wn-immersive-chapter-count is-excluded' });
 					}
 					this.renderedCountEls.set(file.path, countEl);
 				}
 
 				itemEl.addEventListener('click', (e) => {
 					e.preventDefault();
+					if (this.isManuscriptMode() && typeof this.plugin.immersiveModeManager?.navigateManuscriptChapter === 'function') {
+						void this.plugin.immersiveModeManager.navigateManuscriptChapter(file);
+						this.plugin.immersiveModeManager.onMobileDirectoryChapterSelected?.();
+						return;
+					}
 					const targetLeaf = this.getMainEditorLeaf();
 					if (targetLeaf) {
 						void targetLeaf.openFile(file, { active: true });
+						this.plugin.immersiveModeManager?.onMobileDirectoryChapterSelected?.();
 					}
 				});
 
 				itemEl.addEventListener('contextmenu', (e) => {
 					e.preventDefault();
+					if (this.isMobileDirectoryMode()) {
+						return;
+					}
 					
 					let refLeaf = this.getReferenceViewLeaf();
 
@@ -345,7 +394,7 @@ export class ImmersiveChapterListView extends ItemView {
 						const mainLeaf = this.getMainEditorLeaf();
 						if (mainLeaf) {
 							refLeaf = this.app.workspace.createLeafBySplit(mainLeaf, 'vertical', false);
-							refLeaf.containerEl.classList.add('immersive-reference-view');
+							refLeaf.containerEl.classList.add('wn-immersive-reference-view');
 							this.plugin.immersiveModeManager?.registerImmersiveLeaf(refLeaf);
 							
 							if (!this.plugin.settings.immersive.immersiveRightSlots.includes('reference-view')) {
@@ -356,14 +405,14 @@ export class ImmersiveChapterListView extends ItemView {
 					}
 					
 					if (refLeaf) {
-						refLeaf.containerEl.classList.add('immersive-reference-view');
+						refLeaf.containerEl.classList.add('wn-immersive-reference-view');
 						const imm = this.plugin.immersiveModeManager;
 						if (imm && typeof imm.openReferenceFile === 'function') {
 							void imm.openReferenceFile(file, refLeaf);
 						} else {
 							void refLeaf.openFile(file, { active: false, state: { mode: 'preview' } }).then(() => {
 								if (refLeaf) {
-									refLeaf.containerEl.classList.add('immersive-reference-view');
+									refLeaf.containerEl.classList.add('wn-immersive-reference-view');
 									this.updateActiveHighlight();
 								}
 							});
@@ -414,5 +463,27 @@ export class ImmersiveChapterListView extends ItemView {
 		this.cancelRetryTimer();
 		this.cancelScrollRaf();
 		this.renderedCountEls.clear();
+	}
+
+	private isManuscriptMode(): boolean {
+		if (!this.plugin.settings.immersive?.manuscriptModeEnabled) return false;
+		if (!this.plugin.immersiveManuscriptManager) return false;
+		if (typeof this.plugin.immersiveModeManager?.isManuscriptModeActive === 'function') {
+			return this.plugin.immersiveModeManager.isManuscriptModeActive();
+		}
+		return true;
+	}
+
+	private folderHasEligibleChapters(folder: TFolder): boolean {
+		for (const child of folder.children) {
+			if (child instanceof TFile && child.extension === 'md') {
+				if (this.plugin.immersiveManuscriptManager?.isEligibleManuscriptChapter(child)) {
+					return true;
+				}
+			} else if (child instanceof TFolder && this.folderHasEligibleChapters(child)) {
+				return true;
+			}
+		}
+		return false;
 	}
 }

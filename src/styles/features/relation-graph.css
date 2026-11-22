@@ -159,3 +159,9 @@
 	position: absolute;
 	pointer-events: none;
 }
+
+.wn-graph-hover-anchor {
+	position: absolute;
+	pointer-events: none;
+	visibility: hidden;
+}

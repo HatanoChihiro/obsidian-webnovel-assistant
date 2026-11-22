@@ -1,35 +1,25 @@
 import type { App } from 'obsidian';
 import { Modal, Setting } from 'obsidian';
-import { formatCount } from '../utils/format';
+import { formatCount, formatDuration } from '../utils/format';
 import { t } from '../i18n';
+import { bindDailyStatsTrigger } from './DailyStatsModal';
 
 // 热力图等级 CSS 类名
 export const HEAT_LEVELS = [
-	{ min: 0, cls: 'heat-0' },
-	{ min: 1, cls: 'heat-1' },
-	{ min: 1000, cls: 'heat-2' },
-	{ min: 3000, cls: 'heat-3' },
+	{ min: 0, cls: 'wn-heat-0' },
+	{ min: 1, cls: 'wn-heat-1' },
+	{ min: 1000, cls: 'wn-heat-2' },
+	{ min: 3000, cls: 'wn-heat-3' },
 ];
 
 export function getHeatClass(words: number): string {
-	if (words < 0) return "heat-negative";
+	if (words < 0) return "wn-heat-negative";
 if (words === 0) return HEAT_LEVELS[0].cls;
 	for (let i = HEAT_LEVELS.length - 1; i >= 0; i--) {
 		if (words >= HEAT_LEVELS[i].min) return HEAT_LEVELS[i].cls;
 	}
 	return HEAT_LEVELS[0].cls;
 }
-
-function formatDuration(ms: number): string {
-	const totalMinutes = Math.floor(ms / 60000);
-	if (totalMinutes === 0) return '0m';
-	const h = Math.floor(totalMinutes / 60);
-	const m = totalMinutes % 60;
-	if (h > 0) return `${h}h ${m}m`;
-	return `${m}m`;
-}
-
-
 
 function getCurrentKey(tab: string): string {
 	const now = window.moment();
@@ -65,6 +55,7 @@ export type HistoryStatsStatisticsManager = Pick<
 	| 'calcTaskCompletion'
 	| 'calcNovelCompletionRate'
 	| 'aggregateHistoryData'
+	| 'getDailyStats'
 >;
 
 export type HistoryStatsHomepageManager = Pick<
@@ -105,38 +96,38 @@ export class HistoryStatsModal extends Modal {
 	onOpen() {
 		const { contentEl } = this;
 		contentEl.empty();
-		contentEl.addClass('history-stats-modal');
-		this.modalEl.addClass('history-stats-modal-wide');
+		contentEl.addClass('wn-history-stats-modal');
+		this.modalEl.addClass('wn-history-stats-modal-wide');
 
 		new Setting(contentEl).setName(t('modal.writing-data-tracking')).setHeading();
 
 		// === 效率总览 ===
-		this.efficiencyContainer = contentEl.createDiv({ cls: 'stats-efficiency-row' });
+		this.efficiencyContainer = contentEl.createDiv({ cls: 'wn-stats-efficiency-row' });
 		this.renderEfficiency();
 
 		// === 热力图 ===
 		const heatHeading = new Setting(contentEl).setName(t('modal.heatmap')).setHeading();
-		heatHeading.settingEl.addClass('stats-subheading');
+		heatHeading.settingEl.addClass('wn-stats-subheading');
 		this.heatHeadingEl = heatHeading.settingEl;
 
-		this.heatDateRowEl = contentEl.createDiv({ cls: 'stats-heat-date-row' });
-		const inputsWrapper = this.heatDateRowEl.createDiv({ cls: 'stats-heat-inputs-wrapper' });
-		inputsWrapper.createDiv({ cls: 'stats-heat-date-label', text: t('modal.start-date-label') });
+		this.heatDateRowEl = contentEl.createDiv({ cls: 'wn-stats-heat-date-row' });
+		const inputsWrapper = this.heatDateRowEl.createDiv({ cls: 'wn-stats-heat-inputs-wrapper' });
+		inputsWrapper.createDiv({ cls: 'wn-stats-heat-date-label', text: t('modal.start-date-label') });
 		const defaultStart = window.moment().clone().startOf('year').format('YYYY-MM-DD');
 		const defaultEnd = window.moment().clone().endOf('year').format('YYYY-MM-DD');
 		this.heatStartInput = inputsWrapper.createEl('input', {
 			type: 'date',
-			cls: 'stats-heat-date-input'
+			cls: 'wn-stats-heat-date-input'
 		});
 		this.heatStartInput.value = this.plugin.settings.heatmapStartDate || defaultStart;
-		inputsWrapper.createDiv({ cls: 'stats-heat-date-label', text: t('modal.end-date-label') });
+		inputsWrapper.createDiv({ cls: 'wn-stats-heat-date-label', text: t('modal.end-date-label') });
 		this.heatEndInput = inputsWrapper.createEl('input', {
 			type: 'date',
-			cls: 'stats-heat-date-input'
+			cls: 'wn-stats-heat-date-input'
 		});
 		this.heatEndInput.value = this.plugin.settings.heatmapEndDate || defaultEnd;
 
-		const resetBtn = inputsWrapper.createEl('button', { text: t('modal.this-year'), cls: 'stats-heat-today-btn' });
+		const resetBtn = inputsWrapper.createEl('button', { text: t('modal.this-year'), cls: 'wn-stats-heat-today-btn' });
 		resetBtn.onclick = async () => {
 			this.plugin.settings.heatmapStartDate = '';
 			this.plugin.settings.heatmapEndDate = '';
@@ -181,15 +172,15 @@ export class HistoryStatsModal extends Modal {
 			this.renderEfficiency();
 		};
 
-		this.heatContainer = contentEl.createDiv({ cls: 'stats-heatmap-container' });
+		this.heatContainer = contentEl.createDiv({ cls: 'wn-stats-heatmap-container' });
 		this.renderHeatmap();
 
 		// === 详细统计 ===
-		new Setting(contentEl).setName(t('modal.detailed-stats')).setHeading().settingEl.addClass('stats-subheading');
+		new Setting(contentEl).setName(t('modal.detailed-stats')).setHeading().settingEl.addClass('wn-stats-subheading');
 
-		const filterRow = contentEl.createDiv({ cls: "stats-filter-row" });
+		const filterRow = contentEl.createDiv({ cls: "wn-stats-filter-row" });
 
-this.tabGroupEl = filterRow.createDiv({ cls: "stats-time-tabs" });
+this.tabGroupEl = filterRow.createDiv({ cls: "wn-stats-time-tabs" });
 const tabs = [
 { id: "day", name: t("modal.last-30-days") },
 { id: "week", name: t("modal.by-week") },
@@ -197,17 +188,17 @@ const tabs = [
 { id: "year", name: t("modal.by-year") }
 ];
 tabs.forEach(tab => {
-const btn = this.tabGroupEl.createEl("button", { text: tab.name, cls: "stats-tab-btn" });
+const btn = this.tabGroupEl.createEl("button", { text: tab.name, cls: "wn-stats-tab-btn" });
 if (this.currentTab === tab.id) btn.addClass("is-active");
 btn.onclick = () => {
 this.currentTab = tab.id as typeof this.currentTab;
-this.tabGroupEl.querySelectorAll(".stats-tab-btn").forEach(b => b.removeClass("is-active"));
+this.tabGroupEl.querySelectorAll(".wn-stats-tab-btn").forEach(b => b.removeClass("is-active"));
 btn.addClass("is-active");
 this.renderData();
 };
 });
 
-this.metricGroupEl = filterRow.createDiv({ cls: "stats-metric-tabs" });
+this.metricGroupEl = filterRow.createDiv({ cls: "wn-stats-metric-tabs" });
 const metricTabs = [
 { id: "words", name: t("modal.metric-words") },
 { id: "totalTime", name: t("modal.metric-total-time") },
@@ -215,17 +206,17 @@ const metricTabs = [
 { id: "slackTime", name: t("modal.metric-slack-time") }
 ];
 metricTabs.forEach(tab => {
-const btn = this.metricGroupEl.createEl("button", { text: tab.name, cls: "stats-tab-btn" });
+const btn = this.metricGroupEl.createEl("button", { text: tab.name, cls: "wn-stats-tab-btn" });
 if (this.currentMetric === tab.id) btn.addClass("is-active");
 btn.onclick = () => {
 this.currentMetric = tab.id as typeof this.currentMetric;
-this.metricGroupEl.querySelectorAll(".stats-tab-btn").forEach(b => b.removeClass("is-active"));
+this.metricGroupEl.querySelectorAll(".wn-stats-tab-btn").forEach(b => b.removeClass("is-active"));
 btn.addClass("is-active");
 this.renderData();
 };
 });
-this.scrollWrapper = contentEl.createDiv({ cls: 'stats-chart-scroll-wrapper' });
-		this.chartContainer = this.scrollWrapper.createDiv({ cls: 'stats-large-chart-container' });
+this.scrollWrapper = contentEl.createDiv({ cls: 'wn-stats-chart-scroll-wrapper' });
+		this.chartContainer = this.scrollWrapper.createDiv({ cls: 'wn-stats-large-chart-container' });
 		this.renderData();
 
 		this.scrollWrapper.addEventListener('wheel', (evt: WheelEvent) => {
@@ -262,9 +253,9 @@ this.scrollWrapper = contentEl.createDiv({ cls: 'stats-chart-scroll-wrapper' });
 		];
 
 		metrics.forEach(m => {
-			const card = this.efficiencyContainer.createDiv({ cls: 'stats-efficiency-card' });
-			card.createDiv({ cls: 'stats-efficiency-label', text: m.label });
-			card.createDiv({ cls: 'stats-efficiency-value', text: m.value });
+			const card = this.efficiencyContainer.createDiv({ cls: 'wn-stats-efficiency-card' });
+			card.createDiv({ cls: 'wn-stats-efficiency-label', text: m.label });
+			card.createDiv({ cls: 'wn-stats-efficiency-value', text: m.value });
 		});
 
 		void (async () => {
@@ -281,12 +272,12 @@ this.scrollWrapper = contentEl.createDiv({ cls: 'stats-chart-scroll-wrapper' });
 			const taskVal = taskComp.total > 0 ? `${taskComp.completed}/${taskComp.total}` : '--';
 			const novelVal = folders.length > 0 ? `${novelRate}%` : '--';
 
-			const cards = this.efficiencyContainer.querySelectorAll('.stats-efficiency-card');
+			const cards = this.efficiencyContainer.querySelectorAll('.wn-stats-efficiency-card');
 			if (cards.length >= 8) {
-				const taskValEl = cards[6].querySelector('.stats-efficiency-value');
+				const taskValEl = cards[6].querySelector('.wn-stats-efficiency-value');
 				if (taskValEl) taskValEl.textContent = taskVal;
 
-				const novelValEl = cards[7].querySelector('.stats-efficiency-value');
+				const novelValEl = cards[7].querySelector('.wn-stats-efficiency-value');
 				if (novelValEl) novelValEl.textContent = novelVal;
 			}
 		})();
@@ -310,15 +301,15 @@ this.scrollWrapper = contentEl.createDiv({ cls: 'stats-chart-scroll-wrapper' });
 		const labelOffset = this.contentEl.ownerDocument.body.classList.contains('is-phone') ? 0 : 28;
 
 			// 图例放右上角，先清除旧的
-		const existingLegend = this.heatHeadingEl.querySelector(".stats-heatmap-legend-inline");
+		const existingLegend = this.heatHeadingEl.querySelector(".wn-stats-heatmap-legend-inline");
 		if (existingLegend) existingLegend.remove();
-		const legendRow = this.heatHeadingEl.createDiv({ cls: 'stats-heatmap-legend-inline' });
+		const legendRow = this.heatHeadingEl.createDiv({ cls: 'wn-stats-heatmap-legend-inline' });
 		// Negative words legend cell
-const negCell = legendRow.createDiv({ cls: "stats-heatmap-legend-cell heat-negative" });
+const negCell = legendRow.createDiv({ cls: "wn-stats-heatmap-legend-cell wn-heat-negative" });
 negCell.setAttribute("title", t('modal.legend-negative'));
 
 HEAT_LEVELS.forEach(level => {
-			const cell = legendRow.createDiv({ cls: `stats-heatmap-legend-cell ${level.cls}` });
+			const cell = legendRow.createDiv({ cls: `wn-stats-heatmap-legend-cell ${level.cls}` });
 			const nextLevel = HEAT_LEVELS[HEAT_LEVELS.indexOf(level) + 1];
 			if (level.min === 0) {
 				cell.setAttribute('title', t('modal.legend-0'));
@@ -330,25 +321,25 @@ HEAT_LEVELS.forEach(level => {
 		});
 
 			// 月份标注区
-		const monthRow = this.heatContainer.createDiv({ cls: 'stats-heatmap-months' });
+		const monthRow = this.heatContainer.createDiv({ cls: 'wn-stats-heatmap-months' });
 		const totalMonths = rangeEnd.diff(rangeStart, 'months') + 1;
 		for (let m = 0; m < totalMonths; m++) {
 			const monthStart = rangeStart.clone().add(m, 'months').startOf('month');
 			if (monthStart.isAfter(rangeEnd)) continue;
 			const w = Math.floor(monthStart.clone().isoWeekday(1).add(7, 'days').diff(alignedStart, 'days') / 7);
 			if (w >= 0 && w < totalWeeks) {
-				const spacer = monthRow.createDiv({ cls: 'stats-heatmap-month-label' });
+				const spacer = monthRow.createDiv({ cls: 'wn-stats-heatmap-month-label' });
 				spacer.setText(monthStart.format('MMM'));
 				spacer.setCssProps({ left: `calc(${labelOffset}px + ${w} * (100% - ${labelOffset}px) / ${totalWeeks})` });
 			}
 		}
 
-		const gridContainer = this.heatContainer.createDiv({ cls: 'stats-heatmap-grid' });
+		const gridContainer = this.heatContainer.createDiv({ cls: 'wn-stats-heatmap-grid' });
 		const dayLabels = t('common.heatmap-day-labels').split('');
 
 		for (let dayOfWeek = 0; dayOfWeek < 7; dayOfWeek++) {
-			const row = gridContainer.createDiv({ cls: 'stats-heatmap-row' });
-			const labelEl = row.createDiv({ cls: 'stats-heatmap-day-label' });
+			const row = gridContainer.createDiv({ cls: 'wn-stats-heatmap-row' });
+			const labelEl = row.createDiv({ cls: 'wn-stats-heatmap-day-label' });
 			labelEl.setText(dayLabels[dayOfWeek]);
 
 			for (let w = 0; w < totalWeeks; w++) {
@@ -356,24 +347,40 @@ HEAT_LEVELS.forEach(level => {
 				const dateStr = cellDate.format('YYYY-MM-DD');
 				const stat = this.history[dateStr];
 
-				const cell = row.createDiv({ cls: 'stats-heatmap-cell' });
-				cell.setAttribute('title', dateStr);
+				const cell = row.createDiv({ cls: 'wn-stats-heatmap-cell' });
 
 				if (cellDate.isSame(now, 'day')) {
-					cell.addClass('stats-heatmap-today');
+					cell.addClass('wn-stats-heatmap-today');
 				}
+
+				const isFuture = cellDate.isAfter(now, 'day');
 
 				if (stat) {
 					const words = stat.addedWords || 0;
 					cell.addClass(getHeatClass(words));
 					const focusH = ((stat.focusMs || 0) / 3600000).toFixed(1);
-					cell.setAttribute('title', `${dateStr}
-${t('modal.metric-words')}: ${words}
-${t('modal.metric-focus-time')}: ${focusH}h`);
-				} else if (cellDate.isAfter(now, 'day')) {
-					cell.addClass('stats-heatmap-future');
+					const details = `${t('modal.metric-words')}: ${words}\n${t('modal.metric-focus-time')}: ${focusH}h`;
+					if (isFuture) {
+						cell.addClass('wn-stats-heatmap-future');
+						cell.setAttribute('title', `${dateStr}\n${details}`);
+					} else {
+						bindDailyStatsTrigger(cell, {
+							app: this.app,
+							plugin: this.plugin,
+							date: dateStr,
+							details
+						});
+					}
+				} else if (isFuture) {
+					cell.addClass('wn-stats-heatmap-future');
+					cell.setAttribute('title', dateStr);
 				} else {
-					cell.addClass('heat-0');
+					cell.addClass('wn-heat-0');
+					bindDailyStatsTrigger(cell, {
+						app: this.app,
+						plugin: this.plugin,
+						date: dateStr
+					});
 				}
 			}
 		}
@@ -391,7 +398,7 @@ ${t('modal.metric-focus-time')}: ${focusH}h`);
 		if (this.currentTab === 'day') displayKeys = keys.slice(-30);
 
 		if (displayKeys.length === 0) {
-			this.chartContainer.createDiv({ text: t('modal.no-data'), cls: 'stats-empty-msg' });
+			this.chartContainer.createDiv({ text: t('modal.no-data'), cls: 'wn-stats-empty-msg' });
 			return;
 		}
 
@@ -412,38 +419,47 @@ ${t('modal.metric-focus-time')}: ${focusH}h`);
 		getValue: (data: { words: number, focusMs: number, slackMs: number }) => number,
 		currentKey: string
 	): void {
-		this.chartContainer.addClass('stats-bar-mode');
+		this.chartContainer.addClass('wn-stats-bar-mode');
 		
 		const maxAbsValue = Math.max(...displayKeys.map(k => Math.abs(getValue(aggregated[k]))), 1);
 
 		displayKeys.forEach((key) => {
 			const data = aggregated[key];
-			const col = this.chartContainer.createDiv({ cls: 'stats-large-col' });
+			const col = this.chartContainer.createDiv({ cls: 'wn-stats-large-col' });
 
 			const val = getValue(data);
 			const heightPercent = Math.max(2, (Math.abs(val) / maxAbsValue) * 100);
-			const bar = col.createDiv({ cls: 'stats-large-bar' });
+			const bar = col.createDiv({ cls: 'wn-stats-large-bar' });
 			bar.setCssProps({ height: `${heightPercent}%` });
 
 
 			if (val < 0) {
-				bar.addClass('bar-negative');
+				bar.addClass('wn-bar-negative');
 			} else {
 				const ratio = val / maxAbsValue;
-				if (ratio >= 0.8) bar.addClass('bar-high');
-				else if (ratio >= 0.5) bar.addClass('bar-medium');
-				else if (ratio >= 0.2) bar.addClass('bar-low');
-				else bar.addClass('bar-minimal');
+				if (ratio >= 0.8) bar.addClass('wn-bar-high');
+				else if (ratio >= 0.5) bar.addClass('wn-bar-medium');
+				else if (ratio >= 0.2) bar.addClass('wn-bar-low');
+				else bar.addClass('wn-bar-minimal');
 			}
 
 			const totalMs = data.focusMs + data.slackMs;
-			bar.setAttribute('title', `${t('modal.metric-words')}: ${key}
-${t('common.accumulated-words')}: ${data.words.toLocaleString()}
+			const details = `${t('common.accumulated-words')}: ${data.words.toLocaleString()}
 ${t('modal.metric-total-time')}: ${formatDuration(totalMs)}
 ${t('modal.metric-focus-time')}: ${formatDuration(data.focusMs)}
-${t('modal.metric-slack-time')}: ${formatDuration(data.slackMs)}`);
+${t('modal.metric-slack-time')}: ${formatDuration(data.slackMs)}`;
+			if (this.currentTab === 'day') {
+				bindDailyStatsTrigger(col, {
+					app: this.app,
+					plugin: this.plugin,
+					date: key,
+					details
+				});
+			} else {
+				bar.setAttribute('title', `${t('modal.metric-words')}: ${key}\n${details}`);
+			}
 
-			col.createDiv({ cls: 'stats-large-label', text: this.formatLabel(key, key === currentKey) });
+			col.createDiv({ cls: 'wn-stats-large-label', text: this.formatLabel(key, key === currentKey) });
 
 			let displayStr = '';
 			if (this.currentMetric === 'words') {
@@ -452,9 +468,9 @@ ${t('modal.metric-slack-time')}: ${formatDuration(data.slackMs)}`);
 				displayStr = formatDuration(val);
 			}
 
-			const valueEl = col.createDiv({ cls: 'stats-large-value', text: displayStr });
+			const valueEl = col.createDiv({ cls: 'wn-stats-large-value', text: displayStr });
 			if (val < 0) {
-				valueEl.addClass('bar-negative-text');
+				valueEl.addClass('wn-bar-negative-text');
 			}
 		});
 
@@ -474,7 +490,7 @@ ${t('modal.metric-slack-time')}: ${formatDuration(data.slackMs)}`);
 			// Use requestAnimationFrame to measure actual bar positions after layout
 			window.requestAnimationFrame(() => {
 				const container = this.chartContainer;
-				const bars = container.querySelectorAll(".stats-large-bar");
+				const bars = container.querySelectorAll(".wn-stats-large-bar");
 				if (bars.length < 2) return;
 
 				const containerRect = container.getBoundingClientRect();
@@ -502,7 +518,7 @@ points.forEach(p => { p.y = Math.min(p.y, baseline); });
 
 				const svgNS = 'http://www.w3.org/2000/svg';
 				const svgEl = activeDocument['createElementNS'](svgNS, 'svg');
-				svgEl.setAttribute('class', 'stats-trend-overlay');
+				svgEl.setAttribute('class', 'wn-stats-trend-overlay');
 				svgEl.setAttribute('viewBox', `0 0 ${svgW} ${containerH}`);
 				svgEl.setAttribute('preserveAspectRatio', 'none');
 				svgEl.setCssStyles({ width: `${svgW}px` });
@@ -568,10 +584,10 @@ points.forEach(p => { p.y = Math.min(p.y, baseline); });
 				path2.setAttribute('clip-path', 'url(#trendClip)');
 				svgEl.appendChild(path2);
 
-				const existing = container.querySelector(".stats-trend-overlay-wrapper");
+				const existing = container.querySelector(".wn-stats-trend-overlay-wrapper");
 				if (existing) existing.remove();
 
-				const wrapper = container.createDiv({ cls: "stats-trend-overlay-wrapper" });
+				const wrapper = container.createDiv({ cls: "wn-stats-trend-overlay-wrapper" });
 				wrapper.appendChild(svgEl);
 			});
 		}
@@ -611,7 +627,7 @@ const vTension = 0.2;
 
 			const wrapper = this.scrollWrapper;
 			const container = this.chartContainer;
-			const cols = container.querySelectorAll(".stats-large-col");
+			const cols = container.querySelectorAll(".wn-stats-large-col");
 			if (cols[idx]) {
 				const colEl = cols[idx] as HTMLElement;
 				const scrollTarget = colEl.offsetLeft - wrapper.offsetWidth / 2 + colEl.offsetWidth / 2;

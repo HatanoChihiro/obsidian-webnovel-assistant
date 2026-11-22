@@ -89,3 +89,15 @@ export function formatCount(count: number): string {
 	
 	return isNegative ? '-' + result : result;
 }
+
+/**
+ * 将毫秒数格式化为紧凑时长字符串（如 '0m'、'45m'、'1h 30m'）
+ */
+export function formatDuration(ms: number): string {
+	const totalMinutes = Math.floor(ms / 60000);
+	if (totalMinutes === 0) return '0m';
+	const h = Math.floor(totalMinutes / 60);
+	const m = totalMinutes % 60;
+	if (h > 0) return `${h}h ${m}m`;
+	return `${m}m`;
+}

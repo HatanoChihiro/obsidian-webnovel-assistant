@@ -109,6 +109,17 @@ export class ChapterMergeSelection {
 		return newChecked;
 	}
 
+	/** Apply an inclusive range without changing selection outside its endpoints. */
+	public setRange(startPath: string, endPath: string, items: ChapterMergeItem[], checked: boolean): boolean {
+		const start = items.findIndex(item => item.file.path === startPath);
+		const end = items.findIndex(item => item.file.path === endPath);
+		if (start < 0 || end < 0) return false;
+		const range = items.slice(Math.min(start, end), Math.max(start, end) + 1);
+		if (checked) this.selectAll(range);
+		else this.deselectAll(range);
+		return true;
+	}
+
 	/**
 	 * 批量全选指定集合（仅影响传入集合，重置锚点）
 	 */

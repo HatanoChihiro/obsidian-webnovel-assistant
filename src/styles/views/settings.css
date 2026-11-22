@@ -332,3 +332,12 @@
 	font-size: var(--font-ui-small);
 	line-height: 1.4;
 }
+
+.wn-slider-value {
+	min-width: 2.5em;
+	text-align: end;
+	font-family: var(--font-interface);
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+	font-variant-numeric: tabular-nums;
+}

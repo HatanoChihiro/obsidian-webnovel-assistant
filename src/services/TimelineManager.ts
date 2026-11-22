@@ -1,5 +1,6 @@
+import { showPluginNotice } from './PluginNoticeService';
 import type { App } from 'obsidian';
-import { TFile, normalizePath, Notice } from 'obsidian';
+import { TFile, normalizePath } from 'obsidian';
 import { t } from '../i18n';
 
 import type { WebNovelAssistantPlugin } from '../types/plugin';
@@ -1032,7 +1033,7 @@ export class TimelineManager {
 		const expectedPath = expectedSource?.path;
 		const assertSource = (): void => {
 			if (expectedFile && (this.getTimelineFile(folder) !== expectedFile || expectedFile.path !== expectedPath)) {
-				new Notice(t('timeline.conflict-notice'));
+				showPluginNotice(t('timeline.conflict-notice'));
 				throw new Error(t('timeline.conflict-notice'));
 			}
 		};
@@ -1055,7 +1056,7 @@ export class TimelineManager {
 
 				if (targetIndex === -1) {
 					if (frozenExpected) {
-						new Notice(t('timeline.conflict-notice'));
+						showPluginNotice(t('timeline.conflict-notice'));
 						throw new Error(t('timeline.conflict-notice'));
 					}
 					finalContent = existing;
@@ -1109,7 +1110,7 @@ export class TimelineManager {
 
 				if (targetIndex === -1) {
 					if (frozenExpected) {
-						new Notice(t('timeline.conflict-notice'));
+						showPluginNotice(t('timeline.conflict-notice'));
 						throw new Error(t('timeline.conflict-notice'));
 					}
 					finalContent = existing;
@@ -1158,7 +1159,7 @@ export class TimelineManager {
 				const actualFromIndex = this.resolveTargetIndex(latestEntries, fromIndex, frozenExpectedFrom);
 				if (actualFromIndex === -1) {
 					if (frozenExpectedFrom) {
-						new Notice(t('timeline.conflict-notice'));
+						showPluginNotice(t('timeline.conflict-notice'));
 						throw new Error(t('timeline.conflict-notice'));
 					}
 					finalContent = existing;
@@ -1169,7 +1170,7 @@ export class TimelineManager {
 				if (frozenExpectedTo) {
 					actualToIndex = this.resolveTargetIndex(latestEntries, toIndex, frozenExpectedTo);
 					if (actualToIndex === -1) {
-						new Notice(t('timeline.conflict-notice'));
+						showPluginNotice(t('timeline.conflict-notice'));
 						throw new Error(t('timeline.conflict-notice'));
 					}
 				} else {
@@ -1252,7 +1253,7 @@ export class TimelineManager {
 
 				if (sourceIndex === -1) {
 					if (frozenSourceEntry || frozenExpectedItem) {
-						new Notice(t('timeline.conflict-notice'));
+						showPluginNotice(t('timeline.conflict-notice'));
 						throw new Error(t('timeline.conflict-notice'));
 					}
 					finalContent = existing;
@@ -1282,7 +1283,7 @@ export class TimelineManager {
 
 				if (targetIndex === -1) {
 					if (frozenTargetEntry || frozenExpectedItem) {
-						new Notice(t('timeline.conflict-notice'));
+						showPluginNotice(t('timeline.conflict-notice'));
 						throw new Error(t('timeline.conflict-notice'));
 					}
 					finalContent = existing;
@@ -1314,7 +1315,7 @@ export class TimelineManager {
 					} else if (itemMatches.length === 1) {
 						actualSourceItemIndex = itemMatches[0];
 					} else {
-						new Notice(t('timeline.conflict-notice'));
+						showPluginNotice(t('timeline.conflict-notice'));
 						throw new Error(t('timeline.conflict-notice'));
 					}
 				} else {
@@ -1450,14 +1451,14 @@ export class TimelineManager {
 							target.expectedEntry
 						);
 						if (resolvedIdx === -1) {
-							new Notice(t('timeline.conflict-notice'));
+							showPluginNotice(t('timeline.conflict-notice'));
 							throw new Error(t('timeline.conflict-notice'));
 						}
 						matchedEntry = latestEntries[resolvedIdx];
 					} else {
 						if (target.entryIndex !== undefined) {
 							if (!Number.isInteger(target.entryIndex) || target.entryIndex < 0 || target.entryIndex >= latestEntries.length) {
-								new Notice(t('timeline.conflict-notice'));
+								showPluginNotice(t('timeline.conflict-notice'));
 								throw new Error(t('timeline.conflict-notice'));
 							}
 							matchedEntry = latestEntries[target.entryIndex];
@@ -1466,14 +1467,14 @@ export class TimelineManager {
 							if (matches.length === 1) {
 								matchedEntry = matches[0];
 							} else {
-								new Notice(t('timeline.conflict-notice'));
+								showPluginNotice(t('timeline.conflict-notice'));
 								throw new Error(t('timeline.conflict-notice'));
 							}
 						}
 					}
 
 					if (!matchedEntry) {
-						new Notice(t('timeline.conflict-notice'));
+						showPluginNotice(t('timeline.conflict-notice'));
 						throw new Error(t('timeline.conflict-notice'));
 					}
 
@@ -1484,7 +1485,7 @@ export class TimelineManager {
 					let itemIdx = 0;
 					if (target.itemIndex !== undefined) {
 						if (!Number.isInteger(target.itemIndex) || target.itemIndex < 0 || target.itemIndex >= matchedEntry.items.length) {
-							new Notice(t('timeline.conflict-notice'));
+							showPluginNotice(t('timeline.conflict-notice'));
 							throw new Error(t('timeline.conflict-notice'));
 						}
 						itemIdx = target.itemIndex;

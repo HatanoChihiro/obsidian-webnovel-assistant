@@ -1,4 +1,5 @@
-import { MarkdownView, Notice, TFile } from 'obsidian';
+import { showPluginNotice } from '../services/PluginNoticeService';
+import { MarkdownView, TFile } from 'obsidian';
 import { isDesktop } from '../utils/platform';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { copyDocumentContent } from '../utils/ui';
@@ -93,7 +94,7 @@ export class CommandManager {
 	private adjustBodyFontSize(delta: number): void {
 		const typography = this.plugin.settings.typography;
 		if (!typography.enableBodyFontSize) {
-			new Notice(t('notice.body-font-size-disabled'));
+			showPluginNotice(t('notice.body-font-size-disabled'));
 			return;
 		}
 		const current = Number.isFinite(typography.bodyFontSize) && typography.bodyFontSize > 0
@@ -153,14 +154,14 @@ export class CommandManager {
 			}
 		});
 
-		if (isDesktop()) { // Desktop
-			this.plugin.addCommand({
-				id: 'toggle-immersive-mode',
-				name: t('command.toggle-immersive-mode'),
-				icon: 'maximize-2',
-				callback: () => { void this.plugin.immersiveModeManager.toggleImmersiveMode(); }
-			});
+		this.plugin.addCommand({
+			id: 'toggle-immersive-mode',
+			name: t('command.toggle-immersive-mode'),
+			icon: 'maximize-2',
+			callback: () => { void this.plugin.immersiveModeManager.toggleImmersiveMode(); }
+		});
 
+		if (isDesktop()) { // Desktop-only four-region auxiliary toggle
 			this.plugin.addCommand({
 				id: 'toggle-immersive-auxiliary-regions',
 				name: t('command.toggle-immersive-auxiliary-regions'),
@@ -234,10 +235,10 @@ export class CommandManager {
 
 			await this.plugin.historyManager.saveHistory(true);
 			this.plugin.refreshStatusViews();
-			new Notice(successNotice);
+			showPluginNotice(successNotice);
 		} catch (error) {
 			Logger.error('[CommandManager] 更新今日写作统计失败:', error);
-			new Notice(t('notice.daily-stats-update-failed'));
+			showPluginNotice(t('notice.daily-stats-update-failed'));
 		}
 	}
 
@@ -326,6 +327,15 @@ export class CommandManager {
 				const currentFile = view.file;
 				if (!currentFile) return;
 
+				const openNextChapter = async (file: TFile): Promise<void> => {
+					const immersiveManager = this.plugin.immersiveModeManager;
+					if (immersiveManager?.isManuscriptModeActive()) {
+						await immersiveManager.navigateManuscriptChapter(file);
+					} else {
+						await this.plugin.app.workspace.getLeaf(false).openFile(file);
+					}
+				};
+
 				const folder = currentFile.parent;
 				const siblingNames = folder
 					? folder.children
@@ -335,7 +345,7 @@ export class CommandManager {
 
 				const suggestedFileName = ChapterSorter.getNextChapterName(currentFile.basename, siblingNames);
 				if (!suggestedFileName) {
-					new Notice(t('notice.chapter-number-unrecognized'));
+					showPluginNotice(t('notice.chapter-number-unrecognized'));
 					return;
 				}
 				const newFileName = suggestedFileName.replace(/\.md$/i, '').trimEnd() + '.md';
@@ -344,7 +354,7 @@ export class CommandManager {
 				const existingFile = this.plugin.app.vault.getAbstractFileByPath(newFilePath);
 				if (existingFile instanceof TFile) {
 
-					await this.plugin.app.workspace.getLeaf(false).openFile(existingFile);
+					await openNextChapter(existingFile);
 
 					return;
 
@@ -366,15 +376,15 @@ export class CommandManager {
 									Logger.error('[CommandManager] Failed to record writing journey event for create-next:', journeyErr);
 								}
 							}
-							await this.plugin.app.workspace.getLeaf(false).openFile(newFile);
-							new Notice(t('notice.chapter-created', { name: newFileName }));
+							await openNextChapter(newFile);
+							showPluginNotice(t('notice.chapter-created', { name: newFileName }));
 							// 延迟触发文件树重排序，确保 DOM 挂载完成后自动恢复规则排序
 							window.setTimeout(() => {
 								this.plugin.fileExplorerPatcher?.refreshManually();
 							}, 100);
 						} catch (error) {
 							console.error(error);
-							new Notice(t('notice.chapter-create-failed', { error: String(error) }));
+							showPluginNotice(t('notice.chapter-create-failed', { error: String(error) }));
 						}
 					})();
 				});
@@ -410,7 +420,7 @@ export class CommandManager {
 						});
 					} catch (err) {
 						Logger.error('[CommandManager] Unexpected error splitting chapter:', err);
-						new Notice(t('notice.split-chapter-create-failed', { error: String(err) }));
+						showPluginNotice(t('notice.split-chapter-create-failed', { error: String(err) }));
 					}
 				})();
 
@@ -424,24 +434,24 @@ export class CommandManager {
 			icon: 'database',
 			callback: async () => {
 				if (!this.plugin.settings.showExplorerCounts) {
-					new Notice(t('notice.enable-explorer-counts-first'));
+					showPluginNotice(t('notice.enable-explorer-counts-first'));
 					return;
 				}
 
 				this.plugin.cacheManager.clearCache();
-				const notice = new Notice(t('notice.rebuilding-explorer-cache'), 0);
+				const notice = showPluginNotice(t('notice.rebuilding-explorer-cache'), 0);
 				try {
 					await this.plugin.cacheManager.buildInitialCache(
 						this.plugin.app.vault,
 						this.plugin.calculateAccurateWords.bind(this.plugin),
 						this.plugin.cacheManager.isEligibleForWordCount.bind(this.plugin.cacheManager)
 					);
-					notice.hide();
+					notice?.hide();
 					this.plugin.refreshFolderCounts();
-					new Notice(t('notice.cache-rebuild-complete'));
+					showPluginNotice(t('notice.cache-rebuild-complete'));
 				} catch (error) {
-					notice.hide();
-					new Notice(t('notice.cache-rebuild-failed', { error: String(error) }));
+					notice?.hide();
+					showPluginNotice(t('notice.cache-rebuild-failed', { error: String(error) }));
 					console.error('[Plugin] 缓存重建失败:', error);
 				}
 			}
@@ -453,11 +463,11 @@ export class CommandManager {
 			icon: 'sort-asc',
 			callback: () => {
 				if (!this.plugin.settings.enableSmartChapterSort) {
-					new Notice(t('notice.enable-smart-sort-first'));
+					showPluginNotice(t('notice.enable-smart-sort-first'));
 					return;
 				}
 				this.plugin.fileExplorerPatcher.refreshManually();
-				new Notice(t('notice.chapter-sort-refreshed'));
+				showPluginNotice(t('notice.chapter-sort-refreshed'));
 			}
 		});
 	}
@@ -481,21 +491,23 @@ export class CommandManager {
 						try {
 							const { file: foreshadowFile, merged } = await fm.addForeshadowing(file, initialText, description, tags);
 							if (merged) {
-								new Notice(t('notice.foreshadowing-merged', { name: foreshadowFile.name }), 5000);
+								showPluginNotice(t('notice.foreshadowing-merged', { name: foreshadowFile.name }), 5000);
 							} else {
-								new Notice(t('notice.foreshadowing-marked', { name: foreshadowFile.name }), 5000);
+								showPluginNotice(t('notice.foreshadowing-marked', { name: foreshadowFile.name }), 5000);
 							}
 							if (isDesktop()) {
-								const notice = new Notice(t('notice.foreshadowing-click-to-open'), 8000);
-								notice.messageEl.addClass('wn-clickable');
-								notice.messageEl.onclick = () => {
-									void fm.openForeshadowingFile(foreshadowFile);
-									notice.hide();
-								};
+								const notice = showPluginNotice(t('notice.foreshadowing-click-to-open'), 8000);
+								if (notice) {
+									notice.messageEl.addClass('wn-clickable');
+									notice.messageEl.onclick = () => {
+										void fm.openForeshadowingFile(foreshadowFile);
+										notice.hide();
+									};
+								}
 							}
 						} catch (err) {
 							console.error('[ForeshadowingManager] addForeshadowing failed:', err);
-							new Notice(t('notice.foreshadowing-mark-failed', { error: String(err) }));
+							showPluginNotice(t('notice.foreshadowing-mark-failed', { error: String(err) }));
 						}
 					})();
 				};
@@ -564,20 +576,20 @@ export class CommandManager {
 									);
 									if (success) {
 										const links = selectedChapters.map(c => `[[${c}]]`).join('、');
-										new Notice(t('notice.foreshadowing-recovered', { links }));
+										showPluginNotice(t('notice.foreshadowing-recovered', { links }));
 									} else {
-										new Notice(t('notice.foreshadowing-entry-not-found'));
+										showPluginNotice(t('notice.foreshadowing-entry-not-found'));
 									}
 								} catch (err) {
 									console.error('[CommandManager] markAsRecovered failed:', err);
-									new Notice(t('notice.foreshadowing-recovery-failed', { error: String(err) }));
+									showPluginNotice(t('notice.foreshadowing-recovery-failed', { error: String(err) }));
 								}
 							})();
 						}
 					).open();
 					return true;
 				} else {
-					new Notice(t('notice.foreshadowing-cursor-hint'));
+					showPluginNotice(t('notice.foreshadowing-cursor-hint'));
 					return true;
 				}
 			}
@@ -637,7 +649,7 @@ export class CommandManager {
 							folderPath,
 							(result) => {
 								tlManager.appendEntry(result, folderPath).then(async () => {
-									new Notice(t('notice.timeline-added'));
+									showPluginNotice(t('notice.timeline-added'));
 
 									// 刷新已打开的时间线视图
 									const leaves = this.plugin.app.workspace.getLeavesOfType(VIEW_TYPES.TIMELINE);
@@ -687,21 +699,21 @@ export class CommandManager {
 			name: t('command.refresh-lore-cache'),
 			icon: 'refresh-cw',
 			callback: async () => {
-				const notice = new Notice(t('notice.rebuilding-lore-cache'), 0);
+				const notice = showPluginNotice(t('notice.rebuilding-lore-cache'), 0);
 				try {
 					await this.plugin.characterManager.rebuildCache();
 					const stats = await this.plugin.loreSyncService.bulkRefresh();
-					notice.hide();
+					notice?.hide();
 					this.plugin.app.workspace.trigger('webnovel-workbench-lore-updated');
-					new Notice(t('notice.lore-cache-refreshed', {
+					showPluginNotice(t('notice.lore-cache-refreshed', {
 						total: String(stats.total),
 						success: String(stats.success),
 						failed: String(stats.failed)
 					}));
 				} catch (error) {
-					notice.hide();
+					notice?.hide();
 					console.error('[CommandManager] 重建设定缓存失败:', error);
-					new Notice(t('notice.lore-cache-refresh-failed', { error: String(error) }));
+					showPluginNotice(t('notice.lore-cache-refresh-failed', { error: String(error) }));
 				}
 			}
 		});
@@ -729,7 +741,7 @@ export class CommandManager {
 				if (file) {
 					void this.plugin.app.workspace.getLeaf(false).openFile(file);
 				} else {
-					new Notice(t('notice.homepage-file-not-exist'));
+					showPluginNotice(t('notice.homepage-file-not-exist'));
 				}
 			}
 		});
@@ -798,7 +810,7 @@ export class CommandManager {
 						await this.plugin.proofreadingManager.prepareDictionaryForEditing();
 						new AnnotateDictModal(this.plugin.app, this.plugin, selection.trim()).open();
 					} catch {
-						new Notice(t('notice.proofreading-prepare-failed'));
+						showPluginNotice(t('notice.proofreading-prepare-failed'));
 					}
 				})();
 
@@ -836,7 +848,7 @@ export class CommandManager {
 		} catch (error) {
 			this.plugin.settings.editorTypewriter.enabled = previousState;
 			Logger.error('[CommandManager] 切换普通编辑打字机滚动失败:', error);
-			new Notice(t('notice.save-settings-failed'));
+			showPluginNotice(t('notice.save-settings-failed'));
 			return;
 		}
 
@@ -845,7 +857,7 @@ export class CommandManager {
 		} catch (error) {
 			Logger.error('[CommandManager] 刷新普通编辑打字机状态失败:', error);
 		}
-		new Notice(
+		showPluginNotice(
 			nextState
 				? t('notice.editor-typewriter-enabled')
 				: t('notice.editor-typewriter-disabled')

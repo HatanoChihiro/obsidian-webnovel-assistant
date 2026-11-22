@@ -119,8 +119,12 @@ export class LoreOverviewView extends ItemView {
 
 		// 监听活动文件变化，自动关联书籍目录
 		this.registerEvent(this.app.workspace.on('active-leaf-change', (leaf) => {
-			if (!leaf || leaf.view.getViewType() !== 'markdown') return;
-			const file = this.app.workspace.getActiveFile();
+			const imm = this.plugin.immersiveModeManager;
+			const isMobileImmersive = Boolean(imm?.isMobileDataIsolationActive?.() ?? imm?.isMobileImmersiveSessionActive?.());
+			if (!isMobileImmersive && (!leaf || leaf.view.getViewType() !== 'markdown')) return;
+			const file = isMobileImmersive
+				? (imm?.getDataScopedMainFile?.() ?? imm?.getActiveSessionMainFile?.() ?? null)
+				: this.app.workspace.getActiveFile();
 			if (!file) return;
 
 			const homepagePath = this.plugin.homepageManager?.getHomepageFilePath();

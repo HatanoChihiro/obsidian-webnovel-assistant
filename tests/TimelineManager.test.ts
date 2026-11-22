@@ -2170,6 +2170,18 @@ timeline:
             return { source, chapter, content, service: new ChapterReferenceService(mockApp, mockPlugin) };
         }
 
+        it('does not recollect references for a deleted editor file after scoped invalidation', async () => {
+            const { chapter, service } = referenceFixture();
+            expect(await service.prefetchReferences(chapter)).not.toEqual([]);
+            const lookup = mockApp.vault.getAbstractFileByPath.getMockImplementation();
+            mockApp.vault.getAbstractFileByPath.mockImplementation((p: string) => p === chapter.path ? null : lookup(p));
+            const deletions = mockApp.vault.on.mock.calls.filter((call: unknown[]) => call[0] === 'delete');
+            const onDelete = deletions[deletions.length - 1][1] as (file: TFile) => void;
+            onDelete(chapter);
+            expect(await service.prefetchReferences(chapter)).toEqual([]);
+            await service.destroy();
+        });
+
         it('coalesces pending reads, rejects a disabled result, and waits for outstanding reads on destroy', async () => {
             const { chapter, content, service } = referenceFixture();
             let finish!: (content: string) => void;
@@ -2304,6 +2316,203 @@ timeline:
             await service.destroy();
             expect(service.getReferencesSync(chFile)).toEqual([]);
             expect(await service.prefetchReferences(chFile)).toEqual([]);
+        });
+
+        it('ignores unrelated metadata changes and ordinary body modifications while keeping cached chapters ready', async () => {
+            const { chapter, service } = referenceFixture();
+            const metadataListeners: Array<(file: TFile) => void> = [];
+            const vaultListeners = new Map<string, Array<(file: unknown, oldPath?: string) => void>>();
+            mockApp.metadataCache.on = vi.fn((event: string, cb: (file: TFile) => void) => {
+                if (event === 'changed') metadataListeners.push(cb);
+                return { event };
+            });
+            mockApp.vault.on = vi.fn((event: string, cb: (file: unknown, oldPath?: string) => void) => {
+                const list = vaultListeners.get(event) ?? [];
+                list.push(cb);
+                vaultListeners.set(event, list);
+                return { event };
+            });
+
+            // Re-instantiate so it registers on our spying metadataCache.on / vault.on
+            await service.destroy();
+            const scopedService = new ChapterReferenceService(mockApp, mockPlugin);
+            const refreshListener = vi.fn();
+            scopedService.onRefresh(refreshListener);
+
+            const initial = await scopedService.prefetchReferences(chapter);
+            expect(initial).toHaveLength(1);
+            expect(mockApp.vault.read).toHaveBeenCalledTimes(1);
+
+            const getAllChaptersSpy = vi.spyOn(ChapterSorter, 'getAllChapters');
+            getAllChaptersSpy.mockClear();
+            mockApp.vault.read.mockClear();
+
+            const outsideFile = Object.assign(new TFile(), {
+                name: 'Random.md',
+                basename: 'Random',
+                path: 'Notes/Random.md',
+                extension: 'md',
+                parent: { path: 'Notes', isRoot: () => false, parent: null }
+            });
+            const otherBookChapter = Object.assign(new TFile(), {
+                name: 'Chapter 1.md',
+                basename: 'Chapter 1',
+                path: 'Book 2/Chapter 1.md',
+                extension: 'md',
+                parent: { path: 'Book 2', isRoot: () => false, parent: null }
+            });
+
+            for (let i = 0; i < 20; i++) {
+                metadataListeners.forEach(cb => cb(i % 2 === 0 ? outsideFile : otherBookChapter));
+                expect(scopedService.getReferencesSync(chapter)).toEqual(initial);
+            }
+            // Ordinary body modify and metadata change on current chapter with unchanged eligibility
+            for (const cb of vaultListeners.get('modify') ?? []) cb(chapter);
+            for (const cb of metadataListeners) cb(chapter);
+
+            expect(refreshListener).not.toHaveBeenCalled();
+            expect(getAllChaptersSpy).not.toHaveBeenCalled();
+            expect(mockApp.vault.read).not.toHaveBeenCalled();
+            expect(scopedService.getReferencesSync(chapter)).toEqual(initial);
+
+            getAllChaptersSpy.mockRestore();
+            await scopedService.destroy();
+        });
+
+        it('refreshes current chapter when metadata exclusion changes and isolates book-scoped source/structure events', async () => {
+            const folder1 = { path: 'Book 1', isRoot: () => false, parent: null };
+            const folder2 = { path: 'Book 2', isRoot: () => false, parent: null };
+            const tl1 = Object.assign(new TFile(), { name: 'Timeline.md', basename: 'Timeline', path: 'Book 1/Timeline.md', extension: 'md', parent: folder1, stat: { mtime: 1, size: 100 } });
+            const ch1 = Object.assign(new TFile(), { name: 'Chapter 1.md', basename: 'Chapter 1', path: 'Book 1/Chapter 1.md', extension: 'md', parent: folder1, stat: { mtime: 1, size: 100 } });
+            const tl2 = Object.assign(new TFile(), { name: 'Timeline.md', basename: 'Timeline', path: 'Book 2/Timeline.md', extension: 'md', parent: folder2, stat: { mtime: 1, size: 100 } });
+            const ch2 = Object.assign(new TFile(), { name: 'Chapter 1.md', basename: 'Chapter 1', path: 'Book 2/Chapter 1.md', extension: 'md', parent: folder2, stat: { mtime: 1, size: 100 } });
+
+            mockApp.vault.getAbstractFileByPath.mockImplementation((p: string) => {
+                if (p === tl1.path) return tl1;
+                if (p === ch1.path) return ch1;
+                if (p === tl2.path) return tl2;
+                if (p === ch2.path) return ch2;
+                return null;
+            });
+            mockPlugin.getTrackedMarkdownFiles.mockReturnValue([ch1, ch2]);
+            mockPlugin.getVaultMarkdownFiles.mockReturnValue([ch1, ch2]);
+            mockPlugin.timelineManager = manager;
+            mockPlugin.settings.timeline = { fileName: 'Timeline', defaultTypes: [], showEditorReferences: true };
+            mockPlugin.settings.foreshadowing = { fileName: 'Foreshadowing', defaultTags: [], showEditorReferences: false };
+
+            const content1 = manager.formatEntry({ time: 'Day 1', description: 'B1', chapter: 'Chapter 1', origin: 'Quote B1', rawBlock: '', items: [{ description: 'B1', chapter: 'Chapter 1', origin: 'Quote B1' }] });
+            const content2 = manager.formatEntry({ time: 'Day 1', description: 'B2', chapter: 'Chapter 1', origin: 'Quote B2', rawBlock: '', items: [{ description: 'B2', chapter: 'Chapter 1', origin: 'Quote B2' }] });
+            mockApp.vault.read.mockImplementation(async (f: TFile) => (f === tl1 ? content1 : content2));
+
+            const metadataListeners: Array<(file: TFile) => void> = [];
+            const vaultListeners = new Map<string, Array<(file: unknown, oldPath?: string) => void>>();
+            mockApp.metadataCache.on = vi.fn((event: string, cb: (file: TFile) => void) => {
+                if (event === 'changed') metadataListeners.push(cb);
+                return { event };
+            });
+            mockApp.vault.on = vi.fn((event: string, cb: (file: unknown, oldPath?: string) => void) => {
+                const list = vaultListeners.get(event) ?? [];
+                list.push(cb);
+                vaultListeners.set(event, list);
+                return { event };
+            });
+
+            const service = new ChapterReferenceService(mockApp, mockPlugin);
+            const refreshListener = vi.fn();
+            service.onRefresh(refreshListener);
+
+            await service.prefetchReferences(ch1);
+            await service.prefetchReferences(ch2);
+            expect(service.getReferencesSync(ch1)?.[0].quote).toBe('Quote B1');
+            expect(service.getReferencesSync(ch2)?.[0].quote).toBe('Quote B2');
+
+            // Modifying Book 1 Timeline only invalidates Book 1, leaving Book 2 cached
+            for (const cb of vaultListeners.get('modify') ?? []) cb(tl1);
+            expect(refreshListener).toHaveBeenCalledTimes(1);
+            expect(service.getReferencesSync(ch1)).toBeNull();
+            expect(service.getReferencesSync(ch2)?.[0].quote).toBe('Quote B2');
+
+            await service.prefetchReferences(ch1);
+
+            // Metadata/eligibility exclusion on ch1 refreshes ch1 without invalidating ch2
+            mockPlugin.isPluginGeneratedFile.mockImplementation((name: string) => name === ch1.basename);
+            for (const cb of metadataListeners) cb(ch1);
+            expect(refreshListener).toHaveBeenCalledTimes(2);
+            expect(service.getReferencesSync(ch1)).toBeNull();
+            expect(service.getReferencesSync(ch2)?.[0].quote).toBe('Quote B2');
+            expect(await service.prefetchReferences(ch1)).toEqual([]);
+
+            // Restoring eligibility refreshes ch1
+            mockPlugin.isPluginGeneratedFile.mockReturnValue(false);
+            for (const cb of metadataListeners) cb(ch1);
+            expect(refreshListener).toHaveBeenCalledTimes(3);
+            expect(service.getReferencesSync(ch1)).toBeNull();
+            expect((await service.prefetchReferences(ch1))[0].quote).toBe('Quote B1');
+
+            // Same-book other-chapter metadata (e.g. alias) change invalidates Book 1 without touching Book 2
+            const ch1Other = Object.assign(new TFile(), { name: 'Chapter 2.md', basename: 'Chapter 2', path: 'Book 1/Chapter 2.md', extension: 'md', parent: folder1, stat: { mtime: 1, size: 100 } });
+            for (const cb of metadataListeners) cb(ch1Other);
+            expect(refreshListener).toHaveBeenCalledTimes(4);
+            expect(service.getReferencesSync(ch1)).toBeNull();
+            expect(service.getReferencesSync(ch2)?.[0].quote).toBe('Quote B2');
+
+            await service.prefetchReferences(ch1);
+
+            // A cached chapter's alias can also change another cached chapter's link resolution.
+            await service.prefetchReferences(ch1Other);
+            expect(service.getReferencesSync(ch1Other)).not.toBeNull();
+            // Current chapter alias frontmatter change invalidates the book's dependent chapters.
+            mockApp.metadataCache.getFileCache.mockImplementation((f: TFile) => (
+                f === ch1 ? { frontmatter: { aliases: ['序章别名'] } } : null
+            ));
+            for (const cb of metadataListeners) cb(ch1);
+            expect(refreshListener).toHaveBeenCalledTimes(5);
+            expect(service.getReferencesSync(ch1)).toBeNull();
+            expect(service.getReferencesSync(ch1Other)).toBeNull();
+
+            await service.destroy();
+        });
+
+        it('accounts for pending chapter contexts before first collection finishes', async () => {
+            const { source, chapter, content, service } = referenceFixture();
+            const vaultListeners = new Map<string, Array<(file: unknown, oldPath?: string) => void>>();
+            mockApp.vault.on = vi.fn((event: string, cb: (file: unknown, oldPath?: string) => void) => {
+                const list = vaultListeners.get(event) ?? [];
+                list.push(cb);
+                vaultListeners.set(event, list);
+                return { event };
+            });
+
+            await service.destroy();
+            const scopedService = new ChapterReferenceService(mockApp, mockPlugin);
+            const refreshListener = vi.fn();
+            scopedService.onRefresh(refreshListener);
+
+            let resolveFirst!: (val: string) => void;
+            mockApp.vault.read.mockReturnValueOnce(new Promise<string>(res => { resolveFirst = res; }));
+
+            const pendingPromise = scopedService.prefetchReferences(chapter);
+
+            // Unrelated Book 2 source modify while Book 1 chapter is pending must NOT cancel or notify
+            const otherTimeline = Object.assign(new TFile(), {
+                name: 'Timeline.md',
+                basename: 'Timeline',
+                path: 'Book 2/Timeline.md',
+                extension: 'md',
+                parent: { path: 'Book 2', isRoot: () => false, parent: null }
+            });
+            for (const cb of vaultListeners.get('modify') ?? []) cb(otherTimeline);
+            expect(refreshListener).not.toHaveBeenCalled();
+
+            // Book 1 Timeline modify while Book 1 chapter is pending MUST invalidate pending and notify
+            for (const cb of vaultListeners.get('modify') ?? []) cb(source);
+            expect(refreshListener).toHaveBeenCalledTimes(1);
+
+            resolveFirst(content);
+            expect(await pendingPromise).toEqual([]);
+            expect(scopedService.getReferencesSync(chapter)).toBeNull();
+
+            await scopedService.destroy();
         });
     });
 });

@@ -93,7 +93,7 @@ body.is-phone .webnovel-lore-popover .wn-lore-card-overflow-badge {
 }
 
 
-body.is-phone .mobile-floating-stats {
+body.is-phone .wn-mobile-floating-stats {
 	font-size: 0.75em;
 	padding: 4px 10px;
 	min-height: 25px;
@@ -126,21 +126,20 @@ body.is-phone .wn-card-tag-badge {
 }
 
 
-body.is-phone .mobile-floating-stats.is-docked-left {
+body.is-phone .wn-mobile-floating-stats.is-docked-left {
 	min-height: 44px;
 	transform: translateX(calc(-100% + 48px));
 }
 
 
-body.is-phone .mobile-floating-stats.is-docked-right {
+body.is-phone .wn-mobile-floating-stats.is-docked-right {
 	min-height: 44px;
 	transform: translateX(calc(100% - 48px));
 }
 
 
-body.is-phone div.task-card.wn-task-card,
-body.is-phone div.wn-task-card,
-body.is-phone .wn-task-board-layout .task-card,
+body.is-phone .wn-task-board-layout div.wn-task-card,
+body.is-phone .wn-task-board-layout .wn-task-card,
 body.is-phone .wn-task-board-layout .wn-corkboard-card {
 	max-width: 100%;
 	width: 100%;
@@ -154,44 +153,32 @@ body.is-phone .wn-task-board-layout .wn-corkboard-card {
 
 
 /* 手机端任务卡片具体内容与细节字号调大 */
-body.is-phone .wn-task-card .task-card-period,
-body.is-phone .wn-task-card .wn-task-card-period,
-body.is-phone .task-card .task-card-period {
+body.is-phone .wn-task-card .wn-task-card-period {
 	font-size: var(--wn-phone-font-title);
 }
 
 
-body.is-phone .wn-task-card .task-card-info-row,
-body.is-phone .wn-task-card .wn-task-card-info-row,
-body.is-phone .task-card .task-card-info-row {
+body.is-phone .wn-task-card .wn-task-card-info-row {
 	font-size: var(--wn-phone-font-body);
 }
 
 
-body.is-phone .wn-task-card .task-card-cycle-row,
-body.is-phone .wn-task-card .wn-task-card-cycle-row,
-body.is-phone .task-card .task-card-cycle-row {
+body.is-phone .wn-task-card .wn-task-card-cycle-row {
 	font-size: var(--wn-phone-font-meta);
 }
 
 
-body.is-phone .wn-task-card .task-progress-label,
-body.is-phone .wn-task-card .wn-task-progress-label,
-body.is-phone .task-card .task-progress-label {
+body.is-phone .wn-task-card .wn-task-progress-label {
 	font-size: var(--wn-phone-font-body);
 }
 
 
-body.is-phone .wn-task-card .task-card-footer,
-body.is-phone .wn-task-card .wn-task-card-footer,
-body.is-phone .task-card .task-card-footer {
+body.is-phone .wn-task-card .wn-task-card-footer {
 	font-size: var(--wn-phone-font-meta);
 }
 
 
-body.is-phone .wn-task-card .task-card-result,
-body.is-phone .wn-task-card .wn-task-card-result,
-body.is-phone .task-card .task-card-result {
+body.is-phone .wn-task-card .wn-task-card-result {
 	font-size: var(--wn-phone-font-body);
 }
 

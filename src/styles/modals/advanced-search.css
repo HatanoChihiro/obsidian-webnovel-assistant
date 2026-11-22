@@ -2,7 +2,7 @@
 /* ========== Advanced Search Modal ========== */
 
 /* Advanced Search Folder List */
-.advanced-search-folder-list {
+.wn-advanced-search-folder-list {
 	display: flex;
 	flex-direction: column;
 	gap: 4px;
@@ -15,33 +15,33 @@
 }
 
 
-.advanced-search-folder-name {
+.wn-advanced-search-folder-name {
 	font-weight: bold;
 }
 
 
-.advanced-search-checkbox {
+.wn-advanced-search-checkbox {
 	margin-left: 10px;
 }
 
 
-.advanced-search-file-name {
+.wn-advanced-search-file-name {
 	color: var(--text-muted);
 }
 
 
-.advanced-search-results-container {
+.wn-advanced-search-results-container {
 	margin-top: 15px;
 	border-top: 1px solid var(--background-modifier-border);
 	padding-top: 10px;
 }
 
 
-.advanced-search-loading,
+.wn-advanced-search-loading,
 
-.advanced-search-empty,
+.wn-advanced-search-empty,
 
-.advanced-search-summary {
+.wn-advanced-search-summary {
 	color: var(--text-normal);
 	font-size: 0.9em;
 	margin-bottom: 10px;
@@ -50,7 +50,7 @@
 }
 
 
-.advanced-search-results-list {
+.wn-advanced-search-results-list {
 	max-height: 400px;
 	overflow-y: auto;
 	display: flex;
@@ -59,13 +59,13 @@
 }
 
 
-.advanced-search-file-item {
+.wn-advanced-search-file-item {
 	padding: 8px 12px;
 	border-radius: 6px;
 }
 
 
-.advanced-search-file-title {
+.wn-advanced-search-file-title {
 	font-weight: bold;
 	color: var(--text-accent);
 	margin-bottom: 4px;
@@ -73,7 +73,7 @@
 }
 
 
-.advanced-search-match-item {
+.wn-advanced-search-match-item {
 	font-size: 0.85em;
 	color: var(--text-muted);
 	line-height: 1.4;
@@ -85,17 +85,17 @@
 }
 
 
-.advanced-search-match-item:hover {
+.wn-advanced-search-match-item:hover {
 	background-color: var(--background-modifier-hover);
 }
 
-.advanced-search-match-item.is-selected {
+.wn-advanced-search-match-item.is-selected {
 	background-color: var(--background-modifier-hover);
 	box-shadow: inset 2px 0 0 var(--interactive-accent);
 }
 
 
-.advanced-search-match-more {
+.wn-advanced-search-match-more {
 	color: var(--text-faint);
 	font-style: italic;
 	font-size: 0.85em;
@@ -103,7 +103,7 @@
 }
 
 
-.advanced-search-highlight {
+.wn-advanced-search-highlight {
 	background-color: var(--text-highlight-bg);
 	color: var(--text-normal);
 	font-weight: bold;
@@ -115,14 +115,14 @@
 /* Tree structure */
 
 /* Advanced Search Tree Header */
-.advanced-search-tree-header {
+.wn-advanced-search-tree-header {
 	display: flex;
 	align-items: center;
 	padding: 4px 0;
 }
 
 
-.advanced-search-tree-arrow {
+.wn-advanced-search-tree-arrow {
 	cursor: pointer;
 	width: 18px;
 	display: inline-block;
@@ -130,13 +130,13 @@
 }
 
 
-.advanced-search-tree-spacer {
+.wn-advanced-search-tree-spacer {
 	width: 18px;
 	display: inline-block;
 }
 
 
-.advanced-search-tree-name {
+.wn-advanced-search-tree-name {
 	flex: 1;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -144,6 +144,6 @@
 }
 
 
-.advanced-search-tree-children {
+.wn-advanced-search-tree-children {
 	margin-left: 18px;
 }

@@ -3,32 +3,32 @@
 /* Immersive Mode: Hide split handle, show only on hover */
 
 /* Keep ordinary tabs and splits alive while the immersive editor occupies their space. */
-body.immersive-mode-active .wn-immersive-preserved-branch {
+body.wn-immersive-mode-active .wn-immersive-preserved-branch {
 	display: none;
 }
 
-body.immersive-mode-active.immersive-mode-active .workspace-leaf-resize-handle {
+body.wn-immersive-mode-active.wn-immersive-mode-active .workspace-leaf-resize-handle {
 	opacity: 0;
 	transition: opacity 0.2s ease;
 }
 
-body.immersive-mode-active.immersive-mode-active .workspace-leaf-resize-handle:hover,
+body.wn-immersive-mode-active.wn-immersive-mode-active .workspace-leaf-resize-handle:hover,
 
-body.immersive-mode-active.immersive-mode-active .workspace-leaf-resize-handle.is-active {
+body.wn-immersive-mode-active.wn-immersive-mode-active .workspace-leaf-resize-handle.is-active {
 	opacity: 1;
 	background-color: var(--interactive-accent);
 }
 
 /* Deep Theme Defense: Reset global container margins potentially added by mainstream 3rd-party themes (like Border) */
 
-body.immersive-mode-active.immersive-mode-active .app-container.app-container {
+body.wn-immersive-mode-active.wn-immersive-mode-active .app-container.app-container {
 	padding: 0;
 	margin: 0;
 	height: 100%;
 	width: 100%;
 }
 
-body.immersive-mode-active.immersive-mode-active .app-container.app-container .workspace.workspace {
+body.wn-immersive-mode-active.wn-immersive-mode-active .app-container.app-container .workspace.workspace {
 	margin: 0;
 	margin-top: 40px;
 	padding: 0;
@@ -40,35 +40,44 @@ body.immersive-mode-active.immersive-mode-active .app-container.app-container .w
 	width: 100%;
 }
 
-body.immersive-mode-active.immersive-mode-active .horizontal-main-container.horizontal-main-container {
+/* Mobile immersive mode overrides desktop 40px topbar geometry with visualViewport-aware dimensions */
+body.wn-immersive-mode-active.wn-immersive-mobile-active .app-container.app-container .workspace.workspace {
+	margin-top: calc(var(--wn-immersive-mobile-viewport-top, 0px) + var(--wn-immersive-mobile-topbar-height, 44px));
+	height: calc(var(--wn-immersive-mobile-viewport-height, 100%) - var(--wn-immersive-mobile-topbar-height, 44px));
+	padding-bottom: max(var(--safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 0px));
+	padding-right: var(--wn-immersive-mobile-dock-width, 0px);
+	box-sizing: border-box;
+}
+
+body.wn-immersive-mode-active.wn-immersive-mode-active .horizontal-main-container.horizontal-main-container {
 	padding: 0;
 	margin: 0;
 	height: 100%;
 	bottom: 0;
 }
 
-body.immersive-mode-active.immersive-mode-active .app-container.app-container .workspace.workspace .workspace-split.workspace-split,
+body.wn-immersive-mode-active.wn-immersive-mode-active .app-container.app-container .workspace.workspace .workspace-split.workspace-split,
 
-body.immersive-mode-active.immersive-mode-active .app-container.app-container .workspace.workspace .workspace-split.mod-root {
+body.wn-immersive-mode-active.wn-immersive-mode-active .app-container.app-container .workspace.workspace .workspace-split.mod-root {
 	padding: 0;
 	margin: 0;
 }
 
-body.immersive-mode-active.immersive-mode-active .app-container.app-container .workspace.workspace .workspace-leaf.workspace-leaf {
+body.wn-immersive-mode-active.wn-immersive-mode-active .app-container.app-container .workspace.workspace .workspace-leaf.workspace-leaf {
 	margin: 0;
 }
 
 /* Deep Theme Defense: Clear hover borders potentially created by themes using pseudo-elements on body */
 
-body.immersive-mode-active.immersive-mode-active.immersive-mode-active::before,
+body.wn-immersive-mode-active.wn-immersive-mode-active.wn-immersive-mode-active::before,
 
-body.immersive-mode-active.immersive-mode-active.immersive-mode-active::after {
+body.wn-immersive-mode-active.wn-immersive-mode-active.wn-immersive-mode-active::after {
 	display: none;
 }
 
 /* Light highlight for currently active (selected) card */
 
-body.immersive-mode-active .workspace-leaf.mod-active.workspace-leaf .workspace-leaf-content {
+body.wn-immersive-mode-active .workspace-leaf.mod-active.workspace-leaf .workspace-leaf-content {
 	border: 1px solid color-mix(in srgb, var(--interactive-accent) 80%, var(--background-modifier-border));
 	box-shadow: 0 0 0 1px color-mix(in srgb, var(--interactive-accent) 30%, transparent), 0 4px 15px color-mix(in srgb, var(--interactive-accent) 8%, rgba(0, 0, 0, 0.05));
 }
@@ -76,18 +85,18 @@ body.immersive-mode-active .workspace-leaf.mod-active.workspace-leaf .workspace-
 
 /* Auxiliary region collapse state and hidden handles */
 
-body.immersive-mode-active .workspace-split.wn-immersive-region-collapsed,
-body.immersive-mode-active .workspace-leaf.wn-immersive-region-collapsed,
-body.immersive-mode-active .wn-immersive-region-collapsed,
-body.immersive-mode-active .workspace-leaf-resize-handle.wn-immersive-handle-hidden,
-body.immersive-mode-active .wn-immersive-region-collapsed + .workspace-leaf-resize-handle {
+body.wn-immersive-mode-active .workspace-split.wn-immersive-region-collapsed,
+body.wn-immersive-mode-active .workspace-leaf.wn-immersive-region-collapsed,
+body.wn-immersive-mode-active .wn-immersive-region-collapsed,
+body.wn-immersive-mode-active .workspace-leaf-resize-handle.wn-immersive-handle-hidden,
+body.wn-immersive-mode-active .wn-immersive-region-collapsed + .workspace-leaf-resize-handle {
 	display: none;
 }
 
 /* Both states share the main editor edge, hit area and icon size. */
 
-body.immersive-mode-active .wn-immersive-collapse-btn,
-body.immersive-mode-active .wn-immersive-restore-btn {
+body.wn-immersive-mode-active .wn-immersive-collapse-btn,
+body.wn-immersive-mode-active .wn-immersive-restore-btn {
 	position: absolute;
 	z-index: 20;
 	display: flex;
@@ -109,23 +118,23 @@ body.immersive-mode-active .wn-immersive-restore-btn {
 	transition: opacity 0.15s ease, background-color 0.15s ease, color 0.15s ease;
 }
 
-body.immersive-mode-active .wn-immersive-collapse-btn:hover,
-body.immersive-mode-active .wn-immersive-restore-btn:hover,
-body.immersive-mode-active .wn-immersive-collapse-btn:focus-visible,
-body.immersive-mode-active .wn-immersive-restore-btn:focus-visible {
+body.wn-immersive-mode-active .wn-immersive-collapse-btn:hover,
+body.wn-immersive-mode-active .wn-immersive-restore-btn:hover,
+body.wn-immersive-mode-active .wn-immersive-collapse-btn:focus-visible,
+body.wn-immersive-mode-active .wn-immersive-restore-btn:focus-visible {
 	background: var(--background-modifier-hover);
 	color: var(--text-normal);
 	opacity: 1;
 }
 
-body.immersive-mode-active .wn-immersive-collapse-btn:focus-visible,
-body.immersive-mode-active .wn-immersive-restore-btn:focus-visible {
+body.wn-immersive-mode-active .wn-immersive-collapse-btn:focus-visible,
+body.wn-immersive-mode-active .wn-immersive-restore-btn:focus-visible {
 	outline: 2px solid var(--background-modifier-border-focus);
 	outline-offset: -2px;
 }
 
-body.immersive-mode-active .wn-immersive-collapse-btn svg,
-body.immersive-mode-active .wn-immersive-restore-btn svg {
+body.wn-immersive-mode-active .wn-immersive-collapse-btn svg,
+body.wn-immersive-mode-active .wn-immersive-restore-btn svg {
 	width: 14px;
 	height: 14px;
 }

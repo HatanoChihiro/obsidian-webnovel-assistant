@@ -32,6 +32,8 @@
 @import "./features/immersive-folders.css";
 @import "./features/immersive-topbar-controls.css";
 @import "./features/immersive-volume.css";
+@import "./features/immersive-manuscript.css";
+@import "./features/immersive-mobile.css";
 @import "./features/character-match.css";
 @import "./features/sticky-note-list.css";
 @import "./features/floating-notes.css";
@@ -82,6 +84,7 @@
 @import "./modals/lore-modal.css";
 @import "./modals/import-modal.css";
 @import "./modals/template-choice.css";
+@import "./modals/daily-stats-modal.css";
 
 /* Responsive Device Overrides */
 @import "./responsive/phone-base.css";

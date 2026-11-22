@@ -115,8 +115,12 @@ export class ChapterOverviewView extends ItemView {
         }));
 
         this.registerEvent(this.app.workspace.on('active-leaf-change', (leaf) => {
-            if (!leaf || leaf.view.getViewType() !== 'markdown') return;
-            const file = this.app.workspace.getActiveFile();
+            const imm = this.plugin.immersiveModeManager;
+            const isMobileImmersive = Boolean(imm?.isMobileDataIsolationActive?.() ?? imm?.isMobileImmersiveSessionActive?.());
+            if (!isMobileImmersive && (!leaf || leaf.view.getViewType() !== 'markdown')) return;
+            const file = isMobileImmersive
+                ? (imm?.getDataScopedMainFile?.() ?? imm?.getActiveSessionMainFile?.() ?? null)
+                : this.app.workspace.getActiveFile();
             if (!file) return;
 
             const homepagePath = this.plugin.homepageManager?.getHomepageFilePath();

@@ -1,5 +1,7 @@
-import { Modal, Notice, Setting, type App } from 'obsidian';
+import { showPluginNotice } from '../services/PluginNoticeService';
+import { Modal, Setting, type App } from 'obsidian';
 import { t } from '../i18n';
+import { applyDestructiveButtonStyle } from '../utils/ui';
 
 export type DailyStatsAction =
 	| { type: 'reset-all' }
@@ -24,7 +26,7 @@ class ConfirmDailyStatsClearAllModal extends Modal {
 				.onClick(() => this.close()))
 			.addButton(button => button
 				.setButtonText(t('common.confirm'))
-				.setWarning()
+				.then(applyDestructiveButtonStyle)
 				.onClick(() => {
 					this.onConfirm();
 					this.close();
@@ -62,7 +64,7 @@ export class DailyStatsActionModal extends Modal {
 			.setDesc(t('command.daily-stats-clear-all-desc'))
 			.addButton(button => button
 				.setButtonText(t('command.daily-stats-clear-all-action'))
-				.setWarning()
+				.then(applyDestructiveButtonStyle)
 				.onClick(() => this.submit({ type: 'reset-all' })));
 
 		new Setting(contentEl)
@@ -96,12 +98,12 @@ export class DailyStatsActionModal extends Modal {
 	private submitCorrection(): void {
 		const value = this.correctedWords.trim();
 		if (!/^-?\d+$/.test(value)) {
-			new Notice(t('notice.daily-stats-invalid-words'));
+			showPluginNotice(t('notice.daily-stats-invalid-words'));
 			return;
 		}
 		const words = Number(value);
 		if (!Number.isSafeInteger(words)) {
-			new Notice(t('notice.daily-stats-invalid-words'));
+			showPluginNotice(t('notice.daily-stats-invalid-words'));
 			return;
 		}
 		this.submit({ type: 'correct-words', words });

@@ -64,10 +64,12 @@ body .modal-content.wn-mobile-merge-modal-content {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	padding: 4px 2px 8px;
+	padding: 8px 14px;
+	flex: 0 0 auto;
+	flex-wrap: wrap;
 	gap: 8px;
 	border-bottom: 1px solid var(--background-modifier-border);
-	margin-bottom: 10px;
+	margin-bottom: 0;
 }
 
 
@@ -83,14 +85,16 @@ body .modal-content.wn-mobile-merge-modal-content {
 	display: flex;
 	align-items: center;
 	gap: 6px;
+	flex-wrap: wrap;
 }
 
 
 .wn-mobile-merge-btn-bulk {
 	font-size: 0.75em;
 	padding: 3px 8px;
-	height: 24px;
-	line-height: 1;
+	min-height: 36px;
+	height: auto;
+	line-height: 1.3;
 	background: var(--background-modifier-form-field);
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 4px;
@@ -168,4 +172,36 @@ body .modal-content.wn-mobile-merge-modal-content {
 
 .wn-mobile-merge-footer .wn-merge-checkbox-text {
 	font-size: 0.8em;
+}
+
+.wn-mobile-merge-toolbar,
+.wn-mobile-merge-card .wn-merge-card-header {
+	font-family: var(--font-interface);
+}
+
+.wn-mobile-merge-modal-window .wn-mobile-merge-header {
+	padding-inline-end: 72px;
+}
+
+body.is-phone .modal.wn-mobile-merge-modal-window {
+	max-height: calc(100dvh - var(--safe-area-inset-top, 0px) - var(--safe-area-inset-bottom, 0px) - 16px);
+}
+
+body.is-phone .wn-mobile-merge-toolbar {
+	gap: 6px;
+}
+
+body.is-phone .wn-mobile-merge-bulk-actions {
+	width: 100%;
+}
+
+body.is-phone .wn-mobile-merge-btn-bulk {
+	flex: 1;
+	white-space: nowrap;
+	padding-inline: 6px;
+}
+
+
+.wn-mobile-merge-preview-container.is-without-titles .wn-merge-preview-vol-divider {
+	display: none;
 }

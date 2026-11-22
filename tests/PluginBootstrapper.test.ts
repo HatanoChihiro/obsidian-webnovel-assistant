@@ -35,6 +35,12 @@ vi.mock('../src/services/ImmersiveReferenceManager', () => ({
 	}
 }));
 
+vi.mock('../src/services/ImmersiveManuscriptManager', () => ({
+	ImmersiveManuscriptManager: class ImmersiveManuscriptManager {
+		constructor(public app: unknown, public plugin: unknown) {}
+	}
+}));
+
 const mockObsStart = vi.fn();
 const mockObsStop = vi.fn().mockResolvedValue(undefined);
 vi.mock('../src/services/ObsServer', () => ({
@@ -58,6 +64,7 @@ vi.mock('../src/ui/MobileFloatingStats', () => ({
 }));
 
 import { PluginBootstrapper, type BootstrapperHost } from '../src/core/PluginBootstrapper';
+import { showPluginNotice } from '../src/services/PluginNoticeService';
 import type { TFile } from 'obsidian';
 import { ServiceRegistry, type ServiceMap } from '../src/core/ServiceRegistry';
 import { DEFAULT_SETTINGS, PLATFORM_DELAYS } from '../src/constants';
@@ -150,6 +157,7 @@ describe('PluginBootstrapper', () => {
 		'FileExplorerPatcher',
 		'WordCounter',
 		'ImmersiveReferenceManager',
+		'ImmersiveManuscriptManager',
 		'ImmersiveModeManager',
 		'CommandManager',
 		'ViewManager',
@@ -283,6 +291,9 @@ describe('PluginBootstrapper', () => {
 			lastEditTime: 0,
 			get immersiveReferenceManager() {
 				return registry.get('ImmersiveReferenceManager');
+			},
+			get immersiveManuscriptManager() {
+				return registry.get('ImmersiveManuscriptManager');
 			}
 		} as unknown as BootstrapperHost;
 
@@ -769,7 +780,7 @@ describe('PluginBootstrapper', () => {
 				}
 			];
 			(activeDocument.body as unknown as { getElementsByClassName: ReturnType<typeof vi.fn> }).getElementsByClassName = vi.fn((cls: string) => {
-				return cls === 'my-floating-sticky-note' ? mockDomElements : [];
+				return cls === 'wn-my-floating-sticky-note' ? mockDomElements : [];
 			});
 
 			mockNote1 = {
@@ -803,8 +814,9 @@ describe('PluginBootstrapper', () => {
 				'webnovel-notes-hidden',
 				'webnovel-custom-dragging',
 				'webnovel-eye-care-enabled',
-				'immersive-mode-active',
-				'immersive-hide-properties'
+				'wn-immersive-mode-active',
+				'wn-immersive-mobile-active',
+				'wn-immersive-hide-properties'
 			);
 			expect(mockDomElements[0].remove).toHaveBeenCalled();
 			expect(mockDomElements[1].remove).toHaveBeenCalled();
@@ -1251,6 +1263,18 @@ describe('PluginBootstrapper', () => {
 
 			expect((Logger as unknown as { plugin: unknown }).plugin).toBeNull();
 		});
+
+		it('binds the notification preference before loading settings and suppresses late notices after rollback', async () => {
+			mockPlugin.loadSettings = vi.fn().mockImplementation(async () => {
+				expect(showPluginNotice('Disabled during startup')).toBeUndefined();
+				mockPlugin.settings.showNotices = true;
+				expect(showPluginNotice('Enabled during startup')).toBeDefined();
+				throw new Error('Startup interrupted');
+			});
+			const bootstrapper = new PluginBootstrapper(mockPlugin, registry);
+			await expect(bootstrapper.bootstrap()).rejects.toThrow('Startup interrupted');
+			expect(showPluginNotice('Late startup notice')).toBeUndefined();
+		});
 	});
 
 	describe('Immediate Layout Ready', () => {
@@ -1371,7 +1395,10 @@ describe('PluginBootstrapper', () => {
 			editorChangeHandlers[0](null, { file: sampleFile });
 
 			// 1. workerManager.handleEditorChange must be called synchronously immediately before debounce runs
-			expect(mockPlugin.workerManager.handleEditorChange).toHaveBeenCalledWith(sampleFile);
+			expect(mockPlugin.workerManager.handleEditorChange).toHaveBeenCalledWith(
+				sampleFile,
+				expect.objectContaining({ info: { file: sampleFile } })
+			);
 
 			// 2. EditorTracker.handleEditorChange has NOT run because debounce callback was captured and not yet invoked
 			expect(mockEditorTracker.handleEditorChange).not.toHaveBeenCalled();
@@ -1517,6 +1544,74 @@ describe('PluginBootstrapper', () => {
 
 			infoSpy.mockRestore();
 			Logger.release(mockPlugin);
+		});
+
+		it('preserves main editor origin through debounce and ignores reference editor-change during mobile immersive', async () => {
+			const bootstrapper = new PluginBootstrapper(mockPlugin, registry);
+			bootstrapper.registerConstructorServices();
+
+			const pendingDebounces = new Map<string, () => void>();
+			mockPlugin.adaptiveDebounceManager = {
+				debounce: vi.fn((key: string, fn: () => void) => {
+					pendingDebounces.set(key, fn);
+				}),
+				debounceFixed: vi.fn()
+			} as unknown as AdaptiveDebounceManager;
+			mockPlugin.historyManager = { loadHistory: vi.fn().mockResolvedValue(undefined) } as unknown as HistoryDataManager;
+			mockPlugin.cacheManager.loadCache = vi.fn().mockResolvedValue(undefined);
+			mockPlugin.loreSyncService = { initialize: vi.fn() } as unknown as LoreSyncService;
+			mockPlugin.characterManager = { initialize: vi.fn().mockResolvedValue(undefined) } as unknown as CharacterManager;
+			mockPlugin.proofreadingManager = { initialize: vi.fn().mockResolvedValue(undefined) } as unknown as ProofreadingManager;
+			mockPlugin.fileEventManager = { setup: vi.fn() } as unknown as FileEventManager;
+			mockPlugin.statisticsManager = { setup: vi.fn() } as unknown as StatisticsManager;
+			mockPlugin.workerManager = {
+				setup: vi.fn(),
+				handleEditorChange: vi.fn(),
+				handleActiveFileChange: vi.fn(),
+				handleFileRename: vi.fn()
+			} as unknown as WorkerManager;
+			mockPlugin.markdownPostProcessor = { getProcessor: vi.fn() } as unknown as MarkdownPostProcessor;
+			mockPlugin.typographyManager = { updateTypography: vi.fn() } as unknown as TypographyManager;
+			mockPlugin.commandManager = { registerAllCommands: vi.fn() } as unknown as CommandManager;
+			mockPlugin.viewManager = { registerAllViews: vi.fn() } as unknown as ViewManager;
+			mockPlugin.menuManager = { registerAllMenus: vi.fn() } as unknown as MenuManager;
+			mockPlugin.registerMarkdownPostProcessor = vi.fn();
+			mockPlugin.addStatusBarItem = vi.fn().mockReturnValue({});
+			Object.assign(mockPlugin.app, {
+				metadataCache: { on: vi.fn(() => ({})) }
+			});
+
+			const mainFile = { path: 'Novel/Chapter1.md' } as TFile;
+			const mainEditor = { id: 'main-ed' };
+			const refEditor = { id: 'ref-ed' };
+			const mainInfo = { file: mainFile, editor: mainEditor };
+			const refInfo = { file: mainFile, editor: refEditor };
+
+			mockPlugin.immersiveModeManager = {
+				isMobileImmersiveSessionActive: () => true,
+				getActiveSessionMainFile: () => mainFile,
+				isMainEditorOrigin: (info: unknown, editor?: unknown) => info === mainInfo || editor === mainEditor
+			} as unknown as BootstrapperHost['immersiveModeManager'];
+
+			await bootstrapper.bootstrap();
+
+			const editorChangeHandlers = workspaceEventHandlers['editor-change'] || [];
+			expect(editorChangeHandlers.length).toBeGreaterThan(0);
+
+			// Main editor edit fires first
+			editorChangeHandlers[0](mainEditor, mainInfo);
+			// Reference edit on SAME path fires before debounce flushes — must NOT overwrite pending main debounce or notify worker
+			editorChangeHandlers[0](refEditor, refInfo);
+
+			expect(mockPlugin.workerManager.handleEditorChange).toHaveBeenCalledTimes(1);
+			expect(mockPlugin.workerManager.handleEditorChange).toHaveBeenCalledWith(mainFile, { editor: mainEditor, info: mainInfo });
+
+			const flushFn = pendingDebounces.get('editor-update');
+			expect(flushFn).toBeDefined();
+			flushFn!();
+
+			expect(mockEditorTracker.handleEditorChange).toHaveBeenCalledTimes(1);
+			expect(mockEditorTracker.handleEditorChange).toHaveBeenCalledWith({ editor: mainEditor, info: mainInfo });
 		});
 	});
 });

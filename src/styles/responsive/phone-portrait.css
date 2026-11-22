@@ -380,7 +380,7 @@
 	}
 
 	/* 伏笔侧面板卡片与回收/废弃按钮字体恢复侧栏标准字号 */
-	body.is-phone .foreshadowing-entry-card,
+	body.is-phone .wn-foreshadowing-entry-card,
 	body.is-phone .wn-foreshadowing-card {
 		padding: var(--wn-phone-card-padding);
 		margin-bottom: 10px;
@@ -388,45 +388,45 @@
 		border-radius: var(--wn-phone-card-radius);
 	}
 
-	body.is-phone .foreshadowing-entry-desc {
+	body.is-phone .wn-foreshadowing-entry-desc {
 		margin-bottom: 4px;
 	}
 
-	body.is-phone .foreshadowing-entry-desc-text {
+	body.is-phone .wn-foreshadowing-entry-desc-text {
 		font-size: var(--wn-phone-font-title);
 		font-weight: 600;
 		line-height: 1.4;
 	}
 
-	body.is-phone .foreshadowing-entry-quote,
-	body.is-phone .foreshadowing-entry-quote-text {
+	body.is-phone .wn-foreshadowing-entry-quote,
+	body.is-phone .wn-foreshadowing-entry-quote-text {
 		padding: 0.25em 0.375em;
 		font-size: var(--wn-phone-font-body);
 		line-height: 1.45;
 	}
 
-	body.is-phone .foreshadowing-entry-tag,
-	body.is-phone .foreshadowing-status-pill,
+	body.is-phone .wn-foreshadowing-entry-tag,
+	body.is-phone .wn-foreshadowing-status-pill,
 	body.is-phone .wn-badge-foreshadowing {
 		font-size: var(--wn-phone-font-meta);
 		padding: 2px 6px;
 	}
 
-	body.is-phone .foreshadowing-entry-footer {
+	body.is-phone .wn-foreshadowing-entry-footer {
 		margin-top: 6px;
 		gap: 8px;
 		align-items: center;
 	}
 
-	body.is-phone .foreshadowing-entry-actions {
+	body.is-phone .wn-foreshadowing-entry-actions {
 		gap: 8px;
 		align-items: center;
 		margin: 0;
 	}
 
-	body.is-phone .foreshadowing-action-btn,
-	body.is-phone .foreshadowing-recover-btn,
-	body.is-phone .foreshadowing-deprecate-btn {
+	body.is-phone .wn-foreshadowing-action-btn,
+	body.is-phone .wn-foreshadowing-recover-btn,
+	body.is-phone .wn-foreshadowing-deprecate-btn {
 		font-size: var(--wn-phone-font-control);
 		padding: 0 0.75em;
 		height: 2em;

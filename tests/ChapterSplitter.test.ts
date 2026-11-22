@@ -1,3 +1,4 @@
+import { configurePluginNotices } from '../src/services/PluginNoticeService';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { TFile, TFolder, MarkdownView, Setting, type App, type Editor } from 'obsidian';
 import { resetNoticeMessages, mockNoticeMessages } from './mocks/obsidian';
@@ -93,6 +94,8 @@ function createMockFolder(path: string): TFolder {
 	folder.children = [];
 	return folder;
 }
+
+beforeEach(() => { configurePluginNotices(() => true); });
 
 describe('ChapterSplitter - Core Logic & Regressions', () => {
 	beforeEach(() => {

@@ -1,5 +1,6 @@
+import { showPluginNotice } from '../services/PluginNoticeService';
 import type { App } from 'obsidian';
-import { FuzzySuggestModal, Notice, TFile } from 'obsidian';
+import { FuzzySuggestModal, TFile } from 'obsidian';
 import { t } from '../i18n';
 
 export interface ImmersiveReferenceSearchPlugin {
@@ -42,7 +43,7 @@ export class ImmersiveReferenceSearchModal extends FuzzySuggestModal<TFile> {
 	onChooseItem(file: TFile): void {
 		const vaultFile = this.app.vault?.getAbstractFileByPath?.(file?.path);
 		if (!(vaultFile instanceof TFile) || vaultFile.extension !== 'md') {
-			new Notice(t('immersive.reference-file-invalid'));
+			showPluginNotice(t('immersive.reference-file-invalid'));
 			return;
 		}
 		this.isChosen = true;

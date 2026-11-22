@@ -1,416 +1,153 @@
 # OBS Overlay CSS Customization Guide
 
-This guide helps you personalize the appearance of your OBS live stream overlay through custom CSS.
+This guide covers desktop OBS browser sources. The plugin serves a local statistics page; its CSS is separate from Obsidian themes and CSS snippets. See the [Chinese guide](OBS_OVERLAY_CSS_GUIDE.md).
 
----
+## Contents
 
-## 📋 Table of Contents
+- [Connecting and Refreshing](#connecting-and-refreshing)
+- [Available Selectors](#available-selectors)
+- [Ready-to-Use Examples](#ready-to-use-examples)
+- [Custom CSS Limitations](#custom-css-limitations)
+- [FAQ](#faq)
 
-- [Quick Start](#quick-start)
-- [Available CSS Classes](#available-css-classes)
-- [Common Customization Examples](#common-customization-examples)
-- [Advanced Tips](#advanced-tips)
+## Connecting and Refreshing
 
----
+1. Open **Settings → WebNovel Assistant → Data Output → OBS Overlay** and enable the overlay. The default port is `24816`. Enabling starts the service immediately; changing the port restarts it automatically.
+2. Copy the URL and paste it into a browser source in OBS on the same computer. The default is `http://127.0.0.1:24816/`.
+3. Start with a **400×700px** browser source, then adjust for enabled items. The default card is 280px wide with an additional 1.1 scale factor; a small source can crop it.
+4. Choose the theme, background opacity, and visible statistics in plugin settings. Paste the examples you need into **Custom CSS**. Examples are independent; later rules win when the same property is repeated.
+5. After changing CSS, the theme, or visibility toggles, **manually refresh the OBS browser source**. Statistics update automatically, but the page structure and styles do not reload automatically.
 
-## Quick Start
+The page requests local `/api/stats` data, then updates again about 500ms after each request finishes. The service listens only on `127.0.0.1`, so OBS and Obsidian must run on the same computer. Closing Obsidian or disabling the overlay stops updates.
 
-1. Find the "OBS Overlay" section in plugin settings
-2. Scroll to the "Custom CSS" input box
-3. Enter your CSS code
-4. After saving settings, the OBS browser source will refresh automatically
+## Available Selectors
 
----
+Disabling a statistic removes its nodes from the page. CSS cannot display an item that was not generated; enable it in settings first.
 
-## Available CSS Classes
+| Selector | Purpose |
+|---|---|
+| `.overlay-card` | Card shell; defaults to 280px wide, 14px radius, 20px 24px padding |
+| `.overlay-title` | Top status area; currently contains no title text |
+| `.status-dot`, `.status-dot.active`, `.status-dot.paused` | 12px indicator, tracking, and paused states |
+| `.time-row` | Time statistics container holding `.time-item` elements |
+| `.time-item`, `.time-label`, `.time-value` | One time statistic, its label, and value |
+| `.time-value.focus`, `.time-value.slack` | Focus and slack values |
+| `#totalTime`, `#focusTime`, `#slackTime` | Individual total, focus, and slack values |
+| `.divider` | Divider below the time section |
+| `.goal-row`, `.goal-label`, `.goal-value` | Chapter/daily goal row, label, and value group |
+| `.current-val`, `.target-val`, `.sep`, `.percent` | Current count, target, slash, and percentage |
+| `#todayWords`, `#goalValue`, `#percentText` | Current chapter count, goal, and percentage; todayWords is the chapter count |
+| `#dailyWords`, `#dailyGoalValue`, `#dailyPercentText` | Daily net count, daily goal, and percentage |
+| `.progress-bg`, `.progress-fill`, `.progress-fill.done` | Progress track, fill, and completed state |
+| `#progressFill`, `#dailyProgressFill` | Chapter and daily progress fills |
+| `.session-row`, `.session-row .val` | Session statistics row and value |
+| `#sessionWords`, `#sessionSpeed` | Session net count and writing speed; speed is hidden by default |
 
-### Container and Layout
+## Ready-to-Use Examples
 
-| Class | Description | Default Style |
-|-------|-------------|---------------|
-| `.overlay-card` | Overlay outer container | Width 280px, border-radius 12px, semi-transparent background |
-| `.overlay-header` | Top title area | Contains title and status indicator |
-| `.overlay-title` | Title text | Font size 1.1em, bold |
-| `.status-dot` | Status indicator | Circle, 8px diameter |
-| `.status-dot.active` | Recording status | Green, breathing animation |
-| `.status-dot.paused` | Paused status | Gray |
-
-### Time Statistics
-
-| Class | Description | Default Style |
-|-------|-------------|---------------|
-| `.time-section` | Time statistics area container | Contains all time displays |
-| `.time-row` | Single time display row | Left-right layout, label + value |
-| `.time-label` | Time label text | e.g. "Total", "Focus", "Slack" |
-| `.time-value` | Time value | Monospace font, bold |
-| `.time-value.focus` | Focus time value | Green |
-| `.time-value.slack` | Slack time value | Orange |
-
-### Goal Progress
-
-| Class | Description | Default Style |
-|-------|-------------|---------------|
-| `.goal-section` | Goal progress area container | Contains progress bar and values |
-| `.goal-label` | Goal label text | e.g. "Chapter Goal", "Daily Goal" |
-| `.goal-value` | Goal value container | Contains current value, separator, target value, percentage |
-| `.current-val` | Current word count | Large font size, bold |
-| `.target-val` | Target word count | Medium font size, semi-transparent |
-| `.sep` | Separator `/` | Semi-transparent |
-| `.percent` | Percentage text | Accent color |
-| `.goal-value.done` | Goal completed status | Applied when percentage ≥ 100% |
-| `.progress-bg` | Progress bar background track | Gray, rounded |
-| `.progress-fill` | Progress bar fill | Accent color, transition animation |
-| `.progress-fill.done` | Progress bar completed status | Green |
-
-### Session Net Gain
-
-| Class | Description | Default Style |
-|-------|-------------|---------------|
-| `.session-row` | Session net gain row container | Left-right layout |
-| `.session-label` | "Session Net Gain" label | Small font size |
-| `.session-value` | Net gain word count value | Monospace font, bold |
-
----
-
-## Common Customization Examples
-
-### 1. Modify Card Size and Border Radius
+### Card Size and Typography
 
 ```css
-/* Widen the card */
 .overlay-card {
-  width: 350px;
+  width: 340px;
+  border-radius: 18px;
+  padding: 18px;
+  font-family: "Segoe UI", sans-serif;
 }
-
-/* Rounder corners */
-.overlay-card {
-  border-radius: 20px;
-}
-
-/* Square card */
-.overlay-card {
-  border-radius: 0;
-}
-```
-
-### 2. Modify Fonts
-
-```css
-/* Use a custom font */
-.overlay-card {
-  font-family: "Microsoft YaHei", "微软雅黑", sans-serif;
-}
-
-/* Increase all font sizes */
-.overlay-card {
-  font-size: 1.1em;
-}
-
-/* Only increase time value font size */
 .time-value {
-  font-size: 1.5em;
+  font-size: 28px;
+}
+.goal-value .current-val {
+  font-size: 30px;
 }
 ```
 
-### 3. Modify Color Theme
+### Colors and Borders
 
 ```css
-/* Dark theme */
 .overlay-card {
-  background: rgba(20, 20, 30, 0.95);
-  color: #e0e0e0;
+  background: rgba(20, 24, 32, 0.9);
+  color: #eeeeee;
+  border: 1px solid #667788;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
 }
-
-/* Light theme */
-.overlay-card {
-  background: rgba(255, 255, 255, 0.95);
-  color: #333;
+.time-label,
+.session-row .val {
+  color: #eeeeee;
 }
-
-/* Custom accent color */
-.status-dot.active,
-.progress-fill {
-  background: #ff6b6b; /* Red */
-}
-
 .time-value.focus {
-  color: #51cf66; /* Green */
+  color: #8cc7ff;
 }
-
 .time-value.slack {
-  color: #ffd43b; /* Yellow */
+  color: #ffc078;
 }
-```
-
-### 4. Add Borders and Shadows
-
-```css
-/* Add a border */
-.overlay-card {
-  border: 2px solid rgba(255, 255, 255, 0.3);
-}
-
-/* Stronger shadow */
-.overlay-card {
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-}
-
-/* Glow effect */
-.overlay-card {
-  box-shadow: 0 0 20px rgba(100, 200, 255, 0.5);
-}
-```
-
-### 5. Modify Progress Bar Style
-
-```css
-/* Thicker progress bar */
-.progress-bg {
-  height: 12px;
-}
-
-/* Square progress bar */
-.progress-bg,
 .progress-fill {
-  border-radius: 0;
+  background: linear-gradient(90deg, #667eea, #90b5ff);
 }
-
-/* Gradient progress bar */
-.progress-fill {
-  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-}
-
-/* Special effect when completed */
 .progress-fill.done {
-  background: linear-gradient(90deg, #56ab2f 0%, #a8e063 100%);
-  box-shadow: 0 0 10px rgba(86, 171, 47, 0.5);
+  background: #76c893;
 }
 ```
 
-### 6. Hide Specific Elements
+### Compact Layout
 
 ```css
-/* Hide the status indicator */
-.status-dot {
-  display: none;
-}
-
-/* Hide the title */
-.overlay-title {
-  display: none;
-}
-
-/* Hide slack time */
-.time-row:has(.time-value.slack) {
-  display: none;
-}
-
-/* Hide the percentage */
-.percent {
-  display: none;
-}
-```
-
-### 7. Adjust Spacing and Layout
-
-```css
-/* Increase padding */
 .overlay-card {
-  padding: 24px;
+  padding: 12px;
+  gap: 4px;
 }
-
-/* Increase spacing between sections */
-.time-section,
-.goal-section,
-.session-row {
-  margin-bottom: 20px;
-}
-
-/* Compact layout */
 .time-row {
-  margin-bottom: 4px;
+  gap: 6px;
+}
+.time-value {
+  font-size: 20px;
+}
+.percent,
+.divider {
+  display: none;
 }
 ```
 
-### 8. Add Animation Effects
+Use plugin visibility settings to hide entire statistics. This example hides percentages and dividers without changing the data.
+
+### Transparent Background
 
 ```css
-/* Flash effect when values change */
-.time-value,
-.session-value {
-  transition: all 0.3s ease;
-}
-
-/* Progress bar fill animation */
-.progress-fill {
-  transition: width 0.5s ease-out;
-}
-
-/* Card hover effect (won't trigger in OBS, but useful for testing) */
-.overlay-card:hover {
-  transform: scale(1.02);
-  transition: transform 0.2s ease;
-}
-```
-
-### 9. Enhanced Frosted Glass Effect
-
-```css
-/* Stronger frosted glass effect */
-.overlay-card {
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-}
-
-/* Fully transparent background + frosted glass */
-.overlay-card {
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(30px);
-}
-```
-
-### 10. Minimalist Style
-
-```css
-/* Remove all decoration */
 .overlay-card {
   background: transparent;
-  box-shadow: none;
   border: none;
-}
-
-/* Show only key data */
-.overlay-title,
-.time-label,
-.goal-label {
-  display: none;
-}
-
-/* Large values */
-.time-value,
-.session-value {
-  font-size: 2em;
-  font-weight: bold;
+  box-shadow: none;
 }
 ```
 
----
+Also set plugin **Background Opacity** to `0` to remove the default frosted background effect. Text and progress bars remain visible over your stream.
 
-## Advanced Tips
+## Custom CSS Limitations
 
-### Using CSS Variables
+The plugin filters this input; it is not a full stylesheet editor:
 
-You can define variables to manage colors uniformly:
+- Use simple class or ID selectors as above, with one property per line.
+- Common supported properties include colors, backgrounds, font size/family, width/height, overall `margin` / `padding`, borders, radius, shadows, display, Flex/Grid, and `gap`.
+- The current filter removes custom property definitions (`--variables`), `content`, `text-shadow`, `backdrop-filter`, `padding-top`, and other properties outside its allowed list. Pseudo-class selectors containing colons and some advanced rules may also be filtered. Avoid pasting complex theme CSS directly here.
+- `@import`, HTML, and scripts are unsupported. Remote image or font URLs in your CSS may cause the browser source to contact those addresses; installed system fonts need no such request.
+- Do not fix the progress fill's `width`, which live statistics update. Use `.progress-fill.done` for completion styles. The page has no `data-minutes` attribute or `.goal-value.done` state for time/completion conditions.
 
-```css
-.overlay-card {
-  --primary-color: #667eea;
-  --success-color: #51cf66;
-  --warning-color: #ffd43b;
-  --text-color: #ffffff;
-}
+## FAQ
 
-.status-dot.active {
-  background: var(--success-color);
-}
+**Q: Why did my style change have no effect?**
 
-.progress-fill {
-  background: var(--primary-color);
-}
+A: Refresh the browser source. Confirm that the CSS is in the plugin's **Custom CSS** field, its selector matches an enabled item, and its properties survived filtering. Open the same URL in a local browser and inspect the generated page with developer tools.
 
-.time-value.slack {
-  color: var(--warning-color);
-}
-```
+**Q: Why have statistics stopped updating?**
 
-### Responsive Design
+A: Check that Obsidian is running, the overlay is enabled, and the port matches the browser source URL. Update the OBS address after changing ports; select another port if the current one is occupied.
 
-Although OBS browser source has a fixed size, you can prepare styles for different dimensions:
+**Q: Why is the card cropped?**
 
-```css
-/* Small size layout */
-@media (max-width: 300px) {
-  .overlay-card {
-    padding: 12px;
-    font-size: 0.9em;
-  }
-}
-```
+A: Increase the browser source width/height and check custom card dimensions. The default 280px card has a 1.1 scale factor; enabling more items increases its required height.
 
-### Using Pseudo-elements for Decoration
+**Q: Can OBS on another computer connect?**
 
-```css
-/* Add an icon before the title */
-.overlay-title::before {
-  content: "📝 ";
-}
+A: The current service listens only on the local loopback address. This setup requires OBS and Obsidian on the same computer.
 
-/* Add tick marks on the progress bar */
-.progress-bg::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 50%;
-  width: 2px;
-  height: 100%;
-  background: rgba(255, 255, 255, 0.3);
-}
-```
-
-### Conditional Styles
-
-```css
-/* Highlight when focus time exceeds 1 hour */
-.time-value.focus[data-minutes="60"] {
-  color: #ffd700;
-  font-size: 1.2em;
-}
-
-/* Celebration effect when goal is completed */
-.goal-value.done {
-  animation: celebrate 0.5s ease;
-}
-
-@keyframes celebrate {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.1); }
-}
-```
-
----
-
-## 💡 Debugging Tips
-
-1. **Test in a browser**: First open `http://127.0.0.1:24816/` in a regular browser to test CSS
-2. **Use browser developer tools**: Press F12 to open developer tools for live style debugging
-3. **Refresh OBS browser source**: After modifying CSS, right-click the browser source in OBS → Refresh
-4. **Save your favorite styles**: Save satisfying CSS to a text file for future use
-
----
-
-## 📚 Reference Resources
-
-- [CSS Color Reference](https://developer.mozilla.org/en-US/docs/Web/CSS/color_value)
-- [CSS Gradient Generator](https://cssgradient.io/)
-- [CSS Animation Reference](https://developer.mozilla.org/en-US/docs/Web/CSS/animation)
-- [Frosted Glass Effect Generator](https://glassmorphism.com/)
-
----
-
-## ❓ FAQ
-
-**Q: Why is my CSS not taking effect?**
-A: Check that your CSS syntax is correct, make sure selector spellings are accurate, and refresh the browser source in OBS.
-
-**Q: Can I completely hide the background?**
-A: Yes, set `background: transparent;` and adjust the transparency slider to 0.
-
-**Q: How can I make text clearer?**
-A: Add a text shadow: `text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);`
-
-**Q: Can I use custom fonts?**
-A: Yes, but you need to ensure the font is installed on the system where the OBS browser source is running.
-
----
-
-If you create cool styles, feel free to share them!
+Back to [User Guide](USER_GUIDE_EN.md#obs-overlay) · [README](../README.md#english)

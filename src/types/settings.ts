@@ -43,7 +43,9 @@ export interface TypographySettings {
 	indentSize: string;
 	/** 行高 (如 1.8) */
 	lineHeight: number;
-	/** 段间距 (如 "0.5em") */
+	/** 段前距 (如 "0em") */
+	paragraphSpacingBefore: string;
+	/** 段后距 (如 "0.5em"，沿用旧段间距字段) */
 	paragraphSpacing: string;
 	/** 字间距 (如 "0.05em") */
 	letterSpacing: string;
@@ -134,6 +136,61 @@ export interface ChapterNamingRule {
 /** 沉浸模式辅助区域 */
 export type ImmersiveAuxiliaryRegion = 'top' | 'bottom' | 'left' | 'right';
 
+/** 移动端沉浸模式悬浮辅助面板支持的组件 ID（排除独立章节目录） */
+export type MobileImmersiveAuxViewType =
+	| 'immersive-chapter-status-view'
+	| 'immersive-sticky-notes-view'
+	| 'reference-view'
+	| 'foreshadowing-view'
+	| 'wn-timeline-view'
+	| 'webnovel-lore-overview'
+	| 'webnovel-corkboard'
+	| 'outline';
+
+/** 移动端沉浸模式悬浮辅助面板持久化状态 */
+export interface MobileImmersiveAuxPanelState {
+	/** 当前选中的辅助组件 */
+	viewType: MobileImmersiveAuxViewType;
+	/** 面板是否打开显示 */
+	isOpen: boolean;
+	/** 面板是否最小化 */
+	isMinimized: boolean;
+	/** 面板是否锁定（禁止拖拽与缩放） */
+	isLocked: boolean;
+	/** 平板辅助窗是否贴靠主编辑区右侧（手机忽略此偏好） */
+	isDocked: boolean;
+	/** 首选 X 坐标（像素） */
+	x: number;
+	/** 首选 Y 坐标（像素） */
+	y: number;
+	/** 首选宽度（像素） */
+	width: number;
+	/** 首选高度（像素） */
+	height: number;
+}
+
+/** 沉浸原稿模式记忆的最后有效写作位置 */
+export interface PersistedManuscriptPosition {
+	/** 章节文件路径 */
+	filePath: string;
+	/** 所属作品根目录路径（根目录或非作品为空字符串） */
+	workPath: string;
+	/** 光标行号（从 0 开始） */
+	cursorLine: number;
+	/** 光标列号（从 0 开始） */
+	cursorCh: number;
+	/** 章节内相对滚动偏移（像素） */
+	chapterRelativeScroll?: number;
+	/** 文档锚点行号（从 0 开始） */
+	anchorLine?: number;
+	/** 当前可视视口所在章节路径（可与正在编辑的活跃章节不同） */
+	viewportFilePath?: string;
+	/** 视口锚点所在物理行号（从 0 开始） */
+	viewportLine?: number;
+	/** 视口相对锚点行顶部的像素偏移 */
+	viewportLineOffset?: number;
+}
+
 /** 沉浸模式设置 */
 export interface ImmersiveModeSettings {
 	/** 沉浸模式：顶部插槽组件 ID 列表 */
@@ -207,6 +264,15 @@ export interface ImmersiveModeSettings {
 	pomodoroEnabled: boolean;
 	/** 番茄钟提醒间隔 (分钟) */
 	pomodoroInterval: number;
+
+	/** 是否启用沉浸原稿模式（连续章节瀑布流编辑） */
+	manuscriptModeEnabled?: boolean;
+	/** 上次有效的原稿写作位置 */
+	lastManuscriptPosition?: PersistedManuscriptPosition;
+	/** 各作品独立记忆的原稿写作位置映射 */
+	workManuscriptPositions?: Record<string, PersistedManuscriptPosition>;
+	/** 移动端沉浸模式悬浮辅助面板状态（独立于桌面端四区域布局） */
+	mobileAuxPanel?: MobileImmersiveAuxPanelState;
 }
 
 /** 普通编辑器打字机设置 */
@@ -253,6 +319,8 @@ export interface ObsSettings {
 export interface AccurateCountSettings {
 	/** 界面语言 */
 	language: Locale | 'auto';
+	/** 是否显示本插件的通知条（不影响提醒和确认弹窗） */
+	showNotices: boolean;
 	/** 字数统计方式 */
 	wordCountMethod: 'webnovel' | 'standard' | 'obsidian';
 	/** 是否在字数统计和纯净文本复制中包含脚注及 Obsidian 注释 */
@@ -296,8 +364,6 @@ export interface AccurateCountSettings {
 	typography: TypographySettings;
 	/** 是否显示移动端浮动字数统计窗口 */
 	showMobileFloatingStats: boolean;
-	/** 是否在移动端启用专注计时（实验性） */
-	enableMobileFocusTimer: boolean;
 	/** 移动端浮动窗口状态 (x, y) */
 	mobileFloatingStatsState: { x: number; y: number; isDocked?: boolean; dockEdge?: 'left' | 'right' } | null;
 

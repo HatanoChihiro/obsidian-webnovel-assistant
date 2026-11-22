@@ -2,7 +2,7 @@
 
 /* Sticky Notes list */
 
-.immersive-sticky-dock {
+.wn-immersive-sticky-dock {
 	flex: 1;
 	display: flex;
 	flex-direction: row;
@@ -15,7 +15,7 @@
 	height: 100%;
 }
 
-.immersive-sticky-card {
+.wn-immersive-sticky-card {
 	flex: 0 0 200px;
 	/* Fixed width, no flex shrink/grow */
 	width: 200px;
@@ -29,18 +29,18 @@
 	transition: transform 0.2s;
 }
 
-.immersive-sticky-card:hover {
+.wn-immersive-sticky-card:hover {
 	transform: translateY(-5px);
 }
 
-.immersive-mode-active .immersive-sticky-title span:first-child,
-.immersive-sticky-title,
+.wn-immersive-mode-active .wn-immersive-sticky-title span:first-child,
+.wn-immersive-sticky-title,
 .webnovel-immersive-note-title {
 	font-weight: bold;
 	font-size: 0.75em;
 }
 
-.immersive-sticky-card textarea {
+.wn-immersive-sticky-card textarea {
 	flex: 1;
 	width: 100%;
 	border: none;
@@ -50,7 +50,7 @@
 	color: inherit;
 }
 
-.immersive-sticky-card textarea:focus {
+.wn-immersive-sticky-card textarea:focus {
 	outline: none;
 	box-shadow: none;
 }

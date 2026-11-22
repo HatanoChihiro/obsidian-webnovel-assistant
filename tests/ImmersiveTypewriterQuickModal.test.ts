@@ -8,7 +8,6 @@ type MockSlider = {
 	max: number;
 	step: number;
 	value: number;
-	hasDynamicTooltip: boolean;
 	changeHandler?: (val: number) => Promise<void> | void;
 };
 
@@ -90,8 +89,7 @@ vi.mock('obsidian', () => {
 				min: 0,
 				max: 0,
 				step: 0,
-				value: 0,
-				hasDynamicTooltip: false
+				value: 0
 			};
 			const sliderComp = {
 				setLimits: (min: number, max: number, step: number) => {
@@ -102,10 +100,6 @@ vi.mock('obsidian', () => {
 				},
 				setValue: (val: number) => {
 					sliderObj.value = val;
-					return sliderComp;
-				},
-				setDynamicTooltip: () => {
-					sliderObj.hasDynamicTooltip = true;
 					return sliderComp;
 				},
 				onChange: (handler: (val: number) => Promise<void> | void) => {
@@ -175,7 +169,6 @@ describe('ImmersiveTypewriterQuickModal', () => {
 		expect(slider.max).toBe(30);
 		expect(slider.step).toBe(1);
 		expect(slider.value).toBe(0);
-		expect(slider.hasDynamicTooltip).toBe(true);
 
 		// Trigger change
 		await slider.changeHandler?.(15);
@@ -199,7 +192,6 @@ describe('ImmersiveTypewriterQuickModal', () => {
 		expect(slider.max).toBe(1.0);
 		expect(slider.step).toBe(0.05);
 		expect(slider.value).toBe(1.0);
-		expect(slider.hasDynamicTooltip).toBe(true);
 
 		// Trigger change to 0.45
 		await slider.changeHandler?.(0.45);

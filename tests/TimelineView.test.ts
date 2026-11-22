@@ -205,7 +205,7 @@ describe('TimelineView', () => {
 		expect(items[0].getAttribute('data-index')).toBe('2');
 
 		// Test delete on first displayed item ("第三年", original index 2)
-		const deleteBtns = view.containerEl.querySelectorAll('.timeline-delete-btn');
+		const deleteBtns = view.containerEl.querySelectorAll('.wn-timeline-delete-btn');
 		(deleteBtns[0] as HTMLElement | undefined)?.click();
 		await new Promise(resolve => setTimeout(resolve, 10));
 
@@ -534,7 +534,7 @@ describe('TimelineView', () => {
 		expect((view as unknown as { editingIndex: number }).editingIndex).toBe(0);
 
 		// Click delete on the first rendered item (which is index 2 in parsedEntries)
-		const deleteBtns = view.containerEl.querySelectorAll('.timeline-delete-btn');
+		const deleteBtns = view.containerEl.querySelectorAll('.wn-timeline-delete-btn');
 		(deleteBtns[0] as HTMLElement).click();
 		await new Promise(resolve => setTimeout(resolve, 10));
 		expect(mockPlugin.timelineManager.deleteEntry).toHaveBeenCalledWith(2, '', expect.anything());
@@ -666,7 +666,7 @@ describe('TimelineView', () => {
 		mockPlugin.timelineManager.deleteEntry = vi.fn(() => deletion);
 		view.currentFolder = 'A';
 		await view.renderFromContent('A initial');
-		const button = view.containerEl.querySelector('.timeline-delete-btn') as unknown as MockElement;
+		const button = view.containerEl.querySelector('.wn-timeline-delete-btn') as unknown as MockElement;
 		button.click();
 		view.currentFolder = 'B';
 		await view.renderFromContent('B fresh');

@@ -80,7 +80,7 @@
 	justify-content: flex-end;
 }
 
-.webnovel-immersive-sticky-container .immersive-sticky-dock {
+.webnovel-immersive-sticky-container .wn-immersive-sticky-dock {
 	flex: 1 1 0;
 	min-width: 0;
 	min-height: 0;
@@ -99,7 +99,7 @@
 	overflow-y: auto;
 }
 
-.webnovel-immersive-slot-horizontal .webnovel-immersive-sticky-container .immersive-sticky-dock {
+.webnovel-immersive-slot-horizontal .webnovel-immersive-sticky-container .wn-immersive-sticky-dock {
 	display: grid;
 	grid-template-columns: none;
 	grid-template-rows: repeat(var(--wn-immersive-note-grid-lines, 1), var(--wn-immersive-note-grid-size, 300px));
@@ -110,7 +110,7 @@
 	overflow-y: hidden;
 }
 
-.webnovel-immersive-slot-vertical .webnovel-immersive-sticky-container .immersive-sticky-dock {
+.webnovel-immersive-slot-vertical .webnovel-immersive-sticky-container .wn-immersive-sticky-dock {
 	display: grid;
 	grid-template-columns: repeat(var(--wn-immersive-note-grid-lines, 1), var(--wn-immersive-note-grid-size, 300px));
 	grid-auto-rows: var(--wn-immersive-note-grid-size, 300px);
@@ -245,7 +245,7 @@ body.is-tablet .wn-sticky-note-list-side-panel .wn-sticky-note-list-card {
 	stroke-width: 1.75;
 }
 
-.wn-sticky-note-list-card .my-sticky-content,
+.wn-sticky-note-list-card .wn-my-sticky-content,
 .wn-sticky-note-list-card .wn-sticky-note-reading-content {
 	flex: 1 1 0;
 	min-height: 0;

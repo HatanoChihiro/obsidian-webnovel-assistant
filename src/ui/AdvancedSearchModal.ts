@@ -135,7 +135,7 @@ export class AdvancedSearchModal extends Modal {
 			});
 
 		// 自定义范围的选择区域
-		this.customScopeContainer = contentEl.createDiv('advanced-search-custom-scope');
+		this.customScopeContainer = contentEl.createDiv('wn-advanced-search-custom-scope');
 		this.renderCustomScopeSettings(this.customScopeContainer);
 
 		// 搜索按钮
@@ -149,7 +149,7 @@ export class AdvancedSearchModal extends Modal {
 			);
 
 		// 搜索结果容器
-		this.resultsContainer = contentEl.createDiv('advanced-search-results-container');
+		this.resultsContainer = contentEl.createDiv('wn-advanced-search-results-container');
 	}
 
 	private renderCustomScopeSettings(container: HTMLElement) {
@@ -171,7 +171,7 @@ export class AdvancedSearchModal extends Modal {
 		}
 
 		// 为每个目录创建一个树形选择器
-		const listContainer = container.createDiv({ cls: 'advanced-search-folder-list' });
+		const listContainer = container.createDiv({ cls: 'wn-advanced-search-folder-list' });
 
 		for (const item of items) {
 			if (item instanceof TFolder) {
@@ -188,16 +188,16 @@ export class AdvancedSearchModal extends Modal {
 		const children = folder.children.filter(f => f instanceof TFolder || (f instanceof TFile && f.extension === 'md'))
 			.sort((a, b) => this.compareFiles(a, b));
 
-		const itemContainer = container.createDiv({ cls: 'advanced-search-tree-item' });
+		const itemContainer = container.createDiv({ cls: 'wn-advanced-search-tree-item' });
 		
-		const headerEl = itemContainer.createDiv({ cls: 'advanced-search-tree-header' });
+		const headerEl = itemContainer.createDiv({ cls: 'wn-advanced-search-tree-header' });
 		
 		let childrenContainer: HTMLElement | null = null;
 		
 		if (children.length > 0) {
-			const arrow = headerEl.createSpan({ text: '▶ ', cls: 'advanced-search-tree-arrow' });
+			const arrow = headerEl.createSpan({ text: '▶ ', cls: 'wn-advanced-search-tree-arrow' });
 			
-			childrenContainer = itemContainer.createDiv({ cls: 'advanced-search-tree-children' });
+			childrenContainer = itemContainer.createDiv({ cls: 'wn-advanced-search-tree-children' });
 			childrenContainer.hidden = true;
 
 			arrow.addEventListener('click', () => {
@@ -213,19 +213,19 @@ export class AdvancedSearchModal extends Modal {
 			});
 		} else {
 			// 文件占位符，保持对齐
-			headerEl.createSpan({ cls: 'advanced-search-tree-spacer' });
+			headerEl.createSpan({ cls: 'wn-advanced-search-tree-spacer' });
 		}
 		
 		const displayName = folder.isRoot() ? '/' : folder.name;
-		const label = headerEl.createSpan({ text: displayName, cls: 'advanced-search-tree-name' });
+		const label = headerEl.createSpan({ text: displayName, cls: 'wn-advanced-search-tree-name' });
 		if (folder instanceof TFolder) {
-			label.addClass('advanced-search-folder-name');
+			label.addClass('wn-advanced-search-folder-name');
 		}
 		
 		const checkbox = headerEl.createEl('input');
 		checkbox.type = 'checkbox';
 		checkbox.dataset.path = folder.path;
-		checkbox.addClass('advanced-search-checkbox');
+		checkbox.addClass('wn-advanced-search-checkbox');
 		
 		checkbox.addEventListener('change', () => {
 			this.toggleSelection(folder, checkbox.checked);
@@ -244,18 +244,18 @@ export class AdvancedSearchModal extends Modal {
 	}
 
 	private renderFileTreeItem(container: HTMLElement, file: TFile) {
-		const fileItem = container.createDiv({ cls: 'advanced-search-tree-item' });
-		const fileHeader = fileItem.createDiv({ cls: 'advanced-search-tree-header' });
+		const fileItem = container.createDiv({ cls: 'wn-advanced-search-tree-item' });
+		const fileHeader = fileItem.createDiv({ cls: 'wn-advanced-search-tree-header' });
 		
-		fileHeader.createSpan({ cls: 'advanced-search-tree-spacer' });
+		fileHeader.createSpan({ cls: 'wn-advanced-search-tree-spacer' });
 		
-		const fileLabel = fileHeader.createSpan({ text: file.name, cls: 'advanced-search-tree-name' });
-		fileLabel.addClass('advanced-search-file-name');
+		const fileLabel = fileHeader.createSpan({ text: file.name, cls: 'wn-advanced-search-tree-name' });
+		fileLabel.addClass('wn-advanced-search-file-name');
 		
 		const fileCheckbox = fileHeader.createEl('input');
 		fileCheckbox.type = 'checkbox';
 		fileCheckbox.dataset.path = file.path;
-		fileCheckbox.addClass('advanced-search-checkbox');
+		fileCheckbox.addClass('wn-advanced-search-checkbox');
 		
 		fileCheckbox.addEventListener('change', () => {
 			this.toggleSelection(file, fileCheckbox.checked);
@@ -436,20 +436,19 @@ export class AdvancedSearchModal extends Modal {
 
 		if (!this.query.trim()) {
 			this.resultsContainer.empty();
-			this.resultsContainer.createDiv({ text: t('modal.please-enter-keyword'), cls: 'advanced-search-empty' });
+			this.resultsContainer.createDiv({ text: t('modal.please-enter-keyword'), cls: 'wn-advanced-search-empty' });
 			return;
 		}
 
 		this.resultsContainer.empty();
-		this.resultsContainer.createDiv({ text: t('modal.searching'), cls: 'advanced-search-loading' });
+		this.resultsContainer.createDiv({ text: t('modal.searching'), cls: 'wn-advanced-search-loading' });
 
 		try {
-			// 1. 获取目标文件列表
-			const allMarkdownFiles = this.plugin.getVaultMarkdownFiles();
+			// 1. 获取目标文件列表（按作用域直接枚举，避免非全局搜索时全库扫描）
 			let targetFiles: TFile[] = [];
 
 			if (this.searchScope === 'global') {
-				targetFiles = allMarkdownFiles;
+				targetFiles = this.plugin.getVaultMarkdownFiles();
 			} else if (this.searchScope === 'current') {
 				const bookPath = this.getCurrentBookPath();
 				if (bookPath && bookPath !== '/') {
@@ -462,23 +461,47 @@ export class AdvancedSearchModal extends Modal {
 							}
 						});
 						targetFiles = list;
-					} else {
-						targetFiles = allMarkdownFiles.filter(f => f.path.startsWith(bookPath + '/'));
 					}
 				} else {
 					targetFiles = this.plugin.getTrackedMarkdownFiles(); // fallback
 				}
 			} else if (this.searchScope === 'custom') {
 				if (this.selectedFolders.size > 0) {
-					const selectedArray = Array.from(this.selectedFolders);
-					targetFiles = allMarkdownFiles.filter(f => selectedArray.some(path => path === '/' || f.path === path || f.path.startsWith(path + '/')));
+					if (this.selectedFolders.has('/')) {
+						targetFiles = this.plugin.getVaultMarkdownFiles();
+					} else {
+						const sortedPaths = Array.from(this.selectedFolders).sort((a, b) => a.length - b.length);
+						const topLevelPaths: string[] = [];
+						for (const p of sortedPaths) {
+							if (!topLevelPaths.some(ancestor => p === ancestor || p.startsWith(ancestor + '/'))) {
+								topLevelPaths.push(p);
+							}
+						}
+						const seenPaths = new Set<string>();
+						const list: TFile[] = [];
+						for (const selectedPath of topLevelPaths) {
+							const node = this.app.vault.getAbstractFileByPath(selectedPath);
+							if (node instanceof TFolder) {
+								Vault.recurseChildren(node, (child: TAbstractFile) => {
+									if (child instanceof TFile && child.extension === 'md' && !seenPaths.has(child.path)) {
+										seenPaths.add(child.path);
+										list.push(child);
+									}
+								});
+							} else if (node instanceof TFile && node.extension === 'md' && !seenPaths.has(node.path)) {
+								seenPaths.add(node.path);
+								list.push(node);
+							}
+						}
+						targetFiles = list;
+					}
 				}
 			}
 
 			if (targetFiles.length === 0) {
 				if (searchId !== this.activeSearchId) return;
 				this.resultsContainer.empty();
-				this.resultsContainer.createDiv({ text: t('modal.no-files-in-scope'), cls: 'advanced-search-empty' });
+				this.resultsContainer.createDiv({ text: t('modal.no-files-in-scope'), cls: 'wn-advanced-search-empty' });
 				return;
 			}
 
@@ -619,7 +642,7 @@ export class AdvancedSearchModal extends Modal {
 			if (searchId !== this.activeSearchId) return;
 			Logger.error('[WebNovel-Debug] 高级搜索执行失败:', err);
 			this.resultsContainer.empty();
-			this.resultsContainer.createDiv({ text: t('common.error-loading'), cls: 'advanced-search-empty' });
+			this.resultsContainer.createDiv({ text: t('common.error-loading'), cls: 'wn-advanced-search-empty' });
 		}
 	}
 
@@ -647,34 +670,34 @@ export class AdvancedSearchModal extends Modal {
 		this.resultsContainer.empty();
 
 		if (results.length === 0) {
-			this.resultsContainer.createDiv({ text: t('modal.no-results'), cls: 'advanced-search-empty' });
+			this.resultsContainer.createDiv({ text: t('modal.no-results'), cls: 'wn-advanced-search-empty' });
 			return;
 		}
 
 		this.resultsContainer.createDiv({
 			text: t('modal.found-matching-files', { count: results.length }),
-			cls: 'advanced-search-summary'
+			cls: 'wn-advanced-search-summary'
 		});
 
-		const listEl = this.resultsContainer.createDiv({ cls: 'advanced-search-results-list' });
+		const listEl = this.resultsContainer.createDiv({ cls: 'wn-advanced-search-results-list' });
 
 		let domItemsRendered = 0;
 		for (const result of results) {
 			if (searchId !== undefined && searchId !== this.activeSearchId) return;
-			const fileItem = listEl.createDiv({ cls: 'advanced-search-file-item' });
+			const fileItem = listEl.createDiv({ cls: 'wn-advanced-search-file-item' });
 			
-			fileItem.createDiv({ text: `${result.file.basename} (${t('modal.matches-count', { count: result.totalMatches })})`, cls: 'advanced-search-file-title' });
+			fileItem.createDiv({ text: `${result.file.basename} (${t('modal.matches-count', { count: result.totalMatches })})`, cls: 'wn-advanced-search-file-title' });
 
 			for (const snippet of result.snippets) {
-				const matchEl = fileItem.createDiv({ cls: 'advanced-search-match-item' });
+				const matchEl = fileItem.createDiv({ cls: 'wn-advanced-search-match-item' });
 				matchEl.createSpan({ text: '...' + snippet.prefix });
-				matchEl.createSpan({ text: snippet.highlight, cls: 'advanced-search-highlight' });
+				matchEl.createSpan({ text: snippet.highlight, cls: 'wn-advanced-search-highlight' });
 				matchEl.createSpan({ text: snippet.suffix + '...' });
 
 				// 点击跳转
 				matchEl.addEventListener('click', (e) => {
 					e.stopPropagation();
-					this.resultsContainer.querySelectorAll('.advanced-search-match-item.is-selected').forEach(el => el.classList.remove('is-selected'));
+					this.resultsContainer.querySelectorAll('.wn-advanced-search-match-item.is-selected').forEach(el => el.classList.remove('is-selected'));
 					matchEl.classList.add('is-selected');
 					this.openSearchResult(result.file, snippet);
 				});
@@ -687,7 +710,7 @@ export class AdvancedSearchModal extends Modal {
 			}
 
 			if (result.totalMatches > result.snippets.length) {
-				fileItem.createDiv({ text: t('modal.more-matches', { count: result.totalMatches - result.snippets.length }), cls: 'advanced-search-match-more' });
+				fileItem.createDiv({ text: t('modal.more-matches', { count: result.totalMatches - result.snippets.length }), cls: 'wn-advanced-search-match-more' });
 			}
 		}
 	}

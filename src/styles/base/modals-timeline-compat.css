@@ -1,6 +1,6 @@
 /* Fix plugin modal headings indentation */
-.history-stats-modal .setting-item.setting-item-heading,
-.foreshadowing-input-modal .setting-item.setting-item-heading,
+.wn-history-stats-modal .setting-item.setting-item-heading,
+.wn-foreshadowing-input-modal .setting-item.setting-item-heading,
 .wn-timeline-add-modal .setting-item.setting-item-heading {
 	padding-left: 0;
 	margin-left: 0;

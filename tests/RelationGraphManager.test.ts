@@ -996,5 +996,69 @@ describe('RelationGraphManager', () => {
 
 			controller.unbindEvents();
 		});
+
+		it('clears stale hovered node on canvas mouseleave and viewport interactions, and unbinds mouseleave', () => {
+			const canvas = createMockCanvas();
+			const state = createTestState();
+			const onCanvasMouseLeave = vi.fn();
+			const onViewportInteraction = vi.fn();
+			const callbacks = {
+				...createCallbacks(),
+				onCanvasMouseLeave,
+				onViewportInteraction
+			};
+
+			const testNode: GraphNode = {
+				id: 'Rowan',
+				heading: 'Rowan',
+				x: 200,
+				y: 200,
+				vx: 0,
+				vy: 0,
+				pinned: false
+			} as GraphNode;
+
+			const controller = new GraphInteractionController(canvas as unknown as HTMLCanvasElement, state, callbacks);
+			controller.updateLayout({ nodes: [testNode], edges: [] });
+			controller.bindEvents();
+
+			expect(canvas.hasListener('mouseleave')).toBe(true);
+
+			// Hover node then leave canvas directly
+			canvas.dispatch('mousemove', { clientX: 200, clientY: 200, preventDefault: vi.fn() });
+			expect(state.hoveredNode).toBe(testNode);
+			vi.mocked(callbacks.requestRender).mockClear();
+
+			canvas.dispatch('mouseleave', { relatedTarget: null });
+			expect(state.hoveredNode).toBeNull();
+			expect(callbacks.requestRender).toHaveBeenCalledOnce();
+			expect(canvas.setCssStyles).toHaveBeenLastCalledWith({ cursor: 'default' });
+			expect(onCanvasMouseLeave).toHaveBeenCalledOnce();
+
+			// Hover node then zoom via wheel
+			canvas.dispatch('mousemove', { clientX: 200, clientY: 200, preventDefault: vi.fn() });
+			expect(state.hoveredNode).toBe(testNode);
+			canvas.dispatch('wheel', { deltaY: -100, clientX: 200, clientY: 200, preventDefault: vi.fn() });
+			expect(state.hoveredNode).toBeNull();
+			expect(onViewportInteraction).toHaveBeenCalledTimes(1);
+
+			// Hover node then mousedown (drag/pan start)
+			canvas.dispatch('mousemove', { clientX: 200, clientY: 200, preventDefault: vi.fn() });
+			expect(state.hoveredNode).toBe(testNode);
+			canvas.dispatch('mousedown', { button: 0, clientX: 200, clientY: 200, preventDefault: vi.fn() });
+			expect(state.hoveredNode).toBeNull();
+			expect(onViewportInteraction).toHaveBeenCalledTimes(2);
+			canvas.dispatchWindow('mouseup', { preventDefault: vi.fn() });
+
+			// Hover node then touchstart
+			canvas.dispatch('mousemove', { clientX: 200, clientY: 200, preventDefault: vi.fn() });
+			expect(state.hoveredNode).toBe(testNode);
+			canvas.dispatch('touchstart', { touches: [{ clientX: 50, clientY: 50 }], preventDefault: vi.fn() });
+			expect(state.hoveredNode).toBeNull();
+			expect(onViewportInteraction).toHaveBeenCalledTimes(3);
+
+			controller.unbindEvents();
+			expect(canvas.hasListener('mouseleave')).toBe(false);
+		});
 	});
 });

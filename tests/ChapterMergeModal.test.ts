@@ -1,3 +1,6 @@
+import { configurePluginNotices } from '../src/services/PluginNoticeService';
+import { ChapterMergePreview } from '../src/ui/ChapterMergePreview';
+import { ChapterMergeDirectoryModal } from '../src/ui/ChapterMergeSelectionModal';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { App, TFolder } from 'obsidian';
 import { TFile } from 'obsidian';
@@ -113,6 +116,8 @@ function createMockItem(path: string, title: string, volumeName: string = ''): C
 	};
 }
 
+beforeEach(() => { configurePluginNotices(() => true); });
+
 describe('ChapterMergeModal & MobileChapterMergeModal Integration', () => {
 	let mockApp: MockAppInstance;
 	let mockFolder: TFolder;
@@ -168,6 +173,100 @@ describe('ChapterMergeModal & MobileChapterMergeModal Integration', () => {
 			},
 			calculateAccurateWords: vi.fn<(text: string) => number>((text: string) => text.length)
 		};
+	});
+
+	it('materializes nearby prose once, supports an unseen jump, and cancels pending work on dispose', async () => {
+		let notify!: (entries: Array<{ target: HTMLElement; isIntersecting: boolean }>) => void;
+		const observe = vi.fn();
+		const unobserve = vi.fn();
+		const disconnect = vi.fn();
+		class Observer {
+			constructor(callback: typeof notify) { notify = callback; }
+			observe = observe;
+			unobserve = unobserve;
+			disconnect = disconnect;
+		}
+		const root = new MockElement();
+		Object.defineProperty(root, 'ownerDocument', { value: { defaultView: {
+			IntersectionObserver: Observer, setTimeout: window.setTimeout, clearTimeout: window.clearTimeout
+		} } });
+		const preview = new ChapterMergePreview(root as unknown as HTMLElement);
+		const renders = [vi.fn(), vi.fn(), vi.fn()];
+		const cards = renders.map((render, i) => {
+			const card = root.createDiv();
+			const body = card.createDiv();
+			Object.defineProperty(body, 'style', { value: { setProperty: vi.fn(), removeProperty: vi.fn() } });
+			preview.add(String(i), card as unknown as HTMLElement, body as unknown as HTMLElement, 'Fictional prose', render);
+			return card as unknown as HTMLElement;
+		});
+		expect(renders.map(render => render.mock.calls.length)).toEqual([1, 0, 0]);
+		expect(preview.ensure('2')).toBe(cards[2]);
+		preview.ensure('2');
+		expect(renders[2]).toHaveBeenCalledTimes(1);
+		notify([{ target: cards[1], isIntersecting: true }]);
+		preview.dispose();
+		await new Promise(resolve => setTimeout(resolve, 5));
+		expect(renders[1]).not.toHaveBeenCalled();
+		expect(disconnect).toHaveBeenCalled();
+		expect(preview.ensure('1')).toBeUndefined();
+	});
+
+	it('bounds directory results and searches full paths to distinguish repeated chapter names', () => {
+		const choices = Array.from({ length: 120 }, (_, i) => ({ path: `Fiction/Volume${i}/Chapter.md`, label: `Fiction/Volume${i}/Chapter.md` }));
+		const choose = vi.fn();
+		const modal = new ChapterMergeDirectoryModal(mockApp as unknown as App, choices, choose);
+		modal.contentEl = new MockElement() as unknown as HTMLElement;
+		Object.assign(modal, { setTitle: vi.fn() });
+		modal.onOpen();
+		expect(modal.contentEl.querySelectorAll('.wn-merge-picker-result')).toHaveLength(40);
+		const search = modal.contentEl.querySelector('.wn-merge-picker-search') as HTMLInputElement;
+		search.value = 'Volume119/';
+		(search as unknown as InputElementMock).oninput?.();
+		const buttons = modal.contentEl.querySelectorAll<HTMLButtonElement>('.wn-merge-picker-result');
+		expect(buttons).toHaveLength(1);
+		buttons[0].click();
+		expect(choose).toHaveBeenCalledWith(choices[119].path);
+	});
+
+	it.each([['desktop', ChapterMergeModal], ['mobile', MobileChapterMergeModal]] as const)('does not resurrect a closed %s modal after chapter loading completes', async (_name, ModalClass) => {
+		let resolve!: (value: ChapterMergeItem[]) => void;
+		mockPlugin.chapterMergeManager.loadFolderChapters.mockReturnValueOnce(new Promise(done => { resolve = done; }));
+		const modal = new ModalClass(mockApp as unknown as App, mockPlugin, mockFolder);
+		modal.modalEl = new MockElement() as unknown as HTMLElement;
+		modal.contentEl = new MockElement() as unknown as HTMLElement;
+		const opening = modal.onOpen();
+		modal.onClose();
+		resolve(items);
+		await opening;
+		expect(modal.contentEl.querySelector('.wn-merge-chapter-card')).toBeNull();
+		expect(mockPlugin.chapterMergeManager.loadDraft).not.toHaveBeenCalled();
+	});
+
+	it.each([['desktop', ChapterMergeModal], ['mobile', MobileChapterMergeModal]] as const)('reports %s load failures without exposing export controls', async (_name, ModalClass) => {
+		mockPlugin.chapterMergeManager.loadFolderChapters.mockRejectedValueOnce(new Error('Synthetic read failure'));
+		const modal = new ModalClass(mockApp as unknown as App, mockPlugin, mockFolder);
+		modal.modalEl = new MockElement() as unknown as HTMLElement;
+		modal.contentEl = new MockElement() as unknown as HTMLElement;
+		await modal.onOpen();
+		expect(modal.contentEl.querySelector('.wn-merge-loading')?.textContent).toContain('失败');
+		expect(modal.modalEl.querySelector('.wn-btn-export')).toBeNull();
+		modal.onClose();
+	});
+
+	it('does not apply a late draft after desktop close', async () => {
+		let resolve!: (draft: ChapterMergeDraft) => void;
+		mockPlugin.chapterMergeManager.loadDraft.mockReturnValueOnce(new Promise(done => { resolve = done; }));
+		const modal = new ChapterMergeModal(mockApp as unknown as App, mockPlugin, mockFolder);
+		modal.modalEl = new MockElement() as unknown as HTMLElement;
+		modal.contentEl = new MockElement() as unknown as HTMLElement;
+		const opening = modal.onOpen();
+		await Promise.resolve();
+		modal.onClose();
+		resolve({ folderPath: 'Novel', timestamp: 0, items: { [items[0].file.path]: { currentBody: 'Late fictional draft', annotation: '' } } });
+		await opening;
+		expect(items[0].currentBody).toBe(items[0].originalBody);
+		expect(mockPlugin.chapterMergeManager.saveDraft).not.toHaveBeenCalled();
+		expect(modal.contentEl.querySelector('.wn-merge-chapter-card')).toBeNull();
 	});
 
 	describe('Desktop ChapterMergeModal', () => {

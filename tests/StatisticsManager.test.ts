@@ -232,4 +232,158 @@ describe('StatisticsManager', () => {
         expect(stats.goal).toBe(0);
         expect(stats.dailyGoal).toBe(500);
     });
+
+    describe('getDailyStats', () => {
+        it('computes all six metrics for a day with hourlyFocus and isolates adjacent days', () => {
+            const manager = new StatisticsManager(mockPlugin);
+            const hourlyFocusTarget = new Array<number>(24).fill(0);
+            hourlyFocusTarget[9] = 1800000;
+            hourlyFocusTarget[10] = 1800000;
+
+            const hourlyFocusAdjacent = new Array<number>(24).fill(0);
+            hourlyFocusAdjacent[22] = 7200000;
+
+            const history = {
+                '2026-06-20': {
+                    focusMs: 7200000,
+                    slackMs: 1800000,
+                    addedWords: 9999,
+                    hourlyFocus: hourlyFocusAdjacent
+                },
+                '2026-06-21': {
+                    focusMs: 3600000,
+                    slackMs: 1800000,
+                    addedWords: 1500,
+                    hourlyFocus: hourlyFocusTarget
+                },
+                '2026-06-22': {
+                    focusMs: 5400000,
+                    slackMs: 0,
+                    addedWords: 3000,
+                    hourlyFocus: hourlyFocusAdjacent
+                }
+            };
+
+            const summary = manager.getDailyStats(history, '2026-06-21');
+
+            expect(summary.activeHours).toBe(manager.calcActiveHours({ '2026-06-21': history['2026-06-21'] }, '2026-06-21', '2026-06-21'));
+            expect(summary.activeHours).not.toBe('');
+            expect(summary.focusMs).toBe(3600000);
+            expect(summary.slackMs).toBe(1800000);
+            expect(summary.totalMs).toBe(5400000);
+            expect(summary.addedWords).toBe(1500);
+            expect(summary.writingSpeed).toBe(1000);
+        });
+
+        it('keeps negative addedWords and negative speed without clamping', () => {
+            const manager = new StatisticsManager(mockPlugin);
+            const history = {
+                '2026-06-21': {
+                    focusMs: 1800000,
+                    slackMs: 1800000,
+                    addedWords: -450
+                }
+            };
+
+            const summary = manager.getDailyStats(history, '2026-06-21');
+
+            expect(summary.addedWords).toBe(-450);
+            expect(summary.totalMs).toBe(3600000);
+            expect(summary.writingSpeed).toBe(-450);
+        });
+
+        it('supports legacy stats without hourlyFocus arrays', () => {
+            const manager = new StatisticsManager(mockPlugin);
+            const history = {
+                '2026-06-21': {
+                    focusMs: 1800000,
+                    slackMs: 0,
+                    addedWords: 600
+                }
+            };
+
+            const summary = manager.getDailyStats(history, '2026-06-21');
+
+            expect(summary.activeHours).toBe('');
+            expect(summary.totalMs).toBe(1800000);
+            expect(summary.focusMs).toBe(1800000);
+            expect(summary.slackMs).toBe(0);
+            expect(summary.addedWords).toBe(600);
+            expect(summary.writingSpeed).toBe(1200);
+        });
+
+        it('returns zero durations/words and unavailable activeHours/speed when date has no data', () => {
+            const manager = new StatisticsManager(mockPlugin);
+            const summary = manager.getDailyStats({}, '2026-06-21');
+
+            expect(summary).toEqual({
+                activeHours: '',
+                totalMs: 0,
+                focusMs: 0,
+                slackMs: 0,
+                addedWords: 0,
+                writingSpeed: null
+            });
+        });
+
+        it('returns zero speed when total duration is zero, and 0 speed when duration is nonzero with 0 words', () => {
+            const manager = new StatisticsManager(mockPlugin);
+            const zeroDuration = manager.getDailyStats({
+                '2026-06-20': { focusMs: 0, slackMs: 0, addedWords: 200 }
+            }, '2026-06-20');
+            expect(zeroDuration.writingSpeed).toBe(0);
+
+            const zeroWords = manager.getDailyStats({
+                '2026-06-21': { focusMs: 1800000, slackMs: 0, addedWords: 0 }
+            }, '2026-06-21');
+            expect(zeroWords.writingSpeed).toBe(0);
+        });
+
+        it.each([
+            [15000, 0, 0],
+            [29999, 30000, 0],
+            [30000, 30000, 15000],
+            [0, 60000, 15000]
+        ])('uses the displayed minute boundary for %i focus ms and %i slack ms', (focusMs, slackMs, speed) => {
+            const manager = new StatisticsManager(mockPlugin);
+            const summary = manager.getDailyStats({
+                '2026-06-21': { focusMs, slackMs, addedWords: 250 }
+            }, '2026-06-21');
+
+            expect(summary.writingSpeed).toBe(speed);
+            expect(summary.totalMs).toBe(focusMs + slackMs);
+            expect(summary.addedWords).toBe(250);
+        });
+    });
+
+    describe('mobile immersive main-editor binding', () => {
+        it('reads stats from activeMainLeaf even when a reference view (including same file path) is active', () => {
+            const mainFile = new TFile('Chapter1.md', 'Novel/Chapter1.md');
+            mainFile.basename = 'Chapter1';
+            const mainView = {
+                file: mainFile,
+                getViewData: vi.fn().mockReturnValue('12345')
+            };
+            const refViewSamePath = {
+                file: mainFile,
+                getViewData: vi.fn().mockReturnValue('12345678901234567890')
+            };
+
+            mockPlugin.app.workspace.getActiveViewOfType.mockReturnValue(refViewSamePath);
+            mockPlugin.calculateAccurateWords = vi.fn((text: string) => text.length);
+            mockPlugin.immersiveModeManager = {
+                isMobileImmersiveSessionActive: () => true,
+                getActiveSessionMainView: () => mainView,
+                getActiveSessionMainFile: () => mainFile
+            };
+
+            const manager = new StatisticsManager(mockPlugin);
+            const stats = manager.getCoreStats();
+
+            expect(stats.currentFile).toBe('Chapter1');
+            expect(stats.todayWords).toBe(5);
+            expect(mainView.getViewData).toHaveBeenCalled();
+            expect(refViewSamePath.getViewData).not.toHaveBeenCalled();
+        });
+    });
 });

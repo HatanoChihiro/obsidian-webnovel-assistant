@@ -1,3 +1,4 @@
+import { configurePluginNotices } from '../src/services/PluginNoticeService';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { TFile, Notice, type App } from 'obsidian';
 import { ImmersiveReferenceSearchModal, type ImmersiveReferenceSearchPlugin } from '../src/ui/ImmersiveReferenceSearchModal';
@@ -29,6 +30,8 @@ vi.mock('obsidian', () => {
 		Notice: vi.fn()
 	};
 });
+
+beforeEach(() => { configurePluginNotices(() => true); });
 
 describe('ImmersiveReferenceSearchModal - Desktop Reference Search', () => {
 	let mockApp: App;

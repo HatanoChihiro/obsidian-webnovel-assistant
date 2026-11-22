@@ -1,5 +1,6 @@
+import { showPluginNotice } from './PluginNoticeService';
 import type { App, TAbstractFile } from 'obsidian';
-import { TFile, TFolder, type MarkdownView, Notice, normalizePath, parseYaml } from 'obsidian';
+import { TFile, TFolder, type MarkdownView, normalizePath, parseYaml } from 'obsidian';
 import type { WebNovelAssistantPlugin, SeriesLoreRenameResult } from '../types/plugin';
 import { getDefaultFileName, getDefaultFileNameCandidates, getLoreLabel } from '../i18n/data-keys';
 import { findBookRoot, getCandidateNames, isCandidateSubpath } from '../utils/path';
@@ -1143,7 +1144,7 @@ export class CharacterManager {
 
 	public async moveLoreItem(fromEntry: LoreEntry, toEntry: LoreEntry, insertAfter: boolean): Promise<boolean> {
 		if (fromEntry.file.path !== toEntry.file.path) {
-			new Notice(t('character.cross-file-sort-not-supported'));
+			showPluginNotice(t('character.cross-file-sort-not-supported'));
 			return false;
 		}
 
@@ -1942,7 +1943,7 @@ export class CharacterManager {
 		if (targetFilePath) {
 			const validation = await this.validateLoreSaveDestination(bookPath, targetFilePath);
 			if (!validation.valid) {
-				new Notice(t('notice.invalid-lore-destination'));
+				showPluginNotice(t('notice.invalid-lore-destination'));
 				return false;
 			}
 			filePath = normalizePath(targetFilePath);
@@ -1950,7 +1951,7 @@ export class CharacterManager {
 			if (abstractFile instanceof TFile) {
 				targetFile = abstractFile;
 			} else {
-				new Notice(t('notice.invalid-lore-destination'));
+				showPluginNotice(t('notice.invalid-lore-destination'));
 				return false;
 			}
 		} else {
@@ -1969,7 +1970,7 @@ export class CharacterManager {
 					loreFolder = abstractFile instanceof TFolder ? abstractFile : null;
 				}
 				if (!loreFolder) {
-					new Notice(t('modal.lore-cannot-create-folder'));
+					showPluginNotice(t('modal.lore-cannot-create-folder'));
 					return false;
 				}
 			}
@@ -2057,7 +2058,7 @@ export class CharacterManager {
 		}
 
 		await this.rebuildCache();
-		new Notice(t('modal.lore-saved'));
+		showPluginNotice(t('modal.lore-saved'));
 		return true;
 	}
 
@@ -2430,19 +2431,19 @@ export class CharacterManager {
 
 		// 1. Borrowed check
 		if (this.isBorrowedLoreEntry(entry, input.contextBookPath)) {
-			new Notice(t('notice.lore-borrowed-readonly'));
+			showPluginNotice(t('notice.lore-borrowed-readonly'));
 			return false;
 		}
 
 		// 2. Strict target TFile verification at captured path
 		const capturedPath = input.expectedSnapshot?.filePath ?? entry.file.path;
 		if (input.expectedSnapshot && input.expectedSnapshot.file !== entry.file) {
-			new Notice(t('notice.lore-save-failed'));
+			showPluginNotice(t('notice.lore-save-failed'));
 			return false;
 		}
 		const diskFile = this.app.vault.getAbstractFileByPath(capturedPath);
 		if (diskFile !== undefined && (diskFile !== entry.file || entry.file.path !== capturedPath)) {
-			new Notice(t('notice.lore-save-failed'));
+			showPluginNotice(t('notice.lore-save-failed'));
 			return false;
 		}
 
@@ -2450,7 +2451,7 @@ export class CharacterManager {
 		const newName = cleanLoreHeading(input.newHeading);
 		const oldName = cleanLoreHeading(input.oldHeading || entry.heading);
 		if (!newName) {
-			new Notice(t('notice.lore-name-invalid'));
+			showPluginNotice(t('notice.lore-name-invalid'));
 			return false;
 		}
 
@@ -2459,30 +2460,30 @@ export class CharacterManager {
 		};
 
 		if (hasInjection(newName)) {
-			new Notice(t('notice.lore-name-invalid'));
+			showPluginNotice(t('notice.lore-name-invalid'));
 			return false;
 		}
 
 		if (input.type && hasInjection(input.type)) {
-			new Notice(t('notice.lore-name-invalid'));
+			showPluginNotice(t('notice.lore-name-invalid'));
 			return false;
 		}
 
 		const rawAliases = input.aliases.split(/[,，、/|;；]/).map(s => s.trim()).filter(Boolean);
 		for (const a of rawAliases) {
 			if (hasInjection(a)) {
-				new Notice(t('notice.lore-name-invalid'));
+				showPluginNotice(t('notice.lore-name-invalid'));
 				return false;
 			}
 		}
 
 		for (const rel of input.relations) {
 			if (rel.label && (hasInjection(rel.label) || /[:：]/.test(rel.label))) {
-				new Notice(t('notice.lore-name-invalid'));
+				showPluginNotice(t('notice.lore-name-invalid'));
 				return false;
 			}
 			if (rel.target && /[\r\n]/.test(rel.target)) {
-				new Notice(t('notice.lore-name-invalid'));
+				showPluginNotice(t('notice.lore-name-invalid'));
 				return false;
 			}
 		}
@@ -2496,7 +2497,7 @@ export class CharacterManager {
 			if (existing) {
 				const isSame = existing.file.path === entry.file.path && cleanLoreHeading(existing.heading) === cleanLoreHeading(oldName);
 				if (!isSame) {
-					new Notice(t('notice.lore-name-exists', { name }));
+					showPluginNotice(t('notice.lore-name-exists', { name }));
 					return false;
 				}
 			}
@@ -2514,20 +2515,20 @@ export class CharacterManager {
 		// 5. Initial chunk locate & filename validation
 		const chunk = this.locateLoreChunk(latestContent, oldName, entry.file);
 		if (chunk.isDuplicate || (chunk.headingLineIndex === -1 && !chunk.isSingleFile)) {
-			new Notice(t('notice.lore-save-failed'));
+			showPluginNotice(t('notice.lore-save-failed'));
 			return false;
 		}
 
 		if (chunk.isSingleFile && newName !== oldName) {
 			if (newName === '.' || newName === '..' || newName.startsWith('.') || /[\\/:*?"<>|]/.test(newName)) {
-				new Notice(t('notice.lore-name-invalid'));
+				showPluginNotice(t('notice.lore-name-invalid'));
 				return false;
 			}
 			const parentPath = entry.file.parent ? entry.file.parent.path : '';
 			const targetPath = parentPath ? `${parentPath}/${newName}.md` : `${newName}.md`;
 			const fileOnDisk = this.app.vault.getAbstractFileByPath(targetPath);
 			if (fileOnDisk && fileOnDisk.path !== entry.file.path) {
-				new Notice(t('notice.lore-name-exists', { name: newName }));
+				showPluginNotice(t('notice.lore-name-exists', { name: newName }));
 				return false;
 			}
 		}
@@ -2730,7 +2731,7 @@ export class CharacterManager {
 		});
 
 		if (!updateSucceeded) {
-			new Notice(t('notice.lore-save-failed'));
+			showPluginNotice(t('notice.lore-save-failed'));
 			return false;
 		}
 
@@ -2768,7 +2769,7 @@ export class CharacterManager {
 		// 12. Finalize
 		entry.heading = newName;
 		await this.rebuildCache();
-		new Notice(t(linksUpdated ? 'modal.lore-saved' : 'notice.lore-links-update-failed'));
+		showPluginNotice(t(linksUpdated ? 'modal.lore-saved' : 'notice.lore-links-update-failed'));
 		return true;
 	}
 

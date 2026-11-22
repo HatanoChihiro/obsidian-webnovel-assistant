@@ -14,6 +14,13 @@ export interface LoreHoverPopoverPlugin extends LoreCardRendererPlugin {
 	};
 }
 
+export interface LoreHoverPopoverOptions {
+	/** Custom hover check for virtual/canvas anchors where CSS :hover does not apply */
+	isTargetHovered?: () => boolean;
+	/** Invoked once when the popover disposes and cleans up resources */
+	onDispose?: () => void;
+}
+
 export class LoreHoverPopover extends Component {
 	private static readonly activePopovers = new WeakMap<HTMLElement, LoreHoverPopover>();
 	private static readonly openInstances = new Set<LoreHoverPopover>();
@@ -45,13 +52,16 @@ export class LoreHoverPopover extends Component {
 	private originatingBookPath?: string;
 	private readonly ownerDocument: Document;
 	private readonly ownerWindow: Window;
+	private isTargetHovered?: () => boolean;
+	private onDispose?: () => void;
 	
 	constructor(
 		targetEl: HTMLElement,
 		entry: LoreEntry,
 		plugin: LoreHoverPopoverPlugin,
 		immediate: boolean = false,
-		originatingBookPath?: string
+		originatingBookPath?: string,
+		options?: LoreHoverPopoverOptions
 	) {
 		super();
 		this.plugin = plugin;
@@ -59,6 +69,8 @@ export class LoreHoverPopover extends Component {
 		this.targetEl = targetEl;
 		this.immediate = immediate;
 		this.originatingBookPath = originatingBookPath;
+		this.isTargetHovered = options?.isTargetHovered;
+		this.onDispose = options?.onDispose;
 		this.ownerDocument = targetEl.ownerDocument;
 		this.ownerWindow = this.ownerDocument.defaultView ?? window;
 		const existing = LoreHoverPopover.activePopovers.get(targetEl);
@@ -87,7 +99,8 @@ export class LoreHoverPopover extends Component {
 			this.showTimeout = this.ownerWindow.setTimeout(() => {
 				this.showTimeout = null;
 				// 确保鼠标没有离开
-				if (!this.targetEl.isConnected || !this.targetEl.matches(':hover')) {
+				const isHovered = this.isTargetHovered ? this.isTargetHovered() : this.targetEl.matches(':hover');
+				if (!this.targetEl.isConnected || !isHovered) {
 					this.hide();
 					return;
 				}
@@ -154,6 +167,43 @@ export class LoreHoverPopover extends Component {
 		this.disconnectObserver?.disconnect();
 		this.disconnectObserver = null;
 		this.removeDomAndListeners();
+		const onDispose = this.onDispose;
+		this.onDispose = undefined;
+		onDispose?.();
+	}
+
+	public isActive(): boolean {
+		return !this.isDisposed && !this.disposeAfterShow;
+	}
+
+	public isCardVisible(): boolean {
+		return Boolean(this.popoverEl && this.popoverEl.isConnected && this.isActive());
+	}
+
+	public containsTarget(target: EventTarget | null): boolean {
+		return Boolean(target && this.popoverEl && this.popoverEl.contains(target as unknown as Node));
+	}
+
+	public handleTargetLeave(): void {
+		if (!this.isActive()) return;
+		if (!this.isCardVisible()) {
+			this.hide();
+			return;
+		}
+		if (this.closeTimeout === null) {
+			this.scheduleClose();
+		}
+	}
+
+	public close(): void {
+		this.hide();
+	}
+
+	public cancelPendingClose(): void {
+		if (this.closeTimeout !== null) {
+			this.ownerWindow.clearTimeout(this.closeTimeout);
+			this.closeTimeout = null;
+		}
 	}
 
 	override onunload() {

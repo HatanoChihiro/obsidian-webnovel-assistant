@@ -1,11 +1,12 @@
 import type { WorkspaceLeaf } from 'obsidian';
-import { isDesktop, isMobile } from '../utils/platform';
+import { isMobile } from '../utils/platform';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { VIEW_TYPES } from '../constants';
 import { WritingStatusView, STATUS_VIEW_TYPE } from '../ui/StatusView';
 import { ForeshadowingView, FORESHADOWING_VIEW_TYPE } from '../ui/ForeshadowingView';
 import { TimelineView, TIMELINE_VIEW_TYPE } from '../ui/TimelineView';
 import { ImmersiveChapterListView } from '../ui/ImmersiveChapterListView';
+import { ImmersiveChapterStatusView } from '../ui/ImmersiveChapterStatusView';
 import { ImmersiveStickyNotesView } from '../ui/ImmersiveStickyNotesView';
 import { StickyNoteListView } from '../ui/StickyNoteListView';
 import { ChapterOverviewView, CORKBOARD_VIEW_TYPE } from '../ui/ChapterOverviewView';
@@ -29,11 +30,9 @@ export class ViewManager {
 		this.plugin.registerView(LORE_OVERVIEW_VIEW_TYPE, (leaf) => new LoreOverviewView(leaf, this.plugin));
 		this.plugin.registerView(RELATION_GRAPH_VIEW_TYPE, (leaf) => new RelationGraphView(leaf, this.plugin));
 		this.plugin.registerView(VIEW_TYPES.STICKY_NOTE_LIST, (leaf) => new StickyNoteListView(leaf, this.plugin));
-		
-		if (isDesktop()) { // Desktop
-			this.plugin.registerView(VIEW_TYPES.IMMERSIVE_CHAPTER_LIST, (leaf) => new ImmersiveChapterListView(leaf, this.plugin));
-			this.plugin.registerView(VIEW_TYPES.IMMERSIVE_STICKY_NOTES, (leaf) => new ImmersiveStickyNotesView(leaf, this.plugin));
-		}
+		this.plugin.registerView(VIEW_TYPES.IMMERSIVE_CHAPTER_LIST, (leaf) => new ImmersiveChapterListView(leaf, this.plugin));
+		this.plugin.registerView(VIEW_TYPES.IMMERSIVE_CHAPTER_STATUS, (leaf) => new ImmersiveChapterStatusView(leaf, this.plugin));
+		this.plugin.registerView(VIEW_TYPES.IMMERSIVE_STICKY_NOTES, (leaf) => new ImmersiveStickyNotesView(leaf, this.plugin));
 	}
 
 	private isToggling = false;

@@ -1,5 +1,6 @@
+import { showPluginNotice } from '../services/PluginNoticeService';
 import type { TFile, WorkspaceLeaf } from 'obsidian';
-import { Notice, setIcon } from 'obsidian';
+import { setIcon } from 'obsidian';
 import type { ForeshadowingSettings, ParsedForeshadowingEntry } from '../types/foreshadowing';
 import { ForeshadowingStatus } from '../types/foreshadowing';
 import { ForeshadowingRecoveryModal, type ForeshadowingRecoveryModalPlugin } from './ForeshadowingModal';
@@ -122,19 +123,19 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 		const container = this.containerEl.children[1] as HTMLElement;
 		if (!container) return;
 		container.empty();
-		container.addClass('foreshadowing-view-container');
+		container.addClass('wn-foreshadowing-view-container');
 
 		// 标题栏
-		const header = container.createDiv({ cls: 'foreshadowing-view-header' });
-		const titleRow = header.createDiv({ cls: 'foreshadowing-view-title-row' });
-		titleRow.createSpan({ text: t('view.foreshadowing'), cls: 'foreshadowing-view-title' });
+		const header = container.createDiv({ cls: 'wn-foreshadowing-view-header' });
+		const titleRow = header.createDiv({ cls: 'wn-foreshadowing-view-title-row' });
+		titleRow.createSpan({ text: t('view.foreshadowing'), cls: 'wn-foreshadowing-view-title' });
 
 		// 当前文件夹标签
-		const folderLabel = header.createDiv({ cls: 'foreshadowing-view-folder' });
+		const folderLabel = header.createDiv({ cls: 'wn-foreshadowing-view-folder' });
 		folderLabel.setText(targetFolder || t('common.root-directory'));
 
 		// 筛选按钮
-		const filterRow = header.createDiv({ cls: 'foreshadowing-view-filter-row' });
+		const filterRow = header.createDiv({ cls: 'wn-foreshadowing-view-filter-row' });
 		const filters: { label: string; value: 'all' | ForeshadowingStatus }[] = [
 			{ label: t('common.all'), value: 'all' },
 			{ label: getForeshadowingStatusText('pending'), value: ForeshadowingStatus.Pending },
@@ -143,7 +144,7 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 			{ label: getForeshadowingStatusText('deprecated'), value: ForeshadowingStatus.Deprecated },
 		];
 		filters.forEach(f => {
-			const btn = filterRow.createEl('button', { text: f.label, cls: 'foreshadowing-filter-btn' });
+			const btn = filterRow.createEl('button', { text: f.label, cls: 'wn-foreshadowing-filter-btn' });
 			if (this.filterStatus === f.value) btn.addClass('is-active');
 			btn.onclick = () => {
 				this.filterStatus = f.value;
@@ -152,10 +153,10 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 		});
 
 		if (entries === null) {
-			const empty = container.createDiv({ cls: 'foreshadowing-view-empty' });
+			const empty = container.createDiv({ cls: 'wn-foreshadowing-view-empty' });
 			empty.createEl('p', { text: t('common.no-files-hint', { type: t('common.default-foreshadowing-filename') }) });
 			const fileName = this.plugin.settings.foreshadowing?.fileName || getDefaultFileName('foreshadowingFileName');
-			empty.createEl('p', { text: `（${fileName}.md）`, cls: 'foreshadowing-view-hint' });
+			empty.createEl('p', { text: `（${fileName}.md）`, cls: 'wn-foreshadowing-view-hint' });
 			return;
 		}
 
@@ -164,8 +165,8 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 		if (tagOptions.length > 0) {
 			new MultiSelectFilterRow({
 				container: header,
-				cls: 'foreshadowing-view-filter-row foreshadowing-view-tag-filter-row',
-				buttonCls: 'foreshadowing-filter-btn',
+				cls: 'wn-foreshadowing-view-filter-row wn-foreshadowing-view-tag-filter-row',
+				buttonCls: 'wn-foreshadowing-filter-btn',
 				allLabel: t('common.all-tags'),
 				options: tagOptions.map(tag => ({ value: tag, label: `#${tag}` })),
 				selected: this.selectedTags,
@@ -183,7 +184,7 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 		if (this.selectedTags.size > 0) filtered = filtered.filter(e => e.tags.some(tag => this.selectedTags.has(tag)));
 
 		if (filtered.length === 0) {
-			container.createDiv({ cls: 'foreshadowing-view-empty', text: t('common.no-matching-foreshadowing') });
+			container.createDiv({ cls: 'wn-foreshadowing-view-empty', text: t('common.no-matching-foreshadowing') });
 			return;
 		}
 
@@ -219,15 +220,15 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 			g.items.sort((a, b) => getLatestRecoveryTime(b).localeCompare(getLatestRecoveryTime(a)));
 		});
 
-		const list = container.createDiv({ cls: 'foreshadowing-view-list' });
+		const list = container.createDiv({ cls: 'wn-foreshadowing-view-list' });
 
 		groups.forEach(group => {
 			if (group.items.length === 0) return;
 
 			// 分组标题
-			const groupHeader = list.createDiv({ cls: 'foreshadowing-group-header' });
-			groupHeader.createSpan({ text: `${group.label}`, cls: 'foreshadowing-group-label' });
-			groupHeader.createSpan({ text: `${group.items.length}`, cls: 'foreshadowing-group-count' });
+			const groupHeader = list.createDiv({ cls: 'wn-foreshadowing-group-header' });
+			groupHeader.createSpan({ text: `${group.label}`, cls: 'wn-foreshadowing-group-label' });
+			groupHeader.createSpan({ text: `${group.items.length}`, cls: 'wn-foreshadowing-group-count' });
 
 			// 条目列表
 			group.items.forEach(entry => this.renderEntry(list, entry, targetFolder));
@@ -243,17 +244,17 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 			: entry.status === ForeshadowingStatus.Recovered
 			? 'recovered'
 			: 'deprecated';
-		const card = container.createDiv({ cls: `foreshadowing-entry-card status-${statusCls}` });
+		const card = container.createDiv({ cls: `wn-foreshadowing-entry-card wn-status-${statusCls}` });
 
 		// 说明（主标题 - 点击跳转到伏笔文件对应条目）
-		const descRow = card.createDiv({ cls: 'foreshadowing-entry-desc' });
-		const descText = descRow.createSpan({ text: entry.description, cls: 'foreshadowing-entry-desc-text' });
+		const descRow = card.createDiv({ cls: 'wn-foreshadowing-entry-desc' });
+		const descText = descRow.createSpan({ text: entry.description, cls: 'wn-foreshadowing-entry-desc-text' });
 		descText.title = t('common.jump-to-entry');
 		descText.onclick = async (e) => {
 			e.stopPropagation();
 			const foreshadowingFile = this.getForeshadowingFile(folder);
 			if (!foreshadowingFile) {
-				new Notice(t('common.file-not-found', { name: this.getWatchFileName() }));
+				showPluginNotice(t('common.file-not-found', { name: this.getWatchFileName() }));
 				return;
 			}
 			const fileCache = this.app.metadataCache.getFileCache(foreshadowingFile);
@@ -279,18 +280,18 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 		this.renderStageStepper(card, entry, folder);
 
 		// 引用内容（可能多条）
-		const quotesEl = card.createDiv({ cls: 'foreshadowing-entry-quotes' });
+		const quotesEl = card.createDiv({ cls: 'wn-foreshadowing-entry-quotes' });
 		entry.contents.forEach(c => {
-			const quoteEl = quotesEl.createDiv({ cls: 'foreshadowing-entry-quote' });
+			const quoteEl = quotesEl.createDiv({ cls: 'wn-foreshadowing-entry-quote' });
 			const target = c.source || entry.sourceFile;
 			
 			if (c.source || c.time) {
-				const metaEl = quoteEl.createDiv({ cls: 'foreshadowing-entry-quote-meta' });
+				const metaEl = quoteEl.createDiv({ cls: 'wn-foreshadowing-entry-quote-meta' });
 				metaEl.createSpan({ cls: 'wn-card-source-tag', text: t('common.tag-source') });
 
 				if (c.source) {
 					const chapterLink = metaEl.createSpan({
-						cls: 'wn-card-chapter-link clickable-link',
+						cls: 'wn-card-chapter-link wn-clickable-link',
 						text: ` [[${ChapterSorter.extractWikilinkDisplay(c.source)}]]`
 					});
 					chapterLink.title = t('common.jump-to-reference');
@@ -303,7 +304,7 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 						if (file) {
 							await this.openFileWithSmartLocate(file, c.text);
 						} else {
-							new Notice(t('common.file-not-found', { name: ChapterSorter.extractWikilinkDisplay(target) }));
+							showPluginNotice(t('common.file-not-found', { name: ChapterSorter.extractWikilinkDisplay(target) }));
 						}
 					};
 				}
@@ -314,7 +315,7 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 			}
 
 			if (c.text) {
-				const textEl = quoteEl.createDiv({ cls: 'foreshadowing-entry-quote-text', text: c.text });
+				const textEl = quoteEl.createDiv({ cls: 'wn-foreshadowing-entry-quote-text', text: c.text });
 				textEl.title = t('common.jump-to-original');
 				textEl.onclick = async () => {
 					const foreshadowingFile = this.getForeshadowingFile(folder);
@@ -324,7 +325,7 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 					if (file) {
 						await this.openFileWithSmartLocate(file, c.text);
 					} else {
-						new Notice(t('common.file-not-found', { name: ChapterSorter.extractWikilinkDisplay(target) }));
+						showPluginNotice(t('common.file-not-found', { name: ChapterSorter.extractWikilinkDisplay(target) }));
 					}
 				};
 			}
@@ -332,18 +333,18 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 
 		// 回收轨迹与关联原文引用（样式与排版层级与上方“标注引用部分”保持完全一致）
 		if (entry.recoveryLogs && entry.recoveryLogs.length > 0) {
-			const recoveryLogsEl = card.createDiv({ cls: 'foreshadowing-entry-quotes mod-recovery-logs' });
+			const recoveryLogsEl = card.createDiv({ cls: 'wn-foreshadowing-entry-quotes mod-recovery-logs' });
 			entry.recoveryLogs.forEach(log => {
-				const logItemEl = recoveryLogsEl.createDiv({ cls: `foreshadowing-entry-quote mod-recovery mod-${log.stageType}` });
+				const logItemEl = recoveryLogsEl.createDiv({ cls: `wn-foreshadowing-entry-quote mod-recovery mod-${log.stageType}` });
 
 				// 元数据行 (样式与 foreshadowing-entry-quote-meta 一致)
-				const metaEl = logItemEl.createDiv({ cls: 'foreshadowing-entry-quote-meta' });
+				const metaEl = logItemEl.createDiv({ cls: 'wn-foreshadowing-entry-quote-meta' });
 
 				const tag = log.stageType === 'stage' ? t('common.tag-stage-log') : t('common.tag-final-log');
 				metaEl.createSpan({ cls: `wn-log-tag-label mod-${log.stageType}`, text: tag });
 
 				const linkSpan = metaEl.createSpan({
-					cls: 'wn-card-chapter-link clickable-link',
+					cls: 'wn-card-chapter-link wn-clickable-link',
 					text: ` [[${ChapterSorter.extractWikilinkDisplay(log.file)}]]`
 				});
 
@@ -357,7 +358,7 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 				// 正文引用行 (样式与 foreshadowing-entry-quote-text 一致)
 				if (log.quote) {
 					const textEl = logItemEl.createDiv({
-						cls: `foreshadowing-entry-quote-text mod-recovery-quote mod-${log.stageType}`,
+						cls: `wn-foreshadowing-entry-quote-text mod-recovery-quote mod-${log.stageType}`,
 						text: log.quote
 					});
 					textEl.title = t('common.jump-to-original');
@@ -369,22 +370,22 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 		}
 
 		// 底部信息行
-		const footer = card.createDiv({ cls: 'foreshadowing-entry-footer' });
+		const footer = card.createDiv({ cls: 'wn-foreshadowing-entry-footer' });
 
 		// 标签
 		if (entry.tags.length > 0) {
-			const tagsEl = footer.createDiv({ cls: 'foreshadowing-entry-tags' });
+			const tagsEl = footer.createDiv({ cls: 'wn-foreshadowing-entry-tags' });
 			entry.tags.forEach(tag => {
-				tagsEl.createSpan({ text: `#${tag}`, cls: 'foreshadowing-entry-tag' });
+				tagsEl.createSpan({ text: `#${tag}`, cls: 'wn-foreshadowing-entry-tag' });
 			});
 		}
 
 		// 操作按钮
-		const actions = footer.createDiv({ cls: 'foreshadowing-entry-actions' });
+		const actions = footer.createDiv({ cls: 'wn-foreshadowing-entry-actions' });
 
 		// 回收按钮 (未回收 或 阶段回收中)
 		if (entry.status === ForeshadowingStatus.Pending || entry.status === ForeshadowingStatus.PartiallyRecovered) {
-			const recoverBtn = actions.createEl('button', { text: t('foreshadowing.action-recovery'), cls: 'foreshadowing-action-btn foreshadowing-recover-btn' });
+			const recoverBtn = actions.createEl('button', { text: t('foreshadowing.action-recovery'), cls: 'wn-foreshadowing-action-btn wn-foreshadowing-recover-btn' });
 			recoverBtn.onclick = () => {
 				const actionFolder = folder;
 				const foreshadowingFile = this.getForeshadowingFile(actionFolder);
@@ -409,7 +410,7 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 									);
 								}
 								if (success) {
-									new Notice(t('notice.foreshadowing-recovered', { links: recoveryFileNames.map(f => `[[${f}]]`).join('、') }));
+									showPluginNotice(t('notice.foreshadowing-recovered', { links: recoveryFileNames.map(f => `[[${f}]]`).join('、') }));
 									if (!this.isRefreshCurrent(generation, actionFolder)) return;
 									this.schedulePendingRefresh();
 								}
@@ -422,7 +423,7 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 				).open();
 			};
 
-			const deprecateBtn = actions.createEl('button', { text: t('common.deprecate'), cls: 'foreshadowing-action-btn foreshadowing-deprecate-btn' });
+			const deprecateBtn = actions.createEl('button', { text: t('common.deprecate'), cls: 'wn-foreshadowing-action-btn wn-foreshadowing-deprecate-btn' });
 			deprecateBtn.onclick = () => {
 				const actionFolder = folder;
 				const foreshadowingFile = this.getForeshadowingFile(actionFolder);
@@ -434,7 +435,7 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 							foreshadowingFile, entry.description
 						);
 						if (success) {
-							new Notice(t('common.deprecated-marked'));
+							showPluginNotice(t('common.deprecated-marked'));
 							if (!this.isRefreshCurrent(generation, actionFolder)) return;
 							this.schedulePendingRefresh();
 						}
@@ -447,7 +448,7 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 
 		// 恢复按钮（已废弃状态显示）
 		if (entry.status === ForeshadowingStatus.Deprecated) {
-			const restoreBtn = actions.createEl('button', { text: t('common.restore'), cls: 'foreshadowing-action-btn' });
+			const restoreBtn = actions.createEl('button', { text: t('common.restore'), cls: 'wn-foreshadowing-action-btn' });
 			restoreBtn.onclick = async () => {
 				const actionFolder = folder;
 				const foreshadowingFile = this.getForeshadowingFile(actionFolder);
@@ -457,7 +458,7 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 					foreshadowingFile, entry.description
 				);
 				if (success) {
-					new Notice(t('common.restored-to-pending'));
+					showPluginNotice(t('common.restored-to-pending'));
 					if (!this.isRefreshCurrent(generation, actionFolder)) return;
 					this.schedulePendingRefresh();
 				}
@@ -469,7 +470,7 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 	 * 渲染精简多节点推进器 (仅图标，悬浮 Tooltip 呈现完整详情)
 	 */
 	private renderStageStepper(container: HTMLElement, entry: ParsedForeshadowingEntry, folder: string) {
-		const stepperEl = container.createDiv({ cls: 'foreshadowing-stepper' });
+		const stepperEl = container.createDiv({ cls: 'wn-foreshadowing-stepper' });
 		
 		// 节点 1: 埋下伏笔 (源章节)
 		const logs = entry.recoveryLogs || [];
@@ -479,9 +480,9 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 
 		// 节点 1: 伏笔初始埋下节点 (首次标注)
 		const sourceNode = stepperEl.createDiv({
-			cls: `foreshadowing-step-item is-source${!isRecovered && !hasLogs && !hasLegacyRecovered ? ' is-current' : ''}`
+			cls: `wn-foreshadowing-step-item is-source${!isRecovered && !hasLogs && !hasLegacyRecovered ? ' is-current' : ''}`
 		});
-		const sourceDot = sourceNode.createDiv({ cls: 'foreshadowing-step-dot' });
+		const sourceDot = sourceNode.createDiv({ cls: 'wn-foreshadowing-step-dot' });
 		setIcon(sourceDot, 'bookmark');
 
 		const firstContent = entry.contents[0];
@@ -502,11 +503,11 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 		// 阶段/终结节点
 		if (hasLogs) {
 			logs.forEach((log, index) => {
-				stepperEl.createDiv({ cls: `foreshadowing-step-line ${log.stageType === 'final' ? 'is-final' : 'is-stage'}` });
+				stepperEl.createDiv({ cls: `wn-foreshadowing-step-line ${log.stageType === 'final' ? 'is-final' : 'is-stage'}` });
 
 				const isCurrent = !isRecovered && index === logs.length - 1 && log.stageType !== 'final';
-				const node = stepperEl.createDiv({ cls: `foreshadowing-step-item ${log.stageType === 'final' ? 'is-final' : 'is-stage'}${isCurrent ? ' is-current' : ''}` });
-				const dot = node.createDiv({ cls: 'foreshadowing-step-dot' });
+				const node = stepperEl.createDiv({ cls: `wn-foreshadowing-step-item ${log.stageType === 'final' ? 'is-final' : 'is-stage'}${isCurrent ? ' is-current' : ''}` });
+				const dot = node.createDiv({ cls: 'wn-foreshadowing-step-dot' });
 				setIcon(dot, 'circle');
 
 				const fileName = ChapterSorter.extractWikilinkDisplay(log.file);
@@ -522,9 +523,9 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 			});
 		} else if (entry.recoveryFiles && entry.recoveryFiles.length > 0) {
 			entry.recoveryFiles.forEach((file, index) => {
-				stepperEl.createDiv({ cls: 'foreshadowing-step-line is-final' });
-				const node = stepperEl.createDiv({ cls: 'foreshadowing-step-item is-final' });
-				const dot = node.createDiv({ cls: 'foreshadowing-step-dot' });
+				stepperEl.createDiv({ cls: 'wn-foreshadowing-step-line is-final' });
+				const node = stepperEl.createDiv({ cls: 'wn-foreshadowing-step-item is-final' });
+				const dot = node.createDiv({ cls: 'wn-foreshadowing-step-dot' });
 				setIcon(dot, 'circle');
 				const fileName = ChapterSorter.extractWikilinkDisplay(file);
 				const time = entry.recoveredAts && entry.recoveredAts[index] ? entry.recoveredAts[index] : '';
@@ -541,9 +542,9 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 
 		// 末尾待完成节点（若未彻底回收）
 		if (entry.status !== ForeshadowingStatus.Recovered) {
-			stepperEl.createDiv({ cls: 'foreshadowing-step-line is-pending-tail' });
-			const tailNode = stepperEl.createDiv({ cls: 'foreshadowing-step-item is-pending-tail' });
-			const tailDot = tailNode.createDiv({ cls: 'foreshadowing-step-dot' });
+			stepperEl.createDiv({ cls: 'wn-foreshadowing-step-line is-pending-tail' });
+			const tailNode = stepperEl.createDiv({ cls: 'wn-foreshadowing-step-item is-pending-tail' });
+			const tailDot = tailNode.createDiv({ cls: 'wn-foreshadowing-step-dot' });
 			setIcon(tailDot, 'circle');
 			tailNode.title = t('common.mark-final-recovered');
 		}
@@ -577,7 +578,7 @@ export class ForeshadowingView extends CreativeView<ForeshadowingViewPlugin> {
 		const file = ChapterSorter.resolveChapterFile(this.app, this.plugin, targetFolder, chapterName, { sourcePath });
 		if (this.isViewClosed) return;
 		if (!file) {
-			new Notice(t('common.file-not-found', { name: ChapterSorter.extractWikilinkDisplay(chapterName) }));
+			showPluginNotice(t('common.file-not-found', { name: ChapterSorter.extractWikilinkDisplay(chapterName) }));
 			return;
 		}
 

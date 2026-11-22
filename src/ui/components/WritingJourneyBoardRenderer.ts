@@ -373,7 +373,7 @@ export class WritingJourneyBoardRenderer {
 		if (event.type === 'chapter.status_changed') {
 			const actionsEl = contentEl.createDiv('wn-writing-journey-item-actions');
 			const snapshotBtn = actionsEl.createEl('button', {
-				cls: 'wn-writing-journey-btn-snapshot',
+				cls: 'wn-writing-journey-btn-snapshot mod-cta',
 				text: t('snapshot.open-snapshot')
 			});
 			snapshotBtn.onclick = (e: MouseEvent) => {

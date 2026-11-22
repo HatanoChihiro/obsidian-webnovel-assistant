@@ -2,12 +2,12 @@
 
 
 /* ========== 打字机模式：垂直留白居中与焦点淡化 ========== */
-.workspace-leaf .markdown-source-view.mod-cm6 .cm-editor.wn-typewriter-active:not(.wn-typewriter-banner) .cm-sizer,
-.cm-editor.wn-typewriter-active:not(.wn-typewriter-banner) .cm-sizer {
+.workspace-leaf .markdown-source-view.mod-cm6 .cm-editor.wn-typewriter-active:not(.wn-typewriter-banner):not(.wn-typewriter-manuscript) .cm-sizer,
+.cm-editor.wn-typewriter-active:not(.wn-typewriter-banner):not(.wn-typewriter-manuscript) .cm-sizer {
 	padding-top: var(--wn-typewriter-padding-top, 0px);
 }
 
-.cm-editor.wn-typewriter-active .cm-sizer {
+.cm-editor.wn-typewriter-active:not(.wn-typewriter-manuscript) .cm-sizer {
 	padding-bottom: var(--wn-typewriter-padding-bottom, 0px);
 }
 

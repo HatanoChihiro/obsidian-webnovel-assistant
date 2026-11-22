@@ -5,6 +5,11 @@ import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { isMobile, parseGoal } from '../utils';
 import { REGEX_PATTERNS } from '../constants';
 
+export interface EditorChangeOrigin {
+	editor?: unknown;
+	info?: unknown;
+}
+
 /**
  * 编辑器追踪服务
  * 负责监听编辑器变化、更新字数统计、管理状态栏显示
@@ -18,13 +23,41 @@ export class EditorTracker {
 		private plugin: WebNovelAssistantPlugin
 	) {}
 
+	private isMobileImmersiveActive(): boolean {
+		const imm = this.plugin.immersiveModeManager;
+		return Boolean(imm?.isMobileDataIsolationActive?.() ?? imm?.isMobileImmersiveSessionActive?.());
+	}
+
+	private resolveTrackedView(): MarkdownView | null {
+		if (this.isMobileImmersiveActive()) {
+			const imm = this.plugin.immersiveModeManager;
+			return imm?.getDataScopedMainView?.() ?? imm?.getActiveSessionMainView?.() ?? null;
+		}
+		return this.app.workspace.getActiveViewOfType(MarkdownView);
+	}
+
 	/**
 	 * 处理编辑器内容变化
 	 * 更新字数统计和每日历史
 	 */
-	handleEditorChange(): void {
+	handleEditorChange(origin?: EditorChangeOrigin): void {
+		if (this.isMobileImmersiveActive()) {
+			const imm = this.plugin.immersiveModeManager;
+			if (origin !== undefined) {
+				if (!imm?.isMainEditorOrigin?.(origin.info, origin.editor)) {
+					return;
+				}
+			} else {
+				const mainView = imm?.getDataScopedMainView?.() ?? imm?.getActiveSessionMainView?.() ?? null;
+				const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+				if (!mainView || (activeView && activeView !== mainView)) {
+					return;
+				}
+			}
+		}
+
 		this.fileChangeGeneration++;
-		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+		const view = this.resolveTrackedView();
 		if (!view) return;
 
 		// 非工作区文件只更新显示，保留已有的增量追踪边界。
@@ -63,6 +96,7 @@ export class EditorTracker {
 		this.displayWordCount(view, content, currentCount);
 		this.plugin.refreshStatusViews();
 		this.plugin.mobileFloatingStats?.update();
+		this.plugin.immersiveModeManager?.refreshMobileTopBar?.();
 	}
 
 	/**
@@ -105,7 +139,7 @@ export class EditorTracker {
 	 */
 	async handleFileChange(): Promise<void> {
 		const reqGen = ++this.fileChangeGeneration;
-		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+		const view = this.resolveTrackedView();
 
 		// 严格模式：必须符合字数统计条件
 		if (view?.file && !this.plugin.cacheManager.isEligibleForWordCount(view.file)) {
@@ -113,6 +147,7 @@ export class EditorTracker {
 			this.plugin.lastFilePath = view.file.path;
 			this.updateWordCount();
 			this.plugin.refreshStatusViews();
+			this.plugin.immersiveModeManager?.refreshMobileTopBar?.();
 			return;
 		}
 
@@ -120,6 +155,7 @@ export class EditorTracker {
 			// 侧面板或 Modal 获得焦点时没有活动 Markdown Leaf，维持现有追踪基线并通知状态视图刷新。
 			this.updateWordCount();
 			this.plugin.refreshStatusViews();
+			this.plugin.immersiveModeManager?.refreshMobileTopBar?.();
 			return;
 		}
 
@@ -151,7 +187,7 @@ export class EditorTracker {
 				if (targetMtime !== undefined && targetFile.stat?.mtime !== undefined && targetFile.stat.mtime !== targetMtime) {
 					return;
 				}
-				const currentActiveView = this.app.workspace.getActiveViewOfType(MarkdownView);
+				const currentActiveView = this.resolveTrackedView();
 				if (currentActiveView && currentActiveView.file && currentActiveView.file.path !== targetPath) {
 					return;
 				}
@@ -183,7 +219,7 @@ export class EditorTracker {
 			return;
 		}
 
-		const currentActiveView = this.app.workspace.getActiveViewOfType(MarkdownView);
+		const currentActiveView = this.resolveTrackedView();
 		if (currentActiveView && currentActiveView.file && currentActiveView.file.path !== targetPath) {
 			return;
 		}
@@ -193,13 +229,14 @@ export class EditorTracker {
 
 		this.updateWordCount();
 		this.plugin.refreshStatusViews();
+		this.plugin.immersiveModeManager?.refreshMobileTopBar?.();
 	}
 
 	/**
 	 * 更新状态栏字数显示
 	 */
 	updateWordCount(): void {
-		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+		const view = this.resolveTrackedView();
 		if (!view) {
 			this.plugin.statusBarItemEl.setText('');
 			return;

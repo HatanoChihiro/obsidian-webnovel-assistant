@@ -8,14 +8,14 @@ body.is-tablet .wn-status-card {
 
 
 /* Phone Portrait Layout (body.is-phone): Force exactly 2 cards per row */
-body.is-phone .stats-efficiency-row {
+body.is-phone .wn-stats-efficiency-row {
 	display: grid;
 	grid-template-columns: repeat(2, 1fr);
 	gap: var(--wn-phone-card-gap);
 }
 
 
-body.is-phone .stats-efficiency-card {
+body.is-phone .wn-stats-efficiency-card {
 	flex: none;
 	width: 100%;
 	min-width: 0;
@@ -25,21 +25,21 @@ body.is-phone .stats-efficiency-card {
 }
 
 
-body.is-phone .stats-efficiency-value {
+body.is-phone .wn-stats-efficiency-value {
 	font-size: var(--wn-phone-font-kpi);
 }
 
 
-body.is-phone .stats-efficiency-label,
-body.is-phone .homepage-section-label,
-body.is-phone .homepage-field-label,
-body.is-phone .homepage-task-sub {
+body.is-phone .wn-stats-efficiency-label,
+body.is-phone .wn-homepage-section-label,
+body.is-phone .wn-homepage-field-label,
+body.is-phone .wn-homepage-task-sub {
 	font-size: var(--wn-phone-font-meta);
 }
 
 
-body.is-phone .homepage-field-value,
-body.is-phone .homepage-completed-synopsis,
-body.is-phone .homepage-task-row:not(.homepage-task-sub) {
+body.is-phone .wn-homepage-field-value,
+body.is-phone .wn-homepage-completed-synopsis,
+body.is-phone .wn-homepage-task-row:not(.wn-homepage-task-sub) {
 	font-size: var(--wn-phone-font-body);
 }

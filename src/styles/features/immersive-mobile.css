@@ -1,0 +1,537 @@
+/* ========== Mobile Immersive Writing Mode ========== */
+
+/* Hide Obsidian mobile chrome & original floating stats while mobile immersive is active */
+body.wn-immersive-mode-active.wn-immersive-mobile-active .mobile-toolbar,
+body.wn-immersive-mode-active.wn-immersive-mobile-active .mobile-navbar,
+body.wn-immersive-mode-active.wn-immersive-mobile-active .workspace-drawer,
+body.wn-immersive-mode-active.wn-immersive-mobile-active .workspace-drawer-backdrop,
+body.wn-immersive-mode-active.wn-immersive-mobile-active .wn-mobile-floating-stats {
+	display: none;
+}
+
+body.wn-immersive-mode-active.wn-immersive-mobile-active .workspace-leaf.wn-immersive-main-editor {
+	padding: 0;
+}
+
+body.wn-immersive-mode-active.wn-immersive-mobile-active .workspace-leaf.wn-immersive-main-editor .workspace-leaf-content {
+	border: none;
+	border-radius: 0;
+	box-shadow: none;
+}
+
+body.wn-immersive-mode-active.wn-immersive-mobile-active .workspace-leaf.wn-immersive-main-editor .view-content {
+	padding-top: 8px;
+}
+
+/* Match native mobile gutters without padding the hosted manuscript editor twice. */
+body.wn-immersive-mode-active.wn-immersive-mobile-active .workspace-leaf.wn-immersive-main-editor:not(.wn-manuscript-leaf) .markdown-source-view.mod-cm6 > .cm-editor > .cm-scroller,
+body.wn-immersive-mode-active.wn-immersive-mobile-active .workspace-leaf.wn-immersive-main-editor .wn-manuscript-flow {
+	padding-inline: max(12px, var(--file-margins-x, var(--size-4-6, 24px)));
+}
+
+@media (orientation: portrait) {
+	body.is-phone.wn-immersive-mode-active.wn-immersive-mobile-active .workspace-leaf.wn-immersive-main-editor .wn-manuscript-flow {
+		gap: 32px;
+	}
+}
+
+/* Mobile immersive top bar */
+.wn-immersive-mobile-topbar {
+	position: fixed;
+	top: var(--wn-immersive-mobile-viewport-top, 0px);
+	left: var(--wn-immersive-mobile-viewport-left, 0px);
+	width: var(--wn-immersive-mobile-viewport-width, 100%);
+	min-height: calc(44px + max(var(--safe-area-inset-top, 0px), env(safe-area-inset-top, 0px)));
+	padding-top: max(var(--safe-area-inset-top, 0px), env(safe-area-inset-top, 0px));
+	padding-left: max(8px, var(--safe-area-inset-left, 0px), env(safe-area-inset-left, 0px));
+	padding-right: max(8px, var(--safe-area-inset-right, 0px), env(safe-area-inset-right, 0px));
+	box-sizing: border-box;
+	background-color: var(--background-secondary);
+	color: var(--text-normal);
+	border-bottom: 1px solid var(--background-modifier-border);
+	z-index: calc(var(--layer-popover, 30) - 6);
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 6px;
+	font-family: var(--font-interface);
+	font-size: var(--font-ui-small);
+}
+
+.wn-immersive-mobile-safe-area-probe {
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 0;
+	height: 0;
+	visibility: hidden;
+	pointer-events: none;
+	padding-top: max(var(--safe-area-inset-top, 0px), env(safe-area-inset-top, 0px));
+	padding-right: max(var(--safe-area-inset-right, 0px), env(safe-area-inset-right, 0px));
+	padding-bottom: max(var(--safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 0px));
+	padding-left: max(var(--safe-area-inset-left, 0px), env(safe-area-inset-left, 0px));
+}
+
+.wn-immersive-mobile-topbar-right {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	min-height: 44px;
+	flex-shrink: 0;
+}
+
+.wn-immersive-mobile-topbar-stats {
+	display: flex;
+	flex-wrap: nowrap;
+	align-items: center;
+	gap: 0.6em;
+	min-width: 0;
+	flex: 1 1 0;
+	padding-block: 4px;
+	font-variant-numeric: tabular-nums;
+	font-size: var(--wn-immersive-mobile-stats-font-size, var(--font-ui-small));
+	white-space: nowrap;
+}
+
+.wn-immersive-mobile-stat {
+	flex: 0 0 auto;
+	white-space: nowrap;
+}
+
+.wn-immersive-mobile-work-title {
+	flex: 0 0 auto;
+	min-width: 0;
+	max-width: min(9em, 30%);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-weight: var(--font-semibold);
+}
+
+.wn-immersive-mobile-work-title.is-hidden {
+	display: none;
+}
+
+.wn-immersive-mobile-timer {
+	display: flex;
+	flex: 0 0 auto;
+	flex-wrap: nowrap;
+	gap: 0.6em;
+}
+
+body.wn-immersive-mobile-active .wn-immersive-mobile-topbar-right .wn-immersive-mobile-topbar-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+	width: 32px;
+	height: 32px;
+	min-width: 32px;
+	min-height: 32px;
+	flex: 0 0 32px;
+	padding: 4px;
+	border: none;
+	border-radius: var(--radius-s);
+	background-color: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.wn-immersive-mobile-topbar-btn:focus-visible,
+.wn-immersive-mobile-dir-restore-btn:focus-visible,
+.wn-immersive-mobile-dir-close-btn:focus-visible,
+.wn-immersive-mobile-aux-resize-handle:focus-visible,
+.wn-immersive-mobile-aux-btn:focus-visible,
+.wn-immersive-mobile-aux-restore-btn:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 1px;
+}
+
+/* Fixed left overlay chapter directory */
+.wn-immersive-mobile-dir-backdrop {
+	position: fixed;
+	top: calc(var(--wn-immersive-mobile-viewport-top, 0px) + var(--wn-immersive-mobile-topbar-height, 44px));
+	left: var(--wn-immersive-mobile-viewport-left, 0px);
+	width: var(--wn-immersive-mobile-viewport-width, 100%);
+	height: calc(var(--wn-immersive-mobile-viewport-height, 100%) - var(--wn-immersive-mobile-topbar-height, 44px));
+	background-color: var(--background-modifier-cover);
+	z-index: calc(var(--layer-popover, 30) - 2);
+}
+
+.wn-immersive-mobile-dir-backdrop.is-hidden {
+	display: none;
+}
+
+.wn-immersive-mobile-dir-overlay {
+	position: fixed;
+	top: calc(var(--wn-immersive-mobile-viewport-top, 0px) + var(--wn-immersive-mobile-topbar-height, 44px));
+	left: var(--wn-immersive-mobile-viewport-left, 0px);
+	width: min(280px, 82vw);
+	height: calc(var(--wn-immersive-mobile-viewport-height, 100%) - var(--wn-immersive-mobile-topbar-height, 44px));
+	padding-left: max(var(--safe-area-inset-left, 0px), env(safe-area-inset-left, 0px));
+	padding-bottom: max(var(--safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 0px));
+	box-sizing: border-box;
+	background-color: var(--background-secondary);
+	border-right: 1px solid var(--background-modifier-border);
+	box-shadow: var(--shadow-l);
+	z-index: calc(var(--layer-popover, 30) - 1);
+	display: flex;
+	flex-direction: column;
+	font-family: var(--font-interface);
+}
+
+.wn-immersive-mobile-dir-overlay.is-hidden {
+	display: none;
+}
+
+.wn-immersive-mobile-dir-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 8px 10px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	flex-shrink: 0;
+}
+
+.wn-immersive-mobile-dir-title {
+	flex: 1 1 auto;
+	font-weight: var(--font-semibold);
+	font-size: var(--font-ui-small);
+	color: var(--text-normal);
+}
+
+.wn-immersive-mobile-dir-body {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	position: relative;
+}
+
+/* Collapsed left-edge restore control */
+.wn-immersive-mobile-dir-restore-btn {
+	position: fixed;
+	left: calc(var(--wn-immersive-mobile-viewport-left, 0px) + max(var(--safe-area-inset-left, 0px), env(safe-area-inset-left, 0px)));
+	top: calc(var(--wn-immersive-mobile-viewport-top, 0px) + var(--wn-immersive-mobile-topbar-height, 44px) + 16px);
+	width: 22px;
+	height: 32px;
+	padding: 0;
+	border: 1px solid var(--background-modifier-border);
+	border-left: none;
+	border-radius: 0 var(--radius-m) var(--radius-m) 0;
+	background-color: var(--background-secondary);
+	color: var(--text-muted);
+	box-shadow: var(--shadow-s);
+	z-index: calc(var(--layer-popover, 30) - 5);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+	opacity: 0.85;
+}
+
+.wn-immersive-mobile-dir-restore-btn.is-hidden {
+	display: none;
+}
+
+/* Floating auxiliary panel */
+.wn-immersive-mobile-aux-panel {
+	position: fixed;
+	z-index: calc(var(--layer-popover, 30) - 3);
+	display: flex;
+	flex-direction: column;
+	background-color: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	box-shadow: var(--shadow-l);
+	overflow: hidden;
+	box-sizing: border-box;
+	font-family: var(--font-interface);
+}
+
+.wn-immersive-mobile-aux-panel.is-hidden {
+	display: none;
+}
+
+.wn-immersive-mobile-aux-panel.is-dragging,
+.wn-immersive-mobile-aux-panel.is-resizing {
+	user-select: none;
+}
+
+.wn-immersive-mobile-aux-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 6px;
+	min-height: 40px;
+	padding: 4px 8px;
+	background-color: var(--background-secondary);
+	border-bottom: 1px solid var(--background-modifier-border);
+	flex-shrink: 0;
+	touch-action: none;
+	cursor: grab;
+}
+
+.wn-immersive-mobile-aux-panel.is-locked .wn-immersive-mobile-aux-header {
+	cursor: default;
+	touch-action: auto;
+}
+
+.wn-immersive-mobile-aux-header select.wn-immersive-mobile-aux-select {
+	flex: 0 1 110px;
+	width: 110px;
+	max-width: 45%;
+	min-width: 0;
+	min-height: 0;
+	overflow: hidden;
+	height: 24px;
+	font-size: var(--font-ui-smaller);
+}
+
+.wn-immersive-mobile-aux-grip {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	align-self: stretch;
+	flex: 1 0 24px;
+	color: var(--text-faint);
+}
+
+.wn-immersive-mobile-dir-close-btn {
+	width: 28px;
+	height: 28px;
+	padding: 4px;
+	flex-shrink: 0;
+	color: var(--text-muted);
+}
+
+.wn-immersive-mobile-dir-close-btn svg,
+.wn-immersive-mobile-dir-restore-btn svg,
+.wn-immersive-mobile-aux-grip svg,
+.wn-immersive-mobile-aux-btn svg,
+.wn-immersive-mobile-aux-restore-btn svg {
+	width: 14px;
+	height: 14px;
+	stroke-width: 1.6px;
+}
+
+.wn-immersive-mobile-aux-panel.is-minimized {
+	border-radius: var(--radius-s);
+	box-shadow: var(--shadow-s);
+}
+
+.wn-immersive-mobile-aux-header.is-hidden,
+.wn-immersive-mobile-aux-restore-btn.is-hidden {
+	display: none;
+}
+
+.wn-immersive-mobile-aux-restore-btn {
+	touch-action: none;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 100%;
+	height: 100%;
+	padding: 0;
+	border: none;
+	background-color: var(--background-secondary);
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.wn-immersive-mobile-aux-controls {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	flex-shrink: 0;
+}
+
+.wn-immersive-mobile-aux-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 28px;
+	min-height: 28px;
+	padding: 2px;
+	border: none;
+	border-radius: var(--radius-s);
+	background-color: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.wn-immersive-mobile-aux-body {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	position: relative;
+	touch-action: pan-y;
+}
+
+.wn-immersive-mobile-aux-lock-btn.is-active {
+	color: var(--interactive-accent);
+	background-color: var(--background-modifier-hover);
+}
+
+.wn-immersive-mobile-aux-body.is-hidden {
+	display: none;
+}
+
+/* Hosted workspace leaf inside mobile overlay or floating panel */
+body.wn-immersive-mode-active.wn-immersive-mobile-active .workspace-leaf.wn-immersive-mobile-hosted-leaf {
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+	height: 100%;
+	padding: 0;
+	margin: 0;
+}
+
+body.wn-immersive-mode-active.wn-immersive-mobile-active .workspace-leaf.wn-immersive-mobile-hosted-leaf .workspace-leaf-content {
+	height: 100%;
+	border: none;
+	border-radius: 0;
+	box-shadow: none;
+}
+
+body.wn-immersive-mode-active.wn-immersive-mobile-active .workspace-leaf.wn-immersive-mobile-hosted-leaf .view-content {
+	padding-top: 8px;
+}
+
+body.wn-immersive-mode-active.wn-immersive-mobile-active .workspace-leaf.wn-immersive-mobile-hosted-leaf.wn-immersive-reference-view .view-content {
+	padding-top: 40px;
+}
+
+.wn-immersive-mobile-ref-empty,
+.wn-immersive-mobile-outline-empty {
+	padding: 16px 12px;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	text-align: center;
+}
+
+/* Main-bound outline inside floating auxiliary panel */
+.wn-immersive-mobile-outline {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding: 6px;
+}
+
+.wn-immersive-mobile-outline-item {
+	display: block;
+	width: 100%;
+	text-align: left;
+	padding: 6px 8px;
+	border: none;
+	border-radius: var(--radius-s);
+	background-color: transparent;
+	color: var(--text-normal);
+	font-size: var(--font-ui-small);
+	cursor: pointer;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.wn-immersive-mobile-outline-item:hover {
+	background-color: var(--background-modifier-hover);
+}
+
+.wn-immersive-mobile-outline-level-2 {
+	padding-left: 16px;
+}
+
+.wn-immersive-mobile-outline-level-3 {
+	padding-left: 24px;
+}
+
+.wn-immersive-mobile-outline-level-4 {
+	padding-left: 32px;
+}
+
+.wn-immersive-mobile-outline-level-5 {
+	padding-left: 40px;
+}
+
+.wn-immersive-mobile-outline-level-6 {
+	padding-left: 48px;
+}
+
+/* Explicit touch resize handle */
+.wn-immersive-mobile-aux-resize-handle {
+	position: absolute;
+	right: 0;
+	bottom: 0;
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	border: none;
+	border-radius: 0;
+	box-shadow: none;
+	background-color: transparent;
+	touch-action: none;
+	cursor: nwse-resize;
+	z-index: 2;
+	opacity: 0.7;
+}
+
+/* Keep a usable hit area with a quiet, compact corner cue. */
+body.wn-immersive-mobile-active .wn-immersive-mobile-aux-panel .wn-immersive-mobile-aux-resize-handle,
+body.wn-immersive-mobile-active .wn-immersive-mobile-aux-panel .wn-immersive-mobile-aux-resize-handle:hover,
+body.wn-immersive-mobile-active .wn-immersive-mobile-aux-panel .wn-immersive-mobile-aux-resize-handle:active,
+body.wn-immersive-mobile-active .wn-immersive-mobile-aux-panel .wn-immersive-mobile-aux-resize-handle:focus-visible {
+	background: none;
+	box-shadow: none;
+	border: none;
+}
+
+.wn-immersive-mobile-aux-resize-handle::after {
+	content: '';
+	position: absolute;
+	right: 3px;
+	bottom: 3px;
+	width: 10px;
+	height: 10px;
+	background: linear-gradient(135deg, transparent 50%, var(--text-faint) 50%, var(--text-faint) 60%, transparent 60%, transparent 76%, var(--text-faint) 76%, var(--text-faint) 86%, transparent 86%);
+	pointer-events: none;
+}
+
+.wn-immersive-mobile-aux-resize-handle.is-hidden {
+	display: none;
+}
+
+/* Tablet refinements */
+body.is-tablet.wn-immersive-mobile-active .wn-immersive-mobile-dir-overlay {
+	width: min(300px, 40vw);
+}
+
+/* Only tablet controllers can activate this right-docked state. */
+.wn-immersive-mobile-aux-panel.is-docked {
+	border-radius: 0;
+	box-shadow: none;
+}
+
+.wn-immersive-mobile-aux-panel.is-docked .wn-immersive-mobile-aux-header {
+	cursor: default;
+}
+
+.wn-immersive-mobile-aux-panel.is-docked .wn-immersive-mobile-aux-resize-handle {
+	left: 0;
+	right: auto;
+	top: 0;
+	bottom: 0;
+	width: 10px;
+	height: 100%;
+	cursor: ew-resize;
+}
+
+.wn-immersive-mobile-aux-panel.is-docked .wn-immersive-mobile-aux-resize-handle::after {
+	left: 3px;
+	right: auto;
+	top: 50%;
+	bottom: auto;
+	width: 1px;
+	height: 28px;
+	background: var(--text-faint);
+	transform: translateY(-50%);
+}

@@ -28,6 +28,7 @@ import type { ChapterMergeManager } from '../services/ChapterMergeManager';
 import type { ProofreadingManager } from '../services/ProofreadingManager';
 import type { WritingJourneyService } from '../services/WritingJourneyService';
 import type { ImmersiveReferenceManager } from '../services/ImmersiveReferenceManager';
+import type { ImmersiveManuscriptManager } from '../services/ImmersiveManuscriptManager';
 import type { NativeSnapshotService } from '../services/NativeSnapshotService';
 import type { ChapterSnapshotManager } from '../services/ChapterSnapshotManager';
 
@@ -75,6 +76,7 @@ export interface ServiceMap {
 	ProofreadingManager: ProofreadingManager;
 	WritingJourneyService: WritingJourneyService;
 	ImmersiveReferenceManager: ImmersiveReferenceManager;
+	ImmersiveManuscriptManager: ImmersiveManuscriptManager;
 	NativeSnapshotService: NativeSnapshotService;
 	ChapterSnapshotManager: ChapterSnapshotManager;
 }

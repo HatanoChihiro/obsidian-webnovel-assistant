@@ -1,8 +1,9 @@
+import { showPluginNotice } from './PluginNoticeService';
 import { Logger } from '../utils/Logger';
 
 import { isDesktop } from '../utils';
 import { FloatingStickyNote } from '../ui/StickyNote';
-import { Notice, type TFile } from 'obsidian';
+import { type TFile } from 'obsidian';
 import { t } from '../i18n';
 import type { StickyNoteState } from '../types/settings';
 import { getPluginDir } from '../utils/platform';
@@ -253,8 +254,8 @@ export class StickyNoteDataManager {
 		// 如果在移动端调用（如通过命令），由于交互限制，仅给予提示或在沉浸模式中处理
 		if (!isDesktop()) {
 			// 在沉浸模式中创建是允许的，因为它会渲染到辅助面板视图中
-			if (!activeDocument.body.classList.contains('immersive-mode-active')) {
-				new Notice(t('notice.floating-notes-desktop-only'));
+			if (!activeDocument.body.classList.contains('wn-immersive-mode-active')) {
+				showPluginNotice(t('notice.floating-notes-desktop-only'));
 				return;
 			}
 		}

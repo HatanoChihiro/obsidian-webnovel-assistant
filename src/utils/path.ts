@@ -13,6 +13,12 @@ export interface CurrentBookContextPlugin extends FindBookRootPlugin {
 	homepageManager?: Pick<HomepageManager, 'getNovelFolders'> & {
 		getHomepageFilePath?: () => string;
 	};
+	immersiveModeManager?: {
+		isMobileImmersiveSessionActive?: () => boolean;
+		isMobileDataIsolationActive?: () => boolean;
+		getActiveSessionMainFile?: () => TFile | null;
+		getDataScopedMainFile?: () => TFile | null;
+	};
 }
 
 export interface CurrentBookContextOptions {
@@ -206,6 +212,17 @@ export function getCurrentBookContext(
 	plugin: CurrentBookContextPlugin,
 	options?: CurrentBookContextOptions
 ): string | null {
+	const imm = plugin.immersiveModeManager;
+	if (imm?.isMobileDataIsolationActive?.() ?? imm?.isMobileImmersiveSessionActive?.()) {
+		const mainFile = imm?.getDataScopedMainFile?.() ?? imm?.getActiveSessionMainFile?.() ?? null;
+		if (!mainFile) return null;
+		const homepagePath = plugin.homepageManager?.getHomepageFilePath?.();
+		const isHomepage = (homepagePath && mainFile.path === homepagePath) || mainFile.name === '创作主页.md';
+		if (isHomepage) return null;
+		const bookPath = findBookRoot(app, plugin, mainFile, true);
+		return bookPath || null;
+	}
+
 	if (options?.fallback === false) {
 		const activeMarkdown = app.workspace.getActiveViewOfType(MarkdownView);
 		if (activeMarkdown?.file) {

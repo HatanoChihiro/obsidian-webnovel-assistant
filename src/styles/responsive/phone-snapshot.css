@@ -140,6 +140,14 @@ body.is-phone .wn-snapshot-replay-scrubber-group {
 	gap: 0;
 }
 
+body.is-phone .wn-snapshot-replay-action-group {
+	grid-column: 1 / -1;
+	grid-row: 4;
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 6px;
+}
+
 body.is-phone .wn-snapshot-replay-scrubber {
 	width: 100%;
 	min-width: 0;

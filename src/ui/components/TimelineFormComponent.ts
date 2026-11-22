@@ -1,5 +1,6 @@
+import { showPluginNotice } from '../../services/PluginNoticeService';
 import type { App } from 'obsidian';
-import { Notice, Setting } from 'obsidian';
+import { Setting } from 'obsidian';
 import {
 	timelineNodeKey,
 	parseTimelineChapterList,
@@ -47,7 +48,7 @@ export class TimelineFormComponent {
 
 	render(): HTMLElement {
 		const { container, app, context, folderPath, initialEntry, typeOptions, existingNodes, onCancel, onSubmit, submitText, title } = this.options;
-		const form = container.createDiv({ cls: 'wn-timeline-edit-form timeline-add-form' });
+		const form = container.createDiv({ cls: 'wn-timeline-edit-form wn-timeline-add-form' });
 
 		if (title) {
 			new Setting(form).setName(title).setHeading();
@@ -316,7 +317,7 @@ export class TimelineFormComponent {
 			if (isSaving) return;
 			const time = timeInput.value.trim();
 			if (!time) {
-				new Notice(t('modal.please-fill-time-point'));
+				showPluginNotice(t('modal.please-fill-time-point'));
 				timeInput.focus();
 				return;
 			}
@@ -388,7 +389,7 @@ export class TimelineFormComponent {
 				} catch (err) {
 					const msg = err instanceof Error ? err.message : String(err);
 					if (!msg.includes(t('timeline.conflict-notice')) && !msg.includes(t('common.no-files-hint', { type: t('setting.timeline') }))) {
-						new Notice(t('modal.save-failed', { error: msg }));
+						showPluginNotice(t('modal.save-failed', { error: msg }));
 					}
 				} finally {
 					isSaving = false;

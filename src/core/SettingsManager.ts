@@ -1,9 +1,9 @@
+import { showPluginNotice } from '../services/PluginNoticeService';
 import { Logger } from '../utils/Logger';
 import { t } from '../i18n';
 import { detectLocale } from '../i18n';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { getLocalizedDefaults } from '../i18n/data-keys';
-import { Notice } from 'obsidian';
 import type { AccurateCountSettings, ImmersiveModeSettings, ObsSettings } from '../types/settings';
 import type { TaskSettings } from '../types/task';
 import { VALIDATION_RULES, FLAT_OBS_KEYS, FLAT_IMMERSIVE_KEYS } from '../constants';
@@ -11,6 +11,8 @@ import type { ValidationResult } from '../utils/validation';
 import { JsonSnapshotStore } from '../utils/JsonSnapshotStore';
 import { normalizeLoreTemplateHistory } from '../services/LoreTemplateService';
 import { sanitizeWorkbenchSearchHistory } from '../services/WorkbenchFilterIndex';
+import { sanitizeManuscriptPosition, sanitizeWorkManuscriptPositions } from '../services/ImmersiveManuscriptManager';
+import { sanitizeMobileAuxPanelState } from '../services/MobileImmersivePanelGeometry';
 
 /**
  * 验证规则接口（支持嵌套路径）
@@ -25,7 +27,7 @@ interface ValidationRule {
  * 需要保留的旧数据键（不属于 AccurateCountSettings 但需要保留用于兼容）
  */
 const STALE_KEYS = new Set([
-	'cacheData', 'dailyHistory', 'openNotes',
+	'cacheData', 'dailyHistory', 'openNotes', 'enableMobileFocusTimer',
 	...FLAT_OBS_KEYS, ...FLAT_IMMERSIVE_KEYS
 ]);
 
@@ -116,7 +118,7 @@ export class SettingsManager {
 			},
 			onError: (error) => {
 				Logger.error('[SettingsManager] 保存数据失败:', error);
-				new Notice(t('notice.save-settings-failed'));
+				showPluginNotice(t('notice.save-settings-failed'));
 			}
 		});
 	}
@@ -186,7 +188,7 @@ export class SettingsManager {
 			return this.settings;
 		} catch (error) {
 			Logger.error('[SettingsManager] 加载设置失败:', error);
-			new Notice(t('notice.load-settings-failed'));
+			showPluginNotice(t('notice.load-settings-failed'));
 			this.settings = this.mergeSettings({});
 			return this.settings;
 		}
@@ -318,6 +320,7 @@ export class SettingsManager {
 
 		migrated.loreTemplateHistory = normalizeLoreTemplateHistory(migrated.loreTemplateHistory);
 		migrated.workbenchSearchHistory = sanitizeWorkbenchSearchHistory(migrated.workbenchSearchHistory);
+		migrated.showNotices = migrated.showNotices === true;
 
 		if (oldData && typeof oldData === 'object' && 'ranking' in oldData) {
 			const oldRanking = (oldData as Record<string, unknown>).ranking;
@@ -401,6 +404,16 @@ export class SettingsManager {
 						.filter(slot => slot !== 'webnovel-workbench');
 				}
 			}
+
+			migrated.immersive.manuscriptModeEnabled = Boolean(migrated.immersive.manuscriptModeEnabled);
+			const sanitizedLast = sanitizeManuscriptPosition(migrated.immersive.lastManuscriptPosition);
+			if (sanitizedLast) {
+				migrated.immersive.lastManuscriptPosition = sanitizedLast;
+			} else {
+				delete migrated.immersive.lastManuscriptPosition;
+			}
+			migrated.immersive.workManuscriptPositions = sanitizeWorkManuscriptPositions(migrated.immersive.workManuscriptPositions);
+			migrated.immersive.mobileAuxPanel = sanitizeMobileAuxPanelState(migrated.immersive.mobileAuxPanel);
 		}
 
 		if (oldData && typeof oldData === 'object') {

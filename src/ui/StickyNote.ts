@@ -1,6 +1,7 @@
+import { showPluginNotice } from '../services/PluginNoticeService';
 import { Logger } from '../utils/Logger';
 import type { App } from 'obsidian';
-import { Component, MarkdownRenderer, Notice, TFile, setIcon, Modal, Setting } from 'obsidian';
+import { Component, MarkdownRenderer, TFile, setIcon, Modal, Setting } from 'obsidian';
 import type { StickyNoteState, ThemeScheme } from '../types/settings';
 import { hexToRgba } from '../utils/format';
 import { isDesktop } from '../utils/platform';
@@ -128,7 +129,7 @@ export class SaveStickyNoteModal extends Modal {
 			const folderPath = this.folderPathInput.value.trim();
 			
 			if (!fileName) {
-				new Notice(t('modal.please-enter-filename'));
+				showPluginNotice(t('modal.please-enter-filename'));
 				this.fileNameInput.focus();
 				return;
 			}
@@ -139,7 +140,7 @@ export class SaveStickyNoteModal extends Modal {
 				this.close();
 			} catch (error) {
 				Logger.error('保存便签失败:', error);
-				new Notice(t('modal.save-failed', { error: String(error) }));
+				showPluginNotice(t('modal.save-failed', { error: String(error) }));
 				saveBtn.disabled = false;
 			}
 		};
@@ -192,7 +193,7 @@ export class ConfirmCloseModal extends Modal {
 				this.close();
 			} catch (error) {
 				Logger.error('关闭便签失败:', error);
-				new Notice(t('modal.save-failed', { error: String(error) }));
+				showPluginNotice(t('modal.save-failed', { error: String(error) }));
 			}
 		};
 		
@@ -210,7 +211,7 @@ export class ConfirmCloseModal extends Modal {
 				this.close();
 			} catch (error) {
 				Logger.error('保存并关闭便签失败:', error);
-				new Notice(t('modal.save-failed', { error: String(error) }));
+				showPluginNotice(t('modal.save-failed', { error: String(error) }));
 				saveBtn.disabled = false;
 			}
 		};
@@ -307,7 +308,7 @@ export class FloatingStickyNote extends Component {
 		this.state = { ...this.state, ...newState };
 		this.lastSavedContent = this.state.content || "";
 
-		const titleEl = this.containerEl?.querySelector('.my-sticky-title') as HTMLElement;
+		const titleEl = this.containerEl?.querySelector('.wn-my-sticky-title') as HTMLElement;
 		if (titleEl && titleChanged && this.state.title) {
 			titleEl.innerText = this.state.title;
 		}
@@ -370,7 +371,7 @@ export class FloatingStickyNote extends Component {
 		// 确保便签永远挂载在 Obsidian 主工作区窗口 (Main Workspace Window)，绝不挂载到设置/Popout 弹窗中
 		const mainDoc = this.app.workspace.containerEl?.ownerDocument || activeDocument;
 		const modalEl = mainDoc.body.querySelector('.modal-container, .modal.mod-settings, .vertical-tabs-container, .modal-bg');
-		this.containerEl = mainDoc.body.createDiv({ cls: 'my-floating-sticky-note' });
+		this.containerEl = mainDoc.body.createDiv({ cls: 'wn-my-floating-sticky-note' });
 
 		if (modalEl) {
 			mainDoc.body.insertBefore(this.containerEl, modalEl);
@@ -413,14 +414,14 @@ export class FloatingStickyNote extends Component {
 	}
 
 	private createHeader() {
-		const headerEl = this.containerEl.createDiv({ cls: 'my-sticky-header' });
+		const headerEl = this.containerEl.createDiv({ cls: 'wn-my-sticky-header' });
 		
-		const titleWrapper = headerEl.createDiv({ cls: 'my-sticky-title-wrapper' });
-		const titleIcon = titleWrapper.createSpan({ cls: 'my-sticky-title-icon' });
+		const titleWrapper = headerEl.createDiv({ cls: 'wn-my-sticky-title-wrapper' });
+		const titleIcon = titleWrapper.createSpan({ cls: 'wn-my-sticky-title-icon' });
 		setIcon(titleIcon, 'sticky-note');
-		titleWrapper.createSpan({ text: this.state.title || '', cls: 'my-sticky-title' });
+		titleWrapper.createSpan({ text: this.state.title || '', cls: 'wn-my-sticky-title' });
 		
-		const controlsEl = headerEl.createDiv({ cls: 'my-sticky-controls' });
+		const controlsEl = headerEl.createDiv({ cls: 'wn-my-sticky-controls' });
 		
 		// 创建按钮
 		const pinBtn = this.createButton(controlsEl, 'pin', this.state.isPinned);
@@ -431,18 +432,18 @@ export class FloatingStickyNote extends Component {
 		if (syncBtn) syncBtn.title = t('common.note-sync-from-doc');
 		const toggleEditBtn = this.createButton(controlsEl, this.state.isEditing ? 'eye' : 'pencil');
 		this.toggleEditBtn = toggleEditBtn;
-		const paletteBtn = this.createButton(controlsEl, 'palette', false, 'palette-btn-target');
-		const closeBtn = controlsEl.createEl('button', { cls: 'my-sticky-close' });
+		const paletteBtn = this.createButton(controlsEl, 'palette', false, 'wn-palette-btn-target');
+		const closeBtn = controlsEl.createEl('button', { cls: 'wn-my-sticky-close' });
 		setIcon(closeBtn, 'x');
 
 		// 创建内容区域
-		this.contentContainer = this.containerEl.createDiv({ cls: 'my-sticky-content markdown-rendered' });
+		this.contentContainer = this.containerEl.createDiv({ cls: 'wn-my-sticky-content markdown-rendered' });
 		// 防止 contentContainer 接收焦点
 		this.contentContainer.tabIndex = -1;
 		this.textareaEl = createStickyNoteParagraphEditor(
 			this.containerEl,
 			this.state.content || '',
-			'my-sticky-textarea'
+			'wn-my-sticky-textarea'
 		);
 
 		// 1. 只需要在 textarea 级别阻止普通的事件冒泡即可
@@ -513,16 +514,16 @@ export class FloatingStickyNote extends Component {
 	}
 
 	private createButton(parent: HTMLElement, icon: string, isActive = false, extraClass = ''): HTMLButtonElement {
-		const btn = parent.createEl('button', { cls: `my-sticky-btn ${extraClass}` });
+		const btn = parent.createEl('button', { cls: `wn-my-sticky-btn ${extraClass}` });
 		setIcon(btn, icon);
 		if (isActive) btn.classList.add('is-active');
 		return btn;
 	}
 
 	private createPalettePopup(parent: HTMLElement): HTMLElement {
-		const popupEl = parent.createDiv({ cls: 'my-sticky-palette-popup' });
+		const popupEl = parent.createDiv({ cls: 'wn-my-sticky-palette-popup' });
 		this.plugin.settings.noteThemes.forEach((theme: ThemeScheme) => {
-			const swatch = popupEl.createDiv({ cls: 'my-sticky-swatch' });
+			const swatch = popupEl.createDiv({ cls: 'wn-my-sticky-swatch' });
 			swatch.setCssStyles({ backgroundColor: theme.bg, color: theme.text });
 			swatch.innerText = "Aa"; 
 			
@@ -537,8 +538,8 @@ export class FloatingStickyNote extends Component {
 		});
 
 		this.containerEl.addEventListener('click', (e) => {
-			if (!(e.target as HTMLElement).closest('.my-sticky-palette-popup') && 
-			    !(e.target as HTMLElement).closest('.palette-btn-target')) {
+			if (!(e.target as HTMLElement).closest('.wn-my-sticky-palette-popup') &&
+			    !(e.target as HTMLElement).closest('.wn-palette-btn-target')) {
 				popupEl.classList.remove('is-active');
 			}
 		});
@@ -578,7 +579,7 @@ export class FloatingStickyNote extends Component {
 						this.lastSavedContent = this.state.content;
 						if (this.state.isEditing) this.textareaEl.value = this.state.content || '';
 						await this.renderContent();
-						new Notice(t('modal.note-synced'));
+						showPluginNotice(t('modal.note-synced'));
 					}
 				}
 			})();
@@ -629,7 +630,7 @@ export class FloatingStickyNote extends Component {
 				if (file instanceof TFile) {
 					await this.app.vault.process(file, () => this.state.content || '');
 					this.lastSavedContent = this.state.content || ""; // 更新最后保存的内容
-					new Notice(t('modal.note-synced-to-doc'));
+					showPluginNotice(t('modal.note-synced-to-doc'));
 				}
 				return; 
 			}
@@ -648,7 +649,7 @@ export class FloatingStickyNote extends Component {
 
 						// 检查文件是否已存在
 						if (this.app.vault.getAbstractFileByPath(fullPath)) {
-							new Notice(t('modal.file-already-exists', { path: fullPath }));
+							showPluginNotice(t('modal.file-already-exists', { path: fullPath }));
 							return;
 						}
 
@@ -659,14 +660,14 @@ export class FloatingStickyNote extends Component {
 						this.lastSavedContent = this.state.content || ""; // 更新最后保存的内容
 
 						// 更新标题显示
-						const titleEl = titleWrapper.querySelector('.my-sticky-title') as HTMLElement;
+						const titleEl = titleWrapper.querySelector('.wn-my-sticky-title') as HTMLElement;
 						if (titleEl) titleEl.innerText = this.state.title;
 
 						this.saveState();
-						new Notice(t('modal.saved-as', { path: fullPath }));
+						showPluginNotice(t('modal.saved-as', { path: fullPath }));
 					} catch (error) {
 						Logger.error('保存便签失败:', error);
-						new Notice(t('modal.save-failed', { error: String(error) }));
+						showPluginNotice(t('modal.save-failed', { error: String(error) }));
 					}
 				})();
 			});
@@ -702,7 +703,7 @@ export class FloatingStickyNote extends Component {
 								const file = this.app.vault.getAbstractFileByPath(this.state.filePath);
 								if (file instanceof TFile) {
 									await this.app.vault.process(file, () => this.state.content || '' || "");
-									new Notice(t('modal.note-saved'));
+									showPluginNotice(t('modal.note-saved'));
 								}
 								this.close();
 							} else {
@@ -715,15 +716,15 @@ export class FloatingStickyNote extends Component {
 											}
 											const fullPath = folderPath ? `${folderPath}/${fileName}` : fileName;
 											if (this.app.vault.getAbstractFileByPath(fullPath)) {
-												new Notice(t('modal.file-already-exists', { path: fullPath }));
+												showPluginNotice(t('modal.file-already-exists', { path: fullPath }));
 												return;
 											}
 											await this.plugin.stickyNoteManager.createNoteFile(fullPath, this.state.content || "");
-											new Notice(t('modal.saved-as', { path: fullPath }));
+											showPluginNotice(t('modal.saved-as', { path: fullPath }));
 											this.close();
 										} catch (error) {
 											Logger.error('保存便签失败:', error);
-											new Notice(t('modal.save-failed', { error: String(error) }));
+											showPluginNotice(t('modal.save-failed', { error: String(error) }));
 										}
 									})();
 								});
@@ -877,7 +878,7 @@ export class FloatingStickyNote extends Component {
 		this.registerDomEvent(handle, 'mousedown', (e: MouseEvent) => {
 			if (this.state.isPinned) return;
 			const target = e.target as HTMLElement;
-			if (target.tagName === 'BUTTON' || target.closest('.my-sticky-btn') || target.closest('.my-sticky-close')) return;
+			if (target.tagName === 'BUTTON' || target.closest('.wn-my-sticky-btn') || target.closest('.wn-my-sticky-close')) return;
 			
 			pos3 = e.clientX; 
 			pos4 = e.clientY;

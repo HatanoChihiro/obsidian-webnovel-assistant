@@ -39,7 +39,7 @@ export class ChapterReferencePopover extends Component {
 		else this.showTimer = this.ownerWindow.setTimeout(() => {
 			this.showTimer = null;
 			if (target.matches(':hover')) this.show(); else this.hide();
-		}, 250);
+		}, 1000); // 与设定悬浮卡片保持相同的等待时间，避免快速划过时误触
 	}
 	private cancelClose(): void {
 		if (this.closeTimer !== null) this.ownerWindow.clearTimeout(this.closeTimer);
@@ -52,8 +52,8 @@ export class ChapterReferencePopover extends Component {
 	}
 	private show(): void {
 		if (this.disposed || !this.target.isConnected || this.element) return;
-		const element = this.ownerDocument.createElement('div');
-		element.className = 'wn-reference-popover';
+		const element = this.ownerDocument.body.createDiv({ cls: 'wn-reference-popover' });
+		element.remove();
 		element.setAttribute('role', 'dialog');
 		const title = element.createDiv({ cls: 'wn-reference-popover-title', text: t('reference.popover-aria-label') });
 		title.id = 'wn-reference-title-' + ChapterReferencePopover.nextId++;
@@ -75,7 +75,7 @@ export class ChapterReferencePopover extends Component {
 			if (item.description) card.createDiv({ cls: 'wn-reference-desc', text: item.description });
 			if (item.type === 'foreshadowing' && item.note) card.createDiv({ cls: 'wn-reference-note', text: item.note });
 			const button = card.createDiv({ cls: 'wn-reference-item-actions' }).createEl('button', {
-				cls: 'wn-reference-action-link', type: 'button',
+				cls: 'wn-reference-action-link mod-cta', type: 'button',
 				text: t(item.type === 'timeline' ? 'reference.view-timeline-record' : 'reference.view-foreshadowing-record')
 			});
 			this.registerDomEvent(button, 'click', event => {

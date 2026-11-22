@@ -1,4 +1,5 @@
-import { Component, FuzzySuggestModal, MarkdownRenderer, Notice, TFile, setIcon, type App } from 'obsidian';
+import { showPluginNotice } from '../../services/PluginNoticeService';
+import { Component, FuzzySuggestModal, MarkdownRenderer, TFile, setIcon, type App } from 'obsidian';
 import type { StickyNoteState, ThemeScheme } from '../../types/settings';
 import { t } from '../../i18n';
 import { ConfirmCloseModal, SaveStickyNoteModal } from '../StickyNote';
@@ -126,7 +127,7 @@ export class StickyNoteListRenderer {
 		}
 		const dockContainer = this.container.createDiv({
 			cls: this.mode === 'immersive'
-				? 'immersive-sticky-dock webnovel-immersive-dock'
+				? 'wn-immersive-sticky-dock webnovel-immersive-dock'
 				: 'wn-sticky-note-list-grid'
 		});
 		if (this.mode === 'immersive') {
@@ -139,7 +140,7 @@ export class StickyNoteListRenderer {
 		if (notes.length === 0) {
 			dockContainer.createEl('p', {
 				text: t('immersive.no-notes-hint'),
-				cls: this.mode === 'immersive' ? 'immersive-empty-text' : 'wn-sticky-note-list-empty'
+				cls: this.mode === 'immersive' ? 'wn-immersive-empty-text' : 'wn-sticky-note-list-empty'
 			});
 			return;
 		}
@@ -232,7 +233,7 @@ export class StickyNoteListRenderer {
 		if (this.isDestroyed || this.isSelfEditing) return;
 
 		const currentNotes = this.plugin.stickyNoteManager.getNotes();
-		const dockContainer = this.container.querySelector('.immersive-sticky-dock, .wn-sticky-note-list-grid');
+		const dockContainer = this.container.querySelector('.wn-immersive-sticky-dock, .wn-sticky-note-list-grid');
 		if (!dockContainer) {
 			this.render();
 			return;
@@ -311,8 +312,8 @@ export class StickyNoteListRenderer {
 
 	private createToolbar(): HTMLElement {
 		if (this.mode === 'immersive') {
-			const hoverTrigger = this.container.createDiv({ cls: 'immersive-sticky-trigger webnovel-immersive-hover-trigger' });
-			const toolbar = this.container.createDiv({ cls: 'immersive-sticky-toolbar webnovel-immersive-toolbar' });
+			const hoverTrigger = this.container.createDiv({ cls: 'wn-immersive-sticky-trigger webnovel-immersive-hover-trigger' });
+			const toolbar = this.container.createDiv({ cls: 'wn-immersive-sticky-toolbar webnovel-immersive-toolbar' });
 
 			const showToolbar = () => this.container.addClass('is-toolbar-visible');
 			const hideToolbar = () => this.container.removeClass('is-toolbar-visible');
@@ -348,7 +349,7 @@ export class StickyNoteListRenderer {
 					.then(content => this.createNewNote(file.path, content, file.basename))
 					.catch(error => {
 						Logger.error('[StickyNoteListRenderer] 读取便签文件失败:', error);
-						new Notice(t('modal.save-failed', { error: String(error) }));
+						showPluginNotice(t('modal.save-failed', { error: String(error) }));
 					});
 			}).open();
 		};
@@ -380,7 +381,7 @@ export class StickyNoteListRenderer {
 			.then(() => {
 				if (this.isDestroyed) return;
 				this.render();
-				const dock = this.container.querySelector('.immersive-sticky-dock, .wn-sticky-note-list-grid');
+				const dock = this.container.querySelector('.wn-immersive-sticky-dock, .wn-sticky-note-list-grid');
 				const editor = dock?.querySelector<HTMLElement>(`[data-note-id="${note.id}"] .wn-sticky-note-paragraph-editor`);
 				if (editor) {
 					window.requestAnimationFrame(() => {
@@ -391,7 +392,7 @@ export class StickyNoteListRenderer {
 			.catch(error => {
 				if (this.isDestroyed) return;
 				Logger.error('[StickyNoteListRenderer] 保存便签失败:', error);
-				new Notice(t('modal.save-failed', { error: String(error) }));
+				showPluginNotice(t('modal.save-failed', { error: String(error) }));
 			});
 		void this.plugin.saveSettings();
 	}
@@ -418,7 +419,7 @@ export class StickyNoteListRenderer {
 		const noteCard = existingCard ?? dockContainer.createDiv();
 		noteCard.empty();
 
-		noteCard.className = 'immersive-sticky-card webnovel-immersive-note-card wn-sticky-note-list-card';
+		noteCard.className = 'wn-immersive-sticky-card webnovel-immersive-note-card wn-sticky-note-list-card';
 		noteCard.dataset.noteId = noteData.id;
 		noteCard.setCssStyles({ backgroundColor: noteData.color || '#FDF3B8' });
 		if (noteData.textColor) noteCard.setCssProps({ color: noteData.textColor });
@@ -426,7 +427,7 @@ export class StickyNoteListRenderer {
 		const fontSize = `${this.plugin.settings.immersive?.immersiveNoteFontSize || 14}px`;
 		noteCard.setCssProps({ '--wn-sticky-note-font-size': fontSize });
 
-		const titleEl = noteCard.createDiv({ cls: 'immersive-sticky-title webnovel-immersive-note-title' });
+		const titleEl = noteCard.createDiv({ cls: 'wn-immersive-sticky-title webnovel-immersive-note-title' });
 		titleEl.createSpan({ text: noteData.title || t('immersive.note-default-title'), cls: 'webnovel-ellipsis' });
 
 		const actionsEl = titleEl.createDiv({ cls: 'wn-sticky-note-card-actions' });
@@ -508,7 +509,7 @@ export class StickyNoteListRenderer {
 			};
 		} else {
 			const contentEl = noteCard.createDiv({
-				cls: 'my-sticky-content markdown-rendered wn-sticky-note-reading-content'
+				cls: 'wn-my-sticky-content markdown-rendered wn-sticky-note-reading-content'
 			});
 			contentEl.tabIndex = -1;
 			contentEl.setCssStyles({ fontSize });
@@ -570,7 +571,7 @@ export class StickyNoteListRenderer {
 			if (this.isDestroyed) return;
 			this.lastSavedContents.set(noteId, content);
 
-			const dock = this.container.querySelector('.immersive-sticky-dock, .wn-sticky-note-list-grid');
+			const dock = this.container.querySelector('.wn-immersive-sticky-dock, .wn-sticky-note-list-grid');
 			const existingCard = dock?.querySelector<HTMLElement>(`[data-note-id="${noteId}"]`);
 			if (dock && existingCard) {
 				this.renderNoteCard(dock as HTMLElement, updatedNote, existingCard);
@@ -578,11 +579,11 @@ export class StickyNoteListRenderer {
 				this.render();
 			}
 
-			new Notice(t('modal.note-synced'));
+			showPluginNotice(t('modal.note-synced'));
 		} catch (error) {
 			if (this.isDestroyed) return;
 			Logger.error('[StickyNoteListRenderer] 从关联文档同步便签失败:', error);
-			new Notice(t('modal.save-failed', { error: String(error) }));
+			showPluginNotice(t('modal.save-failed', { error: String(error) }));
 		}
 	}
 
@@ -596,7 +597,7 @@ export class StickyNoteListRenderer {
 		};
 		this.plugin.stickyNoteManager.updateNote(updatedNote);
 
-		const dock = this.container.querySelector('.immersive-sticky-dock, .wn-sticky-note-list-grid');
+		const dock = this.container.querySelector('.wn-immersive-sticky-dock, .wn-sticky-note-list-grid');
 		if (!dock) {
 			this.render();
 			return;
@@ -646,7 +647,7 @@ export class StickyNoteListRenderer {
 			if (this.isDestroyed) return;
 			this.lastSavedContents.set(updatedNote.id, fullContent);
 
-			const dock = this.container.querySelector('.immersive-sticky-dock, .wn-sticky-note-list-grid');
+			const dock = this.container.querySelector('.wn-immersive-sticky-dock, .wn-sticky-note-list-grid');
 			if (!dock) {
 				this.render();
 				return;
@@ -661,14 +662,14 @@ export class StickyNoteListRenderer {
 		} catch (error) {
 			if (this.isDestroyed) return;
 			Logger.error('[StickyNoteListRenderer] 完成便签编辑保存失败:', error);
-			new Notice(t('modal.save-failed', { error: String(error) }));
+			showPluginNotice(t('modal.save-failed', { error: String(error) }));
 		}
 	}
 
 	private closeNote(noteData: StickyNoteState): void {
 		const latestNote = this.plugin.stickyNoteManager.getNotes().find(note => note.id === noteData.id) || noteData;
 		const isEditing = !!latestNote.isEditing;
-		const dock = this.container.querySelector('.immersive-sticky-dock, .wn-sticky-note-list-grid');
+		const dock = this.container.querySelector('.wn-immersive-sticky-dock, .wn-sticky-note-list-grid');
 		const editor = dock?.querySelector<HTMLElement>(`[data-note-id="${latestNote.id}"] .wn-sticky-note-paragraph-editor`);
 
 		let currentContent = latestNote.content || '';
@@ -705,7 +706,7 @@ export class StickyNoteListRenderer {
 				const file = this.app.vault.getAbstractFileByPath(latestNote.filePath);
 				if (!(file instanceof TFile)) throw new Error(`Linked note file not found: ${latestNote.filePath}`);
 				await this.app.vault.process(file, () => currentContent);
-				new Notice(t('modal.note-saved'));
+				showPluginNotice(t('modal.note-saved'));
 				await performRemove();
 				return;
 			}
@@ -713,11 +714,11 @@ export class StickyNoteListRenderer {
 			new SaveStickyNoteModal(this.app, async (fileName: string, folderPath: string) => {
 				const fullPath = `${folderPath ? `${folderPath}/` : ''}${fileName.endsWith('.md') ? fileName : `${fileName}.md`}`;
 				if (this.app.vault.getAbstractFileByPath(fullPath)) {
-					new Notice(t('modal.file-already-exists', { path: fullPath }));
+					showPluginNotice(t('modal.file-already-exists', { path: fullPath }));
 					return;
 				}
 				await this.app.vault.create(fullPath, currentContent);
-				new Notice(t('modal.saved-as', { path: fullPath }));
+				showPluginNotice(t('modal.saved-as', { path: fullPath }));
 				await performRemove();
 			}).open();
 		}).open();

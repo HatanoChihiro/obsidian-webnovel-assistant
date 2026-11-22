@@ -1,5 +1,5 @@
 import { ViewPlugin, type ViewUpdate, Decoration, type DecorationSet, EditorView } from '@codemirror/view';
-import { RangeSetBuilder, StateEffect, Transaction, type Extension } from '@codemirror/state';
+import { Prec, RangeSetBuilder, StateEffect, Transaction, type Extension } from '@codemirror/state';
 import { type App, type EventRef } from 'obsidian';
 import type { ImmersiveModeSettings, EditorTypewriterSettings } from '../types/settings';
 
@@ -74,6 +74,8 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 		private ownerDocument: Document;
 		private ownerWindow: Window;
 		private leafChangeEventRef: EventRef | null = null;
+		private boundScrollTarget: HTMLElement | null = null;
+		private lastManuscriptScroller: HTMLElement | null = null;
 
 		constructor(view: EditorView) {
 			this.view = view;
@@ -82,17 +84,8 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 			this.syncDomState();
 			this.decorations = this.buildDecorations(view);
 
-			if (view.scrollDOM) {
-				view.scrollDOM.addEventListener('pointerdown', this.onPointerDown);
-				view.scrollDOM.addEventListener('mousedown', this.onPointerDown);
-				view.scrollDOM.addEventListener('wheel', this.onWheel, { passive: true });
-				view.scrollDOM.addEventListener('touchstart', this.onTouchStart, { passive: true });
-				view.scrollDOM.addEventListener('touchmove', this.onTouchMove, { passive: true });
-				view.scrollDOM.addEventListener('scroll', this.onScroll, { passive: true });
-				view.scrollDOM.addEventListener('focusout', this.onFocusLoss);
-				view.scrollDOM.addEventListener('focusin', this.onFocusIn);
-			}
-			this.ownerWindow.addEventListener('blur', this.onFocusLoss);
+			this.syncScrollListeners();
+			this.ownerWindow.addEventListener('blur', this.onWindowBlur);
 			this.ownerDocument.addEventListener('pointerup', this.onPointerUp);
 			this.ownerDocument.addEventListener('mouseup', this.onPointerUp);
 			this.ownerDocument.addEventListener('touchend', this.onPointerUp);
@@ -114,7 +107,7 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 		}
 
 		private getActiveConfig(): { isActive: boolean; centerOffset: number; unfocusedOpacity: number } {
-			const isImmersive = this.ownerDocument.body.classList.contains('immersive-mode-active');
+			const isImmersive = this.ownerDocument.body.classList.contains('wn-immersive-mode-active');
 			if (isImmersive) {
 				return {
 					isActive: Boolean(plugin.settings.immersive?.typewriterEnabled),
@@ -133,23 +126,170 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 			return this.getActiveConfig().isActive;
 		}
 
+		private getManuscriptScroller(): HTMLElement | null {
+			const closest = this.view.dom?.closest?.('.wn-manuscript-scroller');
+			return (closest as HTMLElement | null) ?? null;
+		}
+
+		private getScrollRoot(): HTMLElement | null {
+			return this.getManuscriptScroller() ?? this.view.scrollDOM ?? null;
+		}
+
+		private detachScrollListeners(target: HTMLElement | null): void {
+			if (!target || typeof target.removeEventListener !== 'function') return;
+			target.removeEventListener('pointerdown', this.onPointerDown);
+			target.removeEventListener('mousedown', this.onPointerDown);
+			target.removeEventListener('wheel', this.onWheel);
+			target.removeEventListener('touchstart', this.onTouchStart);
+			target.removeEventListener('touchmove', this.onTouchMove);
+			target.removeEventListener('scroll', this.onScroll);
+			target.removeEventListener('focusout', this.onFocusLoss);
+			target.removeEventListener('focusin', this.onFocusIn);
+		}
+
+		private syncScrollListeners(): void {
+			const target = this.getScrollRoot();
+			if (target === this.boundScrollTarget) return;
+			this.detachScrollListeners(this.boundScrollTarget);
+			this.boundScrollTarget = target;
+			if (target && typeof target.addEventListener === 'function') {
+				target.addEventListener('pointerdown', this.onPointerDown);
+				target.addEventListener('mousedown', this.onPointerDown);
+				target.addEventListener('wheel', this.onWheel, { passive: true });
+				target.addEventListener('touchstart', this.onTouchStart, { passive: true });
+				target.addEventListener('touchmove', this.onTouchMove, { passive: true });
+				target.addEventListener('scroll', this.onScroll, { passive: true });
+				target.addEventListener('focusout', this.onFocusLoss);
+				target.addEventListener('focusin', this.onFocusIn);
+			}
+		}
+
+		private clearManuscriptScrollerPadding(scroller: HTMLElement | null): boolean {
+			if (!scroller) return false;
+			let changed = false;
+			if (scroller.classList?.contains('wn-manuscript-typewriter-active')) {
+				scroller.classList.remove('wn-manuscript-typewriter-active');
+			}
+			if (scroller.style?.getPropertyValue?.('--wn-manuscript-typewriter-padding-top')) {
+				scroller.style.removeProperty('--wn-manuscript-typewriter-padding-top');
+				changed = true;
+			}
+			if (scroller.style?.getPropertyValue?.('--wn-manuscript-typewriter-padding-bottom')) {
+				scroller.style.removeProperty('--wn-manuscript-typewriter-padding-bottom');
+				changed = true;
+			}
+			return changed;
+		}
+
+		private restoreSizerPadding(sizer: HTMLElement | null): boolean {
+			const owned = sizer && sizerPadding.get(sizer);
+			if (!sizer || !owned) return false;
+			let changed = false;
+			// 仅恢复本扩展接管且仍与最近设置值一致的留白，避免覆盖其他组件后续的修改。
+			for (const [key, property, original, priority, applied, appliedPriority] of [
+				['paddingTop', 'padding-top', owned.top, owned.topPriority, owned.appliedTop, owned.appliedTopPriority],
+				['paddingBottom', 'padding-bottom', owned.bottom, owned.bottomPriority, owned.appliedBottom, owned.appliedBottomPriority]
+			] as const) {
+				if (key === 'paddingTop' && !owned.ownsTop) continue;
+				const currentPriority = sizer.style?.getPropertyPriority?.(property) ?? '';
+				if (sizer.style[key] !== applied || currentPriority !== appliedPriority) continue;
+				if (original && typeof sizer.style.setProperty === 'function') {
+					sizer.style.setProperty(property, original, priority);
+				} else {
+					sizer.style.removeProperty(property);
+					sizer.style[key] = original;
+				}
+				changed = true;
+			}
+			sizerPadding.delete(sizer);
+			return changed;
+		}
+
 		private syncDomState(): { spacerChanged: boolean; positioningChanged: boolean } {
 			if (!this.view.dom) return { spacerChanged: false, positioningChanged: false };
+			this.syncScrollListeners();
+			const manuscriptScroller = this.getManuscriptScroller();
+			const scroller = manuscriptScroller ?? this.view.scrollDOM;
 			// 全屏尺寸可能分多帧到达。留白与滚动必须在同一帧补偿，不能等全屏结束后再回滚。
 			// 读取正文子元素可同时覆盖 sizer 留白与 Banner 页的 content 留白。
-			const viewportAnchor = this.preserveViewportUntilInput && this.view.scrollDOM.scrollTop > 0
+			const viewportAnchor = (this.preserveViewportUntilInput || this.isManualScrolling) && scroller && scroller.scrollTop > 0
 				? this.view.contentDOM.firstElementChild : null;
 			const anchorTop = viewportAnchor?.getBoundingClientRect().top;
 			const config = this.getActiveConfig();
 			let spacerChanged = false;
 			const centerOffset = Math.max(-30, Math.min(30, config.centerOffset));
-			const nextPositioningKey = `${config.isActive}:${centerOffset}`;
+			const nextPositioningKey = `${config.isActive}:${centerOffset}:${manuscriptScroller ? 'manuscript' : 'single'}`;
 			const positioningChanged = this.positioningKey !== '' && this.positioningKey !== nextPositioningKey;
 			this.positioningKey = nextPositioningKey;
 
 			const sizer = (this.view.scrollDOM?.querySelector<HTMLElement>('.cm-sizer') ?? this.view.dom?.querySelector<HTMLElement>('.cm-sizer')) ?? null;
-			const hasBanner = Boolean(this.view.dom.closest?.('.pixel-banner'));
+			const hasBanner = !manuscriptScroller && Boolean(this.view.dom.closest?.('.pixel-banner'));
 
+			if (this.lastManuscriptScroller && this.lastManuscriptScroller !== manuscriptScroller) {
+				if (this.clearManuscriptScrollerPadding(this.lastManuscriptScroller)) spacerChanged = true;
+				this.lastManuscriptScroller = null;
+			}
+
+			if (manuscriptScroller) {
+				this.lastManuscriptScroller = manuscriptScroller;
+				this.view.dom.classList.remove('wn-typewriter-banner');
+				this.view.dom.style.removeProperty('--wn-typewriter-content-base-top');
+				this.view.dom.style.removeProperty('--wn-typewriter-banner-base-top');
+				if (this.view.dom.style.getPropertyValue('--wn-typewriter-padding-top')) {
+					this.view.dom.style.removeProperty('--wn-typewriter-padding-top');
+					spacerChanged = true;
+				}
+				if (this.view.dom.style.getPropertyValue('--wn-typewriter-padding-bottom')) {
+					this.view.dom.style.removeProperty('--wn-typewriter-padding-bottom');
+					spacerChanged = true;
+				}
+				if (this.restoreSizerPadding(sizer)) spacerChanged = true;
+
+				if (config.isActive) {
+					if (!this.view.dom.classList.contains('wn-typewriter-active')) {
+						this.view.dom.classList.add('wn-typewriter-active');
+					}
+					if (!this.view.dom.classList.contains('wn-typewriter-manuscript')) {
+						this.view.dom.classList.add('wn-typewriter-manuscript');
+					}
+					const currentOpacity = this.view.dom.style.getPropertyValue('--wn-typewriter-opacity');
+					const targetOpacity = String(config.unfocusedOpacity);
+					if (currentOpacity !== targetOpacity) {
+						this.view.dom.style.setProperty('--wn-typewriter-opacity', targetOpacity);
+					}
+
+					const viewportHeight = manuscriptScroller.clientHeight ?? 0;
+					if (viewportHeight > 0) {
+						const targetCenterRatio = 0.5 + (centerOffset / 100);
+						const topPadding = Math.round(viewportHeight * targetCenterRatio);
+						const bottomPadding = Math.max(0, viewportHeight - topPadding);
+						const targetTop = `${topPadding}px`;
+						const targetBottom = `${bottomPadding}px`;
+
+						manuscriptScroller.classList?.add('wn-manuscript-typewriter-active');
+						if (manuscriptScroller.style?.getPropertyValue?.('--wn-manuscript-typewriter-padding-top') !== targetTop) {
+							manuscriptScroller.style?.setProperty?.('--wn-manuscript-typewriter-padding-top', targetTop);
+							spacerChanged = true;
+						}
+						if (manuscriptScroller.style?.getPropertyValue?.('--wn-manuscript-typewriter-padding-bottom') !== targetBottom) {
+							manuscriptScroller.style?.setProperty?.('--wn-manuscript-typewriter-padding-bottom', targetBottom);
+							spacerChanged = true;
+						}
+					}
+				} else {
+					this.view.dom.classList.remove('wn-typewriter-active');
+					this.view.dom.classList.remove('wn-typewriter-manuscript');
+					this.view.dom.style.removeProperty('--wn-typewriter-opacity');
+					if (this.clearManuscriptScrollerPadding(manuscriptScroller)) spacerChanged = true;
+				}
+
+				if (spacerChanged && viewportAnchor && anchorTop !== undefined && scroller) {
+					scroller.scrollTop += viewportAnchor.getBoundingClientRect().top - anchorTop;
+				}
+				return { spacerChanged, positioningChanged };
+			}
+
+			this.view.dom.classList.remove('wn-typewriter-manuscript');
 			if (config.isActive) {
 				if (!this.view.dom.classList.contains('wn-typewriter-active')) {
 					this.view.dom.classList.add('wn-typewriter-active');
@@ -160,7 +300,6 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 					this.view.dom.style.setProperty('--wn-typewriter-opacity', targetOpacity);
 				}
 
-				const scroller = this.view.scrollDOM;
 				const viewportHeight = scroller?.clientHeight ?? 0;
 				if (viewportHeight > 0) {
 					const targetCenterRatio = 0.5 + (centerOffset / 100);
@@ -274,30 +413,13 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 					this.view.dom.style.removeProperty('--wn-typewriter-padding-bottom');
 					spacerChanged = true;
 				}
-				const owned = sizer && sizerPadding.get(sizer);
-				if (sizer && owned) {
-					// 仅恢复本扩展接管且仍与最近设置值一致的留白，避免覆盖其他组件后续的修改。
-					for (const [key, property, original, priority, applied, appliedPriority] of [
-						['paddingTop', 'padding-top', owned.top, owned.topPriority, owned.appliedTop, owned.appliedTopPriority],
-						['paddingBottom', 'padding-bottom', owned.bottom, owned.bottomPriority, owned.appliedBottom, owned.appliedBottomPriority]
-					] as const) {
-						if (key === 'paddingTop' && !owned.ownsTop) continue;
-						const currentPriority = sizer.style?.getPropertyPriority?.(property) ?? '';
-						if (sizer.style[key] !== applied || currentPriority !== appliedPriority) continue;
-						if (original && typeof sizer.style.setProperty === 'function') {
-							sizer.style.setProperty(property, original, priority);
-						} else {
-							sizer.style.removeProperty(property);
-							sizer.style[key] = original;
-						}
-						spacerChanged = true;
-					}
-					sizerPadding.delete(sizer);
+				if (this.restoreSizerPadding(sizer)) {
+					spacerChanged = true;
 				}
 			}
 
-			if (spacerChanged && viewportAnchor && anchorTop !== undefined) {
-				this.view.scrollDOM.scrollTop += viewportAnchor.getBoundingClientRect().top - anchorTop;
+			if (spacerChanged && viewportAnchor && anchorTop !== undefined && scroller) {
+				scroller.scrollTop += viewportAnchor.getBoundingClientRect().top - anchorTop;
 			}
 			return { spacerChanged, positioningChanged };
 		}
@@ -357,9 +479,11 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 
 		private isScrollbarTarget(evt?: Event): boolean {
 			if (!evt) return false;
-			const scroller = this.view.scrollDOM;
+			const scroller = this.getScrollRoot();
 			if (!scroller || typeof scroller.getBoundingClientRect !== 'function') return false;
-			const mouseEvt = evt as { clientX?: unknown; clientY?: unknown };
+			if (evt.target && evt.target !== scroller) return false;
+			const mouseEvt = evt as { clientX?: unknown; clientY?: unknown; button?: unknown };
+			if (typeof mouseEvt.button === 'number' && mouseEvt.button !== 0) return false;
 			if (typeof mouseEvt.clientX !== 'number' || typeof mouseEvt.clientY !== 'number') return false;
 			const rect = scroller.getBoundingClientRect();
 			// 确定右侧垂直滚动条的起始横坐标：优先依据真实 clientWidth，无内嵌滚动条时以右侧边缘区域判定
@@ -385,6 +509,18 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 				this.gestureScrolled = true;
 				this.cancelPendingCenter();
 				return;
+			}
+
+			const manuscriptScroller = this.getManuscriptScroller();
+			if (manuscriptScroller && target) {
+				const insideView = typeof this.view.dom?.contains === 'function' ? this.view.dom.contains(target) : true;
+				if (!insideView) {
+					this.releaseViewportFreeze();
+					this.isPointerDown = false;
+					this.gestureScrolled = true;
+					this.cancelPendingCenter();
+					return;
+				}
 			}
 
 			this.releaseViewportFreeze();
@@ -434,18 +570,24 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 			}
 		};
 
+		private onWindowBlur = (): void => {
+			this.isPointerDown = false;
+			this.onFocusLoss();
+		};
+
 		private onFocusLoss = (evt?: FocusEvent): void => {
 			if (this.preserveViewportUntilInput) {
 				this.releaseViewportFreeze();
 				this.cancelPendingCenter();
 				return;
 			}
-			if (!this.isTypewriterActive() || !this.view.scrollDOM) return;
+			const scroller = this.getScrollRoot();
+			if (!this.isTypewriterActive() || !scroller) return;
 			const related = (evt?.relatedTarget ?? null) as Element | null;
 			if (this.isSearchNavigationActive(related)) return;
 			if (this.isManualScrolling || this.isPointerDown) return;
 			if (this.frozenScrollTop === null) {
-				this.frozenScrollTop = this.view.scrollDOM.scrollTop;
+				this.frozenScrollTop = scroller.scrollTop;
 			}
 			this.cancelPendingCenter();
 			this.scheduleFrozenViewportRestore();
@@ -460,9 +602,13 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 			}
 			this.pendingPositioningRefresh = false;
 			this.releaseViewportFreeze();
-			this.isManualScrolling = false;
 			this.hasInitialCentered = true;
 			this.syncDomState();
+			if (this.isManualScrolling || this.isPointerDown) {
+				this.cancelPendingCenter();
+				return;
+			}
+			this.isManualScrolling = false;
 			if (!this.preserveViewportUntilInput) this.scheduleCenter(this.view);
 		};
 
@@ -471,9 +617,10 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 				this.releaseViewportFreeze();
 				return;
 			}
-			if (this.frozenScrollTop === null || !this.view.scrollDOM) return;
-			if (Math.abs(this.view.scrollDOM.scrollTop - this.frozenScrollTop) > 0.5) {
-				this.view.scrollDOM.scrollTop = this.frozenScrollTop;
+			const scroller = this.getScrollRoot();
+			if (this.frozenScrollTop === null || !scroller) return;
+			if (Math.abs(scroller.scrollTop - this.frozenScrollTop) > 0.5) {
+				scroller.scrollTop = this.frozenScrollTop;
 			}
 		}
 
@@ -560,17 +707,10 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 			// 布局留白。设置窗口和工作区焦点变化可能触发实例销毁，清除留白
 			// 会让仍显示在后台的正文立即上跳。仅在功能明确关闭时由
 			// syncDomState() 的 inactive 分支移除类名和内联变量。
-			if (this.view.scrollDOM) {
-				this.view.scrollDOM.removeEventListener('pointerdown', this.onPointerDown);
-				this.view.scrollDOM.removeEventListener('mousedown', this.onPointerDown);
-				this.view.scrollDOM.removeEventListener('wheel', this.onWheel);
-				this.view.scrollDOM.removeEventListener('touchstart', this.onTouchStart);
-				this.view.scrollDOM.removeEventListener('touchmove', this.onTouchMove);
-				this.view.scrollDOM.removeEventListener('scroll', this.onScroll);
-				this.view.scrollDOM.removeEventListener('focusout', this.onFocusLoss);
-				this.view.scrollDOM.removeEventListener('focusin', this.onFocusIn);
-			}
-			this.ownerWindow.removeEventListener('blur', this.onFocusLoss);
+			this.detachScrollListeners(this.boundScrollTarget);
+			this.boundScrollTarget = null;
+			this.lastManuscriptScroller = null;
+			this.ownerWindow.removeEventListener('blur', this.onWindowBlur);
 			this.ownerDocument.removeEventListener('pointerup', this.onPointerUp);
 			this.ownerDocument.removeEventListener('mouseup', this.onPointerUp);
 			this.ownerDocument.removeEventListener('touchend', this.onPointerUp);
@@ -617,8 +757,9 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 			} else if (this.isManualScrolling || this.isPointerDown) {
 				this.releaseViewportFreeze();
 			} else {
-				if (this.frozenScrollTop === null && this.view.scrollDOM && !this.isEditorActiveAndFocused(update.view)) {
-					this.frozenScrollTop = this.view.scrollDOM.scrollTop;
+				const scroller = this.getScrollRoot();
+				if (this.frozenScrollTop === null && scroller && !this.isEditorActiveAndFocused(update.view)) {
+					this.frozenScrollTop = scroller.scrollTop;
 				}
 				this.restoreFrozenViewport();
 			}
@@ -693,6 +834,42 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 			if (this.isManualScrolling || this.isPointerDown || !view.state.selection.main.empty) return;
 
 			const head = view.state.selection.main.head;
+			const manuscriptScroller = this.getManuscriptScroller();
+			if (manuscriptScroller) {
+				if (manuscriptScroller.clientHeight === 0) return;
+				this.syncDomState();
+
+				const centerOffset = Math.max(-30, Math.min(30, config.centerOffset));
+				const targetCenterPx = Math.round(manuscriptScroller.clientHeight * (0.5 + (centerOffset / 100)));
+				const scrollerRect = manuscriptScroller.getBoundingClientRect();
+				const coords = view.coordsAtPos?.(head) ?? null;
+				let caretCenterInViewport: number | null = null;
+				if (coords && (coords.bottom > coords.top || coords.top !== 0 || coords.bottom !== 0)) {
+					caretCenterInViewport = (coords.top + coords.bottom) / 2;
+				} else if (view.lineBlockAt && view.contentDOM) {
+					const contentRect = view.contentDOM.getBoundingClientRect();
+					if (contentRect.width !== 0 || contentRect.height !== 0) {
+						const block = view.lineBlockAt(head);
+						if (block.height > 0) {
+							caretCenterInViewport = contentRect.top + block.top + (block.height / 2);
+						}
+					}
+				}
+				if (caretCenterInViewport === null) return;
+
+				const delta = (caretCenterInViewport - scrollerRect.top) - targetCenterPx;
+				if (Math.abs(delta) > 0.5) {
+					const nextTop = Math.max(0, manuscriptScroller.scrollTop + delta);
+					if (typeof manuscriptScroller.scrollTo === 'function') {
+						manuscriptScroller.scrollTo({ top: nextTop, behavior: 'auto' });
+					} else {
+						manuscriptScroller.scrollTop = nextTop;
+					}
+				}
+				(view as { requestMeasure?: () => void }).requestMeasure?.();
+				return;
+			}
+
 			const scroller = view.scrollDOM;
 			if (!scroller || scroller.clientHeight === 0) return;
 
@@ -734,6 +911,11 @@ export function createTypewriterExtension(plugin: TypewriterExtensionPlugin): Ex
 	}
 
 	return ViewPlugin.fromClass(TypewriterPlugin, {
-		decorations: (v: TypewriterPlugin) => v.decorations
+		decorations: (v: TypewriterPlugin) => v.decorations,
+		// Native scrollPastEnd writes an inline content attribute. Override it through
+		// the public facet while rehosted; normal editors keep their native setting.
+		provide: () => Prec.highest(EditorView.contentAttributes.of(view =>
+			view.dom.closest('.wn-manuscript-scroller') ? { style: 'padding-bottom: 0px' } : null
+		))
 	});
 }

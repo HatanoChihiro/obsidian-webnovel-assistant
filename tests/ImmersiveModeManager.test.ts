@@ -1,9 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { TFile, type App, type WorkspaceLeaf, type WorkspaceSplit, type WorkspaceItem, type MarkdownView } from 'obsidian';
 import { ImmersiveModeManager, type ImmersiveModeManagerPlugin } from '../src/ui/ImmersiveModeManager';
+import { AccurateCountSettingTab } from '../src/ui/SettingsTab';
+import { MOBILE_IMMERSIVE_AUX_VIEW_TYPES } from '../src/constants';
+import { t } from '../src/i18n';
 import { ImmersiveReferenceManager } from '../src/services/ImmersiveReferenceManager';
 import { ImmersivePomodoroModal } from '../src/ui/ImmersivePomodoroModal';
 import { preserveTypewriterViewport } from '../src/editor/TypewriterExtension';
+import { getCurrentBookContext } from '../src/utils/path';
 import type { StateEffect } from '@codemirror/state';
 
 vi.mock('obsidian', () => {
@@ -57,24 +61,58 @@ vi.mock('obsidian', () => {
         close() {
 			(this as unknown as { onClose?: () => void }).onClose?.();
         }
+        setPlaceholder(_placeholder: string) {}
+        setInstructions(_instructions: unknown[]) {}
     }
 
     class MockSetting {
 		controlEl: MockElement;
+		_name = '';
+		_desc = '';
+		_isHeading = false;
+		_toggle?: { value: boolean; onChange?: (v: boolean) => Promise<void> | void };
+		_dropdown?: { options: Array<{ value: string; label: string }>; value: string; onChange?: (v: string) => Promise<void> | void };
+		_slider?: { min: number; max: number; step: number; value: number; onChange?: (v: number) => Promise<void> | void };
+		static instances: MockSetting[] = [];
 		constructor(public containerEl: unknown) {
 			this.controlEl = createMockElement();
+			MockSetting.instances.push(this);
 		}
-        setName() { return this; }
-        setDesc() { return this; }
-        setHeading() { return this; }
-		addSlider(cb: (slider: Record<'setLimits' | 'setValue' | 'setDynamicTooltip' | 'onChange', ReturnType<typeof vi.fn>>) => unknown) {
+        setName(name: string) { this._name = name; return this; }
+        setDesc(desc: string) { this._desc = desc; return this; }
+        setHeading() { this._isHeading = true; return this; }
+		addToggle(cb: (toggle: Record<'setValue' | 'onChange', ReturnType<typeof vi.fn>>) => unknown) {
+			const state: { value: boolean; onChange?: (v: boolean) => Promise<void> | void } = { value: false };
+			const toggle = {
+				setValue: vi.fn((v: boolean) => { state.value = v; return toggle; }),
+				onChange: vi.fn((fn: (v: boolean) => Promise<void> | void) => { state.onChange = fn; return toggle; })
+			};
+			cb(toggle);
+			this._toggle = state;
+			return this;
+		}
+		addDropdown(cb: (dropdown: Record<'addOption' | 'setValue' | 'onChange', ReturnType<typeof vi.fn>>) => unknown) {
+			const state: { options: Array<{ value: string; label: string }>; value: string; onChange?: (v: string) => Promise<void> | void } = { options: [], value: '' };
+			const dropdown = {
+				addOption: vi.fn((value: string, label: string) => { state.options.push({ value, label }); return dropdown; }),
+				setValue: vi.fn((v: string) => { state.value = v; return dropdown; }),
+				onChange: vi.fn((fn: (v: string) => Promise<void> | void) => { state.onChange = fn; return dropdown; })
+			};
+			cb(dropdown);
+			this._dropdown = state;
+			return this;
+		}
+		addSlider(cb: (slider: Record<'setLimits' | 'setValue' | 'setDynamicTooltip' | 'then' | 'onChange', ReturnType<typeof vi.fn>>) => unknown) {
+			const state: { min: number; max: number; step: number; value: number; onChange?: (v: number) => Promise<void> | void } = { min: 0, max: 0, step: 0, value: 0 };
 			const slider = {
-				setLimits: vi.fn().mockReturnThis(),
-				setValue: vi.fn().mockReturnThis(),
+				setLimits: vi.fn((min: number, max: number, step: number) => { state.min = min; state.max = max; state.step = step; return slider; }),
+				setValue: vi.fn((v: number) => { state.value = v; return slider; }),
 				setDynamicTooltip: vi.fn().mockReturnThis(),
-				onChange: vi.fn().mockReturnThis()
+				then: vi.fn((fn: (s: unknown) => void) => { fn(slider); return slider; }),
+				onChange: vi.fn((fn: (v: number) => Promise<void> | void) => { state.onChange = fn; return slider; })
 			};
 			cb(slider);
+			this._slider = state;
 			return this;
 		}
 		addButton(cb: (button: MockButton) => unknown) {
@@ -94,12 +132,18 @@ vi.mock('obsidian', () => {
 	return {
 		Notice: vi.fn(),
 		setIcon: vi.fn(),
+		requireApiVersion: vi.fn().mockReturnValue(true),
+		Platform: { isMobile: false },
 		MarkdownView: class {},
         View: class {},
 		TFile: class {},
         TFolder: class {},
         Modal: MockModal,
         FuzzySuggestModal: MockModal,
+		PluginSettingTab: class { app: unknown; plugin: unknown; containerEl: unknown; constructor(app: unknown, plugin: unknown) { this.app = app; this.plugin = plugin; this.containerEl = createMockElement(); } },
+		SearchComponent: class {},
+		Component: class {},
+		ItemView: class {},
         Setting: MockSetting,
         ToggleComponent: class {
             _value = false;
@@ -392,10 +436,13 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
     it('isImmersiveLayout detects immersive specific view types and markers', () => {
         expect(manager['isImmersiveLayout']({ type: 'immersive-chapter-list' })).toBe(true);
         expect(manager['isImmersiveLayout']({ type: 'immersive-chapter-list-view' })).toBe(true);
+        expect(manager['isImmersiveLayout']({ type: 'immersive-chapter-status-view' })).toBe(true);
         expect(manager['isImmersiveLayout']({ type: 'immersive-sticky-notes' })).toBe(true);
         expect(manager['isImmersiveLayout']({ type: 'immersive-sticky-notes-view' })).toBe(true);
         expect(manager['isImmersiveLayout']({ cls: 'immersive-reference-view' })).toBe(true);
         expect(manager['isImmersiveLayout']({ cls: 'immersive-main-editor' })).toBe(true);
+        expect(manager['isImmersiveLayout']({ cls: 'wn-immersive-reference-view' })).toBe(true);
+        expect(manager['isImmersiveLayout']({ cls: 'wn-immersive-main-editor' })).toBe(true);
         expect(manager['isImmersiveLayout']({ type: 'markdown' })).toBe(false);
     });
 
@@ -432,7 +479,7 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
         expect(otherElement.classes.has('wn-immersive-preserved-branch')).toBe(true);
         expect(mainElement.classes.has('wn-immersive-preserved-branch')).toBe(false);
         expect(mainLeaf.setViewState).toHaveBeenCalled();
-        expect(mainLeaf.containerEl.classList.add).toHaveBeenCalledWith('immersive-main-editor');
+        expect(mainLeaf.containerEl.classList.add).toHaveBeenCalledWith('wn-immersive-main-editor');
     });
 
     it('restores editor focus and viewport without rebuilding or replacing its selection', async () => {
@@ -504,11 +551,11 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
         mockActiveDocument.body.classList.contains = vi.fn((name: string) => classes.has(name));
         mockActiveDocument.body.classList.add = vi.fn((name: string) => {
             classes.add(name);
-            if (name === 'immersive-mode-active') header = 300;
+            if (name === 'wn-immersive-mode-active') header = 300;
         });
         mockActiveDocument.body.classList.remove = vi.fn((name: string) => {
             classes.delete(name);
-            if (name === 'immersive-mode-active') header = 0;
+            if (name === 'wn-immersive-mode-active') header = 0;
         });
         const cm = {
             scrollDOM: { clientHeight: 800, get scrollTop() { return scroll; }, getBoundingClientRect: () => ({ top: 0, left: 0 }) },
@@ -1388,7 +1435,7 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
         await manager['buildImmersiveLayout'](targetFile);
 
         expect(mainLeaf.setViewState).not.toHaveBeenCalled();
-        expect(mainLeaf.containerEl.classList.add).toHaveBeenCalledWith('immersive-main-editor');
+        expect(mainLeaf.containerEl.classList.add).toHaveBeenCalledWith('wn-immersive-main-editor');
     });
 
     it('buildImmersiveLayout builds skeleton first and schedules auxiliary mounts asynchronously', async () => {
@@ -1433,7 +1480,7 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
         expect((mockPlugin.app.workspace.setActiveLeaf as unknown as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith(mainLeaf, { focus: true });
         // 辅助叶子骨架已打上对应类名与 pending 状态类
         expect(auxLeaf.containerEl.classList.add).toHaveBeenCalledWith('webnovel-immersive-slot-vertical');
-        expect(auxLeaf.containerEl.classList.add).toHaveBeenCalledWith('immersive-reference-view');
+        expect(auxLeaf.containerEl.classList.add).toHaveBeenCalledWith('wn-immersive-reference-view');
         expect(auxLeaf.containerEl.classList.add).toHaveBeenCalledWith('is-immersive-slot-pending');
 
         // 此时 buildImmersiveLayout 刚返回，辅助视图尚未在同步调用栈中被阻塞挂载
@@ -1738,7 +1785,7 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
 
     it('exitImmersiveMode cleans up body classes and triggers workspace.updateOptions and active cm dispatch', async () => {
         manager['isImmersiveActive'] = true;
-        mockActiveDocument.body.classList.contains = vi.fn((cls: string) => cls === 'immersive-mode-active');
+        mockActiveDocument.body.classList.contains = vi.fn((cls: string) => cls === 'wn-immersive-mode-active');
 
         const mockDispatch = vi.fn();
         const mockActiveView = {
@@ -1751,8 +1798,8 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
         await manager.exitImmersiveMode();
 
         // 1. cleanup 移除沉浸模式与打字机类名、重置 CSS 变量
-        expect(mockActiveDocument.body.classList.remove).toHaveBeenCalledWith('immersive-mode-active');
-        expect(mockActiveDocument.body.classList.remove).toHaveBeenCalledWith('immersive-hide-properties');
+        expect(mockActiveDocument.body.classList.remove).toHaveBeenCalledWith('wn-immersive-mode-active');
+        expect(mockActiveDocument.body.classList.remove).toHaveBeenCalledWith('wn-immersive-hide-properties');
         expect(mockActiveDocument.body.classList.remove).toHaveBeenCalledWith('wn-typewriter-active');
         expect(mockActiveDocument.body.setCssProps).toHaveBeenCalledWith({ '--wn-typewriter-opacity': 'unset' });
 
@@ -1768,7 +1815,7 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
     it('cleanup standalone (destroy) does not trigger workspace.updateOptions', () => {
         manager.cleanup();
 
-        expect(mockActiveDocument.body.classList.remove).toHaveBeenCalledWith('immersive-mode-active');
+        expect(mockActiveDocument.body.classList.remove).toHaveBeenCalledWith('wn-immersive-mode-active');
         expect(mockPlugin.app.workspace.updateOptions).not.toHaveBeenCalled();
     });
 
@@ -1807,7 +1854,7 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
     it('ordinary exit does not mutate configured top size with transient DOM measurements', async () => {
         mockPlugin.settings.immersive.immersiveTopSize = 25;
         manager['isImmersiveActive'] = true;
-        (mockActiveDocument.body.classList.contains as unknown as ReturnType<typeof vi.fn>).mockImplementation((cls: string) => cls === 'immersive-mode-active');
+        (mockActiveDocument.body.classList.contains as unknown as ReturnType<typeof vi.fn>).mockImplementation((cls: string) => cls === 'wn-immersive-mode-active');
 
         // 直接挂载具有 35% 瞬态 DOM 高度的 activeTopLeaf，验证退出不执行 saveCurrentPanelSizes
         manager['activeTopLeaf'] = createMockSplitLeaf('horizontal', 1000, 350);
@@ -1827,7 +1874,7 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
             { offsetHeight: 350, offsetWidth: 600 }
         ]);
         manager['isImmersiveActive'] = true;
-        (mockActiveDocument.body.classList.contains as unknown as ReturnType<typeof vi.fn>).mockImplementation((cls: string) => cls === 'immersive-mode-active');
+        (mockActiveDocument.body.classList.contains as unknown as ReturnType<typeof vi.fn>).mockImplementation((cls: string) => cls === 'wn-immersive-mode-active');
         manager['registerImmersiveEventListeners']();
 
         const saveSettingsSpy = mockPlugin.saveSettings as unknown as ReturnType<typeof vi.fn>;
@@ -1855,7 +1902,7 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
         saveSettingsSpy.mockClear();
 
         manager['isImmersiveActive'] = true;
-        (mockActiveDocument.body.classList.contains as unknown as ReturnType<typeof vi.fn>).mockImplementation((cls: string) => cls === 'immersive-mode-active');
+        (mockActiveDocument.body.classList.contains as unknown as ReturnType<typeof vi.fn>).mockImplementation((cls: string) => cls === 'wn-immersive-mode-active');
         manager['registerImmersiveEventListeners']();
 
         // 模拟点击编辑器普通元素（非调节手柄）
@@ -1879,7 +1926,7 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
                 classList: {
                     add: vi.fn(),
                     remove: vi.fn(),
-                    contains: vi.fn((cls: string) => cls === 'immersive-main-editor')
+                    contains: vi.fn((cls: string) => cls === 'wn-immersive-main-editor')
                 },
                 addEventListener: vi.fn(),
                 removeEventListener: vi.fn()
@@ -1929,11 +1976,14 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
             const activeModal = manager['activePomodoroModal'];
             expect(activeModal).not.toBeNull();
             expect(manager['pomodoroDeadline']).toBeNull();
+            expect(mockPlugin.stopTracking).toHaveBeenCalledTimes(1);
+            expect(mockPlugin.startTracking).not.toHaveBeenCalled();
 
             // Advance further and check again on subsequent ticks: must not duplicate
             vi.spyOn(Date, 'now').mockReturnValue(deadline + 5000);
             manager['checkPomodoroReminder']();
             expect(manager['activePomodoroModal']).toBe(activeModal);
+            expect(mockPlugin.stopTracking).toHaveBeenCalledTimes(1);
 
             manager.cleanup();
         });
@@ -1963,6 +2013,8 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
             expect(manager['isPomodoroDismissed']).toBe(true);
             expect(manager['pomodoroDeadline']).toBeNull();
             expect(mockEditorFocus).toHaveBeenCalled();
+            expect(mockPlugin.stopTracking).toHaveBeenCalledTimes(1);
+            expect(mockPlugin.startTracking).not.toHaveBeenCalled();
 
             // Advance time: no more reminders should trigger during this session
             vi.spyOn(Date, 'now').mockReturnValue(baseTime + 120 * 60 * 1000);
@@ -1987,6 +2039,8 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
             manager['checkPomodoroReminder']();
             const modal = manager['activePomodoroModal']!;
             expect(modal).not.toBeNull();
+            expect(mockPlugin.stopTracking).toHaveBeenCalledTimes(1);
+            expect(mockPlugin.startTracking).not.toHaveBeenCalled();
 
             // User pauses/rests until clickTime = 3,500,000 before clicking "开启下一轮"
             const clickTime = 3_500_000;
@@ -1996,6 +2050,7 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
 
             expect(manager['activePomodoroModal']).toBeNull();
             expect(manager['isPomodoroDismissed']).toBe(false);
+            expect(mockPlugin.startTracking).toHaveBeenCalledTimes(1);
             // Next deadline must be based on clickTime, not the previous expiry time
             const expectedNextDeadline = clickTime + 30 * 60 * 1000;
             expect(manager['pomodoroDeadline']).toBe(expectedNextDeadline);
@@ -2009,6 +2064,7 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
             vi.spyOn(Date, 'now').mockReturnValue(expectedNextDeadline);
             manager['checkPomodoroReminder']();
             expect(manager['activePomodoroModal']).not.toBeNull();
+            expect(mockPlugin.stopTracking).toHaveBeenCalledTimes(2);
 
             manager.cleanup();
         });
@@ -2087,6 +2143,7 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
 
         it('executes pomodoro expiry check on top-bar tick even if task reading fails', async () => {
             manager['createTopBar']();
+            expect(manager['topBarEl']?.className).toBe('wn-immersive-top-bar');
             mockPlugin.settings.immersive.pomodoroEnabled = true;
             mockPlugin.settings.immersive.immersiveShowTaskProgress = true;
             manager['isImmersiveActive'] = true;
@@ -2384,7 +2441,7 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
                     refLeafView.file = file;
                 }),
                 containerEl: {
-                    classList: { add: vi.fn(), remove: vi.fn(), contains: (cls: string) => cls === 'immersive-reference-view' },
+                    classList: { add: vi.fn(), remove: vi.fn(), contains: (cls: string) => cls === 'wn-immersive-reference-view' },
                     ownerDocument: mockActiveDocument,
                     querySelector: vi.fn().mockReturnValue(null),
                     createDiv: vi.fn(() => ({
@@ -2471,7 +2528,7 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
                     refLeafView.file = file;
                 }),
                 containerEl: {
-                    classList: { add: vi.fn(), remove: vi.fn(), contains: (cls: string) => cls === 'immersive-reference-view' },
+                    classList: { add: vi.fn(), remove: vi.fn(), contains: (cls: string) => cls === 'wn-immersive-reference-view' },
                     ownerDocument: mockActiveDocument,
                     querySelector: vi.fn().mockReturnValue(null),
                     createDiv: vi.fn(() => ({
@@ -2507,7 +2564,7 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
             const refLeaf = {
                 openFile: vi.fn().mockRejectedValue(new Error('EACCES: permission denied')),
                 containerEl: {
-                    classList: { add: vi.fn(), remove: vi.fn(), contains: (cls: string) => cls === 'immersive-reference-view' },
+                    classList: { add: vi.fn(), remove: vi.fn(), contains: (cls: string) => cls === 'wn-immersive-reference-view' },
                     ownerDocument: mockActiveDocument,
                     querySelector: vi.fn().mockReturnValue(null)
                 }
@@ -2546,7 +2603,7 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
                 }),
                 setViewState: vi.fn().mockResolvedValue(undefined),
                 containerEl: {
-                    classList: { add: vi.fn(), remove: vi.fn(), contains: (cls: string) => cls === 'immersive-reference-view' },
+                    classList: { add: vi.fn(), remove: vi.fn(), contains: (cls: string) => cls === 'wn-immersive-reference-view' },
                     ownerDocument: mockActiveDocument,
                     querySelector: vi.fn().mockReturnValue(null),
                     createDiv: vi.fn(() => ({
@@ -2569,7 +2626,7 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
                     file: currentFile,
                     getViewType: () => 'markdown'
                 },
-                containerEl: { classList: { contains: (c: string) => c === 'immersive-main-editor' } }
+                containerEl: { classList: { contains: (c: string) => c === 'wn-immersive-main-editor' } }
             } as unknown as WorkspaceLeaf;
             manager['getMainEditorLeaf'] = vi.fn().mockReturnValue(mainLeaf);
 
@@ -2609,7 +2666,7 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
             const refLeaf = {
                 openFile: vi.fn().mockReturnValue(pendingPromise),
                 containerEl: {
-                    classList: { add: vi.fn(), remove: vi.fn(), contains: (cls: string) => cls === 'immersive-reference-view' },
+                    classList: { add: vi.fn(), remove: vi.fn(), contains: (cls: string) => cls === 'wn-immersive-reference-view' },
                     ownerDocument: mockActiveDocument,
                     querySelector: vi.fn().mockReturnValue(null)
                 }
@@ -2690,7 +2747,7 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
             const refLeaf = {
                 containerEl: {
                     classList: {
-                        contains: (cls: string) => cls === 'immersive-reference-view',
+                        contains: (cls: string) => cls === 'wn-immersive-reference-view',
                         add: vi.fn(),
                         remove: vi.fn()
                     },
@@ -2723,7 +2780,7 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
             const leaf = {
                 view: { file: reference, getViewType: () => 'markdown' },
                 containerEl: {
-                    classList: { contains: (cls: string) => cls === 'immersive-reference-view' },
+                    classList: { contains: (cls: string) => cls === 'wn-immersive-reference-view' },
                     ownerDocument: mockActiveDocument,
                     querySelector: vi.fn(() => host)
                 }
@@ -3305,7 +3362,7 @@ describe('ImmersiveModeManager - Auxiliary Regions Collapse and Global Toggle', 
     it('collapses multi-slot top region branch as a unit and toggles handle and restore button', async () => {
         manager['isImmersiveActive'] = true;
 
-        const mainLeafEl = createAuxElement('immersive-main-editor');
+        const mainLeafEl = createAuxElement('wn-immersive-main-editor');
         const mainLeaf = {
             containerEl: mainLeafEl,
             view: { file: new TFile(), getViewType: () => 'markdown' },
@@ -3383,7 +3440,7 @@ describe('ImmersiveModeManager - Auxiliary Regions Collapse and Global Toggle', 
 
     it('safely handles empty region with zero slots without creating handles or crashing', async () => {
         manager['isImmersiveActive'] = true;
-        const mainLeafEl = createAuxElement('immersive-main-editor');
+        const mainLeafEl = createAuxElement('wn-immersive-main-editor');
         manager['activeMainLeaf'] = { containerEl: mainLeafEl } as unknown as WorkspaceLeaf;
 
         // Bottom has 0 slots
@@ -3398,7 +3455,7 @@ describe('ImmersiveModeManager - Auxiliary Regions Collapse and Global Toggle', 
 
     it('global toggle hides all regions and removes individual restore buttons; second toggle restores visible regions', async () => {
         manager['isImmersiveActive'] = true;
-        const mainLeafEl = createAuxElement('immersive-main-editor');
+        const mainLeafEl = createAuxElement('wn-immersive-main-editor');
         const mainLeaf = { containerEl: mainLeafEl, setDimension: vi.fn() } as unknown as WorkspaceLeaf;
         manager['activeMainLeaf'] = mainLeaf;
 
@@ -3469,7 +3526,7 @@ describe('ImmersiveModeManager - Auxiliary Regions Collapse and Global Toggle', 
 
     it('repeated collapse and restore toggles cause no geometry loss or dimension contamination', async () => {
         manager['isImmersiveActive'] = true;
-        const mainLeafEl = createAuxElement('immersive-main-editor');
+        const mainLeafEl = createAuxElement('wn-immersive-main-editor');
         const mainLeaf = { containerEl: mainLeafEl, setDimension: vi.fn() } as unknown as WorkspaceLeaf;
         manager['activeMainLeaf'] = mainLeaf;
 
@@ -3508,7 +3565,7 @@ describe('ImmersiveModeManager - Auxiliary Regions Collapse and Global Toggle', 
         mockPlugin.settings.immersive.collapsedRegions.left = true;
         mockPlugin.settings.immersive.collapsedRegions.right = false;
 
-        const mainLeafEl = createAuxElement('immersive-main-editor');
+        const mainLeafEl = createAuxElement('wn-immersive-main-editor');
         const mainLeaf = { containerEl: mainLeafEl } as unknown as WorkspaceLeaf;
 
         const rightEl = createAuxElement('workspace-leaf');
@@ -3539,7 +3596,7 @@ describe('ImmersiveModeManager - Auxiliary Regions Collapse and Global Toggle', 
 
     it('restores focus to main editor when search source leaf inside collapsed region is hidden', async () => {
         manager['isImmersiveActive'] = true;
-        const mainLeafEl = createAuxElement('immersive-main-editor');
+        const mainLeafEl = createAuxElement('wn-immersive-main-editor');
         const mainLeaf = {
             containerEl: mainLeafEl,
             view: {
@@ -3583,7 +3640,7 @@ describe('ImmersiveModeManager - Auxiliary Regions Collapse and Global Toggle', 
         manager['isImmersiveActive'] = true;
         mockPlugin.settings.immersive.collapsedRegions.top = true;
 
-        const mainLeafEl = createAuxElement('immersive-main-editor');
+        const mainLeafEl = createAuxElement('wn-immersive-main-editor');
         const mainLeaf = { containerEl: mainLeafEl, setDimension: vi.fn() } as unknown as WorkspaceLeaf;
         manager['activeMainLeaf'] = mainLeaf;
 
@@ -3633,7 +3690,7 @@ describe('ImmersiveModeManager - Auxiliary Regions Collapse and Global Toggle', 
         mockPlugin.settings.immersive.immersiveTopSlots = ['immersive-chapter-list'];
         mockPlugin.settings.immersive.immersiveTopSize = 25;
 
-        const mainLeafEl = createAuxElement('immersive-main-editor');
+        const mainLeafEl = createAuxElement('wn-immersive-main-editor');
         const mainLeaf = { containerEl: mainLeafEl, setDimension: vi.fn() } as unknown as WorkspaceLeaf;
         manager['activeMainLeaf'] = mainLeaf;
 
@@ -3683,7 +3740,7 @@ describe('ImmersiveModeManager - Auxiliary Regions Collapse and Global Toggle', 
         manager['isImmersiveActive'] = true;
         mockPlugin.settings.immersive.collapsedRegions.right = false;
 
-        const mainLeafEl = createAuxElement('immersive-main-editor');
+        const mainLeafEl = createAuxElement('wn-immersive-main-editor');
         const mainLeaf = {
             containerEl: mainLeafEl,
             view: {
@@ -3727,5 +3784,2816 @@ describe('ImmersiveModeManager - Auxiliary Regions Collapse and Global Toggle', 
         expect(manager.getSearchSourceLeaf()).toBe(mainLeaf);
     });
 
+    it('sanitizeNormalWorkspace detaches leftover immersive-chapter-status-view leaves', () => {
+        const leftoverLeaf = { detach: vi.fn() } as unknown as WorkspaceLeaf;
+        vi.mocked(mockPlugin.app.workspace.getLeavesOfType).mockImplementation((type: string) =>
+            type === 'immersive-chapter-status-view' ? [leftoverLeaf] : []
+        );
 
+        manager['isImmersiveActive'] = false;
+        manager.sanitizeNormalWorkspace();
+
+        expect(leftoverLeaf.detach).toHaveBeenCalledTimes(1);
+    });
+
+    it('refreshImmersiveChapterStatusViews updates immersive-chapter-status-view without touching ordinary status view', () => {
+        const chapterStatusUpdate = vi.fn();
+        const ordinaryStatusUpdate = vi.fn();
+        const chapterStatusLeaf = { view: { updateData: chapterStatusUpdate } } as unknown as WorkspaceLeaf;
+        const ordinaryStatusLeaf = { view: { updateData: ordinaryStatusUpdate } } as unknown as WorkspaceLeaf;
+
+        vi.mocked(mockPlugin.app.workspace.getLeavesOfType).mockImplementation((type: string) => {
+            if (type === 'immersive-chapter-status-view') return [chapterStatusLeaf];
+            if (type === 'writing-status-view') return [ordinaryStatusLeaf];
+            return [];
+        });
+
+        manager['refreshImmersiveChapterStatusViews']();
+
+        expect(chapterStatusUpdate).toHaveBeenCalledWith(true);
+        expect(ordinaryStatusUpdate).not.toHaveBeenCalled();
+    });
+});
+
+describe('ImmersiveModeManager - Mobile immersive lifecycle, lock/geometry and isolation', () => {
+    it('enters and exits mobile immersive without desktop fullscreen/splits and follows desktop focus tracking', async () => {
+        const { Platform, MarkdownView: MockMarkdownView } = await import('obsidian');
+        const originalIsMobile = Platform.isMobile;
+        Platform.isMobile = true;
+
+        try {
+            const bodyClasses = new Set<string>(['is-phone']);
+            const cssProps: Record<string, string> = {};
+            const appendedChildren: unknown[] = [];
+            const makeEl = (tag = 'div', cls = ''): Record<string, unknown> => {
+                const classes = new Set<string>(cls ? cls.split(/\s+/).filter(Boolean) : []);
+                const listeners = new Map<string, Array<(e: unknown) => void>>();
+                const attrs = new Map<string, string>();
+                const children: Array<Record<string, unknown>> = [];
+                const el: Record<string, unknown> = {
+                    tagName: tag.toUpperCase(),
+                    className: cls,
+                    style: {},
+                    hidden: false,
+                    textContent: '',
+                    innerText: '',
+                    value: '',
+                    offsetWidth: 320,
+                    offsetHeight: 44,
+                    children,
+                    parentElement: null as Record<string, unknown> | null,
+                    ownerDocument: null as unknown,
+                    classList: {
+                        add: (...names: string[]) => names.forEach(n => classes.add(n)),
+                        remove: (...names: string[]) => names.forEach(n => classes.delete(n)),
+                        contains: (name: string) => classes.has(name),
+                        toggle: (name: string, force?: boolean) => {
+                            const next = force ?? !classes.has(name);
+                            if (next) classes.add(name);
+                            else classes.delete(name);
+                            return next;
+                        }
+                    },
+                    addClass: (...names: string[]) => names.forEach(n => classes.add(n)),
+                    removeClass: (...names: string[]) => names.forEach(n => classes.delete(n)),
+                    hasClass: (name: string) => classes.has(name),
+                    setCssProps: (props: Record<string, string>) => Object.assign(cssProps, props),
+                    setCssStyles: (styles: Record<string, string>) => Object.assign(el.style as Record<string, string>, styles),
+                    setAttribute: (k: string, v: string) => attrs.set(k, v),
+                    getAttribute: (k: string) => attrs.get(k) ?? null,
+                    removeAttribute: (k: string) => attrs.delete(k),
+                    show: () => { el.hidden = false; classes.delete('is-hidden'); },
+                    hide: () => { el.hidden = true; },
+                    isShown: () => !el.hidden,
+                    empty: () => { children.length = 0; },
+                    remove: () => {
+                        const parent = el.parentElement as { children?: unknown[] } | null;
+                        if (parent?.children) {
+                            const idx = parent.children.indexOf(el);
+                            if (idx >= 0) parent.children.splice(idx, 1);
+                        }
+                        el.parentElement = null;
+                    },
+                    appendChild: (child: Record<string, unknown>) => {
+                        child.parentElement = el;
+                        children.push(child);
+                        return child;
+                    },
+                    insertBefore: (child: Record<string, unknown>) => {
+                        child.parentElement = el;
+                        children.push(child);
+                        return child;
+                    },
+                    contains: (node: unknown) => node === el || children.includes(node as Record<string, unknown>),
+                    addEventListener: (evt: string, fn: (e: unknown) => void) => {
+                        const arr = listeners.get(evt) ?? [];
+                        arr.push(fn);
+                        listeners.set(evt, arr);
+                    },
+                    removeEventListener: (evt: string, fn: (e: unknown) => void) => {
+                        const arr = listeners.get(evt) ?? [];
+                        listeners.set(evt, arr.filter(h => h !== fn));
+                    },
+                    dispatchEvent: (evt: string, payload?: unknown) => {
+                        for (const fn of listeners.get(evt) ?? []) fn(payload);
+                    },
+                    querySelector: () => null,
+                    querySelectorAll: () => [],
+                    getElementsByClassName: () => [],
+                    createDiv: (opts?: string | { cls?: string; text?: string }) => {
+                        const c = typeof opts === 'string' ? opts : (opts?.cls || '');
+                        const child = makeEl('div', c);
+                        if (typeof opts === 'object' && opts?.text) child.textContent = opts.text;
+                        child.ownerDocument = el.ownerDocument;
+                        (el.appendChild as (n: Record<string, unknown>) => unknown)(child);
+                        return child;
+                    },
+                    createSpan: (opts?: string | { cls?: string; text?: string }) => {
+                        const c = typeof opts === 'string' ? opts : (opts?.cls || '');
+                        const child = makeEl('span', c);
+                        if (typeof opts === 'object' && opts?.text) child.textContent = opts.text;
+                        child.ownerDocument = el.ownerDocument;
+                        (el.appendChild as (n: Record<string, unknown>) => unknown)(child);
+                        return child;
+                    },
+                    createEl: (t: string, opts?: { cls?: string; text?: string; attr?: Record<string, string> }) => {
+                        const child = makeEl(t, opts?.cls || '');
+                        if (opts?.text) child.textContent = opts.text;
+                        if (opts?.attr) {
+                            for (const [k, v] of Object.entries(opts.attr)) {
+                                (child.setAttribute as (a: string, b: string) => void)(k, v);
+                            }
+                        }
+                        child.ownerDocument = el.ownerDocument;
+                        (el.appendChild as (n: Record<string, unknown>) => unknown)(child);
+                        return child;
+                    }
+                };
+                return el;
+            };
+
+            const mockWin = {
+                innerWidth: 390,
+                innerHeight: 844,
+                visualViewport: {
+                    width: 390,
+                    height: 844,
+                    offsetTop: 0,
+                    offsetLeft: 0,
+                    addEventListener: vi.fn(),
+                    removeEventListener: vi.fn()
+                },
+                addEventListener: vi.fn(),
+                removeEventListener: vi.fn(),
+                requestAnimationFrame: vi.fn((fn: () => void) => { fn(); return 1; }),
+                cancelAnimationFrame: vi.fn(),
+                setTimeout,
+                clearTimeout,
+                setInterval,
+                clearInterval
+            };
+
+            const bodyEl = makeEl('body', 'is-phone');
+            (bodyEl.classList as { add: (...n: string[]) => void; remove: (...n: string[]) => void; contains: (n: string) => boolean }).add = (...n) => n.forEach(x => bodyClasses.add(x));
+            (bodyEl.classList as { add: (...n: string[]) => void; remove: (...n: string[]) => void; contains: (n: string) => boolean }).remove = (...n) => n.forEach(x => bodyClasses.delete(x));
+            (bodyEl.classList as { add: (...n: string[]) => void; remove: (...n: string[]) => void; contains: (n: string) => boolean }).contains = (n) => bodyClasses.has(n);
+            const origAppend = bodyEl.appendChild as (child: Record<string, unknown>) => Record<string, unknown>;
+            bodyEl.appendChild = (child: Record<string, unknown>) => {
+                appendedChildren.push(child);
+                return origAppend(child);
+            };
+
+            const mockDoc = {
+                body: bodyEl,
+                defaultView: mockWin,
+                documentElement: {
+                    requestFullscreen: vi.fn().mockResolvedValue(undefined)
+                },
+                fullscreenElement: null,
+                exitFullscreen: vi.fn().mockResolvedValue(undefined),
+                activeElement: null,
+                addEventListener: vi.fn(),
+                removeEventListener: vi.fn()
+            };
+            bodyEl.ownerDocument = mockDoc;
+
+            (globalThis as Record<string, unknown>).activeDocument = mockDoc;
+            (globalThis as Record<string, unknown>).window = mockWin;
+            (globalThis as Record<string, unknown>).createDiv = (opts?: string | { cls?: string }) => {
+                const el = makeEl('div', typeof opts === 'string' ? opts : (opts?.cls || ''));
+                el.ownerDocument = mockDoc;
+                return el;
+            };
+
+            const chapterFile = Object.assign(new TFile(), { path: 'Novels/BookA/Chapter1.md', basename: 'Chapter1', extension: 'md' });
+            const mainContainer = makeEl('div', 'workspace-leaf');
+            mainContainer.ownerDocument = mockDoc;
+            const mainView = Object.assign(Object.create(MockMarkdownView.prototype), {
+                file: chapterFile,
+                getViewType: () => 'markdown',
+                editor: {
+                    cm: { dispatch: vi.fn(), requestMeasure: vi.fn(), focus: vi.fn() },
+                    focus: vi.fn(),
+                    getScrollInfo: () => ({ top: 0, left: 0 }),
+                    listSelections: () => []
+                },
+                containerEl: mainContainer
+            });
+            const mainLeaf = {
+                id: 'main-1',
+                active: true,
+                view: mainView,
+                containerEl: mainContainer,
+                getViewState: () => ({ type: 'markdown', state: { file: chapterFile.path, mode: 'source' } }),
+                setViewState: vi.fn().mockResolvedValue(undefined)
+            } as unknown as WorkspaceLeaf;
+
+            const createdRightLeaves: Array<{ detach: ReturnType<typeof vi.fn> }> = [];
+            const mockMobileFloatingStats = { update: vi.fn() };
+            const desktopLeftSlots = ['immersive-chapter-list-view'];
+            const desktopRightSlots = ['reference-view'];
+
+            const mockPlugin = {
+                app: {
+                    workspace: {
+                        getActiveViewOfType: vi.fn().mockReturnValue(mainView),
+                        getLeavesOfType: vi.fn((type: string) => type === 'markdown' ? [mainLeaf] : []),
+                        iterateAllLeaves: vi.fn((cb: (l: WorkspaceLeaf) => void) => cb(mainLeaf)),
+                        getRightLeaf: vi.fn(() => {
+                            const c = makeEl('div', 'workspace-leaf');
+                            c.ownerDocument = mockDoc;
+                            const leaf = {
+                                containerEl: c,
+                                view: { getViewType: () => 'empty' },
+                                setViewState: vi.fn().mockResolvedValue(undefined),
+                                openFile: vi.fn().mockResolvedValue(undefined),
+                                detach: vi.fn()
+                            };
+                            createdRightLeaves.push(leaf);
+                            return leaf;
+                        }),
+                        createLeafBySplit: vi.fn(),
+                        getLayout: vi.fn().mockReturnValue({ main: true }),
+                        changeLayout: vi.fn().mockResolvedValue(undefined),
+                        setActiveLeaf: vi.fn(),
+                        updateOptions: vi.fn(),
+                        on: vi.fn().mockReturnValue({ id: 'ev' }),
+                        offref: vi.fn(),
+                        trigger: vi.fn()
+                    },
+                    vault: {
+                        getName: () => 'TestVault',
+                        getAbstractFileByPath: vi.fn((p: string) => p === chapterFile.path ? chapterFile : null),
+                        on: vi.fn().mockReturnValue({ id: 'vev' }),
+                        offref: vi.fn()
+                    },
+                    metadataCache: {
+                        getFileCache: vi.fn().mockReturnValue({ headings: [{ heading: 'Section One', level: 2, position: { start: { line: 3, col: 0, offset: 10 }, end: { line: 3, col: 14, offset: 24 } } }] }),
+                        on: vi.fn().mockReturnValue({ id: 'mev' }),
+                        offref: vi.fn()
+                    },
+                    commands: { executeCommandById: vi.fn() }
+                },
+                isTracking: false,
+                focusMs: 0,
+                mobileFloatingStats: mockMobileFloatingStats,
+                settings: {
+                    _savedImmersiveLayout: null,
+                    workspaceFolders: [],
+                    immersive: {
+                        immersiveTopSlots: [],
+                        immersiveBottomSlots: [],
+                        immersiveLeftSlots: [...desktopLeftSlots],
+                        immersiveRightSlots: [...desktopRightSlots],
+                        immersiveTopSize: 20,
+                        immersiveBottomSize: 20,
+                        immersiveLeftSize: 20,
+                        immersiveRightSize: 20,
+                        immersiveTopInternalSizes: [],
+                        immersiveBottomInternalSizes: [],
+                        immersiveLeftInternalSizes: [],
+                        immersiveRightInternalSizes: [],
+                        collapsedRegions: { top: false, bottom: false, left: false, right: false },
+                        allRegionsHidden: false,
+                        immersiveHideProperties: true,
+                        typewriterEnabled: true,
+                        typewriterCenterOffset: 0,
+                        typewriterUnfocusedOpacity: 0.4,
+                        pomodoroEnabled: false,
+                        pomodoroInterval: 30,
+                        manuscriptModeEnabled: false,
+                        mobileAuxPanel: {
+                            viewType: 'outline',
+                            isOpen: false,
+                            isMinimized: false,
+                            isLocked: false,
+                            x: 16,
+                            y: 64,
+                            width: 300,
+                            height: 280
+                        }
+                    }
+                },
+                stickyNoteManager: {
+                    syncActiveNotesToManager: vi.fn(),
+                    getNotes: vi.fn().mockReturnValue([]),
+                    saveNotes: vi.fn().mockResolvedValue(undefined),
+                    syncFloatingNotes: vi.fn()
+                },
+                statisticsManager: {
+                    getCoreStats: vi.fn().mockReturnValue({
+                        totalTime: '00:00:00',
+                        focusTime: '00:00:00',
+                        slackTime: '00:00:00',
+                        todayWords: 500,
+                        goal: 2000,
+                        percent: 25,
+                        dailyWords: 500,
+                        dailyGoal: 5000,
+                        sessionWords: 0,
+                        sessionSpeed: 0
+                    }),
+                    getSessionSpeed: vi.fn().mockReturnValue(0)
+                },
+                adaptiveDebounceManager: { debounceFixed: vi.fn() },
+                startTracking: vi.fn(),
+                stopTracking: vi.fn(),
+                saveSettings: vi.fn().mockResolvedValue(undefined),
+                settingsManager: { flush: vi.fn().mockResolvedValue(undefined) }
+            } as unknown as ImmersiveModeManagerPlugin;
+
+            mockPlugin.immersiveReferenceManager = new ImmersiveReferenceManager(mockPlugin.app, mockPlugin);
+            const mgr = new ImmersiveModeManager(mockPlugin.app, mockPlugin);
+
+            await mgr.toggleImmersiveMode();
+
+            expect(mgr.isMobileImmersiveSessionActive()).toBe(true);
+            expect(mgr.getActiveSessionMainLeaf()).toBe(mainLeaf);
+            expect(mgr.canToggleAuxiliaryRegions()).toBe(false);
+            expect(bodyClasses.has('wn-immersive-mode-active')).toBe(true);
+            expect(bodyClasses.has('wn-immersive-mobile-active')).toBe(true);
+            // Must NOT invoke desktop fullscreen, splits or overwrite the layout snapshot
+            expect(mockDoc.documentElement.requestFullscreen).not.toHaveBeenCalled();
+            expect((mockPlugin.app as unknown as { commands: { executeCommandById: ReturnType<typeof vi.fn> } }).commands.executeCommandById).not.toHaveBeenCalled();
+            expect(mockPlugin.app.workspace.createLeafBySplit).not.toHaveBeenCalled();
+            expect(mockPlugin.settings._savedImmersiveLayout).toBeNull();
+            expect(mockPlugin.startTracking).toHaveBeenCalledTimes(1);
+            expect(mockPlugin.settings.immersive.immersiveLeftSlots).toEqual(desktopLeftSlots);
+            expect(mockPlugin.settings.immersive.immersiveRightSlots).toEqual(desktopRightSlots);
+
+            await mgr.exitImmersiveMode();
+
+            expect(mgr.isMobileImmersiveSessionActive()).toBe(false);
+            expect(mgr.getActiveSessionMainLeaf()).toBeNull();
+            expect(bodyClasses.has('wn-immersive-mode-active')).toBe(false);
+            expect(bodyClasses.has('wn-immersive-mobile-active')).toBe(false);
+            // Must stop tracking like desktop and restore MobileFloatingStats
+            expect(mockPlugin.stopTracking).toHaveBeenCalledTimes(1);
+            expect(mockMobileFloatingStats.update).toHaveBeenCalled();
+            for (const l of createdRightLeaves) {
+                expect(l.detach).toHaveBeenCalled();
+            }
+        } finally {
+            Platform.isMobile = originalIsMobile;
+        }
+    });
+
+    it('enforces aux panel lock (cancels active gesture), keyboard clamp without overwriting preferred size, stale mount cleanup, reference link guard, main outline, and book context isolation', async () => {
+        const { Platform, MarkdownView: MockMarkdownView, TFolder } = await import('obsidian');
+        const originalIsMobile = Platform.isMobile;
+        Platform.isMobile = true;
+
+        try {
+            type RichEl = Record<string, unknown> & {
+                children: RichEl[];
+                className: string;
+                classList: {
+                    add: (...names: string[]) => void;
+                    remove: (...names: string[]) => void;
+                    toggle: (name: string, force?: boolean) => void;
+                    contains: (name: string) => boolean;
+                };
+                listeners: Map<string, Array<{ fn: (e: unknown) => void; capture: boolean }>>;
+                dispatch: (evt: string, payload?: unknown) => void;
+                findByClass: (cls: string) => RichEl | null;
+                findAllByClass: (cls: string) => RichEl[];
+                createDiv: (opts?: string | { cls?: string; text?: string }) => RichEl;
+                createEl: (t: string, opts?: { cls?: string; text?: string; attr?: Record<string, string> }) => RichEl;
+            };
+
+            const docListeners = new Map<string, Array<(e: unknown) => void>>();
+            const makeRichEl = (tag = 'div', cls = ''): RichEl => {
+                const classes = new Set<string>(cls.split(/\s+/).filter(Boolean));
+                const attrs = new Map<string, string>();
+                const listeners = new Map<string, Array<{ fn: (e: unknown) => void; capture: boolean }>>();
+                const children: RichEl[] = [];
+                const el: RichEl = {
+                    tagName: tag.toUpperCase(),
+                    className: cls,
+                    textContent: '',
+                    value: '',
+                    style: {},
+                    hidden: false,
+                    offsetHeight: 44,
+                    offsetWidth: 300,
+                    parentElement: null,
+                    nextSibling: null,
+                    ownerDocument: null,
+                    children,
+                    listeners,
+                    classList: {
+                        add: (...names: string[]) => {
+                            names.forEach(n => classes.add(n));
+                            el.className = Array.from(classes).join(' ');
+                        },
+                        remove: (...names: string[]) => {
+                            names.forEach(n => classes.delete(n));
+                            el.className = Array.from(classes).join(' ');
+                        },
+                        toggle: (name: string, force?: boolean) => {
+                            if (force === undefined) {
+                                if (classes.has(name)) classes.delete(name); else classes.add(name);
+                            } else if (force) classes.add(name); else classes.delete(name);
+                            el.className = Array.from(classes).join(' ');
+                        },
+                        contains: (name: string) => classes.has(name)
+                    },
+                    addClass: (...names: string[]) => el.classList.add(...names),
+                    removeClass: (...names: string[]) => el.classList.remove(...names),
+                    hasClass: (name: string) => classes.has(name),
+                    setCssProps: (props: Record<string, string>) => Object.assign(el.style as Record<string, string>, props),
+                    setCssStyles: (styles: Record<string, string>) => Object.assign(el.style as Record<string, string>, styles),
+                    setAttribute: (k: string, v: string) => attrs.set(k, v),
+                    getAttribute: (k: string) => attrs.get(k) ?? null,
+                    removeAttribute: (k: string) => attrs.delete(k),
+                    show: () => { el.hidden = false; el.classList.remove('is-hidden'); },
+                    hide: () => { el.hidden = true; },
+                    isShown: () => !el.hidden,
+                    empty: () => { children.length = 0; },
+                    remove: () => {
+                        const parent = el.parentElement as RichEl | null;
+                        if (parent?.children) {
+                            const idx = parent.children.indexOf(el);
+                            if (idx >= 0) parent.children.splice(idx, 1);
+                        }
+                        el.parentElement = null;
+                    },
+                    appendChild: (child: RichEl) => {
+                        child.parentElement = el;
+                        children.push(child);
+                        return child;
+                    },
+                    insertBefore: (child: RichEl) => {
+                        child.parentElement = el;
+                        children.push(child);
+                        return child;
+                    },
+                    contains: (node: unknown): boolean => node === el || children.some(c => (c.contains as (n: unknown) => boolean)(node)),
+                    closest: (selector: string): RichEl | null => {
+                        const tokens = selector.split(',').map(s => s.trim());
+                        let cur: RichEl | null = el;
+                        while (cur) {
+                            for (const tok of tokens) {
+                                if (tok.startsWith('.') && cur.classList.contains(tok.slice(1))) return cur;
+                                if (tok === 'a.internal-link' && cur.tagName === 'A' && cur.classList.contains('internal-link')) return cur;
+                            }
+                            cur = cur.parentElement as RichEl | null;
+                        }
+                        return null;
+                    },
+                    addEventListener: (evt: string, fn: (e: unknown) => void, opts?: boolean | { capture?: boolean }) => {
+                        const capture = typeof opts === 'boolean' ? opts : Boolean(opts?.capture);
+                        const arr = listeners.get(evt) ?? [];
+                        arr.push({ fn, capture });
+                        listeners.set(evt, arr);
+                    },
+                    removeEventListener: (evt: string, fn: (e: unknown) => void) => {
+                        const arr = listeners.get(evt) ?? [];
+                        listeners.set(evt, arr.filter(h => h.fn !== fn));
+                    },
+                    dispatch: (evt: string, payload?: unknown) => {
+                        for (const entry of [...(listeners.get(evt) ?? [])]) entry.fn(payload);
+                    },
+                    findByClass: (targetCls: string): RichEl | null => {
+                        if (el.classList.contains(targetCls)) return el;
+                        for (const c of children) {
+                            const hit = c.findByClass(targetCls);
+                            if (hit) return hit;
+                        }
+                        return null;
+                    },
+                    findAllByClass: (targetCls: string): RichEl[] => {
+                        const res: RichEl[] = [];
+                        if (el.classList.contains(targetCls)) res.push(el);
+                        for (const c of children) res.push(...c.findAllByClass(targetCls));
+                        return res;
+                    },
+                    querySelector: (sel: string) => sel.startsWith('.') ? el.findByClass(sel.slice(1)) : null,
+                    querySelectorAll: (sel: string) => sel.startsWith('.') ? el.findAllByClass(sel.slice(1)) : [],
+                    getElementsByClassName: (clsName: string) => el.findAllByClass(clsName),
+                    createDiv: (opts?: string | { cls?: string; text?: string }) => {
+                        const c = typeof opts === 'string' ? opts : (opts?.cls || '');
+                        const child = makeRichEl('div', c);
+                        if (typeof opts === 'object' && opts?.text) child.textContent = opts.text;
+                        child.ownerDocument = el.ownerDocument;
+                        (el.appendChild as (n: RichEl) => RichEl)(child);
+                        return child;
+                    },
+                    createSpan: (opts?: string | { cls?: string; text?: string }) => {
+                        const c = typeof opts === 'string' ? opts : (opts?.cls || '');
+                        const child = makeRichEl('span', c);
+                        if (typeof opts === 'object' && opts?.text) child.textContent = opts.text;
+                        child.ownerDocument = el.ownerDocument;
+                        (el.appendChild as (n: RichEl) => RichEl)(child);
+                        return child;
+                    },
+                    createEl: (t: string, opts?: { cls?: string; text?: string; attr?: Record<string, string> }) => {
+                        const child = makeRichEl(t, opts?.cls || '');
+                        if (opts?.text) child.textContent = opts.text;
+                        if (opts?.attr) {
+                            for (const [k, v] of Object.entries(opts.attr)) {
+                                (child.setAttribute as (a: string, b: string) => void)(k, v);
+                            }
+                        }
+                        child.ownerDocument = el.ownerDocument;
+                        (el.appendChild as (n: RichEl) => RichEl)(child);
+                        return child;
+                    }
+                };
+                return el;
+            };
+
+            const vvListeners = new Map<string, Array<() => void>>();
+            const visualViewport = {
+                width: 390,
+                height: 844,
+                offsetTop: 0,
+                offsetLeft: 0,
+                addEventListener: vi.fn((evt: string, fn: () => void) => {
+                    const arr = vvListeners.get(evt) ?? [];
+                    arr.push(fn);
+                    vvListeners.set(evt, arr);
+                }),
+                removeEventListener: vi.fn((evt: string, fn: () => void) => {
+                    vvListeners.set(evt, (vvListeners.get(evt) ?? []).filter(f => f !== fn));
+                })
+            };
+            const mockWin = {
+                innerWidth: 390,
+                innerHeight: 844,
+                visualViewport,
+                addEventListener: vi.fn(),
+                removeEventListener: vi.fn(),
+                requestAnimationFrame: vi.fn((fn: () => void) => { fn(); return 1; }),
+                cancelAnimationFrame: vi.fn(),
+                setTimeout,
+                clearTimeout,
+                setInterval,
+                clearInterval
+            };
+            const bodyEl = makeRichEl('body', 'is-phone');
+            const mockDoc = {
+                body: bodyEl,
+                defaultView: mockWin,
+                documentElement: { requestFullscreen: vi.fn().mockResolvedValue(undefined) },
+                fullscreenElement: null,
+                exitFullscreen: vi.fn().mockResolvedValue(undefined),
+                activeElement: null,
+                addEventListener: vi.fn((evt: string, fn: (e: unknown) => void) => {
+                    const arr = docListeners.get(evt) ?? [];
+                    arr.push(fn);
+                    docListeners.set(evt, arr);
+                }),
+                removeEventListener: vi.fn((evt: string, fn: (e: unknown) => void) => {
+                    docListeners.set(evt, (docListeners.get(evt) ?? []).filter(f => f !== fn));
+                })
+            };
+            bodyEl.ownerDocument = mockDoc;
+            (globalThis as Record<string, unknown>).activeDocument = mockDoc;
+            (globalThis as Record<string, unknown>).window = mockWin;
+
+            const rootFolder = { path: '', name: '', parent: null, isRoot: () => true };
+            const novelsFolder = { path: 'Novels', name: 'Novels', parent: rootFolder, isRoot: () => false };
+            const bookMainFolder = { path: 'Novels/BookMain', name: 'BookMain', parent: novelsFolder, isRoot: () => false };
+            const bookOtherFolder = { path: 'Novels/BookOther', name: 'BookOther', parent: novelsFolder, isRoot: () => false };
+            const mainFile = Object.assign(new TFile(), { path: 'Novels/BookMain/Ch1.md', basename: 'Ch1', extension: 'md', parent: bookMainFolder });
+            const refFile = Object.assign(new TFile(), { path: 'Novels/BookOther/NoteRef.md', basename: 'NoteRef', extension: 'md', parent: bookOtherFolder });
+            const setCursor = vi.fn();
+            const scrollIntoView = vi.fn();
+            const mainContainer = makeRichEl('div', 'workspace-leaf');
+            mainContainer.ownerDocument = mockDoc;
+            const mainView = Object.assign(Object.create(MockMarkdownView.prototype), {
+                file: mainFile,
+                getViewType: () => 'markdown',
+                editor: {
+                    cm: { dispatch: vi.fn(), requestMeasure: vi.fn(), focus: vi.fn() },
+                    focus: vi.fn(),
+                    setCursor,
+                    scrollIntoView,
+                    getScrollInfo: () => ({ top: 0, left: 0 }),
+                    listSelections: () => []
+                },
+                containerEl: mainContainer
+            });
+            const mainLeaf = {
+                id: 'main-leaf',
+                active: true,
+                view: mainView,
+                containerEl: mainContainer,
+                getViewState: () => ({ type: 'markdown', state: { file: mainFile.path, mode: 'source' } }),
+                setViewState: vi.fn().mockResolvedValue(undefined)
+            } as unknown as WorkspaceLeaf;
+
+            let nextSlowResolve: (() => void) | null = null;
+            let slowNextLeaf = false;
+            const createdLeaves: Array<{ leaf: WorkspaceLeaf; container: RichEl; detach: ReturnType<typeof vi.fn> }> = [];
+            let activeFileOverride: TFile = mainFile;
+
+            const mockPlugin = {
+                app: {
+                    workspace: {
+                        getActiveViewOfType: vi.fn(() => mainView),
+                        getActiveFile: vi.fn(() => activeFileOverride),
+                        getLeavesOfType: vi.fn((type: string) => type === 'markdown' ? [mainLeaf] : []),
+                        iterateAllLeaves: vi.fn((cb: (l: WorkspaceLeaf) => void) => cb(mainLeaf)),
+                        getRightLeaf: vi.fn(() => {
+                            const container = makeRichEl('div', 'workspace-leaf');
+                            container.ownerDocument = mockDoc;
+                            container.createDiv({ cls: 'workspace-leaf-content' });
+                            const detach = vi.fn();
+                            const leaf = {
+                                containerEl: container,
+                                view: { getViewType: () => 'empty', file: null },
+                                setViewState: vi.fn(async (vs: { type: string; state?: { file?: string } }) => {
+                                    if (slowNextLeaf) {
+                                        slowNextLeaf = false;
+                                        await new Promise<void>(resolve => { nextSlowResolve = resolve; });
+                                    }
+                                    (leaf as unknown as { view: unknown }).view = {
+                                        getViewType: () => vs.type,
+                                        file: vs.state?.file === refFile.path ? refFile : null
+                                    };
+                                }),
+                                openFile: vi.fn().mockResolvedValue(undefined),
+                                detach
+                            } as unknown as WorkspaceLeaf;
+                            createdLeaves.push({ leaf, container, detach });
+                            return leaf;
+                        }),
+                        createLeafBySplit: vi.fn(),
+                        setActiveLeaf: vi.fn(),
+                        updateOptions: vi.fn(),
+                        on: vi.fn().mockReturnValue({ id: 'ev' }),
+                        offref: vi.fn(),
+                        trigger: vi.fn()
+                    },
+                    vault: {
+                        getName: () => 'TestVault',
+                        getAbstractFileByPath: vi.fn((p: string) => {
+                            if (p === mainFile.path) return mainFile;
+                            if (p === refFile.path) return refFile;
+                            if (p === 'Novels/BookMain/lore') return Object.assign(new TFolder(), { path: p, name: 'lore', children: [] });
+                            if (p === 'Novels/BookOther/lore') return Object.assign(new TFolder(), { path: p, name: 'lore', children: [] });
+                            if (p === 'Novels/BookMain') return bookMainFolder;
+                            if (p === 'Novels/BookOther') return bookOtherFolder;
+                            return null;
+                        }),
+                        on: vi.fn().mockReturnValue({ id: 'vev' }),
+                        offref: vi.fn()
+                    },
+                    metadataCache: {
+                        getFileCache: vi.fn((f: TFile) => {
+                            if (f.path === mainFile.path) {
+                                return { headings: [{ heading: 'Main Heading', level: 2, position: { start: { line: 7, col: 0, offset: 40 }, end: { line: 7, col: 12, offset: 52 } } }] };
+                            }
+                            return { headings: [{ heading: 'Ref Heading', level: 1, position: { start: { line: 1, col: 0, offset: 0 }, end: { line: 1, col: 11, offset: 11 } } }] };
+                        }),
+                        on: vi.fn().mockReturnValue({ id: 'mev' }),
+                        offref: vi.fn()
+                    },
+                    commands: { executeCommandById: vi.fn() }
+                },
+                isTracking: false,
+                focusMs: 0,
+                settings: {
+                    _savedImmersiveLayout: null,
+                    workspaceFolders: ['Novels'],
+                    loreFolderName: 'lore',
+                    immersive: {
+                        immersiveTopSlots: [],
+                        immersiveBottomSlots: [],
+                        immersiveLeftSlots: [],
+                        immersiveRightSlots: [],
+                        immersiveTopSize: 20,
+                        immersiveBottomSize: 20,
+                        immersiveLeftSize: 20,
+                        immersiveRightSize: 20,
+                        immersiveTopInternalSizes: [],
+                        immersiveBottomInternalSizes: [],
+                        immersiveLeftInternalSizes: [],
+                        immersiveRightInternalSizes: [],
+                        collapsedRegions: { top: false, bottom: false, left: false, right: false },
+                        allRegionsHidden: false,
+                        immersiveHideProperties: true,
+                        typewriterEnabled: true,
+                        typewriterCenterOffset: 0,
+                        typewriterUnfocusedOpacity: 0.4,
+                        pomodoroEnabled: false,
+                        pomodoroInterval: 30,
+                        manuscriptModeEnabled: false,
+                        mobileAuxPanel: {
+                            viewType: 'outline',
+                            isOpen: true,
+                            isMinimized: false,
+                            isLocked: false,
+                            x: 16,
+                            y: 64,
+                            width: 300,
+                            height: 360
+                        }
+                    }
+                },
+                stickyNoteManager: {
+                    syncActiveNotesToManager: vi.fn(),
+                    getNotes: vi.fn().mockReturnValue([]),
+                    saveNotes: vi.fn().mockResolvedValue(undefined),
+                    syncFloatingNotes: vi.fn()
+                },
+                statisticsManager: {
+                    getCoreStats: vi.fn().mockReturnValue({
+                        totalTime: '00:00:00', focusTime: '00:00:00', slackTime: '00:00:00',
+                        todayWords: 120, goal: 1000, percent: 12, dailyWords: 120, dailyGoal: 2000,
+                        sessionWords: 0, sessionSpeed: 0
+                    }),
+                    getSessionSpeed: vi.fn().mockReturnValue(0)
+                },
+                adaptiveDebounceManager: { debounceFixed: vi.fn() },
+                startTracking: vi.fn(),
+                stopTracking: vi.fn(),
+                saveSettings: vi.fn().mockResolvedValue(undefined),
+                settingsManager: { flush: vi.fn().mockResolvedValue(undefined) }
+            } as unknown as ImmersiveModeManagerPlugin;
+
+            mockPlugin.immersiveReferenceManager = new ImmersiveReferenceManager(mockPlugin.app, mockPlugin);
+            const mgr = new ImmersiveModeManager(mockPlugin.app, mockPlugin);
+            (mockPlugin as unknown as { immersiveModeManager?: ImmersiveModeManager }).immersiveModeManager = mgr;
+
+            await mgr.toggleImmersiveMode();
+            const ctrl = mgr.getMobileController()!;
+            expect(ctrl).not.toBeNull();
+
+            // 1. Main-bound Outline renders headings from MAIN file (even if activeFileOverride points to refFile)
+            activeFileOverride = refFile;
+            const outlineItems = bodyEl.findAllByClass('wn-immersive-mobile-outline-item');
+            expect(outlineItems).toHaveLength(1);
+            expect(outlineItems[0].textContent).toBe('Main Heading');
+            outlineItems[0].dispatch('click', { preventDefault: vi.fn(), stopPropagation: vi.fn() });
+            expect(setCursor).toHaveBeenCalledWith({ line: 7, ch: 0 });
+            expect(scrollIntoView).toHaveBeenCalled();
+
+            // 2. Work context isolation: getCurrentBookContext stays bound to main book
+            const bookCtx = getCurrentBookContext(mockPlugin.app, mockPlugin as unknown as Parameters<typeof getCurrentBookContext>[1]);
+            expect(bookCtx).toBe('Novels/BookMain');
+
+            // 3. Panel lock immediately cancels in-progress drag and blocks further drag/resize while minimize remains available
+            const auxHeader = bodyEl.findByClass('wn-immersive-mobile-aux-header')!;
+            const auxResize = bodyEl.findByClass('wn-immersive-mobile-aux-resize-handle')!;
+            auxHeader.dispatch('pointerdown', { button: 0, clientX: 50, clientY: 80, pointerId: 1, target: auxHeader, preventDefault: vi.fn() });
+            expect(ctrl.hasActiveGesture()).toBe(true);
+
+            await ctrl.setAuxLocked(true);
+            expect(ctrl.hasActiveGesture()).toBe(false);
+
+            // Subsequent drag and resize attempts must be blocked while locked
+            auxHeader.dispatch('pointerdown', { button: 0, clientX: 50, clientY: 80, pointerId: 2, target: auxHeader, preventDefault: vi.fn() });
+            expect(ctrl.hasActiveGesture()).toBe(false);
+            auxResize.dispatch('pointerdown', { button: 0, clientX: 300, clientY: 400, pointerId: 3, target: auxResize, stopPropagation: vi.fn(), preventDefault: vi.fn() });
+            expect(ctrl.hasActiveGesture()).toBe(false);
+
+            // Minimize/restore remain available while locked
+            await ctrl.setAuxMinimized(true);
+            expect(ctrl.getAuxState().isMinimized).toBe(true);
+            await ctrl.setAuxMinimized(false);
+            expect(ctrl.getAuxState().isMinimized).toBe(false);
+
+            // 4. Virtual keyboard shrink clamps rendered panel even when locked, WITHOUT overwriting preferred height in settings
+            visualViewport.height = 360;
+            for (const fn of vvListeners.get('resize') ?? []) fn();
+            const clampedRect = ctrl.getRenderedAuxRect()!;
+            expect(clampedRect.y + clampedRect.height).toBeLessThanOrEqual(360);
+            expect(mockPlugin.settings.immersive.mobileAuxPanel?.height).toBe(360); // preferred size preserved!
+
+            // Restoring viewport restores preferred height
+            visualViewport.height = 844;
+            for (const fn of vvListeners.get('resize') ?? []) fn();
+            expect(ctrl.getRenderedAuxRect()!.height).toBe(360);
+
+            // 5. Reference link navigation interception blocks internal-link clicks in capture phase while allowing toolbar button
+            await ctrl.setAuxViewType('reference-view');
+            const refRecord = createdLeaves[createdLeaves.length - 1];
+            const linkEl = refRecord.container.createEl('a', { cls: 'internal-link' });
+            const linkEvt = { target: linkEl, preventDefault: vi.fn(), stopPropagation: vi.fn(), stopImmediatePropagation: vi.fn() };
+            refRecord.container.dispatch('click', linkEvt);
+            expect(linkEvt.preventDefault).toHaveBeenCalled();
+            expect(linkEvt.stopPropagation).toHaveBeenCalled();
+
+            const toolbarEl = refRecord.container.findByClass('wn-immersive-ref-toolbar')!;
+            const toolbarEvt = { target: toolbarEl, preventDefault: vi.fn(), stopPropagation: vi.fn(), stopImmediatePropagation: vi.fn() };
+            refRecord.container.dispatch('click', toolbarEvt);
+            expect(toolbarEvt.preventDefault).not.toHaveBeenCalled();
+
+            // 6. Stale async aux switch after close detaches late-resolving leaf (no orphan leaves)
+            slowNextLeaf = true;
+            const slowSwitch = ctrl.setAuxViewType('foreshadowing-view');
+            await Promise.resolve();
+            await Promise.resolve();
+            const staleRecord = createdLeaves[createdLeaves.length - 1];
+            const closeTask = ctrl.setAuxOpen(false);
+            const resolver = nextSlowResolve as (() => void) | null;
+            resolver?.();
+            await Promise.all([slowSwitch, closeTask]);
+            expect(staleRecord.detach).toHaveBeenCalled();
+
+            await mgr.exitImmersiveMode();
+            for (const rec of createdLeaves) {
+                expect(rec.detach).toHaveBeenCalled();
+            }
+        } finally {
+            Platform.isMobile = originalIsMobile;
+        }
+    });
+
+    it('CSS cascade: mobile workspace height/margin-top beats desktop 40px rule and all mobile floating layers stay below native modal/popover layers', async () => {
+        const fs = await import('fs');
+        const path = await import('path');
+        const postcss = (await import('postcss')).default;
+        const selectorParser = (await import('postcss-selector-parser')).default;
+
+        const stylesRoot = path.resolve(process.cwd(), 'src', 'styles');
+        const readBundledCss = (entryPath: string): string => {
+            const raw = fs.readFileSync(entryPath, 'utf8');
+            return raw.replace(/@import\s+["']([^"']+)["'];/g, (_, rel: string) => {
+                const target = path.resolve(path.dirname(entryPath), rel);
+                return readBundledCss(target);
+            });
+        };
+
+        const fullCss = readBundledCss(path.join(stylesRoot, 'index.css'));
+        const root = postcss.parse(fullCss);
+
+        type Specificity = [number, number, number];
+        const compareSpec = (a: Specificity, b: Specificity): number => {
+            if (a[0] !== b[0]) return a[0] - b[0];
+            if (a[1] !== b[1]) return a[1] - b[1];
+            return a[2] - b[2];
+        };
+
+        // Evaluate specificity and matching against a simplified 3-element chain:
+        // body(bodyClasses) > .app-container > .workspace
+        const matchWorkspaceSelector = (
+            selectorNode: ReturnType<ReturnType<typeof selectorParser>['astSync']>['nodes'][number],
+            bodyClasses: Set<string>
+        ): Specificity | null => {
+            // Split selector by combinators into compound groups
+            const compounds: Array<Array<{ type: string; value: string }>> = [[]];
+            let hasUnsupportedCombinator = false;
+            for (const node of selectorNode.nodes) {
+                if (node.type === 'combinator') {
+                    const v = node.value.trim();
+                    if (v === '' || v === '>') {
+                        compounds.push([]);
+                    } else {
+                        hasUnsupportedCombinator = true;
+                        break;
+                    }
+                } else if (node.type === 'tag' || node.type === 'class' || node.type === 'id') {
+                    compounds[compounds.length - 1].push({ type: node.type, value: node.value });
+                } else {
+                    hasUnsupportedCombinator = true;
+                    break;
+                }
+            }
+            if (hasUnsupportedCombinator || compounds.length !== 3) return null;
+
+            const matchesCompound = (
+                parts: Array<{ type: string; value: string }>,
+                tag: string,
+                classes: Set<string>
+            ): boolean => {
+                if (parts.length === 0) return false;
+                return parts.every(p => {
+                    if (p.type === 'tag') return p.value === tag;
+                    if (p.type === 'class') return classes.has(p.value);
+                    return false;
+                });
+            };
+
+            const appClasses = new Set(['app-container']);
+            const wsClasses = new Set(['workspace']);
+            if (
+                !matchesCompound(compounds[0], 'body', bodyClasses) ||
+                !matchesCompound(compounds[1], 'div', appClasses) ||
+                !matchesCompound(compounds[2], 'div', wsClasses)
+            ) {
+                return null;
+            }
+
+            let ids = 0;
+            let classes = 0;
+            let tags = 0;
+            for (const compound of compounds) {
+                for (const p of compound) {
+                    if (p.type === 'id') ids++;
+                    else if (p.type === 'class') classes++;
+                    else if (p.type === 'tag') tags++;
+                }
+            }
+            return [ids, classes, tags];
+        };
+
+        const resolveWinningDecl = (bodyClasses: Set<string>, prop: string): string | null => {
+            let bestSpec: Specificity | null = null;
+            let bestOrder = -1;
+            let bestValue: string | null = null;
+            let order = 0;
+
+            root.walkRules((rule) => {
+                let declValue: string | null = null;
+                rule.walkDecls(prop, (d) => { declValue = d.value; });
+                if (declValue === null) return;
+                const ast = selectorParser().astSync(rule.selector);
+                for (const sel of ast.nodes) {
+                    const spec = matchWorkspaceSelector(sel, bodyClasses);
+                    order++;
+                    if (!spec) continue;
+                    if (!bestSpec || compareSpec(spec, bestSpec) > 0 || (compareSpec(spec, bestSpec) === 0 && order > bestOrder)) {
+                        bestSpec = spec;
+                        bestOrder = order;
+                        bestValue = declValue;
+                    }
+                }
+            });
+            return bestValue;
+        };
+
+        const desktopBody = new Set(['wn-immersive-mode-active']);
+        const mobileBody = new Set(['wn-immersive-mode-active', 'wn-immersive-mobile-active']);
+
+        // Desktop workspace must retain 40px topbar geometry
+        expect(resolveWinningDecl(desktopBody, 'margin-top')).toBe('40px');
+        expect(resolveWinningDecl(desktopBody, 'height')).toBe('calc(100% - 40px)');
+
+        // Mobile workspace must beat desktop 40px rule and use visualViewport CSS vars
+        const mobileMarginTop = resolveWinningDecl(mobileBody, 'margin-top');
+        const mobileHeight = resolveWinningDecl(mobileBody, 'height');
+        expect(mobileMarginTop).toContain('--wn-immersive-mobile-topbar-height');
+        expect(mobileHeight).toContain('--wn-immersive-mobile-viewport-height');
+
+        // Keep all numeric values on one row; actual width fitting adjusts the font size.
+        const mobileDataStyles: Record<string, string> = {};
+        const mobileValueStyles: Record<string, string> = {};
+        root.walkRules(rule => {
+            if (rule.selector === '.wn-immersive-mobile-topbar-stats') {
+                rule.walkDecls(decl => { mobileDataStyles[decl.prop] = decl.value; });
+            }
+            if (rule.selector === '.wn-immersive-mobile-stat') {
+                rule.walkDecls(decl => { mobileValueStyles[decl.prop] = decl.value; });
+            }
+        });
+        expect(mobileDataStyles['flex-wrap']).toBe('nowrap');
+        expect(mobileDataStyles['font-size']).toContain('--wn-immersive-mobile-stats-font-size');
+        expect(mobileDataStyles['overflow-x']).toBeUndefined();
+        expect(mobileDataStyles['overflow-y']).toBeUndefined();
+        expect(mobileValueStyles['white-space']).toBe('nowrap');
+        expect(mobileValueStyles['overflow-wrap']).toBeUndefined();
+        expect(mobileValueStyles['text-overflow']).toBeUndefined();
+        let editorGutter = '';
+        let gutterSelector = '';
+        root.walkRules(rule => {
+            if (rule.selector.includes('wn-immersive-main-editor:not(.wn-manuscript-leaf)') &&
+                rule.selector.includes('.wn-manuscript-flow')) {
+                gutterSelector = rule.selector;
+                rule.walkDecls('padding-inline', decl => { editorGutter = decl.value; });
+            }
+        });
+        expect(editorGutter).toContain('--file-margins-x');
+        expect(editorGutter).toContain('max(12px');
+        expect(gutterSelector).toContain('wn-immersive-mobile-active');
+
+
+        // Modal layering: evaluate z-index of every mobile floating layer with Obsidian defaults (--layer-popover: 30, --layer-modal: 50)
+        const evalZIndex = (raw: string): number => {
+            const substituted = raw
+                .replace(/var\(--layer-popover,\s*(\d+)\)/g, '30')
+                .replace(/var\(--layer-modal,\s*(\d+)\)/g, '50');
+            const calcMatch = substituted.match(/^calc\(\s*(\d+)\s*-\s*(\d+)\s*\)$/);
+            if (calcMatch) return Number(calcMatch[1]) - Number(calcMatch[2]);
+            const num = Number(substituted.trim());
+            expect(Number.isFinite(num)).toBe(true);
+            return num;
+        };
+
+        const layerSelectors = [
+            '.wn-immersive-mobile-topbar',
+            '.wn-immersive-mobile-dir-restore-btn',
+            '.wn-immersive-mobile-dir-backdrop',
+            '.wn-immersive-mobile-dir-overlay',
+            '.wn-immersive-mobile-aux-panel'
+        ];
+        const zValues: Record<string, number> = {};
+        root.walkRules((rule) => {
+            if (!layerSelectors.includes(rule.selector.trim())) return;
+            rule.walkDecls('z-index', (d) => {
+                zValues[rule.selector.trim()] = evalZIndex(d.value);
+            });
+        });
+
+        for (const sel of layerSelectors) {
+            expect(zValues[sel]).toBeDefined();
+            expect(zValues[sel]).toBeGreaterThan(0);
+            expect(zValues[sel]).toBeLessThan(30); // strictly below Obsidian native popover (30) and modal (50)
+        }
+        expect(zValues['.wn-immersive-mobile-topbar']).toBeLessThan(zValues['.wn-immersive-mobile-dir-restore-btn']);
+        expect(zValues['.wn-immersive-mobile-dir-restore-btn']).toBeLessThan(zValues['.wn-immersive-mobile-dir-backdrop']);
+        expect(zValues['.wn-immersive-mobile-dir-backdrop']).toBeLessThan(zValues['.wn-immersive-mobile-dir-overlay']);
+        expect(zValues['.wn-immersive-mobile-aux-panel']).toBeLessThan(zValues['.wn-immersive-mobile-dir-backdrop']);
+        expect(zValues['.wn-immersive-mobile-aux-panel']).toBeLessThan(zValues['.wn-immersive-mobile-dir-overlay']);
+    });
+
+    it('invalidates in-flight reference open on aux switch/close, prevents dead refToolbarCleanups or stale modal writes, and handles rapid work switches A->B(empty)->C safely', async () => {
+        const { Platform, MarkdownView: MockMarkdownView, TFolder } = await import('obsidian');
+        const originalIsMobile = Platform.isMobile;
+        Platform.isMobile = true;
+
+        try {
+            type RichEl = Record<string, unknown> & {
+                children: RichEl[];
+                className: string;
+                classList: {
+                    add: (...names: string[]) => void;
+                    remove: (...names: string[]) => void;
+                    toggle: (name: string, force?: boolean) => void;
+                    contains: (name: string) => boolean;
+                };
+                listeners: Map<string, Array<{ fn: (e: unknown) => void }>>;
+                dispatch: (evt: string, payload?: unknown) => void;
+                findByClass: (cls: string) => RichEl | null;
+                findAllByClass: (cls: string) => RichEl[];
+                appendChild: (child: RichEl) => RichEl;
+                createDiv: (opts?: string | { cls?: string; text?: string }) => RichEl;
+                createEl: (t: string, opts?: { cls?: string; text?: string; attr?: Record<string, string> }) => RichEl;
+            };
+
+            const makeRichEl = (tag = 'div', cls = ''): RichEl => {
+                const classes = new Set<string>(cls.split(/\s+/).filter(Boolean));
+                const attrs = new Map<string, string>();
+                const listeners = new Map<string, Array<{ fn: (e: unknown) => void }>>();
+                const children: RichEl[] = [];
+                const el: RichEl = {
+                    tagName: tag.toUpperCase(),
+                    className: cls,
+                    textContent: '',
+                    value: '',
+                    style: {},
+                    hidden: false,
+                    offsetHeight: 44,
+                    offsetWidth: 300,
+                    parentElement: null,
+                    nextSibling: null,
+                    ownerDocument: null,
+                    children,
+                    listeners,
+                    classList: {
+                        add: (...names: string[]) => { names.forEach(n => classes.add(n)); el.className = Array.from(classes).join(' '); },
+                        remove: (...names: string[]) => { names.forEach(n => classes.delete(n)); el.className = Array.from(classes).join(' '); },
+                        toggle: (name: string, force?: boolean) => {
+                            if (force === undefined) { if (classes.has(name)) classes.delete(name); else classes.add(name); }
+                            else if (force) classes.add(name); else classes.delete(name);
+                            el.className = Array.from(classes).join(' ');
+                        },
+                        contains: (name: string) => classes.has(name)
+                    },
+                    addClass: (...names: string[]) => el.classList.add(...names),
+                    removeClass: (...names: string[]) => el.classList.remove(...names),
+                    hasClass: (name: string) => classes.has(name),
+                    setCssProps: (props: Record<string, string>) => Object.assign(el.style as Record<string, string>, props),
+                    setCssStyles: (styles: Record<string, string>) => Object.assign(el.style as Record<string, string>, styles),
+                    setAttribute: (k: string, v: string) => attrs.set(k, v),
+                    getAttribute: (k: string) => attrs.get(k) ?? null,
+                    removeAttribute: (k: string) => attrs.delete(k),
+                    show: () => { el.hidden = false; el.classList.remove('is-hidden'); },
+                    hide: () => { el.hidden = true; },
+                    isShown: () => !el.hidden,
+                    empty: () => { children.length = 0; },
+                    remove: () => {
+                        const parent = el.parentElement as RichEl | null;
+                        if (parent?.children) {
+                            const idx = parent.children.indexOf(el);
+                            if (idx >= 0) parent.children.splice(idx, 1);
+                        }
+                        el.parentElement = null;
+                    },
+                    appendChild: (child: RichEl) => { child.parentElement = el; children.push(child); return child; },
+                    insertBefore: (child: RichEl) => { child.parentElement = el; children.push(child); return child; },
+                    contains: (node: unknown): boolean => node === el || children.some(c => (c.contains as (n: unknown) => boolean)(node)),
+                    closest: () => null,
+                    addEventListener: (evt: string, fn: (e: unknown) => void) => {
+                        const arr = listeners.get(evt) ?? [];
+                        arr.push({ fn });
+                        listeners.set(evt, arr);
+                    },
+                    removeEventListener: (evt: string, fn: (e: unknown) => void) => {
+                        listeners.set(evt, (listeners.get(evt) ?? []).filter(h => h.fn !== fn));
+                    },
+                    dispatch: (evt: string, payload?: unknown) => {
+                        for (const entry of [...(listeners.get(evt) ?? [])]) entry.fn(payload);
+                    },
+                    findByClass: (targetCls: string): RichEl | null => {
+                        if (el.classList.contains(targetCls)) return el;
+                        for (const c of children) { const hit = c.findByClass(targetCls); if (hit) return hit; }
+                        return null;
+                    },
+                    findAllByClass: (targetCls: string): RichEl[] => {
+                        const res: RichEl[] = [];
+                        if (el.classList.contains(targetCls)) res.push(el);
+                        for (const c of children) res.push(...c.findAllByClass(targetCls));
+                        return res;
+                    },
+                    querySelector: (sel: string) => sel.startsWith('.') ? el.findByClass(sel.slice(1)) : null,
+                    querySelectorAll: (sel: string) => sel.startsWith('.') ? el.findAllByClass(sel.slice(1)) : [],
+                    getElementsByClassName: (clsName: string) => el.findAllByClass(clsName),
+                    createDiv: (opts?: string | { cls?: string; text?: string }) => {
+                        const child = makeRichEl('div', typeof opts === 'string' ? opts : (opts?.cls || ''));
+                        if (typeof opts === 'object' && opts?.text) child.textContent = opts.text;
+                        child.ownerDocument = el.ownerDocument;
+                        el.appendChild(child);
+                        return child;
+                    },
+                    createSpan: (opts?: string | { cls?: string; text?: string }) => {
+                        const child = makeRichEl('span', typeof opts === 'string' ? opts : (opts?.cls || ''));
+                        if (typeof opts === 'object' && opts?.text) child.textContent = opts.text;
+                        child.ownerDocument = el.ownerDocument;
+                        el.appendChild(child);
+                        return child;
+                    },
+                    createEl: (t: string, opts?: { cls?: string; text?: string; attr?: Record<string, string> }) => {
+                        const child = makeRichEl(t, opts?.cls || '');
+                        if (opts?.text) child.textContent = opts.text;
+                        if (opts?.attr) for (const [k, v] of Object.entries(opts.attr)) (child.setAttribute as (a: string, b: string) => void)(k, v);
+                        child.ownerDocument = el.ownerDocument;
+                        el.appendChild(child);
+                        return child;
+                    }
+                };
+                return el;
+            };
+
+            const mockWin = {
+                innerWidth: 390,
+                innerHeight: 844,
+                visualViewport: { width: 390, height: 844, offsetTop: 0, offsetLeft: 0, addEventListener: vi.fn(), removeEventListener: vi.fn() },
+                addEventListener: vi.fn(),
+                removeEventListener: vi.fn(),
+                requestAnimationFrame: vi.fn((fn: () => void) => { fn(); return 1; }),
+                cancelAnimationFrame: vi.fn(),
+                setTimeout, clearTimeout, setInterval, clearInterval
+            };
+            const bodyEl = makeRichEl('body', 'is-phone');
+            const mockDoc = {
+                body: bodyEl,
+                defaultView: mockWin,
+                documentElement: { requestFullscreen: vi.fn().mockResolvedValue(undefined) },
+                fullscreenElement: null,
+                exitFullscreen: vi.fn().mockResolvedValue(undefined),
+                activeElement: null,
+                addEventListener: vi.fn(),
+                removeEventListener: vi.fn()
+            };
+            bodyEl.ownerDocument = mockDoc;
+            (globalThis as Record<string, unknown>).activeDocument = mockDoc;
+            (globalThis as Record<string, unknown>).window = mockWin;
+
+            const rootFolder = { path: '', name: '', parent: null, isRoot: () => true };
+            const novelsFolder = { path: 'Novels', name: 'Novels', parent: rootFolder, isRoot: () => false };
+            const folderA = { path: 'Novels/WorkA', name: 'WorkA', parent: novelsFolder, isRoot: () => false };
+            const folderB = { path: 'Novels/WorkB', name: 'WorkB', parent: novelsFolder, isRoot: () => false };
+            const folderC = { path: 'Novels/WorkC', name: 'WorkC', parent: novelsFolder, isRoot: () => false };
+            const chA = Object.assign(new TFile(), { path: 'Novels/WorkA/Ch1.md', basename: 'Ch1', extension: 'md', parent: folderA });
+            const chB = Object.assign(new TFile(), { path: 'Novels/WorkB/Ch1.md', basename: 'Ch1', extension: 'md', parent: folderB });
+            const chC = Object.assign(new TFile(), { path: 'Novels/WorkC/Ch1.md', basename: 'Ch1', extension: 'md', parent: folderC });
+            const refA = Object.assign(new TFile(), { path: 'Novels/WorkA/RefA.md', basename: 'RefA', extension: 'md', parent: folderA });
+            const refC = Object.assign(new TFile(), { path: 'Novels/WorkC/RefC.md', basename: 'RefC', extension: 'md', parent: folderC });
+            const refFresh = Object.assign(new TFile(), { path: 'Novels/WorkA/RefFresh.md', basename: 'RefFresh', extension: 'md', parent: folderA });
+
+            const filesByPath = new Map<string, TFile>([
+                [chA.path, chA], [chB.path, chB], [chC.path, chC],
+                [refA.path, refA], [refC.path, refC], [refFresh.path, refFresh]
+            ]);
+
+            const mainContainer = makeRichEl('div', 'workspace-leaf');
+            mainContainer.ownerDocument = mockDoc;
+            const mainView = Object.assign(Object.create(MockMarkdownView.prototype), {
+                file: chA,
+                getViewType: () => 'markdown',
+                editor: { cm: { dispatch: vi.fn(), requestMeasure: vi.fn(), focus: vi.fn() }, focus: vi.fn(), getCursor: () => ({ line: 0, ch: 0 }), getScrollInfo: () => ({ top: 0, left: 0 }), listSelections: () => [] },
+                containerEl: mainContainer
+            });
+            const mainLeaf = {
+                id: 'main-leaf',
+                active: true,
+                view: mainView,
+                containerEl: mainContainer,
+                getViewState: () => ({ type: 'markdown', state: { file: (mainView.file as TFile).path, mode: 'source' } }),
+                setViewState: vi.fn().mockResolvedValue(undefined)
+            } as unknown as WorkspaceLeaf;
+
+            const wsListeners = new Map<string, Array<(...args: unknown[]) => void>>();
+            const vaultListeners = new Map<string, Array<(...args: unknown[]) => void>>();
+            const pendingOpenResolvers: Array<{ leaf: WorkspaceLeaf; file: TFile; resolve: () => void }> = [];
+            const pendingEmptyResolvers: Array<{ leaf: WorkspaceLeaf; resolve: () => void }> = [];
+            let deferOpenFile = false;
+            let deferEmptySetViewState = false;
+            const createdLeaves: Array<{ leaf: WorkspaceLeaf; container: RichEl; detach: ReturnType<typeof vi.fn> }> = [];
+            const workspaceTrigger = vi.fn();
+
+            const mockPlugin = {
+                app: {
+                    workspace: {
+                        getActiveViewOfType: vi.fn(() => mainView),
+                        getActiveFile: vi.fn(() => mainView.file),
+                        getLeavesOfType: vi.fn((type: string) => type === 'markdown' ? [mainLeaf] : []),
+                        iterateAllLeaves: vi.fn((cb: (l: WorkspaceLeaf) => void) => { cb(mainLeaf); createdLeaves.forEach(c => cb(c.leaf)); }),
+                        getRightLeaf: vi.fn(() => {
+                            const container = makeRichEl('div', 'workspace-leaf');
+                            container.ownerDocument = mockDoc;
+                            container.createDiv({ cls: 'workspace-leaf-content' });
+                            const detach = vi.fn();
+                            const leaf = {
+                                containerEl: container,
+                                view: { getViewType: () => 'empty', file: null as TFile | null },
+                                setViewState: vi.fn(async (vs: { type: string; state?: { file?: string } }) => {
+                                    if (vs.type === 'empty' && deferEmptySetViewState) {
+                                        await new Promise<void>(resolve => { pendingEmptyResolvers.push({ leaf, resolve }); });
+                                    }
+                                    (leaf as unknown as { view: unknown }).view = {
+                                        getViewType: () => vs.type,
+                                        file: vs.state?.file ? (filesByPath.get(vs.state.file) ?? null) : null
+                                    };
+                                }),
+                                openFile: vi.fn(async (f: TFile) => {
+                                    if (deferOpenFile) {
+                                        await new Promise<void>(resolve => { pendingOpenResolvers.push({ leaf, file: f, resolve }); });
+                                    }
+                                    (leaf as unknown as { view: unknown }).view = { getViewType: () => 'markdown', file: f };
+                                }),
+                                detach
+                            } as unknown as WorkspaceLeaf;
+                            createdLeaves.push({ leaf, container, detach });
+                            return leaf;
+                        }),
+                        createLeafBySplit: vi.fn(),
+                        setActiveLeaf: vi.fn(),
+                        updateOptions: vi.fn(),
+                        on: vi.fn((evt: string, fn: (...args: unknown[]) => void) => {
+                            const arr = wsListeners.get(evt) ?? [];
+                            arr.push(fn);
+                            wsListeners.set(evt, arr);
+                            return { evt, fn };
+                        }),
+                        offref: vi.fn(),
+                        trigger: workspaceTrigger
+                    },
+                    vault: {
+                        getName: () => 'TestVault',
+                        getAbstractFileByPath: vi.fn((p: string) => {
+                            if (filesByPath.has(p)) return filesByPath.get(p)!;
+                            if (p === 'Novels/WorkA/lore' || p === 'Novels/WorkB/lore' || p === 'Novels/WorkC/lore') {
+                                return Object.assign(new TFolder(), { path: p, name: 'lore', children: [] });
+                            }
+                            return null;
+                        }),
+                        on: vi.fn((evt: string, fn: (...args: unknown[]) => void) => {
+                            const arr = vaultListeners.get(evt) ?? [];
+                            arr.push(fn);
+                            vaultListeners.set(evt, arr);
+                            return { evt, fn };
+                        }),
+                        offref: vi.fn()
+                    },
+                    metadataCache: { getFileCache: vi.fn().mockReturnValue({ headings: [] }), on: vi.fn().mockReturnValue({ id: 'mev' }), offref: vi.fn() },
+                    commands: { executeCommandById: vi.fn() }
+                },
+                isTracking: false,
+                focusMs: 0,
+                settings: {
+                    _savedImmersiveLayout: null,
+                    workspaceFolders: ['Novels'],
+                    loreFolderName: 'lore',
+                    immersive: {
+                        immersiveTopSlots: [], immersiveBottomSlots: [], immersiveLeftSlots: [], immersiveRightSlots: [],
+                        immersiveTopSize: 20, immersiveBottomSize: 20, immersiveLeftSize: 20, immersiveRightSize: 20,
+                        immersiveTopInternalSizes: [], immersiveBottomInternalSizes: [], immersiveLeftInternalSizes: [], immersiveRightInternalSizes: [],
+                        collapsedRegions: { top: false, bottom: false, left: false, right: false },
+                        allRegionsHidden: false, immersiveHideProperties: true,
+                        typewriterEnabled: false, typewriterCenterOffset: 0, typewriterUnfocusedOpacity: 0.4,
+                        pomodoroEnabled: false, pomodoroInterval: 30, manuscriptModeEnabled: false,
+                        workReferencePaths: {},
+                        mobileAuxPanel: { viewType: 'reference-view', isOpen: true, isMinimized: false, isLocked: false, x: 16, y: 64, width: 300, height: 320 }
+                    }
+                },
+                stickyNoteManager: { syncActiveNotesToManager: vi.fn(), getNotes: vi.fn().mockReturnValue([]), saveNotes: vi.fn().mockResolvedValue(undefined), syncFloatingNotes: vi.fn() },
+                statisticsManager: {
+                    getCoreStats: vi.fn().mockReturnValue({ totalTime: '00:00:00', focusTime: '00:00:00', slackTime: '00:00:00', todayWords: 100, goal: 1000, percent: 10, dailyWords: 100, dailyGoal: 2000, sessionWords: 0, sessionSpeed: 0 }),
+                    getSessionSpeed: vi.fn().mockReturnValue(0)
+                },
+                adaptiveDebounceManager: { debounceFixed: vi.fn() },
+                startTracking: vi.fn(),
+                stopTracking: vi.fn(),
+                saveSettings: vi.fn().mockResolvedValue(undefined),
+                settingsManager: { flush: vi.fn().mockResolvedValue(undefined) },
+                getVaultMarkdownFiles: () => Array.from(filesByPath.values())
+            } as unknown as ImmersiveModeManagerPlugin;
+
+            mockPlugin.immersiveReferenceManager = new ImmersiveReferenceManager(mockPlugin.app, mockPlugin);
+            const mgr = new ImmersiveModeManager(mockPlugin.app, mockPlugin);
+            const flushMicrotasks = async (ticks = 10) => {
+                for (let i = 0; i < ticks; i++) await Promise.resolve();
+            };
+            await mgr.toggleImmersiveMode();
+            const ctrl = mgr.getMobileController()!;
+            // Wait for initial reference-view mount and serialized queue settlement
+            await flushMicrotasks();
+
+            const firstRefLeaf = ctrl.getReferenceLeaf()!;
+            expect(firstRefLeaf).toBeTruthy();
+            expect(mgr['refToolbarCleanups'].has(firstRefLeaf)).toBe(true);
+
+            // 1. Start deferred reference open, then switch aux to outline before openFile resolves
+            deferOpenFile = true;
+            workspaceTrigger.mockClear();
+            const pendingOpen = mgr.openReferenceFile(refA, firstRefLeaf);
+            await flushMicrotasks(4);
+            expect(pendingOpenResolvers.length).toBe(1);
+
+            const switchToOutline = ctrl.setAuxViewType('outline');
+            // Toolbar cleanup for retired leaf must be removed immediately and not leaked
+            expect(mgr['refToolbarCleanups'].has(firstRefLeaf)).toBe(false);
+            // Old leaf must NOT be detached before its pending native openFile settles
+            const firstRecord = createdLeaves.find(c => c.leaf === firstRefLeaf)!;
+            expect(firstRecord.detach).not.toHaveBeenCalled();
+
+            // Resolve stale openFile now
+            pendingOpenResolvers.shift()!.resolve();
+            await Promise.all([pendingOpen, switchToOutline]);
+
+            expect(firstRecord.detach).toHaveBeenCalled();
+            expect(mgr['refToolbarCleanups'].has(firstRefLeaf)).toBe(false);
+            expect(mockPlugin.settings.immersive.workReferencePaths?.['Novels/WorkA']).toBeUndefined();
+            expect(workspaceTrigger).not.toHaveBeenCalledWith('webnovel:immersive-reference-ready');
+
+            // 2. Re-open reference-view (fresh leaf) -> must succeed cleanly without interference from dead leaf
+            deferOpenFile = false;
+            await ctrl.setAuxViewType('reference-view');
+            const freshRefLeaf = ctrl.getReferenceLeaf()!;
+            expect(freshRefLeaf).toBeTruthy();
+            expect(freshRefLeaf).not.toBe(firstRefLeaf);
+            await mgr.openReferenceFile(refFresh, freshRefLeaf);
+            expect(ctrl.getExpectedReferencePath()).toBe(refFresh.path);
+            expect(mockPlugin.settings.immersive.workReferencePaths?.['Novels/WorkA']).toBe(refFresh.path);
+
+            // 3. Stale search modal: open search modal on freshRefLeaf, close aux -> modal closes and stale selection cannot touch retired leaf
+            const searchBtn = createdLeaves.find(c => c.leaf === freshRefLeaf)!.container.findByClass('clickable-icon')!;
+            searchBtn.dispatch('click', { preventDefault: vi.fn(), stopPropagation: vi.fn() });
+            const openedModal = mgr['activeSearchModal'] as unknown as { onChooseItem?: (f: TFile) => void; close: ReturnType<typeof vi.fn> };
+            expect(openedModal).toBeTruthy();
+            const modalCloseSpy = vi.spyOn(openedModal, 'close');
+
+            await ctrl.setAuxOpen(false);
+            expect(modalCloseSpy).toHaveBeenCalled();
+            expect(mgr['activeSearchModal']).toBeNull();
+            expect(mgr['refToolbarCleanups'].size).toBe(0);
+
+            // Even if stale onChooseItem were invoked, retired leaf must not be touched or persisted
+            const openSpyBefore = (freshRefLeaf.openFile as ReturnType<typeof vi.fn>).mock.calls.length;
+            openedModal.onChooseItem?.(refA);
+            await Promise.resolve();
+            expect((freshRefLeaf.openFile as ReturnType<typeof vi.fn>).mock.calls.length).toBe(openSpyBefore);
+            expect(mockPlugin.settings.immersive.workReferencePaths?.['Novels/WorkA']).toBe(refFresh.path);
+
+            // 4. Rapid work switch A -> B (empty) -> C (refC) through serialized manager queue + close during empty work switch
+            mockPlugin.settings.immersive.workReferencePaths = {
+                'Novels/WorkA': refA.path,
+                'Novels/WorkC': refC.path
+            };
+            await ctrl.setAuxOpen(true);
+            const workRefLeaf = ctrl.getReferenceLeaf()!;
+            expect(workRefLeaf).toBeTruthy();
+
+            deferOpenFile = true;
+            deferEmptySetViewState = true;
+            // Switch WorkA -> WorkB (no ref -> empty) -> WorkC (refC) rapidly
+            mainView.file = chB;
+            for (const fn of wsListeners.get('file-open') ?? []) fn(chB);
+            await flushMicrotasks(4);
+            expect(pendingEmptyResolvers.length).toBe(1);
+
+            mainView.file = chC;
+            for (const fn of wsListeners.get('file-open') ?? []) fn(chC);
+            await flushMicrotasks(4);
+
+            // Drain deferred WorkB empty -> WorkC open in sequence
+            while (pendingEmptyResolvers.length > 0 || pendingOpenResolvers.length > 0) {
+                while (pendingEmptyResolvers.length > 0) pendingEmptyResolvers.shift()!.resolve();
+                while (pendingOpenResolvers.length > 0) pendingOpenResolvers.shift()!.resolve();
+                await flushMicrotasks(6);
+            }
+
+            expect(ctrl.getExpectedReferencePath()).toBe(refC.path);
+            expect((workRefLeaf.view as unknown as { file: TFile | null }).file?.path).toBe(refC.path);
+
+            // Closing aux while WorkB empty reset is in progress must not throw or leave dangling toolbar/leaf
+            mainView.file = chB;
+            for (const fn of wsListeners.get('file-open') ?? []) fn(chB);
+            await flushMicrotasks(4);
+            expect(pendingEmptyResolvers.length).toBe(1);
+            const closeDuringReset = ctrl.setAuxOpen(false);
+            while (pendingEmptyResolvers.length > 0) {
+                pendingEmptyResolvers.shift()!.resolve();
+                await flushMicrotasks(4);
+            }
+            await closeDuringReset;
+            expect(ctrl.getReferenceLeaf()).toBeNull();
+            expect(mgr['refToolbarCleanups'].size).toBe(0);
+
+            await mgr.exitImmersiveMode();
+        } finally {
+            Platform.isMobile = originalIsMobile;
+        }
+    });
+
+    it('preserves mobile reference identity on genuine vault file/folder rename while still blocking unauthorized drift', async () => {
+        const { Platform, MarkdownView: MockMarkdownView, TFolder } = await import('obsidian');
+        const originalIsMobile = Platform.isMobile;
+        Platform.isMobile = true;
+
+        try {
+            const makeEl = (tag = 'div', cls = ''): Record<string, unknown> => {
+                const classes = new Set<string>(cls.split(/\s+/).filter(Boolean));
+                const attrs = new Map<string, string>();
+                const children: Array<Record<string, unknown>> = [];
+                const el: Record<string, unknown> = {
+                    tagName: tag.toUpperCase(),
+                    className: cls, textContent: '', value: '', style: {}, hidden: false,
+                    offsetHeight: 44, offsetWidth: 300, parentElement: null, nextSibling: null, ownerDocument: null, children,
+                    classList: {
+                        add: (...n: string[]) => n.forEach(x => classes.add(x)),
+                        remove: (...n: string[]) => n.forEach(x => classes.delete(x)),
+                        toggle: (n: string, f?: boolean) => { if (f === undefined ? !classes.has(n) : f) classes.add(n); else classes.delete(n); },
+                        contains: (n: string) => classes.has(n)
+                    },
+                    addClass: (...n: string[]) => n.forEach(x => classes.add(x)),
+                    removeClass: (...n: string[]) => n.forEach(x => classes.delete(x)),
+                    hasClass: (n: string) => classes.has(n),
+                    setCssProps: vi.fn(), setCssStyles: vi.fn(),
+                    setAttribute: (k: string, v: string) => attrs.set(k, v),
+                    getAttribute: (k: string) => attrs.get(k) ?? null,
+                    removeAttribute: (k: string) => attrs.delete(k),
+                    show: () => { el.hidden = false; }, hide: () => { el.hidden = true; }, isShown: () => !el.hidden,
+                    empty: () => { children.length = 0; }, remove: vi.fn(),
+                    appendChild: (c: Record<string, unknown>) => { c.parentElement = el; children.push(c); return c; },
+                    insertBefore: (c: Record<string, unknown>) => { c.parentElement = el; children.push(c); return c; },
+                    contains: () => false, closest: () => null,
+                    addEventListener: vi.fn(), removeEventListener: vi.fn(),
+                    querySelector: () => null, querySelectorAll: () => [], getElementsByClassName: () => [],
+                    createDiv: (o?: string | { cls?: string }) => { const c = makeEl('div', typeof o === 'string' ? o : (o?.cls || '')); c.ownerDocument = el.ownerDocument; children.push(c); c.parentElement = el; return c; },
+                    createSpan: (o?: string | { cls?: string }) => { const c = makeEl('span', typeof o === 'string' ? o : (o?.cls || '')); c.ownerDocument = el.ownerDocument; children.push(c); c.parentElement = el; return c; },
+                    createEl: (t: string, o?: { cls?: string }) => { const c = makeEl(t, o?.cls || ''); c.ownerDocument = el.ownerDocument; children.push(c); c.parentElement = el; return c; }
+                };
+                return el;
+            };
+
+            const mockWin = {
+                innerWidth: 390, innerHeight: 844,
+                visualViewport: { width: 390, height: 844, offsetTop: 0, offsetLeft: 0, addEventListener: vi.fn(), removeEventListener: vi.fn() },
+                addEventListener: vi.fn(), removeEventListener: vi.fn(),
+                requestAnimationFrame: vi.fn((fn: () => void) => { fn(); return 1; }), cancelAnimationFrame: vi.fn(),
+                setTimeout, clearTimeout, setInterval, clearInterval
+            };
+            const bodyEl = makeEl('body', 'is-phone');
+            const mockDoc = {
+                body: bodyEl, defaultView: mockWin,
+                documentElement: { requestFullscreen: vi.fn().mockResolvedValue(undefined) },
+                fullscreenElement: null, exitFullscreen: vi.fn().mockResolvedValue(undefined),
+                activeElement: null, addEventListener: vi.fn(), removeEventListener: vi.fn()
+            };
+            bodyEl.ownerDocument = mockDoc;
+            (globalThis as Record<string, unknown>).activeDocument = mockDoc;
+            (globalThis as Record<string, unknown>).window = mockWin;
+
+            const rootFolder = { path: '', name: '', parent: null, isRoot: () => true };
+            const novelsFolder = { path: 'Novels', name: 'Novels', parent: rootFolder, isRoot: () => false };
+            const bookFolder = { path: 'Novels/BookA', name: 'BookA', parent: novelsFolder, isRoot: () => false };
+            const ch1 = Object.assign(new TFile(), { path: 'Novels/BookA/Ch1.md', basename: 'Ch1', extension: 'md', parent: bookFolder });
+            const refFile = Object.assign(new TFile(), { path: 'Novels/BookA/RefDir/OldRef.md', basename: 'OldRef', extension: 'md', parent: bookFolder });
+            const unauthorizedFile = Object.assign(new TFile(), { path: 'Novels/BookA/Unauthorized.md', basename: 'Unauthorized', extension: 'md', parent: bookFolder });
+
+            const filesByPath = new Map<string, TFile>([
+                [ch1.path, ch1], [refFile.path, refFile], [unauthorizedFile.path, unauthorizedFile]
+            ]);
+
+            const mainContainer = makeEl('div', 'workspace-leaf');
+            mainContainer.ownerDocument = mockDoc;
+            const mainView = Object.assign(Object.create(MockMarkdownView.prototype), {
+                file: ch1, getViewType: () => 'markdown',
+                editor: { cm: { dispatch: vi.fn(), requestMeasure: vi.fn(), focus: vi.fn() }, focus: vi.fn(), getScrollInfo: () => ({ top: 0, left: 0 }), listSelections: () => [] },
+                containerEl: mainContainer
+            });
+            const mainLeaf = {
+                id: 'main-1', active: true, view: mainView, containerEl: mainContainer,
+                getViewState: () => ({ type: 'markdown', state: { file: ch1.path, mode: 'source' } }),
+                setViewState: vi.fn().mockResolvedValue(undefined)
+            } as unknown as WorkspaceLeaf;
+
+            const wsListeners = new Map<string, Array<(...args: unknown[]) => void>>();
+            const vaultListeners = new Map<string, Array<(...args: unknown[]) => void>>();
+            let refLeafRef: WorkspaceLeaf | null = null;
+
+            const mockPlugin = {
+                app: {
+                    workspace: {
+                        getActiveViewOfType: vi.fn(() => mainView),
+                        getActiveFile: vi.fn(() => ch1),
+                        getLeavesOfType: vi.fn((t: string) => t === 'markdown' ? [mainLeaf] : []),
+                        iterateAllLeaves: vi.fn((cb: (l: WorkspaceLeaf) => void) => { cb(mainLeaf); if (refLeafRef) cb(refLeafRef); }),
+                        getRightLeaf: vi.fn(() => {
+                            const container = makeEl('div', 'workspace-leaf');
+                            container.ownerDocument = mockDoc;
+                            const leaf = {
+                                containerEl: container,
+                                view: { getViewType: () => 'empty', file: null as TFile | null },
+                                setViewState: vi.fn(async (vs: { type: string; state?: { file?: string } }) => {
+                                    (leaf as unknown as { view: unknown }).view = {
+                                        getViewType: () => vs.type,
+                                        file: vs.state?.file ? (filesByPath.get(vs.state.file) ?? null) : null
+                                    };
+                                }),
+                                openFile: vi.fn(async (f: TFile) => {
+                                    (leaf as unknown as { view: unknown }).view = { getViewType: () => 'markdown', file: f };
+                                }),
+                                detach: vi.fn()
+                            } as unknown as WorkspaceLeaf;
+                            refLeafRef = leaf;
+                            return leaf;
+                        }),
+                        createLeafBySplit: vi.fn(), setActiveLeaf: vi.fn(), updateOptions: vi.fn(),
+                        on: vi.fn((evt: string, fn: (...args: unknown[]) => void) => {
+                            const arr = wsListeners.get(evt) ?? []; arr.push(fn); wsListeners.set(evt, arr);
+                            return { evt, fn };
+                        }),
+                        offref: vi.fn(), trigger: vi.fn()
+                    },
+                    vault: {
+                        getName: () => 'TestVault',
+                        getAbstractFileByPath: vi.fn((p: string) => {
+                            if (filesByPath.has(p)) return filesByPath.get(p)!;
+                            if (p === 'Novels/BookA/lore') return Object.assign(new TFolder(), { path: p, name: 'lore', children: [] });
+                            return null;
+                        }),
+                        on: vi.fn((evt: string, fn: (...args: unknown[]) => void) => {
+                            const arr = vaultListeners.get(evt) ?? []; arr.push(fn); vaultListeners.set(evt, arr);
+                            return { evt, fn };
+                        }),
+                        offref: vi.fn()
+                    },
+                    metadataCache: { getFileCache: vi.fn().mockReturnValue({ headings: [] }), on: vi.fn().mockReturnValue({ id: 'mev' }), offref: vi.fn() },
+                    commands: { executeCommandById: vi.fn() }
+                },
+                isTracking: false, focusMs: 0,
+                settings: {
+                    _savedImmersiveLayout: null, workspaceFolders: ['Novels'], loreFolderName: 'lore',
+                    immersive: {
+                        immersiveTopSlots: [], immersiveBottomSlots: [], immersiveLeftSlots: [], immersiveRightSlots: [],
+                        immersiveTopSize: 20, immersiveBottomSize: 20, immersiveLeftSize: 20, immersiveRightSize: 20,
+                        immersiveTopInternalSizes: [], immersiveBottomInternalSizes: [], immersiveLeftInternalSizes: [], immersiveRightInternalSizes: [],
+                        collapsedRegions: { top: false, bottom: false, left: false, right: false },
+                        allRegionsHidden: false, immersiveHideProperties: true,
+                        typewriterEnabled: false, typewriterCenterOffset: 0, typewriterUnfocusedOpacity: 0.4,
+                        pomodoroEnabled: false, pomodoroInterval: 30, manuscriptModeEnabled: false,
+                        workReferencePaths: { 'Novels/BookA': refFile.path },
+                        mobileAuxPanel: { viewType: 'reference-view', isOpen: true, isMinimized: false, isLocked: false, x: 16, y: 64, width: 300, height: 320 }
+                    }
+                },
+                stickyNoteManager: { syncActiveNotesToManager: vi.fn(), getNotes: vi.fn().mockReturnValue([]), saveNotes: vi.fn().mockResolvedValue(undefined), syncFloatingNotes: vi.fn() },
+                statisticsManager: { getCoreStats: vi.fn().mockReturnValue({ totalTime: '00:00:00', focusTime: '00:00:00', slackTime: '00:00:00', todayWords: 100, goal: 1000, percent: 10, dailyWords: 100, dailyGoal: 2000, sessionWords: 0, sessionSpeed: 0 }), getSessionSpeed: vi.fn().mockReturnValue(0) },
+                adaptiveDebounceManager: { debounceFixed: vi.fn() },
+                startTracking: vi.fn(), stopTracking: vi.fn(), saveSettings: vi.fn().mockResolvedValue(undefined),
+                settingsManager: { flush: vi.fn().mockResolvedValue(undefined) }
+            } as unknown as ImmersiveModeManagerPlugin;
+
+            mockPlugin.immersiveReferenceManager = new ImmersiveReferenceManager(mockPlugin.app, mockPlugin);
+            const mgr = new ImmersiveModeManager(mockPlugin.app, mockPlugin);
+            await mgr.toggleImmersiveMode();
+            await Promise.resolve();
+            await Promise.resolve();
+            await Promise.resolve();
+
+            const ctrl = mgr.getMobileController()!;
+            const refLeaf = ctrl.getReferenceLeaf()!;
+            expect(ctrl.getExpectedReferencePath()).toBe('Novels/BookA/RefDir/OldRef.md');
+
+            // 1. Genuine file rename: OldRef.md -> RenamedRef.md
+            const oldFilePath = refFile.path;
+            filesByPath.delete(oldFilePath);
+            refFile.path = 'Novels/BookA/RefDir/RenamedRef.md';
+            refFile.basename = 'RenamedRef';
+            filesByPath.set(refFile.path, refFile);
+            for (const fn of vaultListeners.get('rename') ?? []) fn(refFile, oldFilePath);
+            await Promise.resolve();
+            await Promise.resolve();
+
+            expect(ctrl.getExpectedReferencePath()).toBe('Novels/BookA/RefDir/RenamedRef.md');
+            expect(mockPlugin.settings.immersive.workReferencePaths?.['Novels/BookA']).toBe('Novels/BookA/RefDir/RenamedRef.md');
+            expect((refLeaf.view as unknown as { file: TFile | null }).file?.path).toBe('Novels/BookA/RefDir/RenamedRef.md');
+
+            // 2. Genuine ancestor folder rename: RefDir -> RefDir2
+            filesByPath.delete(refFile.path);
+            refFile.path = 'Novels/BookA/RefDir2/RenamedRef.md';
+            filesByPath.set(refFile.path, refFile);
+            const renamedFolder = Object.assign(new TFolder(), { path: 'Novels/BookA/RefDir2', name: 'RefDir2', children: [refFile] });
+            for (const fn of vaultListeners.get('rename') ?? []) fn(renamedFolder, 'Novels/BookA/RefDir');
+            await Promise.resolve();
+            await Promise.resolve();
+
+            expect(ctrl.getExpectedReferencePath()).toBe('Novels/BookA/RefDir2/RenamedRef.md');
+            expect(mockPlugin.settings.immersive.workReferencePaths?.['Novels/BookA']).toBe('Novels/BookA/RefDir2/RenamedRef.md');
+            expect((refLeaf.view as unknown as { file: TFile | null }).file?.path).toBe('Novels/BookA/RefDir2/RenamedRef.md');
+
+            // 3. Unauthorized drift to another file must still be blocked and restored back to RenamedRef.md
+            (refLeaf as unknown as { view: unknown }).view = { getViewType: () => 'markdown', file: unauthorizedFile };
+            for (const fn of wsListeners.get('file-open') ?? []) fn(unauthorizedFile);
+            await Promise.resolve();
+            await Promise.resolve();
+            await Promise.resolve();
+            expect((refLeaf.view as unknown as { file: TFile | null }).file?.path).toBe('Novels/BookA/RefDir2/RenamedRef.md');
+
+            await mgr.exitImmersiveMode();
+        } finally {
+            Platform.isMobile = originalIsMobile;
+        }
+    });
+
+    it('keeps main-editor data isolation active during awaited mobile exit teardown when reference leaf is still active', async () => {
+        const { Platform, MarkdownView: MockMarkdownView, TFolder } = await import('obsidian');
+        const originalIsMobile = Platform.isMobile;
+        Platform.isMobile = true;
+
+        try {
+            const makeEl = (tag = 'div', cls = ''): Record<string, unknown> => {
+                const classes = new Set<string>(cls.split(/\s+/).filter(Boolean));
+                const attrs = new Map<string, string>();
+                const children: Array<Record<string, unknown>> = [];
+                const el: Record<string, unknown> = {
+                    tagName: tag.toUpperCase(),
+                    className: cls, textContent: '', value: '', style: {}, hidden: false,
+                    offsetHeight: 44, offsetWidth: 300, parentElement: null, nextSibling: null, ownerDocument: null, children,
+                    classList: {
+                        add: (...n: string[]) => n.forEach(x => classes.add(x)),
+                        remove: (...n: string[]) => n.forEach(x => classes.delete(x)),
+                        toggle: (n: string, f?: boolean) => { if (f === undefined ? !classes.has(n) : f) classes.add(n); else classes.delete(n); },
+                        contains: (n: string) => classes.has(n)
+                    },
+                    addClass: (...n: string[]) => n.forEach(x => classes.add(x)),
+                    removeClass: (...n: string[]) => n.forEach(x => classes.delete(x)),
+                    hasClass: (n: string) => classes.has(n),
+                    setCssProps: vi.fn(), setCssStyles: vi.fn(),
+                    setAttribute: (k: string, v: string) => attrs.set(k, v),
+                    getAttribute: (k: string) => attrs.get(k) ?? null,
+                    removeAttribute: (k: string) => attrs.delete(k),
+                    show: () => { el.hidden = false; }, hide: () => { el.hidden = true; }, isShown: () => !el.hidden,
+                    empty: () => { children.length = 0; }, remove: vi.fn(),
+                    appendChild: (c: Record<string, unknown>) => { c.parentElement = el; children.push(c); return c; },
+                    insertBefore: (c: Record<string, unknown>) => { c.parentElement = el; children.push(c); return c; },
+                    contains: () => false, closest: () => null,
+                    addEventListener: vi.fn(), removeEventListener: vi.fn(),
+                    querySelector: () => null, querySelectorAll: () => [], getElementsByClassName: () => [],
+                    createDiv: (o?: string | { cls?: string }) => { const c = makeEl('div', typeof o === 'string' ? o : (o?.cls || '')); c.ownerDocument = el.ownerDocument; children.push(c); c.parentElement = el; return c; },
+                    createSpan: (o?: string | { cls?: string }) => { const c = makeEl('span', typeof o === 'string' ? o : (o?.cls || '')); c.ownerDocument = el.ownerDocument; children.push(c); c.parentElement = el; return c; },
+                    createEl: (t: string, o?: { cls?: string }) => { const c = makeEl(t, o?.cls || ''); c.ownerDocument = el.ownerDocument; children.push(c); c.parentElement = el; return c; }
+                };
+                return el;
+            };
+
+            const mockWin = {
+                innerWidth: 390, innerHeight: 844,
+                visualViewport: { width: 390, height: 844, offsetTop: 0, offsetLeft: 0, addEventListener: vi.fn(), removeEventListener: vi.fn() },
+                addEventListener: vi.fn(), removeEventListener: vi.fn(),
+                requestAnimationFrame: vi.fn((fn: () => void) => { fn(); return 1; }), cancelAnimationFrame: vi.fn(),
+                setTimeout, clearTimeout, setInterval, clearInterval
+            };
+            const bodyEl = makeEl('body', 'is-phone');
+            const mockDoc = {
+                body: bodyEl, defaultView: mockWin,
+                documentElement: { requestFullscreen: vi.fn().mockResolvedValue(undefined) },
+                fullscreenElement: null, exitFullscreen: vi.fn().mockResolvedValue(undefined),
+                activeElement: null, addEventListener: vi.fn(), removeEventListener: vi.fn()
+            };
+            bodyEl.ownerDocument = mockDoc;
+            (globalThis as Record<string, unknown>).activeDocument = mockDoc;
+            (globalThis as Record<string, unknown>).window = mockWin;
+
+            const rootFolder = { path: '', name: '', parent: null, isRoot: () => true };
+            const novelsFolder = { path: 'Novels', name: 'Novels', parent: rootFolder, isRoot: () => false };
+            const bookMain = { path: 'Novels/BookMain', name: 'BookMain', parent: novelsFolder, isRoot: () => false };
+            const bookRef = { path: 'Novels/BookRef', name: 'BookRef', parent: novelsFolder, isRoot: () => false };
+            const mainFile = Object.assign(new TFile(), { path: 'Novels/BookMain/Ch1.md', basename: 'Ch1', extension: 'md', parent: bookMain });
+            const refFile = Object.assign(new TFile(), { path: 'Novels/BookRef/Ref1.md', basename: 'Ref1', extension: 'md', parent: bookRef });
+
+            const mainEditor = { getValue: () => 'main words', cm: { dispatch: vi.fn(), requestMeasure: vi.fn(), focus: vi.fn() }, focus: vi.fn(), getScrollInfo: () => ({ top: 0, left: 0 }), listSelections: () => [] };
+            const refEditor = { getValue: () => 'reference words that must never leak', cm: { dispatch: vi.fn() } };
+            const mainContainer = makeEl('div', 'workspace-leaf');
+            mainContainer.ownerDocument = mockDoc;
+            const mainView = Object.assign(Object.create(MockMarkdownView.prototype), {
+                file: mainFile, getViewType: () => 'markdown', editor: mainEditor, containerEl: mainContainer
+            });
+            const mainLeaf = {
+                id: 'main-exit-leaf', active: true, view: mainView, containerEl: mainContainer,
+                getViewState: () => ({ type: 'markdown', state: { file: mainFile.path, mode: 'source' } }),
+                setViewState: vi.fn().mockResolvedValue(undefined)
+            } as unknown as WorkspaceLeaf;
+
+            let activeViewOverride: unknown = mainView;
+            let activeFileOverride: TFile = mainFile;
+            let resolveSaveNotes: (() => void) | null = null;
+            let markSaveNotesEntered: (() => void) | null = null;
+            const saveNotesEntered = new Promise<void>(resolve => { markSaveNotesEntered = resolve; });
+            let deferSaveNotes = false;
+            let activeLeafBeforeCleanup: WorkspaceLeaf | null = null;
+
+            const mockPlugin = {
+                app: {
+                    workspace: {
+                        getActiveViewOfType: vi.fn(() => activeViewOverride),
+                        getActiveFile: vi.fn(() => activeFileOverride),
+                        getLeavesOfType: vi.fn((t: string) => t === 'markdown' ? [mainLeaf] : []),
+                        iterateAllLeaves: vi.fn((cb: (l: WorkspaceLeaf) => void) => cb(mainLeaf)),
+                        getRightLeaf: vi.fn(() => {
+                            const container = makeEl('div', 'workspace-leaf');
+                            container.ownerDocument = mockDoc;
+                            const refView = Object.assign(Object.create(MockMarkdownView.prototype), {
+                                file: refFile, getViewType: () => 'markdown', editor: refEditor, containerEl: container
+                            });
+                            return {
+                                containerEl: container,
+                                view: refView,
+                                setViewState: vi.fn().mockResolvedValue(undefined),
+                                openFile: vi.fn().mockResolvedValue(undefined),
+                                detach: vi.fn()
+                            } as unknown as WorkspaceLeaf;
+                        }),
+                        createLeafBySplit: vi.fn(),
+                        setActiveLeaf: vi.fn((leaf: WorkspaceLeaf) => {
+                            activeLeafBeforeCleanup = leaf;
+                            if (leaf === mainLeaf) {
+                                activeViewOverride = mainView;
+                                activeFileOverride = mainFile;
+                            }
+                        }),
+                        updateOptions: vi.fn(),
+                        on: vi.fn().mockReturnValue({ id: 'ev' }),
+                        offref: vi.fn(),
+                        trigger: vi.fn()
+                    },
+                    vault: {
+                        getName: () => 'TestVault',
+                        getAbstractFileByPath: vi.fn((p: string) => {
+                            if (p === mainFile.path) return mainFile;
+                            if (p === refFile.path) return refFile;
+                            if (p === 'Novels/BookMain/lore' || p === 'Novels/BookRef/lore') {
+                                return Object.assign(new TFolder(), { path: p, name: 'lore', children: [] });
+                            }
+                            return null;
+                        }),
+                        on: vi.fn().mockReturnValue({ id: 'vev' }),
+                        offref: vi.fn()
+                    },
+                    metadataCache: { getFileCache: vi.fn().mockReturnValue({ headings: [] }), on: vi.fn().mockReturnValue({ id: 'mev' }), offref: vi.fn() },
+                    commands: { executeCommandById: vi.fn() }
+                },
+                isTracking: false, focusMs: 0,
+                settings: {
+                    _savedImmersiveLayout: null, workspaceFolders: ['Novels'], loreFolderName: 'lore',
+                    immersive: {
+                        immersiveTopSlots: [], immersiveBottomSlots: [], immersiveLeftSlots: [], immersiveRightSlots: [],
+                        immersiveTopSize: 20, immersiveBottomSize: 20, immersiveLeftSize: 20, immersiveRightSize: 20,
+                        immersiveTopInternalSizes: [], immersiveBottomInternalSizes: [], immersiveLeftInternalSizes: [], immersiveRightInternalSizes: [],
+                        collapsedRegions: { top: false, bottom: false, left: false, right: false },
+                        allRegionsHidden: false, immersiveHideProperties: true,
+                        typewriterEnabled: false, typewriterCenterOffset: 0, typewriterUnfocusedOpacity: 0.4,
+                        pomodoroEnabled: false, pomodoroInterval: 30, manuscriptModeEnabled: false,
+                        workReferencePaths: { 'Novels/BookMain': refFile.path },
+                        mobileAuxPanel: { viewType: 'reference-view', isOpen: true, isMinimized: false, isLocked: false, x: 16, y: 64, width: 300, height: 320 }
+                    }
+                },
+                stickyNoteManager: {
+                    syncActiveNotesToManager: vi.fn(),
+                    getNotes: vi.fn().mockReturnValue([]),
+                    saveNotes: vi.fn(async () => {
+                        if (deferSaveNotes) {
+                            markSaveNotesEntered?.();
+                            await new Promise<void>(resolve => { resolveSaveNotes = resolve; });
+                        }
+                    }),
+                    syncFloatingNotes: vi.fn()
+                },
+                statisticsManager: {
+                    getCoreStats: vi.fn().mockReturnValue({ totalTime: '00:00:00', focusTime: '00:00:00', slackTime: '00:00:00', todayWords: 100, goal: 1000, percent: 10, dailyWords: 100, dailyGoal: 2000, sessionWords: 0, sessionSpeed: 0 }),
+                    getSessionSpeed: vi.fn().mockReturnValue(0)
+                },
+                adaptiveDebounceManager: { debounceFixed: vi.fn() },
+                startTracking: vi.fn(), stopTracking: vi.fn(), saveSettings: vi.fn().mockResolvedValue(undefined),
+                settingsManager: { flush: vi.fn().mockResolvedValue(undefined) }
+            } as unknown as ImmersiveModeManagerPlugin;
+
+            mockPlugin.immersiveReferenceManager = new ImmersiveReferenceManager(mockPlugin.app, mockPlugin);
+            const mgr = new ImmersiveModeManager(mockPlugin.app, mockPlugin);
+            (mockPlugin as unknown as { immersiveModeManager?: ImmersiveModeManager }).immersiveModeManager = mgr;
+
+            await mgr.toggleImmersiveMode();
+            for (let i = 0; i < 10; i++) await Promise.resolve();
+
+            const refLeaf = mgr.getMobileController()!.getReferenceLeaf()!;
+            // Simulate user focusing reference leaf right before tapping Exit
+            activeViewOverride = refLeaf.view;
+            activeFileOverride = refFile;
+
+            deferSaveNotes = true;
+            const exitPromise = mgr.exitImmersiveMode();
+            await saveNotesEntered;
+
+            // Mid-exit: UI/interactions must be disabled, while data isolation remains bound to MAIN
+            expect(mgr.isMobileImmersiveSessionActive()).toBe(false);
+            expect((mgr as unknown as { isMobileDataIsolationActive?: () => boolean }).isMobileDataIsolationActive?.()).toBe(true);
+            expect((mgr as unknown as { getDataScopedMainLeaf?: () => WorkspaceLeaf | null }).getDataScopedMainLeaf?.()).toBe(mainLeaf);
+            expect(mgr.isMainEditorOrigin(refLeaf.view, refEditor)).toBe(false);
+            expect(mgr.isMainEditorOrigin(mainView, mainEditor)).toBe(true);
+            expect(getCurrentBookContext(mockPlugin.app, mockPlugin as unknown as Parameters<typeof getCurrentBookContext>[1])).toBe('Novels/BookMain');
+
+            // Complete exit
+            (resolveSaveNotes as (() => void) | null)?.();
+            await exitPromise;
+
+            expect(activeLeafBeforeCleanup).toBe(mainLeaf);
+            expect((mgr as unknown as { isMobileDataIsolationActive?: () => boolean }).isMobileDataIsolationActive?.()).toBe(false);
+            expect((mgr as unknown as { getDataScopedMainLeaf?: () => WorkspaceLeaf | null }).getDataScopedMainLeaf?.()).toBeNull();
+        } finally {
+            Platform.isMobile = originalIsMobile;
+        }
+    });
+});
+
+describe('ImmersiveModeManager - Mobile immersive follow-up regressions', () => {
+    type DomEl = Record<string, unknown> & {
+        children: DomEl[];
+        style: Record<string, string>;
+        classList: {
+            add: (...n: string[]) => void;
+            remove: (...n: string[]) => void;
+            toggle: (n: string, f?: boolean) => boolean;
+            contains: (n: string) => boolean;
+        };
+        dispatch: (evt: string, payload?: unknown) => void;
+        findByClass: (cls: string) => DomEl | null;
+        appendChild: (c: DomEl) => DomEl;
+        setAttribute: (k: string, v: string) => void;
+        getAttribute: (k: string) => string | null;
+        createDiv: (o?: string | { cls?: string; text?: string }) => DomEl;
+        createSpan: (o?: string | { cls?: string; text?: string }) => DomEl;
+        createEl: (t: string, o?: { cls?: string; text?: string; attr?: Record<string, string> }) => DomEl;
+    };
+
+    const makeEl = (tag = 'div', cls = ''): DomEl => {
+        const classes = new Set<string>(cls.split(/\s+/).filter(Boolean));
+        const attrs = new Map<string, string>();
+        const listeners = new Map<string, Array<(e: unknown) => void>>();
+        const children: DomEl[] = [];
+        const el: DomEl = {
+            tagName: tag.toUpperCase(),
+            className: cls,
+            textContent: '',
+            value: '',
+            style: {},
+            hidden: false,
+            offsetWidth: 320,
+            offsetHeight: 44,
+            parentElement: null,
+            nextSibling: null,
+            ownerDocument: null,
+            children,
+            classList: {
+                add: (...n: string[]) => { n.forEach(x => classes.add(x)); el.className = Array.from(classes).join(' '); },
+                remove: (...n: string[]) => { n.forEach(x => classes.delete(x)); el.className = Array.from(classes).join(' '); },
+                toggle: (n: string, f?: boolean) => { const next = f ?? !classes.has(n); if (next) classes.add(n); else classes.delete(n); el.className = Array.from(classes).join(' '); return next; },
+                contains: (n: string) => classes.has(n)
+            },
+            addClass: (...n: string[]) => el.classList.add(...n),
+            removeClass: (...n: string[]) => el.classList.remove(...n),
+            hasClass: (n: string) => classes.has(n),
+            setCssProps: (props: Record<string, string>) => Object.assign(el.style, props),
+            setCssStyles: (styles: Record<string, string>) => Object.assign(el.style, styles),
+            setAttribute: (k: string, v: string) => attrs.set(k, v),
+            getAttribute: (k: string) => attrs.get(k) ?? null,
+            removeAttribute: (k: string) => attrs.delete(k),
+            show: () => { el.hidden = false; el.classList.remove('is-hidden'); },
+            hide: () => { el.hidden = true; },
+            isShown: () => !el.hidden,
+            empty: () => { children.length = 0; },
+            remove: () => {
+                const p = el.parentElement as DomEl | null;
+                if (p?.children) { const i = p.children.indexOf(el); if (i >= 0) p.children.splice(i, 1); }
+                el.parentElement = null;
+            },
+            appendChild: (c: DomEl) => { c.parentElement = el; children.push(c); return c; },
+            insertBefore: (c: DomEl) => { c.parentElement = el; children.push(c); return c; },
+            contains: (n: unknown): boolean => n === el || children.some(c => (c.contains as (x: unknown) => boolean)(n)),
+            closest: () => null,
+            addEventListener: (evt: string, fn: (e: unknown) => void) => { const arr = listeners.get(evt) ?? []; arr.push(fn); listeners.set(evt, arr); },
+            removeEventListener: (evt: string, fn: (e: unknown) => void) => { listeners.set(evt, (listeners.get(evt) ?? []).filter(h => h !== fn)); },
+            dispatch: (evt: string, payload?: unknown) => { for (const fn of [...(listeners.get(evt) ?? [])]) fn(payload); },
+            findByClass: (targetCls: string): DomEl | null => {
+                if (el.classList.contains(targetCls)) return el;
+                for (const c of children) { const hit = c.findByClass(targetCls); if (hit) return hit; }
+                return null;
+            },
+            querySelector: (sel: string) => sel.startsWith('.') ? el.findByClass(sel.slice(1)) : null,
+            querySelectorAll: () => [],
+            getElementsByClassName: () => [],
+            createDiv: (o?: string | { cls?: string; text?: string }) => {
+                const c = makeEl('div', typeof o === 'string' ? o : (o?.cls || ''));
+                if (typeof o === 'object' && o?.text) c.textContent = o.text;
+                c.ownerDocument = el.ownerDocument;
+                el.appendChild(c);
+                return c;
+            },
+            createSpan: (o?: string | { cls?: string; text?: string }) => {
+                const c = makeEl('span', typeof o === 'string' ? o : (o?.cls || ''));
+                if (typeof o === 'object' && o?.text) c.textContent = o.text;
+                c.ownerDocument = el.ownerDocument;
+                el.appendChild(c);
+                return c;
+            },
+            createEl: (tagName: string, o?: { cls?: string; text?: string; attr?: Record<string, string> }) => {
+                const c = makeEl(tagName, o?.cls || '');
+                if (o?.text) c.textContent = o.text;
+                if (o?.attr) for (const [k, v] of Object.entries(o.attr)) c.setAttribute(k, v);
+                c.ownerDocument = el.ownerDocument;
+                el.appendChild(c);
+                return c;
+            }
+        };
+        return el;
+    };
+
+    const setupMobileHarness = async (options?: {
+        safeAreaVars?: Record<string, string>;
+        pomodoroEnabled?: boolean;
+        pomodoroInterval?: number;
+        mobileAuxPanel?: Record<string, unknown>;
+        useFakeIntervals?: boolean;
+    }) => {
+        const { Platform, MarkdownView: MockMarkdownView } = await import('obsidian');
+        const originalIsMobile = Platform.isMobile;
+        Platform.isMobile = true;
+
+        const safeAreaVars: Record<string, string> = { ...(options?.safeAreaVars ?? {}) };
+        const vvListeners = new Map<string, Array<() => void>>();
+        const visualViewport = {
+            width: 390, height: 844, offsetTop: 0, offsetLeft: 0,
+            addEventListener: vi.fn((evt: string, fn: () => void) => { const arr = vvListeners.get(evt) ?? []; arr.push(fn); vvListeners.set(evt, arr); }),
+            removeEventListener: vi.fn((evt: string, fn: () => void) => { vvListeners.set(evt, (vvListeners.get(evt) ?? []).filter(f => f !== fn)); })
+        };
+
+        let nextIntervalId = 100;
+        const intervals = new Map<number, () => void>();
+        const clearIntervalSpy = vi.fn((id: number) => { intervals.delete(id); });
+        const setIntervalSpy = vi.fn((fn: () => void) => { const id = ++nextIntervalId; intervals.set(id, fn); return id; });
+
+        const mockWin = {
+            innerWidth: 390,
+            innerHeight: 844,
+            visualViewport,
+            getComputedStyle: vi.fn((node: DomEl) => ({
+                paddingTop: '0px',
+                paddingRight: '0px',
+                paddingBottom: '0px',
+                paddingLeft: '0px',
+                getPropertyValue: (prop: string) => safeAreaVars[prop] ?? node?.style?.[prop] ?? ''
+            })),
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+            requestAnimationFrame: vi.fn((fn: () => void) => { fn(); return 1; }),
+            cancelAnimationFrame: vi.fn(),
+            setTimeout,
+            clearTimeout,
+            setInterval: options?.useFakeIntervals ? setIntervalSpy : setInterval,
+            clearInterval: options?.useFakeIntervals ? clearIntervalSpy : clearInterval
+        };
+
+        const bodyEl = makeEl('body', 'is-phone');
+        const docEl = makeEl('html', '');
+        const mockDoc = {
+            body: bodyEl,
+            documentElement: Object.assign(docEl, { requestFullscreen: vi.fn().mockResolvedValue(undefined) }),
+            defaultView: mockWin,
+            fullscreenElement: null,
+            exitFullscreen: vi.fn().mockResolvedValue(undefined),
+            activeElement: null,
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn()
+        };
+        bodyEl.ownerDocument = mockDoc;
+        docEl.ownerDocument = mockDoc;
+        (globalThis as Record<string, unknown>).activeDocument = mockDoc;
+        (globalThis as Record<string, unknown>).activeWindow = mockWin;
+        (globalThis as Record<string, unknown>).window = mockWin;
+
+        const chapterFile = Object.assign(new TFile(), { path: 'Novels/BookA/Chapter1.md', basename: 'Chapter1', extension: 'md' });
+        const mainContainer = makeEl('div', 'workspace-leaf');
+        mainContainer.ownerDocument = mockDoc;
+        const mainView = Object.assign(Object.create(MockMarkdownView.prototype), {
+            file: chapterFile,
+            getViewType: () => 'markdown',
+            editor: { cm: { dispatch: vi.fn(), requestMeasure: vi.fn(), focus: vi.fn() }, focus: vi.fn(), getScrollInfo: () => ({ top: 0, left: 0 }), listSelections: () => [] },
+            containerEl: mainContainer
+        });
+        const mainLeaf = {
+            id: 'main-leaf', active: true, view: mainView, containerEl: mainContainer,
+            getViewState: () => ({ type: 'markdown', state: { file: chapterFile.path, mode: 'source' } }),
+            setViewState: vi.fn().mockResolvedValue(undefined)
+        } as unknown as WorkspaceLeaf;
+
+        const createdLeaves: Array<{
+            leaf: WorkspaceLeaf;
+            container: DomEl;
+            detach: ReturnType<typeof vi.fn>;
+            onResize: ReturnType<typeof vi.fn>;
+            loadIfDeferred: ReturnType<typeof vi.fn>;
+        }> = [];
+        let leafFactoryOverride: ((rec: {
+            container: DomEl; detach: ReturnType<typeof vi.fn>; onResize: ReturnType<typeof vi.fn>; loadIfDeferred: ReturnType<typeof vi.fn>;
+        }) => Record<string, unknown>) | null = null;
+
+        const mockPlugin = {
+            app: {
+                workspace: {
+                    getActiveViewOfType: vi.fn().mockReturnValue(mainView),
+                    getLeavesOfType: vi.fn((t: string) => t === 'markdown' ? [mainLeaf] : []),
+                    iterateAllLeaves: vi.fn((cb: (l: WorkspaceLeaf) => void) => cb(mainLeaf)),
+                    getRightLeaf: vi.fn(() => {
+                        const container = makeEl('div', 'workspace-leaf');
+                        container.ownerDocument = mockDoc;
+                        container.createDiv({ cls: 'workspace-leaf-content' });
+                        const detach = vi.fn();
+                        const onResize = vi.fn();
+                        const loadIfDeferred = vi.fn().mockResolvedValue(undefined);
+                        const leafObj: Record<string, unknown> = {
+                            containerEl: container,
+                            isDeferred: false,
+                            loadIfDeferred,
+                            view: { getViewType: () => 'empty', onResize },
+                            setViewState: vi.fn(async (vs: { type: string }) => {
+                                leafObj.view = { getViewType: () => vs.type, onResize };
+                            }),
+                            openFile: vi.fn().mockResolvedValue(undefined),
+                            detach
+                        };
+                        if (leafFactoryOverride) {
+                            Object.assign(leafObj, leafFactoryOverride({ container, detach, onResize, loadIfDeferred }));
+                        }
+                        const leaf = leafObj as unknown as WorkspaceLeaf;
+                        createdLeaves.push({
+                            leaf,
+                            container,
+                            detach,
+                            onResize,
+                            loadIfDeferred: leafObj.loadIfDeferred as ReturnType<typeof vi.fn>
+                        });
+                        return leaf;
+                    }),
+                    createLeafBySplit: vi.fn(),
+                    setActiveLeaf: vi.fn(),
+                    updateOptions: vi.fn(),
+                    on: vi.fn().mockReturnValue({ id: 'ev' }),
+                    offref: vi.fn(),
+                    trigger: vi.fn()
+                },
+                vault: {
+                    getName: () => 'TestVault',
+                    getAbstractFileByPath: vi.fn((p: string) => p === chapterFile.path ? chapterFile : null),
+                    on: vi.fn().mockReturnValue({ id: 'vev' }),
+                    offref: vi.fn()
+                },
+                metadataCache: { getFileCache: vi.fn().mockReturnValue({ headings: [] }), on: vi.fn().mockReturnValue({ id: 'mev' }), offref: vi.fn() },
+                commands: { executeCommandById: vi.fn() }
+            },
+            isTracking: false,
+            focusMs: 0,
+            settings: {
+                _savedImmersiveLayout: null,
+                workspaceFolders: [],
+                immersive: {
+                    immersiveTopSlots: [], immersiveBottomSlots: [],
+                    immersiveLeftSlots: ['immersive-chapter-list-view'], immersiveRightSlots: ['reference-view'],
+                    immersiveTopSize: 20, immersiveBottomSize: 20, immersiveLeftSize: 20, immersiveRightSize: 20,
+                    immersiveTopInternalSizes: [], immersiveBottomInternalSizes: [], immersiveLeftInternalSizes: [], immersiveRightInternalSizes: [],
+                    collapsedRegions: { top: false, bottom: false, left: false, right: false },
+                    allRegionsHidden: false,
+                    immersiveHideProperties: true,
+                    typewriterEnabled: false, typewriterCenterOffset: 0, typewriterUnfocusedOpacity: 0.4,
+                    pomodoroEnabled: options?.pomodoroEnabled ?? false,
+                    pomodoroInterval: options?.pomodoroInterval ?? 30,
+                    manuscriptModeEnabled: false,
+                    mobileAuxPanel: {
+                        viewType: 'outline',
+                        isOpen: false,
+                        isMinimized: false,
+                        isLocked: false,
+                        x: 16, y: 64, width: 300, height: 280,
+                        ...(options?.mobileAuxPanel ?? {})
+                    }
+                }
+            },
+            stickyNoteManager: { syncActiveNotesToManager: vi.fn(), getNotes: vi.fn().mockReturnValue([]), saveNotes: vi.fn().mockResolvedValue(undefined), syncFloatingNotes: vi.fn() },
+            statisticsManager: {
+                getCoreStats: vi.fn().mockReturnValue({ totalTime: '00:00:00', focusTime: '00:00:00', slackTime: '00:00:00', todayWords: 100, goal: 1000, percent: 10, dailyWords: 100, dailyGoal: 2000, sessionWords: 0, sessionSpeed: 0 }),
+                getSessionSpeed: vi.fn().mockReturnValue(0)
+            },
+            adaptiveDebounceManager: { debounceFixed: vi.fn() },
+            startTracking: vi.fn(),
+            stopTracking: vi.fn(),
+            saveSettings: vi.fn().mockResolvedValue(undefined),
+            settingsManager: { flush: vi.fn().mockResolvedValue(undefined) }
+        } as unknown as ImmersiveModeManagerPlugin;
+
+        mockPlugin.immersiveReferenceManager = new ImmersiveReferenceManager(mockPlugin.app, mockPlugin);
+        const mgr = new ImmersiveModeManager(mockPlugin.app, mockPlugin);
+        (mockPlugin as unknown as { immersiveModeManager?: ImmersiveModeManager }).immersiveModeManager = mgr;
+
+        return {
+            mgr, mockPlugin, mockDoc, mockWin, bodyEl, visualViewport, vvListeners, safeAreaVars,
+            createdLeaves, intervals, setIntervalSpy, clearIntervalSpy,
+            setLeafFactoryOverride: (fn: typeof leafFactoryOverride) => { leafFactoryOverride = fn; },
+            restorePlatform: () => { Platform.isMobile = originalIsMobile; }
+        };
+    };
+
+    it('keeps read-only data, quick settings and exit in the mobile topbar and starts/stops focus with the session', async () => {
+        const h = await setupMobileHarness();
+        const workPath = vi.spyOn(h.mockPlugin.immersiveReferenceManager, 'getWorkPath').mockReturnValue('Novels/Example Work');
+        try {
+            await h.mgr.toggleImmersiveMode();
+            const title = h.bodyEl.findByClass('wn-immersive-mobile-work-title');
+            expect(title).not.toBeNull();
+            expect(title!.textContent).toBe('Example Work');
+            expect(h.bodyEl.findByClass('wn-immersive-mobile-topbar')!.children[0] === title).toBe(true);
+            expect(h.bodyEl.findByClass('wn-immersive-mobile-topbar-stats')!.children.includes(title!)).toBe(false);
+            workPath.mockReturnValue('Novels/Another Work');
+            h.mgr.refreshMobileTopBar();
+            expect(title!.textContent).toBe('Another Work');
+            workPath.mockReturnValue('');
+            h.mgr.refreshMobileTopBar();
+            expect(title!.hidden).toBe(true);
+            expect(title!.textContent).toBe('');
+            const bar = h.bodyEl.findByClass('wn-immersive-mobile-topbar')!;
+            const descendants = (node: DomEl): DomEl[] => [node, ...node.children.flatMap(descendants)];
+            const buttons = descendants(bar).filter(node => node.tagName === 'BUTTON');
+            expect(buttons).toHaveLength(2);
+            expect(buttons[0].classList.contains('wn-immersive-mobile-settings-btn')).toBe(true);
+            expect(buttons[1].classList.contains('wn-immersive-mobile-exit-btn')).toBe(true);
+            expect(descendants(bar).some(node => node.tagName === 'SELECT')).toBe(false);
+            const stats = h.mockPlugin.statisticsManager.getCoreStats();
+            vi.mocked(h.mockPlugin.statisticsManager.getCoreStats).mockReturnValue({
+                ...stats, todayWords: 123456789, percent: 100, sessionSpeed: 987654
+            });
+            const speedSource = h.mockPlugin.statisticsManager as typeof h.mockPlugin.statisticsManager & {
+                getSessionSpeed(): number;
+            };
+            vi.spyOn(speedSource, 'getSessionSpeed').mockReturnValue(987654);
+            h.mgr.refreshMobileTopBar();
+            expect(h.bodyEl.findByClass('wn-immersive-mobile-word-count')!.textContent)
+                .toContain((123456789).toLocaleString());
+            expect(h.bodyEl.findByClass('wn-immersive-mobile-progress')!.textContent).toBe('100%');
+            expect(h.bodyEl.findByClass('wn-immersive-mobile-speed')!.textContent).toContain('987654');
+            expect(h.bodyEl.findByClass('wn-immersive-mobile-timer')!.hidden).toBe(false);
+            expect(h.bodyEl.findByClass('wn-immersive-mobile-timer-text')!.textContent).toMatch(/^\d+:\d{2}:\d{2}$/);
+            expect(h.mockPlugin.startTracking).toHaveBeenCalledTimes(1);
+            expect(h.bodyEl.findByClass('wn-immersive-mobile-dir-restore-btn')).not.toBeNull();
+            await h.mgr.exitImmersiveMode();
+            expect(h.mockPlugin.stopTracking).toHaveBeenCalledTimes(1);
+        } finally {
+            h.restorePlatform();
+        }
+    });
+
+    it('shrinks single-row topbar text for available width and restores the normal font after widening', async () => {
+        const h = await setupMobileHarness();
+        try {
+            await h.mgr.toggleImmersiveMode();
+            const stats = h.bodyEl.findByClass('wn-immersive-mobile-topbar-stats')!;
+            stats.clientWidth = 160;
+            let naturalWidth = 420;
+            const fontSize = () => Number.parseFloat(stats.style['--wn-immersive-mobile-stats-font-size'] || '14');
+            Object.defineProperty(stats, 'scrollWidth', { get: () => Math.ceil(naturalWidth * fontSize() / 14) });
+            h.mgr.refreshMobileTopBar();
+            expect(fontSize()).toBeLessThan(14);
+            expect(stats.scrollWidth).toBeLessThanOrEqual(160);
+            const firstSize = fontSize();
+            naturalWidth = 700;
+            h.mgr.refreshMobileTopBarTimer();
+            expect(fontSize()).toBeLessThan(firstSize);
+            expect(stats.scrollWidth).toBeLessThanOrEqual(160);
+            stats.clientWidth = 800;
+            h.mgr.getMobileController()!.syncViewportMetrics();
+            expect(fontSize()).toBe(14);
+            await h.mgr.exitImmersiveMode();
+        } finally { h.restorePlatform(); }
+    });
+
+    it('minimizes the auxiliary panel to one restore icon while preserving expanded size and lock state', async () => {
+        const h = await setupMobileHarness({
+            mobileAuxPanel: { isOpen: true, isLocked: true, width: 310, height: 290 }
+        });
+        try {
+            await h.mgr.toggleImmersiveMode();
+            const ctrl = h.mgr.getMobileController()!;
+            await ctrl.setAuxMinimized(true);
+            expect(ctrl.getRenderedAuxRect()).toMatchObject({ width: 32, height: 32 });
+            const header = h.bodyEl.findByClass('wn-immersive-mobile-aux-header')!;
+            const body = h.bodyEl.findByClass('wn-immersive-mobile-aux-body')!;
+            const restore = h.bodyEl.findByClass('wn-immersive-mobile-aux-restore-btn')!;
+            expect(header.hidden).toBe(true);
+            expect(body.hidden).toBe(true);
+            expect(restore.hidden).toBe(false);
+            restore.dispatch('click', { stopPropagation: vi.fn() });
+            await Promise.resolve();
+            expect(ctrl.getAuxState()).toMatchObject({
+                isMinimized: false, isLocked: true, width: 310, height: 290
+            });
+            expect(header.hidden).toBe(false);
+            expect(restore.hidden).toBe(true);
+            await h.mgr.exitImmersiveMode();
+        } finally {
+            h.restorePlatform();
+        }
+    });
+
+    it('drags the minimized restore icon without expanding, preserves dimensions and blocks locked dragging', async () => {
+        const h = await setupMobileHarness({ mobileAuxPanel: { isOpen: true, x: 24, y: 90, width: 300, height: 290 } });
+        try {
+            await h.mgr.toggleImmersiveMode();
+            const ctrl = h.mgr.getMobileController()!;
+            await ctrl.setAuxMinimized(true);
+            const restore = h.bodyEl.findByClass('wn-immersive-mobile-aux-restore-btn')!;
+            restore.dispatch('pointerdown', { pointerId: 7, button: 0, clientX: 30, clientY: 100, preventDefault: vi.fn() });
+            const move = h.mockDoc.addEventListener.mock.calls.slice().reverse().find(c => c[0] === 'pointermove')?.[1] as ((e: unknown) => void) | undefined;
+            const end = h.mockDoc.addEventListener.mock.calls.slice().reverse().find(c => c[0] === 'pointerup')?.[1] as ((e: unknown) => void) | undefined;
+            expect(move).toBeDefined();
+            move!({ pointerId: 7, clientX: 110, clientY: 180, preventDefault: vi.fn() });
+            end!({ pointerId: 7 });
+            restore.dispatch('click', { detail: 1, stopPropagation: vi.fn(), preventDefault: vi.fn() });
+            expect(ctrl.getAuxState()).toMatchObject({ isMinimized: true, x: 104, y: 170, width: 300, height: 290 });
+            expect(h.mockPlugin.settings.immersive.mobileAuxPanel).toMatchObject({ x: 104, y: 170 });
+            expect(h.mockDoc.removeEventListener).toHaveBeenCalledWith('pointermove', move);
+            // A fresh tap restores; locking continues to forbid minimized dragging.
+            restore.dispatch('pointerdown', { pointerId: 8, button: 0, clientX: 110, clientY: 180, preventDefault: vi.fn() });
+            const tapEnd = h.mockDoc.addEventListener.mock.calls.slice().reverse().find(c => c[0] === 'pointerup')?.[1] as (e: unknown) => void;
+            const jitter = h.mockDoc.addEventListener.mock.calls.slice().reverse().find(c => c[0] === 'pointermove')?.[1] as (e: unknown) => void;
+            jitter({ pointerId: 8, clientX: 112, clientY: 181, preventDefault: vi.fn() });
+            expect(ctrl.getAuxState()).toMatchObject({ x: 104, y: 170 });
+            tapEnd({ pointerId: 8 });
+            restore.dispatch('click', { detail: 1, stopPropagation: vi.fn(), preventDefault: vi.fn() });
+            expect(ctrl.getAuxState().isMinimized).toBe(false);
+            await ctrl.setAuxMinimized(true);
+            restore.dispatch('pointerdown', { pointerId: 10, button: 0, clientX: 110, clientY: 180, preventDefault: vi.fn() });
+            const cancel = h.mockDoc.addEventListener.mock.calls.slice().reverse().find(c => c[0] === 'pointercancel')?.[1] as (e: unknown) => void;
+            cancel({ pointerId: 10 });
+            expect(h.mockDoc.removeEventListener).toHaveBeenCalledWith('pointercancel', cancel);
+            await ctrl.setAuxLocked(true);
+            const calls = h.mockDoc.addEventListener.mock.calls.length;
+            restore.dispatch('pointerdown', { pointerId: 9, button: 0, clientX: 110, clientY: 180, preventDefault: vi.fn() });
+            expect(h.mockDoc.addEventListener.mock.calls).toHaveLength(calls);
+            restore.dispatch('click', { detail: 0, stopPropagation: vi.fn(), preventDefault: vi.fn() });
+            expect(ctrl.getAuxState().isMinimized).toBe(false);
+            await h.mgr.exitImmersiveMode();
+        } finally { h.restorePlatform(); }
+    });
+
+    it('docks the tablet auxiliary panel on the right, reserves editor width and resizes from its left boundary', async () => {
+        const h = await setupMobileHarness({ mobileAuxPanel: { isOpen: true, x: 24, y: 90, width: 300, height: 290 } });
+        h.bodyEl.classList.remove('is-phone');
+        h.bodyEl.classList.add('is-tablet');
+        h.mockWin.innerWidth = 1024;
+        h.visualViewport.width = 1024;
+        try {
+            await h.mgr.toggleImmersiveMode();
+            const ctrl = h.mgr.getMobileController()!;
+            const dock = h.bodyEl.findByClass('wn-immersive-mobile-aux-dock-btn');
+            expect(dock).not.toBeNull();
+            dock!.dispatch('click', { stopPropagation: vi.fn() });
+            await Promise.resolve();
+            expect(ctrl.getAuxState()).toMatchObject({ isDocked: true, x: 24, y: 90, width: 300, height: 290 });
+            expect(ctrl.getRenderedAuxRect()).toMatchObject({ x: 724, y: 44, width: 300, height: 800 });
+            expect(h.bodyEl.style['--wn-immersive-mobile-dock-width']).toBe('300px');
+            expect(h.mockPlugin.settings.immersive.mobileAuxPanel).toMatchObject({ isDocked: true });
+            const header = h.bodyEl.findByClass('wn-immersive-mobile-aux-header')!;
+            const beforeDrag = h.mockDoc.addEventListener.mock.calls.length;
+            header.dispatch('pointerdown', { pointerId: 13, button: 0, clientX: 800, clientY: 60, target: header, preventDefault: vi.fn() });
+            expect(h.mockDoc.addEventListener.mock.calls).toHaveLength(beforeDrag);
+            const resize = h.bodyEl.findByClass('wn-immersive-mobile-aux-resize-handle')!;
+            resize.dispatch('pointerdown', { pointerId: 11, button: 0, clientX: 724, clientY: 200, preventDefault: vi.fn(), stopPropagation: vi.fn() });
+            const move = h.mockDoc.addEventListener.mock.calls.slice().reverse().find(c => c[0] === 'pointermove')?.[1] as (e: unknown) => void;
+            const end = h.mockDoc.addEventListener.mock.calls.slice().reverse().find(c => c[0] === 'pointerup')?.[1] as (e: unknown) => void;
+            move({ pointerId: 11, clientX: 684, clientY: 250, preventDefault: vi.fn() });
+            end({ pointerId: 11 });
+            expect(ctrl.getAuxState()).toMatchObject({ width: 340, height: 290 });
+            expect(ctrl.getRenderedAuxRect()).toMatchObject({ x: 684, width: 340, height: 800 });
+            expect(h.bodyEl.style['--wn-immersive-mobile-dock-width']).toBe('340px');
+            h.visualViewport.height = 300;
+            h.visualViewport.width = 500;
+            h.mockWin.innerWidth = 500;
+            ctrl.syncViewportMetrics();
+            expect(ctrl.getRenderedAuxRect()).toMatchObject({ x: 250, width: 250, height: 256 });
+            expect(ctrl.getAuxState()).toMatchObject({ width: 340, height: 290 });
+            h.visualViewport.height = 844;
+            h.visualViewport.width = 1024;
+            h.mockWin.innerWidth = 1024;
+            ctrl.syncViewportMetrics();
+            expect(h.bodyEl.style['--wn-immersive-mobile-dock-width']).toBe('340px');
+            await ctrl.setAuxLocked(true);
+            const count = h.mockDoc.addEventListener.mock.calls.length;
+            resize.dispatch('pointerdown', { pointerId: 12, button: 0, clientX: 684, clientY: 200, preventDefault: vi.fn(), stopPropagation: vi.fn() });
+            expect(h.mockDoc.addEventListener.mock.calls).toHaveLength(count);
+            await ctrl.setAuxMinimized(true);
+            expect(h.bodyEl.style['--wn-immersive-mobile-dock-width']).toBe('0px');
+            await ctrl.setAuxMinimized(false);
+            expect(h.bodyEl.style['--wn-immersive-mobile-dock-width']).toBe('340px');
+            await ctrl.setAuxOpen(false);
+            expect(h.bodyEl.style['--wn-immersive-mobile-dock-width']).toBe('0px');
+            await ctrl.setAuxOpen(true);
+            dock!.dispatch('click', { stopPropagation: vi.fn() });
+            expect(ctrl.getRenderedAuxRect()).toMatchObject({ x: 24, y: 90, width: 340, height: 290 });
+            expect(h.bodyEl.style['--wn-immersive-mobile-dock-width']).toBe('0px');
+            await h.mgr.exitImmersiveMode();
+            expect(h.bodyEl.style['--wn-immersive-mobile-dock-width']).toBe('');
+        } finally { h.restorePlatform(); }
+    });
+
+    it('coalesces tablet dock resize events and dispatches one editor update when the gesture ends', async () => {
+        const h = await setupMobileHarness({ mobileAuxPanel: { isOpen: true, isDocked: true, width: 300, height: 290 } });
+        h.bodyEl.classList.remove('is-phone');
+        h.bodyEl.classList.add('is-tablet');
+        h.mockWin.innerWidth = 1024;
+        h.visualViewport.width = 1024;
+        try {
+            await h.mgr.toggleImmersiveMode();
+            const ctrl = h.mgr.getMobileController()!;
+            const resize = h.bodyEl.findByClass('wn-immersive-mobile-aux-resize-handle')!;
+            const cm = h.mgr.getActiveSessionMainView()!.editor.cm!;
+            const dispatch = vi.mocked(cm.dispatch);
+            const measure = vi.mocked(cm.requestMeasure);
+            dispatch.mockClear(); measure.mockClear();
+            const frames: Array<() => void> = [];
+            h.mockWin.requestAnimationFrame.mockClear();
+            h.mockWin.requestAnimationFrame.mockImplementation(fn => { frames.push(fn); return frames.length; });
+            resize.dispatch('pointerdown', { pointerId: 21, button: 0, clientX: 724, clientY: 200, preventDefault: vi.fn(), stopPropagation: vi.fn() });
+            const move = h.mockDoc.addEventListener.mock.calls.slice().reverse().find(c => c[0] === 'pointermove')?.[1] as (e: unknown) => void;
+            const end = h.mockDoc.addEventListener.mock.calls.slice().reverse().find(c => c[0] === 'pointerup')?.[1] as (e: unknown) => void;
+            h.mockWin.getComputedStyle.mockClear();
+            for (let i = 1; i <= 20; i++) move({ pointerId: 21, clientX: 724 - i * 2, clientY: 200, preventDefault: vi.fn() });
+            const touch = h.mockDoc.addEventListener.mock.calls.slice().reverse().find(c => c[0] === 'touchmove')?.[1] as (e: unknown) => void;
+            touch({ touches: [{ clientX: 684, clientY: 200 }], preventDefault: vi.fn() });
+            expect(dispatch).not.toHaveBeenCalled();
+            expect(h.mockWin.requestAnimationFrame).toHaveBeenCalledOnce();
+            expect(ctrl.getRenderedAuxRect()!.width).toBe(300);
+            frames[0]();
+            expect(ctrl.getRenderedAuxRect()!.width).toBe(340);
+            expect(measure).toHaveBeenCalledOnce();
+            expect(dispatch).not.toHaveBeenCalled();
+            expect(h.mockWin.getComputedStyle).not.toHaveBeenCalled();
+            move({ pointerId: 21, clientX: 664, clientY: 200, preventDefault: vi.fn() });
+            end({ pointerId: 21 });
+            expect(ctrl.getAuxState().width).toBe(360);
+            expect(h.mockPlugin.settings.immersive.mobileAuxPanel?.width).toBe(360);
+            expect(dispatch).toHaveBeenCalledOnce();
+            frames[1](); // A canceled frame cannot apply the last sample twice.
+            expect(dispatch).toHaveBeenCalledOnce();
+            resize.dispatch('pointerdown', { pointerId: 22, button: 0, clientX: 664, clientY: 200, preventDefault: vi.fn(), stopPropagation: vi.fn() });
+            const pendingMove = h.mockDoc.addEventListener.mock.calls.slice().reverse().find(c => c[0] === 'pointermove')?.[1] as (e: unknown) => void;
+            pendingMove({ pointerId: 22, clientX: 644, clientY: 200, preventDefault: vi.fn() });
+            await ctrl.setAuxLocked(true);
+            frames[2]();
+            expect(ctrl.getAuxState().width).toBe(360);
+            await ctrl.setAuxLocked(false);
+            resize.dispatch('pointerdown', { pointerId: 23, button: 0, clientX: 664, clientY: 200, preventDefault: vi.fn(), stopPropagation: vi.fn() });
+            const finalMove = h.mockDoc.addEventListener.mock.calls.slice().reverse().find(c => c[0] === 'pointermove')?.[1] as (e: unknown) => void;
+            finalMove({ pointerId: 23, clientX: 634, clientY: 200, preventDefault: vi.fn() });
+            await h.mgr.exitImmersiveMode();
+            frames[3]();
+            expect(h.bodyEl.style['--wn-immersive-mobile-dock-width']).toBe('');
+            expect(h.mockWin.cancelAnimationFrame).toHaveBeenCalledWith(4);
+        } finally { h.restorePlatform(); }
+    });
+
+    it('keeps phone auxiliary panels floating even when settings contain a tablet docking preference', async () => {
+        const h = await setupMobileHarness({ mobileAuxPanel: { isOpen: true, isDocked: true, x: 24, y: 90, width: 300, height: 290 } });
+        try {
+            await h.mgr.toggleImmersiveMode();
+            expect(h.bodyEl.findByClass('wn-immersive-mobile-aux-dock-btn')).toBeNull();
+            expect(h.mgr.getMobileController()!.getRenderedAuxRect()).toMatchObject({ x: 24, y: 90, width: 300, height: 290 });
+            expect(h.bodyEl.style['--wn-immersive-mobile-dock-width']).toBe('0px');
+            expect(h.mgr.getMobileController()!.getAuxState().isDocked).toBe(true);
+            await h.mgr.exitImmersiveMode();
+        } finally { h.restorePlatform(); }
+    });
+
+    it('opens writing quick settings beside exit in the topbar and applies typewriter/manuscript changes, then closes on exit', async () => {
+        const { Setting } = await import('obsidian');
+        const settings = Setting as unknown as { instances: Array<{
+            _name: string;
+            _toggle?: { onChange?: (value: boolean) => Promise<void> | void };
+            _slider?: { onChange?: (value: number) => Promise<void> | void };
+        }> };
+        const h = await setupMobileHarness();
+        try {
+            await h.mgr.toggleImmersiveMode();
+            expect(h.bodyEl.findByClass('wn-immersive-mobile-dir-settings-btn')).toBeNull();
+            const gear = h.bodyEl.findByClass('wn-immersive-mobile-settings-btn');
+            const right = h.bodyEl.findByClass('wn-immersive-mobile-topbar-right')!;
+            expect(right.children[0]).toBe(gear);
+            expect(right.children[1].classList.contains('wn-immersive-mobile-exit-btn')).toBe(true);
+            expect(gear).not.toBeNull();
+            settings.instances = [];
+            gear!.dispatch('click', { stopPropagation: vi.fn() });
+            const ctrl = h.mgr.getMobileController()!;
+            const state = ctrl as unknown as { activeSettingsModal: { close(): void } | null };
+            expect(state.activeSettingsModal).not.toBeNull();
+            const find = (key: string) => settings.instances.find(s => s._name === t(key))!;
+            await find('setting.immersive-typewriter-enable')._toggle!.onChange!(true);
+            expect(h.mockPlugin.settings.immersive.typewriterEnabled).toBe(true);
+            expect(h.bodyEl.classList.contains('wn-typewriter-active')).toBe(true);
+            await find('setting.immersive-typewriter-offset')._slider!.onChange!(12);
+            await find('setting.immersive-typewriter-opacity')._slider!.onChange!(0.6);
+            expect(h.mockPlugin.settings.immersive.typewriterCenterOffset).toBe(12);
+            expect(h.bodyEl.style['--wn-typewriter-opacity']).toBe('0.6');
+            const handle = vi.spyOn(h.mgr, 'handleManuscriptModeSettingChanged').mockResolvedValue(true);
+            const manuscript = find('setting.immersive-manuscript-mode')._toggle!.onChange!;
+            await manuscript(true);
+            expect(handle).toHaveBeenCalledWith(true);
+            expect(h.mockPlugin.settings.immersive.manuscriptModeEnabled).toBe(true);
+            const close = vi.spyOn(state.activeSettingsModal!, 'close');
+            await h.mgr.exitImmersiveMode();
+            expect(close).toHaveBeenCalledTimes(1);
+            expect(state.activeSettingsModal).toBeNull();
+            await manuscript(false);
+            expect(h.mockPlugin.settings.immersive.manuscriptModeEnabled).toBe(true);
+        } finally { h.restorePlatform(); }
+    });
+
+    it('avoids Android host --safe-area-inset-* when env() is 0, enforces >=44px operable topbar content, excludes side/bottom insets from aux bounds without double-counting', async () => {
+        const fs = await import('fs');
+        const path = await import('path');
+        const postcss = (await import('postcss')).default;
+
+        const stylesRoot = path.resolve(process.cwd(), 'src', 'styles');
+        const readBundledCss = (entryPath: string): string => fs.readFileSync(entryPath, 'utf8')
+            .replace(/@import\s+["']([^"']+)["'];/g, (_, rel: string) => readBundledCss(path.resolve(path.dirname(entryPath), rel)));
+        const root = postcss.parse(readBundledCss(path.join(stylesRoot, 'index.css')));
+
+        const declsFor = (sel: string): Record<string, string> => {
+            const out: Record<string, string> = {};
+            root.walkRules(r => {
+                if (r.selector.trim() === sel) {
+                    r.walkDecls(d => { out[d.prop] = d.value; });
+                }
+            });
+            return out;
+        };
+
+        const topbarCss = declsFor('.wn-immersive-mobile-topbar');
+        expect(topbarCss['padding-top']).toContain('--safe-area-inset-top');
+        expect(topbarCss['padding-top']).toContain('env(safe-area-inset-top');
+        expect(topbarCss['padding-left']).toContain('--safe-area-inset-left');
+        expect(topbarCss['padding-right']).toContain('--safe-area-inset-right');
+        expect(topbarCss['min-height']).toContain('44px');
+        expect(topbarCss['min-height']).toContain('--safe-area-inset-top');
+
+        const dirOverlayCss = declsFor('.wn-immersive-mobile-dir-overlay');
+        expect(dirOverlayCss['padding-left']).toContain('--safe-area-inset-left');
+        expect(dirOverlayCss['padding-bottom']).toContain('--safe-area-inset-bottom');
+
+        const dirRestoreCss = declsFor('.wn-immersive-mobile-dir-restore-btn');
+        expect(dirRestoreCss['left']).toContain('--safe-area-inset-left');
+
+        const mobileWsCss = declsFor('body.wn-immersive-mode-active.wn-immersive-mobile-active .app-container.app-container .workspace.workspace');
+        expect(mobileWsCss['padding-bottom']).toContain('--safe-area-inset-bottom');
+        expect(mobileWsCss['padding-bottom']).toContain('env(safe-area-inset-bottom');
+
+        const h = await setupMobileHarness({
+            safeAreaVars: {
+                '--safe-area-inset-top': '32px',
+                '--safe-area-inset-bottom': '24px',
+                '--safe-area-inset-left': '16px',
+                '--safe-area-inset-right': '12px'
+            },
+            mobileAuxPanel: { isOpen: true, x: 0, y: 0, width: 390, height: 844 }
+        });
+
+        try {
+            await h.mgr.toggleImmersiveMode();
+            const ctrl = h.mgr.getMobileController()!;
+            // Stub offsetHeight is 44, host safe top is 32 -> measured height must cover 44 + 32 = 76
+            expect(h.bodyEl.style['--wn-immersive-mobile-topbar-height']).toBe('76px');
+            let rect = ctrl.getRenderedAuxRect()!;
+            expect(rect.y).toBeGreaterThanOrEqual(76 + 8);
+            expect(rect.x).toBeGreaterThanOrEqual(16 + 8);
+            expect(rect.x + rect.width).toBeLessThanOrEqual(390 - 12 - 8);
+            expect(rect.y + rect.height).toBeLessThanOrEqual(844 - 24 - 8);
+
+            // Real browser where offsetHeight ALREADY includes padding-top (76px): must NOT double-count 76 + 32
+            const topBarEl = h.bodyEl.findByClass('wn-immersive-mobile-topbar')!;
+            topBarEl.offsetHeight = 76;
+            ctrl.syncViewportMetrics(true);
+            expect(h.bodyEl.style['--wn-immersive-mobile-topbar-height']).toBe('76px');
+
+            // Orientation / safe-area change to landscape: must not cumulatively shift
+            h.safeAreaVars['--safe-area-inset-top'] = '0px';
+            h.safeAreaVars['--safe-area-inset-left'] = '48px';
+            h.safeAreaVars['--safe-area-inset-right'] = '48px';
+            h.safeAreaVars['--safe-area-inset-bottom'] = '20px';
+            topBarEl.offsetHeight = 44;
+            h.mockWin.innerWidth = 844;
+            h.mockWin.innerHeight = 390;
+            h.visualViewport.width = 844;
+            h.visualViewport.height = 390;
+            for (const fn of h.vvListeners.get('resize') ?? []) fn();
+            expect(h.bodyEl.style['--wn-immersive-mobile-topbar-height']).toBe('44px');
+            rect = ctrl.getRenderedAuxRect()!;
+            expect(rect.x).toBeGreaterThanOrEqual(48 + 8);
+            expect(rect.x + rect.width).toBeLessThanOrEqual(844 - 48 - 8);
+            expect(rect.y + rect.height).toBeLessThanOrEqual(390 - 20 - 8);
+
+            // Keyboard open (vv.height = 240 < 390 - 20) must NOT double-subtract bottom safe area;
+            // vv.offsetLeft = 20 with safeLeft = 48 must NOT double-count 20 + 48.
+            h.visualViewport.height = 240;
+            h.visualViewport.offsetLeft = 20;
+            for (const fn of h.vvListeners.get('resize') ?? []) fn();
+            rect = ctrl.getRenderedAuxRect()!;
+            expect(rect.y + rect.height).toBeLessThanOrEqual(240 - 8);
+            expect(rect.x).toBe(48 + 8);
+
+            await h.mgr.exitImmersiveMode();
+        } finally {
+            h.restorePlatform();
+        }
+    });
+
+    it('keeps auxiliary enablement in settings and component selection and locking in the floating panel', async () => {
+        const { Setting } = await import('obsidian');
+        const MockSetting = Setting as unknown as {
+            instances: Array<{
+                _name: string;
+                _toggle?: { value: boolean; onChange?: (v: boolean) => Promise<void> | void };
+                _dropdown?: { options: Array<{ value: string; label: string }>; value: string; onChange?: (v: string) => Promise<void> | void };
+                _slider?: { min: number; max: number; step: number; value: number; onChange?: (v: number) => Promise<void> | void };
+            }>;
+        };
+
+        const h = await setupMobileHarness({
+            mobileAuxPanel: {
+                viewType: 'outline',
+                isOpen: false,
+                isMinimized: true,
+                isLocked: true,
+                x: 24, y: 90, width: 310, height: 290
+            }
+        });
+
+        try {
+            const tab = new AccurateCountSettingTab(h.mockPlugin.app as never, h.mockPlugin as never);
+            const settingsContainer = makeEl('div', 'settings');
+            MockSetting.instances = [];
+            (tab as unknown as { displayImmersiveModeSettings: (c: unknown) => void }).displayImmersiveModeSettings(settingsContainer);
+
+            // Desktop-only sections must not render on mobile
+            expect(MockSetting.instances.some(s => s._name === t('setting.immersive-layout-builder'))).toBe(false);
+            expect(MockSetting.instances.some(s => s._name === t('setting.immersive-dashboard-toggles'))).toBe(false);
+
+            // Only enablement remains in settings; component selection and locking live in the panel.
+            const auxToggleSetting = MockSetting.instances.find(s => s._name === t('setting.immersive-mobile-aux-enabled'));
+            expect(auxToggleSetting?._toggle).toBeDefined();
+            expect(MockSetting.instances.some(s => s._name === t('setting.immersive-mobile-aux-view'))).toBe(false);
+            expect(MockSetting.instances.some(s => s._name === t('immersive.mobile-aux-lock'))).toBe(false);
+
+            // Pomodoro controls in mobile settings
+            const pomoToggleSetting = MockSetting.instances.find(s => s._name === t('setting.immersive-pomodoro-enabled'));
+            const pomoSliderSetting = MockSetting.instances.find(s => s._name === t('setting.immersive-pomodoro-interval'));
+            expect(pomoToggleSetting?._toggle).toBeDefined();
+            expect(pomoSliderSetting?._slider).toMatchObject({ min: 20, max: 180, step: 5 });
+
+            // Enable outside immersive mode, restoring from minimized while preserving component/lock/size/desktop slots.
+            await auxToggleSetting!._toggle!.onChange?.(true);
+            expect(h.mockPlugin.settings.immersive.mobileAuxPanel).toMatchObject({
+                viewType: 'outline',
+                isOpen: true,
+                isMinimized: false,
+                isLocked: true,
+                width: 310,
+                height: 290
+            });
+            expect(h.mockPlugin.settings.immersive.immersiveLeftSlots).toEqual(['immersive-chapter-list-view']);
+            expect(h.mockPlugin.settings.immersive.immersiveRightSlots).toEqual(['reference-view']);
+
+            // Enter mobile immersive mode with the remembered component visible and unminimized.
+            await h.mgr.toggleImmersiveMode();
+            const ctrl = h.mgr.getMobileController()!;
+            expect(ctrl.getAuxState().isOpen).toBe(true);
+            expect(ctrl.getAuxState().isMinimized).toBe(false);
+            expect(ctrl.getAuxState().viewType).toBe('outline');
+
+            // Live change from SettingsTab while active: close & minimize in controller, then re-open via SettingsTab
+            await ctrl.setAuxMinimized(true);
+            await auxToggleSetting!._toggle!.onChange?.(false);
+            expect(ctrl.getAuxState().isOpen).toBe(false);
+            await auxToggleSetting!._toggle!.onChange?.(true);
+            expect(ctrl.getAuxState().isOpen).toBe(true);
+            expect(ctrl.getAuxState().isMinimized).toBe(false);
+            expect(ctrl.getAuxState().isLocked).toBe(true);
+
+            const select = h.bodyEl.findByClass('wn-immersive-mobile-aux-select')!;
+            expect(select).not.toBeNull();
+            expect(select.children.map(o => o.value)).toEqual([...MOBILE_IMMERSIVE_AUX_VIEW_TYPES]);
+            select.value = 'foreshadowing-view';
+            select.dispatch('change', {});
+            await Promise.resolve();
+            expect(ctrl.getAuxState().viewType).toBe('foreshadowing-view');
+            const lock = h.bodyEl.findByClass('wn-immersive-mobile-aux-lock-btn')!;
+            expect(lock).not.toBeNull();
+            expect(lock.getAttribute('aria-pressed')).toBe('true');
+            lock.dispatch('click', { stopPropagation: vi.fn() });
+            expect(ctrl.getAuxState().isLocked).toBe(false);
+            expect(lock.getAttribute('aria-label')).toBe(t('immersive.mobile-aux-lock'));
+            lock.dispatch('click', { stopPropagation: vi.fn() });
+            expect(ctrl.getAuxState().isLocked).toBe(true);
+            expect(lock.getAttribute('aria-label')).toBe(t('immersive.mobile-aux-unlock'));
+            expect(lock.getAttribute('title')).toBeNull();
+            expect(h.mockPlugin.settings.immersive.mobileAuxPanel).toMatchObject({
+                viewType: 'foreshadowing-view', isLocked: true
+            });
+
+            await h.mgr.exitImmersiveMode();
+        } finally {
+            h.restorePlatform();
+        }
+    });
+
+    it('awaits loadIfDeferred() and triggers onResize() for hosted directory/aux leaves, and detaches if closed before load settles', async () => {
+        const h = await setupMobileHarness({
+            mobileAuxPanel: { viewType: 'foreshadowing-view', isOpen: false }
+        });
+
+        try {
+            let deferredResolve: (() => void) | null = null;
+            let deferNextLoad = false;
+            h.setLeafFactoryOverride(({ onResize }) => {
+                const loadIfDeferred = vi.fn(async () => {
+                    if (deferNextLoad) {
+                        deferNextLoad = false;
+                        await new Promise<void>(resolve => { deferredResolve = resolve; });
+                    }
+                });
+                return {
+                    isDeferred: true,
+                    loadIfDeferred,
+                    view: { getViewType: () => 'foreshadowing-view', onResize }
+                };
+            });
+
+            await h.mgr.toggleImmersiveMode();
+            const ctrl = h.mgr.getMobileController()!;
+
+            // 1. Opening directory awaits loadIfDeferred and invokes view.onResize
+            await ctrl.setDirectoryOpen(true);
+            const dirLeafRec = h.createdLeaves[0];
+            expect(dirLeafRec.loadIfDeferred).toHaveBeenCalledTimes(1);
+            expect(dirLeafRec.onResize).toHaveBeenCalled();
+
+            // 2. Opening aux view awaits loadIfDeferred and invokes view.onResize
+            await ctrl.setAuxOpen(true);
+            const auxLeafRec = h.createdLeaves[1];
+            expect(auxLeafRec.loadIfDeferred).toHaveBeenCalledTimes(1);
+            expect(auxLeafRec.onResize).toHaveBeenCalled();
+
+            // 3. Closing aux while loadIfDeferred is still pending must detach upon completion and never mount
+            await ctrl.setAuxOpen(false);
+            deferNextLoad = true;
+            const openTask = ctrl.setAuxOpen(true);
+            for (let i = 0; i < 10 && !deferredResolve; i++) {
+                await Promise.resolve();
+            }
+            expect(deferredResolve).not.toBeNull();
+            const lateLeafRec = h.createdLeaves[h.createdLeaves.length - 1];
+            const closeTask = ctrl.setAuxOpen(false);
+            (deferredResolve as (() => void) | null)?.();
+            await Promise.all([openTask, closeTask]);
+            expect(lateLeafRec.detach).toHaveBeenCalled();
+            expect(h.bodyEl.findByClass('wn-immersive-mobile-aux-body')!.children).toHaveLength(0);
+
+            await h.mgr.exitImmersiveMode();
+        } finally {
+            h.restorePlatform();
+        }
+    });
+
+    it('runs mobile Pomodoro on entry independently of focus tracking, supports live enable/interval/disable without unrelated resets, and cleans up timer + modal', async () => {
+        const h = await setupMobileHarness({
+            pomodoroEnabled: true,
+            pomodoroInterval: 25,
+            useFakeIntervals: true
+        });
+        let now = 1_700_000_000_000;
+        const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now);
+
+        try {
+            await h.mgr.toggleImmersiveMode();
+            expect(h.mockPlugin.isTracking).toBe(false);
+            expect(h.mockPlugin.startTracking).toHaveBeenCalledTimes(1);
+            expect(h.mgr['pomodoroDeadline']).toBe(now + 25 * 60 * 1000);
+            expect(h.setIntervalSpy).toHaveBeenCalledTimes(1);
+
+            const tickIntervals = () => {
+                for (const fn of h.intervals.values()) fn();
+            };
+
+            // Unrelated setting change (hideProperties / aux panel) must NOT reset active deadline
+            const deadlineBeforeUnrelated = h.mgr['pomodoroDeadline'];
+            await h.mgr.updateMobileAuxPanelSettings({ isOpen: true });
+            await h.mgr.updatePomodoroSettings({});
+            expect(h.mgr['pomodoroDeadline']).toBe(deadlineBeforeUnrelated);
+
+            // Interval reconfiguration starts fresh deadline from current time
+            now += 5 * 60 * 1000;
+            await h.mgr.updatePomodoroSettings({ pomodoroInterval: 40 });
+            expect(h.mgr['pomodoroDeadline']).toBe(now + 40 * 60 * 1000);
+
+            // Advance to new deadline while isTracking=false -> modal opens once
+            now += 40 * 60 * 1000;
+            tickIntervals();
+            expect(h.mgr['activePomodoroModal']).not.toBeNull();
+            expect(h.mockPlugin.startTracking).toHaveBeenCalledTimes(1);
+            expect(h.mockPlugin.stopTracking).toHaveBeenCalledTimes(1);
+
+            // Rest does not restart focus tracking; explicitly starting the next round does.
+            now += 5 * 60 * 1000;
+            tickIntervals();
+            expect(h.mockPlugin.startTracking).toHaveBeenCalledTimes(1);
+            const restModal = h.mgr['activePomodoroModal']!;
+            (restModal as unknown as { actionTaken: 'next' | 'dismiss' | null }).actionTaken = 'next';
+            restModal.close();
+            expect(h.mockPlugin.startTracking).toHaveBeenCalledTimes(2);
+            expect(h.mgr['pomodoroDeadline']).toBe(now + 40 * 60 * 1000);
+
+            now += 40 * 60 * 1000;
+            tickIntervals();
+            expect(h.mockPlugin.stopTracking).toHaveBeenCalledTimes(2);
+
+            // Disabling Pomodoro cancels deadline, stops timer, and silently disposes active reminder
+            const activeModal = h.mgr['activePomodoroModal']!;
+            const closeSpy = vi.spyOn(activeModal, 'close');
+            await h.mgr.updatePomodoroSettings({ pomodoroEnabled: false });
+            expect(closeSpy).toHaveBeenCalled();
+            expect(h.mgr['activePomodoroModal']).toBeNull();
+            expect(h.mgr['pomodoroDeadline']).toBeNull();
+            expect(h.intervals.size).toBe(0);
+
+            // Re-enabling mid-session starts fresh round & timer
+            now += 60 * 1000;
+            await h.mgr.updatePomodoroSettings({ pomodoroEnabled: true, pomodoroInterval: 20 });
+            expect(h.mgr['pomodoroDeadline']).toBe(now + 20 * 60 * 1000);
+            expect(h.intervals.size).toBe(1);
+
+            // Trigger reminder again, then verify shutdown/exit cleans up timer + modal
+            now += 20 * 60 * 1000;
+            tickIntervals();
+            expect(h.mgr['activePomodoroModal']).not.toBeNull();
+
+            await h.mgr.exitImmersiveMode();
+            expect(h.intervals.size).toBe(0);
+            expect(h.clearIntervalSpy).toHaveBeenCalled();
+            expect(h.mgr['activePomodoroModal']).toBeNull();
+            expect(h.mgr['pomodoroDeadline']).toBeNull();
+            expect(h.mockPlugin.stopTracking).toHaveBeenCalledTimes(4);
+        } finally {
+            nowSpy.mockRestore();
+            h.restorePlatform();
+        }
+    });
 });

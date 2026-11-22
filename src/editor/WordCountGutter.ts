@@ -158,14 +158,14 @@ export function createWordCountGutter(plugin: WordCountGutterPlugin): Extension 
 			if (gutters) {
 				const onlyChild = gutters.children.length === 1 && gutters.children[0].classList.contains('webnovel-word-count-gutter');
 				if (onlyChild) {
-					gutters.classList.add('is-only-word-count-gutter');
+					gutters.classList.add('wn-only-word-count-gutter');
 					if (!view.dom.classList.contains('webnovel-show-gutter')) {
 						gutters.classList.add('is-word-count-gutter-hidden');
 					} else {
 						gutters.classList.remove('is-word-count-gutter-hidden');
 					}
 				} else {
-					gutters.classList.remove('is-only-word-count-gutter');
+					gutters.classList.remove('wn-only-word-count-gutter');
 					gutters.classList.remove('is-word-count-gutter-hidden');
 				}
 			}

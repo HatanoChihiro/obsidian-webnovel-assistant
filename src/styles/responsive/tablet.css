@@ -46,19 +46,19 @@ body.is-tablet .webnovel-lore-popover .wn-lore-card {
 	min-height: 0;
 }
 
-body.is-tablet .mobile-floating-stats {
+body.is-tablet .wn-mobile-floating-stats {
 	font-size: 0.68em;
 	padding: 4px 10px;
 	min-height: 26px;
 	border-radius: 13px;
 }
 
-body.is-tablet .mobile-floating-stats.is-docked-left {
+body.is-tablet .wn-mobile-floating-stats.is-docked-left {
 	min-height: 44px;
 	transform: translateX(calc(-100% + 48px));
 }
 
-body.is-tablet .mobile-floating-stats.is-docked-right {
+body.is-tablet .wn-mobile-floating-stats.is-docked-right {
 	min-height: 44px;
 	transform: translateX(calc(100% - 48px));
 }

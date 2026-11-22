@@ -1,4 +1,5 @@
-import { MarkdownView, Notice, TFile, type App, type Editor, type TFolder } from 'obsidian';
+import { showPluginNotice } from './PluginNoticeService';
+import { MarkdownView, TFile, type App, type Editor, type TFolder } from 'obsidian';
 import { Logger } from '../utils/Logger';
 import { t } from '../i18n';
 import { ChapterSorter } from './ChapterSorter';
@@ -275,25 +276,25 @@ export async function splitChapterAtCursor(options: ChapterSplitOptions): Promis
 	const initialFilePath = initialFile.path;
 
 	if (activeFiles.has(initialFile)) {
-		new Notice(t('notice.split-chapter-in-progress'));
+		showPluginNotice(t('notice.split-chapter-in-progress'));
 		return false;
 	}
 
 	activeFiles.add(initialFile);
 	try {
 		if (editor.somethingSelected()) {
-			new Notice(t('notice.split-chapter-no-selection'));
+			showPluginNotice(t('notice.split-chapter-no-selection'));
 			return false;
 		}
 		const selections = editor.listSelections();
 		if (selections.length > 1) {
-			new Notice(t('notice.split-chapter-no-selection'));
+			showPluginNotice(t('notice.split-chapter-no-selection'));
 			return false;
 		}
 		if (selections.length === 1) {
 			const sel = selections[0];
 			if (sel.anchor.line !== sel.head.line || sel.anchor.ch !== sel.head.ch) {
-				new Notice(t('notice.split-chapter-no-selection'));
+				showPluginNotice(t('notice.split-chapter-no-selection'));
 				return false;
 			}
 		}
@@ -305,9 +306,9 @@ export async function splitChapterAtCursor(options: ChapterSplitOptions): Promis
 		const analysis = analyzeSplitContent(initialContent, cursorOffset);
 		if (!analysis.canSplit) {
 			if (analysis.rejectReason === 'frontmatter' || analysis.rejectReason === 'malformed-frontmatter') {
-				new Notice(t('notice.split-chapter-invalid-cursor'));
+				showPluginNotice(t('notice.split-chapter-invalid-cursor'));
 			} else if (analysis.rejectReason === 'empty-body') {
-				new Notice(t('notice.split-chapter-empty-body'));
+				showPluginNotice(t('notice.split-chapter-empty-body'));
 			}
 			return false;
 		}
@@ -335,7 +336,7 @@ export async function splitChapterAtCursor(options: ChapterSplitOptions): Promis
 			}
 			const validation = validateChapterBasename(chosenName, app, folder);
 			if (!validation.valid || !validation.basename) {
-				new Notice(t(validation.errorKey ?? 'modal.split-chapter-invalid-chars'));
+				showPluginNotice(t(validation.errorKey ?? 'modal.split-chapter-invalid-chars'));
 				return false;
 			}
 			targetBaseName = validation.basename;
@@ -346,7 +347,7 @@ export async function splitChapterAtCursor(options: ChapterSplitOptions): Promis
 		const existingAbstract = app.vault.getAbstractFileByPath(targetPath);
 		if (existingAbstract !== null) {
 			if (!options.onRequestName) {
-				new Notice(t('notice.split-chapter-collision', { name: targetBaseName }));
+				showPluginNotice(t('notice.split-chapter-collision', { name: targetBaseName }));
 				return false;
 			}
 			const chosenName = await options.onRequestName(targetBaseName, folder, 'collision');
@@ -355,7 +356,7 @@ export async function splitChapterAtCursor(options: ChapterSplitOptions): Promis
 			}
 			const validation = validateChapterBasename(chosenName, app, folder);
 			if (!validation.valid || !validation.basename) {
-				new Notice(t(validation.errorKey ?? 'modal.split-chapter-invalid-chars'));
+				showPluginNotice(t(validation.errorKey ?? 'modal.split-chapter-invalid-chars'));
 				return false;
 			}
 			targetBaseName = validation.basename;
@@ -363,7 +364,7 @@ export async function splitChapterAtCursor(options: ChapterSplitOptions): Promis
 		}
 
 		if (view.file !== initialFile || view.file.path !== initialFilePath || editor.getValue() !== initialContent) {
-			new Notice(t('notice.split-chapter-aborted-stale'));
+			showPluginNotice(t('notice.split-chapter-aborted-stale'));
 			return false;
 		}
 
@@ -376,12 +377,12 @@ export async function splitChapterAtCursor(options: ChapterSplitOptions): Promis
 			templateContent = resolved;
 		} catch (templateError) {
 			Logger.error('[ChapterSplitter] Failed to resolve chapter template:', templateError);
-			new Notice(t('notice.split-chapter-create-failed', { error: String(templateError) }));
+			showPluginNotice(t('notice.split-chapter-create-failed', { error: String(templateError) }));
 			return false;
 		}
 
 		if (view.file !== initialFile || view.file.path !== initialFilePath || editor.getValue() !== initialContent) {
-			new Notice(t('notice.split-chapter-aborted-stale'));
+			showPluginNotice(t('notice.split-chapter-aborted-stale'));
 			return false;
 		}
 
@@ -389,17 +390,17 @@ export async function splitChapterAtCursor(options: ChapterSplitOptions): Promis
 			await view.save();
 		} catch (saveError) {
 			Logger.error('[ChapterSplitter] Failed to save source before split:', saveError);
-			new Notice(t('notice.split-chapter-save-before-split-failed'));
+			showPluginNotice(t('notice.split-chapter-save-before-split-failed'));
 			return false;
 		}
 
 		if (view.file !== initialFile || view.file.path !== initialFilePath || editor.getValue() !== initialContent) {
-			new Notice(t('notice.split-chapter-aborted-stale'));
+			showPluginNotice(t('notice.split-chapter-aborted-stale'));
 			return false;
 		}
 
 		if (app.vault.getAbstractFileByPath(targetPath) !== null) {
-			new Notice(t('notice.split-chapter-collision', { name: targetBaseName }));
+			showPluginNotice(t('notice.split-chapter-collision', { name: targetBaseName }));
 			return false;
 		}
 
@@ -421,12 +422,12 @@ export async function splitChapterAtCursor(options: ChapterSplitOptions): Promis
 			}
 		} catch (createError) {
 			Logger.error('[ChapterSplitter] Failed to create target chapter file:', createError);
-			new Notice(t('notice.split-chapter-create-failed', { error: String(createError) }));
+			showPluginNotice(t('notice.split-chapter-create-failed', { error: String(createError) }));
 			return false;
 		}
 
 		if (view.file !== initialFile || view.file.path !== initialFilePath || editor.getValue() !== initialContent) {
-			new Notice(t('notice.split-chapter-target-created-source-changed'));
+			showPluginNotice(t('notice.split-chapter-target-created-source-changed'));
 			return false;
 		}
 
@@ -455,12 +456,12 @@ export async function splitChapterAtCursor(options: ChapterSplitOptions): Promis
 					Logger.error('[ChapterSplitter] Failed to restore suffix in editor:', restoreError);
 				}
 			}
-			new Notice(t('notice.split-chapter-save-source-failed'));
+			showPluginNotice(t('notice.split-chapter-save-source-failed'));
 			return false;
 		}
 
 		if (view.file !== initialFile || view.file.path !== initialFilePath || editor.getValue() !== analysis.prefix) {
-			new Notice(t('notice.split-chapter-success-no-nav'));
+			showPluginNotice(t('notice.split-chapter-success-no-nav'));
 			return true;
 		}
 
@@ -473,12 +474,12 @@ export async function splitChapterAtCursor(options: ChapterSplitOptions): Promis
 			}
 		} catch (openError) {
 			Logger.error('[ChapterSplitter] Failed to open new chapter leaf:', openError);
-			new Notice(t('notice.split-chapter-open-failed', { name: targetBaseName }));
+			showPluginNotice(t('notice.split-chapter-open-failed', { name: targetBaseName }));
 			return true;
 		}
 
 		options.onRefreshExplorer?.();
-		new Notice(t('notice.split-chapter-success', { name: targetBaseName }));
+		showPluginNotice(t('notice.split-chapter-success', { name: targetBaseName }));
 		return true;
 	} finally {
 		activeFiles.delete(initialFile);

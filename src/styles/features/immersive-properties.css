@@ -10,20 +10,20 @@
 
 /* Immersive Hide Properties */
 
-body.immersive-hide-properties div.workspace-leaf-content[data-type="markdown"] div.markdown-source-view div.metadata-container,
+body.wn-immersive-hide-properties div.workspace-leaf-content[data-type="markdown"] div.markdown-source-view div.metadata-container,
 
-body.immersive-hide-properties div.workspace-leaf-content[data-type="markdown"] div.metadata-container {
+body.wn-immersive-hide-properties div.workspace-leaf-content[data-type="markdown"] div.metadata-container {
 	display: none;
 }
 
-body.immersive-hide-properties .markdown-reading-view .metadata-container {
+body.wn-immersive-hide-properties .markdown-reading-view .metadata-container {
 	display: none;
 }
 
-body.immersive-hide-properties .markdown-reading-view .frontmatter-container {
+body.wn-immersive-hide-properties .markdown-reading-view .frontmatter-container {
 	display: none;
 }
 
-body.immersive-hide-properties .markdown-reading-view .frontmatter {
+body.wn-immersive-hide-properties .markdown-reading-view .frontmatter {
 	display: none;
 }

@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { HomepageRenderer } from '../src/ui/components/HomepageRenderer';
+import moment from 'moment';
+import { MockElement } from './mocks/MockElement';
+import { HomepageRenderer, type HomepageRendererPlugin } from '../src/ui/components/HomepageRenderer';
+import { DailyStatsModal } from '../src/ui/DailyStatsModal';
 import type { NovelFolderInfo } from '../src/types/homepage';
 
 describe('HomepageRenderer render-cycle data loading', () => {
@@ -129,5 +132,82 @@ describe('HomepageRenderer render-cycle data loading', () => {
 		expect(setBookPathMock).toHaveBeenCalledWith('Novels/NewNovel');
 		expect(revealLeafMock).toHaveBeenCalledWith(newLeaf);
 		expect(setActiveLeafMock).toHaveBeenCalledWith(newLeaf, { focus: true });
+	});
+});
+
+describe('HomepageRenderer daily stats triggers', () => {
+	function findAllByClass(root: MockElement, cls: string): MockElement[] {
+		const results: MockElement[] = [];
+		const walk = (node: MockElement) => {
+			if (node.hasClass(cls)) results.push(node);
+			for (const child of node.children) walk(child);
+		};
+		walk(root);
+		return results;
+	}
+
+	it('wires heatmap (excluding future dates) and 30-day bars to open DailyStatsModal on click and Enter/Space', () => {
+		(globalThis as unknown as { window: { moment: typeof moment } }).window = { moment };
+
+		const pastDate = moment().subtract(1, 'day').format('YYYY-MM-DD');
+		const futureDate = moment().add(1, 'day').format('YYYY-MM-DD');
+		const start = moment().subtract(3, 'days').format('YYYY-MM-DD');
+		const end = moment().add(3, 'days').format('YYYY-MM-DD');
+
+		const mockPlugin = {
+			settings: {
+				heatmapStartDate: start,
+				heatmapEndDate: end
+			},
+			historyManager: {
+				getHistory: vi.fn(() => ({
+					[pastDate]: { focusMs: 1800000, slackMs: 0, addedWords: 500 },
+					[futureDate]: { focusMs: 1800000, slackMs: 0, addedWords: 200 }
+				}))
+			},
+			statisticsManager: {
+				getDailyStats: vi.fn()
+			}
+		} as unknown as HomepageRendererPlugin;
+
+		const openSpy = vi.spyOn(DailyStatsModal.prototype, 'open').mockImplementation(() => {});
+
+		const renderer = new HomepageRenderer({} as never, mockPlugin);
+
+		const heatContainer = new MockElement();
+		renderer.renderHeatmap(heatContainer as unknown as HTMLElement);
+
+		const futureCells = findAllByClass(heatContainer, 'wn-stats-heatmap-future');
+		expect(futureCells.length).toBeGreaterThanOrEqual(3);
+		for (const cell of futureCells) {
+			expect(cell.hasClass('wn-daily-stats-trigger')).toBe(false);
+			expect(cell.getAttribute('role')).toBeNull();
+			expect(cell.getAttribute('tabindex')).toBeNull();
+		}
+
+		const heatTriggers = findAllByClass(heatContainer, 'wn-daily-stats-trigger');
+		for (const cell of heatTriggers) {
+			expect(cell.getAttribute('aria-label') || '').not.toContain(futureDate);
+		}
+		const pastHeatCell = heatTriggers.find(c => (c.getAttribute('aria-label') || '').includes(pastDate));
+		expect(pastHeatCell).toBeDefined();
+		expect(pastHeatCell!.getAttribute('title')).toBeNull();
+		pastHeatCell!.dispatchEvent('click', { stopPropagation: vi.fn() });
+		expect(openSpy).toHaveBeenCalledTimes(1);
+
+		const barContainer = new MockElement();
+		renderer.renderBarChart(barContainer as unknown as HTMLElement);
+		const bars = findAllByClass(barContainer, 'wn-homepage-chart-bar');
+		expect(bars).toHaveLength(30);
+		const targetBar = bars.find(b => (b.getAttribute('aria-label') || '').includes(pastDate));
+		expect(targetBar).toBeDefined();
+		expect(targetBar!.getAttribute('title')).toBeNull();
+
+		const spaceEvt = { key: ' ', preventDefault: vi.fn(), stopPropagation: vi.fn() };
+		targetBar!.dispatchEvent('keydown', spaceEvt);
+		expect(spaceEvt.preventDefault).toHaveBeenCalledOnce();
+		expect(openSpy).toHaveBeenCalledTimes(2);
+
+		openSpy.mockRestore();
 	});
 });

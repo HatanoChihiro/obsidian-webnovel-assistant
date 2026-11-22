@@ -1,5 +1,6 @@
+import { showPluginNotice } from '../services/PluginNoticeService';
 import type { App, WorkspaceLeaf, TFile } from 'obsidian';
-import { Notice, setIcon } from 'obsidian';
+import { setIcon } from 'obsidian';
 import { filterTimelineEntries, parseTimelineChapterList, type TimelineEntry, type TimelineItem, type TimelineManager } from '../services/TimelineManager';
 import { CreativeView } from './CreativeView';
 import { rafThrottle } from '../utils/dom';
@@ -224,7 +225,7 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 			const fileName = this.plugin.settings.timeline?.fileName || getDefaultFileName('timelineFileName');
 			empty.createEl('p', { text: t('common.no-files-hint', { type: t('common.default-timeline-filename') }) });
 			empty.createEl('p', { text: `（${fileName}.md）`, cls: 'wn-timeline-view-hint' });
-			const createBtn = empty.createEl('button', { text: t('common.create-timeline-file'), cls: 'mod-cta timeline-create-btn' });
+			const createBtn = empty.createEl('button', { text: t('common.create-timeline-file'), cls: 'mod-cta wn-timeline-create-btn' });
 			createBtn.onclick = () => {
 				const actionFolder = folder;
 				void (async () => {
@@ -439,7 +440,7 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 			e.stopPropagation();
 			const timelineFile = this.manager.getTimelineFile(folder);
 			if (!timelineFile) {
-				new Notice(t('common.file-not-found', { name: this.getWatchFileName() }));
+				showPluginNotice(t('common.file-not-found', { name: this.getWatchFileName() }));
 				return;
 			}
 			const fileContent = await this.app.vault.cachedRead(timelineFile);
@@ -504,7 +505,7 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 									const searchText = it.origin || it.description || '';
 									await this.openFileWithSmartLocate(file, searchText);
 								}
-								else new Notice(t('common.file-not-found', { name: ChapterSorter.extractWikilinkDisplay(chapterName) }));
+								else showPluginNotice(t('common.file-not-found', { name: ChapterSorter.extractWikilinkDisplay(chapterName) }));
 							} catch (e) { console.error(e); }
 						})();
 					};
@@ -534,7 +535,7 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 			void this.refresh();
 		};
 
-		const deleteBtn = actions.createEl('button', { text: t('common.delete'), cls: 'wn-timeline-action-btn timeline-delete-btn' });
+		const deleteBtn = actions.createEl('button', { text: t('common.delete'), cls: 'wn-timeline-action-btn wn-timeline-delete-btn' });
 		deleteBtn.onclick = () => {
 			const actionFolder = folder;
 			void (async () => {

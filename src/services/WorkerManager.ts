@@ -1,5 +1,6 @@
+import { showPluginNotice } from './PluginNoticeService';
 import { Logger } from '../utils/Logger';
-import { Notice, TFile, type TAbstractFile } from 'obsidian';
+import { TFile, type TAbstractFile } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { t } from '../i18n';
 import { isMobile } from '../utils/platform';
@@ -28,12 +29,25 @@ export class WorkerManager {
 		this.plugin = plugin;
 	}
 
+	private isMobileImmersiveActive(): boolean {
+		const imm = this.plugin.immersiveModeManager;
+		return Boolean(imm?.isMobileDataIsolationActive?.() ?? imm?.isMobileImmersiveSessionActive?.());
+	}
+
+	private resolveScopedFile(fallback: TFile | null): TFile | null {
+		if (this.isMobileImmersiveActive()) {
+			const imm = this.plugin.immersiveModeManager;
+			return imm?.getDataScopedMainFile?.() ?? imm?.getActiveSessionMainFile?.() ?? null;
+		}
+		return fallback;
+	}
+
 	/**
 	 * 初始化并启动 Worker
 	 */
 	public setup(): void {
 		if (this.restartAttempts >= this.MAX_RESTARTS) {
-			new Notice(t('notice.worker-max-restarts'), 8000);
+			showPluginNotice(t('notice.worker-max-restarts'), 8000);
 			Logger.error('[WorkerManager] Worker 达到最大重启次数，已停止尝试');
 			return;
 		}
@@ -44,11 +58,11 @@ export class WorkerManager {
 			this.visibilityDocument.addEventListener('visibilitychange', this.visibilityHandler);
 		}
 
-		const activeFile = this.plugin.app.workspace.getActiveFile();
+		const activeFile = this.resolveScopedFile(this.plugin.app.workspace.getActiveFile());
 		if (activeFile) {
 			this.currentScopeFile = activeFile;
 			this.isCurrentDocumentInWorkspace = this.plugin.cacheManager.isFileInWorkspace(activeFile);
-		} else if (this.currentScopeFile) {
+		} else if (this.currentScopeFile && !this.isMobileImmersiveActive()) {
 			this.isCurrentDocumentInWorkspace = this.plugin.cacheManager.isFileInWorkspace(this.currentScopeFile);
 		} else {
 			this.isCurrentDocumentInWorkspace = false;
@@ -110,7 +124,11 @@ export class WorkerManager {
 	 * 重新评估当前文档的工作区归属范围（用于设置变更或当前文件重命名等场景）
 	 */
 	public reevaluateScope(): void {
-		if (!this.currentScopeFile) {
+		if (this.isMobileImmersiveActive()) {
+			const imm = this.plugin.immersiveModeManager;
+			const mainFile = imm?.getDataScopedMainFile?.() ?? imm?.getActiveSessionMainFile?.() ?? null;
+			this.currentScopeFile = mainFile;
+		} else if (!this.currentScopeFile) {
 			const activeFile = this.plugin.app.workspace.getActiveFile();
 			if (activeFile) {
 				this.currentScopeFile = activeFile;
@@ -136,19 +154,23 @@ export class WorkerManager {
 	 * 3. 工作区内部文档间切换不重置/刷新打字活动时间戳
 	 */
 	public handleActiveFileChange(file: TFile | null): void {
-		if (!file) {
+		const imm = this.plugin.immersiveModeManager;
+		const targetFile = this.isMobileImmersiveActive()
+			? (imm?.getDataScopedMainFile?.() ?? imm?.getActiveSessionMainFile?.() ?? null)
+			: file;
+		if (!targetFile) {
 			return;
 		}
 
-		const newScope = this.plugin.cacheManager.isFileInWorkspace(file);
-		const hasScopeChanged = this.currentScopeFile !== file && this.isCurrentDocumentInWorkspace !== newScope;
+		const newScope = this.plugin.cacheManager.isFileInWorkspace(targetFile);
+		const hasScopeChanged = this.currentScopeFile !== targetFile && this.isCurrentDocumentInWorkspace !== newScope;
 
 		if (this.plugin.isTracking && hasScopeChanged) {
 			const now = Date.now();
 			this.accumulateElapsedTime(now);
 		}
 
-		this.currentScopeFile = file;
+		this.currentScopeFile = targetFile;
 		this.isCurrentDocumentInWorkspace = newScope;
 	}
 
@@ -157,7 +179,25 @@ export class WorkerManager {
 	 * 仅当正在编辑的文件为当前活动文件且位于工作区时才刷新用户活动时间戳；
 	 * 工作区外的输入以及后台非活动文档的输入绝不刷新工作区内专注所用的活动时间戳。
 	 */
-	public handleEditorChange(file?: TFile | null): void {
+	public handleEditorChange(file?: TFile | null, origin?: { editor?: unknown; info?: unknown }): void {
+		if (this.isMobileImmersiveActive()) {
+			const imm = this.plugin.immersiveModeManager;
+			if (origin !== undefined) {
+				if (!imm?.isMainEditorOrigin?.(origin.info, origin.editor)) {
+					return;
+				}
+			}
+			const mainFile = imm?.getDataScopedMainFile?.() ?? imm?.getActiveSessionMainFile?.() ?? null;
+			if (!mainFile) return;
+			if (file && file !== mainFile && file.path !== mainFile.path) {
+				return;
+			}
+			if (this.plugin.cacheManager.isFileInWorkspace(mainFile)) {
+				this.plugin.lastEditTime = Date.now();
+			}
+			return;
+		}
+
 		const activeFile = this.plugin.app.workspace.getActiveFile() ?? this.currentScopeFile;
 		if (file && activeFile && file !== activeFile && file.path !== activeFile.path) {
 			return;
@@ -240,6 +280,7 @@ export class WorkerManager {
 			// 注意：不要重置 lastTickTime！
 			// 让 handleMessage 通过 delta > 2000 分支正确地将后台时间一次性计入摸鱼
 			this.plugin.mobileFloatingStats?.updateTimerUI();
+			this.plugin.immersiveModeManager?.refreshMobileTopBarTimer?.();
 			this.plugin.refreshStatusViews(false);
 		}
 	}
@@ -263,7 +304,7 @@ export class WorkerManager {
 			}
 			
 			if (this.restartAttempts < this.MAX_RESTARTS) {
-				new Notice(t('notice.worker-restarted'), 5000);
+				showPluginNotice(t('notice.worker-restarted'), 5000);
 			}
 		}, 5000);
 	}
@@ -321,6 +362,7 @@ export class WorkerManager {
 		}, 60000);
 		
 		this.plugin.mobileFloatingStats?.updateTimerUI();
+		this.plugin.immersiveModeManager?.refreshMobileTopBarTimer?.();
 
 		const today = window.moment().format('YYYY-MM-DD');
 		const isNewDay = this.lastTickDate !== null && this.lastTickDate !== today;

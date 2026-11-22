@@ -32,7 +32,7 @@ const immersiveThemeBoundaryPaths = new Set([
 ]);
 const maxCommonLines = 120;
 const classOwners: readonly ClassOwner[] = [
-	{ owner: 'src/styles/modals/advanced-search.css', prefix: 'advanced-search-' },
+	{ owner: 'src/styles/modals/advanced-search.css', prefix: 'wn-advanced-search-' },
 	{ owner: 'src/styles/modals/chapter-merge-mobile.css', prefix: 'wn-mobile-merge-' },
 	{ owner: 'src/styles/modals/task-modal.css', prefix: 'wn-task-modal-' },
 	{ owner: 'src/styles/features/word-count.css', prefix: 'webnovel-word-count-' },
@@ -56,7 +56,7 @@ const classOwners: readonly ClassOwner[] = [
 	{ owner: 'src/styles/modals/foreshadowing-modal-quote.css', prefix: 'wn-associated-quote-input' },
 	{
 		owner: 'src/styles/views/homepage.css',
-		prefix: 'homepage-',
+		prefix: 'wn-homepage-',
 		allowed: ['src/styles/base/typography-scopes.css', 'src/styles/responsive/phone-status.css', 'src/styles/responsive/phone-homepage.css', 'src/styles/views/stats.css'],
 	},
 	{
@@ -79,6 +79,47 @@ const legacyClassPrefixes = [
 	'wn-task-btn-container',
 	'wn-task-type-group',
 	'wn-task-type-badge',
+] as const;
+const migratedBareCssClassPrefixes = [
+	'advanced-search-',
+	'bar-',
+	'cm-tooltip-selection-count',
+	'desktop-add-btn',
+	'phone-add-btn',
+	'event-task-',
+	'floating-sticky-note',
+	'foreshadowing-',
+	'goal-',
+	'heat-',
+	'history-chart',
+	'history-stats-modal',
+	'homepage-',
+	'immersive-',
+	'is-only-word-count-gutter',
+	'mini-chart',
+	'mini-efficiency-summary',
+	'mobile-floating-',
+	'my-floating-sticky-note',
+	'my-sticky-',
+	'progress-bar-',
+	'stat-item',
+	'stats-',
+	'status-deprecated',
+	'status-partially',
+	'status-pending',
+	'status-recovered',
+	'status-goal-',
+	'status-task-',
+	'task-card',
+	'task-days-left',
+	'task-progress-',
+	'task-reached',
+	'task-remaining',
+	'task-status-',
+	'task-time-desc',
+	'time-box',
+	'time-grid',
+	'typewriter-toggle-',
 ] as const;
 const genericModalClasses = new Set(['modal', 'modal-content', 'modal-container', 'modal-title']);
 const genericDragClasses = new Set([
@@ -103,19 +144,19 @@ const requiredDeclarations = [
 	{
 		file: 'src/styles/views/homepage.css',
 		property: 'grid-template-columns',
-		selector: '.homepage-grid-container',
+		selector: '.wn-homepage-grid-container',
 		value: 'repeat(2, minmax(0, 1fr))',
 	},
 	{
 		file: 'src/styles/views/homepage.css',
 		property: 'justify-content',
-		selector: '.homepage-grid-left',
+		selector: '.wn-homepage-grid-left',
 		value: 'space-between',
 	},
 	{
 		file: 'src/styles/views/homepage.css',
 		property: 'height',
-		selector: '.homepage-grid-left',
+		selector: '.wn-homepage-grid-left',
 		value: '100%',
 	},
 	{
@@ -185,7 +226,7 @@ function getSelectors(rule: Rule, file: string): string[] {
 			// Immersive mode deliberately chains existing Obsidian classes to win over theme resets.
 			// Keep this exception narrow to that feature module and active-mode selectors.
 			const isImmersiveThemeBoundary = immersiveThemeBoundaryPaths.has(file)
-				&& selectorText.includes('body.immersive-mode-active');
+				&& selectorText.includes('body.wn-immersive-mode-active');
 			if (repeatedClasses.length > 0 && !isImmersiveThemeBoundary) {
 				errors.push(`${file}:${rule.source?.start?.line ?? 1} 禁止通过重复类名提升特异性：'${selectorText}'。`);
 			}
@@ -202,6 +243,11 @@ function getSelectors(rule: Rule, file: string): string[] {
 			for (const legacyClass of legacyClassPrefixes) {
 				if ([...classCounts.keys()].some((className) => className.startsWith(legacyClass))) {
 					errors.push(`${file}:${rule.source?.start?.line ?? 1} 禁止恢复已迁移的旧类名 '${legacyClass}*'。`);
+				}
+			}
+			for (const bareClass of migratedBareCssClassPrefixes) {
+				if ([...classCounts.keys()].some((className) => className.startsWith(bareClass))) {
+					errors.push(`${file}:${rule.source?.start?.line ?? 1} 禁止恢复未加 wn- 前缀的已迁移类名 '${bareClass}*'。`);
 				}
 			}
 
@@ -222,23 +268,22 @@ function getSelectors(rule: Rule, file: string): string[] {
 				}
 			}
 
-			const isOwnedModal = hasOwnedViewDataType || scopeClasses.some((className) =>
+			const hasPositiveOwnedScope = hasOwnedViewDataType || scopeClasses.some((className) =>
 				className.startsWith('wn-')
 				|| className.startsWith('webnovel-')
-				|| className === 'history-stats-modal'
-				|| className === 'history-stats-modal-wide'
+				|| className.startsWith('is-webnovel-')
+				|| className.startsWith('wna-')
 			);
+			const isAllowedPhoneTokenRoot = file === 'src/styles/responsive/phone-base.css'
+				&& selectorText === 'body.is-phone'
+				&& rule.nodes.every((node) => node.type !== 'decl' || node.prop.startsWith('--wn-'));
+			if (classCounts.size > 0 && !hasPositiveOwnedScope && !isAllowedPhoneTokenRoot) {
+				errors.push(`${file}:${rule.source?.start?.line ?? 1} 选择器 '${selectorText}' 缺少显式插件归属正作用域（wn-*/webnovel-*/data-type）。`);
+			}
 
-			const isOwnedDrag = hasOwnedViewDataType || scopeClasses.some((className) =>
-				className.startsWith('wn-')
-				|| className.startsWith('webnovel-')
-				|| className === 'mobile-floating-stats'
-			);
-
-			const isOwnedDraggable = hasOwnedViewDataType || scopeClasses.some((className) =>
-				className.startsWith('wn-')
-				|| className.startsWith('webnovel-')
-			);
+			const isOwnedModal = hasPositiveOwnedScope;
+			const isOwnedDrag = hasPositiveOwnedScope;
+			const isOwnedDraggable = hasPositiveOwnedScope;
 
 			if (!isOwnedModal && [...classCounts.keys()].some((className) => genericModalClasses.has(className))) {
 				errors.push(`${file}:${rule.source?.start?.line ?? 1} 禁止使用未限定归属的通用弹窗选择器 '${selectorText}'。`);
