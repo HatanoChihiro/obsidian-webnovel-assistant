@@ -1001,7 +1001,7 @@
 	"relation-graph.no-data": "No lore data found. Ensure the file contains ## headings.",
 	"relation-graph.tooltip-relations": "Relations: {count}",
 	"relation-graph.edge-mention": "Mentioned",
-	"relation-graph.edge-hierarchy": "Contains",
+	"relation-graph.edge-hierarchy": "Hierarchy",
 	"relation-graph.hint-double-click-node": "Double-click a node to open character lore",
 	"relation-graph.hint-double-click-blank": "Double-click blank area to return to full graph",
 	"view.corkboard": "Writing Workbench",

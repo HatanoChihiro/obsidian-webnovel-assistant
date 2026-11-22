@@ -1005,7 +1005,7 @@
 	"relation-graph.no-data": "未找到設定資料，請確保檔案包含 ## 二級標題",
 	"relation-graph.tooltip-relations": "關係：{count} 條",
 	"relation-graph.edge-mention": "提及",
-	"relation-graph.edge-hierarchy": "包含",
+	"relation-graph.edge-hierarchy": "隸屬",
 	"relation-graph.hint-double-click-node": "雙擊節點跳轉至文件",
 	"relation-graph.hint-double-click-blank": "雙擊空白區域返回全量",
 	"view.corkboard": "寫作工作臺",

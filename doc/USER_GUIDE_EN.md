@@ -1008,7 +1008,7 @@ An H1–H5 entry can declare one or more `Parent Entry` links to other lore note
 ## Gauge Station
 ```
 
-The graph shows “Contains” edges across both notes and through their headings. Each descendant contributes to node size once, even if several paths lead to it. Existing `### Relations` sections remain readable.
+The graph shows “Hierarchy” edges across notes and their headings. Each descendant contributes to node size once, even if several paths lead to it. Existing `### Relations` sections remain readable.
 
 Under Lore Quick Lookup in WNA settings, toggle ancestor paths in cards and lore notes independently. Each path appears in small gray text on a separate line below its entry, with the local path first. Collapse them by default to show one small gray dot that opens or closes the paths. In lore notes, selecting an ancestor opens its heading.
 
