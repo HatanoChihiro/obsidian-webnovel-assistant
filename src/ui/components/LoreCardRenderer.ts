@@ -2,7 +2,8 @@ import { MarkdownRenderer, type Component, setIcon, setTooltip, type App, type T
 import { t } from '../../i18n';
 import type { AccurateCountSettings } from '../../types/settings';
 import type { LoreEntry } from '../../services/CharacterManager';
-import { cleanLoreHeading } from '../../services/CharacterManager';
+import { cleanLoreHeading, getLoreEntryIdentity } from '../../services/CharacterManager';
+import { buildLoreOutline, getLoreSectionProse, scanLoreHeadings, type LoreOutlineHeading } from '../../services/LoreOutline';
 import { smartLocateAndHighlight } from '../../utils/leaf';
 import { injectSoftBreakIndentPlaceholders } from '../../utils/softBreakIndent';
 import { createCardImportanceButton } from './CardImportanceButton';
@@ -28,6 +29,7 @@ interface LoreFileSnapshot {
 	lines: string[];
 	metadata: CachedMetadata | null;
 	sections: Map<string, { start: number; end: number }>;
+	outline: Map<string, LoreOutlineHeading>;
 }
 
 /** Shared only during a card-render batch; the caller clears it when the batch ends. */
@@ -56,7 +58,7 @@ export class LoreCardRenderer {
 	private static readonly loreBodyCache = new Map<string, { chunk: string; aliases: string[]; mtime: number; file: TFile }>();
 
 	private static getCacheKey(entry: LoreEntry): string {
-		return `${entry.file.path}\u0000${entry.heading}`;
+		return getLoreEntryIdentity(entry);
 	}
 
 	private static getEntryMtime(file: TFile): number {
@@ -72,9 +74,8 @@ export class LoreCardRenderer {
 			LoreCardRenderer.loreBodyCache.clear();
 			return;
 		}
-		const prefix = `${file.path}\u0000`;
-		for (const key of Array.from(LoreCardRenderer.loreBodyCache.keys())) {
-			if (key.startsWith(prefix)) LoreCardRenderer.loreBodyCache.delete(key);
+		for (const [key, cached] of LoreCardRenderer.loreBodyCache) {
+			if (cached.file.path === file.path) LoreCardRenderer.loreBodyCache.delete(key);
 		}
 	}
 
@@ -152,7 +153,9 @@ export class LoreCardRenderer {
 				if (h.level === 2) sections.set(cleanLoreHeading(h.heading), { start: h.position.end.line + 1, end });
 				end = h.position.start.line;
 			}
-			return { content, lines: content.split('\n'), metadata, sections };
+			const lines = content.split('\n');
+			const outline = new Map(buildLoreOutline(scanLoreHeadings(lines), lines.length).map(section => [section.key, section]));
+			return { content, lines, metadata, sections, outline };
 		});
 		if (mtime > 0) reads?.set(file, { mtime, generation, read });
 		try {
@@ -170,6 +173,16 @@ export class LoreCardRenderer {
 
 		let chunk = '';
 		const aliases: string[] = [];
+		if (entry.section) {
+			const section = snapshot.outline.get(entry.section.key);
+			if (!section) return { chunk, aliases };
+			const body = getLoreSectionProse(snapshot.lines, section);
+			const aliasLine = /^(?:\*\*|__)?(?:别名|別名|Alias)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/im;
+			const found = body.match(aliasLine)?.[1];
+			if (found) aliases.push(...found.split(/[,，、/|;；]/).map(alias => alias.trim()).filter(Boolean));
+			chunk = body.replace(aliasLine, '').replace(/<!--\s*wn-important\s*-->\r?\n?/g, '').trim();
+			return { chunk, aliases };
+		}
 
 		const section = snapshot.sections.get(cleanLoreHeading(entry.heading));
 		if (section) {
@@ -375,6 +388,7 @@ export class LoreCardRenderer {
 		options: {
 			draggable?: boolean;
 			dragDataMimeType?: string;
+			dragIdentity?: string;
 			onTitleClick?: () => void;
 			hideEditButton?: boolean;
 			hideImportanceButton?: boolean;
@@ -397,11 +411,12 @@ export class LoreCardRenderer {
 		if (options.draggable) {
 			card.setAttribute('draggable', 'true');
 			card.setAttribute('data-lore-heading', entry.heading);
+			if (options.dragIdentity) card.setAttribute('data-lore-entry-id', options.dragIdentity);
 			card.addEventListener('dragstart', (e) => {
 				if (e.dataTransfer) {
 					e.dataTransfer.effectAllowed = 'all';
 					const mime = options.dragDataMimeType || 'application/wn-lore-heading';
-					e.dataTransfer.setData(mime, entry.heading);
+					e.dataTransfer.setData(mime, options.dragIdentity ?? entry.heading);
 				}
 				window.setTimeout(() => card.addClass('is-dragging'), 0);
 			});
@@ -422,6 +437,12 @@ export class LoreCardRenderer {
 			if (isReadOnly) return;
 			if (options.onTitleClick) {
 				options.onTitleClick();
+			}
+			if (entry.section) {
+				const snapshot = await LoreCardRenderer.readLoreFile(entry.file, plugin.app);
+				const section = snapshot.outline.get(entry.section.key);
+				if (section) await smartLocateAndHighlight(plugin.app, entry.file, [], { splitIfNew: true, fallbackLine: section.line });
+				return;
 			}
 
 			// 找到词条对应的行号，并分屏打开

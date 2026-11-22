@@ -4,12 +4,19 @@ import type { WebNovelAssistantPlugin, SeriesLoreRenameResult } from '../types/p
 import { getDefaultFileName, getDefaultFileNameCandidates, getLoreLabel } from '../i18n/data-keys';
 import { findBookRoot, getCandidateNames, isCandidateSubpath } from '../utils/path';
 import { t } from '../i18n';
-import { trimBlankLines } from './LoreTemplateService';
+import { scanFenceLine, trimBlankLines, type FenceScanState } from './LoreTemplateService';
+import { buildLoreOutline, findLoreOutlineTarget, getLoreFrontmatterEnd, getLoreInlineRelations, getLoreSectionProse, getLoreSectionText, scanLoreHeadings, type LoreOutlineHeading } from './LoreOutline';
 
 export interface LoreEntry {
 	file: TFile;
 	heading: string;
 	important?: boolean;
+	section?: LoreOutlineHeading;
+	fileBacked?: boolean;
+}
+
+export function getLoreEntryIdentity(entry: LoreEntry): string {
+	return JSON.stringify([entry.file.path, entry.section?.key ?? entry.heading]);
 }
 
 export interface LoreCategoryOption {
@@ -420,6 +427,7 @@ export class CharacterManager {
 			const effectiveCache = new Map<string, LoreEntry>();
 			const effectiveLower = new Map<string, string>();
 			const effectiveOrder: LoreEntry[] = [];
+			const seenEntries = new Set<string>();
 			const seenHeadings = new Set<string>();
 
 			// 优先级 1：当前作品自身的全部设定（本地优先，包含私有与本地公共）
@@ -431,7 +439,9 @@ export class CharacterManager {
 						if (cleanedKey) {
 							effectiveCache.set(cleanedKey, entry);
 							effectiveLower.set(cleanedKey.toLowerCase(), cleanedKey);
-							if (!seenHeadings.has(entry.heading)) {
+							const identity = getLoreEntryIdentity(entry);
+							if (!seenEntries.has(identity)) {
+								seenEntries.add(identity);
 								seenHeadings.add(entry.heading);
 								effectiveOrder.push(entry);
 							}
@@ -1148,6 +1158,24 @@ export class CharacterManager {
 		}
 
 		const file = fromEntry.file;
+		if (fromEntry.section || toEntry.section) {
+			if (fromEntry.section?.level !== toEntry.section?.level || fromEntry.section?.parent?.key !== toEntry.section?.parent?.key) return false;
+			let moved = false;
+			await this.app.vault.process(file, data => {
+				const lines = data.split('\n');
+				const outline = buildLoreOutline(scanLoreHeadings(lines), lines.length);
+				const from = outline.find(section => section.key === fromEntry.section?.key);
+				const to = outline.find(section => section.key === toEntry.section?.key);
+				if (!from || !to || from === to || from.level !== to.level || from.parent !== to.parent) return data;
+				const size = from.subtreeEnd - from.line;
+				const block = lines.splice(from.line, size);
+				const destination = (insertAfter ? to.subtreeEnd : to.line) - (from.line < to.line ? size : 0);
+				lines.splice(destination, 0, ...block);
+				moved = true;
+				return lines.join('\n');
+			});
+			return moved;
+		}
 		const fileCache = this.app.metadataCache.getFileCache(file);
 		if (!fileCache || !fileCache.headings) return false;
 
@@ -1208,6 +1236,10 @@ export class CharacterManager {
 		const fileCache = this.app.metadataCache.getFileCache(entry.file);
 		const content = await this.app.vault.cachedRead(entry.file);
 		const lines = content.split('\n');
+		if (entry.section) {
+			const section = buildLoreOutline(scanLoreHeadings(lines), lines.length).find(candidate => candidate.key === entry.section?.key);
+			return section ? getLoreSectionProse(lines, section).replace(/<!--\s*wn-important\s*-->\r?\n?/g, '').trim() : '';
+		}
 		
 		if (fileCache && fileCache.headings) {
 			for (let i = 0; i < fileCache.headings.length; i++) {
@@ -1249,6 +1281,14 @@ export class CharacterManager {
 	}
 
 	public async updateLoreContent(entry: LoreEntry, newContent: string): Promise<boolean> {
+		if (entry.section) {
+			const snapshot = await this.getLoreSnapshot(entry);
+			if (!snapshot) return false;
+			return this.updateLoreEntry(entry, {
+				oldHeading: entry.heading, newHeading: entry.heading, type: snapshot.type, aliases: snapshot.aliases,
+				body: newContent, relations: snapshot.relations, expectedSnapshot: snapshot,
+			});
+		}
 		const file = entry.file;
 		const fileCache = this.app.metadataCache.getFileCache(file);
 
@@ -1317,6 +1357,23 @@ export class CharacterManager {
 	 * 切换设定词条的重要标记状态
 	 */
 	public async toggleLoreImportance(entry: LoreEntry): Promise<boolean> {
+		if (entry.section) {
+			let nextState = Boolean(entry.important);
+			await this.app.vault.process(entry.file, data => {
+				const lines = data.split('\n');
+				const section = buildLoreOutline(scanLoreHeadings(lines), lines.length).find(candidate => candidate.key === entry.section?.key);
+				if (!section) return data;
+				const direct = lines.slice(section.bodyStart, section.bodyEnd);
+				const marker = /^\s*<!--\s*wn-important\s*-->\s*$/;
+				nextState = !direct.some(line => marker.test(line));
+				const body = direct.filter(line => !marker.test(line));
+				if (nextState) body.unshift('<!-- wn-important -->' + (data.includes('\r\n') ? '\r' : ''));
+				lines.splice(section.bodyStart, section.bodyEnd - section.bodyStart, ...body);
+				return lines.join('\n');
+			});
+			entry.important = nextState || undefined;
+			return nextState;
+		}
 		const file = entry.file;
 		const fileCache = this.app.metadataCache.getFileCache(file);
 		let nextState = !entry.important;
@@ -1420,59 +1477,25 @@ export class CharacterManager {
 		const fileCache = this.app.metadataCache.getFileCache(file);
 		const content = await this.app.vault.cachedRead(file);
 		const lines = content.split('\n');
-
-		let headings: { level: number, heading: string, position: { start: { line: number }, end: { line: number } } }[] = [];
-		if (fileCache && fileCache.headings) {
-			headings = fileCache.headings;
-		} else {
-			for (let i = 0; i < lines.length; i++) {
-				const line = lines[i];
-				const match = line.match(/^##\s+(.+)$/);
-				if (match) {
-					headings.push({
-						level: 2,
-						heading: match[1],
-						position: { start: { line: i }, end: { line: i } }
-					});
-				}
-			}
-		}
-
-		const level2Headings = headings.filter(h => h.level === 2);
-
-		if (level2Headings.length > 0) {
-			for (let i = 0; i < headings.length; i++) {
-				const heading = headings[i];
-				if (heading.level !== 2) continue;
-
-				const rawHeading = heading.heading;
-				if (!rawHeading) continue;
-
-				const headingText = cleanLoreHeading(rawHeading);
-				if (!headingText) continue;
-
-				const startLine = heading.position.end.line + 1;
-				const nextHeading = headings[i + 1];
-				const endLine = nextHeading ? nextHeading.position.start.line : lines.length;
-
-				const chunk = lines.slice(startLine, endLine).join('\n');
-				const important = /<!--\s*wn-important\s*-->/.test(chunk) ? true : undefined;
-				const entry: LoreEntry = { file, heading: headingText, important };
-				addEntry(headingText, entry);
-
-				const aliasMatch = chunk.match(/(?:\*\*|__)?(?:别名|別名|Alias)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/);
-				if (aliasMatch && aliasMatch[1]) {
-					const rawAliases = aliasMatch[1].split(/[,，、/|;；]/);
-					for (const a of rawAliases) {
-						addEntry(a, entry);
-					}
-				}
-			}
-		} else {
-			const fileEntryName = cleanLoreHeading(file.basename);
+		const outline = buildLoreOutline(scanLoreHeadings(lines), lines.length);
+		const fileEntryName = cleanLoreHeading(file.basename);
+		const hasH2 = outline.some(section => section.level === 2);
+		const entries = outline.map((section, index) => {
+			const body = getLoreSectionText(lines, section);
+			const important = /<!--\s*wn-important\s*-->/.test(body) || undefined;
+			const fileBacked = index === 0 && !hasH2 && Boolean(fileEntryName);
+			const entry: LoreEntry = { file, heading: fileBacked ? fileEntryName : section.title, important,
+				section: fileBacked && outline.length === 1 ? undefined : section, fileBacked };
+			addEntry(entry.heading, entry);
+			if (entry.heading !== section.title) addEntry(section.title, entry);
+			const aliases = body.match(/^(?:\*\*|__)?(?:别名|別名|Alias)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/im)?.[1];
+			for (const alias of aliases?.split(/[,，、/|;；]/) ?? []) addEntry(alias, entry);
+			return entry;
+		});
+		if (!hasH2) {
 			if (fileEntryName) {
 				const important = /<!--\s*wn-important\s*-->/.test(content) ? true : undefined;
-				const entry: LoreEntry = { file, heading: fileEntryName, important };
+				const entry: LoreEntry = entries[0] ?? { file, heading: fileEntryName, important };
 				addEntry(fileEntryName, entry);
 
 				const fm = fileCache?.frontmatter;
@@ -1492,7 +1515,7 @@ export class CharacterManager {
 					}
 				}
 
-				const aliasMatches = content.matchAll(/(?:\*\*|__)?(?:别名|別名|Alias)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/gi);
+				const aliasMatches = entries.length ? [] : content.matchAll(/(?:\*\*|__)?(?:别名|別名|Alias)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/gi);
 				for (const match of aliasMatches) {
 					if (match[1]) {
 						const rawAliases = match[1].split(/[,，、/|;；]/);
@@ -2333,6 +2356,7 @@ export class CharacterManager {
 		} catch {
 			return null;
 		}
+		if (entry.section) return this.getIndexedLoreSnapshot(entry, content, contextBookPath);
 
 		const chunk = this.locateLoreChunk(content, entry.heading, entry.file);
 		if (chunk.isDuplicate || (chunk.headingLineIndex === -1 && !chunk.isSingleFile)) {
@@ -2425,6 +2449,209 @@ export class CharacterManager {
 		};
 	}
 
+	private getIndexedLoreSnapshot(entry: LoreEntry, content: string, contextBookPath?: string): LoreSnapshot | null {
+		const lines = content.split('\n');
+		const section = buildLoreOutline(scanLoreHeadings(lines), lines.length).find(candidate => candidate.key === entry.section?.key);
+		if (!section) return null;
+		const prose = getLoreSectionProse(lines, section).split('\n');
+		const direct = this.parseChunkFields(prose, 0, prose.length);
+		if (entry.fileBacked) {
+			const fm = this.app.metadataCache.getFileCache(entry.file)?.frontmatter;
+			const rawAliases: unknown = fm?.aliases ?? fm?.alias ?? fm?.别名 ?? fm?.別名;
+			const known: unknown[] = typeof rawAliases === 'string' ? rawAliases.split(/[,，、/|;；]/) : Array.isArray(rawAliases) ? rawAliases : [];
+			direct.aliases = [...new Set([...direct.aliases.split(/[,，、/|;；]/), ...known]
+				.filter(value => typeof value === 'string' || typeof value === 'number').map(value => String(value).trim()).filter(Boolean))].join(', ');
+		}
+		const inline = getLoreInlineRelations(lines, section.bodyStart, section.bodyEnd).map(relation => ({
+			label: relation.label, target: this.extractRelationTargetName(`[[${relation.link}]]`), rawTarget: `[[${relation.link}]]`,
+		}));
+		const legacy = section.relationBlocks.flatMap(block => {
+			const buffer = ['### 关系', ...lines.slice(block.start + 1, block.end)];
+			return this.parseChunkFields(buffer, 0, buffer.length).rawRelationItems;
+		});
+		const relations = [...inline, ...legacy];
+		const ownerBook = this.getBookPathForFile(entry.file) || '';
+		const loreFolder = this.findLoreFolder(ownerBook)?.path;
+		const category = entry.file.basename;
+		const categoryDisplayName = loreFolder && entry.file.path.startsWith(`${loreFolder}/`)
+			? entry.file.path.slice(loreFolder.length + 1).replace(/\.md$/i, '') : category;
+		const rawChunk = JSON.stringify([entry.fileBacked ? lines.slice(0, getLoreFrontmatterEnd(lines) + 1) : [],
+			lines.slice(section.line, section.bodyEnd), ...section.relationBlocks.map(block => lines.slice(block.start, block.end))]);
+		return {
+			name: entry.heading, category, categoryDisplayName, type: direct.type, aliases: direct.aliases,
+			body: direct.body, relations, rawRelationItems: relations, important: direct.important,
+			isBorrowed: this.isBorrowedLoreEntry(entry, contextBookPath), isSingleFile: false,
+			file: entry.file, filePath: entry.file.path, heading: entry.heading, rawChunk,
+		};
+	}
+
+	private async updateIndexedLoreEntry(entry: LoreEntry, input: UpdateLoreInput, newName: string, bookPath: string): Promise<boolean> {
+		const newBody = input.body.trim();
+		if (scanLoreHeadings(newBody.split('\n')).length) {
+			new Notice(t('notice.lore-save-failed'));
+			return false;
+		}
+		const snapshot = input.expectedSnapshot ?? await this.getLoreSnapshot(entry, input.contextBookPath);
+		if (!snapshot) return false;
+		let renamePath: string | undefined;
+		if (entry.fileBacked && newName !== entry.heading) {
+			if (newName.startsWith('.') || /[\\/:*?"<>|]/.test(newName)) {
+				new Notice(t('notice.lore-name-invalid'));
+				return false;
+			}
+			const folder = entry.file.path.slice(0, entry.file.path.lastIndexOf('/') + 1);
+			renamePath = `${folder}${newName}.md`;
+			if (this.app.vault.getAbstractFileByPath(renamePath)) {
+				new Notice(t('notice.lore-name-exists', { name: newName }));
+				return false;
+			}
+		}
+		const canonicalRelations = (relations: LoreRelationItem[]) => JSON.stringify(relations.map(relation => [relation.label.trim(), relation.target.trim()]));
+		const relationsChanged = canonicalRelations(input.relations) !== canonicalRelations(snapshot.relations);
+		const serializeRelation = (relation: LoreRelationItem): string | undefined => {
+			const label = relation.label.trim();
+			const name = relation.target.trim();
+			if (!label || !name) return undefined;
+			const saved = snapshot.rawRelationItems?.find(item => item.label === label && item.target === name)?.rawTarget;
+			let link = /^(\[\[[^\]\r\n]+\]\])$/.exec(name)?.[1] ?? /^(\[\[[^\]\r\n]+\]\])$/.exec(saved ?? '')?.[1];
+			if (!link) {
+				const target = this.getCharacterFile(bookPath, name);
+				if (!target) return undefined;
+				const file = target.file.path === entry.file.path ? '' : target.file.path.replace(/\.md$/i, '');
+				const anchor = target.section ? `#${target.section.path.join('#')}` : '';
+				if (!file && !anchor) return undefined;
+				link = `[[${file}${anchor}]]`;
+			}
+			return `关系:: ${label} → ${link}`;
+		};
+		const newRelations = relationsChanged ? input.relations.filter(relation => relation.label.trim() && relation.target.trim()).map(serializeRelation) : [];
+		if (newRelations.some(line => !line)) {
+			new Notice(t('notice.lore-save-failed'));
+			return false;
+		}
+		let changed = false;
+		let original = '';
+		let written = '';
+		await this.app.vault.process(entry.file, data => {
+			if (entry.file.path !== snapshot.filePath || this.getIndexedLoreSnapshot(entry, data, input.contextBookPath)?.rawChunk !== snapshot.rawChunk) return data;
+			const lines = data.split('\n');
+			const section = buildLoreOutline(scanLoreHeadings(lines), lines.length).find(candidate => candidate.key === entry.section?.key);
+			if (!section) return data;
+			const inline = relationsChanged ? newRelations : getLoreInlineRelations(lines, section.bodyStart, section.bodyEnd).map(relation => lines[relation.line].trimEnd());
+			if (relationsChanged) {
+				for (const block of [...section.relationBlocks].sort((a, b) => b.start - a.start)) {
+					const buffer = ['### 关系', ...lines.slice(block.start + 1, block.end)];
+					const relationLines = new Set(this.parseChunkFields(buffer, 0, buffer.length).rawRelationItems.map(item => item.rawLine));
+					const rest = lines.slice(block.start + 1, block.end).filter(line => !relationLines.has(line));
+					lines.splice(block.start + 1, block.end - block.start - 1, ...rest);
+				}
+			}
+			const aliases = input.aliases.split(/[,，、/|;；]/).map(alias => alias.trim()).filter(Boolean);
+			if (newName !== entry.heading && !aliases.includes(entry.heading)) aliases.push(entry.heading);
+			const body = [
+				snapshot.important ? '<!-- wn-important -->' : '',
+				aliases.length ? `**${getLoreLabel('alias')}**：${aliases.join(', ')}` : '',
+				input.type.trim() ? `**${getLoreLabel('type')}**：${input.type.trim()}` : '', newBody, inline.join('\n'),
+			].filter(Boolean).join('\n\n');
+			const newline = data.includes('\r\n') ? '\r' : '';
+			const keepHeading = newName === entry.heading || (entry.fileBacked && section.title !== entry.heading);
+			const heading = keepHeading ? lines.slice(section.line, section.bodyStart)
+				: [`${'#'.repeat(section.level)} ${newName}${newline}`];
+			const replacement = body ? [...heading, `${newline}`, ...body.split(/\r?\n/).map(line => `${line}${newline}`), `${newline}`] : [...heading, `${newline}`];
+			lines.splice(section.line, section.bodyEnd - section.line, ...replacement);
+			if (entry.fileBacked && input.aliases !== snapshot.aliases) {
+				const frontmatterEnd = getLoreFrontmatterEnd(lines);
+				if (frontmatterEnd > 0) {
+					const metadata = lines.slice(1, frontmatterEnd);
+					const keys = /^(?:aliases|alias|别名|別名|'(?:aliases|alias|别名|別名)'|"(?:aliases|alias|别名|別名)")\s*:/i;
+					let inAliases = false;
+					const fields = metadata.filter(line => {
+						if (keys.test(line)) { inAliases = true; return false; }
+						if (inAliases && /^(?:[ \t]*-[ \t]|[ \t]+\S)/.test(line)) return false;
+						if (line.trim() && !line.trimStart().startsWith('#')) inAliases = false;
+						return true;
+					});
+					lines.splice(1, metadata.length, ...fields);
+				}
+			}
+			changed = true;
+			original = data;
+			written = lines.join('\n');
+			return written;
+		});
+		if (!changed) {
+			new Notice(t('notice.lore-save-failed'));
+			return false;
+		}
+		if (renamePath) {
+			try {
+				await this.app.fileManager.renameFile(entry.file, renamePath);
+			} catch (error) {
+				await this.app.vault.process(entry.file, data => data === written ? original : data);
+				console.error('Failed to rename indexed lore file:', error);
+				new Notice(t('notice.lore-save-failed'));
+				return false;
+			}
+		}
+		const previousLines = original.split('\n');
+		const previousOutline = buildLoreOutline(scanLoreHeadings(previousLines), previousLines.length);
+		const previousHeading = previousOutline.find(section => section.key === entry.section?.key);
+		const linksUpdated = newName === entry.heading || !previousHeading || (entry.fileBacked && previousHeading.title !== entry.heading)
+			|| await this.updateIndexedLoreLinks(bookPath, entry.file, previousOutline, previousHeading, newName);
+		entry.heading = newName;
+		await this.rebuildCache();
+		new Notice(t(linksUpdated ? 'modal.lore-saved' : 'notice.lore-links-update-failed'));
+		return true;
+	}
+
+	private async updateIndexedLoreLinks(bookPath: string, targetFile: TFile, previous: LoreOutlineHeading[], renamed: LoreOutlineHeading, name: string): Promise<boolean> {
+		let succeeded = true;
+		for (const file of this.getLoreFiles(bookPath)) {
+			if (this.isBorrowedLoreEntry({ file, heading: '' }, bookPath)) continue;
+			try {
+				await this.app.vault.process(file, data => {
+					const lines = data.split('\n');
+					const outline = buildLoreOutline(scanLoreHeadings(lines), lines.length);
+					const declared = new Set<number>();
+					for (const section of outline) {
+						for (const relation of getLoreInlineRelations(lines, section.bodyStart, section.bodyEnd)) declared.add(relation.line);
+						for (const block of section.relationBlocks) {
+							const fence: FenceScanState = { inFence: false, fenceChar: '', fenceLength: 0 };
+							for (let i = block.start + 1; i < block.end; i++) {
+								const { inFenceBefore, inFenceAfter } = scanFenceLine(lines[i], fence);
+								if (!inFenceBefore && !inFenceAfter && /^(?:[-*]\s+)?(?:\*\*|__)?[^\n*:]+?(?:\*\*|__)?\s*[:：]/.test(lines[i])) declared.add(i);
+							}
+						}
+					}
+					for (const line of declared) {
+						lines[line] = lines[line].replace(/\[\[([^\]\n]+)\]\]/g, (whole: string, inner: string) => {
+							const separator = inner.indexOf('|');
+							const link = separator < 0 ? inner : inner.slice(0, separator);
+							const [fileName, ...anchors] = link.split('#');
+							if (!anchors.length) return whole;
+							const destination = fileName.trim() ? this.app.metadataCache.getFirstLinkpathDest(fileName.trim(), file.path) : file;
+							if (destination?.path !== targetFile.path) return whole;
+							const target = findLoreOutlineTarget(previous, anchors);
+							if (!target) return whole;
+							let ancestor: LoreOutlineHeading | undefined = target;
+							while (ancestor && ancestor.key !== renamed.key) ancestor = ancestor.parent;
+							if (!ancestor) return whole;
+							const index = ancestor.path.length - 1 - (target.path.length - anchors.length);
+							if (index < 0) return whole;
+							anchors[index] = name;
+							return `[[${[fileName, ...anchors].join('#')}${separator < 0 ? '' : inner.slice(separator)}]]`;
+						});
+					}
+					return lines.join('\n');
+				});
+			} catch (error) {
+				succeeded = false;
+				console.error(`Failed to update indexed lore links in ${file.path}:`, error);
+			}
+		}
+		return succeeded;
+	}
+
 	public async updateLoreEntry(entry: LoreEntry, input: UpdateLoreInput): Promise<boolean> {
 		if (!entry || !entry.file) return false;
 
@@ -2494,13 +2721,16 @@ export class CharacterManager {
 		for (const name of namesToCheck) {
 			const existing = this.getCharacterFile(bookPath, name);
 			if (existing) {
-				const isSame = existing.file.path === entry.file.path && cleanLoreHeading(existing.heading) === cleanLoreHeading(oldName);
+				const isSame = entry.section ? getLoreEntryIdentity(existing) === getLoreEntryIdentity(entry)
+					: existing.file.path === entry.file.path && cleanLoreHeading(existing.heading) === cleanLoreHeading(oldName);
+				if (entry.section && name === oldName && newName === oldName) continue;
 				if (!isSame) {
 					new Notice(t('notice.lore-name-exists', { name }));
 					return false;
 				}
 			}
 		}
+		if (entry.section) return this.updateIndexedLoreEntry(entry, input, newName, bookPath);
 
 		// Read current file content
 		let latestContent = '';

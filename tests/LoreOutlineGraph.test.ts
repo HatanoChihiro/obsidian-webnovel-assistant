@@ -64,11 +64,13 @@ describe('标题层级与设定关系', () => {
 			'关系:: 歧义 → [[#码头]]',
 			'```md', '关系:: 代码 → [[#白岬王国]]', '```',
 			'%%', '关系:: 注释 → [[#白岬王国]]', '%%',
+			'<!--', '###### 隐藏', '关系:: 隐藏 → [[#白岬王国]]', '-->',
 		].join('\n'));
 		const graph = await graphFor([map]);
 		const south = graph.nodes.find(node => node.headingLine === 5)!;
 		const north = graph.nodes.find(node => node.headingLine === 3)!;
 		expect(south.id).not.toBe(north.id);
+		expect(graph.nodes.map(node => node.heading)).not.toContain('隐藏');
 		expect(graph.edges.filter(edge => edge.type === 'explicit')).toEqual([
 			{ source: south.id, target: north.id, type: 'explicit', label: '同行' },
 		]);

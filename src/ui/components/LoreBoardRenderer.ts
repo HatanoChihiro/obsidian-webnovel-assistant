@@ -1,10 +1,11 @@
 import { Notice, TFile, setIcon, Component, type App } from 'obsidian';
 import { t, getLocale } from '../../i18n';
 import type { GraphEdge, RelationGraphManager } from '../../services/RelationGraphManager';
-import { buildLoreOutline, type LoreOutlineHeading } from '../../services/LoreOutline';
+import type { LoreOutlineHeading } from '../../services/LoreOutline';
+import { getLoreFilterKey } from '../../services/WorkbenchFilterIndex';
 import { ForceLayoutEngine } from '../../services/ForceLayoutEngine';
 import type { CharacterManager, LoreEntry } from '../../services/CharacterManager';
-import { cleanLoreHeading } from '../../services/CharacterManager';
+import { cleanLoreHeading, getLoreEntryIdentity } from '../../services/CharacterManager';
 import type { AccurateCountSettings } from '../../types/settings';
 import { GraphRenderer, type GraphRenderState, type ThemeColors } from './GraphRenderer';
 import { GraphInteractionController } from './GraphInteractionController';
@@ -115,18 +116,19 @@ export class LoreBoardRenderer {
 
         const allEntries = plugin.characterManager
             .getLoreEntriesInFileOrder(currentBookPath)
-            .filter(entry => !matchedLoreHeadings || matchedLoreHeadings.has(entry.heading));
+            .filter(entry => !matchedLoreHeadings || matchedLoreHeadings.has(getLoreFilterKey(entry)));
 
         // 卡片视图下强制遵循文件本身的物理顺序，忽略 customSortOrder，确保拖拽修改文件后所见即所得
         const sortedEntries = allEntries;
 
-        const renderedHeadings = new Set<string>();
+        const renderedEntries = new Set<string>();
         const fileGroups = new Map<string, { groupKey: string, displayName: string, entries: LoreEntry[], isBorrowed: boolean }>();
         const groupContext = this.createLoreGroupContext(plugin, currentBookPath);
 
         for (const entry of sortedEntries) {
-            if (renderedHeadings.has(entry.heading)) continue;
-            renderedHeadings.add(entry.heading);
+            const identity = getLoreEntryIdentity(entry);
+            if (renderedEntries.has(identity)) continue;
+            renderedEntries.add(identity);
 
             const { groupKey, displayName, isBorrowed } = this.describeLoreGroup(app, plugin, entry, groupContext);
 
@@ -140,7 +142,6 @@ export class LoreBoardRenderer {
         const groups = this.sortLoreFileGroups(Array.from(fileGroups.entries()));
 
         const boardLayout = container.createDiv('wn-lore-board-layout');
-        const outlines = new Map<TFile, LoreOutlineHeading[]>();
 
         // --- 文件选项卡栏（“全部” + 各设定文件，带条数徽标） ---
         // 设计考量：仅在存在 2 个及以上设定文件且未显式隐藏 Tab 栏时渲染文件 Tab 栏
@@ -180,6 +181,7 @@ export class LoreBoardRenderer {
                 cls: 'wn-volume-header-title'
             });
 
+            if (options?.showHeadingOutline) this.renderHeadingOutline(panel, app, group.entries);
             const grid = panel.createDiv('wn-lore-board-cards-grid');
 
             header.onclick = () => {
@@ -220,6 +222,7 @@ export class LoreBoardRenderer {
                     await LoreCardRenderer.buildCardDOM(cardContainer, entry, { app, settings: plugin.settings, characterManager: plugin.characterManager }, boardComponent, {
                         draggable: !group.isBorrowed,
                         dragDataMimeType: mimeType,
+                        dragIdentity: getLoreEntryIdentity(entry),
                         hideEditButton: group.isBorrowed,
                         hideImportanceButton: group.isBorrowed,
                         onEdit: group.isBorrowed ? undefined : target => {
@@ -229,33 +232,24 @@ export class LoreBoardRenderer {
                         focusable: isPreviewEnabled,
                         onExpand: isPreviewEnabled && preview ? () => { preview.open(); } : undefined
                     }, bodyReads);
-                    if (options?.showHeadingOutline) {
-                        let outline = outlines.get(entry.file);
-                        if (!outline) {
-                            const headings = app.metadataCache.getFileCache(entry.file)?.headings ?? [];
-                            outline = buildLoreOutline(headings, Infinity);
-                            outlines.set(entry.file, outline);
-                        }
-                        const body = cardContainer.querySelector<HTMLElement>('.wn-lore-card-body');
-                        if (body) this.renderCardOutline(body, app, entry, outline);
-                    }
                 }
             } finally {
                 bodyReads.clear();
             }
 
             if (!group.isBorrowed) {
+                const entriesById = new Map(group.entries.map(entry => [getLoreEntryIdentity(entry), entry]));
                 DraggableListHelper.init({
                     container: grid,
                     itemSelector: '.wn-lore-card',
                     dragDataMimeType: mimeType,
-                    getDragData: (el) => el.getAttribute('data-lore-heading') || '',
+                    getDragData: (el) => el.getAttribute('data-lore-entry-id') || '',
                     onDrop: (fromName, toName, insertAfter) => {
                         if (fromName === toName) return;
 
                         void (async () => {
-                            const fromEntry = plugin.characterManager.getCharacterFile(currentBookPath, fromName);
-                            const toEntry = plugin.characterManager.getCharacterFile(currentBookPath, toName);
+                            const fromEntry = entriesById.get(fromName);
+                            const toEntry = entriesById.get(toName);
 
                             if (fromEntry && toEntry) {
                                 if (fromEntry.file.path !== toEntry.file.path) {
@@ -317,17 +311,16 @@ export class LoreBoardRenderer {
         applyView();
     }
 
-    private static renderCardOutline(body: HTMLElement, app: App, entry: LoreEntry, outline: readonly LoreOutlineHeading[]): void {
-        const owner = outline.find(heading => heading.level === 2 && heading.title === cleanLoreHeading(entry.heading));
-        if (!owner && outline.some(heading => heading.level === 2)) return;
+    private static renderHeadingOutline(panel: HTMLElement, app: App, entries: readonly LoreEntry[]): void {
+        if (!entries.some(entry => entry.section?.parent)) return;
         const lists = new Map<LoreOutlineHeading, HTMLUListElement>();
-        const details = body.createEl('details', { cls: 'wn-lore-card-outline' });
+        const details = panel.createEl('details', { cls: 'wn-lore-card-outline' });
         details.createEl('summary', { text: t('lore.heading-outline') });
         const list = details.createEl('ul');
-        if (owner) lists.set(owner, list);
-        for (const heading of outline) {
-            const parent = heading.parent ? lists.get(heading.parent) : owner ? undefined : list;
-            if (!parent) continue;
+        for (const entry of entries) {
+            const heading = entry.section;
+            if (!heading) continue;
+            const parent = (heading.parent && lists.get(heading.parent)) ?? list;
             const item = parent.createEl('li');
             const button = item.createEl('button', { text: heading.title, attr: { type: 'button' } });
             button.onclick = () => {
@@ -335,8 +328,6 @@ export class LoreBoardRenderer {
             };
             lists.set(heading, item.createEl('ul'));
         }
-        if (list.childElementCount) body.prepend(details);
-        else details.remove();
     }
 
     /**
@@ -453,7 +444,7 @@ export class LoreBoardRenderer {
         for (const key of allCharacters) {
             const entry = plugin.characterManager.getCharacterFile(currentBookPath, key);
             if (entry && entry.heading) {
-                if (matchedLoreHeadings && !matchedLoreHeadings.has(entry.heading)) continue;
+                if (matchedLoreHeadings && !matchedLoreHeadings.has(getLoreFilterKey(entry))) continue;
                 if (!loreToChapters.has(entry.heading)) {
                     loreToChapters.set(entry.heading, []);
                 }
@@ -468,8 +459,9 @@ export class LoreBoardRenderer {
                     if (typeof item === 'string') {
                         const parts = item.split('×');
                         const name = parts[0].trim();
-                        const canonicalName = plugin.characterManager.getCharacterFile(currentBookPath, name)?.heading ?? name;
-                        if (matchedLoreHeadings && !matchedLoreHeadings.has(canonicalName)) continue;
+                        const entry = plugin.characterManager.getCharacterFile(currentBookPath, name);
+                        const canonicalName = entry?.heading ?? name;
+                        if (matchedLoreHeadings && !matchedLoreHeadings.has(entry ? getLoreFilterKey(entry) : canonicalName)) continue;
                         const count = parts.length > 1 ? parseInt(parts[1], 10) : 1;
                         if (!loreToChapters.has(canonicalName)) loreToChapters.set(canonicalName, []);
                         loreToChapters.get(canonicalName)!.push({ chapter: file, count: isNaN(count) ? 1 : count });
@@ -489,8 +481,11 @@ export class LoreBoardRenderer {
             const effectiveFiles = plugin.characterManager.getEffectiveLoreFiles(bookPath);
             if (effectiveFiles.length > 0) {
                 const graphManager = plugin.relationGraphManager;
-                const data = await graphManager.buildGraphData(effectiveFiles[0], { files: effectiveFiles, enableGlobal: false, autoLinkMentions: true });
-                explicitEdges = data.edges.filter(e => e.type === 'explicit');
+                const data = await graphManager.buildGraphData(effectiveFiles[0], { files: effectiveFiles, enableGlobal: false, autoLinkMentions: true, includeHeadingHierarchy: true });
+                const names = new Map(data.nodes.map(node => [node.id, node.heading]));
+                explicitEdges = data.edges.filter(e => e.type === 'explicit').map(edge => ({
+                    ...edge, source: names.get(edge.source) ?? edge.source, target: names.get(edge.target) ?? edge.target,
+                }));
             }
         } catch (e) { console.error(e); }
 
@@ -714,7 +709,9 @@ export class LoreBoardRenderer {
             edgeDrawModeMap: new Map(),
             edgeOffsetMap: new Map(),
             combinedLabelMap: new Map(),
-            filterMatchNodeIds: matchedLoreHeadings
+            filterMatchNodeIds: matchedLoreHeadings && new Set(data.nodes.filter(node => matchedLoreHeadings.has(
+                node.sectionKey ? JSON.stringify([node.file.path, node.sectionKey]) : node.heading,
+            )).map(node => node.id)),
         };
 
         const ctx = canvas.getContext('2d');

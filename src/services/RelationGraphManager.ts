@@ -13,13 +13,13 @@
  * 同一对角色可拥有两条方向不同的边（如 A→喜欢→B 和 B→厌恶→A）。
  */
 
-import type { App, CachedMetadata, HeadingCache } from 'obsidian';
+import type { App, CachedMetadata } from 'obsidian';
 import { TFile, TFolder } from 'obsidian';
 import { findBookRoot } from '../utils/path';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { t } from '../i18n';
 import { cleanLoreHeading } from './CharacterManager';
-import { loreRelationHeadings, readLoreInlineRelation } from './LoreOutline';
+import { buildLoreOutline, loreRelationHeadings, readLoreInlineRelation, scanLoreHeadings, type HeadingPosition } from './LoreOutline';
 import { addLoreOutlineToGraph, type LoreGraphFile } from './LoreOutlineGraph';
 
 // ==========================================
@@ -37,6 +37,7 @@ export interface GraphNode {
 	/** 原始标题文本（清理 Markdown 格式后） */
 	heading: string;
 	headingLine?: number;
+	sectionKey?: string;
 	outlineParent?: string;
 	/** Canvas 坐标 x（初始化为 0，由 ForceLayoutEngine 赋值） */
 	x: number;
@@ -163,7 +164,7 @@ export class RelationGraphManager {
 			const content = await this.app.vault.cachedRead(f);
 			const lines = content.split(/\r?\n/);
 			fileDataCache.set(f, { fileCache, lines });
-			const nodes = this.extractNodes(f, fileCache, lines);
+			const nodes = this.extractNodes(f, fileCache, lines, options?.includeHeadingHierarchy ? scanLoreHeadings(lines) : undefined);
 
 			for (const node of nodes) {
 				if (!nodeIds.has(node.id)) {
@@ -208,7 +209,9 @@ export class RelationGraphManager {
 			const data = fileDataCache.get(f);
 			if (!data) continue;
 			const { fileCache, lines } = data;
-			const headings = fileCache.headings || [];
+			const headings = options?.includeHeadingHierarchy ? scanLoreHeadings(lines) : (fileCache.headings ?? []);
+			const scopedBlocks = options?.includeHeadingHierarchy
+				? new Set(buildLoreOutline(headings, lines.length).flatMap(section => section.relationBlocks.map(block => block.start + 1))) : new Set<number>();
 			const level2Headings = headings.filter(h => h.level === 2);
 
 			if (level2Headings.length > 0) {
@@ -224,7 +227,7 @@ export class RelationGraphManager {
 
 					const relationSection = this.findRelationSection(headings, i, sectionStart, sectionEnd, lines);
 
-					if (relationSection) {
+					if (relationSection && !scopedBlocks.has(relationSection.startLine)) {
 						const explicitEdges = this.parseExplicitRelations(
 							characterName, lines, relationSection.startLine, relationSection.endLine, nodeIds, nameOrAliasToNodeId
 						);
@@ -239,7 +242,7 @@ export class RelationGraphManager {
 						}
 					}
 
-					if (autoLinkMentions) {
+					if (autoLinkMentions && !options?.includeHeadingHierarchy) {
 						const mentionEdges = this.scanMentions(
 							characterName, lines, sectionStart, sectionEnd, relationSection, allSearchTerms
 						);
@@ -260,7 +263,7 @@ export class RelationGraphManager {
 					const sectionEnd = lines.length;
 					const relationSection = this.findRelationSection(headings, -1, sectionStart, sectionEnd, lines);
 
-					if (relationSection) {
+					if (relationSection && !scopedBlocks.has(relationSection.startLine)) {
 						const explicitEdges = this.parseExplicitRelations(
 							characterName, lines, relationSection.startLine, relationSection.endLine, nodeIds, nameOrAliasToNodeId
 						);
@@ -309,7 +312,7 @@ export class RelationGraphManager {
 						}
 					}
 
-					if (autoLinkMentions) {
+					if (autoLinkMentions && !options?.includeHeadingHierarchy) {
 						const mentionEdges = this.scanMentions(
 							characterName, lines, sectionStart, sectionEnd, relationSection, allSearchTerms
 						);
@@ -326,18 +329,18 @@ export class RelationGraphManager {
 		}
 
 		const graph = { nodes: allNodes, edges: allEdges };
-		if (options?.includeHeadingHierarchy) addLoreOutlineToGraph(this.app, fileDataCache, graph);
+		if (options?.includeHeadingHierarchy) addLoreOutlineToGraph(this.app, fileDataCache, graph, autoLinkMentions
+			? (source, lines, terms) => this.scanMentions(source, lines, 0, lines.length, null, terms) : undefined);
 		return graph;
 	}
 
 	/**
 	 * 从文件缓存中提取所有词条作为图谱节点，并提取节点的类型与别名（支持大纲二级标题与单文件模式）
 	 */
-	private extractNodes(file: TFile, fileCache: CachedMetadata, lines: string[]): GraphNode[] {
+	private extractNodes(file: TFile, fileCache: CachedMetadata, lines: string[], headings: HeadingPosition[] = fileCache.headings ?? []): GraphNode[] {
 		const nodes: GraphNode[] = [];
 		const seenIds = new Set<string>();
 
-		const headings = fileCache.headings || [];
 		const level2Headings = headings.filter(h => h.level === 2);
 
 		if (level2Headings.length > 0) {
@@ -490,7 +493,7 @@ export class RelationGraphManager {
 	 * @returns 关系区段的起止行号，若未找到则返回 null
 	 */
 	private findRelationSection(
-		headings: HeadingCache[],
+		headings: HeadingPosition[],
 		currentH2Index: number,
 		sectionStart: number,
 		sectionEnd: number,
@@ -700,7 +703,7 @@ export class RelationGraphManager {
 	 * @returns 区段结束行号（不含，即半开区间的右边界）
 	 */
 	private findNextHeadingLine(
-		headings: HeadingCache[],
+		headings: HeadingPosition[],
 		currentIndex: number,
 		maxLevel: number,
 		totalLines: number

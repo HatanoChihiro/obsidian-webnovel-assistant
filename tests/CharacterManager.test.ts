@@ -100,6 +100,49 @@ describe('CharacterManager', () => {
         };
     });
 
+    it('indexes deep entries and updates only the selected heading body and its relations', async () => {
+        const manager = new CharacterManager(mockApp, mockPlugin);
+        const file = Object.assign(new TFile(), { path: 'Book1/Lore/Map.md', basename: 'Map' });
+        manager.getBookPathForFile = vi.fn().mockReturnValue('Book1');
+        manager.isLorePath = vi.fn().mockReturnValue(true);
+        let content = '# 地理志\n## 白岬\n旧领地说明。\n### 北境\n#### 港城\n##### 旧区\n###### 东码头\n独立码头正文。\n关系:: 隶属 → [[#白岬]]\n### 关系\n- **贸易**：北境\n';
+        mockApp.vault.getMarkdownFiles.mockReturnValue([file]);
+        mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) => path === file.path ? file : undefined);
+        mockApp.vault.cachedRead.mockImplementation(async () => content);
+        mockApp.vault.process.mockImplementation(async (_file: TFile, mutate: (source: string) => string) => {
+            content = mutate(content);
+            return content;
+        });
+        await manager.rebuildCache();
+        expect(manager.getLoreEntriesInFileOrder('Book1').map(entry => entry.section?.level)).toEqual([1, 2, 3, 4, 5, 6]);
+        const parent = manager.getCharacterFile('Book1', '白岬')!;
+        const child = manager.getCharacterFile('Book1', '东码头')!;
+        const parentSnapshot = await manager.getLoreSnapshot(parent, 'Book1');
+        const childSnapshot = await manager.getLoreSnapshot(child, 'Book1');
+        expect(parentSnapshot?.body).toBe('旧领地说明。');
+        expect(parentSnapshot?.relations.map(relation => relation.label)).toEqual(['贸易']);
+        expect(childSnapshot?.body).toBe('独立码头正文。');
+        expect(childSnapshot?.relations.map(relation => relation.label)).toEqual(['隶属']);
+        expect(await manager.updateLoreEntry(child, {
+            oldHeading: child.heading, newHeading: child.heading, aliases: '', type: '', body: '更新码头正文。',
+            relations: childSnapshot!.relations, expectedSnapshot: childSnapshot!, contextBookPath: 'Book1',
+        })).toBe(true);
+        expect(content).toContain('## 白岬\n旧领地说明。');
+        expect(content).toContain('关系:: 隶属 → [[#白岬]]');
+        expect(content).toContain('### 关系\n- **贸易**：北境');
+        expect(await manager.getLoreContent(child)).toBe('更新码头正文。');
+
+        content += '\n## 商会\n关系:: 停靠 → [[#白岬#北境#港城#旧区#东码头]]\n';
+        manager.getLoreFiles = vi.fn().mockReturnValue([file]);
+        const renamedSnapshot = await manager.getLoreSnapshot(child, 'Book1');
+        expect(await manager.updateLoreEntry(child, {
+            oldHeading: child.heading, newHeading: '东渡码头', aliases: '', type: '', body: '更新码头正文。',
+            relations: renamedSnapshot!.relations, expectedSnapshot: renamedSnapshot!, contextBookPath: 'Book1',
+        })).toBe(true);
+        expect(content).toContain('###### 东渡码头');
+        expect(content).toContain('关系:: 停靠 → [[#白岬#北境#港城#旧区#东渡码头]]');
+    });
+
     describe('isLorePath', () => {
         it('should correctly identify lore paths and nested folders', () => {
             const manager = new CharacterManager(mockApp, mockPlugin);

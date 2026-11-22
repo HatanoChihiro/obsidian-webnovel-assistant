@@ -1,5 +1,6 @@
 import type { App, TFile } from 'obsidian';
-import { cleanLoreHeading, type CharacterManager, type LoreEntry } from './CharacterManager';
+import { cleanLoreHeading, getLoreEntryIdentity, type CharacterManager, type LoreEntry } from './CharacterManager';
+import { buildLoreOutline, getLoreSectionProse, scanLoreHeadings } from './LoreOutline';
 import { CORKBOARD_STATUS_MAP, getCorkboardStatusText } from '../i18n/data-keys';
 
 interface CachedText {
@@ -10,6 +11,10 @@ interface CachedText {
 interface CachedLoreSections {
 	mtime: number;
 	sections: Map<string, string>;
+}
+
+export function getLoreFilterKey(entry: LoreEntry): string {
+	return entry.section ? getLoreEntryIdentity(entry) : entry.heading;
 }
 
 export function normalizeWorkbenchSearchText(value: unknown): string {
@@ -107,9 +112,10 @@ export function getLoreAliasesForBook(
 		const entry = manager.getCharacterFile(bookPath, name);
 		if (!entry || name === entry.heading) continue;
 
-		const aliases = aliasesByHeading.get(entry.heading) ?? [];
+		const key = getLoreFilterKey(entry);
+		const aliases = aliasesByHeading.get(key) ?? [];
 		if (!aliases.includes(name)) aliases.push(name);
-		aliasesByHeading.set(entry.heading, aliases);
+		aliasesByHeading.set(key, aliases);
 	}
 	return aliasesByHeading;
 }
@@ -236,30 +242,31 @@ export class WorkbenchFilterIndex {
 		const expectedGeneration = this.generation;
 		const tokens = resolveWorkbenchFilterTokens(query);
 		const uniqueEntries = this.getUniqueLoreEntries(entries);
-		if (tokens.length === 0) return new Set(uniqueEntries.map(entry => entry.heading));
+		if (tokens.length === 0) return new Set(uniqueEntries.map(getLoreFilterKey));
 
 		const results = new Set<string>();
 		for (let i = 0; i < uniqueEntries.length; i++) {
 			if (this.generation !== expectedGeneration) return new Set();
 			const entry = uniqueEntries[i];
-			const aliases = aliasesByHeading.get(entry.heading) ?? [];
+			const key = getLoreFilterKey(entry);
+			const aliases = aliasesByHeading.get(key) ?? [];
 			const metadataText = [
 				normalizeWorkbenchSearchText(entry.heading),
 				normalizeWorkbenchSearchText(aliases.join('\n'))
 			].join('\n');
 
 			if (tokens.every(token => metadataText.includes(token))) {
-				results.add(entry.heading);
+				results.add(key);
 			} else {
 				const sections = await this.getLoreSections(entry.file, expectedGeneration);
 				if (this.generation !== expectedGeneration) return new Set();
-				const body = sections.get(entry.heading) ?? '';
+				const body = sections.get(entry.section?.key ?? entry.heading) ?? '';
 				const currentMetadata = [
 					normalizeWorkbenchSearchText(entry.heading),
-					normalizeWorkbenchSearchText((aliasesByHeading.get(entry.heading) ?? []).join('\n'))
+					normalizeWorkbenchSearchText((aliasesByHeading.get(key) ?? []).join('\n'))
 				].join('\n');
 				if (tokens.every(token => currentMetadata.includes(token) || body.includes(token))) {
-					results.add(entry.heading);
+					results.add(key);
 				}
 			}
 
@@ -275,7 +282,7 @@ export class WorkbenchFilterIndex {
 	private getUniqueLoreEntries(entries: readonly LoreEntry[]): LoreEntry[] {
 		const seen = new Set<string>();
 		return entries.filter(entry => {
-			const key = `${entry.file.path}\u0000${entry.heading}`;
+			const key = getLoreEntryIdentity(entry);
 			if (seen.has(key)) return false;
 			seen.add(key);
 			return true;
@@ -324,6 +331,10 @@ export class WorkbenchFilterIndex {
 			if (file.path !== path || file.stat.mtime !== mtime) return new Map();
 
 			const sections = extractLoreSections(content, file.basename);
+			const lines = content.split(/\r?\n/);
+			for (const section of buildLoreOutline(scanLoreHeadings(lines), lines.length)) {
+				sections.set(section.key, normalizeWorkbenchSearchText(getLoreSectionProse(lines, section)));
+			}
 			this.loreSectionCache.set(file.path, { mtime, sections });
 			return sections;
 		} catch (error) {

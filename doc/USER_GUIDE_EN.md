@@ -989,7 +989,7 @@ Add `Relation:: Label → [[Note#Heading]]` to the body of the heading that decl
 Relation:: Supplies → [[Factions#Seagull Guild]]
 ```
 
-The lore graph connects the relationship endpoints to their ancestors with “Contains” edges. In the Workbench lore board, expand **Heading outline** on a lore card to browse its subheadings and jump to the source.
+The lore graph shows H1–H6 hierarchy with “Contains” edges. Expand **Heading outline** above a group of Workbench lore cards to browse headings and jump to the source. Each card shows the prose directly under its own heading. The card editor and graph read the reserved relationship sections and inline declarations.
 
 ##### Related Settings
 - **Collapse Subheadings in Hover Card**: For long quick-reference content, collapse level-3 and deeper subheadings by default and expand them on click.
