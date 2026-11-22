@@ -637,14 +637,14 @@ LinLei is a dragon warrior.`;
             );
 
             expect(result).toBe(true);
-            expect(createdContent).toContain('- **朋友**：[[#ZhangSan|ZhangSan]]');
-            expect(createdContent).toContain('- **义弟**：[[#ZhangSan|SanGe]]');
-            expect(createdContent).toContain('- **偶像**：[[Book1/Lore/Characters/Major/Hero|Hero]]');
-            expect(createdContent).toContain('- **战神**：[[Book1/Lore/Characters/Major/Hero|DragonLord]]');
-            expect(createdContent).toContain('- **同门**：[[Book1/Lore/Characters/Minor/SideCharacters#WangWu|WangWu]]');
-            expect(createdContent).toContain('- **师兄**：[[Book1/Lore/Characters/Minor/SideCharacters#WangWu|LaoWang]]');
-            expect(createdContent).toContain('- **未名**：[[UnknownPerson|UnknownPerson]]');
-            expect(createdContent).toContain('- **手动**：[[CustomLink|CustomLink]]');
+            expect(createdContent).toContain('\n**朋友**：[[#ZhangSan|ZhangSan]]');
+            expect(createdContent).toContain('\n**义弟**：[[#ZhangSan|SanGe]]');
+            expect(createdContent).toContain('\n**偶像**：[[Book1/Lore/Characters/Major/Hero|Hero]]');
+            expect(createdContent).toContain('\n**战神**：[[Book1/Lore/Characters/Major/Hero|DragonLord]]');
+            expect(createdContent).toContain('\n**同门**：[[Book1/Lore/Characters/Minor/SideCharacters#WangWu|WangWu]]');
+            expect(createdContent).toContain('\n**师兄**：[[Book1/Lore/Characters/Minor/SideCharacters#WangWu|LaoWang]]');
+            expect(createdContent).toContain('\n**未名**：[[UnknownPerson|UnknownPerson]]');
+            expect(createdContent).toContain('\n**手动**：[[CustomLink|CustomLink]]');
         });
 
         it('should insert templateContent after description and before relations when creating lore entry', async () => {
@@ -684,7 +684,7 @@ LinLei is a dragon warrior.`;
             expect(createdContent).toContain('## Thor');
             expect(createdContent).toContain('A mythological hero');
             expect(createdContent).toContain('### Background\nBorn in a storm.\n**Weapon**: Thunder Sword');
-            expect(createdContent).toContain('- **Brother**：[[Loki|Loki]]');
+            expect(createdContent).toContain('\n**Brother**：[[Loki|Loki]]');
             // Relations belong to the new entry, before any template subheading.
             const descIndex = createdContent.indexOf('A mythological hero');
             const tplIndex = createdContent.indexOf('### Background');
@@ -810,7 +810,7 @@ LinLei is a dragon warrior.`;
             expect(createdContent).toContain('### Part Two');
             expect(createdContent).toContain('#### Subsection');
 
-            expect(createdContent).toContain('- **Disciple**：[[Apprentice|Apprentice]]');
+            expect(createdContent).toContain('\n**Disciple**：[[Apprentice|Apprentice]]');
         });
 
         it('should preserve leading indented code blocks without converting them to H2 lore titles', async () => {

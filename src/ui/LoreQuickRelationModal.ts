@@ -1,6 +1,6 @@
 import { Modal, Notice, Setting, type App, type Editor, type MarkdownView } from 'obsidian';
 import { buildLoreOutline, getFileLoreRelationBlocks, getLoreFrontmatterEnd, scanLoreHeadings } from '../services/LoreOutline';
-import { formatLoreRelationListItem, formatLoreRelationTarget, planLoreRelationBlockInsertion } from '../services/LoreRelations';
+import { formatLoreRelationLine, formatLoreRelationTarget, planLoreRelationBlockInsertion } from '../services/LoreRelations';
 import type { LoreEntry } from '../services/CharacterManager';
 import { LoreRelationTargetPicker } from './LoreRelationEditor';
 import { t } from '../i18n';
@@ -54,7 +54,7 @@ export class LoreQuickRelationModal extends Modal {
 		new Setting(this.contentEl).setName(sourcePath);
 		const field = new Setting(this.contentEl).setName(t('modal.lore-relation-label-placeholder'));
 		const target = new Setting(this.contentEl);
-		const format = () => selected && formatLoreRelationListItem(label, formatLoreRelationTarget(selected, this.source.file.path));
+		const format = () => selected && formatLoreRelationLine(label, formatLoreRelationTarget(selected, this.source.file.path));
 		new Setting(this.contentEl).addButton(save => {
 			const update = () => { save.setDisabled(!format()); };
 			field.addText(text => {

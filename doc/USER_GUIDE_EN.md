@@ -988,13 +988,13 @@ Place the cursor on the line to format. Open the wheel and press `1`–`6` to se
 
 ###### Define a relationship from a subheading
 
-Add `###### 关系` (or `###### Relations`) after the entry's prose and before the next heading. A relationship section immediately after an H6 entry belongs to that H6 entry. **Add Relationship** in the card editor and **Add Lore Relationship** in a Markdown editor generate the same section and list format.
+Add `###### 关系` (or `###### Relations`) after the entry's prose and before the next heading. A relationship section immediately after an H6 entry belongs to that H6 entry. **Add Relationship** in the card editor and **Add Lore Relationship** in a Markdown editor generate the same section and relation lines.
 
 ```markdown
 ###### East Pier
 
 ###### Relations
-- **Supplies**: [[Factions#Seagull Guild|Seagull Guild]]
+**Supplies**: [[Factions#Seagull Guild|Seagull Guild]]
 ```
 
 The lore graph shows H1–H6 hierarchy with “Contains” edges. Each card shows the prose directly under its own heading. Deeper cards show their parent path. Existing `### Relations` sections remain readable. New and edited relationships use the H6 section.

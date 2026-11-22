@@ -6,7 +6,7 @@ import { findBookRoot, getCandidateNames, isCandidateSubpath } from '../utils/pa
 import { t } from '../i18n';
 import { trimBlankLines } from './LoreTemplateService';
 import { buildLoreOutline, findLoreOutlineTarget, getLoreFrontmatterEnd, getLoreSectionText, relationBodyLines, scanLoreHeadings, type LoreOutlineHeading } from './LoreOutline';
-import { formatLoreRelationListItem, formatLoreRelationTarget, legacyRelationLine, loreRelationsHeading, planLoreRelationBlockInsertion, planLoreRelationEdits, rewriteLoreRelationLines, splitLoreRelationTargets } from './LoreRelations';
+import { formatLoreRelationLine, formatLoreRelationTarget, legacyRelationLine, loreRelationsHeading, planLoreRelationBlockInsertion, planLoreRelationEdits, rewriteLoreRelationLines, splitLoreRelationTargets } from './LoreRelations';
 
 export interface LoreEntry {
 	file: TFile;
@@ -2188,10 +2188,10 @@ export class CharacterManager {
 
 	private formatLoreRelation(bookPath: string, sourcePath: string, row: LoreRelationItem): string | undefined {
 		const explicitLink = [row.rawTarget, row.target].find(target => target && /^\[\[[^\]\r\n]+\]\]$/.test(target.trim()));
-		if (explicitLink) return formatLoreRelationListItem(row.label, explicitLink);
+		if (explicitLink) return formatLoreRelationLine(row.label, explicitLink);
 		const target = this.getCharacterFile(bookPath, row.target.trim());
 		const name = row.target.trim();
-		return formatLoreRelationListItem(row.label, target ? formatLoreRelationTarget(target, sourcePath, name) : `[[${name}|${name}]]`);
+		return formatLoreRelationLine(row.label, target ? formatLoreRelationTarget(target, sourcePath, name) : `[[${name}|${name}]]`);
 	}
 
 	private parseChunkFields(lines: string[], start: number, end: number): {

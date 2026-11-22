@@ -22,12 +22,12 @@ export function formatLoreRelationTarget(entry: LoreEntry, sourcePath?: string, 
 	return `[[${filePath}${headingPath ? `#${headingPath}` : ''}|${displayName}]]`;
 }
 
-export function formatLoreRelationListItem(label: string, rawLink: string): string | undefined {
+export function formatLoreRelationLine(label: string, rawLink: string): string | undefined {
 	const link = /^\[\[([^\]\r\n]+)\]\]$/.exec(rawLink.trim());
 	if (!link || !label.trim() || /[\r\n*:：]/.test(label)) return undefined;
 	const [target, alias] = link[1].split('|');
 	if (!target.trim()) return undefined;
-	return `- **${label.trim()}**：[[${target.trim()}|${alias?.trim() || loreRelationLinkName(rawLink)}]]`;
+	return `**${label.trim()}**：[[${target.trim()}|${alias?.trim() || loreRelationLinkName(rawLink)}]]`;
 }
 
 export function planLoreRelationBlockInsertion(lines: readonly string[], bodyEnd: number, blocks: readonly LoreRelationBlock[], items: readonly string[]) {
