@@ -328,6 +328,7 @@ export interface AccurateCountSettings {
 	// === 嵌套子设置 ===
 	/** 普通编辑器打字机设置 */
 	editorTypewriter: EditorTypewriterSettings;
+	enableHeadingWheel: boolean;
 	/** 沉浸模式设置 */
 	immersive: ImmersiveModeSettings;
 	/** OBS 数据输出设置 */

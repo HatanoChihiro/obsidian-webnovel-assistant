@@ -980,6 +980,12 @@ When lore files or chapters already exist but lore highlighting, Workbench stati
 ```
 4. The Lore Graph will parse `**Relation Name**: Target Name` and draw arrows and labels with solid lines in the graph.
 
+###### Choose a heading level in the editor
+
+Enable **Quick heading wheel** under WNA Settings → Creative Assistance. In Obsidian Settings → Hotkeys, search for **Open Heading Wheel** and assign a shortcut. Avoid system shortcuts such as Alt+Tab and Alt+F4.
+
+Place the cursor on the line to format. Open the wheel and press `1`–`6` to set the line's heading level and keep its text. You can also click a level or press `Esc` to cancel.
+
 ###### Define a relationship from a subheading
 
 Add `Relation:: Label → [[Note#Heading]]` to the body of the heading that declares the relationship. Write one target per line. Use `[[#Heading]]` for a target in the same note, and include the parent headings in the link when titles are repeated.

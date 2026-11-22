@@ -240,6 +240,7 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 	stickyNoteAutoSave: true,
 
 	// 普通编辑器打字机默认设置
+	enableHeadingWheel: false,
 	editorTypewriter: {
 		enabled: false,
 		centerOffset: 0,

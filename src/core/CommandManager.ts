@@ -22,6 +22,7 @@ import { AnnotateDictModal } from '../ui/AnnotateDictModal';
 import { isSelectionEligibleForAnnotate } from '../utils/proofreadingHelpers';
 import { splitChapterAtCursor } from '../services/ChapterSplitter';
 import { ChapterSplitCollisionModal } from '../ui/ChapterSplitCollisionModal';
+import { HeadingWheelModal } from '../ui/HeadingWheelModal';
 
 function getSelectedOrCursorWord(editor: {
 	getSelection: () => string;
@@ -59,6 +60,16 @@ export class CommandManager {
 		this.registerTypographyCommands();
 		this.registerProofreadingCommands();
 		this.registerEditorTypewriterCommands();
+		this.plugin.addCommand({
+			id: 'open-heading-wheel',
+			name: t('command.open-heading-wheel'),
+			icon: 'heading',
+			editorCheckCallback: (checking, editor, view) => {
+				if (!this.plugin.settings.enableHeadingWheel || !(view instanceof MarkdownView)) return false;
+				if (!checking) HeadingWheelModal.show(this.plugin.app, editor, view);
+				return true;
+			}
+		});
 	}
 
 	private registerTypographyCommands() {

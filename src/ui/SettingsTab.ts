@@ -1072,6 +1072,16 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 
 	// ── 创作辅助设置 ──
 	private displayCreativeSettings(containerEl: HTMLElement): void {
+		new Setting(containerEl)
+			.setName(t('setting.heading-wheel'))
+			.setDesc(t('setting.heading-wheel-desc'))
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.enableHeadingWheel)
+				.onChange(async value => {
+					this.plugin.settings.enableHeadingWheel = value;
+					await this.plugin.saveSettings();
+				}));
+
 		this.displayEditorTypewriterSettings(containerEl);
 		this.displayStickyNoteSettings(containerEl);
 		this.displayForeshadowingSettings(containerEl);

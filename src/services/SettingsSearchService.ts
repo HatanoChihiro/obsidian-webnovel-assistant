@@ -151,6 +151,7 @@ export const SETTINGS_SEARCH_CATALOGUE: readonly SettingCatalogueEntry[] = [
 		{ titleKey: 'setting.daily-goal', descKeys: ['setting.daily-goal-desc'], sectionKey: 'setting.writing-goals' },
 	]),
 	...categoryEntries('creative', [
+		{ titleKey: 'setting.heading-wheel', descKeys: ['setting.heading-wheel-desc'] },
 		{ titleKey: 'setting.editor-typewriter-title', isHeading: true },
 		{ titleKey: 'setting.editor-typewriter-enable', descKeys: ['setting.editor-typewriter-enable-desc'], sectionKey: 'setting.editor-typewriter-title' },
 		{ titleKey: 'setting.editor-typewriter-offset', descKeys: ['setting.editor-typewriter-offset-desc'], sectionKey: 'setting.editor-typewriter-title' },
